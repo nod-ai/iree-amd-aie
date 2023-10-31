@@ -12,7 +12,12 @@
 
 namespace mlir::iree_compiler::AMDAIE {
 
+/// Dummy pass that does nothing
 std::unique_ptr<Pass> createPlaceholderPass();
+
+/// Add passes to run the strategy specified using transform dialect
+/// file/library
+void addTransformDialectPasses(OpPassManager &passManager);
 
 /// Populates passes needed to lower linalg/arith/math ops to LLVM dialect via
 /// the structured ops path. The pass manager `pm` here operate on the module
