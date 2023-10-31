@@ -9,6 +9,12 @@
 
 include "mlir/Pass/PassBase.td"
 
+def AMDAIELowerExecutableTarget :
+    Pass<"iree-amdaie-lower-executable-target", "mlir::iree_compiler::IREE::HAL::ExecutableVariantOp"> {
+  let summary = "Perform lowering of executable target using one of the IREE::HAL::DispatchLoweringPassPipeline";
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIELowerExecutableTargetPass()";
+}
+
 def Placeholder : Pass<"iree-amdaie-placeholder", ""> {
   let summary = "Temporary placeholder until there is a pass here";
   let constructor = "mlir::iree_compiler::AMDAIE::createPlaceholderPass()";

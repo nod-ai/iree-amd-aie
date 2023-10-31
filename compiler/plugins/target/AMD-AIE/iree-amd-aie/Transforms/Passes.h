@@ -7,11 +7,24 @@
 #ifndef IREE_AMD_AIE_TRANSFORMS_PASSES_H_
 #define IREE_AMD_AIE_TRANSFORMS_PASSES_H_
 
+#include "iree/compiler/Codegen/Dialect/IREECodegenAttrs.h"
 #include "mlir/Pass/Pass.h"
 
 namespace mlir::iree_compiler::AMDAIE {
 
 std::unique_ptr<Pass> createPlaceholderPass();
+
+/// Populates passes needed to lower linalg/arith/math ops to LLVM dialect via
+/// the structured ops path. The pass manager `pm` here operate on the module
+/// within the IREE::HAL::ExecutableOp.
+void buildAMDAIETransformPassPipeline(OpPassManager &pm);
+
+/// Default pass pipeline on AMDAIE.
+void addAMDAIEDefaultPassPipeline(OpPassManager &pm);
+
+/// Create pass calling the dynamic pipeline for AMDAIE.
+std::unique_ptr<OperationPass<IREE::HAL::ExecutableVariantOp>>
+createAMDAIELowerExecutableTargetPass();
 
 void registerAMDAIEPasses();
 

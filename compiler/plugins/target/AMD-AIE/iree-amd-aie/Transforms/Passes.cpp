@@ -6,7 +6,19 @@
 
 #include "iree-amd-aie/Transforms/Passes.h"
 
+#include "iree/compiler/Codegen/Common/Passes.h"
+#include "mlir/Pass/PassManager.h"
+
 namespace mlir::iree_compiler::AMDAIE {
+
+void buildAMDAIETransformPassPipeline(OpPassManager &pm) {
+  addCommonTargetExecutablePreprocessingPasses(pm);
+  pm.addPass(createAMDAIELowerExecutableTargetPass());
+}
+
+void addAMDAIEDefaultPassPipeline(OpPassManager &pm) {
+  pm.addPass(createPlaceholderPass());
+}
 
 namespace {
 #define GEN_PASS_REGISTRATION
