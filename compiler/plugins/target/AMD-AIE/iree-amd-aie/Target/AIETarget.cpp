@@ -38,7 +38,7 @@ class AIETargetBackend final : public IREE::HAL::TargetBackend {
 
   void buildTranslationPassPipeline(IREE::HAL::ExecutableVariantOp variantOp,
                                     OpPassManager &passManager) override {
-    passManager.addPass(createPlaceholderPass());
+    buildAMDAIETransformPassPipeline(passManager);
   }
 
   LogicalResult serializeExecutable(const SerializationOptions &serOptions,

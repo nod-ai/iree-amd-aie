@@ -7,6 +7,10 @@
 #ifndef IREE_AMD_AIE_TRANSFORMS_PASSDETAIL_H_
 #define IREE_AMD_AIE_TRANSFORMS_PASSDETAIL_H_
 
+#include "iree/compiler/Dialect/HAL/IR/HALOps.h"
+#include "mlir/Dialect/Affine/IR/AffineOps.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Pass/Pass.h"
 
 namespace mlir::iree_compiler::AMDAIE {

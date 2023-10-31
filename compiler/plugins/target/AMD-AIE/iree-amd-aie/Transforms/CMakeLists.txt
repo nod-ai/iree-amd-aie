@@ -36,9 +36,33 @@ iree_cc_library(
   SRCS
     "Passes.cpp"
     "Placeholder.cpp"
+    "AMDAIELowerExecutableTarget.cpp"
   DEPS
     ::PassHeaders
     ::PassesIncGen
     MLIRSupport
+    iree::compiler::Codegen::Dialect::IREECodegenDialect
+    iree::compiler::Dialect::HAL::IR
+    iree::compiler::Utils
+    IREELinalgExtDialect
+    IREELinalgExtPasses
+    IREELinalgExtTransforms
+    MLIRLinalgDialect
+    MLIRLinalgTransforms
+    MLIRLLVMCommonConversion
+    MLIRLLVMDialect
+    MLIRPDLDialect
+    MLIRPDLInterpDialect
+    MLIRPass
+    MLIRSCFDialect
+    MLIRSCFToControlFlow
+    MLIRSCFTransforms
+    MLIRSCFUtils
+    MLIRTensorDialect
+    MLIRTensorTransforms
+    MLIRVectorDialect
+    MLIRVectorToLLVM
+    MLIRVectorToSCF
+    MLIRVectorTransforms
   PUBLIC
 )
