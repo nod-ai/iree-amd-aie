@@ -7,6 +7,7 @@
 #include "iree-amd-aie/Transforms/PassDetail.h"
 #include "iree-amd-aie/Transforms/Passes.h"
 #include "iree-dialects/Dialect/LinalgExt/IR/LinalgExtDialect.h"
+#include "iree/compiler/Codegen/Common/Passes.h"
 #include "iree/compiler/Codegen/Dialect/IREECodegenAttrs.h"
 #include "iree/compiler/Codegen/Dialect/IREECodegenDialect.h"
 #include "iree/compiler/Dialect/HAL/IR/HALDialect.h"
@@ -37,20 +38,12 @@ class AMDAIELowerExecutableTargetPass
     : public AMDAIELowerExecutableTargetBase<AMDAIELowerExecutableTargetPass> {
  public:
   void getDependentDialects(DialectRegistry &registry) const override {
-    // clang-format off
-    registry
-        .insert<IREE::HAL::HALDialect,
-                    IREE::LinalgExt::IREELinalgExtDialect,
-                    bufferization::BufferizationDialect,
-                    linalg::LinalgDialect,
-                    LLVM::LLVMDialect,
-                    pdl::PDLDialect,
-                    pdl_interp::PDLInterpDialect,
-                    scf::SCFDialect,
-                    tensor::TensorDialect,
-                    transform::TransformDialect,
-                    vector::VectorDialect>();
-    // clang-format on
+    registry.insert<
+        IREE::HAL::HALDialect, IREE::LinalgExt::IREELinalgExtDialect,
+        bufferization::BufferizationDialect, linalg::LinalgDialect,
+        LLVM::LLVMDialect, pdl::PDLDialect, pdl_interp::PDLInterpDialect,
+        scf::SCFDialect, tensor::TensorDialect, transform::TransformDialect,
+        vector::VectorDialect>();
   }
 
   AMDAIELowerExecutableTargetPass() = default;
@@ -58,24 +51,60 @@ class AMDAIELowerExecutableTargetPass
       const AMDAIELowerExecutableTargetPass &pass){};
 
   void runOnOperation() override;
-
- private:
-  Option<bool> testLoweringConfiguration{
-      *this, "test-lowering-configuration",
-      llvm::cl::desc(
-          "Flag used for lit-testing the default configuration set for root "
-          "ops in hal.executable.variants. Defaults to false and is set to "
-          "true "
-          "for lit tests. Not for general usage"),
-      llvm::cl::init(false)};
 };
 }  // namespace
 
 void AMDAIELowerExecutableTargetPass::runOnOperation() {
+  IREE::HAL::ExecutableVariantOp variantOp = getOperation();
+  ModuleOp moduleOp = variantOp.getInnerModule();
+  if (!moduleOp) {
+    getOperation()->emitError(
+        "Expected a variantOp root with an inner ModuleOp");
+    return signalPassFailure();
+  }
+
   OpPassManager executableLoweringPipeline(
       IREE::HAL::ExecutableVariantOp::getOperationName());
-  IREE::HAL::ExecutableVariantOp variantOp = getOperation();
-  addAMDAIEDefaultPassPipeline(executableLoweringPipeline);
+
+  // There might be multiple entry points in the module. Currently, all of
+  // them need to have the same translation info. This should already be
+  // verified when the strategies are set, but we still need to retrieve the
+  // correct translation info.
+  llvm::StringMap<IREE::HAL::ExecutableExportOp> exportOps =
+      getAllEntryPoints(moduleOp);
+  std::optional<IREE::Codegen::TranslationInfoAttr> translationInfo;
+  for (auto &it : exportOps) {
+    auto exportOp = it.second;
+    if (IREE::Codegen::TranslationInfoAttr currTranslationInfo =
+            getTranslationInfo(exportOp)) {
+      if (translationInfo) {
+        if (currTranslationInfo != translationInfo.value()) {
+          moduleOp.emitOpError(
+              "unhandled compilation of entry point functions with different "
+              "translation info");
+          return signalPassFailure();
+        }
+      } else {
+        translationInfo = currTranslationInfo;
+      }
+    }
+  }
+
+  if (translationInfo.has_value()) {
+    switch (translationInfo.value().getDispatchLoweringPassPipeline()) {
+        // Transform-dialect pipelines.
+      case IREE::Codegen::DispatchLoweringPassPipeline::TransformDialectCodegen:
+        addTransformDialectPasses(executableLoweringPipeline);
+        break;
+      // no pipeline specified, nothing to do.
+      case IREE::Codegen::DispatchLoweringPassPipeline::None:
+        return;
+      default:
+        moduleOp.emitOpError("Unsupported pipeline on CPU target.");
+        return signalPassFailure();
+    }
+  }
+
   if (failed(runPipeline(executableLoweringPipeline, variantOp))) {
     return signalPassFailure();
   }
