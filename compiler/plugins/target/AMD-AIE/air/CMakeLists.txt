@@ -21,12 +21,11 @@ iree_cc_library(
 # AIR Dialect
 ###############################################################################
 
-file(GLOB _AIRDialectIR_SRCS "${IREE_MLIR_AIR_SOURCE_DIR}/lib/Dialect/AIR/IR/*.cpp")
 iree_cc_library(
     NAME
         AIRDialectIR
     SRCS
-        ${_AIRDialectIR_SRCS}
+      ${IREE_MLIR_AIR_SOURCE_DIR}/lib/Dialect/AIR/IR/AIRDialect.cpp
     DEPS
       ::defs
       ::AIRDialectGen
