@@ -41,12 +41,14 @@ iree_cc_library(
     ::PassHeaders
     ::PassesIncGen
     MLIRSupport
+    iree::compiler::Codegen::Common::TransformDialectInterpreterPass
     iree::compiler::Codegen::Dialect::IREECodegenDialect
     iree::compiler::Dialect::HAL::IR
     iree::compiler::Utils
     IREELinalgExtDialect
     IREELinalgExtPasses
     IREELinalgExtTransforms
+    IREELinalgTransformDialectPasses
     MLIRLinalgDialect
     MLIRLinalgTransforms
     MLIRLLVMCommonConversion
