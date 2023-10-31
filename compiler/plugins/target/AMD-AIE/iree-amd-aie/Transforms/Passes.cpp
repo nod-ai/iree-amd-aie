@@ -6,6 +6,7 @@
 
 #include "iree-amd-aie/Transforms/Passes.h"
 
+#include "iree-dialects/Dialect/LinalgTransform/Passes.h"
 #include "iree/compiler/Codegen/Common/Passes.h"
 #include "mlir/Pass/PassManager.h"
 
@@ -14,6 +15,17 @@ namespace mlir::iree_compiler::AMDAIE {
 void buildAMDAIETransformPassPipeline(OpPassManager &pm) {
   addCommonTargetExecutablePreprocessingPasses(pm);
   pm.addPass(createAMDAIELowerExecutableTargetPass());
+}
+
+void addTransformDialectPasses(OpPassManager &passManager) {
+  // Give control to the transform dialect.
+  passManager.addPass(
+      mlir::iree_compiler::createTransformDialectInterpreterPass());
+  // Dropping the schedule is needed:
+  //   1. if we want to embed the transform in the module: we should drop the
+  //      schedule once applied.
+  //   2. if transform.do_not_dce_operands ops are introduced.
+  passManager.addPass(createDropSchedulePass());
 }
 
 void addAMDAIEDefaultPassPipeline(OpPassManager &pm) {
