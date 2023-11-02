@@ -29,8 +29,7 @@ module attributes { transform.with_named_sequence } {
     transform.yield
   }
 
-  transform.sequence failures(propagate) {
-  ^bb1(%variant_op: !transform.any_op):
+  transform.named_sequence @__transform_main(%variant_op: !transform.any_op {transform.read_only}) {
     %ops = transform.structured.match ops{["linalg.fill", "linalg.matmul"]} in %variant_op : (!transform.any_op) -> !transform.any_op
     %fill, %matmul = transform.split_handle %ops : (!transform.any_op) -> (!transform.any_op, !transform.any_op)
 
@@ -78,7 +77,7 @@ module attributes { transform.with_named_sequence } {
 
     // Find the fill operation to fuse.
     // TODO(ravishankarm): Find a better way to find the fill operation.
-    %fused_fill_1 = transform.get_producer_of_operand %forall_1[2] : (!transform.any_op) -> (!transform.any_op)
+    %fused_fill_1 = transform.get_producer_of_operand %forall_1[0] : (!transform.any_op) -> (!transform.any_op)
 
     // Fuse fill operation into the loop
     %fused_fill_2, %__ = transform.structured.fuse_into_containing_op %fused_fill_1 into %forall_1 : (!transform.any_op, !transform.any_op) -> (!transform.any_op, !transform.any_op)
@@ -140,5 +139,6 @@ module attributes { transform.with_named_sequence } {
     %memref_func = transform.structured.match ops{["func.func"]} in %variant_op_3
       : (!transform.any_op) -> !transform.any_op
     transform.iree.hoist_static_alloc %memref_func : (!transform.any_op) -> ()
+    transform.yield
   }
 }
