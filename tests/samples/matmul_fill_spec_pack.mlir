@@ -4,7 +4,7 @@
 //   export IREE_BUILD_DIR=${IREE_BUILD_DIR:-${HOME}/iree/build/Debug}
 //   export IREE_AMD_AIE_DIR=${IREE_AMD_AIE_DIR:-${HOME}/iree/iree-amd-aie}
 //   ${IREE_BUILD_DIR}/tools/iree-opt \
-//     ${IREE_AMD_AIE_DIR}/tests/samples/matmul_source.mlir \
+//     ${IREE_AMD_AIE_DIR}/tests/samples/matmul_fill.mlir \
 //     --iree-hal-target-backends=amd-aie \
 //     --iree-abi-transformation-pipeline \
 //     --iree-flow-transformation-pipeline \
@@ -12,7 +12,7 @@
 //     --iree-hal-configuration-pipeline | \
 //   ${IREE_BUILD_DIR}/tools/iree-opt \
 //      --pass-pipeline='builtin.module(hal.executable(hal.executable.variant(iree-codegen-materialize-user-configs, iree-amd-aie-lower-executable-target)))' \
-//      --iree-codegen-use-transform-dialect-strategy=${IREE_AMD_AIE_DIR}/tests/samples/matmul_codegen_spec_pack.mlir
+//      --iree-codegen-transform-dialect-strategy=${IREE_AMD_AIE_DIR}/tests/samples/matmul_fill_spec_pack.mlir
 // ```
 
 module attributes { transform.with_named_sequence } {
