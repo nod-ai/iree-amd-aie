@@ -10,3 +10,7 @@ add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/tools/plugins AMD-AIE/tools)
 if(ADD_XRT_RUNTIME)
     add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/runtime/plugins/XRT XRT)
 endif()
+
+add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/experimental xrt)
+
+
