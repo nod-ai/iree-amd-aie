@@ -5,8 +5,8 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 set(IREE_AMD_AIE_SOURCE_DIR "${CMAKE_CURRENT_LIST_DIR}")
-add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/compiler/plugins/target/AMD-AIE target/AMD-AIE)
-add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/tools/plugins AMD-AIE/tools)
-if(ADD_XRT_RUNTIME)
-    add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/runtime/plugins/XRT XRT)
-endif()
+
+# TODO: Enable once turnkey.
+option(IREE_AMD_AIE_ENABLE_XRT_DRIVER "Builds the XRT HAL driver" OFF)
+
+add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/runtime/src AMD-AIE)
