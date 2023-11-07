@@ -6,6 +6,7 @@
 
 set(IREE_PACKAGE_ROOT_DIR "${CMAKE_CURRENT_LIST_DIR}")
 set(IREE_PACKAGE_ROOT_PREFIX "iree::target::amd-aie::Translation")
+iree_add_all_subdirs()
 
 iree_cc_library(
     NAME

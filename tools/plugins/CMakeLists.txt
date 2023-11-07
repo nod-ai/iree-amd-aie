@@ -6,18 +6,8 @@
 
 set(IREE_PACKAGE_ROOT_DIR "${CMAKE_CURRENT_LIST_DIR}")
 set(IREE_PACKAGE_ROOT_PREFIX "iree/tools")
-set(IREE_COMPILER_TABLEGEN_INCLUDE_DIRS "${CMAKE_CURRENT_SOURCE_DIR}")
-
-add_library(iree_amd-aie_tools_defs INTERFACE)
-target_include_directories(iree_amd-aie_tools_defs
-  INTERFACE
-  ${CMAKE_CURRENT_SOURCE_DIR}
-  ${CMAKE_CURRENT_BINARY_DIR}
-)
-
-# Configures all iree_cc_* targets to take this implicit dep,
-# which provides common includes and copts for the tree.
-set(IREE_IMPLICIT_DEFS_CC_DEPS iree_amd-aie_tools_defs)
+iree_add_all_subdirs()
+set(IREE_PACKAGE_ROOT_PREFIX "")
 
 # If a target backend that requires LLD to link codegen executables is
 # enabled, install the target.
