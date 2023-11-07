@@ -23,3 +23,4 @@ set(IREE_IMPLICIT_DEFS_CC_DEPS iree_target_amd-aie_compiler_defs)
 
 add_subdirectory(iree-amd-aie)
 add_subdirectory(air)
+add_subdirectory(Translation)
