@@ -354,16 +354,15 @@ FailureOr<std::string> getOperandStr(Value operand,
     return failure();
   }
 
-  while (!scope.symbolTable.count(operand)) {
-    if (auto subviewOp = operand.getDefiningOp<memref::SubViewOp>()) {
-      operand = subviewOp.getSource();
-      continue;
-    }
+  SmallVector<memref::SubViewOp> destSubviews;
+  FailureOr<Value> sourceOperand = walkSubViews(operand, destSubviews, scope);
+  if (failed(sourceOperand) ||
+      !scope.symbolTable.count(sourceOperand.value())) {
     return failure();
   }
 
-  opStr +=
-      "(" + inputTypeStr.value() + "*)" + scope.symbolTable[operand] + "[(0)])";
+  opStr += "(" + inputTypeStr.value() + "*)" +
+           scope.symbolTable[sourceOperand.value()] + "[(0)])";
   return opStr;
 }
 
@@ -635,7 +634,7 @@ LogicalResult AccelSerializer::processOperation(scf::ForOp forOp,
   }
 
   for (Operation &op : *forOp.getBody()) {
-    if (failed(processOperation(&op, scope))) {
+    if (failed(processOperation(&op, subScope))) {
       return failure();
     }
   }
