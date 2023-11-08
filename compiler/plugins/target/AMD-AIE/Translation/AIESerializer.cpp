@@ -97,7 +97,7 @@ static FailureOr<BdLoops> getBdLoops(ArrayRef<int64_t> shape) {
   return bdLoops;
 }
 
-/// Get all the subview ops by walking through an input operation
+/// Get the source SubView op by walking through the defining ops
 FailureOr<Value> walkSubViews(Value v,
                               SmallVector<memref::SubViewOp> &subviewOps,
                               AccelSerializer::ScopeInfo &scope) {
@@ -351,6 +351,14 @@ FailureOr<std::string> getOperandStr(Value operand,
   if (!inputType) return failure();
   auto inputTypeStr = getTypeStr(inputType.getElementType());
   if (failed(inputTypeStr)) {
+    return failure();
+  }
+
+  while (!scope.symbolTable.count(operand)) {
+    if (auto subviewOp = operand.getDefiningOp<memref::SubViewOp>()) {
+      operand = subviewOp.getSource();
+      continue;
+    }
     return failure();
   }
 
@@ -627,7 +635,7 @@ LogicalResult AccelSerializer::processOperation(scf::ForOp forOp,
   }
 
   for (Operation &op : *forOp.getBody()) {
-    if (failed(processOperation(&op, subScope))) {
+    if (failed(processOperation(&op, scope))) {
       return failure();
     }
   }
