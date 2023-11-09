@@ -18,6 +18,7 @@ iree_cc_library(
     iree::target::amd-aie::Target
     iree::target::amd-aie::Transforms
     iree::target::amd-aie::air::AIRDialectIR
+    iree::target::amd-aie::air::AIRConversionPasses
   PUBLIC
 )
 

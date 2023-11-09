@@ -9,6 +9,7 @@ set(IREE_PACKAGE_ROOT_PREFIX "iree::target::amd-aie::air")
 
 list(APPEND IREE_COMPILER_TABLEGEN_INCLUDE_DIRS
     "${IREE_MLIR_AIR_SOURCE_DIR}/include")
+include_directories("${IREE_MLIR_AIR_SOURCE_DIR}/include")
 
 iree_cc_library(
   NAME
@@ -30,6 +31,7 @@ iree_cc_library(
       ::defs
       ::AIRDialectGen
       ::AIRInterfaceGen
+      ::AIRTransformOpsGen
       MLIRIR
 )
 
@@ -57,4 +59,72 @@ iree_tablegen_library(
   OUTS
     -gen-op-interface-decls Dialect/AIR/AIROpInterfaces.h.inc
     -gen-op-interface-defs Dialect/AIR/AIROpInterfaces.cpp.inc
+)
+
+iree_tablegen_library(
+  NAME
+    AIRTransformOpsGen
+  TD_FILE
+    "${IREE_MLIR_AIR_SOURCE_DIR}/include/air/Dialect/AIR/AIRTransformOps.td"
+  OUTS
+    -gen-op-decls Dialect/AIR/AIRTransformOps.h.inc
+    -gen-op-defs Dialect/AIR/AIRTransformOps.cpp.inc
+)
+
+###############################################################################
+# AIR Passes
+###############################################################################
+
+iree_tablegen_library(
+  NAME
+    PassesIncGen
+  TD_FILE
+    "${IREE_MLIR_AIR_SOURCE_DIR}/include/air/Conversion/Passes.td"
+  OUTS
+    -gen-pass-decls Conversion/Passes.h.inc
+)
+
+iree_cc_library(
+  NAME
+    PassHeaders
+  HDRS
+    "${IREE_MLIR_AIR_SOURCE_DIR}/include/air/Conversion/PassDetail.h"
+    "${IREE_MLIR_AIR_SOURCE_DIR}/include/air/Conversion/Passes.h"
+    "Passes.h.inc"
+  DEPS
+    ::PassesIncGen
+    MLIRPass
+  PUBLIC
+)
+
+iree_cc_library(
+  NAME
+    AIRUtil
+  HDRS
+    "${IREE_MLIR_AIR_SOURCE_DIR}/include/air/Util/Dependency.h"
+    "${IREE_MLIR_AIR_SOURCE_DIR}/include/air/Util/Util.h"
+  SRCS
+    "${IREE_MLIR_AIR_SOURCE_DIR}/lib/Util/Dependency.cpp"
+    "${IREE_MLIR_AIR_SOURCE_DIR}/lib/Util/Util.cpp"
+  DEPS
+    MLIRIR
+    MLIRTransforms
+)
+
+iree_cc_library(
+  NAME
+    AIRConversionPasses
+  HDRS
+    "${IREE_MLIR_AIR_SOURCE_DIR}/include/air/Conversion/ConvertToAIRPass.h"
+    "${IREE_MLIR_AIR_SOURCE_DIR}/include/air/Conversion/Passes.h"
+  SRCS
+    "Passes.cpp"
+    "${IREE_MLIR_AIR_SOURCE_DIR}/lib/Conversion/ConvertToAIRPass.cpp"
+  DEPS
+    ::AIRDialectIR
+    ::AIRUtil
+    ::PassHeaders
+    MLIRAffineDialect
+    MLIRIR
+    MLIRPass
 )

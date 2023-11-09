@@ -127,7 +127,7 @@ module attributes { transform.with_named_sequence } {
     // Hoist static allocations.
     %memref_func = transform.structured.match ops{["func.func"]} in %variant_op_3
       : (!transform.any_op) -> !transform.any_op
-    transform.iree.hoist_static_alloc %memref_func : (!transform.any_op) -> ()
+    // transform.iree.hoist_static_alloc %memref_func : (!transform.any_op) -> ()
     transform.yield
   }
 }
