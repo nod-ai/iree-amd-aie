@@ -244,7 +244,7 @@ hal.executable private @unpack_share_to_global {
 #map3 = affine_map<(d0, d1, d2, d3, d4, d5, d6, d7, d8) -> (d2, d1, d4, d5, d8, d7)>
 #map4 = affine_map<(d0, d1, d2, d3, d4, d5, d6, d7, d8) -> (d0, d1, d4, d3, d6, d7)>
 #executable_target_elf = #hal.executable.target<"amd-aie", "elf", {target_arch = "chip-tbd"}>
-hal.executable private @generic_example {
+hal.executable private @generic_example_0 {
   hal.executable.variant public @elf target(#executable_target_elf)  {
     builtin.module {
       func.func @matmul_example_dispatch_0_matmul_16x128x128_i8xi8xi32() {
@@ -265,6 +265,43 @@ hal.executable private @generic_example {
           ^bb0(%in: i8, %in_10: i8, %out: i32):
             %5 = arith.extsi %in : i8 to i32
             %6 = arith.extsi %in_10 : i8 to i32
+            %7 = arith.muli %5, %6 : i32
+            %8 = arith.addi %out, %7 : i32
+            linalg.yield %8 : i32
+          }
+        }
+        return
+      }
+    }
+  }
+}
+
+// -----
+
+#map2 = affine_map<(d0, d1, d2, d3, d4, d5, d6, d7, d8) -> (d0, d2, d5, d3, d6, d8)>
+#map3 = affine_map<(d0, d1, d2, d3, d4, d5, d6, d7, d8) -> (d2, d1, d4, d5, d8, d7)>
+#map4 = affine_map<(d0, d1, d2, d3, d4, d5, d6, d7, d8) -> (d0, d1, d4, d3, d6, d7)>
+#executable_target_elf = #hal.executable.target<"amd-aie", "elf", {target_arch = "chip-tbd"}>
+hal.executable private @generic_example_1 {
+  hal.executable.variant public @elf target(#executable_target_elf)  {
+    builtin.module {
+      func.func @matmul_example_dispatch_0_matmul_16x128x128_i8xi8xi32() {
+        %alloc = memref.alloc() : memref<2x1x8x8x8x8xi8, "local">
+        %alloc_0 = memref.alloc() : memref<1x2x8x4x4x8xi8, "local">
+        %alloc_1 = memref.alloc() : memref<1x1x8x4x4x8xi32, "local">
+        %c2 = arith.constant 2 : index
+        %c1 = arith.constant 1 : index
+        %c0 = arith.constant 0 : index
+        scf.for %arg4 = %c0 to %c2 step %c1 {
+          %subview_10 = memref.subview %alloc_0[0, %arg4, 0, 0, 0, 0] [1, 1, 8, 4, 4, 8] [1, 1, 1, 1, 1, 1] : memref<1x2x8x4x4x8xi8, "local"> to memref<1x1x8x4x4x8xi8, strided<[2048, 1024, 128, 32, 8, 1], offset: ?>, "local">
+          %subview_11 = memref.subview %alloc[%arg4, 0, 0, 0, 0, 0] [1, 1, 8, 8, 8, 8] [1, 1, 1, 1, 1, 1] : memref<2x1x8x8x8x8xi8, "local"> to memref<1x1x8x8x8x8xi8, strided<[4096, 4096, 512, 64, 8, 1], offset: ?>, "local">
+          // CHECK: attr [IterVar(tdn_i.c: int32, (nullptr), "DataPar", "")] "pragma_aie_intrin_kernel_bdrp*0*0" = 1 {
+          // CHECK:   mem_2_local[(0)] = ((int32*)mem_2_local[(0)] + (cast(int32, (int8*)mem_1_local[(0)])*cast(int32, (int8*)mem_0_local[(0)])))
+          // CHECK: }
+          linalg.generic {indexing_maps = [#map2, #map3, #map4], iterator_types = ["parallel", "parallel", "reduction", "parallel", "parallel", "reduction", "parallel", "parallel", "reduction"]} ins(%subview_10, %subview_11 : memref<1x1x8x4x4x8xi8, strided<[2048, 1024, 128, 32, 8, 1], offset: ?>, "local">, memref<1x1x8x8x8x8xi8, strided<[4096, 4096, 512, 64, 8, 1], offset: ?>, "local">) outs(%alloc_1 : memref<1x1x8x4x4x8xi32, "local">) {
+          ^bb0(%in: i8, %in_12: i8, %out: i32):
+            %5 = arith.extsi %in : i8 to i32
+            %6 = arith.extsi %in_12 : i8 to i32
             %7 = arith.muli %5, %6 : i32
             %8 = arith.addi %out, %7 : i32
             linalg.yield %8 : i32
