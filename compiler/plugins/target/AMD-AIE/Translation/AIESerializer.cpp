@@ -97,7 +97,7 @@ static FailureOr<BdLoops> getBdLoops(ArrayRef<int64_t> shape) {
   return bdLoops;
 }
 
-/// Get all the subview ops by walking through an input operation
+/// Get the source SubView op by walking through the defining ops
 FailureOr<Value> walkSubViews(Value v,
                               SmallVector<memref::SubViewOp> &subviewOps,
                               AccelSerializer::ScopeInfo &scope) {
@@ -354,8 +354,15 @@ FailureOr<std::string> getOperandStr(Value operand,
     return failure();
   }
 
-  opStr +=
-      "(" + inputTypeStr.value() + "*)" + scope.symbolTable[operand] + "[(0)])";
+  SmallVector<memref::SubViewOp> destSubviews;
+  FailureOr<Value> sourceOperand = walkSubViews(operand, destSubviews, scope);
+  if (failed(sourceOperand) ||
+      !scope.symbolTable.count(sourceOperand.value())) {
+    return failure();
+  }
+
+  opStr += "(" + inputTypeStr.value() + "*)" +
+           scope.symbolTable[sourceOperand.value()] + "[(0)])";
   return opStr;
 }
 
