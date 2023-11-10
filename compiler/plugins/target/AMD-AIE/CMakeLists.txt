@@ -5,10 +5,10 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 set(IREE_MLIR_AIR_SOURCE_DIR "${IREE_AMD_AIE_SOURCE_DIR}/third_party/mlir-air/mlir")
+set(IREE_MLIR_AIE_SOURCE_DIR "${IREE_AMD_AIE_SOURCE_DIR}/third_party/mlir-aie")
 set(IREE_PACKAGE_ROOT_DIR "${CMAKE_CURRENT_LIST_DIR}")
 set(IREE_PACKAGE_ROOT_PREFIX "iree::target")
 set(IREE_COMPILER_TABLEGEN_INCLUDE_DIRS "${CMAKE_CURRENT_SOURCE_DIR}")
-
 
 add_library(iree_target_amd-aie_compiler_defs INTERFACE)
 target_include_directories(iree_target_amd-aie_compiler_defs
@@ -21,6 +21,7 @@ target_include_directories(iree_target_amd-aie_compiler_defs
 # which provides common includes and copts for the tree.
 set(IREE_IMPLICIT_DEFS_CC_DEPS iree_target_amd-aie_compiler_defs)
 
-add_subdirectory(iree-amd-aie)
+add_subdirectory(aie)
 add_subdirectory(air)
 add_subdirectory(Translation)
+add_subdirectory(iree-amd-aie)

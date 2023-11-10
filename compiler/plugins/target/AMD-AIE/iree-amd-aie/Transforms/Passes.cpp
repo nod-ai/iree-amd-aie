@@ -9,6 +9,7 @@
 #include "iree-dialects/Dialect/LinalgTransform/Passes.h"
 #include "iree/compiler/Codegen/Common/Passes.h"
 #include "mlir/Pass/PassManager.h"
+#include "air/Transform/Passes.h"
 
 namespace mlir::iree_compiler::AMDAIE {
 
@@ -29,7 +30,15 @@ void addTransformDialectPasses(OpPassManager &passManager) {
 }
 
 void addAMDAIEDefaultPassPipeline(OpPassManager &pm) {
-  pm.addPass(createPlaceholderPass());
+    // "air-linalg-codegen",
+    // "canonicalize",
+    // "cse",
+    // "air-par-to-herd",
+    // "air-copy-to-dma",
+    // "canonicalize",
+    // "cse"
+    pm.addPass(xilinx::air::createAIRLinalgCodegenPass());
+    pm.addPass(createPlaceholderPass());
 }
 
 namespace {
