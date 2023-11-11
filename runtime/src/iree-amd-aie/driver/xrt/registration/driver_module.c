@@ -4,12 +4,12 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#include "xrt/registration/driver_module.h"
+#include "iree-amd-aie/driver/xrt/registration/driver_module.h"
 
 #include <inttypes.h>
 #include <stddef.h>
 
-#include "xrt/api.h"
+#include "iree-amd-aie/driver/xrt/api.h"
 #include "iree/base/api.h"
 #include "iree/base/status.h"
 #include "iree/base/tracing.h"

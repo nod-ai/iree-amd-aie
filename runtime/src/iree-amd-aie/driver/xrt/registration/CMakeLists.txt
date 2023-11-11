@@ -14,8 +14,8 @@ iree_cc_library(
   DEPS
     iree::base
     iree::base::core_headers
-    iree::experimental::xrt
     iree::hal
+    iree-amd-aie::driver::xrt
   DEFINES
     "IREE_HAVE_HAL_XRT_DRIVER_MODULE=1"
   PUBLIC

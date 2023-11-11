@@ -20,7 +20,7 @@ git submodule update --init
 
 ```
 cd ../iree-build
-cmake -DIREE_COMPILER_PLUGIN_PATHS=../iree-amd-aie .
+cmake -DIREE_CMAKE_PLUGIN_PATHS=../iree-amd-aie .
 ninja
 ```
 
