@@ -151,11 +151,14 @@ iree_cc_library(
     "${IREE_MLIR_AIR_SOURCE_DIR}/include/air/Conversion/Passes.h"
   SRCS
     "ConversionPasses.cpp"
+    "${IREE_MLIR_AIR_SOURCE_DIR}/lib/Conversion/AIRToAIEPass.cpp"
+    "${IREE_MLIR_AIR_SOURCE_DIR}/lib/Conversion/AIRToAIESchedulingUtils.cpp"
     "${IREE_MLIR_AIR_SOURCE_DIR}/lib/Conversion/ConvertToAIRPass.cpp"
   DEPS
     ::AIRDialectIR
     ::AIRUtil
     ::AIRConversionPassHeaders
+    iree::target::amd-aie::aie::AIEDialectIR
     MLIRAffineDialect
     MLIRIR
     MLIRPass
