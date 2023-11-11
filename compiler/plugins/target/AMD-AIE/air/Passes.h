@@ -9,8 +9,12 @@
 
 namespace mlir::iree_compiler::AMDAIE {
 
+/// Registration for AIR Conversion passes.
 void registerAIRConversionPasses();
 
-}
+/// Registration for AIR Transform passes.
+void registerAIRTransformPasses();
+
+}  // namespace mlir::iree_compiler::AMDAIE
 
 #endif  // AIR_PASSES_H_

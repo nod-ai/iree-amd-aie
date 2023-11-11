@@ -30,6 +30,7 @@ struct AMDAIESession
   static void registerPasses() {
     AMDAIE::registerAMDAIEPasses();
     AMDAIE::registerAIRConversionPasses();
+    AMDAIE::registerAIRTransformPasses();
   }
 
   void onRegisterDialects(DialectRegistry &registry) override {

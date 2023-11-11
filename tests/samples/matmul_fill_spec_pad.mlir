@@ -11,7 +11,7 @@
 //     --iree-stream-transformation-pipeline \
 //     --iree-hal-configuration-pipeline | \
 //   ${IREE_DIR}/build/tools/iree-opt \
-//      --pass-pipeline='builtin.module(hal.executable(hal.executable.variant(iree-codegen-materialize-user-configs, iree-llvmcpu-lower-executable-target)))' \
+//      --pass-pipeline='builtin.module(hal.executable(hal.executable.variant(iree-codegen-materialize-user-configs, iree-amdaie-lower-executable-target, iree-codegen-erase-hal-descriptor-type-from-memref, iree-amdaie-bridge-to-air)))' \
 //      --iree-codegen-transform-dialect-library=${IREE_AMD_AIE_DIR}/tests/samples/matmul_fill_spec_pad.mlir
 // ```
 
