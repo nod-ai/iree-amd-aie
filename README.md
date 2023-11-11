@@ -29,3 +29,12 @@ Lit tests specific to AIE can be run with something like:
 ```
 ctest -R amd-aie
 ```
+
+## Runtime driver setup
+
+The runtime driver is currently just a stub and is not enabled by default.
+Enable with:
+
+```
+-DIREE_AMD_AIE_ENABLE_XRT_DRIVER=ON
+```
