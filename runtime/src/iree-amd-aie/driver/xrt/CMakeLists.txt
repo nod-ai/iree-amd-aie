@@ -4,6 +4,15 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+iree_register_external_hal_driver(
+  NAME
+    xrt
+  DRIVER_TARGET
+    iree-amd-aie::driver::xrt::registration
+  REGISTER_FN
+    iree_hal_xrt_driver_module_register
+)
+
 iree_add_all_subdirs()
 
 # find_package(XRT REQUIRED)
