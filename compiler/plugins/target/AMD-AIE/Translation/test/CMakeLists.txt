@@ -12,9 +12,7 @@ iree_lit_test_suite(
   TOOLS
     ${IREE_LLD_TARGET}
     FileCheck
-    # TODO: Not sure where this came from. We haven't had an iree-translate
-    # in years.
-    # iree-translate
+    iree-aie-translate
   LABELS
     "hostonly"
 )
