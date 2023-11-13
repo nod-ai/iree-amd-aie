@@ -1,4 +1,4 @@
-// RUN: iree-translate -serialize-accel -allow-unregistered-dialect --split-input-file %s | FileCheck %s
+// RUN: iree-aie-translate -serialize-accel -allow-unregistered-dialect --split-input-file %s | FileCheck %s
 
 #executable_target_elf = #hal.executable.target<"amd-aie", "elf", {target_arch = "chip-tbd"}>
 module attributes {hal.device.targets = []} {

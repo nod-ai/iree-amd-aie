@@ -21,9 +21,9 @@ endif()
 
 iree_cc_binary(
   NAME
-    iree-translate
+    iree-aie-translate
   SRCS
-    "iree-translate.cpp"
+    "iree-aie-translate.cpp"
   DEPS
     iree::compiler::Dialect::HAL::IR::HALDialect
     iree::compiler::Dialect::Stream::IR
