@@ -36,5 +36,5 @@ The runtime driver is currently just a stub and is not enabled by default.
 Enable with:
 
 ```
--DIREE_AMD_AIE_ENABLE_XRT_DRIVER=ON
+-DIREE_AMD_AIE_ENABLE_XRT_DRIVER=ON -DIREE_EXTERNAL_HAL_DRIVERS=xrt
 ```
