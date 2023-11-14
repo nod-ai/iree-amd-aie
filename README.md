@@ -38,3 +38,10 @@ Enable with:
 ```
 -DIREE_AMD_AIE_ENABLE_XRT_DRIVER=ON -DIREE_EXTERNAL_HAL_DRIVERS=xrt
 ```
+
+You will probably also need to add XRT on your PATH so that it can
+be found by cmake
+e.g
+```
+export PATH="/opt/xilinx/xrt/share/cmake/XRT:$PATH"
+```
