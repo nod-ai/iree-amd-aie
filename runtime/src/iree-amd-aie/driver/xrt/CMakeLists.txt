@@ -33,6 +33,10 @@ iree_cc_library(
     "api.h"
   SRCS
     "api.h"
+    "direct_allocator.h"
+    "direct_allocator.cc"
+    "xrt_buffer.h"
+    "xrt_buffer.cc"
     "xrt_driver.cc"
   INCLUDES
     "${XRT_INCLUDE_DIRS}"
@@ -40,6 +44,7 @@ iree_cc_library(
     iree::base
     iree::base::core_headers
     iree::hal
+    iree::hal::utils::buffer_transfer
     # TODO (nirvedhmeshram) : Figure out the flatbuffer format for this runtime
     # iree::schemas::xrt_executable_def_c_fbs
     ${xrt_core_LIBRARY}
