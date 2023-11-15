@@ -17,7 +17,10 @@ iree_cc_library(
     iree::compiler::PluginAPI
     iree::target::amd-aie::Target
     iree::target::amd-aie::Transforms
+    iree::target::amd-aie::aie::AIEDialectIR
+    iree::target::amd-aie::aie::AIEXDialectIR
     iree::target::amd-aie::air::AIRDialectIR
+    iree::target::amd-aie::air::AIRPasses
   PUBLIC
 )
 

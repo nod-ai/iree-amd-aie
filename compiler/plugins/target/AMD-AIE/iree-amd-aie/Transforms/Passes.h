@@ -27,6 +27,10 @@ void buildAMDAIETransformPassPipeline(OpPassManager &pm);
 /// Default pass pipeline on AMDAIE.
 void addAMDAIEDefaultPassPipeline(OpPassManager &pm);
 
+/// Create a pass to do some rewrites that help bridging the path to AIR/AIE
+/// lowering.
+std::unique_ptr<OperationPass<>> createAMDAIEBridgeToAIRPass();
+
 /// Create pass calling the dynamic pipeline for AMDAIE.
 std::unique_ptr<OperationPass<IREE::HAL::ExecutableVariantOp>>
 createAMDAIELowerExecutableTargetPass();
