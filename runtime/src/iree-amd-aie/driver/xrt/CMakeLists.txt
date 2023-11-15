@@ -22,10 +22,6 @@ iree_add_all_subdirs()
 
 find_package(XRT REQUIRED)
 
-set(xrt_core_LIBRARY XRT::xrt_core)
-set(xrt_coreutil_LIBRARY XRT::xrt_coreutil)
-set(xrt_xilinxopencl_LIBRARY XRT::xilinxopencl)
-
 iree_cc_library(
   NAME
     xrt
@@ -37,7 +33,9 @@ iree_cc_library(
     "direct_allocator.cc"
     "xrt_buffer.h"
     "xrt_buffer.cc"
+    "xrt_device.cc"
     "xrt_driver.cc"
+    "nop_semaphore.cc"
   INCLUDES
     "${XRT_INCLUDE_DIRS}"
   DEPS
@@ -47,8 +45,10 @@ iree_cc_library(
     iree::hal::utils::buffer_transfer
     # TODO (nirvedhmeshram) : Figure out the flatbuffer format for this runtime
     # iree::schemas::xrt_executable_def_c_fbs
-    ${xrt_core_LIBRARY}
-    ${xrt_coreutil_LIBRARY}
-    ${xrt_xilinxopencl_LIBRARY}
+    XRT::xrt_coreutil
+  COPTS
+  # currenly this is needed, it can be removed after this issue is resolved
+  # https://github.com/Xilinx/XRT/issues/7810
+   -frtti
   PUBLIC
 )
