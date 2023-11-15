@@ -17,6 +17,7 @@
 #include "iree/compiler/Dialect/HAL/IR/HALOps.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/TypeSwitch.h"
+#include "llvm/Support/Casting.h"
 #include "llvm/Support/Debug.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Utils/StaticValueUtils.h"
@@ -226,7 +227,7 @@ static FailureOr<std::string> getVAIEDmaLoc(bool isDest) {
 /// Get the string representation from the affine map
 FailureOr<std::string> applyExpr(AffineExpr expr,
                                  ArrayRef<std::string> operands) {
-  if (auto binaryOpMap = expr.dyn_cast<AffineBinaryOpExpr>()) {
+  if (auto binaryOpMap = llvm::dyn_cast<AffineBinaryOpExpr>(expr)) {
     FailureOr<std::string> lhsString =
         applyExpr(binaryOpMap.getLHS(), operands);
     FailureOr<std::string> rhsString =
@@ -245,10 +246,10 @@ FailureOr<std::string> applyExpr(AffineExpr expr,
     return std::string("(") + lhsString.value() + " * " + rhsString.value() +
            ")";
   }
-  if (auto constExpr = expr.dyn_cast<AffineConstantExpr>()) {
+  if (auto constExpr = llvm::dyn_cast<AffineConstantExpr>(expr)) {
     return std::to_string(constExpr.getValue());
   }
-  if (auto dimExpr = expr.dyn_cast<AffineDimExpr>()) {
+  if (auto dimExpr = llvm::dyn_cast<AffineDimExpr>(expr)) {
     return operands[dimExpr.getPosition()];
   }
   return failure();
