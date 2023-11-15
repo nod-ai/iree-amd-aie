@@ -226,7 +226,7 @@ static FailureOr<std::string> getVAIEDmaLoc(bool isDest) {
 /// Get the string representation from the affine map
 FailureOr<std::string> applyExpr(AffineExpr expr,
                                  ArrayRef<std::string> operands) {
-  if (auto binaryOpMap = expr.dyn_cast<AffineBinaryOpExpr>()) {
+  if (auto binaryOpMap = dyn_cast<AffineBinaryOpExpr>(expr)) {
     FailureOr<std::string> lhsString =
         applyExpr(binaryOpMap.getLHS(), operands);
     FailureOr<std::string> rhsString =
@@ -245,10 +245,10 @@ FailureOr<std::string> applyExpr(AffineExpr expr,
     return std::string("(") + lhsString.value() + " * " + rhsString.value() +
            ")";
   }
-  if (auto constExpr = expr.dyn_cast<AffineConstantExpr>()) {
+  if (auto constExpr = dyn_cast<AffineConstantExpr>(expr)) {
     return std::to_string(constExpr.getValue());
   }
-  if (auto dimExpr = expr.dyn_cast<AffineDimExpr>()) {
+  if (auto dimExpr = dyn_cast<AffineDimExpr>(expr)) {
     return operands[dimExpr.getPosition()];
   }
   return failure();

@@ -9,6 +9,11 @@
 
 include "mlir/Pass/PassBase.td"
 
+def AMDAIEBridgeToAIR : Pass<"iree-amdaie-bridge-to-air", ""> {
+  let summary = "Perform transformations that allow hooking into AIR/AIE lowering";
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEBridgeToAIRPass()";
+}
+
 def AMDAIELowerExecutableTarget :
     Pass<"iree-amdaie-lower-executable-target", "mlir::iree_compiler::IREE::HAL::ExecutableVariantOp"> {
   let summary = "Perform lowering of executable target using one of the IREE::HAL::DispatchLoweringPassPipeline";
