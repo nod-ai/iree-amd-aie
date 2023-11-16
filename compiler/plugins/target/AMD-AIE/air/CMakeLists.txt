@@ -169,7 +169,7 @@ iree_cc_library(
       ${IREE_MLIR_AIR_SOURCE_DIR}/lib/Util/Util.cpp
       ${IREE_MLIR_AIR_SOURCE_DIR}/lib/Util/Outliner.cpp
       ${IREE_MLIR_AIR_SOURCE_DIR}/lib/Util/CostModel.cpp
-      # ${IREE_MLIR_AIR_SOURCE_DIR}/lib/Util/Runner.cpp
+      ${IREE_MLIR_AIR_SOURCE_DIR}/lib/Util/Runner.cpp
       ${IREE_MLIR_AIR_SOURCE_DIR}/lib/Util/Dependency.cpp
 
     DEPS
