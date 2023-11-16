@@ -20,11 +20,11 @@ iree_register_external_hal_driver(
 
 iree_add_all_subdirs()
 
-# find_package(XRT REQUIRED)
+find_package(XRT REQUIRED)
 
-# set(xrt_core_LIBRARY XRT::xrt_core)
-# set(xrt_coreutil_LIBRARY XRT::xrt_coreutil)
-# set(xrt_xilinxopencl_LIBRARY XRT::xilinxopencl)
+set(xrt_core_LIBRARY XRT::xrt_core)
+set(xrt_coreutil_LIBRARY XRT::xrt_coreutil)
+set(xrt_xilinxopencl_LIBRARY XRT::xilinxopencl)
 
 iree_cc_library(
   NAME
@@ -33,17 +33,22 @@ iree_cc_library(
     "api.h"
   SRCS
     "api.h"
-    "xrt_driver.c"
+    "direct_allocator.h"
+    "direct_allocator.cc"
+    "xrt_buffer.h"
+    "xrt_buffer.cc"
+    "xrt_driver.cc"
   INCLUDES
-    # "${XRT_INCLUDE_DIRS}"
+    "${XRT_INCLUDE_DIRS}"
   DEPS
     iree::base
     iree::base::core_headers
     iree::hal
+    iree::hal::utils::buffer_transfer
     # TODO (nirvedhmeshram) : Figure out the flatbuffer format for this runtime
     # iree::schemas::xrt_executable_def_c_fbs
-    # ${xrt_core_LIBRARY}
-    # ${xrt_coreutil_LIBRARY}
-    # ${xrt_xilinxopencl_LIBRARY}
+    ${xrt_core_LIBRARY}
+    ${xrt_coreutil_LIBRARY}
+    ${xrt_xilinxopencl_LIBRARY}
   PUBLIC
 )
