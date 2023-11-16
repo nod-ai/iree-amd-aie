@@ -86,6 +86,38 @@ iree_tablegen_library(
   TD_FILE
     "${IREE_MLIR_AIE_SOURCE_DIR}/include/aie/Dialect/AIE/IR/AIETypes.td"
   OUTS
-    -gen-typedef-decls -typedefs-dialect=AIE Dialect/AIE/IR/AIETypes.h.inc
-    -gen-typedef-defs -typedefs-dialect=AIE Dialect/AIE/IR/AIETypes.cpp.inc
+    -gen-typedef-decls Dialect/AIE/IR/AIETypesGen.h.inc
+    -gen-typedef-defs Dialect/AIE/IR/AIETypesGen.cpp.inc
+)
+
+iree_cc_library(
+    NAME
+        AIEXDialectIR
+    SRCS
+      ${IREE_MLIR_AIE_SOURCE_DIR}/lib/Dialect/AIEX/IR/AIEXDialect.cpp
+    DEPS
+    ::defs
+    ::AIEXDialectGen
+    ::AIEXOpsGen
+    MLIRIR
+)
+
+iree_tablegen_library(
+  NAME
+    AIEXDialectGen
+  TD_FILE
+    "${IREE_MLIR_AIE_SOURCE_DIR}/include/aie/Dialect/AIEX/IR/AIEX.td"
+  OUTS
+    -gen-dialect-decls --dialect=AIEX Dialect/AIEX/IR/AIEXDialect.h.inc
+    -gen-dialect-defs --dialect=AIEX Dialect/AIEX/IR/AIEXDialect.cpp.inc
+)
+
+iree_tablegen_library(
+  NAME
+    AIEXOpsGen
+  TD_FILE
+    "${IREE_MLIR_AIE_SOURCE_DIR}/include/aie/Dialect/AIEX/IR/AIEX.td"
+  OUTS
+    -gen-op-decls Dialect/AIEX/IR/AIEX.h.inc
+    -gen-op-defs Dialect/AIEX/IR/AIEX.cpp.inc
 )

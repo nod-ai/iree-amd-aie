@@ -46,6 +46,9 @@ iree_cc_library(
     iree::compiler::Codegen::Dialect::IREECodegenDialect
     iree::compiler::Dialect::HAL::IR
     iree::compiler::Utils
+    iree::target::amd-aie::air::AIRDialectIR
+    iree::target::amd-aie::air::AIRTransformPasses
+    iree::target::amd-aie::air::AIRConversionPasses
     IREELinalgExtDialect
     IREELinalgExtPasses
     IREELinalgExtTransforms

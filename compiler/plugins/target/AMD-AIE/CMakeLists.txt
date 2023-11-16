@@ -22,7 +22,7 @@ target_include_directories(iree_target_amd-aie_compiler_defs
 # which provides common includes and copts for the tree.
 set(IREE_IMPLICIT_DEFS_CC_DEPS iree_target_amd-aie_compiler_defs)
 
-add_subdirectory(iree-amd-aie)
 add_subdirectory(aie)
 add_subdirectory(air)
 add_subdirectory(Translation)
+add_subdirectory(iree-amd-aie)
