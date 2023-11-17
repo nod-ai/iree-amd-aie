@@ -15,9 +15,3 @@ void boost::throw_exception(std::exception const& e) {
   // do nothing
   llvm_unreachable("no exceptions");
 }
-#include <boost/throw_exception.hpp>
-void boost::throw_exception(std::exception const& e,
-                            boost::source_location const&) {
-  // do nothing
-  llvm_unreachable("no exceptions");
-}
