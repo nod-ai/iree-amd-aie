@@ -13,6 +13,8 @@ namespace {
 
 namespace mlir::iree_compiler::AMDAIE {
 void registerAIRConversionPasses() {
+  registerAIRRtToIpu();
+  registerAIRLowering();
   registerAIRToAIE();
   registerCopyToDma();
   registerDmaToChannel();
