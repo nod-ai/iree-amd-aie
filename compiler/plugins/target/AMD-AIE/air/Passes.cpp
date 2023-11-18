@@ -15,3 +15,10 @@ void boost::throw_exception(std::exception const& e) {
   // do nothing
   llvm_unreachable("no exceptions");
 }
+#if BOOST_VERSION >= 107300
+void boost::throw_exception(std::exception const& e,
+                            boost::source_location const&) {
+  // do nothing
+  llvm_unreachable("no exceptions");
+}
+#endif
