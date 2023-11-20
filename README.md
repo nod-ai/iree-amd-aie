@@ -24,6 +24,13 @@ cmake -DIREE_CMAKE_PLUGIN_PATHS=../iree-amd-aie .
 ninja
 ```
 
+Note for the time being building the amd-aie backend requires
+Headers-only Boost library. On Ubuntu you can do this with
+
+```
+sudo apt-get install libboost-dev
+```
+
 Lit tests specific to AIE can be run with something like:
 
 ```

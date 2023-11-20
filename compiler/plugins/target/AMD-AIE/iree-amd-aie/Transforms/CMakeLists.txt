@@ -37,6 +37,7 @@ iree_cc_library(
     "Passes.cpp"
     "Placeholder.cpp"
     "AMDAIELowerExecutableTarget.cpp"
+    "BridgeToAIRPass.cpp"
   DEPS
     ::PassHeaders
     ::PassesIncGen
