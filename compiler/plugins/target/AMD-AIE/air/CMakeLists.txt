@@ -61,6 +61,18 @@ iree_tablegen_library(
     -gen-op-interface-defs Dialect/AIR/AIROpInterfaces.cpp.inc
 )
 
+iree_cc_library(
+  NAME
+    AIRTransformOps
+  SRCS
+    ${IREE_MLIR_AIR_SOURCE_DIR}/lib/Dialect/AIR/TransformOps/AIRTransformOps.cpp
+  DEPS
+    ::defs
+    ::AIRDialectIR
+    ::AIRTransformOpsGen
+    MLIRIR
+)
+
 iree_tablegen_library(
   NAME
     AIRTransformOpsGen
@@ -95,12 +107,21 @@ iree_tablegen_library(
   OUTS
     -gen-op-decls Dialect/AIRRt/AIRRtOps.h.inc
     -gen-op-defs Dialect/AIRRt/AIRRtOps.cpp.inc
-    -gen-typedef-decls Dialect/AIRRt/AIRRtTypes.h.inc
-    -gen-typedef-defs Dialect/AIRRt/AIRRtTypes.cpp.inc
+    -gen-typedef-decls Dialect/AIRRt/AIRRtOpsTypes.h.inc
+    -gen-typedef-defs Dialect/AIRRt/AIRRtOpsTypes.cpp.inc
     -gen-dialect-decls Dialect/AIRRt/AIRRtOpsDialect.h.inc --dialect=airrt
     -gen-dialect-defs Dialect/AIRRt/AIRRtOpsDialect.cpp.inc --dialect=airrt
-    -gen-enum-decls Dialect/AIRRt/AIRRtEnums.h.inc
-    -gen-enum-defs Dialect/AIRRt/AIRRtEnums.cpp.inc
+    -gen-enum-decls Dialect/AIRRt/AIRRtOpsEnums.h.inc
+    -gen-enum-defs Dialect/AIRRt/AIRRtOpsEnums.cpp.inc
+)
+
+iree_tablegen_library(
+  NAME
+    AIRConversionGen
+  TD_FILE
+    "${IREE_MLIR_AIR_SOURCE_DIR}/include/air/Conversion/Passes.td"
+  OUTS
+    -gen-pass-decls Conversion/Passes.h.inc
 )
 
 ###############################################################################
@@ -138,7 +159,10 @@ iree_cc_library(
   SRCS
     "${IREE_MLIR_AIR_SOURCE_DIR}/lib/Util/Dependency.cpp"
     "${IREE_MLIR_AIR_SOURCE_DIR}/lib/Util/Util.cpp"
+    "${IREE_MLIR_AIR_SOURCE_DIR}/lib/Util/Outliner.cpp"
+    "${IREE_MLIR_AIR_SOURCE_DIR}/lib/Util/CostModel.cpp"
   DEPS
+    ::defs
     MLIRIR
     MLIRTransforms
 )
@@ -151,23 +175,41 @@ iree_cc_library(
     "${IREE_MLIR_AIR_SOURCE_DIR}/include/air/Conversion/Passes.h"
   SRCS
     "ConversionPasses.cpp"
+    "${IREE_MLIR_AIR_SOURCE_DIR}/lib/Conversion/ConvertToAIRPass.cpp"
+    "${IREE_MLIR_AIR_SOURCE_DIR}/lib/Conversion/AIRLoweringPass.cpp"
+    "${IREE_MLIR_AIR_SOURCE_DIR}/lib/Conversion/AIRRtToIpuPass.cpp"
     "${IREE_MLIR_AIR_SOURCE_DIR}/lib/Conversion/AIRToAIEPass.cpp"
     "${IREE_MLIR_AIR_SOURCE_DIR}/lib/Conversion/AIRToAIESchedulingUtils.cpp"
-    "${IREE_MLIR_AIR_SOURCE_DIR}/lib/Conversion/ConvertToAIRPass.cpp"
+    "${IREE_MLIR_AIR_SOURCE_DIR}/lib/Conversion/AIRPipeline.cpp"
   DEPS
+    ::defs
+    ::AIRTransform
+    ::AIRTransformOps
+    ::AIRConversionGen
     ::AIRDialectIR
-    ::AIRUtil
-    ::AIRConversionPassHeaders
+    ::AIRRtDialectIR
     iree::target::amd-aie::aie::AIEDialectIR
     iree::target::amd-aie::aie::AIEXDialectIR
-    MLIRAffineDialect
     MLIRIR
+    MLIRLinalgTransforms
+    MLIRLinalgUtils
+    MLIRSupport
+    MLIRTransforms
     MLIRPass
 )
 
 ###############################################################################
 # AIR Transform Passes
 ###############################################################################
+
+iree_tablegen_library(
+  NAME
+    AIRTransform
+  TD_FILE
+    "${IREE_MLIR_AIR_SOURCE_DIR}/include/air/Transform/Passes.td"
+  OUTS
+    -gen-pass-decls Transform/Passes.h.inc
+)
 
 iree_tablegen_library(
   NAME
@@ -201,18 +243,23 @@ iree_cc_library(
     "${IREE_MLIR_AIR_SOURCE_DIR}/include/air/Transform/Passes.h"
   SRCS
     "TransformPasses.cpp"
-    "${IREE_MLIR_AIR_SOURCE_DIR}/lib/Transform/AIRDependency.cpp"
-    "${IREE_MLIR_AIR_SOURCE_DIR}/lib/Transform/AIRDependencyCanonicalize.cpp"
-    "${IREE_MLIR_AIR_SOURCE_DIR}/lib/Transform/AIRDependencyScheduleOpt.cpp"
     "${IREE_MLIR_AIR_SOURCE_DIR}/lib/Transform/AIRHerdPlacementPass.cpp"
+    "${IREE_MLIR_AIR_SOURCE_DIR}/lib/Transform/AIRLinalgCodegen.cpp"
     "${IREE_MLIR_AIR_SOURCE_DIR}/lib/Transform/AIRMiscPasses.cpp"
+    "${IREE_MLIR_AIR_SOURCE_DIR}/lib/Transform/AIRDependency.cpp"
+    "${IREE_MLIR_AIR_SOURCE_DIR}/lib/Transform/AIRDependencyScheduleOpt.cpp"
+    "${IREE_MLIR_AIR_SOURCE_DIR}/lib/Transform/AIRDependencyCanonicalize.cpp"
   DEPS
+    ::defs
+    iree::target::amd-aie::aie::AIEDialectIR
     ::AIRDialectIR
+    ::AIRTransform
+    ::AIRTransformOps
     ::AIRUtil
-    ::AIRTransformPassHeaders
-    MLIRAffineDialect
     MLIRIR
-    MLIRPass
+    MLIRLinalgTransforms
+    MLIRLinalgUtils
+    MLIRSupport
 )
 
 ###############################################################################
