@@ -35,7 +35,7 @@ module attributes { transform.with_named_sequence } {
 
     // First level tile to forall with tile_sizes [8, 8].
     %tiled_matmul, %forall =
-      transform.structured.tile_using_forall %matmul tile_sizes [8, 8, 0]
+      transform.structured.tile_using_forall %matmul tile_sizes [32, 32, 0]
         ( mapping = [#gpu.block<y>, #gpu.block<x>] ) : (!transform.any_op) -> (!transform.any_op, !transform.any_op)
     transform.iree.populate_workgroup_count_region_using_num_threads_slice %forall
       : (!transform.any_op) -> ()
@@ -74,7 +74,7 @@ module attributes { transform.with_named_sequence } {
 
     // Second level tile to forall with tile_sizes [4, 4].
     %tiled_matmul_1, %forall_1 =
-      transform.structured.tile_using_forall %tiled_padded_matmul tile_sizes [4, 4, 0]
+      transform.structured.tile_using_forall %tiled_padded_matmul tile_sizes [16, 16, 0]
         ( mapping = [#gpu.thread<y>, #gpu.thread<x>] ) : (!transform.any_op) -> (!transform.any_op, !transform.any_op)
     %fused_fill_2, %fused_for_all_2 = transform.structured.fuse_into_containing_op %tiled_fill_op into %forall_1 : (!transform.any_op, !transform.any_op) -> (!transform.any_op, !transform.any_op)
 
@@ -97,7 +97,7 @@ module attributes { transform.with_named_sequence } {
 
     // Tile reduction dimension.
     %tiled_reduction, %loop =
-      transform.structured.tile_using_for %padded_1 [0, 0, 4]
+      transform.structured.tile_using_for %padded_1 [0, 0, 8]
       : (!transform.any_op) -> (!transform.any_op, !transform.any_op)
 
     // Clean up.
