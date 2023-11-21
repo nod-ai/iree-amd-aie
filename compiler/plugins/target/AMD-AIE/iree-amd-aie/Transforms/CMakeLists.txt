@@ -35,7 +35,6 @@ iree_cc_library(
     "Passes.h"
   SRCS
     "Passes.cpp"
-    "Placeholder.cpp"
     "AMDAIELowerExecutableTarget.cpp"
     "BridgeToAIRPass.cpp"
   DEPS
@@ -54,6 +53,7 @@ iree_cc_library(
     MLIRLinalgTransforms
     MLIRLLVMCommonConversion
     MLIRLLVMDialect
+    MLIRMemRefDialect
     MLIRPDLDialect
     MLIRPDLInterpDialect
     MLIRPass

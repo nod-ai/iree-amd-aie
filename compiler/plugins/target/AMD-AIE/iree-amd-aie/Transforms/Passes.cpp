@@ -8,6 +8,7 @@
 
 #include "iree-dialects/Dialect/LinalgTransform/Passes.h"
 #include "iree/compiler/Codegen/Common/Passes.h"
+#include "mlir/Dialect/MemRef/Transforms/Passes.h"
 #include "mlir/Pass/PassManager.h"
 
 namespace mlir::iree_compiler::AMDAIE {
@@ -29,8 +30,11 @@ void addTransformDialectPasses(OpPassManager &passManager) {
   passManager.addPass(createDropSchedulePass());
 }
 
-void addAMDAIEDefaultPassPipeline(OpPassManager &pm) {
-  pm.addPass(createPlaceholderPass());
+void addMLIRAIRAIELoweringPasses(OpPassManager &passManager) {
+  // Add passes for preparing for lowering to MLIR-AIR
+  passManager.addPass(createEraseHALDescriptorTypeFromMemRefPass());
+  passManager.addPass(createAMDAIEBridgeToAIRPass());
+  passManager.addPass(memref::createFoldMemRefAliasOpsPass());
 }
 
 namespace {

@@ -20,9 +20,4 @@ def AMDAIELowerExecutableTarget :
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIELowerExecutableTargetPass()";
 }
 
-def Placeholder : Pass<"iree-amdaie-placeholder", ""> {
-  let summary = "Temporary placeholder until there is a pass here";
-  let constructor = "mlir::iree_compiler::AMDAIE::createPlaceholderPass()";
-}
-
 #endif // IREE_AMD_AIE_TRANSFORMS_PASSES
