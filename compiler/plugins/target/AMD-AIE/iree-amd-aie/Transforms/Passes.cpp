@@ -6,25 +6,16 @@
 
 #include "iree-amd-aie/Transforms/Passes.h"
 
+#include "air/Conversion/Passes.h"
+#include "air/Transform/Passes.h"
 #include "iree-dialects/Dialect/LinalgTransform/Passes.h"
 #include "iree/compiler/Codegen/Common/Passes.h"
 #include "mlir/Dialect/Linalg/Passes.h"
 #include "mlir/Dialect/MemRef/Transforms/Passes.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/Passes.h"
-#include "air/Conversion/Passes.h"
-#include "air/Transform/Passes.h"
 
 namespace mlir::iree_compiler::AMDAIE {
-
-namespace {
-#define GEN_PASS_DECL
-#include "air/Conversion/Passes.h.inc"
-}  // namespace
-namespace {
-#define GEN_PASS_DECL
-#include "air/Transform/Passes.h.inc"
-}  // namespace
 
 void buildAMDAIETransformPassPipeline(OpPassManager &pm) {
   addCommonTargetExecutablePreprocessingPasses(pm);
@@ -49,14 +40,16 @@ void addMLIRAIRAIELoweringPasses(OpPassManager &passManager) {
   passManager.addPass(createAMDAIEBridgeToAIRPass());
   passManager.addPass(memref::createFoldMemRefAliasOpsPass());
   {
-    ParallelToHerdOptions options;
+    ::xilinx::air::ParallelToHerdOptions options;
     options.clAssignDepth = 1;
-    passManager.addPass(xilinx::air::createParallelToHerdPass()); // depth=1
+    passManager.addPass(
+        ::xilinx::air::createParallelToHerdPass(options));  // depth=1
   }
   {
-    ParallelToLaunchOptions options;
+    ::xilinx::air::ParallelToLaunchOptions options;
     options.clHasSegment = true;
-    passManager.addPass(xilinx::air::createParallelToLaunchPass()); // has-air-segment=true
+    passManager.addPass(xilinx::air::createParallelToLaunchPass(
+        options));  // has-air-segment=true
   }
   passManager.addPass(xilinx::air::createCopyToDmaPass());
 
@@ -72,31 +65,39 @@ void addMLIRAIRAIELoweringPasses(OpPassManager &passManager) {
 
   passManager.addPass(createCanonicalizerPass());
   passManager.addPass(createCSEPass());
-  passManager.addPass(xilinx::air::createAIRLabelScfForLoopForPingPongPattern());
+  passManager.addPass(
+      xilinx::air::createAIRLabelScfForLoopForPingPongPattern());
   {
-    AIRPingPongTransformationPatternOptions options;
+    xilinx::air::AIRPingPongTransformationPatternOptions options;
     options.clKeepMemrefDealloc = true;
-    passManager.addPass(xilinx::air::createAIRPingPongTransformationPattern()); // keep-memref-dealloc=true
+    passManager.addPass(xilinx::air::createAIRPingPongTransformationPattern(
+        options));  // keep-memref-dealloc=true
   }
   passManager.addPass(xilinx::air::createAIRDeAliasMemref());
 
   passManager.addPass(createCanonicalizerPass());
   passManager.addPass(createCSEPass());
-  passManager.addPass(xilinx::air::createAIRLabelScfForLoopInAIRSegmentPattern());
+  passManager.addPass(
+      xilinx::air::createAIRLabelScfForLoopInAIRSegmentPattern());
   passManager.addPass(xilinx::air::createAIRUnrollLoopForPipeliningPattern());
   {
-    AIRHerdPlacementPassOptions options;
+    xilinx::air::AIRHerdPlacementPassOptions options;
     options.clNumRows = 2;
     options.clNumCols = 2;
     options.clAnchorPointRow = 2;
     options.clAnchorPointCol = 0;
-    passManager.addPass(xilinx::air::createAIRHerdPlacementPass()); // num-rows=2 num-cols=2 row-anchor=2 col-anchor=0
+    passManager.addPass(xilinx::air::createAIRHerdPlacementPass(
+        options));  // num-rows=2 num-cols=2
+                    // row-anchor=2
+                    // col-anchor=0
   }
 
   passManager.addPass(createCanonicalizerPass());
   passManager.addPass(createCSEPass());
-  passManager.addNestedPass<func::FuncOp>(xilinx::air::createAIRRenumberDmaIdPass());
-  passManager.addNestedPass<func::FuncOp>(mlir::createConvertLinalgToLoopsPass());
+  passManager.addNestedPass<func::FuncOp>(
+      xilinx::air::createAIRRenumberDmaIdPass());
+  passManager.addNestedPass<func::FuncOp>(
+      mlir::createConvertLinalgToLoopsPass());
 }
 
 namespace {
