@@ -22,7 +22,7 @@ void buildAMDAIETransformPassPipeline(OpPassManager &pm) {
   pm.addPass(createEraseHALDescriptorTypeFromMemRefPass());
   pm.addPass(createAMDAIELowerExecutableTargetPass());
 
-  auto modulePassManager = pm.nest<ModuleOp>();
+  auto &modulePassManager = pm.nest<ModuleOp>();
   addMLIRAIRAIELoweringPasses(modulePassManager);
 }
 
