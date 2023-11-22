@@ -21,6 +21,9 @@ void buildAMDAIETransformPassPipeline(OpPassManager &pm) {
   addCommonTargetExecutablePreprocessingPasses(pm);
   pm.addPass(createEraseHALDescriptorTypeFromMemRefPass());
   pm.addPass(createAMDAIELowerExecutableTargetPass());
+
+  auto modulePassManager = pm.nest<ModuleOp>();
+  addMLIRAIRAIELoweringPasses(modulePassManager);
 }
 
 void addTransformDialectPasses(OpPassManager &passManager) {
