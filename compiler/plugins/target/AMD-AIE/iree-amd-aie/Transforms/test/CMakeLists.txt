@@ -8,8 +8,12 @@ iree_lit_test_suite(
   NAME
     lit
   SRCS
-    "placeholder.mlir"
+    "matmul_fill_static_i32.mlir"
   TOOLS
+    ${IREE_LLD_TARGET}
     FileCheck
+    iree-compile
     iree-opt
+  DATA
+    matmul_fill_spec_pad.mlir
 )
