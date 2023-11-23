@@ -42,65 +42,82 @@ void addMLIRAIRAIELoweringPasses(OpPassManager &passManager) {
   passManager.addPass(createEraseHALDescriptorTypeFromMemRefPass());
   passManager.addPass(createAMDAIEBridgeToAIRPass());
   passManager.addPass(memref::createFoldMemRefAliasOpsPass());
+
   {
     ::xilinx::air::ParallelToHerdOptions options;
     options.clAssignDepth = 1;
     passManager.addPass(
-        ::xilinx::air::createParallelToHerdPass(options));  // depth=1
+        ::xilinx::air::createParallelToHerdPass(options));
   }
   {
     ::xilinx::air::ParallelToLaunchOptions options;
     options.clHasSegment = true;
     passManager.addPass(xilinx::air::createParallelToLaunchPass(
-        options));  // has-air-segment=true
+        options));
   }
   passManager.addPass(xilinx::air::createCopyToDmaPass());
-
   passManager.addPass(createCanonicalizerPass());
   passManager.addPass(createCSEPass());
+
   passManager.addPass(xilinx::air::createAIRDependencyPass());
   passManager.addPass(xilinx::air::createAIRDependencyScheduleOptPass());
+  passManager.addPass(xilinx::air::createAIRSpecializeDmaBroadcast());
   passManager.addPass(xilinx::air::createDmaToChannelPass());
-
   passManager.addPass(createCanonicalizerPass());
   passManager.addPass(createCSEPass());
   passManager.addPass(xilinx::air::createAIRDependencyCanonicalizePass());
-
   passManager.addPass(createCanonicalizerPass());
   passManager.addPass(createCSEPass());
+
   passManager.addPass(
       xilinx::air::createAIRLabelScfForLoopForPingPongPattern());
   {
     xilinx::air::AIRPingPongTransformationPatternOptions options;
     options.clKeepMemrefDealloc = true;
     passManager.addPass(xilinx::air::createAIRPingPongTransformationPattern(
-        options));  // keep-memref-dealloc=true
+        options));
   }
   passManager.addPass(xilinx::air::createAIRDeAliasMemref());
-
   passManager.addPass(createCanonicalizerPass());
   passManager.addPass(createCSEPass());
+  
+  passManager.addPass(xilinx::air::createAIRFuseChannels());
+  passManager.addPass(createCanonicalizerPass());
+  passManager.addPass(createCSEPass());
+
   passManager.addPass(
       xilinx::air::createAIRLabelScfForLoopInAIRSegmentPattern());
   passManager.addPass(xilinx::air::createAIRUnrollLoopForPipeliningPattern());
+
+
+  passManager.addNestedPass<func::FuncOp>(xilinx::air::createAIRCollapseHerdPass());
+  passManager.addPass(createCanonicalizerPass());
+  passManager.addPass(createCSEPass());
+  
   {
     xilinx::air::AIRHerdPlacementPassOptions options;
-    options.clNumRows = 2;
-    options.clNumCols = 2;
+    options.clNumRows = 4;
+    options.clNumCols = 1;
     options.clAnchorPointRow = 2;
     options.clAnchorPointCol = 0;
     passManager.addPass(xilinx::air::createAIRHerdPlacementPass(
-        options));  // num-rows=2 num-cols=2
-                    // row-anchor=2
-                    // col-anchor=0
+        options));
   }
-
   passManager.addPass(createCanonicalizerPass());
   passManager.addPass(createCSEPass());
+
   passManager.addNestedPass<func::FuncOp>(
       xilinx::air::createAIRRenumberDmaIdPass());
   passManager.addNestedPass<func::FuncOp>(
       mlir::createConvertLinalgToLoopsPass());
+
+  // {
+  //   xilinx::air::AIRToAIEOptions options;
+  //   options.clRowOffset = 2;
+  //   options.clColOffset = 0;
+  //   options.clDevice = "ipu";
+  //   passManager.addPass(xilinx::air::createAIRToAIEPass());
+  // }
 }
 
 namespace {
@@ -111,6 +128,13 @@ namespace {
 void registerAMDAIEPasses() {
   // Generated.
   registerPasses();
+
+  static PassPipelineRegistration<> AIELoweringPipeline(
+      "iree-amdaie-aie-lowering-pipeline",
+      "Runs the AIR/AIE lowering passes to tiled and distributed code",
+      [](OpPassManager &passManager) {
+        addMLIRAIRAIELoweringPasses(passManager);
+      });
 }
 
 }  // namespace mlir::iree_compiler::AMDAIE

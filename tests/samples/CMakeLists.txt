@@ -8,11 +8,15 @@ iree_lit_test_suite(
   NAME
     lit
   SRCS
-    "matmul_fill_static_i32.mlir"
+    # TODO(MaheshRavishankar): This is supposed to
+    # be matmul_fill_i32_static.mlir via use of the
+    # transform dialect script in
+    # matmul_fill_spec_pad.mlir. That is blocked
+    # by LLVM #72931.
+    "air_to_ipu_expected_input.mlir"
   TOOLS
     ${IREE_LLD_TARGET}
     FileCheck
-    iree-compile
     iree-opt
   DATA
     matmul_fill_spec_pad.mlir

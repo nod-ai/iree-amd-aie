@@ -1,3 +1,6 @@
+// For now this isnt doing a FileCheck. It is just checking for compilation.
+// RUN: iree-opt --pass-pipeline="builtin.module(hal.executable(hal.executable.variant(builtin.module(iree-amdaie-aie-lowering-pipeline))))" %s
+
 #executable_target_elf = #hal.executable.target<"amd-aie", "elf", {target_arch = "chip-tbd"}>
 #pipeline_layout = #hal.pipeline.layout<push_constants = 0, sets = [<0, bindings = [<0, storage_buffer, ReadOnly>, <1, storage_buffer, ReadOnly>, <2, storage_buffer>]>]>
 #translation = #iree_codegen.translation_info<TransformDialectCodegen codegen_spec = @__transform_main>
