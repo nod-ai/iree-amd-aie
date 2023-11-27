@@ -6,4 +6,4 @@
 	url = https://github.com/nod-ai/mlir-air.git
 [submodule "third_party/mlir-aie"]
 	path = third_party/mlir-aie
-	url = https://github.com/Xilinx/mlir-aie.git
+	url = git@github.com:nod-ai/mlir-aie.git
