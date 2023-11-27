@@ -44,16 +44,14 @@ void addMLIRAIRAIELoweringPasses(OpPassManager &passManager) {
   passManager.addPass(memref::createFoldMemRefAliasOpsPass());
 
   {
-    ::xilinx::air::ParallelToHerdOptions options;
+    xilinx::air::ParallelToHerdOptions options;
     options.clAssignDepth = 1;
-    passManager.addPass(
-        ::xilinx::air::createParallelToHerdPass(options));
+    passManager.addPass(xilinx::air::createParallelToHerdPass(options));
   }
   {
-    ::xilinx::air::ParallelToLaunchOptions options;
+    xilinx::air::ParallelToLaunchOptions options;
     options.clHasSegment = true;
-    passManager.addPass(xilinx::air::createParallelToLaunchPass(
-        options));
+    passManager.addPass(xilinx::air::createParallelToLaunchPass(options));
   }
   passManager.addPass(xilinx::air::createCopyToDmaPass());
   passManager.addPass(createCanonicalizerPass());
@@ -74,13 +72,13 @@ void addMLIRAIRAIELoweringPasses(OpPassManager &passManager) {
   {
     xilinx::air::AIRPingPongTransformationPatternOptions options;
     options.clKeepMemrefDealloc = true;
-    passManager.addPass(xilinx::air::createAIRPingPongTransformationPattern(
-        options));
+    passManager.addPass(
+        xilinx::air::createAIRPingPongTransformationPattern(options));
   }
   passManager.addPass(xilinx::air::createAIRDeAliasMemref());
   passManager.addPass(createCanonicalizerPass());
   passManager.addPass(createCSEPass());
-  
+
   passManager.addPass(xilinx::air::createAIRFuseChannels());
   passManager.addPass(createCanonicalizerPass());
   passManager.addPass(createCSEPass());
@@ -89,19 +87,18 @@ void addMLIRAIRAIELoweringPasses(OpPassManager &passManager) {
       xilinx::air::createAIRLabelScfForLoopInAIRSegmentPattern());
   passManager.addPass(xilinx::air::createAIRUnrollLoopForPipeliningPattern());
 
-
-  passManager.addNestedPass<func::FuncOp>(xilinx::air::createAIRCollapseHerdPass());
+  passManager.addNestedPass<func::FuncOp>(
+      xilinx::air::createAIRCollapseHerdPass());
   passManager.addPass(createCanonicalizerPass());
   passManager.addPass(createCSEPass());
-  
+
   {
     xilinx::air::AIRHerdPlacementPassOptions options;
     options.clNumRows = 4;
     options.clNumCols = 1;
     options.clAnchorPointRow = 2;
     options.clAnchorPointCol = 0;
-    passManager.addPass(xilinx::air::createAIRHerdPlacementPass(
-        options));
+    passManager.addPass(xilinx::air::createAIRHerdPlacementPass(options));
   }
   passManager.addPass(createCanonicalizerPass());
   passManager.addPass(createCSEPass());
@@ -121,7 +118,6 @@ void addMLIRAIRAIELoweringPasses(OpPassManager &passManager) {
   passManager.addPass(xilinx::air::createAIRLoweringPass());
   passManager.addPass(xilinx::airrt::createAIRRtToIpuPass());
   passManager.addPass(createCanonicalizerPass());
-
 }
 
 namespace {
