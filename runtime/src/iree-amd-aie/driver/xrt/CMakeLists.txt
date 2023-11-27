@@ -36,6 +36,8 @@ iree_cc_library(
     "xrt_device.cc"
     "xrt_driver.cc"
     "nop_semaphore.cc"
+    "pipeline_layout.h"
+    "pipeline_layout.cc"
   INCLUDES
     "${XRT_INCLUDE_DIRS}"
   DEPS

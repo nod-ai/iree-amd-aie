@@ -8,6 +8,7 @@
 
 #include "iree-amd-aie/driver/xrt/direct_allocator.h"
 #include "iree-amd-aie/driver/xrt/nop_semaphore.h"
+#include "iree-amd-aie/driver/xrt/pipeline_layout.h"
 #include "iree/base/api.h"
 #include "iree/base/tracing.h"
 #include "iree/hal/api.h"
@@ -165,8 +166,10 @@ static iree_status_t iree_hal_xrt_device_create_descriptor_set_layout(
     iree_host_size_t binding_count,
     const iree_hal_descriptor_set_layout_binding_t* bindings,
     iree_hal_descriptor_set_layout_t** out_descriptor_set_layout) {
-  return iree_make_status(IREE_STATUS_UNIMPLEMENTED,
-                          "unimplmented descriptor set create");
+  iree_hal_xrt_device_t* device = iree_hal_xrt_device_cast(base_device);
+  return iree_hal_xrt_descriptor_set_layout_create(
+      flags, binding_count, bindings, device->host_allocator,
+      out_descriptor_set_layout);
 }
 
 static iree_status_t iree_hal_xrt_device_create_event(
@@ -202,8 +205,10 @@ static iree_status_t iree_hal_xrt_device_create_pipeline_layout(
     iree_host_size_t set_layout_count,
     iree_hal_descriptor_set_layout_t* const* set_layouts,
     iree_hal_pipeline_layout_t** out_pipeline_layout) {
-  return iree_make_status(IREE_STATUS_UNIMPLEMENTED,
-                          "unimplmented pipeline layout create");
+  iree_hal_xrt_device_t* device = iree_hal_xrt_device_cast(base_device);
+  return iree_hal_xrt_pipeline_layout_create(
+      set_layout_count, set_layouts, push_constants, device->host_allocator,
+      out_pipeline_layout);
 }
 
 static iree_status_t iree_hal_xrt_device_create_semaphore(
