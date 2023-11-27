@@ -111,13 +111,17 @@ void addMLIRAIRAIELoweringPasses(OpPassManager &passManager) {
   passManager.addNestedPass<func::FuncOp>(
       mlir::createConvertLinalgToLoopsPass());
 
-  // {
-  //   xilinx::air::AIRToAIEOptions options;
-  //   options.clRowOffset = 2;
-  //   options.clColOffset = 0;
-  //   options.clDevice = "ipu";
-  //   passManager.addPass(xilinx::air::createAIRToAIEPass());
-  // }
+  {
+    xilinx::air::AIRToAIEOptions options;
+    options.clRowOffset = 2;
+    options.clColOffset = 0;
+    options.clDevice = "ipu";
+    passManager.addPass(xilinx::air::createAIRToAIEPass(options));
+  }
+  passManager.addPass(xilinx::air::createAIRLoweringPass());
+  passManager.addPass(xilinx::airrt::createAIRRtToIpuPass());
+  passManager.addPass(createCanonicalizerPass());
+
 }
 
 namespace {
