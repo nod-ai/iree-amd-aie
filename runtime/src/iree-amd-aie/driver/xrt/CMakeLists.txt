@@ -36,6 +36,8 @@ iree_cc_library(
     "xrt_device.cc"
     "xrt_driver.cc"
     "nop_semaphore.cc"
+    "nop_executable_cache.h"
+    "nop_executable_cache.cc"
     "pipeline_layout.h"
     "pipeline_layout.cc"
   INCLUDES
