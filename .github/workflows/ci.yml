@@ -39,6 +39,12 @@ jobs:
           key: linux-build-test-cpp-${{ github.sha }}
           restore-keys: |
             linux-build-test-cpp-
+      
+      # TODO: Remove this or move things into the docker image.
+      - name: Install deps
+        run: |
+          apt update
+          apt install libboost-all-dev
 
       - name: Build packages
         run: |
