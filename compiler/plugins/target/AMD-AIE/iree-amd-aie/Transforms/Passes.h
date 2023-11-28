@@ -12,8 +12,9 @@
 
 namespace mlir::iree_compiler::AMDAIE {
 
-/// Dummy pass that does nothing
-std::unique_ptr<Pass> createPlaceholderPass();
+/// Add passes to lower from MLIR-AIR through AIE. This is
+/// currently the default passes used for lowering after IREEs tiling.
+void addMLIRAIRAIELoweringPasses(OpPassManager &passManager);
 
 /// Add passes to run the strategy specified using transform dialect
 /// file/library
@@ -23,9 +24,6 @@ void addTransformDialectPasses(OpPassManager &passManager);
 /// the structured ops path. The pass manager `pm` here operate on the module
 /// within the IREE::HAL::ExecutableOp.
 void buildAMDAIETransformPassPipeline(OpPassManager &pm);
-
-/// Default pass pipeline on AMDAIE.
-void addAMDAIEDefaultPassPipeline(OpPassManager &pm);
 
 /// Create a pass to do some rewrites that help bridging the path to AIR/AIE
 /// lowering.

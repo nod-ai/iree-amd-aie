@@ -96,9 +96,6 @@ void AMDAIELowerExecutableTargetPass::runOnOperation() {
       case IREE::Codegen::DispatchLoweringPassPipeline::TransformDialectCodegen:
         addTransformDialectPasses(executableLoweringPipeline);
         break;
-      // no pipeline specified, nothing to do.
-      case IREE::Codegen::DispatchLoweringPassPipeline::None:
-        return;
       default:
         moduleOp.emitOpError("Unsupported pipeline on CPU target.");
         return signalPassFailure();

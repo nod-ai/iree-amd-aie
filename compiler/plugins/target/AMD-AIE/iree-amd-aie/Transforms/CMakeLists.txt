@@ -4,8 +4,6 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-add_subdirectory(test)
-
 iree_tablegen_library(
   NAME
     PassesIncGen
@@ -35,7 +33,6 @@ iree_cc_library(
     "Passes.h"
   SRCS
     "Passes.cpp"
-    "Placeholder.cpp"
     "AMDAIELowerExecutableTarget.cpp"
     "BridgeToAIRPass.cpp"
   DEPS
@@ -46,6 +43,8 @@ iree_cc_library(
     iree::compiler::Codegen::Dialect::IREECodegenDialect
     iree::compiler::Dialect::HAL::IR
     iree::compiler::Utils
+    iree::target::amd-aie::air::AIRConversionPasses
+    iree::target::amd-aie::air::AIRTransformPasses
     IREELinalgExtDialect
     IREELinalgExtPasses
     IREELinalgExtTransforms
@@ -54,6 +53,7 @@ iree_cc_library(
     MLIRLinalgTransforms
     MLIRLLVMCommonConversion
     MLIRLLVMDialect
+    MLIRMemRefDialect
     MLIRPDLDialect
     MLIRPDLInterpDialect
     MLIRPass
@@ -63,6 +63,7 @@ iree_cc_library(
     MLIRSCFUtils
     MLIRTensorDialect
     MLIRTensorTransforms
+    MLIRTransforms
     MLIRVectorDialect
     MLIRVectorToLLVM
     MLIRVectorToSCF
