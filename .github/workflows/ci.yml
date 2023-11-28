@@ -44,7 +44,7 @@ jobs:
       - name: Install deps
         run: |
           apt update
-          apt install libboost-all-dev
+          apt install -y libboost-all-dev
 
       - name: Build packages
         run: |
