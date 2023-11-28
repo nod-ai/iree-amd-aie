@@ -25,6 +25,10 @@ jobs:
     env:
       CACHE_DIR: ${{ github.workspace }}/.container-cache
     steps:
+      - name: Configure local git mirrors
+        run: |
+          /gitmirror/scripts/trigger_update_mirrors.sh
+          /gitmirror/scripts/git_config.sh
       - name: "Checking out repository"
         uses: actions/checkout@8f4b7f84864484a7bf31766abe9204da3cbe65b3 # v3.5.0
         with:
@@ -32,12 +36,13 @@ jobs:
 
       - name: Sync source deps
         run: |
-          python ./sync_deps.py --depth 1 --submodules-depth 1
+          python ./sync_deps.py #--depth 1 --submodules-depth 1
 
       - name: Enable cache
         uses: actions/cache/restore@v3
         with:
           path: ${{ env.CACHE_DIR }}
+          key: linux-build-test-cpp-${{ github.sha }}
           restore-keys: |
             linux-build-test-cpp-
       
