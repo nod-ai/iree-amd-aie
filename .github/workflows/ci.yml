@@ -42,6 +42,7 @@ jobs:
         uses: actions/cache/restore@v3
         with:
           path: ${{ env.CACHE_DIR }}
+          key: linux-build-test-cpp-${{ github.sha }}
           restore-keys: |
             linux-build-test-cpp-
       
