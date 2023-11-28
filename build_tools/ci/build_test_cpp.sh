@@ -5,7 +5,9 @@ set -eu -o errtrace
 this_dir="$(cd $(dirname $0) && pwd)"
 repo_root="$(cd $this_dir/../.. && pwd)"
 iree_dir="$(cd $repo_root/../iree && pwd)"
-build_dir="$(cd $iree_dir/../iree-build && pwd)"
+build_dir="$repo_root/../iree-build"
+mkdir -p "$build_dir"
+build_dir="$(cd $build_dir && pwd)"
 cache_dir="${cache_dir:-}"
 
 # Setup cache dir.
@@ -47,7 +49,7 @@ echo "
 " > $iree_dir/cmake/presets/CMakeUserPresets.json 
 
 cd $iree_dir
-cmake --preset new-linux-dev \
+cmake --preset new-linux-minimal -B "$build_dir" \
   -DIREE_CMAKE_PLUGIN_PATHS=../iree-amd-aie
 
 echo "Building all"
