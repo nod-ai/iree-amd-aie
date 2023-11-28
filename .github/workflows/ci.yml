@@ -36,7 +36,7 @@ jobs:
 
       - name: Sync source deps
         run: |
-          python ./sync_deps.py --depth 1 --submodules-depth 1
+          python ./sync_deps.py #--depth 1 --submodules-depth 1
 
       - name: Enable cache
         uses: actions/cache/restore@v3
