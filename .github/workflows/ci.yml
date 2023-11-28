@@ -35,19 +35,12 @@ jobs:
           python ./sync_deps.py --depth 1 --submodules-depth 1
 
       - name: Enable cache
-        uses: actions/cache@v3
+        uses: actions/cache/restore@v3
         with:
           path: ${{ env.CACHE_DIR }}
-          key: linux-build-test-cpp-${{ github.sha }}
           restore-keys: |
             linux-build-test-cpp-
       
-      # TODO: Remove this or move things into the docker image.
-      - name: Install deps
-        run: |
-          apt update
-          apt install -y libboost-all-dev
-
       - name: Build packages
         run: |
           export cache_dir="${{ env.CACHE_DIR }}"
@@ -55,3 +48,10 @@ jobs:
           # Some things put stuff in cache with weird, root read-only
           # permissions. Take them back.
           sudo chown -R "$(whoami)" "${cache_dir}"
+
+      - name: Save cache
+        uses: actions/cache/save@v3
+        if: always()
+        with:
+          path: ${{ env.CACHE_DIR }}
+          key: linux-build-test-cpp-${{ github.sha }}
