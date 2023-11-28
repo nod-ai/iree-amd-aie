@@ -9,7 +9,6 @@ set(IREE_PACKAGE_ROOT_PREFIX "iree::target::amd-aie::air")
 
 list(APPEND IREE_COMPILER_TABLEGEN_INCLUDE_DIRS
     "${IREE_MLIR_AIR_SOURCE_DIR}/include")
-include_directories("${IREE_MLIR_AIR_SOURCE_DIR}/include")
 
 iree_cc_library(
   NAME

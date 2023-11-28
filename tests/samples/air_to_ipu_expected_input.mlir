@@ -1,3 +1,10 @@
+// RUN: iree-opt --pass-pipeline="builtin.module(hal.executable(hal.executable.variant(builtin.module(iree-amdaie-aie-lowering-pipeline))))" %s | FileCheck %s
+
+// CHECK-LABEL: @matmul_static_dispatch_0_matmul_128x512x256_i32
+// CHECK:           AIE.tile
+// CHECK:           @matmul_static_dispatch_0_matmul_8x8x16_i32
+// CHECK:               AIEX.ipu.dma_memcpy_nd
+// CHECK:               AIEX.ipu.sync
 #executable_target_elf = #hal.executable.target<"amd-aie", "elf", {target_arch = "chip-tbd"}>
 #pipeline_layout = #hal.pipeline.layout<push_constants = 0, sets = [<0, bindings = [<0, storage_buffer, ReadOnly>, <1, storage_buffer, ReadOnly>, <2, storage_buffer>]>]>
 #translation = #iree_codegen.translation_info<TransformDialectCodegen codegen_spec = @__transform_main>
