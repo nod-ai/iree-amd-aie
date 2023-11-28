@@ -34,8 +34,7 @@ export CMAKE_CXX_COMPILER_LAUNCHER=ccache
 # Clear ccache stats.
 ccache -z
 
-echo "
-{
+echo '{
     "version": 4,
     "cmakeMinimumRequired": {
       "major": 3,
@@ -45,8 +44,7 @@ echo "
     "include": [
         "build_tools/cmake/presets/all.json"
     ]
-}
-" > $iree_dir/CMakeUserPresets.json 
+}' > $iree_dir/CMakeUserPresets.json 
 
 cd $iree_dir
 cmake --preset new-linux-minimal -B "$build_dir" \
