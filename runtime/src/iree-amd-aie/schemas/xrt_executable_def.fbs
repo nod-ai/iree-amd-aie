@@ -1,0 +1,37 @@
+// Copyright 2023 The IREE Authors
+//
+// Licensed under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+namespace iree.amd.aie.hal.xrt;
+
+// 'XRT Executable'.
+file_identifier "XRTR";
+file_extension "xrtr";
+
+// Source code location denoted by a file name and line within that file.
+table FileLineLocDef {
+  filename:string;
+  line:int32;
+}
+
+// assembly instructions
+table AsmInstDef {
+  asm_inst:[uint32];
+}
+
+table ExecutableDef {
+  // A map of entry point ordinals to string names as used by XRT
+  entry_points:[string];
+
+  // XCLBIN string of the module.
+  xclbin:string;
+
+  // assembly instructions to run for each kernel
+  asm_instrs:[AsmInstDef];
+
+  source_locations:[FileLineLocDef];
+}
+
+root_type ExecutableDef;
