@@ -27,7 +27,7 @@ export CMAKE_TOOLCHAIN_FILE="$this_dir/linux_default_toolchain.cmake"
 export CC=clang
 export CXX=clang++
 export CCACHE_DIR="${cache_dir}/ccache"
-export CCACHE_MAXSIZE="2G"
+export CCACHE_MAXSIZE="700M"
 export CMAKE_C_COMPILER_LAUNCHER=ccache
 export CMAKE_CXX_COMPILER_LAUNCHER=ccache
 
