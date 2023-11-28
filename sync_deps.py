@@ -15,7 +15,7 @@ ORIGINS = {
 }
 
 SUBMODULES = {
-  "iree": 0
+  "iree": 1
 }
 
 
