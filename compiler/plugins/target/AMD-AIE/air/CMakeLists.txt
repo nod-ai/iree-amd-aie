@@ -257,6 +257,7 @@ iree_cc_library(
     ::AIRTransformOps
     ::AIRUtil
     MLIRIR
+    MLIRLinalgDialect
     MLIRLinalgTransforms
     MLIRLinalgTransformOps
     MLIRLinalgUtils
