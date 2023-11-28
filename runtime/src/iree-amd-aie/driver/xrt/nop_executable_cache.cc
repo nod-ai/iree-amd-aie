@@ -9,6 +9,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 
+#include "iree-amd-aie/driver/xrt/native_executable.h"
 #include "iree/base/api.h"
 #include "iree/base/tracing.h"
 
@@ -79,8 +80,11 @@ static iree_status_t iree_hal_xrt_nop_executable_cache_prepare_executable(
     iree_hal_executable_cache_t* base_executable_cache,
     const iree_hal_executable_params_t* executable_params,
     iree_hal_executable_t** out_executable) {
-  return iree_make_status(IREE_STATUS_UNIMPLEMENTED,
-                          "unimplmented executable cache prepare executable");
+  iree_hal_xrt_nop_executable_cache_t* executable_cache =
+      iree_hal_xrt_nop_executable_cache_cast(base_executable_cache);
+  return iree_hal_xrt_native_executable_create(
+      executable_cache->device, executable_params,
+      executable_cache->host_allocator, out_executable);
 }
 
 namespace {
