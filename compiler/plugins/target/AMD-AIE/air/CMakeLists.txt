@@ -162,6 +162,7 @@ iree_cc_library(
     "${IREE_MLIR_AIR_SOURCE_DIR}/lib/Util/CostModel.cpp"
   DEPS
     ::defs
+    ::AIRDialectIR
     MLIRIR
     MLIRTransforms
 )
@@ -257,6 +258,7 @@ iree_cc_library(
     ::AIRUtil
     MLIRIR
     MLIRLinalgTransforms
+    MLIRLinalgTransformOps
     MLIRLinalgUtils
     MLIRSupport
 )
