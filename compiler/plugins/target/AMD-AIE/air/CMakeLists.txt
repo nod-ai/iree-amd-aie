@@ -70,6 +70,7 @@ iree_cc_library(
     ::AIRDialectIR
     ::AIRTransformOpsGen
     MLIRIR
+    MLIRLinalgTransformOps
 )
 
 iree_tablegen_library(
