@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  workflow_call:
+
+  pull_request:
+
+  push:
+    branches:
+      - main
+
+concurrency:
+  # A PR number if a pull request and otherwise the commit hash. This cancels
+  # queued and in-progress runs for the same PR (presubmit) or commit
+  # (postsubmit).
+  group: ci-build-test-cpp-linux-${{ github.event.number || github.sha }}
+  cancel-in-progress: true
+
+jobs:
+  build_test_linux:
+    name: Build and Test (Linux, ASSERTIONS)
+    runs-on: cpubuilder_x86_64
+    strategy:
+      fail-fast: true
+    env:
+      CACHE_DIR: ${{ github.workspace }}/.container-cache
+    steps:
+      - name: "Checking out repository"
+        uses: actions/checkout@8f4b7f84864484a7bf31766abe9204da3cbe65b3 # v3.5.0
+
+      - name: Sync source deps
+        run: |
+          python ./sync_deps.py --depth 1 --submodules-depth 1
+
+      - name: Enable cache
+        uses: actions/cache@v3
+        with:
+          path: ${{ env.CACHE_DIR }}
+          key: linux-build-test-cpp-${{ github.sha }}
+          restore-keys: |
+            linux-build-test-cpp-
+
+      - name: Build packages
+        run: |
+          export cache_dir="${{ env.CACHE_DIR }}"
+          bash build_tools/ci/build_test_cpp.sh
+          # Some things put stuff in cache with weird, root read-only
+          # permissions. Take them back.
+          sudo chown -R "$(whoami)" "${cache_dir}"
