@@ -16,6 +16,9 @@ namespace mlir::iree_compiler::AMDAIE {
 /// currently the default passes used for lowering after IREEs tiling.
 void addMLIRAIRAIELoweringPasses(OpPassManager &passManager);
 
+/// Add passes to lower from MLIR-AIE to just before binary generation.
+void addMLIRAIELoweringPasses(OpPassManager &passManager);
+
 /// Add passes to run the strategy specified using transform dialect
 /// file/library
 void addTransformDialectPasses(OpPassManager &passManager);
