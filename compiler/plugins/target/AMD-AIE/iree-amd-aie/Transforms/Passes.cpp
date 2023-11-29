@@ -6,10 +6,14 @@
 
 #include "iree-amd-aie/Transforms/Passes.h"
 
+#include "aie/Dialect/AIE/Transforms/AIEPasses.h"
+#include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
 #include "air/Conversion/Passes.h"
 #include "air/Transform/Passes.h"
 #include "iree-dialects/Dialect/LinalgTransform/Passes.h"
 #include "iree/compiler/Codegen/Common/Passes.h"
+#include "mlir/Conversion/AffineToStandard/AffineToStandard.h"
+#include "mlir/Conversion/SCFToControlFlow/SCFToControlFlow.h"
 #include "mlir/Dialect/Linalg/Passes.h"
 #include "mlir/Dialect/MemRef/Transforms/Passes.h"
 #include "mlir/Pass/PassManager.h"
@@ -24,6 +28,7 @@ void buildAMDAIETransformPassPipeline(OpPassManager &pm) {
 
   auto &modulePassManager = pm.nest<ModuleOp>();
   addMLIRAIRAIELoweringPasses(modulePassManager);
+  addMLIRAIELoweringPasses(modulePassManager);
 }
 
 void addTransformDialectPasses(OpPassManager &passManager) {
@@ -118,6 +123,28 @@ void addMLIRAIRAIELoweringPasses(OpPassManager &passManager) {
   passManager.addPass(xilinx::air::createAIRLoweringPass());
   passManager.addPass(xilinx::airrt::createAIRRtToIpuPass());
   passManager.addPass(createCanonicalizerPass());
+}
+
+void addMLIRAIELoweringPasses(OpPassManager &passManager) {
+  passManager.addPass(createLowerAffinePass());
+  passManager.addPass(xilinx::AIE::createAIECanonicalizeDevicePass());
+
+  {
+    OpPassManager &devicePassManager =
+        passManager.nest<xilinx::AIE::DeviceOp>();
+    devicePassManager.addPass(xilinx::AIE::createAIEAssignLockIDsPass());
+    devicePassManager.addPass(
+        xilinx::AIE::createAIEObjectFifoRegisterProcessPass());
+    devicePassManager.addPass(
+        xilinx::AIE::createAIEObjectFifoStatefulTransformPass());
+    devicePassManager.addPass(xilinx::AIEX::createAIEBroadcastPacketPass());
+    devicePassManager.addPass(xilinx::AIE::createAIERoutePacketFlowsPass());
+    devicePassManager.addPass(xilinx::AIEX::createAIELowerMulticastPass());
+    devicePassManager.addPass(
+        xilinx::AIE::createAIEAssignBufferAddressesPass());
+  }
+
+  passManager.addPass(createConvertSCFToCFPass());
 }
 
 namespace {
