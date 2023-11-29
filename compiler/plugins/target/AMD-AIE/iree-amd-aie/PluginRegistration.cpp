@@ -4,6 +4,8 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+#include "aie/Dialect/AIE/IR/AIEDialect.h"
+#include "aie/Passes.h"
 #include "air/Dialect/AIR/AIRDialect.h"
 #include "air/Passes.h"
 #include "iree-amd-aie/Target/AIETarget.h"
@@ -29,12 +31,14 @@ struct AMDAIESession
                            PluginActivationPolicy::DefaultActivated> {
   static void registerPasses() {
     AMDAIE::registerAMDAIEPasses();
+    AMDAIE::registerAIETransformPasses();
+    AMDAIE::registerAIEXTransformPasses();
     AMDAIE::registerAIRConversionPasses();
     AMDAIE::registerAIRTransformPasses();
   }
 
   void onRegisterDialects(DialectRegistry &registry) override {
-    registry.insert<xilinx::air::airDialect>();
+    registry.insert<xilinx::AIE::AIEDialect, xilinx::air::airDialect>();
   }
 
   void populateHALTargetBackends(
