@@ -16,6 +16,9 @@ void registerAIETransformPasses() {
   registerAIEAssignLockIDs();
   registerAIEAssignBufferAddresses();
   registerAIECanonicalizeDevice();
+  registerAIECoreToStandard();
+  registerAIELocalizeLocks();
+  registerAIENormalizeAddressSpaces();
   registerAIEObjectFifoRegisterProcess();
   registerAIEObjectFifoStatefulTransform();
   registerAIERoutePacketFlows();
