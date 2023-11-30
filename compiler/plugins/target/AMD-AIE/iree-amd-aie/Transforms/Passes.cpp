@@ -13,7 +13,14 @@
 #include "iree-dialects/Dialect/LinalgTransform/Passes.h"
 #include "iree/compiler/Codegen/Common/Passes.h"
 #include "mlir/Conversion/AffineToStandard/AffineToStandard.h"
+#include "mlir/Conversion/ArithToLLVM/ArithToLLVM.h"
+#include "mlir/Conversion/ControlFlowToLLVM/ControlFlowToLLVM.h"
+#include "mlir/Conversion/FuncToLLVM/ConvertFuncToLLVMPass.h"
+#include "mlir/Conversion/MathToLLVM/MathToLLVM.h"
+#include "mlir/Conversion/MemRefToLLVM/MemRefToLLVM.h"
+#include "mlir/Conversion/ReconcileUnrealizedCasts/ReconcileUnrealizedCasts.h"
 #include "mlir/Conversion/SCFToControlFlow/SCFToControlFlow.h"
+#include "mlir/Conversion/VectorToLLVM/ConvertVectorToLLVMPass.h"
 #include "mlir/Dialect/Linalg/Passes.h"
 #include "mlir/Dialect/MemRef/Transforms/Passes.h"
 #include "mlir/Pass/PassManager.h"
@@ -144,7 +151,34 @@ void addMLIRAIELoweringPasses(OpPassManager &passManager) {
         xilinx::AIE::createAIEAssignBufferAddressesPass());
   }
 
+  // Convert to LLVM.
   passManager.addPass(createConvertSCFToCFPass());
+  {
+    OpPassManager &devicePassManager =
+        passManager.nest<xilinx::AIE::DeviceOp>();
+    devicePassManager.addPass(xilinx::AIE::createAIELocalizeLocksPass());
+  }
+  passManager.addPass(xilinx::AIE::createAIECoreToStandardPass());
+  passManager.addPass(xilinx::AIEX::createAIEXToStandardPass());
+  passManager.addNestedPass<xilinx::AIE::DeviceOp>(
+      xilinx::AIE::createAIENormalizeAddressSpacesPass());
+  passManager.addPass(createCanonicalizerPass());
+  passManager.addPass(createCSEPass());
+  passManager.addPass(createConvertVectorToLLVMPass());
+  passManager.addPass(memref::createExpandStridedMetadataPass());
+  passManager.addPass(createLowerAffinePass());
+  passManager.addPass(createConvertMathToLLVMPass());
+  passManager.addPass(createArithToLLVMConversionPass());
+  passManager.addPass(createFinalizeMemRefToLLVMConversionPass());
+  {
+    ConvertFuncToLLVMPassOptions options;
+    options.useBarePtrCallConv = true;
+    passManager.addPass(createConvertFuncToLLVMPass(options));
+  }
+  passManager.addPass(createConvertControlFlowToLLVMPass());
+  passManager.addPass(createReconcileUnrealizedCastsPass());
+  passManager.addPass(createCanonicalizerPass());
+  passManager.addPass(createCSEPass());
 }
 
 namespace {
