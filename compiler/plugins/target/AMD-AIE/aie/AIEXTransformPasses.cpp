@@ -15,5 +15,6 @@ namespace mlir::iree_compiler::AMDAIE {
 void registerAIEXTransformPasses() {
   registerAIEBroadcastPacket();
   registerAIEMulticast();
+  registerAIEXToStandard();
 }
 }  // namespace mlir::iree_compiler::AMDAIE
