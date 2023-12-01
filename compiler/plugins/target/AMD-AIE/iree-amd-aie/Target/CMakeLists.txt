@@ -9,11 +9,15 @@ iree_cc_library(
     Target
   HDRS
     "AIETarget.h"
+    "PeanoToolKit.h"
   SRCS
     "AIETarget.cpp"
+    "PeanoToolKit.cpp"
   DEPS
     iree::compiler::Dialect::HAL::Target
     iree::target::amd-aie::Transforms
+    iree::target::amd-aie::aie::AIETranslationPasses
+    iree::target::amd-aie::aie::AIEXTransformPasses
     iree::target::amd-aie::air::AIRDialectIR
   PUBLIC
 )
