@@ -17,6 +17,25 @@ extern "C" {
 #endif  // __cplusplus
 
 //===----------------------------------------------------------------------===//
+// iree_hal_xrt_device_params_t
+//===----------------------------------------------------------------------===//
+
+
+// Parameters configuring an iree_hal_xrt_device_t.
+// Must be initialized with iree_hal_xrt_device_params_initialize prior to
+// use.
+typedef struct iree_hal_xrt_device_params_t {
+  // Total size of each block in the device shared block pool.
+  // Larger sizes will lower overhead and ensure the heap isn't hit for
+  // transient allocations while also increasing memory consumption.
+  iree_host_size_t arena_block_size;
+} iree_hal_xrt_device_params_t;
+
+// Initializes |out_params| to default values.
+void iree_hal_xrt_device_params_initialize(
+    iree_hal_xrt_device_params_t* out_params);
+
+//===----------------------------------------------------------------------===//
 // iree_hal_xrt_driver_t
 //===----------------------------------------------------------------------===//
 
@@ -25,8 +44,9 @@ extern "C" {
 //
 // |out_driver| must be released by the caller (see iree_hal_driver_release).
 IREE_API_EXPORT iree_status_t iree_hal_xrt_driver_create(
-    iree_string_view_t identifier, iree_allocator_t host_allocator,
-    iree_hal_driver_t** out_driver);
+    iree_string_view_t identifier,
+    const iree_hal_xrt_device_params_t* device_params,
+    iree_allocator_t host_allocator, iree_hal_driver_t** out_driver);
 
 #ifdef __cplusplus
 }  // extern "C"
