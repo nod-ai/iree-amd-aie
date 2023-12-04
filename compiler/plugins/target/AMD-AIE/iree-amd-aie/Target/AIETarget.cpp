@@ -168,10 +168,10 @@ static LogicalResult convertToLLVMDialect(MLIRContext *context,
         passManager.nest<xilinx::AIE::DeviceOp>();
     devicePassManager.addPass(xilinx::AIE::createAIELocalizeLocksPass());
   }
-  passManager.addPass(xilinx::AIE::createAIECoreToStandardPass());
-  passManager.addPass(xilinx::AIEX::createAIEXToStandardPass());
   passManager.addNestedPass<xilinx::AIE::DeviceOp>(
       xilinx::AIE::createAIENormalizeAddressSpacesPass());
+  passManager.addPass(xilinx::AIE::createAIECoreToStandardPass());
+  passManager.addPass(xilinx::AIEX::createAIEXToStandardPass());
   passManager.addPass(createCanonicalizerPass());
   passManager.addPass(createCSEPass());
   passManager.addPass(createConvertVectorToLLVMPass());
@@ -207,7 +207,7 @@ static void dumpBitcodeToPath(StringRef path, StringRef baseName,
 }
 
 // Compile using Peano.
-LogicalResult compileUsingPeano(std::string peanoInstallDir, Location loc,
+LogicalResult compileUsingPeano(const AMDAIEOptions &options, Location loc,
                                 std::string libraryName,
                                 llvm::Module &llvmModule) {
   Artifact llFile = Artifact::createTemporary(libraryName, "bc");
@@ -222,14 +222,15 @@ LogicalResult compileUsingPeano(std::string peanoInstallDir, Location loc,
   }
   llFile.keep();
 
-  PeanoToolKit toolkit(peanoInstallDir);
+  PeanoToolKit toolkit(options.peanoInstallDir);
   Artifact optFile = Artifact::createTemporary(libraryName, "opt.bc");
   {
     SmallVector<std::string, 8> flags;
     flags.push_back("-O2");
     flags.push_back("--inline-threshold=10");
 
-    if (failed(toolkit.runOptCommand(flags, llFile, optFile))) {
+    if (failed(toolkit.runOptCommand(flags, llFile, optFile,
+                                     options.showInvokedCommands))) {
       return failure();
     }
   }
@@ -242,7 +243,8 @@ LogicalResult compileUsingPeano(std::string peanoInstallDir, Location loc,
     flags.push_back("--function-sections");
     flags.push_back("--filetype=obj");
 
-    if (failed(toolkit.runLlcCommand(flags, optFile, llcFile))) {
+    if (failed(toolkit.runLlcCommand(flags, optFile, llcFile,
+                                     options.showInvokedCommands))) {
       return failure();
     }
   }
@@ -303,8 +305,8 @@ LogicalResult AIETargetBackend::serializeExecutable(
                       variantOp.getName(), ".codegen.bc", *llvmModule);
   }
 
-  if (failed(compileUsingPeano(options.peanoInstallDir, variantOp.getLoc(),
-                               libraryName, *llvmModule.get()))) {
+  if (failed(compileUsingPeano(options, variantOp.getLoc(), libraryName,
+                               *llvmModule.get()))) {
     return moduleOp.emitOpError("failed binary conversion using Peano");
   }
 

@@ -15,6 +15,8 @@ namespace mlir::iree_compiler::AMDAIE {
 struct AMDAIEOptions {
   // Path to Peano installation directory.
   std::string peanoInstallDir;
+  // Dump to stdout system commands used during compilation
+  bool showInvokedCommands;
 
   void bindOptions(OptionsBinder &binder) {
     static llvm::cl::OptionCategory category("AMD AIE Options");
@@ -23,6 +25,11 @@ struct AMDAIEOptions {
         "iree-amd-aie-peano-install-dir", peanoInstallDir,
         llvm::cl::cat(category),
         llvm::cl::desc("Path to Peano installation directory"));
+
+    binder.opt<bool>(
+        "iree-amd-aie-show-invoked-commands", showInvokedCommands,
+        llvm::cl::cat(category),
+        llvm::cl::desc("Show commands invoked during binary generation"));
   }
 };
 

@@ -80,11 +80,11 @@ class PeanoToolKit {
 
   // Run the `opt` tool for Peano with given `flags`.
   LogicalResult runOptCommand(ArrayRef<std::string> flags, Artifact &inputFile,
-                              Artifact &outputFile);
+                              Artifact &outputFile, bool verbose = false);
 
   // Run the `llc` tool for Peano with given `flags`.
   LogicalResult runLlcCommand(ArrayRef<std::string> flags, Artifact &inputFile,
-                              Artifact &outputFile);
+                              Artifact &outputFile, bool verbose = false);
 
  private:
   std::string peanoInstallDir;

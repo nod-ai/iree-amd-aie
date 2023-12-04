@@ -131,7 +131,8 @@ PeanoToolKit::PeanoToolKit(std::string cmdLinePeanoInstallDir) {
 /// with result in `outputFile`.
 static LogicalResult runCommand(std::string toolPath,
                                 ArrayRef<std::string> flags,
-                                Artifact &inputFile, Artifact &outputFile) {
+                                Artifact &inputFile, Artifact &outputFile,
+                                bool verbose = false) {
   SmallVector<std::string, 8> cmdLine;
   cmdLine.push_back(toolPath);
   cmdLine.append(flags.begin(), flags.end());
@@ -141,9 +142,10 @@ static LogicalResult runCommand(std::string toolPath,
 
   std::string cmdLineStr = escapeCommandLineComponent(llvm::join(cmdLine, " "));
 
-  // LLVM_DEBUG({
-  llvm::errs() << "Running command : " << cmdLineStr << "\n";
-  // })
+  if (verbose) {
+    llvm::errs() << "Running command : " << cmdLineStr << "\n";
+  };
+  LLVM_DEBUG({ llvm::errs() << "Running command : " << cmdLineStr << "\n"; });
 
   int exitCode = system(cmdLineStr.c_str());
   if (exitCode != 0) {
@@ -156,18 +158,18 @@ static LogicalResult runCommand(std::string toolPath,
 
 LogicalResult PeanoToolKit::runOptCommand(ArrayRef<std::string> flags,
                                           Artifact &inputFile,
-                                          Artifact &outputFile) {
+                                          Artifact &outputFile, bool verbose) {
   std::filesystem::path optPath(peanoInstallDir);
   optPath.append("bin").append("opt");
-  return runCommand(optPath.string(), flags, inputFile, outputFile);
+  return runCommand(optPath.string(), flags, inputFile, outputFile, verbose);
 }
 
 LogicalResult PeanoToolKit::runLlcCommand(ArrayRef<std::string> flags,
                                           Artifact &inputFile,
-                                          Artifact &outputFile) {
+                                          Artifact &outputFile, bool verbose) {
   std::filesystem::path llcPath(peanoInstallDir);
   llcPath.append("bin").append("llc");
-  return runCommand(llcPath.string(), flags, inputFile, outputFile);
+  return runCommand(llcPath.string(), flags, inputFile, outputFile, verbose);
 }
 
 }  // namespace mlir::iree_compiler::AMDAIE
