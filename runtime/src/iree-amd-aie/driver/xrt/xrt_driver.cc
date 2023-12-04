@@ -4,7 +4,6 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#include "iree-amd-aie/driver/xrt/api.h"
 #include "iree-amd-aie/driver/xrt/xrt_device.h"
 #include "iree/base/api.h"
 #include "iree/base/target_platform.h"
@@ -39,6 +38,9 @@ typedef struct iree_hal_xrt_driver_t {
   // Identifier used for the driver in the IREE driver registry..
   iree_string_view_t identifier;
 
+  // Parameters used to control device behavior.
+  iree_hal_xrt_device_params_t device_params;
+
   xrt::device device;
 
 } iree_hal_xrt_driver_t;
@@ -53,9 +55,25 @@ static iree_hal_xrt_driver_t* iree_hal_xrt_driver_cast(
   return (iree_hal_xrt_driver_t*)base_value;
 }
 
+static const iree_hal_xrt_driver_t* iree_hal_xrt_driver_const_cast(
+    const iree_hal_driver_t* base_value) {
+  IREE_HAL_ASSERT_TYPE(base_value, &iree_hal_xrt_driver_vtable);
+  return (const iree_hal_xrt_driver_t*)base_value;
+}
+
+static iree_status_t iree_hal_xrt_device_check_params(
+    const iree_hal_xrt_device_params_t* params) {
+  if (params->arena_block_size < 4096) {
+    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                            "arena block size too small (< 4096 bytes)");
+  }
+  return iree_ok_status();
+}
+
 iree_status_t iree_hal_xrt_driver_create_internal(
-    iree_string_view_t identifier, iree_allocator_t host_allocator,
-    iree_hal_driver_t** out_driver) {
+    iree_string_view_t identifier,
+    const iree_hal_xrt_device_params_t* device_params,
+    iree_allocator_t host_allocator, iree_hal_driver_t** out_driver) {
   iree_hal_xrt_driver_t* driver = NULL;
   iree_host_size_t total_size = iree_sizeof_struct(*driver) + identifier.size;
   IREE_RETURN_IF_ERROR(
@@ -66,6 +84,7 @@ iree_status_t iree_hal_xrt_driver_create_internal(
   iree_string_view_append_to_buffer(
       identifier, &driver->identifier,
       (char*)driver + iree_sizeof_struct(*driver));
+  driver->device_params = *device_params;
 
   int device_count = xrt::system::enumerate_devices();
   if (IREE_UNLIKELY(device_count == 0)) {
@@ -79,13 +98,16 @@ iree_status_t iree_hal_xrt_driver_create_internal(
 }
 
 IREE_API_EXPORT iree_status_t iree_hal_xrt_driver_create(
-    iree_string_view_t identifier, iree_allocator_t host_allocator,
-    iree_hal_driver_t** out_driver) {
+    iree_string_view_t identifier,
+    const iree_hal_xrt_device_params_t* device_params,
+    iree_allocator_t host_allocator, iree_hal_driver_t** out_driver) {
   IREE_ASSERT_ARGUMENT(out_driver);
   IREE_TRACE_ZONE_BEGIN(z0);
 
+  IREE_RETURN_AND_END_ZONE_IF_ERROR(
+      z0, iree_hal_xrt_device_check_params(device_params));
   iree_status_t status = iree_hal_xrt_driver_create_internal(
-      identifier, host_allocator, out_driver);
+      identifier, device_params, host_allocator, out_driver);
 
   IREE_TRACE_ZONE_END(z0);
   return status;
@@ -192,8 +214,9 @@ static iree_status_t iree_hal_xrt_driver_create_device_by_id(
   iree_hal_xrt_driver_t* driver = iree_hal_xrt_driver_cast(base_driver);
   iree_string_view_t device_name = iree_make_cstring_view("xrt");
 
-  iree_status_t status = iree_hal_xrt_device_create(
-      base_driver, device_name, driver->device, host_allocator, out_device);
+  iree_status_t status =
+      iree_hal_xrt_device_create(device_name, &driver->device_params,
+                                 driver->device, host_allocator, out_device);
 
   IREE_TRACE_ZONE_END(z0);
   return status;
@@ -208,8 +231,9 @@ static iree_status_t iree_hal_xrt_driver_create_device_by_path(
   iree_hal_xrt_driver_t* driver = iree_hal_xrt_driver_cast(base_driver);
   iree_string_view_t device_name = iree_make_cstring_view("xrt");
 
-  iree_status_t status = iree_hal_xrt_device_create(
-      base_driver, device_name, driver->device, host_allocator, out_device);
+  iree_status_t status =
+      iree_hal_xrt_device_create(device_name, &driver->device_params,
+                                 driver->device, host_allocator, out_device);
 
   IREE_TRACE_ZONE_END(z0);
   return status;
