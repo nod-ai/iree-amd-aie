@@ -212,6 +212,7 @@ iree_cc_library(
   SRCS
     "AIEXTransformPasses.cpp"
     "${IREE_MLIR_AIE_SOURCE_DIR}/lib/Dialect/AIEX/Transforms/AIECreateBroadcastPacket.cpp"
+    "${IREE_MLIR_AIE_SOURCE_DIR}/lib/Dialect/AIEX/Transforms/AIEDmaToIpu.cpp"
     "${IREE_MLIR_AIE_SOURCE_DIR}/lib/Dialect/AIEX/Transforms/AIELowerMulticast.cpp"
     "${IREE_MLIR_AIE_SOURCE_DIR}/lib/Dialect/AIEX/Transforms/AIECreateBroadcastPacket.cpp"
     "${IREE_MLIR_AIE_SOURCE_DIR}/lib/Dialect/AIEX/Transforms/AIEXToStandard.cpp"
@@ -219,4 +220,18 @@ iree_cc_library(
     ::defs
     ::AIEXDialectIR
     ::AIEXTransformPassHeaders
+)
+
+###############################################################################
+# AIE Translation passes.
+###############################################################################
+
+iree_cc_library(
+  NAME
+    AIETranslationPasses
+  SRCS
+    "${IREE_MLIR_AIE_SOURCE_DIR}/lib/Targets/AIETargetIPU.cpp"
+  DEPS
+    ::AIEDialectIR
+    ::AIEXDialectIR
 )

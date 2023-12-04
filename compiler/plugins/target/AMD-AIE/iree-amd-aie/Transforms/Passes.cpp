@@ -12,15 +12,6 @@
 #include "air/Transform/Passes.h"
 #include "iree-dialects/Dialect/LinalgTransform/Passes.h"
 #include "iree/compiler/Codegen/Common/Passes.h"
-#include "mlir/Conversion/AffineToStandard/AffineToStandard.h"
-#include "mlir/Conversion/ArithToLLVM/ArithToLLVM.h"
-#include "mlir/Conversion/ControlFlowToLLVM/ControlFlowToLLVM.h"
-#include "mlir/Conversion/FuncToLLVM/ConvertFuncToLLVMPass.h"
-#include "mlir/Conversion/MathToLLVM/MathToLLVM.h"
-#include "mlir/Conversion/MemRefToLLVM/MemRefToLLVM.h"
-#include "mlir/Conversion/ReconcileUnrealizedCasts/ReconcileUnrealizedCasts.h"
-#include "mlir/Conversion/SCFToControlFlow/SCFToControlFlow.h"
-#include "mlir/Conversion/VectorToLLVM/ConvertVectorToLLVMPass.h"
 #include "mlir/Dialect/Linalg/Passes.h"
 #include "mlir/Dialect/MemRef/Transforms/Passes.h"
 #include "mlir/Pass/PassManager.h"
@@ -35,7 +26,6 @@ void buildAMDAIETransformPassPipeline(OpPassManager &pm) {
 
   auto &modulePassManager = pm.nest<ModuleOp>();
   addMLIRAIRAIELoweringPasses(modulePassManager);
-  addMLIRAIELoweringPasses(modulePassManager);
 }
 
 void addTransformDialectPasses(OpPassManager &passManager) {
@@ -130,55 +120,6 @@ void addMLIRAIRAIELoweringPasses(OpPassManager &passManager) {
   passManager.addPass(xilinx::air::createAIRLoweringPass());
   passManager.addPass(xilinx::airrt::createAIRRtToIpuPass());
   passManager.addPass(createCanonicalizerPass());
-}
-
-void addMLIRAIELoweringPasses(OpPassManager &passManager) {
-  passManager.addPass(createLowerAffinePass());
-  passManager.addPass(xilinx::AIE::createAIECanonicalizeDevicePass());
-
-  {
-    OpPassManager &devicePassManager =
-        passManager.nest<xilinx::AIE::DeviceOp>();
-    devicePassManager.addPass(xilinx::AIE::createAIEAssignLockIDsPass());
-    devicePassManager.addPass(
-        xilinx::AIE::createAIEObjectFifoRegisterProcessPass());
-    devicePassManager.addPass(
-        xilinx::AIE::createAIEObjectFifoStatefulTransformPass());
-    devicePassManager.addPass(xilinx::AIEX::createAIEBroadcastPacketPass());
-    devicePassManager.addPass(xilinx::AIE::createAIERoutePacketFlowsPass());
-    devicePassManager.addPass(xilinx::AIEX::createAIELowerMulticastPass());
-    devicePassManager.addPass(
-        xilinx::AIE::createAIEAssignBufferAddressesPass());
-  }
-
-  // Convert to LLVM.
-  passManager.addPass(createConvertSCFToCFPass());
-  {
-    OpPassManager &devicePassManager =
-        passManager.nest<xilinx::AIE::DeviceOp>();
-    devicePassManager.addPass(xilinx::AIE::createAIELocalizeLocksPass());
-  }
-  passManager.addPass(xilinx::AIE::createAIECoreToStandardPass());
-  passManager.addPass(xilinx::AIEX::createAIEXToStandardPass());
-  passManager.addNestedPass<xilinx::AIE::DeviceOp>(
-      xilinx::AIE::createAIENormalizeAddressSpacesPass());
-  passManager.addPass(createCanonicalizerPass());
-  passManager.addPass(createCSEPass());
-  passManager.addPass(createConvertVectorToLLVMPass());
-  passManager.addPass(memref::createExpandStridedMetadataPass());
-  passManager.addPass(createLowerAffinePass());
-  passManager.addPass(createConvertMathToLLVMPass());
-  passManager.addPass(createArithToLLVMConversionPass());
-  passManager.addPass(createFinalizeMemRefToLLVMConversionPass());
-  {
-    ConvertFuncToLLVMPassOptions options;
-    options.useBarePtrCallConv = true;
-    passManager.addPass(createConvertFuncToLLVMPass(options));
-  }
-  passManager.addPass(createConvertControlFlowToLLVMPass());
-  passManager.addPass(createReconcileUnrealizedCastsPass());
-  passManager.addPass(createCanonicalizerPass());
-  passManager.addPass(createCSEPass());
 }
 
 namespace {

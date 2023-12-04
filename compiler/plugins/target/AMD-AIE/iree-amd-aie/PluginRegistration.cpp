@@ -16,18 +16,8 @@
 namespace mlir::iree_compiler {
 namespace {
 
-struct AMDAIEOptions {
-  void bindOptions(OptionsBinder &binder) {
-    static llvm::cl::OptionCategory category("AMD AIE Options");
-    // binder.opt<bool>(
-    //     "amd-aie-sample-flag", sampleFlag,
-    //     llvm::cl::cat(category),
-    //     llvm::cl::desc("Sample flag"));
-  }
-};
-
 struct AMDAIESession
-    : public PluginSession<AMDAIESession, AMDAIEOptions,
+    : public PluginSession<AMDAIESession, AMDAIE::AMDAIEOptions,
                            PluginActivationPolicy::DefaultActivated> {
   static void registerPasses() {
     AMDAIE::registerAMDAIEPasses();
@@ -45,17 +35,14 @@ struct AMDAIESession
       IREE::HAL::TargetBackendList &targets) override {
     // #hal.device.target<"amd-aie", ...
     // #hal.executable.target<"amd-aie", ...
-    targets.add("amd-aie", [&]() {
-      return AMDAIE::createTarget();
-      // return std::make_shared<CUDATargetBackend>(options);
-    });
+    targets.add("amd-aie", [&]() { return AMDAIE::createTarget(options); });
   }
 };
 
 }  // namespace
 }  // namespace mlir::iree_compiler
 
-IREE_DEFINE_COMPILER_OPTION_FLAGS(::mlir::iree_compiler::AMDAIEOptions);
+IREE_DEFINE_COMPILER_OPTION_FLAGS(::mlir::iree_compiler::AMDAIE::AMDAIEOptions);
 
 extern "C" bool iree_register_compiler_plugin_amd_aie(
     mlir::iree_compiler::PluginRegistrar *registrar) {
