@@ -24,9 +24,7 @@ typedef struct iree_hal_xrt_device_t {
 
   iree_string_view_t identifier;
 
-  // Original driver that owns this device.
-  iree_hal_driver_t* driver;
-
+  iree_hal_xrt_device_params_t params;
   iree_allocator_t host_allocator;
   iree_hal_allocator_t* device_allocator;
 
@@ -43,9 +41,28 @@ static iree_hal_xrt_device_t* iree_hal_xrt_device_cast(
   return (iree_hal_xrt_device_t*)base_value;
 }
 
+static const iree_hal_xrt_device_t* iree_hal_xrt_device_const_cast(
+    const iree_hal_device_t* base_value) {
+  IREE_HAL_ASSERT_TYPE(base_value, &iree_hal_xrt_device_vtable);
+  return (const iree_hal_xrt_device_t*)base_value;
+}
+
+void iree_hal_xrt_device_params_initialize(
+    iree_hal_xrt_device_params_t* out_params) {
+  memset(out_params, 0, sizeof(*out_params));
+  out_params->arena_block_size = 32 * 1024;
+}
+
+const iree_hal_xrt_device_params_t* iree_hal_xrt_device_params(
+    const iree_hal_device_t* base_device) {
+  const iree_hal_xrt_device_t* device =
+      iree_hal_xrt_device_const_cast(base_device);
+  return &device->params;
+}
+
 static iree_status_t iree_hal_xrt_device_create_internal(
-    iree_hal_driver_t* driver, iree_string_view_t identifier,
-    xrt::device xrt_device, iree_allocator_t host_allocator,
+    iree_string_view_t identifier, xrt::device xrt_device,
+    const iree_hal_xrt_device_params_t* params, iree_allocator_t host_allocator,
     iree_hal_device_t** out_device) {
   iree_hal_xrt_device_t* device = NULL;
 
@@ -62,10 +79,10 @@ static iree_status_t iree_hal_xrt_device_create_internal(
     iree_string_view_append_to_buffer(
         identifier, &device->identifier,
         (char*)device + iree_sizeof_struct(*device));
-    device->driver = driver;
-    iree_hal_driver_retain(device->driver);
+
     device->host_allocator = host_allocator;
     device->device = xrt_device;
+    device->params = *params;
 
     *out_device = (iree_hal_device_t*)device;
   } else {
@@ -74,16 +91,15 @@ static iree_status_t iree_hal_xrt_device_create_internal(
   return status;
 }
 
-iree_status_t iree_hal_xrt_device_create(iree_hal_driver_t* driver,
-                                         iree_string_view_t identifier,
-                                         xrt::device device,
-                                         iree_allocator_t host_allocator,
-                                         iree_hal_device_t** out_device) {
+iree_status_t iree_hal_xrt_device_create(
+    iree_string_view_t identifier, const iree_hal_xrt_device_params_t* params,
+    xrt::device device, iree_allocator_t host_allocator,
+    iree_hal_device_t** out_device) {
   IREE_ASSERT_ARGUMENT(out_device);
   IREE_TRACE_ZONE_BEGIN(z0);
 
   iree_status_t status = iree_hal_xrt_device_create_internal(
-      driver, identifier, device, host_allocator, out_device);
+      identifier, device, params, host_allocator, out_device);
 
   IREE_TRACE_ZONE_END(z0);
   return status;
@@ -95,8 +111,6 @@ static void iree_hal_xrt_device_destroy(iree_hal_device_t* base_device) {
   IREE_TRACE_ZONE_BEGIN(z0);
 
   iree_hal_allocator_release(device->device_allocator);
-  iree_hal_driver_release(device->driver);
-
   iree_allocator_free(host_allocator, device);
 
   IREE_TRACE_ZONE_END(z0);
