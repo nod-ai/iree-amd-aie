@@ -196,6 +196,18 @@ static LogicalResult convertToLLVMDialect(MLIRContext *context,
   return success();
 }
 
+/// Helper method to dump an MLIR ModuleOp to file.
+static void dumpMLIRModuleToPath(StringRef path, StringRef baseName,
+                                 StringRef suffix, StringRef ext,
+                                 mlir::ModuleOp module) {
+  SmallVector<char, 0> data;
+  llvm::raw_svector_ostream ostream(data);
+  module.print(ostream, OpPrintingFlags().useLocalScope());
+  IREE::HAL::dumpDataToPath(path, baseName, suffix, ext,
+                            StringRef(data.data(), data.size()));
+}
+
+/// Helper method to dump the llvm::Module as bitcode.
 static void dumpBitcodeToPath(StringRef path, StringRef baseName,
                               StringRef suffix, StringRef extension,
                               llvm::Module &module) {
@@ -206,7 +218,7 @@ static void dumpBitcodeToPath(StringRef path, StringRef baseName,
                             StringRef(data.data(), data.size()));
 }
 
-// Compile using Peano.
+/// Compile using Peano.
 LogicalResult compileUsingPeano(const AMDAIEOptions &options, Location loc,
                                 std::string libraryName,
                                 llvm::Module &llvmModule) {
@@ -255,6 +267,11 @@ LogicalResult AIETargetBackend::serializeExecutable(
     const SerializationOptions &serOptions,
     IREE::HAL::ExecutableVariantOp variantOp, OpBuilder &executableBuilder) {
   ModuleOp moduleOp = variantOp.getInnerModule();
+  if (!serOptions.dumpIntermediatesPath.empty()) {
+    dumpMLIRModuleToPath(serOptions.dumpIntermediatesPath,
+                         serOptions.dumpBaseName, variantOp.getName(),
+                         ".aiecc.mlir", moduleOp);
+  }
 
   // Generate the ipu instructions.
   llvm::SmallVector<char, 0> ipuInstrs;
@@ -278,13 +295,9 @@ LogicalResult AIETargetBackend::serializeExecutable(
     return failure();
   }
   if (!serOptions.dumpIntermediatesPath.empty()) {
-    SmallVector<char, 0> llvmDialectModule;
-    llvm::raw_svector_ostream ostream(llvmDialectModule);
-    moduleOp.print(ostream, OpPrintingFlags().useLocalScope());
-    IREE::HAL::dumpDataToPath(
-        serOptions.dumpIntermediatesPath, serOptions.dumpBaseName,
-        variantOp.getName(), ".llvm.mlir",
-        StringRef(llvmDialectModule.data(), llvmDialectModule.size()));
+    dumpMLIRModuleToPath(serOptions.dumpIntermediatesPath,
+                         serOptions.dumpBaseName, variantOp.getName(),
+                         ".llvm.mlir", moduleOp);
   }
 
   // Generate the LLVM IR. We name our files after the executable name so that
