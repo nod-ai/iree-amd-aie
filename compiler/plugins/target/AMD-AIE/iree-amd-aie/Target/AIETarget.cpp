@@ -6,6 +6,8 @@
 
 #include "iree-amd-aie/Target/AIETarget.h"
 
+#include <filesystem>
+
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
@@ -39,7 +41,10 @@
 namespace xilinx::AIE {
 mlir::LogicalResult AIETranslateToIPU(mlir::ModuleOp module,
                                       llvm::raw_ostream &output);
-}
+mlir::LogicalResult AIETranslateToLdScript(mlir::ModuleOp module,
+                                           llvm::raw_ostream &output, int col,
+                                           int row);
+}  // namespace xilinx::AIE
 
 namespace mlir::iree_compiler::AMDAIE {
 
@@ -82,6 +87,8 @@ class AIETargetBackend final : public IREE::HAL::TargetBackend {
                                     IREE::HAL::ExecutableVariantOp variantOp,
                                     OpBuilder &executableBuilder) override;
 
+  const AMDAIEOptions &getOptions() const { return options; }
+
  private:
   ArrayAttr getExecutableTargets(MLIRContext *context) const {
     SmallVector<Attribute> targetAttrs;
@@ -111,41 +118,34 @@ class AIETargetBackend final : public IREE::HAL::TargetBackend {
 };
 
 /// Generate the IPU instructions into `output`.
-static LogicalResult generateIPUInstructions(ModuleOp moduleOp,
-                                             OpBuilder &builder,
+static LogicalResult generateIPUInstructions(MLIRContext *context,
+                                             ModuleOp moduleOp,
                                              raw_ostream &output) {
-  OpBuilder::InsertionGuard g(builder);
-
   // Clone the module for generating the IPU instructions.
-  builder.setInsertionPoint(moduleOp);
-  auto clonedModuleOp =
-      dyn_cast<ModuleOp>(builder.clone(*moduleOp.getOperation()));
-  PassManager passManager(builder.getContext(), ModuleOp::getOperationName());
+  PassManager passManager(context, ModuleOp::getOperationName());
   passManager.addNestedPass<xilinx::AIE::DeviceOp>(
       xilinx::AIEX::createAIEDmaToIpuPass());
 
-  if (failed(passManager.run(clonedModuleOp))) {
-    return clonedModuleOp->emitOpError(
+  if (failed(passManager.run(moduleOp))) {
+    return moduleOp->emitOpError(
         "failed preprocessing pass before IPU instrs generation");
   }
 
-  if (failed(xilinx::AIE::AIETranslateToIPU(clonedModuleOp, output))) {
+  if (failed(xilinx::AIE::AIETranslateToIPU(moduleOp, output))) {
     return moduleOp.emitOpError("failed to translate to IPU instructions");
   }
 
-  clonedModuleOp->erase();
   return success();
 }
 
-/// Convert AIE device code to LLVM Dialect
-static LogicalResult convertToLLVMDialect(MLIRContext *context,
+/// Run further AIE lowering passes
+static LogicalResult runAIELoweringPasses(MLIRContext *context,
                                           ModuleOp moduleOp) {
   PassManager passManager(context, ModuleOp::getOperationName());
 
   // Run lowering passes to prepare for LLVM Dialect lowering.
   passManager.addPass(createLowerAffinePass());
   passManager.addPass(xilinx::AIE::createAIECanonicalizeDevicePass());
-
   {
     OpPassManager &devicePassManager =
         passManager.nest<xilinx::AIE::DeviceOp>();
@@ -160,9 +160,17 @@ static LogicalResult convertToLLVMDialect(MLIRContext *context,
     devicePassManager.addPass(
         xilinx::AIE::createAIEAssignBufferAddressesPass());
   }
-
-  // Convert to LLVM.
   passManager.addPass(createConvertSCFToCFPass());
+  if (failed(passManager.run(moduleOp))) {
+    return moduleOp.emitOpError("failed to run AIE lowering passes");
+  }
+  return success();
+}
+
+/// Convert AIE device code to LLVM Dialect
+static LogicalResult convertToLLVMDialect(MLIRContext *context,
+                                          ModuleOp moduleOp) {
+  PassManager passManager(context, ModuleOp::getOperationName());
   {
     OpPassManager &devicePassManager =
         passManager.nest<xilinx::AIE::DeviceOp>();
@@ -219,9 +227,9 @@ static void dumpBitcodeToPath(StringRef path, StringRef baseName,
 }
 
 /// Compile using Peano.
-LogicalResult compileUsingPeano(const AMDAIEOptions &options, Location loc,
-                                std::string libraryName,
-                                llvm::Module &llvmModule) {
+FailureOr<Artifact> compileUsingPeano(const AMDAIEOptions &options,
+                                      Location loc, std::string libraryName,
+                                      llvm::Module &llvmModule) {
   Artifact llFile = Artifact::createTemporary(libraryName, "bc");
   {
     auto &llFileOs = llFile.outputFile->os();
@@ -260,43 +268,21 @@ LogicalResult compileUsingPeano(const AMDAIEOptions &options, Location loc,
       return failure();
     }
   }
-  return success();
+  return llcFile;
 }
 
-LogicalResult AIETargetBackend::serializeExecutable(
-    const SerializationOptions &serOptions,
-    IREE::HAL::ExecutableVariantOp variantOp, OpBuilder &executableBuilder) {
-  ModuleOp moduleOp = variantOp.getInnerModule();
-  if (!serOptions.dumpIntermediatesPath.empty()) {
-    dumpMLIRModuleToPath(serOptions.dumpIntermediatesPath,
-                         serOptions.dumpBaseName, variantOp.getName(),
-                         ".aiecc.mlir", moduleOp);
-  }
-
-  // Generate the ipu instructions.
-  llvm::SmallVector<char, 0> ipuInstrs;
-  {
-    llvm::raw_svector_ostream ostream(ipuInstrs);
-    if (failed(generateIPUInstructions(moduleOp, executableBuilder, ostream))) {
-      return failure();
-    }
-  }
-  if (!serOptions.dumpIntermediatesPath.empty()) {
-    IREE::HAL::dumpDataToPath(serOptions.dumpIntermediatesPath,
-                              serOptions.dumpBaseName, variantOp.getName(),
-                              ".insts.txt",
-                              StringRef(ipuInstrs.data(), ipuInstrs.size()));
-  }
-
-  // Generate the LLVM IR
-  MLIRContext *context = executableBuilder.getContext();
+// Generate the object file from the ModuleOp
+FailureOr<Artifact> generateObjectFile(MLIRContext *context, ModuleOp moduleOp,
+                                       const AMDAIEOptions &options,
+                                       std::string intermediatesPath,
+                                       std::string baseName) {
   // Convert to LLVM dialect.
   if (failed(convertToLLVMDialect(context, moduleOp))) {
     return failure();
   }
-  if (!serOptions.dumpIntermediatesPath.empty()) {
-    dumpMLIRModuleToPath(serOptions.dumpIntermediatesPath,
-                         serOptions.dumpBaseName, variantOp.getName(),
+  auto variantOp = moduleOp->getParentOfType<IREE::HAL::ExecutableVariantOp>();
+  if (!intermediatesPath.empty()) {
+    dumpMLIRModuleToPath(intermediatesPath, baseName, variantOp.getName(),
                          ".llvm.mlir", moduleOp);
   }
 
@@ -313,14 +299,143 @@ LogicalResult AIETargetBackend::serializeExecutable(
   if (!llvmModule) {
     return moduleOp.emitOpError("failed to translate to LLVM");
   }
-  if (!serOptions.dumpIntermediatesPath.empty()) {
-    dumpBitcodeToPath(serOptions.dumpIntermediatesPath, serOptions.dumpBaseName,
-                      variantOp.getName(), ".codegen.bc", *llvmModule);
+  if (!intermediatesPath.empty()) {
+    dumpBitcodeToPath(intermediatesPath, baseName, variantOp.getName(),
+                      ".codegen.bc", *llvmModule);
   }
 
-  if (failed(compileUsingPeano(options, variantOp.getLoc(), libraryName,
-                               *llvmModule.get()))) {
+  // Compile using Peano.
+  FailureOr<Artifact> objFile = compileUsingPeano(
+      options, variantOp.getLoc(), libraryName, *llvmModule.get());
+  if (failed(objFile)) {
     return moduleOp.emitOpError("failed binary conversion using Peano");
+  }
+  return objFile;
+}
+
+// Generate the elf files for the core
+FailureOr<SmallVector<Artifact>> generateCoreElfFiles(
+    ModuleOp moduleOp, Artifact &objFile, const AMDAIEOptions &options) {
+  auto deviceOps = moduleOp.getOps<xilinx::AIE::DeviceOp>();
+  if (!llvm::hasSingleElement(deviceOps)) {
+    return moduleOp.emitOpError("expected a single device op");
+  }
+
+  SmallVector<Artifact> coreElfFiles;
+  xilinx::AIE::DeviceOp deviceOp = *deviceOps.begin();
+  auto tileOps = deviceOp.getOps<xilinx::AIE::TileOp>();
+  for (auto tileOp : tileOps) {
+    int col = tileOp.colIndex();
+    int row = tileOp.rowIndex();
+    auto coreOp = tileOp.getCoreOp();
+    if (!coreOp) {
+      continue;
+    }
+    auto fileAttr = coreOp->getAttrOfType<StringAttr>("elf_file");
+    std::string elfFileName =
+        fileAttr ? std::string(fileAttr.getValue()) : std::string("None");
+
+    Artifact ldScriptFile = Artifact::createTemporary(elfFileName, "ld.script");
+    SmallVector<char, 0> ldScriptString;
+    llvm::raw_svector_ostream ostream(ldScriptString);
+    if (failed(
+            xilinx::AIE::AIETranslateToLdScript(moduleOp, ostream, col, row))) {
+      return coreOp.emitOpError("failed to generate ld script for core (")
+             << col << "," << row << ")";
+    }
+    auto &ldScriptFileOs = ldScriptFile.outputFile->os();
+    ldScriptFileOs << ldScriptString;
+    ldScriptFileOs.flush();
+    ldScriptFileOs.close();
+
+    // We are running a clang command for now, but really this is an lld
+    // command.
+    PeanoToolKit peanoToolKit(options.peanoInstallDir);
+    Artifact elfFile = Artifact::createTemporary(elfFileName, "");
+    {
+      SmallVector<std::string, 8> flags;
+      flags.push_back("-O2");
+      flags.push_back("--target=aie2-none-elf");
+      flags.push_back(objFile.path);
+      std::filesystem::path meBasicPath(options.mlirAieInstallDir);
+      meBasicPath.append("aie_runtime_lib").append("AIE2").append("me_basic.o");
+      flags.push_back(meBasicPath.string());
+      std::filesystem::path libcPath(options.peanoInstallDir);
+      libcPath.append("lib").append("aie2-none-unknown-elf").append("libc.a");
+      flags.push_back(libcPath.string());
+      flags.push_back("-Wl,--gc-sections");
+      std::string ldScriptFlag = "-Wl,-T," + ldScriptFile.path;
+      flags.push_back(ldScriptFlag);
+      if (failed(peanoToolKit.runClangCommand(flags, elfFile,
+                                              options.showInvokedCommands))) {
+        return coreOp.emitOpError("failed to generate elf file for core(")
+               << col << "," << row << ")";
+      }
+    }
+    coreElfFiles.emplace_back(std::move(elfFile));
+  }
+  return coreElfFiles;
+}
+
+LogicalResult AIETargetBackend::serializeExecutable(
+    const SerializationOptions &serOptions,
+    IREE::HAL::ExecutableVariantOp variantOp, OpBuilder &executableBuilder) {
+  ModuleOp moduleOp = variantOp.getInnerModule();
+  if (!serOptions.dumpIntermediatesPath.empty()) {
+    dumpMLIRModuleToPath(serOptions.dumpIntermediatesPath,
+                         serOptions.dumpBaseName, variantOp.getName(),
+                         ".aiecc.mlir", moduleOp);
+  }
+  MLIRContext *context = executableBuilder.getContext();
+
+  // Run AIE Lowering passes.
+  if (failed(runAIELoweringPasses(context, moduleOp))) {
+    return failure();
+  }
+
+  // Generate the ipu instructions.
+  llvm::SmallVector<char, 0> ipuInstrs;
+  {
+    llvm::raw_svector_ostream ostream(ipuInstrs);
+    OpBuilder::InsertionGuard g(executableBuilder);
+    executableBuilder.setInsertionPoint(moduleOp);
+    auto clonedModuleOp =
+        dyn_cast<ModuleOp>(executableBuilder.clone(*moduleOp.getOperation()));
+    if (failed(generateIPUInstructions(context, clonedModuleOp, ostream))) {
+      return failure();
+    }
+    clonedModuleOp->erase();
+  }
+  if (!serOptions.dumpIntermediatesPath.empty()) {
+    IREE::HAL::dumpDataToPath(serOptions.dumpIntermediatesPath,
+                              serOptions.dumpBaseName, variantOp.getName(),
+                              ".insts.txt",
+                              StringRef(ipuInstrs.data(), ipuInstrs.size()));
+  }
+
+  FailureOr<Artifact> objFile;
+  {
+    OpBuilder::InsertionGuard g(executableBuilder);
+    executableBuilder.setInsertionPoint(moduleOp);
+    auto clonedModuleOp =
+        dyn_cast<ModuleOp>(executableBuilder.clone(*moduleOp.getOperation()));
+    objFile = generateObjectFile(context, clonedModuleOp, getOptions(),
+                                 serOptions.dumpIntermediatesPath,
+                                 serOptions.dumpBaseName);
+    if (failed(objFile)) {
+      return moduleOp.emitOpError("failed binary conversion using Peano");
+    }
+    clonedModuleOp->erase();
+  }
+
+  // Generate the core elf file.
+  FailureOr<SmallVector<Artifact>> coreElfFiles =
+      generateCoreElfFiles(moduleOp, objFile.value(), getOptions());
+  if (failed(coreElfFiles)) {
+    return failure();
+  }
+  for (auto &coreElfFile : coreElfFiles.value()) {
+    coreElfFile.keep();
   }
 
   return variantOp.emitError() << "AIE serialization NYI";
