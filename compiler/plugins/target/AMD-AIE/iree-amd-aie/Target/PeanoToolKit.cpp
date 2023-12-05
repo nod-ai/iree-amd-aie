@@ -129,17 +129,8 @@ PeanoToolKit::PeanoToolKit(std::string cmdLinePeanoInstallDir) {
 
 /// Implementation of running binary at `toolPath` with `flags` and `inputFile`
 /// with result in `outputFile`.
-static LogicalResult runCommand(std::string toolPath,
-                                ArrayRef<std::string> flags,
-                                Artifact &inputFile, Artifact &outputFile,
+static LogicalResult runCommand(ArrayRef<std::string> cmdLine,
                                 bool verbose = false) {
-  SmallVector<std::string, 8> cmdLine;
-  cmdLine.push_back(toolPath);
-  cmdLine.append(flags.begin(), flags.end());
-  cmdLine.push_back(inputFile.path);
-  cmdLine.push_back("-o");
-  cmdLine.push_back(outputFile.path);
-
   std::string cmdLineStr = escapeCommandLineComponent(llvm::join(cmdLine, " "));
 
   if (verbose) {
@@ -161,7 +152,13 @@ LogicalResult PeanoToolKit::runOptCommand(ArrayRef<std::string> flags,
                                           Artifact &outputFile, bool verbose) {
   std::filesystem::path optPath(peanoInstallDir);
   optPath.append("bin").append("opt");
-  return runCommand(optPath.string(), flags, inputFile, outputFile, verbose);
+  SmallVector<std::string, 8> cmdLine;
+  cmdLine.push_back(optPath.string());
+  cmdLine.append(flags.begin(), flags.end());
+  cmdLine.push_back(inputFile.path);
+  cmdLine.push_back("-o");
+  cmdLine.push_back(outputFile.path);
+  return runCommand(cmdLine, verbose);
 }
 
 LogicalResult PeanoToolKit::runLlcCommand(ArrayRef<std::string> flags,
@@ -169,7 +166,26 @@ LogicalResult PeanoToolKit::runLlcCommand(ArrayRef<std::string> flags,
                                           Artifact &outputFile, bool verbose) {
   std::filesystem::path llcPath(peanoInstallDir);
   llcPath.append("bin").append("llc");
-  return runCommand(llcPath.string(), flags, inputFile, outputFile, verbose);
+  SmallVector<std::string, 8> cmdLine;
+  cmdLine.push_back(llcPath.string());
+  cmdLine.append(flags.begin(), flags.end());
+  cmdLine.push_back(inputFile.path);
+  cmdLine.push_back("-o");
+  cmdLine.push_back(outputFile.path);
+  return runCommand(cmdLine, verbose);
+}
+
+LogicalResult PeanoToolKit::runClangCommand(ArrayRef<std::string> flags,
+                                            Artifact &outputFile,
+                                            bool verbose) {
+  std::filesystem::path clangPath(peanoInstallDir);
+  clangPath.append("bin").append("clang");
+  SmallVector<std::string, 8> cmdLine;
+  cmdLine.push_back(clangPath.string());
+  cmdLine.append(flags.begin(), flags.end());
+  cmdLine.push_back("-o");
+  cmdLine.push_back(outputFile.path);
+  return runCommand(cmdLine, verbose);
 }
 
 }  // namespace mlir::iree_compiler::AMDAIE
