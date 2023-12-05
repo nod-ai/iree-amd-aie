@@ -86,6 +86,10 @@ class PeanoToolKit {
   LogicalResult runLlcCommand(ArrayRef<std::string> flags, Artifact &inputFile,
                               Artifact &outputFile, bool verbose = false);
 
+  // Run the `clang` tool for Peano with given `flags`
+  LogicalResult runClangCommand(ArrayRef<std::string> flags,
+                                Artifact &outputFile, bool verbose = false);
+
  private:
   std::string peanoInstallDir;
 };
