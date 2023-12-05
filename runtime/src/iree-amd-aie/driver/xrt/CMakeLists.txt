@@ -31,6 +31,8 @@ iree_cc_library(
     "api.h"
     "direct_allocator.h"
     "direct_allocator.cc"
+    "direct_command_buffer.h"
+    "direct_command_buffer.cc"
     "xrt_buffer.h"
     "xrt_buffer.cc"
     "xrt_device.cc"
