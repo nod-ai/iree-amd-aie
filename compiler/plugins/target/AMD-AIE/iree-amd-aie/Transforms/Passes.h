@@ -33,6 +33,8 @@ std::unique_ptr<OperationPass<>> createAMDAIEBridgeToAIRPass();
 std::unique_ptr<OperationPass<IREE::HAL::ExecutableVariantOp>>
 createAMDAIELowerExecutableTargetPass();
 
+std::unique_ptr<OperationPass<>> createAMDAIETransformStubPass();
+
 void registerAMDAIEPasses();
 
 }  // namespace mlir::iree_compiler::AMDAIE

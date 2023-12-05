@@ -20,4 +20,9 @@ def AMDAIELowerExecutableTarget :
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIELowerExecutableTargetPass()";
 }
 
+def AMDAIETransformStub : Pass<"iree-amdaie-transform-stub", ""> {
+  let summary = "Perform transformation dialect script's equivalent in C++";
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIETransformStubPass()";
+}
+
 #endif // IREE_AMD_AIE_TRANSFORMS_PASSES

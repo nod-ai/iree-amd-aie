@@ -35,6 +35,7 @@ iree_cc_library(
     "Passes.cpp"
     "AMDAIELowerExecutableTarget.cpp"
     "BridgeToAIRPass.cpp"
+    "TransformStub.cpp"
   DEPS
     ::PassHeaders
     ::PassesIncGen
@@ -65,6 +66,7 @@ iree_cc_library(
     MLIRTensorDialect
     MLIRTensorTransforms
     MLIRTransforms
+    MLIRTransformDialect
     MLIRVectorDialect
     MLIRVectorToLLVM
     MLIRVectorToSCF
