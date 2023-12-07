@@ -20,6 +20,9 @@ struct AMDAIEOptions {
   // Path to Peano installation directory.
   std::string peanoInstallDir;
 
+  // Path to Vitis installation directory.
+  std::string vitisInstallDir;
+
   // Dump to stdout system commands used during compilation
   bool showInvokedCommands;
 
@@ -40,6 +43,11 @@ struct AMDAIEOptions {
         "iree-amd-aie-show-invoked-commands", showInvokedCommands,
         llvm::cl::cat(category),
         llvm::cl::desc("Show commands invoked during binary generation"));
+
+    binder.opt<std::string>(
+        "iree-amd-aie-vitis-install-dir", vitisInstallDir,
+        llvm::cl::cat(category),
+        llvm::cl::desc("Path to aietools in Vitis installation"));
   }
 };
 
