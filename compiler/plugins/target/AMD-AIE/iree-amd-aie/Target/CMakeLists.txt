@@ -9,10 +9,10 @@ iree_cc_library(
     Target
   HDRS
     "AIETarget.h"
-    "PeanoToolKit.h"
+    "XclBinGeneratorKit.h"
   SRCS
     "AIETarget.cpp"
-    "PeanoToolKit.cpp"
+    "XclBinGeneratorKit.cpp"
   DEPS
     iree::compiler::Dialect::HAL::Target
     iree::target::amd-aie::Transforms
