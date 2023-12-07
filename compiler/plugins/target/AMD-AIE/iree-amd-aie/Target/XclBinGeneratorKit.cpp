@@ -4,7 +4,7 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#include "iree-amd-aie/Target/PeanoToolKit.h"
+#include "iree-amd-aie/Target/XclBinGeneratorKit.h"
 
 #include <filesystem>
 
@@ -29,7 +29,25 @@ namespace mlir::iree_compiler::AMDAIE {
 //===---------------------------------------------------------------------===//
 
 // static
-Artifact Artifact::fromFile(StringRef path) { return {path.str(), nullptr}; }
+FailureOr<Artifact> Artifact::fromFile(StringRef path) {
+  return Artifact{path.str(), nullptr};
+}
+
+// static
+FailureOr<Artifact> Artifact::createFile(StringRef path, StringRef name) {
+  auto sanitizedName = sanitizeFileName(name);
+  std::filesystem::path filePath(path.str());
+  filePath.append(name.str());
+  std::error_code error;
+  auto file = std::make_unique<llvm::ToolOutputFile>(filePath.string(), error,
+                                                     llvm::sys::fs::OF_None);
+  if (error) {
+    llvm::errs() << "failed to create file : " << name << " at path : " << path
+                 << " Error : " << error.message();
+    return failure();
+  }
+  return Artifact{filePath.string(), std::move(file)};
+}
 
 // static
 Artifact Artifact::createTemporary(StringRef prefix, StringRef suffix) {
@@ -51,6 +69,19 @@ Artifact Artifact::createTemporary(StringRef prefix, StringRef suffix) {
     return {};
   }
   return {filePath.str().str(), std::move(file)};
+}
+
+// static
+FailureOr<std::string> Artifact::createTemporaryDirectory(StringRef prefix) {
+  auto sanitizedPrefix = sanitizeFileName(prefix);
+
+  llvm::SmallString<32> dirPath;
+  if (std::error_code error =
+          llvm::sys::fs::createUniqueDirectory(sanitizedPrefix, dirPath)) {
+    llvm::errs() << "failed to create temporary directory: " << error.message();
+    return failure();
+  }
+  return dirPath.str().str();
 }
 
 // static
@@ -100,7 +131,16 @@ bool Artifact::readInto(raw_ostream &targetStream) const {
   return true;
 }
 
-void Artifact::close() { outputFile->os().close(); }
+void Artifact::write(SmallVectorImpl<char> &data) {
+  auto &os = outputFile->os();
+  os << data;
+  os.flush();
+}
+
+void Artifact::close() {
+  outputFile->os().flush();
+  outputFile->os().close();
+}
 
 void Artifacts::keepAllFiles() {
   libraryFile.keep();
@@ -116,22 +156,42 @@ void Artifacts::keepAllFiles() {
 // DO NOT MODIFY. To be replaced after moving above to a common place.
 //===---------------------------------------------------------------------===//
 
-PeanoToolKit::PeanoToolKit(std::string cmdLinePeanoInstallDir) {
+XclBinGeneratorKit::XclBinGeneratorKit(std::string cmdLinePeanoInstallDir,
+                                       std::string cmdLineVitisInstallDir,
+                                       bool _verbose) {
   // Check if environment variable is set. Override flags provided with
   // environment variable
-  char *installDir = std::getenv("IREE_AMDAIE_PEANO_INSTALL_PATH");
-  if (installDir) {
-    peanoInstallDir = std::string(installDir);
-    return;
-  }
-  peanoInstallDir = cmdLinePeanoInstallDir;
+  auto setPath = [](std::string envVar, std::string cmdLineStr,
+                    std::string &path) {
+    char *installDir = std::getenv(envVar.c_str());
+    if (installDir) {
+      path = envVar;
+      return;
+    }
+    path = cmdLineStr;
+  };
+  setPath("IREE_AMDAIE_PEANO_INSTALL_PATH", cmdLinePeanoInstallDir,
+          peanoInstallDir);
+  setPath("IREE_AMDAIE_VITIS_INSTALL_PATH", cmdLineVitisInstallDir,
+          vitisInstallDir);
+  verbose = _verbose;
 }
 
 /// Implementation of running binary at `toolPath` with `flags` and `inputFile`
 /// with result in `outputFile`.
-static LogicalResult runCommand(ArrayRef<std::string> cmdLine,
-                                bool verbose = false) {
+LogicalResult XclBinGeneratorKit::runCommand(ArrayRef<std::string> cmdLine,
+                                             ArrayRef<EnvVars> envVars) const {
   std::string cmdLineStr = escapeCommandLineComponent(llvm::join(cmdLine, " "));
+
+  if (!envVars.empty()) {
+    SmallVector<std::string> envVarsList;
+    for (auto envVar : envVars) {
+      std::string curr = envVar.varName + "=" + llvm::join(envVar.value, ":");
+      envVarsList.push_back(curr);
+    }
+    std::string envString = llvm::join(envVarsList, " ");
+    cmdLineStr = envString + " " + cmdLineStr;
+  }
 
   if (verbose) {
     llvm::errs() << "Running command : " << cmdLineStr << "\n";
@@ -147,9 +207,9 @@ static LogicalResult runCommand(ArrayRef<std::string> cmdLine,
   return success();
 }
 
-LogicalResult PeanoToolKit::runOptCommand(ArrayRef<std::string> flags,
-                                          Artifact &inputFile,
-                                          Artifact &outputFile, bool verbose) {
+LogicalResult XclBinGeneratorKit::runOptCommand(ArrayRef<std::string> flags,
+                                                Artifact &inputFile,
+                                                Artifact &outputFile) const {
   std::filesystem::path optPath(peanoInstallDir);
   optPath.append("bin").append("opt");
   SmallVector<std::string, 8> cmdLine;
@@ -158,12 +218,12 @@ LogicalResult PeanoToolKit::runOptCommand(ArrayRef<std::string> flags,
   cmdLine.push_back(inputFile.path);
   cmdLine.push_back("-o");
   cmdLine.push_back(outputFile.path);
-  return runCommand(cmdLine, verbose);
+  return runCommand(cmdLine);
 }
 
-LogicalResult PeanoToolKit::runLlcCommand(ArrayRef<std::string> flags,
-                                          Artifact &inputFile,
-                                          Artifact &outputFile, bool verbose) {
+LogicalResult XclBinGeneratorKit::runLlcCommand(ArrayRef<std::string> flags,
+                                                Artifact &inputFile,
+                                                Artifact &outputFile) const {
   std::filesystem::path llcPath(peanoInstallDir);
   llcPath.append("bin").append("llc");
   SmallVector<std::string, 8> cmdLine;
@@ -172,12 +232,11 @@ LogicalResult PeanoToolKit::runLlcCommand(ArrayRef<std::string> flags,
   cmdLine.push_back(inputFile.path);
   cmdLine.push_back("-o");
   cmdLine.push_back(outputFile.path);
-  return runCommand(cmdLine, verbose);
+  return runCommand(cmdLine);
 }
 
-LogicalResult PeanoToolKit::runClangCommand(ArrayRef<std::string> flags,
-                                            Artifact &outputFile,
-                                            bool verbose) {
+LogicalResult XclBinGeneratorKit::runClangCommand(ArrayRef<std::string> flags,
+                                                  Artifact &outputFile) const {
   std::filesystem::path clangPath(peanoInstallDir);
   clangPath.append("bin").append("clang");
   SmallVector<std::string, 8> cmdLine;
@@ -185,7 +244,59 @@ LogicalResult PeanoToolKit::runClangCommand(ArrayRef<std::string> flags,
   cmdLine.append(flags.begin(), flags.end());
   cmdLine.push_back("-o");
   cmdLine.push_back(outputFile.path);
-  return runCommand(cmdLine, verbose);
+  return runCommand(cmdLine);
+}
+
+LogicalResult XclBinGeneratorKit::runClangppCommand(
+    ArrayRef<std::string> flags, ArrayRef<Artifact> inputFiles,
+    Artifact &outputFile) const {
+  std::filesystem::path clangppPath(peanoInstallDir);
+  clangppPath.append("bin").append("clang++");
+  SmallVector<std::string, 8> cmdLine;
+  cmdLine.push_back(clangppPath.string());
+  cmdLine.append(flags.begin(), flags.end());
+  cmdLine.push_back("-o");
+  cmdLine.push_back(outputFile.path);
+  for (auto &artifact : inputFiles) {
+    cmdLine.push_back(artifact.path);
+  }
+  return runCommand(cmdLine);
+}
+
+LogicalResult XclBinGeneratorKit::runBootGen(ArrayRef<std::string> flags,
+                                             Artifact &input,
+                                             Artifact &output) const {
+  std::filesystem::path bootgenPath(vitisInstallDir);
+  bootgenPath.append("bin").append("bootgen");
+
+  SmallVector<std::string, 8> cmdLine;
+  cmdLine.push_back(bootgenPath.string());
+  cmdLine.append(flags.begin(), flags.end());
+  cmdLine.push_back("-image");
+  cmdLine.push_back(input.path);
+  cmdLine.push_back("-o");
+  cmdLine.push_back(output.path);
+  cmdLine.push_back("-w");
+  return runCommand(cmdLine);
+}
+
+LogicalResult XclBinGeneratorKit::runXclBinUtil(ArrayRef<std::string> flags,
+                                                Artifact &input,
+                                                Artifact &output) const {
+  std::filesystem::path xclbinutilPath(vitisInstallDir);
+  xclbinutilPath.append("bin").append("xclbinutil");
+
+  SmallVector<std::string, 8> cmdLine;
+  cmdLine.push_back(xclbinutilPath.string());
+  cmdLine.append(flags.begin(), flags.end());
+
+  cmdLine.push_back("--input");
+  cmdLine.push_back(input.path);
+  cmdLine.append(flags.begin(), flags.end());
+  cmdLine.push_back("--force");
+  cmdLine.push_back("--output");
+  cmdLine.push_back(output.path);
+  return runCommand(cmdLine);
 }
 
 }  // namespace mlir::iree_compiler::AMDAIE
