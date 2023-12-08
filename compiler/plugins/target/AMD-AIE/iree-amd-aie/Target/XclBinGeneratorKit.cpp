@@ -288,7 +288,6 @@ LogicalResult XclBinGeneratorKit::runXclBinUtil(ArrayRef<std::string> flags,
 
   SmallVector<std::string, 8> cmdLine;
   cmdLine.push_back(xclbinutilPath.string());
-  cmdLine.append(flags.begin(), flags.end());
 
   cmdLine.push_back("--input");
   cmdLine.push_back(input.path);
