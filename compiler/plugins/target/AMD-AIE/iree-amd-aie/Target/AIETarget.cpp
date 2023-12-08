@@ -382,11 +382,10 @@ LogicalResult generateCoreElfFiles(ModuleOp moduleOp, Artifact &objFile,
   return success();
 }
 
-FailureOr<Artifact> generateXCLBin(MLIRContext *context, ModuleOp moduleOp,
-                                   std::string workDir,
-                                   const AMDAIEOptions &options,
-                                   const XclBinGeneratorKit &toolkit,
-                                   raw_ostream &xclBin) {
+LogicalResult generateXCLBin(MLIRContext *context, ModuleOp moduleOp,
+                             std::string workDir, const AMDAIEOptions &options,
+                             const XclBinGeneratorKit &toolkit,
+                             raw_ostream &xclBin) {
   // This corresponds to `process_host_cgen`, which is listed as host
   // compilation in aiecc.py... not sure we need this.
   PassManager passManager(context, ModuleOp::getOperationName());
@@ -565,6 +564,200 @@ FailureOr<Artifact> generateXCLBin(MLIRContext *context, ModuleOp moduleOp,
     if (failed(toolkit.runCommand(flags, envVars))) {
       return moduleOp.emitOpError("failed to execute cdo_main binary");
     }
+  }
+
+  // Create mem_topology.json.
+  {
+    FailureOr<Artifact> memTopologyJsonFile =
+        Artifact::createFile(workDir, "mem_topology.json");
+    if (failed(memTopologyJsonFile)) {
+      return moduleOp.emitOpError("failed to create mem_topology.json");
+    }
+    SmallVector<char, 0> memTopologyDataString;
+    llvm::raw_svector_ostream ostream(memTopologyDataString);
+    std::string mem_topology_data = R"({
+        "mem_topology": {
+            "m_count": "2",
+            "m_mem_data": [
+                {
+                    "m_type": "MEM_DRAM",
+                    "m_used": "1",
+                    "m_sizeKB": "0x10000",
+                    "m_tag": "HOST",
+                    "m_base_address": "0x4000000"
+                },
+                {
+                    "m_type": "MEM_DRAM",
+                    "m_used": "1",
+                    "m_sizeKB": "0xc000",
+                    "m_tag": "SRAM",
+                    "m_base_address": "0x4000000"
+                }
+            ]
+        }
+    })";
+    ostream << mem_topology_data;
+    memTopologyJsonFile->write(memTopologyDataString);
+    memTopologyJsonFile->close();
+    memTopologyJsonFile->keep();
+  }
+
+  // Create aie_partition.json.
+  {
+    FailureOr<Artifact> aiePartitionJsonFile =
+        Artifact::createFile(workDir, "aie_partition.json");
+    if (failed(aiePartitionJsonFile)) {
+      return moduleOp.emitOpError("failed to create aie_partition.json");
+    }
+    SmallVector<char, 0> aiePartitionJsonString;
+    llvm::raw_svector_ostream ostream(aiePartitionJsonString);
+    std::string aie_partition_json_data = R"(
+      {
+        "aie_partition": {
+          "name": "QoS",
+          "operations_per_cycle": "2048",
+          "inference_fingerprint": "23423",
+          "pre_post_fingerprint": "12345",
+          "partition": {
+            "column_width": 1,
+            "start_columns": [
+              1,
+              2,
+              3,
+              4
+            ]
+          },
+          "PDIs": [
+            {
+              "uuid": "00000000-0000-0000-0000-000000008025",
+              "file_name": "./design.pdi",
+              "cdo_groups": [
+                {
+                  "name": "DPU",
+                  "type": "PRIMARY",
+                  "pdi_id": "0x01",
+                  "dpu_kernel_ids": [
+                    "0x901"
+                  ],
+                  "pre_cdo_groups": [
+                    "0xC1"
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      }
+    )";
+    ostream << aie_partition_json_data;
+    aiePartitionJsonFile->write(aiePartitionJsonString);
+    aiePartitionJsonFile->close();
+    aiePartitionJsonFile->keep();
+  }
+
+  // Create kernels.json.
+  {
+    FailureOr<Artifact> kernelsJsonFile =
+        Artifact::createFile(workDir, "kernels.json");
+    if (failed(kernelsJsonFile)) {
+      return moduleOp.emitOpError("failed to create kernels.json");
+    }
+    SmallVector<char, 0> kernelsJsonDataString;
+    llvm::raw_svector_ostream ostream(kernelsJsonDataString);
+    std::string kernels_json_data = R"(
+      {
+        "ps-kernels": {
+          "kernels": [
+            {
+              "name": "MLIR_AIE",
+              "type": "dpu",
+              "extended-data": {
+                "subtype": "DPU",
+                "functional": "1",
+                "dpu_kernel_id": "0x901"
+              },
+              "arguments": [
+                {
+                  "name": "instr",
+                  "memory-connection": "SRAM",
+                  "address-qualifier": "GLOBAL",
+                  "type": "char *",
+                  "offset": "0x00"
+                },
+                {
+                  "name": "ninstr",
+                  "address-qualifier": "SCALAR",
+                  "type": "uint64_t",
+                  "offset": "0x08"
+                },
+                {
+                  "name": "in",
+                  "memory-connection": "HOST",
+                  "address-qualifier": "GLOBAL",
+                  "type": "char *",
+                  "offset": "0x10"
+                },
+                {
+                  "name": "tmp",
+                  "memory-connection": "HOST",
+                  "address-qualifier": "GLOBAL",
+                  "type": "char *",
+                  "offset": "0x18"
+                },
+                {
+                  "name": "out",
+                  "memory-connection": "HOST",
+                  "address-qualifier": "GLOBAL",
+                  "type": "char *",
+                  "offset": "0x20"
+                }
+              ],
+              "instances": [
+                {
+                  "name": "MLIRAIEV1"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    )";
+    ostream << kernels_json_data;
+    kernelsJsonFile->write(kernelsJsonDataString);
+    kernelsJsonFile->close();
+    kernelsJsonFile->keep();
+  }
+
+  // Create design.bif.
+  {
+    FailureOr<Artifact> designBifFile =
+        Artifact::createFile(workDir, "design.bif");
+    if (failed(designBifFile)) {
+      return moduleOp.emitOpError("failed to create design.bif");
+    }
+    SmallVector<char, 0> designBifDataString;
+    llvm::raw_svector_ostream ostream(designBifDataString);
+    std::stringstream ss;
+    ss << "all:\n"
+       << "{\n"
+       << "\tid_code = 0x14ca8093\n"
+       << "\textended_id_code = 0x01\n"
+       << "\timage\n"
+       << "\t{\n"
+       << "\t\tname=aie_image, id=0x1c000000\n"
+       << "\t\t{ type=cdo\n"
+       << "\t\t  file=" << workDir << "/aie_cdo_error_handling.bin\n"
+       << "\t\t  file=" << workDir << "/aie_cdo_elfs.bin\n"
+       << "\t\t  file=" << workDir << "/aie_cdo_init.bin\n"
+       << "\t\t  file=" << workDir << "/aie_cdo_enable.bin\n"
+       << "\t\t}\n"
+       << "\t}\n"
+       << "}";
+    std::string design_bif_data = ss.str();
+    ostream << design_bif_data;
+    designBifFile->write(designBifDataString);
+    designBifFile->close();
+    designBifFile->keep();
   }
 
   // Execute the bootgen command.
