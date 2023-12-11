@@ -18,9 +18,8 @@ git submodule update --init
 
 ## Enabling in IREE
 
-Currently (12/12/2023) we are waiting for an MLIR fix in the transform dialect,
-and so cannot build with the latest IREE (and its LLVM submodule). To pin IREE
-and its submodules to a amd-aie compatible version, run
+To pin IREE and its submodules (LLVM, etc) to commits which are compatible
+with this plugin, run
 
 ```
 python3 sync_deps.py
