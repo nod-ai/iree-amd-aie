@@ -170,10 +170,12 @@ iree_cc_library(
     "${IREE_MLIR_AIE_SOURCE_DIR}/lib/Dialect/AIE/Transforms/AIECanonicalizeDevice.cpp"
     "${IREE_MLIR_AIE_SOURCE_DIR}/lib/Dialect/AIE/Transforms/AIECoreToStandard.cpp"
     "${IREE_MLIR_AIE_SOURCE_DIR}/lib/Dialect/AIE/Transforms/AIECreatePacketFlows.cpp"
+    "${IREE_MLIR_AIE_SOURCE_DIR}/lib/Dialect/AIE/Transforms/AIECreatePathFindFlows.cpp"
     "${IREE_MLIR_AIE_SOURCE_DIR}/lib/Dialect/AIE/Transforms/AIELocalizeLocks.cpp"
     "${IREE_MLIR_AIE_SOURCE_DIR}/lib/Dialect/AIE/Transforms/AIEObjectFifoRegisterProcess.cpp"
     "${IREE_MLIR_AIE_SOURCE_DIR}/lib/Dialect/AIE/Transforms/AIEObjectFifoStatefulTransform.cpp"
     "${IREE_MLIR_AIE_SOURCE_DIR}/lib/Dialect/AIE/Transforms/AIENormalizeAddressSpaces.cpp"
+    "${IREE_MLIR_AIE_SOURCE_DIR}/lib/Dialect/AIE/Transforms/AIEPathFinder.cpp"
   DEPS
     ::defs
     ::AIEDialectIR
@@ -230,8 +232,11 @@ iree_cc_library(
   NAME
     AIETranslationPasses
   SRCS
+    "${IREE_MLIR_AIE_SOURCE_DIR}/lib/Targets/AIETargetCDO.cpp"
     "${IREE_MLIR_AIE_SOURCE_DIR}/lib/Targets/AIETargetIPU.cpp"
     "${IREE_MLIR_AIE_SOURCE_DIR}/lib/Targets/AIETargetLdScript.cpp"
+    "${IREE_MLIR_AIE_SOURCE_DIR}/lib/Targets/AIETargetShared.cpp"
+    "${IREE_MLIR_AIE_SOURCE_DIR}/lib/Targets/AIETargetXAIEV2.cpp"
   DEPS
     ::AIEDialectIR
     ::AIEXDialectIR
