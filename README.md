@@ -10,7 +10,7 @@ with this repository have an IREE build setup in an `iree-build` directory that
 is also a sibling. This is not a requirement, but instructions will need to be
 changed for different paths.
 
-Preparing repostiory:
+Preparing repository:
 
 ```
 git submodule update --init
@@ -18,14 +18,25 @@ git submodule update --init
 
 ## Enabling in IREE
 
+Currently (12/12/2023) we are waiting for an MLIR fix in the transform dialect,
+and so cannot build with the latest IREE (and its LLVM submodule). To pin IREE
+and its submodules to a amd-aie compatible version, run
+
+```
+python3 sync_deps.py
+```
+
+from within the mlir-amd-aie root directory. Then,
+
+
 ```
 cd ../iree-build
 cmake -DIREE_CMAKE_PLUGIN_PATHS=../iree-amd-aie .
 ninja
 ```
 
-Note for the time being building the amd-aie backend requires
-Headers-only Boost library. On Ubuntu you can do this with
+to build IREE with amd-aie plugin. Note for the time being building the amd-aie
+backend requires headers-only Boost library. On Ubuntu you can do this with
 
 ```
 sudo apt-get install libboost-dev
