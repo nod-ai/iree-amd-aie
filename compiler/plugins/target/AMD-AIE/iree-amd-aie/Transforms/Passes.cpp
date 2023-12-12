@@ -81,13 +81,10 @@ void addMLIRAIRAIELoweringPasses(OpPassManager &passManager) {
   passManager.addPass(createCanonicalizerPass());
   passManager.addPass(createCSEPass());
 
-  passManager.addPass(xilinx::air::createAIRFuseChannels());
+  passManager.addPass(xilinx::air::createAIRIsolateAsyncDmaLoopNests());
+  passManager.addPass(xilinx::air::createAIRSpecializeChannelWrapAndStridePattern());
   passManager.addPass(createCanonicalizerPass());
   passManager.addPass(createCSEPass());
-
-  passManager.addPass(
-      xilinx::air::createAIRLabelScfForLoopInAIRSegmentPattern());
-  passManager.addPass(xilinx::air::createAIRUnrollLoopForPipeliningPattern());
 
   passManager.addNestedPass<func::FuncOp>(
       xilinx::air::createAIRCollapseHerdPass());
@@ -115,6 +112,7 @@ void addMLIRAIRAIELoweringPasses(OpPassManager &passManager) {
     options.clRowOffset = 2;
     options.clColOffset = 0;
     options.clDevice = "ipu";
+    options.clEmitWhileLoop = true;
     passManager.addPass(xilinx::air::createAIRToAIEPass(options));
   }
   passManager.addPass(xilinx::air::createAIRLoweringPass());

@@ -154,9 +154,11 @@ iree_cc_library(
   NAME
     AIRUtil
   HDRS
+    "${IREE_MLIR_AIR_SOURCE_DIR}/include/air/Util/DirectedAdjacencyMap.h"
     "${IREE_MLIR_AIR_SOURCE_DIR}/include/air/Util/Dependency.h"
     "${IREE_MLIR_AIR_SOURCE_DIR}/include/air/Util/Util.h"
   SRCS
+    "${IREE_MLIR_AIR_SOURCE_DIR}/lib/Util/DirectedAdjacencyMap.cpp"
     "${IREE_MLIR_AIR_SOURCE_DIR}/lib/Util/Dependency.cpp"
     "${IREE_MLIR_AIR_SOURCE_DIR}/lib/Util/DirectedAdjacencyMap.cpp"
     "${IREE_MLIR_AIR_SOURCE_DIR}/lib/Util/Util.cpp"
