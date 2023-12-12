@@ -17,6 +17,7 @@
 #include "iree-amd-aie/Target/XclBinGeneratorKit.h"
 #include "iree-amd-aie/Transforms/Passes.h"
 #include "iree/compiler/Codegen/Dialect/IREECodegenDialect.h"
+#include "iree/compiler/Utils/ToolUtils.h"
 #include "llvm/Bitcode/BitcodeWriter.h"
 #include "mlir/Conversion/AffineToStandard/AffineToStandard.h"
 #include "mlir/Conversion/ArithToLLVM/ArithToLLVM.h"
@@ -362,8 +363,8 @@ LogicalResult generateCoreElfFiles(ModuleOp moduleOp, Artifact &objFile,
       flags.push_back("-O2");
       flags.push_back("--target=aie2-none-elf");
       flags.push_back(objFile.path);
-      std::filesystem::path meBasicPath(options.mlirAieInstallDir);
-      meBasicPath.append("aie_runtime_lib").append("AIE2").append("me_basic.o");
+      std::filesystem::path meBasicPath(findPlatformLibDirectory("amd-aie"));
+      meBasicPath.append("me_basic.o");
       flags.push_back(meBasicPath.string());
       std::filesystem::path libcPath(options.peanoInstallDir);
       libcPath.append("lib").append("aie2-none-unknown-elf").append("libc.a");
