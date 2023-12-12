@@ -160,6 +160,7 @@ iree_cc_library(
   SRCS
     "${IREE_MLIR_AIR_SOURCE_DIR}/lib/Util/DirectedAdjacencyMap.cpp"
     "${IREE_MLIR_AIR_SOURCE_DIR}/lib/Util/Dependency.cpp"
+    "${IREE_MLIR_AIR_SOURCE_DIR}/lib/Util/DirectedAdjacencyMap.cpp"
     "${IREE_MLIR_AIR_SOURCE_DIR}/lib/Util/Util.cpp"
     "${IREE_MLIR_AIR_SOURCE_DIR}/lib/Util/Outliner.cpp"
     "${IREE_MLIR_AIR_SOURCE_DIR}/lib/Util/CostModel.cpp"

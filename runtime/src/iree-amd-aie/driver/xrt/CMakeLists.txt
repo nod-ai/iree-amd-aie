@@ -35,6 +35,8 @@ iree_cc_library(
     "xrt_buffer.cc"
     "xrt_device.cc"
     "xrt_driver.cc"
+    "native_executable.h"
+    "native_executable.cc"
     "nop_semaphore.cc"
     "nop_executable_cache.h"
     "nop_executable_cache.cc"
@@ -47,12 +49,12 @@ iree_cc_library(
     iree::base::core_headers
     iree::hal
     iree::hal::utils::buffer_transfer
-    # TODO (nirvedhmeshram) : Figure out the flatbuffer format for this runtime
-    # iree::schemas::xrt_executable_def_c_fbs
+    iree-amd-aie::schemas::xrt_executable_def_c_fbs
     XRT::xrt_coreutil
   COPTS
   # currenly this is needed, it can be removed after this issue is resolved
   # https://github.com/Xilinx/XRT/issues/7810
    -frtti
+   -fexceptions
   PUBLIC
 )
