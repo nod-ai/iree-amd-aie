@@ -27,17 +27,32 @@
 namespace mlir {
 namespace iree_compiler {
 
+// Check if it is distributing across multicores, and
+// store the corresponding iv name to a string.
+int numParallelLoops = 0;
+bool isMulticore = false;
+std::string ivNameMulticore;
+
 //===---------------------------------------------------------------------===//
 // Utils
 //===---------------------------------------------------------------------===//
 
-/// String representation of the integer data type
+/// String representation of the integer data type.
 static FailureOr<std::string> getTypeStr(Type type) {
   return TypeSwitch<Type, FailureOr<std::string>>(type)
       .Case<IntegerType>([](auto intType) {
         return std::string("int") + std::to_string(intType.getWidth());
       })
       .Default([](Type t) { return failure(); });
+}
+
+/// Get the linearized size from a list of input sizes.
+static int64_t getLinearizedSize(SmallVector<int64_t> &shape) {
+  int64_t linearizedSize = 1;
+  for (auto s : shape) {
+    linearizedSize *= s;
+  }
+  return linearizedSize;
 }
 
 /// Returns the loop header for loops. On success, adds the induction variable
@@ -53,6 +68,7 @@ static FailureOr<std::string> getLoopHeader(
   }
   int normalizedUb =
       llvm::divideCeil(constUb.value() - constLb.value(), constStep.value());
+
   if (normalizedUb == 1) {
     // Hack: Setting the name of the variable as 0...
     scopeInfo.symbolTable[iv] = std::to_string(0);
@@ -63,6 +79,10 @@ static FailureOr<std::string> getLoopHeader(
       std::string("iv_") + std::to_string(scopeInfo.symbolTable.size());
   scopeInfo.symbolTable[iv] = varName;
   forStr += varName + ": int32, 0, " + std::to_string(normalizedUb) + ")";
+
+  if (constStep.value() > 1) {
+    scopeInfo.ivMap[varName] = {constLb.value(), constStep.value()};
+  }
   return forStr;
 }
 
@@ -70,7 +90,15 @@ static FailureOr<std::string> getLoopHeader(
 static std::string getLoopSynchronizationAttr(std::string iv) {
   std::string attr =
       "attr [IterVar(" + iv +
-      ": int32, (nullptr), \"CommReduce\", \"\")] \"pragma_aie_wait\" = 1";
+      ": int32, (nullptr), \"CommReduce\", \"\")] \"pragma_aie_wait2\" = 1";
+  return attr;
+}
+
+/// Multicore distribution attribute
+static std::string getMulticoreAttr(std::string iv) {
+  std::string attr = "attr [IterVar(" + iv +
+                     ".c: int32, (nullptr), \"DataPar\", \"\")] "
+                     "\"pragma_aie_tensorize_spatial_y\" = 1";
   return attr;
 }
 
@@ -315,8 +343,18 @@ FailureOr<std::string> applySubview(memref::SubViewOp subView,
     if (currOffsetStr.value() == std::to_string(0)) {
       continue;
     }
-    std::string stridedOffset = std::string("(") + currOffsetStr.value() +
-                                " * " + std::to_string(stride) + ")";
+
+    std::string stridedOffset;
+    std::string iv = currOffsetStr.value();
+    if (!scope.ivMap[iv].empty()) {
+      stridedOffset = std::to_string(stride * scope.ivMap[iv][0]) +
+                      std::string(" + ") + std::string("(") + iv + " * " +
+                      std::to_string(stride * scope.ivMap[iv][1]) + ")";
+    } else {
+      stridedOffset =
+          std::string("(") + iv + " * " + std::to_string(stride) + ")";
+    }
+
     if (offsetStr.empty()) {
       offsetStr = stridedOffset;
     } else {
@@ -345,7 +383,7 @@ FailureOr<std::string> applySubviews(ArrayRef<memref::SubViewOp> subviews,
 }
 
 /// Serialize the lhs and rhs of the gemm operation
-FailureOr<std::string> getOperandStr(Value operand,
+FailureOr<std::string> getOperandStr(Value operand, int64_t index,
                                      AccelSerializer::ScopeInfo &scope) {
   std::string opStr = "";
   auto inputType = dyn_cast<MemRefType>(operand.getType());
@@ -363,7 +401,17 @@ FailureOr<std::string> getOperandStr(Value operand,
   }
 
   opStr += "(" + inputTypeStr.value() + "*)" +
-           scope.symbolTable[sourceOperand.value()] + "[(0)])";
+           scope.symbolTable[sourceOperand.value()];
+
+  if (isMulticore && index == 1) {
+    auto memType = dyn_cast<MemRefType>(sourceOperand->getType());
+    SmallVector<int64_t> shape = llvm::to_vector(memType.getShape());
+    opStr += "[(" + ivNameMulticore + " * ";
+    opStr += std::to_string(getLinearizedSize(shape));
+    opStr += ")])";
+  } else {
+    opStr += "[(0)])";
+  }
   return opStr;
 }
 
@@ -375,7 +423,7 @@ FailureOr<std::string> walkGenericOp(std::string initStr, Value curOperand,
     auto argIndex = blkArg.getArgNumber();
     auto genericOperand =
         blkArg.getOwner()->getParentOp()->getOperand(argIndex);
-    return getOperandStr(genericOperand, scope);
+    return getOperandStr(genericOperand, argIndex, scope);
   }
 
   Operation *op = curOperand.getDefiningOp();
@@ -539,9 +587,12 @@ LogicalResult AccelSerializer::processOperation(func::FuncOp funcOp,
 
   // Add attribute boiler plate
   std::string attr =
-      "attr = {\"target\": meta[Target][0], \"tir.noalias\": True, "
-      "\"global_symbol\": \"main\", \"from_legacy_te_scheduler\": True, "
-      "\"param_device_types\": [], \"result_device_type\": -1}";
+      "attr = {\"target\": Target(kind='versal_aie', keys={'versal_aie', "
+      "'cpu', 'aiemaize'}, attrs={'model': \"aieml-gemm-asr-qdq\", 'device': "
+      "\"aiemaize\", 'mattr': [\"+bdrp\", \"+opt\", \"+double-buffer\"]}), "
+      "\"tir.noalias\": True, \"result_device_type\": -1, "
+      "\"from_legacy_te_schedule\": True, \"param_device_types\": [], "
+      "\"global_symbol\": \"main\"}";
 
   Region &body = funcOp.getBody();
   if (!llvm::hasSingleElement(body)) {
@@ -558,6 +609,17 @@ LogicalResult AccelSerializer::processOperation(func::FuncOp funcOp,
   scope.append(subScope.buffer);
   scope.indent().append("}\n");
 
+  std::string metadata =
+      "#[metadata]{\"root\": 1, \"nodes\": [{\"type_key\": \"\"}, "
+      "{\"type_key\": \"Map\", \"keys\": [\"IntImm\"], \"data\": [2]}, "
+      "{\"type_key\": \"Array\", \"data\": [3, 4, 5]}, {\"type_key\": "
+      "\"IntImm\", \"attrs\": {\"dtype\": \"bool\", \"span\": \"0\", "
+      "\"value\": \"1\"}}, {\"type_key\": \"IntImm\", \"attrs\": {\"dtype\": "
+      "\"int32\", \"span\": \"0\", \"value\": \"-1\"}}, {\"type_key\": "
+      "\"IntImm\", \"attrs\": {\"dtype\": \"bool\", \"span\": \"0\", "
+      "\"value\": \"1\"}}], \"b64ndarrays\": [], \"attrs\": {\"tvm_version\": "
+      "\"0.15.dev0+aie.0.3.dev0\"}}";
+  scope.indent().append(metadata).append("\n");
   return success();
 }
 
@@ -570,6 +632,8 @@ LogicalResult AccelSerializer::processOperation(scf::ForallOp forAllOp,
 
   ScopeInfo subScope = scope.getSubScope();
   int numGeneratedLoops = 0;
+  numParallelLoops++;
+
   for (auto [index, lb, ub, step, iv] : llvm::enumerate(lbs, ubs, steps, ivs)) {
     FailureOr<std::string> forStr = getLoopHeader(lb, ub, step, iv, subScope);
     if (failed(forStr)) {
@@ -578,6 +642,20 @@ LogicalResult AccelSerializer::processOperation(scf::ForallOp forAllOp,
     }
     if (forStr->empty()) {
       continue;
+    }
+
+    // Check if this is the multicore situation. The first assumption is there
+    // are two forall ops, and the inner forall op is used to distribute across
+    // the AIE columns. The second assumption is only distribution across column
+    // is considered.
+    int normalizedUb = llvm::divideCeil(
+        getConstantIntValue(ub).value() - getConstantIntValue(lb).value(),
+        getConstantIntValue(step).value());
+    if (numParallelLoops == 2 && normalizedUb > 1) {
+      isMulticore = true;
+      ivNameMulticore = subScope.symbolTable[iv];
+      std::string mlcAttr = getMulticoreAttr(ivNameMulticore);
+      scope.indent().append(mlcAttr).append(" {\n");
     }
 
     scope.indent().buffer.append(numGeneratedLoops * INDENTATION_WIDTH, ' ');
@@ -594,14 +672,17 @@ LogicalResult AccelSerializer::processOperation(scf::ForallOp forAllOp,
   }
 
   // Append the body.
+  numParallelLoops--;
   scope.append(subScope);
-
   for (auto loopNum : llvm::reverse(llvm::seq<int>(0, numGeneratedLoops))) {
     scope.indent();
     if (loopNum != 0) {
       scope.buffer.append(loopNum * numGeneratedLoops, ' ');
     }
     scope.append("}\n");
+  }
+  if (numParallelLoops) {
+    scope.indent().append("}\n");
   }
   return success();
 }
@@ -675,11 +756,7 @@ LogicalResult AccelSerializer::processOperation(memref::AllocOp allocOp,
             "), " + typeStr.value() + ", [";
 
   SmallVector<int64_t> shape = llvm::to_vector(allocOp.getType().getShape());
-  int64_t linearizedSize = 1;
-  for (auto s : shape) {
-    linearizedSize *= s;
-  }
-  argStr += std::to_string(linearizedSize) +
+  argStr += std::to_string(getLinearizedSize(shape)) +
             "]), storage_scope = " + memorySpace + ";";
   argStr.push_back('\n');
 
@@ -701,12 +778,20 @@ LogicalResult AccelSerializer::processOperation(linalg::FillOp fillOp,
   }
   argStr += typeStr.value();
   argStr +=
-      ", (nullptr), \"DataPar\", \"\")] \"pragma_aie_intrin_kernel_bdrp*0*0\" "
+      ", (nullptr), \"DataPar\", \"\")] "
+      "\"pragma_aie_intrin_kernel_bdrp*0*0*1\" "
       "= 1 {\n";
 
   ScopeInfo subScope = scope.getSubScope();
   std::string opStr = scope.symbolTable[fillOp.output()];
-  opStr += "[(0)] = 0\n";
+  if (isMulticore) {
+    SmallVector<int64_t> shape = llvm::to_vector(resultType.getShape());
+    opStr += "[(" + ivNameMulticore + " * ";
+    opStr += std::to_string(getLinearizedSize(shape));
+    opStr += ")] = 0\n";
+  } else {
+    opStr += "[(0)] = 0\n";
+  }
   subScope.indentation += INDENTATION_WIDTH;
   subScope.indent().buffer.append(opStr.begin(), opStr.end());
 
@@ -742,9 +827,18 @@ LogicalResult AccelSerializer::processOperation(linalg::GenericOp genericOp,
       ", (nullptr), \"DataPar\", \"\")] \"pragma_aie_intrin_kernel_bdrp*0*0\" "
       "= 1 {\n";
 
-  std::string initStr = scope.symbolTable[output] + "[(0)] = ((" +
-                        resultTypeStr.value() + "*)" +
-                        scope.symbolTable[output] + "[(0)]";
+  std::string initStr = scope.symbolTable[output];
+  if (isMulticore) {
+    SmallVector<int64_t> shape = llvm::to_vector(resultType.getShape());
+    initStr += "[(" + ivNameMulticore + " * " +
+               std::to_string(getLinearizedSize(shape)) + ")]";
+    initStr += " = ((" + resultTypeStr.value() + "*)" +
+               scope.symbolTable[output] + "[(" + ivNameMulticore + " * " +
+               std::to_string(getLinearizedSize(shape)) + ")]";
+  } else {
+    initStr += "[(0)] = ((" + resultTypeStr.value() + "*)" +
+               scope.symbolTable[output] + "[(0)]";
+  }
 
   // Walk back from linalg.yield and serialize the arith.addi, arith.muli, and
   // (optional) arith.extsi respectively.
@@ -805,10 +899,23 @@ LogicalResult AccelSerializer::processOperation(IREE::LinalgExt::PackOp packOp,
     loadType = "load";
   }
 
+  FailureOr<SmallVector<std::string>> sourceIndices =
+      convertToLinearIndices(bdLoops->ivs, packOp.getInnerDimsPos(),
+                             packOp.getMixedTiles(), packOp.getOuterDimsPerm());
+  FailureOr<std::string> sourceOffsetStr =
+      applySubviews(sourceSubviews, scopeInfo);
+  if (failed(sourceOffsetStr)) {
+    return packOp.emitOpError("failed to resolve subview offsets");
+  }
+
   // Serialize the destination buffer and dma location
+  std::string destOffsetStr = "";
+  if (isMulticore && loadType == "load") {
+    destOffsetStr = sourceOffsetStr.value();
+  }
   std::string packStr = "@vaie.virtual_buffers(\"" + loadType + "\", ";
   FailureOr<std::string> destStr = getIndexedAccess(
-      scopeInfo.symbolTable[destBuffer], destType, bdLoops->ivs);
+      scopeInfo.symbolTable[destBuffer], destType, bdLoops->ivs, destOffsetStr);
   if (failed(destStr)) {
     return packOp.emitOpError("failed to get dest string");
   }
@@ -823,14 +930,6 @@ LogicalResult AccelSerializer::processOperation(IREE::LinalgExt::PackOp packOp,
   packStr += "dtype=int8), ";
 
   // Serialize the original buffer and dma location
-  FailureOr<SmallVector<std::string>> sourceIndices =
-      convertToLinearIndices(bdLoops->ivs, packOp.getInnerDimsPos(),
-                             packOp.getMixedTiles(), packOp.getOuterDimsPerm());
-  FailureOr<std::string> sourceOffsetStr =
-      applySubviews(sourceSubviews, scopeInfo);
-  if (failed(sourceOffsetStr)) {
-    return packOp.emitOpError("failed to resolve subview offsets");
-  }
   FailureOr<std::string> sourceStr =
       getIndexedAccess(scopeInfo.symbolTable[resolvedSrcBuffer.value()],
                        srcType, sourceIndices.value(), sourceOffsetStr.value());
@@ -923,8 +1022,12 @@ LogicalResult AccelSerializer::processOperation(
   packStr += "dtype=int8), ";
 
   // Serialize the original buffer and dma location
-  FailureOr<std::string> srcStr =
-      getIndexedAccess(scopeInfo.symbolTable[srcBuffer], srcType, bdLoops->ivs);
+  std::string srcOffsetStr = "";
+  if (isMulticore && loadType == "store") {
+    srcOffsetStr = destOffsetStr.value();
+  }
+  FailureOr<std::string> srcStr = getIndexedAccess(
+      scopeInfo.symbolTable[srcBuffer], srcType, bdLoops->ivs, srcOffsetStr);
   if (failed(srcStr)) {
     return unpackOp.emitOpError("failed to get src string");
   }
