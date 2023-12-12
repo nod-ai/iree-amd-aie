@@ -18,11 +18,13 @@ void registerAIRTransformPasses() {
   registerAIRDependencyCanonicalize();
   registerAIRDependencyScheduleOpt();
   registerAIRFuseChannels();
+  registerAIRIsolateAsyncDmaLoopNests();
   registerAIRLabelScfForLoopInAIRSegmentPattern();
   registerAIRLabelScfForLoopForPingPongPattern();
   registerAIRPingPongTransformationPattern();
   registerAIRRenumberDmaIdPass();
   registerAIRHerdPlacementPass();
+  registerAIRSpecializeChannelWrapAndStridePattern();
   registerAIRSpecializeDmaBroadcast();
   registerAIRUnrollLoopForPipeliningPattern();
   registerAIRCollapseHerdPass();
