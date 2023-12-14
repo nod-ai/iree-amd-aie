@@ -22,7 +22,7 @@ module attributes {hal.device.targets = []} {
 
 // CHECK: #[version = "0.0.5"]
 // CHECK: primfn(placeholder_0_temp : Buffer(placeholder_0: Pointer(int8), int8, [16, 128], []), placeholder_1_temp : Buffer(placeholder_1: Pointer(int8), int8, [128, 128], []), placeholder_2_temp : Buffer(placeholder_2: Pointer(int32), int32, [16, 128], [])) -> ()
-// CHECK: attr = {"target": meta[Target][0], "tir.noalias": True, "global_symbol": "main", "from_legacy_te_scheduler": True, "param_device_types": [], "result_device_type": -1} {
+// CHECK: attr = {"target": Target(kind='versal_aie', keys={'versal_aie', 'cpu', 'aiemaize'}, attrs={'model': "aieml-gemm-asr-qdq", 'device': "aiemaize", 'mattr': ["+bdrp", "+opt", "+double-buffer"]}), "tir.noalias": True, "result_device_type": -1, "from_legacy_te_schedule": True, "param_device_types": [], "global_symbol": "main"} {
 // CHECK: }
 
 // -----
@@ -71,7 +71,7 @@ hal.executable private @for_example_0 {
         %c0 = arith.constant 0 : index
         %c1 = arith.constant 1 : index
         %c2 = arith.constant 2 : index
-        // CHECK: attr [IterVar(iv_0: int32, (nullptr), "CommReduce", "")] "pragma_aie_wait" = 1 {
+        // CHECK: attr [IterVar(iv_0: int32, (nullptr), "CommReduce", "")] "pragma_aie_wait2" = 1 {
         // CHECK:   for (iv_0: int32, 0, 2) {
         // CHECK:   }
         // CHECK: }
@@ -94,7 +94,7 @@ hal.executable private @for_example_1 {
         %c1 = arith.constant 1 : index
         %c2 = arith.constant 2 : index
         // CHECK: for (iv_1: int32, 0, 2) {
-        // CHECK:   attr [IterVar(iv_2: int32, (nullptr), "CommReduce", "")] "pragma_aie_wait" = 1 {
+        // CHECK:   attr [IterVar(iv_2: int32, (nullptr), "CommReduce", "")] "pragma_aie_wait2" = 1 {
         // CHECK:     for (iv_2: int32, 0, 2) {
         // CHECK:     }
         // CHECK:   }
@@ -135,7 +135,7 @@ hal.executable private @fill_example {
       func.func @matmul_example_dispatch_0_matmul_16x128x128_i8xi8xi32() {
         %c0_i32 = arith.constant 0 : i32
         %alloc_1 = memref.alloc() : memref<1x1x8x4x4x8xi32, "local">
-        // CHECK: attr [IterVar(tdn_i.c.init: int32, (nullptr), "DataPar", "")] "pragma_aie_intrin_kernel_bdrp*0*0" = 1 {
+        // CHECK: attr [IterVar(tdn_i.c.init: int32, (nullptr), "DataPar", "")] "pragma_aie_intrin_kernel_bdrp*0*0*1" = 1 {
         // CHECK:   mem_0_local[(0)] = 0
         // CHECK: }
         linalg.fill ins(%c0_i32 : i32) outs(%alloc_1 : memref<1x1x8x4x4x8xi32, "local">)
