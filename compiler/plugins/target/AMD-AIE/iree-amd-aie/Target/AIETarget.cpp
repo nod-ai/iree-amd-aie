@@ -18,6 +18,7 @@
 #include "iree-amd-aie/Transforms/Passes.h"
 #include "iree/compiler/Codegen/Dialect/IREECodegenDialect.h"
 #include "llvm/Bitcode/BitcodeWriter.h"
+#include "llvm/Support/raw_ostream.h"
 #include "mlir/Conversion/AffineToStandard/AffineToStandard.h"
 #include "mlir/Conversion/ArithToLLVM/ArithToLLVM.h"
 #include "mlir/Conversion/ControlFlowToLLVM/ControlFlowToLLVM.h"
@@ -839,7 +840,6 @@ LogicalResult AIETargetBackend::serializeExecutable(
                          serOptions.dumpBaseName, variantOp.getName(),
                          ".aiecc.mlir", moduleOp);
   }
-
   MLIRContext *context = executableBuilder.getContext();
 
   // Run AIE Lowering passes.
@@ -848,16 +848,20 @@ LogicalResult AIETargetBackend::serializeExecutable(
   }
 
   std::vector<uint32_t> ipuInstrs;
-  if (failed(generateIPUInstructions(context, moduleOp, ipuInstrs))) {
+  if (failed(generateIPUInstructions(context, moduleOp, ipuInstrs)))
     return failure();
-  }
 
   // dump lx6 instructions, if required.
   if (!serOptions.dumpIntermediatesPath.empty()) {
-    IREE::HAL::dumpDataToPath(
-        serOptions.dumpIntermediatesPath, serOptions.dumpBaseName,
-        variantOp.getName(), ".insts.txt",
-        llvm::ArrayRef<uint32_t>(ipuInstrs.data(), ipuInstrs.size()));
+    std::string dumpString;
+    llvm::raw_string_ostream dumpStream(dumpString);
+    for (auto w : ipuInstrs) {
+      dumpStream << llvm::format("%08X\n", w);
+    }
+    IREE::HAL::dumpDataToPath(serOptions.dumpIntermediatesPath,
+                              serOptions.dumpBaseName, variantOp.getName(),
+                              ".insts.txt",
+                              StringRef(dumpString.data(), dumpString.size()));
   }
 
   XclBinGeneratorKit toolkit(options.peanoInstallDir, options.vitisInstallDir,
@@ -908,6 +912,7 @@ LogicalResult AIETargetBackend::serializeExecutable(
       return moduleOp.emitOpError() << "failed to generate XCLbin";
     }
   }
+
   return variantOp.emitError() << "AIE serialization NYI";
 }
 
