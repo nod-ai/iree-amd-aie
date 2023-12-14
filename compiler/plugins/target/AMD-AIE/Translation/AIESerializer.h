@@ -45,6 +45,9 @@ class AccelSerializer {
     // Indentation to use.
     int64_t indentation = 0;
 
+    // Map between ivName and {lb, step}.
+    std::map<std::string, SmallVector<int>> ivMap;
+
     // Method to create a sub-scope for a given scope.
     ScopeInfo getSubScope() {
       ScopeInfo subScope;
