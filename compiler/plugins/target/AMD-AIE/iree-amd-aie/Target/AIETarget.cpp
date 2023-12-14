@@ -41,11 +41,13 @@
 namespace xilinx::AIE {
 mlir::LogicalResult AIETranslateToCDO(mlir::ModuleOp module,
                                       llvm::raw_ostream &output);
-mlir::LogicalResult AIETranslateToIPU(mlir::ModuleOp module,
-                                      llvm::raw_ostream &output);
+
+std::vector<uint32_t> AIETranslateToIPU(mlir::ModuleOp module);
+
 mlir::LogicalResult AIETranslateToLdScript(mlir::ModuleOp module,
                                            llvm::raw_ostream &output, int col,
                                            int row);
+
 mlir::LogicalResult AIETranslateToXAIEV2(mlir::ModuleOp module,
                                          llvm::raw_ostream &output);
 }  // namespace xilinx::AIE
@@ -124,7 +126,12 @@ class AIETargetBackend final : public IREE::HAL::TargetBackend {
 /// Generate the IPU instructions into `output`.
 static LogicalResult generateIPUInstructions(MLIRContext *context,
                                              ModuleOp moduleOp,
-                                             raw_ostream &output) {
+                                             std::vector<uint32_t> &output) {
+  if (!output.empty()) {
+    return moduleOp->emitOpError(
+        "expected vector argument being populated to initially be empty");
+  }
+
   // Clone the module for generating the IPU instructions.
   PassManager passManager(context, ModuleOp::getOperationName());
   passManager.addNestedPass<xilinx::AIE::DeviceOp>(
@@ -135,9 +142,7 @@ static LogicalResult generateIPUInstructions(MLIRContext *context,
         "failed preprocessing pass before IPU instrs generation");
   }
 
-  if (failed(xilinx::AIE::AIETranslateToIPU(moduleOp, output))) {
-    return moduleOp.emitOpError("failed to translate to IPU instructions");
-  }
+  output = xilinx::AIE::AIETranslateToIPU(moduleOp);
 
   return success();
 }
@@ -834,6 +839,7 @@ LogicalResult AIETargetBackend::serializeExecutable(
                          serOptions.dumpBaseName, variantOp.getName(),
                          ".aiecc.mlir", moduleOp);
   }
+
   MLIRContext *context = executableBuilder.getContext();
 
   // Run AIE Lowering passes.
@@ -841,24 +847,17 @@ LogicalResult AIETargetBackend::serializeExecutable(
     return failure();
   }
 
-  // Generate the ipu instructions.
-  llvm::SmallVector<char, 0> ipuInstrs;
-  {
-    llvm::raw_svector_ostream ostream(ipuInstrs);
-    OpBuilder::InsertionGuard g(executableBuilder);
-    executableBuilder.setInsertionPoint(moduleOp);
-    auto clonedModuleOp =
-        dyn_cast<ModuleOp>(executableBuilder.clone(*moduleOp.getOperation()));
-    if (failed(generateIPUInstructions(context, clonedModuleOp, ostream))) {
-      return failure();
-    }
-    clonedModuleOp->erase();
+  std::vector<uint32_t> ipuInstrs;
+  if (failed(generateIPUInstructions(context, moduleOp, ipuInstrs))) {
+    return failure();
   }
+
+  // dump lx6 instructions, if required.
   if (!serOptions.dumpIntermediatesPath.empty()) {
-    IREE::HAL::dumpDataToPath(serOptions.dumpIntermediatesPath,
-                              serOptions.dumpBaseName, variantOp.getName(),
-                              ".insts.txt",
-                              StringRef(ipuInstrs.data(), ipuInstrs.size()));
+    IREE::HAL::dumpDataToPath(
+        serOptions.dumpIntermediatesPath, serOptions.dumpBaseName,
+        variantOp.getName(), ".insts.txt",
+        llvm::ArrayRef<uint32_t>(ipuInstrs.data(), ipuInstrs.size()));
   }
 
   XclBinGeneratorKit toolkit(options.peanoInstallDir, options.vitisInstallDir,
@@ -909,7 +908,6 @@ LogicalResult AIETargetBackend::serializeExecutable(
       return moduleOp.emitOpError() << "failed to generate XCLbin";
     }
   }
-
   return variantOp.emitError() << "AIE serialization NYI";
 }
 
