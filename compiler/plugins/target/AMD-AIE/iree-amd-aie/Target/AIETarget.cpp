@@ -837,13 +837,6 @@ LogicalResult generateXCLBin(MLIRContext *context, ModuleOp moduleOp,
 LogicalResult AIETargetBackend::serializeExecutable(
     const SerializationOptions &serOptions,
     IREE::HAL::ExecutableVariantOp variantOp, OpBuilder &executableBuilder) {
-  // Create a flatbuffer containing xclbin and lx6 instructions, which gets
-  // insertered into the IR as an op attribute. The design here is copied from
-  // the CUDA plugin implementation, see
-  // iree/compiler/plugins/target/CUDA/CUDATarget.cpp
-  FlatbufferBuilder builder;
-  iree_amd_aie_hal_xrt_ExecutableDef_start_as_root(builder);
-
   ModuleOp moduleOp = variantOp.getInnerModule();
   if (!serOptions.dumpIntermediatesPath.empty()) {
     dumpMLIRModuleToPath(serOptions.dumpIntermediatesPath,
@@ -876,10 +869,6 @@ LogicalResult AIETargetBackend::serializeExecutable(
                               ".insts.txt",
                               StringRef(dumpString.data(), dumpString.size()));
   }
-
-  // Serialize lx6 control instructions into flatbuffer.
-  auto ipuInstrsRef = builder.createInt32Vec(ipuInstrs);
-  iree_amd_aie_hal_xrt_ExecutableDef_asm_instrs_add(builder, ipuInstrsRef);
 
   XclBinGeneratorKit toolkit(options.peanoInstallDir, options.vitisInstallDir,
                              options.showInvokedCommands);
@@ -921,21 +910,22 @@ LogicalResult AIETargetBackend::serializeExecutable(
     clonedModuleOp->erase();
   }
 
+  // Create a flatbuffer containing (for now) lx6 instructions and xclbin.
+  FlatbufferBuilder builder;
+  iree_amd_aie_hal_xrt_ExecutableDef_start_as_root(builder);
+
+  auto ipuInstrsRef = builder.createInt32Vec(ipuInstrs);
+  iree_amd_aie_hal_xrt_ExecutableDef_asm_instrs_add(builder, ipuInstrsRef);
+
   llvm::SmallVector<char, 0> xclbin;
-  {
-    llvm::raw_svector_ostream ostream(xclbin);
-    if (failed(generateXCLBin(context, moduleOp, workDir.value(), getOptions(),
-                              toolkit, ostream))) {
-      return moduleOp.emitOpError() << "failed to generate XCLbin";
-    }
-
-    // Serialize xclbin into flatbuffer.
-    llvm::StringRef xclbinStringView(xclbin.begin(), xclbin.size());
-    auto xclbinStringRef = builder.createString(xclbinStringView);
-    iree_amd_aie_hal_xrt_ExecutableDef_xclbin_add(builder, xclbinStringRef);
+  llvm::raw_svector_ostream ostream(xclbin);
+  if (failed(generateXCLBin(context, moduleOp, workDir.value(), getOptions(),
+                            toolkit, ostream))) {
+    return moduleOp.emitOpError() << "failed to generate XCLbin";
   }
-
-  // Copied from CUDA plugin (end as root, insert Flatbuffer into the module).
+  llvm::StringRef xclbinStringView(xclbin.begin(), xclbin.size());
+  auto xclbinStringRef = builder.createString(xclbinStringView);
+  iree_amd_aie_hal_xrt_ExecutableDef_xclbin_add(builder, xclbinStringRef);
   iree_amd_aie_hal_xrt_ExecutableDef_end_as_root(builder);
 
   auto binaryOp = executableBuilder.create<IREE::HAL::ExecutableBinaryOp>(
@@ -945,8 +935,8 @@ LogicalResult AIETargetBackend::serializeExecutable(
   binaryOp.setMimeTypeAttr(
       executableBuilder.getStringAttr("application/x-flatbuffers"));
 
-  // TODO(JamesNewling) We really need to test that the above logic is correct,
-  // returning success to enable runtime testing.
+  // TODO(JamesNewling) We need to test that the above logic is correct,
+  // returning success here to enable runtime testing.
   return success();
 }
 
