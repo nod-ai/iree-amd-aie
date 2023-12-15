@@ -249,7 +249,8 @@ static iree_status_t iree_hal_xrt_device_queue_alloca(
     iree_device_size_t allocation_size,
     iree_hal_buffer_t** IREE_RESTRICT out_buffer) {
   return iree_make_status(IREE_STATUS_UNIMPLEMENTED,
-                          "unimplmented queue alloca");
+                          "Unimplemented queue alloca. Checking if this is "
+                          "required for AIE backend.");
 }
 
 static iree_status_t iree_hal_xrt_device_queue_dealloca(
@@ -258,7 +259,7 @@ static iree_status_t iree_hal_xrt_device_queue_dealloca(
     const iree_hal_semaphore_list_t signal_semaphore_list,
     iree_hal_buffer_t* buffer) {
   return iree_make_status(IREE_STATUS_UNIMPLEMENTED,
-                          "unimplmented queue dealloca");
+                          "Unimplemented queue dealloca");
 }
 
 static iree_status_t iree_hal_xrt_device_queue_read(
@@ -310,20 +311,20 @@ static iree_status_t iree_hal_xrt_device_queue_execute(
     iree_host_size_t command_buffer_count,
     iree_hal_command_buffer_t* const* command_buffers) {
   return iree_make_status(IREE_STATUS_UNIMPLEMENTED,
-                          "unimplmented queue execute");
+                          "Unimplemented queue execute");
 }
 
 static iree_status_t iree_hal_xrt_device_queue_flush(
     iree_hal_device_t* base_device, iree_hal_queue_affinity_t queue_affinity) {
   return iree_make_status(IREE_STATUS_UNIMPLEMENTED,
-                          "unimplmented queue flush");
+                          "Unimplemented queue flush");
 }
 
 static iree_status_t iree_hal_xrt_device_wait_semaphores(
     iree_hal_device_t* base_device, iree_hal_wait_mode_t wait_mode,
     const iree_hal_semaphore_list_t semaphore_list, iree_timeout_t timeout) {
   return iree_make_status(IREE_STATUS_UNIMPLEMENTED,
-                          "unimplmented semaphore wait");
+                          "Unimplemented semaphore wait");
 }
 
 static iree_status_t iree_hal_xrt_device_profiling_begin(

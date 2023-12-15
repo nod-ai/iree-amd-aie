@@ -93,6 +93,11 @@ static iree_status_t iree_amd_aie_hal_xrt_native_executable_flatbuffer_verify(
                             "instructions (%zu) mismatched",
                             entry_point_count, number_asm_instr);
   }
+
+  // TODO(JamesNewling) Once all the parts are connected, this assertion
+  // function might fail. If it passes, we might want to add additional
+  // assertions.
+
   return iree_ok_status();
 }
 
