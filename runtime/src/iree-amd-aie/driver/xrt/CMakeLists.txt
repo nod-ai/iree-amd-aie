@@ -47,6 +47,7 @@ iree_cc_library(
   DEPS
     iree::base
     iree::base::core_headers
+    iree::base::internal::flatcc::building
     iree::hal
     iree::hal::utils::buffer_transfer
     iree-amd-aie::schemas::xrt_executable_def_c_fbs
