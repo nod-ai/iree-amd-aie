@@ -25,6 +25,10 @@ typedef struct iree_hal_xrt_device_t {
 
   iree_string_view_t identifier;
 
+  // Block pool used for command buffers with a larger block size (as command
+  // buffers can contain inlined data uploads).
+  iree_arena_block_pool_t block_pool;
+
   iree_hal_xrt_device_params_t params;
   iree_allocator_t host_allocator;
   iree_hal_allocator_t* device_allocator;
@@ -80,6 +84,8 @@ static iree_status_t iree_hal_xrt_device_create_internal(
     iree_string_view_append_to_buffer(
         identifier, &device->identifier,
         (char*)device + iree_sizeof_struct(*device));
+    iree_arena_block_pool_initialize(params->arena_block_size, host_allocator,
+                                     &device->block_pool);
 
     device->host_allocator = host_allocator;
     device->device = xrt_device;
@@ -112,6 +118,7 @@ static void iree_hal_xrt_device_destroy(iree_hal_device_t* base_device) {
   IREE_TRACE_ZONE_BEGIN(z0);
 
   iree_hal_allocator_release(device->device_allocator);
+  iree_arena_block_pool_deinitialize(&device->block_pool);
   iree_allocator_free(host_allocator, device);
 
   IREE_TRACE_ZONE_END(z0);
@@ -150,6 +157,7 @@ static void iree_hal_xrt_replace_channel_provider(
 
 static iree_status_t iree_hal_xrt_device_trim(iree_hal_device_t* base_device) {
   iree_hal_xrt_device_t* device = iree_hal_xrt_device_cast(base_device);
+  iree_arena_block_pool_trim(&device->block_pool);
   return iree_hal_allocator_trim(device->device_allocator);
 }
 
@@ -177,10 +185,9 @@ static iree_status_t iree_hal_xrt_device_create_command_buffer(
     return iree_make_status(IREE_STATUS_UNIMPLEMENTED, "nested command buffer not yet supported");
   if (!iree_all_bits_set(mode, IREE_HAL_COMMAND_BUFFER_MODE_ONE_SHOT))
     return iree_make_status(IREE_STATUS_UNIMPLEMENTED, "unimplmented multi-shot command buffer");
-      return iree_hal_xrt_direct_command_buffer_create(
-      base_device, mode, command_categories,
-      binding_capacity, device->host_allocator,
-      out_command_buffer);
+  return iree_hal_xrt_direct_command_buffer_create(
+      base_device, mode, command_categories, binding_capacity,
+      &device->block_pool, device->host_allocator, out_command_buffer);
 }
 
 static iree_status_t iree_hal_xrt_device_create_descriptor_set_layout(
