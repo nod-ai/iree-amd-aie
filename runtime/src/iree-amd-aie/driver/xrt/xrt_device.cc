@@ -5,6 +5,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 #include "iree-amd-aie/driver/xrt/xrt_device.h"
+#include "iree-amd-aie/driver/xrt/direct_command_buffer.h"
 
 #include "iree-amd-aie/driver/xrt/direct_allocator.h"
 #include "iree-amd-aie/driver/xrt/nop_executable_cache.h"
@@ -171,8 +172,15 @@ static iree_status_t iree_hal_xrt_device_create_command_buffer(
     iree_hal_command_category_t command_categories,
     iree_hal_queue_affinity_t queue_affinity, iree_host_size_t binding_capacity,
     iree_hal_command_buffer_t** out_command_buffer) {
-  return iree_make_status(IREE_STATUS_UNIMPLEMENTED,
-                          "unimplmented command buffer create");
+  iree_hal_xrt_device_t* device = iree_hal_xrt_device_cast(base_device);
+  if (iree_any_bit_set(mode, IREE_HAL_COMMAND_BUFFER_MODE_NESTED))
+    return iree_make_status(IREE_STATUS_UNIMPLEMENTED, "nested command buffer not yet supported");
+  if (!iree_all_bits_set(mode, IREE_HAL_COMMAND_BUFFER_MODE_ONE_SHOT))
+    return iree_make_status(IREE_STATUS_UNIMPLEMENTED, "unimplmented multi-shot command buffer");
+      return iree_hal_xrt_direct_command_buffer_create(
+      base_device, mode, command_categories,
+      binding_capacity, device->host_allocator,
+      out_command_buffer);
 }
 
 static iree_status_t iree_hal_xrt_device_create_descriptor_set_layout(
@@ -248,9 +256,14 @@ static iree_status_t iree_hal_xrt_device_queue_alloca(
     iree_hal_allocator_pool_t pool, iree_hal_buffer_params_t params,
     iree_device_size_t allocation_size,
     iree_hal_buffer_t** IREE_RESTRICT out_buffer) {
-  return iree_make_status(IREE_STATUS_UNIMPLEMENTED,
-                          "Unimplemented queue alloca. Checking if this is "
-                          "required for AIE backend.");
+  // TODO: queue-ordered allocations.
+  IREE_RETURN_IF_ERROR(iree_hal_semaphore_list_wait(wait_semaphore_list,
+                                                    iree_infinite_timeout()));
+  IREE_RETURN_IF_ERROR(
+      iree_hal_allocator_allocate_buffer(iree_hal_device_allocator(base_device),
+                                         params, allocation_size, out_buffer));
+  IREE_RETURN_IF_ERROR(iree_hal_semaphore_list_signal(signal_semaphore_list));
+  return iree_ok_status();
 }
 
 static iree_status_t iree_hal_xrt_device_queue_dealloca(
