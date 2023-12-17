@@ -922,9 +922,22 @@ LogicalResult AIETargetBackend::serializeExecutable(
 
   // Create a flatbuffer containing (for now) lx6 instructions and xclbin.
   FlatbufferBuilder builder;
+  SmallVector<std::string> entryPointNames;
   iree_amd_aie_hal_xrt_ExecutableDef_start_as_root(builder);
+  for (auto exportOp : variantOp.getExportOps()) {
+        entryPointNames.emplace_back(exportOp.getSymName());
+  }
+  auto entryPointsRef = builder.createStringVec(entryPointNames);
 
-  auto ipuInstrsRef = builder.createInt32Vec(ipuInstrs);
+  iree_amd_aie_hal_xrt_ExecutableDef_entry_points_add(builder, entryPointsRef);
+
+  iree_amd_aie_hal_xrt_AsmInstDef_vec_start(builder);
+  auto ipuInstrsVec = builder.createInt32Vec(ipuInstrs);
+    //for (auto w : ipuInstrs) {
+          iree_amd_aie_hal_xrt_AsmInstDef_vec_push_create(
+          builder, ipuInstrsVec);
+    //}
+auto ipuInstrsRef = iree_amd_aie_hal_xrt_AsmInstDef_vec_end(builder);
   iree_amd_aie_hal_xrt_ExecutableDef_asm_instrs_add(builder, ipuInstrsRef);
 
   llvm::SmallVector<char, 0> xclbin;

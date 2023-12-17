@@ -5,6 +5,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 #include "iree-amd-aie/Target/XclBinGeneratorKit.h"
+#include<iostream>
 
 #include <filesystem>
 
@@ -127,6 +128,9 @@ bool Artifact::readInto(raw_ostream &targetStream) const {
     return false;
   }
   auto sourceBuffer = fileData.get()->getBuffer();
+    for(int i=0;i<sourceBuffer.size();i++){
+    std::cout<<"source: "<<std::hex<< (int)sourceBuffer[i]<<"\n";
+  }
   targetStream.write(sourceBuffer.data(), sourceBuffer.size());
   return true;
 }

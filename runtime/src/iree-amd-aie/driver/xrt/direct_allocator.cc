@@ -168,9 +168,18 @@ static iree_status_t iree_hal_xrt_allocator_allocate_buffer(
   // in the DDR RAM. Also, group_id is not of relavence in this use case so we
   // set it to 0.
   int group_id = 0;
-  xrt::bo xrt_buffer = xrt::bo(allocator->device, allocation_size,
+  std::unique_ptr<xrt::bo> xrt_buffer;
+  std::cout<<"in the allocator asking for"<<allocation_size<<"\n";
+  try {
+  xrt_buffer = std::make_unique<xrt::bo>(allocator->device, allocation_size,
                                XRT_BO_FLAGS_HOST_ONLY, group_id);
-
+  } catch (...) {
+      IREE_TRACE_ZONE_END(z0);
+      return iree_make_status(
+          IREE_STATUS_RESOURCE_EXHAUSTED,
+          "could not allocate memory for buffer");
+  }
+  std::cout<<"made the buffer\n";
   IREE_TRACE_ZONE_END(z0);
   if (!xrt_buffer) {
     status = iree_make_status(IREE_STATUS_RESOURCE_EXHAUSTED,
@@ -180,7 +189,7 @@ static iree_status_t iree_hal_xrt_allocator_allocate_buffer(
   iree_hal_buffer_t* buffer = NULL;
   if (iree_status_is_ok(status)) {
     status = iree_hal_xrt_buffer_wrap(
-        xrt_buffer, base_allocator, compat_params.type, compat_params.access,
+        xrt_buffer.release(), base_allocator, compat_params.type, compat_params.access,
         compat_params.usage, allocation_size, /*byte_offset=*/0,
         /*byte_length=*/allocation_size,
         iree_hal_buffer_release_callback_null(), &buffer);
@@ -204,7 +213,7 @@ static void iree_hal_xrt_allocator_deallocate_buffer(
     iree_hal_buffer_t* IREE_RESTRICT base_buffer) {
   iree_hal_xrt_allocator_t* allocator =
       iree_hal_xrt_allocator_cast(base_allocator);
-
+  std::cout<<"this is where a buffer is dealloc\n";
   IREE_TRACE_FREE_NAMED(IREE_HAL_XRT_ALLOCATOR_ID,
                         (void*)iree_hal_xrt_buffer_handle(base_buffer));
   IREE_STATISTICS(iree_hal_allocator_statistics_record_free(

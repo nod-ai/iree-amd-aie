@@ -10,6 +10,7 @@
 #include "iree-amd-aie/driver/xrt/pipeline_layout.h"
 #include "iree-amd-aie/driver/xrt/xrt_buffer.h"
 #include "iree/hal/utils/resource_set.h"
+#include <iostream>
 
 typedef struct iree_hal_xrt_descriptor_t {
   uint32_t set;
@@ -28,7 +29,7 @@ typedef struct iree_hal_xrt_direct_command_buffer_t {
   iree_hal_resource_set_t* resource_set;
 
   struct {
-    xrt::bo bindings[IREE_HAL_XRT_MAX_DESCRIPTOR_SET_BINDING_COUNT];
+    xrt::bo* bindings[IREE_HAL_XRT_MAX_DESCRIPTOR_SET_BINDING_COUNT];
   } descriptor_sets[IREE_HAL_XRT_MAX_DESCRIPTOR_SET_COUNT];
 } iree_hal_xrt_direct_command_buffer_t;
 
@@ -52,7 +53,7 @@ iree_status_t iree_hal_xrt_direct_command_buffer_create(
   IREE_ASSERT_ARGUMENT(device);
   IREE_ASSERT_ARGUMENT(out_command_buffer);
   *out_command_buffer = NULL;
-
+  std::cout<<"creating command buffer\n";
   if (binding_capacity > 0) {
     // TODO(#10144): support indirect command buffers with binding tables.
     return iree_make_status(IREE_STATUS_UNIMPLEMENTED,
@@ -248,7 +249,7 @@ static iree_status_t iree_hal_xrt_direct_command_buffer_push_constants(
     iree_hal_pipeline_layout_t* pipeline_layout, iree_host_size_t offset,
     const void* values, iree_host_size_t values_length) {
   return iree_make_status(IREE_STATUS_UNIMPLEMENTED,
-                          "collectives not yet supported");
+                          "push constants not yet supported");
 }
 
 static iree_status_t iree_hal_xrt_direct_command_buffer_push_descriptor_set(
@@ -256,6 +257,7 @@ static iree_status_t iree_hal_xrt_direct_command_buffer_push_descriptor_set(
     iree_hal_pipeline_layout_t* pipeline_layout, uint32_t set,
     iree_host_size_t binding_count,
     const iree_hal_descriptor_set_binding_t* bindings) {
+  std::cout<<"in push\n";
   if (binding_count > IREE_HAL_XRT_MAX_DESCRIPTOR_SET_BINDING_COUNT) {
     return iree_make_status(
         IREE_STATUS_RESOURCE_EXHAUSTED,
@@ -268,7 +270,7 @@ static iree_status_t iree_hal_xrt_direct_command_buffer_push_descriptor_set(
       iree_hal_xrt_direct_command_buffer_cast(base_command_buffer);
   IREE_TRACE_ZONE_BEGIN(z0);
 
-  xrt::bo* current_bindings = command_buffer->descriptor_sets[set].bindings;
+  xrt::bo** current_bindings = command_buffer->descriptor_sets[set].bindings;
   for (iree_host_size_t i = 0; i < binding_count; i++) {
     const iree_hal_descriptor_set_binding_t* binding = &bindings[i];
     if (binding->buffer) {
@@ -283,14 +285,22 @@ static iree_status_t iree_hal_xrt_direct_command_buffer_push_descriptor_set(
     IREE_RETURN_AND_END_ZONE_IF_ERROR(
         z0, iree_hal_resource_set_insert(command_buffer->resource_set, 1,
                                          &binding->buffer));
-
-    xrt::bo device_buffer = iree_hal_xrt_buffer_handle(
+    std::unique_ptr<xrt::bo> sub_buffer;
+    try {
+    xrt::bo *device_buffer = iree_hal_xrt_buffer_handle(
         iree_hal_buffer_allocated_buffer(binding->buffer));
     iree_device_size_t offset = iree_hal_buffer_byte_offset(binding->buffer);
     iree_device_size_t length = binding->length;
     // allocate a sub buffer of the device buffer as the binding object
-    current_bindings[binding->binding] =
-        xrt::bo(device_buffer, length, offset + binding->offset);
+    sub_buffer = std::make_unique<xrt::bo>(*device_buffer, length, offset + binding->offset);
+    current_bindings[binding->binding] = sub_buffer.release();
+    } catch (...) {
+      IREE_TRACE_ZONE_END(z0);
+      return iree_make_status(
+          IREE_STATUS_RESOURCE_EXHAUSTED,
+          "could not allocate memory for sub buffers being binded");
+    }
+
   }
 
   IREE_TRACE_ZONE_END(z0);
@@ -304,7 +314,7 @@ static iree_status_t iree_hal_xrt_direct_command_buffer_dispatch(
   iree_hal_xrt_direct_command_buffer_t* command_buffer =
       iree_hal_xrt_direct_command_buffer_cast(base_command_buffer);
   IREE_TRACE_ZONE_BEGIN(z0);
-
+  std::cout<<"in dispatch\n";
   // Lookup kernel parameters used for side-channeling additional launch
   // information from the compiler.
   iree_hal_xrt_kernel_params_t kernel_params;
@@ -344,11 +354,13 @@ static iree_status_t iree_hal_xrt_direct_command_buffer_dispatch(
         iree_hal_xrt_pipeline_layout_base_binding_index(kernel_params.layout,
                                                         i);
     for (iree_host_size_t j = 0; j < binding_count; ++j) {
+      std::cout<<"argument: "<<arg_index + base_index + j<<"\n";
       run.set_arg(arg_index + base_index + j,
-                  command_buffer->descriptor_sets[i].bindings[j]);
+                  *command_buffer->descriptor_sets[i].bindings[j]);
     }
   }
   run.start();
+  run.wait();
 
   IREE_TRACE_ZONE_END(z0);
   return iree_ok_status();

@@ -17,6 +17,7 @@
 #include "iree/hal/utils/buffer_transfer.h"
 #include "iree/hal/utils/file_transfer.h"
 #include "iree/hal/utils/memory_file.h"
+#include "iree/hal/utils/deferred_command_buffer.h"
 
 typedef struct iree_hal_xrt_device_t {
   // Abstract resource used for injecting reference counting and vtable; must be
@@ -118,7 +119,7 @@ static void iree_hal_xrt_device_destroy(iree_hal_device_t* base_device) {
   IREE_TRACE_ZONE_BEGIN(z0);
 
   iree_hal_allocator_release(device->device_allocator);
-  iree_arena_block_pool_deinitialize(&device->block_pool);
+  //iree_arena_block_pool_deinitialize(&device->block_pool);
   iree_allocator_free(host_allocator, device);
 
   IREE_TRACE_ZONE_END(z0);
@@ -164,8 +165,8 @@ static iree_status_t iree_hal_xrt_device_trim(iree_hal_device_t* base_device) {
 static iree_status_t iree_hal_xrt_device_query_i64(
     iree_hal_device_t* base_device, iree_string_view_t category,
     iree_string_view_t key, int64_t* out_value) {
-  return iree_make_status(IREE_STATUS_UNIMPLEMENTED,
-                          "unimplmented device i64 query");
+  *out_value = 1;
+    return iree_ok_status();
 }
 
 static iree_status_t iree_hal_xrt_device_create_channel(
@@ -330,8 +331,8 @@ static iree_status_t iree_hal_xrt_device_queue_execute(
     const iree_hal_semaphore_list_t signal_semaphore_list,
     iree_host_size_t command_buffer_count,
     iree_hal_command_buffer_t* const* command_buffers) {
-  return iree_make_status(IREE_STATUS_UNIMPLEMENTED,
-                          "Unimplemented queue execute");
+  std::cout<<"number of command buffers: "<<command_buffer_count<<"\n";
+  return iree_ok_status();
 }
 
 static iree_status_t iree_hal_xrt_device_queue_flush(
