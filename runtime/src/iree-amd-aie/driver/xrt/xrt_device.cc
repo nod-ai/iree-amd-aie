@@ -5,9 +5,9 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 #include "iree-amd-aie/driver/xrt/xrt_device.h"
-#include "iree-amd-aie/driver/xrt/direct_command_buffer.h"
 
 #include "iree-amd-aie/driver/xrt/direct_allocator.h"
+#include "iree-amd-aie/driver/xrt/direct_command_buffer.h"
 #include "iree-amd-aie/driver/xrt/nop_executable_cache.h"
 #include "iree-amd-aie/driver/xrt/nop_semaphore.h"
 #include "iree-amd-aie/driver/xrt/pipeline_layout.h"
@@ -15,9 +15,9 @@
 #include "iree/base/tracing.h"
 #include "iree/hal/api.h"
 #include "iree/hal/utils/buffer_transfer.h"
+#include "iree/hal/utils/deferred_command_buffer.h"
 #include "iree/hal/utils/file_transfer.h"
 #include "iree/hal/utils/memory_file.h"
-#include "iree/hal/utils/deferred_command_buffer.h"
 
 typedef struct iree_hal_xrt_device_t {
   // Abstract resource used for injecting reference counting and vtable; must be
@@ -119,7 +119,7 @@ static void iree_hal_xrt_device_destroy(iree_hal_device_t* base_device) {
   IREE_TRACE_ZONE_BEGIN(z0);
 
   iree_hal_allocator_release(device->device_allocator);
-  //iree_arena_block_pool_deinitialize(&device->block_pool);
+  // iree_arena_block_pool_deinitialize(&device->block_pool);
   iree_allocator_free(host_allocator, device);
 
   IREE_TRACE_ZONE_END(z0);
@@ -166,7 +166,7 @@ static iree_status_t iree_hal_xrt_device_query_i64(
     iree_hal_device_t* base_device, iree_string_view_t category,
     iree_string_view_t key, int64_t* out_value) {
   *out_value = 1;
-    return iree_ok_status();
+  return iree_ok_status();
 }
 
 static iree_status_t iree_hal_xrt_device_create_channel(
@@ -183,9 +183,11 @@ static iree_status_t iree_hal_xrt_device_create_command_buffer(
     iree_hal_command_buffer_t** out_command_buffer) {
   iree_hal_xrt_device_t* device = iree_hal_xrt_device_cast(base_device);
   if (iree_any_bit_set(mode, IREE_HAL_COMMAND_BUFFER_MODE_NESTED))
-    return iree_make_status(IREE_STATUS_UNIMPLEMENTED, "nested command buffer not yet supported");
+    return iree_make_status(IREE_STATUS_UNIMPLEMENTED,
+                            "nested command buffer not yet supported");
   if (!iree_all_bits_set(mode, IREE_HAL_COMMAND_BUFFER_MODE_ONE_SHOT))
-    return iree_make_status(IREE_STATUS_UNIMPLEMENTED, "unimplmented multi-shot command buffer");
+    return iree_make_status(IREE_STATUS_UNIMPLEMENTED,
+                            "unimplmented multi-shot command buffer");
   return iree_hal_xrt_direct_command_buffer_create(
       base_device, mode, command_categories, binding_capacity,
       &device->block_pool, device->host_allocator, out_command_buffer);
@@ -265,6 +267,8 @@ static iree_status_t iree_hal_xrt_device_queue_alloca(
     iree_device_size_t allocation_size,
     iree_hal_buffer_t** IREE_RESTRICT out_buffer) {
   // TODO: queue-ordered allocations.
+  std::cout << "alloca function: "
+            << "\n";
   IREE_RETURN_IF_ERROR(iree_hal_semaphore_list_wait(wait_semaphore_list,
                                                     iree_infinite_timeout()));
   IREE_RETURN_IF_ERROR(
@@ -331,7 +335,7 @@ static iree_status_t iree_hal_xrt_device_queue_execute(
     const iree_hal_semaphore_list_t signal_semaphore_list,
     iree_host_size_t command_buffer_count,
     iree_hal_command_buffer_t* const* command_buffers) {
-  std::cout<<"number of command buffers: "<<command_buffer_count<<"\n";
+  std::cout << "number of command buffers: " << command_buffer_count << "\n";
   return iree_ok_status();
 }
 

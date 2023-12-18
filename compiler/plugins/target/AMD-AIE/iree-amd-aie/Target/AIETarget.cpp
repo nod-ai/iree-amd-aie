@@ -925,7 +925,7 @@ LogicalResult AIETargetBackend::serializeExecutable(
   SmallVector<std::string> entryPointNames;
   iree_amd_aie_hal_xrt_ExecutableDef_start_as_root(builder);
   for (auto exportOp : variantOp.getExportOps()) {
-        entryPointNames.emplace_back(exportOp.getSymName());
+    entryPointNames.emplace_back(exportOp.getSymName());
   }
   auto entryPointsRef = builder.createStringVec(entryPointNames);
 
@@ -933,11 +933,10 @@ LogicalResult AIETargetBackend::serializeExecutable(
 
   iree_amd_aie_hal_xrt_AsmInstDef_vec_start(builder);
   auto ipuInstrsVec = builder.createInt32Vec(ipuInstrs);
-    //for (auto w : ipuInstrs) {
-          iree_amd_aie_hal_xrt_AsmInstDef_vec_push_create(
-          builder, ipuInstrsVec);
-    //}
-auto ipuInstrsRef = iree_amd_aie_hal_xrt_AsmInstDef_vec_end(builder);
+  // for (auto w : ipuInstrs) {
+  iree_amd_aie_hal_xrt_AsmInstDef_vec_push_create(builder, ipuInstrsVec);
+  //}
+  auto ipuInstrsRef = iree_amd_aie_hal_xrt_AsmInstDef_vec_end(builder);
   iree_amd_aie_hal_xrt_ExecutableDef_asm_instrs_add(builder, ipuInstrsRef);
 
   llvm::SmallVector<char, 0> xclbin;

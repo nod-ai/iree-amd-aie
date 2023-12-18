@@ -6,19 +6,12 @@
 
 #include "iree-amd-aie/driver/xrt/direct_command_buffer.h"
 
+#include <iostream>
+
 #include "iree-amd-aie/driver/xrt/native_executable.h"
 #include "iree-amd-aie/driver/xrt/pipeline_layout.h"
 #include "iree-amd-aie/driver/xrt/xrt_buffer.h"
 #include "iree/hal/utils/resource_set.h"
-#include <iostream>
-
-typedef struct iree_hal_xrt_descriptor_t {
-  uint32_t set;
-  uint32_t binding;
-  iree_hal_buffer_t* buffer;
-  iree_host_size_t offset;
-
-} iree_hal_xrt_descriptor_t;
 
 typedef struct iree_hal_xrt_direct_command_buffer_t {
   iree_hal_command_buffer_t base;
@@ -28,7 +21,11 @@ typedef struct iree_hal_xrt_direct_command_buffer_t {
   // command buffer. Reset on each begin.
   iree_hal_resource_set_t* resource_set;
 
+  // needed for clean up
+  iree_host_size_t set_count;
   struct {
+    // needed for clean up
+    iree_host_size_t binding_count;
     xrt::bo* bindings[IREE_HAL_XRT_MAX_DESCRIPTOR_SET_BINDING_COUNT];
   } descriptor_sets[IREE_HAL_XRT_MAX_DESCRIPTOR_SET_COUNT];
 } iree_hal_xrt_direct_command_buffer_t;
@@ -53,7 +50,7 @@ iree_status_t iree_hal_xrt_direct_command_buffer_create(
   IREE_ASSERT_ARGUMENT(device);
   IREE_ASSERT_ARGUMENT(out_command_buffer);
   *out_command_buffer = NULL;
-  std::cout<<"creating command buffer\n";
+  std::cout << "creating command buffer\n";
   if (binding_capacity > 0) {
     // TODO(#10144): support indirect command buffers with binding tables.
     return iree_make_status(IREE_STATUS_UNIMPLEMENTED,
@@ -84,7 +81,16 @@ static void iree_hal_xrt_direct_command_buffer_destroy(
       iree_hal_xrt_direct_command_buffer_cast(base_command_buffer);
   iree_allocator_t host_allocator = command_buffer->host_allocator;
   IREE_TRACE_ZONE_BEGIN(z0);
+  std::cout << "command buffer destroy\n";
 
+  for (iree_host_size_t i = 0; i < command_buffer->set_count; ++i) {
+    // TODO: cache this information in the kernel info to avoid recomputation.
+    for (iree_host_size_t j = 0;
+         j < command_buffer->descriptor_sets[i].binding_count; ++j) {
+      std::cout << "deleting for ( " << i << ", " << j << ")\n";
+      delete command_buffer->descriptor_sets[i].bindings[j];
+    }
+  }
   iree_hal_resource_set_free(command_buffer->resource_set);
   iree_allocator_free(host_allocator, command_buffer);
 
@@ -108,7 +114,7 @@ static iree_status_t iree_hal_xrt_direct_command_buffer_end(
   iree_hal_xrt_direct_command_buffer_t* command_buffer =
       iree_hal_xrt_direct_command_buffer_cast(base_command_buffer);
   IREE_TRACE_ZONE_BEGIN(z0);
-
+  std::cout << "command buffer end\n";
   iree_hal_resource_set_free(command_buffer->resource_set);
 
   IREE_TRACE_ZONE_END(z0);
@@ -205,6 +211,7 @@ static iree_status_t iree_hal_xrt_direct_command_buffer_update_buffer(
   void* target_device_buffer_ptr = target_device_buffer.map();
   uint8_t* dst = (uint8_t*)target_device_buffer_ptr +
                  iree_hal_buffer_byte_offset(target_buffer) + target_offset;
+  std::cout << "update buffer\n";
   memcpy(dst, src, length);
 
   IREE_TRACE_ZONE_END(z0);
@@ -228,7 +235,7 @@ static iree_status_t iree_hal_xrt_direct_command_buffer_copy_buffer(
   source_offset += iree_hal_buffer_byte_offset(source_buffer);
   uint8_t* dst = (uint8_t*)target_device_buffer_ptr + target_offset;
   uint8_t* src = (uint8_t*)source_device_buffer_ptr + source_offset;
-
+  std::cout << "copy buffer\n";
   memcpy(dst, src, length);
 
   IREE_TRACE_ZONE_END(z0);
@@ -257,7 +264,7 @@ static iree_status_t iree_hal_xrt_direct_command_buffer_push_descriptor_set(
     iree_hal_pipeline_layout_t* pipeline_layout, uint32_t set,
     iree_host_size_t binding_count,
     const iree_hal_descriptor_set_binding_t* bindings) {
-  std::cout<<"in push\n";
+  std::cout << "in push\n";
   if (binding_count > IREE_HAL_XRT_MAX_DESCRIPTOR_SET_BINDING_COUNT) {
     return iree_make_status(
         IREE_STATUS_RESOURCE_EXHAUSTED,
@@ -287,20 +294,20 @@ static iree_status_t iree_hal_xrt_direct_command_buffer_push_descriptor_set(
                                          &binding->buffer));
     std::unique_ptr<xrt::bo> sub_buffer;
     try {
-    xrt::bo *device_buffer = iree_hal_xrt_buffer_handle(
-        iree_hal_buffer_allocated_buffer(binding->buffer));
-    iree_device_size_t offset = iree_hal_buffer_byte_offset(binding->buffer);
-    iree_device_size_t length = binding->length;
-    // allocate a sub buffer of the device buffer as the binding object
-    sub_buffer = std::make_unique<xrt::bo>(*device_buffer, length, offset + binding->offset);
-    current_bindings[binding->binding] = sub_buffer.release();
+      xrt::bo* device_buffer = iree_hal_xrt_buffer_handle(
+          iree_hal_buffer_allocated_buffer(binding->buffer));
+      iree_device_size_t offset = iree_hal_buffer_byte_offset(binding->buffer);
+      iree_device_size_t length = binding->length;
+      // allocate a sub buffer of the device buffer as the binding object
+      sub_buffer = std::make_unique<xrt::bo>(*device_buffer, length,
+                                             offset + binding->offset);
+      current_bindings[binding->binding] = sub_buffer.release();
     } catch (...) {
       IREE_TRACE_ZONE_END(z0);
       return iree_make_status(
           IREE_STATUS_RESOURCE_EXHAUSTED,
           "could not allocate memory for sub buffers being binded");
     }
-
   }
 
   IREE_TRACE_ZONE_END(z0);
@@ -314,7 +321,7 @@ static iree_status_t iree_hal_xrt_direct_command_buffer_dispatch(
   iree_hal_xrt_direct_command_buffer_t* command_buffer =
       iree_hal_xrt_direct_command_buffer_cast(base_command_buffer);
   IREE_TRACE_ZONE_BEGIN(z0);
-  std::cout<<"in dispatch\n";
+  std::cout << "in dispatch\n";
   // Lookup kernel parameters used for side-channeling additional launch
   // information from the compiler.
   iree_hal_xrt_kernel_params_t kernel_params;
@@ -344,6 +351,7 @@ static iree_status_t iree_hal_xrt_direct_command_buffer_dispatch(
   // access.
   iree_host_size_t set_count =
       iree_hal_xrt_pipeline_layout_descriptor_set_count(kernel_params.layout);
+  command_buffer->set_count = set_count;
   for (iree_host_size_t i = 0; i < set_count; ++i) {
     // TODO: cache this information in the kernel info to avoid recomputation.
     iree_host_size_t binding_count =
@@ -353,8 +361,9 @@ static iree_status_t iree_hal_xrt_direct_command_buffer_dispatch(
     iree_host_size_t base_index =
         iree_hal_xrt_pipeline_layout_base_binding_index(kernel_params.layout,
                                                         i);
+    command_buffer->descriptor_sets[i].binding_count = binding_count;
     for (iree_host_size_t j = 0; j < binding_count; ++j) {
-      std::cout<<"argument: "<<arg_index + base_index + j<<"\n";
+      std::cout << "argument: " << arg_index + base_index + j << "\n";
       run.set_arg(arg_index + base_index + j,
                   *command_buffer->descriptor_sets[i].bindings[j]);
     }

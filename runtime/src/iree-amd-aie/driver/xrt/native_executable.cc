@@ -7,6 +7,7 @@
 #include "iree-amd-aie/driver/xrt/native_executable.h"
 
 #include <stddef.h>
+
 #include <iomanip>
 
 #include "iree-amd-aie/schemas/xrt_executable_def_reader.h"
@@ -127,15 +128,15 @@ iree_status_t iree_hal_xrt_native_executable_create(
       iree_amd_aie_hal_xrt_ExecutableDef_xclbin_get(executable_def);
 
   // Calculate the size of your char array (assuming it's null-terminated)
-    iree_host_size_t xclbin_length = 0;
-    while (xclbin_fb[xclbin_length] != '\0') {
-        ++xclbin_length;
-    }
+  iree_host_size_t xclbin_length = 0;
+  while (xclbin_fb[xclbin_length] != '\0') {
+    ++xclbin_length;
+  }
 
-    iree_host_size_t xclbin_length2 = flatbuffers_string_len(xclbin_fb);
+  iree_host_size_t xclbin_length2 = flatbuffers_string_len(xclbin_fb);
 
-       std::cout<<"naive length: "<<xclbin_length<<" flatbuffer func length: "<<xclbin_length2;
-
+  std::cout << "naive length: " << xclbin_length
+            << " flatbuffer func length: " << xclbin_length2;
 
   std::vector<char> xclbinVector(xclbin_fb, xclbin_fb + xclbin_length2);
 
@@ -172,8 +173,9 @@ iree_status_t iree_hal_xrt_native_executable_create(
                                &executable->resource);
   xrt::xclbin xclbin = xrt::xclbin(xclbinVector);
   device.register_xclbin(xclbin);
-  std::cout<<"xclbin uuid: "<<xclbin.get_uuid()<<"\n";
+  std::cout << "xclbin uuid: " << xclbin.get_uuid() << "\n";
   xrt::hw_context context(device, xclbin.get_uuid());
+  std::cout << "after context is made " << std::endl;
   executable->host_allocator = host_allocator;
   executable->entry_point_count = entry_point_count;
   for (iree_host_size_t i = 0; i < entry_point_count; i++) {
@@ -185,15 +187,16 @@ iree_status_t iree_hal_xrt_native_executable_create(
     uint32_t num_instr = flatbuffers_uint32_vec_len(asm_inst);
     std::unique_ptr<xrt::kernel> kernel;
     std::unique_ptr<xrt::bo> instr;
+    std::cout << "before try catch" << std::endl;
     try {
       kernel = std::make_unique<xrt::kernel>(context, "MLIR_AIE");
       // XCL_BO_FLAGS_CACHEABLE is used to indicate that this is an instruction
       // buffer that resides in instr_memory. This buffer is always passed as
       // the first argument to the kernel and we can use the
       // kernel.group_id(/*index of first argument*/=0) to get the group_id.
-      instr = std::make_unique<xrt::bo>(
-          device, num_instr * sizeof(uint32_t), XCL_BO_FLAGS_CACHEABLE,
-          kernel.get()->group_id(0));
+      instr = std::make_unique<xrt::bo>(device, num_instr * sizeof(uint32_t),
+                                        XCL_BO_FLAGS_CACHEABLE,
+                                        kernel.get()->group_id(0));
     } catch (...) {
       iree_hal_executable_destroy((iree_hal_executable_t*)executable);
       IREE_TRACE_ZONE_END(z0);
@@ -201,6 +204,7 @@ iree_status_t iree_hal_xrt_native_executable_create(
           IREE_STATUS_RESOURCE_EXHAUSTED,
           "could not allocate memory for kernel or instr buffer");
     }
+    std::cout << "after try catch" << std::endl;
     uint32_t* instr_buffer = instr->map<uint32_t*>();
     for (int j = 0; j < num_instr; j++) {
       instr_buffer[j] = flatbuffers_uint32_vec_at(asm_inst, j);
