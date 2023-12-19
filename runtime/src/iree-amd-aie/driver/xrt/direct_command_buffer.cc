@@ -21,6 +21,9 @@ typedef struct iree_hal_xrt_direct_command_buffer_t {
   // command buffer. Reset on each begin.
   iree_hal_resource_set_t* resource_set;
 
+  // Staging arena used for host->device transfers.
+  iree_arena_allocator_t arena;
+
   // needed for clean up
   iree_host_size_t set_count;
   struct {
@@ -72,6 +75,7 @@ iree_status_t iree_hal_xrt_direct_command_buffer_create(
 
   *out_command_buffer = &command_buffer->base;
   IREE_TRACE_ZONE_END(z0);
+  iree_arena_initialize(block_pool, &command_buffer->arena);
   return iree_hal_resource_set_allocate(block_pool,
                                         &command_buffer->resource_set);
 }
@@ -88,10 +92,11 @@ static void iree_hal_xrt_direct_command_buffer_destroy(
     for (iree_host_size_t j = 0;
          j < command_buffer->descriptor_sets[i].binding_count; ++j) {
       std::cout << "deleting for ( " << i << ", " << j << ")\n";
-      delete command_buffer->descriptor_sets[i].bindings[j];
+      // delete command_buffer->descriptor_sets[i].bindings[j];
     }
   }
   iree_hal_resource_set_free(command_buffer->resource_set);
+  iree_arena_deinitialize(&command_buffer->arena);
   iree_allocator_free(host_allocator, command_buffer);
 
   IREE_TRACE_ZONE_END(z0);
@@ -115,7 +120,11 @@ static iree_status_t iree_hal_xrt_direct_command_buffer_end(
       iree_hal_xrt_direct_command_buffer_cast(base_command_buffer);
   IREE_TRACE_ZONE_BEGIN(z0);
   std::cout << "command buffer end\n";
+  iree_arena_reset(&command_buffer->arena);
   iree_hal_resource_set_free(command_buffer->resource_set);
+  IREE_RETURN_AND_END_ZONE_IF_ERROR(
+      z0, iree_hal_resource_set_allocate(command_buffer->arena.block_pool,
+                                         &command_buffer->resource_set));
 
   IREE_TRACE_ZONE_END(z0);
   return iree_ok_status();
@@ -225,13 +234,25 @@ static iree_status_t iree_hal_xrt_direct_command_buffer_copy_buffer(
     iree_device_size_t length) {
   IREE_TRACE_ZONE_BEGIN(z0);
 
-  xrt::bo target_device_buffer = iree_hal_xrt_buffer_handle(
+  xrt::bo* target_device_buffer = iree_hal_xrt_buffer_handle(
       iree_hal_buffer_allocated_buffer(target_buffer));
-  void* target_device_buffer_ptr = target_device_buffer.map();
+  void* target_device_buffer_ptr = target_device_buffer->map();
+  std::cout << "target address: " << target_device_buffer << std::endl;
+  if (*target_device_buffer) {
+    std::cout << "The target_device_buffer is valid." << std::endl;
+  } else {
+    std::cout << "The target_device_buffer is not valid." << std::endl;
+  }
   target_offset += iree_hal_buffer_byte_offset(target_buffer);
-  xrt::bo source_device_buffer = iree_hal_xrt_buffer_handle(
+  xrt::bo* source_device_buffer = iree_hal_xrt_buffer_handle(
       iree_hal_buffer_allocated_buffer(source_buffer));
-  void* source_device_buffer_ptr = source_device_buffer.map();
+  std::cout << "source address: " << source_device_buffer << std::endl;
+  if (*source_device_buffer) {
+    std::cout << "The source_device_buffer is valid." << std::endl;
+  } else {
+    std::cout << "The source_device_buffer is not valid." << std::endl;
+  }
+  void* source_device_buffer_ptr = source_device_buffer->map();
   source_offset += iree_hal_buffer_byte_offset(source_buffer);
   uint8_t* dst = (uint8_t*)target_device_buffer_ptr + target_offset;
   uint8_t* src = (uint8_t*)source_device_buffer_ptr + source_offset;

@@ -6,6 +6,8 @@
 
 #include "iree-amd-aie/driver/xrt/xrt_buffer.h"
 
+#include <iostream>
+
 #include "iree/base/api.h"
 #include "iree/base/tracing.h"
 #include "iree/hal/api.h"
@@ -66,8 +68,9 @@ static void iree_hal_xrt_buffer_destroy(iree_hal_buffer_t* base_buffer) {
   IREE_TRACE_ZONE_BEGIN(z0);
   IREE_TRACE_ZONE_APPEND_VALUE_I64(
       z0, (int64_t)iree_hal_buffer_allocation_size(base_buffer));
-
+  std::cout << "outside of release function\n";
   if (buffer->release_callback.fn) {
+    std::cout << "there is some release function: " << std::endl;
     buffer->release_callback.fn(buffer->release_callback.user_data,
                                 base_buffer);
   }

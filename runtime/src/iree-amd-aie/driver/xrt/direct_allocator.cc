@@ -160,7 +160,7 @@ static iree_status_t iree_hal_xrt_allocator_allocate_buffer(
         "allocator cannot allocate a buffer with the given parameters");
   }
 
-  std::cout << "in the allocator asking for" << allocation_size << "\n";
+  std::cout << "in the allocator asking for " << allocation_size << "\n";
   // Note that for IPU host and device share the same DDR RAM address space. So
   // the `HOST_ONLY` flag below is not strictly correct but present for legacy
   // reasons and it is what is used by XRT to identify that we want to allocate
@@ -188,7 +188,7 @@ static iree_status_t iree_hal_xrt_allocator_allocate_buffer(
     return iree_make_status(IREE_STATUS_RESOURCE_EXHAUSTED,
                             "could not allocate memory for buffer");
   }
-  std::cout << "made the buffer\n";
+  std::cout << "made the buffer: " << xrt_buffer.get() << std::endl;
   IREE_TRACE_ZONE_END(z0);
   if (!xrt_buffer) {
     status = iree_make_status(IREE_STATUS_RESOURCE_EXHAUSTED,
@@ -223,7 +223,8 @@ static void iree_hal_xrt_allocator_deallocate_buffer(
     iree_hal_buffer_t* IREE_RESTRICT base_buffer) {
   iree_hal_xrt_allocator_t* allocator =
       iree_hal_xrt_allocator_cast(base_allocator);
-  std::cout << "this is where a buffer is dealloc\n";
+  std::cout << "this is where a buffer is dealloc"
+            << iree_hal_xrt_buffer_handle(base_buffer) << std::endl;
   delete iree_hal_xrt_buffer_handle(base_buffer);
   IREE_TRACE_FREE_NAMED(IREE_HAL_XRT_ALLOCATOR_ID,
                         (void*)iree_hal_xrt_buffer_handle(base_buffer));

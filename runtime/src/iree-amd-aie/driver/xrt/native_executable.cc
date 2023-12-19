@@ -189,7 +189,7 @@ iree_status_t iree_hal_xrt_native_executable_create(
     std::unique_ptr<xrt::bo> instr;
     std::cout << "before try catch" << std::endl;
     try {
-      kernel = std::make_unique<xrt::kernel>(context, "MLIR_AIE");
+      kernel = std::make_unique<xrt::kernel>(context, entry_name);
       // XCL_BO_FLAGS_CACHEABLE is used to indicate that this is an instruction
       // buffer that resides in instr_memory. This buffer is always passed as
       // the first argument to the kernel and we can use the

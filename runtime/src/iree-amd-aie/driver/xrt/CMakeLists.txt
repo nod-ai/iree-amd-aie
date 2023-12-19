@@ -9,6 +9,8 @@
 # Enable with: -DIREE_EXTERNAL_HAL_DRIVERS=xrt
 #-------------------------------------------------------------------------------
 
+iree_add_all_subdirs()
+
 iree_register_external_hal_driver(
   NAME
     xrt
@@ -17,8 +19,6 @@ iree_register_external_hal_driver(
   REGISTER_FN
     iree_hal_xrt_driver_module_register
 )
-
-iree_add_all_subdirs()
 
 find_package(XRT REQUIRED)
 
@@ -49,9 +49,14 @@ iree_cc_library(
   DEPS
     iree::base
     iree::base::core_headers
+    iree::base::internal::arena
     iree::base::internal::flatcc::building
+    iree::base::internal::flatcc::parsing
+    iree::hal::utils::file_transfer
     iree::hal
     iree::hal::utils::buffer_transfer
+    iree::hal::utils::resource_set
+    iree::hal::utils::semaphore_base
     iree-amd-aie::schemas::xrt_executable_def_c_fbs
     XRT::xrt_coreutil
   COPTS
