@@ -189,8 +189,7 @@ static iree_status_t iree_hal_xrt_allocator_allocate_buffer(
     status = iree_hal_xrt_buffer_wrap(
         xrt_buffer.release(), base_allocator, compat_params.type,
         compat_params.access, compat_params.usage, allocation_size,
-        /*byte_offset=*/0,
-        /*byte_length=*/allocation_size,
+        /*byte_offset=*/0, /*byte_length=*/allocation_size,
         iree_hal_buffer_release_callback_null(), &buffer);
   }
 
@@ -217,6 +216,7 @@ static void iree_hal_xrt_allocator_deallocate_buffer(
     delete iree_hal_xrt_buffer_handle(base_buffer);
   } catch (...) {
     iree_status_from_code(IREE_STATUS_DATA_LOSS);
+    return;
   }
   IREE_TRACE_FREE_NAMED(IREE_HAL_XRT_ALLOCATOR_ID,
                         (void*)iree_hal_xrt_buffer_handle(base_buffer));

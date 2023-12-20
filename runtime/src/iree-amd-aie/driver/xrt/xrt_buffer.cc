@@ -125,17 +125,17 @@ static iree_status_t iree_hal_xrt_buffer_map_range(
   void* host_ptr = buffer->buffer->map();
   IREE_ASSERT(host_ptr != NULL);  // Should be guaranteed by previous checks.
   uint8_t* data_ptr = (uint8_t*)host_ptr + local_byte_offset;
+  iree_status_t status = iree_hal_xrt_buffer_invalidate_range(
+      base_buffer, local_byte_offset, local_byte_length);
   // If we mapped for discard scribble over the bytes. This is not a mandated
   // behavior but it will make debugging issues easier. Alternatively for heap
   // buffers we could reallocate them such that ASAN yells, but that would only
   // work if the entire buffer was discarded.
-#ifndef NDEBUG
+  #ifndef NDEBUG
   if (iree_any_bit_set(memory_access, IREE_HAL_MEMORY_ACCESS_DISCARD)) {
     memset(data_ptr, 0xCD, local_byte_length);
   }
-#endif  // !NDEBUG
-
-  iree_status_t status = iree_ok_status();
+  #endif  // !NDEBUG
   mapping->contents = iree_make_byte_span(data_ptr, local_byte_length);
   return status;
 }
@@ -143,7 +143,8 @@ static iree_status_t iree_hal_xrt_buffer_map_range(
 static iree_status_t iree_hal_xrt_buffer_unmap_range(
     iree_hal_buffer_t* base_buffer, iree_device_size_t local_byte_offset,
     iree_device_size_t local_byte_length, iree_hal_buffer_mapping_t* mapping) {
-  return iree_ok_status();
+  return iree_hal_xrt_buffer_flush_range(base_buffer, local_byte_offset,
+                                         local_byte_length);
 }
 
 namespace {
