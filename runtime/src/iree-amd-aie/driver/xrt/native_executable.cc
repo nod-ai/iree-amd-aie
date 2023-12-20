@@ -121,7 +121,7 @@ iree_status_t iree_hal_xrt_native_executable_create(
   flatbuffers_string_t xclbin_fb =
       iree_amd_aie_hal_xrt_ExecutableDef_xclbin_get(executable_def);
 
-  // XRT API needs this vector and cant actually read a void*
+  // XRT API needs this vector and cant actually read a void*.
   std::vector<char> xclbinVector(xclbin_fb,
                                  xclbin_fb + flatbuffers_string_len(xclbin_fb));
 
