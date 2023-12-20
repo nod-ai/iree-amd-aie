@@ -298,4 +298,6 @@ LogicalResult XclBinGeneratorKit::runXclBinUtil(ArrayRef<std::string> flags,
   return runCommand(cmdLine);
 }
 
+bool XclBinGeneratorKit::isVerbose() const { return verbose; }
+
 }  // namespace mlir::iree_compiler::AMDAIE
