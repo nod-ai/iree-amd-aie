@@ -65,3 +65,9 @@ set_property(GLOBAL APPEND PROPERTY IREE_COMPILER_DYLIB_DEPENDS
 # Install.
 install(FILES ${_all_device_bc_files}
   DESTINATION "${IREE_COMPILER_DYLIB_INSTALL_PREFIX}/${_platform_lib_reldir}")
+
+set(VITIS_ROOT /proj/xbuilds/2023.2_released/installs/lin64/Vitis/2023.2)
+set(VITIS_AIETOOLS_DIR /proj/xbuilds/2023.2_released/installs/lin64/Vitis/2023.2/aietools)
+set(AIE_RUNTIME_TARGETS x86_64)
+add_subdirectory(${IREE_MLIR_AIE_SOURCE_DIR}/runtime_lib runtime_lib)
+add_subdirectory(${IREE_MLIR_AIE_SOURCE_DIR}/data data)
