@@ -7,13 +7,13 @@
 #include "iree-amd-aie/driver/xrt/xrt_device.h"
 
 #include "iree-amd-aie/driver/xrt/direct_allocator.h"
+#include "iree-amd-aie/driver/xrt/direct_command_buffer.h"
 #include "iree-amd-aie/driver/xrt/nop_executable_cache.h"
 #include "iree-amd-aie/driver/xrt/nop_semaphore.h"
 #include "iree-amd-aie/driver/xrt/pipeline_layout.h"
 #include "iree/base/api.h"
 #include "iree/base/tracing.h"
 #include "iree/hal/api.h"
-#include "iree/hal/utils/buffer_transfer.h"
 #include "iree/hal/utils/file_transfer.h"
 #include "iree/hal/utils/memory_file.h"
 
@@ -23,6 +23,10 @@ typedef struct iree_hal_xrt_device_t {
   iree_hal_resource_t resource;
 
   iree_string_view_t identifier;
+
+  // Block pool used for command buffers with a larger block size (as command
+  // buffers can contain inlined data uploads).
+  iree_arena_block_pool_t block_pool;
 
   iree_hal_xrt_device_params_t params;
   iree_allocator_t host_allocator;
@@ -79,6 +83,8 @@ static iree_status_t iree_hal_xrt_device_create_internal(
     iree_string_view_append_to_buffer(
         identifier, &device->identifier,
         (char*)device + iree_sizeof_struct(*device));
+    iree_arena_block_pool_initialize(params->arena_block_size, host_allocator,
+                                     &device->block_pool);
 
     device->host_allocator = host_allocator;
     device->device = xrt_device;
@@ -111,6 +117,7 @@ static void iree_hal_xrt_device_destroy(iree_hal_device_t* base_device) {
   IREE_TRACE_ZONE_BEGIN(z0);
 
   iree_hal_allocator_release(device->device_allocator);
+  iree_arena_block_pool_deinitialize(&device->block_pool);
   iree_allocator_free(host_allocator, device);
 
   IREE_TRACE_ZONE_END(z0);
@@ -149,14 +156,22 @@ static void iree_hal_xrt_replace_channel_provider(
 
 static iree_status_t iree_hal_xrt_device_trim(iree_hal_device_t* base_device) {
   iree_hal_xrt_device_t* device = iree_hal_xrt_device_cast(base_device);
+  iree_arena_block_pool_trim(&device->block_pool);
   return iree_hal_allocator_trim(device->device_allocator);
 }
 
 static iree_status_t iree_hal_xrt_device_query_i64(
     iree_hal_device_t* base_device, iree_string_view_t category,
     iree_string_view_t key, int64_t* out_value) {
+  *out_value = 0;
+
+  if (iree_string_view_equal(category, IREE_SV("hal.executable.format"))) {
+    *out_value =
+        iree_string_view_equal(key, IREE_SV("amdaie-xclbin-fb")) ? 1 : 0;
+    return iree_ok_status();
+  }
   return iree_make_status(IREE_STATUS_UNIMPLEMENTED,
-                          "unimplmented device i64 query");
+                          "no other queries implemented");
 }
 
 static iree_status_t iree_hal_xrt_device_create_channel(
@@ -171,8 +186,16 @@ static iree_status_t iree_hal_xrt_device_create_command_buffer(
     iree_hal_command_category_t command_categories,
     iree_hal_queue_affinity_t queue_affinity, iree_host_size_t binding_capacity,
     iree_hal_command_buffer_t** out_command_buffer) {
-  return iree_make_status(IREE_STATUS_UNIMPLEMENTED,
-                          "unimplmented command buffer create");
+  iree_hal_xrt_device_t* device = iree_hal_xrt_device_cast(base_device);
+  if (iree_any_bit_set(mode, IREE_HAL_COMMAND_BUFFER_MODE_NESTED))
+    return iree_make_status(IREE_STATUS_UNIMPLEMENTED,
+                            "nested command buffer not yet supported");
+  if (!iree_all_bits_set(mode, IREE_HAL_COMMAND_BUFFER_MODE_ONE_SHOT))
+    return iree_make_status(IREE_STATUS_UNIMPLEMENTED,
+                            "unimplmented multi-shot command buffer");
+  return iree_hal_xrt_direct_command_buffer_create(
+      base_device, mode, command_categories, binding_capacity,
+      &device->block_pool, device->host_allocator, out_command_buffer);
 }
 
 static iree_status_t iree_hal_xrt_device_create_descriptor_set_layout(
@@ -248,9 +271,14 @@ static iree_status_t iree_hal_xrt_device_queue_alloca(
     iree_hal_allocator_pool_t pool, iree_hal_buffer_params_t params,
     iree_device_size_t allocation_size,
     iree_hal_buffer_t** IREE_RESTRICT out_buffer) {
-  return iree_make_status(IREE_STATUS_UNIMPLEMENTED,
-                          "Unimplemented queue alloca. Checking if this is "
-                          "required for AIE backend.");
+  // TODO: queue-ordered allocations.
+  IREE_RETURN_IF_ERROR(iree_hal_semaphore_list_wait(wait_semaphore_list,
+                                                    iree_infinite_timeout()));
+  IREE_RETURN_IF_ERROR(
+      iree_hal_allocator_allocate_buffer(iree_hal_device_allocator(base_device),
+                                         params, allocation_size, out_buffer));
+  IREE_RETURN_IF_ERROR(iree_hal_semaphore_list_signal(signal_semaphore_list));
+  return iree_ok_status();
 }
 
 static iree_status_t iree_hal_xrt_device_queue_dealloca(
@@ -310,8 +338,8 @@ static iree_status_t iree_hal_xrt_device_queue_execute(
     const iree_hal_semaphore_list_t signal_semaphore_list,
     iree_host_size_t command_buffer_count,
     iree_hal_command_buffer_t* const* command_buffers) {
-  return iree_make_status(IREE_STATUS_UNIMPLEMENTED,
-                          "Unimplemented queue execute");
+  // Nothing to do as we synchronize after kernel launch in dispatch
+  return iree_ok_status();
 }
 
 static iree_status_t iree_hal_xrt_device_queue_flush(
@@ -361,7 +389,6 @@ const iree_hal_device_vtable_t iree_hal_xrt_device_vtable = {
     /*.create_semaphore = */ iree_hal_xrt_device_create_semaphore,
     /*.query_semaphore_compatibility = */
     iree_hal_xrt_device_query_semaphore_compatibility,
-    /*.transfer_range = */ iree_hal_device_submit_transfer_range_and_wait,
     /*.queue_alloca = */ iree_hal_xrt_device_queue_alloca,
     /*.queue_dealloca = */ iree_hal_xrt_device_queue_dealloca,
     /*.queue_read=*/iree_hal_xrt_device_queue_read,
