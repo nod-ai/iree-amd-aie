@@ -20,4 +20,10 @@ def AMDAIELowerExecutableTarget :
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIELowerExecutableTargetPass()";
 }
 
+def AMDAIEDecomposeLinalgExtPackUnPackToAIR :
+    Pass<"iree-amdaie-decompose-pack-unpack-to-air", ""> {
+  let summary = "Decompose LinalgExt pack/unpack ops into patterns compatible to AIR.";
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEDecomposeLinalgExtPackUnPackToAIRPass()";
+}
+
 #endif // IREE_AMD_AIE_TRANSFORMS_PASSES
