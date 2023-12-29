@@ -40,7 +40,7 @@ iree_cc_library(
     ::PassesIncGen
     MLIRSupport
     iree::compiler::Codegen::Common::TransformDialectInterpreterPass
-    iree::compiler::Codegen::Dialect::IREECodegenDialect
+    iree::compiler::Codegen::Dialect::Codegen::IR::IREECodegenDialect
     iree::compiler::Dialect::HAL::IR
     iree::compiler::Utils
     iree::target::amd-aie::aie::AIETransformPasses
