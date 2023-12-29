@@ -49,9 +49,8 @@ iree_cc_library(
     iree::base::core_headers
     iree::base::internal::flatcc::building
     iree::hal
-    iree::hal::utils::buffer_transfer
     iree-amd-aie::schemas::xrt_executable_def_c_fbs
-    XRT::xrt_coreutil
+    #XRT::xrt_coreutil
   COPTS
   # currenly this is needed, it can be removed after this issue is resolved
   # https://github.com/Xilinx/XRT/issues/7810

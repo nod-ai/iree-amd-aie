@@ -16,7 +16,7 @@
 #include "air/Dialect/AIRRt/AIRRtDialect.h"
 #include "iree-amd-aie/Target/XclBinGeneratorKit.h"
 #include "iree-amd-aie/Transforms/Passes.h"
-#include "iree/compiler/Codegen/Dialect/IREECodegenDialect.h"
+#include "iree/compiler/Codegen/Dialect/Codegen/IR/IREECodegenDialect.h"
 #include "iree/compiler/Utils/FlatbufferUtils.h"
 #include "llvm/Bitcode/BitcodeWriter.h"
 #include "llvm/Support/Debug.h"
