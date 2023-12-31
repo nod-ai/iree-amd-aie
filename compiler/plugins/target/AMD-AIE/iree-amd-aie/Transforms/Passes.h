@@ -35,6 +35,11 @@ createAMDAIELowerExecutableTargetPass();
 
 void registerAMDAIEPasses();
 
+/// Create a pass decomposing iree_linalg_ext.pack and unpack ops to AIR
+/// dialect.
+std::unique_ptr<OperationPass<>>
+createAMDAIEDecomposeLinalgExtPackUnPackToAIRPass();
+
 }  // namespace mlir::iree_compiler::AMDAIE
 
 #endif  // IREE_AMD_AIE_TRANSFORMS_PASSES_H_

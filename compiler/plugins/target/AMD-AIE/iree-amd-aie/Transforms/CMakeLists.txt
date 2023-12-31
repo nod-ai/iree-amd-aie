@@ -35,6 +35,7 @@ iree_cc_library(
     "Passes.cpp"
     "AMDAIELowerExecutableTarget.cpp"
     "BridgeToAIRPass.cpp"
+    "DecomposeLinalgExtPackUnPackToAIR.cpp"
   DEPS
     ::PassHeaders
     ::PassesIncGen
