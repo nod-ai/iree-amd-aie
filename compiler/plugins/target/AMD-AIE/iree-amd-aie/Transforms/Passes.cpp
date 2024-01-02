@@ -21,7 +21,17 @@ namespace mlir::iree_compiler::AMDAIE {
 
 void buildAMDAIETransformPassPipeline(OpPassManager &pm) {
   addCommonTargetExecutablePreprocessingPasses(pm);
+  // TODO: Current we don't include C++ equivalent of Transform
+  //       dialect scripts. We are thus guarding their inclusion
+  //       with a bool `useCPlusPlusTransformPasses` which would
+  //       be used during development efforts. Once the C++ passes
+  //       are ready, we will include these passes by default and
+  //       take away the guarding.
+  bool useCPlusPlusTransformPasses = false;
+  if (useCPlusPlusTransformPasses)
+    pm.addPass(createTileAndDistributeToWorkgroupsPass());
   pm.addPass(createEraseHALDescriptorTypeFromMemRefPass());
+  if (useCPlusPlusTransformPasses) pm.addPass(createAMDAIETileAndFusePass());
   pm.addPass(createAMDAIELowerExecutableTargetPass());
 
   auto &modulePassManager = pm.nest<ModuleOp>();
