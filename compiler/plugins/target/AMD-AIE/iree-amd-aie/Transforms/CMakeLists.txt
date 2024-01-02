@@ -35,7 +35,8 @@ iree_cc_library(
     "Passes.cpp"
     "AMDAIELowerExecutableTarget.cpp"
     "BridgeToAIRPass.cpp"
-  DEPS
+    "TileToSCFForAll.cpp"
+  DEPS 
     ::PassHeaders
     ::PassesIncGen
     MLIRSupport

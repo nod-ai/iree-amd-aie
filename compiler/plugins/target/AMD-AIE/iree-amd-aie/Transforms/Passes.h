@@ -33,6 +33,9 @@ std::unique_ptr<OperationPass<>> createAMDAIEBridgeToAIRPass();
 std::unique_ptr<OperationPass<IREE::HAL::ExecutableVariantOp>>
 createAMDAIELowerExecutableTargetPass();
 
+/// create pass to tile to scf.for_all.
+std::unique_ptr<OperationPass<>> createAMDAIETileToSCFForAllPass();
+
 void registerAMDAIEPasses();
 
 }  // namespace mlir::iree_compiler::AMDAIE

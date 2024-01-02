@@ -20,4 +20,11 @@ def AMDAIELowerExecutableTarget :
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIELowerExecutableTargetPass()";
 }
 
+def AMDAIETileToSCFForAll :
+    Pass<"iree-amdaie-tile-to-scf-for-all", ""> {
+  let summary = "Tile to SCF For all";
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIETileToSCFForAllPass()";
+}
+
+
 #endif // IREE_AMD_AIE_TRANSFORMS_PASSES

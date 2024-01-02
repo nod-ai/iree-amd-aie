@@ -22,6 +22,7 @@ namespace mlir::iree_compiler::AMDAIE {
 void buildAMDAIETransformPassPipeline(OpPassManager &pm) {
   addCommonTargetExecutablePreprocessingPasses(pm);
   pm.addPass(createEraseHALDescriptorTypeFromMemRefPass());
+  pm.addPass(createAMDAIETileToSCFForAllPass());
   pm.addPass(createAMDAIELowerExecutableTargetPass());
 
   auto &modulePassManager = pm.nest<ModuleOp>();
