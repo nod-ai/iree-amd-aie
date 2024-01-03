@@ -13,7 +13,9 @@
 #include "mlir/Dialect/Linalg/Transforms/Transforms.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
+#include "mlir/Dialect/SCF/Transforms/Patterns.h"
 #include "mlir/Dialect/SCF/Transforms/TileUsingInterface.h"
+#include "mlir/Dialect/SCF/Transforms/Transforms.h"
 #include "mlir/Dialect/Utils/StaticValueUtils.h"
 #include "mlir/IR/Iterators.h"
 #include "mlir/IR/PatternMatch.h"
@@ -329,10 +331,10 @@ LogicalResult applyTileAndFuse(RewriterBase &rewriter, Operation *rootOp,
   collectTiledAndFusedOps(rootOp, origTiledAndFusedOps);
   // TODO: Need to uncomment this when addInitOperandsToLoopNest is adapted for
   //       scf.forall.
-  // auto isIgnoredUser = [&](Operation *user, scf::ForallOp outerMostTiledLoop)
-  // {
-  //   return origTiledAndFusedOps.count(user) || isa<tensor::DimOp>(user);
-  // };
+  auto isIgnoredUser = [&](Operation *user, scf::ForallOp outerMostTiledLoop)
+  {
+     return origTiledAndFusedOps.count(user) || isa<tensor::DimOp>(user);
+  };
 
   // The rest of this method is similar to
   // scf::tileConsumerAndFuseProducerGreedilyUsingSCFForOp, except that this
@@ -435,7 +437,7 @@ LogicalResult applyTileAndFuse(RewriterBase &rewriter, Operation *rootOp,
       tiledOps.push_back(tiledOp);
     }
   }
-
+ */
   scf::ForallOp outermostLoop = forLoops.front();
   for (auto [index, origVal] : llvm::enumerate(yieldedValuesToOrigValues)) {
     Value replacement = outermostLoop.getResult(index);
@@ -443,7 +445,7 @@ LogicalResult applyTileAndFuse(RewriterBase &rewriter, Operation *rootOp,
       return !isIgnoredUser(use.getOwner(), outermostLoop) &&
              dominanceInfo.properlyDominates(outermostLoop, use.getOwner());
     });
-  }*/
+  }
 
   return success();
 }
@@ -520,6 +522,8 @@ void AMDAIETileToSCFForAllPass::runOnOperation() {
 
   SmallVector<OpFoldResult> tileSizes = getAsIndexOpFoldResult(context, {8, 8});
   auto options = scf::SCFTilingOptions().setTileSizes(tileSizes);
+  options.setMapping({gpu::GPUBlockMappingAttr::get(context, gpu::MappingId::DimY),
+         gpu::GPUBlockMappingAttr::get(context, gpu::MappingId::DimX)});
 
   IRRewriter rewriter(context);
   DominanceInfo dominanceInfo(funcOp);
