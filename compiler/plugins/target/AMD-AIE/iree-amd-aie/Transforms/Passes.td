@@ -30,4 +30,11 @@ def AMDAIETileAndFuse :
   ];
 }
 
+def AMDAIEPadAndBufferize :
+    Pass<"iree-amdaie-pad-and-bufferize", "IREE::HAL::ExecutableVariantOp"> {
+  let summary = "Pass to pad operations on tensors in top-down order.";
+  let constructor =
+      "mlir::iree_compiler::AMDAIE::createAMDAIEPadAndBufferizePass()";
+}
+
 #endif // IREE_AMD_AIE_TRANSFORMS_PASSES
