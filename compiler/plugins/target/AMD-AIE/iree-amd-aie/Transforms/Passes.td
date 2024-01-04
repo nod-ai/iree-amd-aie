@@ -30,4 +30,11 @@ def AMDAIETileAndFuse :
   ];
 }
 
+def AMDAIETensorPad :
+    Pass<"iree-amdaie-tensor-pad", ""> {
+  let summary = "Pass to pad operations on tensors in top-down order.";
+  let constructor =
+      "mlir::iree_compiler::AMDAIE::createAMDAIETensorPadPass()";
+}
+
 #endif // IREE_AMD_AIE_TRANSFORMS_PASSES

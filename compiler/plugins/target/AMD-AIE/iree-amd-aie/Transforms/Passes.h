@@ -36,6 +36,11 @@ createAMDAIELowerExecutableTargetPass();
 /// Create pass to tile and fuse using scf.forall.
 std::unique_ptr<OperationPass<>> createAMDAIETileAndFusePass(int64_t tilingLevel = -1);
 
+/// Pass to pad operations on tensors in top-down order.
+enum class AMDAIETensorPadOption { ParallelDims, ReductionDims };
+std::unique_ptr<OperationPass<>> createAMDAIETensorPadPass(
+    AMDAIETensorPadOption option = AMDAIETensorPadOption::ParallelDims);
+
 void registerAMDAIEPasses();
 
 }  // namespace mlir::iree_compiler::AMDAIE

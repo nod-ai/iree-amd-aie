@@ -23,6 +23,7 @@ void buildAMDAIETransformPassPipeline(OpPassManager &pm) {
   addCommonTargetExecutablePreprocessingPasses(pm);
   pm.addPass(createEraseHALDescriptorTypeFromMemRefPass());
   pm.addPass(createAMDAIETileAndFusePass());
+  // pm.addPass(createAMDAIETensorPadPass());
   pm.addPass(createAMDAIELowerExecutableTargetPass());
 
   auto &modulePassManager = pm.nest<ModuleOp>();
