@@ -38,31 +38,6 @@ module attributes { transform.with_named_sequence } {
     %ops = transform.structured.match ops{["scf.forall"]} in %variant_op : (!transform.any_op) -> !transform.any_op
     %fused_for_all = transform.split_handle %ops : (!transform.any_op) -> (!transform.any_op)
 
-    %ops2 = transform.structured.match ops{["linalg.matmul"]} in %variant_op : (!transform.any_op) -> !transform.any_op
-    %tiled_matmul = transform.split_handle %ops2 : (!transform.any_op) -> (!transform.any_op)
-    // Pad operation.
-    %padded, %pad, %__ = transform.structured.pad %tiled_matmul {
-      padding_values=[0 : i32, 0 : i32, 0 : i32],
-      padding_dimensions=[0, 1, 2],
-      pack_paddings=[1, 1, 1],
-      copy_back_op="linalg.copy"
-    } : (!transform.any_op) -> (!transform.any_op, !transform.any_op, !transform.any_op)
-    %pad_dps = transform.structured.rewrite_in_destination_passing_style %pad : (!transform.any_op) -> !transform.any_op
-
-    // Promote the operands to shared memory.
-    %padded_lhs = transform.get_producer_of_operand %padded[0] : (!transform.any_op) -> (!transform.any_op)
-    %padded_lhs_buffer, %padded_lhs_new = transform.structured.bufferize_to_allocation %padded_lhs
-        {memory_space = 1, bufferize_destination_only, emit_dealloc} : !transform.any_op
-
-    %padded_rhs = transform.get_producer_of_operand %padded[1] : (!transform.any_op) -> (!transform.any_op)
-    %padded_rhs_buffer, %padded_rhs_new = transform.structured.bufferize_to_allocation %padded_rhs
-        {memory_space = 1, bufferize_destination_only, emit_dealloc} : !transform.any_op
-
-    // Promote the result to shared memrory
-    %padded_result = transform.get_producer_of_operand %padded[2] : (!transform.any_op) -> (!transform.any_op)
-    %padded_result_buffer, %padded_result_new = transform.structured.bufferize_to_allocation %padded_result
-        {memory_space = 1, bufferize_destination_only, emit_dealloc} : !transform.any_op
-
     // Run canonicalizations.
     transform.include @cleanup failures(propagate) (%variant_op) : (!transform.any_op) -> ()
 

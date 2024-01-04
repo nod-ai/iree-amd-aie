@@ -23,7 +23,7 @@ static llvm::cl::opt<bool> clUseCPlusPlusTransformPasses(
     "iree-amd-aie-cpp-passes",
     llvm::cl::desc(
         "Runs the cpp passes instead of transform dialect when possible"),
-    llvm::cl::init(false));
+    llvm::cl::init(true));
 
 namespace mlir::iree_compiler::AMDAIE {
 
@@ -34,7 +34,10 @@ void buildAMDAIETransformPassPipeline(OpPassManager &pm) {
   // `useCPlusPlusTransformPasses` which would be used during development
   // efforts. Once the C++ passes are ready, we will include these passes by
   // default and take away the guarding.
-  if (clUseCPlusPlusTransformPasses) pm.addPass(createAMDAIETileAndFusePass());
+  if (clUseCPlusPlusTransformPasses) {
+    pm.addPass(createAMDAIETileAndFusePass());
+    pm.addPass(createAMDAIEPadAndBufferizePass());
+  }
   pm.addPass(createEraseHALDescriptorTypeFromMemRefPass());
   pm.addPass(createAMDAIELowerExecutableTargetPass());
 
