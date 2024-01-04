@@ -313,6 +313,7 @@ LogicalResult applyTileAndFuse(RewriterBase &rewriter, Operation *rootOp,
   // 1. Tile the consumer.
   SmallVector<OpResult> yieldedValuesToOrigValues;
   SmallVector<Operation *> tiledOps;
+  rewriter.setInsertionPointAfter(rootOp);
   FailureOr<scf::SCFTilingResult> tilingResult = scf::tileUsingSCFForallOp(
       rewriter, cast<TilingInterface>(rootOp), options);
   if (failed(tilingResult)) {
