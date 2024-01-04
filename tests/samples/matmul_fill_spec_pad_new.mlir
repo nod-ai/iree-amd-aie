@@ -32,12 +32,8 @@ module attributes { transform.with_named_sequence } {
   transform.named_sequence @__transform_main(%variant_op: !transform.any_op {transform.read_only}) {
     // Run canonicalizations.
     transform.include @cleanup failures(propagate) (%variant_op) : (!transform.any_op) -> ()  
-    %ops = transform.structured.match ops{["linalg.fill","scf.forall"]} in %variant_op : (!transform.any_op) -> !transform.any_op
-    %fill,%forall = transform.split_handle %ops : (!transform.any_op) -> (!transform.any_op,!transform.any_op)
-
-
-    // Fuse fill operation into the loop
-    %fused_fill, %fused_for_all = transform.structured.fuse_into_containing_op %fill into %forall : (!transform.any_op, !transform.any_op) -> (!transform.any_op, !transform.any_op)
+    %ops = transform.structured.match ops{["scf.forall"]} in %variant_op : (!transform.any_op) -> !transform.any_op
+    %fused_for_all = transform.split_handle %ops : (!transform.any_op) -> (!transform.any_op)
 
     %ops2 = transform.structured.match ops{["linalg.matmul"]} in %variant_op : (!transform.any_op) -> !transform.any_op
     %tiled_matmul = transform.split_handle %ops2 : (!transform.any_op) -> (!transform.any_op)

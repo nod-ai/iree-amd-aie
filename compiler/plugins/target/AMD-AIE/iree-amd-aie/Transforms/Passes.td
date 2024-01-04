@@ -20,11 +20,14 @@ def AMDAIELowerExecutableTarget :
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIELowerExecutableTargetPass()";
 }
 
-def AMDAIETileToSCFForAll :
-    Pass<"iree-amdaie-tile-to-scf-for-all", ""> {
-  let summary = "Tile to SCF For all";
-  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIETileToSCFForAllPass()";
+def AMDAIETileAndFuse :
+    Pass<"iree-amdaie-tile-and-fuse", ""> {
+  let summary = "Perform tiling and fusing using scf.forall";
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIETileAndFusePass()";
+  let options = [
+    Option<"tilingLevel", "tiling-level", "int64_t", /*default=*/"-1",
+      "Use default tiling level used to retrieve the configuration from lowering_config">
+  ];
 }
-
 
 #endif // IREE_AMD_AIE_TRANSFORMS_PASSES

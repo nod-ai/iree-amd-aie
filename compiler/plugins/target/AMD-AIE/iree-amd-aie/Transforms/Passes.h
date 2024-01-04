@@ -33,8 +33,8 @@ std::unique_ptr<OperationPass<>> createAMDAIEBridgeToAIRPass();
 std::unique_ptr<OperationPass<IREE::HAL::ExecutableVariantOp>>
 createAMDAIELowerExecutableTargetPass();
 
-/// create pass to tile to scf.for_all.
-std::unique_ptr<OperationPass<>> createAMDAIETileToSCFForAllPass();
+/// Create pass to tile and fuse using scf.forall.
+std::unique_ptr<OperationPass<>> createAMDAIETileAndFusePass(int64_t tilingLevel = -1);
 
 void registerAMDAIEPasses();
 

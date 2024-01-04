@@ -21,7 +21,7 @@
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
-#define DEBUG_TYPE "amd-aie-tile-and-fuse"
+#define DEBUG_TYPE "iree-amdaie-tile-and-fuse"
 
 namespace mlir::iree_compiler::AMDAIE {
 
@@ -52,7 +52,7 @@ getUntiledProducerFromSliceSource(OpOperand *source,
   while (auto iterArg = dyn_cast<BlockArgument>(source->get())) {
     scf::ForallOp loop = *loopIt;
     if (iterArg.getOwner()->getParentOp() != loop) break;
-    source = loop.getTiedLoopInit(iterArg);
+    source = loop.getTiedOpOperand(iterArg);
     loopIt++;
   }
   if (loopIt == loops.rend()) destinationIterArg = source;
@@ -182,158 +182,127 @@ static FailureOr<tensor::PadOp> foldIfGeneratedFromPadding(
   return tiledPadOp;
 }
 
-/// TODO:
-///    addInitOperandsToLoopNest method needs to be adapted for SCF.FORALL and
-///    then uncomment rest of the fusion related code, should just work since
-///    other fusion related utilities have been adapted for the same.
-
 /// Method to add new init values to a loop nest. Updates `loops` in-place with
 /// new loops that use the `newInitValues`.
 /// The outer-loops are updated to yield the new result values of the inner
 /// loop. For the innermost loop, the call back `getNewYields` is invoked to get
 /// the additional values to yield form the innermost loop.
-// static void addInitOperandsToLoopNest(
-//     RewriterBase &rewriter, MutableArrayRef<scf::ForallOp> loops,
-//     ValueRange newInitValues,
-//     llvm::function_ref<SmallVector<Value>(RewriterBase &rewriter, Value iv,
-//                                           ValueRange newRegionIterArgs)>
-//         getNewYieldValsFn) {
-//   SmallVector<scf::ForallOp> newLoops;
-//   if (loops.empty())
-//     return;
-//   OpBuilder::InsertionGuard g(rewriter);
-//   rewriter.setInsertionPoint(loops.front());
-//   for (auto &loop : loops) {
-//     rewriter.setInsertionPoint(loop);
+static void addInitOperandsToLoopNest(
+    RewriterBase &rewriter, MutableArrayRef<scf::ForallOp> loops,
+    ValueRange newInitValues,
+    llvm::function_ref<SmallVector<Value>(RewriterBase &rewriter,
+                                          ValueRange newRegionOutArgs)>
+        getNewYieldValsFn) {
+  SmallVector<scf::ForallOp> newLoops;
+  if (loops.empty()) return;
+  OpBuilder::InsertionGuard g(rewriter);
+  rewriter.setInsertionPoint(loops.front());
+  for (auto &loop : loops) {
+    rewriter.setInsertionPoint(loop);
 
-//     // Create a new loop with the new init values for this loop.
-//     SmallVector<Value> newInits = llvm::to_vector(loop.getInitArgs());
-//     newInits.append(newInitValues.begin(), newInitValues.end());
-//     auto newLoop = rewriter.create<scf::ForallOp>(
-//         loop.getLoc(), loop.getLowerBound(), loop.getUpperBound(),
-//         loop.getStep(), newInits,
-//         [&](OpBuilder &b, Location loc, Value iv, ValueRange iterArgs) {});
+    // Create a new loop with the new init values for this loop.
+    SmallVector<Value> newInits = llvm::to_vector(loop.getOutputs());
+    newInits.append(newInitValues.begin(), newInitValues.end());
+    auto newLoop = rewriter.create<scf::ForallOp>(
+        loop.getLoc(), loop.getMixedLowerBound(), loop.getMixedUpperBound(),
+        loop.getMixedStep(), newInits, loop.getMapping(),
+        [&](OpBuilder &b, Location loc, ValueRange values) {});
 
-//     // Merge the body of the new loop with the body of the old loops.
-//     SmallVector<Value> sourceBlockArgs;
-//     sourceBlockArgs.push_back(newLoop.getInductionVar());
-//     auto newRegionIterArgs = newLoop.getRegionIterArgs();
-//     sourceBlockArgs.append(
-//         newRegionIterArgs.begin(),
-//         std::next(newRegionIterArgs.begin(), loop.getNumResults()));
-//     rewriter.mergeBlocks(loop.getBody(), newLoop.getBody(), sourceBlockArgs);
-//     rewriter.replaceOp(loop,
-//                        newLoop.getResults().take_front(loop.getNumResults()));
-//     loop = newLoop;
-//     newInitValues =
-//     newLoop.getRegionIterArgs().take_back(newInitValues.size());
-//   }
+    // Merge the body of the new loop with the body of the old loops.
+    SmallVector<Value> sourceBlockArgs;
+    // sourceBlockArgs.append(newLoop.getInductionVars());
+    for (auto x : newLoop.getInductionVars()) sourceBlockArgs.push_back(x);
+    auto newRegionIterArgs = newLoop.getRegionOutArgs();
+    sourceBlockArgs.append(
+        newRegionIterArgs.begin(),
+        std::next(newRegionIterArgs.begin(), loop.getNumResults()));
+    rewriter.mergeBlocks(loop.getBody(), newLoop.getBody(), sourceBlockArgs);
+    rewriter.replaceOp(loop,
+                       newLoop.getResults().take_front(loop.getNumResults()));
+    loop = newLoop;
+    newInitValues = newLoop.getRegionOutArgs().take_back(newInitValues.size());
+  }
 
-//   // Update the loop body of the innermost loop to get new yield values.
-//   scf::ForOp innerMostLoop = loops.back();
-//   auto innerMostYieldOp =
-//       cast<scf::YieldOp>(innerMostLoop.getBody()->getTerminator());
-//   rewriter.setInsertionPoint(innerMostYieldOp);
-//   SmallVector<Value> newYieldVals =
-//       getNewYieldValsFn(rewriter, innerMostLoop.getInductionVar(),
-//                         innerMostLoop.getRegionIterArgs());
-//   SmallVector<Value> newYieldOperands =
-//       llvm::to_vector(innerMostYieldOp->getOperands());
-//   newYieldOperands.append(newYieldVals);
-//   rewriter.replaceOpWithNewOp<scf::YieldOp>(innerMostYieldOp,
-//   newYieldOperands);
+  // Update the loop body of the innermost loop to get new yield values.
+  scf::ForallOp innerMostLoop = loops.back();
+  auto innerMostYieldOp =
+      cast<scf::YieldOp>(innerMostLoop.getBody()->getTerminator());
+  rewriter.setInsertionPoint(innerMostYieldOp);
+  SmallVector<Value> newYieldVals =
+      getNewYieldValsFn(rewriter, innerMostLoop.getRegionOutArgs());
+  SmallVector<Value> newYieldOperands =
+      llvm::to_vector(innerMostYieldOp->getOperands());
+  newYieldOperands.append(newYieldVals);
+  rewriter.replaceOpWithNewOp<scf::YieldOp>(innerMostYieldOp, newYieldOperands);
 
-//   // Make all other loops except the innermost loops yield the values
-//   returned
-//   // by the inner loop.
-//   for (auto [outerLoop, innerLoop] :
-//        llvm::zip_equal(loops.drop_back(), loops.drop_front())) {
-//     auto outerLoopYield =
-//         cast<scf::YieldOp>(outerLoop.getBody()->getTerminator());
-//     SmallVector<Value> newYields =
-//         llvm::to_vector(outerLoopYield.getOperands());
-//     ValueRange additionalYields =
-//         innerLoop.getResults().take_back(newInitValues.size());
-//     newYields.append(additionalYields.begin(), additionalYields.end());
-//     rewriter.setInsertionPoint(outerLoopYield);
-//     rewriter.replaceOpWithNewOp<scf::YieldOp>(outerLoopYield, newYields);
-//   }
-// }
+  // Make all other loops except the innermost loops yield the values
+  // returned by the inner loop.
+  for (auto [outerLoop, innerLoop] :
+       llvm::zip_equal(loops.drop_back(), loops.drop_front())) {
+    auto outerLoopYield =
+        cast<scf::YieldOp>(outerLoop.getBody()->getTerminator());
+    SmallVector<Value> newYields =
+        llvm::to_vector(outerLoopYield.getOperands());
+    ValueRange additionalYields =
+        innerLoop.getResults().take_back(newInitValues.size());
+    newYields.append(additionalYields.begin(), additionalYields.end());
+    rewriter.setInsertionPoint(outerLoopYield);
+    rewriter.replaceOpWithNewOp<scf::YieldOp>(outerLoopYield, newYields);
+  }
+}
 
-// /// Reconstruct the fused producer from within the tiled-and-fused code.
-// void yieldReplacementForFusedProducer(
-//     RewriterBase &rewriter, tensor::ExtractSliceOp sliceOp,
-//     scf::SCFFuseProducerOfSliceResult fusedProducerInfo,
-//     MutableArrayRef<scf::ForallOp> loops) {
-//   if (loops.empty())
-//     return;
+/// Reconstruct the fused producer from within the tiled-and-fused code.
+void yieldReplacementForFusedProducer(
+    RewriterBase &rewriter, tensor::ExtractSliceOp sliceOp,
+    scf::SCFFuseProducerOfSliceResult fusedProducerInfo,
+    MutableArrayRef<scf::ForallOp> loops) {
+  if (loops.empty()) return;
 
-//   OpResult fusableProducer = fusedProducerInfo.origProducer;
-//   Value tiledAndFusedProducer = fusedProducerInfo.tiledAndFusedProducer;
-//   FailureOr<Value> initValue = tensor::getOrCreateDestination(
-//       rewriter, fusableProducer.getOwner()->getLoc(), fusableProducer);
-//   if (succeeded(initValue)) {
+  OpResult fusableProducer = fusedProducerInfo.origProducer;
+  Value tiledAndFusedProducer = fusedProducerInfo.tiledAndFusedProducer;
+  FailureOr<Value> initValue = tensor::getOrCreateDestination(
+      rewriter, fusableProducer.getOwner()->getLoc(), fusableProducer);
+  if (succeeded(initValue)) {
+    auto newYieldValuesFn =
+        [&](RewriterBase &innerRewriter,
+            ValueRange newRegionOutArgs) -> SmallVector<Value> {
+      OpBuilder::InsertionGuard g(innerRewriter);
+      if (auto tiledDestStyleOp =
+              tiledAndFusedProducer
+                  .getDefiningOp<DestinationStyleOpInterface>()) {
+        rewriter.setInsertionPoint(tiledDestStyleOp);
+        BlockArgument newRegionArg = loops.back().getRegionOutArgs().back();
+        auto destSlice = rewriter.create<tensor::ExtractSliceOp>(
+            sliceOp.getLoc(), newRegionArg, sliceOp.getMixedOffsets(),
+            sliceOp.getMixedSizes(), sliceOp.getMixedStrides());
+        unsigned resultNumber = fusableProducer.getResultNumber();
+        rewriter.updateRootInPlace(tiledDestStyleOp, [&]() {
+          tiledDestStyleOp.getDpsInitsMutable()[resultNumber].set(destSlice);
+        });
+      }
+      Block *block = rewriter.getInsertionPoint()->getBlock();
+      rewriter.setInsertionPoint(block->getTerminator());
+      Value replacement = rewriter.create<tensor::InsertSliceOp>(
+          fusedProducerInfo.origProducer.getLoc(),
+          fusedProducerInfo.tiledAndFusedProducer,
+          loops.back().getRegionOutArgs().back(), sliceOp.getMixedOffsets(),
+          sliceOp.getMixedSizes(), sliceOp.getMixedStrides());
+      return {replacement};
+    };
 
-//     auto newYieldValuesFn =
-//         [&](RewriterBase &innerRewriter, Value iv,
-//             ValueRange newRegionIterArgs) -> SmallVector<Value> {
-//       OpBuilder::InsertionGuard g(innerRewriter);
-//       if (auto tiledDestStyleOp =
-//               tiledAndFusedProducer
-//                   .getDefiningOp<DestinationStyleOpInterface>()) {
-//         rewriter.setInsertionPoint(tiledDestStyleOp);
-//         BlockArgument newRegionArg = loops.back().getRegionIterArgs().back();
-//         auto destSlice = rewriter.create<tensor::ExtractSliceOp>(
-//             sliceOp.getLoc(), newRegionArg, sliceOp.getMixedOffsets(),
-//             sliceOp.getMixedSizes(), sliceOp.getMixedStrides());
-//         unsigned resultNumber = fusableProducer.getResultNumber();
-//         rewriter.updateRootInPlace(tiledDestStyleOp, [&]() {
-//           tiledDestStyleOp.getDpsInitsMutable()[resultNumber].set(destSlice);
-//         });
-//       }
-//       Block *block = rewriter.getInsertionPoint()->getBlock();
-//       rewriter.setInsertionPoint(block->getTerminator());
-//       Value replacement = rewriter.create<tensor::InsertSliceOp>(
-//           fusedProducerInfo.origProducer.getLoc(),
-//           fusedProducerInfo.tiledAndFusedProducer,
-//           loops.back().getRegionIterArgs().back(), sliceOp.getMixedOffsets(),
-//           sliceOp.getMixedSizes(), sliceOp.getMixedStrides());
-//       return {replacement};
-//     };
+    addInitOperandsToLoopNest(rewriter, loops,
+                              SmallVector<Value>{initValue.value()},
+                              newYieldValuesFn);
+  }
+}
 
-//     addInitOperandsToLoopNest(rewriter, loops,
-//                               SmallVector<Value>{initValue.value()},
-//                               newYieldValuesFn);
-//   }
-// }
-
-// OUTPUT we get when tiling with SCF.for - Just for reference (TODO: delete
-// later) %9 = scf.for %arg2 = %c0_2 to %c8_3 step %c8_4 iter_args(%arg3 =
-// %arg1) -> (tensor<8x8xi32>) {
-//   %c0_5 = arith.constant 0 : index
-//   %c16 = arith.constant 16 : index
-//   %c0_6 = arith.constant 0 : index
-//   %extracted_slice = tensor.extract_slice %3[%arg0, 0] [8, 16] [1, 1] :
-//   tensor<8x16xi32> to tensor<8x16xi32> %extracted_slice_7 =
-//   tensor.extract_slice %4[0, %arg2] [16, 8] [1, 1] : tensor<16x8xi32> to
-//   tensor<16x8xi32> %extracted_slice_8 = tensor.extract_slice %arg3[%arg0,
-//   %arg2] [8, 8] [1, 1] : tensor<8x8xi32> to tensor<8x8xi32> %10 =
-//   linalg.matmul ins(%extracted_slice, %extracted_slice_7 : tensor<8x16xi32>,
-//   tensor<16x8xi32>) outs(%extracted_slice_8 : tensor<8x8xi32>) ->
-//   tensor<8x8xi32> %inserted_slice = tensor.insert_slice %10 into %arg3[%arg0,
-//   %arg2] [8, 8] [1, 1] : tensor<8x8xi32> into tensor<8x8xi32> scf.yield
-//   %inserted_slice : tensor<8x8xi32>
-// }
 LogicalResult applyTileAndFuse(RewriterBase &rewriter, Operation *rootOp,
                                DominanceInfo &dominanceInfo,
                                scf::SCFTilingOptions options) {
   llvm::SmallDenseSet<Operation *> origTiledAndFusedOps;
   collectTiledAndFusedOps(rootOp, origTiledAndFusedOps);
-  // TODO: Need to uncomment this when addInitOperandsToLoopNest is adapted for
-  //       scf.forall.
-  auto isIgnoredUser = [&](Operation *user, scf::ForallOp outerMostTiledLoop)
-  {
-     return origTiledAndFusedOps.count(user) || isa<tensor::DimOp>(user);
+  auto isIgnoredUser = [&](Operation *user, scf::ForallOp outerMostTiledLoop) {
+    return origTiledAndFusedOps.count(user) || isa<tensor::DimOp>(user);
   };
 
   // The rest of this method is similar to
@@ -404,9 +373,7 @@ LogicalResult applyTileAndFuse(RewriterBase &rewriter, Operation *rootOp,
 
   std::deque<tensor::ExtractSliceOp> candidates;
   addCandidateSlices(tilingResult->tiledOps.back(), candidates);
-  // TODO: Need to uncomment this when addInitOperandsToLoopNest is adapted for
-  //       scf.forall.
-  /*OpBuilder::InsertionGuard g(rewriter);
+  OpBuilder::InsertionGuard g(rewriter);
   while (!candidates.empty()) {
     // Traverse the slices in BFS fashion.
     tensor::ExtractSliceOp candidateSliceOp = candidates.front();
@@ -415,8 +382,7 @@ LogicalResult applyTileAndFuse(RewriterBase &rewriter, Operation *rootOp,
     // Materialize the slice of the producer in place.
     std::optional<scf::SCFFuseProducerOfSliceResult> fusedProducer =
         tileAndFuseProducerOfSlice(rewriter, candidateSliceOp, forLoops);
-    if (!fusedProducer)
-      continue;
+    if (!fusedProducer) continue;
 
     // Check if the fused producer has other uses that require the value
     // to be yielded from within the tiled loop.
@@ -437,7 +403,7 @@ LogicalResult applyTileAndFuse(RewriterBase &rewriter, Operation *rootOp,
       tiledOps.push_back(tiledOp);
     }
   }
- */
+
   scf::ForallOp outermostLoop = forLoops.front();
   for (auto [index, origVal] : llvm::enumerate(yieldedValuesToOrigValues)) {
     Value replacement = outermostLoop.getResult(index);
@@ -450,20 +416,26 @@ LogicalResult applyTileAndFuse(RewriterBase &rewriter, Operation *rootOp,
   return success();
 }
 
-class AMDAIETileToSCFForAllPass
-    : public AMDAIETileToSCFForAllBase<AMDAIETileToSCFForAllPass> {
+/// This pass starts with the last TilingInterface operation, tiles the op and
+/// fuses its producers recursively. The `tilingLevel` must be specified. It
+/// picks the `tilingLevel`-th list as tiling sizes from lowering_config.
+class AMDAIETileAndFusePass
+    : public AMDAIETileAndFuseBase<AMDAIETileAndFusePass> {
  public:
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<scf::SCFDialect>();
   }
 
-  AMDAIETileToSCFForAllPass() = default;
-  AMDAIETileToSCFForAllPass(const AMDAIETileToSCFForAllPass &pass){};
+  AMDAIETileAndFusePass() = default;
+  AMDAIETileAndFusePass(int64_t tilingLevel = -1) {
+    this->tilingLevel.setValue(tilingLevel);
+  }
+  AMDAIETileAndFusePass(const AMDAIETileAndFusePass &pass){};
 
   void runOnOperation() override;
 };
 
-void AMDAIETileToSCFForAllPass::runOnOperation() {
+void AMDAIETileAndFusePass::runOnOperation() {
   llvm::outs() << "BEFORE :-\n" << (*getOperation()) << "\n--------\n";
   MLIRContext *context = &getContext();
   auto funcOp = getOperation();
@@ -480,6 +452,8 @@ void AMDAIETileToSCFForAllPass::runOnOperation() {
     return;
   }
 
+  LLVM_DEBUG(llvm::dbgs() << "consumerOp: " << consumerOp << "\n");
+  LLVM_DEBUG(llvm::dbgs() << "tilingLevel: " << tilingLevel << "\n");
   // TODO:
   //    1. Add tile level.
   //    2. Currently hardcoding the tile size to make the tile and fuse run for
@@ -487,9 +461,6 @@ void AMDAIETileToSCFForAllPass::runOnOperation() {
   //       least the first level. So, we can generalize this by adding tile
   //       level, similar to LLVMCPUTileAndFuse.cpp by uncommenting the code
   //       below.
-  //    3. Based on point 3 above, change the name of this pass to
-  //       AMDAIETileAndFuse.cpp, and accordingly the pass name similar to
-  //       DEBUG_TYPE.
   // // If `consumerOp` has its own lowering config, we prefer using it.
   // Otherwise,
   // // fallback to find a lowering_config from other operations.
@@ -522,8 +493,9 @@ void AMDAIETileToSCFForAllPass::runOnOperation() {
 
   SmallVector<OpFoldResult> tileSizes = getAsIndexOpFoldResult(context, {8, 8});
   auto options = scf::SCFTilingOptions().setTileSizes(tileSizes);
-  options.setMapping({gpu::GPUBlockMappingAttr::get(context, gpu::MappingId::DimY),
-         gpu::GPUBlockMappingAttr::get(context, gpu::MappingId::DimX)});
+  options.setMapping(
+      {gpu::GPUBlockMappingAttr::get(context, gpu::MappingId::DimY),
+       gpu::GPUBlockMappingAttr::get(context, gpu::MappingId::DimX)});
 
   IRRewriter rewriter(context);
   DominanceInfo dominanceInfo(funcOp);
@@ -537,8 +509,8 @@ void AMDAIETileToSCFForAllPass::runOnOperation() {
 
 }  // namespace
 
-std::unique_ptr<OperationPass<>> createAMDAIETileToSCFForAllPass() {
-  return std::make_unique<AMDAIETileToSCFForAllPass>();
+std::unique_ptr<OperationPass<>> createAMDAIETileAndFusePass(int64_t tilingLevel) {
+  return std::make_unique<AMDAIETileAndFusePass>(tilingLevel);
 }
 
 }  // namespace mlir::iree_compiler::AMDAIE
