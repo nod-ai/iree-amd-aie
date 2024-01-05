@@ -6,6 +6,10 @@
 
 #include "iree-amd-aie/Transforms/PassDetail.h"
 #include "iree-amd-aie/Transforms/Passes.h"
+#include "iree/compiler/Codegen/Common/Transforms.h"
+#include "iree/compiler/Codegen/Transforms/Transforms.h"
+#include "iree/compiler/Codegen/Utils/Utils.h"
+#include "iree/compiler/Dialect/Flow/IR/FlowOps.h"
 #include "mlir/Dialect/Arith/Utils/Utils.h"
 #include "mlir/Dialect/GPU/IR/GPUDialect.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
@@ -26,6 +30,50 @@
 namespace mlir::iree_compiler::AMDAIE {
 
 namespace {
+
+/// Lowers the computation within the workgroup count region for the ops
+/// that are handled by default.
+static LogicalResult lowerWorkgroupCount(
+    RewriterBase &rewriter, func::FuncOp entryPointFn,
+    ArrayRef<OpFoldResult> workgroupCount, ArrayRef<int64_t> tileSizes,
+    ArrayRef<int64_t> staticLoopRanges, ArrayRef<int64_t> interchange,
+    ArrayRef<unsigned> partitionedLoops, int maxWorkgroupParallelDims) {
+  FailureOr<IREE::HAL::ExecutableExportOp> exportOp =
+      getEntryPoint(entryPointFn);
+  if (failed(exportOp)) {
+    return entryPointFn.emitOpError(
+        "expected function to be entry point function");
+  }
+  Block *body = exportOp->getWorkgroupCountBody();
+  if (!body) {
+    return exportOp->emitOpError("unexpected empty workgroup count region");
+  }
+  SmallVector<Operation *> countOps;
+  for (Operation &op : *body) {
+    if (isa<IREE::Flow::DispatchWorkgroupCountFromSliceOp,
+            IREE::Flow::DispatchWorkgroupCountFromDagRootOp>(&op)) {
+      countOps.push_back(&op);
+    }
+  }
+  if (countOps.empty()) {
+    // If there are no default handled `flow.dispatch.workgroup_count`
+    // operation, do nothing. do nothing.
+    return success();
+  }
+  if (!llvm::hasSingleElement(countOps)) {
+    return exportOp->emitOpError(
+        "unexpected multiple flow.dispatch.workgroup_count_from_dag_root "
+        "operations "
+        "in body");
+  }
+  return TypeSwitch<Operation *, LogicalResult>(countOps[0])
+      .Case<IREE::Flow::DispatchWorkgroupCountFromSliceOp>([&](auto countOp) {
+        return lowerWorkgroupCountFromSliceOp(rewriter, countOp, entryPointFn,
+                                              workgroupCount,
+                                              maxWorkgroupParallelDims);
+      })
+      .Default([&](Operation *) { return success(); });
+}
 
 /// Clones the operation and updates the destination if the operation
 /// implements the `DestinationStyleOpInterface`.
@@ -294,43 +342,61 @@ class AMDAIETileAndFusePass
 
 void AMDAIETileAndFusePass::runOnOperation() {
   MLIRContext *context = &getContext();
-  auto funcOp = getOperation();
+  IREE::HAL::ExecutableVariantOp variantOp = getOperation();
+  ModuleOp innerModule = variantOp.getInnerModule();
+  for (func::FuncOp funcOp : innerModule.getOps<func::FuncOp>()) {
+    TilingInterface consumerOp;
+    funcOp->walk<WalkOrder::PostOrder, ReverseIterator>(
+        [&](TilingInterface op) {
+          // Find the next consumer op if it does not have loops.
+          if (op.getLoopIteratorTypes().empty()) return WalkResult::advance();
+          consumerOp = op;
+          return WalkResult::interrupt();
+        });
+    if (!consumerOp) {
+      LLVM_DEBUG(llvm::dbgs() << "----- skip, no consumer op -----\n");
+      return;
+    }
 
-  TilingInterface consumerOp;
-  funcOp->walk<WalkOrder::PostOrder, ReverseIterator>([&](TilingInterface op) {
-    // Find the next consumer op if it does not have loops.
-    if (op.getLoopIteratorTypes().empty()) return WalkResult::advance();
-    consumerOp = op;
-    return WalkResult::interrupt();
-  });
-  if (!consumerOp) {
-    LLVM_DEBUG(llvm::dbgs() << "----- skip, no consumer op -----\n");
-    return;
-  }
+    LLVM_DEBUG(llvm::dbgs() << "consumerOp: " << consumerOp << "\n");
+    LLVM_DEBUG(llvm::dbgs() << "tilingLevel: " << tilingLevel << "\n");
+    // TODO: Currently hardcoding the tile size to make the tile and fuse run
+    // for
+    //       at least the first level. So, we can generalize this by adding tile
+    //       level, similar to LLVMCPUTileAndFuse.cpp.
+    SmallVector<OpFoldResult> tileSizes =
+        getAsIndexOpFoldResult(context, {8, 8});
+    auto options = scf::SCFTilingOptions().setTileSizes(tileSizes);
+    options.setMapping(
+        {gpu::GPUBlockMappingAttr::get(context, gpu::MappingId::DimY),
+         gpu::GPUBlockMappingAttr::get(context, gpu::MappingId::DimX)});
 
-  LLVM_DEBUG(llvm::dbgs() << "consumerOp: " << consumerOp << "\n");
-  LLVM_DEBUG(llvm::dbgs() << "tilingLevel: " << tilingLevel << "\n");
-  // TODO: Currently hardcoding the tile size to make the tile and fuse run for
-  //       at least the first level. So, we can generalize this by adding tile
-  //       level, similar to LLVMCPUTileAndFuse.cpp.
-  SmallVector<OpFoldResult> tileSizes = getAsIndexOpFoldResult(context, {8, 8});
-  auto options = scf::SCFTilingOptions().setTileSizes(tileSizes);
-  options.setMapping(
-      {gpu::GPUBlockMappingAttr::get(context, gpu::MappingId::DimY),
-       gpu::GPUBlockMappingAttr::get(context, gpu::MappingId::DimX)});
+    IRRewriter rewriter(context);
+    DominanceInfo dominanceInfo(funcOp);
+    if (failed(
+            applyTileAndFuse(rewriter, consumerOp, dominanceInfo, options))) {
+      LLVM_DEBUG(llvm::dbgs() << "----- tile and fuse failed -----\n");
+      return signalPassFailure();
+    }
 
-  IRRewriter rewriter(context);
-  DominanceInfo dominanceInfo(funcOp);
-  if (failed(applyTileAndFuse(rewriter, consumerOp, dominanceInfo, options))) {
-    LLVM_DEBUG(llvm::dbgs() << "----- tile and fuse failed -----\n");
-    return signalPassFailure();
+    if (failed(lowerWorkgroupCount(
+            rewriter, funcOp,
+            /*workgroupCountVals =*/ArrayRef<OpFoldResult>{},
+            /*tileSizes =*/ArrayRef<int64_t>{},
+            /*staticLoopRanges =*/ArrayRef<int64_t>{},
+            /*interchange =*/ArrayRef<int64_t>{},
+            /*partitionedLoops =*/ArrayRef<unsigned>{},
+            /*maxWorkgroupParallelDims=*/0))) {
+      funcOp->emitOpError("failed to lower workgroup count region");
+      return signalPassFailure();
+    }
   }
 }
 
 }  // namespace
 
-std::unique_ptr<OperationPass<>> createAMDAIETileAndFusePass(
-    int64_t tilingLevel) {
+std::unique_ptr<OperationPass<IREE::HAL::ExecutableVariantOp>>
+createAMDAIETileAndFusePass(int64_t tilingLevel) {
   return std::make_unique<AMDAIETileAndFusePass>(tilingLevel);
 }
 

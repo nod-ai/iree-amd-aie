@@ -21,7 +21,7 @@ def AMDAIELowerExecutableTarget :
 }
 
 def AMDAIETileAndFuse :
-    Pass<"iree-amdaie-tile-and-fuse", ""> {
+    Pass<"iree-amdaie-tile-and-fuse", "IREE::HAL::ExecutableVariantOp"> {
   let summary = "Pass to tile and fuse TilingInterface operations.";
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIETileAndFusePass()";
   let options = [

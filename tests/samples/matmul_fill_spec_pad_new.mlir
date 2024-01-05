@@ -12,9 +12,12 @@
 //     --iree-hal-configuration-pipeline | \
 //   ${IREE_DIR}/build/tools/iree-opt \
 //      --pass-pipeline='builtin.module(hal.executable(hal.executable.variant(iree-hal-translate-target-executable-variants{target=amd-aie})))' \
-//      --iree-codegen-transform-dialect-library=${IREE_AMD_AIE_DIR}/tests/samples/matmul_fill_spec_pad.mlir
+//      --iree-codegen-transform-dialect-library=${IREE_AMD_AIE_DIR}/tests/samples/matmul_fill_spec_pad_new.mlir \
+//      --iree-amd-aie-cpp-passes
 // ```
 
+
+// The first level tiling and fusion is done in a C++ pass compared to base script
 module attributes { transform.with_named_sequence } {
   transform.named_sequence @cleanup(%variant_op: !transform.any_op {transform.readonly}) {
     %func = transform.structured.match ops{["func.func"]} in %variant_op : (!transform.any_op) -> !transform.any_op

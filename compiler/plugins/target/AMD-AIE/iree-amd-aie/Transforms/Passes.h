@@ -34,8 +34,8 @@ std::unique_ptr<OperationPass<IREE::HAL::ExecutableVariantOp>>
 createAMDAIELowerExecutableTargetPass();
 
 /// Create pass to tile and fuse TilingInterface operations.
-std::unique_ptr<OperationPass<>> createAMDAIETileAndFusePass(
-    int64_t tilingLevel = -1);
+std::unique_ptr<OperationPass<IREE::HAL::ExecutableVariantOp>>
+createAMDAIETileAndFusePass(int64_t tilingLevel = -1);
 
 void registerAMDAIEPasses();
 
