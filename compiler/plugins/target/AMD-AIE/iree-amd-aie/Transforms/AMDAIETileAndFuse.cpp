@@ -75,6 +75,11 @@ static LogicalResult lowerWorkgroupCount(
       .Default([&](Operation *) { return success(); });
 }
 
+//===----------------------------------------------------------------------------------===//
+// Methods copied over from core to implement tile and fuse with scf.forall.
+// TODO(MaheshRavishankar) Replace them with core methods when upstream
+// can handle this natively
+//===----------------------------------------------------------------------------------===//
 /// Clones the operation and updates the destination if the operation
 /// implements the `DestinationStyleOpInterface`.
 static Operation *cloneOpAndUpdateDestinationArgs(RewriterBase &rewriter,
@@ -320,6 +325,9 @@ LogicalResult applyTileAndFuse(RewriterBase &rewriter, Operation *rootOp,
 
   return success();
 }
+//===----------------------------------------------------------------------------------===//
+// End methods copied over from core to implement tile and fuse with scf.forall.
+//===----------------------------------------------------------------------------------===//
 
 /// This pass starts with the last TilingInterface operation, tiles the op and
 /// fuses its producers recursively. The `tilingLevel` must be specified. It
