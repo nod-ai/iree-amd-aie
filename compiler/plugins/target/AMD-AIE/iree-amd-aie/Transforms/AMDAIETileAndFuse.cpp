@@ -33,11 +33,8 @@ namespace {
 
 /// Lowers the computation within the workgroup count region for the ops
 /// that are handled by default.
-static LogicalResult lowerWorkgroupCount(
-    RewriterBase &rewriter, func::FuncOp entryPointFn,
-    ArrayRef<OpFoldResult> workgroupCount, ArrayRef<int64_t> tileSizes,
-    ArrayRef<int64_t> staticLoopRanges, ArrayRef<int64_t> interchange,
-    ArrayRef<unsigned> partitionedLoops, int maxWorkgroupParallelDims) {
+static LogicalResult lowerWorkgroupCount(RewriterBase &rewriter,
+                                         func::FuncOp entryPointFn) {
   FailureOr<IREE::HAL::ExecutableExportOp> exportOp =
       getEntryPoint(entryPointFn);
   if (failed(exportOp)) {
@@ -48,31 +45,32 @@ static LogicalResult lowerWorkgroupCount(
   if (!body) {
     return exportOp->emitOpError("unexpected empty workgroup count region");
   }
-  SmallVector<Operation *> countOps;
+  SmallVector<IREE::Flow::DispatchWorkgroupCountFromSliceOp> workgroupCountOps;
   for (Operation &op : *body) {
-    if (isa<IREE::Flow::DispatchWorkgroupCountFromSliceOp,
-            IREE::Flow::DispatchWorkgroupCountFromDagRootOp>(&op)) {
-      countOps.push_back(&op);
+    if (isa<IREE::Flow::DispatchWorkgroupCountFromSliceOp>(&op)) {
+      workgroupCountOps.push_back(
+          cast<IREE::Flow::DispatchWorkgroupCountFromSliceOp>(&op));
     }
   }
-  if (countOps.empty()) {
+  if (workgroupCountOps.empty()) {
     // If there are no default handled `flow.dispatch.workgroup_count`
     // operation, do nothing. do nothing.
     return success();
   }
-  if (!llvm::hasSingleElement(countOps)) {
+  if (!llvm::hasSingleElement(workgroupCountOps)) {
     return exportOp->emitOpError(
-        "unexpected multiple flow.dispatch.workgroup_count_from_dag_root "
-        "operations "
-        "in body");
+        "unexpected multiple flow.dispatch.workgroup_count_slice_op "
+        "operations in body");
   }
-  return TypeSwitch<Operation *, LogicalResult>(countOps[0])
-      .Case<IREE::Flow::DispatchWorkgroupCountFromSliceOp>([&](auto countOp) {
-        return lowerWorkgroupCountFromSliceOp(rewriter, countOp, entryPointFn,
-                                              workgroupCount,
-                                              maxWorkgroupParallelDims);
-      })
-      .Default([&](Operation *) { return success(); });
+  OpBuilder::InsertionGuard g(rewriter);
+  rewriter.setInsertionPoint(workgroupCountOps[0]);
+  Location loc = workgroupCountOps[0].getLoc();
+  SmallVector<OpFoldResult> results;
+  results.resize(workgroupCountOps[0].getNumResults(),
+                 rewriter.getIndexAttr(1));
+  rewriter.replaceOp(workgroupCountOps[0],
+                     getValueOrCreateConstantIndexOp(rewriter, loc, results));
+  return success();
 }
 
 //===----------------------------------------------------------------------------------===//
@@ -177,6 +175,10 @@ std::optional<scf::SCFFuseProducerOfSliceResult> tileAndFuseProducerOfSlice(
                                            tileAndFuseResult->tiledValues[0],
                                            tileAndFuseResult->tiledOps};
 }
+
+//===----------------------------------------------------------------------------------===//
+// End methods copied over from core to implement tile and fuse with scf.forall.
+//===----------------------------------------------------------------------------------===//
 
 /// Starting from `op` walk all operands backwards to find all
 /// potentially fusable operations, i.e. operations that implement
@@ -325,9 +327,6 @@ LogicalResult applyTileAndFuse(RewriterBase &rewriter, Operation *rootOp,
 
   return success();
 }
-//===----------------------------------------------------------------------------------===//
-// End methods copied over from core to implement tile and fuse with scf.forall.
-//===----------------------------------------------------------------------------------===//
 
 /// This pass starts with the last TilingInterface operation, tiles the op and
 /// fuses its producers recursively. The `tilingLevel` must be specified. It
@@ -387,14 +386,9 @@ void AMDAIETileAndFusePass::runOnOperation() {
       return signalPassFailure();
     }
 
-    if (failed(lowerWorkgroupCount(
-            rewriter, funcOp,
-            /*workgroupCountVals =*/ArrayRef<OpFoldResult>{},
-            /*tileSizes =*/ArrayRef<int64_t>{},
-            /*staticLoopRanges =*/ArrayRef<int64_t>{},
-            /*interchange =*/ArrayRef<int64_t>{},
-            /*partitionedLoops =*/ArrayRef<unsigned>{},
-            /*maxWorkgroupParallelDims=*/0))) {
+    // Check if workgroup count lowering is needed and if it is then perform it
+    // with a workgroup of (1, 1, 1)
+    if (failed(lowerWorkgroupCount(rewriter, funcOp))) {
       funcOp->emitOpError("failed to lower workgroup count region");
       return signalPassFailure();
     }
