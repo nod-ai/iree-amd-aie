@@ -31,8 +31,7 @@ namespace mlir::iree_compiler::AMDAIE {
 
 namespace {
 
-/// Lowers the computation within the workgroup count region for the ops
-/// that are handled by default.
+/// Lower WorkgroupCountFromSliceOp with all 1's.
 static LogicalResult lowerWorkgroupCount(RewriterBase &rewriter,
                                          func::FuncOp entryPointFn) {
   FailureOr<IREE::HAL::ExecutableExportOp> exportOp =
@@ -54,7 +53,7 @@ static LogicalResult lowerWorkgroupCount(RewriterBase &rewriter,
   }
   if (workgroupCountOps.empty()) {
     // If there are no default handled `flow.dispatch.workgroup_count`
-    // operation, do nothing. do nothing.
+    // operation, do nothing.
     return success();
   }
   if (!llvm::hasSingleElement(workgroupCountOps)) {
@@ -386,8 +385,6 @@ void AMDAIETileAndFusePass::runOnOperation() {
       return signalPassFailure();
     }
 
-    // Check if workgroup count lowering is needed and if it is then perform it
-    // with a workgroup of (1, 1, 1)
     if (failed(lowerWorkgroupCount(rewriter, funcOp))) {
       funcOp->emitOpError("failed to lower workgroup count region");
       return signalPassFailure();
