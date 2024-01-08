@@ -276,8 +276,8 @@ FailureOr<LowerPackResult> lowerPack(RewriterBase &rewriter,
 
   SmallVector<Value, 2> mt;
   rewriter.create<xilinx::air::DmaMemcpyNdOp>(
-      loc, SmallVector<Type, 1>{}, mt, transposeOp.getResult(), mt, mt, mt,
-      packOp.getOutput(), mt, mt, mt);
+      loc, SmallVector<Type, 1>{}, mt, packOp.getOutput(), mt, mt, mt,
+      transposeOp.getResult(), mt, mt, mt);
 
   // 7. Replace packOp by transposeOp.
   rewriter.eraseOp(packOp);
@@ -324,15 +324,39 @@ static MemRefType inferTransposeResultType(MemRefType memRefType,
           StridedLayoutAttr::get(memRefType.getContext(), offset, strides));
 }
 
-static void extractStridesFromTranspose(memref::TransposeOp transposeOp,
-                                        OpBuilder &builder,
-                                        SmallVector<Value, 4> &strides) {
-  auto loc = transposeOp.getLoc();
+static void extractStridesFromMemrefType(MemRefType memrefTy,
+                                         OpBuilder &builder,
+                                         SmallVector<Value, 4> &strides) {
+  // get the strides and offsets from the memref type
+  int64_t offset;
+  SmallVector<int64_t, 4> layout_strides;
+  auto successStrides = getStridesAndOffset(memrefTy, layout_strides, offset);
+  if (failed(successStrides)) {
+    llvm::outs() << "Failed to get strides\n";
+    return;  // failure();
+  }
+
+  for (auto s : layout_strides)
+    strides.push_back(
+        builder.create<arith::ConstantIndexOp>(builder.getUnknownLoc(), s));
+}
+
+static void extractOperandsFromSubview(memref::SubViewOp subview,
+                                       OpBuilder &builder,
+                                       SmallVector<Value, 4> &offsets,
+                                       SmallVector<Value, 4> &sizes,
+                                       SmallVector<Value, 4> &strides) {
+  auto subview_offsets = subview.getOffsets().begin();
+  auto static_offsets = subview.getStaticOffsets();
+  auto static_sizes = subview.getStaticSizes();
+  auto static_strides = subview.getStaticStrides();
+  auto loc = subview.getLoc();
 
   // get the strides and offsets from the memref type
-  MemRefType input_type = transposeOp.getIn().getType();
   auto inferredType =
-      inferTransposeResultType(input_type, transposeOp.getPermutation());
+      memref::SubViewOp::inferResultType(
+          subview.getSourceType(), static_offsets, static_sizes, static_strides)
+          .cast<MemRefType>();
   int64_t offset;
   SmallVector<int64_t, 4> layout_strides;
   auto successStrides =
@@ -342,6 +366,14 @@ static void extractStridesFromTranspose(memref::TransposeOp transposeOp,
     return;  // failure();
   }
 
+  for (auto o : static_offsets) {
+    if (o >= 0)
+      offsets.push_back(builder.create<arith::ConstantIndexOp>(loc, o));
+    else
+      offsets.push_back(*subview_offsets++);
+  }
+  for (auto s : static_sizes)
+    sizes.push_back(builder.create<arith::ConstantIndexOp>(loc, s));
   for (auto s : layout_strides)
     strides.push_back(builder.create<arith::ConstantIndexOp>(loc, s));
 }
@@ -362,24 +394,78 @@ static LogicalResult CondenseMemrefDataReorderingToAIRDma(
   if (!(src_type.hasStaticShape() || dst_type.hasStaticShape()))
     return failure();
 
+  // Revert the vector of memref ops, as it was built with push_back.
+  std::reverse(src_ancestor_memref_ops.begin(), src_ancestor_memref_ops.end());
+  std::reverse(dst_ancestor_memref_ops.begin(), dst_ancestor_memref_ops.end());
+
   SmallVector<Value, 4> src_offsets, dst_offsets;
   SmallVector<Value, 4> src_strides, dst_strides;
   SmallVector<Value, 4> src_sizes, dst_sizes;
+  SmallVector<Value, 4> empty;
 
-  if (auto transposeOp = src.getDefiningOp<memref::TransposeOp>()) {
-    extractStridesFromTranspose(transposeOp, rewriter, src_strides);
+  MemRefType src_memref_ty;
+  if (!src_ancestor_memref_ops.empty()) {
+    if (auto subviewOp =
+            dyn_cast<memref::SubViewOp>(src_ancestor_memref_ops[0])) {
+      extractOperandsFromSubview(subviewOp, rewriter, src_offsets, src_sizes,
+                                 empty);
+      src_memref_ty = subviewOp.getSourceType();
+      src = subviewOp.getSource();
+    }
+    // TODO: what if subview op isn't the first memref op?
+  }
+  MemRefType dst_memref_ty;
+  if (!dst_ancestor_memref_ops.empty()) {
+    if (auto subviewOp =
+            dyn_cast<memref::SubViewOp>(dst_ancestor_memref_ops[0])) {
+      extractOperandsFromSubview(subviewOp, rewriter, dst_offsets, dst_sizes,
+                                 empty);
+      dst_memref_ty = subviewOp.getSourceType();
+      dst = subviewOp.getSource();
+    }
+    // TODO: what if subview op isn't the first memref op?
+  }
 
-    src = transposeOp.getIn();
-    src_offsets = dmaOp.getSrcOffsets();
-    src_sizes = dmaOp.getSrcSizes();
-  } else if (auto transposeOp = dst.getDefiningOp<memref::TransposeOp>()) {
-    extractStridesFromTranspose(transposeOp, rewriter, dst_strides);
+  for (auto memrefOp : src_ancestor_memref_ops) {
+    if (auto transposeOp = dyn_cast<memref::TransposeOp>(memrefOp)) {
+      src_memref_ty =
+          inferTransposeResultType(src_memref_ty, transposeOp.getPermutation());
+    } else if (auto expandShapeOp = dyn_cast<memref::ExpandShapeOp>(memrefOp)) {
+      FailureOr<MemRefType> compute_expand =
+          memref::ExpandShapeOp::computeExpandedType(
+              src_memref_ty, expandShapeOp.getResultType().getShape(),
+              expandShapeOp.getReassociationIndices());
+      if (failed(compute_expand)) {
+        assert(false);
+      } else {
+        src_memref_ty = *compute_expand;
+      }
+    }
+  }
 
-    dst = transposeOp.getIn();
-    dst_offsets = dmaOp.getDstOffsets();
-    dst_sizes = dmaOp.getDstSizes();
-  } else
-    return failure();
+  for (auto memrefOp : dst_ancestor_memref_ops) {
+    if (auto transposeOp = dyn_cast<memref::TransposeOp>(memrefOp)) {
+      dst_memref_ty =
+          inferTransposeResultType(dst_memref_ty, transposeOp.getPermutation());
+    } else if (auto expandShapeOp = dyn_cast<memref::ExpandShapeOp>(memrefOp)) {
+      FailureOr<MemRefType> compute_expand =
+          memref::ExpandShapeOp::computeExpandedType(
+              dst_memref_ty, expandShapeOp.getResultType().getShape(),
+              expandShapeOp.getReassociationIndices());
+      if (failed(compute_expand)) {
+        assert(false);
+      } else {
+        dst_memref_ty = *compute_expand;
+      }
+    }
+  }
+
+  if (src_ancestor_memref_ops.size()) {
+    extractStridesFromMemrefType(src_memref_ty, rewriter, src_strides);
+  }
+  if (dst_ancestor_memref_ops.size()) {
+    extractStridesFromMemrefType(dst_memref_ty, rewriter, dst_strides);
+  }
 
   SmallVector<Value, 4> deps;
   SmallVector<Type, 4> tys;
@@ -396,7 +482,7 @@ static LogicalResult CondenseMemrefDataReorderingToAIRDma(
 }
 
 //===----------------------------------------------------------------------===//
-// Pass 1
+// Pass
 //===----------------------------------------------------------------------===//
 
 class AMDAIEDecomposeLinalgExtPackUnPackToAIRPass
@@ -523,10 +609,6 @@ void AMDAIEDecomposeLinalgExtPackUnPackToAIRPass::runOnOperation() {
     }
   }
 }
-
-//===----------------------------------------------------------------------===//
-// Pass 2
-//===----------------------------------------------------------------------===//
 
 }  // namespace
 
