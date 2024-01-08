@@ -18,13 +18,66 @@
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
-#define DEBUG_TYPE "iree-amdaie-tensor-pad"
+#define DEBUG_TYPE "iree-amdaie-pad-and-bufferize"
 
 namespace mlir::iree_compiler::AMDAIE {
 
 namespace {
 
 static constexpr StringRef kCopyOpNone = "none";
+
+/// TODO(avarma): For now we are creating a temporary struct options
+/// in order to adapt to BufferizeToAllocation options. Once we address upstream
+/// methods by having APIs, we can better address this instead using the
+/// upstream struct. I could've used the upstream struct here, but I chose
+/// not to in order to first adapt to minimal changes required for the C++
+/// methods to work.
+struct _BufferizeToAllocationOptions {
+  Attribute memorySpace;
+  StringAttr memCpyOp;
+  StringAttr allocOp;
+  bool bufferizeDestinationOnly;
+  bool emitDealloc;
+};
+
+static LogicalResult applyBufferizeToAllocation(
+    RewriterBase &rewriter, Operation *op,
+    _BufferizeToAllocationOptions _options) {
+  linalg::BufferizeToAllocationOptions options;
+  if (_options.memCpyOp == "bufferization.materialize_in_destination") {
+    options.memcpyOp = linalg::BufferizeToAllocationOptions::MemcpyOp::
+        MaterializeInDestination;
+  } else if (_options.memCpyOp == "memref.copy") {
+    options.memcpyOp =
+        linalg::BufferizeToAllocationOptions::MemcpyOp::MemrefCopy;
+  } else if (_options.memCpyOp == "linalg.copy") {
+    options.memcpyOp =
+        linalg::BufferizeToAllocationOptions::MemcpyOp::LinalgCopy;
+  } else {
+    llvm_unreachable("invalid memcpy op");
+  }
+  if (_options.allocOp == "memref.alloc") {
+    options.allocOp =
+        linalg::BufferizeToAllocationOptions::AllocOp::MemrefAlloc;
+  } else if (_options.allocOp == "memref.alloca") {
+    options.allocOp =
+        linalg::BufferizeToAllocationOptions::AllocOp::MemrefAlloca;
+  } else {
+    llvm_unreachable("invalid alloc op");
+  }
+  options.bufferizeDestinationOnly = _options.bufferizeDestinationOnly;
+  options.emitDealloc = _options.emitDealloc;
+
+  // Bufferize ops.
+  Attribute memorySpace = _options.memorySpace;
+  Value buffer =
+      linalg::bufferizeToAllocation(rewriter, options, op, memorySpace);
+  if (!buffer) {
+    LLVM_DEBUG(llvm::dbgs() << "----- failed to bufferize operation -----\n");
+    return failure();
+  }
+  return success();
+}
 
 /// TODO(avarma): For now we are creating a temporary struct options
 /// in order to adapt to LinalgPadding options. Once we address upstream
@@ -87,25 +140,34 @@ static LogicalResult applyPad(RewriterBase &rewriter,
   // TODO: clean this up and stop "pad and hoist" behavior more globally now
   // that we have more composable abstractions.
   rewriter.replaceOp(linalgTarget, replacements);
-  paddedOps.push_back(paddedOp);
-  padOps.append(newPadOps.begin(), newPadOps.end());
+  // We rewrite each operand of the linalgOp (currently, MatmulOp) into DSP.
+  for (auto newPadOp : newPadOps) {
+    rewriter.setInsertionPointAfter(newPadOp);
+    if (failed(linalg::rewriteInDestinationPassingStyle(rewriter, newPadOp))) {
+      LLVM_DEBUG(llvm::dbgs() << "----- failed to rewrite in DPS -----\n");
+      return failure();
+    }
+  }
 
   return success();
 }
 
-class AMDAIETensorPadPass : public AMDAIETensorPadBase<AMDAIETensorPadPass> {
+class AMDAIEPadAndBufferizePass
+    : public AMDAIETensorPadBase<AMDAIEPadAndBufferizePass> {
  private:
   AMDAIETensorPadOption option = AMDAIETensorPadOption::ParallelDims;
 
  public:
-  explicit AMDAIETensorPadPass(AMDAIETensorPadOption option) : option(option) {}
+  explicit AMDAIEPadAndBufferizePass(AMDAIETensorPadOption option)
+      : option(option) {}
   void getDependentDialects(DialectRegistry &registry) const override {
-    registry.insert<tensor::TensorDialect, linalg::LinalgDialect>();
+    registry.insert<bufferization::BufferizationDialect, tensor::TensorDialect,
+                    linalg::LinalgDialect>();
   }
   void runOnOperation() override;
 };
 
-void AMDAIETensorPadPass::runOnOperation() {
+void AMDAIEPadAndBufferizePass::runOnOperation() {
   MLIRContext *context = &getContext();
   IREE::HAL::ExecutableVariantOp variantOp = getOperation();
   ModuleOp innerModule = variantOp.getInnerModule();
@@ -157,13 +219,42 @@ void AMDAIETensorPadPass::runOnOperation() {
       funcOp->emitOpError("failed to apply pad");
       return signalPassFailure();
     }
+
+    // TODO: This part can be coded better instead of againg walking the FuncOp.
+    funcOp->walk<WalkOrder::PostOrder, ReverseIterator>(
+        [&](TilingInterface op) {
+          // Find the next matmul op if it does not have loops.
+          if (op.getLoopIteratorTypes().empty() || !isa<linalg::MatmulOp>(op))
+            return WalkResult::advance();
+          matmulOp = cast<linalg::MatmulOp>(op);
+          return WalkResult::interrupt();
+        });
+    if (!matmulOp) {
+      LLVM_DEBUG(llvm::dbgs() << "----- skip, no matmul op -----\n");
+      return;
+    }
+    for (auto operand : matmulOp->getOperands()) {
+      _BufferizeToAllocationOptions options;
+      options.memorySpace = rewriter.getIntegerAttr(i64Type, 1);
+      options.memCpyOp =
+          rewriter.getStringAttr("bufferization.materialize_in_destination");
+      options.allocOp = rewriter.getStringAttr("memref.alloc");
+      options.bufferizeDestinationOnly = true;
+      options.emitDealloc = true;
+      rewriter.setInsertionPointAfter(operand.getDefiningOp());
+      if (failed(applyBufferizeToAllocation(rewriter, operand.getDefiningOp(),
+                                            options))) {
+        funcOp->emitOpError("failed bufferizing to allocations");
+        return signalPassFailure();
+      }
+    }
   }
 }
 
 }  // namespace
 
 std::unique_ptr<OperationPass<IREE::HAL::ExecutableVariantOp>>
-createAMDAIETensorPadPass(AMDAIETensorPadOption option) {
-  return std::make_unique<AMDAIETensorPadPass>(option);
+createAMDAIEPadAndBufferizePass(AMDAIETensorPadOption option) {
+  return std::make_unique<AMDAIEPadAndBufferizePass>(option);
 }
 }  // namespace mlir::iree_compiler::AMDAIE

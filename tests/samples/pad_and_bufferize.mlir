@@ -1,4 +1,4 @@
-// RUN: iree-opt --pass-pipeline='builtin.module(hal.executable(hal.executable.variant(iree-amdaie-tensor-pad)))' --split-input-file %s | FileCheck %s
+// RUN: iree-opt --pass-pipeline='builtin.module(hal.executable(hal.executable.variant(iree-amdaie-pad-and-bufferize)))' --split-input-file %s | FileCheck %s
 
 hal.executable private @matmul_static_tensors {
     hal.executable.variant public @amdaie_xclbin_fb target(<"amd-aie", "amdaie-xclbin-fb", {target_arch = "chip-tbd"}>) {
@@ -46,9 +46,18 @@ hal.executable private @matmul_static_tensors {
 //      CHECK:   scf.forall
 // CHECK-SAME:   {
 //      CHECK:       linalg.fill
-//      CHECK:       tensor.pad
-//      CHECK:       tensor.pad
-//      CHECK:       tensor.pad
+//      CHECK:       memref.alloc() : memref<8x16xi32, 1>
+//      CHECK:       bufferization.to_tensor %{{.*}} restrict writable
+//      CHECK:       linalg.copy
+//      CHECK:       memref.alloc() : memref<16x8xi32, 1>
+//      CHECK:       bufferization.to_tensor %{{.*}} restrict writable
+//      CHECK:       linalg.copy
+//      CHECK:       memref.alloc() : memref<8x8xi32, 1>
+//      CHECK:       bufferization.to_tensor %{{.*}} restrict writable
+//      CHECK:       linalg.copy
 //      CHECK:       linalg.matmul
 //      CHECK:       linalg.copy
+//      CHECK:       memref.dealloc
+//      CHECK:       memref.dealloc
+//      CHECK:       memref.dealloc
 //      CHECK:   }

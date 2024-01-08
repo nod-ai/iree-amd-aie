@@ -40,7 +40,7 @@ createAMDAIETileAndFusePass(int64_t tilingLevel = -1);
 /// Pass to pad operations on tensors in top-down order.
 enum class AMDAIETensorPadOption { ParallelDims, ReductionDims };
 std::unique_ptr<OperationPass<IREE::HAL::ExecutableVariantOp>>
-createAMDAIETensorPadPass(
+createAMDAIEPadAndBufferizePass(
     AMDAIETensorPadOption option = AMDAIETensorPadOption::ParallelDims);
 
 void registerAMDAIEPasses();
