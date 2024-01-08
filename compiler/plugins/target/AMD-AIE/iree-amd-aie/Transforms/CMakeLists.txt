@@ -34,6 +34,7 @@ iree_cc_library(
   SRCS
     "Passes.cpp"
     "AMDAIELowerExecutableTarget.cpp"
+    "AMDAIETileAndFuse.cpp"
     "BridgeToAIRPass.cpp"
   DEPS
     ::PassHeaders
