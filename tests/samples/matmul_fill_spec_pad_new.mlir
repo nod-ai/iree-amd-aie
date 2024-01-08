@@ -17,7 +17,8 @@
 // ```
 
 
-// The first level tiling and fusion is done in a C++ pass compared to base script
+// The first level tiling + fusion + padding + DSP + bufferization + cleanup is done in a C++ pass
+// compared to base script.
 module attributes { transform.with_named_sequence } {
   transform.named_sequence @cleanup(%variant_op: !transform.any_op {transform.readonly}) {
     %func = transform.structured.match ops{["func.func"]} in %variant_op : (!transform.any_op) -> !transform.any_op
@@ -37,9 +38,6 @@ module attributes { transform.with_named_sequence } {
     transform.include @cleanup failures(propagate) (%variant_op) : (!transform.any_op) -> ()  
     %ops = transform.structured.match ops{["scf.forall"]} in %variant_op : (!transform.any_op) -> !transform.any_op
     %fused_for_all = transform.split_handle %ops : (!transform.any_op) -> (!transform.any_op)
-
-    // Run canonicalizations.
-    transform.include @cleanup failures(propagate) (%variant_op) : (!transform.any_op) -> ()
 
     // Find the matmul and fill again
     %tiled_ops = transform.structured.match ops{["linalg.fill", "linalg.matmul"]} in %fused_for_all : (!transform.any_op) -> !transform.any_op

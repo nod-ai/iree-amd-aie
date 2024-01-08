@@ -37,6 +37,7 @@ iree_cc_library(
     "AMDAIEPadAndBufferize.cpp"
     "AMDAIETileAndFuse.cpp"
     "BridgeToAIRPass.cpp"
+    "Cleanup.cpp"
   DEPS
     ::PassHeaders
     ::PassesIncGen
