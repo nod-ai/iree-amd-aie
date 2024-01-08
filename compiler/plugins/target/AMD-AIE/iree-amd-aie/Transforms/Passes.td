@@ -20,4 +20,28 @@ def AMDAIELowerExecutableTarget :
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIELowerExecutableTargetPass()";
 }
 
+def AMDAIETileAndFuse :
+    Pass<"iree-amdaie-tile-and-fuse", "IREE::HAL::ExecutableVariantOp"> {
+  let summary = "Pass to tile and fuse TilingInterface operations.";
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIETileAndFusePass()";
+  let options = [
+    Option<"tilingLevel", "tiling-level", "int64_t", /*default=*/"-1",
+      "Use default tiling level used to retrieve the configuration from lowering_config">
+  ];
+}
+
+def AMDAIETensorPad :
+    Pass<"iree-amdaie-pad-and-bufferize", "IREE::HAL::ExecutableVariantOp"> {
+  let summary = "Pass to pad operations on tensors in top-down order.";
+  let constructor =
+      "mlir::iree_compiler::AMDAIE::createAMDAIEPadAndBufferizePass()";
+}
+
+def Cleanup :
+    Pass<"iree-cleanup", "IREE::HAL::ExecutableVariantOp"> {
+  let summary = "Pass to invoke several cleanup and canonicalization patterns.";
+  let constructor =
+      "mlir::iree_compiler::AMDAIE::createCleanupPass()";
+}
+
 #endif // IREE_AMD_AIE_TRANSFORMS_PASSES

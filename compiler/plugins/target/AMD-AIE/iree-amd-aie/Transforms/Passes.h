@@ -33,6 +33,20 @@ std::unique_ptr<OperationPass<>> createAMDAIEBridgeToAIRPass();
 std::unique_ptr<OperationPass<IREE::HAL::ExecutableVariantOp>>
 createAMDAIELowerExecutableTargetPass();
 
+/// Create pass to tile and fuse TilingInterface operations.
+std::unique_ptr<OperationPass<IREE::HAL::ExecutableVariantOp>>
+createAMDAIETileAndFusePass(int64_t tilingLevel = -1);
+
+/// Create pass to invoke several cleanup and canonicalization patterns.
+std::unique_ptr<OperationPass<IREE::HAL::ExecutableVariantOp>>
+createCleanupPass();
+
+/// Pass to pad operations on tensors in top-down order.
+enum class AMDAIETensorPadOption { ParallelDims, ReductionDims };
+std::unique_ptr<OperationPass<IREE::HAL::ExecutableVariantOp>>
+createAMDAIEPadAndBufferizePass(
+    AMDAIETensorPadOption option = AMDAIETensorPadOption::ParallelDims);
+
 void registerAMDAIEPasses();
 
 }  // namespace mlir::iree_compiler::AMDAIE
