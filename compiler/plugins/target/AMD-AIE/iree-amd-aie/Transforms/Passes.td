@@ -37,4 +37,11 @@ def AMDAIEPadAndBufferize :
       "mlir::iree_compiler::AMDAIE::createAMDAIEPadAndBufferizePass()";
 }
 
+def Cleanup :
+    Pass<"iree-cleanup", "IREE::HAL::ExecutableVariantOp"> {
+  let summary = "Pass to invoke several cleanup and canonicalization patterns.";
+  let constructor =
+      "mlir::iree_compiler::AMDAIE::createCleanupPass()";
+}
+
 #endif // IREE_AMD_AIE_TRANSFORMS_PASSES

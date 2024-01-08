@@ -41,6 +41,10 @@ createAMDAIETileAndFusePass(int64_t tilingLevel = -1);
 std::unique_ptr<OperationPass<IREE::HAL::ExecutableVariantOp>>
 createAMDAIEPadAndBufferizePass();
 
+/// Create pass to invoke several cleanup and canonicalization patterns.
+std::unique_ptr<OperationPass<IREE::HAL::ExecutableVariantOp>>
+createCleanupPass();
+
 void registerAMDAIEPasses();
 
 }  // namespace mlir::iree_compiler::AMDAIE
