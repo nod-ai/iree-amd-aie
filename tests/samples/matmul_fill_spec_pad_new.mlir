@@ -36,39 +36,14 @@ module attributes { transform.with_named_sequence } {
   transform.named_sequence @__transform_main(%variant_op: !transform.any_op {transform.read_only}) {
     // Run canonicalizations.
     transform.include @cleanup failures(propagate) (%variant_op) : (!transform.any_op) -> ()  
-    %ops = transform.structured.match ops{["scf.forall"]} in %variant_op : (!transform.any_op) -> !transform.any_op
-    %fused_for_all = transform.split_handle %ops : (!transform.any_op) -> (!transform.any_op)
 
     // Find the matmul and fill again
-    %tiled_ops = transform.structured.match ops{["linalg.fill", "linalg.matmul"]} in %fused_for_all : (!transform.any_op) -> !transform.any_op
-    %tiled_fill_op, %tiled_padded_matmul = transform.split_handle %tiled_ops : (!transform.any_op) -> (!transform.any_op, !transform.any_op)
-
-    // Second level tile to forall with tile_sizes [4, 4].
-    %tiled_matmul_1, %forall_1 =
-      transform.structured.tile_using_forall %tiled_padded_matmul tile_sizes [4, 4]
-        ( mapping = [#gpu.thread<y>, #gpu.thread<x>] ) : (!transform.any_op) -> (!transform.any_op, !transform.any_op)
-    %fused_fill_2, %fused_for_all_2 = transform.structured.fuse_into_containing_op %tiled_fill_op into %forall_1 : (!transform.any_op, !transform.any_op) -> (!transform.any_op, !transform.any_op)
-
-    // Pad operation.
-    %padded_1, %pad_1, %_ = transform.structured.pad %tiled_matmul_1 {
-      padding_values=[0 : i32, 0 : i32, 0 : i32],
-      padding_dimensions=[0, 1, 2],
-      pack_paddings=[0, 0, 1],
-      copy_back_op="linalg.copy"
-    } : (!transform.any_op) -> (!transform.any_op, !transform.any_op, !transform.any_op)
-    %pad_1_dps = transform.structured.rewrite_in_destination_passing_style %pad_1 : (!transform.any_op) -> !transform.any_op
-
-    // Promote the result to local memory.
-    %padded_result_local = transform.get_producer_of_operand %padded_1[2] : (!transform.any_op) -> (!transform.any_op)
-    %padded_result_local_buffer, %padded_result_local_new = transform.structured.bufferize_to_allocation %padded_result_local
-        {memory_space = 2, bufferize_destination_only, emit_dealloc} : !transform.any_op
-
-    // Run canonicalizations.
-    transform.include @cleanup failures(propagate) (%variant_op) : (!transform.any_op) -> ()
-
+    %tiled_ops = transform.structured.match ops{["linalg.matmul"]} in %variant_op : (!transform.any_op) -> !transform.any_op
+    %tiled_matmul = transform.split_handle %tiled_ops : (!transform.any_op) -> (!transform.any_op)
+    
     // Tile reduction dimension.
     %tiled_reduction, %loop =
-      transform.structured.tile_using_for %padded_1 [0, 0, 4]
+      transform.structured.tile_using_for %tiled_matmul [0, 0, 4]
       : (!transform.any_op) -> (!transform.any_op, !transform.any_op)
 
     // Clean up.

@@ -36,11 +36,15 @@ void buildAMDAIETransformPassPipeline(OpPassManager &pm) {
   // default and take away the guarding.
   if (clUseCPlusPlusTransformPasses) {
     pm.addPass(createAMDAIETileAndFusePass(1));
-    pm.addPass(createAMDAIEPadAndBufferizePass());
+    pm.addPass(createAMDAIEPadAndBufferizePass(1));
     pm.addPass(createCleanupPass());
     pm.addPass(createCanonicalizerPass());
     pm.addPass(createCSEPass());
-    // pm.addPass(createAMDAIETileAndFusePass(2));
+    pm.addPass(createAMDAIETileAndFusePass(2));
+    pm.addPass(createAMDAIEPadAndBufferizePass(2));
+    pm.addPass(createCleanupPass());
+    pm.addPass(createCanonicalizerPass());
+    pm.addPass(createCSEPass());
   }
   pm.addPass(createEraseHALDescriptorTypeFromMemRefPass());
   pm.addPass(createAMDAIELowerExecutableTargetPass());
