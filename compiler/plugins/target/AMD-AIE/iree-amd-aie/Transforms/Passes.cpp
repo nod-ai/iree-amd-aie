@@ -17,10 +17,24 @@
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/Passes.h"
 
+/// Command line options used purely for development purposes. Not to be relied
+/// on in any way.
+static llvm::cl::opt<bool> clUseCPlusPlusTransformPasses(
+    "iree-amd-aie-cpp-passes",
+    llvm::cl::desc(
+        "Runs the cpp passes instead of transform dialect when possible"),
+    llvm::cl::init(false));
+
 namespace mlir::iree_compiler::AMDAIE {
 
 void buildAMDAIETransformPassPipeline(OpPassManager &pm) {
   addCommonTargetExecutablePreprocessingPasses(pm);
+  // TODO: Current we don't include C++ equivalent of Transform dialect scripts.
+  // We are thus guarding their inclusion with a bool
+  // `useCPlusPlusTransformPasses` which would be used during development
+  // efforts. Once the C++ passes are ready, we will include these passes by
+  // default and take away the guarding.
+  if (clUseCPlusPlusTransformPasses) pm.addPass(createAMDAIETileAndFusePass());
   pm.addPass(createEraseHALDescriptorTypeFromMemRefPass());
   pm.addPass(createAMDAIELowerExecutableTargetPass());
 

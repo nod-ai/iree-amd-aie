@@ -9,6 +9,7 @@ iree_lit_test_suite(
     lit
   SRCS
     "matmul_fill_static_i32.mlir"
+    "tile_and_fuse.mlir"
   TOOLS
     ${IREE_LLD_TARGET}
     FileCheck
