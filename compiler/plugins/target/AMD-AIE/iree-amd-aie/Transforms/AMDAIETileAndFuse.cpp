@@ -200,35 +200,6 @@ static void collectTiledAndFusedOps(Operation *rootOp,
   }
 }
 
-/// Tiling of `tensor.pad` operation generates
-///
-/// ```mlir
-/// scf.if {
-///   ...
-/// } else {
-///    tensor.pad
-/// }
-/// ```
-///
-/// For IREEs use case we dont need this. So this folds away the `if` condition.
-/// Note this is a fairly hacky workaround, but the current pad operation
-/// semantics force us down this path.
-static FailureOr<tensor::PadOp> foldIfGeneratedFromPadding(
-    RewriterBase &rewriter, tensor::PadOp untiledPadOp,
-    tensor::PadOp tiledPadOp) {
-  auto ifOp = dyn_cast<scf::IfOp>(tiledPadOp->getParentOp());
-  if (!ifOp) {
-    return failure();
-  };
-  Block *block = tiledPadOp->getBlock();
-  Operation *terminator = block->getTerminator();
-  ValueRange results = terminator->getOperands();
-  rewriter.inlineBlockBefore(block, ifOp, /*blockArgs=*/{});
-  rewriter.replaceOp(ifOp, results);
-  rewriter.eraseOp(terminator);
-  return tiledPadOp;
-}
-
 LogicalResult applyTileAndFuse(RewriterBase &rewriter, Operation *rootOp,
                                DominanceInfo &dominanceInfo,
                                scf::SCFTilingOptions options) {
@@ -253,17 +224,7 @@ LogicalResult applyTileAndFuse(RewriterBase &rewriter, Operation *rootOp,
   // A map from untiled value to scf.forall shared_outs. The shared_outs is used
   // for DPS init operand if they use the same init operands.
   llvm::DenseMap<Value, Value> mapToSharedOuts;
-
-  // WAR for `if` ops generating `scf.if` operations.
-  if (auto rootPadOp = dyn_cast<tensor::PadOp>(rootOp)) {
-    assert(tilingResult->tiledOps.size() == 1 &&
-           "expected tiling of `pad` op to return only one operation");
-    FailureOr<Operation *> replacementTiledOp = foldIfGeneratedFromPadding(
-        rewriter, rootPadOp, cast<tensor::PadOp>(tilingResult->tiledOps[0]));
-    if (!failed(replacementTiledOp)) {
-      tilingResult->tiledOps[0] = replacementTiledOp.value();
-    }
-  } else if (auto dpsOp = dyn_cast<DestinationStyleOpInterface>(rootOp)) {
+  if (auto dpsOp = dyn_cast<DestinationStyleOpInterface>(rootOp)) {
     for (auto [init, sharedOuts] :
          llvm::zip_equal(dpsOp.getDpsInits(), forallLoop.getRegionOutArgs())) {
       mapToSharedOuts[init] = sharedOuts;
