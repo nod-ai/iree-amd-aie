@@ -240,9 +240,8 @@ class GeneralizeUnPackOpPattern
     SmallVector<int64_t> readShape;
     SmallVector<Value> dynamicDims;
     for (auto i : llvm::seq<unsigned>(0, destRank)) {
-      readShape.push_back(srcShape[i]);
       if (dimAndTileMapping.count(i)) {
-        readSizes.push_back(dimAndTileMapping[i]);
+        readSizes.push_back(oneIdxAttr);
         continue;
       }
 
@@ -252,7 +251,9 @@ class GeneralizeUnPackOpPattern
       } else {
         readSizes.push_back(rewriter.getIndexAttr(srcShape[i]));
       }
+      if (srcShape[i] != 1) readShape.push_back(srcShape[i]);
     }
+
     auto mixedTiles = unpackOp.getMixedTiles();
     readSizes.append(mixedTiles.begin(), mixedTiles.end());
 
@@ -269,8 +270,9 @@ class GeneralizeUnPackOpPattern
         loc, readType, input, readOffsets, readSizes, readStrides);
 
     // 2. Transpose the tile to match the outer corresponding tile order.
-    SmallVector<int64_t> perm = getPackUnpackRankReducedPerm(
-        srcShape, innerDimsPos, unpackOp.getOuterDimsPerm());
+    SmallVector<int64_t> perm =
+        getPackUnpackRankReducedPerm(srcShape.take_front(destRank),
+                                     innerDimsPos, unpackOp.getOuterDimsPerm());
     // Unpack is a transition out of packed space so we invert the permutation.
     perm = invertPermutationVector(perm);
 
@@ -467,30 +469,19 @@ static void extractStridesFromMemrefType(MemRefType memrefTy,
         builder.create<arith::ConstantIndexOp>(builder.getUnknownLoc(), s));
 }
 
-static void extractOperandsFromSubview(memref::SubViewOp subview,
-                                       OpBuilder &builder,
-                                       SmallVector<Value, 4> &offsets,
-                                       SmallVector<Value, 4> &sizes,
-                                       SmallVector<Value, 4> &strides) {
+static void extractSizesFromMemrefType(MemRefType memrefTy, OpBuilder &builder,
+                                       SmallVector<Value, 4> &sizes) {
+  for (auto s : memrefTy.getShape())
+    sizes.push_back(
+        builder.create<arith::ConstantIndexOp>(builder.getUnknownLoc(), s));
+}
+
+static void extractOffsetsFromSubview(memref::SubViewOp subview,
+                                      OpBuilder &builder,
+                                      SmallVector<Value, 4> &offsets) {
   auto subview_offsets = subview.getOffsets().begin();
   auto static_offsets = subview.getStaticOffsets();
-  auto static_sizes = subview.getStaticSizes();
-  auto static_strides = subview.getStaticStrides();
   auto loc = subview.getLoc();
-
-  // get the strides and offsets from the memref type
-  auto inferredType =
-      memref::SubViewOp::inferResultType(
-          subview.getSourceType(), static_offsets, static_sizes, static_strides)
-          .cast<MemRefType>();
-  int64_t offset;
-  SmallVector<int64_t, 4> layout_strides;
-  auto successStrides =
-      getStridesAndOffset(inferredType, layout_strides, offset);
-  if (failed(successStrides)) {
-    llvm::outs() << "Failed to get strides\n";
-    return;  // failure();
-  }
 
   for (auto o : static_offsets) {
     if (o >= 0)
@@ -498,10 +489,6 @@ static void extractOperandsFromSubview(memref::SubViewOp subview,
     else
       offsets.push_back(*subview_offsets++);
   }
-  for (auto s : static_sizes)
-    sizes.push_back(builder.create<arith::ConstantIndexOp>(loc, s));
-  for (auto s : layout_strides)
-    strides.push_back(builder.create<arith::ConstantIndexOp>(loc, s));
 }
 
 static LogicalResult CondenseMemrefDataReorderingToAIRDma(
@@ -533,8 +520,7 @@ static LogicalResult CondenseMemrefDataReorderingToAIRDma(
   if (!src_ancestor_memref_ops.empty()) {
     if (auto subviewOp =
             dyn_cast<memref::SubViewOp>(src_ancestor_memref_ops[0])) {
-      extractOperandsFromSubview(subviewOp, rewriter, src_offsets, src_sizes,
-                                 empty);
+      extractOffsetsFromSubview(subviewOp, rewriter, src_offsets);
       src_memref_ty = subviewOp.getSourceType();
       src = subviewOp.getSource();
     } else if (auto transposeOp =
@@ -542,14 +528,12 @@ static LogicalResult CondenseMemrefDataReorderingToAIRDma(
       src_memref_ty = transposeOp.getIn().getType().cast<MemRefType>();
       src = transposeOp.getIn();
     }
-    // TODO: what if subview op isn't the first memref op?
   }
   MemRefType dst_memref_ty;
   if (!dst_ancestor_memref_ops.empty()) {
     if (auto subviewOp =
             dyn_cast<memref::SubViewOp>(dst_ancestor_memref_ops[0])) {
-      extractOperandsFromSubview(subviewOp, rewriter, dst_offsets, dst_sizes,
-                                 empty);
+      extractOffsetsFromSubview(subviewOp, rewriter, dst_offsets);
       dst_memref_ty = subviewOp.getSourceType();
       dst = subviewOp.getSource();
     } else if (auto transposeOp =
@@ -557,7 +541,6 @@ static LogicalResult CondenseMemrefDataReorderingToAIRDma(
       dst_memref_ty = transposeOp.getIn().getType().cast<MemRefType>();
       dst = transposeOp.getIn();
     }
-    // TODO: what if subview op isn't the first memref op?
   }
 
   for (auto memrefOp : src_ancestor_memref_ops) {
@@ -574,6 +557,21 @@ static LogicalResult CondenseMemrefDataReorderingToAIRDma(
       } else {
         src_memref_ty = *compute_expand;
       }
+    } else if (auto subviewOp = dyn_cast<memref::SubViewOp>(memrefOp)) {
+      // Check if subview is rank reduced
+      if (subviewOp.getSourceType().getRank() > subviewOp.getType().getRank())
+        src_memref_ty =
+            memref::SubViewOp::inferRankReducedResultType(
+                subviewOp.getType().getShape(), src_memref_ty,
+                subviewOp.getStaticOffsets(), subviewOp.getStaticSizes(),
+                subviewOp.getStaticStrides())
+                .cast<MemRefType>();
+      else
+        src_memref_ty =
+            memref::SubViewOp::inferResultType(
+                src_memref_ty, subviewOp.getStaticOffsets(),
+                subviewOp.getStaticSizes(), subviewOp.getStaticStrides())
+                .cast<MemRefType>();
     }
   }
 
@@ -591,14 +589,30 @@ static LogicalResult CondenseMemrefDataReorderingToAIRDma(
       } else {
         dst_memref_ty = *compute_expand;
       }
+    } else if (auto subviewOp = dyn_cast<memref::SubViewOp>(memrefOp)) {
+      if (subviewOp.getSourceType().getRank() > subviewOp.getType().getRank())
+        dst_memref_ty =
+            memref::SubViewOp::inferRankReducedResultType(
+                subviewOp.getType().getShape(), dst_memref_ty,
+                subviewOp.getStaticOffsets(), subviewOp.getStaticSizes(),
+                subviewOp.getStaticStrides())
+                .cast<MemRefType>();
+      else
+        dst_memref_ty =
+            memref::SubViewOp::inferResultType(
+                dst_memref_ty, subviewOp.getStaticOffsets(),
+                subviewOp.getStaticSizes(), subviewOp.getStaticStrides())
+                .cast<MemRefType>();
     }
   }
 
   if (src_ancestor_memref_ops.size()) {
     extractStridesFromMemrefType(src_memref_ty, rewriter, src_strides);
+    extractSizesFromMemrefType(src_memref_ty, rewriter, src_sizes);
   }
   if (dst_ancestor_memref_ops.size()) {
     extractStridesFromMemrefType(dst_memref_ty, rewriter, dst_strides);
+    extractSizesFromMemrefType(dst_memref_ty, rewriter, dst_sizes);
   }
 
   SmallVector<Value, 4> deps;
