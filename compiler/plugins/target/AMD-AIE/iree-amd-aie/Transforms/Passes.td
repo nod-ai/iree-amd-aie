@@ -35,6 +35,10 @@ def AMDAIEPadAndBufferize :
   let summary = "Pass to pad operations on tensors in top-down order.";
   let constructor =
       "mlir::iree_compiler::AMDAIE::createAMDAIEPadAndBufferizePass()";
+  let options = [
+    Option<"paddingLevel", "padding-level", "int64_t", /*default=*/"-1",
+      "A temporary workaround to figure the config for padding and bufferization">
+  ];
 }
 
 def Cleanup :

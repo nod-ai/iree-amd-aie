@@ -91,7 +91,8 @@ static Operation *cloneOpAndUpdateDestinationArgs(RewriterBase &rewriter,
 
 /// Return the untiled producer whose slice is used in a tiled consumer. If
 /// there was no loop traversal needed, the second value of the returned tuple
-/// is empty.
+/// is empty. In case the source op is a linalg.copy it returns both values as
+/// empty.
 static std::tuple<OpResult, std::optional<OpOperand *>>
 getUntiledProducerFromSliceSource(OpOperand *source, scf::ForallOp loop) {
   std::optional<OpOperand *> destinationSharedOuts;
@@ -100,7 +101,8 @@ getUntiledProducerFromSliceSource(OpOperand *source, scf::ForallOp loop) {
       source = loop.getTiedOpOperand(sharedOuts);
       destinationSharedOuts = source;
     }
-  }
+  } else if (isa<linalg::CopyOp>(source->get().getDefiningOp()))
+    return {nullptr, nullptr};
   return {dyn_cast<OpResult>(source->get()), destinationSharedOuts};
 }
 
@@ -315,8 +317,10 @@ void AMDAIETileAndFusePass::runOnOperation() {
     TilingInterface consumerOp;
     funcOp->walk<WalkOrder::PostOrder, ReverseIterator>(
         [&](TilingInterface op) {
-          // Find the next consumer op if it does not have loops.
-          if (op.getLoopIteratorTypes().empty()) return WalkResult::advance();
+          // Find the next consumer op if it does not have loops OR if it is a
+          // linalg.copy op.
+          if (op.getLoopIteratorTypes().empty() || isa<linalg::CopyOp>(op))
+            return WalkResult::advance();
           consumerOp = op;
           return WalkResult::interrupt();
         });
@@ -327,12 +331,19 @@ void AMDAIETileAndFusePass::runOnOperation() {
 
     LLVM_DEBUG(llvm::dbgs() << "consumerOp: " << consumerOp << "\n");
     LLVM_DEBUG(llvm::dbgs() << "tilingLevel: " << tilingLevel << "\n");
-    // TODO: Currently hardcoding the tile size to make the tile and fuse run
-    // for
-    //       at least the first level. So, we can generalize this by adding tile
-    //       level, similar to LLVMCPUTileAndFuse.cpp.
-    SmallVector<OpFoldResult> tileSizes =
-        getAsIndexOpFoldResult(context, {8, 8});
+    // TODO(avarma): Generalize this by adding pulling in tilingConfig based on
+    // a given tilinglevel, similar to LLVMCPUTileAndFuse.cpp.
+    SmallVector<OpFoldResult> tileSizes;
+    // TODO(avarma): Have a global CONSTANT defining tiling stages and the
+    // tiling
+    //               strategy.
+    if (tilingLevel == 1) {
+      tileSizes = getAsIndexOpFoldResult(context, {8, 8});
+    } else if (tilingLevel == 2) {
+      tileSizes = getAsIndexOpFoldResult(context, {4, 4});
+    } else {
+      assert(false && "unsupported tiling level");
+    }
     auto options = scf::SCFTilingOptions().setTileSizes(tileSizes);
     options.setMapping(
         {gpu::GPUBlockMappingAttr::get(context, gpu::MappingId::DimY),
@@ -346,7 +357,7 @@ void AMDAIETileAndFusePass::runOnOperation() {
       return signalPassFailure();
     }
 
-    if (failed(lowerWorkgroupCount(rewriter, funcOp))) {
+    if (tilingLevel == 1 && failed(lowerWorkgroupCount(rewriter, funcOp))) {
       funcOp->emitOpError("failed to lower workgroup count region");
       return signalPassFailure();
     }
