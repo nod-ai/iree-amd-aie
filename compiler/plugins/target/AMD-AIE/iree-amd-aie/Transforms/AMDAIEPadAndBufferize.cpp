@@ -44,6 +44,45 @@ static LogicalResult applyBufferizeToAllocation(RewriterBase &rewriter,
   return success();
 }
 
+static LogicalResult formLinalgPaddingOptions(
+    IRRewriter &rewriter, linalg::MatmulOp &matmulOp, int64_t paddingLevel,
+    linalg::LinalgPaddingOptions &options) {
+  SmallVector<Attribute> paddingValues;
+  for (auto operand : matmulOp->getOperands()) {
+    auto type = dyn_cast<RankedTensorType>(operand.getType());
+    if (!type) {
+      matmulOp->emitOpError("failed to lower workgroup count region");
+      return failure();
+    }
+    Type elementType = type.getElementType();
+    if (isa<IntegerType>(elementType)) {
+      paddingValues.push_back(rewriter.getIntegerAttr(elementType, 0));
+    } else {
+      paddingValues.push_back(rewriter.getFloatAttr(elementType, 0));
+    }
+  }
+  options.paddingValues = paddingValues;
+  SmallVector<bool> packPaddings(matmulOp->getNumOperands(), true);
+  if (paddingLevel == 2) {
+    packPaddings[0] = false;
+    packPaddings[1] = false;
+  } else if (paddingLevel == 3) {
+    packPaddings[2] = false;
+  }
+  options.packPaddings = packPaddings;
+
+  SmallVector<int64_t> paddingDimensions;
+  for (unsigned i = 0, n = matmulOp.getNumLoops(); i < n; i++)
+    paddingDimensions.push_back(i);
+  options.paddingDimensions = paddingDimensions;
+
+  SmallVector<int64_t> padToMultipleOf(options.paddingDimensions.size(), 1);
+  options.padToMultipleOf = padToMultipleOf;
+  options.copyBackOp = linalg::LinalgPaddingOptions::CopyBackOp::LinalgCopy;
+
+  return success();
+}
+
 static LogicalResult applyPadAndConvertToDPS(
     RewriterBase &rewriter, linalg::MatmulOp linalgTarget,
     linalg::LinalgPaddingOptions &options) {
@@ -81,6 +120,11 @@ class AMDAIEPadAndBufferizePass
     registry.insert<bufferization::BufferizationDialect, tensor::TensorDialect,
                     linalg::LinalgDialect>();
   }
+  AMDAIEPadAndBufferizePass() = default;
+  AMDAIEPadAndBufferizePass(int64_t paddingLevel = -1) {
+    this->paddingLevel.setValue(paddingLevel);
+  }
+  AMDAIEPadAndBufferizePass(const AMDAIEPadAndBufferizePass &pass){};
   void runOnOperation() override;
 };
 
@@ -105,34 +149,10 @@ void AMDAIEPadAndBufferizePass::runOnOperation() {
 
     IRRewriter rewriter(context);
     linalg::LinalgPaddingOptions options;
-    SmallVector<Attribute> paddingValues;
-    auto i64Type = rewriter.getI64Type();
-    for (auto operand : matmulOp->getOperands()) {
-      auto type = dyn_cast<RankedTensorType>(operand.getType());
-      if (!type) {
-        funcOp->emitOpError("failed to lower workgroup count region");
-        return signalPassFailure();
-      }
-      Type elementType = type.getElementType();
-      if (isa<IntegerType>(elementType)) {
-        paddingValues.push_back(rewriter.getIntegerAttr(elementType, 0));
-      } else {
-        paddingValues.push_back(rewriter.getFloatAttr(elementType, 0));
-      }
+    if (failed(formLinalgPaddingOptions(rewriter, matmulOp, paddingLevel,
+                                        options))) {
+      return signalPassFailure();
     }
-    options.paddingValues = paddingValues;
-    SmallVector<bool> packPaddings(matmulOp->getNumOperands(), true);
-    options.packPaddings = packPaddings;
-
-    SmallVector<int64_t> paddingDimensions;
-    for (unsigned i = 0, n = matmulOp.getNumLoops(); i < n; i++)
-      paddingDimensions.push_back(i);
-    options.paddingDimensions = paddingDimensions;
-
-    SmallVector<int64_t> padToMultipleOf(options.paddingDimensions.size(), 1);
-    options.padToMultipleOf = padToMultipleOf;
-    options.copyBackOp = linalg::LinalgPaddingOptions::CopyBackOp::LinalgCopy;
-
     if (failed(applyPadAndConvertToDPS(rewriter, matmulOp, options))) {
       funcOp->emitOpError("failed to apply pad");
       return signalPassFailure();
@@ -151,8 +171,19 @@ void AMDAIEPadAndBufferizePass::runOnOperation() {
       LLVM_DEBUG(llvm::dbgs() << "----- skip, no matmul op -----\n");
       return;
     }
-    for (auto operand : matmulOp->getOperands()) {
+    auto i64Type = rewriter.getI64Type();
+    for (unsigned i = 0, n = matmulOp->getNumOperands(); i < n; i++) {
+      // TODO(avarma): This is a temporary workaround until we have
+      // PaddingStrategy in Given a Matmul(Lhs, Rhs, Out) and a given
+      // `paddingLevel`, the following is what we bufferize :-
+      //    paddingLevel == 1 -> Lhs, Rhs and Out.
+      //    paddingLevel == 2 -> Out.
+      //    paddingLevel == 2 -> Lhs and Rhs.
+      if (paddingLevel == 2 && i <= 1) continue;
+      if (paddingLevel == 3 && i > 1) break;
+      Value operand = matmulOp->getOperand(i);
       auto memorySpace = rewriter.getIntegerAttr(i64Type, 1);
+      if (paddingLevel >= 2) memorySpace = rewriter.getIntegerAttr(i64Type, 2);
       rewriter.setInsertionPointAfter(operand.getDefiningOp());
       if (failed(applyBufferizeToAllocation(rewriter, operand.getDefiningOp(),
                                             memorySpace))) {
@@ -166,7 +197,7 @@ void AMDAIEPadAndBufferizePass::runOnOperation() {
 }  // namespace
 
 std::unique_ptr<OperationPass<IREE::HAL::ExecutableVariantOp>>
-createAMDAIEPadAndBufferizePass() {
-  return std::make_unique<AMDAIEPadAndBufferizePass>();
+createAMDAIEPadAndBufferizePass(int64_t paddingLevel) {
+  return std::make_unique<AMDAIEPadAndBufferizePass>(paddingLevel);
 }
 }  // namespace mlir::iree_compiler::AMDAIE
