@@ -207,6 +207,132 @@ class GeneralizePackOpPattern
   }
 };
 
+class GeneralizeUnPackOpPattern
+    : public OpRewritePattern<IREE::LinalgExt::UnPackOp> {
+ public:
+  using OpRewritePattern<IREE::LinalgExt::UnPackOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(IREE::LinalgExt::UnPackOp unpackOp,
+                                PatternRewriter &rewriter) const override {
+    int64_t srcRank = unpackOp.getInputRank();
+    int64_t destRank = unpackOp.getOutputRank();
+    auto destShape = unpackOp.getOutputType().getShape();
+    ArrayRef<int64_t> srcShape = unpackOp.getInputType().getShape();
+    ArrayRef<int64_t> innerDimsPos = unpackOp.getInnerDimsPos();
+    if (llvm::any_of(innerDimsPos, [srcShape](int64_t index) {
+          return srcShape[index] != 1;
+        })) {
+      return rewriter.notifyMatchFailure(
+          unpackOp,
+          "require the tiled outer dimensions of the result are all 1s");
+    }
+
+    // 1. Use memref.subview op to extract the tile.
+    Location loc = unpackOp.getLoc();
+    Value input = unpackOp.getInput();
+    DenseMap<int64_t, OpFoldResult> dimAndTileMapping =
+        unpackOp.getDimAndTileMapping();
+    Attribute zeroIdxAttr = rewriter.getIndexAttr(0);
+    Attribute oneIdxAttr = rewriter.getIndexAttr(1);
+    SmallVector<OpFoldResult> readOffsets(srcRank, zeroIdxAttr);
+    SmallVector<OpFoldResult> readStrides(srcRank, oneIdxAttr);
+    SmallVector<OpFoldResult> readSizes;
+    SmallVector<int64_t> readShape;
+    SmallVector<Value> dynamicDims;
+    for (auto i : llvm::seq<unsigned>(0, destRank)) {
+      readShape.push_back(srcShape[i]);
+      if (dimAndTileMapping.count(i)) {
+        readSizes.push_back(dimAndTileMapping[i]);
+        continue;
+      }
+
+      if (ShapedType::isDynamic(srcShape[i])) {
+        assert(false);
+        // TODO: Dynamic input shape
+      } else {
+        readSizes.push_back(rewriter.getIndexAttr(srcShape[i]));
+      }
+    }
+    auto mixedTiles = unpackOp.getMixedTiles();
+    readSizes.append(mixedTiles.begin(), mixedTiles.end());
+
+    // Explicitly create the type for subview op because the inner tile
+    // size could be 1. We want to represent the whole inner tile in this case.
+    auto tileShape = srcShape.drop_front(destRank);
+    // Append the inner tile shape to the permuted and rank-reduced outer shape.
+    readShape.append(tileShape.begin(), tileShape.end());
+    Type elemType = unpackOp.getInputType().getElementType();
+    Attribute memorySpace =
+        unpackOp.getInputType().cast<MemRefType>().getMemorySpace();
+    auto readType = MemRefType::get(readShape, elemType, nullptr, memorySpace);
+    Value innerTile = rewriter.create<memref::SubViewOp>(
+        loc, readType, input, readOffsets, readSizes, readStrides);
+
+    // 2. Transpose the tile to match the outer corresponding tile order.
+    SmallVector<int64_t> perm = getPackUnpackRankReducedPerm(
+        srcShape, innerDimsPos, unpackOp.getOuterDimsPerm());
+    // Unpack is a transition out of packed space so we invert the permutation.
+    perm = invertPermutationVector(perm);
+
+    auto transposed = rewriter.create<memref::TransposeOp>(
+        loc, innerTile,
+        AffineMapAttr::get(
+            AffineMap::getPermutationMap(perm, unpackOp->getContext())));
+
+    //  // 3. Handle in-complete tiles if needed. It truncates trailing data
+    //  from the
+    //  // transposed tile.
+    // //  int numLoops = transpShape.size();
+    // //  SmallVector<OpFoldResult> tileStrides(numLoops, oneIdxAttr);
+    // //  SmallVector<OpFoldResult> tileOffsets(numLoops, zeroIdxAttr);
+    // //  SmallVector<OpFoldResult> tileSizes;
+    // //  ArrayRef<int64_t> destShape = unpackOp.getOutputType().getShape();
+    // //  for (auto i : llvm::seq<unsigned>(0, destRank)) {
+    // //    if (dimAndTileMapping.count(i) || destShape[i] != 1)
+    // //     //  tileSizes.push_back(
+    // //     //      tensor::getMixedSize(rewriter, loc, unpackOp.getOutput(),
+    // i));
+    // //      tileSizes.push_back(
+    // //          getMixedSize(rewriter, loc, unpackOp.getOutput(), i));
+    // //  }
+
+    // //   memorySpace =
+    // unpackOp.getOutputType().cast<MemRefType>().getMemorySpace();
+    // //   auto writeType = MemRefType::get(destShape, elemType, nullptr,
+    // memorySpace);
+    // //   auto output_subview = rewriter.create<memref::SubViewOp>(
+    // //       loc, writeType, unpackOp.getOutput(), tileOffsets, tileSizes,
+    // //       tileStrides);
+
+    // //  auto partialTile = rewriter.create<tensor::ExtractSliceOp>(
+    // //      loc, transposedOp.getResult()[0], tileOffsets, tileSizes,
+    // tileStrides);
+
+    // 4. Copy the result to the destination memref.
+    SmallVector<OpFoldResult> writeStrides(destRank, oneIdxAttr);
+    SmallVector<OpFoldResult> writeOffsets(destRank, zeroIdxAttr);
+    SmallVector<OpFoldResult> writeSizes =
+        getMixedSizes(rewriter, loc, unpackOp.getOutput());
+
+    memorySpace = unpackOp.getOutputType().cast<MemRefType>().getMemorySpace();
+    auto writeType = MemRefType::get(
+        destShape, elemType,
+        unpackOp.getOutputType().cast<MemRefType>().getLayout(), memorySpace);
+
+    auto output_subview = rewriter.create<memref::SubViewOp>(
+        loc, writeType, unpackOp.getOutput(), writeOffsets, writeSizes,
+        writeStrides);
+
+    SmallVector<Value, 2> mt;
+    rewriter.create<xilinx::air::DmaMemcpyNdOp>(loc, SmallVector<Type, 1>{}, mt,
+                                                output_subview, mt, mt, mt,
+                                                transposed, mt, mt, mt);
+
+    rewriter.eraseOp(unpackOp);
+    return success();
+  }
+};
+
 struct LowerPackResult {
   // TODO: padding
   memref::ExpandShapeOp expandShapeOp;
@@ -411,6 +537,10 @@ static LogicalResult CondenseMemrefDataReorderingToAIRDma(
                                  empty);
       src_memref_ty = subviewOp.getSourceType();
       src = subviewOp.getSource();
+    } else if (auto transposeOp =
+                   dyn_cast<memref::TransposeOp>(src_ancestor_memref_ops[0])) {
+      src_memref_ty = transposeOp.getIn().getType().cast<MemRefType>();
+      src = transposeOp.getIn();
     }
     // TODO: what if subview op isn't the first memref op?
   }
@@ -422,6 +552,10 @@ static LogicalResult CondenseMemrefDataReorderingToAIRDma(
                                  empty);
       dst_memref_ty = subviewOp.getSourceType();
       dst = subviewOp.getSource();
+    } else if (auto transposeOp =
+                   dyn_cast<memref::TransposeOp>(dst_ancestor_memref_ops[0])) {
+      dst_memref_ty = transposeOp.getIn().getType().cast<MemRefType>();
+      dst = transposeOp.getIn();
     }
     // TODO: what if subview op isn't the first memref op?
   }
@@ -510,8 +644,7 @@ void AMDAIEDecomposeLinalgExtPackUnPackToAIRPass::runOnOperation() {
   // they do not generate reshape ops.
   {
     RewritePatternSet patterns(ctx);
-    patterns.add<GeneralizePackOpPattern>(ctx);
-    //  GeneralizeOuterUnitDimsUnPackOpPattern>(ctx);
+    patterns.add<GeneralizePackOpPattern, GeneralizeUnPackOpPattern>(ctx);
     if (failed(applyPatternsAndFoldGreedily(getOperation(),
                                             std::move(patterns)))) {
       return signalPassFailure();
