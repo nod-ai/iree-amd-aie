@@ -11,6 +11,7 @@
 #include "air/Conversion/Passes.h"
 #include "air/Transform/Passes.h"
 #include "iree-dialects/Dialect/LinalgTransform/Passes.h"
+#include "iree/compiler/Codegen/Common/CPU/Passes.h"
 #include "iree/compiler/Codegen/Common/Passes.h"
 #include "mlir/Dialect/Linalg/Passes.h"
 #include "mlir/Dialect/MemRef/Transforms/Passes.h"
@@ -23,9 +24,43 @@ static llvm::cl::opt<bool> clUseCPlusPlusTransformPasses(
     "iree-amd-aie-cpp-passes",
     llvm::cl::desc(
         "Runs the cpp passes instead of transform dialect when possible"),
-    llvm::cl::init(true));
+    llvm::cl::init(false));
 
 namespace mlir::iree_compiler::AMDAIE {
+
+//===---------------------------------------------------------------------===//
+// Default allocation functions for AIE backend
+//===---------------------------------------------------------------------===//
+// Allocation callbacks to use with upstream comprehensive bufferization
+static FailureOr<Value> aieComprehensiveBufferizeAllocationFn(
+    OpBuilder &builder, Location loc, MemRefType memRefType,
+    ValueRange dynamicSizes, unsigned alignment) {
+  return builder
+      .create<memref::AllocaOp>(loc, memRefType, dynamicSizes,
+                                builder.getI64IntegerAttr(alignment))
+      .getResult();
+}
+
+static LogicalResult aieComprehensiveBufferizeCopyFn(OpBuilder &builder,
+                                                     Location loc, Value from,
+                                                     Value to) {
+  // TODO: ideally we should use linalg.copy which was recently reintroduced
+  // as an OpDSL named op. However, IREE-specific patterns to cleanup spurious
+  // post-bufferization copies do not trigger properly.
+  // So we keep using `createLinalgCopyOp` which builds a GenericOp.
+  // builder.create<linalg::CopyOp>(loc, from, to);
+  mlir::iree_compiler::createLinalgCopyOp(builder, loc, from, to);
+  return success();
+}
+
+static void addAMDAIEBufferizePasses(OpPassManager &pm) {
+  // Bufferize the dispatch.
+  using mlir::bufferization::BufferizationOptions;
+  BufferizationOptions::AllocationFn allocationFn =
+      aieComprehensiveBufferizeAllocationFn;
+  BufferizationOptions::MemCpyFn memCpyFn = aieComprehensiveBufferizeCopyFn;
+  addIREEComprehensiveBufferizePasses(pm, allocationFn, memCpyFn);
+}
 
 void buildAMDAIETransformPassPipeline(OpPassManager &pm) {
   addCommonTargetExecutablePreprocessingPasses(pm);
@@ -53,6 +88,13 @@ void buildAMDAIETransformPassPipeline(OpPassManager &pm) {
     pm.addPass(createCanonicalizerPass());
     pm.addPass(createCSEPass());
     pm.addPass(createAMDAIEPadAndBufferizePass(3));
+    pm.addPass(createCleanupPass());
+    pm.addPass(createCanonicalizerPass());
+    pm.addPass(createCSEPass());
+    {
+      auto &modulePassManager = pm.nest<ModuleOp>();
+      addAMDAIEBufferizePasses(modulePassManager);
+    }
     pm.addPass(createCleanupPass());
     pm.addPass(createCanonicalizerPass());
     pm.addPass(createCSEPass());
