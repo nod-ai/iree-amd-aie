@@ -37,7 +37,7 @@ createAMDAIELowerExecutableTargetPass();
 std::unique_ptr<OperationPass<IREE::HAL::ExecutableVariantOp>>
 createAMDAIETileAndFusePass(int64_t tilingLevel = -1);
 
-/// Pass to pad MatmulOp and bufferize its operands.
+/// Create a pass to pad MatmulOp and bufferize its operands.
 std::unique_ptr<OperationPass<IREE::HAL::ExecutableVariantOp>>
 createAMDAIEPadAndBufferizePass(int64_t paddingLevel = -1);
 
