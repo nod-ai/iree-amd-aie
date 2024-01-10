@@ -35,6 +35,9 @@ void buildAMDAIETransformPassPipeline(OpPassManager &pm) {
   // efforts. Once the C++ passes are ready, we will include these passes by
   // default and take away the guarding.
   if (clUseCPlusPlusTransformPasses) {
+    pm.addPass(createCleanupPass());
+    pm.addPass(createCanonicalizerPass());
+    pm.addPass(createCSEPass());
     pm.addPass(createAMDAIETileAndFusePass(1));
     pm.addPass(createAMDAIEPadAndBufferizePass(1));
     pm.addPass(createCleanupPass());
@@ -42,6 +45,14 @@ void buildAMDAIETransformPassPipeline(OpPassManager &pm) {
     pm.addPass(createCSEPass());
     pm.addPass(createAMDAIETileAndFusePass(2));
     pm.addPass(createAMDAIEPadAndBufferizePass(2));
+    pm.addPass(createCleanupPass());
+    pm.addPass(createCanonicalizerPass());
+    pm.addPass(createCSEPass());
+    pm.addPass(createAMDAIETileAndFusePass(3));
+    pm.addPass(createCleanupPass());
+    pm.addPass(createCanonicalizerPass());
+    pm.addPass(createCSEPass());
+    pm.addPass(createAMDAIEPadAndBufferizePass(3));
     pm.addPass(createCleanupPass());
     pm.addPass(createCanonicalizerPass());
     pm.addPass(createCSEPass());

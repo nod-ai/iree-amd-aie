@@ -202,9 +202,40 @@ static void collectTiledAndFusedOps(Operation *rootOp,
   }
 }
 
-LogicalResult applyTileAndFuse(RewriterBase &rewriter, Operation *rootOp,
-                               DominanceInfo &dominanceInfo,
-                               scf::SCFTilingOptions options) {
+LogicalResult applyTileAndFuseUsingSCFFor(RewriterBase &rewriter,
+                                          Operation *rootOp,
+                                          DominanceInfo &dominanceInfo,
+                                          scf::SCFTilingOptions options) {
+  llvm::SmallDenseSet<Operation *> origTiledAndFusedOps;
+  collectTiledAndFusedOps(rootOp, origTiledAndFusedOps);
+  auto isIgnoredUser = [&](Operation *user) {
+    return origTiledAndFusedOps.count(user) || isa<tensor::DimOp>(user);
+  };
+  FailureOr<scf::SCFTilingResult> tilingResult =
+      tileUsingSCFForOp(rewriter, cast<TilingInterface>(rootOp), options);
+  if (failed(tilingResult)) {
+    return failure();
+  }
+  auto forLoops = llvm::to_vector(llvm::map_range(
+      tilingResult->loops, [](Operation *op) { return cast<scf::ForOp>(op); }));
+  SmallVector<OpResult> yieldedValuesToOrigValues;
+  yieldedValuesToOrigValues.append(rootOp->result_begin(),
+                                   rootOp->result_end());
+  scf::ForOp outermostLoop = forLoops.front();
+  for (auto [index, origVal] : llvm::enumerate(yieldedValuesToOrigValues)) {
+    Value replacement = outermostLoop.getResult(index);
+    rewriter.replaceUsesWithIf(origVal, replacement, [&](OpOperand &use) {
+      return !isIgnoredUser(use.getOwner()) &&
+             dominanceInfo.properlyDominates(outermostLoop, use.getOwner());
+    });
+  }
+
+  return success();
+}
+LogicalResult applyTileAndFuseUsingSCFForall(RewriterBase &rewriter,
+                                             Operation *rootOp,
+                                             DominanceInfo &dominanceInfo,
+                                             scf::SCFTilingOptions options) {
   llvm::SmallDenseSet<Operation *> origTiledAndFusedOps;
   collectTiledAndFusedOps(rootOp, origTiledAndFusedOps);
   auto isIgnoredUser = [&](Operation *user) {
@@ -290,6 +321,20 @@ LogicalResult applyTileAndFuse(RewriterBase &rewriter, Operation *rootOp,
   return success();
 }
 
+LogicalResult applyTileAndFuseUsingSCF(RewriterBase &rewriter,
+                                       Operation *rootOp,
+                                       DominanceInfo &dominanceInfo,
+                                       scf::SCFTilingOptions options,
+                                       int64_t tilingLevel) {
+  if (tilingLevel == 3) {
+    return applyTileAndFuseUsingSCFFor(rewriter, rootOp, dominanceInfo,
+                                       options);
+  } else {
+    return applyTileAndFuseUsingSCFForall(rewriter, rootOp, dominanceInfo,
+                                          options);
+  }
+}
+
 /// This pass starts with the last TilingInterface operation, tiles the op and
 /// fuses its producers recursively. The `tilingLevel` must be specified. It
 /// picks the `tilingLevel`-th list as tiling sizes from lowering_config.
@@ -335,28 +380,36 @@ void AMDAIETileAndFusePass::runOnOperation() {
     // a given tilinglevel, similar to LLVMCPUTileAndFuse.cpp.
     SmallVector<OpFoldResult> tileSizes;
     // TODO(avarma): Have a global CONSTANT defining tiling stages and the
-    // tiling
-    //               strategy.
+    // tiling strategy.
     if (tilingLevel == 1) {
       tileSizes = getAsIndexOpFoldResult(context, {8, 8});
     } else if (tilingLevel == 2) {
       tileSizes = getAsIndexOpFoldResult(context, {4, 4});
+    } else if (tilingLevel == 3) {
+      tileSizes = getAsIndexOpFoldResult(context, {0, 0, 4});
+      // llvm::outs()<<funcOp<<"==============\n\n";
     } else {
       assert(false && "unsupported tiling level");
     }
     auto options = scf::SCFTilingOptions().setTileSizes(tileSizes);
-    options.setMapping(
-        {gpu::GPUBlockMappingAttr::get(context, gpu::MappingId::DimY),
-         gpu::GPUBlockMappingAttr::get(context, gpu::MappingId::DimX)});
+    // When tiling using scf.for we do not need to set any mapping.
+    if (tilingLevel != 3) {
+      options.setMapping(
+          {gpu::GPUBlockMappingAttr::get(context, gpu::MappingId::DimY),
+           gpu::GPUBlockMappingAttr::get(context, gpu::MappingId::DimX)});
+    }
 
     IRRewriter rewriter(context);
     DominanceInfo dominanceInfo(funcOp);
-    if (failed(
-            applyTileAndFuse(rewriter, consumerOp, dominanceInfo, options))) {
+    if (failed(applyTileAndFuseUsingSCF(rewriter, consumerOp, dominanceInfo,
+                                        options, tilingLevel))) {
       LLVM_DEBUG(llvm::dbgs() << "----- tile and fuse failed -----\n");
       return signalPassFailure();
     }
 
+    // TODO: Maybe we should have separate pass for lowering workgroup count?
+    //       Just to have logically separated functionalities which also helps
+    //       in `--mlir-print-before/after-*`.
     if (tilingLevel == 1 && failed(lowerWorkgroupCount(rewriter, funcOp))) {
       funcOp->emitOpError("failed to lower workgroup count region");
       return signalPassFailure();
