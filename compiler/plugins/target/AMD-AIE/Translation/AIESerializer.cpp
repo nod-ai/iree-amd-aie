@@ -690,6 +690,7 @@ LogicalResult AccelSerializer::processOperation(scf::ForallOp forAllOp,
   ValueRange ivs = forAllOp.getInductionVars();
 
   ScopeInfo subScope = scope.getSubScope();
+  subScope.indentation = scope.indentation;
   int numGeneratedLoops = 0;
   numParallelLoops++;
 
@@ -756,6 +757,8 @@ LogicalResult AccelSerializer::processOperation(scf::ForOp forOp,
   OpFoldResult step = getAsOpFoldResult(forOp.getStep());
 
   ScopeInfo subScope = scope.getSubScope();
+  subScope.indentation = scope.indentation + INDENTATION_WIDTH;
+
   FailureOr<std::string> forStr =
       getLoopHeader(lb, ub, step, forOp.getInductionVar(), subScope);
   if (failed(forStr)) {
@@ -774,7 +777,6 @@ LogicalResult AccelSerializer::processOperation(scf::ForOp forOp,
   scope.indent().append(attr).append(" {\n");
 
   if (!forStr->empty()) {
-    scope.indentation += INDENTATION_WIDTH;
     scope.indent().append(forStr.value()).append(" {\n");
   }
 
@@ -791,7 +793,6 @@ LogicalResult AccelSerializer::processOperation(scf::ForOp forOp,
   if (!forStr->empty()) {
     scope.indent().append("}\n");
   }
-  scope.indentation -= INDENTATION_WIDTH;
   scope.indent().append("}\n");
   return success();
 }
@@ -858,7 +859,7 @@ LogicalResult AccelSerializer::processOperation(linalg::FillOp fillOp,
   } else {
     opStr += "[(0)] = 0\n";
   }
-  subScope.indentation += INDENTATION_WIDTH;
+  subScope.indentation = scope.indentation + INDENTATION_WIDTH;
   subScope.indent().buffer.append(opStr.begin(), opStr.end());
 
   scope.indent().buffer.append(argStr.begin(), argStr.end());
@@ -988,18 +989,12 @@ LogicalResult AccelSerializer::processOperation(IREE::LinalgExt::PackOp packOp,
   }
 
   // Serialize the destination buffer and dma location
-  std::string packStr = "";
-  if (!destOffsetStr.value().empty()) {
-    packStr += "attr [weight_shared.shared] \"double_buffer_write\" = 1;";
-    packStr += "\n";
-  }
-
   std::string destOffset = destOffsetStr.value();
   if (isMulticore && loadType == "load") {
     destOffset += sourceOffsetStr.value();
   }
 
-  packStr += "@vaie.virtual_buffers(\"" + loadType + "\", ";
+  std::string packStr = "@vaie.virtual_buffers(\"" + loadType + "\", ";
   FailureOr<std::string> destStr =
       getIndexedAccess(scopeInfo.symbolTable[destRootBuffer], destType,
                        bdLoops->ivs, destOffset);
@@ -1025,7 +1020,7 @@ LogicalResult AccelSerializer::processOperation(IREE::LinalgExt::PackOp packOp,
   if (failed(sourceStr)) {
     return packOp.emitOpError("failed to get source string");
   }
-  
+
   packStr += "@vaie.origin(";
   packStr += sourceStr.value() + ", ";
   packStr += bdLoops->loopStr + ", ";
@@ -1039,8 +1034,12 @@ LogicalResult AccelSerializer::processOperation(IREE::LinalgExt::PackOp packOp,
   // bd_access_config
   packStr += "@vaie.bd_access_config(False, 1, 1, 0, 0, 0, dtype=handle), ";
   packStr += "dtype=int8)";
-  scopeInfo.indent();
-  scopeInfo.append(packStr);
+  if (!destOffsetStr.value().empty()) {
+    std::string doubleBufferAttr =
+        "attr [weight_shared.shared] \"double_buffer_write\" = 1;\n";
+    scopeInfo.indent().append(doubleBufferAttr);
+  }
+  scopeInfo.indent().append(packStr);
   scopeInfo.append("\n");
 
   return success();
