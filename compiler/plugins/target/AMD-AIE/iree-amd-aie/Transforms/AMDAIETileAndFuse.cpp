@@ -387,7 +387,6 @@ void AMDAIETileAndFusePass::runOnOperation() {
       tileSizes = getAsIndexOpFoldResult(context, {4, 4});
     } else if (tilingLevel == 3) {
       tileSizes = getAsIndexOpFoldResult(context, {0, 0, 4});
-      // llvm::outs()<<funcOp<<"==============\n\n";
     } else {
       assert(false && "unsupported tiling level");
     }
