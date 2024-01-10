@@ -32,6 +32,7 @@ namespace iree_compiler {
 int numParallelLoops = 0;
 bool isMulticore = false;
 std::string ivNameMulticore;
+int numBraces = 0;
 
 //===---------------------------------------------------------------------===//
 // Utils
@@ -134,6 +135,19 @@ FailureOr<Value> walkSubViews(Value v,
     if (auto subviewOp = v.getDefiningOp<memref::SubViewOp>()) {
       subviewOps.push_back(subviewOp);
       v = subviewOp.getSource();
+      continue;
+    }
+    if (auto castOp = v.getDefiningOp<memref::CastOp>()) {
+      v = castOp.getSource();
+      continue;
+    }
+    if (auto forOp = v.getDefiningOp<scf::ForOp>()) {
+      v = forOp.getYieldedValues()[0];
+      continue;
+    }
+    if (auto blkArg = dyn_cast<BlockArgument>(v)) {
+      auto forOp = blkArg.getOwner()->getParentOp();
+      v = forOp->getOperand(3);
       continue;
     }
     return failure();
@@ -263,16 +277,21 @@ FailureOr<std::string> applyExpr(AffineExpr expr,
     if (failed(lhsString) || failed(rhsString)) {
       return failure();
     }
+
     auto expr = binaryOpMap.getKind();
-    if (expr != AffineExprKind::Mul) {
-      return failure();
+    if (expr == AffineExprKind::Mod) {
+      return std::string("(floormod(") + lhsString.value() + "), " +
+             rhsString.value() + ")";
+    } else if (expr == AffineExprKind::Mul) {
+      if (lhsString.value() == std::to_string(0) ||
+          rhsString.value() == std::to_string(0)) {
+        return std::to_string(0);
+      }
+      return std::string("(") + lhsString.value() + " * " + rhsString.value() +
+             ")";
+    } else if (expr == AffineExprKind::FloorDiv) {
+      return lhsString.value();
     }
-    if (lhsString.value() == std::to_string(0) ||
-        rhsString.value() == std::to_string(0)) {
-      return std::to_string(0);
-    }
-    return std::string("(") + lhsString.value() + " * " + rhsString.value() +
-           ")";
   }
   if (auto constExpr = llvm::dyn_cast<AffineConstantExpr>(expr)) {
     return std::to_string(constExpr.getValue());
@@ -285,17 +304,26 @@ FailureOr<std::string> applyExpr(AffineExpr expr,
 
 /// Get the string representation of the offsets
 FailureOr<std::string> getString(OpFoldResult ofr,
-                                 AccelSerializer::ScopeInfo &scope) {
+                                 AccelSerializer::ScopeInfo &scope,
+                                 bool isSourceSubview) {
   std::optional<int64_t> intVal = getConstantIntValue(ofr);
   if (intVal) {
     return std::to_string(intVal.value());
   }
   Value v = cast<Value>(ofr);
+
   while (!scope.symbolTable.count(v)) {
+    if (auto blkArg = dyn_cast<BlockArgument>(v)) {
+      auto forOp = dyn_cast<scf::ForOp>(blkArg.getOwner()->getParentOp());
+      v = forOp.getInductionVar();
+      continue;
+    }
+
     if (auto affineOp = dyn_cast<affine::AffineApplyOp>(v.getDefiningOp())) {
       SmallVector<std::string> operands;
       for (auto [index, operand] : llvm::enumerate(affineOp.getOperands())) {
-        FailureOr<std::string> operandStr = getString(operand, scope);
+        FailureOr<std::string> operandStr =
+            getString(operand, scope, isSourceSubview);
         if (failed(operandStr)) {
           return affineOp.emitOpError(
               llvm::formatv("failed to resolve operand {0}", index));
@@ -309,13 +337,32 @@ FailureOr<std::string> getString(OpFoldResult ofr,
       }
       return exprStr.value();
     }
+
+    if (auto addOp = dyn_cast<arith::AddIOp>(v.getDefiningOp())) {
+      SmallVector<std::string> operands;
+      for (auto [index, operand] : llvm::enumerate(addOp.getOperands())) {
+        FailureOr<std::string> operandStr =
+            getString(operand, scope, isSourceSubview);
+        if (failed(operandStr)) {
+          return addOp.emitOpError(
+              llvm::formatv("failed to resolve operand {0}", index));
+        }
+        operands.push_back(operandStr.value());
+      }
+      // For destSubview, it should be (operands[0] + operands[1] / step_size),
+      // and (operands[1] / step_size) == 1. For simplicity, just hardcoded the
+      // rhs as 1. For sourceSubview, it should be just operands[0].
+      std::string offset = isSourceSubview ? "" : " + 1";
+      return std::string("(") + operands[0] + offset + ")";
+    }
   }
   return scope.symbolTable[v];
 }
 
 /// Get the linearized offset from the subview op
 FailureOr<std::string> applySubview(memref::SubViewOp subView,
-                                    AccelSerializer::ScopeInfo &scope) {
+                                    AccelSerializer::ScopeInfo &scope,
+                                    bool isSourceSubview) {
   SmallVector<int64_t> strides;
   int64_t offset;
   if (failed(getStridesAndOffset(
@@ -336,7 +383,8 @@ FailureOr<std::string> applySubview(memref::SubViewOp subView,
     if (isConstantIntValue(offset, 0)) {
       continue;
     }
-    FailureOr<std::string> currOffsetStr = getString(offset, scope);
+    FailureOr<std::string> currOffsetStr =
+        getString(offset, scope, isSourceSubview);
     if (failed(currOffsetStr)) {
       return subView.emitOpError("failed to resolve offset");
     }
@@ -365,10 +413,12 @@ FailureOr<std::string> applySubview(memref::SubViewOp subView,
 }
 
 FailureOr<std::string> applySubviews(ArrayRef<memref::SubViewOp> subviews,
-                                     AccelSerializer::ScopeInfo &scope) {
+                                     AccelSerializer::ScopeInfo &scope,
+                                     bool isSourceSubview) {
   std::string offsetStr;
   for (auto subView : subviews) {
-    FailureOr<std::string> currOffsetStr = applySubview(subView, scope);
+    FailureOr<std::string> currOffsetStr =
+        applySubview(subView, scope, isSourceSubview);
     if (failed(currOffsetStr)) {
       return failure();
     }
@@ -393,18 +443,27 @@ FailureOr<std::string> getOperandStr(Value operand, int64_t index,
     return failure();
   }
 
-  SmallVector<memref::SubViewOp> destSubviews;
-  FailureOr<Value> sourceOperand = walkSubViews(operand, destSubviews, scope);
-  if (failed(sourceOperand) ||
-      !scope.symbolTable.count(sourceOperand.value())) {
-    return failure();
+  MemRefType memType;
+  std::string sourceAllocName;
+  if (isa<BlockArgument>(operand)) {
+    auto parentOp = dyn_cast<BlockArgument>(operand).getOwner()->getParentOp();
+    sourceAllocName = scope.symbolTable[parentOp->getOperand(3)];
+  } else if (isa<scf::ForOp>(operand.getDefiningOp())) {
+    auto parentOp = dyn_cast<scf::ForOp>(operand.getDefiningOp());
+    sourceAllocName = scope.symbolTable[parentOp->getOperand(3)];
+  } else {
+    SmallVector<memref::SubViewOp> destSubviews;
+    FailureOr<Value> sourceOperand = walkSubViews(operand, destSubviews, scope);
+    if (failed(sourceOperand) ||
+        !scope.symbolTable.count(sourceOperand.value())) {
+      return failure();
+    }
+    memType = dyn_cast<MemRefType>(sourceOperand->getType());
+    sourceAllocName = scope.symbolTable[sourceOperand.value()];
   }
-
-  opStr += "(" + inputTypeStr.value() + "*)" +
-           scope.symbolTable[sourceOperand.value()];
+  opStr += "(" + inputTypeStr.value() + "*)" + sourceAllocName;
 
   if (isMulticore && index == 1) {
-    auto memType = dyn_cast<MemRefType>(sourceOperand->getType());
     SmallVector<int64_t> shape = llvm::to_vector(memType.getShape());
     opStr += "[(" + ivNameMulticore + " * ";
     opStr += std::to_string(getLinearizedSize(shape));
@@ -656,6 +715,7 @@ LogicalResult AccelSerializer::processOperation(scf::ForallOp forAllOp,
       ivNameMulticore = subScope.symbolTable[iv];
       std::string mlcAttr = getMulticoreAttr(ivNameMulticore);
       scope.indent().append(mlcAttr).append(" {\n");
+      numBraces++;
     }
 
     scope.indent().buffer.append(numGeneratedLoops * INDENTATION_WIDTH, ' ');
@@ -672,7 +732,6 @@ LogicalResult AccelSerializer::processOperation(scf::ForallOp forAllOp,
   }
 
   // Append the body.
-  numParallelLoops--;
   scope.append(subScope);
   for (auto loopNum : llvm::reverse(llvm::seq<int>(0, numGeneratedLoops))) {
     scope.indent();
@@ -681,7 +740,10 @@ LogicalResult AccelSerializer::processOperation(scf::ForallOp forAllOp,
     }
     scope.append("}\n");
   }
-  if (numParallelLoops) {
+
+  // Add back brackets introduced by multicore attributes
+  numParallelLoops--;
+  if (numParallelLoops && numBraces) {
     scope.indent().append("}\n");
   }
   return success();
@@ -704,6 +766,7 @@ LogicalResult AccelSerializer::processOperation(scf::ForOp forOp,
   // used for reduction loops.
   std::string iv = "ro_" + std::to_string(scope.symbolTable.size());
   std::string ivName = subScope.symbolTable[forOp.getInductionVar()];
+  scope.symbolTable[forOp.getInductionVar()] = ivName;
   if (ivName != std::to_string(0)) {
     iv = ivName;
   }
@@ -758,6 +821,9 @@ LogicalResult AccelSerializer::processOperation(memref::AllocOp allocOp,
   SmallVector<int64_t> shape = llvm::to_vector(allocOp.getType().getShape());
   argStr += std::to_string(getLinearizedSize(shape)) +
             "]), storage_scope = " + memorySpace + ";";
+  if (shape[0] == 2) {
+    argStr += " annotations = {\"double_buffer\": 1};";
+  }
   argStr.push_back('\n');
 
   scope.indent();
@@ -862,33 +928,55 @@ LogicalResult AccelSerializer::processOperation(IREE::LinalgExt::PackOp packOp,
                                                 ScopeInfo &scopeInfo) {
   // Get the destination buffer from the pack operation
   auto destBuffer = packOp.getDpsInits()[0];
-  if (!scopeInfo.symbolTable.count(destBuffer)) {
-    return packOp.emitOpError("missing symbol table entry for destination");
+
+  SmallVector<memref::SubViewOp> destSubviews;
+  FailureOr<Value> resolvedDestBuffer =
+      walkSubViews(destBuffer, destSubviews, scopeInfo);
+  auto destRootBuffer = resolvedDestBuffer.value();
+  if (failed(resolvedDestBuffer) ||
+      !scopeInfo.symbolTable.count(destRootBuffer)) {
+    return packOp.emitOpError("missing symbol table entry for dest buffer");
   }
 
-  // Get the original buffer from the input of the pack operation
-  Value srcBuffer = packOp.getInput();
-  SmallVector<memref::SubViewOp> sourceSubviews;
-  FailureOr<Value> resolvedSrcBuffer =
-      walkSubViews(packOp.getInput(), sourceSubviews, scopeInfo);
-  if (failed(resolvedSrcBuffer) ||
-      !scopeInfo.symbolTable.count(resolvedSrcBuffer.value())) {
-    return packOp.emitOpError("missing symbol table entry for source");
+  FailureOr<std::string> destOffsetStr =
+      applySubviews(destSubviews, scopeInfo, false);
+  if (failed(destOffsetStr)) {
+    return packOp.emitOpError("failed to resolve subview offsets");
   }
 
   auto destType = cast<MemRefType>(destBuffer.getType());
   if (!destType.hasStaticShape()) {
     return packOp.emitOpError("unhandled dynamic shape of dest");
   }
-  auto srcType = cast<MemRefType>(srcBuffer.getType());
-  if (!srcType.hasStaticShape()) {
-    return packOp.emitOpError("unhandled dynamic shape of source");
-  }
 
   // Generate BdLoops from the result shape of the pack operation
   FailureOr<BdLoops> bdLoops = getBdLoops(destType.getShape());
   if (failed(bdLoops)) {
     return packOp.emitOpError("failed to generate bd loops");
+  }
+
+  // Get the original buffer from the input of the pack operation
+  Value srcBuffer = packOp.getInput();
+  SmallVector<memref::SubViewOp> sourceSubviews;
+  FailureOr<Value> resolvedSrcBuffer =
+      walkSubViews(srcBuffer, sourceSubviews, scopeInfo);
+  if (failed(resolvedSrcBuffer) ||
+      !scopeInfo.symbolTable.count(resolvedSrcBuffer.value())) {
+    return packOp.emitOpError("missing symbol table entry for source buffer");
+  }
+
+  auto srcType = cast<MemRefType>(srcBuffer.getType());
+  if (!srcType.hasStaticShape()) {
+    return packOp.emitOpError("unhandled dynamic shape of source");
+  }
+
+  FailureOr<SmallVector<std::string>> sourceIndices =
+      convertToLinearIndices(bdLoops->ivs, packOp.getInnerDimsPos(),
+                             packOp.getMixedTiles(), packOp.getOuterDimsPerm());
+  FailureOr<std::string> sourceOffsetStr =
+      applySubviews(sourceSubviews, scopeInfo, true);
+  if (failed(sourceOffsetStr)) {
+    return packOp.emitOpError("failed to resolve subview offsets");
   }
 
   // Add attribute to the buffer depending on whether it's in shared memory or
@@ -899,26 +987,27 @@ LogicalResult AccelSerializer::processOperation(IREE::LinalgExt::PackOp packOp,
     loadType = "load";
   }
 
-  FailureOr<SmallVector<std::string>> sourceIndices =
-      convertToLinearIndices(bdLoops->ivs, packOp.getInnerDimsPos(),
-                             packOp.getMixedTiles(), packOp.getOuterDimsPerm());
-  FailureOr<std::string> sourceOffsetStr =
-      applySubviews(sourceSubviews, scopeInfo);
-  if (failed(sourceOffsetStr)) {
-    return packOp.emitOpError("failed to resolve subview offsets");
+  // Serialize the destination buffer and dma location
+  std::string packStr = "";
+  if (!destOffsetStr.value().empty()) {
+    packStr += "attr [weight_shared.shared] \"double_buffer_write\" = 1;";
+    packStr += "\n";
   }
 
-  // Serialize the destination buffer and dma location
-  std::string destOffsetStr = "";
+  std::string destOffset = destOffsetStr.value();
   if (isMulticore && loadType == "load") {
-    destOffsetStr = sourceOffsetStr.value();
+    destOffset += sourceOffsetStr.value();
   }
-  std::string packStr = "@vaie.virtual_buffers(\"" + loadType + "\", ";
-  FailureOr<std::string> destStr = getIndexedAccess(
-      scopeInfo.symbolTable[destBuffer], destType, bdLoops->ivs, destOffsetStr);
+
+  packStr += "@vaie.virtual_buffers(\"" + loadType + "\", ";
+  FailureOr<std::string> destStr =
+      getIndexedAccess(scopeInfo.symbolTable[destRootBuffer], destType,
+                       bdLoops->ivs, destOffset);
+
   if (failed(destStr)) {
     return packOp.emitOpError("failed to get dest string");
   }
+
   packStr += "@vaie.dest(";
   packStr += destStr.value() + ", ";
   packStr += bdLoops->loopStr + ", ";
@@ -936,6 +1025,7 @@ LogicalResult AccelSerializer::processOperation(IREE::LinalgExt::PackOp packOp,
   if (failed(sourceStr)) {
     return packOp.emitOpError("failed to get source string");
   }
+  
   packStr += "@vaie.origin(";
   packStr += sourceStr.value() + ", ";
   packStr += bdLoops->loopStr + ", ";
@@ -948,7 +1038,6 @@ LogicalResult AccelSerializer::processOperation(IREE::LinalgExt::PackOp packOp,
 
   // bd_access_config
   packStr += "@vaie.bd_access_config(False, 1, 1, 0, 0, 0, dtype=handle), ";
-
   packStr += "dtype=int8)";
   scopeInfo.indent();
   scopeInfo.append(packStr);
@@ -1001,7 +1090,8 @@ LogicalResult AccelSerializer::processOperation(
   FailureOr<SmallVector<std::string>> destIndices = convertToLinearIndices(
       bdLoops->ivs, unpackOp.getInnerDimsPos(), unpackOp.getMixedTiles(),
       unpackOp.getOuterDimsPerm());
-  FailureOr<std::string> destOffsetStr = applySubviews(destSubviews, scopeInfo);
+  FailureOr<std::string> destOffsetStr =
+      applySubviews(destSubviews, scopeInfo, false);
   if (failed(destOffsetStr)) {
     return unpackOp.emitOpError("failed to resolve subview offsets");
   }
