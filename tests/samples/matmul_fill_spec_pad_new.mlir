@@ -34,42 +34,6 @@ module attributes { transform.with_named_sequence } {
   }
 
   transform.named_sequence @__transform_main(%variant_op: !transform.any_op {transform.read_only}) {
-    // Run canonicalizations.
-    transform.include @cleanup failures(propagate) (%variant_op) : (!transform.any_op) -> ()  
-
-    // Find the matmul and fill again
-    %tiled_ops = transform.structured.match ops{["linalg.matmul"]} in %variant_op : (!transform.any_op) -> !transform.any_op
-    %tiled_matmul = transform.split_handle %tiled_ops : (!transform.any_op) -> (!transform.any_op)
-    
-    // Tile reduction dimension.
-    %tiled_reduction, %loop =
-      transform.structured.tile_using_for %tiled_matmul [0, 0, 4]
-      : (!transform.any_op) -> (!transform.any_op, !transform.any_op)
-
-    // Clean up.
-    transform.include @cleanup failures(propagate) (%variant_op) : (!transform.any_op) -> ()
-
-    // Pad operation.
-    %padded_reduction, %pad_reduction, %___ = transform.structured.pad %tiled_reduction {
-      padding_values=[0 : i32, 0 : i32, 0 : i32],
-      padding_dimensions=[0, 1, 2],
-      pack_paddings=[1, 1, 0],
-      copy_back_op="linalg.copy"
-    } : (!transform.any_op) -> (!transform.any_op, !transform.any_op, !transform.any_op)
-    %pad_2_dps = transform.structured.rewrite_in_destination_passing_style %pad_reduction : (!transform.any_op) -> !transform.any_op
-
-    // Promote to local memory
-    %padded_reduction_lhs = transform.get_producer_of_operand %padded_reduction[0] : (!transform.any_op) -> (!transform.any_op)
-    %padded_reduction_lhs_buffer, %padded_reduction_lhs_new = transform.structured.bufferize_to_allocation %padded_reduction_lhs
-        {memory_space = 2, bufferize_destination_only, emit_dealloc} : !transform.any_op
-
-    %padded_reduction_rhs = transform.get_producer_of_operand %padded_reduction[1] : (!transform.any_op) -> (!transform.any_op)
-    %padded_reduction_rhs_buffer, %padded_reduction_rhs_new = transform.structured.bufferize_to_allocation %padded_reduction_rhs
-        {memory_space = 2, bufferize_destination_only, emit_dealloc} : !transform.any_op
-
-    // Clean up.
-    transform.include @cleanup failures(propagate) (%variant_op) : (!transform.any_op) -> ()
-
     // Bufferize and drop HAL decriptor from memref ops.
     transform.iree.eliminate_empty_tensors %variant_op : (!transform.any_op) -> ()
     %variant_op_3 = transform.iree.bufferize %variant_op : (!transform.any_op) -> !transform.any_op

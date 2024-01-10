@@ -178,7 +178,7 @@ void AMDAIEPadAndBufferizePass::runOnOperation() {
       // `paddingLevel`, the following is what we bufferize :-
       //    paddingLevel == 1 -> Lhs, Rhs and Out.
       //    paddingLevel == 2 -> Out.
-      //    paddingLevel == 2 -> Lhs and Rhs.
+      //    paddingLevel == 3 -> Lhs and Rhs.
       if (paddingLevel == 2 && i <= 1) continue;
       if (paddingLevel == 3 && i > 1) break;
       Value operand = matmulOp->getOperand(i);
