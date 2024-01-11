@@ -45,6 +45,10 @@ createAMDAIEPadAndBufferizePass(int64_t paddingLevel = -1);
 std::unique_ptr<OperationPass<IREE::HAL::ExecutableVariantOp>>
 createCleanupPass();
 
+/// Create a pass to pack and transpose the linalg op.
+std::unique_ptr<OperationPass<IREE::HAL::ExecutableVariantOp>>
+createAMDAIEPackAndTransposePass(int64_t packLevel = -1);
+
 void registerAMDAIEPasses();
 
 }  // namespace mlir::iree_compiler::AMDAIE

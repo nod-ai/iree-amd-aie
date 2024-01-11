@@ -48,4 +48,15 @@ def Cleanup :
       "mlir::iree_compiler::AMDAIE::createCleanupPass()";
 }
 
+def AMDAIEPackAndTranspose :
+    Pass<"iree-amdaie-pack-and-transpose", "IREE::HAL::ExecutableVariantOp"> {
+  let summary = "Pass to pack and transpose the linalg operations.";
+  let constructor =
+      "mlir::iree_compiler::AMDAIE::createAMDAIEPackAndTransposePass()";
+  let options = [
+    Option<"packLevel", "pack-level", "int64_t", /*default=*/"1",
+      "Set the packing level number">
+  ];
+}
+
 #endif // IREE_AMD_AIE_TRANSFORMS_PASSES
