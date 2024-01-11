@@ -631,6 +631,7 @@ LogicalResult AccelSerializer::processOperation(scf::ForallOp forAllOp,
   ValueRange ivs = forAllOp.getInductionVars();
 
   ScopeInfo subScope = scope.getSubScope();
+  subScope.indentation = scope.indentation;
   int numGeneratedLoops = 0;
   numParallelLoops++;
 
@@ -694,6 +695,8 @@ LogicalResult AccelSerializer::processOperation(scf::ForOp forOp,
   OpFoldResult step = getAsOpFoldResult(forOp.getStep());
 
   ScopeInfo subScope = scope.getSubScope();
+  subScope.indentation = scope.indentation + INDENTATION_WIDTH;
+
   FailureOr<std::string> forStr =
       getLoopHeader(lb, ub, step, forOp.getInductionVar(), subScope);
   if (failed(forStr)) {
@@ -711,7 +714,6 @@ LogicalResult AccelSerializer::processOperation(scf::ForOp forOp,
   scope.indent().append(attr).append(" {\n");
 
   if (!forStr->empty()) {
-    scope.indentation += INDENTATION_WIDTH;
     scope.indent().append(forStr.value()).append(" {\n");
   }
 
@@ -728,7 +730,6 @@ LogicalResult AccelSerializer::processOperation(scf::ForOp forOp,
   if (!forStr->empty()) {
     scope.indent().append("}\n");
   }
-  scope.indentation -= INDENTATION_WIDTH;
   scope.indent().append("}\n");
   return success();
 }
@@ -792,7 +793,7 @@ LogicalResult AccelSerializer::processOperation(linalg::FillOp fillOp,
   } else {
     opStr += "[(0)] = 0\n";
   }
-  subScope.indentation += INDENTATION_WIDTH;
+  subScope.indentation = scope.indentation + INDENTATION_WIDTH;
   subScope.indent().buffer.append(opStr.begin(), opStr.end());
 
   scope.indent().buffer.append(argStr.begin(), argStr.end());
