@@ -4,7 +4,7 @@
 //   export IREE_BUILD_DIR=${IREE_BUILD_DIR:-${HOME}/iree/build/Debug}
 //   export IREE_AMD_AIE_DIR=${IREE_AMD_AIE_DIR:-${HOME}/iree/iree-amd-aie}
 //   ${IREE_BUILD_DIR}/tools/iree-opt \
-//     ${IREE_AMD_AIE_DIR}/tests/samples/matmul_fill_static.mlir \
+//     ${IREE_AMD_AIE_DIR}/tests/samples/matmul_fill_static_i8_i32.mlir \
 //     --iree-hal-target-backends=amd-aie \
 //     --iree-abi-transformation-pipeline \
 //     --iree-flow-transformation-pipeline \
@@ -12,7 +12,10 @@
 //     --iree-hal-configuration-pipeline | \
 //   ${IREE_BUILD_DIR}/tools/iree-opt \
 //      --pass-pipeline='builtin.module(hal.executable(hal.executable.variant(iree-codegen-materialize-user-configs, iree-amdaie-lower-executable-target)))' \
-//      --iree-codegen-transform-dialect-library=${IREE_AMD_AIE_DIR}/tests/samples/matmul_fill_spec_pack_peel.mlir
+//      --iree-codegen-transform-dialect-library=${IREE_AMD_AIE_DIR}/tests/samples/matmul_fill_spec_pack_peel.mlir | \
+//   ${IREE_BUILD_DIR}/tools/iree-aie-translate \
+//      --serialize-accel \
+//      --allow-unregistered-dialect
 // ```
 
 module attributes { transform.with_named_sequence } {
@@ -33,9 +36,9 @@ module attributes { transform.with_named_sequence } {
     %ops = transform.structured.match ops{["linalg.fill", "linalg.matmul"]} in %variant_op : (!transform.any_op) -> !transform.any_op
     %fill, %matmul = transform.split_handle %ops : (!transform.any_op) -> (!transform.any_op, !transform.any_op)
 
-    // First level tile to forall with tile_sizes [16, 64].
+    // First level tile to forall with tile_sizes [16, 256] to target 4 cores. Adjust to [16, 64] for 1 core.
     %tiled_matmul, %forall =
-      transform.structured.tile_using_forall %matmul tile_sizes [16, 64]
+      transform.structured.tile_using_forall %matmul tile_sizes [16, 256]
         ( mapping = [#gpu.block<y>, #gpu.block<x>] ) : (!transform.any_op) -> (!transform.any_op, !transform.any_op)
     transform.iree.populate_workgroup_count_region_using_num_threads_slice %forall
       : (!transform.any_op) -> ()
