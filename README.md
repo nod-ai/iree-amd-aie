@@ -49,7 +49,7 @@ ctest -R amd-aie
 
 ## Runtime driver setup
 
-The runtime driver is currently just a stub and is not enabled by default.
+The runtime driver is currently experimental and is not enabled by default.
 Enable with:
 
 ```
