@@ -281,34 +281,9 @@ class GeneralizeUnPackOpPattern
         AffineMapAttr::get(
             AffineMap::getPermutationMap(perm, unpackOp->getContext())));
 
-    //  // 3. Handle in-complete tiles if needed. It truncates trailing data
-    //  from the
-    //  // transposed tile.
-    // //  int numLoops = transpShape.size();
-    // //  SmallVector<OpFoldResult> tileStrides(numLoops, oneIdxAttr);
-    // //  SmallVector<OpFoldResult> tileOffsets(numLoops, zeroIdxAttr);
-    // //  SmallVector<OpFoldResult> tileSizes;
-    // //  ArrayRef<int64_t> destShape = unpackOp.getOutputType().getShape();
-    // //  for (auto i : llvm::seq<unsigned>(0, destRank)) {
-    // //    if (dimAndTileMapping.count(i) || destShape[i] != 1)
-    // //     //  tileSizes.push_back(
-    // //     //      tensor::getMixedSize(rewriter, loc, unpackOp.getOutput(),
-    // i));
-    // //      tileSizes.push_back(
-    // //          getMixedSize(rewriter, loc, unpackOp.getOutput(), i));
-    // //  }
-
-    // //   memorySpace =
-    // unpackOp.getOutputType().cast<MemRefType>().getMemorySpace();
-    // //   auto writeType = MemRefType::get(destShape, elemType, nullptr,
-    // memorySpace);
-    // //   auto output_subview = rewriter.create<memref::SubViewOp>(
-    // //       loc, writeType, unpackOp.getOutput(), tileOffsets, tileSizes,
-    // //       tileStrides);
-
-    // //  auto partialTile = rewriter.create<tensor::ExtractSliceOp>(
-    // //      loc, transposedOp.getResult()[0], tileOffsets, tileSizes,
-    // tileStrides);
+    // 3. Handle in-complete tiles if needed. It truncates trailing data from
+    // the transposed tile.
+    // TODO
 
     // 4. Copy the result to the destination memref.
     SmallVector<OpFoldResult> writeStrides(destRank, oneIdxAttr);
@@ -339,6 +314,13 @@ struct LowerPackResult {
   // TODO: padding
   memref::ExpandShapeOp expandShapeOp;
   memref::TransposeOp transposeOp;
+  xilinx::air::DmaMemcpyNdOp dmaOp;
+};
+
+struct LowerUnPackResult {
+  // TODO: padding
+  memref::TransposeOp transposeOp;
+  xilinx::air::DmaMemcpyNdOp dmaOp;
 };
 
 FailureOr<LowerPackResult> lowerPack(RewriterBase &rewriter,
@@ -403,14 +385,14 @@ FailureOr<LowerPackResult> lowerPack(RewriterBase &rewriter,
           AffineMap::getPermutationMap(transpPerm, packOp->getContext())));
 
   SmallVector<Value, 2> mt;
-  rewriter.create<xilinx::air::DmaMemcpyNdOp>(
+  auto dmaOp = rewriter.create<xilinx::air::DmaMemcpyNdOp>(
       loc, SmallVector<Type, 1>{}, mt, packOp.getOutput(), mt, mt, mt,
       transposeOp.getResult(), mt, mt, mt);
 
   // 7. Replace packOp by transposeOp.
   rewriter.eraseOp(packOp);
 
-  return LowerPackResult{reshapeOp, transposeOp};
+  return LowerPackResult{reshapeOp, transposeOp, dmaOp};
 }
 
 /// A wrapper pattern that calls lowerPack on PackOp. It lowers
@@ -424,6 +406,73 @@ struct LowerPackPattern : public OpRewritePattern<IREE::LinalgExt::PackOp> {
     if (failed(res)) {
       return rewriter.notifyMatchFailure(
           op, "cannot lower to pad + expand + transpose");
+    }
+    return success();
+  }
+};
+
+FailureOr<LowerUnPackResult> lowerUnPack(RewriterBase &rewriter,
+                                         IREE::LinalgExt::UnPackOp unPackOp) {
+  Location loc = unPackOp->getLoc();
+  OpBuilder::InsertionGuard g(rewriter);
+  rewriter.setInsertionPoint(unPackOp);
+
+  MemRefType memrefType = unPackOp.getInputType().cast<MemRefType>();
+  int64_t packedRank = memrefType.getRank();
+
+  // 1. Unpad the source of unPackOp
+  // TODO
+
+  // 2. Compute the permutation vector to move the last `numPackedDims` into
+  // the `innerPosDims` of a shape of rank `packedRank`.
+  int64_t numPackedDims = unPackOp.getInnerDimsPos().size();
+  auto lastDims = llvm::to_vector(
+      llvm::seq<int64_t>(packedRank - numPackedDims, packedRank));
+  PackingMetadata packingMetadata =
+      computePackingMetadata(packedRank, unPackOp.getInnerDimsPos());
+  SmallVector<int64_t> lastDimsToInsertPositionsPerm = computePermutationVector(
+      packedRank, lastDims, packingMetadata.insertPositions);
+  // Apply outer positions permutation.
+  SmallVector<int64_t> outerPos = packingMetadata.outerPositions;
+  ArrayRef<int64_t> outerPerm = unPackOp.getOuterDimsPerm();
+  if (!outerPerm.empty()) applyPermutationToVector(outerPos, outerPerm);
+  SmallVector<int64_t> outerPositionPerm = computePermutationVector(
+      packedRank, packingMetadata.outerPositions, outerPos);
+
+  SmallVector<int64_t> packedToStripMinedShapePerm =
+      lastDimsToInsertPositionsPerm;
+  applyPermutationToVector(packedToStripMinedShapePerm, outerPositionPerm);
+
+  // 3. Transpose packedShape to stripMinedShape.
+  auto transposeOp = rewriter.create<memref::TransposeOp>(
+      loc, unPackOp.getInput(),
+      AffineMapAttr::get(AffineMap::getPermutationMap(
+          packedToStripMinedShapePerm, unPackOp->getContext())));
+
+  // 4. Inject a copy.
+  SmallVector<Value, 2> mt;
+  auto dmaOp = rewriter.create<xilinx::air::DmaMemcpyNdOp>(
+      loc, SmallVector<Type, 1>{}, mt, unPackOp.getOutput(), mt, mt, mt,
+      transposeOp->getResult(0), mt, mt, mt);
+
+  // 5. Erase unPackOp.
+  rewriter.eraseOp(unPackOp);
+
+  return LowerUnPackResult{transposeOp, dmaOp};
+}
+
+/// A warpper pattern that calls linalg::lowerUnPack on tensor::UnPackOp. It
+/// lowers a tensor.unpack op to tensor.empty + linalg.transpose +
+/// tensor.collapse_shape + tensor.extract_slice ops.
+struct LowerUnPackPattern : public OpRewritePattern<IREE::LinalgExt::UnPackOp> {
+  using OpRewritePattern<IREE::LinalgExt::UnPackOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(IREE::LinalgExt::UnPackOp op,
+                                PatternRewriter &rewriter) const override {
+    FailureOr<LowerUnPackResult> res = lowerUnPack(rewriter, op);
+    if (failed(res)) {
+      return rewriter.notifyMatchFailure(
+          op, "cannot lower to empty + transpose + collapse + subview");
     }
     return success();
   }
@@ -461,7 +510,7 @@ static void extractStridesFromMemrefType(MemRefType memrefTy,
   auto successStrides = getStridesAndOffset(memrefTy, layout_strides, offset);
   if (failed(successStrides)) {
     llvm::outs() << "Failed to get strides\n";
-    return;  // failure();
+    return;
   }
 
   for (auto s : layout_strides)
@@ -489,6 +538,57 @@ static void extractOffsetsFromSubview(memref::SubViewOp subview,
     else
       offsets.push_back(*subview_offsets++);
   }
+}
+
+static LogicalResult canonicalizeAIRDmaOperands(OpBuilder builder,
+                                                SmallVector<Value, 4> &offsets,
+                                                SmallVector<Value, 4> &sizes,
+                                                SmallVector<Value, 4> &strides,
+                                                MemRefType memref) {
+  // Increase vector sizes up to memref size
+  int max_dim_size =
+      std::max(std::max(offsets.size(), sizes.size()), strides.size());
+  if (max_dim_size && offsets.size() < memref.getRank()) {
+    for (unsigned i = offsets.size(); i < memref.getRank(); i++) {
+      offsets.insert(offsets.begin(), builder.create<arith::ConstantIndexOp>(
+                                          builder.getUnknownLoc(), 0));
+    }
+  }
+  if (max_dim_size && sizes.size() < memref.getRank()) {
+    for (unsigned i = sizes.size(); i < memref.getRank(); i++) {
+      sizes.insert(sizes.begin(), builder.create<arith::ConstantIndexOp>(
+                                      builder.getUnknownLoc(), 1));
+    }
+  }
+  int memref_size = 1;
+  for (auto size : memref.getShape()) memref_size *= size;
+  if (max_dim_size && strides.size() < memref.getRank()) {
+    for (unsigned i = strides.size(); i < memref.getRank(); i++) {
+      strides.insert(strides.begin(),
+                     builder.create<arith::ConstantIndexOp>(
+                         builder.getUnknownLoc(), memref_size));
+    }
+  }
+
+  // Reduce highest dimensions if more than memref size
+  while (strides.size() > memref.getRank() && getConstantIntValue(strides[0]) &&
+         *getConstantIntValue(strides[0]) == memref_size) {
+    strides.erase(strides.begin());
+  }
+  while (sizes.size() > memref.getRank() && getConstantIntValue(sizes[0]) &&
+         *getConstantIntValue(sizes[0]) == 1) {
+    sizes.erase(sizes.begin());
+  }
+  while (offsets.size() > std::min(sizes.size(), strides.size()) &&
+         getConstantIntValue(offsets[0]) &&
+         *getConstantIntValue(offsets[0]) == 0) {
+    offsets.erase(offsets.begin());
+  }
+
+  if (offsets.size() != sizes.size() || sizes.size() != strides.size())
+    return failure();
+
+  return success();
 }
 
 static LogicalResult CondenseMemrefDataReorderingToAIRDma(
@@ -617,6 +717,15 @@ static LogicalResult CondenseMemrefDataReorderingToAIRDma(
 
   SmallVector<Value, 4> deps;
   SmallVector<Type, 4> tys;
+
+  if (failed(canonicalizeAIRDmaOperands(rewriter, src_offsets, src_sizes,
+                                        src_strides,
+                                        src.getType().cast<MemRefType>())) ||
+      failed(canonicalizeAIRDmaOperands(rewriter, dst_offsets, dst_sizes,
+                                        dst_strides,
+                                        dst.getType().cast<MemRefType>()))) {
+    assert(false);
+  }
   auto new_dma = rewriter.create<xilinx::air::DmaMemcpyNdOp>(
       loc, tys, deps, dst, dst_offsets, dst_sizes, dst_strides, src,
       src_offsets, src_sizes, src_strides);
@@ -668,19 +777,11 @@ void AMDAIEDecomposeLinalgExtPackUnPackToAIRPass::runOnOperation() {
   // Do not convert pack and unpack ops if outer dims are expected to always be
   // tiled to one.
   RewritePatternSet patterns(ctx);
-  patterns.add<LowerPackPattern>(ctx);
-  // patterns.add<LowerPackPattern, LowerUnPackPattern>(ctx);
+  patterns.add<LowerPackPattern, LowerUnPackPattern>(ctx);
   if (failed(
           applyPatternsAndFoldGreedily(getOperation(), std::move(patterns)))) {
     return signalPassFailure();
   }
-
-  // TODO:
-  // GeneralizeOuterUnitDimsPackOpPattern
-  // GeneralizeOuterUnitDimsUnPackOpPattern
-
-  // LowerPackPattern
-  // LowerUnPackPattern
 
   // Condense memref data pattern reordering ops, including memref.subview,
   // memref.tranpose and memref.expand_shape into air.dma_memcpy_nd op's
@@ -754,6 +855,11 @@ void AMDAIEDecomposeLinalgExtPackUnPackToAIRPass::runOnOperation() {
             std::get<0>(dmaOp), std::get<1>(dmaOp), std::get<2>(dmaOp)))) {
       return signalPassFailure();
     }
+  }
+  // Erase condensed memref ops
+  for (auto dmaOp : dma_ops) {
+    for (auto memref_op : std::get<1>(dmaOp)) memref_op->erase();
+    for (auto memref_op : std::get<2>(dmaOp)) memref_op->erase();
   }
 }
 
