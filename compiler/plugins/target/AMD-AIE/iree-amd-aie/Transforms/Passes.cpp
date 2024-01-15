@@ -65,6 +65,8 @@ void addMLIRAIRAIELoweringPasses(OpPassManager &passManager) {
   passManager.addPass(createEraseHALDescriptorTypeFromMemRefPass());
   passManager.addPass(createAMDAIEBridgeToAIRPass());
   passManager.addPass(memref::createFoldMemRefAliasOpsPass());
+  passManager.addPass(
+      mlir::iree_compiler::createIREEComprehensiveBufferizePass());
 
   {
     xilinx::air::ParallelToHerdOptions options;
@@ -103,7 +105,8 @@ void addMLIRAIRAIELoweringPasses(OpPassManager &passManager) {
   passManager.addPass(createCSEPass());
 
   passManager.addPass(xilinx::air::createAIRIsolateAsyncDmaLoopNests());
-  passManager.addPass(xilinx::air::createAIRSpecializeChannelWrapAndStridePattern());
+  passManager.addPass(
+      xilinx::air::createAIRSpecializeChannelWrapAndStridePattern());
   passManager.addPass(createCanonicalizerPass());
   passManager.addPass(createCSEPass());
 
