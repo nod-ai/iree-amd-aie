@@ -131,11 +131,11 @@ static iree_status_t iree_hal_xrt_buffer_map_range(
   // behavior but it will make debugging issues easier. Alternatively for heap
   // buffers we could reallocate them such that ASAN yells, but that would only
   // work if the entire buffer was discarded.
-  #ifndef NDEBUG
+#ifndef NDEBUG
   if (iree_any_bit_set(memory_access, IREE_HAL_MEMORY_ACCESS_DISCARD)) {
     memset(data_ptr, 0xCD, local_byte_length);
   }
-  #endif  // !NDEBUG
+#endif  // !NDEBUG
   mapping->contents = iree_make_byte_span(data_ptr, local_byte_length);
   return status;
 }
