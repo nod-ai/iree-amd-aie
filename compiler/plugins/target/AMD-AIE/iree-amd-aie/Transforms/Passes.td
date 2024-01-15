@@ -56,6 +56,15 @@ def AMDAIEPackAndTranspose :
   let options = [
     Option<"packLevel", "pack-level", "int64_t", /*default=*/"1",
       "Set the packing level number">
+
+def AMDAIEBufferizeToAllocation :
+    Pass<"iree-amdaie-bufferize-to-allocation", "IREE::HAL::ExecutableVariantOp"> {
+  let summary = "Pass to bufferizes the targeted operation and materializes the result in a new allocation.";
+  let constructor =
+      "mlir::iree_compiler::AMDAIE::createAMDAIEBufferizeToAllocationPass()";
+  let options = [
+    Option<"memorySpace", "memory-space", "int64_t", /*default=*/"1",
+      "Set the memory space">
   ];
 }
 

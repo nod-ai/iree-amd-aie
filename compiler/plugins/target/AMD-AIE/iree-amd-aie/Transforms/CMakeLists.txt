@@ -41,6 +41,7 @@ iree_cc_library(
     "AMDAIEPadAndBufferize.cpp"
     "AMDAIETileAndFuse.cpp"
     "AMDAIEPackAndTranspose.cpp"
+    "AMDAIEBufferizeToAllocation.cpp"
     "BridgeToAIRPass.cpp"
     "Cleanup.cpp"
   DEPS

@@ -49,6 +49,11 @@ createCleanupPass();
 std::unique_ptr<OperationPass<IREE::HAL::ExecutableVariantOp>>
 createAMDAIEPackAndTransposePass(int64_t packLevel = 1);
 
+/// Pass to bufferizes the targeted operation and materializes the result in a
+/// new allocation.
+std::unique_ptr<OperationPass<IREE::HAL::ExecutableVariantOp>>
+createAMDAIEBufferizeToAllocationPass(int64_t memorySpace = 1);
+
 void registerAMDAIEPasses();
 
 }  // namespace mlir::iree_compiler::AMDAIE
