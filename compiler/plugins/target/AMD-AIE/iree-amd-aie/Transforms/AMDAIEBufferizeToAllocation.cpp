@@ -1,4 +1,4 @@
-// Copyright 2023 The IREE Authors
+// Copyright 2024 The IREE Authors
 //
 // Licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -8,7 +8,7 @@
 #include "iree-amd-aie/Transforms/Passes.h"
 #include "mlir/Dialect/Bufferization/IR/Bufferization.h"
 #include "mlir/Dialect/Linalg/Transforms/Transforms.h"
-#include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/Iterators.h"
 #include "mlir/Pass/Pass.h"
 
 #define DEBUG_TYPE "iree-amdaie-bufferize-to-allocation"
@@ -59,14 +59,14 @@ void AMDAIEBufferizeToAllocationPass::runOnOperation() {
 
   for (func::FuncOp funcOp : innerModule.getOps<func::FuncOp>()) {
     linalg::LinalgOp linalgOp;
-    funcOp->walk([&](linalg::LinalgOp op) {
-      if (linalg::isaContractionOpInterface(op)) {
-        linalgOp = op;
-        return WalkResult::interrupt();
-      }
-      return WalkResult::advance();
-    });
-    llvm::outs() << linalgOp << "\n";
+    funcOp->walk<WalkOrder::PostOrder, ReverseIterator>(
+        [&](linalg::LinalgOp op) {
+          if (linalg::isaContractionOpInterface(op)) {
+            linalgOp = op;
+            return WalkResult::interrupt();
+          }
+          return WalkResult::advance();
+        });
     if (!linalgOp) {
       LLVM_DEBUG(llvm::dbgs() << "----- skip, no linalg op -----\n");
       return;
