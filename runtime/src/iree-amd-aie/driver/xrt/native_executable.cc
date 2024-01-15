@@ -162,7 +162,7 @@ iree_status_t iree_hal_xrt_native_executable_create(
   executable->host_allocator = host_allocator;
   executable->entry_point_count = entry_point_count;
   for (iree_host_size_t i = 0; i < entry_point_count; i++) {
-    std::string entry_name = flatbuffers_string_vec_at(entry_points_vec, i);
+    const char* entry_name = flatbuffers_string_vec_at(entry_points_vec, i);
     iree_amd_aie_hal_xrt_AsmInstDef_table_t asminst_def =
         iree_amd_aie_hal_xrt_AsmInstDef_vec_at(asm_instrs_vec, i);
     flatbuffers_uint32_vec_t asm_inst =
@@ -212,7 +212,7 @@ iree_status_t iree_hal_xrt_native_executable_create(
         iree_amd_aie_hal_xrt_FileLineLocDef_vec_t source_locs_vec =
             iree_amd_aie_hal_xrt_ExecutableDef_source_locations_get(
                 executable_def);
-        iree_smd_aie_hal_xrt_FileLineLocDef_table_t source_loc =
+        iree_amd_aie_hal_xrt_FileLineLocDef_table_t source_loc =
             iree_amd_aie_hal_xrt_FileLineLocDef_vec_at(source_locs_vec, i);
         flatbuffers_string_t filename =
             iree_amd_aie_hal_xrt_FileLineLocDef_filename_get(source_loc);
