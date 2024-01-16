@@ -4,6 +4,7 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+#include "iree-amd-aie/Transforms/KernelDispatch.h"
 #include "iree-amd-aie/Transforms/PassDetail.h"
 #include "iree-amd-aie/Transforms/Passes.h"
 #include "iree-dialects/Dialect/LinalgExt/IR/LinalgExtDialect.h"
@@ -62,6 +63,11 @@ void AMDAIELowerExecutableTargetPass::runOnOperation() {
         "Expected a variantOp root with an inner ModuleOp");
     return signalPassFailure();
   }
+  // TODO (nmeshram): ADD a LoweringStrategy pass where this should be moved and
+  // then the lowering startegy should be verified
+  if (failed(initAIELaunchConfig(moduleOp))) {
+    return signalPassFailure();
+  }
 
   OpPassManager executableLoweringPipeline(
       IREE::HAL::ExecutableVariantOp::getOperationName());
@@ -97,7 +103,7 @@ void AMDAIELowerExecutableTargetPass::runOnOperation() {
         addTransformDialectPasses(executableLoweringPipeline);
         break;
       default:
-        moduleOp.emitOpError("Unsupported pipeline on CPU target.");
+        moduleOp.emitOpError("Unsupported pipeline on AIE target.");
         return signalPassFailure();
     }
   }
