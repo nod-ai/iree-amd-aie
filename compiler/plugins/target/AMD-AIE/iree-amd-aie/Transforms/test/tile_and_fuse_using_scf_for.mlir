@@ -1,5 +1,6 @@
-// RUN: iree-opt --pass-pipeline='builtin.module(func.func(iree-amdaie-tile-and-fuse{tiling-level=3}))' --split-input-file %s | FileCheck %s --check-prefix=TILE-LEVEL-3
+// RUN: iree-opt --pass-pipeline='builtin.module(func.func(iree-amdaie-tile-and-fuse{tiling-level=2}))' --split-input-file %s | FileCheck %s --check-prefix=TILE-LEVEL-2
 
+#config = #iree_codegen.lowering_config<tile_sizes = [[8, 8], [4, 4], [0, 0, 4]]>
 func.func @matmul_static(%arg0: tensor<8x16xi32>, %arg1 : tensor<16x8xi32>) -> tensor<8x8xi32> {
   %c0 = arith.constant 0 : index
   %c0_i32 = arith.constant 0 : i32
@@ -27,7 +28,7 @@ func.func @matmul_static(%arg0: tensor<8x16xi32>, %arg1 : tensor<16x8xi32>) -> t
       %alloc_7 = memref.alloc() : memref<4x4xi32, 2>
       %18 = bufferization.to_tensor %alloc_7 restrict writable : memref<4x4xi32, 2>
       %19 = linalg.fill ins(%c0_i32 : i32) outs(%18 : tensor<4x4xi32>) -> tensor<4x4xi32>
-      %20 = linalg.matmul ins(%extracted_slice_4, %extracted_slice_5 : tensor<4x16xi32>, tensor<16x4xi32>) outs(%19 : tensor<4x4xi32>) -> tensor<4x4xi32>
+      %20 = linalg.matmul {lowering_config = #config} ins(%extracted_slice_4, %extracted_slice_5 : tensor<4x16xi32>, tensor<16x4xi32>) outs(%19 : tensor<4x4xi32>) -> tensor<4x4xi32>
       %21 = linalg.copy ins(%20 : tensor<4x4xi32>) outs(%extracted_slice_6 : tensor<4x4xi32>) -> tensor<4x4xi32>
       memref.dealloc %alloc_7 : memref<4x4xi32, 2>
       scf.forall.in_parallel {
@@ -44,15 +45,15 @@ func.func @matmul_static(%arg0: tensor<8x16xi32>, %arg1 : tensor<16x8xi32>) -> t
   } {mapping = [#gpu.block<y>, #gpu.block<x>]}
   return %6 : tensor<8x8xi32>
 }
-//      TILE-LEVEL-3: @matmul_static
-//      TILE-LEVEL-3:   scf.forall
-// TILE-LEVEL-3-SAME:   {
-//      TILE-LEVEL-3:       scf.forall
-// TILE-LEVEL-3-SAME:       {
-//      TILE-LEVEL-3:           linalg.fill
-//      TILE-LEVEL-3:           scf.for
-// TILE-LEVEL-3-SAME:           {
-//      TILE-LEVEL-3:               linalg.matmul
-//      TILE-LEVEL-3:           }
-//      TILE-LEVEL-3:       }
-//      TILE-LEVEL-3:   }
+//      TILE-LEVEL-2: @matmul_static
+//      TILE-LEVEL-2:   scf.forall
+// TILE-LEVEL-2-SAME:   {
+//      TILE-LEVEL-2:       scf.forall
+// TILE-LEVEL-2-SAME:       {
+//      TILE-LEVEL-2:           linalg.fill
+//      TILE-LEVEL-2:           scf.for
+// TILE-LEVEL-2-SAME:           {
+//      TILE-LEVEL-2:               linalg.matmul
+//      TILE-LEVEL-2:           }
+//      TILE-LEVEL-2:       }
+//      TILE-LEVEL-2:   }
