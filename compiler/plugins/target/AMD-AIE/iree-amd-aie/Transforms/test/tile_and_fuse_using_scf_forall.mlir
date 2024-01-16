@@ -1,5 +1,5 @@
+// RUN: iree-opt --pass-pipeline='builtin.module(func.func(iree-amdaie-tile-and-fuse{tiling-level=0}))' --split-input-file %s | FileCheck %s --check-prefix=TILE-LEVEL-0
 // RUN: iree-opt --pass-pipeline='builtin.module(func.func(iree-amdaie-tile-and-fuse{tiling-level=1}))' --split-input-file %s | FileCheck %s --check-prefix=TILE-LEVEL-1
-// RUN: iree-opt --pass-pipeline='builtin.module(func.func(iree-amdaie-tile-and-fuse{tiling-level=2}))' --split-input-file %s | FileCheck %s --check-prefix=TILE-LEVEL-2
 
 func.func @matmul_static(%arg0: tensor<8x16xi32>, %arg1 : tensor<16x8xi32>) -> tensor<8x8xi32> {
   %c0 = arith.constant 0 : index
@@ -9,12 +9,12 @@ func.func @matmul_static(%arg0: tensor<8x16xi32>, %arg1 : tensor<16x8xi32>) -> t
   %7 = linalg.matmul ins(%arg0, %arg1 : tensor<8x16xi32>, tensor<16x8xi32>) outs(%6 : tensor<8x8xi32>) -> tensor<8x8xi32>
   return %7 : tensor<8x8xi32>
 }
-//      TILE-LEVEL-1: @matmul_static
-//      TILE-LEVEL-1:   scf.forall
-// TILE-LEVEL-1-SAME:   {
-//      TILE-LEVEL-1:       linalg.fill
-//      TILE-LEVEL-1:       linalg.matmul
-//      TILE-LEVEL-1:   }
+//      TILE-LEVEL-0: @matmul_static
+//      TILE-LEVEL-0:   scf.forall
+// TILE-LEVEL-0-SAME:   {
+//      TILE-LEVEL-0:       linalg.fill
+//      TILE-LEVEL-0:       linalg.matmul
+//      TILE-LEVEL-0:   }
 
 // -----
 
@@ -49,15 +49,15 @@ func.func @matmul_static(%arg0: tensor<8x16xi32>, %arg1 : tensor<16x8xi32>) -> t
   } {mapping = [#gpu.block<y>, #gpu.block<x>]}
   return %6 : tensor<8x8xi32>
 }
-//      TILE-LEVEL-2: @matmul_static
-//      TILE-LEVEL-2:   scf.forall
-// TILE-LEVEL-2-SAME:   {
-//      TILE-LEVEL-2:       scf.forall
-// TILE-LEVEL-2-SAME:       {
-//      TILE-LEVEL-2:           linalg.fill
-//      TILE-LEVEL-2:           linalg.matmul
-//      TILE-LEVEL-2:       }
-//      TILE-LEVEL-2:   }
+//      TILE-LEVEL-1: @matmul_static
+//      TILE-LEVEL-1:   scf.forall
+// TILE-LEVEL-1-SAME:   {
+//      TILE-LEVEL-1:       scf.forall
+// TILE-LEVEL-1-SAME:       {
+//      TILE-LEVEL-1:           linalg.fill
+//      TILE-LEVEL-1:           linalg.matmul
+//      TILE-LEVEL-1:       }
+//      TILE-LEVEL-1:   }
 
 // -----
 
@@ -83,10 +83,10 @@ func.func @matmul_bias_add(%arg0 : tensor<?x?xf32>, %arg1 : tensor<?x?xf32>, %ar
     } -> tensor<?x?xf32>
   return %2 : tensor<?x?xf32>
 }
-//      TILE-LEVEL-1: @matmul_bias_add
-//      TILE-LEVEL-1:   scf.forall
-// TILE-LEVEL-1-SAME:   {
-//      TILE-LEVEL-1:       linalg.fill
-//      TILE-LEVEL-1:       linalg.matmul
-//      TILE-LEVEL-1:       linalg.generic
-//      TILE-LEVEL-1:   }
+//      TILE-LEVEL-0: @matmul_bias_add
+//      TILE-LEVEL-0:   scf.forall
+// TILE-LEVEL-0-SAME:   {
+//      TILE-LEVEL-0:       linalg.fill
+//      TILE-LEVEL-0:       linalg.matmul
+//      TILE-LEVEL-0:       linalg.generic
+//      TILE-LEVEL-0:   }

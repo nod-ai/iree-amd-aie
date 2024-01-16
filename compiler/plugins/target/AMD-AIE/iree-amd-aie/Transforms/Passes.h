@@ -7,6 +7,7 @@
 #ifndef IREE_AMD_AIE_TRANSFORMS_PASSES_H_
 #define IREE_AMD_AIE_TRANSFORMS_PASSES_H_
 
+#include "iree/compiler/Codegen/Common/TileSizeSelection.h"
 #include "iree/compiler/Codegen/Dialect/Codegen/IR/IREECodegenAttrs.h"
 #include "mlir/Pass/Pass.h"
 
@@ -24,6 +25,10 @@ void addTransformDialectPasses(OpPassManager &passManager);
 /// the structured ops path. The pass manager `pm` here operate on the module
 /// within the IREE::HAL::ExecutableOp.
 void buildAMDAIETransformPassPipeline(OpPassManager &pm);
+
+/// Populates passes needed to lower the IR via a Pad based approach.
+void addPadBasedPassPipeline(OpPassManager &passManager,
+                             TilingConfig &tilingConfig);
 
 /// Create a pass to do some rewrites that help bridging the path to AIR/AIE
 /// lowering.

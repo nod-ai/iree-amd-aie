@@ -151,13 +151,13 @@ getThirdLevelLinalgPaddingOptions(IRRewriter &rewriter,
 
 static FailureOr<linalg::LinalgPaddingOptions> getLinalgPaddingOptions(
     IRRewriter &rewriter, linalg::MatmulOp &matmulOp, int64_t paddingLevel) {
-  if (paddingLevel == 1) {
+  if (paddingLevel == 0) {
     return getFirstLevelLinalgPaddingOptions(rewriter, matmulOp);
   }
-  if (paddingLevel == 2) {
+  if (paddingLevel == 1) {
     return getSecondLevelLinalgPaddingOptions(rewriter, matmulOp);
   }
-  if (paddingLevel == 3) {
+  if (paddingLevel == 2) {
     return getThirdLevelLinalgPaddingOptions(rewriter, matmulOp);
   }
   return failure();
@@ -166,16 +166,16 @@ static FailureOr<linalg::LinalgPaddingOptions> getLinalgPaddingOptions(
 // TODO(avarma): This is a temporary workaround until we have PaddingStrategy
 // Currently handles a Matmul. Given a Matmul(Lhs, Rhs, Out) and a given
 // `paddingLevel`, the following is what we bufferize :-
-//    paddingLevel == 1 -> Lhs, Rhs and Out.
-//    paddingLevel == 2 -> Out.
-//    paddingLevel == 3 -> Lhs and Rhs.
+//    paddingLevel == 0 -> Lhs, Rhs and Out.
+//    paddingLevel == 1 -> Out.
+//    paddingLevel == 2 -> Lhs and Rhs.
 static FailureOr<SmallVector<Value>> getOperandsToBufferize(
     int64_t paddingLevel, linalg::MatmulOp &matmulOp) {
-  if (paddingLevel == 1) {
+  if (paddingLevel == 0) {
     return SmallVector<Value>(matmulOp->getOperands());
-  } else if (paddingLevel == 2) {
+  } else if (paddingLevel == 1) {
     return SmallVector<Value>(matmulOp.getOutputs());
-  } else if (paddingLevel == 3) {
+  } else if (paddingLevel == 2) {
     return SmallVector<Value>(matmulOp.getInputs());
   } else {
     return failure();
@@ -275,7 +275,7 @@ void AMDAIEPadAndBufferizePass::runOnOperation() {
   }
   auto i64Type = rewriter.getI64Type();
   auto memorySpace = rewriter.getIntegerAttr(i64Type, 1);
-  if (paddingLevel != 1) {
+  if (paddingLevel != 0) {
     memorySpace = rewriter.getIntegerAttr(i64Type, 2);
   }
   for (auto operand : *bufferizeOperands) {
