@@ -285,7 +285,7 @@ LogicalResult applyTileAndFuseUsingSCF(RewriterBase &rewriter,
                                        DominanceInfo &dominanceInfo,
                                        scf::SCFTilingOptions options,
                                        int64_t tilingLevel) {
-  if (tilingLevel == 3) {
+  if (tilingLevel == 2) {
     return applyTileAndFuseUsingSCFFor(rewriter, rootOp, dominanceInfo,
                                        options);
   } else {
@@ -330,26 +330,36 @@ void AMDAIETileAndFusePass::runOnOperation() {
     LLVM_DEBUG(llvm::dbgs() << "----- skip, no consumer op -----\n");
     return;
   }
-
   LLVM_DEBUG(llvm::dbgs() << "consumerOp: " << consumerOp << "\n");
   LLVM_DEBUG(llvm::dbgs() << "tilingLevel: " << tilingLevel << "\n");
-  // TODO(avarma): Generalize this by adding pulling in tilingConfig based on
-  // a given tilinglevel, similar to LLVMCPUTileAndFuse.cpp.
-  SmallVector<OpFoldResult> tileSizes;
   // TODO(avarma): Have a global CONSTANT defining tiling stages and the
   // tiling strategy.
-  if (tilingLevel == 1) {
-    tileSizes = getAsIndexOpFoldResult(context, {8, 8});
-  } else if (tilingLevel == 2) {
-    tileSizes = getAsIndexOpFoldResult(context, {4, 4});
-  } else if (tilingLevel == 3) {
-    tileSizes = getAsIndexOpFoldResult(context, {0, 0, 4});
+  // If `consumerOp` has its own lowering config, we prefer using it.
+  // Otherwise, fallback to find a lowering_config from other operations.
+  SmallVector<int64_t> tileSizesVal;
+  if (auto loweringConfig = getLoweringConfig(consumerOp)) {
+    tileSizesVal = loweringConfig.getTileSizeVals(tilingLevel);
   } else {
-    assert(false && "unsupported tiling level");
+    FailureOr<IREE::Codegen::LoweringConfigAttr> maybeLoweringConfig =
+        getLoweringConfig(getComputeOps(funcOp));
+    if (failed(maybeLoweringConfig)) {
+      LLVM_DEBUG(llvm::dbgs()
+                 << "can't find lowering_config, skip TileAndFuse");
+      return;
+    }
+    tileSizesVal = maybeLoweringConfig.value().getTileSizeVals(tilingLevel);
   }
+
+  if (llvm::all_of(tileSizesVal, [&](int64_t size) { return size == 0; })) {
+    LLVM_DEBUG(llvm::dbgs() << "----- skip, all zeros -----\n");
+    return;
+  }
+
+  SmallVector<OpFoldResult> tileSizes =
+      getAsIndexOpFoldResult(context, tileSizesVal);
   auto options = scf::SCFTilingOptions().setTileSizes(tileSizes);
   // When tiling using scf.for we do not need to set any mapping.
-  if (tilingLevel != 3) {
+  if (tilingLevel != 2) {
     options.setMapping(
         {gpu::GPUBlockMappingAttr::get(context, gpu::MappingId::DimY),
          gpu::GPUBlockMappingAttr::get(context, gpu::MappingId::DimX)});

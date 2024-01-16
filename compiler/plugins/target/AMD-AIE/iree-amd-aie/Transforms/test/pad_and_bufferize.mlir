@@ -1,6 +1,6 @@
+// RUN: iree-opt --pass-pipeline='builtin.module(func.func(iree-amdaie-pad-and-bufferize{padding-level=0}))' --split-input-file %s | FileCheck %s --check-prefix=PAD-LEVEL-0
 // RUN: iree-opt --pass-pipeline='builtin.module(func.func(iree-amdaie-pad-and-bufferize{padding-level=1}))' --split-input-file %s | FileCheck %s --check-prefix=PAD-LEVEL-1
 // RUN: iree-opt --pass-pipeline='builtin.module(func.func(iree-amdaie-pad-and-bufferize{padding-level=2}))' --split-input-file %s | FileCheck %s --check-prefix=PAD-LEVEL-2
-// RUN: iree-opt --pass-pipeline='builtin.module(func.func(iree-amdaie-pad-and-bufferize{padding-level=3}))' --split-input-file %s | FileCheck %s --check-prefix=PAD-LEVEL-3
 
 func.func @matmul_static(%arg0 : tensor<8x16xi32>, %arg1 : tensor<16x8xi32>) -> tensor<8x8xi32> {
   %c0 = arith.constant 0 : index
@@ -23,24 +23,24 @@ func.func @matmul_static(%arg0 : tensor<8x16xi32>, %arg1 : tensor<16x8xi32>) -> 
   } {mapping = [#gpu.block<y>, #gpu.block<x>]}
   return %6 : tensor<8x8xi32>
 }
-//      PAD-LEVEL-1:   scf.forall
-// PAD-LEVEL-1-SAME:   {
-//      PAD-LEVEL-1:       linalg.fill
-//      PAD-LEVEL-1:       memref.alloc() : memref<8x16xi32, 1>
-//      PAD-LEVEL-1:       bufferization.to_tensor %{{.*}} restrict writable
-//      PAD-LEVEL-1:       linalg.copy
-//      PAD-LEVEL-1:       memref.alloc() : memref<16x8xi32, 1>
-//      PAD-LEVEL-1:       bufferization.to_tensor %{{.*}} restrict writable
-//      PAD-LEVEL-1:       linalg.copy
-//      PAD-LEVEL-1:       memref.alloc() : memref<8x8xi32, 1>
-//      PAD-LEVEL-1:       bufferization.to_tensor %{{.*}} restrict writable
-//      PAD-LEVEL-1:       linalg.copy
-//      PAD-LEVEL-1:       linalg.matmul
-//      PAD-LEVEL-1:       linalg.copy
-//      PAD-LEVEL-1:       memref.dealloc
-//      PAD-LEVEL-1:       memref.dealloc
-//      PAD-LEVEL-1:       memref.dealloc
-//      PAD-LEVEL-1:   }
+//      PAD-LEVEL-0:   scf.forall
+// PAD-LEVEL-0-SAME:   {
+//      PAD-LEVEL-0:       linalg.fill
+//      PAD-LEVEL-0:       memref.alloc() : memref<8x16xi32, 1>
+//      PAD-LEVEL-0:       bufferization.to_tensor %{{.*}} restrict writable
+//      PAD-LEVEL-0:       linalg.copy
+//      PAD-LEVEL-0:       memref.alloc() : memref<16x8xi32, 1>
+//      PAD-LEVEL-0:       bufferization.to_tensor %{{.*}} restrict writable
+//      PAD-LEVEL-0:       linalg.copy
+//      PAD-LEVEL-0:       memref.alloc() : memref<8x8xi32, 1>
+//      PAD-LEVEL-0:       bufferization.to_tensor %{{.*}} restrict writable
+//      PAD-LEVEL-0:       linalg.copy
+//      PAD-LEVEL-0:       linalg.matmul
+//      PAD-LEVEL-0:       linalg.copy
+//      PAD-LEVEL-0:       memref.dealloc
+//      PAD-LEVEL-0:       memref.dealloc
+//      PAD-LEVEL-0:       memref.dealloc
+//      PAD-LEVEL-0:   }
 
 // -----
 
@@ -86,30 +86,30 @@ func.func @matmul_static(%arg0: tensor<8x16xi32>, %arg1 : tensor<16x8xi32>) -> t
   } {mapping = [#gpu.block<y>, #gpu.block<x>]}
   return %6 : tensor<8x8xi32>
 }
-//      PAD-LEVEL-2:   scf.forall
-// PAD-LEVEL-2-SAME:   {
-//      PAD-LEVEL-2:       linalg.fill
-//      PAD-LEVEL-2:       memref.alloc() : memref<8x16xi32, 1>
-//      PAD-LEVEL-2:       bufferization.to_tensor %{{.*}} restrict writable
-//      PAD-LEVEL-2:       linalg.copy
-//      PAD-LEVEL-2:       memref.alloc() : memref<16x8xi32, 1>
-//      PAD-LEVEL-2:       bufferization.to_tensor %{{.*}} restrict writable
-//      PAD-LEVEL-2:       linalg.copy
-//      PAD-LEVEL-2:       memref.alloc() : memref<8x8xi32, 1>
-//      PAD-LEVEL-2:       bufferization.to_tensor %{{.*}} restrict writable
-//      PAD-LEVEL-2:       scf.forall
-// PAD-LEVEL-2-SAME:       {
-//      PAD-LEVEL-2:            memref.alloc() : memref<4x4xi32, 2>
-//      PAD-LEVEL-2:            bufferization.to_tensor %{{.*}} restrict writable
-//      PAD-LEVEL-2:            linalg.copy
-//      PAD-LEVEL-2:            linalg.matmul
-//      PAD-LEVEL-2:            linalg.copy
-//      PAD-LEVEL-2:            memref.dealloc
-//      PAD-LEVEL-2:       }
-//      PAD-LEVEL-2:       memref.dealloc
-//      PAD-LEVEL-2:       memref.dealloc
-//      PAD-LEVEL-2:       memref.dealloc
-//      PAD-LEVEL-2:   }
+//      PAD-LEVEL-1:   scf.forall
+// PAD-LEVEL-1-SAME:   {
+//      PAD-LEVEL-1:       linalg.fill
+//      PAD-LEVEL-1:       memref.alloc() : memref<8x16xi32, 1>
+//      PAD-LEVEL-1:       bufferization.to_tensor %{{.*}} restrict writable
+//      PAD-LEVEL-1:       linalg.copy
+//      PAD-LEVEL-1:       memref.alloc() : memref<16x8xi32, 1>
+//      PAD-LEVEL-1:       bufferization.to_tensor %{{.*}} restrict writable
+//      PAD-LEVEL-1:       linalg.copy
+//      PAD-LEVEL-1:       memref.alloc() : memref<8x8xi32, 1>
+//      PAD-LEVEL-1:       bufferization.to_tensor %{{.*}} restrict writable
+//      PAD-LEVEL-1:       scf.forall
+// PAD-LEVEL-1-SAME:       {
+//      PAD-LEVEL-1:            memref.alloc() : memref<4x4xi32, 2>
+//      PAD-LEVEL-1:            bufferization.to_tensor %{{.*}} restrict writable
+//      PAD-LEVEL-1:            linalg.copy
+//      PAD-LEVEL-1:            linalg.matmul
+//      PAD-LEVEL-1:            linalg.copy
+//      PAD-LEVEL-1:            memref.dealloc
+//      PAD-LEVEL-1:       }
+//      PAD-LEVEL-1:       memref.dealloc
+//      PAD-LEVEL-1:       memref.dealloc
+//      PAD-LEVEL-1:       memref.dealloc
+//      PAD-LEVEL-1:   }
 
 // -----
 
@@ -164,36 +164,36 @@ func.func @matmul_static(%arg0 : tensor<8x16xi32>, %arg1 : tensor<16x8xi32>) -> 
   } {mapping = [#gpu.block<y>, #gpu.block<x>]}
   return %6 : tensor<8x8xi32>
 }
-//      PAD-LEVEL-3:   scf.forall
-// PAD-LEVEL-3-SAME:   {
-//      PAD-LEVEL-3:       linalg.fill
-//      PAD-LEVEL-3:       memref.alloc() : memref<8x16xi32, 1>
-//      PAD-LEVEL-3:       bufferization.to_tensor %{{.*}} restrict writable
-//      PAD-LEVEL-3:       linalg.copy
-//      PAD-LEVEL-3:       memref.alloc() : memref<16x8xi32, 1>
-//      PAD-LEVEL-3:       bufferization.to_tensor %{{.*}} restrict writable
-//      PAD-LEVEL-3:       linalg.copy
-//      PAD-LEVEL-3:       memref.alloc() : memref<8x8xi32, 1>
-//      PAD-LEVEL-3:       bufferization.to_tensor %{{.*}} restrict writable
-//      PAD-LEVEL-3:       scf.forall
-// PAD-LEVEL-3-SAME:       {
-//      PAD-LEVEL-3:            memref.alloc() : memref<4x4xi32, 2>
-//      PAD-LEVEL-3:            bufferization.to_tensor %{{.*}} restrict writable
-//      PAD-LEVEL-3:            scf.for
-// PAD-LEVEL-3-SAME:            {
-//      PAD-LEVEL-3:                memref.alloc() : memref<4x4xi32, 2>
-//      PAD-LEVEL-3:                bufferization.to_tensor %{{.*}} restrict writable
-//      PAD-LEVEL-3:                linalg.copy
-//      PAD-LEVEL-3:                memref.alloc() : memref<4x4xi32, 2>
-//      PAD-LEVEL-3:                bufferization.to_tensor %{{.*}} restrict writable
-//      PAD-LEVEL-3:                linalg.copy
-//      PAD-LEVEL-3:                linalg.matmul
-//      PAD-LEVEL-3:                linalg.copy
-//      PAD-LEVEL-3:                memref.dealloc
-//      PAD-LEVEL-3:                memref.dealloc
-//      PAD-LEVEL-3:            }
-//      PAD-LEVEL-3:       }
-//      PAD-LEVEL-3:       memref.dealloc
-//      PAD-LEVEL-3:       memref.dealloc
-//      PAD-LEVEL-3:       memref.dealloc
-//      PAD-LEVEL-3:   }
+//      PAD-LEVEL-2:   scf.forall
+// PAD-LEVEL-2-SAME:   {
+//      PAD-LEVEL-2:       linalg.fill
+//      PAD-LEVEL-2:       memref.alloc() : memref<8x16xi32, 1>
+//      PAD-LEVEL-2:       bufferization.to_tensor %{{.*}} restrict writable
+//      PAD-LEVEL-2:       linalg.copy
+//      PAD-LEVEL-2:       memref.alloc() : memref<16x8xi32, 1>
+//      PAD-LEVEL-2:       bufferization.to_tensor %{{.*}} restrict writable
+//      PAD-LEVEL-2:       linalg.copy
+//      PAD-LEVEL-2:       memref.alloc() : memref<8x8xi32, 1>
+//      PAD-LEVEL-2:       bufferization.to_tensor %{{.*}} restrict writable
+//      PAD-LEVEL-2:       scf.forall
+// PAD-LEVEL-2-SAME:       {
+//      PAD-LEVEL-2:            memref.alloc() : memref<4x4xi32, 2>
+//      PAD-LEVEL-2:            bufferization.to_tensor %{{.*}} restrict writable
+//      PAD-LEVEL-2:            scf.for
+// PAD-LEVEL-2-SAME:            {
+//      PAD-LEVEL-2:                memref.alloc() : memref<4x4xi32, 2>
+//      PAD-LEVEL-2:                bufferization.to_tensor %{{.*}} restrict writable
+//      PAD-LEVEL-2:                linalg.copy
+//      PAD-LEVEL-2:                memref.alloc() : memref<4x4xi32, 2>
+//      PAD-LEVEL-2:                bufferization.to_tensor %{{.*}} restrict writable
+//      PAD-LEVEL-2:                linalg.copy
+//      PAD-LEVEL-2:                linalg.matmul
+//      PAD-LEVEL-2:                linalg.copy
+//      PAD-LEVEL-2:                memref.dealloc
+//      PAD-LEVEL-2:                memref.dealloc
+//      PAD-LEVEL-2:            }
+//      PAD-LEVEL-2:       }
+//      PAD-LEVEL-2:       memref.dealloc
+//      PAD-LEVEL-2:       memref.dealloc
+//      PAD-LEVEL-2:       memref.dealloc
+//      PAD-LEVEL-2:   }

@@ -18,13 +18,7 @@
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/Passes.h"
 
-/// Command line options used purely for development purposes. Not to be relied
-/// on in any way.
-static llvm::cl::opt<bool> clUseCPlusPlusTransformPasses(
-    "iree-amd-aie-cpp-passes",
-    llvm::cl::desc(
-        "Runs the cpp passes instead of transform dialect when possible"),
-    llvm::cl::init(false));
+#define DEBUG_TYPE "iree-amdaie-lowering-pass-pipeline"
 
 namespace mlir::iree_compiler::AMDAIE {
 
@@ -62,59 +56,45 @@ static void addAMDAIEBufferizePasses(OpPassManager &pm) {
   addIREEComprehensiveBufferizePasses(pm, allocationFn, memCpyFn);
 }
 
+void addPadBasedPassPipeline(OpPassManager &pm, TilingConfig &tilingConfig) {
+  auto &modulePassManager = pm.nest<ModuleOp>();
+  modulePassManager.addNestedPass<func::FuncOp>(createAMDAIECleanupPass());
+  pm.addPass(createCanonicalizerPass());
+  pm.addPass(createCSEPass());
+  for (unsigned i = 0, n = tilingConfig.getNumTilingLevels(); i < n; i++) {
+    modulePassManager.addNestedPass<func::FuncOp>(
+        createAMDAIETileAndFusePass(i));
+    if (i == 2) {
+      modulePassManager.addNestedPass<func::FuncOp>(createAMDAIECleanupPass());
+      pm.addPass(createCanonicalizerPass());
+      pm.addPass(createCSEPass());
+    }
+    modulePassManager.addNestedPass<func::FuncOp>(
+        createAMDAIEPadAndBufferizePass(i));
+    modulePassManager.addNestedPass<func::FuncOp>(createAMDAIECleanupPass());
+    pm.addPass(createCanonicalizerPass());
+    pm.addPass(createCSEPass());
+  }
+  addAMDAIEBufferizePasses(modulePassManager);
+  modulePassManager.addNestedPass<func::FuncOp>(createAMDAIECleanupPass());
+  pm.addPass(createCanonicalizerPass());
+  pm.addPass(createCSEPass());
+}
+
 void buildAMDAIETransformPassPipeline(OpPassManager &pm) {
   addCommonTargetExecutablePreprocessingPasses(pm);
-  // TODO: Current we don't include C++ equivalent of Transform dialect scripts.
-  // We are thus guarding their inclusion with a bool
-  // `useCPlusPlusTransformPasses` which would be used during development
-  // efforts. Once the C++ passes are ready, we will include these passes by
-  // default and take away the guarding.
-  if (clUseCPlusPlusTransformPasses) {
-    auto &modulePassManager = pm.nest<ModuleOp>();
-
-    modulePassManager.addNestedPass<func::FuncOp>(createAMDAIECleanupPass());
-    modulePassManager.addPass(createCanonicalizerPass());
-    modulePassManager.addPass(createCSEPass());
-    modulePassManager.addNestedPass<func::FuncOp>(
-        createAMDAIETileAndFusePass(1));
-
-    modulePassManager.addNestedPass<func::FuncOp>(
-        createAMDAIEPadAndBufferizePass(1));
-    modulePassManager.addNestedPass<func::FuncOp>(createAMDAIECleanupPass());
-    modulePassManager.addPass(createCanonicalizerPass());
-    modulePassManager.addPass(createCSEPass());
-
-    modulePassManager.addNestedPass<func::FuncOp>(
-        createAMDAIETileAndFusePass(2));
-    modulePassManager.addNestedPass<func::FuncOp>(
-        createAMDAIEPadAndBufferizePass(2));
-    modulePassManager.addNestedPass<func::FuncOp>(createAMDAIECleanupPass());
-    modulePassManager.addPass(createCanonicalizerPass());
-    modulePassManager.addPass(createCSEPass());
-
-    modulePassManager.addNestedPass<func::FuncOp>(
-        createAMDAIETileAndFusePass(3));
-    modulePassManager.addNestedPass<func::FuncOp>(createAMDAIECleanupPass());
-    modulePassManager.addPass(createCanonicalizerPass());
-    modulePassManager.addPass(createCSEPass());
-
-    modulePassManager.addNestedPass<func::FuncOp>(
-        createAMDAIEPadAndBufferizePass(3));
-    modulePassManager.addNestedPass<func::FuncOp>(createAMDAIECleanupPass());
-    modulePassManager.addPass(createCanonicalizerPass());
-    modulePassManager.addPass(createCSEPass());
-
-    addAMDAIEBufferizePasses(modulePassManager);
-    modulePassManager.addNestedPass<func::FuncOp>(createAMDAIECleanupPass());
-    modulePassManager.addPass(createCanonicalizerPass());
-    modulePassManager.addPass(createCSEPass());
-  }
   pm.addPass(createEraseHALDescriptorTypeFromMemRefPass());
   pm.addPass(createAMDAIELowerExecutableTargetPass());
   pm.addPass(createAMDAIELowerWorkgroupCountPass());
 
   auto &modulePassManager = pm.nest<ModuleOp>();
   addMLIRAIRAIELoweringPasses(modulePassManager);
+
+  LLVM_DEBUG({
+    llvm::dbgs() << "Using AMDAIE pass pipeline:\n";
+    pm.printAsTextualPipeline(llvm::dbgs());
+    llvm::dbgs() << "\n";
+  });
 }
 
 void addTransformDialectPasses(OpPassManager &passManager) {
