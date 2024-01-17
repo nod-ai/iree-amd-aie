@@ -47,7 +47,7 @@ createCleanupPass();
 
 /// Create a pass to pack and transpose the linalg op.
 std::unique_ptr<OperationPass<IREE::HAL::ExecutableVariantOp>>
-createAMDAIEPackAndTransposePass(int64_t packLevel = -1);
+createAMDAIEPackAndTransposePass(int64_t packLevel = 1);
 
 void registerAMDAIEPasses();
 
