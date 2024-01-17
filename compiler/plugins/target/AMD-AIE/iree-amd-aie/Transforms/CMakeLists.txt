@@ -38,7 +38,7 @@ iree_cc_library(
   SRCS
     "Passes.cpp"
     "AMDAIELowerExecutableTarget.cpp"
-    "AMDAIEPadAndBufferize.cpp"
+    "AMDAIEPad.cpp"
     "AMDAIETileAndFuse.cpp"
     "AMDAIEPackAndTranspose.cpp"
     "AMDAIEBufferizeToAllocation.cpp"

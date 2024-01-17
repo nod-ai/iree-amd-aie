@@ -39,7 +39,7 @@ createAMDAIETileAndFusePass(int64_t tilingLevel = -1);
 
 /// Create a pass to pad MatmulOp and bufferize its operands.
 std::unique_ptr<OperationPass<IREE::HAL::ExecutableVariantOp>>
-createAMDAIEPadAndBufferizePass(int64_t paddingLevel = -1);
+createAMDAIEPadPass(int64_t paddingLevel = -1);
 
 /// Create pass to invoke several cleanup and canonicalization patterns.
 std::unique_ptr<OperationPass<IREE::HAL::ExecutableVariantOp>>

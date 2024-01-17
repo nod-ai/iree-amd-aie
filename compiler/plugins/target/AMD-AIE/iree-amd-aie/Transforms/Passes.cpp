@@ -74,14 +74,14 @@ void buildAMDAIETransformPassPipeline(OpPassManager &pm) {
     pm.addPass(createCanonicalizerPass());
     pm.addPass(createCSEPass());
     pm.addPass(createAMDAIETileAndFusePass(1));
-    pm.addPass(createAMDAIEPadAndBufferizePass(1));
+    pm.addPass(createAMDAIEPadPass(1));
     pm.addPass(createAMDAIEBufferizeToAllocationPass(1));
     pm.addPass(createCleanupPass());
     pm.addPass(createCanonicalizerPass());
     pm.addPass(createCSEPass());
     pm.addPass(createAMDAIETileAndFusePass(2));
-    pm.addPass(createAMDAIEPadAndBufferizePass(2));
-    pm.addPass(createAMDAIEBufferizeToAllocationPass(3));
+    pm.addPass(createAMDAIEPadPass(2));
+    pm.addPass(createAMDAIEBufferizeToAllocationPass(2));
     pm.addPass(createCleanupPass());
     pm.addPass(createCanonicalizerPass());
     pm.addPass(createCSEPass());
@@ -89,8 +89,8 @@ void buildAMDAIETransformPassPipeline(OpPassManager &pm) {
     pm.addPass(createCleanupPass());
     pm.addPass(createCanonicalizerPass());
     pm.addPass(createCSEPass());
-    pm.addPass(createAMDAIEPadAndBufferizePass(3));
-    pm.addPass(createAMDAIEBufferizeToAllocationPass(3));
+    pm.addPass(createAMDAIEPadPass(3));
+    pm.addPass(createAMDAIEBufferizeToAllocationPass(2));
     pm.addPass(createCleanupPass());
     pm.addPass(createCanonicalizerPass());
     pm.addPass(createCSEPass());

@@ -1,6 +1,6 @@
-// RUN: iree-opt --pass-pipeline='builtin.module(hal.executable(hal.executable.variant(iree-amdaie-pad-and-bufferize{padding-level=1})))' --split-input-file %s | FileCheck %s --check-prefix=PAD-LEVEL-1
-// RUN: iree-opt --pass-pipeline='builtin.module(hal.executable(hal.executable.variant(iree-amdaie-pad-and-bufferize{padding-level=2})))' --split-input-file %s | FileCheck %s --check-prefix=PAD-LEVEL-2
-// RUN: iree-opt --pass-pipeline='builtin.module(hal.executable(hal.executable.variant(iree-amdaie-pad-and-bufferize{padding-level=3})))' --split-input-file %s | FileCheck %s --check-prefix=PAD-LEVEL-3
+// RUN: iree-opt --pass-pipeline='builtin.module(hal.executable(hal.executable.variant(iree-amdaie-pad{padding-level=1})))' --split-input-file %s | FileCheck %s --check-prefix=PAD-LEVEL-1
+// RUN: iree-opt --pass-pipeline='builtin.module(hal.executable(hal.executable.variant(iree-amdaie-pad{padding-level=2})))' --split-input-file %s | FileCheck %s --check-prefix=PAD-LEVEL-2
+// RUN: iree-opt --pass-pipeline='builtin.module(hal.executable(hal.executable.variant(iree-amdaie-pad{padding-level=3})))' --split-input-file %s | FileCheck %s --check-prefix=PAD-LEVEL-3
 
 hal.executable private @matmul_static_tensors {
     hal.executable.variant public @amdaie_xclbin_fb target(<"amd-aie", "amdaie-xclbin-fb", {target_arch = "chip-tbd"}>) {
@@ -46,20 +46,16 @@ hal.executable private @matmul_static_tensors {
 //      PAD-LEVEL-1:   scf.forall
 // PAD-LEVEL-1-SAME:   {
 //      PAD-LEVEL-1:       linalg.fill
-//      PAD-LEVEL-1:       memref.alloc() : memref<8x16xi32, 1>
-//      PAD-LEVEL-1:       bufferization.to_tensor %{{.*}} restrict writable
+//      PAD-LEVEL-1:       bufferization.alloc_tensor()
 //      PAD-LEVEL-1:       linalg.copy
 //      PAD-LEVEL-1:       memref.alloc() : memref<16x8xi32, 1>
-//      PAD-LEVEL-1:       bufferization.to_tensor %{{.*}} restrict writable
+//      PAD-LEVEL-1:       bufferization.alloc_tensor()
 //      PAD-LEVEL-1:       linalg.copy
 //      PAD-LEVEL-1:       memref.alloc() : memref<8x8xi32, 1>
-//      PAD-LEVEL-1:       bufferization.to_tensor %{{.*}} restrict writable
+//      PAD-LEVEL-1:       bufferization.alloc_tensor()
 //      PAD-LEVEL-1:       linalg.copy
 //      PAD-LEVEL-1:       linalg.matmul
 //      PAD-LEVEL-1:       linalg.copy
-//      PAD-LEVEL-1:       memref.dealloc
-//      PAD-LEVEL-1:       memref.dealloc
-//      PAD-LEVEL-1:       memref.dealloc
 //      PAD-LEVEL-1:   }
 
 // -----
@@ -127,26 +123,19 @@ hal.executable private @matmul_static_tensors {
 //      PAD-LEVEL-2:   scf.forall
 // PAD-LEVEL-2-SAME:   {
 //      PAD-LEVEL-2:       linalg.fill
-//      PAD-LEVEL-2:       memref.alloc() : memref<8x16xi32, 1>
-//      PAD-LEVEL-2:       bufferization.to_tensor %{{.*}} restrict writable
+//      PAD-LEVEL-2:       bufferization.alloc_tensor()
 //      PAD-LEVEL-2:       linalg.copy
-//      PAD-LEVEL-2:       memref.alloc() : memref<16x8xi32, 1>
-//      PAD-LEVEL-2:       bufferization.to_tensor %{{.*}} restrict writable
+//      PAD-LEVEL-2:       bufferization.alloc_tensor()
 //      PAD-LEVEL-2:       linalg.copy
-//      PAD-LEVEL-2:       memref.alloc() : memref<8x8xi32, 1>
-//      PAD-LEVEL-2:       bufferization.to_tensor %{{.*}} restrict writable
+//      PAD-LEVEL-2:       bufferization.alloc_tensor()
 //      PAD-LEVEL-2:       scf.forall
 // PAD-LEVEL-2-SAME:       {
-//      PAD-LEVEL-2:            memref.alloc() : memref<4x4xi32, 2>
-//      PAD-LEVEL-2:            bufferization.to_tensor %{{.*}} restrict writable
+//      PAD-LEVEL-2:            bufferization.alloc_tensor()
 //      PAD-LEVEL-2:            linalg.copy
 //      PAD-LEVEL-2:            linalg.matmul
 //      PAD-LEVEL-2:            linalg.copy
 //      PAD-LEVEL-2:            memref.dealloc
 //      PAD-LEVEL-2:       }
-//      PAD-LEVEL-2:       memref.dealloc
-//      PAD-LEVEL-2:       memref.dealloc
-//      PAD-LEVEL-2:       memref.dealloc
 //      PAD-LEVEL-2:   }
 
 // -----
@@ -223,25 +212,19 @@ hal.executable private @matmul_static_tensors {
 //      PAD-LEVEL-3:   scf.forall
 // PAD-LEVEL-3-SAME:   {
 //      PAD-LEVEL-3:       linalg.fill
-//      PAD-LEVEL-3:       memref.alloc() : memref<8x16xi32, 1>
-//      PAD-LEVEL-3:       bufferization.to_tensor %{{.*}} restrict writable
+//      PAD-LEVEL-3:       bufferization.alloc_tensor()
 //      PAD-LEVEL-3:       linalg.copy
-//      PAD-LEVEL-3:       memref.alloc() : memref<16x8xi32, 1>
-//      PAD-LEVEL-3:       bufferization.to_tensor %{{.*}} restrict writable
+//      PAD-LEVEL-3:       bufferization.alloc_tensor()
 //      PAD-LEVEL-3:       linalg.copy
-//      PAD-LEVEL-3:       memref.alloc() : memref<8x8xi32, 1>
-//      PAD-LEVEL-3:       bufferization.to_tensor %{{.*}} restrict writable
+//      PAD-LEVEL-3:       bufferization.alloc_tensor()
 //      PAD-LEVEL-3:       scf.forall
 // PAD-LEVEL-3-SAME:       {
-//      PAD-LEVEL-3:            memref.alloc() : memref<4x4xi32, 2>
-//      PAD-LEVEL-3:            bufferization.to_tensor %{{.*}} restrict writable
+//      PAD-LEVEL-3:            bufferization.alloc_tensor()
 //      PAD-LEVEL-3:            scf.for
 // PAD-LEVEL-3-SAME:            {
-//      PAD-LEVEL-3:                memref.alloc() : memref<4x4xi32, 2>
-//      PAD-LEVEL-3:                bufferization.to_tensor %{{.*}} restrict writable
+//      PAD-LEVEL-3:                bufferization.alloc_tensor()
 //      PAD-LEVEL-3:                linalg.copy
-//      PAD-LEVEL-3:                memref.alloc() : memref<4x4xi32, 2>
-//      PAD-LEVEL-3:                bufferization.to_tensor %{{.*}} restrict writable
+//      PAD-LEVEL-3:                bufferization.alloc_tensor()
 //      PAD-LEVEL-3:                linalg.copy
 //      PAD-LEVEL-3:                linalg.matmul
 //      PAD-LEVEL-3:                linalg.copy
@@ -249,7 +232,4 @@ hal.executable private @matmul_static_tensors {
 //      PAD-LEVEL-3:                memref.dealloc
 //      PAD-LEVEL-3:            }
 //      PAD-LEVEL-3:       }
-//      PAD-LEVEL-3:       memref.dealloc
-//      PAD-LEVEL-3:       memref.dealloc
-//      PAD-LEVEL-3:       memref.dealloc
 //      PAD-LEVEL-3:   }

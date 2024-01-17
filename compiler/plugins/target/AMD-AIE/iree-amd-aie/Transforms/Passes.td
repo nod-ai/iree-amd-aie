@@ -30,11 +30,11 @@ def AMDAIETileAndFuse :
   ];
 }
 
-def AMDAIEPadAndBufferize :
-    Pass<"iree-amdaie-pad-and-bufferize", "IREE::HAL::ExecutableVariantOp"> {
+def AMDAIEPad :
+    Pass<"iree-amdaie-pad", "IREE::HAL::ExecutableVariantOp"> {
   let summary = "Pass to pad operations on tensors in top-down order.";
   let constructor =
-      "mlir::iree_compiler::AMDAIE::createAMDAIEPadAndBufferizePass()";
+      "mlir::iree_compiler::AMDAIE::createAMDAIEPadPass()";
   let options = [
     Option<"paddingLevel", "padding-level", "int64_t", /*default=*/"-1",
       "A temporary workaround to figure the config for padding and bufferization">
@@ -56,6 +56,8 @@ def AMDAIEPackAndTranspose :
   let options = [
     Option<"packLevel", "pack-level", "int64_t", /*default=*/"1",
       "Set the packing level number">
+  ];
+}
 
 def AMDAIEBufferizeToAllocation :
     Pass<"iree-amdaie-bufferize-to-allocation", "IREE::HAL::ExecutableVariantOp"> {

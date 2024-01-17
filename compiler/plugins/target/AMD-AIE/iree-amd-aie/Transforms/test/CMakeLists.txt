@@ -8,7 +8,8 @@ iree_lit_test_suite(
   NAME
     lit
   SRCS
-    "pad_and_bufferize.mlir"
+    "pad.mlir"
+    "bufferize_to_allocation.mlir"
     "tile_and_fuse_using_scf_for.mlir"
     "tile_and_fuse_using_scf_forall.mlir"
     "pack_and_transpose_level1.mlir"
