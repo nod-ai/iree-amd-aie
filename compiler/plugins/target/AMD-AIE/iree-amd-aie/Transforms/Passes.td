@@ -66,7 +66,9 @@ def AMDAIEBufferizeToAllocation :
       "mlir::iree_compiler::AMDAIE::createAMDAIEBufferizeToAllocationPass()";
   let options = [
     Option<"memorySpace", "memory-space", "int64_t", /*default=*/"1",
-      "Set the memory space">
+      "Set the memory space">,
+    Option<"paddingLevel", "padding-level", "int64_t", /*default=*/"0",
+      "A temporary workaround to figure the config for padding and bufferization">
   ];
 }
 

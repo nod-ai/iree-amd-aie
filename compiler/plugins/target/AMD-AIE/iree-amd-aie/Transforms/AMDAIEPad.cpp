@@ -137,25 +137,6 @@ static FailureOr<linalg::LinalgPaddingOptions> getLinalgPaddingOptions(
   return failure();
 }
 
-// TODO(avarma): This is a temporary workaround until we have PaddingStrategy
-// Currently handles a Matmul. Given a Matmul(Lhs, Rhs, Out) and a given
-// `paddingLevel`, the following is what we bufferize :-
-//    paddingLevel == 1 -> Lhs, Rhs and Out.
-//    paddingLevel == 2 -> Out.
-//    paddingLevel == 3 -> Lhs and Rhs.
-static FailureOr<SmallVector<Value>> getOperandsToBufferize(
-    int64_t paddingLevel, linalg::MatmulOp &matmulOp) {
-  if (paddingLevel == 1) {
-    return SmallVector<Value>(matmulOp->getOperands());
-  } else if (paddingLevel == 2) {
-    return SmallVector<Value>(matmulOp.getOutputs());
-  } else if (paddingLevel == 3) {
-    return SmallVector<Value>(matmulOp.getInputs());
-  } else {
-    return failure();
-  }
-}
-
 static LogicalResult applyPadAndConvertToDPS(
     RewriterBase &rewriter, linalg::MatmulOp linalgTarget,
     linalg::LinalgPaddingOptions &options) {

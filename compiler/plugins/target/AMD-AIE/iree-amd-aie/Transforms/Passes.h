@@ -51,8 +51,12 @@ createAMDAIEPackAndTransposePass(int64_t packLevel = 1);
 
 /// Pass to bufferizes the targeted operation and materializes the result in a
 /// new allocation.
+/// Currently using paddingLevel = 0 to indicate the target operation is
+/// packing.
+/// TODO: Find a better way to do the pass without using paddingLevel.
 std::unique_ptr<OperationPass<IREE::HAL::ExecutableVariantOp>>
-createAMDAIEBufferizeToAllocationPass(int64_t memorySpace = 1);
+createAMDAIEBufferizeToAllocationPass(int64_t memorySpace = 1,
+                                      int64_t paddingLevel = 0);
 
 void registerAMDAIEPasses();
 

@@ -37,6 +37,26 @@ static LogicalResult applyBufferizeToAllocation(RewriterBase &rewriter,
   return success();
 }
 
+// TODO(avarma): This is a temporary workaround until we have PaddingStrategy
+// Currently handles a Matmul. Given a Matmul(Lhs, Rhs, Out) and a given
+// `paddingLevel`, the following is what we bufferize :
+//    paddingLevel == 0 -> This is for packing op bufferization.
+//    paddingLevel == 1 -> Lhs, Rhs and Out.
+//    paddingLevel == 2 -> Out.
+//    paddingLevel == 3 -> Lhs and Rhs.
+static FailureOr<SmallVector<Value>> getOperandsToBufferize(
+    int64_t paddingLevel, linalg::LinalgOp &linalgOp) {
+  if (paddingLevel == 0 || paddingLevel == 1) {
+    return SmallVector<Value>(linalgOp->getOperands());
+  } else if (paddingLevel == 2) {
+    return SmallVector<Value>(linalgOp.getDpsInits());
+  } else if (paddingLevel == 3) {
+    return SmallVector<Value>(linalgOp.getDpsInputs());
+  } else {
+    return failure();
+  }
+}
+
 class AMDAIEBufferizeToAllocationPass
     : public AMDAIEBufferizeToAllocationBase<AMDAIEBufferizeToAllocationPass> {
  public:
@@ -46,8 +66,10 @@ class AMDAIEBufferizeToAllocationPass
   }
 
   AMDAIEBufferizeToAllocationPass() = default;
-  AMDAIEBufferizeToAllocationPass(int64_t memorySpace = 1) {
+  AMDAIEBufferizeToAllocationPass(int64_t memorySpace = 1,
+                                  int64_t paddingLevel = 0) {
     this->memorySpace.setValue(memorySpace);
+    this->paddingLevel.setValue(paddingLevel);
   }
   void runOnOperation() override;
 };
@@ -75,8 +97,15 @@ void AMDAIEBufferizeToAllocationPass::runOnOperation() {
     IRRewriter rewriter(context);
 
     // Find the producer ops for linalg (matmul) op, and bufferizes them in new
-    // allocations
-    for (auto operand : linalgOp->getOperands()) {
+    // allocations.
+    FailureOr<SmallVector<Value>> bufferizeOperands =
+        getOperandsToBufferize(paddingLevel, linalgOp);
+    if (failed(bufferizeOperands)) {
+      linalgOp->emitOpError("could not fetch operands to bufferize");
+      return signalPassFailure();
+    }
+
+    for (auto operand : *bufferizeOperands) {
       auto memorySpaceAttr = rewriter.getI64IntegerAttr(memorySpace);
       rewriter.setInsertionPointAfter(operand.getDefiningOp());
       if (failed(applyBufferizeToAllocation(rewriter, operand.getDefiningOp(),
@@ -91,7 +120,9 @@ void AMDAIEBufferizeToAllocationPass::runOnOperation() {
 }  // namespace
 
 std::unique_ptr<OperationPass<IREE::HAL::ExecutableVariantOp>>
-createAMDAIEBufferizeToAllocationPass(int64_t memorySpace) {
-  return std::make_unique<AMDAIEBufferizeToAllocationPass>(memorySpace);
+createAMDAIEBufferizeToAllocationPass(int64_t memorySpace,
+                                      int64_t paddingLevel) {
+  return std::make_unique<AMDAIEBufferizeToAllocationPass>(memorySpace,
+                                                           paddingLevel);
 }
 }  // namespace mlir::iree_compiler::AMDAIE

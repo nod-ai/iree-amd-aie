@@ -122,7 +122,6 @@ hal.executable private @matmul_static_tensors {
 //      PAD-LEVEL-2: @matmul_static
 //      PAD-LEVEL-2:   scf.forall
 // PAD-LEVEL-2-SAME:   {
-//      PAD-LEVEL-2:       linalg.fill
 //      PAD-LEVEL-2:       bufferization.alloc_tensor()
 //      PAD-LEVEL-2:       linalg.copy
 //      PAD-LEVEL-2:       bufferization.alloc_tensor()
@@ -130,6 +129,7 @@ hal.executable private @matmul_static_tensors {
 //      PAD-LEVEL-2:       bufferization.alloc_tensor()
 //      PAD-LEVEL-2:       scf.forall
 // PAD-LEVEL-2-SAME:       {
+//      PAD-LEVEL-2:            linalg.fill
 //      PAD-LEVEL-2:            bufferization.alloc_tensor()
 //      PAD-LEVEL-2:            linalg.copy
 //      PAD-LEVEL-2:            linalg.matmul
@@ -211,7 +211,6 @@ hal.executable private @matmul_static_tensors {
 //      PAD-LEVEL-3: @matmul_static
 //      PAD-LEVEL-3:   scf.forall
 // PAD-LEVEL-3-SAME:   {
-//      PAD-LEVEL-3:       linalg.fill
 //      PAD-LEVEL-3:       bufferization.alloc_tensor()
 //      PAD-LEVEL-3:       linalg.copy
 //      PAD-LEVEL-3:       bufferization.alloc_tensor()
@@ -220,6 +219,7 @@ hal.executable private @matmul_static_tensors {
 //      PAD-LEVEL-3:       scf.forall
 // PAD-LEVEL-3-SAME:       {
 //      PAD-LEVEL-3:            bufferization.alloc_tensor()
+//      PAD-LEVEL-3:            linalg.fill
 //      PAD-LEVEL-3:            scf.for
 // PAD-LEVEL-3-SAME:            {
 //      PAD-LEVEL-3:                bufferization.alloc_tensor()
