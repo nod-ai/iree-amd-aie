@@ -11,6 +11,7 @@ iree_lit_test_suite(
     "matmul_fill_static_i32.mlir"
     "pad_and_bufferize.mlir"
     "tile_and_fuse.mlir"
+    "implicit_convolution.mlir"
   TOOLS
     ${IREE_LLD_TARGET}
     FileCheck
