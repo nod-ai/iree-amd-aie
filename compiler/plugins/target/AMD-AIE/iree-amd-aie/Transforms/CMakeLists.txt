@@ -40,6 +40,7 @@ iree_cc_library(
     "AMDAIELowerExecutableTarget.cpp"
     "AMDAIEPadAndBufferize.cpp"
     "AMDAIETileAndFuse.cpp"
+    "AMDAIEPackAndTranspose.cpp"
     "BridgeToAIRPass.cpp"
     "Cleanup.cpp"
   DEPS
