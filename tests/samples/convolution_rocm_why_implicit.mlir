@@ -1,6 +1,8 @@
 // RUN: iree-compile \
-// RUN: --iree-hal-target-backends=amd-aie \
+// RUN: --iree-hal-target-backends=rocm \
 // RUN: --compile-to=executable-sources %s | FileCheck %s
+
+// The behaviour here is unexpected. 
 
 // CHECK-LABEL: conv_2d_example
 func.func @conv_2d_example(%arg0: tensor<1x16x16x4xf32>,
@@ -19,3 +21,7 @@ func.func @conv_2d_example(%arg0: tensor<1x16x16x4xf32>,
 // CHECK: return
   return %0 : tensor<1x14x15x16xf32>
 }
+
+
+
+

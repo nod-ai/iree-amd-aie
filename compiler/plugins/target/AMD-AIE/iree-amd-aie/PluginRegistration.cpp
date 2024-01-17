@@ -40,7 +40,8 @@ struct AMDAIESession
   }
 
   void extendPreprocessingPassPipeline(OpPassManager &pm) override {
-    pm.addPass(iree_compiler::Preprocessing::createConvertConv2DToImg2ColPass());
+    pm.addPass(
+        iree_compiler::Preprocessing::createConvertConv2DToImg2ColPass());
   }
 };
 
