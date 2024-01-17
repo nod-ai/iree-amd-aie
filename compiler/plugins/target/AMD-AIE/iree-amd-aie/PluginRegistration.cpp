@@ -12,6 +12,7 @@
 #include "iree-amd-aie/Transforms/Passes.h"
 #include "iree/compiler/Dialect/HAL/Target/TargetRegistry.h"
 #include "iree/compiler/PluginAPI/Client.h"
+#include "iree/compiler/Preprocessing/Common/Passes.h"
 
 namespace mlir::iree_compiler {
 namespace {
@@ -36,6 +37,10 @@ struct AMDAIESession
     // #hal.device.target<"amd-aie", ...
     // #hal.executable.target<"amd-aie", ...
     targets.add("amd-aie", [&]() { return AMDAIE::createTarget(options); });
+  }
+
+  void extendPreprocessingPassPipeline(OpPassManager &pm) override {
+    pm.addPass(iree_compiler::Preprocessing::createConvertConv2DToImg2ColPass());
   }
 };
 
