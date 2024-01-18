@@ -38,9 +38,10 @@ iree_cc_library(
   SRCS
     "Passes.cpp"
     "AMDAIELowerExecutableTarget.cpp"
+    "AMDAIELowerWorkgroupCount.cpp"
+    "AMDAIEPackAndTranspose.cpp"
     "AMDAIEPadAndBufferize.cpp"
     "AMDAIETileAndFuse.cpp"
-    "AMDAIEPackAndTranspose.cpp"
     "BridgeToAIRPass.cpp"
     "Cleanup.cpp"
   DEPS

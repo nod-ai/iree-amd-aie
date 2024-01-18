@@ -92,7 +92,7 @@ void AMDAIELowerExecutableTargetPass::runOnOperation() {
 
   if (translationInfo.has_value()) {
     switch (translationInfo.value().getDispatchLoweringPassPipeline()) {
-        // Transform-dialect pipelines.
+      // Transform-dialect pipelines.
       case IREE::Codegen::DispatchLoweringPassPipeline::TransformDialectCodegen:
         addTransformDialectPasses(executableLoweringPipeline);
         break;

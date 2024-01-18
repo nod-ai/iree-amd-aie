@@ -1,4 +1,4 @@
-// Copyright 2023 The IREE Authors
+// Copyright 2024 The IREE Authors
 //
 // Licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -65,38 +65,36 @@ static void populateCleanupPatterns(RewritePatternSet &patterns) {
   scf::populateSCFForLoopCanonicalizationPatterns(patterns);
 }
 
-class CleanupPass : public CleanupBase<CleanupPass> {
+class AMDAIECleanupPass : public AMDAIECleanupBase<AMDAIECleanupPass> {
  public:
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<gpu::GPUDialect, scf::SCFDialect>();
   }
 
-  CleanupPass() = default;
-  CleanupPass(const CleanupPass &pass){};
+  AMDAIECleanupPass() = default;
+  AMDAIECleanupPass(const AMDAIECleanupPass &pass){};
 
   void runOnOperation() override;
 };
 
-void CleanupPass::runOnOperation() {
+void AMDAIECleanupPass::runOnOperation() {
   MLIRContext *context = &getContext();
-  IREE::HAL::ExecutableVariantOp variantOp = getOperation();
-  ModuleOp innerModule = variantOp.getInnerModule();
-  IRRewriter rewriter(context);
-  for (func::FuncOp funcOp : innerModule.getOps<func::FuncOp>()) {
-    RewritePatternSet patterns(context);
-    populateCleanupPatterns(patterns);
-    if (failed(applyPatternsAndFoldGreedily(funcOp, std::move(patterns)))) {
-      return signalPassFailure();
-    }
+  func::FuncOp funcOp = getOperation();
+
+  RewritePatternSet patterns(context);
+  populateCleanupPatterns(patterns);
+  if (failed(applyPatternsAndFoldGreedily(funcOp, std::move(patterns)))) {
+    return signalPassFailure();
+  }
+  {
+    IRRewriter rewriter(context);
     loopIndependentCodeMotion(funcOp, rewriter);
   }
 }
-
 }  // namespace
 
-std::unique_ptr<OperationPass<IREE::HAL::ExecutableVariantOp>>
-createCleanupPass() {
-  return std::make_unique<CleanupPass>();
+std::unique_ptr<OperationPass<func::FuncOp>> createAMDAIECleanupPass() {
+  return std::make_unique<AMDAIECleanupPass>();
 }
 
 }  // namespace mlir::iree_compiler::AMDAIE

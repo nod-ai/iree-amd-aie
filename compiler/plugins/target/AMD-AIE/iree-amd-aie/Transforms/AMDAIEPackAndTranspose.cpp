@@ -101,79 +101,75 @@ class AMDAIEPackAndTransposePass
 
 void AMDAIEPackAndTransposePass::runOnOperation() {
   MLIRContext *context = &getContext();
-  IREE::HAL::ExecutableVariantOp variantOp = getOperation();
-  ModuleOp innerModule = variantOp.getInnerModule();
+  func::FuncOp funcOp = getOperation();
 
-  for (func::FuncOp funcOp : innerModule.getOps<func::FuncOp>()) {
-    // Find the linalg op for packing, currently only consider contraction ops
-    linalg::LinalgOp linalgOp;
-    funcOp->walk([&](linalg::LinalgOp op) {
-      if (linalg::isaContractionOpInterface(op)) {
-        linalgOp = op;
-        return WalkResult::interrupt();
-      }
-      return WalkResult::advance();
-    });
+  // Find the linalg op for packing, currently only consider contraction ops
+  linalg::LinalgOp linalgOp;
+  funcOp->walk([&](linalg::LinalgOp op) {
+    if (linalg::isaContractionOpInterface(op)) {
+      linalgOp = op;
+      return WalkResult::interrupt();
+    }
+    return WalkResult::advance();
+  });
 
-    if (!linalgOp) {
-      LLVM_DEBUG(llvm::dbgs()
-                 << "----- skip, no linalg op for packing -----\n");
-      return;
+  if (!linalgOp) {
+    LLVM_DEBUG(llvm::dbgs() << "----- skip, no linalg op for packing -----\n");
+    return;
+  }
+
+  // Pack the operation
+  IRRewriter rewriter(context);
+  FailureOr<PackConfig> packCfg = getPackConfig(rewriter, packLevel);
+  if (failed(packCfg)) {
+    funcOp->emitOpError("failed to get pack configs");
+    return signalPassFailure();
+  }
+
+  FailureOr<linalg::PackResult> packResult =
+      applyPackOnLinalgOp(rewriter, linalgOp, packCfg->packedSizes);
+  if (failed(packResult)) {
+    return signalPassFailure();
+  }
+
+  // Pack Transpose
+  SmallVector<tensor::PackOp> packOps = packResult->packOps;
+  linalg::LinalgOp packedOp = packResult->packedLinalgOp;
+  SmallVector<tensor::UnPackOp> unpackOps = packResult->unPackOps;
+
+  if (packOps.size() != 3 || !packedOp || unpackOps.empty()) {
+    funcOp->emitOpError("failed to get correct pack and unpack ops");
+    return signalPassFailure();
+  }
+
+  auto packIndices = packCfg->transposePackIndices;
+  auto unpackArr = packCfg->unpackEmpty;
+  auto innerPermArr = packCfg->innerPerm;
+  auto outerPermArr = packCfg->outerPerm;
+
+  for (auto [index, unpackEmpty, innerPerm, outerPerm] :
+       llvm::zip(packIndices, unpackArr, innerPermArr, outerPermArr)) {
+    tensor::UnPackOp unpackOp;
+    if (unpackEmpty) {
+      unpackOp = unpackOps.back();
     }
 
-    // Pack the operation
-    IRRewriter rewriter(context);
-    FailureOr<PackConfig> packCfg = getPackConfig(rewriter, packLevel);
-    if (failed(packCfg)) {
-      funcOp->emitOpError("failed to get pack configs");
+    FailureOr<linalg::PackTransposeResult> packTransResult = packTranspose(
+        rewriter, packOps[index], packedOp, unpackOp, outerPerm, innerPerm);
+    if (failed(packTransResult)) {
+      funcOp->emitOpError("failed to transpose the pack operation ") << index;
       return signalPassFailure();
     }
 
-    FailureOr<linalg::PackResult> packResult =
-        applyPackOnLinalgOp(rewriter, linalgOp, packCfg->packedSizes);
-    if (failed(packResult)) {
-      return signalPassFailure();
-    }
-
-    // Pack Transpose
-    SmallVector<tensor::PackOp> packOps = packResult->packOps;
-    linalg::LinalgOp packedOp = packResult->packedLinalgOp;
-    SmallVector<tensor::UnPackOp> unpackOps = packResult->unPackOps;
-
-    if (packOps.size() != 3 || !packedOp || unpackOps.empty()) {
-      funcOp->emitOpError("failed to get correct pack and unpack ops");
-      return signalPassFailure();
-    }
-
-    auto packIndices = packCfg->transposePackIndices;
-    auto unpackArr = packCfg->unpackEmpty;
-    auto innerPermArr = packCfg->innerPerm;
-    auto outerPermArr = packCfg->outerPerm;
-
-    for (auto [index, unpackEmpty, innerPerm, outerPerm] :
-         llvm::zip(packIndices, unpackArr, innerPermArr, outerPermArr)) {
-      tensor::UnPackOp unpackOp;
-      if (unpackEmpty) {
-        unpackOp = unpackOps.back();
-      }
-
-      FailureOr<linalg::PackTransposeResult> packTransResult = packTranspose(
-          rewriter, packOps[index], packedOp, unpackOp, outerPerm, innerPerm);
-      if (failed(packTransResult)) {
-        funcOp->emitOpError("failed to transpose the pack operation ") << index;
-        return signalPassFailure();
-      }
-
-      // Update packed linalg op
-      packedOp = packTransResult->transposedLinalgOp;
-    }
+    // Update packed linalg op
+    packedOp = packTransResult->transposedLinalgOp;
   }
 }
 
 }  // namespace
 
-std::unique_ptr<OperationPass<IREE::HAL::ExecutableVariantOp>>
-createAMDAIEPackAndTransposePass(int64_t packLevel) {
+std::unique_ptr<OperationPass<func::FuncOp>> createAMDAIEPackAndTransposePass(
+    int64_t packLevel) {
   return std::make_unique<AMDAIEPackAndTransposePass>(packLevel);
 }
 }  // namespace mlir::iree_compiler::AMDAIE
