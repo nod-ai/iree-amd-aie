@@ -29,25 +29,28 @@ void buildAMDAIETransformPassPipeline(OpPassManager &pm);
 /// lowering.
 std::unique_ptr<OperationPass<>> createAMDAIEBridgeToAIRPass();
 
+/// Create pass to invoke several cleanup and canonicalization patterns.
+std::unique_ptr<OperationPass<func::FuncOp>> createAMDAIECleanupPass();
+
 /// Create pass calling the dynamic pipeline for AMDAIE.
 std::unique_ptr<OperationPass<IREE::HAL::ExecutableVariantOp>>
 createAMDAIELowerExecutableTargetPass();
 
-/// Create pass to tile and fuse TilingInterface operations.
+/// Create a pass to lower workgroup count region of entry point operations.
 std::unique_ptr<OperationPass<IREE::HAL::ExecutableVariantOp>>
-createAMDAIETileAndFusePass(int64_t tilingLevel = -1);
-
-/// Create a pass to pad MatmulOp and bufferize its operands.
-std::unique_ptr<OperationPass<IREE::HAL::ExecutableVariantOp>>
-createAMDAIEPadAndBufferizePass(int64_t paddingLevel = -1);
-
-/// Create pass to invoke several cleanup and canonicalization patterns.
-std::unique_ptr<OperationPass<IREE::HAL::ExecutableVariantOp>>
-createCleanupPass();
+createAMDAIELowerWorkgroupCountPass();
 
 /// Create a pass to pack and transpose the linalg op.
-std::unique_ptr<OperationPass<IREE::HAL::ExecutableVariantOp>>
-createAMDAIEPackAndTransposePass(int64_t packLevel = 1);
+std::unique_ptr<OperationPass<func::FuncOp>> createAMDAIEPackAndTransposePass(
+    int64_t packLevel = 1);
+
+/// Create a pass to pad MatmulOp and bufferize its operands.
+std::unique_ptr<OperationPass<func::FuncOp>> createAMDAIEPadAndBufferizePass(
+    int64_t paddingLevel = -1);
+
+/// Create pass to tile and fuse TilingInterface operations.
+std::unique_ptr<OperationPass<func::FuncOp>> createAMDAIETileAndFusePass(
+    int64_t tilingLevel = -1);
 
 void registerAMDAIEPasses();
 

@@ -1,4 +1,4 @@
-// Copyright 2023 The IREE Authors
+// Copyright 2024 The IREE Authors
 //
 // Licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -30,47 +30,6 @@
 namespace mlir::iree_compiler::AMDAIE {
 
 namespace {
-
-/// Lower WorkgroupCountFromSliceOp with all 1's.
-static LogicalResult lowerWorkgroupCount(RewriterBase &rewriter,
-                                         func::FuncOp entryPointFn) {
-  FailureOr<IREE::HAL::ExecutableExportOp> exportOp =
-      getEntryPoint(entryPointFn);
-  if (failed(exportOp)) {
-    return entryPointFn.emitOpError(
-        "expected function to be entry point function");
-  }
-  Block *body = exportOp->getWorkgroupCountBody();
-  if (!body) {
-    return exportOp->emitOpError("unexpected empty workgroup count region");
-  }
-  SmallVector<IREE::Flow::DispatchWorkgroupCountFromSliceOp> workgroupCountOps;
-  for (Operation &op : *body) {
-    if (isa<IREE::Flow::DispatchWorkgroupCountFromSliceOp>(&op)) {
-      workgroupCountOps.push_back(
-          cast<IREE::Flow::DispatchWorkgroupCountFromSliceOp>(&op));
-    }
-  }
-  if (workgroupCountOps.empty()) {
-    // If there are no default handled `flow.dispatch.workgroup_count`
-    // operation, do nothing.
-    return success();
-  }
-  if (!llvm::hasSingleElement(workgroupCountOps)) {
-    return exportOp->emitOpError(
-        "unexpected multiple flow.dispatch.workgroup_count_slice_op "
-        "operations in body");
-  }
-  OpBuilder::InsertionGuard g(rewriter);
-  rewriter.setInsertionPoint(workgroupCountOps[0]);
-  Location loc = workgroupCountOps[0].getLoc();
-  SmallVector<OpFoldResult> results;
-  results.resize(workgroupCountOps[0].getNumResults(),
-                 rewriter.getIndexAttr(1));
-  rewriter.replaceOp(workgroupCountOps[0],
-                     getValueOrCreateConstantIndexOp(rewriter, loc, results));
-  return success();
-}
 
 //===----------------------------------------------------------------------------------===//
 // Methods copied over from core to implement tile and fuse with scf.forall.
@@ -356,70 +315,59 @@ class AMDAIETileAndFusePass
 
 void AMDAIETileAndFusePass::runOnOperation() {
   MLIRContext *context = &getContext();
-  IREE::HAL::ExecutableVariantOp variantOp = getOperation();
-  ModuleOp innerModule = variantOp.getInnerModule();
-  for (func::FuncOp funcOp : innerModule.getOps<func::FuncOp>()) {
-    TilingInterface consumerOp;
-    funcOp->walk<WalkOrder::PostOrder, ReverseIterator>(
-        [&](TilingInterface op) {
-          // Find the next consumer op if it does not have loops OR if it is a
-          // linalg.copy op.
-          if (op.getLoopIteratorTypes().empty() || isa<linalg::CopyOp>(op))
-            return WalkResult::advance();
-          consumerOp = op;
-          return WalkResult::interrupt();
-        });
-    if (!consumerOp) {
-      LLVM_DEBUG(llvm::dbgs() << "----- skip, no consumer op -----\n");
-      return;
-    }
+  func::FuncOp funcOp = getOperation();
 
-    LLVM_DEBUG(llvm::dbgs() << "consumerOp: " << consumerOp << "\n");
-    LLVM_DEBUG(llvm::dbgs() << "tilingLevel: " << tilingLevel << "\n");
-    // TODO(avarma): Generalize this by adding pulling in tilingConfig based on
-    // a given tilinglevel, similar to LLVMCPUTileAndFuse.cpp.
-    SmallVector<OpFoldResult> tileSizes;
-    // TODO(avarma): Have a global CONSTANT defining tiling stages and the
-    // tiling strategy.
-    if (tilingLevel == 1) {
-      tileSizes = getAsIndexOpFoldResult(context, {8, 8});
-    } else if (tilingLevel == 2) {
-      tileSizes = getAsIndexOpFoldResult(context, {4, 4});
-    } else if (tilingLevel == 3) {
-      tileSizes = getAsIndexOpFoldResult(context, {0, 0, 4});
-    } else {
-      assert(false && "unsupported tiling level");
-    }
-    auto options = scf::SCFTilingOptions().setTileSizes(tileSizes);
-    // When tiling using scf.for we do not need to set any mapping.
-    if (tilingLevel != 3) {
-      options.setMapping(
-          {gpu::GPUBlockMappingAttr::get(context, gpu::MappingId::DimY),
-           gpu::GPUBlockMappingAttr::get(context, gpu::MappingId::DimX)});
-    }
+  TilingInterface consumerOp;
+  funcOp->walk<WalkOrder::PostOrder, ReverseIterator>([&](TilingInterface op) {
+    // Find the next consumer op if it does not have loops OR if it is a
+    // linalg.copy op.
+    if (op.getLoopIteratorTypes().empty() || isa<linalg::CopyOp>(op))
+      return WalkResult::advance();
+    consumerOp = op;
+    return WalkResult::interrupt();
+  });
+  if (!consumerOp) {
+    LLVM_DEBUG(llvm::dbgs() << "----- skip, no consumer op -----\n");
+    return;
+  }
 
-    IRRewriter rewriter(context);
-    DominanceInfo dominanceInfo(funcOp);
-    if (failed(applyTileAndFuseUsingSCF(rewriter, consumerOp, dominanceInfo,
-                                        options, tilingLevel))) {
-      LLVM_DEBUG(llvm::dbgs() << "----- tile and fuse failed -----\n");
-      return signalPassFailure();
-    }
+  LLVM_DEBUG(llvm::dbgs() << "consumerOp: " << consumerOp << "\n");
+  LLVM_DEBUG(llvm::dbgs() << "tilingLevel: " << tilingLevel << "\n");
+  // TODO(avarma): Generalize this by adding pulling in tilingConfig based on
+  // a given tilinglevel, similar to LLVMCPUTileAndFuse.cpp.
+  SmallVector<OpFoldResult> tileSizes;
+  // TODO(avarma): Have a global CONSTANT defining tiling stages and the
+  // tiling strategy.
+  if (tilingLevel == 1) {
+    tileSizes = getAsIndexOpFoldResult(context, {8, 8});
+  } else if (tilingLevel == 2) {
+    tileSizes = getAsIndexOpFoldResult(context, {4, 4});
+  } else if (tilingLevel == 3) {
+    tileSizes = getAsIndexOpFoldResult(context, {0, 0, 4});
+  } else {
+    assert(false && "unsupported tiling level");
+  }
+  auto options = scf::SCFTilingOptions().setTileSizes(tileSizes);
+  // When tiling using scf.for we do not need to set any mapping.
+  if (tilingLevel != 3) {
+    options.setMapping(
+        {gpu::GPUBlockMappingAttr::get(context, gpu::MappingId::DimY),
+         gpu::GPUBlockMappingAttr::get(context, gpu::MappingId::DimX)});
+  }
 
-    // TODO: Maybe we should have separate pass for lowering workgroup count?
-    //       Just to have logically separated functionalities which also helps
-    //       in `--mlir-print-before/after-*`.
-    if (tilingLevel == 1 && failed(lowerWorkgroupCount(rewriter, funcOp))) {
-      funcOp->emitOpError("failed to lower workgroup count region");
-      return signalPassFailure();
-    }
+  IRRewriter rewriter(context);
+  DominanceInfo dominanceInfo(funcOp);
+  if (failed(applyTileAndFuseUsingSCF(rewriter, consumerOp, dominanceInfo,
+                                      options, tilingLevel))) {
+    LLVM_DEBUG(llvm::dbgs() << "----- tile and fuse failed -----\n");
+    return signalPassFailure();
   }
 }
 
 }  // namespace
 
-std::unique_ptr<OperationPass<IREE::HAL::ExecutableVariantOp>>
-createAMDAIETileAndFusePass(int64_t tilingLevel) {
+std::unique_ptr<OperationPass<func::FuncOp>> createAMDAIETileAndFusePass(
+    int64_t tilingLevel) {
   return std::make_unique<AMDAIETileAndFusePass>(tilingLevel);
 }
 

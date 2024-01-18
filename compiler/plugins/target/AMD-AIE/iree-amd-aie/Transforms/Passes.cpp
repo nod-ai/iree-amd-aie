@@ -70,37 +70,48 @@ void buildAMDAIETransformPassPipeline(OpPassManager &pm) {
   // efforts. Once the C++ passes are ready, we will include these passes by
   // default and take away the guarding.
   if (clUseCPlusPlusTransformPasses) {
-    pm.addPass(createCleanupPass());
-    pm.addPass(createCanonicalizerPass());
-    pm.addPass(createCSEPass());
-    pm.addPass(createAMDAIETileAndFusePass(1));
-    pm.addPass(createAMDAIEPadAndBufferizePass(1));
-    pm.addPass(createCleanupPass());
-    pm.addPass(createCanonicalizerPass());
-    pm.addPass(createCSEPass());
-    pm.addPass(createAMDAIETileAndFusePass(2));
-    pm.addPass(createAMDAIEPadAndBufferizePass(2));
-    pm.addPass(createCleanupPass());
-    pm.addPass(createCanonicalizerPass());
-    pm.addPass(createCSEPass());
-    pm.addPass(createAMDAIETileAndFusePass(3));
-    pm.addPass(createCleanupPass());
-    pm.addPass(createCanonicalizerPass());
-    pm.addPass(createCSEPass());
-    pm.addPass(createAMDAIEPadAndBufferizePass(3));
-    pm.addPass(createCleanupPass());
-    pm.addPass(createCanonicalizerPass());
-    pm.addPass(createCSEPass());
-    {
-      auto &modulePassManager = pm.nest<ModuleOp>();
-      addAMDAIEBufferizePasses(modulePassManager);
-    }
-    pm.addPass(createCleanupPass());
-    pm.addPass(createCanonicalizerPass());
-    pm.addPass(createCSEPass());
+    auto &modulePassManager = pm.nest<ModuleOp>();
+
+    modulePassManager.addNestedPass<func::FuncOp>(createAMDAIECleanupPass());
+    modulePassManager.addPass(createCanonicalizerPass());
+    modulePassManager.addPass(createCSEPass());
+    modulePassManager.addNestedPass<func::FuncOp>(
+        createAMDAIETileAndFusePass(1));
+
+    modulePassManager.addNestedPass<func::FuncOp>(
+        createAMDAIEPadAndBufferizePass(1));
+    modulePassManager.addNestedPass<func::FuncOp>(createAMDAIECleanupPass());
+    modulePassManager.addPass(createCanonicalizerPass());
+    modulePassManager.addPass(createCSEPass());
+
+    modulePassManager.addNestedPass<func::FuncOp>(
+        createAMDAIETileAndFusePass(2));
+    modulePassManager.addNestedPass<func::FuncOp>(
+        createAMDAIEPadAndBufferizePass(2));
+    modulePassManager.addNestedPass<func::FuncOp>(createAMDAIECleanupPass());
+    modulePassManager.addPass(createCanonicalizerPass());
+    modulePassManager.addPass(createCSEPass());
+
+    modulePassManager.addNestedPass<func::FuncOp>(
+        createAMDAIETileAndFusePass(3));
+    modulePassManager.addNestedPass<func::FuncOp>(createAMDAIECleanupPass());
+    modulePassManager.addPass(createCanonicalizerPass());
+    modulePassManager.addPass(createCSEPass());
+
+    modulePassManager.addNestedPass<func::FuncOp>(
+        createAMDAIEPadAndBufferizePass(3));
+    modulePassManager.addNestedPass<func::FuncOp>(createAMDAIECleanupPass());
+    modulePassManager.addPass(createCanonicalizerPass());
+    modulePassManager.addPass(createCSEPass());
+
+    addAMDAIEBufferizePasses(modulePassManager);
+    modulePassManager.addNestedPass<func::FuncOp>(createAMDAIECleanupPass());
+    modulePassManager.addPass(createCanonicalizerPass());
+    modulePassManager.addPass(createCSEPass());
   }
   pm.addPass(createEraseHALDescriptorTypeFromMemRefPass());
   pm.addPass(createAMDAIELowerExecutableTargetPass());
+  pm.addPass(createAMDAIELowerWorkgroupCountPass());
 
   auto &modulePassManager = pm.nest<ModuleOp>();
   addMLIRAIRAIELoweringPasses(modulePassManager);
@@ -160,7 +171,8 @@ void addMLIRAIRAIELoweringPasses(OpPassManager &passManager) {
   passManager.addPass(createCSEPass());
 
   passManager.addPass(xilinx::air::createAIRIsolateAsyncDmaLoopNests());
-  passManager.addPass(xilinx::air::createAIRSpecializeChannelWrapAndStridePattern());
+  passManager.addPass(
+      xilinx::air::createAIRSpecializeChannelWrapAndStridePattern());
   passManager.addPass(createCanonicalizerPass());
   passManager.addPass(createCSEPass());
 

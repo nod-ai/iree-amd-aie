@@ -8,11 +8,12 @@ iree_lit_test_suite(
   NAME
     lit
   SRCS
+    "lower_workgroup_count.mlir"
+    "pack_and_transpose_level1.mlir"
+    "pack_and_transpose_level2.mlir"
     "pad_and_bufferize.mlir"
     "tile_and_fuse_using_scf_for.mlir"
     "tile_and_fuse_using_scf_forall.mlir"
-    "pack_and_transpose_level1.mlir"
-    "pack_and_transpose_level2.mlir"
   TOOLS
     ${IREE_LLD_TARGET}
     FileCheck
