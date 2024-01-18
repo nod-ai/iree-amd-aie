@@ -43,7 +43,7 @@ class SCFForAllToParallelOp : public OpRewritePattern<scf::ForallOp> {
     // Fixup the terminator
     OpBuilder::InsertionGuard g(rewriter);
     rewriter.setInsertionPointToEnd(&parallelOp.getRegion().front());
-    rewriter.replaceOpWithNewOp<scf::ReduceOp>(
+    rewriter.replaceOpWithNewOp<scf::YieldOp>(
         parallelOp.getRegion().front().getTerminator());
     return success();
   }
