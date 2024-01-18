@@ -12,7 +12,7 @@ iree_lit_test_suite(
     "pad_and_bufferize.mlir"
     "tile_and_fuse.mlir"
     "implicit_convolution.mlir"
-    "convolution_rocm_why_implicit.mlir"
+    "disable_amd_aie_plugin.mlir"
   TOOLS
     ${IREE_LLD_TARGET}
     FileCheck

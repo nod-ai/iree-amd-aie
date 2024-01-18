@@ -12,7 +12,6 @@
 #include "air/Transform/Passes.h"
 #include "iree-dialects/Dialect/LinalgTransform/Passes.h"
 #include "iree/compiler/Codegen/Common/Passes.h"
-#include "iree/compiler/Preprocessing/Passes.h"
 #include "mlir/Dialect/Linalg/Passes.h"
 #include "mlir/Dialect/MemRef/Transforms/Passes.h"
 #include "mlir/Pass/PassManager.h"
@@ -29,14 +28,6 @@ static llvm::cl::opt<bool> clUseCPlusPlusTransformPasses(
 namespace mlir::iree_compiler::AMDAIE {
 
 void buildAMDAIETransformPassPipeline(OpPassManager &pm) {
-
-  // iree_compiler::PreprocessingOptions po;
-  // po.preprocessingPassPipeline =
-  //     "builtin.module(func.func(iree-global-opt-convert-1x1-filter-conv2d-to-"
-  //     "matmul,iree-preprocessing-convert-conv2d-to-img2col))";
-  // iree_compiler::Preprocessing::buildPreprocessingPassPipeline(pm, po);
-
-
   addCommonTargetExecutablePreprocessingPasses(pm);
   // TODO: Current we don't include C++ equivalent of Transform dialect scripts.
   // We are thus guarding their inclusion with a bool

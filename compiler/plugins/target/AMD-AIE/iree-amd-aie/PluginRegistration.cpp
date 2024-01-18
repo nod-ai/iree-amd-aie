@@ -11,8 +11,10 @@
 #include "iree-amd-aie/Target/AIETarget.h"
 #include "iree-amd-aie/Transforms/Passes.h"
 #include "iree/compiler/Dialect/HAL/Target/TargetRegistry.h"
+#include "iree/compiler/Pipelines/Options.h"
 #include "iree/compiler/PluginAPI/Client.h"
 #include "iree/compiler/Preprocessing/Common/Passes.h"
+#include "iree/compiler/GlobalOptimization/Passes.h"
 
 namespace mlir::iree_compiler {
 namespace {
@@ -42,6 +44,8 @@ struct AMDAIESession
   void extendPreprocessingPassPipeline(OpPassManager &pm) override {
     pm.addPass(
         iree_compiler::Preprocessing::createConvertConv2DToImg2ColPass());
+    pm.addPass(iree_compiler::GlobalOptimization::
+                   createConvert1X1FilterConv2DToMatmulPass());
   }
 };
 
