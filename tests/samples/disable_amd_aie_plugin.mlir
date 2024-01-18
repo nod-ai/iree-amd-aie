@@ -2,6 +2,10 @@
 // RUN: --iree-hal-target-backends=rocm \
 // RUN: --compile-to=executable-sources %s | FileCheck %s
 
+// Without the compiler flag --iree-plugin=-amd_aie to disable the modifications 
+// to the pipeline that the amd-aie plugin makes, the convolution in turned into 
+// a matmul even when the target backend is rocm. 
+
 // CHECK-LABEL: conv_2d_example
 func.func @conv_2d_example(%arg0: tensor<1x16x16x4xf32>,
                       %arg1: tensor<3x2x4x16xf32>,
