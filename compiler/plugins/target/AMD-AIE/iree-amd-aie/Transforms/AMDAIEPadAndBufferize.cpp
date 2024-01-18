@@ -1,4 +1,4 @@
-// Copyright 2023 The IREE Authors
+// Copyright 2024 The IREE Authors
 //
 // Licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -229,74 +229,69 @@ class AMDAIEPadAndBufferizePass
 
 void AMDAIEPadAndBufferizePass::runOnOperation() {
   MLIRContext *context = &getContext();
-  IREE::HAL::ExecutableVariantOp variantOp = getOperation();
-  ModuleOp innerModule = variantOp.getInnerModule();
-  for (func::FuncOp funcOp : innerModule.getOps<func::FuncOp>()) {
-    linalg::MatmulOp matmulOp;
-    funcOp->walk<WalkOrder::PostOrder, ReverseIterator>(
-        [&](TilingInterface op) {
-          // Find the next matmul op if it does not have loops.
-          if (op.getLoopIteratorTypes().empty() || !isa<linalg::MatmulOp>(op))
-            return WalkResult::advance();
-          matmulOp = cast<linalg::MatmulOp>(op);
-          return WalkResult::interrupt();
-        });
-    if (!matmulOp) {
-      LLVM_DEBUG(llvm::dbgs() << "----- skip, no matmul op -----\n");
-      return;
-    }
+  func::FuncOp funcOp = getOperation();
+  linalg::MatmulOp matmulOp;
+  funcOp->walk<WalkOrder::PostOrder, ReverseIterator>([&](TilingInterface op) {
+    // Find the next matmul op if it does not have loops.
+    if (op.getLoopIteratorTypes().empty() || !isa<linalg::MatmulOp>(op))
+      return WalkResult::advance();
+    matmulOp = cast<linalg::MatmulOp>(op);
+    return WalkResult::interrupt();
+  });
+  if (!matmulOp) {
+    LLVM_DEBUG(llvm::dbgs() << "----- skip, no matmul op -----\n");
+    return;
+  }
 
-    IRRewriter rewriter(context);
-    FailureOr<linalg::LinalgPaddingOptions> options =
-        getLinalgPaddingOptions(rewriter, matmulOp, paddingLevel);
-    if (failed(options)) {
-      funcOp->emitOpError("unknown padding level");
-      return signalPassFailure();
-    }
-    if (failed(applyPadAndConvertToDPS(rewriter, matmulOp, *options))) {
-      funcOp->emitOpError("failed to apply pad");
-      return signalPassFailure();
-    }
+  IRRewriter rewriter(context);
+  FailureOr<linalg::LinalgPaddingOptions> options =
+      getLinalgPaddingOptions(rewriter, matmulOp, paddingLevel);
+  if (failed(options)) {
+    funcOp->emitOpError("unknown padding level");
+    return signalPassFailure();
+  }
+  if (failed(applyPadAndConvertToDPS(rewriter, matmulOp, *options))) {
+    funcOp->emitOpError("failed to apply pad");
+    return signalPassFailure();
+  }
 
-    // TODO: This part can be coded better instead of againg walking the FuncOp.
-    funcOp->walk<WalkOrder::PostOrder, ReverseIterator>(
-        [&](TilingInterface op) {
-          // Find the next matmul op if it does not have loops.
-          if (op.getLoopIteratorTypes().empty() || !isa<linalg::MatmulOp>(op))
-            return WalkResult::advance();
-          matmulOp = cast<linalg::MatmulOp>(op);
-          return WalkResult::interrupt();
-        });
-    if (!matmulOp) {
-      LLVM_DEBUG(llvm::dbgs() << "----- skip, no matmul op -----\n");
-      return;
-    }
-    FailureOr<SmallVector<Value>> bufferizeOperands =
-        getOperandsToBufferize(paddingLevel, matmulOp);
-    if (failed(bufferizeOperands)) {
-      matmulOp->emitOpError("could not fetch operands to bufferize");
+  // TODO: This part can be coded better instead of againg walking the FuncOp.
+  funcOp->walk<WalkOrder::PostOrder, ReverseIterator>([&](TilingInterface op) {
+    // Find the next matmul op if it does not have loops.
+    if (op.getLoopIteratorTypes().empty() || !isa<linalg::MatmulOp>(op))
+      return WalkResult::advance();
+    matmulOp = cast<linalg::MatmulOp>(op);
+    return WalkResult::interrupt();
+  });
+  if (!matmulOp) {
+    LLVM_DEBUG(llvm::dbgs() << "----- skip, no matmul op -----\n");
+    return;
+  }
+  FailureOr<SmallVector<Value>> bufferizeOperands =
+      getOperandsToBufferize(paddingLevel, matmulOp);
+  if (failed(bufferizeOperands)) {
+    matmulOp->emitOpError("could not fetch operands to bufferize");
+    return signalPassFailure();
+  }
+  auto i64Type = rewriter.getI64Type();
+  auto memorySpace = rewriter.getIntegerAttr(i64Type, 1);
+  if (paddingLevel != 1) {
+    memorySpace = rewriter.getIntegerAttr(i64Type, 2);
+  }
+  for (auto operand : *bufferizeOperands) {
+    rewriter.setInsertionPointAfter(operand.getDefiningOp());
+    if (failed(applyBufferizeToAllocation(rewriter, operand.getDefiningOp(),
+                                          memorySpace))) {
+      funcOp->emitOpError("failed bufferizing to allocations");
       return signalPassFailure();
-    }
-    auto i64Type = rewriter.getI64Type();
-    auto memorySpace = rewriter.getIntegerAttr(i64Type, 1);
-    if (paddingLevel != 1) {
-      memorySpace = rewriter.getIntegerAttr(i64Type, 2);
-    }
-    for (auto operand : *bufferizeOperands) {
-      rewriter.setInsertionPointAfter(operand.getDefiningOp());
-      if (failed(applyBufferizeToAllocation(rewriter, operand.getDefiningOp(),
-                                            memorySpace))) {
-        funcOp->emitOpError("failed bufferizing to allocations");
-        return signalPassFailure();
-      }
     }
   }
 }
 
 }  // namespace
 
-std::unique_ptr<OperationPass<IREE::HAL::ExecutableVariantOp>>
-createAMDAIEPadAndBufferizePass(int64_t paddingLevel) {
+std::unique_ptr<OperationPass<func::FuncOp>> createAMDAIEPadAndBufferizePass(
+    int64_t paddingLevel) {
   return std::make_unique<AMDAIEPadAndBufferizePass>(paddingLevel);
 }
 }  // namespace mlir::iree_compiler::AMDAIE
