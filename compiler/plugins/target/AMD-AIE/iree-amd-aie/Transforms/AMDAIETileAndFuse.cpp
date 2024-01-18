@@ -284,8 +284,10 @@ LogicalResult applyTileAndFuseUsingSCF(RewriterBase &rewriter,
                                        Operation *rootOp,
                                        DominanceInfo &dominanceInfo,
                                        scf::SCFTilingOptions options,
-                                       int64_t tilingLevel) {
-  if (tilingLevel == 2) {
+                                       bool useSCFFor, int64_t tilingLevel) {
+  // TODO(MaheshRavishankar): Adapt this to use SCFTilingOptions after
+  // the upstream changes land.
+  if (useSCFFor) {
     return applyTileAndFuseUsingSCFFor(rewriter, rootOp, dominanceInfo,
                                        options);
   } else {
@@ -305,7 +307,8 @@ class AMDAIETileAndFusePass
   }
 
   AMDAIETileAndFusePass() = default;
-  AMDAIETileAndFusePass(int64_t tilingLevel = -1) {
+  AMDAIETileAndFusePass(bool useSCFFor = false, int64_t tilingLevel = -1) {
+    this->useSCFFor.setValue(useSCFFor);
     this->tilingLevel.setValue(tilingLevel);
   }
   AMDAIETileAndFusePass(const AMDAIETileAndFusePass &pass){};
@@ -368,7 +371,7 @@ void AMDAIETileAndFusePass::runOnOperation() {
   IRRewriter rewriter(context);
   DominanceInfo dominanceInfo(funcOp);
   if (failed(applyTileAndFuseUsingSCF(rewriter, consumerOp, dominanceInfo,
-                                      options, tilingLevel))) {
+                                      options, useSCFFor, tilingLevel))) {
     LLVM_DEBUG(llvm::dbgs() << "----- tile and fuse failed -----\n");
     return signalPassFailure();
   }
@@ -377,8 +380,8 @@ void AMDAIETileAndFusePass::runOnOperation() {
 }  // namespace
 
 std::unique_ptr<OperationPass<func::FuncOp>> createAMDAIETileAndFusePass(
-    int64_t tilingLevel) {
-  return std::make_unique<AMDAIETileAndFusePass>(tilingLevel);
+    bool useSCFFor, int64_t tilingLevel) {
+  return std::make_unique<AMDAIETileAndFusePass>(useSCFFor, tilingLevel);
 }
 
 }  // namespace mlir::iree_compiler::AMDAIE
