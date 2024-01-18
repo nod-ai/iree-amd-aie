@@ -69,6 +69,7 @@ iree_cc_library(
     ::defs
     ::AIRDialectIR
     ::AIRTransformOpsGen
+    iree::target::amd-aie::aie::AIEDialectIR
     MLIRIR
     MLIRLinalgTransformOps
 )

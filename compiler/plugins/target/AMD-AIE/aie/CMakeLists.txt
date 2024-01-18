@@ -143,6 +143,7 @@ iree_cc_library(
     ${IREE_MLIR_AIE_SOURCE_DIR}/lib/Dialect/AIEX/IR/AIEXDialect.cpp
   DEPS
     ::defs
+    ::AIEDialectIR
     ::AIEXOpsGen
     ::AIEXDialectGen
     MLIRIR
