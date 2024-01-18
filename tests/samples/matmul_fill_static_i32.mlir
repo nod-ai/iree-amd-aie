@@ -3,27 +3,27 @@
 
 // To check the transform dialect script path.
 // TRANSFORM-LABEL: hal.executable.export public @matmul_static_dispatch_0_matmul_8x8x16_i32
-//       TRANSFORM:    AIE.device(ipu)
-//       TRANSFORM:    AIE.shimDMAAllocation
-//       TRANSFORM:    AIE.shimDMAAllocation
-//       TRANSFORM:    AIE.shimDMAAllocation
+//       TRANSFORM:    aie.device(ipu)
+//       TRANSFORM:    aie.shim_dma_allocation
+//       TRANSFORM:    aie.shim_dma_allocation
+//       TRANSFORM:    aie.shim_dma_allocation
 //       TRANSFORM:    func.func @matmul_static_dispatch_0_matmul_8x8x16_i32(%arg0: memref<8x16xi32>, %arg1: memref<16x8xi32>, %arg2: memref<8x8xi32>)
-//       TRANSFORM:      AIEX.ipu.dma_memcpy_nd
-//       TRANSFORM:      AIEX.ipu.dma_memcpy_nd
-//       TRANSFORM:      AIEX.ipu.dma_memcpy_nd
-//       TRANSFORM:      AIEX.ipu.sync
+//       TRANSFORM:      aiex.ipu.dma_memcpy_nd
+//       TRANSFORM:      aiex.ipu.dma_memcpy_nd
+//       TRANSFORM:      aiex.ipu.dma_memcpy_nd
+//       TRANSFORM:      aiex.ipu.sync
 
 // To check the cpp path equivalent to the transform dialect script.
 // CPP-LABEL: hal.executable.export public @matmul_static_dispatch_0_matmul_8x8x16_i32
-//       CPP:    AIE.device(ipu)
-//       CPP:    AIE.shimDMAAllocation
-//       CPP:    AIE.shimDMAAllocation
-//       CPP:    AIE.shimDMAAllocation
+//       CPP:    aie.device(ipu)
+//       CPP:    aie.shim_dma_allocation
+//       CPP:    aie.shim_dma_allocation
+//       CPP:    aie.shim_dma_allocation
 //       CPP:    func.func @matmul_static_dispatch_0_matmul_8x8x16_i32(%arg0: memref<8x16xi32>, %arg1: memref<16x8xi32>, %arg2: memref<8x8xi32>)
-//       CPP:      AIEX.ipu.dma_memcpy_nd
-//       CPP:      AIEX.ipu.dma_memcpy_nd
-//       CPP:      AIEX.ipu.dma_memcpy_nd
-//       CPP:      AIEX.ipu.sync
+//       CPP:      aiex.ipu.dma_memcpy_nd
+//       CPP:      aiex.ipu.dma_memcpy_nd
+//       CPP:      aiex.ipu.dma_memcpy_nd
+//       CPP:      aiex.ipu.sync
 func.func @matmul_static(%lhs : tensor<8x16xi32>,
     %rhs : tensor<16x8xi32>) -> tensor<8x8xi32> {
   %empty = tensor.empty() : tensor<8x8xi32>
