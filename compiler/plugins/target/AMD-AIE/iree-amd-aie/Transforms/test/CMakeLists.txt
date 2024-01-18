@@ -11,6 +11,7 @@ iree_lit_test_suite(
     "pad.mlir"
     "bufferize_to_allocation_pad.mlir"
     "bufferize_to_allocation_pad_last.mlir"
+    "bufferize_to_allocation_pack.mlir"
     "tile_and_fuse_using_scf_for.mlir"
     "tile_and_fuse_using_scf_forall.mlir"
     "pack_and_transpose_level1.mlir"
