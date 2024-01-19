@@ -415,7 +415,7 @@ FailureOr<std::string> getOperandStr(Value operand, int64_t index,
   return opStr;
 }
 
-/// Walk bottom up through generic op starting from yeild op
+/// Walk bottom up through generic op starting from yield op
 FailureOr<std::string> walkGenericOp(std::string initStr, Value curOperand,
                                      AccelSerializer::ScopeInfo &scope) {
   if (isa<BlockArgument>(curOperand)) {
@@ -682,7 +682,9 @@ LogicalResult AccelSerializer::processOperation(scf::ForallOp forAllOp,
     }
     scope.append("}\n");
   }
-  if (numParallelLoops) {
+  // In the multicore situation, the inner forall loop opens an additional
+  // parenthesis after the multicore attribute, close it here.
+  if (numParallelLoops && isMulticore) {
     scope.indent().append("}\n");
   }
   return success();
