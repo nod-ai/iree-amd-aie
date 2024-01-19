@@ -38,22 +38,27 @@ static LogicalResult applyBufferizeToAllocation(RewriterBase &rewriter,
 }
 
 // TODO(avarma): This is a temporary workaround until we have PaddingStrategy
-// Currently handles a Matmul. Given a Matmul(Lhs, Rhs, Out) and a given
-// `bufferizeLevel`, the following is what we bufferize :
-//    bufferizeLevel == -1 -> This is for packing op bufferization.
-//    bufferizeLevel == 0 -> Lhs, Rhs and Out.
-//    bufferizeLevel == 1 -> Out.
-//    bufferizeLevel == 2 -> Lhs and Rhs.
+// This function is to take certain operands from a matmul op and used for
+// new allocation creation. Since we have different pipelines (packing/padding)
+// and padding strategies. We use buffereizeLevel to indicate what pipeline
+// and padding strategy we are targeting.
 static FailureOr<SmallVector<Value>> getOperandsToBufferize(
     int64_t bufferizeLevel, linalg::LinalgOp &linalgOp) {
-  if (bufferizeLevel <= 0) {
-    return SmallVector<Value>(linalgOp->getOperands());
-  } else if (bufferizeLevel == 1) {
-    return SmallVector<Value>(linalgOp.getDpsInits());
-  } else if (bufferizeLevel == 2) {
-    return SmallVector<Value>(linalgOp.getDpsInputs());
-  } else {
-    return failure();
+  switch (bufferizeLevel) {
+    // Use with packing pipeline, create new allocations for Lhs, Rhs and Out.
+    case -1:
+      return SmallVector<Value>(linalgOp->getOperands());
+    // Use with paddingLevel == 0, create new allocations for Lhs, Rhs and Out.
+    case 0:
+      return SmallVector<Value>(linalgOp->getOperands());
+    // Use with paddingLevel == 1, create new allocation only for Out.
+    case 1:
+      return SmallVector<Value>(linalgOp.getDpsInits());
+    // Use with paddingLevel == 2, create new allocations only for Lhs, Rhs.
+    case 2:
+      return SmallVector<Value>(linalgOp.getDpsInputs());
+    default:
+      return failure();
   }
 }
 
