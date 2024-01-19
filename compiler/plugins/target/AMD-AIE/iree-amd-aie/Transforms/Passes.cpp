@@ -11,21 +11,90 @@
 #include "air/Conversion/Passes.h"
 #include "air/Transform/Passes.h"
 #include "iree-dialects/Dialect/LinalgTransform/Passes.h"
+#include "iree/compiler/Codegen/Common/CPU/Passes.h"
 #include "iree/compiler/Codegen/Common/Passes.h"
 #include "mlir/Dialect/Linalg/Passes.h"
 #include "mlir/Dialect/MemRef/Transforms/Passes.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/Passes.h"
 
+#define DEBUG_TYPE "iree-amdaie-lowering-pass-pipeline"
+
 namespace mlir::iree_compiler::AMDAIE {
+
+//===---------------------------------------------------------------------===//
+// Default allocation functions for AIE backend
+//===---------------------------------------------------------------------===//
+// Allocation callbacks to use with upstream comprehensive bufferization
+static FailureOr<Value> aieComprehensiveBufferizeAllocationFn(
+    OpBuilder &builder, Location loc, MemRefType memRefType,
+    ValueRange dynamicSizes, unsigned alignment) {
+  return builder
+      .create<memref::AllocaOp>(loc, memRefType, dynamicSizes,
+                                builder.getI64IntegerAttr(alignment))
+      .getResult();
+}
+
+static LogicalResult aieComprehensiveBufferizeCopyFn(OpBuilder &builder,
+                                                     Location loc, Value from,
+                                                     Value to) {
+  // TODO: ideally we should use linalg.copy which was recently reintroduced
+  // as an OpDSL named op. However, IREE-specific patterns to cleanup spurious
+  // post-bufferization copies do not trigger properly.
+  // So we keep using `createLinalgCopyOp` which builds a GenericOp.
+  // builder.create<linalg::CopyOp>(loc, from, to);
+  mlir::iree_compiler::createLinalgCopyOp(builder, loc, from, to);
+  return success();
+}
+
+static void addAMDAIEBufferizePasses(OpPassManager &pm) {
+  // Bufferize the dispatch.
+  using mlir::bufferization::BufferizationOptions;
+  BufferizationOptions::AllocationFn allocationFn =
+      aieComprehensiveBufferizeAllocationFn;
+  BufferizationOptions::MemCpyFn memCpyFn = aieComprehensiveBufferizeCopyFn;
+  addIREEComprehensiveBufferizePasses(pm, allocationFn, memCpyFn);
+}
+
+void addPadBasedPassPipeline(OpPassManager &pm, TilingConfig &tilingConfig) {
+  auto &modulePassManager = pm.nest<ModuleOp>();
+  modulePassManager.addNestedPass<func::FuncOp>(createAMDAIECleanupPass());
+  pm.addPass(createCanonicalizerPass());
+  pm.addPass(createCSEPass());
+  for (unsigned i = 0, n = tilingConfig.getNumTilingLevels(); i < n; i++) {
+    modulePassManager.addNestedPass<func::FuncOp>(
+        createAMDAIETileAndFusePass(i));
+    if (i == 2) {
+      modulePassManager.addNestedPass<func::FuncOp>(createAMDAIECleanupPass());
+      pm.addPass(createCanonicalizerPass());
+      pm.addPass(createCSEPass());
+    }
+    modulePassManager.addNestedPass<func::FuncOp>(
+        createAMDAIEPadAndBufferizePass(i));
+    modulePassManager.addNestedPass<func::FuncOp>(createAMDAIECleanupPass());
+    pm.addPass(createCanonicalizerPass());
+    pm.addPass(createCSEPass());
+  }
+  addAMDAIEBufferizePasses(modulePassManager);
+  modulePassManager.addNestedPass<func::FuncOp>(createAMDAIECleanupPass());
+  pm.addPass(createCanonicalizerPass());
+  pm.addPass(createCSEPass());
+}
 
 void buildAMDAIETransformPassPipeline(OpPassManager &pm) {
   addCommonTargetExecutablePreprocessingPasses(pm);
   pm.addPass(createEraseHALDescriptorTypeFromMemRefPass());
   pm.addPass(createAMDAIELowerExecutableTargetPass());
+  pm.addPass(createAMDAIELowerWorkgroupCountPass());
 
   auto &modulePassManager = pm.nest<ModuleOp>();
   addMLIRAIRAIELoweringPasses(modulePassManager);
+
+  LLVM_DEBUG({
+    llvm::dbgs() << "Using AMDAIE pass pipeline:\n";
+    pm.printAsTextualPipeline(llvm::dbgs());
+    llvm::dbgs() << "\n";
+  });
 }
 
 void addTransformDialectPasses(OpPassManager &passManager) {
@@ -82,7 +151,8 @@ void addMLIRAIRAIELoweringPasses(OpPassManager &passManager) {
   passManager.addPass(createCSEPass());
 
   passManager.addPass(xilinx::air::createAIRIsolateAsyncDmaLoopNests());
-  passManager.addPass(xilinx::air::createAIRSpecializeChannelWrapAndStridePattern());
+  passManager.addPass(
+      xilinx::air::createAIRSpecializeChannelWrapAndStridePattern());
   passManager.addPass(createCanonicalizerPass());
   passManager.addPass(createCSEPass());
 

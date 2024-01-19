@@ -4,12 +4,13 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+#include "iree-amd-aie/Transforms/KernelDispatch.h"
 #include "iree-amd-aie/Transforms/PassDetail.h"
 #include "iree-amd-aie/Transforms/Passes.h"
 #include "iree-dialects/Dialect/LinalgExt/IR/LinalgExtDialect.h"
 #include "iree/compiler/Codegen/Common/Passes.h"
-#include "iree/compiler/Codegen/Dialect/IREECodegenAttrs.h"
-#include "iree/compiler/Codegen/Dialect/IREECodegenDialect.h"
+#include "iree/compiler/Codegen/Dialect/Codegen/IR/IREECodegenAttrs.h"
+#include "iree/compiler/Codegen/Dialect/Codegen/IR/IREECodegenDialect.h"
 #include "iree/compiler/Dialect/HAL/IR/HALDialect.h"
 #include "iree/compiler/Dialect/HAL/IR/HALOps.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
@@ -24,6 +25,12 @@
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Pass/PassRegistry.h"
 #include "mlir/Transforms/Passes.h"
+// TODO(avarma):
+//     We shouldn't add "CPUUtils" - instead it should perhaps just be "Utils"?
+#include "iree/compiler/Codegen/Common/TileSizeSelection.h"
+#include "iree/compiler/Codegen/Utils/CPUUtils.h"
+
+using mlir::iree_compiler::IREE::Codegen::LoweringConfigAttr;
 
 namespace mlir::iree_compiler::AMDAIE {
 
@@ -54,12 +61,52 @@ class AMDAIELowerExecutableTargetPass
 };
 }  // namespace
 
+// TODO(dcaballe): We temporarily need this utility to retrieve a valid
+// lowering config. We should be able to remove this once we have a lowering
+// config attribute per op.
+static FailureOr<LoweringConfigAttr> getRootLoweringConfig(ModuleOp moduleOp) {
+  llvm::StringMap<IREE::HAL::ExecutableExportOp> exportOps =
+      getAllEntryPoints(moduleOp);
+  for (auto &it : exportOps) {
+    auto exportOp = it.second;
+    auto rootLoweringConfig = iree_compiler::getLoweringConfig(exportOp);
+    if (rootLoweringConfig) {
+      return rootLoweringConfig;
+    }
+  }
+
+  for (auto funcOp : moduleOp.getOps<func::FuncOp>()) {
+    getAllEntryPoints(moduleOp);
+    SmallVector<Operation *> computeOps = getComputeOps(funcOp);
+    // Check for self first.
+    FailureOr<Operation *> rootOp = getRootOperation(computeOps);
+    auto rootLoweringConfig = iree_compiler::getLoweringConfig(rootOp.value());
+    if (rootLoweringConfig) {
+      return rootLoweringConfig;
+    }
+  }
+
+  return failure();
+}
+
+static TilingConfig getTilingConfigForPipeline(ModuleOp moduleOp) {
+  auto maybeLoweringConfig = getRootLoweringConfig(moduleOp);
+  assert(succeeded(maybeLoweringConfig) &&
+         "Pipeline requires a lowering config");
+  return TilingConfig(*maybeLoweringConfig);
+}
+
 void AMDAIELowerExecutableTargetPass::runOnOperation() {
   IREE::HAL::ExecutableVariantOp variantOp = getOperation();
   ModuleOp moduleOp = variantOp.getInnerModule();
   if (!moduleOp) {
     getOperation()->emitError(
         "Expected a variantOp root with an inner ModuleOp");
+    return signalPassFailure();
+  }
+  // TODO (nmeshram): ADD a LoweringStrategy pass where this should be moved and
+  // then the lowering startegy should be verified
+  if (failed(initAIELaunchConfig(moduleOp))) {
     return signalPassFailure();
   }
 
@@ -92,13 +139,16 @@ void AMDAIELowerExecutableTargetPass::runOnOperation() {
 
   if (translationInfo.has_value()) {
     switch (translationInfo.value().getDispatchLoweringPassPipeline()) {
-        // Transform-dialect pipelines.
+      // Transform-dialect pipelines.
       case IREE::Codegen::DispatchLoweringPassPipeline::TransformDialectCodegen:
         addTransformDialectPasses(executableLoweringPipeline);
         break;
+      // TODO(avarma): Currently we are using "CPUDefault" but resorting to use
+      //               the default case. Will soon have corresponding AIE enum.
       default:
-        moduleOp.emitOpError("Unsupported pipeline on CPU target.");
-        return signalPassFailure();
+        TilingConfig tilingConfig = getTilingConfigForPipeline(moduleOp);
+        addPadBasedPassPipeline(executableLoweringPipeline, tilingConfig);
+        break;
     }
   }
 

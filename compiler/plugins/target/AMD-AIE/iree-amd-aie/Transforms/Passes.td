@@ -14,6 +14,13 @@ def AMDAIEBridgeToAIR : Pass<"iree-amdaie-bridge-to-air", ""> {
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEBridgeToAIRPass()";
 }
 
+def AMDAIECleanup :
+    Pass<"iree-amdaie-cleanup", "func::FuncOp"> {
+  let summary = "Pass to invoke several cleanup and canonicalization patterns.";
+  let constructor =
+      "mlir::iree_compiler::AMDAIE::createAMDAIECleanupPass()";
+}
+
 def AMDAIELowerExecutableTarget :
     Pass<"iree-amdaie-lower-executable-target", "mlir::iree_compiler::IREE::HAL::ExecutableVariantOp"> {
   let summary = "Perform lowering of executable target using one of the IREE::HAL::DispatchLoweringPassPipeline";
@@ -24,6 +31,44 @@ def AMDAIEDecomposeLinalgExtPackUnPackToAIR :
     Pass<"iree-amdaie-decompose-pack-unpack-to-air", ""> {
   let summary = "Decompose LinalgExt pack/unpack ops into patterns compatible to AIR.";
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEDecomposeLinalgExtPackUnPackToAIRPass()";
+}
+
+def AMDAIELowerWorkgroupCount :
+    Pass<"iree-amdaie-lower-workgroup-count", "mlir::iree_compiler::IREE::HAL::ExecutableVariantOp"> {
+  let summary = "Lower the workgroup count region";
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIELowerWorkgroupCountPass()";
+}
+
+def AMDAIEPackAndTranspose :
+    Pass<"iree-amdaie-pack-and-transpose", "func::FuncOp"> {
+  let summary = "Pass to pack and transpose the linalg operations.";
+  let constructor =
+      "mlir::iree_compiler::AMDAIE::createAMDAIEPackAndTransposePass()";
+  let options = [
+    Option<"packLevel", "pack-level", "int64_t", /*default=*/"1",
+      "Set the packing level number">
+  ];
+}
+
+def AMDAIEPadAndBufferize :
+    Pass<"iree-amdaie-pad-and-bufferize", "func::FuncOp"> {
+  let summary = "Pass to pad operations on tensors in top-down order.";
+  let constructor =
+      "mlir::iree_compiler::AMDAIE::createAMDAIEPadAndBufferizePass()";
+  let options = [
+    Option<"paddingLevel", "padding-level", "int64_t", /*default=*/"-1",
+      "A temporary workaround to figure the config for padding and bufferization">
+  ];
+}
+
+def AMDAIETileAndFuse :
+    Pass<"iree-amdaie-tile-and-fuse", "func::FuncOp"> {
+  let summary = "Pass to tile and fuse TilingInterface operations.";
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIETileAndFusePass()";
+  let options = [
+    Option<"tilingLevel", "tiling-level", "int64_t", /*default=*/"-1",
+      "Use default tiling level used to retrieve the configuration from lowering_config">
+  ];
 }
 
 #endif // IREE_AMD_AIE_TRANSFORMS_PASSES

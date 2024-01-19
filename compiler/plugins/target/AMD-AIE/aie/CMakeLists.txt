@@ -62,6 +62,28 @@ iree_tablegen_library(
 
 iree_tablegen_library(
   NAME
+    AIEXDialectGen
+  TD_FILE
+    "${IREE_MLIR_AIE_SOURCE_DIR}/include/aie/Dialect/AIEX/IR/AIEX.td"
+  OUTS
+    -gen-dialect-decls -dialect=aiex Dialect/AIEX/IR/AIEXDialect.h.inc
+    -gen-dialect-defs -dialect=aiex Dialect/AIEX/IR/AIEXDialect.cpp.inc
+)
+
+iree_tablegen_library(
+  NAME
+    AIEVecDialectGen
+  TD_FILE
+    "${IREE_MLIR_AIE_SOURCE_DIR}/include/aie/Dialect/AIEVec/IR/AIEVecOps.td"
+  OUTS
+    -gen-dialect-decls -dialect=aievec Dialect/AIEVec/IR/AIEVecOpsDialect.h.inc
+    -gen-dialect-defs -dialect=aievec Dialect/AIEVec/IR/AIEVecOpsDialect.cpp.inc
+    -gen-typedef-decls -typedefs-dialect=aievec Dialect/AIEVec/IR/AIEVecOpsTypes.h.inc
+    -gen-typedef-defs -typedefs-dialect=aievec Dialect/AIEVec/IR/AIEVecOpsTypes.cpp.inc
+)
+
+iree_tablegen_library(
+  NAME
     AIEInterfacesGen
   TD_FILE
     "${IREE_MLIR_AIE_SOURCE_DIR}/include/aie/Dialect/AIE/IR/AIEInterfaces.td"
@@ -121,7 +143,9 @@ iree_cc_library(
     ${IREE_MLIR_AIE_SOURCE_DIR}/lib/Dialect/AIEX/IR/AIEXDialect.cpp
   DEPS
     ::defs
+    ::AIEDialectIR
     ::AIEXOpsGen
+    ::AIEXDialectGen
     MLIRIR
 )
 
@@ -133,6 +157,33 @@ iree_tablegen_library(
   OUTS
     -gen-op-decls Dialect/AIEX/IR/AIEX.h.inc
     -gen-op-defs Dialect/AIEX/IR/AIEX.cpp.inc
+)
+
+###############################################################################
+# AIEVec Dialect
+###############################################################################
+
+iree_cc_library(
+  NAME
+    AIEVecDialectIR
+  SRCS
+    ${IREE_MLIR_AIE_SOURCE_DIR}/lib/Dialect/AIEVec/IR/AIEVecOps.cpp
+    ${IREE_MLIR_AIE_SOURCE_DIR}/lib/Dialect/AIEVec/IR/AIEVecTypes.cpp
+  DEPS
+    ::defs
+    ::AIEVecOpsGen
+    ::AIEVecDialectGen
+    MLIRIR
+)
+
+iree_tablegen_library(
+  NAME
+    AIEVecOpsGen
+  TD_FILE
+    "${IREE_MLIR_AIE_SOURCE_DIR}/include/aie/Dialect/AIEVec/IR/AIEVecOps.td"
+  OUTS
+    -gen-op-decls Dialect/AIEVec/IR/AIEVecOps.h.inc
+    -gen-op-defs Dialect/AIEVec/IR/AIEVecOps.cpp.inc
 )
 
 ###############################################################################
@@ -240,4 +291,5 @@ iree_cc_library(
   DEPS
     ::AIEDialectIR
     ::AIEXDialectIR
+    ::AIEVecDialectIR
 )

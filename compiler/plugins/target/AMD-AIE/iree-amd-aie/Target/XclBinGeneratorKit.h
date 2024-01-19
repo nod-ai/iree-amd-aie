@@ -126,6 +126,8 @@ class XclBinGeneratorKit {
   LogicalResult runXclBinUtil(ArrayRef<std::string> flags, Artifact &input,
                               Artifact &output) const;
 
+  bool isVerbose() const;
+
  private:
   std::string peanoInstallDir;
 

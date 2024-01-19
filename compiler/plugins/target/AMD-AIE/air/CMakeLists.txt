@@ -69,6 +69,7 @@ iree_cc_library(
     ::defs
     ::AIRDialectIR
     ::AIRTransformOpsGen
+    iree::target::amd-aie::aie::AIEDialectIR
     MLIRIR
     MLIRLinalgTransformOps
 )
@@ -113,15 +114,6 @@ iree_tablegen_library(
     -gen-dialect-defs Dialect/AIRRt/AIRRtOpsDialect.cpp.inc --dialect=airrt
     -gen-enum-decls Dialect/AIRRt/AIRRtOpsEnums.h.inc
     -gen-enum-defs Dialect/AIRRt/AIRRtOpsEnums.cpp.inc
-)
-
-iree_tablegen_library(
-  NAME
-    AIRConversionGen
-  TD_FILE
-    "${IREE_MLIR_AIR_SOURCE_DIR}/include/air/Conversion/Passes.td"
-  OUTS
-    -gen-pass-decls Conversion/Passes.h.inc
 )
 
 ###############################################################################
@@ -187,9 +179,9 @@ iree_cc_library(
     "${IREE_MLIR_AIR_SOURCE_DIR}/lib/Conversion/AIRPipeline.cpp"
   DEPS
     ::defs
+    ::AIRConversionPassHeaders
     ::AIRTransform
     ::AIRTransformOps
-    ::AIRConversionGen
     ::AIRDialectIR
     ::AIRRtDialectIR
     iree::target::amd-aie::aie::AIEDialectIR
@@ -259,6 +251,7 @@ iree_cc_library(
     ::AIRDialectIR
     ::AIRTransform
     ::AIRTransformOps
+    ::AIRTransformPassHeaders
     ::AIRUtil
     MLIRIR
     MLIRLinalgDialect

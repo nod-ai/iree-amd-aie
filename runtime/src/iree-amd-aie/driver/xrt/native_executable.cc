@@ -94,10 +94,6 @@ static iree_status_t iree_amd_aie_hal_xrt_native_executable_flatbuffer_verify(
                             entry_point_count, number_asm_instr);
   }
 
-  // TODO(JamesNewling) Once all the parts are connected, this assertion
-  // function might fail. If it passes, we might want to add additional
-  // assertions.
-
   return iree_ok_status();
 }
 
@@ -124,6 +120,10 @@ iree_status_t iree_hal_xrt_native_executable_create(
 
   flatbuffers_string_t xclbin_fb =
       iree_amd_aie_hal_xrt_ExecutableDef_xclbin_get(executable_def);
+
+  // XRT API needs this vector and cant actually read a void*.
+  std::vector<char> xclbinVector(xclbin_fb,
+                                 xclbin_fb + flatbuffers_string_len(xclbin_fb));
 
   iree_amd_aie_hal_xrt_AsmInstDef_vec_t asm_instrs_vec =
       iree_amd_aie_hal_xrt_ExecutableDef_asm_instrs_get(executable_def);
@@ -156,14 +156,13 @@ iree_status_t iree_hal_xrt_native_executable_create(
 
   iree_hal_resource_initialize(&iree_hal_xrt_native_executable_vtable,
                                &executable->resource);
-
-  xrt::xclbin xclbin = xrt::xclbin(xclbin_fb);
+  xrt::xclbin xclbin = xrt::xclbin(xclbinVector);
   device.register_xclbin(xclbin);
   xrt::hw_context context(device, xclbin.get_uuid());
   executable->host_allocator = host_allocator;
   executable->entry_point_count = entry_point_count;
   for (iree_host_size_t i = 0; i < entry_point_count; i++) {
-    std::string entry_name = flatbuffers_string_vec_at(entry_points_vec, i);
+    const char* entry_name = flatbuffers_string_vec_at(entry_points_vec, i);
     iree_amd_aie_hal_xrt_AsmInstDef_table_t asminst_def =
         iree_amd_aie_hal_xrt_AsmInstDef_vec_at(asm_instrs_vec, i);
     flatbuffers_uint32_vec_t asm_inst =
@@ -172,14 +171,14 @@ iree_status_t iree_hal_xrt_native_executable_create(
     std::unique_ptr<xrt::kernel> kernel;
     std::unique_ptr<xrt::bo> instr;
     try {
-      auto kernel = std::make_unique<xrt::kernel>(context, entry_name);
+      kernel = std::make_unique<xrt::kernel>(context, entry_name);
       // XCL_BO_FLAGS_CACHEABLE is used to indicate that this is an instruction
       // buffer that resides in instr_memory. This buffer is always passed as
       // the first argument to the kernel and we can use the
       // kernel.group_id(/*index of first argument*/=0) to get the group_id.
-      auto instr = std::make_unique<xrt::bo>(
-          device, num_instr * sizeof(uint32_t), XCL_BO_FLAGS_CACHEABLE,
-          kernel.get()->group_id(0));
+      instr = std::make_unique<xrt::bo>(device, num_instr * sizeof(uint32_t),
+                                        XCL_BO_FLAGS_CACHEABLE,
+                                        kernel.get()->group_id(0));
     } catch (...) {
       iree_hal_executable_destroy((iree_hal_executable_t*)executable);
       IREE_TRACE_ZONE_END(z0);
@@ -213,7 +212,7 @@ iree_status_t iree_hal_xrt_native_executable_create(
         iree_amd_aie_hal_xrt_FileLineLocDef_vec_t source_locs_vec =
             iree_amd_aie_hal_xrt_ExecutableDef_source_locations_get(
                 executable_def);
-        iree_smd_aie_hal_xrt_FileLineLocDef_table_t source_loc =
+        iree_amd_aie_hal_xrt_FileLineLocDef_table_t source_loc =
             iree_amd_aie_hal_xrt_FileLineLocDef_vec_at(source_locs_vec, i);
         flatbuffers_string_t filename =
             iree_amd_aie_hal_xrt_FileLineLocDef_filename_get(source_loc);

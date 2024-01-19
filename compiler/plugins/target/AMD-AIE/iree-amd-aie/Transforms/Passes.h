@@ -7,7 +7,8 @@
 #ifndef IREE_AMD_AIE_TRANSFORMS_PASSES_H_
 #define IREE_AMD_AIE_TRANSFORMS_PASSES_H_
 
-#include "iree/compiler/Codegen/Dialect/IREECodegenAttrs.h"
+#include "iree/compiler/Codegen/Common/TileSizeSelection.h"
+#include "iree/compiler/Codegen/Dialect/Codegen/IR/IREECodegenAttrs.h"
 #include "mlir/Pass/Pass.h"
 
 namespace mlir::iree_compiler::AMDAIE {
@@ -25,13 +26,36 @@ void addTransformDialectPasses(OpPassManager &passManager);
 /// within the IREE::HAL::ExecutableOp.
 void buildAMDAIETransformPassPipeline(OpPassManager &pm);
 
+/// Populates passes needed to lower the IR via a Pad based approach.
+void addPadBasedPassPipeline(OpPassManager &passManager,
+                             TilingConfig &tilingConfig);
+
 /// Create a pass to do some rewrites that help bridging the path to AIR/AIE
 /// lowering.
 std::unique_ptr<OperationPass<>> createAMDAIEBridgeToAIRPass();
 
+/// Create pass to invoke several cleanup and canonicalization patterns.
+std::unique_ptr<OperationPass<func::FuncOp>> createAMDAIECleanupPass();
+
 /// Create pass calling the dynamic pipeline for AMDAIE.
 std::unique_ptr<OperationPass<IREE::HAL::ExecutableVariantOp>>
 createAMDAIELowerExecutableTargetPass();
+
+/// Create a pass to lower workgroup count region of entry point operations.
+std::unique_ptr<OperationPass<IREE::HAL::ExecutableVariantOp>>
+createAMDAIELowerWorkgroupCountPass();
+
+/// Create a pass to pack and transpose the linalg op.
+std::unique_ptr<OperationPass<func::FuncOp>> createAMDAIEPackAndTransposePass(
+    int64_t packLevel = 1);
+
+/// Create a pass to pad MatmulOp and bufferize its operands.
+std::unique_ptr<OperationPass<func::FuncOp>> createAMDAIEPadAndBufferizePass(
+    int64_t paddingLevel = -1);
+
+/// Create pass to tile and fuse TilingInterface operations.
+std::unique_ptr<OperationPass<func::FuncOp>> createAMDAIETileAndFusePass(
+    int64_t tilingLevel = -1);
 
 void registerAMDAIEPasses();
 

@@ -4,6 +4,10 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+set(IREE_PACKAGE_ROOT_DIR "${CMAKE_CURRENT_LIST_DIR}")
+set(IREE_PACKAGE_ROOT_PREFIX "iree::target::amd-aie::Transforms")
+iree_add_all_subdirs()
+
 iree_tablegen_library(
   NAME
     PassesIncGen
@@ -34,14 +38,20 @@ iree_cc_library(
   SRCS
     "Passes.cpp"
     "AMDAIELowerExecutableTarget.cpp"
+    "AMDAIELowerWorkgroupCount.cpp"
+    "AMDAIEPackAndTranspose.cpp"
+    "AMDAIEPadAndBufferize.cpp"
+    "AMDAIETileAndFuse.cpp"
     "BridgeToAIRPass.cpp"
     "DecomposeLinalgExtPackUnPackToAIR.cpp"
+    "Cleanup.cpp"
+    "KernelDispatch.cpp"
   DEPS
     ::PassHeaders
     ::PassesIncGen
     MLIRSupport
     iree::compiler::Codegen::Common::TransformDialectInterpreterPass
-    iree::compiler::Codegen::Dialect::IREECodegenDialect
+    iree::compiler::Codegen::Dialect::Codegen::IR::IREECodegenDialect
     iree::compiler::Dialect::HAL::IR
     iree::compiler::Utils
     iree::target::amd-aie::aie::AIETransformPasses
