@@ -11,6 +11,7 @@ iree_lit_test_suite(
     "lower_workgroup_count.mlir"
     "pack_and_transpose_level1.mlir"
     "pack_and_transpose_level2.mlir"
+    "pack_to_air.mlir"
     "pad_and_bufferize.mlir"
     "tile_and_fuse_using_scf_for.mlir"
     "tile_and_fuse_using_scf_forall.mlir"
