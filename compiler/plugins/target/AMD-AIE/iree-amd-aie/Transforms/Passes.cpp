@@ -61,6 +61,7 @@ void addPadBasedPassPipeline(OpPassManager &pm, TilingConfig &tilingConfig) {
   modulePassManager.addNestedPass<func::FuncOp>(createAMDAIECleanupPass());
   pm.addPass(createCanonicalizerPass());
   pm.addPass(createCSEPass());
+  int64_t memorySpace = 1;
   for (unsigned i = 0, n = tilingConfig.getNumTilingLevels(); i < n; i++) {
     modulePassManager.addNestedPass<func::FuncOp>(
         createAMDAIETileAndFusePass(i));
@@ -69,8 +70,12 @@ void addPadBasedPassPipeline(OpPassManager &pm, TilingConfig &tilingConfig) {
       pm.addPass(createCanonicalizerPass());
       pm.addPass(createCSEPass());
     }
+    modulePassManager.addNestedPass<func::FuncOp>(createAMDAIEPadPass(i));
+    if (i == 1) {
+      memorySpace = 2;
+    }
     modulePassManager.addNestedPass<func::FuncOp>(
-        createAMDAIEPadAndBufferizePass(i));
+        createAMDAIEBufferizeToAllocationPass(memorySpace, i));
     modulePassManager.addNestedPass<func::FuncOp>(createAMDAIECleanupPass());
     pm.addPass(createCanonicalizerPass());
     pm.addPass(createCSEPass());
