@@ -1,4 +1,4 @@
-// Copyright 2023 The IREE Authors
+// Copyright 2024 The IREE Authors
 //
 // Licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -27,9 +27,8 @@ namespace mlir::iree_compiler::AMDAIE {
 
 namespace {
 
-/// Returns a pad op if padding value is set. Otherwise, returns the
-/// source directly. The method assumes that the `packOp` has static shapes.
-/// TODO: padding
+/// Returns the padding value if set. Otherwise, returns the source directly.
+/// The method assumes that the `packOp` has static shapes.
 static Value getPackOpInputOrPaddedSource(OpBuilder &builder,
                                           IREE::LinalgExt::PackOp packOp) {
   return packOp.getInput();
@@ -311,14 +310,12 @@ class GeneralizeUnPackOpPattern
 };
 
 struct LowerPackResult {
-  // TODO: padding
   memref::ExpandShapeOp expandShapeOp;
   memref::TransposeOp transposeOp;
   xilinx::air::DmaMemcpyNdOp dmaOp;
 };
 
 struct LowerUnPackResult {
-  // TODO: padding
   memref::TransposeOp transposeOp;
   xilinx::air::DmaMemcpyNdOp dmaOp;
 };
@@ -369,14 +366,11 @@ FailureOr<LowerPackResult> lowerPack(RewriterBase &rewriter,
   SmallVector<int64_t> stripMinedShape(packedMemrefType.getShape());
   applyPermutationToVector(stripMinedShape, packedToStripMinedShapePerm);
 
-  // 4. Pad the source of packOp to a shape we can expand into stripMinedShape.
-  // TODO
-
-  // 5. Expand from the padded result to the stripMinedShape.
+  // 4. Expand from the padded result to the stripMinedShape.
   auto reshapeOp = rewriter.create<memref::ExpandShapeOp>(
       loc, stripMinedShape, packOp.getInput(), packingMetadata.reassociations);
 
-  // 6. Transpose stripMinedShape to packedShape.
+  // 5. Transpose stripMinedShape to packedShape.
   SmallVector<int64_t> transpPerm =
       invertPermutationVector(packedToStripMinedShapePerm);
   auto transposeOp = rewriter.create<memref::TransposeOp>(
@@ -389,14 +383,14 @@ FailureOr<LowerPackResult> lowerPack(RewriterBase &rewriter,
       loc, SmallVector<Type, 1>{}, mt, packOp.getOutput(), mt, mt, mt,
       transposeOp.getResult(), mt, mt, mt);
 
-  // 7. Replace packOp by transposeOp.
+  // 6. Replace packOp by transposeOp.
   rewriter.eraseOp(packOp);
 
   return LowerPackResult{reshapeOp, transposeOp, dmaOp};
 }
 
 /// A wrapper pattern that calls lowerPack on PackOp. It lowers
-/// a pack op to (TODO: pad) + memref.expand_shape + memref.transpose ops.
+/// a pack op to memref.expand_shape + memref.transpose ops.
 struct LowerPackPattern : public OpRewritePattern<IREE::LinalgExt::PackOp> {
   using OpRewritePattern<IREE::LinalgExt::PackOp>::OpRewritePattern;
 
@@ -420,10 +414,7 @@ FailureOr<LowerUnPackResult> lowerUnPack(RewriterBase &rewriter,
   MemRefType memrefType = unPackOp.getInputType().cast<MemRefType>();
   int64_t packedRank = memrefType.getRank();
 
-  // 1. Unpad the source of unPackOp
-  // TODO
-
-  // 2. Compute the permutation vector to move the last `numPackedDims` into
+  // 1. Compute the permutation vector to move the last `numPackedDims` into
   // the `innerPosDims` of a shape of rank `packedRank`.
   int64_t numPackedDims = unPackOp.getInnerDimsPos().size();
   auto lastDims = llvm::to_vector(
@@ -443,19 +434,19 @@ FailureOr<LowerUnPackResult> lowerUnPack(RewriterBase &rewriter,
       lastDimsToInsertPositionsPerm;
   applyPermutationToVector(packedToStripMinedShapePerm, outerPositionPerm);
 
-  // 3. Transpose packedShape to stripMinedShape.
+  // 2. Transpose packedShape to stripMinedShape.
   auto transposeOp = rewriter.create<memref::TransposeOp>(
       loc, unPackOp.getInput(),
       AffineMapAttr::get(AffineMap::getPermutationMap(
           packedToStripMinedShapePerm, unPackOp->getContext())));
 
-  // 4. Inject a copy.
+  // 3. Inject a copy.
   SmallVector<Value, 2> mt;
   auto dmaOp = rewriter.create<xilinx::air::DmaMemcpyNdOp>(
       loc, SmallVector<Type, 1>{}, mt, unPackOp.getOutput(), mt, mt, mt,
       transposeOp->getResult(0), mt, mt, mt);
 
-  // 5. Erase unPackOp.
+  // 4. Erase unPackOp.
   rewriter.eraseOp(unPackOp);
 
   return LowerUnPackResult{transposeOp, dmaOp};
