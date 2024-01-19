@@ -53,6 +53,9 @@ std::unique_ptr<OperationPass<func::FuncOp>> createAMDAIEPackAndTransposePass(
 std::unique_ptr<OperationPass<func::FuncOp>> createAMDAIEPadAndBufferizePass(
     int64_t paddingLevel = -1);
 
+/// Create a pass to peel the first iteration out of the scf.for loop.
+std::unique_ptr<OperationPass<func::FuncOp>> createAMDAIEPeelForLoopPass();
+
 /// Create pass to tile and fuse TilingInterface operations.
 std::unique_ptr<OperationPass<func::FuncOp>> createAMDAIETileAndFusePass(
     int64_t tilingLevel = -1);
