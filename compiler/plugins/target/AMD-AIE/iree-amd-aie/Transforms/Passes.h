@@ -34,6 +34,15 @@ void addPadBasedPassPipeline(OpPassManager &passManager,
 /// lowering.
 std::unique_ptr<OperationPass<>> createAMDAIEBridgeToAIRPass();
 
+/// Pass to bufferizes the targeted operation and materializes the result in a
+/// new allocation.
+/// Currently using paddingLevel = 0 to indicate the target operation is
+/// packing.
+/// TODO: Find a better way to do the pass without using paddingLevel.
+std::unique_ptr<OperationPass<func::FuncOp>>
+createAMDAIEBufferizeToAllocationPass(int64_t memorySpace = 1,
+                                      int64_t paddingLevel = 0);
+
 /// Create pass to invoke several cleanup and canonicalization patterns.
 std::unique_ptr<OperationPass<func::FuncOp>> createAMDAIECleanupPass();
 
@@ -49,8 +58,8 @@ createAMDAIELowerWorkgroupCountPass();
 std::unique_ptr<OperationPass<func::FuncOp>> createAMDAIEPackAndTransposePass(
     int64_t packLevel = 1);
 
-/// Create a pass to pad MatmulOp and bufferize its operands.
-std::unique_ptr<OperationPass<func::FuncOp>> createAMDAIEPadAndBufferizePass(
+/// Create a pass to pad MatmulOp.
+std::unique_ptr<OperationPass<func::FuncOp>> createAMDAIEPadPass(
     int64_t paddingLevel = -1);
 
 /// Create a pass to peel the first iteration out of the scf.for loop.
