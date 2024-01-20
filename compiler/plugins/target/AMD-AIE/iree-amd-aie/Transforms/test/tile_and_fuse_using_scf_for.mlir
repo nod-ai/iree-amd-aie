@@ -1,4 +1,4 @@
-// RUN: iree-opt --pass-pipeline='builtin.module(func.func(iree-amdaie-tile-and-fuse{tiling-level=2}))' --split-input-file %s | FileCheck %s --check-prefix=TILE-LEVEL-2
+// RUN: iree-opt --pass-pipeline='builtin.module(func.func(iree-amdaie-tile-and-fuse{use-scf-for tiling-level=2}))' --split-input-file %s | FileCheck %s --check-prefix=TILE-LEVEL-2
 
 #config = #iree_codegen.lowering_config<tile_sizes = [[8, 8], [4, 4], [0, 0, 4]]>
 func.func @matmul_static(%arg0: tensor<8x16xi32>, %arg1 : tensor<16x8xi32>) -> tensor<8x8xi32> {
