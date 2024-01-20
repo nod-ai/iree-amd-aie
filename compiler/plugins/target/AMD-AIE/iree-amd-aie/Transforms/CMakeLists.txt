@@ -42,6 +42,7 @@ iree_cc_library(
     "AMDAIELowerWorkgroupCount.cpp"
     "AMDAIEPackAndTranspose.cpp"
     "AMDAIEPad.cpp"
+    "AMDAIEPeelForLoop.cpp"
     "AMDAIETileAndFuse.cpp"
     "BridgeToAIRPass.cpp"
     "Cleanup.cpp"

@@ -15,6 +15,7 @@ iree_lit_test_suite(
     "pack_and_transpose_level1.mlir"
     "pack_and_transpose_level2.mlir"
     "pad.mlir"
+    "peel_for_loop.mlir"
     "tile_and_fuse_using_scf_for.mlir"
     "tile_and_fuse_using_scf_forall.mlir"
   TOOLS

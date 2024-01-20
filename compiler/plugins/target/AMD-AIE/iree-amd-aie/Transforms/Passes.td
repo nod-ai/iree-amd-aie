@@ -68,6 +68,13 @@ def AMDAIEPad :
   ];
 }
 
+def AMDAIEPeelForLoop :
+    Pass<"iree-amdaie-peel-for-loop", "func::FuncOp"> {
+  let summary = "Pass to peel the first iteration out of the scf.for loop.";
+  let constructor =
+      "mlir::iree_compiler::AMDAIE::createAMDAIEPeelForLoopPass()";
+}
+
 def AMDAIETileAndFuse :
     Pass<"iree-amdaie-tile-and-fuse", "func::FuncOp"> {
   let summary = "Pass to tile and fuse TilingInterface operations.";
