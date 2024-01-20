@@ -37,10 +37,12 @@ iree_cc_library(
     "Passes.h"
   SRCS
     "Passes.cpp"
+    "AMDAIEBufferizeToAllocation.cpp"
     "AMDAIELowerExecutableTarget.cpp"
     "AMDAIELowerWorkgroupCount.cpp"
     "AMDAIEPackAndTranspose.cpp"
-    "AMDAIEPadAndBufferize.cpp"
+    "AMDAIEPad.cpp"
+    "AMDAIEPeelForLoop.cpp"
     "AMDAIETileAndFuse.cpp"
     "BridgeToAIRPass.cpp"
     "Cleanup.cpp"

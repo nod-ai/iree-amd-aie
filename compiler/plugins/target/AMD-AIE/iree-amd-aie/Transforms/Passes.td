@@ -14,6 +14,19 @@ def AMDAIEBridgeToAIR : Pass<"iree-amdaie-bridge-to-air", ""> {
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEBridgeToAIRPass()";
 }
 
+def AMDAIEBufferizeToAllocation :
+    Pass<"iree-amdaie-bufferize-to-allocation", "func::FuncOp"> {
+  let summary = "Pass to bufferizes the targeted operation and materializes the result in a new allocation.";
+  let constructor =
+      "mlir::iree_compiler::AMDAIE::createAMDAIEBufferizeToAllocationPass()";
+  let options = [
+    Option<"memorySpace", "memory-space", "int64_t", /*default=*/"1",
+      "Set the memory space">,
+    Option<"bufferizeLevel", "bufferize-level", "int64_t", /*default=*/"-1",
+      "A temporary workaround to figure the config for bufferization">
+  ];
+}
+
 def AMDAIECleanup :
     Pass<"iree-amdaie-cleanup", "func::FuncOp"> {
   let summary = "Pass to invoke several cleanup and canonicalization patterns.";
@@ -44,15 +57,22 @@ def AMDAIEPackAndTranspose :
   ];
 }
 
-def AMDAIEPadAndBufferize :
-    Pass<"iree-amdaie-pad-and-bufferize", "func::FuncOp"> {
+def AMDAIEPad :
+    Pass<"iree-amdaie-pad", "func::FuncOp"> {
   let summary = "Pass to pad operations on tensors in top-down order.";
   let constructor =
-      "mlir::iree_compiler::AMDAIE::createAMDAIEPadAndBufferizePass()";
+      "mlir::iree_compiler::AMDAIE::createAMDAIEPadPass()";
   let options = [
     Option<"paddingLevel", "padding-level", "int64_t", /*default=*/"-1",
-      "A temporary workaround to figure the config for padding and bufferization">
+      "A temporary workaround to figure the config for padding">
   ];
+}
+
+def AMDAIEPeelForLoop :
+    Pass<"iree-amdaie-peel-for-loop", "func::FuncOp"> {
+  let summary = "Pass to peel the first iteration out of the scf.for loop.";
+  let constructor =
+      "mlir::iree_compiler::AMDAIE::createAMDAIEPeelForLoopPass()";
 }
 
 def AMDAIETileAndFuse :
