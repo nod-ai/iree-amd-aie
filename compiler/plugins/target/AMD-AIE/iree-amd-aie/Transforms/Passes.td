@@ -80,8 +80,10 @@ def AMDAIETileAndFuse :
   let summary = "Pass to tile and fuse TilingInterface operations.";
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIETileAndFusePass()";
   let options = [
+    Option<"useSCFFor", "use-scf-for", "bool", /*default=*/"false",
+      "Use scf.forall by default for the corresponding tiling level">,
     Option<"tilingLevel", "tiling-level", "int64_t", /*default=*/"-1",
-      "Use default tiling level used to retrieve the configuration from lowering_config">
+      "Use default tiling level used to retrieve the configuration from lowering_config">  
   ];
 }
 

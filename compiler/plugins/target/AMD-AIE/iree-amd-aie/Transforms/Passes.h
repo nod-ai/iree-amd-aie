@@ -67,7 +67,7 @@ std::unique_ptr<OperationPass<func::FuncOp>> createAMDAIEPeelForLoopPass();
 
 /// Create pass to tile and fuse TilingInterface operations.
 std::unique_ptr<OperationPass<func::FuncOp>> createAMDAIETileAndFusePass(
-    int64_t tilingLevel = -1);
+    bool useSCFFor = false, int64_t tilingLevel = -1);
 
 void registerAMDAIEPasses();
 
