@@ -64,22 +64,37 @@ void addPadBasedPassPipeline(OpPassManager &pm, TilingConfig &tilingConfig) {
   bool useSCFFor = false;
   int64_t memorySpace = 1;
   for (unsigned i = 0, n = tilingConfig.getNumTilingLevels(); i < n; i++) {
-    if (i == 2) {
-      useSCFFor = true;
+    {
+      AMDAIETileAndFuseOptions options;
+      if (i == 2) {
+        useSCFFor = true;
+      }
+      options.tilingLevel = i;
+      options.useSCFFor = useSCFFor;
+      modulePassManager.addNestedPass<func::FuncOp>(
+          createAMDAIETileAndFusePass(options));
     }
-    modulePassManager.addNestedPass<func::FuncOp>(
-        createAMDAIETileAndFusePass(useSCFFor, i));
     if (i == 2) {
       modulePassManager.addNestedPass<func::FuncOp>(createAMDAIECleanupPass());
       pm.addPass(createCanonicalizerPass());
       pm.addPass(createCSEPass());
     }
-    modulePassManager.addNestedPass<func::FuncOp>(createAMDAIEPadPass(i));
-    if (i == 1) {
-      memorySpace = 2;
+    {
+      AMDAIEPadOptions options;
+      options.paddingLevel = i;
+      modulePassManager.addNestedPass<func::FuncOp>(
+          createAMDAIEPadPass(options));
     }
-    modulePassManager.addNestedPass<func::FuncOp>(
-        createAMDAIEBufferizeToAllocationPass(memorySpace, i));
+    {
+      AMDAIEBufferizeToAllocationOptions options;
+      if (i == 1) {
+        memorySpace = 2;
+      }
+      options.memorySpace = memorySpace;
+      options.bufferizeLevel = i;
+      modulePassManager.addNestedPass<func::FuncOp>(
+          createAMDAIEBufferizeToAllocationPass(options));
+    }
     modulePassManager.addNestedPass<func::FuncOp>(createAMDAIECleanupPass());
     pm.addPass(createCanonicalizerPass());
     pm.addPass(createCSEPass());

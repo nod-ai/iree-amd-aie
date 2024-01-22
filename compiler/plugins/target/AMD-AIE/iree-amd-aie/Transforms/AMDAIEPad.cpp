@@ -4,7 +4,6 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#include "iree-amd-aie/Transforms/PassDetail.h"
 #include "iree-amd-aie/Transforms/Passes.h"
 #include "mlir/Dialect/Bufferization/IR/Bufferization.h"
 #include "mlir/Dialect/Linalg/Transforms/TilingInterfaceImpl.h"
@@ -173,17 +172,17 @@ static LogicalResult applyPadAndConvertToDPS(
   return success();
 }
 
-class AMDAIEPadPass : public AMDAIEPadBase<AMDAIEPadPass> {
+class AMDAIEPadPass : public impl::AMDAIEPadBase<AMDAIEPadPass> {
  public:
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<bufferization::BufferizationDialect, tensor::TensorDialect,
                     linalg::LinalgDialect>();
   }
+
   AMDAIEPadPass() = default;
-  AMDAIEPadPass(int64_t paddingLevel = -1) {
-    this->paddingLevel.setValue(paddingLevel);
-  }
-  AMDAIEPadPass(const AMDAIEPadPass &pass){};
+  AMDAIEPadPass(const AMDAIEPadPass &pass) {}
+  AMDAIEPadPass(const AMDAIEPadOptions &options) : AMDAIEPadBase(options) {}
+
   void runOnOperation() override;
 };
 
@@ -218,8 +217,8 @@ void AMDAIEPadPass::runOnOperation() {
 
 }  // namespace
 
-std::unique_ptr<OperationPass<func::FuncOp>> createAMDAIEPadPass(
-    int64_t paddingLevel) {
-  return std::make_unique<AMDAIEPadPass>(paddingLevel);
+std::unique_ptr<Pass> createAMDAIEPadPass(AMDAIEPadOptions options) {
+  return std::make_unique<AMDAIEPadPass>(options);
 }
+
 }  // namespace mlir::iree_compiler::AMDAIE
