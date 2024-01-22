@@ -44,6 +44,7 @@ iree_cc_library(
     "AMDAIEPad.cpp"
     "AMDAIEPeelForLoop.cpp"
     "AMDAIETileAndFuse.cpp"
+    "AMDAIEPropagateDataLayout.cpp"
     "BridgeToAIRPass.cpp"
     "Cleanup.cpp"
     "KernelDispatch.cpp"

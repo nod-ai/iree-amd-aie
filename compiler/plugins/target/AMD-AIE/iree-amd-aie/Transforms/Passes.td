@@ -87,4 +87,11 @@ def AMDAIETileAndFuse :
   ];
 }
 
+
+def AMDAIEPropagateDataLayout :
+    Pass<"iree-amdaie-propagate-data-layout", "func::FuncOp"> {
+  let summary = "Pass to tile and fuse TilingInterface operations.";
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEPropagateDataLayoutPass()";
+}
+
 #endif // IREE_AMD_AIE_TRANSFORMS_PASSES
