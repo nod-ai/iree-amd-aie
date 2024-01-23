@@ -3,7 +3,7 @@
 // Licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-#include "iree-amd-aie/Transforms/PassDetail.h"
+
 #include "iree-amd-aie/Transforms/Passes.h"
 #include "iree/compiler/Dialect/Flow/IR/FlowOps.h"
 #include "iree/compiler/Dialect/HAL/IR/HALOps.h"
@@ -15,7 +15,12 @@ namespace mlir::iree_compiler::AMDAIE {
 
 namespace {
 class AMDAIELowerWorkgroupCountPass
-    : public AMDAIELowerWorkgroupCountBase<AMDAIELowerWorkgroupCountPass> {
+    : public impl::AMDAIELowerWorkgroupCountBase<
+          AMDAIELowerWorkgroupCountPass> {
+ public:
+  AMDAIELowerWorkgroupCountPass() = default;
+  AMDAIELowerWorkgroupCountPass(const AMDAIELowerWorkgroupCountPass &pass){};
+
   void runOnOperation() override;
 };
 }  // namespace
@@ -51,8 +56,7 @@ void AMDAIELowerWorkgroupCountPass::runOnOperation() {
   }
 }
 
-std::unique_ptr<OperationPass<IREE::HAL::ExecutableVariantOp>>
-createAMDAIELowerWorkgroupCountPass() {
+std::unique_ptr<Pass> createAMDAIELowerWorkgroupCountPass() {
   return std::make_unique<AMDAIELowerWorkgroupCountPass>();
 }
 

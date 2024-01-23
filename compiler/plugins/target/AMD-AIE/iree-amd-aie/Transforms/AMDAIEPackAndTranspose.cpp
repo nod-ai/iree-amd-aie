@@ -4,7 +4,6 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#include "iree-amd-aie/Transforms/PassDetail.h"
 #include "iree-amd-aie/Transforms/Passes.h"
 #include "mlir/Dialect/Linalg/Transforms/Transforms.h"
 #include "mlir/Pass/Pass.h"
@@ -85,17 +84,17 @@ static FailureOr<linalg::PackResult> applyPackOnLinalgOp(
 }
 
 class AMDAIEPackAndTransposePass
-    : public AMDAIEPackAndTransposeBase<AMDAIEPackAndTransposePass> {
+    : public impl::AMDAIEPackAndTransposeBase<AMDAIEPackAndTransposePass> {
  public:
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<tensor::TensorDialect, linalg::LinalgDialect>();
   }
 
   AMDAIEPackAndTransposePass() = default;
-  AMDAIEPackAndTransposePass(int64_t packLevel = 1) {
-    this->packLevel.setValue(packLevel);
-  }
-  AMDAIEPackAndTransposePass(const AMDAIEPackAndTransposePass &pass){};
+  AMDAIEPackAndTransposePass(const AMDAIEPackAndTransposePass &pass) {}
+  AMDAIEPackAndTransposePass(const AMDAIEPackAndTransposeOptions &options)
+      : AMDAIEPackAndTransposeBase(options) {}
+
   void runOnOperation() override;
 };
 
@@ -168,8 +167,9 @@ void AMDAIEPackAndTransposePass::runOnOperation() {
 
 }  // namespace
 
-std::unique_ptr<OperationPass<func::FuncOp>> createAMDAIEPackAndTransposePass(
-    int64_t packLevel) {
-  return std::make_unique<AMDAIEPackAndTransposePass>(packLevel);
+std::unique_ptr<Pass> createAMDAIEPackAndTransposePass(
+    AMDAIEPackAndTransposeOptions options) {
+  return std::make_unique<AMDAIEPackAndTransposePass>(options);
 }
+
 }  // namespace mlir::iree_compiler::AMDAIE

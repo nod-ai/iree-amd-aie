@@ -4,7 +4,6 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#include "iree-amd-aie/Transforms/PassDetail.h"
 #include "iree-amd-aie/Transforms/Passes.h"
 #include "mlir/Dialect/Bufferization/IR/Bufferization.h"
 #include "mlir/Dialect/Linalg/Transforms/Transforms.h"
@@ -63,18 +62,19 @@ static FailureOr<SmallVector<Value>> getOperandsToBufferize(
 }
 
 class AMDAIEBufferizeToAllocationPass
-    : public AMDAIEBufferizeToAllocationBase<AMDAIEBufferizeToAllocationPass> {
+    : public impl::AMDAIEBufferizeToAllocationBase<
+          AMDAIEBufferizeToAllocationPass> {
  public:
+  AMDAIEBufferizeToAllocationPass() = default;
+  AMDAIEBufferizeToAllocationPass(const AMDAIEBufferizeToAllocationPass &pass) {
+  }
+  AMDAIEBufferizeToAllocationPass(
+      const AMDAIEBufferizeToAllocationOptions &options)
+      : AMDAIEBufferizeToAllocationBase(options) {}
+
   void getDependentDialects(DialectRegistry &registry) const override {
     registry
         .insert<bufferization::BufferizationDialect, linalg::LinalgDialect>();
-  }
-
-  AMDAIEBufferizeToAllocationPass() = default;
-  AMDAIEBufferizeToAllocationPass(int64_t memorySpace = 1,
-                                  int64_t bufferizeLevel = 0) {
-    this->memorySpace.setValue(memorySpace);
-    this->bufferizeLevel.setValue(bufferizeLevel);
   }
   void runOnOperation() override;
 };
@@ -120,10 +120,9 @@ void AMDAIEBufferizeToAllocationPass::runOnOperation() {
 
 }  // namespace
 
-std::unique_ptr<OperationPass<func::FuncOp>>
-createAMDAIEBufferizeToAllocationPass(int64_t memorySpace,
-                                      int64_t bufferizeLevel) {
-  return std::make_unique<AMDAIEBufferizeToAllocationPass>(memorySpace,
-                                                           bufferizeLevel);
+std::unique_ptr<Pass> createAMDAIEBufferizeToAllocationPass(
+    AMDAIEBufferizeToAllocationOptions options) {
+  return std::make_unique<AMDAIEBufferizeToAllocationPass>(options);
 }
+
 }  // namespace mlir::iree_compiler::AMDAIE

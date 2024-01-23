@@ -12,10 +12,20 @@
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Pass/Pass.h"
+#include "mlir/Pass/PassOptions.h"
 
 namespace mlir::iree_compiler::AMDAIE {
 
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DECL
+#define GEN_PASS_DEF_AMDAIEBRIDGETOAIR
+#define GEN_PASS_DEF_AMDAIEBUFFERIZETOALLOCATION
+#define GEN_PASS_DEF_AMDAIECLEANUP
+#define GEN_PASS_DEF_AMDAIELOWEREXECUTABLETARGET
+#define GEN_PASS_DEF_AMDAIELOWERWORKGROUPCOUNT
+#define GEN_PASS_DEF_AMDAIEPACKANDTRANSPOSE
+#define GEN_PASS_DEF_AMDAIEPAD
+#define GEN_PASS_DEF_AMDAIEPEELFORLOOP
+#define GEN_PASS_DEF_AMDAIETILEANDFUSE
 #include "iree-amd-aie/Transforms/Passes.h.inc"
 
 }  // namespace mlir::iree_compiler::AMDAIE
