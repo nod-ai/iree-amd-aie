@@ -4,20 +4,20 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#include "iree-amd-aie/Transforms/PassDetail.h"
 #include "iree-amd-aie/Transforms/Passes.h"
 #include "mlir/Dialect/Linalg/Transforms/Transforms.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
-#define DEBUG_TYPE "iree-amdaie-propagate-pad"
+#define DEBUG_TYPE "iree-amdaie-propagate-data-layout"
 
 namespace mlir::iree_compiler::AMDAIE {
 
 namespace {
 
 class AMDAIEPropagateDataLayoutPass
-    : public AMDAIEPropagateDataLayoutBase<AMDAIEPropagateDataLayoutPass> {
+    : public impl::AMDAIEPropagateDataLayoutBase<
+          AMDAIEPropagateDataLayoutPass> {
  public:
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<tensor::TensorDialect, linalg::LinalgDialect>();

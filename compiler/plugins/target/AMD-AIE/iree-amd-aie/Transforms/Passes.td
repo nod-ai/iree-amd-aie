@@ -90,7 +90,7 @@ def AMDAIETileAndFuse :
 
 def AMDAIEPropagateDataLayout :
     Pass<"iree-amdaie-propagate-data-layout", "func::FuncOp"> {
-  let summary = "Pass to tile and fuse TilingInterface operations.";
+  let summary = "Pass to propagate pack/unpack ops using upstream patterns.";
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEPropagateDataLayoutPass()";
 }
 
