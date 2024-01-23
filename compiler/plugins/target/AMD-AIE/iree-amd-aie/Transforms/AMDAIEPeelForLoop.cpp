@@ -4,7 +4,6 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#include "iree-amd-aie/Transforms/PassDetail.h"
 #include "iree-amd-aie/Transforms/Passes.h"
 #include "mlir/Dialect/Linalg/Transforms/Transforms.h"
 #include "mlir/Dialect/SCF/Transforms/Transforms.h"
@@ -17,7 +16,7 @@ namespace mlir::iree_compiler::AMDAIE {
 namespace {
 
 class AMDAIEPeelForLoopPass
-    : public AMDAIEPeelForLoopBase<AMDAIEPeelForLoopPass> {
+    : public impl::AMDAIEPeelForLoopBase<AMDAIEPeelForLoopPass> {
  public:
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<scf::SCFDialect>();
@@ -45,7 +44,7 @@ void AMDAIEPeelForLoopPass::runOnOperation() {
 
 }  // namespace
 
-std::unique_ptr<OperationPass<func::FuncOp>> createAMDAIEPeelForLoopPass() {
+std::unique_ptr<Pass> createAMDAIEPeelForLoopPass() {
   return std::make_unique<AMDAIEPeelForLoopPass>();
 }
 }  // namespace mlir::iree_compiler::AMDAIE

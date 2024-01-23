@@ -7,6 +7,7 @@
 #ifndef IREE_AMD_AIE_TRANSFORMS_PASSES_H_
 #define IREE_AMD_AIE_TRANSFORMS_PASSES_H_
 
+#include "iree-amd-aie/Transforms/PassDetail.h"
 #include "iree/compiler/Codegen/Common/TileSizeSelection.h"
 #include "iree/compiler/Codegen/Dialect/Codegen/IR/IREECodegenAttrs.h"
 #include "mlir/Pass/Pass.h"
@@ -32,42 +33,35 @@ void addPadBasedPassPipeline(OpPassManager &passManager,
 
 /// Create a pass to do some rewrites that help bridging the path to AIR/AIE
 /// lowering.
-std::unique_ptr<OperationPass<>> createAMDAIEBridgeToAIRPass();
+std::unique_ptr<Pass> createAMDAIEBridgeToAIRPass();
 
 /// Pass to bufferizes the targeted operation and materializes the result in a
 /// new allocation.
-/// Currently using paddingLevel = 0 to indicate the target operation is
-/// packing.
-/// TODO: Find a better way to do the pass without using paddingLevel.
-std::unique_ptr<OperationPass<func::FuncOp>>
-createAMDAIEBufferizeToAllocationPass(int64_t memorySpace = 1,
-                                      int64_t paddingLevel = 0);
+std::unique_ptr<Pass> createAMDAIEBufferizeToAllocationPass(
+    AMDAIEBufferizeToAllocationOptions options = {});
 
 /// Create pass to invoke several cleanup and canonicalization patterns.
-std::unique_ptr<OperationPass<func::FuncOp>> createAMDAIECleanupPass();
+std::unique_ptr<Pass> createAMDAIECleanupPass();
 
 /// Create pass calling the dynamic pipeline for AMDAIE.
-std::unique_ptr<OperationPass<IREE::HAL::ExecutableVariantOp>>
-createAMDAIELowerExecutableTargetPass();
+std::unique_ptr<Pass> createAMDAIELowerExecutableTargetPass();
 
 /// Create a pass to lower workgroup count region of entry point operations.
-std::unique_ptr<OperationPass<IREE::HAL::ExecutableVariantOp>>
-createAMDAIELowerWorkgroupCountPass();
+std::unique_ptr<Pass> createAMDAIELowerWorkgroupCountPass();
 
 /// Create a pass to pack and transpose the linalg op.
-std::unique_ptr<OperationPass<func::FuncOp>> createAMDAIEPackAndTransposePass(
-    int64_t packLevel = 1);
+std::unique_ptr<Pass> createAMDAIEPackAndTransposePass(
+    AMDAIEPackAndTransposeOptions options = {});
 
 /// Create a pass to pad MatmulOp.
-std::unique_ptr<OperationPass<func::FuncOp>> createAMDAIEPadPass(
-    int64_t paddingLevel = -1);
+std::unique_ptr<Pass> createAMDAIEPadPass(AMDAIEPadOptions options = {});
 
 /// Create a pass to peel the first iteration out of the scf.for loop.
-std::unique_ptr<OperationPass<func::FuncOp>> createAMDAIEPeelForLoopPass();
+std::unique_ptr<Pass> createAMDAIEPeelForLoopPass();
 
 /// Create pass to tile and fuse TilingInterface operations.
-std::unique_ptr<OperationPass<func::FuncOp>> createAMDAIETileAndFusePass(
-    bool useSCFFor = false, int64_t tilingLevel = -1);
+std::unique_ptr<Pass> createAMDAIETileAndFusePass(
+    AMDAIETileAndFuseOptions options = {});
 
 void registerAMDAIEPasses();
 
