@@ -34,25 +34,6 @@ static Value getPackOpInputOrPaddedSource(OpBuilder &builder,
   return packOp.getInput();
 }
 
-OpFoldResult getMixedSize(OpBuilder &builder, Location loc, Value value,
-                          int64_t dim) {
-  auto memrefType = llvm::cast<MemRefType>(value.getType());
-  SmallVector<OpFoldResult> result;
-  // TODO: dynamic shape
-  // if (memrefType.isDynamicDim(dim))
-
-  return builder.getIndexAttr(memrefType.getDimSize(dim));
-}
-
-SmallVector<OpFoldResult> getMixedSizes(OpBuilder &builder, Location loc,
-                                        Value value) {
-  auto memrefType = llvm::cast<MemRefType>(value.getType());
-  SmallVector<OpFoldResult> result;
-  for (int64_t i = 0; i < memrefType.getRank(); ++i)
-    result.push_back(getMixedSize(builder, loc, value, i));
-  return result;
-}
-
 // Normalizes a permutation on a higher rank space to its actual size, e.g.
 //   perm = [1, 4, 2]
 // becomes
@@ -188,7 +169,7 @@ class GeneralizePackOpPattern
     SmallVector<OpFoldResult> writeStrides(destRank, oneIdxAttr);
     SmallVector<OpFoldResult> writeOffsets(destRank, zeroIdxAttr);
     SmallVector<OpFoldResult> writeSizes =
-        getMixedSizes(rewriter, loc, packOp.getOutput());
+        memref::getMixedSizes(rewriter, loc, packOp.getOutput());
 
     memorySpace = packOp.getOutputType().cast<MemRefType>().getMemorySpace();
     auto writeType = MemRefType::get(destShape, elemType, nullptr, memorySpace);
@@ -288,7 +269,7 @@ class GeneralizeUnPackOpPattern
     SmallVector<OpFoldResult> writeStrides(destRank, oneIdxAttr);
     SmallVector<OpFoldResult> writeOffsets(destRank, zeroIdxAttr);
     SmallVector<OpFoldResult> writeSizes =
-        getMixedSizes(rewriter, loc, unpackOp.getOutput());
+        memref::getMixedSizes(rewriter, loc, unpackOp.getOutput());
 
     memorySpace = unpackOp.getOutputType().cast<MemRefType>().getMemorySpace();
     auto writeType = MemRefType::get(
