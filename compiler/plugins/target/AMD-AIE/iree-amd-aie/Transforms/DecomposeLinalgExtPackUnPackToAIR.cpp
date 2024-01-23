@@ -177,10 +177,10 @@ class GeneralizePackOpPattern
         loc, writeType, packOp.getOutput(), writeOffsets, writeSizes,
         writeStrides);
 
-    SmallVector<Value, 2> mt;
-    rewriter.create<xilinx::air::DmaMemcpyNdOp>(loc, SmallVector<Type, 1>{}, mt,
-                                                output_subview, mt, mt, mt,
-                                                transposed, mt, mt, mt);
+    SmallVector<Value, 2> emptyVec;
+    rewriter.create<xilinx::air::DmaMemcpyNdOp>(
+        loc, SmallVector<Type, 1>{}, emptyVec, output_subview, emptyVec,
+        emptyVec, emptyVec, transposed, emptyVec, emptyVec, emptyVec);
 
     rewriter.eraseOp(packOp);
     return success();
@@ -280,10 +280,10 @@ class GeneralizeUnPackOpPattern
         loc, writeType, unpackOp.getOutput(), writeOffsets, writeSizes,
         writeStrides);
 
-    SmallVector<Value, 2> mt;
-    rewriter.create<xilinx::air::DmaMemcpyNdOp>(loc, SmallVector<Type, 1>{}, mt,
-                                                output_subview, mt, mt, mt,
-                                                transposed, mt, mt, mt);
+    SmallVector<Value, 2> emptyVec;
+    rewriter.create<xilinx::air::DmaMemcpyNdOp>(
+        loc, SmallVector<Type, 1>{}, emptyVec, output_subview, emptyVec,
+        emptyVec, emptyVec, transposed, emptyVec, emptyVec, emptyVec);
 
     rewriter.eraseOp(unpackOp);
     return success();
@@ -359,10 +359,11 @@ FailureOr<LowerPackResult> lowerPack(RewriterBase &rewriter,
       AffineMapAttr::get(
           AffineMap::getPermutationMap(transpPerm, packOp->getContext())));
 
-  SmallVector<Value, 2> mt;
+  SmallVector<Value, 2> emptyVec;
   auto dmaOp = rewriter.create<xilinx::air::DmaMemcpyNdOp>(
-      loc, SmallVector<Type, 1>{}, mt, packOp.getOutput(), mt, mt, mt,
-      transposeOp.getResult(), mt, mt, mt);
+      loc, SmallVector<Type, 1>{}, emptyVec, packOp.getOutput(), emptyVec,
+      emptyVec, emptyVec, transposeOp.getResult(), emptyVec, emptyVec,
+      emptyVec);
 
   // 6. Replace packOp by transposeOp.
   rewriter.eraseOp(packOp);
@@ -422,10 +423,11 @@ FailureOr<LowerUnPackResult> lowerUnPack(RewriterBase &rewriter,
           packedToStripMinedShapePerm, unPackOp->getContext())));
 
   // 3. Inject a copy.
-  SmallVector<Value, 2> mt;
+  SmallVector<Value, 2> emptyVec;
   auto dmaOp = rewriter.create<xilinx::air::DmaMemcpyNdOp>(
-      loc, SmallVector<Type, 1>{}, mt, unPackOp.getOutput(), mt, mt, mt,
-      transposeOp->getResult(0), mt, mt, mt);
+      loc, SmallVector<Type, 1>{}, emptyVec, unPackOp.getOutput(), emptyVec,
+      emptyVec, emptyVec, transposeOp->getResult(0), emptyVec, emptyVec,
+      emptyVec);
 
   // 4. Erase unPackOp.
   rewriter.eraseOp(unPackOp);
@@ -486,8 +488,7 @@ void AMDAIEDecomposeLinalgExtPackUnPackToAIRPass::runOnOperation() {
     }
   }
 
-  // Do not convert pack and unpack ops if outer dims are expected to always be
-  // tiled to one.
+  // Second-stage lowering of pack and unpack ops.
   RewritePatternSet patterns(ctx);
   patterns.add<LowerPackPattern, LowerUnPackPattern>(ctx);
   if (failed(
