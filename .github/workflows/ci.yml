@@ -42,7 +42,7 @@ jobs:
         uses: actions/cache/restore@v3
         with:
           path: ${{ env.CACHE_DIR }}
-          key: linux-build-test-cpp-${{ github.sha }}
+          key: linux-build-test-cpp-asserts-manylinux-${{ github.sha }}
           restore-keys: |
             linux-build-test-cpp-
       
@@ -59,4 +59,4 @@ jobs:
         if: always()
         with:
           path: ${{ env.CACHE_DIR }}
-          key: linux-build-test-cpp-${{ github.sha }}
+          key: linux-build-test-cpp-asserts-manylinux-${{ github.sha }}
