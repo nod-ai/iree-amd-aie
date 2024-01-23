@@ -25,6 +25,7 @@ namespace mlir::iree_compiler::AMDAIE {
 #define GEN_PASS_DEF_AMDAIEPACKANDTRANSPOSE
 #define GEN_PASS_DEF_AMDAIEPAD
 #define GEN_PASS_DEF_AMDAIEPEELFORLOOP
+#define GEN_PASS_DEF_AMDAIEPROPAGATEDATALAYOUT
 #define GEN_PASS_DEF_AMDAIETILEANDFUSE
 #include "iree-amd-aie/Transforms/Passes.h.inc"
 
