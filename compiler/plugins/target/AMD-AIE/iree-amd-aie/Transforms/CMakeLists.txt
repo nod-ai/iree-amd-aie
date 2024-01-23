@@ -43,6 +43,7 @@ iree_cc_library(
     "AMDAIEPackAndTranspose.cpp"
     "AMDAIEPad.cpp"
     "AMDAIEPeelForLoop.cpp"
+    "AMDAIEPropagateDataLayout.cpp"
     "AMDAIETileAndFuse.cpp"
     "BridgeToAIRPass.cpp"
     "Cleanup.cpp"
