@@ -4,7 +4,6 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#include "iree-amd-aie/Transforms/PassDetail.h"
 #include "iree-amd-aie/Transforms/Passes.h"
 #include "iree/compiler/Codegen/Common/Transforms.h"
 #include "iree/compiler/Codegen/Transforms/Transforms.h"
@@ -284,8 +283,10 @@ LogicalResult applyTileAndFuseUsingSCF(RewriterBase &rewriter,
                                        Operation *rootOp,
                                        DominanceInfo &dominanceInfo,
                                        scf::SCFTilingOptions options,
-                                       int64_t tilingLevel) {
-  if (tilingLevel == 2) {
+                                       bool useSCFFor, int64_t tilingLevel) {
+  // TODO(MaheshRavishankar): Adapt this to use SCFTilingOptions after
+  // the upstream changes land.
+  if (useSCFFor) {
     return applyTileAndFuseUsingSCFFor(rewriter, rootOp, dominanceInfo,
                                        options);
   } else {
@@ -298,17 +299,16 @@ LogicalResult applyTileAndFuseUsingSCF(RewriterBase &rewriter,
 /// fuses its producers recursively. The `tilingLevel` must be specified. It
 /// picks the `tilingLevel`-th list as tiling sizes from lowering_config.
 class AMDAIETileAndFusePass
-    : public AMDAIETileAndFuseBase<AMDAIETileAndFusePass> {
+    : public impl::AMDAIETileAndFuseBase<AMDAIETileAndFusePass> {
  public:
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<gpu::GPUDialect, scf::SCFDialect>();
   }
 
   AMDAIETileAndFusePass() = default;
-  AMDAIETileAndFusePass(int64_t tilingLevel = -1) {
-    this->tilingLevel.setValue(tilingLevel);
-  }
-  AMDAIETileAndFusePass(const AMDAIETileAndFusePass &pass){};
+  AMDAIETileAndFusePass(const AMDAIETileAndFusePass &pass) {}
+  AMDAIETileAndFusePass(const AMDAIETileAndFuseOptions &options)
+      : AMDAIETileAndFuseBase(options) {}
 
   void runOnOperation() override;
 };
@@ -368,7 +368,7 @@ void AMDAIETileAndFusePass::runOnOperation() {
   IRRewriter rewriter(context);
   DominanceInfo dominanceInfo(funcOp);
   if (failed(applyTileAndFuseUsingSCF(rewriter, consumerOp, dominanceInfo,
-                                      options, tilingLevel))) {
+                                      options, useSCFFor, tilingLevel))) {
     LLVM_DEBUG(llvm::dbgs() << "----- tile and fuse failed -----\n");
     return signalPassFailure();
   }
@@ -376,9 +376,9 @@ void AMDAIETileAndFusePass::runOnOperation() {
 
 }  // namespace
 
-std::unique_ptr<OperationPass<func::FuncOp>> createAMDAIETileAndFusePass(
-    int64_t tilingLevel) {
-  return std::make_unique<AMDAIETileAndFusePass>(tilingLevel);
+std::unique_ptr<Pass> createAMDAIETileAndFusePass(
+    AMDAIETileAndFuseOptions options) {
+  return std::make_unique<AMDAIETileAndFusePass>(options);
 }
 
 }  // namespace mlir::iree_compiler::AMDAIE

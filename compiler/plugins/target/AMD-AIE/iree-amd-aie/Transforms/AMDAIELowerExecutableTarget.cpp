@@ -5,7 +5,6 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 #include "iree-amd-aie/Transforms/KernelDispatch.h"
-#include "iree-amd-aie/Transforms/PassDetail.h"
 #include "iree-amd-aie/Transforms/Passes.h"
 #include "iree-dialects/Dialect/LinalgExt/IR/LinalgExtDialect.h"
 #include "iree/compiler/Codegen/Common/Passes.h"
@@ -42,7 +41,8 @@ namespace {
 /// This should be merged with the equivalent pass in LinalgToLLVM. Fo
 /// simplicity it is currently a separate pass.
 class AMDAIELowerExecutableTargetPass
-    : public AMDAIELowerExecutableTargetBase<AMDAIELowerExecutableTargetPass> {
+    : public impl::AMDAIELowerExecutableTargetBase<
+          AMDAIELowerExecutableTargetPass> {
  public:
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<
@@ -157,8 +157,7 @@ void AMDAIELowerExecutableTargetPass::runOnOperation() {
   }
 }
 
-std::unique_ptr<OperationPass<IREE::HAL::ExecutableVariantOp>>
-createAMDAIELowerExecutableTargetPass() {
+std::unique_ptr<Pass> createAMDAIELowerExecutableTargetPass() {
   return std::make_unique<AMDAIELowerExecutableTargetPass>();
 }
 

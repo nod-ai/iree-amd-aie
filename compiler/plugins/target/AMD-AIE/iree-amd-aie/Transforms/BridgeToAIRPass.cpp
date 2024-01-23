@@ -4,7 +4,6 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#include "iree-amd-aie/Transforms/PassDetail.h"
 #include "iree-amd-aie/Transforms/Passes.h"
 #include "mlir/Dialect/Arith/Utils/Utils.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
@@ -65,7 +64,7 @@ class LinalgCopyToMemRefCopy : public OpRewritePattern<linalg::CopyOp> {
 };
 
 class AMDAIEBridgeToAIRPass
-    : public AMDAIEBridgeToAIRBase<AMDAIEBridgeToAIRPass> {
+    : public impl::AMDAIEBridgeToAIRBase<AMDAIEBridgeToAIRPass> {
  public:
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<memref::MemRefDialect, scf::SCFDialect>();
@@ -89,7 +88,7 @@ void AMDAIEBridgeToAIRPass::runOnOperation() {
 
 }  // namespace
 
-std::unique_ptr<OperationPass<>> createAMDAIEBridgeToAIRPass() {
+std::unique_ptr<Pass> createAMDAIEBridgeToAIRPass() {
   return std::make_unique<AMDAIEBridgeToAIRPass>();
 }
 

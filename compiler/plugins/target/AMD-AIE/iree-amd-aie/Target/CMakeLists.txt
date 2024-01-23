@@ -9,10 +9,8 @@ iree_cc_library(
     Target
   HDRS
     "AIETarget.h"
-    "XclBinGeneratorKit.h"
   SRCS
     "AIETarget.cpp"
-    "XclBinGeneratorKit.cpp"
   DEPS
     iree::compiler::Dialect::HAL::Target
     iree::target::amd-aie::Transforms

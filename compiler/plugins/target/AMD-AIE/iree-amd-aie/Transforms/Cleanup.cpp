@@ -4,7 +4,6 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#include "iree-amd-aie/Transforms/PassDetail.h"
 #include "iree-amd-aie/Transforms/Passes.h"
 #include "iree/compiler/Codegen/Common/Transforms.h"
 #include "iree/compiler/Codegen/Transforms/Transforms.h"
@@ -65,7 +64,7 @@ static void populateCleanupPatterns(RewritePatternSet &patterns) {
   scf::populateSCFForLoopCanonicalizationPatterns(patterns);
 }
 
-class AMDAIECleanupPass : public AMDAIECleanupBase<AMDAIECleanupPass> {
+class AMDAIECleanupPass : public impl::AMDAIECleanupBase<AMDAIECleanupPass> {
  public:
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<gpu::GPUDialect, scf::SCFDialect>();
@@ -93,7 +92,7 @@ void AMDAIECleanupPass::runOnOperation() {
 }
 }  // namespace
 
-std::unique_ptr<OperationPass<func::FuncOp>> createAMDAIECleanupPass() {
+std::unique_ptr<Pass> createAMDAIECleanupPass() {
   return std::make_unique<AMDAIECleanupPass>();
 }
 

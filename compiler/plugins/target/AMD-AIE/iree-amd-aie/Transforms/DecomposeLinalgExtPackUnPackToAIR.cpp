@@ -455,7 +455,7 @@ struct LowerUnPackPattern : public OpRewritePattern<IREE::LinalgExt::UnPackOp> {
 //===----------------------------------------------------------------------===//
 
 class AMDAIEDecomposeLinalgExtPackUnPackToAIRPass
-    : public AMDAIEDecomposeLinalgExtPackUnPackToAIRBase<
+    : public impl::AMDAIEDecomposeLinalgExtPackUnPackToAIRBase<
           AMDAIEDecomposeLinalgExtPackUnPackToAIRPass> {
  public:
   void getDependentDialects(DialectRegistry &registry) const override {
@@ -498,8 +498,7 @@ void AMDAIEDecomposeLinalgExtPackUnPackToAIRPass::runOnOperation() {
 
 }  // namespace
 
-std::unique_ptr<OperationPass<>>
-createAMDAIEDecomposeLinalgExtPackUnPackToAIRPass() {
+std::unique_ptr<Pass> createAMDAIEDecomposeLinalgExtPackUnPackToAIRPass() {
   return std::make_unique<AMDAIEDecomposeLinalgExtPackUnPackToAIRPass>();
 }
 
