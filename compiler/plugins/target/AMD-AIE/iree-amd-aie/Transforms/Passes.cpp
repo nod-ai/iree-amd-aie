@@ -137,6 +137,7 @@ void addMLIRAIRAIELoweringPasses(OpPassManager &passManager) {
   passManager.addPass(createEraseHALDescriptorTypeFromMemRefPass());
   passManager.addPass(createAMDAIEBridgeToAIRPass());
   passManager.addPass(memref::createFoldMemRefAliasOpsPass());
+  passManager.addPass(createAMDAIEDecomposeLinalgExtPackUnPackToAIRPass());
 
   {
     xilinx::air::ParallelToHerdOptions options;
