@@ -435,9 +435,8 @@ FailureOr<LowerUnPackResult> lowerUnPack(RewriterBase &rewriter,
   return LowerUnPackResult{transposeOp, dmaOp};
 }
 
-/// A warpper pattern that calls linalg::lowerUnPack on tensor::UnPackOp. It
-/// lowers a tensor.unpack op to tensor.empty + linalg.transpose +
-/// tensor.collapse_shape + tensor.extract_slice ops.
+/// A warpper pattern that calls lowerUnPack on IREE::LinalgExt::UnPackOp. It
+/// lowers a iree_linalg_ext.unpack op to memref.transpose + memref.subview ops.
 struct LowerUnPackPattern : public OpRewritePattern<IREE::LinalgExt::UnPackOp> {
   using OpRewritePattern<IREE::LinalgExt::UnPackOp>::OpRewritePattern;
 
