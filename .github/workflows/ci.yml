@@ -19,7 +19,7 @@ concurrency:
 jobs:
   build_test_linux:
     name: Build and Test (Linux, ASSERTIONS)
-    runs-on: nod-ai-shared-cpubuilder-x86_64
+    runs-on: nod-ai-shared-cpubuilder-manylinux-x86_64
     strategy:
       fail-fast: true
     env:
