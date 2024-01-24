@@ -53,11 +53,11 @@ To enable the runtime driver. You need to make sure XRT cmake package is dicover
 One option is to add it to your PATH.
 Note that with a standard setup, XRT is installed in `/opt/xilinx/xrt`. 
 
-You could use this script in the install which setups your PATH
+You could use this script in the install which setups your PATH.
 ```
 source ${PATH_TO_XRT_INSTALL}/setup.sh
 ``` 
-if for some reason this setup.sh is not available to you. You can do,
+If for some reason this setup.sh is not available to you. You can do,
 ```
 export PATH="${PATH_TO_XRT_INSTALL}/share/cmake/XRT:$PATH"
 ```
