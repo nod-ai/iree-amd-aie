@@ -48,7 +48,8 @@ echo '{
 
 cd $iree_dir
 cmake --preset new-linux-minimal -B "$build_dir" \
-  -DIREE_CMAKE_PLUGIN_PATHS=../iree-amd-aie
+  -DIREE_CMAKE_PLUGIN_PATHS=../iree-amd-aie \
+  -DIREE_BUILD_COMPILER=OFF # DO NOT SUBMIT.
 
 echo "Building all"
 echo "------------"
