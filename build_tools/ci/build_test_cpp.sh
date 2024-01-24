@@ -35,6 +35,7 @@ export CMAKE_CXX_COMPILER_LAUNCHER=ccache
 
 # Clear ccache stats.
 ccache -z
+ccache --version
 
 echo '{
     "version": 4,
