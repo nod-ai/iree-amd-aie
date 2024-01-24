@@ -49,16 +49,26 @@ ctest -R amd-aie
 
 ## Runtime driver setup
 
-The runtime driver is currently experimental and is not enabled by default.
-Enable with:
+To enable the runtime driver. You need to make sure XRT cmake package is discoverable by cmake.
+One option is to add it to your PATH.
+Note that with a standard setup, XRT is installed in `/opt/xilinx/xrt`. 
+
+You could use this script in the install which setups your PATH.
+```
+source ${PATH_TO_XRT_INSTALL}/setup.sh
+``` 
+If for some reason this setup.sh is not available to you. You can do,
+```
+export PATH="${PATH_TO_XRT_INSTALL}/share/cmake/XRT:$PATH"
+```
+
+Now from within the iree-amd-aie root directory. Then,
 
 ```
--DIREE_AMD_AIE_ENABLE_XRT_DRIVER=ON -DIREE_EXTERNAL_HAL_DRIVERS=xrt
+cd ../iree-build
+cmake -DIREE_CMAKE_PLUGIN_PATHS=../iree-amd-aie \
+-DIREE_AMD_AIE_ENABLE_XRT_DRIVER=ON \
+-DIREE_EXTERNAL_HAL_DRIVERS=xrt .
+ninja
 ```
 
-You will probably also need to add XRT on your PATH so that it can
-be found by cmake
-e.g
-```
-export PATH="/opt/xilinx/xrt/share/cmake/XRT:$PATH"
-```
