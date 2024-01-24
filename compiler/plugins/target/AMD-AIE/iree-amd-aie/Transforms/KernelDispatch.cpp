@@ -34,9 +34,16 @@ static LogicalResult setRootConfig(func::FuncOp entryPointFn,
   // TODO (nmeshram) : This needs to be moved in a separate more generalized
   // logic. Also, need a flag to experiment between pad based and pack based
   // approach which will have different tile sizes and pass pipelines
-  SmallVector<int64_t> TileSizeLevel0 = {8, 8};
-  SmallVector<int64_t> TileSizeLevel1 = {4, 4};
-  SmallVector<int64_t> TileSizeLevel2 = {0, 0, 4};
+  // pad based
+  // SmallVector<int64_t> TileSizeLevel0 = {8, 8};
+  // SmallVector<int64_t> TileSizeLevel1 = {4, 4};
+  // SmallVector<int64_t> TileSizeLevel2 = {0, 0, 4};
+
+  // pack based
+  SmallVector<int64_t> TileSizeLevel0 = {16, 64};
+  SmallVector<int64_t> TileSizeLevel1 = {0, 0, 64};
+  SmallVector<int64_t> TileSizeLevel2 = {1, 1};
+
   TileSizesListType tileSizes = {TileSizeLevel0, TileSizeLevel1,
                                  TileSizeLevel2};
   return setOpConfigAndEntryPointFnTranslation(

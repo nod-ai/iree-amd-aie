@@ -85,12 +85,14 @@ std::optional<scf::SCFFuseProducerOfSliceResult> tileAndFuseProducerOfSlice(
   // 2a. Compute the destination operands to use for the cloned operation.
   SmallVector<Value> origDestinationTensors, clonedOpDestinationTensors;
   Operation *fusableProducerOp = fusableProducer.getOwner();
-  if (isa<tensor::PackOp>(fusableProducerOp) ||
-      (isa<DestinationStyleOpInterface>(fusableProducerOp) &&
-       failed(tensor::getOrCreateDestinations(
-           rewriter, fusableProducerOp->getLoc(), fusableProducerOp,
-           origDestinationTensors))))
+  if (isa<DestinationStyleOpInterface>(fusableProducerOp) &&
+      failed(tensor::getOrCreateDestinations(
+          rewriter, fusableProducerOp->getLoc(), fusableProducerOp,
+          origDestinationTensors)))
     return std::nullopt;
+
+  // Don't fuse the pack op into the SCF loops
+  if (isa<tensor::PackOp>(fusableProducerOp)) return std::nullopt;
 
   clonedOpDestinationTensors = origDestinationTensors;
   if (destinationInitArg &&
@@ -159,6 +161,11 @@ static void collectTiledAndFusedOps(Operation *rootOp,
       result.insert(producer);
     }
   }
+}
+
+static bool consumerToSkip(TilingInterface op) {
+  if (isa<linalg::CopyOp>(op) || isa<tensor::UnPackOp>(op)) return true;
+  return false;
 }
 
 LogicalResult applyTileAndFuseUsingSCFFor(RewriterBase &rewriter,
@@ -320,10 +327,9 @@ void AMDAIETileAndFusePass::runOnOperation() {
 
   TilingInterface consumerOp;
   funcOp->walk<WalkOrder::PostOrder, ReverseIterator>([&](TilingInterface op) {
-    // Find the next consumer op if it does not have loops OR if it is a
-    // linalg.copy op.
-    if (op.getLoopIteratorTypes().empty() || isa<linalg::CopyOp>(op) ||
-        isa<tensor::UnPackOp>(op))
+    // Find the next consumer op if it does not have loops OR it is from
+    // the skip ops list which currently contains linalg.copy and tensor.unpack.
+    if (op.getLoopIteratorTypes().empty() || consumerToSkip(op))
       return WalkResult::advance();
     consumerOp = op;
     return WalkResult::interrupt();
@@ -342,8 +348,8 @@ void AMDAIETileAndFusePass::runOnOperation() {
   if (auto loweringConfig = getLoweringConfig(consumerOp)) {
     tileSizesVal = loweringConfig.getTileSizeVals(tilingLevel);
   } else if (isa<linalg::GenericOp>(consumerOp)) {
-    // TODO(vivian): This is a temp hack to get around the lowering config
-    // not passing to linalg.generic during lowering.
+    // TODO(vivian): Fix in upstream. For now this is a temp hack to get
+    // around the lowering config not passing to linalg.generic during lowering.
     tileSizesVal = {1, 1};
   } else {
     FailureOr<IREE::Codegen::LoweringConfigAttr> maybeLoweringConfig =
