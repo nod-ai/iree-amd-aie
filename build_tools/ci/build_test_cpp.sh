@@ -28,14 +28,11 @@ export CC=clang
 export CXX=clang++
 export CCACHE_DIR="${cache_dir}/ccache"
 export CCACHE_MAXSIZE="700M"
-export CCACHE_DEBUG=1
-export CCACHE_LOGFILE="${cache_dir}/ccache.log"
 export CMAKE_C_COMPILER_LAUNCHER=ccache
 export CMAKE_CXX_COMPILER_LAUNCHER=ccache
 
 # Clear ccache stats.
 ccache -z
-ccache --version
 
 echo '{
     "version": 4,
@@ -64,5 +61,3 @@ ctest --test-dir "$build_dir" -R amd-aie
 
 # Show ccache stats.
 ccache --show-stats
-
-cat $CCACHE_LOGFILE
