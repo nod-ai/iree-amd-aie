@@ -28,8 +28,9 @@ export CC=clang
 export CXX=clang++
 export CCACHE_DIR="${cache_dir}/ccache"
 export CCACHE_MAXSIZE="700M"
-export CMAKE_C_COMPILER_LAUNCHER="ccache -v"
-export CMAKE_CXX_COMPILER_LAUNCHER="ccache -v"
+export CCACHE_DEBUG=1
+export CMAKE_C_COMPILER_LAUNCHER=ccache
+export CMAKE_CXX_COMPILER_LAUNCHER=ccache
 
 # Clear ccache stats.
 ccache -z
