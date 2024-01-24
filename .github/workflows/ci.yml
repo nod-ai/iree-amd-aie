@@ -50,9 +50,6 @@ jobs:
         run: |
           export cache_dir="${{ env.CACHE_DIR }}"
           bash build_tools/ci/build_test_cpp.sh
-          # Some things put stuff in cache with weird, root read-only
-          # permissions. Take them back.
-          sudo chown -R "$(whoami)" "${cache_dir}"
 
       - name: Save cache
         uses: actions/cache/save@v3
