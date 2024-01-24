@@ -19,20 +19,9 @@
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
-//===----------------------------------------------------------------------===//
-// Pass
-//===----------------------------------------------------------------------===//
-
 namespace mlir::iree_compiler::AMDAIE {
 
 namespace {
-
-/// Returns the padding value if set. Otherwise, returns the source directly.
-/// The method assumes that the `packOp` has static shapes.
-static Value getPackOpInputOrPaddedSource(OpBuilder &builder,
-                                          IREE::LinalgExt::PackOp packOp) {
-  return packOp.getInput();
-}
 
 // Normalizes a permutation on a higher rank space to its actual size, e.g.
 //   perm = [1, 4, 2]
@@ -88,104 +77,36 @@ static SmallVector<int64_t> getPackUnpackRankReducedPerm(
   return perm;
 }
 
-class GeneralizePackOpPattern
-    : public OpRewritePattern<IREE::LinalgExt::PackOp> {
- public:
-  using OpRewritePattern<IREE::LinalgExt::PackOp>::OpRewritePattern;
+// Computes the permutation vector to shuffle packed shape into the shape
+// before any outer or inner permutations have been applied. The permutation
+// can be obtained from two permutations:
+//   a) Compute the permutation vector to move the last `numPackedDims` into
+//      the `innerPosDims` of a shape of rank `packedRank`.
+//   b) Compute the permutation vector to move outer dims if the pack op
+//      has outer_dims_perm.
+// Apply (b) permutation on (a) permutation to get the final permutation.
+static SmallVector<int64_t> getPackUnpackStripMinedPerm(
+    ArrayRef<int64_t> shape, ArrayRef<int64_t> innerDimsPos,
+    ArrayRef<int64_t> outerDimsPerm) {
+  int64_t numPackedDims = innerDimsPos.size();
+  int64_t packedRank = shape.size();
+  auto lastDims = llvm::to_vector(
+      llvm::seq<int64_t>(packedRank - numPackedDims, packedRank));
+  PackingMetadata packingMetadata =
+      computePackingMetadata(packedRank, innerDimsPos);
+  SmallVector<int64_t> innerPositionsPerm = computePermutationVector(
+      packedRank, lastDims, packingMetadata.insertPositions);
 
-  LogicalResult matchAndRewrite(IREE::LinalgExt::PackOp packOp,
-                                PatternRewriter &rewriter) const override {
-    if (llvm::any_of(packOp.getMixedTiles(),
-                     [](OpFoldResult tile) { return tile.is<Value>(); })) {
-      return rewriter.notifyMatchFailure(
-          packOp, "require inner tile sizes being static");
-    }
+  SmallVector<int64_t> outerPos = packingMetadata.outerPositions;
+  if (!outerDimsPerm.empty()) applyPermutationToVector(outerPos, outerDimsPerm);
+  SmallVector<int64_t> outerPositionPerm = computePermutationVector(
+      packedRank, packingMetadata.outerPositions, outerPos);
 
-    auto innerDimsPos = packOp.getInnerDimsPos();
-    int64_t srcRank = packOp.getInputRank();
-    auto destShape = packOp.getOutputType().getShape();
-    if (llvm::any_of(innerDimsPos, [destShape](int64_t index) {
-          return destShape[index] != 1;
-        })) {
-      return rewriter.notifyMatchFailure(
-          packOp,
-          "require the tiled outer dimensions of the result are all 1s");
-    }
+  SmallVector<int64_t> packedToStripMinedShapePerm = innerPositionsPerm;
+  applyPermutationToVector(packedToStripMinedShapePerm, outerPositionPerm);
 
-    // 1. Use rank-reduced memref.subview op to extract the tile and untiled
-    // outer dims.
-    Location loc = packOp.getLoc();
-    Value input = getPackOpInputOrPaddedSource(rewriter, packOp);
-    auto inputShape = packOp.getInputType().getShape();
-    DenseMap<int64_t, OpFoldResult> dimAndTileMapping =
-        packOp.getDimAndTileMapping();
-    Attribute zeroIdxAttr = rewriter.getIndexAttr(0);
-    Attribute oneIdxAttr = rewriter.getIndexAttr(1);
-    SmallVector<OpFoldResult> readOffsets(srcRank, zeroIdxAttr);
-    SmallVector<OpFoldResult> readStrides(srcRank, oneIdxAttr);
-    SmallVector<OpFoldResult> readSizes;
-    SmallVector<int64_t> readShape;
-    for (auto i : llvm::seq<unsigned>(0, srcRank)) {
-      if (dimAndTileMapping.count(i)) {
-        readShape.push_back(getConstantIntValue(dimAndTileMapping[i])
-                                .value_or(ShapedType::kDynamic));
-        readSizes.push_back(dimAndTileMapping[i]);
-        continue;
-      }
-      if (ShapedType::isDynamic(inputShape[i])) {
-        assert(false);
-        // TODO: Dynamic input shape
-      } else {
-        readSizes.push_back(rewriter.getIndexAttr(inputShape[i]));
-      }
-      readShape.push_back(inputShape[i]);
-    }
-
-    Type elemType = packOp.getInputType().getElementType();
-    Attribute memorySpace =
-        packOp.getInputType().cast<MemRefType>().getMemorySpace();
-    auto readType = MemRefType::get(
-        readShape, elemType,
-        packOp.getInputType().cast<MemRefType>().getLayout(), memorySpace);
-
-    Value tile = rewriter.create<memref::SubViewOp>(
-        loc, readType, input, readOffsets, readSizes, readStrides);
-
-    // 2. Transpose the tile to match the inner tile order.
-
-    SmallVector<int64_t> perm = getPackUnpackRankReducedPerm(
-        inputShape, innerDimsPos, packOp.getOuterDimsPerm());
-
-    SmallVector<int64_t> transpShape = readShape;
-    applyPermutationToVector<int64_t>(transpShape, perm);
-
-    Value transposed = rewriter.create<memref::TransposeOp>(
-        loc, tile,
-        AffineMapAttr::get(
-            AffineMap::getPermutationMap(perm, packOp->getContext())));
-
-    // 3. Insert the inner tile to the destination.
-    int64_t destRank = packOp.getOutputRank();
-    SmallVector<OpFoldResult> writeStrides(destRank, oneIdxAttr);
-    SmallVector<OpFoldResult> writeOffsets(destRank, zeroIdxAttr);
-    SmallVector<OpFoldResult> writeSizes =
-        memref::getMixedSizes(rewriter, loc, packOp.getOutput());
-
-    memorySpace = packOp.getOutputType().cast<MemRefType>().getMemorySpace();
-    auto writeType = MemRefType::get(destShape, elemType, nullptr, memorySpace);
-    auto output_subview = rewriter.create<memref::SubViewOp>(
-        loc, writeType, packOp.getOutput(), writeOffsets, writeSizes,
-        writeStrides);
-
-    SmallVector<Value, 2> emptyVec;
-    rewriter.create<xilinx::air::DmaMemcpyNdOp>(
-        loc, SmallVector<Type, 1>{}, emptyVec, output_subview, emptyVec,
-        emptyVec, emptyVec, transposed, emptyVec, emptyVec, emptyVec);
-
-    rewriter.eraseOp(packOp);
-    return success();
-  }
-};
+  return packedToStripMinedShapePerm;
+}
 
 class GeneralizeUnPackOpPattern
     : public OpRewritePattern<IREE::LinalgExt::UnPackOp> {
@@ -291,7 +212,6 @@ class GeneralizeUnPackOpPattern
 };
 
 struct LowerPackResult {
-  memref::ExpandShapeOp expandShapeOp;
   memref::TransposeOp transposeOp;
   xilinx::air::DmaMemcpyNdOp dmaOp;
 };
@@ -316,59 +236,95 @@ FailureOr<LowerPackResult> lowerPack(RewriterBase &rewriter,
   OpBuilder::InsertionGuard g(rewriter);
   rewriter.setInsertionPoint(packOp);
 
-  // 2. Compute the permutation vector to shuffle packed shape into the shape
-  // before any outer or inner permutations have been applied. The permutation
-  // can be obtained from two permutations:
-  //   a) Compute the permutation vector to move the last `numPackedDims` into
-  //      the `innerPosDims` of a shape of rank `packedRank`.
-  //   b) Compute the permutation vector to move outer dims if the pack op
-  //      has outer_dims_perm.
-  // Apply (b) permutation on (a) permutation to get the final permutation.
-  int64_t numPackedDims = packOp.getInnerDimsPos().size();
-  int64_t packedRank = packedMemrefType.getRank();
-  auto lastDims = llvm::to_vector(
-      llvm::seq<int64_t>(packedRank - numPackedDims, packedRank));
-  PackingMetadata packingMetadata = computePackingMetadata(
-      packedMemrefType.getRank(), packOp.getInnerDimsPos());
-  SmallVector<int64_t> innerPositionsPerm = computePermutationVector(
-      packedRank, lastDims, packingMetadata.insertPositions);
+  auto innerDimsPos = packOp.getInnerDimsPos();
+  auto destShape = packOp.getOutputType().getShape();
+  SmallVector<int64_t> transpPerm = {};
+  Value tile = nullptr;
+  if (llvm::any_of(innerDimsPos, [destShape](int64_t index) {
+        return destShape[index] != 1;
+      })) {
+    // 1. Computes the permutation vector to shuffle packed shape into the shape
+    // before any outer or inner permutations have been applied.
+    PackingMetadata packingMetadata = computePackingMetadata(
+        packedMemrefType.getRank(), packOp.getInnerDimsPos());
 
-  SmallVector<int64_t> outerPos = packingMetadata.outerPositions;
-  ArrayRef<int64_t> outerPerm = packOp.getOuterDimsPerm();
-  if (!outerPerm.empty()) applyPermutationToVector(outerPos, outerPerm);
-  SmallVector<int64_t> outerPositionPerm = computePermutationVector(
-      packedRank, packingMetadata.outerPositions, outerPos);
+    SmallVector<int64_t> packedToStripMinedShapePerm =
+        getPackUnpackStripMinedPerm(packedMemrefType.getShape(),
+                                    packOp.getInnerDimsPos(),
+                                    packOp.getOuterDimsPerm());
 
-  SmallVector<int64_t> packedToStripMinedShapePerm = innerPositionsPerm;
-  applyPermutationToVector(packedToStripMinedShapePerm, outerPositionPerm);
+    // 2. Compute the stripMinedShape: this is the packed shape before any outer
+    // or inner permutations have been applied.
+    SmallVector<int64_t> stripMinedShape(packedMemrefType.getShape());
+    applyPermutationToVector(stripMinedShape, packedToStripMinedShapePerm);
 
-  // 3. Compute the stripMinedShape: this is the packed shape before any outer
-  // or inner permutations have been applied.
-  SmallVector<int64_t> stripMinedShape(packedMemrefType.getShape());
-  applyPermutationToVector(stripMinedShape, packedToStripMinedShapePerm);
+    // 3. Expand from the padded result to the stripMinedShape.
+    tile = rewriter.create<memref::ExpandShapeOp>(
+        loc, stripMinedShape, packOp.getInput(),
+        packingMetadata.reassociations);
 
-  // 4. Expand from the padded result to the stripMinedShape.
-  auto reshapeOp = rewriter.create<memref::ExpandShapeOp>(
-      loc, stripMinedShape, packOp.getInput(), packingMetadata.reassociations);
+    // 4. Transpose stripMinedShape to packedShape.
+    transpPerm = invertPermutationVector(packedToStripMinedShapePerm);
+  } else {
+    int64_t srcRank = packOp.getInputRank();
+    // 1. Use rank-reduced memref.subview op to extract the tile and untiled
+    // outer dims.
+    Value input = packOp.getInput();
+    auto inputShape = packOp.getInputType().getShape();
+    DenseMap<int64_t, OpFoldResult> dimAndTileMapping =
+        packOp.getDimAndTileMapping();
+    Attribute zeroIdxAttr = rewriter.getIndexAttr(0);
+    Attribute oneIdxAttr = rewriter.getIndexAttr(1);
+    SmallVector<OpFoldResult> readOffsets(srcRank, zeroIdxAttr);
+    SmallVector<OpFoldResult> readStrides(srcRank, oneIdxAttr);
+    SmallVector<OpFoldResult> readSizes;
+    SmallVector<int64_t> readShape;
+    for (auto i : llvm::seq<unsigned>(0, srcRank)) {
+      if (dimAndTileMapping.count(i)) {
+        readShape.push_back(getConstantIntValue(dimAndTileMapping[i])
+                                .value_or(ShapedType::kDynamic));
+        readSizes.push_back(dimAndTileMapping[i]);
+        continue;
+      }
+      if (ShapedType::isDynamic(inputShape[i])) {
+        assert(false);
+        // TODO: Dynamic input shape
+      } else {
+        readSizes.push_back(rewriter.getIndexAttr(inputShape[i]));
+      }
+      readShape.push_back(inputShape[i]);
+    }
 
-  // 5. Transpose stripMinedShape to packedShape.
-  SmallVector<int64_t> transpPerm =
-      invertPermutationVector(packedToStripMinedShapePerm);
-  auto transposeOp = rewriter.create<memref::TransposeOp>(
-      loc, reshapeOp.getResult(),
+    Type elemType = packOp.getInputType().getElementType();
+    Attribute memorySpace =
+        packOp.getInputType().cast<MemRefType>().getMemorySpace();
+    auto readType = MemRefType::get(
+        readShape, elemType,
+        packOp.getInputType().cast<MemRefType>().getLayout(), memorySpace);
+
+    tile = rewriter.create<memref::SubViewOp>(loc, readType, input, readOffsets,
+                                              readSizes, readStrides);
+
+    // 2. Transpose the tile to match the inner tile order.
+    transpPerm = getPackUnpackRankReducedPerm(inputShape, innerDimsPos,
+                                              packOp.getOuterDimsPerm());
+  }
+
+  memref::TransposeOp transposeOp = rewriter.create<memref::TransposeOp>(
+      loc, tile,
       AffineMapAttr::get(
           AffineMap::getPermutationMap(transpPerm, packOp->getContext())));
 
   SmallVector<Value, 2> emptyVec;
-  auto dmaOp = rewriter.create<xilinx::air::DmaMemcpyNdOp>(
-      loc, SmallVector<Type, 1>{}, emptyVec, packOp.getOutput(), emptyVec,
-      emptyVec, emptyVec, transposeOp.getResult(), emptyVec, emptyVec,
-      emptyVec);
+  xilinx::air::DmaMemcpyNdOp dmaOp =
+      rewriter.create<xilinx::air::DmaMemcpyNdOp>(
+          loc, SmallVector<Type, 1>{}, emptyVec, packOp.getOutput(), emptyVec,
+          emptyVec, emptyVec, transposeOp.getResult(), emptyVec, emptyVec,
+          emptyVec);
 
-  // 6. Replace packOp by transposeOp.
+  // Replace packOp.
   rewriter.eraseOp(packOp);
-
-  return LowerPackResult{reshapeOp, transposeOp, dmaOp};
+  return LowerPackResult{transposeOp, dmaOp};
 }
 
 /// A wrapper pattern that calls lowerPack on PackOp. It lowers
@@ -480,7 +436,7 @@ void AMDAIEDecomposeLinalgExtPackUnPackToAIRPass::runOnOperation() {
   // they do not generate reshape ops.
   {
     RewritePatternSet patterns(ctx);
-    patterns.add<GeneralizePackOpPattern, GeneralizeUnPackOpPattern>(ctx);
+    patterns.add<GeneralizeUnPackOpPattern>(ctx);
     if (failed(applyPatternsAndFoldGreedily(getOperation(),
                                             std::move(patterns)))) {
       return signalPassFailure();
