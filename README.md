@@ -49,7 +49,7 @@ ctest -R amd-aie
 
 ## Runtime driver setup
 
-To enable the runtime driver. You need to make sure XRT cmake package is dicoverable by cmake.
+To enable the runtime driver. You need to make sure XRT cmake package is discoverable by cmake.
 One option is to add it to your PATH.
 Note that with a standard setup, XRT is installed in `/opt/xilinx/xrt`. 
 
