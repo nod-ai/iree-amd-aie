@@ -142,7 +142,7 @@ void AMDAIELowerExecutableTargetPass::runOnOperation() {
       //               the default case. Will soon have corresponding AIE enum.
       default:
         TilingConfig tilingConfig = getTilingConfigForPipeline(moduleOp);
-        addPadBasedPassPipeline(executableLoweringPipeline, tilingConfig);
+        addPackBasedPassPipeline(executableLoweringPipeline, tilingConfig);
         break;
     }
   }

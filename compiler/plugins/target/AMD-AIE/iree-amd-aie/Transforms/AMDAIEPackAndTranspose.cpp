@@ -30,11 +30,11 @@ struct PackConfig {
 static FailureOr<PackConfig> getPackConfig(RewriterBase &rewriter,
                                            int packLevel) {
   PackConfig config;
-  if (packLevel == 1) {
+  if (packLevel == 0) {
     // packed size for [M, N, K]
-    config.packedSizes = {rewriter.getI64IntegerAttr(16),
-                          rewriter.getI64IntegerAttr(64),
-                          rewriter.getI64IntegerAttr(64)};
+    config.packedSizes = {rewriter.getI64IntegerAttr(8),
+                          rewriter.getI64IntegerAttr(16),
+                          rewriter.getI64IntegerAttr(16)};
     // Transpose B matrix from [K N n k] to [K N k n]
     config.transposePackIndices = {1};
     // There is no corresponding unpack for the specified pack operation
@@ -42,7 +42,7 @@ static FailureOr<PackConfig> getPackConfig(RewriterBase &rewriter,
     config.unpackEmpty = {0};
     config.innerPerm = {{1, 0}};
     config.outerPerm = {{0, 1}};
-  } else if (packLevel == 2) {
+  } else if (packLevel == 1) {
     // packed size for [M, N, K, m, n, k]
     config.packedSizes = {
         rewriter.getI64IntegerAttr(0), rewriter.getI64IntegerAttr(0),

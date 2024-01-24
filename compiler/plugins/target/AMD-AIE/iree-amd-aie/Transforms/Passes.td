@@ -86,7 +86,7 @@ def AMDAIEPackAndTranspose :
   let constructor =
       "mlir::iree_compiler::AMDAIE::createAMDAIEPackAndTransposePass()";
   let options = [
-    Option<"packLevel", "pack-level", "int64_t", /*default=*/"1",
+    Option<"packLevel", "pack-level", "int64_t", /*default=*/"-1",
       "Set the packing level number">
   ];
 }
