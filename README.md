@@ -25,7 +25,7 @@ with this plugin, run
 python3 sync_deps.py
 ```
 
-from within the mlir-amd-aie root directory. Then,
+from within the iree-amd-aie root directory. Then,
 
 
 ```
