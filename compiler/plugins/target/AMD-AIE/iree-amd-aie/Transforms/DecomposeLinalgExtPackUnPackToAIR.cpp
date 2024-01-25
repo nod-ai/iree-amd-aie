@@ -142,12 +142,11 @@ FailureOr<LowerPackResult> lowerPack(RewriterBase &rewriter,
       })) {
     // 1. Computes the permutation vector to shuffle packed shape into the shape
     // before any outer or inner permutations have been applied.
-    PackingMetadata packingMetadata = computePackingMetadata(
-        packedMemrefType.getRank(), packOp.getInnerDimsPos());
+    PackingMetadata packingMetadata =
+        computePackingMetadata(packedMemrefType.getRank(), innerDimsPos);
 
     SmallVector<int64_t> packedToStripMinedShapePerm =
-        getPackUnpackStripMinedPerm(packedMemrefType.getShape(),
-                                    packOp.getInnerDimsPos(),
+        getPackUnpackStripMinedPerm(packedMemrefType.getShape(), innerDimsPos,
                                     packOp.getOuterDimsPerm());
 
     // 2. Compute the stripMinedShape: this is the packed shape before any outer
@@ -163,46 +162,9 @@ FailureOr<LowerPackResult> lowerPack(RewriterBase &rewriter,
     // 4. Transpose stripMinedShape to packedShape.
     transpPerm = invertPermutationVector(packedToStripMinedShapePerm);
   } else {
-    int64_t srcRank = packOp.getInputRank();
-    // 1. Use rank-reduced memref.subview op to extract the tile and untiled
-    // outer dims.
-    Value input = packOp.getInput();
+    tile = packOp.getInput();
+    // Transpose the tile to match the inner tile order.
     auto inputShape = packOp.getInputType().getShape();
-    DenseMap<int64_t, OpFoldResult> dimAndTileMapping =
-        packOp.getDimAndTileMapping();
-    Attribute zeroIdxAttr = rewriter.getIndexAttr(0);
-    Attribute oneIdxAttr = rewriter.getIndexAttr(1);
-    SmallVector<OpFoldResult> readOffsets(srcRank, zeroIdxAttr);
-    SmallVector<OpFoldResult> readStrides(srcRank, oneIdxAttr);
-    SmallVector<OpFoldResult> readSizes;
-    SmallVector<int64_t> readShape;
-    for (auto i : llvm::seq<unsigned>(0, srcRank)) {
-      if (dimAndTileMapping.count(i)) {
-        readShape.push_back(getConstantIntValue(dimAndTileMapping[i])
-                                .value_or(ShapedType::kDynamic));
-        readSizes.push_back(dimAndTileMapping[i]);
-        continue;
-      }
-      if (ShapedType::isDynamic(inputShape[i])) {
-        assert(false);
-        // TODO: Dynamic input shape
-      } else {
-        readSizes.push_back(rewriter.getIndexAttr(inputShape[i]));
-      }
-      readShape.push_back(inputShape[i]);
-    }
-
-    Type elemType = packOp.getInputType().getElementType();
-    Attribute memorySpace =
-        packOp.getInputType().cast<MemRefType>().getMemorySpace();
-    auto readType = MemRefType::get(
-        readShape, elemType,
-        packOp.getInputType().cast<MemRefType>().getLayout(), memorySpace);
-
-    tile = rewriter.create<memref::SubViewOp>(loc, readType, input, readOffsets,
-                                              readSizes, readStrides);
-
-    // 2. Transpose the tile to match the inner tile order.
     transpPerm = getPackUnpackRankReducedPerm(inputShape, innerDimsPos,
                                               packOp.getOuterDimsPerm());
   }
