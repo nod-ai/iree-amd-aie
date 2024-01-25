@@ -66,6 +66,10 @@ std::unique_ptr<Pass> createAMDAIETileAndFusePass(
 /// Create pass to propagate pack/unpack ops using upstream patterns.
 std::unique_ptr<Pass> createAMDAIEPropagateDataLayoutPass();
 
+/// Create a pass decomposing iree_linalg_ext.pack and unpack ops to AIR
+/// dialect.
+std::unique_ptr<Pass> createAMDAIEDecomposeLinalgExtPackUnPackToAIRPass();
+
 void registerAMDAIEPasses();
 
 }  // namespace mlir::iree_compiler::AMDAIE
