@@ -38,45 +38,6 @@ static SmallVector<int64_t> getPackUnpackNormalizedPerm(
   return invertPermutationVector(normalizedPerm);
 }
 
-// Gets the normalized permutation implied by innerDimsPos and outerDimsPerm
-// assuming rank reduction of unit outer dims.
-static SmallVector<int64_t> getPackUnpackRankReducedPerm(
-    ArrayRef<int64_t> shape, ArrayRef<int64_t> innerDimsPos,
-    ArrayRef<int64_t> outerDimsPerm) {
-  SmallVector<int64_t> rankReducedOuterDimsPerm;
-  SmallVector<int64_t> outerDims;
-  SmallVector<int64_t> innerDims;
-  int64_t dim = 0;
-  int64_t unpackedRank = shape.size();
-  for (auto i : llvm::seq<unsigned>(0, unpackedRank)) {
-    if (llvm::is_contained(innerDimsPos, i)) {
-      innerDims.push_back(dim++);
-      continue;
-    }
-    outerDims.push_back(dim++);
-    if (!outerDimsPerm.empty())
-      rankReducedOuterDimsPerm.push_back(outerDimsPerm[i]);
-  }
-
-  // Get the position of the inner dims after permutation.
-  SmallVector<int64_t> innerPerm =
-      getPackUnpackNormalizedPerm(unpackedRank, innerDimsPos);
-  applyPermutationToVector<int64_t>(innerDims, innerPerm);
-
-  // Ditto for the outer dims.
-  SmallVector<int64_t> perm = outerDims;
-
-  rankReducedOuterDimsPerm =
-      getPackUnpackNormalizedPerm(unpackedRank, rankReducedOuterDimsPerm);
-  if (!rankReducedOuterDimsPerm.empty())
-    applyPermutationToVector<int64_t>(perm, rankReducedOuterDimsPerm);
-
-  // The tile always ends up as the inner most dims after packing.
-  perm.append(innerDims);
-
-  return perm;
-}
-
 // Computes the permutation vector to shuffle packed shape into the shape
 // before any outer or inner permutations have been applied. The permutation
 // can be obtained from two permutations:
@@ -159,9 +120,8 @@ FailureOr<LowerPackUnPackResult> lowerPack(RewriterBase &rewriter,
   } else {
     tile = packOp.getInput();
     // Transpose the tile to match the inner tile order.
-    auto inputShape = packOp.getInputType().getShape();
-    transpPerm = getPackUnpackRankReducedPerm(inputShape, innerDimsPos,
-                                              packOp.getOuterDimsPerm());
+    transpPerm = getPackUnpackNormalizedPerm(packOp.getInputType().getRank(),
+                                             innerDimsPos);
   }
 
   memref::TransposeOp transposeOp = rewriter.create<memref::TransposeOp>(
@@ -276,10 +236,7 @@ FailureOr<LowerPackUnPackResult> lowerUnPack(
     auto readType = MemRefType::get(readShape, elemType, nullptr, memorySpace);
     tile = rewriter.create<memref::SubViewOp>(loc, readType, input, readOffsets,
                                               readSizes, readStrides);
-
-    perm =
-        getPackUnpackRankReducedPerm(srcShape.take_front(destRank),
-                                     innerDimsPos, unPackOp.getOuterDimsPerm());
+    perm = getPackUnpackNormalizedPerm(destRank, innerDimsPos);
     // Unpack is a transition out of packed space so we invert the permutation.
     perm = invertPermutationVector(perm);
   }
