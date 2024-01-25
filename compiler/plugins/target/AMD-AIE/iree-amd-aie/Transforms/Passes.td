@@ -40,6 +40,12 @@ def AMDAIELowerExecutableTarget :
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIELowerExecutableTargetPass()";
 }
 
+def AMDAIEDecomposeLinalgExtPackUnPackToAIR :
+    Pass<"iree-amdaie-decompose-pack-unpack-to-air", ""> {
+  let summary = "Decompose LinalgExt pack/unpack ops into patterns compatible to AIR.";
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEDecomposeLinalgExtPackUnPackToAIRPass()";
+}
+
 def AMDAIELowerWorkgroupCount :
     Pass<"iree-amdaie-lower-workgroup-count", "mlir::iree_compiler::IREE::HAL::ExecutableVariantOp"> {
   let summary = "Lower the workgroup count region";

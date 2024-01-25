@@ -46,6 +46,7 @@ iree_cc_library(
     "AMDAIEPropagateDataLayout.cpp"
     "AMDAIETileAndFuse.cpp"
     "BridgeToAIRPass.cpp"
+    "DecomposeLinalgExtPackUnPackToAIR.cpp"
     "Cleanup.cpp"
     "KernelDispatch.cpp"
   DEPS
