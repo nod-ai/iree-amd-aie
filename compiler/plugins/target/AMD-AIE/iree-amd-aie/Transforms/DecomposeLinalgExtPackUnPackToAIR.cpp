@@ -108,18 +108,13 @@ static SmallVector<int64_t> getPackUnpackStripMinedPerm(
   return packedToStripMinedShapePerm;
 }
 
-struct LowerPackResult {
+struct LowerPackUnPackResult {
   memref::TransposeOp transposeOp;
   xilinx::air::DmaMemcpyNdOp dmaOp;
 };
 
-struct LowerUnPackResult {
-  memref::TransposeOp transposeOp;
-  xilinx::air::DmaMemcpyNdOp dmaOp;
-};
-
-FailureOr<LowerPackResult> lowerPack(RewriterBase &rewriter,
-                                     IREE::LinalgExt::PackOp packOp) {
+FailureOr<LowerPackUnPackResult> lowerPack(RewriterBase &rewriter,
+                                           IREE::LinalgExt::PackOp packOp) {
   // 1. Filter out NYI cases.
   auto packedMemrefType = packOp.getOutputType();
   if (llvm::any_of(packOp.getStaticInnerTiles(),
@@ -181,9 +176,9 @@ FailureOr<LowerPackResult> lowerPack(RewriterBase &rewriter,
           emptyVec, emptyVec, transposeOp.getResult(), emptyVec, emptyVec,
           emptyVec);
 
-  // Replace packOp.
+  // Erase packOp.
   rewriter.eraseOp(packOp);
-  return LowerPackResult{transposeOp, dmaOp};
+  return LowerPackUnPackResult{transposeOp, dmaOp};
 }
 
 /// A wrapper pattern that calls lowerPack on PackOp. It lowers
@@ -193,7 +188,7 @@ struct LowerPackPattern : public OpRewritePattern<IREE::LinalgExt::PackOp> {
 
   LogicalResult matchAndRewrite(IREE::LinalgExt::PackOp op,
                                 PatternRewriter &rewriter) const override {
-    FailureOr<LowerPackResult> res = lowerPack(rewriter, op);
+    FailureOr<LowerPackUnPackResult> res = lowerPack(rewriter, op);
     if (failed(res)) {
       return rewriter.notifyMatchFailure(
           op, "cannot lower to pad + expand + transpose");
@@ -202,8 +197,8 @@ struct LowerPackPattern : public OpRewritePattern<IREE::LinalgExt::PackOp> {
   }
 };
 
-FailureOr<LowerUnPackResult> lowerUnPack(RewriterBase &rewriter,
-                                         IREE::LinalgExt::UnPackOp unPackOp) {
+FailureOr<LowerPackUnPackResult> lowerUnPack(
+    RewriterBase &rewriter, IREE::LinalgExt::UnPackOp unPackOp) {
   Location loc = unPackOp->getLoc();
   OpBuilder::InsertionGuard g(rewriter);
   rewriter.setInsertionPoint(unPackOp);
@@ -306,7 +301,7 @@ FailureOr<LowerUnPackResult> lowerUnPack(RewriterBase &rewriter,
   // Erase unPackOp.
   rewriter.eraseOp(unPackOp);
 
-  return LowerUnPackResult{transposeOp, dmaOp};
+  return LowerPackUnPackResult{transposeOp, dmaOp};
 }
 
 /// A warpper pattern that calls lowerUnPack on IREE::LinalgExt::UnPackOp. It
@@ -316,7 +311,7 @@ struct LowerUnPackPattern : public OpRewritePattern<IREE::LinalgExt::UnPackOp> {
 
   LogicalResult matchAndRewrite(IREE::LinalgExt::UnPackOp op,
                                 PatternRewriter &rewriter) const override {
-    FailureOr<LowerUnPackResult> res = lowerUnPack(rewriter, op);
+    FailureOr<LowerPackUnPackResult> res = lowerUnPack(rewriter, op);
     if (failed(res)) {
       return rewriter.notifyMatchFailure(
           op, "cannot lower to empty + transpose + collapse + subview");
