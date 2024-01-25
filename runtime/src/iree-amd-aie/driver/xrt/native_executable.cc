@@ -190,6 +190,8 @@ iree_status_t iree_hal_xrt_native_executable_create(
     for (int j = 0; j < num_instr; j++) {
       instr_buffer[j] = flatbuffers_uint32_vec_at(asm_inst, j);
     }
+    // The Ryzen AI device is not cache coherent, so it is important to sync
+    instr->sync(XCL_BO_SYNC_BO_TO_DEVICE);
     iree_hal_xrt_kernel_params_t* params = &executable->entry_points[i];
     params->kernel = kernel.release();
     params->instr = instr.release();
