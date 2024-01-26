@@ -12,7 +12,8 @@
 
 namespace mlir::iree_compiler::AMDAIE {
 
-LogicalResult initAIELaunchConfig(ModuleOp moduleOp);
+LogicalResult initAIELaunchConfig(ModuleOp moduleOp,
+                                  StringRef tilingStrategy = "");
 
 }  // namespace mlir::iree_compiler::AMDAIE
 
