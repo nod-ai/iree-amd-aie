@@ -54,8 +54,13 @@ std::unique_ptr<Pass> createAMDAIEDecomposeLinalgExtPackUnPackToAIRPass();
 /// Create a pass to fuse the linalg.fill into the forall loops.
 std::unique_ptr<Pass> createAMDAIEFuseFillIntoForallPass();
 
+/// Create pass for adding lowering strategy configurations.
+std::unique_ptr<Pass> createAMDAIEAddLoweringStrategyPass(
+    AMDAIEAddLoweringStrategyOptions options = {});
+
 /// Create pass calling the dynamic pipeline for AMDAIE.
-std::unique_ptr<Pass> createAMDAIELowerExecutableTargetPass();
+std::unique_ptr<Pass> createAMDAIELowerExecutableTargetPass(
+    AMDAIELowerExecutableTargetOptions options = {});
 
 /// Create a pass to lower workgroup count region of entry point operations.
 std::unique_ptr<Pass> createAMDAIELowerWorkgroupCountPass();
