@@ -35,13 +35,13 @@ func.func @matmul_static(%arg0 : tensor<8x16xi32>, %arg1 : tensor<16x8xi32>) -> 
 //      BUFFERIZE-LEVEL-0:   scf.forall
 // BUFFERIZE-LEVEL-0-SAME:   {
 //      BUFFERIZE-LEVEL-0:       linalg.fill
-//      BUFFERIZE-LEVEL-0:       memref.alloc() : memref<8x16xi32, 1>
+//      BUFFERIZE-LEVEL-0:       memref.alloc() : memref<8x16xi32, 1 : i32>
 //      BUFFERIZE-LEVEL-0:       bufferization.to_tensor %{{.*}} restrict writable
 //      BUFFERIZE-LEVEL-0:       linalg.copy
-//      BUFFERIZE-LEVEL-0:       memref.alloc() : memref<16x8xi32, 1>
+//      BUFFERIZE-LEVEL-0:       memref.alloc() : memref<16x8xi32, 1 : i32>
 //      BUFFERIZE-LEVEL-0:       bufferization.to_tensor %{{.*}} restrict writable
 //      BUFFERIZE-LEVEL-0:       linalg.copy
-//      BUFFERIZE-LEVEL-0:       memref.alloc() : memref<8x8xi32, 1>
+//      BUFFERIZE-LEVEL-0:       memref.alloc() : memref<8x8xi32, 1 : i32>
 //      BUFFERIZE-LEVEL-0:       bufferization.to_tensor %{{.*}} restrict writable
 //      BUFFERIZE-LEVEL-0:       linalg.copy
 //      BUFFERIZE-LEVEL-0:       linalg.matmul
@@ -62,20 +62,20 @@ func.func @matmul_static(%arg0 : tensor<8x16xi32>, %arg1 : tensor<16x8xi32>) -> 
     %extracted_slice_0 = tensor.extract_slice %arg1[0, %iv1] [16, 8] [1, 1] : tensor<16x8xi32> to tensor<16x8xi32>
     %extracted_slice_1 = tensor.extract_slice %arg2[%iv0, %iv1] [8, 8] [1, 1] : tensor<8x8xi32> to tensor<8x8xi32>
     %7 = bufferization.alloc_tensor() : tensor<8x16xi32>
-    %alloc = memref.alloc() : memref<8x16xi32, 1>
-    %8 = bufferization.to_tensor %alloc restrict writable : memref<8x16xi32, 1>
+    %alloc = memref.alloc() : memref<8x16xi32, 1 : i32>
+    %8 = bufferization.to_tensor %alloc restrict writable : memref<8x16xi32, 1 : i32>
     %9 = linalg.copy ins(%extracted_slice : tensor<8x16xi32>) outs(%8 : tensor<8x16xi32>) -> tensor<8x16xi32>
     %10 = bufferization.alloc_tensor() : tensor<16x8xi32>
-    %alloc_2 = memref.alloc() : memref<16x8xi32, 1>
-    %11 = bufferization.to_tensor %alloc_2 restrict writable : memref<16x8xi32, 1>
+    %alloc_2 = memref.alloc() : memref<16x8xi32, 1 : i32>
+    %11 = bufferization.to_tensor %alloc_2 restrict writable : memref<16x8xi32, 1 : i32>
     %12 = linalg.copy ins(%extracted_slice_0 : tensor<16x8xi32>) outs(%11 : tensor<16x8xi32>) -> tensor<16x8xi32>
     %13 = bufferization.alloc_tensor() : tensor<8x8xi32>
-    %alloc_3 = memref.alloc() : memref<8x8xi32, 1>
-    %14 = bufferization.to_tensor %alloc_3 restrict writable : memref<8x8xi32, 1>
+    %alloc_3 = memref.alloc() : memref<8x8xi32, 1 : i32>
+    %14 = bufferization.to_tensor %alloc_3 restrict writable : memref<8x8xi32, 1 : i32>
     %15 = scf.forall (%iv3, %iv4) = (0, 0) to (8, 8) step (4, 4) shared_outs(%arg5 = %14) -> (tensor<8x8xi32>) {
       %extracted_slice_4 = tensor.extract_slice %9[%iv3, 0] [4, 16] [1, 1] : tensor<8x16xi32> to tensor<4x16xi32>
       %extracted_slice_5 = tensor.extract_slice %12[0, %iv4] [16, 4] [1, 1] : tensor<16x8xi32> to tensor<16x4xi32>
-      %17 = bufferization.to_tensor %alloc_3 restrict writable : memref<8x8xi32, 1>
+      %17 = bufferization.to_tensor %alloc_3 restrict writable : memref<8x8xi32, 1 : i32>
       %extracted_slice_6 = tensor.extract_slice %17[%iv3, %iv4] [4, 4] [1, 1] : tensor<8x8xi32> to tensor<4x4xi32>
       %extracted_slice_7 = tensor.extract_slice %arg5[%iv3, %iv4] [4, 4] [1, 1] : tensor<8x8xi32> to tensor<4x4xi32>
       %18 = linalg.fill ins(%c0_i32 : i32) outs(%extracted_slice_7 : tensor<4x4xi32>) -> tensor<4x4xi32>
@@ -91,9 +91,9 @@ func.func @matmul_static(%arg0 : tensor<8x16xi32>, %arg1 : tensor<16x8xi32>) -> 
       }
     } {mapping = [#gpu.block<y>, #gpu.block<x>]}
     %16 = linalg.copy ins(%15 : tensor<8x8xi32>) outs(%extracted_slice_1 : tensor<8x8xi32>) -> tensor<8x8xi32>
-    memref.dealloc %alloc : memref<8x16xi32, 1>
-    memref.dealloc %alloc_2 : memref<16x8xi32, 1>
-    memref.dealloc %alloc_3 : memref<8x8xi32, 1>
+    memref.dealloc %alloc : memref<8x16xi32, 1 : i32>
+    memref.dealloc %alloc_2 : memref<16x8xi32, 1 : i32>
+    memref.dealloc %alloc_3 : memref<8x8xi32, 1 : i32>
     scf.forall.in_parallel {
       tensor.parallel_insert_slice %16 into %arg2[%iv0, %iv1] [8, 8] [1, 1] : tensor<8x8xi32> into tensor<8x8xi32>
     }
@@ -103,18 +103,18 @@ func.func @matmul_static(%arg0 : tensor<8x16xi32>, %arg1 : tensor<16x8xi32>) -> 
 //      BUFFERIZE-LEVEL-1: @matmul_static
 //      BUFFERIZE-LEVEL-1:   scf.forall
 // BUFFERIZE-LEVEL-1-SAME:   {
-//      BUFFERIZE-LEVEL-1:       memref.alloc() : memref<8x16xi32, 1>
+//      BUFFERIZE-LEVEL-1:       memref.alloc() : memref<8x16xi32, 1 : i32>
 //      BUFFERIZE-LEVEL-1:       bufferization.to_tensor %{{.*}} restrict writable
 //      BUFFERIZE-LEVEL-1:       linalg.copy
-//      BUFFERIZE-LEVEL-1:       memref.alloc() : memref<16x8xi32, 1>
+//      BUFFERIZE-LEVEL-1:       memref.alloc() : memref<16x8xi32, 1 : i32>
 //      BUFFERIZE-LEVEL-1:       bufferization.to_tensor %{{.*}} restrict writable
 //      BUFFERIZE-LEVEL-1:       linalg.copy
-//      BUFFERIZE-LEVEL-1:       memref.alloc() : memref<8x8xi32, 1>
+//      BUFFERIZE-LEVEL-1:       memref.alloc() : memref<8x8xi32, 1 : i32>
 //      BUFFERIZE-LEVEL-1:       bufferization.to_tensor %{{.*}} restrict writable
 //      BUFFERIZE-LEVEL-1:       scf.forall
 // BUFFERIZE-LEVEL-1-SAME:       {
 //      BUFFERIZE-LEVEL-1:            linalg.fill
-//      BUFFERIZE-LEVEL-1:            memref.alloc() : memref<4x4xi32, 2>
+//      BUFFERIZE-LEVEL-1:            memref.alloc() : memref<4x4xi32, 2 : i32>
 //      BUFFERIZE-LEVEL-1:            bufferization.to_tensor %{{.*}} restrict writable
 //      BUFFERIZE-LEVEL-1:            linalg.copy
 //      BUFFERIZE-LEVEL-1:            linalg.matmul

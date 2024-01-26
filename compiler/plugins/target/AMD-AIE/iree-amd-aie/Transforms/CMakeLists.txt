@@ -15,6 +15,8 @@ iree_tablegen_library(
     "Passes.td"
   OUTS
     --gen-pass-decls Passes.h.inc
+    --gen-enum-decls AMDAIEEnums.h.inc
+    --gen-enum-defs AMDAIEEnums.cpp.inc
 )
 
 iree_cc_library(
