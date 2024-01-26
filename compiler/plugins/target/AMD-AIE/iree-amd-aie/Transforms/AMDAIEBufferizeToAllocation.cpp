@@ -10,6 +10,10 @@
 #include "mlir/IR/Iterators.h"
 #include "mlir/Pass/Pass.h"
 
+// clang-format off: must be included after all LLVM/MLIR headers.
+#include "iree-amd-aie/Transforms/AMDAIEEnums.cpp.inc"  // IWYU pragma: export
+// clang-format on
+
 #define DEBUG_TYPE "iree-amdaie-bufferize-to-allocation"
 
 namespace mlir::iree_compiler::AMDAIE {
@@ -61,6 +65,24 @@ static FailureOr<SmallVector<Value>> getOperandsToBufferize(
   }
 }
 
+/// Utility to create and return AMDAIEMemSpaceAttr with a given integer
+/// `memorySpace`.
+static AMDAIEMemSpaceAttr getMemorySpaceAttr(RewriterBase &rewriter,
+                                             int64_t memorySpace) {
+  AMDAIEMemSpace memSpace;
+  switch (memorySpace) {
+    case 1:
+      memSpace = AMDAIEMemSpace::L1;
+      break;
+    case 2:
+      memSpace = AMDAIEMemSpace::L2;
+      break;
+    default:
+      assert(false && "incorrect memory space");
+  }
+  return AMDAIEMemSpaceAttr::get(rewriter.getContext(), memSpace);
+}
+
 class AMDAIEBufferizeToAllocationPass
     : public impl::AMDAIEBufferizeToAllocationBase<
           AMDAIEBufferizeToAllocationPass> {
@@ -108,7 +130,8 @@ void AMDAIEBufferizeToAllocationPass::runOnOperation() {
   }
 
   for (auto operand : *bufferizeOperands) {
-    auto memorySpaceAttr = rewriter.getI64IntegerAttr(memorySpace);
+    AMDAIEMemSpaceAttr memorySpaceAttr =
+        getMemorySpaceAttr(rewriter, memorySpace);
     rewriter.setInsertionPointAfter(operand.getDefiningOp());
     if (failed(applyBufferizeToAllocation(rewriter, operand.getDefiningOp(),
                                           memorySpaceAttr))) {
