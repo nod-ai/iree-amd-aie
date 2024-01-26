@@ -20,8 +20,6 @@ iree_register_external_hal_driver(
     iree_hal_xrt_driver_module_register
 )
 
-find_package(XRT REQUIRED)
-
 iree_cc_library(
   NAME
     xrt

@@ -53,22 +53,48 @@ To enable the runtime driver. You need to make sure XRT cmake package is discove
 One option is to add it to your PATH.
 Note that with a standard setup, XRT is installed in `/opt/xilinx/xrt`. 
 
-You could use this script in the install which setups your PATH.
-```
-source ${PATH_TO_XRT_INSTALL}/setup.sh
-``` 
-If for some reason this setup.sh is not available to you. You can do,
-```
-export PATH="${PATH_TO_XRT_INSTALL}/share/cmake/XRT:$PATH"
-```
-
 Now from within the iree-amd-aie root directory. Then,
 
 ```
 cd ../iree-build
-cmake -DIREE_CMAKE_PLUGIN_PATHS=../iree-amd-aie \
--DIREE_AMD_AIE_ENABLE_XRT_DRIVER=ON \
--DIREE_EXTERNAL_HAL_DRIVERS=xrt .
+cmake . -DIREE_CMAKE_PLUGIN_PATHS=../iree-amd-aie \
+  -DIREE_EXTERNAL_HAL_DRIVERS=xrt 
+  -DXRT_DIR=/opt/xilinx/xrt/share/cmake/XRT
 ninja
+```
+
+### Building XRT
+
+For the CI, we prefer to build against the pinned XRT. Note that XRT has
+submodules so recursively submodule initialization is required.
+
+You can build using the same script the CI does:
+
+```
+./build_tools/ci/build_xrt.sh ../xrt-build ../xrt-install
+```
+
+Then instead of using the default system install location for `-DXRT_DIR=`
+above, prepend the `../xrt-install/` prefix for the one you just built.
+
+### Ubuntu Dependencies
+
+Presently XRT is a monolithic build that unconditionally requires a number of
+packages. Here are the requirements for various operating systems:
+
+```
+apt install \
+  libboost-dev libboost-filesystem-dev libboost-program-options-dev \
+  libboost-system-dev \
+  pkg-config libdrm-dev opencl-headers ocl-icd-opencl-dev libssl-dev \
+  rapidjson-dev \
+  protobuf-compiler \
+  libprotobuf-dev \
+  python3-pybind11 \
+  uuid-dev \
+  libcurl4-openssl-dev \
+  libudev-dev \
+  systemtap-sdt-dev \
+  libelf-dev
 ```
 
