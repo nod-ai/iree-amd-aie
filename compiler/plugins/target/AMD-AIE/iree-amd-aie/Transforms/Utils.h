@@ -11,10 +11,9 @@
 
 namespace mlir::iree_compiler::AMDAIE {
 
-std::optional<scf::SCFFuseProducerOfSliceResult>
-tileAndFuseProducerOfSlice(RewriterBase &rewriter,
-                           tensor::ExtractSliceOp candidateSliceOp,
-                           scf::ForallOp &loop);
+std::optional<scf::SCFFuseProducerOfSliceResult> tileAndFuseProducerOfSlice(
+    RewriterBase &rewriter, tensor::ExtractSliceOp candidateSliceOp,
+    scf::ForallOp &loop);
 
 }  // namespace mlir::iree_compiler::AMDAIE
 

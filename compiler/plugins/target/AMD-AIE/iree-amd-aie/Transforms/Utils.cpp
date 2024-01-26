@@ -5,6 +5,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 #include "iree-amd-aie/Transforms/Utils.h"
+
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 
 namespace mlir::iree_compiler::AMDAIE {

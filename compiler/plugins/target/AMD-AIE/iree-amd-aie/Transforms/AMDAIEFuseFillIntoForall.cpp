@@ -34,7 +34,7 @@ void AMDAIEFuseFillIntoForallPass::runOnOperation() {
   // Find the producer op, in this case is linalg.fill.
   TilingInterface tileableProducer;
   funcOp->walk([&](TilingInterface op) {
-    if(isa<linalg::FillOp>(op)){
+    if (isa<linalg::FillOp>(op)) {
       tileableProducer = op;
       return WalkResult::interrupt();
     }
@@ -74,8 +74,9 @@ void AMDAIEFuseFillIntoForallPass::runOnOperation() {
 
   // Materialize the slice of the producer in place.
   std::optional<scf::SCFFuseProducerOfSliceResult> fusedProducer =
-        mlir::iree_compiler::AMDAIE::tileAndFuseProducerOfSlice(rewriter, sliceOpToTile, forallOp);
-  if (!fusedProducer){
+      mlir::iree_compiler::AMDAIE::tileAndFuseProducerOfSlice(
+          rewriter, sliceOpToTile, forallOp);
+  if (!fusedProducer) {
     funcOp->emitOpError("Failed to fuse fill op into forall loop.");
     return signalPassFailure();
   }

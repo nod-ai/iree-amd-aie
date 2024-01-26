@@ -150,7 +150,8 @@ LogicalResult applyTileAndFuseUsingSCFForall(RewriterBase &rewriter,
 
     // Materialize the slice of the producer in place.
     std::optional<scf::SCFFuseProducerOfSliceResult> fusedProducer =
-        mlir::iree_compiler::AMDAIE::tileAndFuseProducerOfSlice(rewriter, candidateSliceOp, forallLoop);
+        mlir::iree_compiler::AMDAIE::tileAndFuseProducerOfSlice(
+            rewriter, candidateSliceOp, forallLoop);
     if (!fusedProducer) continue;
 
     // Add more fusion candidates to the worklist.

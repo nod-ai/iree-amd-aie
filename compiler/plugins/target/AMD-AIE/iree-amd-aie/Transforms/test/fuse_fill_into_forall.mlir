@@ -33,7 +33,6 @@ func.func @matmul_example_dispatch_0_matmul_16x256x256_i8xi8xi32() {
       %extracted_slice_5 = tensor.extract_slice %pack[%arg3, 0, 0, 0] [1, 4, 16, 64] [1, 1, 1, 1] : tensor<1x4x16x64xi8> to tensor<1x4x16x64xi8>
       %extracted_slice_6 = tensor.extract_slice %pack_3[0, %arg4, 0, 0] [4, 1, 64, 64] [1, 1, 1, 1] : tensor<4x1x64x64xi8> to tensor<4x1x64x64xi8>
       %extracted_slice_7 = tensor.extract_slice %arg5[%arg3, %arg4, 0, 0] [1, 1, 16, 64] [1, 1, 1, 1] : tensor<1x1x16x64xi32> to tensor<1x1x16x64xi32>
-      // CHECK: linalg.fill ins(%{{.*}}) outs(%{{.*}}) -> tensor<1x1x16x64xi32>
       %14 = linalg.generic {indexing_maps = [#map2, #map3, #map4], iterator_types = ["parallel", "parallel", "reduction", "parallel", "parallel", "reduction"]} ins(%extracted_slice_5, %extracted_slice_6 : tensor<1x4x16x64xi8>, tensor<4x1x64x64xi8>) outs(%extracted_slice_7 : tensor<1x1x16x64xi32>) {
       ^bb0(%in: i8, %in_8: i8, %out: i32):
         %15 = arith.extsi %in : i8 to i32
@@ -57,3 +56,13 @@ func.func @matmul_example_dispatch_0_matmul_16x256x256_i8xi8xi32() {
   flow.dispatch.tensor.store %6, %2, offsets = [0, 0], sizes = [16, 256], strides = [1, 1] : tensor<16x256xi32> -> !flow.dispatch.tensor<writeonly:tensor<16x256xi32>>
   return
 }
+
+//      CHECK: @matmul_example_dispatch_0_matmul_16x256x256_i8xi8xi32
+//      CHECK:   scf.forall
+//      CHECK:   {
+//      CHECK:       scf.forall
+//      CHECK:       {
+//      CHECK:           linalg.fill
+//      CHECK:           linalg.generic
+//      CHECK:       }
+//      CHECK:   }
