@@ -40,7 +40,6 @@ iree_cc_library(
   SRCS
     "Passes.cpp"
     "AMDAIEBufferizeToAllocation.cpp"
-    "AMDAIEFuseFillIntoForall.cpp"
     "AMDAIELowerExecutableTarget.cpp"
     "AMDAIELowerWorkgroupCount.cpp"
     "AMDAIEPackAndTranspose.cpp"
@@ -52,7 +51,6 @@ iree_cc_library(
     "DecomposeLinalgExtPackUnPackToAIR.cpp"
     "Cleanup.cpp"
     "KernelDispatch.cpp"
-    "Utils.cpp"
   DEPS
     ::PassHeaders
     ::PassesIncGen
