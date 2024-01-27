@@ -47,6 +47,13 @@ std::unique_ptr<Pass> createAMDAIEBufferizeToAllocationPass(
 /// Create pass to invoke several cleanup and canonicalization patterns.
 std::unique_ptr<Pass> createAMDAIECleanupPass();
 
+/// Create a pass decomposing iree_linalg_ext.pack and unpack ops to AIR
+/// dialect.
+std::unique_ptr<Pass> createAMDAIEDecomposeLinalgExtPackUnPackToAIRPass();
+
+/// Create a pass to fuse the linalg.fill into the forall loops.
+std::unique_ptr<Pass> createAMDAIEFuseFillIntoForallPass();
+
 /// Create pass calling the dynamic pipeline for AMDAIE.
 std::unique_ptr<Pass> createAMDAIELowerExecutableTargetPass();
 
@@ -69,10 +76,6 @@ std::unique_ptr<Pass> createAMDAIETileAndFusePass(
 
 /// Create pass to propagate pack/unpack ops using upstream patterns.
 std::unique_ptr<Pass> createAMDAIEPropagateDataLayoutPass();
-
-/// Create a pass decomposing iree_linalg_ext.pack and unpack ops to AIR
-/// dialect.
-std::unique_ptr<Pass> createAMDAIEDecomposeLinalgExtPackUnPackToAIRPass();
 
 void registerAMDAIEPasses();
 
