@@ -20,6 +20,7 @@ mkdir -p "${install_dir}"
 cmake -GNinja \
   "-S${src_dir}" \
   "-B${build_dir}" \
+  -DDISABLE_ABI_CHECK=ON \
   -DCMAKE_INSTALL_PREFIX=/opt/xilinx \
   -DXRT_INSTALL_PREFIX=/opt/xilinx \
   -DCMAKE_BUILD_TYPE=Release 

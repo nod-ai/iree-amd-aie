@@ -58,6 +58,8 @@ cd $iree_dir
 cmake -S "$iree_dir" -B "$build_dir" \
   -GNinja \
   -DCMAKE_BUILD_TYPE=Release \
+  -DCMAKE_INSTALL_PREFIX="$install_dir" \
+  -DCMAKE_INSTALL_LIBDIR=lib \
   -DIREE_ENABLE_ASSERTIONS=ON \
   -DIREE_DEFAULT_CPU_LLVM_TARGETS=host \
   -DIREE_BUILD_SAMPLES=OFF \
