@@ -55,7 +55,8 @@ echo '{
 }' > $iree_dir/CMakeUserPresets.json 
 
 cd $iree_dir
-cmake -B "$build_dir" \
+cmake -S "$iree_dir" -B "$build_dir" \
+  -GNinja \
   -DCMAKE_BUILD_TYPE=Release \
   -DIREE_ENABLE_ASSERTIONS=ON \
   -DIREE_DEFAULT_CPU_LLVM_TARGETS=host \
