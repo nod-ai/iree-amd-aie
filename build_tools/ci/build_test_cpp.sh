@@ -5,8 +5,8 @@ set -eu -o errtrace
 this_dir="$(cd $(dirname $0) && pwd)"
 repo_root="$(cd $this_dir/../.. && pwd)"
 iree_dir="$(cd $repo_root/../iree && pwd)"
-build_dir="$repo_root/../iree-build"
-install_dir="$repo_root/../iree-install"
+build_dir="$repo_root/iree-build"
+install_dir="$repo_root/iree-install"
 mkdir -p "$build_dir"
 build_dir="$(cd $build_dir && pwd)"
 cache_dir="${cache_dir:-}"
@@ -36,8 +36,8 @@ export CMAKE_CXX_COMPILER_LAUNCHER=ccache
 ccache -z
 
 # Build XRT.
-XRT_BUILD_DIR=$repo_root/../xrt-build
-XRT_INSTALL_DIR=$repo_root/../xrt-install
+XRT_BUILD_DIR=$repo_root/xrt-build
+XRT_INSTALL_DIR=$repo_root/xrt-install
 $this_dir/build_xrt.sh $XRT_BUILD_DIR $XRT_INSTALL_DIR
 
 echo "Building IREE"

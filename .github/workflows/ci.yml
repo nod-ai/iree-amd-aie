@@ -53,12 +53,13 @@ jobs:
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: linux_x86_64_release_packages
           path: |
-            ${{ github.workspace }}/../iree-install/
-            !${{ github.workspace }}/../iree-install/bin/clang*
-            !${{ github.workspace }}/../iree-install/bin/llvm-link*
+            iree-install/
+            !iree-install/bin/clang*
+            !iree-install/bin/llvm-link*
           if-no-files-found: warn
 
       - name: Save cache
