@@ -59,8 +59,7 @@ jobs:
           # installs.
           rm -f iree-install/bin/clang*
           rm -f iree-install/bin/llvm-link*
-          tar cfJ iree-dist.tar.xz -C iree-install .
-          tar cfJ xrt-dist.tar.xz -C xrt-install .
+          tar cf iree-dist.tar -C iree-install .
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
@@ -69,9 +68,7 @@ jobs:
           name: linux_x86_64_release_packages
           path: |
             iree-dist.tar.xz
-            xrt-dist.tar.xz
           if-no-files-found: warn
-          compression-level: 0 # no compression
 
       - name: Save cache
         uses: actions/cache/save@v3
