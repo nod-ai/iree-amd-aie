@@ -3,7 +3,7 @@ import os
 import sys
 
 def print_usage():
-    print("Usage: python script.py <iree_bin> <vmfb_path>")
+    print("Usage: python run_module.py <iree_bin> <vmfb_path>")
     sys.exit(1)
 
 def main():
