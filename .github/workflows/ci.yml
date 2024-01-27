@@ -51,15 +51,25 @@ jobs:
           export cache_dir="${{ env.CACHE_DIR }}"
           bash build_tools/ci/build_test_cpp.sh
 
+      - name: Create artifacts
+        if: always()
+        run: |
+          # TODO: https://github.com/openxla/iree/issues/16230
+          # We should not be packaging clang and llvm-link in the default dist
+          # installs.
+          rm -f iree-install/bin/clang*
+          rm -f iree-install/bin/llvm-link*
+          tar cfJ iree-dist.tar.xz -C iree-install *
+          tar cfJ xrt-dist.tar.xz -C xrt-install *
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         if: always()
         with:
           name: linux_x86_64_release_packages
           path: |
-            iree-install/
-            !iree-install/bin/clang*
-            !iree-install/bin/llvm-link*
+            iree-dist.tar.xz
+            xrt-dist.tar.xz
           if-no-files-found: warn
 
       - name: Save cache
