@@ -52,7 +52,7 @@ jobs:
           bash build_tools/ci/build_test_cpp.sh
 
       - name: Create artifacts
-        if: !cancelled()
+        if: ${{ !cancelled() }}
         run: |
           # TODO: https://github.com/openxla/iree/issues/16230
           # We should not be packaging clang and llvm-link in the default dist
@@ -64,7 +64,7 @@ jobs:
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
-        if: !cancelled()
+        if: ${{ !cancelled() }}
         with:
           name: linux_x86_64_release_packages
           path: |
@@ -75,7 +75,7 @@ jobs:
 
       - name: Save cache
         uses: actions/cache/save@v3
-        if: !cancelled()
+        if: ${{ !cancelled() }}
         with:
           path: ${{ env.CACHE_DIR }}
           key: linux-build-test-cpp-asserts-manylinux-v2-${{ github.sha }}
