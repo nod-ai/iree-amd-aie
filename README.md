@@ -58,7 +58,7 @@ Now from within the iree-amd-aie root directory. Then,
 ```
 cd ../iree-build
 cmake . -DIREE_CMAKE_PLUGIN_PATHS=../iree-amd-aie \
-  -DIREE_EXTERNAL_HAL_DRIVERS=xrt 
+  -DIREE_EXTERNAL_HAL_DRIVERS=xrt  \
   -DXRT_DIR=/opt/xilinx/xrt/share/cmake/XRT
 ninja
 ```
@@ -98,3 +98,28 @@ apt install \
   libelf-dev
 ```
 
+### RH Based Deps
+
+This is an incomplete list derived by adding what is needed to our development
+base manylinux (AlmaLinux 8) image.
+
+```
+yum install \
+  boost-devel \
+  boost-filesystem \
+  boost-program-options \
+  boost-static \
+  libcurl-devel \
+  libdrm-devel \
+  libudev-devel \
+  libuuid-devel \
+  ncurses-devel \
+  ocl-icd-devel \
+  openssl-devel \
+  pkgconfig \
+  protobuf-compiler \
+  protobuf-devel \
+  rapidjson-devel \
+  systemtap-sdt-devel
+
+```
