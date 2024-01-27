@@ -71,6 +71,7 @@ jobs:
             iree-dist.tar.xz
             xrt-dist.tar.xz
           if-no-files-found: warn
+          compression-level: 0 # no compression
 
       - name: Save cache
         uses: actions/cache/save@v3
