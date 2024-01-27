@@ -6,6 +6,7 @@ this_dir="$(cd $(dirname $0) && pwd)"
 repo_root="$(cd $this_dir/../.. && pwd)"
 iree_dir="$(cd $repo_root/../iree && pwd)"
 build_dir="$repo_root/../iree-build"
+install_dir="$repo_root/../iree-install"
 mkdir -p "$build_dir"
 build_dir="$(cd $build_dir && pwd)"
 cache_dir="${cache_dir:-}"
@@ -62,6 +63,11 @@ cmake --preset new-linux-minimal -B "$build_dir" \
 echo "Building all"
 echo "------------"
 cmake --build "$build_dir" -- -k 0
+
+echo "Installing"
+echo "----------"
+echo "Install to: $install_dir"
+cmake --build "$build_dir" --target iree-install-dist
 
 echo "CTest"
 echo "-----"

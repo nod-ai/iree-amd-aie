@@ -58,7 +58,7 @@ Now from within the iree-amd-aie root directory. Then,
 ```
 cd ../iree-build
 cmake . -DIREE_CMAKE_PLUGIN_PATHS=../iree-amd-aie \
-  -DIREE_EXTERNAL_HAL_DRIVERS=xrt  \
+  -DIREE_EXTERNAL_HAL_DRIVERS=xrt \
   -DXRT_DIR=/opt/xilinx/xrt/share/cmake/XRT
 ninja
 ```
