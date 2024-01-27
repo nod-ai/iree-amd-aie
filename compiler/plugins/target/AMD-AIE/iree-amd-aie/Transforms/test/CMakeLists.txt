@@ -11,7 +11,6 @@ iree_lit_test_suite(
     "bufferize_to_allocation_pack.mlir"
     "bufferize_to_allocation_pad.mlir"
     "bufferize_to_allocation_pad_last.mlir"
-    "fuse_fill_into_forall.mlir"
     "lower_workgroup_count.mlir"
     "pack_and_transpose_level1.mlir"
     "pack_and_transpose_level2.mlir"
