@@ -55,7 +55,18 @@ echo '{
 }' > $iree_dir/CMakeUserPresets.json 
 
 cd $iree_dir
-cmake --preset new-linux-minimal -B "$build_dir" \
+cmake -B "$build_dir" \
+  -DIREE_DEFAULT_CPU_LLVM_TARGETS=host \
+  -DIREE_BUILD_SAMPLES=OFF \
+  -DIREE_BUILD_PYTHON_BINDINGS=OFF \
+  -DIREE_BUILD_BINDINGS_TFLITE=OFF \
+  -DIREE_HAL_DRIVER_DEFAULTS=OFF \
+  -DIREE_HAL_DRIVER_LOCAL_SYNC=ON \
+  -DIREE_HAL_DRIVER_LOCAL_TASK=ON \
+  -DIREE_TARGET_BACKEND_DEFAULTS=OFF \
+  -DIREE_TARGET_BACKEND_LLVM_CPU=ON \
+  -DIREE_INPUT_TOSA=OFF \
+  -DIREE_INPUT_STABLEHLO=OFF \
   -DIREE_CMAKE_PLUGIN_PATHS=../iree-amd-aie \
   -DIREE_EXTERNAL_HAL_DRIVERS=xrt \
   -DXRT_DIR=$XRT_INSTALL_DIR/opt/xilinx/xrt/share/cmake/XRT
