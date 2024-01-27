@@ -67,7 +67,7 @@ jobs:
         with:
           name: linux_x86_64_release_packages
           path: |
-            iree-dist.tar.xz
+            iree-dist.tar
           if-no-files-found: warn
 
       - name: Save cache
