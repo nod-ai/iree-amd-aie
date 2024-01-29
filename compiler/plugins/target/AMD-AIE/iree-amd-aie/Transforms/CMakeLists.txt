@@ -52,7 +52,6 @@ iree_cc_library(
     "DecomposeLinalgExtPackUnPackToAIR.cpp"
     "Cleanup.cpp"
     "KernelDispatch.cpp"
-    "Utils.cpp"
   DEPS
     ::PassHeaders
     ::PassesIncGen

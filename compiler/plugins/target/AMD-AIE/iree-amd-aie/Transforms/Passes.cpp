@@ -61,16 +61,14 @@ void addPadBasedPassPipeline(OpPassManager &pm, TilingConfig &tilingConfig) {
   modulePassManager.addNestedPass<func::FuncOp>(createAMDAIECleanupPass());
   pm.addPass(createCanonicalizerPass());
   pm.addPass(createCSEPass());
-  bool useSCFFor = false;
   int64_t memorySpace = 1;
   for (unsigned i = 0, n = tilingConfig.getNumTilingLevels(); i < n; i++) {
     {
       AMDAIETileAndFuseOptions options;
       if (i == 2) {
-        useSCFFor = true;
+        options.useSCFFor = true;
       }
       options.tilingLevel = i;
-      options.useSCFFor = useSCFFor;
       modulePassManager.addNestedPass<func::FuncOp>(
           createAMDAIETileAndFusePass(options));
     }
