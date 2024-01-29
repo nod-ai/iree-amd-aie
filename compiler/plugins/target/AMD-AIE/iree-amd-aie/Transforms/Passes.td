@@ -100,8 +100,6 @@ def AMDAIETileAndFuse :
   let options = [
     Option<"useSCFFor", "use-scf-for", "bool", /*default=*/"false",
       "Use scf.forall by default for the corresponding tiling level">,
-    Option<"useFusion", "use-fusion", "bool", /*default=*/"true",
-      "Use fusion by default unless explicitly not desired">,
     Option<"tilingLevel", "tiling-level", "int64_t", /*default=*/"-1",
       "Use default tiling level used to retrieve the configuration from lowering_config">  
   ];

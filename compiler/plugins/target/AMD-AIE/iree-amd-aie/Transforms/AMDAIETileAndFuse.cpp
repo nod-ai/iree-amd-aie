@@ -30,59 +30,41 @@ namespace mlir::iree_compiler::AMDAIE {
 
 namespace {
 
+/// Utility function to check if any of the reduction dimension is being tiled.
+static bool isTilingReductionDimension(TilingInterface consumerOp,
+                                       SmallVector<int64_t> tileSizesVal) {
+  SmallVector<utils::IteratorType> loopIteratorTypes =
+      consumerOp.getLoopIteratorTypes();
+  unsigned totalTileSizes = tileSizesVal.size();
+  unsigned totalLoopIteratorTypes = loopIteratorTypes.size();
+  // Assume the following cases for [parallel, parallel, reduction, parallel]
+  // iter types :-
+  // Case 1:
+  //    tile_size = [8, 8] - this is essentially -> [8, 8, 0, 0], i.e. we tile
+  //    both the parallel iter types and do not tile the last two iter type
+  //    (reduction and parallel in this case).
+  // Case 2:
+  //    tile_size = [8, 0, 8] - this is essentially -> [8, 0, 8, 0], i.e. here
+  //    we tile the first iter type (parallel), do not tile the second iter type
+  //    (parallel), tile the third iter type (reduction) and do not tile the
+  //    last iter type (parallel).
+  // Case 3:
+  //    tile_size = [0, 0, 8, 8] - here we only tile the last two iter types
+  //    (reduction and parallel).
+  if (totalTileSizes < totalLoopIteratorTypes) {
+    tileSizesVal.append(totalLoopIteratorTypes - totalTileSizes, 0);
+  }
+  for (auto [tileSize, loopIteratorType] :
+       llvm::zip(tileSizesVal, loopIteratorTypes)) {
+    if (loopIteratorType == utils::IteratorType::reduction && tileSize != 0)
+      return true;
+  }
+  return false;
+}
+
 LogicalResult applyTileAndFuse(RewriterBase &rewriter, TilingInterface rootOp,
                                DominanceInfo &dominanceInfo,
-                               scf::SCFTilingOptions options, bool useSCFFor,
-                               bool useFusion) {
-  if (!useSCFFor) {
-    options.setLoopType(scf::SCFTilingOptions::LoopType::ForallOp);
-  }
-  scf::SCFTileAndFuseOptions tileAndFuseOptions;
-  tileAndFuseOptions.setTilingOptions(options);
-  tileAndFuseOptions.setFusionControlFn(
-      [&](tensor::ExtractSliceOp sliceOp, OpResult originalProducer,
-          bool isDestinationOperand) -> std::tuple<bool, bool> {
-        bool fusableOp =
-            TypeSwitch<Operation *, bool>(originalProducer.getOwner())
-                // List ops that shouldnt be fused.
-                .Case<tensor::PackOp, tensor::PadOp, linalg::CopyOp,
-                      memref::CopyOp>([](Operation *) { return false; })
-                // Fuse all Linalg ops (can be generalized later)
-                .Default([&](Operation *op) {
-                  return op->getDialect() ==
-                         rewriter.getContext()
-                             ->getLoadedDialect<linalg::LinalgDialect>();
-                });
-        return {fusableOp, false};
-      });
-
-  if (useFusion) {
-    tileAndFuseOptions.setFusionControlFn(
-        [&](tensor::ExtractSliceOp sliceOp, OpResult originalProducer,
-            bool isDestinationOperand) -> std::tuple<bool, bool> {
-          bool fusableOp =
-              TypeSwitch<Operation *, bool>(originalProducer.getOwner())
-                  // List ops that shouldnt be fused.
-                  .Case<tensor::PackOp, tensor::PadOp, linalg::CopyOp,
-                        memref::CopyOp>([](Operation *) { return false; })
-                  // Fuse all Linalg ops (can be generalized later)
-                  .Default([&](Operation *op) {
-                    return op->getDialect() ==
-                           rewriter.getContext()
-                               ->getLoadedDialect<linalg::LinalgDialect>();
-                  });
-          return {fusableOp, false};
-        });
-  }
-  // If user of pass requests they dont want fusion we disable all fusion.
-  else {
-    tileAndFuseOptions.setFusionControlFn(
-        [&](tensor::ExtractSliceOp sliceOp, OpResult originalProducer,
-            bool isDestinationOperand) -> std::tuple<bool, bool> {
-          return {false, false};
-        });
-  }
-
+                               scf::SCFTileAndFuseOptions &tileAndFuseOptions) {
   FailureOr<scf::SCFTileAndFuseResult> tileAndFuseResult =
       scf::tileConsumerAndFuseProducersUsingSCF(rewriter, rootOp,
                                                 tileAndFuseOptions);
@@ -169,10 +151,44 @@ void AMDAIETileAndFusePass::runOnOperation() {
          gpu::GPUBlockMappingAttr::get(context, gpu::MappingId::DimX)});
   }
 
+  if (!useSCFFor) {
+    options.setLoopType(scf::SCFTilingOptions::LoopType::ForallOp);
+  }
+
   IRRewriter rewriter(context);
   DominanceInfo dominanceInfo(funcOp);
-  if (failed(applyTileAndFuse(rewriter, consumerOp, dominanceInfo, options,
-                              useSCFFor, useFusion))) {
+  scf::SCFTileAndFuseOptions tileAndFuseOptions;
+  tileAndFuseOptions.setTilingOptions(options);
+  // We switch off fusion if any of the reduction dimension is being tiled. We
+  // resort to the default fusion control function that eliminates certain ops
+  // otherwise.
+  if (bool tilingReductionDimension =
+          isTilingReductionDimension(consumerOp, tileSizesVal)) {
+    tileAndFuseOptions.setFusionControlFn(
+        [&](tensor::ExtractSliceOp sliceOp, OpResult originalProducer,
+            bool isDestinationOperand) -> std::tuple<bool, bool> {
+          return {false, false};
+        });
+  } else {
+    tileAndFuseOptions.setFusionControlFn(
+        [&](tensor::ExtractSliceOp sliceOp, OpResult originalProducer,
+            bool isDestinationOperand) -> std::tuple<bool, bool> {
+          bool fusableOp =
+              TypeSwitch<Operation *, bool>(originalProducer.getOwner())
+                  // List ops that shouldnt be fused.
+                  .Case<tensor::PackOp, tensor::PadOp, linalg::CopyOp,
+                        memref::CopyOp>([](Operation *) { return false; })
+                  // Fuse all Linalg ops (can be generalized later)
+                  .Default([&](Operation *op) {
+                    return op->getDialect() ==
+                           rewriter.getContext()
+                               ->getLoadedDialect<linalg::LinalgDialect>();
+                  });
+          return {fusableOp, false};
+        });
+  }
+  if (failed(applyTileAndFuse(rewriter, consumerOp, dominanceInfo,
+                              tileAndFuseOptions))) {
     LLVM_DEBUG(llvm::dbgs() << "----- tile and fuse failed -----\n");
     return signalPassFailure();
   }

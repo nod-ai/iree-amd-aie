@@ -67,7 +67,6 @@ void addPadBasedPassPipeline(OpPassManager &pm, TilingConfig &tilingConfig) {
       AMDAIETileAndFuseOptions options;
       if (i == 2) {
         options.useSCFFor = true;
-        options.useFusion = false;
       }
       options.tilingLevel = i;
       modulePassManager.addNestedPass<func::FuncOp>(
