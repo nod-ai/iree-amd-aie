@@ -75,12 +75,10 @@ func.func @func4() {
     // CHECK: %[[SUBVIEW0:.*]] = memref.subview %{{.*}}[%{{.*}}, 0] [8, 16] [1, 1] : memref<8x16xi32> to memref<8x16xi32, strided<[16, 1], offset: ?>>
     // CHECK: %[[SUBVIEW1:.*]] = memref.subview %{{.*}}[0, %{{.*}}] [16, 16] [1, 1] : memref<16x32xi32> to memref<16x16xi32, strided<[32, 1], offset: ?>>
     // CHECK: %[[SUBVIEW2:.*]] = memref.subview %{{.*}}[%{{.*}}, %{{.*}}] [8, 16] [1, 1] : memref<8x32xi32> to memref<8x16xi32, strided<[32, 1], offset: ?>>
-    // CHECK: %[[TRANSPOSE0:.*]] = memref.transpose %[[SUBVIEW0]] (d0, d1) -> (d0, d1) : memref<8x16xi32, strided<[16, 1], offset: ?>> to memref<8x16xi32, strided<[16, 1], offset: ?>>
-    // CHECK: air.dma_memcpy_nd (%{{.*}}[] [] [], %[[TRANSPOSE0]][] [] []) : (memref<1x1x8x16xi32, 1>, memref<8x16xi32, strided<[16, 1], offset: ?>>)
+    // CHECK: air.dma_memcpy_nd (%{{.*}}[] [] [], %[[SUBVIEW0]][] [] []) : (memref<1x1x8x16xi32, 1>, memref<8x16xi32, strided<[16, 1], offset: ?>>)
     iree_linalg_ext.pack %subview inner_dims_pos = [0, 1] inner_tiles = [8, 16] into %alloc : (memref<8x16xi32, strided<[16, 1], offset: ?>> memref<1x1x8x16xi32, 1>)
     %alloc_2 = memref.alloc() : memref<1x1x16x16xi32, 1>
-    // CHECK: %[[TRANSPOSE1:.*]] = memref.transpose %[[SUBVIEW1]] (d0, d1) -> (d0, d1) : memref<16x16xi32, strided<[32, 1], offset: ?>> to memref<16x16xi32, strided<[32, 1], offset: ?>>
-    // CHECK: air.dma_memcpy_nd (%{{.*}}[] [] [], %[[TRANSPOSE1]][] [] []) : (memref<1x1x16x16xi32, 1>, memref<16x16xi32, strided<[32, 1], offset: ?>>)
+    // CHECK: air.dma_memcpy_nd (%{{.*}}[] [] [], %[[SUBVIEW1]][] [] []) : (memref<1x1x16x16xi32, 1>, memref<16x16xi32, strided<[32, 1], offset: ?>>)
     iree_linalg_ext.pack %subview_0 outer_dims_perm = [0, 1] inner_dims_pos = [0, 1] inner_tiles = [16, 16] into %alloc_2 : (memref<16x16xi32, strided<[32, 1], offset: ?>> memref<1x1x16x16xi32, 1>)
     %alloc_3 = memref.alloc() : memref<1x1x8x16xi32, 1>
     scf.parallel (%arg2, %arg3) = (%c0, %c0) to (%c1, %c1) step (%c1, %c1) {

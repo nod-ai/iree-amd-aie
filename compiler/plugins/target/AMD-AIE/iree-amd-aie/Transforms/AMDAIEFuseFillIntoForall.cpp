@@ -5,7 +5,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 #include "iree-amd-aie/Transforms/Passes.h"
-#include "iree-amd-aie/Transforms/Utils.h"
+#include "mlir/Dialect/SCF/Transforms/TileUsingInterface.h"
 #include "mlir/Pass/Pass.h"
 
 #define DEBUG_TYPE "iree-amdaie-fuse-fill-into-forall"
@@ -72,10 +72,13 @@ void AMDAIEFuseFillIntoForallPass::runOnOperation() {
   }
   auto sliceOpToTile = cast<tensor::ExtractSliceOp>(*itBBArgUsers);
 
+  LoopLikeOpInterface loops =
+      cast<LoopLikeOpInterface>(forallOp.getOperation());
+
   // Materialize the slice of the producer in place.
   std::optional<scf::SCFFuseProducerOfSliceResult> fusedProducer =
-      mlir::iree_compiler::AMDAIE::tileAndFuseProducerOfSlice(
-          rewriter, sliceOpToTile, forallOp);
+      scf::tileAndFuseProducerOfSlice(rewriter, sliceOpToTile,
+                                      MutableArrayRef(&loops, 1));
   if (!fusedProducer) {
     funcOp->emitOpError("Failed to fuse fill op into forall loop.");
     return signalPassFailure();
