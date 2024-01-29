@@ -52,6 +52,12 @@ def AMDAIEDecomposeLinalgExtPackUnPackToAIR :
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEDecomposeLinalgExtPackUnPackToAIRPass()";
 }
 
+def AMDAIEFuseFillIntoForall :
+    Pass<"iree-amdaie-fuse-fill-into-forall", "func::FuncOp"> {
+  let summary = "Fuse the linalg.fill into the forall loops.";
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEFuseFillIntoForallPass()";
+}
+
 def AMDAIELowerExecutableTarget :
     Pass<"iree-amdaie-lower-executable-target", "mlir::iree_compiler::IREE::HAL::ExecutableVariantOp"> {
   let summary = "Perform lowering of executable target using one of the IREE::HAL::DispatchLoweringPassPipeline";

@@ -40,6 +40,7 @@ iree_cc_library(
   SRCS
     "Passes.cpp"
     "AMDAIEBufferizeToAllocation.cpp"
+    "AMDAIEFuseFillIntoForall.cpp"
     "AMDAIELowerExecutableTarget.cpp"
     "AMDAIELowerWorkgroupCount.cpp"
     "AMDAIEPackAndTranspose.cpp"
