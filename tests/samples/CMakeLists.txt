@@ -8,6 +8,7 @@ iree_lit_test_suite(
   NAME
     lit
   SRCS
+    "matmul_fill_static.mlir"
     "matmul_fill_static_i32.mlir"
     "matmul_fill_static_i32_config.mlir"
   TOOLS
