@@ -104,11 +104,6 @@ void AMDAIELowerExecutableTargetPass::runOnOperation() {
         "Expected a variantOp root with an inner ModuleOp");
     return signalPassFailure();
   }
-  // TODO (nmeshram): ADD a LoweringStrategy pass where this should be moved and
-  // then the lowering startegy should be verified
-  if (failed(initAIELaunchConfig(moduleOp))) {
-    return signalPassFailure();
-  }
 
   OpPassManager executableLoweringPipeline(
       IREE::HAL::ExecutableVariantOp::getOperationName());

@@ -106,6 +106,7 @@ void addPadBasedPassPipeline(OpPassManager &pm, TilingConfig &tilingConfig) {
 void buildAMDAIETransformPassPipeline(OpPassManager &pm) {
   addCommonTargetExecutablePreprocessingPasses(pm);
   pm.addPass(createEraseHALDescriptorTypeFromMemRefPass());
+  pm.addPass(createAMDAIEAddLoweringStrategyPass());
   pm.addPass(createAMDAIELowerExecutableTargetPass());
   pm.addPass(createAMDAIELowerWorkgroupCountPass());
 
