@@ -19,7 +19,7 @@ namespace mlir::iree_compiler::AMDAIE {
 /// implements the contraction operation interface.
 static LogicalResult setRootConfig(func::FuncOp entryPointFn,
                                    linalg::MatmulOp matmulOp,
-                                   StringRef tilingStrategy) {
+                                   bool useUKernelStrategy) {
   assert(!getLoweringConfig(matmulOp) && "expected lowering_config is not set");
   auto linalgOp = cast<linalg::LinalgOp>(matmulOp.getOperation());
   unsigned numLoops = linalgOp.getNumLoops();
@@ -36,7 +36,7 @@ static LogicalResult setRootConfig(func::FuncOp entryPointFn,
   // logic. Also, need a flag to experiment between pad based and pack based
   // approach which will have different tile sizes and pass pipelines
   TileSizesListType tileSizes;
-  if (tilingStrategy == "ukernel") {
+  if (useUKernelStrategy) {
     SmallVector<int64_t> TileSizeLevel0 = {16, 64};
     SmallVector<int64_t> TileSizeLevel1 = {0, 0, 64};
     SmallVector<int64_t> TileSizeLevel2 = {1, 1};
@@ -55,14 +55,14 @@ static LogicalResult setRootConfig(func::FuncOp entryPointFn,
 
 /// Redirects to methods that set the configuration based on operation type.
 static LogicalResult setRootConfigImpl(func::FuncOp entryPointFn, Operation *op,
-                                       StringRef tilingStrategy) {
+                                       bool useUKernelStrategy) {
   auto setRootConfigFn = [&](Operation *op) -> LogicalResult {
     return TypeSwitch<Operation *, LogicalResult>(op)
         // TODO (nmeshram): This is very limited for now, plan is to
         // let it first crash for all the other ops and then consiously
         // add support for them, this way we can verify our work.
         .Case<linalg::MatmulOp>([&](auto op) {
-          return setRootConfig(entryPointFn, op, tilingStrategy);
+          return setRootConfig(entryPointFn, op, useUKernelStrategy);
         })
         .Default([&](Operation *op) { return success(); });
   };
@@ -72,7 +72,7 @@ static LogicalResult setRootConfigImpl(func::FuncOp entryPointFn, Operation *op,
 /// Sets the translation information to use for a dispatch region.
 static LogicalResult setTranslationInfoAndRootConfig(
     func::FuncOp entryPointFn, ArrayRef<Operation *> computeOps,
-    StringRef tilingStrategy) {
+    bool useUKernelStrategy) {
   // Make sure that lowering_config is not preset on any compute ops.
   for (auto computeOp : computeOps) {
     if (getLoweringConfig(computeOp)) return failure();
@@ -87,7 +87,8 @@ static LogicalResult setTranslationInfoAndRootConfig(
     return entryPointFn.emitError("Case with no root ops not yet supported.");
   }
 
-  if (failed(setRootConfigImpl(entryPointFn, rootOperation, tilingStrategy))) {
+  if (failed(
+          setRootConfigImpl(entryPointFn, rootOperation, useUKernelStrategy))) {
     return failure();
   }
 
@@ -97,7 +98,7 @@ static LogicalResult setTranslationInfoAndRootConfig(
   return success();
 }
 
-LogicalResult initAIELaunchConfig(ModuleOp moduleOp, StringRef tilingStrategy) {
+LogicalResult initAIELaunchConfig(ModuleOp moduleOp, bool useUKernelStrategy) {
   llvm::StringMap<IREE::HAL::ExecutableExportOp> exportOps =
       getAllEntryPoints(moduleOp);
   for (auto funcOp : moduleOp.getOps<func::FuncOp>()) {
@@ -112,7 +113,7 @@ LogicalResult initAIELaunchConfig(ModuleOp moduleOp, StringRef tilingStrategy) {
 
     SmallVector<Operation *> computeOps = getComputeOps(funcOp);
     if (failed(setTranslationInfoAndRootConfig(funcOp, computeOps,
-                                               tilingStrategy))) {
+                                               useUKernelStrategy))) {
       return failure();
     }
   }

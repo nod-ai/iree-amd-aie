@@ -48,7 +48,7 @@ void AMDAIEAddLoweringStrategyPass::runOnOperation() {
         "Expected a variantOp root with an inner ModuleOp");
     return signalPassFailure();
   }
-  if (failed(initAIELaunchConfig(moduleOp, tilingStrategy))) {
+  if (failed(initAIELaunchConfig(moduleOp, useUKernelStrategy))) {
     return signalPassFailure();
   }
 }
