@@ -59,8 +59,7 @@ std::unique_ptr<Pass> createAMDAIEAddLoweringStrategyPass(
     AMDAIEAddLoweringStrategyOptions options = {});
 
 /// Create pass calling the dynamic pipeline for AMDAIE.
-std::unique_ptr<Pass> createAMDAIELowerExecutableTargetPass(
-    AMDAIELowerExecutableTargetOptions options = {});
+std::unique_ptr<Pass> createAMDAIELowerExecutableTargetPass();
 
 /// Create a pass to lower workgroup count region of entry point operations.
 std::unique_ptr<Pass> createAMDAIELowerWorkgroupCountPass();

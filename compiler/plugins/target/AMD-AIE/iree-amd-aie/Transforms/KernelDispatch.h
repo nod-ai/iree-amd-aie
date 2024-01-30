@@ -13,7 +13,7 @@
 namespace mlir::iree_compiler::AMDAIE {
 
 LogicalResult initAIELaunchConfig(ModuleOp moduleOp,
-                                  StringRef tilingStrategy = "");
+                                  bool useUKernelStrategy = false);
 
 }  // namespace mlir::iree_compiler::AMDAIE
 

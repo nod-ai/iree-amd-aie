@@ -55,9 +55,6 @@ class AMDAIELowerExecutableTargetPass
 
   AMDAIELowerExecutableTargetPass() = default;
   AMDAIELowerExecutableTargetPass(
-      const AMDAIELowerExecutableTargetOptions &options)
-      : AMDAIELowerExecutableTargetBase(options) {}
-  AMDAIELowerExecutableTargetPass(
       const AMDAIELowerExecutableTargetPass &pass){};
 
   void runOnOperation() override;
@@ -105,11 +102,6 @@ void AMDAIELowerExecutableTargetPass::runOnOperation() {
   if (!moduleOp) {
     getOperation()->emitError(
         "Expected a variantOp root with an inner ModuleOp");
-    return signalPassFailure();
-  }
-  // TODO (nmeshram): ADD a LoweringStrategy pass where this should be moved and
-  // then the lowering startegy should be verified
-  if (failed(initAIELaunchConfig(moduleOp, tilingStrategy))) {
     return signalPassFailure();
   }
 
@@ -160,9 +152,8 @@ void AMDAIELowerExecutableTargetPass::runOnOperation() {
   }
 }
 
-std::unique_ptr<Pass> createAMDAIELowerExecutableTargetPass(
-    AMDAIELowerExecutableTargetOptions options) {
-  return std::make_unique<AMDAIELowerExecutableTargetPass>(options);
+std::unique_ptr<Pass> createAMDAIELowerExecutableTargetPass() {
+  return std::make_unique<AMDAIELowerExecutableTargetPass>();
 }
 
 }  // namespace mlir::iree_compiler::AMDAIE
