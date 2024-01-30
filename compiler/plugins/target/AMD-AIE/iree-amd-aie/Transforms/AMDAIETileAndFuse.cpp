@@ -26,6 +26,7 @@
 
 #define DEBUG_TYPE "iree-amdaie-tile-and-fuse"
 
+
 namespace mlir::iree_compiler::AMDAIE {
 
 namespace {
@@ -162,8 +163,7 @@ void AMDAIETileAndFusePass::runOnOperation() {
   // We switch off fusion if any of the reduction dimension is being tiled. We
   // resort to the default fusion control function that eliminates certain ops
   // otherwise.
-  if (bool tilingReductionDimension =
-          isTilingReductionDimension(consumerOp, tileSizesVal)) {
+  if (isTilingReductionDimension(consumerOp, tileSizesVal)) {
     tileAndFuseOptions.setFusionControlFn(
         [&](tensor::ExtractSliceOp sliceOp, OpResult originalProducer,
             bool isDestinationOperand) -> std::tuple<bool, bool> {
