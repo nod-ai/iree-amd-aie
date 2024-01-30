@@ -69,6 +69,7 @@ iree_cc_library(
     ::defs
     ::AIRDialectIR
     ::AIRTransformOpsGen
+    ::AIRTransformPasses
     iree::target::amd-aie::aie::AIEDialectIR
     MLIRIR
     MLIRLinalgTransformOps
@@ -250,13 +251,11 @@ iree_cc_library(
     iree::target::amd-aie::aie::AIEDialectIR
     ::AIRDialectIR
     ::AIRTransform
-    ::AIRTransformOps
     ::AIRTransformPassHeaders
     ::AIRUtil
     MLIRIR
     MLIRLinalgDialect
     MLIRLinalgTransforms
-    MLIRLinalgTransformOps
     MLIRLinalgUtils
     MLIRSupport
 )
