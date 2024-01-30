@@ -35,22 +35,25 @@ static LogicalResult setRootConfig(func::FuncOp entryPointFn,
   // TODO (nmeshram) : This needs to be moved in a separate more generalized
   // logic. Also, need a flag to experiment between pad based and pack based
   // approach which will have different tile sizes and pass pipelines
-  TileSizesListType tileSizes;
-  if (useUKernelStrategy) {
-    SmallVector<int64_t> TileSizeLevel0 = {16, 64};
-    SmallVector<int64_t> TileSizeLevel1 = {0, 0, 64};
-    SmallVector<int64_t> TileSizeLevel2 = {1, 1};
-    tileSizes = {TileSizeLevel0, TileSizeLevel1, TileSizeLevel2};
-  } else {
+  if (clUsePadPipeline) {
     SmallVector<int64_t> TileSizeLevel0 = {8, 8};
     SmallVector<int64_t> TileSizeLevel1 = {4, 4};
     SmallVector<int64_t> TileSizeLevel2 = {0, 0, 4};
-    tileSizes = {TileSizeLevel0, TileSizeLevel1, TileSizeLevel2};
+    TileSizesListType tileSizes = {TileSizeLevel0, TileSizeLevel1,
+                                   TileSizeLevel2};
+    return setOpConfigAndEntryPointFnTranslation(
+        entryPointFn, matmulOp, tileSizes,
+        IREE::Codegen::DispatchLoweringPassPipeline::CPUDefault);
+  } else {
+    SmallVector<int64_t> TileSizeLevel0 = {8, 16};
+    SmallVector<int64_t> TileSizeLevel1 = {1, 1};
+    SmallVector<int64_t> TileSizeLevel2 = {0, 0, 1};
+    TileSizesListType tileSizes = {TileSizeLevel0, TileSizeLevel1,
+                                   TileSizeLevel2};
+    return setOpConfigAndEntryPointFnTranslation(
+        entryPointFn, matmulOp, tileSizes,
+        IREE::Codegen::DispatchLoweringPassPipeline::CPUDoubleTilingExpert);
   }
-
-  return setOpConfigAndEntryPointFnTranslation(
-      entryPointFn, matmulOp, tileSizes,
-      IREE::Codegen::DispatchLoweringPassPipeline::CPUDefault);
 }
 
 /// Redirects to methods that set the configuration based on operation type.

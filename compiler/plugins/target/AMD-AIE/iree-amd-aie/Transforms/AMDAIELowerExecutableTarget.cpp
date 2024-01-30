@@ -34,6 +34,14 @@ using mlir::iree_compiler::IREE::Codegen::LoweringConfigAttr;
 namespace mlir::iree_compiler::AMDAIE {
 
 namespace {
+
+/// Command line options used purely for development purposes. Not to be relied
+/// on in any way.
+static llvm::cl::opt<bool> clUsePadPipeline(
+    "iree-amdaie-pad-pipeline",
+    llvm::cl::desc("Runs the pad based lowering pipeline"),
+    llvm::cl::init(false));
+
 /// Lowers an hal.executable.variant operation to scalar/native-vector
 /// code. Invokes different compilation pipeline to
 /// - first lower to scalar/native-vector code
@@ -138,8 +146,15 @@ void AMDAIELowerExecutableTargetPass::runOnOperation() {
       case IREE::Codegen::DispatchLoweringPassPipeline::TransformDialectCodegen:
         addTransformDialectPasses(executableLoweringPipeline);
         break;
-      // TODO(avarma): Currently we are using "CPUDefault" but resorting to use
-      //               the default case. Will soon have corresponding AIE enum.
+      // TODO(avarma): Currently we are using "CPUDefault" for Pad based
+      // approach
+      //               and "CPUDoubleTilingExpert" for Pack based approach.
+      //               Will soon have corresponding AIE enum.
+      case IREE::Codegen::DispatchLoweringPassPipeline::CPUDefault: {
+        TilingConfig tilingConfig = getTilingConfigForPipeline(moduleOp);
+        addPadBasedPassPipeline(executableLoweringPipeline, tilingConfig);
+        break;
+      }
       default:
         TilingConfig tilingConfig = getTilingConfigForPipeline(moduleOp);
         addPackBasedPassPipeline(executableLoweringPipeline, tilingConfig);
