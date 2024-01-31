@@ -1,4 +1,5 @@
-// Copyright 2023 The IREE Authors
+// Copyright 2023 The IREE Authors#include "irer"
+
 //
 // Licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -7,6 +8,7 @@
 #ifndef IREE_AMD_AIE_TRANSFORMS_PASSDETAIL_H_
 #define IREE_AMD_AIE_TRANSFORMS_PASSDETAIL_H_
 
+#include "iree-amd-aie/Transforms/KernelDispatch.h"
 #include "iree/compiler/Dialect/HAL/IR/HALOps.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -22,6 +24,7 @@ namespace mlir::iree_compiler::AMDAIE {
 #define GEN_PASS_DEF_AMDAIECLEANUP
 #define GEN_PASS_DEF_AMDAIEFUSEFILLINTOFORALL
 #define GEN_PASS_DEF_AMDAIELOWEREXECUTABLETARGET
+#define GEN_PASS_DEF_AMDAIELOWERINGSTRATEGY
 #define GEN_PASS_DEF_AMDAIELOWERWORKGROUPCOUNT
 #define GEN_PASS_DEF_AMDAIEPACKANDTRANSPOSE
 #define GEN_PASS_DEF_AMDAIEPAD

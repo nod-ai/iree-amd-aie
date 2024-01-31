@@ -26,6 +26,7 @@
 
 #define DEBUG_TYPE "iree-amdaie-tile-and-fuse"
 
+
 namespace mlir::iree_compiler::AMDAIE {
 
 namespace {
@@ -59,6 +60,11 @@ static bool isTilingReductionDimension(TilingInterface consumerOp,
     if (loopIteratorType == utils::IteratorType::reduction && tileSize != 0)
       return true;
   }
+  return false;
+}
+
+static bool consumerToSkip(TilingInterface op) {
+  if (isa<linalg::CopyOp>(op) || isa<tensor::UnPackOp>(op)) return true;
   return false;
 }
 
@@ -105,9 +111,9 @@ void AMDAIETileAndFusePass::runOnOperation() {
 
   TilingInterface consumerOp;
   funcOp->walk<WalkOrder::PostOrder, ReverseIterator>([&](TilingInterface op) {
-    // Find the next consumer op if it does not have loops OR if it is a
-    // linalg.copy op.
-    if (op.getLoopIteratorTypes().empty() || isa<linalg::CopyOp>(op))
+    // Find the next consumer op if it does not have loops OR it is from
+    // the skip ops list which currently contains linalg.copy and tensor.unpack.
+    if (op.getLoopIteratorTypes().empty() || consumerToSkip(op))
       return WalkResult::advance();
     consumerOp = op;
     return WalkResult::interrupt();
@@ -145,7 +151,7 @@ void AMDAIETileAndFusePass::runOnOperation() {
       getAsIndexOpFoldResult(context, tileSizesVal);
   auto options = scf::SCFTilingOptions().setTileSizes(tileSizes);
   // When tiling using scf.for we do not need to set any mapping.
-  if (tilingLevel != 2) {
+  if (!useSCFFor) {
     options.setMapping(
         {gpu::GPUBlockMappingAttr::get(context, gpu::MappingId::DimY),
          gpu::GPUBlockMappingAttr::get(context, gpu::MappingId::DimX)});
@@ -162,8 +168,7 @@ void AMDAIETileAndFusePass::runOnOperation() {
   // We switch off fusion if any of the reduction dimension is being tiled. We
   // resort to the default fusion control function that eliminates certain ops
   // otherwise.
-  if (bool tilingReductionDimension =
-          isTilingReductionDimension(consumerOp, tileSizesVal)) {
+  if (isTilingReductionDimension(consumerOp, tileSizesVal)) {
     tileAndFuseOptions.setFusionControlFn(
         [&](tensor::ExtractSliceOp sliceOp, OpResult originalProducer,
             bool isDestinationOperand) -> std::tuple<bool, bool> {
