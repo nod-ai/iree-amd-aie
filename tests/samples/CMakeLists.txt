@@ -9,6 +9,7 @@ iree_lit_test_suite(
     lit
   SRCS
     "pack_pipeline_e2e.mlir"
+    "pack_pipeline_accumulate.mlir"
     "pad_pipeline_e2e.mlir"
   TOOLS
     ${IREE_LLD_TARGET}
