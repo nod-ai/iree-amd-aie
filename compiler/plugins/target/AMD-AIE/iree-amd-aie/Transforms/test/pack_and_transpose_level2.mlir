@@ -1,4 +1,4 @@
-// RUN: iree-opt --pass-pipeline='builtin.module(func.func(iree-amdaie-pack-and-transpose{pack-level=2}))' --split-input-file %s | FileCheck --check-prefix=CHECK-2 %s
+// RUN: iree-opt --pass-pipeline='builtin.module(func.func(iree-amdaie-pack-and-transpose{pack-level=1}))' --split-input-file %s | FileCheck %s
 
 #map = affine_map<(d0) -> (d0 * 16)>
 #map1 = affine_map<(d0) -> (d0 * 64)>
@@ -25,9 +25,9 @@ func.func @matmul_example_dispatch_0_matmul_16x256x256_i8xi8xi32(%arg0: tensor<1
       %extracted_slice_4 = tensor.extract_slice %pack_2[0, %arg4, 0, 0] [4, 1, 64, 64] [1, 1, 1, 1] : tensor<4x1x64x64xi8> to tensor<4x1x64x64xi8>
       %extracted_slice_5 = tensor.extract_slice %arg5[%arg3, %arg4, 0, 0] [1, 1, 16, 64] [1, 1, 1, 1] : tensor<1x1x16x64xi32> to tensor<1x1x16x64xi32>
       %13 = linalg.fill ins(%c0_i32 : i32) outs(%extracted_slice_5 : tensor<1x1x16x64xi32>) -> tensor<1x1x16x64xi32>
-      // CHECK-2: tensor.pack %{{.*}} outer_dims_perm = [0, 1, 3, 2] inner_dims_pos = [2, 3] inner_tiles = [4, 8] into %{{.*}} : tensor<1x4x16x64xi8> -> tensor<1x4x8x4x4x8xi8>
-      // CHECK-2: tensor.pack %{{.*}} outer_dims_perm = [0, 1, 3, 2] inner_dims_pos = [2, 3] inner_tiles = [8, 8] into %{{.*}} : tensor<4x1x64x64xi8> -> tensor<4x1x8x8x8x8xi8>
-      // CHECK-2: tensor.pack %{{.*}} outer_dims_perm = [0, 1, 3, 2] inner_dims_pos = [2, 3] inner_tiles = [4, 8] into %{{.*}} : tensor<1x1x16x64xi32> -> tensor<1x1x8x4x4x8xi32>
+      // CHECK: tensor.pack %{{.*}} outer_dims_perm = [0, 1, 3, 2] inner_dims_pos = [2, 3] inner_tiles = [4, 8] into %{{.*}} : tensor<1x4x16x64xi8> -> tensor<1x4x8x4x4x8xi8>
+      // CHECK: tensor.pack %{{.*}} outer_dims_perm = [0, 1, 3, 2] inner_dims_pos = [2, 3] inner_tiles = [8, 8] into %{{.*}} : tensor<4x1x64x64xi8> -> tensor<4x1x8x8x8x8xi8>
+      // CHECK: tensor.pack %{{.*}} outer_dims_perm = [0, 1, 3, 2] inner_dims_pos = [2, 3] inner_tiles = [4, 8] into %{{.*}} : tensor<1x1x16x64xi32> -> tensor<1x1x8x4x4x8xi32>
       %14 = linalg.generic {indexing_maps = [#map2, #map3, #map4], iterator_types = ["parallel", "parallel", "reduction", "parallel", "parallel", "reduction"]} ins(%extracted_slice_3, %extracted_slice_4 : tensor<1x4x16x64xi8>, tensor<4x1x64x64xi8>) outs(%13 : tensor<1x1x16x64xi32>) {
       ^bb0(%in: i8, %in_6: i8, %out: i32):
         %15 = arith.extsi %in : i8 to i32
