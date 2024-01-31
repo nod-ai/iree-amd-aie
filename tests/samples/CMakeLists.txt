@@ -8,8 +8,8 @@ iree_lit_test_suite(
   NAME
     lit
   SRCS
-    "matmul_fill_static_i32.mlir"
-    "matmul_fill_static_i32_config.mlir"
+    "pack_pipeline_e2e.mlir"
+    "pad_pipeline_e2e.mlir"
   TOOLS
     ${IREE_LLD_TARGET}
     FileCheck

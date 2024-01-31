@@ -12,8 +12,18 @@
 
 namespace mlir::iree_compiler::AMDAIE {
 
+/// Enum for pass pipelines to pick. Because of how the pass-pipeline
+/// enums are implemented using tablegen in IREE, it isnt extensible.
+/// This is an enum to pick different pass pipelines in IREE.
+enum class AIEPassPipeline : int32_t {
+  PadPipeline = 0,
+  PackPipeline = 1,
+  SimplePackPipeline = 2,
+  None = 3
+};
+
 LogicalResult initAIELaunchConfig(ModuleOp moduleOp,
-                                  bool useUKernelStrategy = false);
+                                  AIEPassPipeline usePassPipeline);
 
 }  // namespace mlir::iree_compiler::AMDAIE
 

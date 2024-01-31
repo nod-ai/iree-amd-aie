@@ -18,9 +18,8 @@ namespace mlir::iree_compiler::AMDAIE {
 
 namespace {
 /// Add the lowering strategy configurations to be used for ops.
-class AMDAIEAddLoweringStrategyPass
-    : public impl::AMDAIEAddLoweringStrategyBase<
-          AMDAIEAddLoweringStrategyPass> {
+class AMDAIELoweringStrategyPass
+    : public impl::AMDAIELoweringStrategyBase<AMDAIELoweringStrategyPass> {
  public:
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<
@@ -31,16 +30,16 @@ class AMDAIEAddLoweringStrategyPass
         vector::VectorDialect>();
   }
 
-  AMDAIEAddLoweringStrategyPass() = default;
-  AMDAIEAddLoweringStrategyPass(const AMDAIEAddLoweringStrategyOptions &options)
-      : AMDAIEAddLoweringStrategyBase(options) {}
-  AMDAIEAddLoweringStrategyPass(const AMDAIEAddLoweringStrategyPass &pass){};
+  AMDAIELoweringStrategyPass() = default;
+  AMDAIELoweringStrategyPass(const AMDAIELoweringStrategyOptions &options)
+      : AMDAIELoweringStrategyBase(options) {}
+  AMDAIELoweringStrategyPass(const AMDAIELoweringStrategyPass &pass){};
 
   void runOnOperation() override;
 };
 }  // namespace
 
-void AMDAIEAddLoweringStrategyPass::runOnOperation() {
+void AMDAIELoweringStrategyPass::runOnOperation() {
   IREE::HAL::ExecutableVariantOp variantOp = getOperation();
   ModuleOp moduleOp = variantOp.getInnerModule();
   if (!moduleOp) {
@@ -48,14 +47,14 @@ void AMDAIEAddLoweringStrategyPass::runOnOperation() {
         "Expected a variantOp root with an inner ModuleOp");
     return signalPassFailure();
   }
-  if (failed(initAIELaunchConfig(moduleOp, useUKernelStrategy))) {
+  if (failed(initAIELaunchConfig(moduleOp, usePassPipeline))) {
     return signalPassFailure();
   }
 }
 
-std::unique_ptr<Pass> createAMDAIEAddLoweringStrategyPass(
-    AMDAIEAddLoweringStrategyOptions options) {
-  return std::make_unique<AMDAIEAddLoweringStrategyPass>(options);
+std::unique_ptr<Pass> createAMDAIELoweringStrategyPass(
+    AMDAIELoweringStrategyOptions options) {
+  return std::make_unique<AMDAIELoweringStrategyPass>(options);
 }
 
 }  // namespace mlir::iree_compiler::AMDAIE
