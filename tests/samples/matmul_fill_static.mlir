@@ -1,11 +1,10 @@
 // Example using a transform dialect script.
 
-// Compile to mlir-aie:
+// // RUN: iree-compile --iree-hal-target-backends=amd-aie --compile-to=executable-sources %s | iree-opt --pass-pipeline="builtin.module(hal.executable(hal.executable.variant(iree-hal-translate-target-executable-variants{target=amd-aie})))" --iree-codegen-transform-dialect-library=%S/matmul_fill_spec_pad.mlir | FileCheck %s
 
-// RUN: iree-compile --iree-hal-target-backends=amd-aie --compile-to=executable-sources %s | iree-opt --pass-pipeline="builtin.module(hal.executable(hal.executable.variant(iree-hal-translate-target-executable-variants{target=amd-aie})))" --iree-codegen-transform-dialect-library=%S/matmul_fill_spec_pad.mlir | FileCheck %s
+// // RUN: iree-opt %s   --iree-hal-target-backends=amd-aie --iree-abi-transformation-pipeline --iree-flow-transformation-pipeline --iree-stream-transformation-pipeline --iree-hal-configuration-pipeline | cat - %S/matmul_fill_spec_pad.mlir | iree-opt --iree-transform-dialect-interpreter | FileCheck %s
 
-// To compile to just after the transform dialect pass: // RUN: iree-opt %s   --iree-hal-target-backends=amd-aie --iree-abi-transformation-pipeline --iree-flow-transformation-pipeline --iree-stream-transformation-pipeline --iree-hal-configuration-pipeline | cat - %S/matmul_fill_spec_pad.mlir | iree-opt --iree-transform-dialect-interpreter | FileCheck %s
-
+// RUN: iree-compile  --iree-hal-target-backends=amd-aie --compile-to=executable-sources %s | cat - %S/matmul_fill_spec_pad.mlir | iree-opt --iree-transform-dialect-interpreter | FileCheck %s
 
 // CHECK: scf.for
 // CHECK: scf.for
