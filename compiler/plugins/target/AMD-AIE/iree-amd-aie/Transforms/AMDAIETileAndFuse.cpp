@@ -131,10 +131,6 @@ void AMDAIETileAndFusePass::runOnOperation() {
   SmallVector<int64_t> tileSizesVal;
   if (auto loweringConfig = getLoweringConfig(consumerOp)) {
     tileSizesVal = loweringConfig.getTileSizeVals(tilingLevel);
-  } else if (isa<linalg::GenericOp>(consumerOp)) {
-    // TODO(vivian): Fix in upstream. For now this is a temp hack to get around
-    // the lowering config not passing to linalg.generic during lowering.
-    tileSizesVal = {1, 1};
   } else {
     FailureOr<IREE::Codegen::LoweringConfigAttr> maybeLoweringConfig =
         getLoweringConfig(getComputeOps(funcOp));

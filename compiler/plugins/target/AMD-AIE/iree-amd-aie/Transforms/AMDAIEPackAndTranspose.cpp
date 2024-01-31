@@ -5,6 +5,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 #include "iree-amd-aie/Transforms/Passes.h"
+#include "iree/compiler/Codegen/Dialect/Codegen/IR/IREECodegenAttrs.h"
 #include "mlir/Dialect/Linalg/Transforms/Transforms.h"
 #include "mlir/Pass/Pass.h"
 
@@ -162,6 +163,12 @@ void AMDAIEPackAndTransposePass::runOnOperation() {
 
     // Update packed linalg op
     packedOp = packTransResult->transposedLinalgOp;
+  }
+
+  // Get the lowering config from the previous linalgOp and add it to the
+  // packedOp
+  if (auto config = getLoweringConfig(linalgOp)) {
+    setLoweringConfig(packedOp, config);
   }
 }
 
