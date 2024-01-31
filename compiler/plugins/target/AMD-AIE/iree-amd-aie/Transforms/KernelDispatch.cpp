@@ -19,7 +19,7 @@ namespace mlir::iree_compiler::AMDAIE {
 /// implements the contraction operation interface.
 static LogicalResult setRootConfig(func::FuncOp entryPointFn,
                                    linalg::MatmulOp matmulOp,
-                                   bool useUKernelStrategy) {
+                                   AIEPassPipeline usePassPipeline) {
   assert(!getLoweringConfig(matmulOp) && "expected lowering_config is not set");
   auto linalgOp = cast<linalg::LinalgOp>(matmulOp.getOperation());
   unsigned numLoops = linalgOp.getNumLoops();
@@ -35,7 +35,7 @@ static LogicalResult setRootConfig(func::FuncOp entryPointFn,
   // TODO (nmeshram) : This needs to be moved in a separate more generalized
   // logic. Also, need a flag to experiment between pad based and pack based
   // approach which will have different tile sizes and pass pipelines
-  if (clUsePadPipeline) {
+  if (usePassPipeline == AIEPassPipeline::PadPipeline) {
     SmallVector<int64_t> TileSizeLevel0 = {8, 8};
     SmallVector<int64_t> TileSizeLevel1 = {4, 4};
     SmallVector<int64_t> TileSizeLevel2 = {0, 0, 4};
@@ -43,8 +43,8 @@ static LogicalResult setRootConfig(func::FuncOp entryPointFn,
                                    TileSizeLevel2};
     return setOpConfigAndEntryPointFnTranslation(
         entryPointFn, matmulOp, tileSizes,
-        IREE::Codegen::DispatchLoweringPassPipeline::CPUDefault);
-  } else {
+        IREE::Codegen::DispatchLoweringPassPipeline::None);
+  } else if (usePassPipeline == AIEPassPipeline::SimplePackPipeline) {
     SmallVector<int64_t> TileSizeLevel0 = {8, 16};
     SmallVector<int64_t> TileSizeLevel1 = {1, 1};
     SmallVector<int64_t> TileSizeLevel2 = {0, 0, 1};
@@ -52,20 +52,30 @@ static LogicalResult setRootConfig(func::FuncOp entryPointFn,
                                    TileSizeLevel2};
     return setOpConfigAndEntryPointFnTranslation(
         entryPointFn, matmulOp, tileSizes,
-        IREE::Codegen::DispatchLoweringPassPipeline::CPUDoubleTilingExpert);
+        IREE::Codegen::DispatchLoweringPassPipeline::None);
+  } else if (usePassPipeline == AIEPassPipeline::PackPipeline) {
+    SmallVector<int64_t> TileSizeLevel0 = {16, 64};
+    SmallVector<int64_t> TileSizeLevel1 = {0, 0, 64};
+    SmallVector<int64_t> TileSizeLevel2 = {1, 1};
+    TileSizesListType tileSizes = {TileSizeLevel0, TileSizeLevel1,
+                                   TileSizeLevel2};
+    return setOpConfigAndEntryPointFnTranslation(
+        entryPointFn, matmulOp, tileSizes,
+        IREE::Codegen::DispatchLoweringPassPipeline::None);
   }
+  return matmulOp.emitOpError("unhandled pass pipeline");
 }
 
 /// Redirects to methods that set the configuration based on operation type.
 static LogicalResult setRootConfigImpl(func::FuncOp entryPointFn, Operation *op,
-                                       bool useUKernelStrategy) {
+                                       AIEPassPipeline usePassPipeline) {
   auto setRootConfigFn = [&](Operation *op) -> LogicalResult {
     return TypeSwitch<Operation *, LogicalResult>(op)
         // TODO (nmeshram): This is very limited for now, plan is to
         // let it first crash for all the other ops and then consiously
         // add support for them, this way we can verify our work.
         .Case<linalg::MatmulOp>([&](auto op) {
-          return setRootConfig(entryPointFn, op, useUKernelStrategy);
+          return setRootConfig(entryPointFn, op, usePassPipeline);
         })
         .Default([&](Operation *op) { return success(); });
   };
@@ -75,7 +85,7 @@ static LogicalResult setRootConfigImpl(func::FuncOp entryPointFn, Operation *op,
 /// Sets the translation information to use for a dispatch region.
 static LogicalResult setTranslationInfoAndRootConfig(
     func::FuncOp entryPointFn, ArrayRef<Operation *> computeOps,
-    bool useUKernelStrategy) {
+    AIEPassPipeline usePassPipeline) {
   // Make sure that lowering_config is not preset on any compute ops.
   for (auto computeOp : computeOps) {
     if (getLoweringConfig(computeOp)) return failure();
@@ -90,8 +100,7 @@ static LogicalResult setTranslationInfoAndRootConfig(
     return entryPointFn.emitError("Case with no root ops not yet supported.");
   }
 
-  if (failed(
-          setRootConfigImpl(entryPointFn, rootOperation, useUKernelStrategy))) {
+  if (failed(setRootConfigImpl(entryPointFn, rootOperation, usePassPipeline))) {
     return failure();
   }
 
@@ -101,7 +110,8 @@ static LogicalResult setTranslationInfoAndRootConfig(
   return success();
 }
 
-LogicalResult initAIELaunchConfig(ModuleOp moduleOp, bool useUKernelStrategy) {
+LogicalResult initAIELaunchConfig(ModuleOp moduleOp,
+                                  AIEPassPipeline usePassPipeline) {
   llvm::StringMap<IREE::HAL::ExecutableExportOp> exportOps =
       getAllEntryPoints(moduleOp);
   for (auto funcOp : moduleOp.getOps<func::FuncOp>()) {
@@ -116,7 +126,7 @@ LogicalResult initAIELaunchConfig(ModuleOp moduleOp, bool useUKernelStrategy) {
 
     SmallVector<Operation *> computeOps = getComputeOps(funcOp);
     if (failed(setTranslationInfoAndRootConfig(funcOp, computeOps,
-                                               useUKernelStrategy))) {
+                                               usePassPipeline))) {
       return failure();
     }
   }

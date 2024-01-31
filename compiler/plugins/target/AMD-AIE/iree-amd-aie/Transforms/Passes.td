@@ -58,20 +58,28 @@ def AMDAIEFuseFillIntoForall :
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEFuseFillIntoForallPass()";
 }
 
-def AMDAIEAddLoweringStrategy :
-    Pass<"iree-amdaie-add-lowering-strategy", "mlir::iree_compiler::IREE::HAL::ExecutableVariantOp"> {
-  let summary = "Add lowering strategy configurations to be used";
-  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEAddLoweringStrategyPass()";
-  let options = [
-    Option<"useUKernelStrategy", "use-ukernel-strategy", "bool", /*default=*/"false",
-      "Whether to use the ukernel tiling strategy">  
-  ];
-}
-
 def AMDAIELowerExecutableTarget :
     Pass<"iree-amdaie-lower-executable-target", "mlir::iree_compiler::IREE::HAL::ExecutableVariantOp"> {
   let summary = "Perform lowering of executable target using one of the IREE::HAL::DispatchLoweringPassPipeline";
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIELowerExecutableTargetPass()";
+  let options = [
+    Option<"usePassPipeline", "use-pass-pipeline",
+      "mlir::iree_compiler::AMDAIE::AIEPassPipeline", 
+      /*default=*/"mlir::iree_compiler::AMDAIE::AIEPassPipeline::PadPipeline",
+      "Pass pipeline to use while lowering to AIR dialect">
+  ];
+}
+
+def AMDAIELoweringStrategy :
+    Pass<"iree-amdaie-lowering-strategy", "mlir::iree_compiler::IREE::HAL::ExecutableVariantOp"> {
+  let summary = "Add lowering strategy configurations to be used";
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIELoweringStrategyPass()";
+  let options = [
+    Option<"usePassPipeline", "use-pass-pipeline",
+      "mlir::iree_compiler::AMDAIE::AIEPassPipeline", 
+      /*default=*/"mlir::iree_compiler::AMDAIE::AIEPassPipeline::PadPipeline",
+      "Pass pipeline to use while lowering to AIR dialect">  
+  ];
 }
 
 def AMDAIELowerWorkgroupCount :

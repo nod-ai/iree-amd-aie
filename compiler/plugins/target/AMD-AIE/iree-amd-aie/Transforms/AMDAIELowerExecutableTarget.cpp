@@ -35,13 +35,6 @@ namespace mlir::iree_compiler::AMDAIE {
 
 namespace {
 
-/// Command line options used purely for development purposes. Not to be relied
-/// on in any way.
-static llvm::cl::opt<bool> clUsePadPipeline(
-    "iree-amdaie-pad-pipeline",
-    llvm::cl::desc("Runs the pad based lowering pipeline"),
-    llvm::cl::init(false));
-
 /// Lowers an hal.executable.variant operation to scalar/native-vector
 /// code. Invokes different compilation pipeline to
 /// - first lower to scalar/native-vector code
@@ -64,6 +57,9 @@ class AMDAIELowerExecutableTargetPass
   AMDAIELowerExecutableTargetPass() = default;
   AMDAIELowerExecutableTargetPass(
       const AMDAIELowerExecutableTargetPass &pass){};
+  AMDAIELowerExecutableTargetPass(
+      const AMDAIELowerExecutableTargetOptions &options)
+      : AMDAIELowerExecutableTargetBase(options) {}
 
   void runOnOperation() override;
 };
@@ -146,19 +142,17 @@ void AMDAIELowerExecutableTargetPass::runOnOperation() {
       case IREE::Codegen::DispatchLoweringPassPipeline::TransformDialectCodegen:
         addTransformDialectPasses(executableLoweringPipeline);
         break;
-      // TODO(avarma): Currently we are using "CPUDefault" for Pad based
-      // approach
-      //               and "CPUDoubleTilingExpert" for Pack based approach.
-      //               Will soon have corresponding AIE enum.
-      case IREE::Codegen::DispatchLoweringPassPipeline::CPUDefault: {
+      case IREE::Codegen::DispatchLoweringPassPipeline::None: {
         TilingConfig tilingConfig = getTilingConfigForPipeline(moduleOp);
-        addPadBasedPassPipeline(executableLoweringPipeline, tilingConfig);
-        break;
-      }
+        if (usePassPipeline == AIEPassPipeline::SimplePackPipeline) {
+          addPackBasedPassPipeline(executableLoweringPipeline, tilingConfig);
+        } else if (usePassPipeline == AIEPassPipeline::PadPipeline) {
+          addPadBasedPassPipeline(executableLoweringPipeline, tilingConfig);
+        }
+      } break;
       default:
-        TilingConfig tilingConfig = getTilingConfigForPipeline(moduleOp);
-        addPackBasedPassPipeline(executableLoweringPipeline, tilingConfig);
-        break;
+        variantOp.emitOpError("unhandled pass pipeline value set");
+        return signalPassFailure();
     }
   }
 
@@ -167,8 +161,9 @@ void AMDAIELowerExecutableTargetPass::runOnOperation() {
   }
 }
 
-std::unique_ptr<Pass> createAMDAIELowerExecutableTargetPass() {
-  return std::make_unique<AMDAIELowerExecutableTargetPass>();
+std::unique_ptr<Pass> createAMDAIELowerExecutableTargetPass(
+    AMDAIELowerExecutableTargetOptions options) {
+  return std::make_unique<AMDAIELowerExecutableTargetPass>(options);
 }
 
 }  // namespace mlir::iree_compiler::AMDAIE

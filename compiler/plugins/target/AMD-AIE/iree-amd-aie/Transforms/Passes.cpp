@@ -22,6 +22,22 @@
 
 namespace mlir::iree_compiler::AMDAIE {
 
+/// Command line options used purely for development purposes. Not to be relied
+/// on in any way.
+static llvm::cl::opt<AIEPassPipeline> clUsePipeline(
+    "iree-amdaie-use-pipeline",
+    llvm::cl::desc("Pick the lowering pipeline to use"),
+    llvm::cl::values(
+        clEnumValN(AIEPassPipeline::PadPipeline, "pad",
+                   "Use IREE lowering to AIR dialect through pad operations"),
+        clEnumValN(
+            AIEPassPipeline::PackPipeline, "pack",
+            "Use the IREE lowering to AIR dialect through pack operation"),
+        clEnumValN(AIEPassPipeline::SimplePackPipeline, "simple-pack",
+                   "Use the simplified IREE lowering to AIR dialect through "
+                   "pack operation")),
+    llvm::cl::init(AIEPassPipeline::SimplePackPipeline));
+
 //===---------------------------------------------------------------------===//
 // Default allocation functions for AIE backend
 //===---------------------------------------------------------------------===//
@@ -171,9 +187,16 @@ void addPackBasedPassPipeline(OpPassManager &pm, TilingConfig &tilingConfig) {
 
 void buildAMDAIETransformPassPipeline(OpPassManager &pm) {
   addCommonTargetExecutablePreprocessingPasses(pm);
-  pm.addPass(createEraseHALDescriptorTypeFromMemRefPass());
-  pm.addPass(createAMDAIEAddLoweringStrategyPass());
-  pm.addPass(createAMDAIELowerExecutableTargetPass());
+  {
+    AMDAIELoweringStrategyOptions options;
+    options.usePassPipeline = clUsePipeline;
+    pm.addPass(createAMDAIELoweringStrategyPass(options));
+  }
+  {
+    AMDAIELowerExecutableTargetOptions options;
+    options.usePassPipeline = clUsePipeline;
+    pm.addPass(createAMDAIELowerExecutableTargetPass(options));
+  }
   pm.addPass(createAMDAIELowerWorkgroupCountPass());
 
   auto &modulePassManager = pm.nest<ModuleOp>();

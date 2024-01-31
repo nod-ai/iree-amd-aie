@@ -10,7 +10,6 @@ iree_lit_test_suite(
   SRCS
     "pack_pipeline_e2e.mlir"
     "pad_pipeline_e2e.mlir"
-    "pipeline_select.mlir"
   TOOLS
     ${IREE_LLD_TARGET}
     FileCheck
