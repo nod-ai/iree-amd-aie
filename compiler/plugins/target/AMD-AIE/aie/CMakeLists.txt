@@ -111,6 +111,15 @@ iree_tablegen_library(
     -gen-typedef-defs -typedefs-dialect=AIE Dialect/AIE/IR/AIETypes.cpp.inc
 )
 
+iree_tablegen_library(
+  NAME
+    AIENormalizeAddressSpacesGen
+  TD_FILE
+    "${IREE_MLIR_AIE_SOURCE_DIR}/include/aie/Dialect/AIE/Transforms/AIENormalizeAddressSpaces.td"
+  OUTS
+    -gen-rewriters Dialect/AIE/Transforms/AIENormalizeAddressSpaces.inc
+)
+
 ###############################################################################
 # AIEX Dialect
 ###############################################################################
