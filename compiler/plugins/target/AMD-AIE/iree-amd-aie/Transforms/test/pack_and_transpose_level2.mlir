@@ -1,5 +1,7 @@
 // RUN: iree-opt --pass-pipeline='builtin.module(func.func(iree-amdaie-pack-and-transpose{pack-level=1}))' --split-input-file %s | FileCheck %s
 
+// CHECK: #config
+#config = #iree_codegen.lowering_config<tile_sizes = [[8, 8], [4, 4], [0, 0, 4]]>
 #map = affine_map<(d0) -> (d0 * 16)>
 #map1 = affine_map<(d0) -> (d0 * 64)>
 #map2 = affine_map<(d0, d1, d2, d3, d4, d5) -> (d0, d2, d3, d5)>
@@ -28,7 +30,9 @@ func.func @matmul_example_dispatch_0_matmul_16x256x256_i8xi8xi32(%arg0: tensor<1
       // CHECK: tensor.pack %{{.*}} outer_dims_perm = [0, 1, 3, 2] inner_dims_pos = [2, 3] inner_tiles = [4, 8] into %{{.*}} : tensor<1x4x16x64xi8> -> tensor<1x4x8x4x4x8xi8>
       // CHECK: tensor.pack %{{.*}} outer_dims_perm = [0, 1, 3, 2] inner_dims_pos = [2, 3] inner_tiles = [8, 8] into %{{.*}} : tensor<4x1x64x64xi8> -> tensor<4x1x8x8x8x8xi8>
       // CHECK: tensor.pack %{{.*}} outer_dims_perm = [0, 1, 3, 2] inner_dims_pos = [2, 3] inner_tiles = [4, 8] into %{{.*}} : tensor<1x1x16x64xi32> -> tensor<1x1x8x4x4x8xi32>
-      %14 = linalg.generic {indexing_maps = [#map2, #map3, #map4], iterator_types = ["parallel", "parallel", "reduction", "parallel", "parallel", "reduction"]} ins(%extracted_slice_3, %extracted_slice_4 : tensor<1x4x16x64xi8>, tensor<4x1x64x64xi8>) outs(%13 : tensor<1x1x16x64xi32>) {
+      // CHECK:       linalg.generic
+      // CHECK-SAME:  attrs =  {lowering_config = #config}
+      %14 = linalg.generic {indexing_maps = [#map2, #map3, #map4], iterator_types = ["parallel", "parallel", "reduction", "parallel", "parallel", "reduction"]} ins(%extracted_slice_3, %extracted_slice_4 : tensor<1x4x16x64xi8>, tensor<4x1x64x64xi8>) outs(%13 : tensor<1x1x16x64xi32>) attrs = {lowering_config = #config} {
       ^bb0(%in: i8, %in_6: i8, %out: i32):
         %15 = arith.extsi %in : i8 to i32
         %16 = arith.extsi %in_6 : i8 to i32
