@@ -118,7 +118,10 @@ void AMDAIEPackAndTransposePass::runOnOperation() {
     return;
   }
 
-  // Pack the operation
+  // Step 1. Before packing the operation, we will prefetch the lowering config.
+  auto config = getLoweringConfig(linalgOp);
+
+  // Step 2. Pack the operation
   IRRewriter rewriter(context);
   FailureOr<PackConfig> packCfg = getPackConfig(rewriter, packLevel);
   if (failed(packCfg)) {
@@ -132,7 +135,7 @@ void AMDAIEPackAndTransposePass::runOnOperation() {
     return signalPassFailure();
   }
 
-  // Pack Transpose
+  // Step 3. Pack Transpose
   SmallVector<tensor::PackOp> packOps = packResult->packOps;
   linalg::LinalgOp packedOp = packResult->packedLinalgOp;
   SmallVector<tensor::UnPackOp> unpackOps = packResult->unPackOps;
@@ -165,9 +168,9 @@ void AMDAIEPackAndTransposePass::runOnOperation() {
     packedOp = packTransResult->transposedLinalgOp;
   }
 
-  // Get the lowering config from the previous linalgOp and add it to the
-  // packedOp
-  if (auto config = getLoweringConfig(linalgOp)) {
+  // Step 4. Set the lowering config prefetched earlier in step 1 to the
+  // packedOp.
+  if (config) {
     setLoweringConfig(packedOp, config);
   }
 }
