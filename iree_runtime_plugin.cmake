@@ -19,3 +19,4 @@ if(IREE_AMD_AIE_ENABLE_XRT_DRIVER)
 endif()
 
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/runtime/src AMD-AIE)
+add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/tests external/tests)
