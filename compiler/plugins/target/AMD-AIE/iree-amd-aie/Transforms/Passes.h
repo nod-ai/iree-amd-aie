@@ -39,6 +39,10 @@ void addPadBasedPassPipeline(OpPassManager &passManager,
 void addPackBasedPassPipeline(OpPassManager &passManager,
                               TilingConfig &tilingConfig);
 
+/// Populates passes needed to lower the IR via a simple Pack based approach.
+void addSimplePackBasedPassPipeline(OpPassManager &passManager,
+                                    TilingConfig &tilingConfig);
+
 /// Create a pass to do some rewrites that help bridging the path to AIR/AIE
 /// lowering.
 std::unique_ptr<Pass> createAMDAIEBridgeToAIRPass();
