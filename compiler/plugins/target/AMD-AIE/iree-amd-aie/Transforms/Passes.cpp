@@ -187,6 +187,7 @@ void addSimplePackBasedPassPipeline(OpPassManager &pm,
 
   // Comprehensive bufferization
   addAMDAIEBufferizePasses(modulePassManager);
+  modulePassManager.addPass(memref::createFoldMemRefAliasOpsPass());
 }
 
 void addPackBasedPassPipeline(OpPassManager &pm, TilingConfig &tilingConfig) {
@@ -281,8 +282,10 @@ void buildAMDAIETransformPassPipeline(OpPassManager &pm) {
   }
   pm.addPass(createAMDAIELowerWorkgroupCountPass());
 
-  auto &modulePassManager = pm.nest<ModuleOp>();
-  addMLIRAIRAIELoweringPasses(modulePassManager);
+  if (clUsePipeline != AIEPassPipeline::PackPipeline) {
+    auto &modulePassManager = pm.nest<ModuleOp>();
+    addMLIRAIRAIELoweringPasses(modulePassManager);
+  }
 
   LLVM_DEBUG({
     llvm::dbgs() << "Using AMDAIE pass pipeline:\n";

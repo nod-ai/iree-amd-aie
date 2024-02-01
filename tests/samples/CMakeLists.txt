@@ -8,8 +8,9 @@ iree_lit_test_suite(
   NAME
     lit
   SRCS
-    "pack_pipeline_e2e.mlir"
+    "pack_pipeline_funcIR.mlir"
     "pad_pipeline_e2e.mlir"
+    "simple_pack_pipeline_e2e.mlir"
   TOOLS
     ${IREE_LLD_TARGET}
     FileCheck
