@@ -36,22 +36,13 @@ class MatrixElemTypeId(enum.Enum):
 class ShapesId(enum.Enum):
     SMALL = "small"
     LARGE = "large"
-    GPU_LARGE = "gpu_large"
-    GPU_LARGE_ALIGNED = "gpu_large_aligned"
-
 
 # Enumerates of the collections of compilation info that we can generate tests
 # for. The values are the accepted values for the --compilation_info= flag.
 @enum.unique
 class CompilationInfoId(enum.Enum):
     NONE = ""
-    LLVMGPUMatmulSimt = "LLVMGPUMatmulSimt"
-    LLVMGPUMatmulTensorCore = "LLVMGPUMatmulTensorCore"
-    LLVMGPUMatmulTensorCoreMmaSync = "LLVMGPUMatmulTensorCoreMmaSync"
-    SPIRVCooperativeMatrixVectorize = "SPIRVCooperativeMatrixVectorize"
-    SPIRVVectorizeMali = "SPIRVVectorizeMali"
-    SPIRVVectorizeNVIDIA = "SPIRVVectorizeNVIDIA"
-
+    AMDAIEPadBasedPassPipeline = "AMDAIEPadBasedPassPipeline"
 
 # Enumerates ways to construct MLIR tensor types.
 @enum.unique
@@ -88,6 +79,8 @@ class CompilationInfo:
     tile_sizes: typing.List[typing.List[int]]
     # Translation Info
     dispatch_lowering_pass_pipeline: str
+    # The next two arguments dont make sense for 
+    # AIE should they be removed?
     workload_per_wg: typing.List[int]
     software_pipeline_depth: int
     # Compilation info
@@ -111,66 +104,17 @@ def get_test_shapes(shapes_id: ShapesId):
     #    latency.
     if shapes_id == ShapesId.SMALL:
         return [
-            # square matrices. Start by the simplest case of 1x1x1.
-            TestShape(m=1, k=1, n=1, accumulate=True),
-            TestShape(m=1, k=1, n=1, accumulate=False),
-            # Test some small powers of two, that exercise in particular the
-            # adjustment of data-tiling tile sizes to narrow cases.
-            TestShape(m=2, k=2, n=2, accumulate=True),
-            TestShape(m=4, k=4, n=4, accumulate=True),
-            TestShape(m=8, k=8, n=8, accumulate=True),
-            # test 9x9x9 because as many kernel M0/K0/N0 dims are equal to 8,
-            # this will often be the smallest value that exercises something above
-            # the kernel's size.
-            TestShape(m=9, k=9, n=9, accumulate=True),
-            # rectangular matrices.
-            # >= 2x differences between M/N/K dims may exercise tiling corner cases
-            # not exercised by nearly-square matrices.
-            TestShape(m=6, k=13, n=3, accumulate=True),
-            TestShape(m=15, k=37, n=7, accumulate=False),
-            TestShape(m=81, k=19, n=41, accumulate=True),
-            # shapes involving vectors (i.e. most rectangular cases)
-            # This is particularly relevant because we have dedicated kernels for
-            # the matrix*vector / vector*matrix case.
-            TestShape(m=1, k=10, n=10, accumulate=True),  # vector*matrix
-            TestShape(m=1, k=10, n=10, accumulate=False),  # vector*matrix
-            TestShape(m=10, k=1, n=10, accumulate=True),  # outer-product
-            TestShape(m=10, k=10, n=1, accumulate=True),  # matrix*vector
-            TestShape(m=10, k=10, n=1, accumulate=False),  # matrix*vector
+            TestShape(m=8, k=16, n=32, accumulate=False),
+            #TestShape(m=16, k=8, n=16, accumulate=False),
+            #TestShape(m=64, k=16, n=32, accumulate=True),
+            #TestShape(m=8, k=16, n=16, accumulate=False),
         ]
     if shapes_id == ShapesId.LARGE:
         return [
-            # some random large sizes
-            TestShape(m=123, k=456, n=789, accumulate=True),
-            TestShape(m=654, k=321, n=234, accumulate=False),
-            # shapes involving vectors (i.e. most rectangular cases)
-            TestShape(m=1, k=1000, n=1000, accumulate=True),  # large vector*matrix
-            TestShape(m=1000, k=1000, n=1, accumulate=True),  # large matrix*vector
-            TestShape(m=1000, k=1000, n=1, accumulate=False),  # large matrix*vector
-            # Be conservative in adding larger shapes. They can result in
-            # high latency tests. If you have to, consider splitting them
-            # out in a way that constrains the latency impact, e.g. by
-            # running on fewer backends/drivers or with fewer generators
-            # (see get_test_generators).
-        ]
-    if shapes_id == ShapesId.GPU_LARGE_ALIGNED:
-        return [
-            TestShape(m=256, k=128, n=512, accumulate=True),
-            TestShape(m=256, k=128, n=512, accumulate=False),
-        ]
-    if shapes_id == ShapesId.GPU_LARGE:
-        return [
-            # unaligned cases.
-            TestShape(m=457, k=330, n=512, accumulate=False),
-            TestShape(m=457, k=330, n=514, accumulate=False),
-            TestShape(m=438, k=330, n=514, accumulate=False),
-            TestShape(m=540, k=332, n=516, accumulate=False),
-            TestShape(m=1000, k=4, n=512, accumulate=False),
-            TestShape(m=4, k=1000, n=512, accumulate=False),
-            TestShape(m=512, k=1000, n=4, accumulate=False),
-            TestShape(m=512, k=128, n=500, accumulate=False),
-            TestShape(m=457, k=160, n=512, accumulate=False),
-            TestShape(m=512, k=330, n=512, accumulate=False),
+            TestShape(m=256, k=128, n=256, accumulate=True),
+            TestShape(m=256, k=128, n=256, accumulate=False),
+            TestShape(m=512, k=256, n=512, accumulate=True),
+            TestShape(m=512, k=256, n=512, accumulate=False),
         ]
 
     raise ValueError(shapes_id)
@@ -178,17 +122,11 @@ def get_test_shapes(shapes_id: ShapesId):
 
 # Returns the list of Dynamicity's to use for the collection of shapes
 # identified by shapes_id.
+# just do static for now
 def get_dynamicities(shapes_id: ShapesId):
-    if shapes_id == ShapesId.GPU_LARGE or shapes_id == ShapesId.GPU_LARGE_ALIGNED:
-        return [
-            Dynamicity.STATIC,
-        ]
-    else:
-        return [
-            Dynamicity.DYNAMIC,
-            Dynamicity.STATIC,
-        ]
-    raise ValueError(shapes_id)
+    return [
+        Dynamicity.STATIC,
+    ]
 
 
 @dataclasses.dataclass
@@ -197,87 +135,12 @@ class TileWorkgroupSizePair:
     workgroup_size: typing.List[int]
 
 
-# Constructs a TileWorkgroupSizePair for SPIRV Targets enforcing the constraints between
-# the workgroup_size and tile size
-def get_spirv_tile_workgroup_size_pair(
-    workgroup_size, t_tile_k, t_tile_m=4, t_tile_n=4
-):
-    x, y, z = workgroup_size
-    wg_tile_m = y * t_tile_m
-    wg_tile_n = x * t_tile_n
-    return TileWorkgroupSizePair(
-        [[wg_tile_m, wg_tile_n], [t_tile_m, t_tile_n], [0, 0, t_tile_k]], workgroup_size
-    )
-
-
-# Returns all the TileWorkgroupSizePairs for a given SPIRV Target
-def get_all_spirv_tile_workgroup_size_pairs(t_tile_k):
-    tile_workgroup_size_pairs = [
-        get_spirv_tile_workgroup_size_pair([32, 8, 1], t_tile_k),
-        get_spirv_tile_workgroup_size_pair([16, 8, 1], t_tile_k),
-        get_spirv_tile_workgroup_size_pair([64, 2, 1], t_tile_k),
-        get_spirv_tile_workgroup_size_pair([8, 8, 1], t_tile_k),
-        get_spirv_tile_workgroup_size_pair([32, 1, 1], t_tile_k),
-        get_spirv_tile_workgroup_size_pair([16, 2, 1], t_tile_k),
-        get_spirv_tile_workgroup_size_pair([32, 1, 1], t_tile_k),
-    ]
-    return tile_workgroup_size_pairs
-
-
 # Returns the list of CompilationInfo's to use for the CompilationInfoId.
 def get_test_compilation_infos(
     compilation_info_id: CompilationInfoId, lhs_rhs_type: MatrixElemTypeId
 ) -> typing.List[typing.Optional[CompilationInfo]]:
     if compilation_info_id == CompilationInfoId.NONE:
         return [None]
-    if compilation_info_id == CompilationInfoId.LLVMGPUMatmulSimt:
-        tile_workgroup_size_pairs = [
-            TileWorkgroupSizePair([[32, 128, 32]], [32, 8, 1]),
-            TileWorkgroupSizePair([[128, 64, 8]], [16, 8, 1]),
-            TileWorkgroupSizePair([[16, 256, 32]], [64, 2, 1]),
-            TileWorkgroupSizePair([[8, 32, 32]], [8, 8, 1]),
-            TileWorkgroupSizePair([[8, 128, 4]], [32, 1, 1]),
-            TileWorkgroupSizePair([[16, 64, 4]], [16, 2, 1]),
-            TileWorkgroupSizePair([[1, 128, 8]], [32, 1, 1]),
-        ]
-    elif compilation_info_id == CompilationInfoId.SPIRVCooperativeMatrixVectorize:
-        tile_workgroup_size_pairs = [
-            TileWorkgroupSizePair(
-                [[64, 64], [16, 64], [0, 0, 16], [16, 16, 16]], [64, 4, 1]
-            )
-        ]
-    elif compilation_info_id == CompilationInfoId.SPIRVVectorizeNVIDIA:
-        tile_workgroup_size_pairs = get_all_spirv_tile_workgroup_size_pairs(32)
-    elif compilation_info_id == CompilationInfoId.SPIRVVectorizeMali:
-        tile_workgroup_size_pairs = get_all_spirv_tile_workgroup_size_pairs(4)
-    elif (
-        compilation_info_id == CompilationInfoId.LLVMGPUMatmulTensorCore
-        or compilation_info_id == CompilationInfoId.LLVMGPUMatmulTensorCoreMmaSync
-    ):
-        tile_workgroup_size_pairs = []
-        ## WarpShape = 2x2
-        tile_workgroup_size_pairs.append(
-            TileWorkgroupSizePair([[32, 32, 16]], [64, 2, 1])
-        )
-        tile_workgroup_size_pairs.append(
-            TileWorkgroupSizePair([[64, 64, 64]], [64, 2, 1])
-        )
-
-        ## WarpShape = 4x1
-        tile_workgroup_size_pairs.append(
-            TileWorkgroupSizePair([[32, 32, 32]], [64, 1, 1])
-        )
-
-        ## WarpShape = 2x2 with large tiles using larger Shared Memory capacity.
-        if lhs_rhs_type == MatrixElemTypeId.F16:
-            tile_workgroup_size_pairs.append(
-                TileWorkgroupSizePair([[128, 128, 64]], [64, 2, 1])
-            )
-        elif lhs_rhs_type == MatrixElemTypeId.F32:
-            tile_workgroup_size_pairs.append(
-                TileWorkgroupSizePair([[128, 128, 16]], [64, 2, 1])
-            )
-
     compilation_infos = []
     for tile_workgroup_size_pair in tile_workgroup_size_pairs:
         compilation_infos.append(
@@ -389,7 +252,7 @@ def generate_function_name(
         info = f"_for_{compilation_info.dispatch_lowering_pass_pipeline}_{tile_workgroup_key}"
 
     matmul_kind = "matmul_accumulate" if accumulate else "matmul"
-    return f"{matmul_kind}_{lhs_m}x{lhs_k}x{input_t}_times_{rhs_k}x{rhs_n}x{input_t}_into_{acc_m}x{acc_n}x{acc_t}{info}"
+    return f"{matmul_kind}_{lhs_m}x{rhs_n}_{rhs_k}x{input_t}_{info}"
 
 
 # Represents a generated test function.
@@ -429,24 +292,9 @@ def generate_function(
     func_definition = ""
     compilation_info_attr = ""
     if compilation_info:
-        if (
-            "SPIRV"
-            in compilation_info.dispatch_lowering_pass_pipeline
-            == "SPIRVVectorizeMali"
-        ):
-            dispatch_lowering_pass_pipeline = "SPIRVBaseVectorize"
-        elif (
+        dispatch_lowering_pass_pipeline = (
             compilation_info.dispatch_lowering_pass_pipeline
-            == "SPIRVCooperativeMatrixVectorize"
-        ):
-            dispatch_lowering_pass_pipeline = "SPIRVCooperativeMatrixVectorize"
-        elif compilation_info.dispatch_lowering_pass_pipeline == "SPIRVVectorizeNVIDIA":
-            # TODO: change to test SPIRVMatmulPromoteVectorize too
-            dispatch_lowering_pass_pipeline = "SPIRVBaseVectorize"
-        else:
-            dispatch_lowering_pass_pipeline = (
-                compilation_info.dispatch_lowering_pass_pipeline
-            )
+        )
         compilation_info_string = (
             f"#compilation{generate_function.compilation_index} = #iree_codegen.compilation_info<\n"
             f"  lowering_config = <tile_sizes = {compilation_info.tile_sizes}>,\n"
@@ -658,7 +506,7 @@ def parse_arguments():
     parser.add_argument(
         "--lhs_rhs_type",
         type=str,
-        choices=["i8", "f32", "f16", "bf16"],
+        choices=["i32", "f32", "f16", "bf16"],
         help="Numeric type of input matrices",
         required=True,
     )
