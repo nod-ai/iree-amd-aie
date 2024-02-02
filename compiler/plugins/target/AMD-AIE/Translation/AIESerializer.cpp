@@ -55,6 +55,18 @@ static int64_t getLinearizedSize(SmallVector<int64_t> &shape) {
   return linearizedSize;
 }
 
+/// Translate the memory space into shared / local.
+static FailureOr<std::string> translateMemorySpace(IntegerAttr memorySpace) {
+  std::optional<int> intMemorySpace = getConstantIntValue(memorySpace);
+  if (!intMemorySpace)
+    return failure();
+  if (intMemorySpace == 1)
+    return std::string("shared");
+  if (intMemorySpace == 2)
+    return std::string("local");
+  return failure();
+}
+
 /// Returns the loop header for loops. On success, adds the induction variable
 /// of the loop to the symbol table.
 static FailureOr<std::string> getLoopHeader(
@@ -309,6 +321,9 @@ FailureOr<std::string> getString(OpFoldResult ofr,
       }
       return exprStr.value();
     }
+    else if (auto val = dyn_cast<arith::ConstantIntOp>(v.getDefiningOp())) {
+      return std::to_string(val.value());
+    }
   }
   return scope.symbolTable[v];
 }
@@ -357,7 +372,7 @@ FailureOr<std::string> applySubview(memref::SubViewOp subView,
 
     if (offsetStr.empty()) {
       offsetStr = stridedOffset;
-    } else {
+    } else if (!stridedOffset.empty()) {
       offsetStr = std::string("(") + offsetStr + " + " + stridedOffset + ")";
     }
   }
@@ -374,7 +389,7 @@ FailureOr<std::string> applySubviews(ArrayRef<memref::SubViewOp> subviews,
     }
     if (offsetStr.empty()) {
       offsetStr = currOffsetStr.value();
-    } else {
+    } else if (!currOffsetStr->empty()) {
       offsetStr =
           std::string("(") + offsetStr + " + " + currOffsetStr.value() + ")";
     }
@@ -415,7 +430,7 @@ FailureOr<std::string> getOperandStr(Value operand, int64_t index,
   return opStr;
 }
 
-/// Walk bottom up through generic op starting from yeild op
+/// Walk bottom up through generic op starting from yield op
 FailureOr<std::string> walkGenericOp(std::string initStr, Value curOperand,
                                      AccelSerializer::ScopeInfo &scope) {
   if (isa<BlockArgument>(curOperand)) {
@@ -682,7 +697,9 @@ LogicalResult AccelSerializer::processOperation(scf::ForallOp forAllOp,
     }
     scope.append("}\n");
   }
-  if (numParallelLoops) {
+  // In the multicore situation, the inner forall loop opens an additional
+  // parenthesis after the multicore attribute, close it here.
+  if (numParallelLoops && isMulticore) {
     scope.indent().append("}\n");
   }
   return success();
@@ -739,9 +756,13 @@ LogicalResult AccelSerializer::processOperation(memref::AllocOp allocOp,
   std::string argStr = "allocate(";
   std::string varName =
       std::string("mem_") + std::to_string(scope.symbolTable.size());
-  auto memorySpace =
-      dyn_cast<StringAttr>(allocOp.getType().getMemorySpace()).str();
-  varName += "_" + memorySpace;
+  auto rawMemorySpace =
+      dyn_cast<IntegerAttr>(allocOp.getType().getMemorySpace());
+  FailureOr<std::string> memorySpace = translateMemorySpace(rawMemorySpace);
+  if (failed(memorySpace)) {
+    return allocOp->emitOpError("unexpected memory space");
+  }
+  varName += "_" + memorySpace.value();
   scope.symbolTable[allocOp.getResult()] = varName;
   argStr += varName;
 
@@ -753,12 +774,12 @@ LogicalResult AccelSerializer::processOperation(memref::AllocOp allocOp,
   if (failed(typeStr)) {
     return allocOp->emitOpError("unhandled element type");
   }
-  argStr += std::string(": Pointer(") + memorySpace + " " + typeStr.value() +
+  argStr += std::string(": Pointer(") + memorySpace.value() + " " + typeStr.value() +
             "), " + typeStr.value() + ", [";
 
   SmallVector<int64_t> shape = llvm::to_vector(allocOp.getType().getShape());
   argStr += std::to_string(getLinearizedSize(shape)) +
-            "]), storage_scope = " + memorySpace + ";";
+            "]), storage_scope = " + memorySpace.value() + ";";
   argStr.push_back('\n');
 
   scope.indent();
@@ -895,9 +916,15 @@ LogicalResult AccelSerializer::processOperation(IREE::LinalgExt::PackOp packOp,
   // Add attribute to the buffer depending on whether it's in shared memory or
   // local memory
   std::string loadType = "bidirectional";
-  auto strAttr = destType.getMemorySpace().dyn_cast<StringAttr>();
-  if (strAttr && strAttr.getValue() == "local") {
-    loadType = "load";
+  auto rawMemorySpace = destType.getMemorySpace().dyn_cast<IntegerAttr>();
+  if (rawMemorySpace) {
+    FailureOr<std::string> memorySpace = translateMemorySpace(rawMemorySpace);
+    if (failed(memorySpace)) {
+      return packOp->emitOpError("unexpected memory space");
+    }
+    if (memorySpace.value() == "local") {
+      loadType = "load";
+    }
   }
 
   FailureOr<SmallVector<std::string>> sourceIndices =
@@ -991,10 +1018,16 @@ LogicalResult AccelSerializer::processOperation(
 
   // Add attribute to the buffer depending on whether it's in shared memory or
   // local memory
-  std::string loadType = "bidirectional";
-  auto strAttr = srcType.getMemorySpace().dyn_cast<StringAttr>();
-  if (strAttr && strAttr.getValue() == "local") {
-    loadType = "store";
+  std::string loadType = "bidirectional";  
+  auto rawMemorySpace = srcType.getMemorySpace().dyn_cast<IntegerAttr>();
+  if (rawMemorySpace) {
+    FailureOr<std::string> memorySpace = translateMemorySpace(rawMemorySpace);
+    if (failed(memorySpace)) {
+      return unpackOp->emitOpError("unexpected memory space");
+    }
+    if (memorySpace.value() == "local") {
+      loadType = "store";
+    }
   }
 
   // Serialize the destination buffer and dma location
