@@ -29,13 +29,23 @@ struct PackConfig {
 };
 
 static FailureOr<PackConfig> getPackConfig(RewriterBase &rewriter,
-                                           int packLevel) {
+                                           int packLevel,
+                                           AIEPassPipeline passPipeline) {
   PackConfig config;
   if (packLevel == 0) {
     // packed size for [M, N, K]
-    config.packedSizes = {rewriter.getI64IntegerAttr(8),
-                          rewriter.getI64IntegerAttr(16),
-                          rewriter.getI64IntegerAttr(16)};
+    if (passPipeline == AIEPassPipeline::PackPipeline) {
+      config.packedSizes = {rewriter.getI64IntegerAttr(16),
+                            rewriter.getI64IntegerAttr(64),
+                            rewriter.getI64IntegerAttr(64)};
+
+    } else if (passPipeline == AIEPassPipeline::SimplePackPipeline) {
+      config.packedSizes = {rewriter.getI64IntegerAttr(8),
+                            rewriter.getI64IntegerAttr(16),
+                            rewriter.getI64IntegerAttr(16)};
+    } else {
+      return failure();
+    }
     // Transpose B matrix from [K N n k] to [K N k n]
     config.transposePackIndices = {1};
     // There is no corresponding unpack for the specified pack operation
@@ -123,7 +133,8 @@ void AMDAIEPackAndTransposePass::runOnOperation() {
 
   // Step 2. Pack the operation
   IRRewriter rewriter(context);
-  FailureOr<PackConfig> packCfg = getPackConfig(rewriter, packLevel);
+  FailureOr<PackConfig> packCfg =
+      getPackConfig(rewriter, packLevel, usePassPipeline);
   if (failed(packCfg)) {
     funcOp->emitOpError("failed to get pack configs");
     return signalPassFailure();
