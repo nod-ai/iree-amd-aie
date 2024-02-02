@@ -4,7 +4,7 @@
 //   export IREE_DIR=${HOME}/iree/iree; \
 //   export IREE_AMD_AIE_DIR=${IREE_AMD_AIE_DIR:-${HOME}/iree/iree-amd-aie}
 //   ${IREE_DIR}/build/tools/iree-opt \
-//     ${IREE_AMD_AIE_DIR}/tests/samples/matmul_fill_static.mlir \
+//     ${IREE_AMD_AIE_DIR}/tests/samples/pad_pipeline_e2e.mlir \
 //     --iree-hal-target-backends=amd-aie \
 //     --iree-abi-transformation-pipeline \
 //     --iree-flow-transformation-pipeline \

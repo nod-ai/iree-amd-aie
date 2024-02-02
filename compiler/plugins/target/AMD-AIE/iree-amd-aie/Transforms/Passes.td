@@ -95,7 +95,11 @@ def AMDAIEPackAndTranspose :
       "mlir::iree_compiler::AMDAIE::createAMDAIEPackAndTransposePass()";
   let options = [
     Option<"packLevel", "pack-level", "int64_t", /*default=*/"-1",
-      "Set the packing level number">
+      "Set the packing level number">,
+    Option<"usePassPipeline", "use-pass-pipeline",
+      "mlir::iree_compiler::AMDAIE::AIEPassPipeline", 
+      /*default=*/"mlir::iree_compiler::AMDAIE::AIEPassPipeline::SimplePackPipeline",
+      "Pass pipeline to use while lowering to AIR dialect"> 
   ];
 }
 
