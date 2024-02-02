@@ -36,7 +36,7 @@ static FailureOr<PackConfig> getPackConfig(RewriterBase &rewriter,
     // packed size for [M, N, K]
     if (passPipeline == AIEPassPipeline::PackPipeline) {
       config.packedSizes = {rewriter.getI64IntegerAttr(16),
-                            rewriter.getI64IntegerAttr(256),
+                            rewriter.getI64IntegerAttr(64),
                             rewriter.getI64IntegerAttr(64)};
 
     } else if (passPipeline == AIEPassPipeline::SimplePackPipeline) {
