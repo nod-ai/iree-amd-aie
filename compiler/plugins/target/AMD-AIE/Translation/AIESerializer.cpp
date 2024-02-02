@@ -57,12 +57,9 @@ static int64_t getLinearizedSize(SmallVector<int64_t> &shape) {
 
 /// Translate the memory space into shared / local.
 static FailureOr<std::string> translateMemorySpace(IntegerAttr memorySpace) {
-  std::optional<int> intMemorySpace = getConstantIntValue(memorySpace);
-  if (!intMemorySpace)
-    return failure();
-  if (intMemorySpace == 1)
+  if (isConstantIntValue(memorySpace, 1))
     return std::string("shared");
-  if (intMemorySpace == 2)
+  if (isConstantIntValue(memorySpace, 2))
     return std::string("local");
   return failure();
 }
