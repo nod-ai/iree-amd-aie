@@ -54,7 +54,7 @@ class LinalgCopyToMemRefCopy : public OpRewritePattern<linalg::CopyOp> {
 
   LogicalResult matchAndRewrite(linalg::CopyOp copyOp,
                                 PatternRewriter &rewriter) const override {
-    if (!copyOp.hasBufferSemantics()) {
+    if (copyOp.hasIndexSemantics()) {
       return failure();
     }
     rewriter.replaceOpWithNewOp<memref::CopyOp>(

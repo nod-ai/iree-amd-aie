@@ -26,273 +26,65 @@
 
 #define DEBUG_TYPE "iree-amdaie-tile-and-fuse"
 
+
 namespace mlir::iree_compiler::AMDAIE {
 
 namespace {
 
-//===----------------------------------------------------------------------------------===//
-// Methods copied over from core to implement tile and fuse with scf.forall.
-// TODO(MaheshRavishankar) Replace them with core methods when upstream
-// can handle this natively
-//===----------------------------------------------------------------------------------===//
-/// Clones the operation and updates the destination if the operation
-/// implements the `DestinationStyleOpInterface`.
-static Operation *cloneOpAndUpdateDestinationArgs(RewriterBase &rewriter,
-                                                  Operation *op,
-                                                  ValueRange newDestArgs) {
-  Operation *clonedOp = rewriter.clone(*op);
-  if (newDestArgs.empty()) return clonedOp;
-  if (auto destinationStyleOp = dyn_cast<DestinationStyleOpInterface>(clonedOp))
-    destinationStyleOp.getDpsInitsMutable().assign(newDestArgs);
-  return clonedOp;
+/// Utility function to check if any of the reduction dimension is being tiled.
+static bool isTilingReductionDimension(TilingInterface consumerOp,
+                                       SmallVector<int64_t> tileSizesVal) {
+  SmallVector<utils::IteratorType> loopIteratorTypes =
+      consumerOp.getLoopIteratorTypes();
+  unsigned totalTileSizes = tileSizesVal.size();
+  unsigned totalLoopIteratorTypes = loopIteratorTypes.size();
+  // Assume the following cases for [parallel, parallel, reduction, parallel]
+  // iter types :-
+  // Case 1:
+  //    tile_size = [8, 8] - this is essentially -> [8, 8, 0, 0], i.e. we tile
+  //    both the parallel iter types and do not tile the last two iter type
+  //    (reduction and parallel in this case).
+  // Case 2:
+  //    tile_size = [8, 0, 8] - this is essentially -> [8, 0, 8, 0], i.e. here
+  //    we tile the first iter type (parallel), do not tile the second iter type
+  //    (parallel), tile the third iter type (reduction) and do not tile the
+  //    last iter type (parallel).
+  // Case 3:
+  //    tile_size = [0, 0, 8, 8] - here we only tile the last two iter types
+  //    (reduction and parallel).
+  if (totalTileSizes < totalLoopIteratorTypes) {
+    tileSizesVal.append(totalLoopIteratorTypes - totalTileSizes, 0);
+  }
+  for (auto [tileSize, loopIteratorType] :
+       llvm::zip(tileSizesVal, loopIteratorTypes)) {
+    if (loopIteratorType == utils::IteratorType::reduction && tileSize != 0)
+      return true;
+  }
+  return false;
 }
 
-/// Return the untiled producer whose slice is used in a tiled consumer. If
-/// there was no loop traversal needed, the second value of the returned tuple
-/// is empty. In case the source op is a linalg.copy it returns both values as
-/// empty.
-static std::tuple<OpResult, std::optional<OpOperand *>>
-getUntiledProducerFromSliceSource(OpOperand *source, scf::ForallOp loop) {
-  std::optional<OpOperand *> destinationSharedOuts;
-  if (auto sharedOuts = dyn_cast<BlockArgument>(source->get())) {
-    if (sharedOuts.getOwner()->getParentOp() == loop) {
-      source = loop.getTiedOpOperand(sharedOuts);
-      destinationSharedOuts = source;
-    }
-  } else if (isa<linalg::CopyOp>(source->get().getDefiningOp()))
-    return {nullptr, nullptr};
-  return {dyn_cast<OpResult>(source->get()), destinationSharedOuts};
+static bool consumerToSkip(TilingInterface op) {
+  if (isa<linalg::CopyOp>(op) || isa<tensor::UnPackOp>(op)) return true;
+  return false;
 }
 
-/// The following is a copy of tileAndFuseProducerOfSlice to make it work for
-/// scf.forall.
-/// Implementation of fusing producer of a single slice by computing the
-/// slice of the producer in-place.
-std::optional<scf::SCFFuseProducerOfSliceResult> tileAndFuseProducerOfSlice(
-    RewriterBase &rewriter, tensor::ExtractSliceOp candidateSliceOp,
-    scf::ForallOp &loop) {
-  // 1. Get the producer of the source.
-  auto [fusableProducer, destinationInitArg] =
-      getUntiledProducerFromSliceSource(&candidateSliceOp.getSourceMutable(),
-                                        loop);
-  if (!fusableProducer) return std::nullopt;
-  unsigned resultNumber = fusableProducer.getResultNumber();
-
-  OpBuilder::InsertionGuard g(rewriter);
-  rewriter.setInsertionPoint(candidateSliceOp);
-
-  // 2. Clone the fused producer
-  // 2a. Compute the destination operands to use for the cloned operation.
-  SmallVector<Value> origDestinationTensors, clonedOpDestinationTensors;
-  Operation *fusableProducerOp = fusableProducer.getOwner();
-  if (isa<DestinationStyleOpInterface>(fusableProducerOp) &&
-      failed(tensor::getOrCreateDestinations(
-          rewriter, fusableProducerOp->getLoc(), fusableProducerOp,
-          origDestinationTensors)))
-    return std::nullopt;
-
-  clonedOpDestinationTensors = origDestinationTensors;
-  if (destinationInitArg &&
-      isa<DestinationStyleOpInterface>(fusableProducerOp)) {
-    // 2b. If the producer is also destination style, then to maintain the
-    // destination passing style, update the destination of the producer to be
-    // the source of the slice.
-    clonedOpDestinationTensors[resultNumber] = candidateSliceOp.getSource();
+LogicalResult applyTileAndFuse(RewriterBase &rewriter, TilingInterface rootOp,
+                               DominanceInfo &dominanceInfo,
+                               scf::SCFTileAndFuseOptions &tileAndFuseOptions) {
+  FailureOr<scf::SCFTileAndFuseResult> tileAndFuseResult =
+      scf::tileConsumerAndFuseProducersUsingSCF(rewriter, rootOp,
+                                                tileAndFuseOptions);
+  if (failed(tileAndFuseResult)) {
+    return rootOp.emitOpError("failed to tile and fuse with op as root");
   }
-  // 2c. Clone the fused producer.
-  Operation *clonedProducerOp = cloneOpAndUpdateDestinationArgs(
-      rewriter, fusableProducerOp, clonedOpDestinationTensors);
-  // 2d. Update the source of the candidateSlice to be the cloned producer.
-  //     Easier to just clone the slice with different source since replacements
-  //     and DCE of cloned ops becomes easier
-  SmallVector<Value> candidateSliceOpOperands =
-      llvm::to_vector(candidateSliceOp->getOperands());
-  candidateSliceOpOperands[0] = clonedProducerOp->getResult(resultNumber);
-  tensor::ExtractSliceOp clonedCandidateSliceOp =
-      mlir::clone(rewriter, candidateSliceOp,
-                  candidateSliceOp->getResultTypes(), candidateSliceOpOperands);
 
-  // 3. Generate the tiled implementation of the producer of the source
-  FailureOr<TilingResult> tileAndFuseResult =
-      tensor::replaceExtractSliceWithTiledProducer(
-          rewriter, clonedCandidateSliceOp,
-          clonedProducerOp->getResult(resultNumber));
-  if (failed(tileAndFuseResult)) return std::nullopt;
-  // Note: Do not delete the candidateSliceOp, since its passed in from the
-  // caller.
-  rewriter.replaceAllUsesWith(candidateSliceOp,
-                              tileAndFuseResult->tiledValues[0]);
-  rewriter.eraseOp(clonedCandidateSliceOp);
-  rewriter.eraseOp(clonedProducerOp);
-
-  if (destinationInitArg &&
-      isa<DestinationStyleOpInterface>(fusableProducerOp) && loop) {
-    loop->getOpOperands()[destinationInitArg.value()->getOperandNumber()].set(
-        origDestinationTensors[resultNumber]);
-  }
-  return scf::SCFFuseProducerOfSliceResult{fusableProducer,
-                                           tileAndFuseResult->tiledValues[0],
-                                           tileAndFuseResult->tiledOps};
-}
-
-//===----------------------------------------------------------------------------------===//
-// End methods copied over from core to implement tile and fuse with scf.forall.
-//===----------------------------------------------------------------------------------===//
-
-/// Starting from `op` walk all operands backwards to find all
-/// potentially fusable operations, i.e. operations that implement
-/// the `TilingInterface`.
-static void collectTiledAndFusedOps(Operation *rootOp,
-                                    llvm::SmallDenseSet<Operation *> &result) {
-  SmallVector<Operation *> worklist;
-  worklist.push_back(rootOp);
-  result.insert(rootOp);
-  while (!worklist.empty()) {
-    Operation *current = worklist.pop_back_val();
-    for (OpOperand &operand : current->getOpOperands()) {
-      Operation *producer = operand.get().getDefiningOp();
-      if (!producer || !isa<TilingInterface>(producer) ||
-          result.count(producer))
-        continue;
-      worklist.push_back(producer);
-      result.insert(producer);
-    }
-  }
-}
-
-LogicalResult applyTileAndFuseUsingSCFFor(RewriterBase &rewriter,
-                                          Operation *rootOp,
-                                          DominanceInfo &dominanceInfo,
-                                          scf::SCFTilingOptions options) {
-  llvm::SmallDenseSet<Operation *> origTiledAndFusedOps;
-  collectTiledAndFusedOps(rootOp, origTiledAndFusedOps);
-  auto isIgnoredUser = [&](Operation *user) {
-    return origTiledAndFusedOps.count(user) || isa<tensor::DimOp>(user);
-  };
-  FailureOr<scf::SCFTilingResult> tilingResult =
-      tileUsingSCFForOp(rewriter, cast<TilingInterface>(rootOp), options);
-  if (failed(tilingResult)) {
-    return failure();
-  }
-  auto forLoops = llvm::to_vector(llvm::map_range(
-      tilingResult->loops, [](Operation *op) { return cast<scf::ForOp>(op); }));
-  SmallVector<OpResult> yieldedValuesToOrigValues;
-  yieldedValuesToOrigValues.append(rootOp->result_begin(),
-                                   rootOp->result_end());
-  scf::ForOp outermostLoop = forLoops.front();
-  for (auto [index, origVal] : llvm::enumerate(yieldedValuesToOrigValues)) {
-    Value replacement = outermostLoop.getResult(index);
+  for (auto [origVal, replacement] : tileAndFuseResult->replacements) {
     rewriter.replaceUsesWithIf(origVal, replacement, [&](OpOperand &use) {
-      return !isIgnoredUser(use.getOwner()) &&
-             dominanceInfo.properlyDominates(outermostLoop, use.getOwner());
+      return !isa<tensor::DimOp>(use.getOwner());
     });
   }
 
   return success();
-}
-LogicalResult applyTileAndFuseUsingSCFForall(RewriterBase &rewriter,
-                                             Operation *rootOp,
-                                             DominanceInfo &dominanceInfo,
-                                             scf::SCFTilingOptions options) {
-  llvm::SmallDenseSet<Operation *> origTiledAndFusedOps;
-  collectTiledAndFusedOps(rootOp, origTiledAndFusedOps);
-  auto isIgnoredUser = [&](Operation *user) {
-    return origTiledAndFusedOps.count(user) || isa<tensor::DimOp>(user);
-  };
-
-  // 1. Tile the consumer.
-  SmallVector<OpResult> yieldedValuesToOrigValues;
-  SmallVector<Operation *> tiledOps;
-  rewriter.setInsertionPointAfter(rootOp);
-  FailureOr<scf::SCFTilingResult> tilingResult = scf::tileUsingSCFForallOp(
-      rewriter, cast<TilingInterface>(rootOp), options);
-  if (failed(tilingResult)) {
-    return failure();
-  }
-  auto forallLoop = cast<scf::ForallOp>(tilingResult->loops[0]);
-  yieldedValuesToOrigValues.append(rootOp->result_begin(),
-                                   rootOp->result_end());
-  // A map from untiled value to scf.forall shared_outs. The shared_outs is used
-  // for DPS init operand if they use the same init operands.
-  llvm::DenseMap<Value, Value> mapToSharedOuts;
-  if (auto dpsOp = dyn_cast<DestinationStyleOpInterface>(rootOp)) {
-    for (auto [init, sharedOuts] :
-         llvm::zip_equal(dpsOp.getDpsInits(), forallLoop.getRegionOutArgs())) {
-      mapToSharedOuts[init] = sharedOuts;
-    }
-  }
-  tiledOps.append(tilingResult->tiledOps);
-
-  // 2. Tiling each operation results in generation of slices. The source of
-  // these slices could be producers that can be fused into the tiled loops by
-  // computing the slices of these producers in-place. This results in more
-  // slices created for operands of the "fused producer". This open up more
-  // opportunities for fusion. Use a worklist to fuse greedily.
-  auto addCandidateSlices =
-      [&](Operation *fusedOp, std::deque<tensor::ExtractSliceOp> &candidates) {
-        for (OpOperand &operand : fusedOp->getOpOperands()) {
-          auto sliceOp = operand.get().getDefiningOp<tensor::ExtractSliceOp>();
-          if (!sliceOp) continue;
-          candidates.push_back(sliceOp);
-
-          auto dpsOp = dyn_cast<DestinationStyleOpInterface>(fusedOp);
-          if (!dpsOp) continue;
-
-          if (dpsOp.isDpsInit(&operand) &&
-              mapToSharedOuts.contains(sliceOp.getSource())) {
-            rewriter.startRootUpdate(sliceOp);
-            sliceOp.getSourceMutable().assign(
-                mapToSharedOuts[sliceOp.getSource()]);
-            rewriter.finalizeRootUpdate(sliceOp);
-          }
-        }
-      };
-
-  std::deque<tensor::ExtractSliceOp> candidates;
-  addCandidateSlices(tilingResult->tiledOps.back(), candidates);
-  OpBuilder::InsertionGuard g(rewriter);
-  while (!candidates.empty()) {
-    // Traverse the slices in BFS fashion.
-    tensor::ExtractSliceOp candidateSliceOp = candidates.front();
-    candidates.pop_front();
-
-    // Materialize the slice of the producer in place.
-    std::optional<scf::SCFFuseProducerOfSliceResult> fusedProducer =
-        tileAndFuseProducerOfSlice(rewriter, candidateSliceOp, forallLoop);
-    if (!fusedProducer) continue;
-
-    // Add more fusion candidates to the worklist.
-    for (auto tiledOp : fusedProducer->tiledOps) {
-      addCandidateSlices(tiledOp, candidates);
-      tiledOps.push_back(tiledOp);
-    }
-  }
-
-  for (auto [index, origVal] : llvm::enumerate(yieldedValuesToOrigValues)) {
-    Value replacement = forallLoop.getResult(index);
-    rewriter.replaceUsesWithIf(origVal, replacement, [&](OpOperand &use) {
-      return !isIgnoredUser(use.getOwner()) &&
-             dominanceInfo.properlyDominates(forallLoop, use.getOwner());
-    });
-  }
-
-  return success();
-}
-
-LogicalResult applyTileAndFuseUsingSCF(RewriterBase &rewriter,
-                                       Operation *rootOp,
-                                       DominanceInfo &dominanceInfo,
-                                       scf::SCFTilingOptions options,
-                                       bool useSCFFor, int64_t tilingLevel) {
-  // TODO(MaheshRavishankar): Adapt this to use SCFTilingOptions after
-  // the upstream changes land.
-  if (useSCFFor) {
-    return applyTileAndFuseUsingSCFFor(rewriter, rootOp, dominanceInfo,
-                                       options);
-  } else {
-    return applyTileAndFuseUsingSCFForall(rewriter, rootOp, dominanceInfo,
-                                          options);
-  }
 }
 
 /// This pass starts with the last TilingInterface operation, tiles the op and
@@ -319,9 +111,9 @@ void AMDAIETileAndFusePass::runOnOperation() {
 
   TilingInterface consumerOp;
   funcOp->walk<WalkOrder::PostOrder, ReverseIterator>([&](TilingInterface op) {
-    // Find the next consumer op if it does not have loops OR if it is a
-    // linalg.copy op.
-    if (op.getLoopIteratorTypes().empty() || isa<linalg::CopyOp>(op))
+    // Find the next consumer op if it does not have loops OR it is from
+    // the skip ops list which currently contains linalg.copy and tensor.unpack.
+    if (op.getLoopIteratorTypes().empty() || consumerToSkip(op))
       return WalkResult::advance();
     consumerOp = op;
     return WalkResult::interrupt();
@@ -359,16 +151,49 @@ void AMDAIETileAndFusePass::runOnOperation() {
       getAsIndexOpFoldResult(context, tileSizesVal);
   auto options = scf::SCFTilingOptions().setTileSizes(tileSizes);
   // When tiling using scf.for we do not need to set any mapping.
-  if (tilingLevel != 2) {
+  if (!useSCFFor) {
     options.setMapping(
         {gpu::GPUBlockMappingAttr::get(context, gpu::MappingId::DimY),
          gpu::GPUBlockMappingAttr::get(context, gpu::MappingId::DimX)});
   }
 
+  if (!useSCFFor) {
+    options.setLoopType(scf::SCFTilingOptions::LoopType::ForallOp);
+  }
+
   IRRewriter rewriter(context);
   DominanceInfo dominanceInfo(funcOp);
-  if (failed(applyTileAndFuseUsingSCF(rewriter, consumerOp, dominanceInfo,
-                                      options, useSCFFor, tilingLevel))) {
+  scf::SCFTileAndFuseOptions tileAndFuseOptions;
+  tileAndFuseOptions.setTilingOptions(options);
+  // We switch off fusion if any of the reduction dimension is being tiled. We
+  // resort to the default fusion control function that eliminates certain ops
+  // otherwise.
+  if (isTilingReductionDimension(consumerOp, tileSizesVal)) {
+    tileAndFuseOptions.setFusionControlFn(
+        [&](tensor::ExtractSliceOp sliceOp, OpResult originalProducer,
+            bool isDestinationOperand) -> std::tuple<bool, bool> {
+          return {false, false};
+        });
+  } else {
+    tileAndFuseOptions.setFusionControlFn(
+        [&](tensor::ExtractSliceOp sliceOp, OpResult originalProducer,
+            bool isDestinationOperand) -> std::tuple<bool, bool> {
+          bool fusableOp =
+              TypeSwitch<Operation *, bool>(originalProducer.getOwner())
+                  // List ops that shouldnt be fused.
+                  .Case<tensor::PackOp, tensor::PadOp, linalg::CopyOp,
+                        memref::CopyOp>([](Operation *) { return false; })
+                  // Fuse all Linalg ops (can be generalized later)
+                  .Default([&](Operation *op) {
+                    return op->getDialect() ==
+                           rewriter.getContext()
+                               ->getLoadedDialect<linalg::LinalgDialect>();
+                  });
+          return {fusableOp, false};
+        });
+  }
+  if (failed(applyTileAndFuse(rewriter, consumerOp, dominanceInfo,
+                              tileAndFuseOptions))) {
     LLVM_DEBUG(llvm::dbgs() << "----- tile and fuse failed -----\n");
     return signalPassFailure();
   }

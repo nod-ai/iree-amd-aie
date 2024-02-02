@@ -46,16 +46,40 @@ def AMDAIECleanup :
       "mlir::iree_compiler::AMDAIE::createAMDAIECleanupPass()";
 }
 
-def AMDAIELowerExecutableTarget :
-    Pass<"iree-amdaie-lower-executable-target", "mlir::iree_compiler::IREE::HAL::ExecutableVariantOp"> {
-  let summary = "Perform lowering of executable target using one of the IREE::HAL::DispatchLoweringPassPipeline";
-  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIELowerExecutableTargetPass()";
-}
-
 def AMDAIEDecomposeLinalgExtPackUnPackToAIR :
     Pass<"iree-amdaie-decompose-pack-unpack-to-air", ""> {
   let summary = "Decompose LinalgExt pack/unpack ops into patterns compatible to AIR.";
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEDecomposeLinalgExtPackUnPackToAIRPass()";
+}
+
+def AMDAIEFuseFillIntoForall :
+    Pass<"iree-amdaie-fuse-fill-into-forall", "func::FuncOp"> {
+  let summary = "Fuse the linalg.fill into the forall loops.";
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEFuseFillIntoForallPass()";
+}
+
+def AMDAIELowerExecutableTarget :
+    Pass<"iree-amdaie-lower-executable-target", "mlir::iree_compiler::IREE::HAL::ExecutableVariantOp"> {
+  let summary = "Perform lowering of executable target using one of the IREE::HAL::DispatchLoweringPassPipeline";
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIELowerExecutableTargetPass()";
+  let options = [
+    Option<"usePassPipeline", "use-pass-pipeline",
+      "mlir::iree_compiler::AMDAIE::AIEPassPipeline", 
+      /*default=*/"mlir::iree_compiler::AMDAIE::AIEPassPipeline::PadPipeline",
+      "Pass pipeline to use while lowering to AIR dialect">
+  ];
+}
+
+def AMDAIELoweringStrategy :
+    Pass<"iree-amdaie-lowering-strategy", "mlir::iree_compiler::IREE::HAL::ExecutableVariantOp"> {
+  let summary = "Add lowering strategy configurations to be used";
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIELoweringStrategyPass()";
+  let options = [
+    Option<"usePassPipeline", "use-pass-pipeline",
+      "mlir::iree_compiler::AMDAIE::AIEPassPipeline", 
+      /*default=*/"mlir::iree_compiler::AMDAIE::AIEPassPipeline::PadPipeline",
+      "Pass pipeline to use while lowering to AIR dialect">  
+  ];
 }
 
 def AMDAIELowerWorkgroupCount :
@@ -70,7 +94,7 @@ def AMDAIEPackAndTranspose :
   let constructor =
       "mlir::iree_compiler::AMDAIE::createAMDAIEPackAndTransposePass()";
   let options = [
-    Option<"packLevel", "pack-level", "int64_t", /*default=*/"1",
+    Option<"packLevel", "pack-level", "int64_t", /*default=*/"-1",
       "Set the packing level number">
   ];
 }
@@ -104,7 +128,6 @@ def AMDAIETileAndFuse :
       "Use default tiling level used to retrieve the configuration from lowering_config">  
   ];
 }
-
 
 def AMDAIEPropagateDataLayout :
     Pass<"iree-amdaie-propagate-data-layout", "func::FuncOp"> {

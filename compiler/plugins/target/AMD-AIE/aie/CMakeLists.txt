@@ -274,22 +274,3 @@ iree_cc_library(
     ::AIEXDialectIR
     ::AIEXTransformPassHeaders
 )
-
-###############################################################################
-# AIE Translation passes.
-###############################################################################
-
-iree_cc_library(
-  NAME
-    AIETranslationPasses
-  SRCS
-    "${IREE_MLIR_AIE_SOURCE_DIR}/lib/Targets/AIETargetCDO.cpp"
-    "${IREE_MLIR_AIE_SOURCE_DIR}/lib/Targets/AIETargetIPU.cpp"
-    "${IREE_MLIR_AIE_SOURCE_DIR}/lib/Targets/AIETargetLdScript.cpp"
-    "${IREE_MLIR_AIE_SOURCE_DIR}/lib/Targets/AIETargetShared.cpp"
-    "${IREE_MLIR_AIE_SOURCE_DIR}/lib/Targets/AIETargetXAIEV2.cpp"
-  DEPS
-    ::AIEDialectIR
-    ::AIEXDialectIR
-    ::AIEVecDialectIR
-)

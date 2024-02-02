@@ -15,6 +15,7 @@
 #include "air/Dialect/AIR/AIRDialect.h"
 #include "air/Dialect/AIRRt/AIRRtDialect.h"
 #include "iree-amd-aie/Transforms/Passes.h"
+#include "iree-dialects/Dialect/LinalgExt/IR/LinalgExtDialect.h"
 #include "iree/compiler/Codegen/Dialect/Codegen/IR/IREECodegenDialect.h"
 #include "iree/compiler/Utils/FlatbufferUtils.h"
 #include "llvm/Bitcode/BitcodeWriter.h"
@@ -73,6 +74,7 @@ class AIETargetBackend final : public IREE::HAL::TargetBackend {
 
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<mlir::iree_compiler::IREE::Codegen::IREECodegenDialect,
+                    IREE::LinalgExt::IREELinalgExtDialect,
                     transform::TransformDialect, xilinx::AIE::AIEDialect,
                     xilinx::AIEX::AIEXDialect, xilinx::air::airDialect,
                     xilinx::airrt::AIRRtDialect>();
@@ -194,7 +196,12 @@ LogicalResult AIETargetBackend::serializeExecutable(
                                  "--xclbin-kernel-name",
                                  entryPointNames[0],
                                  "--tmpdir",
-                                 workDir};
+                                 workDir,
+                                 "--install-dir",
+                                 options.mlirAieInstallDir};
+  if (options.showInvokedCommands) {
+    cmdArgs.push_back("-v");
+  }
   // Update the linker search path to find libcdo_driver.so
   SmallString<128> libPath(options.vitisInstallDir);
   llvm::sys::path::append(libPath, "aietools", "lib", "lnx64.o");
@@ -219,6 +226,11 @@ LogicalResult AIETargetBackend::serializeExecutable(
 #endif
     newPath = "PATH=" + newPath;
     cmdEnv.push_back(newPath);
+  }
+  if (options.showInvokedCommands) {
+    for (auto s : cmdEnv) llvm::dbgs() << s << " ";
+    for (auto s : cmdArgs) llvm::dbgs() << s << " ";
+    llvm::dbgs() << "\n";
   }
   int result = llvm::sys::ExecuteAndWait(cmdArgs[0], cmdArgs, cmdEnv);
   if (result != 0) {

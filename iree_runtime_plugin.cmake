@@ -4,9 +4,18 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+include(FetchContent)
+
 set(IREE_AMD_AIE_SOURCE_DIR "${CMAKE_CURRENT_LIST_DIR}")
 
-# TODO: Enable once turnkey.
-option(IREE_AMD_AIE_ENABLE_XRT_DRIVER "Builds the XRT HAL driver" OFF)
+set(IREE_AMD_AIE_ENABLE_XRT_DRIVER OFF)
+if("xrt" IN_LIST IREE_EXTERNAL_HAL_DRIVERS)
+  message(STATUS "Enabling XRT build because it is an enabled HAL driver")
+  set(IREE_AMD_AIE_ENABLE_XRT_DRIVER ON)
+endif()
+
+if(IREE_AMD_AIE_ENABLE_XRT_DRIVER)
+  find_package(XRT REQUIRED)
+endif()
 
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/runtime/src AMD-AIE)

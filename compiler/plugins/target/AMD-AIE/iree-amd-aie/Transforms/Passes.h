@@ -35,6 +35,10 @@ void buildAMDAIETransformPassPipeline(OpPassManager &pm);
 void addPadBasedPassPipeline(OpPassManager &passManager,
                              TilingConfig &tilingConfig);
 
+/// Populates passes needed to lower the IR via a Pack based approach.
+void addPackBasedPassPipeline(OpPassManager &passManager,
+                              TilingConfig &tilingConfig);
+
 /// Create a pass to do some rewrites that help bridging the path to AIR/AIE
 /// lowering.
 std::unique_ptr<Pass> createAMDAIEBridgeToAIRPass();
@@ -47,8 +51,20 @@ std::unique_ptr<Pass> createAMDAIEBufferizeToAllocationPass(
 /// Create pass to invoke several cleanup and canonicalization patterns.
 std::unique_ptr<Pass> createAMDAIECleanupPass();
 
+/// Create a pass decomposing iree_linalg_ext.pack and unpack ops to AIR
+/// dialect.
+std::unique_ptr<Pass> createAMDAIEDecomposeLinalgExtPackUnPackToAIRPass();
+
+/// Create a pass to fuse the linalg.fill into the forall loops.
+std::unique_ptr<Pass> createAMDAIEFuseFillIntoForallPass();
+
 /// Create pass calling the dynamic pipeline for AMDAIE.
-std::unique_ptr<Pass> createAMDAIELowerExecutableTargetPass();
+std::unique_ptr<Pass> createAMDAIELowerExecutableTargetPass(
+    AMDAIELowerExecutableTargetOptions options = {});
+
+/// Create pass for adding lowering strategy configurations.
+std::unique_ptr<Pass> createAMDAIELoweringStrategyPass(
+    AMDAIELoweringStrategyOptions options = {});
 
 /// Create a pass to lower workgroup count region of entry point operations.
 std::unique_ptr<Pass> createAMDAIELowerWorkgroupCountPass();
@@ -69,10 +85,6 @@ std::unique_ptr<Pass> createAMDAIETileAndFusePass(
 
 /// Create pass to propagate pack/unpack ops using upstream patterns.
 std::unique_ptr<Pass> createAMDAIEPropagateDataLayoutPass();
-
-/// Create a pass decomposing iree_linalg_ext.pack and unpack ops to AIR
-/// dialect.
-std::unique_ptr<Pass> createAMDAIEDecomposeLinalgExtPackUnPackToAIRPass();
 
 void registerAMDAIEPasses();
 
