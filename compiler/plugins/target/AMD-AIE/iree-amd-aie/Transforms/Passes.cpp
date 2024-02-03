@@ -13,6 +13,7 @@
 #include "iree-dialects/Dialect/LinalgTransform/Passes.h"
 #include "iree/compiler/Codegen/Common/CPU/Passes.h"
 #include "iree/compiler/Codegen/Common/Passes.h"
+#include "mlir/Dialect/Affine/Passes.h"
 #include "mlir/Dialect/Linalg/Passes.h"
 #include "mlir/Dialect/MemRef/Transforms/Passes.h"
 #include "mlir/Pass/PassManager.h"
@@ -299,6 +300,20 @@ void addMLIRAIRAIELoweringPasses(OpPassManager &passManager) {
     passManager.addPass(xilinx::air::createAIRToAIEPass(options));
   }
   passManager.addPass(xilinx::air::createAIRLoweringPass());
+  {
+    xilinx::air::AIRAffineLoopTilingPassOptions options;
+    options.tileSizes = {4, 4};
+    passManager.addNestedPass<func::FuncOp>(
+        xilinx::air::createAIRAffineLoopTilingPass(options));
+  }
+  {
+    xilinx::air::AIRUnrollOuterPerfectlyNestedLoopsPassOptions options;
+    options.clDepth = 2;
+    passManager.addNestedPass<func::FuncOp>(
+        xilinx::air::createAIRUnrollOuterPerfectlyNestedLoopsPass(options));
+  }
+  passManager.addPass(mlir::affine::createAffineExpandIndexOpsPass());
+
   passManager.addPass(xilinx::airrt::createAIRRtToIpuPass());
   passManager.addPass(createCanonicalizerPass());
 }
