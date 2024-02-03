@@ -32,6 +32,7 @@ static LogicalResult setRootConfig(func::FuncOp entryPointFn,
           "dim");
     }
   }
+
   // TODO (nmeshram) : This needs to be moved in a separate more generalized
   // logic. Also, need a flag to experiment between pad based and pack based
   // approach which will have different tile sizes and pass pipelines
@@ -45,7 +46,13 @@ static LogicalResult setRootConfig(func::FuncOp entryPointFn,
         entryPointFn, matmulOp, tileSizes,
         IREE::Codegen::DispatchLoweringPassPipeline::None);
   } else if (usePassPipeline == AIEPassPipeline::SimplePackPipeline) {
-    SmallVector<int64_t> TileSizeLevel0 = {8, 16};
+    // Make sure the tile size is not larger than the input size.
+    auto initType = matmulOp.getDpsInitOperand(0)->get().getType();
+    auto initShape = llvm::cast<ShapedType>(initType).getShape();
+    auto tileM = std::min(initShape[0], (int64_t)64);
+    auto tileN = std::min(initShape[1], (int64_t)64);s
+
+    SmallVector<int64_t> TileSizeLevel0 = {tileM, tileN};
     SmallVector<int64_t> TileSizeLevel1 = {1, 1};
     SmallVector<int64_t> TileSizeLevel2 = {0, 0, 1};
     TileSizesListType tileSizes = {TileSizeLevel0, TileSizeLevel1,
