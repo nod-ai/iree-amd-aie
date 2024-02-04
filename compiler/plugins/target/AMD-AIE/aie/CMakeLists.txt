@@ -34,7 +34,6 @@ iree_cc_library(
     ::AIEInterfacesGen
     ::AIEOpsGen
     ::AIETypesGen
-    ::AIETypesGen2
     MLIRIR
 )
 
@@ -110,17 +109,6 @@ iree_tablegen_library(
   OUTS
     -gen-typedef-decls -typedefs-dialect=AIE Dialect/AIE/IR/AIETypes.h.inc
     -gen-typedef-defs -typedefs-dialect=AIE Dialect/AIE/IR/AIETypes.cpp.inc
-)
-
-## AIE generates the same type file with multiple names.
-iree_tablegen_library(
-  NAME
-    AIETypesGen2
-  TD_FILE
-    "${IREE_MLIR_AIE_SOURCE_DIR}/include/aie/Dialect/AIE/IR/AIETypes.td"
-  OUTS
-    -gen-typedef-decls -typedefs-dialect=AIE Dialect/AIE/IR/AIETypesGen.h.inc
-    -gen-typedef-defs -typedefs-dialect=AIE Dialect/AIE/IR/AIETypesGen.cpp.inc
 )
 
 iree_tablegen_library(
