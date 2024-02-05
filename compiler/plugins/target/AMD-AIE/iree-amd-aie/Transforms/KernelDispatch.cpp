@@ -12,8 +12,44 @@
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
 #define DEBUG_TYPE "kernel-dispatch"
-
 namespace mlir::iree_compiler::AMDAIE {
+
+/// Sets the lowering configuration for dispatch region with root op that
+/// implements the contraction operation interface.
+static LogicalResult setRootConfig(
+    func::FuncOp entryPointFn, linalg::ContractionOpInterface contractionOp) {
+  assert(!getLoweringConfig(contractionOp) &&
+         "expected lowering_config is not set");
+  auto linalgOp = cast<linalg::LinalgOp>(contractionOp.getOperation());
+  unsigned numLoops = linalgOp.getNumLoops();
+  {
+    SmallVector<unsigned> dims;
+    linalgOp.getReductionDims(dims);
+    if (dims.size() != 1 || dims[0] != numLoops - 1) {
+      return contractionOp.emitOpError(
+          "expected to have exactly one reduction dim, and it is the innermost "
+          "dim");
+    }
+  }
+
+  // Make sure the tile size is not larger than the input size.
+  auto initType = linalgOp.getDpsInitOperand(0)->get().getType();
+  auto initShape = llvm::cast<ShapedType>(initType).getShape();
+  auto tileM = std::min(initShape[1], (int64_t)64);
+  auto tileN = std::min(initShape[2], (int64_t)64);
+
+  SmallVector<int64_t> TileSizeLevel0 = {1, tileM, tileN};
+  SmallVector<int64_t> TileSizeLevel1 = {1, 1, 1};
+  SmallVector<int64_t> TileSizeLevel2 = {0, 0, 0, 1};
+  TileSizesListType tileSizes = {TileSizeLevel0, TileSizeLevel1,
+                                 TileSizeLevel2};
+  return setOpConfigAndEntryPointFnTranslation(
+      entryPointFn, linalgOp, tileSizes,
+      IREE::Codegen::DispatchLoweringPassPipeline::None);
+
+  // #config = #iree_codegen.lowering_config<tile_sizes = [[1, 64, 64, 0], [1,
+  // 16, 4, 0], [0, 0, 0, 64]]>
+}
 
 /// Sets the lowering configuration for dispatch region with root op that
 /// implements the contraction operation interface.
@@ -50,7 +86,7 @@ static LogicalResult setRootConfig(func::FuncOp entryPointFn,
     auto initType = matmulOp.getDpsInitOperand(0)->get().getType();
     auto initShape = llvm::cast<ShapedType>(initType).getShape();
     auto tileM = std::min(initShape[0], (int64_t)64);
-    auto tileN = std::min(initShape[1], (int64_t)64);s
+    auto tileN = std::min(initShape[1], (int64_t)64);
 
     SmallVector<int64_t> TileSizeLevel0 = {tileM, tileN};
     SmallVector<int64_t> TileSizeLevel1 = {1, 1};
@@ -81,6 +117,8 @@ static LogicalResult setRootConfigImpl(func::FuncOp entryPointFn, Operation *op,
         // TODO (nmeshram): This is very limited for now, plan is to
         // let it first crash for all the other ops and then consiously
         // add support for them, this way we can verify our work.
+        .Case<linalg::ContractionOpInterface>(
+            [&](auto op) { return setRootConfig(entryPointFn, op); })
         .Case<linalg::MatmulOp>([&](auto op) {
           return setRootConfig(entryPointFn, op, usePassPipeline);
         })
@@ -101,6 +139,8 @@ static LogicalResult setTranslationInfoAndRootConfig(
   FailureOr<Operation *> rootOp = getRootOperation(computeOps);
   if (failed(rootOp)) return failure();
   Operation *rootOperation = rootOp.value();
+  // llvm::outs()<<"ROOT OPERATION : "<<*rootOperation<<"\n";
+  // assert(false);
 
   // TODO (nmeshram): Handle the case with no known root operation.
   if (!rootOperation) {

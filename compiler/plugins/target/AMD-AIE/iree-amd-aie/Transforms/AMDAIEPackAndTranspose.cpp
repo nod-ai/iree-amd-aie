@@ -42,16 +42,19 @@ static FailureOr<PackConfig> getPackConfig(
     } else if (passPipeline == AIEPassPipeline::SimplePackPipeline) {
       // Set constraints for pack size [M, N] from first level of tile sizes
       // Currently set pack size k as the input size K to avoid failure.
+      
+      // int64_t tileB = 64;
       int64_t tileM = 64;
       int64_t tileN = 64;
       if (lowerConfig) {
         auto tileSizes = lowerConfig.getTilingLevels()[0].getSizes();
-        tileM = tileSizes[0];
-        tileN = tileSizes[1];
+        // tileB = tileSizes[0];
+        tileM = tileSizes[1];
+        tileN = tileSizes[2];
       }
-      config.packedSizes = {rewriter.getI64IntegerAttr(tileM),
-                            rewriter.getI64IntegerAttr(tileN),
-                            rewriter.getI64IntegerAttr(kSize)};
+      config.packedSizes = {
+          rewriter.getI64IntegerAttr(0), rewriter.getI64IntegerAttr(tileM),
+          rewriter.getI64IntegerAttr(tileN), rewriter.getI64IntegerAttr(kSize)};
     } else {
       return failure();
     }
@@ -61,10 +64,11 @@ static FailureOr<PackConfig> getPackConfig(
     // 0 is used when unpack is empty
     config.unpackEmpty = {0};
     config.innerPerm = {{1, 0}};
-    config.outerPerm = {{0, 1}};
+    config.outerPerm = {{0, 1, 2}};
   } else if (packLevel == 1) {
     // packed size for [M, N, K, m, n, k]
     config.packedSizes = {
+        rewriter.getI64IntegerAttr(0),
         rewriter.getI64IntegerAttr(0), rewriter.getI64IntegerAttr(0),
         rewriter.getI64IntegerAttr(0), rewriter.getI64IntegerAttr(4),
         rewriter.getI64IntegerAttr(8), rewriter.getI64IntegerAttr(8)};
@@ -75,7 +79,7 @@ static FailureOr<PackConfig> getPackConfig(
     // Only the third pack operation has a corresponding unpack operation
     config.unpackEmpty = {0, 0, 1};
     config.innerPerm = {{0, 1}, {1, 0}, {0, 1}};
-    config.outerPerm = {{0, 1, 3, 2}, {0, 1, 3, 2}, {0, 1, 3, 2}};
+    config.outerPerm = {{0, 1, 2, 4, 3}, {0, 1, 2, 4, 3}, {0, 1, 2, 4, 3}};
   } else {
     return failure();
   }
@@ -143,7 +147,7 @@ void AMDAIEPackAndTransposePass::runOnOperation() {
   // Step 2. Pack the operation
   IRRewriter rewriter(context);
   auto lhsType = linalgOp->getOperand(0).getType();
-  int64_t kSize = llvm::cast<ShapedType>(lhsType).getShape()[1];
+  int64_t kSize = llvm::cast<ShapedType>(lhsType).getShape()[2];
   FailureOr<PackConfig> packCfg =
       getPackConfig(rewriter, packLevel, usePassPipeline, config, kSize);
   if (failed(packCfg)) {
