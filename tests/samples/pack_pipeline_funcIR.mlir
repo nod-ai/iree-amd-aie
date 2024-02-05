@@ -14,33 +14,33 @@ func.func @matmul_example(%lhs: tensor<16x256xi8>, %rhs: tensor<256x256xi8>) -> 
 //       CHECK: memref.alloc() : memref<1x1x8x4x4x8xi32, 2 : i32>
 //       CHECK: memref.alloc() : memref<1x1x8x8x8x8xi8, 2 : i32>
 //       CHECK: memref.alloc() : memref<1x1x8x4x4x8xi8, 2 : i32>
-//       CHECK: memref.alloc() : memref<1x4x16x64xi32, 1 : i32>
-//       CHECK: memref.alloc() : memref<1x4x64x64xi8, 1 : i32>
+//       CHECK: memref.alloc() : memref<1x1x16x64xi32, 1 : i32>
+//       CHECK: memref.alloc() : memref<1x1x64x64xi8, 1 : i32>
 //       CHECK: memref.alloc() : memref<1x1x16x64xi8, 1 : i32>
 //       CHECK: scf.forall
 //       CHECK:   iree_linalg_ext.pack %{{.*}} : (memref<16x64xi8, strided<[256, 1], offset: ?>, #hal.descriptor_type<storage_buffer>> memref<1x1x16x64xi8, 1 : i32>)
-//       CHECK:   iree_linalg_ext.pack %{{.*}} : (memref<64x256xi8, strided<[256, 1], offset: ?>, #hal.descriptor_type<storage_buffer>> memref<1x4x64x64xi8, 1 : i32>)
+//       CHECK:   iree_linalg_ext.pack %{{.*}} : (memref<64x64xi8, strided<[256, 1], offset: ?>, #hal.descriptor_type<storage_buffer>> memref<1x1x64x64xi8, 1 : i32>)
 //       CHECK:   scf.forall
 //       CHECK:     iree_linalg_ext.pack %{{.*}} : (memref<1x1x16x64xi8, strided<[1024, 1024, 64, 1], offset: ?>, 1 : i32> memref<1x1x8x4x4x8xi8, 2 : i32>)
-//       CHECK:     iree_linalg_ext.pack %{{.*}} : (memref<1x1x64x64xi8, strided<[16384, 4096, 64, 1], offset: ?>, 1 : i32> memref<1x1x8x8x8x8xi8, 2 : i32>)
+//       CHECK:     iree_linalg_ext.pack %{{.*}} : (memref<1x1x64x64xi8, strided<[4096, 4096, 64, 1], offset: ?>, 1 : i32> memref<1x1x8x8x8x8xi8, 2 : i32>)
 //       CHECK:     linalg.fill
 //       CHECK:     linalg.generic
-//       CHECK:     iree_linalg_ext.unpack %{{.*}} : (memref<1x1x8x4x4x8xi32, 2 : i32> memref<1x1x16x64xi32, strided<[4096, 1024, 64, 1], offset: ?>, 1 : i32>)
-//       CHECK:   iree_linalg_ext.unpack %{{.*}} : (memref<1x4x16x64xi32, 1 : i32> memref<16x256xi32, strided<[256, 1], offset: ?>, #hal.descriptor_type<storage_buffer>>)
+//       CHECK:     iree_linalg_ext.unpack %{{.*}} : (memref<1x1x8x4x4x8xi32, 2 : i32> memref<1x1x16x64xi32, strided<[1024, 1024, 64, 1], offset: ?>, 1 : i32>)
+//       CHECK:   iree_linalg_ext.unpack %{{.*}} : (memref<1x1x16x64xi32, 1 : i32> memref<16x64xi32, strided<[256, 1], offset: ?>, #hal.descriptor_type<storage_buffer>>)
 //       CHECK:   scf.for
 //       CHECK:     iree_linalg_ext.pack %{{.*}} : (memref<16x64xi8, strided<[256, 1], offset: ?>, #hal.descriptor_type<storage_buffer>> memref<1x1x16x64xi8, 1 : i32>)
-//       CHECK:     iree_linalg_ext.pack %{{.*}} : (memref<64x256xi8, strided<[256, 1], offset: ?>, #hal.descriptor_type<storage_buffer>> memref<1x4x64x64xi8, 1 : i32>)
-//       CHECK:     iree_linalg_ext.pack %{{.*}} : (memref<16x256xi32, strided<[256, 1], offset: ?>, #hal.descriptor_type<storage_buffer>> memref<1x4x16x64xi32, 1 : i32>)
+//       CHECK:     iree_linalg_ext.pack %{{.*}} : (memref<64x64xi8, strided<[256, 1], offset: ?>, #hal.descriptor_type<storage_buffer>> memref<1x1x64x64xi8, 1 : i32>)
+//       CHECK:     iree_linalg_ext.pack %{{.*}} : (memref<16x64xi32, strided<[256, 1], offset: ?>, #hal.descriptor_type<storage_buffer>> memref<1x1x16x64xi32, 1 : i32>)
 //       CHECK:     scf.forall
 //       CHECK:       iree_linalg_ext.pack %{{.*}} : (memref<1x1x16x64xi8, strided<[1024, 1024, 64, 1], offset: ?>, 1 : i32> memref<1x1x8x4x4x8xi8, 2 : i32>)
-//       CHECK:       iree_linalg_ext.pack %{{.*}} : (memref<1x1x64x64xi8, strided<[16384, 4096, 64, 1], offset: ?>, 1 : i32> memref<1x1x8x8x8x8xi8, 2 : i32>)
-//       CHECK:       iree_linalg_ext.pack %{{.*}} : (memref<1x1x16x64xi32, strided<[4096, 1024, 64, 1], offset: ?>, 1 : i32> memref<1x1x8x4x4x8xi32, 2 : i32>)
+//       CHECK:       iree_linalg_ext.pack %{{.*}} : (memref<1x1x64x64xi8, strided<[4096, 4096, 64, 1], offset: ?>, 1 : i32> memref<1x1x8x8x8x8xi8, 2 : i32>)
+//       CHECK:       iree_linalg_ext.pack %{{.*}} : (memref<1x1x16x64xi32, strided<[1024, 1024, 64, 1], offset: ?>, 1 : i32> memref<1x1x8x4x4x8xi32, 2 : i32>)
 //       CHECK:       linalg.generic
-//       CHECK:       iree_linalg_ext.unpack %{{.*}} : (memref<1x1x8x4x4x8xi32, 2 : i32> memref<1x1x16x64xi32, strided<[4096, 1024, 64, 1], offset: ?>, 1 : i32>)
-//       CHECK:     iree_linalg_ext.unpack %{{.*}} : (memref<1x4x16x64xi32, 1 : i32> memref<16x256xi32, strided<[256, 1], offset: ?>, #hal.descriptor_type<storage_buffer>>)
+//       CHECK:       iree_linalg_ext.unpack %{{.*}} : (memref<1x1x8x4x4x8xi32, 2 : i32> memref<1x1x16x64xi32, strided<[1024, 1024, 64, 1], offset: ?>, 1 : i32>)
+//       CHECK:     iree_linalg_ext.unpack %{{.*}} : (memref<1x1x16x64xi32, 1 : i32> memref<16x64xi32, strided<[256, 1], offset: ?>, #hal.descriptor_type<storage_buffer>>)
 //       CHECK: memref.dealloc %{{.*}} : memref<1x1x16x64xi8, 1 : i32>
-//       CHECK: memref.dealloc %{{.*}} : memref<1x4x64x64xi8, 1 : i32>
-//       CHECK: memref.dealloc %{{.*}} : memref<1x4x16x64xi32, 1 : i32>
+//       CHECK: memref.dealloc %{{.*}} : memref<1x1x64x64xi8, 1 : i32>
+//       CHECK: memref.dealloc %{{.*}} : memref<1x1x16x64xi32, 1 : i32>
 //       CHECK: memref.dealloc %{{.*}} : memref<1x1x8x4x4x8xi8, 2 : i32>
 //       CHECK: memref.dealloc %{{.*}} : memref<1x1x8x8x8x8xi8, 2 : i32>
 //       CHECK: memref.dealloc %{{.*}} : memref<1x1x8x4x4x8xi32, 2 : i32>
