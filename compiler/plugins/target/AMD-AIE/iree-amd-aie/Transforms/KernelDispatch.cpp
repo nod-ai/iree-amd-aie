@@ -50,7 +50,7 @@ static LogicalResult setRootConfig(func::FuncOp entryPointFn,
     auto initType = matmulOp.getDpsInitOperand(0)->get().getType();
     auto initShape = llvm::cast<ShapedType>(initType).getShape();
     auto tileM = std::min(initShape[0], (int64_t)64);
-    auto tileN = std::min(initShape[1], (int64_t)64);s
+    auto tileN = std::min(initShape[1], (int64_t)64);
 
     SmallVector<int64_t> TileSizeLevel0 = {tileM, tileN};
     SmallVector<int64_t> TileSizeLevel1 = {1, 1};
