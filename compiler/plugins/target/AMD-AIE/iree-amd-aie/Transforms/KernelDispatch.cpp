@@ -79,7 +79,7 @@ static LogicalResult setRootConfigImpl(func::FuncOp entryPointFn, Operation *op,
         // let it first crash for all the other ops and then consiously
         // add support for them, this way we can verify our work.
         .Case<linalg::MatmulOp>([&](auto op) {
-          return setRootConfig(entryPointFn, op, usePassPipeline, int64_t useMulticore);
+          return setRootConfig(entryPointFn, op, usePassPipeline, useMulticore);
         })
         .Default([&](Operation *op) { return success(); });
   };
