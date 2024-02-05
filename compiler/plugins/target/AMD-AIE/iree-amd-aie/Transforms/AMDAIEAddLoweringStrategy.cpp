@@ -47,7 +47,7 @@ void AMDAIELoweringStrategyPass::runOnOperation() {
         "Expected a variantOp root with an inner ModuleOp");
     return signalPassFailure();
   }
-  if (failed(initAIELaunchConfig(moduleOp, usePassPipeline, useMulticore))) {
+  if (failed(initAIELaunchConfig(moduleOp, usePassPipeline, numCores))) {
     return signalPassFailure();
   }
 }

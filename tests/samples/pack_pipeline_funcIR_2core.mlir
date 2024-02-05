@@ -1,4 +1,4 @@
-// RUN: iree-compile --iree-hal-target-backends=amd-aie --compile-to=executable-sources --mlir-print-ir-after=fold-memref-alias-ops %s | iree-opt --pass-pipeline="builtin.module(hal.executable(hal.executable.variant(iree-hal-translate-target-executable-variants{target=amd-aie})))" --iree-amdaie-use-pipeline=pack --iree-amdaie-use-multicore=2 | FileCheck %s
+// RUN: iree-compile --iree-hal-target-backends=amd-aie --compile-to=executable-sources --mlir-print-ir-after=fold-memref-alias-ops %s | iree-opt --pass-pipeline="builtin.module(hal.executable(hal.executable.variant(iree-hal-translate-target-executable-variants{target=amd-aie})))" --iree-amdaie-use-pipeline=pack --iree-amdaie-num-cores=2 | FileCheck %s
 
 func.func @matmul_example(%lhs: tensor<16x256xi8>, %rhs: tensor<256x256xi8>) -> tensor<16x256xi32>
 {

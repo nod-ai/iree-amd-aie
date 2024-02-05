@@ -21,7 +21,7 @@ namespace mlir::iree_compiler::AMDAIE {
 static LogicalResult setRootConfig(func::FuncOp entryPointFn,
                                    linalg::MatmulOp matmulOp,
                                    AIEPassPipeline usePassPipeline,
-                                   int64_t useMulticore) {
+                                   int64_t numCores) {
   assert(!getLoweringConfig(matmulOp) && "expected lowering_config is not set");
   auto linalgOp = cast<linalg::LinalgOp>(matmulOp.getOperation());
   unsigned numLoops = linalgOp.getNumLoops();
@@ -56,9 +56,9 @@ static LogicalResult setRootConfig(func::FuncOp entryPointFn,
         entryPointFn, matmulOp, tileSizes,
         IREE::Codegen::DispatchLoweringPassPipeline::None);
   } else if (usePassPipeline == AIEPassPipeline::PackPipeline) {
-    if (!(useMulticore==1 || useMulticore==2 || useMulticore==4))
+    if (!(numCores == 1 || numCores == 2 || numCores == 4))
       return matmulOp.emitOpError("unhandled number of cores");
-    SmallVector<int64_t> TileSizeLevel0 = {16, 64*useMulticore};
+    SmallVector<int64_t> TileSizeLevel0 = {16, 64 * numCores};
     SmallVector<int64_t> TileSizeLevel1 = {0, 0, 64};
     SmallVector<int64_t> TileSizeLevel2 = {1, 1};
     TileSizesListType tileSizes = {TileSizeLevel0, TileSizeLevel1,
@@ -72,14 +72,14 @@ static LogicalResult setRootConfig(func::FuncOp entryPointFn,
 
 /// Redirects to methods that set the configuration based on operation type.
 static LogicalResult setRootConfigImpl(func::FuncOp entryPointFn, Operation *op,
-                                       AIEPassPipeline usePassPipeline, int64_t useMulticore) {
+                                       AIEPassPipeline usePassPipeline, int64_t numCores) {
   auto setRootConfigFn = [&](Operation *op) -> LogicalResult {
     return TypeSwitch<Operation *, LogicalResult>(op)
         // TODO (nmeshram): This is very limited for now, plan is to
         // let it first crash for all the other ops and then consiously
         // add support for them, this way we can verify our work.
         .Case<linalg::MatmulOp>([&](auto op) {
-          return setRootConfig(entryPointFn, op, usePassPipeline, useMulticore);
+          return setRootConfig(entryPointFn, op, usePassPipeline, numCores);
         })
         .Default([&](Operation *op) { return success(); });
   };
@@ -89,7 +89,7 @@ static LogicalResult setRootConfigImpl(func::FuncOp entryPointFn, Operation *op,
 /// Sets the translation information to use for a dispatch region.
 static LogicalResult setTranslationInfoAndRootConfig(
     func::FuncOp entryPointFn, ArrayRef<Operation *> computeOps,
-    AIEPassPipeline usePassPipeline, int64_t useMulticore) {
+    AIEPassPipeline usePassPipeline, int64_t numCores) {
   // Make sure that lowering_config is not preset on any compute ops.
   for (auto computeOp : computeOps) {
     if (getLoweringConfig(computeOp)) return failure();
@@ -104,7 +104,7 @@ static LogicalResult setTranslationInfoAndRootConfig(
     return entryPointFn.emitError("Case with no root ops not yet supported.");
   }
 
-  if (failed(setRootConfigImpl(entryPointFn, rootOperation, usePassPipeline, useMulticore))) {
+  if (failed(setRootConfigImpl(entryPointFn, rootOperation, usePassPipeline, numCores))) {
     return failure();
   }
 
@@ -115,7 +115,7 @@ static LogicalResult setTranslationInfoAndRootConfig(
 }
 
 LogicalResult initAIELaunchConfig(ModuleOp moduleOp,
-                                  AIEPassPipeline usePassPipeline, int64_t useMulticore) {
+                                  AIEPassPipeline usePassPipeline, int64_t numCores) {
   llvm::StringMap<IREE::HAL::ExecutableExportOp> exportOps =
       getAllEntryPoints(moduleOp);
   for (auto funcOp : moduleOp.getOps<func::FuncOp>()) {
@@ -130,7 +130,7 @@ LogicalResult initAIELaunchConfig(ModuleOp moduleOp,
 
     SmallVector<Operation *> computeOps = getComputeOps(funcOp);
     if (failed(setTranslationInfoAndRootConfig(funcOp, computeOps,
-                                               usePassPipeline, useMulticore))) {
+                                               usePassPipeline, numCores))) {
       return failure();
     }
   }
