@@ -23,8 +23,8 @@ enum class AIEPassPipeline : int32_t {
 };
 
 LogicalResult initAIELaunchConfig(ModuleOp moduleOp,
-                                  AIEPassPipeline usePassPipeline);
-
+                                  AIEPassPipeline usePassPipeline,
+                                  int64_t useMulticore);
 }  // namespace mlir::iree_compiler::AMDAIE
 
 #endif  // IREE_AMD_AIE_TRANSFORMS_KERNELDISPATCH_H_

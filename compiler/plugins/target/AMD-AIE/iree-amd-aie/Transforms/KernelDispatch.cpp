@@ -20,7 +20,8 @@ namespace mlir::iree_compiler::AMDAIE {
 /// implements the contraction operation interface.
 static LogicalResult setRootConfig(func::FuncOp entryPointFn,
                                    linalg::MatmulOp matmulOp,
-                                   AIEPassPipeline usePassPipeline) {
+                                   AIEPassPipeline usePassPipeline,
+                                   int64_t useMulticore) {
   assert(!getLoweringConfig(matmulOp) && "expected lowering_config is not set");
   auto linalgOp = cast<linalg::LinalgOp>(matmulOp.getOperation());
   unsigned numLoops = linalgOp.getNumLoops();
@@ -55,7 +56,9 @@ static LogicalResult setRootConfig(func::FuncOp entryPointFn,
         entryPointFn, matmulOp, tileSizes,
         IREE::Codegen::DispatchLoweringPassPipeline::None);
   } else if (usePassPipeline == AIEPassPipeline::PackPipeline) {
-    SmallVector<int64_t> TileSizeLevel0 = {16, 64};
+    if (!(useMulticore==1 || useMulticore==2 || useMulticore==4))
+      return matmulOp.emitOpError("unhandled number of cores");
+    SmallVector<int64_t> TileSizeLevel0 = {16, 64*useMulticore};
     SmallVector<int64_t> TileSizeLevel1 = {0, 0, 64};
     SmallVector<int64_t> TileSizeLevel2 = {1, 1};
     TileSizesListType tileSizes = {TileSizeLevel0, TileSizeLevel1,
@@ -69,14 +72,14 @@ static LogicalResult setRootConfig(func::FuncOp entryPointFn,
 
 /// Redirects to methods that set the configuration based on operation type.
 static LogicalResult setRootConfigImpl(func::FuncOp entryPointFn, Operation *op,
-                                       AIEPassPipeline usePassPipeline) {
+                                       AIEPassPipeline usePassPipeline, int64_t useMulticore) {
   auto setRootConfigFn = [&](Operation *op) -> LogicalResult {
     return TypeSwitch<Operation *, LogicalResult>(op)
         // TODO (nmeshram): This is very limited for now, plan is to
         // let it first crash for all the other ops and then consiously
         // add support for them, this way we can verify our work.
         .Case<linalg::MatmulOp>([&](auto op) {
-          return setRootConfig(entryPointFn, op, usePassPipeline);
+          return setRootConfig(entryPointFn, op, usePassPipeline, int64_t useMulticore);
         })
         .Default([&](Operation *op) { return success(); });
   };
@@ -86,7 +89,7 @@ static LogicalResult setRootConfigImpl(func::FuncOp entryPointFn, Operation *op,
 /// Sets the translation information to use for a dispatch region.
 static LogicalResult setTranslationInfoAndRootConfig(
     func::FuncOp entryPointFn, ArrayRef<Operation *> computeOps,
-    AIEPassPipeline usePassPipeline) {
+    AIEPassPipeline usePassPipeline, int64_t useMulticore) {
   // Make sure that lowering_config is not preset on any compute ops.
   for (auto computeOp : computeOps) {
     if (getLoweringConfig(computeOp)) return failure();
@@ -101,7 +104,7 @@ static LogicalResult setTranslationInfoAndRootConfig(
     return entryPointFn.emitError("Case with no root ops not yet supported.");
   }
 
-  if (failed(setRootConfigImpl(entryPointFn, rootOperation, usePassPipeline))) {
+  if (failed(setRootConfigImpl(entryPointFn, rootOperation, usePassPipeline, useMulticore))) {
     return failure();
   }
 
@@ -112,7 +115,7 @@ static LogicalResult setTranslationInfoAndRootConfig(
 }
 
 LogicalResult initAIELaunchConfig(ModuleOp moduleOp,
-                                  AIEPassPipeline usePassPipeline) {
+                                  AIEPassPipeline usePassPipeline, int64_t useMulticore) {
   llvm::StringMap<IREE::HAL::ExecutableExportOp> exportOps =
       getAllEntryPoints(moduleOp);
   for (auto funcOp : moduleOp.getOps<func::FuncOp>()) {
@@ -127,7 +130,7 @@ LogicalResult initAIELaunchConfig(ModuleOp moduleOp,
 
     SmallVector<Operation *> computeOps = getComputeOps(funcOp);
     if (failed(setTranslationInfoAndRootConfig(funcOp, computeOps,
-                                               usePassPipeline))) {
+                                               usePassPipeline, useMulticore))) {
       return failure();
     }
   }
