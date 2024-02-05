@@ -23,7 +23,7 @@
 //  ${IREE_OPT} \
 //      --pass-pipeline='builtin.module(hal.executable(hal.executable.variant(builtin.module(func.func(air-collapse-herd), canonicalize, cse, air-place-herds{num-rows=4 num-cols=1 row-anchor=2 col-anchor=0}, canonicalize, cse, func.func(air-renumber-dma, convert-linalg-to-loops)))))' ${DEBUG_FLAGS} | \
 //  ${IREE_OPT} \
-//      --pass-pipeline='builtin.module(hal.executable(hal.executable.variant(builtin.module(air-to-aie{row-offset=2 col-offset=0 device=ipu emit-while-loop=true}, canonicalize, air-to-std, func.func(air-affine-loop-tile{tile-sizes=4,4}), func.func(air-unroll-outer-affine-loops{depth=2}), affine-expand-index-ops, airrt-to-ipu, canonicalize))))' ${DEBUG_FLAGS}
+//      --pass-pipeline='builtin.module(hal.executable(hal.executable.variant(builtin.module(air-to-aie{row-offset=2 col-offset=0 device=ipu emit-while-loop=true}, canonicalize, air-to-std, func.func(affine-loop-opt{affine-opt-tile-sizes=4,4}), func.func(air-unroll-outer-affine-loops{depth=2}), affine-expand-index-ops, airrt-to-ipu, canonicalize))))' ${DEBUG_FLAGS}
 
 
 #executable_target_elf = #hal.executable.target<"amd-aie", "elf", {target_arch = "chip-tbd"}>

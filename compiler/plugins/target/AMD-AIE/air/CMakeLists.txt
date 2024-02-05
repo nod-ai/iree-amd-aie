@@ -242,6 +242,7 @@ iree_cc_library(
     "TransformPasses.cpp"
     "${IREE_MLIR_AIR_SOURCE_DIR}/lib/Transform/AIRHerdPlacementPass.cpp"
     "${IREE_MLIR_AIR_SOURCE_DIR}/lib/Transform/AIRLinalgCodegen.cpp"
+    "${IREE_MLIR_AIR_SOURCE_DIR}/lib/Transform/AffineLoopOptPass.cpp"
     "${IREE_MLIR_AIR_SOURCE_DIR}/lib/Transform/AIRMiscPasses.cpp"
     "${IREE_MLIR_AIR_SOURCE_DIR}/lib/Transform/AIRDependency.cpp"
     "${IREE_MLIR_AIR_SOURCE_DIR}/lib/Transform/AIRDependencyScheduleOpt.cpp"
