@@ -389,10 +389,10 @@ void addMLIRAIRAIELoweringPasses(OpPassManager &passManager) {
   }
   passManager.addPass(xilinx::air::createAIRLoweringPass());
   {
-    xilinx::air::AIRAffineLoopTilingPassOptions options;
-    options.tileSizes = {4, 4};
+    xilinx::air::AffineLoopOptPassOptions options;
+    options.clTileSizes = {4, 4};
     passManager.addNestedPass<func::FuncOp>(
-        xilinx::air::createAIRAffineLoopTilingPass(options));
+        xilinx::air::createAffineLoopOptPass(options));
   }
   {
     xilinx::air::AIRUnrollOuterPerfectlyNestedLoopsPassOptions options;

@@ -29,6 +29,6 @@ void registerAIRTransformPasses() {
   registerAIRUnrollLoopForPipeliningPattern();
   registerAIRCollapseHerdPass();
   registerAIRUnrollOuterPerfectlyNestedLoopsPass();
-  registerAIRAffineLoopTilingPass();
+  registerAffineLoopOptPass();
 }
 }  // namespace mlir::iree_compiler::AMDAIE
