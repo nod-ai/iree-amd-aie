@@ -6,6 +6,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 """iree_generated_e2e_matmul_test generator for e2e matmul tests.
 """
+from colorama import Fore
 
 import argparse
 import os
@@ -124,11 +125,11 @@ def get_test_shapes(shapes_id: ShapesId):
         ]
     if shapes_id == ShapesId.LARGE2:
         return [
-            TestShape(m=8, k=64, n=2048, accumulate=False),
+            TestShape(m=8, k=32, n=2048, accumulate=False),
         ]
     if shapes_id == ShapesId.LARGE3:
         return [
-            TestShape(m=16, k=64, n=2048, accumulate=False),
+            TestShape(m=64, k=32, n=512, accumulate=False),
         ]
 
     raise ValueError(shapes_id)
@@ -616,6 +617,8 @@ def main(args):
     acc_type = MatrixElemTypeId(args.acc_type)
     acc_type = infer_acc_type(lhs_rhs_type, acc_type)
     shapes_id = ShapesId(args.shapes)
+    test=get_test_shapes(shapes_id)
+    print(f"{Fore.YELLOW}{get_test_shapes(shapes_id)}{Fore.WHITE}")
     compilation_info_id = CompilationInfoId(args.compilation_info)
     (functions, calls) = generate(
         lhs_rhs_type, acc_type, shapes_id, compilation_info_id

@@ -43,6 +43,9 @@ TEST_RUNNER="${IREE_INSTALL_BIN}/iree-e2e-matmul-test"
 echo "Python version: $("${IREE_PYTHON3_EXECUTABLE}" --version)"
 echo "iree-compile version: $("${IREE_COMPILE_EXE}" --version)"
 mkdir -p ${OUTPUT_DIR}
+rm -f ${OUTPUT_DIR}/*.txt
+rm -f ${OUTPUT_DIR}/*.mlir
+rm -f ${OUTPUT_DIR}/*.vmfb
 
 ###############################################################################
 # Define helper function                                                      #
@@ -106,7 +109,8 @@ function run_matmul_test() {
         ;;
     esac
   done
-
+  echo ""
+  echo "***********${shapes}***************"
   echo "**** Generating .mlir files ****"
   ${IREE_PYTHON3_EXECUTABLE} ${GENERATOR} \
       --output_matmuls_mlir="${OUTPUT_DIR}/${name}_matmuls.mlir" \
@@ -122,7 +126,7 @@ function run_matmul_test() {
       --iree-amd-aie-peano-install-dir=${peano_install_path} \
       --iree-amd-aie-mlir-aie-install-dir=${mlir_aie_install_path} \
       --iree-amd-aie-vitis-install-dir=${vitis_path} \
-      -o "${OUTPUT_DIR}/${name}_matmuls.vmfb" &> ${OUTPUT_DIR}/${name}_matmuls_logs.txt
+      -o "${OUTPUT_DIR}/${name}_matmuls.vmfb" &>> ${OUTPUT_DIR}/${name}_matmuls_logs.txt
   
   # Capture the exit code
   exit_code=$?
@@ -138,13 +142,12 @@ function run_matmul_test() {
       --iree-hal-target-backends=${target_backend} \
       -o "${OUTPUT_DIR}/${name}_calls.vmfb"
 
-  echo "**** Running '${name}' matmul tests ****"
-  echo ""
+  echo "**** Running tests ****"
 
   ${TEST_RUNNER} \
       --module="${OUTPUT_DIR}/${name}_matmuls.vmfb" \
       --module="${OUTPUT_DIR}/${name}_calls.vmfb" \
-      --device=${device}
+      --device=${device} &>> ${OUTPUT_DIR}/${name}_matmuls_logs.txt
 
 # Capture the exit code
 exit_code=$?
@@ -155,7 +158,8 @@ if [ $exit_code -eq 0 ]; then
 else
     printf "${RED}Failed in runtime (Exit code: $exit_code)${NC}\n"
 fi
-
+echo "log written to: ${OUTPUT_DIR}/${name}_matmuls_logs.txt"
+echo "********************************"
 }
 
 ###############################################################################
