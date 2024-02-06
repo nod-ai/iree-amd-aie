@@ -22,9 +22,15 @@ enum class AIEPassPipeline : int32_t {
   None = 3
 };
 
+/// Struct specifying the number of cores to use. This will be replaced
+/// by a more versatile handling in the future.
+struct AIEConfig {
+  int32_t num_cores;
+};
+
 LogicalResult initAIELaunchConfig(ModuleOp moduleOp,
                                   AIEPassPipeline usePassPipeline,
-                                  int64_t useMulticore);
+                                  int32_t numCores);
 }  // namespace mlir::iree_compiler::AMDAIE
 
 #endif  // IREE_AMD_AIE_TRANSFORMS_KERNELDISPATCH_H_

@@ -21,7 +21,7 @@ namespace mlir::iree_compiler::AMDAIE {
 static LogicalResult setRootConfig(func::FuncOp entryPointFn,
                                    linalg::MatmulOp matmulOp,
                                    AIEPassPipeline usePassPipeline,
-                                   int64_t numCores) {
+                                   int32_t numCores) {
   assert(!getLoweringConfig(matmulOp) && "expected lowering_config is not set");
   auto linalgOp = cast<linalg::LinalgOp>(matmulOp.getOperation());
   unsigned numLoops = linalgOp.getNumLoops();
@@ -56,9 +56,12 @@ static LogicalResult setRootConfig(func::FuncOp entryPointFn,
         entryPointFn, matmulOp, tileSizes,
         IREE::Codegen::DispatchLoweringPassPipeline::None);
   } else if (usePassPipeline == AIEPassPipeline::PackPipeline) {
-    if (!(numCores == 1 || numCores == 2 || numCores == 4))
+    // Instantiate a struct with multicore parameters for preliminary use.
+    // In the future these could be read from file.
+    struct AIEConfig cfg = {numCores};
+    if (!(cfg.num_cores == 1 || cfg.num_cores == 2 || cfg.num_cores == 4))
       return matmulOp.emitOpError("unhandled number of cores");
-    SmallVector<int64_t> TileSizeLevel0 = {16, 64 * numCores};
+    SmallVector<int64_t> TileSizeLevel0 = {16, 64 * cfg.num_cores};
     SmallVector<int64_t> TileSizeLevel1 = {0, 0, 64};
     SmallVector<int64_t> TileSizeLevel2 = {1, 1};
     TileSizesListType tileSizes = {TileSizeLevel0, TileSizeLevel1,
@@ -72,7 +75,8 @@ static LogicalResult setRootConfig(func::FuncOp entryPointFn,
 
 /// Redirects to methods that set the configuration based on operation type.
 static LogicalResult setRootConfigImpl(func::FuncOp entryPointFn, Operation *op,
-                                       AIEPassPipeline usePassPipeline, int64_t numCores) {
+                                       AIEPassPipeline usePassPipeline,
+                                       int32_t numCores) {
   auto setRootConfigFn = [&](Operation *op) -> LogicalResult {
     return TypeSwitch<Operation *, LogicalResult>(op)
         // TODO (nmeshram): This is very limited for now, plan is to
@@ -89,7 +93,7 @@ static LogicalResult setRootConfigImpl(func::FuncOp entryPointFn, Operation *op,
 /// Sets the translation information to use for a dispatch region.
 static LogicalResult setTranslationInfoAndRootConfig(
     func::FuncOp entryPointFn, ArrayRef<Operation *> computeOps,
-    AIEPassPipeline usePassPipeline, int64_t numCores) {
+    AIEPassPipeline usePassPipeline, int32_t numCores) {
   // Make sure that lowering_config is not preset on any compute ops.
   for (auto computeOp : computeOps) {
     if (getLoweringConfig(computeOp)) return failure();
@@ -115,7 +119,8 @@ static LogicalResult setTranslationInfoAndRootConfig(
 }
 
 LogicalResult initAIELaunchConfig(ModuleOp moduleOp,
-                                  AIEPassPipeline usePassPipeline, int64_t numCores) {
+                                  AIEPassPipeline usePassPipeline,
+                                  int32_t numCores) {
   llvm::StringMap<IREE::HAL::ExecutableExportOp> exportOps =
       getAllEntryPoints(moduleOp);
   for (auto funcOp : moduleOp.getOps<func::FuncOp>()) {

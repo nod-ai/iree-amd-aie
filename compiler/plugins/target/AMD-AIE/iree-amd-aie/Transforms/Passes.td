@@ -95,7 +95,7 @@ def AMDAIELoweringStrategy :
         clEnumValN(mlir::iree_compiler::AMDAIE::AIEPassPipeline::SimplePackPipeline, "simple-pack",
                    "Use the simple-pack based lowering strategy.")
       )}]>,
-    Option<"numCores", "num-cores", "int64_t", /*default=*/"1",
+    Option<"numCores", "num-cores", "int32_t", /*default=*/"1",
       "Choose the number of cores to use">
   ];
 }
