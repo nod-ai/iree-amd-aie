@@ -29,13 +29,23 @@ struct PackConfig {
 };
 
 static FailureOr<PackConfig> getPackConfig(RewriterBase &rewriter,
-                                           int packLevel) {
+                                           int packLevel,
+                                           AIEPassPipeline passPipeline) {
   PackConfig config;
   if (packLevel == 0) {
     // packed size for [M, N, K]
-    config.packedSizes = {rewriter.getI64IntegerAttr(8),
-                          rewriter.getI64IntegerAttr(16),
-                          rewriter.getI64IntegerAttr(16)};
+    if (passPipeline == AIEPassPipeline::PackPipeline) {
+      config.packedSizes = {rewriter.getI64IntegerAttr(16),
+                            rewriter.getI64IntegerAttr(64),
+                            rewriter.getI64IntegerAttr(64)};
+
+    } else if (passPipeline == AIEPassPipeline::SimplePackPipeline) {
+      config.packedSizes = {rewriter.getI64IntegerAttr(8),
+                            rewriter.getI64IntegerAttr(16),
+                            rewriter.getI64IntegerAttr(16)};
+    } else {
+      return failure();
+    }
     // Transpose B matrix from [K N n k] to [K N k n]
     config.transposePackIndices = {1};
     // There is no corresponding unpack for the specified pack operation
@@ -118,9 +128,13 @@ void AMDAIEPackAndTransposePass::runOnOperation() {
     return;
   }
 
-  // Pack the operation
+  // Step 1. Before packing the operation, we will prefetch the lowering config.
+  auto config = getLoweringConfig(linalgOp);
+
+  // Step 2. Pack the operation
   IRRewriter rewriter(context);
-  FailureOr<PackConfig> packCfg = getPackConfig(rewriter, packLevel);
+  FailureOr<PackConfig> packCfg =
+      getPackConfig(rewriter, packLevel, usePassPipeline);
   if (failed(packCfg)) {
     funcOp->emitOpError("failed to get pack configs");
     return signalPassFailure();
@@ -132,7 +146,7 @@ void AMDAIEPackAndTransposePass::runOnOperation() {
     return signalPassFailure();
   }
 
-  // Pack Transpose
+  // Step 3. Pack Transpose
   SmallVector<tensor::PackOp> packOps = packResult->packOps;
   linalg::LinalgOp packedOp = packResult->packedLinalgOp;
   SmallVector<tensor::UnPackOp> unpackOps = packResult->unPackOps;
@@ -165,9 +179,9 @@ void AMDAIEPackAndTransposePass::runOnOperation() {
     packedOp = packTransResult->transposedLinalgOp;
   }
 
-  // Get the lowering config from the previous linalgOp and add it to the
-  // packedOp
-  if (auto config = getLoweringConfig(linalgOp)) {
+  // Step 4. Set the lowering config prefetched earlier in step 1 to the
+  // packedOp.
+  if (config) {
     setLoweringConfig(packedOp, config);
   }
 }
