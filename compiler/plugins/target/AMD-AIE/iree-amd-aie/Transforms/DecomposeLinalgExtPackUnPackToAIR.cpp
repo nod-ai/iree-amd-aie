@@ -29,13 +29,25 @@ namespace {
 //   norm = [0, 2, 1]
 static SmallVector<int64_t> getPackUnpackNormalizedPerm(
     int rank, ArrayRef<int64_t> perm) {
-  constexpr int64_t kNonTiledMarker = -1;
-  SmallVector<int64_t> vec(rank, kNonTiledMarker);
-  for (auto [index, value] : llvm::enumerate(perm)) vec[value] = index;
-  SmallVector<int64_t> normalizedPerm = llvm::to_vector(llvm::make_filter_range(
-      vec, [&](int64_t v) { return v != kNonTiledMarker; }));
-  // This inverts the permutation in addition to normalizing so invert back.
-  return invertPermutationVector(normalizedPerm);
+  if (rank == perm.size()) {
+    SmallVector<int64_t> vec;
+    for (auto [index, value] : llvm::enumerate(perm)) vec.push_back(index);
+    return vec;
+  } else if (rank > perm.size()) {
+    // Infer extra dimensions in the incomplete permutation list.
+    SmallVector<int64_t> vec;
+    for (auto i : llvm::seq<unsigned>(0, rank)) {
+      if (llvm::any_of(perm, [i](int64_t elem) { return elem == i; })) continue;
+      vec.push_back(i);
+    }
+    vec.insert(vec.end(), perm.begin(), perm.end());
+    return vec;
+  } else {
+    assert(false &&
+           "expected output permutation list's rank must not be less than the "
+           "original permutation list");
+    return SmallVector<int64_t>{};
+  }
 }
 
 // Computes the permutation vector to shuffle packed shape into the shape
@@ -236,8 +248,7 @@ FailureOr<LowerPackUnPackResult> lowerUnPack(
     auto readType = MemRefType::get(readShape, elemType, nullptr, memorySpace);
     tile = rewriter.create<memref::SubViewOp>(loc, readType, input, readOffsets,
                                               readSizes, readStrides);
-    perm = getPackUnpackNormalizedPerm(destRank, innerDimsPos);
-    // Unpack is a transition out of packed space so we invert the permutation.
+    perm = getPackUnpackNormalizedPerm(readType.getRank(), innerDimsPos);
     perm = invertPermutationVector(perm);
   }
 
