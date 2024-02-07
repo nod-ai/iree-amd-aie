@@ -18,14 +18,14 @@
 namespace mlir::iree_compiler::AMDAIE {
 
 static LogicalResult setRootConfigForPadPipeline(func::FuncOp entryPointFn,
-                                                 linalg::MatmulOp matmulOp) {
+                                                 linalg::LinalgOp linalgOp) {
   SmallVector<int64_t> TileSizeLevel0 = {8, 8};
   SmallVector<int64_t> TileSizeLevel1 = {4, 4};
   SmallVector<int64_t> TileSizeLevel2 = {0, 0, 4};
   TileSizesListType tileSizes = {TileSizeLevel0, TileSizeLevel1,
                                  TileSizeLevel2};
   return setOpConfigAndEntryPointFnTranslation(
-      entryPointFn, matmulOp, tileSizes,
+      entryPointFn, linalgOp, tileSizes,
       IREE::Codegen::DispatchLoweringPassPipeline::None);
 }
 
@@ -63,19 +63,19 @@ static SmallVector<int64_t> getPackedSize(Operation *op) {
 }
 
 static LogicalResult setRootConfigForSimplePackPipeline(
-    func::FuncOp entryPointFn, linalg::MatmulOp matmulOp) {
+    func::FuncOp entryPointFn, linalg::LinalgOp linalgOp) {
   // ------------------------------------------------------
   // -------------- Set lowering config -------------------
   // ------------------------------------------------------
   // Assume working on a 2x2 AIE array and make sure the tile size is not larger
   // than the input size.
-  auto initType = matmulOp.getDpsInitOperand(0)->get().getType();
+  auto initType = linalgOp.getDpsInitOperand(0)->get().getType();
   auto initShape = llvm::cast<ShapedType>(initType).getShape();
   auto tileM0 = std::min((int)initShape[0], 64);
   auto tileN0 = std::min((int)initShape[1], 64);
   auto tileM1 = std::max((int)tileM0 / 2, 1);
   auto tileN1 = std::max((int)tileN0 / 2, 1);
-  auto lhsType = matmulOp.getDpsInputOperand(0)->get().getType();
+  auto lhsType = linalgOp.getDpsInputOperand(0)->get().getType();
   auto lhsShape = llvm::cast<ShapedType>(lhsType).getShape();
   auto tileK = std::min((int)lhsShape[1] / 8, 4);
 
@@ -85,7 +85,7 @@ static LogicalResult setRootConfigForSimplePackPipeline(
   TileSizesListType tileSizes = {TileSizeLevel0, TileSizeLevel1,
                                  TileSizeLevel2};
   if (failed(setOpConfigAndEntryPointFnTranslation(
-          entryPointFn, matmulOp, tileSizes,
+          entryPointFn, linalgOp, tileSizes,
           IREE::Codegen::DispatchLoweringPassPipeline::None))) {
     return failure();
   }
@@ -110,7 +110,7 @@ static LogicalResult setRootConfigForSimplePackPipeline(
       outerPerm);
   // Pack level => 2.
   // packed size for [M, N, K, m, n, k]
-  packedSizes = getPackedSize(matmulOp);
+  packedSizes = getPackedSize(linalgOp);
   // Transpose A matrix from [M K m k m0 k0] to [M K k m m0 k0]
   // Transpose B matrix from [K N k n n0 k0] to [K N n k k0 n0]
   // Transpose C matrix from [M N m n m0 n0] to [M N n m m0 n0]
@@ -129,25 +129,25 @@ static LogicalResult setRootConfigForSimplePackPipeline(
   auto packingConfigLevels =
       PackingConfigPackingLevelsAttr::get(context, packingConfigLevelsVal);
   auto config = PackingConfigAttr::get(context, packingConfigLevels);
-  setPackingConfig(matmulOp, config);
+  setPackingConfig(linalgOp, config);
   return success();
 }
 
 static LogicalResult setRootConfigForPackPipeline(func::FuncOp entryPointFn,
-                                                  linalg::MatmulOp matmulOp,
+                                                  linalg::LinalgOp linalgOp,
                                                   AIEConfig cfg) {
   // ------------------------------------------------------
   // -------------- Set lowering config -------------------
   // ------------------------------------------------------
   if (!(cfg.num_cores == 1 || cfg.num_cores == 2 || cfg.num_cores == 4))
-    return matmulOp.emitOpError("unhandled number of cores");
+    return linalgOp.emitOpError("unhandled number of cores");
   SmallVector<int64_t> TileSizeLevel0 = {16, 64 * cfg.num_cores};
   SmallVector<int64_t> TileSizeLevel1 = {0, 0, 64};
   SmallVector<int64_t> TileSizeLevel2 = {1, 1};
   TileSizesListType tileSizes = {TileSizeLevel0, TileSizeLevel1,
                                  TileSizeLevel2};
   if (failed(setOpConfigAndEntryPointFnTranslation(
-          entryPointFn, matmulOp, tileSizes,
+          entryPointFn, linalgOp, tileSizes,
           IREE::Codegen::DispatchLoweringPassPipeline::None))) {
     return failure();
   }
@@ -169,7 +169,7 @@ static LogicalResult setRootConfigForPackPipeline(func::FuncOp entryPointFn,
       outerPerm);
   // Pack level => 2.
   // packed size for [M, N, K, m, n, k]
-  packedSizes = getPackedSize(matmulOp);
+  packedSizes = getPackedSize(linalgOp);
   // Transpose A matrix from [M K m k m0 k0] to [M K k m m0 k0]
   // Transpose B matrix from [K N k n n0 k0] to [K N n k k0 n0]
   // Transpose C matrix from [M N m n m0 n0] to [M N n m m0 n0]
@@ -188,24 +188,125 @@ static LogicalResult setRootConfigForPackPipeline(func::FuncOp entryPointFn,
   auto packingConfigLevels =
       PackingConfigPackingLevelsAttr::get(context, packingConfigLevelsVal);
   auto config = PackingConfigAttr::get(context, packingConfigLevels);
-  setPackingConfig(matmulOp, config);
+  setPackingConfig(linalgOp, config);
   return success();
+}
+
+/// TODO(avarma): This currently is skipping checking for ext* ops.
+static bool bodyMatcherForMatmulTranspose(Value yieldVal, Block *body) {
+  Operation *addOp = yieldVal.getDefiningOp();
+  if (!isa_and_nonnull<arith::AddIOp, arith::AddFOp>(addOp)) {
+    return false;
+  }
+  Operation *mulOp = addOp->getOperand(1).getDefiningOp();
+  if (!isa_and_nonnull<arith::MulIOp, arith::MulFOp>(mulOp)) {
+    return false;
+  }
+  auto lhsBlockArg = mulOp->getOperand(0).dyn_cast<BlockArgument>();
+  auto rhsBlockArg = mulOp->getOperand(1).dyn_cast<BlockArgument>();
+  auto outBlockArg = addOp->getOperand(0).dyn_cast<BlockArgument>();
+  if (!lhsBlockArg || !rhsBlockArg || !outBlockArg ||
+      lhsBlockArg.getOwner() != body || rhsBlockArg.getOwner() != body ||
+      outBlockArg.getOwner() != body || lhsBlockArg.getArgNumber() != 0 ||
+      rhsBlockArg.getArgNumber() != 1 || outBlockArg.getArgNumber() != 2) {
+    return false;
+  }
+  return true;
+}
+
+/// `isMatmulTranspose` is a utility function that aims to indentify whether a
+/// linalg.generic op is a matmul transpose op.
+static bool isMatmulTranspose(linalg::GenericOp genericOp) {
+  // Step 1. Test the body of the generic to indeed be what we expect for a
+  //         matmul transpose.
+  Block *body = genericOp.getBlock();
+  auto yieldOp = cast<linalg::YieldOp>(body->getTerminator());
+  Value yieldVal = yieldOp.getOperand(0);
+  if (!bodyMatcherForMatmulTranspose(yieldVal, body)) {
+    return false;
+  }
+  // Step 2. Check iterator types.
+  SmallVector<utils::IteratorType> matmulTransposeIteratorTypes = {
+      utils::IteratorType::parallel, utils::IteratorType::parallel,
+      utils::IteratorType::reduction};
+  SmallVector<utils::IteratorType> opIteratorTypes =
+      genericOp.getIteratorTypesArray();
+  if (matmulTransposeIteratorTypes != opIteratorTypes) {
+    return false;
+  }
+  // Step 3. Test the indexing maps.
+  ArrayAttr indexingMaps = genericOp.getIndexingMaps();
+  if (indexingMaps.size() != 3) return false;
+
+  AffineMap map0 = cast<AffineMapAttr>(indexingMaps[0]).getValue();
+  AffineMap map1 = cast<AffineMapAttr>(indexingMaps[1]).getValue();
+  AffineMap map2 = cast<AffineMapAttr>(indexingMaps[2]).getValue();
+
+  if (map0.getNumResults() != 2 || map1.getNumResults() != 2 ||
+      map2.getNumResults() != 2 || map0.getNumInputs() != 3 ||
+      map1.getNumInputs() != 3 || map2.getNumInputs() != 3) {
+    return false;
+  }
+
+  // Extract dimensions for MxK * NxK -> MxN
+  AffineExpr m = map2.getResult(0);
+  AffineExpr n = map2.getResult(1);
+  AffineExpr k = map0.getResult(1);
+  auto *context = indexingMaps.getContext();
+  auto mapA = AffineMapAttr::get(AffineMap::get(3, 0, {m, k}, context));
+  auto mapB = AffineMapAttr::get(AffineMap::get(3, 0, {n, k}, context));
+  auto mapC = AffineMapAttr::get(AffineMap::get(3, 0, {m, n}, context));
+  auto maps = ArrayAttr::get(context, {mapA, mapB, mapC});
+  return indexingMaps == maps;
+}
+
+/// Sets the lowering configuration for a generic op implementing a
+/// transposition.
+static LogicalResult setTransposeLikeOpRootConfig(
+    func::FuncOp entryPointFn, linalg::LinalgOp linalgOp,
+    AIEPassPipeline usePassPipeline) {
+  if (usePassPipeline == AIEPassPipeline::SimplePackPipeline)
+    return setRootConfigForSimplePackPipeline(entryPointFn, linalgOp);
+  return linalgOp.emitOpError("unhandled pass pipeline");
+}
+
+static LogicalResult setRootConfig(func::FuncOp entryPointFn,
+                                   linalg::GenericOp genericOp,
+                                   AIEPassPipeline usePassPipeline) {
+  assert(!getLoweringConfig(genericOp) &&
+         "expected lowering_config is not set");
+
+  if (isMatmulTranspose(genericOp) &&
+      succeeded(setTransposeLikeOpRootConfig(entryPointFn, genericOp,
+                                             usePassPipeline))) {
+    return success();
+  }
+
+  return failure();
 }
 
 /// Sets the lowering configuration for dispatch region with root op that
 /// implements the contraction operation interface.
 static LogicalResult setRootConfig(func::FuncOp entryPointFn,
-                                   linalg::MatmulOp matmulOp,
+                                   linalg::ContractionOpInterface contractionOp,
                                    AIEPassPipeline usePassPipeline,
                                    AIEConfig cfg) {
-  assert(!getLoweringConfig(matmulOp) && "expected lowering_config is not set");
-  auto linalgOp = cast<linalg::LinalgOp>(matmulOp.getOperation());
+  assert(!getLoweringConfig(contractionOp) &&
+         "expected lowering_config is not set");
+  auto linalgOp = cast<linalg::LinalgOp>(contractionOp.getOperation());
+  if (isa<linalg::MatmulTransposeBOp>(linalgOp)) {
+    if (succeeded(setTransposeLikeOpRootConfig(entryPointFn, linalgOp,
+                                               usePassPipeline))) {
+      return success();
+    }
+    return failure();
+  }
   unsigned numLoops = linalgOp.getNumLoops();
   {
     SmallVector<unsigned> dims;
     linalgOp.getReductionDims(dims);
     if (dims.size() != 1 || dims[0] != numLoops - 1) {
-      return matmulOp.emitOpError(
+      return linalgOp.emitOpError(
           "expected to have exactly one reduction dim, and it is the innermost "
           "dim");
     }
@@ -215,12 +316,12 @@ static LogicalResult setRootConfig(func::FuncOp entryPointFn,
   // logic. Also, need a flag to experiment between pad based and pack based
   // approach which will have different tile sizes and pass pipelines
   if (usePassPipeline == AIEPassPipeline::PadPipeline)
-    return setRootConfigForPadPipeline(entryPointFn, matmulOp);
+    return setRootConfigForPadPipeline(entryPointFn, linalgOp);
   if (usePassPipeline == AIEPassPipeline::SimplePackPipeline)
-    return setRootConfigForSimplePackPipeline(entryPointFn, matmulOp);
+    return setRootConfigForSimplePackPipeline(entryPointFn, linalgOp);
   if (usePassPipeline == AIEPassPipeline::PackPipeline)
-    return setRootConfigForPackPipeline(entryPointFn, matmulOp, cfg);
-  return matmulOp.emitOpError("unhandled pass pipeline");
+    return setRootConfigForPackPipeline(entryPointFn, linalgOp, cfg);
+  return linalgOp.emitOpError("unhandled pass pipeline");
 }
 
 /// Redirects to methods that set the configuration based on operation type.
@@ -232,7 +333,10 @@ static LogicalResult setRootConfigImpl(func::FuncOp entryPointFn, Operation *op,
         // TODO (nmeshram): This is very limited for now, plan is to
         // let it first crash for all the other ops and then consiously
         // add support for them, this way we can verify our work.
-        .Case<linalg::MatmulOp>([&](auto op) {
+        .Case<linalg::GenericOp>([&](auto op) {
+          return setRootConfig(entryPointFn, op, usePassPipeline);
+        })
+        .Case<linalg::ContractionOpInterface>([&](auto op) {
           return setRootConfig(entryPointFn, op, usePassPipeline, cfg);
         })
         .Default([&](Operation *op) { return success(); });
