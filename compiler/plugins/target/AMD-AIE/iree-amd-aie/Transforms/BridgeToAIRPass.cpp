@@ -63,6 +63,25 @@ class LinalgCopyToMemRefCopy : public OpRewritePattern<linalg::CopyOp> {
   }
 };
 
+/// Pattern to rewrite `affine.apply` with AffineExpr on symbols rather than
+/// dims.
+class AffineApplyOnSym : public OpRewritePattern<affine::AffineApplyOp> {
+  using OpRewritePattern<affine::AffineApplyOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(affine::AffineApplyOp applyOp,
+                                PatternRewriter &rewriter) const override {
+    auto map = applyOp.getAffineMap();
+    if (map.getNumDims() != 1) return failure();
+    if (map.getNumSymbols()) return failure();
+    SmallVector<Value> opers;
+    for (auto v : applyOp.getMapOperands()) opers.push_back(v);
+    auto newMap = map.replaceDimsAndSymbols(
+        getAffineSymbolExpr(0, applyOp->getContext()), {}, 0, 1);
+    rewriter.replaceOpWithNewOp<affine::AffineApplyOp>(applyOp, newMap, opers);
+    return success();
+  }
+};
+
 class AMDAIEBridgeToAIRPass
     : public impl::AMDAIEBridgeToAIRBase<AMDAIEBridgeToAIRPass> {
  public:
@@ -79,7 +98,9 @@ class AMDAIEBridgeToAIRPass
 void AMDAIEBridgeToAIRPass::runOnOperation() {
   MLIRContext *context = &getContext();
   RewritePatternSet patterns(context);
-  patterns.insert<LinalgCopyToMemRefCopy, SCFForAllToParallelOp>(context);
+  patterns
+      .insert<LinalgCopyToMemRefCopy, SCFForAllToParallelOp, AffineApplyOnSym>(
+          context);
   if (failed(
           applyPatternsAndFoldGreedily(getOperation(), std::move(patterns)))) {
     return signalPassFailure();

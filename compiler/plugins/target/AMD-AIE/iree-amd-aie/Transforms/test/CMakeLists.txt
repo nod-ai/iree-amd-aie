@@ -8,6 +8,7 @@ iree_lit_test_suite(
   NAME
     lit
   SRCS
+    "bridge_to_air.mlir"
     "bufferize_to_allocation_pack.mlir"
     "bufferize_to_allocation_pad.mlir"
     "bufferize_to_allocation_pad_last.mlir"
