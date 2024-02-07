@@ -117,9 +117,9 @@ hal.executable private @alloc_example {
     builtin.module {
       func.func @matmul_example_dispatch_0_matmul_16x128x128_i8xi8xi32() {
         // CHECK: allocate(mem_0_local: Pointer(local int8), int8, [8192]), storage_scope = local;
-        %alloc = memref.alloc() : memref<2x1x8x8x8x8xi8, "local">
+        %alloc = memref.alloc() : memref<2x1x8x8x8x8xi8, 2 : i32>
         // CHECK: allocate(mem_1_shared: Pointer(shared int8), int8, [16384]), storage_scope = shared;
-        %alloc_1 = memref.alloc() : memref<2x2x64x64xi8, "shared">
+        %alloc_1 = memref.alloc() : memref<2x2x64x64xi8, 1 : i32>
         return
       }
     }
@@ -134,11 +134,11 @@ hal.executable private @fill_example {
     builtin.module {
       func.func @matmul_example_dispatch_0_matmul_16x128x128_i8xi8xi32() {
         %c0_i32 = arith.constant 0 : i32
-        %alloc_1 = memref.alloc() : memref<1x1x8x4x4x8xi32, "local">
+        %alloc_1 = memref.alloc() : memref<1x1x8x4x4x8xi32, 2 : i32>
         // CHECK: attr [IterVar(tdn_i.c.init: int32, (nullptr), "DataPar", "")] "pragma_aie_intrin_kernel_bdrp*0*0*1" = 1 {
         // CHECK:   mem_0_local[(0)] = 0
         // CHECK: }
-        linalg.fill ins(%c0_i32 : i32) outs(%alloc_1 : memref<1x1x8x4x4x8xi32, "local">)
+        linalg.fill ins(%c0_i32 : i32) outs(%alloc_1 : memref<1x1x8x4x4x8xi32, 2 : i32>)
         return
       }
     }
@@ -153,14 +153,14 @@ hal.executable private @pack_global_to_share {
   hal.executable.variant public @elf target(#executable_target_elf)  {
     builtin.module {
       func.func @matmul_example_dispatch_0_matmul_16x128x128_i8xi8xi32() {
-        %alloc_3 = memref.alloc() : memref<1x2x16x64xi8, "shared">
+        %alloc_3 = memref.alloc() : memref<1x2x16x64xi8, 1 : i32>
         %c0 = arith.constant 0 : index
         %0 = hal.interface.binding.subspan set(0) binding(0) type(storage_buffer) alignment(64) offset(%c0) flags(ReadOnly) : memref<16x128xi8, #hal.descriptor_type<storage_buffer>>
         memref.assume_alignment %0, 64 : memref<16x128xi8, #hal.descriptor_type<storage_buffer>>
         %3 = affine.apply #map(%c0)
         // CHECK: @vaie.virtual_buffers("bidirectional", @vaie.dest((int8*)mem_1_shared[(((((ax0 * 2048) + (ax1 * 1024)) + (ax2 * 64)) + (ax3 * 1)))], @vaie.bd_loops(4, ax0, ax1, ax2, ax3, 0, 0, 0, 0, 1, 2, 16, 64,  dtype=int8), @vaie.dma_location(0, @vaie.tile(-1, -1, dtype=handle), @vaie.ch(-1, 0, dtype=handle), dtype=int8), dtype=int8), @vaie.origin((int8*)placeholder_0[(((((ax0 * 16) + ax2) * 128) + (((ax1 * 64) + ax3) * 1)))], @vaie.bd_loops(4, ax0, ax1, ax2, ax3, 0, 0, 0, 0, 1, 2, 16, 64,  dtype=int8), @vaie.dma_location(1, @vaie.tile(-1, -1, dtype=handle), @vaie.ch(-1, 0, dtype=handle), dtype=int8), dtype=int8), @vaie.bd_access_config(False, 1, 1, 0, 0, 0, dtype=handle), dtype=int8)
         %subview = memref.subview %0[%3, 0] [16, 128] [1, 1] : memref<16x128xi8, #hal.descriptor_type<storage_buffer>> to memref<16x128xi8, strided<[128, 1], offset: ?>, #hal.descriptor_type<storage_buffer>>
-        iree_linalg_ext.pack %subview inner_dims_pos = [0, 1] inner_tiles = [16, 64] into %alloc_3 : (memref<16x128xi8, strided<[128, 1], offset: ?>, #hal.descriptor_type<storage_buffer>> memref<1x2x16x64xi8, "shared">)
+        iree_linalg_ext.pack %subview inner_dims_pos = [0, 1] inner_tiles = [16, 64] into %alloc_3 : (memref<16x128xi8, strided<[128, 1], offset: ?>, #hal.descriptor_type<storage_buffer>> memref<1x2x16x64xi8, 1 : i32>)
         return
       }
     }
@@ -174,12 +174,12 @@ hal.executable private @pack_share_to_local {
   hal.executable.variant public @elf target(#executable_target_elf)  {
     builtin.module {
       func.func @matmul_example_dispatch_0_matmul_16x128x128_i8xi8xi32() {
-        %alloc_0 = memref.alloc() : memref<1x1x16x4x4x8xi8, "local">
-        %alloc_3 = memref.alloc() : memref<1x1x16x128xi8, "shared">
+        %alloc_0 = memref.alloc() : memref<1x1x16x4x4x8xi8, 2 : i32>
+        %alloc_3 = memref.alloc() : memref<1x1x16x128xi8, 1 : i32>
         scf.forall (%arg2, %arg3) in (1, 2) {
           // CHECK: @vaie.virtual_buffers("load", @vaie.dest((int8*)mem_0_local[(((((((ax0 * 2048) + (ax1 * 2048)) + (ax2 * 128)) + (ax3 * 32)) + (ax4 * 8)) + (ax5 * 1)))], @vaie.bd_loops(6, ax0, ax1, ax2, ax3, ax4, ax5, 0, 0, 0, 0, 0, 0, 1, 1, 16, 4, 4, 8,  dtype=int8), @vaie.dma_location(0, @vaie.tile(-1, -1, dtype=handle), @vaie.ch(-1, 0, dtype=handle), dtype=int8), dtype=int8), @vaie.origin((int8*)mem_1_shared[(((((ax0 * 2048) + (ax1 * 2048)) + (((ax3 * 4) + ax4) * 128)) + (((ax2 * 8) + ax5) * 1)))], @vaie.bd_loops(6, ax0, ax1, ax2, ax3, ax4, ax5, 0, 0, 0, 0, 0, 0, 1, 1, 16, 4, 4, 8,  dtype=int8), @vaie.dma_location(1, @vaie.tile(-1, -1, dtype=handle), @vaie.ch(-1, 0, dtype=handle), dtype=int8), dtype=int8), @vaie.bd_access_config(False, 1, 1, 0, 0, 0, dtype=handle), dtype=int8)
-          %subview_7 = memref.subview %alloc_3[%arg2, 0, 0, 0] [1, 1, 16, 128] [1, 1, 1, 1] : memref<1x1x16x128xi8, "shared"> to memref<1x1x16x128xi8, strided<[2048, 2048, 128, 1], offset: ?>, "shared">
-          iree_linalg_ext.pack %subview_7 outer_dims_perm = [0, 1, 3, 2] inner_dims_pos = [2, 3] inner_tiles = [4, 8] into %alloc_0 : (memref<1x1x16x128xi8, strided<[2048, 2048, 128, 1], offset: ?>, "shared"> memref<1x1x16x4x4x8xi8, "local">)
+          %subview_7 = memref.subview %alloc_3[%arg2, 0, 0, 0] [1, 1, 16, 128] [1, 1, 1, 1] : memref<1x1x16x128xi8, 1 : i32> to memref<1x1x16x128xi8, strided<[2048, 2048, 128, 1], offset: ?>, 1 : i32>
+          iree_linalg_ext.pack %subview_7 outer_dims_perm = [0, 1, 3, 2] inner_dims_pos = [2, 3] inner_tiles = [4, 8] into %alloc_0 : (memref<1x1x16x128xi8, strided<[2048, 2048, 128, 1], offset: ?>, 1 : i32> memref<1x1x16x4x4x8xi8, 2 : i32>)
         }
         return
       }
@@ -194,12 +194,12 @@ hal.executable private @unpack_local_to_share {
   hal.executable.variant public @elf target(#executable_target_elf)  {
     builtin.module {
       func.func @matmul_example_dispatch_0_matmul_16x128x128_i8xi8xi32() {
-        %alloc_1 = memref.alloc() : memref<1x1x8x4x4x8xi32, "local">
-        %alloc_4 = memref.alloc() : memref<1x2x16x64xi32, "shared">
+        %alloc_1 = memref.alloc() : memref<1x1x8x4x4x8xi32, 2 : i32>
+        %alloc_4 = memref.alloc() : memref<1x2x16x64xi32, 1 : i32>
         scf.forall (%arg2, %arg3) in (1, 2) {
           // CHECK: @vaie.virtual_buffers("store", @vaie.dest((int32*)mem_1_shared[(((iv_3 * 1024) + ((((ax0 * 2048) + (ax1 * 1024)) + (((ax3 * 4) + ax4) * 64)) + (((ax2 * 8) + ax5) * 1))))], @vaie.bd_loops(6, ax0, ax1, ax2, ax3, ax4, ax5, 0, 0, 0, 0, 0, 0, 1, 1, 8, 4, 4, 8,  dtype=int8), @vaie.dma_location(0, @vaie.tile(-1, -1, dtype=handle), @vaie.ch(-1, 0, dtype=handle), dtype=int8), dtype=int8), @vaie.origin((int32*)mem_0_local[(((((((ax0 * 1024) + (ax1 * 1024)) + (ax2 * 128)) + (ax3 * 32)) + (ax4 * 8)) + (ax5 * 1)))], @vaie.bd_loops(6, ax0, ax1, ax2, ax3, ax4, ax5, 0, 0, 0, 0, 0, 0, 1, 1, 8, 4, 4, 8,  dtype=int8), @vaie.dma_location(1, @vaie.tile(-1, -1, dtype=handle), @vaie.ch(-1, 0, dtype=handle), dtype=int8), dtype=int8), @vaie.bd_access_config(False, 1, 1, 0, 0, 0, dtype=handle), dtype=int8)
-          %subview_9 = memref.subview %alloc_4[%arg2, %arg3, 0, 0] [1, 1, 16, 64] [1, 1, 1, 1] : memref<1x2x16x64xi32, "shared"> to memref<1x1x16x64xi32, strided<[2048, 1024, 64, 1], offset: ?>, "shared">
-          iree_linalg_ext.unpack %alloc_1 outer_dims_perm = [0, 1, 3, 2] inner_dims_pos = [2, 3] inner_tiles = [4, 8] into %subview_9 : (memref<1x1x8x4x4x8xi32, "local"> memref<1x1x16x64xi32, strided<[2048, 1024, 64, 1], offset: ?>, "shared">)
+          %subview_9 = memref.subview %alloc_4[%arg2, %arg3, 0, 0] [1, 1, 16, 64] [1, 1, 1, 1] : memref<1x2x16x64xi32, 1 : i32> to memref<1x1x16x64xi32, strided<[2048, 1024, 64, 1], offset: ?>, 1 : i32>
+          iree_linalg_ext.unpack %alloc_1 outer_dims_perm = [0, 1, 3, 2] inner_dims_pos = [2, 3] inner_tiles = [4, 8] into %subview_9 : (memref<1x1x8x4x4x8xi32, 2 : i32> memref<1x1x16x64xi32, strided<[2048, 1024, 64, 1], offset: ?>, 1 : i32>)
         }
         return
       }
@@ -216,8 +216,8 @@ hal.executable private @unpack_share_to_global {
   hal.executable.variant public @elf target(#executable_target_elf)  {
     builtin.module {
       func.func @matmul_example_dispatch_0_matmul_16x128x128_i8xi8xi32() {
-        %alloc_1 = memref.alloc() : memref<1x1x8x4x4x8xi32, "local">
-        %alloc_4 = memref.alloc() : memref<1x2x16x64xi32, "shared">
+        %alloc_1 = memref.alloc() : memref<1x1x8x4x4x8xi32, 2 : i32>
+        %alloc_4 = memref.alloc() : memref<1x2x16x64xi32, 1 : i32>
         %c0 = arith.constant 0 : index
         %0 = hal.interface.binding.subspan set(0) binding(0) type(storage_buffer) alignment(64) offset(%c0) flags(ReadOnly) : memref<16x128xi8, #hal.descriptor_type<storage_buffer>>
         memref.assume_alignment %0, 64 : memref<16x128xi8, #hal.descriptor_type<storage_buffer>>
@@ -230,7 +230,7 @@ hal.executable private @unpack_share_to_global {
           %4 = affine.apply #map1(%arg1)
           // CHECK: @vaie.virtual_buffers("bidirectional", @vaie.dest((int32*)placeholder_2[(((((ax0 * 16) + ax2) * 128) + (((ax1 * 64) + ax3) * 1)))], @vaie.bd_loops(4, ax0, ax1, ax2, ax3, 0, 0, 0, 0, 1, 2, 16, 64,  dtype=int8), @vaie.dma_location(0, @vaie.tile(-1, -1, dtype=handle), @vaie.ch(-1, 0, dtype=handle), dtype=int8), dtype=int8), @vaie.origin((int32*)mem_4_shared[(((((ax0 * 2048) + (ax1 * 1024)) + (ax2 * 64)) + (ax3 * 1)))], @vaie.bd_loops(4, ax0, ax1, ax2, ax3, 0, 0, 0, 0, 1, 2, 16, 64,  dtype=int8), @vaie.dma_location(1, @vaie.tile(-1, -1, dtype=handle), @vaie.ch(-1, 0, dtype=handle), dtype=int8), dtype=int8), @vaie.bd_access_config(False, 1, 1, 0, 0, 0, dtype=handle), dtype=int8)
           %subview_6 = memref.subview %2[%3, %4] [16, 128] [1, 1] : memref<16x128xi32, #hal.descriptor_type<storage_buffer>> to memref<16x128xi32, strided<[128, 1], offset: ?>, #hal.descriptor_type<storage_buffer>>
-          iree_linalg_ext.unpack %alloc_4 inner_dims_pos = [0, 1] inner_tiles = [16, 64] into %subview_6 : (memref<1x2x16x64xi32, "shared"> memref<16x128xi32, strided<[128, 1], offset: ?>, #hal.descriptor_type<storage_buffer>>)
+          iree_linalg_ext.unpack %alloc_4 inner_dims_pos = [0, 1] inner_tiles = [16, 64] into %subview_6 : (memref<1x2x16x64xi32, 1 : i32> memref<16x128xi32, strided<[128, 1], offset: ?>, #hal.descriptor_type<storage_buffer>>)
         }
         return
       }
@@ -248,20 +248,20 @@ hal.executable private @generic_example_0 {
   hal.executable.variant public @elf target(#executable_target_elf)  {
     builtin.module {
       func.func @matmul_example_dispatch_0_matmul_16x128x128_i8xi8xi32() {
-        %alloc = memref.alloc() : memref<1x1x8x16x8x8xi8, "local">
-        %alloc_0 = memref.alloc() : memref<1x1x16x4x4x8xi8, "local">
-        %alloc_1 = memref.alloc() : memref<1x1x8x4x4x8xi32, "local">
-        %alloc_2 = memref.alloc() : memref<1x2x128x64xi8, "shared">
-        %alloc_3 = memref.alloc() : memref<1x1x16x128xi8, "shared">
+        %alloc = memref.alloc() : memref<1x1x8x16x8x8xi8, 2 : i32>
+        %alloc_0 = memref.alloc() : memref<1x1x16x4x4x8xi8, 2 : i32>
+        %alloc_1 = memref.alloc() : memref<1x1x8x4x4x8xi32, 2 : i32>
+        %alloc_2 = memref.alloc() : memref<1x2x128x64xi8, 1 : i32>
+        %alloc_3 = memref.alloc() : memref<1x1x16x128xi8, 1 : i32>
         scf.forall (%arg2, %arg3) in (1, 2) {
-          %subview_7 = memref.subview %alloc_3[%arg2, 0, 0, 0] [1, 1, 16, 128] [1, 1, 1, 1] : memref<1x1x16x128xi8, "shared"> to memref<1x1x16x128xi8, strided<[2048, 2048, 128, 1], offset: ?>, "shared">
-          %subview_8 = memref.subview %alloc_2[0, %arg3, 0, 0] [1, 1, 128, 64] [1, 1, 1, 1] : memref<1x2x128x64xi8, "shared"> to memref<1x1x128x64xi8, strided<[16384, 8192, 64, 1], offset: ?>, "shared">
-          iree_linalg_ext.pack %subview_7 outer_dims_perm = [0, 1, 3, 2] inner_dims_pos = [2, 3] inner_tiles = [4, 8] into %alloc_0 : (memref<1x1x16x128xi8, strided<[2048, 2048, 128, 1], offset: ?>, "shared"> memref<1x1x16x4x4x8xi8, "local">)
-          iree_linalg_ext.pack %subview_8 outer_dims_perm = [0, 1, 3, 2] inner_dims_pos = [2, 3] inner_tiles = [8, 8] into %alloc : (memref<1x1x128x64xi8, strided<[16384, 8192, 64, 1], offset: ?>, "shared"> memref<1x1x8x16x8x8xi8, "local">)
+          %subview_7 = memref.subview %alloc_3[%arg2, 0, 0, 0] [1, 1, 16, 128] [1, 1, 1, 1] : memref<1x1x16x128xi8, 1 : i32> to memref<1x1x16x128xi8, strided<[2048, 2048, 128, 1], offset: ?>, 1 : i32>
+          %subview_8 = memref.subview %alloc_2[0, %arg3, 0, 0] [1, 1, 128, 64] [1, 1, 1, 1] : memref<1x2x128x64xi8, 1 : i32> to memref<1x1x128x64xi8, strided<[16384, 8192, 64, 1], offset: ?>, 1 : i32>
+          iree_linalg_ext.pack %subview_7 outer_dims_perm = [0, 1, 3, 2] inner_dims_pos = [2, 3] inner_tiles = [4, 8] into %alloc_0 : (memref<1x1x16x128xi8, strided<[2048, 2048, 128, 1], offset: ?>, 1 : i32> memref<1x1x16x4x4x8xi8, 2 : i32>)
+          iree_linalg_ext.pack %subview_8 outer_dims_perm = [0, 1, 3, 2] inner_dims_pos = [2, 3] inner_tiles = [8, 8] into %alloc : (memref<1x1x128x64xi8, strided<[16384, 8192, 64, 1], offset: ?>, 1 : i32> memref<1x1x8x16x8x8xi8, 2 : i32>)
           // CHECK: attr [IterVar(tdn_i.c: int32, (nullptr), "DataPar", "")] "pragma_aie_intrin_kernel_bdrp*0*0" = 1 {
           // CHECK:   mem_2_local[(0)] = ((int32*)mem_2_local[(0)] + (cast(int32, (int8*)mem_1_local[(0)])*cast(int32, (int8*)mem_0_local[(0)])))
           // CHECK: }
-          linalg.generic {indexing_maps = [#map2, #map3, #map4], iterator_types = ["parallel", "parallel", "reduction", "parallel", "parallel", "reduction", "parallel", "parallel", "reduction"]} ins(%alloc_0, %alloc : memref<1x1x16x4x4x8xi8, "local">, memref<1x1x8x16x8x8xi8, "local">) outs(%alloc_1 : memref<1x1x8x4x4x8xi32, "local">) {
+          linalg.generic {indexing_maps = [#map2, #map3, #map4], iterator_types = ["parallel", "parallel", "reduction", "parallel", "parallel", "reduction", "parallel", "parallel", "reduction"]} ins(%alloc_0, %alloc : memref<1x1x16x4x4x8xi8, 2 : i32>, memref<1x1x8x16x8x8xi8, 2 : i32>) outs(%alloc_1 : memref<1x1x8x4x4x8xi32, 2 : i32>) {
           ^bb0(%in: i8, %in_10: i8, %out: i32):
             %5 = arith.extsi %in : i8 to i32
             %6 = arith.extsi %in_10 : i8 to i32
@@ -286,19 +286,19 @@ hal.executable private @generic_example_1 {
   hal.executable.variant public @elf target(#executable_target_elf)  {
     builtin.module {
       func.func @matmul_example_dispatch_0_matmul_16x128x128_i8xi8xi32() {
-        %alloc = memref.alloc() : memref<2x1x8x8x8x8xi8, "local">
-        %alloc_0 = memref.alloc() : memref<1x2x8x4x4x8xi8, "local">
-        %alloc_1 = memref.alloc() : memref<1x1x8x4x4x8xi32, "local">
+        %alloc = memref.alloc() : memref<2x1x8x8x8x8xi8, 2 : i32>
+        %alloc_0 = memref.alloc() : memref<1x2x8x4x4x8xi8, 2 : i32>
+        %alloc_1 = memref.alloc() : memref<1x1x8x4x4x8xi32, 2 : i32>
         %c2 = arith.constant 2 : index
         %c1 = arith.constant 1 : index
         %c0 = arith.constant 0 : index
         scf.for %arg4 = %c0 to %c2 step %c1 {
-          %subview_10 = memref.subview %alloc_0[0, %arg4, 0, 0, 0, 0] [1, 1, 8, 4, 4, 8] [1, 1, 1, 1, 1, 1] : memref<1x2x8x4x4x8xi8, "local"> to memref<1x1x8x4x4x8xi8, strided<[2048, 1024, 128, 32, 8, 1], offset: ?>, "local">
-          %subview_11 = memref.subview %alloc[%arg4, 0, 0, 0, 0, 0] [1, 1, 8, 8, 8, 8] [1, 1, 1, 1, 1, 1] : memref<2x1x8x8x8x8xi8, "local"> to memref<1x1x8x8x8x8xi8, strided<[4096, 4096, 512, 64, 8, 1], offset: ?>, "local">
+          %subview_10 = memref.subview %alloc_0[0, %arg4, 0, 0, 0, 0] [1, 1, 8, 4, 4, 8] [1, 1, 1, 1, 1, 1] : memref<1x2x8x4x4x8xi8, 2 : i32> to memref<1x1x8x4x4x8xi8, strided<[2048, 1024, 128, 32, 8, 1], offset: ?>, 2 : i32>
+          %subview_11 = memref.subview %alloc[%arg4, 0, 0, 0, 0, 0] [1, 1, 8, 8, 8, 8] [1, 1, 1, 1, 1, 1] : memref<2x1x8x8x8x8xi8, 2 : i32> to memref<1x1x8x8x8x8xi8, strided<[4096, 4096, 512, 64, 8, 1], offset: ?>, 2 : i32>
           // CHECK: attr [IterVar(tdn_i.c: int32, (nullptr), "DataPar", "")] "pragma_aie_intrin_kernel_bdrp*0*0" = 1 {
           // CHECK:   mem_2_local[(0)] = ((int32*)mem_2_local[(0)] + (cast(int32, (int8*)mem_1_local[(0)])*cast(int32, (int8*)mem_0_local[(0)])))
           // CHECK: }
-          linalg.generic {indexing_maps = [#map2, #map3, #map4], iterator_types = ["parallel", "parallel", "reduction", "parallel", "parallel", "reduction", "parallel", "parallel", "reduction"]} ins(%subview_10, %subview_11 : memref<1x1x8x4x4x8xi8, strided<[2048, 1024, 128, 32, 8, 1], offset: ?>, "local">, memref<1x1x8x8x8x8xi8, strided<[4096, 4096, 512, 64, 8, 1], offset: ?>, "local">) outs(%alloc_1 : memref<1x1x8x4x4x8xi32, "local">) {
+          linalg.generic {indexing_maps = [#map2, #map3, #map4], iterator_types = ["parallel", "parallel", "reduction", "parallel", "parallel", "reduction", "parallel", "parallel", "reduction"]} ins(%subview_10, %subview_11 : memref<1x1x8x4x4x8xi8, strided<[2048, 1024, 128, 32, 8, 1], offset: ?>, 2 : i32>, memref<1x1x8x8x8x8xi8, strided<[4096, 4096, 512, 64, 8, 1], offset: ?>, 2 : i32>) outs(%alloc_1 : memref<1x1x8x4x4x8xi32, 2 : i32>) {
           ^bb0(%in: i8, %in_12: i8, %out: i32):
             %5 = arith.extsi %in : i8 to i32
             %6 = arith.extsi %in_12 : i8 to i32
