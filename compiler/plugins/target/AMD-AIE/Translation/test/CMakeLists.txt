@@ -9,6 +9,7 @@ iree_lit_test_suite(
     lit
   SRCS
     "AIESerializer.mlir"
+    "single_core.mlir"
   TOOLS
     ${IREE_LLD_TARGET}
     FileCheck

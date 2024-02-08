@@ -66,7 +66,15 @@ def AMDAIELowerExecutableTarget :
     Option<"usePassPipeline", "use-pass-pipeline",
       "mlir::iree_compiler::AMDAIE::AIEPassPipeline", 
       /*default=*/"mlir::iree_compiler::AMDAIE::AIEPassPipeline::PadPipeline",
-      "Pass pipeline to use while lowering to AIR dialect">
+      "Pass pipeline to use while lowering to AIR dialect",
+      [{::llvm::cl::values(
+        clEnumValN(mlir::iree_compiler::AMDAIE::AIEPassPipeline::PadPipeline, "pad",
+                   "Use the pad-based lowering strategy."),
+        clEnumValN(mlir::iree_compiler::AMDAIE::AIEPassPipeline::PackPipeline, "pack",
+                   "Use the more advanced pack-based lowering strategy, including peeling and double-buffering."),
+        clEnumValN(mlir::iree_compiler::AMDAIE::AIEPassPipeline::SimplePackPipeline, "simple-pack",
+                   "Use the simple-pack based lowering strategy.")
+      )}]>
   ];
 }
 
@@ -78,7 +86,15 @@ def AMDAIELoweringStrategy :
     Option<"usePassPipeline", "use-pass-pipeline",
       "mlir::iree_compiler::AMDAIE::AIEPassPipeline", 
       /*default=*/"mlir::iree_compiler::AMDAIE::AIEPassPipeline::PadPipeline",
-      "Pass pipeline to use while lowering to AIR dialect">  
+      "Pass pipeline to use while lowering to AIR dialect",
+      [{::llvm::cl::values(
+        clEnumValN(mlir::iree_compiler::AMDAIE::AIEPassPipeline::PadPipeline, "pad",
+                   "Use the pad-based lowering strategy."),
+        clEnumValN(mlir::iree_compiler::AMDAIE::AIEPassPipeline::PackPipeline, "pack",
+                   "Use the more advanced pack-based lowering strategy, including peeling and double-buffering."),
+        clEnumValN(mlir::iree_compiler::AMDAIE::AIEPassPipeline::SimplePackPipeline, "simple-pack",
+                   "Use the simple-pack based lowering strategy.")
+      )}]>  
   ];
 }
 
