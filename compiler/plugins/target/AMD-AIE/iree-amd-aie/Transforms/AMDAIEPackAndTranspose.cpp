@@ -40,9 +40,9 @@ static FailureOr<PackConfig> getPackConfig(RewriterBase &rewriter,
                             rewriter.getI64IntegerAttr(64)};
 
     } else if (passPipeline == AIEPassPipeline::SimplePackPipeline) {
-      config.packedSizes = {rewriter.getI64IntegerAttr(8),
-                            rewriter.getI64IntegerAttr(16),
-                            rewriter.getI64IntegerAttr(16)};
+      config.packedSizes = {rewriter.getI64IntegerAttr(64),
+                            rewriter.getI64IntegerAttr(64),
+                            rewriter.getI64IntegerAttr(512)};
     } else {
       return failure();
     }

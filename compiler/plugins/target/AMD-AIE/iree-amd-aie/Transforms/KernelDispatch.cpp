@@ -47,9 +47,9 @@ static LogicalResult setRootConfig(func::FuncOp entryPointFn,
         entryPointFn, matmulOp, tileSizes,
         IREE::Codegen::DispatchLoweringPassPipeline::None);
   } else if (usePassPipeline == AIEPassPipeline::SimplePackPipeline) {
-    SmallVector<int64_t> TileSizeLevel0 = {8, 16};
-    SmallVector<int64_t> TileSizeLevel1 = {1, 1};
-    SmallVector<int64_t> TileSizeLevel2 = {0, 0, 1};
+    SmallVector<int64_t> TileSizeLevel0 = {64, 64};
+    SmallVector<int64_t> TileSizeLevel1 = {0, 0, 0, 32, 32};
+    SmallVector<int64_t> TileSizeLevel2 = {0, 0, 0, 0, 0, 4};
     TileSizesListType tileSizes = {TileSizeLevel0, TileSizeLevel1,
                                    TileSizeLevel2};
     return setOpConfigAndEntryPointFnTranslation(

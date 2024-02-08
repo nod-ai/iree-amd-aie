@@ -169,13 +169,13 @@ void addSimplePackBasedPassPipeline(OpPassManager &pm,
   modulePassManager.addPass(createCanonicalizerPass());
   modulePassManager.addPass(createCSEPass());
 
-  // Second level packing and bufferize to allocation
+  // Second level packing and only promote the result to local memory
   packOptions.packLevel = 1;
   packOptions.usePassPipeline = AIEPassPipeline::SimplePackPipeline;
   modulePassManager.addNestedPass<func::FuncOp>(
       createAMDAIEPackAndTransposePass(packOptions));
   bufferizeOptions.memorySpace = 2;
-  bufferizeOptions.bufferizeLevel = -1;
+  bufferizeOptions.bufferizeLevel = 1;
   modulePassManager.addNestedPass<func::FuncOp>(
       createAMDAIEBufferizeToAllocationPass(bufferizeOptions));
 
@@ -187,6 +187,19 @@ void addSimplePackBasedPassPipeline(OpPassManager &pm,
   modulePassManager.addNestedPass<func::FuncOp>(createAMDAIECleanupPass());
   modulePassManager.addPass(createCanonicalizerPass());
   modulePassManager.addPass(createCSEPass());
+
+  // Fuse pack ops into for loop
+  modulePassManager.addNestedPass<func::FuncOp>(
+      createAMDAIEFusePackIntoForLoopPass());
+  modulePassManager.addNestedPass<func::FuncOp>(createAMDAIECleanupPass());
+  modulePassManager.addPass(createCanonicalizerPass());
+  modulePassManager.addPass(createCSEPass());
+
+  // Promote the inputs to local memory
+  bufferizeOptions.memorySpace = 2;
+  bufferizeOptions.bufferizeLevel = 2;
+  modulePassManager.addNestedPass<func::FuncOp>(
+      createAMDAIEBufferizeToAllocationPass(bufferizeOptions));
 
   // Comprehensive bufferization
   addAMDAIEBufferizePasses(modulePassManager);
