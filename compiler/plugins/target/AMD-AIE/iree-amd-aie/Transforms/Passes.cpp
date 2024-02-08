@@ -400,10 +400,12 @@ void addMLIRAIRAIELoweringPasses(OpPassManager &passManager) {
     options.clEmitWhileLoop = true;
     passManager.addPass(xilinx::air::createAIRToAIEPass(options));
   }
+  passManager.addPass(createCanonicalizerPass());
   passManager.addPass(xilinx::air::createAIRLoweringPass());
   {
     xilinx::air::AffineLoopOptPassOptions options;
-    options.clTileSizes = {4, 4};
+    const std::vector<unsigned> tile_sizes = {4, 4};
+    options.clTileSizes = ArrayRef(tile_sizes);
     passManager.addNestedPass<func::FuncOp>(
         xilinx::air::createAffineLoopOptPass(options));
   }
