@@ -30,7 +30,7 @@ struct AIEConfig {
 
 LogicalResult initAIELaunchConfig(ModuleOp moduleOp,
                                   AIEPassPipeline usePassPipeline,
-                                  int32_t numCores);
+                                  AIEConfig cfg);
 }  // namespace mlir::iree_compiler::AMDAIE
 
 #endif  // IREE_AMD_AIE_TRANSFORMS_KERNELDISPATCH_H_
