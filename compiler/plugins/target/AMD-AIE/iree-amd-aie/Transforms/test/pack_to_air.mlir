@@ -27,27 +27,75 @@ func.func @func1() {
 }
 
 // CHECK-LABEL: @func2
+// CHECK: %[[ALLOC0:.*]] = memref.alloc() : memref<32x8x8xf32>
+// CHECK: scf.parallel (%[[ARG0:.*]], %[[ARG1:.*]], %[[ARG2:.*]]) = 
+// CHECK: %[[SUBVIEW0:.*]] = memref.subview %[[ALLOC0]][%[[ARG0]], %[[ARG1]], 0] [1, 8, 8] [1, 1, 1] : memref<32x8x8xf32> to memref<1x8x8xf32, strided<[64, 8, 1], offset: ?>>
+// CHECK: %[[ALLOC1:.*]] = memref.alloc() : memref<1x1x1x8x8xf32, 1>
+// CHECK: air.dma_memcpy_nd (%[[ALLOC1]][] [] [], %[[SUBVIEW0]][] [] []) : (memref<1x1x1x8x8xf32, 1>, memref<1x8x8xf32, strided<[64, 8, 1], offset: ?>>)
+// CHECK: scf.reduce
+func.func @func2() {
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
+  %c8 = arith.constant 8 : index
+  %c32 = arith.constant 32 : index
+  %c64 = arith.constant 64 : index
+  %0 = memref.alloc() : memref<32x8x8xf32>
+  scf.parallel (%arg0, %arg1, %arg2) = (%c0, %c0, %c0) to (%c32, %c8, %c64) step (%c1, %c8, %c64) {
+    %subview = memref.subview %0[%arg0, %arg1, 0] [1, 8, 8] [1, 1, 1] : memref<32x8x8xf32> to memref<1x8x8xf32, strided<[64, 8, 1], offset: ?>>
+    %alloc = memref.alloc() : memref<1x1x1x8x8xf32, 1>
+    iree_linalg_ext.pack %subview inner_dims_pos = [1, 2] inner_tiles = [8, 8] into %alloc : (memref<1x8x8xf32, strided<[64, 8, 1], offset: ?>> memref<1x1x1x8x8xf32, 1>)
+    scf.reduce
+  }
+  return
+}
+
+// CHECK-LABEL: @func3
 // CHECK: %[[ALLOC0:.*]] = memref.alloc() : memref<1x1x2x2x4x8xi32, 2>
 // CHECK: %[[ALLOC1:.*]] = memref.alloc() : memref<1x1x8x16xi32, 1>
 // CHECK: %[[TRANSPOSE0:.*]] = memref.transpose %[[ALLOC0]] (d0, d1, d2, d3, d4, d5) -> (d0, d1, d3, d4, d2, d5) : memref<1x1x2x2x4x8xi32, 2> to memref<1x1x2x4x2x8xi32, strided<[128, 128, 32, 8, 64, 1]>, 2>
 // CHECK: air.dma_memcpy_nd (%[[ALLOC1]][] [] [], %[[TRANSPOSE0]][] [] []) : (memref<1x1x8x16xi32, 1>, memref<1x1x2x4x2x8xi32, strided<[128, 128, 32, 8, 64, 1]>, 2>)
-func.func @func2() {
+func.func @func3() {
   %alloc = memref.alloc() : memref<1x1x2x2x4x8xi32, 2>
   %alloc_0 = memref.alloc() : memref<1x1x8x16xi32, 1>
   iree_linalg_ext.unpack %alloc outer_dims_perm = [0, 1, 3, 2] inner_dims_pos = [2, 3] inner_tiles = [4, 8] into %alloc_0 : (memref<1x1x2x2x4x8xi32, 2> memref<1x1x8x16xi32, 1>)
   return
 }
 
-// CHECK-LABEL: @func3
+// CHECK-LABEL: @func4
 // CHECK: %[[ALLOC0:.*]] = memref.alloc() : memref<1x1x8x16xi32, 1>
 // CHECK: %[[ALLOC1:.*]] = memref.alloc() : memref<8x16xi32>
 // CHECK: %[[SUBVIEW0:.*]] = memref.subview %[[ALLOC0]][0, 0, 0, 0] [1, 1, 8, 16] [1, 1, 1, 1] : memref<1x1x8x16xi32, 1> to memref<8x16xi32, 1>
 // CHECK: %[[TRANSPOSE0:.*]] = memref.transpose %[[SUBVIEW0]] (d0, d1) -> (d0, d1) : memref<8x16xi32, 1> to memref<8x16xi32, strided<[16, 1]>, 1>
 // CHECK: air.dma_memcpy_nd (%[[ALLOC1]][] [] [], %[[TRANSPOSE0]][] [] []) : (memref<8x16xi32>, memref<8x16xi32, strided<[16, 1]>, 1>)
-func.func @func3() {
+func.func @func4() {
   %alloc = memref.alloc() : memref<1x1x8x16xi32, 1>
   %alloc_0 = memref.alloc() : memref<8x16xi32>
   iree_linalg_ext.unpack %alloc inner_dims_pos = [0, 1] inner_tiles = [8, 16] into %alloc_0 : (memref<1x1x8x16xi32, 1> memref<8x16xi32>)
+  return
+}
+
+// CHECK-LABEL: @func5
+// CHECK: %[[ALLOC0:.*]] = memref.alloc() : memref<32x8x64xf32>
+// CHECK: scf.parallel (%[[ARG0:.*]], %[[ARG1:.*]], %[[ARG2:.*]]) = 
+// CHECK: %[[SUBVIEW0:.*]] = memref.subview %[[ALLOC0]][%[[ARG0]], %[[ARG1]], %[[ARG2]]] [1, 8, 64] [1, 1, 1] : memref<32x8x64xf32> to memref<1x8x64xf32, strided<[512, 64, 1], offset: ?>>
+// CHECK: %[[ALLOC1:.*]] = memref.alloc() : memref<1x1x1x8x64xf32, 1>
+// CHECK: %[[SUBVIEW1:.*]] = memref.subview %[[ALLOC1]][0, 0, 0, 0, 0] [1, 1, 1, 8, 64] [1, 1, 1, 1, 1] : memref<1x1x1x8x64xf32, 1> to memref<8x64xf32, 1>
+// CHECK: %[[TRANSPOSE0:.*]] = memref.transpose %[[SUBVIEW1]] (d0, d1) -> (d0, d1) : memref<8x64xf32, 1> to memref<8x64xf32, strided<[64, 1]>, 1>
+// CHECK: air.dma_memcpy_nd (%[[SUBVIEW0]][] [] [], %[[TRANSPOSE0]][] [] []) : (memref<1x8x64xf32, strided<[512, 64, 1], offset: ?>>, memref<8x64xf32, strided<[64, 1]>, 1>)
+
+func.func @func5() {
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
+  %c8 = arith.constant 8 : index
+  %c32 = arith.constant 32 : index
+  %c64 = arith.constant 64 : index
+  %2 = memref.alloc() : memref<32x8x64xf32>
+  scf.parallel (%arg0, %arg1, %arg2) = (%c0, %c0, %c0) to (%c32, %c8, %c64) step (%c1, %c8, %c64) {
+    %subview_1 = memref.subview %2[%arg0, %arg1, %arg2] [1, 8, 64] [1, 1, 1] : memref<32x8x64xf32> to memref<1x8x64xf32, strided<[512, 64, 1], offset: ?>>
+    %alloc_3 = memref.alloc() : memref<1x1x1x8x64xf32, 1>
+    iree_linalg_ext.unpack %alloc_3 inner_dims_pos = [1, 2] inner_tiles = [8, 64] into %subview_1 : (memref<1x1x1x8x64xf32, 1> memref<1x8x64xf32, strided<[512, 64, 1], offset: ?>>)
+    scf.reduce
+  }
   return
 }
 
@@ -56,8 +104,8 @@ func.func @func3() {
 #map2 = affine_map<(d0, d1, d2, d3, d4, d5, d6, d7, d8) -> (d0, d2, d5, d3, d6, d8)>
 #map3 = affine_map<(d0, d1, d2, d3, d4, d5, d6, d7, d8) -> (d2, d1, d4, d5, d8, d7)>
 #map4 = affine_map<(d0, d1, d2, d3, d4, d5, d6, d7, d8) -> (d0, d1, d4, d3, d6, d7)>
-// CHECK-LABEL: @func4
-func.func @func4() {
+// CHECK-LABEL: @func6
+func.func @func6() {
   %c2 = arith.constant 2 : index
   %c1 = arith.constant 1 : index
   %c0_i32 = arith.constant 0 : i32
