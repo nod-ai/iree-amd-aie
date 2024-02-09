@@ -33,32 +33,22 @@ void AMDAIEFusePackIntoForLoopPass::runOnOperation() {
   func::FuncOp funcOp = getOperation();
   IRRewriter rewriter(context);
 
-  // Walk through the graph in post order and find the pack op.
-  TilingInterface packOp;
-  funcOp->walk<WalkOrder::PostOrder, ReverseIterator>([&](TilingInterface op) {
-    if (isa<linalg::FillOp>(op)) {
-      packOp = op;
-      return WalkResult::interrupt();
-    }
-    return WalkResult::advance();
-  });
-  if (!packOp) {
-    LLVM_DEBUG(llvm::dbgs() << "There is no pack op to be fused.\n");
-    return;
-  }
-
-  // Search the first use by a scf::ForOp user.
+  // Walk through the graph in post order and find the for loop.
   scf::ForOp forOp;
-  auto itProducerUses = llvm::find_if(packOp->getUses(), [&](OpOperand &use) {
-    forOp = dyn_cast<scf::ForOp>(use.getOwner());
-    return forOp;
-  });
-  if (!forOp || itProducerUses == packOp->getUses().end()) {
+  funcOp->walk<WalkOrder::PostOrder, ReverseIterator>(
+      [&](LoopLikeOpInterface op) {
+        if (isa<scf::ForOp>(op)) {
+          forOp = cast<scf::ForOp>(op);
+          return WalkResult::interrupt();
+        }
+        return WalkResult::advance();
+      });
+  if (!forOp) {
     LLVM_DEBUG(llvm::dbgs() << "There is no for loop to fuse with.\n");
     return;
   }
 
-  // Search the producer slices accessed within the For op.
+  // Search the compute op and its producer slices within the For loop.
   BlockArgument bbArg = forOp.getRegionIterArg(0);
   SmallVector<tensor::ExtractSliceOp> sliceOps;
   for (auto user : bbArg.getUsers()) {
@@ -79,10 +69,14 @@ void AMDAIEFusePackIntoForLoopPass::runOnOperation() {
     return signalPassFailure();
   }
 
-  LoopLikeOpInterface loops = cast<LoopLikeOpInterface>(forOp.getOperation());
-
   // Materialize each slice of the producer in place.
+  LoopLikeOpInterface loops = cast<LoopLikeOpInterface>(forOp.getOperation());
   for (auto sliceOp : sliceOps) {
+    auto defOp = sliceOp.getOperand(0).getDefiningOp();
+    if (!isa<tensor::PackOp>(defOp)) {
+      LLVM_DEBUG(llvm::dbgs() << "The producer is not a pack op.\n");
+      continue;
+    }
     std::optional<scf::SCFFuseProducerOfSliceResult> fusedProducer =
         scf::tileAndFuseProducerOfSlice(rewriter, sliceOp,
                                         MutableArrayRef(&loops, 1));
