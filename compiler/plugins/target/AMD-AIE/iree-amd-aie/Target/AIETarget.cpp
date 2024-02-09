@@ -45,23 +45,6 @@
 
 #define DEBUG_TYPE "aie-target"
 
-// Forward declaration of some translate methods from AIE. THis is done
-// here since the headers in MLIR-AIE repo are in a place that is
-// not where you would expect.
-namespace xilinx::AIE {
-mlir::LogicalResult AIETranslateToCDO(mlir::ModuleOp module,
-                                      llvm::raw_ostream &output);
-
-std::vector<uint32_t> AIETranslateToIPU(mlir::ModuleOp module);
-
-mlir::LogicalResult AIETranslateToLdScript(mlir::ModuleOp module,
-                                           llvm::raw_ostream &output, int col,
-                                           int row);
-
-mlir::LogicalResult AIETranslateToXAIEV2(mlir::ModuleOp module,
-                                         llvm::raw_ostream &output);
-}  // namespace xilinx::AIE
-
 namespace mlir::iree_compiler::AMDAIE {
 
 class AIETargetBackend final : public IREE::HAL::TargetBackend {
@@ -197,6 +180,9 @@ LogicalResult AIETargetBackend::serializeExecutable(
                                  workDir,
                                  "--install-dir",
                                  options.mlirAieInstallDir};
+  if (options.useChess) {
+    cmdArgs.push_back("--use-chess");
+  }
   if (options.showInvokedCommands) {
     cmdArgs.push_back("-v");
   }
@@ -225,6 +211,11 @@ LogicalResult AIETargetBackend::serializeExecutable(
     newPath = "PATH=" + newPath;
     cmdEnv.push_back(newPath);
   }
+  // Chess (if used) will look here for the AIEbuild license.
+  const char *originalHome = ::getenv("HOME");
+  if (originalHome != nullptr) {
+    cmdEnv.push_back(std::string("HOME=") + originalHome);
+  }
   if (options.showInvokedCommands) {
     for (auto s : cmdEnv) llvm::dbgs() << s << " ";
     for (auto s : cmdArgs) llvm::dbgs() << s << " ";
@@ -233,7 +224,7 @@ LogicalResult AIETargetBackend::serializeExecutable(
   int result = llvm::sys::ExecuteAndWait(cmdArgs[0], cmdArgs, cmdEnv);
   if (result != 0) {
     return moduleOp.emitOpError(
-        "Failed to produce an xclbIN with external tool");
+        "Failed to produce an XCLBin with external tool");
   }
 
   std::vector<uint32_t> ipuInstrs;
