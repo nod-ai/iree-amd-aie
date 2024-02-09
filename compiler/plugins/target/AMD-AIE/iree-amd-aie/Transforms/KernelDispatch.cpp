@@ -7,6 +7,7 @@
 #include "iree-amd-aie/Transforms/KernelDispatch.h"
 
 #include "iree/compiler/Codegen/Utils/CPUUtils.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/MemRef/Transforms/Transforms.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
