@@ -13,6 +13,7 @@ iree_lit_test_suite(
     "pack_pipeline_funcIR_4core.mlir"
     "pad_pipeline_e2e.mlir"
     "simple_pack_pipeline_e2e.mlir"
+    "simple_pack_pipeline_e2e_large_gemm.mlir"
   TOOLS
     ${IREE_LLD_TARGET}
     FileCheck

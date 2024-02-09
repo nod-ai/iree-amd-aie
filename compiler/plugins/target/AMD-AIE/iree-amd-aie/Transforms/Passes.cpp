@@ -41,6 +41,10 @@ static llvm::cl::opt<AIEPassPipeline> clUsePipeline(
 static llvm::cl::opt<int32_t> clNumCores(
     "iree-amdaie-num-cores",
     llvm::cl::desc("Choose the number of cores to use"), llvm::cl::init(1));
+static llvm::cl::opt<bool> clEnableLargeGEMM(
+    "iree-amdaie-enable-large-gemm",
+    llvm::cl::desc("Enable passes to compile large GEMM (experimental)"),
+    llvm::cl::init(false));
 
 //===---------------------------------------------------------------------===//
 // Default allocation functions for AIE backend
@@ -402,20 +406,23 @@ void addMLIRAIRAIELoweringPasses(OpPassManager &passManager) {
   }
   passManager.addPass(createCanonicalizerPass());
   passManager.addPass(xilinx::air::createAIRLoweringPass());
-  {
-    xilinx::air::AffineLoopOptPassOptions options;
-    const std::vector<unsigned> tile_sizes = {4, 4};
-    options.clTileSizes = ArrayRef(tile_sizes);
-    passManager.addNestedPass<func::FuncOp>(
-        xilinx::air::createAffineLoopOptPass(options));
+
+  if (clEnableLargeGEMM) {
+    {
+      xilinx::air::AffineLoopOptPassOptions options;
+      const std::vector<unsigned> tile_sizes = {4, 4};
+      options.clTileSizes = ArrayRef(tile_sizes);
+      passManager.addNestedPass<func::FuncOp>(
+          xilinx::air::createAffineLoopOptPass(options));
+    }
+    {
+      xilinx::air::AIRUnrollOuterPerfectlyNestedLoopsPassOptions options;
+      options.clDepth = 2;
+      passManager.addNestedPass<func::FuncOp>(
+          xilinx::air::createAIRUnrollOuterPerfectlyNestedLoopsPass(options));
+    }
+    passManager.addPass(mlir::affine::createAffineExpandIndexOpsPass());
   }
-  {
-    xilinx::air::AIRUnrollOuterPerfectlyNestedLoopsPassOptions options;
-    options.clDepth = 2;
-    passManager.addNestedPass<func::FuncOp>(
-        xilinx::air::createAIRUnrollOuterPerfectlyNestedLoopsPass(options));
-  }
-  passManager.addPass(mlir::affine::createAffineExpandIndexOpsPass());
 
   passManager.addPass(xilinx::airrt::createAIRRtToIpuPass());
   passManager.addPass(createCanonicalizerPass());
