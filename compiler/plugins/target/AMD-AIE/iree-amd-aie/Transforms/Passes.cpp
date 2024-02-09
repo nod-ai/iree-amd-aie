@@ -6,8 +6,6 @@
 
 #include "iree-amd-aie/Transforms/Passes.h"
 
-#include "aie/Dialect/AIE/Transforms/AIEPasses.h"
-#include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
 #include "air/Conversion/Passes.h"
 #include "air/Transform/Passes.h"
 #include "iree-dialects/Dialect/LinalgTransform/Passes.h"
