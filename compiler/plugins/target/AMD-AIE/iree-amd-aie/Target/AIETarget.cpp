@@ -9,9 +9,7 @@
 #include <fstream>
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
-#include "aie/Dialect/AIE/Transforms/AIEPasses.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
-#include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
 #include "air/Dialect/AIR/AIRDialect.h"
 #include "air/Dialect/AIRRt/AIRRtDialect.h"
 #include "iree-amd-aie/Transforms/Passes.h"

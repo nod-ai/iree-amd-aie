@@ -21,8 +21,6 @@ struct AMDAIESession
                            PluginActivationPolicy::DefaultActivated> {
   static void registerPasses() {
     AMDAIE::registerAMDAIEPasses();
-    AMDAIE::registerAIETransformPasses();
-    AMDAIE::registerAIEXTransformPasses();
     AMDAIE::registerAIRConversionPasses();
     AMDAIE::registerAIRTransformPasses();
   }
