@@ -45,7 +45,7 @@ jobs:
           key: linux-build-test-cpp-asserts-manylinux-v2-${{ github.sha }}
           restore-keys: |
             linux-build-test-cpp-
-      
+
       - name: Build packages
         run: |
           export cache_dir="${{ env.CACHE_DIR }}"
@@ -76,3 +76,27 @@ jobs:
         with:
           path: ${{ env.CACHE_DIR }}
           key: linux-build-test-cpp-asserts-manylinux-v2-${{ github.sha }}
+  test_linux:
+    runs-on: amd7940hs
+    needs: build_test_linux
+    strategy:
+      fail-fast: true
+    steps:
+      - name: "Checking out repository" # for test scripts
+        uses: actions/checkout@8f4b7f84864484a7bf31766abe9204da3cbe65b3 # v3.5.0
+        with:
+          submodules: false
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: linux_x86_64_release_packages
+
+      - name: Extract artifact
+        run: |
+          mkdir iree-install
+          tar -xf iree-dist.tar -C iree-install
+
+      - name: Pad matmul test
+        run: |
+          bash build_tools/ci/pad_test.sh test1 iree-install
