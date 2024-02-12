@@ -1,12 +1,8 @@
 // This script demonstrates lowering conv through IREE to eventually target AIE.
-// It's based on conv2d lowering in IREE for llvm-cpu. See conv_linalg.mlir for
-// the applied problem size: 
-// !input = tensor<2x32x14x14xf32>, 
-// !weight = tensor<64x32x3x3xf32>, 
-// !output = tensor<2x64x12x12xf32>.
-// 
-// The trick is to tile the 2-d convolution into 1-d convolution, and then 
-// convert the 1-d convolution to a vector.contract. 
+// It's based on conv2d lowering in IREE for llvm-cpu. 
+//
+// The trick is to tile the 2-d convolution into 1-d convolution, and then
+// convert the 1-d convolution to a vector.contract.
 
 !any = !transform.any_op
 
@@ -66,20 +62,20 @@ module attributes { transform.with_named_sequence } {
     // %extracted_slice_0 = tensor.extract_slice %4 ...  to tensor<4x32x3x3xf32>
     // ```
     //
-    // with IR like 
+    // with IR like
     //
     // ```
     // %13 = bufferization.alloc_tensor() : tensor<4x32x3x3xf32>
     // %alloc_2 = memref.alloc() : memref<4x32x3x3xf32, 1>
     // %14 = bufferization.to_tensor %alloc_2 ... : memref<4x32x3x3xf32, 1>
-    // %15 = linalg.copy ins(%extracted_slice_0 : tensor<4x32x3x3xf32>) 
+    // %15 = linalg.copy ins(%extracted_slice_0 : tensor<4x32x3x3xf32>)
     //             outs(%14 : tensor<4x32x3x3xf32>) -> tensor<4x32x3x3xf32>
     // ```
-    // 
+    //
     %padded, %pad, %_ = transform.structured.pad %tiled_conv {
       padding_values=[0. : f32, 0. : f32, 0. : f32],
       padding_dimensions=[0, 1, 2],
-      pack_paddings=[1, 1, 1], 
+      pack_paddings=[1, 1, 1],
       copy_back_op="linalg.copy"
     } : (!any) -> (!any, !any, !any)
 
@@ -133,11 +129,11 @@ module attributes { transform.with_named_sequence } {
       transform.structured.bufferize_to_allocation %padded_result_local
       {memory_space = 2, bufferize_destination_only, emit_dealloc} : !any
 
-      // Create loop structure for each tile's execution. 
+      // Create loop structure for each tile's execution.
       // [0,0,0,0,8,1,1]
       //  ^ ^ ^ ^ ^ ^ ^
       //  | | | | | | |
-      //  N H W C K h w ===> 3 loops for K, h, w are inserted. 
+      //  N H W C K h w ===> 3 loops for K, h, w are inserted.
 
     %tiled_reduction, %loop0, %loop1, %loop2  =
       transform.structured.tile_using_for %padded_1 [0,0,0,0,8,1,1]
