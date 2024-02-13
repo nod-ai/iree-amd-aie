@@ -28,9 +28,9 @@ struct PackConfig {
   SmallVector<SmallVector<int64_t>> outerPerm;
 };
 
-static FailureOr<PackConfig> getPackConfig(RewriterBase &rewriter,
-                                           int packLevel,
-                                           AIEPassPipeline passPipeline) {
+static FailureOr<PackConfig> getPackConfig(
+    RewriterBase &rewriter, int packLevel, AIEPassPipeline passPipeline,
+    IREE::Codegen::LoweringConfigAttr lowerConfig, int64_t kSize) {
   PackConfig config;
   if (packLevel == 0) {
     // packed size for [M, N, K]
@@ -40,9 +40,18 @@ static FailureOr<PackConfig> getPackConfig(RewriterBase &rewriter,
                             rewriter.getI64IntegerAttr(64)};
 
     } else if (passPipeline == AIEPassPipeline::SimplePackPipeline) {
-      config.packedSizes = {rewriter.getI64IntegerAttr(8),
-                            rewriter.getI64IntegerAttr(16),
-                            rewriter.getI64IntegerAttr(16)};
+      // Set constraints for pack size [M, N] from first level of tile sizes
+      // Currently set pack size k as the input size K to avoid failure.
+      int64_t tileM = 64;
+      int64_t tileN = 64;
+      if (lowerConfig) {
+        auto tileSizes = lowerConfig.getTilingLevels()[0].getSizes();
+        tileM = tileSizes[0];
+        tileN = tileSizes[1];
+      }
+      config.packedSizes = {rewriter.getI64IntegerAttr(tileM),
+                            rewriter.getI64IntegerAttr(tileN),
+                            rewriter.getI64IntegerAttr(kSize)};
     } else {
       return failure();
     }
@@ -133,8 +142,10 @@ void AMDAIEPackAndTransposePass::runOnOperation() {
 
   // Step 2. Pack the operation
   IRRewriter rewriter(context);
+  auto lhsType = linalgOp->getOperand(0).getType();
+  int64_t kSize = llvm::cast<ShapedType>(lhsType).getShape()[1];
   FailureOr<PackConfig> packCfg =
-      getPackConfig(rewriter, packLevel, usePassPipeline);
+      getPackConfig(rewriter, packLevel, usePassPipeline, config, kSize);
   if (failed(packCfg)) {
     funcOp->emitOpError("failed to get pack configs");
     return signalPassFailure();
