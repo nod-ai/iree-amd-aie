@@ -1,5 +1,5 @@
 // This script demonstrates lowering conv through IREE to eventually target AIE.
-// It's based on conv2d lowering in IREE for llvm-cpu. 
+// It's based on conv2d lowering in IREE for llvm-cpu.
 //
 // The trick is to tile the 2-d convolution into 1-d convolution, and then
 // convert the 1-d convolution to a vector.contract.
@@ -27,16 +27,6 @@ module attributes { transform.with_named_sequence } {
          : (!any) -> !any
     %f1 = transform.apply_registered_pass
          "iree-codegen-decompose-convolution-to-lower-dim-ops"
-         to %f0 : (!any) -> !any
-    transform.yield
-  }
-
-  // This is currently not used, we use the transform dialect vectorization op
-  transform.named_sequence @iree_generic_vectorization(%variant_op: !any
-                                                        {transform.readonly}) {
-    %f0 = transform.structured.match ops{["func.func"]} in %variant_op
-         : (!any) -> !any
-    %f1 = transform.apply_registered_pass "iree-codegen-generic-vectorization"
          to %f0 : (!any) -> !any
     transform.yield
   }
