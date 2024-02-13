@@ -14,7 +14,6 @@ iree_cc_library(
   DEPS
     iree::compiler::Dialect::HAL::Target
     iree::target::amd-aie::Transforms
-    iree::target::amd-aie::aie::AIEXTransformPasses
     iree::target::amd-aie::air::AIRDialectIR
   PUBLIC
 )

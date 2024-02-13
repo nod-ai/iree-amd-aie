@@ -6,8 +6,6 @@
 
 #include "iree-amd-aie/Transforms/Passes.h"
 
-#include "aie/Dialect/AIE/Transforms/AIEPasses.h"
-#include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
 #include "air/Conversion/Passes.h"
 #include "air/Transform/Passes.h"
 #include "iree-dialects/Dialect/LinalgTransform/Passes.h"
@@ -38,6 +36,10 @@ static llvm::cl::opt<AIEPassPipeline> clUsePipeline(
                    "Use the simplified IREE lowering to AIR dialect through "
                    "pack operation")),
     llvm::cl::init(AIEPassPipeline::SimplePackPipeline));
+
+static llvm::cl::opt<int32_t> clNumCores(
+    "iree-amdaie-num-cores",
+    llvm::cl::desc("Choose the number of cores to use"), llvm::cl::init(1));
 
 //===---------------------------------------------------------------------===//
 // Default allocation functions for AIE backend
@@ -273,6 +275,7 @@ void buildAMDAIETransformPassPipeline(OpPassManager &pm) {
   {
     AMDAIELoweringStrategyOptions options;
     options.usePassPipeline = clUsePipeline;
+    options.numCores = clNumCores;
     pm.addPass(createAMDAIELoweringStrategyPass(options));
   }
   {

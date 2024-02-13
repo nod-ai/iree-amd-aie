@@ -26,6 +26,9 @@ struct AMDAIEOptions {
   // Dump to stdout system commands used during compilation
   bool showInvokedCommands;
 
+  // Use the legacy chess compiler.
+  bool useChess;
+
   void bindOptions(OptionsBinder &binder) {
     static llvm::cl::OptionCategory category("AMD AIE Options");
 
@@ -48,6 +51,10 @@ struct AMDAIEOptions {
         "iree-amd-aie-vitis-install-dir", vitisInstallDir,
         llvm::cl::cat(category),
         llvm::cl::desc("Path to aietools in Vitis installation"));
+
+    binder.opt<bool>("iree-amd-aie-enable-chess", useChess,
+                     llvm::cl::cat(category),
+                     llvm::cl::desc("Use the legacy chess compiler"));
   }
 };
 

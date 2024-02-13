@@ -100,7 +100,9 @@ def AMDAIELoweringStrategy :
                    "Use the more advanced pack-based lowering strategy, including peeling and double-buffering."),
         clEnumValN(mlir::iree_compiler::AMDAIE::AIEPassPipeline::SimplePackPipeline, "simple-pack",
                    "Use the simple-pack based lowering strategy.")
-      )}]>  
+      )}]>,
+    Option<"numCores", "num-cores", "int32_t", /*default=*/"1",
+      "Choose the number of cores to use">
   ];
 }
 
