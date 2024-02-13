@@ -6,6 +6,7 @@
 
 #include "iree-amd-aie/Transforms/KernelDispatch.h"
 
+#include "iree-amd-aie/IR/AMDAIEAttrs.h"
 #include "iree/compiler/Codegen/Utils/CPUUtils.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
@@ -30,6 +31,9 @@ static LogicalResult setRootConfigForPadPipeline(func::FuncOp entryPointFn,
 
 static LogicalResult setRootConfigForSimplePackPipeline(
     func::FuncOp entryPointFn, linalg::MatmulOp matmulOp) {
+  // ------------------------------------------------------
+  // -------------- Set lowering config -------------------
+  // ------------------------------------------------------
   // Assume working on a 2x2 AIE array and make sure the tile size is not larger
   // than the input size.
   auto initType = matmulOp.getDpsInitOperand(0)->get().getType();
@@ -47,14 +51,61 @@ static LogicalResult setRootConfigForSimplePackPipeline(
   SmallVector<int64_t> TileSizeLevel2 = {0, 0, 0, 0, 0, tileK};
   TileSizesListType tileSizes = {TileSizeLevel0, TileSizeLevel1,
                                  TileSizeLevel2};
-  return setOpConfigAndEntryPointFnTranslation(
-      entryPointFn, matmulOp, tileSizes,
-      IREE::Codegen::DispatchLoweringPassPipeline::None);
+  if (failed(setOpConfigAndEntryPointFnTranslation(
+          entryPointFn, matmulOp, tileSizes,
+          IREE::Codegen::DispatchLoweringPassPipeline::None))) {
+    return failure();
+  }
+  // ------------------------------------------------------
+  // --------------- Set packing config -------------------
+  // ------------------------------------------------------
+  MLIRContext *context = entryPointFn.getContext();
+  // Pack level => 1.
+  // Set constraints for pack size [M, N] from first level of tile sizes
+  // Currently set pack size k as the input size K to avoid failure.
+  int64_t kSize = lhsShape[1];
+  SmallVector<int64_t> packedSizes = {tileM0, tileN0, kSize};
+  // Transpose B matrix from [K N n k] to [K N k n]
+  SmallVector<int64_t> transposePackIndices = {1};
+  // There is no corresponding unpack for the specified pack operation
+  // 0 is used when unpack is empty
+  SmallVector<bool> unpackEmpty = {false};
+  SmallVector<SmallVector<int64_t>> innerPerm = {{1, 0}};
+  SmallVector<SmallVector<int64_t>> outerPerm = {{0, 1}};
+  auto packingConfigLevel1Attr = getPackingConfigPackingLevelAttr(
+      context, packedSizes, transposePackIndices, unpackEmpty, innerPerm,
+      outerPerm);
+  // Pack level => 2.
+  // packed size for [M, N, K, m, n, k]
+  packedSizes = {0, 0, 0, 4, 8, 8};
+  // Transpose A matrix from [M K m k m0 k0] to [M K k m m0 k0]
+  // Transpose B matrix from [K N k n n0 k0] to [K N n k k0 n0]
+  // Transpose C matrix from [M N m n m0 n0] to [M N n m m0 n0]
+  transposePackIndices = {0, 1, 2};
+  // Only the third pack operation has a corresponding unpack operation
+  unpackEmpty = {false, false, true};
+  innerPerm = {{0, 1}, {1, 0}, {0, 1}};
+  outerPerm = {{0, 1, 3, 2}, {0, 1, 3, 2}, {0, 1, 3, 2}};
+  auto packingConfigLevel2Attr = getPackingConfigPackingLevelAttr(
+      context, packedSizes, transposePackIndices, unpackEmpty, innerPerm,
+      outerPerm);
+
+  SmallVector<PackingConfigPackingLevelAttr> packingConfigLevelsVal = {
+      packingConfigLevel1Attr, packingConfigLevel2Attr};
+
+  auto packingConfigLevels =
+      PackingConfigPackingLevelsAttr::get(context, packingConfigLevelsVal);
+  auto config = PackingConfigAttr::get(context, packingConfigLevels);
+  setPackingConfig(matmulOp, config);
+  return success();
 }
 
 static LogicalResult setRootConfigForPackPipeline(func::FuncOp entryPointFn,
                                                   linalg::MatmulOp matmulOp,
                                                   AIEConfig cfg) {
+  // ------------------------------------------------------
+  // -------------- Set lowering config -------------------
+  // ------------------------------------------------------
   if (!(cfg.num_cores == 1 || cfg.num_cores == 2 || cfg.num_cores == 4))
     return matmulOp.emitOpError("unhandled number of cores");
   SmallVector<int64_t> TileSizeLevel0 = {16, 64 * cfg.num_cores};
@@ -62,9 +113,50 @@ static LogicalResult setRootConfigForPackPipeline(func::FuncOp entryPointFn,
   SmallVector<int64_t> TileSizeLevel2 = {1, 1};
   TileSizesListType tileSizes = {TileSizeLevel0, TileSizeLevel1,
                                  TileSizeLevel2};
-  return setOpConfigAndEntryPointFnTranslation(
-      entryPointFn, matmulOp, tileSizes,
-      IREE::Codegen::DispatchLoweringPassPipeline::None);
+  if (failed(setOpConfigAndEntryPointFnTranslation(
+          entryPointFn, matmulOp, tileSizes,
+          IREE::Codegen::DispatchLoweringPassPipeline::None))) {
+    return failure();
+  }
+  // ------------------------------------------------------
+  // --------------- Set packing config -------------------
+  // ------------------------------------------------------
+  MLIRContext *context = entryPointFn.getContext();
+  // Pack level => 1.
+  SmallVector<int64_t> packedSizes = {16, 64, 64};
+  // Transpose B matrix from [K N n k] to [K N k n]
+  SmallVector<int64_t> transposePackIndices = {1};
+  // There is no corresponding unpack for the specified pack operation
+  // 0 is used when unpack is empty
+  SmallVector<bool> unpackEmpty = {false};
+  SmallVector<SmallVector<int64_t>> innerPerm = {{1, 0}};
+  SmallVector<SmallVector<int64_t>> outerPerm = {{0, 1}};
+  auto packingConfigLevel1Attr = getPackingConfigPackingLevelAttr(
+      context, packedSizes, transposePackIndices, unpackEmpty, innerPerm,
+      outerPerm);
+  // Pack level => 2.
+  // packed size for [M, N, K, m, n, k]
+  packedSizes = {0, 0, 0, 4, 8, 8};
+  // Transpose A matrix from [M K m k m0 k0] to [M K k m m0 k0]
+  // Transpose B matrix from [K N k n n0 k0] to [K N n k k0 n0]
+  // Transpose C matrix from [M N m n m0 n0] to [M N n m m0 n0]
+  transposePackIndices = {0, 1, 2};
+  // Only the third pack operation has a corresponding unpack operation
+  unpackEmpty = {false, false, true};
+  innerPerm = {{0, 1}, {1, 0}, {0, 1}};
+  outerPerm = {{0, 1, 3, 2}, {0, 1, 3, 2}, {0, 1, 3, 2}};
+  auto packingConfigLevel2Attr = getPackingConfigPackingLevelAttr(
+      context, packedSizes, transposePackIndices, unpackEmpty, innerPerm,
+      outerPerm);
+
+  SmallVector<PackingConfigPackingLevelAttr> packingConfigLevelsVal = {
+      packingConfigLevel1Attr, packingConfigLevel2Attr};
+
+  auto packingConfigLevels =
+      PackingConfigPackingLevelsAttr::get(context, packingConfigLevelsVal);
+  auto config = PackingConfigAttr::get(context, packingConfigLevels);
+  setPackingConfig(matmulOp, config);
+  return success();
 }
 
 /// Sets the lowering configuration for dispatch region with root op that
@@ -85,6 +177,7 @@ static LogicalResult setRootConfig(func::FuncOp entryPointFn,
           "dim");
     }
   }
+
   // TODO (nmeshram) : This needs to be moved in a separate more generalized
   // logic. Also, need a flag to experiment between pad based and pack based
   // approach which will have different tile sizes and pass pipelines
