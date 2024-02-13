@@ -7,19 +7,8 @@
 #ifndef IREE_AMD_AIE_TRANSFORMS_PASSES
 #define IREE_AMD_AIE_TRANSFORMS_PASSES
 
-include "mlir/IR/EnumAttr.td"
+include "iree-amd-aie/IR/AMDAIEDialect.td"
 include "mlir/Pass/PassBase.td"
-
-def AMDAIE_MemSpace_L1 : I32EnumAttrCase<"L1", 1, "l1">;
-def AMDAIE_MemSpace_L2 : I32EnumAttrCase<"L2", 2, "l2">;
-def AMDAIE_MemSpaceAttr: I32EnumAttr<"AMDAIEMemSpace", "AIE Memory Space",
-  [
-    AMDAIE_MemSpace_L1,
-    AMDAIE_MemSpace_L2,
-  ]> {
-
-  let cppNamespace = "mlir::iree_compiler::AMDAIE";
-}
 
 def AMDAIEBridgeToAIR : Pass<"iree-amdaie-bridge-to-air", ""> {
   let summary = "Perform transformations that allow hooking into AIR/AIE lowering";

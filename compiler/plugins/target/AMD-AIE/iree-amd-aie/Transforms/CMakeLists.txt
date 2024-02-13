@@ -15,8 +15,6 @@ iree_tablegen_library(
     "Passes.td"
   OUTS
     --gen-pass-decls Passes.h.inc
-    --gen-enum-decls AMDAIEEnums.h.inc
-    --gen-enum-defs AMDAIEEnums.cpp.inc
 )
 
 iree_cc_library(
@@ -28,6 +26,7 @@ iree_cc_library(
     "Passes.h.inc"
   DEPS
     ::PassesIncGen
+    iree::target::amd-aie::IR::AMDAIEDialect
     MLIRPass
   PUBLIC
 )
@@ -36,6 +35,7 @@ iree_cc_library(
   NAME
     Transforms
   HDRS
+    "KernelDispatch.h"
     "Passes.h"
   SRCS
     "Passes.cpp"
@@ -57,6 +57,7 @@ iree_cc_library(
   DEPS
     ::PassHeaders
     ::PassesIncGen
+    iree::target::amd-aie::IR::AMDAIEDialect
     MLIRSupport
     iree::compiler::Codegen::Common::TransformDialectInterpreterPass
     iree::compiler::Codegen::Dialect::Codegen::IR::IREECodegenDialect

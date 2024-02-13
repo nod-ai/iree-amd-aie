@@ -13,6 +13,7 @@ iree_cc_library(
     "AIETarget.cpp"
   DEPS
     iree::compiler::Dialect::HAL::Target
+    iree::target::amd-aie::IR::AMDAIEDialect
     iree::target::amd-aie::Transforms
     iree::target::amd-aie::air::AIRDialectIR
   PUBLIC

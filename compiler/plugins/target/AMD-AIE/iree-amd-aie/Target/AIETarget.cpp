@@ -12,6 +12,7 @@
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "air/Dialect/AIR/AIRDialect.h"
 #include "air/Dialect/AIRRt/AIRRtDialect.h"
+#include "iree-amd-aie/IR/AMDAIEDialect.h"
 #include "iree-amd-aie/Transforms/Passes.h"
 #include "iree-dialects/Dialect/LinalgExt/IR/LinalgExtDialect.h"
 #include "iree/compiler/Codegen/Dialect/Codegen/IR/IREECodegenDialect.h"
@@ -54,7 +55,8 @@ class AIETargetBackend final : public IREE::HAL::TargetBackend {
   std::string name() const override { return "amd-aie"; }
 
   void getDependentDialects(DialectRegistry &registry) const override {
-    registry.insert<mlir::iree_compiler::IREE::Codegen::IREECodegenDialect,
+    registry.insert<mlir::iree_compiler::AMDAIE::AMDAIEDialect,
+                    mlir::iree_compiler::IREE::Codegen::IREECodegenDialect,
                     IREE::LinalgExt::IREELinalgExtDialect,
                     transform::TransformDialect, xilinx::AIE::AIEDialect,
                     xilinx::AIEX::AIEXDialect, xilinx::air::airDialect,

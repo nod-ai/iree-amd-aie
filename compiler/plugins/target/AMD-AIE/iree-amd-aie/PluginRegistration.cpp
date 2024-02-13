@@ -8,6 +8,7 @@
 #include "aie/Passes.h"
 #include "air/Dialect/AIR/AIRDialect.h"
 #include "air/Passes.h"
+#include "iree-amd-aie/IR/AMDAIEDialect.h"
 #include "iree-amd-aie/Target/AIETarget.h"
 #include "iree-amd-aie/Transforms/Passes.h"
 #include "iree/compiler/Dialect/HAL/Target/TargetRegistry.h"
@@ -26,7 +27,8 @@ struct AMDAIESession
   }
 
   void onRegisterDialects(DialectRegistry &registry) override {
-    registry.insert<xilinx::AIE::AIEDialect, xilinx::air::airDialect>();
+    registry.insert<AMDAIE::AMDAIEDialect, xilinx::AIE::AIEDialect,
+                    xilinx::air::airDialect>();
   }
 
   void populateHALTargetBackends(
