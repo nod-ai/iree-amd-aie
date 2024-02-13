@@ -12,10 +12,6 @@
 #include "iree/compiler/Codegen/Dialect/Codegen/IR/IREECodegenAttrs.h"
 #include "mlir/Pass/Pass.h"
 
-// clang-format off: must be included after all LLVM/MLIR headers.
-#include "iree-amd-aie/Transforms/AMDAIEEnums.h.inc"  // IWYU pragma: export
-// clang-format on
-
 namespace mlir::iree_compiler::AMDAIE {
 
 /// Add passes to lower from MLIR-AIR through AIE. This is
