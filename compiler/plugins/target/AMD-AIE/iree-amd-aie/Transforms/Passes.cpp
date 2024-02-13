@@ -12,6 +12,7 @@
 #include "iree/compiler/Codegen/Common/CPU/Passes.h"
 #include "iree/compiler/Codegen/Common/Passes.h"
 #include "iree/compiler/Codegen/Common/Transforms.h"
+#include "mlir/Dialect/Affine/Passes.h"
 #include "mlir/Dialect/Linalg/Passes.h"
 #include "mlir/Dialect/MemRef/Transforms/Passes.h"
 #include "mlir/Pass/PassManager.h"
@@ -168,13 +169,13 @@ void addSimplePackBasedPassPipeline(OpPassManager &pm,
   modulePassManager.addPass(createCanonicalizerPass());
   modulePassManager.addPass(createCSEPass());
 
-  // Second level packing and bufferize to allocation
+  // Second level packing and only promote the result to local memory
   packOptions.packLevel = 1;
   packOptions.usePassPipeline = AIEPassPipeline::SimplePackPipeline;
   modulePassManager.addNestedPass<func::FuncOp>(
       createAMDAIEPackAndTransposePass(packOptions));
   bufferizeOptions.memorySpace = 2;
-  bufferizeOptions.bufferizeLevel = -1;
+  bufferizeOptions.bufferizeLevel = 1;
   modulePassManager.addNestedPass<func::FuncOp>(
       createAMDAIEBufferizeToAllocationPass(bufferizeOptions));
 
@@ -186,6 +187,19 @@ void addSimplePackBasedPassPipeline(OpPassManager &pm,
   modulePassManager.addNestedPass<func::FuncOp>(createAMDAIECleanupPass());
   modulePassManager.addPass(createCanonicalizerPass());
   modulePassManager.addPass(createCSEPass());
+
+  // Fuse pack ops into for loop
+  modulePassManager.addNestedPass<func::FuncOp>(
+      createAMDAIEFusePackIntoForLoopPass());
+  modulePassManager.addNestedPass<func::FuncOp>(createAMDAIECleanupPass());
+  modulePassManager.addPass(createCanonicalizerPass());
+  modulePassManager.addPass(createCSEPass());
+
+  // Promote the inputs to local memory
+  bufferizeOptions.memorySpace = 2;
+  bufferizeOptions.bufferizeLevel = 2;
+  modulePassManager.addNestedPass<func::FuncOp>(
+      createAMDAIEBufferizeToAllocationPass(bufferizeOptions));
 
   // Comprehensive bufferization
   addAMDAIEBufferizePasses(modulePassManager);
@@ -386,7 +400,23 @@ void addMLIRAIRAIELoweringPasses(OpPassManager &passManager) {
     options.clEmitWhileLoop = true;
     passManager.addPass(xilinx::air::createAIRToAIEPass(options));
   }
+  passManager.addPass(createCanonicalizerPass());
   passManager.addPass(xilinx::air::createAIRLoweringPass());
+  {
+    xilinx::air::AffineLoopOptPassOptions options;
+    const std::vector<unsigned> tile_sizes = {4, 4};
+    options.clTileSizes = ArrayRef(tile_sizes);
+    passManager.addNestedPass<func::FuncOp>(
+        xilinx::air::createAffineLoopOptPass(options));
+  }
+  {
+    xilinx::air::AIRUnrollOuterPerfectlyNestedLoopsPassOptions options;
+    options.clDepth = 2;
+    passManager.addNestedPass<func::FuncOp>(
+        xilinx::air::createAIRUnrollOuterPerfectlyNestedLoopsPass(options));
+  }
+  passManager.addPass(mlir::affine::createAffineExpandIndexOpsPass());
+
   passManager.addPass(xilinx::airrt::createAIRRtToIpuPass());
   passManager.addPass(createCanonicalizerPass());
 }

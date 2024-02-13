@@ -16,6 +16,57 @@
 
 namespace mlir::iree_compiler::AMDAIE {
 
+static LogicalResult setRootConfigForPadPipeline(func::FuncOp entryPointFn,
+                                                 linalg::MatmulOp matmulOp) {
+  SmallVector<int64_t> TileSizeLevel0 = {8, 8};
+  SmallVector<int64_t> TileSizeLevel1 = {4, 4};
+  SmallVector<int64_t> TileSizeLevel2 = {0, 0, 4};
+  TileSizesListType tileSizes = {TileSizeLevel0, TileSizeLevel1,
+                                 TileSizeLevel2};
+  return setOpConfigAndEntryPointFnTranslation(
+      entryPointFn, matmulOp, tileSizes,
+      IREE::Codegen::DispatchLoweringPassPipeline::None);
+}
+
+static LogicalResult setRootConfigForSimplePackPipeline(
+    func::FuncOp entryPointFn, linalg::MatmulOp matmulOp) {
+  // Assume working on a 2x2 AIE array and make sure the tile size is not larger
+  // than the input size.
+  auto initType = matmulOp.getDpsInitOperand(0)->get().getType();
+  auto initShape = llvm::cast<ShapedType>(initType).getShape();
+  auto tileM0 = std::min((int)initShape[0], 64);
+  auto tileN0 = std::min((int)initShape[1], 64);
+  auto tileM1 = std::max((int)tileM0 / 2, 1);
+  auto tileN1 = std::max((int)tileN0 / 2, 1);
+  auto lhsType = matmulOp.getDpsInputOperand(0)->get().getType();
+  auto lhsShape = llvm::cast<ShapedType>(lhsType).getShape();
+  auto tileK = std::min((int)lhsShape[1] / 8, 4);
+
+  SmallVector<int64_t> TileSizeLevel0 = {tileM0, tileN0};
+  SmallVector<int64_t> TileSizeLevel1 = {0, 0, 0, tileM1, tileN1};
+  SmallVector<int64_t> TileSizeLevel2 = {0, 0, 0, 0, 0, tileK};
+  TileSizesListType tileSizes = {TileSizeLevel0, TileSizeLevel1,
+                                 TileSizeLevel2};
+  return setOpConfigAndEntryPointFnTranslation(
+      entryPointFn, matmulOp, tileSizes,
+      IREE::Codegen::DispatchLoweringPassPipeline::None);
+}
+
+static LogicalResult setRootConfigForPackPipeline(func::FuncOp entryPointFn,
+                                                  linalg::MatmulOp matmulOp,
+                                                  AIEConfig cfg) {
+  if (!(cfg.num_cores == 1 || cfg.num_cores == 2 || cfg.num_cores == 4))
+    return matmulOp.emitOpError("unhandled number of cores");
+  SmallVector<int64_t> TileSizeLevel0 = {16, 64 * cfg.num_cores};
+  SmallVector<int64_t> TileSizeLevel1 = {0, 0, 64};
+  SmallVector<int64_t> TileSizeLevel2 = {1, 1};
+  TileSizesListType tileSizes = {TileSizeLevel0, TileSizeLevel1,
+                                 TileSizeLevel2};
+  return setOpConfigAndEntryPointFnTranslation(
+      entryPointFn, matmulOp, tileSizes,
+      IREE::Codegen::DispatchLoweringPassPipeline::None);
+}
+
 /// Sets the lowering configuration for dispatch region with root op that
 /// implements the contraction operation interface.
 static LogicalResult setRootConfig(func::FuncOp entryPointFn,
@@ -37,36 +88,12 @@ static LogicalResult setRootConfig(func::FuncOp entryPointFn,
   // TODO (nmeshram) : This needs to be moved in a separate more generalized
   // logic. Also, need a flag to experiment between pad based and pack based
   // approach which will have different tile sizes and pass pipelines
-  if (usePassPipeline == AIEPassPipeline::PadPipeline) {
-    SmallVector<int64_t> TileSizeLevel0 = {8, 8};
-    SmallVector<int64_t> TileSizeLevel1 = {4, 4};
-    SmallVector<int64_t> TileSizeLevel2 = {0, 0, 4};
-    TileSizesListType tileSizes = {TileSizeLevel0, TileSizeLevel1,
-                                   TileSizeLevel2};
-    return setOpConfigAndEntryPointFnTranslation(
-        entryPointFn, matmulOp, tileSizes,
-        IREE::Codegen::DispatchLoweringPassPipeline::None);
-  } else if (usePassPipeline == AIEPassPipeline::SimplePackPipeline) {
-    SmallVector<int64_t> TileSizeLevel0 = {8, 16};
-    SmallVector<int64_t> TileSizeLevel1 = {1, 1};
-    SmallVector<int64_t> TileSizeLevel2 = {0, 0, 1};
-    TileSizesListType tileSizes = {TileSizeLevel0, TileSizeLevel1,
-                                   TileSizeLevel2};
-    return setOpConfigAndEntryPointFnTranslation(
-        entryPointFn, matmulOp, tileSizes,
-        IREE::Codegen::DispatchLoweringPassPipeline::None);
-  } else if (usePassPipeline == AIEPassPipeline::PackPipeline) {
-    if (!(cfg.num_cores == 1 || cfg.num_cores == 2 || cfg.num_cores == 4))
-      return matmulOp.emitOpError("unhandled number of cores");
-    SmallVector<int64_t> TileSizeLevel0 = {16, 64 * cfg.num_cores};
-    SmallVector<int64_t> TileSizeLevel1 = {0, 0, 64};
-    SmallVector<int64_t> TileSizeLevel2 = {1, 1};
-    TileSizesListType tileSizes = {TileSizeLevel0, TileSizeLevel1,
-                                   TileSizeLevel2};
-    return setOpConfigAndEntryPointFnTranslation(
-        entryPointFn, matmulOp, tileSizes,
-        IREE::Codegen::DispatchLoweringPassPipeline::None);
-  }
+  if (usePassPipeline == AIEPassPipeline::PadPipeline)
+    return setRootConfigForPadPipeline(entryPointFn, matmulOp);
+  if (usePassPipeline == AIEPassPipeline::SimplePackPipeline)
+    return setRootConfigForSimplePackPipeline(entryPointFn, matmulOp);
+  if (usePassPipeline == AIEPassPipeline::PackPipeline)
+    return setRootConfigForPackPipeline(entryPointFn, matmulOp, cfg);
   return matmulOp.emitOpError("unhandled pass pipeline");
 }
 
