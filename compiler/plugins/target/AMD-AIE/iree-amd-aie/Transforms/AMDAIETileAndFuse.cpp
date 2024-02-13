@@ -154,7 +154,8 @@ void AMDAIETileAndFusePass::runOnOperation() {
   if (!useSCFFor) {
     options.setMapping(
         {gpu::GPUBlockMappingAttr::get(context, gpu::MappingId::DimY),
-         gpu::GPUBlockMappingAttr::get(context, gpu::MappingId::DimX)});
+         gpu::GPUBlockMappingAttr::get(context, gpu::MappingId::DimX),
+         gpu::GPUBlockMappingAttr::get(context, gpu::MappingId::DimZ)});
   }
 
   if (!useSCFFor) {
