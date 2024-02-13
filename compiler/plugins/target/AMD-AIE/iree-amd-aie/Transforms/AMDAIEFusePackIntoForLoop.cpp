@@ -54,11 +54,12 @@ void AMDAIEFusePackIntoForLoopPass::runOnOperation() {
   for (auto user : bbArg.getUsers()) {
     if (auto genericOp = dyn_cast<linalg::GenericOp>(user)) {
       for (auto [index, operand] : llvm::enumerate(genericOp.getOperands())) {
-        if (!isa<BlockArgument>(operand)) {
-          auto defOp = operand.getDefiningOp();
-          if (auto sliceOp = dyn_cast<tensor::ExtractSliceOp>(defOp)) {
-            sliceOps.push_back(sliceOp);
-          }
+        auto sliceOp =
+            dyn_cast_or_null<tensor::ExtractSliceOp>(operand.getDefiningOp());
+        // The producer of sliceOp should be a pack op.
+        if (sliceOp && isa_and_nonnull<tensor::PackOp>(
+                           sliceOp.getSource().getDefiningOp())) {
+          sliceOps.push_back(sliceOp);
         }
       }
     }
@@ -72,11 +73,6 @@ void AMDAIEFusePackIntoForLoopPass::runOnOperation() {
   // Materialize each slice of the producer in place.
   LoopLikeOpInterface loops = cast<LoopLikeOpInterface>(forOp.getOperation());
   for (auto sliceOp : sliceOps) {
-    auto defOp = sliceOp.getOperand(0).getDefiningOp();
-    if (!isa<tensor::PackOp>(defOp)) {
-      LLVM_DEBUG(llvm::dbgs() << "The producer is not a pack op.\n");
-      continue;
-    }
     std::optional<scf::SCFFuseProducerOfSliceResult> fusedProducer =
         scf::tileAndFuseProducerOfSlice(rewriter, sliceOp,
                                         MutableArrayRef(&loops, 1));
