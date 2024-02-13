@@ -10,10 +10,6 @@
 #include "mlir/IR/Iterators.h"
 #include "mlir/Pass/Pass.h"
 
-// clang-format off: must be included after all LLVM/MLIR headers.
-#include "iree-amd-aie/Transforms/AMDAIEEnums.cpp.inc"  // IWYU pragma: export
-// clang-format on
-
 #define DEBUG_TYPE "iree-amdaie-bufferize-to-allocation"
 
 namespace mlir::iree_compiler::AMDAIE {

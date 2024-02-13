@@ -15,6 +15,7 @@ iree_cc_library(
   DEPS
     iree::compiler::Dialect::HAL::Target
     iree::compiler::PluginAPI
+    iree::target::amd-aie::IR::AMDAIEDialect
     iree::target::amd-aie::Target
     iree::target::amd-aie::Transforms
     iree::target::amd-aie::aie::AIEDialectIR
@@ -34,5 +35,6 @@ iree_compiler_register_plugin(
     ::registration
 )
 
+add_subdirectory(IR)
 add_subdirectory(Target)
 add_subdirectory(Transforms)
