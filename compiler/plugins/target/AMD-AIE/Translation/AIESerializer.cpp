@@ -359,18 +359,22 @@ FailureOr<std::string> applySubview(memref::SubViewOp subView,
     std::string stridedOffset;
     std::string iv = currOffsetStr.value();
     if (!scope.ivMap[iv].empty()) {
-      stridedOffset = std::to_string(stride * scope.ivMap[iv][0]) +
-                      std::string(" + ") + std::string("(") + iv + " * " +
+      stridedOffset = std::string("(") + iv + " * " +
                       std::to_string(stride * scope.ivMap[iv][1]) + ")";
+      if (scope.ivMap[iv][0] != 0) {
+        stridedOffset = std::to_string(stride * scope.ivMap[iv][0]) +
+                        std::string(" + ") + stridedOffset;
+      }
     } else {
       stridedOffset =
           std::string("(") + iv + " * " + std::to_string(stride) + ")";
     }
 
-    if (offsetStr.empty()) {
-      offsetStr = stridedOffset;
-    } else if (!stridedOffset.empty()) {
+    if (!offsetStr.empty() && !stridedOffset.empty()) {
       offsetStr = std::string("(") + offsetStr + " + " + stridedOffset + ")";
+    } else {
+      // We can safely concatenate the offset strings if one of them is empty
+      offsetStr += stridedOffset;
     }
   }
   return offsetStr;
@@ -384,11 +388,12 @@ FailureOr<std::string> applySubviews(ArrayRef<memref::SubViewOp> subviews,
     if (failed(currOffsetStr)) {
       return failure();
     }
-    if (offsetStr.empty()) {
-      offsetStr = currOffsetStr.value();
-    } else if (!currOffsetStr->empty()) {
+    if (!offsetStr.empty() && !currOffsetStr.value().empty()) {
       offsetStr =
           std::string("(") + offsetStr + " + " + currOffsetStr.value() + ")";
+    } else {
+      // We can safely concatenate the offset strings if one of them is empty
+      offsetStr += currOffsetStr.value();
     }
   }
   return offsetStr;

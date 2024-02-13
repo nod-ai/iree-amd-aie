@@ -10,6 +10,7 @@ iree_lit_test_suite(
   SRCS
     "AIESerializer.mlir"
     "single_core.mlir"
+    "large_M.mlir"
   TOOLS
     ${IREE_LLD_TARGET}
     FileCheck
