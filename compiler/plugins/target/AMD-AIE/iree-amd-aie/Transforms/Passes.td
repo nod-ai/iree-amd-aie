@@ -58,6 +58,12 @@ def AMDAIEFuseFillIntoForall :
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEFuseFillIntoForallPass()";
 }
 
+def AMDAIEFusePackIntoForLoop :
+    Pass<"iree-amdaie-fuse-pack-into-for", "func::FuncOp"> {
+  let summary = "Fuse the pack operations into the for loops.";
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEFusePackIntoForLoopPass()";
+}
+
 def AMDAIELowerExecutableTarget :
     Pass<"iree-amdaie-lower-executable-target", "mlir::iree_compiler::IREE::HAL::ExecutableVariantOp"> {
   let summary = "Perform lowering of executable target using one of the IREE::HAL::DispatchLoweringPassPipeline";
