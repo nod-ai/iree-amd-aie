@@ -4,9 +4,11 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+#include "iree-amd-aie/IR/AMDAIEAttrs.h"
 #include "iree-amd-aie/Transforms/Passes.h"
 #include "iree/compiler/Codegen/Dialect/Codegen/IR/IREECodegenAttrs.h"
 #include "mlir/Dialect/Linalg/Transforms/Transforms.h"
+#include "mlir/Dialect/Utils/StaticValueUtils.h"
 #include "mlir/Pass/Pass.h"
 
 #define DEBUG_TYPE "iree-amdaie-pack-and-transpose"
@@ -14,73 +16,6 @@
 namespace mlir::iree_compiler::AMDAIE {
 
 namespace {
-
-struct PackConfig {
-  // Expected packed sizes for specified iterator dimensions
-  SmallVector<OpFoldResult> packedSizes;
-  // Indices of pack operations need to be transposed
-  SmallVector<int64_t> transposePackIndices;
-  // Indicator of if there is a unpack op corresponding to a pack op
-  SmallVector<int64_t> unpackEmpty;
-  // Attributes for inner dimension permutation
-  SmallVector<SmallVector<int64_t>> innerPerm;
-  // Attributes for outer dimension permutation
-  SmallVector<SmallVector<int64_t>> outerPerm;
-};
-
-static FailureOr<PackConfig> getPackConfig(
-    RewriterBase &rewriter, int packLevel, AIEPassPipeline passPipeline,
-    IREE::Codegen::LoweringConfigAttr lowerConfig, int64_t kSize) {
-  PackConfig config;
-  if (packLevel == 0) {
-    // packed size for [M, N, K]
-    if (passPipeline == AIEPassPipeline::PackPipeline) {
-      config.packedSizes = {rewriter.getI64IntegerAttr(16),
-                            rewriter.getI64IntegerAttr(64),
-                            rewriter.getI64IntegerAttr(64)};
-
-    } else if (passPipeline == AIEPassPipeline::SimplePackPipeline) {
-      // Set constraints for pack size [M, N] from first level of tile sizes
-      // Currently set pack size k as the input size K to avoid failure.
-      int64_t tileM = 64;
-      int64_t tileN = 64;
-      if (lowerConfig) {
-        auto tileSizes = lowerConfig.getTilingLevels()[0].getSizes();
-        tileM = tileSizes[0];
-        tileN = tileSizes[1];
-      }
-      config.packedSizes = {rewriter.getI64IntegerAttr(tileM),
-                            rewriter.getI64IntegerAttr(tileN),
-                            rewriter.getI64IntegerAttr(kSize)};
-    } else {
-      return failure();
-    }
-    // Transpose B matrix from [K N n k] to [K N k n]
-    config.transposePackIndices = {1};
-    // There is no corresponding unpack for the specified pack operation
-    // 0 is used when unpack is empty
-    config.unpackEmpty = {0};
-    config.innerPerm = {{1, 0}};
-    config.outerPerm = {{0, 1}};
-  } else if (packLevel == 1) {
-    // packed size for [M, N, K, m, n, k]
-    config.packedSizes = {
-        rewriter.getI64IntegerAttr(0), rewriter.getI64IntegerAttr(0),
-        rewriter.getI64IntegerAttr(0), rewriter.getI64IntegerAttr(4),
-        rewriter.getI64IntegerAttr(8), rewriter.getI64IntegerAttr(8)};
-    // Transpose A matrix from [M K m k m0 k0] to [M K k m m0 k0]
-    // Transpose B matrix from [K N k n n0 k0] to [K N n k k0 n0]
-    // Transpose C matrix from [M N m n m0 n0] to [M N n m m0 n0]
-    config.transposePackIndices = {0, 1, 2};
-    // Only the third pack operation has a corresponding unpack operation
-    config.unpackEmpty = {0, 0, 1};
-    config.innerPerm = {{0, 1}, {1, 0}, {0, 1}};
-    config.outerPerm = {{0, 1, 3, 2}, {0, 1, 3, 2}, {0, 1, 3, 2}};
-  } else {
-    return failure();
-  }
-  return config;
-}
 
 static FailureOr<linalg::PackResult> applyPackOnLinalgOp(
     RewriterBase &rewriter, linalg::LinalgOp op,
@@ -137,22 +72,26 @@ void AMDAIEPackAndTransposePass::runOnOperation() {
     return;
   }
 
-  // Step 1. Before packing the operation, we will prefetch the lowering config.
+  // Step 1. Before packing the operation, we will prefetch the lowering and
+  // packing config.
   auto config = getLoweringConfig(linalgOp);
+  auto packingConfig = getPackingConfig(linalgOp);
 
-  // Step 2. Pack the operation
-  IRRewriter rewriter(context);
-  auto lhsType = linalgOp->getOperand(0).getType();
-  int64_t kSize = llvm::cast<ShapedType>(lhsType).getShape()[1];
-  FailureOr<PackConfig> packCfg =
-      getPackConfig(rewriter, packLevel, usePassPipeline, config, kSize);
-  if (failed(packCfg)) {
+  if (!config || !packingConfig) {
     funcOp->emitOpError("failed to get pack configs");
     return signalPassFailure();
   }
 
+  // Step 2. Pack the operation
+  IRRewriter rewriter(context);
+  // Extract packing config from the `linalgOp`.
+  PackingConfigPackingLevelAttr packCfg =
+      packingConfig.getPackingConfigVals(packLevel);
+  SmallVector<OpFoldResult> packedSizes =
+      getAsIndexOpFoldResult(context, packCfg.getPackedSizes());
+
   FailureOr<linalg::PackResult> packResult =
-      applyPackOnLinalgOp(rewriter, linalgOp, packCfg->packedSizes);
+      applyPackOnLinalgOp(rewriter, linalgOp, packedSizes);
   if (failed(packResult)) {
     return signalPassFailure();
   }
@@ -167,10 +106,10 @@ void AMDAIEPackAndTransposePass::runOnOperation() {
     return signalPassFailure();
   }
 
-  auto packIndices = packCfg->transposePackIndices;
-  auto unpackArr = packCfg->unpackEmpty;
-  auto innerPermArr = packCfg->innerPerm;
-  auto outerPermArr = packCfg->outerPerm;
+  auto packIndices = packCfg.getTransposePackIndices();
+  auto unpackArr = packCfg.getUnpackEmpty();
+  auto innerPermArr = packCfg.getInnerPermArr();
+  auto outerPermArr = packCfg.getOuterPermArr();
 
   for (auto [index, unpackEmpty, innerPerm, outerPerm] :
        llvm::zip(packIndices, unpackArr, innerPermArr, outerPermArr)) {
@@ -194,6 +133,7 @@ void AMDAIEPackAndTransposePass::runOnOperation() {
   // packedOp.
   if (config) {
     setLoweringConfig(packedOp, config);
+    setPackingConfig(packedOp, packingConfig);
   }
 }
 
