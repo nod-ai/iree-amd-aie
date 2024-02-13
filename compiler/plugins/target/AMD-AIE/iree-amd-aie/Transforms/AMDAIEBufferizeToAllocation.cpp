@@ -68,10 +68,10 @@ static AMDAIEMemSpaceAttr getMemorySpaceAttr(RewriterBase &rewriter,
   AMDAIEMemSpace memSpace;
   switch (memorySpace) {
     case 1:
-      memSpace = AMDAIEMemSpace::L1;
+      memSpace = AMDAIEMemSpace::Shared;
       break;
     case 2:
-      memSpace = AMDAIEMemSpace::L2;
+      memSpace = AMDAIEMemSpace::Local;
       break;
     default:
       assert(false && "incorrect memory space");
