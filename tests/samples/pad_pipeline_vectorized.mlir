@@ -2,7 +2,9 @@
 
 
 // CHECK-LABEL:   aie.device
+// Matmul appears 8 times ... 4 tiles with ping-pong? 
 // CHECK-COUNT-8: vector.multi_reduction <add>{{.*}}[2] : vector<4x4x4xf32> to vector<4x4xf32>
+// CHECK-NOT vector.multi_reduction
 
 
 !lhs = tensor<8x16xf32>
