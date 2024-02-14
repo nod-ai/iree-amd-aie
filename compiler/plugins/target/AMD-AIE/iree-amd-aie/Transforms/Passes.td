@@ -58,6 +58,12 @@ def AMDAIEFuseFillIntoForall :
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEFuseFillIntoForallPass()";
 }
 
+def AMDAIEVectorization :
+    Pass<"iree-amdaie-vectorization", "func::FuncOp"> {
+  let summary = "Vectorization pass. Currently this matches on matmul bfloat only.";
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEVectorizationPass()";
+}
+
 def AMDAIEFusePackIntoForLoop :
     Pass<"iree-amdaie-fuse-pack-into-for", "func::FuncOp"> {
   let summary = "Fuse the pack operations into the for loops.";

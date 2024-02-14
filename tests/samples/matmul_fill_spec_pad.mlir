@@ -122,6 +122,12 @@ module attributes { transform.with_named_sequence } {
     %padded_reduction_rhs_buffer, %padded_reduction_rhs_new = transform.structured.bufferize_to_allocation %padded_reduction_rhs
         {memory_space = 2, bufferize_destination_only, emit_dealloc} : !transform.any_op
 
+    
+//     %current_matmul = transform.structured.match ops{["linalg.matmul"]} in %variant_op : (!transform.any_op) -> !transform.any_op
+//     // Vectorize the matmul:
+//     transform.structured.vectorize %current_matmul :  !transform.any_op
+
+
     // Clean up.
     transform.include @cleanup failures(propagate) (%variant_op) : (!transform.any_op) -> ()
 

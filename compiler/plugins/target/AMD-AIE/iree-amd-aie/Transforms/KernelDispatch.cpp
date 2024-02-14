@@ -20,7 +20,18 @@ static LogicalResult setRootConfigForPadPipeline(func::FuncOp entryPointFn,
                                                  linalg::MatmulOp matmulOp) {
   SmallVector<int64_t> TileSizeLevel0 = {8, 8};
   SmallVector<int64_t> TileSizeLevel1 = {4, 4};
-  SmallVector<int64_t> TileSizeLevel2 = {0, 0, 4};
+
+  auto dtype =
+      matmulOp->getOperand(0).getType().cast<ShapedType>().getElementType();
+
+  // TODO: do not duplicate this logic
+  int64_t kSize = [&]() {
+    if (dtype.isBF16()) return 8;
+    if (dtype.isInteger(16)) return 8;
+    return 4;
+  }();
+  SmallVector<int64_t> TileSizeLevel2 = {0, 0, kSize};
+
   TileSizesListType tileSizes = {TileSizeLevel0, TileSizeLevel1,
                                  TileSizeLevel2};
   return setOpConfigAndEntryPointFnTranslation(

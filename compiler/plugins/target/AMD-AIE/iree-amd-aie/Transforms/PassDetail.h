@@ -33,6 +33,7 @@ namespace mlir::iree_compiler::AMDAIE {
 #define GEN_PASS_DEF_AMDAIEPROPAGATEDATALAYOUT
 #define GEN_PASS_DEF_AMDAIETILEANDFUSE
 #define GEN_PASS_DEF_AMDAIEDECOMPOSELINALGEXTPACKUNPACKTOAIR
+#define GEN_PASS_DEF_AMDAIEVECTORIZATION
 #include "iree-amd-aie/Transforms/Passes.h.inc"
 
 }  // namespace mlir::iree_compiler::AMDAIE
