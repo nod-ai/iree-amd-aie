@@ -9,6 +9,7 @@
 #include "iree-amd-aie/Transforms/Passes.h"
 #include "mlir/Dialect/Linalg/Transforms/Transforms.h"
 #include "mlir/Pass/Pass.h"
+#include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
 #define DEBUG_TYPE "iree-amdaie-vectorization"
 
@@ -99,6 +100,14 @@ class AMDAIEVectorizationPass
         opToVectorize->emitOpError("Unexpectedly failed to vectorize");
         return signalPassFailure();
       }
+
+    mlir::RewritePatternSet patterns(context);
+    vector::populateVectorReductionToContractPatterns(patterns);
+    vector::TransferReadOp::getCanonicalizationPatterns(patterns,
+                                                        funcOp.getContext());
+    vector::TransferWriteOp::getCanonicalizationPatterns(patterns,
+                                                         funcOp.getContext());
+    (void)mlir::applyPatternsAndFoldGreedily(funcOp, std::move(patterns));
   }
 };
 }  // namespace
