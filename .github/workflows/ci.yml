@@ -104,4 +104,4 @@ jobs:
       - name: Clean up
         if: ${{ always() }}
         run: |
-          for kern in /lib/firmware/amdipu/1502/github.${GITHUB_RUN_ID}.${GITHUB_RUN_ATTEMPT}.*; do sudo /opt/xilinx/xrt/amdxdna/rm_xclbin.sh "$kern"; done
+          for kern in /lib/firmware/amdnpu/1502/github.${GITHUB_RUN_ID}.${GITHUB_RUN_ATTEMPT}.*; do sudo /opt/xilinx/xrt/amdxdna/rm_xclbin.sh "$kern"; done
