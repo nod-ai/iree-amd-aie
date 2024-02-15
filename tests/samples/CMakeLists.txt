@@ -12,6 +12,7 @@ iree_lit_test_suite(
     "pack_pipeline_funcIR_2core.mlir"
     "pack_pipeline_funcIR_4core.mlir"
     "pad_pipeline_e2e.mlir"
+    "pad_pipeline_vectorized.mlir"
     "simple_pack_pipeline_e2e.mlir"
     "pad_pipeline_conv2d.mlir"
   TOOLS

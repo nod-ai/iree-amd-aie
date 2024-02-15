@@ -27,7 +27,7 @@ static LogicalResult applyBufferizeToAllocation(RewriterBase &rewriter,
   options.memcpyOp =
       linalg::BufferizeToAllocationOptions::MemcpyOp::MaterializeInDestination;
   options.allocOp = linalg::BufferizeToAllocationOptions::AllocOp::MemrefAlloc;
-  options.bufferizeDestinationOnly = true;
+  options.bufferizeDestinationOnly = false;
   options.emitDealloc = true;
 
   // Bufferize ops.

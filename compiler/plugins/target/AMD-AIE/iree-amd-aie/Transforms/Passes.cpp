@@ -76,6 +76,13 @@ static void addAMDAIEBufferizePasses(OpPassManager &pm) {
   addIREEComprehensiveBufferizePasses(pm, allocationFn, memCpyFn);
 }
 
+static void addAMDAIEVectorizePasses(OpPassManager &pm) {
+  mlir::iree_compiler::GenericVectorizationPassOptions opts{};
+  opts.generateContract = true;
+  pm.addNestedPass<func::FuncOp>(
+      mlir::iree_compiler::createGenericVectorizationPass(opts));
+}
+
 void addPadBasedPassPipeline(OpPassManager &pm, TilingConfig &tilingConfig) {
   auto &modulePassManager = pm.nest<ModuleOp>();
   modulePassManager.addNestedPass<func::FuncOp>(createAMDAIECleanupPass());
@@ -117,6 +124,7 @@ void addPadBasedPassPipeline(OpPassManager &pm, TilingConfig &tilingConfig) {
     pm.addPass(createCanonicalizerPass());
     pm.addPass(createCSEPass());
   }
+  addAMDAIEVectorizePasses(modulePassManager);
   addAMDAIEBufferizePasses(modulePassManager);
   modulePassManager.addNestedPass<func::FuncOp>(createAMDAIECleanupPass());
   pm.addPass(createCanonicalizerPass());
