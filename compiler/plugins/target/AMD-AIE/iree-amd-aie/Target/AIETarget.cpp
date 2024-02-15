@@ -177,9 +177,7 @@ LogicalResult AIETargetBackend::serializeExecutable(
                                  "--xclbin-kernel-name",
                                  entryPointNames[0],
                                  "--tmpdir",
-                                 workDir,
-                                 "--install-dir",
-                                 options.mlirAieInstallDir};
+                                 workDir};
   if (options.useChess) {
     cmdArgs.push_back("--use-chess");
   }
