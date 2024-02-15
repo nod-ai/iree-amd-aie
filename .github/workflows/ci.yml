@@ -85,7 +85,7 @@ jobs:
       - name: "Checking out repository" # for test scripts
         uses: actions/checkout@8f4b7f84864484a7bf31766abe9204da3cbe65b3 # v3.5.0
         with:
-          submodules: false
+          submodules: false # not required for testbench
 
       - name: Download artifacts
         uses: actions/download-artifact@v4
@@ -99,4 +99,9 @@ jobs:
 
       - name: Pad matmul test
         run: |
-          bash build_tools/ci/pad_test.sh test1 iree-install
+          bash build_tools/ci/pad_test.sh test1 iree-install mlir_aie-0.0.1.2024021415+7ee44b7
+
+      - name: Clean up
+        if: ${{ always() }}
+        run: |
+          for kern in /lib/firmware/amdnpu/1502/github.${GITHUB_RUN_ID}.${GITHUB_RUN_ATTEMPT}.*; do sudo /opt/xilinx/xrt/amdxdna/rm_xclbin.sh "$kern"; done
