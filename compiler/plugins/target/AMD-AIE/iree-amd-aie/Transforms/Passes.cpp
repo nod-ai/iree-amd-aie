@@ -339,7 +339,7 @@ void addMLIRAIRAIELoweringPasses(OpPassManager &passManager) {
     options.clHasSegment = true;
     passManager.addPass(xilinx::air::createParallelToLaunchPass(options));
   }
-  passManager.addPass(xilinx::air::createCopyToDmaPass());
+  passManager.addPass(createCopyToDmaPass());
   passManager.addPass(createCanonicalizerPass());
   passManager.addPass(createCSEPass());
 

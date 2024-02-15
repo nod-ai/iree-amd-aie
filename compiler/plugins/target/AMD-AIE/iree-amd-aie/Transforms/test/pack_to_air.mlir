@@ -67,6 +67,7 @@ func.func @func3() {
 // CHECK: %[[SUBVIEW0:.*]] = memref.subview %[[ALLOC0]][0, 0, 0, 0] [1, 1, 8, 16] [1, 1, 1, 1] : memref<1x1x8x16xi32, 1> to memref<8x16xi32, 1>
 // CHECK: %[[TRANSPOSE0:.*]] = memref.transpose %[[SUBVIEW0]] (d0, d1) -> (d0, d1) : memref<8x16xi32, 1> to memref<8x16xi32, strided<[16, 1]>, 1>
 // CHECK: air.dma_memcpy_nd (%[[ALLOC1]][] [] [], %[[TRANSPOSE0]][] [] []) : (memref<8x16xi32>, memref<8x16xi32, strided<[16, 1]>, 1>)
+
 func.func @func4() {
   %alloc = memref.alloc() : memref<1x1x8x16xi32, 1>
   %alloc_0 = memref.alloc() : memref<8x16xi32>

@@ -53,6 +53,7 @@ iree_cc_library(
     "BridgeToAIRPass.cpp"
     "DecomposeLinalgExtPackUnPackToAIR.cpp"
     "Cleanup.cpp"
+    "CopyToDma.cpp"
     "KernelDispatch.cpp"
   DEPS
     ::PassHeaders

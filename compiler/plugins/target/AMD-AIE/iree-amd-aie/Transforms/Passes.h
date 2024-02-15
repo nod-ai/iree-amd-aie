@@ -89,6 +89,9 @@ std::unique_ptr<Pass> createAMDAIETileAndFusePass(
 /// Create pass to propagate pack/unpack ops using upstream patterns.
 std::unique_ptr<Pass> createAMDAIEPropagateDataLayoutPass();
 
+/// Create pass to propagate pack/unpack ops using upstream patterns.
+std::unique_ptr<Pass> createCopyToDmaPass();
+
 void registerAMDAIEPasses();
 
 }  // namespace mlir::iree_compiler::AMDAIE
