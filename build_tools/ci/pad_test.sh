@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 set -xe
-
+MLIR_AIE_INSTALL=.venv/lib/python3.10/site-packages/mlir_aie
 TESTDIR="$1"
 
 BASE_DIR=`realpath "$(dirname $0)/../.."`

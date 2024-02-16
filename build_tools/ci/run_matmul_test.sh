@@ -21,6 +21,7 @@
 
 set -euox pipefail
 
+MLIR_AIE_INSTALL=.venv/lib/python3.10/site-packages/mlir_aie
 THIS_DIR="$(cd $(dirname $0) && pwd)"
 ROOT_DIR="$(cd $THIS_DIR/../.. && pwd)"
 
@@ -56,8 +57,6 @@ echo "Python version: $("${IREE_PYTHON3_EXECUTABLE}" --version)"
 echo "iree-compile version: $("${IREE_COMPILE_EXE}" --version)"
 mkdir -p ${OUTPUT_DIR}
 cd ${OUTPUT_DIR}
-
-MLIR_AIE_INSTALL=.venv/lib/python3.10/site-packages/mlir_aie
 
 ###############################################################################
 # Define helper function                                                      #
