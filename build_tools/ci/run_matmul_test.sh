@@ -55,6 +55,7 @@ echo "Python version: $("${IREE_PYTHON3_EXECUTABLE}" --version)"
 echo "iree-compile version: $("${IREE_COMPILE_EXE}" --version)"
 mkdir -p ${OUTPUT_DIR}
 cd ${OUTPUT_DIR}
+OUTPUT_DIR=$(pwd)
 
 python3 -m venv sandbox
 source sandbox/bin/activate
