@@ -58,11 +58,11 @@ echo "iree-compile version: $("${IREE_COMPILE_EXE}" --version)"
 mkdir -p ${OUTPUT_DIR}
 cd ${OUTPUT_DIR}
 
-python3 -m venv sandbox
-source sandbox/bin/activate
+python3 -m venv .venv
+source .venv/bin/activate
 pip install https://github.com/Xilinx/mlir-aie/releases/download/latest-wheels/${MLIR_AIE_VERSION}-py3-none-manylinux_2_35_x86_64.whl
 pip install -r ${ROOT_DIR}/tests/matmul/requirements.txt
-MLIR_AIE_INSTALL=sandbox/lib/python3.10/site-packages/mlir_aie
+MLIR_AIE_INSTALL=.venv/lib/python3.10/site-packages/mlir_aie
 
 ###############################################################################
 # Define helper function                                                      #
@@ -145,7 +145,6 @@ function run_matmul_test() {
       --iree-amd-aie-mlir-aie-install-dir=${mlir_aie_install_path} \
       --iree-amd-aie-vitis-install-dir=${vitis_path} \
       --iree-hal-dump-executable-files-to=$PWD \
-      --iree-hal-dump-executable-intermediates-to=$PWD \
       -o "${OUTPUT_DIR}/${name}_matmuls.vmfb"
   ${IREE_COMPILE_EXE} \
       "${OUTPUT_DIR}/${name}_calls.mlir" \

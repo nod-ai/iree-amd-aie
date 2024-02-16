@@ -18,10 +18,10 @@ MLIRFILE="${BASE_DIR}/tests/samples/pad_pipeline_e2e.mlir"
 mkdir -p "$TESTDIR"
 cd "$TESTDIR"
 
-python3 -m venv sandbox
-source sandbox/bin/activate
+python3 -m venv .venv
+source .venv/bin/activate
 pip install https://github.com/Xilinx/mlir-aie/releases/download/latest-wheels/${MLIR_AIE_VERSION}-py3-none-manylinux_2_35_x86_64.whl
-MLIR_AIE_INSTALL=sandbox/lib/python3.10/site-packages/mlir_aie
+MLIR_AIE_INSTALL=.venv/lib/python3.10/site-packages/mlir_aie
 
 OUTPUT=output.vmfb
 XRT_DIR=/opt/xilinx/xrt
@@ -39,7 +39,6 @@ source $XRT_DIR/setup.sh
     --iree-amd-aie-mlir-aie-install-dir "${MLIR_AIE_INSTALL}" \
     --iree-amd-aie-vitis-install-dir "${VITIS}" \
     --iree-hal-dump-executable-files-to=$PWD \
-    --iree-hal-dump-executable-intermediates-to=$PWD \
     --iree-amd-aie-show-invoked-commands \
     --iree-amdaie-use-pipeline=pad -o "${OUTPUT}"
 
