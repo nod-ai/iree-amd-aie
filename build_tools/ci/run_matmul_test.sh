@@ -17,26 +17,34 @@
 #      `iree-e2e-matmul-test` to include support for the runtime HAL
 #      driver/device you wish to test.
 #   2. Update the paths in this script or specify them via environment variables
-#   3. Run: `./run_matmul_tests.sh <output_dir_path> <iree_install_path> <mlir_wheel_version>`
+#   3. Run: `./run_matmul_tests.sh <output_dir_path> <iree_install_path> <iree_build_path> <mlir_wheel_version>`
 
 set -euox pipefail
 
 THIS_DIR="$(cd $(dirname $0) && pwd)"
 ROOT_DIR="$(cd $THIS_DIR/../.. && pwd)"
 
-OUTPUT_DIR="$1"
-IREE_DIR="$2"
-MLIR_AIE_VERSION="$3"
-if [ -d "${IREE_DIR}/tools" ]; then
-    IREE_INSTALL_BIN=`realpath "${IREE_DIR}/tools"`
+OUTPUT_DIR=`realpath "$1"`
+IREE_INSTALL_DIR="$2"
+if [ -d "${IREE_INSTALL_DIR}/tools" ]; then
+    IREE_INSTALL_BIN=`realpath "${IREE_INSTALL_DIR}/tools"`
 else
-    IREE_INSTALL_BIN=`realpath "${IREE_DIR}/bin"`
+    IREE_INSTALL_BIN=`realpath "${IREE_INSTALL_DIR}/bin"`
 fi
+
+IREE_BUILD_DIR="$3"
+if [ -d "${IREE_BUILD_DIR}/tools" ]; then
+    IREE_BUILD_BIN=`realpath "${IREE_BUILD_DIR}/tools"`
+else
+    IREE_BUILD_BIN=`realpath "${IREE_BUILD_DIR}/bin"`
+fi
+
+MLIR_AIE_VERSION="$4"
 GENERATOR="${ROOT_DIR}/tests/matmul/generate_e2e_matmul_tests.py"
 IREE_PYTHON3_EXECUTABLE="${IREE_PYTHON3_EXECUTABLE:-python3}"
 
 IREE_COMPILE_EXE="${IREE_INSTALL_BIN}/iree-compile"
-TEST_RUNNER="${IREE_INSTALL_BIN}/iree-e2e-matmul-test"
+TEST_RUNNER="${IREE_BUILD_BIN}/iree-e2e-matmul-test"
 
 XRT_DIR=/opt/xilinx/xrt
 PEANO=/opt/llvm-aie
@@ -55,7 +63,6 @@ echo "Python version: $("${IREE_PYTHON3_EXECUTABLE}" --version)"
 echo "iree-compile version: $("${IREE_COMPILE_EXE}" --version)"
 mkdir -p ${OUTPUT_DIR}
 cd ${OUTPUT_DIR}
-OUTPUT_DIR=$(pwd)
 
 python3 -m venv sandbox
 source sandbox/bin/activate
