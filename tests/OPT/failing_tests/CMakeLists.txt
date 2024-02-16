@@ -8,6 +8,7 @@ iree_lit_test_suite(
   NAME
     lit
   SRCS
+    "gemm_f32.mlir"
     "gemm_i32.mlir"
   TOOLS
     ${IREE_LLD_TARGET}
