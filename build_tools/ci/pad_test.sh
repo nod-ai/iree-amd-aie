@@ -6,7 +6,6 @@ TESTDIR="$1"
 
 BASE_DIR=`realpath "$(dirname $0)/../.."`
 IREE_DIR="$2"
-MLIR_AIE_VERSION="$3"
 if [ -e "${IREE_DIR}/tools/iree-compile" ]; then
     IREE_BIN=`realpath "${IREE_DIR}/tools"`
 else
@@ -18,9 +17,6 @@ MLIRFILE="${BASE_DIR}/tests/samples/pad_pipeline_e2e.mlir"
 mkdir -p "$TESTDIR"
 cd "$TESTDIR"
 
-python3 -m venv .venv
-source .venv/bin/activate
-pip install https://github.com/Xilinx/mlir-aie/releases/download/latest-wheels/${MLIR_AIE_VERSION}-py3-none-manylinux_2_35_x86_64.whl
 MLIR_AIE_INSTALL=.venv/lib/python3.10/site-packages/mlir_aie
 
 OUTPUT=output.vmfb

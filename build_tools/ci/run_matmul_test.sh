@@ -17,7 +17,7 @@
 #      `iree-e2e-matmul-test` to include support for the runtime HAL
 #      driver/device you wish to test.
 #   2. Update the paths in this script or specify them via environment variables
-#   3. Run: `./run_matmul_tests.sh <output_dir_path> <iree_install_path> <mlir_wheel_version>`
+#   3. Run: `./run_matmul_tests.sh <output_dir_path> <iree_install_path>`
 
 set -euox pipefail
 
@@ -33,7 +33,6 @@ if [ -d "${IREE_INSTALL_DIR}/bin" ]; then
     IREE_INSTALL_BIN=`realpath "${IREE_INSTALL_DIR}/bin"`
 fi
 
-MLIR_AIE_VERSION="$3"
 GENERATOR="${ROOT_DIR}/tests/matmul/generate_e2e_matmul_tests.py"
 IREE_PYTHON3_EXECUTABLE="${IREE_PYTHON3_EXECUTABLE:-python3}"
 
@@ -58,10 +57,6 @@ echo "iree-compile version: $("${IREE_COMPILE_EXE}" --version)"
 mkdir -p ${OUTPUT_DIR}
 cd ${OUTPUT_DIR}
 
-python3 -m venv .venv
-source .venv/bin/activate
-pip install https://github.com/Xilinx/mlir-aie/releases/download/latest-wheels/${MLIR_AIE_VERSION}-py3-none-manylinux_2_35_x86_64.whl
-pip install -r ${ROOT_DIR}/tests/matmul/requirements.txt
 MLIR_AIE_INSTALL=.venv/lib/python3.10/site-packages/mlir_aie
 
 ###############################################################################
