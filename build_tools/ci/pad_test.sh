@@ -7,7 +7,7 @@ TESTDIR="$1"
 BASE_DIR=`realpath "$(dirname $0)/../.."`
 IREE_DIR="$2"
 MLIR_AIE_VERSION="$3"
-if [ -d "${IREE_DIR}/tools" ]; then
+if [ -e "${IREE_DIR}/tools/iree-compile" ]; then
     IREE_BIN=`realpath "${IREE_DIR}/tools"`
 else
     IREE_BIN=`realpath "${IREE_DIR}/bin"`
