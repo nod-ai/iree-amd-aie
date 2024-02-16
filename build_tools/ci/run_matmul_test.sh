@@ -59,6 +59,7 @@ cd ${OUTPUT_DIR}
 python3 -m venv sandbox
 source sandbox/bin/activate
 pip install https://github.com/Xilinx/mlir-aie/releases/download/latest-wheels/${MLIR_AIE_VERSION}-py3-none-manylinux_2_35_x86_64.whl
+pip install -r ${ROOT_DIR}/tests/matmul/requirements.txt
 MLIR_AIE_INSTALL=sandbox/lib/python3.10/site-packages/mlir_aie
 
 ###############################################################################
