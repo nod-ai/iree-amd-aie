@@ -17,8 +17,6 @@ MLIRFILE="${BASE_DIR}/tests/samples/pad_pipeline_e2e.mlir"
 mkdir -p "$TESTDIR"
 cd "$TESTDIR"
 
-MLIR_AIE_INSTALL=.venv/lib/python3.10/site-packages/mlir_aie
-
 OUTPUT=output.vmfb
 XRT_DIR=/opt/xilinx/xrt
 PEANO=/opt/llvm-aie
