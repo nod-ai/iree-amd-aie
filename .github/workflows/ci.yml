@@ -59,7 +59,7 @@ jobs:
           # installs.
           rm -f iree-install/bin/clang*
           rm -f iree-install/bin/llvm-link*
-          tar cf iree-dist.tar -C iree-install .
+          tar cf iree-dist.tar -C iree-install . -C ../iree-build tools/iree-e2e-matmul-test
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
@@ -103,7 +103,7 @@ jobs:
 
       - name: E2E correctness matmul test
         run: |
-          bash build_tools/ci/run_matmul_test.sh test2 iree-install iree-build mlir_aie-0.0.1.2024021415+7ee44b7
+          bash build_tools/ci/run_matmul_test.sh test2 iree-install mlir_aie-0.0.1.2024021415+7ee44b7
 
       - name: Clean up
         if: ${{ always() }}
