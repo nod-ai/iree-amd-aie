@@ -101,6 +101,10 @@ jobs:
         run: |
           bash build_tools/ci/pad_test.sh test1 iree-install mlir_aie-0.0.1.2024021415+7ee44b7
 
+      - name: E2E correctness matmul test
+        run: |
+          bash build_tools/ci/run_matmul_test.sh test2 iree-install mlir_aie-0.0.1.2024021415+7ee44b7
+
       - name: Clean up
         if: ${{ always() }}
         run: |
