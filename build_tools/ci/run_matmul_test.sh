@@ -21,7 +21,7 @@
 
 set -euox pipefail
 
-MLIR_AIE_INSTALL=.venv/lib/python3.10/site-packages/mlir_aie
+MLIR_AIE_INSTALL=`realpath .venv/lib/python3.10/site-packages/mlir_aie`
 THIS_DIR="$(cd $(dirname $0) && pwd)"
 ROOT_DIR="$(cd $THIS_DIR/../.. && pwd)"
 
