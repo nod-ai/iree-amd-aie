@@ -130,7 +130,7 @@ func.func @batch_matmul_transpose_static_32x8x8x64_i32(%lhs : tensor<32x8x64xi32
   %cst = arith.constant 0 : i32
   %empty = tensor.empty() : tensor<32x8x8xi32>
   %fill = linalg.fill ins(%cst : i32) outs(%empty : tensor<32x8x8xi32>) -> tensor<32x8x8xi32>
-  %batch_matmul_transpose = linalg.generic {indexing_maps = [affine_map<(d0, d1, d2, d3) -> (d0, d1, d3)>, affine_map<(d0, d1, d2, d3) -> (d0, d2, d3)>, affine_map<(d0, d1, d2, d3) -> (d0, d1, d2)>], iterator_types = ["parallel", "parallel", "parallel", "reduction"]} ins(%10, %11 : tensor<32x8x64xi32>, tensor<32x8x64xi32>) outs(%14 : tensor<32x8x8xi32>) {
+  %batch_matmul_transpose = linalg.generic {indexing_maps = [affine_map<(d0, d1, d2, d3) -> (d0, d1, d3)>, affine_map<(d0, d1, d2, d3) -> (d0, d2, d3)>, affine_map<(d0, d1, d2, d3) -> (d0, d1, d2)>], iterator_types = ["parallel", "parallel", "parallel", "reduction"]} ins(%lhs, %rhs : tensor<32x8x64xi32>, tensor<32x8x64xi32>) outs(%fill : tensor<32x8x8xi32>) {
   ^bb0(%in: i32, %in_1: i32, %out: i32):
     %17 = arith.muli %in, %in_1 : i32
     %18 = arith.addi %out, %17 : i32
@@ -142,26 +142,21 @@ func.func @batch_matmul_transpose_static_32x8x8x64_i32(%lhs : tensor<32x8x64xi32
 // -----
 
 // XFAIL: *
-// CPP-LABEL: hal.executable.export public @batch_matmul_transpose_static_dispatch_0_generic_32x8x8x64_i32
+// CPP-LABEL: hal.executable.export public @batch_matmul_static_dispatch_0_batch_matmul_32x8x64x8_i32
 //       CPP:    aie.device(ipu)
 //       CPP:    aie.shim_dma_allocation
 //       CPP:    aie.shim_dma_allocation
 //       CPP:    aie.shim_dma_allocation
-//       CPP:    func.func @batch_matmul_transpose_static_dispatch_0_generic_32x8x8x64_i32(%arg0: memref<32x8x64xi32>, %arg1: memref<32x8x64xi32>, %arg2: memref<32x8x8xi32>)
+//       CPP:    func.func @batch_matmul_static_dispatch_0_batch_matmul_32x8x64x8_i32(%arg0: memref<32x8x64xi32>, %arg1: memref<32x8x64xi32>, %arg2: memref<32x8x8xi32>)
 //       CPP:      aiex.ipu.dma_memcpy_nd
 //       CPP:      aiex.ipu.dma_memcpy_nd
 //       CPP:      aiex.ipu.dma_memcpy_nd
 //       CPP:      aiex.ipu.sync
-func.func @batch_matmul_transpose_static_32x8x64x8_i32(%lhs : tensor<32x8x8xi32>,
-    %rhs : tensor<32x64x8xi32>) -> tensor<32x8x64xi32> {
+func.func @batch_matmul_static_32x8x64x8_i32(%lhs : tensor<32x8x8xi32>,
+    %rhs : tensor<32x8x64xi32>) -> tensor<32x8x64xi32> {
   %cst = arith.constant 0 : i32
   %empty = tensor.empty() : tensor<32x8x64xi32>
   %fill = linalg.fill ins(%cst : i32) outs(%empty : tensor<32x8x64xi32>) -> tensor<32x8x64xi32>
-  %batch_matmul_transpose = linalg.generic {indexing_maps = [affine_map<(d0, d1, d2, d3) -> (d0, d1, d3)>, affine_map<(d0, d1, d2, d3) -> (d0, d2, d3)>, affine_map<(d0, d1, d2, d3) -> (d0, d1, d2)>], iterator_types = ["parallel", "parallel", "parallel", "reduction"]} ins(%10, %11 : tensor<32x8x8xi32>, tensor<32x64x8xi32>) outs(%14 : tensor<32x8x64xi32>) {
-  ^bb0(%in: i32, %in_1: i32, %out: i32):
-    %17 = arith.muli %in, %in_1 : i32
-    %18 = arith.addi %out, %17 : i32
-    linalg.yield %18 : i32
-  } -> tensor<32x8x64xi32>
-  return %batch_matmul_transpose : tensor<32x8x64xi32>
+  %batch_matmul = linalg.batch_matmul ins(%lhs, %rhs : tensor<32x8x8xi32>, tensor<32x8x64xi32>) outs(%fill : tensor<32x8x64xi32>) -> tensor<32x8x64xi32>
+  return %batch_matmul : tensor<32x8x64xi32>
 }
