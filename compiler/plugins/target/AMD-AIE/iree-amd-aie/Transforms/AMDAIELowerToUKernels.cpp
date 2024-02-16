@@ -8,6 +8,8 @@
 #include "iree/compiler/Codegen/Dialect/Codegen/IR/IREECodegenDialect.h"
 #include "iree/compiler/Codegen/Dialect/Codegen/IR/UKernelOps.h"
 #include "iree/compiler/Codegen/Utils/Utils.h"
+#include "llvm/Support/FileSystem.h"
+#include "llvm/Support/Path.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
@@ -52,15 +54,36 @@ struct FnNameAndDefAttrs {
   SmallVector<NamedAttribute> defAttrs;
 };
 
+static std::string getPathToUKernelObjectFile(std::string pathToUkernels,
+                                              std::string ukernelObjectFile) {
+  // TODO(avarma): The idea is that we build the microkernel object files while
+  // building IREE with iree-amd-aie plugin. This way we know where the object
+  // files is going to reside w.r.t IREE build and by extension the onus of
+  // spilling out the path to the same is going to be on IREE(iree-amd-aie).
+  // For now, I'm using `path-to-ukernels` pass flag to specify the directory
+  // where microkernel resides.
+  SmallVector<char> parentDirectoryPath{pathToUkernels.begin(),
+                                        pathToUkernels.end()};
+  llvm::sys::path::append(parentDirectoryPath, ukernelObjectFile);
+  return Twine(parentDirectoryPath).str();
+}
+
 /// Returns the function name and attributes to use for a ukernel with given
 /// `ukernelName` on the target described by `targetAttr`.
-static FnNameAndDefAttrs getFnNameAndDefAttrs(AIEPassPipeline passPipeline,
+static FnNameAndDefAttrs getFnNameAndDefAttrs(RewriterBase &rewriter,
+                                              AIEPassPipeline passPipeline,
                                               std::string ukernelName,
-                                              std::string inputOutputElemType) {
+                                              std::string inputOutputElemType,
+                                              std::string pathToUkernels,
+                                              std::string ukernelObjectFile) {
   FnNameAndDefAttrs result;
   std::string ukernelSuffix = "";
   if (passPipeline == AIEPassPipeline::PadPipeline) ukernelSuffix = "_scalar";
   result.name = ukernelName + ukernelSuffix + "_" + inputOutputElemType;
+  result.defAttrs.emplace_back(
+      rewriter.getStringAttr("link_with"),
+      rewriter.getStringAttr(
+          getPathToUKernelObjectFile(pathToUkernels, ukernelObjectFile)));
   return result;
 }
 
@@ -92,20 +115,11 @@ static bool bodyMatcherForMatmul(Value yieldVal, Block *body) {
   return true;
 }
 
-/// `isMatmul` is a utility function that aims to indentify whether a
-/// linalg op is a matmul op.
-static bool isMatmul(linalg::LinalgOp linalgOp) {
-  // Step 0. Test if the op itself is a linalg.matmul op.
-  if (isa<linalg::MatmulOp>(linalgOp)) return true;
-  // Step 1. Test the body of the generic to indeed be what we expect for a
-  //         matmul.
-  Block *body = linalgOp.getBlock();
-  auto yieldOp = cast<linalg::YieldOp>(body->getTerminator());
-  Value yieldVal = yieldOp.getOperand(0);
-  if (!bodyMatcherForMatmul(yieldVal, body)) {
-    return false;
-  }
-  // Step 2. Check iterator types.
+/// Utility to match iterator type and indexing map for a linalg.generic that
+/// is basically implementing a matmul with 2D input/output operands. Such
+/// matmul variants we get from Pad pipeline.
+static bool match2DLinalgGenericMatmul(linalg::LinalgOp linalgOp) {
+  // Check iterator types.
   SmallVector<utils::IteratorType> matmulIteratorTypes = {
       utils::IteratorType::parallel, utils::IteratorType::parallel,
       utils::IteratorType::reduction};
@@ -114,7 +128,7 @@ static bool isMatmul(linalg::LinalgOp linalgOp) {
   if (matmulIteratorTypes != opIteratorTypes) {
     return false;
   }
-  // Step 3. Test the indexing maps.
+  // Check indexing maps.
   ArrayAttr indexingMaps = linalgOp.getIndexingMaps();
   if (indexingMaps.size() != 3) return false;
 
@@ -140,12 +154,87 @@ static bool isMatmul(linalg::LinalgOp linalgOp) {
   return indexingMaps == maps;
 }
 
+/// Utility to match iterator type and indexing map for a linalg.generic that
+/// is basically implementing a matmul with 6D input/output operands. Such
+/// matmul variants we get from Simple-Pack pipeline.
+static bool match6DLinalgGenericMatmul(linalg::LinalgOp linalgOp) {
+  // Check iterator types.
+  SmallVector<utils::IteratorType> matmulIteratorTypes = {
+      utils::IteratorType::parallel,  utils::IteratorType::parallel,
+      utils::IteratorType::reduction, utils::IteratorType::parallel,
+      utils::IteratorType::parallel,  utils::IteratorType::reduction,
+      utils::IteratorType::parallel,  utils::IteratorType::parallel,
+      utils::IteratorType::reduction};
+  SmallVector<utils::IteratorType> opIteratorTypes =
+      linalgOp.getIteratorTypesArray();
+  if (matmulIteratorTypes != opIteratorTypes) {
+    return false;
+  }
+  // Check indexing maps.
+  ArrayAttr indexingMaps = linalgOp.getIndexingMaps();
+  if (indexingMaps.size() != 3) return false;
+
+  AffineMap map0 = cast<AffineMapAttr>(indexingMaps[0]).getValue();
+  AffineMap map1 = cast<AffineMapAttr>(indexingMaps[1]).getValue();
+  AffineMap map2 = cast<AffineMapAttr>(indexingMaps[2]).getValue();
+
+  if (map0.getNumResults() != 6 || map1.getNumResults() != 6 ||
+      map2.getNumResults() != 6 || map0.getNumInputs() != 9 ||
+      map1.getNumInputs() != 9 || map2.getNumInputs() != 9) {
+    return false;
+  }
+
+  // Since this is invoked after the final pack-and-transpose we need to
+  // extract dimensions for M*K*k*m*m0*k0 x K*N*n*k*k0*n0 -> M*N*n*m*m0*n0.
+  AffineExpr M = map2.getResult(0);
+  AffineExpr N = map2.getResult(1);
+  AffineExpr n = map2.getResult(2);
+  AffineExpr m = map2.getResult(3);
+  AffineExpr m0 = map2.getResult(4);
+  AffineExpr n0 = map2.getResult(5);
+  AffineExpr K = map0.getResult(1);
+  AffineExpr k = map0.getResult(2);
+  AffineExpr k0 = map0.getResult(5);
+
+  auto *context = indexingMaps.getContext();
+  auto mapA =
+      AffineMapAttr::get(AffineMap::get(9, 0, {M, K, k, m, m0, k0}, context));
+  auto mapB =
+      AffineMapAttr::get(AffineMap::get(9, 0, {K, N, n, k, k0, n0}, context));
+  auto mapC =
+      AffineMapAttr::get(AffineMap::get(9, 0, {M, N, n, m, m0, n0}, context));
+  auto maps = ArrayAttr::get(context, {mapA, mapB, mapC});
+  return indexingMaps == maps;
+}
+
+/// `isMatmul` is a utility function that aims to indentify whether a
+/// linalg op is a matmul op.
+static bool isMatmul(linalg::LinalgOp linalgOp, AIEPassPipeline passPipeline) {
+  // Step 0. Test if the op itself is a linalg.matmul op.
+  if (isa<linalg::MatmulOp>(linalgOp)) return true;
+
+  // Step 1. Test the body of the generic to indeed be what we expect for a
+  //         matmul.
+  Block *body = linalgOp.getBlock();
+  auto yieldOp = cast<linalg::YieldOp>(body->getTerminator());
+  Value yieldVal = yieldOp.getOperand(0);
+  if (!bodyMatcherForMatmul(yieldVal, body)) {
+    return false;
+  }
+
+  if (passPipeline == AIEPassPipeline::PadPipeline) {
+    return match2DLinalgGenericMatmul(linalgOp);
+  } else {
+    return match6DLinalgGenericMatmul(linalgOp);
+  }
+}
+
 /// Matches a linalg.generic operation which is basically a tiled matmul and
 /// converts it into a iree_codegen.ukernel."iree_amdaie_uk_matmul" operation,
 /// that is later lowered into a call to the microkernel.
 static FailureOr<IREE::Codegen::UKernelOpInterface> matchDAGForUKernel(
     RewriterBase &rewriter, linalg::LinalgOp op, std::string ukernelName,
-    AIEPassPipeline passPipeline) {
+    AIEPassPipeline passPipeline, std::string pathToUkernels) {
   auto targetAttr = IREE::HAL::ExecutableTargetAttr::lookup(op);
   if (!hasUkernel(targetAttr, ukernelName)) {
     return failure();
@@ -184,14 +273,15 @@ static FailureOr<IREE::Codegen::UKernelOpInterface> matchDAGForUKernel(
 
   Location loc = op.getLoc();
 
-  auto fn =
-      getFnNameAndDefAttrs(passPipeline, ukernelName, inputOutputElemType);
+  auto fn = getFnNameAndDefAttrs(rewriter, passPipeline, ukernelName,
+                                 inputOutputElemType, pathToUkernels, "mm.o");
 
   // Create UKernel for AMD-AIE.
   auto genericMicroKernelOp = rewriter.create<IREE::Codegen::UKernelGenericOp>(
       loc, outType, fn.name, ValueRange{lhs, rhs}, out, ValueRange{},
       /*fn_def_attrs=*/rewriter.getDictionaryAttr(fn.defAttrs),
       /*strided_outer_dims=*/rewriter.getIndexAttr(0));
+
   return cast<IREE::Codegen::UKernelOpInterface>(
       genericMicroKernelOp.getOperation());
 }
@@ -201,10 +291,12 @@ using TargetPredicate = std::function<bool(IREE::HAL::ExecutableTargetAttr)>;
 template <typename OpType>
 struct LowerToUKernelPattern : OpRewritePattern<OpType> {
   LowerToUKernelPattern(MLIRContext *context, TargetPredicate targetPredicate,
-                        AIEPassPipeline passPipeline)
+                        AIEPassPipeline passPipeline,
+                        std::string pathToUkernels)
       : OpRewritePattern<OpType>(context),
         targetPredicate(targetPredicate),
-        passPipeline(passPipeline) {}
+        passPipeline(passPipeline),
+        pathToUkernels(pathToUkernels) {}
 
   LogicalResult matchAndRewrite(OpType op,
                                 PatternRewriter &rewriter) const override {
@@ -214,8 +306,9 @@ struct LowerToUKernelPattern : OpRewritePattern<OpType> {
     }
 
     FailureOr<IREE::Codegen::UKernelOpInterface> ukernelOp;
-    if (isMatmul(op)) {
-      ukernelOp = matchDAGForUKernel(rewriter, op, "matmul", passPipeline);
+    if (isMatmul(op, passPipeline)) {
+      ukernelOp = matchDAGForUKernel(rewriter, op, "matmul", passPipeline,
+                                     pathToUkernels);
     } else {
       return failure();
     }
@@ -229,6 +322,7 @@ struct LowerToUKernelPattern : OpRewritePattern<OpType> {
 
   TargetPredicate targetPredicate;
   AIEPassPipeline passPipeline;
+  std::string pathToUkernels;
 };
 
 }  // namespace
@@ -249,10 +343,10 @@ void AMDAIELowerToUKernelsPass::runOnOperation() {
   // performance, and that consideration overrides the benefit of fusions for
   // these ops.
   auto allTargets = [](auto target) { return true; };
-  patterns.insert<LowerToUKernelPattern<linalg::GenericOp>>(context, allTargets,
-                                                            passPipeline);
-  patterns.insert<LowerToUKernelPattern<linalg::MatmulOp>>(context, allTargets,
-                                                           passPipeline);
+  patterns.insert<LowerToUKernelPattern<linalg::GenericOp>>(
+      context, allTargets, passPipeline, pathToUkernels);
+  patterns.insert<LowerToUKernelPattern<linalg::MatmulOp>>(
+      context, allTargets, passPipeline, pathToUkernels);
   if (failed(
           applyPatternsAndFoldGreedily(getOperation(), std::move(patterns)))) {
     return signalPassFailure();

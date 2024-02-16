@@ -117,7 +117,9 @@ def AMDAIELowerToUKernels :
                    "Use the more advanced pack-based lowering strategy, including peeling and double-buffering."),
         clEnumValN(mlir::iree_compiler::AMDAIE::AIEPassPipeline::SimplePackPipeline, "simple-pack",
                    "Use the simple-pack based lowering strategy.")
-      )}]>
+      )}]>,
+    Option<"pathToUkernels", "path-to-ukernels", "std::string", /*default=*/"",
+      "Path to microkernels' directory">
   ];
 }
 

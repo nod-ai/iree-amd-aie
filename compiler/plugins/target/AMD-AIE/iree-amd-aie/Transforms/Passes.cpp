@@ -43,6 +43,10 @@ static llvm::cl::opt<int32_t> clNumCores(
     "iree-amdaie-num-cores",
     llvm::cl::desc("Choose the number of cores to use"), llvm::cl::init(1));
 
+static llvm::cl::opt<std::string> clPathToUkernels(
+    "iree-amdaie-path-to-ukernels",
+    llvm::cl::desc("Path to microkernels' directory"));
+
 //===---------------------------------------------------------------------===//
 // Default allocation functions for AIE backend
 //===---------------------------------------------------------------------===//
@@ -121,6 +125,7 @@ void addPadBasedPassPipeline(OpPassManager &pm, TilingConfig &tilingConfig) {
   {
     AMDAIELowerToUKernelsOptions options;
     options.passPipeline = AIEPassPipeline::PadPipeline;
+    options.pathToUkernels = clPathToUkernels;
     modulePassManager.addNestedPass<func::FuncOp>(
         createAMDAIELowerToUKernelsPass(options));
   }
@@ -217,8 +222,16 @@ void addSimplePackBasedPassPipeline(OpPassManager &pm,
   modulePassManager.addNestedPass<func::FuncOp>(
       createAMDAIEBufferizeToAllocationPass(bufferizeOptions2));
 
+  {
+    AMDAIELowerToUKernelsOptions options;
+    options.passPipeline = AIEPassPipeline::SimplePackPipeline;
+    options.pathToUkernels = clPathToUkernels;
+    modulePassManager.addNestedPass<func::FuncOp>(
+        createAMDAIELowerToUKernelsPass(options));
+  }
   // Comprehensive bufferization
   addAMDAIEBufferizePasses(modulePassManager);
+  modulePassManager.addPass(createLowerUKernelOpsToCallsPass());
   modulePassManager.addPass(memref::createFoldMemRefAliasOpsPass());
 }
 
