@@ -117,7 +117,14 @@ void addPadBasedPassPipeline(OpPassManager &pm, TilingConfig &tilingConfig) {
     pm.addPass(createCanonicalizerPass());
     pm.addPass(createCSEPass());
   }
+  {
+    AMDAIELowerToUKernelsOptions options;
+    options.passPipeline = AIEPassPipeline::PadPipeline;
+    modulePassManager.addNestedPass<func::FuncOp>(
+        createAMDAIELowerToUKernelsPass(options));
+  }
   addAMDAIEBufferizePasses(modulePassManager);
+  modulePassManager.addPass(createLowerUKernelOpsToCallsPass());
   modulePassManager.addNestedPass<func::FuncOp>(createAMDAIECleanupPass());
   pm.addPass(createCanonicalizerPass());
   pm.addPass(createCSEPass());

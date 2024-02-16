@@ -95,6 +95,28 @@ def AMDAIELoweringStrategy :
   ];
 }
 
+def AMDAIELowerToUKernels :
+    Pass<"iree-amdaie-lower-to-ukernels", ""> {
+  let summary =
+      "Separate out the inner-loop main compute operation that lower to a micro-kernel";
+  let constructor =
+      "mlir::iree_compiler::AMDAIE::createAMDAIELowerToUKernelsPass()";
+  let options = [
+    Option<"passPipeline", "pass-pipeline",
+      "mlir::iree_compiler::AMDAIE::AIEPassPipeline", 
+      /*default=*/"mlir::iree_compiler::AMDAIE::AIEPassPipeline::PadPipeline",
+      "Pass pipeline to use while lowering to AIR dialect",
+      [{::llvm::cl::values(
+        clEnumValN(mlir::iree_compiler::AMDAIE::AIEPassPipeline::PadPipeline, "pad",
+                   "Use the pad-based lowering strategy."),
+        clEnumValN(mlir::iree_compiler::AMDAIE::AIEPassPipeline::PackPipeline, "pack",
+                   "Use the more advanced pack-based lowering strategy, including peeling and double-buffering."),
+        clEnumValN(mlir::iree_compiler::AMDAIE::AIEPassPipeline::SimplePackPipeline, "simple-pack",
+                   "Use the simple-pack based lowering strategy.")
+      )}]>
+  ];
+}
+
 def AMDAIELowerWorkgroupCount :
     Pass<"iree-amdaie-lower-workgroup-count", "mlir::iree_compiler::IREE::HAL::ExecutableVariantOp"> {
   let summary = "Lower the workgroup count region";
