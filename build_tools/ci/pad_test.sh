@@ -1,13 +1,12 @@
 #!/usr/bin/env bash
 
 set -xe
-
+MLIR_AIE_INSTALL=`realpath .venv/lib/python3.10/site-packages/mlir_aie`
 TESTDIR="$1"
 
 BASE_DIR=`realpath "$(dirname $0)/../.."`
 IREE_DIR="$2"
-MLIR_AIE_VERSION="$3"
-if [ -d "${IREE_DIR}/tools" ]; then
+if [ -e "${IREE_DIR}/tools/iree-compile" ]; then
     IREE_BIN=`realpath "${IREE_DIR}/tools"`
 else
     IREE_BIN=`realpath "${IREE_DIR}/bin"`
@@ -17,11 +16,6 @@ MLIRFILE="${BASE_DIR}/tests/samples/pad_pipeline_e2e.mlir"
 
 mkdir -p "$TESTDIR"
 cd "$TESTDIR"
-
-python3 -m venv sandbox
-source sandbox/bin/activate
-pip install https://github.com/Xilinx/mlir-aie/releases/download/latest-wheels/${MLIR_AIE_VERSION}-py3-none-manylinux_2_35_x86_64.whl
-MLIR_AIE_INSTALL=sandbox/lib/python3.10/site-packages/mlir_aie
 
 OUTPUT=output.vmfb
 XRT_DIR=/opt/xilinx/xrt
@@ -39,7 +33,6 @@ source $XRT_DIR/setup.sh
     --iree-amd-aie-mlir-aie-install-dir "${MLIR_AIE_INSTALL}" \
     --iree-amd-aie-vitis-install-dir "${VITIS}" \
     --iree-hal-dump-executable-files-to=$PWD \
-    --iree-hal-dump-executable-intermediates-to=$PWD \
     --iree-amd-aie-show-invoked-commands \
     --iree-amdaie-use-pipeline=pad -o "${OUTPUT}"
 
