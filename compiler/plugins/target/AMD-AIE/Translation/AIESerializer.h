@@ -53,6 +53,7 @@ class AccelSerializer {
       ScopeInfo subScope;
       subScope.symbolTable = symbolTable;
       subScope.indentation += INDENTATION_WIDTH;
+      subScope.ivMap = ivMap;
       return subScope;
     }
 
