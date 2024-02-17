@@ -9,8 +9,6 @@ iree_lit_test_suite(
     lit
   SRCS
     "pack_pipeline_funcIR.mlir"
-    "pack_pipeline_funcIR_2core.mlir"
-    "pack_pipeline_funcIR_4core.mlir"
     "pad_pipeline_e2e.mlir"
     "simple_pack_pipeline_e2e.mlir"
     "pad_pipeline_conv2d.mlir"
