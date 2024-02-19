@@ -75,6 +75,7 @@ function run_matmul_test() {
   local peano_install_path=""
   local mlir_aie_install_path=""
   local vitis_path=""
+  local pipeline=""
 
   while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -114,6 +115,10 @@ function run_matmul_test() {
         vitis_path="$2"
         shift 2
         ;;
+      --pipeline)
+        pipeline="$2"
+        shift 2
+        ;;
       *)
         echo "Unknown option: $1"
         return 1
@@ -131,10 +136,11 @@ function run_matmul_test() {
       --acc_type=${acc_type} \
       --shapes=${shapes}
 
-  echo "**** Generating .vmfb files ****"
+  echo "**** Generating .vmfb files for $pipeline pipeline ****"
   ${IREE_COMPILE_EXE} \
       "${OUTPUT_DIR}/${name}_matmuls.mlir" \
       --iree-hal-target-backends=${target_backend} \
+      --iree-amdaie-use-pipeline=${pipeline} \
       --iree-amd-aie-peano-install-dir=${peano_install_path} \
       --iree-amd-aie-mlir-aie-install-dir=${mlir_aie_install_path} \
       --iree-amd-aie-vitis-install-dir=${vitis_path} \
@@ -175,7 +181,7 @@ function run_matmul_test() {
 ###############################################################################
 
 run_matmul_test \
-    --name "matmul_i32_i32_small_amd-aie_xrt" \
+    --name "matmul_i32_i32_small_amd-aie_xrt_pad" \
     --lhs_rhs_type "i32" \
     --acc_type "i32" \
     --shapes "small" \
@@ -184,9 +190,10 @@ run_matmul_test \
     --peano_install_path "${PEANO}" \
     --mlir_aie_install_path "${MLIR_AIE_INSTALL}" \
     --vitis_path  "${VITIS}" \
+    --pipeline "pad"
 
 run_matmul_test \
-    --name "matmul_i32_i32_large_amd-aie_xrt" \
+    --name "matmul_i32_i32_large_amd-aie_xrt_pad" \
     --lhs_rhs_type "i32" \
     --acc_type "i32" \
     --shapes "large" \
@@ -195,3 +202,28 @@ run_matmul_test \
     --peano_install_path "${PEANO}" \
     --mlir_aie_install_path "${MLIR_AIE_INSTALL}" \
     --vitis_path  "${VITIS}" \
+    --pipeline "pad"
+
+run_matmul_test \
+    --name "matmul_i32_i32_small_amd-aie_xrt_simple-pack" \
+    --lhs_rhs_type "i32" \
+    --acc_type "i32" \
+    --shapes "small" \
+    --target_backend "amd-aie" \
+    --device "xrt" \
+    --peano_install_path "${PEANO}" \
+    --mlir_aie_install_path "${MLIR_AIE_INSTALL}" \
+    --vitis_path  "${VITIS}" \
+    --pipeline "simple-pack"
+
+run_matmul_test \
+    --name "matmul_i32_i32_large_amd-aie_xrt_simple-pack" \
+    --lhs_rhs_type "i32" \
+    --acc_type "i32" \
+    --shapes "large" \
+    --target_backend "amd-aie" \
+    --device "xrt" \
+    --peano_install_path "${PEANO}" \
+    --mlir_aie_install_path "${MLIR_AIE_INSTALL}" \
+    --vitis_path  "${VITIS}" \
+    --pipeline "simple-pack"

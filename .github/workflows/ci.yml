@@ -104,15 +104,10 @@ jobs:
           pip install https://github.com/Xilinx/mlir-aie/releases/download/latest-wheels/mlir_aie-0.0.1.2024021415+7ee44b7-py3-none-manylinux_2_35_x86_64.whl
           pip install -r tests/matmul/requirements.txt
 
-      - name: Pad matmul test
-        run: |
-          source .venv/bin/activate
-          bash build_tools/ci/pad_test.sh test1 iree-install
-
       - name: E2E correctness matmul test
         run: |
           source .venv/bin/activate
-          bash build_tools/ci/run_matmul_test.sh test2 iree-install
+          bash build_tools/ci/run_matmul_test.sh test1 iree-install
 
       - name: Clean up
         if: ${{ always() }}
