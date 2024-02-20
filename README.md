@@ -3,6 +3,11 @@
 This repository contains an early-phase IREE compiler and runtime plugin for
 interfacing the AMD AIE accelerator to IREE.
 
+## Architectural Overview
+
+![image](https://github.com/nod-ai/iree-amd-aie/assets/74956/3fa73139-5fdf-4658-86c3-0705352c4ea0)
+
+
 ## Developer Setup
 
 These instructions assume that you have an appropriate IREE checkout side by side
