@@ -153,9 +153,15 @@ def AMDAIEPropagateDataLayout :
 }
 
 def CopyToDma : 
-  Pass<"copy-to-dma", "func::FuncOp"> {
+  Pass<"copy-to-dma", ""> {
   let summary = "Condense memref data patterns into air.dma_memcpy_nd op's";
   let constructor = "mlir::iree_compiler::AMDAIE::createCopyToDmaPass()";
+}
+
+def AMDAIEPackToDma : 
+  Pass<"iree-amdaie-pack-to-dma", ""> {
+  let summary = "Convert pack/unpack ops air.dma_memcpy_nd op's";
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEPackToDmaPass()";
 }
 
 #endif // IREE_AMD_AIE_TRANSFORMS_PASSES

@@ -46,6 +46,7 @@ iree_cc_library(
     "AMDAIELowerExecutableTarget.cpp"
     "AMDAIELowerWorkgroupCount.cpp"
     "AMDAIEPackAndTranspose.cpp"
+    "AMDAIEPackToDma.cpp"
     "AMDAIEPad.cpp"
     "AMDAIEPeelForLoop.cpp"
     "AMDAIEPropagateDataLayout.cpp"
