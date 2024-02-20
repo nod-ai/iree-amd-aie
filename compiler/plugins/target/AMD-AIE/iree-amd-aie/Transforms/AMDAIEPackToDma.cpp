@@ -24,6 +24,68 @@ class LinalgExtPackToAirDmaMemcpyNd : public OpRewritePattern<IREE::LinalgExt::P
 
   LogicalResult matchAndRewrite(IREE::LinalgExt::PackOp packOp,
                                 PatternRewriter &rewriter) const override {
+
+  // 1. Filter out NYI cases.
+  auto packedMemrefType = packOp.getOutputType();
+  if (llvm::any_of(packOp.getStaticInnerTiles(),
+                   [](int64_t size) { return ShapedType::isDynamic(size); })) {
+    return rewriter.notifyMatchFailure(
+        packOp,
+        "non-static shape NYI");
+  }
+  //Location loc = packOp->getLoc();
+  OpBuilder::InsertionGuard g(rewriter);
+  rewriter.setInsertionPoint(packOp);
+
+  auto innerDimsPos = packOp.getInnerDimsPos();
+  auto destShape = packOp.getOutputType().getShape();
+
+  Value input = packOp.getInput();
+  Value output = packOp.getOutput();
+
+  llvm::outs()<<"packedMemrefType: "<<packedMemrefType<<"\n";
+  llvm::outs()<<"innerDimsPos: "<<"\n";
+  for (int64_t element : innerDimsPos) {
+        llvm::outs() << element << " ";
+  }
+  llvm::outs()<<"destShape: "<<"\n";
+  for (int64_t element : destShape) {
+        llvm::outs() << element << " ";
+  }
+  llvm::outs()<<"input: "<<input<<"\n";
+  llvm::outs()<<"output: "<<output<<"\n";
+  Operation* sourceOp = input.getDefiningOp();
+  //Operation* DstOp;
+  if(auto allocOp = dyn_cast<memref::AllocOp>(sourceOp)){
+    auto [strides, offset] = getStridesAndOffset(allocOp.getType());
+    for (auto stride : strides) {
+        llvm::outs() << stride << " ";
+    }
+    llvm::outs()<<"\n";
+    llvm::outs()<<"offset: "<<offset<<"\n";
+  }
+  else if(auto subviewOp = dyn_cast<memref::SubViewOp>(sourceOp)){
+    SmallVector<OpFoldResult> strides = subviewOp.getMixedStrides();
+    for (auto stride : strides) {
+        llvm::outs() << stride << " ";
+    }
+    llvm::outs()<<"\n";
+    SmallVector<OpFoldResult> strides2 = subviewOp.getStrides();
+    for (auto stride : strides2) {
+        llvm::outs() << stride << " ";
+    }
+    llvm::outs()<<"\n";
+    auto [strides3, offset] = getStridesAndOffset(subviewOp.getSource().getType());
+    for (auto stride : strides3) {
+        llvm::outs() << stride << " ";
+    }
+    llvm::outs()<<"offset: "<<offset<<"\n";
+    sourceOp = subviewOp.getSource().getDefiningOp();
+  }
+  sourceOp->dump();
+
+
+
     return failure();
   }
 };
