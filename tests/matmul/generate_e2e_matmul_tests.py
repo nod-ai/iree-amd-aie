@@ -107,7 +107,7 @@ def get_test_shapes(shapes_id: ShapesId):
             TestShape(m=8, k=16, n=32, accumulate=False),
             #TestShape(m=16, k=8, n=16, accumulate=False),
             #TestShape(m=64, k=16, n=32, accumulate=True),
-            #TestShape(m=8, k=16, n=16, accumulate=False),
+            TestShape(m=32, k=16, n=32, accumulate=False),
         ]
     if shapes_id == ShapesId.LARGE:
         return [
