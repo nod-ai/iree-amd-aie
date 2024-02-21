@@ -11,6 +11,7 @@
 #include "mlir/Dialect/Linalg/Transforms/Transforms.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+#include "mlir/Dialect/Utils/IndexingUtils.h"
 
 #define DEBUG_TYPE "iree-amdaie-propagate-data-layout"
 
@@ -26,8 +27,10 @@ class LinalgExtPackToAirDmaMemcpyNd : public OpRewritePattern<IREE::LinalgExt::P
                                 PatternRewriter &rewriter) const override {
 
   // 1. Filter out NYI cases.
+  llvm::ArrayRef<int64_t> innerTiles = packOp.getStaticInnerTiles();
   auto packedMemrefType = packOp.getOutputType();
-  if (llvm::any_of(packOp.getStaticInnerTiles(),
+  auto permutation = packOp.getOuterDimsPerm();
+  if (llvm::any_of(innerTiles,
                    [](int64_t size) { return ShapedType::isDynamic(size); })) {
     return rewriter.notifyMatchFailure(
         packOp,
@@ -55,19 +58,33 @@ class LinalgExtPackToAirDmaMemcpyNd : public OpRewritePattern<IREE::LinalgExt::P
   llvm::outs()<<"input: "<<input<<"\n";
   llvm::outs()<<"output: "<<output<<"\n";
   Operation* sourceOp = input.getDefiningOp();
-  //Operation* DstOp;
+  Operation* DstOp = output.getDefiningOp();
+  SmallVector<Value> baseStridesValues;
+  SmallVector<Value> srcShapeValues;
+  SmallVector<Value> mixedOffsets;
+  SmallVector<Value> mixedSizes;
+  SmallVector<int64_t> baseStrides;
+  SmallVector<int64_t> srcShape;
+  int64_t baseOffset;
   if(auto allocOp = dyn_cast<memref::AllocOp>(sourceOp)){
-    auto [strides, offset] = getStridesAndOffset(allocOp.getType());
-    for (auto stride : strides) {
+    std::tie(baseStrides, baseOffset) = getStridesAndOffset(allocOp.getType());
+    srcShape = SmallVector<int64_t>(allocOp.getType().getShape().begin(),allocOp.getType().getShape().end());
+    llvm::outs()<<"\n";
+    llvm::outs()<<"offset: "<<baseOffset<<"\n";
+  }
+  else if(auto subviewOp = dyn_cast<memref::SubViewOp>(sourceOp)){
+    SmallVector<OpFoldResult> mixedStrides = subviewOp.getMixedStrides();
+    for (auto stride : mixedStrides) {
         llvm::outs() << stride << " ";
     }
     llvm::outs()<<"\n";
-    llvm::outs()<<"offset: "<<offset<<"\n";
-  }
-  else if(auto subviewOp = dyn_cast<memref::SubViewOp>(sourceOp)){
-    SmallVector<OpFoldResult> strides = subviewOp.getMixedStrides();
-    for (auto stride : strides) {
-        llvm::outs() << stride << " ";
+    mixedOffsets = getValueOrCreateConstantIndexOp(
+        rewriter, packOp.getLoc(), subviewOp.getMixedOffsets());
+    mixedSizes = getValueOrCreateConstantIndexOp(
+        rewriter, packOp.getLoc(), subviewOp.getMixedSizes());
+
+    for (auto offset : mixedOffsets) {
+        llvm::outs() << offset << "x";
     }
     llvm::outs()<<"\n";
     SmallVector<OpFoldResult> strides2 = subviewOp.getStrides();
@@ -75,18 +92,45 @@ class LinalgExtPackToAirDmaMemcpyNd : public OpRewritePattern<IREE::LinalgExt::P
         llvm::outs() << stride << " ";
     }
     llvm::outs()<<"\n";
-    auto [strides3, offset] = getStridesAndOffset(subviewOp.getSource().getType());
-    for (auto stride : strides3) {
-        llvm::outs() << stride << " ";
-    }
-    llvm::outs()<<"offset: "<<offset<<"\n";
+    std::tie(baseStrides, baseOffset) = getStridesAndOffset(subviewOp.getSource().getType());
+    llvm::outs()<<"offset: "<<baseOffset<<"\n";
     sourceOp = subviewOp.getSource().getDefiningOp();
+    //srcShape = subviewOp.getSource().getType().getShape();
+    srcShape = SmallVector<int64_t>(subviewOp.getType().getShape().begin(),subviewOp.getType().getShape().end());
   }
-  sourceOp->dump();
+  // apply tiling
 
+  for(int i=0;i<innerTiles.size();i++){
+    srcShape.push_back(innerTiles[i]);
+    srcShape[innerDimsPos[i]]/=innerTiles[i];
+    baseStrides.push_back(baseStrides[innerDimsPos[i]]);
+    baseStrides[innerDimsPos[i]]*=innerTiles[i];
+  }
+  if(!permutation.empty()){
+    auto outerShape = SmallVector<int64_t>(srcShape.begin(),srcShape.begin()+permutation.size());
+    auto outerStrides = SmallVector<int64_t>(baseStrides.begin(),baseStrides.begin()+permutation.size());
+    applyPermutationToVector(outerStrides, permutation);
+    applyPermutationToVector(outerShape, permutation);
+    for(int i=0;i<outerShape.size();i++){
+      baseStrides[i] = outerStrides[i];
+      srcShape[i] = outerShape[i];
+    }
 
-
-    return failure();
+  }
+    for (auto stride : baseStrides) {
+        baseStridesValues.push_back(rewriter.create<arith::ConstantIndexOp>(
+            packOp.getLoc(), stride));
+    }
+    for (auto dim : srcShape) {
+        srcShapeValues.push_back(rewriter.create<arith::ConstantIndexOp>(
+            packOp.getLoc(), dim));
+    }
+  SmallVector<Value, 2> emptyVec;
+  rewriter.replaceOpWithNewOp<xilinx::air::DmaMemcpyNdOp>(
+          packOp, SmallVector<Type, 1>{}, emptyVec, DstOp->getResult(0), emptyVec,
+          emptyVec, emptyVec, sourceOp->getResult(0), mixedOffsets, srcShapeValues,
+          baseStridesValues);
+    return success();
   }
 };
 
@@ -95,7 +139,7 @@ class AMDAIEPackToDmaPass
           AMDAIEPackToDmaPass> {
  public:
   void getDependentDialects(DialectRegistry &registry) const override {
-    registry.insert<tensor::TensorDialect, linalg::LinalgDialect>();
+    registry.insert<tensor::TensorDialect, linalg::LinalgDialect, xilinx::air::airDialect>();
   }
 
   AMDAIEPackToDmaPass() = default;
