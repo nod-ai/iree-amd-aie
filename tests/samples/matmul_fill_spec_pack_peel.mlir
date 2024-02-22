@@ -69,11 +69,11 @@ module attributes { transform.with_named_sequence } {
     %pack_producer_c0 = transform.get_producer_of_operand %packed_b0[2]
       : (!transform.any_op) -> (!transform.any_op)
     %buffer_a0, %new_a0 = transform.structured.bufferize_to_allocation %pack_b0
-      {memory_space = "shared", bufferize_destination_only, emit_dealloc} : !transform.any_op
+      {memory_space = 1, bufferize_destination_only, emit_dealloc} : !transform.any_op
     %buffer_b0, %new_b0 = transform.structured.bufferize_to_allocation %pack_producer_a0
-      {memory_space = "shared", bufferize_destination_only, emit_dealloc} : !transform.any_op
+      {memory_space = 1, bufferize_destination_only, emit_dealloc} : !transform.any_op
     %buffer_c0, %new_c0 = transform.structured.bufferize_to_allocation %pack_producer_c0
-      {memory_space = "shared", bufferize_destination_only, emit_dealloc} : !transform.any_op
+      {memory_space = 1, bufferize_destination_only, emit_dealloc} : !transform.any_op
 
     // Second level tile to forall with tile_sizes [1, 1].
     %tiled_matmul_1, %forall_1 =
@@ -110,11 +110,11 @@ module attributes { transform.with_named_sequence } {
 
     // Bufferize to local memory allocation
     %buffer_a, %new_a = transform.structured.bufferize_to_allocation %pack_a
-      {memory_space = "local", bufferize_destination_only} : !transform.any_op
+      {memory_space = 2, bufferize_destination_only, emit_dealloc} : !transform.any_op
     %buffer_b, %new_b = transform.structured.bufferize_to_allocation %pack_b
-      {memory_space = "local", bufferize_destination_only} : !transform.any_op
+      {memory_space = 2, bufferize_destination_only, emit_dealloc} : !transform.any_op
     %buffer_c, %new_c = transform.structured.bufferize_to_allocation %pack_c
-      {memory_space = "local", bufferize_destination_only} : !transform.any_op
+      {memory_space = 2, bufferize_destination_only, emit_dealloc} : !transform.any_op
 
     // Hoist static alloc out of the loops
     %memref_func = transform.structured.match ops{["func.func"]} in %variant_op
