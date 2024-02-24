@@ -63,8 +63,23 @@ static bool isTilingReductionDimension(TilingInterface consumerOp,
   return false;
 }
 
-static bool consumerToSkip(TilingInterface op) {
-  if (isa<linalg::CopyOp>(op) || isa<tensor::UnPackOp>(op)) return true;
+static bool consumerToSkip(TilingInterface op, int64_t targetOp,
+                           int64_t copyCnt) {
+  switch (targetOp) {
+    // Target consumer is linalg.matmul
+    case 1:
+      return (isa<linalg::CopyOp>(op) || isa<tensor::UnPackOp>(op));
+    // Target consumer is linalg.copy, its user is rhs of matmul op
+    case 2:
+      return (copyCnt != 2 || isa<linalg::MatmulOp>(op) ||
+              isa<tensor::UnPackOp>(op));
+    // Target consumer is linalg.copy, its user is lhs of matmul op
+    case 3:
+      return (copyCnt != 3 || isa<linalg::MatmulOp>(op) ||
+              isa<tensor::UnPackOp>(op));
+    default:
+      return false;
+  }
   return false;
 }
 
@@ -110,10 +125,21 @@ void AMDAIETileAndFusePass::runOnOperation() {
   func::FuncOp funcOp = getOperation();
 
   TilingInterface consumerOp;
+  TilingInterface matmulOp;
+  int64_t copyCnt = 0;
   funcOp->walk<WalkOrder::PostOrder, ReverseIterator>([&](TilingInterface op) {
+    // When there are copies of matmul operands and the targetOp is linalg.copy,
+    // different tiling strategies are applied on these linalg.copy. In the post
+    // order walk, linalg.copy ops are found in the order of (result, rhs, lhs).
+    // We only want to apply tiling on lhs and rhs of them in the pad-pack
+    // pipeline.
+    if (isa<linalg::CopyOp>(op)) copyCnt++;
+    if (isa<linalg::MatmulOp>(op)) matmulOp = op;
+
     // Find the next consumer op if it does not have loops OR it is from
-    // the skip ops list which currently contains linalg.copy and tensor.unpack.
-    if (op.getLoopIteratorTypes().empty() || consumerToSkip(op))
+    // the skip ops list.
+    if (op.getLoopIteratorTypes().empty() ||
+        consumerToSkip(op, targetOp, copyCnt))
       return WalkResult::advance();
     consumerOp = op;
     return WalkResult::interrupt();
@@ -128,9 +154,14 @@ void AMDAIETileAndFusePass::runOnOperation() {
   // tiling strategy.
   // If `consumerOp` has its own lowering config, we prefer using it.
   // Otherwise, fallback to find a lowering_config from other operations.
+  // When the consumerOp is a linalg.copy, the lowering config is originally
+  // added to the matmul op. To tile the linalg.copy op, take lowering configs
+  // from the its user matmul.
   SmallVector<int64_t> tileSizesVal;
   if (auto loweringConfig = getLoweringConfig(consumerOp)) {
     tileSizesVal = loweringConfig.getTileSizeVals(tilingLevel);
+  } else if (isa<linalg::CopyOp>(consumerOp) && getLoweringConfig(matmulOp)) {
+    tileSizesVal = getLoweringConfig(matmulOp).getTileSizeVals(tilingLevel);
   } else {
     FailureOr<IREE::Codegen::LoweringConfigAttr> maybeLoweringConfig =
         getLoweringConfig(getComputeOps(funcOp));

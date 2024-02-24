@@ -68,7 +68,9 @@ def AMDAIELowerExecutableTarget :
         clEnumValN(mlir::iree_compiler::AMDAIE::AIEPassPipeline::PackPipeline, "pack",
                    "Use the more advanced pack-based lowering strategy, including peeling and double-buffering."),
         clEnumValN(mlir::iree_compiler::AMDAIE::AIEPassPipeline::SimplePackPipeline, "simple-pack",
-                   "Use the simple-pack based lowering strategy.")
+                   "Use the simple-pack based lowering strategy."),
+        clEnumValN(mlir::iree_compiler::AMDAIE::AIEPassPipeline::PadPackPipeline, "pad-pack",
+                   "Use the pad-pack based lowering strategy.")
       )}]>
   ];
 }
@@ -148,7 +150,9 @@ def AMDAIETileAndFuse :
     Option<"useSCFFor", "use-scf-for", "bool", /*default=*/"false",
       "Use scf.forall by default for the corresponding tiling level">,
     Option<"tilingLevel", "tiling-level", "int64_t", /*default=*/"-1",
-      "Use default tiling level used to retrieve the configuration from lowering_config">  
+      "Use default tiling level used to retrieve the configuration from lowering_config">,
+    Option<"targetOp", "target-op", "int64_t", /*default=*/"1",
+      "Target consumer op for tiling, 1 for linalg.matmul, 2 for weight linalg.copy and 3 for input linalg.copy">
   ];
 }
 

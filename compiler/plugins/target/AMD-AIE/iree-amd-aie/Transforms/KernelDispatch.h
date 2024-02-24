@@ -20,7 +20,8 @@ enum class AIEPassPipeline : int32_t {
   PadPipeline = 0,
   PackPipeline = 1,
   SimplePackPipeline = 2,
-  None = 3
+  PadPackPipeline = 3,
+  None = 4
 };
 
 /// Struct specifying the number of cores to use. This will be replaced
