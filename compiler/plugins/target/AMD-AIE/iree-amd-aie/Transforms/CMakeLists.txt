@@ -37,6 +37,7 @@ iree_cc_library(
   HDRS
     "KernelDispatch.h"
     "Passes.h"
+    "AMDAIEUtils.h"
   SRCS
     "Passes.cpp"
     "AMDAIEBufferizeToAllocation.cpp"
@@ -47,6 +48,7 @@ iree_cc_library(
     "AMDAIELowerWorkgroupCount.cpp"
     "AMDAIEPackAndTranspose.cpp"
     "AMDAIEPad.cpp"
+    "AMDAIEUtils.cpp"
     "AMDAIEPeelForLoop.cpp"
     "AMDAIEPropagateDataLayout.cpp"
     "AMDAIETileAndFuse.cpp"

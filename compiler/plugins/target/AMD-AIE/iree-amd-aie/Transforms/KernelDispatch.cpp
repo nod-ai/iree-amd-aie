@@ -7,9 +7,9 @@
 #include "iree-amd-aie/Transforms/KernelDispatch.h"
 
 #include "iree-amd-aie/IR/AMDAIEAttrs.h"
+#include "iree-amd-aie/Transforms/AMDAIEUtils.h"
 #include "iree/compiler/Codegen/Utils/CPUUtils.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
-#include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/MemRef/Transforms/Transforms.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
@@ -27,6 +27,39 @@ static LogicalResult setRootConfigForPadPipeline(func::FuncOp entryPointFn,
   return setOpConfigAndEntryPointFnTranslation(
       entryPointFn, matmulOp, tileSizes,
       IREE::Codegen::DispatchLoweringPassPipeline::None);
+}
+
+static SmallVector<int64_t> getPackedSize(Operation *op) {
+  // TODO: consider emiting an error/warning if the default sizes are used as a
+  // fallback.
+  const SmallVector<int64_t> defaultSizes{0, 0, 0, 4, 4, 8};
+  auto matmulOp = dyn_cast<linalg::MatmulOp>(op);
+  if (!matmulOp) {
+    return defaultSizes;
+  }
+
+  auto getElementType = [](Value v) {
+    return v.getType().cast<ShapedType>().getElementType();
+  };
+
+  auto elTypeLhs = getElementType(op->getOperand(0));
+  auto elTypeRhs = getElementType(op->getOperand(1));
+  auto elTypeAcc = getElementType(op->getResult(0));
+
+  auto maybeInstructionSize =
+      getAIEMatmulInstructionSize(elTypeLhs, elTypeRhs, elTypeAcc);
+
+  if (failed(maybeInstructionSize)) {
+    return defaultSizes;
+  }
+
+  auto instructionSize = maybeInstructionSize.value();
+
+  SmallVector<int64_t> packedSizes(6, 0);
+  std::copy(instructionSize.begin(), instructionSize.end(),
+            packedSizes.begin() + 3);
+
+  return packedSizes;
 }
 
 static LogicalResult setRootConfigForSimplePackPipeline(
@@ -77,7 +110,7 @@ static LogicalResult setRootConfigForSimplePackPipeline(
       outerPerm);
   // Pack level => 2.
   // packed size for [M, N, K, m, n, k]
-  packedSizes = {0, 0, 0, 4, 8, 8};
+  packedSizes = getPackedSize(matmulOp);
   // Transpose A matrix from [M K m k m0 k0] to [M K k m m0 k0]
   // Transpose B matrix from [K N k n n0 k0] to [K N n k k0 n0]
   // Transpose C matrix from [M N m n m0 n0] to [M N n m m0 n0]
@@ -136,7 +169,7 @@ static LogicalResult setRootConfigForPackPipeline(func::FuncOp entryPointFn,
       outerPerm);
   // Pack level => 2.
   // packed size for [M, N, K, m, n, k]
-  packedSizes = {0, 0, 0, 4, 8, 8};
+  packedSizes = getPackedSize(matmulOp);
   // Transpose A matrix from [M K m k m0 k0] to [M K k m m0 k0]
   // Transpose B matrix from [K N k n n0 k0] to [K N n k k0 n0]
   // Transpose C matrix from [M N m n m0 n0] to [M N n m m0 n0]
