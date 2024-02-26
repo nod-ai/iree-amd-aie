@@ -19,6 +19,7 @@
 #include "iree/compiler/Utils/FlatbufferUtils.h"
 #include "llvm/Bitcode/BitcodeWriter.h"
 #include "llvm/Support/Debug.h"
+#include "llvm/Support/FileSystem.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/Path.h"
 #include "llvm/Support/Program.h"
@@ -123,10 +124,22 @@ LogicalResult AIETargetBackend::serializeExecutable(
     const SerializationOptions &serOptions,
     IREE::HAL::ExecutableVariantOp variantOp, OpBuilder &executableBuilder) {
   ModuleOp moduleOp = variantOp.getInnerModule();
+  auto basename =
+      llvm::join_items("_", serOptions.dumpBaseName, variantOp.getName());
+
+  // If an intermediates path has been specified, assume it is common for all
+  // executables compiling in parallel, so create an executable-specific
+  // subdir to keep this executable's intermediates separate.
   SmallString<128> workDir;
   if (!serOptions.dumpIntermediatesPath.empty()) {
     workDir = serOptions.dumpIntermediatesPath;
-  } else {
+    llvm::sys::path::append(workDir, basename);
+    llvm::sys::fs::create_directories(workDir);
+  }
+
+  // No path for intermediates: make a temporary directory for this executable
+  // that is certain to be distinct from the dir of any other executable.
+  else {
     auto err =
         llvm::sys::fs::createUniqueDirectory(variantOp.getName(), workDir);
     if (err) {
@@ -138,8 +151,6 @@ LogicalResult AIETargetBackend::serializeExecutable(
 
   std::string errorMessage;
   SmallString<128> inputMlirPath(workDir);
-  auto basename =
-      llvm::join_items("_", serOptions.dumpBaseName, variantOp.getName());
   llvm::sys::path::append(inputMlirPath, basename + ".aiecc.mlir");
   {
     auto inputMlirOut = openOutputFile(inputMlirPath, &errorMessage);
@@ -213,8 +224,10 @@ LogicalResult AIETargetBackend::serializeExecutable(
   }
   // Chess (if used) will look here for the AIEbuild license.
   const char *originalHome = ::getenv("HOME");
+  std::string newHome;
   if (originalHome != nullptr) {
-    cmdEnv.push_back(std::string("HOME=") + originalHome);
+    newHome = std::string("HOME=") + originalHome;
+    cmdEnv.push_back(newHome);
   }
   if (options.showInvokedCommands) {
     for (auto s : cmdEnv) llvm::dbgs() << s << " ";
