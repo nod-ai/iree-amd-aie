@@ -156,13 +156,15 @@ function run_matmul_test() {
 
   # Iterate over each function name and sign the corresponding XCLBIN
   for func_name in $function_names; do
+    # Location of XCLBIN files
+    XCLBIN_DIR="module_${func_name}_dispatch_0_amdaie_xclbin_fb"
     # Define the XCLBIN variable
     XCLBIN="module_${func_name}_dispatch_0_amdaie_xclbin_fb.xclbin"
     # Ensure unique file name
     XCLBIN_UNIQ="github.${GITHUB_RUN_ID}.${GITHUB_RUN_ATTEMPT}.${XCLBIN}"
-    cp "${XCLBIN}" "${XCLBIN_UNIQ}"
+    cp "${XCLBIN_DIR}/${XCLBIN}" "${XCLBIN_DIR}/${XCLBIN_UNIQ}"
     # Deploy firmware
-    sudo $XRT_DIR/amdxdna/setup_xclbin_firmware.sh -dev Phoenix -xclbin "${XCLBIN_UNIQ}"
+    sudo $XRT_DIR/amdxdna/setup_xclbin_firmware.sh -dev Phoenix -xclbin "${XCLBIN_DIR}/${XCLBIN_UNIQ}"
   done
 
   echo "**** Running '${name}' matmul tests ****"
