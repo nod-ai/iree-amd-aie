@@ -1,19 +1,6 @@
-// This script shows an example lowering matmul through IREE for a special accelerator.
-//
-// ```
-//   export IREE_DIR=${HOME}/iree/iree; \
-//   export IREE_AMD_AIE_DIR=${IREE_AMD_AIE_DIR:-${HOME}/iree/iree-amd-aie}
-//   ${IREE_DIR}/build/tools/iree-opt \
-//     ${IREE_AMD_AIE_DIR}/tests/samples/pad_pipeline_e2e.mlir \
-//     --iree-hal-target-backends=amd-aie \
-//     --iree-abi-transformation-pipeline \
-//     --iree-flow-transformation-pipeline \
-//     --iree-stream-transformation-pipeline \
-//     --iree-hal-configuration-pipeline | \
-//   ${IREE_DIR}/build/tools/iree-opt \
-//      --pass-pipeline='builtin.module(hal.executable(hal.executable.variant(iree-hal-translate-target-executable-variants{target=amd-aie})))' \
-//      --iree-codegen-transform-dialect-library=${IREE_AMD_AIE_DIR}/tests/samples/matmul_fill_spec_pad.mlir
-// ```
+// RUN: iree-compile --iree-hal-target-backends=amd-aie --compile-to=executable-sources %S/../samples/pad_pipeline_e2e.mlir | iree-opt --pass-pipeline="builtin.module(hal.executable(hal.executable.variant(iree-hal-translate-target-executable-variants{target=amd-aie})))" --iree-codegen-transform-dialect-library=%s
+
+// This script shows an example lowering matmul through pad based pipeline for AIE device.
 
 module attributes { transform.with_named_sequence } {
   transform.named_sequence @cleanup(%variant_op: !transform.any_op {transform.readonly}) {

@@ -17,6 +17,4 @@ iree_lit_test_suite(
     FileCheck
     iree-opt
     iree-compile
-  DATA
-    matmul_fill_spec_pad.mlir
 )

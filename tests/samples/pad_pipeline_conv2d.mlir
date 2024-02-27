@@ -1,6 +1,6 @@
 // RUN: iree-compile  --iree-hal-target-backends=amd-aie \
 // RUN:               --compile-to=executable-sources %s  \
-// RUN:             | cat - %S/conv_fill_spec_pad.mlir \
+// RUN:             | cat - %S/../transform_dialect/conv_fill_spec_pad.mlir \
 // RUN:             | iree-opt --iree-transform-dialect-interpreter \
 // RUN:             | FileCheck %s
 
