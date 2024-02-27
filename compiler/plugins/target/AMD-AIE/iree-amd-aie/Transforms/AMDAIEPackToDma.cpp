@@ -19,9 +19,9 @@ namespace mlir::iree_compiler::AMDAIE {
 
 namespace {
 
-/// Applies packing to a given input
-LogicalResult packDmaInputs(RewriterBase &rewriter,
-                            IREE::LinalgExt::PackOp packOp,
+/// Applies packing to a given input.
+template <typename OpType>
+LogicalResult packDmaInputs(RewriterBase &rewriter, OpType packOp,
                             SmallVector<Value> &offsets,
                             SmallVector<int64_t> &sizes,
                             SmallVector<int64_t> &strides) {
@@ -44,7 +44,7 @@ LogicalResult packDmaInputs(RewriterBase &rewriter,
     // the outer dims stride gets multiplied by the size of the tile.
     innerStrides.push_back(strides[innerDimsPos[i]]);
     strides[innerDimsPos[i]] *= innerTiles[i];
-    // The tiled dim inhertis the offset from the corresponding outer dim and
+    // The tiled dim inherits the offset from the corresponding outer dim and
     // the outer dim offset is set to zero.
     innerOffsets.push_back(offsets[innerDimsPos[i]]);
     offsets[innerDimsPos[i]] =
@@ -63,9 +63,9 @@ LogicalResult packDmaInputs(RewriterBase &rewriter,
   return success();
 }
 
-/// Applies unpacking to a given input
-LogicalResult unPackDmaInputs(RewriterBase &rewriter,
-                              IREE::LinalgExt::UnPackOp unPackOp,
+/// Applies unpacking to a given input.
+template <typename OpType>
+LogicalResult unPackDmaInputs(RewriterBase &rewriter, OpType unPackOp,
                               SmallVector<Value> &offsets,
                               SmallVector<int64_t> &sizes,
                               SmallVector<int64_t> &strides) {
@@ -97,7 +97,7 @@ LogicalResult unPackDmaInputs(RewriterBase &rewriter,
     outerDimsIndexMap[i] = i;
   }
   for (int i = 0; i < innerTiles.size(); i++) {
-    // Insert inner dims adjcant to there corresponding outer dims.
+    // Insert inner dims adjacent to there corresponding outer dims.
     outerSizes.insert(
         outerSizes.begin() + outerDimsIndexMap[innerDimsPos[i]] + 1,
         innerTiles[i]);
@@ -120,7 +120,7 @@ LogicalResult unPackDmaInputs(RewriterBase &rewriter,
   return success();
 }
 
-/// Examines an input or an output Value of a pack/unpack op and provides the
+/// Examines an input/output of a pack/unpack op and provides the
 /// corresponding offsets, sizes and strides required by the dma op
 LogicalResult getDmaInputs(RewriterBase &rewriter, Operation *&operandOp,
                            SmallVector<Value> &offsets,
@@ -132,20 +132,30 @@ LogicalResult getDmaInputs(RewriterBase &rewriter, Operation *&operandOp,
     std::tie(strides, baseOffset) = getStridesAndOffset(allocOp.getType());
     sizes = SmallVector<int64_t>(allocOp.getType().getShape().begin(),
                                  allocOp.getType().getShape().end());
-  } else if (auto subviewOp = dyn_cast<memref::SubViewOp>(operandOp)) {
+    // Dynamic shape not supported by air dma op.
+    if (llvm::any_of(
+            sizes, [](int64_t size) { return ShapedType::isDynamic(size); })) {
+      return failure();
+    }
+    if (baseOffset != 0) {
+      // This is conservative, however need to verify that this can be correctly
+      // supported once we see a use case to enable.
+      return failure();
+    }
+    // Alloc Op has no offsets.
+    for (int i = 0; i < sizes.size(); i++) {
+      offsets.push_back(rewriter.create<arith::ConstantIndexOp>(loc, 0));
+    }
+    return success();
+  }
+  if (auto subviewOp = dyn_cast<memref::SubViewOp>(operandOp)) {
     // fail if non-unit mixed strides are present as NYI.
     auto mixedStrides = subviewOp.getMixedStrides();
-    for (auto mixedStride : mixedStrides) {
-      Attribute mixedStrideAttr = dyn_cast_if_present<Attribute>(mixedStride);
-      if (!mixedStrideAttr) {
-        return failure();
-      }
-      int64_t mixedStrideValue = cast<IntegerAttr>(mixedStrideAttr).getInt();
-      if (mixedStrideValue != 1) {
-        return failure();
-      }
+    if (llvm::any_of(mixedStrides, [](OpFoldResult ofr) {
+          return !isConstantIntValue(ofr, 1);
+        })) {
+      return failure();
     }
-
     offsets = getValueOrCreateConstantIndexOp(rewriter, loc,
                                               subviewOp.getMixedOffsets());
     std::tie(strides, baseOffset) =
@@ -153,175 +163,92 @@ LogicalResult getDmaInputs(RewriterBase &rewriter, Operation *&operandOp,
     operandOp = subviewOp.getSource().getDefiningOp();
     sizes = SmallVector<int64_t>(subviewOp.getType().getShape().begin(),
                                  subviewOp.getType().getShape().end());
-  } else {
-    return failure();
-  }
+    // Dynamic shape not supported by air dma op.
+    if (llvm::any_of(
+            sizes, [](int64_t size) { return ShapedType::isDynamic(size); })) {
+      return failure();
+    }
   if (baseOffset != 0) {
     // This is conservative, however need to verify that this can be correctly
     // supported once we see a use case to enable.
     return failure();
   }
-  for (int i = offsets.size(); i < sizes.size(); i++) {
-    offsets.push_back(rewriter.create<arith::ConstantIndexOp>(loc, 0));
-  }
   return success();
+  }
+  return failure();
 }
 
-/// Pattern to rewrite LinalgExt::PackOp -> air::DmaMemcpyNdOp.
-class LinalgExtPackToAirDmaMemcpyNd
-    : public OpRewritePattern<IREE::LinalgExt::PackOp> {
-  using OpRewritePattern<IREE::LinalgExt::PackOp>::OpRewritePattern;
+template <typename OpType>
+class LinalgExtPackToAirDmaMemcpyNd : public OpRewritePattern<OpType> {
+ public:
+  using OpRewritePattern<OpType>::OpRewritePattern;
 
-  LogicalResult matchAndRewrite(IREE::LinalgExt::PackOp packOp,
+  LogicalResult matchAndRewrite(OpType op,
                                 PatternRewriter &rewriter) const override {
     // 1. Filter out NYI cases.
-    llvm::ArrayRef<int64_t> innerTiles = packOp.getStaticInnerTiles();
+    llvm::ArrayRef<int64_t> innerTiles = op.getStaticInnerTiles();
     if (llvm::any_of(innerTiles, [](int64_t size) {
           return ShapedType::isDynamic(size);
         })) {
-      return rewriter.notifyMatchFailure(packOp, "non-static shape NYI");
+      return rewriter.notifyMatchFailure(op, "non-static shape NYI");
     }
-    Location loc = packOp->getLoc();
+    Location loc = op->getLoc();
     OpBuilder::InsertionGuard g(rewriter);
-    rewriter.setInsertionPoint(packOp);
+    rewriter.setInsertionPoint(op);
 
-    Value input = packOp.getInput();
-    Value output = packOp.getOutput();
+    Value input = op.getInput();
+    Value output = op.getOutput();
 
     Operation *sourceOp = input.getDefiningOp();
     Operation *dstOp = output.getDefiningOp();
 
     // prepare source DMA inputs.
-    SmallVector<Value> srcBaseStridesValues;
-    SmallVector<Value> srcShapeValues;
     SmallVector<Value> srcOffsets;
     SmallVector<int64_t> srcBaseStrides;
     SmallVector<int64_t> srcShape;
     if (!succeeded(getDmaInputs(rewriter, sourceOp, srcOffsets, srcShape,
                                 srcBaseStrides))) {
       return rewriter.notifyMatchFailure(
-          packOp, "cant infer dma source inputs from op");
+          op, "cant infer dma source inputs from op");
     }
-    if (!succeeded(packDmaInputs(rewriter, packOp, srcOffsets, srcShape,
-                                 srcBaseStrides))) {
-      return rewriter.notifyMatchFailure(
-          packOp, "could not perform the required packing to create a dma op");
+    if (std::is_same<OpType, IREE::LinalgExt::PackOp>::value) {
+      if (!succeeded(packDmaInputs<OpType>(rewriter, op, srcOffsets, srcShape,
+                                           srcBaseStrides))) {
+        return rewriter.notifyMatchFailure(
+            op, "could not perform the required packing to create a dma op");
+      }
+    } else if (std::is_same<OpType, IREE::LinalgExt::UnPackOp>::value) {
+      if (!succeeded(unPackDmaInputs<OpType>(rewriter, op, srcOffsets, srcShape,
+                                             srcBaseStrides))) {
+        return rewriter.notifyMatchFailure(
+            op, "could not perform the required unpacking to create a dma op");
+      }
     }
-    for (auto stride : srcBaseStrides) {
-      srcBaseStridesValues.push_back(
-          rewriter.create<arith::ConstantIndexOp>(loc, stride));
-    }
-    for (auto dim : srcShape) {
-      srcShapeValues.push_back(
-          rewriter.create<arith::ConstantIndexOp>(loc, dim));
-    }
-
     // prepare destination DMA inputs.
-    SmallVector<Value> dstBaseStridesValues;
-    SmallVector<Value> dstShapeValues;
     SmallVector<Value> dstOffsets;
     SmallVector<int64_t> dstBaseStrides;
     SmallVector<int64_t> dstShape;
     if (!succeeded(getDmaInputs(rewriter, dstOp, dstOffsets, dstShape,
                                 dstBaseStrides))) {
       return rewriter.notifyMatchFailure(
-          packOp, "cant infer dma source inputs from op");
+          op, "cant infer dma source inputs from op");
     }
-    for (auto stride : dstBaseStrides) {
-      dstBaseStridesValues.push_back(
-          rewriter.create<arith::ConstantIndexOp>(loc, stride));
-    }
-    for (auto dim : dstShape) {
-      dstShapeValues.push_back(
-          rewriter.create<arith::ConstantIndexOp>(loc, dim));
-    }
-
+    // utility function to convert SmallVector<int64_t> -> SmallVector<Value>
+    auto createConstantIndexOps = [&rewriter,
+                                   &loc](const SmallVector<int64_t> &values) {
+      SmallVector<Value> result;
+      for (auto value : values) {
+        result.push_back(rewriter.create<arith::ConstantIndexOp>(loc, value));
+      }
+      return result;
+    };
     SmallVector<Value, 2> emptyVec;
     rewriter.replaceOpWithNewOp<xilinx::air::DmaMemcpyNdOp>(
-        packOp, SmallVector<Type, 1>{}, emptyVec, dstOp->getResult(0),
-        dstOffsets, dstShapeValues, dstBaseStridesValues,
-        sourceOp->getResult(0), srcOffsets, srcShapeValues,
-        srcBaseStridesValues);
-    return success();
-  }
-};
-
-/// Pattern to rewrite LinalgExt::UnPackOp -> air::DmaMemcpyNdOp.
-class LinalgExtUnPackToAirDmaMemcpyNd
-    : public OpRewritePattern<IREE::LinalgExt::UnPackOp> {
-  using OpRewritePattern<IREE::LinalgExt::UnPackOp>::OpRewritePattern;
-
-  LogicalResult matchAndRewrite(IREE::LinalgExt::UnPackOp unPackOp,
-                                PatternRewriter &rewriter) const override {
-    // 1. Filter out NYI cases.
-    llvm::ArrayRef<int64_t> innerTiles = unPackOp.getStaticInnerTiles();
-    if (llvm::any_of(innerTiles, [](int64_t size) {
-          return ShapedType::isDynamic(size);
-        })) {
-      return rewriter.notifyMatchFailure(unPackOp, "non-static shape NYI");
-    }
-    Location loc = unPackOp->getLoc();
-    OpBuilder::InsertionGuard g(rewriter);
-    rewriter.setInsertionPoint(unPackOp);
-
-    Value input = unPackOp.getInput();
-    Value output = unPackOp.getOutput();
-
-    Operation *sourceOp = input.getDefiningOp();
-    Operation *dstOp = output.getDefiningOp();
-
-    // prepare source DMA inputs.
-    SmallVector<Value> srcBaseStridesValues;
-    SmallVector<Value> srcShapeValues;
-    SmallVector<Value> srcOffsets;
-    SmallVector<int64_t> srcBaseStrides;
-    SmallVector<int64_t> srcShape;
-    if (!succeeded(getDmaInputs(rewriter, sourceOp, srcOffsets, srcShape,
-                                srcBaseStrides))) {
-      return rewriter.notifyMatchFailure(
-          unPackOp, "cant infer dma source inputs from op");
-    }
-    if (!succeeded(unPackDmaInputs(rewriter, unPackOp, srcOffsets, srcShape,
-                                   srcBaseStrides))) {
-      return rewriter.notifyMatchFailure(
-          unPackOp,
-          "could not perform the required packing to create a dma op");
-    }
-    for (auto stride : srcBaseStrides) {
-      srcBaseStridesValues.push_back(
-          rewriter.create<arith::ConstantIndexOp>(loc, stride));
-    }
-    for (auto dim : srcShape) {
-      srcShapeValues.push_back(
-          rewriter.create<arith::ConstantIndexOp>(loc, dim));
-    }
-
-    // prepare destination DMA inputs.
-    SmallVector<Value> dstBaseStridesValues;
-    SmallVector<Value> dstShapeValues;
-    SmallVector<Value> dstOffsets;
-    SmallVector<int64_t> dstBaseStrides;
-    SmallVector<int64_t> dstShape;
-    if (!succeeded(getDmaInputs(rewriter, dstOp, dstOffsets, dstShape,
-                                dstBaseStrides))) {
-      return rewriter.notifyMatchFailure(
-          unPackOp, "cant infer dma source inputs from op");
-    }
-    for (auto stride : dstBaseStrides) {
-      dstBaseStridesValues.push_back(
-          rewriter.create<arith::ConstantIndexOp>(loc, stride));
-    }
-    for (auto dim : dstShape) {
-      dstShapeValues.push_back(
-          rewriter.create<arith::ConstantIndexOp>(loc, dim));
-    }
-
-    SmallVector<Value, 2> emptyVec;
-    rewriter.replaceOpWithNewOp<xilinx::air::DmaMemcpyNdOp>(
-        unPackOp, SmallVector<Type, 1>{}, emptyVec, dstOp->getResult(0),
-        dstOffsets, dstShapeValues, dstBaseStridesValues,
-        sourceOp->getResult(0), srcOffsets, srcShapeValues,
-        srcBaseStridesValues);
+        op, SmallVector<Type, 1>{}, emptyVec, dstOp->getResult(0), dstOffsets,
+        createConstantIndexOps(dstShape),
+        createConstantIndexOps(dstBaseStrides), sourceOp->getResult(0),
+        srcOffsets, createConstantIndexOps(srcShape),
+        createConstantIndexOps(srcBaseStrides));
     return success();
   }
 };
@@ -342,9 +269,9 @@ class AMDAIEPackToDmaPass
 void AMDAIEPackToDmaPass::runOnOperation() {
   MLIRContext *context = &getContext();
   RewritePatternSet patterns(context);
-  patterns
-      .insert<LinalgExtPackToAirDmaMemcpyNd, LinalgExtUnPackToAirDmaMemcpyNd>(
-          context);
+  patterns.insert<LinalgExtPackToAirDmaMemcpyNd<IREE::LinalgExt::PackOp>,
+                  LinalgExtPackToAirDmaMemcpyNd<IREE::LinalgExt::UnPackOp>>(
+      context);
   if (failed(
           applyPatternsAndFoldGreedily(getOperation(), std::move(patterns)))) {
     return signalPassFailure();
