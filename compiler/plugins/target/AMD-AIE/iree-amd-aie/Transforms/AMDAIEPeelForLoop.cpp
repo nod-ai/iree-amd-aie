@@ -33,6 +33,15 @@ void AMDAIEPeelForLoopPass::runOnOperation() {
   IRRewriter rewriter(context);
 
   funcOp->walk([&](scf::ForOp forOp) {
+    auto lbInt = getConstantIntValue(forOp.getLowerBound());
+    auto ubInt = getConstantIntValue(forOp.getUpperBound());
+    auto stepInt = getConstantIntValue(forOp.getStep());
+
+    // Peeling is not needed if there is one or less iteration.
+    if (lbInt && ubInt && stepInt &&
+        ceil(float(*ubInt - *lbInt) / *stepInt) <= 1)
+      return;
+
     scf::ForOp result;
     LogicalResult status =
         scf::peelForLoopFirstIteration(rewriter, forOp, result);
