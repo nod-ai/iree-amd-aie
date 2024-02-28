@@ -75,8 +75,8 @@ static LogicalResult setRootConfigForSimplePackPipeline(
   // ------------------------------------------------------
   // -------------- Set lowering config -------------------
   // ------------------------------------------------------
-  // Assume working on a 2x2 AIE array and make sure the tile size is not larger
-  // than the input size.
+  // Assume working on a 2x2 AIE array. Currently, the tile sizes are hardcoded
+  // with basic constraints.
   auto initType = linalgOp.getDpsInitOperand(0)->get().getType();
   auto initShape = llvm::cast<ShapedType>(initType).getShape();
   auto tileM0 = std::min((int)initShape[0], 64);
@@ -208,15 +208,15 @@ static LogicalResult setRootConfigForPadPackPipeline(func::FuncOp entryPointFn,
   // ------------------------------------------------------
   // -------------- Set lowering config -------------------
   // ------------------------------------------------------
-  // Assume working on a 2x2 AIE array and make sure the tile size is not larger
-  // than the input size.
-  auto initType = matmulOp.getDpsInitOperand(0)->get().getType();
+  // Assume working on a 2x2 AIE array. Currently, the tile sizes are hardcoded
+  // with basic constraints.
+  auto initType = linalgOp.getDpsInitOperand(0)->get().getType();
   auto initShape = llvm::cast<ShapedType>(initType).getShape();
   auto tileM0 = std::min((int)initShape[0], 64);
   auto tileN0 = std::min((int)initShape[1], 64);
   auto tileM1 = std::max((int)tileM0 / 2, 1);
   auto tileN1 = std::max((int)tileN0 / 2, 1);
-  auto lhsType = matmulOp.getDpsInputOperand(0)->get().getType();
+  auto lhsType = linalgOp.getDpsInputOperand(0)->get().getType();
   auto lhsShape = llvm::cast<ShapedType>(lhsType).getShape();
   auto tileK0 = std::min((int)lhsShape[1], 256);
   auto tileK1 = std::min((int)lhsShape[1] / 8, 4);
@@ -229,7 +229,7 @@ static LogicalResult setRootConfigForPadPackPipeline(func::FuncOp entryPointFn,
   TileSizesListType tileSizes = {TileSizeLevel0, TileSizeLevel1, TileSizeLevel2,
                                  TileSizeLevel3, TileSizeLevel4};
   if (failed(setOpConfigAndEntryPointFnTranslation(
-          entryPointFn, matmulOp, tileSizes,
+          entryPointFn, linalgOp, tileSizes,
           IREE::Codegen::DispatchLoweringPassPipeline::None))) {
     return failure();
   }
@@ -252,7 +252,7 @@ static LogicalResult setRootConfigForPadPackPipeline(func::FuncOp entryPointFn,
   auto packingConfigLevels =
       PackingConfigPackingLevelsAttr::get(context, packingConfigLevelsVal);
   auto config = PackingConfigAttr::get(context, packingConfigLevels);
-  setPackingConfig(matmulOp, config);
+  setPackingConfig(linalgOp, config);
   return success();
 }
 
