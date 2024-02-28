@@ -176,6 +176,7 @@ LogicalResult AIETargetBackend::serializeExecutable(
     // 10 chars) is required by the xclbinutil to have a length smaller or equal
     // to 64 right now. To have some additional wiggle room for suffix changes,
     // we use the 48 first characters for the kernel name.
+    // This is okay to do for now because we are only supporting single entry point.
     entryPointNames.emplace_back(exportOp.getSymName().substr(0, 48));
   }
 
