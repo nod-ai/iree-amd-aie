@@ -1,19 +1,6 @@
-// This script shows an example lowering matmul through IREE for a special accelerator.
-//
-// ```
-//   export IREE_BUILD_DIR=${IREE_BUILD_DIR:-${HOME}/iree/build/Debug}
-//   export IREE_AMD_AIE_DIR=${IREE_AMD_AIE_DIR:-${HOME}/iree/iree-amd-aie}
-//   ${IREE_BUILD_DIR}/tools/iree-opt \
-//     ${IREE_AMD_AIE_DIR}/tests/samples/simple_pack_pipeline_e2e.mlir \
-//     --iree-hal-target-backends=amd-aie \
-//     --iree-abi-transformation-pipeline \
-//     --iree-flow-transformation-pipeline \
-//     --iree-stream-transformation-pipeline \
-//     --iree-hal-configuration-pipeline | \
-//   ${IREE_BUILD_DIR}/tools/iree-opt \
-//      --pass-pipeline='builtin.module(hal.executable(hal.executable.variant(iree-codegen-materialize-user-configs, iree-amdaie-lower-executable-target, fold-memref-alias-ops)))' \
-//      --iree-codegen-transform-dialect-library=${IREE_AMD_AIE_DIR}/tests/samples/matmul_fill_spec_pack.mlir
-// ```
+// RUN: iree-compile --iree-hal-target-backends=amd-aie --compile-to=executable-sources %S/../samples/pack_pipeline_funcIR.mlir | iree-opt --pass-pipeline="builtin.module(hal.executable(hal.executable.variant(iree-hal-translate-target-executable-variants{target=amd-aie})))" --iree-codegen-transform-dialect-library=%s
+
+// This script shows an example lowering matmul through pack based pipeline for AIE device.
 
 module attributes { transform.with_named_sequence } {
   transform.named_sequence @cleanup(%variant_op: !transform.any_op {transform.readonly}) {
@@ -33,18 +20,23 @@ module attributes { transform.with_named_sequence } {
     %ops = transform.structured.match ops{["linalg.fill", "linalg.matmul"]} in %variant_op : (!transform.any_op) -> !transform.any_op
     %fill, %matmul = transform.split_handle %ops : (!transform.any_op) -> (!transform.any_op, !transform.any_op)
 
-    // First level tile to forall.
+    // First level tile to forall with tile_sizes [16, 256] to target 4 cores. Adjust to [16, 64] for 1 core.
     %tiled_matmul, %forall =
-      transform.structured.tile_using_forall %matmul tile_sizes [64, 64]
+      transform.structured.tile_using_forall %matmul tile_sizes [16, 256]
         ( mapping = [#gpu.block<y>, #gpu.block<x>] ) : (!transform.any_op) -> (!transform.any_op, !transform.any_op)
     transform.iree.populate_workgroup_count_region_using_num_threads_slice %forall
       : (!transform.any_op) -> ()
 
-    // Fuse fill operation into the loop
+    // Fuse fill operation into the forall loop.
     %fused_fill, %_ = transform.structured.fuse_into_containing_op %fill into %forall : (!transform.any_op, !transform.any_op) -> (!transform.any_op, !transform.any_op)
 
-    // First level of packing, move data from L3 to L2.
-    %packed = transform.structured.pack %tiled_matmul packed_sizes = [64, 64, 512]
+    // Tile reduction dimension.
+    %tiled_reduction, %loop =
+      transform.structured.tile_using_for %tiled_matmul [0, 0, 64]
+      : (!transform.any_op) -> (!transform.any_op, !transform.op<"scf.for">)
+
+    // Pack by applying data tiling, and the linalg.matmul becomes linalg.generic.
+    %packed = transform.structured.pack %tiled_reduction packed_sizes = [16, 64, 64]
       : (!transform.any_op) -> (!transform.any_op)
 
     // Transpose B matrix from [K N n k] to [K N k n]
@@ -54,9 +46,6 @@ module attributes { transform.with_named_sequence } {
       transform.structured.pack_transpose %pack_producer_b0 with_compute_op(%packed)
       inner_perm = [1, 0] : (!transform.any_op, !transform.any_op)
       -> (!transform.any_op, !transform.any_op, !transform.any_op)
-
-    // Run canonicalization to fold fill with pack and unpack operations.
-    transform.include @cleanup failures(propagate) (%variant_op) : (!transform.any_op) -> ()
 
     // Bufferize to shared memory allocation
     %pack_producer_a0 = transform.get_producer_of_operand %packed_b0[0]
@@ -70,17 +59,12 @@ module attributes { transform.with_named_sequence } {
     %buffer_c0, %new_c0 = transform.structured.bufferize_to_allocation %pack_producer_c0
       {memory_space = 1, bufferize_destination_only, emit_dealloc} : !transform.any_op
 
-    // Second level tile to forall.
+    // Second level tile to forall with tile_sizes [1, 1].
     %tiled_matmul_1, %forall_1 =
-      transform.structured.tile_using_forall %packed_b0 tile_sizes [0, 0, 0, 32, 32]
+      transform.structured.tile_using_forall %packed_b0 tile_sizes [1, 1]
         ( mapping = [#gpu.thread<y>, #gpu.thread<x>] ) : (!transform.any_op) -> (!transform.any_op, !transform.any_op)
 
-    // Find the fill operation to fuse.
-    %fused_fill_1 = transform.get_producer_of_operand %forall_1[0] : (!transform.any_op) -> (!transform.any_op)
-    %fused_fill_2, %__ = transform.structured.fuse_into_containing_op %fused_fill_1 into %forall_1 : (!transform.any_op, !transform.any_op) -> (!transform.any_op, !transform.any_op)
-    transform.include @cleanup failures(propagate) (%variant_op) : (!transform.any_op) -> ()
-
-    // Second level of packing, move data from L2 to L1.
+    // Pack by applying data tiling, and the linalg.matmul becomes linalg.generic.
     %packed_2 = transform.structured.pack %tiled_matmul_1 packed_sizes = [0, 0, 0, 4, 8, 8]
       : (!transform.any_op) -> (!transform.any_op)
 
@@ -108,27 +92,33 @@ module attributes { transform.with_named_sequence } {
       outer_perm = [0, 1, 3, 2] : (!transform.any_op, !transform.any_op)
       -> (!transform.any_op, !transform.any_op, !transform.any_op)
 
-    // Promote the result to local memory.
+    // Bufferize to local memory allocation
+    %buffer_a, %new_a = transform.structured.bufferize_to_allocation %pack_a
+      {memory_space = 2, bufferize_destination_only, emit_dealloc} : !transform.any_op
+    %buffer_b, %new_b = transform.structured.bufferize_to_allocation %pack_b
+      {memory_space = 2, bufferize_destination_only, emit_dealloc} : !transform.any_op
     %buffer_c, %new_c = transform.structured.bufferize_to_allocation %pack_c
       {memory_space = 2, bufferize_destination_only, emit_dealloc} : !transform.any_op
 
-    // Tile reduction dimension.
-    %tiled_reduction, %loop =
-      transform.structured.tile_using_for %packed_c[0, 0, 0, 0, 0, 4]
-      : (!transform.any_op) -> (!transform.any_op, !transform.any_op)
+    // Hoist static alloc out of the loops
+    %memref_func = transform.structured.match ops{["func.func"]} in %variant_op
+      : (!transform.any_op) -> !transform.any_op
+    transform.iree.hoist_static_alloc %memref_func : (!transform.any_op) -> ()
 
-    // Find the for op and fuse the pack ops into the loop.
-    %for_op = transform.structured.match ops{["scf.for"]} in %variant_op : (!transform.any_op) -> !transform.any_op
-    %fused_pack_a, %e1 = transform.structured.fuse_into_containing_op %pack_a into %for_op
-      : (!transform.any_op, !transform.any_op) -> (!transform.any_op, !transform.any_op)
-    %fused_pack_b, %e2 = transform.structured.fuse_into_containing_op %pack_b into %for_op
-      : (!transform.any_op, !transform.any_op) -> (!transform.any_op, !transform.any_op)
+    // Peel the first iteration out of the for loop.
+    // This only works when the for loop has more than one iteration.
+    %1 = transform.get_parent_op %packed_c {op_name = "scf.for"} : (!transform.any_op) -> !transform.op<"scf.for">
+    %main_loop, %remainder = transform.loop.peel %1 {peel_front = true}
+      : (!transform.op<"scf.for">) -> (!transform.any_op, !transform.any_op)
+    transform.include @cleanup failures(propagate) (%variant_op) : (!transform.any_op) -> ()
 
-    // Promote the inputs to local memory.
-    %buffer_a, %new_a = transform.structured.bufferize_to_allocation %fused_pack_a
-      {memory_space = 2, bufferize_destination_only, emit_dealloc} : !transform.any_op
-    %buffer_b, %new_b = transform.structured.bufferize_to_allocation %fused_pack_b
-      {memory_space = 2, bufferize_destination_only, emit_dealloc} : !transform.any_op
+    // Find the fill and the second forall operations.
+    %fused_fill_1 = transform.structured.match ops{["linalg.fill"]} in %variant_op : (!transform.any_op) -> !transform.any_op
+    %fill_consumer = transform.get_consumers_of_result %fused_fill_1[0] : (!transform.any_op) -> (!transform.any_op)
+
+    // Fuse fill operation into the forall loop
+    %fused_fill_2, %__ = transform.structured.fuse_into_containing_op %fused_fill_1 into %fill_consumer
+      : (!transform.any_op, !transform.any_op) -> (!transform.any_op, !transform.any_op)
 
     // Clean up.
     transform.include @cleanup failures(propagate) (%variant_op) : (!transform.any_op) -> ()
