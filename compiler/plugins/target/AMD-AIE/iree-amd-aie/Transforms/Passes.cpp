@@ -443,8 +443,7 @@ void addMLIRAIRAIELoweringPasses(OpPassManager &passManager) {
   passManager.addPass(createEraseHALDescriptorTypeFromMemRefPass());
   passManager.addPass(memref::createFoldMemRefAliasOpsPass());
   passManager.addPass(createAMDAIEBridgeToAIRPass());
-  passManager.addPass(createAMDAIEDecomposeLinalgExtPackUnPackToAIRPass());
-
+  passManager.addPass(createAMDAIEPackToDmaPass());
   {
     xilinx::air::ParallelToHerdOptions options;
     options.clAssignDepth = 1;
@@ -455,6 +454,10 @@ void addMLIRAIRAIELoweringPasses(OpPassManager &passManager) {
     options.clHasSegment = true;
     passManager.addPass(xilinx::air::createParallelToLaunchPass(options));
   }
+  passManager.addPass(createCanonicalizerPass());
+  passManager.addPass(createCSEPass());
+  passManager.addPass(createAMDAIECanonicalizeDmaPass());
+  //}
   passManager.addPass(xilinx::air::createCopyToDmaPass());
   passManager.addPass(createCanonicalizerPass());
   passManager.addPass(createCSEPass());

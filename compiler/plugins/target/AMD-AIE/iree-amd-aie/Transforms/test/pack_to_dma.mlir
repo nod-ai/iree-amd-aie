@@ -3,7 +3,7 @@
 // CHECK-LABEL: @basic_unitdim_pack
 // CHECK: %[[ALLOC0:.*]] = memref.alloc() : memref<1x1x8x16xi32, 1>
 // CHECK: %[[ALLOC1:.*]] = memref.alloc() : memref<8x16xi32, 1>
-// CHECK: air.dma_memcpy_nd (%[[ALLOC0]][%c0, %c0, %c0, %c0] [%c1, %c1, %c8, %c16] [%c128, %c128, %c16, %c1],
+// CHECK: air.dma_memcpy_nd (%[[ALLOC0]][] [] [],
 // CHECK-SAME: %[[ALLOC1]][%c0, %c0, %c0, %c0] [%c1, %c1, %c8, %c16] [%c128, %c16, %c16, %c1])
 // CHECK-SAME: (memref<1x1x8x16xi32, 1>, memref<8x16xi32, 1>)
 func.func @basic_unitdim_pack() {
@@ -18,7 +18,7 @@ func.func @multidim_pack() {
 // CHECK-LABEL: @multidim_pack
 // CHECK: %[[ALLOC0:.*]] = memref.alloc() : memref<5x4x3x2xi32, 1>
 // CHECK: %[[ALLOC1:.*]] = memref.alloc() : memref<15x8xi32, 1>
-// CHECK: air.dma_memcpy_nd (%[[ALLOC0]][%c0, %c0, %c0, %c0] [%c5, %c4, %c3, %c2] [%c24, %c6, %c2, %c1],
+// CHECK: air.dma_memcpy_nd (%[[ALLOC0]][] [] [],
 // CHECK-SAME: %[[ALLOC1]][%c0, %c0, %c0, %c0] [%c5, %c4, %c3, %c2] [%c24, %c2, %c8, %c1])
 // CHECK-SAME:(memref<5x4x3x2xi32, 1>, memref<15x8xi32, 1>)
   %alloc = memref.alloc() :  memref<5x4x3x2xi32, 1>
@@ -32,7 +32,7 @@ func.func @multidim_pack() {
 // CHECK-LABEL: @permute_pack
 // CHECK: %[[ALLOC0:.*]] = memref.alloc() : memref<1x1x2x2x4x8xi32, 2>
 // CHECK: %[[ALLOC1:.*]] = memref.alloc() : memref<1x1x8x16xi32, 1>
-// CHECK: air.dma_memcpy_nd (%[[ALLOC0]][%c0, %c0, %c0, %c0, %c0, %c0] [%c1, %c1, %c2, %c2, %c4, %c8] [%c128, %c128, %c64, %c32, %c8, %c1],
+// CHECK: air.dma_memcpy_nd (%[[ALLOC0]][] [] [],
 // CHECK-SAME: %[[ALLOC1]][%c0, %c0, %c0, %c0, %c0, %c0] [%c1, %c1, %c2, %c2, %c4, %c8] [%c128, %c128, %c8, %c64, %c16, %c1])
 // CHECK-SAME:(memref<1x1x2x2x4x8xi32, 2>, memref<1x1x8x16xi32, 1>)
 func.func @permute_pack() {
@@ -49,7 +49,7 @@ func.func @permute_pack() {
 // CHECK: scf.parallel (%arg0, %arg1, %arg2) = (%c0, %c0, %c0) to (%c32, %c8, %c64) step (%c1, %c8, %c64)
 // CHECK-NOT: memref.subview
 // CHECK:   %[[ALLOC0:.*]] = memref.alloc() : memref<1x1x1x8x8xf32, 1>
-// CHECK:   air.dma_memcpy_nd (%[[ALLOC0]][%c0, %c0, %c0, %c0, %c0] [%c1, %c1, %c1, %c8, %c8] [%c64, %c64, %c64, %c8, %c1],
+// CHECK:   air.dma_memcpy_nd (%[[ALLOC0]][] [] [],
 // CHECK-SAME:   %[[ALLOC1]][%arg0, %c0, %c0, %arg1, %c0] [%c1, %c1, %c1, %c8, %c8] [%c64, %c64, %c8, %c8, %c1])
 // CHECK-SAME:   (memref<1x1x1x8x8xf32, 1>, memref<32x8x8xf32>)
 func.func @subview_pack() {
@@ -72,7 +72,7 @@ func.func @subview_pack() {
 // CHECK-LABEL: @unitdim_unpack
 // CHECK: %[[ALLOC0:.*]] = memref.alloc() : memref<1x1x8x16xi32, 1>
 // CHECK: %[[ALLOC1:.*]] = memref.alloc() : memref<8x16xi32>
-// CHECK: air.dma_memcpy_nd (%[[ALLOC1]][%c0, %c0] [%c8, %c16] [%c16, %c1],
+// CHECK: air.dma_memcpy_nd (%[[ALLOC1]][] [] [],
 // CHECK-SAME: %[[ALLOC0]][%c0, %c0, %c0, %c0] [%c1, %c8, %c1, %c16] [%c128, %c16, %c128, %c1])
 // CHECK-SAME: (memref<8x16xi32>, memref<1x1x8x16xi32, 1>)
 func.func @unitdim_unpack() {
@@ -86,7 +86,7 @@ func.func @unitdim_unpack() {
 // CHECK-LABEL: @multidim_unpack
 // CHECK: %[[ALLOC0:.*]] = memref.alloc() : memref<5x4x3x2xi32, 1>
 // CHECK: %[[ALLOC1:.*]] = memref.alloc() : memref<15x8xi32>
-// CHECK: air.dma_memcpy_nd (%[[ALLOC1]][%c0, %c0] [%c15, %c8] [%c8, %c1],
+// CHECK: air.dma_memcpy_nd (%[[ALLOC1]][] [] [],
 // CHECK-SAME: %[[ALLOC0]][%c0, %c0, %c0, %c0] [%c5, %c3, %c4, %c2] [%c24, %c2, %c6, %c1])
 // CHECK-SAME: (memref<15x8xi32>, memref<5x4x3x2xi32, 1>)
 func.func @multidim_unpack() {
@@ -100,7 +100,7 @@ func.func @multidim_unpack() {
 // CHECK-LABEL: @permute_unpack
 // CHECK: %[[ALLOC0:.*]] = memref.alloc() : memref<1x1x2x2x4x8xi32, 2>
 // CHECK: %[[ALLOC1:.*]] = memref.alloc() : memref<1x1x8x16xi32, 1>
-// CHECK: air.dma_memcpy_nd (%[[ALLOC1]][%c0, %c0, %c0, %c0] [%c1, %c1, %c8, %c16] [%c128, %c128, %c16, %c1],
+// CHECK: air.dma_memcpy_nd (%[[ALLOC1]][] [] [],
 // CHECK-SAME: %[[ALLOC0]][%c0, %c0, %c0, %c0, %c0, %c0] [%c1, %c1, %c2, %c4, %c2, %c8] [%c128, %c128, %c32, %c8, %c64, %c1])
 // CHECK-SAME: (memref<1x1x8x16xi32, 1>, memref<1x1x2x2x4x8xi32, 2>)
 func.func @permute_unpack() {
@@ -114,10 +114,11 @@ func.func @permute_unpack() {
 // CHECK-LABEL: @subview_unpack
 // CHECK: %[[ALLOC0:.*]] = memref.alloc() : memref<32x8x64xf32>
 // CHECK: scf.parallel (%arg0, %arg1, %arg2) = (%c0, %c0, %c0) to (%c32, %c8, %c64) step (%c1, %c8, %c64)
+// CHECK:   %[[SUBVIEW:.*]] = memref.subview %[[ALLOC0]]
 // CHECK:   %[[ALLOC1:.*]] = memref.alloc() : memref<1x1x1x8x64xf32, 1>
-// CHECK:   air.dma_memcpy_nd (%[[ALLOC0]][%arg0, %arg1, %arg2] [%c1, %c8, %c64] [%c512, %c64, %c1],
+// CHECK:   air.dma_memcpy_nd (%[[SUBVIEW]][] [] [],
 // CHECK-SAME: %[[ALLOC1]][%c0, %c0, %c0, %c0, %c0] [%c1, %c1, %c8, %c1, %c64] [%c512, %c512, %c64, %c512, %c1])
-// CHECK-SAME: (memref<32x8x64xf32>, memref<1x1x1x8x64xf32, 1>)
+// CHECK-SAME: (memref<1x8x64xf32, strided<[512, 64, 1], offset: ?>>, memref<1x1x1x8x64xf32, 1>)
 func.func @subview_unpack() {
   %c0 = arith.constant 0 : index
   %c1 = arith.constant 1 : index
