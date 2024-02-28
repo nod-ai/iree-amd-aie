@@ -1,3 +1,5 @@
+// RUN: iree-compile --iree-hal-target-backends=amd-aie --compile-to=executable-sources %s/../samples/pad_pipeline_conv2d.mlir | iree-opt --pass-pipeline="builtin.module(hal.executable(hal.executable.variant(iree-hal-translate-target-executable-variants{target=amd-aie})))" --iree-codegen-transform-dialect-library=%s
+
 // This script demonstrates lowering conv through IREE to eventually target AIE.
 // It's based on conv2d lowering in IREE for llvm-cpu.
 //
