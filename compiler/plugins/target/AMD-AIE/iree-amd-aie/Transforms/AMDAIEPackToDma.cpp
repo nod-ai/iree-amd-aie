@@ -22,33 +22,45 @@ namespace {
 /// Applies packing to a given input.
 template <typename OpType>
 LogicalResult packDmaInputs(RewriterBase &rewriter, OpType packOp,
-                            SmallVector<Value> &offsets,
-                            SmallVector<int64_t> &sizes,
-                            SmallVector<int64_t> &strides) {
+                            SmallVector<OpFoldResult> &offsets,
+                            SmallVector<OpFoldResult> &sizes,
+                            SmallVector<OpFoldResult> &strides) {
+  MLIRContext *ctx = packOp.getContext();
+
   llvm::ArrayRef<int64_t> permutation = packOp.getOuterDimsPerm();
   llvm::ArrayRef<int64_t> innerTiles = packOp.getStaticInnerTiles();
-  SmallVector<int64_t> innerSizes;
-  SmallVector<int64_t> innerStrides;
-  SmallVector<Value> innerOffsets;
+
+  SmallVector<OpFoldResult> innerSizes;
+  SmallVector<OpFoldResult> innerStrides;
+  SmallVector<OpFoldResult> innerOffsets;
+
   auto innerDimsPos = packOp.getInnerDimsPos();
   for (int i = 0; i < innerTiles.size(); i++) {
     // Calculate new sizes.
-    innerSizes.push_back(innerTiles[i]);
+    innerSizes.push_back(getAsIndexOpFoldResult(ctx, innerTiles[i]));
+    std::optional<int64_t> size = getConstantIntValue(sizes[innerDimsPos[i]]);
+    assert(size.has_value() &&
+           "expect constant index here in sizes vector of pack op");
     // Fail if tile doesnt perfectly divide the corresponding outer dim as we do
     // not support the padding semantics yet.
-    if (sizes[innerDimsPos[i]] % innerTiles[i] != 0) {
+    if (size.value() % innerTiles[i] != 0) {
       return failure();
     }
-    sizes[innerDimsPos[i]] /= innerTiles[i];
+    sizes[innerDimsPos[i]] =
+        getAsIndexOpFoldResult(ctx, size.value() / innerTiles[i]);
     // The tiled dim inherits the stride from the corresponding outer dim and
     // the outer dims stride gets multiplied by the size of the tile.
     innerStrides.push_back(strides[innerDimsPos[i]]);
-    strides[innerDimsPos[i]] *= innerTiles[i];
+    std::optional<int64_t> stride =
+        getConstantIntValue(strides[innerDimsPos[i]]);
+    assert(stride.has_value() &&
+           "expect constant index in stride vector of pack op");
+    strides[innerDimsPos[i]] =
+        getAsIndexOpFoldResult(ctx, stride.value() * innerTiles[i]);
     // The tiled dim inherits the offset from the corresponding outer dim and
     // the outer dim offset is set to zero.
     innerOffsets.push_back(offsets[innerDimsPos[i]]);
-    offsets[innerDimsPos[i]] =
-        rewriter.create<arith::ConstantIndexOp>(packOp.getLoc(), 0);
+    offsets[innerDimsPos[i]] = getAsIndexOpFoldResult(ctx, 0);
   }
   // Apply permutations to the outer dims if provided.
   if (!permutation.empty()) {
@@ -66,23 +78,26 @@ LogicalResult packDmaInputs(RewriterBase &rewriter, OpType packOp,
 /// Applies unpacking to a given input.
 template <typename OpType>
 LogicalResult unPackDmaInputs(RewriterBase &rewriter, OpType unPackOp,
-                              SmallVector<Value> &offsets,
-                              SmallVector<int64_t> &sizes,
-                              SmallVector<int64_t> &strides) {
+                              SmallVector<OpFoldResult> &offsets,
+                              SmallVector<OpFoldResult> &sizes,
+                              SmallVector<OpFoldResult> &strides) {
+  MLIRContext *ctx = unPackOp.getContext();
+
   llvm::ArrayRef<int64_t> permutation = unPackOp.getOuterDimsPerm();
   llvm::ArrayRef<int64_t> innerTiles = unPackOp.getStaticInnerTiles();
-  SmallVector<int64_t> innerSizes;
-  SmallVector<int64_t> innerStrides;
-  SmallVector<Value> innerOffsets;
+
+  SmallVector<OpFoldResult> innerSizes;
+  SmallVector<OpFoldResult> innerStrides;
+  SmallVector<OpFoldResult> innerOffsets;
   auto innerDimsPos = unPackOp.getInnerDimsPos();
 
   int numOuterDims = sizes.size() - innerTiles.size();
-  SmallVector<Value> outerOffsets =
-      SmallVector<Value>(offsets.begin(), offsets.begin() + numOuterDims);
-  SmallVector<int64_t> outerStrides =
-      SmallVector<int64_t>(strides.begin(), strides.begin() + numOuterDims);
-  SmallVector<int64_t> outerSizes =
-      SmallVector<int64_t>(sizes.begin(), sizes.begin() + numOuterDims);
+  SmallVector<OpFoldResult> outerOffsets = SmallVector<OpFoldResult>(
+      offsets.begin(), offsets.begin() + numOuterDims);
+  SmallVector<OpFoldResult> outerStrides = SmallVector<OpFoldResult>(
+      strides.begin(), strides.begin() + numOuterDims);
+  SmallVector<OpFoldResult> outerSizes =
+      SmallVector<OpFoldResult>(sizes.begin(), sizes.begin() + numOuterDims);
 
   // Apply permutations to the outer dims if provided.
   if (!permutation.empty()) {
@@ -100,7 +115,7 @@ LogicalResult unPackDmaInputs(RewriterBase &rewriter, OpType unPackOp,
     // Insert inner dims adjacent to there corresponding outer dims.
     outerSizes.insert(
         outerSizes.begin() + outerDimsIndexMap[innerDimsPos[i]] + 1,
-        innerTiles[i]);
+        getAsIndexOpFoldResult(ctx, innerTiles[i]));
     outerStrides.insert(
         outerStrides.begin() + outerDimsIndexMap[innerDimsPos[i]] + 1,
         strides[numOuterDims + i]);
@@ -123,28 +138,29 @@ LogicalResult unPackDmaInputs(RewriterBase &rewriter, OpType unPackOp,
 /// Examines an input/output of a pack/unpack op and provides the
 /// corresponding offsets, sizes and strides required by the dma op
 LogicalResult getDmaInputs(RewriterBase &rewriter, Operation *&operandOp,
-                           SmallVector<Value> &offsets,
-                           SmallVector<int64_t> &sizes,
-                           SmallVector<int64_t> &strides) {
-  Location loc = operandOp->getLoc();
-  int64_t baseOffset;
+                           SmallVector<OpFoldResult> &offsets,
+                           SmallVector<OpFoldResult> &sizes,
+                           SmallVector<OpFoldResult> &strides) {
+  MLIRContext *ctx = operandOp->getContext();
   if (auto allocOp = dyn_cast<memref::AllocOp>(operandOp)) {
-    std::tie(strides, baseOffset) = getStridesAndOffset(allocOp.getType());
-    sizes = SmallVector<int64_t>(allocOp.getType().getShape().begin(),
-                                 allocOp.getType().getShape().end());
-    // Dynamic shape not supported by air dma op.
-    if (llvm::any_of(
-            sizes, [](int64_t size) { return ShapedType::isDynamic(size); })) {
-      return failure();
-    }
+    auto [stridesI64, baseOffset] = getStridesAndOffset(allocOp.getType());
     if (baseOffset != 0) {
       // This is conservative, however need to verify that this can be correctly
       // supported once we see a use case to enable.
       return failure();
     }
+    strides = getAsIndexOpFoldResult(ctx, stridesI64);
+    auto sizesI64 = allocOp.getType().getShape();
+    // Dynamic shape not supported by air dma op.
+    if (llvm::any_of(sizesI64, [](int64_t size) {
+          return ShapedType::isDynamic(size);
+        })) {
+      return failure();
+    }
+    sizes = getAsIndexOpFoldResult(ctx, sizesI64);
     // Alloc Op has no offsets.
     for (int i = 0; i < sizes.size(); i++) {
-      offsets.push_back(rewriter.create<arith::ConstantIndexOp>(loc, 0));
+      offsets.push_back(getAsIndexOpFoldResult(ctx, 0));
     }
     return success();
   }
@@ -156,24 +172,25 @@ LogicalResult getDmaInputs(RewriterBase &rewriter, Operation *&operandOp,
         })) {
       return failure();
     }
-    offsets = getValueOrCreateConstantIndexOp(rewriter, loc,
-                                              subviewOp.getMixedOffsets());
-    std::tie(strides, baseOffset) =
+    offsets = subviewOp.getMixedOffsets();
+    auto [stridesI64, baseOffset] =
         getStridesAndOffset(subviewOp.getSource().getType());
-    operandOp = subviewOp.getSource().getDefiningOp();
-    sizes = SmallVector<int64_t>(subviewOp.getType().getShape().begin(),
-                                 subviewOp.getType().getShape().end());
-    // Dynamic shape not supported by air dma op.
-    if (llvm::any_of(
-            sizes, [](int64_t size) { return ShapedType::isDynamic(size); })) {
+    if (baseOffset != 0) {
+      // This is conservative, however need to verify that this can be correctly
+      // supported once we see a use case to enable.
       return failure();
     }
-  if (baseOffset != 0) {
-    // This is conservative, however need to verify that this can be correctly
-    // supported once we see a use case to enable.
-    return failure();
-  }
-  return success();
+    strides = getAsIndexOpFoldResult(ctx, stridesI64);
+    operandOp = subviewOp.getSource().getDefiningOp();
+    auto sizesI64 = subviewOp.getType().getShape();
+    // Dynamic shape not supported by air dma op.
+    if (llvm::any_of(sizesI64, [](int64_t size) {
+          return ShapedType::isDynamic(size);
+        })) {
+      return failure();
+    }
+    sizes = getAsIndexOpFoldResult(ctx, sizesI64);
+    return success();
   }
   return failure();
 }
@@ -203,9 +220,9 @@ class LinalgExtPackToAirDmaMemcpyNd : public OpRewritePattern<OpType> {
     Operation *dstOp = output.getDefiningOp();
 
     // prepare source DMA inputs.
-    SmallVector<Value> srcOffsets;
-    SmallVector<int64_t> srcBaseStrides;
-    SmallVector<int64_t> srcShape;
+    SmallVector<OpFoldResult> srcOffsets;
+    SmallVector<OpFoldResult> srcBaseStrides;
+    SmallVector<OpFoldResult> srcShape;
     if (!succeeded(getDmaInputs(rewriter, sourceOp, srcOffsets, srcShape,
                                 srcBaseStrides))) {
       return rewriter.notifyMatchFailure(
@@ -225,30 +242,25 @@ class LinalgExtPackToAirDmaMemcpyNd : public OpRewritePattern<OpType> {
       }
     }
     // prepare destination DMA inputs.
-    SmallVector<Value> dstOffsets;
-    SmallVector<int64_t> dstBaseStrides;
-    SmallVector<int64_t> dstShape;
+    SmallVector<OpFoldResult> dstOffsets;
+    SmallVector<OpFoldResult> dstBaseStrides;
+    SmallVector<OpFoldResult> dstShape;
     if (!succeeded(getDmaInputs(rewriter, dstOp, dstOffsets, dstShape,
                                 dstBaseStrides))) {
       return rewriter.notifyMatchFailure(
           op, "cant infer dma source inputs from op");
     }
-    // utility function to convert SmallVector<int64_t> -> SmallVector<Value>
-    auto createConstantIndexOps = [&rewriter,
-                                   &loc](const SmallVector<int64_t> &values) {
-      SmallVector<Value> result;
-      for (auto value : values) {
-        result.push_back(rewriter.create<arith::ConstantIndexOp>(loc, value));
-      }
-      return result;
-    };
-    SmallVector<Value, 2> emptyVec;
+    // Async Tokens are added to the op in later passes.
+    SmallVector<Value, 2> asyncTokens;
     rewriter.replaceOpWithNewOp<xilinx::air::DmaMemcpyNdOp>(
-        op, SmallVector<Type, 1>{}, emptyVec, dstOp->getResult(0), dstOffsets,
-        createConstantIndexOps(dstShape),
-        createConstantIndexOps(dstBaseStrides), sourceOp->getResult(0),
-        srcOffsets, createConstantIndexOps(srcShape),
-        createConstantIndexOps(srcBaseStrides));
+        op, SmallVector<Type, 1>{}, asyncTokens, dstOp->getResult(0),
+        getValueOrCreateConstantIndexOp(rewriter, loc, dstOffsets),
+        getValueOrCreateConstantIndexOp(rewriter, loc, dstShape),
+        getValueOrCreateConstantIndexOp(rewriter, loc, dstBaseStrides),
+        sourceOp->getResult(0),
+        getValueOrCreateConstantIndexOp(rewriter, loc, srcOffsets),
+        getValueOrCreateConstantIndexOp(rewriter, loc, srcShape),
+        getValueOrCreateConstantIndexOp(rewriter, loc, srcBaseStrides));
     return success();
   }
 };
