@@ -250,7 +250,10 @@ class LinalgExtPackToAirDmaMemcpyNd : public OpRewritePattern<OpType> {
       return rewriter.notifyMatchFailure(
           op, "cant infer dma source inputs from op");
     }
-    // Async Tokens are added to the op in later passes.
+    // TODO(nmeshram) : We would want to do the same extraction for destination
+    // but currently this is causing a bug in AIR lowering. Therefore we are
+    // sending empty dims which AIR correctly handles as linear strides Async
+    // Tokens are added to the op in later passes.
     SmallVector<Value, 2> asyncTokens;
     rewriter.replaceOpWithNewOp<xilinx::air::DmaMemcpyNdOp>(
         op, SmallVector<Type, 1>{}, asyncTokens, dstOp->getResult(0),

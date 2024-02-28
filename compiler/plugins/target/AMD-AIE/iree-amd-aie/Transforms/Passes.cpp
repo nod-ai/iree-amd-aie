@@ -443,8 +443,10 @@ void addMLIRAIRAIELoweringPasses(OpPassManager &passManager) {
   passManager.addPass(createEraseHALDescriptorTypeFromMemRefPass());
   passManager.addPass(memref::createFoldMemRefAliasOpsPass());
   passManager.addPass(createAMDAIEBridgeToAIRPass());
-  passManager.addPass(createAMDAIEDecomposeLinalgExtPackUnPackToAIRPass());
-
+  if (clUsePipeline != AIEPassPipeline::PackPipeline) {
+    passManager.addPass(createAMDAIEPackToDmaPass());
+  } else {
+  }
   {
     xilinx::air::ParallelToHerdOptions options;
     options.clAssignDepth = 1;
@@ -455,6 +457,10 @@ void addMLIRAIRAIELoweringPasses(OpPassManager &passManager) {
     options.clHasSegment = true;
     passManager.addPass(xilinx::air::createParallelToLaunchPass(options));
   }
+  passManager.addPass(createCanonicalizerPass());
+  passManager.addPass(createCSEPass());
+  passManager.addPass(createAMDAIECanonicalizeDmaPass());
+
   passManager.addPass(xilinx::air::createCopyToDmaPass());
   passManager.addPass(createCanonicalizerPass());
   passManager.addPass(createCSEPass());
@@ -468,8 +474,8 @@ void addMLIRAIRAIELoweringPasses(OpPassManager &passManager) {
   passManager.addPass(xilinx::air::createAIRDependencyCanonicalizePass());
   passManager.addPass(createCanonicalizerPass());
   passManager.addPass(createCSEPass());
-  passManager.addNestedPass<func::FuncOp>(
-      xilinx::air::createAIRSegmentLoopFusion());
+  /*passManager.addNestedPass<func::FuncOp>(
+      xilinx::air::createAIRSegmentLoopFusion());*/
 
   passManager.addPass(
       xilinx::air::createAIRLabelScfForLoopForPingPongPattern());
@@ -483,8 +489,8 @@ void addMLIRAIRAIELoweringPasses(OpPassManager &passManager) {
   passManager.addPass(createCSEPass());
 
   passManager.addPass(xilinx::air::createAIRIsolateAsyncDmaLoopNests());
-  passManager.addPass(
-      xilinx::air::createAIRSpecializeChannelWrapAndStridePattern());
+  // passManager.addPass(
+  //     xilinx::air::createAIRSpecializeChannelWrapAndStridePattern());
   passManager.addPass(createCanonicalizerPass());
   passManager.addPass(createCSEPass());
 
