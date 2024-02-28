@@ -153,8 +153,18 @@ def AMDAIETileAndFuse :
       "Use scf.forall by default for the corresponding tiling level">,
     Option<"tilingLevel", "tiling-level", "int64_t", /*default=*/"-1",
       "Use default tiling level used to retrieve the configuration from lowering_config">,
-    Option<"targetOp", "target-op", "int64_t", /*default=*/"1",
-      "Target consumer op for tiling, 1 for linalg.matmul, 2 for weight linalg.copy and 3 for input linalg.copy">
+    Option<"tilingOp", "tiling-op",
+      "mlir::iree_compiler::AMDAIE::TilingOp",
+      /*default=*/"mlir::iree_compiler::AMDAIE::TilingOp::Matmul",
+      "Target op for tiling",
+      [{::llvm::cl::values(
+        clEnumValN(mlir::iree_compiler::AMDAIE::TilingOp::Matmul, "matmulOp",
+                   "Target op is a linalg.matmul."),
+        clEnumValN(mlir::iree_compiler::AMDAIE::TilingOp::RhsCopy, "rhsCopyOp",
+                   "Target op is a linalg.copy whose user is the rhs of matmul op."),
+        clEnumValN(mlir::iree_compiler::AMDAIE::TilingOp::LhsCopy, "lhsCopyOp",
+                   "Target op is a linalg.copy whose user is the lhs of matmul op.")
+      )}]>
   ];
 }
 

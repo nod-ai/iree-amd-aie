@@ -1,5 +1,5 @@
-// RUN: iree-opt --pass-pipeline='builtin.module(func.func(iree-amdaie-tile-and-fuse{use-scf-for tiling-level=2 target-op=2}))' --split-input-file %s | FileCheck %s --check-prefix=CHECK-RHS-COPY
-// RUN: iree-opt --pass-pipeline='builtin.module(func.func(iree-amdaie-tile-and-fuse{use-scf-for tiling-level=1 target-op=3}))' --split-input-file %s | FileCheck %s --check-prefix=CHECK-LHS-COPY
+// RUN: iree-opt --pass-pipeline='builtin.module(func.func(iree-amdaie-tile-and-fuse{use-scf-for tiling-level=2 tiling-op=rhsCopyOp}))' --split-input-file %s | FileCheck %s --check-prefix=CHECK-RHS-COPY
+// RUN: iree-opt --pass-pipeline='builtin.module(func.func(iree-amdaie-tile-and-fuse{use-scf-for tiling-level=1 tiling-op=lhsCopyOp}))' --split-input-file %s | FileCheck %s --check-prefix=CHECK-LHS-COPY
 
 #config = #iree_codegen.lowering_config<tile_sizes = [[64, 64], [0, 256], [256, 0]]>
 func.func @matmul_example(%arg0 : tensor<64x2048xi32>, %arg1 : tensor<2048x64xi32>) -> tensor<64x64xi32> {

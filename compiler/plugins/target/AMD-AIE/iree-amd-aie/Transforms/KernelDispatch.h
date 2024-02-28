@@ -24,6 +24,9 @@ enum class AIEPassPipeline : int32_t {
   None = 4
 };
 
+/// Enum for target tiling op.
+enum class TilingOp : int32_t { Matmul = 0, RhsCopy = 1, LhsCopy = 2 };
+
 /// Struct specifying the number of cores to use. This will be replaced
 /// by a more versatile handling in the future.
 struct AIEConfig {

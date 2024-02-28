@@ -323,13 +323,13 @@ void addPadPackBasedPassPipeline(OpPassManager &pm,
   // Tile linalg.copy ops using scf.for
   tileOptions.tilingLevel = 1;
   tileOptions.useSCFFor = true;
-  tileOptions.targetOp = 3;
+  tileOptions.tilingOp = TilingOp::LhsCopy;
   modulePassManager.addNestedPass<func::FuncOp>(
       createAMDAIETileAndFusePass(tileOptions));
 
   tileOptions.tilingLevel = 2;
   tileOptions.useSCFFor = true;
-  tileOptions.targetOp = 2;
+  tileOptions.tilingOp = TilingOp::RhsCopy;
   modulePassManager.addNestedPass<func::FuncOp>(
       createAMDAIETileAndFusePass(tileOptions));
   modulePassManager.addNestedPass<func::FuncOp>(createAMDAIECleanupPass());
@@ -339,16 +339,9 @@ void addPadPackBasedPassPipeline(OpPassManager &pm,
   // Second level tiling using scf.forall
   tileOptions.tilingLevel = 3;
   tileOptions.useSCFFor = false;
-  tileOptions.targetOp = 1;
+  tileOptions.tilingOp = TilingOp::Matmul;
   modulePassManager.addNestedPass<func::FuncOp>(
       createAMDAIETileAndFusePass(tileOptions));
-  modulePassManager.addNestedPass<func::FuncOp>(createAMDAIECleanupPass());
-  modulePassManager.addPass(createCanonicalizerPass());
-  modulePassManager.addPass(createCSEPass());
-
-  // Fuse fill into forall loop
-  modulePassManager.addNestedPass<func::FuncOp>(
-      createAMDAIEFuseFillIntoForallPass());
   modulePassManager.addNestedPass<func::FuncOp>(createAMDAIECleanupPass());
   modulePassManager.addPass(createCanonicalizerPass());
   modulePassManager.addPass(createCSEPass());

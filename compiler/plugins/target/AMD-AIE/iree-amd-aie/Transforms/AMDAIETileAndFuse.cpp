@@ -63,18 +63,18 @@ static bool isTilingReductionDimension(TilingInterface consumerOp,
   return false;
 }
 
-static bool consumerToSkip(TilingInterface op, int64_t targetOp,
+static bool consumerToSkip(TilingInterface op, TilingOp tilingOp,
                            int64_t copyCnt) {
-  switch (targetOp) {
+  switch (tilingOp) {
     // Target consumer is linalg.matmul
-    case 1:
+    case TilingOp::Matmul:
       return (isa<linalg::CopyOp>(op) || isa<tensor::UnPackOp>(op));
     // Target consumer is linalg.copy, its user is rhs of matmul op
-    case 2:
+    case TilingOp::RhsCopy:
       return (copyCnt != 2 || isa<linalg::MatmulOp>(op) ||
               isa<tensor::UnPackOp>(op));
     // Target consumer is linalg.copy, its user is lhs of matmul op
-    case 3:
+    case TilingOp::LhsCopy:
       return (copyCnt != 3 || isa<linalg::MatmulOp>(op) ||
               isa<tensor::UnPackOp>(op));
     default:
@@ -128,7 +128,7 @@ void AMDAIETileAndFusePass::runOnOperation() {
   TilingInterface matmulOp;
   int64_t copyCnt = 0;
   funcOp->walk<WalkOrder::PostOrder, ReverseIterator>([&](TilingInterface op) {
-    // When there are copies of matmul operands and the targetOp is linalg.copy,
+    // When there are copies of matmul operands and the tilingOp is linalg.copy,
     // different tiling strategies are applied on these linalg.copy. In the post
     // order walk, linalg.copy ops are found in the order of (result, rhs, lhs).
     // We only want to apply tiling on lhs and rhs of them in the pad-pack
@@ -139,7 +139,7 @@ void AMDAIETileAndFusePass::runOnOperation() {
     // Find the next consumer op if it does not have loops OR it is from
     // the skip ops list.
     if (op.getLoopIteratorTypes().empty() ||
-        consumerToSkip(op, targetOp, copyCnt))
+        consumerToSkip(op, tilingOp, copyCnt))
       return WalkResult::advance();
     consumerOp = op;
     return WalkResult::interrupt();
