@@ -208,8 +208,10 @@ static LogicalResult setRootConfigForPadPackPipeline(func::FuncOp entryPointFn,
   // ------------------------------------------------------
   // -------------- Set lowering config -------------------
   // ------------------------------------------------------
-  // Assume working on a 2x2 AIE array. Currently, the tile sizes are hardcoded
-  // with basic constraints.
+  // Assume working on a 2x2 AIE array. Currently, the tile sizes are chosen
+  // empirically for large GEMM sizes, which are [64, 64, 256] for the first
+  // level and [32, 32, 32] for the second level. Basic min/max constraints are
+  // added to avoid failure for small GEMM sizes.
   auto initType = linalgOp.getDpsInitOperand(0)->get().getType();
   auto initShape = llvm::cast<ShapedType>(initType).getShape();
   auto tileM0 = std::min((int)initShape[0], 64);
