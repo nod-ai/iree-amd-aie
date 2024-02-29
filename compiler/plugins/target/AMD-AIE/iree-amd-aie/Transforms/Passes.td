@@ -116,6 +116,12 @@ def AMDAIEPackAndTranspose :
   ];
 }
 
+def AMDAIEPackToDma : 
+  Pass<"iree-amdaie-pack-to-dma", ""> {
+  let summary = "Convert pack/unpack ops air.dma_memcpy_nd op's";
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEPackToDmaPass()";
+}
+
 def AMDAIEPad :
     Pass<"iree-amdaie-pad", "func::FuncOp"> {
   let summary = "Pass to pad operations on tensors in top-down order.";
