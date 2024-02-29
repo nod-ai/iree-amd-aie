@@ -76,6 +76,9 @@ std::unique_ptr<Pass> createAMDAIELowerWorkgroupCountPass();
 std::unique_ptr<Pass> createAMDAIEPackAndTransposePass(
     AMDAIEPackAndTransposeOptions options = {});
 
+/// Create pass to lower pack/unpack ops to air.DmaMemcpyNd ops.
+std::unique_ptr<Pass> createAMDAIEPackToDmaPass();
+
 /// Create a pass to pad MatmulOp.
 std::unique_ptr<Pass> createAMDAIEPadPass(AMDAIEPadOptions options = {});
 
