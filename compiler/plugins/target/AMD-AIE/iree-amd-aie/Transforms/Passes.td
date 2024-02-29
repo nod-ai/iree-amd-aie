@@ -144,6 +144,16 @@ def AMDAIEPeelForLoop :
       "mlir::iree_compiler::AMDAIE::createAMDAIEPeelForLoopPass()";
 }
 
+def AMDAIETile :
+    Pass<"iree-amdaie-tile", "func::FuncOp"> {
+  let summary = "Pass to tile TilingInterface operations.";
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIETilePass()";
+  let options = [
+    Option<"tilingLevel", "tiling-level", "int64_t", /*default=*/"-1",
+      "Use default tiling level used to retrieve the configuration from lowering_config">
+  ];
+}
+
 def AMDAIETileAndFuse :
     Pass<"iree-amdaie-tile-and-fuse", "func::FuncOp"> {
   let summary = "Pass to tile and fuse TilingInterface operations.";
@@ -152,19 +162,7 @@ def AMDAIETileAndFuse :
     Option<"useSCFFor", "use-scf-for", "bool", /*default=*/"false",
       "Use scf.forall by default for the corresponding tiling level">,
     Option<"tilingLevel", "tiling-level", "int64_t", /*default=*/"-1",
-      "Use default tiling level used to retrieve the configuration from lowering_config">,
-    Option<"tilingOp", "tiling-op",
-      "mlir::iree_compiler::AMDAIE::TilingOp",
-      /*default=*/"mlir::iree_compiler::AMDAIE::TilingOp::Matmul",
-      "Target op for tiling",
-      [{::llvm::cl::values(
-        clEnumValN(mlir::iree_compiler::AMDAIE::TilingOp::Matmul, "matmulOp",
-                   "Target op is a linalg.matmul."),
-        clEnumValN(mlir::iree_compiler::AMDAIE::TilingOp::RhsCopy, "rhsCopyOp",
-                   "Target op is a linalg.copy whose user is the rhs of matmul op."),
-        clEnumValN(mlir::iree_compiler::AMDAIE::TilingOp::LhsCopy, "lhsCopyOp",
-                   "Target op is a linalg.copy whose user is the lhs of matmul op.")
-      )}]>
+      "Use default tiling level used to retrieve the configuration from lowering_config">
   ];
 }
 

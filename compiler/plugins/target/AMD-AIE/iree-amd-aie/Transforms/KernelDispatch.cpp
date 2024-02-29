@@ -222,12 +222,11 @@ static LogicalResult setRootConfigForPadPackPipeline(func::FuncOp entryPointFn,
   auto tileK1 = std::min((int)lhsShape[1] / 8, 4);
 
   SmallVector<int64_t> TileSizeLevel0 = {tileM0, tileN0};
-  SmallVector<int64_t> TileSizeLevel1 = {0, tileK0};
-  SmallVector<int64_t> TileSizeLevel2 = {tileK0, 0};
-  SmallVector<int64_t> TileSizeLevel3 = {tileM1, tileN1};
-  SmallVector<int64_t> TileSizeLevel4 = {0, 0, tileK1};
+  SmallVector<int64_t> TileSizeLevel1 = {0, 0, tileK0};
+  SmallVector<int64_t> TileSizeLevel2 = {tileM1, tileN1};
+  SmallVector<int64_t> TileSizeLevel3 = {0, 0, tileK1};
   TileSizesListType tileSizes = {TileSizeLevel0, TileSizeLevel1, TileSizeLevel2,
-                                 TileSizeLevel3, TileSizeLevel4};
+                                 TileSizeLevel3};
   if (failed(setOpConfigAndEntryPointFnTranslation(
           entryPointFn, linalgOp, tileSizes,
           IREE::Codegen::DispatchLoweringPassPipeline::None))) {

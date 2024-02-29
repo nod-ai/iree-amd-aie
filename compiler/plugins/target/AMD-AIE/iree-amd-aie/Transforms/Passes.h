@@ -89,6 +89,9 @@ std::unique_ptr<Pass> createAMDAIEPadPass(AMDAIEPadOptions options = {});
 /// Create a pass to peel the first iteration out of the scf.for loop.
 std::unique_ptr<Pass> createAMDAIEPeelForLoopPass();
 
+/// Create pass to tile TilingInterface operations.
+std::unique_ptr<Pass> createAMDAIETilePass(AMDAIETileOptions options = {});
+
 /// Create pass to tile and fuse TilingInterface operations.
 std::unique_ptr<Pass> createAMDAIETileAndFusePass(
     AMDAIETileAndFuseOptions options = {});

@@ -52,6 +52,7 @@ iree_cc_library(
     "AMDAIEUtils.cpp"
     "AMDAIEPeelForLoop.cpp"
     "AMDAIEPropagateDataLayout.cpp"
+    "AMDAIETile.cpp"
     "AMDAIETileAndFuse.cpp"
     "BridgeToAIRPass.cpp"
     "DecomposeLinalgExtPackUnPackToAIR.cpp"
