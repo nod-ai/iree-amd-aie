@@ -151,6 +151,8 @@ void AMDAIELowerExecutableTargetPass::runOnOperation() {
           addPackBasedPassPipeline(executableLoweringPipeline, tilingConfig);
         } else if (usePassPipeline == AIEPassPipeline::PadPipeline) {
           addPadBasedPassPipeline(executableLoweringPipeline, tilingConfig);
+        } else if (usePassPipeline == AIEPassPipeline::PadPackPipeline) {
+          addPadPackBasedPassPipeline(executableLoweringPipeline, tilingConfig);
         }
       } break;
       default:

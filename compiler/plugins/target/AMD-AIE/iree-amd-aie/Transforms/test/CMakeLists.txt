@@ -24,6 +24,7 @@ iree_lit_test_suite(
     "propagate_data_layout.mlir"
     "tile_and_fuse_using_scf_for.mlir"
     "tile_and_fuse_using_scf_forall.mlir"
+    "tile_copy_using_scf_for.mlir"
   TOOLS
     ${IREE_LLD_TARGET}
     FileCheck

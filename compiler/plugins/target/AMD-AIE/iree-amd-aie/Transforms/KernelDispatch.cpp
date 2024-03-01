@@ -29,10 +29,17 @@ static LogicalResult setRootConfigForPadPipeline(func::FuncOp entryPointFn,
       IREE::Codegen::DispatchLoweringPassPipeline::None);
 }
 
-static SmallVector<int64_t> getPackedSize(Operation *op) {
+static SmallVector<int64_t> getPackedSize(Operation *op, const int packLevel) {
   // TODO: consider emiting an error/warning if the default sizes are used as a
   // fallback.
-  const SmallVector<int64_t> defaultSizes{0, 0, 0, 4, 4, 8};
+  SmallVector<int64_t> defaultSizes;
+  if (packLevel == 1) {
+    defaultSizes = {4, 4, 8};
+  } else if (packLevel == 2) {
+    defaultSizes = {0, 0, 0, 4, 4, 8};
+  } else {
+    op->emitError("invalid value of pack level.");
+  }
   auto matmulOp = dyn_cast<linalg::MatmulOp>(op);
   if (!matmulOp) {
     return defaultSizes;
@@ -54,11 +61,12 @@ static SmallVector<int64_t> getPackedSize(Operation *op) {
   }
 
   auto instructionSize = maybeInstructionSize.value();
-
-  SmallVector<int64_t> packedSizes(6, 0);
+  SmallVector<int64_t> packedSizes(3, 0);
   std::copy(instructionSize.begin(), instructionSize.end(),
-            packedSizes.begin() + 3);
-
+            packedSizes.begin());
+  if (packLevel == 2) {
+    packedSizes.insert(packedSizes.begin(), {0, 0, 0});
+  }
   return packedSizes;
 }
 
@@ -67,8 +75,8 @@ static LogicalResult setRootConfigForSimplePackPipeline(
   // ------------------------------------------------------
   // -------------- Set lowering config -------------------
   // ------------------------------------------------------
-  // Assume working on a 2x2 AIE array and make sure the tile size is not larger
-  // than the input size.
+  // Assume working on a 2x2 AIE array. Currently, the tile sizes are hardcoded
+  // with basic constraints.
   auto initType = linalgOp.getDpsInitOperand(0)->get().getType();
   auto initShape = llvm::cast<ShapedType>(initType).getShape();
   auto tileM0 = std::min((int)initShape[0], 64);
@@ -110,7 +118,8 @@ static LogicalResult setRootConfigForSimplePackPipeline(
       outerPerm);
   // Pack level => 2.
   // packed size for [M, N, K, m, n, k]
-  packedSizes = getPackedSize(linalgOp);
+  const int packLevel = 2;
+  packedSizes = getPackedSize(linalgOp, packLevel);
   // Transpose A matrix from [M K m k m0 k0] to [M K k m m0 k0]
   // Transpose B matrix from [K N k n n0 k0] to [K N n k k0 n0]
   // Transpose C matrix from [M N m n m0 n0] to [M N n m m0 n0]
@@ -169,7 +178,8 @@ static LogicalResult setRootConfigForPackPipeline(func::FuncOp entryPointFn,
       outerPerm);
   // Pack level => 2.
   // packed size for [M, N, K, m, n, k]
-  packedSizes = getPackedSize(linalgOp);
+  const int packLevel = 2;
+  packedSizes = getPackedSize(linalgOp, packLevel);
   // Transpose A matrix from [M K m k m0 k0] to [M K k m m0 k0]
   // Transpose B matrix from [K N k n n0 k0] to [K N n k k0 n0]
   // Transpose C matrix from [M N m n m0 n0] to [M N n m m0 n0]
@@ -184,6 +194,61 @@ static LogicalResult setRootConfigForPackPipeline(func::FuncOp entryPointFn,
 
   SmallVector<PackingConfigPackingLevelAttr> packingConfigLevelsVal = {
       packingConfigLevel1Attr, packingConfigLevel2Attr};
+
+  auto packingConfigLevels =
+      PackingConfigPackingLevelsAttr::get(context, packingConfigLevelsVal);
+  auto config = PackingConfigAttr::get(context, packingConfigLevels);
+  setPackingConfig(linalgOp, config);
+  return success();
+}
+
+static LogicalResult setRootConfigForPadPackPipeline(func::FuncOp entryPointFn,
+                                                     linalg::LinalgOp linalgOp,
+                                                     AIEConfig cfg) {
+  // ------------------------------------------------------
+  // -------------- Set lowering config -------------------
+  // ------------------------------------------------------
+  // Assume working on a 2x2 AIE array. Currently, the tile sizes are chosen
+  // empirically for large GEMM sizes, which are [64, 64, 256] for the first
+  // level and [32, 32, 32] for the second level. Basic min/max constraints are
+  // added to avoid failure for small GEMM sizes.
+  auto initType = linalgOp.getDpsInitOperand(0)->get().getType();
+  auto initShape = llvm::cast<ShapedType>(initType).getShape();
+  auto tileM0 = std::min((int)initShape[0], 64);
+  auto tileN0 = std::min((int)initShape[1], 64);
+  auto tileM1 = std::max((int)tileM0 / 2, 1);
+  auto tileN1 = std::max((int)tileN0 / 2, 1);
+  auto lhsType = linalgOp.getDpsInputOperand(0)->get().getType();
+  auto lhsShape = llvm::cast<ShapedType>(lhsType).getShape();
+  auto tileK0 = std::min((int)lhsShape[1], 256);
+  auto tileK1 = std::min((int)lhsShape[1] / 8, 4);
+
+  SmallVector<int64_t> TileSizeLevel0 = {tileM0, tileN0};
+  SmallVector<int64_t> TileSizeLevel1 = {0, 0, tileK0};
+  SmallVector<int64_t> TileSizeLevel2 = {tileM1, tileN1};
+  SmallVector<int64_t> TileSizeLevel3 = {0, 0, tileK1};
+  TileSizesListType tileSizes = {TileSizeLevel0, TileSizeLevel1, TileSizeLevel2,
+                                 TileSizeLevel3};
+  if (failed(setOpConfigAndEntryPointFnTranslation(
+          entryPointFn, linalgOp, tileSizes,
+          IREE::Codegen::DispatchLoweringPassPipeline::None))) {
+    return failure();
+  }
+  // ------------------------------------------------------
+  // --------------- Set packing config -------------------
+  // ------------------------------------------------------
+  MLIRContext *context = entryPointFn.getContext();
+  const int packLevel = 1;
+  auto packedSizes = getPackedSize(linalgOp, packLevel);
+  SmallVector<int64_t> transposePackIndices = {0, 1, 2};
+  SmallVector<bool> unpackEmpty = {false, false, true};
+  SmallVector<SmallVector<int64_t>> innerPerm = {{0, 1}, {1, 0}, {0, 1}};
+  SmallVector<SmallVector<int64_t>> outerPerm = {{1, 0}, {1, 0}, {1, 0}};
+  auto packingConfigLevel1Attr = getPackingConfigPackingLevelAttr(
+      context, packedSizes, transposePackIndices, unpackEmpty, innerPerm,
+      outerPerm);
+  SmallVector<PackingConfigPackingLevelAttr> packingConfigLevelsVal = {
+      packingConfigLevel1Attr};
 
   auto packingConfigLevels =
       PackingConfigPackingLevelsAttr::get(context, packingConfigLevelsVal);
@@ -321,6 +386,8 @@ static LogicalResult setRootConfig(func::FuncOp entryPointFn,
     return setRootConfigForSimplePackPipeline(entryPointFn, linalgOp);
   if (usePassPipeline == AIEPassPipeline::PackPipeline)
     return setRootConfigForPackPipeline(entryPointFn, linalgOp, cfg);
+  if (usePassPipeline == AIEPassPipeline::PadPackPipeline)
+    return setRootConfigForPadPackPipeline(entryPointFn, linalgOp, cfg);
   return linalgOp.emitOpError("unhandled pass pipeline");
 }
 
