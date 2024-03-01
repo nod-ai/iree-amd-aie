@@ -73,6 +73,11 @@ std::unique_ptr<Pass> createAMDAIELowerExecutableTargetPass(
 std::unique_ptr<Pass> createAMDAIELoweringStrategyPass(
     AMDAIELoweringStrategyOptions options = {});
 
+/// Create pass to lower a sequence of operation(s) to a iree_codegen.ukernel.*
+/// operation.
+std::unique_ptr<Pass> createAMDAIELowerToUKernelsPass(
+    AMDAIELowerToUKernelsOptions options = {});
+
 /// Create a pass to lower workgroup count region of entry point operations.
 std::unique_ptr<Pass> createAMDAIELowerWorkgroupCountPass();
 
