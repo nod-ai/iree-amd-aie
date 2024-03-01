@@ -49,6 +49,13 @@
 
 namespace mlir::iree_compiler::AMDAIE {
 
+static llvm::cl::opt<std::string> clEnableAMDAIEUkernels(
+    "iree-amdaie-enable-ukernels",
+    llvm::cl::desc("Enables microkernels in the amdaie backend. May be "
+                   "`none`, `all`, or a comma-separated list of specific "
+                   "unprefixed microkernels to enable, e.g. `matmul`."),
+    llvm::cl::init("none"));
+
 class AIETargetBackend final : public IREE::HAL::TargetBackend {
  public:
   explicit AIETargetBackend(const AMDAIEOptions &options) : options(options) {}
@@ -109,8 +116,11 @@ class AIETargetBackend final : public IREE::HAL::TargetBackend {
     auto addConfig = [&](StringRef name, Attribute value) {
       configItems.emplace_back(StringAttr::get(context, name), value);
     };
-    // Set target arch
+    // Set target arch.
     addConfig("target_arch", StringAttr::get(context, "chip-tbd"));
+    // Set microkernel enabling flag.
+    addConfig("ukernels", StringAttr::get(context, clEnableAMDAIEUkernels));
+
     auto configAttr = b.getDictionaryAttr(configItems);
     return IREE::HAL::ExecutableTargetAttr::get(
         context, b.getStringAttr("amd-aie"),
