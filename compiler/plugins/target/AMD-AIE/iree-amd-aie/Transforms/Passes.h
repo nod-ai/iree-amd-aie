@@ -39,6 +39,10 @@ void addPackBasedPassPipeline(OpPassManager &passManager,
 void addSimplePackBasedPassPipeline(OpPassManager &passManager,
                                     TilingConfig &tilingConfig);
 
+/// Populates passes needed to lower the IR via a Pad-Pack based approach.
+void addPadPackBasedPassPipeline(OpPassManager &passManager,
+                                 TilingConfig &tilingConfig);
+
 /// Create a pass to do some rewrites that help bridging the path to AIR/AIE
 /// lowering.
 std::unique_ptr<Pass> createAMDAIEBridgeToAIRPass();
@@ -81,11 +85,17 @@ std::unique_ptr<Pass> createAMDAIELowerWorkgroupCountPass();
 std::unique_ptr<Pass> createAMDAIEPackAndTransposePass(
     AMDAIEPackAndTransposeOptions options = {});
 
+/// Create pass to lower pack/unpack ops to air.DmaMemcpyNd ops.
+std::unique_ptr<Pass> createAMDAIEPackToDmaPass();
+
 /// Create a pass to pad MatmulOp.
 std::unique_ptr<Pass> createAMDAIEPadPass(AMDAIEPadOptions options = {});
 
 /// Create a pass to peel the first iteration out of the scf.for loop.
 std::unique_ptr<Pass> createAMDAIEPeelForLoopPass();
+
+/// Create pass to tile TilingInterface operations.
+std::unique_ptr<Pass> createAMDAIETilePass(AMDAIETileOptions options = {});
 
 /// Create pass to tile and fuse TilingInterface operations.
 std::unique_ptr<Pass> createAMDAIETileAndFusePass(
