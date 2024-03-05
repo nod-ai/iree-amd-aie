@@ -17,25 +17,13 @@
 #include "iree-dialects/Dialect/LinalgExt/IR/LinalgExtDialect.h"
 #include "iree/compiler/Codegen/Dialect/Codegen/IR/IREECodegenDialect.h"
 #include "iree/compiler/Utils/FlatbufferUtils.h"
-#include "llvm/Bitcode/BitcodeWriter.h"
-#include "llvm/Support/Debug.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/Path.h"
 #include "llvm/Support/Program.h"
 #include "llvm/Support/ToolOutputFile.h"
-#include "llvm/Support/raw_ostream.h"
-#include "mlir/Conversion/AffineToStandard/AffineToStandard.h"
-#include "mlir/Conversion/ArithToLLVM/ArithToLLVM.h"
-#include "mlir/Conversion/ControlFlowToLLVM/ControlFlowToLLVM.h"
-#include "mlir/Conversion/MathToLLVM/MathToLLVM.h"
-#include "mlir/Conversion/MemRefToLLVM/MemRefToLLVM.h"
-#include "mlir/Dialect/MemRef/Transforms/Passes.h"
 #include "mlir/Dialect/Transform/IR/TransformDialect.h"
-#include "mlir/IR/BuiltinOps.h"
-#include "mlir/Pass/PassManager.h"
 #include "mlir/Support/FileUtilities.h"
-#include "mlir/Target/LLVMIR/ModuleTranslation.h"
 #include "runtime/plugins/AMD-AIE/iree-amd-aie/schemas/xrt_executable_def_builder.h"
 
 #define DEBUG_TYPE "aie-target"
@@ -137,7 +125,7 @@ LogicalResult AIETargetBackend::serializeExecutable(
   if (!serOptions.dumpIntermediatesPath.empty()) {
     workDir = serOptions.dumpIntermediatesPath;
     llvm::sys::path::append(workDir, basename);
-    llvm::sys::fs::create_directories(workDir);
+    (void)llvm::sys::fs::create_directories(workDir);
   }
 
   // No path for intermediates: make a temporary directory for this executable
