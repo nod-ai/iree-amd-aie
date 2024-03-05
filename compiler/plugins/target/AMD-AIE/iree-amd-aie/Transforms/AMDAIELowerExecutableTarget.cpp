@@ -7,9 +7,7 @@
 #include "iree-amd-aie/Transforms/KernelDispatch.h"
 #include "iree-amd-aie/Transforms/Passes.h"
 #include "iree-dialects/Dialect/LinalgExt/IR/LinalgExtDialect.h"
-#include "iree/compiler/Codegen/Common/Passes.h"
 #include "iree/compiler/Codegen/Dialect/Codegen/IR/IREECodegenAttrs.h"
-#include "iree/compiler/Codegen/Dialect/Codegen/IR/IREECodegenDialect.h"
 #include "iree/compiler/Dialect/HAL/IR/HALDialect.h"
 #include "iree/compiler/Dialect/HAL/IR/HALOps.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
@@ -23,7 +21,6 @@
 #include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Pass/PassRegistry.h"
-#include "mlir/Transforms/Passes.h"
 // TODO(avarma):
 //     We shouldn't add "CPUUtils" - instead it should perhaps just be "Utils"?
 #include "iree/compiler/Codegen/Common/TileSizeSelection.h"
