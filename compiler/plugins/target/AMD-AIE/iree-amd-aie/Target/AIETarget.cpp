@@ -115,34 +115,50 @@ LogicalResult AIETargetBackend::serializeExecutable(
     const SerializationOptions &serOptions,
     IREE::HAL::ExecutableVariantOp variantOp, OpBuilder &executableBuilder) {
   ModuleOp moduleOp = variantOp.getInnerModule();
+
   auto basename =
       llvm::join_items("_", serOptions.dumpBaseName, variantOp.getName());
 
-  // If an intermediates path has been specified, assume it is common for all
-  // executables compiling in parallel, so create an executable-specific
-  // subdir to keep this executable's intermediates separate.
-  SmallString<128> workDir;
-  if (!serOptions.dumpIntermediatesPath.empty()) {
-    workDir = serOptions.dumpIntermediatesPath;
-    llvm::sys::path::append(workDir, basename);
-    (void)llvm::sys::fs::create_directories(workDir);
-  }
 
-  // No path for intermediates: make a temporary directory for this executable
-  // that is certain to be distinct from the dir of any other executable.
-  else {
-    auto err =
-        llvm::sys::fs::createUniqueDirectory(variantOp.getName(), workDir);
-    if (err) {
-      return moduleOp.emitOpError() << "failed to create temporary working "
-                                       "directory for xclbin generation: "
-                                    << err.message();
+  auto maybeWorkDir = [&]() -> FailureOr<SmallString<128>> {
+    // If a path for intermediates has been specified, assume it is common for
+    // all executables compiling in parallel, and so create an
+    // executable-specific subdir to keep this executable's intermediates
+    // separate.
+    if (!serOptions.dumpIntermediatesPath.empty()) {
+      SmallString<128> workDir{serOptions.dumpIntermediatesPath};
+      llvm::sys::path::append(workDir, basename);
+      auto ecode = llvm::sys::fs::create_directories(workDir);
+      if (ecode) {
+        return moduleOp.emitError()
+               << "failed to create working directory " << workDir
+               << ". Error message : " << ecode.message();
+      }
+      return workDir;
     }
-  }
 
-  std::string errorMessage;
+    // No path for intermediates: make a temporary directory for this
+    // executable that is certain to be distinct from the dir of any other
+    // executable.
+    SmallString<128> workDirFromScratch;
+    auto err = llvm::sys::fs::createUniqueDirectory(
+        /* prefix = */ variantOp.getName(), workDirFromScratch);
+
+    if (err)
+      return moduleOp.emitOpError()
+             << "failed to create working directory for xclbin generation: "
+             << err.message();
+
+    return workDirFromScratch;
+  }();
+
+  if (failed(maybeWorkDir)) return failure();
+  auto workDir = maybeWorkDir.value();
+
   SmallString<128> inputMlirPath(workDir);
   llvm::sys::path::append(inputMlirPath, basename + ".aiecc.mlir");
+
+  std::string errorMessage;
   {
     auto inputMlirOut = openOutputFile(inputMlirPath, &errorMessage);
     if (!inputMlirOut) {
@@ -166,8 +182,8 @@ LogicalResult AIETargetBackend::serializeExecutable(
     // The xclbin kernel name, appended with instance name suffix (`:MLIRAIEV1`,
     // 10 chars) is required by the xclbinutil to have a length smaller or equal
     // to 64 right now. To have some additional wiggle room for suffix changes,
-    // we use the 48 first characters for the kernel name.
-    // This is okay to do for now because we are only supporting single entry point.
+    // we use the 48 first characters for the kernel name. This is okay to do
+    // for now because we are only supporting single entry point.
     entryPointNames.emplace_back(exportOp.getSymName().substr(0, 48));
   }
 
@@ -187,12 +203,17 @@ LogicalResult AIETargetBackend::serializeExecutable(
                                  entryPointNames[0],
                                  "--tmpdir",
                                  workDir};
-  if (options.useChess) {
-    cmdArgs.push_back("--use-chess");
-  }
-  if (options.showInvokedCommands) {
-    cmdArgs.push_back("-v");
-  }
+
+  auto addOpt = [&](StringRef arg, bool value) {
+    if (value) cmdArgs.push_back(arg);
+  };
+  addOpt("--use-chess", options.useChess);
+  addOpt("-v", options.showInvokedCommands);
+  addOpt("--print-ir-after-all", options.aie2xclbinPrintIrAfterAll);
+  addOpt("--print-ir-before-all", options.aie2xclbinPrintIrBeforeAll);
+  addOpt("--disable-threading", options.aie2xclbinDisableTheading);
+  addOpt("--print-ir-module-scope", options.aie2xclbinPrintIrModuleScope);
+
   // Update the linker search path to find libcdo_driver.so
   SmallString<128> libPath(options.vitisInstallDir);
   llvm::sys::path::append(libPath, "aietools", "lib", "lnx64.o");
@@ -226,14 +247,23 @@ LogicalResult AIETargetBackend::serializeExecutable(
     cmdEnv.push_back(newHome);
   }
   if (options.showInvokedCommands) {
-    for (auto s : cmdEnv) llvm::dbgs() << s << " ";
-    for (auto s : cmdArgs) llvm::dbgs() << s << " ";
-    llvm::dbgs() << "\n";
+    for (auto s : cmdEnv) llvm::outs() << s << " ";
+    for (auto s : cmdArgs) llvm::outs() << s << " ";
+    llvm::outs() << "\n";
   }
+
   int result = llvm::sys::ExecuteAndWait(cmdArgs[0], cmdArgs, cmdEnv);
+
   if (result != 0) {
+    if (options.showInvokedCommands) {
+      llvm::outs() << "Failed in ExucuteAndWait" << result << "\n";
+    }
     return moduleOp.emitOpError(
-        "Failed to produce an XCLBin with external tool");
+        "Failed to produce an XCLBin with external tool.");
+  }
+
+  if (options.showInvokedCommands) {
+    llvm::outs() << "Succeeded in ExucuteAndWait" << result << "\n";
   }
 
   std::vector<uint32_t> ipuInstrs;
@@ -251,7 +281,7 @@ LogicalResult AIETargetBackend::serializeExecutable(
 
   auto xclbinIn = openInputFile(xclbinPath, &errorMessage);
   if (!xclbinIn) {
-    moduleOp.emitOpError() << "Failed to open xclbIN file: " << errorMessage;
+    moduleOp.emitOpError() << "Failed to open xclbin file: " << errorMessage;
   }
 
   // Serialize the executable to flatbuffer format
