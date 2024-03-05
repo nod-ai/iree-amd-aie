@@ -1,5 +1,5 @@
+// Input to printing test:
 !t = tensor<64x64xf32>
-
 func.func @matmul(%lhs : !t, %rhs : !t) -> !t {
   %init_acc = tensor.empty() : !t
   %c0_acc_t = arith.constant 0.0 : f32

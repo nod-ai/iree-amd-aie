@@ -247,23 +247,16 @@ LogicalResult AIETargetBackend::serializeExecutable(
     cmdEnv.push_back(newHome);
   }
   if (options.showInvokedCommands) {
-    for (auto s : cmdEnv) llvm::outs() << s << " ";
-    for (auto s : cmdArgs) llvm::outs() << s << " ";
-    llvm::outs() << "\n";
+    for (auto s : cmdEnv) llvm::dbgs() << s << " ";
+    for (auto s : cmdArgs) llvm::dbgs() << s << " ";
+    llvm::dbgs() << "\n";
   }
 
-  int result = llvm::sys::ExecuteAndWait(cmdArgs[0], cmdArgs, cmdEnv);
-
-  if (result != 0) {
-    if (options.showInvokedCommands) {
-      llvm::outs() << "Failed in ExucuteAndWait" << result << "\n";
-    }
-    return moduleOp.emitOpError(
-        "Failed to produce an XCLBin with external tool.");
-  }
-
-  if (options.showInvokedCommands) {
-    llvm::outs() << "Succeeded in ExucuteAndWait" << result << "\n";
+  {
+    int result = llvm::sys::ExecuteAndWait(cmdArgs[0], cmdArgs, cmdEnv);
+    if (result != 0)
+      return moduleOp.emitOpError(
+          "Failed to produce an XCLBin with external tool.");
   }
 
   std::vector<uint32_t> ipuInstrs;

@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-#Copyright 2024 The LLVM Project
+# Copyright 2024 The LLVM Project
 #
 # Licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.
@@ -36,6 +36,7 @@ fi
 OUTPUT=`realpath "${2}"`
 mkdir -p ${OUTPUT}
 
+# The CI case:
 if [ "$#" -eq 2 ]; then
   PEANO=/opt/llvm-aie
   XRT=/opt/xilinx/xrt
@@ -43,6 +44,7 @@ if [ "$#" -eq 2 ]; then
   MLIR_AIE=`realpath .venv/lib/python3.10/site-packages/mlir_aie`
 fi
 
+# The local set-paths-manually case:
 if [ "$#" -eq 6 ]; then
   PEANO="$3"
   XRT="$4"
@@ -84,7 +86,7 @@ else
 fi
 
 if [ -d "${VITIS}" ]; then
-  VITIS=${VITIS} # `realpath "${VITIS}"`
+  VITIS=${VITIS}
 else
   echo "VITIS does not exist: ${VITIS}"
   exit 1
@@ -97,27 +99,23 @@ else
   exit 1
 fi
 
-# There might be a FileCheck program in the IREE_COMPILE. Check. 
-# Do not fail if it not there, we can also check if it already on PATH (backup). 
+# There might be a FileCheck program in the IREE_COMPILE. Check.
+# Do not fail if it is not there, we can also check if it already on PATH.
 if [ -x "${IREE_COMPILE}/FileCheck" ]; then
   FILECHECK_EXE="${IREE_COMPILE}/FileCheck"
 elif [ -x "$(command -v FileCheck)" ]; then
   FILECHECK_EXE="$(command -v FileCheck)"
 else
-  echo "FileCheck does not exist or isn't executable in IREE_COMPILE or on PATH."
+  echo "FileCheck does not exist or isn't executable in ${IREE_COMPILE} or on PATH."
   exit 1
 fi
 
-
-
-
 source $XRT/setup.sh
-
 
 THIS="$(cd $(dirname $0) && pwd)"
 SOURCE_MLIR_FILE="${THIS}/linalg_matmul_f32.mlir"
 
-# Construct the iree-compile command. Use all the aie2xclbin printing options, 
+# Construct the iree-compile command. Use all the aie2xclbin printing options,
 # and then test that the output is printed to stdout and stderr as expected.
 IREE_COMPILE_COMMAND="${IREE_COMPILE_EXE} \
 ${SOURCE_MLIR_FILE} \
@@ -137,12 +135,11 @@ ${SOURCE_MLIR_FILE} \
 -o ${OUTPUT}/test_artefact.vmfb \
 --iree-amd-aie-show-invoked-commands"
 
-# set the files for stdout and stdin as variables:
+# set the files for stdout and stdin. These are what FileCheck will scrutinize.
 STDOUT_FULLPATH="${OUTPUT}/stdout.txt"
 STDERR_FULLPATH="${OUTPUT}/stderr.txt"
 
-# Execute the command, piping all stdout to a file named stdout.txt and all
-# stderr to a file named stderr.txt:
+# Execute the command, piping all stdout and stderr to different files.
 echo "Executing command: $IREE_COMPILE_COMMAND"
 eval $IREE_COMPILE_COMMAND 1> ${STDOUT_FULLPATH} 2> ${STDERR_FULLPATH}
 
