@@ -27,6 +27,7 @@ iree_lit_test_suite(
     "tile_and_fuse_using_scf_for.mlir"
     "tile_and_fuse_using_scf_forall.mlir"
     "tile_copy_using_scf_for.mlir"
+    "insert_loops_for_vectorization.mlir"
   TOOLS
     ${IREE_LLD_TARGET}
     FileCheck

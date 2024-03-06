@@ -46,6 +46,7 @@ iree_cc_library(
     "AMDAIEFusePackIntoForLoop.cpp"
     "AMDAIEAddLoweringStrategy.cpp"
     "AMDAIELowerExecutableTarget.cpp"
+    "AMDAIEInsertLoopsForVectorization.cpp"
     "AMDAIELowerToUKernels.cpp"
     "AMDAIELowerWorkgroupCount.cpp"
     "AMDAIEPackAndTranspose.cpp"

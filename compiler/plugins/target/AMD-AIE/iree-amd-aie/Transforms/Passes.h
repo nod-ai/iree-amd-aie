@@ -9,7 +9,6 @@
 
 #include "iree-amd-aie/Transforms/PassDetail.h"
 #include "iree/compiler/Codegen/Common/TileSizeSelection.h"
-#include "iree/compiler/Codegen/Dialect/Codegen/IR/IREECodegenAttrs.h"
 #include "mlir/Pass/Pass.h"
 
 namespace mlir::iree_compiler::AMDAIE {
@@ -64,6 +63,10 @@ std::unique_ptr<Pass> createAMDAIEDecomposeLinalgExtPackUnPackToAIRPass();
 
 /// Create a pass to fuse the linalg.fill into the forall loops.
 std::unique_ptr<Pass> createAMDAIEFuseFillIntoForallPass();
+
+/// Create a pass to transform linalg.generics into a form which benefits later
+/// vectorization passes (to vector and aievec dialects).
+std::unique_ptr<Pass> createAMDAIEInsertLoopsForVectorizationPass();
 
 /// Create a pass to fuse the pack operations into the for loops.
 std::unique_ptr<Pass> createAMDAIEFusePackIntoForLoopPass();
