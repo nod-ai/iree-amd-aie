@@ -1,12 +1,24 @@
-// RUN: iree-opt --iree-transform-dialect-interpreter %s
+// RUN: iree-opt --iree-transform-dialect-interpreter %s | FileCheck %s
 
-func.func @matmul_i32(%arg0 : tensor<1024x2048xi32>, %arg1 : tensor<2048x512xi32>) -> tensor<1024x512xi32> {
-  %c0 = arith.constant 0: i32
+// This script shows an example lowering matmul for AIE device.
+// In this strategy, we use pad operation for data movement from L3 to L2,
+// and pack operation for L2 to L1. In order to keep initialization in L1,
+// the first iteration of scf.for loop is peeled.
+
+func.func @matmul_i32() {
+  %c0_i32 = arith.constant 0: i32
+  %c0 = arith.constant 0 : index
+  %arg0_binding = hal.interface.binding.subspan set(0) binding(0) type(storage_buffer) offset(%c0) flags(ReadOnly) : !flow.dispatch.tensor<readonly:tensor<1024x2048xi32>>
+  %arg0 = flow.dispatch.tensor.load %arg0_binding, offsets = [0, 0], sizes = [1024, 2048], strides = [1, 1] : !flow.dispatch.tensor<readonly:tensor<1024x2048xi32>> -> tensor<1024x2048xi32>
+  %arg1_binding = hal.interface.binding.subspan set(0) binding(1) type(storage_buffer) offset(%c0) flags(ReadOnly) : !flow.dispatch.tensor<readonly:tensor<2048x512xi32>>
+  %arg1 = flow.dispatch.tensor.load %arg1_binding, offsets = [0, 0], sizes = [2048, 512], strides = [1, 1] : !flow.dispatch.tensor<readonly:tensor<2048x512xi32>> -> tensor<2048x512xi32>
+  %arg2_binding = hal.interface.binding.subspan set(0) binding(2) type(storage_buffer) offset(%c0) flags(None) : !flow.dispatch.tensor<writeonly:tensor<1024x512xi32>>
   %empty = tensor.empty() : tensor<1024x512xi32>
-  %0 = linalg.fill ins(%c0 : i32) outs(%empty : tensor<1024x512xi32>) -> tensor<1024x512xi32>
+  %0 = linalg.fill ins(%c0_i32 : i32) outs(%empty : tensor<1024x512xi32>) -> tensor<1024x512xi32>
   %1 = linalg.matmul ins(%arg0, %arg1 : tensor<1024x2048xi32>, tensor<2048x512xi32>)
       outs(%0 : tensor<1024x512xi32>) -> tensor<1024x512xi32>
-  return %1 : tensor<1024x512xi32>
+  flow.dispatch.tensor.store %1, %arg2_binding, offsets = [0, 0], sizes = [1024, 512], strides = [1, 1] : tensor<1024x512xi32> -> !flow.dispatch.tensor<writeonly:tensor<1024x512xi32>>
+  return
 }
 
 module attributes { transform.with_named_sequence } {
@@ -152,3 +164,52 @@ module attributes { transform.with_named_sequence } {
     transform.yield
   }
 }
+
+// CHECK-LABEL: @matmul_i32
+//       CHECK: memref.alloc() : memref<4x4x8x8xi32, 2>
+//       CHECK: memref.alloc() : memref<4x8x4x8xi32, 2>
+//       CHECK: memref.alloc() : memref<4x8x4x8xi32, 2>
+//       CHECK: memref.alloc() : memref<64x64xi32, 1>
+//       CHECK: memref.alloc() : memref<256x64xi32, 1>
+//       CHECK: memref.alloc() : memref<64x256xi32, 1>
+//       CHECK: scf.forall
+//       CHECK: {
+//       CHECK:   linalg.copy ins(%{{.*}} : memref<64x256xi32, strided<[2048, 1], offset: ?>, #hal.descriptor_type<storage_buffer>>) outs(%{{.*}} : memref<64x256xi32, 1>)
+//       CHECK:   linalg.copy ins(%{{.*}} : memref<256x64xi32, strided<[512, 1], offset: ?>, #hal.descriptor_type<storage_buffer>>) outs(%{{.*}} : memref<256x64xi32, 1>)
+//       CHECK:   scf.forall
+//       CHECK:   {
+//       CHECK:     linalg.fill ins(%{{.*}}) outs(%{{.*}} : memref<4x8x4x8xi32, 2>)
+//       CHECK:     scf.for
+//       CHECK:     {
+//       CHECK:       iree_linalg_ext.pack %{{.*}} outer_dims_perm = [1, 0] inner_dims_pos = [0, 1] inner_tiles = [4, 8] into %{{.*}} : (memref<32x32xi32, strided<[256, 1], offset: ?>, 1> memref<4x8x4x8xi32, 2>)
+//       CHECK:       iree_linalg_ext.pack %{{.*}} outer_dims_perm = [1, 0] inner_dims_pos = [0, 1] inner_tiles = [8, 8] into %{{.*}} : (memref<32x32xi32, strided<[64, 1], offset: ?>, 1> memref<4x4x8x8xi32, 2>)
+//       CHECK:       linalg.generic
+//       CHECK:     }
+//       CHECK:     iree_linalg_ext.unpack %{{.*}} outer_dims_perm = [1, 0] inner_dims_pos = [0, 1] inner_tiles = [4, 8] into %{{.*}} : (memref<4x8x4x8xi32, 2> memref<32x32xi32, strided<[64, 1], offset: ?>, 1>)
+//       CHECK:   }
+//       CHECK:   linalg.copy ins(%{{.*}} : memref<64x64xi32, 1>) outs(%{{.*}} : memref<64x64xi32, strided<[512, 1], offset: ?>, #hal.descriptor_type<storage_buffer>>)
+//       CHECK:   scf.for
+//       CHECK:   {
+//       CHECK:     linalg.copy ins(%{{.*}} : memref<64x256xi32, strided<[2048, 1], offset: ?>, #hal.descriptor_type<storage_buffer>>) outs(%{{.*}} : memref<64x256xi32, 1>)
+//       CHECK:     linalg.copy ins(%{{.*}} : memref<256x64xi32, strided<[512, 1], offset: ?>, #hal.descriptor_type<storage_buffer>>) outs(%{{.*}} : memref<256x64xi32, 1>)
+//       CHECK:     linalg.copy ins(%{{.*}} : memref<64x64xi32, strided<[512, 1], offset: ?>, #hal.descriptor_type<storage_buffer>>) outs(%{{.*}}: memref<64x64xi32, 1>)
+//       CHECK:     scf.forall
+//       CHECK:     {
+//       CHECK:       iree_linalg_ext.pack %{{.*}} outer_dims_perm = [1, 0] inner_dims_pos = [0, 1] inner_tiles = [4, 8] into %{{.*}} : (memref<32x32xi32, strided<[64, 1], offset: ?>, 1> memref<4x8x4x8xi32, 2>)
+//       CHECK:       scf.for
+//       CHECK:       {
+//       CHECK:         iree_linalg_ext.pack %{{.*}} outer_dims_perm = [1, 0] inner_dims_pos = [0, 1] inner_tiles = [4, 8] into %{{.*}} : (memref<32x32xi32, strided<[256, 1], offset: ?>, 1> memref<4x8x4x8xi32, 2>)
+//       CHECK:         iree_linalg_ext.pack %{{.*}} outer_dims_perm = [1, 0] inner_dims_pos = [0, 1] inner_tiles = [8, 8] into %{{.*}} : (memref<32x32xi32, strided<[64, 1], offset: ?>, 1> memref<4x4x8x8xi32, 2>)
+//       CHECK:         linalg.generic
+//       CHECK:       }
+//       CHECK:       iree_linalg_ext.unpack %{{.*}} outer_dims_perm = [1, 0] inner_dims_pos = [0, 1] inner_tiles = [4, 8] into %{{.*}} : (memref<4x8x4x8xi32, 2> memref<32x32xi32, strided<[64, 1], offset: ?>, 1>)
+//       CHECK:     }
+//       CHECK:     linalg.copy ins(%{{.*}} : memref<64x64xi32, 1>) outs(%{{.*}} : memref<64x64xi32, strided<[512, 1], offset: ?>, #hal.descriptor_type<storage_buffer>>)
+//       CHECK:   }
+//       CHECK: }
+//       CHECK: memref.dealloc %{{.*}} : memref<64x256xi32, 1>
+//       CHECK: memref.dealloc %{{.*}} : memref<256x64xi32, 1>
+//       CHECK: memref.dealloc %{{.*}} : memref<64x64xi32, 1>
+//       CHECK: memref.dealloc %{{.*}} : memref<4x8x4x8xi32, 2>
+//       CHECK: memref.dealloc %{{.*}} : memref<4x8x4x8xi32, 2>
+//       CHECK: memref.dealloc %{{.*}} : memref<4x4x8x8xi32, 2>
