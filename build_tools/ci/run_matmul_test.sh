@@ -87,7 +87,7 @@ fi
 
 
 # Parameter 3) <mlir-aie-install-dir>
-if [ -z "$3" ]; then
+if [ -z "${3-}" ]; then
   MLIR_AIE_INSTALL=`realpath .venv/lib/python3.10/site-packages/mlir_aie`
 else
   MLIR_AIE_INSTALL=`realpath "$3"`
@@ -98,7 +98,7 @@ if [ ! -d "${MLIR_AIE_INSTALL}" ]; then
 fi
 
 # Parameter 4) <peano-install-dir>
-if [ -z "$4" ]; then
+if [ -z "${4-}" ]; then
   PEANO=/opt/llvm-aie
 else
   PEANO=`realpath "$4"`
@@ -109,7 +109,7 @@ if [ ! -d "${PEANO}" ]; then
 fi
 
 # Parameter 5) <xrt-dir>
-if [ -z "$5" ]; then
+if [ -z "${5-}" ]; then
   XRT_DIR=/opt/xilinx/xrt
 else
   XRT_DIR=`realpath "$5"`
@@ -120,7 +120,7 @@ if [ ! -d "${XRT_DIR}" ]; then
 fi
 
 # Parameter 6) <vitis-install-dir>
-if [ -z "$6" ]; then
+if [ -z "${6-}" ]; then
   # An alternate to a full vitis install, will work
   # here but not for a full build of mlir-aie
   # https://riallto.ai/install-riallto.html#install-riallto
