@@ -7,8 +7,10 @@
 #ifndef IREE_AMD_AIE_TARGET_AIETARGET_H_
 #define IREE_AMD_AIE_TARGET_AIETARGET_H_
 
-#include "iree/compiler/Dialect/HAL/Target/TargetRegistry.h"
-#include "iree/compiler/PluginAPI/Client.h"
+#include <string>
+
+#include "iree/compiler/Dialect/HAL/Target/TargetBackend.h"
+#include "iree/compiler/Utils/OptionUtils.h"
 
 namespace mlir::iree_compiler::AMDAIE {
 
@@ -23,12 +25,25 @@ struct AMDAIEOptions {
   // Path to Vitis installation directory.
   std::string vitisInstallDir;
 
-  // Dump to stdout system commands used during compilation
-  bool showInvokedCommands;
+  // Dump system commands used during compilation
+  bool showInvokedCommands{false};
 
   // Use the legacy chess compiler.
-  bool useChess;
+  bool useChess{false};
 
+  // Print IR after all MLIR passes run in aie2xclbin (to stderr).
+  bool aie2xclbinPrintIrAfterAll{false};
+
+  // Print IR before all MLIR passes run in aie2xclbin (to stderr).
+  bool aie2xclbinPrintIrBeforeAll{false};
+
+  // Disable theading in MLIR passes in aie2xclbin.
+  bool aie2xclbinDisableTheading{false};
+
+  // Print IR at module scope in MLIR passes in aie2xclbin.
+  bool aie2xclbinPrintIrModuleScope{false};
+
+ public:
   void bindOptions(OptionsBinder &binder) {
     static llvm::cl::OptionCategory category("AMD AIE Options");
 
@@ -41,6 +56,29 @@ struct AMDAIEOptions {
         "iree-amd-aie-peano-install-dir", peanoInstallDir,
         llvm::cl::cat(category),
         llvm::cl::desc("Path to Peano installation directory"));
+
+    binder.opt<bool>(
+        "aie2xclbin-print-ir-after-all", aie2xclbinPrintIrAfterAll,
+        llvm::cl::cat(category),
+        llvm::cl::desc(
+            "If true, print the IR after all MLIR passes run in aie2xclbin"));
+
+    binder.opt<bool>(
+        "aie2xclbin-print-ir-before-all", aie2xclbinPrintIrBeforeAll,
+        llvm::cl::cat(category),
+        llvm::cl::desc(
+            "If true, print the IR before all MLIR passes run in aie2xclbin"));
+
+    binder.opt<bool>(
+        "aie2xclbin-disable-threading", aie2xclbinDisableTheading,
+        llvm::cl::cat(category),
+        llvm::cl::desc("Disable theading in MLIR passes in aie2xclbin"));
+
+    binder.opt<bool>(
+        "aie2xclbin-print-ir-module-scope", aie2xclbinPrintIrModuleScope,
+        llvm::cl::cat(category),
+        llvm::cl::desc(
+            "If true, when printing the IR do so at the module scope"));
 
     binder.opt<bool>(
         "iree-amd-aie-show-invoked-commands", showInvokedCommands,
