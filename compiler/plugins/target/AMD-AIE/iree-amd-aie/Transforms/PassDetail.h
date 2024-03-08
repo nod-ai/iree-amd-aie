@@ -1,5 +1,4 @@
-// Copyright 2023 The IREE Authors#include "irer"
-
+// Copyright 2024 The IREE Authors
 //
 // Licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -21,6 +20,7 @@ namespace mlir::iree_compiler::AMDAIE {
 #define GEN_PASS_DECL
 #define GEN_PASS_DEF_AMDAIEBRIDGETOAIR
 #define GEN_PASS_DEF_AMDAIEBUFFERIZETOALLOCATION
+#define GEN_PASS_DEF_AMDAIECANONICALIZEDMA
 #define GEN_PASS_DEF_AMDAIECLEANUP
 #define GEN_PASS_DEF_AMDAIEFUSEFILLINTOFORALL
 #define GEN_PASS_DEF_AMDAIEFUSEPACKINTOFORLOOP
