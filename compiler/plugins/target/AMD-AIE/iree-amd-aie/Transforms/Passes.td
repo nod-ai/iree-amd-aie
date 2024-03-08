@@ -28,6 +28,12 @@ def AMDAIEBufferizeToAllocation :
   ];
 }
 
+def AMDAIECanonicalizeDma : 
+  Pass<"iree-amdaie-canonicalize-dma", ""> {
+  let summary = "Apply caonicaliztions to air.dma_memcpy_nd op's";
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIECanonicalizeDmaPass()";
+}
+
 def AMDAIECleanup :
     Pass<"iree-amdaie-cleanup", "func::FuncOp"> {
   let summary = "Pass to invoke several cleanup and canonicalization patterns.";
