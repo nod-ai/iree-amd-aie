@@ -1,4 +1,5 @@
 #!/bin/bash
+#
 # Copyright 2024 The IREE Authors
 #
 # Licensed under the Apache License v2.0 with LLVM Exceptions.
@@ -17,45 +18,142 @@
 #      `iree-e2e-matmul-test` to include support for the runtime HAL
 #      driver/device you wish to test.
 #   2. Update the paths in this script or specify them via environment variables
-#   3. Run: `./run_matmul_tests.sh <output_dir_path> <iree_install_path>`
+#   3. Run: `./run_matmul_tests.sh <output_dir_path> <iree_install_path> [<mlir_aie_install_path>] [<peano_install_path>] [<xrt_path>] [<vitis_path>]`
+#      The directories above in square brackets are optional, the first 2 directories are required.
 
 set -euox pipefail
 
-MLIR_AIE_INSTALL=`realpath .venv/lib/python3.10/site-packages/mlir_aie`
+if [ "$#" -lt 2 ] || [ "$#" -gt 6 ]; then
+
+   # The expected parameters are
+   #    1) <output-dir>            (required)
+   #    2) <iree-install-dir>      (required)
+   #    3) <mlir-aie-install-dir>  (optional)
+   #    4) <peano-install-dir>     (optional)
+   #    5) <xrt-dir>               (optional)
+   #    6) <vitis-install-dir>     (optional)
+    echo -e "Illegal number of parameters: $#, expected 2,3,4,5, or 6 parameters." \
+            "\n The parameters are as follows:" \
+            "\n     1) <output-dir>               (required)" \
+            "\n     2) <iree-install-dir>         (required)" \
+            "\n     3) <mlir-aie-install-dir>     (optional)" \
+            "\n     4) <peano-install-dir>        (optional)" \
+            "\n     5) <xrt-dir>                  (optional)" \
+            "\n     6) <vitis-install-dir>        (optional)" \
+            "\n Example, dependent on environment variables:" \
+            "\n     ./run_matmul_test.sh  " \
+            "results_dir_tmp  \$MLIR_AIE_INSTALL_DIR  \$IREE_INSTALL_DIR  " \
+            "\$PEANO_INSTALL_DIR  /opt/xilinx/xrt  \$VITIS_INSTALL_PATH"
+    exit 1
+fi
+
+
+
+OUTPUT_DIR=`realpath "$1"`
+mkdir -p ${OUTPUT_DIR}
+if [ ! -d "${OUTPUT_DIR}" ]; then
+  echo "Failed to locate on construct OUTPUT_DIR '${OUTPUT_DIR}'."
+  exit 1
+fi
+
+IREE_INSTALL_DIR=`realpath "$2"`
+if [ ! -d "${IREE_INSTALL_DIR}" ]; then
+  echo "IREE_INSTALL_DIR must be a directory, '${IREE_INSTALL_DIR}' is not."
+  exit 1
+fi
+
+# Search for iree-compile and iree-e2e-matmul-test in the user provided directory.
+IREE_COMPILE_EXE=""
+TEST_RUNNER=""
+for dir in "${IREE_INSTALL_DIR}" "${IREE_INSTALL_DIR}/bin" "${IREE_INSTALL_DIR}/tools"; do
+  if [ -f "${dir}/iree-compile" ]; then
+    IREE_COMPILE_EXE="${dir}/iree-compile"
+  fi
+  if [ -f "${dir}/iree-e2e-matmul-test" ]; then
+    TEST_RUNNER="${dir}/iree-e2e-matmul-test"
+  fi
+done
+
+if [ -z "${IREE_COMPILE_EXE}" ]; then
+  echo "No 'iree-compile' found in any of the following directories: " \
+       "'${IREE_INSTALL_DIR}', '${IREE_INSTALL_DIR}/bin', '${IREE_INSTALL_DIR}/tools'."
+  exit 1
+fi
+if [ -z "${TEST_RUNNER}" ]; then
+  echo "No 'iree-e2e-matmul-test' found in any of the following directories: " \
+       "'${IREE_INSTALL_DIR}', '${IREE_INSTALL_DIR}/bin', '${IREE_INSTALL_DIR}/tools'."
+  exit 1
+fi
+
+
+# Parameter 3) <mlir-aie-install-dir>
+if [ -z "${3-}" ]; then
+  MLIR_AIE_INSTALL=`realpath .venv/lib/python3.10/site-packages/mlir_aie`
+else
+  MLIR_AIE_INSTALL=`realpath "$3"`
+fi
+if [ ! -d "${MLIR_AIE_INSTALL}" ]; then
+  echo "No directory '${MLIR_AIE_INSTALL}' (argument 3) found."
+  exit 1
+fi
+
+# Parameter 4) <peano-install-dir>
+if [ -z "${4-}" ]; then
+  PEANO=/opt/llvm-aie
+else
+  PEANO=`realpath "$4"`
+fi
+if [ ! -d "${PEANO}" ]; then
+  echo "No directory '${PEANO}' (argument 4) found."
+  exit 1
+fi
+
+# Parameter 5) <xrt-dir>
+if [ -z "${5-}" ]; then
+  XRT_DIR=/opt/xilinx/xrt
+else
+  XRT_DIR=`realpath "$5"`
+fi
+if [ ! -d "${XRT_DIR}" ]; then
+  echo "No directory '${XRT_DIR}' (argument 5) found."
+  exit 1
+fi
+
+# Parameter 6) <vitis-install-dir>
+if [ -z "${6-}" ]; then
+  # An alternate to a full vitis install, will work
+  # here but not for a full build of mlir-aie
+  # https://riallto.ai/install-riallto.html#install-riallto
+  # VITIS=/opt/Riallto/Vitis/2023.1
+  VITIS=/opt/Xilinx/Vitis/2023.2
+else
+  VITIS=`realpath "$6"`
+fi
+if [ ! -d "${VITIS}" ]; then
+  echo "No directory '${VITIS}' (argument 6) found."
+  exit 1
+fi
+
 THIS_DIR="$(cd $(dirname $0) && pwd)"
 ROOT_DIR="$(cd $THIS_DIR/../.. && pwd)"
 
-OUTPUT_DIR=`realpath "$1"`
-IREE_INSTALL_DIR="$2"
-if [ -d "${IREE_INSTALL_DIR}/tools" ]; then
-    IREE_INSTALL_TOOLS=`realpath "${IREE_INSTALL_DIR}/tools"`
-fi
-if [ -d "${IREE_INSTALL_DIR}/bin" ]; then
-    IREE_INSTALL_BIN=`realpath "${IREE_INSTALL_DIR}/bin"`
-fi
-
 GENERATOR="${ROOT_DIR}/tests/matmul/generate_e2e_matmul_tests.py"
+# Verify that generator exists
+if [ ! -f "${GENERATOR}" ]; then
+  echo "Generator script '${GENERATOR}' not found."
+  exit 1
+fi
+
 IREE_PYTHON3_EXECUTABLE="${IREE_PYTHON3_EXECUTABLE:-python3}"
-
-IREE_COMPILE_EXE="${IREE_INSTALL_BIN}/iree-compile"
-TEST_RUNNER="${IREE_INSTALL_TOOLS}/iree-e2e-matmul-test"
-
-XRT_DIR=/opt/xilinx/xrt
-PEANO=/opt/llvm-aie
-VITIS=/opt/Xilinx/Vitis/2023.2
-# An alternate to a full vitis install, will work here but not for a full build of mlir-aie
-# https://riallto.ai/install-riallto.html#install-riallto
-# VITIS=/opt/Riallto/Vitis/2023.1
+if [ -z "$IREE_PYTHON3_EXECUTABLE" ]; then
+  echo "IREE_PYTHON3_EXECUTABLE is not set."
+  exit 1
+else
+  echo "Python version: $("${IREE_PYTHON3_EXECUTABLE}" --version)"
+fi
 
 source $XRT_DIR/setup.sh
 
-###############################################################################
-# Setup and checking for dependencies                                         #
-###############################################################################
-
-echo "Python version: $("${IREE_PYTHON3_EXECUTABLE}" --version)"
-echo "iree-compile version: $("${IREE_COMPILE_EXE}" --version)"
-mkdir -p ${OUTPUT_DIR}
 cd ${OUTPUT_DIR}
 
 ###############################################################################
@@ -154,26 +252,39 @@ function run_matmul_test() {
   # Extract function names from the mlir file
   function_names=$(grep -oP '@\K\S+(?=\()' ${OUTPUT_DIR}/${name}_matmuls.mlir)
 
-  # Iterate over each function name and sign the corresponding XCLBIN
-  for func_name in $function_names; do
-    # Location of XCLBIN files
-    XCLBIN_DIR="module_${func_name}_dispatch_0_amdaie_xclbin_fb"
-    # Define the XCLBIN variable
-    XCLBIN="module_${func_name}_dispatch_0_amdaie_xclbin_fb.xclbin"
-    # Ensure unique file name
-    XCLBIN_UNIQ="github.${GITHUB_RUN_ID}.${GITHUB_RUN_ATTEMPT}.${XCLBIN}"
-    cp "${XCLBIN_DIR}/${XCLBIN}" "${XCLBIN_DIR}/${XCLBIN_UNIQ}"
-    # Deploy firmware
-    sudo $XRT_DIR/amdxdna/setup_xclbin_firmware.sh -dev Phoenix -xclbin "${XCLBIN_DIR}/${XCLBIN_UNIQ}"
-  done
+  # Make a guess as to whether we need to sign the XCLBIN:
+  SIGNER=${XRT_DIR}/amdxdna/setup_xclbin_firmware.sh
+  # 1) check if $XRT_DIR/amdxdna/setup_xclbin_firmware.sh exists:
+  if [ ! -f "$SIGNER" ]; then
+    echo "**** Skipping XCLBIN signing: $SIGNER not found ****"
+  else
+    # Iterate over each function name and sign the corresponding XCLBIN
+    for func_name in $function_names; do
+      # Location of XCLBIN files
+      XCLBIN_DIR="module_${func_name}_dispatch_0_amdaie_xclbin_fb"
+      # Define the XCLBIN variable
+      XCLBIN="module_${func_name}_dispatch_0_amdaie_xclbin_fb.xclbin"
+      # Ensure unique file name
+      echo "**** Getting unique id for XCLBIN ****"
+      XCLBIN_UNIQ="github.${GITHUB_RUN_ID}.${GITHUB_RUN_ATTEMPT}.${XCLBIN}"
+      cp "${XCLBIN_DIR}/${XCLBIN}" "${XCLBIN_DIR}/${XCLBIN_UNIQ}"
+      # Deploy firmware
+      sudo $SIGNER -dev Phoenix -xclbin "${XCLBIN_DIR}/${XCLBIN_UNIQ}"
+    done
+  fi
 
   echo "**** Running '${name}' matmul tests ****"
-  echo ""
 
-  ${TEST_RUNNER} \
-      --module="${OUTPUT_DIR}/${name}_matmuls.vmfb" \
-      --module="${OUTPUT_DIR}/${name}_calls.vmfb" \
-      --device=${device}
+  COMMAND="${TEST_RUNNER} \
+      --module=${OUTPUT_DIR}/${name}_matmuls.vmfb \
+      --module=${OUTPUT_DIR}/${name}_calls.vmfb \
+      --device=${device}"
+
+  echo "Running command: ${COMMAND}"
+
+  # Execute the command, and print the status:
+  eval "${COMMAND}"
+  echo "Command returned with status: $?"
 
   set +x
 }
@@ -229,3 +340,27 @@ run_matmul_test \
     --mlir_aie_install_path "${MLIR_AIE_INSTALL}" \
     --vitis_path  "${VITIS}" \
     --pipeline "simple-pack"
+
+run_matmul_test \
+    --name "matmul_i32_i32_small_amd-aie_xrt_pad-pack" \
+    --lhs_rhs_type "i32" \
+    --acc_type "i32" \
+    --shapes "small" \
+    --target_backend "amd-aie" \
+    --device "xrt" \
+    --peano_install_path "${PEANO}" \
+    --mlir_aie_install_path "${MLIR_AIE_INSTALL}" \
+    --vitis_path  "${VITIS}" \
+    --pipeline "pad-pack"
+
+run_matmul_test \
+    --name "matmul_i32_i32_large_amd-aie_xrt_pad-pack" \
+    --lhs_rhs_type "i32" \
+    --acc_type "i32" \
+    --shapes "large" \
+    --target_backend "amd-aie" \
+    --device "xrt" \
+    --peano_install_path "${PEANO}" \
+    --mlir_aie_install_path "${MLIR_AIE_INSTALL}" \
+    --vitis_path  "${VITIS}" \
+    --pipeline "pad-pack"

@@ -8,7 +8,6 @@
 
 #include "iree-amd-aie/IR/AMDAIEAttrs.h"
 #include "iree-amd-aie/IR/AMDAIEDialect.cpp.inc"
-#include "mlir/IR/DialectImplementation.h"
 
 namespace mlir::iree_compiler::AMDAIE {
 

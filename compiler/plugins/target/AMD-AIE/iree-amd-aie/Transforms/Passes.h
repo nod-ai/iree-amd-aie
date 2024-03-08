@@ -39,6 +39,10 @@ void addPackBasedPassPipeline(OpPassManager &passManager,
 void addSimplePackBasedPassPipeline(OpPassManager &passManager,
                                     TilingConfig &tilingConfig);
 
+/// Populates passes needed to lower the IR via a Pad-Pack based approach.
+void addPadPackBasedPassPipeline(OpPassManager &passManager,
+                                 TilingConfig &tilingConfig);
+
 /// Create a pass to do some rewrites that help bridging the path to AIR/AIE
 /// lowering.
 std::unique_ptr<Pass> createAMDAIEBridgeToAIRPass();
@@ -47,6 +51,9 @@ std::unique_ptr<Pass> createAMDAIEBridgeToAIRPass();
 /// new allocation.
 std::unique_ptr<Pass> createAMDAIEBufferizeToAllocationPass(
     AMDAIEBufferizeToAllocationOptions options = {});
+
+/// Create pass to apply caonicaliztions to air.dma_memcpy_nd op's.
+std::unique_ptr<Pass> createAMDAIECanonicalizeDmaPass();
 
 /// Create pass to invoke several cleanup and canonicalization patterns.
 std::unique_ptr<Pass> createAMDAIECleanupPass();
@@ -69,6 +76,11 @@ std::unique_ptr<Pass> createAMDAIELowerExecutableTargetPass(
 std::unique_ptr<Pass> createAMDAIELoweringStrategyPass(
     AMDAIELoweringStrategyOptions options = {});
 
+/// Create pass to lower a sequence of operation(s) to a iree_codegen.ukernel.*
+/// operation.
+std::unique_ptr<Pass> createAMDAIELowerToUKernelsPass(
+    AMDAIELowerToUKernelsOptions options = {});
+
 /// Create a pass to lower workgroup count region of entry point operations.
 std::unique_ptr<Pass> createAMDAIELowerWorkgroupCountPass();
 
@@ -84,6 +96,9 @@ std::unique_ptr<Pass> createAMDAIEPadPass(AMDAIEPadOptions options = {});
 
 /// Create a pass to peel the first iteration out of the scf.for loop.
 std::unique_ptr<Pass> createAMDAIEPeelForLoopPass();
+
+/// Create pass to tile TilingInterface operations.
+std::unique_ptr<Pass> createAMDAIETilePass(AMDAIETileOptions options = {});
 
 /// Create pass to tile and fuse TilingInterface operations.
 std::unique_ptr<Pass> createAMDAIETileAndFusePass(

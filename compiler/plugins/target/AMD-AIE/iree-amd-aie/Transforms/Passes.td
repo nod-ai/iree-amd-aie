@@ -28,6 +28,12 @@ def AMDAIEBufferizeToAllocation :
   ];
 }
 
+def AMDAIECanonicalizeDma : 
+  Pass<"iree-amdaie-canonicalize-dma", ""> {
+  let summary = "Apply caonicaliztions to air.dma_memcpy_nd op's";
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIECanonicalizeDmaPass()";
+}
+
 def AMDAIECleanup :
     Pass<"iree-amdaie-cleanup", "func::FuncOp"> {
   let summary = "Pass to invoke several cleanup and canonicalization patterns.";
@@ -68,7 +74,9 @@ def AMDAIELowerExecutableTarget :
         clEnumValN(mlir::iree_compiler::AMDAIE::AIEPassPipeline::PackPipeline, "pack",
                    "Use the more advanced pack-based lowering strategy, including peeling and double-buffering."),
         clEnumValN(mlir::iree_compiler::AMDAIE::AIEPassPipeline::SimplePackPipeline, "simple-pack",
-                   "Use the simple-pack based lowering strategy.")
+                   "Use the simple-pack based lowering strategy."),
+        clEnumValN(mlir::iree_compiler::AMDAIE::AIEPassPipeline::PadPackPipeline, "pad-pack",
+                   "Use the pad-pack based lowering strategy.")
       )}]>
   ];
 }
@@ -88,10 +96,36 @@ def AMDAIELoweringStrategy :
         clEnumValN(mlir::iree_compiler::AMDAIE::AIEPassPipeline::PackPipeline, "pack",
                    "Use the more advanced pack-based lowering strategy, including peeling and double-buffering."),
         clEnumValN(mlir::iree_compiler::AMDAIE::AIEPassPipeline::SimplePackPipeline, "simple-pack",
-                   "Use the simple-pack based lowering strategy.")
+                   "Use the simple-pack based lowering strategy."),
+        clEnumValN(mlir::iree_compiler::AMDAIE::AIEPassPipeline::PadPackPipeline, "pad-pack",
+                   "Use the pad-pack based lowering strategy.")
       )}]>,
     Option<"numCores", "num-cores", "int32_t", /*default=*/"1",
       "Choose the number of cores to use">
+  ];
+}
+
+def AMDAIELowerToUKernels :
+    Pass<"iree-amdaie-lower-to-ukernels", ""> {
+  let summary =
+      "Separate out the inner-loop main compute operation that lower to a micro-kernel";
+  let constructor =
+      "mlir::iree_compiler::AMDAIE::createAMDAIELowerToUKernelsPass()";
+  let options = [
+    Option<"passPipeline", "pass-pipeline",
+      "mlir::iree_compiler::AMDAIE::AIEPassPipeline", 
+      /*default=*/"mlir::iree_compiler::AMDAIE::AIEPassPipeline::PadPipeline",
+      "Pass pipeline to use while lowering to AIR dialect",
+      [{::llvm::cl::values(
+        clEnumValN(mlir::iree_compiler::AMDAIE::AIEPassPipeline::PadPipeline, "pad",
+                   "Use the pad-based lowering strategy."),
+        clEnumValN(mlir::iree_compiler::AMDAIE::AIEPassPipeline::PackPipeline, "pack",
+                   "Use the more advanced pack-based lowering strategy, including peeling and double-buffering."),
+        clEnumValN(mlir::iree_compiler::AMDAIE::AIEPassPipeline::SimplePackPipeline, "simple-pack",
+                   "Use the simple-pack based lowering strategy.")
+      )}]>,
+    Option<"pathToUkernels", "path-to-ukernels", "std::string", /*default=*/"",
+      "Path to microkernels' directory">
   ];
 }
 
@@ -140,6 +174,16 @@ def AMDAIEPeelForLoop :
       "mlir::iree_compiler::AMDAIE::createAMDAIEPeelForLoopPass()";
 }
 
+def AMDAIETile :
+    Pass<"iree-amdaie-tile", "func::FuncOp"> {
+  let summary = "Pass to tile TilingInterface operations.";
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIETilePass()";
+  let options = [
+    Option<"tilingLevel", "tiling-level", "int64_t", /*default=*/"-1",
+      "Use default tiling level used to retrieve the configuration from lowering_config">
+  ];
+}
+
 def AMDAIETileAndFuse :
     Pass<"iree-amdaie-tile-and-fuse", "func::FuncOp"> {
   let summary = "Pass to tile and fuse TilingInterface operations.";
@@ -148,7 +192,7 @@ def AMDAIETileAndFuse :
     Option<"useSCFFor", "use-scf-for", "bool", /*default=*/"false",
       "Use scf.forall by default for the corresponding tiling level">,
     Option<"tilingLevel", "tiling-level", "int64_t", /*default=*/"-1",
-      "Use default tiling level used to retrieve the configuration from lowering_config">  
+      "Use default tiling level used to retrieve the configuration from lowering_config">
   ];
 }
 
