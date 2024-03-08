@@ -56,7 +56,7 @@ def AMDAIEFuseFillIntoForall :
 def AMDAIEInsertLoopsForVectorization :
     Pass<"iree-amdaie-insert-loops-for-vectorization", "func::FuncOp"> {
 
-    let summary = "Transforms linalg.generic operations with matmul-like semantics.";
+    let summary = "Replace outer-dimensions of matmul-like linalg.generics with scf.for loops.";
 
     let description  = [{
       This pass transforms all linalg.generic operations with matmul-like
@@ -69,7 +69,8 @@ def AMDAIEInsertLoopsForVectorization :
       All outer dimensions are replaced with scf.for loops. The three
       inner-dimensions must describe a matmul: 2 parallel dimensions and 1
       reduction dimension, at correct indices. The pass does not transform
-      transposed matmuls.
+      transposed matmuls, or any other operation that does not have exact
+      matmul semantics.
 
       The motivation for this pass is to enable a subsequent vectorization pass
       to generate vector.contract operations which map easily to the AIEVec
