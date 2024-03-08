@@ -12,3 +12,4 @@ add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/compiler/plugins/target/AMD-AIE targe
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/tools/plugins AMD-AIE/tools)
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/tests/samples AMD-AIE/tests/samples)
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/tests/OPT/failing_tests AMD-AIE/tests/OPT/failing_tests)
+add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/tests/transform_dialect AMD-AIE/tests/transform_dialect)
