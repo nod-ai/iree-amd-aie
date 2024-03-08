@@ -37,7 +37,7 @@ static llvm::cl::opt<AIEPassPipeline> clUsePipeline(
         clEnumValN(AIEPassPipeline::PadPackPipeline, "pad-pack",
                    "Use the IREE lowering to AIR dialect through "
                    "pad and pack operations")),
-    llvm::cl::init(AIEPassPipeline::SimplePackPipeline));
+    llvm::cl::init(AIEPassPipeline::PadPackPipeline));
 
 static llvm::cl::opt<int32_t> clNumCores(
     "iree-amdaie-num-cores",
@@ -549,6 +549,106 @@ void addMLIRAIRAIELoweringPasses(OpPassManager &passManager) {
   passManager.addPass(createCanonicalizerPass());
 }
 
+void addMLIRAIRAIELegacyLoweringPasses(OpPassManager &passManager) {
+  // Add passes for preparing for lowering to MLIR-AIR
+  passManager.addPass(createEraseHALDescriptorTypeFromMemRefPass());
+  passManager.addPass(memref::createFoldMemRefAliasOpsPass());
+  passManager.addPass(createAMDAIEBridgeToAIRPass());
+  passManager.addPass(createAMDAIEDecomposeLinalgExtPackUnPackToAIRPass());
+
+  {
+    xilinx::air::ParallelToHerdOptions options;
+    options.clAssignDepth = 1;
+    passManager.addPass(xilinx::air::createParallelToHerdPass(options));
+  }
+  {
+    xilinx::air::ParallelToLaunchOptions options;
+    options.clHasSegment = true;
+    passManager.addPass(xilinx::air::createParallelToLaunchPass(options));
+  }
+  passManager.addPass(xilinx::air::createCopyToDmaPass());
+  passManager.addPass(createCanonicalizerPass());
+  passManager.addPass(createCSEPass());
+
+  passManager.addPass(xilinx::air::createAIRDependencyPass());
+  passManager.addPass(xilinx::air::createAIRDependencyScheduleOptPass());
+  passManager.addPass(xilinx::air::createAIRSpecializeDmaBroadcast());
+  passManager.addPass(xilinx::air::createDmaToChannelPass());
+  passManager.addPass(createCanonicalizerPass());
+  passManager.addPass(createCSEPass());
+  passManager.addPass(xilinx::air::createAIRDependencyCanonicalizePass());
+  passManager.addPass(createCanonicalizerPass());
+  passManager.addPass(createCSEPass());
+  passManager.addNestedPass<func::FuncOp>(
+      xilinx::air::createAIRSegmentLoopFusion());
+
+  passManager.addPass(
+      xilinx::air::createAIRLabelScfForLoopForPingPongPattern());
+  {
+    xilinx::air::AIRPingPongTransformationPatternOptions options;
+    options.clKeepMemrefDealloc = true;
+    passManager.addPass(
+        xilinx::air::createAIRPingPongTransformationPattern(options));
+  }
+  passManager.addPass(createCanonicalizerPass());
+  passManager.addPass(createCSEPass());
+
+  passManager.addPass(xilinx::air::createAIRIsolateAsyncDmaLoopNests());
+  passManager.addPass(
+      xilinx::air::createAIRSpecializeChannelWrapAndStridePattern());
+  passManager.addPass(createCanonicalizerPass());
+  passManager.addPass(createCSEPass());
+
+  passManager.addNestedPass<func::FuncOp>(
+      xilinx::air::createAIRCollapseHerdPass());
+  passManager.addPass(createCanonicalizerPass());
+  passManager.addPass(createCSEPass());
+
+  {
+    xilinx::air::AIRHerdPlacementPassOptions options;
+    options.clNumRows = 4;
+    options.clNumCols = 1;
+    options.clAnchorPointRow = 2;
+    options.clAnchorPointCol = 0;
+    passManager.addPass(xilinx::air::createAIRHerdPlacementPass(options));
+  }
+  passManager.addPass(createCanonicalizerPass());
+  passManager.addPass(createCSEPass());
+
+  passManager.addNestedPass<func::FuncOp>(
+      xilinx::air::createAIRRenumberDmaIdPass());
+  passManager.addNestedPass<func::FuncOp>(
+      mlir::createConvertLinalgToLoopsPass());
+
+  {
+    xilinx::air::AIRToAIEOptions options;
+    options.clRowOffset = 2;
+    options.clColOffset = 0;
+    options.clDevice = "ipu";
+    options.clEmitWhileLoop = true;
+    passManager.addPass(xilinx::air::createAIRToAIEPass(options));
+  }
+  passManager.addPass(createCanonicalizerPass());
+  passManager.addPass(xilinx::air::createAIRLoweringPass());
+  {
+    xilinx::air::AffineLoopOptPassOptions options;
+    const std::vector<unsigned> tile_sizes = {4, 4};
+    options.clTileSizes = ArrayRef(tile_sizes);
+    passManager.addNestedPass<func::FuncOp>(
+        xilinx::air::createAffineLoopOptPass(options));
+  }
+  {
+    xilinx::air::AIRUnrollOuterPerfectlyNestedLoopsPassOptions options;
+    options.clDepth = 2;
+    passManager.addNestedPass<func::FuncOp>(
+        xilinx::air::createAIRUnrollOuterPerfectlyNestedLoopsPass(options));
+  }
+  passManager.addPass(mlir::affine::createAffineExpandIndexOpsPass());
+
+  passManager.addPass(xilinx::airrt::createAIRRtToIpuPass());
+  passManager.addPass(createCanonicalizerPass());
+}
+
 namespace {
 #define GEN_PASS_REGISTRATION
 #include "iree-amd-aie/Transforms/Passes.h.inc"
@@ -562,7 +662,11 @@ void registerAMDAIEPasses() {
       "iree-amdaie-aie-lowering-pipeline",
       "Runs the AIR/AIE lowering passes to tiled and distributed code",
       [](OpPassManager &passManager) {
-        addMLIRAIRAIELoweringPasses(passManager);
+        if (clUsePipeline == AIEPassPipeline::PadPackPipeline) {
+          addMLIRAIRAIELoweringPasses(passManager);
+        } else {
+          addMLIRAIRAIELegacyLoweringPasses(passManager);
+        }
       });
 }
 
