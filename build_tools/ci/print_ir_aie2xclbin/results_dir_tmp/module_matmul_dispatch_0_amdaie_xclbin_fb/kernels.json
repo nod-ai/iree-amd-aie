@@ -1,0 +1,56 @@
+{
+  "ps-kernels": {
+    "kernels": [
+      {
+        "arguments": [
+          {
+            "address-qualifier": "GLOBAL",
+            "memory-connection": "SRAM",
+            "name": "instr",
+            "offset": "0x00",
+            "type": "char *"
+          },
+          {
+            "address-qualifier": "SCALAR",
+            "name": "ninstr",
+            "offset": "0x08",
+            "type": "uint64_t"
+          },
+          {
+            "address-qualifier": "GLOBAL",
+            "memory-connection": "HOST",
+            "name": "in",
+            "offset": "0x10",
+            "type": "char *"
+          },
+          {
+            "address-qualifier": "GLOBAL",
+            "memory-connection": "HOST",
+            "name": "tmp",
+            "offset": "0x18",
+            "type": "char *"
+          },
+          {
+            "address-qualifier": "GLOBAL",
+            "memory-connection": "HOST",
+            "name": "out",
+            "offset": "0x20",
+            "type": "char *"
+          }
+        ],
+        "extended-data": {
+          "dpu_kernel_id": "0x901",
+          "functional": "1",
+          "subtype": "DPU"
+        },
+        "instances": [
+          {
+            "name": "MLIRAIEV1"
+          }
+        ],
+        "name": "matmul_dispatch_0_matmul_64x64x64_i32",
+        "type": "dpu"
+      }
+    ]
+  }
+}

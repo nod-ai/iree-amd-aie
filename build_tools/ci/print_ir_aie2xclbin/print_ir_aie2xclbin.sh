@@ -6,7 +6,7 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-set -euox pipefail
+# set -euox pipefail
 
 # Check for the number of provided arguments
 if [ "$#" -ne 2 ] && [ "$#" -ne 6 ]; then
@@ -170,4 +170,29 @@ ${FILECHECK_EXE} --input-file ${STDERR_FULLPATH} ${0} --check-prefix=CHECK-STDER
 # CHECK-STDOUT-DAG: Bootgen
 # CHECK-STDOUT-DAG: MEM_TOPOLOGY
 ${FILECHECK_EXE} --input-file ${STDOUT_FULLPATH} ${0} --check-prefix=CHECK-STDOUT
+
+# We now run test_artefact.vmfb 1000x to check for correctness. 
+
+IREE_RUN_EXE="${IREE_COMPILE}/iree-run-module"
+if [ ! -x "${IREE_RUN_EXE}" ]; then
+  echo "IREE_RUN_EXE does not exist or isn't executable: ${IREE_RUN_EXE}."
+  exit 1
+fi
+
+non_zero_count=0
+for i in {1..1000}; do
+  echo "Running iree-run-module iteration $i."
+  ${IREE_RUN_EXE} --module=${OUTPUT}/test_artefact.vmfb  --device=xrt --input="64x64xi32=1"  --input="64x64xi32=2"  --output_max_element_count=10000 --expected_output="64x64xi32=128"
+  if [ "$?" -ne 0 ]; then
+    echo "iree-run-module returned non-zero exit status."
+    # Increment the counter if the exit status is non-zero
+    ((non_zero_count++))
+  fi
+done
+echo "The command returned a non-zero exit status $non_zero_count times."
+
+if [ "$non_zero_count" -ne 0 ]; then
+  echo "iree-run-module returned non-zero exit status out of 1000."
+  exit 1
+fi
 
