@@ -15,11 +15,11 @@ namespace {
 class AMDAIEInsertLoopsForVectorizationPass
     : public impl::AMDAIEInsertLoopsForVectorizationBase<
           AMDAIEInsertLoopsForVectorizationPass> {
+ private:
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<linalg::LinalgDialect, scf::SCFDialect>();
   }
 
- private:
   // The number of dimensions ignoring leading 0s and 1s.
   // Examples:
   //   (5,5,5) -> 3
@@ -46,9 +46,11 @@ class AMDAIEInsertLoopsForVectorizationPass
   // denotes tiling with smallest possible tile (size 1) and tile size '0'
   // denotes tiling with the largest possible tile (size equal to the
   // dimension size). The tile sizes we use are [1,1,...1,0,0,0].
-  static void rewrite(IRRewriter &rewriter, linalg::GenericOp genericOp,
-                      uint32_t numIterators) {
+  static void rewrite(IRRewriter &rewriter, linalg::GenericOp genericOp) {
+    auto iteratorTypes = genericOp.getIteratorTypesArray();
+    auto numIterators = iteratorTypes.size();
     assert(numIterators >= 3 && "expected at least 3 iterators here");
+
     SmallVector<int64_t> tileSizes(numIterators, 1);
     tileSizes[numIterators - 3] = 0;
     tileSizes[numIterators - 2] = 0;
@@ -60,67 +62,72 @@ class AMDAIEInsertLoopsForVectorizationPass
     rewriter.replaceOp(genericOp, loops[0]->getResult(0));
   }
 
+  // Return success if the generic op is rewritten, failure otherwise.
+  LogicalResult maybeRewrite(linalg::GenericOp genericOp,
+                             IRRewriter &rewriter) {
+    auto iteratorTypes = genericOp.getIteratorTypesArray();
+    auto numIterators = iteratorTypes.size();
+
+    // No outer dimensions to tile if fewer than 4 iterators.
+    if (numIterators < 4) {
+      return failure();
+    }
+
+    // Matmul-like ops have 3 operands.
+    if (genericOp->getNumOperands() != 3) {
+      return failure();
+    }
+
+    // Don't transform to scf.for loops unless there is at least one
+    // non-singleton loop to construct. This isn't strictly necessary, but
+    // avoids generating a bunch of loops of size 1.
+    if (llvm::all_of(genericOp->getOperands(), [&](Value operand) {
+          return getNumInnerDims(operand) < 3;
+        })) {
+      return failure();
+    }
+
+    assert(iteratorTypes.size() >= 3 && "expected at least 3 iterators here");
+
+    // Check that innermost 3 iterators are 'parallel, parallel, reduction'.
+    for (auto i : {2, 3}) {
+      if (!linalg::isParallelIterator(iteratorTypes[numIterators - i])) {
+        return failure();
+      }
+    }
+    if (!linalg::isReductionIterator(iteratorTypes[iteratorTypes.size() - 1])) {
+      return failure();
+    }
+
+    // Check that the 'parallel, parallel, reduction' map exactly to a matmul.
+    {
+      auto indexingMaps = genericOp.getIndexingMaps();
+      assert(indexingMaps.size() == 3 && "expected 3 indexing maps here");
+      auto getDim = [&](uint32_t mapIndex, uint32_t matMulIndex) {
+        auto aMap = cast<AffineMapAttr>(indexingMaps[mapIndex]).getValue();
+        auto nResults = aMap.getNumResults();
+        return aMap.getResult(nResults - 2 + matMulIndex);
+      };
+      uint32_t A = 0, B = 1, C = 2;
+      auto mAgrees = getDim(A, 0) == getDim(C, 0);
+      auto nAgrees = getDim(B, 1) == getDim(C, 1);
+      auto kAgrees = getDim(A, 1) == getDim(B, 0);
+      if (!mAgrees || !nAgrees || !kAgrees) {
+        return failure();
+      }
+    }
+
+    rewrite(rewriter, genericOp);
+    return success();
+  }
+
   void runOnOperation() final {
     MLIRContext *context = &getContext();
     func::FuncOp operation = getOperation();
 
     IRRewriter rewriter(context);
-    operation->walk([&](linalg::GenericOp genericOp) -> WalkResult {
-      auto iteratorTypes = genericOp.getIteratorTypesArray();
-      auto numIterators = iteratorTypes.size();
-
-      // No outer dimensions to tile if fewer than 4 iterators.
-      if (numIterators < 4) {
-        return WalkResult::advance();
-      }
-
-      // Matmul-like ops have 3 operands.
-      if (genericOp->getNumOperands() != 3) {
-        return WalkResult::advance();
-      }
-
-      // Don't transform to scf.for loops unless there is at least one
-      // non-singleton loop to construct. This isn't strictly necessary, but
-      // avoids generating a bunch of loops of size 1.
-      if (llvm::all_of(genericOp->getOperands(), [&](Value operand) {
-            return getNumInnerDims(operand) < 3;
-          })) {
-        return WalkResult::advance();
-      }
-
-      assert(iteratorTypes.size() >= 3 && "expected at least 3 iterators here");
-
-      // Check that innermost 3 iterators are 'parallel, parallel, reduction'.
-      for (auto i : {2, 3}) {
-        if (!linalg::isParallelIterator(iteratorTypes[numIterators - i])) {
-          return WalkResult::advance();
-        }
-      }
-      if (!linalg::isReductionIterator(
-              iteratorTypes[iteratorTypes.size() - 1])) {
-        return WalkResult::advance();
-      }
-
-      // Check that the 'parallel, parallel, reduction' map exactly to a matmul.
-      {
-        auto indexingMaps = genericOp.getIndexingMaps();
-        assert(indexingMaps.size() == 3 && "expected 3 indexing maps here");
-        auto getDim = [&](uint32_t mapIndex, uint32_t matMulIndex) {
-          auto aMap = cast<AffineMapAttr>(indexingMaps[mapIndex]).getValue();
-          auto nResults = aMap.getNumResults();
-          return aMap.getResult(nResults - 2 + matMulIndex);
-        };
-        uint32_t A = 0, B = 1, C = 2;
-        auto mAgrees = getDim(A, 0) == getDim(C, 0);
-        auto nAgrees = getDim(B, 1) == getDim(C, 1);
-        auto kAgrees = getDim(A, 1) == getDim(B, 0);
-        if (!mAgrees || !nAgrees || !kAgrees) {
-          return WalkResult::advance();
-        }
-      }
-
-      rewrite(rewriter, genericOp, numIterators);
-      return WalkResult::advance();
+    operation->walk([&](linalg::GenericOp genericOp) {
+      (void)maybeRewrite(genericOp, rewriter);
     });
   }
 };
