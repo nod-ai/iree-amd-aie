@@ -31,11 +31,15 @@ struct AMDAIESession
                     xilinx::air::airDialect>();
   }
 
-  void populateHALTargetBackends(
-      IREE::HAL::TargetBackendList &targets) override {
+  void populateHALTargetDevices(IREE::HAL::TargetDeviceList &targets) override {
     // #hal.device.target<"amd-aie", ...
     // #hal.executable.target<"amd-aie", ...
-    targets.add("amd-aie", [&]() { return AMDAIE::createTarget(options); });
+    targets.add("amd-aie", [=]() { return AMDAIE::createTarget(options); });
+  }
+
+  void populateHALTargetBackends(
+      IREE::HAL::TargetBackendList &targets) override {
+    targets.add("amd-aie", [=]() { return AMDAIE::createBackend(options); });
   }
 };
 

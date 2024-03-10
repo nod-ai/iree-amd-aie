@@ -10,6 +10,7 @@
 #include <string>
 
 #include "iree/compiler/Dialect/HAL/Target/TargetBackend.h"
+#include "iree/compiler/Dialect/HAL/Target/TargetDevice.h"
 #include "iree/compiler/Utils/OptionUtils.h"
 
 namespace mlir::iree_compiler::AMDAIE {
@@ -97,7 +98,11 @@ struct AMDAIEOptions {
 };
 
 // Creates the default AIE target.
-std::shared_ptr<IREE::HAL::TargetBackend> createTarget(
+std::shared_ptr<IREE::HAL::TargetDevice> createTarget(
+    const AMDAIEOptions &options);
+
+// Creates the default AIE backend.
+std::shared_ptr<IREE::HAL::TargetBackend> createBackend(
     const AMDAIEOptions &options);
 
 }  // namespace mlir::iree_compiler::AMDAIE
