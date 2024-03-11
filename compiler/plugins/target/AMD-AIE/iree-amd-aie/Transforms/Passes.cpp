@@ -433,10 +433,12 @@ void buildAMDAIETransformPassPipeline(OpPassManager &pm) {
     pm.addPass(createAMDAIELowerExecutableTargetPass(options));
   }
   pm.addPass(createAMDAIELowerWorkgroupCountPass());
-
-  if (clUsePipeline != AIEPassPipeline::PackPipeline) {
+  if (clUsePipeline == AIEPassPipeline::PadPackPipeline) {
     auto &modulePassManager = pm.nest<ModuleOp>();
     addMLIRAIRAIELoweringPasses(modulePassManager);
+  } else if (clUsePipeline != AIEPassPipeline::PackPipeline) {
+    auto &modulePassManager = pm.nest<ModuleOp>();
+    addMLIRAIRAIELegacyLoweringPasses(modulePassManager);
   }
 
   LLVM_DEBUG({
@@ -462,7 +464,7 @@ void addMLIRAIRAIELoweringPasses(OpPassManager &passManager) {
   passManager.addPass(createEraseHALDescriptorTypeFromMemRefPass());
   passManager.addPass(memref::createFoldMemRefAliasOpsPass());
   passManager.addPass(createAMDAIEBridgeToAIRPass());
-  passManager.addPass(createAMDAIEDecomposeLinalgExtPackUnPackToAIRPass());
+  passManager.addPass(createAMDAIEPackToDmaPass());
 
   {
     xilinx::air::ParallelToHerdOptions options;
@@ -474,6 +476,9 @@ void addMLIRAIRAIELoweringPasses(OpPassManager &passManager) {
     options.clHasSegment = true;
     passManager.addPass(xilinx::air::createParallelToLaunchPass(options));
   }
+  passManager.addPass(createCanonicalizerPass());
+  passManager.addPass(createCSEPass());
+  passManager.addPass(createAMDAIECanonicalizeDmaPass());
   passManager.addPass(xilinx::air::createCopyToDmaPass());
   passManager.addPass(createCanonicalizerPass());
   passManager.addPass(createCSEPass());
