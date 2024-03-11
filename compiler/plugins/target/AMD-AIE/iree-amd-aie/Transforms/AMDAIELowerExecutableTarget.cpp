@@ -6,10 +6,11 @@
 
 #include "iree-amd-aie/Transforms/KernelDispatch.h"
 #include "iree-amd-aie/Transforms/Passes.h"
-#include "iree-dialects/Dialect/LinalgExt/IR/LinalgExtDialect.h"
+#include "iree/compiler/Codegen/Common/Passes.h"
 #include "iree/compiler/Codegen/Dialect/Codegen/IR/IREECodegenAttrs.h"
 #include "iree/compiler/Dialect/HAL/IR/HALDialect.h"
 #include "iree/compiler/Dialect/HAL/IR/HALOps.h"
+#include "iree/compiler/Dialect/LinalgExt/IR/LinalgExtDialect.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/Linalg/TransformOps/LinalgTransformOps.h"
 #include "mlir/Dialect/PDL/IR/PDL.h"
