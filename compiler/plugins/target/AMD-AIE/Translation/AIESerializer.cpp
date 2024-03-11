@@ -12,8 +12,6 @@
 
 #include "Translation/AIESerializer.h"
 
-#include <set>
-
 #include "iree/compiler/Dialect/HAL/IR/HALOps.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/TypeSwitch.h"
