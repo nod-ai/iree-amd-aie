@@ -69,12 +69,11 @@ iree_cc_library(
     iree::compiler::Codegen::Common::TransformDialectInterpreterPass
     iree::compiler::Codegen::Dialect::Codegen::IR::IREECodegenDialect
     iree::compiler::Dialect::HAL::IR
+    iree::compiler::Dialect::LinalgExt::IR
+    iree::compiler::Dialect::LinalgExt::Transforms
     iree::compiler::Utils
     iree::target::amd-aie::air::AIRConversionPasses
     iree::target::amd-aie::air::AIRTransformPasses
-    IREELinalgExtDialect
-    IREELinalgExtPasses
-    IREELinalgExtTransforms
     IREELinalgTransformDialectPasses
     MLIRLinalgDialect
     MLIRLinalgTransforms

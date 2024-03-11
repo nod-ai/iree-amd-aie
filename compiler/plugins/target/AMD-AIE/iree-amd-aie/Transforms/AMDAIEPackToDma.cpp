@@ -6,7 +6,7 @@
 
 #include "air/Dialect/AIR/AIRDialect.h"
 #include "iree-amd-aie/Transforms/Passes.h"
-#include "iree-dialects/Dialect/LinalgExt/IR/LinalgExtOps.h"
+#include "iree/compiler/Dialect/LinalgExt/IR/LinalgExtOps.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/Utils/IndexingUtils.h"
 #include "mlir/Pass/Pass.h"

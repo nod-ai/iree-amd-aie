@@ -26,13 +26,13 @@ iree_cc_binary(
     "iree-aie-translate.cpp"
   DEPS
     iree::compiler::Dialect::HAL::IR::HALDialect
+    iree::compiler::Dialect::LinalgExt::IR
     iree::compiler::Dialect::Stream::IR
     iree::target::amd-aie::Translation::AIESerializer
     MLIRGPUDialect
     MLIRSCFDialect
     MLIRTranslateLib
     MLIRSupport
-    IREELinalgExtDialect
   DATA
     ${IREE_LLD_TARGET}
   HOSTONLY
