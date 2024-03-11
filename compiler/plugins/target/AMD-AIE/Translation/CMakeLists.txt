@@ -17,11 +17,11 @@ iree_cc_library(
       "AIESerializer.cpp"
     DEPS
       iree::compiler::Dialect::HAL::IR::HALDialect
+      iree::compiler::Dialect::LinalgExt::IR
       iree::compiler::Dialect::Stream::IR
       MLIRGPUDialect
       MLIRSCFDialect
       MLIRTranslateLib
       MLIRSupport
-      IREELinalgExtDialect
     PUBLIC
 )

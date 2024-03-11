@@ -39,26 +39,28 @@ iree_cc_library(
     "Passes.h"
     "AMDAIEUtils.h"
   SRCS
-    "Passes.cpp"
+    "AMDAIEAddLoweringStrategy.cpp"
     "AMDAIEBufferizeToAllocation.cpp"
+    "AMDAIECanonicalizeDma.cpp"
     "AMDAIEFuseFillIntoForall.cpp"
     "AMDAIEFusePackIntoForLoop.cpp"
-    "AMDAIEAddLoweringStrategy.cpp"
+    "AMDAIEInsertLoopsForVectorization.cpp"
     "AMDAIELowerExecutableTarget.cpp"
     "AMDAIELowerToUKernels.cpp"
     "AMDAIELowerWorkgroupCount.cpp"
     "AMDAIEPackAndTranspose.cpp"
     "AMDAIEPackToDma.cpp"
     "AMDAIEPad.cpp"
-    "AMDAIEUtils.cpp"
     "AMDAIEPeelForLoop.cpp"
     "AMDAIEPropagateDataLayout.cpp"
     "AMDAIETile.cpp"
     "AMDAIETileAndFuse.cpp"
+    "AMDAIEUtils.cpp"
     "BridgeToAIRPass.cpp"
     "DecomposeLinalgExtPackUnPackToAIR.cpp"
     "Cleanup.cpp"
     "KernelDispatch.cpp"
+    "Passes.cpp"
   DEPS
     ::PassHeaders
     ::PassesIncGen
@@ -67,12 +69,11 @@ iree_cc_library(
     iree::compiler::Codegen::Common::TransformDialectInterpreterPass
     iree::compiler::Codegen::Dialect::Codegen::IR::IREECodegenDialect
     iree::compiler::Dialect::HAL::IR
+    iree::compiler::Dialect::LinalgExt::IR
+    iree::compiler::Dialect::LinalgExt::Transforms
     iree::compiler::Utils
     iree::target::amd-aie::air::AIRConversionPasses
     iree::target::amd-aie::air::AIRTransformPasses
-    IREELinalgExtDialect
-    IREELinalgExtPasses
-    IREELinalgExtTransforms
     IREELinalgTransformDialectPasses
     MLIRLinalgDialect
     MLIRLinalgTransforms

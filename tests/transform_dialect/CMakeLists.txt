@@ -8,13 +8,10 @@ iree_lit_test_suite(
   NAME
     lit
   SRCS
-    "pack_pipeline_funcIR.mlir"
-    "pad_pack_pipeline_e2e.mlir"
-    "pad_pipeline_e2e.mlir"
-    "simple_pack_pipeline_e2e.mlir"
-    # Disabling because on Windows build: 
-    #    'linalg.fill' op with consumer is being erased.
-    # "pad_pipeline_conv2d.mlir"
+    "matmul_fill_spec_pack_peel.mlir"
+    "matmul_fill_spec_pad.mlir"
+    "matmul_fill_spec_pad_pack_peel.mlir"
+    "matmul_fill_spec_simple_pack.mlir"
   TOOLS
     ${IREE_LLD_TARGET}
     FileCheck

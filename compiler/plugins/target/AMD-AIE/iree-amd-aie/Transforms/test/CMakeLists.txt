@@ -12,6 +12,7 @@ iree_lit_test_suite(
     "bufferize_to_allocation_pack.mlir"
     "bufferize_to_allocation_pad.mlir"
     "bufferize_to_allocation_pad_last.mlir"
+    "canonicalize_dma.mlir"
     "fuse_fill_into_forall.mlir"
     "fuse_pack_into_for.mlir"
     "lower_to_ukernel.mlir"
@@ -26,6 +27,7 @@ iree_lit_test_suite(
     "tile_and_fuse_using_scf_for.mlir"
     "tile_and_fuse_using_scf_forall.mlir"
     "tile_copy_using_scf_for.mlir"
+    "insert_loops_for_vectorization.mlir"
   TOOLS
     ${IREE_LLD_TARGET}
     FileCheck
