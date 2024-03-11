@@ -97,3 +97,32 @@ func.func @matmul_transpose_b_static(%lhs : tensor<8x16xi32>,
                                         outs(%fill : tensor<8x32xi32>) -> tensor<8x32xi32>
   return %matmul_transpose : tensor<8x32xi32>
 }
+
+// -----
+
+// This test checks that vectorization is enabled on the simple-pack pipeline.
+// Vectorization is only enabled for some operations which have 16-bit or
+// smaller operand types, so we use bf16 operands in this test.
+
+// CPP-LABEL: hal.executable.export public @mm_in_bf16_out_f32_dispatch_0_matmul_64x64x64_bf16xbf16xf32
+// CPP-NOT: linalg.matmul
+// CPP-NOT: linalg.generic
+// CPP: vector.contract
+// CPP-SAME: iterator_types = ["parallel", "parallel", "reduction", "parallel", "parallel", "reduction", "parallel", "parallel", "reduction"]
+// CPP-SAME: kind = #vector.kind<add>
+// CPP-SAME: vector<1x1x1x1x4x8xf32>, vector<1x1x1x1x8x4xf32> into vector<1x1x1x1x4x4xf32>
+// CPP-NOT: linalg.matmul
+// CPP-NOT: linalg.generic
+// CPP: func.func @mm_in_bf16_out_f32_dispatch_0_matmul_64x64x64_bf16xbf16xf32
+
+func.func @mm_in_bf16_out_f32(%lhs: tensor<64x64xbf16>,
+                              %rhs: tensor<64x64xbf16>) -> tensor<64x64xf32> {
+  %empty = tensor.empty() : tensor<64x64xf32>
+  %cst = arith.constant 0.0 : f32
+  %fill = linalg.fill ins(%cst : f32)
+                      outs(%empty : tensor<64x64xf32>) -> tensor<64x64xf32>
+  %res = linalg.matmul ins(%lhs, %rhs: tensor<64x64xbf16>, tensor<64x64xbf16>)
+                       outs(%fill: tensor<64x64xf32>) -> tensor<64x64xf32>
+  return %res : tensor<64x64xf32>
+}
+

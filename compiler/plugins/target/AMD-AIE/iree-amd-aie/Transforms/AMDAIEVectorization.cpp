@@ -1,0 +1,113 @@
+// Copyright 2024 The IREE Authors
+//
+// Licensed under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+#include <memory>
+
+#include "iree-amd-aie/Transforms/Passes.h"
+#include "mlir/Dialect/Affine/LoopUtils.h"
+#include "mlir/Dialect/Linalg/IR/LinalgInterfaces.h"
+#include "mlir/Dialect/Linalg/Transforms/Hoisting.h"
+#include "mlir/Dialect/Linalg/Transforms/Transforms.h"
+#include "mlir/Dialect/MemRef/Transforms/Passes.h"
+#include "mlir/Dialect/SCF/IR/SCF.h"
+#include "mlir/Dialect/SCF/Utils/Utils.h"
+#include "mlir/Dialect/Vector/IR/VectorOps.h"
+#include "mlir/Dialect/Vector/Transforms/LoweringPatterns.h"
+#include "mlir/Dialect/Vector/Transforms/VectorRewritePatterns.h"
+#include "mlir/Pass/Pass.h"
+#include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+
+namespace mlir::iree_compiler::AMDAIE {
+
+namespace {
+
+// IREE's GenericVectorization pass has many options, patterns, and vectorizes
+// some non-linalg ops (tensor.pad). It has logic to choose vector sizes.
+//
+// This new pass is a minimal version of GenericVectorization tailored to the
+// needs of amd-aie. iree-amd-aie uses linalg.copy ops to move data between
+// memory spaces (DDR, memory tile, core). These copy ops should not be
+// vectorized to vector transfer_read/transfer_write ops.
+//
+// This 'fork' of GenericVectorization will be extended in the future to support
+// more AIE-specific vectorization patterns.
+
+class AMDAIEVectorizationPass
+    : public impl::AMDAIEVectorizationBase<AMDAIEVectorizationPass> {
+ public:
+  using AMDAIEVectorizationBase::AMDAIEVectorizationBase;
+
+  void getDependentDialects(DialectRegistry &registry) const override {
+    registry.insert</* tensor::TensorDialect, */ linalg::LinalgDialect,
+                    scf::SCFDialect, vector::VectorDialect>();
+  }
+  void runOnOperation() override;
+
+  static bool hasOperandWithSmallElementType(Operation *op) {
+    for (auto operand : op->getOperands()) {
+      if (auto type = operand.getType().dyn_cast<ShapedType>()) {
+        auto elementType = type.getElementType();
+        if (elementType.getIntOrFloatBitWidth() <= 16) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+};
+
+
+
+void AMDAIEVectorizationPass::runOnOperation() {
+  MLIRContext *context = &getContext();
+  auto funcOp = getOperation();
+
+  IRRewriter rewriter(context);
+
+  // Collect all operations which must be vectorized.
+  SmallVector<Operation *> candidates;
+  funcOp.walk([&](Operation *op) {
+
+    // Only vectorize linalg ops (for now)
+    if (!isa<linalg::LinalgOp>(op)) return;
+
+    // iree-amd-aie's current tiling pipelines use linalg.copy ops to move data
+    // between memory spaces. These copy ops should not be vectorized to
+    // vector.transfer_read/transfer_write ops.
+    if (isa<linalg::CopyOp>(op)) return;
+
+    // Temporarily disabling linalg::FillOp vectorization. Current compilation
+    // pipeline crashes in DMAToChannelPass: 'error: operand #0 does not
+    // dominate this use'. TODO(newling) follow-up on this.
+    if (isa<linalg::FillOp>(op)) return;
+
+    // AIE architecture has no vector instructions for 32/64-bit types.
+    if (!hasOperandWithSmallElementType(op)) return;
+
+    candidates.push_back(op);
+  });
+
+  for (Operation *op : candidates) {
+    (void)linalg::vectorize(rewriter, op);
+  }
+
+  RewritePatternSet vectorizationPatterns(funcOp.getContext());
+
+  vector::populateVectorReductionToContractPatterns(vectorizationPatterns);
+
+  // Including this pattern prevents broadcasting in vector.transfer_read ops
+  vector::populateVectorTransferPermutationMapLoweringPatterns(
+      vectorizationPatterns);
+
+  (void)applyPatternsAndFoldGreedily(funcOp, std::move(vectorizationPatterns));
+}
+}  // namespace
+
+std::unique_ptr<Pass> createAMDAIEVectorizationPass() {
+  return std::make_unique<AMDAIEVectorizationPass>();
+}
+
+}  // namespace mlir::iree_compiler::AMDAIE

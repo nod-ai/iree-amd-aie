@@ -109,6 +109,12 @@ def AMDAIELowerExecutableTarget :
   ];
 }
 
+def AMDAIEVectorization :
+    Pass<"iree-amdaie-vectorization", "func::FuncOp"> {
+  let summary = "Vectorization pass. Currently this matches on matmul bfloat only.";
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEVectorizationPass()";
+}
+
 def AMDAIELoweringStrategy :
     Pass<"iree-amdaie-lowering-strategy", "mlir::iree_compiler::IREE::HAL::ExecutableVariantOp"> {
   let summary = "Add lowering strategy configurations to be used";
