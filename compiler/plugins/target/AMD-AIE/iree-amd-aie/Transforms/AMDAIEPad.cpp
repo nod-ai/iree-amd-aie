@@ -22,7 +22,7 @@ namespace {
 
 static FailureOr<linalg::LinalgPaddingOptions>
 getFirstLevelLinalgPaddingOptions(IRRewriter &rewriter,
-                                  linalg::MatmulOp &matmulOp) {
+                                  linalg::LinalgOp &matmulOp) {
   linalg::LinalgPaddingOptions options;
   SmallVector<Attribute> paddingValues;
   for (auto operand : matmulOp->getOperands()) {
@@ -56,7 +56,7 @@ getFirstLevelLinalgPaddingOptions(IRRewriter &rewriter,
 
 static FailureOr<linalg::LinalgPaddingOptions>
 getSecondLevelLinalgPaddingOptions(IRRewriter &rewriter,
-                                   linalg::MatmulOp &matmulOp) {
+                                   linalg::LinalgOp &matmulOp) {
   linalg::LinalgPaddingOptions options;
   SmallVector<Attribute> paddingValues;
   for (auto operand : matmulOp->getOperands()) {
@@ -92,7 +92,7 @@ getSecondLevelLinalgPaddingOptions(IRRewriter &rewriter,
 
 static FailureOr<linalg::LinalgPaddingOptions>
 getThirdLevelLinalgPaddingOptions(IRRewriter &rewriter,
-                                  linalg::MatmulOp &matmulOp) {
+                                  linalg::LinalgOp &matmulOp) {
   linalg::LinalgPaddingOptions options;
   SmallVector<Attribute> paddingValues;
   for (auto operand : matmulOp->getOperands()) {
@@ -126,7 +126,7 @@ getThirdLevelLinalgPaddingOptions(IRRewriter &rewriter,
 }
 
 static FailureOr<linalg::LinalgPaddingOptions> getLinalgPaddingOptions(
-    IRRewriter &rewriter, linalg::MatmulOp &matmulOp, int64_t paddingLevel) {
+    IRRewriter &rewriter, linalg::LinalgOp &matmulOp, int64_t paddingLevel) {
   if (paddingLevel == 0) {
     return getFirstLevelLinalgPaddingOptions(rewriter, matmulOp);
   }
@@ -140,7 +140,7 @@ static FailureOr<linalg::LinalgPaddingOptions> getLinalgPaddingOptions(
 }
 
 static LogicalResult applyPadAndConvertToDPS(
-    RewriterBase &rewriter, linalg::MatmulOp linalgTarget,
+    RewriterBase &rewriter, linalg::LinalgOp linalgTarget,
     linalg::LinalgPaddingOptions &options) {
   linalg::LinalgOp paddedOp;
   SmallVector<Value> replacements;
@@ -186,13 +186,13 @@ class AMDAIEPadPass : public impl::AMDAIEPadBase<AMDAIEPadPass> {
 void AMDAIEPadPass::runOnOperation() {
   MLIRContext *context = &getContext();
   func::FuncOp funcOp = getOperation();
-  linalg::MatmulOp matmulOp;
-  funcOp->walk<WalkOrder::PostOrder, ReverseIterator>([&](TilingInterface op) {
-    // Find the next matmul op if it does not have loops.
-    if (op.getLoopIteratorTypes().empty() || !isa<linalg::MatmulOp>(op))
-      return WalkResult::advance();
-    matmulOp = cast<linalg::MatmulOp>(op);
-    return WalkResult::interrupt();
+  linalg::LinalgOp matmulOp;
+  funcOp->walk([&](linalg::LinalgOp op) {
+    if (linalg::isaContractionOpInterface(op)) {
+      matmulOp = op;
+      return WalkResult::interrupt();
+    }
+    return WalkResult::advance();
   });
   if (!matmulOp) {
     LLVM_DEBUG(llvm::dbgs() << "----- skip, no matmul op -----\n");
