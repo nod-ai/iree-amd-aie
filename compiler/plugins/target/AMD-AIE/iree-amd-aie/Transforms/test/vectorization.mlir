@@ -9,9 +9,8 @@ module {
 // is vectorized to a vector.contract operation.
 // CHECK-LABEL: func @matmul_m4_n4_k8_bf16_f32
 func.func @matmul_m4_n4_k8_bf16_f32(%arg0: tensor<4x8xbf16>, %arg1: tensor<8x4xbf16>, %arg2: tensor<4x4xf32>) -> tensor<4x4xf32> {
-  // CHECK-DAG: %[[cst:.*]] = arith.constant 0.000000e+00 : f32
-  // CHECK-DAG: %[[c0:.*]] = arith.constant 0 : index
-  // CHECK-DAG: %[[cst_0:.*]] = arith.constant 0.000000e+00 : bf16
+  // CHECK-DAG: arith.extf{{.*}} vector<4x8xbf16> to vector<4x8xf32>
+  // CHECK-DAG: arith.extf{{.*}} vector<8x4xbf16> to vector<8x4xf32>
   // CHECK-DAG: vector.transfer_read{{.*}} tensor<4x8xbf16>, vector<4x8xbf16>
   // CHECK-DAG: vector.transfer_read{{.*}} tensor<8x4xbf16>, vector<8x4xbf16>
   // CHECK-DAG: vector.transfer_read{{.*}} tensor<4x4xf32>, vector<4x4xf32>
@@ -41,6 +40,7 @@ func.func @matmul_m4_n4_k8_f32_f32(%arg0: tensor<4x8xf32>, %arg1: tensor<8x4xf32
     %2 = arith.addf %out, %1 : f32
     linalg.yield %2 : f32
   } -> tensor<4x4xf32>
+
   // CHECK: return
   return %0 : tensor<4x4xf32>
 }
@@ -51,7 +51,6 @@ func.func @matmul_m4_n4_k8_f32_f32(%arg0: tensor<4x8xf32>, %arg1: tensor<8x4xf32
 // CHECK-LABEL: func @fillAndCopy
 func.func @fillAndCopy() -> tensor<8xbf16> {
   // CHECK-NOT: vector
-
   // Fill a tensor with a constant value:
   %cst = arith.constant 3.140000e+00 : bf16
   %0 = tensor.empty() : tensor<8xbf16>
