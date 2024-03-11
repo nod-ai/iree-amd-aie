@@ -5,9 +5,8 @@
 #map2 = affine_map<(d0, d1, d2) -> (d0, d1)>
 module {
 
-// Test that a matmul with bfloat operands (presented as a generic operation) 
-// is vectorized to a vector.contract operation. 
-
+// Test that a matmul (as a generic operation) with bf16 operands
+// is vectorized to a vector.contract operation.
 // CHECK-LABEL: func @matmul_m4_n4_k8_bf16_f32
 func.func @matmul_m4_n4_k8_bf16_f32(%arg0: tensor<4x8xbf16>, %arg1: tensor<8x4xbf16>, %arg2: tensor<4x4xf32>) -> tensor<4x4xf32> {
   // CHECK-DAG: %[[cst:.*]] = arith.constant 0.000000e+00 : f32
@@ -31,7 +30,7 @@ func.func @matmul_m4_n4_k8_bf16_f32(%arg0: tensor<4x8xbf16>, %arg1: tensor<8x4xb
   return %0 : tensor<4x4xf32>
 }
 
-// Test that a matmul with f32 operands (presented as a generic operation)
+// Test that a matmul with f32 operands (a generic operation with matmul semantics)
 // is not vectorized to a vector.contract operation.
 // CHECK-LABEL: func @matmul_m4_n4_k8_f32_f32
 func.func @matmul_m4_n4_k8_f32_f32(%arg0: tensor<4x8xf32>, %arg1: tensor<8x4xf32>, %arg2: tensor<4x4xf32>) -> tensor<4x4xf32> {
@@ -46,24 +45,24 @@ func.func @matmul_m4_n4_k8_f32_f32(%arg0: tensor<4x8xf32>, %arg1: tensor<8x4xf32
   return %0 : tensor<4x4xf32>
 }
 
-// Test that the currently black-listed linalg operations are not vectorized:
+// Test that the currently 'black listed' linalg operations are not vectorized:
 //  - linalg.copy
 //  - linalg.fill
 // CHECK-LABEL: func @fillAndCopy
-func.func @fillAndCopy() -> tensor<8xf32> {
+func.func @fillAndCopy() -> tensor<8xbf16> {
   // CHECK-NOT: vector
 
   // Fill a tensor with a constant value:
-  %cst = arith.constant 3.140000e+00 : f32
-  %0 = tensor.empty() : tensor<8xf32>
-  %1 = linalg.fill ins(%cst : f32) outs(%0 : tensor<8xf32>) -> tensor<8xf32>
+  %cst = arith.constant 3.140000e+00 : bf16
+  %0 = tensor.empty() : tensor<8xbf16>
+  %1 = linalg.fill ins(%cst : bf16) outs(%0 : tensor<8xbf16>) -> tensor<8xbf16>
 
   // Copy from the filled tensor to another tensor:
-  %2 = tensor.empty() : tensor<8xf32>
-  %copy = linalg.copy ins(%1 : tensor<8xf32>) outs(%2 : tensor<8xf32>) -> tensor<8xf32>
+  %2 = tensor.empty() : tensor<8xbf16>
+  %copy = linalg.copy ins(%1 : tensor<8xbf16>) outs(%2 : tensor<8xbf16>) -> tensor<8xbf16>
 
   // CHECK: return
-  return %copy : tensor<8xf32>
+  return %copy : tensor<8xbf16>
 }
 
 
