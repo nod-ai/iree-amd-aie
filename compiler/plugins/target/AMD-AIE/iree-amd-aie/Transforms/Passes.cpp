@@ -20,14 +20,12 @@
 
 namespace mlir::iree_compiler::AMDAIE {
 
-void doVectorize(OpPassManager &modulePassManager) {
-  modulePassManager.addNestedPass<func::FuncOp>(createAMDAIECleanupPass());
-  modulePassManager.addNestedPass<func::FuncOp>(
-      createAMDAIEInsertLoopsForVectorizationPass());
-  modulePassManager.addNestedPass<func::FuncOp>(
-      createAMDAIEVectorizationPass());
-  modulePassManager.addPass(createCanonicalizerPass());
-  modulePassManager.addPass(createCSEPass());
+void appendVectorizationToPipeline(OpPassManager &pm) {
+  pm.addNestedPass<func::FuncOp>(createAMDAIECleanupPass());
+  pm.addNestedPass<func::FuncOp>(createAMDAIEInsertLoopsForVectorizationPass());
+  pm.addNestedPass<func::FuncOp>(createAMDAIEVectorizationPass());
+  pm.addPass(createCanonicalizerPass());
+  pm.addPass(createCSEPass());
 }
 
 /// Command line options used purely for development purposes. Not to be relied
@@ -241,7 +239,7 @@ void addSimplePackBasedPassPipeline(OpPassManager &pm,
     modulePassManager.addNestedPass<func::FuncOp>(
         createAMDAIELowerToUKernelsPass(options));
   }
-  doVectorize(modulePassManager);
+  appendVectorizationToPipeline(modulePassManager);
 
   // Comprehensive bufferization
   addAMDAIEBufferizePasses(modulePassManager);

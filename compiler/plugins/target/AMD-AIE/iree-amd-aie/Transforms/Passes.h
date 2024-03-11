@@ -54,7 +54,7 @@ std::unique_ptr<Pass> createAMDAIEBufferizeToAllocationPass(
 /// Create pass to apply caonicaliztions to air.dma_memcpy_nd op's.
 std::unique_ptr<Pass> createAMDAIECanonicalizeDmaPass();
 
-/// Create a pass to vectorize ops.
+/// Create a pass to vectorize operations.
 std::unique_ptr<Pass> createAMDAIEVectorizationPass();
 
 /// Create pass to invoke several cleanup and canonicalization patterns.

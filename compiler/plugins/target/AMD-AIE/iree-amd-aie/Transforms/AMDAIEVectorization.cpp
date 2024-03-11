@@ -4,8 +4,6 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#include <memory>
-
 #include "iree-amd-aie/Transforms/Passes.h"
 #include "mlir/Dialect/Affine/LoopUtils.h"
 #include "mlir/Dialect/Linalg/IR/LinalgInterfaces.h"
@@ -25,15 +23,13 @@ namespace mlir::iree_compiler::AMDAIE {
 namespace {
 
 // IREE's GenericVectorization pass has many options, patterns, and vectorizes
-// some non-linalg ops (tensor.pad). It has logic to choose vector sizes.
-//
-// This new pass is a minimal version of GenericVectorization tailored to the
-// needs of amd-aie. iree-amd-aie uses linalg.copy ops to move data between
+// some non-linalg ops (tensor.pad). It has logic to choose vector sizes. This
+// AIE-specific pass is a minimal version of GenericVectorization tailored to
+// the needs of amd-aie. iree-amd-aie uses linalg.copy ops to move data between
 // memory spaces (DDR, memory tile, core). These copy ops should not be
-// vectorized to vector transfer_read/transfer_write ops.
-//
-// This 'fork' of GenericVectorization will be extended in the future to support
-// more AIE-specific vectorization patterns.
+// vectorized to vector transfer_read/transfer_write ops. This 'fork' of
+// GenericVectorization will be extended in the future to support more
+// AIE-specific vectorization patterns.
 
 class AMDAIEVectorizationPass
     : public impl::AMDAIEVectorizationBase<AMDAIEVectorizationPass> {
