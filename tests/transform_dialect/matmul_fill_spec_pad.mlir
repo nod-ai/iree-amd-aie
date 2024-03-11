@@ -1,6 +1,23 @@
-// RUN: iree-compile --iree-hal-target-backends=amd-aie --compile-to=executable-sources %S/../samples/pad_pipeline_e2e.mlir | iree-opt --pass-pipeline="builtin.module(hal.executable(hal.executable.variant(iree-hal-translate-target-executable-variants{target=amd-aie})))" --iree-codegen-transform-dialect-library=%s
+// RUN: iree-opt --iree-transform-dialect-interpreter %s | FileCheck %s
 
 // This script shows an example lowering matmul through pad based pipeline for AIE device.
+// In this strategy, we use pad operations for data movement from L3 to L2, and L2 to L1.
+
+func.func @matmul_i32() {
+  %c0_i32 = arith.constant 0: i32
+  %c0 = arith.constant 0 : index
+  %arg0_binding = hal.interface.binding.subspan set(0) binding(0) type(storage_buffer) offset(%c0) flags(ReadOnly) : !flow.dispatch.tensor<readonly:tensor<8x16xi32>>
+  %arg0 = flow.dispatch.tensor.load %arg0_binding, offsets = [0, 0], sizes = [8, 16], strides = [1, 1] : !flow.dispatch.tensor<readonly:tensor<8x16xi32>> -> tensor<8x16xi32>
+  %arg1_binding = hal.interface.binding.subspan set(0) binding(1) type(storage_buffer) offset(%c0) flags(ReadOnly) : !flow.dispatch.tensor<readonly:tensor<16x8xi32>>
+  %arg1 = flow.dispatch.tensor.load %arg1_binding, offsets = [0, 0], sizes = [16, 8], strides = [1, 1] : !flow.dispatch.tensor<readonly:tensor<16x8xi32>> -> tensor<16x8xi32>
+  %arg2_binding = hal.interface.binding.subspan set(0) binding(2) type(storage_buffer) offset(%c0) flags(None) : !flow.dispatch.tensor<writeonly:tensor<8x8xi32>>
+  %empty = tensor.empty() : tensor<8x8xi32>
+  %0 = linalg.fill ins(%c0_i32 : i32) outs(%empty : tensor<8x8xi32>) -> tensor<8x8xi32>
+  %1 = linalg.matmul ins(%arg0, %arg1 : tensor<8x16xi32>, tensor<16x8xi32>)
+      outs(%0 : tensor<8x8xi32>) -> tensor<8x8xi32>
+  flow.dispatch.tensor.store %1, %arg2_binding, offsets = [0, 0], sizes = [8, 8], strides = [1, 1] : tensor<8x8xi32> -> !flow.dispatch.tensor<writeonly:tensor<8x8xi32>>
+  return
+}
 
 module attributes { transform.with_named_sequence } {
   transform.named_sequence @cleanup(%variant_op: !transform.any_op {transform.readonly}) {
@@ -24,8 +41,6 @@ module attributes { transform.with_named_sequence } {
     %tiled_matmul, %forall =
       transform.structured.tile_using_forall %matmul tile_sizes [8, 8]
         ( mapping = [#gpu.block<y>, #gpu.block<x>] ) : (!transform.any_op) -> (!transform.any_op, !transform.any_op)
-    transform.iree.populate_workgroup_count_region_using_num_threads_slice %forall
-      : (!transform.any_op) -> ()
 
     // Fuse fill operation into the loop
     %fused_fill, %fused_for_all = transform.structured.fuse_into_containing_op %fill into %forall : (!transform.any_op, !transform.any_op) -> (!transform.any_op, !transform.any_op)
@@ -120,3 +135,34 @@ module attributes { transform.with_named_sequence } {
     transform.yield
   }
 }
+
+// CHECK-LABEL: @matmul_i32
+//       CHECK: scf.forall
+//       CHECK: {
+//       CHECK:   memref.alloc() : memref<8x16xi32, 1>
+//       CHECK:   linalg.copy ins(%{{.*}} : memref<8x16xi32, strided<[16, 1], offset: ?>, #hal.descriptor_type<storage_buffer>>) outs(%{{.*}} : memref<8x16xi32, 1>)
+//       CHECK:   memref.alloc() : memref<16x8xi32, 1>
+//       CHECK:   linalg.copy ins(%{{.*}} : memref<16x8xi32, strided<[8, 1], offset: ?>, #hal.descriptor_type<storage_buffer>>) outs(%{{.*}} : memref<16x8xi32, 1>)
+//       CHECK:   memref.alloc() : memref<8x8xi32, 1>
+//       CHECK:   scf.forall
+//       CHECK:   {
+//       CHECK:     memref.alloc() : memref<4x4xi32, 2>
+//       CHECK:     linalg.fill ins(%{{.*}}) outs(%{{.*}} : memref<4x4xi32, 2>)
+//       CHECK:     scf.for
+//       CHECK:     {
+//       CHECK:        memref.alloc() : memref<4x4xi32, 2>
+//       CHECK:        linalg.copy ins(%{{.*}} : memref<4x4xi32, strided<[16, 1], offset: ?>, 1>) outs(%{{.*}} : memref<4x4xi32, 2>)
+//       CHECK:        memref.alloc() : memref<4x4xi32, 2>
+//       CHECK:        linalg.copy ins(%{{.*}} : memref<4x4xi32, strided<[8, 1], offset: ?>, 1>) outs(%{{.*}} : memref<4x4xi32, 2>)
+//       CHECK:        linalg.matmul
+//       CHECK:        memref.dealloc %{{.*}} : memref<4x4xi32, 2>
+//       CHECK:        memref.dealloc %{{.*}} : memref<4x4xi32, 2>
+//       CHECK:     }
+//       CHECK:     linalg.copy ins(%{{.*}} : memref<4x4xi32, 2>) outs(%{{.*}} : memref<4x4xi32, strided<[8, 1], offset: ?>, 1>)
+//       CHECK:     memref.dealloc %{{.*}} : memref<4x4xi32, 2>
+//       CHECK:   }
+//       CHECK:   linalg.copy ins(%{{.*}} : memref<8x8xi32, 1>) outs(%{{.*}} : memref<8x8xi32, strided<[8, 1], offset: ?>, #hal.descriptor_type<storage_buffer>>)
+//       CHECK:   memref.dealloc %{{.*}} : memref<8x16xi32, 1>
+//       CHECK:   memref.dealloc %{{.*}} : memref<16x8xi32, 1>
+//       CHECK:   memref.dealloc %{{.*}} : memref<8x8xi32, 1>
+//       CHECK: }

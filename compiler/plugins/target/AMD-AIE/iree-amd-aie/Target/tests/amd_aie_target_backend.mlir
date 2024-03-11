@@ -1,5 +1,5 @@
-// RUN: iree-compile --iree-hal-target-backends=amd-aie --compile-to=executable-sources %s | FileCheck %s --check-prefix=DEFAULT
-// RUN: iree-compile --iree-hal-target-backends=amd-aie --compile-to=executable-sources --iree-amdaie-enable-ukernels=all %s | FileCheck %s --check-prefix=ENABLE_UKERNEL
+// RUN: iree-compile --iree-hal-target-backends=amd-aie --compile-to=executable-targets %s | FileCheck %s --check-prefix=DEFAULT
+// RUN: iree-compile --iree-hal-target-backends=amd-aie --compile-to=executable-targets --iree-amdaie-enable-ukernels=all %s | FileCheck %s --check-prefix=ENABLE_UKERNEL
 
 //        DEFAULT: hal.executable.variant public @amdaie_xclbin_fb target(<"amd-aie", "amdaie-xclbin-fb", {target_arch = "chip-tbd", ukernels = "none"}>) {
 // ENABLE_UKERNEL: hal.executable.variant public @amdaie_xclbin_fb target(<"amd-aie", "amdaie-xclbin-fb", {target_arch = "chip-tbd", ukernels = "all"}>) {

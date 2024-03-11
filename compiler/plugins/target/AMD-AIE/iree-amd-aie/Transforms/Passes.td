@@ -28,6 +28,12 @@ def AMDAIEBufferizeToAllocation :
   ];
 }
 
+def AMDAIECanonicalizeDma : 
+  Pass<"iree-amdaie-canonicalize-dma", ""> {
+  let summary = "Apply caonicaliztions to air.dma_memcpy_nd op's";
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIECanonicalizeDmaPass()";
+}
+
 def AMDAIECleanup :
     Pass<"iree-amdaie-cleanup", "func::FuncOp"> {
   let summary = "Pass to invoke several cleanup and canonicalization patterns.";
@@ -47,6 +53,34 @@ def AMDAIEFuseFillIntoForall :
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEFuseFillIntoForallPass()";
 }
 
+def AMDAIEInsertLoopsForVectorization :
+    Pass<"iree-amdaie-insert-loops-for-vectorization", "func::FuncOp"> {
+
+    let summary = "Replace outer-dimensions of matmul-like linalg.generics with scf.for loops.";
+
+    let description  = [{
+      This pass transforms all linalg.generic operations with matmul-like
+      inner-dimension semantics. It replaces all outer-dimensions with scf.for
+      loops. For example, it replaces a generic operation that describes a
+      batched matmul with an scf.for loop containing a linalg.generic that
+      describes a lower rank non-batched matmul. In other words, it replaces
+      the batch dimension in the linalg.generic with an scf.for loop.
+
+      All outer dimensions are replaced with scf.for loops. The three
+      inner-dimensions must describe a matmul: 2 parallel dimensions and 1
+      reduction dimension, at correct indices. The pass does not transform
+      transposed matmuls, or any other operation that does not have exact
+      matmul semantics.
+
+      The motivation for this pass is to enable a subsequent vectorization pass
+      to generate vector.contract operations which map easily to the AIEVec
+      dialect.
+    }];
+
+   let constructor =
+       "mlir::iree_compiler::AMDAIE::createAMDAIEInsertLoopsForVectorizationPass()";
+}
+
 def AMDAIEFusePackIntoForLoop :
     Pass<"iree-amdaie-fuse-pack-into-for", "func::FuncOp"> {
   let summary = "Fuse the pack operations into the for loops.";
@@ -59,7 +93,7 @@ def AMDAIELowerExecutableTarget :
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIELowerExecutableTargetPass()";
   let options = [
     Option<"usePassPipeline", "use-pass-pipeline",
-      "mlir::iree_compiler::AMDAIE::AIEPassPipeline", 
+      "mlir::iree_compiler::AMDAIE::AIEPassPipeline",
       /*default=*/"mlir::iree_compiler::AMDAIE::AIEPassPipeline::PadPipeline",
       "Pass pipeline to use while lowering to AIR dialect",
       [{::llvm::cl::values(
@@ -81,7 +115,7 @@ def AMDAIELoweringStrategy :
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIELoweringStrategyPass()";
   let options = [
     Option<"usePassPipeline", "use-pass-pipeline",
-      "mlir::iree_compiler::AMDAIE::AIEPassPipeline", 
+      "mlir::iree_compiler::AMDAIE::AIEPassPipeline",
       /*default=*/"mlir::iree_compiler::AMDAIE::AIEPassPipeline::PadPipeline",
       "Pass pipeline to use while lowering to AIR dialect",
       [{::llvm::cl::values(
@@ -107,7 +141,7 @@ def AMDAIELowerToUKernels :
       "mlir::iree_compiler::AMDAIE::createAMDAIELowerToUKernelsPass()";
   let options = [
     Option<"passPipeline", "pass-pipeline",
-      "mlir::iree_compiler::AMDAIE::AIEPassPipeline", 
+      "mlir::iree_compiler::AMDAIE::AIEPassPipeline",
       /*default=*/"mlir::iree_compiler::AMDAIE::AIEPassPipeline::PadPipeline",
       "Pass pipeline to use while lowering to AIR dialect",
       [{::llvm::cl::values(
@@ -116,7 +150,9 @@ def AMDAIELowerToUKernels :
         clEnumValN(mlir::iree_compiler::AMDAIE::AIEPassPipeline::PackPipeline, "pack",
                    "Use the more advanced pack-based lowering strategy, including peeling and double-buffering."),
         clEnumValN(mlir::iree_compiler::AMDAIE::AIEPassPipeline::SimplePackPipeline, "simple-pack",
-                   "Use the simple-pack based lowering strategy.")
+                   "Use the simple-pack based lowering strategy."),
+        clEnumValN(mlir::iree_compiler::AMDAIE::AIEPassPipeline::PadPackPipeline, "pad-pack",
+                   "Use the pad-pack based lowering strategy.")
       )}]>,
     Option<"pathToUkernels", "path-to-ukernels", "std::string", /*default=*/"",
       "Path to microkernels' directory">
@@ -138,13 +174,13 @@ def AMDAIEPackAndTranspose :
     Option<"packLevel", "pack-level", "int64_t", /*default=*/"-1",
       "Set the packing level number">,
     Option<"usePassPipeline", "use-pass-pipeline",
-      "mlir::iree_compiler::AMDAIE::AIEPassPipeline", 
+      "mlir::iree_compiler::AMDAIE::AIEPassPipeline",
       /*default=*/"mlir::iree_compiler::AMDAIE::AIEPassPipeline::SimplePackPipeline",
-      "Pass pipeline to use while lowering to AIR dialect"> 
+      "Pass pipeline to use while lowering to AIR dialect">
   ];
 }
 
-def AMDAIEPackToDma : 
+def AMDAIEPackToDma :
   Pass<"iree-amdaie-pack-to-dma", ""> {
   let summary = "Convert pack/unpack ops air.dma_memcpy_nd op's";
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEPackToDmaPass()";

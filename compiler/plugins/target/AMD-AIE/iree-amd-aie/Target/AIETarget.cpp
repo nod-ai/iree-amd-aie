@@ -14,8 +14,9 @@
 #include "air/Dialect/AIRRt/AIRRtDialect.h"
 #include "iree-amd-aie/IR/AMDAIEDialect.h"
 #include "iree-amd-aie/Transforms/Passes.h"
-#include "iree-dialects/Dialect/LinalgExt/IR/LinalgExtDialect.h"
 #include "iree/compiler/Codegen/Dialect/Codegen/IR/IREECodegenDialect.h"
+#include "iree/compiler/Dialect/HAL/Target/TargetRegistry.h"
+#include "iree/compiler/Dialect/LinalgExt/IR/LinalgExtDialect.h"
 #include "iree/compiler/Utils/FlatbufferUtils.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/MemoryBuffer.h"
@@ -37,11 +38,64 @@ static llvm::cl::opt<std::string> clEnableAMDAIEUkernels(
                    "unprefixed microkernels to enable, e.g. `matmul`."),
     llvm::cl::init("none"));
 
+class AIETargetDevice final : public IREE::HAL::TargetDevice {
+ public:
+  AIETargetDevice(const AMDAIEOptions &options) : options(options) {}
+
+  IREE::HAL::DeviceTargetAttr getDefaultDeviceTarget(
+      MLIRContext *context,
+      const IREE::HAL::TargetRegistry &targetRegistry) const override {
+    Builder b(context);
+    SmallVector<NamedAttribute> configItems;
+
+    auto configAttr = b.getDictionaryAttr(configItems);
+    configItems.emplace_back(b.getStringAttr("legacy_sync"), b.getUnitAttr());
+
+    // If we had multiple target environments we would generate one target attr
+    // per environment, with each setting its own environment attribute.
+    SmallVector<IREE::HAL::ExecutableTargetAttr> executableTargetAttrs;
+    targetRegistry.getTargetBackend("amd-aie")->getDefaultExecutableTargets(
+        context, "amd-aie", configAttr, executableTargetAttrs);
+
+    return IREE::HAL::DeviceTargetAttr::get(context, b.getStringAttr("amd-aie"),
+                                            configAttr, executableTargetAttrs);
+  }
+
+ private:
+  AMDAIEOptions options;
+};
+
 class AIETargetBackend final : public IREE::HAL::TargetBackend {
  public:
   explicit AIETargetBackend(const AMDAIEOptions &options) : options(options) {}
 
-  std::string name() const override { return "amd-aie"; }
+  std::string getLegacyDefaultDeviceID() const override { return "amd-aie"; }
+
+  void getDefaultExecutableTargets(
+      MLIRContext *context, StringRef deviceID, DictionaryAttr deviceConfigAttr,
+      SmallVectorImpl<IREE::HAL::ExecutableTargetAttr> &executableTargetAttrs)
+      const override {
+    executableTargetAttrs.push_back(getExecutableTarget(context));
+  }
+
+  IREE::HAL::ExecutableTargetAttr getExecutableTarget(
+      MLIRContext *context) const {
+    Builder b(context);
+    SmallVector<NamedAttribute> configItems;
+
+    // Add some configurations to the `hal.executable.target` attribute.
+    auto addConfig = [&](StringRef name, Attribute value) {
+      configItems.emplace_back(StringAttr::get(context, name), value);
+    };
+    // Set target arch
+    addConfig("target_arch", StringAttr::get(context, "chip-tbd"));
+    // Set microkernel enabling flag.
+    addConfig("ukernels", StringAttr::get(context, clEnableAMDAIEUkernels));
+    auto configAttr = b.getDictionaryAttr(configItems);
+    return IREE::HAL::ExecutableTargetAttr::get(
+        context, b.getStringAttr("amd-aie"),
+        b.getStringAttr("amdaie-xclbin-fb"), configAttr);
+  }
 
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<mlir::iree_compiler::AMDAIE::AMDAIEDialect,
@@ -50,23 +104,6 @@ class AIETargetBackend final : public IREE::HAL::TargetBackend {
                     transform::TransformDialect, xilinx::AIE::AIEDialect,
                     xilinx::AIEX::AIEXDialect, xilinx::air::airDialect,
                     xilinx::airrt::AIRRtDialect>();
-  }
-
-  IREE::HAL::DeviceTargetAttr getDefaultDeviceTarget(
-      MLIRContext *context) const override {
-    Builder b(context);
-    SmallVector<NamedAttribute> configItems;
-
-    // Indicates that the runtime HAL driver operates only in the legacy
-    // synchronous mode.
-    configItems.emplace_back(b.getStringAttr("legacy_sync"), b.getUnitAttr());
-
-    configItems.emplace_back(b.getStringAttr("executable_targets"),
-                             getExecutableTargets(context));
-
-    auto configAttr = b.getDictionaryAttr(configItems);
-    return IREE::HAL::DeviceTargetAttr::get(
-        context, b.getStringAttr(deviceID()), configAttr);
   }
 
   void buildTranslationPassPipeline(IREE::HAL::ExecutableVariantOp variantOp,
@@ -81,33 +118,6 @@ class AIETargetBackend final : public IREE::HAL::TargetBackend {
   const AMDAIEOptions &getOptions() const { return options; }
 
  private:
-  ArrayAttr getExecutableTargets(MLIRContext *context) const {
-    SmallVector<Attribute> targetAttrs;
-    // If we had multiple target environments we would generate one target attr
-    // per environment, with each setting its own environment attribute.
-    targetAttrs.push_back(getExecutableTarget(context));
-    return ArrayAttr::get(context, targetAttrs);
-  }
-
-  IREE::HAL::ExecutableTargetAttr getExecutableTarget(
-      MLIRContext *context) const {
-    Builder b(context);
-    SmallVector<NamedAttribute> configItems;
-    // Add some configurations to the `hal.executable.target` attribute.
-    auto addConfig = [&](StringRef name, Attribute value) {
-      configItems.emplace_back(StringAttr::get(context, name), value);
-    };
-    // Set target arch.
-    addConfig("target_arch", StringAttr::get(context, "chip-tbd"));
-    // Set microkernel enabling flag.
-    addConfig("ukernels", StringAttr::get(context, clEnableAMDAIEUkernels));
-
-    auto configAttr = b.getDictionaryAttr(configItems);
-    return IREE::HAL::ExecutableTargetAttr::get(
-        context, b.getStringAttr("amd-aie"),
-        b.getStringAttr("amdaie-xclbin-fb"), configAttr);
-  }
-
   AMDAIEOptions options;
 };
 
@@ -115,34 +125,49 @@ LogicalResult AIETargetBackend::serializeExecutable(
     const SerializationOptions &serOptions,
     IREE::HAL::ExecutableVariantOp variantOp, OpBuilder &executableBuilder) {
   ModuleOp moduleOp = variantOp.getInnerModule();
+
   auto basename =
       llvm::join_items("_", serOptions.dumpBaseName, variantOp.getName());
 
-  // If an intermediates path has been specified, assume it is common for all
-  // executables compiling in parallel, so create an executable-specific
-  // subdir to keep this executable's intermediates separate.
-  SmallString<128> workDir;
-  if (!serOptions.dumpIntermediatesPath.empty()) {
-    workDir = serOptions.dumpIntermediatesPath;
-    llvm::sys::path::append(workDir, basename);
-    (void)llvm::sys::fs::create_directories(workDir);
-  }
-
-  // No path for intermediates: make a temporary directory for this executable
-  // that is certain to be distinct from the dir of any other executable.
-  else {
-    auto err =
-        llvm::sys::fs::createUniqueDirectory(variantOp.getName(), workDir);
-    if (err) {
-      return moduleOp.emitOpError() << "failed to create temporary working "
-                                       "directory for xclbin generation: "
-                                    << err.message();
+  auto maybeWorkDir = [&]() -> FailureOr<SmallString<128>> {
+    // If a path for intermediates has been specified, assume it is common for
+    // all executables compiling in parallel, and so create an
+    // executable-specific subdir to keep this executable's intermediates
+    // separate.
+    if (!serOptions.dumpIntermediatesPath.empty()) {
+      SmallString<128> workDir{serOptions.dumpIntermediatesPath};
+      llvm::sys::path::append(workDir, basename);
+      auto ecode = llvm::sys::fs::create_directories(workDir);
+      if (ecode) {
+        return moduleOp.emitError()
+               << "failed to create working directory " << workDir
+               << ". Error message : " << ecode.message();
+      }
+      return workDir;
     }
-  }
 
-  std::string errorMessage;
+    // No path for intermediates: make a temporary directory for this
+    // executable that is certain to be distinct from the dir of any other
+    // executable.
+    SmallString<128> workDirFromScratch;
+    auto err = llvm::sys::fs::createUniqueDirectory(
+        /* prefix = */ variantOp.getName(), workDirFromScratch);
+
+    if (err)
+      return moduleOp.emitOpError()
+             << "failed to create working directory for xclbin generation: "
+             << err.message();
+
+    return workDirFromScratch;
+  }();
+
+  if (failed(maybeWorkDir)) return failure();
+  auto workDir = maybeWorkDir.value();
+
   SmallString<128> inputMlirPath(workDir);
   llvm::sys::path::append(inputMlirPath, basename + ".aiecc.mlir");
+
+  std::string errorMessage;
   {
     auto inputMlirOut = openOutputFile(inputMlirPath, &errorMessage);
     if (!inputMlirOut) {
@@ -166,8 +191,8 @@ LogicalResult AIETargetBackend::serializeExecutable(
     // The xclbin kernel name, appended with instance name suffix (`:MLIRAIEV1`,
     // 10 chars) is required by the xclbinutil to have a length smaller or equal
     // to 64 right now. To have some additional wiggle room for suffix changes,
-    // we use the 48 first characters for the kernel name.
-    // This is okay to do for now because we are only supporting single entry point.
+    // we use the 48 first characters for the kernel name. This is okay to do
+    // for now because we are only supporting single entry point.
     entryPointNames.emplace_back(exportOp.getSymName().substr(0, 48));
   }
 
@@ -187,12 +212,17 @@ LogicalResult AIETargetBackend::serializeExecutable(
                                  entryPointNames[0],
                                  "--tmpdir",
                                  workDir};
-  if (options.useChess) {
-    cmdArgs.push_back("--use-chess");
-  }
-  if (options.showInvokedCommands) {
-    cmdArgs.push_back("-v");
-  }
+
+  auto addOpt = [&](StringRef arg, bool value) {
+    if (value) cmdArgs.push_back(arg);
+  };
+  addOpt("--use-chess", options.useChess);
+  addOpt("-v", options.showInvokedCommands);
+  addOpt("--print-ir-after-all", options.aie2xclbinPrintIrAfterAll);
+  addOpt("--print-ir-before-all", options.aie2xclbinPrintIrBeforeAll);
+  addOpt("--disable-threading", options.aie2xclbinDisableTheading);
+  addOpt("--print-ir-module-scope", options.aie2xclbinPrintIrModuleScope);
+
   // Update the linker search path to find libcdo_driver.so
   SmallString<128> libPath(options.vitisInstallDir);
   llvm::sys::path::append(libPath, "aietools", "lib", "lnx64.o");
@@ -230,10 +260,12 @@ LogicalResult AIETargetBackend::serializeExecutable(
     for (auto s : cmdArgs) llvm::dbgs() << s << " ";
     llvm::dbgs() << "\n";
   }
-  int result = llvm::sys::ExecuteAndWait(cmdArgs[0], cmdArgs, cmdEnv);
-  if (result != 0) {
-    return moduleOp.emitOpError(
-        "Failed to produce an XCLBin with external tool");
+
+  {
+    int result = llvm::sys::ExecuteAndWait(cmdArgs[0], cmdArgs, cmdEnv);
+    if (result != 0)
+      return moduleOp.emitOpError(
+          "Failed to produce an XCLBin with external tool.");
   }
 
   std::vector<uint32_t> ipuInstrs;
@@ -251,7 +283,7 @@ LogicalResult AIETargetBackend::serializeExecutable(
 
   auto xclbinIn = openInputFile(xclbinPath, &errorMessage);
   if (!xclbinIn) {
-    moduleOp.emitOpError() << "Failed to open xclbIN file: " << errorMessage;
+    moduleOp.emitOpError() << "Failed to open xclbin file: " << errorMessage;
   }
 
   // Serialize the executable to flatbuffer format
@@ -280,7 +312,12 @@ LogicalResult AIETargetBackend::serializeExecutable(
   return success();
 }
 
-std::shared_ptr<IREE::HAL::TargetBackend> createTarget(
+std::shared_ptr<IREE::HAL::TargetDevice> createTarget(
+    const AMDAIEOptions &options) {
+  return std::make_shared<AIETargetDevice>(options);
+}
+
+std::shared_ptr<IREE::HAL::TargetBackend> createBackend(
     const AMDAIEOptions &options) {
   return std::make_shared<AIETargetBackend>(options);
 }

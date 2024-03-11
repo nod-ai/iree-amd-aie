@@ -155,6 +155,50 @@ static bool match2DLinalgGenericMatmul(linalg::LinalgOp linalgOp) {
 }
 
 /// Utility to match iterator type and indexing map for a linalg.generic that
+/// is basically implementing a matmul with 4D input/output operands. Such
+/// matmul variants we get from Pad-Pack pipeline.
+static bool match4DLinalgGenericMatmul(linalg::LinalgOp linalgOp) {
+  // Check iterator types.
+  SmallVector<utils::IteratorType> matmulIteratorTypes = {
+      utils::IteratorType::parallel,  utils::IteratorType::parallel,
+      utils::IteratorType::reduction, utils::IteratorType::parallel,
+      utils::IteratorType::parallel,  utils::IteratorType::reduction};
+  SmallVector<utils::IteratorType> opIteratorTypes =
+      linalgOp.getIteratorTypesArray();
+  if (matmulIteratorTypes != opIteratorTypes) {
+    return false;
+  }
+  // Check indexing maps.
+  ArrayAttr indexingMaps = linalgOp.getIndexingMaps();
+  if (indexingMaps.size() != 3) return false;
+
+  AffineMap map0 = cast<AffineMapAttr>(indexingMaps[0]).getValue();
+  AffineMap map1 = cast<AffineMapAttr>(indexingMaps[1]).getValue();
+  AffineMap map2 = cast<AffineMapAttr>(indexingMaps[2]).getValue();
+
+  if (map0.getNumResults() != 4 || map1.getNumResults() != 4 ||
+      map2.getNumResults() != 4 || map0.getNumInputs() != 6 ||
+      map1.getNumInputs() != 6 || map2.getNumInputs() != 6) {
+    return false;
+  }
+
+  // We extract dimensions for K*N*n*k x M*K*k*m -> M*N*n*m.
+  AffineExpr M = map2.getResult(0);
+  AffineExpr N = map2.getResult(1);
+  AffineExpr K = map0.getResult(0);
+  AffineExpr m = map2.getResult(2);
+  AffineExpr n = map2.getResult(3);
+  AffineExpr k = map0.getResult(3);
+
+  auto *context = indexingMaps.getContext();
+  auto mapA = AffineMapAttr::get(AffineMap::get(6, 0, {K, N, m, k}, context));
+  auto mapB = AffineMapAttr::get(AffineMap::get(6, 0, {M, K, k, n}, context));
+  auto mapC = AffineMapAttr::get(AffineMap::get(6, 0, {M, N, m, n}, context));
+  auto maps = ArrayAttr::get(context, {mapA, mapB, mapC});
+  return indexingMaps == maps;
+}
+
+/// Utility to match iterator type and indexing map for a linalg.generic that
 /// is basically implementing a matmul with 6D input/output operands. Such
 /// matmul variants we get from Simple-Pack pipeline.
 static bool match6DLinalgGenericMatmul(linalg::LinalgOp linalgOp) {
@@ -224,6 +268,8 @@ static bool isMatmul(linalg::LinalgOp linalgOp, AIEPassPipeline passPipeline) {
 
   if (passPipeline == AIEPassPipeline::PadPipeline) {
     return match2DLinalgGenericMatmul(linalgOp);
+  } else if (passPipeline == AIEPassPipeline::PadPackPipeline) {
+    return match4DLinalgGenericMatmul(linalgOp);
   } else {
     return match6DLinalgGenericMatmul(linalgOp);
   }

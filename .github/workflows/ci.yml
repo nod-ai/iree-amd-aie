@@ -101,13 +101,18 @@ jobs:
         run: |
           python3 -m venv .venv
           source .venv/bin/activate
-          pip install https://github.com/Xilinx/mlir-aie/releases/download/latest-wheels/mlir_aie-0.0.1.2024021415+7ee44b7-py3-none-manylinux_2_35_x86_64.whl
+          pip install https://github.com/Xilinx/mlir-aie/releases/download/latest-wheels/mlir_aie-0.0.1.2024030421+0899ece-py3-none-manylinux_2_35_x86_64.whl
           pip install -r tests/matmul/requirements.txt
 
       - name: E2E correctness matmul test
         run: |
           source .venv/bin/activate
           bash build_tools/ci/run_matmul_test.sh test1 iree-install
+
+      - name: Printing IR from aie2xclbin
+        run: |
+          source .venv/bin/activate
+          bash build_tools/ci/print_ir_aie2xclbin/print_ir_aie2xclbin.sh iree-install/bin print_ir_aie2xclbin_results
 
       - name: Clean up
         if: ${{ always() }}
