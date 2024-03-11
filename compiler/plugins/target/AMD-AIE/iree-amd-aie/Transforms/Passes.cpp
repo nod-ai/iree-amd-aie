@@ -407,8 +407,16 @@ void addPadPackBasedPassPipeline(OpPassManager &pm,
   modulePassManager.addNestedPass<func::FuncOp>(
       createAMDAIEBufferizeToAllocationPass(bufferizeOptions2));
 
+  {
+    AMDAIELowerToUKernelsOptions options;
+    options.passPipeline = AIEPassPipeline::PadPackPipeline;
+    options.pathToUkernels = clPathToUkernels;
+    modulePassManager.addNestedPass<func::FuncOp>(
+        createAMDAIELowerToUKernelsPass(options));
+  }
   // Comprehensive bufferization
   addAMDAIEBufferizePasses(modulePassManager);
+  modulePassManager.addPass(createLowerUKernelOpsToCallsPass());
 }
 
 void buildAMDAIETransformPassPipeline(OpPassManager &pm) {
