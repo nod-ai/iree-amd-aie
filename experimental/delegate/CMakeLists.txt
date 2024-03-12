@@ -22,8 +22,7 @@ if(IREE_HAL_EXECUTABLE_PLUGIN_SYSTEM_LIBRARY)
 find_package(XRT)
 
 add_library(mlp_bf16_aie_delegate SHARED
-  mlp_plugin.c
-  mlp_aie_bf16.cpp
+  mlp_aie_bf16_plugin.cpp
 )
 target_include_directories(mlp_bf16_aie_delegate
   PRIVATE
