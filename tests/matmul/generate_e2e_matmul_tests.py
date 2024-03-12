@@ -212,14 +212,24 @@ class TestInputMatricesShapes:
 # Helper for generate_function. Generates TestInputMatricesShapes, i.e.
 # converts from the runtime shape dimensions in TestShape and given dynamicity to
 # the set of shapes to be used in a test function's input tensors.
-def generate_shapes(shape: TestShape, dynamicity: Dynamicity):
+def generate_shapes(shape: TestShape, transpose_rhs: bool, dynamicity: Dynamicity):
+    lhs_rows = shape_dim(shape.m, dynamicity)
+    lhs_cols = shape_dim(shape.k, dynamicity)
+    acc_rows = shape_dim(shape.m, dynamicity)
+    acc_cols = shape_dim(shape.n, dynamicity)
+    if transpose_rhs:
+        rhs_rows = shape_dim(shape.n, dynamicity)
+        rhs_cols = shape_dim(shape.k, dynamicity)
+    else:
+        rhs_rows = shape_dim(shape.k, dynamicity)
+        rhs_cols = shape_dim(shape.n, dynamicity)
     shapes = TestInputMatricesShapes(
-        lhs_rows=shape_dim(shape.m, dynamicity),
-        lhs_cols=shape_dim(shape.k, dynamicity),
-        rhs_rows=shape_dim(shape.k, dynamicity),
-        rhs_cols=shape_dim(shape.n, dynamicity),
-        acc_rows=shape_dim(shape.m, dynamicity),
-        acc_cols=shape_dim(shape.n, dynamicity),
+        lhs_rows=lhs_rows,
+        lhs_cols=lhs_cols,
+        rhs_rows=rhs_rows,
+        rhs_cols=rhs_cols,
+        acc_rows=acc_rows,
+        acc_cols=acc_cols,
     )
     return shapes
 
@@ -266,16 +276,17 @@ class MLIRFunction:
 
 
 # Generates a test function in the generated MLIR code.
-# The generated function will take the same arguments as linalg.matmul and
-# will just call linalg.matmul with them, returning its result.
+# The generated function will take the same arguments as linalg.matmul variants
+# and will just call linalg.matmul variants with them, returning its result.
 def generate_function(
     lhs_rhs_type: MatrixElemTypeId,
     acc_type: MatrixElemTypeId,
     shape: TestShape,
+    transpose_rhs: bool,
     dynamicity: Dynamicity,
     compilation_info: typing.Optional[CompilationInfo] = None,
 ):
-    shapes = generate_shapes(shape, dynamicity)
+    shapes = generate_shapes(shape, transpose_rhs, dynamicity)
     func_name = generate_function_name(
         lhs_rhs_type, acc_type, shapes, shape.accumulate, compilation_info
     )
@@ -288,6 +299,11 @@ def generate_function(
     lhs_tensor_type = f"tensor<{lhs_m}x{lhs_k}x{lhs_rhs_type.value}>"
     rhs_tensor_type = f"tensor<{rhs_k}x{rhs_n}x{lhs_rhs_type.value}>"
     acc_tensor_type = f"tensor<{acc_m}x{acc_n}x{acc_type.value}>"
+
+    if transpose_rhs:
+        op_name = "linalg.matmul_transpose_b"
+    else:
+        op_name = "linalg.matmul"
 
     # Compilation info is optional; prints empty string by default.
     func_definition = ""
@@ -314,7 +330,7 @@ def generate_function(
         import_declaration = f"func.func private @module.{func_name}(%lhs: !hal.buffer_view, %rhs: !hal.buffer_view, %acc: !hal.buffer_view) -> !hal.buffer_view"
         func_definition = func_definition + (
             f"func.func @{func_name}(%lhs: {lhs_tensor_type}, %rhs: {rhs_tensor_type}, %acc: {acc_tensor_type}) -> {acc_tensor_type} {{\n"
-            f"  %result = linalg.matmul {compilation_info_attr}ins(%lhs, %rhs: {lhs_tensor_type}, {rhs_tensor_type}) outs(%acc: {acc_tensor_type}) -> {acc_tensor_type}\n"
+            f"  %result = {op_name} {compilation_info_attr}ins(%lhs, %rhs: {lhs_tensor_type}, {rhs_tensor_type}) outs(%acc: {acc_tensor_type}) -> {acc_tensor_type}\n"
             f"  return %result: {acc_tensor_type}\n"
             f"}}\n"
         )
@@ -332,7 +348,7 @@ def generate_function(
                 f"  %init_acc = tensor.empty(%acc_dim0, %acc_dim1) : {acc_tensor_type}\n"
                 f"  %c0_acc_type = arith.constant {literal_zero_for_acc_type}: {acc_type.value}\n"
                 f"  %acc = linalg.fill ins(%c0_acc_type : {acc_type.value}) outs(%init_acc : {acc_tensor_type}) -> {acc_tensor_type}\n"
-                f"  %result = linalg.matmul {compilation_info_attr}ins(%lhs, %rhs: {lhs_tensor_type}, {rhs_tensor_type}) outs(%acc: {acc_tensor_type}) -> {acc_tensor_type}\n"
+                f"  %result = {op_name} {compilation_info_attr}ins(%lhs, %rhs: {lhs_tensor_type}, {rhs_tensor_type}) outs(%acc: {acc_tensor_type}) -> {acc_tensor_type}\n"
                 f"  return %result: {acc_tensor_type}\n"
                 f"}}\n"
             )
@@ -344,7 +360,7 @@ def generate_function(
                 f"  %init_acc = tensor.empty() : {acc_tensor_type}\n"
                 f"  %c0_acc_type = arith.constant {literal_zero_for_acc_type}: {acc_type.value}\n"
                 f"  %acc = linalg.fill ins(%c0_acc_type : {acc_type.value}) outs(%init_acc : {acc_tensor_type}) -> {acc_tensor_type}\n"
-                f"  %result = linalg.matmul {compilation_info_attr}ins(%lhs, %rhs: {lhs_tensor_type}, {rhs_tensor_type}) outs(%acc: {acc_tensor_type}) -> {acc_tensor_type}\n"
+                f"  %result = {op_name} {compilation_info_attr}ins(%lhs, %rhs: {lhs_tensor_type}, {rhs_tensor_type}) outs(%acc: {acc_tensor_type}) -> {acc_tensor_type}\n"
                 f"  return %result: {acc_tensor_type}\n"
                 f"}}\n"
             )
@@ -412,6 +428,7 @@ def generate_call(
     lhs_rhs_type: MatrixElemTypeId,
     acc_type: MatrixElemTypeId,
     shape: TestShape,
+    transpose_rhs: bool=False,
 ):
     global call_id
     func_name = f"{function.name}_{shape.m}_{shape.k}_{shape.n}"
@@ -429,8 +446,16 @@ def generate_call(
         "  %device = hal.devices.get %device_index : !hal.device\n"
     )
 
-    op = op + generate_random_matrix("lhs", [shape.m, shape.k], lhs_rhs_type)
-    op = op + generate_random_matrix("rhs", [shape.k, shape.n], lhs_rhs_type)
+    lhs_shape = [shape.m, shape.k]
+    if transpose_rhs:
+        rhs_shape = [shape.n, shape.k]
+        transpose_rhs = 1
+    else:
+        rhs_shape = [shape.k, shape.n]
+        transpose_rhs = 0
+
+    op = op + generate_random_matrix("lhs", lhs_shape, lhs_rhs_type)
+    op = op + generate_random_matrix("rhs", rhs_shape, lhs_rhs_type)
     if shape.accumulate:
         op = op + generate_random_matrix("acc", [shape.m, shape.n], acc_type)
         # TODO(#16168): there's a bug with in-place input->output aliasing and
@@ -451,7 +476,8 @@ def generate_call(
         f"  %m = arith.constant {shape.m} : i64\n"
         f"  %k = arith.constant {shape.k} : i64\n"
         f"  %n = arith.constant {shape.n} : i64\n"
-        f"  call @matmul_test.check_matmul_results(%device, %m, %k, %n, %lhs, %rhs, %acc, %result) : (!hal.device, i64, i64, i64, !hal.buffer_view, !hal.buffer_view, !hal.buffer_view, !hal.buffer_view) -> ()\n"
+        f"  %transpose_rhs = arith.constant {transpose_rhs} : i32\n"
+        f"  call @matmul_test.check_matmul_results(%device, %m, %k, %n, %transpose_rhs, %lhs, %rhs, %acc, %result) : (!hal.device, i64, i64, i64, i32, !hal.buffer_view, !hal.buffer_view, !hal.buffer_view, !hal.buffer_view) -> ()\n"
     )
 
     op = op + "  return\n"
@@ -465,6 +491,7 @@ def generate(
     lhs_rhs_type: MatrixElemTypeId,
     acc_type: MatrixElemTypeId,
     shapes_id: ShapesId,
+    transpose_rhs: bool,
     compilation_info_id: CompilationInfoId,
 ):
     functions = {}
@@ -476,7 +503,12 @@ def generate(
         for shape in get_test_shapes(shapes_id):
             for dynamicity in get_dynamicities(shapes_id):
                 function = generate_function(
-                    lhs_rhs_type, acc_type, shape, dynamicity, compilation_info
+                    lhs_rhs_type,
+                    acc_type,
+                    shape,
+                    transpose_rhs,
+                    dynamicity,
+                    compilation_info,
                 )
                 # Different testcases may differ only by runtime parameters but
                 # share the same code. For example, dynamic-shapes testcases
@@ -485,7 +517,11 @@ def generate(
                 # to calls, but unconditionally to function_definitions.
                 if function.name not in functions:
                     functions[function.name] = function
-                calls.append(generate_call(function, lhs_rhs_type, acc_type, shape))
+                calls.append(
+                    generate_call(
+                        function, lhs_rhs_type, acc_type, shape, transpose_rhs
+                    )
+                )
 
     return (functions, calls)
 
@@ -525,6 +561,13 @@ def parse_arguments():
         choices=[s.value for s in ShapesId],
         help="Collection of matrix shapes to test",
         required=True,
+    )
+    parser.add_argument(
+        "--transpose_rhs",
+        action="store_true",
+        help="Whether to transpose RHS",
+        default=False,
+        required=False,
     )
     parser.add_argument(
         "--compilation_info",
@@ -567,7 +610,7 @@ def write_calls_file(functions, calls, filename, requirements):
     # Declare the custom module that generates arguments.
     module_definition = module_definition + (
         "func.func private @matmul_test.generate_random_matrix(%device: !hal.device, %dim0: i64, %dim1: i64, %element_type: i32, %seed: i32) -> !hal.buffer_view\n"
-        "func.func private @matmul_test.check_matmul_results(%device: !hal.device, %m: i64, %k: i64, %n: i64, %lhs: !hal.buffer_view, %rhs: !hal.buffer_view, %acc: !hal.buffer_view, %actual_result: !hal.buffer_view)\n"
+        "func.func private @matmul_test.check_matmul_results(%device: !hal.device, %m: i64, %k: i64, %n: i64, %transpose_rhs: i32, %lhs: !hal.buffer_view, %rhs: !hal.buffer_view, %acc: !hal.buffer_view, %actual_result: !hal.buffer_view)\n"
         "\n"
     )
 
@@ -605,7 +648,7 @@ def main(args):
     shapes_id = ShapesId(args.shapes)
     compilation_info_id = CompilationInfoId(args.compilation_info)
     (functions, calls) = generate(
-        lhs_rhs_type, acc_type, shapes_id, compilation_info_id
+        lhs_rhs_type, acc_type, shapes_id, args.transpose_rhs, compilation_info_id
     )
 
     write_code_file(functions, args.output_matmuls_mlir)

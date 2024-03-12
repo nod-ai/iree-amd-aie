@@ -14,8 +14,9 @@
 #include "air/Dialect/AIRRt/AIRRtDialect.h"
 #include "iree-amd-aie/IR/AMDAIEDialect.h"
 #include "iree-amd-aie/Transforms/Passes.h"
-#include "iree-dialects/Dialect/LinalgExt/IR/LinalgExtDialect.h"
 #include "iree/compiler/Codegen/Dialect/Codegen/IR/IREECodegenDialect.h"
+#include "iree/compiler/Dialect/HAL/Target/TargetRegistry.h"
+#include "iree/compiler/Dialect/LinalgExt/IR/LinalgExtDialect.h"
 #include "iree/compiler/Utils/FlatbufferUtils.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/MemoryBuffer.h"
@@ -37,11 +38,64 @@ static llvm::cl::opt<std::string> clEnableAMDAIEUkernels(
                    "unprefixed microkernels to enable, e.g. `matmul`."),
     llvm::cl::init("none"));
 
+class AIETargetDevice final : public IREE::HAL::TargetDevice {
+ public:
+  AIETargetDevice(const AMDAIEOptions &options) : options(options) {}
+
+  IREE::HAL::DeviceTargetAttr getDefaultDeviceTarget(
+      MLIRContext *context,
+      const IREE::HAL::TargetRegistry &targetRegistry) const override {
+    Builder b(context);
+    SmallVector<NamedAttribute> configItems;
+
+    auto configAttr = b.getDictionaryAttr(configItems);
+    configItems.emplace_back(b.getStringAttr("legacy_sync"), b.getUnitAttr());
+
+    // If we had multiple target environments we would generate one target attr
+    // per environment, with each setting its own environment attribute.
+    SmallVector<IREE::HAL::ExecutableTargetAttr> executableTargetAttrs;
+    targetRegistry.getTargetBackend("amd-aie")->getDefaultExecutableTargets(
+        context, "amd-aie", configAttr, executableTargetAttrs);
+
+    return IREE::HAL::DeviceTargetAttr::get(context, b.getStringAttr("amd-aie"),
+                                            configAttr, executableTargetAttrs);
+  }
+
+ private:
+  AMDAIEOptions options;
+};
+
 class AIETargetBackend final : public IREE::HAL::TargetBackend {
  public:
   explicit AIETargetBackend(const AMDAIEOptions &options) : options(options) {}
 
-  std::string name() const override { return "amd-aie"; }
+  std::string getLegacyDefaultDeviceID() const override { return "amd-aie"; }
+
+  void getDefaultExecutableTargets(
+      MLIRContext *context, StringRef deviceID, DictionaryAttr deviceConfigAttr,
+      SmallVectorImpl<IREE::HAL::ExecutableTargetAttr> &executableTargetAttrs)
+      const override {
+    executableTargetAttrs.push_back(getExecutableTarget(context));
+  }
+
+  IREE::HAL::ExecutableTargetAttr getExecutableTarget(
+      MLIRContext *context) const {
+    Builder b(context);
+    SmallVector<NamedAttribute> configItems;
+
+    // Add some configurations to the `hal.executable.target` attribute.
+    auto addConfig = [&](StringRef name, Attribute value) {
+      configItems.emplace_back(StringAttr::get(context, name), value);
+    };
+    // Set target arch
+    addConfig("target_arch", StringAttr::get(context, "chip-tbd"));
+    // Set microkernel enabling flag.
+    addConfig("ukernels", StringAttr::get(context, clEnableAMDAIEUkernels));
+    auto configAttr = b.getDictionaryAttr(configItems);
+    return IREE::HAL::ExecutableTargetAttr::get(
+        context, b.getStringAttr("amd-aie"),
+        b.getStringAttr("amdaie-xclbin-fb"), configAttr);
+  }
 
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<mlir::iree_compiler::AMDAIE::AMDAIEDialect,
@@ -50,23 +104,6 @@ class AIETargetBackend final : public IREE::HAL::TargetBackend {
                     transform::TransformDialect, xilinx::AIE::AIEDialect,
                     xilinx::AIEX::AIEXDialect, xilinx::air::airDialect,
                     xilinx::airrt::AIRRtDialect>();
-  }
-
-  IREE::HAL::DeviceTargetAttr getDefaultDeviceTarget(
-      MLIRContext *context) const override {
-    Builder b(context);
-    SmallVector<NamedAttribute> configItems;
-
-    // Indicates that the runtime HAL driver operates only in the legacy
-    // synchronous mode.
-    configItems.emplace_back(b.getStringAttr("legacy_sync"), b.getUnitAttr());
-
-    configItems.emplace_back(b.getStringAttr("executable_targets"),
-                             getExecutableTargets(context));
-
-    auto configAttr = b.getDictionaryAttr(configItems);
-    return IREE::HAL::DeviceTargetAttr::get(
-        context, b.getStringAttr(deviceID()), configAttr);
   }
 
   void buildTranslationPassPipeline(IREE::HAL::ExecutableVariantOp variantOp,
@@ -81,33 +118,6 @@ class AIETargetBackend final : public IREE::HAL::TargetBackend {
   const AMDAIEOptions &getOptions() const { return options; }
 
  private:
-  ArrayAttr getExecutableTargets(MLIRContext *context) const {
-    SmallVector<Attribute> targetAttrs;
-    // If we had multiple target environments we would generate one target attr
-    // per environment, with each setting its own environment attribute.
-    targetAttrs.push_back(getExecutableTarget(context));
-    return ArrayAttr::get(context, targetAttrs);
-  }
-
-  IREE::HAL::ExecutableTargetAttr getExecutableTarget(
-      MLIRContext *context) const {
-    Builder b(context);
-    SmallVector<NamedAttribute> configItems;
-    // Add some configurations to the `hal.executable.target` attribute.
-    auto addConfig = [&](StringRef name, Attribute value) {
-      configItems.emplace_back(StringAttr::get(context, name), value);
-    };
-    // Set target arch.
-    addConfig("target_arch", StringAttr::get(context, "chip-tbd"));
-    // Set microkernel enabling flag.
-    addConfig("ukernels", StringAttr::get(context, clEnableAMDAIEUkernels));
-
-    auto configAttr = b.getDictionaryAttr(configItems);
-    return IREE::HAL::ExecutableTargetAttr::get(
-        context, b.getStringAttr("amd-aie"),
-        b.getStringAttr("amdaie-xclbin-fb"), configAttr);
-  }
-
   AMDAIEOptions options;
 };
 
@@ -118,7 +128,6 @@ LogicalResult AIETargetBackend::serializeExecutable(
 
   auto basename =
       llvm::join_items("_", serOptions.dumpBaseName, variantOp.getName());
-
 
   auto maybeWorkDir = [&]() -> FailureOr<SmallString<128>> {
     // If a path for intermediates has been specified, assume it is common for
@@ -303,7 +312,12 @@ LogicalResult AIETargetBackend::serializeExecutable(
   return success();
 }
 
-std::shared_ptr<IREE::HAL::TargetBackend> createTarget(
+std::shared_ptr<IREE::HAL::TargetDevice> createTarget(
+    const AMDAIEOptions &options) {
+  return std::make_shared<AIETargetDevice>(options);
+}
+
+std::shared_ptr<IREE::HAL::TargetBackend> createBackend(
     const AMDAIEOptions &options) {
   return std::make_shared<AIETargetBackend>(options);
 }
