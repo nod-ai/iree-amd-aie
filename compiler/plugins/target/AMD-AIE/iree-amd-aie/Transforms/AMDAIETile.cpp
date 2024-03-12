@@ -93,7 +93,14 @@ void AMDAIETilePass::runOnOperation() {
   }
   const int64_t tileK = tileSizesVal[2];
   SmallVector<int64_t> lhsTileSizes = {0, tileK};
-  SmallVector<int64_t> rhsTileSizes = {tileK, 0};
+  // Currently matmul and transpose op are the only once supported. If its not matmul then it is a transpose.
+  SmallVector<int64_t> rhsTileSizes;
+  if(isa<linalg::MatmulOp>(linalgOp)) {
+    rhsTileSizes = {tileK, 0};
+  }
+  else {
+    rhsTileSizes = {0,tileK};
+  }
   SmallVector<SmallVector<int64_t>> allTileSizes = {lhsTileSizes, rhsTileSizes};
   SmallVector<TilingInterface> tilingOps = {cast<TilingInterface>(lhsOp),
                                             cast<TilingInterface>(rhsOp)};
