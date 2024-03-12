@@ -99,10 +99,10 @@ void addPadBasedPassPipeline(OpPassManager &pm, TilingConfig &tilingConfig) {
     }
     if (i == 2) {
       modulePassManager.addNestedPass<func::FuncOp>(createAMDAIECleanupPass());
-      pm.addPass(createCanonicalizerPass());
-      pm.addPass(createCSEPass());
     }
     {
+      modulePassManager.addNestedPass<func::FuncOp>(createCanonicalizerPass());
+      modulePassManager.addNestedPass<func::FuncOp>(createCSEPass());
       AMDAIEPadOptions options;
       options.paddingLevel = i;
       modulePassManager.addNestedPass<func::FuncOp>(
@@ -324,8 +324,8 @@ void addPadPackBasedPassPipeline(OpPassManager &pm,
                                  TilingConfig &tilingConfig) {
   auto &modulePassManager = pm.nest<ModuleOp>();
   modulePassManager.addNestedPass<func::FuncOp>(createAMDAIECleanupPass());
-  pm.addPass(createCanonicalizerPass());
-  pm.addPass(createCSEPass());
+  modulePassManager.addNestedPass<func::FuncOp>(createCanonicalizerPass());
+  modulePassManager.addNestedPass<func::FuncOp>(createCSEPass());
 
   // First level tiling using scf.forall
   AMDAIETileAndFuseOptions tileFuseOptions0;
