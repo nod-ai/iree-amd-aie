@@ -42,7 +42,7 @@ if [ "$#" -lt 2 ] || [ "$#" -gt 6 ]; then
             "\n     6) <vitis-install-dir>        (optional)" \
             "\n Example, dependent on environment variables:" \
             "\n     ./run_matmul_test.sh  " \
-            "results_dir_tmp  \$MLIR_AIE_INSTALL_DIR  \$IREE_INSTALL_DIR  " \
+            "results_dir_tmp  \$IREE_BUILD_OR_INSTALL_DIR  \$MLIR_AIE_INSTALL_DIR  " \
             "\$PEANO_INSTALL_DIR  /opt/xilinx/xrt  \$VITIS_INSTALL_PATH"
     exit 1
 fi
@@ -287,13 +287,13 @@ function run_matmul_test() {
 
   echo "Running command: ${COMMAND}"
 
-  # Run the command n_runs times. Cound the number of times the return code is not 0. Do NOT fail automatocally when 0 is returned (see 'set -euox pipefail. 
-  # 1) initialize the count of number of fails to 0:
-  n_fails=0
+  # Run the command n_runs times.
+  # Count the number of times the return code is not 0.
+  # Don't fail automatocally when 0 is returned (see 'set -euox pipefail')
 
-  #2) Run the command n_runs times, incrementing n_fails when the return code is not 0. Ensure that we don't fail the script if eval returns a non-zero status.
+  n_fails=0
   for i in $(seq 1 $n_runs); do
-    # Disable exit on error:
+    # Disable exit on error temporarily:
     set +e
     eval "${COMMAND}"
     command_status=$?
@@ -358,7 +358,7 @@ run_matmul_test \
     --lhs_rhs_type "i32" \
     --acc_type "i32" \
     --shapes "large" \
-    --n_runs 1000 \
+    --n_runs 2000 \
     --target_backend "amd-aie" \
     --device "xrt" \
     --peano_install_path "${PEANO}" \
