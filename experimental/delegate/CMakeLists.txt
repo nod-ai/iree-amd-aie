@@ -19,6 +19,8 @@ endif()
 # system-library plugin mechanism using the system dynamic library loader.
 if(IREE_HAL_EXECUTABLE_PLUGIN_SYSTEM_LIBRARY)
 
+iree_add_all_subdirs()
+
 find_package(XRT)
 
 add_library(mlp_bf16_aie_delegate SHARED
