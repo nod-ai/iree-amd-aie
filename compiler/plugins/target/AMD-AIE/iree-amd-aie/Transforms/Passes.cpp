@@ -20,6 +20,14 @@
 
 namespace mlir::iree_compiler::AMDAIE {
 
+void appendVectorizationToPipeline(OpPassManager &pm) {
+  pm.addNestedPass<func::FuncOp>(createAMDAIECleanupPass());
+  pm.addNestedPass<func::FuncOp>(createAMDAIEInsertLoopsForVectorizationPass());
+  pm.addNestedPass<func::FuncOp>(createAMDAIEVectorizationPass());
+  pm.addPass(createCanonicalizerPass());
+  pm.addPass(createCSEPass());
+}
+
 /// Command line options used purely for development purposes. Not to be relied
 /// on in any way.
 static llvm::cl::opt<AIEPassPipeline> clUsePipeline(
@@ -122,6 +130,7 @@ void addPadBasedPassPipeline(OpPassManager &pm, TilingConfig &tilingConfig) {
     pm.addPass(createCanonicalizerPass());
     pm.addPass(createCSEPass());
   }
+
   {
     AMDAIELowerToUKernelsOptions options;
     options.passPipeline = AIEPassPipeline::PadPipeline;
@@ -131,6 +140,7 @@ void addPadBasedPassPipeline(OpPassManager &pm, TilingConfig &tilingConfig) {
   }
   addAMDAIEBufferizePasses(modulePassManager);
   modulePassManager.addPass(createLowerUKernelOpsToCallsPass());
+
   modulePassManager.addNestedPass<func::FuncOp>(createAMDAIECleanupPass());
   pm.addPass(createCanonicalizerPass());
   pm.addPass(createCSEPass());
@@ -229,6 +239,8 @@ void addSimplePackBasedPassPipeline(OpPassManager &pm,
     modulePassManager.addNestedPass<func::FuncOp>(
         createAMDAIELowerToUKernelsPass(options));
   }
+  appendVectorizationToPipeline(modulePassManager);
+
   // Comprehensive bufferization
   addAMDAIEBufferizePasses(modulePassManager);
   modulePassManager.addPass(createLowerUKernelOpsToCallsPass());
