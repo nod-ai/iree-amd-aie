@@ -512,8 +512,12 @@ void addMLIRAIRAIELoweringPasses(OpPassManager &passManager) {
   passManager.addPass(createCanonicalizerPass());
   passManager.addPass(createCSEPass());
 
-  passManager.addNestedPass<func::FuncOp>(
-      xilinx::air::createAIRCollapseHerdPass());
+  {
+    xilinx::air::AIRCollapseHerdPassOptions options;
+    options.clMaxColSize = 4;
+    passManager.addNestedPass<func::FuncOp>(
+        xilinx::air::createAIRCollapseHerdPass(options));
+  }
   passManager.addPass(createCanonicalizerPass());
   passManager.addPass(createCSEPass());
 
@@ -612,8 +616,12 @@ void addMLIRAIRAIELegacyLoweringPasses(OpPassManager &passManager) {
   passManager.addPass(createCanonicalizerPass());
   passManager.addPass(createCSEPass());
 
-  passManager.addNestedPass<func::FuncOp>(
-      xilinx::air::createAIRCollapseHerdPass());
+  {
+    xilinx::air::AIRCollapseHerdPassOptions options;
+    options.clMaxColSize = 4;
+    passManager.addNestedPass<func::FuncOp>(
+        xilinx::air::createAIRCollapseHerdPass(options));
+  }
   passManager.addPass(createCanonicalizerPass());
   passManager.addPass(createCSEPass());
 
