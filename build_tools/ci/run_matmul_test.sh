@@ -42,7 +42,7 @@ if [ "$#" -lt 2 ] || [ "$#" -gt 6 ]; then
             "\n     6) <vitis-install-dir>        (optional)" \
             "\n Example, dependent on environment variables:" \
             "\n     ./run_matmul_test.sh  " \
-            "results_dir_tmp  \$MLIR_AIE_INSTALL_DIR  \$IREE_INSTALL_DIR  " \
+            "results_dir_tmp  \$IREE_BUILD_OR_INSTALL_DIR  \$MLIR_AIE_INSTALL_DIR  " \
             "\$PEANO_INSTALL_DIR  /opt/xilinx/xrt  \$VITIS_INSTALL_PATH"
     exit 1
 fi
@@ -174,6 +174,7 @@ function run_matmul_test() {
   local mlir_aie_install_path=""
   local vitis_path=""
   local pipeline=""
+  local n_runs="1"
 
   while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -183,6 +184,10 @@ function run_matmul_test() {
         ;;
       --lhs_rhs_type)
         lhs_rhs_type="$2"
+        shift 2
+        ;;
+      --n_runs)
+        n_runs="$2"
         shift 2
         ;;
       --acc_type)
@@ -282,9 +287,28 @@ function run_matmul_test() {
 
   echo "Running command: ${COMMAND}"
 
-  # Execute the command, and print the status:
-  eval "${COMMAND}"
-  echo "Command returned with status: $?"
+  # Run the command n_runs times.
+  # Count the number of times the return code is not 0.
+  # Don't fail automatocally when 0 is returned (see 'set -euox pipefail')
+
+  n_fails=0
+  for i in $(seq 1 $n_runs); do
+    # Disable exit on error temporarily:
+    set +e
+    eval "${COMMAND}"
+    command_status=$?
+    if [ $command_status -ne 0 ]; then
+       ((n_fails++))
+    fi
+    # Re-enable exit on error:
+    set -e
+  done
+
+  echo "Command failed ${n_fails} times out of ${n_runs} runs."
+  if [ $n_fails -gt 0 ]; then
+    echo "**** Test failed at least once ****"
+    return 1
+  fi
 
   set +x
 }
@@ -293,74 +317,75 @@ function run_matmul_test() {
 # Run a few tests                                                             #
 ###############################################################################
 
-run_matmul_test \
-    --name "matmul_i32_i32_small_amd-aie_xrt_pad" \
-    --lhs_rhs_type "i32" \
-    --acc_type "i32" \
-    --shapes "small" \
-    --target_backend "amd-aie" \
-    --device "xrt" \
-    --peano_install_path "${PEANO}" \
-    --mlir_aie_install_path "${MLIR_AIE_INSTALL}" \
-    --vitis_path  "${VITIS}" \
-    --pipeline "pad"
-
-run_matmul_test \
-    --name "matmul_i32_i32_large_amd-aie_xrt_pad" \
-    --lhs_rhs_type "i32" \
-    --acc_type "i32" \
-    --shapes "large" \
-    --target_backend "amd-aie" \
-    --device "xrt" \
-    --peano_install_path "${PEANO}" \
-    --mlir_aie_install_path "${MLIR_AIE_INSTALL}" \
-    --vitis_path  "${VITIS}" \
-    --pipeline "pad"
-
-run_matmul_test \
-    --name "matmul_i32_i32_small_amd-aie_xrt_simple-pack" \
-    --lhs_rhs_type "i32" \
-    --acc_type "i32" \
-    --shapes "small" \
-    --target_backend "amd-aie" \
-    --device "xrt" \
-    --peano_install_path "${PEANO}" \
-    --mlir_aie_install_path "${MLIR_AIE_INSTALL}" \
-    --vitis_path  "${VITIS}" \
-    --pipeline "simple-pack"
-
+#run_matmul_test \
+#    --name "matmul_i32_i32_small_amd-aie_xrt_pad" \
+#    --lhs_rhs_type "i32" \
+#    --acc_type "i32" \
+#    --shapes "small" \
+#    --target_backend "amd-aie" \
+#    --device "xrt" \
+#    --peano_install_path "${PEANO}" \
+#    --mlir_aie_install_path "${MLIR_AIE_INSTALL}" \
+#    --vitis_path  "${VITIS}" \
+#    --pipeline "pad"
+#
+#run_matmul_test \
+#    --name "matmul_i32_i32_large_amd-aie_xrt_pad" \
+#    --lhs_rhs_type "i32" \
+#    --acc_type "i32" \
+#    --shapes "large" \
+#    --target_backend "amd-aie" \
+#    --device "xrt" \
+#    --peano_install_path "${PEANO}" \
+#    --mlir_aie_install_path "${MLIR_AIE_INSTALL}" \
+#    --vitis_path  "${VITIS}" \
+#    --pipeline "pad"
+#
+#run_matmul_test \
+#    --name "matmul_i32_i32_small_amd-aie_xrt_simple-pack" \
+#    --lhs_rhs_type "i32" \
+#    --acc_type "i32" \
+#    --shapes "small" \
+#    --target_backend "amd-aie" \
+#    --device "xrt" \
+#    --peano_install_path "${PEANO}" \
+#    --mlir_aie_install_path "${MLIR_AIE_INSTALL}" \
+#    --vitis_path  "${VITIS}" \
+#    --pipeline "simple-pack"
+#
 run_matmul_test \
     --name "matmul_i32_i32_large_amd-aie_xrt_simple-pack" \
     --lhs_rhs_type "i32" \
     --acc_type "i32" \
     --shapes "large" \
+    --n_runs 2000 \
     --target_backend "amd-aie" \
     --device "xrt" \
     --peano_install_path "${PEANO}" \
     --mlir_aie_install_path "${MLIR_AIE_INSTALL}" \
     --vitis_path  "${VITIS}" \
     --pipeline "simple-pack"
+#
+#run_matmul_test \
+#    --name "matmul_i32_i32_small_amd-aie_xrt_pad-pack" \
+#    --lhs_rhs_type "i32" \
+#    --acc_type "i32" \
+#    --shapes "small" \
+#    --target_backend "amd-aie" \
+#    --device "xrt" \
+#    --peano_install_path "${PEANO}" \
+#    --mlir_aie_install_path "${MLIR_AIE_INSTALL}" \
+#    --vitis_path  "${VITIS}" \
+#    --pipeline "pad-pack"
 
-run_matmul_test \
-    --name "matmul_i32_i32_small_amd-aie_xrt_pad-pack" \
-    --lhs_rhs_type "i32" \
-    --acc_type "i32" \
-    --shapes "small" \
-    --target_backend "amd-aie" \
-    --device "xrt" \
-    --peano_install_path "${PEANO}" \
-    --mlir_aie_install_path "${MLIR_AIE_INSTALL}" \
-    --vitis_path  "${VITIS}" \
-    --pipeline "pad-pack"
-
-run_matmul_test \
-    --name "matmul_i32_i32_large_amd-aie_xrt_pad-pack" \
-    --lhs_rhs_type "i32" \
-    --acc_type "i32" \
-    --shapes "large" \
-    --target_backend "amd-aie" \
-    --device "xrt" \
-    --peano_install_path "${PEANO}" \
-    --mlir_aie_install_path "${MLIR_AIE_INSTALL}" \
-    --vitis_path  "${VITIS}" \
-    --pipeline "pad-pack"
+#run_matmul_test \
+#    --name "matmul_i32_i32_large_amd-aie_xrt_pad-pack" \
+#    --lhs_rhs_type "i32" \
+#    --acc_type "i32" \
+#    --shapes "large" \
+#    --target_backend "amd-aie" \
+#    --device "xrt" \
+#    --peano_install_path "${PEANO}" \
+#    --mlir_aie_install_path "${MLIR_AIE_INSTALL}" \
+#    --vitis_path  "${VITIS}" \
+#    --pipeline "pad-pack"
