@@ -66,7 +66,8 @@ void AMDAIEFusePackIntoForLoopPass::runOnOperation() {
   }
 
   if (sliceOps.empty()) {
-    // Pack ops are already fused.
+    LLVM_DEBUG(llvm::dbgs() << "----- Pack ops are already fused or no slice "
+                               "ops were found.-----\n");
     return;
   }
 

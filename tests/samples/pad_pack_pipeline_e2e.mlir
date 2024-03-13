@@ -46,7 +46,7 @@ func.func @matmul_large(%lhs: tensor<2048x2048xi32>, %rhs: tensor<2048x2048xi32>
 
 // -----
 
-// This test demonstrates Pack pipeline based e2e lowering for a linalg.generic implementing
+// This test demonstrates Pad-Pack pipeline based e2e lowering for a linalg.generic implementing
 // a linalg.matmul_transpose_b.
 
 // CPP-LABEL: hal.executable.export public @generic_matmul_transpose_static_dispatch_0_generic_8x32x16_i32
@@ -75,7 +75,7 @@ func.func @generic_matmul_transpose_static(%lhs : tensor<8x16xi32>,
 
 // -----
 
-// This test demonstrates Pack pipeline based e2e lowering for a linalg.matmul_transpose_b.
+// This test demonstrates Pad-Pack pipeline based e2e lowering for a linalg.matmul_transpose_b.
 
 // CPP-LABEL: hal.executable.export public @matmul_transpose_b_static_dispatch_0_matmul_transpose_b_8x32x16_i32
 //       CPP:    aie.device(ipu)
