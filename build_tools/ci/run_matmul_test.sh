@@ -252,6 +252,7 @@ function run_matmul_test() {
       --iree-amd-aie-mlir-aie-install-dir=${mlir_aie_install_path} \
       --iree-amd-aie-vitis-install-dir=${vitis_path} \
       --iree-hal-dump-executable-files-to=$PWD \
+      --iree-amd-aie-show-invoked-commands \
       -o "${OUTPUT_DIR}/${name}_matmuls.vmfb"
   ${IREE_COMPILE_EXE} \
       "${OUTPUT_DIR}/${name}_calls.mlir" \
