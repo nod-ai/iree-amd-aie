@@ -368,15 +368,12 @@ static int mlp_external(void* params_ptr, void* context, void* reserved) {
   fprintf(plugin->file, "[AIE Delegate]: M = %d, N = %d, K = %d\n", params->M,
           params->N, params->K);
 
-  if (params->M == MLP_M && params->K == MLP_K && params->N == MLP_N) {
-      int rc = setupNPUAccelerator();
-      if (rc != 0)
-        return rc;
+  // If the input shapes match the AIE kernel, use it
+  if (params->M == MLP_M && params->K == MLP_K && params->N == MLP_N)
       return aie_matmul(params);
-  }
-  else
-      // return cpu_matmul(params);  // enable this if CPU fallback desired
-      return 1;  // deliberately fail to make sure AIE version is getting used
+
+  // return cpu_matmul(params);  // enable this if CPU fallback desired
+  return 1;  // deliberately fail to make sure AIE version is getting used
 }
 
 // Called once for each plugin load and paired with a future call to unload.
@@ -403,6 +400,11 @@ static iree_hal_executable_plugin_status_t mlp_plugin_load(
   // "Open standard out" simulating us doing some syscalls or other expensive
   // stateful/side-effecting things.
   plugin->file = stdout;
+
+  // Initialize XRT with the one-and-only xclbin and instruction file
+  int rc = setupNPUAccelerator();
+  if (rc != 0)
+    return iree_hal_executable_plugin_status_from_code(rc);
 
   // Pass back the plugin instance that'll be passed to resolve.
   *out_self = plugin;
