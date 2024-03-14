@@ -1,10 +1,24 @@
-// RUN: iree-compile --iree-hal-target-backends=amd-aie --compile-to=executable-sources %s/../samples/pad_pipeline_conv2d.mlir | iree-opt --pass-pipeline="builtin.module(hal.executable(hal.executable.variant(iree-hal-translate-target-executable-variants{target=amd-aie})))" --iree-codegen-transform-dialect-library=%s
+// RUN: iree-opt --iree-transform-dialect-interpreter %s | FileCheck %s
 
 // This script demonstrates lowering conv through IREE to eventually target AIE.
 // It's based on conv2d lowering in IREE for llvm-cpu.
 //
 // The trick is to tile the 2-d convolution into 1-d convolution, and then
 // convert the 1-d convolution to a vector.contract.
+
+!input = tensor<2x32x14x14xf32>
+!weight = tensor<64x32x3x3xf32>
+!output = tensor<2x64x12x12xf32>
+
+func.func @conv_static(%input: !input, %weight: !weight) -> !output {
+    %cst = arith.constant 0.000000e+00 : f32
+    %2 = tensor.empty() : !output
+    %3 = linalg.fill ins(%cst : f32) outs(%2 : !output) -> !output
+    %4 = linalg.conv_2d_nchw_fchw {dilations = dense<1> : vector<2xi64>,
+                                   strides = dense<1> : vector<2xi64>}
+    ins(%input, %weight :!input, !weight) outs(%3 : !output) -> !output
+    return %4: !output
+}
 
 !any = !transform.any_op
 
@@ -183,4 +197,13 @@ module attributes { transform.with_named_sequence } {
   }
 }
 
-
+// CHECK-LABEL:  func.func @conv_static
+// CHECK:        scf.forall
+// CHECK:        scf.forall
+// CHECK-NOT:    scf.forall
+// CHECK:        scf.for
+// CHECK:        scf.for
+// CHECK:        scf.for
+// CHECK-NOT:    scf.for
+// CHECK:        vector.contract
+// CHECK:        return
