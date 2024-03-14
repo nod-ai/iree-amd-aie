@@ -66,8 +66,9 @@ void AMDAIEFusePackIntoForLoopPass::runOnOperation() {
   }
 
   if (sliceOps.empty()) {
-    funcOp->emitOpError("There is no extract tensor slice.");
-    return signalPassFailure();
+    LLVM_DEBUG(llvm::dbgs() << "----- Pack ops are already fused or no slice "
+                               "ops were found.-----\n");
+    return;
   }
 
   // Materialize each slice of the producer in place.
