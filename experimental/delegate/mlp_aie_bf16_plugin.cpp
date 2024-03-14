@@ -33,6 +33,49 @@
 #define MLP_K 256
 #define MLP_N 256
 
+// Get the path of this plugin's .so
+
+#if defined(_WIN32)
+
+// WARNING: Windows code untested!
+
+#include <windows.h>
+
+std::string getLibraryPath() {
+    char path[MAX_PATH];
+    HMODULE hm = NULL;
+
+    if (GetModuleHandleEx(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
+        GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+        (LPCSTR)&getLibraryPath, &hm) == 0)
+    {
+        int ret = GetLastError();
+        fprintf(stderr, "GetModuleHandle returned error code %d\n", ret);
+        // Handle the error.
+    }
+    if (GetModuleFileName(hm, path, sizeof(path)) == 0)
+    {
+        int ret = GetLastError();
+        fprintf(stderr, "GetModuleFileName returned error code %d\n", ret);
+        // Handle the error.
+    }
+
+    return std::string(path);
+}
+#elif defined(__linux__)
+#include <dlfcn.h>
+#include <libgen.h>
+
+std::string getLibraryPath() {
+    Dl_info dl_info;
+    dladdr((void*)getLibraryPath, &dl_info);
+    return dirname(const_cast<char *>(dl_info.dli_fname));
+}
+#else
+std::string getLibraryPath() { return std::string(); }
+#endif
+
+
 struct TensorData {
   float* data;
   size_t offset;
@@ -139,12 +182,15 @@ inline float fromBfloat16(bfloat16_t b) {
 }
 
 int setupNPUAccelerator() {
-    std::vector<uint32_t> instrV = 
-        // loadInstrSequence("aie_design/insts.txt");
-        loadInstrSequence("/proj/gdba/dliddell/Projects/iree/iree-amd-aie/third_party/mlir-aie/reference_designs/ipu-xrt/matrix_multiplication/build/insts.txt");
+    const std::string kernelFileName = "matmul-bf16-256x256x256";
+    std::string libPath = getLibraryPath();
+    std::cout << "AIE Delegate .so path: " << libPath << std::endl;
+    std::string instrFilePath = libPath + "/kernels/" + kernelFileName + ".insts.txt";
+    // std::string instrFilePath = "/proj/gdba/dliddell/Projects/iree/iree-amd-aie/third_party/mlir-aie/reference_designs/ipu-xrt/matrix_multiplication/build/insts.txt");
+    std::vector<uint32_t> instrV = loadInstrSequence(instrFilePath);
     instrSize = instrV.size();
     if (instrSize == 0) {
-        std::cout << "Couldn't load instructions" << std::endl;
+        std::cerr << "Couldn't load instructions from file " << instrFilePath << std::endl;
         return 1;
     }
     std::cout << "Sequence instr count: " << instrV.size() << "\n";
@@ -156,8 +202,9 @@ int setupNPUAccelerator() {
     xrtState->device = xrt::device(deviceIndex);
 
     // Load the xclbin
-    // auto xclbin = xrt::xclbin("aie_design/final.xclbin");
-    auto xclbin = xrt::xclbin("/proj/gdba/dliddell/Projects/iree/iree-amd-aie/third_party/mlir-aie/reference_designs/ipu-xrt/matrix_multiplication/build/final.xclbin");
+    std::string xclbinPath = libPath + "/kernels/" + kernelFileName + ".xclbin";
+    // std::string xclbinPath = "/proj/gdba/dliddell/Projects/iree/iree-amd-aie/third_party/mlir-aie/reference_designs/ipu-xrt/matrix_multiplication/build/final.xclbin";
+    auto xclbin = xrt::xclbin(xclbinPath);
 
     std::string node = "MLIR_AIE";
 
@@ -241,16 +288,16 @@ int aie_matmul(Params *params) {
     xrtState->boC.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
     // std::memcpy(params->result.getDest(), bufC, (M * N * sizeof(float)));
 
-    std::cout << "Result" << std::endl;
+    // std::cout << "Result" << std::endl;
     for (int i = 0; i < M; i++) {
-        std::cout << '[';
+        // std::cout << '[';
         for (int j = 0; j < N; j++) {
             bfloat16_t bf = *(bufC + i * N + j);
             float f = fromBfloat16(bf);
             params->result.setElement(i, j, N, f);
-            std::cout << bf << ",";
+            // std::cout << bf << ",";
         }
-        std::cout << "]," << std::endl;
+        // std::cout << "]," << std::endl;
     }
 
     return 0;  // TODO: check for and handle error conditions

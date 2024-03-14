@@ -6,7 +6,8 @@
 
 if(NOT IREE_TARGET_BACKEND_LLVM_CPU OR
    NOT IREE_HAL_DRIVER_LOCAL_SYNC OR
-   NOT IREE_HAL_EXECUTABLE_LOADER_EMBEDDED_ELF)
+   NOT IREE_HAL_EXECUTABLE_LOADER_EMBEDDED_ELF OR
+   NOT IREE_AMD_AIE_ENABLE_XRT_DRIVER)
   return()
 endif()
 
@@ -41,9 +42,12 @@ set_target_properties(mlp_bf16_aie_delegate
     # OUTPUT_NAME "mlp_bf16_aie_delegate"
 )
 
+add_dependencies(mlp_bf16_aie_delegate
+  aie_delegate_kernels
+)
 add_dependencies(iree-sample-deps
   mlp_bf16_aie_delegate
-  iree_samples_custom_dispatch_cpu_system_plugin)
+)
 
 
 iree_lit_test_suite(
