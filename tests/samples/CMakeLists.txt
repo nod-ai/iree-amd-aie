@@ -15,6 +15,7 @@ iree_lit_test_suite(
     # Disabling because on Windows build: 
     #    'linalg.fill' op with consumer is being erased.
     # "pad_pipeline_conv2d.mlir"
+    "xdna_oplib_plugin.mlir"
   TOOLS
     ${IREE_LLD_TARGET}
     FileCheck
