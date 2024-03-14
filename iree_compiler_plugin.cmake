@@ -14,4 +14,4 @@ add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/tests/samples AMD-AIE/tests/samples)
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/tests/OPT/failing_tests AMD-AIE/tests/OPT/failing_tests)
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/tests/transform_dialect AMD-AIE/tests/transform_dialect)
 
-add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/compiler/plugins/target/XDNA-OPLIB target/XDNA-OPLIB)
+add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/compiler/plugins/preprocessing/XDNA-OPLIB preprocessing/XDNA-OPLIB)
