@@ -106,6 +106,12 @@ struct Params {
   int32_t M;
   int32_t N;
   int32_t K;
+
+  std::string getShapeStr() const {
+    std::ostringstream oss;
+    oss << M << 'x' << K << 'x' << N;
+    return oss.str();
+  }
 };
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -184,7 +190,7 @@ inline float fromBfloat16(bfloat16_t b) {
 int setupNPUAccelerator() {
     const std::string kernelFileName = "matmul-bf16-256x256x256";
     std::string libPath = getLibraryPath();
-    std::cout << "AIE Delegate .so path: " << libPath << std::endl;
+    std::cout << "[AIE Delegate]: Using delegate installation at: " << libPath << std::endl;
     std::string instrFilePath = libPath + "/kernels/" + kernelFileName + ".insts.txt";
     // std::string instrFilePath = "/proj/gdba/dliddell/Projects/iree/iree-amd-aie/third_party/mlir-aie/reference_designs/ipu-xrt/matrix_multiplication/build/insts.txt");
     std::vector<uint32_t> instrV = loadInstrSequence(instrFilePath);
@@ -241,11 +247,11 @@ int setupNPUAccelerator() {
     std::cout << "NPU setup done." << std::endl;
     
     aie_setup = true;
-    return 0;  // TODO: check for and handle error conditions
+    return 0;  // TODO: check for and handle more error conditions
 }
 
 int aie_matmul(Params *params) {
-    std::cout << "AIE matmul" << std::endl;
+    std::cout << "[AIE Delegate]: Computing AIE matmul of " << params->getShapeStr() << std::endl;
     int cnt = 0;
 
     // quantize and copy weights to XRT BO
@@ -307,7 +313,7 @@ int aie_matmul(Params *params) {
 // Reference scalar CPU implementation
 
 static int cpu_matmul(Params *params) {
-  std::cout << "CPU reference matmul" << std::endl;
+  std::cout << "[AIE Delegate]: Computing CPU scalar matmul of " << params->getShapeStr() << std::endl;
   for (int32_t i = 0; i < params->M; i++) {
     for (int32_t j = 0; j < params->N; j++) {
       float curr_result = 0.0;
@@ -357,10 +363,9 @@ typedef struct {
 // Expects a return of 0 on success and any other value indicates failure.
 // Try not to fail!
 static int mlp_external(void* params_ptr, void* context, void* reserved) {
-  std::cout << "New mlp_external" << std::endl;
   auto plugin = reinterpret_cast<mlp_plugin_t *>(context);
   auto params = reinterpret_cast<Params *>(params_ptr);
-  fprintf(plugin->file, "[Plugin]: M = %d, N = %d, K = %d\n", params->M,
+  fprintf(plugin->file, "[AIE Delegate]: M = %d, N = %d, K = %d\n", params->M,
           params->N, params->K);
 
   if (params->M == MLP_M && params->K == MLP_K && params->N == MLP_N) {
