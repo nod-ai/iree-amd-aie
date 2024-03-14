@@ -5,7 +5,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 set(IREE_PACKAGE_ROOT_DIR "${CMAKE_CURRENT_LIST_DIR}")
-set(IREE_PACKAGE_ROOT_PREFIX "iree::target::xdna-oplib")
+set(IREE_PACKAGE_ROOT_PREFIX "iree::preprocessing::xdna-oplib")
 
 iree_cc_library(
   NAME
@@ -15,7 +15,7 @@ iree_cc_library(
   DEPS
     iree::compiler::PluginAPI
     iree::compiler::Utils
-    iree::target::xdna-oplib::Transforms
+    iree::preprocessing::xdna-oplib::Transforms
   PUBLIC
 )
 

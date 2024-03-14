@@ -5,7 +5,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 set(IREE_PACKAGE_ROOT_DIR "${CMAKE_CURRENT_LIST_DIR}")
-set(IREE_PACKAGE_ROOT_PREFIX "iree::target::xdna-oplib::Transforms")
+set(IREE_PACKAGE_ROOT_PREFIX "iree::preprocessing::xdna-oplib::Transforms")
 iree_add_all_subdirs()
 
 iree_tablegen_library(
