@@ -223,28 +223,15 @@ LogicalResult AIETargetBackend::serializeExecutable(
   addOpt("--disable-threading", options.aie2xclbinDisableTheading);
   addOpt("--print-ir-module-scope", options.aie2xclbinPrintIrModuleScope);
 
-  // Update the linker search path to find libcdo_driver.so
-  SmallString<128> libPath(options.vitisInstallDir);
-  llvm::sys::path::append(libPath, "aietools", "lib", "lnx64.o");
-  const char *originalLDPath = ::getenv("LD_LIBRARY_PATH");
-  std::string newLDPath;
-  if (originalLDPath == nullptr) {
-    newLDPath = libPath.str();
-  } else {
-    newLDPath =
-        llvm::join_items(llvm::sys::EnvPathSeparator, libPath, originalLDPath);
+  SmallVector<StringRef> cmdEnv{};
+  if (options.useChess) {
+    std::string newVitis = "VITIS=" + options.vitisInstallDir;
+    cmdEnv.push_back(newVitis);
   }
-  newLDPath = "LD_LIBRARY_PATH=" + newLDPath;
-  std::string newVitis = "VITIS=" + options.vitisInstallDir;
-  SmallVector<StringRef> cmdEnv{newLDPath, newVitis};
   const char *originalPath = ::getenv("PATH");
   std::string newPath;
   if (originalPath != nullptr) {
     newPath = originalPath;
-    // Amend the dll search path
-#ifdef _WIN32
-    newPath = llvm::join_items(llvm::sys::EnvPathSeparator, libPath, newPath);
-#endif
     newPath = "PATH=" + newPath;
     cmdEnv.push_back(newPath);
   }
