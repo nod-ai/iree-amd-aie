@@ -27,7 +27,7 @@ if [ "$#" -lt 2 ] || [ "$#" -gt 6 ]; then
             "\n     5) <xrt-dir>                  (optional)" \
             "\n     6) <vitis-install-dir>        (optional)" \
             "\n Example, dependent on environment variables:" \
-            "\n     ./run_matmul_test.sh  " \
+            "\n     ./run_test.sh  " \
             "results_dir_tmp  \$IREE_BUILD_OR_INSTALL_DIR  \$MLIR_AIE_INSTALL_DIR  " \
             "\$PEANO_INSTALL_DIR  /opt/xilinx/xrt  \$VITIS_INSTALL_PATH"
     exit 1
@@ -144,6 +144,8 @@ fi
 # Get the full path of test.cpp (which is in the same directory as this script).
 TEST_CPP="${THIS_DIR}/test.cpp"
 
+
+# Compile the host code (flags inspired by mlir-air tests). 
 g++ ${TEST_CPP} -o ${OUTPUT_DIR}/test.exe -Wall -I${XRT_DIR}/include -L${XRT_DIR}/lib -luuid -lxrt_coreutil -lrt -lstdc++
 
 # Verify that ${OUTPUT_DIR}/test.exe exists:
@@ -173,7 +175,7 @@ else
   sudo $SIGNER -dev Phoenix -xclbin "${XCLBIN_FILE}"
 fi
 
-# As for the XCLBIN file, we expect to find a .ipu.txt file in the output directory.
+# Just like above for the XCLBIN file, we expect to find a .ipu.txt file in the output directory.
 IPU_TXT_FILE=""
 for file in `find ${OUTPUT_DIR} -name "*.ipu.txt"`; do
   IPU_TXT_FILE="${file}"
