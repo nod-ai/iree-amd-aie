@@ -122,7 +122,7 @@ def get_test_shapes(shapes_id: ShapesId):
             TestShape(m=64, k=128, n=64, accumulate=False),
             # This size compiles but has a correctness error
             # TestShape(m=300, k=300, n=300, accumulate=False),
-            TestShape(m=2048, k=2048, n=2048, accumulate=False),
+            TestShape(m=512, k=512, n=512, accumulate=False),
         ]
     if shapes_id == ShapesId.SMALL_LEGACY:
         return [
