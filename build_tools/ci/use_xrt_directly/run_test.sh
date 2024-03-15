@@ -151,7 +151,10 @@ if [ ! -f "${OUTPUT_DIR}/test_artefact.vmfb" ]; then
 fi
 
 
-g++ test.cpp -o ${OUTPUT_DIR}/test.exe -Wall -I${XRT_DIR}/include -L${XRT_DIR}/lib -luuid -lxrt_coreutil -lrt -lstdc++
+# Get the full path of test.cpp (which is in the same directory as this script).
+TEST_CPP="${THIS_DIR}/test.cpp"
+
+g++ ${TEST_CPP} -o ${OUTPUT_DIR}/test.exe -Wall -I${XRT_DIR}/include -L${XRT_DIR}/lib -luuid -lxrt_coreutil -lrt -lstdc++
 
 # Verify that ${OUTPUT_DIR}/test.exe exists:
 if [ ! -f "${OUTPUT_DIR}/test.exe" ]; then
