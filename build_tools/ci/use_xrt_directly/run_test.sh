@@ -48,25 +48,16 @@ if [ ! -d "${IREE_INSTALL_DIR}" ]; then
   exit 1
 fi
 
-# Search for iree-compile and iree-e2e-matmul-test in the user provided directory.
+# Search for iree-compile in the user provide
 IREE_COMPILE_EXE=""
-TEST_RUNNER=""
 for dir in "${IREE_INSTALL_DIR}" "${IREE_INSTALL_DIR}/bin" "${IREE_INSTALL_DIR}/tools"; do
   if [ -f "${dir}/iree-compile" ]; then
     IREE_COMPILE_EXE="${dir}/iree-compile"
-  fi
-  if [ -f "${dir}/iree-e2e-matmul-test" ]; then
-    TEST_RUNNER="${dir}/iree-e2e-matmul-test"
   fi
 done
 
 if [ -z "${IREE_COMPILE_EXE}" ]; then
   echo "No 'iree-compile' found in any of the following directories: " \
-       "'${IREE_INSTALL_DIR}', '${IREE_INSTALL_DIR}/bin', '${IREE_INSTALL_DIR}/tools'."
-  exit 1
-fi
-if [ -z "${TEST_RUNNER}" ]; then
-  echo "No 'iree-e2e-matmul-test' found in any of the following directories: " \
        "'${IREE_INSTALL_DIR}', '${IREE_INSTALL_DIR}/bin', '${IREE_INSTALL_DIR}/tools'."
   exit 1
 fi
@@ -128,8 +119,7 @@ source $XRT_DIR/setup.sh
 THIS="$(cd $(dirname $0) && pwd)"
 SOURCE_MLIR_FILE="${THIS_DIR}/linalg_matmul.mlir"
 
-# Construct the iree-compile command. Use all the aie2xclbin printing options,
-# and then test that the output is printed to stdout and stderr as expected.
+# Construct the iree-compile command. 
 IREE_COMPILE_COMMAND="${IREE_COMPILE_EXE} \
 ${SOURCE_MLIR_FILE} \
 --iree-hal-target-backends=amd-aie \
@@ -195,7 +185,7 @@ else
   echo "Found .ipu.txt file: ${IPU_TXT_FILE}"
 fi
 
-# Run the test! 'true false' is the failure mode. 
+echo "Running the test executable with writeC and syncC set to true (writeC=true and syncC=false is the failure mode)."
 ${OUTPUT_DIR}/test.exe ${XCLBIN_FILE} ${IPU_TXT_FILE} true true
 
 
