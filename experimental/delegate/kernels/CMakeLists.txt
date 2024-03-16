@@ -37,8 +37,8 @@ foreach(kernel ${AIE_DELEGATE_KERNELS})
         set(_url "${AIE_DELEGATE_KERNEL_REPO}/${_src_file}")
         add_custom_command(
             OUTPUT ${_dest_file}
-            COMMAND /usr/bin/wget -O ${_dest_file} ${_url}
-            COMMENT "wget ${_url}"
+            COMMAND curl ${_url} -o ${_dest_file}
+            COMMENT "curl ${_url}"
         )
 
         list(APPEND AIE_DELEGATE_KERNEL_DEST_FILES "${_dest_file}")
