@@ -33,15 +33,18 @@
 #define MLP_K 256
 #define MLP_N 256
 
+// Kernel file names (without extension) relative to installation root
+const std::string kernelFileName = "matmul/matmul-bf16-256x256x256-v1";
+
 // Get the path of this plugin's .so
 
 #if defined(_WIN32)
 
-// WARNING: Windows code untested!
-
 #include <windows.h>
 
 std::string getLibraryPath() {
+#if 0
+    TODO: Let's revisit the Windows implementation if we ever need it to run there
     char path[MAX_PATH];
     HMODULE hm = NULL;
 
@@ -61,6 +64,9 @@ std::string getLibraryPath() {
     }
 
     return std::string(path);
+#else
+    return std::string();
+#endif
 }
 #elif defined(__linux__)
 #include <dlfcn.h>
@@ -188,11 +194,9 @@ inline float fromBfloat16(bfloat16_t b) {
 }
 
 int setupNPUAccelerator() {
-    const std::string kernelFileName = "matmul-bf16-256x256x256";
     std::string libPath = getLibraryPath();
     std::cout << "[AIE Delegate]: Using delegate installation at: " << libPath << std::endl;
     std::string instrFilePath = libPath + "/kernels/" + kernelFileName + ".insts.txt";
-    // std::string instrFilePath = "/proj/gdba/dliddell/Projects/iree/iree-amd-aie/third_party/mlir-aie/reference_designs/ipu-xrt/matrix_multiplication/build/insts.txt");
     std::vector<uint32_t> instrV = loadInstrSequence(instrFilePath);
     instrSize = instrV.size();
     if (instrSize == 0) {
@@ -209,7 +213,6 @@ int setupNPUAccelerator() {
 
     // Load the xclbin
     std::string xclbinPath = libPath + "/kernels/" + kernelFileName + ".xclbin";
-    // std::string xclbinPath = "/proj/gdba/dliddell/Projects/iree/iree-amd-aie/third_party/mlir-aie/reference_designs/ipu-xrt/matrix_multiplication/build/final.xclbin";
     auto xclbin = xrt::xclbin(xclbinPath);
 
     std::string node = "MLIR_AIE";
