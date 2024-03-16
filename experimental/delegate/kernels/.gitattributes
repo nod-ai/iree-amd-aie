@@ -1,2 +1,0 @@
-matmul-bf16-256x256x256.insts.txt filter=lfs diff=lfs merge=lfs -text
-matmul-bf16-256x256x256.xclbin filter=lfs diff=lfs merge=lfs -text
