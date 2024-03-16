@@ -12,28 +12,44 @@ endif()
 
 message(STATUS "Processing AIE Delegate Kernels")
 
-# Get a list of all files in the source directory
-file(GLOB _aie_delegate_kernel_src_files "${CMAKE_CURRENT_SOURCE_DIR}/*.xclbin" "${CMAKE_CURRENT_SOURCE_DIR}/*.insts.txt")
+# List of all kernels stored in Azure (without file extension)
+set(AIE_DELEGATE_KERNELS
+    "matmul/matmul-bf16-256x256x256-v1"
+)
+
+# List of all kernel file extensions
+set(AIE_DELEGATE_KERNEL_EXTENSIONS
+    ".insts.txt"
+    ".xclbin"
+)
+
+# Kernel repo
+set(AIE_DELEGATE_KERNEL_REPO
+    "https://sharkpublic.blob.core.windows.net/sharkpublic/aie-delegate/kernels"
+)
 
 # Install each file to the destination directory and build a list of destination files
-set(_aie_delegate_kernel_dest_files)
-foreach(file ${_aie_delegate_kernel_src_files})
-    # TODO: Determine if the following line is needed for install target
-    # install(FILES ${file} DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
-    file(RELATIVE_PATH _relative_path ${CMAKE_CURRENT_SOURCE_DIR} ${file})
-    list(APPEND _aie_delegate_kernel_dest_files "${CMAKE_CURRENT_BINARY_DIR}/${_relative_path}")
-endforeach()
+set(AIE_DELEGATE_KERNEL_DEST_FILES)
+foreach(kernel ${AIE_DELEGATE_KERNELS})
+    foreach (extension ${AIE_DELEGATE_KERNEL_EXTENSIONS})
+        set(_src_file "${kernel}${extension}")
+        set(_dest_file "${CMAKE_CURRENT_BINARY_DIR}/${_src_file}")
+        set(_url "${AIE_DELEGATE_KERNEL_REPO}/${_src_file}")
+        add_custom_command(
+            OUTPUT ${_dest_file}
+            COMMAND wget -O ${_dest_file} ${_url}
+            COMMENT "wget ${_url}"
+        )
 
-add_custom_command(
-    OUTPUT ${_aie_delegate_kernel_dest_files}
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        ${_aie_delegate_kernel_src_files}
-        ${CMAKE_CURRENT_BINARY_DIR}
-    COMMENT "Copying AIE Delegate Kernel files"
-)
+        list(APPEND AIE_DELEGATE_KERNEL_DEST_FILES "${_dest_file}")
+        unset(_url)
+        unset(_dest_file)
+        unset(_src_file)
+    endforeach()
+endforeach()
 
 add_custom_target(aie_delegate_kernels
   DEPENDS
-    ${_aie_delegate_kernel_dest_files}
+    ${AIE_DELEGATE_KERNEL_DEST_FILES}
   WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
