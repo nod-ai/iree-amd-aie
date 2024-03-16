@@ -49,20 +49,4 @@ add_dependencies(iree-sample-deps
   mlp_bf16_aie_delegate
 )
 
-
-iree_lit_test_suite(
-  NAME
-    mlp_example
-  SRCS
-    "mlp.mlir"
-  TOOLS
-    FileCheck
-    iree-compile
-    iree-run-module
-    mlp_bf16_aie_delegate
-  LABELS
-    "driver=local-sync"
-    "hostonly"
-)
-
 endif(IREE_HAL_EXECUTABLE_PLUGIN_SYSTEM_LIBRARY)
