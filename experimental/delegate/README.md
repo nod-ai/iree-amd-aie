@@ -30,8 +30,11 @@ iree-compile --iree-preprocessing-transform-spec-filename=mlp_spec.mlir mlp.mlir
 # Circumvent xclbin security
 export XRT_HACK_UNSECURE_LOADING_XCLBIN=1
 
+# Set this to the location of the IREE build
+export PATH_TO_IREE_BUILD=../../../iree-build
+
 iree-run-module --device=local-sync \
-  --executable_plugin=../../../iree-build/runtime/plugins/AMD-AIE-experimental/delegate/mlp_bf16_aie_delegate.so \
+  --executable_plugin=${PATH_TO_IREE_BUILD}/runtime/plugins/AMD-AIE-experimental/delegate/mlp_bf16_aie_delegate.so \
   --module=mlp.vmfb \
   --function=mlp_invocation \
   --input="256x256xf32=2" \
