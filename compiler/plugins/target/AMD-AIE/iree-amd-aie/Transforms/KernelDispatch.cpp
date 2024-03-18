@@ -30,19 +30,39 @@ static LogicalResult setRootConfigForPadPipeline(func::FuncOp entryPointFn,
       IREE::Codegen::DispatchLoweringPassPipeline::None);
 }
 
-static SmallVector<int64_t> getPackedSize(Operation *op, const int packLevel) {
+/// Returns the largest number that perfectly divides `num` that is less than or
+/// equal to max
+static int findLargestFactor(int num, int max) {
+  if (num < max) {
+    return num;
+  }
+  for (int i = max; i > 0; i--) {
+    if (num % i == 0) {
+      return i;
+    }
+  }
+  return 1;
+}
+
+static SmallVector<int64_t> getPackedSize(linalg::LinalgOp linalgOp,
+                                          const int packLevel, int m = 0,
+                                          int n = 0, int k = 0) {
   // TODO: consider emiting an error/warning if the default sizes are used as a
   // fallback.
   SmallVector<int64_t> defaultSizes;
+  // TODO (nmeshram) : We should not need this and be able to fix the pack
+  // config after we have padding support
+  int minM = m ? findLargestFactor(m, 4) : 4;
+  int minN = n ? findLargestFactor(n, 4) : 4;
+  int minK = k ? findLargestFactor(k, 8) : 8;
   if (packLevel == 1) {
-    defaultSizes = {4, 4, 8};
+    defaultSizes = {{minM, minN, minK}};
   } else if (packLevel == 2) {
-    defaultSizes = {0, 0, 0, 4, 4, 8};
+    defaultSizes = {{0, 0, 0, minM, minN, minK}};
   } else {
-    op->emitError("invalid value of pack level.");
+    linalgOp->emitError("invalid value of pack level.");
   }
-  auto matmulOp = dyn_cast<linalg::MatmulOp>(op);
-  if (!matmulOp) {
+  if (!isa<linalg::MatmulOp>(linalgOp)) {
     return defaultSizes;
   }
 
@@ -50,9 +70,9 @@ static SmallVector<int64_t> getPackedSize(Operation *op, const int packLevel) {
     return v.getType().cast<ShapedType>().getElementType();
   };
 
-  auto elTypeLhs = getElementType(op->getOperand(0));
-  auto elTypeRhs = getElementType(op->getOperand(1));
-  auto elTypeAcc = getElementType(op->getResult(0));
+  auto elTypeLhs = getElementType(linalgOp->getOperand(0));
+  auto elTypeRhs = getElementType(linalgOp->getOperand(1));
+  auto elTypeAcc = getElementType(linalgOp->getResult(0));
 
   auto maybeInstructionSize =
       getAIEMatmulInstructionSize(elTypeLhs, elTypeRhs, elTypeAcc);
@@ -215,15 +235,16 @@ static LogicalResult setRootConfigForPadPackPipeline(func::FuncOp entryPointFn,
   // added to avoid failure for small GEMM sizes.
   auto initType = linalgOp.getDpsInitOperand(0)->get().getType();
   auto initShape = llvm::cast<ShapedType>(initType).getShape();
-  auto tileM0 = std::min((int)initShape[0], 64);
-  auto tileN0 = std::min((int)initShape[1], 64);
-  auto tileM1 = std::max((int)tileM0 / 2, 1);
-  auto tileN1 = std::max((int)tileN0 / 2, 1);
+  // TODO (nmeshram) : We should be able to use fixed tiling config after we
+  // have padding support.
+  auto tileM0 = findLargestFactor((int)initShape[0], 64);
+  auto tileN0 = findLargestFactor((int)initShape[1], 64);
+  auto tileM1 = findLargestFactor((int)tileM0, 32);
+  auto tileN1 = findLargestFactor((int)tileN0, 32);
   auto lhsType = linalgOp.getDpsInputOperand(0)->get().getType();
   auto lhsShape = llvm::cast<ShapedType>(lhsType).getShape();
-  auto tileK0 = std::min((int)lhsShape[1], 256);
-  auto tileK1 = std::min((int)lhsShape[1] / 8, 4);
-
+  auto tileK0 = findLargestFactor((int)lhsShape[1], 256);
+  auto tileK1 = findLargestFactor((int)tileK0, 4);
   SmallVector<int64_t> TileSizeLevel0 = {tileM0, tileN0};
   SmallVector<int64_t> TileSizeLevel1 = {0, 0, tileK0};
   SmallVector<int64_t> TileSizeLevel2 = {tileM1, tileN1};
@@ -240,7 +261,7 @@ static LogicalResult setRootConfigForPadPackPipeline(func::FuncOp entryPointFn,
   // ------------------------------------------------------
   MLIRContext *context = entryPointFn.getContext();
   const int packLevel = 1;
-  auto packedSizes = getPackedSize(linalgOp, packLevel);
+  auto packedSizes = getPackedSize(linalgOp, packLevel, tileM1, tileN1, (int)tileK0/(int)tileK1);
   SmallVector<int64_t> transposePackIndices = {0, 1, 2};
   SmallVector<bool> unpackEmpty = {false, false, true};
   SmallVector<SmallVector<int64_t>> innerPerm = {{0, 1}, {1, 0}, {0, 1}};

@@ -174,6 +174,22 @@ def AMDAIELowerWorkgroupCount :
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIELowerWorkgroupCountPass()";
 }
 
+def AMDAIEMapForallToCores :
+    Pass<"iree-amdaie-map-forall-to-cores", "func::FuncOp"> {
+  let summary = "Map scf.forall ops to blocks and cores";
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEMapForallToCoresPass()";
+  let options = [
+    Option<"numCoresRow", "num-cores-row", "int64_t", /*default=*/"1",
+      "Number of cores for each row along y dimension">,
+    Option<"numCoresCol", "num-cores-col", "int64_t", /*default=*/"1",
+      "Number of cores for each col along x dimension">,
+    Option<"blockSizeRow", "block-size-row", "int64_t", /*default=*/"1",
+      "Block size along y dimension">,
+    Option<"blockSizeCol", "block-size-col", "int64_t", /*default=*/"1",
+      "Block size along x dimension">
+  ];
+}
+
 def AMDAIEPackAndTranspose :
     Pass<"iree-amdaie-pack-and-transpose", "func::FuncOp"> {
   let summary = "Pass to pack and transpose the linalg operations.";
