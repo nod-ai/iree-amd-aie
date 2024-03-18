@@ -18,7 +18,8 @@
 namespace mlir::iree_compiler::AMDAIE {
 
 static LogicalResult setRootConfigForPadPipeline(func::FuncOp entryPointFn,
-                                                 linalg::LinalgOp linalgOp) {
+                                                 linalg::LinalgOp linalgOp,
+                                                 AIEConfig cfg) {
   SmallVector<int64_t> TileSizeLevel0 = {8, 8};
   SmallVector<int64_t> TileSizeLevel1 = {4, 4};
   SmallVector<int64_t> TileSizeLevel2 = {0, 0, 4};
@@ -71,7 +72,7 @@ static SmallVector<int64_t> getPackedSize(Operation *op, const int packLevel) {
 }
 
 static LogicalResult setRootConfigForSimplePackPipeline(
-    func::FuncOp entryPointFn, linalg::LinalgOp linalgOp) {
+    func::FuncOp entryPointFn, linalg::LinalgOp linalgOp, AIEConfig cfg) {
   // ------------------------------------------------------
   // -------------- Set lowering config -------------------
   // ------------------------------------------------------
@@ -329,21 +330,24 @@ static bool isMatmulTranspose(linalg::GenericOp genericOp) {
 /// transposition.
 static LogicalResult setTransposeLikeOpRootConfig(
     func::FuncOp entryPointFn, linalg::LinalgOp linalgOp,
-    AIEPassPipeline usePassPipeline) {
+    AIEPassPipeline usePassPipeline, AIEConfig cfg) {
   if (usePassPipeline == AIEPassPipeline::SimplePackPipeline)
-    return setRootConfigForSimplePackPipeline(entryPointFn, linalgOp);
+    return setRootConfigForSimplePackPipeline(entryPointFn, linalgOp, cfg);
+  else if (usePassPipeline == AIEPassPipeline::PadPackPipeline)
+    return setRootConfigForPadPackPipeline(entryPointFn, linalgOp, cfg);
   return linalgOp.emitOpError("unhandled pass pipeline");
 }
 
 static LogicalResult setRootConfig(func::FuncOp entryPointFn,
                                    linalg::GenericOp genericOp,
-                                   AIEPassPipeline usePassPipeline) {
+                                   AIEPassPipeline usePassPipeline,
+                                   AIEConfig cfg) {
   assert(!getLoweringConfig(genericOp) &&
          "expected lowering_config is not set");
 
   if (isMatmulTranspose(genericOp) &&
       succeeded(setTransposeLikeOpRootConfig(entryPointFn, genericOp,
-                                             usePassPipeline))) {
+                                             usePassPipeline, cfg))) {
     return success();
   }
 
@@ -361,7 +365,7 @@ static LogicalResult setRootConfig(func::FuncOp entryPointFn,
   auto linalgOp = cast<linalg::LinalgOp>(contractionOp.getOperation());
   if (isa<linalg::MatmulTransposeBOp>(linalgOp)) {
     if (succeeded(setTransposeLikeOpRootConfig(entryPointFn, linalgOp,
-                                               usePassPipeline))) {
+                                               usePassPipeline, cfg))) {
       return success();
     }
     return failure();
@@ -381,9 +385,9 @@ static LogicalResult setRootConfig(func::FuncOp entryPointFn,
   // logic. Also, need a flag to experiment between pad based and pack based
   // approach which will have different tile sizes and pass pipelines
   if (usePassPipeline == AIEPassPipeline::PadPipeline)
-    return setRootConfigForPadPipeline(entryPointFn, linalgOp);
+    return setRootConfigForPadPipeline(entryPointFn, linalgOp, cfg);
   if (usePassPipeline == AIEPassPipeline::SimplePackPipeline)
-    return setRootConfigForSimplePackPipeline(entryPointFn, linalgOp);
+    return setRootConfigForSimplePackPipeline(entryPointFn, linalgOp, cfg);
   if (usePassPipeline == AIEPassPipeline::PackPipeline)
     return setRootConfigForPackPipeline(entryPointFn, linalgOp, cfg);
   if (usePassPipeline == AIEPassPipeline::PadPackPipeline)
@@ -401,7 +405,7 @@ static LogicalResult setRootConfigImpl(func::FuncOp entryPointFn, Operation *op,
         // let it first crash for all the other ops and then consiously
         // add support for them, this way we can verify our work.
         .Case<linalg::GenericOp>([&](auto op) {
-          return setRootConfig(entryPointFn, op, usePassPipeline);
+          return setRootConfig(entryPointFn, op, usePassPipeline, cfg);
         })
         .Case<linalg::ContractionOpInterface>([&](auto op) {
           return setRootConfig(entryPointFn, op, usePassPipeline, cfg);
