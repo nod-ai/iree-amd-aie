@@ -48,6 +48,7 @@ iree_cc_library(
     "AMDAIELowerExecutableTarget.cpp"
     "AMDAIELowerToUKernels.cpp"
     "AMDAIELowerWorkgroupCount.cpp"
+    "AMDAIEMapForallToCores.cpp"
     "AMDAIEPackAndTranspose.cpp"
     "AMDAIEPackToDma.cpp"
     "AMDAIEPad.cpp"
