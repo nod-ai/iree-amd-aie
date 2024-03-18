@@ -95,6 +95,10 @@ std::unique_ptr<Pass> createAMDAIELowerToUKernelsPass(
 /// Create a pass to lower workgroup count region of entry point operations.
 std::unique_ptr<Pass> createAMDAIELowerWorkgroupCountPass();
 
+/// Create a pass to map scf.forall ops to blocks and cores.
+std::unique_ptr<Pass> createAMDAIEMapForallToCoresPass(
+    AMDAIEMapForallToCoresOptions options = {});
+
 /// Create a pass to pack and transpose the linalg op.
 std::unique_ptr<Pass> createAMDAIEPackAndTransposePass(
     AMDAIEPackAndTransposeOptions options = {});
