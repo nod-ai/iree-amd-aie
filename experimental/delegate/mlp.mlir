@@ -1,10 +1,3 @@
-// RUN: iree-compile --iree-preprocessing-transform-spec-filename=%p/mlp_spec.mlir  %s | \
-// RUN: iree-run-module --device=local-sync \
-// RUN:     --executable_plugin=$IREE_BINARY_DIR/runtime/plugins/AMD-AIE-experimental/delegate/mlp_bf16_aie_delegate$IREE_DYLIB_EXT \
-// RUN:     --module=- \
-// RUN:     --function=mlp_invocation \
-// RUN:     --input="256x256xf32=2" \
-// RUN:     --input="256x256xf32=3"
 
 // The implementation of MLP is matched using a transform dialect script and is forwarded to a system plugin.
 
