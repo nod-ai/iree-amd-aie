@@ -124,12 +124,12 @@ static void iree_hal_xrt_direct_command_buffer_begin_debug_group(
     iree_hal_command_buffer_t* base_command_buffer, iree_string_view_t label,
     iree_hal_label_color_t label_color,
     const iree_hal_label_location_t* location) {
-  iree_status_from_code(IREE_STATUS_UNIMPLEMENTED);
+  (void)iree_status_from_code(IREE_STATUS_UNIMPLEMENTED);
 }
 
 static void iree_hal_xrt_direct_command_buffer_end_debug_group(
     iree_hal_command_buffer_t* base_command_buffer) {
-  iree_status_from_code(IREE_STATUS_UNIMPLEMENTED);
+  (void)iree_status_from_code(IREE_STATUS_UNIMPLEMENTED);
 }
 
 static iree_status_t iree_hal_xrt_direct_command_buffer_execution_barrier(
