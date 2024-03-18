@@ -268,8 +268,7 @@ static LogicalResult setRootConfigForPadPackPipeline(func::FuncOp entryPointFn,
   setPackingConfig(linalgOp, config);
 
   // Finish rest of tiling
-  auto tileK1 =
-      findLargestFactor((int)tileK0, (int)tileK0 / (int)packedSizes[2]);
+  auto tileK1 = findLargestFactor((int)tileK0 / (int)packedSizes[2], 4);
   SmallVector<int64_t> TileSizeLevel0 = {tileM0, tileN0};
   SmallVector<int64_t> TileSizeLevel1 = {0, 0, tileK0};
   SmallVector<int64_t> TileSizeLevel2 = {tileM1, tileN1};
