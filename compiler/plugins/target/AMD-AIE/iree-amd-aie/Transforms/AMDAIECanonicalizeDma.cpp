@@ -55,6 +55,10 @@ bool foldAirDmaLinearDims(MLIRContext *ctx,
                           SmallVector<OpFoldResult> &newSizes) {
   bool foldableLinearDimsFound = false;
 
+  if (offsets.size() == 0) {
+    return foldableLinearDimsFound;
+  }
+
   newOffsets.push_back(offsets[0]);
   newStrides.push_back(strides[0]);
   newSizes.push_back(sizes[0]);
