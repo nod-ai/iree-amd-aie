@@ -50,6 +50,8 @@ static SmallVector<int64_t> getPackedSize(linalg::LinalgOp linalgOp,
   // TODO: consider emiting an error/warning if the default sizes are used as a
   // fallback.
   SmallVector<int64_t> defaultSizes;
+  // TODO (nmeshram) : We should not need this and be able to fix the pack
+  // config after we have padding support
   int minM = m ? findLargestFactor(m, 4) : 4;
   int minN = n ? findLargestFactor(n, 4) : 4;
   int minK = k ? findLargestFactor(k, 8) : 8;
@@ -233,6 +235,8 @@ static LogicalResult setRootConfigForPadPackPipeline(func::FuncOp entryPointFn,
   // added to avoid failure for small GEMM sizes.
   auto initType = linalgOp.getDpsInitOperand(0)->get().getType();
   auto initShape = llvm::cast<ShapedType>(initType).getShape();
+  // TODO (nmeshram) : We should be able to use fixed tiling config after we
+  // have padding support.
   auto tileM0 = findLargestFactor((int)initShape[0], 64);
   auto tileN0 = findLargestFactor((int)initShape[1], 64);
   auto tileM1 = findLargestFactor((int)tileM0, 32);
