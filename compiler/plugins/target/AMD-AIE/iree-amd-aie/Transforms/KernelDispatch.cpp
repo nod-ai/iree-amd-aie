@@ -203,6 +203,18 @@ static LogicalResult setRootConfigForPackPipeline(func::FuncOp entryPointFn,
   return success();
 }
 
+//     M x N x K
+// L1: 64x64 x 64
+// L2: 128x128x(256/512 - flexible for K)
+
+// <tile_sizes =
+// [ 
+//   [128, 128],
+//   [0, 0, 256],
+//   [64, 64],
+//   [0, 0, 8]
+// ]>
+
 static LogicalResult setRootConfigForPadPackPipeline(func::FuncOp entryPointFn,
                                                      linalg::LinalgOp linalgOp,
                                                      AIEConfig cfg) {
@@ -224,6 +236,12 @@ static LogicalResult setRootConfigForPadPackPipeline(func::FuncOp entryPointFn,
   auto tileK0 = std::min((int)lhsShape[1], 256);
   auto tileK1 = std::min((int)lhsShape[1] / 8, 4);
 
+  tileM0 = 128;
+  tileN0 = 128;
+  tileK0 = 256;
+  tileM1 = 64;
+  tileN1 = 64;
+  tileK1 = 8;
   SmallVector<int64_t> TileSizeLevel0 = {tileM0, tileN0};
   SmallVector<int64_t> TileSizeLevel1 = {0, 0, tileK0};
   SmallVector<int64_t> TileSizeLevel2 = {tileM1, tileN1};
