@@ -42,7 +42,7 @@ if [ "$#" -lt 2 ] || [ "$#" -gt 6 ]; then
             "\n     6) <vitis-install-dir>        (optional)" \
             "\n Example, dependent on environment variables:" \
             "\n     ./run_matmul_test.sh  " \
-            "results_dir_tmp  \$MLIR_AIE_INSTALL_DIR  \$IREE_INSTALL_DIR  " \
+            "results_dir_tmp  \$IREE_INSTALL_DIR  \$MLIR_AIE_INSTALL_DIR  " \
             "\$PEANO_INSTALL_DIR  /opt/xilinx/xrt  \$VITIS_INSTALL_PATH"
     exit 1
 fi
@@ -333,6 +333,18 @@ run_matmul_test \
     --name "matmul_i32_i32_large_amd-aie_xrt_simple-pack" \
     --lhs_rhs_type "i32" \
     --acc_type "i32" \
+    --shapes "large" \
+    --target_backend "amd-aie" \
+    --device "xrt" \
+    --peano_install_path "${PEANO}" \
+    --mlir_aie_install_path "${MLIR_AIE_INSTALL}" \
+    --vitis_path  "${VITIS}" \
+    --pipeline "simple-pack"
+
+run_matmul_test \
+    --name "matmul_bf16_bf16_large_amd-aie_xrt_simple-pack" \
+    --lhs_rhs_type "bf16" \
+    --acc_type "f32" \
     --shapes "large" \
     --target_backend "amd-aie" \
     --device "xrt" \

@@ -20,6 +20,14 @@
 
 namespace mlir::iree_compiler::AMDAIE {
 
+void appendVectorizationToPipeline(OpPassManager &pm) {
+  pm.addNestedPass<func::FuncOp>(createAMDAIECleanupPass());
+  pm.addNestedPass<func::FuncOp>(createAMDAIEInsertLoopsForVectorizationPass());
+  pm.addNestedPass<func::FuncOp>(createAMDAIEVectorizationPass());
+  pm.addPass(createCanonicalizerPass());
+  pm.addPass(createCSEPass());
+}
+
 /// Command line options used purely for development purposes. Not to be relied
 /// on in any way.
 static llvm::cl::opt<AIEPassPipeline> clUsePipeline(
@@ -99,9 +107,9 @@ void addPadBasedPassPipeline(OpPassManager &pm, TilingConfig &tilingConfig) {
     }
     if (i == 2) {
       modulePassManager.addNestedPass<func::FuncOp>(createAMDAIECleanupPass());
-      pm.addPass(createCanonicalizerPass());
-      pm.addPass(createCSEPass());
     }
+    modulePassManager.addPass(createCanonicalizerPass());
+    modulePassManager.addPass(createCSEPass());
     {
       AMDAIEPadOptions options;
       options.paddingLevel = i;
@@ -119,9 +127,10 @@ void addPadBasedPassPipeline(OpPassManager &pm, TilingConfig &tilingConfig) {
           createAMDAIEBufferizeToAllocationPass(options));
     }
     modulePassManager.addNestedPass<func::FuncOp>(createAMDAIECleanupPass());
-    pm.addPass(createCanonicalizerPass());
-    pm.addPass(createCSEPass());
+    modulePassManager.addPass(createCanonicalizerPass());
+    modulePassManager.addPass(createCSEPass());
   }
+
   {
     AMDAIELowerToUKernelsOptions options;
     options.passPipeline = AIEPassPipeline::PadPipeline;
@@ -131,18 +140,15 @@ void addPadBasedPassPipeline(OpPassManager &pm, TilingConfig &tilingConfig) {
   }
   addAMDAIEBufferizePasses(modulePassManager);
   modulePassManager.addPass(createLowerUKernelOpsToCallsPass());
+
   modulePassManager.addNestedPass<func::FuncOp>(createAMDAIECleanupPass());
-  pm.addPass(createCanonicalizerPass());
-  pm.addPass(createCSEPass());
+  modulePassManager.addPass(createCanonicalizerPass());
+  modulePassManager.addPass(createCSEPass());
 }
 
 void addSimplePackBasedPassPipeline(OpPassManager &pm,
                                     TilingConfig &tilingConfig) {
   auto &modulePassManager = pm.nest<ModuleOp>();
-  modulePassManager.addNestedPass<func::FuncOp>(createAMDAIECleanupPass());
-  pm.addPass(createCanonicalizerPass());
-  pm.addPass(createCSEPass());
-
   // First level tiling using scf.forall
   AMDAIETileAndFuseOptions tileFuseOptions0;
   tileFuseOptions0.tilingLevel = 0;
@@ -229,6 +235,8 @@ void addSimplePackBasedPassPipeline(OpPassManager &pm,
     modulePassManager.addNestedPass<func::FuncOp>(
         createAMDAIELowerToUKernelsPass(options));
   }
+  appendVectorizationToPipeline(modulePassManager);
+
   // Comprehensive bufferization
   addAMDAIEBufferizePasses(modulePassManager);
   modulePassManager.addPass(createLowerUKernelOpsToCallsPass());
@@ -237,9 +245,6 @@ void addSimplePackBasedPassPipeline(OpPassManager &pm,
 
 void addPackBasedPassPipeline(OpPassManager &pm, TilingConfig &tilingConfig) {
   auto &modulePassManager = pm.nest<ModuleOp>();
-  modulePassManager.addNestedPass<func::FuncOp>(createAMDAIECleanupPass());
-  pm.addPass(createCanonicalizerPass());
-  pm.addPass(createCSEPass());
 
   // First level tiling using scf.forall
   AMDAIETileAndFuseOptions tileFuseOptions0;
@@ -323,9 +328,6 @@ void addPackBasedPassPipeline(OpPassManager &pm, TilingConfig &tilingConfig) {
 void addPadPackBasedPassPipeline(OpPassManager &pm,
                                  TilingConfig &tilingConfig) {
   auto &modulePassManager = pm.nest<ModuleOp>();
-  modulePassManager.addNestedPass<func::FuncOp>(createAMDAIECleanupPass());
-  pm.addPass(createCanonicalizerPass());
-  pm.addPass(createCSEPass());
 
   // First level tiling using scf.forall
   AMDAIETileAndFuseOptions tileFuseOptions0;
@@ -342,8 +344,6 @@ void addPadPackBasedPassPipeline(OpPassManager &pm,
   padOptions.paddingLevel = 0;
   modulePassManager.addNestedPass<func::FuncOp>(
       createAMDAIEPadPass(padOptions));
-  modulePassManager.addPass(createCanonicalizerPass());
-  modulePassManager.addPass(createCSEPass());
 
   AMDAIEBufferizeToAllocationOptions bufferizeOptions0;
   bufferizeOptions0.memorySpace = 1;
@@ -433,10 +433,12 @@ void buildAMDAIETransformPassPipeline(OpPassManager &pm) {
     pm.addPass(createAMDAIELowerExecutableTargetPass(options));
   }
   pm.addPass(createAMDAIELowerWorkgroupCountPass());
-
-  if (clUsePipeline != AIEPassPipeline::PackPipeline) {
+  if (clUsePipeline == AIEPassPipeline::PadPackPipeline) {
     auto &modulePassManager = pm.nest<ModuleOp>();
     addMLIRAIRAIELoweringPasses(modulePassManager);
+  } else if (clUsePipeline != AIEPassPipeline::PackPipeline) {
+    auto &modulePassManager = pm.nest<ModuleOp>();
+    addMLIRAIRAIELegacyLoweringPasses(modulePassManager);
   }
 
   LLVM_DEBUG({
@@ -462,7 +464,7 @@ void addMLIRAIRAIELoweringPasses(OpPassManager &passManager) {
   passManager.addPass(createEraseHALDescriptorTypeFromMemRefPass());
   passManager.addPass(memref::createFoldMemRefAliasOpsPass());
   passManager.addPass(createAMDAIEBridgeToAIRPass());
-  passManager.addPass(createAMDAIEDecomposeLinalgExtPackUnPackToAIRPass());
+  passManager.addPass(createAMDAIEPackToDmaPass());
 
   {
     xilinx::air::ParallelToHerdOptions options;
@@ -474,6 +476,9 @@ void addMLIRAIRAIELoweringPasses(OpPassManager &passManager) {
     options.clHasSegment = true;
     passManager.addPass(xilinx::air::createParallelToLaunchPass(options));
   }
+  passManager.addPass(createCanonicalizerPass());
+  passManager.addPass(createCSEPass());
+  passManager.addPass(createAMDAIECanonicalizeDmaPass());
   passManager.addPass(xilinx::air::createCopyToDmaPass());
   passManager.addPass(createCanonicalizerPass());
   passManager.addPass(createCSEPass());
@@ -507,8 +512,12 @@ void addMLIRAIRAIELoweringPasses(OpPassManager &passManager) {
   passManager.addPass(createCanonicalizerPass());
   passManager.addPass(createCSEPass());
 
-  passManager.addNestedPass<func::FuncOp>(
-      xilinx::air::createAIRCollapseHerdPass());
+  {
+    xilinx::air::AIRCollapseHerdPassOptions options;
+    options.clMaxColSize = 4;
+    passManager.addNestedPass<func::FuncOp>(
+        xilinx::air::createAIRCollapseHerdPass(options));
+  }
   passManager.addPass(createCanonicalizerPass());
   passManager.addPass(createCSEPass());
 
@@ -607,8 +616,12 @@ void addMLIRAIRAIELegacyLoweringPasses(OpPassManager &passManager) {
   passManager.addPass(createCanonicalizerPass());
   passManager.addPass(createCSEPass());
 
-  passManager.addNestedPass<func::FuncOp>(
-      xilinx::air::createAIRCollapseHerdPass());
+  {
+    xilinx::air::AIRCollapseHerdPassOptions options;
+    options.clMaxColSize = 4;
+    passManager.addNestedPass<func::FuncOp>(
+        xilinx::air::createAIRCollapseHerdPass(options));
+  }
   passManager.addPass(createCanonicalizerPass());
   passManager.addPass(createCSEPass());
 

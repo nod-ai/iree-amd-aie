@@ -56,6 +56,7 @@ iree_cc_library(
     "AMDAIETile.cpp"
     "AMDAIETileAndFuse.cpp"
     "AMDAIEUtils.cpp"
+    "AMDAIEVectorization.cpp"
     "BridgeToAIRPass.cpp"
     "DecomposeLinalgExtPackUnPackToAIR.cpp"
     "Cleanup.cpp"

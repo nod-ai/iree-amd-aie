@@ -81,6 +81,15 @@ def AMDAIEInsertLoopsForVectorization :
        "mlir::iree_compiler::AMDAIE::createAMDAIEInsertLoopsForVectorizationPass()";
 }
 
+
+def AMDAIEVectorization :
+    Pass<"iree-amdaie-vectorization", "func::FuncOp"> {
+
+  let summary = "Convert operations to the vector dialect in an AIE-friendly way.";
+
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEVectorizationPass()";
+}
+
 def AMDAIEFusePackIntoForLoop :
     Pass<"iree-amdaie-fuse-pack-into-for", "func::FuncOp"> {
   let summary = "Fuse the pack operations into the for loops.";

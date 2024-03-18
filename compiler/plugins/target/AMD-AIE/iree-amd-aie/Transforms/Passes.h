@@ -17,6 +17,11 @@ namespace mlir::iree_compiler::AMDAIE {
 /// currently the default passes used for lowering after IREEs tiling.
 void addMLIRAIRAIELoweringPasses(OpPassManager &passManager);
 
+/// Add passes to lower from MLIR-AIR through AIE. This is
+/// currently the default passes used for lowering after IREEs tiling from
+/// pipelines other than the pad-pack pipelines
+void addMLIRAIRAIELegacyLoweringPasses(OpPassManager &passManager);
+
 /// Add passes to run the strategy specified using transform dialect
 /// file/library
 void addTransformDialectPasses(OpPassManager &passManager);
@@ -53,6 +58,9 @@ std::unique_ptr<Pass> createAMDAIEBufferizeToAllocationPass(
 
 /// Create pass to apply caonicaliztions to air.dma_memcpy_nd op's.
 std::unique_ptr<Pass> createAMDAIECanonicalizeDmaPass();
+
+/// Create a pass to vectorize operations.
+std::unique_ptr<Pass> createAMDAIEVectorizationPass();
 
 /// Create pass to invoke several cleanup and canonicalization patterns.
 std::unique_ptr<Pass> createAMDAIECleanupPass();
