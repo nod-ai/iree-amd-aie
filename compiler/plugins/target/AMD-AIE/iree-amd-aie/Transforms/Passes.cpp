@@ -414,6 +414,8 @@ void addPadPackBasedPassPipeline(OpPassManager &pm,
     modulePassManager.addNestedPass<func::FuncOp>(
         createAMDAIELowerToUKernelsPass(options));
   }
+  appendVectorizationToPipeline(modulePassManager);
+
   // Comprehensive bufferization
   addAMDAIEBufferizePasses(modulePassManager);
   modulePassManager.addPass(createLowerUKernelOpsToCallsPass());
