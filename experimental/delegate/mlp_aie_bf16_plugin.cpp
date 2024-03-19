@@ -44,7 +44,7 @@ const std::string kernelFileName = "matmul/matmul-bf16-256x256x256-v1";
 
 std::string getLibraryPath() {
 #if 0
-    TODO: Let's revisit the Windows implementation if we ever need it to run there
+    // TODO: Let's revisit the Windows implementation if we ever need it to run there
     char path[MAX_PATH];
     HMODULE hm = NULL;
 
