@@ -18,7 +18,7 @@
 #      `iree-e2e-matmul-test` to include support for the runtime HAL
 #      driver/device you wish to test.
 #   2. Update the paths in this script or specify them via environment variables
-#   3. Run: `./run_matmul_tests.sh <output_dir_path> <iree_install_path> [<mlir_aie_install_path>] [<peano_install_path>] [<xrt_path>] [<vitis_path>]`
+#   3. Run: `./run_matmul_tests.sh <output_dir_path> <iree_install_path> [<mlir_aie_install_path>] [<peano_install_path>] [<xrt_path>] [<vitis_path>] [do_signing]`
 #      The directories above in square brackets are optional, the first 2 directories are required.
 
 set -euox pipefail
@@ -33,7 +33,7 @@ if [ "$#" -lt 2 ] || [ "$#" -gt 7 ]; then
    #    5) <xrt-dir>               (optional)
    #    6) <vitis-install-dir>     (optional)
    #    7) <do-signing>            (optional)
-    echo -e "Illegal number of parameters: $#, expected 2,3,4,5, or 6 parameters." \
+    echo -e "Illegal number of parameters: $#, expected 2-7 parameters." \
             "\n The parameters are as follows:" \
             "\n     1) <output-dir>               (required)" \
             "\n     2) <iree-install-dir>         (required)" \
@@ -261,14 +261,26 @@ function run_matmul_test() {
   # Extract function names from the mlir file
   function_names=$(grep -oP '@\K\S+(?=\()' ${OUTPUT_DIR}/${name}_matmuls.mlir)
 
-  # Make a guess as to whether we need to sign the XCLBIN:
-  SIGNER=${XRT_DIR}/amdxdna/setup_xclbin_firmware.sh
-  # 1) check if $XRT_DIR/amdxdna/setup_xclbin_firmware.sh exists:
+  # Behavior of <do-signing> depends on if the script for
+  # signing xclbins is found:
+  #
+  # do-signing     |  setup_xclbin_firmware.sh found | Behavior
+  # -------------- | ------------------------------- | -------------
+  # 1              | yes                             | Sign XCLBIN
+  # 1              | no                              | Error
+  # 0              | no/yes                          | Skip signing
+  # -------------- | ------------------------------- | -------------
+
+
   if [ $DO_SIGNING -eq 0 ]; then
-    echo "**** Skipping XCLBIN signing: DO_SIGNING set to 0****"
-  elif [ ! -f "$SIGNER" ]; then
-    echo "**** Skipping XCLBIN signing: $SIGNER not found ****"
+    echo "**** Skipping XCLBIN signing: DO_SIGNING set to 0 ****"
   else
+    # Informed guess where the signing script is.TODO: make this a script param.
+    SIGNER=${XRT_DIR}/amdxdna/setup_xclbin_firmware.sh
+    if [ ! -f "$SIGNER" ]; then
+      echo "**** With DO_SIGNING=1, the script for signing xclbins was not found at $SIGNER ****"
+      exit 1
+    fi
     # Iterate over each function name and sign the corresponding XCLBIN
     for func_name in $function_names; do
       # Location of XCLBIN files
