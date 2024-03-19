@@ -264,8 +264,9 @@ function run_matmul_test() {
   # Make a guess as to whether we need to sign the XCLBIN:
   SIGNER=${XRT_DIR}/amdxdna/setup_xclbin_firmware.sh
   # 1) check if $XRT_DIR/amdxdna/setup_xclbin_firmware.sh exists:
-  echo $DO_SIGNING
-  if [ ! -f "$SIGNER" ] || [ $DO_SIGNING -eq 0 ]; then
+  if [ $DO_SIGNING -eq 0 ]; then
+    echo "**** Skipping XCLBIN signing: DO_SIGNING set to 0****"
+  elif [ ! -f "$SIGNER" ]; then
     echo "**** Skipping XCLBIN signing: $SIGNER not found ****"
   else
     # Iterate over each function name and sign the corresponding XCLBIN
