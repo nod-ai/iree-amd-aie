@@ -18,7 +18,7 @@
 #      `iree-e2e-matmul-test` to include support for the runtime HAL
 #      driver/device you wish to test.
 #   2. Update the paths in this script or specify them via environment variables
-#   3. Run: `./run_matmul_tests.sh <output_dir_path> <iree_install_path> [<mlir_aie_install_path>] [<peano_install_path>] [<xrt_path>] [<vitis_path>] [<do_signing>]`
+#   3. Run: `./run_matmul_tests.sh <output_dir_path> <iree_install_path> [<mlir_aie_install_path>] [<peano_install_path>] [<xrt_path>] [<vitis_path>] [do_signing]`
 #      The directories above in square brackets are optional, the first 2 directories are required.
 
 set -euox pipefail
@@ -261,24 +261,22 @@ function run_matmul_test() {
   # Extract function names from the mlir file
   function_names=$(grep -oP '@\K\S+(?=\()' ${OUTPUT_DIR}/${name}_matmuls.mlir)
 
-  # Behavior of <do-signing> dependendant on if the script for signing 
-  # xclbins is found. 
+  # Behavior of <do-signing> depends on if the script for
+  # signing xclbins is found:
   #
-  # do-signing     |  setup_xclbin_firmware.sh  found | Behavior
-  # -------------- | -------------------------------- | ------------- 
-  # 1              | yes                              | Sign XCLBIN
-  # 1              | no                               | Error
-  # 0              | no/yes                           | Skip signing
-  # -------------- | -------------------------------- | -------------
+  # do-signing     |  setup_xclbin_firmware.sh found | Behavior
+  # -------------- | ------------------------------- | -------------
+  # 1              | yes                             | Sign XCLBIN
+  # 1              | no                              | Error
+  # 0              | no/yes                          | Skip signing
+  # -------------- | ------------------------------- | -------------
 
 
   if [ $DO_SIGNING -eq 0 ]; then
     echo "**** Skipping XCLBIN signing: DO_SIGNING set to 0 ****"
   else
-    # Make a guess as to where the script for signing XCLBins is located 
-    # (TODO: make this a script parameter if it might vary). 
+    # Informed guess where the signing script is.TODO: make this a script param.
     SIGNER=${XRT_DIR}/amdxdna/setup_xclbin_firmware.sh
-    # If Signer does not exist, error out with a clear message:
     if [ ! -f "$SIGNER" ]; then
       echo "**** With DO_SIGNING=1, the script for signing xclbins was not found at $SIGNER ****"
       exit 1
@@ -318,53 +316,53 @@ function run_matmul_test() {
 # Run a few tests                                                             #
 ###############################################################################
 
-#run_matmul_test \
-#    --name "matmul_i32_i32_small_amd-aie_xrt_pad" \
-#    --lhs_rhs_type "i32" \
-#    --acc_type "i32" \
-#    --shapes "small_legacy" \
-#    --target_backend "amd-aie" \
-#    --device "xrt" \
-#    --peano_install_path "${PEANO}" \
-#    --mlir_aie_install_path "${MLIR_AIE_INSTALL}" \
-#    --vitis_path  "${VITIS}" \
-#    --pipeline "pad"
-#
-#run_matmul_test \
-#    --name "matmul_i32_i32_large_amd-aie_xrt_pad" \
-#    --lhs_rhs_type "i32" \
-#    --acc_type "i32" \
-#    --shapes "large_legacy" \
-#    --target_backend "amd-aie" \
-#    --device "xrt" \
-#    --peano_install_path "${PEANO}" \
-#    --mlir_aie_install_path "${MLIR_AIE_INSTALL}" \
-#    --vitis_path  "${VITIS}" \
-#    --pipeline "pad"
-#
-#run_matmul_test \
-#    --name "matmul_i32_i32_small_amd-aie_xrt_simple-pack" \
-#    --lhs_rhs_type "i32" \
-#    --acc_type "i32" \
-#    --shapes "small_legacy" \
-#    --target_backend "amd-aie" \
-#    --device "xrt" \
-#    --peano_install_path "${PEANO}" \
-#    --mlir_aie_install_path "${MLIR_AIE_INSTALL}" \
-#    --vitis_path  "${VITIS}" \
-#    --pipeline "simple-pack"
-#
-#run_matmul_test \
-#    --name "matmul_i32_i32_large_amd-aie_xrt_simple-pack" \
-#    --lhs_rhs_type "i32" \
-#    --acc_type "i32" \
-#    --shapes "large_legacy" \
-#    --target_backend "amd-aie" \
-#    --device "xrt" \
-#    --peano_install_path "${PEANO}" \
-#    --mlir_aie_install_path "${MLIR_AIE_INSTALL}" \
-#    --vitis_path  "${VITIS}" \
-#    --pipeline "simple-pack"
+run_matmul_test \
+    --name "matmul_i32_i32_small_amd-aie_xrt_pad" \
+    --lhs_rhs_type "i32" \
+    --acc_type "i32" \
+    --shapes "small_legacy" \
+    --target_backend "amd-aie" \
+    --device "xrt" \
+    --peano_install_path "${PEANO}" \
+    --mlir_aie_install_path "${MLIR_AIE_INSTALL}" \
+    --vitis_path  "${VITIS}" \
+    --pipeline "pad"
+
+run_matmul_test \
+    --name "matmul_i32_i32_large_amd-aie_xrt_pad" \
+    --lhs_rhs_type "i32" \
+    --acc_type "i32" \
+    --shapes "large_legacy" \
+    --target_backend "amd-aie" \
+    --device "xrt" \
+    --peano_install_path "${PEANO}" \
+    --mlir_aie_install_path "${MLIR_AIE_INSTALL}" \
+    --vitis_path  "${VITIS}" \
+    --pipeline "pad"
+
+run_matmul_test \
+    --name "matmul_i32_i32_small_amd-aie_xrt_simple-pack" \
+    --lhs_rhs_type "i32" \
+    --acc_type "i32" \
+    --shapes "small_legacy" \
+    --target_backend "amd-aie" \
+    --device "xrt" \
+    --peano_install_path "${PEANO}" \
+    --mlir_aie_install_path "${MLIR_AIE_INSTALL}" \
+    --vitis_path  "${VITIS}" \
+    --pipeline "simple-pack"
+
+run_matmul_test \
+    --name "matmul_i32_i32_large_amd-aie_xrt_simple-pack" \
+    --lhs_rhs_type "i32" \
+    --acc_type "i32" \
+    --shapes "large_legacy" \
+    --target_backend "amd-aie" \
+    --device "xrt" \
+    --peano_install_path "${PEANO}" \
+    --mlir_aie_install_path "${MLIR_AIE_INSTALL}" \
+    --vitis_path  "${VITIS}" \
+    --pipeline "simple-pack"
 
 run_matmul_test \
     --name "matmul_bf16_bf16_large_amd-aie_xrt_simple-pack" \
@@ -390,26 +388,26 @@ run_matmul_test \
     --vitis_path  "${VITIS}" \
     --pipeline "pad-pack"
 
-# run_matmul_test \
-#     --name "matmul_i32_i32_small_amd-aie_xrt_pad-pack" \
-#     --lhs_rhs_type "i32" \
-#     --acc_type "i32" \
-#     --shapes "small" \
-#     --target_backend "amd-aie" \
-#     --device "xrt" \
-#     --peano_install_path "${PEANO}" \
-#     --mlir_aie_install_path "${MLIR_AIE_INSTALL}" \
-#     --vitis_path  "${VITIS}" \
-#     --pipeline "pad-pack"
-# 
-# run_matmul_test \
-#     --name "matmul_i32_i32_large_amd-aie_xrt_pad-pack" \
-#     --lhs_rhs_type "i32" \
-#     --acc_type "i32" \
-#     --shapes "large" \
-#     --target_backend "amd-aie" \
-#     --device "xrt" \
-#     --peano_install_path "${PEANO}" \
-#     --mlir_aie_install_path "${MLIR_AIE_INSTALL}" \
-#     --vitis_path  "${VITIS}" \
-#     --pipeline "pad-pack"
+run_matmul_test \
+    --name "matmul_i32_i32_small_amd-aie_xrt_pad-pack" \
+    --lhs_rhs_type "i32" \
+    --acc_type "i32" \
+    --shapes "small" \
+    --target_backend "amd-aie" \
+    --device "xrt" \
+    --peano_install_path "${PEANO}" \
+    --mlir_aie_install_path "${MLIR_AIE_INSTALL}" \
+    --vitis_path  "${VITIS}" \
+    --pipeline "pad-pack"
+
+run_matmul_test \
+    --name "matmul_i32_i32_large_amd-aie_xrt_pad-pack" \
+    --lhs_rhs_type "i32" \
+    --acc_type "i32" \
+    --shapes "large" \
+    --target_backend "amd-aie" \
+    --device "xrt" \
+    --peano_install_path "${PEANO}" \
+    --mlir_aie_install_path "${MLIR_AIE_INSTALL}" \
+    --vitis_path  "${VITIS}" \
+    --pipeline "pad-pack"
