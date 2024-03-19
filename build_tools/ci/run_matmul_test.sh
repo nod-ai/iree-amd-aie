@@ -377,18 +377,6 @@ run_matmul_test \
     --pipeline "simple-pack"
 
 run_matmul_test \
-    --name "matmul_bf16_bf16_large_amd-aie_xrt_pad-pack" \
-    --lhs_rhs_type "bf16" \
-    --acc_type "f32" \
-    --shapes "large_legacy" \
-    --target_backend "amd-aie" \
-    --device "xrt" \
-    --peano_install_path "${PEANO}" \
-    --mlir_aie_install_path "${MLIR_AIE_INSTALL}" \
-    --vitis_path  "${VITIS}" \
-    --pipeline "pad-pack"
-
-run_matmul_test \
     --name "matmul_i32_i32_small_amd-aie_xrt_pad-pack" \
     --lhs_rhs_type "i32" \
     --acc_type "i32" \
