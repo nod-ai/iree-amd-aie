@@ -244,24 +244,14 @@ static LogicalResult setRootConfigForPadPackPipeline(func::FuncOp entryPointFn,
   auto lhsType = linalgOp.getDpsInputOperand(0)->get().getType();
   auto lhsShape = llvm::cast<ShapedType>(lhsType).getShape();
   auto tileK0 = findLargestFactor((int)lhsShape[1], 256);
-  auto tileK1 = findLargestFactor((int)tileK0, 4);
-  SmallVector<int64_t> TileSizeLevel0 = {tileM0, tileN0};
-  SmallVector<int64_t> TileSizeLevel1 = {0, 0, tileK0};
-  SmallVector<int64_t> TileSizeLevel2 = {tileM1, tileN1};
-  SmallVector<int64_t> TileSizeLevel3 = {0, 0, tileK1};
-  TileSizesListType tileSizes = {TileSizeLevel0, TileSizeLevel1, TileSizeLevel2,
-                                 TileSizeLevel3};
-  if (failed(setOpConfigAndEntryPointFnTranslation(
-          entryPointFn, linalgOp, tileSizes,
-          IREE::Codegen::DispatchLoweringPassPipeline::None))) {
-    return failure();
-  }
+  // Do packing first to allow larger k packing
   // ------------------------------------------------------
   // --------------- Set packing config -------------------
   // ------------------------------------------------------
   MLIRContext *context = entryPointFn.getContext();
   const int packLevel = 1;
-  auto packedSizes = getPackedSize(linalgOp, packLevel, tileM1, tileN1, (int)tileK0/(int)tileK1);
+  auto packedSizes =
+      getPackedSize(linalgOp, packLevel, tileM1, tileN1, (int)tileK0);
   SmallVector<int64_t> transposePackIndices = {0, 1, 2};
   SmallVector<bool> unpackEmpty = {false, false, true};
   SmallVector<SmallVector<int64_t>> innerPerm = {{0, 1}, {1, 0}, {0, 1}};
@@ -276,6 +266,21 @@ static LogicalResult setRootConfigForPadPackPipeline(func::FuncOp entryPointFn,
       PackingConfigPackingLevelsAttr::get(context, packingConfigLevelsVal);
   auto config = PackingConfigAttr::get(context, packingConfigLevels);
   setPackingConfig(linalgOp, config);
+
+  // Finish rest of tiling
+  auto tileK1 = findLargestFactor((int)tileK0 / (int)packedSizes[2], 4);
+  SmallVector<int64_t> TileSizeLevel0 = {tileM0, tileN0};
+  SmallVector<int64_t> TileSizeLevel1 = {0, 0, tileK0};
+  SmallVector<int64_t> TileSizeLevel2 = {tileM1, tileN1};
+  SmallVector<int64_t> TileSizeLevel3 = {0, 0, tileK1};
+  TileSizesListType tileSizes = {TileSizeLevel0, TileSizeLevel1, TileSizeLevel2,
+                                 TileSizeLevel3};
+  if (failed(setOpConfigAndEntryPointFnTranslation(
+          entryPointFn, linalgOp, tileSizes,
+          IREE::Codegen::DispatchLoweringPassPipeline::None))) {
+    return failure();
+  }
+
   return success();
 }
 
