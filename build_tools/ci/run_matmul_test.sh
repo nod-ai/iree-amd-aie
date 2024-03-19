@@ -23,7 +23,7 @@
 
 set -euox pipefail
 
-if [ "$#" -lt 2 ] || [ "$#" -gt 6 ]; then
+if [ "$#" -lt 2 ] || [ "$#" -gt 7 ]; then
 
    # The expected parameters are
    #    1) <output-dir>            (required)
@@ -32,6 +32,7 @@ if [ "$#" -lt 2 ] || [ "$#" -gt 6 ]; then
    #    4) <peano-install-dir>     (optional)
    #    5) <xrt-dir>               (optional)
    #    6) <vitis-install-dir>     (optional)
+   #    7) <do-signing>            (optional)
     echo -e "Illegal number of parameters: $#, expected 2,3,4,5, or 6 parameters." \
             "\n The parameters are as follows:" \
             "\n     1) <output-dir>               (required)" \
@@ -40,10 +41,11 @@ if [ "$#" -lt 2 ] || [ "$#" -gt 6 ]; then
             "\n     4) <peano-install-dir>        (optional)" \
             "\n     5) <xrt-dir>                  (optional)" \
             "\n     6) <vitis-install-dir>        (optional)" \
+            "\n     7) <do-signing>               (optional)" \
             "\n Example, dependent on environment variables:" \
             "\n     ./run_matmul_test.sh  " \
             "results_dir_tmp  \$IREE_INSTALL_DIR  \$MLIR_AIE_INSTALL_DIR  " \
-            "\$PEANO_INSTALL_DIR  /opt/xilinx/xrt  \$VITIS_INSTALL_PATH"
+            "\$PEANO_INSTALL_DIR  /opt/xilinx/xrt  \$VITIS_INSTALL_PATH 0"
     exit 1
 fi
 
@@ -132,6 +134,13 @@ fi
 if [ ! -d "${VITIS}" ]; then
   echo "No directory '${VITIS}' (argument 6) found."
   exit 1
+fi
+
+# Parameter 7) <do-signing>
+if [ -z "${7-}" ]; then
+  DO_SIGNING=1
+else
+  DO_SIGNING=$7
 fi
 
 THIS_DIR="$(cd $(dirname $0) && pwd)"
@@ -255,7 +264,9 @@ function run_matmul_test() {
   # Make a guess as to whether we need to sign the XCLBIN:
   SIGNER=${XRT_DIR}/amdxdna/setup_xclbin_firmware.sh
   # 1) check if $XRT_DIR/amdxdna/setup_xclbin_firmware.sh exists:
-  if [ ! -f "$SIGNER" ]; then
+  if [ $DO_SIGNING -eq 0 ]; then
+    echo "**** Skipping XCLBIN signing: DO_SIGNING set to 0****"
+  elif [ ! -f "$SIGNER" ]; then
     echo "**** Skipping XCLBIN signing: $SIGNER not found ****"
   else
     # Iterate over each function name and sign the corresponding XCLBIN
@@ -297,7 +308,7 @@ run_matmul_test \
     --name "matmul_i32_i32_small_amd-aie_xrt_pad" \
     --lhs_rhs_type "i32" \
     --acc_type "i32" \
-    --shapes "small" \
+    --shapes "small_legacy" \
     --target_backend "amd-aie" \
     --device "xrt" \
     --peano_install_path "${PEANO}" \
@@ -309,7 +320,7 @@ run_matmul_test \
     --name "matmul_i32_i32_large_amd-aie_xrt_pad" \
     --lhs_rhs_type "i32" \
     --acc_type "i32" \
-    --shapes "large" \
+    --shapes "large_legacy" \
     --target_backend "amd-aie" \
     --device "xrt" \
     --peano_install_path "${PEANO}" \
@@ -321,7 +332,7 @@ run_matmul_test \
     --name "matmul_i32_i32_small_amd-aie_xrt_simple-pack" \
     --lhs_rhs_type "i32" \
     --acc_type "i32" \
-    --shapes "small" \
+    --shapes "small_legacy" \
     --target_backend "amd-aie" \
     --device "xrt" \
     --peano_install_path "${PEANO}" \
@@ -333,7 +344,7 @@ run_matmul_test \
     --name "matmul_i32_i32_large_amd-aie_xrt_simple-pack" \
     --lhs_rhs_type "i32" \
     --acc_type "i32" \
-    --shapes "large" \
+    --shapes "large_legacy" \
     --target_backend "amd-aie" \
     --device "xrt" \
     --peano_install_path "${PEANO}" \
@@ -345,7 +356,7 @@ run_matmul_test \
     --name "matmul_bf16_bf16_large_amd-aie_xrt_simple-pack" \
     --lhs_rhs_type "bf16" \
     --acc_type "f32" \
-    --shapes "large" \
+    --shapes "large_legacy" \
     --target_backend "amd-aie" \
     --device "xrt" \
     --peano_install_path "${PEANO}" \
