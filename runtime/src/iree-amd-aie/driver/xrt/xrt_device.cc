@@ -152,7 +152,7 @@ static void iree_hal_xrt_replace_device_allocator(
 
 static void iree_hal_xrt_replace_channel_provider(
     iree_hal_device_t* base_device, iree_hal_channel_provider_t* new_provider) {
-  iree_status_from_code(IREE_STATUS_UNIMPLEMENTED);
+  (void)iree_status_from_code(IREE_STATUS_UNIMPLEMENTED);
 }
 
 static iree_status_t iree_hal_xrt_device_trim(iree_hal_device_t* base_device) {

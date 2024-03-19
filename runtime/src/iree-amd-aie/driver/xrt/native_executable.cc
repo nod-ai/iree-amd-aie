@@ -242,7 +242,7 @@ static void iree_hal_xrt_native_executable_destroy(
       delete executable->entry_points[i].kernel;
       delete executable->entry_points[i].instr;
     } catch (...) {
-      iree_status_from_code(IREE_STATUS_DATA_LOSS);
+      (void)iree_status_from_code(IREE_STATUS_DATA_LOSS);
     }
     iree_hal_pipeline_layout_release(executable->entry_points[i].layout);
   }

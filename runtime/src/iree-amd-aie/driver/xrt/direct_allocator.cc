@@ -215,7 +215,7 @@ static void iree_hal_xrt_allocator_deallocate_buffer(
   try {
     delete iree_hal_xrt_buffer_handle(base_buffer);
   } catch (...) {
-    iree_status_from_code(IREE_STATUS_DATA_LOSS);
+    (void)iree_status_from_code(IREE_STATUS_DATA_LOSS);
     return;
   }
   IREE_TRACE_FREE_NAMED(IREE_HAL_XRT_ALLOCATOR_ID,
