@@ -26,7 +26,7 @@ func.func @matmul_static(%0 : memref<128x512xi32>, %1 : memref<512x128xi32>, %2 
   return
 }
 
-// CHECK-LABEL: func.func @matmul_static
+// CHECK-1-LABEL: func.func @matmul_static
 //       CHECK-1:   %[[C2:.+]] = arith.constant 2 : index
 //       CHECK-1:   scf.forall (%[[CORE_Y:.+]], %[[CORE_X:.+]]) in (4, 4)
 //       CHECK-1:     %[[LB_Y0:.+]] = affine.apply affine_map<()[s0] -> (s0 floordiv 2)>()[%[[CORE_Y]]]
@@ -38,6 +38,7 @@ func.func @matmul_static(%0 : memref<128x512xi32>, %1 : memref<512x128xi32>, %2 
 //       CHECK-1:           %[[LB_X1:.+]] = affine.apply affine_map<()[s0] -> (s0 mod 2)>()[%[[CORE_X]]]
 //       CHECK-1:           scf.for %[[ARG3:.+]] = %[[LB_X1]] to %[[C2]] step %[[C2]]
 
+// CHECK-2-LABEL: func.func @matmul_static
 //       CHECK-2:   %[[C1:.+]] = arith.constant 1 : index
 //       CHECK-2:   %[[C0:.+]] = arith.constant 0 : index
 //       CHECK-2:   %[[C4:.+]] = arith.constant 4 : index
@@ -73,8 +74,7 @@ func.func @matmul_static_1(%0 : memref<128x512xi32>, %1 : memref<512x128xi32>, %
   return
 }
 
-//   CHECK-LABEL: func.func @matmul_static_1
-//       CHECK-3:   %[[C0:.+]] = arith.constant 0 : index
+// CHECK-3-LABEL: func.func @matmul_static_1
 //       CHECK-3:   %[[C1:.+]] = arith.constant 1 : index
 //       CHECK-3:   %[[C4:.+]] = arith.constant 4 : index
 //       CHECK-3:   scf.forall (%[[CORE_Y:.+]], %[[CORE_X:.+]]) in (4, 4)
