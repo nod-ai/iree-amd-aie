@@ -1,5 +1,100 @@
-*-build/
-*-install/
-kernel-doc
+#############################################
+# This file was copied unmodified from IREE #
+#############################################
+
+# Python
+.env
+*.pyc
+**/.ipynb_checkpoints/
+.pytype/
+**/__pycache__/**
+
+# Visual Studio files
+.vs/
+.vscode/
+*.sdf
+*.opensdf
+*.VC.opendb
+*.suo
+*.user
+*.code-workspace
+
+# macOS files
+.DS_Store
+
+# CMake artifacts
 build/
 build-*/
+Testing/
+
+# Bazel artifacts
+**/bazel-*
+
+# Executables
+*.exe
+*.out
+
+# Local-only config options
+configured.bazelrc
+user.bazelrc
+version_info.json
+CMakeUserPresets.json
+
+# Dear ImGui Ini files
+imgui.ini
+
+# Emacs autosaves
+*~
+\#*\#
+
+# Vim swap files
+[._]*.sw[a-p]
+
+# Source indexing files
+compile_commands.json
+.cache/clangd
+
+# Language server configuration files
+.clangd
+
+# Pyenv files
+.python-version
+*.venv
+.venv
+
+# Python deployment artifacts
+*.whl
+*.egg-info
+
+# Android Studio / Gradle files
+.cxx
+.gradle
+gradlew
+gradlew.bat
+gradle/
+local.properties
+
+# Generated documentation files
+mkdocs/site/
+docs/website/site/
+
+# Temporary files
+iree/builtins/**/bin/*.ll
+artifacts/
+
+# Archive files
+*.tar
+*.tar.*
+
+# VS Code DevContainer
+.devcontainer/docker-compose.yml
+
+# Local cache files
+llvm-external-projects/iree-dialects/.cache
+
+# pkgci artifacts
+artifacts/
+
+# Side effects of local patching/merging
+*.orig
+*.rej
