@@ -20,13 +20,6 @@
 
 namespace mlir::iree_compiler::AMDAIE {
 
-void appendVectorizationToPipeline(OpPassManager &pm) {
-  pm.addNestedPass<func::FuncOp>(createAMDAIECleanupPass());
-  pm.addNestedPass<func::FuncOp>(createAMDAIEInsertLoopsForVectorizationPass());
-  pm.addNestedPass<func::FuncOp>(createAMDAIEVectorizationPass());
-  pm.addPass(createCanonicalizerPass());
-  pm.addPass(createCSEPass());
-}
 
 /// Command line options used purely for development purposes. Not to be relied
 /// on in any way.
@@ -54,6 +47,23 @@ static llvm::cl::opt<int32_t> clNumCores(
 static llvm::cl::opt<std::string> clPathToUkernels(
     "iree-amdaie-path-to-ukernels",
     llvm::cl::desc("Path to microkernels' directory"));
+
+static llvm::cl::opt<bool> clEnableVectorizationInPassPipeline(
+    "iree-amdaie-enable-vectorization-in-pass-pipeline",
+    llvm::cl::desc("Some pipelines (see iree-amdaie-use-pipeline) may include "
+                   "vectorization passes. This option enables or disables "
+                   "these vectorization passes. It is intended for development "
+                   "purposes only."),
+    llvm::cl::init(true));
+
+void appendVectorizationToPipeline(OpPassManager &pm) {
+  if (!clEnableVectorizationInPassPipeline) return;
+  pm.addNestedPass<func::FuncOp>(createAMDAIECleanupPass());
+  pm.addNestedPass<func::FuncOp>(createAMDAIEInsertLoopsForVectorizationPass());
+  pm.addNestedPass<func::FuncOp>(createAMDAIEVectorizationPass());
+  pm.addPass(createCanonicalizerPass());
+  pm.addPass(createCSEPass());
+}
 
 //===---------------------------------------------------------------------===//
 // Default allocation functions for AIE backend
