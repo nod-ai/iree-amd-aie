@@ -3,10 +3,10 @@
 // the flag --iree-amdaie-use-pipeline). We check 3 paths:
 //
 // 1) Explicitly disabling vectorization with
-//             --iree-amdaie-enable-vectorization-in-pass-pipeline=0
+//             --iree-amdaie-enable-vectorization-passes=0
 //
 // 2) Explicitly enabling vectorization with
-//             --iree-amdaie-enable-vectorization-in-pass-pipeline=1
+//             --iree-amdaie-enable-vectorization-passes=1
 //
 // 3) Not specifying the flag at all, which should use the default value (1).
 //
@@ -19,14 +19,14 @@
 // RUN: iree-opt \
 // RUN:   --pass-pipeline="builtin.module(hal.executable(hal.executable.variant(\
 // RUN:   iree-hal-translate-target-executable-variants{target=amd-aie})))" \
-// RUN:   --iree-amdaie-enable-vectorization-in-pass-pipeline=0 exe-sources.mlir \
+// RUN:   --iree-amdaie-enable-vectorization-passes=0 exe-sources.mlir \
 // RUN:   | FileCheck %s -check-prefix=CHECK-DISABLED
 
 // 2) Explicitly enabled:
 // RUN: iree-opt \
 // RUN:   --pass-pipeline="builtin.module(hal.executable(hal.executable.variant(\
 // RUN:   iree-hal-translate-target-executable-variants{target=amd-aie})))" \
-// RUN:   --iree-amdaie-enable-vectorization-in-pass-pipeline=1 exe-sources.mlir \
+// RUN:   --iree-amdaie-enable-vectorization-passes=1 exe-sources.mlir \
 // RUN:   | FileCheck %s -check-prefix=CHECK-ENABLED
 
 // 3) Default value:
