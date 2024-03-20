@@ -78,7 +78,6 @@ static FnNameAndDefAttrs getFnNameAndDefAttrs(RewriterBase &rewriter,
                                               std::string ukernelObjectFile) {
   FnNameAndDefAttrs result;
   std::string ukernelSuffix = "";
-  if (passPipeline == AIEPassPipeline::PadPipeline) ukernelSuffix = "_scalar";
   result.name = ukernelName + ukernelSuffix + "_" + inputOutputElemType;
   result.defAttrs.emplace_back(
       rewriter.getStringAttr("link_with"),
@@ -266,9 +265,7 @@ static bool isMatmul(linalg::LinalgOp linalgOp, AIEPassPipeline passPipeline) {
     return false;
   }
 
-  if (passPipeline == AIEPassPipeline::PadPipeline) {
-    return match2DLinalgGenericMatmul(linalgOp);
-  } else if (passPipeline == AIEPassPipeline::PadPackPipeline) {
+  if (passPipeline == AIEPassPipeline::PadPackPipeline) {
     return match4DLinalgGenericMatmul(linalgOp);
   } else {
     return match6DLinalgGenericMatmul(linalgOp);

@@ -1,5 +1,3 @@
-// RUN: iree-opt --split-input-file --pass-pipeline="builtin.module(func.func(iree-amdaie-lower-to-ukernels,cse,canonicalize))" %s | FileCheck %s
-// RUN: iree-opt --split-input-file --pass-pipeline="builtin.module(func.func(iree-amdaie-lower-to-ukernels{pass-pipeline=simple-pack path-to-ukernels="/custom/path/to/ukernels"},cse,canonicalize))" %s | FileCheck %s --check-prefix=SIMPLE_PACK_AND_UK_PATH
 // RUN: iree-opt --split-input-file --pass-pipeline="builtin.module(func.func(iree-amdaie-lower-to-ukernels{pass-pipeline=pad-pack},cse,canonicalize))" %s | FileCheck %s --check-prefix=PAD_PACK
 
 // This first case demonstrates no lowering to ukernel when the corresponding
@@ -196,40 +194,6 @@ func.func @matmul_bf16bf16bf16(%arg0 : tensor<?x?xbf16>, %arg1 : tensor<?x?xbf16
 // CHECK-SAME:       fn_def_attrs {link_with = "mm.o"}
 // CHECK-SAME:       strided_outer_dims(0)
 //      CHECK:   return %[[MICRO_KERNEL]]
-
-// -----
-
-func.func @generic_matmul_i32i32i32_simple_pack(%arg0 : tensor<?x?x?x?x?x?xi32>, %arg1 : tensor<?x?x?x?x?x?xi32>,
-    %arg2 : tensor<?x?x?x?x?x?xi32>) -> tensor<?x?x?x?x?x?xi32> attributes {
-  hal.executable.target = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_arch = "chip-tbd", ukernels = "all"}>
-} {
-  %0 = linalg.generic {
-    indexing_maps = [affine_map<(d0, d1, d2, d3, d4, d5, d6, d7, d8) -> (d0, d2, d5, d3, d6, d8)>,
-                     affine_map<(d0, d1, d2, d3, d4, d5, d6, d7, d8) -> (d2, d1, d4, d5, d8, d7)>,
-                     affine_map<(d0, d1, d2, d3, d4, d5, d6, d7, d8) -> (d0, d1, d4, d3, d6, d7)>],
-    iterator_types = ["parallel", "parallel", "reduction", "parallel", "parallel", "reduction", "parallel", "parallel", "reduction"]
-    } ins(%arg0, %arg1 : tensor<?x?x?x?x?x?xi32>, tensor<?x?x?x?x?x?xi32>)
-      outs(%arg2 : tensor<?x?x?x?x?x?xi32>)
-    {
-      ^bb0(%in: i32, %in_12: i32, %out: i32):
-        %16 = arith.muli %in, %in_12 : i32
-        %17 = arith.addi %out, %16 : i32
-        linalg.yield %17 : i32
-  } -> tensor<?x?x?x?x?x?xi32>
-
-  return %0 : tensor<?x?x?x?x?x?xi32>
-}
-//      SIMPLE_PACK_AND_UK_PATH: func @generic_matmul_i32i32i32_simple_pack(
-// SIMPLE_PACK_AND_UK_PATH-SAME:     %[[ARG0:[a-zA-Z0-9]+]]: tensor<?x?x?x?x?x?xi32>
-// SIMPLE_PACK_AND_UK_PATH-SAME:     %[[ARG1:[a-zA-Z0-9]+]]: tensor<?x?x?x?x?x?xi32>
-// SIMPLE_PACK_AND_UK_PATH-SAME:     %[[ARG2:[a-zA-Z0-9]+]]: tensor<?x?x?x?x?x?xi32>)
-//  SIMPLE_PACK_AND_UK_PATH-NOT:   linalg.generic
-//      SIMPLE_PACK_AND_UK_PATH:   %[[MICRO_KERNEL:.+]] = iree_codegen.ukernel.generic "matmul_i32_i32"
-// SIMPLE_PACK_AND_UK_PATH-SAME:       ins(%[[ARG0]], %[[ARG1]] :
-// SIMPLE_PACK_AND_UK_PATH-SAME:       outs(%[[ARG2]] :
-// SIMPLE_PACK_AND_UK_PATH-SAME:       fn_def_attrs {link_with = "/custom/path/to/ukernels/mm.o"}
-// SIMPLE_PACK_AND_UK_PATH-SAME:       strided_outer_dims(0)
-//      SIMPLE_PACK_AND_UK_PATH:   return %[[MICRO_KERNEL]]
 
 // -----
 
