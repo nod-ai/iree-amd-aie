@@ -19,6 +19,7 @@ iree_lit_test_suite(
     "insert_loops_for_vectorization.mlir"
     "lower_to_ukernel.mlir"
     "lower_workgroup_count.mlir"
+    "lowering_strategy.mlir"
     "map_forall_to_cores.mlir"
     "pack_and_transpose_level1.mlir"
     "pack_and_transpose_level2.mlir"

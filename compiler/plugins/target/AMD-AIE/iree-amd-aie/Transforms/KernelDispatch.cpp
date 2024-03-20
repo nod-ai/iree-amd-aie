@@ -230,19 +230,28 @@ static LogicalResult setRootConfigForPadPackPipeline(func::FuncOp entryPointFn,
   // -------------- Set lowering config -------------------
   // ------------------------------------------------------
   // Assume working on a 2x2 AIE array. Currently, the tile sizes are chosen
-  // empirically for large GEMM sizes, which are [64, 64, 256] for the first
-  // level and [32, 32, 32] for the second level. Basic min/max constraints are
-  // added to avoid failure for small GEMM sizes.
+  // empirically for large GEMM sizes, which are [32*s, 32*s, 256] for the first
+  // level and [16*s, 16*s, 16*s] for the second level, where 's' is the scaling
+  // scaling factor based on the element type's bit width. Basic min/max
+  // constraints are added to avoid failure for small GEMM sizes.
   auto initType = linalgOp.getDpsInitOperand(0)->get().getType();
   auto initShape = llvm::cast<ShapedType>(initType).getShape();
+  auto lhsType =
+      llvm::cast<ShapedType>(linalgOp.getDpsInputOperand(0)->get().getType());
+  auto lhsShape = lhsType.getShape();
+
+  FailureOr<unsigned> maybeTilingScaleFactor =
+      getTilingScaleFactor(lhsType.getElementType());
+  if (failed(maybeTilingScaleFactor)) {
+    return linalgOp.emitOpError("expected bitwidth 64/32/16");
+  }
+  unsigned tilingScaleFactor = maybeTilingScaleFactor.value();
   // TODO (nmeshram) : We should be able to use fixed tiling config after we
   // have padding support.
-  auto tileM0 = findLargestFactor((int)initShape[0], 64);
-  auto tileN0 = findLargestFactor((int)initShape[1], 64);
-  auto tileM1 = findLargestFactor((int)tileM0, 32);
-  auto tileN1 = findLargestFactor((int)tileN0, 32);
-  auto lhsType = linalgOp.getDpsInputOperand(0)->get().getType();
-  auto lhsShape = llvm::cast<ShapedType>(lhsType).getShape();
+  auto tileM0 = findLargestFactor((int)initShape[0], 32 * tilingScaleFactor);
+  auto tileN0 = findLargestFactor((int)initShape[1], 32 * tilingScaleFactor);
+  auto tileM1 = findLargestFactor((int)tileM0, 16 * tilingScaleFactor);
+  auto tileN1 = findLargestFactor((int)tileN0, 16 * tilingScaleFactor);
   auto tileK0 = findLargestFactor((int)lhsShape[1], 256);
   // Do packing first to allow larger k packing
   // ------------------------------------------------------
@@ -268,7 +277,8 @@ static LogicalResult setRootConfigForPadPackPipeline(func::FuncOp entryPointFn,
   setPackingConfig(linalgOp, config);
 
   // Finish rest of tiling
-  auto tileK1 = findLargestFactor((int)tileK0 / (int)packedSizes[2], 4);
+  auto tileK1 = findLargestFactor((int)tileK0 / (int)packedSizes[2],
+                                  2 * tilingScaleFactor);
   SmallVector<int64_t> TileSizeLevel0 = {tileM0, tileN0};
   SmallVector<int64_t> TileSizeLevel1 = {0, 0, tileK0};
   SmallVector<int64_t> TileSizeLevel2 = {tileM1, tileN1};

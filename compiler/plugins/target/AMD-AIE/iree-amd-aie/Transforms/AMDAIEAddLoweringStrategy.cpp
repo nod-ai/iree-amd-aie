@@ -4,8 +4,10 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+#include "iree-amd-aie/IR/AMDAIEDialect.h"
 #include "iree-amd-aie/Transforms/KernelDispatch.h"
 #include "iree-amd-aie/Transforms/Passes.h"
+#include "iree/compiler/Codegen/Dialect/Codegen/IR/IREECodegenDialect.h"
 #include "iree/compiler/Dialect/HAL/IR/HALDialect.h"
 #include "iree/compiler/Dialect/LinalgExt/IR/LinalgExtDialect.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
@@ -23,6 +25,7 @@ class AMDAIELoweringStrategyPass
  public:
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<
+        AMDAIE::AMDAIEDialect, IREE::Codegen::IREECodegenDialect,
         IREE::HAL::HALDialect, IREE::LinalgExt::IREELinalgExtDialect,
         bufferization::BufferizationDialect, linalg::LinalgDialect,
         LLVM::LLVMDialect, pdl::PDLDialect, pdl_interp::PDLInterpDialect,
