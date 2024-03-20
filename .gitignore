@@ -1,6 +1,11 @@
-#############################################
-# This file was copied unmodified from IREE #
-#############################################
+##################################
+# This file was copied from IREE #
+##################################
+
+# iree-amd-aie specific (CI or otherwise). 
+*-build/
+*-install/
+kernel-doc
 
 # Python
 .env
