@@ -115,45 +115,6 @@ static bool bodyMatcherForMatmul(Value yieldVal, Block *body) {
 }
 
 /// Utility to match iterator type and indexing map for a linalg.generic that
-/// is basically implementing a matmul with 2D input/output operands. Such
-/// matmul variants we get from Pad pipeline.
-static bool match2DLinalgGenericMatmul(linalg::LinalgOp linalgOp) {
-  // Check iterator types.
-  SmallVector<utils::IteratorType> matmulIteratorTypes = {
-      utils::IteratorType::parallel, utils::IteratorType::parallel,
-      utils::IteratorType::reduction};
-  SmallVector<utils::IteratorType> opIteratorTypes =
-      linalgOp.getIteratorTypesArray();
-  if (matmulIteratorTypes != opIteratorTypes) {
-    return false;
-  }
-  // Check indexing maps.
-  ArrayAttr indexingMaps = linalgOp.getIndexingMaps();
-  if (indexingMaps.size() != 3) return false;
-
-  AffineMap map0 = cast<AffineMapAttr>(indexingMaps[0]).getValue();
-  AffineMap map1 = cast<AffineMapAttr>(indexingMaps[1]).getValue();
-  AffineMap map2 = cast<AffineMapAttr>(indexingMaps[2]).getValue();
-
-  if (map0.getNumResults() != 2 || map1.getNumResults() != 2 ||
-      map2.getNumResults() != 2 || map0.getNumInputs() != 3 ||
-      map1.getNumInputs() != 3 || map2.getNumInputs() != 3) {
-    return false;
-  }
-
-  AffineExpr M = map2.getResult(0);
-  AffineExpr N = map2.getResult(1);
-  AffineExpr K = map0.getResult(1);
-
-  auto *context = indexingMaps.getContext();
-  auto mapA = AffineMapAttr::get(AffineMap::get(3, 0, {M, K}, context));
-  auto mapB = AffineMapAttr::get(AffineMap::get(3, 0, {K, N}, context));
-  auto mapC = AffineMapAttr::get(AffineMap::get(3, 0, {M, N}, context));
-  auto maps = ArrayAttr::get(context, {mapA, mapB, mapC});
-  return indexingMaps == maps;
-}
-
-/// Utility to match iterator type and indexing map for a linalg.generic that
 /// is basically implementing a matmul with 4D input/output operands. Such
 /// matmul variants we get from Pad-Pack pipeline.
 static bool match4DLinalgGenericMatmul(linalg::LinalgOp linalgOp) {
@@ -197,59 +158,6 @@ static bool match4DLinalgGenericMatmul(linalg::LinalgOp linalgOp) {
   return indexingMaps == maps;
 }
 
-/// Utility to match iterator type and indexing map for a linalg.generic that
-/// is basically implementing a matmul with 6D input/output operands. Such
-/// matmul variants we get from Simple-Pack pipeline.
-static bool match6DLinalgGenericMatmul(linalg::LinalgOp linalgOp) {
-  // Check iterator types.
-  SmallVector<utils::IteratorType> matmulIteratorTypes = {
-      utils::IteratorType::parallel,  utils::IteratorType::parallel,
-      utils::IteratorType::reduction, utils::IteratorType::parallel,
-      utils::IteratorType::parallel,  utils::IteratorType::reduction,
-      utils::IteratorType::parallel,  utils::IteratorType::parallel,
-      utils::IteratorType::reduction};
-  SmallVector<utils::IteratorType> opIteratorTypes =
-      linalgOp.getIteratorTypesArray();
-  if (matmulIteratorTypes != opIteratorTypes) {
-    return false;
-  }
-  // Check indexing maps.
-  ArrayAttr indexingMaps = linalgOp.getIndexingMaps();
-  if (indexingMaps.size() != 3) return false;
-
-  AffineMap map0 = cast<AffineMapAttr>(indexingMaps[0]).getValue();
-  AffineMap map1 = cast<AffineMapAttr>(indexingMaps[1]).getValue();
-  AffineMap map2 = cast<AffineMapAttr>(indexingMaps[2]).getValue();
-
-  if (map0.getNumResults() != 6 || map1.getNumResults() != 6 ||
-      map2.getNumResults() != 6 || map0.getNumInputs() != 9 ||
-      map1.getNumInputs() != 9 || map2.getNumInputs() != 9) {
-    return false;
-  }
-
-  // Since this is invoked after the final pack-and-transpose we need to
-  // extract dimensions for M*K*k*m*m0*k0 x K*N*n*k*k0*n0 -> M*N*n*m*m0*n0.
-  AffineExpr M = map2.getResult(0);
-  AffineExpr N = map2.getResult(1);
-  AffineExpr n = map2.getResult(2);
-  AffineExpr m = map2.getResult(3);
-  AffineExpr m0 = map2.getResult(4);
-  AffineExpr n0 = map2.getResult(5);
-  AffineExpr K = map0.getResult(1);
-  AffineExpr k = map0.getResult(2);
-  AffineExpr k0 = map0.getResult(5);
-
-  auto *context = indexingMaps.getContext();
-  auto mapA =
-      AffineMapAttr::get(AffineMap::get(9, 0, {M, K, k, m, m0, k0}, context));
-  auto mapB =
-      AffineMapAttr::get(AffineMap::get(9, 0, {K, N, n, k, k0, n0}, context));
-  auto mapC =
-      AffineMapAttr::get(AffineMap::get(9, 0, {M, N, n, m, m0, n0}, context));
-  auto maps = ArrayAttr::get(context, {mapA, mapB, mapC});
-  return indexingMaps == maps;
-}
-
 /// `isMatmul` is a utility function that aims to indentify whether a
 /// linalg op is a matmul op.
 static bool isMatmul(linalg::LinalgOp linalgOp, AIEPassPipeline passPipeline) {
@@ -265,11 +173,7 @@ static bool isMatmul(linalg::LinalgOp linalgOp, AIEPassPipeline passPipeline) {
     return false;
   }
 
-  if (passPipeline == AIEPassPipeline::PadPackPipeline) {
-    return match4DLinalgGenericMatmul(linalgOp);
-  } else {
-    return match6DLinalgGenericMatmul(linalgOp);
-  }
+  return match4DLinalgGenericMatmul(linalgOp);
 }
 
 /// Matches a linalg.generic operation which is basically a tiled matmul and
