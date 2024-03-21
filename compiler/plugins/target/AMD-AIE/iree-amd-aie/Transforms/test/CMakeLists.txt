@@ -13,6 +13,7 @@ iree_lit_test_suite(
     "bufferize_to_allocation_pad.mlir"
     "bufferize_to_allocation_pad_last.mlir"
     "canonicalize_dma.mlir"
+    "disable_vectorization.mlir"
     "fuse_fill_into_forall.mlir"
     "fuse_pack_into_for.mlir"
     "insert_loops_for_vectorization.mlir"
