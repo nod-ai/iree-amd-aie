@@ -100,4 +100,10 @@ FailureOr<std::array<uint32_t, 3>> getAIEMatmulInstructionSize(Type elTypeLhs,
   return getAIEIntegerMatmulInstructionSize(nBitsLhs, nBitsRhs, nBitsAcc);
 }
 
+FailureOr<unsigned> getTilingScaleFactor(Type elemType) {
+  unsigned bitWidth = elemType.getIntOrFloatBitWidth();
+  if ((bitWidth % 16 == 0) && (bitWidth <= 64)) return (64 / bitWidth);
+  return failure();
+}
+
 }  // namespace mlir::iree_compiler::AMDAIE

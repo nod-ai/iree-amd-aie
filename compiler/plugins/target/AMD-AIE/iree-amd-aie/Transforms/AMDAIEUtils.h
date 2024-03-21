@@ -48,6 +48,22 @@ FailureOr<std::array<uint32_t, 3>> getAIEMatmulInstructionSize(
 FailureOr<std::array<uint32_t, 3>> getAIEIntegerMatmulInstructionSize(
     uint32_t nBitsLhs, uint32_t nBitsRhs, uint32_t nBitsAcc);
 
+/// Utility function that, given an element type, computes tiling scaling factor
+/// as : 64/bitWidth.
+/// Therefore, for example, if the element type has :-
+///     a. 64 bit width -> scaling factor will be 1.
+///     b. 32 bit width -> scaling factor will be 2.
+///     c. 16 bit width -> scaling factor will be 4.
+/// This can easily be scaled to other element data types by just changing the
+/// check in the `if` in the function body.
+/// The rationale/need for this is - higher bit width element types can be
+/// accomodated using small tile sizes, whereas lower bit width element types
+/// can make use of larger tile sizes as they can be easily accomodated within
+/// the same. Therefore this tiling scale factor helps dynamically
+/// increase/decrease the tiling window depending on the element type's bit
+/// width.
+FailureOr<unsigned> getTilingScaleFactor(Type elemType);
+
 }  // namespace mlir::iree_compiler::AMDAIE
 
 #endif
