@@ -7,8 +7,6 @@
 #ifndef IREE_AMD_AIE_TRANSFORMS_KERNELDISPATCH_H_
 #define IREE_AMD_AIE_TRANSFORMS_KERNELDISPATCH_H_
 
-#include "iree-amd-aie/IR/AMDAIEAttrs.h"
-#include "iree/compiler/Codegen/Dialect/Codegen/IR/IREECodegenAttrs.h"
 #include "mlir/IR/BuiltinOps.h"
 
 namespace mlir::iree_compiler::AMDAIE {
@@ -34,6 +32,7 @@ struct AIEConfig {
 LogicalResult initAIELaunchConfig(ModuleOp moduleOp,
                                   AIEPassPipeline usePassPipeline,
                                   AIEConfig cfg);
+
 }  // namespace mlir::iree_compiler::AMDAIE
 
 #endif  // IREE_AMD_AIE_TRANSFORMS_KERNELDISPATCH_H_

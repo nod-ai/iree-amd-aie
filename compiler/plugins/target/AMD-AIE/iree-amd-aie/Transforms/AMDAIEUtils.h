@@ -40,8 +40,9 @@ namespace mlir::iree_compiler::AMDAIE {
 // This first line says that if 'lhs' is an i8 tensor, 'rhs' is an i4 tensor
 // and 'accumulator' is an i32 tensor, then there is an AIE instruction for
 // matmul with m = 4, n = 8, k = 16.
-FailureOr<std::array<uint32_t, 3>> getAIEMatmulInstructionSize(
-    Type elTypeLhs, Type elTypeRhs, Type elTypeAcc);
+FailureOr<std::array<uint32_t, 3>> getAIEMatmulInstructionSize(Type elTypeLhs,
+                                                               Type elTypeRhs,
+                                                               Type elTypeAcc);
 
 // Return the AIE instruction size (m, n, k) for the integer types with
 // bitwidths nBitsLhs, nBitsRhs, and nBitsAcc. Based on the table above.
@@ -63,6 +64,14 @@ FailureOr<std::array<uint32_t, 3>> getAIEIntegerMatmulInstructionSize(
 /// increase/decrease the tiling window depending on the element type's bit
 /// width.
 FailureOr<unsigned> getTilingScaleFactor(Type elemType);
+
+namespace detail {
+
+// Returns the largest number that perfectly divides `num` that
+// is less than or equal to max
+int findLargestFactor(int num, int max);
+
+}  // namespace detail
 
 }  // namespace mlir::iree_compiler::AMDAIE
 

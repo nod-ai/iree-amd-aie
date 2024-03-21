@@ -39,3 +39,14 @@ iree_lit_test_suite(
   LABELS
     "hostonly"
 )
+
+
+iree_cc_test(
+  NAME
+    AMDAIEUtilsCppTest
+  SRCS
+    "AMDAIEUtilsTest.cpp"
+  DEPS
+    gtest
+    iree::target::amd-aie::Transforms
+)
