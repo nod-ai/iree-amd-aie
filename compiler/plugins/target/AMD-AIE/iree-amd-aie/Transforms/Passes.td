@@ -208,9 +208,23 @@ def AMDAIEPad :
 
 def AMDAIEPeelForLoop :
     Pass<"iree-amdaie-peel-for-loop", "func::FuncOp"> {
-  let summary = "Pass to peel the first iteration out of the scf.for loop.";
+  let summary = "Pass to peel the first or/and the last iteration out of the scf.for loop.";
   let constructor =
       "mlir::iree_compiler::AMDAIE::createAMDAIEPeelForLoopPass()";
+  let options = [
+    Option<"peelLoopType", "peel-loop-type",
+      "mlir::iree_compiler::AMDAIE::PeelLoopType",
+      /*default=*/"mlir::iree_compiler::AMDAIE::PeelLoopType::First",
+      "Choose which type of loop peeling to perform",
+      [{::llvm::cl::values(
+        clEnumValN(mlir::iree_compiler::AMDAIE::PeelLoopType::First, "first",
+                   "Peel the first iteration."),
+        clEnumValN(mlir::iree_compiler::AMDAIE::PeelLoopType::Last, "last",
+                   "Peel the last iteration."),
+        clEnumValN(mlir::iree_compiler::AMDAIE::PeelLoopType::FirstLast, "firstLast",
+                   "Peel the first and the last iterations.")
+      )}]>
+  ];
 }
 
 def AMDAIETile :

@@ -102,7 +102,8 @@ std::unique_ptr<Pass> createAMDAIEPackToDmaPass();
 std::unique_ptr<Pass> createAMDAIEPadPass(AMDAIEPadOptions options = {});
 
 /// Create a pass to peel the first iteration out of the scf.for loop.
-std::unique_ptr<Pass> createAMDAIEPeelForLoopPass();
+std::unique_ptr<Pass> createAMDAIEPeelForLoopPass(
+    AMDAIEPeelForLoopOptions options = {});
 
 /// Create pass to tile TilingInterface operations.
 std::unique_ptr<Pass> createAMDAIETilePass(AMDAIETileOptions options = {});
