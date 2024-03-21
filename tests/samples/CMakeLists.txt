@@ -10,8 +10,6 @@ iree_lit_test_suite(
   SRCS
     "pack_pipeline_funcIR.mlir"
     "pad_pack_pipeline_e2e.mlir"
-    "pad_pipeline_e2e.mlir"
-    "simple_pack_pipeline_e2e.mlir"
     "xdna_oplib_plugin.mlir"
   TOOLS
     ${IREE_LLD_TARGET}

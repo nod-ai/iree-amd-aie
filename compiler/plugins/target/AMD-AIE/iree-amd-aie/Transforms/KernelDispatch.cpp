@@ -17,19 +17,6 @@
 
 namespace mlir::iree_compiler::AMDAIE {
 
-static LogicalResult setRootConfigForPadPipeline(func::FuncOp entryPointFn,
-                                                 linalg::LinalgOp linalgOp,
-                                                 AIEConfig cfg) {
-  SmallVector<int64_t> TileSizeLevel0 = {8, 8};
-  SmallVector<int64_t> TileSizeLevel1 = {4, 4};
-  SmallVector<int64_t> TileSizeLevel2 = {0, 0, 4};
-  TileSizesListType tileSizes = {TileSizeLevel0, TileSizeLevel1,
-                                 TileSizeLevel2};
-  return setOpConfigAndEntryPointFnTranslation(
-      entryPointFn, linalgOp, tileSizes,
-      IREE::Codegen::DispatchLoweringPassPipeline::None);
-}
-
 /// Returns the largest number that perfectly divides `num` that is less than or
 /// equal to max
 static int findLargestFactor(int num, int max) {
@@ -89,78 +76,6 @@ static SmallVector<int64_t> getPackedSize(linalg::LinalgOp linalgOp,
     packedSizes.insert(packedSizes.begin(), {0, 0, 0});
   }
   return packedSizes;
-}
-
-static LogicalResult setRootConfigForSimplePackPipeline(
-    func::FuncOp entryPointFn, linalg::LinalgOp linalgOp, AIEConfig cfg) {
-  // ------------------------------------------------------
-  // -------------- Set lowering config -------------------
-  // ------------------------------------------------------
-  // Assume working on a 2x2 AIE array. Currently, the tile sizes are hardcoded
-  // with basic constraints.
-  auto initType = linalgOp.getDpsInitOperand(0)->get().getType();
-  auto initShape = llvm::cast<ShapedType>(initType).getShape();
-  auto tileM0 = std::min((int)initShape[0], 64);
-  auto tileN0 = std::min((int)initShape[1], 64);
-  auto tileM1 = std::max((int)tileM0 / 2, 1);
-  auto tileN1 = std::max((int)tileN0 / 2, 1);
-  auto lhsType = linalgOp.getDpsInputOperand(0)->get().getType();
-  auto lhsShape = llvm::cast<ShapedType>(lhsType).getShape();
-  auto tileK = std::min((int)lhsShape[1] / 8, 4);
-
-  SmallVector<int64_t> TileSizeLevel0 = {tileM0, tileN0};
-  SmallVector<int64_t> TileSizeLevel1 = {0, 0, 0, tileM1, tileN1};
-  SmallVector<int64_t> TileSizeLevel2 = {0, 0, 0, 0, 0, tileK};
-  TileSizesListType tileSizes = {TileSizeLevel0, TileSizeLevel1,
-                                 TileSizeLevel2};
-  if (failed(setOpConfigAndEntryPointFnTranslation(
-          entryPointFn, linalgOp, tileSizes,
-          IREE::Codegen::DispatchLoweringPassPipeline::None))) {
-    return failure();
-  }
-  // ------------------------------------------------------
-  // --------------- Set packing config -------------------
-  // ------------------------------------------------------
-  MLIRContext *context = entryPointFn.getContext();
-  // Pack level => 1.
-  // Set constraints for pack size [M, N] from first level of tile sizes
-  // Currently set pack size k as the input size K to avoid failure.
-  int64_t kSize = lhsShape[1];
-  SmallVector<int64_t> packedSizes = {tileM0, tileN0, kSize};
-  // Transpose B matrix from [K N n k] to [K N k n]
-  SmallVector<int64_t> transposePackIndices = {1};
-  // There is no corresponding unpack for the specified pack operation
-  // 0 is used when unpack is empty
-  SmallVector<bool> unpackEmpty = {false};
-  SmallVector<SmallVector<int64_t>> innerPerm = {{1, 0}};
-  SmallVector<SmallVector<int64_t>> outerPerm = {{0, 1}};
-  auto packingConfigLevel1Attr = getPackingConfigPackingLevelAttr(
-      context, packedSizes, transposePackIndices, unpackEmpty, innerPerm,
-      outerPerm);
-  // Pack level => 2.
-  // packed size for [M, N, K, m, n, k]
-  const int packLevel = 2;
-  packedSizes = getPackedSize(linalgOp, packLevel);
-  // Transpose A matrix from [M K m k m0 k0] to [M K k m m0 k0]
-  // Transpose B matrix from [K N k n n0 k0] to [K N n k k0 n0]
-  // Transpose C matrix from [M N m n m0 n0] to [M N n m m0 n0]
-  transposePackIndices = {0, 1, 2};
-  // Only the third pack operation has a corresponding unpack operation
-  unpackEmpty = {false, false, true};
-  innerPerm = {{0, 1}, {1, 0}, {0, 1}};
-  outerPerm = {{0, 1, 3, 2}, {0, 1, 3, 2}, {0, 1, 3, 2}};
-  auto packingConfigLevel2Attr = getPackingConfigPackingLevelAttr(
-      context, packedSizes, transposePackIndices, unpackEmpty, innerPerm,
-      outerPerm);
-
-  SmallVector<PackingConfigPackingLevelAttr> packingConfigLevelsVal = {
-      packingConfigLevel1Attr, packingConfigLevel2Attr};
-
-  auto packingConfigLevels =
-      PackingConfigPackingLevelsAttr::get(context, packingConfigLevelsVal);
-  auto config = PackingConfigAttr::get(context, packingConfigLevels);
-  setPackingConfig(linalgOp, config);
-  return success();
 }
 
 static LogicalResult setRootConfigForPackPipeline(func::FuncOp entryPointFn,
@@ -367,8 +282,8 @@ static bool isMatmulTranspose(linalg::GenericOp genericOp) {
 static LogicalResult setTransposeLikeOpRootConfig(
     func::FuncOp entryPointFn, linalg::LinalgOp linalgOp,
     AIEPassPipeline usePassPipeline, AIEConfig cfg) {
-  if (usePassPipeline == AIEPassPipeline::SimplePackPipeline)
-    return setRootConfigForSimplePackPipeline(entryPointFn, linalgOp, cfg);
+  if (usePassPipeline == AIEPassPipeline::PackPipeline)
+    return setRootConfigForPackPipeline(entryPointFn, linalgOp, cfg);
   else if (usePassPipeline == AIEPassPipeline::PadPackPipeline)
     return setRootConfigForPadPackPipeline(entryPointFn, linalgOp, cfg);
   return linalgOp.emitOpError("unhandled pass pipeline");
@@ -420,10 +335,6 @@ static LogicalResult setRootConfig(func::FuncOp entryPointFn,
   // TODO (nmeshram) : This needs to be moved in a separate more generalized
   // logic. Also, need a flag to experiment between pad based and pack based
   // approach which will have different tile sizes and pass pipelines
-  if (usePassPipeline == AIEPassPipeline::PadPipeline)
-    return setRootConfigForPadPipeline(entryPointFn, linalgOp, cfg);
-  if (usePassPipeline == AIEPassPipeline::SimplePackPipeline)
-    return setRootConfigForSimplePackPipeline(entryPointFn, linalgOp, cfg);
   if (usePassPipeline == AIEPassPipeline::PackPipeline)
     return setRootConfigForPackPipeline(entryPointFn, linalgOp, cfg);
   if (usePassPipeline == AIEPassPipeline::PadPackPipeline)
