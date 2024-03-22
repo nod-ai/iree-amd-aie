@@ -357,7 +357,7 @@ def generate_function(
             f"}}\n"
         )
     else:
-        literal_zero_for_acc_type = "0.0" if "f" in acc_type.value else "0"
+        literal_zero_for_acc_type = "1.0" if "f" in acc_type.value else "1"
         if acc_m == "?":
             signature = f"({lhs_tensor_type}, {rhs_tensor_type}) -> {acc_tensor_type}"
             import_declaration = f"func.func private @module.{func_name}(%lhs: !hal.buffer_view, %rhs: !hal.buffer_view) -> !hal.buffer_view"
