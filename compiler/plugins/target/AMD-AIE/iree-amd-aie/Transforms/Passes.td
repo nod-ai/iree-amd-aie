@@ -212,16 +212,16 @@ def AMDAIEPeelForLoop :
   let constructor =
       "mlir::iree_compiler::AMDAIE::createAMDAIEPeelForLoopPass()";
   let options = [
-    Option<"peelLoopType", "peel-loop-type",
-      "mlir::iree_compiler::AMDAIE::PeelLoopType",
-      /*default=*/"mlir::iree_compiler::AMDAIE::PeelLoopType::First",
+    Option<"peelingType", "peeling-type",
+      "mlir::iree_compiler::AMDAIE::PeelingType",
+      /*default=*/"mlir::iree_compiler::AMDAIE::PeelingType::First",
       "Choose which type of loop peeling to perform",
       [{::llvm::cl::values(
-        clEnumValN(mlir::iree_compiler::AMDAIE::PeelLoopType::First, "first",
+        clEnumValN(mlir::iree_compiler::AMDAIE::PeelingType::First, "first",
                    "Peel the first iteration."),
-        clEnumValN(mlir::iree_compiler::AMDAIE::PeelLoopType::Last, "last",
+        clEnumValN(mlir::iree_compiler::AMDAIE::PeelingType::Last, "last",
                    "Peel the last iteration."),
-        clEnumValN(mlir::iree_compiler::AMDAIE::PeelLoopType::FirstLast, "firstLast",
+        clEnumValN(mlir::iree_compiler::AMDAIE::PeelingType::FirstLast, "first-last",
                    "Peel the first and the last iterations.")
       )}]>
   ];

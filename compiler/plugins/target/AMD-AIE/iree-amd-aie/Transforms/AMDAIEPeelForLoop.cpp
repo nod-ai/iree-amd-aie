@@ -14,6 +14,10 @@ namespace mlir::iree_compiler::AMDAIE {
 
 namespace {
 
+// This function is a special case of `peelForLoop` in llvm-project. However,
+// there is a condition in the upstream function that peeling only works if the
+// step size doesn't divide the upper bound evenly. This function relaxes the
+// condition and do last iteration peeling for general cases.
 LogicalResult peelForLoopLastIteration(RewriterBase &b, scf::ForOp forOp,
                                        scf::ForOp &lastIteration) {
   RewriterBase::InsertionGuard guard(b);
@@ -22,7 +26,7 @@ LogicalResult peelForLoopLastIteration(RewriterBase &b, scf::ForOp forOp,
   auto stepInt = getConstantIntValue(forOp.getStep());
 
   // Check again when the first iteration is already peeled off.
-  // Peeling is not needed if there is one or less iteration.
+  // Peeling is not possible if there is one or less iteration.
   if (lbInt && ubInt && stepInt && ceil(float(*ubInt - *lbInt) / *stepInt) <= 1)
     return failure();
 
@@ -83,20 +87,20 @@ void AMDAIEPeelForLoopPass::runOnOperation() {
       return;
 
     scf::ForOp result;
-    switch (peelLoopType) {
-      case PeelLoopType::First:
+    switch (peelingType) {
+      case PeelingType::First:
         if (failed(scf::peelForLoopFirstIteration(rewriter, forOp, result))) {
           forOp->emitOpError("failed to peel the first iteration.");
           return signalPassFailure();
         }
         break;
-      case PeelLoopType::Last:
+      case PeelingType::Last:
         if (failed(peelForLoopLastIteration(rewriter, forOp, result))) {
           forOp->emitOpError("failed to peel the last iteration.");
           return signalPassFailure();
         }
         break;
-      case PeelLoopType::FirstLast:
+      case PeelingType::FirstLast:
         if (failed(scf::peelForLoopFirstIteration(rewriter, forOp, result))) {
           forOp->emitOpError("failed to peel the first iteration.");
           return signalPassFailure();
