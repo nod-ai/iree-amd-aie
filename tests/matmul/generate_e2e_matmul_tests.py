@@ -565,14 +565,14 @@ def parse_arguments():
     parser.add_argument(
         "--lhs_rhs_type",
         type=str,
-        choices=["i32", "f32", "f16", "bf16"],
+        choices=["i32", "f32", "f16", "bf16", "i8"],
         help="Numeric type of input matrices",
         required=True,
     )
     parser.add_argument(
         "--acc_type",
         type=str,
-        choices=["i32", "f32", "f16", "bf16"],
+        choices=["i32", "f32", "f16", "bf16", "i8"],
         help="Numeric type of input matrices",
         default="",
         required=False,
