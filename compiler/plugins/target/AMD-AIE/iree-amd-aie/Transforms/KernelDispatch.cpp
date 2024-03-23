@@ -1,4 +1,4 @@
-// Copyright 2020 The IREE Authors
+// Copyright 2024 The IREE Authors
 //
 // Licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -8,6 +8,7 @@
 
 #include "iree-amd-aie/IR/AMDAIEAttrs.h"
 #include "iree-amd-aie/Transforms/AMDAIEUtils.h"
+#include "iree/compiler/Codegen/Dialect/Codegen/IR/IREECodegenAttrs.h"
 #include "iree/compiler/Codegen/Utils/CPUUtils.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/MemRef/Transforms/Transforms.h"
@@ -17,24 +18,25 @@
 
 namespace mlir::iree_compiler::AMDAIE {
 
-/// Returns the largest number that perfectly divides `num` that is less than or
-/// equal to max
-static int findLargestFactor(int num, int max) {
-  if (num < max) {
-    return num;
-  }
-  for (int i = max; i > 0; i--) {
-    if (num % i == 0) {
-      return i;
-    }
-  }
-  return 1;
+using detail::findLargestFactor;
+
+static LogicalResult setRootConfigForPadPipeline(func::FuncOp entryPointFn,
+                                                 linalg::LinalgOp linalgOp,
+                                                 AIEConfig cfg) {
+  SmallVector<int64_t> TileSizeLevel0 = {8, 8};
+  SmallVector<int64_t> TileSizeLevel1 = {4, 4};
+  SmallVector<int64_t> TileSizeLevel2 = {0, 0, 4};
+  TileSizesListType tileSizes = {TileSizeLevel0, TileSizeLevel1,
+                                 TileSizeLevel2};
+  return setOpConfigAndEntryPointFnTranslation(
+      entryPointFn, linalgOp, tileSizes,
+      IREE::Codegen::DispatchLoweringPassPipeline::None);
 }
 
 static SmallVector<int64_t> getPackedSize(linalg::LinalgOp linalgOp,
                                           const int packLevel, int m = 0,
                                           int n = 0, int k = 0) {
-  // TODO: consider emiting an error/warning if the default sizes are used as a
+  // TODO (newling): consider emiting an error/warning if the default sizes are used as a
   // fallback.
   SmallVector<int64_t> defaultSizes;
   // TODO (nmeshram) : We should not need this and be able to fix the pack

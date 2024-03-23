@@ -10,10 +10,7 @@
 #ifndef IREE_COMPILER_AMDAIE_DIALECT_PACKINGCONFIG_H_
 #define IREE_COMPILER_AMDAIE_DIALECT_PACKINGCONFIG_H_
 
-#include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
-#include "mlir/IR/BuiltinOps.h"
-#include "mlir/IR/BuiltinTypes.h"
 
 // clang-format off
 #include "iree-amd-aie/IR/AMDAIEEnums.h.inc"

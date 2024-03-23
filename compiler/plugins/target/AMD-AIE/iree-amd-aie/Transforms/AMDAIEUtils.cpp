@@ -106,4 +106,32 @@ FailureOr<unsigned> getTilingScaleFactor(Type elemType) {
   return failure();
 }
 
+// Find the largest factor of 'num' which is not larger than 'max'.
+int detail::findLargestFactor(int num, int max) {
+  assert(max > 0 && "No factors less than or equal to 0 exist");
+
+  // Do O(1) instead of O(sqrt(num)) computation for this common case.
+  if (num <= max) {
+    return num;
+  }
+
+  int largestLowFactor = 1;
+  for (int lowFactor = 2; lowFactor <= max; ++lowFactor) {
+    const int highFactor = num / lowFactor;
+
+    // This early exit is what makes this O(sqrt(num)) instead of O(num).
+    if (highFactor < lowFactor) return largestLowFactor;
+
+    const bool areActuallyFactors = num % lowFactor == 0;
+    if (areActuallyFactors) {
+      // We're certain that here lowFactor <= highFactor, and highFactor is
+      // descending in this loop. So we can return immediately if highFactor is
+      // good.
+      if (highFactor <= max) return highFactor;
+      largestLowFactor = lowFactor;
+    }
+  }
+  return largestLowFactor;
+}
+
 }  // namespace mlir::iree_compiler::AMDAIE
