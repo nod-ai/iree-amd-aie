@@ -6,6 +6,7 @@
 
 #include "iree-amd-aie/Transforms/Passes.h"
 #include "mlir/Dialect/Affine/LoopUtils.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Linalg/IR/LinalgInterfaces.h"
 #include "mlir/Dialect/Linalg/Transforms/Hoisting.h"
 #include "mlir/Dialect/Linalg/Transforms/Transforms.h"
@@ -55,7 +56,67 @@ class AMDAIEVectorizationPass
   }
 };
 
+// A pattern to up-cast the result of a vector.contract as appropriate. This is
+// designed to target AIE matmul instructions. For example AIE can do matmul
+// with bf16 operands and f32 result, but not with bf16 operands and bf16
+// result. So this pattern will up-cast the result to f32 if the result is bf16
+// in such cases, and down-cast after the contract as appropriate.
+//
+// The position to perform this casting is up for debate: Could be really early
+// in the pipeline, or could be pushed down to mlir-aie. Pros and cons to both.
+struct UpcastVectorContractResult
+    : public OpRewritePattern<mlir::vector::ContractionOp> {
+  using OpRewritePattern<vector::ContractionOp>::OpRewritePattern;
 
+  LogicalResult matchAndRewrite(vector::ContractionOp contractOp,
+                                PatternRewriter &rewriter) const override {
+    auto lhs = contractOp.getLhs();
+    auto rhs = contractOp.getRhs();
+    auto acc = contractOp.getAcc();
+
+    auto lhsType = dyn_cast<VectorType>(lhs.getType());
+    auto rhsType = dyn_cast<VectorType>(rhs.getType());
+    auto accType = dyn_cast<VectorType>(acc.getType());
+
+    if (!lhsType)
+      return rewriter.notifyMatchFailure(contractOp,
+                                         "lhs is not a vector type");
+    if (!rhsType)
+      return rewriter.notifyMatchFailure(contractOp,
+                                         "rhs is not a vector type");
+    if (!accType)
+      return rewriter.notifyMatchFailure(contractOp,
+                                         "acc is not a vector type");
+
+    auto lhsElType = lhsType.getElementType();
+    auto rhsElType = rhsType.getElementType();
+    auto accElType = accType.getElementType();
+
+    // For now we match the case where all lhs, rhs, acc are bf16.
+    if (!lhsElType.isBF16() || !rhsElType.isBF16() || !accElType.isBF16())
+      return rewriter.notifyMatchFailure(
+          contractOp,
+          "lhs, rhs, acc are not all bf16 (this constraint needs relaxing to "
+          "support this patter for int types)");
+
+    // Upcast acc to f32:
+    auto f32Type = rewriter.getF32Type();
+    auto f32VecType = VectorType::get(accType.getShape(), f32Type);
+    auto newAcc = rewriter.create<arith::ExtFOp>(acc.getLoc(), f32VecType, acc);
+
+    auto newContract = rewriter.create<vector::ContractionOp>(
+        contractOp.getLoc(), lhs, rhs, newAcc, contractOp.getIndexingMaps(),
+        contractOp.getIteratorTypes(), contractOp.getKind());
+
+    // Downcast the new result to bf16 
+    auto newResult = rewriter.create<arith::TruncFOp>(
+        contractOp.getLoc(), accType, newContract.getResult());
+
+    auto oldResult = contractOp.getResult();
+    oldResult.replaceAllUsesWith(newResult);
+    return success();
+  }
+};
 
 void AMDAIEVectorizationPass::runOnOperation() {
   MLIRContext *context = &getContext();
@@ -66,7 +127,6 @@ void AMDAIEVectorizationPass::runOnOperation() {
   // Collect all operations which must be vectorized.
   SmallVector<Operation *> candidates;
   funcOp.walk([&](Operation *op) {
-
     // Only vectorize linalg ops (for now)
     if (!isa<linalg::LinalgOp>(op)) return;
 
@@ -90,7 +150,7 @@ void AMDAIEVectorizationPass::runOnOperation() {
     (void)linalg::vectorize(rewriter, op);
   }
 
-  RewritePatternSet vectorizationPatterns(funcOp.getContext());
+  RewritePatternSet vectorizationPatterns(context);
 
   vector::populateVectorReductionToContractPatterns(vectorizationPatterns);
 
@@ -99,6 +159,10 @@ void AMDAIEVectorizationPass::runOnOperation() {
       vectorizationPatterns);
 
   (void)applyPatternsAndFoldGreedily(funcOp, std::move(vectorizationPatterns));
+
+  RewritePatternSet set2(context);
+  set2.add<UpcastVectorContractResult>(context);
+  (void)applyPatternsAndFoldGreedily(funcOp, std::move(set2));
 }
 }  // namespace
 
