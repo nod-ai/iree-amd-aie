@@ -21,7 +21,7 @@ enum class AIEPassPipeline : int32_t {
 };
 
 /// Enum for target tiling op.
-enum class TilingOp : int32_t { Matmul = 0, RhsCopy = 1, LhsCopy = 2 };
+enum class PeelingType : int32_t { First = 0, Last = 1, FirstLast = 2 };
 
 /// Struct specifying the number of cores to use. This will be replaced
 /// by a more versatile handling in the future.
