@@ -33,13 +33,16 @@ LogicalResult peelForLoopLastIteration(RewriterBase &b, scf::ForOp forOp,
   AffineExpr lbSymbol, ubSymbol, stepSymbol;
   bindSymbols(b.getContext(), lbSymbol, ubSymbol, stepSymbol);
 
-  // New upper bound: %ub - (%ub - %lb) mod %step
-  auto modMap =
-      AffineMap::get(0, 3, {ubSymbol - ((ubSymbol - lbSymbol) % stepSymbol)});
+  // Calculate new upper bound.
+  // %numIters = (%ub - %lb).ceilDiv(%step)
+  // %newUb = %lb + (%numIters - 1) * %step
+  auto numIters = (ubSymbol - lbSymbol).ceilDiv(stepSymbol);
+  auto newUbMap =
+      AffineMap::get(0, 3, {lbSymbol + (numIters - 1) * stepSymbol});
   b.setInsertionPoint(forOp);
   auto loc = forOp.getLoc();
   Value splitBound = b.createOrFold<affine::AffineApplyOp>(
-      loc, modMap,
+      loc, newUbMap,
       ValueRange{forOp.getLowerBound(), forOp.getUpperBound(),
                  forOp.getStep()});
 
