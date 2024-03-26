@@ -160,7 +160,7 @@ static LogicalResult setRootConfigForPadPackPipeline(func::FuncOp entryPointFn,
   FailureOr<unsigned> maybeTilingScaleFactor =
       getTilingScaleFactor(lhsType.getElementType());
   if (failed(maybeTilingScaleFactor)) {
-    return linalgOp.emitOpError("expected bitwidth 64/32/16");
+    return linalgOp.emitOpError("expected bitwidth 64/32/16/8");
   }
   unsigned tilingScaleFactor = maybeTilingScaleFactor.value();
   // TODO (nmeshram) : We should be able to use fixed tiling config after we
