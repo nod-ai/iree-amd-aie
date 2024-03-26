@@ -102,8 +102,9 @@ FailureOr<std::array<uint32_t, 3>> getAIEMatmulInstructionSize(Type elTypeLhs,
 
 FailureOr<unsigned> getTilingScaleFactor(Type elemType) {
   unsigned bitWidth = elemType.getIntOrFloatBitWidth();
-  if ((bitWidth % 16 == 0) && (bitWidth <= 64)) return (64 / bitWidth);
-  return failure();
+  if (bitWidth %8 != 0) return failure();
+  if (bitWidth > 64) return failure();
+  return 64 / bitWidth;
 }
 
 // Find the largest factor of 'num' which is not larger than 'max'.
