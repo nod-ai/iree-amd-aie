@@ -78,7 +78,7 @@ static FnNameAndDefAttrs getFnNameAndDefAttrs(RewriterBase &rewriter,
                                               std::string ukernelObjectFile) {
   FnNameAndDefAttrs result;
   std::string ukernelSuffix = "";
-  result.name = ukernelName + ukernelSuffix + "_" + inputOutputElemType;
+  result.name = ukernelName + "_" + inputOutputElemType;
   result.defAttrs.emplace_back(
       rewriter.getStringAttr("link_with"),
       rewriter.getStringAttr(
@@ -215,6 +215,7 @@ static FailureOr<IREE::Codegen::UKernelOpInterface> matchDAGForUKernel(
     // defining op can be discarded.
     if (auto fillOp = out.getDefiningOp<linalg::FillOp>()) {
       out = fillOp.getDpsInitOperand(0)->get();
+      ukernelName += "_zero_filling";
     }
   }
 
