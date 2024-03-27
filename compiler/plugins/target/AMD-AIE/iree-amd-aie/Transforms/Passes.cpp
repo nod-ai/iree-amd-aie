@@ -20,7 +20,6 @@
 
 namespace mlir::iree_compiler::AMDAIE {
 
-
 /// Command line options used purely for development purposes. Not to be relied
 /// on in any way.
 static llvm::cl::opt<AIEPassPipeline> clUsePipeline(
@@ -343,6 +342,11 @@ void addMLIRAIRAIELoweringPasses(OpPassManager &passManager) {
   passManager.addPass(createCanonicalizerPass());
   passManager.addPass(createCSEPass());
   passManager.addNestedPass<func::FuncOp>(
+      xilinx::air::createAIRSplitL2MemrefForBufferConstraintPass());
+  passManager.addPass(xilinx::air::createAIRIsolateAsyncDmaLoopNests());
+  passManager.addPass(createCanonicalizerPass());
+  passManager.addPass(createCSEPass());
+  passManager.addNestedPass<func::FuncOp>(
       xilinx::air::createAIRSegmentLoopFusion());
 
   passManager.addPass(
@@ -356,7 +360,6 @@ void addMLIRAIRAIELoweringPasses(OpPassManager &passManager) {
   passManager.addPass(createCanonicalizerPass());
   passManager.addPass(createCSEPass());
 
-  passManager.addPass(xilinx::air::createAIRIsolateAsyncDmaLoopNests());
   passManager.addPass(
       xilinx::air::createAIRSpecializeChannelWrapAndStridePattern());
   passManager.addPass(createCanonicalizerPass());
