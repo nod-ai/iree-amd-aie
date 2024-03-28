@@ -16,6 +16,7 @@ endif()
 
 if(IREE_AMD_AIE_ENABLE_XRT_DRIVER)
   find_package(XRT REQUIRED)
+  find_package(Boost REQUIRED)
 endif()
 
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/runtime/src AMD-AIE)

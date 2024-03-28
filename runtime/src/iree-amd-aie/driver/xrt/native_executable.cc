@@ -156,7 +156,13 @@ iree_status_t iree_hal_xrt_native_executable_create(
 
   iree_hal_resource_initialize(&iree_hal_xrt_native_executable_vtable,
                                &executable->resource);
-  xrt::xclbin xclbin = xrt::xclbin(xclbinVector);
+  xrt::xclbin xclbin;
+  try {
+    xclbin = xrt::xclbin(xclbinVector);
+  } catch (std::runtime_error& e) {
+    return iree_make_status(IREE_STATUS_INTERNAL, "XCLBIN load error: %s",
+                            e.what());
+  }
   device.register_xclbin(xclbin);
   xrt::hw_context context(device, xclbin.get_uuid());
   executable->host_allocator = host_allocator;
