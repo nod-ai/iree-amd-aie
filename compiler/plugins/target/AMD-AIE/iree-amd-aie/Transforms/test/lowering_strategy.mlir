@@ -1,6 +1,6 @@
 // RUN: iree-opt --split-input-file --pass-pipeline='builtin.module(hal.executable(hal.executable.variant(iree-amdaie-lowering-strategy{use-pass-pipeline=pad-pack})))' %s | FileCheck %s
 
-// CHECK{LITERAL}: #config = #iree_codegen.lowering_config<tile_sizes = [[32, 32], [0, 0, 256], [16, 16], [0, 0, 2]]>
+// CHECK{LITERAL}: #config = #iree_codegen.lowering_config<tile_sizes = [[64, 64], [0, 0, 256], [16, 16], [0, 0, 2]]>
 // CHECK{LITERAL}: #packingConfig = #amdaie.packing_config<packing_config = [{packedSizes = [4, 4, 8], transposePackIndices = [0, 1, 2], unpackEmpty = [false, false, true], innerPerm = [[0, 1], [1, 0], [0, 1]], outerPerm = [[1, 0], [1, 0], [1, 0]]}]>
 hal.executable private @matmul_pad_pack_large_i64 {
   hal.executable.variant public @amdaie_xclbin_fb target(<"amd-aie", "amdaie-xclbin-fb", {target_arch = "chip-tbd", ukernels = "none"}>) {
@@ -31,7 +31,7 @@ hal.executable private @matmul_pad_pack_large_i64 {
 
 // -----
 
-// CHECK{LITERAL}: #config = #iree_codegen.lowering_config<tile_sizes = [[64, 64], [0, 0, 256], [32, 32], [0, 0, 4]]>
+// CHECK{LITERAL}: #config = #iree_codegen.lowering_config<tile_sizes = [[128, 128], [0, 0, 256], [32, 32], [0, 0, 4]]>
 // CHECK{LITERAL}: #packingConfig = #amdaie.packing_config<packing_config = [{packedSizes = [4, 4, 8], transposePackIndices = [0, 1, 2], unpackEmpty = [false, false, true], innerPerm = [[0, 1], [1, 0], [0, 1]], outerPerm = [[1, 0], [1, 0], [1, 0]]}]>
 hal.executable private @matmul_pad_pack_large_i32 {
   hal.executable.variant public @amdaie_xclbin_fb target(<"amd-aie", "amdaie-xclbin-fb", {target_arch = "chip-tbd", ukernels = "none"}>) {
@@ -62,7 +62,7 @@ hal.executable private @matmul_pad_pack_large_i32 {
 
 // -----
 
-// CHECK{LITERAL}: #config = #iree_codegen.lowering_config<tile_sizes = [[128, 128], [0, 0, 256], [64, 64], [0, 0, 8]]>
+// CHECK{LITERAL}: #config = #iree_codegen.lowering_config<tile_sizes = [[256, 256], [0, 0, 256], [64, 64], [0, 0, 8]]>
 // CHECK{LITERAL}: #packingConfig = #amdaie.packing_config<packing_config = [{packedSizes = [4, 4, 8], transposePackIndices = [0, 1, 2], unpackEmpty = [false, false, true], innerPerm = [[0, 1], [1, 0], [0, 1]], outerPerm = [[1, 0], [1, 0], [1, 0]]}]>
 hal.executable private @matmul_pad_pack_large_bf16 {
   hal.executable.variant public @amdaie_xclbin_fb target(<"amd-aie", "amdaie-xclbin-fb", {target_arch = "chip-tbd", ukernels = "none"}>) {

@@ -165,8 +165,8 @@ static LogicalResult setRootConfigForPadPackPipeline(func::FuncOp entryPointFn,
   unsigned tilingScaleFactor = maybeTilingScaleFactor.value();
   // TODO (nmeshram) : We should be able to use fixed tiling config after we
   // have padding support.
-  auto tileM0 = findLargestFactor((int)initShape[0], 32 * tilingScaleFactor);
-  auto tileN0 = findLargestFactor((int)initShape[1], 32 * tilingScaleFactor);
+  auto tileM0 = findLargestFactor((int)initShape[0], 64 * tilingScaleFactor);
+  auto tileN0 = findLargestFactor((int)initShape[1], 64 * tilingScaleFactor);
   auto tileM1 = findLargestFactor((int)tileM0, 16 * tilingScaleFactor);
   auto tileN1 = findLargestFactor((int)tileN0, 16 * tilingScaleFactor);
   auto tileK0 = findLargestFactor((int)lhsShape[1], 256);
