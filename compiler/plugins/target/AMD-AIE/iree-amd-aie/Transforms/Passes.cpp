@@ -377,7 +377,7 @@ void addMLIRAIRAIELoweringPasses(OpPassManager &passManager) {
   {
     xilinx::air::AIRHerdPlacementPassOptions options;
     options.clNumRows = 4;
-    options.clNumCols = 1;
+    options.clNumCols = 4;
     options.clAnchorPointRow = 2;
     options.clAnchorPointCol = 0;
     passManager.addPass(xilinx::air::createAIRHerdPlacementPass(options));
