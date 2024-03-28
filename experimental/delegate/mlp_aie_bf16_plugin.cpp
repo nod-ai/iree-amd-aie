@@ -29,12 +29,16 @@
 // The only header required from IREE:
 #include "iree/hal/local/executable_plugin.h"
 
-#define MLP_M 256
-#define MLP_K 256
-#define MLP_N 256
+// #define MLP_M 256
+// #define MLP_K 256
+// #define MLP_N 256
+#define MLP_M 8
+#define MLP_K 768
+#define MLP_N 768
 
 // Kernel file names (without extension) relative to installation root
-const std::string kernelFileName = "matmul/matmul-bf16-256x256x256-v1";
+// const std::string kernelFileName = "matmul/matmul-bf16-256x256x256-v1";
+const std::string kernelFileName = "matmul/matmul-bf16-8x768x768-v1";
 
 // Get the path of this plugin's .so
 
