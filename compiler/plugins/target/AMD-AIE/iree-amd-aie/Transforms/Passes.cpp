@@ -27,7 +27,7 @@ static llvm::cl::opt<AIEPassPipeline> clUsePipeline(
     llvm::cl::desc("Pick the lowering pipeline to use"),
     llvm::cl::values(
         clEnumValN(
-            AIEPassPipeline::PackPipeline, "pack",
+            AIEPassPipeline::PackPeelPipeline, "pack-peel",
             "Use the IREE lowering to AIR dialect through pack operation"),
         clEnumValN(AIEPassPipeline::PadPackPipeline, "pad-pack",
                    "Use the IREE lowering to AIR dialect through "
@@ -93,7 +93,8 @@ static void addAMDAIEBufferizePasses(OpPassManager &pm) {
   addIREEComprehensiveBufferizePasses(pm, allocationFn, memCpyFn);
 }
 
-void addPackBasedPassPipeline(OpPassManager &pm, TilingConfig &tilingConfig) {
+void addPackPeelBasedPassPipeline(OpPassManager &pm,
+                                  TilingConfig &tilingConfig) {
   auto &modulePassManager = pm.nest<ModuleOp>();
 
   // First level tiling using scf.forall
@@ -106,6 +107,32 @@ void addPackBasedPassPipeline(OpPassManager &pm, TilingConfig &tilingConfig) {
   modulePassManager.addPass(createCanonicalizerPass());
   modulePassManager.addPass(createCSEPass());
 
+  // First level packing
+  AMDAIEPackAndTransposeOptions packOptions0;
+  packOptions0.packLevel = 0;
+  modulePassManager.addNestedPass<func::FuncOp>(
+      createAMDAIEPackAndTransposePass(packOptions0));
+
+  // Promote the output to shared memory
+  AMDAIEBufferizeToAllocationOptions bufferizeOptions0;
+  bufferizeOptions0.memorySpace = 1;
+  bufferizeOptions0.bufferizeOperand = BufferizeOperand::Output;
+  modulePassManager.addNestedPass<func::FuncOp>(
+      createAMDAIEBufferizeToAllocationPass(bufferizeOptions0));
+
+  // Second level packing
+  AMDAIEPackAndTransposeOptions packOptions1;
+  packOptions1.packLevel = 1;
+  modulePassManager.addNestedPass<func::FuncOp>(
+      createAMDAIEPackAndTransposePass(packOptions1));
+
+  // Promote the output to local memory
+  AMDAIEBufferizeToAllocationOptions bufferizeOptions1;
+  bufferizeOptions1.memorySpace = 2;
+  bufferizeOptions1.bufferizeOperand = BufferizeOperand::Output;
+  modulePassManager.addNestedPass<func::FuncOp>(
+      createAMDAIEBufferizeToAllocationPass(bufferizeOptions1));
+
   // Tile the reduction dimension using scf.for
   AMDAIETileAndFuseOptions tileFuseOptions1;
   tileFuseOptions1.tilingLevel = 1;
@@ -116,18 +143,21 @@ void addPackBasedPassPipeline(OpPassManager &pm, TilingConfig &tilingConfig) {
   modulePassManager.addPass(createCanonicalizerPass());
   modulePassManager.addPass(createCSEPass());
 
-  // First level packing
-  AMDAIEPackAndTransposeOptions packOptions0;
-  packOptions0.packLevel = 0;
+  // Fuse both levels of pack ops into for loop
+  AMDAIEFusePackIntoLoopOptions fusePackOptions0;
+  fusePackOptions0.fusePackDepth = 2;
+  fusePackOptions0.useSCFFor = true;
   modulePassManager.addNestedPass<func::FuncOp>(
-      createAMDAIEPackAndTransposePass(packOptions0));
+      createAMDAIEFusePackIntoLoopPass(fusePackOptions0));
+  modulePassManager.addPass(createCanonicalizerPass());
+  modulePassManager.addPass(createCSEPass());
 
-  // Promote inputs and result to shared memory
-  AMDAIEBufferizeToAllocationOptions bufferizeOptions0;
-  bufferizeOptions0.memorySpace = 1;
-  bufferizeOptions0.bufferizeOperand = BufferizeOperand::InputOutput;
+  // Promote the inputs to shared memory
+  AMDAIEBufferizeToAllocationOptions bufferizeOptions2;
+  bufferizeOptions2.memorySpace = 1;
+  bufferizeOptions2.bufferizeOperand = BufferizeOperand::DefInput;
   modulePassManager.addNestedPass<func::FuncOp>(
-      createAMDAIEBufferizeToAllocationPass(bufferizeOptions0));
+      createAMDAIEBufferizeToAllocationPass(bufferizeOptions2));
 
   // Second level tiling using scf.forall
   AMDAIETileAndFuseOptions tileFuseOptions2;
@@ -139,18 +169,21 @@ void addPackBasedPassPipeline(OpPassManager &pm, TilingConfig &tilingConfig) {
   modulePassManager.addPass(createCanonicalizerPass());
   modulePassManager.addPass(createCSEPass());
 
-  // Second level packing
-  AMDAIEPackAndTransposeOptions packOptions1;
-  packOptions1.packLevel = 1;
+  // Fuse second level pack ops into forall loop
+  AMDAIEFusePackIntoLoopOptions fusePackOptions1;
+  fusePackOptions1.fusePackDepth = 1;
+  fusePackOptions1.useSCFFor = false;
   modulePassManager.addNestedPass<func::FuncOp>(
-      createAMDAIEPackAndTransposePass(packOptions1));
+      createAMDAIEFusePackIntoLoopPass(fusePackOptions1));
+  modulePassManager.addPass(createCanonicalizerPass());
+  modulePassManager.addPass(createCSEPass());
 
-  // Promote inputs and result to local memory
-  AMDAIEBufferizeToAllocationOptions bufferizeOptions1;
-  bufferizeOptions1.memorySpace = 2;
-  bufferizeOptions1.bufferizeOperand = BufferizeOperand::InputOutput;
+  // Promote the inputs to local memory
+  AMDAIEBufferizeToAllocationOptions bufferizeOptions3;
+  bufferizeOptions3.memorySpace = 2;
+  bufferizeOptions3.bufferizeOperand = BufferizeOperand::Input;
   modulePassManager.addNestedPass<func::FuncOp>(
-      createAMDAIEBufferizeToAllocationPass(bufferizeOptions1));
+      createAMDAIEBufferizeToAllocationPass(bufferizeOptions3));
 
   // Hoist static allocations
   modulePassManager.addNestedPass<func::FuncOp>(
@@ -285,7 +318,7 @@ void buildAMDAIETransformPassPipeline(OpPassManager &pm) {
   if (clUsePipeline == AIEPassPipeline::PadPackPipeline) {
     auto &modulePassManager = pm.nest<ModuleOp>();
     addMLIRAIRAIELoweringPasses(modulePassManager);
-  } else if (clUsePipeline != AIEPassPipeline::PackPipeline) {
+  } else if (clUsePipeline != AIEPassPipeline::PackPeelPipeline) {
     auto &modulePassManager = pm.nest<ModuleOp>();
     addMLIRAIRAIELegacyLoweringPasses(modulePassManager);
   }

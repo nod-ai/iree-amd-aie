@@ -20,19 +20,6 @@ namespace mlir::iree_compiler::AMDAIE {
 
 using detail::findLargestFactor;
 
-static LogicalResult setRootConfigForPadPipeline(func::FuncOp entryPointFn,
-                                                 linalg::LinalgOp linalgOp,
-                                                 AIEConfig cfg) {
-  SmallVector<int64_t> TileSizeLevel0 = {8, 8};
-  SmallVector<int64_t> TileSizeLevel1 = {4, 4};
-  SmallVector<int64_t> TileSizeLevel2 = {0, 0, 4};
-  TileSizesListType tileSizes = {TileSizeLevel0, TileSizeLevel1,
-                                 TileSizeLevel2};
-  return setOpConfigAndEntryPointFnTranslation(
-      entryPointFn, linalgOp, tileSizes,
-      IREE::Codegen::DispatchLoweringPassPipeline::None);
-}
-
 static SmallVector<int64_t> getPackedSize(linalg::LinalgOp linalgOp,
                                           const int packLevel, int m = 0,
                                           int n = 0, int k = 0) {
@@ -80,17 +67,15 @@ static SmallVector<int64_t> getPackedSize(linalg::LinalgOp linalgOp,
   return packedSizes;
 }
 
-static LogicalResult setRootConfigForPackPipeline(func::FuncOp entryPointFn,
-                                                  linalg::LinalgOp linalgOp,
-                                                  AIEConfig cfg) {
+static LogicalResult setRootConfigForPackPeelPipeline(func::FuncOp entryPointFn,
+                                                      linalg::LinalgOp linalgOp,
+                                                      AIEConfig cfg) {
   // ------------------------------------------------------
   // -------------- Set lowering config -------------------
   // ------------------------------------------------------
-  if (!(cfg.num_cores == 1 || cfg.num_cores == 2 || cfg.num_cores == 4))
-    return linalgOp.emitOpError("unhandled number of cores");
-  SmallVector<int64_t> TileSizeLevel0 = {16, 64 * cfg.num_cores};
-  SmallVector<int64_t> TileSizeLevel1 = {0, 0, 64};
-  SmallVector<int64_t> TileSizeLevel2 = {1, 1};
+  SmallVector<int64_t> TileSizeLevel0 = {64, 64};
+  SmallVector<int64_t> TileSizeLevel1 = {0, 0, 1};
+  SmallVector<int64_t> TileSizeLevel2 = {0, 0, 0, 8, 4, 0};
   TileSizesListType tileSizes = {TileSizeLevel0, TileSizeLevel1,
                                  TileSizeLevel2};
   if (failed(setOpConfigAndEntryPointFnTranslation(
@@ -103,7 +88,7 @@ static LogicalResult setRootConfigForPackPipeline(func::FuncOp entryPointFn,
   // ------------------------------------------------------
   MLIRContext *context = entryPointFn.getContext();
   // Pack level => 1.
-  SmallVector<int64_t> packedSizes = {16, 64, 64};
+  SmallVector<int64_t> packedSizes = {64, 64, 32};
   // Transpose B matrix from [K N n k] to [K N k n]
   SmallVector<int64_t> transposePackIndices = {1};
   // There is no corresponding unpack for the specified pack operation
@@ -284,8 +269,8 @@ static bool isMatmulTranspose(linalg::GenericOp genericOp) {
 static LogicalResult setTransposeLikeOpRootConfig(
     func::FuncOp entryPointFn, linalg::LinalgOp linalgOp,
     AIEPassPipeline usePassPipeline, AIEConfig cfg) {
-  if (usePassPipeline == AIEPassPipeline::PackPipeline)
-    return setRootConfigForPackPipeline(entryPointFn, linalgOp, cfg);
+  if (usePassPipeline == AIEPassPipeline::PackPeelPipeline)
+    return setRootConfigForPackPeelPipeline(entryPointFn, linalgOp, cfg);
   else if (usePassPipeline == AIEPassPipeline::PadPackPipeline)
     return setRootConfigForPadPackPipeline(entryPointFn, linalgOp, cfg);
   return linalgOp.emitOpError("unhandled pass pipeline");
@@ -337,8 +322,8 @@ static LogicalResult setRootConfig(func::FuncOp entryPointFn,
   // TODO (nmeshram) : This needs to be moved in a separate more generalized
   // logic. Also, need a flag to experiment between pad based and pack based
   // approach which will have different tile sizes and pass pipelines
-  if (usePassPipeline == AIEPassPipeline::PackPipeline)
-    return setRootConfigForPackPipeline(entryPointFn, linalgOp, cfg);
+  if (usePassPipeline == AIEPassPipeline::PackPeelPipeline)
+    return setRootConfigForPackPeelPipeline(entryPointFn, linalgOp, cfg);
   if (usePassPipeline == AIEPassPipeline::PadPackPipeline)
     return setRootConfigForPadPackPipeline(entryPointFn, linalgOp, cfg);
   return linalgOp.emitOpError("unhandled pass pipeline");

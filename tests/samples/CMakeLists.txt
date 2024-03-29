@@ -8,7 +8,8 @@ iree_lit_test_suite(
   NAME
     lit
   SRCS
-    "pack_pipeline_funcIR.mlir"
+    #"pack_pipeline_funcIR.mlir"
+    "pack_peel_pipeline.mlir"
     "pad_pack_pipeline_e2e.mlir"
     "xdna_oplib_plugin.mlir"
   TOOLS
