@@ -46,30 +46,19 @@ pdl.pattern @mlp : benefit(1) {
   // ```
   %lhs = pdl.operand
   %rhs = pdl.operand
+  %empty = pdl.operand
   %lhs_type = pdl.type : tensor<?x?xf32>
   %rhs_type = pdl.type : tensor<?x?xf32>
   %matmul_type = pdl.type : tensor<?x?xf32>
 
-  %zero_val = pdl.attribute = 0 : index
-  %one_val = pdl.attribute = 1 : index
   %zero_val_f32 = pdl.attribute = 0.000000e+00 : f32
   %index_type = pdl.type : index
   %f32_type = pdl.type : f32
 
-  %zero_op = pdl.operation "arith.constant" {"value" = %zero_val} -> (%index_type : !pdl.type)
-  %zero = pdl.result 0 of %zero_op
-  %one_op = pdl.operation "arith.constant" {"value" = %one_val} -> (%index_type : !pdl.type)
-  %one = pdl.result 0 of %one_op
+
   %zero_f32_op = pdl.operation "arith.constant" {"value" = %zero_val_f32} -> (%f32_type : !pdl.type)
   %zero_f32 = pdl.result 0 of %zero_f32_op
 
-  %m_op = pdl.operation "tensor.dim"(%lhs, %zero : !pdl.value, !pdl.value) -> (%index_type : !pdl.type)
-  %m = pdl.result 0 of %m_op
-  %n_op = pdl.operation "tensor.dim"(%rhs, %one : !pdl.value, !pdl.value) -> (%index_type : !pdl.type)
-  %n = pdl.result 0 of %n_op
-
-  %empty_op = pdl.operation "tensor.empty" (%m, %n : !pdl.value, !pdl.value) -> (%matmul_type : !pdl.type)
-  %empty = pdl.result 0 of %empty_op
   
   %fill_op = pdl.operation "linalg.fill" (%zero_f32, %empty : !pdl.value, !pdl.value) -> (%matmul_type : !pdl.type)
   %fill = pdl.result 0 of %fill_op
@@ -79,7 +68,17 @@ pdl.pattern @mlp : benefit(1) {
     // The pattern above matched `%result`, `%lhs`, `%rhs` needed for the
     // external function call. The values of `%M`, `%N` and `%K` need to
     // be generated.
-    %i32_type = pdl.type : i32 
+    %i32_type = pdl.type : i32
+    %zero_val = pdl.attribute = 0 : index
+    %one_val = pdl.attribute = 1 : index
+    %zero_op = pdl.operation "arith.constant" {"value" = %zero_val} -> (%index_type : !pdl.type)
+    %zero = pdl.result 0 of %zero_op
+    %one_op = pdl.operation "arith.constant" {"value" = %one_val} -> (%index_type : !pdl.type)
+    %one = pdl.result 0 of %one_op
+    %m_op = pdl.operation "tensor.dim"(%lhs, %zero : !pdl.value, !pdl.value) -> (%index_type : !pdl.type)
+    %m = pdl.result 0 of %m_op
+    %n_op = pdl.operation "tensor.dim"(%rhs, %one : !pdl.value, !pdl.value) -> (%index_type : !pdl.type)
+    %n = pdl.result 0 of %n_op 
     %k_op = pdl.operation "tensor.dim"(%lhs, %one : !pdl.value, !pdl.value)
     %k = pdl.result 0 of %k_op
     %m_i32_op = pdl.operation "arith.index_cast"(%m : !pdl.value) -> (%i32_type : !pdl.type)
@@ -119,4 +118,3 @@ pdl.pattern @mlp : benefit(1) {
         : !pdl.operation, !pdl.attribute, !pdl.range<value>, !pdl.range<value>, !pdl.range<value>, !pdl.range<value>)
   }
 }
-

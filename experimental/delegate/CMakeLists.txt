@@ -53,9 +53,9 @@ iree_lit_test_suite(
   NAME
     lit
   SRCS
-   "mlp.mlir"
+    "mlp.mlir"
   DATA
-    "lianlg.pdl.mlir"
+    "linalg.pdl.mlir"
   TOOLS
     FileCheck
     iree-compile
