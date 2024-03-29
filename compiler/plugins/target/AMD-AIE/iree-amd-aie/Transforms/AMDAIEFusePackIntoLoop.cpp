@@ -59,7 +59,7 @@ void AMDAIEFusePackIntoLoopPass::runOnOperation() {
   func::FuncOp funcOp = getOperation();
   IRRewriter rewriter(context);
 
-  // Walk through the graph in post order and find the for loop.
+  // Walk through the graph in post order and find the scf loop.
   Operation *scfLoopOp = nullptr;
   funcOp->walk<WalkOrder::PostOrder, ReverseIterator>(
       [&](LoopLikeOpInterface op) {
@@ -85,7 +85,16 @@ void AMDAIEFusePackIntoLoopPass::runOnOperation() {
     // Search the compute op and its producer slices within the For loop.
     BlockArgument bbArg = loops.getRegionIterArgs()[0];
     SmallVector<tensor::ExtractSliceOp> sliceOps;
-    for (auto user : bbArg.getUsers()) {
+    SmallVector<Operation *> allUsers(bbArg.getUsers().begin(),
+                                      bbArg.getUsers().end());
+    while (!allUsers.empty()) {
+      auto user = allUsers.pop_back_val();
+      if (isa<tensor::ExtractSliceOp>(user)) {
+        allUsers.insert(allUsers.begin(), user->getUsers().begin(),
+                        user->getUsers().end());
+        continue;
+      }
+
       if (auto genericOp = dyn_cast<linalg::GenericOp>(user)) {
         for (auto [index, operand] : llvm::enumerate(genericOp.getOperands())) {
           FailureOr<tensor::ExtractSliceOp> sliceOp =

@@ -39,6 +39,14 @@ static LogicalResult applyBufferizeToAllocation(RewriterBase &rewriter,
   return success();
 }
 
+static SmallVector<Value> getOperandFromDefOp(linalg::LinalgOp &linalgOp) {
+  SmallVector<Value> operands;
+  for (auto input : linalgOp.getDpsInputs()) {
+    operands.push_back(input.getDefiningOp()->getOperand(0));
+  }
+  return operands;
+}
+
 // TODO(avarma): This is a temporary workaround until we have PaddingStrategy
 // This function is to take certain operands from a matmul op and used for
 // new allocation creation. Since we have different pipelines (packing/padding)
@@ -59,6 +67,9 @@ static FailureOr<SmallVector<Value>> getOperandsToBufferize(
     // Use with paddingLevel == 2, create new allocations only for Lhs, Rhs.
     case 2:
       return SmallVector<Value>(linalgOp.getDpsInputs());
+    // Create new allocations for Lhs, Rhs from the def ops.
+    case 3:
+      return getOperandFromDefOp(linalgOp);
     default:
       return failure();
   }
