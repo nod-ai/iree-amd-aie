@@ -55,6 +55,7 @@ iree_cc_library(
     iree::hal
     iree-amd-aie::schemas::xrt_executable_def_c_fbs
     XRT::xrt_coreutil
+    Boost::boost
   COPTS
   # currenly this is needed, it can be removed after this issue is resolved
   # https://github.com/Xilinx/XRT/issues/7810
