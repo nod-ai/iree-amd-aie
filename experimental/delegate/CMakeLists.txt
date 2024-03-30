@@ -57,4 +57,17 @@ add_dependencies(iree-sample-deps
   mlp_bf16_aie_delegate
 )
 
+iree_lit_test_suite(
+  NAME
+    lit
+  SRCS
+    "mlp.mlir"
+  DATA
+    "linalg.pdl.mlir"
+  TOOLS
+    FileCheck
+    iree-compile
+    iree-opt
+)
+
 endif(IREE_HAL_EXECUTABLE_PLUGIN_SYSTEM_LIBRARY)
