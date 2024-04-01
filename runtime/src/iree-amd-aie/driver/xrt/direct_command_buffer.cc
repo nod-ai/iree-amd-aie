@@ -348,18 +348,16 @@ static iree_status_t iree_hal_xrt_direct_command_buffer_dispatch(
     iree_host_size_t base_index =
         iree_hal_xrt_pipeline_layout_base_binding_index(kernel_params.layout,
                                                         i);
-
     for (iree_host_size_t j = 0; j < binding_count; ++j) {
       xrt::bo arg_buffer =
           xrt::bo(*command_buffer->descriptor_sets[i].bindings[j],
                   command_buffer->descriptor_sets[i].lengths[j],
                   command_buffer->descriptor_sets[i].offsets[j]);
 
-      // TODO(newling)
       // See motivation for this sync:
       // https://github.com/nod-ai/iree-amd-aie/issues/209
-      // A better solution should be found, or a better explanation should be
-      // provided.
+      // TODO(newling)
+      // A better solution should be found or a better explanation provided.
       if (j == binding_count - 1) {
         arg_buffer.sync(XCL_BO_SYNC_BO_TO_DEVICE);
       }
