@@ -29,16 +29,26 @@
 // The only header required from IREE:
 #include "iree/hal/local/executable_plugin.h"
 
-// #define MLP_M 256
-// #define MLP_K 256
-// #define MLP_N 256
+// Turn this on to use the 8x768x768 kernel in place of the default ref matmul
+#define USE_OPT_KERNEL 1
+
+#ifdef USE_OPT_KERNEL
 #define MLP_M 8
 #define MLP_K 768
 #define MLP_N 768
+#else
+#define MLP_M 256
+#define MLP_K 256
+#define MLP_N 256
+#endif
 
 // Kernel file names (without extension) relative to installation root
-// const std::string kernelFileName = "matmul/matmul-bf16-256x256x256-v1";
-const std::string kernelFileName = "matmul/matmul-bf16-8x768x768-v1";
+const std::string kernelFileName = 
+#ifdef USE_OPT_KERNEL
+    "matmul/matmul-bf16-8x768x768-v1";
+#else
+    "matmul/matmul-bf16-256x256x256-v1";
+#endif
 
 // Get the path of this plugin's .so
 
@@ -91,7 +101,7 @@ struct TensorData {
   size_t offset;
 
   size_t getIndex(size_t i, size_t j, size_t stride) const {
-    return offset + i + j * stride;
+    return offset + i * stride + j;
   }
 
   float getElement(size_t i, size_t j, size_t stride) const {
@@ -105,6 +115,14 @@ struct TensorData {
   // Return a pointer to the first element to write to
   float *getDest() {
     return data + offset;
+  }
+
+  std::ostream &dump(std::ostream &os) const {
+    return os << "data: " << (void *) data << ", offset: " << offset;
+  }
+
+  friend std::ostream &operator<<(std::ostream &os, const TensorData &td) {
+    return td.dump(os);
   }
 };
 
@@ -122,6 +140,14 @@ struct Params {
     oss << M << 'x' << K << 'x' << N;
     return oss.str();
   }
+
+  std::ostream &dump(std::ostream &os) const {
+    return os << "lhs: (" << lhs << "), rhs: (" << rhs << "), result: " << result << ")";
+  }
+
+  friend std::ostream &operator<<(std::ostream &os, const Params &p) {
+    return p.dump(os);
+  }
 };
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -135,7 +161,7 @@ std::vector<uint32_t> loadInstrSequence(std::string instr_path) {
         std::istringstream iss(line);
         uint32_t a;
         if (!(iss >> std::hex >> a)) {
-           std::cerr << "Unable to parse instruction file" << std::endl;
+           std::cerr << "[AIE Delegate]: Unable to parse instruction file" << std::endl;
            return {};
         }
         instrV.push_back(a);
@@ -204,10 +230,10 @@ int setupNPUAccelerator() {
     std::vector<uint32_t> instrV = loadInstrSequence(instrFilePath);
     instrSize = instrV.size();
     if (instrSize == 0) {
-        std::cerr << "Couldn't load instructions from file " << instrFilePath << std::endl;
+        std::cerr << "[AIE Delegate]: Couldn't load instructions from file " << instrFilePath << std::endl;
         return 1;
     }
-    std::cout << "Sequence instr count: " << instrV.size() << "\n";
+    std::cout << "[AIE Delegate]: Sequence instr count: " << instrV.size() << "\n";
 
     // Start the XRT test code
     // Get a device handle
@@ -226,7 +252,7 @@ int setupNPUAccelerator() {
     auto xkernel = *std::find_if(xkernels.begin(), xkernels.end(),
                                  [node](xrt::xclbin::kernel &k) {
                                    auto name = k.get_name();
-                                   std::cout << "Name: " << name << std::endl;
+                                   std::cout << "[AIE Delegate]: Name: " << name << std::endl;
                                    return name.rfind(node, 0) == 0;
                                  });
     auto kernelName = xkernel.get_name();
@@ -251,7 +277,7 @@ int setupNPUAccelerator() {
     std::memcpy(bufInstr, instrV.data(), instrV.size() * sizeof(int));
     xrtState->boInstr.sync(XCL_BO_SYNC_BO_TO_DEVICE);
 
-    std::cout << "NPU setup done." << std::endl;
+    std::cout << "[AIE Delegate]: NPU setup done." << std::endl;
     
     aie_setup = true;
     return 0;  // TODO: check for and handle more error conditions
