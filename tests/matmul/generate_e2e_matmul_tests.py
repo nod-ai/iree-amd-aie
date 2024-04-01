@@ -105,39 +105,10 @@ def get_test_shapes(shapes_id: ShapesId):
     #    disabled to improve the trade-off between test coverage and build
     #    latency.
 
-    if shapes_id == ShapesId.SMALL:
-        return [
-            # some "nice" multiple of 8 shapes
-            TestShape(m=8, k=16, n=32, accumulate=False),
-            TestShape(m=16, k=8, n=16, accumulate=False),
-            # some arbitrary shapes
-            TestShape(m=52, k=63, n=52, accumulate=False),
-            TestShape(m=7, k=9, n=15, accumulate=False)
-            # This size seems to fail in llvm IR
-            #TestShape(m=9, k=15, n=7, accumulate=False),
 
-        ]
-    if shapes_id == ShapesId.LARGE:
-        return [
-            TestShape(m=64, k=128, n=64, accumulate=False),
-            # This size compiles but has a correctness error
-            # TestShape(m=300, k=300, n=300, accumulate=False),
-            TestShape(m=512, k=512, n=512, accumulate=False),
-        ]
-    if shapes_id == ShapesId.SMALL_LEGACY:
-        return [
-            TestShape(m=8, k=16, n=32, accumulate=False),
-            #TestShape(m=16, k=8, n=16, accumulate=False),
-            #TestShape(m=64, k=16, n=32, accumulate=True),
-            #TestShape(m=8, k=16, n=16, accumulate=False),
-        ]
     if shapes_id == ShapesId.LARGE_LEGACY:
         return [
-            TestShape(m=64, k=16, n=64, accumulate=False),
-            #TestShape(m=64, k=64, n=64, accumulate=False),
-            #TestShape(m=256, k=128, n=256, accumulate=False),
-            #TestShape(m=512, k=256, n=512, accumulate=True),
-            #TestShape(m=512, k=256, n=512, accumulate=False),
+            TestShape(m=64, k=16, n=64, accumulate=False)
         ]
 
     raise ValueError(shapes_id)

@@ -353,6 +353,11 @@ static iree_status_t iree_hal_xrt_direct_command_buffer_dispatch(
           xrt::bo(*command_buffer->descriptor_sets[i].bindings[j],
                   command_buffer->descriptor_sets[i].lengths[j],
                   command_buffer->descriptor_sets[i].offsets[j]);
+
+      if (j == binding_count - 1) {
+        arg_buffer.sync(XCL_BO_SYNC_BO_TO_DEVICE);
+      }
+
       run.set_arg(arg_index + base_index + j, arg_buffer);
     }
   }

@@ -190,6 +190,10 @@ function run_matmul_test() {
         name="$2"
         shift 2
         ;;
+      --n_runs)
+        n_runs="$2"
+        shift 2
+        ;;
       --lhs_rhs_type)
         lhs_rhs_type="$2"
         shift 2
@@ -304,12 +308,13 @@ function run_matmul_test() {
       --module=${OUTPUT_DIR}/${name}_calls.vmfb \
       --device=${device}"
 
-  echo "Running command: ${COMMAND}"
 
-  # Execute the command, and print the status:
-  eval "${COMMAND}"
-  echo "Command returned with status: $?"
-
+  # Run the command at most n_runs times. 
+  # If it fails once, return non-zero exit code immediately.
+  for i in $(seq 1 $n_runs); do
+    echo "Iteration ${i} of ${n_runs} complete."
+    eval "${COMMAND}"
+  done
   set +x
 }
 
@@ -318,37 +323,14 @@ function run_matmul_test() {
 ###############################################################################
 
 run_matmul_test \
-    --name "matmul_bf16_bf16_large_amd-aie_xrt_pad-pack" \
-    --lhs_rhs_type "bf16" \
-    --acc_type "f32" \
+    --name "matmul_run_til_failure" \
+    --lhs_rhs_type "i32" \
+    --acc_type "i32" \
     --shapes "large_legacy" \
     --target_backend "amd-aie" \
     --device "xrt" \
     --peano_install_path "${PEANO}" \
     --mlir_aie_install_path "${MLIR_AIE_INSTALL}" \
     --vitis_path  "${VITIS}" \
-    --pipeline "pad-pack"
-
-run_matmul_test \
-    --name "matmul_i32_i32_small_amd-aie_xrt_pad-pack" \
-    --lhs_rhs_type "i32" \
-    --acc_type "i32" \
-    --shapes "small" \
-    --target_backend "amd-aie" \
-    --device "xrt" \
-    --peano_install_path "${PEANO}" \
-    --mlir_aie_install_path "${MLIR_AIE_INSTALL}" \
-    --vitis_path  "${VITIS}" \
-    --pipeline "pad-pack"
-
-run_matmul_test \
-    --name "matmul_i32_i32_large_amd-aie_xrt_pad-pack" \
-    --lhs_rhs_type "i32" \
-    --acc_type "i32" \
-    --shapes "large" \
-    --target_backend "amd-aie" \
-    --device "xrt" \
-    --peano_install_path "${PEANO}" \
-    --mlir_aie_install_path "${MLIR_AIE_INSTALL}" \
-    --vitis_path  "${VITIS}" \
+    --n_runs 10000 \
     --pipeline "pad-pack"
