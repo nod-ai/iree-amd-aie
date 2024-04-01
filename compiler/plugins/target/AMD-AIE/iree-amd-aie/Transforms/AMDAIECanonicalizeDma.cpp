@@ -6,10 +6,6 @@
 
 #include "air/Dialect/AIR/AIRDialect.h"
 #include "iree-amd-aie/Transforms/Passes.h"
-#include "iree/compiler/Dialect/LinalgExt/IR/LinalgExtDialect.h"
-#include "iree/compiler/Dialect/LinalgExt/IR/LinalgExtOps.h"
-#include "mlir/Dialect/Linalg/Transforms/Transforms.h"
-#include "mlir/Dialect/Utils/IndexingUtils.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
