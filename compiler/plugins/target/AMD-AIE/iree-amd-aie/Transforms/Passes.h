@@ -69,7 +69,8 @@ std::unique_ptr<Pass> createAMDAIEFuseFillIntoForallPass();
 std::unique_ptr<Pass> createAMDAIEInsertLoopsForVectorizationPass();
 
 /// Create a pass to fuse the pack operations into the for loops.
-std::unique_ptr<Pass> createAMDAIEFusePackIntoForLoopPass();
+std::unique_ptr<Pass> createAMDAIEFusePackIntoForLoopPass(
+    AMDAIEFusePackIntoForLoopOptions options = {});
 
 /// Create pass calling the dynamic pipeline for AMDAIE.
 std::unique_ptr<Pass> createAMDAIELowerExecutableTargetPass(
