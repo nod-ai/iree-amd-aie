@@ -243,7 +243,7 @@ void addPadPackBasedPassPipeline(OpPassManager &pm,
 
   // Fuse pack ops into for loop
   modulePassManager.addNestedPass<func::FuncOp>(
-      createAMDAIEFusePackIntoForLoopPass());
+      createAMDAIEFusePackIntoLoopPass());
   modulePassManager.addNestedPass<func::FuncOp>(createAMDAIECleanupPass());
   modulePassManager.addPass(createCanonicalizerPass());
   modulePassManager.addPass(createCSEPass());
