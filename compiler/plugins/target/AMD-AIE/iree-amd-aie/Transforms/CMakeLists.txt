@@ -43,7 +43,7 @@ iree_cc_library(
     "AMDAIEBufferizeToAllocation.cpp"
     "AMDAIECanonicalizeDma.cpp"
     "AMDAIEFuseFillIntoForall.cpp"
-    "AMDAIEFusePackIntoForLoop.cpp"
+    "AMDAIEFusePackIntoLoop.cpp"
     "AMDAIEInsertLoopsForVectorization.cpp"
     "AMDAIELowerExecutableTarget.cpp"
     "AMDAIELowerToUKernels.cpp"

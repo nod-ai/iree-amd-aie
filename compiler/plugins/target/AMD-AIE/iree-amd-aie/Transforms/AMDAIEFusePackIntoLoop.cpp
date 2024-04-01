@@ -9,7 +9,7 @@
 #include "mlir/IR/Iterators.h"
 #include "mlir/Pass/Pass.h"
 
-#define DEBUG_TYPE "iree-amdaie-fuse-pack-into-for"
+#define DEBUG_TYPE "iree-amdaie-fuse-pack-into-loop"
 
 namespace mlir::iree_compiler::AMDAIE {
 
@@ -40,14 +40,13 @@ static FailureOr<tensor::ExtractSliceOp> getTensorExtractSliceDefiningOp(
   return failure();
 }
 
-class AMDAIEFusePackIntoForLoopPass
-    : public impl::AMDAIEFusePackIntoForLoopBase<
-          AMDAIEFusePackIntoForLoopPass> {
+class AMDAIEFusePackIntoLoopPass
+    : public impl::AMDAIEFusePackIntoLoopBase<AMDAIEFusePackIntoLoopPass> {
  public:
-  AMDAIEFusePackIntoForLoopPass() = default;
-  AMDAIEFusePackIntoForLoopPass(const AMDAIEFusePackIntoForLoopPass &pass) {}
-  AMDAIEFusePackIntoForLoopPass(const AMDAIEFusePackIntoForLoopOptions &options)
-      : AMDAIEFusePackIntoForLoopBase(options) {}
+  AMDAIEFusePackIntoLoopPass() = default;
+  AMDAIEFusePackIntoLoopPass(const AMDAIEFusePackIntoLoopPass &pass) {}
+  AMDAIEFusePackIntoLoopPass(const AMDAIEFusePackIntoLoopOptions &options)
+      : AMDAIEFusePackIntoLoopBase(options) {}
 
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<scf::SCFDialect>();
@@ -55,31 +54,36 @@ class AMDAIEFusePackIntoForLoopPass
   void runOnOperation() override;
 };
 
-void AMDAIEFusePackIntoForLoopPass::runOnOperation() {
+void AMDAIEFusePackIntoLoopPass::runOnOperation() {
   MLIRContext *context = &getContext();
   func::FuncOp funcOp = getOperation();
   IRRewriter rewriter(context);
 
   // Walk through the graph in post order and find the for loop.
-  scf::ForOp forOp;
+  Operation *scfLoopOp = nullptr;
   funcOp->walk<WalkOrder::PostOrder, ReverseIterator>(
       [&](LoopLikeOpInterface op) {
-        if (isa<scf::ForOp>(op)) {
-          forOp = cast<scf::ForOp>(op);
+        if (isa<scf::ForOp>(op) && useSCFFor) {
+          scfLoopOp = op;
+          return WalkResult::interrupt();
+        } else if (isa<scf::ForallOp>(op) && !useSCFFor) {
+          scfLoopOp = op;
           return WalkResult::interrupt();
         }
         return WalkResult::advance();
       });
-  if (!forOp) {
-    LLVM_DEBUG(llvm::dbgs() << "There is no for loop to fuse with.\n");
+  if (!scfLoopOp) {
+    LLVM_DEBUG(llvm::dbgs()
+               << "There is no scf.for/forall loop to fuse with.\n");
     return;
   }
 
   // Based on the `fusePackDepth`, we would continue to greedily fuse the
   // producer tensor.pack ops.
+  LoopLikeOpInterface loops = cast<LoopLikeOpInterface>(scfLoopOp);
   for (unsigned depth = 1; depth <= fusePackDepth; depth++) {
     // Search the compute op and its producer slices within the For loop.
-    BlockArgument bbArg = forOp.getRegionIterArg(0);
+    BlockArgument bbArg = loops.getRegionIterArgs()[0];
     SmallVector<tensor::ExtractSliceOp> sliceOps;
     for (auto user : bbArg.getUsers()) {
       if (auto genericOp = dyn_cast<linalg::GenericOp>(user)) {
@@ -100,7 +104,6 @@ void AMDAIEFusePackIntoForLoopPass::runOnOperation() {
     }
 
     // Materialize each slice of the producer in place.
-    LoopLikeOpInterface loops = cast<LoopLikeOpInterface>(forOp.getOperation());
     for (auto sliceOp : sliceOps) {
       std::optional<scf::SCFFuseProducerOfSliceResult> fusedProducer =
           scf::tileAndFuseProducerOfSlice(rewriter, sliceOp,
@@ -115,8 +118,8 @@ void AMDAIEFusePackIntoForLoopPass::runOnOperation() {
 
 }  // namespace
 
-std::unique_ptr<Pass> createAMDAIEFusePackIntoForLoopPass(
-    AMDAIEFusePackIntoForLoopOptions options) {
-  return std::make_unique<AMDAIEFusePackIntoForLoopPass>(options);
+std::unique_ptr<Pass> createAMDAIEFusePackIntoLoopPass(
+    AMDAIEFusePackIntoLoopOptions options) {
+  return std::make_unique<AMDAIEFusePackIntoLoopPass>(options);
 }
 }  // namespace mlir::iree_compiler::AMDAIE
