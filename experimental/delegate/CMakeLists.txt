@@ -42,11 +42,32 @@ set_target_properties(mlp_bf16_aie_delegate
     # OUTPUT_NAME "mlp_bf16_aie_delegate"
 )
 
+target_link_libraries(
+  mlp_bf16_aie_delegate
+  PRIVATE
+  XRT::xrt_coreutil
+  Boost::boost
+)
+set_property(TARGET mlp_bf16_aie_delegate PROPERTY CXX_STANDARD 20)
+
 add_dependencies(mlp_bf16_aie_delegate
   aie_delegate_kernels
 )
 add_dependencies(iree-sample-deps
   mlp_bf16_aie_delegate
+)
+
+iree_lit_test_suite(
+  NAME
+    lit
+  SRCS
+    "mlp.mlir"
+  DATA
+    "linalg.pdl.mlir"
+  TOOLS
+    FileCheck
+    iree-compile
+    iree-opt
 )
 
 endif(IREE_HAL_EXECUTABLE_PLUGIN_SYSTEM_LIBRARY)
