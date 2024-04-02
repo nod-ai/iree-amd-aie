@@ -145,9 +145,26 @@ void AMDAIETileAndFusePass::runOnOperation() {
   auto options = scf::SCFTilingOptions().setTileSizes(tileSizes);
   // When tiling using scf.for we do not need to set any mapping.
   if (!useSCFFor) {
-    options.setMapping(
-        {gpu::GPUBlockMappingAttr::get(context, gpu::MappingId::DimY),
-         gpu::GPUBlockMappingAttr::get(context, gpu::MappingId::DimX)});
+    // SmallVector<DeviceMappingAttrInterface> globalMappingAttrs = {
+    //                 gpu::GPUBlockMappingAttr::get(context, gpu::MappingId::DimY),
+    //                 gpu::GPUBlockMappingAttr::get(context, gpu::MappingId::DimX),
+    //                 gpu::GPUBlockMappingAttr::get(context, gpu::MappingId::DimZ)};
+    // SmallVector<DeviceMappingAttrInterface> mappingAttrs;
+    // SmallVector<utils::IteratorType> loopIteratorTypes =
+    //   consumerOp.getLoopIteratorTypes();
+    // unsigned i = 0;
+    // llvm::outs()<<loopIteratorTypes.size();
+    // for (auto loopIteratorType : loopIteratorTypes) {
+    //   llvm::outs()<<loopIteratorType<<"\n";
+    //   llvm::outs()<<i<<"\n";
+    //   llvm::outs().flush();
+    //   if (loopIteratorType == utils::IteratorType::reduction)
+    //     continue;
+    //   mappingAttrs.push_back(globalMappingAttrs[i++]);
+    // }
+    SmallVector<DeviceMappingAttrInterface> mappingAttrs = {gpu::GPUBlockMappingAttr::get(context, gpu::MappingId::DimY),
+                    gpu::GPUBlockMappingAttr::get(context, gpu::MappingId::DimX)};
+    options.setMapping(mappingAttrs);
   }
 
   if (!useSCFFor) {
