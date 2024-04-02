@@ -39,26 +39,31 @@ static LogicalResult applyBufferizeToAllocation(RewriterBase &rewriter,
   return success();
 }
 
-// TODO(avarma): This is a temporary workaround until we have PaddingStrategy
-// This function is to take certain operands from a matmul op and used for
-// new allocation creation. Since we have different pipelines (packing/padding)
-// and padding strategies. We use buffereizeLevel to indicate what pipeline
-// and padding strategy we are targeting.
+static SmallVector<Value> getOperandsFromDefOp(linalg::LinalgOp &linalgOp) {
+  SmallVector<Value> operands;
+  for (auto input : linalgOp.getDpsInputs()) {
+    operands.push_back(input.getDefiningOp()->getOperand(0));
+  }
+  return operands;
+}
+
+// This function is to take certain operands from a matmul op or its defining
+// ops and used for new allocation creation.
 static FailureOr<SmallVector<Value>> getOperandsToBufferize(
-    int64_t bufferizeLevel, linalg::LinalgOp &linalgOp) {
-  switch (bufferizeLevel) {
-    // Use with packing pipeline, create new allocations for Lhs, Rhs and Out.
-    case -1:
+    BufferizeOperand bufferizeOperand, linalg::LinalgOp &linalgOp) {
+  switch (bufferizeOperand) {
+    // Create new allocations for Lhs, Rhs and Out.
+    case BufferizeOperand::InputOutput:
       return SmallVector<Value>(linalgOp->getOperands());
-    // Use with paddingLevel == 0, create new allocations for Lhs, Rhs and Out.
-    case 0:
-      return SmallVector<Value>(linalgOp->getOperands());
-    // Use with paddingLevel == 1, create new allocation only for Out.
-    case 1:
-      return SmallVector<Value>(linalgOp.getDpsInits());
-    // Use with paddingLevel == 2, create new allocations only for Lhs, Rhs.
-    case 2:
+    // Create new allocation only for Out.
+    case BufferizeOperand::Input:
       return SmallVector<Value>(linalgOp.getDpsInputs());
+    // Create new allocations only for Lhs, Rhs.
+    case BufferizeOperand::Output:
+      return SmallVector<Value>(linalgOp.getDpsInits());
+    // Create new allocations for operands from the input def ops.
+    case BufferizeOperand::DefInput:
+      return getOperandsFromDefOp(linalgOp);
     default:
       return failure();
   }
@@ -121,14 +126,14 @@ void AMDAIEBufferizeToAllocationPass::runOnOperation() {
 
   // Find the producer ops for linalg (matmul) op, and bufferizes them in new
   // allocations.
-  FailureOr<SmallVector<Value>> bufferizeOperands =
-      getOperandsToBufferize(bufferizeLevel, linalgOp);
-  if (failed(bufferizeOperands)) {
+  FailureOr<SmallVector<Value>> operands =
+      getOperandsToBufferize(bufferizeOperand, linalgOp);
+  if (failed(operands)) {
     linalgOp->emitOpError("could not fetch operands to bufferize");
     return signalPassFailure();
   }
 
-  for (auto operand : *bufferizeOperands) {
+  for (auto operand : *operands) {
     AMDAIEMemSpaceAttr memorySpaceAttr =
         getMemorySpaceAttr(rewriter, memorySpace);
     rewriter.setInsertionPointAfter(operand.getDefiningOp());

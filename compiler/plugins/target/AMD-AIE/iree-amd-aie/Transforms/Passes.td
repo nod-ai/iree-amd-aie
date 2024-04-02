@@ -23,8 +23,20 @@ def AMDAIEBufferizeToAllocation :
   let options = [
     Option<"memorySpace", "memory-space", "int64_t", /*default=*/"1",
       "Set the memory space">,
-    Option<"bufferizeLevel", "bufferize-level", "int64_t", /*default=*/"-1",
-      "A temporary workaround to figure the config for bufferization">
+    Option<"bufferizeOperand", "bufferize-operand",
+      "mlir::iree_compiler::AMDAIE::BufferizeOperand",
+      /*default=*/"mlir::iree_compiler::AMDAIE::BufferizeOperand::InputOutput",
+      "Select which operands of a matmul to be bufferized to allocation",
+      [{::llvm::cl::values(
+        clEnumValN(mlir::iree_compiler::AMDAIE::BufferizeOperand::InputOutput, "input-output",
+                   "Create new allocations for lhs, rhs and output of a matmul."),
+        clEnumValN(mlir::iree_compiler::AMDAIE::BufferizeOperand::Input, "input",
+                   "Create new allocations for output of a matmul."),
+        clEnumValN(mlir::iree_compiler::AMDAIE::BufferizeOperand::Output, "output",
+                   "Create new allocations for lhs, rhs of a matmul."),
+        clEnumValN(mlir::iree_compiler::AMDAIE::BufferizeOperand::DefInput, "def-input",
+                   "Create new allocations for operands from the input def ops of a matmul.")
+    )}]>
   ];
 }
 
