@@ -30,21 +30,13 @@ class MatrixElemTypeId(enum.Enum):
     BF16 = "bf16"
 
 
-# Enumerates of the collections of shapes that we can generate tests for.
-# The values are the accepted values for the --shapes= flag.
-@enum.unique
-class ShapesId(enum.Enum):
-    SMALL_LEGACY = "small_legacy"
-    LARGE_LEGACY = "large_legacy"
-    SMALL = "small"
-    LARGE = "large"
-
 # Enumerates of the collections of compilation info that we can generate tests
 # for. The values are the accepted values for the --compilation_info= flag.
 @enum.unique
 class CompilationInfoId(enum.Enum):
     NONE = ""
     AMDAIEPadBasedPassPipeline = "AMDAIEPadBasedPassPipeline"
+
 
 # Enumerates ways to construct MLIR tensor types.
 @enum.unique
@@ -65,13 +57,15 @@ class MatrixGenerator(enum.Enum):
 # the LHS is {m}x{k}, the RHS is {k}x{n}, the accumulator/result is {m}x{n}.
 # The extra `accumulate` boolean tells whether the matmul is accumulating into
 # an existing accumulator (C += A * B) or just overwriting the result
-# (C = A * B).
+# (C = A * B). The extra `dynamicity` parameter controls whether the values
+# `m`, `k`, and `n` are fixed to their set value or dynamic.
 @dataclasses.dataclass
 class TestShape:
     m: int
     k: int
     n: int
     accumulate: bool
+    dynamicity: Dynamicity
 
 
 # Describes how to construct compilation info for the testcase.
@@ -81,7 +75,7 @@ class CompilationInfo:
     tile_sizes: typing.List[typing.List[int]]
     # Translation Info
     dispatch_lowering_pass_pipeline: str
-    # The next two arguments dont make sense for 
+    # The next two arguments dont make sense for
     # AIE should they be removed?
     workload_per_wg: typing.List[int]
     software_pipeline_depth: int
@@ -91,65 +85,6 @@ class CompilationInfo:
     # Prints the workgroup size
     def workgroup_size_str(self):
         return "[" + ", ".join(map(str, self.workgroup_size)) + "]"
-
-
-# Returns the list of TestShape's to use for the collection of shapes
-# identified by shapes_id.
-def get_test_shapes(shapes_id: ShapesId):
-    # Notes:
-    # 1. Be conservative in adding more shapes, as that can increase both the
-    #    build and execution latency of tests. The build latency is nearly the
-    #    same for all shapes, while execution latency grows cubicly i.e.
-    #    linearly with m*k*n.
-    # 2. Some shapes are commented out: they used to be tested but have been
-    #    disabled to improve the trade-off between test coverage and build
-    #    latency.
-
-    if shapes_id == ShapesId.SMALL:
-        return [
-            # some "nice" multiple of 8 shapes
-            TestShape(m=8, k=16, n=32, accumulate=False),
-            TestShape(m=16, k=8, n=16, accumulate=False),
-            # some arbitrary shapes
-            TestShape(m=52, k=63, n=52, accumulate=False),
-            TestShape(m=7, k=9, n=15, accumulate=False)
-            # This size seems to fail in llvm IR
-            #TestShape(m=9, k=15, n=7, accumulate=False),
-
-        ]
-    if shapes_id == ShapesId.LARGE:
-        return [
-            TestShape(m=64, k=128, n=64, accumulate=False),
-            # This size compiles but has a correctness error
-            # TestShape(m=300, k=300, n=300, accumulate=False),
-            TestShape(m=512, k=512, n=512, accumulate=False),
-        ]
-    if shapes_id == ShapesId.SMALL_LEGACY:
-        return [
-            TestShape(m=8, k=16, n=32, accumulate=False),
-            #TestShape(m=16, k=8, n=16, accumulate=False),
-            #TestShape(m=64, k=16, n=32, accumulate=True),
-            #TestShape(m=8, k=16, n=16, accumulate=False),
-        ]
-    if shapes_id == ShapesId.LARGE_LEGACY:
-        return [
-            TestShape(m=64, k=16, n=64, accumulate=False),
-            #TestShape(m=64, k=64, n=64, accumulate=False),
-            #TestShape(m=256, k=128, n=256, accumulate=False),
-            #TestShape(m=512, k=256, n=512, accumulate=True),
-            #TestShape(m=512, k=256, n=512, accumulate=False),
-        ]
-
-    raise ValueError(shapes_id)
-
-
-# Returns the list of Dynamicity's to use for the collection of shapes
-# identified by shapes_id.
-# just do static for now
-def get_dynamicities(shapes_id: ShapesId):
-    return [
-        Dynamicity.STATIC,
-    ]
 
 
 @dataclasses.dataclass
@@ -202,7 +137,7 @@ def shape_dim(x: int, dynamicity: Dynamicity):
     elif dynamicity == Dynamicity.STATIC:
         return DimSize(x)
     else:
-        raise ValueError(dynamicity)
+        raise ValueError("Mixed dynamicity is not currently supported")
 
 
 # Stringification used for generating MLIR types, e.g. tensor<?x?xf32>.
@@ -232,19 +167,23 @@ class TestInputMatricesShapes:
 
 
 # Helper for generate_function. Generates TestInputMatricesShapes, i.e.
-# converts from the runtime shape dimensions in TestShape and given dynamicity to
+# converts from the runtime shape dimensions in TestShape to
 # the set of shapes to be used in a test function's input tensors.
-def generate_shapes(shape: TestShape, transpose_rhs: bool, dynamicity: Dynamicity):
-    lhs_rows = shape_dim(shape.m, dynamicity)
-    lhs_cols = shape_dim(shape.k, dynamicity)
-    acc_rows = shape_dim(shape.m, dynamicity)
-    acc_cols = shape_dim(shape.n, dynamicity)
+def generate_shapes(shape: TestShape, transpose_rhs: bool):
+    dynamicity = shape.dynamicity
+    m = shape.m
+    k = shape.k
+    n = shape.n
+    lhs_rows = shape_dim(m, dynamicity)
+    lhs_cols = shape_dim(k, dynamicity)
+    acc_rows = shape_dim(m, dynamicity)
+    acc_cols = shape_dim(n, dynamicity)
     if transpose_rhs:
-        rhs_rows = shape_dim(shape.n, dynamicity)
-        rhs_cols = shape_dim(shape.k, dynamicity)
+        rhs_rows = shape_dim(n, dynamicity)
+        rhs_cols = shape_dim(k, dynamicity)
     else:
-        rhs_rows = shape_dim(shape.k, dynamicity)
-        rhs_cols = shape_dim(shape.n, dynamicity)
+        rhs_rows = shape_dim(k, dynamicity)
+        rhs_cols = shape_dim(n, dynamicity)
     shapes = TestInputMatricesShapes(
         lhs_rows=lhs_rows,
         lhs_cols=lhs_cols,
@@ -305,10 +244,9 @@ def generate_function(
     acc_type: MatrixElemTypeId,
     shape: TestShape,
     transpose_rhs: bool,
-    dynamicity: Dynamicity,
     compilation_info: typing.Optional[CompilationInfo] = None,
 ):
-    shapes = generate_shapes(shape, transpose_rhs, dynamicity)
+    shapes = generate_shapes(shape, transpose_rhs)
     func_name = generate_function_name(
         lhs_rhs_type, acc_type, shapes, shape.accumulate, compilation_info
     )
@@ -450,7 +388,7 @@ def generate_call(
     lhs_rhs_type: MatrixElemTypeId,
     acc_type: MatrixElemTypeId,
     shape: TestShape,
-    transpose_rhs: bool=False,
+    transpose_rhs: bool = False,
 ):
     global call_id
     func_name = f"{function.name}_{shape.m}_{shape.k}_{shape.n}"
@@ -512,7 +450,7 @@ def generate_call(
 def generate(
     lhs_rhs_type: MatrixElemTypeId,
     acc_type: MatrixElemTypeId,
-    shapes_id: ShapesId,
+    shapes: typing.List[TestShape],
     transpose_rhs: bool,
     compilation_info_id: CompilationInfoId,
 ):
@@ -522,34 +460,31 @@ def generate(
     for compilation_info in get_test_compilation_infos(
         compilation_info_id, lhs_rhs_type
     ):
-        for shape in get_test_shapes(shapes_id):
-            for dynamicity in get_dynamicities(shapes_id):
-                function = generate_function(
-                    lhs_rhs_type,
-                    acc_type,
-                    shape,
-                    transpose_rhs,
-                    dynamicity,
-                    compilation_info,
-                )
-                # Different testcases may differ only by runtime parameters but
-                # share the same code. For example, dynamic-shapes testcases
-                # share the same code involing tensor<?x?xf32> even though the runtime
-                # value in the trace are different. That's why we append conditionally
-                # to calls, but unconditionally to function_definitions.
-                if function.name not in functions:
-                    functions[function.name] = function
-                calls.append(
-                    generate_call(
-                        function, lhs_rhs_type, acc_type, shape, transpose_rhs
-                    )
-                )
+        for shape in shapes:
+            function = generate_function(
+                lhs_rhs_type,
+                acc_type,
+                shape,
+                transpose_rhs,
+                compilation_info,
+            )
+            # Different testcases may differ only by runtime parameters but
+            # share the same code. For example, dynamic-shapes testcases
+            # share the same code involing tensor<?x?xf32> even though the runtime
+            # value in the trace are different. That's why we append conditionally
+            # to calls, but unconditionally to function_definitions.
+            if function.name not in functions:
+                functions[function.name] = function
+            calls.append(
+                generate_call(function, lhs_rhs_type, acc_type, shape, transpose_rhs)
+            )
 
     return (functions, calls)
 
 
 def parse_arguments():
     parser = argparse.ArgumentParser(description="Generator of e2e matmul tests")
+
     parser.add_argument(
         "--output_matmuls_mlir",
         type=str,
@@ -569,6 +504,7 @@ def parse_arguments():
         help="Numeric type of input matrices",
         required=True,
     )
+
     parser.add_argument(
         "--acc_type",
         type=str,
@@ -578,12 +514,39 @@ def parse_arguments():
         required=False,
     )
     parser.add_argument(
-        "--shapes",
+        "--m",
         type=str,
-        choices=[s.value for s in ShapesId],
-        help="Collection of matrix shapes to test",
+        help="Number of rows in the lhs and acc matrices. Expected comma separated values if multiple test cases, example: 4,6,8",
         required=True,
     )
+    parser.add_argument(
+        "--n",
+        type=str,
+        help="Number of columns in the rhs and acc matrices. Expected comma separated values if multiple test cases, example: 4,6,8",
+        required=True,
+    )
+    parser.add_argument(
+        "--k",
+        type=str,
+        help="Number of columns in the lhs and rows in the rhs matrices. Expected comma separated values if multiple test cases, example: 4,6,8",
+        required=True,
+    )
+
+    parser.add_argument(
+        "--accumulate",
+        type=str,
+        help="Whether to accumulate the result. Expected comma separated values if multiple test cases, example: true,false",
+        required=True,
+    )
+
+    parser.add_argument(
+        "--dynamicity",
+        type=str,
+        choices=["static", "dynamic", "mixed"],
+        required=True,
+        help="Dynamicity of the input matrices. Expected comma separated values if multiple test cases, example: static,dynamic,mixed",
+    )
+
     parser.add_argument(
         "--transpose_rhs",
         action="store_true",
@@ -651,26 +614,64 @@ def write_calls_file(functions, calls, filename, requirements):
         file.write(module_definition)
 
 
-# For now, the accumulator type can always be inferred from the input LHS/RHS
-# type, so we do that. That is temporary: eventually there will be cases
-# where the same input types are used with different accumulator types, e.g.
-# f16 inputs with both f16 and f32 accumulator.
-def infer_acc_type(lhs_rhs_type: MatrixElemTypeId, acc_type: MatrixElemTypeId):
-    if acc_type != MatrixElemTypeId.NONE:
-        return acc_type
-    if lhs_rhs_type == MatrixElemTypeId.I8:
-        return MatrixElemTypeId.I32
-    return lhs_rhs_type
+def intsFromCommaSeperated(s):
+    return [int(x) for x in s.split(",")]
 
+def stringsFromCommaSeperated(s):
+    return s.split(",")
+
+def boolFromString(s):
+    return not s.lower() in ["false", "0", ""]
 
 def main(args):
     lhs_rhs_type = MatrixElemTypeId(args.lhs_rhs_type)
     acc_type = MatrixElemTypeId(args.acc_type)
-    acc_type = infer_acc_type(lhs_rhs_type, acc_type)
-    shapes_id = ShapesId(args.shapes)
+
+    m = intsFromCommaSeperated(args.m)
+    n = intsFromCommaSeperated(args.n)
+    k = intsFromCommaSeperated(args.k)
+
+    dynamicity = stringsFromCommaSeperated(args.dynamicity)
+    dynamicity = [Dynamicity(x) for x in dynamicity]
+
+    accumulate = stringsFromCommaSeperated(args.accumulate)
+    accumulate  = [boolFromString(x) for x in accumulate]
+
+    for a in accumulate:
+        if a:
+            raise ValueError(
+                "accumulate=true not yet supported in iree-amd-aie tests"
+            )
+
+    sizes = [len(m), len(n), len(k), len(dynamicity), len(accumulate)]
+    maxSize = max(sizes)
+    if not all(x == 1 or x == maxSize for x in sizes):
+        raise ValueError(
+            f"Sizes of m, n, k, dynamicity, and accumulate must match or be 1. "
+            f"Sizes are: m={len(m)}, n={len(n)}, k={len(k)}, "
+            f"dynamicity={len(dynamicity)}, accumulate={len(accumulate)}"
+        )
+
+
+
+    shapes = []
+    for i in range(maxSize):
+        m_i = m[0] if len(m) == 1 else m[i]
+        n_i = n[0] if len(n) == 1 else n[i]
+        k_i = k[0] if len(k) == 1 else k[i]
+        dynamicity_i = dynamicity[0] if len(dynamicity) == 1 else dynamicity[i]
+        accumulate_i = accumulate[0] if len(accumulate) == 1 else accumulate[i]
+        shapes.append(TestShape(m_i, k_i, n_i, accumulate_i, dynamicity_i))
+
+    print(shapes)
+
     compilation_info_id = CompilationInfoId(args.compilation_info)
     (functions, calls) = generate(
-        lhs_rhs_type, acc_type, shapes_id, args.transpose_rhs, compilation_info_id
+        lhs_rhs_type,
+        acc_type,
+        shapes,
+        args.transpose_rhs,
+        compilation_info_id,
     )
 
     write_code_file(functions, args.output_matmuls_mlir)
