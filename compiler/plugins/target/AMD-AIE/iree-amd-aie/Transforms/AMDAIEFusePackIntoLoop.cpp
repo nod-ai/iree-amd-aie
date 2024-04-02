@@ -59,7 +59,7 @@ void AMDAIEFusePackIntoLoopPass::runOnOperation() {
   func::FuncOp funcOp = getOperation();
   IRRewriter rewriter(context);
 
-  // Walk through the graph in post order and find the for loop.
+  // Walk through the graph in post order and find the loop.
   Operation *scfLoopOp = nullptr;
   funcOp->walk<WalkOrder::PostOrder, ReverseIterator>(
       [&](LoopLikeOpInterface op) {
@@ -78,14 +78,28 @@ void AMDAIEFusePackIntoLoopPass::runOnOperation() {
     return;
   }
 
+  if (fusePackDepth < 1) {
+    funcOp->emitOpError("Invalid depth of pack ops for fusion.");
+    return signalPassFailure();
+  }
+
   // Based on the `fusePackDepth`, we would continue to greedily fuse the
   // producer tensor.pack ops.
   LoopLikeOpInterface loops = cast<LoopLikeOpInterface>(scfLoopOp);
   for (unsigned depth = 1; depth <= fusePackDepth; depth++) {
-    // Search the compute op and its producer slices within the For loop.
+    // Search the compute op and its producer slices.
     BlockArgument bbArg = loops.getRegionIterArgs()[0];
     SmallVector<tensor::ExtractSliceOp> sliceOps;
-    for (auto user : bbArg.getUsers()) {
+    SmallVector<Operation *> allUsers(bbArg.getUsers().begin(),
+                                      bbArg.getUsers().end());
+    while (!allUsers.empty()) {
+      auto user = allUsers.pop_back_val();
+      if (isa<tensor::ExtractSliceOp>(user)) {
+        allUsers.insert(allUsers.begin(), user->getUsers().begin(),
+                        user->getUsers().end());
+        continue;
+      }
+
       if (auto genericOp = dyn_cast<linalg::GenericOp>(user)) {
         for (auto [index, operand] : llvm::enumerate(genericOp.getOperands())) {
           FailureOr<tensor::ExtractSliceOp> sliceOp =
