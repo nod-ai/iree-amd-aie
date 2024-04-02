@@ -516,26 +516,26 @@ def parse_arguments():
     parser.add_argument(
         "--m",
         type=str,
-        help="Number of rows in the lhs and acc matrices",
+        help="Number of rows in the lhs and acc matrices. Expected comma separated values if multiple test cases, example: 4,6,8",
         required=True,
     )
     parser.add_argument(
         "--n",
         type=str,
-        help="Number of columns in the rhs and acc matrices",
+        help="Number of columns in the rhs and acc matrices. Expected comma separated values if multiple test cases, example: 4,6,8",
         required=True,
     )
     parser.add_argument(
         "--k",
         type=str,
-        help="Number of columns in the lhs and rows in the rhs matrices",
+        help="Number of columns in the lhs and rows in the rhs matrices. Expected comma separated values if multiple test cases, example: 4,6,8",
         required=True,
     )
 
     parser.add_argument(
         "--accumulate",
         type=str,
-        help="Whether to accumulate the result",
+        help="Whether to accumulate the result. Expected comma separated values if multiple test cases, example: true,false",
         required=True,
     )
 
@@ -544,7 +544,7 @@ def parse_arguments():
         type=str,
         choices=["static", "dynamic", "mixed"],
         required=True,
-        help="Dynamicity of the input matrices",
+        help="Dynamicity of the input matrices. Expected comma separated values if multiple test cases, example: static,dynamic,mixed",
     )
 
     parser.add_argument(

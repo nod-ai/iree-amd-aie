@@ -175,24 +175,42 @@ cd ${OUTPUT_DIR}
 function run_matmul_test() {
 
 
-  # Options without defaults:
+  # Options without defaults
+  # ========================
   local lhs_rhs_type=""
   local acc_type=""
   local m=""
   local n=""
   local k=""
 
-  # Options with defaults:
+  # Options with defaults
+  # =====================
+  # name_prefix: A prefix for the name of the test. The full test name will be
+  # extended with m,n,k if they are unique.
   local name_prefix="noprefix"
+
   local target_backend="amd-aie"
+
   local device="xrt"
+
   local peano_install_path="${PEANO}"
+
   local mlir_aie_install_path="${MLIR_AIE_INSTALL}"
+
   local vitis_path="${VITIS}"
+
   local pipeline="pad-pack"
+
+  # By default, the m,n,k provided are used, and there are no dynamic tensor
+  # dimensions.
   local dynamicity="static"
+
   local accumulate="false"
+
+  # By default we do not expect a compilation failure.
   local expect_compile_failure="0"
+
+  # By default we want to compile and run the numerical test.
   local compile_only="0"
 
   while [ "$#" -gt 0 ]; do
@@ -263,19 +281,22 @@ function run_matmul_test() {
         ;;
       *)
         echo "Unknown option: $1"
-        return 1
+        exit 1
         ;;
     esac
   done
 
   set -x
 
-  # Generate a name for the test based on the m,n,k parameters, but only 
+  # Generate a name for the test based on the m,n,k parameters, but only
   # if this test only has 1 set of m,n,k parameters. If there are multiple
   # sets of m,n,k parameters, then just use name_prefix provided
   # This is to prevent very long names when the number of m,n,k parameters
   # is large.
+  # Generate a name, assuming m, n, k are just single integers:
   name="mm_${name_prefix}_${lhs_rhs_type}_${acc_type}_m${m}_n${n}_k${k}"
+  # If m, n, or k was not just an integer but a sequence of integers, then
+  # just just use the name_prefix.
   if [ $(echo $name | grep -q ',') ] || [ $(echo $name | grep -q ' ') ]; then
     name="mm_${name_prefix}"
   fi
@@ -300,7 +321,7 @@ function run_matmul_test() {
       --n=${n} \
       --k=${k} \
       --dynamicity=${dynamicity} \
-      --accumulate=${accumulate} 
+      --accumulate=${accumulate}
 
 
   ## Disable exit on failure:
@@ -319,10 +340,10 @@ function run_matmul_test() {
 
   compileResult=$?
 
-  # If you expect a failure, and got a failure, exit with 0
-  # If you expect a failure, and got a success, exit with 1
-  # If you expect a success, and got a failure, exit with 1
-  # If you expect a success, and got a success, continue.
+  # If expect a failure, and get a failure, exit with 0
+  # If expect a failure, and got a success, exit with 1
+  # If expect a success, and got a failure, exit with 1
+  # If expect a success, and got a success, continue.
   if [ $expect_compile_failure -ne 0 ]; then
     if [ $compileResult -ne 0 ]; then
       echo "Expected compile failure, got compile failure."
@@ -436,8 +457,8 @@ run_matmul_test \
     --expect-compile-failure "0" \
     --compile-only "0"
 
-# An example of a matmul which we don't currently support, and which fails in 
-# compilation. We should support this (and all!) matmul. 
+# An example of a matmul which we don't currently support, and which fails in
+# compilation. We should support this (and all!) matmul.
 run_matmul_test \
    --name_prefix "failure_0" \
    --lhs_rhs_type "i32" \
@@ -446,10 +467,10 @@ run_matmul_test \
    --expect-compile-failure "1"
 
 
-# Example of a run with a group of 2+ matmuls. Currently this test is passed 
-# the flag '--compile-only' as there is currently an issue with the runtime if 
-# multiple matmuls are run in the same test. TODO(newling/nmeshram): Document 
-# this issue. 
+# Example of a run with a group of 2+ matmuls. Currently this test is passed
+# the flag '--compile-only' as there is currently an issue with the runtime if
+# multiple matmuls are run in the same test. TODO(newling/nmeshram): Document
+# this issue.
 run_matmul_test \
     --name_prefix "small" \
     --lhs_rhs_type "i32" \
