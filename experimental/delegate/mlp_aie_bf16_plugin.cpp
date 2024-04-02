@@ -286,9 +286,15 @@ int setupNPUAccelerator() {
 int aie_matmul(Params *params) {
     std::cout << "[AIE Delegate]: Computing AIE matmul of " << params->getShapeStr() << std::endl;
     int cnt = 0;
-
-    // quantize and copy weights to XRT BO
     auto xrtState = XrtState::getInstance();
+
+#ifdef USE_OPT_KERNEL
+    A_DATATYPE *bufA = xrtState->boA.map<A_DATATYPE *>();
+    std::memcpy(bufA, params->lhs.data + params->lhs.offset, aSize);
+    B_DATATYPE *bufB = xrtState->boB.map<B_DATATYPE *>();
+    std::memcpy(bufB, params->rhs.data + params->rhs.offset, bSize);
+#else
+    // quantize and copy weights to XRT BO
     A_DATATYPE *bufA = xrtState->boA.map<A_DATATYPE *>();
     // std::cout << "Input A" << std::endl;
     for (int i = 0; i < M; i++) {
@@ -310,9 +316,12 @@ int aie_matmul(Params *params) {
         for (int j = 0; j < N; j++)
             *(bufB + i * N + j) = toBfloat16(params->rhs.getElement(i, j, N));
 
+    // TODO: copy f32 result to bf16 XRT BO
+#endif
+
     // copy output to XRT BO
     C_DATATYPE *bufC = xrtState->boC.map<C_DATATYPE *>();
-    std::memcpy(bufC, params->result.data + params->result.offset, (M * N * sizeof(C_DATATYPE)));
+    std::memcpy(bufC, params->result.data + params->result.offset, cSize);
 
     // sync buffers to NPU device
     xrtState->boA.sync(XCL_BO_SYNC_BO_TO_DEVICE);
@@ -325,8 +334,10 @@ int aie_matmul(Params *params) {
 
     // sync output to host
     xrtState->boC.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
-    // std::memcpy(params->result.getDest(), bufC, (M * N * sizeof(float)));
 
+#ifdef USE_OPT_KERNEL
+    std::memcpy(params->result.getDest(), bufC, cSize);
+#else
     // std::cout << "Result" << std::endl;
     for (int i = 0; i < M; i++) {
         // std::cout << '[';
@@ -338,6 +349,7 @@ int aie_matmul(Params *params) {
         }
         // std::cout << "]," << std::endl;
     }
+#endif
 
     return 0;  // TODO: check for and handle error conditions
 }
