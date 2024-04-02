@@ -354,9 +354,16 @@ static iree_status_t iree_hal_xrt_direct_command_buffer_dispatch(
                   command_buffer->descriptor_sets[i].lengths[j],
                   command_buffer->descriptor_sets[i].offsets[j]);
 
-      if (j == binding_count - 1) {
-        arg_buffer.sync(XCL_BO_SYNC_BO_TO_DEVICE);
-      }
+     // The 'band-aid' :
+     // 
+     // Running with this resulted in 10'000 successful runs in CI:
+     // see https://github.com/nod-ai/iree-amd-aie/actions/runs/8513126883/job/23316286103?pr=259
+     //
+     // I have commented it out to see what happens without the band-aid. 
+     //
+     //  if (j == binding_count - 1) {
+     //    arg_buffer.sync(XCL_BO_SYNC_BO_TO_DEVICE);
+     //  }
 
       run.set_arg(arg_index + base_index + j, arg_buffer);
     }
