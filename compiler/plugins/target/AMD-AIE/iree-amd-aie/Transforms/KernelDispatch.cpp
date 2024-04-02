@@ -291,6 +291,50 @@ static LogicalResult setTransposeLikeOpRootConfig(
   return linalgOp.emitOpError("unhandled pass pipeline");
 }
 
+static LogicalResult setElementwiseGenericOpRootConfig(
+    func::FuncOp entryPointFn, linalg::GenericOp genericOp,
+    AIEPassPipeline usePassPipeline, AIEConfig cfg) {
+  unsigned numLoops = genericOp.getNumLoops();
+  if (numLoops == 0)
+    return failure();
+  if (!linalg::isElementwise(genericOp))
+    return failure();
+
+  // ------------------------------------------------------
+  // -------------- Set lowering config -------------------
+  // ------------------------------------------------------
+  // TODO(avarma): Currently, the following assumes the cases :-
+  //               1. ALL input element type == ALL output element types.
+  //               2. The op only has outputs and all of their element types are same.
+  auto outType =
+      llvm::cast<ShapedType>(genericOp.getDpsInitOperand(0)->get().getType());
+  auto outShape = outType.getShape();
+
+  FailureOr<unsigned> maybeTilingScaleFactor =
+      getTilingScaleFactor(outType.getElementType());
+  if (failed(maybeTilingScaleFactor)) {
+    return genericOp.emitOpError("expected bitwidth 64/32/16/8");
+  }
+  unsigned tilingScaleFactor = maybeTilingScaleFactor.value();
+  // TODO (nmeshram) : We should be able to use fixed tiling config after we
+  // have padding support.
+  auto tile0 = findLargestFactor((int)outShape[0], 1024 * tilingScaleFactor * tilingScaleFactor);
+  auto tile1 = findLargestFactor((int)tile0, 256 * tilingScaleFactor * tilingScaleFactor);
+  SmallVector<int64_t> TileSizeLevel0 = {tile0};
+  SmallVector<int64_t> TileSizeLevel1 = {0};
+  SmallVector<int64_t> TileSizeLevel2 = {tile1};
+  SmallVector<int64_t> TileSizeLevel3 = {0};
+  TileSizesListType tileSizes = {TileSizeLevel0, TileSizeLevel1, TileSizeLevel2,
+                                 TileSizeLevel3};
+
+  if (failed(setOpConfigAndEntryPointFnTranslation(
+          entryPointFn, genericOp, tileSizes,
+          IREE::Codegen::DispatchLoweringPassPipeline::None))) {
+    return failure();
+  }
+  return success();
+}
+
 static LogicalResult setRootConfig(func::FuncOp entryPointFn,
                                    linalg::GenericOp genericOp,
                                    AIEPassPipeline usePassPipeline,
@@ -304,6 +348,10 @@ static LogicalResult setRootConfig(func::FuncOp entryPointFn,
     return success();
   }
 
+  if (succeeded(setElementwiseGenericOpRootConfig(
+          entryPointFn, genericOp, usePassPipeline, cfg))) {
+    return success();
+  }
   return failure();
 }
 
