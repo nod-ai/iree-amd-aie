@@ -173,21 +173,58 @@ cd ${OUTPUT_DIR}
 # Reference for named args: https://tecadmin.net/create-bash-functions-with-arguments/
 
 function run_matmul_test() {
-  local name=""
+
+
+  # Options without defaults
+  # ========================
   local lhs_rhs_type=""
   local acc_type=""
-  local shapes=""
-  local target_backend=""
-  local device=""
-  local peano_install_path=""
-  local mlir_aie_install_path=""
-  local vitis_path=""
-  local pipeline=""
+  local m=""
+  local n=""
+  local k=""
+
+  # Options with defaults
+  # =====================
+  # name_prefix: A prefix for the name of the test. The full test name will be
+  # extended with m,n,k if they are unique.
+  local name_prefix="noprefix"
+
+  local target_backend="amd-aie"
+
+  local device="xrt"
+
+  local peano_install_path="${PEANO}"
+
+  local mlir_aie_install_path="${MLIR_AIE_INSTALL}"
+
+  local vitis_path="${VITIS}"
+
+  local pipeline="pad-pack"
+
+  # By default, the m,n,k provided are used, and there are no dynamic tensor
+  # dimensions.
+  local dynamicity="static"
+
+  local accumulate="false"
+
+  # By default we do not expect a compilation failure.
+  local expect_compile_failure="0"
+
+  # By default we want to compile and run the numerical test.
+  local compile_only="0"
 
   while [ "$#" -gt 0 ]; do
     case "$1" in
-      --name)
-        name="$2"
+      --compile-only)
+        compile_only="$2"
+        shift 2
+        ;;
+      --expect-compile-failure)
+        expect_compile_failure="$2"
+        shift 2
+        ;;
+      --name_prefix)
+        name_prefix="$2"
         shift 2
         ;;
       --lhs_rhs_type)
@@ -196,10 +233,6 @@ function run_matmul_test() {
         ;;
       --acc_type)
         acc_type="$2"
-        shift 2
-        ;;
-      --shapes)
-        shapes="$2"
         shift 2
         ;;
       --target_backend)
@@ -226,26 +259,76 @@ function run_matmul_test() {
         pipeline="$2"
         shift 2
         ;;
+      --dynamicity)
+        dynamicity="$2"
+        shift 2
+        ;;
+      --accumulate)
+        accumulate="$2"
+        shift 2
+        ;;
+      --m)
+        m="$2"
+        shift 2
+        ;;
+      --n)
+        n="$2"
+        shift 2
+        ;;
+      --k)
+        k="$2"
+        shift 2
+        ;;
       *)
         echo "Unknown option: $1"
-        return 1
+        exit 1
         ;;
     esac
   done
 
   set -x
 
+  # Generate a name for the test based on the m,n,k parameters, but only
+  # if this test only has 1 set of m,n,k parameters. If there are multiple
+  # sets of m,n,k parameters, then just use name_prefix provided
+  # This is to prevent very long names when the number of m,n,k parameters
+  # is large.
+  # Generate a name, assuming m, n, k are just single integers:
+  name="mm_${name_prefix}_${lhs_rhs_type}_${acc_type}_m${m}_n${n}_k${k}"
+  # If m, n, or k was not just an integer but a sequence of integers, then
+  # just just use the name_prefix.
+  if [ $(echo $name | grep -q ',') ] || [ $(echo $name | grep -q ' ') ]; then
+    name="mm_${name_prefix}"
+  fi
+  # Confirm that the name does not contain any commas or spaces.
+  if [ $(echo $name | grep -q ',') ] || [ $(echo $name | grep -q ' ') ]; then
+    echo "Name contains a comma or space: '$name'"
+    exit 1
+  fi
+
+  matmul_ir="${OUTPUT_DIR}/${name}_ir.mlir"
+  calls_ir="${OUTPUT_DIR}/${name}_calls.mlir"
+  matmul_vmfb="${OUTPUT_DIR}/${name}.vmfb"
+  calls_vmfb="${OUTPUT_DIR}/${name}_calls.vmfb"
+
   echo "**** Generating .mlir files ****"
   ${IREE_PYTHON3_EXECUTABLE} ${GENERATOR} \
-      --output_matmuls_mlir="${OUTPUT_DIR}/${name}_matmuls.mlir" \
-      --output_calls_mlir="${OUTPUT_DIR}/${name}_calls.mlir" \
+      --output_matmuls_mlir="${matmul_ir}" \
+      --output_calls_mlir="${calls_ir}" \
       --lhs_rhs_type=${lhs_rhs_type} \
       --acc_type=${acc_type} \
-      --shapes=${shapes}
+      --m=${m} \
+      --n=${n} \
+      --k=${k} \
+      --dynamicity=${dynamicity} \
+      --accumulate=${accumulate}
 
-  echo "**** Generating .vmfb files for $pipeline pipeline ****"
-  ${IREE_COMPILE_EXE} \
-      "${OUTPUT_DIR}/${name}_matmuls.mlir" \
+
+  ## Disable exit on failure:
+  set +e
+
+  echo "**** Generating matmul .vmfb file for ${name} ****"
+  ${IREE_COMPILE_EXE} "${matmul_ir}"  \
       --iree-hal-target-backends=${target_backend} \
       --iree-amdaie-use-pipeline=${pipeline} \
       --iree-amd-aie-peano-install-dir=${peano_install_path} \
@@ -253,14 +336,40 @@ function run_matmul_test() {
       --iree-amd-aie-vitis-install-dir=${vitis_path} \
       --iree-hal-dump-executable-files-to=$PWD \
       --iree-amd-aie-show-invoked-commands \
-      -o "${OUTPUT_DIR}/${name}_matmuls.vmfb"
-  ${IREE_COMPILE_EXE} \
-      "${OUTPUT_DIR}/${name}_calls.mlir" \
+      -o "${matmul_vmfb}"
+
+  compileResult=$?
+
+  # If expect a failure, and get a failure, exit with 0
+  # If expect a failure, and got a success, exit with 1
+  # If expect a success, and got a failure, exit with 1
+  # If expect a success, and got a success, continue.
+  if [ $expect_compile_failure -ne 0 ]; then
+    if [ $compileResult -ne 0 ]; then
+      echo "Expected compile failure, got compile failure."
+      return 0
+    else
+      echo "Expected compile failure, got compile success."
+      exit 1
+    fi
+  else
+    if [ $compileResult -ne 0 ]; then
+      echo "Expected compile success, got compile failure."
+      exit 1
+    fi
+  fi
+
+  # Renable exit on failure:
+  set -e
+
+
+  echo "**** Generating calls .vmfb file for ${name} ****"
+  ${IREE_COMPILE_EXE} "${calls_ir}" \
       --iree-hal-target-backends=${target_backend} \
-      -o "${OUTPUT_DIR}/${name}_calls.vmfb"
+      -o "${calls_vmfb}"
 
   # Extract function names from the mlir file
-  function_names=$(grep -oP '@\K\S+(?=\()' ${OUTPUT_DIR}/${name}_matmuls.mlir)
+  function_names=$(grep -oP '@\K\S+(?=\()' ${matmul_ir})
 
   # Behavior of <do-signing> depends on if the script for
   # signing xclbins is found:
@@ -271,7 +380,6 @@ function run_matmul_test() {
   # 1              | no                              | Error
   # 0              | no/yes                          | Skip signing
   # -------------- | ------------------------------- | -------------
-
 
   if [ $DO_SIGNING -eq 0 ]; then
     echo "**** Skipping XCLBIN signing: DO_SIGNING set to 0 ****"
@@ -300,9 +408,15 @@ function run_matmul_test() {
   echo "**** Running '${name}' matmul tests ****"
 
   COMMAND="${TEST_RUNNER} \
-      --module=${OUTPUT_DIR}/${name}_matmuls.vmfb \
-      --module=${OUTPUT_DIR}/${name}_calls.vmfb \
+      --module=${matmul_vmfb} \
+      --module=${calls_vmfb} \
       --device=${device}"
+
+  # If compile only, exit with success:
+  if [ $compile_only -ne "0" ]; then
+    echo "Compile only flag is ${compile_only} which is not 0, skipping execution"
+    return 0
+  fi
 
   echo "Running command: ${COMMAND}"
 
@@ -317,38 +431,88 @@ function run_matmul_test() {
 # Run a few tests                                                             #
 ###############################################################################
 
+# Notes:
+# 1. Be conservative in adding more shapes, as that can increase both the
+#    build and execution latency of tests. The build latency is nearly the
+#    same for all shapes, while execution latency grows cubicly i.e.
+#    linearly with m*k*n.
+#
+
+# Example of a run without any defaults arguments.
 run_matmul_test \
-    --name "matmul_bf16_bf16_large_amd-aie_xrt_pad-pack" \
+    --name_prefix "test1" \
     --lhs_rhs_type "bf16" \
     --acc_type "f32" \
-    --shapes "large_legacy" \
     --target_backend "amd-aie" \
     --device "xrt" \
     --peano_install_path "${PEANO}" \
     --mlir_aie_install_path "${MLIR_AIE_INSTALL}" \
     --vitis_path  "${VITIS}" \
-    --pipeline "pad-pack"
+    --pipeline "pad-pack" \
+    --m "64" \
+    --n "64" \
+    --k "64" \
+    --dynamicity "static" \
+    --accumulate "false" \
+    --expect-compile-failure "0" \
+    --compile-only "0"
 
+# An example of a matmul which we don't currently support, and which fails in
+# compilation. We should support this (and all!) matmul.
 run_matmul_test \
-    --name "matmul_i32_i32_small_amd-aie_xrt_pad-pack" \
+   --name_prefix "failure_0" \
+   --lhs_rhs_type "i32" \
+   --acc_type "i32" \
+   --m "1"  --n "1" --k "1000" \
+   --expect-compile-failure "1"
+
+
+# Example of a run with a group of 2+ matmuls. Currently this test is passed
+# the flag '--compile-only' as there is currently an issue with the runtime if
+# multiple matmuls are run in the same test. TODO(newling/nmeshram): Document
+# this issue.
+run_matmul_test \
+    --name_prefix "small" \
     --lhs_rhs_type "i32" \
     --acc_type "i32" \
-    --shapes "small" \
-    --target_backend "amd-aie" \
-    --device "xrt" \
-    --peano_install_path "${PEANO}" \
-    --mlir_aie_install_path "${MLIR_AIE_INSTALL}" \
-    --vitis_path  "${VITIS}" \
-    --pipeline "pad-pack"
+    --m "512,8,16,52,7" \
+    --n "512,32,16,52,15" \
+    --k "256,16,8,63,9" \
+    --compile-only "1"
 
 run_matmul_test \
-    --name "matmul_i32_i32_large_amd-aie_xrt_pad-pack" \
+    --name_prefix "small_test3" \
     --lhs_rhs_type "i32" \
     --acc_type "i32" \
-    --shapes "large" \
-    --target_backend "amd-aie" \
-    --device "xrt" \
-    --peano_install_path "${PEANO}" \
-    --mlir_aie_install_path "${MLIR_AIE_INSTALL}" \
-    --vitis_path  "${VITIS}" \
-    --pipeline "pad-pack"
+    --m "16"  --n "16" --k "8"
+
+run_matmul_test \
+    --name_prefix "small_test2" \
+    --lhs_rhs_type "i32" \
+    --acc_type "i32" \
+    --m "8"  --n "32" --k "16"
+
+run_matmul_test \
+    --name_prefix "small_test4" \
+    --lhs_rhs_type "i32" \
+    --acc_type "i32" \
+    --m "52"  --n "52" --k "63"
+
+run_matmul_test \
+    --name_prefix "small_test5" \
+    --lhs_rhs_type "i32" \
+    --acc_type "i32" \
+    --m "9"  --n "7" --k "16"
+
+run_matmul_test \
+    --name_prefix "large_test6" \
+    --lhs_rhs_type "i32" \
+    --acc_type "i32" \
+    --m "64"  --n "64" --k "128"
+
+run_matmul_test \
+    --name_prefix "large_test7" \
+    --lhs_rhs_type "i32" \
+    --acc_type "i32" \
+    --m "512"  --n "512" --k "512"
+
