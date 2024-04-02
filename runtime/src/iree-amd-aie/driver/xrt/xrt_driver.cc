@@ -86,7 +86,12 @@ iree_status_t iree_hal_xrt_driver_create_internal(
       (char*)driver + iree_sizeof_struct(*driver));
   driver->device_params = *device_params;
 
-  int device_count = xrt::system::enumerate_devices();
+  int device_count = 0;
+  try {
+    device_count = xrt::system::enumerate_devices();
+  } catch (std::runtime_error &e) {
+    return iree_make_status(IREE_STATUS_INTERNAL, "XRT error: %s", e.what());
+  }
   if (IREE_UNLIKELY(device_count == 0)) {
     return iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
                             "No XRT devices found");

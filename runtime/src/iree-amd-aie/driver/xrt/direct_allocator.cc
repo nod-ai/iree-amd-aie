@@ -140,6 +140,9 @@ iree_hal_xrt_allocator_query_buffer_compatibility(
   return compatibility;
 }
 
+extern int magic_group_id[3];
+static int id = 0;
+
 static iree_status_t iree_hal_xrt_allocator_allocate_buffer(
     iree_hal_allocator_t* IREE_RESTRICT base_allocator,
     const iree_hal_buffer_params_t* IREE_RESTRICT params,
@@ -167,10 +170,11 @@ static iree_status_t iree_hal_xrt_allocator_allocate_buffer(
   // reasons and it is what is used by XRT to identify that we want to allocate
   // in the DDR RAM. Also, group_id is not of relavence in this use case so we
   // set it to 0.
-  int group_id = 0;
+  int group_id = magic_group_id[id++ % 3];
   std::unique_ptr<xrt::bo> xrt_buffer;
 
   try {
+  fprintf(stderr, "bo %d\n", group_id);
     xrt_buffer = std::make_unique<xrt::bo>(allocator->device, allocation_size,
                                            XRT_BO_FLAGS_HOST_ONLY, group_id);
   } catch (...) {

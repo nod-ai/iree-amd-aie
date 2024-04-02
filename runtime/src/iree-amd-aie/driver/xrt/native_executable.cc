@@ -97,6 +97,8 @@ static iree_status_t iree_amd_aie_hal_xrt_native_executable_flatbuffer_verify(
   return iree_ok_status();
 }
 
+int magic_group_id[3] = {0, 0};
+
 iree_status_t iree_hal_xrt_native_executable_create(
     xrt::device device, const iree_hal_executable_params_t* executable_params,
     iree_allocator_t host_allocator, iree_hal_executable_t** out_executable) {
@@ -164,7 +166,9 @@ iree_status_t iree_hal_xrt_native_executable_create(
                             e.what());
   }
   device.register_xclbin(xclbin);
-  xrt::hw_context context(device, xclbin.get_uuid());
+  try {
+    xrt::hw_context context(device, xclbin.get_uuid());
+    fprintf(stderr, "ctx\n");
   executable->host_allocator = host_allocator;
   executable->entry_point_count = entry_point_count;
   for (iree_host_size_t i = 0; i < entry_point_count; i++) {
@@ -178,6 +182,15 @@ iree_status_t iree_hal_xrt_native_executable_create(
     std::unique_ptr<xrt::bo> instr;
     try {
       kernel = std::make_unique<xrt::kernel>(context, entry_name);
+      fprintf(stderr, "name:%s\n", entry_name);
+      fprintf(stderr, "gid:%d\n", kernel->group_id(0));
+      fprintf(stderr, "gid:%d\n", kernel->group_id(1));
+      fprintf(stderr, "gid:%d\n", kernel->group_id(2));
+      fprintf(stderr, "gid:%d\n", kernel->group_id(3));
+      fprintf(stderr, "gid:%d\n", kernel->group_id(4));
+      magic_group_id[0] = kernel->group_id(2);
+      magic_group_id[1] = kernel->group_id(3);
+      magic_group_id[2] = kernel->group_id(4);
       // XCL_BO_FLAGS_CACHEABLE is used to indicate that this is an instruction
       // buffer that resides in instr_memory. This buffer is always passed as
       // the first argument to the kernel and we can use the
@@ -233,6 +246,11 @@ iree_status_t iree_hal_xrt_native_executable_create(
     });
   }
   *out_executable = (iree_hal_executable_t*)executable;
+  } catch (std::exception& e) {
+    return iree_make_status(IREE_STATUS_INTERNAL, "XCLBIN load error: %s",
+                            e.what());
+  }
+  
   return iree_ok_status();
 }
 
