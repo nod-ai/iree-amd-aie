@@ -90,10 +90,16 @@ def AMDAIEVectorization :
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEVectorizationPass()";
 }
 
-def AMDAIEFusePackIntoForLoop :
-    Pass<"iree-amdaie-fuse-pack-into-for", "func::FuncOp"> {
-  let summary = "Fuse the pack operations into the for loops.";
-  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEFusePackIntoForLoopPass()";
+def AMDAIEFusePackIntoLoop :
+    Pass<"iree-amdaie-fuse-pack-into-loop", "func::FuncOp"> {
+  let summary = "Fuse the pack operations into the innermost for/forall loop.";
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEFusePackIntoLoopPass()";
+  let options = [
+    Option<"fusePackDepth", "fuse-pack-depth", "int64_t", /*default=*/"1",
+      "Set the depth until which we would keep fusing producer tensor.pack chain">,
+    Option<"useSCFFor", "use-scf-for", "bool", /*default=*/"true",
+      "Set the innermost scf loop type to fuse tensor.pack ops into">
+  ];
 }
 
 def AMDAIELowerExecutableTarget :
