@@ -12,7 +12,7 @@
 # CMakeLists.txt file to always ping a bunch of people.
 
 # Compiler
-/compiler/ @MaheshRavishankar @nirvedhmeshram @yzhang93
+/compiler/ @MaheshRavishankar @nirvedhmeshram @yzhang93 @Abhishek-Varma
 
 # Runtime
 /runtime/ @nirvedhmeshram
