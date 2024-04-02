@@ -162,9 +162,9 @@ void AMDAIETileAndFusePass::runOnOperation() {
     //     continue;
     //   mappingAttrs.push_back(globalMappingAttrs[i++]);
     // }
-    SmallVector<DeviceMappingAttrInterface> mappingAttrs = {gpu::GPUBlockMappingAttr::get(context, gpu::MappingId::DimY),
-                    gpu::GPUBlockMappingAttr::get(context, gpu::MappingId::DimX)};
-    options.setMapping(mappingAttrs);
+    // SmallVector<DeviceMappingAttrInterface> mappingAttrs = {gpu::GPUBlockMappingAttr::get(context, gpu::MappingId::DimY),
+    //                 gpu::GPUBlockMappingAttr::get(context, gpu::MappingId::DimX)};
+    // options.setMapping(mappingAttrs);
   }
 
   if (!useSCFFor) {
