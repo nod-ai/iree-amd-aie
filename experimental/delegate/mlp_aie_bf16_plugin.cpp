@@ -350,7 +350,6 @@ int aie_matmul(Params *params) {
         // std::cout << "]," << std::endl;
     }
 #endif
-
     return 0;  // TODO: check for and handle error conditions
 }
 
