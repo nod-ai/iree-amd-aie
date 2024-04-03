@@ -29,11 +29,11 @@ def AMDAIEBufferizeToAllocation :
       "Select which operands of a matmul to be bufferized to allocation",
       [{::llvm::cl::values(
         clEnumValN(mlir::iree_compiler::AMDAIE::BufferizeOperand::InputOutput, "input-output",
-                   "Create new allocations for lhs, rhs and output of a matmul."),
+                   "Create new allocations for lhs, rhs and output of a linalg op."),
         clEnumValN(mlir::iree_compiler::AMDAIE::BufferizeOperand::Input, "input",
-                   "Create new allocations for output of a matmul."),
+                   "Create new allocations for lhs, rhs of a linalg op."),
         clEnumValN(mlir::iree_compiler::AMDAIE::BufferizeOperand::Output, "output",
-                   "Create new allocations for lhs, rhs of a matmul."),
+                   "Create new allocations for output of a linalg op."),
         clEnumValN(mlir::iree_compiler::AMDAIE::BufferizeOperand::DefInput, "def-input",
                    "Create new allocations for operands from the input def ops of a matmul.")
     )}]>

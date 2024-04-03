@@ -23,7 +23,7 @@ enum class AIEPassPipeline : int32_t {
 /// Enum for types of loop peeling.
 enum class PeelingType : int32_t { First = 0, Last = 1, FirstLast = 2 };
 
-/// Enum for operands for bufferizing to allocation.
+/// Enum for operands to be bufferized to allocation.
 enum class BufferizeOperand : int32_t {
   InputOutput = 0,
   Input = 1,

@@ -39,26 +39,39 @@ static LogicalResult applyBufferizeToAllocation(RewriterBase &rewriter,
   return success();
 }
 
-static SmallVector<Value> getOperandsFromDefOp(linalg::LinalgOp &linalgOp) {
+/// Utility to get operands from the defining ops of LinalgOp input operands.
+/// For example, we want to promote %pack0 and %pack1 to memory.
+/// %pack0 = tensor.pack % arg0
+/// %pack1 = tensor.pack % arg1
+/// %pack2 = tensor.pack % pack0
+/// %pack3 = tensor.pack % pack1
+/// %generic = linalg.generic ins(%pack2, %pack3)
+static FailureOr<SmallVector<Value>> getOperandsFromDefOp(
+    linalg::LinalgOp &linalgOp) {
   SmallVector<Value> operands;
   for (auto input : linalgOp.getDpsInputs()) {
-    operands.push_back(input.getDefiningOp()->getOperand(0));
+    auto defOp = input.getDefiningOp();
+    if (!defOp || !defOp->getOperand(0)) {
+      return failure();
+    }
+    operands.push_back(defOp->getOperand(0));
   }
   return operands;
 }
 
-// This function is to take certain operands from a matmul op or its defining
-// ops and used for new allocation creation.
+// This function helps to fetch operands of either a LinalgOp or its defining
+// ops, based on which operands the caller wants to bufferize via
+// `bufferizeOperand` parameter.
 static FailureOr<SmallVector<Value>> getOperandsToBufferize(
     BufferizeOperand bufferizeOperand, linalg::LinalgOp &linalgOp) {
   switch (bufferizeOperand) {
     // Create new allocations for Lhs, Rhs and Out.
     case BufferizeOperand::InputOutput:
       return SmallVector<Value>(linalgOp->getOperands());
-    // Create new allocation only for Out.
+    // Create new allocation only for Lhs, Rhs.
     case BufferizeOperand::Input:
       return SmallVector<Value>(linalgOp.getDpsInputs());
-    // Create new allocations only for Lhs, Rhs.
+    // Create new allocations only for Out.
     case BufferizeOperand::Output:
       return SmallVector<Value>(linalgOp.getDpsInits());
     // Create new allocations for operands from the input def ops.
@@ -126,14 +139,14 @@ void AMDAIEBufferizeToAllocationPass::runOnOperation() {
 
   // Find the producer ops for linalg (matmul) op, and bufferizes them in new
   // allocations.
-  FailureOr<SmallVector<Value>> operands =
+  FailureOr<SmallVector<Value>> operandsToBufferize =
       getOperandsToBufferize(bufferizeOperand, linalgOp);
-  if (failed(operands)) {
+  if (failed(operandsToBufferize)) {
     linalgOp->emitOpError("could not fetch operands to bufferize");
     return signalPassFailure();
   }
 
-  for (auto operand : *operands) {
+  for (auto operand : *operandsToBufferize) {
     AMDAIEMemSpaceAttr memorySpaceAttr =
         getMemorySpaceAttr(rewriter, memorySpace);
     rewriter.setInsertionPointAfter(operand.getDefiningOp());
