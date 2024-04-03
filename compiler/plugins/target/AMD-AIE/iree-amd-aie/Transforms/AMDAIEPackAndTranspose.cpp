@@ -57,10 +57,11 @@ void AMDAIEPackAndTransposePass::runOnOperation() {
   MLIRContext *context = &getContext();
   func::FuncOp funcOp = getOperation();
 
+  llvm::outs()<<"DB - 1\n";
   // Find the linalg op for packing, currently only consider contraction ops
   linalg::LinalgOp linalgOp;
   funcOp->walk([&](linalg::LinalgOp op) {
-    if (linalg::isaContractionOpInterface(op)) {
+    if (isa<linalg::LinalgOp>(op)) {
       linalgOp = op;
       return WalkResult::interrupt();
     }
@@ -71,6 +72,7 @@ void AMDAIEPackAndTransposePass::runOnOperation() {
     LLVM_DEBUG(llvm::dbgs() << "----- skip, no linalg op for packing -----\n");
     return;
   }
+  llvm::outs()<<"DB - 2\n";
 
   // Step 1. Before packing the operation, we will prefetch the lowering and
   // packing config.
@@ -81,6 +83,7 @@ void AMDAIEPackAndTransposePass::runOnOperation() {
     funcOp->emitOpError("failed to get pack configs");
     return signalPassFailure();
   }
+  llvm::outs()<<"DB - 3\n";
 
   // Step 2. Pack the operation
   IRRewriter rewriter(context);
@@ -95,6 +98,7 @@ void AMDAIEPackAndTransposePass::runOnOperation() {
   if (failed(packResult)) {
     return signalPassFailure();
   }
+  llvm::outs()<<"DB - 4\n";
 
   // Step 3. Pack Transpose
   SmallVector<tensor::PackOp> packOps = packResult->packOps;
@@ -105,6 +109,7 @@ void AMDAIEPackAndTransposePass::runOnOperation() {
     funcOp->emitOpError("failed to get correct pack and unpack ops");
     return signalPassFailure();
   }
+  llvm::outs()<<"DB - 5\n";
 
   auto packIndices = packCfg.getTransposePackIndices();
   auto unpackArr = packCfg.getUnpackEmpty();
@@ -124,6 +129,7 @@ void AMDAIEPackAndTransposePass::runOnOperation() {
       funcOp->emitOpError("failed to transpose the pack operation ") << index;
       return signalPassFailure();
     }
+  llvm::outs()<<"DB - 6\n";
 
     // Update packed linalg op
     packedOp = packTransResult->transposedLinalgOp;

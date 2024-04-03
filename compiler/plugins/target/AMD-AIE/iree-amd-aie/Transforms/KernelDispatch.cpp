@@ -317,6 +317,41 @@ static LogicalResult setElementwiseGenericOpRootConfig(
           IREE::Codegen::DispatchLoweringPassPipeline::None))) {
     return failure();
   }
+  // ------------------------------------------------------
+  // --------------- Set packing config -------------------
+  // ------------------------------------------------------
+  MLIRContext *context = entryPointFn.getContext();
+  // Pack level => 1.
+  SmallVector<int64_t> packedSizes = {tile0};
+  SmallVector<int64_t> transposePackIndices = {};
+  // There is no corresponding unpack for the specified pack operation
+  // 0 is used when unpack is empty
+  SmallVector<bool> unpackEmpty = {false};
+  SmallVector<SmallVector<int64_t>> innerPerm = {{1, 0}};
+  SmallVector<SmallVector<int64_t>> outerPerm = {{0, 1}};
+  auto packingConfigLevel1Attr = getPackingConfigPackingLevelAttr(
+      context, packedSizes, transposePackIndices, unpackEmpty, innerPerm,
+      outerPerm);
+  // Pack level => 2.
+  // packed size for [M, N, K, m, n, k]
+  packedSizes = {0, 0, 0, 4, 4, 8};
+  // Transpose A tensor from [M K m k m0 k0] to [M K k m m0 k0]
+  transposePackIndices = {0};
+  // Only the third pack operation has a corresponding unpack operation
+  unpackEmpty = {true};
+  innerPerm = {{0, 1}};
+  outerPerm = {{0, 1, 3, 2}};
+  auto packingConfigLevel2Attr = getPackingConfigPackingLevelAttr(
+      context, packedSizes, transposePackIndices, unpackEmpty, innerPerm,
+      outerPerm);
+
+  SmallVector<PackingConfigPackingLevelAttr> packingConfigLevelsVal = {
+      packingConfigLevel1Attr, packingConfigLevel2Attr};
+
+  auto packingConfigLevels =
+      PackingConfigPackingLevelsAttr::get(context, packingConfigLevelsVal);
+  auto config = PackingConfigAttr::get(context, packingConfigLevels);
+  setPackingConfig(genericOp, config);
   return success();
 }
 
