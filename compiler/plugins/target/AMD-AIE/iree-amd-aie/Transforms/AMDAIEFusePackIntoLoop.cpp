@@ -83,31 +83,36 @@ void AMDAIEFusePackIntoLoopPass::runOnOperation() {
     return signalPassFailure();
   }
 
-  // Based on the `fusePackDepth`, we would continue to greedily fuse the
-  // producer tensor.pack ops.
   LoopLikeOpInterface loops = cast<LoopLikeOpInterface>(scfLoopOp);
+  auto loopBody = useSCFFor ? cast<scf::ForOp>(loops).getBody()
+                            : cast<scf::ForallOp>(loops).getBody();
+
+  // Based on the `fusePackDepth`, we would greedily fuse the producer
+  // tensor.pack ops.
   for (unsigned depth = 1; depth <= fusePackDepth; depth++) {
     // Search the compute op and its producer slices.
-    BlockArgument bbArg = loops.getRegionIterArgs()[0];
-    SmallVector<tensor::ExtractSliceOp> sliceOps;
-    SmallVector<Operation *> allUsers(bbArg.getUsers().begin(),
-                                      bbArg.getUsers().end());
-    while (!allUsers.empty()) {
-      auto user = allUsers.pop_back_val();
-      if (isa<tensor::ExtractSliceOp>(user)) {
-        allUsers.insert(allUsers.begin(), user->getUsers().begin(),
-                        user->getUsers().end());
-        continue;
-      }
-
-      if (auto genericOp = dyn_cast<linalg::GenericOp>(user)) {
-        for (auto [index, operand] : llvm::enumerate(genericOp.getOperands())) {
-          FailureOr<tensor::ExtractSliceOp> sliceOp =
-              getTensorExtractSliceDefiningOp(operand);
-          if (!failed(sliceOp)) {
-            sliceOps.push_back(sliceOp.value());
+    linalg::GenericOp genericOp;
+    loopBody->walk<WalkOrder::PostOrder, ReverseIterator>(
+        [&](linalg::LinalgOp op) {
+          if (isa<linalg::GenericOp>(op) &&
+              linalg::isaContractionOpInterface(op)) {
+            genericOp = cast<linalg::GenericOp>(op);
+            return WalkResult::interrupt();
           }
-        }
+          return WalkResult::advance();
+        });
+
+    if (!genericOp) {
+      LLVM_DEBUG(llvm::dbgs() << "----- There is no compute op.-----\n");
+      return;
+    }
+
+    SmallVector<tensor::ExtractSliceOp> sliceOps;
+    for (auto [index, operand] : llvm::enumerate(genericOp.getOperands())) {
+      FailureOr<tensor::ExtractSliceOp> sliceOp =
+          getTensorExtractSliceDefiningOp(operand);
+      if (!failed(sliceOp)) {
+        sliceOps.push_back(sliceOp.value());
       }
     }
 
