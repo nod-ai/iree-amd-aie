@@ -13,7 +13,6 @@ namespace {
 
 namespace mlir::iree_compiler::AMDAIE {
 void registerAIRTransformPasses() {
-  registerAIRDeAliasMemref();
   registerAIRDependency();
   registerAIRDependencyCanonicalize();
   registerAIRDependencyScheduleOpt();
@@ -30,5 +29,6 @@ void registerAIRTransformPasses() {
   registerAIRCollapseHerdPass();
   registerAIRUnrollOuterPerfectlyNestedLoopsPass();
   registerAffineLoopOptPass();
+  registerAIRSplitL2MemrefForBufferConstraintPass();
 }
 }  // namespace mlir::iree_compiler::AMDAIE
