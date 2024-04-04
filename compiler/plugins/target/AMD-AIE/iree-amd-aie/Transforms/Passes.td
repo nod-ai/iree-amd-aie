@@ -26,7 +26,7 @@ def AMDAIEBufferizeToAllocation :
     Option<"bufferizeOperand", "bufferize-operand",
       "mlir::iree_compiler::AMDAIE::BufferizeOperand",
       /*default=*/"mlir::iree_compiler::AMDAIE::BufferizeOperand::InputOutput",
-      "Select which operands of a matmul to be bufferized to allocation",
+      "Select which operands of a linalg op to be bufferized to allocation",
       [{::llvm::cl::values(
         clEnumValN(mlir::iree_compiler::AMDAIE::BufferizeOperand::InputOutput, "input-output",
                    "Create new allocations for lhs, rhs and output of a linalg op."),

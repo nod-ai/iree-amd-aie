@@ -39,8 +39,9 @@ static LogicalResult applyBufferizeToAllocation(RewriterBase &rewriter,
   return success();
 }
 
-/// Utility to get operands from the defining ops of LinalgOp input operands.
-/// For example, we want to promote %pack0 and %pack1 to memory.
+/// Utility to fetch operands from the defining ops of LinalgOp's input
+/// operands. For example, we want to fetch the input operand of %pack0 and
+/// %pack1 as shown in below, and promote them to memory.
 /// %pack0 = tensor.pack % arg0
 /// %pack1 = tensor.pack % arg1
 /// %pack2 = tensor.pack % pack0
@@ -51,9 +52,11 @@ static FailureOr<SmallVector<Value>> getOperandsFromDefOp(
   SmallVector<Value> operands;
   for (auto input : linalgOp.getDpsInputs()) {
     auto defOp = input.getDefiningOp();
-    if (!defOp || !defOp->getOperand(0)) {
+    // The defining op has to be a pack op, fail otherwise.
+    if (!defOp || !isa<tensor::PackOp>(defOp)) {
       return failure();
     }
+    // We only want to fetch the input operand of the pack op.
     operands.push_back(defOp->getOperand(0));
   }
   return operands;
@@ -65,16 +68,16 @@ static FailureOr<SmallVector<Value>> getOperandsFromDefOp(
 static FailureOr<SmallVector<Value>> getOperandsToBufferize(
     BufferizeOperand bufferizeOperand, linalg::LinalgOp &linalgOp) {
   switch (bufferizeOperand) {
-    // Create new allocations for Lhs, Rhs and Out.
+    /// Create new allocations for Lhs, Rhs and Out.
     case BufferizeOperand::InputOutput:
       return SmallVector<Value>(linalgOp->getOperands());
-    // Create new allocation only for Lhs, Rhs.
+    /// Create new allocation only for Lhs, Rhs.
     case BufferizeOperand::Input:
       return SmallVector<Value>(linalgOp.getDpsInputs());
-    // Create new allocations only for Out.
+    /// Create new allocations only for Out.
     case BufferizeOperand::Output:
       return SmallVector<Value>(linalgOp.getDpsInits());
-    // Create new allocations for operands from the input def ops.
+    /// Create new allocations for operands from the input def ops.
     case BufferizeOperand::DefInput:
       return getOperandsFromDefOp(linalgOp);
     default:
