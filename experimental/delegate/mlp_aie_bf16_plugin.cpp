@@ -119,19 +119,6 @@ using ModelRhsDType = float;
 using ModelReturnDType = float;
 #endif
 
-// Explicit number conversion functions, in the absence of C++ compiler support
-
-inline bfloat16_t toBfloat16(float f) {
-    bfloat16_t bf = (bfloat16_t) (((*reinterpret_cast<uint32_t*>(&f))) >> 16);
-    return bf;
-}
-
-inline float fromBfloat16(bfloat16_t b) {
-    uint32_t tmp = uint32_t(b) << 16;
-    float f = *reinterpret_cast<float*>(&tmp);
-    return f;
-}
-
 // Casting functions to automate converting between model and kernel dtypes
 //
 // Using wrapper class to force exact type matching: directly defining
@@ -146,43 +133,51 @@ struct Converter {
 // If the FROM and TO types are the same, no conversion needed.
 template <typename T>
 struct Converter<T, T> {
-    static T convert(const T& value) {
-        return value;
-    }
+  static T convert(T value) {
+    return value;
+  }
 };
 
-// Conversions between float and bfloat16
-
+// float to bfloat16
 template <>
 struct Converter<float, bfloat16_t> {
-    static bfloat16_t convert(const float& value) {
-        return toBfloat16(value);
-    }
+  static bfloat16_t convert(float value) {
+    bfloat16_t bf = (bfloat16_t) (((*reinterpret_cast<uint32_t*>(&value))) >> 16);
+    return bf;
+  }
 };
 
+// bfloat16 to float
 template <>
 struct Converter<bfloat16_t, float> {
-    static float convert(const short& value) {
-        return fromBfloat16(value);
-    }
+  static float convert(bfloat16_t value) {
+    uint32_t tmp = uint32_t(value) << 16;
+    float f = *reinterpret_cast<float*>(&tmp);
+    return f;
+  }
 };
 
 // Copying functions to automate conversions between model and kernel dtypes.
-// If conversion isn't needed, the copy can take advantage of memcpy
 
-// TODO: these need to be reworked to prevent wrong auto-conversion
-
+// General case: copy can be performed if there is a dtype converter between
+// `SrcType` and `DestType`.
 template<typename SrcType, typename DestType>
-inline void copyTensor(DestType *destBuf, const SrcType *srcBuf, std::size_t numElements) {
+struct TensorCopier {
+  static void copy(DestType *destBuf, const SrcType *srcBuf, std::size_t numElements) {
     DestType *pDest = destBuf;
     for (SrcType *pSrc = srcBuf, pEnd = srcBuf + numElements; pSrc != pEnd; ++pSrc)
-        *pDest++ = castNumber<DestType>(*pSrc);
-}
+      *pDest++ = Converter<SrcType, DestType>::convert(*pSrc);
+  }
+};
 
+// If source and destination types are the same, no dtype conversion is needed,
+// and a straight memcpy can be performed.
 template<typename T>
-inline void copyTensor(T *destBuf, const T *srcBuf, std::size_t numElements) {
+struct TensorCopier<T, T> {
+  static void copy(T *destBuf, const T *srcBuf, std::size_t numElements) {
     std::memcpy(destBuf, srcBuf, numElements * sizeof(T));
-}
+  }
+};
 
 // Info about a tensor passed between model and plugin.
 //
@@ -384,13 +379,13 @@ int aie_matmul(Params *params) {
 
     // Copy inputs to kernel input BOs
     A_DATATYPE *bufA = xrtState->boA.map<A_DATATYPE *>();
-    copyTensor(bufA, params->lhs.get(), aVolume);
+    TensorCopier<ModelLhsDType, A_DATATYPE>::copy(bufA, params->lhs.get(), aVolume);
     B_DATATYPE *bufB = xrtState->boB.map<B_DATATYPE *>();
-    copyTensor(bufB, params->rhs.get(), bVolume);
+    TensorCopier<ModelRhsDType, B_DATATYPE>::copy(bufB, params->rhs.get(), bVolume);
 
     // copy output to XRT BO (is this really necessary?)
     C_DATATYPE *bufC = xrtState->boC.map<C_DATATYPE *>();
-    copyTensor(bufC, params->result.get(), cVolume);
+    TensorCopier<ModelReturnDType, C_DATATYPE>::copy(bufC, params->result.get(), cVolume);
 
     // sync buffers to NPU device
     xrtState->boA.sync(XCL_BO_SYNC_BO_TO_DEVICE);
@@ -403,7 +398,7 @@ int aie_matmul(Params *params) {
 
     // sync output to host
     xrtState->boC.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
-    copyTensor(params->result.get(), bufC, cVolume);
+    TensorCopier<C_DATATYPE, ModelReturnDType>::copy(params->result.get(), bufC, cVolume);
 
     return 0;  // TODO: check for and handle error conditions
 }
