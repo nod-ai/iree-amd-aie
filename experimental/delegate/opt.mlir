@@ -35,7 +35,7 @@ module @example attributes {hal.device.targets = [#cpu_target]} {
       linalg.yield %884 : bf16
     } -> tensor<1x8x768xbf16>
     
-    %cst_191 = arith.constant dense<1024.0> : tensor<768xbf16>
+    %cst_191 = arith.constant dense<1.31072e+05> : tensor<768xbf16>
     %69 = linalg.batch_matmul ins(%66, %rhs : tensor<1x8x768xbf16>, tensor<1x768x768xbf16>) outs(%64 : tensor<1x8x768xbf16>) -> tensor<1x8x768xbf16>
     %70 = linalg.generic {indexing_maps = [#map14, #map10, #map11], iterator_types = ["parallel", "parallel", "parallel"]} ins(%cst_191, %69 : tensor<768xbf16>, tensor<1x8x768xbf16>) outs(%44 : tensor<1x8x768xbf16>) {
     ^bb0(%in: bf16, %in_372: bf16, %out: bf16):
