@@ -59,7 +59,7 @@ void AMDAIEFusePackIntoLoopPass::runOnOperation() {
   func::FuncOp funcOp = getOperation();
   IRRewriter rewriter(context);
 
-  // Walk through the graph in post order and find the for loop.
+  // Walk through the graph in post order and find the loop.
   Operation *scfLoopOp = nullptr;
   funcOp->walk<WalkOrder::PostOrder, ReverseIterator>(
       [&](LoopLikeOpInterface op) {
@@ -78,22 +78,41 @@ void AMDAIEFusePackIntoLoopPass::runOnOperation() {
     return;
   }
 
-  // Based on the `fusePackDepth`, we would continue to greedily fuse the
-  // producer tensor.pack ops.
+  if (fusePackDepth < 1) {
+    funcOp->emitOpError("Invalid depth of pack ops for fusion.");
+    return signalPassFailure();
+  }
+
   LoopLikeOpInterface loops = cast<LoopLikeOpInterface>(scfLoopOp);
+  auto loopBody = useSCFFor ? cast<scf::ForOp>(loops).getBody()
+                            : cast<scf::ForallOp>(loops).getBody();
+
+  // Based on the `fusePackDepth`, we would greedily fuse the producer
+  // tensor.pack ops.
   for (unsigned depth = 1; depth <= fusePackDepth; depth++) {
-    // Search the compute op and its producer slices within the For loop.
-    BlockArgument bbArg = loops.getRegionIterArgs()[0];
-    SmallVector<tensor::ExtractSliceOp> sliceOps;
-    for (auto user : bbArg.getUsers()) {
-      if (auto genericOp = dyn_cast<linalg::GenericOp>(user)) {
-        for (auto [index, operand] : llvm::enumerate(genericOp.getOperands())) {
-          FailureOr<tensor::ExtractSliceOp> sliceOp =
-              getTensorExtractSliceDefiningOp(operand);
-          if (!failed(sliceOp)) {
-            sliceOps.push_back(sliceOp.value());
+    // Search the compute op and its producer slices.
+    linalg::GenericOp genericOp;
+    loopBody->walk<WalkOrder::PostOrder, ReverseIterator>(
+        [&](linalg::LinalgOp op) {
+          if (isa<linalg::GenericOp>(op) &&
+              linalg::isaContractionOpInterface(op)) {
+            genericOp = cast<linalg::GenericOp>(op);
+            return WalkResult::interrupt();
           }
-        }
+          return WalkResult::advance();
+        });
+
+    if (!genericOp) {
+      LLVM_DEBUG(llvm::dbgs() << "----- There is no compute op.-----\n");
+      return;
+    }
+
+    SmallVector<tensor::ExtractSliceOp> sliceOps;
+    for (auto [index, operand] : llvm::enumerate(genericOp.getOperands())) {
+      FailureOr<tensor::ExtractSliceOp> sliceOp =
+          getTensorExtractSliceDefiningOp(operand);
+      if (!failed(sliceOp)) {
+        sliceOps.push_back(sliceOp.value());
       }
     }
 
