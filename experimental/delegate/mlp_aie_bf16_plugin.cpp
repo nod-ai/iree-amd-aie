@@ -14,12 +14,14 @@
 #include <stdio.h>
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <fstream>
 #include <iostream>
 #include <sstream>
 #include <string>
+#include <type_traits>
 #include <vector>
 
 #include "xrt/xrt_bo.h"
@@ -29,8 +31,14 @@
 // The only header required from IREE:
 #include "iree/hal/local/executable_plugin.h"
 
+
 // Turn this on to use the 8x768x768 kernel in place of the default ref matmul
 #define USE_OPT_KERNEL 1
+
+// Turn this on to replace the AIE implementation with a simple reference
+// implementation on CPU.
+#define USE_CPU_IMPLEMENTATION 1
+
 
 #ifdef USE_OPT_KERNEL
 #define MLP_M 8
@@ -95,16 +103,100 @@ std::string getLibraryPath() {
 std::string getLibraryPath() { return std::string(); }
 #endif
 
+// Fake bfloat16 type (assuming no C++ 23)
+using bfloat16_t = std::uint16_t;
 
+// Types of the matmul LHS, RHS, and return, as seen by the model
+// (as opposed to the kernel)
+
+#ifdef USE_OPT_KERNEL
+using ModelLhsDType = bfloat16_t;
+using ModelRhsDType = bfloat16_t;
+using ModelReturnDType = bfloat16_t;
+#else
+using ModelLhsDType = float;
+using ModelRhsDType = float;
+using ModelReturnDType = float;
+#endif
+
+// Explicit number conversion functions, in the absence of C++ compiler support
+
+inline bfloat16_t toBfloat16(float f) {
+    bfloat16_t bf = (bfloat16_t) (((*reinterpret_cast<uint32_t*>(&f))) >> 16);
+    return bf;
+}
+
+inline float fromBfloat16(bfloat16_t b) {
+    uint32_t tmp = uint32_t(b) << 16;
+    float f = *reinterpret_cast<float*>(&tmp);
+    return f;
+}
+
+// Casting functions to automate converting between model and kernel dtypes
+//
+// Using wrapper class to force exact type matching: directly defining
+// template functions has a problem of numeric types auto-converting and
+// ending up calling the wrong function.
+
+// Default case: catch unsupported conversions at compile time
+template <typename FROM, typename TO>
+struct Converter {
+};
+
+// If the FROM and TO types are the same, no conversion needed.
+template <typename T>
+struct Converter<T, T> {
+    static T convert(const T& value) {
+        return value;
+    }
+};
+
+// Conversions between float and bfloat16
+
+template <>
+struct Converter<float, bfloat16_t> {
+    static bfloat16_t convert(const float& value) {
+        return toBfloat16(value);
+    }
+};
+
+template <>
+struct Converter<bfloat16_t, float> {
+    static float convert(const short& value) {
+        return fromBfloat16(value);
+    }
+};
+
+// Copying functions to automate conversions between model and kernel dtypes.
+// If conversion isn't needed, the copy can take advantage of memcpy
+
+// TODO: these need to be reworked to prevent wrong auto-conversion
+
+template<typename SrcType, typename DestType>
+inline void copyTensor(DestType *destBuf, const SrcType *srcBuf, std::size_t numElements) {
+    DestType *pDest = destBuf;
+    for (SrcType *pSrc = srcBuf, pEnd = srcBuf + numElements; pSrc != pEnd; ++pSrc)
+        *pDest++ = castNumber<DestType>(*pSrc);
+}
+
+template<typename T>
+inline void copyTensor(T *destBuf, const T *srcBuf, std::size_t numElements) {
+    std::memcpy(destBuf, srcBuf, numElements * sizeof(T));
+}
+
+// Info about a tensor passed between model and plugin.
+//
+// The layout of this struct must match the calling convention for the plugin.
+template <typename T>
 struct TensorData {
-  float* data;
+  T* data;
   size_t offset;
 
   size_t getIndex(size_t i, size_t j, size_t stride) const {
     return offset + i * stride + j;
   }
 
-  float getElement(size_t i, size_t j, size_t stride) const {
+  T getElement(size_t i, size_t j, size_t stride) const {
     return data[getIndex(i,j, stride)];
   }
 
@@ -112,9 +204,18 @@ struct TensorData {
     data[getIndex(i,j, stride)] = val;
   }
 
-  // Return a pointer to the first element to write to
-  float *getDest() {
+  T *get() {
     return data + offset;
+  }
+
+  const T *get() const {
+    return data + offset;
+  }
+
+  void dumpVals(std::ostream &os, std::size_t numElements) const {
+    for (const T *p = get(), *pEnd = get() + numElements; p != pEnd; ++p)
+      os << *p << ':' << Converter<T, float>::convert(*p) << ' ';
+    std::cout << std::endl;
   }
 
   std::ostream &dump(std::ostream &os) const {
@@ -127,10 +228,13 @@ struct TensorData {
 };
 
 
+// Set of all arguments passed from model to plugin
+//
+// The layout of this struct must match the calling convention for the plugin.
 struct Params {
-  const TensorData lhs;
-  const TensorData rhs;
-  TensorData result;
+  const TensorData<ModelLhsDType> lhs;
+  const TensorData<ModelRhsDType> rhs;
+  TensorData<ModelReturnDType> result;
   int32_t M;
   int32_t N;
   int32_t K;
@@ -169,6 +273,8 @@ std::vector<uint32_t> loadInstrSequence(std::string instr_path) {
     return instrV;
 }
 
+// Holder of AIE hardware resources of which there should be only one of each.
+// This class is used as a singleton via `getInstance()`.
 struct XrtState {
     xrt::device device;
     xrt::kernel kernel;
@@ -198,9 +304,8 @@ constexpr int aVolume = M * K;
 constexpr int bVolume = K * N;
 constexpr int cVolume = M * N;
 
-using bfloat16_t = uint16_t;
-using A_DATATYPE = bfloat16_t; // std::bfloat16_t;
-using B_DATATYPE = bfloat16_t; // std::bfloat16_t;
+using A_DATATYPE = bfloat16_t;
+using B_DATATYPE = bfloat16_t;
 using C_DATATYPE = bfloat16_t;
 
 constexpr int aSize = (aVolume * sizeof(A_DATATYPE));
@@ -211,17 +316,6 @@ bool aie_setup = false;
 int instrSize = 0;
 int aie_matmuls_done = 0;
 int matmuls_done = 0;
-
-inline bfloat16_t toBfloat16(float f) {
-    bfloat16_t bf = (bfloat16_t) (((*reinterpret_cast<uint32_t*>(&f))) >> 16);
-    return bf;
-}
-
-inline float fromBfloat16(bfloat16_t b) {
-    uint32_t tmp = uint32_t(b) << 16;
-    float f = *reinterpret_cast<float*>(&tmp);
-    return f;
-}
 
 int setupNPUAccelerator() {
     std::string libPath = getLibraryPath();
@@ -288,40 +382,15 @@ int aie_matmul(Params *params) {
     int cnt = 0;
     auto xrtState = XrtState::getInstance();
 
-#ifdef USE_OPT_KERNEL
+    // Copy inputs to kernel input BOs
     A_DATATYPE *bufA = xrtState->boA.map<A_DATATYPE *>();
-    std::memcpy(bufA, params->lhs.data + params->lhs.offset, aSize);
+    copyTensor(bufA, params->lhs.get(), aVolume);
     B_DATATYPE *bufB = xrtState->boB.map<B_DATATYPE *>();
-    std::memcpy(bufB, params->rhs.data + params->rhs.offset, bSize);
-#else
-    // quantize and copy weights to XRT BO
-    A_DATATYPE *bufA = xrtState->boA.map<A_DATATYPE *>();
-    // std::cout << "Input A" << std::endl;
-    for (int i = 0; i < M; i++) {
-        // std::cout << '[';
-        for (int j = 0; j < K; j++) {
-            float f = params->lhs.getElement(i, j, K);
-            bfloat16_t bf = toBfloat16(f);
-            // std::cout << "{f:" << f << ",bf:" << bf << "}";
-            *(bufA + i * K + j) = bf;
-        }
-        // std::cout << "]," << std::endl;
-    }
+    copyTensor(bufB, params->rhs.get(), bVolume);
 
-    cnt = 0;
-
-    // quantize and copy input to XRT BO
-    B_DATATYPE *bufB = xrtState->boB.map<B_DATATYPE *>();
-    for (int i = 0; i < K; i++)
-        for (int j = 0; j < N; j++)
-            *(bufB + i * N + j) = toBfloat16(params->rhs.getElement(i, j, N));
-
-    // TODO: copy f32 result to bf16 XRT BO
-#endif
-
-    // copy output to XRT BO
+    // copy output to XRT BO (is this really necessary?)
     C_DATATYPE *bufC = xrtState->boC.map<C_DATATYPE *>();
-    std::memcpy(bufC, params->result.data + params->result.offset, cSize);
+    copyTensor(bufC, params->result.get(), cVolume);
 
     // sync buffers to NPU device
     xrtState->boA.sync(XCL_BO_SYNC_BO_TO_DEVICE);
@@ -334,22 +403,8 @@ int aie_matmul(Params *params) {
 
     // sync output to host
     xrtState->boC.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
+    copyTensor(params->result.get(), bufC, cVolume);
 
-#ifdef USE_OPT_KERNEL
-    std::memcpy(params->result.getDest(), bufC, cSize);
-#else
-    // std::cout << "Result" << std::endl;
-    for (int i = 0; i < M; i++) {
-        // std::cout << '[';
-        for (int j = 0; j < N; j++) {
-            bfloat16_t bf = *(bufC + i * N + j);
-            float f = fromBfloat16(bf);
-            params->result.setElement(i, j, N, f);
-            // std::cout << bf << ",";
-        }
-        // std::cout << "]," << std::endl;
-    }
-#endif
     return 0;  // TODO: check for and handle error conditions
 }
 
@@ -360,12 +415,14 @@ static int cpu_matmul(Params *params) {
   std::cout << "[AIE Delegate]: Computing CPU scalar matmul of " << params->getShapeStr() << std::endl;
   for (int32_t i = 0; i < params->M; i++) {
     for (int32_t j = 0; j < params->N; j++) {
-      float curr_result = 0.0;
+      float curr_result = 0.0;  // Do computation in float, irrespective of model type
       for (int32_t k = 0; k < params->K; k++) {
-        curr_result += params->lhs.getElement(i, k, K) * params->rhs.getElement(k, j, N);
+        float a = Converter<ModelLhsDType, float>::convert(params->lhs.getElement(i, k, K));
+        float b = Converter<ModelRhsDType, float>::convert(params->rhs.getElement(k, j, N));
+        curr_result += a * b;
       }
       curr_result = curr_result < 0.0 ? 0.0 : curr_result;
-      params->result.setElement(i, j, N, curr_result);
+      params->result.setElement(i, j, N, Converter<float, ModelReturnDType>::convert(curr_result));
     }
   }
   return 0;
@@ -411,13 +468,17 @@ static int mlp_external(void* params_ptr, void* context, void* reserved) {
   auto params = reinterpret_cast<Params *>(params_ptr);
   fprintf(plugin->file, "[AIE Delegate]: M = %d, N = %d, K = %d\n", params->M,
           params->N, params->K);
+  std::cout << "[AIE Delegate]: Params: " << *params << std::endl;
 
+#ifdef USE_CPU_IMPLEMENTATION
+  return cpu_matmul(params);  // enable this if CPU fallback desired
+#else
   // If the input shapes match the AIE kernel, use it
   if (params->M == MLP_M && params->K == MLP_K && params->N == MLP_N)
       return aie_matmul(params);
 
-  // return cpu_matmul(params);  // enable this if CPU fallback desired
   return 1;  // deliberately fail to make sure AIE version is getting used
+#endif
 }
 
 // Called once for each plugin load and paired with a future call to unload.
