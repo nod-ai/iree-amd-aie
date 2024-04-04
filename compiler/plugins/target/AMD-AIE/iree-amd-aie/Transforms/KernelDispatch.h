@@ -20,8 +20,16 @@ enum class AIEPassPipeline : int32_t {
   None = 2
 };
 
-/// Enum for target tiling op.
+/// Enum for types of loop peeling.
 enum class PeelingType : int32_t { First = 0, Last = 1, FirstLast = 2 };
+
+/// Enum for operands to be bufferized to allocation.
+enum class BufferizeOperand : int32_t {
+  InputOutput = 0,
+  Input = 1,
+  Output = 2,
+  DefInput = 3
+};
 
 /// Struct specifying the number of cores to use. This will be replaced
 /// by a more versatile handling in the future.

@@ -125,7 +125,7 @@ void addPackBasedPassPipeline(OpPassManager &pm, TilingConfig &tilingConfig) {
   // Promote inputs and result to shared memory
   AMDAIEBufferizeToAllocationOptions bufferizeOptions0;
   bufferizeOptions0.memorySpace = 1;
-  bufferizeOptions0.bufferizeLevel = -1;
+  bufferizeOptions0.bufferizeOperand = BufferizeOperand::InputOutput;
   modulePassManager.addNestedPass<func::FuncOp>(
       createAMDAIEBufferizeToAllocationPass(bufferizeOptions0));
 
@@ -148,7 +148,7 @@ void addPackBasedPassPipeline(OpPassManager &pm, TilingConfig &tilingConfig) {
   // Promote inputs and result to local memory
   AMDAIEBufferizeToAllocationOptions bufferizeOptions1;
   bufferizeOptions1.memorySpace = 2;
-  bufferizeOptions1.bufferizeLevel = -1;
+  bufferizeOptions1.bufferizeOperand = BufferizeOperand::InputOutput;
   modulePassManager.addNestedPass<func::FuncOp>(
       createAMDAIEBufferizeToAllocationPass(bufferizeOptions1));
 
@@ -195,7 +195,7 @@ void addPadPackBasedPassPipeline(OpPassManager &pm,
 
   AMDAIEBufferizeToAllocationOptions bufferizeOptions0;
   bufferizeOptions0.memorySpace = 1;
-  bufferizeOptions0.bufferizeLevel = 0;
+  bufferizeOptions0.bufferizeOperand = BufferizeOperand::InputOutput;
   modulePassManager.addNestedPass<func::FuncOp>(
       createAMDAIEBufferizeToAllocationPass(bufferizeOptions0));
 
@@ -226,7 +226,7 @@ void addPadPackBasedPassPipeline(OpPassManager &pm,
 
   AMDAIEBufferizeToAllocationOptions bufferizeOptions1;
   bufferizeOptions1.memorySpace = 2;
-  bufferizeOptions1.bufferizeLevel = 1;
+  bufferizeOptions1.bufferizeOperand = BufferizeOperand::Output;
   modulePassManager.addNestedPass<func::FuncOp>(
       createAMDAIEBufferizeToAllocationPass(bufferizeOptions1));
 
@@ -250,7 +250,7 @@ void addPadPackBasedPassPipeline(OpPassManager &pm,
   // Promote the inputs to local memory
   AMDAIEBufferizeToAllocationOptions bufferizeOptions2;
   bufferizeOptions2.memorySpace = 2;
-  bufferizeOptions2.bufferizeLevel = 2;
+  bufferizeOptions2.bufferizeOperand = BufferizeOperand::Input;
   modulePassManager.addNestedPass<func::FuncOp>(
       createAMDAIEBufferizeToAllocationPass(bufferizeOptions2));
 
