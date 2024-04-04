@@ -70,25 +70,29 @@ static SmallVector<int64_t> getPackedSize(linalg::LinalgOp linalgOp,
 static LogicalResult setRootConfigForPackPeelPipeline(func::FuncOp entryPointFn,
                                                       linalg::LinalgOp linalgOp,
                                                       AIEConfig cfg) {
-  // ------------------------------------------------------
-  // -------------- Set lowering config -------------------
-  // ------------------------------------------------------
-  SmallVector<int64_t> TileSizeLevel0 = {64, 64};
-  SmallVector<int64_t> TileSizeLevel1 = {0, 0, 1};
-  SmallVector<int64_t> TileSizeLevel2 = {0, 0, 0, 8, 4, 0};
-  TileSizesListType tileSizes = {TileSizeLevel0, TileSizeLevel1,
-                                 TileSizeLevel2};
-  if (failed(setOpConfigAndEntryPointFnTranslation(
-          entryPointFn, linalgOp, tileSizes,
-          IREE::Codegen::DispatchLoweringPassPipeline::None))) {
-    return failure();
+  auto initType =
+      llvm::cast<ShapedType>(linalgOp.getDpsInitOperand(0)->get().getType());
+  auto initShape = initType.getShape();
+  auto lhsType =
+      llvm::cast<ShapedType>(linalgOp.getDpsInputOperand(0)->get().getType());
+  auto lhsShape = lhsType.getShape();
+
+  FailureOr<unsigned> maybeTilingScaleFactor =
+      getTilingScaleFactor(initType.getElementType());
+  if (failed(maybeTilingScaleFactor)) {
+    return linalgOp.emitOpError("expected bitwidth 64/32/16/8");
   }
+  unsigned tilingScaleFactor = maybeTilingScaleFactor.value();
+  auto tileM0 = findLargestFactor((int)initShape[0], 32 * tilingScaleFactor);
+  auto tileN0 = findLargestFactor((int)initShape[1], 32 * tilingScaleFactor);
+
   // ------------------------------------------------------
   // --------------- Set packing config -------------------
   // ------------------------------------------------------
   MLIRContext *context = entryPointFn.getContext();
   // Pack level => 1.
-  SmallVector<int64_t> packedSizes = {64, 64, 32};
+  auto packedK0 = findLargestFactor((int)lhsShape[1], 16 * tilingScaleFactor);
+  SmallVector<int64_t> packedSizes = {tileM0, tileN0, packedK0};
   // Transpose B matrix from [K N n k] to [K N k n]
   SmallVector<int64_t> transposePackIndices = {1};
   // There is no corresponding unpack for the specified pack operation
@@ -99,6 +103,7 @@ static LogicalResult setRootConfigForPackPeelPipeline(func::FuncOp entryPointFn,
   auto packingConfigLevel1Attr = getPackingConfigPackingLevelAttr(
       context, packedSizes, transposePackIndices, unpackEmpty, innerPerm,
       outerPerm);
+
   // Pack level => 2.
   // packed size for [M, N, K, m, n, k]
   const int packLevel = 2;
@@ -117,22 +122,45 @@ static LogicalResult setRootConfigForPackPeelPipeline(func::FuncOp entryPointFn,
 
   SmallVector<PackingConfigPackingLevelAttr> packingConfigLevelsVal = {
       packingConfigLevel1Attr, packingConfigLevel2Attr};
-
   auto packingConfigLevels =
       PackingConfigPackingLevelsAttr::get(context, packingConfigLevelsVal);
   auto config = PackingConfigAttr::get(context, packingConfigLevels);
   setPackingConfig(linalgOp, config);
+
+  // ------------------------------------------------------
+  // -------------- Set lowering config -------------------
+  // ------------------------------------------------------
+  // Currently, assume working on a 2x2 AIE array, so the second level tile
+  // sizes should be (tileM0/2, tileN0/2). Considering the packing sizes, the
+  // adjusted tile sizes should be (tileM0/2/packedM1, tileN0/2/packedN1).
+  auto packedM1 = packedSizes[3];
+  auto packedN1 = packedSizes[4];
+  auto tileM1 = findLargestFactor((int)tileM0 / packedM1,
+                                  16 * tilingScaleFactor / packedM1);
+  auto tileN1 = findLargestFactor((int)tileN0 / packedN1,
+                                  16 * tilingScaleFactor / packedN1);
+  // Set tile size for K as constant 1, so that the packed outer K dimension
+  // is 1.
+  const int tileK = 1;
+
+  SmallVector<int64_t> TileSizeLevel0 = {tileM0, tileN0};
+  SmallVector<int64_t> TileSizeLevel1 = {0, 0, tileK};
+  SmallVector<int64_t> TileSizeLevel2 = {0, 0, 0, tileM1, tileN1, 0};
+  TileSizesListType tileSizes = {TileSizeLevel0, TileSizeLevel1,
+                                 TileSizeLevel2};
+  if (failed(setOpConfigAndEntryPointFnTranslation(
+          entryPointFn, linalgOp, tileSizes,
+          IREE::Codegen::DispatchLoweringPassPipeline::None))) {
+    return failure();
+  }
   return success();
 }
 
 static LogicalResult setRootConfigForPadPackPipeline(func::FuncOp entryPointFn,
                                                      linalg::LinalgOp linalgOp,
                                                      AIEConfig cfg) {
-  // ------------------------------------------------------
-  // -------------- Set lowering config -------------------
-  // ------------------------------------------------------
-  // Assume working on a 2x2 AIE array. Currently, the tile sizes are chosen
-  // empirically for large GEMM sizes, which are [32*s, 32*s, 256] for the first
+  // Assume working on a 4x4 AIE array. Currently, the tile sizes are chosen
+  // empirically for large GEMM sizes, which are [64*s, 64*s, 256] for the first
   // level and [16*s, 16*s, 16*s] for the second level, where 's' is the scaling
   // scaling factor based on the element type's bit width. Basic min/max
   // constraints are added to avoid failure for small GEMM sizes.
@@ -155,6 +183,7 @@ static LogicalResult setRootConfigForPadPackPipeline(func::FuncOp entryPointFn,
   auto tileM1 = findLargestFactor((int)tileM0, 16 * tilingScaleFactor);
   auto tileN1 = findLargestFactor((int)tileN0, 16 * tilingScaleFactor);
   auto tileK0 = findLargestFactor((int)lhsShape[1], 256);
+
   // Do packing first to allow larger k packing
   // ------------------------------------------------------
   // --------------- Set packing config -------------------
@@ -179,6 +208,9 @@ static LogicalResult setRootConfigForPadPackPipeline(func::FuncOp entryPointFn,
   setPackingConfig(linalgOp, config);
 
   // Finish rest of tiling
+  // ------------------------------------------------------
+  // -------------- Set lowering config -------------------
+  // ------------------------------------------------------
   auto tileK1 = findLargestFactor((int)tileK0 / (int)packedSizes[2],
                                   2 * tilingScaleFactor);
   SmallVector<int64_t> TileSizeLevel0 = {tileM0, tileN0};
