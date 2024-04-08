@@ -124,8 +124,8 @@ def AMDAIELowerExecutableTarget :
       /*default=*/"mlir::iree_compiler::AMDAIE::AIEPassPipeline::PadPackPipeline",
       "Pass pipeline to use while lowering to AIR dialect",
       [{::llvm::cl::values(
-        clEnumValN(mlir::iree_compiler::AMDAIE::AIEPassPipeline::PackPipeline, "pack",
-                   "Use the more advanced pack-based lowering strategy, including peeling and double-buffering."),
+        clEnumValN(mlir::iree_compiler::AMDAIE::AIEPassPipeline::PackPeelPipeline, "pack-peel",
+                   "Use the pack-peel based lowering strategy."),
         clEnumValN(mlir::iree_compiler::AMDAIE::AIEPassPipeline::PadPackPipeline, "pad-pack",
                    "Use the pad-pack based lowering strategy.")
       )}]>
@@ -142,7 +142,7 @@ def AMDAIELoweringStrategy :
       /*default=*/"mlir::iree_compiler::AMDAIE::AIEPassPipeline::PadPackPipeline",
       "Pass pipeline to use while lowering to AIR dialect",
       [{::llvm::cl::values(
-        clEnumValN(mlir::iree_compiler::AMDAIE::AIEPassPipeline::PackPipeline, "pack",
+        clEnumValN(mlir::iree_compiler::AMDAIE::AIEPassPipeline::PackPeelPipeline, "pack-peel",
                    "Use the more advanced pack-based lowering strategy, including peeling and double-buffering."),
         clEnumValN(mlir::iree_compiler::AMDAIE::AIEPassPipeline::PadPackPipeline, "pad-pack",
                    "Use the pad-pack based lowering strategy.")
@@ -164,7 +164,7 @@ def AMDAIELowerToUKernels :
       /*default=*/"mlir::iree_compiler::AMDAIE::AIEPassPipeline::PadPackPipeline",
       "Pass pipeline to use while lowering to AIR dialect",
       [{::llvm::cl::values(
-        clEnumValN(mlir::iree_compiler::AMDAIE::AIEPassPipeline::PackPipeline, "pack",
+        clEnumValN(mlir::iree_compiler::AMDAIE::AIEPassPipeline::PackPeelPipeline, "pack-peel",
                    "Use the more advanced pack-based lowering strategy, including peeling and double-buffering."),
         clEnumValN(mlir::iree_compiler::AMDAIE::AIEPassPipeline::PadPackPipeline, "pad-pack",
                    "Use the pad-pack based lowering strategy.")
