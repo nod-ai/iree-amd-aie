@@ -90,7 +90,20 @@ static FnNameAndDefAttrs getFnNameAndDefAttrs(RewriterBase &rewriter,
 /// ================== SAME UTILITIES AS IREE LLVMCPU ====================
 /// ======================================================================
 
-/// TODO(avarma): This currently is skipping checking for ext* ops.
+/// Returns the BlockArgument that leads to `val`. Traverses optional ext*
+/// ops.
+static BlockArgument checkOptionalExtOps(Value val) {
+  BlockArgument blockArg;
+  if (!(blockArg = val.dyn_cast<BlockArgument>())) {
+    auto castOp = dyn_cast<arith::ExtFOp>(val.getDefiningOp());
+    if (!castOp) {
+      return nullptr;
+    }
+    blockArg = castOp->getOperand(0).dyn_cast<BlockArgument>();
+  }
+  return blockArg;
+}
+
 /// TODO(avarma): Will shift this utility to a common space later to be used by
 ///               KernelDispatch as well.
 static bool bodyMatcherForMatmul(Value yieldVal, Block *body) {
@@ -102,9 +115,10 @@ static bool bodyMatcherForMatmul(Value yieldVal, Block *body) {
   if (!isa_and_nonnull<arith::MulIOp, arith::MulFOp>(mulOp)) {
     return false;
   }
-  auto lhsBlockArg = mulOp->getOperand(0).dyn_cast<BlockArgument>();
-  auto rhsBlockArg = mulOp->getOperand(1).dyn_cast<BlockArgument>();
-  auto outBlockArg = addOp->getOperand(0).dyn_cast<BlockArgument>();
+
+  BlockArgument lhsBlockArg = checkOptionalExtOps(mulOp->getOperand(0));
+  BlockArgument rhsBlockArg = checkOptionalExtOps(mulOp->getOperand(1));
+  BlockArgument outBlockArg = checkOptionalExtOps(addOp->getOperand(0));
   if (!lhsBlockArg || !rhsBlockArg || !outBlockArg ||
       lhsBlockArg.getOwner() != body || rhsBlockArg.getOwner() != body ||
       outBlockArg.getOwner() != body || lhsBlockArg.getArgNumber() != 0 ||
