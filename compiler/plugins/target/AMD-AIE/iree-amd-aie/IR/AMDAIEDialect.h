@@ -19,4 +19,37 @@
 #include "iree-amd-aie/IR/AMDAIEDialect.h.inc"  // IWYU pragma: keep
 // clang-format on
 
+namespace mlir::iree_compiler::AMDAIE {
+
+namespace detail {
+struct AMDAIELogicalObjectFifoTypeStorage;
+}
+
+/// This class defines the AMDAIE LogicalObjectFifo type. Similar and based on the
+/// MLIR-AIE ObjectFifo type. The logical objectfifo encapsulates a memref and
+/// provides synchronized access operations to get the underlying memref.
+class AMDAIELogicalObjectFifoType
+    : public mlir::Type::TypeBase<AMDAIELogicalObjectFifoType, mlir::Type,
+                                  detail::AMDAIELogicalObjectFifoTypeStorage> {
+ public:
+  /// Inherit some necessary constructors from 'TypeBase'.
+  using Base::Base;
+
+  /// Create an instance of a `LogicalObjectFifoType` with the given element type.
+  static AMDAIELogicalObjectFifoType get(mlir::MemRefType elementType);
+
+  /// This method is used to verify the construction invariants.
+  static mlir::LogicalResult verify(
+      llvm::function_ref<mlir::InFlightDiagnostic()> emitError,
+      mlir::MemRefType elementType);
+
+  static constexpr llvm::StringLiteral name = "amdaielogicalobjectfifo";
+  /// Returns the element type of this LogicalObjectFifoType.
+  mlir::MemRefType getElementType();
+  ///
+  size_t getStaticSize();
+};
+
+}  // namespace mlir::iree_compiler::AMDAIE
+
 #endif  // IREE_COMPILER_AMDAIE_DIALECT_IREEAMDAIE_DIALECT_H_
