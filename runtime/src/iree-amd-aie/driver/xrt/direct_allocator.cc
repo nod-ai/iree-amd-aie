@@ -15,6 +15,7 @@
 #include "xrt/xrt_bo.h"
 #include "xrt/xrt_device.h"
 #include "xrt/xrt_kernel.h"
+#include "experimental/xrt_ext.h"
 
 #if IREE_TRACING_FEATURES & IREE_TRACING_FEATURE_ALLOCATION_TRACKING
 static const char* IREE_HAL_XRT_ALLOCATOR_ID = "XRT";
@@ -142,6 +143,8 @@ iree_hal_xrt_allocator_query_buffer_compatibility(
 
 extern int magic_group_id[3];
 static int id = 0;
+extern xrt::uuid magic_uuid;
+extern std::vector<xrt::hw_context> global_contexts;
 
 static iree_status_t iree_hal_xrt_allocator_allocate_buffer(
     iree_hal_allocator_t* IREE_RESTRICT base_allocator,
@@ -171,16 +174,19 @@ static iree_status_t iree_hal_xrt_allocator_allocate_buffer(
   // in the DDR RAM. Also, group_id is not of relavence in this use case so we
   // set it to 0.
   int group_id = magic_group_id[id++ % 3];
-  std::unique_ptr<xrt::bo> xrt_buffer;
+  std::unique_ptr<xrt::ext::bo> xrt_buffer;
 
   try {
-  fprintf(stderr, "bo %d\n", group_id);
-    xrt_buffer = std::make_unique<xrt::bo>(allocator->device, allocation_size,
-                                           XRT_BO_FLAGS_HOST_ONLY, group_id);
-  } catch (...) {
+    fprintf(stderr, "uuid %s\n", magic_uuid.to_string().c_str());
+    fprintf(stderr, "bo %d\n", group_id);
+    // xrt_buffer = std::make_unique<xrt::bo>(allocator->device, allocation_size,
+    //                                        XRT_BO_FLAGS_HOST_ONLY, group_id);
+    xrt_buffer = std::make_unique<xrt::ext::bo>(global_contexts.front(), allocation_size,
+                                                xrt::ext::bo::access_mode::read_write);
+  } catch (std::exception &e) {
     IREE_TRACE_ZONE_END(z0);
     return iree_make_status(IREE_STATUS_RESOURCE_EXHAUSTED,
-                            "could not allocate memory for buffer");
+                            "could not allocate memory for buffer %s", e.what());
   }
   IREE_TRACE_ZONE_END(z0);
   if (!xrt_buffer) {

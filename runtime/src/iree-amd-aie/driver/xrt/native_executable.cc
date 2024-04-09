@@ -98,6 +98,8 @@ static iree_status_t iree_amd_aie_hal_xrt_native_executable_flatbuffer_verify(
 }
 
 int magic_group_id[3] = {0, 0};
+xrt::uuid magic_uuid;
+std::vector<xrt::hw_context> global_contexts;
 
 iree_status_t iree_hal_xrt_native_executable_create(
     xrt::device device, const iree_hal_executable_params_t* executable_params,
@@ -167,7 +169,11 @@ iree_status_t iree_hal_xrt_native_executable_create(
   }
   device.register_xclbin(xclbin);
   try {
-    xrt::hw_context context(device, xclbin.get_uuid());
+    magic_uuid = xclbin.get_uuid();
+    fprintf(stderr, "uuid %s\n", magic_uuid.to_string().c_str());
+    //xrt::hw_context context(device, xclbin.get_uuid());
+    //global_ctx = std::make_unique<xrt::hw_context>(device, xclbin.get_uuid());
+    global_contexts.emplace_back(device, xclbin.get_uuid());
     fprintf(stderr, "ctx\n");
   executable->host_allocator = host_allocator;
   executable->entry_point_count = entry_point_count;
@@ -181,7 +187,7 @@ iree_status_t iree_hal_xrt_native_executable_create(
     std::unique_ptr<xrt::kernel> kernel;
     std::unique_ptr<xrt::bo> instr;
     try {
-      kernel = std::make_unique<xrt::kernel>(context, entry_name);
+      kernel = std::make_unique<xrt::kernel>(global_contexts.back(), entry_name);
       fprintf(stderr, "name:%s\n", entry_name);
       fprintf(stderr, "gid:%d\n", kernel->group_id(0));
       fprintf(stderr, "gid:%d\n", kernel->group_id(1));
