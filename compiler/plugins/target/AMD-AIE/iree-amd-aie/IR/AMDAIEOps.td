@@ -26,7 +26,7 @@ class AMDAIE_Op<string mnemonic, list<Trait> traits = []> :
 // IREE AMDAIE Ops
 //===----------------------------------------------------------------------===//
 
-def LogicalObjectFifoFromMemref : AMDAIE_Op<"logicalobjectfifo.from_memref", []> {
+def LogicalObjectFifoFromMemrefOp : AMDAIE_Op<"logicalobjectfifo.from_memref", []> {
   let summary = "Create a logical objectfifo from a memref";
   let description = [{
     Creates a logical objectfifo which encapsulates a memref. The logical objectfifo adds synchronization
@@ -45,15 +45,13 @@ def LogicalObjectFifoFromMemref : AMDAIE_Op<"logicalobjectfifo.from_memref", []>
         Variadic<Index>:$tiles
   ); 
 
-  let hasVerifier = 0;
-
   let results = (outs AMDAIE_LogicalObjectFifoType:$output);
 
   let assemblyFormat = [{
     $memref  `,``{` $tiles `}` attr-dict `:` type($memref) `->` type($output)
   }];
 
-  // Build a LogicalObjectFifoFromMemref with just a memref value.
+  // Build a LogicalObjectFifoFromMemrefOp with just a memref value.
   let builders = [
     OpBuilder<(ins "mlir::Value":$memref)>
   ];
@@ -62,6 +60,7 @@ def LogicalObjectFifoFromMemref : AMDAIE_Op<"logicalobjectfifo.from_memref", []>
     MemRefType getMemrefType() { return getOutput().getType().cast<AMDAIELogicalObjectFifoType>().getElementType(); }
   }];
 
+  let hasVerifier = 0;
   let cppNamespace = "mlir::iree_compiler::AMDAIE";
 }
 
@@ -105,10 +104,11 @@ def DmaCpyNdOp: AMDAIE_Op<"dma_cpy_nd", [AttrSizedOperandSegments, CopyOpInterfa
     Value getTargetMemref() { return getTarget(); }
     Type getSourceType() { return getSource().getType(); }
     Type getTargetType() { return getTarget().getType(); }
-    LogicalObjectFifoFromMemref getSourceObjectFifo();
-    LogicalObjectFifoFromMemref getTargetObjectFifo();
+    LogicalObjectFifoFromMemrefOp getSourceObjectFifo();
+    LogicalObjectFifoFromMemrefOp getTargetObjectFifo();
   }];
 
+  let hasVerifier = 1;
   let cppNamespace = "mlir::iree_compiler::AMDAIE";
 }
 

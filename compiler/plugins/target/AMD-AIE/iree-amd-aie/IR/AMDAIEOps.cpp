@@ -24,12 +24,26 @@ void AMDAIEDialect::initializeAMDAIEOps() {
       >();
 }
 
-LogicalObjectFifoFromMemref DmaCpyNdOp::getSourceObjectFifo() {
-  return dyn_cast<LogicalObjectFifoFromMemref>(getSource().getDefiningOp());
+//===----------------------------------------------------------------------===//
+// DmaCpyNdOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult DmaCpyNdOp::verify() {
+  if (failed(verifyCommon()))
+    return failure();
+  if (!isa<LogicalObjectFifoFromMemrefOp>(getSource().getDefiningOp()))
+    return emitOpError("should have a `LogicalObjectFifoFromMemrefOp` as source");
+  if (!isa<LogicalObjectFifoFromMemrefOp>(getTarget().getDefiningOp()))
+    return emitOpError("should have a `LogicalObjectFifoFromMemrefOp` as target");
+  return success();
+}
+
+LogicalObjectFifoFromMemrefOp DmaCpyNdOp::getSourceObjectFifo() {
+  return dyn_cast<LogicalObjectFifoFromMemrefOp>(getSource().getDefiningOp());
 };
 
-LogicalObjectFifoFromMemref DmaCpyNdOp::getTargetObjectFifo() {
-  return dyn_cast<LogicalObjectFifoFromMemref>(getTarget().getDefiningOp());
+LogicalObjectFifoFromMemrefOp DmaCpyNdOp::getTargetObjectFifo() {
+  return dyn_cast<LogicalObjectFifoFromMemrefOp>(getTarget().getDefiningOp());
 };
 
 }  // namespace mlir::iree_compiler::AMDAIE

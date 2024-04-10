@@ -21,7 +21,7 @@ namespace mlir::iree_compiler::AMDAIE {
 namespace {
 
 /// Transform AIR::DmaMemcpyNdOp into AMDAIE::DmaCpyNdOp ops, which operate on
-/// top logical objectfifos instead of memrefs.
+/// top of logical objectfifos instead of memrefs.
 class AIRDmaToAMDAIEDma : public OpRewritePattern<xilinx::air::DmaMemcpyNdOp> {
   using OpRewritePattern<xilinx::air::DmaMemcpyNdOp>::OpRewritePattern;
 
@@ -30,11 +30,11 @@ class AIRDmaToAMDAIEDma : public OpRewritePattern<xilinx::air::DmaMemcpyNdOp> {
     auto srcType = op.getSrc().getType().cast<MemRefType>();
     auto dstType = op.getDst().getType().cast<MemRefType>();
     rewriter.setInsertionPointAfter(op.getSrc().getDefiningOp());
-    auto src = rewriter.create<AMDAIE::LogicalObjectFifoFromMemref>(
+    auto src = rewriter.create<AMDAIE::LogicalObjectFifoFromMemrefOp>(
         rewriter.getUnknownLoc(), AMDAIELogicalObjectFifoType::get(srcType),
         op.getSrc());
     rewriter.setInsertionPointAfter(op.getDst().getDefiningOp());
-    auto dst = rewriter.create<AMDAIE::LogicalObjectFifoFromMemref>(
+    auto dst = rewriter.create<AMDAIE::LogicalObjectFifoFromMemrefOp>(
         rewriter.getUnknownLoc(), AMDAIELogicalObjectFifoType::get(dstType),
         op.getDst());
 

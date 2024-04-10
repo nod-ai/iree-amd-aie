@@ -39,8 +39,8 @@ void addPackPeelBasedPassPipeline(OpPassManager &passManager,
 void addPadPackBasedPassPipeline(OpPassManager &passManager,
                                  TilingConfig &tilingConfig);
 
-/// Creaye a pass to convert AIR DMA ops into AMDAIE DMA ops operating on
-/// logical objectfifos
+/// Create a pass to convert AIR DMA ops into AMDAIE DMA ops operating on
+/// logical objectfifos.
 std::unique_ptr<Pass> createAMDAIEAIRDmaAMDAIEDmaPass();
 
 /// Create a pass to do some rewrites that help bridging the path to AIR/AIE

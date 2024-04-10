@@ -41,8 +41,9 @@ static OptionalParseResult amdaieTypeParser(DialectAsmParser &parser,
 
     // Check that the type is a MemRef type.
     if (!elementType.isa<MemRefType>()) {
-      parser.emitError(typeLoc, "element type for an logicalObjectFifo must be "
-                                "a MemRefType, got: ")
+      parser.emitError(typeLoc,
+                       "element type for an logicalObjectFifo must be "
+                       "a MemRefType, got: ")
           << elementType;
       return failure();
     }
@@ -57,7 +58,6 @@ static OptionalParseResult amdaieTypeParser(DialectAsmParser &parser,
 /// refer to a type defined in this dialect.
 static ParseResult parse(Type &result, StringRef name,
                          DialectAsmParser &parser) {
-
   if (OptionalParseResult parseResult = amdaieTypeParser(parser, name, result);
       parseResult.has_value())
     return parseResult.value();
@@ -67,16 +67,13 @@ static ParseResult parse(Type &result, StringRef name,
   return failure();
 }
 
-
 /// Parse an instance of a type registered to the AMDAIE dialect.
 Type AMDAIEDialect::parseType(DialectAsmParser &parser) const {
   StringRef name;
   Type result;
-  if (parser.parseKeyword(&name) || parse(result, name, parser))
-    return {};
+  if (parser.parseKeyword(&name) || parse(result, name, parser)) return {};
   return result;
 }
-
 
 /// Print an instance of a type registered to the AMDAIE dialect.
 void AMDAIEDialect::printType(Type type, DialectAsmPrinter &printer) const {
@@ -85,7 +82,6 @@ void AMDAIEDialect::printType(Type type, DialectAsmPrinter &printer) const {
     printer << "logicalobjectfifo<";
     printer << objectFifoType.getElementType();
     printer << '>';
-
   }
 }
 
@@ -97,7 +93,8 @@ void AMDAIEDialect::initialize() {
 }
 
 namespace detail {
-/// This class represents the internal storage of the AMDAIE `ObjectFifoType`.
+/// This class represents the internal storage of the AMDAIE
+/// `LogicalObjectFifoType`.
 struct AMDAIELogicalObjectFifoTypeStorage : TypeStorage {
   /// The `KeyTy` is a required type that provides an interface for the storage
   /// instance. This type will be used when uniquing an instance of the type
@@ -105,7 +102,8 @@ struct AMDAIELogicalObjectFifoTypeStorage : TypeStorage {
   using KeyTy = MemRefType;
 
   /// A constructor for the objectFifo type storage instance.
-  AMDAIELogicalObjectFifoTypeStorage(MemRefType elementType) : elementType(elementType) {}
+  AMDAIELogicalObjectFifoTypeStorage(MemRefType elementType)
+      : elementType(elementType) {}
 
   /// Define the comparison function for the key type with the current storage
   /// instance. This is used when constructing a new instance to ensure that we
@@ -115,8 +113,8 @@ struct AMDAIELogicalObjectFifoTypeStorage : TypeStorage {
   /// Define a construction method for creating a new instance of this storage.
   /// This method takes an instance of a storage allocator, and an instance of a
   /// `KeyTy`.
-  static AMDAIELogicalObjectFifoTypeStorage *construct(TypeStorageAllocator &allocator,
-                                             const KeyTy &key) {
+  static AMDAIELogicalObjectFifoTypeStorage *construct(
+      TypeStorageAllocator &allocator, const KeyTy &key) {
     // Allocate the storage instance and construct it.
     return new (allocator.allocate<AMDAIELogicalObjectFifoTypeStorage>())
         AMDAIELogicalObjectFifoTypeStorage(key);
@@ -124,18 +122,18 @@ struct AMDAIELogicalObjectFifoTypeStorage : TypeStorage {
 
   MemRefType elementType;
 };
-} // namespace detail
+}  // namespace detail
 
-AMDAIELogicalObjectFifoType AMDAIELogicalObjectFifoType::get(MemRefType elementType) {
+AMDAIELogicalObjectFifoType AMDAIELogicalObjectFifoType::get(
+    MemRefType elementType) {
   // Call into a helper 'get' method in 'TypeBase' to get an uniqued instance
   // of this type.
   MLIRContext *ctx = elementType.getContext();
   return Base::get(ctx, elementType);
 }
 
-LogicalResult
-AMDAIELogicalObjectFifoType::verify(function_ref<InFlightDiagnostic()> emitError,
-                             MemRefType elementType) {
+LogicalResult AMDAIELogicalObjectFifoType::verify(
+    function_ref<InFlightDiagnostic()> emitError, MemRefType elementType) {
   return success();
 }
 
@@ -146,7 +144,8 @@ mlir::MemRefType AMDAIELogicalObjectFifoType::getElementType() {
 
 size_t AMDAIELogicalObjectFifoType::getStaticSize() {
   auto shape = getElementType().getShape();
-  return std::accumulate(shape.begin(), shape.begin(), 1, std::multiplies<size_t>());
+  return std::accumulate(shape.begin(), shape.begin(), 1,
+                         std::multiplies<size_t>());
 }
 
 }  // namespace mlir::iree_compiler::AMDAIE
