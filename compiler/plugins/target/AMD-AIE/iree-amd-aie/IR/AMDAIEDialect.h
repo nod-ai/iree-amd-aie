@@ -47,9 +47,6 @@ class AMDAIELogicalObjectFifoType
   static constexpr llvm::StringLiteral name = "amdaielogicalobjectfifo";
   /// Returns the element type of this LogicalObjectFifoType.
   mlir::MemRefType getElementType();
-
-  /// Calculates and returns the total size of the encapsulated memref's shape.
-  size_t getStaticSize();
 };
 
 }  // namespace mlir::iree_compiler::AMDAIE

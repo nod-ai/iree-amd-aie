@@ -79,7 +79,7 @@ def DoublyStridedOpInterface : OpInterface<"DoublyStridedInterface"> {
         }
         if ($_op.getSourceSizes().size() != $_op.getSourceOffsets().size()) {
           return $_op.emitError(
-            "source sizes should have same size as source offsets");
+            "source sizes should have same number of dimensions as source offsets");
         }
         if ($_op.getSourceStrides().size() != $_op.getSourceOffsets().size()) {
           return $_op.emitError(

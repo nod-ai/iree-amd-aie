@@ -31,10 +31,6 @@ void AMDAIEDialect::initializeAMDAIEOps() {
 LogicalResult DmaCpyNdOp::verify() {
   if (failed(verifyCommon()))
     return failure();
-  if (!isa<LogicalObjectFifoFromMemrefOp>(getSource().getDefiningOp()))
-    return emitOpError("should have a `LogicalObjectFifoFromMemrefOp` as source");
-  if (!isa<LogicalObjectFifoFromMemrefOp>(getTarget().getDefiningOp()))
-    return emitOpError("should have a `LogicalObjectFifoFromMemrefOp` as target");
   return success();
 }
 

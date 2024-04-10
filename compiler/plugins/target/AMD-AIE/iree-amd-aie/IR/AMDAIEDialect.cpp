@@ -134,18 +134,17 @@ AMDAIELogicalObjectFifoType AMDAIELogicalObjectFifoType::get(
 
 LogicalResult AMDAIELogicalObjectFifoType::verify(
     function_ref<InFlightDiagnostic()> emitError, MemRefType elementType) {
+  if (llvm::any_of(elementType.getShape(), [](auto dimSize) {
+        return ShapedType::isDynamic(dimSize);
+      })) {
+    return emitError() << "should encapsulate static memref";
+  }
   return success();
 }
 
 mlir::MemRefType AMDAIELogicalObjectFifoType::getElementType() {
   // 'getImpl' returns a pointer to the internal storage instance.
   return getImpl()->elementType;
-}
-
-size_t AMDAIELogicalObjectFifoType::getStaticSize() {
-  auto shape = getElementType().getShape();
-  return std::accumulate(shape.begin(), shape.end(), 1,
-                         std::multiplies<size_t>());
 }
 
 }  // namespace mlir::iree_compiler::AMDAIE
