@@ -37,8 +37,21 @@
 
 // Turn this on to replace the AIE implementation with a simple reference
 // implementation on CPU.
-#define USE_CPU_IMPLEMENTATION 1
+// #define USE_CPU_IMPLEMENTATION 1
 
+// Turn this on to use bfloat16 accumulation in the CPU implementation instead
+// of float accumulation.
+// #define USE_BF16_CPU_ACCUMULATOR 1
+
+// Turn this on to debug value conversions
+#define DEBUG_VALUE_CONVERSIONS 1
+
+#if DEBUG_VALUE_CONVERSIONS
+  bool DebugValueConversions = false;
+  #define CONVERSION_DEBUG(turnOn_) DebugValueConversions = (turnOn_);
+#else
+  #define CONVERSION_DEBUG(turnOn_) ;
+#endif
 
 #ifdef USE_OPT_KERNEL
 #define MLP_M 8
@@ -134,6 +147,10 @@ struct Converter {
 template <typename T>
 struct Converter<T, T> {
   static T convert(T value) {
+#ifdef DEBUG_VALUE_CONVERSIONS
+    if (DebugValueConversions)
+      std::cout << "noop value conversion" << std::endl;
+#endif
     return value;
   }
 };
@@ -142,6 +159,10 @@ struct Converter<T, T> {
 template <>
 struct Converter<float, bfloat16_t> {
   static bfloat16_t convert(float value) {
+#ifdef DEBUG_VALUE_CONVERSIONS
+    if (DebugValueConversions)
+      std::cout << "float to bf16 value conversion" << std::endl;
+#endif
     bfloat16_t bf = (bfloat16_t) (((*reinterpret_cast<uint32_t*>(&value))) >> 16);
     return bf;
   }
@@ -151,6 +172,10 @@ struct Converter<float, bfloat16_t> {
 template <>
 struct Converter<bfloat16_t, float> {
   static float convert(bfloat16_t value) {
+#ifdef DEBUG_VALUE_CONVERSIONS
+    if (DebugValueConversions)
+      std::cout << "bf16 to float value conversion" << std::endl;
+#endif
     uint32_t tmp = uint32_t(value) << 16;
     float f = *reinterpret_cast<float*>(&tmp);
     return f;
@@ -164,6 +189,7 @@ struct Converter<bfloat16_t, float> {
 template<typename SrcType, typename DestType>
 struct TensorCopier {
   static void copy(DestType *destBuf, const SrcType *srcBuf, std::size_t numElements) {
+    std::cout << "TensorCopier: Using general (type converting) copy" << std::endl;
     DestType *pDest = destBuf;
     for (SrcType *pSrc = srcBuf, pEnd = srcBuf + numElements; pSrc != pEnd; ++pSrc)
       *pDest++ = Converter<SrcType, DestType>::convert(*pSrc);
@@ -175,6 +201,11 @@ struct TensorCopier {
 template<typename T>
 struct TensorCopier<T, T> {
   static void copy(T *destBuf, const T *srcBuf, std::size_t numElements) {
+    std::cout << "TensorCopier: Using memcpy" << std::endl;
+    std::cout << "TensorCopier: destBuf = " << (void *) destBuf
+      << ", srcBuf = " << (void *) srcBuf << std::endl;
+    std::cout << "TensorCopier: numElements = " << numElements
+      << ", sizeof(T) = " << sizeof(T) << std::endl;
     std::memcpy(destBuf, srcBuf, numElements * sizeof(T));
   }
 };
@@ -385,6 +416,7 @@ int aie_matmul(Params *params) {
 
     // copy output to XRT BO (is this really necessary?)
     C_DATATYPE *bufC = xrtState->boC.map<C_DATATYPE *>();
+    params->result.dumpVals(std::cout, cVolume);
     TensorCopier<ModelReturnDType, C_DATATYPE>::copy(bufC, params->result.get(), cVolume);
 
     // sync buffers to NPU device
@@ -398,6 +430,8 @@ int aie_matmul(Params *params) {
 
     // sync output to host
     xrtState->boC.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
+    std::cout << std::endl;
+    params->result.dumpVals(std::cout, cVolume);
     TensorCopier<C_DATATYPE, ModelReturnDType>::copy(params->result.get(), bufC, cVolume);
 
     return 0;  // TODO: check for and handle error conditions
@@ -406,18 +440,35 @@ int aie_matmul(Params *params) {
 ///////////////////////////////////////////////////////////////////////////////
 // Reference scalar CPU implementation
 
+// Type for accumulating the multiplications over the k dimension
+using CpuAccDType = 
+#ifdef USE_BF16_CPU_ACCUMULATOR
+  bfloat16_t;
+#else
+  float;
+#endif
+
 static int cpu_matmul(Params *params) {
   std::cout << "[AIE Delegate]: Computing CPU scalar matmul of " << params->getShapeStr() << std::endl;
   for (int32_t i = 0; i < params->M; i++) {
     for (int32_t j = 0; j < params->N; j++) {
-      float curr_result = 0.0;  // Do computation in float, irrespective of model type
+      CpuAccDType curr_result = Converter<float, CpuAccDType>::convert(0.0);
       for (int32_t k = 0; k < params->K; k++) {
         float a = Converter<ModelLhsDType, float>::convert(params->lhs.getElement(i, k, K));
         float b = Converter<ModelRhsDType, float>::convert(params->rhs.getElement(k, j, N));
-        curr_result += a * b;
+        curr_result = Converter<float, CpuAccDType>::convert(
+          Converter<CpuAccDType, float>::convert(curr_result)
+          + Converter<float, CpuAccDType>::convert(a * b)
+        );
+        if (!i && !j && k < 20) {
+          CONVERSION_DEBUG(true);
+          std::cout << "a = " << a << ", b = " << b << ", result = "
+            << Converter<CpuAccDType, float>::convert(curr_result) << std::endl;
+          CONVERSION_DEBUG(false);
+        }
       }
-      curr_result = curr_result < 0.0 ? 0.0 : curr_result;
-      params->result.setElement(i, j, N, Converter<float, ModelReturnDType>::convert(curr_result));
+      // curr_result = curr_result < 0.0 ? 0.0 : curr_result;  ref matmul doesn't seem to have this
+      params->result.setElement(i, j, N, Converter<CpuAccDType, ModelReturnDType>::convert(curr_result));
     }
   }
   return 0;
@@ -464,6 +515,8 @@ static int mlp_external(void* params_ptr, void* context, void* reserved) {
   fprintf(plugin->file, "[AIE Delegate]: M = %d, N = %d, K = %d\n", params->M,
           params->N, params->K);
   std::cout << "[AIE Delegate]: Params: " << *params << std::endl;
+  // std::cout << "LHS:" << std::endl;
+  // params->lhs.dumpVals(std::cout, aVolume);
 
 #ifdef USE_CPU_IMPLEMENTATION
   return cpu_matmul(params);  // enable this if CPU fallback desired
@@ -501,10 +554,12 @@ static iree_hal_executable_plugin_status_t mlp_plugin_load(
   // stateful/side-effecting things.
   plugin->file = stdout;
 
+#ifndef USE_CPU_IMPLEMENTATION
   // Initialize XRT with the one-and-only xclbin and instruction file
   int rc = setupNPUAccelerator();
   if (rc != 0)
     return iree_hal_executable_plugin_status_from_code(rc);
+#endif
 
   // Pass back the plugin instance that'll be passed to resolve.
   *out_self = plugin;
@@ -521,6 +576,10 @@ static void mlp_plugin_unload(void* self) {
   // stateful/side-effecting things.
   fflush(plugin->file);
   plugin->file = NULL;
+
+#ifndef USE_CPU_IMPLEMENTATION
+  XrtState::getInstance(true); // delete singleton data
+#endif
 
   // Free the plugin state using the same allocator it came from.
   iree_hal_executable_plugin_allocator_free(host_allocator, plugin);

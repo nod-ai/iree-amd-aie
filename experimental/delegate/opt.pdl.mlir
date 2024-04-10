@@ -103,7 +103,8 @@ pdl.pattern @mlp : benefit(1) {
     // %k_i32 = pdl.result 0 of %k_i32_op
 
     %replaced_values_dims = pdl.range %m, %n : !pdl.value, !pdl.value
-    %input_values = pdl.range %lhs, %rhs, %empty : !pdl.value, !pdl.value, !pdl.value
+    // %input_values = pdl.range %lhs, %rhs, %empty : !pdl.value, !pdl.value, !pdl.value
+    %input_values = pdl.range %lhs, %rhs : !pdl.value, !pdl.value
     %replaced_value = pdl.result 0 of %matmul
     %replaced_values = pdl.range %replaced_value : !pdl.value
     // %other_operands = pdl.range %m_i32, %n_i32, %k_i32 : !pdl.value, !pdl.value, !pdl.value
