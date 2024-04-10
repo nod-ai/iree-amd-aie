@@ -25,9 +25,9 @@ namespace detail {
 struct AMDAIELogicalObjectFifoTypeStorage;
 }
 
-/// This class defines the AMDAIE LogicalObjectFifo type. Similar and based on the
-/// MLIR-AIE ObjectFifo type. The logical objectfifo encapsulates a memref and
-/// provides synchronized access operations to get the underlying memref.
+/// This class defines the AMDAIE LogicalObjectFifo type. Similar and based on
+/// the MLIR-AIE ObjectFifo type. The logical objectfifo encapsulates a memref
+/// and provides synchronized access operations to get the underlying memref.
 class AMDAIELogicalObjectFifoType
     : public mlir::Type::TypeBase<AMDAIELogicalObjectFifoType, mlir::Type,
                                   detail::AMDAIELogicalObjectFifoTypeStorage> {
@@ -35,7 +35,8 @@ class AMDAIELogicalObjectFifoType
   /// Inherit some necessary constructors from 'TypeBase'.
   using Base::Base;
 
-  /// Create an instance of a `LogicalObjectFifoType` with the given element type.
+  /// Create an instance of a `LogicalObjectFifoType` with the given element
+  /// type.
   static AMDAIELogicalObjectFifoType get(mlir::MemRefType elementType);
 
   /// This method is used to verify the construction invariants.
@@ -46,7 +47,8 @@ class AMDAIELogicalObjectFifoType
   static constexpr llvm::StringLiteral name = "amdaielogicalobjectfifo";
   /// Returns the element type of this LogicalObjectFifoType.
   mlir::MemRefType getElementType();
-  ///
+
+  /// Calculates and returns the total size of the encapsulated memref's shape.
   size_t getStaticSize();
 };
 

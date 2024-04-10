@@ -14,8 +14,6 @@
 
 #define DEBUG_TYPE "iree-amdaie-air-dma-to-amdaie-dma"
 
-using namespace xilinx;
-
 namespace mlir::iree_compiler::AMDAIE {
 
 namespace {

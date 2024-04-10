@@ -144,7 +144,7 @@ mlir::MemRefType AMDAIELogicalObjectFifoType::getElementType() {
 
 size_t AMDAIELogicalObjectFifoType::getStaticSize() {
   auto shape = getElementType().getShape();
-  return std::accumulate(shape.begin(), shape.begin(), 1,
+  return std::accumulate(shape.begin(), shape.end(), 1,
                          std::multiplies<size_t>());
 }
 
