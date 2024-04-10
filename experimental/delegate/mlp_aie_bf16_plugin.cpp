@@ -445,6 +445,8 @@ int aie_matmul(Params *params) {
 
     // sync output to host
     xrtState->boC.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
+    std::cout << std::endl;
+    params->result.dumpVals(std::cout, cVolume);
     TensorCopier<C_DATATYPE, ModelReturnDType>::copy(params->result.get(), bufC, cVolume);
 
     return 0;  // TODO: check for and handle error conditions
