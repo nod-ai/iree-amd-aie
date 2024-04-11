@@ -1,5 +1,8 @@
 // RUN: iree-opt --pass-pipeline="builtin.module(iree-amdaie-air-dma-to-amdaie-dma)" %s | FileCheck %s
 
+// expected-error @+1 {{should encapsulate static memref}}
+func.func @logicalobjectfifo_type(!amdaie.logicalobjectfifo<memref<?x8x16xi32, 1>>)
+
 // CHECK-LABEL: @basic_dma
 // CHECK: %[[ALLOC0:.*]] = memref.alloc() : memref<1x1x8x16xi32, 1>
 // CHECK: %[[FROMMEMREF0:.*]] = amdaie.logicalobjectfifo.from_memref %[[ALLOC0]], {} : memref<1x1x8x16xi32, 1> -> !amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>
