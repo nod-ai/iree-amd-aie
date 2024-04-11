@@ -1,7 +1,12 @@
 // RUN: iree-opt --split-input-file --verify-diagnostics %s
 
+// expected-error @+1 {{invalid kind of type specified}}
+func.func @logicalobjectfifo_tensor(!amdaie.logicalobjectfifo<tensor<8x16xi32>>)
+
+// -----
+
 // expected-error @+1 {{should encapsulate static memref}}
-func.func @logicalobjectfifo_type(!amdaie.logicalobjectfifo<memref<?x8x16xi32, 1>>)
+func.func @logicalobjectfifo_dynamic(!amdaie.logicalobjectfifo<memref<?x8x16xi32>>)
 
 // -----
 

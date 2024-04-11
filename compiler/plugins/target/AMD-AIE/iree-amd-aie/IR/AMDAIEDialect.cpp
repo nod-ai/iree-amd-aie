@@ -39,16 +39,11 @@ static OptionalParseResult amdaieTypeParser(DialectAsmParser &parser,
         parser.parseGreater())
       return failure();
 
-    // Check that the type is a MemRef type.
-    if (!elementType.isa<MemRefType>()) {
-      parser.emitError(typeLoc,
-                       "element type for an logicalObjectFifo must be "
-                       "a MemRefType, got: ")
-          << elementType;
-      return failure();
-    }
-
-    return result = AMDAIELogicalObjectFifoType::get(elementType), success();
+    auto loc = parser.getEncodedSourceLoc(typeLoc);
+    result = AMDAIELogicalObjectFifoType::get(loc, elementType);
+    if (!result) return failure();
+    
+    return success();
   }
   return {};
 }
@@ -125,11 +120,11 @@ struct AMDAIELogicalObjectFifoTypeStorage : TypeStorage {
 }  // namespace detail
 
 AMDAIELogicalObjectFifoType AMDAIELogicalObjectFifoType::get(
-    MemRefType elementType) {
+    const Location &loc, MemRefType elementType) {
   // Call into a helper 'get' method in 'TypeBase' to get an uniqued instance
   // of this type.
   MLIRContext *ctx = elementType.getContext();
-  return Base::get(ctx, elementType);
+  return Base::getChecked(loc, ctx, elementType);
 }
 
 LogicalResult AMDAIELogicalObjectFifoType::verify(

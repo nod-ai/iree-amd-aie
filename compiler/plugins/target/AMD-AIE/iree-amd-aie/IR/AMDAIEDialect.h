@@ -34,10 +34,10 @@ class AMDAIELogicalObjectFifoType
  public:
   /// Inherit some necessary constructors from 'TypeBase'.
   using Base::Base;
-
+  
   /// Create an instance of a `LogicalObjectFifoType` with the given element
   /// type.
-  static AMDAIELogicalObjectFifoType get(mlir::MemRefType elementType);
+  static AMDAIELogicalObjectFifoType get(const Location &loc, mlir::MemRefType elementType);
 
   /// This method is used to verify the construction invariants.
   static mlir::LogicalResult verify(
