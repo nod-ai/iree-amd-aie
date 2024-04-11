@@ -1,5 +1,10 @@
 // RUN: iree-opt --split-input-file --verify-diagnostics %s
 
+// expected-error @+1 {{should encapsulate static memref}}
+func.func @logicalobjectfifo_type(!amdaie.logicalobjectfifo<memref<?x8x16xi32, 1>>)
+
+// -----
+
 func.func @dma_cpy_nd_invalid_src_offsets() {
   %c0 = arith.constant 0 : index
   %c1 = arith.constant 1 : index
