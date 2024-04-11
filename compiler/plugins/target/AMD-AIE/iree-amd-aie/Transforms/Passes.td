@@ -10,6 +10,12 @@
 include "iree-amd-aie/IR/AMDAIEDialect.td"
 include "mlir/Pass/PassBase.td"
 
+def AMDAIEAIRDmaToAMDAIEDma : 
+  Pass<"iree-amdaie-air-dma-to-amdaie-dma", ""> {
+  let summary = "Convert AIR DMA ops into AMDAIE DMA ops operating on logical objectfifos";
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEAIRDmaAMDAIEDmaPass()";
+}
+
 def AMDAIEBridgeToAIR : Pass<"iree-amdaie-bridge-to-air", ""> {
   let summary = "Perform transformations that allow hooking into AIR/AIE lowering";
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEBridgeToAIRPass()";
