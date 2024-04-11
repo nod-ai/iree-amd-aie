@@ -9,6 +9,7 @@
 #include "mlir/Dialect/GPU/IR/GPUDialect.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Linalg/Transforms/TilingInterfaceImpl.h"
+#include "mlir/Dialect/Linalg/Utils/Utils.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/SCF/Transforms/TileUsingInterface.h"
@@ -57,7 +58,9 @@ static bool isTilingReductionDimension(TilingInterface consumerOp,
 }
 
 static bool consumerToSkip(TilingInterface op) {
-  if (isa<linalg::CopyOp>(op) || isa<tensor::UnPackOp>(op)) return true;
+  if (isa<linalg::CopyOp>(op) || isa<tensor::PackOp>(op) ||
+      isa<tensor::UnPackOp>(op))
+    return true;
   return false;
 }
 
@@ -107,6 +110,9 @@ void AMDAIETileAndFusePass::runOnOperation() {
     // Find the next consumer op if it does not have loops OR it is from
     // the skip ops list which currently contains linalg.copy and tensor.unpack.
     if (op.getLoopIteratorTypes().empty() || consumerToSkip(op))
+      return WalkResult::advance();
+    if (!tileElementwise && isa<linalg::GenericOp>(op) &&
+        isElementwise(cast<linalg::LinalgOp>(op.getOperation())))
       return WalkResult::advance();
     consumerOp = op;
     return WalkResult::interrupt();
