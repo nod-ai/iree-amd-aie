@@ -183,7 +183,7 @@ void addPackPeelBasedPassPipeline(OpPassManager &pm,
   {
     AMDAIEBufferizeToAllocationOptions bufferizeOptions2;
     bufferizeOptions2.memorySpace = 1;
-    bufferizeOptions2.bufferizeOperand = BufferizeOperand::DefInput;
+    bufferizeOptions2.bufferizeOperand = BufferizeOperand::DefOp;
     modulePassManager.addNestedPass<func::FuncOp>(
         createAMDAIEBufferizeToAllocationPass(bufferizeOptions2));
   }
@@ -245,6 +245,24 @@ void addPackPeelBasedPassPipeline(OpPassManager &pm,
       createAMDAIEFuseFillIntoForallPass());
   modulePassManager.addPass(createCanonicalizerPass());
   modulePassManager.addPass(createCSEPass());
+
+  // Promote the operands from Elementwise op to shared and local memory
+  {
+    AMDAIEBufferizeToAllocationOptions bufferizeOptions4;
+    bufferizeOptions4.memorySpace = 1;
+    bufferizeOptions4.bufferizeElementwise = true;
+    bufferizeOptions4.bufferizeOperand = BufferizeOperand::InputOutput;
+    modulePassManager.addNestedPass<func::FuncOp>(
+        createAMDAIEBufferizeToAllocationPass(bufferizeOptions4));
+  }
+  {
+    AMDAIEBufferizeToAllocationOptions bufferizeOptions5;
+    bufferizeOptions5.memorySpace = 2;
+    bufferizeOptions5.bufferizeElementwise = true;
+    bufferizeOptions5.bufferizeOperand = BufferizeOperand::InputOutput;
+    modulePassManager.addNestedPass<func::FuncOp>(
+        createAMDAIEBufferizeToAllocationPass(bufferizeOptions5));
+  }
 
   // Comprehensive bufferization
   addAMDAIEBufferizePasses(modulePassManager);

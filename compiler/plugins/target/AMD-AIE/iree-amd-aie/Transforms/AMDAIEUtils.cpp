@@ -107,6 +107,26 @@ FailureOr<unsigned> getTilingScaleFactor(Type elemType) {
   return 64 / bitWidth;
 }
 
+/// Utility to check if a generic op is an elementwise op and if its producer is
+/// a matmul-like op.
+bool isMatmulElementwiseFusion(linalg::LinalgOp linalgOp) {
+  if (!isElementwise(linalgOp)) return false;
+  // Check if any of the defining op is a matmul-like op. To simplify the
+  // problem, currently only check if it is a contraction op.
+  for (auto operand : linalgOp->getOperands()) {
+    while (Operation* defOp = operand.getDefiningOp()) {
+      if (auto defLinalgOp = dyn_cast_or_null<linalg::LinalgOp>(defOp)) {
+        if (linalg::isaContractionOpInterface(defLinalgOp)) {
+          return true;
+        }
+        break;
+      }
+      operand = defOp->getOperand(0);
+    }
+  }
+  return false;
+}
+
 // Find the largest factor of 'num' which is not larger than 'max'.
 int detail::findLargestFactor(int num, int max) {
   assert(max > 0 && "No factors less than or equal to 0 exist");

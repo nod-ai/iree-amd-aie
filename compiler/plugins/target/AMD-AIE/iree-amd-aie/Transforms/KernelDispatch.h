@@ -28,7 +28,7 @@ enum class BufferizeOperand : int32_t {
   InputOutput = 0,
   Input = 1,
   Output = 2,
-  DefInput = 3
+  DefOp = 3
 };
 
 /// Struct specifying the number of cores to use. This will be replaced

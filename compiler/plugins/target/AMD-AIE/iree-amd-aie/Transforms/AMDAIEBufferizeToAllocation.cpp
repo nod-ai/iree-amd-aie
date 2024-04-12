@@ -5,6 +5,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 #include "iree-amd-aie/IR/AMDAIEAttrs.h"
+#include "iree-amd-aie/Transforms/AMDAIEUtils.h"
 #include "iree-amd-aie/Transforms/Passes.h"
 #include "mlir/Dialect/Bufferization/IR/Bufferization.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -39,6 +40,28 @@ static LogicalResult applyBufferizeToAllocation(RewriterBase &rewriter,
   return success();
 }
 
+/// Utility to fetch operands from the LinalgOp's input and output.
+static FailureOr<SmallVector<Value>> getInputOutputOperands(
+    linalg::LinalgOp &linalgOp) {
+  SmallVector<Value> operands;
+  for (auto operand : linalgOp->getOperands()) {
+    // For matmul-elementwise ops fusion, there is no need to promote the
+    // operand which is the output of its producer contraction op.
+    if (isMatmulElementwiseFusion(linalgOp)) {
+      auto defOp = operand.getDefiningOp();
+      if (!defOp) {
+        return failure();
+      }
+      auto defLinalgOp = dyn_cast_or_null<linalg::LinalgOp>(defOp);
+      if (defLinalgOp && linalg::isaContractionOpInterface(defLinalgOp)) {
+        continue;
+      }
+    }
+    operands.push_back(operand);
+  }
+  return operands;
+}
+
 /// Utility to fetch operands from the defining ops of LinalgOp's input
 /// operands. For example, we want to fetch the input operand of %pack0 and
 /// %pack1 as shown in below, and promote them to memory.
@@ -50,13 +73,28 @@ static LogicalResult applyBufferizeToAllocation(RewriterBase &rewriter,
 static FailureOr<SmallVector<Value>> getOperandsFromDefOp(
     linalg::LinalgOp &linalgOp) {
   SmallVector<Value> operands;
-  for (auto input : linalgOp.getDpsInputs()) {
-    auto defOp = input.getDefiningOp();
-    // The defining op has to be a pack op, fail otherwise.
-    if (!defOp || !isa<tensor::PackOp>(defOp)) {
+  // For matmul only dispatch, we only want to fetch the input operand of the
+  // pack ops.
+  auto candidateOperands = isMatmulElementwiseFusion(linalgOp)
+                               ? linalgOp->getOperands()
+                               : linalgOp.getDpsInputs();
+  for (auto operand : candidateOperands) {
+    auto defOp = operand.getDefiningOp();
+    if (!defOp) {
       return failure();
     }
-    // We only want to fetch the input operand of the pack op.
+    // For matmul-elementwise ops fusion, there is no need to promote the
+    // operand which is the output of its producer contraction op.
+    if (isMatmulElementwiseFusion(linalgOp)) {
+      auto defLinalgOp = dyn_cast_or_null<linalg::LinalgOp>(defOp);
+      if (defLinalgOp && linalg::isaContractionOpInterface(defLinalgOp)) {
+        continue;
+      }
+    } else {
+      if (!isa<tensor::PackOp>(defOp)) {
+        return failure();
+      }
+    }
     operands.push_back(defOp->getOperand(0));
   }
   return operands;
@@ -70,15 +108,15 @@ static FailureOr<SmallVector<Value>> getOperandsToBufferize(
   switch (bufferizeOperand) {
     /// Create new allocations for Lhs, Rhs and Out.
     case BufferizeOperand::InputOutput:
-      return SmallVector<Value>(linalgOp->getOperands());
+      return getInputOutputOperands(linalgOp);
     /// Create new allocation only for Lhs, Rhs.
     case BufferizeOperand::Input:
       return SmallVector<Value>(linalgOp.getDpsInputs());
     /// Create new allocations only for Out.
     case BufferizeOperand::Output:
       return SmallVector<Value>(linalgOp.getDpsInits());
-    /// Create new allocations for operands from the input def ops.
-    case BufferizeOperand::DefInput:
+    /// Create new allocations for operands from the def ops.
+    case BufferizeOperand::DefOp:
       return getOperandsFromDefOp(linalgOp);
     default:
       return failure();
@@ -126,6 +164,10 @@ void AMDAIEBufferizeToAllocationPass::runOnOperation() {
   func::FuncOp funcOp = getOperation();
   linalg::LinalgOp linalgOp;
   funcOp->walk<WalkOrder::PostOrder, ReverseIterator>([&](linalg::LinalgOp op) {
+    if (isElementwise(op) && bufferizeElementwise) {
+      linalgOp = op;
+      return WalkResult::interrupt();
+    }
     if (linalg::isaContractionOpInterface(op)) {
       linalgOp = op;
       return WalkResult::interrupt();

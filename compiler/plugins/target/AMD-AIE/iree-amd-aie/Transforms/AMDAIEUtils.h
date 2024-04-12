@@ -9,6 +9,7 @@
 
 #include <array>
 
+#include "mlir/Dialect/Linalg/Utils/Utils.h"
 #include "mlir/IR/Types.h"
 
 namespace mlir::iree_compiler::AMDAIE {
@@ -64,6 +65,10 @@ FailureOr<std::array<uint32_t, 3>> getAIEIntegerMatmulInstructionSize(
 /// increase/decrease the tiling window depending on the element type's bit
 /// width.
 FailureOr<unsigned> getTilingScaleFactor(Type elemType);
+
+/// Utility to check if a generic op is an elementwise op and if its producer is
+/// a matmul-like op.
+bool isMatmulElementwiseFusion(linalg::LinalgOp linalgOp);
 
 namespace detail {
 
