@@ -53,22 +53,40 @@
   #define CONVERSION_DEBUG(turnOn_) ;
 #endif
 
+// Fake bfloat16 type (assuming no C++ 23)
+using bfloat16_t = std::uint16_t;
+
+
 #ifdef USE_OPT_KERNEL
+// Kernel file names (without extension) relative to installation root
+const std::string kernelFileName = 
+    // "matmul/matmul-bf16-8x768x768-v1";
+    "matmul/matmul-bf16-f32-8x768x768-v1";
+
+const std::string KernelName = "matmul_8x768_768xbf16__dispatch_0_matmul_8x768x7";
+
 #define MLP_M 8
 #define MLP_K 768
 #define MLP_N 768
+
+using A_DATATYPE = bfloat16_t;
+using B_DATATYPE = bfloat16_t;
+using C_DATATYPE = float; // bfloat16_t;
+
 #else
+// Kernel file names (without extension) relative to installation root
+const std::string kernelFileName = "matmul/matmul-bf16-256x256x256-v1";
+
+const std::string KernelName = "MLIR_AIE";
+
 #define MLP_M 256
 #define MLP_K 256
 #define MLP_N 256
-#endif
 
-// Kernel file names (without extension) relative to installation root
-const std::string kernelFileName = 
-#ifdef USE_OPT_KERNEL
-    "matmul/matmul-bf16-8x768x768-v1";
-#else
-    "matmul/matmul-bf16-256x256x256-v1";
+using A_DATATYPE = bfloat16_t;
+using B_DATATYPE = bfloat16_t;
+using C_DATATYPE = float;
+
 #endif
 
 // Get the path of this plugin's .so
@@ -115,9 +133,6 @@ std::string getLibraryPath() {
 #else
 std::string getLibraryPath() { return std::string(); }
 #endif
-
-// Fake bfloat16 type (assuming no C++ 23)
-using bfloat16_t = std::uint16_t;
 
 // Types of the matmul LHS, RHS, and return, as seen by the model
 // (as opposed to the kernel)
@@ -191,7 +206,7 @@ struct TensorCopier {
   static void copy(DestType *destBuf, const SrcType *srcBuf, std::size_t numElements) {
     std::cout << "TensorCopier: Using general (type converting) copy" << std::endl;
     DestType *pDest = destBuf;
-    for (SrcType *pSrc = srcBuf, pEnd = srcBuf + numElements; pSrc != pEnd; ++pSrc)
+    for (const SrcType *pSrc = srcBuf, *pEnd = srcBuf + numElements; pSrc != pEnd; ++pSrc)
       *pDest++ = Converter<SrcType, DestType>::convert(*pSrc);
   }
 };
@@ -330,10 +345,6 @@ constexpr int aVolume = M * K;
 constexpr int bVolume = K * N;
 constexpr int cVolume = M * N;
 
-using A_DATATYPE = bfloat16_t;
-using B_DATATYPE = bfloat16_t;
-using C_DATATYPE = bfloat16_t;
-
 constexpr int aSize = (aVolume * sizeof(A_DATATYPE));
 constexpr int bSize = (bVolume * sizeof(B_DATATYPE));
 constexpr int cSize = (cVolume * sizeof(C_DATATYPE));
@@ -365,15 +376,15 @@ int setupNPUAccelerator() {
     std::string xclbinPath = libPath + "/kernels/" + kernelFileName + ".xclbin";
     auto xclbin = xrt::xclbin(xclbinPath);
 
-    std::string node = "MLIR_AIE";
+    // std::string node = "MLIR_AIE";
 
     // Get the kernel from the xclbin
     auto xkernels = xclbin.get_kernels();
     auto xkernel = *std::find_if(xkernels.begin(), xkernels.end(),
-                                 [node](xrt::xclbin::kernel &k) {
+                                 [/* node */](xrt::xclbin::kernel &k) {
                                    auto name = k.get_name();
                                    std::cout << "[AIE Delegate]: Name: " << name << std::endl;
-                                   return name.rfind(node, 0) == 0;
+                                   return name.rfind(KernelName /* node */, 0) == 0;
                                  });
     auto kernelName = xkernel.get_name();
 
@@ -416,19 +427,23 @@ int aie_matmul(Params *params) {
 
     // copy output to XRT BO (is this really necessary?)
     C_DATATYPE *bufC = xrtState->boC.map<C_DATATYPE *>();
-    params->result.dumpVals(std::cout, cVolume);
+    // params->result.dumpVals(std::cout, cVolume);
     TensorCopier<ModelReturnDType, C_DATATYPE>::copy(bufC, params->result.get(), cVolume);
 
     // sync buffers to NPU device
+    std::cout << "Syncing" << std::endl;
     xrtState->boA.sync(XCL_BO_SYNC_BO_TO_DEVICE);
     xrtState->boB.sync(XCL_BO_SYNC_BO_TO_DEVICE);
     xrtState->boC.sync(XCL_BO_SYNC_BO_TO_DEVICE);
 
     // execute the kernel on NPU
+    std::cout << "Running kernel" << std::endl;
     auto run = xrtState->kernel(xrtState->boInstr, instrSize, xrtState->boA, xrtState->boB, xrtState->boC);
+    std::cout << "Waiting on kernel" << std::endl;
     run.wait();
 
     // sync output to host
+    std::cout << "Syncing output" << std::endl;
     xrtState->boC.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
     std::cout << std::endl;
     params->result.dumpVals(std::cout, cVolume);
