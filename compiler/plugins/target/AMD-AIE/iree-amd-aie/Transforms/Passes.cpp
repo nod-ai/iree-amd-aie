@@ -117,6 +117,12 @@ void addPackPeelBasedPassPipeline(OpPassManager &pm,
         createAMDAIEPackAndTransposePass(packOptions0));
   }
 
+  // Propagate pack ops for the elementwise op
+  modulePassManager.addNestedPass<func::FuncOp>(
+      createAMDAIEPropagateDataLayoutPass());
+  modulePassManager.addPass(createCanonicalizerPass());
+  modulePassManager.addPass(createCSEPass());
+
   // Promote the output to shared memory
   {
     AMDAIEBufferizeToAllocationOptions bufferizeOptions0;
@@ -134,6 +140,12 @@ void addPackPeelBasedPassPipeline(OpPassManager &pm,
         createAMDAIEPackAndTransposePass(packOptions1));
   }
 
+  // Propagate pack ops for the elementwise op
+  modulePassManager.addNestedPass<func::FuncOp>(
+      createAMDAIEPropagateDataLayoutPass());
+  modulePassManager.addPass(createCanonicalizerPass());
+  modulePassManager.addPass(createCSEPass());
+
   // Promote the output to local memory
   {
     AMDAIEBufferizeToAllocationOptions bufferizeOptions1;
@@ -148,6 +160,7 @@ void addPackPeelBasedPassPipeline(OpPassManager &pm,
     AMDAIETileAndFuseOptions tileFuseOptions1;
     tileFuseOptions1.tilingLevel = 1;
     tileFuseOptions1.useSCFFor = true;
+    tileFuseOptions1.tileElementwise = false;
     modulePassManager.addNestedPass<func::FuncOp>(
         createAMDAIETileAndFusePass(tileFuseOptions1));
   }
@@ -180,6 +193,7 @@ void addPackPeelBasedPassPipeline(OpPassManager &pm,
     AMDAIETileAndFuseOptions tileFuseOptions2;
     tileFuseOptions2.tilingLevel = 2;
     tileFuseOptions2.useSCFFor = false;
+    tileFuseOptions2.tileElementwise = false;
     modulePassManager.addNestedPass<func::FuncOp>(
         createAMDAIETileAndFusePass(tileFuseOptions2));
   }
@@ -213,8 +227,16 @@ void addPackPeelBasedPassPipeline(OpPassManager &pm,
   modulePassManager.addPass(createCanonicalizerPass());
   modulePassManager.addPass(createCSEPass());
 
-  // Peel the first iteration out of the for loop
-  modulePassManager.addNestedPass<func::FuncOp>(createAMDAIEPeelForLoopPass());
+  // Peel the first iteration out of the for loop.
+  // TODO (vivian): Find a way to automatically detect matmul + elementwise
+  // dispatches, so that we can change the peelOptions to peel both first and
+  // last iterations.
+  {
+    AMDAIEPeelForLoopOptions peelOptions;
+    peelOptions.peelingType = PeelingType::First;
+    modulePassManager.addNestedPass<func::FuncOp>(
+        createAMDAIEPeelForLoopPass(peelOptions));
+  }
   modulePassManager.addPass(createCanonicalizerPass());
   modulePassManager.addPass(createCSEPass());
 
