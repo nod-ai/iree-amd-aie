@@ -207,10 +207,13 @@ function run_matmul_test() {
 
   local accumulate="false"
 
-  # By default we do not expect a compilation failure.
+  # The default is to not expect a compilation failure.
   local expect_compile_failure="0"
 
-  # By default we want to compile and run the numerical test.
+  # The default is to not expect a numerical failure.
+  local expect_numerical_failure="0"
+
+  # The default is to compile and run the numerical test.
   local compile_only="0"
 
   while [ "$#" -gt 0 ]; do
@@ -221,6 +224,10 @@ function run_matmul_test() {
         ;;
       --expect-compile-failure)
         expect_compile_failure="$2"
+        shift 2
+        ;;
+      --expect-numerical-failure)
+        expect_numerical_failure="$2"
         shift 2
         ;;
       --name_prefix)
@@ -418,11 +425,35 @@ function run_matmul_test() {
     return 0
   fi
 
-  echo "Running command: ${COMMAND}"
 
-  # Execute the command, and print the status:
+  # Execute the command, and print the status. Compare the status to the
+  # expected status (controlled by flag expect_numerical_failure).
+
+  # Disable exit on failure:
+  set +e
+
+  echo "Running command: ${COMMAND}"
   eval "${COMMAND}"
-  echo "Command returned with status: $?"
+  return_status=$?
+  echo "Command returned with status: ${return_status}"
+
+  # Renable exit on failure:
+  set -e
+
+  if [ $expect_numerical_failure -ne 0 ]; then
+    if [ $return_status -ne 0 ]; then
+      echo "Expected numerical failure, got numerical failure."
+      return 0
+    else
+      echo "Expected numerical failure, but got success."
+      exit 1
+    fi
+  fi
+
+  if [ $return_status -ne 0 ]; then
+    echo "Expected numerical match, but got numerical mismatch."
+    exit 1
+  fi
 
   set +x
 }
@@ -457,8 +488,8 @@ run_matmul_test \
     --expect-compile-failure "0" \
     --compile-only "0"
 
-# An example of a matmul which we don't currently support, and which fails in
-# compilation. TODO: support this (and all!) matmuls.
+# An example of a matmul which is not currently support, and which fails in
+# compilation. TODO: Fix this.
 run_matmul_test \
    --name_prefix "failure_0" \
    --lhs_rhs_type "i32" \
@@ -466,6 +497,14 @@ run_matmul_test \
    --m "1"  --n "1" --k "1000" \
    --expect-compile-failure "1"
 
+# An example of a matmul which currently fails numerical testing. 
+# TODO: fix this. https://github.com/nod-ai/iree-amd-aie/issues/273
+run_matmul_test \
+   --name_prefix "failure_1" \
+   --lhs_rhs_type "i8" \
+   --acc_type "i32" \
+   --m "32"  --n "32" --k "64" \
+   --expect-numerical-failure "1"
 
 # Example of a run with a group of 2+ matmuls. Currently this test is passed
 # the flag '--compile-only' as there is currently an issue with the runtime if
