@@ -40,6 +40,7 @@ iree_cc_library(
     "AMDAIEUtils.h"
   SRCS
     "AMDAIEAddLoweringStrategy.cpp"
+    "AMDAIEAIRDmaToAMDAIEDma.cpp"
     "AMDAIEBufferizeToAllocation.cpp"
     "AMDAIECanonicalizeDma.cpp"
     "AMDAIEFuseFillIntoForall.cpp"
