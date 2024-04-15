@@ -28,6 +28,7 @@ def AMDAIE_Dialect : Dialect {
   let extraClassDeclaration = [{
     void initializeAMDAIEAttrs();
     void initializeAMDAIEOps();
+    void initializeAMDAIETypes();
   }];
   let useDefaultTypePrinterParser = 1;
   let useDefaultAttributePrinterParser = 1;

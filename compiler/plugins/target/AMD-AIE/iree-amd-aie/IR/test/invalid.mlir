@@ -1,5 +1,6 @@
 // RUN: iree-opt --split-input-file --verify-diagnostics %s
 
+// expected-error @+2 {{failed to parse AMDAIE_LogicalObjectFifoType parameter 'element_type' which is to be a `MemRefType`}}
 // expected-error @+1 {{invalid kind of type specified}}
 func.func @logicalobjectfifo_tensor(!amdaie.logicalobjectfifo<tensor<8x16xi32>>)
 

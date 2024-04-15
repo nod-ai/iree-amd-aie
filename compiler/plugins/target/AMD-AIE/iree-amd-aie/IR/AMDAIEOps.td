@@ -45,7 +45,7 @@ def LogicalObjectFifoFromMemrefOp : AMDAIE_Op<"logicalobjectfifo.from_memref", [
         Variadic<Index>:$tiles
   ); 
 
-  let results = (outs AMDAIE_LogicalObjectFifoType:$output);
+  let results = (outs AnyAMDAIELogicalObjectFifoType:$output);
 
   let assemblyFormat = [{
     $memref  `,``{` $tiles `}` attr-dict `:` type($memref) `->` type($output)
@@ -57,7 +57,7 @@ def LogicalObjectFifoFromMemrefOp : AMDAIE_Op<"logicalobjectfifo.from_memref", [
   ];
 
   let extraClassDeclaration = [{
-    MemRefType getMemrefType() { return getOutput().getType().cast<AMDAIELogicalObjectFifoType>().getElementType(); }
+    MemRefType getMemrefType() { return getOutput().getType().cast<LogicalObjectFifoType>().getElementType(); }
   }];
 
   let hasVerifier = 0;
