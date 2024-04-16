@@ -1,9 +1,9 @@
 // RUN: iree-opt --pass-pipeline='builtin.module(func.func(iree-amdaie-bufferize-to-allocation{memory-space=2 bufferize-operand=input-output}))' --split-input-file %s | FileCheck %s --check-prefix=INPUT-OUTPUT
 // RUN: iree-opt --pass-pipeline='builtin.module(func.func(iree-amdaie-bufferize-to-allocation{memory-space=2 bufferize-operand=input}))' --split-input-file %s | FileCheck %s --check-prefix=INPUT
 // RUN: iree-opt --pass-pipeline='builtin.module(func.func(iree-amdaie-bufferize-to-allocation{memory-space=2 bufferize-operand=output}))' --split-input-file %s | FileCheck %s --check-prefix=OUTPUT
-// RUN: iree-opt --pass-pipeline='builtin.module(func.func(iree-amdaie-bufferize-to-allocation{memory-space=1 bufferize-operand=def-op}))' --split-input-file %s | FileCheck %s --check-prefix=DEF-INPUT
-// RUN: iree-opt --pass-pipeline='builtin.module(func.func(iree-amdaie-bufferize-to-allocation{memory-space=1 bufferize-elementwise=true bufferize-operand=def-op}))' --split-input-file %s | FileCheck %s --check-prefix=ELEMENTWISE-CHECK1
-// RUN: iree-opt --pass-pipeline='builtin.module(func.func(iree-amdaie-bufferize-to-allocation{memory-space=2 bufferize-elementwise=true bufferize-operand=input-output}))' --split-input-file %s | FileCheck %s --check-prefix=ELEMENTWISE-CHECK2
+// RUN: iree-opt --pass-pipeline='builtin.module(func.func(iree-amdaie-bufferize-to-allocation{memory-space=1 bufferize-operand=def-op}))' --split-input-file %s | FileCheck %s --check-prefix=DEF-OP
+// RUN: iree-opt --pass-pipeline='builtin.module(func.func(iree-amdaie-bufferize-to-allocation{memory-space=1 bufferize-elementwise=true bufferize-operand=def-op}))' --split-input-file %s | FileCheck %s --check-prefix=ELEMENTWISE-DEF-OP
+// RUN: iree-opt --pass-pipeline='builtin.module(func.func(iree-amdaie-bufferize-to-allocation{memory-space=2 bufferize-elementwise=true bufferize-operand=input-output}))' --split-input-file %s | FileCheck %s --check-prefix=ELEMENTWISE-INPUT-OUTPUT
 
 #map = affine_map<(d0, d1, d2, d3, d4, d5, d6, d7, d8) -> (d0, d2, d3, d5, d6, d8)>
 #map1 = affine_map<(d0, d1, d2, d3, d4, d5, d6, d7, d8) -> (d2, d1, d5, d4, d7, d8)>
@@ -77,19 +77,19 @@ func.func @matmul_static(%arg0 : tensor<1024x2048xi32>, %arg1 : tensor<2048x512x
 //     OUTPUT:  linalg.fill
 //     OUTPUT:  linalg.generic
 
-//     DEF-INPUT:  memref.alloc() : memref<16x32x64x64xi32, 1 : i32>
-//     DEF-INPUT:  bufferization.to_tensor
-//     DEF-INPUT:  tensor.pack
-//     DEF-INPUT:  memref.alloc() : memref<32x8x64x64xi32, 1 : i32>
-//     DEF-INPUT:  bufferization.to_tensor
-//     DEF-INPUT:  tensor.pack
-// DEF-INPUT-NOT:  memref.alloc
-//     DEF-INPUT:  tensor.pack
-// DEF-INPUT-NOT:  memref.alloc
-//     DEF-INPUT:  tensor.pack
-// DEF-INPUT-NOT:  memref.alloc
-//     DEF-INPUT:  linalg.fill
-//     DEF-INPUT:  linalg.generic
+//     DEF-OP:  memref.alloc() : memref<16x32x64x64xi32, 1 : i32>
+//     DEF-OP:  bufferization.to_tensor
+//     DEF-OP:  tensor.pack
+//     DEF-OP:  memref.alloc() : memref<32x8x64x64xi32, 1 : i32>
+//     DEF-OP:  bufferization.to_tensor
+//     DEF-OP:  tensor.pack
+// DEF-OP-NOT:  memref.alloc
+//     DEF-OP:  tensor.pack
+// DEF-OP-NOT:  memref.alloc
+//     DEF-OP:  tensor.pack
+// DEF-OP-NOT:  memref.alloc
+//     DEF-OP:  linalg.fill
+//     DEF-OP:  linalg.generic
 
 // -----
 
@@ -143,32 +143,32 @@ func.func @matmul_elementwise(%arg0: tensor<1024x512xi8>, %arg1: tensor<512x1024
   return %1 : tensor<1024x1024xi32>
 }
 
-// ELEMENTWISE-CHECK1-COUNT-4:  tensor.pack
-//         ELEMENTWISE-CHECK1:  linalg.fill
-//         ELEMENTWISE-CHECK1:  linalg.generic
-//         ELEMENTWISE-CHECK1:  memref.alloc() : memref<1x1x64x64xi32, 1 : i32>
-//         ELEMENTWISE-CHECK1:  bufferization.to_tensor
-//         ELEMENTWISE-CHECK1:  tensor.pack
-//         ELEMENTWISE-CHECK1:  memref.alloc() : memref<1x1x64x64xi32, 1 : i32>
-//         ELEMENTWISE-CHECK1:  bufferization.to_tensor
-//         ELEMENTWISE-CHECK1:  tensor.pack
-//     ELEMENTWISE-CHECK1-NOT:  memref.alloc
-//         ELEMENTWISE-CHECK1:  tensor.pack
-//     ELEMENTWISE-CHECK1-NOT:  memref.alloc
-//         ELEMENTWISE-CHECK1:  tensor.pack
-//         ELEMENTWISE-CHECK1:  linalg.generic
+// ELEMENTWISE-DEF-OP-COUNT-4:  tensor.pack
+//         ELEMENTWISE-DEF-OP:  linalg.fill
+//         ELEMENTWISE-DEF-OP:  linalg.generic
+//         ELEMENTWISE-DEF-OP:  memref.alloc() : memref<1x1x64x64xi32, 1 : i32>
+//         ELEMENTWISE-DEF-OP:  bufferization.to_tensor
+//         ELEMENTWISE-DEF-OP:  tensor.pack
+//         ELEMENTWISE-DEF-OP:  memref.alloc() : memref<1x1x64x64xi32, 1 : i32>
+//         ELEMENTWISE-DEF-OP:  bufferization.to_tensor
+//         ELEMENTWISE-DEF-OP:  tensor.pack
+//     ELEMENTWISE-DEF-OP-NOT:  memref.alloc
+//         ELEMENTWISE-DEF-OP:  tensor.pack
+//     ELEMENTWISE-DEF-OP-NOT:  memref.alloc
+//         ELEMENTWISE-DEF-OP:  tensor.pack
+//         ELEMENTWISE-DEF-OP:  linalg.generic
 
-// ELEMENTWISE-CHECK2-COUNT-4:  tensor.pack
-//         ELEMENTWISE-CHECK2:  linalg.fill
-//         ELEMENTWISE-CHECK2:  linalg.generic
-//     ELEMENTWISE-CHECK2-NOT:  memref.alloc
-//         ELEMENTWISE-CHECK2:  tensor.pack
-//     ELEMENTWISE-CHECK2-NOT:  memref.alloc
-//         ELEMENTWISE-CHECK2:  tensor.pack
-//         ELEMENTWISE-CHECK2:  memref.alloc() : memref<1x1x8x16x4x8xi32, 2 : i32>
-//         ELEMENTWISE-CHECK2:  bufferization.to_tensor
-//         ELEMENTWISE-CHECK2:  tensor.pack
-//         ELEMENTWISE-CHECK2:  memref.alloc() : memref<1x1x8x16x4x8xi32, 2 : i32>
-//         ELEMENTWISE-CHECK2:  bufferization.to_tensor
-//         ELEMENTWISE-CHECK2:  tensor.pack
-//         ELEMENTWISE-CHECK2:  linalg.generic
+// ELEMENTWISE-INPUT-OUTPUT-COUNT-4:  tensor.pack
+//         ELEMENTWISE-INPUT-OUTPUT:  linalg.fill
+//         ELEMENTWISE-INPUT-OUTPUT:  linalg.generic
+//     ELEMENTWISE-INPUT-OUTPUT-NOT:  memref.alloc
+//         ELEMENTWISE-INPUT-OUTPUT:  tensor.pack
+//     ELEMENTWISE-INPUT-OUTPUT-NOT:  memref.alloc
+//         ELEMENTWISE-INPUT-OUTPUT:  tensor.pack
+//         ELEMENTWISE-INPUT-OUTPUT:  memref.alloc() : memref<1x1x8x16x4x8xi32, 2 : i32>
+//         ELEMENTWISE-INPUT-OUTPUT:  bufferization.to_tensor
+//         ELEMENTWISE-INPUT-OUTPUT:  tensor.pack
+//         ELEMENTWISE-INPUT-OUTPUT:  memref.alloc() : memref<1x1x8x16x4x8xi32, 2 : i32>
+//         ELEMENTWISE-INPUT-OUTPUT:  bufferization.to_tensor
+//         ELEMENTWISE-INPUT-OUTPUT:  tensor.pack
+//         ELEMENTWISE-INPUT-OUTPUT:  linalg.generic

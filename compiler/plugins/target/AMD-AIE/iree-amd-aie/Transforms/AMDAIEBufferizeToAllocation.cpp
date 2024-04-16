@@ -41,19 +41,14 @@ static LogicalResult applyBufferizeToAllocation(RewriterBase &rewriter,
 }
 
 /// Utility to fetch operands from the LinalgOp's input and output.
-static FailureOr<SmallVector<Value>> getInputOutputOperands(
-    linalg::LinalgOp &linalgOp) {
+static SmallVector<Value> getInputOutputOperands(linalg::LinalgOp &linalgOp) {
   SmallVector<Value> operands;
   for (auto operand : linalgOp->getOperands()) {
     // For matmul-elementwise ops fusion, there is no need to promote the
     // operand which is the output of its producer contraction op.
     if (isMatmulElementwiseFusion(linalgOp)) {
-      auto defOp = operand.getDefiningOp();
-      if (!defOp) {
-        return failure();
-      }
-      auto defLinalgOp = dyn_cast_or_null<linalg::LinalgOp>(defOp);
-      if (defLinalgOp && linalg::isaContractionOpInterface(defLinalgOp)) {
+      auto defOp = operand.getDefiningOp<linalg::LinalgOp>();
+      if (defOp && linalg::isaContractionOpInterface(defOp)) {
         continue;
       }
     }
@@ -86,7 +81,7 @@ static FailureOr<SmallVector<Value>> getOperandsFromDefOp(
     // For matmul-elementwise ops fusion, there is no need to promote the
     // operand which is the output of its producer contraction op.
     if (isMatmulElementwiseFusion(linalgOp)) {
-      auto defLinalgOp = dyn_cast_or_null<linalg::LinalgOp>(defOp);
+      auto defLinalgOp = dyn_cast<linalg::LinalgOp>(defOp);
       if (defLinalgOp && linalg::isaContractionOpInterface(defLinalgOp)) {
         continue;
       }

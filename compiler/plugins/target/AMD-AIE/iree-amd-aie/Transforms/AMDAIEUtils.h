@@ -66,8 +66,11 @@ FailureOr<std::array<uint32_t, 3>> getAIEIntegerMatmulInstructionSize(
 /// width.
 FailureOr<unsigned> getTilingScaleFactor(Type elemType);
 
-/// Utility to check if a generic op is an elementwise op and if its producer is
-/// a matmul-like op.
+/// Utility to indentify whether a linalg op is a matmul op.
+bool isMatmul(linalg::LinalgOp linalgOp);
+
+/// Utility to indentify whether a generic op is an elementwise op and whether
+/// its producer is a matmul-like op.
 bool isMatmulElementwiseFusion(linalg::LinalgOp linalgOp);
 
 namespace detail {

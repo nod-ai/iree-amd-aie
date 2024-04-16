@@ -155,6 +155,24 @@ void addPackPeelBasedPassPipeline(OpPassManager &pm,
         createAMDAIEBufferizeToAllocationPass(bufferizeOptions1));
   }
 
+  // Promote the operands from Elementwise op to shared and local memory
+  {
+    AMDAIEBufferizeToAllocationOptions bufferizeOptions2;
+    bufferizeOptions2.memorySpace = 1;
+    bufferizeOptions2.bufferizeElementwise = true;
+    bufferizeOptions2.bufferizeOperand = BufferizeOperand::DefOp;
+    modulePassManager.addNestedPass<func::FuncOp>(
+        createAMDAIEBufferizeToAllocationPass(bufferizeOptions2));
+  }
+  {
+    AMDAIEBufferizeToAllocationOptions bufferizeOptions3;
+    bufferizeOptions3.memorySpace = 2;
+    bufferizeOptions3.bufferizeElementwise = true;
+    bufferizeOptions3.bufferizeOperand = BufferizeOperand::InputOutput;
+    modulePassManager.addNestedPass<func::FuncOp>(
+        createAMDAIEBufferizeToAllocationPass(bufferizeOptions3));
+  }
+
   // Tile the reduction dimension using scf.for
   {
     AMDAIETileAndFuseOptions tileFuseOptions1;
@@ -181,11 +199,11 @@ void addPackPeelBasedPassPipeline(OpPassManager &pm,
 
   // Promote the inputs to shared memory
   {
-    AMDAIEBufferizeToAllocationOptions bufferizeOptions2;
-    bufferizeOptions2.memorySpace = 1;
-    bufferizeOptions2.bufferizeOperand = BufferizeOperand::DefOp;
+    AMDAIEBufferizeToAllocationOptions bufferizeOptions4;
+    bufferizeOptions4.memorySpace = 1;
+    bufferizeOptions4.bufferizeOperand = BufferizeOperand::DefOp;
     modulePassManager.addNestedPass<func::FuncOp>(
-        createAMDAIEBufferizeToAllocationPass(bufferizeOptions2));
+        createAMDAIEBufferizeToAllocationPass(bufferizeOptions4));
   }
 
   // Second level tiling using scf.forall
@@ -214,11 +232,11 @@ void addPackPeelBasedPassPipeline(OpPassManager &pm,
 
   // Promote the inputs to local memory
   {
-    AMDAIEBufferizeToAllocationOptions bufferizeOptions3;
-    bufferizeOptions3.memorySpace = 2;
-    bufferizeOptions3.bufferizeOperand = BufferizeOperand::Input;
+    AMDAIEBufferizeToAllocationOptions bufferizeOptions5;
+    bufferizeOptions5.memorySpace = 2;
+    bufferizeOptions5.bufferizeOperand = BufferizeOperand::Input;
     modulePassManager.addNestedPass<func::FuncOp>(
-        createAMDAIEBufferizeToAllocationPass(bufferizeOptions3));
+        createAMDAIEBufferizeToAllocationPass(bufferizeOptions5));
   }
 
   // Hoist static allocations
@@ -233,7 +251,7 @@ void addPackPeelBasedPassPipeline(OpPassManager &pm,
   // last iterations.
   {
     AMDAIEPeelForLoopOptions peelOptions;
-    peelOptions.peelingType = PeelingType::First;
+    peelOptions.peelingType = PeelingType::FirstLast;
     modulePassManager.addNestedPass<func::FuncOp>(
         createAMDAIEPeelForLoopPass(peelOptions));
   }
@@ -245,24 +263,6 @@ void addPackPeelBasedPassPipeline(OpPassManager &pm,
       createAMDAIEFuseFillIntoForallPass());
   modulePassManager.addPass(createCanonicalizerPass());
   modulePassManager.addPass(createCSEPass());
-
-  // Promote the operands from Elementwise op to shared and local memory
-  {
-    AMDAIEBufferizeToAllocationOptions bufferizeOptions4;
-    bufferizeOptions4.memorySpace = 1;
-    bufferizeOptions4.bufferizeElementwise = true;
-    bufferizeOptions4.bufferizeOperand = BufferizeOperand::InputOutput;
-    modulePassManager.addNestedPass<func::FuncOp>(
-        createAMDAIEBufferizeToAllocationPass(bufferizeOptions4));
-  }
-  {
-    AMDAIEBufferizeToAllocationOptions bufferizeOptions5;
-    bufferizeOptions5.memorySpace = 2;
-    bufferizeOptions5.bufferizeElementwise = true;
-    bufferizeOptions5.bufferizeOperand = BufferizeOperand::InputOutput;
-    modulePassManager.addNestedPass<func::FuncOp>(
-        createAMDAIEBufferizeToAllocationPass(bufferizeOptions5));
-  }
 
   // Comprehensive bufferization
   addAMDAIEBufferizePasses(modulePassManager);
