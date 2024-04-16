@@ -380,16 +380,16 @@ int setupNPUAccelerator() {
     std::string xclbinPath = libPath + "/kernels/" + kernelFileName + ".xclbin";
     auto xclbin = xrt::xclbin(xclbinPath);
 
-    // std::string node = "MLIR_AIE";
-
     // Get the kernel from the xclbin
     auto xkernels = xclbin.get_kernels();
     auto xkernel = *std::find_if(xkernels.begin(), xkernels.end(),
-                                 [/* node */](xrt::xclbin::kernel &k) {
+                                 [](xrt::xclbin::kernel &k) {
                                    auto name = k.get_name();
                                    std::cout << "[AIE Delegate]: Name: " << name << std::endl;
-                                   return name.rfind(KernelName /* node */, 0) == 0;
+                                   return name.rfind(KernelName, 0) == 0;
                                  });
+    // TODO: handle case where kernel name isn't found (instead of crashing)
+    
     auto kernelName = xkernel.get_name();
 
     // Register the xclbin
