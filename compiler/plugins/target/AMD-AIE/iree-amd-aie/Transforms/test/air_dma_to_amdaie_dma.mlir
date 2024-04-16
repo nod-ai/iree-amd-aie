@@ -5,8 +5,9 @@
 // CHECK: %[[FROMMEMREF0:.*]] = amdaie.logicalobjectfifo.from_memref %[[ALLOC0]], {} : memref<1x1x8x16xi32, 1> -> !amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>
 // CHECK: %[[ALLOC1:.*]] = memref.alloc() : memref<8x16xi32, 1>
 // CHECK: %[[FROMMEMREF1:.*]] = amdaie.logicalobjectfifo.from_memref %[[ALLOC1]], {} : memref<8x16xi32, 1> -> !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>
-// CHECK: %[[DMA0:.*]] = amdaie.dma_cpy_nd(%[[FROMMEMREF0]][%c0, %c0, %c0, %c0] [%c1, %c1, %c8, %c16] [%c128, %c128, %c16, %c1],
-// CHECK-SAME: %[[FROMMEMREF1]][%c0, %c0, %c0, %c0] [%c1, %c1, %c8, %c16] [%c128, %c16, %c16, %c1])
+// CHECK: %[[DMA0:.*]] = amdaie.dma_cpy_nd
+// CHECK-SAME: %[[FROMMEMREF0]][%c0, %c0, %c0, %c0] [%c1, %c1, %c8, %c16] [%c128, %c128, %c16, %c1]
+// CHECK-SAME: %[[FROMMEMREF1]][%c0, %c0, %c0, %c0] [%c1, %c1, %c8, %c16] [%c128, %c16, %c16, %c1]
 // CHECK-SAME: (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>)
 func.func @basic_dma() {
   %c0 = arith.constant 0 : index

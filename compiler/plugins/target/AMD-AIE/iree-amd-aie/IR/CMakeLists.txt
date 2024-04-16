@@ -31,6 +31,7 @@ iree_cc_library(
     "AMDAIEDmaOpInterface.h.inc"
   SRCS
     "AMDAIEAttrs.cpp"
+    "AMDAIEDmaOpInterface.cpp"
     "AMDAIEDialect.cpp"
     "AMDAIEOps.cpp"
     "AMDAIETypes.cpp"

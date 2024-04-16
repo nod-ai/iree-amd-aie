@@ -7,6 +7,23 @@
 #ifndef IREE_COMPILER_AMDAIE_DMAOPINTERFACE_H_
 #define IREE_COMPILER_AMDAIE_DMAOPINTERFACE_H_
 
+#include "mlir/Dialect/Utils/StaticValueUtils.h"
+#include "mlir/IR/Builders.h"
+#include "mlir/IR/OpImplementation.h"
+
+namespace mlir::iree_compiler::AMDAIE {
+
+class DoublyStridedOpInterface;
+
+namespace detail {
+
+/// Common verifier for doubly-strided operations.
+LogicalResult verifyDoublyStridedOp(DoublyStridedOpInterface op);
+
+}  // namespace detail
+
+}  // namespace mlir::iree_compiler::AMDAIE
+
 // clang-format off
 #include "iree-amd-aie/IR/AMDAIEDmaOpInterface.h.inc"
 // clang-format on
