@@ -15,7 +15,8 @@ message(STATUS "Processing AIE Delegate Kernels")
 # List of all kernels stored in Azure (without file extension)
 set(AIE_DELEGATE_KERNELS
     "matmul/matmul-bf16-256x256x256-v1"
-    "matmul/matmul-bf16-8x768x768-v1"  # for OPT
+    "matmul/matmul-bf16-8x768x768-v1"  # OPT ref vec matmul (doesn't work)
+    "matmul/matmul-bf16-f32-8x768x768-v1"  # for OPT, Erwei's 4x4 vec matmul
 )
 
 # List of all kernel file extensions
