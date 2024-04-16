@@ -29,18 +29,18 @@ class AIRDmaToAMDAIEDma : public OpRewritePattern<xilinx::air::DmaMemcpyNdOp> {
     auto dstType = op.getDst().getType().cast<MemRefType>();
     rewriter.setInsertionPointAfter(op.getSrc().getDefiningOp());
     auto src = rewriter.create<AMDAIE::LogicalObjectFifoFromMemrefOp>(
-        rewriter.getUnknownLoc(), AMDAIELogicalObjectFifoType::get(op.getLoc(), srcType),
+        rewriter.getUnknownLoc(), LogicalObjectFifoType::get(srcType),
         op.getSrc());
     rewriter.setInsertionPointAfter(op.getDst().getDefiningOp());
     auto dst = rewriter.create<AMDAIE::LogicalObjectFifoFromMemrefOp>(
-        rewriter.getUnknownLoc(), AMDAIELogicalObjectFifoType::get(op.getLoc(), dstType),
+        rewriter.getUnknownLoc(), LogicalObjectFifoType::get(dstType),
         op.getDst());
 
     rewriter.setInsertionPoint(op);
-    rewriter.create<AMDAIE::DmaCpyNdOp>(
-        op.getLoc(), rewriter.getIndexType(), dst, op.getDstOffsets(),
-        op.getDstSizes(), op.getDstStrides(), src, op.getSrcOffsets(),
-        op.getSrcSizes(), op.getSrcStrides());
+    rewriter.create<AMDAIE::DmaCpyNdOp>(op.getLoc(), dst, op.getDstOffsets(),
+                                        op.getDstSizes(), op.getDstStrides(),
+                                        src, op.getSrcOffsets(),
+                                        op.getSrcSizes(), op.getSrcStrides());
     rewriter.eraseOp(op);
     return success();
   }

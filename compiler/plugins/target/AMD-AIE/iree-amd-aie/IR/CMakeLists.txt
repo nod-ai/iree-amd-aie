@@ -15,6 +15,7 @@ iree_cc_library(
     "AMDAIEAttrs.h"
     "AMDAIEDialect.h"
     "AMDAIEOps.h"
+    "AMDAIETypes.h"
   TEXTUAL_HDRS
     "AMDAIEAttrs.cpp.inc"
     "AMDAIEAttrs.h.inc"
@@ -30,8 +31,10 @@ iree_cc_library(
     "AMDAIEDmaOpInterface.h.inc"
   SRCS
     "AMDAIEAttrs.cpp"
+    "AMDAIEDmaOpInterface.cpp"
     "AMDAIEDialect.cpp"
     "AMDAIEOps.cpp"
+    "AMDAIETypes.cpp"
   DEPS
     ::AMDAIEDialectGen
     ::AMDAIEDmaOpInterfaceGen

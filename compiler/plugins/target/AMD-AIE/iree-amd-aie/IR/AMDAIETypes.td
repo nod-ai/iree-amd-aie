@@ -16,8 +16,31 @@ class AMDAIEDialect_Type<string name, string typeMnemonic, list<Trait> traits = 
 }
 
 def AMDAIE_LogicalObjectFifoType :
-    DialectType<AMDAIE_Dialect, CPred<"$_self.isa<AMDAIELogicalObjectFifoType>()">,
-                "AMDAIE objectFifo type">;
+    AMDAIEDialect_Type<"LogicalObjectFifo", "logicalobjectfifo"> {
+  let summary = "The logical objectfifo type encapsulating a memref";
+  let description = [{
+    The logical objectfifo type encapulates a memref and provides synchronized
+    access operations to retrieve the underlying memref. This type is similar and 
+    based on the MLIR-AIE ObjectFifo type. For now, this type only works with
+    static memrefs.
+
+    Example:
+    ```mlir
+    !amdaie.logicalobjectfifo<memref<8x16xi32>>
+    ```
+  }];
+
+  let parameters = (ins "MemRefType":$element_type);
+  let genVerifyDecl = 1;
+
+  let assemblyFormat = "`<` $element_type `>`";
+  
+  let builders = [
+    TypeBuilderWithInferredContext<(ins "MemRefType":$elementType), [{
+      return $_get(elementType.getContext(), elementType);
+    }]>
+  ];  
+}
 
 def AnyAMDAIELogicalObjectFifoType : AnyTypeOf<[AMDAIE_LogicalObjectFifoType]>;
 
