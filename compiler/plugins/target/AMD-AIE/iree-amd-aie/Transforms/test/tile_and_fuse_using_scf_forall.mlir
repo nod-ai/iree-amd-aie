@@ -1,5 +1,6 @@
 // RUN: iree-opt --pass-pipeline='builtin.module(func.func(iree-amdaie-tile-and-fuse{tiling-level=0}))' --split-input-file %s | FileCheck %s --check-prefix=TILE-LEVEL-0
 // RUN: iree-opt --pass-pipeline='builtin.module(func.func(iree-amdaie-tile-and-fuse{tiling-level=1}))' --split-input-file %s | FileCheck %s --check-prefix=TILE-LEVEL-1
+// RUN: iree-opt --pass-pipeline='builtin.module(func.func(iree-amdaie-tile-and-fuse{tiling-level=0 tile-elementwise=false}))' --split-input-file %s | FileCheck %s --check-prefix=TILE-MATMUL-ONLY
 
 func.func @matmul_static(%arg0: tensor<8x16xi32>, %arg1 : tensor<16x8xi32>) -> tensor<8x8xi32> {
   %c0 = arith.constant 0 : index
@@ -91,3 +92,11 @@ func.func @matmul_bias_add(%arg0 : tensor<?x?xf32>, %arg1 : tensor<?x?xf32>, %ar
 //      TILE-LEVEL-0:       linalg.matmul
 //      TILE-LEVEL-0:       linalg.generic
 //      TILE-LEVEL-0:   }
+
+//      TILE-MATMUL-ONLY: @matmul_bias_add
+//      TILE-MATMUL-ONLY:   scf.forall
+// TILE-MATMUL-ONLY-SAME:   {
+//      TILE-MATMUL-ONLY:       linalg.fill
+//      TILE-MATMUL-ONLY:       linalg.matmul
+//      TILE-MATMUL-ONLY:   }
+//      TILE-MATMUL-ONLY:   linalg.generic

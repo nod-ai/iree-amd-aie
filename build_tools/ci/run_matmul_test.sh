@@ -436,7 +436,7 @@ function run_matmul_test() {
 #    build and execution latency of tests. The build latency is nearly the
 #    same for all shapes, while execution latency grows cubicly i.e.
 #    linearly with m*k*n.
-#
+
 
 # Example of a run without any defaults arguments.
 run_matmul_test \
@@ -458,7 +458,7 @@ run_matmul_test \
     --compile-only "0"
 
 # An example of a matmul which we don't currently support, and which fails in
-# compilation. We should support this (and all!) matmul.
+# compilation. TODO: support this (and all!) matmuls.
 run_matmul_test \
    --name_prefix "failure_0" \
    --lhs_rhs_type "i32" \
@@ -481,38 +481,44 @@ run_matmul_test \
     --compile-only "1"
 
 run_matmul_test \
-    --name_prefix "small_test3" \
+    --name_prefix "small" \
     --lhs_rhs_type "i32" \
     --acc_type "i32" \
     --m "16"  --n "16" --k "8"
 
 run_matmul_test \
-    --name_prefix "small_test2" \
+    --name_prefix "small" \
     --lhs_rhs_type "i32" \
     --acc_type "i32" \
     --m "8"  --n "32" --k "16"
 
 run_matmul_test \
-    --name_prefix "small_test4" \
+    --name_prefix "small" \
     --lhs_rhs_type "i32" \
     --acc_type "i32" \
     --m "52"  --n "52" --k "63"
 
 run_matmul_test \
-    --name_prefix "small_test5" \
+    --name_prefix "small" \
     --lhs_rhs_type "i32" \
     --acc_type "i32" \
     --m "9"  --n "7" --k "16"
 
 run_matmul_test \
-    --name_prefix "large_test6" \
+    --name_prefix "large" \
     --lhs_rhs_type "i32" \
     --acc_type "i32" \
     --m "64"  --n "64" --k "128"
 
 run_matmul_test \
-    --name_prefix "large_test7" \
+    --name_prefix "large" \
     --lhs_rhs_type "i32" \
     --acc_type "i32" \
     --m "512"  --n "512" --k "512"
+
+run_matmul_test \
+    --name_prefix "int8" \
+    --lhs_rhs_type "i8" \
+    --acc_type "i32" \
+    --m "64"  --n "64" --k "64"
 
