@@ -44,7 +44,7 @@
 // #define USE_BF16_CPU_ACCUMULATOR 1
 
 // Turn this on to debug value conversions
-#define DEBUG_VALUE_CONVERSIONS 1
+// #define DEBUG_VALUE_CONVERSIONS 1
 
 #if DEBUG_VALUE_CONVERSIONS
   bool DebugValueConversions = false;
@@ -60,8 +60,8 @@ using bfloat16_t = std::uint16_t;
 #ifdef USE_OPT_KERNEL
 // Kernel file names (without extension) relative to installation root
 const std::string kernelFileName = 
-    // "matmul/matmul-bf16-8x768x768-v1";
-    "matmul/matmul-bf16-f32-8x768x768-v1";
+    // "matmul/matmul-bf16-8x768x768-v1";  // from mlir-aie, doesn't work for M=8
+    "matmul/matmul-bf16-f32-8x768x768-v1";  // Erwei's 4x4 vector matmul
 
 const std::string KernelName = "matmul_8x768_768xbf16__dispatch_0_matmul_8x768x7";
 
@@ -204,7 +204,9 @@ struct Converter<bfloat16_t, float> {
 template<typename SrcType, typename DestType>
 struct TensorCopier {
   static void copy(DestType *destBuf, const SrcType *srcBuf, std::size_t numElements) {
+#ifdef DEBUG_VALUE_CONVERSIONS
     std::cout << "TensorCopier: Using general (type converting) copy" << std::endl;
+#endif
     DestType *pDest = destBuf;
     for (const SrcType *pSrc = srcBuf, *pEnd = srcBuf + numElements; pSrc != pEnd; ++pSrc)
       *pDest++ = Converter<SrcType, DestType>::convert(*pSrc);
@@ -216,11 +218,13 @@ struct TensorCopier {
 template<typename T>
 struct TensorCopier<T, T> {
   static void copy(T *destBuf, const T *srcBuf, std::size_t numElements) {
+#ifdef DEBUG_VALUE_CONVERSIONS
     std::cout << "TensorCopier: Using memcpy" << std::endl;
     std::cout << "TensorCopier: destBuf = " << (void *) destBuf
       << ", srcBuf = " << (void *) srcBuf << std::endl;
     std::cout << "TensorCopier: numElements = " << numElements
       << ", sizeof(T) = " << sizeof(T) << std::endl;
+#endif
     std::memcpy(destBuf, srcBuf, numElements * sizeof(T));
   }
 };
@@ -431,22 +435,16 @@ int aie_matmul(Params *params) {
     TensorCopier<ModelReturnDType, C_DATATYPE>::copy(bufC, params->result.get(), cVolume);
 
     // sync buffers to NPU device
-    std::cout << "Syncing" << std::endl;
     xrtState->boA.sync(XCL_BO_SYNC_BO_TO_DEVICE);
     xrtState->boB.sync(XCL_BO_SYNC_BO_TO_DEVICE);
     xrtState->boC.sync(XCL_BO_SYNC_BO_TO_DEVICE);
 
     // execute the kernel on NPU
-    std::cout << "Running kernel" << std::endl;
     auto run = xrtState->kernel(xrtState->boInstr, instrSize, xrtState->boA, xrtState->boB, xrtState->boC);
-    std::cout << "Waiting on kernel" << std::endl;
     run.wait();
 
     // sync output to host
-    std::cout << "Syncing output" << std::endl;
     xrtState->boC.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
-    std::cout << std::endl;
-    params->result.dumpVals(std::cout, cVolume);
     TensorCopier<C_DATATYPE, ModelReturnDType>::copy(params->result.get(), bufC, cVolume);
 
     return 0;  // TODO: check for and handle error conditions
@@ -475,12 +473,6 @@ static int cpu_matmul(Params *params) {
           Converter<CpuAccDType, float>::convert(curr_result)
           + Converter<float, CpuAccDType>::convert(a * b)
         );
-        if (!i && !j && k < 20) {
-          CONVERSION_DEBUG(true);
-          std::cout << "a = " << a << ", b = " << b << ", result = "
-            << Converter<CpuAccDType, float>::convert(curr_result) << std::endl;
-          CONVERSION_DEBUG(false);
-        }
       }
       // curr_result = curr_result < 0.0 ? 0.0 : curr_result;  ref matmul doesn't seem to have this
       params->result.setElement(i, j, N, Converter<CpuAccDType, ModelReturnDType>::convert(curr_result));
@@ -527,11 +519,8 @@ typedef struct {
 static int mlp_external(void* params_ptr, void* context, void* reserved) {
   auto plugin = reinterpret_cast<mlp_plugin_t *>(context);
   auto params = reinterpret_cast<Params *>(params_ptr);
-  fprintf(plugin->file, "[AIE Delegate]: M = %d, N = %d, K = %d\n", params->M,
-          params->N, params->K);
-  std::cout << "[AIE Delegate]: Params: " << *params << std::endl;
-  // std::cout << "LHS:" << std::endl;
-  // params->lhs.dumpVals(std::cout, aVolume);
+  // fprintf(plugin->file, "[AIE Delegate]: M = %d, N = %d, K = %d\n", params->M,
+  //         params->N, params->K);
 
 #ifdef USE_CPU_IMPLEMENTATION
   return cpu_matmul(params);  // enable this if CPU fallback desired
