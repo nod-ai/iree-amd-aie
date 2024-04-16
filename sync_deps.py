@@ -7,11 +7,11 @@
 ### Update with: shark-workspace pin
 
 PINNED_VERSIONS = {
-  "iree": "4691fc5bf37d6ba8aeac6a1c5382a595fa900f4c",
+  "iree": "125f4200d8326349a9fc5ef9ed090872400c18d0",
 }
 
 ORIGINS = {
-  "iree": "https://github.com/openxla/iree.git",
+  "iree": "https://github.com/iree-org/iree.git",
 }
 
 SUBMODULES = {

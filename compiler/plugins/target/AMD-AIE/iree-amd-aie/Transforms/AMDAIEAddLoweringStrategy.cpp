@@ -10,11 +10,15 @@
 #include "iree/compiler/Codegen/Dialect/Codegen/IR/IREECodegenDialect.h"
 #include "iree/compiler/Dialect/HAL/IR/HALDialect.h"
 #include "iree/compiler/Dialect/LinalgExt/IR/LinalgExtDialect.h"
+#include "mlir/Dialect/Bufferization/IR/Bufferization.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
-#include "mlir/Dialect/Linalg/TransformOps/LinalgTransformOps.h"
 #include "mlir/Dialect/PDL/IR/PDL.h"
 #include "mlir/Dialect/PDLInterp/IR/PDLInterp.h"
+#include "mlir/Dialect/Transform/IR/TransformDialect.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
+#include "mlir/Pass/Pass.h"
+#include "mlir/Pass/PassManager.h"
+#include "mlir/Pass/PassRegistry.h"
 
 namespace mlir::iree_compiler::AMDAIE {
 
@@ -43,22 +47,20 @@ class AMDAIELoweringStrategyPass
 }  // namespace
 
 void AMDAIELoweringStrategyPass::runOnOperation() {
-  IREE::HAL::ExecutableVariantOp variantOp = getOperation();
-  ModuleOp moduleOp = variantOp.getInnerModule();
-  if (!moduleOp) {
-    getOperation()->emitError(
-        "Expected a variantOp root with an inner ModuleOp");
-    return signalPassFailure();
-  }
+  ModuleOp moduleOp = getOperation();
   // To simplify development, the number of cores can be passed as a flag during
   // compilation. In the future these parameters could be read from file.
   struct AIEConfig cfg = {numCores};
-  if (failed(initAIELaunchConfig(moduleOp, usePassPipeline, cfg))) {
-    return signalPassFailure();
+  for (auto funcOp : moduleOp.getOps<FunctionOpInterface>()) {
+    // Set the strategy with default heuristics.
+    if (failed(initAIELaunchConfig(funcOp, usePassPipeline, cfg))) {
+      funcOp.emitOpError("failed to set lowering configuration");
+      return signalPassFailure();
+    }
   }
 }
 
-std::unique_ptr<Pass> createAMDAIELoweringStrategyPass(
+std::unique_ptr<OperationPass<ModuleOp>> createAMDAIELoweringStrategyPass(
     AMDAIELoweringStrategyOptions options) {
   return std::make_unique<AMDAIELoweringStrategyPass>(options);
 }

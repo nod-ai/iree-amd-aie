@@ -8,6 +8,7 @@
 #define IREE_AMD_AIE_TRANSFORMS_PASSES_H_
 
 #include "iree-amd-aie/Transforms/PassDetail.h"
+#include "iree/compiler/Codegen/Common/PassUtils.h"
 #include "iree/compiler/Codegen/Common/TileSizeSelection.h"
 #include "mlir/Pass/Pass.h"
 
@@ -21,10 +22,6 @@ void addMLIRAIRAIELoweringPasses(OpPassManager &passManager);
 /// currently the default passes used for lowering after IREEs tiling from
 /// pipelines other than the pad-pack pipelines
 void addMLIRAIRAIELegacyLoweringPasses(OpPassManager &passManager);
-
-/// Add passes to run the strategy specified using transform dialect
-/// file/library
-void addTransformDialectPasses(OpPassManager &passManager);
 
 /// Populates passes needed to lower linalg/arith/math ops to LLVM dialect via
 /// the structured ops path. The pass manager `pm` here operate on the module
@@ -77,11 +74,12 @@ std::unique_ptr<Pass> createAMDAIEFusePackIntoLoopPass(
     AMDAIEFusePackIntoLoopOptions options = {});
 
 /// Create pass calling the dynamic pipeline for AMDAIE.
-std::unique_ptr<Pass> createAMDAIELowerExecutableTargetPass(
+std::unique_ptr<InterfacePass<FunctionOpInterface>>
+createAMDAIELowerExecutableTargetPass(
     AMDAIELowerExecutableTargetOptions options = {});
 
 /// Create pass for adding lowering strategy configurations.
-std::unique_ptr<Pass> createAMDAIELoweringStrategyPass(
+std::unique_ptr<OperationPass<ModuleOp>> createAMDAIELoweringStrategyPass(
     AMDAIELoweringStrategyOptions options = {});
 
 /// Create pass to lower a sequence of operation(s) to a iree_codegen.ukernel.*

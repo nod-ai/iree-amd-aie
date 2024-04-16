@@ -28,7 +28,7 @@ class AMDAIEFuseFillIntoForallPass
 
 void AMDAIEFuseFillIntoForallPass::runOnOperation() {
   MLIRContext *context = &getContext();
-  func::FuncOp funcOp = getOperation();
+  mlir::FunctionOpInterface funcOp = getOperation();
   IRRewriter rewriter(context);
 
   // Find the producer op, in this case is linalg.fill.

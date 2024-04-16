@@ -76,7 +76,7 @@ class AMDAIEPeelForLoopPass
 
 void AMDAIEPeelForLoopPass::runOnOperation() {
   MLIRContext *context = &getContext();
-  func::FuncOp funcOp = getOperation();
+  mlir::FunctionOpInterface funcOp = getOperation();
   IRRewriter rewriter(context);
 
   funcOp->walk([&](scf::ForOp forOp) {

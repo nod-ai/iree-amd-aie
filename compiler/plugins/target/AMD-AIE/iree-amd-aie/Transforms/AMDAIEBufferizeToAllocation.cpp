@@ -159,7 +159,7 @@ class AMDAIEBufferizeToAllocationPass
 
 void AMDAIEBufferizeToAllocationPass::runOnOperation() {
   MLIRContext *context = &getContext();
-  func::FuncOp funcOp = getOperation();
+  mlir::FunctionOpInterface funcOp = getOperation();
   linalg::LinalgOp linalgOp;
   funcOp->walk<WalkOrder::PostOrder, ReverseIterator>([&](linalg::LinalgOp op) {
     // Use flag `bufferizeElementwise` to indicate whether the target for

@@ -56,7 +56,7 @@ class AMDAIEFusePackIntoLoopPass
 
 void AMDAIEFusePackIntoLoopPass::runOnOperation() {
   MLIRContext *context = &getContext();
-  func::FuncOp funcOp = getOperation();
+  mlir::FunctionOpInterface funcOp = getOperation();
   IRRewriter rewriter(context);
 
   // Walk through the graph in post order and find the loop.

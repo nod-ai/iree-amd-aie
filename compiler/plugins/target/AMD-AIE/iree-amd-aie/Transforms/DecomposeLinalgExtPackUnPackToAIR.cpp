@@ -296,10 +296,10 @@ class AMDAIEDecomposeLinalgExtPackUnPackToAIRPass
           AMDAIEDecomposeLinalgExtPackUnPackToAIRPass> {
  public:
   void getDependentDialects(DialectRegistry &registry) const override {
-    registry.insert<linalg::LinalgDialect, func::FuncDialect,
-                    arith::ArithDialect, scf::SCFDialect, memref::MemRefDialect,
-                    IREE::LinalgExt::IREELinalgExtDialect,
-                    xilinx::air::airDialect>();
+    registry
+        .insert<linalg::LinalgDialect, arith::ArithDialect, scf::SCFDialect,
+                memref::MemRefDialect, IREE::LinalgExt::IREELinalgExtDialect,
+                xilinx::air::airDialect>();
   }
 
   AMDAIEDecomposeLinalgExtPackUnPackToAIRPass() = default;

@@ -39,7 +39,7 @@ class AMDAIETilePass : public impl::AMDAIETileBase<AMDAIETilePass> {
 
 void AMDAIETilePass::runOnOperation() {
   MLIRContext *context = &getContext();
-  func::FuncOp funcOp = getOperation();
+  mlir::FunctionOpInterface funcOp = getOperation();
 
   if (tilingLevel == -1) {
     LLVM_DEBUG(llvm::dbgs() << "tilingLevel not set, skip tiling\n");
