@@ -106,7 +106,7 @@ def DoublyStridedOpInterface : OpInterface<"DoublyStridedOpInterface"> {
       /*desc=*/[{
         Return a vector of all the static or dynamic target offsets of the op.
       }],
-      /*retTy=*/"::llvm::SmallVector<::mlir::OpFoldResult, 4>",
+      /*retTy=*/"::llvm::SmallVector<::mlir::OpFoldResult>",
       /*methodName=*/"getTargetMixedOffsets",
       /*args=*/(ins),
       /*methodBody=*/"",
@@ -120,7 +120,7 @@ def DoublyStridedOpInterface : OpInterface<"DoublyStridedOpInterface"> {
       /*desc=*/[{
         Return a vector of all the static or dynamic target sizes of the op.
       }],
-      /*retTy=*/"::llvm::SmallVector<::mlir::OpFoldResult, 4>",
+      /*retTy=*/"::llvm::SmallVector<::mlir::OpFoldResult>",
       /*methodName=*/"getTargetMixedSizes",
       /*args=*/(ins),
       /*methodBody=*/"",
@@ -134,7 +134,7 @@ def DoublyStridedOpInterface : OpInterface<"DoublyStridedOpInterface"> {
       /*desc=*/[{
         Return a vector of all the static or dynamic target strides of the op.
       }],
-      /*retTy=*/"::llvm::SmallVector<::mlir::OpFoldResult, 4>",
+      /*retTy=*/"::llvm::SmallVector<::mlir::OpFoldResult>",
       /*methodName=*/"getTargetMixedStrides",
       /*args=*/(ins),
       /*methodBody=*/"",
@@ -208,7 +208,7 @@ def DoublyStridedOpInterface : OpInterface<"DoublyStridedOpInterface"> {
       /*desc=*/[{
         Return a vector of all the static or dynamic source offsets of the op.
       }],
-      /*retTy=*/"::llvm::SmallVector<::mlir::OpFoldResult, 4>",
+      /*retTy=*/"::llvm::SmallVector<::mlir::OpFoldResult>",
       /*methodName=*/"getSourceMixedOffsets",
       /*args=*/(ins),
       /*methodBody=*/"",
@@ -222,7 +222,7 @@ def DoublyStridedOpInterface : OpInterface<"DoublyStridedOpInterface"> {
       /*desc=*/[{
         Return a vector of all the static or dynamic source sizes of the op.
       }],
-      /*retTy=*/"::llvm::SmallVector<::mlir::OpFoldResult, 4>",
+      /*retTy=*/"::llvm::SmallVector<::mlir::OpFoldResult>",
       /*methodName=*/"getSourceMixedSizes",
       /*args=*/(ins),
       /*methodBody=*/"",
@@ -236,7 +236,7 @@ def DoublyStridedOpInterface : OpInterface<"DoublyStridedOpInterface"> {
       /*desc=*/[{
         Return a vector of all the static or dynamic source strides of the op.
       }],
-      /*retTy=*/"::llvm::SmallVector<::mlir::OpFoldResult, 4>",
+      /*retTy=*/"::llvm::SmallVector<::mlir::OpFoldResult>",
       /*methodName=*/"getSourceMixedStrides",
       /*args=*/(ins),
       /*methodBody=*/"",
