@@ -251,7 +251,7 @@ void addPackPeelBasedPassPipeline(OpPassManager &pm,
   // last iterations.
   {
     AMDAIEPeelForLoopOptions peelOptions;
-    peelOptions.peelingType = PeelingType::FirstLast;
+    peelOptions.peelingType = PeelingType::First;
     modulePassManager.addNestedPass<func::FuncOp>(
         createAMDAIEPeelForLoopPass(peelOptions));
   }
