@@ -206,9 +206,6 @@ function run_matmul_test() {
   # The default is to not expect a compilation failure.
   local expect_compile_failure="0"
 
-  # The default is to not expect a numerical failure.
-  local expect_numerical_failure="0"
-
   # The default is to compile and run the numerical test.
   local compile_only="0"
 
@@ -220,10 +217,6 @@ function run_matmul_test() {
         ;;
       --expect-compile-failure)
         expect_compile_failure="$2"
-        shift 2
-        ;;
-      --expect-numerical-failure)
-        expect_numerical_failure="$2"
         shift 2
         ;;
       --name_prefix)
@@ -326,7 +319,7 @@ function run_matmul_test() {
   matmul_vmfb="${OUTPUT_DIR}/${name}.vmfb"
   calls_vmfb="${OUTPUT_DIR}/${name}_calls.vmfb"
 
-  echo "**** Generating .mlir file with function(s) ****"
+  echo "**** Generating .mlir file containing matmul function(s) ****"
   ${IREE_PYTHON3_EXECUTABLE} ${GENERATOR} \
       --output_matmuls_mlir="${matmul_ir}" \
       --output_calls_mlir="${calls_ir}" \
@@ -435,34 +428,11 @@ function run_matmul_test() {
   fi
 
 
-  # Execute the command, and print the status. Compare the status to the
-  # expected status (controlled by flag expect_numerical_failure).
-
-  # Disable exit on failure:
-  set +e
-
   echo "Running command: ${COMMAND}"
   eval "${COMMAND}"
   return_status=$?
   echo "Command returned with status: ${return_status}"
 
-  # Renable exit on failure:
-  set -e
-
-  if [ $expect_numerical_failure -ne 0 ]; then
-    if [ $return_status -ne 0 ]; then
-      echo "Expected numerical failure, got numerical failure."
-      return 0
-    else
-      echo "Expected numerical failure, but got success."
-      exit 1
-    fi
-  fi
-
-  if [ $return_status -ne 0 ]; then
-    echo "Expected numerical match, but got numerical mismatch."
-    exit 1
-  fi
 
   set +x
 }
@@ -497,8 +467,8 @@ run_matmul_test \
     --expect-compile-failure "0" \
     --compile-only "0"
 
-# An example of a matmul which is not currently support, and which fails in
-# compilation. TODO: Fix this.
+# An example of a matmul which we don't currently support, and which fails in
+# compilation. TODO: support this (and all!) matmuls.
 run_matmul_test \
    --name_prefix "failure_0" \
    --lhs_rhs_type "i32" \
@@ -508,22 +478,24 @@ run_matmul_test \
 
 # Example of a run with a group of 2+ matmuls. Currently this test is passed
 # the flag '--compile-only' as there is currently an issue with the runtime if
-# multiple matmuls are run in the same test.  TODO: Fix this (see 
-# issue https://github.com/nod-ai/iree-amd-aie/issues/277). 
+# multiple matmuls are run in the same test.  TODO: Fix this (see
+# issue https://github.com/nod-ai/iree-amd-aie/issues/277).
+#
+# TODO: note that I have disabled compile-only, to check what happens in CI. 
 run_matmul_test \
-    --name_prefix "two_matmuls" \
+    --name_prefix "multiple_matmuls" \
     --lhs_rhs_type "i32" \
     --acc_type "i32" \
     --m "512,8,16,52,7" \
     --n "512,32,16,52,15" \
     --k "256,16,8,63,9" \
-    --compile-only "1"
+    --compile-only "0"
 
 run_matmul_test \
     --name_prefix "small" \
     --lhs_rhs_type "i32" \
     --acc_type "i32" \
-    --m "512"  --n "512" --k "256"
+    --m "16"  --n "16" --k "8"
 
 run_matmul_test \
     --name_prefix "small" \
