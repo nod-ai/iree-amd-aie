@@ -478,10 +478,8 @@ run_matmul_test \
 
 # Example of a run with a group of 2+ matmuls. Currently this test is passed
 # the flag '--compile-only' as there is currently an issue with the runtime if
-# multiple matmuls are run in the same test.  TODO: Fix this (see
-# issue https://github.com/nod-ai/iree-amd-aie/issues/277).
-#
-# TODO: note that I have disabled compile-only, to check what happens in CI. 
+# multiple matmuls are run in the same test. TODO(newling/nmeshram): Document
+# this issue.
 run_matmul_test \
     --name_prefix "multiple_matmuls" \
     --lhs_rhs_type "i32" \
@@ -489,7 +487,7 @@ run_matmul_test \
     --m "512,8,16,52,7" \
     --n "512,32,16,52,15" \
     --k "256,16,8,63,9" \
-    --compile-only "0"
+    --compile-only "1"
 
 run_matmul_test \
     --name_prefix "small" \
