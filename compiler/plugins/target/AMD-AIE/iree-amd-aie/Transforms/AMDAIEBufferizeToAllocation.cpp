@@ -40,15 +40,18 @@ static LogicalResult applyBufferizeToAllocation(RewriterBase &rewriter,
   return success();
 }
 
-/// Utility to fetch operands from the LinalgOp's input and output.
+/// Utility to fetch input and output operands from the LinalgOp (matmul or
+/// elementwise op). For matmul-elementwise special case, since one of the
+/// elementwise op's input is the output of the matmul op and has already been
+/// promoted, there is no need to promote such operand again.
 static SmallVector<Value> getInputOutputOperands(linalg::LinalgOp &linalgOp) {
   SmallVector<Value> operands;
   for (auto operand : linalgOp->getOperands()) {
-    // For matmul-elementwise ops fusion, there is no need to promote the
-    // operand which is the output of its producer contraction op.
-    if (isMatmulElementwiseFusion(linalgOp)) {
+    if (isMatmulProducerOfElementwise(linalgOp)) {
       auto defOp = operand.getDefiningOp<linalg::LinalgOp>();
-      if (defOp && linalg::isaContractionOpInterface(defOp)) {
+      // Continue the loop without including the operand which is the output of
+      // matmul.
+      if (defOp && isMatmul(defOp)) {
         continue;
       }
     }
@@ -70,7 +73,7 @@ static FailureOr<SmallVector<Value>> getOperandsFromDefOp(
   SmallVector<Value> operands;
   // For matmul only dispatch, we only want to fetch the input operand of the
   // pack ops.
-  auto candidateOperands = isMatmulElementwiseFusion(linalgOp)
+  auto candidateOperands = isMatmulProducerOfElementwise(linalgOp)
                                ? linalgOp->getOperands()
                                : linalgOp.getDpsInputs();
   for (auto operand : candidateOperands) {
@@ -78,11 +81,11 @@ static FailureOr<SmallVector<Value>> getOperandsFromDefOp(
     if (!defOp) {
       return failure();
     }
-    // For matmul-elementwise ops fusion, there is no need to promote the
-    // operand which is the output of its producer contraction op.
-    if (isMatmulElementwiseFusion(linalgOp)) {
+    // For matmul-elementwise special case, continue the loop without including
+    // the operand which is the output of matmul.
+    if (isMatmulProducerOfElementwise(linalgOp)) {
       auto defLinalgOp = dyn_cast<linalg::LinalgOp>(defOp);
-      if (defLinalgOp && linalg::isaContractionOpInterface(defLinalgOp)) {
+      if (defLinalgOp && isMatmul(defLinalgOp)) {
         continue;
       }
     } else {
@@ -165,7 +168,7 @@ void AMDAIEBufferizeToAllocationPass::runOnOperation() {
       linalgOp = op;
       return WalkResult::interrupt();
     }
-    if (bufferizeElementwise && !isMatmulElementwiseFusion(op)) {
+    if (bufferizeElementwise && !isMatmulProducerOfElementwise(op)) {
       return WalkResult::interrupt();
     }
     if (!bufferizeElementwise && linalg::isaContractionOpInterface(op)) {

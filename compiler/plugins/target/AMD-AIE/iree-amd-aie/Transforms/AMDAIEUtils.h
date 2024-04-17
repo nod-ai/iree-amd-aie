@@ -71,7 +71,7 @@ bool isMatmul(linalg::LinalgOp linalgOp);
 
 /// Utility to indentify whether a generic op is an elementwise op and whether
 /// its producer is a matmul-like op.
-bool isMatmulElementwiseFusion(linalg::LinalgOp linalgOp);
+bool isMatmulProducerOfElementwise(linalg::LinalgOp linalgOp);
 
 namespace detail {
 
