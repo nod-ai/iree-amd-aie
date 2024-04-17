@@ -9,6 +9,7 @@
 #include "mlir/Dialect/GPU/IR/GPUDialect.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Linalg/Transforms/TilingInterfaceImpl.h"
+#include "mlir/Dialect/Linalg/Utils/Utils.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/SCF/Transforms/TileUsingInterface.h"
@@ -57,7 +58,9 @@ static bool isTilingReductionDimension(TilingInterface consumerOp,
 }
 
 static bool consumerToSkip(TilingInterface op) {
-  if (isa<linalg::CopyOp>(op) || isa<tensor::UnPackOp>(op)) return true;
+  if (isa<linalg::CopyOp>(op) || isa<tensor::PackOp>(op) ||
+      isa<tensor::UnPackOp>(op))
+    return true;
   return false;
 }
 
@@ -108,6 +111,15 @@ void AMDAIETileAndFusePass::runOnOperation() {
     // the skip ops list which currently contains linalg.copy and tensor.unpack.
     if (op.getLoopIteratorTypes().empty() || consumerToSkip(op))
       return WalkResult::advance();
+
+    // For matmul + elementwise dispatch, we use flag `tileElementwise` to
+    // indicate whether we want to tile the elementwise op. If flag
+    // `tileElementwise == false`, and the linalg op is an elementwise op, it
+    // will advance to find the next target op for tiling.
+    auto linalgOp = dyn_cast_or_null<linalg::LinalgOp>(op.getOperation());
+    if (linalgOp && isElementwise(linalgOp) && !tileElementwise)
+      return WalkResult::advance();
+
     consumerOp = op;
     return WalkResult::interrupt();
   });
