@@ -155,7 +155,7 @@ void addPackPeelBasedPassPipeline(OpPassManager &pm,
         createAMDAIEBufferizeToAllocationPass(bufferizeOptions1));
   }
 
-  // Promote the operands from Elementwise op to shared and local memory
+  // Promote the operands from elementwise op to shared and local memory
   {
     AMDAIEBufferizeToAllocationOptions bufferizeOptions2;
     bufferizeOptions2.memorySpace = 1;

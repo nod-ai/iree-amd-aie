@@ -13,15 +13,15 @@ namespace mlir::iree_compiler::AMDAIE {
 
 namespace {
 
-// Generate a DenseMap key we can use for the element types (alternatives
-// considered: implement tombstone for std::array, or use std::map instead of
-// DenseMap).
+/// Generate a DenseMap key we can use for the element types (alternatives
+/// considered: implement tombstone for std::array, or use std::map instead of
+/// DenseMap).
 constexpr uint32_t getElementTypeKey(uint32_t a, uint32_t b, uint32_t c) {
   return a + (b << 8) + (c << 16);
 }
 
-// Map from (LHS bitwidth, RHS bitwidth, Accumulator bitwidth) to the AIE
-// instruction size (m, n, k) for the integer types with those bitwidths.
+/// Map from (LHS bitwidth, RHS bitwidth, Accumulator bitwidth) to the AIE
+/// instruction size (m, n, k) for the integer types with those bitwidths.
 const auto& getIntegerMatmulInstructionSizeMap() {
   // Sanity check.
   static_assert(getElementTypeKey(1, 2, 3) == 1 + 2 * 256 + 3 * 65536);
@@ -107,9 +107,8 @@ FailureOr<unsigned> getTilingScaleFactor(Type elemType) {
   return 64 / bitWidth;
 }
 
-// Utility to match iterator type and indexing map for a linalg.generic that
-/// is basically implementing a matmul with 2D input/output operands. Such
-/// matmul variants we get from Pad pipeline.
+/// Utility to match iterator type and indexing map for a linalg.generic that
+/// is basically implementing a matmul with 2D input/output operands.
 static bool match2DLinalgGenericMatmul(linalg::LinalgOp linalgOp) {
   // Check iterator types.
   SmallVector<utils::IteratorType> matmulIteratorTypes = {
@@ -147,8 +146,7 @@ static bool match2DLinalgGenericMatmul(linalg::LinalgOp linalgOp) {
 }
 
 /// Utility to match iterator type and indexing map for a linalg.generic that
-/// is basically implementing a matmul with 4D input/output operands. Such
-/// matmul variants we get from Pad-Pack pipeline.
+/// is basically implementing a matmul with 4D input/output operands.
 static bool match4DLinalgGenericMatmul(linalg::LinalgOp linalgOp) {
   // Check iterator types.
   SmallVector<utils::IteratorType> matmulIteratorTypes = {
@@ -319,7 +317,7 @@ bool isMatmulElementwiseFusion(linalg::LinalgOp linalgOp) {
   return false;
 }
 
-// Find the largest factor of 'num' which is not larger than 'max'.
+/// Find the largest factor of 'num' which is not larger than 'max'.
 int detail::findLargestFactor(int num, int max) {
   assert(max > 0 && "No factors less than or equal to 0 exist");
 
