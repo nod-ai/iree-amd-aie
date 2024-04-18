@@ -8,6 +8,7 @@
 
 #include "llvm/ADT/DenseMap.h"
 #include "mlir/IR/BuiltinTypes.h"
+#include "mlir/IR/Iterators.h"
 
 namespace mlir::iree_compiler::AMDAIE {
 
@@ -301,6 +302,7 @@ bool isMatmul(linalg::LinalgOp linalgOp) {
 /// its producer is a matmul-like op.
 bool isMatmulProducerOfElementwise(linalg::LinalgOp linalgOp) {
   if (!isElementwise(linalgOp)) return false;
+  if (isa<linalg::FillOp>(linalgOp)) return false;
   // Check if any of the defining op is a matmul-like op. To simplify the
   // problem, currently only check if it is a contraction op.
   for (auto operand : linalgOp->getOperands()) {
@@ -310,6 +312,18 @@ bool isMatmulProducerOfElementwise(linalg::LinalgOp linalgOp) {
           return true;
         }
         break;
+      }
+      if (auto forOp = dyn_cast_or_null<scf::ForOp>(defOp)) {
+        bool findMatmul = false;
+        forOp.getBody()->walk<WalkOrder::PostOrder, ReverseIterator>(
+            [&](linalg::LinalgOp op) {
+              if (isMatmul(op)) {
+                findMatmul = true;
+                return WalkResult::interrupt();
+              }
+              return WalkResult::advance();
+            });
+        if (findMatmul) return true;
       }
       operand = defOp->getOperand(0);
     }
