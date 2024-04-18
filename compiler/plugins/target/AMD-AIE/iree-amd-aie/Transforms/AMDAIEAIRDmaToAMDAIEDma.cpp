@@ -37,10 +37,10 @@ class AIRDmaToAMDAIEDma : public OpRewritePattern<xilinx::air::DmaMemcpyNdOp> {
         op.getDst());
 
     rewriter.setInsertionPoint(op);
-    rewriter.create<AMDAIE::DmaCpyNdOp>(
-        op.getLoc(), rewriter.getIndexType(), dst, op.getDstOffsets(),
-        op.getDstSizes(), op.getDstStrides(), src, op.getSrcOffsets(),
-        op.getSrcSizes(), op.getSrcStrides());
+    rewriter.create<AMDAIE::DmaCpyNdOp>(op.getLoc(), dst, op.getDstOffsets(),
+                                        op.getDstSizes(), op.getDstStrides(),
+                                        src, op.getSrcOffsets(),
+                                        op.getSrcSizes(), op.getSrcStrides());
     rewriter.eraseOp(op);
     return success();
   }

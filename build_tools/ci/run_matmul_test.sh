@@ -49,12 +49,10 @@ if [ "$#" -lt 2 ] || [ "$#" -gt 7 ]; then
     exit 1
 fi
 
-
-
 OUTPUT_DIR=`realpath "$1"`
 mkdir -p ${OUTPUT_DIR}
 if [ ! -d "${OUTPUT_DIR}" ]; then
-  echo "Failed to locate on construct OUTPUT_DIR '${OUTPUT_DIR}'."
+  echo "Failed to locate or construct OUTPUT_DIR '${OUTPUT_DIR}'."
   exit 1
 fi
 
@@ -86,7 +84,6 @@ if [ -z "${TEST_RUNNER}" ]; then
        "'${IREE_INSTALL_DIR}', '${IREE_INSTALL_DIR}/bin', '${IREE_INSTALL_DIR}/tools'."
   exit 1
 fi
-
 
 # Parameter 3) <mlir-aie-install-dir>
 if [ -z "${3-}" ]; then
@@ -174,7 +171,6 @@ cd ${OUTPUT_DIR}
 
 function run_matmul_test() {
 
-
   # Options without defaults
   # ========================
   local lhs_rhs_type=""
@@ -207,10 +203,10 @@ function run_matmul_test() {
 
   local accumulate="false"
 
-  # By default we do not expect a compilation failure.
+  # The default is to not expect a compilation failure.
   local expect_compile_failure="0"
 
-  # By default we want to compile and run the numerical test.
+  # The default is to compile and run the numerical test.
   local compile_only="0"
 
   while [ "$#" -gt 0 ]; do
@@ -288,30 +284,42 @@ function run_matmul_test() {
 
   set -x
 
-  # Generate a name for the test based on the m,n,k parameters, but only
-  # if this test only has 1 set of m,n,k parameters. If there are multiple
-  # sets of m,n,k parameters, then just use name_prefix provided
-  # This is to prevent very long names when the number of m,n,k parameters
-  # is large.
+  # Generate a name for the test based on name_prefix and the matmul dimensions,
+  # but only if the test has 1  matmul in it. If there are multiple matmuls,
+  # then use name_prefix as is. This is to prevent long names when there are
+  # many matmuls in a test.
+  #
   # Generate a name, assuming m, n, k are just single integers:
   name="mm_${name_prefix}_${lhs_rhs_type}_${acc_type}_m${m}_n${n}_k${k}"
-  # If m, n, or k was not just an integer but a sequence of integers, then
-  # just just use the name_prefix.
-  if [ $(echo $name | grep -q ',') ] || [ $(echo $name | grep -q ' ') ]; then
-    name="mm_${name_prefix}"
+
+  # Disable exit on failure:
+  set +e
+
+  # Check if the name contains a ',' or ' ', which indicates multiple matmuls.
+  nameContainsComma=$(echo $name | grep -c ",")
+  nameContainsSpace=$(echo $name | grep -c " ")
+  if [ $nameContainsComma -ne 0 ] || [ $nameContainsSpace -ne 0 ]; then
+    name="${name_prefix}"
   fi
-  # Confirm that the name does not contain any commas or spaces.
-  if [ $(echo $name | grep -q ',') ] || [ $(echo $name | grep -q ' ') ]; then
-    echo "Name contains a comma or space: '$name'"
+
+  # Confirm that the name does not contain a comma or space, now that just
+  # the name_prefix is used.
+  nameContainsComma=$(echo $name | grep -c ",")
+  nameContainsSpace=$(echo $name | grep -c " ")
+  if [ $nameContainsComma -ne 0 ] || [ $nameContainsSpace -ne 0 ]; then
+    echo "Name contains a comma or space: not allowed."
     exit 1
   fi
+
+  # Re-enable exit on failure:
+  set -e
 
   matmul_ir="${OUTPUT_DIR}/${name}_ir.mlir"
   calls_ir="${OUTPUT_DIR}/${name}_calls.mlir"
   matmul_vmfb="${OUTPUT_DIR}/${name}.vmfb"
   calls_vmfb="${OUTPUT_DIR}/${name}_calls.vmfb"
 
-  echo "**** Generating .mlir files ****"
+  echo "**** Generating .mlir file containing matmul function(s) ****"
   ${IREE_PYTHON3_EXECUTABLE} ${GENERATOR} \
       --output_matmuls_mlir="${matmul_ir}" \
       --output_calls_mlir="${calls_ir}" \
@@ -324,8 +332,10 @@ function run_matmul_test() {
       --accumulate=${accumulate}
 
 
+
   ## Disable exit on failure:
   set +e
+
 
   echo "**** Generating matmul .vmfb file for ${name} ****"
   ${IREE_COMPILE_EXE} "${matmul_ir}"  \
@@ -338,23 +348,21 @@ function run_matmul_test() {
       --iree-amd-aie-show-invoked-commands \
       -o "${matmul_vmfb}"
 
+
   compileResult=$?
 
-  # If expect a failure, and get a failure, exit with 0
-  # If expect a failure, and got a success, exit with 1
-  # If expect a success, and got a failure, exit with 1
-  # If expect a success, and got a success, continue.
+  # Handle cases other than when compilation is expected to, and does, succeed:
   if [ $expect_compile_failure -ne 0 ]; then
     if [ $compileResult -ne 0 ]; then
-      echo "Expected compile failure, got compile failure."
+      echo "Expected compilation failure, got compilation failure."
       return 0
     else
-      echo "Expected compile failure, got compile success."
+      echo "Expected compilation failure, got compilation success."
       exit 1
     fi
   else
     if [ $compileResult -ne 0 ]; then
-      echo "Expected compile success, got compile failure."
+      echo "Expected compilation success, got compilation failure."
       exit 1
     fi
   fi
@@ -370,6 +378,7 @@ function run_matmul_test() {
 
   # Extract function names from the mlir file
   function_names=$(grep -oP '@\K\S+(?=\()' ${matmul_ir})
+
 
   # Behavior of <do-signing> depends on if the script for
   # signing xclbins is found:
@@ -418,11 +427,12 @@ function run_matmul_test() {
     return 0
   fi
 
-  echo "Running command: ${COMMAND}"
 
-  # Execute the command, and print the status:
+  echo "Running command: ${COMMAND}"
   eval "${COMMAND}"
-  echo "Command returned with status: $?"
+  return_status=$?
+  echo "Command returned with status: ${return_status}"
+
 
   set +x
 }
@@ -466,13 +476,12 @@ run_matmul_test \
    --m "1"  --n "1" --k "1000" \
    --expect-compile-failure "1"
 
-
 # Example of a run with a group of 2+ matmuls. Currently this test is passed
 # the flag '--compile-only' as there is currently an issue with the runtime if
 # multiple matmuls are run in the same test. TODO(newling/nmeshram): Document
 # this issue.
 run_matmul_test \
-    --name_prefix "small" \
+    --name_prefix "multiple_matmuls" \
     --lhs_rhs_type "i32" \
     --acc_type "i32" \
     --m "512,8,16,52,7" \
