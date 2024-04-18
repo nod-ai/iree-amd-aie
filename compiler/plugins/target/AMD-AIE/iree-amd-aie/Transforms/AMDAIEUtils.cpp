@@ -13,15 +13,15 @@ namespace mlir::iree_compiler::AMDAIE {
 
 namespace {
 
-// Generate a DenseMap key we can use for the element types (alternatives
-// considered: implement tombstone for std::array, or use std::map instead of
-// DenseMap).
+/// Generate a DenseMap key we can use for the element types (alternatives
+/// considered: implement tombstone for std::array, or use std::map instead of
+/// DenseMap).
 constexpr uint32_t getElementTypeKey(uint32_t a, uint32_t b, uint32_t c) {
   return a + (b << 8) + (c << 16);
 }
 
-// Map from (LHS bitwidth, RHS bitwidth, Accumulator bitwidth) to the AIE
-// instruction size (m, n, k) for the integer types with those bitwidths.
+/// Map from (LHS bitwidth, RHS bitwidth, Accumulator bitwidth) to the AIE
+/// instruction size (m, n, k) for the integer types with those bitwidths.
 const auto& getIntegerMatmulInstructionSizeMap() {
   // Sanity check.
   static_assert(getElementTypeKey(1, 2, 3) == 1 + 2 * 256 + 3 * 65536);
@@ -107,7 +107,217 @@ FailureOr<unsigned> getTilingScaleFactor(Type elemType) {
   return 64 / bitWidth;
 }
 
-// Find the largest factor of 'num' which is not larger than 'max'.
+/// Utility to match iterator type and indexing map for a linalg.generic that
+/// is basically implementing a matmul with 2D input/output operands.
+static bool match2DLinalgGenericMatmul(linalg::LinalgOp linalgOp) {
+  // Check iterator types.
+  SmallVector<utils::IteratorType> matmulIteratorTypes = {
+      utils::IteratorType::parallel, utils::IteratorType::parallel,
+      utils::IteratorType::reduction};
+  SmallVector<utils::IteratorType> opIteratorTypes =
+      linalgOp.getIteratorTypesArray();
+  if (matmulIteratorTypes != opIteratorTypes) {
+    return false;
+  }
+  // Check indexing maps.
+  ArrayAttr indexingMaps = linalgOp.getIndexingMaps();
+  if (indexingMaps.size() != 3) return false;
+
+  AffineMap map0 = cast<AffineMapAttr>(indexingMaps[0]).getValue();
+  AffineMap map1 = cast<AffineMapAttr>(indexingMaps[1]).getValue();
+  AffineMap map2 = cast<AffineMapAttr>(indexingMaps[2]).getValue();
+
+  if (map0.getNumResults() != 2 || map1.getNumResults() != 2 ||
+      map2.getNumResults() != 2 || map0.getNumInputs() != 3 ||
+      map1.getNumInputs() != 3 || map2.getNumInputs() != 3) {
+    return false;
+  }
+
+  AffineExpr M = map2.getResult(0);
+  AffineExpr N = map2.getResult(1);
+  AffineExpr K = map0.getResult(1);
+
+  auto *context = indexingMaps.getContext();
+  auto mapA = AffineMapAttr::get(AffineMap::get(3, 0, {M, K}, context));
+  auto mapB = AffineMapAttr::get(AffineMap::get(3, 0, {K, N}, context));
+  auto mapC = AffineMapAttr::get(AffineMap::get(3, 0, {M, N}, context));
+  auto maps = ArrayAttr::get(context, {mapA, mapB, mapC});
+  return indexingMaps == maps;
+}
+
+/// Utility to match iterator type and indexing map for a linalg.generic that
+/// is basically implementing a matmul with 4D input/output operands.
+static bool match4DLinalgGenericMatmul(linalg::LinalgOp linalgOp) {
+  // Check iterator types.
+  SmallVector<utils::IteratorType> matmulIteratorTypes = {
+      utils::IteratorType::parallel,  utils::IteratorType::parallel,
+      utils::IteratorType::reduction, utils::IteratorType::parallel,
+      utils::IteratorType::parallel,  utils::IteratorType::reduction};
+  SmallVector<utils::IteratorType> opIteratorTypes =
+      linalgOp.getIteratorTypesArray();
+  if (matmulIteratorTypes != opIteratorTypes) {
+    return false;
+  }
+  // Check indexing maps.
+  ArrayAttr indexingMaps = linalgOp.getIndexingMaps();
+  if (indexingMaps.size() != 3) return false;
+
+  AffineMap map0 = cast<AffineMapAttr>(indexingMaps[0]).getValue();
+  AffineMap map1 = cast<AffineMapAttr>(indexingMaps[1]).getValue();
+  AffineMap map2 = cast<AffineMapAttr>(indexingMaps[2]).getValue();
+
+  if (map0.getNumResults() != 4 || map1.getNumResults() != 4 ||
+      map2.getNumResults() != 4 || map0.getNumInputs() != 6 ||
+      map1.getNumInputs() != 6 || map2.getNumInputs() != 6) {
+    return false;
+  }
+
+  // We extract dimensions for K*N*n*k x M*K*k*m -> M*N*n*m.
+  AffineExpr M = map2.getResult(0);
+  AffineExpr N = map2.getResult(1);
+  AffineExpr K = map0.getResult(0);
+  AffineExpr m = map2.getResult(2);
+  AffineExpr n = map2.getResult(3);
+  AffineExpr k = map0.getResult(3);
+
+  auto *context = indexingMaps.getContext();
+  auto mapA = AffineMapAttr::get(AffineMap::get(6, 0, {K, N, m, k}, context));
+  auto mapB = AffineMapAttr::get(AffineMap::get(6, 0, {M, K, k, n}, context));
+  auto mapC = AffineMapAttr::get(AffineMap::get(6, 0, {M, N, m, n}, context));
+  auto maps = ArrayAttr::get(context, {mapA, mapB, mapC});
+  return indexingMaps == maps;
+}
+
+/// Utility to match iterator type and indexing map for a linalg.generic that
+/// is basically implementing a matmul with 6D input/output operands.
+static bool match6DLinalgGenericMatmul(linalg::LinalgOp linalgOp) {
+  // Check iterator types.
+  SmallVector<utils::IteratorType> matmulIteratorTypes = {
+      utils::IteratorType::parallel,  utils::IteratorType::parallel,
+      utils::IteratorType::reduction, utils::IteratorType::parallel,
+      utils::IteratorType::parallel,  utils::IteratorType::reduction,
+      utils::IteratorType::parallel,  utils::IteratorType::parallel,
+      utils::IteratorType::reduction};
+  SmallVector<utils::IteratorType> opIteratorTypes =
+      linalgOp.getIteratorTypesArray();
+  if (matmulIteratorTypes != opIteratorTypes) {
+    return false;
+  }
+  // Check indexing maps.
+  ArrayAttr indexingMaps = linalgOp.getIndexingMaps();
+  if (indexingMaps.size() != 3) return false;
+
+  AffineMap map0 = cast<AffineMapAttr>(indexingMaps[0]).getValue();
+  AffineMap map1 = cast<AffineMapAttr>(indexingMaps[1]).getValue();
+  AffineMap map2 = cast<AffineMapAttr>(indexingMaps[2]).getValue();
+
+  if (map0.getNumResults() != 6 || map1.getNumResults() != 6 ||
+      map2.getNumResults() != 6 || map0.getNumInputs() != 9 ||
+      map1.getNumInputs() != 9 || map2.getNumInputs() != 9) {
+    return false;
+  }
+
+  // Since this is invoked after the final pack-and-transpose we need to
+  // extract dimensions for M*K*k*m*m0*k0 x K*N*n*k*k0*n0 -> M*N*n*m*m0*n0.
+  AffineExpr M = map2.getResult(0);
+  AffineExpr N = map2.getResult(1);
+  AffineExpr n = map2.getResult(2);
+  AffineExpr m = map2.getResult(3);
+  AffineExpr m0 = map2.getResult(4);
+  AffineExpr n0 = map2.getResult(5);
+  AffineExpr K = map0.getResult(1);
+  AffineExpr k = map0.getResult(2);
+  AffineExpr k0 = map0.getResult(5);
+
+  auto *context = indexingMaps.getContext();
+  auto mapA =
+      AffineMapAttr::get(AffineMap::get(9, 0, {M, K, k, m, m0, k0}, context));
+  auto mapB =
+      AffineMapAttr::get(AffineMap::get(9, 0, {K, N, n, k, k0, n0}, context));
+  auto mapC =
+      AffineMapAttr::get(AffineMap::get(9, 0, {M, N, n, m, m0, n0}, context));
+  auto maps = ArrayAttr::get(context, {mapA, mapB, mapC});
+  return indexingMaps == maps;
+}
+
+/// Returns the BlockArgument that leads to `val`. Traverses optional ext*
+/// ops.
+static BlockArgument checkOptionalExtOps(Value val) {
+  BlockArgument blockArg;
+  if (!(blockArg = val.dyn_cast<BlockArgument>())) {
+    auto defOp = val.getDefiningOp();
+    if (!dyn_cast<arith::ExtFOp>(defOp) && !dyn_cast<arith::ExtSIOp>(defOp) &&
+        !dyn_cast<arith::ExtUIOp>(defOp)) {
+      return nullptr;
+    }
+    blockArg = defOp->getOperand(0).dyn_cast<BlockArgument>();
+  }
+  return blockArg;
+}
+
+/// Utility to match block body for matmul.
+static bool bodyMatcherForMatmul(Value yieldVal, Block *body) {
+  Operation *addOp = yieldVal.getDefiningOp();
+  if (!isa_and_nonnull<arith::AddIOp, arith::AddFOp>(addOp)) {
+    return false;
+  }
+  Operation *mulOp = addOp->getOperand(1).getDefiningOp();
+  if (!isa_and_nonnull<arith::MulIOp, arith::MulFOp>(mulOp)) {
+    return false;
+  }
+
+  BlockArgument lhsBlockArg = checkOptionalExtOps(mulOp->getOperand(0));
+  BlockArgument rhsBlockArg = checkOptionalExtOps(mulOp->getOperand(1));
+  BlockArgument outBlockArg = checkOptionalExtOps(addOp->getOperand(0));
+  if (!lhsBlockArg || !rhsBlockArg || !outBlockArg ||
+      lhsBlockArg.getOwner() != body || rhsBlockArg.getOwner() != body ||
+      outBlockArg.getOwner() != body || lhsBlockArg.getArgNumber() != 0 ||
+      rhsBlockArg.getArgNumber() != 1 || outBlockArg.getArgNumber() != 2) {
+    return false;
+  }
+  return true;
+}
+
+/// Utility to indentify whether a linalg op is a matmul op.
+bool isMatmul(linalg::LinalgOp linalgOp) {
+  // Step 0. Test if the op itself is a linalg.matmul op.
+  if (isa<linalg::MatmulOp>(linalgOp)) return true;
+
+  // Step 1. Test the body of the generic to indeed be what we expect for a
+  //         matmul.
+  Block *body = linalgOp.getBlock();
+  auto yieldOp = cast<linalg::YieldOp>(body->getTerminator());
+  Value yieldVal = yieldOp.getOperand(0);
+  if (!bodyMatcherForMatmul(yieldVal, body)) {
+    return false;
+  }
+
+  return match2DLinalgGenericMatmul(linalgOp) ||
+         match4DLinalgGenericMatmul(linalgOp) ||
+         match6DLinalgGenericMatmul(linalgOp);
+}
+
+/// Utility to indentify whether a generic op is an elementwise op and whether
+/// its producer is a matmul-like op.
+bool isMatmulProducerOfElementwise(linalg::LinalgOp linalgOp) {
+  if (!isElementwise(linalgOp)) return false;
+  // Check if any of the defining op is a matmul-like op. To simplify the
+  // problem, currently only check if it is a contraction op.
+  for (auto operand : linalgOp->getOperands()) {
+    while (Operation* defOp = operand.getDefiningOp()) {
+      if (auto defLinalgOp = dyn_cast_or_null<linalg::LinalgOp>(defOp)) {
+        if (isMatmul(defLinalgOp)) {
+          return true;
+        }
+        break;
+      }
+      operand = defOp->getOperand(0);
+    }
+  }
+  return false;
+}
+
+/// Find the largest factor of 'num' which is not larger than 'max'.
 int detail::findLargestFactor(int num, int max) {
   assert(max > 0 && "No factors less than or equal to 0 exist");
 

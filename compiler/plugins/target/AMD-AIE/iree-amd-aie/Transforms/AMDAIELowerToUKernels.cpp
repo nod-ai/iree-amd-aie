@@ -4,6 +4,7 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+#include "iree-amd-aie/Transforms/AMDAIEUtils.h"
 #include "iree-amd-aie/Transforms/Passes.h"
 #include "iree/compiler/Codegen/Dialect/Codegen/IR/IREECodegenDialect.h"
 #include "iree/compiler/Codegen/Dialect/Codegen/IR/UKernelOps.h"
@@ -90,106 +91,6 @@ static FnNameAndDefAttrs getFnNameAndDefAttrs(RewriterBase &rewriter,
 /// ================== SAME UTILITIES AS IREE LLVMCPU ====================
 /// ======================================================================
 
-/// Returns the BlockArgument that leads to `val`. Traverses optional ext*
-/// ops.
-static BlockArgument checkOptionalExtOps(Value val) {
-  BlockArgument blockArg;
-  if (!(blockArg = val.dyn_cast<BlockArgument>())) {
-    auto castOp = dyn_cast<arith::ExtFOp>(val.getDefiningOp());
-    if (!castOp) {
-      return nullptr;
-    }
-    blockArg = castOp->getOperand(0).dyn_cast<BlockArgument>();
-  }
-  return blockArg;
-}
-
-/// TODO(avarma): Will shift this utility to a common space later to be used by
-///               KernelDispatch as well.
-static bool bodyMatcherForMatmul(Value yieldVal, Block *body) {
-  Operation *addOp = yieldVal.getDefiningOp();
-  if (!isa_and_nonnull<arith::AddIOp, arith::AddFOp>(addOp)) {
-    return false;
-  }
-  Operation *mulOp = addOp->getOperand(1).getDefiningOp();
-  if (!isa_and_nonnull<arith::MulIOp, arith::MulFOp>(mulOp)) {
-    return false;
-  }
-
-  BlockArgument lhsBlockArg = checkOptionalExtOps(mulOp->getOperand(0));
-  BlockArgument rhsBlockArg = checkOptionalExtOps(mulOp->getOperand(1));
-  BlockArgument outBlockArg = checkOptionalExtOps(addOp->getOperand(0));
-  if (!lhsBlockArg || !rhsBlockArg || !outBlockArg ||
-      lhsBlockArg.getOwner() != body || rhsBlockArg.getOwner() != body ||
-      outBlockArg.getOwner() != body || lhsBlockArg.getArgNumber() != 0 ||
-      rhsBlockArg.getArgNumber() != 1 || outBlockArg.getArgNumber() != 2) {
-    return false;
-  }
-  return true;
-}
-
-/// Utility to match iterator type and indexing map for a linalg.generic that
-/// is basically implementing a matmul with 4D input/output operands. Such
-/// matmul variants we get from Pad-Pack pipeline.
-static bool match4DLinalgGenericMatmul(linalg::LinalgOp linalgOp) {
-  // Check iterator types.
-  SmallVector<utils::IteratorType> matmulIteratorTypes = {
-      utils::IteratorType::parallel,  utils::IteratorType::parallel,
-      utils::IteratorType::reduction, utils::IteratorType::parallel,
-      utils::IteratorType::parallel,  utils::IteratorType::reduction};
-  SmallVector<utils::IteratorType> opIteratorTypes =
-      linalgOp.getIteratorTypesArray();
-  if (matmulIteratorTypes != opIteratorTypes) {
-    return false;
-  }
-  // Check indexing maps.
-  ArrayAttr indexingMaps = linalgOp.getIndexingMaps();
-  if (indexingMaps.size() != 3) return false;
-
-  AffineMap map0 = cast<AffineMapAttr>(indexingMaps[0]).getValue();
-  AffineMap map1 = cast<AffineMapAttr>(indexingMaps[1]).getValue();
-  AffineMap map2 = cast<AffineMapAttr>(indexingMaps[2]).getValue();
-
-  if (map0.getNumResults() != 4 || map1.getNumResults() != 4 ||
-      map2.getNumResults() != 4 || map0.getNumInputs() != 6 ||
-      map1.getNumInputs() != 6 || map2.getNumInputs() != 6) {
-    return false;
-  }
-
-  // We extract dimensions for K*N*n*k x M*K*k*m -> M*N*n*m.
-  AffineExpr M = map2.getResult(0);
-  AffineExpr N = map2.getResult(1);
-  AffineExpr K = map0.getResult(0);
-  AffineExpr m = map2.getResult(2);
-  AffineExpr n = map2.getResult(3);
-  AffineExpr k = map0.getResult(3);
-
-  auto *context = indexingMaps.getContext();
-  auto mapA = AffineMapAttr::get(AffineMap::get(6, 0, {K, N, m, k}, context));
-  auto mapB = AffineMapAttr::get(AffineMap::get(6, 0, {M, K, k, n}, context));
-  auto mapC = AffineMapAttr::get(AffineMap::get(6, 0, {M, N, m, n}, context));
-  auto maps = ArrayAttr::get(context, {mapA, mapB, mapC});
-  return indexingMaps == maps;
-}
-
-/// `isMatmul` is a utility function that aims to indentify whether a
-/// linalg op is a matmul op.
-static bool isMatmul(linalg::LinalgOp linalgOp, AIEPassPipeline passPipeline) {
-  // Step 0. Test if the op itself is a linalg.matmul op.
-  if (isa<linalg::MatmulOp>(linalgOp)) return true;
-
-  // Step 1. Test the body of the generic to indeed be what we expect for a
-  //         matmul.
-  Block *body = linalgOp.getBlock();
-  auto yieldOp = cast<linalg::YieldOp>(body->getTerminator());
-  Value yieldVal = yieldOp.getOperand(0);
-  if (!bodyMatcherForMatmul(yieldVal, body)) {
-    return false;
-  }
-
-  return match4DLinalgGenericMatmul(linalgOp);
-}
-
 /// Matches a linalg.generic operation which is basically a tiled matmul and
 /// converts it into a iree_codegen.ukernel."iree_amdaie_uk_matmul" operation,
 /// that is later lowered into a call to the microkernel.
@@ -267,7 +168,7 @@ struct LowerToUKernelPattern : OpRewritePattern<OpType> {
     }
 
     FailureOr<IREE::Codegen::UKernelOpInterface> ukernelOp;
-    if (isMatmul(op, passPipeline)) {
+    if (isMatmul(op)) {
       ukernelOp = matchDAGForUKernel(rewriter, op, "matmul", passPipeline,
                                      pathToUkernels);
     } else {
