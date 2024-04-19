@@ -92,10 +92,22 @@ func.func @logicalobjectfifo_produce(%arg0: !amdaie.logicalobjectfifo<memref<1x1
 
 // CHECK-LABEL: func.func @workgroup
 // CHECK: amdaie.workgroup
+// CHECK: amdaie.core
+// CHECK: amdaie.end
+// CHECK: amdaie.core
+// CHECK: amdaie.end
 // CHECK: amdaie.controlcode
 // CHECK: amdaie.end
 func.func @workgroup() {
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
   amdaie.workgroup {
+    amdaie.core(%c0, %c0) {
+      amdaie.end
+    }
+    amdaie.core(%c0, %c1) {
+      amdaie.end
+    }
     amdaie.controlcode {
       amdaie.end
     }

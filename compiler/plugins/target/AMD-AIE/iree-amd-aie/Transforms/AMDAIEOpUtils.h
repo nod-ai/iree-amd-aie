@@ -13,9 +13,10 @@
 
 namespace mlir::iree_compiler::AMDAIE {
 
-/// Return a vector of the parent operations that are of type 'OpTy'
+/// Return a vector of the parent operations that are of type 'OpTy', including
+/// this op if it has type 'OpTy'
 template <typename OpTy>
-SmallVector<OpTy> getParentsOfTypeIncluding(Operation *op) {
+SmallVector<OpTy> getInclusiveParentsOfType(Operation *op) {
   SmallVector<OpTy> res;
   auto *current = op;
   do
@@ -24,7 +25,7 @@ SmallVector<OpTy> getParentsOfTypeIncluding(Operation *op) {
   return res;
 }
 
-/// Return a vector with the most nested forall loops with the provided op's
+/// Return a vector with the innermost forall loops within the provided op's
 /// scope
 SmallVector<scf::ForallOp> getInnermostForallLoops(Operation *op);
 

@@ -79,7 +79,7 @@ LogicalResult insertCoreOpsInWorkgroup(mlir::ModuleOp moduleOp) {
       return WalkResult::interrupt();
     }
     scf::ForallOp innermostForall = innermostForallLoops[0];
-    auto parentOps = getParentsOfTypeIncluding<scf::ForallOp>(innermostForall);
+    auto parentOps = getInclusiveParentsOfType<scf::ForallOp>(innermostForall);
     DenseMap<Attribute, Value> attrMapping;
     getAttributeMapping(parentOps, attrMapping);
     if (!attrMapping.contains(gpu::threadX(workgroupOp->getContext())) ||
@@ -112,7 +112,7 @@ LogicalResult insertCoreOpsInWorkgroup(mlir::ModuleOp moduleOp) {
             targetMemspace &&
             dyn_cast<IntegerAttr>(targetMemspace).getInt() == 2) {
           dmaOp->emitOpError()
-              << "dma op with both source and target on L2 is not supported";
+              << "dma op with both source and target on L1 is not supported";
           return WalkResult::interrupt();
         } else if (sourceMemspace &&
                    dyn_cast<IntegerAttr>(sourceMemspace).getInt() == 2) {

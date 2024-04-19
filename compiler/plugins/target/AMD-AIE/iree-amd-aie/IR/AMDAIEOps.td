@@ -32,7 +32,7 @@ def AMDAIE_ControlCodeOp : AMDAIE_Op<"controlcode", [HasParent<"WorkgroupOp">,
   let summary = "Operation containing the host control code instructions.";
   let description = [{
     The control code op contains the host code instructions for a workgroup
-    in a single block. Therefore, this operation is expeced to always have a
+    in a single block. Therefore, this operation is expected to always have a
     workgroup parent and is expected to be the terminator of this parent.
   }];
   
@@ -91,9 +91,8 @@ def AMDAIE_WorkgroupOp : AMDAIE_Op<"workgroup",
       4. A newly inserted `ControlCodeOp`, representing the sequence of host
          control code instructions.
 
-    The invariants of this op are:
-      1. The workgroup contains a single block, of which the terminator should
-         be a `ControlCodeOp`.
+    The invariant of this op is that the workgroup contains a single block, of
+    which the terminator should be a `ControlCodeOp`.
   }];
   
   let regions = (region SizedRegion<1>:$region);
