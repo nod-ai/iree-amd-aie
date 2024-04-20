@@ -1,7 +1,8 @@
 // RUN: iree-opt --pass-pipeline="builtin.module(func.func(iree-amdaie-peel-for-loop{peeling-type=first}))"  --split-input-file %s | FileCheck %s --check-prefix=PEEL-FIRST
 // RUN: iree-opt --pass-pipeline="builtin.module(func.func(iree-amdaie-peel-for-loop{peeling-type=last}))"  --split-input-file %s | FileCheck %s --check-prefix=PEEL-LAST
 // RUN: iree-opt --pass-pipeline="builtin.module(func.func(iree-amdaie-peel-for-loop{peeling-type=first-last}))"  --split-input-file %s | FileCheck %s --check-prefix=FIRST-LAST
-// RUN: iree-opt --pass-pipeline="builtin.module(func.func(iree-amdaie-peel-for-loop{peeling-type=first}))"  --split-input-file %s | FileCheck %s --check-prefix=OVERWRITE-FLAG
+// RUN: iree-opt --pass-pipeline="builtin.module(func.func(iree-amdaie-peel-for-loop))"  --split-input-file %s | FileCheck %s --check-prefix=DEFAULT-FLAG
+// RUN: iree-opt --pass-pipeline="builtin.module(func.func(iree-amdaie-peel-for-loop))"  --split-input-file %s | FileCheck %s --check-prefix=OVERWRITE-FLAG
 
 #map = affine_map<(d0, d1)[s0] -> (s0, d0 - d1)>
 func.func @peel_indivisible_example() -> i32 {
@@ -63,6 +64,20 @@ func.func @peel_indivisible_example() -> i32 {
 //  FIRST-LAST-SAME:       step %[[C4]] iter_args(%[[ACC:.*]] = %[[MAIN]]) -> (i32) {
 //       FIRST-LAST:   }
 //       FIRST-LAST:   return %[[LAST]]
+
+// DEFAULT-FLAG-LABEL: func.func @peel_indivisible_example()
+//       DEFAULT-FLAG:   %[[C0_I32:.*]] = arith.constant 0 : i32
+//       DEFAULT-FLAG:   %[[C0:.*]] = arith.constant 0 : index
+//       DEFAULT-FLAG:   %[[C4:.*]] = arith.constant 4 : index
+//       DEFAULT-FLAG:   %[[C17:.*]] = arith.constant 17 : index
+//       DEFAULT-FLAG:   %[[C4_0:.*]] = arith.constant 4 : index
+//       DEFAULT-FLAG:   %[[FIRST:.*]] = scf.for %[[IV:.*]] = %[[C0]] to %[[C4_0]]
+//  DEFAULT-FLAG-SAME:       step %[[C4]] iter_args(%[[ACC:.*]] = %[[C0_I32]]) -> (i32) {
+//       DEFAULT-FLAG:   }
+//       DEFAULT-FLAG:   %[[RESULT:.*]] = scf.for %[[IV1:.*]] = %[[C4_0]] to %[[C17]]
+//  DEFAULT-FLAG-SAME:       step %[[C4]] iter_args(%[[ACC:.*]] = %[[FIRST]]) -> (i32) {
+//       DEFAULT-FLAG:   }
+//       DEFAULT-FLAG:   return %[[RESULT]]
 
 // -----
 

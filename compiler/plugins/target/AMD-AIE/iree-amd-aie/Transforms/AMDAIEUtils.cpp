@@ -298,13 +298,12 @@ bool isMatmul(linalg::LinalgOp linalgOp) {
          match6DLinalgGenericMatmul(linalgOp);
 }
 
-/// Utility to indentify whether a generic op is an elementwise op and whether
-/// its producer is a matmul-like op.
+/// Utility to identify if `linalgOp` is an elementwise operation with a
+/// matmul-like op upstream in its computation tree.
 bool isMatmulProducerOfElementwise(linalg::LinalgOp linalgOp) {
   if (!isElementwise(linalgOp)) return false;
   if (isa<linalg::FillOp>(linalgOp)) return false;
-  // Check if any of the defining op is a matmul-like op. To simplify the
-  // problem, currently only check if it is a contraction op.
+  // Check if any of the defining op is a matmul-like op.
   for (auto operand : linalgOp->getOperands()) {
     while (Operation* defOp = operand.getDefiningOp()) {
       if (auto defLinalgOp = dyn_cast_or_null<linalg::LinalgOp>(defOp)) {

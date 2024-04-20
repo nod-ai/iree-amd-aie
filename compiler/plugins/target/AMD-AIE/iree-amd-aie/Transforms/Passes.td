@@ -246,7 +246,7 @@ def AMDAIEPeelForLoop :
   let options = [
     Option<"peelingType", "peeling-type",
       "mlir::iree_compiler::AMDAIE::PeelingType",
-      /*default=*/"mlir::iree_compiler::AMDAIE::PeelingType::First",
+      /*default=*/"",
       "Choose which type of loop peeling to perform",
       [{::llvm::cl::values(
         clEnumValN(mlir::iree_compiler::AMDAIE::PeelingType::First, "first",

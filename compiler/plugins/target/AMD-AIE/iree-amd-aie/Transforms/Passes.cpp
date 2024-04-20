@@ -135,8 +135,7 @@ void addPackPeelBasedPassPipeline(OpPassManager &funcPassManager,
   {
     AMDAIEPackAndTransposeOptions packOptions;
     packOptions.packLevel = 1;
-    funcPassManager.addPass(
-        createAMDAIEPackAndTransposePass(packOptions));
+    funcPassManager.addPass(createAMDAIEPackAndTransposePass(packOptions));
   }
 
   // Propagate pack ops for the elementwise op
@@ -177,8 +176,7 @@ void addPackPeelBasedPassPipeline(OpPassManager &funcPassManager,
     tileFuseOptions.tilingLevel = 1;
     tileFuseOptions.useSCFFor = true;
     tileFuseOptions.tileElementwise = false;
-    funcPassManager.addPass(
-        createAMDAIETileAndFusePass(tileFuseOptions));
+    funcPassManager.addPass(createAMDAIETileAndFusePass(tileFuseOptions));
   }
   funcPassManager.addPass(createAMDAIECleanupPass());
   funcPassManager.addPass(createCanonicalizerPass());
@@ -189,8 +187,7 @@ void addPackPeelBasedPassPipeline(OpPassManager &funcPassManager,
     AMDAIEFusePackIntoLoopOptions fusePackOptions;
     fusePackOptions.fusePackDepth = 2;
     fusePackOptions.useSCFFor = true;
-    funcPassManager.addPass(
-        createAMDAIEFusePackIntoLoopPass(fusePackOptions));
+    funcPassManager.addPass(createAMDAIEFusePackIntoLoopPass(fusePackOptions));
   }
   funcPassManager.addPass(createCanonicalizerPass());
   funcPassManager.addPass(createCSEPass());
@@ -210,8 +207,7 @@ void addPackPeelBasedPassPipeline(OpPassManager &funcPassManager,
     tileFuseOptions.tilingLevel = 2;
     tileFuseOptions.useSCFFor = false;
     tileFuseOptions.tileElementwise = false;
-    funcPassManager.addPass(
-        createAMDAIETileAndFusePass(tileFuseOptions));
+    funcPassManager.addPass(createAMDAIETileAndFusePass(tileFuseOptions));
   }
   funcPassManager.addPass(createAMDAIECleanupPass());
   funcPassManager.addPass(createCanonicalizerPass());
@@ -222,8 +218,7 @@ void addPackPeelBasedPassPipeline(OpPassManager &funcPassManager,
     AMDAIEFusePackIntoLoopOptions fusePackOptions;
     fusePackOptions.fusePackDepth = 1;
     fusePackOptions.useSCFFor = false;
-    funcPassManager.addPass(
-        createAMDAIEFusePackIntoLoopPass(fusePackOptions));
+    funcPassManager.addPass(createAMDAIEFusePackIntoLoopPass(fusePackOptions));
   }
   funcPassManager.addPass(createCanonicalizerPass());
   funcPassManager.addPass(createCSEPass());
@@ -264,8 +259,7 @@ void addPadPackBasedPassPipeline(OpPassManager &funcPassManager,
     AMDAIETileAndFuseOptions tileFuseOptions;
     tileFuseOptions.tilingLevel = 0;
     tileFuseOptions.useSCFFor = false;
-    funcPassManager.addPass(
-        createAMDAIETileAndFusePass(tileFuseOptions));
+    funcPassManager.addPass(createAMDAIETileAndFusePass(tileFuseOptions));
   }
   funcPassManager.addPass(createAMDAIECleanupPass());
   funcPassManager.addPass(createCanonicalizerPass());
@@ -291,8 +285,7 @@ void addPadPackBasedPassPipeline(OpPassManager &funcPassManager,
   {
     AMDAIETileOptions tileOptions;
     tileOptions.tilingLevel = 1;
-    funcPassManager.addPass(
-        createAMDAIETilePass(tileOptions));
+    funcPassManager.addPass(createAMDAIETilePass(tileOptions));
   }
   funcPassManager.addPass(createAMDAIECleanupPass());
   funcPassManager.addPass(createCanonicalizerPass());
@@ -303,8 +296,7 @@ void addPadPackBasedPassPipeline(OpPassManager &funcPassManager,
     AMDAIETileAndFuseOptions tileFuseOptions;
     tileFuseOptions.tilingLevel = 2;
     tileFuseOptions.useSCFFor = false;
-    funcPassManager.addPass(
-        createAMDAIETileAndFusePass(tileFuseOptions));
+    funcPassManager.addPass(createAMDAIETileAndFusePass(tileFuseOptions));
   }
   funcPassManager.addPass(createAMDAIECleanupPass());
   funcPassManager.addPass(createCanonicalizerPass());
@@ -331,8 +323,7 @@ void addPadPackBasedPassPipeline(OpPassManager &funcPassManager,
     AMDAIETileAndFuseOptions tileFuseOptions;
     tileFuseOptions.tilingLevel = 3;
     tileFuseOptions.useSCFFor = true;
-    funcPassManager.addPass(
-        createAMDAIETileAndFusePass(tileFuseOptions));
+    funcPassManager.addPass(createAMDAIETileAndFusePass(tileFuseOptions));
   }
   funcPassManager.addPass(createAMDAIECleanupPass());
   funcPassManager.addPass(createCanonicalizerPass());

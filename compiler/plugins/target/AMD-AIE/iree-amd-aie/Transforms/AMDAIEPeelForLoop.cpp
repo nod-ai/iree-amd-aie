@@ -125,8 +125,11 @@ void AMDAIEPeelForLoopPass::runOnOperation() {
         }
         break;
       default:
-        forOp->emitOpError("failed to specify the type of loop peeling.");
-        return signalPassFailure();
+        // Set peeling first iteration as default.
+        if (failed(scf::peelForLoopFirstIteration(rewriter, forOp, result))) {
+          forOp->emitOpError("failed to peel the first iteration.");
+          return signalPassFailure();
+        }
     }
   });
 }
