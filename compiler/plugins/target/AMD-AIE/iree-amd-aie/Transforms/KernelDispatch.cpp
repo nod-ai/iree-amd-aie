@@ -67,9 +67,9 @@ static SmallVector<int64_t> getPackedSize(linalg::LinalgOp linalgOp,
   return packedSizes;
 }
 
-static LogicalResult setRootConfigForPackPeelPipeline(func::FuncOp entryPointFn,
-                                                      linalg::LinalgOp linalgOp,
-                                                      AIEConfig cfg) {
+static LogicalResult setRootConfigForPackPeelPipeline(
+    mlir::FunctionOpInterface entryPointFn, linalg::LinalgOp linalgOp,
+    AIEConfig cfg) {
   auto initType =
       llvm::cast<ShapedType>(linalgOp.getDpsInitOperand(0)->get().getType());
   auto initShape = initType.getShape();
@@ -150,15 +150,15 @@ static LogicalResult setRootConfigForPackPeelPipeline(func::FuncOp entryPointFn,
                                  TileSizeLevel2};
   if (failed(setOpConfigAndEntryPointFnTranslation(
           entryPointFn, linalgOp, tileSizes,
-          IREE::Codegen::DispatchLoweringPassPipeline::None))) {
+          IREE::Codegen::DispatchLoweringPassPipeline::Custom))) {
     return failure();
   }
   return success();
 }
 
-static LogicalResult setRootConfigForPadPackPipeline(func::FuncOp entryPointFn,
-                                                     linalg::LinalgOp linalgOp,
-                                                     AIEConfig cfg) {
+static LogicalResult setRootConfigForPadPackPipeline(
+    mlir::FunctionOpInterface entryPointFn, linalg::LinalgOp linalgOp,
+    AIEConfig cfg) {
   // Assume working on a 4x4 AIE array. Currently, the tile sizes are chosen
   // empirically for large GEMM sizes, which are [64*s, 64*s, 256] for the first
   // level and [16*s, 16*s, 16*s] for the second level, where 's' is the scaling
@@ -221,7 +221,7 @@ static LogicalResult setRootConfigForPadPackPipeline(func::FuncOp entryPointFn,
                                  TileSizeLevel3};
   if (failed(setOpConfigAndEntryPointFnTranslation(
           entryPointFn, linalgOp, tileSizes,
-          IREE::Codegen::DispatchLoweringPassPipeline::None))) {
+          IREE::Codegen::DispatchLoweringPassPipeline::Custom))) {
     return failure();
   }
 
@@ -299,7 +299,7 @@ static bool isMatmulTranspose(linalg::GenericOp genericOp) {
 /// Sets the lowering configuration for a generic op implementing a
 /// transposition.
 static LogicalResult setTransposeLikeOpRootConfig(
-    func::FuncOp entryPointFn, linalg::LinalgOp linalgOp,
+    mlir::FunctionOpInterface entryPointFn, linalg::LinalgOp linalgOp,
     AIEPassPipeline usePassPipeline, AIEConfig cfg) {
   if (usePassPipeline == AIEPassPipeline::PackPeelPipeline)
     return setRootConfigForPackPeelPipeline(entryPointFn, linalgOp, cfg);
@@ -308,7 +308,7 @@ static LogicalResult setTransposeLikeOpRootConfig(
   return linalgOp.emitOpError("unhandled pass pipeline");
 }
 
-static LogicalResult setRootConfig(func::FuncOp entryPointFn,
+static LogicalResult setRootConfig(mlir::FunctionOpInterface entryPointFn,
                                    linalg::GenericOp genericOp,
                                    AIEPassPipeline usePassPipeline,
                                    AIEConfig cfg) {
@@ -326,7 +326,7 @@ static LogicalResult setRootConfig(func::FuncOp entryPointFn,
 
 /// Sets the lowering configuration for dispatch region with root op that
 /// implements the contraction operation interface.
-static LogicalResult setRootConfig(func::FuncOp entryPointFn,
+static LogicalResult setRootConfig(mlir::FunctionOpInterface entryPointFn,
                                    linalg::ContractionOpInterface contractionOp,
                                    AIEPassPipeline usePassPipeline,
                                    AIEConfig cfg) {
@@ -362,7 +362,8 @@ static LogicalResult setRootConfig(func::FuncOp entryPointFn,
 }
 
 /// Redirects to methods that set the configuration based on operation type.
-static LogicalResult setRootConfigImpl(func::FuncOp entryPointFn, Operation *op,
+static LogicalResult setRootConfigImpl(mlir::FunctionOpInterface entryPointFn,
+                                       Operation *op,
                                        AIEPassPipeline usePassPipeline,
                                        AIEConfig cfg) {
   auto setRootConfigFn = [&](Operation *op) -> LogicalResult {
@@ -383,7 +384,7 @@ static LogicalResult setRootConfigImpl(func::FuncOp entryPointFn, Operation *op,
 
 /// Sets the translation information to use for a dispatch region.
 static LogicalResult setTranslationInfoAndRootConfig(
-    func::FuncOp entryPointFn, ArrayRef<Operation *> computeOps,
+    mlir::FunctionOpInterface entryPointFn, ArrayRef<Operation *> computeOps,
     AIEPassPipeline usePassPipeline, AIEConfig cfg) {
   // Make sure that lowering_config is not preset on any compute ops.
   for (auto computeOp : computeOps) {
@@ -410,33 +411,29 @@ static LogicalResult setTranslationInfoAndRootConfig(
   return success();
 }
 
-LogicalResult initAIELaunchConfig(ModuleOp moduleOp,
+LogicalResult initAIELaunchConfig(FunctionOpInterface funcOp,
                                   AIEPassPipeline usePassPipeline,
                                   AIEConfig cfg) {
-  llvm::StringMap<IREE::HAL::ExecutableExportOp> exportOps =
-      getAllEntryPoints(moduleOp);
-  for (auto funcOp : moduleOp.getOps<func::FuncOp>()) {
-    auto exportOp = exportOps.lookup(funcOp.getName());
-    if (!exportOp) continue;
-    if (getTranslationInfo(exportOp)) continue;
+  if (getTranslationInfo(funcOp)) {
+    return success();
+  }
 
-    // TODO (nmeshram): Need a default pipeline for control flow cases.
-    if (funcOp.getBody().empty() || !llvm::hasSingleElement(funcOp.getBody())) {
-      return funcOp.emitError("control flow not yet supported.");
-    }
+  // TODO (nmeshram): Need a default pipeline for control flow cases.
+  if (funcOp.empty() || !llvm::hasSingleElement(funcOp.getFunctionBody())) {
+    return funcOp.emitError("control flow not yet supported.");
+  }
 
-    SmallVector<Operation *> computeOps = getComputeOps(funcOp);
-    if (failed(setTranslationInfoAndRootConfig(funcOp, computeOps,
-                                               usePassPipeline, cfg))) {
-      return failure();
-    }
+  SmallVector<Operation *> computeOps = getComputeOps(funcOp);
+  if (failed(setTranslationInfoAndRootConfig(funcOp, computeOps,
+                                             usePassPipeline, cfg))) {
+    return failure();
   }
 
   // The root configuration setting introduces `tensor.dim` operations.
   // Resolve those away.
-  RewritePatternSet patterns(moduleOp.getContext());
+  RewritePatternSet patterns(funcOp.getContext());
   memref::populateResolveRankedShapedTypeResultDimsPatterns(patterns);
-  return applyPatternsAndFoldGreedily(moduleOp, std::move(patterns));
+  return applyPatternsAndFoldGreedily(funcOp, std::move(patterns));
 }
 
 }  // namespace mlir::iree_compiler::AMDAIE

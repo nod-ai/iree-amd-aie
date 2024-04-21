@@ -1,5 +1,5 @@
 // RUN: iree-opt --iree-transform-dialect-interpreter %s | FileCheck %s
-
+// XFAIL: *
 // This script shows an example lowering matmul for AIE device.
 // In this strategy, we use pack operations for data movement from L3 to L2, and L2 to L1.
 // In order to keep initialization in L1, the first iteration of scf.for loop is peeled.

@@ -70,7 +70,7 @@ class AMDAIECleanupPass : public impl::AMDAIECleanupBase<AMDAIECleanupPass> {
 
 void AMDAIECleanupPass::runOnOperation() {
   MLIRContext *context = &getContext();
-  func::FuncOp funcOp = getOperation();
+  mlir::FunctionOpInterface funcOp = getOperation();
 
   RewritePatternSet patterns(context);
   populateCleanupPatterns(patterns);

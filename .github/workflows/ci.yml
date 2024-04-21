@@ -59,7 +59,7 @@ jobs:
           # installs.
           rm -f iree-install/bin/clang*
           rm -f iree-install/bin/llvm-link*
-          tar cf iree-dist.tar -C iree-install . -C ../iree-build tools/iree-e2e-matmul-test
+          tar cf iree-dist.tar -C iree-install . -C ../iree-build tools/testing/e2e/iree-e2e-matmul-test
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4

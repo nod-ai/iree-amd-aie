@@ -516,7 +516,7 @@ LogicalResult AccelSerializer::processOperation(Operation *opInst,
 
   auto status =
       TypeSwitch<Operation *, LogicalResult>(opInst)
-          .Case<func::FuncOp, scf::ForallOp, scf::ForOp,
+          .Case<FunctionOpInterface, scf::ForallOp, scf::ForOp,
                 IREE::LinalgExt::PackOp, IREE::LinalgExt::UnPackOp,
                 memref::AllocOp, linalg::FillOp, linalg::GenericOp>(
               [&](auto typedOp) { return processOperation(typedOp, scope); })
@@ -528,7 +528,7 @@ LogicalResult AccelSerializer::processOperation(Operation *opInst,
   return status;
 }
 
-LogicalResult AccelSerializer::processOperation(func::FuncOp funcOp,
+LogicalResult AccelSerializer::processOperation(FunctionOpInterface funcOp,
                                                 ScopeInfo &scope) {
   ScopeInfo subScope = scope.getSubScope();
   std::string fnName = "primfn";
@@ -609,7 +609,7 @@ LogicalResult AccelSerializer::processOperation(func::FuncOp funcOp,
       "\"from_legacy_te_schedule\": True, \"param_device_types\": [], "
       "\"global_symbol\": \"main\"}";
 
-  Region &body = funcOp.getBody();
+  Region &body = funcOp.getFunctionBody();
   if (!llvm::hasSingleElement(body)) {
     return funcOp.emitOpError("unhandled operation with multiple blocks");
   }

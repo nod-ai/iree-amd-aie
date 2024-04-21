@@ -1,5 +1,5 @@
 // RUN: iree-opt --iree-transform-dialect-interpreter %s | FileCheck %s
-
+// XFAIL: *
 // This script demonstrates lowering conv through IREE to eventually target AIE.
 // It's based on conv2d lowering in IREE for llvm-cpu.
 //

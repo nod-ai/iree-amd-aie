@@ -69,8 +69,8 @@ for dir in "${IREE_INSTALL_DIR}" "${IREE_INSTALL_DIR}/bin" "${IREE_INSTALL_DIR}/
   if [ -f "${dir}/iree-compile" ]; then
     IREE_COMPILE_EXE="${dir}/iree-compile"
   fi
-  if [ -f "${dir}/iree-e2e-matmul-test" ]; then
-    TEST_RUNNER="${dir}/iree-e2e-matmul-test"
+  if [ -f "${dir}/testing/e2e/iree-e2e-matmul-test" ]; then
+    TEST_RUNNER="${dir}/testing/e2e/iree-e2e-matmul-test"
   fi
 done
 
@@ -467,14 +467,15 @@ run_matmul_test \
     --expect-compile-failure "0" \
     --compile-only "0"
 
-# An example of a matmul which we don't currently support, and which fails in
-# compilation. TODO: support this (and all!) matmuls.
+# The below matmul case used to fail but passes since the bump of 4/16/2024
+# Keep track of this, however if it does regress we can mark this as
+# expected failure and not block other progress.
 run_matmul_test \
    --name_prefix "failure_0" \
    --lhs_rhs_type "i32" \
    --acc_type "i32" \
    --m "1"  --n "1" --k "1000" \
-   --expect-compile-failure "1"
+   --expect-compile-failure "0"
 
 # Example of a run with a group of 2+ matmuls. Currently this test is passed
 # the flag '--compile-only' as there is currently an issue with the runtime if

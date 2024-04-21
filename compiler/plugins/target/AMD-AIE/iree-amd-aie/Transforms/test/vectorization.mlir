@@ -1,4 +1,4 @@
-// RUN: iree-opt  --iree-amdaie-vectorization %s | FileCheck %s
+// RUN: iree-opt  --pass-pipeline='builtin.module(func.func(iree-amdaie-vectorization))' %s | FileCheck %s
 
 #map = affine_map<(d0, d1, d2) -> (d0, d2)>
 #map1 = affine_map<(d0, d1, d2) -> (d2, d1)>

@@ -11,8 +11,8 @@
 #include "iree/compiler/Dialect/HAL/IR/HALDialect.h"
 #include "iree/compiler/Dialect/HAL/IR/HALOps.h"
 #include "iree/compiler/Dialect/LinalgExt/IR/LinalgExtDialect.h"
+#include "mlir/Dialect/Bufferization/IR/Bufferization.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
-#include "mlir/Dialect/Linalg/TransformOps/LinalgTransformOps.h"
 #include "mlir/Dialect/PDL/IR/PDL.h"
 #include "mlir/Dialect/PDLInterp/IR/PDLInterp.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
@@ -66,101 +66,63 @@ class AMDAIELowerExecutableTargetPass
 // TODO(dcaballe): We temporarily need this utility to retrieve a valid
 // lowering config. We should be able to remove this once we have a lowering
 // config attribute per op.
-static FailureOr<LoweringConfigAttr> getRootLoweringConfig(ModuleOp moduleOp) {
-  llvm::StringMap<IREE::HAL::ExecutableExportOp> exportOps =
-      getAllEntryPoints(moduleOp);
-  for (auto &it : exportOps) {
-    auto exportOp = it.second;
-    auto rootLoweringConfig = iree_compiler::getLoweringConfig(exportOp);
-    if (rootLoweringConfig) {
-      return rootLoweringConfig;
-    }
-  }
-
-  for (auto funcOp : moduleOp.getOps<func::FuncOp>()) {
-    getAllEntryPoints(moduleOp);
-    SmallVector<Operation *> computeOps = getComputeOps(funcOp);
-    // Check for self first.
-    FailureOr<Operation *> rootOp = getRootOperation(computeOps);
-    auto rootLoweringConfig = iree_compiler::getLoweringConfig(rootOp.value());
-    if (rootLoweringConfig) {
-      return rootLoweringConfig;
-    }
+static FailureOr<LoweringConfigAttr> getRootLoweringConfig(
+    FunctionOpInterface funcOp) {
+  SmallVector<Operation *> computeOps = getComputeOps(funcOp);
+  // Check for self first.
+  FailureOr<Operation *> rootOp = getRootOperation(computeOps);
+  auto rootLoweringConfig = iree_compiler::getLoweringConfig(rootOp.value());
+  if (rootLoweringConfig) {
+    return rootLoweringConfig;
   }
 
   return failure();
 }
 
-static TilingConfig getTilingConfigForPipeline(ModuleOp moduleOp) {
-  auto maybeLoweringConfig = getRootLoweringConfig(moduleOp);
+static TilingConfig getTilingConfigForPipeline(FunctionOpInterface funcOp) {
+  auto maybeLoweringConfig = getRootLoweringConfig(funcOp);
   assert(succeeded(maybeLoweringConfig) &&
          "Pipeline requires a lowering config");
   return TilingConfig(*maybeLoweringConfig);
 }
 
 void AMDAIELowerExecutableTargetPass::runOnOperation() {
-  IREE::HAL::ExecutableVariantOp variantOp = getOperation();
-  ModuleOp moduleOp = variantOp.getInnerModule();
-  if (!moduleOp) {
-    getOperation()->emitError(
-        "Expected a variantOp root with an inner ModuleOp");
-    return signalPassFailure();
+  auto funcOp = getOperation();
+  auto target = IREE::HAL::ExecutableTargetAttr::lookup(funcOp);
+  if (!target) {
+    // Do nothing without target
+    return;
   }
 
-  OpPassManager executableLoweringPipeline(
-      IREE::HAL::ExecutableVariantOp::getOperationName());
+  IREE::Codegen::TranslationInfoAttr translationInfo =
+      getTranslationInfo(funcOp);
+  if (!translationInfo) return;
 
-  // There might be multiple entry points in the module. Currently, all of
-  // them need to have the same translation info. This should already be
-  // verified when the strategies are set, but we still need to retrieve the
-  // correct translation info.
-  llvm::StringMap<IREE::HAL::ExecutableExportOp> exportOps =
-      getAllEntryPoints(moduleOp);
-  std::optional<IREE::Codegen::TranslationInfoAttr> translationInfo;
-  for (auto &it : exportOps) {
-    auto exportOp = it.second;
-    if (IREE::Codegen::TranslationInfoAttr currTranslationInfo =
-            getTranslationInfo(exportOp)) {
-      if (translationInfo) {
-        if (currTranslationInfo != translationInfo.value()) {
-          moduleOp.emitOpError(
-              "unhandled compilation of entry point functions with different "
-              "translation info");
-          return signalPassFailure();
-        }
-      } else {
-        translationInfo = currTranslationInfo;
+  OpPassManager executableLoweringPipeline(func::FuncOp::getOperationName());
+  switch (translationInfo.getDispatchLoweringPassPipeline()) {
+      // No pipleline specified, nothing to do.
+    case IREE::Codegen::DispatchLoweringPassPipeline::None:
+      return;
+    case IREE::Codegen::DispatchLoweringPassPipeline::Custom: {
+      TilingConfig tilingConfig = getTilingConfigForPipeline(funcOp);
+      if (usePassPipeline == AIEPassPipeline::PackPeelPipeline) {
+        addPackPeelBasedPassPipeline(executableLoweringPipeline, tilingConfig);
+      } else if (usePassPipeline == AIEPassPipeline::PadPackPipeline) {
+        addPadPackBasedPassPipeline(executableLoweringPipeline, tilingConfig);
       }
-    }
+    } break;
+    default:
+      funcOp.emitOpError("unhandled pass pipeline value set");
+      return signalPassFailure();
   }
 
-  if (translationInfo.has_value()) {
-    switch (translationInfo.value().getDispatchLoweringPassPipeline()) {
-      // Transform-dialect pipelines.
-      case IREE::Codegen::DispatchLoweringPassPipeline::TransformDialectCodegen:
-        addTransformDialectPasses(executableLoweringPipeline);
-        break;
-      case IREE::Codegen::DispatchLoweringPassPipeline::None: {
-        TilingConfig tilingConfig = getTilingConfigForPipeline(moduleOp);
-        if (usePassPipeline == AIEPassPipeline::PackPeelPipeline) {
-          addPackPeelBasedPassPipeline(executableLoweringPipeline,
-                                       tilingConfig);
-        } else if (usePassPipeline == AIEPassPipeline::PadPackPipeline) {
-          addPadPackBasedPassPipeline(executableLoweringPipeline, tilingConfig);
-        }
-      } break;
-      default:
-        variantOp.emitOpError("unhandled pass pipeline value set");
-        return signalPassFailure();
-    }
-  }
-
-  if (failed(runPipeline(executableLoweringPipeline, variantOp))) {
+  if (failed(runPipeline(executableLoweringPipeline, funcOp))) {
     return signalPassFailure();
   }
 }
 
-std::unique_ptr<Pass> createAMDAIELowerExecutableTargetPass(
+std::unique_ptr<InterfacePass<FunctionOpInterface>>
+createAMDAIELowerExecutableTargetPass(
     AMDAIELowerExecutableTargetOptions options) {
   return std::make_unique<AMDAIELowerExecutableTargetPass>(options);
 }

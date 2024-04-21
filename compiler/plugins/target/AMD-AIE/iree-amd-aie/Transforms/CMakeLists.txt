@@ -79,6 +79,8 @@ iree_cc_library(
     iree::target::amd-aie::air::AIRConversionPasses
     iree::target::amd-aie::air::AIRTransformPasses
     IREELinalgTransformDialectPasses
+    MLIRFuncDialect
+    MLIRFunctionInterfaces
     MLIRLinalgDialect
     MLIRLinalgTransforms
     MLIRLLVMCommonConversion
