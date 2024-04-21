@@ -1,4 +1,4 @@
-// RUN: iree-opt --iree-amdaie-insert-loops-for-vectorization %s | FileCheck %s
+// RUN: iree-opt --pass-pipeline="builtin.module(func.func(iree-amdaie-insert-loops-for-vectorization))" %s | FileCheck %s
 
 !t2 = tensor<64x64xf32>
 !t3 = tensor<64x64x64xf32>

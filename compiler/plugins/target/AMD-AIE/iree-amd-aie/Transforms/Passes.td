@@ -22,7 +22,7 @@ def AMDAIEBridgeToAIR : Pass<"iree-amdaie-bridge-to-air", ""> {
 }
 
 def AMDAIEBufferizeToAllocation :
-    Pass<"iree-amdaie-bufferize-to-allocation", "func::FuncOp"> {
+    InterfacePass<"iree-amdaie-bufferize-to-allocation", "mlir::FunctionOpInterface"> {
   let summary = "Pass to bufferizes the targeted operation and materializes the result in a new allocation.";
   let constructor =
       "mlir::iree_compiler::AMDAIE::createAMDAIEBufferizeToAllocationPass()";
@@ -55,7 +55,7 @@ def AMDAIECanonicalizeDma :
 }
 
 def AMDAIECleanup :
-    Pass<"iree-amdaie-cleanup", "func::FuncOp"> {
+    InterfacePass<"iree-amdaie-cleanup", "mlir::FunctionOpInterface"> {
   let summary = "Pass to invoke several cleanup and canonicalization patterns.";
   let constructor =
       "mlir::iree_compiler::AMDAIE::createAMDAIECleanupPass()";
@@ -68,13 +68,13 @@ def AMDAIEDecomposeLinalgExtPackUnPackToAIR :
 }
 
 def AMDAIEFuseFillIntoForall :
-    Pass<"iree-amdaie-fuse-fill-into-forall", "func::FuncOp"> {
+    InterfacePass<"iree-amdaie-fuse-fill-into-forall", "mlir::FunctionOpInterface"> {
   let summary = "Fuse the linalg.fill into the forall loops.";
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEFuseFillIntoForallPass()";
 }
 
 def AMDAIEInsertLoopsForVectorization :
-    Pass<"iree-amdaie-insert-loops-for-vectorization", "func::FuncOp"> {
+    InterfacePass<"iree-amdaie-insert-loops-for-vectorization", "mlir::FunctionOpInterface"> {
 
     let summary = "Replace outer-dimensions of matmul-like linalg.generics with scf.for loops.";
 
@@ -103,7 +103,7 @@ def AMDAIEInsertLoopsForVectorization :
 
 
 def AMDAIEVectorization :
-    Pass<"iree-amdaie-vectorization", "func::FuncOp"> {
+    InterfacePass<"iree-amdaie-vectorization", "mlir::FunctionOpInterface"> {
 
   let summary = "Convert operations to the vector dialect in an AIE-friendly way.";
 
@@ -111,7 +111,7 @@ def AMDAIEVectorization :
 }
 
 def AMDAIEFusePackIntoLoop :
-    Pass<"iree-amdaie-fuse-pack-into-loop", "func::FuncOp"> {
+    InterfacePass<"iree-amdaie-fuse-pack-into-loop", "mlir::FunctionOpInterface"> {
   let summary = "Fuse the pack operations into the innermost for/forall loop.";
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEFusePackIntoLoopPass()";
   let options = [
@@ -123,7 +123,7 @@ def AMDAIEFusePackIntoLoop :
 }
 
 def AMDAIELowerExecutableTarget :
-    Pass<"iree-amdaie-lower-executable-target", "mlir::iree_compiler::IREE::HAL::ExecutableVariantOp"> {
+    InterfacePass<"iree-amdaie-lower-executable-target", "mlir::FunctionOpInterface"> {
   let summary = "Perform lowering of executable target using one of the IREE::HAL::DispatchLoweringPassPipeline";
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIELowerExecutableTargetPass()";
   let options = [
@@ -141,7 +141,7 @@ def AMDAIELowerExecutableTarget :
 }
 
 def AMDAIELoweringStrategy :
-    Pass<"iree-amdaie-lowering-strategy", "mlir::iree_compiler::IREE::HAL::ExecutableVariantOp"> {
+    Pass<"iree-amdaie-lowering-strategy", "ModuleOp"> {
   let summary = "Add lowering strategy configurations to be used";
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIELoweringStrategyPass()";
   let options = [
@@ -189,7 +189,7 @@ def AMDAIELowerWorkgroupCount :
 }
 
 def AMDAIEMapForallToCores :
-    Pass<"iree-amdaie-map-forall-to-cores", "func::FuncOp"> {
+    InterfacePass<"iree-amdaie-map-forall-to-cores", "mlir::FunctionOpInterface"> {
   let summary = "Map scf.forall ops to blocks and cores";
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEMapForallToCoresPass()";
   let options = [
@@ -205,7 +205,7 @@ def AMDAIEMapForallToCores :
 }
 
 def AMDAIEPackAndTranspose :
-    Pass<"iree-amdaie-pack-and-transpose", "func::FuncOp"> {
+    InterfacePass<"iree-amdaie-pack-and-transpose", "mlir::FunctionOpInterface"> {
   let summary = "Pass to pack and transpose the linalg operations.";
   let constructor =
       "mlir::iree_compiler::AMDAIE::createAMDAIEPackAndTransposePass()";
@@ -222,7 +222,7 @@ def AMDAIEPackToDma :
 }
 
 def AMDAIEPad :
-    Pass<"iree-amdaie-pad", "func::FuncOp"> {
+    InterfacePass<"iree-amdaie-pad", "mlir::FunctionOpInterface"> {
   let summary = "Pass to pad operations on tensors in top-down order.";
   let constructor =
       "mlir::iree_compiler::AMDAIE::createAMDAIEPadPass()";
@@ -233,7 +233,7 @@ def AMDAIEPad :
 }
 
 def AMDAIEPeelForLoop :
-    Pass<"iree-amdaie-peel-for-loop", "func::FuncOp"> {
+    InterfacePass<"iree-amdaie-peel-for-loop", "mlir::FunctionOpInterface"> {
   let summary = "Pass to peel the first or/and the last iteration out of the scf.for loop.";
   let constructor =
       "mlir::iree_compiler::AMDAIE::createAMDAIEPeelForLoopPass()";
@@ -254,7 +254,7 @@ def AMDAIEPeelForLoop :
 }
 
 def AMDAIETile :
-    Pass<"iree-amdaie-tile", "func::FuncOp"> {
+    InterfacePass<"iree-amdaie-tile", "mlir::FunctionOpInterface"> {
   let summary = "Pass to tile TilingInterface operations.";
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIETilePass()";
   let options = [
@@ -264,7 +264,7 @@ def AMDAIETile :
 }
 
 def AMDAIETileAndFuse :
-    Pass<"iree-amdaie-tile-and-fuse", "func::FuncOp"> {
+    InterfacePass<"iree-amdaie-tile-and-fuse", "mlir::FunctionOpInterface"> {
   let summary = "Pass to tile and fuse TilingInterface operations.";
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIETileAndFusePass()";
   let options = [
@@ -278,7 +278,7 @@ def AMDAIETileAndFuse :
 }
 
 def AMDAIEPropagateDataLayout :
-    Pass<"iree-amdaie-propagate-data-layout", "func::FuncOp"> {
+    InterfacePass<"iree-amdaie-propagate-data-layout", "mlir::FunctionOpInterface"> {
   let summary = "Pass to propagate pack/unpack ops using upstream patterns.";
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEPropagateDataLayoutPass()";
 }

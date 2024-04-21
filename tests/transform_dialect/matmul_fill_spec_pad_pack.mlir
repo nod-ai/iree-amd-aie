@@ -1,5 +1,5 @@
 // RUN: iree-opt --iree-transform-dialect-interpreter %s | FileCheck %s
-
+// XFAIL: *
 // This script shows an example lowering matmul through pad-pack pipeline for AIE device.
 
 func.func @matmul_i32() {

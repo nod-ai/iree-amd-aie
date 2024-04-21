@@ -184,7 +184,7 @@ class AMDAIEPadPass : public impl::AMDAIEPadBase<AMDAIEPadPass> {
 
 void AMDAIEPadPass::runOnOperation() {
   MLIRContext *context = &getContext();
-  func::FuncOp funcOp = getOperation();
+  mlir::FunctionOpInterface funcOp = getOperation();
   linalg::LinalgOp matmulOp;
   funcOp->walk([&](linalg::LinalgOp op) {
     if (linalg::isaContractionOpInterface(op)) {

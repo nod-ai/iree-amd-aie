@@ -55,7 +55,7 @@ class AMDAIEPackAndTransposePass
 
 void AMDAIEPackAndTransposePass::runOnOperation() {
   MLIRContext *context = &getContext();
-  func::FuncOp funcOp = getOperation();
+  mlir::FunctionOpInterface funcOp = getOperation();
 
   // Find the linalg op for packing, currently only consider contraction ops
   linalg::LinalgOp linalgOp;

@@ -123,7 +123,7 @@ class AMDAIEInsertLoopsForVectorizationPass
 
   void runOnOperation() final {
     MLIRContext *context = &getContext();
-    func::FuncOp operation = getOperation();
+    mlir::FunctionOpInterface operation = getOperation();
 
     IRRewriter rewriter(context);
     operation->walk([&](linalg::GenericOp genericOp) {

@@ -8,6 +8,7 @@
 #define IREE_AMD_AIE_TRANSFORMS_KERNELDISPATCH_H_
 
 #include "mlir/IR/BuiltinOps.h"
+#include "mlir/Interfaces/FunctionInterfaces.h"
 
 namespace mlir::iree_compiler::AMDAIE {
 
@@ -37,7 +38,7 @@ struct AIEConfig {
   int32_t num_cores;
 };
 
-LogicalResult initAIELaunchConfig(ModuleOp moduleOp,
+LogicalResult initAIELaunchConfig(FunctionOpInterface funcOp,
                                   AIEPassPipeline usePassPipeline,
                                   AIEConfig cfg);
 

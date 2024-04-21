@@ -95,7 +95,8 @@ class AccelSerializer {
   mlir::Builder mlirBuilder;
 
   /// Method to process individual functions.
-  LogicalResult processOperation(func::FuncOp funcOp, ScopeInfo &scope);
+  LogicalResult processOperation(mlir::FunctionOpInterface funcOp,
+                                 ScopeInfo &scope);
 
   /// Methods to process loop operations.
   LogicalResult processOperation(scf::ForallOp forallOp, ScopeInfo &scope);

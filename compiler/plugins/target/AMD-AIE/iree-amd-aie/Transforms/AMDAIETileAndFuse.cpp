@@ -103,7 +103,7 @@ class AMDAIETileAndFusePass
 
 void AMDAIETileAndFusePass::runOnOperation() {
   MLIRContext *context = &getContext();
-  func::FuncOp funcOp = getOperation();
+  mlir::FunctionOpInterface funcOp = getOperation();
 
   TilingInterface consumerOp;
   funcOp->walk<WalkOrder::PostOrder, ReverseIterator>([&](TilingInterface op) {
