@@ -1,5 +1,18 @@
 // RUN: iree-opt --split-input-file --verify-diagnostics %s
 
+
+func.func @core_invalid_terminator() {
+  %c0 = arith.constant 0 : index
+  // expected-note @+2 {{in custom textual format, the absence of terminator implies 'amdaie.end'}}
+  // expected-error @+1 {{'amdaie.core' op expects regions to end with 'amdaie.end', found 'arith.constant'}}
+  amdaie.core(%c0, %c0) {
+    %c1 = arith.constant 0 : index
+  }
+  return
+}
+
+// -----
+
 // expected-error @+2 {{failed to parse AMDAIE_LogicalObjectFifoType parameter 'element_type' which is to be a `MemRefType`}}
 // expected-error @+1 {{invalid kind of type specified}}
 func.func @logicalobjectfifo_tensor(!amdaie.logicalobjectfifo<tensor<8x16xi32>>)
@@ -156,5 +169,25 @@ func.func @dma_cpy_nd_negative_source_size(%arg0: !amdaie.logicalobjectfifo<memr
 func.func @dma_cpy_nd_negative_source_stride(%arg0: !amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, %arg1: !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>) {
   // expected-error @+1 {{expected source strides to be non-negative, but got -16}}
   %0 = amdaie.dma_cpy_nd(%arg0[0, 0, 0, 0] [1, 1, 8, 16] [128, 128, 16, 1], %arg1[0, 0, 0, 0] [1, 1, 8, 16] [128, -16, 16, 1]) : (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>)
+  return
+}
+
+// -----
+
+func.func @workgroup_no_terminator() {
+  // expected-note @+2 {{in custom textual format, the absence of terminator implies 'amdaie.controlcode'}}
+  // expected-error @+1 {{'amdaie.workgroup' op expects regions to end with 'amdaie.controlcode', found 'amdaie.end}}
+  amdaie.workgroup {
+    amdaie.end
+  }
+  return
+}
+
+// -----
+
+func.func @controlcode_no_workgroup() {
+  // expected-error @+1 {{'amdaie.controlcode' op expects parent op 'amdaie.workgroup'}}
+  amdaie.controlcode {
+  }
   return
 }
