@@ -73,6 +73,10 @@ std::unique_ptr<Pass> createAMDAIEInsertLoopsForVectorizationPass();
 std::unique_ptr<Pass> createAMDAIEFusePackIntoLoopPass(
     AMDAIEFusePackIntoLoopOptions options = {});
 
+/// Create pass to insert AIE workgroups around forall loops selected
+/// for parallel execution.
+std::unique_ptr<Pass> createAMDAIEInsertAIEWorkgroupPass();
+
 /// Create pass calling the dynamic pipeline for AMDAIE.
 std::unique_ptr<InterfacePass<FunctionOpInterface>>
 createAMDAIELowerExecutableTargetPass(
