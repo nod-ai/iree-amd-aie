@@ -37,6 +37,7 @@ iree_cc_library(
   HDRS
     "KernelDispatch.h"
     "Passes.h"
+    "AMDAIEOpUtils.h"
     "AMDAIEUtils.h"
   SRCS
     "AMDAIEAddLoweringStrategy.cpp"
@@ -45,11 +46,13 @@ iree_cc_library(
     "AMDAIECanonicalizeDma.cpp"
     "AMDAIEFuseFillIntoForall.cpp"
     "AMDAIEFusePackIntoLoop.cpp"
+    "AMDAIEInsertAIEWorkgroup.cpp"
     "AMDAIEInsertLoopsForVectorization.cpp"
     "AMDAIELowerExecutableTarget.cpp"
     "AMDAIELowerToUKernels.cpp"
     "AMDAIELowerWorkgroupCount.cpp"
     "AMDAIEMapForallToCores.cpp"
+    "AMDAIEOpUtils.cpp"
     "AMDAIEPackAndTranspose.cpp"
     "AMDAIEPackToDma.cpp"
     "AMDAIEPad.cpp"

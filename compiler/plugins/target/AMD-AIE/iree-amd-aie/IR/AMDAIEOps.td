@@ -24,10 +24,144 @@ class AMDAIE_Op<string mnemonic, list<Trait> traits = []> :
     Op<AMDAIE_Dialect, mnemonic, traits>;
 
 //===----------------------------------------------------------------------===//
-// IREE AMDAIE Ops
+// IREE AMDAIE Workgroup Ops
 //===----------------------------------------------------------------------===//
 
-def LogicalObjectFifoFromMemrefOp : AMDAIE_Op<"logicalobjectfifo.from_memref", []> {
+def AMDAIE_ControlCodeOp : AMDAIE_Op<"controlcode", [HasParent<"WorkgroupOp">,
+    SingleBlock, Terminator]> {
+  let summary = "Operation containing the host control code instructions.";
+  let description = [{
+    The control code op contains the host code instructions for a workgroup
+    in a single block. Therefore, this operation is expected to always have a
+    workgroup parent and is expected to be the terminator of this parent.
+  }];
+  
+  let regions = (region SizedRegion<1>:$region);
+  
+  let assemblyFormat = [{ regions attr-dict }];
+
+  let hasVerifier = 1;
+}
+
+def AMDAIE_CoreOp: AMDAIE_Op<"core", [SingleBlock]>, Results<(outs Index)> {
+  let summary = "The AIE core operator";
+  let description = [{
+    This operation represents an AIE core op, containing a sequence of
+    operations in its body to be executed on this core. The core is
+    specified through a coordinate (`col`, `row`), indicating the location
+    in the AIE array. This operation differs from the `CoreOp` defined in the
+    AIE dialect in that it accepts the column and row as indices instead of
+    integers.
+  }];
+
+  let arguments = (
+    ins Index:$col,
+        Index:$row
+  );
+
+  let regions = (region SizedRegion<1>:$region);
+  
+  let assemblyFormat = [{ `(` $col `,` $row `)` regions attr-dict }];
+  
+  let builders = [
+    OpBuilder<(ins "mlir::Value":$col, "mlir::Value":$row), [{
+      build($_builder, $_state, $_builder.getIndexType(), col, row);
+    }]>
+  ];
+
+  let hasVerifier = 1;
+}
+
+def AMDAIE_EndOp: AMDAIE_Op<"end", [Terminator]> {
+  let summary = "Generic terminator for AMDAIE ops' regions.";
+  let assemblyFormat = [{ attr-dict }];
+}
+
+def AMDAIE_WorkgroupOp : AMDAIE_Op<"workgroup",
+    [SingleBlock]> {
+  let summary = "An AIE workgroup region.";
+  let description = [{
+    This operation represents an AIE workgroup region. A workgroup consists of:
+      1. A set of forall loops, with GPU parallel mapping attributes, which will
+         be unrolled to a sequence of parallel cores.
+      2. `DmaCpyNdOps` representing data movement between different memories in
+         the memory hierarchy.
+      3. Computational operations (linalg), which will be moved inside the AIE
+         core operations.
+      4. A newly inserted `ControlCodeOp`, representing the sequence of host
+         control code instructions.
+
+    The invariant of this op is that the workgroup contains a single block, of
+    which the terminator should be a `ControlCodeOp`.
+  }];
+  
+  let regions = (region SizedRegion<1>:$region);
+  
+  let assemblyFormat = [{ regions attr-dict }];
+
+  // Skip the default builders and provide a custom implementation which ensures
+  // that the operation is well-formed with region block and a ControlCodeOp
+  // terminator.
+  let skipDefaultBuilders = 1;
+  let builders = [
+    OpBuilder<(ins)>,
+  ];
+
+  let extraClassDeclaration = [{
+    // Return the control code op within this workgroup.
+    ControlCodeOp getControlCode() {
+      return dyn_cast<ControlCodeOp>(getBody()->getTerminator());
+    }
+    // Make sure the WorkgroupOp region is well-formed with a ControlCodeOp
+    // terminator.
+    static void ensureTerminator(Region &region, OpBuilder &builder,
+                                 Location loc);
+  }];
+  
+  let hasVerifier = 1;
+}
+
+//===----------------------------------------------------------------------===//
+// IREE AMDAIE LogicalObjectFifo Ops
+//===----------------------------------------------------------------------===//
+
+def AMDAIE_LogicalObjectFifoConsume: AMDAIE_Op<"logicalobjectfifo.consume", []> {
+  let summary = "Consume a DMA logicalobjectfifo result.";
+  let description = [{
+    Consumes the result of a DMA operation. This is a blocking operation,
+    waiting for the DMA to produce data. Typically, this operation will reside
+    inside a `CoreOp` to synchronize with external DMA operations producing data
+    into the respective core's local memory.
+
+    Example:
+    ```mlir
+    %2 = amdaie.dma_cpy_nd(
+      %1[%c0, %c0, %c0, %c0] [%c1, %c1, %c8, %c16] [%c128, %c128, %c16, %c1],
+      %0[%c0, %c0, %c0, %c0] [%c1, %c1, %c8, %c16] [%c128, %c16, %c16, %c1])
+      : (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>)
+    %3 = amdaie.logicalobjectfifo.consume(%2)
+    ```
+  }];
+
+  let arguments = (
+    ins Index:$dma
+  );
+
+  let assemblyFormat = [{
+    `(` $dma `)`  attr-dict
+  }];
+
+  let extraClassDeclaration = [{
+    DmaCpyNdOp getDmaCpyNdOp() {
+      return dyn_cast<DmaCpyNdOp>(getDma().getDefiningOp());
+    }
+    Value getLogicalObjectfifo() {
+      return dyn_cast<DmaCpyNdOp>(getDma().getDefiningOp()).getTarget();
+    }
+  }];
+}
+
+def AMDAIE_LogicalObjectFifoFromMemrefOp : AMDAIE_Op<"logicalobjectfifo.from_memref", []> {
   let summary = "Create a logical objectfifo from a memref";
   let description = [{
     Creates a logical objectfifo which encapsulates a memref. The logical objectfifo adds synchronization
@@ -58,6 +192,7 @@ def LogicalObjectFifoFromMemrefOp : AMDAIE_Op<"logicalobjectfifo.from_memref", [
   ];
 
   let extraClassDeclaration = [{
+    Attribute getMemorySpace() { return getMemrefType().getMemorySpace(); }
     MemRefType getMemrefType() { return getOutput().getType().cast<LogicalObjectFifoType>().getElementType(); }
   }];
 
@@ -65,7 +200,44 @@ def LogicalObjectFifoFromMemrefOp : AMDAIE_Op<"logicalobjectfifo.from_memref", [
   let cppNamespace = "mlir::iree_compiler::AMDAIE";
 }
 
-def DmaCpyNdOp: AMDAIE_Op<"dma_cpy_nd", [AttrSizedOperandSegments, CopyOpInterface,
+def AMDAIE_LogicalObjectFifoProduce: AMDAIE_Op<"logicalobjectfifo.produce", []> {
+  let summary = "Produce a DMA logicalobjectfifo input.";
+  let description = [{
+    Produces the input of a DMA operation. This is a release-type operation,
+    where the DMA will be waiting for the data to be produced. Typically, this
+    operation will reside inside a `CoreOp` to synchronize with external DMA
+    operations waiting for data from the respective core's local memory to be
+    released.
+
+    Example:
+    ```mlir
+    %2 = amdaie.dma_cpy_nd(
+      %1[%c0, %c0, %c0, %c0] [%c1, %c1, %c8, %c16] [%c128, %c128, %c16, %c1],
+      %0[%c0, %c0, %c0, %c0] [%c1, %c1, %c8, %c16] [%c128, %c16, %c16, %c1])
+      : (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>)
+    %3 = amdaie.logicalobjectfifo.produce(%2)
+    ```
+  }];
+
+  let arguments = (
+    ins Index:$dma
+  );
+  
+  let assemblyFormat = [{
+    `(` $dma `)`  attr-dict
+  }];
+  
+  let extraClassDeclaration = [{
+    DmaCpyNdOp getDmaCpyNdOp() {
+      return dyn_cast<DmaCpyNdOp>(getDma().getDefiningOp());
+    }
+    Value getLogicalObjectfifo() {
+      return dyn_cast<DmaCpyNdOp>(getDma().getDefiningOp()).getSource();
+    }
+  }];
+}
+
+def AMDAIE_DmaCpyNdOp: AMDAIE_Op<"dma_cpy_nd", [AttrSizedOperandSegments, CopyOpInterface,
     DoublyStridedOpInterface]> {
   let summary = "The DMA copy operator";
   let description = [{
@@ -149,7 +321,6 @@ def DmaCpyNdOp: AMDAIE_Op<"dma_cpy_nd", [AttrSizedOperandSegments, CopyOpInterfa
   }];
 
   let hasVerifier = 0;
-  let cppNamespace = "mlir::iree_compiler::AMDAIE";
 }
 
 #endif // IREE_AMDAIE_DIALECT_IREEAMDAIE_OPS
