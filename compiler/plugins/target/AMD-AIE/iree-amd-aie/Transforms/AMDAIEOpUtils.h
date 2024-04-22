@@ -19,9 +19,11 @@ template <typename OpTy>
 SmallVector<OpTy> getInclusiveParentsOfType(Operation *op) {
   SmallVector<OpTy> res;
   auto *current = op;
-  do
-    if (auto typedParent = dyn_cast<OpTy>(current)) res.push_back(typedParent);
-  while ((current = current->getParentOp()));
+  do {
+    if (auto typedParent = dyn_cast<OpTy>(current)) {
+      res.push_back(typedParent);
+    }
+  } while ((current = current->getParentOp()));
   return res;
 }
 

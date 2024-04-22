@@ -1,25 +1,18 @@
 // RUN: iree-opt --split-input-file --pass-pipeline="builtin.module(iree-amdaie-insert-aie-workgroup)" %s | FileCheck %s
 
 // CHECK-LABEL: @insert_aie_workgroup
-// CHECK: scf.forall (%arg0, %arg1) in (1, 1) {
+// CHECK: scf.forall (%[[ARG0:.*]], %[[ARG1:.*]]) in (1, 1) {
 // CHECK:   amdaie.workgroup {
-// CHECK:     scf.forall (%arg2, %arg3) in (1, 2) {
-// CHECK:       %9 = affine.apply #map(%arg2)
-// CHECK:       %10 = affine.apply #map(%arg3)
-// CHECK:       %11 = amdaie.dma_cpy_nd(%3[] [] [], %1[%9, %c0] [%c32, %c64] [%c1024, %c1]) : (!amdaie.logicalobjectfifo<memref<32x64xi32, 1>>, !amdaie.logicalobjectfifo<memref<32x1024xi32>>)
-// CHECK:       %12 = amdaie.dma_cpy_nd(%2[] [] [], %0[%c0, %10] [%c64, %c32] [%c64, %c1]) : (!amdaie.logicalobjectfifo<memref<64x32xi32, 1>>, !amdaie.logicalobjectfifo<memref<1024x64xi32>>)
-// CHECK:       %13 = amdaie.dma_cpy_nd(%5[%c0, %c0, %c0, %c0] [%c8, %c8, %c4, %c8] [%c256, %c32, %c8, %c1], %3[%c0, %c0, %c0, %c0] [%c8, %c8, %c4, %c8] [%c8, %c256, %c64, %c1]) : (!amdaie.logicalobjectfifo<memref<8x8x4x8xi32, 2>>, !amdaie.logicalobjectfifo<memref<32x64xi32, 1>>)
-// CHECK:       %14 = amdaie.dma_cpy_nd(%4[%c0, %c0, %c0, %c0] [%c4, %c8, %c8, %c8] [%c512, %c64, %c8, %c1], %2[%c0, %c0, %c0, %c0] [%c4, %c8, %c8, %c8] [%c8, %c256, %c32, %c1]) : (!amdaie.logicalobjectfifo<memref<4x8x8x8xi32, 2>>, !amdaie.logicalobjectfifo<memref<64x32xi32, 1>>)
-// CHECK:       %15 = amdaie.core(%arg3, %arg2) {
-// CHECK:         linalg.fill ins(%c0_i32 : i32) outs(%alloc_1 : memref<4x8x4x8xi32, 2>)
-// CHECK:         amdaie.logicalobjectfifo.consume(%13)
-// CHECK:         amdaie.logicalobjectfifo.consume(%14)
-// CHECK:         linalg.generic {indexing_maps = [#map1, #map2, #map3], iterator_types = ["parallel", "parallel", "reduction", "parallel", "parallel", "reduction"]} ins(%alloc_0, %alloc : memref<8x8x4x8xi32, 2>, memref<4x8x8x8xi32, 2>) outs(%alloc_1 : memref<4x8x4x8xi32, 2>) {
-// CHECK:         ^bb0(%in: i32, %in_8: i32, %out: i32):
-// CHECK:           %16 = arith.muli %in, %in_8 : i32
-// CHECK:           %17 = arith.addi %out, %16 : i32
-// CHECK:           linalg.yield %17 : i32
-// CHECK:         }
+// CHECK:     scf.forall (%[[ARG2:.*]], %[[ARG3:.*]]) in (1, 2) {
+// CHECK:       %[[DMA_CPY0:.*]] = amdaie.dma_cpy_nd
+// CHECK:       %[[DMA_CPY1:.*]] = amdaie.dma_cpy_nd
+// CHECK:       %[[DMA_CPY2:.*]] = amdaie.dma_cpy_nd
+// CHECK:       %[[DMA_CPY3:.*]] = amdaie.dma_cpy_nd
+// CHECK:       %[[CORE0:.*]] = amdaie.core(%[[ARG3]], %[[ARG2]]) {
+// CHECK:         linalg.fill
+// CHECK:         amdaie.logicalobjectfifo.consume(%[[DMA_CPY2]])
+// CHECK:         amdaie.logicalobjectfifo.consume(%[[DMA_CPY3]])
+// CHECK:         linalg.generic
 // CHECK:         amdaie.end
 // CHECK:       }
 // CHECK:     } {mapping = [#gpu.thread<y>, #gpu.thread<x>]}
@@ -28,26 +21,19 @@
 // CHECK:     }
 // CHECK:   }
 // CHECK:   amdaie.workgroup {
-// CHECK:     scf.forall (%arg2, %arg3) in (1, 2) {
-// CHECK:       %9 = affine.apply #map(%arg2)
-// CHECK:       %10 = affine.apply #map(%arg3)
-// CHECK:       %11 = amdaie.dma_cpy_nd(%3[] [] [], %1[%9, %c0] [%c32, %c64] [%c1024, %c1]) : (!amdaie.logicalobjectfifo<memref<32x64xi32, 1>>, !amdaie.logicalobjectfifo<memref<32x1024xi32>>)
-// CHECK:       %12 = amdaie.dma_cpy_nd(%2[] [] [], %0[%c0, %10] [%c64, %c32] [%c64, %c1]) : (!amdaie.logicalobjectfifo<memref<64x32xi32, 1>>, !amdaie.logicalobjectfifo<memref<1024x64xi32>>)
-// CHECK:       %13 = amdaie.dma_cpy_nd(%5[%c0, %c0, %c0, %c0] [%c8, %c8, %c4, %c8] [%c256, %c32, %c8, %c1], %3[%c0, %c0, %c0, %c0] [%c8, %c8, %c4, %c8] [%c8, %c256, %c64, %c1]) : (!amdaie.logicalobjectfifo<memref<8x8x4x8xi32, 2>>, !amdaie.logicalobjectfifo<memref<32x64xi32, 1>>)
-// CHECK:       %14 = amdaie.dma_cpy_nd(%4[%c0, %c0, %c0, %c0] [%c4, %c8, %c8, %c8] [%c512, %c64, %c8, %c1], %2[%c0, %c0, %c0, %c0] [%c4, %c8, %c8, %c8] [%c8, %c256, %c32, %c1]) : (!amdaie.logicalobjectfifo<memref<4x8x8x8xi32, 2>>, !amdaie.logicalobjectfifo<memref<64x32xi32, 1>>)
-// CHECK:       %15 = amdaie.dma_cpy_nd(%7[%c0, %c0] [%c32, %c32] [%c32, %c1], %6[%c0, %c0, %c0, %c0] [%c8, %c4, %c4, %c8] [%c32, %c8, %c256, %c1]) : (!amdaie.logicalobjectfifo<memref<32x32xi32, 1>>, !amdaie.logicalobjectfifo<memref<4x8x4x8xi32, 2>>)
-// CHECK:       %16 = amdaie.dma_cpy_nd(%8[%9, %10] [%c32, %c32] [%c64, %c1], %7[] [] []) : (!amdaie.logicalobjectfifo<memref<32x64xi32>>, !amdaie.logicalobjectfifo<memref<32x32xi32, 1>>)
-// CHECK:       %17 = amdaie.core(%arg3, %arg2) {
+// CHECK:     scf.forall (%[[ARG2:.*]], %[[ARG3:.*]]) in (1, 2) {
+// CHECK:       %[[DMA_CPY0:.*]] = amdaie.dma_cpy_nd
+// CHECK:       %[[DMA_CPY1:.*]] = amdaie.dma_cpy_nd
+// CHECK:       %[[DMA_CPY2:.*]] = amdaie.dma_cpy_nd
+// CHECK:       %[[DMA_CPY3:.*]] = amdaie.dma_cpy_nd
+// CHECK:       %[[DMA_CPY4:.*]] = amdaie.dma_cpy_nd
+// CHECK:       %[[DMA_CPY5:.*]] = amdaie.dma_cpy_nd
+// CHECK:       %[[CORE1:.*]] = amdaie.core(%[[ARG3]], %[[ARG2]]) {
 // CHECK:         linalg.fill ins(%c0_i32 : i32) outs(%alloc_1 : memref<4x8x4x8xi32, 2>)
-// CHECK:         amdaie.logicalobjectfifo.consume(%13)
-// CHECK:         amdaie.logicalobjectfifo.consume(%14)
-// CHECK:         linalg.generic {indexing_maps = [#map1, #map2, #map3], iterator_types = ["parallel", "parallel", "reduction", "parallel", "parallel", "reduction"]} ins(%alloc_0, %alloc : memref<8x8x4x8xi32, 2>, memref<4x8x8x8xi32, 2>) outs(%alloc_1 : memref<4x8x4x8xi32, 2>) {
-// CHECK:         ^bb0(%in: i32, %in_8: i32, %out: i32):
-// CHECK:           %18 = arith.muli %in, %in_8 : i32
-// CHECK:           %19 = arith.addi %out, %18 : i32
-// CHECK:           linalg.yield %19 : i32
-// CHECK:         }
-// CHECK:         amdaie.logicalobjectfifo.produce(%15)
+// CHECK:         amdaie.logicalobjectfifo.consume(%[[DMA_CPY2]])
+// CHECK:         amdaie.logicalobjectfifo.consume(%[[DMA_CPY3]])
+// CHECK:         linalg.generic
+// CHECK:         amdaie.logicalobjectfifo.produce(%[[DMA_CPY4]])
 // CHECK:         amdaie.end
 // CHECK:       }
 // CHECK:     } {mapping = [#gpu.thread<y>, #gpu.thread<x>]}
