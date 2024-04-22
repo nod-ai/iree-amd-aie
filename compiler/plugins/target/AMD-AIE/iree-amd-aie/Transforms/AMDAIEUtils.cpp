@@ -8,6 +8,7 @@
 
 #include "llvm/ADT/DenseMap.h"
 #include "mlir/IR/BuiltinTypes.h"
+#include "mlir/IR/Iterators.h"
 
 namespace mlir::iree_compiler::AMDAIE {
 
@@ -297,12 +298,12 @@ bool isMatmul(linalg::LinalgOp linalgOp) {
          match6DLinalgGenericMatmul(linalgOp);
 }
 
-/// Utility to indentify whether a generic op is an elementwise op and whether
-/// its producer is a matmul-like op.
+/// Utility to identify if `linalgOp` is an elementwise operation with a
+/// matmul-like op upstream in its computation tree.
 bool isMatmulProducerOfElementwise(linalg::LinalgOp linalgOp) {
   if (!isElementwise(linalgOp)) return false;
-  // Check if any of the defining op is a matmul-like op. To simplify the
-  // problem, currently only check if it is a contraction op.
+  if (isa<linalg::FillOp>(linalgOp)) return false;
+  // Check if any of the defining op is a matmul-like op.
   for (auto operand : linalgOp->getOperands()) {
     while (Operation* defOp = operand.getDefiningOp()) {
       if (auto defLinalgOp = dyn_cast_or_null<linalg::LinalgOp>(defOp)) {
@@ -310,6 +311,18 @@ bool isMatmulProducerOfElementwise(linalg::LinalgOp linalgOp) {
           return true;
         }
         break;
+      }
+      if (auto forOp = dyn_cast_or_null<scf::ForOp>(defOp)) {
+        bool findMatmul = false;
+        forOp.getBody()->walk<WalkOrder::PostOrder, ReverseIterator>(
+            [&](linalg::LinalgOp op) {
+              if (isMatmul(op)) {
+                findMatmul = true;
+                return WalkResult::interrupt();
+              }
+              return WalkResult::advance();
+            });
+        if (findMatmul) return true;
       }
       operand = defOp->getOperand(0);
     }
