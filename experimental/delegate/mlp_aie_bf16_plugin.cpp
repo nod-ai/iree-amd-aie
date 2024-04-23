@@ -17,9 +17,12 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <exception>
 #include <fstream>
 #include <iostream>
+#include <memory>
 #include <sstream>
+#include <stdexcept>
 #include <string>
 #include <type_traits>
 #include <vector>
@@ -31,9 +34,18 @@
 // The only header required from IREE:
 #include "iree/hal/local/executable_plugin.h"
 
+//#############################################################################
+//
+// Macros for configuring AIE delegate behavior
+//
 
 // Turn this on to use the 8x768x768 kernel in place of the default ref matmul
 #define USE_OPT_KERNEL 1
+
+// Turn this on to use XRT buffers which are separate from HAL buffers.
+// There is a performance cost to copying between HAL and XRT buffer, but it
+// also isolates XRT code from HAL (for troubleshooting, for example).
+#define USE_INDIRECT_XRT_BUFFERS 1
 
 // Turn this on to replace the AIE implementation with a simple reference
 // implementation on CPU.
@@ -46,8 +58,10 @@
 // Turn this on to debug value conversions
 // #define DEBUG_VALUE_CONVERSIONS 1
 
+//#############################################################################
+
 #if DEBUG_VALUE_CONVERSIONS
-  bool DebugValueConversions = false;
+  static bool DebugValueConversions = false;
   #define CONVERSION_DEBUG(turnOn_) DebugValueConversions = (turnOn_);
 #else
   #define CONVERSION_DEBUG(turnOn_) ;
@@ -57,37 +71,71 @@
 using bfloat16_t = std::uint16_t;
 
 
+//#############################################################################
+//
+// Configuration of the kernel that the AIE delegate uses
+//
+
 #ifdef USE_OPT_KERNEL
 // Kernel file names (without extension) relative to installation root
 const std::string kernelFileName = 
-    // "matmul/matmul-bf16-8x768x768-v1";  // from mlir-aie, doesn't work for M=8
     "matmul/matmul-bf16-f32-8x768x768-v1";  // Erwei's 4x4 vector matmul
 
+// Kernel name inside the xclbin file
 const std::string KernelName = "matmul_8x768_768xbf16__dispatch_0_matmul_8x768x7";
 
+// Fixed shape of the matmul kernel
 #define MLP_M 8
 #define MLP_K 768
 #define MLP_N 768
 
+// Types of the matmul LHS, RHS, and result, as defined by the kernel
 using A_DATATYPE = bfloat16_t;
 using B_DATATYPE = bfloat16_t;
 using C_DATATYPE = float; // bfloat16_t;
+
+// Types of the matmul LHS, RHS, and result, as seen by the model
+using ModelLhsDType = bfloat16_t;
+using ModelRhsDType = bfloat16_t;
+using ModelReturnDType = bfloat16_t;
+
+//-----------------------------------------------------------------------------
 
 #else
 // Kernel file names (without extension) relative to installation root
 const std::string kernelFileName = "matmul/matmul-bf16-256x256x256-v1";
 
+// Kernel name inside the xclbin file
 const std::string KernelName = "MLIR_AIE";
 
+// Fixed shape of the matmul kernel
 #define MLP_M 256
 #define MLP_K 256
 #define MLP_N 256
 
+// Types of the matmul LHS, RHS, and result, as defined by the kernel
 using A_DATATYPE = bfloat16_t;
 using B_DATATYPE = bfloat16_t;
 using C_DATATYPE = float;
 
+// Types of the matmul LHS, RHS, and result, as seen by the model
+using ModelLhsDType = float;
+using ModelRhsDType = float;
+using ModelReturnDType = float;
+
 #endif
+
+//#############################################################################
+//
+// AIE delegate implementation
+//
+
+// Run-time exception class
+class DelegateException : public std::runtime_error {
+public:
+  DelegateException(const std::string &what) : std::runtime_error(what) {}
+};
+
 
 // Get the path of this plugin's .so
 
@@ -134,18 +182,8 @@ std::string getLibraryPath() {
 std::string getLibraryPath() { return std::string(); }
 #endif
 
-// Types of the matmul LHS, RHS, and return, as seen by the model
-// (as opposed to the kernel)
-
-#ifdef USE_OPT_KERNEL
-using ModelLhsDType = bfloat16_t;
-using ModelRhsDType = bfloat16_t;
-using ModelReturnDType = bfloat16_t;
-#else
-using ModelLhsDType = float;
-using ModelRhsDType = float;
-using ModelReturnDType = float;
-#endif
+//=============================================================================
+// Dtype casting and copying
 
 // Casting functions to automate converting between model and kernel dtypes
 //
@@ -196,6 +234,8 @@ struct Converter<bfloat16_t, float> {
     return f;
   }
 };
+
+//-----------------------------------------------------------------------------
 
 // Copying functions to automate conversions between model and kernel dtypes.
 
@@ -272,6 +312,146 @@ struct TensorData {
   }
 };
 
+//=============================================================================
+// Classes for managing the connection between HAL and XRT
+
+// Functionality common to all variants of tensor binder
+template <typename ModelDType, typename KernelDType, typename ModelDataPtr>
+class TensorBinderCommon {
+protected:
+  xrt::device device;
+  int memoryBank = 0;
+  std::size_t xrtBufferNumBytes;  // fixed size of XRT buffer
+  xrt::bo bo;
+
+  // Make sure that the XRT buffer is large enough to handle the model tensor
+  void checkBufferSizes(ModelDataPtr modelTensorData, std::size_t numModelElements) {
+    std::size_t modelBufferNumBytes = numModelElements * sizeof(KernelDType);
+    if (modelBufferNumBytes > xrtBufferNumBytes) {
+      std::ostringstream oss;
+      oss << "INTERNAL ERROR: XRT buffer too small!  XRT buffer size: "
+          << xrtBufferNumBytes << ", model buffer size: " << modelBufferNumBytes
+          << std::endl;
+      throw DelegateException(oss.str());
+    }
+  }
+
+public:
+  TensorBinderCommon(xrt::device device, int memoryBank, std::size_t xrtBufferNumBytes)
+  : device(device), memoryBank(memoryBank), xrtBufferNumBytes(xrtBufferNumBytes)
+  {}
+
+  virtual ~TensorBinderCommon() {}
+  xrt::bo getBo() { return bo; }
+};
+
+
+// Class for binding a HAL buffer to an XRT buffer (BO).
+//
+// In the general case, the HAL buffer is separate from the XRT buffer, so that
+// memory copies are done between the HAL buffer and XRT buffer
+template <typename ModelDType, typename KernelDType, typename ModelDataPtr>
+class TensorBinderBase : public TensorBinderCommon<ModelDType, KernelDType, ModelDataPtr> {
+protected:
+  std::size_t numModelElements;  // number of elements in model tensor
+  ModelDataPtr modelTensorData = ModelDataPtr();
+  bool isInitialized = false;
+
+public:
+  using CommonClass = TensorBinderCommon<ModelDType, KernelDType, ModelDataPtr>;
+  using CommonClass::CommonClass;
+
+  void bind(ModelDataPtr modelTensorData, std::size_t numModelElements) {
+    CommonClass::checkBufferSizes(modelTensorData, numModelElements);
+    if (!isInitialized || numModelElements != this->numModelElements) {
+      this->bo = xrt::bo(this->device, this->xrtBufferNumBytes,
+          XRT_BO_FLAGS_HOST_ONLY, this->memoryBank);
+      this->modelTensorData = modelTensorData;
+      this->numModelElements = numModelElements;
+      isInitialized = true;
+    }
+  }
+
+  void copyModelToXrt() {
+    KernelDType *xrtBuf = this->bo.template map<KernelDType *>();
+    std::cout << "[AIE Delegate]: PERFORMANCE WARNING: using extra buffer copy!" << std::endl;
+    TensorCopier<ModelDType, KernelDType>::copy(xrtBuf, modelTensorData,
+        numModelElements);
+    this->bo.sync(XCL_BO_SYNC_BO_TO_DEVICE);
+  }
+
+};
+
+
+#ifndef USE_INDIRECT_XRT_BUFFERS
+// Special case for binding a HAL buffer directly to an XRT buffer (BO),
+// so that they share the same memory.
+//
+// This class can be used only if the Model (HAL) and kernel (XRT) data types
+// match.
+template <typename DType, typename ModelDataPtr>
+class TensorBinderBase<DType, DType, ModelDataPtr> : public TensorBinderCommon<DType, DType, ModelDataPtr> {
+public:
+  using CommonClass = TensorBinderCommon<DType, DType, ModelDataPtr>;
+  using CommonClass::CommonClass;
+
+  void bind(ModelDataPtr modelTensorData, std::size_t numModelElements) {
+    CommonClass::checkBufferSizes(modelTensorData, numModelElements);
+
+    // std::cout << "Using direct buffers" << std::endl;
+
+    // Construct BO every time, as HAL buffer can be different with every call
+    this->bo = xrt::bo(this->device, (void *) modelTensorData,
+        this->xrtBufferNumBytes, this->memoryBank);
+  }
+
+  void copyModelToXrt() {
+    this->bo.sync(XCL_BO_SYNC_BO_TO_DEVICE);
+  }
+};
+#endif
+
+
+// TensorBinder whose HAL buffer CANNOT be written to
+template <typename ModelDType, typename KernelDType>
+class ConstTensorBinder : public TensorBinderBase<ModelDType, KernelDType, const ModelDType *> {
+public:
+  using BaseClass = TensorBinderBase<ModelDType, KernelDType, const ModelDType *>;
+  using BaseClass::BaseClass;
+};
+
+
+// TensorBinder whose HAL buffer CAN be written to, default case
+template <typename ModelDType, typename KernelDType>
+class MutableTensorBinder : public TensorBinderBase<ModelDType, KernelDType, ModelDType *> {
+public:
+  using BaseClass = TensorBinderBase<ModelDType, KernelDType, ModelDType *>;
+  using BaseClass::BaseClass;
+
+  void copyXrtToModel() {
+    this->bo.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
+    KernelDType *xrtBuf = this->bo.template map<KernelDType *>();
+    std::cout << "[AIE Delegate]: PERFORMANCE WARNING: using extra buffer copy!" << std::endl;
+    TensorCopier<KernelDType, ModelDType>::copy(this->modelTensorData, xrtBuf,
+        this->numModelElements);
+  }
+};
+
+
+#ifndef USE_INDIRECT_XRT_BUFFERS
+// TensorBinder whose HAL buffer CAN be written to, conversion not required
+template <typename DType>
+class MutableTensorBinder<DType, DType> : public TensorBinderBase<DType, DType, DType *> {
+public:
+  using BaseClass = TensorBinderBase<DType, DType, DType *>;
+  using BaseClass::BaseClass;
+
+  void copyXrtToModel() {
+    this->bo.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
+  }
+};
+#endif
+
 
 // Set of all arguments passed from model to plugin
 //
@@ -299,8 +479,10 @@ struct Params {
   }
 };
 
-///////////////////////////////////////////////////////////////////////////////
-// bf16 AIE implementation from Joe Melber
+//#############################################################################
+//
+// XRT host code implementation, adapted from Joe Melber's mlir-aie ref matmul
+//
 
 std::vector<uint32_t> loadInstrSequence(std::string instr_path) {
     std::ifstream instrFile(instr_path);
@@ -321,14 +503,19 @@ std::vector<uint32_t> loadInstrSequence(std::string instr_path) {
 // Holder of AIE hardware resources of which there should be only one of each.
 // This class is used as a singleton via `getInstance()`.
 struct XrtState {
+    using LhsBinder = ConstTensorBinder<ModelLhsDType, A_DATATYPE>;
+    using RhsBinder = ConstTensorBinder<ModelRhsDType, B_DATATYPE>;
+    using ResultBinder = MutableTensorBinder<ModelReturnDType, C_DATATYPE>;
+
     xrt::device device;
     xrt::kernel kernel;
     xrt::bo boInstr;
-    xrt::bo boA;
-    xrt::bo boB;
-    xrt::bo boC;
+    std::unique_ptr<LhsBinder> lhsBinder;
+    std::unique_ptr<RhsBinder> rhsBinder;
+    std::unique_ptr<ResultBinder> resultBinder;
 
     static XrtState *getInstance(bool shouldDelete = false) {
+        // TODO: handle multiple simultaneous dispatches, multiple kernels
         static XrtState *instance = nullptr;
         if (shouldDelete) {
             delete instance;
@@ -403,9 +590,13 @@ int setupNPUAccelerator() {
  
     xrtState->boInstr = xrt::bo(xrtState->device, instrV.size() * sizeof(int),
                            XCL_BO_FLAGS_CACHEABLE, xrtState->kernel.group_id(0));
-    xrtState->boA = xrt::bo(xrtState->device, aSize, XRT_BO_FLAGS_HOST_ONLY, xrtState->kernel.group_id(2));
-    xrtState->boB = xrt::bo(xrtState->device, bSize, XRT_BO_FLAGS_HOST_ONLY, xrtState->kernel.group_id(3));
-    xrtState->boC = xrt::bo(xrtState->device, cSize, XRT_BO_FLAGS_HOST_ONLY, xrtState->kernel.group_id(4));
+
+    xrtState->lhsBinder = std::make_unique<XrtState::LhsBinder>(xrtState->device,
+        xrtState->kernel.group_id(2), aSize);
+    xrtState->rhsBinder = std::make_unique<XrtState::RhsBinder>(xrtState->device,
+        xrtState->kernel.group_id(3), bSize);
+    xrtState->resultBinder = std::make_unique<XrtState::ResultBinder>(xrtState->device,
+        xrtState->kernel.group_id(4), cSize);
 
     // copy instruction stream to NPU
     void *bufInstr = xrtState->boInstr.map<void *>();
@@ -423,35 +614,35 @@ int aie_matmul(Params *params) {
     int cnt = 0;
     auto xrtState = XrtState::getInstance();
 
-    // Copy inputs to kernel input BOs
-    A_DATATYPE *bufA = xrtState->boA.map<A_DATATYPE *>();
-    TensorCopier<ModelLhsDType, A_DATATYPE>::copy(bufA, params->lhs.get(), aVolume);
-    B_DATATYPE *bufB = xrtState->boB.map<B_DATATYPE *>();
-    TensorCopier<ModelRhsDType, B_DATATYPE>::copy(bufB, params->rhs.get(), bVolume);
+    // Set up binders to map HAL buffers to XRT buffers
+    xrtState->lhsBinder->bind(params->lhs.get(), aVolume);
+    xrtState->rhsBinder->bind(params->rhs.get(), bVolume);
+    xrtState->resultBinder->bind(params->result.get(), cVolume);
 
-    // copy output to XRT BO (is this really necessary?)
-    C_DATATYPE *bufC = xrtState->boC.map<C_DATATYPE *>();
-    // params->result.dumpVals(std::cout, cVolume);
-    TensorCopier<ModelReturnDType, C_DATATYPE>::copy(bufC, params->result.get(), cVolume);
+    // Copy inputs to kernel input BOs and sync the BOs
+    xrtState->lhsBinder->copyModelToXrt();
+    xrtState->rhsBinder->copyModelToXrt();
 
-    // sync buffers to NPU device
-    xrtState->boA.sync(XCL_BO_SYNC_BO_TO_DEVICE);
-    xrtState->boB.sync(XCL_BO_SYNC_BO_TO_DEVICE);
-    xrtState->boC.sync(XCL_BO_SYNC_BO_TO_DEVICE);
+    // copy output to XRT BO and sync it (is this really necessary?)
+    xrtState->resultBinder->copyModelToXrt();
 
     // execute the kernel on NPU
-    auto run = xrtState->kernel(xrtState->boInstr, instrSize, xrtState->boA, xrtState->boB, xrtState->boC);
+    auto run = xrtState->kernel(xrtState->boInstr, instrSize,
+        xrtState->lhsBinder->getBo(), xrtState->rhsBinder->getBo(),
+        xrtState->resultBinder->getBo());
     run.wait();
 
-    // sync output to host
-    xrtState->boC.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
-    TensorCopier<C_DATATYPE, ModelReturnDType>::copy(params->result.get(), bufC, cVolume);
+    // sync output to host and copy the data from the BO
+    xrtState->resultBinder->copyXrtToModel();
 
     return 0;  // TODO: check for and handle error conditions
 }
 
-///////////////////////////////////////////////////////////////////////////////
-// Reference scalar CPU implementation
+//#############################################################################
+//
+// Reference scalar CPU implementation, adapted from Mahesh's CPU delegate
+// in iree/samples/custom_dispatch/cpu/mlp_plugin
+//
 
 // Type for accumulating the multiplications over the k dimension
 using CpuAccDType = 
@@ -481,8 +672,10 @@ static int cpu_matmul(Params *params) {
   return 0;
 }
 
-///////////////////////////////////////////////////////////////////////////////
+//#############################################################################
+//
 // Implementation of API of IREE Dynamic Plugin
+//
 
 // Stateful plugin instance.
 // There may be multiple of these in a process at a time, each with its own
