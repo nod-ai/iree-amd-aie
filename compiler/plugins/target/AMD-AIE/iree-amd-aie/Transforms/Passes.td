@@ -122,6 +122,12 @@ def AMDAIEFusePackIntoLoop :
   ];
 }
 
+def AMDAIEInsertAIEWorkgroup : 
+  Pass<"iree-amdaie-insert-aie-workgroup", "ModuleOp"> {
+  let summary = "Insert AIE workgroups around forall loops selected for parallel execution.";
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEInsertAIEWorkgroupPass()";
+}
+
 def AMDAIELowerExecutableTarget :
     InterfacePass<"iree-amdaie-lower-executable-target", "mlir::FunctionOpInterface"> {
   let summary = "Perform lowering of executable target using one of the IREE::HAL::DispatchLoweringPassPipeline";
@@ -240,7 +246,7 @@ def AMDAIEPeelForLoop :
   let options = [
     Option<"peelingType", "peeling-type",
       "mlir::iree_compiler::AMDAIE::PeelingType",
-      /*default=*/"mlir::iree_compiler::AMDAIE::PeelingType::First",
+      /*default=*/"",
       "Choose which type of loop peeling to perform",
       [{::llvm::cl::values(
         clEnumValN(mlir::iree_compiler::AMDAIE::PeelingType::First, "first",

@@ -15,6 +15,7 @@ iree_lit_test_suite(
     "disable_vectorization.mlir"
     "fuse_fill_into_forall.mlir"
     "fuse_pack_into_loop.mlir"
+    "insert_aie_workgroup.mlir"
     "insert_loops_for_vectorization.mlir"
     "lower_to_ukernel.mlir"
     "lower_workgroup_count.mlir"

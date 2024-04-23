@@ -11,6 +11,7 @@
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Transform/IR/TransformOps.h"
 #include "mlir/IR/DialectImplementation.h"
+#include "mlir/IR/OpDefinition.h"
 
 #define GET_OP_CLASSES
 #include "iree-amd-aie/IR/AMDAIEOps.cpp.inc"
@@ -25,7 +26,35 @@ void AMDAIEDialect::initializeAMDAIEOps() {
 }
 
 //===----------------------------------------------------------------------===//
-// DmaCpyNdOp
+// AMDAIE_ControlCodeOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult ControlCodeOp::verify() {
+  // Verify that this ControlCodeOp contains a EndOp terminator if one
+  // exists.
+  if (failed(OpTrait::SingleBlockImplicitTerminator<EndOp>::Impl<
+             ControlCodeOp>::verifyRegionTrait(*this))) {
+    return failure();
+  }
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// AMDAIE_CoreOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult CoreOp::verify() {
+  // Verify that this CoreOp contains a EndOp terminator if one
+  // exists.
+  if (failed(OpTrait::SingleBlockImplicitTerminator<EndOp>::Impl<
+             CoreOp>::verifyRegionTrait(*this))) {
+    return failure();
+  }
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// AMDAIE_DmaCpyNdOp
 //===----------------------------------------------------------------------===//
 
 // Build a DmaCpyNdOp with mixed static and dynamic entries.
@@ -134,5 +163,45 @@ LogicalObjectFifoFromMemrefOp DmaCpyNdOp::getSourceObjectFifo() {
 LogicalObjectFifoFromMemrefOp DmaCpyNdOp::getTargetObjectFifo() {
   return dyn_cast<LogicalObjectFifoFromMemrefOp>(getTarget().getDefiningOp());
 };
+
+//===----------------------------------------------------------------------===//
+// AMDAIE_WorkgroupOp
+//===----------------------------------------------------------------------===//
+
+// Make sure the WorkgroupOp region is well-formed with a ControlCodeOp
+// terminator
+void WorkgroupOp::ensureTerminator(Region &region, OpBuilder &builder,
+                                   Location loc) {
+  OpTrait::SingleBlockImplicitTerminator<ControlCodeOp>::Impl<
+      WorkgroupOp>::ensureTerminator(region, builder, loc);
+  auto terminator =
+      llvm::dyn_cast<ControlCodeOp>(region.front().getTerminator());
+  if (terminator.getRegion().empty()) {
+    Block *newBlock = builder.createBlock(&terminator.getRegion());
+    builder.setInsertionPointToEnd(newBlock);
+    builder.create<AMDAIE::EndOp>(builder.getUnknownLoc());
+  }
+}
+
+// Builder that ensures the WorkgroupOp is well-formed with a block and a
+// ControlCodeOp terminator
+void WorkgroupOp::build(OpBuilder &builder, OperationState &result) {
+  Region *bodyRegion = result.addRegion();
+  OpBuilder::InsertionGuard guard(builder);
+  builder.createBlock(bodyRegion);
+  Block &bodyBlock = bodyRegion->front();
+  builder.setInsertionPointToStart(&bodyBlock);
+  WorkgroupOp::ensureTerminator(*bodyRegion, builder, result.location);
+}
+
+LogicalResult WorkgroupOp::verify() {
+  // Verify that this WorkgroupOp contains a ControlCodeOp terminator if one
+  // exists.
+  if (failed(OpTrait::SingleBlockImplicitTerminator<ControlCodeOp>::Impl<
+             WorkgroupOp>::verifyRegionTrait(*this))) {
+    return failure();
+  }
+  return success();
+}
 
 }  // namespace mlir::iree_compiler::AMDAIE
