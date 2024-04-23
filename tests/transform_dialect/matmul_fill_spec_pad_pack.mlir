@@ -1,5 +1,4 @@
 // RUN: iree-opt --iree-transform-dialect-interpreter %s | FileCheck %s
-// XFAIL: *
 // This script shows an example lowering matmul through pad-pack pipeline for AIE device.
 
 func.func @matmul_i32() {
@@ -142,10 +141,12 @@ module attributes { transform.with_named_sequence } {
 
     // Clean up.
     transform.include @cleanup failures(propagate) (%variant_op) : (!transform.any_op) -> ()
-    transform.iree.eliminate_empty_tensors %variant_op : (!transform.any_op) -> ()
 
     // Bufferize and drop HAL decriptor from memref ops.
-    %variant_op_3 = transform.iree.bufferize %variant_op : (!transform.any_op) -> !transform.any_op
+    %func_op = transform.structured.match ops{["func.func"]} in %variant_op : (!transform.any_op) -> !transform.any_op
+    transform.iree.eliminate_empty_tensors %func_op : (!transform.any_op) -> ()
+    %memref_func = transform.iree.bufferize %func_op : (!transform.any_op) -> !transform.any_op
+
     transform.yield
   }
 }
