@@ -14,6 +14,7 @@ iree_lit_test_suite(
     "canonicalize_dma.mlir"
     "disable_vectorization.mlir"
     "fuse_fill_into_forall.mlir"
+    "fuse_logical_objectfifo_into_workgroup.mlir"
     "fuse_pack_into_loop.mlir"
     "insert_aie_workgroup.mlir"
     "insert_loops_for_vectorization.mlir"
