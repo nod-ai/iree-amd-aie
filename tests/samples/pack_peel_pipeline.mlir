@@ -31,12 +31,12 @@ func.func @matmul_bf16(%lhs: tensor<512x1024xbf16>, %rhs: tensor<1024x512xbf16>)
   return %res : tensor<512x512xbf16>
 }
 
-// CHECK-LABEL: hal.executable.export public @matmul_large_dispatch_0_matmul_512x512x1024_bf16
+// CHECK-LABEL: hal.executable.export public @matmul_bf16_dispatch_0_matmul_512x512x1024_bf16
 //       CHECK:    aie.device(ipu)
 //       CHECK:    aie.shim_dma_allocation
 //       CHECK:    aie.shim_dma_allocation
 //       CHECK:    aie.shim_dma_allocation
-//       CHECK:    func.func @matmul_large_dispatch_0_matmul_512x512x1024_bf16(%arg0: memref<262144xi32>, %arg1: memref<262144xi32>, %arg2: memref<131072xi32>)
+//       CHECK:    func.func @matmul_bf16_dispatch_0_matmul_512x512x1024_bf16(%arg0: memref<262144xi32>, %arg1: memref<262144xi32>, %arg2: memref<131072xi32>)
 //       CHECK:      aiex.ipu.dma_memcpy_nd
 //       CHECK:      aiex.ipu.dma_memcpy_nd
 //       CHECK:      aiex.ipu.dma_memcpy_nd
