@@ -206,8 +206,9 @@ LogicalResult setDmaInputs(Operation *&operandOp,
       "and SubViewOp as inputs.");
 }
 
-LogicalResult processInputs(Operation * op, SmallVector<OpFoldResult> & offsets, 
-     SmallVector<OpFoldResult> & sizes, SmallVector<OpFoldResult> & strides) {
+LogicalResult processInputs(Operation *op, SmallVector<OpFoldResult> &offsets,
+                            SmallVector<OpFoldResult> &sizes,
+                            SmallVector<OpFoldResult> &strides) {
   if (auto packOp = dyn_cast<IREE::LinalgExt::PackOp>(op)) {
     if (failed(packDmaInputs(packOp, offsets, sizes, strides))) {
       return failure();
@@ -222,7 +223,6 @@ LogicalResult processInputs(Operation * op, SmallVector<OpFoldResult> & offsets,
 
 LogicalResult rewriteAsDma(IRRewriter &rewriter, Operation *op, Value input,
                            Value output, llvm::ArrayRef<int64_t> innerTiles) {
-
   if (llvm::any_of(innerTiles,
                    [](int64_t size) { return ShapedType::isDynamic(size); })) {
     op->emitError("has a non-static shape: not yet supported by this pass.");
@@ -244,7 +244,7 @@ LogicalResult rewriteAsDma(IRRewriter &rewriter, Operation *op, Value input,
     return failure();
   }
 
-  if (!succeeded(processInputs(op, srcOffsets, srcShape, srcBaseStrides))){
+  if (!succeeded(processInputs(op, srcOffsets, srcShape, srcBaseStrides))) {
     return failure();
   }
 
@@ -312,8 +312,7 @@ void AMDAIEPackToDmaPass::runOnOperation() {
       });
 
   if (walkResult.wasInterrupted()) signalPassFailure();
-
-}  
+}
 
 std::unique_ptr<Pass> createAMDAIEPackToDmaPass() {
   return std::make_unique<AMDAIEPackToDmaPass>();
