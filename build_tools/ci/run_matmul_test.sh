@@ -532,3 +532,9 @@ run_matmul_test \
     --acc_type "i32" \
     --m "64"  --n "64" --k "64"
 
+run_matmul_test \
+    --name_prefix "large" \
+    --lhs_rhs_type "bf16" \
+    --acc_type "f32" \
+    --m "2304"  --n "2304" --k "2304"
+
