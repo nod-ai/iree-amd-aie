@@ -65,6 +65,9 @@ std::unique_ptr<Pass> createAMDAIEDecomposeLinalgExtPackUnPackToAIRPass();
 /// Create a pass to fuse the linalg.fill into the forall loops.
 std::unique_ptr<Pass> createAMDAIEFuseFillIntoForallPass();
 
+/// Create a pass to fuse or distribute logical objectfifos into workgroups.
+std::unique_ptr<Pass> createAMDAIEFuseLogicalObjectFifoIntoWorkgroupPass();
+
 /// Create a pass to transform linalg.generics into a form which benefits later
 /// vectorization passes (to vector and aievec dialects).
 std::unique_ptr<Pass> createAMDAIEInsertLoopsForVectorizationPass();

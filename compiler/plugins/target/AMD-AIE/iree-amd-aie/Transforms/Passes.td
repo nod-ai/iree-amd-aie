@@ -110,6 +110,13 @@ def AMDAIEVectorization :
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEVectorizationPass()";
 }
 
+def AMDAIEFuseLogicalObjectFifoIntoWorkgroup :
+    Pass<"iree-amdaie-fuse-logicalobjectfifo-into-workgroup", "ModuleOp"> {
+  let summary = "Fuse or distribute logical objectfifos into workgroups.";
+  let constructor = 
+    "mlir::iree_compiler::AMDAIE::createAMDAIEFuseLogicalObjectFifoIntoWorkgroupPass()";
+}
+
 def AMDAIEFusePackIntoLoop :
     InterfacePass<"iree-amdaie-fuse-pack-into-loop", "mlir::FunctionOpInterface"> {
   let summary = "Fuse the pack operations into the innermost for/forall loop.";
