@@ -381,8 +381,10 @@ void buildAMDAIETransformPassPipeline(OpPassManager &variantPassManager) {
   }
   modulePassManager.addPass(createLowerUKernelOpsToCallsPass());
   if (clUsePipeline == AIEPassPipeline::PadPackPipeline) {
-    addMLIRAIRAIELoweringPasses(modulePassManager);
-  } else if (clUsePipeline != AIEPassPipeline::PackPeelPipeline) {
+    addMLIRAIRAIELoweringPasses(modulePassManager, false);
+  } else if (clUsePipeline == AIEPassPipeline::PackPeelPipeline) {
+    addMLIRAIRAIELoweringPasses(modulePassManager, true);
+  } else {
     addMLIRAIRAIELegacyLoweringPasses(modulePassManager);
   }
   variantPassManager.addPass(createReconcileTranslationInfoPass());
@@ -395,12 +397,19 @@ void buildAMDAIETransformPassPipeline(OpPassManager &variantPassManager) {
   });
 }
 
-void addMLIRAIRAIELoweringPasses(OpPassManager &passManager) {
+// TODO (Erwei): The "packPeel" temporary argument should be removed once
+// pack-peel and pack-pad share the same pass pipeline. See TODOs inlined below
+// for details.
+void addMLIRAIRAIELoweringPasses(OpPassManager &passManager, bool packPeel) {
   // Add passes for preparing for lowering to MLIR-AIR
   passManager.addPass(createEraseHALDescriptorTypeFromMemRefPass());
   passManager.addPass(memref::createFoldMemRefAliasOpsPass());
   passManager.addPass(createAMDAIEBridgeToAIRPass());
-  passManager.addPass(createAMDAIEPackToDmaPass());
+  // TODO (Erwei): Figure out a way to work with AMDAIEPackToDmaPass.
+  if (packPeel)
+    passManager.addPass(createAMDAIEDecomposeLinalgExtPackUnPackToAIRPass());
+  else
+    passManager.addPass(createAMDAIEPackToDmaPass());
 
   {
     xilinx::air::ParallelToHerdOptions options;
@@ -428,9 +437,19 @@ void addMLIRAIRAIELoweringPasses(OpPassManager &passManager) {
   passManager.addPass(xilinx::air::createAIRDependencyCanonicalizePass());
   passManager.addPass(createCanonicalizerPass());
   passManager.addPass(createCSEPass());
-  passManager.addNestedPass<func::FuncOp>(
-      xilinx::air::createAIRSplitL2MemrefForBufferConstraintPass());
+  // TODO (Erwei): This pass currently doesn't support pack-peel pipeline. This
+  // pass needs to work in order to get multiple AIE columns to work.
+  if (!packPeel)
+    passManager.addNestedPass<func::FuncOp>(
+        xilinx::air::createAIRSplitL2MemrefForBufferConstraintPass());
   passManager.addPass(xilinx::air::createAIRIsolateAsyncDmaLoopNests());
+  // TODO (Erwei): Check for this pass's stability, to ensure backward
+  // compatibility with pad-pack pipeline.
+  if (packPeel) {
+    passManager.addPass(createCanonicalizerPass());
+    passManager.addPass(createCSEPass());
+    passManager.addPass(xilinx::air::createAIRFuseChannels());
+  }
   passManager.addPass(createCanonicalizerPass());
   passManager.addPass(createCSEPass());
   passManager.addNestedPass<func::FuncOp>(
@@ -624,7 +643,7 @@ void registerAMDAIEPasses() {
       "Runs the AIR/AIE lowering passes to tiled and distributed code",
       [](OpPassManager &passManager) {
         if (clUsePipeline == AIEPassPipeline::PadPackPipeline) {
-          addMLIRAIRAIELoweringPasses(passManager);
+          addMLIRAIRAIELoweringPasses(passManager, false);
         } else {
           addMLIRAIRAIELegacyLoweringPasses(passManager);
         }
