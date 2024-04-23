@@ -448,89 +448,89 @@ function run_matmul_test() {
 #    linearly with m*k*n.
 
 
-# # Example of a run without any defaults arguments.
-# run_matmul_test \
-#     --name_prefix "test1" \
-#     --lhs_rhs_type "bf16" \
-#     --acc_type "f32" \
-#     --target_backend "amd-aie" \
-#     --device "xrt" \
-#     --peano_install_path "${PEANO}" \
-#     --mlir_aie_install_path "${MLIR_AIE_INSTALL}" \
-#     --vitis_path  "${VITIS}" \
-#     --pipeline "pad-pack" \
-#     --m "64" \
-#     --n "64" \
-#     --k "64" \
-#     --dynamicity "static" \
-#     --accumulate "false" \
-#     --expect-compile-failure "0" \
-#     --compile-only "0"
+# Example of a run without any defaults arguments.
+run_matmul_test \
+    --name_prefix "test1" \
+    --lhs_rhs_type "bf16" \
+    --acc_type "f32" \
+    --target_backend "amd-aie" \
+    --device "xrt" \
+    --peano_install_path "${PEANO}" \
+    --mlir_aie_install_path "${MLIR_AIE_INSTALL}" \
+    --vitis_path  "${VITIS}" \
+    --pipeline "pad-pack" \
+    --m "64" \
+    --n "64" \
+    --k "64" \
+    --dynamicity "static" \
+    --accumulate "false" \
+    --expect-compile-failure "0" \
+    --compile-only "0"
 
-# # The below matmul case used to fail but passes since the bump of 4/16/2024
-# # Keep track of this, however if it does regress we can mark this as
-# # expected failure and not block other progress.
-# run_matmul_test \
-#    --name_prefix "failure_0" \
-#    --lhs_rhs_type "i32" \
-#    --acc_type "i32" \
-#    --m "1"  --n "1" --k "1000" \
-#    --expect-compile-failure "0"
+# The below matmul case used to fail but passes since the bump of 4/16/2024
+# Keep track of this, however if it does regress we can mark this as
+# expected failure and not block other progress.
+run_matmul_test \
+   --name_prefix "failure_0" \
+   --lhs_rhs_type "i32" \
+   --acc_type "i32" \
+   --m "1"  --n "1" --k "1000" \
+   --expect-compile-failure "0"
 
-# # Example of a run with a group of 2+ matmuls. Currently this test is passed
-# # the flag '--compile-only' as there is currently an issue with the runtime if
-# # multiple matmuls are run in the same test. TODO(newling/nmeshram): Document
-# # this issue.
-# run_matmul_test \
-#     --name_prefix "multiple_matmuls" \
-#     --lhs_rhs_type "i32" \
-#     --acc_type "i32" \
-#     --m "512,8,16,52,7" \
-#     --n "512,32,16,52,15" \
-#     --k "256,16,8,63,9" \
-#     --compile-only "1"
+# Example of a run with a group of 2+ matmuls. Currently this test is passed
+# the flag '--compile-only' as there is currently an issue with the runtime if
+# multiple matmuls are run in the same test. TODO(newling/nmeshram): Document
+# this issue.
+run_matmul_test \
+    --name_prefix "multiple_matmuls" \
+    --lhs_rhs_type "i32" \
+    --acc_type "i32" \
+    --m "512,8,16,52,7" \
+    --n "512,32,16,52,15" \
+    --k "256,16,8,63,9" \
+    --compile-only "1"
 
-# run_matmul_test \
-#     --name_prefix "small" \
-#     --lhs_rhs_type "i32" \
-#     --acc_type "i32" \
-#     --m "16"  --n "16" --k "8"
+run_matmul_test \
+    --name_prefix "small" \
+    --lhs_rhs_type "i32" \
+    --acc_type "i32" \
+    --m "16"  --n "16" --k "8"
 
-# run_matmul_test \
-#     --name_prefix "small" \
-#     --lhs_rhs_type "i32" \
-#     --acc_type "i32" \
-#     --m "8"  --n "32" --k "16"
+run_matmul_test \
+    --name_prefix "small" \
+    --lhs_rhs_type "i32" \
+    --acc_type "i32" \
+    --m "8"  --n "32" --k "16"
 
-# run_matmul_test \
-#     --name_prefix "small" \
-#     --lhs_rhs_type "i32" \
-#     --acc_type "i32" \
-#     --m "52"  --n "52" --k "63"
+run_matmul_test \
+    --name_prefix "small" \
+    --lhs_rhs_type "i32" \
+    --acc_type "i32" \
+    --m "52"  --n "52" --k "63"
 
-# run_matmul_test \
-#     --name_prefix "small" \
-#     --lhs_rhs_type "i32" \
-#     --acc_type "i32" \
-#     --m "9"  --n "7" --k "16"
+run_matmul_test \
+    --name_prefix "small" \
+    --lhs_rhs_type "i32" \
+    --acc_type "i32" \
+    --m "9"  --n "7" --k "16"
 
-# run_matmul_test \
-#     --name_prefix "large" \
-#     --lhs_rhs_type "i32" \
-#     --acc_type "i32" \
-#     --m "64"  --n "64" --k "128"
+run_matmul_test \
+    --name_prefix "large" \
+    --lhs_rhs_type "i32" \
+    --acc_type "i32" \
+    --m "64"  --n "64" --k "128"
 
-# run_matmul_test \
-#     --name_prefix "large" \
-#     --lhs_rhs_type "i32" \
-#     --acc_type "i32" \
-#     --m "512"  --n "512" --k "512"
+run_matmul_test \
+    --name_prefix "large" \
+    --lhs_rhs_type "i32" \
+    --acc_type "i32" \
+    --m "512"  --n "512" --k "512"
 
-# run_matmul_test \
-#     --name_prefix "int8" \
-#     --lhs_rhs_type "i8" \
-#     --acc_type "i32" \
-#     --m "64"  --n "64" --k "64"
+run_matmul_test \
+    --name_prefix "int8" \
+    --lhs_rhs_type "i8" \
+    --acc_type "i32" \
+    --m "64"  --n "64" --k "64"
 
 run_matmul_test \
     --name_prefix "bf16_2304" \
