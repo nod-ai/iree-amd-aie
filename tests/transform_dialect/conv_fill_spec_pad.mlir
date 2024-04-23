@@ -1,5 +1,4 @@
 // RUN: iree-opt --iree-transform-dialect-interpreter %s | FileCheck %s
-// XFAIL: *
 // This script demonstrates lowering conv through IREE to eventually target AIE.
 // It's based on conv2d lowering in IREE for llvm-cpu.
 //
@@ -181,10 +180,11 @@ module attributes { transform.with_named_sequence } {
 
     transform.structured.vectorize %conv_pre_contract : !any
 
-    transform.iree.eliminate_empty_tensors %variant_op : (!any) -> ()
-    %variant_op_3 = transform.iree.bufferize %variant_op : (!any) -> !any
+    %func_op = transform.structured.match ops{["func.func"]} in %variant_op : (!transform.any_op) -> !transform.any_op
+    transform.iree.eliminate_empty_tensors %func_op : (!any) -> ()
+    %memref_func = transform.iree.bufferize %func_op : (!any) -> !any
 
-    transform.include @cleanup failures(propagate) (%variant_op_3) : (!any) -> ()
+    transform.include @cleanup failures(propagate) (%memref_func) : (!any) -> ()
 
     transform.yield
   }
