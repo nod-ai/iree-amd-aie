@@ -403,6 +403,9 @@ void buildAMDAIETransformPassPipeline(OpPassManager &variantPassManager) {
   });
 }
 
+// TODO (Erwei): The "packPeel" temporary argument should be removed once
+// pack-peel and pack-pad share the same pass pipeline. See TODOs inlined below
+// for details.
 void addMLIRAIRAIELoweringPasses(OpPassManager &passManager, bool packPeel) {
   // Add passes for preparing for lowering to MLIR-AIR
   passManager.addPass(createEraseHALDescriptorTypeFromMemRefPass());

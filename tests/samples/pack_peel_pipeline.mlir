@@ -21,7 +21,7 @@ func.func @matmul_example(%lhs: tensor<1024x512xi8>, %rhs: tensor<512x1024xi8>) 
 //       CHECK:      aiex.ipu.dma_memcpy_nd
 //       CHECK:      aiex.ipu.sync
 
-func.func @matmul_large(%lhs: tensor<512x1024xbf16>, %rhs: tensor<1024x512xbf16>) -> tensor<512x512xbf16>
+func.func @matmul_bf16(%lhs: tensor<512x1024xbf16>, %rhs: tensor<1024x512xbf16>) -> tensor<512x512xbf16>
 {
   %cst = arith.constant 0.000000e+00 : bf16
   %0 = tensor.empty() : tensor<512x512xbf16>
