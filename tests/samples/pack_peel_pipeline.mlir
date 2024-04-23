@@ -10,41 +10,34 @@ func.func @matmul_example(%lhs: tensor<1024x512xi8>, %rhs: tensor<512x1024xi8>) 
   return %res : tensor<1024x1024xi32>
 }
 
-// CHECK-LABEL: @matmul_example_dispatch_0_matmul_1024x1024x512_i8xi8xi32
-//       CHECK: memref.alloc() : memref<1x1x4x4x8x8xi8, 2 : i32>
-//       CHECK: memref.alloc() : memref<1x1x4x8x4x8xi8, 2 : i32>
-//       CHECK: memref.alloc() : memref<1x1x32x64xi8, 1 : i32>
-//       CHECK: memref.alloc() : memref<1x1x64x32xi8, 1 : i32>
-//       CHECK: memref.alloc() : memref<1x1x8x16x4x8xi32, 2 : i32>
-//       CHECK: memref.alloc() : memref<1x1x64x64xi32, 1 : i32>
-//       CHECK: scf.forall
-//       CHECK: {
-//       CHECK:   iree_linalg_ext.pack %{{.*}} : (memref<64x32xi8, strided<[512, 1], offset: ?>, #hal.descriptor_type<storage_buffer>> memref<1x1x64x32xi8, 1 : i32>)
-//       CHECK:   iree_linalg_ext.pack %{{.*}} : (memref<32x64xi8, strided<[1024, 1], offset: ?>, #hal.descriptor_type<storage_buffer>> memref<1x1x32x64xi8, 1 : i32>)
-//       CHECK:   scf.forall
-//       CHECK:   {
-//       CHECK:     iree_linalg_ext.pack %{{.*}} : (memref<1x1x32x32xi8, strided<[2048, 2048, 32, 1], offset: ?>, 1 : i32> memref<1x1x4x8x4x8xi8, 2 : i32>)
-//       CHECK:     iree_linalg_ext.pack %{{.*}} : (memref<1x1x32x32xi8, strided<[2048, 2048, 64, 1], offset: ?>, 1 : i32> memref<1x1x4x4x8x8xi8, 2 : i32>)
-//       CHECK:     linalg.fill ins(%{{.*}}) outs(%{{.*}} : memref<1x1x4x8x4x8xi32, strided<[4096, 4096, 512, 32, 8, 1], offset: ?>, 2 : i32>)
-//       CHECK:     linalg.generic
-//       CHECK:   }
-//       CHECK:   scf.for
-//       CHECK:   {
-//       CHECK:     iree_linalg_ext.pack %{{.*}} : (memref<64x32xi8, strided<[512, 1], offset: ?>, #hal.descriptor_type<storage_buffer>> memref<1x1x64x32xi8, 1 : i32>)
-//       CHECK:     iree_linalg_ext.pack %{{.*}} : (memref<32x64xi8, strided<[1024, 1], offset: ?>, #hal.descriptor_type<storage_buffer>> memref<1x1x32x64xi8, 1 : i32>)
-//       CHECK:     scf.forall
-//       CHECK:     {
-//       CHECK:     iree_linalg_ext.pack %{{.*}} : (memref<1x1x32x32xi8, strided<[2048, 2048, 32, 1], offset: ?>, 1 : i32> memref<1x1x4x8x4x8xi8, 2 : i32>)
-//       CHECK:     iree_linalg_ext.pack %{{.*}} : (memref<1x1x32x32xi8, strided<[2048, 2048, 64, 1], offset: ?>, 1 : i32> memref<1x1x4x4x8x8xi8, 2 : i32>)
-//       CHECK:       linalg.generic
-//       CHECK:     }
-//       CHECK:   }
-//       CHECK:   iree_linalg_ext.unpack %{{.*}} : (memref<1x1x8x16x4x8xi32, 2 : i32> memref<1x1x64x64xi32, 1 : i32>)
-//       CHECK:   iree_linalg_ext.unpack %{{.*}} : (memref<1x1x64x64xi32, 1 : i32> memref<64x64xi32, strided<[1024, 1], offset: ?>, #hal.descriptor_type<storage_buffer>>)
-//       CHECK: }
-//       CHECK: memref.dealloc %{{.*}} : memref<1x1x64x64xi32, 1 : i32>
-//       CHECK: memref.dealloc %{{.*}} : memref<1x1x8x16x4x8xi32, 2 : i32>
-//       CHECK: memref.dealloc %{{.*}} : memref<1x1x64x32xi8, 1 : i32>
-//       CHECK: memref.dealloc %{{.*}} : memref<1x1x32x64xi8, 1 : i32>
-//       CHECK: memref.dealloc %{{.*}} : memref<1x1x4x8x4x8xi8, 2 : i32>
-//       CHECK: memref.dealloc %{{.*}} : memref<1x1x4x4x8x8xi8, 2 : i32>
+// CHECK-LABEL: hal.executable.export public @matmul_example_dispatch_0_matmul_1024x1024x512_i8xi8xi32
+//       CHECK:    aie.device(ipu)
+//       CHECK:    aie.shim_dma_allocation
+//       CHECK:    aie.shim_dma_allocation
+//       CHECK:    aie.shim_dma_allocation
+//       CHECK:    func.func @matmul_example_dispatch_0_matmul_1024x1024x512_i8xi8xi32(%arg0: memref<131072xi32>, %arg1: memref<131072xi32>, %arg2: memref<1024x1024xi32>)
+//       CHECK:      aiex.ipu.dma_memcpy_nd
+//       CHECK:      aiex.ipu.dma_memcpy_nd
+//       CHECK:      aiex.ipu.dma_memcpy_nd
+//       CHECK:      aiex.ipu.sync
+
+func.func @matmul_bf16(%lhs: tensor<512x1024xbf16>, %rhs: tensor<1024x512xbf16>) -> tensor<512x512xbf16>
+{
+  %cst = arith.constant 0.000000e+00 : bf16
+  %0 = tensor.empty() : tensor<512x512xbf16>
+  %1 = linalg.fill ins(%cst : bf16) outs(%0 : tensor<512x512xbf16>) -> tensor<512x512xbf16>
+  %res = linalg.matmul ins(%lhs, %rhs: tensor<512x1024xbf16>, tensor<1024x512xbf16>)
+                    outs(%1: tensor<512x512xbf16>) -> tensor<512x512xbf16>
+  return %res : tensor<512x512xbf16>
+}
+
+// CHECK-LABEL: hal.executable.export public @matmul_bf16_dispatch_0_matmul_512x512x1024_bf16
+//       CHECK:    aie.device(ipu)
+//       CHECK:    aie.shim_dma_allocation
+//       CHECK:    aie.shim_dma_allocation
+//       CHECK:    aie.shim_dma_allocation
+//       CHECK:    func.func @matmul_bf16_dispatch_0_matmul_512x512x1024_bf16(%arg0: memref<262144xi32>, %arg1: memref<262144xi32>, %arg2: memref<131072xi32>)
+//       CHECK:      aiex.ipu.dma_memcpy_nd
+//       CHECK:      aiex.ipu.dma_memcpy_nd
+//       CHECK:      aiex.ipu.dma_memcpy_nd
+//       CHECK:      aiex.ipu.sync
