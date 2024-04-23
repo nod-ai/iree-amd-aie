@@ -7,10 +7,10 @@
 #include "air/Dialect/AIR/AIRDialect.h"
 #include "iree-amd-aie/Transforms/Passes.h"
 #include "iree/compiler/Dialect/LinalgExt/IR/LinalgExtOps.h"
+#include "llvm/Support/FormatVariadic.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/Utils/IndexingUtils.h"
 #include "mlir/Pass/Pass.h"
-#include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
 #define DEBUG_TYPE "iree-amdaie-pack-to-dma"
 
@@ -19,8 +19,7 @@ namespace mlir::iree_compiler::AMDAIE {
 namespace {
 
 /// Applies packing to a given input.
-template <typename OpType>
-LogicalResult packDmaInputs(RewriterBase &rewriter, OpType packOp,
+LogicalResult packDmaInputs(IREE::LinalgExt::PackOp packOp,
                             SmallVector<OpFoldResult> &offsets,
                             SmallVector<OpFoldResult> &sizes,
                             SmallVector<OpFoldResult> &strides) {
@@ -34,17 +33,23 @@ LogicalResult packDmaInputs(RewriterBase &rewriter, OpType packOp,
   SmallVector<OpFoldResult> innerOffsets;
 
   auto innerDimsPos = packOp.getInnerDimsPos();
+
   for (int i = 0; i < innerTiles.size(); i++) {
     // Calculate new sizes.
     innerSizes.push_back(getAsIndexOpFoldResult(ctx, innerTiles[i]));
     std::optional<int64_t> size = getConstantIntValue(sizes[innerDimsPos[i]]);
     assert(size.has_value() &&
            "expect constant index here in sizes vector of pack op");
-    // Fail if tile doesnt perfectly divide the corresponding outer dim as we do
-    // not support the padding semantics yet.
+    // Fail if tile doesnt perfectly divide the corresponding outer dim as we
+    // do not support the padding semantics yet.
     if (size.value() % innerTiles[i] != 0) {
-      return failure();
+      auto message = llvm::formatv(
+          "in dimension {0}, the tile size {1} does not divide the tensor size "
+          "{2}. We currently do not support imperfect tiling.",
+          i, innerTiles[i], size.value());
+      return packOp->emitOpError(message);
     }
+
     sizes[innerDimsPos[i]] =
         getAsIndexOpFoldResult(ctx, size.value() / innerTiles[i]);
     // The tiled dim inherits the stride from the corresponding outer dim and
@@ -75,8 +80,7 @@ LogicalResult packDmaInputs(RewriterBase &rewriter, OpType packOp,
 }
 
 /// Applies unpacking to a given input.
-template <typename OpType>
-LogicalResult unPackDmaInputs(RewriterBase &rewriter, OpType unPackOp,
+LogicalResult unPackDmaInputs(IREE::LinalgExt::UnPackOp unPackOp,
                               SmallVector<OpFoldResult> &offsets,
                               SmallVector<OpFoldResult> &sizes,
                               SmallVector<OpFoldResult> &strides) {
@@ -136,7 +140,7 @@ LogicalResult unPackDmaInputs(RewriterBase &rewriter, OpType unPackOp,
 
 /// Examines an input/output of a pack/unpack op and provides the
 /// corresponding offsets, sizes and strides required by the dma op
-LogicalResult getDmaInputs(RewriterBase &rewriter, Operation *&operandOp,
+LogicalResult setDmaInputs(Operation *&operandOp,
                            SmallVector<OpFoldResult> &offsets,
                            SmallVector<OpFoldResult> &sizes,
                            SmallVector<OpFoldResult> &strides) {
@@ -144,17 +148,19 @@ LogicalResult getDmaInputs(RewriterBase &rewriter, Operation *&operandOp,
   if (auto allocOp = dyn_cast<memref::AllocOp>(operandOp)) {
     auto [stridesI64, baseOffset] = getStridesAndOffset(allocOp.getType());
     if (baseOffset != 0) {
-      // This is conservative, however need to verify that this can be correctly
-      // supported once we see a use case to enable.
-      return failure();
+      auto message = llvm::formatv(
+          "with non-zero base offset {0} is not supported by the "
+          "current pass, requires testing and possible code changes.",
+          baseOffset);
+      return allocOp->emitOpError(message);
     }
     strides = getAsIndexOpFoldResult(ctx, stridesI64);
     auto sizesI64 = allocOp.getType().getShape();
-    // Dynamic shape not supported by air dma op.
     if (llvm::any_of(sizesI64, [](int64_t size) {
           return ShapedType::isDynamic(size);
         })) {
-      return failure();
+      return allocOp->emitOpError(
+          "with dynamic shape is not supported by air dma op.");
     }
     sizes = getAsIndexOpFoldResult(ctx, sizesI64);
     // Alloc Op has no offsets.
@@ -164,105 +170,114 @@ LogicalResult getDmaInputs(RewriterBase &rewriter, Operation *&operandOp,
     return success();
   }
   if (auto subviewOp = dyn_cast<memref::SubViewOp>(operandOp)) {
-    // fail if non-unit mixed strides are present as NYI.
     auto mixedStrides = subviewOp.getMixedStrides();
     if (llvm::any_of(mixedStrides, [](OpFoldResult ofr) {
           return !isConstantIntValue(ofr, 1);
         })) {
-      return failure();
+      auto message = llvm::formatv(
+          "has non-unit mixed strides that are not currently supported by this "
+          "pass.");
+      return subviewOp->emitOpError(message);
     }
     offsets = subviewOp.getMixedOffsets();
     auto [stridesI64, baseOffset] =
         getStridesAndOffset(subviewOp.getSource().getType());
     if (baseOffset != 0) {
-      // This is conservative, however need to verify that this can be correctly
-      // supported once we see a use case to enable.
-      return failure();
+      auto message = llvm::formatv(
+          "has non-zero base offset {0} that is not supported by the "
+          "current pass: requires testing and possible code changes.",
+          baseOffset);
+      return subviewOp->emitOpError(message);
     }
     strides = getAsIndexOpFoldResult(ctx, stridesI64);
     operandOp = subviewOp.getSource().getDefiningOp();
     auto sizesI64 = subviewOp.getType().getShape();
-    // Dynamic shape not supported by air dma op.
     if (llvm::any_of(sizesI64, [](int64_t size) {
           return ShapedType::isDynamic(size);
         })) {
-      return failure();
+      return subviewOp->emitOpError(
+          "has dynamic shape that is not supported by the target air dma op.");
     }
     sizes = getAsIndexOpFoldResult(ctx, sizesI64);
     return success();
   }
-  return failure();
+  return operandOp->emitOpError(
+      "is an unsupported operation. This pass currently only supports AllocOp "
+      "and SubViewOp as inputs.");
 }
 
-template <typename OpType>
-class LinalgExtPackToAirDmaMemcpyNd : public OpRewritePattern<OpType> {
- public:
-  using OpRewritePattern<OpType>::OpRewritePattern;
-
-  LogicalResult matchAndRewrite(OpType op,
-                                PatternRewriter &rewriter) const override {
-    // 1. Filter out NYI cases.
-    llvm::ArrayRef<int64_t> innerTiles = op.getStaticInnerTiles();
-    if (llvm::any_of(innerTiles, [](int64_t size) {
-          return ShapedType::isDynamic(size);
-        })) {
-      return rewriter.notifyMatchFailure(op, "non-static shape NYI");
+LogicalResult processInputs(Operation * op, SmallVector<OpFoldResult> & offsets, 
+     SmallVector<OpFoldResult> & sizes, SmallVector<OpFoldResult> & strides) {
+  if (auto packOp = dyn_cast<IREE::LinalgExt::PackOp>(op)) {
+    if (failed(packDmaInputs(packOp, offsets, sizes, strides))) {
+      return failure();
     }
-    Location loc = op->getLoc();
-    OpBuilder::InsertionGuard g(rewriter);
-    rewriter.setInsertionPoint(op);
-
-    Value input = op.getInput();
-    Value output = op.getOutput();
-
-    Operation *sourceOp = input.getDefiningOp();
-    Operation *dstOp = output.getDefiningOp();
-
-    // prepare source DMA inputs.
-    SmallVector<OpFoldResult> srcOffsets;
-    SmallVector<OpFoldResult> srcBaseStrides;
-    SmallVector<OpFoldResult> srcShape;
-    if (!succeeded(getDmaInputs(rewriter, sourceOp, srcOffsets, srcShape,
-                                srcBaseStrides))) {
-      return rewriter.notifyMatchFailure(
-          op, "cant infer dma source inputs from op");
+  } else if (auto unPackOp = dyn_cast<IREE::LinalgExt::UnPackOp>(op)) {
+    if (failed(unPackDmaInputs(unPackOp, offsets, sizes, strides))) {
+      return failure();
     }
-    if (std::is_same<OpType, IREE::LinalgExt::PackOp>::value) {
-      if (!succeeded(packDmaInputs<OpType>(rewriter, op, srcOffsets, srcShape,
-                                           srcBaseStrides))) {
-        return rewriter.notifyMatchFailure(
-            op, "could not perform the required packing to create a dma op");
-      }
-    } else if (std::is_same<OpType, IREE::LinalgExt::UnPackOp>::value) {
-      if (!succeeded(unPackDmaInputs<OpType>(rewriter, op, srcOffsets, srcShape,
-                                             srcBaseStrides))) {
-        return rewriter.notifyMatchFailure(
-            op, "could not perform the required unpacking to create a dma op");
-      }
-    }
-    // prepare destination DMA inputs.
-    SmallVector<OpFoldResult> dstOffsets;
-    SmallVector<OpFoldResult> dstBaseStrides;
-    SmallVector<OpFoldResult> dstShape;
-    if (!succeeded(getDmaInputs(rewriter, dstOp, dstOffsets, dstShape,
-                                dstBaseStrides))) {
-      return rewriter.notifyMatchFailure(
-          op, "cant infer dma source inputs from op");
-    }
-    // Async Tokens are added to the op in later passes.
-    SmallVector<Value, 2> asyncTokens;
-    rewriter.replaceOpWithNewOp<xilinx::air::DmaMemcpyNdOp>(
-        op, SmallVector<Type, 1>{}, asyncTokens, dstOp->getResult(0),
-        getValueOrCreateConstantIndexOp(rewriter, loc, dstOffsets),
-        getValueOrCreateConstantIndexOp(rewriter, loc, dstShape),
-        getValueOrCreateConstantIndexOp(rewriter, loc, dstBaseStrides),
-        sourceOp->getResult(0),
-        getValueOrCreateConstantIndexOp(rewriter, loc, srcOffsets),
-        getValueOrCreateConstantIndexOp(rewriter, loc, srcShape),
-        getValueOrCreateConstantIndexOp(rewriter, loc, srcBaseStrides));
-    return success();
   }
-};
+  return success();
+}
+
+LogicalResult rewriteAsDma(IRRewriter &rewriter, Operation *op, Value input,
+                           Value output, llvm::ArrayRef<int64_t> innerTiles) {
+
+  if (llvm::any_of(innerTiles,
+                   [](int64_t size) { return ShapedType::isDynamic(size); })) {
+    op->emitError("has a non-static shape: not yet supported by this pass.");
+  }
+  Location loc = op->getLoc();
+  OpBuilder::InsertionGuard g(rewriter);
+  rewriter.setInsertionPoint(op);
+
+  Operation *sourceOp = input.getDefiningOp();
+  Operation *dstOp = output.getDefiningOp();
+
+  // prepare source DMA inputs.
+  SmallVector<OpFoldResult> srcOffsets;
+  SmallVector<OpFoldResult> srcBaseStrides;
+  SmallVector<OpFoldResult> srcShape;
+
+  if (!succeeded(
+          setDmaInputs(sourceOp, srcOffsets, srcShape, srcBaseStrides))) {
+    return failure();
+  }
+
+  if (!succeeded(processInputs(op, srcOffsets, srcShape, srcBaseStrides))){
+    return failure();
+  }
+
+  // prepare destination DMA inputs.
+  SmallVector<OpFoldResult> dstOffsets;
+  SmallVector<OpFoldResult> dstBaseStrides;
+  SmallVector<OpFoldResult> dstShape;
+  if (!succeeded(setDmaInputs(dstOp, dstOffsets, dstShape, dstBaseStrides))) {
+    return failure();
+  }
+  // Async Tokens are added to the op in later passes.
+  SmallVector<Value, 2> asyncTokens;
+  rewriter.replaceOpWithNewOp<xilinx::air::DmaMemcpyNdOp>(
+      op, SmallVector<Type, 1>{}, asyncTokens, dstOp->getResult(0),
+      getValueOrCreateConstantIndexOp(rewriter, loc, dstOffsets),
+      getValueOrCreateConstantIndexOp(rewriter, loc, dstShape),
+      getValueOrCreateConstantIndexOp(rewriter, loc, dstBaseStrides),
+      sourceOp->getResult(0),
+      getValueOrCreateConstantIndexOp(rewriter, loc, srcOffsets),
+      getValueOrCreateConstantIndexOp(rewriter, loc, srcShape),
+      getValueOrCreateConstantIndexOp(rewriter, loc, srcBaseStrides));
+  return success();
+}
+
+template <typename PackOrUnpackOp>
+LogicalResult rewriteAsDma(PackOrUnpackOp op, IRRewriter &rewriter) {
+  Value input = op.getInput();
+  Value output = op.getOutput();
+  llvm::ArrayRef<int64_t> innerTiles = op.getStaticInnerTiles();
+  return rewriteAsDma(rewriter, op, input, output, innerTiles);
+}
+
+};  // namespace
 
 class AMDAIEPackToDmaPass
     : public impl::AMDAIEPackToDmaBase<AMDAIEPackToDmaPass> {
@@ -279,17 +294,26 @@ class AMDAIEPackToDmaPass
 
 void AMDAIEPackToDmaPass::runOnOperation() {
   MLIRContext *context = &getContext();
-  RewritePatternSet patterns(context);
-  patterns.insert<LinalgExtPackToAirDmaMemcpyNd<IREE::LinalgExt::PackOp>,
-                  LinalgExtPackToAirDmaMemcpyNd<IREE::LinalgExt::UnPackOp>>(
-      context);
-  if (failed(
-          applyPatternsAndFoldGreedily(getOperation(), std::move(patterns)))) {
-    return signalPassFailure();
-  }
-}
+  IRRewriter rewriter(context);
 
-}  // namespace
+  auto walkResult =
+      getOperation()->walk([&rewriter](Operation *op) -> WalkResult {
+        if (auto packOp = dyn_cast_or_null<IREE::LinalgExt::PackOp>(op)) {
+          if (failed(rewriteAsDma(packOp, rewriter))) {
+            return WalkResult::interrupt();
+          }
+        }
+        if (auto unPackOp = dyn_cast_or_null<IREE::LinalgExt::UnPackOp>(op)) {
+          if (failed(rewriteAsDma(unPackOp, rewriter))) {
+            return WalkResult::interrupt();
+          }
+        }
+        return WalkResult::advance();
+      });
+
+  if (walkResult.wasInterrupted()) signalPassFailure();
+
+}  
 
 std::unique_ptr<Pass> createAMDAIEPackToDmaPass() {
   return std::make_unique<AMDAIEPackToDmaPass>();

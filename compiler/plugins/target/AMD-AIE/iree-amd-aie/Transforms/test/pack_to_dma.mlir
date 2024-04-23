@@ -1,4 +1,4 @@
-// RUN: iree-opt --pass-pipeline="builtin.module(iree-amdaie-pack-to-dma)" %s | FileCheck %s
+// RUN: iree-opt --iree-amdaie-pack-to-dma --cse --split-input-file %s | FileCheck %s
 
 // CHECK-LABEL: @basic_unitdim_pack
 // CHECK: %[[ALLOC0:.*]] = memref.alloc() : memref<1x1x8x16xi32, 1>
@@ -133,4 +133,3 @@ func.func @subview_unpack() {
   }
   return
 }
-
