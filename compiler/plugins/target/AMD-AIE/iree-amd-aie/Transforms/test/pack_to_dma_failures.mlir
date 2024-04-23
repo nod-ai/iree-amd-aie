@@ -18,7 +18,7 @@ func.func @failure_case() {
                memref<152x2432xbf16, 1 : i32> to
                memref<38x8xbf16, strided<[2432, 1], offset: ?>, 1 : i32>
 
-    // expected-error@below error: 'iree_linalg_ext.pack' op in dimension 0, the tile size 4 does not divide the tensor size 38. We currently do not support imperfect tiling.
+    // expected-error@below error: 'iree_linalg_ext.pack' op in dimension 0, the tile size 4 does not divide the tensor size 38. Imperfect/partial tiling is not currently supported.
     iree_linalg_ext.pack %subview padding_value(%cst : bf16)
                          outer_dims_perm = [1, 0]
                          inner_dims_pos = [0, 1]

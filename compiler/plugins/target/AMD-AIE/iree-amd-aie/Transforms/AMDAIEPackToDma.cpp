@@ -45,7 +45,7 @@ LogicalResult packDmaInputs(IREE::LinalgExt::PackOp packOp,
     if (size.value() % innerTiles[i] != 0) {
       auto message = llvm::formatv(
           "in dimension {0}, the tile size {1} does not divide the tensor size "
-          "{2}. We currently do not support imperfect tiling.",
+          "{2}. Imperfect/partial tiling is currently not supported.",
           i, innerTiles[i], size.value());
       return packOp->emitOpError(message);
     }
