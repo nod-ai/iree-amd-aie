@@ -532,3 +532,9 @@ run_matmul_test \
     --acc_type "i32" \
     --m "64"  --n "64" --k "64"
 
+run_matmul_test \
+    --name_prefix "bf16_2304" \
+    --lhs_rhs_type "bf16" \
+    --acc_type "f32" \
+    --m "128"  --n "128" --k "2304"
+
