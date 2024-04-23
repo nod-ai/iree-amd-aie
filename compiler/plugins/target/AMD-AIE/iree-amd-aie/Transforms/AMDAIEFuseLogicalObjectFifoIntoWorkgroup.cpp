@@ -41,6 +41,8 @@ void AMDAIEFuseLogicalObjectFifoIntoWorkgroupPass::runOnOperation() {
 
   SmallVector<AMDAIE::LogicalObjectFifoFromMemrefOp> logicalObjectFifos;
   moduleOp->walk([&](AMDAIE::LogicalObjectFifoFromMemrefOp op) {
+    // The op is already in a workgroup, so it can just stay there and there is
+    // nothing to be done further.
     if (isa<AMDAIE::WorkgroupOp>(op->getParentOp())) {
       return WalkResult::advance();
     }

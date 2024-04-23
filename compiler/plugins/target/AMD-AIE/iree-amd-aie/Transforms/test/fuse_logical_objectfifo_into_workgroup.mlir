@@ -3,6 +3,7 @@
 // CHECK-LABEL: @fuse_logical_objectfifo_into_workgroup
 // CHECK:     %[[ALLOC0:.*]] = memref.alloc() : memref<32x1024xi32>
 // CHECK:     %[[ALLOC1:.*]] = memref.alloc() : memref<32x64xi32, 1>
+// CHECK-NOT: amdaie.logicalobjectfifo.from_memref
 // CHECK:     scf.forall
 // CHECK:       amdaie.workgroup
 // CHECK:         %[[FROMMEMREF1:.*]] = amdaie.logicalobjectfifo.from_memref %[[ALLOC1]]
