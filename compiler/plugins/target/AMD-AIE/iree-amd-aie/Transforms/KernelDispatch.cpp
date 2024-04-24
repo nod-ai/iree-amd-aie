@@ -23,6 +23,10 @@ using detail::findLargestFactor;
 static SmallVector<int64_t> getPackedSize(linalg::LinalgOp linalgOp,
                                           const int packLevel, int m = 0,
                                           int n = 0, int k = 0) {
+
+ llvm::outs() << "In getPackedSize at level " << packLevel << " with n=" << n
+              << " m=" << m << " k=" << k << "\n";
+
   // TODO (newling): consider emiting an error/warning if the default sizes are used as a
   // fallback.
   SmallVector<int64_t> defaultSizes;
@@ -57,13 +61,10 @@ static SmallVector<int64_t> getPackedSize(linalg::LinalgOp linalgOp,
     return defaultSizes;
   }
 
+  auto nLeadingZeros = packLevel == 2 ? 3 : 0;
+  SmallVector<int64_t> packedSizes(nLeadingZeros, 0);
   auto instructionSize = maybeInstructionSize.value();
-  SmallVector<int64_t> packedSizes(3, 0);
-  std::copy(instructionSize.begin(), instructionSize.end(),
-            packedSizes.begin());
-  if (packLevel == 2) {
-    packedSizes.insert(packedSizes.begin(), {0, 0, 0});
-  }
+  packedSizes.append(instructionSize.begin(), instructionSize.end());
   return packedSizes;
 }
 
@@ -161,7 +162,7 @@ static LogicalResult setRootConfigForPadPackPipeline(
     AIEConfig cfg) {
   // Assume working on a 4x4 AIE array. Currently, the tile sizes are chosen
   // empirically for large GEMM sizes, which are [64*s, 64*s, 256] for the first
-  // level and [16*s, 16*s, 16*s] for the second level, where 's' is the scaling
+  // level and [16*s, 16*s, 16*s] for the second level, where 's' is the 
   // scaling factor based on the element type's bit width. Basic min/max
   // constraints are added to avoid failure for small GEMM sizes.
   auto initType = linalgOp.getDpsInitOperand(0)->get().getType();
@@ -178,11 +179,17 @@ static LogicalResult setRootConfigForPadPackPipeline(
   unsigned tilingScaleFactor = maybeTilingScaleFactor.value();
   // TODO (nmeshram) : We should be able to use fixed tiling config after we
   // have padding support.
-  auto tileM0 = findLargestFactor((int)initShape[0], 64 * tilingScaleFactor);
-  auto tileN0 = findLargestFactor((int)initShape[1], 64 * tilingScaleFactor);
+  auto tileM0 =
+      findLargestFactor((int)initShape[0], 64 * tilingScaleFactor, true);
+  auto tileN0 =
+      findLargestFactor((int)initShape[1], 64 * tilingScaleFactor, true);
   auto tileM1 = findLargestFactor((int)tileM0, 16 * tilingScaleFactor);
   auto tileN1 = findLargestFactor((int)tileN0, 16 * tilingScaleFactor);
-  auto tileK0 = findLargestFactor((int)lhsShape[1], 256);
+  auto tileK0 = findLargestFactor((int)lhsShape[1], 256, true);
+
+  llvm::outs() << "tileM0: " << tileM0 << " tileN0: " << tileN0
+               << " tileM1: " << tileM1 << " tileN1: " << tileN1
+               << " tileK0: " << tileK0 << "\n";
 
   // Do packing first to allow larger k packing
   // ------------------------------------------------------

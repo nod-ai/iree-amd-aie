@@ -77,7 +77,7 @@ namespace detail {
 
 // Returns the largest number that perfectly divides `num` that
 // is less than or equal to max
-int findLargestFactor(int num, int max);
+int findLargestFactor(int num, int max, bool mustBePowerOf2 = false);
 
 }  // namespace detail
 
