@@ -62,6 +62,10 @@ std::unique_ptr<Pass> createAMDAIECleanupPass();
 /// dialect.
 std::unique_ptr<Pass> createAMDAIEDecomposeLinalgExtPackUnPackToAIRPass();
 
+/// Create a pass to fuse the consumer op into the innermost last scf loop.
+std::unique_ptr<Pass> createAMDAIEFuseConsumerIntoLoopPass(
+    AMDAIEFuseConsumerIntoLoopOptions options = {});
+
 /// Create a pass to fuse the linalg.fill into the forall loops.
 std::unique_ptr<Pass> createAMDAIEFuseFillIntoForallPass();
 
