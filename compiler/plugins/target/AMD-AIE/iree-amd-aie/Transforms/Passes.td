@@ -89,43 +89,6 @@ def AMDAIEFuseFillIntoForall :
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEFuseFillIntoForallPass()";
 }
 
-def AMDAIEInsertLoopsForVectorization :
-    InterfacePass<"iree-amdaie-insert-loops-for-vectorization", "mlir::FunctionOpInterface"> {
-
-    let summary = "Replace outer-dimensions of matmul-like linalg.generics with scf.for loops.";
-
-    let description  = [{
-      This pass transforms all linalg.generic operations with matmul-like
-      inner-dimension semantics. It replaces all outer-dimensions with scf.for
-      loops. For example, it replaces a generic operation that describes a
-      batched matmul with an scf.for loop containing a linalg.generic that
-      describes a lower rank non-batched matmul. In other words, it replaces
-      the batch dimension in the linalg.generic with an scf.for loop.
-
-      All outer dimensions are replaced with scf.for loops. The three
-      inner-dimensions must describe a matmul: 2 parallel dimensions and 1
-      reduction dimension, at correct indices. The pass does not transform
-      transposed matmuls, or any other operation that does not have exact
-      matmul semantics.
-
-      The motivation for this pass is to enable a subsequent vectorization pass
-      to generate vector.contract operations which map easily to the AIEVec
-      dialect.
-    }];
-
-   let constructor =
-       "mlir::iree_compiler::AMDAIE::createAMDAIEInsertLoopsForVectorizationPass()";
-}
-
-
-def AMDAIEVectorization :
-    InterfacePass<"iree-amdaie-vectorization", "mlir::FunctionOpInterface"> {
-
-  let summary = "Convert operations to the vector dialect in an AIE-friendly way.";
-
-  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEVectorizationPass()";
-}
-
 def AMDAIEFuseLogicalObjectFifoIntoWorkgroup :
     Pass<"iree-amdaie-fuse-logicalobjectfifo-into-workgroup", "ModuleOp"> {
   let summary = "Fuse or distribute logical objectfifos into workgroups.";
@@ -141,7 +104,9 @@ def AMDAIEFusePackIntoLoop :
     Option<"fusePackDepth", "fuse-pack-depth", "int64_t", /*default=*/"1",
       "Set the depth until which we would keep fusing producer tensor.pack chain">,
     Option<"useSCFFor", "use-scf-for", "bool", /*default=*/"true",
-      "Set the innermost scf loop type to fuse tensor.pack ops into">
+      "Set the innermost scf loop type to fuse tensor.pack ops into">,
+    Option<"targetElementwise", "target-elementwise", "bool", /*default=*/"false",
+      "Set if the compute op within the loop is an elementwise op">
   ];
 }
 
@@ -154,6 +119,34 @@ def AMDAIEInsertAIEWorkgroup :
   Pass<"iree-amdaie-insert-aie-workgroup", "ModuleOp"> {
   let summary = "Insert AIE workgroups around forall loops selected for parallel execution.";
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEInsertAIEWorkgroupPass()";
+}
+
+def AMDAIEInsertLoopsForVectorization :
+  InterfacePass<"iree-amdaie-insert-loops-for-vectorization", "mlir::FunctionOpInterface"> {
+
+  let summary = "Replace outer-dimensions of matmul-like linalg.generics with scf.for loops.";
+
+  let description  = [{
+    This pass transforms all linalg.generic operations with matmul-like
+    inner-dimension semantics. It replaces all outer-dimensions with scf.for
+    loops. For example, it replaces a generic operation that describes a
+    batched matmul with an scf.for loop containing a linalg.generic that
+    describes a lower rank non-batched matmul. In other words, it replaces
+    the batch dimension in the linalg.generic with an scf.for loop.
+
+    All outer dimensions are replaced with scf.for loops. The three
+    inner-dimensions must describe a matmul: 2 parallel dimensions and 1
+    reduction dimension, at correct indices. The pass does not transform
+    transposed matmuls, or any other operation that does not have exact
+    matmul semantics.
+
+    The motivation for this pass is to enable a subsequent vectorization pass
+    to generate vector.contract operations which map easily to the AIEVec
+    dialect.
+  }];
+
+ let constructor =
+     "mlir::iree_compiler::AMDAIE::createAMDAIEInsertLoopsForVectorizationPass()";
 }
 
 def AMDAIELowerExecutableTarget :
@@ -287,6 +280,12 @@ def AMDAIEPeelForLoop :
   ];
 }
 
+def AMDAIEPropagateDataLayout :
+    InterfacePass<"iree-amdaie-propagate-data-layout", "mlir::FunctionOpInterface"> {
+  let summary = "Pass to propagate pack/unpack ops using upstream patterns.";
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEPropagateDataLayoutPass()";
+}
+
 def AMDAIETile :
     InterfacePass<"iree-amdaie-tile", "mlir::FunctionOpInterface"> {
   let summary = "Pass to tile TilingInterface operations.";
@@ -311,10 +310,10 @@ def AMDAIETileAndFuse :
   ];
 }
 
-def AMDAIEPropagateDataLayout :
-    InterfacePass<"iree-amdaie-propagate-data-layout", "mlir::FunctionOpInterface"> {
-  let summary = "Pass to propagate pack/unpack ops using upstream patterns.";
-  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEPropagateDataLayoutPass()";
+def AMDAIEVectorization :
+    InterfacePass<"iree-amdaie-vectorization", "mlir::FunctionOpInterface"> {
+  let summary = "Convert operations to the vector dialect in an AIE-friendly way.";
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEVectorizationPass()";
 }
 
 def AMDAIEUnrollAndDistributeWorkgroup : 

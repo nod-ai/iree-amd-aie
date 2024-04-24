@@ -45,19 +45,31 @@ static LogicalResult applyBufferizeToAllocation(RewriterBase &rewriter,
 /// elementwise op's input is the output of the matmul op and has already been
 /// promoted, there is no need to promote such operand again.
 static SmallVector<Value> getInputOutputOperands(linalg::LinalgOp &linalgOp) {
-  SmallVector<Value> operands;
-  for (auto operand : linalgOp->getOperands()) {
-    if (isMatmulProducerOfElementwise(linalgOp)) {
-      auto defOp = operand.getDefiningOp<linalg::LinalgOp>();
-      // Continue the loop without including the operand which is the output of
-      // matmul.
-      if (defOp && isMatmul(defOp)) {
-        continue;
-      }
+  if (isMatmulProducerOfElementwise(linalgOp)) {
+    SmallVector<Value> operands;
+    for (auto operand : linalgOp->getOperands()) {
+      if (isMatmulInDefChain(operand)) continue;
+      operands.push_back(operand);
     }
-    operands.push_back(operand);
+    return operands;
   }
-  return operands;
+  return linalgOp->getOperands();
+}
+
+/// Utility to fetch input operands from the LinalgOp (matmul or elementwise
+/// op). For matmul-elementwise special case, since one of the elementwise op's
+/// input is the output of the matmul op and has already been promoted, there is
+/// no need to promote such operand again.
+static SmallVector<Value> getInputOperands(linalg::LinalgOp &linalgOp) {
+  if (isMatmulProducerOfElementwise(linalgOp)) {
+    SmallVector<Value> operands;
+    for (auto operand : linalgOp.getDpsInputs()) {
+      if (isMatmulInDefChain(operand)) continue;
+      operands.push_back(operand);
+    }
+    return operands;
+  }
+  return linalgOp.getDpsInputs();
 }
 
 /// Utility to fetch operands from the defining ops of LinalgOp's input
@@ -71,28 +83,13 @@ static SmallVector<Value> getInputOutputOperands(linalg::LinalgOp &linalgOp) {
 static FailureOr<SmallVector<Value>> getOperandsFromDefOp(
     linalg::LinalgOp &linalgOp) {
   SmallVector<Value> operands;
-  // For matmul only dispatch, we only want to fetch the input operand of the
-  // pack ops.
-  auto candidateOperands = isMatmulProducerOfElementwise(linalgOp)
-                               ? linalgOp->getOperands()
-                               : linalgOp.getDpsInputs();
-  for (auto operand : candidateOperands) {
-    auto defOp = operand.getDefiningOp();
-    if (!defOp) {
+  for (auto input : linalgOp.getDpsInputs()) {
+    auto defOp = input.getDefiningOp();
+    // The defining op has to be a pack op, fail otherwise.
+    if (!defOp || !isa<tensor::PackOp>(defOp)) {
       return failure();
     }
-    // For matmul-elementwise special case, continue the loop without including
-    // the operand which is the output of matmul.
-    if (isMatmulProducerOfElementwise(linalgOp)) {
-      auto defLinalgOp = dyn_cast<linalg::LinalgOp>(defOp);
-      if (defLinalgOp && isMatmul(defLinalgOp)) {
-        continue;
-      }
-    } else {
-      if (!isa<tensor::PackOp>(defOp)) {
-        return failure();
-      }
-    }
+    // We only want to fetch the input operand of the pack op.
     operands.push_back(defOp->getOperand(0));
   }
   return operands;
@@ -109,7 +106,7 @@ static FailureOr<SmallVector<Value>> getOperandsToBufferize(
       return getInputOutputOperands(linalgOp);
     /// Create new allocation only for Lhs, Rhs.
     case BufferizeOperand::Input:
-      return SmallVector<Value>(linalgOp.getDpsInputs());
+      return getInputOperands(linalgOp);
     /// Create new allocations only for Out.
     case BufferizeOperand::Output:
       return SmallVector<Value>(linalgOp.getDpsInits());

@@ -69,6 +69,10 @@ FailureOr<unsigned> getTilingScaleFactor(Type elemType);
 /// Utility to indentify whether a linalg op is a matmul op.
 bool isMatmul(linalg::LinalgOp linalgOp);
 
+/// Utility to identify if the input operand has matmul-like op in its
+/// def-chain.
+bool isMatmulInDefChain(Value operand);
+
 /// Utility to identify if `linalgOp` is an elementwise operation with a
 /// matmul-like op upstream in its computation tree.
 bool isMatmulProducerOfElementwise(linalg::LinalgOp linalgOp);

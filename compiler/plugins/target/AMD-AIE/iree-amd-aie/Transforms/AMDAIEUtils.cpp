@@ -173,20 +173,9 @@ static bool match4DLinalgGenericMatmul(linalg::LinalgOp linalgOp) {
     return false;
   }
 
-  // We extract dimensions for K*N*n*k x M*K*k*m -> M*N*n*m.
-  AffineExpr M = map2.getResult(0);
-  AffineExpr N = map2.getResult(1);
-  AffineExpr K = map0.getResult(0);
-  AffineExpr m = map2.getResult(2);
-  AffineExpr n = map2.getResult(3);
-  AffineExpr k = map0.getResult(3);
-
-  auto *context = indexingMaps.getContext();
-  auto mapA = AffineMapAttr::get(AffineMap::get(6, 0, {K, N, m, k}, context));
-  auto mapB = AffineMapAttr::get(AffineMap::get(6, 0, {M, K, k, n}, context));
-  auto mapC = AffineMapAttr::get(AffineMap::get(6, 0, {M, N, m, n}, context));
-  auto maps = ArrayAttr::get(context, {mapA, mapB, mapC});
-  return indexingMaps == maps;
+  // Skip the exact indexingMaps matching, because there could be different
+  // dimension permutations caused by pack_transpose.
+  return true;
 }
 
 /// Utility to match iterator type and indexing map for a linalg.generic that
@@ -298,6 +287,36 @@ bool isMatmul(linalg::LinalgOp linalgOp) {
          match6DLinalgGenericMatmul(linalgOp);
 }
 
+/// Utility to identify if the input operand has matmul-like op in its
+/// def-chain.
+bool isMatmulInDefChain(Value operand) {
+  if (isa<BlockArgument>(operand)) return false;
+  while (Operation *defOp = operand.getDefiningOp()) {
+    if (isa<arith::ConstantOp>(defOp)) return false;
+    if (auto defLinalgOp = dyn_cast_or_null<linalg::LinalgOp>(defOp)) {
+      if (isMatmul(defLinalgOp)) {
+        return true;
+      }
+      break;
+    }
+    if (auto forOp = dyn_cast_or_null<scf::ForOp>(defOp)) {
+      bool findMatmul = false;
+      forOp.getBody()->walk<WalkOrder::PostOrder, ReverseIterator>(
+          [&](linalg::LinalgOp op) {
+            if (isMatmul(op)) {
+              findMatmul = true;
+              return WalkResult::interrupt();
+            }
+            return WalkResult::advance();
+          });
+      if (findMatmul) return true;
+    }
+    operand = defOp->getOperand(0);
+    if (isa<BlockArgument>(operand)) return false;
+  }
+  return false;
+}
+
 /// Utility to identify if `linalgOp` is an elementwise operation with a
 /// matmul-like op upstream in its computation tree.
 bool isMatmulProducerOfElementwise(linalg::LinalgOp linalgOp) {
@@ -305,27 +324,7 @@ bool isMatmulProducerOfElementwise(linalg::LinalgOp linalgOp) {
   if (isa<linalg::FillOp>(linalgOp)) return false;
   // Check if any of the defining op is a matmul-like op.
   for (auto operand : linalgOp->getOperands()) {
-    while (Operation* defOp = operand.getDefiningOp()) {
-      if (auto defLinalgOp = dyn_cast_or_null<linalg::LinalgOp>(defOp)) {
-        if (isMatmul(defLinalgOp)) {
-          return true;
-        }
-        break;
-      }
-      if (auto forOp = dyn_cast_or_null<scf::ForOp>(defOp)) {
-        bool findMatmul = false;
-        forOp.getBody()->walk<WalkOrder::PostOrder, ReverseIterator>(
-            [&](linalg::LinalgOp op) {
-              if (isMatmul(op)) {
-                findMatmul = true;
-                return WalkResult::interrupt();
-              }
-              return WalkResult::advance();
-            });
-        if (findMatmul) return true;
-      }
-      operand = defOp->getOperand(0);
-    }
+    if (isMatmulInDefChain(operand)) return true;
   }
   return false;
 }
