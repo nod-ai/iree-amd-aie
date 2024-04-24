@@ -54,6 +54,7 @@ static void populateCleanupPatterns(RewritePatternSet &patterns) {
   // Pulling in upstream scf.for and affine.min canonicalization patterns.
   // They work on tiled (but not distributed) loops.
   scf::populateSCFForLoopCanonicalizationPatterns(patterns);
+  tensor::populateFoldTensorEmptyPatterns(patterns);
 }
 
 class AMDAIECleanupPass : public impl::AMDAIECleanupBase<AMDAIECleanupPass> {

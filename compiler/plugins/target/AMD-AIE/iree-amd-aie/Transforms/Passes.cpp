@@ -122,11 +122,21 @@ void addPackPeelBasedPassPipeline(OpPassManager &funcPassManager,
   funcPassManager.addPass(createCanonicalizerPass());
   funcPassManager.addPass(createCSEPass());
 
-  // Promote the output to shared memory
+  // Promote the matmul output to shared memory
   {
     AMDAIEBufferizeToAllocationOptions bufferizeOptions;
     bufferizeOptions.memorySpace = 1;
     bufferizeOptions.bufferizeOperand = BufferizeOperand::Output;
+    funcPassManager.addPass(
+        createAMDAIEBufferizeToAllocationPass(bufferizeOptions));
+  }
+
+  // Promote the elementwise input and output to shared memory
+  {
+    AMDAIEBufferizeToAllocationOptions bufferizeOptions;
+    bufferizeOptions.memorySpace = 1;
+    bufferizeOptions.bufferizeElementwise = true;
+    bufferizeOptions.bufferizeOperand = BufferizeOperand::InputOutput;
     funcPassManager.addPass(
         createAMDAIEBufferizeToAllocationPass(bufferizeOptions));
   }
@@ -143,7 +153,7 @@ void addPackPeelBasedPassPipeline(OpPassManager &funcPassManager,
   funcPassManager.addPass(createCanonicalizerPass());
   funcPassManager.addPass(createCSEPass());
 
-  // Promote the output to local memory
+  // Promote the matmul output to local memory
   {
     AMDAIEBufferizeToAllocationOptions bufferizeOptions;
     bufferizeOptions.memorySpace = 2;
@@ -152,20 +162,12 @@ void addPackPeelBasedPassPipeline(OpPassManager &funcPassManager,
         createAMDAIEBufferizeToAllocationPass(bufferizeOptions));
   }
 
-  // Promote the operands from elementwise op to shared and local memory
-  {
-    AMDAIEBufferizeToAllocationOptions bufferizeOptions;
-    bufferizeOptions.memorySpace = 1;
-    bufferizeOptions.bufferizeElementwise = true;
-    bufferizeOptions.bufferizeOperand = BufferizeOperand::DefOp;
-    funcPassManager.addPass(
-        createAMDAIEBufferizeToAllocationPass(bufferizeOptions));
-  }
+  // Promote the elementwise output to local memory
   {
     AMDAIEBufferizeToAllocationOptions bufferizeOptions;
     bufferizeOptions.memorySpace = 2;
     bufferizeOptions.bufferizeElementwise = true;
-    bufferizeOptions.bufferizeOperand = BufferizeOperand::InputOutput;
+    bufferizeOptions.bufferizeOperand = BufferizeOperand::Output;
     funcPassManager.addPass(
         createAMDAIEBufferizeToAllocationPass(bufferizeOptions));
   }
@@ -192,7 +194,7 @@ void addPackPeelBasedPassPipeline(OpPassManager &funcPassManager,
   funcPassManager.addPass(createCanonicalizerPass());
   funcPassManager.addPass(createCSEPass());
 
-  // Promote the inputs to shared memory
+  // Promote the matmul inputs to shared memory
   {
     AMDAIEBufferizeToAllocationOptions bufferizeOptions;
     bufferizeOptions.memorySpace = 1;
@@ -223,7 +225,7 @@ void addPackPeelBasedPassPipeline(OpPassManager &funcPassManager,
   funcPassManager.addPass(createCanonicalizerPass());
   funcPassManager.addPass(createCSEPass());
 
-  // Promote the inputs to local memory
+  // Promote the matmul inputs to local memory
   {
     AMDAIEBufferizeToAllocationOptions bufferizeOptions;
     bufferizeOptions.memorySpace = 2;
@@ -237,16 +239,40 @@ void addPackPeelBasedPassPipeline(OpPassManager &funcPassManager,
   funcPassManager.addPass(createCanonicalizerPass());
   funcPassManager.addPass(createCSEPass());
 
-  // Peel the for loop. For matmul dispatch, only peel the first iteration. For
-  // matmul-elementwise dispatch, peel the first and last iteration.
+  // Peel the for loop. For matmul dispatch, only peel the first iteration,
+  // while for matmul-elementwise dispatch, peel the first and last iteration.
+  // Note: Do not run CSE pass afterwards, because it may bring problem for
+  // bufferization.
   funcPassManager.addPass(createAMDAIEPeelForLoopPass());
   funcPassManager.addPass(createCanonicalizerPass());
-  funcPassManager.addPass(createCSEPass());
 
-  // Fuse fill into forall loop
+  // Fuse fill op into the first inner forall loop
   funcPassManager.addPass(createAMDAIEFuseFillIntoForallPass());
+
+  // Fuse elementwise op into the last inner forall loop
+  funcPassManager.addPass(createAMDAIEFuseConsumerIntoLoopPass());
   funcPassManager.addPass(createCanonicalizerPass());
-  funcPassManager.addPass(createCSEPass());
+
+  // Fuse pack ops into the last inner forall loop
+  {
+    AMDAIEFusePackIntoLoopOptions fusePackOptions;
+    fusePackOptions.fusePackDepth = 1;
+    fusePackOptions.useSCFFor = false;
+    funcPassManager.addPass(createAMDAIEFusePackIntoLoopPass(fusePackOptions));
+  }
+  funcPassManager.addPass(createCanonicalizerPass());
+
+  // Promote the elementwise inputs to local memory
+  {
+    AMDAIEBufferizeToAllocationOptions bufferizeOptions;
+    bufferizeOptions.memorySpace = 2;
+    bufferizeOptions.bufferizeElementwise = true;
+    bufferizeOptions.bufferizeOperand = BufferizeOperand::Input;
+    funcPassManager.addPass(
+        createAMDAIEBufferizeToAllocationPass(bufferizeOptions));
+  }
+  funcPassManager.addPass(createHoistStaticallyBoundAllocationsPass());
+  funcPassManager.addPass(createCanonicalizerPass());
 
   // Comprehensive bufferization
   addAMDAIEBufferizePasses(funcPassManager);

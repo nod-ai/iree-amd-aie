@@ -28,6 +28,15 @@ static FailureOr<tensor::ExtractSliceOp> getTensorExtractSliceDefiningOp(
               sliceOp.getSource().getDefiningOp())) {
         return sliceOp;
       }
+      if (isa<BlockArgument>(sliceOp.getSource())) {
+        auto blkArg = dyn_cast<BlockArgument>(sliceOp.getSource());
+        for (auto blkOperand :
+             blkArg.getOwner()->getParentOp()->getOperands()) {
+          if (isa_and_nonnull<tensor::PackOp>(blkOperand.getDefiningOp())) {
+            return sliceOp;
+          }
+        }
+      }
       break;
     }
     // We perform further traversal only if we have tensor.pack op in the
@@ -84,18 +93,17 @@ void AMDAIEFusePackIntoLoopPass::runOnOperation() {
   }
 
   LoopLikeOpInterface loops = cast<LoopLikeOpInterface>(scfLoopOp);
-  auto loopBody = useSCFFor ? cast<scf::ForOp>(loops).getBody()
-                            : cast<scf::ForallOp>(loops).getBody();
+  auto castLoop =
+      useSCFFor ? cast<scf::ForOp>(loops) : cast<scf::ForallOp>(loops);
 
   // Based on the `fusePackDepth`, we would greedily fuse the producer
   // tensor.pack ops.
   for (unsigned depth = 1; depth <= fusePackDepth; depth++) {
-    // Search the compute op and its producer slices.
+    // Search the last compute op in the loop and its producer slices.
     linalg::GenericOp genericOp;
-    loopBody->walk<WalkOrder::PostOrder, ReverseIterator>(
+    castLoop->walk<WalkOrder::PostOrder, ReverseIterator>(
         [&](linalg::LinalgOp op) {
-          if (isa<linalg::GenericOp>(op) &&
-              linalg::isaContractionOpInterface(op)) {
+          if (isa<linalg::GenericOp>(op)) {
             genericOp = cast<linalg::GenericOp>(op);
             return WalkResult::interrupt();
           }
