@@ -358,4 +358,18 @@ int detail::findLargestFactor(int num, int max) {
   return largestLowFactor;
 }
 
+/// Find the largest factor of 'num' which is not larger than 'max' and is a
+/// multiple of `multiple` if possible.
+int detail::findLargestFactor(int num, int max, int multiple) {
+  int factor = 0;
+  for (int i = multiple; i <= max && i <= num; i += multiple) {
+    if (num % i == 0 && i % multiple == 0) {
+      factor = i;
+    }
+  }
+  // if we could not find the desired factor then we give up and call the code
+  // that doesnt require the multiple constrain.
+  return factor ? factor : detail::findLargestFactor(num, max);
+}
+
 }  // namespace mlir::iree_compiler::AMDAIE

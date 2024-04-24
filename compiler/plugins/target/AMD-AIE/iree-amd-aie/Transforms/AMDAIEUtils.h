@@ -79,6 +79,9 @@ namespace detail {
 // is less than or equal to max
 int findLargestFactor(int num, int max);
 
+// A variant where we prefer factors to also be a multiple of `multiple`
+int findLargestFactor(int num, int max, int multiple);
+
 }  // namespace detail
 
 }  // namespace mlir::iree_compiler::AMDAIE

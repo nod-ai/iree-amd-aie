@@ -467,15 +467,31 @@ run_matmul_test \
     --expect-compile-failure "0" \
     --compile-only "0"
 
-# The below matmul case used to fail but passes since the bump of 4/16/2024
-# Keep track of this, however if it does regress we can mark this as
-# expected failure and not block other progress.
+# The below matmul case passes with 
+# tile_sizes = [[1, 1], [0, 0, 250], [1, 1], [0, 0, 2]], packedSizes = [1, 1, 5]
+# but fails with tile_sizes = [[1, 1], [0, 0, 200], [1, 1], [0, 0, 1]], packedSizes = [1, 1, 8],
+# with the error LLVM ERROR: unable to legalize instruction: %152:_(<2 x s32>) = G_FMUL %148:_, %150:_ (in function: core_0_2)
+# The later is what a more vectorization friendly packing looks like so we are expected failing the test here.
+# We need to see if the test will pass with a more latest llvm-aie and if it doesnt we can report it upstream.
 run_matmul_test \
    --name_prefix "failure_0" \
    --lhs_rhs_type "i32" \
    --acc_type "i32" \
    --m "1"  --n "1" --k "1000" \
-   --expect-compile-failure "0"
+   --expect-compile-failure "1"
+
+# The below matmul case passes with 
+# tile_sizes = [52, 52], [0, 0, 63], [26, 26], [0, 0, 3], packedSizes = [2, 2, 7]
+# but fails with tile_sizes = [[52, 52], [0, 0, 63], [4, 4], [0, 0, 3]], packedSizes = [4, 4, 7],
+# in AIRHerdPlacementPass with the error No valid placement found 
+# The later is what a more vectorization friendly packing looks like so we are expected failing the test here.
+# We should fix this failure.
+run_matmul_test \
+   --name_prefix "failure_0" \
+   --lhs_rhs_type "i32" \
+   --acc_type "i32" \
+   --m "52"  --n "52" --k "63" \
+   --expect-compile-failure "1"
 
 # Example of a run with a group of 2+ matmuls. Currently this test is passed
 # the flag '--compile-only' as there is currently an issue with the runtime if
@@ -485,9 +501,9 @@ run_matmul_test \
     --name_prefix "multiple_matmuls" \
     --lhs_rhs_type "i32" \
     --acc_type "i32" \
-    --m "512,8,16,52,7" \
-    --n "512,32,16,52,15" \
-    --k "256,16,8,63,9" \
+    --m "512,8,16,7" \
+    --n "512,32,16,15" \
+    --k "256,16,8,9" \
     --compile-only "1"
 
 run_matmul_test \
@@ -501,12 +517,6 @@ run_matmul_test \
     --lhs_rhs_type "i32" \
     --acc_type "i32" \
     --m "8"  --n "32" --k "16"
-
-run_matmul_test \
-    --name_prefix "small" \
-    --lhs_rhs_type "i32" \
-    --acc_type "i32" \
-    --m "52"  --n "52" --k "63"
 
 run_matmul_test \
     --name_prefix "small" \

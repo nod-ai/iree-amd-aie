@@ -176,22 +176,15 @@ static LogicalResult setRootConfigForPadPackPipeline(
     return linalgOp.emitOpError("expected bitwidth 64/32/16/8");
   }
   unsigned tilingScaleFactor = maybeTilingScaleFactor.value();
-  // TODO (nmeshram) : We should be able to use fixed tiling config after we
-  // have padding support.
-  auto tileM0 = findLargestFactor((int)initShape[0], 64 * tilingScaleFactor);
-  auto tileN0 = findLargestFactor((int)initShape[1], 64 * tilingScaleFactor);
-  auto tileM1 = findLargestFactor((int)tileM0, 16 * tilingScaleFactor);
-  auto tileN1 = findLargestFactor((int)tileN0, 16 * tilingScaleFactor);
-  auto tileK0 = findLargestFactor((int)lhsShape[1], 256);
 
-  // Do packing first to allow larger k packing
+  // Do packing first to allow better packing configs
   // ------------------------------------------------------
   // --------------- Set packing config -------------------
   // ------------------------------------------------------
   MLIRContext *context = entryPointFn.getContext();
   const int packLevel = 1;
-  auto packedSizes =
-      getPackedSize(linalgOp, packLevel, tileM1, tileN1, (int)tileK0);
+  auto packedSizes = getPackedSize(linalgOp, packLevel, (int)initShape[0],
+                                   (int)initShape[1], (int)lhsShape[1]);
   SmallVector<int64_t> transposePackIndices = {0, 1, 2};
   SmallVector<bool> unpackEmpty = {false, false, true};
   SmallVector<SmallVector<int64_t>> innerPerm = {{0, 1}, {1, 0}, {0, 1}};
@@ -207,12 +200,26 @@ static LogicalResult setRootConfigForPadPackPipeline(
   auto config = PackingConfigAttr::get(context, packingConfigLevels);
   setPackingConfig(linalgOp, config);
 
-  // Finish rest of tiling
+  // Do tiling
   // ------------------------------------------------------
   // -------------- Set lowering config -------------------
   // ------------------------------------------------------
-  auto tileK1 = findLargestFactor((int)tileK0 / (int)packedSizes[2],
+  // TODO (nmeshram) : We should be able to use fixed tiling config after we
+  // have padding support.
+  auto tileM1 = findLargestFactor((int)initShape[0], 16 * tilingScaleFactor,
+                                  (int)packedSizes[0]);
+  auto tileN1 = findLargestFactor((int)initShape[1], 16 * tilingScaleFactor,
+                                  (int)packedSizes[1]);
+  auto tileK1 = findLargestFactor((int)lhsShape[1] / (int)packedSizes[2],
                                   2 * tilingScaleFactor);
+
+  auto tileM0 =
+      findLargestFactor((int)initShape[0], 64 * tilingScaleFactor, (int)tileM1);
+  auto tileN0 =
+      findLargestFactor((int)initShape[1], 64 * tilingScaleFactor, (int)tileN1);
+  auto tileK0 = findLargestFactor((int)lhsShape[1], 256,
+                                  (int)tileK1 * (int)packedSizes[2]);
+
   SmallVector<int64_t> TileSizeLevel0 = {tileM0, tileN0};
   SmallVector<int64_t> TileSizeLevel1 = {0, 0, tileK0};
   SmallVector<int64_t> TileSizeLevel2 = {tileM1, tileN1};
