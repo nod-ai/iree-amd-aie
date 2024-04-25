@@ -25,8 +25,8 @@ class AIRDmaToAMDAIEDma : public OpRewritePattern<xilinx::air::DmaMemcpyNdOp> {
 
   LogicalResult matchAndRewrite(xilinx::air::DmaMemcpyNdOp op,
                                 PatternRewriter &rewriter) const override {
-    auto srcType = op.getSrc().getType().cast<MemRefType>();
-    auto dstType = op.getDst().getType().cast<MemRefType>();
+    auto srcType = cast<MemRefType>(op.getSrc().getType());
+    auto dstType = cast<MemRefType>(op.getDst().getType());
     rewriter.setInsertionPointAfter(op.getSrc().getDefiningOp());
     auto src = rewriter.create<AMDAIE::LogicalObjectFifoFromMemrefOp>(
         rewriter.getUnknownLoc(), LogicalObjectFifoType::get(srcType),

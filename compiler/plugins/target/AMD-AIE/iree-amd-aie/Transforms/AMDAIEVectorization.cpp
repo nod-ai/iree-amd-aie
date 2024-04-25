@@ -44,7 +44,7 @@ class AMDAIEVectorizationPass
 
   static bool hasOperandWithSmallElementType(Operation *op) {
     for (auto operand : op->getOperands()) {
-      if (auto type = operand.getType().dyn_cast<ShapedType>()) {
+      if (auto type = dyn_cast<ShapedType>(operand.getType())) {
         auto elementType = type.getElementType();
         if (elementType.getIntOrFloatBitWidth() <= 16) {
           return true;
@@ -55,8 +55,6 @@ class AMDAIEVectorizationPass
   }
 };
 
-
-
 void AMDAIEVectorizationPass::runOnOperation() {
   MLIRContext *context = &getContext();
   auto funcOp = getOperation();
@@ -66,7 +64,6 @@ void AMDAIEVectorizationPass::runOnOperation() {
   // Collect all operations which must be vectorized.
   SmallVector<Operation *> candidates;
   funcOp.walk([&](Operation *op) {
-
     // Only vectorize linalg ops (for now)
     if (!isa<linalg::LinalgOp>(op)) return;
 

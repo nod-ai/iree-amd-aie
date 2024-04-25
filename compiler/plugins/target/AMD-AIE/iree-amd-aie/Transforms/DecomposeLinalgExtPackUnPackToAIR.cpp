@@ -183,7 +183,7 @@ FailureOr<LowerPackUnPackResult> lowerUnPack(
   if (llvm::any_of(innerDimsPos, [srcShape](int64_t index) {
         return srcShape[index] != 1;
       })) {
-    MemRefType memrefType = unPackOp.getInputType().cast<MemRefType>();
+    MemRefType memrefType = cast<MemRefType>(unPackOp.getInputType());
     int64_t packedRank = memrefType.getRank();
 
     // Compute the permutation vector to move the last `numPackedDims` into
@@ -243,7 +243,7 @@ FailureOr<LowerPackUnPackResult> lowerUnPack(
     readShape.append(tileShape.begin(), tileShape.end());
     Type elemType = unPackOp.getInputType().getElementType();
     Attribute memorySpace =
-        unPackOp.getInputType().cast<MemRefType>().getMemorySpace();
+        cast<MemRefType>(unPackOp.getInputType()).getMemorySpace();
     auto readType = MemRefType::get(readShape, elemType, nullptr, memorySpace);
     tile = rewriter.create<memref::SubViewOp>(loc, readType, input, readOffsets,
                                               readSizes, readStrides);

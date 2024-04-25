@@ -193,7 +193,9 @@ def AMDAIE_LogicalObjectFifoFromMemrefOp : AMDAIE_Op<"logicalobjectfifo.from_mem
 
   let extraClassDeclaration = [{
     Attribute getMemorySpace() { return getMemrefType().getMemorySpace(); }
-    MemRefType getMemrefType() { return getOutput().getType().cast<LogicalObjectFifoType>().getElementType(); }
+    MemRefType getMemrefType() { 
+      return cast<LogicalObjectFifoType>(getOutput().getType()).getElementType();
+    }
   }];
 
   let hasVerifier = 0;

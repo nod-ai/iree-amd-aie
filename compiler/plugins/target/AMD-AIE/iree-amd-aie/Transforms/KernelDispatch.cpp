@@ -43,7 +43,7 @@ static SmallVector<int64_t> getPackedSize(linalg::LinalgOp linalgOp,
   }
 
   auto getElementType = [](Value v) {
-    return v.getType().cast<ShapedType>().getElementType();
+    return cast<ShapedType>(v.getType()).getElementType();
   };
 
   auto elTypeLhs = getElementType(linalgOp->getOperand(0));
@@ -245,9 +245,9 @@ static bool bodyMatcherForMatmulTranspose(Value yieldVal, Block *body) {
   if (!isa_and_nonnull<arith::MulIOp, arith::MulFOp>(mulOp)) {
     return false;
   }
-  auto lhsBlockArg = mulOp->getOperand(0).dyn_cast<BlockArgument>();
-  auto rhsBlockArg = mulOp->getOperand(1).dyn_cast<BlockArgument>();
-  auto outBlockArg = addOp->getOperand(0).dyn_cast<BlockArgument>();
+  auto lhsBlockArg = dyn_cast<BlockArgument>(mulOp->getOperand(0));
+  auto rhsBlockArg = dyn_cast<BlockArgument>(mulOp->getOperand(1));
+  auto outBlockArg = dyn_cast<BlockArgument>(addOp->getOperand(0));
   if (!lhsBlockArg || !rhsBlockArg || !outBlockArg ||
       lhsBlockArg.getOwner() != body || rhsBlockArg.getOwner() != body ||
       outBlockArg.getOwner() != body || lhsBlockArg.getArgNumber() != 0 ||
