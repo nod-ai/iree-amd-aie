@@ -409,6 +409,8 @@ void addMLIRAIRAIELoweringPasses(OpPassManager &passManager, bool packPeel) {
   else
     passManager.addPass(createAMDAIEPackToDmaPass());
 
+  passManager.addPass(createCanonicalizerPass());
+  passManager.addPass(createCSEPass());
   {
     xilinx::air::ParallelToHerdOptions options;
     options.clAssignDepth = 1;
