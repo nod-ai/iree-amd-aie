@@ -174,7 +174,7 @@ iree_cc_library(
     "ConversionPasses.cpp"
     "${IREE_MLIR_AIR_SOURCE_DIR}/lib/Conversion/ConvertToAIRPass.cpp"
     "${IREE_MLIR_AIR_SOURCE_DIR}/lib/Conversion/AIRLoweringPass.cpp"
-    "${IREE_MLIR_AIR_SOURCE_DIR}/lib/Conversion/AIRRtToIpuPass.cpp"
+    "${IREE_MLIR_AIR_SOURCE_DIR}/lib/Conversion/AIRRtToNpuPass.cpp"
     "${IREE_MLIR_AIR_SOURCE_DIR}/lib/Conversion/AIRToAIEPass.cpp"
     "${IREE_MLIR_AIR_SOURCE_DIR}/lib/Conversion/AIRToAIESchedulingUtils.cpp"
     "${IREE_MLIR_AIR_SOURCE_DIR}/lib/Conversion/AIRPipeline.cpp"

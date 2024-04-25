@@ -162,7 +162,7 @@ static iree_status_t iree_hal_xrt_allocator_allocate_buffer(
 
   iree_status_t status = iree_ok_status();
 
-  // Note that for IPU host and device share the same DDR RAM address space. So
+  // Note that for NPU host and device share the same DDR RAM address space. So
   // the `HOST_ONLY` flag below is not strictly correct but present for legacy
   // reasons and it is what is used by XRT to identify that we want to allocate
   // in the DDR RAM. Also, group_id is not of relavence in this use case so we

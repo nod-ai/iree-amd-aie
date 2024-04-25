@@ -15,7 +15,7 @@ namespace mlir::iree_compiler::AMDAIE {
 void registerAIRConversionPasses() {
   registerAIRToAIE();
   registerAIRLoweringPass();
-  registerAIRRtToIpuPass();
+  registerAIRRtToNpuPass();
   registerCopyToDma();
   registerDmaToChannel();
   registerParallelToHerd();
