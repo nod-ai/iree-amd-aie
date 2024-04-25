@@ -7,15 +7,15 @@
 
 // XFAIL: *
 // CPP-LABEL: hal.executable.export public @matmul_transpose_static_dispatch_0_generic_8x2048x2048_f32
-//       CPP:    aie.device(ipu)
+//       CPP:    aie.device(npu)
 //       CPP:    aie.shim_dma_allocation
 //       CPP:    aie.shim_dma_allocation
 //       CPP:    aie.shim_dma_allocation
 //       CPP:    func.func @matmul_transpose_static_dispatch_0_generic_8x2048x2048_f32(%arg0: memref<8x2048xf32>, %arg1: memref<2048x2048xf32>, %arg2: memref<8x2048xf32>)
-//       CPP:      aiex.ipu.dma_memcpy_nd
-//       CPP:      aiex.ipu.dma_memcpy_nd
-//       CPP:      aiex.ipu.dma_memcpy_nd
-//       CPP:      aiex.ipu.sync
+//       CPP:      aiex.npu.dma_memcpy_nd
+//       CPP:      aiex.npu.dma_memcpy_nd
+//       CPP:      aiex.npu.dma_memcpy_nd
+//       CPP:      aiex.npu.sync
 func.func @matmul_transpose_static_8x2048x2048_f32(%lhs : tensor<8x2048xf32>,
     %rhs : tensor<2048x2048xf32>) -> tensor<8x2048xf32> {
   %cst = arith.constant 0.0 : f32
@@ -34,15 +34,15 @@ func.func @matmul_transpose_static_8x2048x2048_f32(%lhs : tensor<8x2048xf32>,
 
 // XFAIL: *
 // CPP-LABEL: hal.executable.export public @matmul_transpose_static_dispatch_0_generic_8x2048x8192_f32
-//       CPP:    aie.device(ipu)
+//       CPP:    aie.device(npu)
 //       CPP:    aie.shim_dma_allocation
 //       CPP:    aie.shim_dma_allocation
 //       CPP:    aie.shim_dma_allocation
 //       CPP:    func.func @matmul_transpose_static_dispatch_0_generic_8x2048x8192_f32(%arg0: memref<8x8192xf32>, %arg1: memref<2048x8192xf32>, %arg2: memref<8x2048xf32>)
-//       CPP:      aiex.ipu.dma_memcpy_nd
-//       CPP:      aiex.ipu.dma_memcpy_nd
-//       CPP:      aiex.ipu.dma_memcpy_nd
-//       CPP:      aiex.ipu.sync
+//       CPP:      aiex.npu.dma_memcpy_nd
+//       CPP:      aiex.npu.dma_memcpy_nd
+//       CPP:      aiex.npu.dma_memcpy_nd
+//       CPP:      aiex.npu.sync
 func.func @matmul_transpose_static_8x2048x8192_f32(%lhs : tensor<8x8192xf32>,
     %rhs : tensor<2048x8192xf32>) -> tensor<8x2048xf32> {
   %cst = arith.constant 0.0 : f32
@@ -61,15 +61,15 @@ func.func @matmul_transpose_static_8x2048x8192_f32(%lhs : tensor<8x8192xf32>,
 
 // XFAIL: *
 // CPP-LABEL: hal.executable.export public @matmul_transpose_static_dispatch_0_generic_8x8192x2048_f32
-//       CPP:    aie.device(ipu)
+//       CPP:    aie.device(npu)
 //       CPP:    aie.shim_dma_allocation
 //       CPP:    aie.shim_dma_allocation
 //       CPP:    aie.shim_dma_allocation
 //       CPP:    func.func @matmul_transpose_static_dispatch_0_generic_8x8192x2048_f32(%arg0: memref<8x2048xf32>, %arg1: memref<8192x2048xf32>, %arg2: memref<8x8192xf32>)
-//       CPP:      aiex.ipu.dma_memcpy_nd
-//       CPP:      aiex.ipu.dma_memcpy_nd
-//       CPP:      aiex.ipu.dma_memcpy_nd
-//       CPP:      aiex.ipu.sync
+//       CPP:      aiex.npu.dma_memcpy_nd
+//       CPP:      aiex.npu.dma_memcpy_nd
+//       CPP:      aiex.npu.dma_memcpy_nd
+//       CPP:      aiex.npu.sync
 func.func @matmul_transpose_static_8x8192x2048_f32(%lhs : tensor<8x2048xf32>,
     %rhs : tensor<8192x2048xf32>) -> tensor<8x8192xf32> {
   %cst = arith.constant 0.0 : f32
@@ -88,15 +88,15 @@ func.func @matmul_transpose_static_8x8192x2048_f32(%lhs : tensor<8x2048xf32>,
 
 // XFAIL: *
 // CPP-LABEL: hal.executable.export public @matmul_transpose_static_dispatch_0_generic_8x50272x2048_f32
-//       CPP:    aie.device(ipu)
+//       CPP:    aie.device(npu)
 //       CPP:    aie.shim_dma_allocation
 //       CPP:    aie.shim_dma_allocation
 //       CPP:    aie.shim_dma_allocation
 //       CPP:    func.func @matmul_transpose_static_dispatch_0_generic_8x50272x2048_f32(%arg0: memref<8x2048xf32>, %arg1: memref<50272x2048xf32>, %arg2: memref<8x50272xf32>)
-//       CPP:      aiex.ipu.dma_memcpy_nd
-//       CPP:      aiex.ipu.dma_memcpy_nd
-//       CPP:      aiex.ipu.dma_memcpy_nd
-//       CPP:      aiex.ipu.sync
+//       CPP:      aiex.npu.dma_memcpy_nd
+//       CPP:      aiex.npu.dma_memcpy_nd
+//       CPP:      aiex.npu.dma_memcpy_nd
+//       CPP:      aiex.npu.sync
 func.func @matmul_transpose_static_8x50272x2048_f32(%lhs : tensor<8x2048xf32>,
     %rhs : tensor<50272x2048xf32>) -> tensor<8x50272xf32> {
   %cst = arith.constant 0.0 : f32
@@ -115,15 +115,15 @@ func.func @matmul_transpose_static_8x50272x2048_f32(%lhs : tensor<8x2048xf32>,
 
 // XFAIL: *
 // CPP-LABEL: hal.executable.export public @batch_matmul_transpose_static_dispatch_0_generic_32x8x8x64_f32
-//       CPP:    aie.device(ipu)
+//       CPP:    aie.device(npu)
 //       CPP:    aie.shim_dma_allocation
 //       CPP:    aie.shim_dma_allocation
 //       CPP:    aie.shim_dma_allocation
 //       CPP:    func.func @batch_matmul_transpose_static_dispatch_0_generic_32x8x8x64_f32(%arg0: memref<32x8x64xf32>, %arg1: memref<32x8x64xf32>, %arg2: memref<32x8x8xf32>)
-//       CPP:      aiex.ipu.dma_memcpy_nd
-//       CPP:      aiex.ipu.dma_memcpy_nd
-//       CPP:      aiex.ipu.dma_memcpy_nd
-//       CPP:      aiex.ipu.sync
+//       CPP:      aiex.npu.dma_memcpy_nd
+//       CPP:      aiex.npu.dma_memcpy_nd
+//       CPP:      aiex.npu.dma_memcpy_nd
+//       CPP:      aiex.npu.sync
 func.func @batch_matmul_transpose_static_32x8x8x64_f32(%lhs : tensor<32x8x64xf32>,
     %rhs : tensor<32x8x64xf32>) -> tensor<32x8x8xf32> {
   %cst = arith.constant 0.0 : f32
@@ -142,15 +142,15 @@ func.func @batch_matmul_transpose_static_32x8x8x64_f32(%lhs : tensor<32x8x64xf32
 
 // XFAIL: *
 // CPP-LABEL: hal.executable.export public @batch_matmul_static_dispatch_0_batch_matmul_32x8x64x8_f32
-//       CPP:    aie.device(ipu)
+//       CPP:    aie.device(npu)
 //       CPP:    aie.shim_dma_allocation
 //       CPP:    aie.shim_dma_allocation
 //       CPP:    aie.shim_dma_allocation
 //       CPP:    func.func @batch_matmul_static_dispatch_0_batch_matmul_32x8x64x8_f32(%arg0: memref<32x8x64xf32>, %arg1: memref<32x8x64xf32>, %arg2: memref<32x8x8xf32>)
-//       CPP:      aiex.ipu.dma_memcpy_nd
-//       CPP:      aiex.ipu.dma_memcpy_nd
-//       CPP:      aiex.ipu.dma_memcpy_nd
-//       CPP:      aiex.ipu.sync
+//       CPP:      aiex.npu.dma_memcpy_nd
+//       CPP:      aiex.npu.dma_memcpy_nd
+//       CPP:      aiex.npu.dma_memcpy_nd
+//       CPP:      aiex.npu.sync
 func.func @batch_matmul_static_32x8x64x8_f32(%lhs : tensor<32x8x8xf32>,
     %rhs : tensor<32x8x64xf32>) -> tensor<32x8x64xf32> {
   %cst = arith.constant 0.0 : f32
