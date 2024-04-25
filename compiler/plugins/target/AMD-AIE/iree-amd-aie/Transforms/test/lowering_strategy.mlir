@@ -132,6 +132,27 @@ builtin.module {
 
 // -----
 
+// CHECK-PAD-PACK{LITERAL}: #config = #iree_codegen.lowering_config<tile_sizes = [[128, 128], [0, 0, 128], [64, 64], [0, 0, 8]]>
+// CHECK-PAD-PACK{LITERAL}: #packingConfig = #amdaie.packing_config<packing_config = [{packedSizes = [4, 4, 8], transposePackIndices = [0, 1, 2], unpackEmpty = [false, false, true], innerPerm = [[0, 1], [1, 0], [0, 1]], outerPerm = [[1, 0], [1, 0], [1, 0]]}]>
+builtin.module {
+  func.func @matmul_2432x2432x2432_bf16xbf16xf32() {
+    %cst = arith.constant 0.000000e+00 : f32
+    %c0 = arith.constant 0 : index
+    %0 = hal.interface.binding.subspan set(0) binding(0) type(storage_buffer) alignment(64) offset(%c0) flags(ReadOnly) : !flow.dispatch.tensor<readonly:tensor<2432x2432xbf16>>
+    %1 = hal.interface.binding.subspan set(0) binding(1) type(storage_buffer) alignment(64) offset(%c0) flags(ReadOnly) : !flow.dispatch.tensor<readonly:tensor<2432x2432xbf16>>
+    %2 = hal.interface.binding.subspan set(0) binding(2) type(storage_buffer) alignment(64) offset(%c0) : !flow.dispatch.tensor<writeonly:tensor<2432x2432xf32>>
+    %3 = flow.dispatch.tensor.load %0, offsets = [0, 0], sizes = [2432, 2432], strides = [1, 1] : !flow.dispatch.tensor<readonly:tensor<2432x2432xbf16>> -> tensor<2432x2432xbf16>
+    %4 = flow.dispatch.tensor.load %1, offsets = [0, 0], sizes = [2432, 2432], strides = [1, 1] : !flow.dispatch.tensor<readonly:tensor<2432x2432xbf16>> -> tensor<2432x2432xbf16>
+    %5 = tensor.empty() : tensor<2432x2432xf32>
+    %6 = linalg.fill ins(%cst : f32) outs(%5 : tensor<2432x2432xf32>) -> tensor<2432x2432xf32>
+    %7 = linalg.matmul ins(%3, %4 : tensor<2432x2432xbf16>, tensor<2432x2432xbf16>) outs(%6 : tensor<2432x2432xf32>) -> tensor<2432x2432xf32>
+    flow.dispatch.tensor.store %7, %2, offsets = [0, 0], sizes = [2432, 2432], strides = [1, 1] : tensor<2432x2432xf32> -> !flow.dispatch.tensor<writeonly:tensor<2432x2432xf32>>
+    return
+  }
+}
+
+// -----
+
 // CHECK-PACK-PEEL{LITERAL}: #config = #iree_codegen.lowering_config<tile_sizes = [[64, 64], [0, 0, 1], [0, 0, 0, 8, 4, 0]]>
 // CHECK-PACK-PEEL{LITERAL}: #packingConfig = #amdaie.packing_config<packing_config = [{packedSizes = [64, 64, 32], transposePackIndices = [1], unpackEmpty = [false], innerPerm = [[1, 0]], outerPerm = [[0, 1]]}, {packedSizes = [0, 0, 0, 4, 8, 8], transposePackIndices = [0, 1, 2], unpackEmpty = [false, false, true], innerPerm = [[0, 1], [1, 0], [0, 1]], outerPerm = [[0, 1, 3, 2], [0, 1, 3, 2], [0, 1, 3, 2]]}]>
 builtin.module {
