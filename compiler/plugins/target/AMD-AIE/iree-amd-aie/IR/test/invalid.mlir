@@ -3,9 +3,10 @@
 
 func.func @core_invalid_terminator() {
   %c0 = arith.constant 0 : index
+  %tile = amdaie.tile(%c0, %c0)
   // expected-note @+2 {{in custom textual format, the absence of terminator implies 'amdaie.end'}}
   // expected-error @+1 {{'amdaie.core' op expects regions to end with 'amdaie.end', found 'arith.constant'}}
-  amdaie.core(%c0, %c0) {
+  %core = amdaie.core(%tile) {
     %c1 = arith.constant 0 : index
   }
   return

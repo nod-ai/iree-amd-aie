@@ -66,6 +66,9 @@ std::unique_ptr<Pass> createAMDAIEFuseFillIntoForallPass();
 /// Create a pass to fuse or distribute logical objectfifos into workgroups.
 std::unique_ptr<Pass> createAMDAIEFuseLogicalObjectFifoIntoWorkgroupPass();
 
+/// Hoist an affine apply op on a scf.for op's induction variable.
+std::unique_ptr<Pass> createAMDAIEHoistForLoopAffineApplyPass();
+
 /// Create a pass to transform linalg.generics into a form which benefits later
 /// vectorization passes (to vector and aievec dialects).
 std::unique_ptr<Pass> createAMDAIEInsertLoopsForVectorizationPass();
@@ -122,6 +125,10 @@ std::unique_ptr<Pass> createAMDAIETileAndFusePass(
 
 /// Create pass to propagate pack/unpack ops using upstream patterns.
 std::unique_ptr<Pass> createAMDAIEPropagateDataLayoutPass();
+
+/// Create pass to unroll the scf.forall operations within AIE workgroups and
+/// distribute the logical objectfifos .
+std::unique_ptr<Pass> createAMDAIEUnrollAndDistributeWorkgroupPass();
 
 void registerAMDAIEPasses();
 

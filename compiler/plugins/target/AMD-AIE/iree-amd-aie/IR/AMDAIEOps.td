@@ -8,7 +8,9 @@
 #define IREE_AMDAIE_DIALECT_IREEAMDAIE_OPS
 
 include "mlir/Interfaces/CopyOpInterface.td"
+include "mlir/Interfaces/SideEffectInterfaces.td"
 include "mlir/Interfaces/ViewLikeInterface.td"
+include "mlir/IR/OpAsmInterface.td"
 include "mlir/IR/OpBase.td"
 include "mlir/IR/SymbolInterfaces.td"
 include "iree-amd-aie/IR/AMDAIEAttrs.td"
@@ -48,8 +50,47 @@ def AMDAIE_CoreOp: AMDAIE_Op<"core", [SingleBlock]>, Results<(outs Index)> {
   let description = [{
     This operation represents an AIE core op, containing a sequence of
     operations in its body to be executed on this core. The core is
+    specified through a tile, indicating the location in the AIE array. This 
+    operation differs from the `CoreOp` defined in the it uses AMDAIE_TileOp,
+    which accepts the column and row as indices instead of integers.
+  }];
+
+  let arguments = (
+    ins Index:$tile
+  );
+
+  let regions = (region SizedRegion<1>:$region);
+  
+  let assemblyFormat = [{ `(` $tile `)` regions attr-dict }];
+  
+  let builders = [
+    OpBuilder<(ins "mlir::Value":$tile), [{
+      build($_builder, $_state, $_builder.getIndexType(), tile);
+    }]>,
+    OpBuilder<(ins "mlir::Value":$coreCol, "mlir::Value":$coreRow)>,
+  ];
+
+  let extraClassDeclaration = [{
+    TileOp getTileOp();
+  }];
+
+  let hasVerifier = 1;
+}
+
+def AMDAIE_EndOp: AMDAIE_Op<"end", [Terminator]> {
+  let summary = "Generic terminator for AMDAIE ops' regions.";
+  let assemblyFormat = [{ attr-dict }];
+}
+
+def AMDAIE_TileOp: AMDAIE_Op<"tile", [
+    Pure,
+    DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>
+  ]>, Results<(outs Index)> {
+  let summary = "The AIE tile operator indicating a location on the AIE array.";
+  let description = [{
+    This operation represents an AIE tile on the AIE array. The tile is
     specified through a coordinate (`col`, `row`), indicating the location
-    in the AIE array. This operation differs from the `CoreOp` defined in the
+    in the AIE array. This operation differs from the `TileOp` defined in the
     AIE dialect in that it accepts the column and row as indices instead of
     integers.
   }];
@@ -59,22 +100,17 @@ def AMDAIE_CoreOp: AMDAIE_Op<"core", [SingleBlock]>, Results<(outs Index)> {
         Index:$row
   );
 
-  let regions = (region SizedRegion<1>:$region);
-  
-  let assemblyFormat = [{ `(` $col `,` $row `)` regions attr-dict }];
-  
+  let assemblyFormat = [{ `(` $col `,` $row `)` attr-dict }];
+
   let builders = [
     OpBuilder<(ins "mlir::Value":$col, "mlir::Value":$row), [{
       build($_builder, $_state, $_builder.getIndexType(), col, row);
     }]>
   ];
 
-  let hasVerifier = 1;
-}
-
-def AMDAIE_EndOp: AMDAIE_Op<"end", [Terminator]> {
-  let summary = "Generic terminator for AMDAIE ops' regions.";
-  let assemblyFormat = [{ attr-dict }];
+  let extraClassDeclaration = [{
+    bool hasStaticLocation();
+  }];
 }
 
 def AMDAIE_WorkgroupOp : AMDAIE_Op<"workgroup",
@@ -161,7 +197,7 @@ def AMDAIE_LogicalObjectFifoConsume: AMDAIE_Op<"logicalobjectfifo.consume", []> 
   }];
 }
 
-def AMDAIE_LogicalObjectFifoFromMemrefOp : AMDAIE_Op<"logicalobjectfifo.from_memref", []> {
+def AMDAIE_LogicalObjectFifoFromMemrefOp : AMDAIE_Op<"logicalobjectfifo.from_memref", [Pure]> {
   let summary = "Create a logical objectfifo from a memref";
   let description = [{
     Creates a logical objectfifo which encapsulates a memref. The logical objectfifo adds synchronization
@@ -192,13 +228,30 @@ def AMDAIE_LogicalObjectFifoFromMemrefOp : AMDAIE_Op<"logicalobjectfifo.from_mem
   ];
 
   let extraClassDeclaration = [{
-    Attribute getMemorySpace() { return getMemrefType().getMemorySpace(); }
+    // Return the memory space as an attribute.
+    Attribute getMemorySpace() {
+      return getMemrefType().getMemorySpace();
+    }
+
+    // Helper method to return the memory space as an integer. If no memory
+    // space attribute, this indicates a global memory space and we return 0.
+    // Else cast the memory space attribute to an integer. 
+    uint64_t getMemorySpaceAsUInt() {
+      Attribute memSpace = getMemorySpace();
+      return memSpace ? dyn_cast<IntegerAttr>(memSpace).getInt() : 0;
+    }
+
+    // Return the source memref type.
     MemRefType getMemrefType() { 
       return cast<LogicalObjectFifoType>(getOutput().getType()).getElementType();
     }
   }];
 
-  let hasVerifier = 0;
+  // The canonicalizer will sort the tile arguments to get deterministic IR.
+  // The comparator first orders on column index and then on row index (if static).
+  let hasCanonicalizeMethod = 1;
+
+  let hasVerifier = 1;
   let cppNamespace = "mlir::iree_compiler::AMDAIE";
 }
 

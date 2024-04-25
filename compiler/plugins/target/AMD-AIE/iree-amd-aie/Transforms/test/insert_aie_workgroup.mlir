@@ -8,7 +8,10 @@
 // CHECK:       %[[DMA_CPY1:.*]] = amdaie.dma_cpy_nd
 // CHECK:       %[[DMA_CPY2:.*]] = amdaie.dma_cpy_nd
 // CHECK:       %[[DMA_CPY3:.*]] = amdaie.dma_cpy_nd
-// CHECK:       %[[CORE0:.*]] = amdaie.core(%[[ARG3]], %[[ARG2]]) {
+// CHECK:       %[[C2:.*]] = arith.constant 2 : index
+// CHECK:       %[[ADD:.*]] = arith.addi %[[ARG2]], %[[C2]] : index
+// CHECK:       %[[TILE0:.*]] = amdaie.tile(%[[ARG3]], %[[ADD]])
+// CHECK:       %[[CORE0:.*]] = amdaie.core(%[[TILE0]]) {
 // CHECK:         linalg.fill
 // CHECK:         amdaie.logicalobjectfifo.consume(%[[DMA_CPY2]])
 // CHECK:         amdaie.logicalobjectfifo.consume(%[[DMA_CPY3]])
@@ -28,7 +31,10 @@
 // CHECK:       %[[DMA_CPY3:.*]] = amdaie.dma_cpy_nd
 // CHECK:       %[[DMA_CPY4:.*]] = amdaie.dma_cpy_nd
 // CHECK:       %[[DMA_CPY5:.*]] = amdaie.dma_cpy_nd
-// CHECK:       %[[CORE1:.*]] = amdaie.core(%[[ARG3]], %[[ARG2]]) {
+// CHECK:       %[[C2:.*]] = arith.constant 2 : index
+// CHECK:       %[[ADD:.*]] = arith.addi %[[ARG2]], %[[C2]] : index
+// CHECK:       %[[TILE1:.*]] = amdaie.tile(%[[ARG3]], %[[ADD]])
+// CHECK:       %[[CORE1:.*]] = amdaie.core(%[[TILE1]]) {
 // CHECK:         linalg.fill ins(%c0_i32 : i32) outs(%alloc_1 : memref<4x8x4x8xi32, 2>)
 // CHECK:         amdaie.logicalobjectfifo.consume(%[[DMA_CPY2]])
 // CHECK:         amdaie.logicalobjectfifo.consume(%[[DMA_CPY3]])
