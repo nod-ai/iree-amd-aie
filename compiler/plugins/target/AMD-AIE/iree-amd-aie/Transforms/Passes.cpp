@@ -500,7 +500,7 @@ void addMLIRAIRAIELoweringPasses(OpPassManager &passManager, bool packPeel) {
     xilinx::air::AIRToAIEOptions options;
     options.clRowOffset = 2;
     options.clColOffset = 0;
-    options.clDevice = "ipu";
+    options.clDevice = "npu";
     options.clEmitWhileLoop = true;
     passManager.addPass(xilinx::air::createAIRToAIEPass(options));
   }
@@ -521,7 +521,7 @@ void addMLIRAIRAIELoweringPasses(OpPassManager &passManager, bool packPeel) {
   }
   passManager.addPass(mlir::affine::createAffineExpandIndexOpsPass());
 
-  passManager.addPass(xilinx::airrt::createAIRRtToIpuPass());
+  passManager.addPass(xilinx::airrt::createAIRRtToNpuPass());
   passManager.addPass(createCanonicalizerPass());
 }
 
@@ -604,7 +604,7 @@ void addMLIRAIRAIELegacyLoweringPasses(OpPassManager &passManager) {
     xilinx::air::AIRToAIEOptions options;
     options.clRowOffset = 2;
     options.clColOffset = 0;
-    options.clDevice = "ipu";
+    options.clDevice = "npu";
     options.clEmitWhileLoop = true;
     passManager.addPass(xilinx::air::createAIRToAIEPass(options));
   }
@@ -625,7 +625,7 @@ void addMLIRAIRAIELegacyLoweringPasses(OpPassManager &passManager) {
   }
   passManager.addPass(mlir::affine::createAffineExpandIndexOpsPass());
 
-  passManager.addPass(xilinx::airrt::createAIRRtToIpuPass());
+  passManager.addPass(xilinx::airrt::createAIRRtToNpuPass());
   passManager.addPass(createCanonicalizerPass());
 }
 
