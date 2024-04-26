@@ -206,8 +206,8 @@ LogicalResult setDmaInputs(Operation *&operandOp,
       "and SubViewOp as inputs.");
 }
 
-/// Get the inputs from the pack/unpack op \p op. Return failure if \p op is not
-/// a pack/unpack op, or if \p op is determined unlowerable to a DMA operation.
+/// Get the inputs from the pack/unpack op 'op'. Return failure if 'op' is not
+/// a pack/unpack op, or if 'op' is determined unlowerable to a DMA operation.
 LogicalResult processInputs(Operation *op, SmallVector<OpFoldResult> &offsets,
                             SmallVector<OpFoldResult> &sizes,
                             SmallVector<OpFoldResult> &strides) {
@@ -225,13 +225,13 @@ LogicalResult processInputs(Operation *op, SmallVector<OpFoldResult> &offsets,
   return success();
 }
 
-/// Rewrite the pack/unpack \p op as a DMA operation. The function arguments \p
-/// input, \p output, and \p innerTiles are the input, output, and inner tile
-/// of \p op. If \p op is not a pack/unpack op, or if it determined to not
+/// Rewrite the pack/unpack op 'op' as a DMA operation. The function arguments
+/// 'input', 'output', and 'innerTiles' are the input, output, and inner tile
+/// of 'op'. If 'op' is not a pack/unpack op, or if it determined to not
 /// currently be lowerable to a DMA operation, failure is returned.
 ///
-/// Design note: arguments \p input, \p output, and \p innerTiles could be
-/// obtained from \p op inside this function if it were templatized, but
+/// Design note: arguments 'input', 'output', and 'innerTiles' could be
+/// obtained from 'op' inside this function if it were templatized, but
 /// I've factorized out that logic to reduce the total amount of templatized
 /// code.
 LogicalResult rewriteAsDma(IRRewriter &rewriter, Operation *op, Value input,
