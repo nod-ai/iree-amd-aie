@@ -409,7 +409,8 @@ void addMLIRAIRAIELoweringPasses(OpPassManager &passManager, bool packPeel) {
   else
     passManager.addPass(createAMDAIEPackToDmaPass());
 
-  passManager.addPass(createCanonicalizerPass());
+  // TODO(newling) adding createCanonicalizerPass introduces a dma copy lowering
+  // failure. Understand and fix.
   passManager.addPass(createCSEPass());
   {
     xilinx::air::ParallelToHerdOptions options;
