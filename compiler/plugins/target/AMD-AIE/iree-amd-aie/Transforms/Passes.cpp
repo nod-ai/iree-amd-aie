@@ -354,8 +354,6 @@ void addPadPackBasedPassPipeline(OpPassManager &funcPassManager,
   // Vectorization passes
   appendVectorizationToPipeline(funcPassManager);
 
-  modulePassManager.addPass(createCanonicalizerPass());
-
   // Comprehensive bufferization
   addAMDAIEBufferizePasses(funcPassManager);
 }
@@ -386,7 +384,7 @@ void buildAMDAIETransformPassPipeline(OpPassManager &variantPassManager) {
     addMLIRAIRAIELoweringPasses(modulePassManager, false);
   } else if (clUsePipeline == AIEPassPipeline::PackPeelPipeline) {
     addMLIRAIRAIELoweringPasses(modulePassManager, true);
-  } 
+  }
   variantPassManager.addPass(createReconcileTranslationInfoPass());
   variantPassManager.addPass(createAMDAIELowerWorkgroupCountPass());
 
