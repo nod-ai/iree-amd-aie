@@ -44,6 +44,9 @@ struct AMDAIEOptions {
   // Print IR at module scope in MLIR passes in aie2xclbin.
   bool aie2xclbinPrintIrModuleScope{false};
 
+  // Print MLIR timing summary for the MLIR passes in aie2xclbin.
+  bool aie2xclbinTiming{false};
+
  public:
   void bindOptions(OptionsBinder &binder) {
     static llvm::cl::OptionCategory category("AMD AIE Options");
@@ -80,6 +83,11 @@ struct AMDAIEOptions {
         llvm::cl::cat(category),
         llvm::cl::desc(
             "If true, when printing the IR do so at the module scope"));
+
+    binder.opt<bool>(
+        "aie2xclbin-timing", aie2xclbinTiming, llvm::cl::cat(category),
+        llvm::cl::desc("If true, print MLIR timing summary for the MLIR passes "
+                       "in aie2xclbin"));
 
     binder.opt<bool>(
         "iree-amd-aie-show-invoked-commands", showInvokedCommands,

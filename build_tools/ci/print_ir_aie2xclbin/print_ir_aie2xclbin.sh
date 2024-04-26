@@ -128,9 +128,11 @@ ${SOURCE_MLIR_FILE} \
 --aie2xclbin-print-ir-before-all \
 --aie2xclbin-print-ir-module-scope \
 --aie2xclbin-disable-threading \
+--aie2xclbin-timing \
 --mlir-print-ir-after-all \
 --mlir-print-ir-module-scope \
 --mlir-disable-threading \
+--mlir-timing \
 --iree-amdaie-use-pipeline=pad-pack \
 -o ${OUTPUT}/test_artefact.vmfb \
 --iree-amd-aie-show-invoked-commands"
@@ -170,4 +172,6 @@ ${FILECHECK_EXE} --input-file ${STDERR_FULLPATH} ${0} --check-prefix=CHECK-STDER
 # CHECK-STDOUT-DAG: Bootgen
 # CHECK-STDOUT-DAG: MEM_TOPOLOGY
 ${FILECHECK_EXE} --input-file ${STDOUT_FULLPATH} ${0} --check-prefix=CHECK-STDOUT
+
+#TODO(newling) add check of sorts for timing. 
 
