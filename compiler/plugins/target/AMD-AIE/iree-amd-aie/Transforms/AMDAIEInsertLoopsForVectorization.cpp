@@ -27,7 +27,7 @@ class AMDAIEInsertLoopsForVectorizationPass
   //   (1,1,5) -> 1
   //   (1,1,1) -> 0
   static int getNumInnerDims(Value v) {
-    auto shape = v.getType().cast<ShapedType>().getShape();
+    auto shape = cast<ShapedType>(v.getType()).getShape();
     auto nDims = shape.size();
 
     // The first dimension which is not 0 or 1.
