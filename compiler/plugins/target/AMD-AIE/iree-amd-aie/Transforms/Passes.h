@@ -8,7 +8,6 @@
 #define IREE_AMD_AIE_TRANSFORMS_PASSES_H_
 
 #include "iree-amd-aie/Transforms/PassDetail.h"
-#include "iree/compiler/Codegen/Common/PassUtils.h"
 #include "iree/compiler/Codegen/Common/TileSizeSelection.h"
 #include "mlir/Pass/Pass.h"
 
@@ -17,11 +16,6 @@ namespace mlir::iree_compiler::AMDAIE {
 /// Add passes to lower from MLIR-AIR through AIE. This is
 /// currently the default passes used for lowering after IREEs tiling.
 void addMLIRAIRAIELoweringPasses(OpPassManager &passManager, bool packPeel);
-
-/// Add passes to lower from MLIR-AIR through AIE. This is
-/// currently the default passes used for lowering after IREEs tiling from
-/// pipelines other than the pad-pack pipelines
-void addMLIRAIRAIELegacyLoweringPasses(OpPassManager &passManager);
 
 /// Populates passes needed to lower linalg/arith/math ops to LLVM dialect via
 /// the structured ops path. The pass manager `pm` here operate on the module
