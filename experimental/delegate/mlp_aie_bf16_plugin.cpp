@@ -55,6 +55,9 @@
 // of float accumulation.
 // #define USE_BF16_CPU_ACCUMULATOR 1
 
+// Turn this on to dump matmul operand and result tensor values
+// #define DEBUG_VALUES 1
+
 // Turn this on to debug value conversions
 // #define DEBUG_VALUE_CONVERSIONS 1
 
@@ -354,7 +357,7 @@ template <typename ModelDType, typename KernelDType, typename ModelDataPtr>
 class TensorBinderBase : public TensorBinderCommon<ModelDType, KernelDType, ModelDataPtr> {
 protected:
   std::size_t numModelElements;  // number of elements in model tensor
-  ModelDataPtr modelTensorData = ModelDataPtr();
+  ModelDataPtr modelTensorData = ModelDataPtr(); // pointer to HAL buffer
   bool isInitialized = false;
 
 public:
@@ -366,10 +369,10 @@ public:
     if (!isInitialized || numModelElements != this->numModelElements) {
       this->bo = xrt::bo(this->device, this->xrtBufferNumBytes,
           XRT_BO_FLAGS_HOST_ONLY, this->memoryBank);
-      this->modelTensorData = modelTensorData;
-      this->numModelElements = numModelElements;
       isInitialized = true;
     }
+    this->modelTensorData = modelTensorData;
+    this->numModelElements = numModelElements;
   }
 
   void copyModelToXrt() {
@@ -614,6 +617,13 @@ int aie_matmul(Params *params) {
     int cnt = 0;
     auto xrtState = XrtState::getInstance();
 
+#ifdef DEBUG_VALUES
+    std::cout << "LHS Tensor" << std::endl;
+    params->lhs.dumpVals(std::cout, aVolume);
+    std::cout << "RHS Tensor" << std::endl;
+    params->rhs.dumpVals(std::cout, bVolume);
+#endif
+
     // Set up binders to map HAL buffers to XRT buffers
     xrtState->lhsBinder->bind(params->lhs.get(), aVolume);
     xrtState->rhsBinder->bind(params->rhs.get(), bVolume);
@@ -634,6 +644,11 @@ int aie_matmul(Params *params) {
 
     // sync output to host and copy the data from the BO
     xrtState->resultBinder->copyXrtToModel();
+
+#ifdef DEBUG_VALUES
+    std::cout << "Result Tensor" << std::endl;
+    params->result.dumpVals(std::cout, cVolume);
+#endif
 
     return 0;  // TODO: check for and handle error conditions
 }
