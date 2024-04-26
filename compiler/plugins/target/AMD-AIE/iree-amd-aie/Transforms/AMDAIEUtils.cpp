@@ -72,13 +72,13 @@ FailureOr<std::array<uint32_t, 3>> getAIEIntegerMatmulInstructionSize(
 FailureOr<std::array<uint32_t, 3>> getAIEMatmulInstructionSize(Type elTypeLhs,
                                                                Type elTypeRhs,
                                                                Type elTypeAcc) {
-  bool allFloatingPoint = elTypeLhs.isa<FloatType>() &&
-                          elTypeRhs.isa<FloatType>() &&
-                          elTypeAcc.isa<FloatType>();
+  bool allFloatingPoint = isa<FloatType>(elTypeLhs) &&
+                          isa<FloatType>(elTypeRhs) &&
+                          isa<FloatType>(elTypeAcc);
 
-  bool allInteger = elTypeLhs.isa<IntegerType>() &&
-                    elTypeRhs.isa<IntegerType>() &&
-                    elTypeAcc.isa<IntegerType>();
+  bool allInteger = isa<IntegerType>(elTypeLhs) &&
+                    isa<IntegerType>(elTypeRhs) &&
+                    isa<IntegerType>(elTypeAcc);
 
   if (!allInteger && !allFloatingPoint) {
     return failure();
@@ -245,13 +245,13 @@ static bool match6DLinalgGenericMatmul(linalg::LinalgOp linalgOp) {
 /// ops.
 static BlockArgument checkOptionalExtOps(Value val) {
   BlockArgument blockArg;
-  if (!(blockArg = val.dyn_cast<BlockArgument>())) {
+  if (!(blockArg = dyn_cast<BlockArgument>(val))) {
     auto defOp = val.getDefiningOp();
     if (!dyn_cast<arith::ExtFOp>(defOp) && !dyn_cast<arith::ExtSIOp>(defOp) &&
         !dyn_cast<arith::ExtUIOp>(defOp)) {
       return nullptr;
     }
-    blockArg = defOp->getOperand(0).dyn_cast<BlockArgument>();
+    blockArg = dyn_cast<BlockArgument>(defOp->getOperand(0));
   }
   return blockArg;
 }
