@@ -59,6 +59,7 @@ pdl.pattern @mlp : benefit(1) {
   %fixed_M = pdl.attribute = 8 : i32
   %fixed_N = pdl.attribute = 768 : i32
   %fixed_K = pdl.attribute = 768 : i32
+  %one_attribute = pdl.attribute = 1 : i32
 
   %index_type = pdl.type : index
   %zero_val_bf16 = pdl.attribute = 0.0 : bf16
@@ -81,8 +82,11 @@ pdl.pattern @mlp : benefit(1) {
     %n = pdl.result 0 of %n_op
     %k_op = pdl.operation "arith.constant" {"value" = %fixed_K} -> (%i32_type : !pdl.type)
     %k = pdl.result 0 of %n_op
+    %one_op = pdl.operation "arith.constant" {"value" = %one_attribute} -> (%i32_type : !pdl.type)
+    %one = pdl.result 0 of %one_op
 
-    %replaced_values_dims = pdl.range %m, %n : !pdl.value, !pdl.value
+    // %replaced_values_dims = pdl.range %one, %m, %n : !pdl.value, !pdl.value, !pdl.value
+    %replaced_values_dims = pdl.range : !pdl.range<value>
     %input_values = pdl.range %lhs, %rhs : !pdl.value, !pdl.value
     %replaced_value = pdl.result 0 of %matmul
     %replaced_values = pdl.range %replaced_value : !pdl.value
