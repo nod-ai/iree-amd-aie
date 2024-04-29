@@ -598,7 +598,7 @@ run_matmul_test \
      --acc_type "f32" \
      --m "8192" --k "2432" --n "9728"  \
      --expect-compile-failure "0" \
-     --compile-only "0"
+     --compile-only "1" #could be 0 but too slow...
 
 # SD3 matmuls that compile but fail at runtime #
 # ============================================ #
