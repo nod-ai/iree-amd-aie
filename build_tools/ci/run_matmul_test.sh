@@ -209,15 +209,8 @@ function run_matmul_test() {
   # The default is to compile and run the numerical test.
   local compile_only="0"
 
-  # Experimenting with ways to make the host side baseline computation faster.
-  local matrix_rank="0"
-
   while [ "$#" -gt 0 ]; do
     case "$1" in
-      --matrix-rank)
-        matrix_rank="$2"
-        shift 2
-        ;;
       --compile-only)
         compile_only="$2"
         shift 2
@@ -355,16 +348,6 @@ function run_matmul_test() {
       --iree-amd-aie-show-invoked-commands \
       -o "${matmul_vmfb}"
 
-#       --aie2xclbin-timing \
-#       --mlir-timing \
-#       --mlir-print-ir-before-all \
-#       --mlir-disable-threading \
-#       --mlir-print-ir-module-scope \
-#       --aie2xclbin-print-ir-before-all \
-#       --aie2xclbin-disable-threading \
-#       --aie2xclbin-print-ir-module-scope \
-
-
 
   compileResult=$?
 
@@ -437,7 +420,6 @@ function run_matmul_test() {
       --module=${matmul_vmfb} \
       --module=${calls_vmfb} \
       --device=${device}"
-    # --matrix_rank=3"
 
   # If compile only, exit with success:
   if [ $compile_only -ne "0" ]; then
@@ -466,114 +448,112 @@ function run_matmul_test() {
 #    linearly with m*k*n.
 
 
+# Example of a run without any defaults arguments.
+run_matmul_test \
+    --name_prefix "test1" \
+    --lhs_rhs_type "bf16" \
+    --acc_type "f32" \
+    --target_backend "amd-aie" \
+    --device "xrt" \
+    --peano_install_path "${PEANO}" \
+    --mlir_aie_install_path "${MLIR_AIE_INSTALL}" \
+    --vitis_path  "${VITIS}" \
+    --pipeline "pad-pack" \
+    --m "64" \
+    --n "64" \
+    --k "64" \
+    --dynamicity "static" \
+    --accumulate "false" \
+    --expect-compile-failure "0" \
+    --compile-only "0"
 
- # Example of a run without any defaults arguments.
- run_matmul_test \
-     --name_prefix "test1" \
-     --lhs_rhs_type "bf16" \
-     --acc_type "f32" \
-     --target_backend "amd-aie" \
-     --device "xrt" \
-     --peano_install_path "${PEANO}" \
-     --mlir_aie_install_path "${MLIR_AIE_INSTALL}" \
-     --vitis_path  "${VITIS}" \
-     --pipeline "pad-pack" \
-     --m "64" \
-     --n "64" \
-     --k "64" \
-     --dynamicity "static" \
-     --accumulate "false" \
-     --expect-compile-failure "0" \
-     --compile-only "0"
+# The below matmul case passes with 
+# tile_sizes = [[1, 1], [0, 0, 250], [1, 1], [0, 0, 2]], packedSizes = [1, 1, 5]
+# but fails with tile_sizes = [[1, 1], [0, 0, 200], [1, 1], [0, 0, 1]], packedSizes = [1, 1, 8],
+# with the error LLVM ERROR: unable to legalize instruction: %152:_(<2 x s32>) = G_FMUL %148:_, %150:_ (in function: core_0_2)
+# The later is what a more vectorization friendly packing looks like so we are expected failing the test here.
+# We need to see if the test will pass with a more latest llvm-aie and if it doesnt we can report it upstream.
+run_matmul_test \
+   --name_prefix "failure_0" \
+   --lhs_rhs_type "i32" \
+   --acc_type "i32" \
+   --m "1"  --n "1" --k "1000" \
+   --expect-compile-failure "1"
 
- # The below matmul case passes with
- # tile_sizes = [[1, 1], [0, 0, 250], [1, 1], [0, 0, 2]], packedSizes = [1, 1, 5]
- # but fails with tile_sizes = [[1, 1], [0, 0, 200], [1, 1], [0, 0, 1]], packedSizes = [1, 1, 8],
- # with the error LLVM ERROR: unable to legalize instruction: %152:_(<2 x s32>) = G_FMUL %148:_, %150:_ (in function: core_0_2)
- # The later is what a more vectorization friendly packing looks like so we are expected failing the test here.
- # We need to see if the test will pass with a more latest llvm-aie and if it doesnt we can report it upstream.
- run_matmul_test \
-    --name_prefix "failure_0" \
+# The below matmul case passes with 
+# tile_sizes = [52, 52], [0, 0, 63], [26, 26], [0, 0, 3], packedSizes = [2, 2, 7]
+# but fails with tile_sizes = [[52, 52], [0, 0, 63], [4, 4], [0, 0, 3]], packedSizes = [4, 4, 7],
+# in AIRHerdPlacementPass with the error No valid placement found 
+# The later is what a more vectorization friendly packing looks like so we are expected failing the test here.
+# We should fix this failure.
+run_matmul_test \
+   --name_prefix "failure_0" \
+   --lhs_rhs_type "i32" \
+   --acc_type "i32" \
+   --m "52"  --n "52" --k "63" \
+   --expect-compile-failure "1"
+
+# Example of a run with a group of 2+ matmuls. Currently this test is passed
+# the flag '--compile-only' as there is currently an issue with the runtime if
+# multiple matmuls are run in the same test. TODO(newling/nmeshram): Document
+# this issue.
+run_matmul_test \
+    --name_prefix "multiple_matmuls" \
     --lhs_rhs_type "i32" \
     --acc_type "i32" \
-    --m "1"  --n "1" --k "1000" \
-    --expect-compile-failure "1"
+    --m "512,8,16,7" \
+    --n "512,32,16,15" \
+    --k "256,16,8,9" \
+    --compile-only "1"
 
- # The below matmul case passes with
- # tile_sizes = [52, 52], [0, 0, 63], [26, 26], [0, 0, 3], packedSizes = [2, 2, 7]
- # but fails with tile_sizes = [[52, 52], [0, 0, 63], [4, 4], [0, 0, 3]], packedSizes = [4, 4, 7],
- # in AIRHerdPlacementPass with the error No valid placement found
- # The later is what a more vectorization friendly packing looks like so we are expected failing the test here.
- # We should fix this failure.
- run_matmul_test \
-    --name_prefix "failure_0" \
+run_matmul_test \
+    --name_prefix "small" \
     --lhs_rhs_type "i32" \
     --acc_type "i32" \
-    --m "52"  --n "52" --k "63" \
-    --expect-compile-failure "1"
+    --m "16"  --n "16" --k "8"
 
- # Example of a run with a group of 2+ matmuls. Currently this test is passed
- # the flag '--compile-only' as there is currently an issue with the runtime if
- # multiple matmuls are run in the same test. TODO(newling/nmeshram): Document
- # this issue.
- run_matmul_test \
-     --name_prefix "multiple_matmuls" \
-     --lhs_rhs_type "i32" \
-     --acc_type "i32" \
-     --m "512,8,16,7" \
-     --n "512,32,16,15" \
-     --k "256,16,8,9" \
-     --compile-only "1"
+run_matmul_test \
+    --name_prefix "small" \
+    --lhs_rhs_type "i32" \
+    --acc_type "i32" \
+    --m "8"  --n "32" --k "16"
 
- run_matmul_test \
-     --name_prefix "small" \
-     --lhs_rhs_type "i32" \
-     --acc_type "i32" \
-     --m "16"  --n "16" --k "8"
+run_matmul_test \
+    --name_prefix "small" \
+    --lhs_rhs_type "i32" \
+    --acc_type "i32" \
+    --m "9"  --n "7" --k "16"
 
- run_matmul_test \
-     --name_prefix "small" \
-     --lhs_rhs_type "i32" \
-     --acc_type "i32" \
-     --m "8"  --n "32" --k "16"
+run_matmul_test \
+    --name_prefix "large" \
+    --lhs_rhs_type "i32" \
+    --acc_type "i32" \
+    --m "64"  --n "64" --k "128"
 
- run_matmul_test \
-     --name_prefix "small" \
-     --lhs_rhs_type "i32" \
-     --acc_type "i32" \
-     --m "9"  --n "7" --k "16"
+run_matmul_test \
+    --name_prefix "large" \
+    --lhs_rhs_type "i32" \
+    --acc_type "i32" \
+    --m "512"  --n "512" --k "512"
 
- run_matmul_test \
-     --name_prefix "large" \
-     --lhs_rhs_type "i32" \
-     --acc_type "i32" \
-     --m "64"  --n "64" --k "128"
+run_matmul_test \
+    --name_prefix "int8" \
+    --lhs_rhs_type "i8" \
+    --acc_type "i32" \
+    --m "64"  --n "64" --k "64"
 
- run_matmul_test \
-     --name_prefix "large" \
-     --lhs_rhs_type "i32" \
-     --acc_type "i32" \
-     --m "512"  --n "512" --k "512"
+run_matmul_test \
+    --name_prefix "bf16_2304" \
+    --lhs_rhs_type "bf16" \
+    --acc_type "f32" \
+    --m "128"  --n "128" --k "2304"
 
- run_matmul_test \
-     --name_prefix "int8" \
-     --lhs_rhs_type "i8" \
-     --acc_type "i32" \
-     --m "64"  --n "64" --k "64"
-
- run_matmul_test \
-     --name_prefix "bf16_2304" \
-     --lhs_rhs_type "bf16" \
-     --acc_type "f32" \
-     --m "128"  --n "128" --k "2304"
-
- run_matmul_test \
-     --name_prefix "packPeel" \
-     --pipeline "pack-peel" \
-     --lhs_rhs_type "i32" \
-     --acc_type "i32" \
-     --m "64"  --n "64" --k "160"
-
+run_matmul_test \
+    --name_prefix "packPeel" \
+    --pipeline "pack-peel" \
+    --lhs_rhs_type "i32" \
+    --acc_type "i32" \
+    --m "64"  --n "64" --k "160"
 
 # SD3 matmul tracker: https://github.com/nod-ai/iree-amd-aie/issues/285
 
@@ -684,3 +664,4 @@ run_matmul_test \
     --compile-only "1" 
 
 ###########################################
+
