@@ -106,7 +106,7 @@ def AMDAIEFusePackIntoLoop :
     Option<"useSCFFor", "use-scf-for", "bool", /*default=*/"true",
       "Set the innermost scf loop type to fuse tensor.pack ops into">,
     Option<"targetElementwise", "target-elementwise", "bool", /*default=*/"false",
-      "Set if the compute op within the loop is an elementwise op">
+      "Set if the target compute op within the loop is an elementwise op">
   ];
 }
 

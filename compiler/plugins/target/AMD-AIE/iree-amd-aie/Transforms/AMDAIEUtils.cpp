@@ -290,7 +290,6 @@ bool isMatmul(linalg::LinalgOp linalgOp) {
 /// Utility to identify if the input operand has matmul-like op in its
 /// def-chain.
 bool isMatmulInDefChain(Value operand) {
-  if (isa<BlockArgument>(operand)) return false;
   while (Operation *defOp = operand.getDefiningOp()) {
     if (isa<arith::ConstantOp>(defOp)) return false;
     if (auto defLinalgOp = dyn_cast_or_null<linalg::LinalgOp>(defOp)) {
@@ -309,10 +308,11 @@ bool isMatmulInDefChain(Value operand) {
             }
             return WalkResult::advance();
           });
-      if (findMatmul) return true;
+      if (findMatmul) {
+        return true;
+      }
     }
     operand = defOp->getOperand(0);
-    if (isa<BlockArgument>(operand)) return false;
   }
   return false;
 }
@@ -320,11 +320,14 @@ bool isMatmulInDefChain(Value operand) {
 /// Utility to identify if `linalgOp` is an elementwise operation with a
 /// matmul-like op upstream in its computation tree.
 bool isMatmulProducerOfElementwise(linalg::LinalgOp linalgOp) {
-  if (!isElementwise(linalgOp)) return false;
-  if (isa<linalg::FillOp>(linalgOp)) return false;
+  if (!isElementwise(linalgOp) || isa<linalg::FillOp>(linalgOp)) {
+    return false;
+  }
   // Check if any of the defining op is a matmul-like op.
   for (auto operand : linalgOp->getOperands()) {
-    if (isMatmulInDefChain(operand)) return true;
+    if (isMatmulInDefChain(operand)) {
+      return true;
+    }
   }
   return false;
 }

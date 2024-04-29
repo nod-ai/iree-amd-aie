@@ -47,7 +47,7 @@ static LogicalResult applyBufferizeToAllocation(RewriterBase &rewriter,
 static SmallVector<Value> getInputOutputOperands(linalg::LinalgOp &linalgOp) {
   if (isMatmulProducerOfElementwise(linalgOp)) {
     SmallVector<Value> operands;
-    for (auto operand : linalgOp->getOperands()) {
+    for (Value operand : linalgOp->getOperands()) {
       if (isMatmulInDefChain(operand)) continue;
       operands.push_back(operand);
     }
@@ -63,7 +63,7 @@ static SmallVector<Value> getInputOutputOperands(linalg::LinalgOp &linalgOp) {
 static SmallVector<Value> getInputOperands(linalg::LinalgOp &linalgOp) {
   if (isMatmulProducerOfElementwise(linalgOp)) {
     SmallVector<Value> operands;
-    for (auto operand : linalgOp.getDpsInputs()) {
+    for (Value operand : linalgOp.getDpsInputs()) {
       if (isMatmulInDefChain(operand)) continue;
       operands.push_back(operand);
     }
@@ -83,7 +83,7 @@ static SmallVector<Value> getInputOperands(linalg::LinalgOp &linalgOp) {
 static FailureOr<SmallVector<Value>> getOperandsFromDefOp(
     linalg::LinalgOp &linalgOp) {
   SmallVector<Value> operands;
-  for (auto input : linalgOp.getDpsInputs()) {
+  for (Value input : linalgOp.getDpsInputs()) {
     auto defOp = input.getDefiningOp();
     // The defining op has to be a pack op, fail otherwise.
     if (!defOp || !isa<tensor::PackOp>(defOp)) {
