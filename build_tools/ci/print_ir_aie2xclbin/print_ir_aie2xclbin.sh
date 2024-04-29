@@ -38,6 +38,7 @@ mkdir -p ${OUTPUT}
 
 # The CI case:
 if [ "$#" -eq 2 ]; then
+  echo "Assuming that this is the 'CI case' as 2 parameters were provided."
   PEANO=/opt/llvm-aie
   XRT=/opt/xilinx/xrt
   VITIS=/opt/Xilinx/Vitis/2023.2
@@ -132,10 +133,10 @@ ${SOURCE_MLIR_FILE} \
 --mlir-print-ir-after-all \
 --mlir-print-ir-module-scope \
 --mlir-disable-threading \
---mlir-timing \
 --iree-amdaie-use-pipeline=pad-pack \
 -o ${OUTPUT}/test_artefact.vmfb \
 --iree-amd-aie-show-invoked-commands"
+
 
 # set the files for stdout and stdin. These are what FileCheck will scrutinize.
 STDOUT_FULLPATH="${OUTPUT}/stdout.txt"
@@ -169,9 +170,17 @@ fi
 # CHECK-STDERR-DAG: llvm.load
 ${FILECHECK_EXE} --input-file ${STDERR_FULLPATH} ${0} --check-prefix=CHECK-STDERR
 
+# Checks that timing information is printed for aie2xclbin:
+# CHECK-STDERRTIME: Execution time report
+# CHECK-STDERRTIME-DAG: Total Execution Time
+#   Check for a line of the form '0.0013 (  0.1%)  AIECoreToStandard'
+# CHECK-STDERRTIME-DAG: AIECoreToStandard
+#   Check for a line of the form: '1.1778 (100.0%)  Total'
+# CHECK-STDERRTIME-DAG: Total
+${FILECHECK_EXE} --input-file ${STDERR_FULLPATH} ${0} --check-prefix=CHECK-STDERRTIME
+
 # CHECK-STDOUT-DAG: Bootgen
 # CHECK-STDOUT-DAG: MEM_TOPOLOGY
 ${FILECHECK_EXE} --input-file ${STDOUT_FULLPATH} ${0} --check-prefix=CHECK-STDOUT
 
-#TODO(newling) add check of sorts for timing. 
-
+echo "Test of printing in aie2xclbin passed."
