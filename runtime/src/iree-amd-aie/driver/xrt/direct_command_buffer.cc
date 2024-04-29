@@ -141,6 +141,7 @@ static iree_status_t iree_hal_xrt_direct_command_buffer_execution_barrier(
     const iree_hal_memory_barrier_t* memory_barriers,
     iree_host_size_t buffer_barrier_count,
     const iree_hal_buffer_barrier_t* buffer_barriers) {
+  printf("Just entered into iree_hal_xrt_direct_command_buffer_execution_barrier\n");
   if (iree_any_bit_set(source_stage_mask, IREE_HAL_EXECUTION_STAGE_HOST) ||
       iree_any_bit_set(target_stage_mask, IREE_HAL_EXECUTION_STAGE_HOST)) {
     return iree_make_status(IREE_STATUS_UNIMPLEMENTED,
@@ -192,6 +193,8 @@ static iree_status_t iree_hal_xrt_direct_command_buffer_fill_buffer(
     iree_hal_buffer_t* target_buffer, iree_device_size_t target_offset,
     iree_device_size_t length, const void* pattern,
     iree_host_size_t pattern_length) {
+
+  printf("Just entered into iree_hal_xrt_direct_command_buffer_fill_buffer\n");
   return iree_make_status(IREE_STATUS_UNIMPLEMENTED,
                           "fill buffer not yet supported");
 }
@@ -200,6 +203,8 @@ static iree_status_t iree_hal_xrt_direct_command_buffer_update_buffer(
     iree_hal_command_buffer_t* base_command_buffer, const void* source_buffer,
     iree_host_size_t source_offset, iree_hal_buffer_t* target_buffer,
     iree_device_size_t target_offset, iree_device_size_t length) {
+
+  printf("Just entered into iree_hal_xrt_direct_command_buffer_update_buffer\n");
   IREE_TRACE_ZONE_BEGIN(z0);
   const uint8_t* src = (const uint8_t*)source_buffer + source_offset;
 
@@ -221,6 +226,8 @@ static iree_status_t iree_hal_xrt_direct_command_buffer_copy_buffer(
     iree_hal_buffer_t* source_buffer, iree_device_size_t source_offset,
     iree_hal_buffer_t* target_buffer, iree_device_size_t target_offset,
     iree_device_size_t length) {
+
+  printf("Just entered into iree_hal_xrt_direct_command_buffer_copy_buffer\n");
   IREE_TRACE_ZONE_BEGIN(z0);
 
   xrt::bo* target_device_buffer = iree_hal_xrt_buffer_handle(
@@ -307,6 +314,8 @@ static iree_status_t iree_hal_xrt_direct_command_buffer_dispatch(
     iree_hal_command_buffer_t* base_command_buffer,
     iree_hal_executable_t* executable, int32_t entry_point,
     uint32_t workgroup_x, uint32_t workgroup_y, uint32_t workgroup_z) {
+
+  printf("Just entered into iree_hal_xrt_direct_command_buffer_dispatch\n");
   iree_hal_xrt_direct_command_buffer_t* command_buffer =
       iree_hal_xrt_direct_command_buffer_cast(base_command_buffer);
   IREE_TRACE_ZONE_BEGIN(z0);
@@ -356,10 +365,15 @@ static iree_status_t iree_hal_xrt_direct_command_buffer_dispatch(
       run.set_arg(arg_index + base_index + j, arg_buffer);
     }
   }
+
+  // Print a message stating that we're about to call start:
+  printf("Calling start in function iree_hal_xrt_direct_command_buffer_dispatch\n");
   run.start();
+  printf("Calling wait in function iree_hal_xrt_direct_command_buffer_dispatch\n");
   run.wait();
 
   IREE_TRACE_ZONE_END(z0);
+  printf("Returning from dispatch in function iree_hal_xrt_direct_command_buffer_dispatch\n");
   return iree_ok_status();
 }
 

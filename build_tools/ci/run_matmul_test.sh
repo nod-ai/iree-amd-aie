@@ -209,8 +209,15 @@ function run_matmul_test() {
   # The default is to compile and run the numerical test.
   local compile_only="0"
 
+  # Experimenting with ways to make the host side baseline computation faster.
+  local matrix_rank="0"
+
   while [ "$#" -gt 0 ]; do
     case "$1" in
+      --matrix-rank)
+        matrix_rank="$2"
+        shift 2
+        ;;
       --compile-only)
         compile_only="$2"
         shift 2
@@ -348,6 +355,16 @@ function run_matmul_test() {
       --iree-amd-aie-show-invoked-commands \
       -o "${matmul_vmfb}"
 
+#       --aie2xclbin-timing \
+#       --mlir-timing \
+#       --mlir-print-ir-before-all \
+#       --mlir-disable-threading \
+#       --mlir-print-ir-module-scope \
+#       --aie2xclbin-print-ir-before-all \
+#       --aie2xclbin-disable-threading \
+#       --aie2xclbin-print-ir-module-scope \
+
+
 
   compileResult=$?
 
@@ -420,6 +437,7 @@ function run_matmul_test() {
       --module=${matmul_vmfb} \
       --module=${calls_vmfb} \
       --device=${device}"
+    # --matrix_rank=3"
 
   # If compile only, exit with success:
   if [ $compile_only -ne "0" ]; then
@@ -448,110 +466,221 @@ function run_matmul_test() {
 #    linearly with m*k*n.
 
 
-# Example of a run without any defaults arguments.
+
+ # Example of a run without any defaults arguments.
+ run_matmul_test \
+     --name_prefix "test1" \
+     --lhs_rhs_type "bf16" \
+     --acc_type "f32" \
+     --target_backend "amd-aie" \
+     --device "xrt" \
+     --peano_install_path "${PEANO}" \
+     --mlir_aie_install_path "${MLIR_AIE_INSTALL}" \
+     --vitis_path  "${VITIS}" \
+     --pipeline "pad-pack" \
+     --m "64" \
+     --n "64" \
+     --k "64" \
+     --dynamicity "static" \
+     --accumulate "false" \
+     --expect-compile-failure "0" \
+     --compile-only "0"
+
+ # The below matmul case passes with
+ # tile_sizes = [[1, 1], [0, 0, 250], [1, 1], [0, 0, 2]], packedSizes = [1, 1, 5]
+ # but fails with tile_sizes = [[1, 1], [0, 0, 200], [1, 1], [0, 0, 1]], packedSizes = [1, 1, 8],
+ # with the error LLVM ERROR: unable to legalize instruction: %152:_(<2 x s32>) = G_FMUL %148:_, %150:_ (in function: core_0_2)
+ # The later is what a more vectorization friendly packing looks like so we are expected failing the test here.
+ # We need to see if the test will pass with a more latest llvm-aie and if it doesnt we can report it upstream.
+ run_matmul_test \
+    --name_prefix "failure_0" \
+    --lhs_rhs_type "i32" \
+    --acc_type "i32" \
+    --m "1"  --n "1" --k "1000" \
+    --expect-compile-failure "1"
+
+ # The below matmul case passes with
+ # tile_sizes = [52, 52], [0, 0, 63], [26, 26], [0, 0, 3], packedSizes = [2, 2, 7]
+ # but fails with tile_sizes = [[52, 52], [0, 0, 63], [4, 4], [0, 0, 3]], packedSizes = [4, 4, 7],
+ # in AIRHerdPlacementPass with the error No valid placement found
+ # The later is what a more vectorization friendly packing looks like so we are expected failing the test here.
+ # We should fix this failure.
+ run_matmul_test \
+    --name_prefix "failure_0" \
+    --lhs_rhs_type "i32" \
+    --acc_type "i32" \
+    --m "52"  --n "52" --k "63" \
+    --expect-compile-failure "1"
+
+ # Example of a run with a group of 2+ matmuls. Currently this test is passed
+ # the flag '--compile-only' as there is currently an issue with the runtime if
+ # multiple matmuls are run in the same test. TODO(newling/nmeshram): Document
+ # this issue.
+ run_matmul_test \
+     --name_prefix "multiple_matmuls" \
+     --lhs_rhs_type "i32" \
+     --acc_type "i32" \
+     --m "512,8,16,7" \
+     --n "512,32,16,15" \
+     --k "256,16,8,9" \
+     --compile-only "1"
+
+ run_matmul_test \
+     --name_prefix "small" \
+     --lhs_rhs_type "i32" \
+     --acc_type "i32" \
+     --m "16"  --n "16" --k "8"
+
+ run_matmul_test \
+     --name_prefix "small" \
+     --lhs_rhs_type "i32" \
+     --acc_type "i32" \
+     --m "8"  --n "32" --k "16"
+
+ run_matmul_test \
+     --name_prefix "small" \
+     --lhs_rhs_type "i32" \
+     --acc_type "i32" \
+     --m "9"  --n "7" --k "16"
+
+ run_matmul_test \
+     --name_prefix "large" \
+     --lhs_rhs_type "i32" \
+     --acc_type "i32" \
+     --m "64"  --n "64" --k "128"
+
+ run_matmul_test \
+     --name_prefix "large" \
+     --lhs_rhs_type "i32" \
+     --acc_type "i32" \
+     --m "512"  --n "512" --k "512"
+
+ run_matmul_test \
+     --name_prefix "int8" \
+     --lhs_rhs_type "i8" \
+     --acc_type "i32" \
+     --m "64"  --n "64" --k "64"
+
+ run_matmul_test \
+     --name_prefix "bf16_2304" \
+     --lhs_rhs_type "bf16" \
+     --acc_type "f32" \
+     --m "128"  --n "128" --k "2304"
+
+ run_matmul_test \
+     --name_prefix "packPeel" \
+     --pipeline "pack-peel" \
+     --lhs_rhs_type "i32" \
+     --acc_type "i32" \
+     --m "64"  --n "64" --k "160"
+
+
+# SD3 matmul tracker: https://github.com/nod-ai/iree-amd-aie/issues/285
+
+
+# SD3 matmuls that do not compile #
+# =============================== #
+# We expect a compilation failure here because m is not a multiple of 4.
+# error: 'iree_linalg_ext.pack' op in dimension 0, the tile size 4 does not 
+# divide the tensor size 2. Imperfect/partial tiling is currently not supported.
+# TODO: We must eventually support this, but it is not expected to currently work.
 run_matmul_test \
-    --name_prefix "test1" \
+    --name_prefix "sd3_mm1" \
     --lhs_rhs_type "bf16" \
     --acc_type "f32" \
-    --target_backend "amd-aie" \
-    --device "xrt" \
-    --peano_install_path "${PEANO}" \
-    --mlir_aie_install_path "${MLIR_AIE_INSTALL}" \
-    --vitis_path  "${VITIS}" \
-    --pipeline "pad-pack" \
-    --m "64" \
-    --n "64" \
-    --k "64" \
-    --dynamicity "static" \
-    --accumulate "false" \
+    --m "2"    --k "2432" --n "14592" \
+    --expect-compile-failure "1"
+
+
+# e2e SD3 matmuls which work e2e #
+# ============================== #
+run_matmul_test \
+    --name_prefix "sd3_mm6" \
+    --lhs_rhs_type "bf16" \
+    --acc_type "f32" \
+    --m "308"  --k "9728" --n "2432"  \
+    --expect-compile-failure "0"
+
+run_matmul_test \
+    --name_prefix "sd3_mm4" \
+    --lhs_rhs_type "bf16" \
+    --acc_type "f32" \
+    --m "308"  --k "2432" --n "2432"  \
+    --expect-compile-failure "0"
+
+
+# TODO(newling) this takes way too long to verify on CPU 
+# (like 10 minutes with IREE atm). We need to find a way to make this faster. 
+# Low-rank tensors? Plumb through to IREE? Blocking:tried doesn't help.
+run_matmul_test \
+     --name_prefix "sd3_mm8" \
+     --lhs_rhs_type "bf16" \
+     --acc_type "f32" \
+     --m "8192" --k "2432" --n "9728"  \
+     --expect-compile-failure "0" \
+     --compile-only "0"
+
+# SD3 matmuls that compile but fail at runtime #
+# ============================================ #
+# TODO: support this matmul
+#  https://github.com/nod-ai/iree-amd-aie/issues/285
+#
+#  I have seen both:
+#   incorrect numbers
+#   'the actual and expected result matrices disagree at row 0, column 256.
+run_matmul_test \
+    --name_prefix "sd3_mm5" \
+    --lhs_rhs_type "bf16" \
+    --acc_type "f32" \
+    --m "308"  --k "2432" --n "9728"  \
     --expect-compile-failure "0" \
-    --compile-only "0"
+    --compile-only "1" \
 
-# The below matmul case passes with 
-# tile_sizes = [[1, 1], [0, 0, 250], [1, 1], [0, 0, 2]], packedSizes = [1, 1, 5]
-# but fails with tile_sizes = [[1, 1], [0, 0, 200], [1, 1], [0, 0, 1]], packedSizes = [1, 1, 8],
-# with the error LLVM ERROR: unable to legalize instruction: %152:_(<2 x s32>) = G_FMUL %148:_, %150:_ (in function: core_0_2)
-# The later is what a more vectorization friendly packing looks like so we are expected failing the test here.
-# We need to see if the test will pass with a more latest llvm-aie and if it doesnt we can report it upstream.
+# TODO: support this matmul
+#  https://github.com/nod-ai/iree-amd-aie/issues/285
+#  incorrect numbers. error: the actual and expected result matrices disagree 
+#  at row 0, column 192. TODO(newling) find way to make reference matmul not 
+#  necessary (tried blocking, only marginal gains, we need a low-rank trick).
 run_matmul_test \
-   --name_prefix "failure_0" \
-   --lhs_rhs_type "i32" \
-   --acc_type "i32" \
-   --m "1"  --n "1" --k "1000" \
-   --expect-compile-failure "1"
+     --name_prefix "sd3_mm2" \
+     --lhs_rhs_type "bf16" \
+     --acc_type "f32" \
+     --m "308"  --k "2432" --n "7296"  \
+     --expect-compile-failure "0" \
+     --compile-only "1" 
 
-# The below matmul case passes with 
-# tile_sizes = [52, 52], [0, 0, 63], [26, 26], [0, 0, 3], packedSizes = [2, 2, 7]
-# but fails with tile_sizes = [[52, 52], [0, 0, 63], [4, 4], [0, 0, 3]], packedSizes = [4, 4, 7],
-# in AIRHerdPlacementPass with the error No valid placement found 
-# The later is what a more vectorization friendly packing looks like so we are expected failing the test here.
-# We should fix this failure.
+#TODO: support this matmul
+# https://github.com/nod-ai/iree-amd-aie/issues/285
+# hangs in AIE. Stuck in 
+# 'Calling wait in function iree_hal_xrt_direct_command_buffer_dispatch'
 run_matmul_test \
-   --name_prefix "failure_0" \
-   --lhs_rhs_type "i32" \
-   --acc_type "i32" \
-   --m "52"  --n "52" --k "63" \
-   --expect-compile-failure "1"
-
-# Example of a run with a group of 2+ matmuls. Currently this test is passed
-# the flag '--compile-only' as there is currently an issue with the runtime if
-# multiple matmuls are run in the same test. TODO(newling/nmeshram): Document
-# this issue.
-run_matmul_test \
-    --name_prefix "multiple_matmuls" \
-    --lhs_rhs_type "i32" \
-    --acc_type "i32" \
-    --m "512,8,16,7" \
-    --n "512,32,16,15" \
-    --k "256,16,8,9" \
-    --compile-only "1"
-
-run_matmul_test \
-    --name_prefix "small" \
-    --lhs_rhs_type "i32" \
-    --acc_type "i32" \
-    --m "16"  --n "16" --k "8"
-
-run_matmul_test \
-    --name_prefix "small" \
-    --lhs_rhs_type "i32" \
-    --acc_type "i32" \
-    --m "8"  --n "32" --k "16"
-
-run_matmul_test \
-    --name_prefix "small" \
-    --lhs_rhs_type "i32" \
-    --acc_type "i32" \
-    --m "9"  --n "7" --k "16"
-
-run_matmul_test \
-    --name_prefix "large" \
-    --lhs_rhs_type "i32" \
-    --acc_type "i32" \
-    --m "64"  --n "64" --k "128"
-
-run_matmul_test \
-    --name_prefix "large" \
-    --lhs_rhs_type "i32" \
-    --acc_type "i32" \
-    --m "512"  --n "512" --k "512"
-
-run_matmul_test \
-    --name_prefix "int8" \
-    --lhs_rhs_type "i8" \
-    --acc_type "i32" \
-    --m "64"  --n "64" --k "64"
-
-run_matmul_test \
-    --name_prefix "bf16_2304" \
+    --name_prefix "sd3_mm7" \
     --lhs_rhs_type "bf16" \
     --acc_type "f32" \
-    --m "128"  --n "128" --k "2304"
+    --m "8192" --k "2432" --n "2432"  \
+    --expect-compile-failure "0" \
+    --compile-only "1" 
 
+#TODO: support this matmul
+# hangs in AIE. Stuck in 
+# 'Calling wait in function iree_hal_xrt_direct_command_buffer_dispatch'
 run_matmul_test \
-    --name_prefix "packPeel" \
-    --pipeline "pack-peel" \
-    --lhs_rhs_type "i32" \
-    --acc_type "i32" \
-    --m "64"  --n "64" --k "160"
+     --name_prefix "sd3_mm9" \
+     --lhs_rhs_type "bf16" \
+     --acc_type "f32" \
+     --m "8192" --k "9728" --n "2432"  \
+     --expect-compile-failure "0" \
+     --compile-only "1" 
 
+# TODO: support this matmul
+# hangs in AIE. Stuck in 
+# 'Calling wait in function iree_hal_xrt_direct_command_buffer_dispatch'
+run_matmul_test \
+    --name_prefix "sd3_mm3" \
+    --lhs_rhs_type "bf16" \
+    --acc_type "f32" \
+    --m "8192" --k "2432" --n "7296"  \
+    --expect-compile-failure "0" \
+    --compile-only "1" 
+
+###########################################
