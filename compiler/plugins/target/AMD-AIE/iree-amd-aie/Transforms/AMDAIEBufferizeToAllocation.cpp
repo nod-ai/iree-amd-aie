@@ -84,9 +84,9 @@ static FailureOr<SmallVector<Value>> getOperandsFromDefOp(
     linalg::LinalgOp &linalgOp) {
   SmallVector<Value> operands;
   for (Value input : linalgOp.getDpsInputs()) {
-    auto defOp = input.getDefiningOp();
+    auto defOp = input.getDefiningOp<tensor::PackOp>();
     // The defining op has to be a pack op, fail otherwise.
-    if (!defOp || !isa<tensor::PackOp>(defOp)) {
+    if (!defOp) {
       return failure();
     }
     // We only want to fetch the input operand of the pack op.

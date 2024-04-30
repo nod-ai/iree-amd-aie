@@ -207,27 +207,9 @@ static bool match6DLinalgGenericMatmul(linalg::LinalgOp linalgOp) {
     return false;
   }
 
-  // Since this is invoked after the final pack-and-transpose we need to
-  // extract dimensions for M*K*k*m*m0*k0 x K*N*n*k*k0*n0 -> M*N*n*m*m0*n0.
-  AffineExpr M = map2.getResult(0);
-  AffineExpr N = map2.getResult(1);
-  AffineExpr n = map2.getResult(2);
-  AffineExpr m = map2.getResult(3);
-  AffineExpr m0 = map2.getResult(4);
-  AffineExpr n0 = map2.getResult(5);
-  AffineExpr K = map0.getResult(1);
-  AffineExpr k = map0.getResult(2);
-  AffineExpr k0 = map0.getResult(5);
-
-  auto *context = indexingMaps.getContext();
-  auto mapA =
-      AffineMapAttr::get(AffineMap::get(9, 0, {M, K, k, m, m0, k0}, context));
-  auto mapB =
-      AffineMapAttr::get(AffineMap::get(9, 0, {K, N, n, k, k0, n0}, context));
-  auto mapC =
-      AffineMapAttr::get(AffineMap::get(9, 0, {M, N, n, m, m0, n0}, context));
-  auto maps = ArrayAttr::get(context, {mapA, mapB, mapC});
-  return indexingMaps == maps;
+  // Skip the exact indexingMaps matching, because there could be different
+  // dimension permutations caused by pack_transpose.
+  return true;
 }
 
 /// Returns the BlockArgument that leads to `val`. Traverses optional ext*
@@ -312,6 +294,8 @@ bool isMatmulInDefChain(Value operand) {
         return true;
       }
     }
+    // The defining op could be tensor.pack or tensor.extract_slice, and we only
+    // take the source operand.
     operand = defOp->getOperand(0);
   }
   return false;

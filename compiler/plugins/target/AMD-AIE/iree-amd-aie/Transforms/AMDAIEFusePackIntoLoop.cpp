@@ -33,7 +33,7 @@ static FailureOr<tensor::ExtractSliceOp> getTensorExtractSliceDefiningOp(
       }
       if (isa<BlockArgument>(sliceOp.getSource())) {
         auto blkArg = dyn_cast<BlockArgument>(sliceOp.getSource());
-        for (auto blkOperand :
+        for (Value blkOperand :
              blkArg.getOwner()->getParentOp()->getOperands()) {
           if (isa_and_nonnull<tensor::PackOp>(blkOperand.getDefiningOp())) {
             return sliceOp;
