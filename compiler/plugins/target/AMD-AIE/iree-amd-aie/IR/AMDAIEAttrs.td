@@ -11,6 +11,16 @@ include "iree-amd-aie/IR/AMDAIEDialect.td"
 include "mlir/IR/AttrTypeBase.td"
 include "mlir/IR/EnumAttr.td"
 
+def AMDAIE_CopyOpOperateOn: I32EnumAttr<"CopyOpOperateOn",
+  "Enables templated functions that operate on either source or target of "
+  "copy/dma operations",
+  [
+    I32EnumAttrCase<"Source", 0>,
+    I32EnumAttrCase<"Target", 1>
+  ]>
+{
+}
+
 def AMDAIE_MemSpace_Global : I32EnumAttrCase<"Global", 0>;
 def AMDAIE_MemSpace_Shared : I32EnumAttrCase<"Shared", 1>;
 def AMDAIE_MemSpace_Local : I32EnumAttrCase<"Local", 2>;

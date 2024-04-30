@@ -43,6 +43,18 @@ LogicalResult ControlCodeOp::verify() {
 // AMDAIE_CoreOp
 //===----------------------------------------------------------------------===//
 
+/// Hardcoded row_offset == 2 -> AIE core rows start from 2
+/// TODO(jornt): avoid hardcoding here. Add a device model/identifier to loop up
+/// core offset. This will be handled in a follow-up.
+void CoreOp::build(OpBuilder &b, OperationState &result, Value coreCol,
+                   Value coreRow) {
+  auto rowOffset = b.create<arith::ConstantIndexOp>(b.getUnknownLoc(), 2);
+  auto row =
+      b.createOrFold<arith::AddIOp>(b.getUnknownLoc(), rowOffset, coreRow);
+  auto tileOp = b.create<AMDAIE::TileOp>(b.getUnknownLoc(), coreCol, row);
+  build(b, result, b.getIndexType(), tileOp);
+}
+
 LogicalResult CoreOp::verify() {
   // Verify that this CoreOp contains a EndOp terminator if one
   // exists.
@@ -51,6 +63,10 @@ LogicalResult CoreOp::verify() {
     return failure();
   }
   return success();
+}
+
+TileOp CoreOp::getTileOp() {
+  return dyn_cast<TileOp>(getTile().getDefiningOp());
 }
 
 //===----------------------------------------------------------------------===//
@@ -163,6 +179,64 @@ LogicalObjectFifoFromMemrefOp DmaCpyNdOp::getSourceObjectFifo() {
 LogicalObjectFifoFromMemrefOp DmaCpyNdOp::getTargetObjectFifo() {
   return dyn_cast<LogicalObjectFifoFromMemrefOp>(getTarget().getDefiningOp());
 };
+
+//===----------------------------------------------------------------------===//
+// AMDAIE_LogicalObjectFifoFromMemrefOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult LogicalObjectFifoFromMemrefOp::canonicalize(
+    LogicalObjectFifoFromMemrefOp logicalObjectFifo,
+    PatternRewriter &rewriter) {
+  // We only canonicalize the tiles for now, so return if empty
+  if (logicalObjectFifo.getTiles().empty()) {
+    return success();
+  }
+
+  auto comparator = [](Value a, Value b) -> bool {
+    TileOp tileA = dyn_cast<TileOp>(a.getDefiningOp());
+    TileOp tileB = dyn_cast<TileOp>(b.getDefiningOp());
+    int64_t colA = getConstantIntValue(tileA.getCol()).value();
+    int64_t rowA = getConstantIntValue(tileA.getRow()).value();
+    int64_t colB = getConstantIntValue(tileB.getCol()).value();
+    int64_t rowB = getConstantIntValue(tileB.getRow()).value();
+    if (colA == colB) return rowA < rowB;
+    return colA < colB;
+  };
+  SmallVector<Value> tiles = logicalObjectFifo.getTiles();
+  if (llvm::is_sorted(tiles, comparator)) {
+    return success();
+  }
+
+  // If tiles are not sorted, sort them and replace the logical objectfifo
+  llvm::sort(tiles.begin(), tiles.end(), comparator);
+  rewriter.replaceOpWithNewOp<AMDAIE::LogicalObjectFifoFromMemrefOp>(
+      logicalObjectFifo,
+      logicalObjectFifo.getOutput().getType().cast<LogicalObjectFifoType>(),
+      logicalObjectFifo.getMemref(), tiles);
+  return success();
+}
+
+LogicalResult LogicalObjectFifoFromMemrefOp::verify() {
+  // Check whether the tile arguments are all of type AMDAIE::TileOp
+  if (llvm::all_of(getTiles(), [](Value result) {
+        return isa<TileOp>(result.getDefiningOp());
+      })) {
+    return success();
+  }
+  return failure();
+}
+
+//===----------------------------------------------------------------------===//
+// AMDAIE_TileOp
+//===----------------------------------------------------------------------===//
+
+void TileOp::getAsmResultNames(function_ref<void(Value, StringRef)> setNameFn) {
+  setNameFn(getResult(), "tile");
+}
+
+bool TileOp::hasStaticLocation() {
+  return getConstantIntValue(getCol()) && getConstantIntValue(getRow());
+}
 
 //===----------------------------------------------------------------------===//
 // AMDAIE_WorkgroupOp

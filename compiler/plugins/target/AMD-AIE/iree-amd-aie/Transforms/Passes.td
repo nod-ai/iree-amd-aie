@@ -139,6 +139,11 @@ def AMDAIEFusePackIntoLoop :
   ];
 }
 
+def AMDAIEHoistForLoopAffineApply : Pass<"iree-amdaie-hoist-for-affine-apply"> {
+  let summary = "Hoist an affine apply op on a scf.for op's induction variable.";
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEHoistForLoopAffineApplyPass()";
+}
+
 def AMDAIEInsertAIEWorkgroup : 
   Pass<"iree-amdaie-insert-aie-workgroup", "ModuleOp"> {
   let summary = "Insert AIE workgroups around forall loops selected for parallel execution.";
@@ -304,6 +309,12 @@ def AMDAIEPropagateDataLayout :
     InterfacePass<"iree-amdaie-propagate-data-layout", "mlir::FunctionOpInterface"> {
   let summary = "Pass to propagate pack/unpack ops using upstream patterns.";
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEPropagateDataLayoutPass()";
+}
+
+def AMDAIEUnrollAndDistributeWorkgroup : 
+  Pass<"iree-amdaie-unroll-and-distribute-workgroup", "ModuleOp"> {
+  let summary = "Create pass to unroll operations within AIE workgroups and distibute the logical objectfifos.";
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEUnrollAndDistributeWorkgroupPass()";
 }
 
 #endif // IREE_AMD_AIE_TRANSFORMS_PASSES

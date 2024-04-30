@@ -39,6 +39,7 @@ iree_cc_library(
     "Passes.h"
     "AMDAIEOpUtils.h"
     "AMDAIEUtils.h"
+    "Transforms.h"
   SRCS
     "AMDAIEAddLoweringStrategy.cpp"
     "AMDAIEAIRDmaToAMDAIEDma.cpp"
@@ -48,6 +49,7 @@ iree_cc_library(
     "AMDAIEFuseFillIntoForall.cpp"
     "AMDAIEFuseLogicalObjectFifoIntoWorkgroup.cpp"
     "AMDAIEFusePackIntoLoop.cpp"
+    "AMDAIEHoistForAffineApply.cpp"
     "AMDAIEInsertAIEWorkgroup.cpp"
     "AMDAIEInsertLoopsForVectorization.cpp"
     "AMDAIELowerExecutableTarget.cpp"
@@ -62,6 +64,7 @@ iree_cc_library(
     "AMDAIEPropagateDataLayout.cpp"
     "AMDAIETile.cpp"
     "AMDAIETileAndFuse.cpp"
+    "AMDAIEUnrollAndDistributeWorkgroup.cpp"
     "AMDAIEUtils.cpp"
     "AMDAIEVectorization.cpp"
     "BridgeToAIRPass.cpp"

@@ -1,11 +1,14 @@
 // RUN: iree-opt --split-input-file %s | FileCheck %s
 
 // CHECK-LABEL: func.func @core
-// CHECK: amdaie.core
+// CHECK: %[[C0:.*]] = arith.constant 0 : index
+// CHECK: %[[TILE_0:.*]] = amdaie.tile(%[[C0]], %[[C0]])
+// CHECK: %[[CORE_0:.*]] = amdaie.core(%[[TILE_0]])
 // CHECK: amdaie.end
 func.func @core() {
   %c0 = arith.constant 0 : index
-  amdaie.core(%c0, %c0) {
+  %tile = amdaie.tile(%c0, %c0)
+  %core = amdaie.core(%tile) {
     amdaie.end
   }
   return
@@ -102,10 +105,12 @@ func.func @workgroup() {
   %c0 = arith.constant 0 : index
   %c1 = arith.constant 1 : index
   amdaie.workgroup {
-    amdaie.core(%c0, %c0) {
+    %tile_0_0 = amdaie.tile(%c0, %c0)
+    %core_0 = amdaie.core(%tile_0_0) {
       amdaie.end
     }
-    amdaie.core(%c0, %c1) {
+    %tile_0_1 = amdaie.tile(%c0, %c1)
+    %core_1 = amdaie.core(%tile_0_1) {
       amdaie.end
     }
     amdaie.controlcode {

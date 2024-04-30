@@ -10,6 +10,7 @@ iree_lit_test_suite(
   NAME
     lit
   SRCS
+    "canonicalize.mlir"
     "invalid.mlir"
     "roundtrip.mlir"
   TOOLS

@@ -17,6 +17,7 @@ iree_lit_test_suite(
     "fuse_fill_into_forall.mlir"
     "fuse_logical_objectfifo_into_workgroup.mlir"
     "fuse_pack_into_loop.mlir"
+    "hoist_for_affine_apply.mlir"
     "insert_aie_workgroup.mlir"
     "insert_loops_for_vectorization.mlir"
     "lower_to_ukernel.mlir"
@@ -34,6 +35,7 @@ iree_lit_test_suite(
     "tile_and_fuse_using_scf_for.mlir"
     "tile_and_fuse_using_scf_forall.mlir"
     "tile_copy_using_scf_for.mlir"
+    "unroll_and_distribute_workgroup.mlir"
     "vectorization.mlir"
   TOOLS
     ${IREE_LLD_TARGET}
