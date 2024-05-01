@@ -329,11 +329,15 @@ static iree_status_t iree_hal_xrt_direct_command_buffer_dispatch(
   // Index to push arguments on the kernel.
   iree_host_size_t arg_index = 0;
 
-  // First argument is the LX6 instructions.
-  run.set_arg(arg_index++, instr);
+  // First argument is the opcode, currently using DPU sequence which has opcode
+  // 0
+  run.set_arg(arg_index++, 0x01);
 
-  // Second argument is the number of LX6 instructions.
-  run.set_arg(arg_index++, num_instr);
+  // Fifth argument is the LX6 instructions.
+  run.set_arg(5, instr);
+
+  // Sizxth argument is the number of LX6 instructions.
+  run.set_arg(6, num_instr);
 
   // Copy descriptors from all sets to the end of the current segment for later
   // access.
