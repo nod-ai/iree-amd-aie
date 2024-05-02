@@ -479,15 +479,24 @@ run_matmul_test \
     --compile-only "0" \
     --do_transpose_rhs "0"
 
-# TODO: fix this. 
-#: error: 'aie.dma_bd' op Cannot give more than 4 dimensions for step sizes and wraps in this  tile (got 5 dimensions).
 run_matmul_test \
-  --name_prefix "transpose" \
+  --name_prefix "transpose_int32" \
+  --lhs_rhs_type "i32" \
+  --acc_type "i32" \
+  --m "8" --n "16" --k "32" \
+  --do_transpose_rhs "1"
+
+# TODO: fix this. 
+#: error: 'aie.dma_bd' op Cannot give more than 4 dimensions for step sizes
+#  and wraps in this  tile (got 5 dimensions).
+run_matmul_test \
+  --name_prefix "transpose_bf16" \
   --lhs_rhs_type "bf16" \
   --acc_type "f32" \
   --m "256" --n "256" --k "256" \
   --do_transpose_rhs "1" \
   --expect-compile-failure "1"
+
 
 # The below matmul case passes with 
 # tile_sizes = [[1, 1], [0, 0, 250], [1, 1], [0, 0, 2]], packedSizes = [1, 1, 5]
