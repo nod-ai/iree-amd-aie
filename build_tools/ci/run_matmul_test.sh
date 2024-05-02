@@ -209,10 +209,16 @@ function run_matmul_test() {
   # The default is to compile and run the numerical test.
   local compile_only="0"
 
+  local do_transpose_rhs="0"
+
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --compile-only)
         compile_only="$2"
+        shift 2
+        ;;
+      --do_transpose_rhs)
+        do_transpose_rhs="$2"
         shift 2
         ;;
       --expect-compile-failure)
@@ -319,18 +325,23 @@ function run_matmul_test() {
   matmul_vmfb="${OUTPUT_DIR}/${name}.vmfb"
   calls_vmfb="${OUTPUT_DIR}/${name}_calls.vmfb"
 
-  echo "**** Generating .mlir file containing matmul function(s) ****"
-  ${IREE_PYTHON3_EXECUTABLE} ${GENERATOR} \
-      --output_matmuls_mlir="${matmul_ir}" \
-      --output_calls_mlir="${calls_ir}" \
-      --lhs_rhs_type=${lhs_rhs_type} \
-      --acc_type=${acc_type} \
-      --m=${m} \
-      --n=${n} \
-      --k=${k} \
-      --dynamicity=${dynamicity} \
-      --accumulate=${accumulate}
+  generation_flags="--lhs_rhs_type=${lhs_rhs_type} \
+                    --acc_type=${acc_type} \
+                    --m=${m} \
+                    --n=${n} \
+                    --k=${k} \
+                    --dynamicity=${dynamicity} \
+                    --accumulate=${accumulate} \
+                    --output_matmuls_mlir=${matmul_ir} \
+                    --output_calls_mlir=${calls_ir}"
 
+  if [ $do_transpose_rhs -ne 0 ]; then
+    generation_flags="${generation_flags} --transpose_rhs"
+  fi
+
+
+  echo "**** Generating .mlir file containing matmul function(s) ****"
+  ${IREE_PYTHON3_EXECUTABLE} ${GENERATOR} ${generation_flags}
 
 
   ## Disable exit on failure:
@@ -465,7 +476,18 @@ run_matmul_test \
     --dynamicity "static" \
     --accumulate "false" \
     --expect-compile-failure "0" \
-    --compile-only "0"
+    --compile-only "0" \
+    --do_transpose_rhs "0"
+
+# TODO: fix this. 
+#: error: 'aie.dma_bd' op Cannot give more than 4 dimensions for step sizes and wraps in this  tile (got 5 dimensions).
+run_matmul_test \
+  --name_prefix "transpose" \
+  --lhs_rhs_type "bf16" \
+  --acc_type "f32" \
+  --m "256" --n "256" --k "256" \
+  --do_transpose_rhs "1" \
+  --expect-compile-failure "1"
 
 # The below matmul case passes with 
 # tile_sizes = [[1, 1], [0, 0, 250], [1, 1], [0, 0, 2]], packedSizes = [1, 1, 5]
@@ -554,4 +576,5 @@ run_matmul_test \
     --lhs_rhs_type "i32" \
     --acc_type "i32" \
     --m "64"  --n "64" --k "160"
+
 
