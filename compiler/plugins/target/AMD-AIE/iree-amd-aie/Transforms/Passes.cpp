@@ -54,6 +54,13 @@ static llvm::cl::opt<bool> clEnableVectorizationPasses(
                    "purposes only."),
     llvm::cl::init(true));
 
+static llvm::cl::opt<bool> clMatmulElementwiseFusion(
+    "iree-amdaie-matmul-elementwise-fusion",
+    llvm::cl::desc("This option enables/disables special passes in MLIR-AIR "
+                   "for matmul-elementwise fusion. It is currently added for "
+                   "development purpose and should be removed in the future."),
+    llvm::cl::init(false));
+
 void appendVectorizationToPipeline(OpPassManager &funcPassManager) {
   if (!clEnableVectorizationPasses) return;
   funcPassManager.addPass(createAMDAIECleanupPass());
@@ -457,8 +464,10 @@ void addMLIRAIRAIELoweringPasses(OpPassManager &passManager, bool packPeel) {
   passManager.addPass(createCSEPass());
 
   passManager.addPass(xilinx::air::createAIRDependencyPass());
-  passManager.addPass(xilinx::air::createAIRDependencyScheduleOptPass());
-  passManager.addPass(xilinx::air::createAIRSpecializeDmaBroadcast());
+  if (!clMatmulElementwiseFusion) {
+    passManager.addPass(xilinx::air::createAIRDependencyScheduleOptPass());
+    passManager.addPass(xilinx::air::createAIRSpecializeDmaBroadcast());
+  }
   passManager.addPass(xilinx::air::createDmaToChannelPass());
   passManager.addPass(createCanonicalizerPass());
   passManager.addPass(createCSEPass());
@@ -476,7 +485,15 @@ void addMLIRAIRAIELoweringPasses(OpPassManager &passManager, bool packPeel) {
   if (packPeel) {
     passManager.addPass(createCanonicalizerPass());
     passManager.addPass(createCSEPass());
-    passManager.addPass(xilinx::air::createAIRFuseChannels());
+    {
+      xilinx::air::AIRFuseChannelsOptions options;
+      std::vector<std::string> mode;
+      if (clMatmulElementwiseFusion) {
+        mode.push_back("L1");
+      }
+      options.clAggressiveMode = ArrayRef(mode);
+      passManager.addPass(xilinx::air::createAIRFuseChannels(options));
+    }
   }
   passManager.addPass(createCanonicalizerPass());
   passManager.addPass(createCSEPass());

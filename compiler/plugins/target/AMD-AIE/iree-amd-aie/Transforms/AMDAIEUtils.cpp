@@ -272,31 +272,32 @@ bool isMatmul(linalg::LinalgOp linalgOp) {
 /// Utility to identify if the input operand has matmul-like op in its
 /// def-chain.
 bool isMatmulInDefChain(Value operand) {
-  while (Operation *defOp = operand.getDefiningOp()) {
-    if (isa<arith::ConstantOp>(defOp)) return false;
-    if (auto defLinalgOp = dyn_cast_or_null<linalg::LinalgOp>(defOp)) {
-      if (isMatmul(defLinalgOp)) {
-        return true;
-      }
-      break;
+  Operation *defOp = operand.getDefiningOp();
+  if (!defOp) {
+    return false;
+  }
+
+  if (isa<arith::ConstantOp>(defOp)) {
+    return false;
+  }
+
+  if (auto defLinalgOp = dyn_cast_or_null<linalg::LinalgOp>(defOp)) {
+    if (isMatmul(defLinalgOp)) {
+      return true;
     }
-    if (auto forOp = dyn_cast_or_null<scf::ForOp>(defOp)) {
-      bool findMatmul = false;
-      forOp.getBody()->walk<WalkOrder::PostOrder, ReverseIterator>(
-          [&](linalg::LinalgOp op) {
-            if (isMatmul(op)) {
-              findMatmul = true;
-              return WalkResult::interrupt();
-            }
-            return WalkResult::advance();
-          });
-      if (findMatmul) {
-        return true;
-      }
+  }
+
+  // If something is being produced from a for/forall loop, we just assume it is
+  // some fused computation and do not really need to look at its body to match
+  // matmul.
+  if (isa<scf::ForOp>(defOp) || isa<scf::ForallOp>(defOp)) {
+    return true;
+  }
+
+  for (Value operand : defOp->getOperands()) {
+    if (isMatmulInDefChain(operand)) {
+      return true;
     }
-    // The defining op could be tensor.pack or tensor.extract_slice, and we only
-    // take the source operand.
-    operand = defOp->getOperand(0);
   }
   return false;
 }
@@ -308,7 +309,7 @@ bool isMatmulProducerOfElementwise(linalg::LinalgOp linalgOp) {
     return false;
   }
   // Check if any of the defining op is a matmul-like op.
-  for (auto operand : linalgOp->getOperands()) {
+  for (Value operand : linalgOp->getOperands()) {
     if (isMatmulInDefChain(operand)) {
       return true;
     }
