@@ -15,6 +15,11 @@ class AMDAIEDialect_Type<string name, string typeMnemonic, list<Trait> traits = 
   let mnemonic = typeMnemonic;
 }
 
+def AMDAIE_DmaType : AMDAIEDialect_Type<"Dma", "dma"> {
+  let summary = "The type for AMDAIE DMA operations";
+  let genVerifyDecl = 1;  
+}
+
 def AMDAIE_LogicalObjectFifoType :
     AMDAIEDialect_Type<"LogicalObjectFifo", "logicalobjectfifo"> {
   let summary = "The logical objectfifo type encapsulating a memref";

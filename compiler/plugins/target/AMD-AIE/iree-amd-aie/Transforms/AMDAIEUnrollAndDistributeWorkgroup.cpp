@@ -12,6 +12,7 @@
 #include "mlir/IR/Iterators.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+#include "mlir/Transforms/LoopInvariantCodeMotionUtils.h"
 
 #define DEBUG_TYPE "iree-amdaie-unroll-and-distribute-workgroup"
 
@@ -224,6 +225,11 @@ class AMDAIEUnrollWorkgroupLoops : public OpRewritePattern<scf::ForOp> {
     if (succeeded(forOp.promoteIfSingleIteration(rewriter))) {
       return success();
     }
+
+    // Hoist non-dma loop invariant operations (like constants, affine apply,
+    // etc) out of the loop like operation to allow more DMA operations to be
+    // hoisted.
+    moveLoopInvariantCode(dyn_cast<LoopLikeOpInterface>(forOp.getOperation()));
 
     // Try hoisting dma ops outside the scf.for operation by sweeping once
     // forward and once backward to hoist to before, respectively after the
@@ -450,6 +456,85 @@ class AssignAieTiles
   }
 };
 
+struct OffsetMapInfo {
+  static SmallVector<std::tuple<int64_t, int64_t>> getEmptyKey() {
+    return {std::make_tuple(int64_t(-1), int64_t(-1))};
+  }
+
+  static SmallVector<std::tuple<int64_t, int64_t>> getTombstoneKey() {
+    return {std::make_tuple(int64_t(-2), int64_t(-2))};
+  }
+
+  static unsigned getHashValue(
+      const SmallVector<std::tuple<int64_t, int64_t>> &v) {
+    return static_cast<unsigned>(llvm::hash_combine_range(v.begin(), v.end()));
+  }
+
+  static bool isEqual(const SmallVector<std::tuple<int64_t, int64_t>> &lhs,
+                      const SmallVector<std::tuple<int64_t, int64_t>> &rhs) {
+    return lhs == rhs;
+  }
+};
+
+///
+LogicalResult distributeSharedMemory(ModuleOp moduleOp) {
+  IRRewriter rewriter(moduleOp.getContext());
+
+  // Map from local objectfifos found to the tiles where they are used
+  DenseMap<SmallVector<std::tuple<int64_t, int64_t>>,
+           AMDAIE::LogicalObjectFifoFromMemrefOp, OffsetMapInfo>
+      logicalObjectFifosToTiles;
+  // DenseMap<SmallVector<llvm::detail::DenseMapPair<unsigned,unsigned>>,
+  // AMDAIE::LogicalObjectFifoFromMemrefOp>
+  //     logicalObjectFifosToTiles;
+
+  auto comparator = [](Value a, Value b) -> bool {
+    TileOp tileA = dyn_cast<AMDAIE::TileOp>(a.getDefiningOp());
+    TileOp tileB = dyn_cast<AMDAIE::TileOp>(b.getDefiningOp());
+    int64_t colA = getConstantIntValue(tileA.getCol()).value();
+    int64_t rowA = getConstantIntValue(tileA.getRow()).value();
+    int64_t colB = getConstantIntValue(tileB.getCol()).value();
+    int64_t rowB = getConstantIntValue(tileB.getRow()).value();
+    if (colA == colB) return rowA < rowB;
+    return colA < colB;
+  };
+
+  // Walk DMA ops and find the ones which are used in cores to update
+  // source/target logical objectfifos
+  moduleOp->walk([&](AMDAIE::LogicalObjectFifoFromMemrefOp logicalObjectFifo) {
+    SmallVector<AMDAIE::TileOp> tiles =
+        llvm::map_to_vector(logicalObjectFifo.getTiles(), [](Value tile) {
+          return dyn_cast<AMDAIE::TileOp>(tile.getDefiningOp());
+        });
+    llvm::sort(tiles.begin(), tiles.end(), comparator);
+
+    SmallVector<AMDAIE::TileOp> targetTiles;
+    (void)getUserTiles<CopyOpOperateOn::Target>(logicalObjectFifo, targetTiles);
+    llvm::sort(targetTiles.begin(), targetTiles.end(), comparator);
+    tiles.insert(tiles.end(), std::make_move_iterator(targetTiles.begin()),
+                 std::make_move_iterator(targetTiles.end()));
+
+    SmallVector<AMDAIE::TileOp> sourceTiles;
+    (void)getUserTiles<CopyOpOperateOn::Source>(logicalObjectFifo, sourceTiles);
+    llvm::sort(sourceTiles.begin(), sourceTiles.end(), comparator);
+    tiles.insert(tiles.end(), std::make_move_iterator(sourceTiles.begin()),
+                 std::make_move_iterator(sourceTiles.end()));
+    llvm::outs() << "Op: " << logicalObjectFifo << ", TILES: " << tiles.size()
+                 << "\n";
+    return WalkResult::advance();
+  });
+
+  // Update the logical objectfifos with assigned tiles
+  // for (auto &&[logicalObjectFifo, tiles] : logicalObjectFifosToTiles) {
+  //   rewriter.setInsertionPoint(logicalObjectFifo);
+  //   rewriter.replaceOpWithNewOp<AMDAIE::LogicalObjectFifoFromMemrefOp>(
+  //       logicalObjectFifo,
+  //       logicalObjectFifo.getOutput().getType().cast<LogicalObjectFifoType>(),
+  //       logicalObjectFifo.getMemref(), tiles.takeVector());
+  // }
+  return success();
+}
+
 class AMDAIEUnrollAndDistributeWorkgroupPass
     : public impl::AMDAIEUnrollAndDistributeWorkgroupBase<
           AMDAIEUnrollAndDistributeWorkgroupPass> {
@@ -477,6 +562,7 @@ void AMDAIEUnrollAndDistributeWorkgroupPass::runOnOperation() {
   if (failed(hoistAffineApplyDependingOnFor(moduleOp))) {
     return signalPassFailure();
   }
+  // llvm::outs() << "AFTER hoistAffineApplyDependingOnFor: " << moduleOp << "\n";
   // Unroll loops inside the workgroups and try hoisting dma operations if
   // possible.
   RewritePatternSet unrollWorkgroupPatterns(context);
@@ -496,6 +582,10 @@ void AMDAIEUnrollAndDistributeWorkgroupPass::runOnOperation() {
                                           std::move(assignAieTilePatters)))) {
     return signalPassFailure();
   }
+
+  // if (failed(distributeSharedMemory(moduleOp))) {
+  //   return signalPassFailure();
+  // }
 }
 
 }  // namespace

@@ -142,6 +142,10 @@ std::unique_ptr<Pass> createAMDAIEPeelForLoopPass(
 /// Create pass to tile TilingInterface operations.
 std::unique_ptr<Pass> createAMDAIETilePass(AMDAIETileOptions options = {});
 
+/// Create pass to lower to an AIE device and convert AMDAIE dialect operations
+/// into AIE dialect operations.
+std::unique_ptr<Pass> createAMDAIELowerToAIEPass();
+
 /// Create pass to tile and fuse TilingInterface operations.
 std::unique_ptr<Pass> createAMDAIETileAndFusePass(
     AMDAIETileAndFuseOptions options = {});

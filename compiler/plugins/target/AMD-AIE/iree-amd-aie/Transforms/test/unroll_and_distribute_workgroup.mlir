@@ -139,7 +139,7 @@ module {
 // does't depend on one of the induction variables and can be hoisted, resulting
 // in a single dma op in the output instead of two.
 //
-// CHECK-LABEL: @broadcast_dma_single_loop
+// CHECK-LABEL: @hoist_dma_single_loop
 // CHECK-DAG:   %[[C0:.*]] = arith.constant 0 : index
 // CHECK-DAG:   %[[C1:.*]] = arith.constant 1 : index
 // CHECK-DAG:   %[[C2:.*]] = arith.constant 2 : index
@@ -161,7 +161,7 @@ module {
 // CHECK-DAG:       %[[CORE_1:.*]] = amdaie.core(%[[TILE_1_2]])
 // CHECK:             amdaie.logicalobjectfifo.consume(%[[DMA_0]])
 module {
-  func.func @broadcast_dma_single_loop() {
+  func.func @hoist_dma_single_loop() {
     %c2 = arith.constant 2 : index
     %alloc = memref.alloc() : memref<32x1024xi32, 1>
     %alloc_1 = memref.alloc() : memref<32x64xi32, 2>
@@ -191,10 +191,54 @@ module {
 // -----
 
 // Check for unrolling a parallel loop, with both cores and dma ops. The dma op
+// does't depend on one of the induction variables and can be hoisted, resulting
+// in a single dma op in the output instead of two. However, in this test, the
+// DMA operation does depend on an affine apply operation within the `scf.for`
+// operation's scope and checks whether both the affine apply and the DMA can
+// be hoisted.
+//
+// CHECK-LABEL: @hoist_dma_and_affine_single_loop
+// CHECK:       scf.forall
+// CHECK:         amdaie.workgroup
+// CHECK:           amdaie.dma_cpy_nd
+// CHECK-NOT:       amdaie.dma_cpy_nd
+#map = affine_map<(d0) -> (d0 * 32)>
+module {
+  func.func @hoist_dma_and_affine_single_loop() {
+    %alloc = memref.alloc() : memref<32x1024xi32, 1>
+    %alloc_1 = memref.alloc() : memref<32x64xi32, 2>
+    scf.forall (%arg0, %arg1) in (1, 1) {
+      amdaie.workgroup {
+        %0 = amdaie.logicalobjectfifo.from_memref %alloc, {} : memref<32x1024xi32, 1> -> !amdaie.logicalobjectfifo<memref<32x1024xi32, 1>>
+        %1 = amdaie.logicalobjectfifo.from_memref %alloc_1, {} : memref<32x64xi32, 2> -> !amdaie.logicalobjectfifo<memref<32x64xi32, 2>>
+        scf.forall (%arg2, %arg3) in (2, 1) {
+          %c2 = arith.constant 2 : index
+          %apply = affine.apply #map(%arg3)
+          %2 = amdaie.dma_cpy_nd(%1[] [] [], %0[%apply] [%c2] [%c2]) : (!amdaie.logicalobjectfifo<memref<32x64xi32, 2>>, !amdaie.logicalobjectfifo<memref<32x1024xi32, 1>>)
+          %tile = amdaie.tile(%arg3, %c2)
+          %3 = amdaie.core(%tile) {
+            amdaie.logicalobjectfifo.consume(%2)
+            amdaie.end
+          }
+        } {mapping = [#gpu.thread<y>, #gpu.thread<x>]}
+        amdaie.controlcode {
+          amdaie.end
+        }
+      }
+    } {mapping = [#gpu.block<y>, #gpu.block<x>]}
+    memref.dealloc %alloc_1 : memref<32x64xi32, 2>
+    memref.dealloc %alloc : memref<32x1024xi32, 1>
+    return
+  }
+}
+
+// -----
+
+// Check for unrolling a parallel loop, with both cores and dma ops. The dma op
 // doesn't depend on either of the induction variables and can be hoisted,
 // resulting in a single dma op in the output instead of four.
 //
-// CHECK-LABEL: @broadcast_dma_multi_loop
+// CHECK-LABEL: @hoist_dma_multi_loop
 // CHECK-DAG:   %[[C0:.*]] = arith.constant 0 : index
 // CHECK-DAG:   %[[C1:.*]] = arith.constant 1 : index
 // CHECK-DAG:   %[[C2:.*]] = arith.constant 2 : index
@@ -225,7 +269,7 @@ module {
 // CHECK-DAG:       %[[CORE_1_3:.*]] = amdaie.core(%[[TILE_1_3]])
 // CHECK-DAG:         amdaie.logicalobjectfifo.consume(%[[DMA_0]])
 module {
-  func.func @broadcast_dma_multi_loop() {
+  func.func @hoist_dma_multi_loop() {
     %c2 = arith.constant 2 : index
     %alloc = memref.alloc() : memref<32x1024xi32, 1>
     %alloc_1 = memref.alloc() : memref<32x64xi32, 2>
@@ -259,7 +303,7 @@ module {
 // doesn't depend on one of the induction variables and can be hoisted,
 // resulting in two dma op in the output instead of four.
 //
-// CHECK-LABEL: @broadcast_dma_one_of_multi_loop
+// CHECK-LABEL: @hoist_dma_one_of_multi_loop
 // CHECK-DAG:   %[[C0:.*]] = arith.constant 0 : index
 // CHECK-DAG:   %[[C1:.*]] = arith.constant 1 : index
 // CHECK-DAG:   %[[C2:.*]] = arith.constant 2 : index
@@ -295,7 +339,7 @@ module {
 // CHECK-DAG:       %[[CORE_1_3:.*]] = amdaie.core(%[[TILE_1_3]])
 // CHECK-DAG:         amdaie.logicalobjectfifo.consume(%[[DMA_1]])
 module {
-  func.func @broadcast_dma_one_of_multi_loop() {
+  func.func @hoist_dma_one_of_multi_loop() {
     %c2 = arith.constant 2 : index
     %alloc = memref.alloc() : memref<32x1024xi32, 1>
     %alloc_1 = memref.alloc() : memref<32x64xi32, 2>
@@ -330,7 +374,7 @@ module {
 // which another one is reading from, resulting in a dma dependency,
 // complicating hoisting. This checks verifies that both dma ops are hoisted.
 //
-// CHECK-LABEL: @broadcast_dma_dependencies
+// CHECK-LABEL: @hoist_dma_dependencies
 // CHECK-DAG:   %[[C0:.+]] = arith.constant 0 : index
 // CHECK-DAG:   %[[C1:.+]] = arith.constant 1 : index
 // CHECK-DAG:   %[[C2:.+]] = arith.constant 2 : index
@@ -371,7 +415,7 @@ module {
 // CHECK-DAG:       %[[CORE_1_3:.*]] = amdaie.core(%[[TILE_1_3]])
 // CHECK-DAG:         amdaie.logicalobjectfifo.consume(%[[DMA_3]])
 module {
-  func.func @broadcast_dma_dependencies() {
+  func.func @hoist_dma_dependencies() {
     %c2 = arith.constant 2 : index
     %alloc = memref.alloc() : memref<32x1024xi32>
     %alloc_1 = memref.alloc() : memref<32x64xi32, 1>
