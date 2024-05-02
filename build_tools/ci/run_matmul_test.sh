@@ -558,6 +558,7 @@ run_matmul_test \
 # SD3 matmul tracker: https://github.com/nod-ai/iree-amd-aie/issues/285
 
 
+
 # SD3 matmuls that do not compile #
 # =============================== #
 # We expect a compilation failure here because m is not a multiple of 4.
@@ -574,12 +575,17 @@ run_matmul_test \
 
 # e2e SD3 matmuls which work e2e #
 # ============================== #
+#
+# TODO(newling) this takes way too long to verify on CPU 
+# (like 10 minutes with IREE atm). We need to find a way to make this faster. 
+# Low-rank tensors? Plumb through to IREE? Blocking:tried doesn't help.
 run_matmul_test \
     --name_prefix "sd3_mm6" \
     --lhs_rhs_type "bf16" \
     --acc_type "f32" \
     --m "308"  --k "9728" --n "2432"  \
-    --expect-compile-failure "0"
+    --expect-compile-failure "0" \
+    --compile-only "0"
 
 run_matmul_test \
     --name_prefix "sd3_mm4" \
@@ -588,80 +594,54 @@ run_matmul_test \
     --m "308"  --k "2432" --n "2432"  \
     --expect-compile-failure "0"
 
-
-# TODO(newling) this takes way too long to verify on CPU 
-# (like 10 minutes with IREE atm). We need to find a way to make this faster. 
-# Low-rank tensors? Plumb through to IREE? Blocking:tried doesn't help.
-run_matmul_test \
-     --name_prefix "sd3_mm8" \
-     --lhs_rhs_type "bf16" \
-     --acc_type "f32" \
-     --m "8192" --k "2432" --n "9728"  \
-     --expect-compile-failure "0" \
-     --compile-only "1" #could be 0 but too slow...
-
-# SD3 matmuls that compile but fail at runtime #
-# ============================================ #
-# TODO: support this matmul
-#  https://github.com/nod-ai/iree-amd-aie/issues/285
-#
-#  I have seen both:
-#   incorrect numbers
-#   'the actual and expected result matrices disagree at row 0, column 256.
-run_matmul_test \
-    --name_prefix "sd3_mm5" \
-    --lhs_rhs_type "bf16" \
-    --acc_type "f32" \
-    --m "308"  --k "2432" --n "9728"  \
-    --expect-compile-failure "0" \
-    --compile-only "1" \
-
-# TODO: support this matmul
-#  https://github.com/nod-ai/iree-amd-aie/issues/285
-#  incorrect numbers. error: the actual and expected result matrices disagree 
-#  at row 0, column 192. TODO(newling) find way to make reference matmul not 
-#  necessary (tried blocking, only marginal gains, we need a low-rank trick).
 run_matmul_test \
      --name_prefix "sd3_mm2" \
      --lhs_rhs_type "bf16" \
      --acc_type "f32" \
      --m "308"  --k "2432" --n "7296"  \
      --expect-compile-failure "0" \
-     --compile-only "1" 
+     --compile-only "0" 
 
-#TODO: support this matmul
-# https://github.com/nod-ai/iree-amd-aie/issues/285
-# hangs in AIE. Stuck in 
-# 'Calling wait in function iree_hal_xrt_direct_command_buffer_dispatch'
+
+run_matmul_test \
+     --name_prefix "sd3_mm8" \
+     --lhs_rhs_type "bf16" \
+     --acc_type "f32" \
+     --m "8192" --k "2432" --n "9728"  \
+     --expect-compile-failure "0" \
+     --compile-only "0"
+
+run_matmul_test \
+    --name_prefix "sd3_mm5" \
+    --lhs_rhs_type "bf16" \
+    --acc_type "f32" \
+    --m "308"  --k "2432" --n "9728"  \
+    --expect-compile-failure "0" \
+    --compile-only "0"
+
 run_matmul_test \
     --name_prefix "sd3_mm7" \
     --lhs_rhs_type "bf16" \
     --acc_type "f32" \
     --m "8192" --k "2432" --n "2432"  \
     --expect-compile-failure "0" \
-    --compile-only "1" 
+    --compile-only "0" 
 
-#TODO: support this matmul
-# hangs in AIE. Stuck in 
-# 'Calling wait in function iree_hal_xrt_direct_command_buffer_dispatch'
 run_matmul_test \
      --name_prefix "sd3_mm9" \
      --lhs_rhs_type "bf16" \
      --acc_type "f32" \
      --m "8192" --k "9728" --n "2432"  \
      --expect-compile-failure "0" \
-     --compile-only "1" 
+     --compile-only "0"
 
-# TODO: support this matmul
-# hangs in AIE. Stuck in 
-# 'Calling wait in function iree_hal_xrt_direct_command_buffer_dispatch'
 run_matmul_test \
     --name_prefix "sd3_mm3" \
     --lhs_rhs_type "bf16" \
     --acc_type "f32" \
     --m "8192" --k "2432" --n "7296"  \
     --expect-compile-failure "0" \
-    --compile-only "1" 
+    --compile-only "0"
 
 ###########################################
 
