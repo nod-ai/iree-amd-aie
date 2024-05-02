@@ -102,6 +102,10 @@ using ModelLhsDType = bfloat16_t;
 using ModelRhsDType = bfloat16_t;
 using ModelReturnDType = bfloat16_t;
 
+// Set to 1 if the kernel requires a pre-initialized buffer to be loaded
+// into the kernel before the kernel runs
+#define KERNEL_REQUIRES_RESULT_PRELOAD 0
+
 //-----------------------------------------------------------------------------
 
 #else
@@ -125,6 +129,10 @@ using C_DATATYPE = float;
 using ModelLhsDType = float;
 using ModelRhsDType = float;
 using ModelReturnDType = float;
+
+// Set to 1 if the kernel requires a pre-initialized buffer to be loaded
+// into the kernel before the kernel runs
+#define KERNEL_REQUIRES_RESULT_PRELOAD 0
 
 #endif
 
@@ -633,8 +641,10 @@ int aie_matmul(Params *params) {
     xrtState->lhsBinder->copyModelToXrt();
     xrtState->rhsBinder->copyModelToXrt();
 
-    // copy output to XRT BO and sync it (is this really necessary?)
+    // copy output to XRT BO and sync it, if the kernel requires it
+#if KERNEL_REQUIRES_RESULT_PRELOAD
     xrtState->resultBinder->copyModelToXrt();
+#endif
 
     // execute the kernel on NPU
     auto run = xrtState->kernel(xrtState->boInstr, instrSize,
