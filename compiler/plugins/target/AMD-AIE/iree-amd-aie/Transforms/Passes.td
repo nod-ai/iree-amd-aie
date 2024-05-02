@@ -67,6 +67,12 @@ def AMDAIEDecomposeLinalgExtPackUnPackToAIR :
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEDecomposeLinalgExtPackUnPackToAIRPass()";
 }
 
+def AMDAIEDmaToCircularDma :
+  Pass<"iree-amdaie-dma-to-circular-dma"> {
+  let summary = "Convert dma operations to circular dma operations.";
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEDmaToCircularDmaPass()";
+}
+
 def AMDAIEFuseConsumerIntoLoop :
     InterfacePass<"iree-amdaie-fuse-consumer-into-loop", "mlir::FunctionOpInterface"> {
   let summary = "Fuse the consumer operation into the innermost last scf loop.";

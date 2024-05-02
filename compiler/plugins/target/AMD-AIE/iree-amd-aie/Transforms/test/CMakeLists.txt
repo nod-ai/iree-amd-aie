@@ -13,6 +13,7 @@ iree_lit_test_suite(
     "bufferize_to_allocation.mlir"
     "canonicalize_dma.mlir"
     "disable_vectorization.mlir"
+    "dma_to_circular_dma.mlir"
     "fuse_consumer_into_loop.mlir"
     "fuse_fill_into_forall.mlir"
     "fuse_logical_objectfifo_into_workgroup.mlir"
