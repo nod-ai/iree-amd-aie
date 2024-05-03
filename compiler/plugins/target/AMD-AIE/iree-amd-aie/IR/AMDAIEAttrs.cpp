@@ -10,7 +10,6 @@
 #include "llvm/ADT/TypeSwitch.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
-#include "mlir/Dialect/Transform/IR/TransformOps.h"
 #include "mlir/IR/DialectImplementation.h"
 
 #define GET_ATTRDEF_CLASSES
@@ -86,12 +85,12 @@ namespace mlir::iree_compiler {
 // ===----------------------------------------------------------------------===//
 
 static AMDAIE::PermLevelAttr getPermLevelAttr(
-    MLIRContext *context, SmallVector<int64_t> permLevelVal) {
+    MLIRContext *context, ArrayRef<int64_t> permLevelVal) {
   return AMDAIE::PermLevelAttr::get(context, permLevelVal);
 }
 
 static AMDAIE::PermLevelsAttr getPermLevelsAttr(
-    MLIRContext *context, SmallVector<SmallVector<int64_t>> permLevelsVal) {
+    MLIRContext *context, ArrayRef<SmallVector<int64_t>> permLevelsVal) {
   SmallVector<AMDAIE::PermLevelAttr> permLevels;
   for (auto permLevel : permLevelsVal) {
     permLevels.push_back(AMDAIE::PermLevelAttr::get(context, permLevel));
@@ -100,10 +99,10 @@ static AMDAIE::PermLevelsAttr getPermLevelsAttr(
 }
 
 AMDAIE::PackingConfigPackingLevelAttr getPackingConfigPackingLevelAttr(
-    MLIRContext *context, SmallVector<int64_t> &packedSizes,
-    SmallVector<int64_t> &transposePackIndices, SmallVector<bool> &unpackEmpty,
-    SmallVector<SmallVector<int64_t>> &innerPermVal,
-    SmallVector<SmallVector<int64_t>> &outerPermVal) {
+    MLIRContext *context, ArrayRef<int64_t> packedSizes,
+    ArrayRef<int64_t> transposePackIndices, ArrayRef<bool> unpackEmpty,
+    ArrayRef<SmallVector<int64_t>> innerPermVal,
+    ArrayRef<SmallVector<int64_t>> outerPermVal) {
   auto innerPermAttr = getPermLevelsAttr(context, innerPermVal);
   auto outerPermAttr = getPermLevelsAttr(context, outerPermVal);
   return AMDAIE::PackingConfigPackingLevelAttr::get(
