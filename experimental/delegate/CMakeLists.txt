@@ -62,6 +62,7 @@ iree_lit_test_suite(
     lit
   SRCS
     "mlp.mlir"
+    "matmul.mlir"
     "opt.mlir"
   DATA
     "linalg.pdl.mlir"
