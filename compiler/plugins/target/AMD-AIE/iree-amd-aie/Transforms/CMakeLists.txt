@@ -45,6 +45,7 @@ iree_cc_library(
     "AMDAIEAIRDmaToAMDAIEDma.cpp"
     "AMDAIEBufferizeToAllocation.cpp"
     "AMDAIECanonicalizeDma.cpp"
+    "AMDAIEDmaToCircularDma.cpp"
     "AMDAIEFuseConsumerIntoLoop.cpp"
     "AMDAIEFuseFillIntoForall.cpp"
     "AMDAIEFuseLogicalObjectFifoIntoWorkgroup.cpp"

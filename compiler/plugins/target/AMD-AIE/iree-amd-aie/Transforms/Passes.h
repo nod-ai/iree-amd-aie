@@ -56,6 +56,9 @@ std::unique_ptr<Pass> createAMDAIECleanupPass();
 /// dialect.
 std::unique_ptr<Pass> createAMDAIEDecomposeLinalgExtPackUnPackToAIRPass();
 
+/// Create a pass to convert dma operations to circular dma operations.
+std::unique_ptr<Pass> createAMDAIEDmaToCircularDmaPass();
+
 /// Create a pass to fuse the consumer op into the innermost last scf loop.
 std::unique_ptr<Pass> createAMDAIEFuseConsumerIntoLoopPass(
     AMDAIEFuseConsumerIntoLoopOptions options = {});

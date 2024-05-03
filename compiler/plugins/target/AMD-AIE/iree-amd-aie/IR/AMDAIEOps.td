@@ -292,9 +292,10 @@ def AMDAIE_LogicalObjectFifoProduce: AMDAIE_Op<"logicalobjectfifo.produce", []> 
   }];
 }
 
-def AMDAIE_DmaCpyNdOp: AMDAIE_Op<"dma_cpy_nd", [AttrSizedOperandSegments, CopyOpInterface,
+class AMDAIE_DmaCpyNdBaseOp<string mnemonic, list<Trait> traits = []> :
+    AMDAIE_Op<mnemonic, traits # [AttrSizedOperandSegments, CopyOpInterface,
     DoublyStridedOpInterface]> {
-  let summary = "The DMA copy operator";
+  let summary = "The base DMA copy operator class";
   let description = [{
     The DMA operation represents a strided copy operation with an unlimited number of
     dimensions from a source to a target logical objectfifo. Both the source and target
@@ -365,7 +366,7 @@ def AMDAIE_DmaCpyNdOp: AMDAIE_Op<"dma_cpy_nd", [AttrSizedOperandSegments, CopyOp
       "ValueRange":$target_sizes, "ValueRange":$target_strides, "Value":$source,
       "ValueRange":$source_offsets, "ValueRange":$source_sizes, "ValueRange":$source_strides)>
   ];
-  
+
   let extraClassDeclaration = [{
     Value getSourceMemref() { return getSource(); }
     Value getTargetMemref() { return getTarget(); }
@@ -373,6 +374,51 @@ def AMDAIE_DmaCpyNdOp: AMDAIE_Op<"dma_cpy_nd", [AttrSizedOperandSegments, CopyOp
     Type getTargetType() { return getTarget().getType(); }
     LogicalObjectFifoFromMemrefOp getSourceObjectFifo();
     LogicalObjectFifoFromMemrefOp getTargetObjectFifo();
+  }];
+}
+
+def AMDAIE_DmaCpyNdOp: AMDAIE_DmaCpyNdBaseOp<"dma_cpy_nd", []> {
+  let summary = "The DMA copy operator";
+  let description = [{
+    The DMA operation represents a strided copy operation with an unlimited number of
+    dimensions from a source to a target logical objectfifo as specified by the
+    `DmaCpyNdBaseOp` base class. Contrast this operation with the `CircularDmaCpyNdOp`,
+    which is similar, but keeps copying data indefinitely, waiting for data to be
+    produced on the source logical objectfifo and producing into the target logical
+    objectfifo.
+    
+    Example:
+
+    ```mlir
+    %2 = amdaie.dma_cpy_nd(
+      %1[%c0, %c0, %c0, %c0] [%c1, %c1, %c8, %c16] [%c128, %c128, %c16, %c1],
+      %0[%c0, %c0, %c0, %c0] [%c1, %c1, %c8, %c16] [%c128, %c16, %c16, %c1])
+      : (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>)
+    ```
+
+  }];
+
+  let hasVerifier = 0;
+}
+
+def AMDAIE_CircularDmaCpyNdOp: AMDAIE_DmaCpyNdBaseOp<"circular_dma_cpy_nd", []> {
+  let summary = "The circular DMA copy operator";
+  let description = [{
+    The DMA operation represents a strided copy operation with an unlimited number of
+    dimensions from a source to a target logical objectfifo as specified by the
+    `DmaCpyNdBaseOp` base class. This operation keeps copying data indefinitely, waiting 
+    for data to be produced on the source logical objectfifo and producing into the target
+    logical objectfifo.
+    
+    Example:
+
+    ```mlir
+    %2 = amdaie.circular_dma_cpy_nd(
+      %1[%c0, %c0, %c0, %c0] [%c1, %c1, %c8, %c16] [%c128, %c128, %c16, %c1],
+      %0[%c0, %c0, %c0, %c0] [%c1, %c1, %c8, %c16] [%c128, %c16, %c16, %c1])
+      : (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>)
+    ```
+
   }];
 
   let hasVerifier = 0;
