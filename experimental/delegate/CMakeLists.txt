@@ -62,8 +62,10 @@ iree_lit_test_suite(
     lit
   SRCS
     "mlp.mlir"
+    "opt.mlir"
   DATA
     "linalg.pdl.mlir"
+    "opt.pdl.mlir"
   TOOLS
     FileCheck
     iree-compile
