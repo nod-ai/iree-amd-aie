@@ -346,7 +346,6 @@ function run_matmul_test() {
       --iree-amd-aie-vitis-install-dir=${vitis_path} \
       --iree-hal-dump-executable-files-to=$PWD \
       --iree-amd-aie-show-invoked-commands \
-      --mlir-print-ir-before-all \
       -o "${matmul_vmfb}"
 
 
@@ -558,12 +557,12 @@ run_matmul_test \
     --m "64"  --n "64" --k "160"
 
 
-# TODO: Fails in AIRToAIE, without a message. 
-#
+# TODO: Fails in mlir-air
+# error: 'aie.dma_bd' op Cannot give more than 3 dimensions for step sizes and wraps in this  tile (got 4 dimensions).
 run_matmul_test \
     --name_prefix "pack_peel_bf16" \
     --pipeline "pack-peel" \
     --lhs_rhs_type "bf16" \
     --acc_type "f32" \
-    --m "64"  --n "64" --k "64" \
-    --expect_compile_failure "1"
+    --m "64"  --n "64" --k "160" \
+    --expect-compile-failure "1" 
