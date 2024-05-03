@@ -158,6 +158,145 @@ def AMDAIE_WorkgroupOp : AMDAIE_Op<"workgroup",
 }
 
 //===----------------------------------------------------------------------===//
+// IREE AMDAIE Npu Ops
+//===----------------------------------------------------------------------===//
+
+def AMDAIE_NpuDmaCpyNdOp: AMDAIE_Op<"npu.dma_cpy_nd",
+    [AttrSizedOperandSegments, DoublyStridedOpInterface]>,
+    Results<(outs Index)> {
+  let summary = "The Npu uController's dma operator";
+  let description = [{
+    The Npu DMA operation represents a strided copy operation with an unlimited
+    number of dimenions, executed by the Npu uController. This operation refers
+    to a `CircularDmaCpyNdOp`, which will contain the necessary information
+    about the source and target logical object fifos of the operation and which
+    will instantiate the DMA connection.
+
+    The representation supports a partially-static representation of both the source and
+    target `offsets`, `sizes` and `strides`. A special sentinel value ShapedType::kDynamic
+    encodes that the corresponding entry has a dynamic value.
+
+    Example:
+
+    ```mlir
+    %1 = amdaie.circular_dma_cpy_nd(%1[] [] [], %0[] [] []) : (!amdaie.logicalobjectfifo<memref<32x64xi32, 1>>, !amdaie.logicalobjectfifo<memref<32x1024xi32>>)
+    ...
+    amdaie.controlcode {
+      %2 = amdaie.npu.dma_cpy_nd %1([] [] [], [%c0, %c0] [%c32, %c64] [%c1024, %c1])
+      ...
+    }
+    ```
+  }];
+
+  let arguments = (
+    ins Index:$dma,
+        Variadic<Index>:$target_offsets,
+        Variadic<Index>:$target_sizes,
+        Variadic<Index>:$target_strides,
+        DenseI64ArrayAttr:$target_static_offsets,
+        DenseI64ArrayAttr:$target_static_sizes,
+        DenseI64ArrayAttr:$target_static_strides,
+        Variadic<Index>:$source_offsets,
+        Variadic<Index>:$source_sizes,
+        Variadic<Index>:$source_strides,
+        DenseI64ArrayAttr:$source_static_offsets,
+        DenseI64ArrayAttr:$source_static_sizes,
+        DenseI64ArrayAttr:$source_static_strides
+  );
+
+  let assemblyFormat = [{
+    $dma
+    `(`
+    custom<DynamicIndexList>($target_offsets, $target_static_offsets)
+    custom<DynamicIndexList>($target_sizes, $target_static_sizes)
+    custom<DynamicIndexList>($target_strides, $target_static_strides)
+    `,`
+    custom<DynamicIndexList>($source_offsets, $source_static_offsets)
+    custom<DynamicIndexList>($source_sizes, $source_static_sizes)
+    custom<DynamicIndexList>($source_strides, $source_static_strides)
+    `)`
+    attr-dict
+  }];
+
+  let builders = [
+    // Build a NpuDmaCpyNdOp with mixed static and dynamic entries.
+    OpBuilder<(ins "Value":$dma, "ArrayRef<OpFoldResult>":$target_offsets,
+      "ArrayRef<OpFoldResult>":$target_sizes,
+      "ArrayRef<OpFoldResult>":$target_strides,
+      "ArrayRef<OpFoldResult>":$source_offsets,
+      "ArrayRef<OpFoldResult>":$source_sizes,
+      "ArrayRef<OpFoldResult>":$source_strides)>,
+    // Build a NpuDmaCpyNdOp with static entries.
+    OpBuilder<(ins "Value":$dma, "ArrayRef<int64_t>":$target_offsets,
+      "ArrayRef<int64_t>":$target_sizes, "ArrayRef<int64_t>":$target_strides,
+      "ArrayRef<int64_t>":$source_offsets, "ArrayRef<int64_t>":$source_sizes,
+      "ArrayRef<int64_t>":$source_strides)>,
+    // Build a NpuDmaCpyNdOp with dynamic entries.
+    OpBuilder<(ins "Value":$dma, "ValueRange":$target_offsets,
+      "ValueRange":$target_sizes, "ValueRange":$target_strides,
+      "ValueRange":$source_offsets, "ValueRange":$source_sizes,
+      "ValueRange":$source_strides)>
+  ];
+
+  let extraClassDeclaration = [{
+    // Return the input circular dma copy operation.
+    CircularDmaCpyNdOp getDmaCpyNdOp() {
+      return dyn_cast<CircularDmaCpyNdOp>(getDma().getDefiningOp());
+    }
+    // Check whether this operation has addressing on the target side.
+    bool hasTargetAddressing() { 
+      return !getTargetMixedOffsets().empty() || !getTargetMixedSizes().empty()
+        || !getTargetMixedStrides().empty();
+    }
+    // Check whether this operation has addressing on the target side.
+    bool hasSourceAddressing() {
+      return !getSourceMixedOffsets().empty() || !getSourceMixedSizes().empty() 
+        || !getSourceMixedStrides().empty();
+    }
+    // Check whether this dma operation has a wait user.
+    bool hasDmaWaitOpUser();
+  }];
+}
+
+def AMDAIE_NpuDmaWaitOp: AMDAIE_Op<"npu.dma_wait", []> {
+  let summary = "Wait for the Npu DMA operation to complete.";
+  let description = [{
+    The wait operation will block on the referenced DMA operation to complete
+    execution on provided `direction`. The `S2MM` direction will block on the
+    destination side of the dma operation, ensuring complete execution. The
+    `MM2S` direction will block on the source side of the dma operation,
+    ensuring that the DMA has successfully started execution, but not
+    guaranteeing that all data has been received on the destination side.
+
+    Example:
+
+    ```mlir
+    %2 = amdaie.npu.dma_cpy_nd %0([] [] [], [%c0, %c0] [%c32, %c64] [%c1024, %c1])
+    amdaie.npu.dma_wait(%2, MM2S)
+    ```
+
+    Here, the `dma_wait` operation will wait until the referenced Npu DMA
+    operation has started execution.
+  }];
+
+  let arguments = (
+    ins Index:$dma,
+        DMAChannelDir:$direction
+  );
+
+  let assemblyFormat = [{
+    `(` $dma `,` $direction `)`  attr-dict
+  }];
+
+  let extraClassDeclaration = [{
+    // Return the Npu DMA operation argument.
+    NpuDmaCpyNdOp getDmaOp() { 
+      return dyn_cast<NpuDmaCpyNdOp>(getDma().getDefiningOp());
+    }
+  }];
+}
+
+//===----------------------------------------------------------------------===//
 // IREE AMDAIE LogicalObjectFifo Ops
 //===----------------------------------------------------------------------===//
 

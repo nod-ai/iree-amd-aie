@@ -334,6 +334,113 @@ LogicalResult LogicalObjectFifoFromMemrefOp::verify() {
 }
 
 //===----------------------------------------------------------------------===//
+// AMDAIE_NpuDmaCpyNdOp
+//===----------------------------------------------------------------------===//
+
+// Build a NpuDmaCpyNdOp with mixed static and dynamic entries.
+void NpuDmaCpyNdOp::build(OpBuilder &b, OperationState &result, Value dma,
+                          ArrayRef<OpFoldResult> targetOffsets,
+                          ArrayRef<OpFoldResult> targetSizes,
+                          ArrayRef<OpFoldResult> targetStrides,
+                          ArrayRef<OpFoldResult> sourceOffsets,
+                          ArrayRef<OpFoldResult> sourceSizes,
+                          ArrayRef<OpFoldResult> sourceStrides) {
+  SmallVector<int64_t> staticTargetOffsets, staticTargetSizes,
+      staticTargetStrides;
+  SmallVector<int64_t> staticSourceOffsets, staticSourceSizes,
+      staticSourceStrides;
+  SmallVector<Value> dynamicTargetOffsets, dynamicTargetSizes,
+      dynamicTargetStrides;
+  SmallVector<Value> dynamicSourceOffsets, dynamicSourceSizes,
+      dynamicSourceStrides;
+  dispatchIndexOpFoldResults(targetOffsets, dynamicTargetOffsets,
+                             staticTargetOffsets);
+  dispatchIndexOpFoldResults(targetSizes, dynamicTargetSizes,
+                             staticTargetSizes);
+  dispatchIndexOpFoldResults(targetStrides, dynamicTargetStrides,
+                             staticTargetStrides);
+  dispatchIndexOpFoldResults(sourceOffsets, dynamicSourceOffsets,
+                             staticSourceOffsets);
+  dispatchIndexOpFoldResults(sourceSizes, dynamicSourceSizes,
+                             staticSourceSizes);
+  dispatchIndexOpFoldResults(sourceStrides, dynamicSourceStrides,
+                             staticSourceStrides);
+  build(b, result, b.getIndexType(), dma, dynamicTargetOffsets,
+        dynamicTargetSizes, dynamicTargetStrides, staticTargetOffsets,
+        staticTargetSizes, staticTargetStrides, dynamicSourceOffsets,
+        dynamicSourceSizes, dynamicSourceStrides, staticSourceOffsets,
+        staticSourceSizes, staticSourceStrides);
+}
+
+// Build a NpuDmaCpyNdOp with static entries.
+void NpuDmaCpyNdOp::build(OpBuilder &b, OperationState &result, Value dma,
+                          ArrayRef<int64_t> targetOffsets,
+                          ArrayRef<int64_t> targetSizes,
+                          ArrayRef<int64_t> targetStrides,
+                          ArrayRef<int64_t> sourceOffsets,
+                          ArrayRef<int64_t> sourceSizes,
+                          ArrayRef<int64_t> sourceStrides) {
+  SmallVector<OpFoldResult> targetOffsetValues = llvm::to_vector<4>(
+      llvm::map_range(targetOffsets, [&](int64_t v) -> OpFoldResult {
+        return b.getI64IntegerAttr(v);
+      }));
+  SmallVector<OpFoldResult> targetSizeValues = llvm::to_vector<4>(
+      llvm::map_range(targetSizes, [&](int64_t v) -> OpFoldResult {
+        return b.getI64IntegerAttr(v);
+      }));
+  SmallVector<OpFoldResult> targetStrideValues = llvm::to_vector<4>(
+      llvm::map_range(targetStrides, [&](int64_t v) -> OpFoldResult {
+        return b.getI64IntegerAttr(v);
+      }));
+  SmallVector<OpFoldResult> sourceOffsetValues = llvm::to_vector<4>(
+      llvm::map_range(sourceOffsets, [&](int64_t v) -> OpFoldResult {
+        return b.getI64IntegerAttr(v);
+      }));
+  SmallVector<OpFoldResult> sourceSizeValues = llvm::to_vector<4>(
+      llvm::map_range(sourceSizes, [&](int64_t v) -> OpFoldResult {
+        return b.getI64IntegerAttr(v);
+      }));
+  SmallVector<OpFoldResult> sourceStrideValues = llvm::to_vector<4>(
+      llvm::map_range(sourceStrides, [&](int64_t v) -> OpFoldResult {
+        return b.getI64IntegerAttr(v);
+      }));
+  build(b, result, dma, targetOffsetValues, targetSizeValues,
+        targetStrideValues, sourceOffsetValues, sourceSizeValues,
+        sourceStrideValues);
+}
+
+// Build a NpuDmaCpyNdOp with dynamic entries.
+void NpuDmaCpyNdOp::build(OpBuilder &b, OperationState &result, Value dma,
+                          ValueRange targetOffsets, ValueRange targetSizes,
+                          ValueRange targetStrides, ValueRange sourceOffsets,
+                          ValueRange sourceSizes, ValueRange sourceStrides) {
+  SmallVector<OpFoldResult> targetOffsetValues =
+      llvm::to_vector<4>(llvm::map_range(
+          targetOffsets, [](Value v) -> OpFoldResult { return v; }));
+  SmallVector<OpFoldResult> targetSizeValues = llvm::to_vector<4>(
+      llvm::map_range(targetSizes, [](Value v) -> OpFoldResult { return v; }));
+  SmallVector<OpFoldResult> targetStrideValues =
+      llvm::to_vector<4>(llvm::map_range(
+          targetStrides, [](Value v) -> OpFoldResult { return v; }));
+  SmallVector<OpFoldResult> sourceOffsetValues =
+      llvm::to_vector<4>(llvm::map_range(
+          sourceOffsets, [](Value v) -> OpFoldResult { return v; }));
+  SmallVector<OpFoldResult> sourceSizeValues = llvm::to_vector<4>(
+      llvm::map_range(sourceSizes, [](Value v) -> OpFoldResult { return v; }));
+  SmallVector<OpFoldResult> sourceStrideValues =
+      llvm::to_vector<4>(llvm::map_range(
+          sourceStrides, [](Value v) -> OpFoldResult { return v; }));
+  build(b, result, dma, targetOffsetValues, targetSizeValues,
+        targetStrideValues, sourceOffsetValues, sourceSizeValues,
+        sourceStrideValues);
+}
+
+bool NpuDmaCpyNdOp::hasDmaWaitOpUser() {
+  return llvm::any_of((*this)->getUsers(),
+                      [](auto userOp) { return isa<NpuDmaWaitOp>(userOp); });
+}
+
+//===----------------------------------------------------------------------===//
 // AMDAIE_TileOp
 //===----------------------------------------------------------------------===//
 
