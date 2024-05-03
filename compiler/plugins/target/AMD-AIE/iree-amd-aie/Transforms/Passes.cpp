@@ -248,6 +248,9 @@ void addPackPeelBasedPassPipeline(OpPassManager &funcPassManager,
   funcPassManager.addPass(createCanonicalizerPass());
   funcPassManager.addPass(createCSEPass());
 
+  // Vectorization passes
+  appendVectorizationToPipeline(funcPassManager);
+
   // Comprehensive bufferization
   addAMDAIEBufferizePasses(funcPassManager);
 }

@@ -555,3 +555,10 @@ run_matmul_test \
     --acc_type "i32" \
     --m "64"  --n "64" --k "160"
 
+run_matmul_test \
+    --name_prefix "pack_peel_bf16" \
+    --pipeline "pack-peel" \
+    --lhs_rhs_type "bf16" \
+    --acc_type "f32" \
+    --m "64"  --n "64" --k "64"
+
