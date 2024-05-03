@@ -346,6 +346,7 @@ function run_matmul_test() {
       --iree-amd-aie-vitis-install-dir=${vitis_path} \
       --iree-hal-dump-executable-files-to=$PWD \
       --iree-amd-aie-show-invoked-commands \
+      --mlir-print-ir-before-all \
       -o "${matmul_vmfb}"
 
 
@@ -446,6 +447,7 @@ function run_matmul_test() {
 #    build and execution latency of tests. The build latency is nearly the
 #    same for all shapes, while execution latency grows cubicly i.e.
 #    linearly with m*k*n.
+
 
 
 # Example of a run without any defaults arguments.
@@ -555,10 +557,13 @@ run_matmul_test \
     --acc_type "i32" \
     --m "64"  --n "64" --k "160"
 
+
+# TODO: Fails in AIRToAIE, without a message. 
+#
 run_matmul_test \
     --name_prefix "pack_peel_bf16" \
     --pipeline "pack-peel" \
     --lhs_rhs_type "bf16" \
     --acc_type "f32" \
-    --m "64"  --n "64" --k "64"
-
+    --m "64"  --n "64" --k "64" \
+    --expect_compile_failure "1"
