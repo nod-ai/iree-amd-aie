@@ -106,7 +106,7 @@ class AIETargetBackend final : public IREE::HAL::TargetBackend {
                     xilinx::airrt::AIRRtDialect>();
   }
 
-  void buildTranslationPassPipeline(IREE::HAL::ExecutableVariantOp variantOp,
+  void buildTranslationPassPipeline(IREE::HAL::ExecutableTargetAttr,
                                     OpPassManager &passManager) override {
     buildAMDAIETransformPassPipeline(passManager);
   }
