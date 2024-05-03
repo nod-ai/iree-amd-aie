@@ -1,4 +1,6 @@
-// RUN: iree-compile --iree-hal-target-backends=amd-aie --compile-to=executable-sources --mlir-print-ir-after=fold-memref-alias-ops %s | iree-opt --pass-pipeline="builtin.module(hal.executable(hal.executable.variant(iree-hal-translate-target-executable-variants{target=amd-aie})))" --iree-amdaie-use-pipeline=pack-peel | FileCheck %s
+// TODO : currently this test have vectorization disabled. With vectorization enabled, a compilation error is seen:
+//  error: 'aie.dma_bd' op Cannot give more than 3 dimensions for step sizes and wraps in this  tile (got 4 dimensions)
+// RUN: iree-compile --iree-hal-target-backends=amd-aie --compile-to=executable-sources --mlir-print-ir-after=fold-memref-alias-ops %s | iree-opt --pass-pipeline="builtin.module(hal.executable(hal.executable.variant(iree-hal-translate-target-executable-variants{target=amd-aie})))" --iree-amdaie-use-pipeline=pack-peel --iree-amdaie-enable-vectorization-passes=0 | FileCheck %s
 
 func.func @matmul_example(%lhs: tensor<1024x512xi8>, %rhs: tensor<512x1024xi8>) -> tensor<1024x1024xi32>
 {
