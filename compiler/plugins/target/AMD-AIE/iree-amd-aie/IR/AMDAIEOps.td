@@ -167,9 +167,9 @@ def AMDAIE_NpuDmaCpyNdOp: AMDAIE_Op<"npu.dma_cpy_nd",
   let summary = "The Npu uController's dma operator";
   let description = [{
     The Npu DMA operation represents a strided copy operation with an unlimited
-    number of dimenions, executed by the Npu uController. This operation refers
+    number of dimensions, executed by the Npu uController. This operation refers
     to a `CircularDmaCpyNdOp`, which will contain the necessary information
-    about the source and target logical object fifos of the operation and which
+    about the source and target logical objectFifos of the operation and which
     will instantiate the DMA connection.
 
     The representation supports a partially-static representation of both the source and
@@ -239,30 +239,30 @@ def AMDAIE_NpuDmaCpyNdOp: AMDAIE_Op<"npu.dma_cpy_nd",
   ];
 
   let extraClassDeclaration = [{
-    // Return the input circular dma copy operation.
-    CircularDmaCpyNdOp getDmaCpyNdOp() {
-      return dyn_cast<CircularDmaCpyNdOp>(getDma().getDefiningOp());
+    // Check whether this dma operation has a wait user.
+    bool hasDmaWaitOpUser();
+    // Check whether this operation has addressing on the source side.
+    bool hasSourceAddressing() {
+      return !getSourceMixedOffsets().empty() || !getSourceMixedSizes().empty() 
+        || !getSourceMixedStrides().empty();
     }
     // Check whether this operation has addressing on the target side.
     bool hasTargetAddressing() { 
       return !getTargetMixedOffsets().empty() || !getTargetMixedSizes().empty()
         || !getTargetMixedStrides().empty();
     }
-    // Check whether this operation has addressing on the target side.
-    bool hasSourceAddressing() {
-      return !getSourceMixedOffsets().empty() || !getSourceMixedSizes().empty() 
-        || !getSourceMixedStrides().empty();
+    // Return the input circular dma copy operation.
+    CircularDmaCpyNdOp getDmaCpyNdOp() {
+      return dyn_cast<CircularDmaCpyNdOp>(getDma().getDefiningOp());
     }
-    // Check whether this dma operation has a wait user.
-    bool hasDmaWaitOpUser();
   }];
 }
 
 def AMDAIE_NpuDmaWaitOp: AMDAIE_Op<"npu.dma_wait", []> {
   let summary = "Wait for the Npu DMA operation to complete.";
   let description = [{
-    The wait operation will block on the referenced DMA operation to complete
-    execution on provided `direction`. The `S2MM` direction will block on the
+    The wait operation will block on the referenced Npu DMA operation to complete
+    execution on the provided `direction`. The `S2MM` direction will block on the
     destination side of the dma operation, ensuring complete execution. The
     `MM2S` direction will block on the source side of the dma operation,
     ensuring that the DMA has successfully started execution, but not
