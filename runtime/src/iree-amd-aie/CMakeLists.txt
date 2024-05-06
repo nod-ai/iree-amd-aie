@@ -6,7 +6,6 @@
 
 if(IREE_AMD_AIE_ENABLE_XRT_DRIVER)
     add_subdirectory(driver/xrt)
-    add_subdirectory(tools)
 endif()
 
 # Flatbuffer schema generation does not require XRT. Moreover the generated
