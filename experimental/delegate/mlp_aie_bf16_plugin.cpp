@@ -71,6 +71,10 @@
 // Turn this on to debug value conversions
 // #define DEBUG_VALUE_CONVERSIONS 1
 
+// Turn this on to report whenever a copy between HAL and XRT buffers is
+// being done
+// #define ENABLE_PERFORMANCE_WARNING 1
+
 //#############################################################################
 
 #if DEBUG_VALUE_CONVERSIONS
@@ -428,7 +432,9 @@ public:
 
   void copyModelToXrt() {
     KernelDType *xrtBuf = this->bo.template map<KernelDType *>();
+#ifdef ENABLE_PERFORMANCE_WARNING
     std::cout << "[AIE Delegate]: PERFORMANCE WARNING: using extra buffer copy!" << std::endl;
+#endif
     TensorCopier<ModelDType, KernelDType>::copy(xrtBuf, modelTensorData,
         numModelElements);
     this->bo.sync(XCL_BO_SYNC_BO_TO_DEVICE);
@@ -485,7 +491,9 @@ public:
   void copyXrtToModel() {
     this->bo.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
     KernelDType *xrtBuf = this->bo.template map<KernelDType *>();
+#ifdef ENABLE_PERFORMANCE_WARNING
     std::cout << "[AIE Delegate]: PERFORMANCE WARNING: using extra buffer copy!" << std::endl;
+#endif
     TensorCopier<KernelDType, ModelDType>::copy(this->modelTensorData, xrtBuf,
         this->numModelElements);
   }
@@ -630,7 +638,6 @@ void setupNPUAccelerator() {
         [&](xrt::xclbin::kernel &k) {
           auto name = k.get_name();
           kernelNames.push_back(name);
-        //  std::cout << "[AIE Delegate]: Name: " << name << std::endl;
           return name.rfind(KernelName, 0) == 0;
         }
     );
