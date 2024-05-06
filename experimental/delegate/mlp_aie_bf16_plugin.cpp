@@ -95,7 +95,7 @@ const std::string kernelFileName =
     "matmul/matmul-bf16-f32-8192x9728x2432-v1";  // From AIE codegen
 
 // Kernel name inside the xclbin file
-const std::string KernelName = "matmul_8x768_768xbf16__dispatch_0_matmul_8x768x7";
+const std::string KernelName = "matmul_8192x9728_2432xbf16__dispatch_0_matmul_81";
 
 // Fixed shape of the matmul kernel
 #define MLP_M 8192
@@ -520,7 +520,7 @@ struct Params {
 
   std::string getShapeStr() const {
     std::ostringstream oss;
-    oss << M << 'x' << K << 'x' << N;
+    oss << M << 'x' << N << 'x' << K;
     return oss.str();
   }
 
@@ -599,15 +599,16 @@ int instrSize = 0;
 int aie_matmuls_done = 0;
 int matmuls_done = 0;
 
-int setupNPUAccelerator() {
+void setupNPUAccelerator() {
     std::string libPath = getLibraryPath();
     std::cout << "[AIE Delegate]: Using delegate installation at: " << libPath << std::endl;
     std::string instrFilePath = libPath + "/kernels/" + kernelFileName + ".insts.txt";
     std::vector<uint32_t> instrV = loadInstrSequence(instrFilePath);
     instrSize = instrV.size();
     if (instrSize == 0) {
-        std::cerr << "[AIE Delegate]: Couldn't load instructions from file " << instrFilePath << std::endl;
-        return 1;
+      std::ostringstream oss;
+        oss << "[AIE Delegate]: Couldn't load instructions from file " << instrFilePath << std::endl;
+        throw DelegateException(oss.str());
     }
     std::cout << "[AIE Delegate]: Sequence instr count: " << instrV.size() << "\n";
 
@@ -621,16 +622,33 @@ int setupNPUAccelerator() {
     std::string xclbinPath = libPath + "/kernels/" + kernelFileName + ".xclbin";
     auto xclbin = xrt::xclbin(xclbinPath);
 
-    // Get the kernel from the xclbin
+    // Search in the xclbin for the kernel by its name
     auto xkernels = xclbin.get_kernels();
-    auto xkernel = *std::find_if(xkernels.begin(), xkernels.end(),
-                                 [](xrt::xclbin::kernel &k) {
-                                   auto name = k.get_name();
-                                   std::cout << "[AIE Delegate]: Name: " << name << std::endl;
-                                   return name.rfind(KernelName, 0) == 0;
-                                 });
-    // TODO: handle case where kernel name isn't found (instead of crashing)
-    
+    std::vector<std::string> kernelNames;
+    auto foundIter = std::find_if(
+        xkernels.begin(), xkernels.end(),
+        [&](xrt::xclbin::kernel &k) {
+          auto name = k.get_name();
+          kernelNames.push_back(name);
+        //  std::cout << "[AIE Delegate]: Name: " << name << std::endl;
+          return name.rfind(KernelName, 0) == 0;
+        }
+    );
+
+    // If the kernel name we're looking for doesn't exist, error out with a
+    // list of all the kernel names in the xclbin
+    if (foundIter == xkernels.end()) {
+      std::ostringstream oss;
+      oss << "[AIE Delegate] FATAL ERROR: No such kernel " << KernelName
+          << " in " << xclbinPath << ".  Possible kernel names are:"
+          << std::endl;
+      for (const std::string &kernelName : kernelNames)
+        oss << "    " << kernelName << std::endl;
+      throw DelegateException(oss.str());
+    }
+
+    // Kernel name found in the xclbin: get the kernel
+    auto xkernel = *foundIter;
     auto kernelName = xkernel.get_name();
 
     // Register the xclbin
@@ -660,10 +678,9 @@ int setupNPUAccelerator() {
     std::cout << "[AIE Delegate]: NPU setup done." << std::endl;
     
     aie_setup = true;
-    return 0;  // TODO: check for and handle more error conditions
 }
 
-int aie_matmul(Params *params) {
+void aie_matmul(Params *params) {
     std::cout << "[AIE Delegate]: Computing AIE matmul of " << params->getShapeStr() << std::endl;
     int cnt = 0;
     auto xrtState = XrtState::getInstance();
@@ -702,8 +719,6 @@ int aie_matmul(Params *params) {
     std::cout << "Result Tensor" << std::endl;
     params->result.dumpVals(std::cout, cVolume);
 #endif
-
-    return 0;  // TODO: check for and handle error conditions
 }
 
 //#############################################################################
@@ -720,7 +735,7 @@ using CpuAccDType =
   float;
 #endif
 
-static int cpu_matmul(Params *params) {
+static void cpu_matmul(Params *params) {
   std::cout << "[AIE Delegate]: Computing CPU scalar matmul of " << params->getShapeStr() << std::endl;
   for (int32_t i = 0; i < params->M; i++) {
     for (int32_t j = 0; j < params->N; j++) {
@@ -737,7 +752,6 @@ static int cpu_matmul(Params *params) {
       params->result.setElement(i, j, N, Converter<CpuAccDType, ModelReturnDType>::convert(curr_result));
     }
   }
-  return 0;
 }
 
 //#############################################################################
@@ -784,14 +798,24 @@ static int mlp_external(void* params_ptr, void* context, void* reserved) {
   //         params->N, params->K);
 
 #ifdef USE_CPU_IMPLEMENTATION
-  return cpu_matmul(params);  // enable this if CPU fallback desired
+  cpu_matmul(params);  // enable this if CPU fallback desired
 #else
-  // If the input shapes match the AIE kernel, use it
-  if (params->M == MLP_M && params->K == MLP_K && params->N == MLP_N)
-      return aie_matmul(params);
+  // If the input shapes do not match the AIE kernel, deliberately fail to
+  // make sure AIE version is getting used
+  if (params->M != MLP_M || params->K != MLP_K || params->N != MLP_N) {
+    std::ostringstream oss;
+    oss << "[AIE Delegate] FATAL ERROR: Shape mismatch between model and kernel."
+        << std::endl;
+    oss << "    Model shape: M=" << params->M << ", N=" << params->N << ", K="
+        << params->K << std::endl;
+    oss << "    Kernel shape: M=" << MLP_M << ", N=" << MLP_N << ", K="
+        << MLP_K << std::endl;
+    throw DelegateException(oss.str());
+  }
 
-  return 1;  // deliberately fail to make sure AIE version is getting used
+  aie_matmul(params);
 #endif
+  return 0;
 }
 
 // Called once for each plugin load and paired with a future call to unload.
@@ -821,9 +845,7 @@ static iree_hal_executable_plugin_status_t mlp_plugin_load(
 
 #ifndef USE_CPU_IMPLEMENTATION
   // Initialize XRT with the one-and-only xclbin and instruction file
-  int rc = setupNPUAccelerator();
-  if (rc != 0)
-    return iree_hal_executable_plugin_status_from_code(rc);
+  setupNPUAccelerator();
 #endif
 
   // Pass back the plugin instance that'll be passed to resolve.
