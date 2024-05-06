@@ -139,11 +139,16 @@ func.func @logicalobjectfifo_produce(%arg0: !amdaie.logicalobjectfifo<memref<1x1
 // -----
 
 // CHECK-LABEL: func.func @npu_dma_cpy_nd
-// CHECK:       %[[DMA0:.+]] = amdaie.circular_dma_cpy_nd
+// CHECK-DAG:   %[[C0:.+]] = arith.constant 0 : index
+// CHECK-DAG:   %[[C1:.+]] = arith.constant 1 : index
+// CHECK-DAG:   %[[C8:.+]] = arith.constant 8 : index
+// CHECK-DAG:   %[[C16:.+]] = arith.constant 16 : index
+// CHECK-DAG:   %[[C128:.+]] = arith.constant 128 : index
+// CHECK-DAG:   %[[DMA0:.+]] = amdaie.circular_dma_cpy_nd
 // CHECK:       %{{.*}} = amdaie.npu.dma_cpy_nd
 // CHECK-SAME:  %[[DMA0]]
-// CHECK-SAME:  [%c0, %c0, %c0, %c0] [%c1, %c1, %c8, %c16] [%c128, %c128, %c16, %c1]
-// CHECK-SAME:  [%c0, %c0, %c0, %c0] [%c1, %c1, %c8, %c16] [%c128, %c16, %c16, %c1]
+// CHECK-SAME:  [%[[C0]], %[[C0]], %[[C0]], %[[C0]]] [%[[C1]], %[[C1]], %[[C8]], %[[C16]]] [%[[C128]], %[[C128]], %[[C16]], %[[C1]]]
+// CHECK-SAME:  [%[[C0]], %[[C0]], %[[C0]], %[[C0]]] [%[[C1]], %[[C1]], %[[C8]], %[[C16]]] [%[[C128]], %[[C16]], %[[C16]], %[[C1]]]
 func.func @npu_dma_cpy_nd(%arg0: !amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, %arg1: !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>) {
   %c0 = arith.constant 0 : index
   %c1 = arith.constant 1 : index
@@ -172,11 +177,15 @@ func.func @npu_dma_cpy_nd_inline_literals(%arg0: !amdaie.logicalobjectfifo<memre
 // -----
 
 // CHECK-LABEL: func.func @npu_dma_cpy_nd_mixed
-// CHECK:       %[[DMA0:.+]] = amdaie.circular_dma_cpy_nd
+// CHECK-DAG:   %[[C0:.+]] = arith.constant 0 : index
+// CHECK-DAG:   %[[C8:.+]] = arith.constant 8 : index
+// CHECK-DAG:   %[[C16:.+]] = arith.constant 16 : index
+// CHECK-DAG:   %[[C128:.+]] = arith.constant 128 : index
+// CHECK-DAG:   %[[DMA0:.+]] = amdaie.circular_dma_cpy_nd
 // CHECK:       %{{.*}} = amdaie.npu.dma_cpy_nd
 // CHECK-SAME:  %[[DMA0]]
-// CHECK-SAME:  [%c0, %c0, %c0, %c0] [1, 1, %c8, %c16] [%c128, %c128, %c16, 1]
-// CHECK-SAME:  [%c0, %c0, %c0, %c0] [1, 1, %c8, %c16] [%c128, %c16, %c16, 1]
+// CHECK-SAME:  [%[[C0]], %[[C0]], %[[C0]], %[[C0]]] [1, 1, %[[C8]], %[[C16]]] [%[[C128]], %[[C128]], %[[C16]], 1]
+// CHECK-SAME:  [%[[C0]], %[[C0]], %[[C0]], %[[C0]]] [1, 1, %[[C8]], %[[C16]]] [%[[C128]], %[[C16]], %[[C16]], 1]
 func.func @npu_dma_cpy_nd_mixed(%arg0: !amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, %arg1: !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>) {
   %c0 = arith.constant 0 : index
   %c8 = arith.constant 8 : index
