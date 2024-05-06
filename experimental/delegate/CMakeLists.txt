@@ -64,9 +64,11 @@ iree_lit_test_suite(
     "mlp.mlir"
     "matmul.mlir"
     "opt.mlir"
+    "tres-leches.mlir"
   DATA
     "linalg.pdl.mlir"
     "opt.pdl.mlir"
+    "tres-leches.pdl.mlir"
   TOOLS
     FileCheck
     iree-compile

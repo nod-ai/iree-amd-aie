@@ -34,13 +34,23 @@
 // The only header required from IREE:
 #include "iree/hal/local/executable_plugin.h"
 
+// Delegate kernels
+#define REF_MATMUL_DELEGATE_KERNEL 1
+#define OPT_DELEGATE_KERNEL 2
+#define TRES_LECHES_DELEGATE_KERNEL 3
+
 //#############################################################################
 //
 // Macros for configuring AIE delegate behavior
 //
 
 // Turn this on to use the 8x768x768 kernel in place of the default ref matmul
-#define USE_OPT_KERNEL 1
+// #define USE_OPT_KERNEL 1
+
+// Uncomment the kernel to use
+// #define DELEGATE_KERNEL_TO_USE REF_MATMUL_DELEGATE_KERNEL
+// #define DELEGATE_KERNEL_TO_USE OPT_DELEGATE_KERNEL
+#define DELEGATE_KERNEL_TO_USE TRES_LECHES_DELEGATE_KERNEL
 
 // Turn this on to use XRT buffers which are separate from HAL buffers.
 // There is a performance cost to copying between HAL and XRT buffer, but it
@@ -79,7 +89,37 @@ using bfloat16_t = std::uint16_t;
 // Configuration of the kernel that the AIE delegate uses
 //
 
-#ifdef USE_OPT_KERNEL
+#if DELEGATE_KERNEL_TO_USE == TRES_LECHES_DELEGATE_KERNEL
+// Kernel file names (without extension) relative to installation root
+const std::string kernelFileName = 
+    "matmul/matmul-bf16-f32-8192x9728x2432-v1";  // From AIE codegen
+
+// Kernel name inside the xclbin file
+const std::string KernelName = "matmul_8x768_768xbf16__dispatch_0_matmul_8x768x7";
+
+// Fixed shape of the matmul kernel
+#define MLP_M 8192
+#define MLP_K 2432
+#define MLP_N 9728
+
+// Types of the matmul LHS, RHS, and result, as defined by the kernel
+using A_DATATYPE = bfloat16_t;
+using B_DATATYPE = bfloat16_t;
+using C_DATATYPE = float; // bfloat16_t;
+
+// Types of the matmul LHS, RHS, and result, as seen by the model
+using ModelLhsDType = bfloat16_t;
+using ModelRhsDType = bfloat16_t;
+using ModelReturnDType = bfloat16_t;
+
+// Set to 1 if the kernel requires a pre-initialized buffer to be loaded
+// into the kernel before the kernel runs
+#define KERNEL_REQUIRES_RESULT_PRELOAD 0
+
+
+//-----------------------------------------------------------------------------
+
+#elif DELEGATE_KERNEL_TO_USE == OPT_DELEGATE_KERNEL
 // Kernel file names (without extension) relative to installation root
 const std::string kernelFileName = 
     "matmul/matmul-bf16-f32-8x768x768-v1";  // Erwei's 4x4 vector matmul
@@ -108,7 +148,7 @@ using ModelReturnDType = bfloat16_t;
 
 //-----------------------------------------------------------------------------
 
-#else
+#elif DELEGATE_KERNEL_TO_USE == REF_MATMUL_DELEGATE_KERNEL
 // Kernel file names (without extension) relative to installation root
 const std::string kernelFileName = "matmul/matmul-bf16-256x256x256-v1";
 
@@ -134,6 +174,9 @@ using ModelReturnDType = float;
 // into the kernel before the kernel runs
 #define KERNEL_REQUIRES_RESULT_PRELOAD 0
 
+#else
+#error "[AIE Delegate]: Unknown kernel.  \
+Set DELEGATE_KERNEL_TO_USE to a supported kernel."
 #endif
 
 //#############################################################################
