@@ -87,6 +87,38 @@ class IRRewriterAndMapper : public IRRewriter {
   IRMapping mapper;
 };
 
+/// A Functor to call the `IRRewriterAndMapper::createAndMap` method.
+struct CreateAndMapFunctor {
+  template <typename OpTy, typename... Args>
+  static OpTy Call(IRRewriterAndMapper &rewriter, Location location,
+                   Operation *op, Args &&... args) {
+    return rewriter.createAndMap<OpTy>(location, op,
+                                       std::forward<Args>(args)...);
+  }
+};
+
+/// A Functor to call the `IRRewriterAndMapper::createAndLookup` method.
+struct CreateAndLookupFunctor {
+  template <typename OpTy, typename... Args>
+  static OpTy Call(IRRewriterAndMapper &rewriter, Location location,
+                   Operation *op, Args &&... args) {
+    return rewriter.createAndLookup<OpTy>(location,
+                                          std::forward<Args>(args)...);
+  }
+};
+
+/// Utility to create a new op using the provided `TFunctor`.
+template <class TFunctor, typename OpTy, typename... Args>
+OpTy createOp(IRRewriterAndMapper &rewriter, Location location, Operation *op,
+              Args &&... args) {
+  return TFunctor::template Call<OpTy>(rewriter, location, op,
+                                       std::forward<Args>(args)...);
+}
+
+//===----------------------------------------------------------------------===//
+// CoreContext
+//===----------------------------------------------------------------------===//
+
 /// Utility class to contain and maintain the core operations' as a map from
 /// coordinates to the respective core operation on that location. The core map
 /// can be accessed through lookup functions and new entries can be added
@@ -151,6 +183,10 @@ class CoreContext {
   /// respective core operation on that location.
   DenseMap<std::tuple<int64_t, int64_t>, AMDAIE::CoreOp> coreMap;
 };
+
+//===----------------------------------------------------------------------===//
+// Recursive workgroup builder functions
+//===----------------------------------------------------------------------===//
 
 /// Recursive workgroup build function for an operation.
 LogicalResult workgroupBuild(IRRewriterAndMapper &rewriter, Operation *op,

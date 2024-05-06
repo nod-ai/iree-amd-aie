@@ -1,5 +1,14 @@
 // RUN: iree-opt --split-input-file --pass-pipeline="builtin.module(func.func(iree-amdaie-create-aie-workgroup))" %s | FileCheck %s
 
+// CHECK-LABEL: @func
+// CHECK:       amdaie.workgroup
+// CHECK:         amdaie.controlcode
+func.func @func() {
+  return
+}
+
+// -----
+
 // CHECK-LABEL: @circular_dma_cpy_nd
 // CHECK:       amdaie.workgroup
 // CHECK:         amdaie.circular_dma_cpy_nd
@@ -112,7 +121,7 @@ func.func @for_cores() {
 
 // -----
 
-// Verify that empty scf.for is inserted in control code with nested dmas.
+// Verify that scf.for is inserted in control code with nested dmas.
 //
 // CHECK-LABEL: @for_dma
 // CHECK:       amdaie.workgroup
@@ -147,7 +156,7 @@ func.func @for_dma(%arg0: memref<1x1x8x16xi32, 2>, %arg1: memref<8x16xi32, 1>) {
 
 // -----
 
-// Verify that empty scf.forall is inserted in control code.
+// Verify that scf.forall is inserted in control code.
 //
 // CHECK-LABEL: @forall
 // CHECK:       amdaie.workgroup
@@ -191,7 +200,7 @@ func.func @forall_cores() {
 
 // -----
 
-// Verify that empty scf.forall is inserted in control code with nested dmas.
+// Verify that scf.forall is inserted in control code with nested dmas.
 //
 // CHECK-LABEL: @forall_dmas
 // CHECK:       amdaie.workgroup
@@ -215,15 +224,6 @@ func.func @forall_dmas(%arg0: memref<1x1x8x16xi32, 2>, %arg1: memref<8x16xi32, 1
   scf.forall (%arg2, %arg3) in (2, 2) {
     %2 = amdaie.dma_cpy_nd(%0[] [] [], %1[0, 0, 0, 0] [1, 1, 8, 16] [128, %arg3, %arg2, 1]) : (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 2>>, !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>)
   }
-  return
-}
-
-// -----
-
-// CHECK-LABEL: @func
-// CHECK:       amdaie.workgroup
-// CHECK:         amdaie.controlcode
-func.func @func() {
   return
 }
 

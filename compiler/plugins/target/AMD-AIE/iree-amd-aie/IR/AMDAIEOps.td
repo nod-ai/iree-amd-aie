@@ -179,10 +179,10 @@ def AMDAIE_NpuDmaCpyNdOp: AMDAIE_Op<"npu.dma_cpy_nd",
     Example:
 
     ```mlir
-    %1 = amdaie.circular_dma_cpy_nd(%1[] [] [], %0[] [] []) : (!amdaie.logicalobjectfifo<memref<32x64xi32, 1>>, !amdaie.logicalobjectfifo<memref<32x1024xi32>>)
+    %2 = amdaie.circular_dma_cpy_nd(%1[] [] [], %0[] [] []) : (!amdaie.logicalobjectfifo<memref<32x64xi32, 1>>, !amdaie.logicalobjectfifo<memref<32x1024xi32>>)
     ...
     amdaie.controlcode {
-      %2 = amdaie.npu.dma_cpy_nd %1([] [] [], [%c0, %c0] [%c32, %c64] [%c1024, %c1])
+      %3 = amdaie.npu.dma_cpy_nd %2([] [] [], [%c0, %c0] [%c32, %c64] [%c1024, %c1])
       ...
     }
     ```
@@ -276,7 +276,14 @@ def AMDAIE_NpuDmaWaitOp: AMDAIE_Op<"npu.dma_wait", []> {
     ```
 
     Here, the `dma_wait` operation will wait until the referenced Npu DMA
-    operation has started execution.
+    operation has started execution. On the other hand, the `S2MM` direction can
+    be used to wait on the destination side of the DMA, i.e. until the DMA has
+    finished it's write into the target memory:
+
+    ```mlir
+    %2 = amdaie.npu.dma_cpy_nd %0([%c0, %c0] [%c32, %c64] [%c1024, %c1], [] [] [])
+    amdaie.npu.dma_wait(%2, S2MM)
+    ```
   }];
 
   let arguments = (

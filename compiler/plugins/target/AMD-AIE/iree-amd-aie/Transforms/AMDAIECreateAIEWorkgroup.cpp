@@ -35,7 +35,7 @@ LogicalResult workgroupBuildForCoreOp(
     IRRewriterAndMapper &rewriter, AMDAIE::CoreOp coreOp, Block *target,
     Block *controlCode, CoreContext &coreContext, Block::iterator targetBegin,
     Block::iterator controlCodeBegin, Block::iterator controlCodeEnd) {
-  LLVM_DEBUG(llvm::dbgs() << "workgroupBuild [CoreOp] Start\n");
+  LLVM_DEBUG(llvm::dbgs() << "workgroupBuild [amdaie.core] Start\n");
   OpBuilder::InsertionGuard guard(rewriter);
   int64_t col = getConstantIntValue(coreOp.getTileOp().getCol()).value();
   int64_t row = getConstantIntValue(coreOp.getTileOp().getRow()).value();
@@ -43,7 +43,7 @@ LogicalResult workgroupBuildForCoreOp(
   auto cloneCoreOp =
       dyn_cast<AMDAIE::CoreOp>(rewriter.cloneAndMap(*coreOp.getOperation()));
   coreContext.mapOrMerge(coordinate, cloneCoreOp);
-  LLVM_DEBUG(llvm::dbgs() << "workgroupBuild [CoreOp] End\n");
+  LLVM_DEBUG(llvm::dbgs() << "workgroupBuild [amdaie.core] End\n");
   return success();
 }
 
@@ -54,9 +54,11 @@ LogicalResult workgroupBuildForCircularDmaCpyNdOp(
     Block *target, Block *controlCode, CoreContext &coreContext,
     Block::iterator targetBegin, Block::iterator controlCodeBegin,
     Block::iterator controlCodeEnd) {
-  LLVM_DEBUG(llvm::dbgs() << "workgroupBuild [CircularDmaCpyNdOp] Start\n");
+  LLVM_DEBUG(
+      llvm::dbgs() << "workgroupBuild [amdaie.circular_dma_cpy_nd] Start\n");
   rewriter.cloneAndMap(*dmaOp.getOperation());
-  LLVM_DEBUG(llvm::dbgs() << "workgroupBuild [CircularDmaCpyNdOp] End\n");
+  LLVM_DEBUG(
+      llvm::dbgs() << "workgroupBuild [amdaie.circular_dma_cpy_nd] End\n");
   return success();
 }
 
@@ -66,7 +68,7 @@ LogicalResult workgroupBuildForDmaCpyNdOp(
     IRRewriterAndMapper &rewriter, AMDAIE::DmaCpyNdOp dmaOp, Block *target,
     Block *controlCode, CoreContext &coreContext, Block::iterator targetBegin,
     Block::iterator controlCodeBegin, Block::iterator controlCodeEnd) {
-  LLVM_DEBUG(llvm::dbgs() << "workgroupBuild [DmaCpyNdOp] Start\n");
+  LLVM_DEBUG(llvm::dbgs() << "workgroupBuild [amdaie.dma_cpy_nd] Start\n");
   Attribute sourceMemSpace = dmaOp.getSourceObjectFifo().getMemorySpace();
   Location loc = rewriter.getUnknownLoc();
   SmallVector<OpFoldResult> empty;
@@ -92,100 +94,88 @@ LogicalResult workgroupBuildForDmaCpyNdOp(
       rewriter.getUnknownLoc(), SmallVector<Type, 1>{}, ipuDmaCpy.getResult(),
       direction);
   rewriter.restoreInsertionPoint(dmaInsertionPoint);
-  LLVM_DEBUG(llvm::dbgs() << "workgroupBuild [DmaCpyNdOp] End\n");
+  LLVM_DEBUG(llvm::dbgs() << "workgroupBuild [amdaie.dma_cpy_nd] End\n");
   return success();
 }
 
-/// Recursively build the scf.forall body and then:
-///   1. Insert a scf.forall in each nested core around the existing core body.
-///   2. Insert a scf.forall in the control code block around the existing
-///   control code body.
-LogicalResult workgroupBuildForForallOp(
-    IRRewriterAndMapper &rewriter, scf::ForallOp forallOp, Block *target,
-    Block *controlCode, CoreContext &coreContext, Block::iterator targetBegin,
-    Block::iterator controlCodeBegin, Block::iterator controlCodeEnd) {
-  LLVM_DEBUG(llvm::dbgs() << "workgroupBuild [ForallOp] Start\n");
+/// Create a new loop of type `LoopType` from the provided `loopOp`. A
+/// `TFunctor` template parameter specifies the Functor to be used for creating
+/// the operation.
+template <class TFunctor, typename OpTy>
+FailureOr<OpTy> createNewLoopOp(IRRewriterAndMapper &rewriter, OpTy loopOp) {
+  return rewriter.notifyMatchFailure(loopOp, "unhandled loop type");
+}
 
-  // Create forall op for control code before the recursive visit of the inner
-  // block, so induction vars are mapped correctly.
-  auto newForallOp = rewriter.createAndMap<scf::ForallOp>(
-      forallOp.getLoc(), forallOp, forallOp.getMixedLowerBound(),
+/// The implementation of `createNewLoopOp` for `scf.for`.
+template <class TFunctor, typename OpTy,
+          std::enable_if_t<std::is_same<OpTy, scf::ForOp>::value, bool> = true>
+FailureOr<OpTy> createNewLoopOp(IRRewriterAndMapper &rewriter,
+                                scf::ForOp forOp) {
+  return createOp<TFunctor, scf::ForOp>(
+      rewriter, forOp.getLoc(), forOp, forOp.getLowerBound(),
+      forOp.getUpperBound(), forOp.getStep(), forOp.getInits());
+}
+
+/// The implementation of `createNewLoopOp` for `scf.forall`.
+template <
+    class TFunctor, typename OpTy,
+    std::enable_if_t<std::is_same<OpTy, scf::ForallOp>::value, bool> = true>
+FailureOr<OpTy> createNewLoopOp(IRRewriterAndMapper &rewriter,
+                                scf::ForallOp forallOp) {
+  return createOp<TFunctor, scf::ForallOp>(
+      rewriter, forallOp.getLoc(), forallOp, forallOp.getMixedLowerBound(),
       forallOp.getMixedUpperBound(), forallOp.getMixedStep(),
       forallOp.getOutputs(), forallOp.getMapping());
-
-  // Create a new core map and control code block for visiting the nested ops.
-  CoreContext nestedCoreContext(rewriter);
-  Block *nestedControlCode = rewriter.createBlock(controlCode->getParent());
-  if (failed(workgroupBuild(
-          rewriter, forallOp.getBody(), target, nestedControlCode,
-          nestedCoreContext, forallOp.getBody()->begin(),
-          std::prev(forallOp.getBody()->end()), target->end(),
-          nestedControlCode->begin(), nestedControlCode->end()))) {
-    return forallOp.emitOpError()
-           << "failed to add scf.forall body to workgroup";
-  }
-
-  // Create a new scf.forall for every nested core and insert into the core
-  // operations around all existing ops, except for the terminator.
-  for (auto &&[coordinate, coreOp] : nestedCoreContext.getCoreMap()) {
-    auto newForallOp = rewriter.create<scf::ForallOp>(
-        forallOp.getLoc(), forallOp.getMixedLowerBound(),
-        forallOp.getMixedUpperBound(), forallOp.getMixedStep(),
-        forallOp.getOutputs(), forallOp.getMapping());
-    Block::iterator insertIt = newForallOp.getBody()->begin();
-    Block::iterator coreBegin = coreOp.getBody()->begin();
-    Block::iterator coreEnd = coreOp.getBody()->getTerminator()->getIterator();
-    newForallOp.getBody()->getOperations().splice(
-        insertIt, coreOp.getBody()->getOperations(), coreBegin, coreEnd);
-    rewriter.moveOpBefore(newForallOp, coreOp.getBody()->getTerminator());
-  }
-  coreContext.mergeContext(nestedCoreContext);
-
-  // Add the scf.forall op to control code as well.
-  rewriter.inlineBlockBefore(nestedControlCode,
-                             newForallOp.getBody()->getTerminator());
-  rewriter.moveOpBefore(newForallOp, controlCode, controlCodeEnd);
-  LLVM_DEBUG(llvm::dbgs() << "workgroupBuild [ForallOp] Start\n");
-  return success();
 }
 
-/// Recursively build the scf.for body and then:
-///   1. Insert a scf.for in each nested core around the existing core body.
-///   2. Insert a scf.for in the control code block around the existing control
-///   code body.
-LogicalResult workgroupBuildForForOp(
-    IRRewriterAndMapper &rewriter, scf::ForOp forOp, Block *target,
-    Block *controlCode, CoreContext &coreContext, Block::iterator targetBegin,
+/// Recursively build operations with a single body. These operations define a
+/// `getBody` method to retrieve the inner body block. This function will
+/// recursively visit this body block and use it to continue building then
+/// workgroup and control code blocks. Afterwards, the following insertions will
+/// be done:
+///   1. Create a new operation from the provided operation of type `OpTy` and
+///   insert it in each nested core around the existing core body.
+///   2. Create a new operation from the provided operation of type `OpTy` and
+///   insert it in the control code block around the existing control code body.
+template <typename OpTy>
+LogicalResult workgroupBuildForSingleBody(
+    IRRewriterAndMapper &rewriter, OpTy op, Block *target, Block *controlCode,
+    CoreContext &coreContext, Block::iterator targetBegin,
     Block::iterator controlCodeBegin, Block::iterator controlCodeEnd) {
-  LLVM_DEBUG(llvm::dbgs() << "workgroupBuild [ForOp] Start\n");
-  Value lb = forOp.getLowerBound();
-  Value ub = forOp.getUpperBound();
-  Value step = forOp.getStep();
-  auto newControlCodeForOp = rewriter.createAndMap<scf::ForOp>(
-      forOp.getLoc(), forOp, lb, ub, step, forOp.getInits());
+  LLVM_DEBUG(llvm::dbgs() << "workgroupBuild [" << OpTy::getOperationName()
+                          << "] Start\n");
+  FailureOr<OpTy> maybeControlCodeOp =
+      createNewLoopOp<CreateAndMapFunctor, OpTy>(rewriter, op);
+  if (failed(maybeControlCodeOp)) {
+    return op.emitOpError("failed to create a new loop");
+  }
+  OpTy newControlCodeForOp = maybeControlCodeOp.value();
 
   // Create a new core map and control code block for visiting the nested ops.
   CoreContext nestedCoreContext(rewriter);
   Block *nestedControlCode = rewriter.createBlock(controlCode->getParent());
   if (failed(workgroupBuild(
-          rewriter, forOp.getBody(), target, nestedControlCode,
-          nestedCoreContext, forOp.getBody()->begin(),
-          std::prev(forOp.getBody()->end()), target->end(),
+          rewriter, op.getBody(), target, nestedControlCode, nestedCoreContext,
+          op.getBody()->begin(), std::prev(op.getBody()->end()), target->end(),
           nestedControlCode->begin(), nestedControlCode->end()))) {
-    return forOp.emitOpError() << "failed to add scf.for body to workgroup";
+    return op.emitOpError() << "failed to add scf.for body to workgroup";
   }
 
   // Create a new scf.for for every nested core and insert into the core
   // op around all existing ops, except for the terminator.
   for (auto &&[coordinate, coreOp] : nestedCoreContext.getCoreMap()) {
-    auto newforOp =
-        rewriter.createAndLookup<scf::ForOp>(forOp.getLoc(), lb, ub, step);
-    Block::iterator insertIt = newforOp.getBody()->begin();
+    FailureOr<OpTy> maybeCoreOp =
+        createNewLoopOp<CreateAndLookupFunctor, OpTy>(rewriter, op);
+    if (failed(maybeCoreOp)) {
+      return op.emitOpError("failed to create a new loop");
+    }
+    auto newCoreOp = maybeCoreOp.value();
+    Block::iterator insertIt = newCoreOp.getBody()->begin();
     Block::iterator coreBegin = coreOp.getBody()->begin();
     Block::iterator coreEnd = coreOp.getBody()->getTerminator()->getIterator();
-    newforOp.getBody()->getOperations().splice(
+    newCoreOp.getBody()->getOperations().splice(
         insertIt, coreOp.getBody()->getOperations(), coreBegin, coreEnd);
-    rewriter.moveOpBefore(newforOp, coreOp.getBody()->getTerminator());
+    rewriter.moveOpBefore(newCoreOp, coreOp.getBody()->getTerminator());
   }
   coreContext.mergeContext(nestedCoreContext);
 
@@ -193,7 +183,8 @@ LogicalResult workgroupBuildForForOp(
   rewriter.inlineBlockBefore(nestedControlCode,
                              newControlCodeForOp.getBody()->getTerminator());
   rewriter.moveOpBefore(newControlCodeForOp, controlCode, controlCodeEnd);
-  LLVM_DEBUG(llvm::dbgs() << "workgroupBuild [ForOp] End\n");
+  LLVM_DEBUG(llvm::dbgs() << "workgroupBuild [" << OpTy::getOperationName()
+                          << "] End\n");
   return success();
 }
 
@@ -206,7 +197,7 @@ LogicalResult workgroupBuildForWorkgroupOp(IRRewriterAndMapper &rewriter,
                                            Block::iterator targetBegin,
                                            Block::iterator controlCodeBegin,
                                            Block::iterator controlCodeEnd) {
-  LLVM_DEBUG(llvm::dbgs() << "workgroupBuild [WorkgroupOp] Start\n");
+  LLVM_DEBUG(llvm::dbgs() << "workgroupBuild [amdaie.workgroup] Start\n");
   if (failed(workgroupBuild(rewriter, workgroupOp.getBody(), target,
                             controlCode, coreContext,
                             workgroupOp.getBody()->begin(),
@@ -215,7 +206,7 @@ LogicalResult workgroupBuildForWorkgroupOp(IRRewriterAndMapper &rewriter,
     return workgroupOp.emitOpError()
            << "failed to add workgroup body to workgroup";
   }
-  LLVM_DEBUG(llvm::dbgs() << "workgroupBuild [WorkgroupOp] End\n");
+  LLVM_DEBUG(llvm::dbgs() << "workgroupBuild [amdaie.workgroup] End\n");
   return success();
 }
 
@@ -243,14 +234,14 @@ LogicalResult workgroupBuild(IRRewriterAndMapper &rewriter, Operation *op,
                                            controlCodeBegin, controlCodeEnd);
       })
       .Case<scf::ForallOp>([&](auto forallOp) {
-        return workgroupBuildForForallOp(rewriter, forallOp, target,
-                                         controlCode, coreContext, targetBegin,
-                                         controlCodeBegin, controlCodeEnd);
+        return workgroupBuildForSingleBody<scf::ForallOp>(
+            rewriter, forallOp, target, controlCode, coreContext, targetBegin,
+            controlCodeBegin, controlCodeEnd);
       })
       .Case<scf::ForOp>([&](auto forOp) {
-        return workgroupBuildForForOp(rewriter, forOp, target, controlCode,
-                                      coreContext, targetBegin,
-                                      controlCodeBegin, controlCodeEnd);
+        return workgroupBuildForSingleBody<scf::ForOp>(
+            rewriter, forOp, target, controlCode, coreContext, targetBegin,
+            controlCodeBegin, controlCodeEnd);
       })
       .Case<AMDAIE::WorkgroupOp>([&](auto workgroupOp) {
         return workgroupBuildForWorkgroupOp(
@@ -318,7 +309,7 @@ LogicalResult createSingleWorkgroupAndControlCode(func::FuncOp funcOp) {
   // block's operations.
   rewriter.inlineBlockBefore(newWorkgroupBlock, workgroupOp.getControlCode());
   rewriter.moveOpBefore(funcBlock->getTerminator(), newBlock, newBlock->end());
-  for (auto &op : llvm::make_early_inc_range(llvm::reverse(*funcBlock))) {
+  for (Operation &op : llvm::make_early_inc_range(llvm::reverse(*funcBlock))) {
     assert(op.use_empty() && "expected 'op' to have no uses");
     rewriter.eraseOp(&op);
   }
