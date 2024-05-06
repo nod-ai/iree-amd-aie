@@ -20,8 +20,6 @@
 #include "mlir/Dialect/Transform/IR/TransformDialect.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
 #include "mlir/Pass/Pass.h"
-#include "mlir/Pass/PassManager.h"
-#include "mlir/Pass/PassRegistry.h"
 
 namespace mlir::iree_compiler::AMDAIE {
 
@@ -57,7 +55,7 @@ void AMDAIELoweringStrategyPass::runOnOperation() {
   for (auto funcOp : moduleOp.getOps<FunctionOpInterface>()) {
     // Set the strategy with default heuristics.
     if (failed(initAIELaunchConfig(funcOp, usePassPipeline, cfg))) {
-      funcOp.emitOpError("failed to set lowering configuration");
+      funcOp.emitOpError("failed to have a lowering configuration set for it.");
       return signalPassFailure();
     }
   }
