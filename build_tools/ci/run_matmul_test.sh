@@ -209,6 +209,12 @@ function run_matmul_test() {
   # The default is to compile and run the numerical test.
   local compile_only="0"
 
+  # The default is to not repeat the rows of LHS. 0 denotes no repetition.
+  local dim0_repeat_period="0"
+
+  # The default is to not repeat the columns of RHS. 0 denotes no repetition.
+  local dim1_repeat_period="0"
+
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --compile-only)
@@ -275,6 +281,14 @@ function run_matmul_test() {
         k="$2"
         shift 2
         ;;
+      --dim0_repeat_period)
+        dim0_repeat_period="$2"
+        shift 2
+        ;;
+        --dim1_repeat_period)
+        dim1_repeat_period="$2"
+        shift 2
+        ;;
       *)
         echo "Unknown option: $1"
         exit 1
@@ -329,7 +343,9 @@ function run_matmul_test() {
       --n=${n} \
       --k=${k} \
       --dynamicity=${dynamicity} \
-      --accumulate=${accumulate}
+      --accumulate=${accumulate} \
+      --dim0_repeat_period=${dim0_repeat_period} \
+      --dim1_repeat_period=${dim1_repeat_period}
 
 
 
@@ -507,10 +523,11 @@ run_matmul_test \
     --compile-only "1"
 
 run_matmul_test \
-    --name_prefix "small" \
-    --lhs_rhs_type "i32" \
-    --acc_type "i32" \
-    --m "16"  --n "16" --k "8"
+   --name_prefix "small" \
+   --lhs_rhs_type "i32" \
+   --acc_type "i32" \
+   --m "16"  --n "16" --k "8"
+
 
 run_matmul_test \
     --name_prefix "small" \
@@ -555,3 +572,10 @@ run_matmul_test \
     --acc_type "i32" \
     --m "64"  --n "64" --k "160"
 
+run_matmul_test \
+    --name_prefix "small" \
+    --lhs_rhs_type "bf16" \
+    --acc_type "f32" \
+    --m "2048" --n "2048" --k "2048" \
+    --dim0_repeat_period "53" \
+    --dim1_repeat_period "17"

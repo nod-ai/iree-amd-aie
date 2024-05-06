@@ -366,15 +366,19 @@ def generate_random_matrix(
     name: str,
     matrix_shape: list,
     element_type: MatrixElemTypeId,
+    dim0_repeat_period : int,
+    dim1_repeat_period : int,
 ):
     global pseudorandom_generator_seed
     pseudorandom_generator_seed = pseudorandom_generator_seed + 1
     return (
         f"  %{name}_dim0 = arith.constant {matrix_shape[0]} : i64\n"
         f"  %{name}_dim1 = arith.constant {matrix_shape[1]} : i64\n"
+        f"  %{name}_dim0_repeat_period = arith.constant {dim0_repeat_period} : i64\n"
+        f"  %{name}_dim1_repeat_period = arith.constant {dim1_repeat_period} : i64\n"
         f"  %{name}_element_type = hal.element_type<{element_type.value}> : i32\n"
         f"  %{name}_seed = arith.constant {pseudorandom_generator_seed} : i32\n"
-        f"  %{name} = call @matmul_test.generate_random_matrix(%device, %{name}_dim0, %{name}_dim1, %{name}_element_type, %{name}_seed) : (!hal.device, i64, i64, i32, i32) -> !hal.buffer_view\n"
+        f"  %{name} = call @matmul_test.generate_random_cyclical_matrix(%device, %{name}_dim0, %{name}_dim1, %{name}_dim0_repeat_period, %{name}_dim1_repeat_period, %{name}_element_type, %{name}_seed) : (!hal.device, i64, i64, i64, i64, i32, i32) -> !hal.buffer_view\n"
     )
 
 
@@ -388,7 +392,9 @@ def generate_call(
     lhs_rhs_type: MatrixElemTypeId,
     acc_type: MatrixElemTypeId,
     shape: TestShape,
-    transpose_rhs: bool = False,
+    transpose_rhs: bool,
+    dim0_repeat_period : int,
+    dim1_repeat_period : int,
 ):
     global call_id
     func_name = f"{function.name}_{shape.m}_{shape.k}_{shape.n}"
@@ -414,15 +420,17 @@ def generate_call(
         rhs_shape = [shape.k, shape.n]
         transpose_rhs = 0
 
-    op = op + generate_random_matrix("lhs", lhs_shape, lhs_rhs_type)
-    op = op + generate_random_matrix("rhs", rhs_shape, lhs_rhs_type)
+    no_repeat = 0
+    op = op + generate_random_matrix("lhs", lhs_shape, lhs_rhs_type, dim0_repeat_period, no_repeat)
+    op = op + generate_random_matrix("rhs", rhs_shape, lhs_rhs_type, no_repeat, dim1_repeat_period)
     if shape.accumulate:
-        op = op + generate_random_matrix("acc", [shape.m, shape.n], acc_type)
+        # No repetition in the accumulator.
+        op = op + generate_random_matrix("acc", [shape.m, shape.n], acc_type, no_repeat, no_repeat)
         # TODO(#16168): there's a bug with in-place input->output aliasing and
         # we work around it here by passing in a unique copy.
         global pseudorandom_generator_seed
         pseudorandom_generator_seed = pseudorandom_generator_seed - 1
-        op = op + generate_random_matrix("acc_copy", [shape.m, shape.n], acc_type)
+        op = op + generate_random_matrix("acc_copy", [shape.m, shape.n], acc_type, no_repeat, no_repeat)
         op = op + (
             f"  %result = call @module.{function.name}(%lhs, %rhs, %acc_copy) : (!hal.buffer_view, !hal.buffer_view, !hal.buffer_view) -> !hal.buffer_view\n"
         )
@@ -436,8 +444,10 @@ def generate_call(
         f"  %m = arith.constant {shape.m} : i64\n"
         f"  %k = arith.constant {shape.k} : i64\n"
         f"  %n = arith.constant {shape.n} : i64\n"
+        f"  %m_repeat_period = arith.constant {dim0_repeat_period} : i64\n"
+        f"  %n_repeat_period = arith.constant {dim1_repeat_period} : i64\n"
         f"  %transpose_rhs = arith.constant {transpose_rhs} : i32\n"
-        f"  call @matmul_test.check_matmul_results(%device, %m, %k, %n, %transpose_rhs, %lhs, %rhs, %acc, %result) : (!hal.device, i64, i64, i64, i32, !hal.buffer_view, !hal.buffer_view, !hal.buffer_view, !hal.buffer_view) -> ()\n"
+        f"  call @matmul_test.check_matmul_results(%device, %m, %k, %n, %m_repeat_period, %n_repeat_period, %transpose_rhs, %lhs, %rhs, %acc, %result) : (!hal.device, i64, i64, i64, i64, i64, i32, !hal.buffer_view, !hal.buffer_view, !hal.buffer_view, !hal.buffer_view) -> ()\n"
     )
 
     op = op + "  return\n"
@@ -453,6 +463,8 @@ def generate(
     shapes: typing.List[TestShape],
     transpose_rhs: bool,
     compilation_info_id: CompilationInfoId,
+    dim0_repeat_period: int,
+    dim1_repeat_period: int,
 ):
     functions = {}
     calls = []
@@ -476,7 +488,7 @@ def generate(
             if function.name not in functions:
                 functions[function.name] = function
             calls.append(
-                generate_call(function, lhs_rhs_type, acc_type, shape, transpose_rhs)
+                generate_call(function, lhs_rhs_type, acc_type, shape, transpose_rhs, dim0_repeat_period, dim1_repeat_period)
             )
 
     return (functions, calls)
@@ -529,6 +541,27 @@ def parse_arguments():
         "--k",
         type=str,
         help="Number of columns in the lhs and rows in the rhs matrices. Expected comma separated values if multiple test cases, example: 4,6,8",
+        required=True,
+    )
+
+    parser.add_argument(
+        "--dim0_repeat_period",
+        type=int,
+        help="""Number of distinct rows in LHS; rows repeat after this number.
+          If 0, then there is no row repetition. If the number of rows in LHS
+          is greater than this number, there is no row repetition. This flag
+          is useful for testing large matrices as it allows for faster
+          computation of the baseline result. We suggest choosing this value to
+          be a not-too-small prime number to reduce the risk of missing bugs in
+          implementation of the target backends matrix multiplication: If the
+          implementation being tested erroneously reads from a row of LHS which
+          is a multiple of this value away, this bug will not be detected.""",
+        required=True,
+    )
+    parser.add_argument(
+        "--dim1_repeat_period",
+        type=int,
+        help="Number of distinct columns in RHS, columns repeat after this number. See also dim0_repeat_period.",
         required=True,
     )
 
@@ -594,8 +627,8 @@ def write_calls_file(functions, calls, filename, requirements):
 
     # Declare the custom module that generates arguments.
     module_definition = module_definition + (
-        "func.func private @matmul_test.generate_random_matrix(%device: !hal.device, %dim0: i64, %dim1: i64, %element_type: i32, %seed: i32) -> !hal.buffer_view\n"
-        "func.func private @matmul_test.check_matmul_results(%device: !hal.device, %m: i64, %k: i64, %n: i64, %transpose_rhs: i32, %lhs: !hal.buffer_view, %rhs: !hal.buffer_view, %acc: !hal.buffer_view, %actual_result: !hal.buffer_view)\n"
+        "func.func private @matmul_test.generate_random_cyclical_matrix(%device: !hal.device, %dim0: i64, %dim1: i64, %dim0_repeat_period: i64, %dim1_repeat_period: i64, %element_type: i32, %seed: i32) -> !hal.buffer_view\n"
+        "func.func private @matmul_test.check_matmul_results(%device: !hal.device, %m: i64, %k: i64, %n: i64, %dim0_repeat_period: i64, %dim1_repeat_period: i64, %transpose_rhs: i32, %lhs: !hal.buffer_view, %rhs: !hal.buffer_view, %acc: !hal.buffer_view, %actual_result: !hal.buffer_view)\n"
         "\n"
     )
 
@@ -637,6 +670,10 @@ def main(args):
     accumulate = stringsFromCommaSeperated(args.accumulate)
     accumulate  = [boolFromString(x) for x in accumulate]
 
+    dim0_repeat_period = args.dim0_repeat_period
+    dim1_repeat_period = args.dim1_repeat_period
+
+
     for a in accumulate:
         if a:
             raise ValueError(
@@ -672,6 +709,8 @@ def main(args):
         shapes,
         args.transpose_rhs,
         compilation_info_id,
+        dim0_repeat_period,
+        dim1_repeat_period,
     )
 
     write_code_file(functions, args.output_matmuls_mlir)
