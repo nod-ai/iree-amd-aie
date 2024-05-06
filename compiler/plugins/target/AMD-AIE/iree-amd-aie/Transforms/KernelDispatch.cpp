@@ -289,9 +289,9 @@ static LogicalResult setRootConfigForPadPackPipeline(
   // small GEMM sizes where possible. Assume for now that we are working on a
   // 4x4 AIE array.
 
-  auto maybe = PadPackTiling::create(linalgOp);
-  if (failed(maybe)) return failure();
-  auto tiling = maybe.value();
+  auto maybePadPackTiling = PadPackTiling::create(linalgOp);
+  if (failed(maybePadPackTiling)) return failure();
+  auto padPackTiling = maybePadPackTiling.value();
 
   // Do packing first to allow better packing configs
   // ------------------------------------------------------
@@ -305,7 +305,7 @@ static LogicalResult setRootConfigForPadPackPipeline(
   SmallVector<SmallVector<int64_t>> outerPerm{{1, 0}, {1, 0}, {1, 0}};
 
   auto packingConfigLevel1Attr = getPackingConfigPackingLevelAttr(
-      context, tiling.getPackSize(), transposePackIndices, unpackEmpty,
+      context, padPackTiling.getPackSize(), transposePackIndices, unpackEmpty,
       innerPerm, outerPerm);
   SmallVector<PackingConfigPackingLevelAttr> packingConfigLevelsVal{
       packingConfigLevel1Attr};
@@ -319,10 +319,10 @@ static LogicalResult setRootConfigForPadPackPipeline(
   // -------------- Set lowering config -------------------
   // ------------------------------------------------------
 
-  SmallVector<int64_t> level0{tiling.getM0(), tiling.getN0()};
-  SmallVector<int64_t> level1{0, 0, tiling.getK0()};
-  SmallVector<int64_t> level2{tiling.getM1(), tiling.getN1()};
-  SmallVector<int64_t> level3{0, 0, tiling.getK1()};
+  SmallVector<int64_t> level0{padPackTiling.getM0(), padPackTiling.getN0()};
+  SmallVector<int64_t> level1{0, 0, padPackTiling.getK0()};
+  SmallVector<int64_t> level2{padPackTiling.getM1(), padPackTiling.getN1()};
+  SmallVector<int64_t> level3{0, 0, padPackTiling.getK1()};
   TileSizesListType tileSizes = {level0, level1, level2, level3};
 
   if (failed(setOpConfigAndEntryPointFnTranslation(
