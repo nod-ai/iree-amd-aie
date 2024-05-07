@@ -10,6 +10,7 @@
 #include "iree-amd-aie/Transforms/KernelDispatch.h"
 #include "iree/compiler/Dialect/HAL/IR/HALOps.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/Interfaces/FunctionInterfaces.h"
@@ -24,6 +25,7 @@ namespace mlir::iree_compiler::AMDAIE {
 #define GEN_PASS_DEF_AMDAIEBUFFERIZETOALLOCATION
 #define GEN_PASS_DEF_AMDAIECANONICALIZEDMA
 #define GEN_PASS_DEF_AMDAIECLEANUP
+#define GEN_PASS_DEF_AMDAIECREATEAIEWORKGROUP
 #define GEN_PASS_DEF_AMDAIEDECOMPOSELINALGEXTPACKUNPACKTOAIR
 #define GEN_PASS_DEF_AMDAIEDMATOCIRCULARDMA
 #define GEN_PASS_DEF_AMDAIEFUSECONSUMERINTOLOOP

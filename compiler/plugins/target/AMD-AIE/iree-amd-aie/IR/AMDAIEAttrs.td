@@ -21,6 +21,16 @@ def AMDAIE_CopyOpOperateOn: I32EnumAttr<"CopyOpOperateOn",
 {
 }
 
+def DMAChannelDir: I32EnumAttr<"DMAChannelDir",
+  "DMA Channel direction. Either stream to memory (`S2MM`) or memory to stream "
+  "(`MM2S`)",
+  [
+    I32EnumAttrCase<"S2MM", 0>,
+    I32EnumAttrCase<"MM2S", 1>
+  ]> {
+  let cppNamespace = "mlir::iree_compiler::AMDAIE";
+}
+
 def AMDAIE_MemSpace_Global : I32EnumAttrCase<"Global", 0>;
 def AMDAIE_MemSpace_Shared : I32EnumAttrCase<"Shared", 1>;
 def AMDAIE_MemSpace_Local : I32EnumAttrCase<"Local", 2>;

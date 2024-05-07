@@ -96,15 +96,13 @@ void AMDAIEFusePackIntoLoopPass::runOnOperation() {
   }
 
   LoopLikeOpInterface loops = cast<LoopLikeOpInterface>(scfLoopOp);
-  auto castLoop =
-      useSCFFor ? cast<scf::ForOp>(loops) : cast<scf::ForallOp>(loops);
 
   // Based on the `fusePackDepth`, we would greedily fuse the producer
   // tensor.pack ops.
   for (unsigned depth = 1; depth <= fusePackDepth; depth++) {
     // Search the last compute op in the loop and its producer slices.
     linalg::GenericOp genericOp;
-    castLoop->walk<WalkOrder::PostOrder, ReverseIterator>(
+    scfLoopOp->walk<WalkOrder::PostOrder, ReverseIterator>(
         [&](linalg::LinalgOp op) {
           if (isa<linalg::GenericOp>(op)) {
             genericOp = cast<linalg::GenericOp>(op);

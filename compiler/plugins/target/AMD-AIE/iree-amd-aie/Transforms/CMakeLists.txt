@@ -37,6 +37,7 @@ iree_cc_library(
   HDRS
     "KernelDispatch.h"
     "Passes.h"
+    "AMDAIECreateAIEWorkgroup.h"
     "AMDAIEOpUtils.h"
     "AMDAIEUtils.h"
     "Transforms.h"
@@ -45,6 +46,7 @@ iree_cc_library(
     "AMDAIEAIRDmaToAMDAIEDma.cpp"
     "AMDAIEBufferizeToAllocation.cpp"
     "AMDAIECanonicalizeDma.cpp"
+    "AMDAIECreateAIEWorkgroup.cpp"
     "AMDAIEDmaToCircularDma.cpp"
     "AMDAIEFuseConsumerIntoLoop.cpp"
     "AMDAIEFuseFillIntoForall.cpp"
