@@ -109,6 +109,11 @@ jobs:
           source .venv/bin/activate
           bash build_tools/ci/run_matmul_test.sh test1 iree-install
 
+      - name: E2E matmul with direct xrt calls
+        run: |
+          source .venv/bin/activate
+          bash build_tools/ci/use_xrt_directly/run_test.sh test1 iree-install
+
       - name: Printing IR from aie2xclbin
         run: |
           source .venv/bin/activate
