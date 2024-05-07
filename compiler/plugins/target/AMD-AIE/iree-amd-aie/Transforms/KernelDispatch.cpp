@@ -10,7 +10,6 @@
 #include "iree-amd-aie/Transforms/AMDAIEUtils.h"
 #include "iree/compiler/Codegen/Dialect/Codegen/IR/IREECodegenAttrs.h"
 #include "iree/compiler/Codegen/Utils/CPUUtils.h"
-#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/MemRef/Transforms/Transforms.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
@@ -20,52 +19,61 @@ namespace mlir::iree_compiler::AMDAIE {
 
 using detail::findLargestFactor;
 
-static SmallVector<int64_t> getPackedSize(linalg::LinalgOp linalgOp,
-                                          const int packLevel, int m = 0,
-                                          int n = 0, int k = 0) {
-  // TODO (newling): consider emiting an error/warning if the default sizes are used as a
-  // fallback.
-  SmallVector<int64_t> defaultSizes;
-  // TODO (nmeshram) : We should not need this and be able to fix the pack
-  // config after we have padding support
-  int minM = m ? findLargestFactor(m, 4) : 4;
-  int minN = n ? findLargestFactor(n, 4) : 4;
-  int minK = k ? findLargestFactor(k, 8) : 8;
-  if (packLevel == 1) {
-    defaultSizes = {{minM, minN, minK}};
-  } else if (packLevel == 2) {
-    defaultSizes = {{0, 0, 0, minM, minN, minK}};
-  } else {
-    linalgOp->emitError("invalid value of pack level.");
-  }
-  if (!isa<linalg::MatmulOp>(linalgOp)) {
-    return defaultSizes;
-  }
+namespace {
 
+FailureOr<std::array<uint32_t, 3>> getMatmulInstructionSize(
+    linalg::LinalgOp op) {
   auto getElementType = [](Value v) {
     return cast<ShapedType>(v.getType()).getElementType();
   };
 
-  auto elTypeLhs = getElementType(linalgOp->getOperand(0));
-  auto elTypeRhs = getElementType(linalgOp->getOperand(1));
-  auto elTypeAcc = getElementType(linalgOp->getResult(0));
+  assert(op->getNumResults() > 0 && op->getNumOperands() > 1 &&
+         "expected op to have 2+ operands and 1+ results");
 
-  auto maybeInstructionSize =
-      getAIEMatmulInstructionSize(elTypeLhs, elTypeRhs, elTypeAcc);
+  auto elTypeLhs = getElementType(op->getOperand(0));
+  auto elTypeRhs = getElementType(op->getOperand(1));
+  auto elTypeAcc = getElementType(op->getResult(0));
 
-  if (failed(maybeInstructionSize)) {
-    return defaultSizes;
-  }
-
-  auto instructionSize = maybeInstructionSize.value();
-  SmallVector<int64_t> packedSizes(3, 0);
-  std::copy(instructionSize.begin(), instructionSize.end(),
-            packedSizes.begin());
-  if (packLevel == 2) {
-    packedSizes.insert(packedSizes.begin(), {0, 0, 0});
-  }
-  return packedSizes;
+  return getAIEMatmulInstructionSize(elTypeLhs, elTypeRhs, elTypeAcc);
 }
+
+FailureOr<std::array<uint32_t, 3>> getPackedSize(linalg::LinalgOp linalgOp,
+                                                 uint64_t M, uint64_t N,
+                                                 uint64_t K) {
+  // Depending on the operand/result element types, there might be a specific
+  // vector instruction size that must be used on AIE. Some types do not have
+  // vector instructions, for example if operands are 32-bit types.
+  auto maybeInstructionSize = getMatmulInstructionSize(linalgOp);
+
+  // Operand/result element types do not have vector instructions. In this case,
+  // try for a packing of 4x4x8, but if the tensor dimensions M, N, and K are
+  // not divisible by the instruction size, then use the largest factor of M, N,
+  // K that is divisible. Any packing is valid when there is not vectorization.
+  if (failed(maybeInstructionSize)) {
+    std::array<uint32_t, 3> packedSize;
+    packedSize[0] = findLargestFactor(M, 4);
+    packedSize[1] = findLargestFactor(N, 4);
+    packedSize[2] = findLargestFactor(K, 8);
+    return packedSize;
+  }
+
+  // Operand/result element types have vector instructions, and a specific
+  // vector size which must be used. If the tensor dimensions M, N, K are not
+  // divisible by the instruction size, then fail.
+  auto instructionSize = maybeInstructionSize.value();
+  if (M % instructionSize[0] != 0 || N % instructionSize[1] != 0 ||
+      K % instructionSize[2] != 0) {
+    return linalgOp.emitOpError(
+               "has element types which must target an AIE instruction size "
+               "that does not divide M (")
+           << M << "), N (" << N << "), or K (" << K
+           << "). The instruction size is m = " << instructionSize[0]
+           << ", n = " << instructionSize[1] << ", k = " << instructionSize[2]
+           << ".";
+  }
+  return instructionSize;
+}
+}  // namespace
 
 static LogicalResult setRootConfigForPackPeelPipeline(
     mlir::FunctionOpInterface entryPointFn, linalg::LinalgOp linalgOp,
@@ -73,25 +81,31 @@ static LogicalResult setRootConfigForPackPeelPipeline(
   auto initType =
       llvm::cast<ShapedType>(linalgOp.getDpsInitOperand(0)->get().getType());
   auto initShape = initType.getShape();
+
   auto lhsType =
       llvm::cast<ShapedType>(linalgOp.getDpsInputOperand(0)->get().getType());
   auto lhsShape = lhsType.getShape();
 
-  FailureOr<unsigned> maybeTilingScaleFactor =
+  const auto M = initShape[0];
+  const auto N = initShape[1];
+  const auto K = lhsShape[1];
+
+  FailureOr<unsigned> maybeScaleFactor =
       getTilingScaleFactor(initType.getElementType());
-  if (failed(maybeTilingScaleFactor)) {
-    return linalgOp.emitOpError("expected bitwidth 64/32/16/8");
+  if (failed(maybeScaleFactor)) {
+    return linalgOp.emitOpError(
+        "does not have the expected bitwidth (64, 32, 16, or 8), could not "
+        "determine scale factor.");
   }
-  unsigned tilingScaleFactor = maybeTilingScaleFactor.value();
-  auto tileM0 = findLargestFactor((int)initShape[0], 32 * tilingScaleFactor);
-  auto tileN0 = findLargestFactor((int)initShape[1], 32 * tilingScaleFactor);
+  unsigned scaleFactor = maybeScaleFactor.value();
+  const auto tileM0 = findLargestFactor(M, 32 * scaleFactor);
+  const auto tileN0 = findLargestFactor(N, 32 * scaleFactor);
 
   // ------------------------------------------------------
   // --------------- Set packing config -------------------
   // ------------------------------------------------------
   MLIRContext *context = entryPointFn.getContext();
-  // Pack level => 1.
-  auto packedK0 = findLargestFactor((int)lhsShape[1], 16 * tilingScaleFactor);
+  const auto packedK0 = findLargestFactor(K, 16 * scaleFactor);
   SmallVector<int64_t> packedSizes = {tileM0, tileN0, packedK0};
   // Transpose B matrix from [K N n k] to [K N k n]
   SmallVector<int64_t> transposePackIndices = {1};
@@ -106,8 +120,11 @@ static LogicalResult setRootConfigForPackPeelPipeline(
 
   // Pack level => 2.
   // packed size for [M, N, K, m, n, k]
-  const int packLevel = 2;
-  packedSizes = getPackedSize(linalgOp, packLevel);
+  auto maybePackedSize = getPackedSize(linalgOp, M, N, K);
+  if (failed(maybePackedSize)) return failure();
+  const auto [m0, n0, k0] = maybePackedSize.value();
+  packedSizes = {0, 0, 0, m0, n0, k0};
+
   // Transpose A matrix from [M K m k m0 k0] to [M K k m m0 k0]
   // Transpose B matrix from [K N k n n0 k0] to [K N n k k0 n0]
   // Transpose C matrix from [M N m n m0 n0] to [M N n m m0 n0]
@@ -133,12 +150,8 @@ static LogicalResult setRootConfigForPackPeelPipeline(
   // Currently, assume working on a 2x2 AIE array, so the second level tile
   // sizes should be (tileM0/2, tileN0/2). Considering the packing sizes, the
   // adjusted tile sizes should be (tileM0/2/packedM1, tileN0/2/packedN1).
-  auto packedM1 = packedSizes[3];
-  auto packedN1 = packedSizes[4];
-  auto tileM1 = findLargestFactor((int)tileM0 / packedM1,
-                                  16 * tilingScaleFactor / packedM1);
-  auto tileN1 = findLargestFactor((int)tileN0 / packedN1,
-                                  16 * tilingScaleFactor / packedN1);
+  const auto tileM1 = findLargestFactor(tileM0 / m0, 16 * scaleFactor / m0);
+  const auto tileN1 = findLargestFactor(tileN0 / n0, 16 * scaleFactor / n0);
   // Set tile size for K as constant 1, so that the packed outer K dimension
   // is 1.
   const int tileK = 1;
@@ -156,43 +169,145 @@ static LogicalResult setRootConfigForPackPeelPipeline(
   return success();
 }
 
-static LogicalResult setRootConfigForPadPackPipeline(
-    mlir::FunctionOpInterface entryPointFn, linalg::LinalgOp linalgOp,
-    AIEConfig cfg) {
-  // Assume working on a 4x4 AIE array. Currently, the tile sizes are chosen
-  // empirically for large GEMM sizes, which are [64*s, 64*s, 256] for the first
-  // level and [16*s, 16*s, 16*s] for the second level, where 's' is the scaling
-  // scaling factor based on the element type's bit width. Basic min/max
-  // constraints are added to avoid failure for small GEMM sizes.
-  auto initType = linalgOp.getDpsInitOperand(0)->get().getType();
-  auto initShape = llvm::cast<ShapedType>(initType).getShape();
+namespace {
+
+// Container class for the tiling at level 0 (the AIE shared memory) and level 1
+// (the AIE core) in the M-, N-, and K-dimensions of a matmul operation, using
+// the pad-pack approach to tiling a matmul. Also contains the packing sizes for
+// the M, N, and K dimensions. The packing sizes correspond to matmul
+// vector-instruction sizes for vectorizable types.
+class PadPackTiling {
+ public:
+  SmallVector<int64_t> getPackSize() const { return {mPack, nPack, kPack}; }
+
+  static FailureOr<PadPackTiling> create(linalg::LinalgOp linalgOp);
+
+  uint32_t getM0() const { return M0; }
+  uint32_t getN0() const { return N0; }
+  uint32_t getK0() const { return K0; }
+  uint32_t getM1() const { return M1; }
+  uint32_t getN1() const { return N1; }
+  uint32_t getK1() const { return K1; }
+  uint32_t getMPack() const { return mPack; }
+  uint32_t getNPack() const { return nPack; }
+  uint32_t getKPack() const { return kPack; }
+
+ private:
+  PadPackTiling(uint32_t M0, uint32_t N0, uint32_t K0, uint32_t M1, uint32_t N1,
+                uint32_t K1, uint32_t mPack, uint32_t nPack, uint32_t kPack)
+      : M0(M0),
+        N0(N0),
+        K0(K0),
+        M1(M1),
+        N1(N1),
+        K1(K1),
+        mPack(mPack),
+        nPack(nPack),
+        kPack(kPack) {
+    // Tiling at level 0 (shared memory) should be no smaller that tiling at
+    // level 1 (AIE core memory).
+    assert(M0 >= M1 && N0 >= N1);
+
+    // Tiling at level 1 (AIE core memory) should be no smaller than the packing
+    // size (vector instruction size).
+    assert(M1 >= mPack && N1 >= nPack);
+  }
+
+  uint32_t M0;
+  uint32_t N0;
+  uint32_t K0;
+  uint32_t M1;
+  uint32_t N1;
+  uint32_t K1;
+  uint32_t mPack;
+  uint32_t nPack;
+  uint32_t kPack;
+};
+
+FailureOr<PadPackTiling> PadPackTiling::create(linalg::LinalgOp linalgOp) {
+  auto initType =
+      llvm::cast<ShapedType>(linalgOp.getDpsInitOperand(0)->get().getType());
+  auto initShape = initType.getShape();
+
   auto lhsType =
       llvm::cast<ShapedType>(linalgOp.getDpsInputOperand(0)->get().getType());
   auto lhsShape = lhsType.getShape();
 
-  FailureOr<unsigned> maybeTilingScaleFactor =
+  // Shape of the full matmul operation.
+  const uint64_t M = initShape[0];
+  const uint64_t N = initShape[1];
+  const uint64_t K = lhsShape[1];
+
+  FailureOr<unsigned> maybeScaleFactor =
       getTilingScaleFactor(lhsType.getElementType());
-  if (failed(maybeTilingScaleFactor)) {
-    return linalgOp.emitOpError("expected bitwidth 64/32/16/8");
+  if (failed(maybeScaleFactor)) {
+    return linalgOp.emitOpError(
+        "does not have the expected bitwidth (64, 32, 16, or 8), could not "
+        "determine scale factor.");
   }
-  unsigned tilingScaleFactor = maybeTilingScaleFactor.value();
+
+  unsigned scaleFactor = maybeScaleFactor.value();
+
+  auto maybePackedSize = getPackedSize(linalgOp, M, N, K);
+  if (failed(maybePackedSize)) return failure();
+  auto [mPack, nPack, kPack] = maybePackedSize.value();
+
+  // The current ad-hoc algorithm for determining the tiling at level 0 and
+  // level 1 is as follows:
+  //
+  // Step 1: Find the largest tiling for M and N on the AIE core, subject to
+  // constraints.
+  //
+  // Step 2: Find the largest tiling for M and N in AIE shared memory,
+  // subject to constraints.
+  //
+  // Tiling in the K-dimension is done differently TODO(newling)
+  // document/reconsider.
+
+  auto maxL1Size = 16 * scaleFactor;
+  uint32_t M1 = findLargestFactor(M, maxL1Size, mPack);
+  uint32_t N1 = findLargestFactor(N, maxL1Size, nPack);
+
+  auto maxL0Size = 64 * scaleFactor;
+  uint32_t M0 = findLargestFactor(M, maxL0Size, M1);
+  uint32_t N0 = findLargestFactor(N, maxL0Size, N1);
+
+  uint32_t K1 = findLargestFactor(K / kPack, 2 * scaleFactor);
+  uint32_t K0 = findLargestFactor(K, 256, kPack * K1);
+
+  return PadPackTiling{M0, N0, K0, M1, N1, K1, mPack, nPack, kPack};
+}
+}  // namespace
+
+static LogicalResult setRootConfigForPadPackPipeline(
+    mlir::FunctionOpInterface entryPointFn, linalg::LinalgOp linalgOp,
+    AIEConfig cfg) {
+  // Currently, the tile sizes are chosen empirically for large GEMM sizes,
+  // which are [64*s, 64*s, 256] for the first level and [16*s, 16*s, 16*s] for
+  // the second level, where 's' is the scaling factor based on the element
+  // type's bit width. Basic min/max constraints are added to avoid failure for
+  // small GEMM sizes where possible. Assume for now that we are working on a
+  // 4x4 AIE array.
+
+  auto maybePadPackTiling = PadPackTiling::create(linalgOp);
+  if (failed(maybePadPackTiling)) return failure();
+  auto padPackTiling = maybePadPackTiling.value();
 
   // Do packing first to allow better packing configs
   // ------------------------------------------------------
   // --------------- Set packing config -------------------
   // ------------------------------------------------------
   MLIRContext *context = entryPointFn.getContext();
-  const int packLevel = 1;
-  auto packedSizes = getPackedSize(linalgOp, packLevel, (int)initShape[0],
-                                   (int)initShape[1], (int)lhsShape[1]);
-  SmallVector<int64_t> transposePackIndices = {0, 1, 2};
-  SmallVector<bool> unpackEmpty = {false, false, true};
-  SmallVector<SmallVector<int64_t>> innerPerm = {{0, 1}, {1, 0}, {0, 1}};
-  SmallVector<SmallVector<int64_t>> outerPerm = {{1, 0}, {1, 0}, {1, 0}};
+
+  SmallVector<int64_t> transposePackIndices{0, 1, 2};
+  SmallVector<bool> unpackEmpty{false, false, true};
+  SmallVector<SmallVector<int64_t>> innerPerm{{0, 1}, {1, 0}, {0, 1}};
+  SmallVector<SmallVector<int64_t>> outerPerm{{1, 0}, {1, 0}, {1, 0}};
+
   auto packingConfigLevel1Attr = getPackingConfigPackingLevelAttr(
-      context, packedSizes, transposePackIndices, unpackEmpty, innerPerm,
-      outerPerm);
-  SmallVector<PackingConfigPackingLevelAttr> packingConfigLevelsVal = {
+      context, padPackTiling.getPackSize(), transposePackIndices, unpackEmpty,
+      innerPerm, outerPerm);
+  SmallVector<PackingConfigPackingLevelAttr> packingConfigLevelsVal{
       packingConfigLevel1Attr};
 
   auto packingConfigLevels =
@@ -200,32 +315,16 @@ static LogicalResult setRootConfigForPadPackPipeline(
   auto config = PackingConfigAttr::get(context, packingConfigLevels);
   setPackingConfig(linalgOp, config);
 
-  // Do tiling
   // ------------------------------------------------------
   // -------------- Set lowering config -------------------
   // ------------------------------------------------------
-  // TODO (nmeshram) : We should be able to use fixed tiling config after we
-  // have padding support.
-  auto tileM1 = findLargestFactor((int)initShape[0], 16 * tilingScaleFactor,
-                                  (int)packedSizes[0]);
-  auto tileN1 = findLargestFactor((int)initShape[1], 16 * tilingScaleFactor,
-                                  (int)packedSizes[1]);
-  auto tileK1 = findLargestFactor((int)lhsShape[1] / (int)packedSizes[2],
-                                  2 * tilingScaleFactor);
 
-  auto tileM0 =
-      findLargestFactor((int)initShape[0], 64 * tilingScaleFactor, (int)tileM1);
-  auto tileN0 =
-      findLargestFactor((int)initShape[1], 64 * tilingScaleFactor, (int)tileN1);
-  auto tileK0 = findLargestFactor((int)lhsShape[1], 256,
-                                  (int)tileK1 * (int)packedSizes[2]);
+  SmallVector<int64_t> level0{padPackTiling.getM0(), padPackTiling.getN0()};
+  SmallVector<int64_t> level1{0, 0, padPackTiling.getK0()};
+  SmallVector<int64_t> level2{padPackTiling.getM1(), padPackTiling.getN1()};
+  SmallVector<int64_t> level3{0, 0, padPackTiling.getK1()};
+  TileSizesListType tileSizes = {level0, level1, level2, level3};
 
-  SmallVector<int64_t> TileSizeLevel0 = {tileM0, tileN0};
-  SmallVector<int64_t> TileSizeLevel1 = {0, 0, tileK0};
-  SmallVector<int64_t> TileSizeLevel2 = {tileM1, tileN1};
-  SmallVector<int64_t> TileSizeLevel3 = {0, 0, tileK1};
-  TileSizesListType tileSizes = {TileSizeLevel0, TileSizeLevel1, TileSizeLevel2,
-                                 TileSizeLevel3};
   if (failed(setOpConfigAndEntryPointFnTranslation(
           entryPointFn, linalgOp, tileSizes,
           IREE::Codegen::DispatchLoweringPassPipeline::Custom))) {
@@ -307,24 +406,25 @@ static bool isMatmulTranspose(linalg::GenericOp genericOp) {
 /// transposition.
 static LogicalResult setTransposeLikeOpRootConfig(
     mlir::FunctionOpInterface entryPointFn, linalg::LinalgOp linalgOp,
-    AIEPassPipeline usePassPipeline, AIEConfig cfg) {
-  if (usePassPipeline == AIEPassPipeline::PackPeelPipeline)
+    AIEPassPipeline passPipeline, AIEConfig cfg) {
+  if (passPipeline == AIEPassPipeline::PackPeelPipeline)
     return setRootConfigForPackPeelPipeline(entryPointFn, linalgOp, cfg);
-  else if (usePassPipeline == AIEPassPipeline::PadPackPipeline)
+  else if (passPipeline == AIEPassPipeline::PadPackPipeline)
     return setRootConfigForPadPackPipeline(entryPointFn, linalgOp, cfg);
-  return linalgOp.emitOpError("unhandled pass pipeline");
+  return linalgOp.emitError(
+      "Unhandled pass pipeline in setTransposeLikeOpRootConfig.");
 }
 
 static LogicalResult setRootConfig(mlir::FunctionOpInterface entryPointFn,
                                    linalg::GenericOp genericOp,
-                                   AIEPassPipeline usePassPipeline,
+                                   AIEPassPipeline passPipeline,
                                    AIEConfig cfg) {
   assert(!getLoweringConfig(genericOp) &&
          "expected lowering_config is not set");
 
   if (isMatmulTranspose(genericOp) &&
       succeeded(setTransposeLikeOpRootConfig(entryPointFn, genericOp,
-                                             usePassPipeline, cfg))) {
+                                             passPipeline, cfg))) {
     return success();
   }
 
@@ -335,14 +435,14 @@ static LogicalResult setRootConfig(mlir::FunctionOpInterface entryPointFn,
 /// implements the contraction operation interface.
 static LogicalResult setRootConfig(mlir::FunctionOpInterface entryPointFn,
                                    linalg::ContractionOpInterface contractionOp,
-                                   AIEPassPipeline usePassPipeline,
+                                   AIEPassPipeline passPipeline,
                                    AIEConfig cfg) {
   assert(!getLoweringConfig(contractionOp) &&
          "expected lowering_config is not set");
   auto linalgOp = cast<linalg::LinalgOp>(contractionOp.getOperation());
   if (isa<linalg::MatmulTransposeBOp>(linalgOp)) {
     if (succeeded(setTransposeLikeOpRootConfig(entryPointFn, linalgOp,
-                                               usePassPipeline, cfg))) {
+                                               passPipeline, cfg))) {
       return success();
     }
     return failure();
@@ -353,25 +453,25 @@ static LogicalResult setRootConfig(mlir::FunctionOpInterface entryPointFn,
     linalgOp.getReductionDims(dims);
     if (dims.size() != 1 || dims[0] != numLoops - 1) {
       return linalgOp.emitOpError(
-          "expected to have exactly one reduction dim, and it is the innermost "
-          "dim");
+                 "is expected to have exactly one reduction dim, ")
+             << "and that it is the innermost dim (" << numLoops - 1 << ").";
     }
   }
 
   // TODO (nmeshram) : This needs to be moved in a separate more generalized
   // logic. Also, need a flag to experiment between pad based and pack based
   // approach which will have different tile sizes and pass pipelines
-  if (usePassPipeline == AIEPassPipeline::PackPeelPipeline)
+  if (passPipeline == AIEPassPipeline::PackPeelPipeline)
     return setRootConfigForPackPeelPipeline(entryPointFn, linalgOp, cfg);
-  if (usePassPipeline == AIEPassPipeline::PadPackPipeline)
+  if (passPipeline == AIEPassPipeline::PadPackPipeline)
     return setRootConfigForPadPackPipeline(entryPointFn, linalgOp, cfg);
-  return linalgOp.emitOpError("unhandled pass pipeline");
+  return linalgOp.emitError("Unhandled pass pipeline in setRootConfig.");
 }
 
 /// Redirects to methods that set the configuration based on operation type.
 static LogicalResult setRootConfigImpl(mlir::FunctionOpInterface entryPointFn,
                                        Operation *op,
-                                       AIEPassPipeline usePassPipeline,
+                                       AIEPassPipeline passPipeline,
                                        AIEConfig cfg) {
   auto setRootConfigFn = [&](Operation *op) -> LogicalResult {
     return TypeSwitch<Operation *, LogicalResult>(op)
@@ -379,10 +479,10 @@ static LogicalResult setRootConfigImpl(mlir::FunctionOpInterface entryPointFn,
         // let it first crash for all the other ops and then consiously
         // add support for them, this way we can verify our work.
         .Case<linalg::GenericOp>([&](auto op) {
-          return setRootConfig(entryPointFn, op, usePassPipeline, cfg);
+          return setRootConfig(entryPointFn, op, passPipeline, cfg);
         })
         .Case<linalg::ContractionOpInterface>([&](auto op) {
-          return setRootConfig(entryPointFn, op, usePassPipeline, cfg);
+          return setRootConfig(entryPointFn, op, passPipeline, cfg);
         })
         .Default([&](Operation *op) { return success(); });
   };
@@ -392,7 +492,7 @@ static LogicalResult setRootConfigImpl(mlir::FunctionOpInterface entryPointFn,
 /// Sets the translation information to use for a dispatch region.
 static LogicalResult setTranslationInfoAndRootConfig(
     mlir::FunctionOpInterface entryPointFn, ArrayRef<Operation *> computeOps,
-    AIEPassPipeline usePassPipeline, AIEConfig cfg) {
+    AIEPassPipeline passPipeline, AIEConfig cfg) {
   // Make sure that lowering_config is not preset on any compute ops.
   for (auto computeOp : computeOps) {
     if (getLoweringConfig(computeOp)) return failure();
@@ -403,38 +503,26 @@ static LogicalResult setTranslationInfoAndRootConfig(
   Operation *rootOperation = rootOp.value();
 
   // TODO (nmeshram): Handle the case with no known root operation.
-  if (!rootOperation) {
+  if (!rootOperation)
     return entryPointFn.emitError("Case with no root ops not yet supported.");
-  }
 
-  if (failed(setRootConfigImpl(entryPointFn, rootOperation, usePassPipeline,
-                               cfg))) {
+  if (failed(setRootConfigImpl(entryPointFn, rootOperation, passPipeline, cfg)))
     return failure();
-  }
-
-  // TODO (nmeshram): // Set vector level tile sizes for other operations
-  // individually.
-
   return success();
 }
 
 LogicalResult initAIELaunchConfig(FunctionOpInterface funcOp,
-                                  AIEPassPipeline usePassPipeline,
-                                  AIEConfig cfg) {
-  if (getTranslationInfo(funcOp)) {
-    return success();
-  }
+                                  AIEPassPipeline passPipeline, AIEConfig cfg) {
+  if (getTranslationInfo(funcOp)) return success();
 
   // TODO (nmeshram): Need a default pipeline for control flow cases.
-  if (funcOp.empty() || !llvm::hasSingleElement(funcOp.getFunctionBody())) {
-    return funcOp.emitError("control flow not yet supported.");
-  }
+  if (funcOp.empty() || !llvm::hasSingleElement(funcOp.getFunctionBody()))
+    return funcOp.emitError("Control flow not yet supported.");
 
   SmallVector<Operation *> computeOps = getComputeOps(funcOp);
-  if (failed(setTranslationInfoAndRootConfig(funcOp, computeOps,
-                                             usePassPipeline, cfg))) {
+  if (failed(setTranslationInfoAndRootConfig(funcOp, computeOps, passPipeline,
+                                             cfg)))
     return failure();
-  }
 
   // The root configuration setting introduces `tensor.dim` operations.
   // Resolve those away.
