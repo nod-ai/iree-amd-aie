@@ -44,9 +44,6 @@
 // Macros for configuring AIE delegate behavior
 //
 
-// Turn this on to use the 8x768x768 kernel in place of the default ref matmul
-// #define USE_OPT_KERNEL 1
-
 // Uncomment the kernel to use
 // #define DELEGATE_KERNEL_TO_USE REF_MATMUL_DELEGATE_KERNEL
 // #define DELEGATE_KERNEL_TO_USE OPT_DELEGATE_KERNEL
@@ -114,7 +111,7 @@ using C_DATATYPE = float; // bfloat16_t;
 // Types of the matmul LHS, RHS, and result, as seen by the model
 using ModelLhsDType = bfloat16_t;
 using ModelRhsDType = bfloat16_t;
-using ModelReturnDType = bfloat16_t;
+using ModelReturnDType = float;
 
 // Set to 1 if the kernel requires a pre-initialized buffer to be loaded
 // into the kernel before the kernel runs
