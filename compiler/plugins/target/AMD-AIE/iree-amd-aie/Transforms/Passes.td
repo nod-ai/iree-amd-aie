@@ -61,6 +61,12 @@ def AMDAIECleanup :
       "mlir::iree_compiler::AMDAIE::createAMDAIECleanupPass()";
 }
 
+def AMDAIECreateAIEWorkgroup : 
+  Pass<"iree-amdaie-create-aie-workgroup", "func::FuncOp"> {
+  let summary = "Creates a single AIE workgroup.";
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIECreateAIEWorkgroupPass()";
+}
+
 def AMDAIEDecomposeLinalgExtPackUnPackToAIR :
     Pass<"iree-amdaie-decompose-pack-unpack-to-air", ""> {
   let summary = "Decompose LinalgExt pack/unpack ops into patterns compatible to AIR.";
