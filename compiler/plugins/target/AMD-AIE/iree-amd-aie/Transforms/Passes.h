@@ -46,6 +46,9 @@ std::unique_ptr<Pass> createAMDAIEBufferizeToAllocationPass(
 /// Create pass to apply caonicaliztions to air.dma_memcpy_nd op's.
 std::unique_ptr<Pass> createAMDAIECanonicalizeDmaPass();
 
+/// Pass to create a single AIE workgroup.
+std::unique_ptr<Pass> createAMDAIECreateAIEWorkgroupPass();
+
 /// Create a pass to vectorize operations.
 std::unique_ptr<Pass> createAMDAIEVectorizationPass();
 
