@@ -23,10 +23,10 @@ The function makes XRT calls to load the AIE kernel, transfer the operand
 tensors to the AIE device, run the kernel, and transfer the result tensor
 from the device.
 
-In this first draft, several aspects of AIE Delegates are hard-coded for the
-specific use case of a 256x256x256 or a 8x768x768 matmul, selectable by
-enabling or disabling the macro `USE_OPT_KERNEL`.  As checked in, the macro
-is enabled, meaning that the 8x768x768 matmul is being used.
+In this first draft, several aspects of AIE Delegates are hard-coded for a
+specific matmul kernel, selectable by changing the value of
+`DELEGATE_KERNEL_TO_USE`.  As checked in, the macro is set to use a large
+matmul.
 
 ### Build Artifacts
 
@@ -39,7 +39,7 @@ time, these artifacts are downloaded from Azure.
 
 ### Demos
 
-In the `experimental/delegate` directory there are three demos, as described
+In the `experimental/delegate` directory there are four demos, as described
 below.
 
 #### Demo 1: Dynamic shape model with one matmul, Transform script
@@ -53,7 +53,7 @@ has been tested with only the 256x256x256 kernel.
 The model uses f32 tensors, whereas the kernel uses bf16 tensors, so the
 plugin function converts between the two types.
 
-#### Demo 2: Model with one 8x768x768 batch_matmul, PDL script
+#### Demo 2 (OPT): Model with one 8x768x768 batch_matmul, PDL script
 
 In the second demo the `matmul.mlir` file is an OPT-like model with a single
 batch_matmul of the most common shape found in OPT.  `opt.pdl.mlir` is the
@@ -62,11 +62,17 @@ PDL script that replaces the batch_matmul with the external function call.
 The model uses bf16 tensors, whereas the kernel has bf16 inputs but a f32
 result, so the plugin converts the f32 result to bf16.
 
-#### Demo 3: Model with two 8x768x768 batch_matmuls, PDL script
+#### Demo 3 (OPT): Model with two 8x768x768 batch_matmuls, PDL script
 
 The third demo is like the second, except that the model, `opt.mlir`,
 contains two batch_matmuls to demonstrate the delegate getting called
 multiple times in a model.  It uses the same PDL script, `opt.pdl.mlir`.
+
+#### Demo 4 (Large Matmul): Model with one 8192x9728x2432 matmul, PDL script
+
+Demo 4 has a single matmul like demo 2, but with a different shape.  As such,
+it requires its own PDL, `large-matmul.pdl.mlir`.  Note also that it rewrites
+the `matmul` op, not `batch_matmul`.
 
 ## Running the Demos
 
@@ -89,8 +95,8 @@ export PATH_TO_IREE_BUILD=../../../iree-build
 
 ### Compiling and running demo 1
 
-Don't forget to disable `USE_OPT_KERNEL` in `mlp_bf16_aie_delegate.so` and
-recompile IREE!
+Set `DELEGATE_KERNEL_TO_USE` in `mlp_bf16_aie_delegate.so` to `REF_MATMUL_DELEGATE_KERNEL`
+and recompile IREE.
 
 ```
 iree-compile --iree-preprocessing-transform-spec-filename=mlp_spec.mlir mlp.mlir -o mlp.vmfb
@@ -103,7 +109,10 @@ iree-run-module --device=local-sync \
   --input="768x768xf32=3"
 ```
 
-### Compiling and running demo 2
+### Compiling and running demo 2 (OPT)
+
+Set `DELEGATE_KERNEL_TO_USE` in `mlp_bf16_aie_delegate.so` to `OPT_DELEGATE_KERNEL`
+and recompile IREE.
 
 ```
 iree-compile --iree-preprocessing-pdl-spec-filename=opt.pdl.mlir matmul.mlir -o matmul.vmfb
@@ -115,7 +124,10 @@ iree-run-module --device=local-sync \
   --input="1x8x768xbf16=2" \
   --input="1x768x768xbf16=3"
 ```
-### Compililng and running demo 3
+### Compililng and running demo 3 (OPT)
+
+Set `DELEGATE_KERNEL_TO_USE` in `mlp_bf16_aie_delegate.so` to `OPT_DELEGATE_KERNEL`
+and recompile IREE.
 
 ```
 iree-compile --iree-preprocessing-pdl-spec-filename=opt.pdl.mlir opt.mlir -o opt.vmfb
@@ -127,3 +139,57 @@ iree-run-module --device=local-sync \
   --input="1x8x768xbf16=2" \
   --input="1x768x768xbf16=3"
 ```
+
+### Compiling and running demo 4 (Large Matmul)
+
+Set `DELEGATE_KERNEL_TO_USE` in `mlp_bf16_aie_delegate.so` to `LARGE_MATMUL_DELEGATE_KERNEL`
+(the default as checked in) and recompile IREE.
+
+```
+iree-compile large-matmul.mlir -o large-matmul.vmfb --iree-preprocessing-pdl-spec-filename=large-matmul.pdl.mlir
+ 
+iree-run-module --device=local-sync \
+  --executable_plugin=../../../iree-build/runtime/plugins/AMD-AIE-experimental/delegate/mlp_bf16_aie_delegate.so \
+  --module=large-matmul.vmfb \
+  --function=mlp_invocation \
+  --input="8192x2432xbf16=2" \
+  --input="2432x9728xbf16=3"
+```
+
+## Building the large matmul kernel
+
+The large matmul kernel used in demo 4 was generated with IREE.  While the
+kernel is checked into Azure and downloaded automatically at build time, you can
+regenerate the kernel yourself as needed by following the steps below.
+
+1. Edit the file `iree-amd-aie/build_tools/ci/run_matmul_test.sh`
+2. Comment out all the test lines starting with `run_matmul_test` in the "Run a few tests" section of the file
+3. Add the following test:
+
+```
+run_matmul_test \
+    --name_prefix "large_matmul" \
+    --lhs_rhs_type "bf16" \
+    --acc_type "f32" \
+    --m "8192"  --n "9728" --k "2432"
+```
+
+4. Generate the kernel artifacts with the following commands:
+
+```
+cd <workspace root (containing iree-build)>
+export IREE_ROOT=$PWD
+cd iree-amd-aie/experimental/delegate
+export IREE_INSTALL_DIR=$IREE_ROOT/iree-build/
+export MLIR_AIE_INSTALL_DIR=$IREE_ROOT/iree-amd-aie/third_party/mlir-aie/install
+export PEANO_INSTALL_DIR=$IREE_ROOT/install
+export VITIS_INSTALL_PATH=/proj/xbuilds/2023.2_released/installs/lin64/Vitis/2023.2
+
+../../build_tools/ci/run_matmul_test.sh  results_dir_tmp  $IREE_INSTALL_DIR  \
+    $MLIR_AIE_INSTALL_DIR   $PEANO_INSTALL_DIR  /opt/xilinx/xrt \
+    $VITIS_INSTALL_PATH 0
+```
+
+5. Under the `results_dir_tmp` directory, there should be another directory.
+That directory should contain the .xclbin file and a .npu.txt file, which is
+the same thing as an insts.txt file.

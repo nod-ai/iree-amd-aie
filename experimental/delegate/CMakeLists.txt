@@ -64,9 +64,11 @@ iree_lit_test_suite(
     "mlp.mlir"
     "matmul.mlir"
     "opt.mlir"
+    "large-matmul.mlir"
   DATA
     "linalg.pdl.mlir"
     "opt.pdl.mlir"
+    "large-matmul.pdl.mlir"
   TOOLS
     FileCheck
     iree-compile
