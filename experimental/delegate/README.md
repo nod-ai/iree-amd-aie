@@ -25,8 +25,8 @@ from the device.
 
 In this first draft, several aspects of AIE Delegates are hard-coded for a
 specific matmul kernel, selectable by changing the value of
-`DELEGATE_KERNEL_TO_USE`.  As checked in, the macro is set to use a matmul
-(not a matmul_transpose_b!) from the tres leches model.
+`DELEGATE_KERNEL_TO_USE`.  As checked in, the macro is set to use a large
+matmul.
 
 ### Build Artifacts
 
