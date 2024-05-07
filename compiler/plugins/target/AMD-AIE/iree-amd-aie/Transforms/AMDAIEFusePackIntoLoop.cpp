@@ -7,6 +7,7 @@
 #include "iree-amd-aie/Transforms/Passes.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Linalg/IR/LinalgInterfaces.h"
+#include "mlir/Dialect/Linalg/Utils/Utils.h"
 #include "mlir/Dialect/SCF/Transforms/TileUsingInterface.h"
 #include "mlir/IR/Iterators.h"
 #include "mlir/Pass/Pass.h"
@@ -29,6 +30,15 @@ static FailureOr<tensor::ExtractSliceOp> getTensorExtractSliceDefiningOp(
       if (isa_and_nonnull<tensor::PackOp>(
               sliceOp.getSource().getDefiningOp())) {
         return sliceOp;
+      }
+      if (isa<BlockArgument>(sliceOp.getSource())) {
+        auto blkArg = dyn_cast<BlockArgument>(sliceOp.getSource());
+        for (Value blkOperand :
+             blkArg.getOwner()->getParentOp()->getOperands()) {
+          if (isa_and_nonnull<tensor::PackOp>(blkOperand.getDefiningOp())) {
+            return sliceOp;
+          }
+        }
       }
       break;
     }
@@ -86,18 +96,17 @@ void AMDAIEFusePackIntoLoopPass::runOnOperation() {
   }
 
   LoopLikeOpInterface loops = cast<LoopLikeOpInterface>(scfLoopOp);
-  auto loopBody = useSCFFor ? cast<scf::ForOp>(loops).getBody()
-                            : cast<scf::ForallOp>(loops).getBody();
+  auto castLoop =
+      useSCFFor ? cast<scf::ForOp>(loops) : cast<scf::ForallOp>(loops);
 
   // Based on the `fusePackDepth`, we would greedily fuse the producer
   // tensor.pack ops.
   for (unsigned depth = 1; depth <= fusePackDepth; depth++) {
-    // Search the compute op and its producer slices.
+    // Search the last compute op in the loop and its producer slices.
     linalg::GenericOp genericOp;
-    loopBody->walk<WalkOrder::PostOrder, ReverseIterator>(
+    castLoop->walk<WalkOrder::PostOrder, ReverseIterator>(
         [&](linalg::LinalgOp op) {
-          if (isa<linalg::GenericOp>(op) &&
-              linalg::isaContractionOpInterface(op)) {
+          if (isa<linalg::GenericOp>(op)) {
             genericOp = cast<linalg::GenericOp>(op);
             return WalkResult::interrupt();
           }
@@ -106,6 +115,12 @@ void AMDAIEFusePackIntoLoopPass::runOnOperation() {
 
     if (!genericOp) {
       LLVM_DEBUG(llvm::dbgs() << "----- There is no compute op.-----\n");
+      return;
+    }
+
+    if (targetElementwise && !isElementwise(genericOp)) {
+      LLVM_DEBUG(llvm::dbgs()
+                 << "----- The target compute op is not elementwise.-----\n");
       return;
     }
 

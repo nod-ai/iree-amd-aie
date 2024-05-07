@@ -173,20 +173,9 @@ static bool match4DLinalgGenericMatmul(linalg::LinalgOp linalgOp) {
     return false;
   }
 
-  // We extract dimensions for K*N*n*k x M*K*k*m -> M*N*n*m.
-  AffineExpr M = map2.getResult(0);
-  AffineExpr N = map2.getResult(1);
-  AffineExpr K = map0.getResult(0);
-  AffineExpr m = map2.getResult(2);
-  AffineExpr n = map2.getResult(3);
-  AffineExpr k = map0.getResult(3);
-
-  auto *context = indexingMaps.getContext();
-  auto mapA = AffineMapAttr::get(AffineMap::get(6, 0, {K, N, m, k}, context));
-  auto mapB = AffineMapAttr::get(AffineMap::get(6, 0, {M, K, k, n}, context));
-  auto mapC = AffineMapAttr::get(AffineMap::get(6, 0, {M, N, m, n}, context));
-  auto maps = ArrayAttr::get(context, {mapA, mapB, mapC});
-  return indexingMaps == maps;
+  // Skip the exact indexingMaps matching, because there could be different
+  // dimension permutations caused by pack_transpose.
+  return true;
 }
 
 /// Utility to match iterator type and indexing map for a linalg.generic that
@@ -218,27 +207,9 @@ static bool match6DLinalgGenericMatmul(linalg::LinalgOp linalgOp) {
     return false;
   }
 
-  // Since this is invoked after the final pack-and-transpose we need to
-  // extract dimensions for M*K*k*m*m0*k0 x K*N*n*k*k0*n0 -> M*N*n*m*m0*n0.
-  AffineExpr M = map2.getResult(0);
-  AffineExpr N = map2.getResult(1);
-  AffineExpr n = map2.getResult(2);
-  AffineExpr m = map2.getResult(3);
-  AffineExpr m0 = map2.getResult(4);
-  AffineExpr n0 = map2.getResult(5);
-  AffineExpr K = map0.getResult(1);
-  AffineExpr k = map0.getResult(2);
-  AffineExpr k0 = map0.getResult(5);
-
-  auto *context = indexingMaps.getContext();
-  auto mapA =
-      AffineMapAttr::get(AffineMap::get(9, 0, {M, K, k, m, m0, k0}, context));
-  auto mapB =
-      AffineMapAttr::get(AffineMap::get(9, 0, {K, N, n, k, k0, n0}, context));
-  auto mapC =
-      AffineMapAttr::get(AffineMap::get(9, 0, {M, N, n, m, m0, n0}, context));
-  auto maps = ArrayAttr::get(context, {mapA, mapB, mapC});
-  return indexingMaps == maps;
+  // Skip the exact indexingMaps matching, because there could be different
+  // dimension permutations caused by pack_transpose.
+  return true;
 }
 
 /// Returns the BlockArgument that leads to `val`. Traverses optional ext*
@@ -298,33 +269,49 @@ bool isMatmul(linalg::LinalgOp linalgOp) {
          match6DLinalgGenericMatmul(linalgOp);
 }
 
+/// Utility to identify if the input operand has matmul-like op in its
+/// def-chain.
+bool isMatmulInDefChain(Value operand) {
+  Operation *defOp = operand.getDefiningOp();
+  if (!defOp) {
+    return false;
+  }
+
+  if (isa<arith::ConstantOp>(defOp)) {
+    return false;
+  }
+
+  if (auto defLinalgOp = dyn_cast_or_null<linalg::LinalgOp>(defOp)) {
+    if (isMatmul(defLinalgOp)) {
+      return true;
+    }
+  }
+
+  // If something is being produced from a for/forall loop, we just assume it is
+  // some fused computation and do not really need to look at its body to match
+  // matmul.
+  if (isa<scf::ForOp>(defOp) || isa<scf::ForallOp>(defOp)) {
+    return true;
+  }
+
+  for (Value operand : defOp->getOperands()) {
+    if (isMatmulInDefChain(operand)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 /// Utility to identify if `linalgOp` is an elementwise operation with a
 /// matmul-like op upstream in its computation tree.
 bool isMatmulProducerOfElementwise(linalg::LinalgOp linalgOp) {
-  if (!isElementwise(linalgOp)) return false;
-  if (isa<linalg::FillOp>(linalgOp)) return false;
+  if (!isElementwise(linalgOp) || isa<linalg::FillOp>(linalgOp)) {
+    return false;
+  }
   // Check if any of the defining op is a matmul-like op.
-  for (auto operand : linalgOp->getOperands()) {
-    while (Operation* defOp = operand.getDefiningOp()) {
-      if (auto defLinalgOp = dyn_cast_or_null<linalg::LinalgOp>(defOp)) {
-        if (isMatmul(defLinalgOp)) {
-          return true;
-        }
-        break;
-      }
-      if (auto forOp = dyn_cast_or_null<scf::ForOp>(defOp)) {
-        bool findMatmul = false;
-        forOp.getBody()->walk<WalkOrder::PostOrder, ReverseIterator>(
-            [&](linalg::LinalgOp op) {
-              if (isMatmul(op)) {
-                findMatmul = true;
-                return WalkResult::interrupt();
-              }
-              return WalkResult::advance();
-            });
-        if (findMatmul) return true;
-      }
-      operand = defOp->getOperand(0);
+  for (Value operand : linalgOp->getOperands()) {
+    if (isMatmulInDefChain(operand)) {
+      return true;
     }
   }
   return false;

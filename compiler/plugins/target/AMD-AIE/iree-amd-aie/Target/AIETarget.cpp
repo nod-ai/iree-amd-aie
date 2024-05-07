@@ -106,7 +106,7 @@ class AIETargetBackend final : public IREE::HAL::TargetBackend {
                     xilinx::airrt::AIRRtDialect>();
   }
 
-  void buildTranslationPassPipeline(IREE::HAL::ExecutableVariantOp variantOp,
+  void buildTranslationPassPipeline(IREE::HAL::ExecutableTargetAttr,
                                     OpPassManager &passManager) override {
     buildAMDAIETransformPassPipeline(passManager);
   }
@@ -222,6 +222,7 @@ LogicalResult AIETargetBackend::serializeExecutable(
   addOpt("--print-ir-before-all", options.aie2xclbinPrintIrBeforeAll);
   addOpt("--disable-threading", options.aie2xclbinDisableTheading);
   addOpt("--print-ir-module-scope", options.aie2xclbinPrintIrModuleScope);
+  addOpt("--timing", options.aie2xclbinTiming);
 
   SmallVector<StringRef> cmdEnv{};
   if (options.useChess) {
