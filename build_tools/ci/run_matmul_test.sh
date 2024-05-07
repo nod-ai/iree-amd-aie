@@ -486,7 +486,7 @@ run_matmul_test \
   --m "8" --n "16" --k "32" \
   --do_transpose_rhs "1"
 
-# TODO: fix this. 
+# TODO: fix this.
 #: error: 'aie.dma_bd' op Cannot give more than 4 dimensions for step sizes
 #  and wraps in this  tile (got 5 dimensions).
 run_matmul_test \
@@ -498,7 +498,7 @@ run_matmul_test \
   --expect-compile-failure "1"
 
 
-# The below matmul case passes with 
+# The below matmul case passes with
 # tile_sizes = [[1, 1], [0, 0, 250], [1, 1], [0, 0, 2]], packedSizes = [1, 1, 5]
 # but fails with tile_sizes = [[1, 1], [0, 0, 200], [1, 1], [0, 0, 1]], packedSizes = [1, 1, 8],
 # with the error LLVM ERROR: unable to legalize instruction: %152:_(<2 x s32>) = G_FMUL %148:_, %150:_ (in function: core_0_2)
@@ -511,10 +511,10 @@ run_matmul_test \
    --m "1"  --n "1" --k "1000" \
    --expect-compile-failure "1"
 
-# The below matmul case passes with 
+# The below matmul case passes with
 # tile_sizes = [52, 52], [0, 0, 63], [26, 26], [0, 0, 3], packedSizes = [2, 2, 7]
 # but fails with tile_sizes = [[52, 52], [0, 0, 63], [4, 4], [0, 0, 3]], packedSizes = [4, 4, 7],
-# in AIRHerdPlacementPass with the error No valid placement found 
+# in AIRHerdPlacementPass with the error No valid placement found
 # The later is what a more vectorization friendly packing looks like so we are expected failing the test here.
 # We should fix this failure.
 run_matmul_test \
