@@ -127,11 +127,10 @@ ${SOURCE_MLIR_FILE} \
 --iree-amd-aie-mlir-aie-install-dir=${MLIR_AIE_INSTALL} \
 --iree-amd-aie-vitis-install-dir=${VITIS} \
 --iree-hal-dump-executable-files-to=${OUTPUT_DIR} \
---iree-amdaie-use-pipeline=simple-pack \
 -o ${OUTPUT_DIR}/test_artefact.vmfb \
 --iree-amd-aie-show-invoked-commands"
 
-# Execute the command to generate the .vmfb, .xclbin, .ipu.txt files, etc.
+# Execute the command to generate the .vmfb, .xclbin, .npu.txt files, etc.
 echo "Executing command: $IREE_COMPILE_COMMAND"
 eval $IREE_COMPILE_COMMAND 
 
@@ -175,16 +174,16 @@ else
   sudo $SIGNER -dev Phoenix -xclbin "${XCLBIN_FILE}"
 fi
 
-# Just like above for the XCLBIN file, we expect to find a .ipu.txt file in the output directory.
+# Just like above for the XCLBIN file, we expect to find a .npu.txt file in the output directory.
 IPU_TXT_FILE=""
-for file in `find ${OUTPUT_DIR} -name "*.ipu.txt"`; do
+for file in `find ${OUTPUT_DIR} -name "*.npu.txt"`; do
   IPU_TXT_FILE="${file}"
 done
 if [ -z "${IPU_TXT_FILE}" ]; then
-  echo "No .ipu.txt file found in the output directory or any of its subdirectories."
+  echo "No .npu.txt file found in the output directory or any of its subdirectories."
   exit 1
 else
-  echo "Found .ipu.txt file: ${IPU_TXT_FILE}"
+  echo "Found .npu.txt file: ${IPU_TXT_FILE}"
 fi
 
 echo "Running the test executable with writeC and syncC set to true (writeC=true and syncC=false is the failure mode)."

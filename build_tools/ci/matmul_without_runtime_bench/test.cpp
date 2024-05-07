@@ -120,7 +120,7 @@ int main(int argc, const char *argv[]) {
   double totalTime;
   double minTime = 1e9;
   double maxTime = 0;
-  int nIters = 100;
+  int nIters = 10;
   for (int i = 0; i < nIters; ++i) {
     bo_instr.sync(XCL_BO_SYNC_BO_TO_DEVICE);
     bo_a.sync(XCL_BO_SYNC_BO_TO_DEVICE);
