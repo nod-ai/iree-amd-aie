@@ -68,11 +68,11 @@ The third demo is like the second, except that the model, `opt.mlir`,
 contains two batch_matmuls to demonstrate the delegate getting called
 multiple times in a model.  It uses the same PDL script, `opt.pdl.mlir`.
 
-#### Demo 4 (Tres Leches): Model with one 8192x9728x2432 matmul, PDL script
+#### Demo 4 (Large Matmul): Model with one 8192x9728x2432 matmul, PDL script
 
 Demo 4 has a single matmul like demo 2, but with a different shape.  As such,
-it requires its own PDL, `tres-leches.pdl.mlir`.  Note also that is rewrites
-`matmul`, not `batch_matmul`.
+it requires its own PDL, `large-matmul.pdl.mlir`.  Note also that it rewrites
+the `matmul` op, not `batch_matmul`.
 
 ## Running the Demos
 
@@ -140,25 +140,25 @@ iree-run-module --device=local-sync \
   --input="1x768x768xbf16=3"
 ```
 
-### Compiling and running demo 4 (Tres Leches)
+### Compiling and running demo 4 (Large Matmul)
 
-Set `DELEGATE_KERNEL_TO_USE` in `mlp_bf16_aie_delegate.so` to `TRES_LECHES_DELEGATE_KERNEL`
+Set `DELEGATE_KERNEL_TO_USE` in `mlp_bf16_aie_delegate.so` to `LARGE_MATMUL_DELEGATE_KERNEL`
 (the default as checked in) and recompile IREE.
 
 ```
-iree-compile tres-leches.mlir -o tres-leches.vmfb --iree-preprocessing-pdl-spec-filename=tres-leches.pdl.mlir
+iree-compile large-matmul.mlir -o large-matmul.vmfb --iree-preprocessing-pdl-spec-filename=large-matmul.pdl.mlir
  
 iree-run-module --device=local-sync \
   --executable_plugin=../../../iree-build/runtime/plugins/AMD-AIE-experimental/delegate/mlp_bf16_aie_delegate.so \
-  --module=tres-leches.vmfb \
+  --module=large-matmul.vmfb \
   --function=mlp_invocation \
   --input="8192x2432xbf16=2" \
   --input="2432x9728xbf16=3"
 ```
 
-## Building the Tres Leches matmul kernel
+## Building the large matmul kernel
 
-The Tres Leches matmul kernel used in demo 4 was generated with IREE.  While the
+The large matmul kernel used in demo 4 was generated with IREE.  While the
 kernel is checked into Azure and downloaded automatically at build time, you can
 regenerate the kernel yourself as needed by following the steps below.
 
@@ -168,7 +168,7 @@ regenerate the kernel yourself as needed by following the steps below.
 
 ```
 run_matmul_test \
-    --name_prefix "tresleches_39" \
+    --name_prefix "large_matmul" \
     --lhs_rhs_type "bf16" \
     --acc_type "f32" \
     --m "8192"  --n "9728" --k "2432"

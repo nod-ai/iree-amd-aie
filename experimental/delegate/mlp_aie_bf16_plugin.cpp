@@ -37,7 +37,7 @@
 // Delegate kernels
 #define REF_MATMUL_DELEGATE_KERNEL 1
 #define OPT_DELEGATE_KERNEL 2
-#define TRES_LECHES_DELEGATE_KERNEL 3
+#define LARGE_MATMUL_DELEGATE_KERNEL 3
 
 //#############################################################################
 //
@@ -47,7 +47,7 @@
 // Uncomment the kernel to use
 // #define DELEGATE_KERNEL_TO_USE REF_MATMUL_DELEGATE_KERNEL
 // #define DELEGATE_KERNEL_TO_USE OPT_DELEGATE_KERNEL
-#define DELEGATE_KERNEL_TO_USE TRES_LECHES_DELEGATE_KERNEL
+#define DELEGATE_KERNEL_TO_USE LARGE_MATMUL_DELEGATE_KERNEL
 
 // Turn this on to use XRT buffers which are separate from HAL buffers.
 // There is a performance cost to copying between HAL and XRT buffer, but it
@@ -90,7 +90,7 @@ using bfloat16_t = std::uint16_t;
 // Configuration of the kernel that the AIE delegate uses
 //
 
-#if DELEGATE_KERNEL_TO_USE == TRES_LECHES_DELEGATE_KERNEL
+#if DELEGATE_KERNEL_TO_USE == LARGE_MATMUL_DELEGATE_KERNEL
 // Kernel file names (without extension) relative to installation root
 const std::string kernelFileName = 
     "matmul/matmul-bf16-f32-8192x9728x2432-v1";  // From AIE codegen
