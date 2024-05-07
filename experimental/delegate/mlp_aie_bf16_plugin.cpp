@@ -109,8 +109,8 @@ using B_DATATYPE = bfloat16_t;
 using C_DATATYPE = float; // bfloat16_t;
 
 // Types of the matmul LHS, RHS, and result, as seen by the model
-using ModelLhsDType = bfloat16_t;
-using ModelRhsDType = bfloat16_t;
+using ModelLhsDType = float; // bfloat16_t;
+using ModelRhsDType = float; // bfloat16_t;
 using ModelReturnDType = float;
 
 // Set to 1 if the kernel requires a pre-initialized buffer to be loaded

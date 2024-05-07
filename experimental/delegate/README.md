@@ -39,7 +39,7 @@ time, these artifacts are downloaded from Azure.
 
 ### Demos
 
-In the `experimental/delegate` directory there are four demos, as described
+In the `experimental/delegate` directory there are five demos, as described
 below.
 
 #### Demo 1: Dynamic shape model with one matmul, Transform script
@@ -68,11 +68,19 @@ The third demo is like the second, except that the model, `opt.mlir`,
 contains two batch_matmuls to demonstrate the delegate getting called
 multiple times in a model.  It uses the same PDL script, `opt.pdl.mlir`.
 
-#### Demo 4 (Large Matmul): Model with one 8192x9728x2432 matmul, PDL script
+#### Demo 4 (Large Matmul): Model with one 8192x9728x2432 matmul, PDL script, bf16 inputs
 
 Demo 4 has a single matmul like demo 2, but with a different shape.  As such,
 it requires its own PDL, `large-matmul.pdl.mlir`.  Note also that it rewrites
-the `matmul` op, not `batch_matmul`.
+the `matmul` op, not `batch_matmul`.  The kernel for this demo has bf16 inputs
+and f32 outputs.
+
+#### Demo 5 (Large Matmul): Model with one 8192x9728x2432 matmul, PDL script, f32 i/o
+
+Demo 5 is the same as demo 4, except that the model has f32 inputs instead of
+bf16.  Since this demo uses the same kernel (with bf16 inputs), the delegate
+automatically casts the f32 inputs to bf16.  This demo also has its own PDL,
+`large-matmul.pdl.mlir`.
 
 ## Running the Demos
 
@@ -95,8 +103,9 @@ export PATH_TO_IREE_BUILD=../../../iree-build
 
 ### Compiling and running demo 1
 
-Set `DELEGATE_KERNEL_TO_USE` in `mlp_bf16_aie_delegate.so` to `REF_MATMUL_DELEGATE_KERNEL`
-and recompile IREE.
+Set `DELEGATE_KERNEL_TO_USE` in `mlp_bf16_aie_delegate.so` to `REF_MATMUL_DELEGATE_KERNEL`.
+
+Recompile IREE if you have made any code changes.
 
 ```
 iree-compile --iree-preprocessing-transform-spec-filename=mlp_spec.mlir mlp.mlir -o mlp.vmfb
@@ -111,8 +120,9 @@ iree-run-module --device=local-sync \
 
 ### Compiling and running demo 2 (OPT)
 
-Set `DELEGATE_KERNEL_TO_USE` in `mlp_bf16_aie_delegate.so` to `OPT_DELEGATE_KERNEL`
-and recompile IREE.
+Set `DELEGATE_KERNEL_TO_USE` in `mlp_bf16_aie_delegate.so` to `OPT_DELEGATE_KERNEL`.
+
+Recompile IREE if you have made any code changes.
 
 ```
 iree-compile --iree-preprocessing-pdl-spec-filename=opt.pdl.mlir matmul.mlir -o matmul.vmfb
@@ -126,8 +136,9 @@ iree-run-module --device=local-sync \
 ```
 ### Compililng and running demo 3 (OPT)
 
-Set `DELEGATE_KERNEL_TO_USE` in `mlp_bf16_aie_delegate.so` to `OPT_DELEGATE_KERNEL`
-and recompile IREE.
+Set `DELEGATE_KERNEL_TO_USE` in `mlp_bf16_aie_delegate.so` to `OPT_DELEGATE_KERNEL`.
+
+Recompile IREE if you have made any code changes.
 
 ```
 iree-compile --iree-preprocessing-pdl-spec-filename=opt.pdl.mlir opt.mlir -o opt.vmfb
@@ -140,10 +151,15 @@ iree-run-module --device=local-sync \
   --input="1x768x768xbf16=3"
 ```
 
-### Compiling and running demo 4 (Large Matmul)
+### Compiling and running demo 4 (Large Matmul with bf16 inputs)
 
 Set `DELEGATE_KERNEL_TO_USE` in `mlp_bf16_aie_delegate.so` to `LARGE_MATMUL_DELEGATE_KERNEL`
-(the default as checked in) and recompile IREE.
+(the default as checked in).
+
+Also, under the `#if DELEGATE_KERNEL_TO_USE == LARGE_MATMUL_DELEGATE_KERNEL`
+section, change `ModelLhsDType` and `ModelRhsDType` to `bfloat16_t`.
+
+Recompile IREE if you have made any code changes.
 
 ```
 iree-compile large-matmul.mlir -o large-matmul.vmfb --iree-preprocessing-pdl-spec-filename=large-matmul.pdl.mlir
@@ -154,6 +170,28 @@ iree-run-module --device=local-sync \
   --function=mlp_invocation \
   --input="8192x2432xbf16=2" \
   --input="2432x9728xbf16=3"
+```
+
+### Compiling and running demo 5 (Large Matmul with f32 inputs)
+
+Set `DELEGATE_KERNEL_TO_USE` in `mlp_bf16_aie_delegate.so` to `LARGE_MATMUL_DELEGATE_KERNEL`
+(the default as checked in).
+
+Also, under the `#if DELEGATE_KERNEL_TO_USE == LARGE_MATMUL_DELEGATE_KERNEL`
+section, change `ModelLhsDType` and `ModelRhsDType` to `float` (the default as
+checked in).
+
+Recompile IREE if you have made any code changes.
+
+```
+iree-compile large-matmul-f32.mlir -o large-matmul-f32.vmfb --iree-preprocessing-pdl-spec-filename=large-matmul-f32.pdl.mlir
+ 
+iree-run-module --device=local-sync \
+  --executable_plugin=../../../iree-build/runtime/plugins/AMD-AIE-experimental/delegate/mlp_bf16_aie_delegate.so \
+  --module=large-matmul-f32.vmfb \
+  --function=mlp_invocation \
+  --input="8192x2432xf32=2" \
+  --input="2432x9728xf32=3"
 ```
 
 ## Building the large matmul kernel
