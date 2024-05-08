@@ -144,8 +144,24 @@ fi
 TEST_CPP="${THIS_DIR}/test.cpp"
 
 
-# Compile the host code (flags inspired by mlir-air tests). 
-g++ ${TEST_CPP} -o ${OUTPUT_DIR}/test.exe -Wall -I${XRT_DIR}/include -L${XRT_DIR}/lib -luuid -lxrt_coreutil -lrt -lstdc++
+FLAGS="-Wall -I${XRT_DIR}/include -L${XRT_DIR}/lib -luuid -lxrt_coreutil -lrt -lstdc++"
+g++ ${TEST_CPP} -o ${OUTPUT_DIR}/test.exe ${FLAGS}
+
+# =============================================
+# ==== YCM VIM SETUP =======================
+# =======================================
+YCM_EXTRA_CONF="${THIS_DIR}/.ycm_extra_conf.py"
+echo "def Settings( **kwargs ):" > ${YCM_EXTRA_CONF}
+echo "  return {" >> ${YCM_EXTRA_CONF}
+echo "    'flags': [ '-x', 'c++'," >> ${YCM_EXTRA_CONF}
+for flag in ${FLAGS}; do
+  echo "              '${flag}'," >> ${YCM_EXTRA_CONF}
+done
+echo "            ]" >> ${YCM_EXTRA_CONF}
+echo "  }" >> ${YCM_EXTRA_CONF}
+# ====================
+# =================
+# ==============
 
 # Verify that ${OUTPUT_DIR}/test.exe exists:
 if [ ! -f "${OUTPUT_DIR}/test.exe" ]; then
