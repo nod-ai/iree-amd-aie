@@ -107,8 +107,36 @@ jobs:
       - name: E2E correctness matmul test
         run: |
           source .venv/bin/activate
-          # See https://github.com/Xilinx/mlir-air/issues/566
+          # Without this additional line an error like
+          #
+          # [XRT] ERROR: Failed to allocate host memory buffer (mmap(len=10616832, prot=3, flags=8193, offset=4294967296) 
+          # failed (err=11): Resource temporarily unavailable), make sure host bank is enabled (see xbutil configure --host-mem)
+          # iree-amd-aie/runtime/src/iree-amd-aie/driver/xrt/direct_allocator.cc:179: RESOURCE_EXHAUSTED; could not allocate 
+          # memory for buffer; while invoking C++ function matmul_test.generate_random_matrix; while calling import;
+          #
+          # might be observed when too much memory is allocated. For example this 
+          # error was seen when running a bf16->f32 matmul with m=n=k=2304. 
+          #
+          # This line was suggested https://github.com/Xilinx/mlir-air/issues/566
+          #
+          # Note that this is only half of the fix! It is also necessary that 
+          # the machine CI is running on has permission to run this line. 
+          #
+          # This permission can be adding by putting the line 
+          #
+          # ```
+          # %github ALL=(ALL) NOPASSWD: /usr/bin/prlimit *
+          # ```
+          #
+          # in the file /etc/sudoers.d/github, which can be done by running
+          #
+          # ```
+          # sudo visudo -f /etc/sudoers.d/github
+          # ```
+          #
+          # on the guthub CI machine.
           sudo prlimit -lunlimited --pid $$
+
           bash build_tools/ci/run_matmul_test.sh test1 iree-install
 
       - name: Printing IR from aie2xclbin
