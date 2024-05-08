@@ -282,6 +282,9 @@ void addPackPeelBasedPassPipeline(OpPassManager &funcPassManager,
   funcPassManager.addPass(createHoistStaticallyBoundAllocationsPass());
   funcPassManager.addPass(createCanonicalizerPass());
 
+  // Vectorization passes
+  appendVectorizationToPipeline(funcPassManager);
+  
   // Comprehensive bufferization
   addAMDAIEBufferizePasses(funcPassManager);
 }
