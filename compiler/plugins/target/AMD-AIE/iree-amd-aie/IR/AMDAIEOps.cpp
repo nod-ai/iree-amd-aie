@@ -5,6 +5,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 #include "iree-amd-aie/IR/AMDAIEOps.h"
+
 #include "iree-amd-aie/IR/AMDAIEDialect.h"
 #include "llvm/ADT/TypeSwitch.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
@@ -172,6 +173,26 @@ void DmaCpyNdOp::build(OpBuilder &b, OperationState &result, Value target,
         sourceStrideValues);
 }
 
+DoublyStridedOpInterface DmaCpyNdOp::createDoublyStridedOp(
+    RewriterBase &rewriter, SmallVector<OpFoldResult> &newTargetOffsets,
+    SmallVector<OpFoldResult> &newTargetSizes,
+    SmallVector<OpFoldResult> &newTargetStrides,
+    SmallVector<OpFoldResult> &newSourceOffsets,
+    SmallVector<OpFoldResult> &newSourceSizes,
+    SmallVector<OpFoldResult> &newSourceStrides) {
+  Location loc = (*this)->getLoc();
+  auto newOp = rewriter.create<AMDAIE::DmaCpyNdOp>(
+      loc, getTarget(),
+      getValueOrCreateConstantIndexOp(rewriter, loc, newTargetOffsets),
+      getValueOrCreateConstantIndexOp(rewriter, loc, newTargetSizes),
+      getValueOrCreateConstantIndexOp(rewriter, loc, newTargetStrides),
+      getSource(),
+      getValueOrCreateConstantIndexOp(rewriter, loc, newSourceOffsets),
+      getValueOrCreateConstantIndexOp(rewriter, loc, newSourceSizes),
+      getValueOrCreateConstantIndexOp(rewriter, loc, newSourceStrides));
+  return cast<DoublyStridedOpInterface>(newOp.getOperation());
+}
+
 LogicalObjectFifoFromMemrefOp DmaCpyNdOp::getSourceObjectFifo() {
   return dyn_cast<LogicalObjectFifoFromMemrefOp>(getSource().getDefiningOp());
 };
@@ -277,6 +298,26 @@ void CircularDmaCpyNdOp::build(OpBuilder &b, OperationState &result,
   build(b, result, target, targetOffsetValues, targetSizeValues,
         targetStrideValues, source, sourceOffsetValues, sourceSizeValues,
         sourceStrideValues);
+}
+
+DoublyStridedOpInterface CircularDmaCpyNdOp::createDoublyStridedOp(
+    RewriterBase &rewriter, SmallVector<OpFoldResult> &newTargetOffsets,
+    SmallVector<OpFoldResult> &newTargetSizes,
+    SmallVector<OpFoldResult> &newTargetStrides,
+    SmallVector<OpFoldResult> &newSourceOffsets,
+    SmallVector<OpFoldResult> &newSourceSizes,
+    SmallVector<OpFoldResult> &newSourceStrides) {
+  Location loc = (*this)->getLoc();
+  auto newOp = rewriter.create<AMDAIE::CircularDmaCpyNdOp>(
+      loc, getTarget(),
+      getValueOrCreateConstantIndexOp(rewriter, loc, newTargetOffsets),
+      getValueOrCreateConstantIndexOp(rewriter, loc, newTargetSizes),
+      getValueOrCreateConstantIndexOp(rewriter, loc, newTargetStrides),
+      getSource(),
+      getValueOrCreateConstantIndexOp(rewriter, loc, newSourceOffsets),
+      getValueOrCreateConstantIndexOp(rewriter, loc, newSourceSizes),
+      getValueOrCreateConstantIndexOp(rewriter, loc, newSourceStrides));
+  return cast<DoublyStridedOpInterface>(newOp.getOperation());
 }
 
 LogicalObjectFifoFromMemrefOp CircularDmaCpyNdOp::getSourceObjectFifo() {
@@ -433,6 +474,26 @@ void NpuDmaCpyNdOp::build(OpBuilder &b, OperationState &result, Value dma,
   build(b, result, dma, targetOffsetValues, targetSizeValues,
         targetStrideValues, sourceOffsetValues, sourceSizeValues,
         sourceStrideValues);
+}
+
+DoublyStridedOpInterface NpuDmaCpyNdOp::createDoublyStridedOp(
+    ::mlir::RewriterBase &rewriter,
+    ::llvm::SmallVector<OpFoldResult> &newTargetOffsets,
+    ::llvm::SmallVector<OpFoldResult> &newTargetSizes,
+    ::llvm::SmallVector<OpFoldResult> &newTargetStrides,
+    ::llvm::SmallVector<OpFoldResult> &newSourceOffsets,
+    ::llvm::SmallVector<OpFoldResult> &newSourceSizes,
+    ::llvm::SmallVector<OpFoldResult> &newSourceStrides) {
+  Location loc = (*this)->getLoc();
+  auto newOp = rewriter.create<AMDAIE::NpuDmaCpyNdOp>(
+      loc, getDma(),
+      getValueOrCreateConstantIndexOp(rewriter, loc, newTargetOffsets),
+      getValueOrCreateConstantIndexOp(rewriter, loc, newTargetSizes),
+      getValueOrCreateConstantIndexOp(rewriter, loc, newTargetStrides),
+      getValueOrCreateConstantIndexOp(rewriter, loc, newSourceOffsets),
+      getValueOrCreateConstantIndexOp(rewriter, loc, newSourceSizes),
+      getValueOrCreateConstantIndexOp(rewriter, loc, newSourceStrides));
+  return cast<DoublyStridedOpInterface>(newOp.getOperation());
 }
 
 bool NpuDmaCpyNdOp::hasDmaWaitOpUser() {

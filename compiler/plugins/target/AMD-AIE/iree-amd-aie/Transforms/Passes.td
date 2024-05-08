@@ -54,6 +54,12 @@ def AMDAIECanonicalizeDma :
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIECanonicalizeDmaPass()";
 }
 
+def AMDAIECanonicalizeDoublyStridedOp :
+    Pass<"iree-amdaie-canonicalize-doubly-strided-op", ""> {
+  let summary = "Canonicalize doubly strided DMA operations.";
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIECanonicalizeDoublyStridedOpPass()";
+}
+
 def AMDAIECleanup :
     InterfacePass<"iree-amdaie-cleanup", "mlir::FunctionOpInterface"> {
   let summary = "Pass to invoke several cleanup and canonicalization patterns.";

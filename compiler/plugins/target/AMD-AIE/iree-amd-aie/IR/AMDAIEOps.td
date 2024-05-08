@@ -255,6 +255,16 @@ def AMDAIE_NpuDmaCpyNdOp: AMDAIE_Op<"npu.dma_cpy_nd",
     CircularDmaCpyNdOp getDmaCpyNdOp() {
       return dyn_cast<CircularDmaCpyNdOp>(getDma().getDefiningOp());
     }
+    // A utility to create a new doubly strided operation from this one with a
+    // new set of source and target offsets, sizes and strides.
+    DoublyStridedOpInterface createDoublyStridedOp(
+        ::mlir::RewriterBase& rewriter,
+        ::llvm::SmallVector<::mlir::OpFoldResult>& newTargetOffsets,
+        ::llvm::SmallVector<::mlir::OpFoldResult>& newTargetSizes,
+        ::llvm::SmallVector<::mlir::OpFoldResult>& newTargetStrides,
+        ::llvm::SmallVector<::mlir::OpFoldResult>& newSourceOffsets,
+        ::llvm::SmallVector<::mlir::OpFoldResult>& newSourceSizes,
+        ::llvm::SmallVector<::mlir::OpFoldResult>& newSourceStrides);
   }];
 }
 
@@ -520,6 +530,16 @@ class AMDAIE_DmaCpyNdBaseOp<string mnemonic, list<Trait> traits = []> :
     Type getTargetType() { return getTarget().getType(); }
     LogicalObjectFifoFromMemrefOp getSourceObjectFifo();
     LogicalObjectFifoFromMemrefOp getTargetObjectFifo();
+    // A utility to create a new doubly strided operation from this one with a
+    // new set of source and target offsets, sizes and strides.
+    DoublyStridedOpInterface createDoublyStridedOp(
+        ::mlir::RewriterBase& rewriter,
+        ::llvm::SmallVector<::mlir::OpFoldResult>& newTargetOffsets,
+        ::llvm::SmallVector<::mlir::OpFoldResult>& newTargetSizes,
+        ::llvm::SmallVector<::mlir::OpFoldResult>& newTargetStrides,
+        ::llvm::SmallVector<::mlir::OpFoldResult>& newSourceOffsets,
+        ::llvm::SmallVector<::mlir::OpFoldResult>& newSourceSizes,
+        ::llvm::SmallVector<::mlir::OpFoldResult>& newSourceStrides);
   }];
 }
 
@@ -547,7 +567,7 @@ def AMDAIE_DmaCpyNdOp: AMDAIE_DmaCpyNdBaseOp<"dma_cpy_nd", []> {
   let hasVerifier = 0;
 }
 
-def AMDAIE_CircularDmaCpyNdOp: AMDAIE_DmaCpyNdBaseOp<"circular_dma_cpy_nd", []> {
+def AMDAIE_CircularDmaCpyNdOp: AMDAIE_DmaCpyNdBaseOp<"circular_dma_cpy_nd", [Pure]> {
   let summary = "The circular DMA copy operator";
   let description = [{
     The DMA operation represents a strided copy operation with an unlimited number of
