@@ -67,7 +67,6 @@ void appendVectorizationToPipeline(OpPassManager &funcPassManager) {
   funcPassManager.addPass(createAMDAIEInsertLoopsForVectorizationPass());
   funcPassManager.addPass(createAMDAIEVectorizationPass());
   funcPassManager.addPass(createCanonicalizerPass());
-  funcPassManager.addPass(createCSEPass());
 }
 
 //===---------------------------------------------------------------------===//
@@ -282,6 +281,9 @@ void addPackPeelBasedPassPipeline(OpPassManager &funcPassManager,
   funcPassManager.addPass(createHoistStaticallyBoundAllocationsPass());
   funcPassManager.addPass(createCanonicalizerPass());
 
+  // Vectorization passes
+  appendVectorizationToPipeline(funcPassManager);
+  
   // Comprehensive bufferization
   addAMDAIEBufferizePasses(funcPassManager);
 }
