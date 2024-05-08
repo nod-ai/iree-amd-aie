@@ -18,5 +18,8 @@ iree_cc_library(
     iree::target::amd-aie::IR::AMDAIEDialect
     iree::target::amd-aie::Transforms
     iree::target::amd-aie::air::AIRDialectIR
+    iree::base::internal::flatcc::building
+    iree::base::internal::flatcc::parsing
+    iree-amd-aie::schemas::xrt_executable_def_c_fbs
   PUBLIC
 )
