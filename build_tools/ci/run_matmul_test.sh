@@ -584,6 +584,34 @@ run_matmul_test \
     --pipeline "pack-peel" \
     --lhs_rhs_type "i32" \
     --acc_type "i32" \
-    --m "64"  --n "64" --k "160"
+    --m "64"  --n "64" --k "128"
+
+run_matmul_test \
+    --name_prefix "packPeel" \
+    --pipeline "pack-peel" \
+    --lhs_rhs_type "bf16" \
+    --acc_type "f32" \
+    --m "64"  --n "64" --k "128"
+
+run_matmul_test \
+    --name_prefix "packPeelLarge" \
+    --pipeline "pack-peel" \
+    --lhs_rhs_type "i32" \
+    --acc_type "i32" \
+    --m "512"  --n "512" --k "512"
+
+run_matmul_test \
+    --name_prefix "packPeelLarge" \
+    --pipeline "pack-peel" \
+    --lhs_rhs_type "bf16" \
+    --acc_type "f32" \
+    --m "512"  --n "512" --k "512"
+
+run_matmul_test \
+    --name_prefix "packPeel2304" \
+    --pipeline "pack-peel" \
+    --lhs_rhs_type "bf16" \
+    --acc_type "f32" \
+    --m "128"  --n "128" --k "2304"
 
 
