@@ -69,37 +69,31 @@ class AMDAIEInsertLoopsForVectorizationPass
     auto numIterators = iteratorTypes.size();
 
     // No outer dimensions to tile if fewer than 4 iterators.
-    if (numIterators < 4) {
-      return failure();
-    }
+    if (numIterators < 4) return failure();
 
     // Matmul-like ops have 3 operands.
-    if (genericOp->getNumOperands() != 3) {
-      return failure();
-    }
+    if (genericOp->getNumOperands() != 3) return failure();
 
     // Don't transform to scf.for loops unless there is at least one
     // non-singleton loop to construct. This isn't strictly necessary, but
     // avoids generating a bunch of loops of size 1.
     if (llvm::all_of(genericOp->getOperands(), [&](Value operand) {
           return getNumInnerDims(operand) < 3;
-        })) {
+        }))
       return failure();
-    }
 
     assert(iteratorTypes.size() >= 3 && "expected at least 3 iterators here");
 
     // Check that innermost 3 iterators are 'parallel, parallel, reduction'.
     for (auto i : {2, 3}) {
-      if (!linalg::isParallelIterator(iteratorTypes[numIterators - i])) {
+      if (!linalg::isParallelIterator(iteratorTypes[numIterators - i]))
         return failure();
-      }
     }
-    if (!linalg::isReductionIterator(iteratorTypes[iteratorTypes.size() - 1])) {
+    if (!linalg::isReductionIterator(iteratorTypes[iteratorTypes.size() - 1]))
       return failure();
-    }
 
-    // Check that the 'parallel, parallel, reduction' map exactly to a matmul.
+    // Check that the 'parallel, parallel, reduction' map exactly to a matmul,
+    // or a matmul_transpose_b.
     {
       auto indexingMaps = genericOp.getIndexingMaps();
       assert(indexingMaps.size() == 3 && "expected 3 indexing maps here");
@@ -109,12 +103,16 @@ class AMDAIEInsertLoopsForVectorizationPass
         return aMap.getResult(nResults - 2 + matMulIndex);
       };
       uint32_t A = 0, B = 1, C = 2;
-      auto mAgrees = getDim(A, 0) == getDim(C, 0);
-      auto nAgrees = getDim(B, 1) == getDim(C, 1);
-      auto kAgrees = getDim(A, 1) == getDim(B, 0);
-      if (!mAgrees || !nAgrees || !kAgrees) {
-        return failure();
-      }
+
+      auto isMatmul = getDim(A, 0) == getDim(C, 0) &&  // M
+                      getDim(B, 1) == getDim(C, 1) &&  // N
+                      getDim(A, 1) == getDim(B, 0);    // K
+
+      auto isMatmulTransposeB = getDim(A, 0) == getDim(C, 0) &&  // M
+                                getDim(B, 0) == getDim(C, 1) &&  // N
+                                getDim(A, 1) == getDim(B, 1);    // K
+
+      if (!isMatmul && !isMatmulTransposeB) return failure();
     }
 
     rewrite(rewriter, genericOp);

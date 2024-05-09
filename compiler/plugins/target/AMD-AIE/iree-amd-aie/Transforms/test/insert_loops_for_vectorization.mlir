@@ -4,7 +4,7 @@
 !t3 = tensor<64x64x64xf32>
 !t4 = tensor<64x64x64x64xf32>
 module {
-   // A generic with corresponds to a simple matmul (2 rank-2 operands)
+   // A generic that corresponds to a simple matmul (2 rank-2 operands)
    // does NOT get tiled.
    // CHECK-LABEL: vanilla
    // CHECK-NOT: scf.for
@@ -52,6 +52,57 @@ module {
     return %0 : !t3
   }
 
+  // A test like the above, but with a matmul_tranpose_b instead of a matmul
+  // CHECK-LABEL: batched_transpose_b
+  // CHECK: scf.for
+  // CHECK: linalg.generic
+  // CHECK-SAME: iterator_types = ["parallel", "parallel", "parallel", "reduction"]
+  // CHECK-SAME: ins
+  // CHECK-SAME: tensor<1x64x64xf32>, tensor<1x64x64xf32>
+  // CHECK-SAME: outs
+  // CHECK-SAME: tensor<1x64x64xf32>
+  // CHECK-NOT: scf.for
+  func.func @batched_transpose_b(%arg0: !t3, %arg1: !t3, %arg2: !t3) -> !t3 {
+    %0 = linalg.generic {indexing_maps =
+                          [
+                           affine_map<(b0, d0, d1, d2) -> (b0, d0, d2)>,
+                           affine_map<(b0, d0, d1, d2) -> (b0, d1, d2)>,
+                           affine_map<(b0, d0, d1, d2) -> (b0, d0, d1)>
+                          ],
+                         iterator_types = ["parallel", "parallel", "parallel", "reduction"]}
+                         ins(%arg0, %arg1 : !t3, !t3) outs(%arg2 : !t3) {
+    ^bb0(%in: f32, %in_0: f32, %out: f32):
+      %1 = arith.mulf %in, %in_0 : f32
+      %2 = arith.addf %out, %1 : f32
+      linalg.yield %2 : f32
+    } -> !t3
+    return %0 : !t3
+  }
+
+  // Another test with a transposed matmul, but in this case A is transposed.
+  // Currently the pass does not modify this (so no scf.for should appear).
+  // We'll probably add support for this in the future, but for now we don't.
+  // CHECK-LABEL: batched_transpose_a
+  // CHECK-NOT: scf.for
+
+  func.func @batched_transpose_a(%arg0: !t3, %arg1: !t3, %arg2: !t3) -> !t3 {
+    %0 = linalg.generic {indexing_maps =
+                          [
+                           affine_map<(b0, d0, d1, d2) -> (b0, d2, d1)>,
+                           affine_map<(b0, d0, d1, d2) -> (b0, d2, d0)>,
+                           affine_map<(b0, d0, d1, d2) -> (b0, d0, d1)>
+                          ],
+                         iterator_types = ["parallel", "parallel", "parallel", "reduction"]}
+                         ins(%arg0, %arg1 : !t3, !t3) outs(%arg2 : !t3) {
+    ^bb0(%in: f32, %in_0: f32, %out: f32):
+      %1 = arith.mulf %in, %in_0 : f32
+      %2 = arith.addf %out, %1 : f32
+      linalg.yield %2 : f32
+    } -> !t3
+    return %0 : !t3
+  }
+
+
   // A check that a linalg.generic where the number of operands is not 3, does
   // not get transformed to have an scf.for
   // CHECK-LABEL: funcWithTwoOperands
@@ -70,7 +121,7 @@ module {
     return %0 : !t4
   }
 
-  // Check that the final 3 dimensions do have the pattern of a matmul:
+  // Check that the final 3 dimensions do have the pattern of a matmul (or matmul transpose)
   // CHECK-LABEL: batched1
   // CHECK-NOT: scf.for
   func.func @batched1(%arg0: !t3, %arg1: !t3, %arg2: !t3) -> !t3 {
