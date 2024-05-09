@@ -211,10 +211,18 @@ function run_matmul_test() {
 
   local do_transpose_rhs="0"
 
+  # The maximum number of elements to check for correctness.
+  # See https://github.com/iree-org/iree/blob/tools/testing/e2e/test_utils.c#L40-L47
+  local max_elements_to_check="20000"
+
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --compile-only)
         compile_only="$2"
+        shift 2
+        ;;
+      --max_elements_to_check)
+        max_elements_to_check="$2"
         shift 2
         ;;
       --do_transpose_rhs)
@@ -290,6 +298,13 @@ function run_matmul_test() {
 
   set -x
 
+
+  # Record the current time in milliseconds. We record the time at certain
+  # checkpoints, and print statistics summarizing how much time is spent in
+  # compilation and execution.
+  start_time=$(date +%s%3N)
+
+
   # Generate a name for the test based on name_prefix and the matmul dimensions,
   # but only if the test has 1  matmul in it. If there are multiple matmuls,
   # then use name_prefix as is. This is to prevent long names when there are
@@ -344,6 +359,9 @@ function run_matmul_test() {
   ${IREE_PYTHON3_EXECUTABLE} ${GENERATOR} ${generation_flags}
 
 
+  generated_time=$(date +%s%3N)
+
+
   ## Disable exit on failure:
   set +e
 
@@ -361,6 +379,7 @@ function run_matmul_test() {
 
 
   compileResult=$?
+
 
   # Handle cases other than when compilation is expected to, and does, succeed:
   if [ $expect_compile_failure -ne 0 ]; then
@@ -389,6 +408,8 @@ function run_matmul_test() {
 
   # Extract function names from the mlir file
   function_names=$(grep -oP '@\K\S+(?=\()' ${matmul_ir})
+
+  compiled_time=$(date +%s%3N)
 
 
   # Behavior of <do-signing> depends on if the script for
@@ -430,7 +451,8 @@ function run_matmul_test() {
   COMMAND="${TEST_RUNNER} \
       --module=${matmul_vmfb} \
       --module=${calls_vmfb} \
-      --device=${device}"
+      --device=${device} \
+      --max_elements_to_check=${max_elements_to_check}"
 
   # If compile only, exit with success:
   if [ $compile_only -ne "0" ]; then
@@ -444,16 +466,22 @@ function run_matmul_test() {
   return_status=$?
   echo "Command returned with status: ${return_status}"
 
+  end_time=$(date +%s%3N)
+
+  #print the time spent in each stage:
+  echo "Time spent in generation: $((generated_time - start_time)) [ms]"
+  echo "Time spent in compilation: $((compiled_time - generated_time)) [ms]"
+  echo "Time spent in execution and verification: $((end_time - compiled_time)) [ms]"
 
   set +x
 }
 
-###############################################################################
-# Run a few tests                                                             #
-###############################################################################
+########################################################
+# Run tests                                            #
+########################################################
 
 # Notes:
-# 1. Be conservative in adding more shapes, as that can increase both the
+# 1. Be conservative in adding more shapes, as it can increase both the
 #    build and execution latency of tests. The build latency is nearly the
 #    same for all shapes, while execution latency grows cubicly i.e.
 #    linearly with m*k*n.
@@ -477,7 +505,9 @@ run_matmul_test \
     --accumulate "false" \
     --expect-compile-failure "0" \
     --compile-only "0" \
-    --do_transpose_rhs "0"
+    --do_transpose_rhs "0" \
+    --max_elements_to_check "0" # Check all elements.
+
 
 run_matmul_test \
   --name_prefix "transpose_int32" \
@@ -503,7 +533,7 @@ run_matmul_test \
 # but fails with tile_sizes = [[1, 1], [0, 0, 200], [1, 1], [0, 0, 1]], packedSizes = [1, 1, 8],
 # with the error LLVM ERROR: unable to legalize instruction: %152:_(<2 x s32>) = G_FMUL %148:_, %150:_ (in function: core_0_2)
 # The later is what a more vectorization friendly packing looks like so we are expected failing the test here.
-# We need to see if the test will pass with a more latest llvm-aie and if it doesnt we can report it upstream.
+# We need to see if the test will pass with a more recent llvm-aie and if it doesnt we can report it upstream.
 run_matmul_test \
    --name_prefix "failure_0" \
    --lhs_rhs_type "i32" \
@@ -614,4 +644,66 @@ run_matmul_test \
     --acc_type "f32" \
     --m "128"  --n "128" --k "2304"
 
+run_matmul_test \
+    --name_prefix "mm6" \
+    --lhs_rhs_type "bf16" \
+    --acc_type "f32" \
+    --m "308"  --k "9728" --n "2432"  \
+    --expect-compile-failure "0" \
+    --compile-only "0"
+
+run_matmul_test \
+    --name_prefix "mm4" \
+    --lhs_rhs_type "bf16" \
+    --acc_type "f32" \
+    --m "308"  --k "2432" --n "2432"  \
+    --expect-compile-failure "0"
+
+run_matmul_test \
+     --name_prefix "mm2" \
+     --lhs_rhs_type "bf16" \
+     --acc_type "f32" \
+     --m "308"  --k "2432" --n "7296"  \
+     --expect-compile-failure "0" \
+     --compile-only "0"
+
+run_matmul_test \
+     --name_prefix "mm8" \
+     --lhs_rhs_type "bf16" \
+     --acc_type "f32" \
+     --m "8192" --k "2432" --n "9728"  \
+     --expect-compile-failure "0" \
+     --compile-only "0"
+
+run_matmul_test \
+    --name_prefix "mm5" \
+    --lhs_rhs_type "bf16" \
+    --acc_type "f32" \
+    --m "308"  --k "2432" --n "9728"  \
+    --expect-compile-failure "0" \
+    --compile-only "0"
+
+run_matmul_test \
+    --name_prefix "mm7" \
+    --lhs_rhs_type "bf16" \
+    --acc_type "f32" \
+    --m "8192" --k "2432" --n "2432"  \
+    --expect-compile-failure "0" \
+    --compile-only "0"
+
+run_matmul_test \
+     --name_prefix "mm9" \
+     --lhs_rhs_type "bf16" \
+     --acc_type "f32" \
+     --m "8192" --k "9728" --n "2432"  \
+     --expect-compile-failure "0" \
+     --compile-only "0"
+
+run_matmul_test \
+    --name_prefix "mm3" \
+    --lhs_rhs_type "bf16" \
+    --acc_type "f32" \
+    --m "8192" --k "2432" --n "7296"  \
+    --expect-compile-failure "0" \
+    --compile-only "0"
 
