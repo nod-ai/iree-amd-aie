@@ -66,11 +66,14 @@ iree_lit_test_suite(
     "opt.mlir"
     "large-matmul.mlir"
     "large-matmul-f32.mlir"
+    "matmul-elementwise-f32.mlir"
   DATA
     "linalg.pdl.mlir"
     "opt.pdl.mlir"
     "large-matmul.pdl.mlir"
     "large-matmul-f32.pdl.mlir"
+    "mlp_spec_matmul.mlir"
+    "mlp_spec_matmul_elementwise.mlir"
   TOOLS
     FileCheck
     iree-compile
