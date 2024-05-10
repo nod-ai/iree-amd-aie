@@ -73,71 +73,11 @@ FailureOr<std::array<uint32_t, 3>> getPackedSize(linalg::LinalgOp linalgOp,
   }
   return instructionSize;
 }
+}  // namespace
 
-// Container class for the tiling at level 0 (the AIE shared memory) and level 1
-// (the AIE core) in the M-, N-, and K-dimensions of a matmul operation, using
-// the pad-pack approach to tiling a matmul. Also contains the packing sizes for
-// the M, N, and K dimensions. The packing sizes correspond to matmul
-// vector-instruction sizes for vectorizable types.
-class ParameterSetting {
- public:
-  SmallVector<int64_t> getPackSizeL0() const {
-    return {m0Pack, n0Pack, k0Pack};
-  }
-  SmallVector<int64_t> getPackSizeL1() const {
-    return {m1Pack, n1Pack, k1Pack};
-  }
-
-  static FailureOr<ParameterSetting> create(linalg::LinalgOp linalgOp,
-                                            bool isPackPeel);
-
-  uint32_t getM0() const { return M0; }
-  uint32_t getN0() const { return N0; }
-  uint32_t getK0() const { return K0; }
-  uint32_t getM1() const { return M1; }
-  uint32_t getN1() const { return N1; }
-  uint32_t getK1() const { return K1; }
-  uint32_t getM0Pack() const { return m0Pack; }
-  uint32_t getN0Pack() const { return n0Pack; }
-  uint32_t getK0Pack() const { return k0Pack; }
-  uint32_t getM1Pack() const { return m1Pack; }
-  uint32_t getN1Pack() const { return n1Pack; }
-  uint32_t getK1Pack() const { return k1Pack; }
-
- private:
-  ParameterSetting(uint32_t M0, uint32_t N0, uint32_t K0, uint32_t M1,
-                   uint32_t N1, uint32_t K1, uint32_t m0Pack, uint32_t n0Pack,
-                   uint32_t k0Pack, uint32_t m1Pack, uint32_t n1Pack,
-                   uint32_t k1Pack)
-      : M0(M0),
-        N0(N0),
-        K0(K0),
-        M1(M1),
-        N1(N1),
-        K1(K1),
-        m0Pack(m0Pack),
-        n0Pack(n0Pack),
-        k0Pack(k0Pack),
-        m1Pack(m1Pack),
-        n1Pack(n1Pack),
-        k1Pack(k1Pack) {}
-
-  uint32_t M0;
-  uint32_t N0;
-  uint32_t K0;
-  uint32_t M1;
-  uint32_t N1;
-  uint32_t K1;
-  uint32_t m0Pack;
-  uint32_t n0Pack;
-  uint32_t k0Pack;
-  uint32_t m1Pack;
-  uint32_t n1Pack;
-  uint32_t k1Pack;
-};
-
-FailureOr<ParameterSetting> ParameterSetting::create(linalg::LinalgOp linalgOp,
-                                                     bool isPackPeel) {
+static LogicalResult setRootConfigForPackPeelPipeline(
+    mlir::FunctionOpInterface entryPointFn, linalg::LinalgOp linalgOp,
+    AIEConfig cfg) {
   auto initType =
       llvm::cast<ShapedType>(linalgOp.getDpsInitOperand(0)->get().getType());
   auto initShape = initType.getShape();
@@ -146,10 +86,9 @@ FailureOr<ParameterSetting> ParameterSetting::create(linalg::LinalgOp linalgOp,
       llvm::cast<ShapedType>(linalgOp.getDpsInputOperand(0)->get().getType());
   auto lhsShape = lhsType.getShape();
 
-  // Shape of the full matmul operation.
-  const uint64_t M = initShape[0];
-  const uint64_t N = initShape[1];
-  const uint64_t K = lhsShape[1];
+  const auto M = initShape[0];
+  const auto N = initShape[1];
+  const auto K = lhsShape[1];
 
   FailureOr<unsigned> maybeScaleFactor =
       getTilingScaleFactor(initType.getElementType());
@@ -158,97 +97,16 @@ FailureOr<ParameterSetting> ParameterSetting::create(linalg::LinalgOp linalgOp,
         "does not have the expected bitwidth (64, 32, 16, or 8), could not "
         "determine scale factor.");
   }
-
   unsigned scaleFactor = maybeScaleFactor.value();
-
-  auto maybePackedSize = getPackedSize(linalgOp, M, N, K);
-  if (failed(maybePackedSize)) return failure();
-  auto [m1Pack, n1Pack, k1Pack] = maybePackedSize.value();
-
-  // The current ad-hoc algorithm for determining the tiling at level 0 and
-  // level 1 is as follows:
-  //
-  // Step 1: Find the largest tiling for M and N on the AIE core, subject to
-  // constraints.
-  //
-  // Step 2: Find the largest tiling for M and N in AIE shared memory,
-  // subject to constraints.
-  //
-  // Tiling in the K-dimension is done differently TODO(newling)
-  // document/reconsider.
-
-  if (isPackPeel) {
-    // Assume working on a 2x2 AIE array, so the ideal level 1 tile sizes should
-    // be (tileM0/2, tileN0/2). Since packing happens before tiling, and an
-    // extra step is performed to fuse pack ops into the loops, the adjusted
-    // level 1 tile sizes should be (tileM0/2/packedM1, tileN0/2/packedN1).
-    auto maxL1Size = 16 * scaleFactor;
-    uint32_t M1 = findLargestFactor(M / m1Pack, maxL1Size / m1Pack, m1Pack);
-    uint32_t N1 = findLargestFactor(N / n1Pack, maxL1Size / n1Pack, n1Pack);
-
-    auto maxL0Size = 32 * scaleFactor;
-    uint32_t M0 = findLargestFactor(M, maxL0Size, m1Pack * M1);
-    uint32_t N0 = findLargestFactor(N, maxL0Size, n1Pack * N1);
-
-    // In pack-peel pipeline there is only one level of tiling for K dimension,
-    // so set K1 = 0. The packed outer K dimension needs to be 1, so set K0 = 1.
-    uint32_t K1 = 0;
-    uint32_t K0 = 1;
-
-    uint32_t m0Pack = M0;
-    uint32_t n0Pack = N0;
-    uint32_t k0Pack = findLargestFactor(K, maxL1Size);
-
-    return ParameterSetting{M0,     N0,     K0,     M1,     N1,     K1,
-                            m0Pack, n0Pack, k0Pack, m1Pack, n1Pack, k1Pack};
-  } else {
-    // Assume working on a 4x4 AIE array. The tile sizes are chosen empirically
-    // for large GEMM sizes, which are [64*s, 64*s, 256] for the first level and
-    // [16*s, 16*s, 16*s] for the second level, where 's' is the scaling factor
-    // based on the element type's bit width.
-    auto maxL1Size = 16 * scaleFactor;
-    uint32_t M1 = findLargestFactor(M, maxL1Size, m1Pack);
-    uint32_t N1 = findLargestFactor(N, maxL1Size, n1Pack);
-
-    auto maxL0Size = 64 * scaleFactor;
-    uint32_t M0 = findLargestFactor(M, maxL0Size, M1);
-    uint32_t N0 = findLargestFactor(N, maxL0Size, N1);
-
-    uint32_t K1 = findLargestFactor(K / k1Pack, 2 * scaleFactor);
-    uint32_t K0 = findLargestFactor(K, 256, k1Pack * K1);
-
-    // In pad-pack pipeline, there is only one level of packing, set pack
-    // parameters for level 0 as 0.
-    uint32_t m0Pack = 0;
-    uint32_t n0Pack = 0;
-    uint32_t k0Pack = 0;
-
-    // Tiling at level 0 (shared memory) should be no smaller than tiling at
-    // level 1 (AIE core memory).
-    assert(M0 >= M1 && N0 >= N1);
-
-    // Tiling at level 1 (AIE core memory) should be no smaller than the packing
-    // size (vector instruction size).
-    assert(M1 >= m1Pack && N1 >= n1Pack);
-
-    return ParameterSetting{M0,     N0,     K0,     M1,     N1,     K1,
-                            m0Pack, n0Pack, k0Pack, m1Pack, n1Pack, k1Pack};
-  }
-}
-}  // namespace
-
-static LogicalResult setRootConfigForPackPeelPipeline(
-    mlir::FunctionOpInterface entryPointFn, linalg::LinalgOp linalgOp,
-    AIEConfig cfg) {
-  auto maybePackPeelTiling = ParameterSetting::create(linalgOp, true);
-  if (failed(maybePackPeelTiling)) return failure();
-  auto packPeelTiling = maybePackPeelTiling.value();
+  const auto tileM0 = findLargestFactor(M, 32 * scaleFactor);
+  const auto tileN0 = findLargestFactor(N, 32 * scaleFactor);
 
   // ------------------------------------------------------
   // --------------- Set packing config -------------------
   // ------------------------------------------------------
   MLIRContext *context = entryPointFn.getContext();
-
+  const auto packedK0 = findLargestFactor(K, 16 * scaleFactor);
+  SmallVector<int64_t> packedSizes = {tileM0, tileN0, packedK0};
   // Transpose B matrix from [K N n k] to [K N k n]
   SmallVector<int64_t> transposePackIndices = {1};
   // There is no corresponding unpack for the specified pack operation
@@ -257,17 +115,15 @@ static LogicalResult setRootConfigForPackPeelPipeline(
   SmallVector<SmallVector<int64_t>> innerPerm = {{1, 0}};
   SmallVector<SmallVector<int64_t>> outerPerm = {{0, 1}};
   auto packingConfigLevel1Attr = getPackingConfigPackingLevelAttr(
-      context, packPeelTiling.getPackSizeL0(), transposePackIndices,
-      unpackEmpty, innerPerm, outerPerm);
+      context, packedSizes, transposePackIndices, unpackEmpty, innerPerm,
+      outerPerm);
 
   // Pack level => 2.
   // packed size for [M, N, K, m, n, k]
-  SmallVector<int64_t> packedSizes = {0,
-                                      0,
-                                      0,
-                                      packPeelTiling.getM1Pack(),
-                                      packPeelTiling.getN1Pack(),
-                                      packPeelTiling.getK1Pack()};
+  auto maybePackedSize = getPackedSize(linalgOp, M, N, K);
+  if (failed(maybePackedSize)) return failure();
+  const auto [m0, n0, k0] = maybePackedSize.value();
+  packedSizes = {0, 0, 0, m0, n0, k0};
 
   // Transpose A matrix from [M K m k m0 k0] to [M K k m m0 k0]
   // Transpose B matrix from [K N k n n0 k0] to [K N n k k0 n0]
@@ -291,11 +147,18 @@ static LogicalResult setRootConfigForPackPeelPipeline(
   // ------------------------------------------------------
   // -------------- Set lowering config -------------------
   // ------------------------------------------------------
-  SmallVector<int64_t> TileSizeLevel0 = {packPeelTiling.getM0(),
-                                         packPeelTiling.getN0()};
-  SmallVector<int64_t> TileSizeLevel1 = {0, 0, packPeelTiling.getK0()};
-  SmallVector<int64_t> TileSizeLevel2 = {
-      0, 0, 0, packPeelTiling.getM1(), packPeelTiling.getN1(), 0};
+  // Currently, assume working on a 2x2 AIE array, so the second level tile
+  // sizes should be (tileM0/2, tileN0/2). Considering the packing sizes, the
+  // adjusted tile sizes should be (tileM0/2/packedM1, tileN0/2/packedN1).
+  const auto tileM1 = findLargestFactor(tileM0 / m0, 16 * scaleFactor / m0);
+  const auto tileN1 = findLargestFactor(tileN0 / n0, 16 * scaleFactor / n0);
+  // Set tile size for K as constant 1, so that the packed outer K dimension
+  // is 1.
+  const int tileK = 1;
+
+  SmallVector<int64_t> TileSizeLevel0 = {tileM0, tileN0};
+  SmallVector<int64_t> TileSizeLevel1 = {0, 0, tileK};
+  SmallVector<int64_t> TileSizeLevel2 = {0, 0, 0, tileM1, tileN1, 0};
   TileSizesListType tileSizes = {TileSizeLevel0, TileSizeLevel1,
                                  TileSizeLevel2};
   if (failed(setOpConfigAndEntryPointFnTranslation(
@@ -306,10 +169,127 @@ static LogicalResult setRootConfigForPackPeelPipeline(
   return success();
 }
 
+namespace {
+
+// Container class for the tiling at level 0 (the AIE shared memory) and level 1
+// (the AIE core) in the M-, N-, and K-dimensions of a matmul operation, using
+// the pad-pack approach to tiling a matmul. Also contains the packing sizes for
+// the M, N, and K dimensions. The packing sizes correspond to matmul
+// vector-instruction sizes for vectorizable types.
+class PadPackTiling {
+ public:
+  SmallVector<int64_t> getPackSize() const { return {mPack, nPack, kPack}; }
+
+  static FailureOr<PadPackTiling> create(linalg::LinalgOp linalgOp);
+
+  uint32_t getM0() const { return M0; }
+  uint32_t getN0() const { return N0; }
+  uint32_t getK0() const { return K0; }
+  uint32_t getM1() const { return M1; }
+  uint32_t getN1() const { return N1; }
+  uint32_t getK1() const { return K1; }
+  uint32_t getMPack() const { return mPack; }
+  uint32_t getNPack() const { return nPack; }
+  uint32_t getKPack() const { return kPack; }
+
+ private:
+  PadPackTiling(uint32_t M0, uint32_t N0, uint32_t K0, uint32_t M1, uint32_t N1,
+                uint32_t K1, uint32_t mPack, uint32_t nPack, uint32_t kPack)
+      : M0(M0),
+        N0(N0),
+        K0(K0),
+        M1(M1),
+        N1(N1),
+        K1(K1),
+        mPack(mPack),
+        nPack(nPack),
+        kPack(kPack) {
+    // Tiling at level 0 (shared memory) should be no smaller that tiling at
+    // level 1 (AIE core memory).
+    assert(M0 >= M1 && N0 >= N1);
+
+    // Tiling at level 1 (AIE core memory) should be no smaller than the packing
+    // size (vector instruction size).
+    assert(M1 >= mPack && N1 >= nPack);
+  }
+
+  uint32_t M0;
+  uint32_t N0;
+  uint32_t K0;
+  uint32_t M1;
+  uint32_t N1;
+  uint32_t K1;
+  uint32_t mPack;
+  uint32_t nPack;
+  uint32_t kPack;
+};
+
+FailureOr<PadPackTiling> PadPackTiling::create(linalg::LinalgOp linalgOp) {
+  auto initType =
+      llvm::cast<ShapedType>(linalgOp.getDpsInitOperand(0)->get().getType());
+  auto initShape = initType.getShape();
+
+  auto lhsType =
+      llvm::cast<ShapedType>(linalgOp.getDpsInputOperand(0)->get().getType());
+  auto lhsShape = lhsType.getShape();
+
+  // Shape of the full matmul operation.
+  const uint64_t M = initShape[0];
+  const uint64_t N = initShape[1];
+  const uint64_t K = lhsShape[1];
+
+  FailureOr<unsigned> maybeScaleFactor =
+      getTilingScaleFactor(lhsType.getElementType());
+  if (failed(maybeScaleFactor)) {
+    return linalgOp.emitOpError(
+        "does not have the expected bitwidth (64, 32, 16, or 8), could not "
+        "determine scale factor.");
+  }
+
+  unsigned scaleFactor = maybeScaleFactor.value();
+
+  auto maybePackedSize = getPackedSize(linalgOp, M, N, K);
+  if (failed(maybePackedSize)) return failure();
+  auto [mPack, nPack, kPack] = maybePackedSize.value();
+
+  // The current ad-hoc algorithm for determining the tiling at level 0 and
+  // level 1 is as follows:
+  //
+  // Step 1: Find the largest tiling for M and N on the AIE core, subject to
+  // constraints.
+  //
+  // Step 2: Find the largest tiling for M and N in AIE shared memory,
+  // subject to constraints.
+  //
+  // Tiling in the K-dimension is done differently TODO(newling)
+  // document/reconsider.
+
+  auto maxL1Size = 16 * scaleFactor;
+  uint32_t M1 = findLargestFactor(M, maxL1Size, mPack);
+  uint32_t N1 = findLargestFactor(N, maxL1Size, nPack);
+
+  auto maxL0Size = 64 * scaleFactor;
+  uint32_t M0 = findLargestFactor(M, maxL0Size, M1);
+  uint32_t N0 = findLargestFactor(N, maxL0Size, N1);
+
+  uint32_t K1 = findLargestFactor(K / kPack, 2 * scaleFactor);
+  uint32_t K0 = findLargestFactor(K, 256, kPack * K1);
+
+  return PadPackTiling{M0, N0, K0, M1, N1, K1, mPack, nPack, kPack};
+}
+}  // namespace
+
 static LogicalResult setRootConfigForPadPackPipeline(
     mlir::FunctionOpInterface entryPointFn, linalg::LinalgOp linalgOp,
     AIEConfig cfg) {
-  auto maybePadPackTiling = ParameterSetting::create(linalgOp, false);
+  // Currently, the tile sizes are chosen empirically for large GEMM sizes,
+  // which are [64*s, 64*s, 256] for the first level and [16*s, 16*s, 16*s] for
+  // the second level, where 's' is the scaling factor based on the element
+  // type's bit width. Basic min/max constraints are added to avoid failure for
+  // small GEMM sizes where possible. Assume for now that we are working on a
+  // 4x4 AIE array.
+
+  auto maybePadPackTiling = PadPackTiling::create(linalgOp);
   if (failed(maybePadPackTiling)) return failure();
   auto padPackTiling = maybePadPackTiling.value();
 
@@ -325,7 +305,7 @@ static LogicalResult setRootConfigForPadPackPipeline(
   SmallVector<SmallVector<int64_t>> outerPerm{{1, 0}, {1, 0}, {1, 0}};
 
   auto packingConfigLevel1Attr = getPackingConfigPackingLevelAttr(
-      context, padPackTiling.getPackSizeL1(), transposePackIndices, unpackEmpty,
+      context, padPackTiling.getPackSize(), transposePackIndices, unpackEmpty,
       innerPerm, outerPerm);
   SmallVector<PackingConfigPackingLevelAttr> packingConfigLevelsVal{
       packingConfigLevel1Attr};
@@ -338,6 +318,7 @@ static LogicalResult setRootConfigForPadPackPipeline(
   // ------------------------------------------------------
   // -------------- Set lowering config -------------------
   // ------------------------------------------------------
+
   SmallVector<int64_t> level0{padPackTiling.getM0(), padPackTiling.getN0()};
   SmallVector<int64_t> level1{0, 0, padPackTiling.getK0()};
   SmallVector<int64_t> level2{padPackTiling.getM1(), padPackTiling.getN1()};
