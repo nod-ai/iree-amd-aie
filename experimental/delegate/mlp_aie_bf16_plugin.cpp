@@ -87,7 +87,6 @@
 // Fake bfloat16 type (assuming no C++ 23)
 using bfloat16_t = std::uint16_t;
 
-
 //#############################################################################
 //
 // Configuration of the kernel that the AIE delegate uses
