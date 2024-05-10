@@ -645,65 +645,49 @@ run_matmul_test \
     --m "128"  --n "128" --k "2304"
 
 run_matmul_test \
-    --name_prefix "mm6" \
+    --name_prefix "mm2" \
     --lhs_rhs_type "bf16" \
     --acc_type "f32" \
-    --m "308"  --k "9728" --n "2432"  \
-    --expect-compile-failure "0" \
-    --compile-only "0"
-
-run_matmul_test \
-    --name_prefix "mm4" \
-    --lhs_rhs_type "bf16" \
-    --acc_type "f32" \
-    --m "308"  --k "2432" --n "2432"  \
-    --expect-compile-failure "0"
-
-run_matmul_test \
-     --name_prefix "mm2" \
-     --lhs_rhs_type "bf16" \
-     --acc_type "f32" \
-     --m "308"  --k "2432" --n "7296"  \
-     --expect-compile-failure "0" \
-     --compile-only "0"
-
-run_matmul_test \
-     --name_prefix "mm8" \
-     --lhs_rhs_type "bf16" \
-     --acc_type "f32" \
-     --m "8192" --k "2432" --n "9728"  \
-     --expect-compile-failure "0" \
-     --compile-only "0"
-
-run_matmul_test \
-    --name_prefix "mm5" \
-    --lhs_rhs_type "bf16" \
-    --acc_type "f32" \
-    --m "308"  --k "2432" --n "9728"  \
-    --expect-compile-failure "0" \
-    --compile-only "0"
-
-run_matmul_test \
-    --name_prefix "mm7" \
-    --lhs_rhs_type "bf16" \
-    --acc_type "f32" \
-    --m "8192" --k "2432" --n "2432"  \
-    --expect-compile-failure "0" \
-    --compile-only "0"
-
-run_matmul_test \
-     --name_prefix "mm9" \
-     --lhs_rhs_type "bf16" \
-     --acc_type "f32" \
-     --m "8192" --k "9728" --n "2432"  \
-     --expect-compile-failure "0" \
-     --compile-only "0"
+    --m "308"  --k "9728" --n "2432"
 
 run_matmul_test \
     --name_prefix "mm3" \
     --lhs_rhs_type "bf16" \
     --acc_type "f32" \
-    --m "8192" --k "2432" --n "7296"  \
-    --expect-compile-failure "0" \
-    --compile-only "0"
+    --m "308"  --k "2432" --n "2432"
 
+run_matmul_test \
+     --name_prefix "mm4" \
+     --lhs_rhs_type "bf16" \
+     --acc_type "f32" \
+     --m "308"  --k "2432" --n "7296"
+
+run_matmul_test \
+     --name_prefix "mm5" \
+     --lhs_rhs_type "bf16" \
+     --acc_type "f32" \
+     --m "8192" --k "2432" --n "9728"
+
+run_matmul_test \
+    --name_prefix "mm6" \
+    --lhs_rhs_type "bf16" \
+    --acc_type "f32" \
+    --m "308"  --k "2432" --n "9728"
+
+run_matmul_test \
+    --name_prefix "mm7" \
+    --lhs_rhs_type "bf16" \
+    --acc_type "f32" \
+    --m "8192" --k "2432" --n "2432"
+
+run_matmul_test \
+     --name_prefix "mm8" \
+     --lhs_rhs_type "bf16" \
+     --acc_type "f32" \
+     --m "8192" --k "9728" --n "2432"
+
+run_matmul_test \
+    --name_prefix "mm9" \
+    --lhs_rhs_type "bf16" \
+    --acc_type "f32" \
+    --m "8192" --k "2432" --n "7296"
