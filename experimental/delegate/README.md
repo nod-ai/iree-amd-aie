@@ -88,6 +88,8 @@ automatically casts the f32 inputs to bf16.  This demo also has its own PDL,
 
 First, log in to a Ryzen AI machine (aka IPU, Phoenix), then do the following:
 
+#### Linux (bash)
+
 ```
 cd <workspace root (containing iree-build)>
 source /opt/xilinx/xrt/setup.sh
@@ -99,61 +101,61 @@ export XRT_HACK_UNSECURE_LOADING_XCLBIN=1
 
 # Set this to the location of the IREE build
 export PATH_TO_IREE_BUILD=../../../iree-build
+
+export PATH_TO_DELEGATE=$PATH_TO_IREE_BUILD/runtime/plugins/AMD-AIE-experimental/delegate/mlp_bf16_aie_delegate.so
+```
+
+#### Windows (PowerShell)
+
+```
+cd <workspace root (containing iree and iree-amd-aie)>
+$env:Path += ";$pwd\iree\build\tools"
+cd iree-amd-aie\experimental\delegate
+
+# Set this to the location of the IREE build
+$PATH_TO_IREE_BUILD = "..\..\..\iree\build"
+
+$PATH_TO_DELEGATE = "$PATH_TO_IREE_BUILD\runtime\plugins\AMD-AIE-experimental\delegate\mlp_bf16_aie_delegate.dll"
 ```
 
 ### Compiling and running demo 1
 
-Set `DELEGATE_KERNEL_TO_USE` in `mlp_bf16_aie_delegate.so` to `REF_MATMUL_DELEGATE_KERNEL`.
+Set `DELEGATE_KERNEL_TO_USE` in `mlp_aie_bf16_plugin.cpp` to `REF_MATMUL_DELEGATE_KERNEL`.
 
 Recompile IREE if you have made any code changes.
 
 ```
 iree-compile --iree-preprocessing-transform-spec-filename=mlp_spec.mlir mlp.mlir -o mlp.vmfb
 
-iree-run-module --device=local-sync \
-  --executable_plugin=${PATH_TO_IREE_BUILD}/runtime/plugins/AMD-AIE-experimental/delegate/mlp_bf16_aie_delegate.so \
-  --module=mlp.vmfb \
-  --function=mlp_invocation \
-  --input="8x768xf32=2" \
-  --input="768x768xf32=3"
+iree-run-module --device=local-sync --executable_plugin=$PATH_TO_DELEGATE --module=mlp.vmfb --function=mlp_invocation --input="8x768xf32=2" --input="768x768xf32=3"
 ```
 
 ### Compiling and running demo 2 (OPT)
 
-Set `DELEGATE_KERNEL_TO_USE` in `mlp_bf16_aie_delegate.so` to `OPT_DELEGATE_KERNEL`.
+Set `DELEGATE_KERNEL_TO_USE` in `mlp_aie_bf16_plugin.cpp` to `OPT_DELEGATE_KERNEL`.
 
 Recompile IREE if you have made any code changes.
 
 ```
 iree-compile --iree-preprocessing-pdl-spec-filename=opt.pdl.mlir matmul.mlir -o matmul.vmfb
  
-iree-run-module --device=local-sync \
-  --executable_plugin=${PATH_TO_IREE_BUILD}/runtime/plugins/AMD-AIE-experimental/delegate/mlp_bf16_aie_delegate.so \
-  --module=matmul.vmfb \
-  --function=mlp_invocation \
-  --input="1x8x768xbf16=2" \
-  --input="1x768x768xbf16=3"
+iree-run-module --device=local-sync --executable_plugin=$PATH_TO_DELEGATE --module=matmul.vmfb --function=mlp_invocation --input="1x8x768xbf16=2" --input="1x768x768xbf16=3"
 ```
 ### Compililng and running demo 3 (OPT)
 
-Set `DELEGATE_KERNEL_TO_USE` in `mlp_bf16_aie_delegate.so` to `OPT_DELEGATE_KERNEL`.
+Set `DELEGATE_KERNEL_TO_USE` in `mlp_aie_bf16_plugin.cpp` to `OPT_DELEGATE_KERNEL`.
 
 Recompile IREE if you have made any code changes.
 
 ```
 iree-compile --iree-preprocessing-pdl-spec-filename=opt.pdl.mlir opt.mlir -o opt.vmfb
 
-iree-run-module --device=local-sync \
-  --executable_plugin=${PATH_TO_IREE_BUILD}/runtime/plugins/AMD-AIE-experimental/delegate/mlp_bf16_aie_delegate.so \
-  --module=opt.vmfb \
-  --function=mlp_invocation \
-  --input="1x8x768xbf16=2" \
-  --input="1x768x768xbf16=3"
+iree-run-module --device=local-sync --executable_plugin=$PATH_TO_DELEGATE --module=opt.vmfb --function=mlp_invocation --input="1x8x768xbf16=2" --input="1x768x768xbf16=3"
 ```
 
 ### Compiling and running demo 4 (Large Matmul with bf16 inputs)
 
-Set `DELEGATE_KERNEL_TO_USE` in `mlp_bf16_aie_delegate.so` to `LARGE_MATMUL_DELEGATE_KERNEL`
+Set `DELEGATE_KERNEL_TO_USE` in `mlp_aie_bf16_plugin.cpp` to `LARGE_MATMUL_DELEGATE_KERNEL`
 (the default as checked in).
 
 Also, under the `#if DELEGATE_KERNEL_TO_USE == LARGE_MATMUL_DELEGATE_KERNEL`
@@ -164,17 +166,12 @@ Recompile IREE if you have made any code changes.
 ```
 iree-compile large-matmul.mlir -o large-matmul.vmfb --iree-preprocessing-pdl-spec-filename=large-matmul.pdl.mlir
  
-iree-run-module --device=local-sync \
-  --executable_plugin=../../../iree-build/runtime/plugins/AMD-AIE-experimental/delegate/mlp_bf16_aie_delegate.so \
-  --module=large-matmul.vmfb \
-  --function=mlp_invocation \
-  --input="8192x2432xbf16=2" \
-  --input="2432x9728xbf16=3"
+iree-run-module --device=local-sync --executable_plugin=$PATH_TO_DELEGATE --module=large-matmul.vmfb --function=mlp_invocation --input="8192x2432xbf16=2" --input="2432x9728xbf16=3"
 ```
 
 ### Compiling and running demo 5 (Large Matmul with f32 inputs)
 
-Set `DELEGATE_KERNEL_TO_USE` in `mlp_bf16_aie_delegate.so` to `LARGE_MATMUL_DELEGATE_KERNEL`
+Set `DELEGATE_KERNEL_TO_USE` in `mlp_aie_bf16_plugin.cpp` to `LARGE_MATMUL_DELEGATE_KERNEL`
 (the default as checked in).
 
 Also, under the `#if DELEGATE_KERNEL_TO_USE == LARGE_MATMUL_DELEGATE_KERNEL`
@@ -186,12 +183,7 @@ Recompile IREE if you have made any code changes.
 ```
 iree-compile large-matmul-f32.mlir -o large-matmul-f32.vmfb --iree-preprocessing-pdl-spec-filename=large-matmul-f32.pdl.mlir
  
-iree-run-module --device=local-sync \
-  --executable_plugin=../../../iree-build/runtime/plugins/AMD-AIE-experimental/delegate/mlp_bf16_aie_delegate.so \
-  --module=large-matmul-f32.vmfb \
-  --function=mlp_invocation \
-  --input="8192x2432xf32=2" \
-  --input="2432x9728xf32=3"
+iree-run-module --device=local-sync --executable_plugin=$PATH_TO_DELEGATE --module=large-matmul-f32.vmfb --function=mlp_invocation --input="8192x2432xf32=2" --input="2432x9728xf32=3"
 ```
 
 ## Building the large matmul kernel

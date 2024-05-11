@@ -62,6 +62,9 @@
 // of float accumulation.
 // #define USE_BF16_CPU_ACCUMULATOR 1
 
+// Turn this on to print debug messages throughout the delegate run
+// #define TRACE_DELEGATE 1
+
 // Turn this on to dump matmul operand and result tensor values
 // #define DEBUG_VALUES 1
 
@@ -83,7 +86,6 @@
 
 // Fake bfloat16 type (assuming no C++ 23)
 using bfloat16_t = std::uint16_t;
-
 
 //#############################################################################
 //
@@ -188,7 +190,11 @@ Set DELEGATE_KERNEL_TO_USE to a supported kernel."
 // Run-time exception class
 class DelegateException : public std::runtime_error {
 public:
-  DelegateException(const std::string &what) : std::runtime_error(what) {}
+  DelegateException(const std::string &what) : std::runtime_error(what) {
+#ifdef TRACE_DELEGATE
+    std::cout << "[AIE Delegate Trace]: DelegateException: " << what << std::endl;
+#endif
+  }
 };
 
 
@@ -197,32 +203,38 @@ public:
 #if defined(_WIN32)
 
 #include <windows.h>
+#include <filesystem>
 
 std::string getLibraryPath() {
-#if 0
-    // TODO: Let's revisit the Windows implementation if we ever need it to run there
     char path[MAX_PATH];
     HMODULE hm = NULL;
 
+    // Get the currently executing DLL (the delegate DLL)
     if (GetModuleHandleEx(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
         GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
         (LPCSTR)&getLibraryPath, &hm) == 0)
     {
         int ret = GetLastError();
-        fprintf(stderr, "GetModuleHandle returned error code %d\n", ret);
-        // Handle the error.
+        std::ostringstream oss;
+        oss << "[AIE Delegate] FATAL ERROR: Can't open delegate DLL.  Error code: "
+            << ret << std::endl;
+        throw DelegateException(oss.str());
     }
+
+    // Get the file path for the DLL
     if (GetModuleFileName(hm, path, sizeof(path)) == 0)
     {
         int ret = GetLastError();
-        fprintf(stderr, "GetModuleFileName returned error code %d\n", ret);
-        // Handle the error.
+        std::ostringstream oss;
+        oss << "[AIE Delegate] FATAL ERROR: Can't read delegate DLL file name."
+            "  Error code: " << ret << std::endl;
+        throw DelegateException(oss.str());
     }
 
-    return std::string(path);
-#else
-    return std::string();
-#endif
+    // Strip off the file name, leaving the DLL's directory
+    std::filesystem::path pathObj(path);
+    std::string dllDir = pathObj.parent_path().string();
+    return std::string(dllDir);
 }
 #elif defined(__linux__)
 #include <dlfcn.h>
@@ -544,18 +556,25 @@ struct Params {
 //
 
 std::vector<uint32_t> loadInstrSequence(std::string instr_path) {
-    std::ifstream instrFile(instr_path);
-    std::string line;
-    std::vector<uint32_t> instrV;
-    while (std::getline(instrFile, line)) {
-        std::istringstream iss(line);
-        uint32_t a;
-        if (!(iss >> std::hex >> a)) {
-           std::cerr << "[AIE Delegate]: Unable to parse instruction file" << std::endl;
-           return {};
-        }
-        instrV.push_back(a);
+#ifdef TRACE_DELEGATE
+  std::cout << "[AIE Delegate Trace]: loadInstrSequence" << std::endl;
+#endif
+  std::ifstream instrFile(instr_path);
+  std::string line;
+  std::vector<uint32_t> instrV;
+  while (std::getline(instrFile, line)) {
+    std::istringstream iss(line);
+    uint32_t a;
+    if (!(iss >> std::hex >> a)) {
+      std::ostringstream oss;
+      oss << "[AIE Delegate]: Unable to parse instruction file" << std::endl;
+      throw DelegateException(oss.str());
     }
+    instrV.push_back(a);
+  }
+#ifdef TRACE_DELEGATE
+  std::cout << "[AIE Delegate Trace]: loadInstrSequence done" << std::endl;
+#endif
     return instrV;
 }
 
@@ -605,6 +624,9 @@ int aie_matmuls_done = 0;
 int matmuls_done = 0;
 
 void setupNPUAccelerator() {
+#ifdef TRACE_DELEGATE
+  std::cout << "[AIE Delegate Trace]: setupNPUAccelerator" << std::endl;
+#endif
     std::string libPath = getLibraryPath();
     std::cout << "[AIE Delegate]: Using delegate installation at: " << libPath << std::endl;
     std::string instrFilePath = libPath + "/kernels/" + kernelFileName + ".insts.txt";
@@ -621,13 +643,22 @@ void setupNPUAccelerator() {
     // Get a device handle
     auto xrtState = XrtState::getInstance();
     unsigned int deviceIndex = 0;
+#ifdef TRACE_DELEGATE
+  std::cout << "[AIE Delegate Trace]: setupNPUAccelerator get device" << std::endl;
+#endif
     xrtState->device = xrt::device(deviceIndex);
 
     // Load the xclbin
     std::string xclbinPath = libPath + "/kernels/" + kernelFileName + ".xclbin";
+#ifdef TRACE_DELEGATE
+  std::cout << "[AIE Delegate Trace]: setupNPUAccelerator get xclbin" << std::endl;
+#endif
     auto xclbin = xrt::xclbin(xclbinPath);
 
     // Search in the xclbin for the kernel by its name
+#ifdef TRACE_DELEGATE
+  std::cout << "[AIE Delegate Trace]: setupNPUAccelerator get kernels" << std::endl;
+#endif
     auto xkernels = xclbin.get_kernels();
     std::vector<std::string> kernelNames;
     auto foundIter = std::find_if(
@@ -656,14 +687,26 @@ void setupNPUAccelerator() {
     auto kernelName = xkernel.get_name();
 
     // Register the xclbin
+#ifdef TRACE_DELEGATE
+  std::cout << "[AIE Delegate Trace]: setupNPUAccelerator register xclbin" << std::endl;
+#endif
     xrtState->device.register_xclbin(xclbin);
 
     // Get a hardware context
+#ifdef TRACE_DELEGATE
+  std::cout << "[AIE Delegate Trace]: setupNPUAccelerator create context" << std::endl;
+#endif
     xrt::hw_context context(xrtState->device, xclbin.get_uuid());
 
     // Get a kernel handle
+#ifdef TRACE_DELEGATE
+  std::cout << "[AIE Delegate Trace]: setupNPUAccelerator create kernel" << std::endl;
+#endif
     xrtState->kernel = xrt::kernel(context, kernelName);
  
+#ifdef TRACE_DELEGATE
+  std::cout << "[AIE Delegate Trace]: setupNPUAccelerator create BOs" << std::endl;
+#endif
     xrtState->boInstr = xrt::bo(xrtState->device, instrV.size() * sizeof(int),
                            XCL_BO_FLAGS_CACHEABLE, xrtState->kernel.group_id(0));
 
@@ -677,11 +720,17 @@ void setupNPUAccelerator() {
     // copy instruction stream to NPU
     void *bufInstr = xrtState->boInstr.map<void *>();
     std::memcpy(bufInstr, instrV.data(), instrV.size() * sizeof(int));
+#ifdef TRACE_DELEGATE
+  std::cout << "[AIE Delegate Trace]: setupNPUAccelerator sync instruction BO" << std::endl;
+#endif
     xrtState->boInstr.sync(XCL_BO_SYNC_BO_TO_DEVICE);
 
     std::cout << "[AIE Delegate]: NPU setup done." << std::endl;
     
     aie_setup = true;
+#ifdef TRACE_DELEGATE
+  std::cout << "[AIE Delegate Trace]: setupNPUAccelerator done" << std::endl;
+#endif
 }
 
 void aie_matmul(Params *params) {
@@ -800,6 +849,9 @@ static int mlp_external(void* params_ptr, void* context, void* reserved) {
   auto params = reinterpret_cast<Params *>(params_ptr);
   // fprintf(plugin->file, "[AIE Delegate]: M = %d, N = %d, K = %d\n", params->M,
   //         params->N, params->K);
+#ifdef TRACE_DELEGATE
+  std::cout << "[AIE Delegate Trace]: mlp_external" << std::endl;
+#endif
 
 #ifdef USE_CPU_IMPLEMENTATION
   cpu_matmul(params);  // enable this if CPU fallback desired
@@ -819,6 +871,9 @@ static int mlp_external(void* params_ptr, void* context, void* reserved) {
 
   aie_matmul(params);
 #endif
+#ifdef TRACE_DELEGATE
+  std::cout << "[AIE Delegate Trace]: mlp_external done" << std::endl;
+#endif
   return 0;
 }
 
@@ -835,6 +890,9 @@ static iree_hal_executable_plugin_status_t mlp_plugin_load(
     const iree_hal_executable_plugin_environment_v0_t* environment,
     size_t param_count, const iree_hal_executable_plugin_string_pair_t* params,
     void** out_self) {
+#ifdef TRACE_DELEGATE
+  std::cout << "[AIE Delegate Trace]: mlp_plugin_load" << std::endl;
+#endif
   // Allocate the plugin state.
   mlp_plugin_t* plugin = NULL;
   iree_hal_executable_plugin_status_t status =
@@ -854,6 +912,9 @@ static iree_hal_executable_plugin_status_t mlp_plugin_load(
 
   // Pass back the plugin instance that'll be passed to resolve.
   *out_self = plugin;
+#ifdef TRACE_DELEGATE
+  std::cout << "[AIE Delegate Trace]: mlp_plugin_load done" << std::endl;
+#endif
   return iree_hal_executable_plugin_ok_status();
 }
 
@@ -882,6 +943,9 @@ static void mlp_plugin_unload(void* self) {
 static iree_hal_executable_plugin_status_t mlp_plugin_resolve(
     void* self, const iree_hal_executable_plugin_resolve_params_v0_t* params,
     iree_hal_executable_plugin_resolution_t* out_resolution) {
+#ifdef TRACE_DELEGATE
+  std::cout << "[AIE Delegate Trace]: mlp_plugin_resolve" << std::endl;
+#endif
   mlp_plugin_t* plugin = (mlp_plugin_t*)self;
   *out_resolution = 0;
   bool any_required_not_found = false;
@@ -904,6 +968,9 @@ static iree_hal_executable_plugin_status_t mlp_plugin_resolve(
       }
     }
   }
+#ifdef TRACE_DELEGATE
+  std::cout << "[AIE Delegate Trace]: mlp_plugin_resolve done" << std::endl;
+#endif
   return any_required_not_found
              ? iree_hal_executable_plugin_status_from_code(
                    IREE_HAL_EXECUTABLE_PLUGIN_STATUS_NOT_FOUND)
