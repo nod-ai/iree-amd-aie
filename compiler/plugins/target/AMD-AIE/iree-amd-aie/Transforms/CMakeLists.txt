@@ -48,6 +48,7 @@ iree_cc_library(
     "AMDAIEBufferizeToAllocation.cpp"
     "AMDAIECanonicalizeDma.cpp"
     "AMDAIECanonicalizeDoublyStridedOp.cpp"
+    "AMDAIEControlCodeLoopUnroll.cpp"
     "AMDAIECreateAIEWorkgroup.cpp"
     "AMDAIEDmaToCircularDma.cpp"
     "AMDAIEDmaUtils.cpp"

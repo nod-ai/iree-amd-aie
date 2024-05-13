@@ -49,6 +49,9 @@ std::unique_ptr<Pass> createAMDAIECanonicalizeDmaPass();
 /// Create pass to canonicalize doubly strided operations.
 std::unique_ptr<Pass> createAMDAIECanonicalizeDoublyStridedOpPass();
 
+/// Pass to unroll the loops within the control code regions.
+std::unique_ptr<Pass> createAMDAIEControlCodeLoopUnrollPass();
+
 /// Pass to create a single AIE workgroup.
 std::unique_ptr<Pass> createAMDAIECreateAIEWorkgroupPass();
 
