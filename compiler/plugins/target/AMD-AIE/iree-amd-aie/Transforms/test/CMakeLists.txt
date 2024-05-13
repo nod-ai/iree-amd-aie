@@ -13,6 +13,7 @@ iree_lit_test_suite(
     "bufferize_to_allocation.mlir"
     "canonicalize_dma.mlir"
     "canonicalize_doubly_strided_op.mlir"
+    "controlcode_loop_unrolling.mlir"
     "create_aie_workgroup.mlir"
     "disable_vectorization.mlir"
     "dma_to_circular_dma.mlir"

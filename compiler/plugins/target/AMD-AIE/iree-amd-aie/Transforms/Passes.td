@@ -67,6 +67,12 @@ def AMDAIECleanup :
       "mlir::iree_compiler::AMDAIE::createAMDAIECleanupPass()";
 }
 
+def AMDAIEControlCodeLoopUnroll :
+    Pass<"iree-amdaie-controlcode-loop-unroll", ""> {
+  let summary = "Unroll the loops in the control code regions.";
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEControlCodeLoopUnrollPass()";
+}
+
 def AMDAIECreateAIEWorkgroup : 
   Pass<"iree-amdaie-create-aie-workgroup", "func::FuncOp"> {
   let summary = "Creates a single AIE workgroup.";
