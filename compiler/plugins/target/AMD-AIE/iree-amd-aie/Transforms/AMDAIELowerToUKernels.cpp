@@ -9,7 +9,6 @@
 #include "iree/compiler/Codegen/Dialect/Codegen/IR/IREECodegenDialect.h"
 #include "iree/compiler/Codegen/Dialect/Codegen/IR/UKernelOps.h"
 #include "iree/compiler/Codegen/Utils/Utils.h"
-#include "llvm/Support/FileSystem.h"
 #include "llvm/Support/Path.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
@@ -40,15 +39,6 @@ namespace {
 /// ================== SAME UTILITIES AS IREE LLVMCPU ====================
 /// ======================================================================
 
-/// Returns `true` if an `outsOperand` value is initialized to zero.
-static bool isInitializedToZero(Value outsOperand) {
-  auto fillOp = outsOperand.getDefiningOp<linalg::FillOp>();
-  if (!fillOp) return false;
-  Value fillVal = fillOp.getDpsInputOperand(0)->get();
-  return matchPattern(fillVal, m_Zero()) ||
-         matchPattern(fillVal, m_AnyZeroFloat());
-}
-
 /// Holds a function name and attributes.
 struct FnNameAndDefAttrs {
   std::string name;
@@ -72,7 +62,6 @@ static std::string getPathToUKernelObjectFile(std::string pathToUkernels,
 /// Returns the function name and attributes to use for a ukernel with given
 /// `ukernelName` on the target described by `targetAttr`.
 static FnNameAndDefAttrs getFnNameAndDefAttrs(RewriterBase &rewriter,
-                                              AIEPassPipeline passPipeline,
                                               std::string ukernelName,
                                               std::string inputOutputElemType,
                                               std::string pathToUkernels,
@@ -96,7 +85,7 @@ static FnNameAndDefAttrs getFnNameAndDefAttrs(RewriterBase &rewriter,
 /// that is later lowered into a call to the microkernel.
 static FailureOr<IREE::Codegen::UKernelOpInterface> matchDAGForUKernel(
     RewriterBase &rewriter, linalg::LinalgOp op, std::string ukernelName,
-    AIEPassPipeline passPipeline, std::string pathToUkernels) {
+    std::string pathToUkernels) {
   auto targetAttr = IREE::HAL::ExecutableTargetAttr::lookup(op);
   if (!hasUkernel(targetAttr, ukernelName)) {
     return failure();
@@ -119,28 +108,64 @@ static FailureOr<IREE::Codegen::UKernelOpInterface> matchDAGForUKernel(
   } else if (lhsElemType.isBF16() && rhsElemType.isBF16() &&
              outElemType.isF32()) {
     inputOutputElemType = "bf16_f32";
+  } else if (lhsElemType.isF32() && rhsElemType.isF32() &&
+             outElemType.isF32()) {
+    inputOutputElemType = "f32_f32";
   } else {
     return rewriter.notifyMatchFailure(
         op, "unsupported combination of element types for microkernel");
   }
 
-  // Check if the accumulator is zero-filled.
-  if (isInitializedToZero(out)) {
-    // Here the matmul ukernel op won't read the existing accumulator, so its
-    // defining op can be discarded.
-    if (auto fillOp = out.getDefiningOp<linalg::FillOp>()) {
-      out = fillOp.getDpsInitOperand(0)->get();
-    }
-  }
-
   Location loc = op.getLoc();
 
-  auto fn = getFnNameAndDefAttrs(rewriter, passPipeline, ukernelName,
-                                 inputOutputElemType, pathToUkernels, "mm.o");
+  auto fn = getFnNameAndDefAttrs(rewriter, ukernelName, inputOutputElemType,
+                                 pathToUkernels, "mm.o");
 
   // Create UKernel for AMD-AIE.
   auto genericMicroKernelOp = rewriter.create<IREE::Codegen::UKernelGenericOp>(
       loc, outType, fn.name, ValueRange{lhs, rhs}, out, ValueRange{},
+      /*fn_def_attrs=*/rewriter.getDictionaryAttr(fn.defAttrs),
+      /*strided_outer_dims=*/rewriter.getIndexAttr(0));
+
+  return cast<IREE::Codegen::UKernelOpInterface>(
+      genericMicroKernelOp.getOperation());
+}
+
+static FailureOr<IREE::Codegen::UKernelOpInterface> matchDAGForUKernel(
+    RewriterBase &rewriter, linalg::FillOp op, std::string ukernelName,
+    std::string pathToUkernels) {
+  auto targetAttr = IREE::HAL::ExecutableTargetAttr::lookup(op);
+  if (!hasUkernel(targetAttr, ukernelName)) {
+    return failure();
+  }
+
+  Value input = op.getDpsInputOperand(0)->get();
+  if (!(matchPattern(input, m_Zero()) ||
+        matchPattern(input, m_AnyZeroFloat()))) {
+    return rewriter.notifyMatchFailure(op, "not a zero filling operation");
+  }
+  Value output = op.getDpsInitOperand(0)->get();
+  auto outType = llvm::cast<ShapedType>(output.getType());
+  Type outElemType = outType.getElementType();
+
+  std::string elemType = "";
+  if (outElemType.isBF16()) {
+    elemType = "bf16";
+  } else if (outElemType.isF32()) {
+    elemType = "f32";
+  } else {
+    return rewriter.notifyMatchFailure(
+        op, "unsupported combination of element types for microkernel");
+  }
+
+  Location loc = op.getLoc();
+
+  auto fn = getFnNameAndDefAttrs(rewriter, ukernelName, elemType,
+                                 pathToUkernels, "mm.o");
+
+  // Create UKernel for AMD-AIE.
+  auto genericMicroKernelOp = rewriter.create<IREE::Codegen::UKernelGenericOp>(
+      loc, outType, fn.name, ValueRange{}, output, ValueRange{},
       /*fn_def_attrs=*/rewriter.getDictionaryAttr(fn.defAttrs),
       /*strided_outer_dims=*/rewriter.getIndexAttr(0));
 
@@ -153,11 +178,9 @@ using TargetPredicate = std::function<bool(IREE::HAL::ExecutableTargetAttr)>;
 template <typename OpType>
 struct LowerToUKernelPattern : OpRewritePattern<OpType> {
   LowerToUKernelPattern(MLIRContext *context, TargetPredicate targetPredicate,
-                        AIEPassPipeline passPipeline,
                         std::string pathToUkernels)
       : OpRewritePattern<OpType>(context),
         targetPredicate(targetPredicate),
-        passPipeline(passPipeline),
         pathToUkernels(pathToUkernels) {}
 
   LogicalResult matchAndRewrite(OpType op,
@@ -169,8 +192,9 @@ struct LowerToUKernelPattern : OpRewritePattern<OpType> {
 
     FailureOr<IREE::Codegen::UKernelOpInterface> ukernelOp;
     if (isMatmul(op)) {
-      ukernelOp = matchDAGForUKernel(rewriter, op, "matmul", passPipeline,
-                                     pathToUkernels);
+      ukernelOp = matchDAGForUKernel(rewriter, op, "matmul", pathToUkernels);
+    } else if (isa<linalg::FillOp>(op)) {
+      ukernelOp = matchDAGForUKernel(rewriter, op, "zero", pathToUkernels);
     } else {
       return failure();
     }
@@ -183,7 +207,6 @@ struct LowerToUKernelPattern : OpRewritePattern<OpType> {
   }
 
   TargetPredicate targetPredicate;
-  AIEPassPipeline passPipeline;
   std::string pathToUkernels;
 };
 
@@ -205,10 +228,12 @@ void AMDAIELowerToUKernelsPass::runOnOperation() {
   // performance, and that consideration overrides the benefit of fusions for
   // these ops.
   auto allTargets = [](auto target) { return true; };
-  patterns.insert<LowerToUKernelPattern<linalg::GenericOp>>(
-      context, allTargets, passPipeline, pathToUkernels);
-  patterns.insert<LowerToUKernelPattern<linalg::MatmulOp>>(
-      context, allTargets, passPipeline, pathToUkernels);
+  patterns.insert<LowerToUKernelPattern<linalg::GenericOp>>(context, allTargets,
+                                                            pathToUkernels);
+  patterns.insert<LowerToUKernelPattern<linalg::MatmulOp>>(context, allTargets,
+                                                           pathToUkernels);
+  patterns.insert<LowerToUKernelPattern<linalg::FillOp>>(context, allTargets,
+                                                         pathToUkernels);
   if (failed(
           applyPatternsAndFoldGreedily(getOperation(), std::move(patterns)))) {
     return signalPassFailure();

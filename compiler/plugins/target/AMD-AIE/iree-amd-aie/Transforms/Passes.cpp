@@ -281,6 +281,13 @@ void addPackPeelBasedPassPipeline(OpPassManager &funcPassManager,
   funcPassManager.addPass(createHoistStaticallyBoundAllocationsPass());
   funcPassManager.addPass(createCanonicalizerPass());
 
+  // Lower to UKernels.
+  {
+    AMDAIELowerToUKernelsOptions options;
+    options.pathToUkernels = clPathToUkernels;
+    funcPassManager.addPass(createAMDAIELowerToUKernelsPass(options));
+  }
+
   // Vectorization passes
   appendVectorizationToPipeline(funcPassManager);
   
@@ -383,7 +390,6 @@ void addPadPackBasedPassPipeline(OpPassManager &funcPassManager,
   // Lower to UKernels
   {
     AMDAIELowerToUKernelsOptions options;
-    options.passPipeline = AIEPassPipeline::PadPackPipeline;
     options.pathToUkernels = clPathToUkernels;
     funcPassManager.addPass(createAMDAIELowerToUKernelsPass(options));
   }
