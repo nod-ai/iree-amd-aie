@@ -5,6 +5,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 #include "air/Dialect/AIR/AIRDialect.h"
+#include "iree-amd-aie/Transforms/AMDAIEDmaUtils.h"
 #include "iree-amd-aie/Transforms/Passes.h"
 #include "mlir/Dialect/Arith/Utils/Utils.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
@@ -17,79 +18,6 @@
 namespace mlir::iree_compiler::AMDAIE {
 
 namespace {
-
-int64_t getConstantIndexOrAssert(OpFoldResult dim) {
-  std::optional<int64_t> size = getConstantIntValue(dim);
-  assert(size.has_value() && "expect constant index");
-  return size.value();
-}
-
-bool foldAirDmaUnitDims(const SmallVector<OpFoldResult> &offsets,
-                        const SmallVector<OpFoldResult> &strides,
-                        const SmallVector<OpFoldResult> &sizes,
-                        SmallVector<OpFoldResult> &newOffsets,
-                        SmallVector<OpFoldResult> &newStrides,
-                        SmallVector<OpFoldResult> &newSizes) {
-  bool foldableUnitDimsFound = false;
-
-  for (int i = 0; i < offsets.size(); i++) {
-    // Dim can be folded if offset is zero and size is 1
-    if (isConstantIntValue(offsets[i], 0) && isConstantIntValue(sizes[i], 1)) {
-      foldableUnitDimsFound = true;
-      continue;
-    }
-    newOffsets.push_back(offsets[i]);
-    newStrides.push_back(strides[i]);
-    newSizes.push_back(sizes[i]);
-  }
-  return foldableUnitDimsFound;
-}
-
-bool foldAirDmaLinearDims(MLIRContext *ctx,
-                          const SmallVector<OpFoldResult> &offsets,
-                          const SmallVector<OpFoldResult> &strides,
-                          const SmallVector<OpFoldResult> &sizes,
-                          SmallVector<OpFoldResult> &newOffsets,
-                          SmallVector<OpFoldResult> &newStrides,
-                          SmallVector<OpFoldResult> &newSizes) {
-  bool foldableLinearDimsFound = false;
-
-  if (offsets.size() == 0) {
-    return foldableLinearDimsFound;
-  }
-
-  newOffsets.push_back(offsets[0]);
-  newStrides.push_back(strides[0]);
-  newSizes.push_back(sizes[0]);
-
-  for (int i = 1; i < offsets.size(); i++) {
-    // Conditions for folding a dim.
-    // 1. size(i) x stide(i) == stride(i-1), with this we can have new size(i-1)
-    // = size(i-1) * size(i), stride(i-1) = stride(i) and then fold away the i
-    // dimension
-    // 2. Offset(i-1) = 0. This is required becuase we are dropping the offset
-    // of the i-1 dimension and doing offset(i-1) = offset(i)
-    int vecSize = newOffsets.size();
-    if (isConstantIntValue(newOffsets[vecSize - 1], 0) &&
-        getConstantIndexOrAssert(sizes[i]) *
-                getConstantIndexOrAssert(strides[i]) ==
-            getConstantIndexOrAssert(newStrides[vecSize - 1])) {
-      foldableLinearDimsFound = true;
-      int vecSize = newOffsets.size();
-      newOffsets[vecSize - 1] = offsets[i];
-      newStrides[vecSize - 1] = strides[i];
-      newSizes[vecSize - 1] = getAsIndexOpFoldResult(
-          ctx, getConstantIndexOrAssert(sizes[i]) *
-                   getConstantIndexOrAssert(newSizes[vecSize - 1]));
-
-      continue;
-    }
-    newOffsets.push_back(offsets[i]);
-    newStrides.push_back(strides[i]);
-    newSizes.push_back(sizes[i]);
-  }
-  return foldableLinearDimsFound;
-}
 
 class FoldUnitDimsInDma : public OpRewritePattern<xilinx::air::DmaMemcpyNdOp> {
  public:
@@ -114,7 +42,6 @@ class FoldUnitDimsInDma : public OpRewritePattern<xilinx::air::DmaMemcpyNdOp> {
 
     SmallVector<OpFoldResult> newSrcOffsets, newDstOffsets, newSrcStrides,
         newDstStrides, newSrcSizes, newDstSizes;
-    bool foldableUnitDimsFound = false;
 
     // We do not make any assumptions when all offsets are not
     // specified and dont change the op in that case.
@@ -124,14 +51,15 @@ class FoldUnitDimsInDma : public OpRewritePattern<xilinx::air::DmaMemcpyNdOp> {
           op, "offset dimensions dont match stride dimensions");
     }
     // Fold source dims.
-    foldableUnitDimsFound |=
-        foldAirDmaUnitDims(srcOffsets, srcStrides, srcSizes, newSrcOffsets,
-                           newSrcStrides, newSrcSizes);
+    LogicalResult foldableUnitDimsFoundInSrc =
+        foldUnitDims(srcOffsets, srcSizes, srcStrides, newSrcOffsets,
+                     newSrcSizes, newSrcStrides);
     // Fold destination dims.
-    foldableUnitDimsFound |=
-        foldAirDmaUnitDims(dstOffsets, dstStrides, dstSizes, newDstOffsets,
-                           newDstStrides, newDstSizes);
-    if (!foldableUnitDimsFound) {
+    LogicalResult foldableUnitDimsFoundInDst =
+        foldUnitDims(dstOffsets, dstSizes, dstStrides, newDstOffsets,
+                     newDstSizes, newDstStrides);
+    if (failed(foldableUnitDimsFoundInSrc) &&
+        failed(foldableUnitDimsFoundInDst)) {
       return rewriter.notifyMatchFailure(op, "no foldable unit dims found");
     }
 
@@ -172,7 +100,6 @@ class FoldLinearDimsInDma
 
     SmallVector<OpFoldResult> newSrcOffsets, newDstOffsets, newSrcStrides,
         newDstStrides, newSrcSizes, newDstSizes;
-    bool foldableLinearDimsFound = false;
 
     // We do not make any assumptions when all offsets are not
     // specified and dont change the op in that case.
@@ -183,14 +110,15 @@ class FoldLinearDimsInDma
     }
 
     // Fold source dims.
-    foldableLinearDimsFound |=
-        foldAirDmaLinearDims(op.getContext(), srcOffsets, srcStrides, srcSizes,
-                             newSrcOffsets, newSrcStrides, newSrcSizes);
+    LogicalResult foldableLinearDimsFoundInSrc =
+        foldLinearDims(op.getContext(), srcOffsets, srcSizes, srcStrides,
+                       newSrcOffsets, newSrcSizes, newSrcStrides);
     // Fold destination dims.
-    foldableLinearDimsFound |=
-        foldAirDmaLinearDims(op.getContext(), dstOffsets, dstStrides, dstSizes,
-                             newDstOffsets, newDstStrides, newDstSizes);
-    if (!foldableLinearDimsFound) {
+    LogicalResult foldableLinearDimsFoundInDst =
+        foldLinearDims(op.getContext(), dstOffsets, dstSizes, dstStrides,
+                       newDstOffsets, newDstSizes, newDstStrides);
+    if (failed(foldableLinearDimsFoundInSrc) &&
+        failed(foldableLinearDimsFoundInDst)) {
       return rewriter.notifyMatchFailure(op, "no foldable linear dims found");
     }
 

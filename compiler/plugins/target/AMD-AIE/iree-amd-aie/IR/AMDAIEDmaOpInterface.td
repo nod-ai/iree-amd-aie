@@ -246,6 +246,29 @@ def DoublyStridedOpInterface : OpInterface<"DoublyStridedOpInterface"> {
                                       $_op.getSourceStrides(), b);
       }]
     >,
+    InterfaceMethod<
+      /*desc=*/[{
+        A utility to create and return a new doubly strided operation from
+        this one with new source and target offsets, sizes and strides.
+      }],
+      /*retTy=*/"::mlir::iree_compiler::AMDAIE::DoublyStridedOpInterface",
+      /*methodName=*/"createDoublyStridedOp",
+      /*args=*/(
+        ins "::mlir::RewriterBase&":$rewriter,
+            "::llvm::SmallVector<::mlir::OpFoldResult>&":$newTargetOffsets,
+            "::llvm::SmallVector<::mlir::OpFoldResult>&":$newTargetSizes,
+            "::llvm::SmallVector<::mlir::OpFoldResult>&":$newTargetStrides,
+            "::llvm::SmallVector<::mlir::OpFoldResult>&":$newSourceOffsets,
+            "::llvm::SmallVector<::mlir::OpFoldResult>&":$newSourceSizes,
+            "::llvm::SmallVector<::mlir::OpFoldResult>&":$newSourceStrides
+      ),
+      /*methodBody=*/"",
+      /*defaultImplementation=*/[{
+        return $_op.createDoublyStridedOp(
+            rewriter, newTargetOffsets,newTargetSizes, newTargetStrides,
+            newSourceOffsets, newSourceSizes, newSourceStrides);
+      }]
+    >,
   ];
 
   let verify = [{

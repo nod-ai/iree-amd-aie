@@ -12,6 +12,7 @@ iree_lit_test_suite(
     "bridge_to_air.mlir"
     "bufferize_to_allocation.mlir"
     "canonicalize_dma.mlir"
+    "canonicalize_doubly_strided_op.mlir"
     "create_aie_workgroup.mlir"
     "disable_vectorization.mlir"
     "dma_to_circular_dma.mlir"
