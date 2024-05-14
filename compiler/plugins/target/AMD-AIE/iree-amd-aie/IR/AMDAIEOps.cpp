@@ -329,6 +329,15 @@ LogicalObjectFifoFromMemrefOp CircularDmaCpyNdOp::getTargetObjectFifo() {
 };
 
 //===----------------------------------------------------------------------===//
+// AMDAIE_LogicalObjectFifoAcquire
+//===----------------------------------------------------------------------===//
+
+void LogicalObjectFifoAcquire::build(OpBuilder &b, mlir::OperationState &result,
+                                     Value dma, LogicalObjectFifoPort port) {
+  build(b, result, dma, port, b.getI32IntegerAttr(1));
+}
+
+//===----------------------------------------------------------------------===//
 // AMDAIE_LogicalObjectFifoFromMemrefOp
 //===----------------------------------------------------------------------===//
 
@@ -372,6 +381,15 @@ LogicalResult LogicalObjectFifoFromMemrefOp::verify() {
     return success();
   }
   return failure();
+}
+
+//===----------------------------------------------------------------------===//
+// AMDAIE_LogicalObjectFifoRelease
+//===----------------------------------------------------------------------===//
+
+void LogicalObjectFifoRelease::build(OpBuilder &b, mlir::OperationState &result,
+                                     Value dma, LogicalObjectFifoPort port) {
+  build(b, result, dma, port, b.getI32IntegerAttr(1));
 }
 
 //===----------------------------------------------------------------------===//

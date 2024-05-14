@@ -116,6 +116,18 @@ func.func @dma_cpy_nd_mixed(%arg0: !amdaie.logicalobjectfifo<memref<1x1x8x16xi32
 
 // -----
 
+// CHECK-LABEL: func.func @logicalobjectfifo_acquire
+// CHECK:       %[[DMA:.+]] = amdaie.dma_cpy_nd
+// CHECK:       amdaie.logicalobjectfifo.acquire
+// CHECK-SAME:  %[[DMA]]
+func.func @logicalobjectfifo_acquire(%arg0: !amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, %arg1: !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>) {
+  %0 = amdaie.dma_cpy_nd(%arg0[0, 0, 0, 0] [1, 1, 8, 16] [128, 128, 16, 1], %arg1[0, 0, 0, 0] [1, 1, 8, 16] [128, 16, 16, 1]) : (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>)
+  amdaie.logicalobjectfifo.acquire(%0, Consume) {size = 1 : i32}
+  return
+}
+
+// -----
+
 // CHECK-LABEL: func.func @logicalobjectfifo_consume
 // CHECK: amdaie.dma_cpy_nd
 // CHECK: amdaie.logicalobjectfifo.consume
@@ -133,6 +145,18 @@ func.func @logicalobjectfifo_consume(%arg0: !amdaie.logicalobjectfifo<memref<1x1
 func.func @logicalobjectfifo_produce(%arg0: !amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, %arg1: !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>) {
   %0 = amdaie.dma_cpy_nd(%arg0[0, 0, 0, 0] [1, 1, 8, 16] [128, 128, 16, 1], %arg1[0, 0, 0, 0] [1, 1, 8, 16] [128, 16, 16, 1]) : (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>)
   amdaie.logicalobjectfifo.produce(%0)
+  return
+}
+
+// -----
+
+// CHECK-LABEL: func.func @logicalobjectfifo_release
+// CHECK:       %[[DMA:.+]] = amdaie.dma_cpy_nd
+// CHECK:       amdaie.logicalobjectfifo.release
+// CHECK-SAME:  %[[DMA]]
+func.func @logicalobjectfifo_release(%arg0: !amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, %arg1: !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>) {
+  %0 = amdaie.dma_cpy_nd(%arg0[0, 0, 0, 0] [1, 1, 8, 16] [128, 128, 16, 1], %arg1[0, 0, 0, 0] [1, 1, 8, 16] [128, 16, 16, 1]) : (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>)
+  amdaie.logicalobjectfifo.release(%0, Consume) {size = 1 : i32}
   return
 }
 

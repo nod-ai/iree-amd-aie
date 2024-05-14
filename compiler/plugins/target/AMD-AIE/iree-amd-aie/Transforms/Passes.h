@@ -49,6 +49,10 @@ std::unique_ptr<Pass> createAMDAIECanonicalizeDmaPass();
 /// Create pass to canonicalize doubly strided operations.
 std::unique_ptr<Pass> createAMDAIECanonicalizeDoublyStridedOpPass();
 
+/// Pass to convert logical objectfifo consume/produce operation to
+/// acquire/release semaphore operations.
+std::unique_ptr<Pass> createAMDAIEConsumeProduceToAcquireReleasePass();
+
 /// Pass to unroll the loops within the control code regions.
 std::unique_ptr<Pass> createAMDAIEControlCodeLoopUnrollPass();
 
