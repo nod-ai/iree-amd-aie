@@ -10,7 +10,7 @@
 include "iree-amd-aie/IR/AMDAIEDialect.td"
 include "mlir/Pass/PassBase.td"
 
-def AMDAIEAIRDmaToAMDAIEDma : 
+def AMDAIEAIRDmaToAMDAIEDma :
   Pass<"iree-amdaie-air-dma-to-amdaie-dma", ""> {
   let summary = "Convert AIR DMA ops into AMDAIE DMA ops operating on logical objectfifos";
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEAIRDmaAMDAIEDmaPass()";
@@ -48,7 +48,7 @@ def AMDAIEBufferizeToAllocation :
   ];
 }
 
-def AMDAIECanonicalizeDma : 
+def AMDAIECanonicalizeDma :
   Pass<"iree-amdaie-canonicalize-dma", ""> {
   let summary = "Apply caonicaliztions to air.dma_memcpy_nd op's";
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIECanonicalizeDmaPass()";
@@ -73,7 +73,7 @@ def AMDAIEControlCodeLoopUnroll :
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEControlCodeLoopUnrollPass()";
 }
 
-def AMDAIECreateAIEWorkgroup : 
+def AMDAIECreateAIEWorkgroup :
   Pass<"iree-amdaie-create-aie-workgroup", "func::FuncOp"> {
   let summary = "Creates a single AIE workgroup.";
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIECreateAIEWorkgroupPass()";
@@ -110,7 +110,7 @@ def AMDAIEFuseFillIntoForall :
 def AMDAIEFuseLogicalObjectFifoIntoWorkgroup :
     Pass<"iree-amdaie-fuse-logicalobjectfifo-into-workgroup", "ModuleOp"> {
   let summary = "Fuse or distribute logical objectfifos into workgroups.";
-  let constructor = 
+  let constructor =
     "mlir::iree_compiler::AMDAIE::createAMDAIEFuseLogicalObjectFifoIntoWorkgroupPass()";
 }
 
@@ -133,7 +133,7 @@ def AMDAIEHoistForLoopAffineApply : Pass<"iree-amdaie-hoist-for-affine-apply"> {
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEHoistForLoopAffineApplyPass()";
 }
 
-def AMDAIEInsertAIEWorkgroup : 
+def AMDAIEInsertAIEWorkgroup :
   Pass<"iree-amdaie-insert-aie-workgroup", "ModuleOp"> {
   let summary = "Insert AIE workgroups around forall loops selected for parallel execution.";
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEInsertAIEWorkgroupPass()";
@@ -145,7 +145,7 @@ def AMDAIEInsertLoopsForVectorization :
   let summary = "Replace outer-dimensions of matmul-like linalg.generics with scf.for loops.";
 
   let description  = [{
-    This pass transforms all linalg.generic operations with matmul-like
+    This pass transforms linalg.generic operations with matmul-like
     inner-dimension semantics. It replaces all outer-dimensions with scf.for
     loops. For example, it replaces a generic operation that describes a
     batched matmul with an scf.for loop containing a linalg.generic that
@@ -153,10 +153,8 @@ def AMDAIEInsertLoopsForVectorization :
     the batch dimension in the linalg.generic with an scf.for loop.
 
     All outer dimensions are replaced with scf.for loops. The three
-    inner-dimensions must describe a matmul: 2 parallel dimensions and 1
-    reduction dimension, at correct indices. The pass does not transform
-    transposed matmuls, or any other operation that does not have exact
-    matmul semantics.
+    inner-dimensions must currently describe a matmul or matmul_tranpose_b:
+    2 parallel dimensions and 1 reduction dimension at correct indices.
 
     The motivation for this pass is to enable a subsequent vectorization pass
     to generate vector.contract operations which map easily to the AIEVec
@@ -334,7 +332,7 @@ def AMDAIEVectorization :
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEVectorizationPass()";
 }
 
-def AMDAIEUnrollAndDistributeWorkgroup : 
+def AMDAIEUnrollAndDistributeWorkgroup :
   Pass<"iree-amdaie-unroll-and-distribute-workgroup", "ModuleOp"> {
   let summary = "Create pass to unroll operations within AIE workgroups and distibute the logical objectfifos.";
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEUnrollAndDistributeWorkgroupPass()";
