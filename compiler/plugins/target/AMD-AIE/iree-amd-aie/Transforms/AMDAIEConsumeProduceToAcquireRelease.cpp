@@ -55,9 +55,9 @@ LogicalResult consumeProduceToAcquireRelease(Operation *parentOp) {
 
       // Find the new consume/produce operation's parent operation within the
       // same block as the previous operation of the same type and operating on
-      // the same DMA. Use theisparent operation in the same block to set the
-      // insertion point either before or after depending whether the iteration
-      // is happening in forward or backward fashion.
+      // the same DMA. Use this parent operation in the same block to set the
+      // insertion point either before or after depending on whether the
+      // iteration is happening in forward or backward fashion.
       auto parentOpInBlock =
           getParentOpInBlock(mapper.lookup(dmaOp)->getBlock(), op);
       if (parentOpInBlock) {
