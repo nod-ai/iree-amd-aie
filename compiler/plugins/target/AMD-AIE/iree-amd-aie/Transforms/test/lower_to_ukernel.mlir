@@ -1,4 +1,4 @@
-// RUN: iree-opt --split-input-file --pass-pipeline="builtin.module(func.func(iree-amdaie-lower-to-ukernels{pass-pipeline=pad-pack path-to-ukernels="/custom/path/to/ukernels"},cse,canonicalize))" %s | FileCheck %s
+// RUN: iree-opt --split-input-file --pass-pipeline="builtin.module(func.func(iree-amdaie-lower-to-ukernels{path-to-ukernels="/custom/path/to/ukernels"},cse,canonicalize))" %s | FileCheck %s
 
 // This first case demonstrates no lowering to ukernel when the corresponding
 // config is set to "none".

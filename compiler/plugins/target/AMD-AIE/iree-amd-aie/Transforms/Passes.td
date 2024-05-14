@@ -212,16 +212,6 @@ def AMDAIELowerToUKernels :
   let constructor =
       "mlir::iree_compiler::AMDAIE::createAMDAIELowerToUKernelsPass()";
   let options = [
-    Option<"passPipeline", "pass-pipeline",
-      "mlir::iree_compiler::AMDAIE::AIEPassPipeline",
-      /*default=*/"mlir::iree_compiler::AMDAIE::AIEPassPipeline::PadPackPipeline",
-      "Pass pipeline to use while lowering to AIR dialect",
-      [{::llvm::cl::values(
-        clEnumValN(mlir::iree_compiler::AMDAIE::AIEPassPipeline::PackPeelPipeline, "pack-peel",
-                   "Use the more advanced pack-based lowering strategy, including peeling and double-buffering."),
-        clEnumValN(mlir::iree_compiler::AMDAIE::AIEPassPipeline::PadPackPipeline, "pad-pack",
-                   "Use the pad-pack based lowering strategy.")
-      )}]>,
     Option<"pathToUkernels", "path-to-ukernels", "std::string", /*default=*/"",
       "Path to microkernels' directory">
   ];

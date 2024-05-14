@@ -9,7 +9,6 @@
 #include "iree/compiler/Codegen/Dialect/Codegen/IR/IREECodegenDialect.h"
 #include "iree/compiler/Codegen/Dialect/Codegen/IR/UKernelOps.h"
 #include "iree/compiler/Codegen/Utils/Utils.h"
-#include "llvm/Support/FileSystem.h"
 #include "llvm/Support/Path.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
@@ -72,7 +71,6 @@ static std::string getPathToUKernelObjectFile(std::string pathToUkernels,
 /// Returns the function name and attributes to use for a ukernel with given
 /// `ukernelName` on the target described by `targetAttr`.
 static FnNameAndDefAttrs getFnNameAndDefAttrs(RewriterBase &rewriter,
-                                              AIEPassPipeline passPipeline,
                                               std::string ukernelName,
                                               std::string inputOutputElemType,
                                               std::string pathToUkernels,
@@ -96,7 +94,7 @@ static FnNameAndDefAttrs getFnNameAndDefAttrs(RewriterBase &rewriter,
 /// that is later lowered into a call to the microkernel.
 static FailureOr<IREE::Codegen::UKernelOpInterface> matchDAGForUKernel(
     RewriterBase &rewriter, linalg::LinalgOp op, std::string ukernelName,
-    AIEPassPipeline passPipeline, std::string pathToUkernels) {
+    std::string pathToUkernels) {
   auto targetAttr = IREE::HAL::ExecutableTargetAttr::lookup(op);
   if (!hasUkernel(targetAttr, ukernelName)) {
     return failure();
@@ -135,7 +133,7 @@ static FailureOr<IREE::Codegen::UKernelOpInterface> matchDAGForUKernel(
 
   Location loc = op.getLoc();
 
-  auto fn = getFnNameAndDefAttrs(rewriter, passPipeline, ukernelName,
+  auto fn = getFnNameAndDefAttrs(rewriter, ukernelName,
                                  inputOutputElemType, pathToUkernels, "mm.o");
 
   // Create UKernel for AMD-AIE.
@@ -153,11 +151,9 @@ using TargetPredicate = std::function<bool(IREE::HAL::ExecutableTargetAttr)>;
 template <typename OpType>
 struct LowerToUKernelPattern : OpRewritePattern<OpType> {
   LowerToUKernelPattern(MLIRContext *context, TargetPredicate targetPredicate,
-                        AIEPassPipeline passPipeline,
                         std::string pathToUkernels)
       : OpRewritePattern<OpType>(context),
         targetPredicate(targetPredicate),
-        passPipeline(passPipeline),
         pathToUkernels(pathToUkernels) {}
 
   LogicalResult matchAndRewrite(OpType op,
@@ -169,8 +165,7 @@ struct LowerToUKernelPattern : OpRewritePattern<OpType> {
 
     FailureOr<IREE::Codegen::UKernelOpInterface> ukernelOp;
     if (isMatmul(op)) {
-      ukernelOp = matchDAGForUKernel(rewriter, op, "matmul", passPipeline,
-                                     pathToUkernels);
+      ukernelOp = matchDAGForUKernel(rewriter, op, "matmul", pathToUkernels);
     } else {
       return failure();
     }
@@ -183,7 +178,6 @@ struct LowerToUKernelPattern : OpRewritePattern<OpType> {
   }
 
   TargetPredicate targetPredicate;
-  AIEPassPipeline passPipeline;
   std::string pathToUkernels;
 };
 
@@ -205,10 +199,10 @@ void AMDAIELowerToUKernelsPass::runOnOperation() {
   // performance, and that consideration overrides the benefit of fusions for
   // these ops.
   auto allTargets = [](auto target) { return true; };
-  patterns.insert<LowerToUKernelPattern<linalg::GenericOp>>(
-      context, allTargets, passPipeline, pathToUkernels);
-  patterns.insert<LowerToUKernelPattern<linalg::MatmulOp>>(
-      context, allTargets, passPipeline, pathToUkernels);
+  patterns.insert<LowerToUKernelPattern<linalg::GenericOp>>(context, allTargets,
+                                                            pathToUkernels);
+  patterns.insert<LowerToUKernelPattern<linalg::MatmulOp>>(context, allTargets,
+                                                           pathToUkernels);
   if (failed(
           applyPatternsAndFoldGreedily(getOperation(), std::move(patterns)))) {
     return signalPassFailure();

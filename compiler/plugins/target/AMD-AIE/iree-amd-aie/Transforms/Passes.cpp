@@ -383,7 +383,6 @@ void addPadPackBasedPassPipeline(OpPassManager &funcPassManager,
   // Lower to UKernels
   {
     AMDAIELowerToUKernelsOptions options;
-    options.passPipeline = AIEPassPipeline::PadPackPipeline;
     options.pathToUkernels = clPathToUkernels;
     funcPassManager.addPass(createAMDAIELowerToUKernelsPass(options));
   }
