@@ -77,18 +77,10 @@ void appendVectorizationToPipeline(OpPassManager &funcPassManager) {
 static FailureOr<Value> aieComprehensiveBufferizeAllocationFn(
     OpBuilder &builder, Location loc, MemRefType memRefType,
     ValueRange dynamicSizes, unsigned alignment) {
-  int64_t numDims = memRefType.getShape().size();
-  AMDAIEMemSpace memSpace = AMDAIEMemSpace::Shared;
-  if (clUsePipeline == AIEPassPipeline::PadPackPipeline && numDims == 4) {
-    memSpace = AMDAIEMemSpace::Local;
-  } else if (clUsePipeline == AIEPassPipeline::PackPeelPipeline &&
-             numDims == 6) {
-    memSpace = AMDAIEMemSpace::Local;
-  }
-
   OpBuilder::InsertionGuard g(builder);
+  // Set the memory space attribute as local for now
   auto memorySpaceAttr =
-      AMDAIEMemSpaceAttr::get(builder.getContext(), memSpace);
+      AMDAIEMemSpaceAttr::get(builder.getContext(), AMDAIEMemSpace::Local);
   MemRefType allocType =
       MemRefType::get(memRefType.getShape(), memRefType.getElementType(),
                       AffineMap(), memorySpaceAttr);
