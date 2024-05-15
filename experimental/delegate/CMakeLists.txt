@@ -63,12 +63,14 @@ iree_lit_test_suite(
   SRCS
     "mlp.mlir"
     "matmul.mlir"
+    "matmul-16k.mlir"
     "opt.mlir"
     "large-matmul.mlir"
     "large-matmul-f32.mlir"
     "matmul-elementwise-f32.mlir"
   DATA
     "linalg.pdl.mlir"
+    "matmul-16k.pdl.mlir"
     "opt.pdl.mlir"
     "large-matmul.pdl.mlir"
     "large-matmul-f32.pdl.mlir"

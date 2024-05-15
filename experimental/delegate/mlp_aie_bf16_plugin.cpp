@@ -14,6 +14,7 @@
 #include <stdio.h>
 
 #include <algorithm>
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -38,6 +39,7 @@
 #define REF_MATMUL_DELEGATE_KERNEL 1
 #define OPT_DELEGATE_KERNEL 2
 #define LARGE_MATMUL_DELEGATE_KERNEL 3
+#define MATMUL_16K_DELEGATE_KERNEL 4
 
 //#############################################################################
 //
@@ -47,7 +49,8 @@
 // Uncomment the kernel to use
 // #define DELEGATE_KERNEL_TO_USE REF_MATMUL_DELEGATE_KERNEL
 // #define DELEGATE_KERNEL_TO_USE OPT_DELEGATE_KERNEL
-#define DELEGATE_KERNEL_TO_USE LARGE_MATMUL_DELEGATE_KERNEL
+// #define DELEGATE_KERNEL_TO_USE LARGE_MATMUL_DELEGATE_KERNEL
+#define DELEGATE_KERNEL_TO_USE MATMUL_16K_DELEGATE_KERNEL
 
 // Turn this on to use XRT buffers which are separate from HAL buffers.
 // There is a performance cost to copying between HAL and XRT buffer, but it
@@ -63,7 +66,7 @@
 // #define USE_BF16_CPU_ACCUMULATOR 1
 
 // Turn this on to print debug messages throughout the delegate run
-// #define TRACE_DELEGATE 1
+// #define ENABLE_TRACE_DELEGATE 1
 
 // Turn this on to dump matmul operand and result tensor values
 // #define DEBUG_VALUES 1
@@ -84,15 +87,65 @@
   #define CONVERSION_DEBUG(turnOn_) ;
 #endif
 
-// Fake bfloat16 type (assuming no C++ 23)
-using bfloat16_t = std::uint16_t;
+#ifdef ENABLE_TRACE_DELEGATE
+#define TRACE_DELEGATE(str_)                                      \
+  do {                                                            \
+    std::cout << "[AIE Delegate Trace]: " << (str_) << std::endl; \
+  } while (0)
+#define TRACE_DELEGATE1(str_, arg1_)                                         \
+  do {                                                                       \
+    std::cout << "[AIE Delegate Trace]: " << (str_) << (arg1_) << std::endl; \
+  } while (0)
+#else
+#define TRACE_DELEGATE(str_) \
+  do {                       \
+    ;                        \
+  } while (0)
+#define TRACE_DELEGATE1(str_, arg1_) \
+  do {                               \
+    ;                                \
+  } while (0)
+#endif
 
-//#############################################################################
-//
-// Configuration of the kernel that the AIE delegate uses
-//
+  // Fake bfloat16 type (assuming no C++ 23)
+  using bfloat16_t = std::uint16_t;
 
-#if DELEGATE_KERNEL_TO_USE == LARGE_MATMUL_DELEGATE_KERNEL
+  //#############################################################################
+  //
+  // Configuration of the kernel that the AIE delegate uses
+  //
+
+#if DELEGATE_KERNEL_TO_USE == MATMUL_16K_DELEGATE_KERNEL
+// Kernel file names (without extension) relative to installation root
+const std::string kernelFileName =
+    "matmul/matmul-bf16-f32-16384x16384X512-phx-v1";  // From AIE codegen
+
+// Kernel name inside the xclbin file
+const std::string KernelName =
+    "matmul_16384x16384_512xbf16__dispatch_0_matmul_1";
+
+// Fixed shape of the matmul kernel
+#define MLP_M 16384
+#define MLP_K 512
+#define MLP_N 16384
+
+// Types of the matmul LHS, RHS, and result, as defined by the kernel
+using A_DATATYPE = bfloat16_t;
+using B_DATATYPE = bfloat16_t;
+using C_DATATYPE = float;
+
+// Types of the matmul LHS, RHS, and result, as seen by the model
+using ModelLhsDType = bfloat16_t;
+using ModelRhsDType = bfloat16_t;
+using ModelReturnDType = float;
+
+// Set to 1 if the kernel requires a pre-initialized buffer to be loaded
+// into the kernel before the kernel runs
+#define KERNEL_REQUIRES_RESULT_PRELOAD 0
+
+//-----------------------------------------------------------------------------
+
+#elif DELEGATE_KERNEL_TO_USE == LARGE_MATMUL_DELEGATE_KERNEL
 // Kernel file names (without extension) relative to installation root
 const std::string kernelFileName = 
     "matmul/matmul-bf16-f32-8192x9728x2432-v1";  // From AIE codegen
@@ -191,9 +244,7 @@ Set DELEGATE_KERNEL_TO_USE to a supported kernel."
 class DelegateException : public std::runtime_error {
 public:
   DelegateException(const std::string &what) : std::runtime_error(what) {
-#ifdef TRACE_DELEGATE
-    std::cout << "[AIE Delegate Trace]: DelegateException: " << what << std::endl;
-#endif
+    TRACE_DELEGATE1("DelegateException: ", what);
   }
 };
 
@@ -556,9 +607,7 @@ struct Params {
 //
 
 std::vector<uint32_t> loadInstrSequence(std::string instr_path) {
-#ifdef TRACE_DELEGATE
-  std::cout << "[AIE Delegate Trace]: loadInstrSequence" << std::endl;
-#endif
+  TRACE_DELEGATE("loadInstrSequence");
   std::ifstream instrFile(instr_path);
   std::string line;
   std::vector<uint32_t> instrV;
@@ -572,10 +621,8 @@ std::vector<uint32_t> loadInstrSequence(std::string instr_path) {
     }
     instrV.push_back(a);
   }
-#ifdef TRACE_DELEGATE
-  std::cout << "[AIE Delegate Trace]: loadInstrSequence done" << std::endl;
-#endif
-    return instrV;
+  TRACE_DELEGATE("loadInstrSequence done");
+  return instrV;
 }
 
 // Holder of AIE hardware resources of which there should be only one of each.
@@ -624,154 +671,159 @@ int aie_matmuls_done = 0;
 int matmuls_done = 0;
 
 void setupNPUAccelerator() {
-#ifdef TRACE_DELEGATE
-  std::cout << "[AIE Delegate Trace]: setupNPUAccelerator" << std::endl;
-#endif
-    std::string libPath = getLibraryPath();
-    std::cout << "[AIE Delegate]: Using delegate installation at: " << libPath << std::endl;
-    std::string instrFilePath = libPath + "/kernels/" + kernelFileName + ".insts.txt";
-    std::vector<uint32_t> instrV = loadInstrSequence(instrFilePath);
-    instrSize = instrV.size();
-    if (instrSize == 0) {
-      std::ostringstream oss;
-        oss << "[AIE Delegate]: Couldn't load instructions from file " << instrFilePath << std::endl;
-        throw DelegateException(oss.str());
-    }
-    std::cout << "[AIE Delegate]: Sequence instr count: " << instrV.size() << "\n";
+  TRACE_DELEGATE("setupNPUAccelerator");
+  auto startTime = std::chrono::high_resolution_clock::now();
+  std::string libPath = getLibraryPath();
+  std::cout << "[AIE Delegate]: Using delegate installation at: " << libPath
+            << std::endl;
+  std::string instrFilePath =
+      libPath + "/kernels/" + kernelFileName + ".insts.txt";
+  std::vector<uint32_t> instrV = loadInstrSequence(instrFilePath);
+  instrSize = instrV.size();
+  if (instrSize == 0) {
+    std::ostringstream oss;
+    oss << "[AIE Delegate]: Couldn't load instructions from file "
+        << instrFilePath << std::endl;
+    throw DelegateException(oss.str());
+  }
+  std::cout << "[AIE Delegate]: Sequence instr count: " << instrV.size()
+            << "\n";
 
-    // Start the XRT test code
-    // Get a device handle
-    auto xrtState = XrtState::getInstance();
-    unsigned int deviceIndex = 0;
-#ifdef TRACE_DELEGATE
-  std::cout << "[AIE Delegate Trace]: setupNPUAccelerator get device" << std::endl;
-#endif
-    xrtState->device = xrt::device(deviceIndex);
+  // Start the XRT test code
+  // Get a device handle
+  auto xrtState = XrtState::getInstance();
+  unsigned int deviceIndex = 0;
+  TRACE_DELEGATE("setupNPUAccelerator get device");
+  xrtState->device = xrt::device(deviceIndex);
 
-    // Load the xclbin
-    std::string xclbinPath = libPath + "/kernels/" + kernelFileName + ".xclbin";
-#ifdef TRACE_DELEGATE
-  std::cout << "[AIE Delegate Trace]: setupNPUAccelerator get xclbin" << std::endl;
-#endif
-    auto xclbin = xrt::xclbin(xclbinPath);
+  // Load the xclbin
+  std::string xclbinPath = libPath + "/kernels/" + kernelFileName + ".xclbin";
+  TRACE_DELEGATE("setupNPUAccelerator get xclbin");
+  auto xclbin = xrt::xclbin(xclbinPath);
 
-    // Search in the xclbin for the kernel by its name
-#ifdef TRACE_DELEGATE
-  std::cout << "[AIE Delegate Trace]: setupNPUAccelerator get kernels" << std::endl;
-#endif
-    auto xkernels = xclbin.get_kernels();
-    std::vector<std::string> kernelNames;
-    auto foundIter = std::find_if(
-        xkernels.begin(), xkernels.end(),
-        [&](xrt::xclbin::kernel &k) {
-          auto name = k.get_name();
-          kernelNames.push_back(name);
-          return name.rfind(KernelName, 0) == 0;
-        }
-    );
+  // Search in the xclbin for the kernel by its name
+  TRACE_DELEGATE("setupNPUAccelerator get kernels");
+  auto xkernels = xclbin.get_kernels();
+  std::vector<std::string> kernelNames;
+  auto foundIter = std::find_if(xkernels.begin(), xkernels.end(),
+                                [&](xrt::xclbin::kernel &k) {
+                                  auto name = k.get_name();
+                                  kernelNames.push_back(name);
+                                  return name.rfind(KernelName, 0) == 0;
+                                });
 
-    // If the kernel name we're looking for doesn't exist, error out with a
-    // list of all the kernel names in the xclbin
-    if (foundIter == xkernels.end()) {
-      std::ostringstream oss;
-      oss << "[AIE Delegate] FATAL ERROR: No such kernel " << KernelName
-          << " in " << xclbinPath << ".  Possible kernel names are:"
-          << std::endl;
-      for (const std::string &kernelName : kernelNames)
-        oss << "    " << kernelName << std::endl;
-      throw DelegateException(oss.str());
-    }
+  // If the kernel name we're looking for doesn't exist, error out with a
+  // list of all the kernel names in the xclbin
+  if (foundIter == xkernels.end()) {
+    std::ostringstream oss;
+    oss << "[AIE Delegate] FATAL ERROR: No such kernel " << KernelName << " in "
+        << xclbinPath << ".  Possible kernel names are:" << std::endl;
+    for (const std::string &kernelName : kernelNames)
+      oss << "    " << kernelName << std::endl;
+    throw DelegateException(oss.str());
+  }
 
-    // Kernel name found in the xclbin: get the kernel
-    auto xkernel = *foundIter;
-    auto kernelName = xkernel.get_name();
+  // Kernel name found in the xclbin: get the kernel
+  auto xkernel = *foundIter;
+  auto kernelName = xkernel.get_name();
 
-    // Register the xclbin
-#ifdef TRACE_DELEGATE
-  std::cout << "[AIE Delegate Trace]: setupNPUAccelerator register xclbin" << std::endl;
-#endif
-    xrtState->device.register_xclbin(xclbin);
+  // Register the xclbin
+  TRACE_DELEGATE("setupNPUAccelerator register xclbin");
+  xrtState->device.register_xclbin(xclbin);
 
-    // Get a hardware context
-#ifdef TRACE_DELEGATE
-  std::cout << "[AIE Delegate Trace]: setupNPUAccelerator create context" << std::endl;
-#endif
-    xrt::hw_context context(xrtState->device, xclbin.get_uuid());
+  // Get a hardware context
+  TRACE_DELEGATE("setupNPUAccelerator create context");
+  xrt::hw_context context(xrtState->device, xclbin.get_uuid());
 
-    // Get a kernel handle
-#ifdef TRACE_DELEGATE
-  std::cout << "[AIE Delegate Trace]: setupNPUAccelerator create kernel" << std::endl;
-#endif
-    xrtState->kernel = xrt::kernel(context, kernelName);
- 
-#ifdef TRACE_DELEGATE
-  std::cout << "[AIE Delegate Trace]: setupNPUAccelerator create BOs" << std::endl;
-#endif
-    xrtState->boInstr = xrt::bo(xrtState->device, instrV.size() * sizeof(int),
-                           XCL_BO_FLAGS_CACHEABLE, xrtState->kernel.group_id(0));
+  // Get a kernel handle
+  TRACE_DELEGATE("setupNPUAccelerator create kernel");
+  xrtState->kernel = xrt::kernel(context, kernelName);
 
-    xrtState->lhsBinder = std::make_unique<XrtState::LhsBinder>(xrtState->device,
-        xrtState->kernel.group_id(2), aSize);
-    xrtState->rhsBinder = std::make_unique<XrtState::RhsBinder>(xrtState->device,
-        xrtState->kernel.group_id(3), bSize);
-    xrtState->resultBinder = std::make_unique<XrtState::ResultBinder>(xrtState->device,
-        xrtState->kernel.group_id(4), cSize);
+  TRACE_DELEGATE("setupNPUAccelerator create BOs");
+  xrtState->boInstr =
+      xrt::bo(xrtState->device, instrV.size() * sizeof(int),
+              XCL_BO_FLAGS_CACHEABLE, xrtState->kernel.group_id(0));
 
-    // copy instruction stream to NPU
-    void *bufInstr = xrtState->boInstr.map<void *>();
-    std::memcpy(bufInstr, instrV.data(), instrV.size() * sizeof(int));
-#ifdef TRACE_DELEGATE
-  std::cout << "[AIE Delegate Trace]: setupNPUAccelerator sync instruction BO" << std::endl;
-#endif
-    xrtState->boInstr.sync(XCL_BO_SYNC_BO_TO_DEVICE);
+  xrtState->lhsBinder = std::make_unique<XrtState::LhsBinder>(
+      xrtState->device, xrtState->kernel.group_id(2), aSize);
+  xrtState->rhsBinder = std::make_unique<XrtState::RhsBinder>(
+      xrtState->device, xrtState->kernel.group_id(3), bSize);
+  xrtState->resultBinder = std::make_unique<XrtState::ResultBinder>(
+      xrtState->device, xrtState->kernel.group_id(4), cSize);
 
-    std::cout << "[AIE Delegate]: NPU setup done." << std::endl;
-    
-    aie_setup = true;
-#ifdef TRACE_DELEGATE
-  std::cout << "[AIE Delegate Trace]: setupNPUAccelerator done" << std::endl;
-#endif
+  // copy instruction stream to NPU
+  void *bufInstr = xrtState->boInstr.map<void *>();
+  std::memcpy(bufInstr, instrV.data(), instrV.size() * sizeof(int));
+  TRACE_DELEGATE("setupNPUAccelerator sync instruction BO");
+  xrtState->boInstr.sync(XCL_BO_SYNC_BO_TO_DEVICE);
+
+  std::cout << "[AIE Delegate]: NPU setup done." << std::endl;
+
+  aie_setup = true;
+  auto endTime = std::chrono::high_resolution_clock::now();
+  auto duration =
+      std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime)
+          .count();
+  std::cout << "[AIE Delegate]: NPU setup time: " << duration << " ms"
+            << std::endl;
+  TRACE_DELEGATE("setupNPUAccelerator done");
 }
 
 void aie_matmul(Params *params) {
-    std::cout << "[AIE Delegate]: Computing AIE matmul of " << params->getShapeStr() << std::endl;
-    int cnt = 0;
-    auto xrtState = XrtState::getInstance();
+  TRACE_DELEGATE("aie_matmul");
+  std::cout << "[AIE Delegate]: Computing AIE matmul of "
+            << params->getShapeStr() << std::endl;
+  auto startTime = std::chrono::high_resolution_clock::now();
+  int cnt = 0;
+  auto xrtState = XrtState::getInstance();
 
 #ifdef DEBUG_VALUES
-    std::cout << "LHS Tensor" << std::endl;
-    params->lhs.dumpVals(std::cout, aVolume);
-    std::cout << "RHS Tensor" << std::endl;
-    params->rhs.dumpVals(std::cout, bVolume);
+  std::cout << "LHS Tensor" << std::endl;
+  params->lhs.dumpVals(std::cout, aVolume);
+  std::cout << "RHS Tensor" << std::endl;
+  params->rhs.dumpVals(std::cout, bVolume);
 #endif
 
-    // Set up binders to map HAL buffers to XRT buffers
-    xrtState->lhsBinder->bind(params->lhs.get(), aVolume);
-    xrtState->rhsBinder->bind(params->rhs.get(), bVolume);
-    xrtState->resultBinder->bind(params->result.get(), cVolume);
+  // Set up binders to map HAL buffers to XRT buffers
+  TRACE_DELEGATE("aie_matmul binder setup");
+  xrtState->lhsBinder->bind(params->lhs.get(), aVolume);
+  xrtState->rhsBinder->bind(params->rhs.get(), bVolume);
+  xrtState->resultBinder->bind(params->result.get(), cVolume);
 
-    // Copy inputs to kernel input BOs and sync the BOs
-    xrtState->lhsBinder->copyModelToXrt();
-    xrtState->rhsBinder->copyModelToXrt();
+  // Copy inputs to kernel input BOs and sync the BOs
+  TRACE_DELEGATE("aie_matmul copy inputs");
+  xrtState->lhsBinder->copyModelToXrt();
+  xrtState->rhsBinder->copyModelToXrt();
 
-    // copy output to XRT BO and sync it, if the kernel requires it
+  // copy output to XRT BO and sync it, if the kernel requires it
 #if KERNEL_REQUIRES_RESULT_PRELOAD
-    xrtState->resultBinder->copyModelToXrt();
+  xrtState->resultBinder->copyModelToXrt();
 #endif
 
-    // execute the kernel on NPU
-    auto run = xrtState->kernel(xrtState->boInstr, instrSize,
-        xrtState->lhsBinder->getBo(), xrtState->rhsBinder->getBo(),
-        xrtState->resultBinder->getBo());
-    run.wait();
+  // execute the kernel on NPU
+  TRACE_DELEGATE("aie_matmul run kernel");
+  auto run = xrtState->kernel(
+      xrtState->boInstr, instrSize, xrtState->lhsBinder->getBo(),
+      xrtState->rhsBinder->getBo(), xrtState->resultBinder->getBo());
+  TRACE_DELEGATE("aie_matmul wait");
+  run.wait();
 
-    // sync output to host and copy the data from the BO
-    xrtState->resultBinder->copyXrtToModel();
+  // sync output to host and copy the data from the BO
+  TRACE_DELEGATE("aie_matmul copy output");
+  xrtState->resultBinder->copyXrtToModel();
+
+  auto endTime = std::chrono::high_resolution_clock::now();
+  auto duration =
+      std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime)
+          .count();
+  std::cout << "[AIE Delegate]: Kernel execution time: " << duration << " ms"
+            << std::endl;
 
 #ifdef DEBUG_VALUES
-    std::cout << "Result Tensor" << std::endl;
-    params->result.dumpVals(std::cout, cVolume);
+  std::cout << "Result Tensor" << std::endl;
+  params->result.dumpVals(std::cout, cVolume);
 #endif
+  TRACE_DELEGATE("aie_matmul done");
 }
 
 //#############################################################################
@@ -849,9 +901,7 @@ static int mlp_external(void* params_ptr, void* context, void* reserved) {
   auto params = reinterpret_cast<Params *>(params_ptr);
   // fprintf(plugin->file, "[AIE Delegate]: M = %d, N = %d, K = %d\n", params->M,
   //         params->N, params->K);
-#ifdef TRACE_DELEGATE
-  std::cout << "[AIE Delegate Trace]: mlp_external" << std::endl;
-#endif
+  TRACE_DELEGATE("mlp_external");
 
 #ifdef USE_CPU_IMPLEMENTATION
   cpu_matmul(params);  // enable this if CPU fallback desired
@@ -871,9 +921,7 @@ static int mlp_external(void* params_ptr, void* context, void* reserved) {
 
   aie_matmul(params);
 #endif
-#ifdef TRACE_DELEGATE
-  std::cout << "[AIE Delegate Trace]: mlp_external done" << std::endl;
-#endif
+  TRACE_DELEGATE("mlp_external done");
   return 0;
 }
 
@@ -890,9 +938,7 @@ static iree_hal_executable_plugin_status_t mlp_plugin_load(
     const iree_hal_executable_plugin_environment_v0_t* environment,
     size_t param_count, const iree_hal_executable_plugin_string_pair_t* params,
     void** out_self) {
-#ifdef TRACE_DELEGATE
-  std::cout << "[AIE Delegate Trace]: mlp_plugin_load" << std::endl;
-#endif
+  TRACE_DELEGATE("mlp_plugin_load");
   // Allocate the plugin state.
   mlp_plugin_t* plugin = NULL;
   iree_hal_executable_plugin_status_t status =
@@ -912,9 +958,7 @@ static iree_hal_executable_plugin_status_t mlp_plugin_load(
 
   // Pass back the plugin instance that'll be passed to resolve.
   *out_self = plugin;
-#ifdef TRACE_DELEGATE
-  std::cout << "[AIE Delegate Trace]: mlp_plugin_load done" << std::endl;
-#endif
+  TRACE_DELEGATE("mlp_plugin_load done");
   return iree_hal_executable_plugin_ok_status();
 }
 
@@ -943,9 +987,7 @@ static void mlp_plugin_unload(void* self) {
 static iree_hal_executable_plugin_status_t mlp_plugin_resolve(
     void* self, const iree_hal_executable_plugin_resolve_params_v0_t* params,
     iree_hal_executable_plugin_resolution_t* out_resolution) {
-#ifdef TRACE_DELEGATE
-  std::cout << "[AIE Delegate Trace]: mlp_plugin_resolve" << std::endl;
-#endif
+  TRACE_DELEGATE("mlp_plugin_resolve");
   mlp_plugin_t* plugin = (mlp_plugin_t*)self;
   *out_resolution = 0;
   bool any_required_not_found = false;
@@ -968,9 +1010,7 @@ static iree_hal_executable_plugin_status_t mlp_plugin_resolve(
       }
     }
   }
-#ifdef TRACE_DELEGATE
-  std::cout << "[AIE Delegate Trace]: mlp_plugin_resolve done" << std::endl;
-#endif
+  TRACE_DELEGATE("mlp_plugin_resolve done");
   return any_required_not_found
              ? iree_hal_executable_plugin_status_from_code(
                    IREE_HAL_EXECUTABLE_PLUGIN_STATUS_NOT_FOUND)
