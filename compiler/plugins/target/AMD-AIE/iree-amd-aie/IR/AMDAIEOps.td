@@ -317,6 +317,45 @@ def AMDAIE_NpuDmaWaitOp: AMDAIE_Op<"npu.dma_wait", []> {
 // IREE AMDAIE LogicalObjectFifo Ops
 //===----------------------------------------------------------------------===//
 
+def AMDAIE_LogicalObjectFifoAcquire: 
+    AMDAIE_Op<"logicalobjectfifo.acquire", []> {
+  let summary = "Semaphore operation to acquire objects from a logical"
+                "objectfifo DMA operation.";
+  let description = [{
+    Acquires data objects from a logical objectfifo DMA operation, as specified
+    by `dma`, and blocks until these objects are available. This operation will
+    acquire for either read or write, depending on whether the `port` is set to
+    `Consume`, respectively `Produce`. The `size` argument specifies the number
+    of data objects to be acquired.
+
+    Example:
+    ```mlir
+      %2 = amdaie.dma_cpy_nd(
+        %1[%c0, %c0, %c0, %c0] [%c1, %c1, %c8, %c16] [%c128, %c128, %c16, %c1],
+        %0[%c0, %c0, %c0, %c0] [%c1, %c1, %c8, %c16] [%c128, %c16, %c16, %c1])
+        : (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>)
+      %3 = amdaie.logicalobjectfifo.acquire(%2, Consume) {size = 1 : i32}
+    ```
+
+    This operation acquires 1 data object from the `amdaie.dma_cpy_nd` operation
+    and will block until available.
+  }];
+
+  let arguments = (
+    ins Index:$dma,
+        LogicalObjectFifoPort:$port,
+        OptionalAttr<I32Attr>:$size
+  );
+
+  let assemblyFormat = [{
+    `(` $dma `,` $port `)` attr-dict
+  }];
+
+  let builders = [
+    OpBuilder<(ins "mlir::Value":$dma, "LogicalObjectFifoPort":$port)>,
+  ];
+}
+
 def AMDAIE_LogicalObjectFifoConsume: AMDAIE_Op<"logicalobjectfifo.consume", []> {
   let summary = "Consume a DMA logicalobjectfifo result.";
   let description = [{
@@ -349,6 +388,10 @@ def AMDAIE_LogicalObjectFifoConsume: AMDAIE_Op<"logicalobjectfifo.consume", []> 
     }
     Value getLogicalObjectfifo() {
       return dyn_cast<DmaCpyNdOp>(getDma().getDefiningOp()).getTarget();
+    }
+    // Return the port of this operation.
+    LogicalObjectFifoPort getPort() {
+      return LogicalObjectFifoPort::Consume;
     }
   }];
 }
@@ -445,7 +488,48 @@ def AMDAIE_LogicalObjectFifoProduce: AMDAIE_Op<"logicalobjectfifo.produce", []> 
     Value getLogicalObjectfifo() {
       return dyn_cast<DmaCpyNdOp>(getDma().getDefiningOp()).getSource();
     }
+    // Return the port of this operation.
+    LogicalObjectFifoPort getPort() {
+      return LogicalObjectFifoPort::Produce;
+    }
   }];
+}
+
+def AMDAIE_LogicalObjectFifoRelease: 
+    AMDAIE_Op<"logicalobjectfifo.release", []> {
+  let summary = "Semaphore operation to release objects from a logical"
+                "objectfifo DMA operation.";
+  let description = [{
+    Releases data objects from a logical objectfifo DMA operation, as specified
+    by `dma`. This operation will be releasing either a read or write operation,
+    depending on whether the `port` is set to `Consume`, respectively `Produce`.
+    The `size` argument specifies the number of data objects to be released.
+
+    Example:
+    ```mlir
+      %2 = amdaie.dma_cpy_nd(
+        %1[%c0, %c0, %c0, %c0] [%c1, %c1, %c8, %c16] [%c128, %c128, %c16, %c1],
+        %0[%c0, %c0, %c0, %c0] [%c1, %c1, %c8, %c16] [%c128, %c16, %c16, %c1])
+        : (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>)
+      %3 = amdaie.logicalobjectfifo.release(%2, Consume) {size = 1 : i32}
+    ```
+
+    This operation releases 1 data object from the `amdaie.dma_cpy_nd` operation.
+  }];
+
+  let arguments = (
+    ins Index:$dma,
+        LogicalObjectFifoPort:$port,
+        OptionalAttr<I32Attr>:$size
+  );
+
+  let assemblyFormat = [{
+    `(` $dma `,` $port `)`  attr-dict
+  }];
+
+  let builders = [
+    OpBuilder<(ins "mlir::Value":$dma, "LogicalObjectFifoPort":$port)>,
+  ];
 }
 
 class AMDAIE_DmaCpyNdBaseOp<string mnemonic, list<Trait> traits = []> :

@@ -67,6 +67,13 @@ def AMDAIECleanup :
       "mlir::iree_compiler::AMDAIE::createAMDAIECleanupPass()";
 }
 
+def AMDAIEConsumeProduceToAcquireRelease :
+    Pass<"iree-amdaie-consume-produce-to-acquire-release", ""> {
+  let summary = "Convert logical objectfifo consume/produce operation to "
+                "acquire/release semaphore operations.";
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEConsumeProduceToAcquireReleasePass()";
+}
+
 def AMDAIEControlCodeLoopUnroll :
     Pass<"iree-amdaie-controlcode-loop-unroll", ""> {
   let summary = "Unroll the loops in the control code regions.";
