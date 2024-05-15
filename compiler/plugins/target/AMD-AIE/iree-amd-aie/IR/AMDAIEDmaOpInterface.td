@@ -32,6 +32,10 @@ def DoublyStridedOpInterface : OpInterface<"DoublyStridedOpInterface"> {
       1. `offsets`, `sizes` and `strides` variadic operands for both source and target.
       2. `static_offsets`, resp. `static_sizes` and `static_strides` integer
           array attributes for both source and target.
+      3. `createDoublyStridedOp`, a utility to create a new doubly strided operation
+         from this one with new source and target `offsets`, `sizes` and `strides`. This
+         is useful for writing transformations that modify those operands and that can
+         work on all operations implementing this interface.
 
     The invariants of this interface are:
       1. `offsets`, `sizes` and `strides` have the same length.
