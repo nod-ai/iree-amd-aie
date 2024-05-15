@@ -8,6 +8,7 @@
 
 #include "air/Conversion/Passes.h"
 #include "air/Transform/Passes.h"
+#include "iree-amd-aie/IR/AMDAIEAttrs.h"
 #include "iree-dialects/Dialect/LinalgTransform/Passes.h"
 #include "iree/compiler/Codegen/Common/PassUtils.h"
 #include "iree/compiler/Codegen/Common/Passes.h"
@@ -76,9 +77,22 @@ void appendVectorizationToPipeline(OpPassManager &funcPassManager) {
 static FailureOr<Value> aieComprehensiveBufferizeAllocationFn(
     OpBuilder &builder, Location loc, MemRefType memRefType,
     ValueRange dynamicSizes, unsigned alignment) {
-  return builder
-      .create<memref::AllocaOp>(loc, memRefType, dynamicSizes,
-                                builder.getI64IntegerAttr(alignment))
+  int64_t numDims = memRefType.getShape().size();
+  AMDAIEMemSpace memSpace = AMDAIEMemSpace::Shared;
+  if (clUsePipeline == AIEPassPipeline::PadPackPipeline && numDims == 4) {
+    memSpace = AMDAIEMemSpace::Local;
+  } else if (clUsePipeline == AIEPassPipeline::PackPeelPipeline &&
+             numDims == 6) {
+    memSpace = AMDAIEMemSpace::Local;
+  }
+
+  OpBuilder::InsertionGuard g(builder);
+  auto memorySpaceAttr =
+      AMDAIEMemSpaceAttr::get(builder.getContext(), memSpace);
+  MemRefType allocType =
+      MemRefType::get(memRefType.getShape(), memRefType.getElementType(),
+                      AffineMap(), memorySpaceAttr);
+  return builder.create<memref::AllocOp>(loc, allocType, dynamicSizes)
       .getResult();
 }
 
@@ -137,12 +151,12 @@ void addPackPeelBasedPassPipeline(OpPassManager &funcPassManager,
         createAMDAIEBufferizeToAllocationPass(bufferizeOptions));
   }
 
-  // Promote the elementwise input and output to shared memory
+  // Promote the elementwise input to shared memory
   {
     AMDAIEBufferizeToAllocationOptions bufferizeOptions;
     bufferizeOptions.memorySpace = 1;
     bufferizeOptions.bufferizeElementwise = true;
-    bufferizeOptions.bufferizeOperand = BufferizeOperand::InputOutput;
+    bufferizeOptions.bufferizeOperand = BufferizeOperand::Input;
     funcPassManager.addPass(
         createAMDAIEBufferizeToAllocationPass(bufferizeOptions));
   }
@@ -163,16 +177,6 @@ void addPackPeelBasedPassPipeline(OpPassManager &funcPassManager,
   {
     AMDAIEBufferizeToAllocationOptions bufferizeOptions;
     bufferizeOptions.memorySpace = 2;
-    bufferizeOptions.bufferizeOperand = BufferizeOperand::Output;
-    funcPassManager.addPass(
-        createAMDAIEBufferizeToAllocationPass(bufferizeOptions));
-  }
-
-  // Promote the elementwise output to local memory
-  {
-    AMDAIEBufferizeToAllocationOptions bufferizeOptions;
-    bufferizeOptions.memorySpace = 2;
-    bufferizeOptions.bufferizeElementwise = true;
     bufferizeOptions.bufferizeOperand = BufferizeOperand::Output;
     funcPassManager.addPass(
         createAMDAIEBufferizeToAllocationPass(bufferizeOptions));
@@ -269,7 +273,7 @@ void addPackPeelBasedPassPipeline(OpPassManager &funcPassManager,
   }
   funcPassManager.addPass(createCanonicalizerPass());
 
-  // Promote the elementwise inputs to local memory
+  // Promote the elementwise input to local memory
   {
     AMDAIEBufferizeToAllocationOptions bufferizeOptions;
     bufferizeOptions.memorySpace = 2;
@@ -278,8 +282,6 @@ void addPackPeelBasedPassPipeline(OpPassManager &funcPassManager,
     funcPassManager.addPass(
         createAMDAIEBufferizeToAllocationPass(bufferizeOptions));
   }
-  funcPassManager.addPass(createHoistStaticallyBoundAllocationsPass());
-  funcPassManager.addPass(createCanonicalizerPass());
 
   // Lower to UKernels.
   {
@@ -293,6 +295,7 @@ void addPackPeelBasedPassPipeline(OpPassManager &funcPassManager,
   
   // Comprehensive bufferization
   addAMDAIEBufferizePasses(funcPassManager);
+  funcPassManager.addPass(createHoistStaticallyBoundAllocationsPass());
 }
 
 void addPadPackBasedPassPipeline(OpPassManager &funcPassManager,
