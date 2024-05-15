@@ -6,7 +6,6 @@
 
 #include "iree-amd-aie/Transforms/Passes.h"
 #include "mlir/Dialect/Linalg/Transforms/Transforms.h"
-#include "mlir/Dialect/SparseTensor/IR/SparseTensor.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
@@ -34,10 +33,6 @@ struct RemoveOutsDependency : public OpRewritePattern<linalg::GenericOp> {
         auto operandType = dyn_cast<RankedTensorType>(operandVal.getType());
         if (!operandType) continue;
 
-        // If outs is sparse, leave it to the sparsifier.
-        if (sparse_tensor::getSparseTensorEncoding(operandVal.getType()))
-          continue;
-
         // If outs is already an `empty` operation, nothing to do.
         auto definingOp = operandVal.getDefiningOp<tensor::EmptyOp>();
         if (definingOp) continue;
@@ -58,10 +53,6 @@ struct RemoveOutsDependency : public OpRewritePattern<linalg::GenericOp> {
   }
 };
 
-void populateElementwiseOpsFusionPatterns(RewritePatternSet &patterns) {
-  patterns.add<RemoveOutsDependency>(patterns.getContext());
-}
-
 class AMDAIEPropagateDataLayoutPass
     : public impl::AMDAIEPropagateDataLayoutBase<
           AMDAIEPropagateDataLayoutPass> {
@@ -81,7 +72,7 @@ void AMDAIEPropagateDataLayoutPass::runOnOperation() {
 
   linalg::populateDataLayoutPropagationPatterns(
       patterns, [](Operation *op) { return true; });
-  populateElementwiseOpsFusionPatterns(patterns);
+  patterns.add<RemoveOutsDependency>(context);
 
   if (failed(applyPatternsAndFoldGreedily(getOperation(), std::move(patterns))))
     return signalPassFailure();
