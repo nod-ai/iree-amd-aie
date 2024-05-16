@@ -151,8 +151,19 @@ FailureOr<ParameterSetting> ParameterSetting::create(linalg::LinalgOp linalgOp,
   const uint64_t N = initShape[1];
   const uint64_t K = lhsShape[1];
 
+  // If we are conservative with ensuring that tiles A, B, and C fit at the
+  // different memory levels, we should choose the scale factor based
+  // on the largest of the types of A, B, and C, which is the type of C, as
+  // accumulation always happens in an element type with at least as may bits as
+  // the operand types. We currently choose the scale factor based on the
+  // element type of the lhs operand, which works with the current workloads (we
+  // have not seen OOM errors).
+  //
+  // Long-term we should use a different approach, one which takes into account
+  // the element types of all tensors which need to be allocated in memory
+  // simultaneously.
   FailureOr<unsigned> maybeScaleFactor =
-      getTilingScaleFactor(initType.getElementType());
+      getTilingScaleFactor(lhsType.getElementType());
   if (failed(maybeScaleFactor)) {
     return linalgOp.emitOpError(
         "does not have the expected bitwidth (64, 32, 16, or 8), could not "
@@ -213,6 +224,41 @@ FailureOr<ParameterSetting> ParameterSetting::create(linalg::LinalgOp linalgOp,
     auto maxL0Size = 64 * scaleFactor;
     uint32_t M0 = findLargestFactor(M, maxL0Size, M1);
     uint32_t N0 = findLargestFactor(N, maxL0Size, N1);
+
+    // Step 3 (currently only for pad-pack pipeline): We assume a 4x4 AIE array.
+    // We would like to make use of all the cores. Ideally we'll send 4 distinct
+    // horizontal slices of 'A' and 4 distinct vertical slices of 'B' to the AIE
+    // array. We check if the tiling is only by a factor of 2, in which case
+    // halve the core tiling size so that it divides the memory tile by 4.
+    // TODO(newling) in the case of M1:M0 = 1:1 there is a compilation error, so
+    // currently only handling the case M1:M0 = 1:2
+    //
+    // This function either returns coreTile or coreTile/2.
+    //
+    // It returns coreTile/2 if
+    //
+    //  1. coreTile is exactly 2x smaller than memTile, and
+    //  2. coreTile is divisible by 2, and
+    //  3. coreTile is divisible by pack.
+    //
+    // Otherwise, it returns coreTile.
+    auto downScale = [](uint32_t pack, uint64_t memTile, uint64_t coreTile) {
+      // If coreTile is not exactly 2x smaller than memTile, return coreTile
+      // (don't downscale).
+      if (memTile / coreTile != 2) return coreTile;
+      if (memTile % coreTile != 0) return coreTile;
+
+      // If coreTile cannot be divided by 2, return coreTile (don't downscale).
+      if (coreTile % 2 != 0) return coreTile;
+
+      // The core tile size must still be a multiple of the packing size.
+      auto reduced = coreTile / 2;
+      if (reduced % pack != 0) return coreTile;
+
+      return reduced;
+    };
+    M1 = downScale(m1Pack, M0, M1);
+    N1 = downScale(n1Pack, N0, N1);
 
     uint32_t K1 = findLargestFactor(K / k1Pack, 2 * scaleFactor);
     uint32_t K0 = findLargestFactor(K, 256, k1Pack * K1);
