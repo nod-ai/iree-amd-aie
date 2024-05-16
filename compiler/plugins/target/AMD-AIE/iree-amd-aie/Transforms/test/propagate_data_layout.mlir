@@ -86,10 +86,10 @@ func.func @matmul_elementwise_1024x1024x512_i8xi8xi32(%arg0: tensor<1024x512xi8>
 // CHECK-LABEL: matmul_elementwise_1024x1024x512_i8xi8xi32
 //       CHECK: %[[PACK_0:.*]] = tensor.pack {{.*}} : tensor<64x512xi8> -> tensor<1x16x64x32xi8>
 //       CHECK: %[[PACK_1:.*]] = tensor.pack {{.*}} : tensor<512x64xi8> -> tensor<16x1x32x64xi8>
+//       CHECK: %[[EMPTY:.*]] = tensor.empty() : tensor<1x1x64x64xi32>
 //       CHECK: %[[FILL:.*]] = linalg.fill {{.*}} -> tensor<1x1x64x64xi32>
 //       CHECK: %[[MATMUL:.*]] = linalg.generic {{.*}} ins(%[[PACK_0]], %[[PACK_1]] : tensor<1x16x64x32xi8>, tensor<16x1x32x64xi8>) outs(%[[FILL]] : tensor<1x1x64x64xi32>)
 //   CHECK-NOT: tensor.unpack
 //       CHECK: %[[PACK_2:.*]] = tensor.pack {{.*}} : tensor<64x64xi32> -> tensor<1x1x64x64xi32>
-//       CHECK: %[[PACK_3:.*]] = tensor.pack {{.*}} : tensor<64x64xi32> -> tensor<1x1x64x64xi32>
-//       CHECK: %[[ELEMENT:.*]] = linalg.generic {{.*}} ins(%[[MATMUL]], %[[PACK_3]] : tensor<1x1x64x64xi32>, tensor<1x1x64x64xi32>) outs(%[[PACK_2]] : tensor<1x1x64x64xi32>)
+//       CHECK: %[[ELEMENT:.*]] = linalg.generic {{.*}} ins(%[[MATMUL]], %[[PACK_2]] : tensor<1x1x64x64xi32>, tensor<1x1x64x64xi32>) outs(%[[EMPTY]] : tensor<1x1x64x64xi32>)
 //       CHECK: %[[UNPACK:.*]] = tensor.unpack %[[ELEMENT:.*]] {{.*}} :  tensor<1x1x64x64xi32> -> tensor<64x64xi32>
