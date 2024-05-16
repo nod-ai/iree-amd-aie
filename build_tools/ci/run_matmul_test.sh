@@ -667,12 +667,6 @@ run_matmul_test \
     --compile-only "1"
 
 ###################################################################
-<<<<<<< HEAD
-=======
-
-
-
->>>>>>> ed6d5eb (squash)
 
 run_matmul_test \
     --name_prefix "packPeelLarge" \
