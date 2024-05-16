@@ -88,23 +88,14 @@
 #endif
 
 #ifdef ENABLE_TRACE_DELEGATE
-#define TRACE_DELEGATE(str_)                                      \
-  do {                                                            \
-    std::cout << "[AIE Delegate Trace]: " << (str_) << std::endl; \
-  } while (0)
-#define TRACE_DELEGATE1(str_, arg1_)                                         \
-  do {                                                                       \
-    std::cout << "[AIE Delegate Trace]: " << (str_) << (arg1_) << std::endl; \
-  } while (0)
-#else
 #define TRACE_DELEGATE(str_) \
-  do {                       \
-    ;                        \
-  } while (0)
+  std::cout << "[AIE Delegate Trace]: " << (str_) << std::endl
+
 #define TRACE_DELEGATE1(str_, arg1_) \
-  do {                               \
-    ;                                \
-  } while (0)
+  std::cout << "[AIE Delegate Trace]: " << (str_) << (arg1_) << std::endl
+#else
+#define TRACE_DELEGATE(str_)
+#define TRACE_DELEGATE1(str_, arg1_)
 #endif
 
   // Fake bfloat16 type (assuming no C++ 23)
