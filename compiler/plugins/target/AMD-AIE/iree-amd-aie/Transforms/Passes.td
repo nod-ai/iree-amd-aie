@@ -86,6 +86,12 @@ def AMDAIECreateAIEWorkgroup :
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIECreateAIEWorkgroupPass()";
 }
 
+def AMDAIECreateLogicalObjectFifoLink :
+  Pass<"iree-amdaie-create-logical-objectfifo-link", ""> {
+  let summary = "Create logical objectfifo link operations, explicitly linking inputs and outputs.";
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIECreateLogicalObjectFifoLinkPass()";
+}
+
 def AMDAIEDecomposeLinalgExtPackUnPackToAIR :
     Pass<"iree-amdaie-decompose-pack-unpack-to-air", ""> {
   let summary = "Decompose LinalgExt pack/unpack ops into patterns compatible to AIR.";
