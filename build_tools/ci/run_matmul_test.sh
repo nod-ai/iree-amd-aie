@@ -616,21 +616,39 @@ run_matmul_test \
     --acc_type "i32" \
     --m "64"  --n "64" --k "128"
 
-
-# We're seeing intermittent numerical errors in these 3 tests, 
-# needs investigation. TODO(newling/yzhang93): Add more info. 
+# We're seeing intermittent numerical errors in these 3 tests,
+# needs investigation. TODO(newling/yzhang93): Add more info.
 # Appears to be only pack-peel pipeline with bf16->f32.
 # Using 'compile-only' flag to avoid running the numerical test.
-# ################################################################
+#################################################################
 
+
+# TODO: compilation error with the below test.
+#
+# error: 'aie.dma_bd' op Cannot give more than 3 dimensions for step sizes and wraps in this  tile (got 4 dimensions).
+#
+# The config generated with the current strategy is:
+#
+# packing_config = #amdaie.packing_config<packing_config =
+#   [{packedSizes = [64, 64, 64],
+#     transposePackIndices = [1],
+#     unpackEmpty = [false],
+#     innerPerm = [[1, 0]],
+#     outerPerm = [[0, 1]]},
+#     {
+#       packedSizes = [0, 0, 0, 4, 4, 8],
+#       transposePackIndices = [0, 1, 2],
+#       unpackEmpty = [false, false, true],
+#       innerPerm = [[0, 1], [1, 0], [0, 1]],
+#       outerPerm = [[0, 1, 3, 2], [0, 1, 3, 2], [0, 1, 3, 2]]}]>
+#     }
 run_matmul_test \
     --name_prefix "packPeel" \
     --pipeline "pack-peel" \
     --lhs_rhs_type "bf16" \
     --acc_type "f32" \
     --m "64"  --n "64" --k "128" \
-    --compile-only "1"
-
+    --expect-compile-failure "1" \
 
 run_matmul_test \
     --name_prefix "packPeelLarge" \
@@ -649,6 +667,12 @@ run_matmul_test \
     --compile-only "1"
 
 ###################################################################
+<<<<<<< HEAD
+=======
+
+
+
+>>>>>>> ed6d5eb (squash)
 
 run_matmul_test \
     --name_prefix "packPeelLarge" \
