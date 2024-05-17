@@ -59,6 +59,10 @@ std::unique_ptr<Pass> createAMDAIEControlCodeLoopUnrollPass();
 /// Pass to create a single AIE workgroup.
 std::unique_ptr<Pass> createAMDAIECreateAIEWorkgroupPass();
 
+/// Pass to create logical objectfifo link operations, explicitly linking inputs
+/// and outputs.
+std::unique_ptr<Pass> createAMDAIECreateLogicalObjectFifoLinkPass();
+
 /// Create a pass to vectorize operations.
 std::unique_ptr<Pass> createAMDAIEVectorizationPass();
 
