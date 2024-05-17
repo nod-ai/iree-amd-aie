@@ -62,6 +62,7 @@ iree_cc_library(
     "AMDAIEInsertAIEWorkgroup.cpp"
     "AMDAIEInsertLoopsForVectorization.cpp"
     "AMDAIELowerExecutableTarget.cpp"
+    "AMDAIELowerToAIE.cpp"
     "AMDAIELowerToUKernels.cpp"
     "AMDAIELowerWorkgroupCount.cpp"
     "AMDAIEMapForallToCores.cpp"

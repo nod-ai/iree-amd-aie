@@ -216,6 +216,12 @@ def AMDAIELoweringStrategy :
   ];
 }
 
+def AMDAIELowerToAIE :
+    Pass<"iree-amdaie-lower-to-aie", "ModuleOp"> {
+  let summary = "Lower from the AMDAIE dialect to the AIE/AIEX dialects";
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIELowerToAIEPass()";
+}
+
 def AMDAIELowerToUKernels :
     Pass<"iree-amdaie-lower-to-ukernels", ""> {
   let summary =

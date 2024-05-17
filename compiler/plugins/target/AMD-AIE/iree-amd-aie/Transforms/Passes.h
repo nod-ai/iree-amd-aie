@@ -110,6 +110,9 @@ createAMDAIELowerExecutableTargetPass(
 std::unique_ptr<OperationPass<ModuleOp>> createAMDAIELoweringStrategyPass(
     AMDAIELoweringStrategyOptions options = {});
 
+/// Create pass to lower from the AMDAIE dialect to the AIE/AIEX dialects.
+std::unique_ptr<Pass> createAMDAIELowerToAIEPass();
+
 /// Create pass to lower a sequence of operation(s) to a iree_codegen.ukernel.*
 /// operation.
 std::unique_ptr<Pass> createAMDAIELowerToUKernelsPass(
