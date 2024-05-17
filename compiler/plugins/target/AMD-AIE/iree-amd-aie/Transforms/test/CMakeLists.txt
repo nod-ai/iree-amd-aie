@@ -16,6 +16,7 @@ iree_lit_test_suite(
     "consume_produce_to_acquire_release.mlir"
     "controlcode_loop_unrolling.mlir"
     "create_aie_workgroup.mlir"
+    "create_logical_objectfifo_link.mlir"
     "disable_vectorization.mlir"
     "dma_to_circular_dma.mlir"
     "fuse_consumer_into_loop.mlir"

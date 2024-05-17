@@ -17,6 +17,13 @@ namespace mlir::iree_compiler::AMDAIE {
 LogicalResult controlCodeLoopUnroll(RewriterBase &rewriter,
                                     AMDAIE::ControlCodeOp controlCodeOp);
 
+/// Utility to create explicit logical objectfifo link operations, linking input
+/// and output copy operations. This is useful for conversion to the AIE dialect
+/// as that one relies on explicit link operations.
+LogicalResult createLogicalObjectFifoLink(
+    RewriterBase &rewriter,
+    AMDAIE::LogicalObjectFifoFromMemrefOp logicalObjectFifo);
+
 /// Hoist an affine apply op on a scf.for op's induction variable
 /// TODO(jornt): Can we generalize this to go into upstream?
 LogicalResult hoistForAffineApplyOp(RewriterBase &rewriter,

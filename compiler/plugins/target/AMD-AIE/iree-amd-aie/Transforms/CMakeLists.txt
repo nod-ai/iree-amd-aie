@@ -51,6 +51,7 @@ iree_cc_library(
     "AMDAIEConsumeProduceToAcquireRelease.cpp"
     "AMDAIEControlCodeLoopUnroll.cpp"
     "AMDAIECreateAIEWorkgroup.cpp"
+    "AMDAIECreateLogicalObjectFifoLink.cpp"
     "AMDAIEDmaToCircularDma.cpp"
     "AMDAIEDmaUtils.cpp"
     "AMDAIEFuseConsumerIntoLoop.cpp"
