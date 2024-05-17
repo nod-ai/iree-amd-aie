@@ -368,7 +368,8 @@ LogicalResult LogicalObjectFifoFromMemrefOp::canonicalize(
   llvm::sort(tiles.begin(), tiles.end(), comparator);
   rewriter.replaceOpWithNewOp<AMDAIE::LogicalObjectFifoFromMemrefOp>(
       logicalObjectFifo,
-      logicalObjectFifo.getOutput().getType().cast<LogicalObjectFifoType>(),
+      llvm::cast<LogicalObjectFifoType>(
+          logicalObjectFifo.getOutput().getType()),
       logicalObjectFifo.getMemref(), tiles);
   return success();
 }

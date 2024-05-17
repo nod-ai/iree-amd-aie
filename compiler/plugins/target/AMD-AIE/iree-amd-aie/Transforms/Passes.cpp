@@ -548,7 +548,7 @@ void addMLIRAIRAIELoweringPasses(OpPassManager &passManager, bool packPeel) {
     xilinx::air::AIRToAIEOptions options;
     options.clRowOffset = 2;
     options.clColOffset = 0;
-    options.clDevice = "npu";
+    options.clDevice = "npu1_4col";
     options.clEmitWhileLoop = true;
     passManager.addPass(xilinx::air::createAIRToAIEPass(options));
   }
