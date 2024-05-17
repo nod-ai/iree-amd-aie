@@ -11,7 +11,7 @@ func.func @matmul_i8_i32(%lhs: tensor<1024x512xi8>, %rhs: tensor<512x1024xi8>) -
 }
 
 // CHECK-LABEL: hal.executable.export public @matmul_i8_i32_dispatch_0_matmul_1024x1024x512_i8xi8xi32
-//       CHECK:    aie.device(npu)
+//       CHECK:    aie.device(npu1_4col)
 //       CHECK:    aie.shim_dma_allocation
 //       CHECK:    aie.shim_dma_allocation
 //       CHECK:    aie.shim_dma_allocation
@@ -34,7 +34,7 @@ func.func @matmul_bf16(%lhs: tensor<512x1024xbf16>, %rhs: tensor<1024x512xbf16>)
 }
 
 // CHECK-LABEL: hal.executable.export public @matmul_bf16_dispatch_0_matmul_512x512x1024_bf16
-//       CHECK:    aie.device(npu)
+//       CHECK:    aie.device(npu1_4col)
 //       CHECK:    aie.shim_dma_allocation
 //       CHECK:    aie.shim_dma_allocation
 //       CHECK:    aie.shim_dma_allocation
@@ -56,7 +56,7 @@ func.func @matmul_bf16_large(%arg0: tensor<308x9728xbf16>, %arg1: tensor<9728x24
 
 
 // CHECK-LABEL: hal.executable.export public @matmul_bf16_large_dispatch_0_matmul_308x2432x9728_bf16
-//       CHECK:    aie.device(npu)
+//       CHECK:    aie.device(npu1_4col)
 //       CHECK:    aie.shim_dma_allocation
 //       CHECK:    aie.shim_dma_allocation
 //       CHECK:    aie.shim_dma_allocation
