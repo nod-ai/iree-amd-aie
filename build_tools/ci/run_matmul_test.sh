@@ -110,6 +110,8 @@ fi
 # Parameter 5) <xrt-dir>
 if [ -z "${5-}" ]; then
   print "Using XRT built and installed in this run."
+  # The parent of IREE_INSTALL_DIR
+  IREE_PARENT_DIR=$(dirname ${IREE_INSTALL_DIR})
   # Print the sub-directories of IREE_PARENT_DIR (for CI debug info):
   print "The sub-directories of ${IREE_PARENT_DIR} are:"
   ls -l ${IREE_PARENT_DIR}
