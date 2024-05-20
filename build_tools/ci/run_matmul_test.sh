@@ -109,7 +109,15 @@ fi
 
 # Parameter 5) <xrt-dir>
 if [ -z "${5-}" ]; then
-  XRT_DIR=/opt/xilinx/xrt
+  print "Using XRT built and installed in this run."
+  # Print the sub-directories of IREE_PARENT_DIR (for CI debug info):
+  print "The sub-directories of ${IREE_PARENT_DIR} are:"
+  ls -l ${IREE_PARENT_DIR}
+  XRT_DIR=${IREE_PARENT_DIR}/xrt-install
+  if [ ! -d "${XRT_DIR}" ]; then
+    echo "No directory '${XRT_DIR}' found."
+    exit 1
+  fi
 else
   XRT_DIR=`realpath "$5"`
 fi
