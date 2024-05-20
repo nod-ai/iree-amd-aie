@@ -110,7 +110,7 @@ fi
 # Parameter 5) <xrt-dir>
 if [ -z "${5-}" ]; then
   echo "Using XRT built and installed in this run."
-  XRT_DIR=${IREE_INSTALL_DIR}/opt/xilinx
+  XRT_DIR=${IREE_INSTALL_DIR}/opt/xilinx/xrt
   if [ ! -d "${XRT_DIR}" ]; then
     echo "No directory '${XRT_DIR}' found."
     exit 1
