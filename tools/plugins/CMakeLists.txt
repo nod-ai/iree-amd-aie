@@ -27,6 +27,7 @@ iree_cc_binary(
   DEPS
     iree::compiler::Dialect::HAL::IR::HALDialect
     iree::compiler::Dialect::LinalgExt::IR
+    iree::compiler::Dialect::LinalgExt::Transforms
     iree::compiler::Dialect::Stream::IR
     iree::target::amd-aie::Translation::AIESerializer
     MLIRGPUDialect
