@@ -38,6 +38,7 @@ ccache -z
 # Build XRT.
 XRT_BUILD_DIR=$repo_root/xrt-build
 XRT_INSTALL_DIR=$repo_root/xrt-install
+echo "The XRT install directory is set to $XRT_INSTALL_DIR"
 $this_dir/build_xrt.sh $XRT_BUILD_DIR $XRT_INSTALL_DIR
 
 echo "Building IREE"
