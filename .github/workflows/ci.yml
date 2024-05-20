@@ -55,11 +55,13 @@ jobs:
         if: ${{ !cancelled() }}
         run: |
           # TODO: https://github.com/openxla/iree/issues/16230
-          # We should not be packaging clang and llvm-link in the default dist
-          # installs.
-          rm -f iree-install/bin/clang*
-          rm -f iree-install/bin/llvm-link*
-          tar cf iree-dist.tar -C iree-install . -C ../iree-build tools/testing/e2e/iree-e2e-matmul-test
+          # We should not be packaging clang and llvm-link in the default 
+          # dist installs.
+          rm -f iree-install/bin/clang* iree-install/bin/llvm-link*
+          tar cf iree-dist.tar \
+            -C iree-install . \
+            -C ../iree-build tools/testing/e2e/iree-e2e-matmul-test \
+            -C ../xrt-install .
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
