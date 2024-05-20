@@ -224,25 +224,23 @@ LogicalResult AIETargetBackend::serializeExecutable(
   addOpt("--print-ir-module-scope", options.aie2xclbinPrintIrModuleScope);
   addOpt("--timing", options.aie2xclbinTiming);
 
-  SmallVector<StringRef> cmdEnv{};
+  SmallVector<std::string> cmdEnv{};
   if (options.useChess) {
     std::string newVitis = "VITIS=" + options.vitisInstallDir;
     cmdEnv.push_back(newVitis);
   }
-  const char *originalPath = ::getenv("PATH");
-  std::string newPath;
-  if (originalPath != nullptr) {
-    newPath = originalPath;
-    newPath = "PATH=" + newPath;
+
+  if (const char *originalPath = ::getenv("PATH")) {
+    std::string newPath = "PATH=" + std::string(originalPath);
     cmdEnv.push_back(newPath);
   }
+
   // Chess (if used) will look here for the AIEbuild license.
-  const char *originalHome = ::getenv("HOME");
-  std::string newHome;
-  if (originalHome != nullptr) {
-    newHome = std::string("HOME=") + originalHome;
+  if (const char *originalHome = ::getenv("HOME")) {
+    std::string newHome = std::string("HOME=") + std::string(originalHome);
     cmdEnv.push_back(newHome);
   }
+
   if (options.showInvokedCommands) {
     for (auto s : cmdEnv) llvm::dbgs() << s << " ";
     for (auto s : cmdArgs) llvm::dbgs() << s << " ";
@@ -250,7 +248,8 @@ LogicalResult AIETargetBackend::serializeExecutable(
   }
 
   {
-    int result = llvm::sys::ExecuteAndWait(cmdArgs[0], cmdArgs, cmdEnv);
+    SmallVector<StringRef> cmdEnvRefs{cmdEnv.begin(), cmdEnv.end()};
+    int result = llvm::sys::ExecuteAndWait(cmdArgs[0], cmdArgs, cmdEnvRefs);
     if (result != 0)
       return moduleOp.emitOpError(
           "Failed to produce an XCLBin with external tool.");
