@@ -99,7 +99,7 @@ module attributes { transform.with_named_sequence } {
 
     // Tile reduction dimension.
     %tiled_reduction, %loop =
-      transform.structured.tile_using_for %padded_1 [0, 0, 4]
+      transform.structured.tile_using_for %padded_1 tile_sizes [0, 0, 4]
       : (!transform.any_op) -> (!transform.any_op, !transform.any_op)
 
     // Clean up.

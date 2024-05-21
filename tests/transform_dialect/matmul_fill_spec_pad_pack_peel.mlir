@@ -48,7 +48,7 @@ module attributes { transform.with_named_sequence } {
 
     // First level for loop.
     %tiled_reduction, %for_loop =
-      transform.structured.tile_using_for %tiled_matmul [0, 0, 256]
+      transform.structured.tile_using_for %tiled_matmul tile_sizes [0, 0, 256]
       : (!transform.any_op) -> (!transform.any_op, !transform.op<"scf.for">)
 
     // Pad operation.
@@ -117,7 +117,7 @@ module attributes { transform.with_named_sequence } {
 
     // Second level for loop.
     %tiled_reduction_1, %for_loop_1 =
-      transform.structured.tile_using_for %packed_c [0, 0, 4]
+      transform.structured.tile_using_for %packed_c tile_sizes [0, 0, 4]
       : (!transform.any_op) -> (!transform.any_op, !transform.any_op)
 
     // Fuse pack ops into the for loop.

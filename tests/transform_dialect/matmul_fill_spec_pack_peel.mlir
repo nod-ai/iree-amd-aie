@@ -100,7 +100,7 @@ module attributes { transform.with_named_sequence } {
 
     // First level for loop.
     %first_level_tiled_reduction_matmul, %outer_for_loop =
-      transform.structured.tile_using_for %l1_packed_matmul [0, 0, 1]
+      transform.structured.tile_using_for %l1_packed_matmul tile_sizes [0, 0, 1]
       : (!transform.any_op) -> (!transform.any_op, !transform.any_op)
 
     // Fuse the pack operations in the outer for loop.
@@ -134,7 +134,7 @@ module attributes { transform.with_named_sequence } {
     // Second level for loop.
     %generic_op1 = transform.structured.match ops{["linalg.generic"]} in %variant_op : (!transform.any_op) -> !transform.any_op
     %second_level_tiled_reduction_matmul, %inner_for_loop =
-      transform.structured.tile_using_for %generic_op1 [0, 0, 0, 0, 0, 4]
+      transform.structured.tile_using_for %generic_op1 tile_sizes [0, 0, 0, 0, 0, 4]
       : (!transform.any_op) -> (!transform.any_op, !transform.any_op)
 
     // Fuse the pack operations in inner for loop.

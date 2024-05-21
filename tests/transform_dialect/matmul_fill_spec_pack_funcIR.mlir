@@ -48,7 +48,7 @@ module attributes { transform.with_named_sequence } {
 
     // Tile reduction dimension.
     %tiled_reduction, %loop =
-      transform.structured.tile_using_for %tiled_matmul [0, 0, 64]
+      transform.structured.tile_using_for %tiled_matmul tile_sizes [0, 0, 64]
       : (!transform.any_op) -> (!transform.any_op, !transform.op<"scf.for">)
 
     // Pack by applying data tiling, and the linalg.matmul becomes linalg.generic.

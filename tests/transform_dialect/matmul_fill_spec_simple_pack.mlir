@@ -115,7 +115,7 @@ module attributes { transform.with_named_sequence } {
 
     // Tile reduction dimension.
     %tiled_reduction, %loop =
-      transform.structured.tile_using_for %packed_c[0, 0, 0, 0, 0, 4]
+      transform.structured.tile_using_for %packed_c tile_sizes [0, 0, 0, 0, 0, 4]
       : (!transform.any_op) -> (!transform.any_op, !transform.any_op)
 
     // Find the for op and fuse the pack ops into the loop.
