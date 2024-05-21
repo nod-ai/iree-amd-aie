@@ -80,7 +80,7 @@
 
 // Turn this on to enable running the kernel.  Disabling the kernel is for
 // testing and debugging only.
-// #define ENABLE_KERNEL_RUN 1
+#define ENABLE_KERNEL_RUN 1
 
 //#############################################################################
 
@@ -744,6 +744,8 @@ struct XrtState {
 
 // Sets up XRT to use the specified kernel, if not already done
 void setupNPUAccelerator(const KernelInfo &kernelInfo) {
+  static std::string libPath;  // Location of delegate .so/.dll
+
   TRACE_DELEGATE("setupNPUAccelerator");
   auto startTime = std::chrono::high_resolution_clock::now();
 
@@ -756,10 +758,15 @@ void setupNPUAccelerator(const KernelInfo &kernelInfo) {
     return;
   }
 
+  // Determine the path to the kernel files from the .so/.dll.  Only needs
+  // to be done once, as the files don't change location.
+  if (libPath.empty()) {
+    libPath = getLibraryPath();
+    std::cout << "[AIE Delegate]: Using delegate installation at: " << libPath
+              << std::endl;
+  }
+
   // Load the instruction sequence from its file
-  std::string libPath = getLibraryPath();
-  std::cout << "[AIE Delegate]: Using delegate installation at: " << libPath
-            << std::endl;
   std::string instrFilePath =
       libPath + "/kernels/" + kernelInfo.kernelFileName + ".insts.txt";
   std::vector<uint32_t> instrV = loadInstrSequence(instrFilePath);
