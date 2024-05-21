@@ -141,7 +141,7 @@ module attributes { transform.with_named_sequence } {
       //  N H W C K h w ===> 3 loops for K, h, w are inserted.
 
     %tiled_reduction, %loop0, %loop1, %loop2  =
-      transform.structured.tile_using_for %padded_1 [0,0,0,0,8,1,1]
+      transform.structured.tile_using_for %padded_1 tile_sizes [0,0,0,0,8,1,1]
       : (!any) -> (!any, !any, !any, !any)
 
     transform.include @replace_conv2d_with_conv1d failures(propagate)
