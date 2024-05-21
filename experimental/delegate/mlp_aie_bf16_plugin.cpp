@@ -893,10 +893,12 @@ void aie_matmul(const KernelInfo &kernelInfo, Params *params) {
   TRACE_DELEGATE1("aie_matmul LHS volume: ", kernelInfo.getLhsVolume());
   TRACE_DELEGATE1("aie_matmul RHS volume: ", kernelInfo.getRhsVolume());
   TRACE_DELEGATE1("aie_matmul Result volume: ", kernelInfo.getResultVolume());
+  auto bufferStartTime = std::chrono::high_resolution_clock::now();
   xrtState->lhsBinder->bind(params->lhs.get(), kernelInfo.getLhsVolume());
   xrtState->rhsBinder->bind(params->rhs.get(), kernelInfo.getRhsVolume());
   xrtState->resultBinder->bind(params->result.get(),
                                kernelInfo.getResultVolume());
+  auto bufferEndTime = std::chrono::high_resolution_clock::now();
 
   // Copy inputs to kernel input BOs and sync the BOs
   TRACE_DELEGATE("aie_matmul copy inputs");
@@ -932,6 +934,11 @@ void aie_matmul(const KernelInfo &kernelInfo, Params *params) {
 
   // Collect and display performance metrics
   auto endTime = std::chrono::high_resolution_clock::now();
+  auto bufferDuration = std::chrono::duration_cast<std::chrono::milliseconds>(
+                            bufferEndTime - copyInStartTime)
+                            .count();
+  std::cout << "[AIE Delegate]: NPU buffer creation time: " << bufferDuration
+            << " ms" << std::endl;
   auto copyInDuration = std::chrono::duration_cast<std::chrono::milliseconds>(
                             copyInEndTime - copyInStartTime)
                             .count();
