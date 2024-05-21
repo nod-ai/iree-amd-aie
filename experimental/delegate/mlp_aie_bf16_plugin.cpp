@@ -78,13 +78,17 @@
 // being done
 // #define ENABLE_PERFORMANCE_WARNING 1
 
+// Turn this on to enable running the kernel.  Disabling the kernel is for
+// testing and debugging only.
+#define ENABLE_KERNEL_RUN 1
+
 //#############################################################################
 
 #if DEBUG_VALUE_CONVERSIONS
-  static bool DebugValueConversions = false;
-  #define CONVERSION_DEBUG(turnOn_) DebugValueConversions = (turnOn_);
+static bool DebugValueConversions = false;
+#define CONVERSION_DEBUG(turnOn_) DebugValueConversions = (turnOn_);
 #else
-  #define CONVERSION_DEBUG(turnOn_) ;
+#define CONVERSION_DEBUG(turnOn_) ;
 #endif
 
 #ifdef ENABLE_TRACE_DELEGATE
@@ -98,27 +102,57 @@
 #define TRACE_DELEGATE1(str_, arg1_)
 #endif
 
-  // Fake bfloat16 type (assuming no C++ 23)
-  using bfloat16_t = std::uint16_t;
+// Fake bfloat16 type (assuming no C++ 23)
+using bfloat16_t = std::uint16_t;
 
-  //#############################################################################
-  //
-  // Configuration of the kernel that the AIE delegate uses
-  //
+// Integral data type for tensor dimensions
+//
+// Must be same type as HAL uses for plug-ins.
+using TensorDim = std::int32_t;
+
+// Kernel characteristics
+struct KernelInfo {
+  // Shape that the kernel handles
+  TensorDim m;
+  TensorDim n;
+  TensorDim k;
+
+  // Kernel file names (without extension) relative to installation root
+  std::string kernelFileName;
+
+  // Kernel name inside the xclbin file
+  std::string kernelName;
+
+  bool isMatch(TensorDim m, TensorDim n, TensorDim k) const {
+    return m == this->m && n == this->n && k == this->k;
+  }
+
+  TensorDim getLhsVolume() const { return m * k; }
+  TensorDim getRhsVolume() const { return k * n; }
+  TensorDim getResultVolume() const { return m * n; }
+  inline std::size_t getLhsNumBytes() const;
+  inline std::size_t getRhsNumBytes() const;
+  inline std::size_t getResultNumBytes() const;
+};
+
+//#############################################################################
+//
+// Configuration of the kernel that the AIE delegate uses
+//
 
 #if DELEGATE_KERNEL_TO_USE == MATMUL_16K_DELEGATE_KERNEL
-// Kernel file names (without extension) relative to installation root
-const std::string kernelFileName =
-    "matmul/matmul-bf16-f32-16384x16384X512-phx-v1";  // From AIE codegen
 
-// Kernel name inside the xclbin file
-const std::string KernelName =
-    "matmul_16384x16384_512xbf16__dispatch_0_matmul_1";
+// Table of descriptions of kernels available
+static KernelInfo KernelInfos[] = {
+    {16384, 16384, 512, "matmul/matmul-bf16-f32-16384x16384X512-phx-v1",
+     "matmul_16384x16384_512xbf16__dispatch_0_matmul_1"},
+    {16384, 512, 16384, "matmul/matmul-bf16-f32-16384x512x16384-phx-v1",
+     "matmul_16384x512_16384xbf16__dispatch_0_matmul_1"}};
 
 // Fixed shape of the matmul kernel
-#define MLP_M 16384
-#define MLP_K 512
-#define MLP_N 16384
+// #define MLP_M 16384
+// #define MLP_K 512
+// #define MLP_N 16384
 
 // Types of the matmul LHS, RHS, and result, as defined by the kernel
 using A_DATATYPE = bfloat16_t;
@@ -135,6 +169,10 @@ using ModelReturnDType = float;
 #define KERNEL_REQUIRES_RESULT_PRELOAD 0
 
 //-----------------------------------------------------------------------------
+
+//
+// TODO: UPDATE ALL THE OTHER DEMOS TO USE KernelInfo!!!
+//
 
 #elif DELEGATE_KERNEL_TO_USE == LARGE_MATMUL_DELEGATE_KERNEL
 // Kernel file names (without extension) relative to installation root
@@ -226,6 +264,22 @@ using ModelReturnDType = float;
 Set DELEGATE_KERNEL_TO_USE to a supported kernel."
 #endif
 
+//=============================================================================
+
+// Kernel support functions
+
+std::size_t KernelInfo::getLhsNumBytes() const {
+  return getLhsVolume() * sizeof(A_DATATYPE);
+}
+
+std::size_t KernelInfo::getRhsNumBytes() const {
+  return getRhsVolume() * sizeof(B_DATATYPE);
+}
+
+std::size_t KernelInfo::getResultNumBytes() const {
+  return getResultVolume() * sizeof(C_DATATYPE);
+}
+
 //#############################################################################
 //
 // AIE delegate implementation
@@ -239,6 +293,19 @@ public:
   }
 };
 
+// Given the shape of a matmul (MxNxK), return the index into KernelInfos
+// of the kernel that matches the shape.
+//
+// Throws a runtime exception if no kernel matches the shape.
+static const KernelInfo &getKernelInfo(TensorDim m, TensorDim n, TensorDim k) {
+  for (const KernelInfo &ki : KernelInfos)
+    if (ki.m == m && ki.n == n && ki.k == k) return ki;
+
+  std::ostringstream oss;
+  oss << "[AIE Delegate] FATAL ERROR: No kernel available for shape " << m
+      << "x" << n << "x" << k << std::endl;
+  throw DelegateException(oss.str());
+}
 
 // Get the path of this plugin's .so
 
@@ -617,78 +684,109 @@ std::vector<uint32_t> loadInstrSequence(std::string instr_path) {
 }
 
 // Holder of AIE hardware resources of which there should be only one of each.
-// This class is used as a singleton via `getInstance()`.
+//
+// This class is used as a singleton via `getInstance()`.  An `XrtState` is
+// either "uninitialed", in which case XRT needs to be set up before the
+// AIE kernel can be used, or it's "initialized", in which case XRT has already
+// been set up for the kernel.
+//
+// When requesting the singleton, you need to give a pointer to the
+// `KernelInfo` of the kernel to use.  If the singleton was previously created
+// with the same `KernelInfo` pointer, the singleton is returned as is,
+// initialized or not.  Otherwise, the singleton is destroyed and re-created.
 struct XrtState {
-    using LhsBinder = ConstTensorBinder<ModelLhsDType, A_DATATYPE>;
-    using RhsBinder = ConstTensorBinder<ModelRhsDType, B_DATATYPE>;
-    using ResultBinder = MutableTensorBinder<ModelReturnDType, C_DATATYPE>;
+  using LhsBinder = ConstTensorBinder<ModelLhsDType, A_DATATYPE>;
+  using RhsBinder = ConstTensorBinder<ModelRhsDType, B_DATATYPE>;
+  using ResultBinder = MutableTensorBinder<ModelReturnDType, C_DATATYPE>;
 
-    xrt::device device;
-    xrt::kernel kernel;
-    xrt::bo boInstr;
-    std::unique_ptr<LhsBinder> lhsBinder;
-    std::unique_ptr<RhsBinder> rhsBinder;
-    std::unique_ptr<ResultBinder> resultBinder;
+  xrt::device device;
+  xrt::kernel kernel;
+  xrt::bo boInstr;
+  std::unique_ptr<LhsBinder> lhsBinder;
+  std::unique_ptr<RhsBinder> rhsBinder;
+  std::unique_ptr<ResultBinder> resultBinder;
+  std::size_t instrSize = 0;
+  bool isInitialized = false;
 
-    static XrtState *getInstance(bool shouldDelete = false) {
-        // TODO: handle multiple simultaneous dispatches, multiple kernels
-        static XrtState *instance = nullptr;
-        if (shouldDelete) {
-            delete instance;
-            instance = nullptr;
-            return nullptr;
-        }
-        if (instance == nullptr)
-            instance = new XrtState();
-        return instance;
+  // Returns the `XrtState` singleton, unless `shouldDelete` is true, in which
+  // case the singleton is instead destroyed and nullptr returned.
+  static XrtState *getInstance(const KernelInfo *kernelInfo,
+                               bool shouldDelete = false) {
+    // TODO: handle multiple simultaneous dispatches
+    static XrtState *instance = nullptr;
+
+    // If clean-up was requested, delete the singleton
+    if (shouldDelete) {
+      delete instance;
+      instance = nullptr;
+      return nullptr;
     }
+
+    // If the existing singleton doesn't match the requested kernel,
+    // clean up the singleton (can't reuse it)
+    if (instance != nullptr && kernelInfo != instance->kernelInfo) {
+      delete instance;
+      instance = nullptr;
+    }
+
+    // If there never was a singleton or it got cleaned up, create a new one
+    if (instance == nullptr) {
+      instance = new XrtState();
+      instance->kernelInfo = kernelInfo;
+    }
+
+    return instance;
+  }
+
+ private:
+  const KernelInfo *kernelInfo = nullptr;
 };
 
-constexpr int M = MLP_M;
-constexpr int K = MLP_K;
-constexpr int N = MLP_N;
+// Sets up XRT to use the specified kernel, if not already done
+void setupNPUAccelerator(const KernelInfo &kernelInfo) {
+  static std::string libPath;  // Location of delegate .so/.dll
 
-constexpr int aVolume = M * K;
-constexpr int bVolume = K * N;
-constexpr int cVolume = M * N;
-
-constexpr int aSize = (aVolume * sizeof(A_DATATYPE));
-constexpr int bSize = (bVolume * sizeof(B_DATATYPE));
-constexpr int cSize = (cVolume * sizeof(C_DATATYPE));
-
-bool aie_setup = false;
-int instrSize = 0;
-int aie_matmuls_done = 0;
-int matmuls_done = 0;
-
-void setupNPUAccelerator() {
   TRACE_DELEGATE("setupNPUAccelerator");
   auto startTime = std::chrono::high_resolution_clock::now();
-  std::string libPath = getLibraryPath();
-  std::cout << "[AIE Delegate]: Using delegate installation at: " << libPath
-            << std::endl;
+
+  // Clear out any old XRT state and create a new one for the specified kernel
+  auto xrtState = XrtState::getInstance(&kernelInfo);
+
+  // If setup was previously done for this kernel, skip doing it again
+  if (xrtState->isInitialized) {
+    TRACE_DELEGATE("setupNPUAccelerator kernel already initialized");
+    return;
+  }
+
+  // Determine the path to the kernel files from the .so/.dll.  Only needs
+  // to be done once, as the files don't change location.
+  if (libPath.empty()) {
+    libPath = getLibraryPath();
+    std::cout << "[AIE Delegate]: Using delegate installation at: " << libPath
+              << std::endl;
+  }
+
+  // Load the instruction sequence from its file
   std::string instrFilePath =
-      libPath + "/kernels/" + kernelFileName + ".insts.txt";
+      libPath + "/kernels/" + kernelInfo.kernelFileName + ".insts.txt";
   std::vector<uint32_t> instrV = loadInstrSequence(instrFilePath);
-  instrSize = instrV.size();
-  if (instrSize == 0) {
+  xrtState->instrSize = instrV.size();
+  if (xrtState->instrSize == 0) {
     std::ostringstream oss;
     oss << "[AIE Delegate]: Couldn't load instructions from file "
         << instrFilePath << std::endl;
     throw DelegateException(oss.str());
   }
-  std::cout << "[AIE Delegate]: Sequence instr count: " << instrV.size()
-            << "\n";
+  TRACE_DELEGATE1("Sequence instr count: ", instrV.size());
 
-  // Start the XRT test code
-  // Get a device handle
-  auto xrtState = XrtState::getInstance();
+  // Clear out the saved XRT state and get a device handle
   unsigned int deviceIndex = 0;
   TRACE_DELEGATE("setupNPUAccelerator get device");
   xrtState->device = xrt::device(deviceIndex);
 
   // Load the xclbin
-  std::string xclbinPath = libPath + "/kernels/" + kernelFileName + ".xclbin";
+  std::string xclbinPath =
+      libPath + "/kernels/" + kernelInfo.kernelFileName + ".xclbin";
   TRACE_DELEGATE("setupNPUAccelerator get xclbin");
   auto xclbin = xrt::xclbin(xclbinPath);
 
@@ -700,15 +798,17 @@ void setupNPUAccelerator() {
                                 [&](xrt::xclbin::kernel &k) {
                                   auto name = k.get_name();
                                   kernelNames.push_back(name);
-                                  return name.rfind(KernelName, 0) == 0;
+                                  return name.rfind(kernelInfo.kernelName, 0) ==
+                                         0;
                                 });
 
   // If the kernel name we're looking for doesn't exist, error out with a
   // list of all the kernel names in the xclbin
   if (foundIter == xkernels.end()) {
     std::ostringstream oss;
-    oss << "[AIE Delegate] FATAL ERROR: No such kernel " << KernelName << " in "
-        << xclbinPath << ".  Possible kernel names are:" << std::endl;
+    oss << "[AIE Delegate] FATAL ERROR: No such kernel "
+        << kernelInfo.kernelName << " in " << xclbinPath
+        << ".  Possible kernel names are:" << std::endl;
     for (const std::string &kernelName : kernelNames)
       oss << "    " << kernelName << std::endl;
     throw DelegateException(oss.str());
@@ -730,17 +830,27 @@ void setupNPUAccelerator() {
   TRACE_DELEGATE("setupNPUAccelerator create kernel");
   xrtState->kernel = xrt::kernel(context, kernelName);
 
+  // Create XRT buffer objects for lhs, rhs, and result tensors
   TRACE_DELEGATE("setupNPUAccelerator create BOs");
   xrtState->boInstr =
       xrt::bo(xrtState->device, instrV.size() * sizeof(int),
               XCL_BO_FLAGS_CACHEABLE, xrtState->kernel.group_id(0));
 
+  TRACE_DELEGATE1("setupNPUAccelerator LHS # bytes: ",
+                  kernelInfo.getLhsNumBytes());
+  TRACE_DELEGATE1("setupNPUAccelerator RHS # bytes: ",
+                  kernelInfo.getRhsNumBytes());
+  TRACE_DELEGATE1("setupNPUAccelerator Result # bytes: ",
+                  kernelInfo.getResultNumBytes());
   xrtState->lhsBinder = std::make_unique<XrtState::LhsBinder>(
-      xrtState->device, xrtState->kernel.group_id(2), aSize);
+      xrtState->device, xrtState->kernel.group_id(2),
+      kernelInfo.getLhsNumBytes());
   xrtState->rhsBinder = std::make_unique<XrtState::RhsBinder>(
-      xrtState->device, xrtState->kernel.group_id(3), bSize);
+      xrtState->device, xrtState->kernel.group_id(3),
+      kernelInfo.getRhsNumBytes());
   xrtState->resultBinder = std::make_unique<XrtState::ResultBinder>(
-      xrtState->device, xrtState->kernel.group_id(4), cSize);
+      xrtState->device, xrtState->kernel.group_id(4),
+      kernelInfo.getResultNumBytes());
 
   // copy instruction stream to NPU
   void *bufInstr = xrtState->boInstr.map<void *>();
@@ -748,38 +858,45 @@ void setupNPUAccelerator() {
   TRACE_DELEGATE("setupNPUAccelerator sync instruction BO");
   xrtState->boInstr.sync(XCL_BO_SYNC_BO_TO_DEVICE);
 
-  std::cout << "[AIE Delegate]: NPU setup done." << std::endl;
-
-  aie_setup = true;
+  // Calculate and display NPU setup time
   auto endTime = std::chrono::high_resolution_clock::now();
   auto duration =
       std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime)
           .count();
   std::cout << "[AIE Delegate]: NPU setup time: " << duration << " ms"
             << std::endl;
+  xrtState->isInitialized = true;
   TRACE_DELEGATE("setupNPUAccelerator done");
 }
 
-void aie_matmul(Params *params) {
+void aie_matmul(const KernelInfo &kernelInfo, Params *params) {
   TRACE_DELEGATE("aie_matmul");
   std::cout << "[AIE Delegate]: Computing AIE matmul of "
             << params->getShapeStr() << std::endl;
+
+  // Set up XRT for the requested kernel (if not already done)
+  setupNPUAccelerator(kernelInfo);
+
+  // Start timing the kernel run from this point
   auto startTime = std::chrono::high_resolution_clock::now();
-  int cnt = 0;
-  auto xrtState = XrtState::getInstance();
 
 #ifdef DEBUG_VALUES
   std::cout << "LHS Tensor" << std::endl;
-  params->lhs.dumpVals(std::cout, aVolume);
+  params->lhs.dumpVals(std::cout, kernelInfo.getLhsVolume());
   std::cout << "RHS Tensor" << std::endl;
-  params->rhs.dumpVals(std::cout, bVolume);
+  params->rhs.dumpVals(std::cout, kernelInfo.getRhsVolume());
 #endif
 
   // Set up binders to map HAL buffers to XRT buffers
   TRACE_DELEGATE("aie_matmul binder setup");
-  xrtState->lhsBinder->bind(params->lhs.get(), aVolume);
-  xrtState->rhsBinder->bind(params->rhs.get(), bVolume);
-  xrtState->resultBinder->bind(params->result.get(), cVolume);
+  auto xrtState = XrtState::getInstance(&kernelInfo);
+  TRACE_DELEGATE1("aie_matmul LHS volume: ", kernelInfo.getLhsVolume());
+  TRACE_DELEGATE1("aie_matmul RHS volume: ", kernelInfo.getRhsVolume());
+  TRACE_DELEGATE1("aie_matmul Result volume: ", kernelInfo.getResultVolume());
+  xrtState->lhsBinder->bind(params->lhs.get(), kernelInfo.getLhsVolume());
+  xrtState->rhsBinder->bind(params->rhs.get(), kernelInfo.getRhsVolume());
+  xrtState->resultBinder->bind(params->result.get(),
+                               kernelInfo.getResultVolume());
 
   // Copy inputs to kernel input BOs and sync the BOs
   TRACE_DELEGATE("aie_matmul copy inputs");
@@ -792,23 +909,28 @@ void aie_matmul(Params *params) {
 #endif
 
   // execute the kernel on NPU
+#ifdef ENABLE_KERNEL_RUN
   TRACE_DELEGATE("aie_matmul run kernel");
   auto run = xrtState->kernel(
-      xrtState->boInstr, instrSize, xrtState->lhsBinder->getBo(),
+      xrtState->boInstr, xrtState->instrSize, xrtState->lhsBinder->getBo(),
       xrtState->rhsBinder->getBo(), xrtState->resultBinder->getBo());
   TRACE_DELEGATE("aie_matmul wait");
   run.wait();
+#else
+  TRACE_DELEGATE("aie_matmul kernel run skipped");
+#endif
 
   // sync output to host and copy the data from the BO
   TRACE_DELEGATE("aie_matmul copy output");
   xrtState->resultBinder->copyXrtToModel();
 
+  // Collect and display performance metrics
   auto endTime = std::chrono::high_resolution_clock::now();
   auto duration =
       std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime)
           .count();
-  std::cout << "[AIE Delegate]: Kernel execution time: " << duration << " ms"
-            << std::endl;
+  std::cout << "[AIE Delegate]: Kernel execution time: " << duration
+            << " ms" << std::endl;
 
 #ifdef DEBUG_VALUES
   std::cout << "Result Tensor" << std::endl;
@@ -831,21 +953,25 @@ using CpuAccDType =
   float;
 #endif
 
-static void cpu_matmul(Params *params) {
+static void cpu_matmul(const KernelInfo &kernelInfo, Params *params) {
   std::cout << "[AIE Delegate]: Computing CPU scalar matmul of " << params->getShapeStr() << std::endl;
   for (int32_t i = 0; i < params->M; i++) {
     for (int32_t j = 0; j < params->N; j++) {
       CpuAccDType curr_result = Converter<float, CpuAccDType>::convert(0.0);
       for (int32_t k = 0; k < params->K; k++) {
-        float a = Converter<ModelLhsDType, float>::convert(params->lhs.getElement(i, k, K));
-        float b = Converter<ModelRhsDType, float>::convert(params->rhs.getElement(k, j, N));
+        float a = Converter<ModelLhsDType, float>::convert(
+            params->lhs.getElement(i, k, kernelInfo.k));
+        float b = Converter<ModelRhsDType, float>::convert(
+            params->rhs.getElement(k, j, kernelInfo.n));
         curr_result = Converter<float, CpuAccDType>::convert(
           Converter<CpuAccDType, float>::convert(curr_result)
           + Converter<float, CpuAccDType>::convert(a * b)
         );
       }
       // curr_result = curr_result < 0.0 ? 0.0 : curr_result;  ref matmul doesn't seem to have this
-      params->result.setElement(i, j, N, Converter<CpuAccDType, ModelReturnDType>::convert(curr_result));
+      params->result.setElement(
+          i, j, kernelInfo.n,
+          Converter<CpuAccDType, ModelReturnDType>::convert(curr_result));
     }
   }
 }
@@ -895,22 +1021,10 @@ static int mlp_external(void* params_ptr, void* context, void* reserved) {
   TRACE_DELEGATE("mlp_external");
 
 #ifdef USE_CPU_IMPLEMENTATION
-  cpu_matmul(params);  // enable this if CPU fallback desired
+  cpu_matmul(kernelInfo, params);  // enable this if CPU fallback desired
 #else
-  // If the input shapes do not match the AIE kernel, deliberately fail to
-  // make sure AIE version is getting used
-  if (params->M != MLP_M || params->K != MLP_K || params->N != MLP_N) {
-    std::ostringstream oss;
-    oss << "[AIE Delegate] FATAL ERROR: Shape mismatch between model and kernel."
-        << std::endl;
-    oss << "    Model shape: M=" << params->M << ", N=" << params->N << ", K="
-        << params->K << std::endl;
-    oss << "    Kernel shape: M=" << MLP_M << ", N=" << MLP_N << ", K="
-        << MLP_K << std::endl;
-    throw DelegateException(oss.str());
-  }
-
-  aie_matmul(params);
+  const auto &kernelInfo = getKernelInfo(params->M, params->N, params->K);
+  aie_matmul(kernelInfo, params);
 #endif
   TRACE_DELEGATE("mlp_external done");
   return 0;
@@ -942,11 +1056,6 @@ static iree_hal_executable_plugin_status_t mlp_plugin_load(
   // stateful/side-effecting things.
   plugin->file = stdout;
 
-#ifndef USE_CPU_IMPLEMENTATION
-  // Initialize XRT with the one-and-only xclbin and instruction file
-  setupNPUAccelerator();
-#endif
-
   // Pass back the plugin instance that'll be passed to resolve.
   *out_self = plugin;
   TRACE_DELEGATE("mlp_plugin_load done");
@@ -965,7 +1074,7 @@ static void mlp_plugin_unload(void* self) {
   plugin->file = NULL;
 
 #ifndef USE_CPU_IMPLEMENTATION
-  XrtState::getInstance(true); // delete singleton data
+  XrtState::getInstance(nullptr, true);  // delete singleton data
 #endif
 
   // Free the plugin state using the same allocator it came from.
