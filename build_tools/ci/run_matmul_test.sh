@@ -235,7 +235,7 @@ function run_matmul_test() {
         do_transpose_rhs="$2"
         shift 2
         ;;
-      --expect_compile_failure)
+      --expect_compile_failur)
         expect_compile_failure="$2"
         shift 2
         ;;
@@ -687,8 +687,7 @@ run_matmul_test \
     --lhs_rhs_type "bf16" \
     --acc_type "f32" \
     --m "64"  --n "64" --k "128" \
-    --expect-compile-failure "1" \
-    --num_repeat_runs "0"
+    --expect_compile_failure "1"
 
 run_matmul_test \
     --name_prefix "packPeelLarge" \
