@@ -28,18 +28,22 @@ module @example attributes {hal.device.targets = [#cpu_target]} {
 // CHECK: func.func @mlp_external_entry_point({{.+}}) {
 // CHECK: call @mlp_external({{.+}}) : (memref<bf16>, index, memref<bf16>, index, memref<f32>, index, i32, i32, i32) -> ()
 
-
+  func.func private @fake_cast(%in: tensor<1x16384x16384xf32>) -> (tensor<1x16384x16384xbf16>)
   func.func @mlp_invocation(%lhs: tensor<1x16384x512xbf16>,
-                            %rhs: tensor<1x512x16384xbf16>) -> (tensor<1x16384x16384xf32>) {
+                            %rhs: tensor<1x512x16384xbf16>) -> (tensor<1x16384x512xf32>) {
     %cst_206 = arith.constant 0.000000e+00 : f32
     %44 = tensor.empty() : tensor<1x16384x16384xf32>
     %64 = linalg.fill ins(%cst_206 : f32) outs(%44 : tensor<1x16384x16384xf32>) -> tensor<1x16384x16384xf32>
     %65 = linalg.batch_matmul ins(%lhs, %rhs : tensor<1x16384x512xbf16>, tensor<1x512x16384xbf16>) outs(%64 : tensor<1x16384x16384xf32>) -> tensor<1x16384x16384xf32>
-
-// Check that the batch_matmul has been replaced with a call to the external function with the right types
+    %66 = func.call @fake_cast(%65) : (tensor<1x16384x16384xf32>) -> tensor<1x16384x16384xbf16>
+    %69 = tensor.empty() : tensor<1x16384x512xf32>
+    %68 = linalg.fill ins(%cst_206 : f32) outs(%69 : tensor<1x16384x512xf32>) -> tensor<1x16384x512xf32>
+    %67 = linalg.batch_matmul ins(%66, %lhs : tensor<1x16384x16384xbf16>, tensor<1x16384x512xbf16>) outs(%68 : tensor<1x16384x512xf32>) -> tensor<1x16384x512xf32>
+// Check that the two batch_matmuls have been replaced with calls to the external function with the right types
 // CHECK: func.func @mlp_invocation({{.+}}) -> {{.+}} {
 // CHECK: flow.dispatch @mlp_external_bf16_bf16_f32_i32_i32_i32_executable::@mlp_external_entry_point({{.+}}) : (tensor<1x16384x512xbf16>, tensor<1x512x16384xbf16>, i32, i32, i32) -> tensor<1x16384x16384xf32>
+// CHECK: flow.dispatch @mlp_external_bf16_bf16_f32_i32_i32_i32_executable::@mlp_external_entry_point({{.+}}) : (tensor<1x16384x16384xbf16>, tensor<1x16384x512xbf16>, i32, i32, i32) -> tensor<1x16384x512xf32>
 
-    return %65 : tensor<1x16384x16384xf32>
+    return %67 : tensor<1x16384x512xf32>
   }
 }  // module
