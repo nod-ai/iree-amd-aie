@@ -215,6 +215,9 @@ function run_matmul_test() {
   # See https://github.com/iree-org/iree/blob/tools/testing/e2e/test_utils.c#L40-L47
   local max_elements_to_check="20000"
 
+  # The default is to not use microkernels.
+  local use_ukernel="0"
+
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --compile-only)
@@ -243,6 +246,10 @@ function run_matmul_test() {
         ;;
       --acc_type)
         acc_type="$2"
+        shift 2
+        ;;
+      --use_ukernel)
+        use_ukernel="$2"
         shift 2
         ;;
       --target_backend)
@@ -299,7 +306,7 @@ function run_matmul_test() {
   set -x
 
 
-  # Record the current time in milliseconds. We record the time at certain
+  # Record the current time in milliseconds. Record the time at certain
   # checkpoints, and print statistics summarizing how much time is spent in
   # compilation and execution.
   start_time=$(date +%s%3N)
@@ -365,17 +372,38 @@ function run_matmul_test() {
   ## Disable exit on failure:
   set +e
 
+  compilation_flags="--iree-hal-target-backends=${target_backend} \
+                      --iree-amdaie-use-pipeline=${pipeline} \
+                      --iree-amd-aie-peano-install-dir=${peano_install_path} \
+                      --iree-amd-aie-mlir-aie-install-dir=${mlir_aie_install_path} \
+                      --iree-amd-aie-vitis-install-dir=${vitis_path} \
+                      --iree-hal-dump-executable-files-to=$PWD \
+                      --iree-amd-aie-show-invoked-commands"
+
+  if [ $use_ukernel -ne 0 ]; then
+
+    compilation_flags="${compilation_flags} \
+                        --iree-amdaie-enable-ukernels=all"
+
+
+    # The flag '--iree-amdaie-path-to-ukernels' currently does not work,
+    # see for example https://github.com/nod-ai/iree-amd-aie/issues/340
+    # Therefore we need to manually copy (or link) the mm.o file to the
+    # directory in which iree-compile is run. iree-compile is run in the
+    # output directory. Create the softlink only if it is has not already
+    # been created.
+    if [ -f "${OUTPUT_DIR}/mm.o" ]; then
+      echo "File 'mm.o' already exists in ${OUTPUT_DIR}."
+    else
+      SRC_DIR="${mlir_aie_install_path}/aie_kernels/mm.o"
+      ln -s ${SRC_DIR} ${OUTPUT_DIR}/mm.o
+    fi
+  fi
+
 
   echo "**** Generating matmul .vmfb file for ${name} ****"
-  ${IREE_COMPILE_EXE} "${matmul_ir}"  \
-      --iree-hal-target-backends=${target_backend} \
-      --iree-amdaie-use-pipeline=${pipeline} \
-      --iree-amd-aie-peano-install-dir=${peano_install_path} \
-      --iree-amd-aie-mlir-aie-install-dir=${mlir_aie_install_path} \
-      --iree-amd-aie-vitis-install-dir=${vitis_path} \
-      --iree-hal-dump-executable-files-to=$PWD \
-      --iree-amd-aie-show-invoked-commands \
-      -o "${matmul_vmfb}"
+  ${IREE_COMPILE_EXE} "${matmul_ir}" \
+    ${compilation_flags} -o "${matmul_vmfb}"
 
 
   compileResult=$?
@@ -486,7 +514,6 @@ function run_matmul_test() {
 #    same for all shapes, while execution latency grows cubicly i.e.
 #    linearly with m*k*n.
 
-
 # Example of a run without any defaults arguments.
 run_matmul_test \
     --name_prefix "test1" \
@@ -506,8 +533,15 @@ run_matmul_test \
     --expect-compile-failure "0" \
     --compile-only "0" \
     --do_transpose_rhs "0" \
-    --max_elements_to_check "0" # Check all elements.
+    --max_elements_to_check "0" \
+    --use_ukernel "0"
 
+run_matmul_test \
+    --name_prefix "ukern" \
+    --lhs_rhs_type "bf16" \
+    --acc_type "f32" \
+    --m "256"  --k "256" --n "256" \
+    --use_ukernel "1"
 
 run_matmul_test \
   --name_prefix "transpose_int32" \
@@ -532,8 +566,8 @@ run_matmul_test \
 # tile_sizes = [[1, 1], [0, 0, 250], [1, 1], [0, 0, 2]], packedSizes = [1, 1, 5]
 # but fails with tile_sizes = [[1, 1], [0, 0, 200], [1, 1], [0, 0, 1]], packedSizes = [1, 1, 8],
 # with the error LLVM ERROR: unable to legalize instruction: %152:_(<2 x s32>) = G_FMUL %148:_, %150:_ (in function: core_0_2)
-# The later is what a more vectorization friendly packing looks like so we are expected failing the test here.
-# We need to see if the test will pass with a more recent llvm-aie and if it doesnt we can report it upstream.
+# The later is what a more vectorization friendly packing looks like so this test is expected failing the test here.
+# TODO: check if the test will pass with a more recent llvm-aie and if it doesnt, report it upstream.
 run_matmul_test \
    --name_prefix "failure_0" \
    --lhs_rhs_type "i32" \
