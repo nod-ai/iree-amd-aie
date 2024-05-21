@@ -900,6 +900,7 @@ void aie_matmul(const KernelInfo &kernelInfo, Params *params) {
 
   // Copy inputs to kernel input BOs and sync the BOs
   TRACE_DELEGATE("aie_matmul copy inputs");
+  auto copyInStartTime = std::chrono::high_resolution_clock::now();
   xrtState->lhsBinder->copyModelToXrt();
   xrtState->rhsBinder->copyModelToXrt();
 
@@ -907,8 +908,10 @@ void aie_matmul(const KernelInfo &kernelInfo, Params *params) {
 #if KERNEL_REQUIRES_RESULT_PRELOAD
   xrtState->resultBinder->copyModelToXrt();
 #endif
+  auto copyInEndTime = std::chrono::high_resolution_clock::now();
 
   // execute the kernel on NPU
+  auto kernelStartTime = std::chrono::high_resolution_clock::now();
 #ifdef ENABLE_KERNEL_RUN
   TRACE_DELEGATE("aie_matmul run kernel");
   auto run = xrtState->kernel(
@@ -919,17 +922,36 @@ void aie_matmul(const KernelInfo &kernelInfo, Params *params) {
 #else
   TRACE_DELEGATE("aie_matmul kernel run skipped");
 #endif
+  auto kernelEndTime = std::chrono::high_resolution_clock::now();
 
   // sync output to host and copy the data from the BO
   TRACE_DELEGATE("aie_matmul copy output");
+  auto copyOutStartTime = std::chrono::high_resolution_clock::now();
   xrtState->resultBinder->copyXrtToModel();
+  auto copyOutEndTime = std::chrono::high_resolution_clock::now();
 
+  // Collect and display performance metrics
   auto endTime = std::chrono::high_resolution_clock::now();
+  auto copyInDuration = std::chrono::duration_cast<std::chrono::milliseconds>(
+                            copyInEndTime - copyInStartTime)
+                            .count();
+  std::cout << "[AIE Delegate]: HAL-NPU copy time: " << copyInDuration << " ms"
+            << std::endl;
+  auto kernelDuration = std::chrono::duration_cast<std::chrono::milliseconds>(
+                            kernelEndTime - kernelStartTime)
+                            .count();
+  std::cout << "[AIE Delegate]: Kernel execution time: " << copyInDuration
+            << " ms" << std::endl;
+  auto copyOutDuration = std::chrono::duration_cast<std::chrono::milliseconds>(
+                             copyOutEndTime - copyOutStartTime)
+                             .count();
+  std::cout << "[AIE Delegate]: NPU-HAL copy time: " << copyOutDuration << " ms"
+            << std::endl;
   auto duration =
       std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime)
           .count();
-  std::cout << "[AIE Delegate]: Kernel execution time: " << duration << " ms"
-            << std::endl;
+  std::cout << "[AIE Delegate]: TOTAL Kernel execution time: " << duration
+            << " ms" << std::endl;
 
 #ifdef DEBUG_VALUES
   std::cout << "Result Tensor" << std::endl;
