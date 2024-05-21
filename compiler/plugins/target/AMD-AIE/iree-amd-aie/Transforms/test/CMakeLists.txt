@@ -26,6 +26,7 @@ iree_lit_test_suite(
     "hoist_for_affine_apply.mlir"
     "insert_aie_workgroup.mlir"
     "insert_loops_for_vectorization.mlir"
+    "lower_to_aie.mlir"
     "lower_to_ukernel.mlir"
     "lower_workgroup_count.mlir"
     "lowering_strategy.mlir"
