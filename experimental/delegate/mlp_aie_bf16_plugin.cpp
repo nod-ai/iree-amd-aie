@@ -66,7 +66,7 @@
 // #define USE_BF16_CPU_ACCUMULATOR 1
 
 // Turn this on to print debug messages throughout the delegate run
-// #define ENABLE_TRACE_DELEGATE 1
+#define ENABLE_TRACE_DELEGATE 1
 
 // Turn this on to dump matmul operand and result tensor values
 // #define DEBUG_VALUES 1
@@ -78,11 +78,24 @@
 // being done
 // #define ENABLE_PERFORMANCE_WARNING 1
 
-// Turn this on to enable running the kernel.  Disabling the kernel is for
-// testing and debugging only.
-#define ENABLE_KERNEL_RUN 1
+// Turn this on to suppress initializing and running the kernel
+// #define DRY_RUN 1
+
+// Turn this on to run on Strix instead of the default Phoenix.
+// Also, you can instead compile for Strix by adding the following flag
+// to the iree cmake command line:
+// -DCMAKE_CXX_FLAGS="-DAMD_STRIX=1 ${CMAKE_CXX_FLAGS}"
+// #define AMD_STRIX 1
 
 //#############################################################################
+
+// String for which AIE platform
+const std::string NpuPlatformStr =
+#ifdef AMD_STRIX
+    "Strix";
+#else
+    "Phoenix";
+#endif
 
 #if DEBUG_VALUE_CONVERSIONS
 static bool DebugValueConversions = false;
@@ -140,14 +153,32 @@ struct KernelInfo {
 // Configuration of the kernel that the AIE delegate uses
 //
 
+#ifdef AMD_STRIX
+#define PLATFORM_SUFFIX "stx"
+#else
+#define PLATFORM_SUFFIX "phx"
+#endif
+
 #if DELEGATE_KERNEL_TO_USE == MATMUL_16K_DELEGATE_KERNEL
 
 // Table of descriptions of kernels available
 static KernelInfo KernelInfos[] = {
-    {16384, 16384, 512, "matmul/matmul-bf16-f32-16384x16384X512-phx-v1",
-     "matmul_16384x16384_512xbf16__dispatch_0_matmul_1"},
-    {16384, 512, 16384, "matmul/matmul-bf16-f32-16384x512x16384-phx-v1",
-     "matmul_16384x512_16384xbf16__dispatch_0_matmul_1"}};
+    {16384, 16384, 512,
+     "matmul/matmul-bf16-f32-16384x16384x512-" PLATFORM_SUFFIX "-v1",
+#ifdef AMD_STRIX
+     "MLIR_AIE"
+#else
+     "matmul_16384x16384_512xbf16__dispatch_0_matmul_1"
+#endif
+    },
+    {16384, 512, 16384,
+     "matmul/matmul-bf16-f32-16384x512x16384-" PLATFORM_SUFFIX "-v1",
+#ifdef AMD_STRIX
+     "MLIR_AIE"
+#else
+     "matmul_16384x512_16384xbf16__dispatch_0_matmul_1"
+#endif
+    }};
 
 // Fixed shape of the matmul kernel
 // #define MLP_M 16384
@@ -747,6 +778,9 @@ void setupNPUAccelerator(const KernelInfo &kernelInfo) {
   static std::string libPath;  // Location of delegate .so/.dll
 
   TRACE_DELEGATE("setupNPUAccelerator");
+  TRACE_DELEGATE1("setupNPUAccelerator kernel file: ",
+                  kernelInfo.kernelFileName);
+  TRACE_DELEGATE1("setupNPUAccelerator kernel name: ", kernelInfo.kernelName);
   auto startTime = std::chrono::high_resolution_clock::now();
 
   // Clear out any old XRT state and create a new one for the specified kernel
@@ -762,8 +796,8 @@ void setupNPUAccelerator(const KernelInfo &kernelInfo) {
   // to be done once, as the files don't change location.
   if (libPath.empty()) {
     libPath = getLibraryPath();
-    std::cout << "[AIE Delegate]: Using delegate installation at: " << libPath
-              << std::endl;
+    std::cout << "[AIE Delegate]: Using " << NpuPlatformStr
+              << " delegate installation at: " << libPath << std::endl;
   }
 
   // Load the instruction sequence from its file
@@ -855,8 +889,12 @@ void setupNPUAccelerator(const KernelInfo &kernelInfo) {
   // copy instruction stream to NPU
   void *bufInstr = xrtState->boInstr.map<void *>();
   std::memcpy(bufInstr, instrV.data(), instrV.size() * sizeof(int));
+#ifdef DRY_RUN
+  TRACE_DELEGATE("setupNPUAccelerator skipping sync instruction BO");
+#else
   TRACE_DELEGATE("setupNPUAccelerator sync instruction BO");
   xrtState->boInstr.sync(XCL_BO_SYNC_BO_TO_DEVICE);
+#endif
 
   // Calculate and display NPU setup time
   auto endTime = std::chrono::high_resolution_clock::now();
@@ -871,8 +909,8 @@ void setupNPUAccelerator(const KernelInfo &kernelInfo) {
 
 void aie_matmul(const KernelInfo &kernelInfo, Params *params) {
   TRACE_DELEGATE("aie_matmul");
-  std::cout << "[AIE Delegate]: Computing AIE matmul of "
-            << params->getShapeStr() << std::endl;
+  std::cout << "[AIE Delegate]: Computing " << NpuPlatformStr
+            << " AIE matmul of " << params->getShapeStr() << std::endl;
 
   // Set up XRT for the requested kernel (if not already done)
   setupNPUAccelerator(kernelInfo);
@@ -909,15 +947,15 @@ void aie_matmul(const KernelInfo &kernelInfo, Params *params) {
 #endif
 
   // execute the kernel on NPU
-#ifdef ENABLE_KERNEL_RUN
+#ifdef DRY_RUN
+  TRACE_DELEGATE("aie_matmul kernel run skipped");
+#else
   TRACE_DELEGATE("aie_matmul run kernel");
   auto run = xrtState->kernel(
       xrtState->boInstr, xrtState->instrSize, xrtState->lhsBinder->getBo(),
       xrtState->rhsBinder->getBo(), xrtState->resultBinder->getBo());
   TRACE_DELEGATE("aie_matmul wait");
   run.wait();
-#else
-  TRACE_DELEGATE("aie_matmul kernel run skipped");
 #endif
 
   // sync output to host and copy the data from the BO
