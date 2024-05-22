@@ -297,7 +297,7 @@ LogicalResult assignLocalAieTiles(ModuleOp moduleOp) {
     rewriter.setInsertionPoint(logicalObjectFifo);
     rewriter.replaceOpWithNewOp<AMDAIE::LogicalObjectFifoFromMemrefOp>(
         logicalObjectFifo,
-        logicalObjectFifo.getOutput().getType().cast<LogicalObjectFifoType>(),
+        cast<LogicalObjectFifoType>(logicalObjectFifo.getOutput().getType()),
         logicalObjectFifo.getMemref(), tiles.takeVector());
   }
   return success();
@@ -444,7 +444,7 @@ class AssignAieTiles
               std::back_inserter(tileResults));
     rewriter.replaceOpWithNewOp<AMDAIE::LogicalObjectFifoFromMemrefOp>(
         logicalObjectFifo,
-        logicalObjectFifo.getOutput().getType().cast<LogicalObjectFifoType>(),
+        cast<LogicalObjectFifoType>(logicalObjectFifo.getOutput().getType()),
         logicalObjectFifo.getMemref(), tileResults);
     return success();
   }
