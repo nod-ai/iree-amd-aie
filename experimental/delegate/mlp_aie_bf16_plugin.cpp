@@ -79,7 +79,13 @@
 // #define ENABLE_PERFORMANCE_WARNING 1
 
 // Turn this on to suppress initializing and running the kernel
-#define DRY_RUN 1
+// #define DRY_RUN 1
+
+// Turn this on to run on Strix instead of the default Phoenix.
+// Also, you can instead compile for Strix by adding the following flag
+// to the iree cmake command line:
+// -DCMAKE_CXX_FLAGS="-DAMD_STRIX=1 ${CMAKE_CXX_FLAGS}"
+// #define AMD_STRIX 1
 
 //#############################################################################
 
