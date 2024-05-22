@@ -15,7 +15,7 @@ func.func @matmul_static(%arg0: tensor<8x16xi32>, %arg1 : tensor<16x8xi32>) -> t
 // TILE-LEVEL-0-SAME:   {
 //      TILE-LEVEL-0:       linalg.fill
 //      TILE-LEVEL-0:       linalg.matmul
-//      TILE-LEVEL-0:   }
+//      TILE-LEVEL-0:   } {mapping = [#gpu.block<y>, #gpu.block<x>]}
 
 // -----
 
@@ -58,8 +58,8 @@ func.func @matmul_static(%arg0: tensor<8x16xi32>, %arg1 : tensor<16x8xi32>) -> t
 // TILE-LEVEL-1-SAME:       {
 //      TILE-LEVEL-1:           linalg.fill
 //      TILE-LEVEL-1:           linalg.matmul
-//      TILE-LEVEL-1:       }
-//      TILE-LEVEL-1:   }
+//      TILE-LEVEL-1:       } {mapping = [#gpu.thread<y>, #gpu.thread<x>]}
+//      TILE-LEVEL-1:   } {mapping = [#gpu.block<y>, #gpu.block<x>]}
 
 // -----
 
@@ -91,12 +91,12 @@ func.func @matmul_bias_add(%arg0 : tensor<?x?xf32>, %arg1 : tensor<?x?xf32>, %ar
 //      TILE-LEVEL-0:       linalg.fill
 //      TILE-LEVEL-0:       linalg.matmul
 //      TILE-LEVEL-0:       linalg.generic
-//      TILE-LEVEL-0:   }
+//      TILE-LEVEL-0:   } {mapping = [#gpu.block<y>, #gpu.block<x>]}
 
 //      TILE-MATMUL-ONLY: @matmul_bias_add
 //      TILE-MATMUL-ONLY:   scf.forall
 // TILE-MATMUL-ONLY-SAME:   {
 //      TILE-MATMUL-ONLY:       linalg.fill
 //      TILE-MATMUL-ONLY:       linalg.matmul
-//      TILE-MATMUL-ONLY:   }
+//      TILE-MATMUL-ONLY:   } {mapping = [#gpu.block<y>, #gpu.block<x>]}
 //      TILE-MATMUL-ONLY:   linalg.generic
