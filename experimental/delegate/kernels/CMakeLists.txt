@@ -17,7 +17,7 @@ set(AIE_DELEGATE_KERNELS
     "matmul/matmul-bf16-256x256x256-v1"  # ref matmul
     "matmul/matmul-bf16-f32-8x768x768-v1"  # for OPT, 4x4 vec matmul
     "matmul/matmul-bf16-f32-8192x9728x2432-v1"  # Large Matmul
-    "matmul/matmul-bf16-f32-16384x16384X512-phx-v1"  # 16k phoenix matmul
+    "matmul/matmul-bf16-f32-16384x16384x512-phx-v1"  # 16k phoenix matmul
     "matmul/matmul-bf16-f32-16384x512x16384-phx-v1"  # 16k phx matmul alt shape
     "matmul/matmul-bf16-f32-16384x16384x512-stx-v1"  # 16k strix matmul
     "matmul/matmul-bf16-f32-16384x512x16384-stx-v1"  # 16k stx matmul alt shape

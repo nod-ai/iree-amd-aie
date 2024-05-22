@@ -158,7 +158,7 @@ struct KernelInfo {
 // Table of descriptions of kernels available
 static KernelInfo KernelInfos[] = {
     {16384, 16384, 512,
-     "matmul/matmul-bf16-f32-16384x16384X512-" PLATFORM_SUFFIX "-v1",
+     "matmul/matmul-bf16-f32-16384x16384x512-" PLATFORM_SUFFIX "-v1",
      "matmul_16384x16384_512xbf16__dispatch_0_matmul_1"},
     {16384, 512, 16384,
      "matmul/matmul-bf16-f32-16384x512x16384-" PLATFORM_SUFFIX "-v1",
