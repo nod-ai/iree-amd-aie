@@ -12,6 +12,7 @@
 #include "mlir/IR/Iterators.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+#include "mlir/Transforms/LoopInvariantCodeMotionUtils.h"
 
 #define DEBUG_TYPE "iree-amdaie-unroll-and-distribute-workgroup"
 
@@ -224,6 +225,11 @@ class AMDAIEUnrollWorkgroupLoops : public OpRewritePattern<scf::ForOp> {
     if (succeeded(forOp.promoteIfSingleIteration(rewriter))) {
       return success();
     }
+
+    // Hoist non-dma loop invariant operations (like constants, affine apply,
+    // etc) out of the loop like operation to allow more DMA operations to be
+    // hoisted.
+    moveLoopInvariantCode(dyn_cast<LoopLikeOpInterface>(forOp.getOperation()));
 
     // Try hoisting dma ops outside the scf.for operation by sweeping once
     // forward and once backward to hoist to before, respectively after the
