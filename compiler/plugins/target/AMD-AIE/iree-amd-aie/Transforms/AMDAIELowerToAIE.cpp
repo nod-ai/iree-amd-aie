@@ -138,11 +138,11 @@ LogicalResult acquireOpToAIE(IRRewriter &rewriter,
            << "acquire doesn't operate on a `amdaie.circular_dma_cpy_nd`";
   }
   MemRefType srcType =
-      dmaOp.getSourceType().cast<LogicalObjectFifoType>().getElementType();
+      cast<LogicalObjectFifoType>(dmaOp.getSourceType()).getElementType();
   MemRefType newSrcType = MemRefType::Builder(srcType).setMemorySpace(
       rewriter.getI64IntegerAttr(1));
   MemRefType dstType =
-      dmaOp.getTargetType().cast<LogicalObjectFifoType>().getElementType();
+      cast<LogicalObjectFifoType>(dmaOp.getTargetType()).getElementType();
   MemRefType newDstType = MemRefType::Builder(dstType).setMemorySpace(
       rewriter.getI64IntegerAttr(1));
 
