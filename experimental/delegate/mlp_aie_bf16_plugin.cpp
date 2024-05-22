@@ -159,10 +159,20 @@ struct KernelInfo {
 static KernelInfo KernelInfos[] = {
     {16384, 16384, 512,
      "matmul/matmul-bf16-f32-16384x16384x512-" PLATFORM_SUFFIX "-v1",
-     "matmul_16384x16384_512xbf16__dispatch_0_matmul_1"},
+#ifdef AMD_STRIX
+     "MLIR_AIE"
+#else
+     "matmul_16384x16384_512xbf16__dispatch_0_matmul_1"
+#endif
+    },
     {16384, 512, 16384,
      "matmul/matmul-bf16-f32-16384x512x16384-" PLATFORM_SUFFIX "-v1",
-     "matmul_16384x512_16384xbf16__dispatch_0_matmul_1"}};
+#ifdef AMD_STRIX
+     "MLIR_AIE"
+#else
+     "matmul_16384x512_16384xbf16__dispatch_0_matmul_1"
+#endif
+    }};
 
 // Fixed shape of the matmul kernel
 // #define MLP_M 16384
