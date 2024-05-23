@@ -1,6 +1,3 @@
-    %130 = torch.aten.bmm %125, %129 : !torch.vtensor<[1,4096,512],f32>, !torch.vtensor<[1,512,4096],f32> -> !torch.vtensor<[1,4096,4096],f32>
-    %142 = torch.aten.bmm %137, %141 : !torch.vtensor<[1,4096,4096],f32>, !torch.vtensor<[1,4096,512],f32> -> !torch.vtensor<[1,4096,512],f32>
-
 // PDL pattern spec to match an MLP of shape 4096x4096x512 or 4096x512x4096
 // (MxNxK) and offload to an external function
 //
