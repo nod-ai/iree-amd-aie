@@ -580,6 +580,9 @@ void addAMDAIEObjectFifoLoweringPasses(OpPassManager &passManager) {
   passManager.addPass(createCanonicalizerPass());
 
   passManager.addPass(createAMDAIEDmaToCircularDmaPass());
+  passManager.addPass(createAMDAIECanonicalizeDoublyStridedOpPass());
+  passManager.addPass(createCSEPass());
+  passManager.addPass(createCanonicalizerPass());
   passManager.addNestedPass<func::FuncOp>(createAMDAIECreateAIEWorkgroupPass());
   passManager.addPass(createCSEPass());
 

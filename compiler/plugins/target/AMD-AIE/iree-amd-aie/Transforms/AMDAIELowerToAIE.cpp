@@ -129,7 +129,8 @@ AIE::ObjectFifoCreateOp createObjectFifo(IRRewriter &rewriter,
                             MemRefLayoutAttrInterface{},
                             rewriter.getI64IntegerAttr(1));
   AIE::AIEObjectFifoType dtype = AIE::AIEObjectFifoType::get(memrefType);
-  auto depthInBytes = srcType.getElementTypeBitWidth() / 8;
+  // auto depthInBytes = srcType.getElementTypeBitWidth() / 8;
+  int64_t depthInBytes = 2;
   auto fifo = rewriter.create<AIE::ObjectFifoCreateOp>(
       rewriter.getUnknownLoc(), symName, srcTile, dstTiles,
       rewriter.getIntegerAttr(rewriter.getI32Type(), depthInBytes), dtype,

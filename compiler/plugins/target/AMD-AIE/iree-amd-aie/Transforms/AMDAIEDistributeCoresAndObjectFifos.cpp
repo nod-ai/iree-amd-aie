@@ -568,7 +568,7 @@ LogicalResult insertLogicalObjectFifoAccess(ModuleOp moduleOp) {
           if (memrefToLogicalObjectFifoAccess.contains(operand.get())) {
             op->setOperand(idx, memrefToLogicalObjectFifoAccess[operand.get()]);
           } else if (memrefToLogicalObjectFifo.contains(operand.get())) {
-            rewriter.setInsertionPointToStart(coreOp.getBody());
+            rewriter.setInsertionPoint(op);
             std::tuple<AMDAIE::LogicalObjectFifoFromMemrefOp,
                        AMDAIE::MemoryAccess>
                 value = memrefToLogicalObjectFifo[operand.get()];
@@ -585,7 +585,7 @@ LogicalResult insertLogicalObjectFifoAccess(ModuleOp moduleOp) {
                 rewriter.create<AMDAIE::LogicalObjectFifoFromMemrefOp>(
                     rewriter.getUnknownLoc(), LogicalObjectFifoType::get(type),
                     memref);
-            rewriter.setInsertionPointToStart(coreOp.getBody());
+            rewriter.setInsertionPoint(op);
 
             AMDAIE::LogicalObjectFifoAccessOp accessOp;
             if (memrefToLogicalObjectFifo.contains(memref)) {
