@@ -110,9 +110,14 @@ static bool DebugValueConversions = false;
 
 #define TRACE_DELEGATE1(str_, arg1_) \
   std::cout << "[AIE Delegate Trace]: " << (str_) << (arg1_) << std::endl
+
+#define TRACE_DELEGATE3(str_, arg1_, arg2_, arg3_) \
+  std::cout << "[AIE Delegate Trace]: " << (str_) << (arg1_) << ' ' \
+      << (arg2_) << ' ' << (arg3_) << std::endl
 #else
 #define TRACE_DELEGATE(str_)
 #define TRACE_DELEGATE1(str_, arg1_)
+#define TRACE_DELEGATE3(str_, arg1_, arg2_, arg3_)
 #endif
 
 // Fake bfloat16 type (assuming no C++ 23)
@@ -324,8 +329,11 @@ public:
 //
 // Throws a runtime exception if no kernel matches the shape.
 static const KernelInfo &getKernelInfo(TensorDim m, TensorDim n, TensorDim k) {
-  for (const KernelInfo &ki : KernelInfos)
+  TRACE_DELEGATE3("getKernelInfo input shape: ", m, n, k);
+  for (const KernelInfo &ki : KernelInfos) {
+    TRACE_DELEGATE3("getKernelInfo: trying shape: ", ki.m, ki.n, ki.k);
     if (ki.m == m && ki.n == n && ki.k == k) return ki;
+  }
 
   std::ostringstream oss;
   oss << "[AIE Delegate] FATAL ERROR: No kernel available for shape " << m
