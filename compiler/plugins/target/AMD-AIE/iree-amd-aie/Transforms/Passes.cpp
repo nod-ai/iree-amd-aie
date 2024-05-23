@@ -310,7 +310,7 @@ void addPackPeelBasedPassPipeline(OpPassManager &funcPassManager,
   }
 
   // Vectorization passes
-  appendVectorizationToPipeline(funcPassManager);
+  //// appendVectorizationToPipeline(funcPassManager);
 
   // Comprehensive bufferization
   addAMDAIEBufferizePasses(funcPassManager);
@@ -552,6 +552,7 @@ void buildAMDAIETransformPassPipeline(OpPassManager &variantPassManager) {
         false &&
         "Only `ObjectFifo` and `AIR` pipelines supported for lowering to AIE");
   }
+  
   variantPassManager.addPass(createReconcileTranslationInfoPass());
   variantPassManager.addPass(createAMDAIELowerWorkgroupCountPass());
 
