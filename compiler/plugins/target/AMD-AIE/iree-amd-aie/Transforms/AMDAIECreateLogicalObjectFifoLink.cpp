@@ -13,6 +13,54 @@
 
 namespace mlir::iree_compiler::AMDAIE {
 
+std::optional<int64_t> getFlatConstantSourceOffset(
+    DoublyStridedOpInterface op) {
+  llvm::outs() << "getFlatConstantSourceOffset: " << op << "\n";
+  int64_t resOffset = 0;
+  for (auto &&[offset, size, stride] :
+       llvm::zip(op.getSourceMixedOffsets(), op.getSourceMixedSizes(),
+                 op.getSourceMixedStrides())) {
+    std::optional<int64_t> constantOffset = getConstantIntValue(offset);
+    std::optional<int64_t> constantSize = getConstantIntValue(size);
+    std::optional<int64_t> constantStride = getConstantIntValue(stride);
+    if (!constantOffset)
+      llvm::outs() << "no constant offset: " << offset << "\n";
+    if (!constantSize) llvm::outs() << "no constant size: " << size << "\n";
+    if (!constantStride)
+      llvm::outs() << "no constant stride: " << stride << "\n";
+
+    if (constantOffset && constantOffset.value() == 0) continue;
+    if (constantOffset && constantSize && constantStride &&
+        constantOffset.value() != 0 && constantSize.value() == 1) {
+      resOffset += (constantOffset.value() * constantStride.value());
+    } else {
+      return std::nullopt;
+    }
+  }
+  return resOffset;
+}
+
+std::optional<int64_t> getFlatConstantTargetOffset(
+    DoublyStridedOpInterface op) {
+  llvm::outs() << "getFlatConstantTargetOffset: " << op << "\n";
+  int64_t resOffset = 0;
+  for (auto &&[offset, size, stride] :
+       llvm::zip(op.getTargetMixedOffsets(), op.getTargetMixedSizes(),
+                 op.getTargetMixedStrides())) {
+    std::optional<int64_t> constantOffset = getConstantIntValue(offset);
+    std::optional<int64_t> constantSize = getConstantIntValue(size);
+    std::optional<int64_t> constantStride = getConstantIntValue(stride);
+    if (constantOffset && constantOffset.value() == 0) continue;
+    if (constantOffset && constantSize && constantStride &&
+        constantSize.value() == 1) {
+      resOffset += (constantOffset.value() * constantStride.value());
+    } else {
+      return std::nullopt;
+    }
+  }
+  return resOffset;
+}
+
 /// Utility to add explicit link operations to avoid having to do this during
 /// conversion to AIEDialect operations. This function only consider L2/MT for
 /// links as L1/L3 don't need this linking through AIE objectFifos. Furthermore,
@@ -30,11 +78,13 @@ LogicalResult createLogicalObjectFifoLink(
   // either the input or output side of this logical objectFifo. While
   // doing this, keep track of the last user operation for insertion
   // purposes.
-  SmallVector<OpFoldResult> ins;
-  SmallVector<OpFoldResult> outs;
+  SmallVector<std::pair<DoublyStridedOpInterface, int64_t>> ins;
+  SmallVector<std::pair<DoublyStridedOpInterface, int64_t>> outs;
   CopyOpInterface lastUserOp;
   for (Operation *userOp : logicalObjectFifo->getUsers()) {
-    if (auto copyOp = dyn_cast<CopyOpInterface>(userOp)) {
+    auto stridedOp = dyn_cast<DoublyStridedOpInterface>(userOp);
+    auto copyOp = dyn_cast<CopyOpInterface>(userOp);
+    if (stridedOp && copyOp) {
       if (lastUserOp && copyOp->getBlock() != lastUserOp->getBlock()) {
         logicalObjectFifo->emitError(
             "does have copy-like users not residing in the same block");
@@ -52,23 +102,86 @@ LogicalResult createLogicalObjectFifoLink(
         lastUserOp = copyOp;
       }
       if (logicalObjectFifo == sourceLogicalObjectFifo) {
-        outs.push_back(copyOp->getResult(0));
+        if (std::optional<int64_t> offset =
+                getFlatConstantSourceOffset(stridedOp)) {
+          outs.push_back(std::make_pair(stridedOp, offset.value()));
+        } else {
+          return stridedOp.emitOpError()
+                 << "non-constant offset found which is not supported";
+        }
       } else {
-        ins.push_back(copyOp->getResult(0));
+        if (std::optional<int64_t> offset =
+                getFlatConstantSourceOffset(stridedOp)) {
+          ins.push_back(std::make_pair(stridedOp, offset.value()));
+        } else {
+          return stridedOp.emitOpError()
+                 << "non-constant offset found which is not supported";
+        }
       }
     }
   }
 
+  // TODO(jornt): Add checks on size equality etc due to objectfifo constraints.
+
+  auto comparator = [](std::pair<DoublyStridedOpInterface, int64_t> a,
+                       std::pair<DoublyStridedOpInterface, int64_t> b) -> bool {
+    return a.second < b.second;
+  };
+
+  llvm::sort(ins.begin(), ins.end(), comparator);
+  llvm::sort(outs.begin(), outs.end(), comparator);
+
+  SmallVector<Value> inResults = llvm::map_to_vector(
+      ins, [](std::pair<DoublyStridedOpInterface, int64_t> elem) {
+        return cast<Value>(elem.first->getResult(0));
+      });
+  SmallVector<Value> outResults = llvm::map_to_vector(
+      outs, [](std::pair<DoublyStridedOpInterface, int64_t> elem) {
+        return cast<Value>(elem.first->getResult(0));
+      });
+
   // Insert the `LogicalObjectFifoLink` after the last user operation.
   if (lastUserOp) {
     rewriter.setInsertionPointAfter(lastUserOp);
-    rewriter.create<AMDAIE::LogicalObjectFifoLink>(
-        rewriter.getUnknownLoc(),
-        getValueOrCreateConstantIndexOp(rewriter, rewriter.getUnknownLoc(),
-                                        ins),
-        getValueOrCreateConstantIndexOp(rewriter, rewriter.getUnknownLoc(),
-                                        outs));
+    rewriter.create<AMDAIE::LogicalObjectFifoLink>(rewriter.getUnknownLoc(),
+                                                   inResults, outResults);
   }
+  return success();
+}
+
+LogicalResult removeAllNonZeroOffsets(RewriterBase &rewriter,
+                                      AMDAIE::DoublyStridedOpInterface op) {
+  auto copyOp = dyn_cast<CopyOpInterface>(op.getOperation());
+  if (!copyOp) return success();
+  SmallVector<OpFoldResult> newSourceOffsets;
+  SmallVector<OpFoldResult> newSourceSizes;
+  SmallVector<OpFoldResult> newSourceStrides;
+  SmallVector<OpFoldResult> newTargetOffsets;
+  SmallVector<OpFoldResult> newTargetSizes;
+  SmallVector<OpFoldResult> newTargetStrides;
+  for (auto &&[offset, size, stride] :
+       llvm::zip(op.getSourceMixedOffsets(), op.getSourceMixedSizes(),
+                 op.getSourceMixedStrides())) {
+    std::optional<int64_t> constantOffset = getConstantIntValue(offset);
+    if (constantOffset && constantOffset.value() != 0) continue;
+    newSourceOffsets.push_back(offset);
+    newSourceSizes.push_back(size);
+    newSourceStrides.push_back(stride);
+  }
+  for (auto &&[offset, size, stride] :
+       llvm::zip(op.getTargetMixedOffsets(), op.getTargetMixedSizes(),
+                 op.getTargetMixedStrides())) {
+    std::optional<int64_t> constantOffset = getConstantIntValue(offset);
+    if (constantOffset && constantOffset.value() != 0) continue;
+    newTargetOffsets.push_back(offset);
+    newTargetSizes.push_back(size);
+    newTargetStrides.push_back(stride);
+  }
+  rewriter.setInsertionPointAfter(op);
+  auto newDoublyStridedOp = op.createDoublyStridedOp(
+      rewriter, newTargetOffsets, newTargetSizes, newTargetStrides,
+      newSourceOffsets, newSourceSizes, newSourceStrides);
+  rewriter.replaceOp(op, newDoublyStridedOp.getOperation());
   return success();
 }
 
@@ -95,6 +208,27 @@ struct AMDAIECreateLogicalObjectFifoLinkPass
           return WalkResult::advance();
         });
     if (res.wasInterrupted()) return signalPassFailure();
+
+    // Remove all non-zero offsets as they should be handled through the link by
+    // now or errored out.
+    // TODO(jornt): rewrite
+    res = parentOp->walk([&](AMDAIE::DoublyStridedOpInterface stridedOp) {
+      auto copyOp = dyn_cast<CopyOpInterface>(stridedOp.getOperation());
+      if (!copyOp) return WalkResult::advance();
+      if (failed(removeAllNonZeroOffsets(rewriter, stridedOp))) {
+        stridedOp.emitError() << "couldn't remove non-zero offsets";
+        return WalkResult::interrupt();
+      }
+      return WalkResult::advance();
+    });
+    if (res.wasInterrupted()) return signalPassFailure();
+
+    parentOp->walk([&](AMDAIE::DoublyStridedOpInterface stridedOp) {
+      auto copyOp = dyn_cast<CopyOpInterface>(stridedOp.getOperation());
+      if (!copyOp) return WalkResult::advance();
+      (void)foldDmaOpSingleDims(rewriter, stridedOp);
+      return WalkResult::advance();
+    });
   }
 };
 

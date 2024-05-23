@@ -24,6 +24,9 @@ LogicalResult createLogicalObjectFifoLink(
     RewriterBase &rewriter,
     AMDAIE::LogicalObjectFifoFromMemrefOp logicalObjectFifo);
 
+LogicalResult foldDmaOpSingleDims(RewriterBase &rewriter,
+                                  AMDAIE::DoublyStridedOpInterface op);
+
 /// Hoist an affine apply op on a scf.for op's induction variable
 /// TODO(jornt): Can we generalize this to go into upstream?
 LogicalResult hoistForAffineApplyOp(RewriterBase &rewriter,

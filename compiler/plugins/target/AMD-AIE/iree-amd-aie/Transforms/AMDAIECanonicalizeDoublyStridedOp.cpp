@@ -14,7 +14,7 @@
 
 namespace mlir::iree_compiler::AMDAIE {
 
-namespace {
+// namespace {
 
 /// Recognize linear accesses across multiple DMA access dimensions and fold
 /// them.
@@ -102,6 +102,8 @@ LogicalResult foldDmaOpUnitDims(RewriterBase &rewriter,
   rewriter.replaceOp(op, newDoublyStridedOp.getOperation());
   return success();
 }
+
+namespace {
 
 class AMDAIECanonicalizeDoublyStridedOpPass
     : public impl::AMDAIECanonicalizeDoublyStridedOpBase<

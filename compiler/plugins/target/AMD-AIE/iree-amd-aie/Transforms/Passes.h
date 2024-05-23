@@ -52,9 +52,9 @@ std::unique_ptr<Pass> createAMDAIECanonicalizeDmaPass();
 /// Create pass to canonicalize doubly strided operations.
 std::unique_ptr<Pass> createAMDAIECanonicalizeDoublyStridedOpPass();
 
-/// Pass to convert logical objectFifo consume/produce operation to
-/// acquire/release semaphore operations.
-std::unique_ptr<Pass> createAMDAIEConsumeProduceToAcquireReleasePass();
+/// Pass to convert logical objectFifo access operations to acquire/release
+/// semaphore operations.
+std::unique_ptr<Pass> createAMDAIEAccessToAcquireReleasePass();
 
 /// Pass to unroll the loops within the control code regions.
 std::unique_ptr<Pass> createAMDAIEControlCodeLoopUnrollPass();
@@ -79,6 +79,9 @@ std::unique_ptr<Pass> createAMDAIEDecomposeLinalgExtPackUnPackToAIRPass();
 /// Create pass to unroll the scf.forall operations around `amdaie.core`
 /// operations and distribute the logical objectFifos.
 std::unique_ptr<Pass> createAMDAIEDistributeCoresAndObjectFifosPass();
+
+/// Create a pass to TODO.
+std::unique_ptr<Pass> createAMDAIEDmaLoopSubsumptionPass();
 
 /// Create a pass to convert dma operations to circular dma operations.
 std::unique_ptr<Pass> createAMDAIEDmaToCircularDmaPass();

@@ -10,6 +10,13 @@
 include "iree-amd-aie/IR/AMDAIEDialect.td"
 include "mlir/Pass/PassBase.td"
 
+def AMDAIEAccessToAcquireRelease :
+    Pass<"iree-amdaie-access-to-acquire-release", ""> {
+  let summary = "Convert logical objectFifo access operations to acquire/release "
+                "semaphore operations.";
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEAccessToAcquireReleasePass()";
+}
+
 def AMDAIEAIRDmaToAMDAIEDma :
   Pass<"iree-amdaie-air-dma-to-amdaie-dma", ""> {
   let summary = "Convert AIR DMA ops into AMDAIE DMA ops operating on logical objectFifos";
@@ -67,13 +74,6 @@ def AMDAIECleanup :
       "mlir::iree_compiler::AMDAIE::createAMDAIECleanupPass()";
 }
 
-def AMDAIEConsumeProduceToAcquireRelease :
-    Pass<"iree-amdaie-consume-produce-to-acquire-release", ""> {
-  let summary = "Convert logical objectFifo consume/produce operation to "
-                "acquire/release semaphore operations.";
-  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEConsumeProduceToAcquireReleasePass()";
-}
-
 def AMDAIEControlCodeLoopUnroll :
     Pass<"iree-amdaie-controlcode-loop-unroll", ""> {
   let summary = "Unroll the loops in the control code regions.";
@@ -109,6 +109,12 @@ def AMDAIEDmaToCircularDma :
   Pass<"iree-amdaie-dma-to-circular-dma"> {
   let summary = "Convert dma operations to circular dma operations.";
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEDmaToCircularDmaPass()";
+}
+
+def AMDAIEDmaLoopSubsumption :
+  Pass<"iree-amdaie-dma-loop-subsumption"> {
+  let summary = "TODO.";
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEDmaLoopSubsumptionPass()";
 }
 
 def AMDAIEFuseConsumerIntoLoop :

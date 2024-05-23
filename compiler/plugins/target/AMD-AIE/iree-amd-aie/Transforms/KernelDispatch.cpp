@@ -206,8 +206,8 @@ FailureOr<ParameterSetting> ParameterSetting::create(linalg::LinalgOp linalgOp,
     uint32_t K1 = 0;
     uint32_t K0 = 1;
 
-    uint32_t m0Pack = M0;
-    uint32_t n0Pack = N0;
+    uint32_t m0Pack = M0 / 2;
+    uint32_t n0Pack = N0 / 2;
     uint32_t k0Pack = findLargestFactor(K, maxL1Size);
 
     return ParameterSetting{M0,     N0,     K0,     M1,     N1,     K1,
@@ -355,8 +355,7 @@ static LogicalResult setRootConfigForPackPeelPipeline(
   SmallVector<int64_t> TileSizeLevel0 = {packPeelTiling.getM0(),
                                          packPeelTiling.getN0()};
   SmallVector<int64_t> TileSizeLevel1 = {0, 0, packPeelTiling.getK0()};
-  SmallVector<int64_t> TileSizeLevel2 = {
-      0, 0, 0, packPeelTiling.getM1(), packPeelTiling.getN1(), 0};
+  SmallVector<int64_t> TileSizeLevel2 = {1, 1, 0, 0, 0, 0};
   TileSizesListType tileSizes = {TileSizeLevel0, TileSizeLevel1,
                                  TileSizeLevel2};
   if (failed(setOpConfigAndEntryPointFnTranslation(

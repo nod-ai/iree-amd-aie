@@ -349,8 +349,9 @@ LogicalObjectFifoAccessOp::getLogicalObjectFifo() {
 //===----------------------------------------------------------------------===//
 
 void LogicalObjectFifoAcquire::build(OpBuilder &b, mlir::OperationState &result,
-                                     Value dma, LogicalObjectFifoPort port) {
-  build(b, result, dma, port, b.getI32IntegerAttr(1));
+                                     mlir::TypeRange resultTypes, Value dma,
+                                     LogicalObjectFifoPort port) {
+  build(b, result, resultTypes, dma, port, b.getI32IntegerAttr(1));
 }
 
 //===----------------------------------------------------------------------===//

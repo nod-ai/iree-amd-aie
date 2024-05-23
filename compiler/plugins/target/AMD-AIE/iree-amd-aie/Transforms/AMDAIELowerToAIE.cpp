@@ -11,6 +11,8 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include <numeric>
+
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "iree-amd-aie/IR/AMDAIEDialect.h"
@@ -18,6 +20,9 @@
 #include "iree-amd-aie/Transforms/Passes.h"
 #include "iree-amd-aie/Transforms/Transforms.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
+#include "mlir/Dialect/SCF/Transforms/Transforms.h"
+#include "mlir/Dialect/SCF/Utils/Utils.h"
+#include "mlir/Dialect/Utils/StaticValueUtils.h"
 #include "mlir/IR/IRMapping.h"
 #include "mlir/IR/Iterators.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
@@ -89,32 +94,67 @@ AIE::ObjectFifoCreateOp createObjectFifo(IRRewriter &rewriter,
   // TODO(jornt): I think objectfifos should support source type != dest type.
   MemRefType srcType =
       cast<LogicalObjectFifoType>(dmaOp.getSourceType()).getElementType();
-  Attribute srcMemSpace = srcType.getMemorySpace();
-  int64_t srcMemSpaceInt =
-      srcMemSpace ? dyn_cast<IntegerAttr>(srcMemSpace).getInt() : 0;
   MemRefType dstType =
       cast<LogicalObjectFifoType>(dmaOp.getTargetType()).getElementType();
-  Attribute dstMemSpace = dstType.getMemorySpace();
-  int64_t dstMemSpaceInt =
-      dstMemSpace ? dyn_cast<IntegerAttr>(dstMemSpace).getInt() : 0;
-  AIE::AIEObjectFifoType dtype;
-  if (srcMemSpaceInt == 1) {
-    // Source on L2
-    dtype = AIE::AIEObjectFifoType::get(srcType);
-  } else if (dstMemSpaceInt == 1) {
-    // Destination on L2
-    dtype = AIE::AIEObjectFifoType::get(dstType);
-  } else if (srcMemSpaceInt < dstMemSpaceInt) {
-    dtype = AIE::AIEObjectFifoType::get(dstType);
-  } else {
-    dtype = AIE::AIEObjectFifoType::get(srcType);
-  }
+  ArrayRef<int64_t> sourceShape = srcType.getShape();
+  ArrayRef<int64_t> targetShape = dstType.getShape();
+  int64_t sourceSize = std::accumulate(sourceShape.begin(), sourceShape.end(),
+                                       1, std::multiplies<>());
+  int64_t targetSize = std::accumulate(targetShape.begin(), targetShape.end(),
+                                       1, std::multiplies<>());
+  // TODO(jornt) refactor memory spaces
+  MemRefType memrefType =
+      sourceSize < targetSize
+          ? MemRefType::get({sourceSize}, srcType.getElementType(),
+                            MemRefLayoutAttrInterface{},
+                            rewriter.getI64IntegerAttr(1))
+          : MemRefType::get({targetSize}, dstType.getElementType(),
+                            MemRefLayoutAttrInterface{},
+                            rewriter.getI64IntegerAttr(1));
+  AIE::AIEObjectFifoType dtype = AIE::AIEObjectFifoType::get(memrefType);
   auto depthInBytes = srcType.getElementTypeBitWidth() / 8;
   auto fifo = rewriter.create<AIE::ObjectFifoCreateOp>(
       rewriter.getUnknownLoc(), symName, srcTile, dstTiles,
       rewriter.getIntegerAttr(rewriter.getI32Type(), depthInBytes), dtype,
       sourceDims, targetDims);
   return fifo;
+}
+
+/// Convert `amdaie.logicalobjectfifo.access` to `aie.objectfifo.subview.access`
+/// + `memref.reinterpret_cast` to bridge the gap between the objectFifo type
+/// and the type assumed by computational operations.
+LogicalResult accessOpToAIE(IRRewriter &rewriter,
+                            AMDAIE::LogicalObjectFifoAccessOp accessOp,
+                            IRMapping &mapper,
+                            SmallVector<Operation *> &toBeErased) {
+  LLVM_DEBUG(llvm::dbgs() << "Convert [AMDAIE::LogicalObjectFifoAccessOp]\n");
+  OpBuilder::InsertionGuard guard(rewriter);
+  rewriter.setInsertionPoint(accessOp);
+  if (!mapper.contains(accessOp.getInput())) {
+    return accessOp.emitError()
+           << "this access operation's input has not been mapped";
+  }
+  auto subviewOp = dyn_cast<AIE::ObjectFifoSubviewAccessOp>(
+      mapper.lookup(accessOp.getInput()).getDefiningOp());
+  if (!subviewOp) {
+    return accessOp.emitError()
+           << "access doesn't operate on an input that has been mapped to an "
+              "`aie.objectfifo.acquire` + subview operation";
+  }
+  auto type = cast<MemRefType>(accessOp.getOutput().getType());
+  // TODO(jornt): refactor memory space used for objectFifos to avoid
+  // hardcoding.
+  MemRefType newType =
+      MemRefType::Builder(type).setMemorySpace(rewriter.getI64IntegerAttr(1));
+  llvm::ArrayRef<int64_t> sizes = newType.getShape();
+  auto [strides, baseOffset] = getStridesAndOffset(newType);
+  auto reinterpretOp = rewriter.create<memref::ReinterpretCastOp>(
+      rewriter.getUnknownLoc(), newType, subviewOp.getOutput(), baseOffset,
+      sizes, strides);
+  mapper.map(accessOp.getOperation(), reinterpretOp.getOperation());
+  mapper.map(accessOp.getResult(), reinterpretOp.getResult());
+  toBeErased.push_back(accessOp);
+  return success();
 }
 
 /// Convert `amdaie.logicalobjectfifo.acquire` to `aie.objectfifo.acquire`.
@@ -127,7 +167,8 @@ AIE::ObjectFifoCreateOp createObjectFifo(IRRewriter &rewriter,
 ///   into objectfifos can have a different source and target type.
 LogicalResult acquireOpToAIE(IRRewriter &rewriter,
                              AMDAIE::LogicalObjectFifoAcquire acquireOp,
-                             IRMapping &mapper, IRMapping &localMemrefMapper) {
+                             IRMapping &mapper,
+                             SmallVector<Operation *> &toBeErased) {
   LLVM_DEBUG(llvm::dbgs() << "Convert [AMDAIE::LogicalObjectFifoAcquire]\n");
   OpBuilder::InsertionGuard guard(rewriter);
   rewriter.setInsertionPoint(acquireOp);
@@ -137,14 +178,6 @@ LogicalResult acquireOpToAIE(IRRewriter &rewriter,
     return dmaOp.emitError()
            << "acquire doesn't operate on a `amdaie.circular_dma_cpy_nd`";
   }
-  MemRefType srcType =
-      cast<LogicalObjectFifoType>(dmaOp.getSourceType()).getElementType();
-  MemRefType newSrcType = MemRefType::Builder(srcType).setMemorySpace(
-      rewriter.getI64IntegerAttr(1));
-  MemRefType dstType =
-      cast<LogicalObjectFifoType>(dmaOp.getTargetType()).getElementType();
-  MemRefType newDstType = MemRefType::Builder(dstType).setMemorySpace(
-      rewriter.getI64IntegerAttr(1));
 
   auto objFifo =
       dyn_cast<AIE::ObjectFifoCreateOp>(mapper.lookup(dmaOp.getOperation()));
@@ -163,42 +196,22 @@ LogicalResult acquireOpToAIE(IRRewriter &rewriter,
           : AIE::ObjectFifoPort::Consume;
   auto objFifoAquireOp = rewriter.create<AIE::ObjectFifoAcquireOp>(
       rewriter.getUnknownLoc(), subviewType, port, objFifo.getName(), 1);
-  auto subview = rewriter.create<AIE::ObjectFifoSubviewAccessOp>(
+  auto subviewOp = rewriter.create<AIE::ObjectFifoSubviewAccessOp>(
       rewriter.getUnknownLoc(), elementType, objFifoAquireOp.getSubview(),
       rewriter.getIntegerAttr(rewriter.getI32Type(), 0));
-
-  Attribute dstMemSpace = dstType.getMemorySpace();
-  if (!dstMemSpace) {
-    dmaOp.emitError("no memspace for dma op used in CoreOp is not supported");
-    return failure();
-  }
-  int64_t memSpaceInt = dyn_cast<IntegerAttr>(dstMemSpace).getInt();
-  // Use target logical objectfifo for L2 to L1 and source for L1 to L2.
-  Value memref = memSpaceInt == 2 ? dmaOp.getTargetObjectFifo().getMemref()
-                                  : dmaOp.getSourceObjectFifo().getMemref();
-  MemRefType type = memSpaceInt == 2 ? newDstType : newSrcType;
-  llvm::ArrayRef<int64_t> sizes = type.getShape();
-  auto [strides, baseOffset] = getStridesAndOffset(type);
-  auto reinterpretOp = rewriter.create<memref::ReinterpretCastOp>(
-      rewriter.getUnknownLoc(), type, subview.getOutput(), baseOffset, sizes,
-      strides);
-  localMemrefMapper.map(memref, reinterpretOp.getResult());
-  rewriter.eraseOp(acquireOp);
+  // Map acquire op to new acquire + subview op.
+  mapper.map(acquireOp.getOperation(), subviewOp.getOperation());
+  mapper.map(acquireOp.getResult(), subviewOp.getOutput());
+  toBeErased.push_back(acquireOp);
   return success();
 }
 
 LogicalResult coreLinalgOpToAIE(IRRewriter &rewriter, linalg::LinalgOp linalgOp,
                                 IRMapping &mapper,
-                                IRMapping &localMemrefMapper) {
+                                SmallVector<Operation *> &toBeErased) {
   LLVM_DEBUG(llvm::dbgs() << "Convert [linalg.LinalgOp]\n");
   OpBuilder::InsertionGuard guard(rewriter);
   rewriter.setInsertionPoint(linalgOp);
-  for (int i = 0; i < linalgOp->getNumOperands(); ++i) {
-    Value operand = linalgOp->getOperand(i);
-    if (localMemrefMapper.contains(operand)) {
-      linalgOp->setOperand(i, localMemrefMapper.lookup(operand));
-    }
-  }
   rewriter.clone(*(linalgOp.getOperation()), mapper);
   rewriter.eraseOp(linalgOp);
   return success();
@@ -207,7 +220,7 @@ LogicalResult coreLinalgOpToAIE(IRRewriter &rewriter, linalg::LinalgOp linalgOp,
 LogicalResult coreReleaseOpToAIE(IRRewriter &rewriter,
                                  AMDAIE::LogicalObjectFifoRelease releaseOp,
                                  IRMapping &mapper,
-                                 IRMapping &localMemrefMapper) {
+                                 SmallVector<Operation *> &toBeErased) {
   LLVM_DEBUG(llvm::dbgs() << "Convert [AMDAIE::LogicalObjectFifoRelease]\n");
   OpBuilder::InsertionGuard guard(rewriter);
   rewriter.setInsertionPoint(releaseOp);
@@ -257,30 +270,32 @@ LogicalResult coreToAIE(IRRewriter &rewriter, AMDAIE::CoreOp coreOp,
   rewriter.setInsertionPointToEnd(aieCoreBlock);
   rewriter.create<AIE::EndOp>(rewriter.getUnknownLoc());
 
-  // Mapper used to remap local memrefs if needed. This happens as we're
-  // inserting `ReinterpretCastOp` operations in the acquire operation to AIE
-  // conversion.
-  IRMapping localMemrefMapper;
+  SmallVector<Operation *> toBeErased;
   auto walkResult = aieCoreOp.walk([&](Operation *op) {
     rewriter.setInsertionPoint(op);
     if (TypeSwitch<Operation *, LogicalResult>(op)
             .Case<AMDAIE::LogicalObjectFifoAccessOp>([&](auto accessOp) {
-              // TODO(jornt): Temporary until access operations are used for
-              // inserting synchronization stubs instead of consume/produce.
-              rewriter.eraseOp(accessOp);
-              return success();
+              return accessOpToAIE(rewriter, accessOp, mapper, toBeErased);
             })
             .Case<AMDAIE::LogicalObjectFifoAcquire>([&](auto acquireOp) {
-              return acquireOpToAIE(rewriter, acquireOp, mapper,
-                                    localMemrefMapper);
+              return acquireOpToAIE(rewriter, acquireOp, mapper, toBeErased);
+            })
+            .Case<AMDAIE::LogicalObjectFifoConsume>([&](auto consumeOp) {
+              // TODO(jornt): get rid of LogicalObjectFifoConsume before this
+              rewriter.eraseOp(consumeOp);
+              return success();
+            })
+            .Case<AMDAIE::LogicalObjectFifoProduce>([&](auto produceOp) {
+              // TODO(jornt): get rid of LogicalObjectFifoProduce before this
+              rewriter.eraseOp(produceOp);
+              return success();
             })
             .Case<AMDAIE::LogicalObjectFifoRelease>([&](auto releaseOp) {
               return coreReleaseOpToAIE(rewriter, releaseOp, mapper,
-                                        localMemrefMapper);
+                                        toBeErased);
             })
             .Case<linalg::LinalgOp>([&](auto linalgOp) {
-              return coreLinalgOpToAIE(rewriter, linalgOp, mapper,
-                                       localMemrefMapper);
+              return coreLinalgOpToAIE(rewriter, linalgOp, mapper, toBeErased);
             })
             .Default([&](Operation *op) {
               remapOperands(op, mapper);
@@ -294,6 +309,10 @@ LogicalResult coreToAIE(IRRewriter &rewriter, AMDAIE::CoreOp coreOp,
   if (walkResult.wasInterrupted()) {
     coreOp.emitError("could not convert to AIEDialect ops");
     return failure();
+  }
+  for (auto *op : toBeErased) {
+    op->dropAllUses();
+    rewriter.eraseOp(op);
   }
 
   mapper.map(coreOp.getResult(), aieCoreOp.getResult());
@@ -663,7 +682,7 @@ LogicalResult lowerToAIE(ModuleOp moduleOp) {
     auto deviceOp = rewriter.create<xilinx::AIE::DeviceOp>(
         rewriter.getUnknownLoc(),
         xilinx::AIE::AIEDeviceAttr::get(rewriter.getContext(),
-                                        xilinx::AIE::AIEDevice::npu1));
+                                        xilinx::AIE::AIEDevice::npu1_4col));
     deviceOp.getRegion().emplaceBlock();
     Block *deviceBlock = &deviceOp.getRegion().front();
 
@@ -683,7 +702,8 @@ LogicalResult lowerToAIE(ModuleOp moduleOp) {
     FunctionType funcType = rewriter.getFunctionType(inputTypes, TypeRange{});
     rewriter.setInsertionPoint(deviceBlock, deviceBlock->begin());
     auto ipuFuncOp = rewriter.create<func::FuncOp>(
-        rewriter.getUnknownLoc(), rewriter.getStringAttr("sequence"), funcType);
+        rewriter.getUnknownLoc(), rewriter.getStringAttr(funcOp.getSymName()),
+        funcType);
     ipuFuncOp.setPublic();
     rewriter.setInsertionPointToStart(ipuFuncOp.addEntryBlock());
     rewriter.create<func::ReturnOp>(rewriter.getUnknownLoc());
@@ -786,6 +806,33 @@ class MoveAllDependenciesIntoOp : public OpRewritePattern<OpTy> {
   }
 };
 
+LogicalResult coreForallToFor(ModuleOp moduleOp) {
+  IRRewriter rewriter(moduleOp.getContext());
+  WalkResult res = moduleOp->walk([&](AIE::CoreOp coreOp) {
+    WalkResult coreRes = coreOp->walk([&](scf::ForallOp forallOp) {
+      SmallVector<Operation *> forOpResults;
+      if (failed(scf::forallToForLoop(rewriter, forallOp, &forOpResults))) {
+        coreOp.emitOpError() << "failed to transform scf.forall to scf.for";
+        return WalkResult::interrupt();
+      }
+
+      SmallVector<scf::ForOp> forOps = llvm::map_to_vector(
+          forOpResults,
+          [](Operation *loop) { return dyn_cast<scf::ForOp>(loop); });
+      if (failed(coalesceLoops(rewriter, forOps))) {
+        coreOp.emitOpError() << "failed to coalesce for loops";
+        return WalkResult::interrupt();
+      }
+
+      return WalkResult::advance();
+    });
+    if (coreRes.wasInterrupted()) return WalkResult::interrupt();
+    return WalkResult::advance();
+  });
+  if (res.wasInterrupted()) return failure();
+  return success();
+}
+
 class AMDAIELowerToAIEPass
     : public impl::AMDAIELowerToAIEBase<AMDAIELowerToAIEPass> {
  public:
@@ -804,21 +851,25 @@ void AMDAIELowerToAIEPass::runOnOperation() {
   // to AIEDialect operations.
   Operation *parentOp = getOperation();
   IRRewriter rewriter(parentOp->getContext());
-  WalkResult res = parentOp->walk(
-      [&](AMDAIE::LogicalObjectFifoFromMemrefOp logicalObjectFifo) {
-        if (failed(createLogicalObjectFifoLink(rewriter, logicalObjectFifo))) {
-          logicalObjectFifo.emitError() << "couldn't create a link operation";
-          return WalkResult::interrupt();
-        }
-        return WalkResult::advance();
-      });
-  if (res.wasInterrupted()) return signalPassFailure();
+  // WalkResult res = parentOp->walk(
+  //     [&](AMDAIE::LogicalObjectFifoFromMemrefOp logicalObjectFifo) {
+  //       if (failed(createLogicalObjectFifoLink(rewriter, logicalObjectFifo)))
+  //       {
+  //         logicalObjectFifo.emitError() << "couldn't create a link
+  //         operation"; return WalkResult::interrupt();
+  //       }
+  //       return WalkResult::advance();
+  //     });
+  // if (res.wasInterrupted()) return signalPassFailure();
+  // LLVM_DEBUG(llvm::dbgs() << "Module after createLogicalObjectFifoLink: "
+  //                         << getOperation());
 
   // Main function call to convert all operations into AIE dialect operations
   // inside an AIE device.
   if (failed(lowerToAIE(getOperation()))) {
     return signalPassFailure();
   }
+  LLVM_DEBUG(llvm::dbgs() << "Module after lowerToAIE: " << getOperation());
 
   // Clean up the HAL bindings and it's uses as they are not needed anymore.
   if (failed(eraseHALBindings(getOperation()))) {
@@ -833,6 +884,11 @@ void AMDAIELowerToAIEPass::runOnOperation() {
   patterns.insert<MoveAllDependenciesIntoOp<xilinx::AIE::CoreOp>>(context);
   if (failed(
           applyPatternsAndFoldGreedily(getOperation(), std::move(patterns)))) {
+    return signalPassFailure();
+  }
+
+  // Convert forall operations within core operations to scf.for
+  if (failed(coreForallToFor(getOperation()))) {
     return signalPassFailure();
   }
 }

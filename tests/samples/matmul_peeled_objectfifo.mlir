@@ -1,6 +1,6 @@
-// RUN: iree-opt --pass-pipeline="builtin.module(fold-memref-alias-ops,iree-amdaie-pack-to-dma,air-copy-to-dma,iree-amdaie-air-dma-to-amdaie-dma,iree-amdaie-insert-cores,cse,iree-amdaie-localize-logicalobjectfifo,iree-amdaie-distribute-cores-and-objectfifos,cse,iree-amdaie-dma-to-circular-dma,func.func(iree-amdaie-create-aie-workgroup),cse,iree-amdaie-canonicalize-doubly-strided-op,iree-amdaie-consume-produce-to-acquire-release,cse,canonicalize,iree-amdaie-controlcode-loop-unroll,cse,canonicalize,canonicalize,iree-amdaie-lower-to-aie,canonicalize)" --split-input-file %s | FileCheck %s
+// RUN: iree-opt --pass-pipeline="builtin.module(fold-memref-alias-ops,iree-amdaie-pack-to-dma,air-copy-to-dma,iree-amdaie-air-dma-to-amdaie-dma,iree-amdaie-insert-cores,cse,iree-amdaie-localize-logicalobjectfifo,iree-amdaie-distribute-cores-and-objectfifos,cse,canonicalize,iree-amdaie-dma-to-circular-dma,func.func(iree-amdaie-create-aie-workgroup),cse,iree-amdaie-canonicalize-doubly-strided-op,iree-amdaie-access-to-acquire-release,cse,canonicalize,iree-amdaie-controlcode-loop-unroll,cse,canonicalize,iree-amdaie-create-logical-objectfifo-link,iree-amdaie-lower-to-aie,canonicalize)" --split-input-file %s | FileCheck %s
 
-// CHECK:       aie.device(npu1)
+// CHECK:       aie.device(npu1_4col)
 // CHECK-DAG:   %[[TILE_0_2:.+]] = aie.tile(0, 2)
 // CHECK-DAG:   %[[TILE_1_2:.+]] = aie.tile(1, 2)
 // CHECK-DAG:   aie.objectfifo @[[OBJ0:.+]](%[[TILE_0_2]]
@@ -9,7 +9,7 @@
 // CHECK:         aie.objectfifo.acquire @[[OBJ0]](Produce, 1)
 // CHECK-DAG:   aie.core(%[[TILE_1_2]])
 // CHECK:         aie.objectfifo.acquire @[[OBJ1]](Produce, 1)
-// CHECK:       func.func @sequence(%[[ARG0:.+]]: memref<32x1024xi32>, %[[ARG1:.+]]: memref<1024x64xi32>, %[[ARG2:.+]]: memref<32x64xi32>)
+// CHECK:       func.func @matmul_i32(%[[ARG0:.+]]: memref<32x1024xi32>, %[[ARG1:.+]]: memref<1024x64xi32>, %[[ARG2:.+]]: memref<32x64xi32>)
 // CHECK-DAG:     aiex.npu.dma_memcpy_nd
 // CHECK-SAME:    %[[ARG0]]
 // CHECK-DAG:     aiex.npu.dma_memcpy_nd
