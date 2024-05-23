@@ -8,6 +8,7 @@
 #include "iree-amd-aie/IR/AMDAIEOps.h"
 #include "iree-amd-aie/Transforms/AMDAIEOpUtils.h"
 #include "iree-amd-aie/Transforms/Passes.h"
+#include "iree-amd-aie/Transforms/Transforms.h"
 #include "iree/compiler/Codegen/TransformStrategies/GPU/Common.h"
 
 #define DEBUG_TYPE "iree-amdaie-insert-aie-workgroup"
@@ -15,6 +16,20 @@
 namespace mlir::iree_compiler::AMDAIE {
 
 namespace {
+
+/// Normalize the loop bounds of `scf.forall` operations within the module.
+LogicalResult normalizeModuleLoopBounds(ModuleOp moduleOp) {
+  IRRewriter rewriter(moduleOp.getContext());
+  WalkResult res = moduleOp->walk([&](scf::ForallOp forallOp) {
+    if (failed(normalizeLoopBounds(rewriter, forallOp))) {
+      forallOp.emitOpError() << "failed to normalize loop bounds";
+      return WalkResult::interrupt();
+    }
+    return WalkResult::advance();
+  });
+  if (res.wasInterrupted()) return failure();
+  return success();
+}
 
 /// Utility to map the parallel mapping attributes to the corresponding
 /// induction variables.
@@ -152,6 +167,10 @@ class AMDAIEInsertAIEWorkgroupPass
 };
 
 void AMDAIEInsertAIEWorkgroupPass::runOnOperation() {
+  // Normalize the loop bounds of `scf.forall` operations within the module.
+  if (failed(normalizeModuleLoopBounds(getOperation()))) {
+    return signalPassFailure();
+  }
   if (failed(insertWorkgroupOps(getOperation()))) {
     return signalPassFailure();
   }
