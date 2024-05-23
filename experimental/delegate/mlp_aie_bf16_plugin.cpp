@@ -85,7 +85,7 @@
 // Also, you can instead compile for Strix by adding the following flag
 // to the iree cmake command line:
 // -DCMAKE_CXX_FLAGS="-DAMD_STRIX=1 ${CMAKE_CXX_FLAGS}"
-// #define AMD_STRIX 1
+#define AMD_STRIX 1
 
 //#############################################################################
 
@@ -163,27 +163,22 @@ struct KernelInfo {
 
 // Table of descriptions of kernels available
 static KernelInfo KernelInfos[] = {
-    {16384, 16384, 512,
-     "matmul/matmul-bf16-f32-16384x16384x512-" PLATFORM_SUFFIX "-v1",
+    {4096, 4096, 512,
+     "matmul/matmul-bf16-f32-4096x4096x512-" PLATFORM_SUFFIX "-v1",
 #ifdef AMD_STRIX
      "MLIR_AIE"
 #else
-     "matmul_16384x16384_512xbf16__dispatch_0_matmul_1"
+     "matmul_4096x4096_512xbf16__dispatch_0_matmul_1"
 #endif
     },
-    {16384, 512, 16384,
-     "matmul/matmul-bf16-f32-16384x512x16384-" PLATFORM_SUFFIX "-v1",
+    {4096, 512, 4096,
+     "matmul/matmul-bf16-f32-4096x512x4096-" PLATFORM_SUFFIX "-v1",
 #ifdef AMD_STRIX
      "MLIR_AIE"
 #else
-     "matmul_16384x512_16384xbf16__dispatch_0_matmul_1"
+     "matmul_4096x512_4096xbf16__dispatch_0_matmul_1"
 #endif
     }};
-
-// Fixed shape of the matmul kernel
-// #define MLP_M 16384
-// #define MLP_K 512
-// #define MLP_N 16384
 
 // Types of the matmul LHS, RHS, and result, as defined by the kernel
 using A_DATATYPE = bfloat16_t;
