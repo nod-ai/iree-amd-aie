@@ -78,6 +78,38 @@ module {
 
 // -----
 
+// Check for unrolling and distribute when the loop bounds are not normalised.
+
+// CHECK-LABEL: @unroll_and_distribute_workgroup_with_loop_bounds_not_normalised
+// CHECK-DAG:   %[[C0:.*]] = arith.constant 0 : index
+// CHECK-DAG:   %[[C1:.*]] = arith.constant 1 : index
+// CHECK-DAG:   %[[C2:.*]] = arith.constant 2 : index
+// CHECK:       scf.forall (%[[ARG0:.*]], %[[ARG1:.*]]) in (1, 1) {
+// CHECK:         amdaie.workgroup {
+// CHECK:           %[[TILE_0:.*]] = amdaie.tile(%[[C0]], %[[C2]])
+// CHECK:           %{{.*}} = amdaie.core(%[[TILE_0]])
+// CHECK:           %[[TILE_1:.*]] = amdaie.tile(%[[C1]], %[[C2]])
+// CHECK:           %{{.*}} = amdaie.core(%[[TILE_1]])
+func.func @unroll_and_distribute_workgroup_with_loop_bounds_not_normalised() {
+  %c2 = arith.constant 2 : index
+  scf.forall (%arg0, %arg1) in (1, 1) {
+    amdaie.workgroup {
+      scf.forall (%arg2, %arg3) = (0, 0) to (8, 16) step (8, 8) {
+        %tile = amdaie.tile(%arg3, %c2)
+        %21 = amdaie.core(%tile) {
+          amdaie.end
+        }
+      } {mapping = [#gpu.thread<y>, #gpu.thread<x>]}
+      amdaie.controlcode {
+        amdaie.end
+      }
+    }
+  } {mapping = [#gpu.block<y>, #gpu.block<x>]}
+  return
+}
+
+// -----
+
 // Check for unrolling a parallel loop, with both cores and dma ops. The dma op
 // can't be hoisted.
 //

@@ -166,7 +166,13 @@ class AMDAIEUnrollWorkgroupLoops : public OpRewritePattern<scf::ForOp> {
     int64_t lbInt = getConstantIntValue(forOp.getLowerBound()).value();
     int64_t ubInt = getConstantIntValue(forOp.getUpperBound()).value();
     int64_t stepInt = getConstantIntValue(forOp.getStep()).value();
-    if (lbInt != 0 || stepInt != 1) return failure();
+    // TODO(avarma): Either :-
+    //               1. Enforce loop normalisation before this pass.
+    //                  OR
+    //               2. Adapt this better during PR review.
+    if (lbInt != 0) return failure();
+    ubInt = std::ceil(ubInt / stepInt);
+    stepInt = 1;
     if (stepInt == (ubInt - lbInt)) return failure();
     Value forOpIV = forOp.getInductionVar();
     forOp.setUpperBound(
