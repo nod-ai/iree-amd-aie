@@ -975,7 +975,7 @@ void aie_matmul(const KernelInfo &kernelInfo, Params *params) {
 
 #ifdef DEBUG_VALUES
   std::cout << "Result Tensor" << std::endl;
-  params->result.dumpVals(std::cout, cVolume);
+  params->result.dumpVals(std::cout, kernelInfo.getResultVolume());
 #endif
   TRACE_DELEGATE("aie_matmul done");
 }
