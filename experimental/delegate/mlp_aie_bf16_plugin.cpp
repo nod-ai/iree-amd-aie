@@ -66,7 +66,7 @@
 // #define USE_BF16_CPU_ACCUMULATOR 1
 
 // Turn this on to print debug messages throughout the delegate run
-#define ENABLE_TRACE_DELEGATE 1
+// #define ENABLE_TRACE_DELEGATE 1
 
 // Turn this on to dump matmul operand and result tensor values
 // #define DEBUG_VALUES 1
@@ -85,7 +85,7 @@
 // Also, you can instead compile for Strix by adding the following flag
 // to the iree cmake command line:
 // -DCMAKE_CXX_FLAGS="-DAMD_STRIX=1 ${CMAKE_CXX_FLAGS}"
-// #define AMD_STRIX 1
+#define AMD_STRIX 1
 
 //#############################################################################
 
@@ -110,9 +110,14 @@ static bool DebugValueConversions = false;
 
 #define TRACE_DELEGATE1(str_, arg1_) \
   std::cout << "[AIE Delegate Trace]: " << (str_) << (arg1_) << std::endl
+
+#define TRACE_DELEGATE3(str_, arg1_, arg2_, arg3_) \
+  std::cout << "[AIE Delegate Trace]: " << (str_) << (arg1_) << ' ' \
+      << (arg2_) << ' ' << (arg3_) << std::endl
 #else
 #define TRACE_DELEGATE(str_)
 #define TRACE_DELEGATE1(str_, arg1_)
+#define TRACE_DELEGATE3(str_, arg1_, arg2_, arg3_)
 #endif
 
 // Fake bfloat16 type (assuming no C++ 23)
@@ -163,27 +168,22 @@ struct KernelInfo {
 
 // Table of descriptions of kernels available
 static KernelInfo KernelInfos[] = {
-    {16384, 16384, 512,
-     "matmul/matmul-bf16-f32-16384x16384x512-" PLATFORM_SUFFIX "-v1",
+    {4096, 4096, 512,
+     "matmul/matmul-bf16-f32-4096x4096x512-" PLATFORM_SUFFIX "-v1",
 #ifdef AMD_STRIX
      "MLIR_AIE"
 #else
-     "matmul_16384x16384_512xbf16__dispatch_0_matmul_1"
+     "matmul_4096x4096_512xbf16__dispatch_0_matmul_409"
 #endif
     },
-    {16384, 512, 16384,
-     "matmul/matmul-bf16-f32-16384x512x16384-" PLATFORM_SUFFIX "-v1",
+    {4096, 512, 4096,
+     "matmul/matmul-bf16-f32-4096x512x4096-" PLATFORM_SUFFIX "-v1",
 #ifdef AMD_STRIX
      "MLIR_AIE"
 #else
-     "matmul_16384x512_16384xbf16__dispatch_0_matmul_1"
+     "matmul_4096x512_4096xbf16__dispatch_0_matmul_409"
 #endif
     }};
-
-// Fixed shape of the matmul kernel
-// #define MLP_M 16384
-// #define MLP_K 512
-// #define MLP_N 16384
 
 // Types of the matmul LHS, RHS, and result, as defined by the kernel
 using A_DATATYPE = bfloat16_t;
@@ -329,8 +329,11 @@ public:
 //
 // Throws a runtime exception if no kernel matches the shape.
 static const KernelInfo &getKernelInfo(TensorDim m, TensorDim n, TensorDim k) {
-  for (const KernelInfo &ki : KernelInfos)
+  TRACE_DELEGATE3("getKernelInfo input shape: ", m, n, k);
+  for (const KernelInfo &ki : KernelInfos) {
+    TRACE_DELEGATE3("getKernelInfo: trying shape: ", ki.m, ki.n, ki.k);
     if (ki.m == m && ki.n == n && ki.k == k) return ki;
+  }
 
   std::ostringstream oss;
   oss << "[AIE Delegate] FATAL ERROR: No kernel available for shape " << m
@@ -972,7 +975,7 @@ void aie_matmul(const KernelInfo &kernelInfo, Params *params) {
 
 #ifdef DEBUG_VALUES
   std::cout << "Result Tensor" << std::endl;
-  params->result.dumpVals(std::cout, cVolume);
+  params->result.dumpVals(std::cout, kernelInfo.getResultVolume());
 #endif
   TRACE_DELEGATE("aie_matmul done");
 }
