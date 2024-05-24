@@ -250,7 +250,20 @@ LogicalResult workgroupBuild(IRRewriterAndMapper &rewriter, Operation *op,
       })
       .Default([&](Operation *) {
         // All other operations are cloned.
+        mlir::OpBuilder::InsertPoint insertPt;
+        // TODO(avarma): This is just a stopgap solution and will be improved
+        // during PR review. We should instead deal with building loop body's
+        // operations by checking their users and accordingly see whom to hoist.
+        if (isa<mlir::affine::AffineApplyOp>(op)) {
+          insertPt = rewriter.saveInsertionPoint();
+          rewriter.setInsertionPoint(controlCode, controlCodeEnd);
+        }
+
         rewriter.cloneAndMap(*op);
+
+        if (isa<mlir::affine::AffineApplyOp>(op)) {
+          rewriter.restoreInsertionPoint(insertPt);
+        }
         return success();
       });
   return success();

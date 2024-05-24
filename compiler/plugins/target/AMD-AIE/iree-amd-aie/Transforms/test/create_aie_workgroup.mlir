@@ -381,3 +381,40 @@ func.func @complex_example(%arg0: memref<1x1x8x16xi32, 2>, %arg1: memref<8x16xi3
   }
   return
 }
+
+// -----
+
+// Verify that affine.apply within scf.for is not hoisted outside.
+//
+// CHECK-LABEL: @do_not_hoist_affine
+// CHECK:       amdaie.workgroup
+// CHECK-DAG:     %[[C0:.+]] = arith.constant 0 : index
+// CHECK-DAG:     %[[C1:.+]] = arith.constant 1 : index
+// CHECK-DAG:     %[[C8:.+]] = arith.constant 8 : index
+// CHECK-DAG:     %[[FROMMEMREF0:.+]] = amdaie.logicalobjectfifo.from_memref
+// CHECK-SAME:    memref<1x1x8x16xi32, 2> -> !amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 2>>
+// CHECK-DAG:     %[[FROMMEMREF1:.+]] = amdaie.logicalobjectfifo.from_memref
+// CHECK-SAME:    memref<8x16xi32, 1> -> !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>
+// CHECK:         %[[DMA:.+]] = amdaie.circular_dma_cpy_nd
+// CHECK-SAME:    %[[FROMMEMREF0]][] [] []
+// CHECK-SAME:    %[[FROMMEMREF1]][] [] []
+// CHECK-SAME:    (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 2>>, !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>)
+// CHECK:         amdaie.controlcode
+// CHECK:           scf.for %[[ARG:.+]] = %[[C0]] to %[[C8]] step %[[C1]]
+// CHECK:             %[[AFFINE_APPLY:.*]] = affine.apply #map(%[[ARG]])
+// CHECK:             %[[IPU_DMA:.+]] = amdaie.npu.dma_cpy_nd %[[DMA]]
+// CHECK-SAME:        [] [] []
+// CHECK-SAME:        [0, 0, 0, 0] [1, 1, 8, 16] [128, 16, %[[AFFINE_APPLY]], 1]
+// CHECK:             amdaie.npu.dma_wait(%[[IPU_DMA]], S2MM)
+func.func @do_not_hoist_affine(%arg0: memref<1x1x8x16xi32, 2>, %arg1: memref<8x16xi32, 1>) {
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
+  %c8 = arith.constant 8 : index
+  %0 = amdaie.logicalobjectfifo.from_memref %arg0, {} : memref<1x1x8x16xi32, 2> -> !amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 2>>
+  %1 = amdaie.logicalobjectfifo.from_memref %arg1, {} : memref<8x16xi32, 1> -> !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>
+  scf.for %arg2 = %c0 to %c8 step %c1  {  
+    %16 = affine.apply affine_map<(d0) -> (d0 * 32)>(%arg2)
+    %2 = amdaie.dma_cpy_nd(%0[] [] [], %1[0, 0, 0, 0] [1, 1, 8, 16] [128, 16, %16, 1]) : (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 2>>, !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>)
+  }
+  return
+}
