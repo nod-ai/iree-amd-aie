@@ -66,7 +66,7 @@
 // #define USE_BF16_CPU_ACCUMULATOR 1
 
 // Turn this on to print debug messages throughout the delegate run
-#define ENABLE_TRACE_DELEGATE 1
+// #define ENABLE_TRACE_DELEGATE 1
 
 // Turn this on to dump matmul operand and result tensor values
 // #define DEBUG_VALUES 1
@@ -85,7 +85,7 @@
 // Also, you can instead compile for Strix by adding the following flag
 // to the iree cmake command line:
 // -DCMAKE_CXX_FLAGS="-DAMD_STRIX=1 ${CMAKE_CXX_FLAGS}"
-// #define AMD_STRIX 1
+#define AMD_STRIX 1
 
 //#############################################################################
 
