@@ -85,7 +85,7 @@
 // Also, you can instead compile for Strix by adding the following flag
 // to the iree cmake command line:
 // -DCMAKE_CXX_FLAGS="-DAMD_STRIX=1 ${CMAKE_CXX_FLAGS}"
-#define AMD_STRIX 1
+// #define AMD_STRIX 1
 
 //#############################################################################
 
@@ -173,7 +173,7 @@ static KernelInfo KernelInfos[] = {
 #ifdef AMD_STRIX
      "MLIR_AIE"
 #else
-     "matmul_4096x4096_512xbf16__dispatch_0_matmul_1"
+     "matmul_4096x4096_512xbf16__dispatch_0_matmul_409"
 #endif
     },
     {4096, 512, 4096,
@@ -181,7 +181,7 @@ static KernelInfo KernelInfos[] = {
 #ifdef AMD_STRIX
      "MLIR_AIE"
 #else
-     "matmul_4096x512_4096xbf16__dispatch_0_matmul_1"
+     "matmul_4096x512_4096xbf16__dispatch_0_matmul_409"
 #endif
     }};
 
