@@ -64,6 +64,9 @@ iree_lit_test_suite(
     "mlp.mlir"
     "matmul.mlir"
     "matmul-16k.mlir"
+    "matmul-4k.mlir"
+    "matmul-4k4k512.mlir"
+    "matmul-4k5124k.mlir"
     "opt.mlir"
     "large-matmul.mlir"
     "large-matmul-f32.mlir"
@@ -71,6 +74,7 @@ iree_lit_test_suite(
   DATA
     "linalg.pdl.mlir"
     "matmul-16k.pdl.mlir"
+    "matmul-4k.pdl.mlir"
     "opt.pdl.mlir"
     "large-matmul.pdl.mlir"
     "large-matmul-f32.pdl.mlir"
