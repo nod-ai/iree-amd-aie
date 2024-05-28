@@ -108,6 +108,7 @@ builtin.module {
     return
   }
 }
+
 // -----
 
 // CHECK-PAD-PACK{LITERAL}: #config = #iree_codegen.lowering_config<tile_sizes = [[8, 32], [0, 0, 16], [8, 32], [0, 0, 2]]>
@@ -190,6 +191,30 @@ module {
     %6 = linalg.fill ins(%cst : bf16) outs(%5 : tensor<308x2432xbf16>) -> tensor<308x2432xbf16>
     %7 = linalg.matmul ins(%3, %4 : tensor<308x9728xbf16>, tensor<9728x2432xbf16>) outs(%6 : tensor<308x2432xbf16>) -> tensor<308x2432xbf16>
     flow.dispatch.tensor.store %7, %2, offsets = [0, 0], sizes = [308, 2432], strides = [1, 1] : tensor<308x2432xbf16> -> !flow.dispatch.tensor<writeonly:tensor<308x2432xbf16>>
+    return
+  }
+}
+
+// -----
+
+// CHECK-PAD-PACK{LITERAL}: #config = #iree_codegen.lowering_config<tile_sizes = [[128, 128], [0, 0, 256], [32, 32], [0, 0, 4]]>
+// CHECK-PAD-PACK{LITERAL}: #packingConfig = #amdaie.packing_config<packing_config = [{packedSizes = [4, 4, 8], transposePackIndices = [0, 1, 2], unpackEmpty = [false, false, true], innerPerm = [[0, 1], [0, 1], [0, 1]], outerPerm = [[1, 0], [1, 0], [1, 0]]}]>
+// CHECK-PACK-PEEL{LITERAL}: #config = #iree_codegen.lowering_config<tile_sizes = [[64, 64], [0, 0, 1], [0, 0, 0, 8, 8, 0]]>
+// CHECK-PACK-PEEL{LITERAL}: #packingConfig = #amdaie.packing_config<packing_config = [{packedSizes = [64, 64, 32], transposePackIndices = [1], unpackEmpty = [false], innerPerm = [[0, 1]], outerPerm = [[0, 1]]}, {packedSizes = [0, 0, 0, 4, 4, 8], transposePackIndices = [0, 1, 2], unpackEmpty = [false, false, true], innerPerm = [[0, 1], [0, 1], [0, 1]], outerPerm = [[0, 1, 3, 2], [0, 1, 3, 2], [0, 1, 3, 2]]}]>
+builtin.module {
+  func.func @matmul_transpose_b_dispatch_0_matmul_transpose_b_256x1024x512_i32() {
+    %c0_i32 = arith.constant 0 : i32
+    %c0 = arith.constant 0 : index
+    %0 = hal.interface.binding.subspan set(0) binding(0) type(storage_buffer) alignment(64) offset(%c0) flags(ReadOnly) : !flow.dispatch.tensor<readonly:tensor<256x512xi32>>
+    %1 = hal.interface.binding.subspan set(0) binding(1) type(storage_buffer) alignment(64) offset(%c0) flags(ReadOnly) : !flow.dispatch.tensor<readonly:tensor<1024x512xi32>>
+    %2 = hal.interface.binding.subspan set(0) binding(2) type(storage_buffer) alignment(64) offset(%c0) : !flow.dispatch.tensor<writeonly:tensor<256x1024xi32>>
+    %3 = flow.dispatch.tensor.load %0, offsets = [0, 0], sizes = [256, 512], strides = [1, 1] : !flow.dispatch.tensor<readonly:tensor<256x512xi32>> -> tensor<256x512xi32>
+    %4 = flow.dispatch.tensor.load %1, offsets = [0, 0], sizes = [1024, 512], strides = [1, 1] : !flow.dispatch.tensor<readonly:tensor<1024x512xi32>> -> tensor<1024x512xi32>
+    %5 = tensor.empty() : tensor<256x1024xi32>
+    %6 = linalg.fill ins(%c0_i32 : i32) outs(%5 : tensor<256x1024xi32>) -> tensor<256x1024xi32>
+    // CHECK:  linalg.matmul_transpose_b {lowering_config = #config, packing_config = #packingConfig}
+    %7 = linalg.matmul_transpose_b ins(%3, %4 : tensor<256x512xi32>, tensor<1024x512xi32>) outs(%6 : tensor<256x1024xi32>) -> tensor<256x1024xi32>
+    flow.dispatch.tensor.store %7, %2, offsets = [0, 0], sizes = [256, 1024], strides = [1, 1] : tensor<256x1024xi32> -> !flow.dispatch.tensor<writeonly:tensor<256x1024xi32>>
     return
   }
 }
