@@ -283,9 +283,19 @@ FailureOr<ParameterSetting> ParameterSetting::create(linalg::LinalgOp linalgOp,
 }
 }  // namespace
 
+static SmallVector<int64_t> setInnerPermB(bool isMatmulTransposeB) {
+  SmallVector<int64_t> innerPermB;
+  if (isMatmulTransposeB) {
+    innerPermB = {0, 1};
+  } else {
+    innerPermB = {1, 0};
+  }
+  return innerPermB;
+}
+
 static LogicalResult setRootConfigForPackPeelPipeline(
     mlir::FunctionOpInterface entryPointFn, linalg::LinalgOp linalgOp,
-    AIEConfig cfg) {
+    AIEConfig cfg, bool isMatmulTransposeB) {
   auto maybePackPeelTiling = ParameterSetting::create(linalgOp, true);
   if (failed(maybePackPeelTiling)) return failure();
   auto packPeelTiling = maybePackPeelTiling.value();
@@ -295,12 +305,15 @@ static LogicalResult setRootConfigForPackPeelPipeline(
   // ------------------------------------------------------
   MLIRContext *context = entryPointFn.getContext();
 
-  // Transpose B matrix from [K N n k] to [K N k n]
+  // For matmul, transpose B matrix from [K N n k] to [K N k n]
+  // For matmul_transpose_b, we don't have to transpose the B matrix,
+  // since it is already [N K n k]
   SmallVector<int64_t> transposePackIndices = {1};
   // There is no corresponding unpack for the specified pack operation
   // 0 is used when unpack is empty
   SmallVector<bool> unpackEmpty = {false};
-  SmallVector<SmallVector<int64_t>> innerPerm = {{1, 0}};
+  SmallVector<int64_t> innerPermB = setInnerPermB(isMatmulTransposeB);
+  SmallVector<SmallVector<int64_t>> innerPerm = {innerPermB};
   SmallVector<SmallVector<int64_t>> outerPerm = {{0, 1}};
   auto packingConfigLevel1Attr = getPackingConfigPackingLevelAttr(
       context, packPeelTiling.getPackSizeL0(), transposePackIndices,
@@ -316,12 +329,14 @@ static LogicalResult setRootConfigForPackPeelPipeline(
                                       packPeelTiling.getK1Pack()};
 
   // Transpose A matrix from [M K m k m0 k0] to [M K k m m0 k0]
-  // Transpose B matrix from [K N k n n0 k0] to [K N n k k0 n0]
   // Transpose C matrix from [M N m n m0 n0] to [M N n m m0 n0]
+  // For matmul, transpose B matrix from [K N k n n0 k0] to [K N n k k0 n0]
+  // For matmul_transpose_b, transpose B matrix from [N K n k n0 k0] to
+  // [N K k n n0 k0]
   transposePackIndices = {0, 1, 2};
   // Only the third pack operation has a corresponding unpack operation
   unpackEmpty = {false, false, true};
-  innerPerm = {{0, 1}, {1, 0}, {0, 1}};
+  innerPerm = {{0, 1}, innerPermB, {0, 1}};
   outerPerm = {{0, 1, 3, 2}, {0, 1, 3, 2}, {0, 1, 3, 2}};
   auto packingConfigLevel2Attr = getPackingConfigPackingLevelAttr(
       context, packedSizes, transposePackIndices, unpackEmpty, innerPerm,
@@ -354,7 +369,7 @@ static LogicalResult setRootConfigForPackPeelPipeline(
 
 static LogicalResult setRootConfigForPadPackPipeline(
     mlir::FunctionOpInterface entryPointFn, linalg::LinalgOp linalgOp,
-    AIEConfig cfg) {
+    AIEConfig cfg, bool isMatmulTransposeB) {
   auto maybePadPackTiling = ParameterSetting::create(linalgOp, false);
   if (failed(maybePadPackTiling)) return failure();
   auto padPackTiling = maybePadPackTiling.value();
@@ -365,9 +380,14 @@ static LogicalResult setRootConfigForPadPackPipeline(
   // ------------------------------------------------------
   MLIRContext *context = entryPointFn.getContext();
 
+  // Transpose A matrix from [M K m k] to [K M m k]
+  // Transpose C matrix from [M N m n] to [N M m n]
+  // For matmul, transpose B matrix from [K N n k] to [N K k n]
+  // For matmul_transpose_b, transpose B matrix from [N K n k] to [K N n k]
   SmallVector<int64_t> transposePackIndices{0, 1, 2};
   SmallVector<bool> unpackEmpty{false, false, true};
-  SmallVector<SmallVector<int64_t>> innerPerm{{0, 1}, {1, 0}, {0, 1}};
+  SmallVector<int64_t> innerPermB = setInnerPermB(isMatmulTransposeB);
+  SmallVector<SmallVector<int64_t>> innerPerm{{0, 1}, innerPermB, {0, 1}};
   SmallVector<SmallVector<int64_t>> outerPerm{{1, 0}, {1, 0}, {1, 0}};
 
   auto packingConfigLevel1Attr = getPackingConfigPackingLevelAttr(
@@ -421,9 +441,9 @@ static bool bodyMatcherForMatmulTranspose(Value yieldVal, Block *body) {
   return true;
 }
 
-/// `isMatmulTranspose` is a utility function that aims to indentify whether a
-/// linalg.generic op is a matmul transpose op.
-static bool isMatmulTranspose(linalg::GenericOp genericOp) {
+/// `isMatmulTransposeB` is a utility function that aims to indentify whether a
+/// linalg.generic op is a matmul with rhs operand transposed.
+static bool isMatmulTransposeB(linalg::GenericOp genericOp) {
   // Step 1. Test the body of the generic to indeed be what we expect for a
   //         matmul transpose.
   Block *body = genericOp.getBlock();
@@ -473,9 +493,9 @@ static LogicalResult setTransposeLikeOpRootConfig(
     mlir::FunctionOpInterface entryPointFn, linalg::LinalgOp linalgOp,
     AIEPassPipeline passPipeline, AIEConfig cfg) {
   if (passPipeline == AIEPassPipeline::PackPeelPipeline)
-    return setRootConfigForPackPeelPipeline(entryPointFn, linalgOp, cfg);
+    return setRootConfigForPackPeelPipeline(entryPointFn, linalgOp, cfg, true);
   else if (passPipeline == AIEPassPipeline::PadPackPipeline)
-    return setRootConfigForPadPackPipeline(entryPointFn, linalgOp, cfg);
+    return setRootConfigForPadPackPipeline(entryPointFn, linalgOp, cfg, true);
   return linalgOp.emitError(
       "Unhandled pass pipeline in setTransposeLikeOpRootConfig.");
 }
@@ -487,7 +507,7 @@ static LogicalResult setRootConfig(mlir::FunctionOpInterface entryPointFn,
   assert(!getLoweringConfig(genericOp) &&
          "expected lowering_config is not set");
 
-  if (isMatmulTranspose(genericOp) &&
+  if (isMatmulTransposeB(genericOp) &&
       succeeded(setTransposeLikeOpRootConfig(entryPointFn, genericOp,
                                              passPipeline, cfg))) {
     return success();
@@ -527,9 +547,9 @@ static LogicalResult setRootConfig(mlir::FunctionOpInterface entryPointFn,
   // logic. Also, need a flag to experiment between pad based and pack based
   // approach which will have different tile sizes and pass pipelines
   if (passPipeline == AIEPassPipeline::PackPeelPipeline)
-    return setRootConfigForPackPeelPipeline(entryPointFn, linalgOp, cfg);
+    return setRootConfigForPackPeelPipeline(entryPointFn, linalgOp, cfg, false);
   if (passPipeline == AIEPassPipeline::PadPackPipeline)
-    return setRootConfigForPadPackPipeline(entryPointFn, linalgOp, cfg);
+    return setRootConfigForPadPackPipeline(entryPointFn, linalgOp, cfg, false);
   return linalgOp.emitError("Unhandled pass pipeline in setRootConfig.");
 }
 
