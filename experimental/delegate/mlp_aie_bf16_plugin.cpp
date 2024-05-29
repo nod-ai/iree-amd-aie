@@ -43,7 +43,7 @@
 
 //#############################################################################
 //
-// Macros for configuring AIE delegate behavior
+// Macros for configuring NPU Delegate behavior
 //
 
 // Uncomment the kernel to use
@@ -90,11 +90,10 @@
 //#############################################################################
 
 // String for which AIE platform
-const std::string NpuPlatformStr =
 #ifdef AMD_STRIX
-    "Strix";
+#define NPU_PLATFORM_STR "Strix"
 #else
-    "Phoenix";
+#define NPU_PLATFORM_STR "Phoenix"
 #endif
 
 #if DEBUG_VALUE_CONVERSIONS
@@ -106,14 +105,14 @@ static bool DebugValueConversions = false;
 
 #ifdef ENABLE_TRACE_DELEGATE
 #define TRACE_DELEGATE(str_) \
-  std::cout << "[AIE Delegate Trace]: " << (str_) << std::endl
+  std::cout << "[NPU Delegate Trace]: " << (str_) << std::endl
 
 #define TRACE_DELEGATE1(str_, arg1_) \
-  std::cout << "[AIE Delegate Trace]: " << (str_) << (arg1_) << std::endl
+  std::cout << "[NPU Delegate Trace]: " << (str_) << (arg1_) << std::endl
 
-#define TRACE_DELEGATE3(str_, arg1_, arg2_, arg3_) \
-  std::cout << "[AIE Delegate Trace]: " << (str_) << (arg1_) << ' ' \
-      << (arg2_) << ' ' << (arg3_) << std::endl
+#define TRACE_DELEGATE3(str_, arg1_, arg2_, arg3_)                             \
+  std::cout << "[NPU Delegate Trace]: " << (str_) << (arg1_) << ' ' << (arg2_) \
+            << ' ' << (arg3_) << std::endl
 #else
 #define TRACE_DELEGATE(str_)
 #define TRACE_DELEGATE1(str_, arg1_)
@@ -155,7 +154,7 @@ struct KernelInfo {
 
 //#############################################################################
 //
-// Configuration of the kernel that the AIE delegate uses
+// Configuration of the kernel that the NPU Delegate uses
 //
 
 #ifdef AMD_STRIX
@@ -291,7 +290,8 @@ using ModelReturnDType = float;
 #define KERNEL_REQUIRES_RESULT_PRELOAD 0
 
 #else
-#error "[AIE Delegate]: Unknown kernel.  \
+#error \
+    "[NPU Delegate]: Unknown kernel.  \
 Set DELEGATE_KERNEL_TO_USE to a supported kernel."
 #endif
 
@@ -313,7 +313,7 @@ std::size_t KernelInfo::getResultNumBytes() const {
 
 //#############################################################################
 //
-// AIE delegate implementation
+// NPU Delegate implementation
 //
 
 // Run-time exception class
@@ -336,7 +336,7 @@ static const KernelInfo &getKernelInfo(TensorDim m, TensorDim n, TensorDim k) {
   }
 
   std::ostringstream oss;
-  oss << "[AIE Delegate] FATAL ERROR: No kernel available for shape " << m
+  oss << "[NPU Delegate] FATAL ERROR: No kernel available for shape " << m
       << "x" << n << "x" << k << std::endl;
   throw DelegateException(oss.str());
 }
@@ -359,7 +359,8 @@ std::string getLibraryPath() {
     {
         int ret = GetLastError();
         std::ostringstream oss;
-        oss << "[AIE Delegate] FATAL ERROR: Can't open delegate DLL.  Error code: "
+        oss << "[NPU Delegate] FATAL ERROR: Can't open delegate DLL.  Error "
+               "code: "
             << ret << std::endl;
         throw DelegateException(oss.str());
     }
@@ -369,8 +370,9 @@ std::string getLibraryPath() {
     {
         int ret = GetLastError();
         std::ostringstream oss;
-        oss << "[AIE Delegate] FATAL ERROR: Can't read delegate DLL file name."
-            "  Error code: " << ret << std::endl;
+        oss << "[NPU Delegate] FATAL ERROR: Can't read delegate DLL file name."
+               "  Error code: "
+            << ret << std::endl;
         throw DelegateException(oss.str());
     }
 
@@ -510,7 +512,7 @@ struct TensorData {
   void dumpVals(std::ostream &os, std::size_t numElements) const {
     for (const T *p = get(), *pEnd = get() + numElements; p != pEnd; ++p)
       os << *p << ':' << Converter<T, float>::convert(*p) << ' ';
-    std::cout << std::endl;
+    os << std::endl;
   }
 
   std::ostream &dump(std::ostream &os) const {
@@ -585,7 +587,8 @@ public:
   void copyModelToXrt() {
     KernelDType *xrtBuf = this->bo.template map<KernelDType *>();
 #ifdef ENABLE_PERFORMANCE_WARNING
-    std::cout << "[AIE Delegate]: PERFORMANCE WARNING: using extra buffer copy!" << std::endl;
+    std::cout << "[NPU Delegate]: PERFORMANCE WARNING: using extra buffer copy!"
+              << std::endl;
 #endif
     TensorCopier<ModelDType, KernelDType>::copy(xrtBuf, modelTensorData,
         numModelElements);
@@ -644,7 +647,8 @@ public:
     this->bo.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
     KernelDType *xrtBuf = this->bo.template map<KernelDType *>();
 #ifdef ENABLE_PERFORMANCE_WARNING
-    std::cout << "[AIE Delegate]: PERFORMANCE WARNING: using extra buffer copy!" << std::endl;
+    std::cout << "[NPU Delegate]: PERFORMANCE WARNING: using extra buffer copy!"
+              << std::endl;
 #endif
     TensorCopier<KernelDType, ModelDType>::copy(this->modelTensorData, xrtBuf,
         this->numModelElements);
@@ -708,7 +712,7 @@ std::vector<uint32_t> loadInstrSequence(std::string instr_path) {
     uint32_t a;
     if (!(iss >> std::hex >> a)) {
       std::ostringstream oss;
-      oss << "[AIE Delegate]: Unable to parse instruction file" << std::endl;
+      oss << "[NPU Delegate]: Unable to parse instruction file" << std::endl;
       throw DelegateException(oss.str());
     }
     instrV.push_back(a);
@@ -799,8 +803,8 @@ void setupNPUAccelerator(const KernelInfo &kernelInfo) {
   // to be done once, as the files don't change location.
   if (libPath.empty()) {
     libPath = getLibraryPath();
-    std::cout << "[AIE Delegate]: Using " << NpuPlatformStr
-              << " delegate installation at: " << libPath << std::endl;
+    TRACE_DELEGATE1("Using " NPU_PLATFORM_STR " delegate installation at: ",
+                    libPath);
   }
 
   // Load the instruction sequence from its file
@@ -810,7 +814,7 @@ void setupNPUAccelerator(const KernelInfo &kernelInfo) {
   xrtState->instrSize = instrV.size();
   if (xrtState->instrSize == 0) {
     std::ostringstream oss;
-    oss << "[AIE Delegate]: Couldn't load instructions from file "
+    oss << "[NPU Delegate]: Couldn't load instructions from file "
         << instrFilePath << std::endl;
     throw DelegateException(oss.str());
   }
@@ -843,7 +847,7 @@ void setupNPUAccelerator(const KernelInfo &kernelInfo) {
   // list of all the kernel names in the xclbin
   if (foundIter == xkernels.end()) {
     std::ostringstream oss;
-    oss << "[AIE Delegate] FATAL ERROR: No such kernel "
+    oss << "[NPU Delegate] FATAL ERROR: No such kernel "
         << kernelInfo.kernelName << " in " << xclbinPath
         << ".  Possible kernel names are:" << std::endl;
     for (const std::string &kernelName : kernelNames)
@@ -904,16 +908,15 @@ void setupNPUAccelerator(const KernelInfo &kernelInfo) {
   auto duration =
       std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime)
           .count();
-  std::cout << "[AIE Delegate]: NPU setup time: " << duration << " ms"
-            << std::endl;
+  TRACE_DELEGATE1(" NPU setup time (ms): ", duration);
   xrtState->isInitialized = true;
   TRACE_DELEGATE("setupNPUAccelerator done");
 }
 
 void aie_matmul(const KernelInfo &kernelInfo, Params *params) {
   TRACE_DELEGATE("aie_matmul");
-  std::cout << "[AIE Delegate]: Computing " << NpuPlatformStr
-            << " AIE matmul of " << params->getShapeStr() << std::endl;
+  std::cout << "[NPU Delegate]: Computing " << NPU_PLATFORM_STR
+            << " NPU matmul of " << params->getShapeStr() << std::endl;
 
   // Set up XRT for the requested kernel (if not already done)
   setupNPUAccelerator(kernelInfo);
@@ -970,8 +973,7 @@ void aie_matmul(const KernelInfo &kernelInfo, Params *params) {
   auto duration =
       std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime)
           .count();
-  std::cout << "[AIE Delegate]: Kernel execution time: " << duration
-            << " ms" << std::endl;
+  TRACE_DELEGATE1("Kernel execution time (ms): ", duration);
 
 #ifdef DEBUG_VALUES
   std::cout << "Result Tensor" << std::endl;
@@ -995,7 +997,8 @@ using CpuAccDType =
 #endif
 
 static void cpu_matmul(const KernelInfo &kernelInfo, Params *params) {
-  std::cout << "[AIE Delegate]: Computing CPU scalar matmul of " << params->getShapeStr() << std::endl;
+  std::cout << "[NPU Delegate]: Computing CPU scalar matmul of "
+            << params->getShapeStr() << std::endl;
   for (int32_t i = 0; i < params->M; i++) {
     for (int32_t j = 0; j < params->N; j++) {
       CpuAccDType curr_result = Converter<float, CpuAccDType>::convert(0.0);
@@ -1057,7 +1060,8 @@ typedef struct {
 static int mlp_external(void* params_ptr, void* context, void* reserved) {
   auto plugin = reinterpret_cast<mlp_plugin_t *>(context);
   auto params = reinterpret_cast<Params *>(params_ptr);
-  // fprintf(plugin->file, "[AIE Delegate]: M = %d, N = %d, K = %d\n", params->M,
+  // fprintf(plugin->file, "[NPU Delegate]: M = %d, N = %d, K = %d\n",
+  // params->M,
   //         params->N, params->K);
   TRACE_DELEGATE("mlp_external");
 
@@ -1176,7 +1180,7 @@ iree_hal_executable_plugin_query(
       // Name and description are used for tracing/logging/diagnostics.
       .name = "mlp_bf16_aie_delegate",
       .description =
-          "AIE Delegate for bf16 matmul "
+          "NPU Delegate for bf16 matmul "
           "(iree-amd-aie/experimental/delegate/mlp_aie_bf16_plugin.cpp)",
       .features = 0,
       // Let the runtime know what sanitizer this plugin was compiled with.
