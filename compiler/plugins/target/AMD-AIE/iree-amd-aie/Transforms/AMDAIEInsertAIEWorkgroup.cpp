@@ -8,6 +8,7 @@
 #include "iree-amd-aie/IR/AMDAIEOps.h"
 #include "iree-amd-aie/Transforms/AMDAIEOpUtils.h"
 #include "iree-amd-aie/Transforms/Passes.h"
+#include "iree-amd-aie/Transforms/Transforms.h"
 #include "iree/compiler/Codegen/TransformStrategies/GPU/Common.h"
 
 #define DEBUG_TYPE "iree-amdaie-insert-aie-workgroup"
@@ -79,6 +80,12 @@ LogicalResult insertCoreOpsInWorkgroup(mlir::ModuleOp moduleOp) {
       return WalkResult::interrupt();
     }
     scf::ForallOp innermostForall = innermostForallLoops[0];
+    if (!innermostForall.isNormalized()) {
+      innermostForall.emitOpError()
+          << "scf.forall operations must be normalized before core "
+             "operation insertion";
+      return WalkResult::interrupt();
+    }
     auto parentOps = getInclusiveParentsOfType<scf::ForallOp>(innermostForall);
     DenseMap<Attribute, Value> attrMapping;
     getAttributeMapping(parentOps, attrMapping);
