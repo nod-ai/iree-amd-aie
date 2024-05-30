@@ -235,7 +235,7 @@ function run_matmul_test() {
         do_transpose_rhs="$2"
         shift 2
         ;;
-      --expect_compile_failur)
+      --expect_compile_failure)
         expect_compile_failure="$2"
         shift 2
         ;;
