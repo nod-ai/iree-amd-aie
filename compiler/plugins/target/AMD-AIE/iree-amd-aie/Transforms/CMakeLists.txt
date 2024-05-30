@@ -66,6 +66,7 @@ iree_cc_library(
     "AMDAIELowerToUKernels.cpp"
     "AMDAIELowerWorkgroupCount.cpp"
     "AMDAIEMapForallToCores.cpp"
+    "AMDAIENormalizeLoopBounds.cpp"
     "AMDAIEOpUtils.cpp"
     "AMDAIEPackAndTranspose.cpp"
     "AMDAIEPackToDma.cpp"

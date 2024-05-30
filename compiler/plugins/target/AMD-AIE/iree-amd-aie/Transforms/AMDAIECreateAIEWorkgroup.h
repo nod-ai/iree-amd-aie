@@ -25,7 +25,7 @@ class IRRewriterAndMapper : public IRRewriter {
  public:
   using IRRewriter::IRRewriter;
 
-  /// Creates a deep copy of the specified operation, remapping operands based
+  /// Create a deep copy of the specified operation, remapping operands based
   /// on the class's IR map and mapping this op to the cloned operation.
   Operation *cloneAndMap(Operation &op) {
     return IRRewriter::clone(op, mapper);
@@ -56,7 +56,7 @@ class IRRewriterAndMapper : public IRRewriter {
   }
 
  protected:
-  /// Map the 'source' operation, it's results and regions to the 'target'
+  /// Map the 'source' operation's results and regions to the 'target'
   /// counterparts.
   void mapOperations(Operation *source, Operation *target) {
     assert(source->getNumResults() == target->getNumResults() &&
@@ -72,7 +72,7 @@ class IRRewriterAndMapper : public IRRewriter {
     }
   }
 
-  /// Map the 'source' regions's block arguments to the 'target' region's block
+  /// Map the 'source' region's block arguments to the 'target' region's block
   /// arguments.
   void mapRegions(Region *source, Region *target) {
     assert(source->getNumArguments() == target->getNumArguments() &&
@@ -119,7 +119,7 @@ OpTy createOp(IRRewriterAndMapper &rewriter, Location location, Operation *op,
 // CoreContext
 //===----------------------------------------------------------------------===//
 
-/// Utility class to contain and maintain the core operations' as a map from
+/// Utility class to contain and maintain the core operations as a map from
 /// coordinates to the respective core operation on that location. The core map
 /// can be accessed through lookup functions and new entries can be added
 /// through the 'mapOrMerge' method or by merging with another CoreContext. This
@@ -130,7 +130,7 @@ class CoreContext {
   CoreContext(IRRewriterAndMapper &rewriter) : rewriter(rewriter) {}
   CoreContext(IRRewriterAndMapper &&rewriter) = delete;
 
-  // Check whether the coordinate exists in the map.
+  /// Check whether the coordinate exists in the map.
   bool contains(const std::tuple<int64_t, int64_t> &coordinate) {
     return coreMap.contains(coordinate);
   }
