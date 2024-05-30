@@ -29,6 +29,15 @@ LogicalResult createLogicalObjectFifoLink(
 LogicalResult hoistForAffineApplyOp(RewriterBase &rewriter,
                                     affine::AffineApplyOp applyOp);
 
+/// Normalize the loop bounds of the `scf.for` operation to lowerbound == 0 and
+/// step == 1.
+LogicalResult normalizeLoopBounds(RewriterBase &rewriter, scf::ForOp forOp);
+
+/// Normalize the loop bounds of the `scf.forall` operation to lowerbound == 0
+/// and step == 1.
+LogicalResult normalizeLoopBounds(RewriterBase &rewriter,
+                                  scf::ForallOp forallOp);
+
 }  // namespace mlir::iree_compiler::AMDAIE
 
 #endif

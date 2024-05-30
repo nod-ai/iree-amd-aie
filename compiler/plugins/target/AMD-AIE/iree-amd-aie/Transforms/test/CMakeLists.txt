@@ -32,6 +32,7 @@ iree_lit_test_suite(
     "lowering_strategy.mlir"
     "lowering_strategy_failures.mlir"
     "map_forall_to_cores.mlir"
+    "normalize_loop_bounds.mlir"
     "pack_and_transpose_level1.mlir"
     "pack_and_transpose_level2.mlir"
     "pack_to_air.mlir"
