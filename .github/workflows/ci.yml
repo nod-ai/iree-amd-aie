@@ -109,35 +109,39 @@ jobs:
           source .venv/bin/activate
           # Without this additional line an error like
           #
-          # [XRT] ERROR: Failed to allocate host memory buffer (mmap(len=10616832, prot=3, flags=8193, offset=4294967296) 
+          # [XRT] ERROR: Failed to allocate host memory buffer (mmap(len=10616832, prot=3, flags=8193, offset=4294967296)
           # failed (err=11): Resource temporarily unavailable), make sure host bank is enabled (see xbutil configure --host-mem)
-          # iree-amd-aie/runtime/src/iree-amd-aie/driver/xrt/direct_allocator.cc:179: RESOURCE_EXHAUSTED; could not allocate 
+          # iree-amd-aie/runtime/src/iree-amd-aie/driver/xrt/direct_allocator.cc:179: RESOURCE_EXHAUSTED; could not allocate
           # memory for buffer; while invoking C++ function matmul_test.generate_random_matrix; while calling import;
           #
-          # might be observed when too much memory is allocated. For example this 
-          # error was seen when running a bf16->f32 matmul with m=n=k=2304. 
+          # might be observed when too much memory is allocated. For example this
+          # error was seen when running a bf16->f32 matmul with m=n=k=2304.
           #
-          # This line was suggested https://github.com/Xilinx/mlir-air/issues/566
+          # This line was suggested at https://github.com/Xilinx/mlir-air/issues/566
           #
-          # Note that this is only half of the fix! It is also necessary that 
-          # the machine CI is running on has permission to run this line. 
+          # Note that this is only half of the fix. It is also necessary that
+          # the machine that CI is running on has permission to run this line.
           #
-          # This permission can be adding by putting the line 
-          #
+          # This permission can be adding by adding the line
           # ```
           # %github ALL=(ALL) NOPASSWD: /usr/bin/prlimit *
           # ```
           #
-          # in the file /etc/sudoers.d/github, which can be done by running
-          #
+          # to the file /etc/sudoers.d/github, which can be done by running
           # ```
           # sudo visudo -f /etc/sudoers.d/github
           # ```
-          #
           # on the guthub CI machine.
           sudo prlimit -lunlimited --pid $$
 
-          bash build_tools/ci/run_matmul_test.sh test1 iree-install
+          bash build_tools/ci/run_matmul_test.sh test_matmuls iree-install
+
+      - name : E2E comparison of AIE to llvm-cpu
+        run: |
+          source .venv/bin/activate
+          #install numpy (any version)
+          pip install numpy
+          bash build_tools/ci/cpu_comparison/run_test.sh test_aie_vs_cpu iree-install
 
       - name: Printing IR from aie2xclbin
         run: |
