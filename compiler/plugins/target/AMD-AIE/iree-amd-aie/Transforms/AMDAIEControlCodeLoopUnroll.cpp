@@ -18,7 +18,7 @@ namespace mlir::iree_compiler::AMDAIE {
 /// Unroll all scf.forall and scf.for loops inside the control code region.
 LogicalResult controlCodeLoopUnroll(RewriterBase &rewriter,
                                     AMDAIE::ControlCodeOp controlCodeOp) {
-  // Convert all scf.forall's in the control code region to scf.for.
+  // Convert all scf.forall in the control code region to scf.for.
   WalkResult forallRes = controlCodeOp.walk([&](scf::ForallOp forallOp) {
     if (succeeded(forallOp.promoteIfSingleIteration(rewriter))) {
       return WalkResult::advance();

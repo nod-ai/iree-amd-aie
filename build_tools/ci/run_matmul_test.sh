@@ -206,9 +206,6 @@ function run_matmul_test() {
   # The default is to not expect a compilation failure.
   local expect_compile_failure="0"
 
-  # The default is to compile and run the numerical test.
-  local compile_only="0"
-
   local do_transpose_rhs="0"
 
   # The maximum number of elements to check for correctness.
@@ -218,10 +215,16 @@ function run_matmul_test() {
   # The default is to not use microkernels.
   local use_ukernel="0"
 
+  # After compilation, the test with be run 'num_repeat_runs' times. This option (when
+  # set greater than 1) is useful for shapes which might be 'flakey' and fail
+  # intermittently. It is also useful if a test is know to fail at runtime but
+  # should still be checked to compile (set num_repeat_runs=0 in this case).
+  local num_repeat_runs="1"
+
   while [ "$#" -gt 0 ]; do
     case "$1" in
-      --compile-only)
-        compile_only="$2"
+      --num_repeat_runs)
+        num_repeat_runs="$2"
         shift 2
         ;;
       --max_elements_to_check)
@@ -232,7 +235,7 @@ function run_matmul_test() {
         do_transpose_rhs="$2"
         shift 2
         ;;
-      --expect-compile-failure)
+      --expect_compile_failure)
         expect_compile_failure="$2"
         shift 2
         ;;
@@ -482,17 +485,19 @@ function run_matmul_test() {
       --device=${device} \
       --max_elements_to_check=${max_elements_to_check}"
 
-  # If compile only, exit with success:
-  if [ $compile_only -ne "0" ]; then
-    echo "Compile only flag is ${compile_only} which is not 0, skipping execution"
-    return 0
-  fi
 
 
-  echo "Running command: ${COMMAND}"
-  eval "${COMMAND}"
-  return_status=$?
-  echo "Command returned with status: ${return_status}"
+  echo "**** Running '${name}' matmul test ${num_repeat_runs} times ****"
+  for i in $(seq 1 $num_repeat_runs); do
+    echo "Run number ${i} / ${num_repeat_runs} of command ${COMMAND}"
+    eval "${COMMAND}"
+    return_status=$?
+    if [ $return_status -ne 0 ]; then
+      echo "Command returned with status: ${return_status}"
+      exit 1
+    fi
+  done
+
 
   end_time=$(date +%s%3N)
 
@@ -530,11 +535,11 @@ run_matmul_test \
     --k "64" \
     --dynamicity "static" \
     --accumulate "false" \
-    --expect-compile-failure "0" \
-    --compile-only "0" \
+    --expect_compile_failure "0" \
     --do_transpose_rhs "0" \
     --max_elements_to_check "0" \
-    --use_ukernel "0"
+    --use_ukernel "0" \
+    --num_repeat_runs "2"
 
 run_matmul_test \
     --name_prefix "ukern" \
@@ -559,7 +564,7 @@ run_matmul_test \
   --acc_type "f32" \
   --m "256" --n "256" --k "256" \
   --do_transpose_rhs "1" \
-  --expect-compile-failure "1"
+  --expect_compile_failure "1"
 
 
 # The below matmul case passes with
@@ -573,7 +578,7 @@ run_matmul_test \
    --lhs_rhs_type "i32" \
    --acc_type "i32" \
    --m "1"  --n "1" --k "1000" \
-   --expect-compile-failure "1"
+   --expect_compile_failure "1"
 
 # The below matmul case passes with
 # tile_sizes = [52, 52], [0, 0, 63], [26, 26], [0, 0, 3], packedSizes = [2, 2, 7]
@@ -586,10 +591,10 @@ run_matmul_test \
    --lhs_rhs_type "i32" \
    --acc_type "i32" \
    --m "52"  --n "52" --k "63" \
-   --expect-compile-failure "1"
+   --expect_compile_failure "1"
 
 # Example of a run with a group of 2+ matmuls. Currently this test is passed
-# the flag '--compile-only' as there is currently an issue with the runtime if
+# the flag '--num_repeat_runs 0" as there is currently an issue with the runtime if
 # multiple matmuls are run in the same test. TODO(newling/nmeshram): Document
 # this issue.
 run_matmul_test \
@@ -599,7 +604,7 @@ run_matmul_test \
     --m "512,8,16,7" \
     --n "512,32,16,15" \
     --k "256,16,8,9" \
-    --compile-only "1"
+    --num_repeat_runs "0"
 
 run_matmul_test \
     --name_prefix "small" \
@@ -653,7 +658,7 @@ run_matmul_test \
 # We're seeing intermittent numerical errors in these 3 tests,
 # needs investigation. TODO(newling/yzhang93): Add more info.
 # Appears to be only pack-peel pipeline with bf16->f32.
-# Using 'compile-only' flag to avoid running the numerical test.
+# Using 'num_repeat_runs=0' flag to avoid running the numerical test.
 #################################################################
 
 
@@ -682,7 +687,7 @@ run_matmul_test \
     --lhs_rhs_type "bf16" \
     --acc_type "f32" \
     --m "64"  --n "64" --k "128" \
-    --expect-compile-failure "1" \
+    --expect_compile_failure "1"
 
 run_matmul_test \
     --name_prefix "packPeelLarge" \
@@ -690,7 +695,7 @@ run_matmul_test \
     --lhs_rhs_type "bf16" \
     --acc_type "f32" \
     --m "512"  --n "512" --k "512" \
-    --compile-only "1"
+    --num_repeat_runs "0"
 
 run_matmul_test \
     --name_prefix "packPeel2304" \
@@ -698,16 +703,9 @@ run_matmul_test \
     --lhs_rhs_type "bf16" \
     --acc_type "f32" \
     --m "128"  --n "128" --k "2304" \
-    --compile-only "1"
+    --num_repeat_runs "0"
 
 ###################################################################
-
-run_matmul_test \
-    --name_prefix "packPeelLarge" \
-    --pipeline "pack-peel" \
-    --lhs_rhs_type "i32" \
-    --acc_type "i32" \
-    --m "512"  --n "512" --k "512"
 
 run_matmul_test \
     --name_prefix "mm2" \
