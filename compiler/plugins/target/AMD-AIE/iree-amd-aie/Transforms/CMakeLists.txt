@@ -61,6 +61,7 @@ iree_cc_library(
     "AMDAIEHoistForAffineApply.cpp"
     "AMDAIEInsertAIEWorkgroup.cpp"
     "AMDAIEInsertLoopsForVectorization.cpp"
+    "AMDAIELinkExecutable.cpp" 
     "AMDAIELowerExecutableTarget.cpp"
     "AMDAIELowerToAIE.cpp"
     "AMDAIELowerToUKernels.cpp"
