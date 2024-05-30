@@ -134,11 +134,13 @@ void AMDAIETileAndFusePass::runOnOperation() {
   // If `consumerOp` has its own lowering config, we prefer using it.
   // Otherwise, fallback to find a lowering_config from other operations.
   SmallVector<int64_t> tileSizesVal;
-  if (auto loweringConfig = getLoweringConfig(consumerOp)) {
+  if (auto loweringConfig =
+          getLoweringConfig<IREE::Codegen::LoweringConfigAttr>(consumerOp)) {
     tileSizesVal = loweringConfig.getTileSizeVals(tilingLevel);
   } else {
     FailureOr<IREE::Codegen::LoweringConfigAttr> maybeLoweringConfig =
-        getLoweringConfig(getComputeOps(funcOp));
+        getFirstLoweringConfig<IREE::Codegen::LoweringConfigAttr>(
+            getComputeOps(funcOp));
     if (failed(maybeLoweringConfig)) {
       LLVM_DEBUG(llvm::dbgs()
                  << "can't find lowering_config, skip TileAndFuse");

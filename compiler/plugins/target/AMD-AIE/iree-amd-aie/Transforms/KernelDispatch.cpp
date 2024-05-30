@@ -504,7 +504,7 @@ static LogicalResult setRootConfig(mlir::FunctionOpInterface entryPointFn,
                                    linalg::GenericOp genericOp,
                                    AIEPassPipeline passPipeline,
                                    AIEConfig cfg) {
-  assert(!getLoweringConfig(genericOp) &&
+  assert(!getLoweringConfig<IREE::Codegen::LoweringConfigAttr>(genericOp) &&
          "expected lowering_config is not set");
 
   if (isMatmulTransposeB(genericOp) &&
@@ -522,7 +522,7 @@ static LogicalResult setRootConfig(mlir::FunctionOpInterface entryPointFn,
                                    linalg::ContractionOpInterface contractionOp,
                                    AIEPassPipeline passPipeline,
                                    AIEConfig cfg) {
-  assert(!getLoweringConfig(contractionOp) &&
+  assert(!getLoweringConfig<IREE::Codegen::LoweringConfigAttr>(contractionOp) &&
          "expected lowering_config is not set");
   auto linalgOp = cast<linalg::LinalgOp>(contractionOp.getOperation());
   if (isa<linalg::MatmulTransposeBOp>(linalgOp)) {
@@ -580,7 +580,8 @@ static LogicalResult setTranslationInfoAndRootConfig(
     AIEPassPipeline passPipeline, AIEConfig cfg) {
   // Make sure that lowering_config is not preset on any compute ops.
   for (auto computeOp : computeOps) {
-    if (getLoweringConfig(computeOp)) return failure();
+    if (getLoweringConfig<IREE::Codegen::LoweringConfigAttr>(computeOp))
+      return failure();
   }
 
   FailureOr<Operation *> rootOp = getRootOperation(computeOps);
