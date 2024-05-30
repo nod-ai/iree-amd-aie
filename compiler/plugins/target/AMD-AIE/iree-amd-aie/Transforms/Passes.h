@@ -125,6 +125,9 @@ std::unique_ptr<Pass> createAMDAIELowerWorkgroupCountPass();
 std::unique_ptr<Pass> createAMDAIEMapForallToCoresPass(
     AMDAIEMapForallToCoresOptions options = {});
 
+/// Normalize the loop bounds of `scf.for` and `scf.forall`.
+std::unique_ptr<Pass> createAMDAIENormalizeLoopBoundsPass();
+
 /// Create a pass to pack and transpose the linalg op.
 std::unique_ptr<Pass> createAMDAIEPackAndTransposePass(
     AMDAIEPackAndTransposeOptions options = {});

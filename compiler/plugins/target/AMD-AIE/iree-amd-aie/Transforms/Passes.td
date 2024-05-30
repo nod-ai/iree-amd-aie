@@ -256,6 +256,12 @@ def AMDAIEMapForallToCores :
   ];
 }
 
+def AMDAIENormalizeLoopBounds :
+    Pass<"iree-amdaie-normalize-loop-bounds", ""> {
+  let summary = "Normalize the loop bounds of `scf.for` and `scf.forall`";
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIENormalizeLoopBoundsPass()";
+}
+
 def AMDAIEPackAndTranspose :
     InterfacePass<"iree-amdaie-pack-and-transpose", "mlir::FunctionOpInterface"> {
   let summary = "Pass to pack and transpose the linalg operations.";
