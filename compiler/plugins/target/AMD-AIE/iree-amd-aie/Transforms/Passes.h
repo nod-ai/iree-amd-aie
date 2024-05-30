@@ -22,7 +22,7 @@ void addMLIRAIRAIELoweringPasses(OpPassManager &passManager, bool packPeel);
 /// within the IREE::HAL::ExecutableOp.
 void buildAMDAIETransformPassPipeline(OpPassManager &pm);
 
-/// Populates passes needed to lower the IR via a Pack based approach.
+/// Populates passes needed to lower the IR via a Pack-Peel based approach.
 void addPackPeelBasedPassPipeline(OpPassManager &passManager,
                                   TilingConfig &tilingConfig);
 
@@ -31,25 +31,25 @@ void addPadPackBasedPassPipeline(OpPassManager &passManager,
                                  TilingConfig &tilingConfig);
 
 /// Create a pass to convert AIR DMA ops into AMDAIE DMA ops operating on
-/// logical objectfifos.
+/// logical objectFifos.
 std::unique_ptr<Pass> createAMDAIEAIRDmaAMDAIEDmaPass();
 
 /// Create a pass to do some rewrites that help bridging the path to AIR/AIE
 /// lowering.
 std::unique_ptr<Pass> createAMDAIEBridgeToAIRPass();
 
-/// Pass to bufferizes the targeted operation and materializes the result in a
+/// Pass to bufferize the targeted operation and materialize the result in a
 /// new allocation.
 std::unique_ptr<Pass> createAMDAIEBufferizeToAllocationPass(
     AMDAIEBufferizeToAllocationOptions options = {});
 
-/// Create pass to apply caonicaliztions to air.dma_memcpy_nd op's.
+/// Create pass to apply canonicalization to air.dma_memcpy_nd op's.
 std::unique_ptr<Pass> createAMDAIECanonicalizeDmaPass();
 
 /// Create pass to canonicalize doubly strided operations.
 std::unique_ptr<Pass> createAMDAIECanonicalizeDoublyStridedOpPass();
 
-/// Pass to convert logical objectfifo consume/produce operation to
+/// Pass to convert logical objectFifo consume/produce operation to
 /// acquire/release semaphore operations.
 std::unique_ptr<Pass> createAMDAIEConsumeProduceToAcquireReleasePass();
 
@@ -59,7 +59,7 @@ std::unique_ptr<Pass> createAMDAIEControlCodeLoopUnrollPass();
 /// Pass to create a single AIE workgroup.
 std::unique_ptr<Pass> createAMDAIECreateAIEWorkgroupPass();
 
-/// Pass to create logical objectfifo link operations, explicitly linking inputs
+/// Pass to create logical objectFifo link operations, explicitly linking inputs
 /// and outputs.
 std::unique_ptr<Pass> createAMDAIECreateLogicalObjectFifoLinkPass();
 
@@ -83,10 +83,10 @@ std::unique_ptr<Pass> createAMDAIEFuseConsumerIntoLoopPass(
 /// Create a pass to fuse the linalg.fill into the forall loops.
 std::unique_ptr<Pass> createAMDAIEFuseFillIntoForallPass();
 
-/// Create a pass to fuse or distribute logical objectfifos into workgroups.
+/// Create a pass to fuse or distribute logical objectFifos into workgroups.
 std::unique_ptr<Pass> createAMDAIEFuseLogicalObjectFifoIntoWorkgroupPass();
 
-/// Hoist an affine apply op on a scf.for op's induction variable.
+/// Hoist an affine.apply op on a scf.for op's induction variable.
 std::unique_ptr<Pass> createAMDAIEHoistForLoopAffineApplyPass();
 
 /// Create a pass to transform linalg.generics into a form which benefits later
@@ -153,7 +153,7 @@ std::unique_ptr<Pass> createAMDAIETileAndFusePass(
 std::unique_ptr<Pass> createAMDAIEPropagateDataLayoutPass();
 
 /// Create pass to unroll the scf.forall operations within AIE workgroups and
-/// distribute the logical objectfifos .
+/// distribute the logical objectFifos .
 std::unique_ptr<Pass> createAMDAIEUnrollAndDistributeWorkgroupPass();
 
 void registerAMDAIEPasses();

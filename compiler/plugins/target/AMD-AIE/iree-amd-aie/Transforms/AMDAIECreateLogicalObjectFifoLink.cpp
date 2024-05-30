@@ -15,8 +15,8 @@ namespace mlir::iree_compiler::AMDAIE {
 
 /// Utility to add explicit link operations to avoid having to do this during
 /// conversion to AIEDialect operations. This function only consider L2/MT for
-/// links as L1/L3 don't need this linking through AIE objectfifos. Furthermore,
-/// it assumes that all users of a logical objectfifo reside within the same
+/// links as L1/L3 don't need this linking through AIE objectFifos. Furthermore,
+/// it assumes that all users of a logical objectFifo reside within the same
 /// block and an error will be emitted if that's not the case.
 LogicalResult createLogicalObjectFifoLink(
     RewriterBase &rewriter,
@@ -26,8 +26,8 @@ LogicalResult createLogicalObjectFifoLink(
     return success();
   }
 
-  // Visit all CopyOp users of this logical objectfifo and add them to
-  // either the input or output side of this logical objectfifo. While
+  // Visit all CopyOp users of this logical objectFifo and add them to
+  // either the input or output side of this logical objectFifo. While
   // doing this, keep track of the last user operation for insertion
   // purposes.
   SmallVector<OpFoldResult> ins;

@@ -123,13 +123,13 @@ LogicalResult insertCoreOpsInWorkgroup(mlir::ModuleOp moduleOp) {
           return WalkResult::interrupt();
         } else if (sourceMemspace &&
                    dyn_cast<IntegerAttr>(sourceMemspace).getInt() == 2) {
-          // From L1, so insert a logical objectfifo produce op
+          // From L1, so insert a logical objectFifo produce op
           rewriter.setInsertionPoint(endOp);
           rewriter.create<AMDAIE::LogicalObjectFifoProduce>(
               rewriter.getUnknownLoc(), SmallVector<Type, 1>{}, dmaOp);
         } else if (targetMemspace &&
                    dyn_cast<IntegerAttr>(targetMemspace).getInt() == 2) {
-          // To L1, so insert a logical objectfifo consume op
+          // To L1, so insert a logical objectFifo consume op
           rewriter.setInsertionPoint(endOp);
           rewriter.create<AMDAIE::LogicalObjectFifoConsume>(
               rewriter.getUnknownLoc(), SmallVector<Type, 1>{}, dmaOp);
