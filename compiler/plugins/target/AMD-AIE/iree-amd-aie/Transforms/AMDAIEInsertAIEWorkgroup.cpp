@@ -17,20 +17,6 @@ namespace mlir::iree_compiler::AMDAIE {
 
 namespace {
 
-/// Normalize the loop bounds of `scf.forall` operations within the module.
-LogicalResult normalizeModuleLoopBounds(ModuleOp moduleOp) {
-  IRRewriter rewriter(moduleOp.getContext());
-  WalkResult res = moduleOp->walk([&](scf::ForallOp forallOp) {
-    if (failed(normalizeLoopBounds(rewriter, forallOp))) {
-      forallOp.emitOpError() << "failed to normalize loop bounds";
-      return WalkResult::interrupt();
-    }
-    return WalkResult::advance();
-  });
-  if (res.wasInterrupted()) return failure();
-  return success();
-}
-
 /// Utility to map the parallel mapping attributes to the corresponding
 /// induction variables.
 void getAttributeMapping(SmallVector<scf::ForallOp> forallOps,
@@ -94,6 +80,12 @@ LogicalResult insertCoreOpsInWorkgroup(mlir::ModuleOp moduleOp) {
       return WalkResult::interrupt();
     }
     scf::ForallOp innermostForall = innermostForallLoops[0];
+    if (!innermostForall.isNormalized()) {
+      innermostForall.emitOpError()
+          << "scf.forall operations must be normalized before core "
+             "operation insertion";
+      return WalkResult::interrupt();
+    }
     auto parentOps = getInclusiveParentsOfType<scf::ForallOp>(innermostForall);
     DenseMap<Attribute, Value> attrMapping;
     getAttributeMapping(parentOps, attrMapping);
@@ -167,10 +159,6 @@ class AMDAIEInsertAIEWorkgroupPass
 };
 
 void AMDAIEInsertAIEWorkgroupPass::runOnOperation() {
-  // Normalize the loop bounds of `scf.forall` operations within the module.
-  if (failed(normalizeModuleLoopBounds(getOperation()))) {
-    return signalPassFailure();
-  }
   if (failed(insertWorkgroupOps(getOperation()))) {
     return signalPassFailure();
   }

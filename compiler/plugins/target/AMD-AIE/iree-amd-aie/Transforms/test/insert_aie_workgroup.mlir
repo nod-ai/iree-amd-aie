@@ -1,16 +1,9 @@
-// RUN: iree-opt --split-input-file --pass-pipeline="builtin.module(iree-amdaie-insert-aie-workgroup)" %s | FileCheck %s
+// RUN: iree-opt --split-input-file --pass-pipeline="builtin.module(iree-amdaie-insert-aie-workgroup)" --verify-diagnostics %s | FileCheck %s
 
-// CHECK-LABEL: @insert_aie_workgroup_with_non_normalized_forall
-// CHECK:       scf.forall (%{{.+}}, %{{.+}}) in (1, 1) {
-// CHECK:         amdaie.workgroup {
-// CHECK:           scf.forall (%[[ARG2:.*]], %[[ARG3:.*]]) in (1, 2) {
-// CHECK:             %[[C2:.*]] = arith.constant 2 : index
-// CHECK:             %[[ADD:.*]] = arith.addi %[[ARG2]], %[[C2]]
-// CHECK-DAG:         %[[TILE_0:.*]] = amdaie.tile(%[[ARG3]], %[[ADD]])
-// CHECK-DAG:         %{{.+}} = amdaie.core(%[[TILE_0]])
 func.func @insert_aie_workgroup_with_non_normalized_forall() {
   %c2 = arith.constant 2 : index
   scf.forall (%arg0, %arg1) in (1, 1) {
+    // expected-error @+1 {{scf.forall operations must be normalized before core operation insertion}}
     scf.forall (%arg2, %arg3) = (0, 0) to (8, 16) step (8, 8) {
     } {mapping = [#gpu.thread<y>, #gpu.thread<x>]}
   } {mapping = [#gpu.block<y>, #gpu.block<x>]}
