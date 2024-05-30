@@ -48,11 +48,11 @@ def AMDAIE_ControlCodeOp : AMDAIE_Op<"controlcode", [HasParent<"WorkgroupOp">,
 def AMDAIE_CoreOp: AMDAIE_Op<"core", [SingleBlock]>, Results<(outs Index)> {
   let summary = "The AIE core operator";
   let description = [{
-    This operation represents an AIE core op, containing a sequence of
-    operations in its body to be executed on this core. The core is
-    specified through a tile, indicating the location in the AIE array. This 
-    operation differs from the `CoreOp` defined in the it uses AMDAIE_TileOp,
-    which accepts the column and row as indices instead of integers.
+    This operation represents an AIE core op, containing a sequence of operations
+    in its body to be executed on this core. The core is specified through a tile,
+    indicating the location in the AIE array. This operation differs from the
+    `CoreOp` defined in the AIE dialect in that it uses AMDAIE_TileOp, which
+    accepts the column and row as indices instead of integers.
   }];
 
   let arguments = (
@@ -172,14 +172,16 @@ def AMDAIE_NpuDmaCpyNdOp: AMDAIE_Op<"npu.dma_cpy_nd",
     about the source and target logical objectFifos of the operation and which
     will instantiate the DMA connection.
 
-    The representation supports a partially-static representation of both the source and
-    target `offsets`, `sizes` and `strides`. A special sentinel value ShapedType::kDynamic
-    encodes that the corresponding entry has a dynamic value.
+    The representation supports a partially-static representation of both the
+    source and target `offsets`, `sizes` and `strides`. A special sentinel value
+    ShapedType::kDynamic encodes that the corresponding entry has a dynamic value.
 
     Example:
 
     ```mlir
-    %2 = amdaie.circular_dma_cpy_nd(%1[] [] [], %0[] [] []) : (!amdaie.logicalobjectfifo<memref<32x64xi32, 1>>, !amdaie.logicalobjectfifo<memref<32x1024xi32>>)
+    %2 = amdaie.circular_dma_cpy_nd(%1[] [] [], %0[] [] [])
+      : (!amdaie.logicalobjectfifo<memref<32x64xi32, 1>>,
+      !amdaie.logicalobjectfifo<memref<32x1024xi32>>)
     ...
     amdaie.controlcode {
       %3 = amdaie.npu.dma_cpy_nd %2([] [] [], [%c0, %c0] [%c32, %c64] [%c1024, %c1])
@@ -288,7 +290,7 @@ def AMDAIE_NpuDmaWaitOp: AMDAIE_Op<"npu.dma_wait", []> {
     Here, the `dma_wait` operation will wait until the referenced Npu DMA
     operation has started execution. On the other hand, the `S2MM` direction can
     be used to wait on the destination side of the DMA, i.e. until the DMA has
-    finished it's write into the target memory:
+    finished its write into the target memory:
 
     ```mlir
     %2 = amdaie.npu.dma_cpy_nd %0([%c0, %c0] [%c32, %c64] [%c1024, %c1], [] [] [])
@@ -320,9 +322,9 @@ def AMDAIE_NpuDmaWaitOp: AMDAIE_Op<"npu.dma_wait", []> {
 def AMDAIE_LogicalObjectFifoAcquire: 
     AMDAIE_Op<"logicalobjectfifo.acquire", []> {
   let summary = "Semaphore operation to acquire objects from a logical"
-                "objectfifo DMA operation.";
+                "objectFifo DMA operation.";
   let description = [{
-    Acquires data objects from a logical objectfifo DMA operation, as specified
+    Acquires data objects from a logical objectFifo DMA operation, as specified
     by `dma`, and blocks until these objects are available. This operation will
     acquire for either read or write, depending on whether the `port` is set to
     `Consume`, respectively `Produce`. The `size` argument specifies the number
@@ -333,11 +335,12 @@ def AMDAIE_LogicalObjectFifoAcquire:
       %2 = amdaie.dma_cpy_nd(
         %1[%c0, %c0, %c0, %c0] [%c1, %c1, %c8, %c16] [%c128, %c128, %c16, %c1],
         %0[%c0, %c0, %c0, %c0] [%c1, %c1, %c8, %c16] [%c128, %c16, %c16, %c1])
-        : (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>)
+        : (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>,
+        !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>)
       %3 = amdaie.logicalobjectfifo.acquire(%2, Consume) {size = 1 : i32}
     ```
 
-    This operation acquires 1 data object from the `amdaie.dma_cpy_nd` operation
+    This operation acquires one data object from the `amdaie.dma_cpy_nd` operation
     and will block until available.
   }];
 
@@ -357,7 +360,7 @@ def AMDAIE_LogicalObjectFifoAcquire:
 }
 
 def AMDAIE_LogicalObjectFifoConsume: AMDAIE_Op<"logicalobjectfifo.consume", []> {
-  let summary = "Consume a DMA logicalobjectfifo result.";
+  let summary = "Consume a DMA logical objectFifo result.";
   let description = [{
     Consumes the result of a DMA operation. This is a blocking operation,
     waiting for the DMA to produce data. Typically, this operation will reside
@@ -369,7 +372,8 @@ def AMDAIE_LogicalObjectFifoConsume: AMDAIE_Op<"logicalobjectfifo.consume", []> 
     %2 = amdaie.dma_cpy_nd(
       %1[%c0, %c0, %c0, %c0] [%c1, %c1, %c8, %c16] [%c128, %c128, %c16, %c1],
       %0[%c0, %c0, %c0, %c0] [%c1, %c1, %c8, %c16] [%c128, %c16, %c16, %c1])
-      : (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>)
+      : (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>,
+      !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>)
     %3 = amdaie.logicalobjectfifo.consume(%2)
     ```
   }];
@@ -396,17 +400,20 @@ def AMDAIE_LogicalObjectFifoConsume: AMDAIE_Op<"logicalobjectfifo.consume", []> 
   }];
 }
 
-def AMDAIE_LogicalObjectFifoFromMemrefOp : AMDAIE_Op<"logicalobjectfifo.from_memref", [Pure]> {
-  let summary = "Create a logical objectfifo from a memref";
+def AMDAIE_LogicalObjectFifoFromMemrefOp
+    : AMDAIE_Op<"logicalobjectfifo.from_memref", [Pure]> {
+  let summary = "Create a logical objectFifo from a memref";
   let description = [{
-    Creates a logical objectfifo which encapsulates a memref. The logical objectfifo adds synchronization
-    capability around the memref using produce/consume to write into respectively read from the base memref.
-    Alternatively, the memref can be accessed through semaphore acquire/release ops.
+    Creates a logical objectFifo which encapsulates a memref. The logical objectFifo
+    adds synchronization capability around the memref using produce/consume to write
+    into respectively read from the base memref. Alternatively, the memref can be
+    accessed through semaphore acquire/release ops.
 
     Usage:
     ```mlir
       %alloc = memref.alloc() : memref<8x16xi32, 1>
-      %0  amdaie.logicalobjectfifo.from_memref %alloc, {} : memref<8x16xi32, 1> -> !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>
+      %0 = amdaie.logicalobjectfifo.from_memref %alloc, {} : memref<8x16xi32, 1>
+        -> !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>
     ```
   }];
 
@@ -456,21 +463,27 @@ def AMDAIE_LogicalObjectFifoFromMemrefOp : AMDAIE_Op<"logicalobjectfifo.from_mem
 
 def AMDAIE_LogicalObjectFifoLink
     : AMDAIE_Op<"logicalobjectfifo.link", [AttrSizedOperandSegments]> {
-  let summary = "Link DMA operations operating on a logical objectfifo.";
+  let summary = "Link DMA operations operating on a logical objectFifo.";
   let description = [{
     The `amdaie.logicalobjectfifo.link` operation explicitly links the DMA
-    operations operating on a logical objectfifo. This operation mimics the 
+    operations operating on a logical objectFifo. This operation mimics the
     `aie.objectFifo.link` operation and is useful as an intermediary before
     conversion to the AIE dialect.
 
     Example:
     ```mlir
-    %1 = amdaie.logicalobjectfifo.from_memref %alloc, {%tile} : memref<64x32xi32, 1> -> !amdaie.logicalobjectfifo<memref<64x32xi32, 1>>
-    %3 = amdaie.circular_dma_cpy_nd(%1[] [] [], %0[] [] []) : (!amdaie.logicalobjectfifo<memref<32x64xi32, 1>>, !amdaie.logicalobjectfifo<memref<32x1024xi32>>)
-    %4 = amdaie.circular_dma_cpy_nd(%2[] [] [], %1[%c0, %c0, %c0] [%c8, %c32, %c8] [%c8, %c64, %c1]) : (!amdaie.logicalobjectfifo<memref<8x8x4x8xi32, 2>>, !amdaie.logicalobjectfifo<memref<32x64xi32, 1>>)
+    %1 = amdaie.logicalobjectfifo.from_memref %alloc, {%tile}
+      : memref<64x32xi32, 1> -> !amdaie.logicalobjectfifo<memref<64x32xi32, 1>>
+    %3 = amdaie.circular_dma_cpy_nd(%1[] [] [], %0[] [] [])
+      : (!amdaie.logicalobjectfifo<memref<32x64xi32, 1>>,
+      !amdaie.logicalobjectfifo<memref<32x1024xi32>>)
+    %4 = amdaie.circular_dma_cpy_nd(%2[] [] [],
+      %1[%c0, %c0, %c0] [%c8, %c32, %c8] [%c8, %c64, %c1])
+      : (!amdaie.logicalobjectfifo<memref<8x8x4x8xi32, 2>>,
+      !amdaie.logicalobjectfifo<memref<32x64xi32, 1>>)
     amdaie.logicalobjectfifo.link[%3] -> [%4] ()
     ```
-    Here, two circular DMA operations operating on logical objectfifo `%1` are
+    Here, two circular DMA operations operating on logical objectFifo `%1` are
     linked explicitly through the `amdaie.logicalobjectfifo.link` operation.
   }];
 
@@ -498,7 +511,8 @@ def AMDAIE_LogicalObjectFifoProduce: AMDAIE_Op<"logicalobjectfifo.produce", []> 
     %2 = amdaie.dma_cpy_nd(
       %1[%c0, %c0, %c0, %c0] [%c1, %c1, %c8, %c16] [%c128, %c128, %c16, %c1],
       %0[%c0, %c0, %c0, %c0] [%c1, %c1, %c8, %c16] [%c128, %c16, %c16, %c1])
-      : (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>)
+      : (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>,
+      !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>)
     %3 = amdaie.logicalobjectfifo.produce(%2)
     ```
   }];
@@ -528,9 +542,9 @@ def AMDAIE_LogicalObjectFifoProduce: AMDAIE_Op<"logicalobjectfifo.produce", []> 
 def AMDAIE_LogicalObjectFifoRelease: 
     AMDAIE_Op<"logicalobjectfifo.release", []> {
   let summary = "Semaphore operation to release objects from a logical"
-                "objectfifo DMA operation.";
+                "objectFifo DMA operation.";
   let description = [{
-    Releases data objects from a logical objectfifo DMA operation, as specified
+    Releases data objects from a logical objectFifo DMA operation, as specified
     by `dma`. This operation will be releasing either a read or write operation,
     depending on whether the `port` is set to `Consume`, respectively `Produce`.
     The `size` argument specifies the number of data objects to be released.
@@ -540,7 +554,8 @@ def AMDAIE_LogicalObjectFifoRelease:
       %2 = amdaie.dma_cpy_nd(
         %1[%c0, %c0, %c0, %c0] [%c1, %c1, %c8, %c16] [%c128, %c128, %c16, %c1],
         %0[%c0, %c0, %c0, %c0] [%c1, %c1, %c8, %c16] [%c128, %c16, %c16, %c1])
-        : (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>)
+        : (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>,
+        !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>)
       %3 = amdaie.logicalobjectfifo.release(%2, Consume) {size = 1 : i32}
     ```
 
@@ -568,9 +583,9 @@ class AMDAIE_DmaCpyNdBaseOp<string mnemonic, list<Trait> traits = []> :
   let summary = "The base DMA copy operator class";
   let description = [{
     The DMA operation represents a strided copy operation with an unlimited number of
-    dimensions from a source to a target logical objectfifo. Both the source and target
+    dimensions from a source to a target logical objectFifo. Both the source and target
     have `offsets`, `sizes` and `strides` to define the access pattern on the source
-    respectively target logical objectfifo.
+    respectively target logical objectFifo.
 
     The representation supports a partially-static representation of both the source and
     target `offsets`, `sizes` and `strides`. A special sentinel value ShapedType::kDynamic
@@ -582,7 +597,8 @@ class AMDAIE_DmaCpyNdBaseOp<string mnemonic, list<Trait> traits = []> :
     %2 = amdaie.dma_cpy_nd(
       %1[%c0, %c0, %c0, %c0] [%c1, %c1, %c8, %c16] [%c128, %c128, %c16, %c1],
       %0[%c0, %c0, %c0, %c0] [%c1, %c1, %c8, %c16] [%c128, %c16, %c16, %c1])
-      : (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>)
+      : (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>,
+      !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>)
     ```
 
   }];
@@ -661,11 +677,11 @@ def AMDAIE_DmaCpyNdOp: AMDAIE_DmaCpyNdBaseOp<"dma_cpy_nd", []> {
   let summary = "The DMA copy operator";
   let description = [{
     The DMA operation represents a strided copy operation with an unlimited number of
-    dimensions from a source to a target logical objectfifo as specified by the
+    dimensions from a source to a target logical objectFifo as specified by the
     `DmaCpyNdBaseOp` base class. Contrast this operation with the `CircularDmaCpyNdOp`,
     which is similar, but keeps copying data indefinitely, waiting for data to be
-    produced on the source logical objectfifo and producing into the target logical
-    objectfifo.
+    produced on the source logical objectFifo and producing into the target logical
+    objectFifo.
     
     Example:
 
@@ -673,7 +689,8 @@ def AMDAIE_DmaCpyNdOp: AMDAIE_DmaCpyNdBaseOp<"dma_cpy_nd", []> {
     %2 = amdaie.dma_cpy_nd(
       %1[%c0, %c0, %c0, %c0] [%c1, %c1, %c8, %c16] [%c128, %c128, %c16, %c1],
       %0[%c0, %c0, %c0, %c0] [%c1, %c1, %c8, %c16] [%c128, %c16, %c16, %c1])
-      : (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>)
+      : (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>,
+      !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>)
     ```
 
   }];
@@ -685,9 +702,9 @@ def AMDAIE_CircularDmaCpyNdOp: AMDAIE_DmaCpyNdBaseOp<"circular_dma_cpy_nd", [Pur
   let summary = "The circular DMA copy operator";
   let description = [{
     The DMA operation represents a strided copy operation with an unlimited number of
-    dimensions from a source to a target logical objectfifo as specified by the
+    dimensions from a source to a target logical objectFifo as specified by the
     `DmaCpyNdBaseOp` base class. This operation keeps copying data indefinitely, waiting 
-    for data to be produced on the source logical objectfifo and producing into the target
+    for data to be produced on the source logical objectFifo and producing into the target
     logical objectfifo.
     
     Example:
@@ -696,7 +713,8 @@ def AMDAIE_CircularDmaCpyNdOp: AMDAIE_DmaCpyNdBaseOp<"circular_dma_cpy_nd", [Pur
     %2 = amdaie.circular_dma_cpy_nd(
       %1[%c0, %c0, %c0, %c0] [%c1, %c1, %c8, %c16] [%c128, %c128, %c16, %c1],
       %0[%c0, %c0, %c0, %c0] [%c1, %c1, %c8, %c16] [%c128, %c16, %c16, %c1])
-      : (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>)
+      : (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>,
+      !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>)
     ```
 
   }];

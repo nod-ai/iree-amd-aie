@@ -19,7 +19,7 @@ namespace mlir::iree_compiler::AMDAIE {
 namespace {
 
 /// Transform AIR::DmaMemcpyNdOp into AMDAIE::DmaCpyNdOp ops, which operate on
-/// top of logical objectfifos instead of memrefs.
+/// top of logical objectFifos instead of memrefs.
 class AIRDmaToAMDAIEDma : public OpRewritePattern<xilinx::air::DmaMemcpyNdOp> {
   using OpRewritePattern<xilinx::air::DmaMemcpyNdOp>::OpRewritePattern;
 
