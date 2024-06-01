@@ -168,18 +168,20 @@ struct KernelInfo {
 // Table of descriptions of kernels available
 static KernelInfo KernelInfos[] = {
     {4096, 4096, 512,
-     "matmul/matmul-bf16-f32-4096x4096x512-" PLATFORM_SUFFIX "-v1",
 #ifdef AMD_STRIX
+     "matmul/matmul-bf16-f32-4096x4096x512-stx-v2",
      "MLIR_AIE"
 #else
+     "matmul/matmul-bf16-f32-4096x4096x512-phx-v1",
      "matmul_4096x4096_512xbf16__dispatch_0_matmul_409"
 #endif
     },
     {4096, 512, 4096,
-     "matmul/matmul-bf16-f32-4096x512x4096-" PLATFORM_SUFFIX "-v1",
 #ifdef AMD_STRIX
+     "matmul/matmul-bf16-f32-4096x512x4096-stx-v2",
      "MLIR_AIE"
 #else
+     "matmul/matmul-bf16-f32-4096x512x4096-phx-v1",
      "matmul_4096x512_4096xbf16__dispatch_0_matmul_409"
 #endif
     }};

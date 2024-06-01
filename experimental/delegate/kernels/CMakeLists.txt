@@ -25,6 +25,8 @@ set(AIE_DELEGATE_KERNELS
     "matmul/matmul-bf16-f32-4096x512x4096-phx-v1"  # 4k phx matmul alt shape
     "matmul/matmul-bf16-f32-4096x4096x512-stx-v1"  # 4k strix matmul
     "matmul/matmul-bf16-f32-4096x512x4096-stx-v1"  # 4k stx matmul alt shape
+    "matmul/matmul-bf16-f32-4096x4096x512-stx-v2"  # 4k strix matmul v2
+    "matmul/matmul-bf16-f32-4096x512x4096-stx-v2"  # 4k stx matmul alt shape v2
 )
 
 # List of all kernel file extensions
