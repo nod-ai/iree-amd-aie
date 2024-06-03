@@ -89,6 +89,25 @@ func.func @unroll_nested() {
 
 // -----
 
+func.func private @callee(%i: index, %j: index)
+// CHECK-LABEL: @promote_single_iteration_forall
+// CHECK-DAG:   %[[C0:.+]] = arith.constant 0 : index
+// CHECK:       amdaie.controlcode
+// CHECK:         func.call @callee(%[[C0]], %[[C0]])
+func.func @promote_single_iteration_forall() {
+  amdaie.workgroup {
+    amdaie.controlcode {
+      scf.forall (%i, %j) in (1, 1) {
+        func.call @callee(%i, %j) : (index, index) -> ()
+      }
+      amdaie.end
+    }
+  }
+  return
+}
+
+// -----
+
 func.func private @callee(%i: index)
 
 // CHECK-LABEL: @no_for_unroll_outside_controlcode
