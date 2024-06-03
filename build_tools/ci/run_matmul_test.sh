@@ -690,7 +690,6 @@ run_matmul_test \
     --lhs_rhs_type "bf16" \
     --acc_type "f32" \
     --m "512"  --n "512" --k "512" \
-    --num_repeat_runs "0"
 
 run_matmul_test \
     --name_prefix "packPeel2304" \
@@ -698,7 +697,22 @@ run_matmul_test \
     --lhs_rhs_type "bf16" \
     --acc_type "f32" \
     --m "128"  --n "128" --k "2304" \
-    --num_repeat_runs "0"
+
+run_matmul_test \
+  --name_prefix "packPeel_t_i32" \
+  --pipeline "pack-peel" \
+  --lhs_rhs_type "i32" \
+  --acc_type "i32" \
+  --m "128" --n "256" --k "512" \
+  --do_transpose_rhs "1"
+
+run_matmul_test \
+  --name_prefix "packPeel_t_bf16" \
+  --pipeline "pack-peel" \
+  --lhs_rhs_type "bf16" \
+  --acc_type "f32" \
+  --m "128" --n "256" --k "512" \
+  --do_transpose_rhs "1" \
 
 ###################################################################
 
