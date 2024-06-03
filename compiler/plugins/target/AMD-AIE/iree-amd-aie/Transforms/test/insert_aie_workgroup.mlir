@@ -1,4 +1,16 @@
-// RUN: iree-opt --split-input-file --pass-pipeline="builtin.module(iree-amdaie-insert-aie-workgroup)" %s | FileCheck %s
+// RUN: iree-opt --split-input-file --pass-pipeline="builtin.module(iree-amdaie-insert-aie-workgroup)" --verify-diagnostics %s | FileCheck %s
+
+func.func @insert_aie_workgroup_with_non_normalized_forall() {
+  %c2 = arith.constant 2 : index
+  scf.forall (%arg0, %arg1) in (1, 1) {
+    // expected-error @+1 {{scf.forall operations must be normalized before core operation insertion}}
+    scf.forall (%arg2, %arg3) = (0, 0) to (8, 16) step (8, 8) {
+    } {mapping = [#gpu.thread<y>, #gpu.thread<x>]}
+  } {mapping = [#gpu.block<y>, #gpu.block<x>]}
+  return
+}
+
+// -----
 
 // CHECK-LABEL: @insert_aie_workgroup
 // CHECK: scf.forall (%[[ARG0:.*]], %[[ARG1:.*]]) in (1, 1) {
