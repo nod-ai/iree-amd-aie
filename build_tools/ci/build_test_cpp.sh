@@ -38,7 +38,7 @@ ccache -z
 # Build XRT.
 XRT_BUILD_DIR=$repo_root/xrt-build
 XRT_INSTALL_DIR=$repo_root/xrt-install
-$this_dir/build_xrt.sh $XRT_BUILD_DIR $XRT_INSTALL_DIR
+# $this_dir/build_xrt.sh $XRT_BUILD_DIR $XRT_INSTALL_DIR
 
 echo "Building IREE"
 echo "============="
@@ -72,9 +72,7 @@ cmake -S "$iree_dir" -B "$build_dir" \
   -DIREE_TARGET_BACKEND_LLVM_CPU=ON \
   -DIREE_INPUT_TOSA=OFF \
   -DIREE_INPUT_STABLEHLO=OFF \
-  -DIREE_CMAKE_PLUGIN_PATHS=../iree-amd-aie \
-  -DIREE_EXTERNAL_HAL_DRIVERS=xrt \
-  -DXRT_DIR=$XRT_INSTALL_DIR/opt/xilinx/xrt/share/cmake/XRT
+  -DIREE_CMAKE_PLUGIN_PATHS=../iree-amd-aie
 
 echo "Building all"
 echo "------------"
@@ -87,7 +85,7 @@ cmake --build "$build_dir" --target iree-install-dist
 
 echo "CTest"
 echo "-----"
-ctest --test-dir "$build_dir" -R amd-aie
+ctest --test-dir "$build_dir" -R amd-aie --output-on-failure
 
 # Show ccache stats.
 ccache --show-stats

@@ -1,0 +1,74 @@
+name: CI here
+
+on:
+  workflow_call:
+
+  pull_request:
+
+  merge_group:
+
+  push:
+    branches:
+      - main
+
+concurrency:
+  # A PR number if a pull request and otherwise the commit hash. This cancels
+  # queued and in-progress runs for the same PR (presubmit) or commit
+  # (postsubmit).
+  group: ci-build-test-cpp-linux-here-${{ github.event.number || github.sha }}
+  cancel-in-progress: true
+
+jobs:
+  build_test_linux_here:
+    name: Build and Test (Linux, ASSERTIONS)
+    runs-on: ubuntu-20.04
+    strategy:
+      fail-fast: true
+    env:
+      CACHE_DIR: ${{ github.workspace }}/.container-cache
+    steps:
+      - name: "Checking out repository"
+        uses: actions/checkout@8f4b7f84864484a7bf31766abe9204da3cbe65b3 # v3.5.0
+        with:
+          submodules: recursive
+
+      - name: Sync source deps
+        run: |
+          python ./sync_deps.py
+
+      - name: Enable cache
+        uses: actions/cache/restore@v3
+        with:
+          path: ${{ env.CACHE_DIR }}
+          key: linux-build-test-cpp-asserts-here-${{ github.sha }}
+          restore-keys: |
+            linux-build-test-cpp-
+
+      - name: Install requirements
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ccache ninja-build \
+            libboost-dev libboost-filesystem-dev libboost-program-options-dev \
+            libboost-system-dev \
+            pkg-config libdrm-dev opencl-headers ocl-icd-opencl-dev libssl-dev \
+            rapidjson-dev \
+            protobuf-compiler \
+            libprotobuf-dev \
+            python3-pybind11 \
+            uuid-dev \
+            libcurl4-openssl-dev \
+            libudev-dev \
+            systemtap-sdt-dev \
+            libelf-dev
+
+      - name: Build packages
+        run: |
+          export cache_dir="${{ env.CACHE_DIR }}"
+          bash build_tools/ci/build_test_cpp.sh
+
+      - name: Save cache
+        uses: actions/cache/save@v3
+        if: ${{ !cancelled() }}
+        with:
+          path: ${{ env.CACHE_DIR }}
+          key: linux-build-test-cpp-asserts-here-${{ github.sha }}

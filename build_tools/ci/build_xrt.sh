@@ -21,6 +21,7 @@ cmake -GNinja \
   "-S${src_dir}" \
   "-B${build_dir}" \
   -DDISABLE_ABI_CHECK=ON \
+  -DHAS_PYTHON=OFF \
   -DCMAKE_INSTALL_PREFIX=/opt/xilinx \
   -DXRT_INSTALL_PREFIX=/opt/xilinx \
   -DCMAKE_BUILD_TYPE=Release 
