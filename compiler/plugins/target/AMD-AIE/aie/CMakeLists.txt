@@ -83,6 +83,18 @@ iree_tablegen_library(
 
 iree_tablegen_library(
   NAME
+    AIEVecAttrsGen
+  TD_FILE
+    "${IREE_MLIR_AIE_SOURCE_DIR}/include/aie/Dialect/AIEVec/IR/AIEVecAttributes.td"
+  OUTS
+    -gen-attrdef-decls -attrdefs-dialect=aievec Dialect/AIEVec/IR/AIEVecAttributes.h.inc
+    -gen-attrdef-defs -attrdefs-dialect=aievec Dialect/AIEVec/IR/AIEVecAttributes.cpp.inc
+    -gen-enum-decls Dialect/AIEVec/IR/AIEVecEnums.h.inc
+    -gen-enum-defs Dialect/AIEVec/IR/AIEVecEnums.cpp.inc
+)
+
+iree_tablegen_library(
+  NAME
     AIEInterfacesGen
   TD_FILE
     "${IREE_MLIR_AIE_SOURCE_DIR}/include/aie/Dialect/AIE/IR/AIEInterfaces.td"
@@ -161,6 +173,7 @@ iree_cc_library(
     ::defs
     ::AIEVecOpsGen
     ::AIEVecDialectGen
+    ::AIEVecAttrsGen
     MLIRIR
 )
 
