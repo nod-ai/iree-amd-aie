@@ -21,3 +21,4 @@ endif()
 
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/runtime/src AMD-AIE)
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/experimental AMD-AIE-experimental)
+add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/tools/iree_amd_aie_runtime AMD-AIE/tools)
