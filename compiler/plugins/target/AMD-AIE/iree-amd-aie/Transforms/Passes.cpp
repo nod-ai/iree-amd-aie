@@ -243,17 +243,13 @@ void addPackPeelBasedPassPipeline(OpPassManager &funcPassManager,
 
   // Peel the first and last iteration. Note: Do not run CSE pass afterwards,
   // because it may bring problem for bufferization.
-  {
-    AMDAIEPeelForLoopOptions peelOptions;
-    peelOptions.peelingType = PeelingType::FirstLast;
-    funcPassManager.addPass(createAMDAIEPeelForLoopPass(peelOptions));
-  }
+  funcPassManager.addPass(createAMDAIEPeelForLoopPass());
   funcPassManager.addPass(createCanonicalizerPass());
 
   // Fuse fill op into the first inner forall loop
   funcPassManager.addPass(createAMDAIEFuseFillIntoForallPass());
 
-  // Fuse unpack and elementwise op into the last inner forall loop
+  // Fuse unpack/elementwise consumer ops into the last inner forall loop
   funcPassManager.addPass(createAMDAIEFuseConsumerIntoLoopPass());
 
   // Fuse pack ops into the last inner forall loop
