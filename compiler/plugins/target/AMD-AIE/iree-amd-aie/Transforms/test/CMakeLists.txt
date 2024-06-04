@@ -8,6 +8,7 @@ iree_lit_test_suite(
   NAME
     lit
   SRCS
+    "aie_link_executables.mlir"
     "air_dma_to_amdaie_dma.mlir"
     "bridge_to_air.mlir"
     "bufferize_to_allocation.mlir"

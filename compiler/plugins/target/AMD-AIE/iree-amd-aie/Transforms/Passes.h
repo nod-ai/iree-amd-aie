@@ -101,6 +101,10 @@ std::unique_ptr<Pass> createAMDAIEFusePackIntoLoopPass(
 /// for parallel execution.
 std::unique_ptr<Pass> createAMDAIEInsertAIEWorkgroupPass();
 
+/// Links AMDAIE HAL executables within the top-level program module.
+std::unique_ptr<OperationPass<mlir::ModuleOp>>
+createAMDAIELinkExecutablesPass();
+
 /// Create pass calling the dynamic pipeline for AMDAIE.
 std::unique_ptr<InterfacePass<FunctionOpInterface>>
 createAMDAIELowerExecutableTargetPass(
