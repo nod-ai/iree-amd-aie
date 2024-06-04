@@ -42,6 +42,9 @@ struct AMDAIELinkExecutablesPass
         OpBuilder::atBlockBegin(&linkedExecutableOp.getBlock());
 
     // Gather all unique executable targets - we may have multiple.
+    // However, in AIE currently we have only one unique target but we still
+    // do this for the same of future proofing and ease of implementation
+    // as we can use the upstream gatherExecutableTargets utility this way.
     SetVector<IREE::HAL::ExecutableTargetAttr> executableTargetAttrs =
         gatherExecutableTargets(sourceExecutableOps);
     for (auto [index, attr] : llvm::enumerate(executableTargetAttrs)) {
