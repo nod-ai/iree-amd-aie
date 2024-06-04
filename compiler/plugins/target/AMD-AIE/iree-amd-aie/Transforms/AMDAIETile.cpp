@@ -73,11 +73,13 @@ void AMDAIETilePass::runOnOperation() {
   // The lowering config is added to the original matmul/generic op. To tile the
   // linalg.copy op, get lowering configs from its user op.
   SmallVector<int64_t> tileSizesVal;
-  if (auto loweringConfig = getLoweringConfig(linalgOp)) {
+  if (auto loweringConfig =
+          getLoweringConfig<IREE::Codegen::LoweringConfigAttr>(linalgOp)) {
     tileSizesVal = loweringConfig.getTileSizeVals(tilingLevel);
   } else {
     FailureOr<IREE::Codegen::LoweringConfigAttr> maybeLoweringConfig =
-        getLoweringConfig(getComputeOps(funcOp));
+        getFirstLoweringConfig<IREE::Codegen::LoweringConfigAttr>(
+            getComputeOps(funcOp));
     if (failed(maybeLoweringConfig)) {
       LLVM_DEBUG(llvm::dbgs() << "can't find lowering_config, skip tiling");
       return;

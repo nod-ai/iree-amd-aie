@@ -71,7 +71,9 @@ static FailureOr<LoweringConfigAttr> getRootLoweringConfig(
   SmallVector<Operation *> computeOps = getComputeOps(funcOp);
   // Check for self first.
   FailureOr<Operation *> rootOp = getRootOperation(computeOps);
-  auto rootLoweringConfig = iree_compiler::getLoweringConfig(rootOp.value());
+  auto rootLoweringConfig =
+      iree_compiler::getLoweringConfig<IREE::Codegen::LoweringConfigAttr>(
+          rootOp.value());
   if (rootLoweringConfig) {
     return rootLoweringConfig;
   }

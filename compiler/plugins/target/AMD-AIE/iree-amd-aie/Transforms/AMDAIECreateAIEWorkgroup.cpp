@@ -130,7 +130,7 @@ FailureOr<OpTy> createNewLoopOp(IRRewriterAndMapper &rewriter,
 
 /// Recursively build operations with a single body. These operations define a
 /// `getBody` method to retrieve the inner body block. This function will
-/// recursively visit this body block and use it to continue building then
+/// recursively visit this body block and use it to continue building the
 /// workgroup and control code blocks. Afterwards, the following insertions will
 /// be done:
 ///   1. Create a new operation from the provided operation of type `OpTy` and
