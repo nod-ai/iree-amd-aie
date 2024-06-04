@@ -11,15 +11,17 @@
 #include "mlir/Dialect/SCF/Utils/Utils.h"
 #include "mlir/Support/MathExtras.h"
 
-#define DEBUG_TYPE "iree-amdaie-control-code-loop-unroll"
+#define DEBUG_TYPE "iree-amdaie-controlcode-loop-unroll"
 
 namespace mlir::iree_compiler::AMDAIE {
 
 /// Unroll all scf.forall and scf.for loops inside the control code region.
 LogicalResult controlCodeLoopUnroll(RewriterBase &rewriter,
                                     AMDAIE::ControlCodeOp controlCodeOp) {
-  // Convert all scf.forall's in the control code region to scf.for.
+  // Convert all scf.forall in the control code region to scf.for.
   WalkResult forallRes = controlCodeOp.walk([&](scf::ForallOp forallOp) {
+    // TODO(avarma): Remove this after upstream fix.
+    rewriter.setInsertionPoint(forallOp);
     if (succeeded(forallOp.promoteIfSingleIteration(rewriter))) {
       return WalkResult::advance();
     }
@@ -34,6 +36,8 @@ LogicalResult controlCodeLoopUnroll(RewriterBase &rewriter,
   // Unroll all scf.for loops in the control code region.
   WalkResult res =
       controlCodeOp.walk([&](scf::ForOp forOp) {
+        // TODO(avarma): Remove this after upstream fix.
+        rewriter.setInsertionPoint(forOp);
         if (succeeded(forOp.promoteIfSingleIteration(rewriter))) {
           return WalkResult::advance();
         }

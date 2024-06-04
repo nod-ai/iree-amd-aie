@@ -55,10 +55,8 @@ static int64_t getLinearizedSize(SmallVector<int64_t> &shape) {
 
 /// Translate the memory space into shared / local.
 static FailureOr<std::string> translateMemorySpace(IntegerAttr memorySpace) {
-  if (isConstantIntValue(memorySpace, 1))
-    return std::string("shared");
-  if (isConstantIntValue(memorySpace, 2))
-    return std::string("local");
+  if (isConstantIntValue(memorySpace, 1)) return std::string("shared");
+  if (isConstantIntValue(memorySpace, 2)) return std::string("local");
   return failure();
 }
 
@@ -315,8 +313,7 @@ FailureOr<std::string> getString(OpFoldResult ofr,
         return affineOp.emitOpError("failed to apply affine expr");
       }
       return exprStr.value();
-    }
-    else if (auto val = dyn_cast<arith::ConstantIntOp>(v.getDefiningOp())) {
+    } else if (auto val = dyn_cast<arith::ConstantIntOp>(v.getDefiningOp())) {
       return std::to_string(val.value());
     }
   }
@@ -329,7 +326,7 @@ FailureOr<std::string> applySubview(memref::SubViewOp subView,
   SmallVector<int64_t> strides;
   int64_t offset;
   if (failed(getStridesAndOffset(
-          subView.getSource().getType().cast<MemRefType>(), strides, offset))) {
+          cast<MemRefType>(subView.getSource().getType()), strides, offset))) {
     return subView.emitOpError("unhandled non-canonical strides of source");
   }
   if (llvm::any_of(subView.getMixedStrides(), [](OpFoldResult ofr) {
@@ -774,8 +771,8 @@ LogicalResult AccelSerializer::processOperation(memref::AllocOp allocOp,
   if (failed(typeStr)) {
     return allocOp->emitOpError("unhandled element type");
   }
-  argStr += std::string(": Pointer(") + memorySpace.value() + " " + typeStr.value() +
-            "), " + typeStr.value() + ", [";
+  argStr += std::string(": Pointer(") + memorySpace.value() + " " +
+            typeStr.value() + "), " + typeStr.value() + ", [";
 
   SmallVector<int64_t> shape = llvm::to_vector(allocOp.getType().getShape());
   argStr += std::to_string(getLinearizedSize(shape)) +
@@ -916,7 +913,7 @@ LogicalResult AccelSerializer::processOperation(IREE::LinalgExt::PackOp packOp,
   // Add attribute to the buffer depending on whether it's in shared memory or
   // local memory
   std::string loadType = "bidirectional";
-  auto rawMemorySpace = destType.getMemorySpace().dyn_cast<IntegerAttr>();
+  auto rawMemorySpace = dyn_cast<IntegerAttr>(destType.getMemorySpace());
   if (rawMemorySpace) {
     FailureOr<std::string> memorySpace = translateMemorySpace(rawMemorySpace);
     if (failed(memorySpace)) {
@@ -1018,8 +1015,8 @@ LogicalResult AccelSerializer::processOperation(
 
   // Add attribute to the buffer depending on whether it's in shared memory or
   // local memory
-  std::string loadType = "bidirectional";  
-  auto rawMemorySpace = srcType.getMemorySpace().dyn_cast<IntegerAttr>();
+  std::string loadType = "bidirectional";
+  auto rawMemorySpace = dyn_cast<IntegerAttr>(srcType.getMemorySpace());
   if (rawMemorySpace) {
     FailureOr<std::string> memorySpace = translateMemorySpace(rawMemorySpace);
     if (failed(memorySpace)) {

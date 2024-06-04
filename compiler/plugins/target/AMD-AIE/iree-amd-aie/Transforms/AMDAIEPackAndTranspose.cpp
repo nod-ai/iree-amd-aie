@@ -74,7 +74,7 @@ void AMDAIEPackAndTransposePass::runOnOperation() {
 
   // Step 1. Before packing the operation, we will prefetch the lowering and
   // packing config.
-  auto config = getLoweringConfig(linalgOp);
+  auto config = getLoweringConfig<IREE::Codegen::LoweringConfigAttr>(linalgOp);
   auto packingConfig = getPackingConfig(linalgOp);
 
   if (!config || !packingConfig) {
