@@ -13,3 +13,5 @@ endif()
 # (.vmfb file), and so the schema sub-directory is required even when not
 # building the XRT driver code.
 add_subdirectory(schemas)
+
+add_subdirectory(runtime)
