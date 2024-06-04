@@ -178,6 +178,12 @@ def AMDAIEInsertLoopsForVectorization :
      "mlir::iree_compiler::AMDAIE::createAMDAIEInsertLoopsForVectorizationPass()";
 }
 
+def AMDAIELinkExecutables :
+    Pass<"iree-amdaie-link-executables", "mlir::ModuleOp"> {
+  let summary = "Links AMDAIE HAL executables within the top-level program module.";
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIELinkExecutablesPass()";
+}
+
 def AMDAIELowerExecutableTarget :
     InterfacePass<"iree-amdaie-lower-executable-target", "mlir::FunctionOpInterface"> {
   let summary = "Perform lowering of executable target using one of the IREE::HAL::DispatchLoweringPassPipeline";
