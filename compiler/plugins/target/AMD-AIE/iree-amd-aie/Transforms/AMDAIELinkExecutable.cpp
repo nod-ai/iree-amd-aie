@@ -11,7 +11,7 @@
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/Pass/Pass.h"
 
-#define DEBUG_TYPE "iree-amdaie-linkexec"
+#define DEBUG_TYPE "iree-amdaie-link-executable"
 
 namespace mlir::iree_compiler::AMDAIE {
 
