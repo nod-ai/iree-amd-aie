@@ -44,7 +44,7 @@ int main(int argc, char** argv) {
       XAIE_IO_BACKEND_CDO,
   };
 
-  XAie_DevInst devInst;
+  XAie_DevInst devInst = {};
   XAie_SetupPartitionConfig(&devInst, 0, 1, 1);
   XAie_CfgInitialize(&devInst, &config);
   XAie_UpdateNpiAddr(&devInst, 0);
