@@ -71,15 +71,21 @@ LogicalResult workgroupBuildForDmaCpyNdOp(
   LLVM_DEBUG(llvm::dbgs() << "workgroupBuild [amdaie.dma_cpy_nd] Start\n");
   Attribute sourceMemSpace = dmaOp.getSourceObjectFifo().getMemorySpace();
   Attribute targetMemSpace = dmaOp.getTargetObjectFifo().getMemorySpace();
+  if (sourceMemSpace && targetMemSpace) {
+    dmaOp.emitOpError()
+        << "neither source nor target of the DmaNdCpy op is on L3";
+    return failure();
+  }
   Location loc = rewriter.getUnknownLoc();
+
   SmallVector<OpFoldResult> empty;
 
-  SmallVector<OpFoldResult> circularDmaTargetOffsets = empty;
-  SmallVector<OpFoldResult> circularDmaTargetSizes = empty;
-  SmallVector<OpFoldResult> circularDmaTargetStrides = empty;
-  SmallVector<OpFoldResult> circularDmaSourceOffsets = empty;
-  SmallVector<OpFoldResult> circularDmaSourceSizes = empty;
-  SmallVector<OpFoldResult> circularDmaSourceStrides = empty;
+  SmallVector<OpFoldResult> circularDmaTargetOffsets;
+  SmallVector<OpFoldResult> circularDmaTargetSizes;
+  SmallVector<OpFoldResult> circularDmaTargetStrides;
+  SmallVector<OpFoldResult> circularDmaSourceOffsets;
+  SmallVector<OpFoldResult> circularDmaSourceSizes;
+  SmallVector<OpFoldResult> circularDmaSourceStrides;
 
   SmallVector<OpFoldResult> ipuDmaTargetOffsets = dmaOp.getTargetMixedOffsets();
   SmallVector<OpFoldResult> ipuDmaTargetSizes = dmaOp.getTargetMixedSizes();
@@ -88,8 +94,9 @@ LogicalResult workgroupBuildForDmaCpyNdOp(
   SmallVector<OpFoldResult> ipuDmaSourceSizes = dmaOp.getSourceMixedSizes();
   SmallVector<OpFoldResult> ipuDmaSourceStrides = dmaOp.getSourceMixedStrides();
   if (!sourceMemSpace) {
-    // Check if the source of DmaCpyNd op is from L3 - then addressing will be
-    // controlled by the uController.
+    // Check if the source of DmaCpyNd op is from L3 - then source addressing
+    // will be controlled by the uController and target addressing will stay in
+    // the circular DMA to be part of the AIE configuration.
     circularDmaTargetOffsets = ipuDmaTargetOffsets;
     circularDmaTargetSizes = ipuDmaTargetSizes;
     circularDmaTargetStrides = ipuDmaTargetStrides;
@@ -98,8 +105,9 @@ LogicalResult workgroupBuildForDmaCpyNdOp(
     ipuDmaTargetSizes = empty;
     ipuDmaTargetStrides = empty;
   } else if (!targetMemSpace) {
-    // Check if the target of DmaCpyNd op is from L3 - then addressing will be
-    // controlled by the circular DMA at shim tile.
+    // Check if the target of DmaCpyNd op is from L3 - then target addressing
+    // will be controlled by the uController and source addressing will stay in
+    // the circular DMA to be part of the AIE configuration.
     circularDmaSourceOffsets = ipuDmaSourceOffsets;
     circularDmaSourceSizes = ipuDmaSourceSizes;
     circularDmaSourceStrides = ipuDmaSourceStrides;
