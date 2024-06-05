@@ -22,6 +22,8 @@ void addMLIRAIRAIELoweringPasses(OpPassManager &passManager, bool packPeel);
 /// within the IREE::HAL::ExecutableOp.
 void buildAMDAIETransformPassPipeline(OpPassManager &pm);
 
+void buildAMDAIETransformDirectPassPipeline(OpPassManager &pm);
+
 /// Populates passes needed to lower the IR via a Pack-Peel based approach.
 void addPackPeelBasedPassPipeline(OpPassManager &passManager,
                                   TilingConfig &tilingConfig);
