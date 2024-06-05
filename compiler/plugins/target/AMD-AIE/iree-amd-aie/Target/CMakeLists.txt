@@ -11,8 +11,10 @@ iree_cc_library(
     Target
   HDRS
     "AIETarget.h"
+    "AIETargetDirect.h"
   SRCS
     "AIETarget.cpp"
+    "AIETargetDirect.cpp"
   DEPS
     iree::compiler::Dialect::HAL::Target
     iree::target::amd-aie::IR::AMDAIEDialect

@@ -37,11 +37,15 @@ struct AMDAIESession
     // #hal.device.target<"amd-aie", ...
     // #hal.executable.target<"amd-aie", ...
     targets.add("amd-aie", [=]() { return AMDAIE::createTarget(options); });
+    targets.add("amd-aie-direct",
+                [=]() { return AMDAIE::createTarget(options); });
   }
 
   void populateHALTargetBackends(
       IREE::HAL::TargetBackendList &targets) override {
     targets.add("amd-aie", [=]() { return AMDAIE::createBackend(options); });
+    targets.add("amd-aie-direct",
+                [=]() { return AMDAIE::createBackend(options); });
   }
 };
 
