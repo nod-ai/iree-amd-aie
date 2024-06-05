@@ -1,4 +1,4 @@
-// Copyright 2023 The IREE Authors
+// Copyright 2024 The IREE Authors
 //
 // Licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -21,6 +21,8 @@ void addMLIRAIRAIELoweringPasses(OpPassManager &passManager, bool packPeel);
 /// the structured ops path. The pass manager `pm` here operate on the module
 /// within the IREE::HAL::ExecutableOp.
 void buildAMDAIETransformPassPipeline(OpPassManager &pm);
+
+void buildAMDAIELowerObjectFIFO(OpPassManager &variantPassManager);
 
 /// Populates passes needed to lower the IR via a Pack-Peel based approach.
 void addPackPeelBasedPassPipeline(OpPassManager &passManager,

@@ -1,4 +1,4 @@
-// Copyright 2023 The IREE Authors
+// Copyright 2024 The IREE Authors
 //
 // Licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -10,6 +10,7 @@
 #include "air/Passes.h"
 #include "iree-amd-aie/IR/AMDAIEDialect.h"
 #include "iree-amd-aie/Target/AIETarget.h"
+#include "iree-amd-aie/Target/AIETargetDirect.h"
 #include "iree-amd-aie/Transforms/Passes.h"
 #include "iree/compiler/Dialect/HAL/Target/TargetRegistry.h"
 #include "iree/compiler/PluginAPI/Client.h"
@@ -37,11 +38,15 @@ struct AMDAIESession
     // #hal.device.target<"amd-aie", ...
     // #hal.executable.target<"amd-aie", ...
     targets.add("amd-aie", [=]() { return AMDAIE::createTarget(options); });
+    targets.add("amd-aie-direct",
+                [=]() { return AMDAIE::createTargetDirect(options); });
   }
 
   void populateHALTargetBackends(
       IREE::HAL::TargetBackendList &targets) override {
     targets.add("amd-aie", [=]() { return AMDAIE::createBackend(options); });
+    targets.add("amd-aie-direct",
+                [=]() { return AMDAIE::createBackendDirect(options); });
   }
 };
 
