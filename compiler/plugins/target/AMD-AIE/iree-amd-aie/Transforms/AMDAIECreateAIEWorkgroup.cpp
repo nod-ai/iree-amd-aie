@@ -70,24 +70,58 @@ LogicalResult workgroupBuildForDmaCpyNdOp(
     Block::iterator controlCodeBegin, Block::iterator controlCodeEnd) {
   LLVM_DEBUG(llvm::dbgs() << "workgroupBuild [amdaie.dma_cpy_nd] Start\n");
   Attribute sourceMemSpace = dmaOp.getSourceObjectFifo().getMemorySpace();
+  Attribute targetMemSpace = dmaOp.getTargetObjectFifo().getMemorySpace();
   Location loc = rewriter.getUnknownLoc();
   SmallVector<OpFoldResult> empty;
+
+  SmallVector<OpFoldResult> circularDmaTargetOffsets = empty;
+  SmallVector<OpFoldResult> circularDmaTargetSizes = empty;
+  SmallVector<OpFoldResult> circularDmaTargetStrides = empty;
+  SmallVector<OpFoldResult> circularDmaSourceOffsets = empty;
+  SmallVector<OpFoldResult> circularDmaSourceSizes = empty;
+  SmallVector<OpFoldResult> circularDmaSourceStrides = empty;
+
+  SmallVector<OpFoldResult> ipuDmaTargetOffsets = dmaOp.getTargetMixedOffsets();
+  SmallVector<OpFoldResult> ipuDmaTargetSizes = dmaOp.getTargetMixedSizes();
+  SmallVector<OpFoldResult> ipuDmaTargetStrides = dmaOp.getTargetMixedStrides();
+  SmallVector<OpFoldResult> ipuDmaSourceOffsets = dmaOp.getSourceMixedOffsets();
+  SmallVector<OpFoldResult> ipuDmaSourceSizes = dmaOp.getSourceMixedSizes();
+  SmallVector<OpFoldResult> ipuDmaSourceStrides = dmaOp.getSourceMixedStrides();
+  if (!sourceMemSpace) {
+    // Check if the source of DmaCpyNd op is from L3 - then addressing will be
+    // controlled by the uController.
+    circularDmaTargetOffsets = ipuDmaTargetOffsets;
+    circularDmaTargetSizes = ipuDmaTargetSizes;
+    circularDmaTargetStrides = ipuDmaTargetStrides;
+
+    ipuDmaTargetOffsets = empty;
+    ipuDmaTargetSizes = empty;
+    ipuDmaTargetStrides = empty;
+  } else if (!targetMemSpace) {
+    // Check if the target of DmaCpyNd op is from L3 - then addressing will be
+    // controlled by the circular DMA at shim tile.
+    circularDmaSourceOffsets = ipuDmaSourceOffsets;
+    circularDmaSourceSizes = ipuDmaSourceSizes;
+    circularDmaSourceStrides = ipuDmaSourceStrides;
+
+    ipuDmaSourceOffsets = empty;
+    ipuDmaSourceSizes = empty;
+    ipuDmaSourceStrides = empty;
+  }
+  // In case of transfers between L1/L2 - the addressing is always controlled by
+  // the uController.
   auto newDmaOp = rewriter.createAndMap<AMDAIE::CircularDmaCpyNdOp>(
       rewriter.getUnknownLoc(), dmaOp, dmaOp.getTarget(),
-      getValueOrCreateConstantIndexOp(rewriter, loc, empty),
-      getValueOrCreateConstantIndexOp(rewriter, loc, empty),
-      getValueOrCreateConstantIndexOp(rewriter, loc, empty), dmaOp.getSource(),
-      getValueOrCreateConstantIndexOp(rewriter, loc, empty),
-      getValueOrCreateConstantIndexOp(rewriter, loc, empty),
-      getValueOrCreateConstantIndexOp(rewriter, loc, empty));
+      circularDmaTargetOffsets, circularDmaTargetSizes,
+      circularDmaTargetStrides, dmaOp.getSource(), circularDmaSourceOffsets,
+      circularDmaSourceSizes, circularDmaSourceStrides);
 
   IRRewriter::InsertPoint dmaInsertionPoint = rewriter.saveInsertionPoint();
   rewriter.setInsertionPoint(controlCode, controlCodeEnd);
   auto ipuDmaCpy = rewriter.createAndLookup<AMDAIE::NpuDmaCpyNdOp>(
-      loc, newDmaOp.getResult(), dmaOp.getTargetMixedOffsets(),
-      dmaOp.getTargetMixedSizes(), dmaOp.getTargetMixedStrides(),
-      dmaOp.getSourceMixedOffsets(), dmaOp.getSourceMixedSizes(),
-      dmaOp.getSourceMixedStrides());
+      loc, newDmaOp.getResult(), ipuDmaTargetOffsets, ipuDmaTargetSizes,
+      ipuDmaTargetStrides, ipuDmaSourceOffsets, ipuDmaSourceSizes,
+      ipuDmaSourceStrides);
   DMAChannelDir direction =
       !sourceMemSpace ? DMAChannelDir::MM2S : DMAChannelDir::S2MM;
   rewriter.createAndLookup<AMDAIE::NpuDmaWaitOp>(
