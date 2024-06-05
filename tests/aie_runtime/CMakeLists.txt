@@ -13,13 +13,14 @@ iree_cc_binary(
     iree-amd-aie::runtime::iree_aie_runtime_static
 )
 
-iree_native_test(
+iree_lit_test(
   NAME
     aie_runtime_utest_test
-  SRC
+  TEST_FILE
+    "cdo_dump.txt"
+  TOOLS
     ::aie_runtime_utest
-  DATA
-    ${CMAKE_CURRENT_SOURCE_DIR}/pi.elf
-  ARGS
-    "${CMAKE_CURRENT_SOURCE_DIR}/pi.elf"
+    FileCheck
+  LABELS
+    "hostonly"
 )
