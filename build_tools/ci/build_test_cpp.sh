@@ -87,7 +87,7 @@ cmake --build "$build_dir" --target iree-install-dist
 
 echo "CTest"
 echo "-----"
-ctest --test-dir "$build_dir" -R amd-aie
+ctest --test-dir "$build_dir" -R amd-aie --output-on-failure
 
 # Show ccache stats.
 ccache --show-stats
