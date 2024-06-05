@@ -7,6 +7,9 @@
 #ifndef AIE_PASSES_H_
 #define AIE_PASSES_H_
 
+#include "aie/Dialect/AIE/Transforms/AIEPasses.h"
+#include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
+
 namespace mlir::iree_compiler::AMDAIE {
 
 /// Registration for AIE Transform passes.

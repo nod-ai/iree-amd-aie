@@ -30,6 +30,7 @@ iree_lit_test_suite(
     "insert_loops_for_vectorization.mlir"
     "localize_logical_objectfifo.mlir"
     "lower_to_aie.mlir"
+    "lower_to_aie_direct.mlir"
     "lower_to_ukernel.mlir"
     "lower_workgroup_count.mlir"
     "lowering_strategy.mlir"

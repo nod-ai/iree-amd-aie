@@ -4,6 +4,7 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+#include "AIEAssignBufferAddressesBasic.h"
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h"
 
 namespace {
@@ -14,7 +15,8 @@ namespace {
 namespace mlir::iree_compiler::AMDAIE {
 void registerAIETransformPasses() {
   registerAIEAssignLockIDs();
-  registerAIEAssignBufferAddresses();
+  registerAIEAssignBufferDescriptorIDs();
+  xilinx::AIE::registerAIEAssignBufferAddressesBasic();
   registerAIECanonicalizeDevice();
   registerAIECoreToStandard();
   registerAIERoutePathfinderFlows();
