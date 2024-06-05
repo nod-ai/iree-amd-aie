@@ -241,19 +241,16 @@ void addPackPeelBasedPassPipeline(OpPassManager &funcPassManager,
   funcPassManager.addPass(createCanonicalizerPass());
   funcPassManager.addPass(createCSEPass());
 
-  // Peel the for loop. For matmul dispatch, only peel the first iteration,
-  // while for matmul-elementwise dispatch, peel the first and last iteration.
-  // Note: Do not run CSE pass afterwards, because it may bring problem for
-  // bufferization.
+  // Peel the first and last iteration. Note: Do not run CSE pass afterwards,
+  // because it may bring problem for bufferization.
   funcPassManager.addPass(createAMDAIEPeelForLoopPass());
   funcPassManager.addPass(createCanonicalizerPass());
 
   // Fuse fill op into the first inner forall loop
   funcPassManager.addPass(createAMDAIEFuseFillIntoForallPass());
 
-  // Fuse elementwise op into the last inner forall loop
+  // Fuse unpack/elementwise consumer ops into the last inner forall loop
   funcPassManager.addPass(createAMDAIEFuseConsumerIntoLoopPass());
-  funcPassManager.addPass(createCanonicalizerPass());
 
   // Fuse pack ops into the last inner forall loop
   {
@@ -263,7 +260,6 @@ void addPackPeelBasedPassPipeline(OpPassManager &funcPassManager,
     fusePackOptions.targetElementwise = true;
     funcPassManager.addPass(createAMDAIEFusePackIntoLoopPass(fusePackOptions));
   }
-  funcPassManager.addPass(createCanonicalizerPass());
 
   // Promote the elementwise input to local memory
   {

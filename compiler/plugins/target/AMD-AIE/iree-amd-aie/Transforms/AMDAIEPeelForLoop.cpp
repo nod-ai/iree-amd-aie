@@ -81,16 +81,6 @@ void AMDAIEPeelForLoopPass::runOnOperation() {
   mlir::FunctionOpInterface funcOp = getOperation();
   IRRewriter rewriter(context);
 
-  // Check if there is matmul-elementwise fusion opportunity. If so, overwrite
-  // the `peelingType` to PeelingType::FirstLast.
-  funcOp->walk<WalkOrder::PostOrder, ReverseIterator>([&](linalg::LinalgOp op) {
-    if (isMatmulProducerOfElementwise(op)) {
-      peelingType = PeelingType::FirstLast;
-      return WalkResult::interrupt();
-    }
-    return WalkResult::advance();
-  });
-
   funcOp->walk([&](scf::ForOp forOp) {
     auto lbInt = getConstantIntValue(forOp.getLowerBound());
     auto ubInt = getConstantIntValue(forOp.getUpperBound());
