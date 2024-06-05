@@ -22,6 +22,8 @@ iree_cc_library(
     iree::target::amd-aie::aie::AIEXDialectIR
     iree::target::amd-aie::air::AIRDialectIR
     iree::target::amd-aie::air::AIRPasses
+    iree::target::amd-aie::aie::AIETransformPasses
+    iree::target::amd-aie::aie::AIEXTransformPasses
     iree::base::core_headers
     iree::base::internal::flatcc::building
     iree-amd-aie::schemas::xrt_executable_def_c_fbs
