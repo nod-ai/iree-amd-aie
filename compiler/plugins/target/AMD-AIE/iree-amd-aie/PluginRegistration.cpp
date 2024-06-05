@@ -22,13 +22,15 @@ struct AMDAIESession
                            PluginActivationPolicy::DefaultActivated> {
   static void registerPasses() {
     AMDAIE::registerAMDAIEPasses();
+    AMDAIE::registerAIETransformPasses();
+    AMDAIE::registerAIEXTransformPasses();
     AMDAIE::registerAIRConversionPasses();
     AMDAIE::registerAIRTransformPasses();
   }
 
   void onRegisterDialects(DialectRegistry &registry) override {
     registry.insert<AMDAIE::AMDAIEDialect, xilinx::AIE::AIEDialect,
-                    xilinx::air::airDialect>();
+                    xilinx::AIEX::AIEXDialect, xilinx::air::airDialect>();
   }
 
   void populateHALTargetDevices(IREE::HAL::TargetDeviceList &targets) override {
