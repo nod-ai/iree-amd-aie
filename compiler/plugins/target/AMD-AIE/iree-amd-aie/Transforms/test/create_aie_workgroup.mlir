@@ -1,4 +1,4 @@
-// RUN: iree-opt --split-input-file --pass-pipeline="builtin.module(func.func(iree-amdaie-create-aie-workgroup))" %s | FileCheck %s
+// RUN: iree-opt --split-input-file --pass-pipeline="builtin.module(func.func(iree-amdaie-create-aie-workgroup))" --verify-diagnostics %s | FileCheck %s
 
 // CHECK-LABEL: @func
 // CHECK:       amdaie.workgroup
@@ -112,6 +112,40 @@ func.func @dma_cpy_nd_L2_L3(%arg0: memref<1x1x8x16xi32>, %arg1: memref<8x16xi32,
   %0 = amdaie.logicalobjectfifo.from_memref %arg0, {} : memref<1x1x8x16xi32> -> !amdaie.logicalobjectfifo<memref<1x1x8x16xi32>>
   %1 = amdaie.logicalobjectfifo.from_memref %arg1, {} : memref<8x16xi32, 1> -> !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>
   %2 = amdaie.dma_cpy_nd(%0[] [] [], %1[0, 0, 0, 0] [1, 1, 8, 16] [128, 16, 16, 1]) : (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32>>, !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>)
+  return
+}
+
+// -----
+
+// CHECK-LABEL: @dma_cpy_nd_L2_L3_target_addressing
+// CHECK:       amdaie.workgroup
+// CHECK-DAG:     %[[FROMMEMREF0:.+]] = amdaie.logicalobjectfifo.from_memref
+// CHECK-SAME:    memref<1x1x8x16xi32> -> !amdaie.logicalobjectfifo<memref<1x1x8x16xi32>>
+// CHECK-DAG:     %[[FROMMEMREF1:.+]] = amdaie.logicalobjectfifo.from_memref
+// CHECK-SAME:    memref<8x16xi32, 1> -> !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>
+// CHECK:         %[[DMA:.+]] = amdaie.circular_dma_cpy_nd
+// CHECK-SAME:    %[[FROMMEMREF0]][] [] []
+// CHECK-SAME:    %[[FROMMEMREF1]][0, 0, 0, 0] [1, 1, 8, 16] [128, 16, 16, 1]
+// CHECK-SAME:    (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32>>, !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>)
+// CHECK:         amdaie.controlcode
+// CHECK:           %[[IPU_DMA:.+]] = amdaie.npu.dma_cpy_nd %[[DMA]]
+// CHECK-SAME:      [0, 0, 0, 0] [1, 1, 8, 16] [128, 16, 16, 1]
+// CHECK-SAME:      [] [] []
+// CHECK:           amdaie.npu.dma_wait(%[[IPU_DMA]], S2MM)
+func.func @dma_cpy_nd_L2_L3_target_addressing(%arg0: memref<1x1x8x16xi32>, %arg1: memref<8x16xi32, 1>) {
+  %0 = amdaie.logicalobjectfifo.from_memref %arg0, {} : memref<1x1x8x16xi32> -> !amdaie.logicalobjectfifo<memref<1x1x8x16xi32>>
+  %1 = amdaie.logicalobjectfifo.from_memref %arg1, {} : memref<8x16xi32, 1> -> !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>
+  %2 = amdaie.dma_cpy_nd(%0[0, 0, 0, 0] [1, 1, 8, 16] [128, 16, 16, 1], %1[0, 0, 0, 0] [1, 1, 8, 16] [128, 16, 16, 1]) : (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32>>, !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>)
+  return
+}
+
+// -----
+
+func.func @error_dma_cpy_nd_L2_L1(%arg0: memref<1x1x8x16xi32, 2>, %arg1: memref<8x16xi32, 1>) {
+  %0 = amdaie.logicalobjectfifo.from_memref %arg0, {} : memref<1x1x8x16xi32, 2> -> !amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 2>>
+  %1 = amdaie.logicalobjectfifo.from_memref %arg1, {} : memref<8x16xi32, 1> -> !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>
+  // expected-error @+1 {{neither source nor target of the DmaCpyNd op is on L3}}
+  %2 = amdaie.dma_cpy_nd(%0[0, 0, 0, 0] [1, 1, 8, 16] [128, 16, 16, 1], %1[0, 0, 0, 0] [1, 1, 8, 16] [128, 16, 16, 1]) : (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 2>>, !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>)
   return
 }
 

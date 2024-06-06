@@ -72,7 +72,7 @@ LogicalResult workgroupBuildForDmaCpyNdOp(
   Attribute sourceMemSpace = dmaOp.getSourceObjectFifo().getMemorySpace();
   Attribute targetMemSpace = dmaOp.getTargetObjectFifo().getMemorySpace();
   if (sourceMemSpace && targetMemSpace) {
-    dmaOp.emitOpError()
+    dmaOp.emitError()
         << "neither source nor target of the DmaCpyNd op is on L3";
     return failure();
   }
