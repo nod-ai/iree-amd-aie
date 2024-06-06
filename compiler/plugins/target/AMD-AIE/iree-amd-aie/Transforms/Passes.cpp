@@ -561,7 +561,7 @@ void addMLIRAIRAIELoweringPasses(OpPassManager &passManager, bool packPeel) {
   passManager.addPass(xilinx::air::createAIRLoweringPass());
   {
     xilinx::air::AffineLoopOptPassOptions options;
-    const std::vector<unsigned> tile_sizes = {4, 4};
+    const std::vector<unsigned> tile_sizes = {2, 2};
     options.clTileSizes = ArrayRef(tile_sizes);
     passManager.addNestedPass<func::FuncOp>(
         xilinx::air::createAffineLoopOptPass(options));

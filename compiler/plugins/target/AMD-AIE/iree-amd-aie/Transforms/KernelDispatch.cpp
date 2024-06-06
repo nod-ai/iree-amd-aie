@@ -206,8 +206,12 @@ FailureOr<ParameterSetting> ParameterSetting::create(linalg::LinalgOp linalgOp,
     uint32_t K1 = 0;
     uint32_t K0 = 1;
 
-    uint32_t m0Pack = M0;
-    uint32_t n0Pack = N0;
+    // Instead of directly packing to (1, 1, M0, N0), the new strategy is making
+    // the pack size as (2, 2, M0/2, N0/2) to avoid the large allocation in L1.
+    // Also we should make sure the first level inner pack size is divisible by
+    // the second level of inner pack size (vector instruction size).
+    uint32_t m0Pack = (M0 / 2) % m1Pack == 0 ? (M0 / 2) : M0;
+    uint32_t n0Pack = (N0 / 2) % n1Pack == 0 ? (N0 / 2) : N0;
     uint32_t k0Pack = findLargestFactor(K, maxL1Size);
 
     return ParameterSetting{M0,     N0,     K0,     M1,     N1,     K1,
@@ -355,8 +359,7 @@ static LogicalResult setRootConfigForPackPeelPipeline(
   SmallVector<int64_t> TileSizeLevel0 = {packPeelTiling.getM0(),
                                          packPeelTiling.getN0()};
   SmallVector<int64_t> TileSizeLevel1 = {0, 0, packPeelTiling.getK0()};
-  SmallVector<int64_t> TileSizeLevel2 = {
-      0, 0, 0, packPeelTiling.getM1(), packPeelTiling.getN1(), 0};
+  SmallVector<int64_t> TileSizeLevel2 = {1, 1, 0, 0, 0, 0};
   TileSizesListType tileSizes = {TileSizeLevel0, TileSizeLevel1,
                                  TileSizeLevel2};
   if (failed(setOpConfigAndEntryPointFnTranslation(
