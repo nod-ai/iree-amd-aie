@@ -73,7 +73,7 @@ LogicalResult workgroupBuildForDmaCpyNdOp(
   Attribute targetMemSpace = dmaOp.getTargetObjectFifo().getMemorySpace();
   if (sourceMemSpace && targetMemSpace) {
     dmaOp.emitOpError()
-        << "neither source nor target of the DmaNdCpy op is on L3";
+        << "neither source nor target of the DmaCpyNd op is on L3";
     return failure();
   }
   Location loc = rewriter.getUnknownLoc();
