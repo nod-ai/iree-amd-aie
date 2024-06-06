@@ -276,4 +276,20 @@ iree_cc_library(
     ::defs
     ::AIEXDialectIR
     ::AIEXTransformPassHeaders
+    MLIRToLLVMIRTranslationRegistration
+    MLIRFuncAllExtensions
+)
+
+###############################################################################
+# AIE CDO Generation
+###############################################################################
+
+iree_cc_library(
+  NAME
+    AIETargetCDODirect
+  SRCS
+    "${IREE_MLIR_AIE_SOURCE_DIR}/lib/Targets/AIETargetCDODirect.cpp"
+  DEPS
+    ::AIEDialectIR
+    iree-amd-aie::runtime::iree_aie_runtime_static
 )
