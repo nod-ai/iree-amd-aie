@@ -33,4 +33,7 @@ iree_lit_test_suite(
     vision_vision_passthrough.mlir
   TOOLS
     iree-opt
+    iree-compile
+    FileCheck
+    not
 )

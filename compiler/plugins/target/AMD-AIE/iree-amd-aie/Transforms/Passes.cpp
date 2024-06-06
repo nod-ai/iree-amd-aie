@@ -6,6 +6,8 @@
 
 #include "iree-amd-aie/Transforms/Passes.h"
 
+#include "aie/AIEAssignBufferAddressesBasic.h"
+#include "aie/Passes.h"
 #include "air/Conversion/Passes.h"
 #include "air/Transform/Passes.h"
 #include "iree-amd-aie/IR/AMDAIEAttrs.h"
@@ -288,7 +290,7 @@ void addPackPeelBasedPassPipeline(OpPassManager &funcPassManager,
 
   // Vectorization passes
   appendVectorizationToPipeline(funcPassManager);
-  
+
   // Comprehensive bufferization
   addAMDAIEBufferizePasses(funcPassManager);
   funcPassManager.addPass(createHoistStaticallyBoundAllocationsPass());
@@ -429,6 +431,29 @@ void buildAMDAIETransformPassPipeline(OpPassManager &variantPassManager) {
   }
   variantPassManager.addPass(createReconcileTranslationInfoPass());
   variantPassManager.addPass(createAMDAIELowerWorkgroupCountPass());
+
+  LLVM_DEBUG({
+    llvm::dbgs() << "Using AMDAIE pass pipeline:\n";
+    variantPassManager.printAsTextualPipeline(llvm::dbgs());
+    llvm::dbgs() << "\n";
+  });
+}
+
+void buildAMDAIELowerObjectFIFO(OpPassManager &variantPassManager) {
+  OpPassManager &modulePassManager = variantPassManager.nest<ModuleOp>();
+  modulePassManager.addPass(xilinx::AIE::createAIECanonicalizeDevicePass());
+  auto &devicePassMan = modulePassManager.nest<xilinx::AIE::DeviceOp>();
+  devicePassMan.addPass(
+      xilinx::AIE::createAIEObjectFifoStatefulTransformPass());
+  devicePassMan.addPass(xilinx::AIE::createAIEAssignBufferAddressesBasicPass());
+  devicePassMan.addPass(xilinx::AIE::createAIEAssignLockIDsPass());
+  devicePassMan.addPass(xilinx::AIE::createAIEPathfinderPass());
+  devicePassMan.addPass(xilinx::AIE::createAIEPathfinderPass());
+  devicePassMan.addPass(xilinx::AIE::createAIELocalizeLocksPass());
+  devicePassMan.addPass(xilinx::AIE::createAIENormalizeAddressSpacesPass());
+  devicePassMan.addPass(xilinx::AIE::createAIELocalizeLocksPass());
+//  modulePassManager.addPass(xilinx::AIE::createAIECoreToStandardPass());
+//  modulePassManager.addPass(xilinx::AIEX::createAIEXToStandardPass());
 
   LLVM_DEBUG({
     llvm::dbgs() << "Using AMDAIE pass pipeline:\n";

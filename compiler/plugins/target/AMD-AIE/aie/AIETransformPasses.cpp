@@ -6,6 +6,14 @@
 
 #include "AIEAssignBufferAddressesBasic.h"
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h"
+#include "mlir/Conversion/ArithToLLVM/ArithToLLVM.h"
+#include "mlir/Conversion/ControlFlowToLLVM/ControlFlowToLLVM.h"
+#include "mlir/Conversion/FuncToLLVM/ConvertFuncToLLVM.h"
+#include "mlir/Conversion/IndexToLLVM/IndexToLLVM.h"
+#include "mlir/Conversion/MathToLLVM/MathToLLVM.h"
+#include "mlir/Conversion/MemRefToLLVM/MemRefToLLVM.h"
+#include "mlir/Dialect/Func/Extensions/AllExtensions.h"
+#include "mlir/Target/LLVMIR/Dialect/All.h"
 
 namespace {
 #define GEN_PASS_REGISTRATION
@@ -25,5 +33,15 @@ void registerAIETransformPasses() {
   registerAIEObjectFifoRegisterProcess();
   registerAIEObjectFifoStatefulTransform();
   registerAIERoutePacketFlows();
+  // convert to llvm
+  DialectRegistry registry;
+  registerAllToLLVMIRTranslations(registry);
+  arith::registerConvertArithToLLVMInterface(registry);
+  cf::registerConvertControlFlowToLLVMInterface(registry);
+  func::registerAllExtensions(registry);
+  registerConvertFuncToLLVMInterface(registry);
+  index::registerConvertIndexToLLVMInterface(registry);
+  registerConvertMathToLLVMInterface(registry);
+  registerConvertMemRefToLLVMInterface(registry);
 }
 }  // namespace mlir::iree_compiler::AMDAIE

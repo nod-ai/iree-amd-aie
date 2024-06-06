@@ -10,33 +10,48 @@
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
+#include "aie/Passes.h"
 #include "air/Dialect/AIR/AIRDialect.h"
 #include "air/Dialect/AIRRt/AIRRtDialect.h"
 #include "iree-amd-aie/IR/AMDAIEDialect.h"
 #include "iree-amd-aie/Transforms/Passes.h"
+#include "iree-dialects/Dialect/LinalgTransform/Passes.h"
+#include "iree/compiler/Codegen/Common/PassUtils.h"
+#include "iree/compiler/Codegen/Common/Passes.h"
 #include "iree/compiler/Codegen/Dialect/Codegen/IR/IREECodegenDialect.h"
 #include "iree/compiler/Dialect/HAL/Target/TargetRegistry.h"
 #include "iree/compiler/Dialect/LinalgExt/IR/LinalgExtDialect.h"
+#include "iree/compiler/Dialect/LinalgExt/Transforms/Passes.h"
 #include "iree/compiler/Utils/FlatbufferUtils.h"
+#include "iree/compiler/Utils/PassUtils.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/Path.h"
 #include "llvm/Support/Program.h"
 #include "llvm/Support/ToolOutputFile.h"
+#include "mlir/Conversion/Passes.h"
+#include "mlir/Dialect/Affine/Passes.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/Linalg/Passes.h"
+#include "mlir/Dialect/MemRef/Transforms/Passes.h"
 #include "mlir/Dialect/Transform/IR/TransformDialect.h"
+#include "mlir/Pass/Pass.h"
+#include "mlir/Pass/PassManager.h"
 #include "mlir/Support/FileUtilities.h"
+#include "mlir/Target/LLVMIR/Export.h"
+#include "mlir/Transforms/Passes.h"
 #include "runtime/plugins/AMD-AIE/iree-amd-aie/schemas/xrt_executable_def_builder.h"
 
-#define DEBUG_TYPE "aie-target"
+#define DEBUG_TYPE "aie-target-direct"
+
+namespace xilinx::AIE {
+extern mlir::LogicalResult AIETranslateToCDODirect(
+    mlir::ModuleOp m, llvm::StringRef workDirPath, bool bigEndian = false,
+    bool emitUnified = false, bool cdoDebug = false, bool aieSim = false,
+    bool xaieDebug = false, bool enableCores = true);
+}
 
 namespace mlir::iree_compiler::AMDAIE {
-
-static llvm::cl::opt<std::string> clEnableAMDAIEUkernels(
-    "iree-amdaie-enable-ukernels",
-    llvm::cl::desc("Enables microkernels in the amdaie backend. May be "
-                   "`none`, `all`, or a comma-separated list of specific "
-                   "unprefixed microkernels to enable, e.g. `matmul`."),
-    llvm::cl::init("none"));
 
 class AIETargetDirectDevice final : public IREE::HAL::TargetDevice {
  public:
@@ -97,7 +112,8 @@ class AIETargetDirectBackend final : public IREE::HAL::TargetBackend {
     // Set target arch
     addConfig("target_arch", StringAttr::get(context, "chip-tbd"));
     // Set microkernel enabling flag.
-    addConfig("ukernels", StringAttr::get(context, clEnableAMDAIEUkernels));
+    addConfig("ukernels",
+              StringAttr::get(context, /*clEnableAMDAIEUkernels*/ ""));
     auto configAttr = b.getDictionaryAttr(configItems);
     return IREE::HAL::ExecutableTargetAttr::get(
         context, b.getStringAttr("amd-aie-direct"),
@@ -115,7 +131,7 @@ class AIETargetDirectBackend final : public IREE::HAL::TargetBackend {
 
   void buildTranslationPassPipeline(IREE::HAL::ExecutableTargetAttr,
                                     OpPassManager &passManager) override {
-    buildAMDAIETransformDirectPassPipeline(passManager);
+    buildAMDAIELowerObjectFIFO(passManager);
   }
 
   LogicalResult serializeExecutable(const SerializationOptions &serOptions,
@@ -132,7 +148,85 @@ LogicalResult AIETargetDirectBackend::serializeExecutable(
     const SerializationOptions &serOptions,
     IREE::HAL::ExecutableVariantOp variantOp, OpBuilder &executableBuilder) {
   ModuleOp moduleOp = variantOp.getInnerModule();
-  moduleOp.dump();
+
+  auto basename =
+      llvm::join_items("_", serOptions.dumpBaseName, variantOp.getName());
+
+  auto maybeWorkDir = [&]() -> FailureOr<SmallString<128>> {
+    // If a path for intermediates has been specified, assume it is common for
+    // all executables compiling in parallel, and so create an
+    // executable-specific subdir to keep this executable's intermediates
+    // separate.
+    if (!serOptions.dumpIntermediatesPath.empty()) {
+      SmallString<128> workDir{serOptions.dumpIntermediatesPath};
+      llvm::sys::path::append(workDir, basename);
+      auto ecode = llvm::sys::fs::create_directories(workDir);
+      if (ecode) {
+        return moduleOp.emitError()
+               << "failed to create working directory " << workDir
+               << ". Error message : " << ecode.message();
+      }
+      return workDir;
+    }
+
+    // No path for intermediates: make a temporary directory for this
+    // executable that is certain to be distinct from the dir of any other
+    // executable.
+    SmallString<128> workDirFromScratch;
+    auto err = llvm::sys::fs::createUniqueDirectory(
+        /* prefix = */ variantOp.getName(), workDirFromScratch);
+
+    if (err)
+      return moduleOp.emitOpError()
+             << "failed to create working directory for xclbin generation: "
+             << err.message();
+
+    return workDirFromScratch;
+  }();
+
+  if (failed(maybeWorkDir)) return failure();
+  auto workDir = maybeWorkDir.value();
+
+  ModuleOp coreMod = moduleOp.clone();
+  PassManager passManager(coreMod->getContext(), ModuleOp::getOperationName());
+  passManager.addPass(xilinx::AIE::createAIECoreToStandardPass());
+  passManager.addPass(xilinx::AIEX::createAIEXToStandardPass());
+  // convert to LLVM dialect
+  passManager.addPass(createCanonicalizerPass());
+  passManager.addPass(createCSEPass());
+  passManager.addPass(createConvertVectorToLLVMPass());
+  passManager.addPass(createIREEExpandStridedMetadataPass());
+  passManager.addPass(createLowerAffinePass());
+  passManager.addPass(createConvertMathToLLVMPass());
+  passManager.addPass(createArithToLLVMConversionPass());
+  passManager.addPass(createIREEExpandStridedMetadataPass());
+  passManager.addPass(createFinalizeMemRefToLLVMConversionPass());
+  ConvertFuncToLLVMPassOptions funcToLlvmPassOptions;
+  funcToLlvmPassOptions.useBarePtrCallConv = true;
+  passManager.addPass(createConvertFuncToLLVMPass(funcToLlvmPassOptions));
+  passManager.addPass(createConvertControlFlowToLLVMPass());
+  passManager.addPass(createCanonicalizerPass());
+  passManager.addPass(createCSEPass());
+
+  if (failed(passManager.run(coreMod))) {
+    variantOp.emitError() << "failed to run translation of source "
+                             "executable to target executable for backend "
+                          << variantOp.getTarget();
+    return failure();
+  }
+
+  std::string llvmir;
+  llvm::raw_string_ostream os(llvmir);
+  llvm::LLVMContext llvmContext;
+  auto llvmModule = translateModuleToLLVMIR(coreMod, llvmContext);
+  llvmModule->dump();
+  llvmModule->print(os, nullptr);
+
+  if (failed(xilinx::AIE::AIETranslateToCDODirect(moduleOp, workDir)))
+    return failure();
+
+  moduleOp.emitOpError(
+      "unimplemented AIETargetDirectBackend::serializeExecutable");
   return failure();
 }
 

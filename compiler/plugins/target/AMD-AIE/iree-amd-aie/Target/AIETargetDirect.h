@@ -4,8 +4,8 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#ifndef IREE_AMD_AIE_TARGET_AIETARGET_H_
-#define IREE_AMD_AIE_TARGET_AIETARGET_H_
+#ifndef IREE_AMD_AIE_TARGET_DIRECT_AIETARGET_H_
+#define IREE_AMD_AIE_TARGET_DIRECT_AIETARGET_H_
 
 #include <string>
 
@@ -25,4 +25,4 @@ std::shared_ptr<IREE::HAL::TargetBackend> createBackendDirect(
 
 }  // namespace mlir::iree_compiler::AMDAIE
 
-#endif  // IREE_AMD_AIE_TARGET_AIETARGET_H_
+#endif  // IREE_AMD_AIE_TARGET_DIRECT_AIETARGET_H_
