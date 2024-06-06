@@ -71,6 +71,8 @@ LogicalResult workgroupBuildForDmaCpyNdOp(
   LLVM_DEBUG(llvm::dbgs() << "workgroupBuild [amdaie.dma_cpy_nd] Start\n");
   Attribute sourceMemSpace = dmaOp.getSourceObjectFifo().getMemorySpace();
   Attribute targetMemSpace = dmaOp.getTargetObjectFifo().getMemorySpace();
+  // Error out if the DmaCpyNd involves transfer between L1/L2 as these are all
+  // circular_dma_cpy_nd operations by this stage.
   if (sourceMemSpace && targetMemSpace) {
     dmaOp.emitError()
         << "neither source nor target of the DmaCpyNd op is on L3";
@@ -116,8 +118,6 @@ LogicalResult workgroupBuildForDmaCpyNdOp(
     ipuDmaSourceSizes = empty;
     ipuDmaSourceStrides = empty;
   }
-  // In case of transfers between L1/L2 - the addressing is always controlled by
-  // the uController.
   auto newDmaOp = rewriter.createAndMap<AMDAIE::CircularDmaCpyNdOp>(
       rewriter.getUnknownLoc(), dmaOp, dmaOp.getTarget(),
       circularDmaTargetOffsets, circularDmaTargetSizes,
