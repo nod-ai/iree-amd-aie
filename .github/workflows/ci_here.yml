@@ -60,6 +60,10 @@ jobs:
             libudev-dev \
             systemtap-sdt-dev \
             libelf-dev
+            
+            sudo /usr/sbin/update-ccache-symlinks
+            # Prepend ccache into the PATH
+            echo "/usr/lib/ccache:/usr/lib64/ccache:/usr/lib/ccache/bin" >> $GITHUB_PATH
 
       - name: Build packages
         run: |
