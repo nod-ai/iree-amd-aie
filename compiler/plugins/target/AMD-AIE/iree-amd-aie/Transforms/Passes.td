@@ -127,13 +127,6 @@ def AMDAIEFuseFillIntoForall :
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEFuseFillIntoForallPass()";
 }
 
-def AMDAIEFuseLogicalObjectFifoIntoWorkgroup :
-    Pass<"iree-amdaie-fuse-logicalobjectfifo-into-workgroup", "ModuleOp"> {
-  let summary = "Fuse or distribute logical objectFifos into workgroups.";
-  let constructor =
-    "mlir::iree_compiler::AMDAIE::createAMDAIEFuseLogicalObjectFifoIntoWorkgroupPass()";
-}
-
 def AMDAIEFusePackIntoLoop :
     InterfacePass<"iree-amdaie-fuse-pack-into-loop", "mlir::FunctionOpInterface"> {
   let summary = "Fuse the pack operations into the innermost for/forall loop.";
@@ -189,6 +182,13 @@ def AMDAIELinkExecutables :
     Pass<"iree-amdaie-link-executables", "mlir::ModuleOp"> {
   let summary = "Links AMDAIE HAL executables within the top-level program module.";
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIELinkExecutablesPass()";
+}
+
+def AMDAIELocalizeLogicalObjectfifo :
+    Pass<"iree-amdaie-localize-logicalobjectfifo", "ModuleOp"> {
+  let summary = "Localize logical objectfifos to local parallel loop scopes.";
+  let constructor =
+    "mlir::iree_compiler::AMDAIE::createAMDAIELocalizeLogicalObjectFifoPass()";
 }
 
 def AMDAIELowerExecutableTarget :
