@@ -24,7 +24,7 @@ static const llvm::StringLiteral kAMDAIELoopUnroll = "amdaie.unroll";
 
 namespace {
 
-/// Convert local scf.forall ops chosen for parallel distribution to scf.for
+/// Convert inner scf.forall ops chosen for parallel distribution to scf.for
 /// ops.
 LogicalResult localForallToFor(ModuleOp moduleOp) {
   IRRewriter rewriter(moduleOp.getContext());
@@ -36,14 +36,14 @@ LogicalResult localForallToFor(ModuleOp moduleOp) {
     if (!isa<mlir::gpu::GPUThreadMappingAttr>(*mapping.begin()))
       return WalkResult::advance();
 
-    SmallVector<Operation *> results;
-    if (failed(scf::forallToForLoop(rewriter, forallOp, &results))) {
+    SmallVector<Operation *> loopResults;
+    if (failed(scf::forallToForLoop(rewriter, forallOp, &loopResults))) {
       forallOp.emitOpError() << "failed to transform scf.forall to scf.for";
       return WalkResult::interrupt();
     }
     // Set attribute to unroll this loop later in this pass.
-    for (Operation *res : results) {
-      scf::ForOp forOp = dyn_cast<scf::ForOp>(res);
+    for (Operation *loopRes : loopResults) {
+      scf::ForOp forOp = dyn_cast<scf::ForOp>(loopRes);
       if (!forOp) {
         forallOp.emitOpError() << "failed to retrieve generated scf.for from "
                                   "scf::forallToForLoop conversion";
