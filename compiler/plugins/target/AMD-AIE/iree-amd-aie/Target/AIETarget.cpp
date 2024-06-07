@@ -239,8 +239,8 @@ LogicalResult AIETargetBackend::serializeExecutable(
     entryPointNames.emplace_back(entryPointName);
     entryPointOrdinals[entryPointName] = ordinal;
     // error out if we think the name will most likely be too long
-    // for the artifact generation to succeed we set this cut-off at 50
-    // characters
+    // for the artifact generation to succeed. We set this cut-off at 50
+    // characters.
     if (entryPointName.size() > 50)
       return exportOp.emitError()
              << "entry point name: " << entryPointName << "is too long!";
