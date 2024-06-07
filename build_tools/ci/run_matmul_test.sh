@@ -466,14 +466,29 @@ function run_matmul_test() {
     for func_name in $function_names; do
       # Location of XCLBIN files
       XCLBIN_DIR="module_${func_name}_dispatch_0_amdaie_xclbin_fb"
-      # Define the XCLBIN variable
-      XCLBIN="module_${func_name}_0.xclbin"
+      # XCLBIN file extension to search for
+      file_extension="*.xclbin"
+      # Use the find command to get the list of files
+      found_files=($(find $XCLBIN_DIR -type f -name "$file_extension"))
+      # Check the number of files found
+      file_count=${#found_files[@]}
+     
+      if [ "$file_count" -eq 0 ]; then
+        echo "No files with extension $file_extension found in $XCLBIN_DIR"
+        exit 1
+      elif [ "$file_count" -gt 1 ]; then
+        echo "Error: Multiple files with extension $file_extension found in $XCLBIN_DIR"
+        exit 1
+      else
+        XCLBIN=${found_files[0]}
+        echo "File found: $XCLBIN"
+      fi
       # Ensure unique file name
-      echo "**** Getting unique id for XCLBIN ****"
-      XCLBIN_UNIQ="github.${GITHUB_RUN_ID}.${GITHUB_RUN_ATTEMPT}.${XCLBIN}"
-      cp "${XCLBIN_DIR}/${XCLBIN}" "${XCLBIN_DIR}/${XCLBIN_UNIQ}"
-      # Deploy firmware
-      sudo $SIGNER -dev Phoenix -xclbin "${XCLBIN_DIR}/${XCLBIN_UNIQ}"
+     echo "**** Getting unique id for XCLBIN ****"
+     XCLBIN_UNIQ="${XCLBIN}.github.${GITHUB_RUN_ID}.${GITHUB_RUN_ATTEMPT}"
+     cp "${XCLBIN}" "${XCLBIN_UNIQ}"
+     # Deploy firmware
+     sudo $SIGNER -dev Phoenix -xclbin "${XCLBIN_DIR}/${XCLBIN_UNIQ}"
     done
   fi
 
