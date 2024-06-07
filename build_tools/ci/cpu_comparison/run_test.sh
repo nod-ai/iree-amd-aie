@@ -254,7 +254,7 @@ function run_test() {
       # Location of XCLBIN files
       XCLBIN_DIR="module_${func_name}_dispatch_0_amdaie_xclbin_fb"
       # Define the XCLBIN variable
-      XCLBIN="module_${func_name}_dispatch_0_amdaie_xclbin_fb.xclbin"
+      XCLBIN="module_${func_name}_0.xclbin"
       # Ensure unique file name
       echo "**** Getting unique id for XCLBIN ****"
       XCLBIN_UNIQ="github.${GITHUB_RUN_ID}.${GITHUB_RUN_ATTEMPT}.${XCLBIN}"

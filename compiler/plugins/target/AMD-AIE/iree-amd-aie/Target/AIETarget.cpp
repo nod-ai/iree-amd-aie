@@ -38,7 +38,8 @@ static llvm::cl::opt<std::string> clEnableAMDAIEUkernels(
                    "unprefixed microkernels to enable, e.g. `matmul`."),
     llvm::cl::init("none"));
 
-// Utility to find aie.device Op corresponding to the export Op, We have
+// Utility to find aie.device Op corresponding to the export Op.
+// For example, we have
 // hal.executable.variant {
 //   hal.executable.export symbol1
 //   hal.executable.export symbol2
@@ -69,7 +70,7 @@ static xilinx::AIE::DeviceOp getDeviceOpFromEntryPoint(ModuleOp moduleOp,
   });
   if (!deviceOp) {
     moduleOp.emitError()
-        << "failed to find aie.device Op containing func.func with symbol "
+        << "failed to find aie.device containing func.func with symbol "
         << exportOpName;
   }
   return deviceOp;
