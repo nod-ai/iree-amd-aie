@@ -150,6 +150,8 @@ else
 fi
 
 source $XRT_DIR/setup.sh
+# Circumvent xclbin security (no longer needed as of April 2024 XDNA driver)
+export XRT_HACK_UNSECURE_LOADING_XCLBIN=1
 
 cd ${OUTPUT_DIR}
 
@@ -442,7 +444,6 @@ function run_matmul_test() {
 
 
   echo "**** Running '${name}' matmul test ${num_repeat_runs} times ****"
-  echo $XRT_HACK_UNSECURE_LOADING_XCLBIN
   for i in $(seq 1 $num_repeat_runs); do
     echo "Run number ${i} / ${num_repeat_runs} of command ${COMMAND}"
     eval "${COMMAND}"

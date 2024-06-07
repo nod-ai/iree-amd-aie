@@ -122,6 +122,8 @@ fi
 
 
 source $XRT_DIR/setup.sh
+# Circumvent xclbin security (no longer needed as of April 2024 XDNA driver)
+export XRT_HACK_UNSECURE_LOADING_XCLBIN=1
 
 cd ${OUTPUT_DIR}
 
