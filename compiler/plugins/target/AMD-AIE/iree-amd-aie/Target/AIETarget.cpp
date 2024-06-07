@@ -257,12 +257,9 @@ LogicalResult AIETargetBackend::serializeExecutable(
   // Per entry-point data.
   // Note that the following vectors should all be of the same size and
   // element at index #i is for entry point with ordinal #i!
-  SmallVector<std::string> entryPointNamesFb;
-  SmallVector<uint32_t> xclbinIndices;
-  SmallVector<uint32_t> asmInstrIndices;
-  entryPointNamesFb.resize(ordinalCount);
-  xclbinIndices.resize(ordinalCount);
-  asmInstrIndices.resize(ordinalCount);
+  SmallVector<std::string> entryPointNamesFb(ordinalCount);
+  SmallVector<uint32_t> xclbinIndices(ordinalCount);
+  SmallVector<uint32_t> asmInstrIndices(ordinalCount);
 
   for (size_t i = 0; i < entryPointNames.size(); i++) {
     uint64_t ordinal = entryPointOrdinals.at(entryPointNames[i]);
@@ -283,12 +280,13 @@ LogicalResult AIETargetBackend::serializeExecutable(
       deviceOps[i].print(inputMlirOut->os(), OpPrintingFlags().useLocalScope());
       inputMlirOut->keep();
     }
-    // we add the entry point to the working directory for xclbin artifacts so
-    // that we dont overwrite the xclbinutil generated artifacts e.g
-    // kernels.json, for different entry points which will have the same exact
-    // names.
+    // we add the entry point to the working directory for xclbin artifacts if
+    // there are multiple entry points so that we dont overwrite the xclbinutil
+    // generated artifacts e.g kernels.json, for different entry points which
+    // will have the same exact names.
     SmallString<128> entryPointWorkDir(workDir);
-    llvm::sys::path::append(entryPointWorkDir, entryPointNamesFb[ordinal]);
+    if (ordinalCount > 1)
+      llvm::sys::path::append(entryPointWorkDir, entryPointNamesFb[ordinal]);
     SmallString<128> xclbinPath(entryPointWorkDir);
     llvm::sys::path::append(xclbinPath, entryPointNamesFb[ordinal] + ".xclbin");
     SmallString<128> npuInstPath(entryPointWorkDir);
