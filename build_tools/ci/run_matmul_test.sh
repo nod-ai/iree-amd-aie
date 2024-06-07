@@ -428,8 +428,6 @@ function run_matmul_test() {
       --iree-hal-target-backends=${target_backend} \
       -o "${calls_vmfb}"
 
-  # Extract function names from the mlir file
-  function_names=$(grep -oP '@\K\S+(?=\()' ${matmul_ir})
 
   compiled_time=$(date +%s%3N)
 
@@ -444,6 +442,7 @@ function run_matmul_test() {
 
 
   echo "**** Running '${name}' matmul test ${num_repeat_runs} times ****"
+  echo $XRT_HACK_UNSECURE_LOADING_XCLBIN
   for i in $(seq 1 $num_repeat_runs); do
     echo "Run number ${i} / ${num_repeat_runs} of command ${COMMAND}"
     eval "${COMMAND}"
