@@ -4,17 +4,16 @@
 
 set -euox pipefail
 
-if [ "$#" -lt 2 ] || [ "$#" -gt 7 ]; then
+if [ "$#" -lt 2 ] || [ "$#" -gt 6 ]; then
 
-    echo -e "Illegal number of parameters: $#, expected 2-7 parameters." \
+    echo -e "Illegal number of parameters: $#, expected 2-6 parameters." \
             "\n The parameters are as follows:" \
             "\n     1) <output-dir>               (required)" \
             "\n     2) <iree-install-dir>         (required)" \
             "\n     3) <mlir-aie-install-dir>     (optional)" \
             "\n     4) <peano-install-dir>        (optional)" \
             "\n     5) <xrt-dir>                  (optional)" \
-            "\n     6) <vitis-install-dir>        (optional)" \
-            "\n     7) <do-signing>               (optional)" \
+            "\n     6) <do-signing>               (optional)" \
             "\n Example, dependent on environment variables:" \
             "\n     ./run_test.sh  " \
             "results_dir_tmp  \$IREE_INSTALL_DIR  \$MLIR_AIE_INSTALL_DIR  " \
@@ -102,13 +101,6 @@ fi
 if [ ! -d "${VITIS}" ]; then
   echo "No directory '${VITIS}' (argument 6) found."
   exit 1
-fi
-
-# Parameter 7) <do-signing>
-if [ -z "${7-}" ]; then
-  DO_SIGNING=1
-else
-  DO_SIGNING=$7
 fi
 
 THIS_DIR="$(cd $(dirname $0) && pwd)"
@@ -229,55 +221,6 @@ function run_test() {
   # Extract function names from the mlir file
   function_names=$(grep -oP '@\K\S+(?=\()' ${test_file})
 
-
-  # Behavior of <do-signing> depends on if the script for
-  # signing xclbins is found:
-  #
-  # do-signing     |  setup_xclbin_firmware.sh found | Behavior
-  # -------------- | ------------------------------- | -------------
-  # 1              | yes                             | Sign XCLBIN
-  # 1              | no                              | Error
-  # 0              | no/yes                          | Skip signing
-  # -------------- | ------------------------------- | -------------
-
-  if [ $DO_SIGNING -eq 0 ]; then
-    echo "**** Skipping XCLBIN signing: DO_SIGNING set to 0 ****"
-  else
-    # Informed guess where the signing script is.TODO: make this a script param.
-    SIGNER=${XRT_DIR}/amdxdna/setup_xclbin_firmware.sh
-    if [ ! -f "$SIGNER" ]; then
-      echo "**** With DO_SIGNING=1, the script for signing xclbins was not found at $SIGNER ****"
-      exit 1
-    fi
-    # Iterate over each function name and sign the corresponding XCLBIN
-    for func_name in $function_names; do
-      # Location of XCLBIN files
-      XCLBIN_DIR="module_${func_name}_dispatch_0_amdaie_xclbin_fb"
-      # XCLBIN file extension to search for
-      file_extension="*.xclbin"
-      # Use the find command to get the list of files
-      found_files=($(find $XCLBIN_DIR -type f -name "$file_extension"))
-      # Check the number of files found
-      file_count=${#found_files[@]}
-     
-      if [ "$file_count" -eq 0 ]; then
-        echo "No files with extension $file_extension found in $XCLBIN_DIR"
-        exit 1
-      elif [ "$file_count" -gt 1 ]; then
-        echo "Error: Multiple files with extension $file_extension found in $XCLBIN_DIR"
-        exit 1
-      else
-        XCLBIN=${found_files[0]}
-        echo "File found: $XCLBIN"
-      fi
-      # Ensure unique file name
-      echo "**** Getting unique id for XCLBIN ****"
-      XCLBIN_UNIQ="${XCLBIN}.github.${GITHUB_RUN_ID}.${GITHUB_RUN_ATTEMPT}"
-      cp "${XCLBIN}" "${XCLBIN_UNIQ}"
-      # Deploy firmware
-      sudo $SIGNER -dev Phoenix -xclbin "${XCLBIN_UNIQ}"
-    done
-  fi
   # Running 'python3 ${INPUT_GENERATOR} ${test_file} ${OUTPUT_DIR}' does 2 things.
   # 1) it creates binary files with the data that will be consumed as inputs
   #    by iree-run-module
