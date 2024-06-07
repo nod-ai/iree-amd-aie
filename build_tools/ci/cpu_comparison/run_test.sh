@@ -13,11 +13,11 @@ if [ "$#" -lt 2 ] || [ "$#" -gt 6 ]; then
             "\n     3) <mlir-aie-install-dir>     (optional)" \
             "\n     4) <peano-install-dir>        (optional)" \
             "\n     5) <xrt-dir>                  (optional)" \
-            "\n     6) <do-signing>               (optional)" \
+            "\n     6) <vitis-install-dir>        (optional)" \
             "\n Example, dependent on environment variables:" \
             "\n     ./run_test.sh  " \
             "results_dir_tmp  \$IREE_INSTALL_DIR  \$MLIR_AIE_INSTALL_DIR  " \
-            "\$PEANO_INSTALL_DIR  /opt/xilinx/xrt  \$VITIS_INSTALL_PATH 0"
+            "\$PEANO_INSTALL_DIR  /opt/xilinx/xrt  \$VITIS_INSTALL_PATH"
     exit 1
 fi
 

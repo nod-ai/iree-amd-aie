@@ -106,6 +106,9 @@ jobs:
           pip install https://github.com/Xilinx/mlir-aie/releases/download/latest-wheels/mlir_aie-0.0.1.2024060222+6f70bfe-py3-none-manylinux_2_35_x86_64.whl
 
           pip install -r tests/matmul/requirements.txt
+          
+          # Circumvent xclbin security (no longer needed as of April 2024 XDNA driver)
+          export XRT_HACK_UNSECURE_LOADING_XCLBIN=1
 
       - name: E2E correctness matmul test
         run: |
