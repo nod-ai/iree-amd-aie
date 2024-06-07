@@ -73,6 +73,10 @@ std::unique_ptr<Pass> createAMDAIECleanupPass();
 /// dialect.
 std::unique_ptr<Pass> createAMDAIEDecomposeLinalgExtPackUnPackToAIRPass();
 
+/// Create pass to unroll the scf.forall operations around `amdaie.core`
+/// operations and distribute the logical objectFifos.
+std::unique_ptr<Pass> createAMDAIEDistributeCoresAndObjectFifosPass();
+
 /// Create a pass to convert dma operations to circular dma operations.
 std::unique_ptr<Pass> createAMDAIEDmaToCircularDmaPass();
 
@@ -155,10 +159,6 @@ std::unique_ptr<Pass> createAMDAIETileAndFusePass(
 
 /// Create pass to propagate pack/unpack ops using upstream patterns.
 std::unique_ptr<Pass> createAMDAIEPropagateDataLayoutPass();
-
-/// Create pass to unroll the scf.forall operations within AIE workgroups and
-/// distribute the logical objectFifos .
-std::unique_ptr<Pass> createAMDAIEUnrollAndDistributeWorkgroupPass();
 
 void registerAMDAIEPasses();
 

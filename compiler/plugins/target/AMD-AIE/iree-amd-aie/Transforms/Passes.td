@@ -98,6 +98,13 @@ def AMDAIEDecomposeLinalgExtPackUnPackToAIR :
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEDecomposeLinalgExtPackUnPackToAIRPass()";
 }
 
+def AMDAIEDistributeCoresAndObjectFifos :
+  Pass<"iree-amdaie-distribute-cores-and-objectfifos", "ModuleOp"> {
+  let summary = "Unroll the scf.forall operations around `amdaie.core` "
+                "operations and distribute the logical objectFifos.";
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEDistributeCoresAndObjectFifosPass()";
+}
+
 def AMDAIEDmaToCircularDma :
   Pass<"iree-amdaie-dma-to-circular-dma"> {
   let summary = "Convert dma operations to circular dma operations.";
@@ -351,12 +358,6 @@ def AMDAIEVectorization :
     InterfacePass<"iree-amdaie-vectorization", "mlir::FunctionOpInterface"> {
   let summary = "Convert operations to the vector dialect in an AIE-friendly way.";
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEVectorizationPass()";
-}
-
-def AMDAIEUnrollAndDistributeWorkgroup :
-  Pass<"iree-amdaie-unroll-and-distribute-workgroup", "ModuleOp"> {
-  let summary = "Create pass to unroll operations within AIE workgroups and distribute the logical objectFifos.";
-  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEUnrollAndDistributeWorkgroupPass()";
 }
 
 #endif // IREE_AMD_AIE_TRANSFORMS_PASSES
