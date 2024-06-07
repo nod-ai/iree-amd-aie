@@ -271,11 +271,11 @@ function run_test() {
         echo "File found: $XCLBIN"
       fi
       # Ensure unique file name
-     echo "**** Getting unique id for XCLBIN ****"
-     XCLBIN_UNIQ="${XCLBIN}.github.${GITHUB_RUN_ID}.${GITHUB_RUN_ATTEMPT}"
-     cp "${XCLBIN}" "${XCLBIN_UNIQ}"
-     # Deploy firmware
-     sudo $SIGNER -dev Phoenix -xclbin "${XCLBIN_DIR}/${XCLBIN_UNIQ}"
+      echo "**** Getting unique id for XCLBIN ****"
+      XCLBIN_UNIQ="${XCLBIN}.github.${GITHUB_RUN_ID}.${GITHUB_RUN_ATTEMPT}"
+      cp "${XCLBIN}" "${XCLBIN_UNIQ}"
+      # Deploy firmware
+      sudo $SIGNER -dev Phoenix -xclbin "${XCLBIN_UNIQ}"
     done
   fi
   # Running 'python3 ${INPUT_GENERATOR} ${test_file} ${OUTPUT_DIR}' does 2 things.
