@@ -1,10 +1,10 @@
-// RUN: iree-opt --pass-pipeline="builtin.module(iree-amdaie-unroll-and-distribute-workgroup,cse)" --split-input-file %s | FileCheck %s
+// RUN: iree-opt --pass-pipeline="builtin.module(iree-amdaie-distribute-cores-and-objectfifos,cse)" --split-input-file %s | FileCheck %s
 
 // Check for unrolling an amdaie.core within a parallel loop with a single
 // induction variable with multiple iterations. There are no dma ops in this
 // check.
 //
-// CHECK-LABEL: @unroll_and_distribute_workgroup_1x4_cores
+// CHECK-LABEL: @distribute_cores_and_objectfifos_1x4
 // CHECK-DAG:   %[[C0:.*]] = arith.constant 0 : index
 // CHECK-DAG:   %[[C1:.*]] = arith.constant 1 : index
 // CHECK-DAG:   %[[C2:.*]] = arith.constant 2 : index
@@ -20,7 +20,7 @@
 // CHECK:           %[[TILE_3:.*]] = amdaie.tile(%[[C3]], %[[C2]])
 // CHECK:           %{{.*}} = amdaie.core(%[[TILE_3]])
 module {
-  func.func @unroll_and_distribute_workgroup_1x4_cores() {
+  func.func @distribute_cores_and_objectfifos_1x4() {
     %c2 = arith.constant 2 : index
     scf.forall (%arg0, %arg1) in (1, 1) {
       amdaie.workgroup {
@@ -44,7 +44,7 @@ module {
 // Check for unrolling an amdaie.core within a parallel loop, with two induction
 // variables with multiple iterations. There are no dma ops in this check.
 //
-// CHECK-LABEL: @unroll_and_distribute_workgroup_2x2_cores
+// CHECK-LABEL: @distribute_cores_and_objectfifos_2x2
 // CHECK-DAG:   %[[C0:.*]] = arith.constant 0 : index
 // CHECK-DAG:   %[[C1:.*]] = arith.constant 1 : index
 // CHECK:       scf.forall
@@ -58,7 +58,7 @@ module {
 // CHECK-DAG:       %[[TILE_1_1:.*]] = amdaie.tile(%[[C1]], %[[C1]])
 // CHECK-DAG:       %[[CORE_1_1:.*]] = amdaie.core(%[[TILE_1_1]])
 module {
-  func.func @unroll_and_distribute_workgroup_2x2_cores() {
+  func.func @distribute_cores_and_objectfifos_2x2() {
     scf.forall (%arg0, %arg1) in (1, 1) {
       amdaie.workgroup {
         scf.forall (%arg2, %arg3) in (2, 2) {
@@ -466,7 +466,7 @@ module {
 
 // -----
 
-// CHECK-LABEL: @unroll_and_distribute_workgroup
+// CHECK-LABEL: @distribute_cores_and_objectfifos
 // CHECK-DAG:       %[[IN_B:.*]] = hal.interface.binding.subspan set(0) binding(1)
 // CHECK-DAG:       %[[IN_A:.*]] = hal.interface.binding.subspan set(0) binding(0)
 // CHECK-DAG:       %[[OUTPUT:.*]] = hal.interface.binding.subspan set(0) binding(2)
@@ -533,7 +533,7 @@ module {
 #map2 = affine_map<(d0, d1, d2, d3, d4, d5) -> (d1, d2, d5, d4)>
 #map3 = affine_map<(d0, d1, d2, d3, d4, d5) -> (d1, d0, d3, d4)>
 module {
-  func.func @unroll_and_distribute_workgroup() {
+  func.func @distribute_cores_and_objectfifos() {
     %c2 = arith.constant 2 : index
     %c1024 = arith.constant 1024 : index
     %c512 = arith.constant 512 : index

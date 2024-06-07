@@ -8,32 +8,50 @@
 #include "iree-amd-aie/IR/AMDAIEOps.h"
 #include "iree-amd-aie/Transforms/Passes.h"
 #include "iree-amd-aie/Transforms/Transforms.h"
+#include "iree/compiler/Codegen/TransformStrategies/GPU/Common.h"
 #include "mlir/Dialect/SCF/Transforms/Transforms.h"
 #include "mlir/IR/Iterators.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "mlir/Transforms/LoopInvariantCodeMotionUtils.h"
 
-#define DEBUG_TYPE "iree-amdaie-unroll-and-distribute-workgroup"
+#define DEBUG_TYPE "iree-amdaie-distribute-cores-and-objectfifos"
 
 namespace mlir::iree_compiler::AMDAIE {
 
+// Used to annotate loops that should be unrolled.
+static const llvm::StringLiteral kAMDAIELoopUnroll = "amdaie.unroll";
+
 namespace {
 
-/// Convert scf.forall ops within a workgroup to scf.for ops
-/// TODO(jornt): use upstream `forallToFor` function once merged.
-LogicalResult workgroupForallToFor(ModuleOp moduleOp) {
+/// Convert local scf.forall ops chosen for parallel distribution to scf.for
+/// ops.
+LogicalResult localForallToFor(ModuleOp moduleOp) {
   IRRewriter rewriter(moduleOp.getContext());
-  WalkResult res = moduleOp->walk([&](AMDAIE::WorkgroupOp workgroupOp) {
-    WalkResult workgroupRes = workgroupOp->walk([&](scf::ForallOp forallOp) {
-      if (failed(scf::forallToForLoop(rewriter, forallOp))) {
-        workgroupOp.emitOpError()
-            << "failed to transform scf.forall to scf.for";
+  WalkResult res = moduleOp->walk([&](scf::ForallOp forallOp) {
+    SmallVector<Attribute> mapping =
+        llvm::to_vector(forallOp.getMapping()->getValue());
+    // We index on thread mapping for core and dma unrolling and buffer
+    // distribution.
+    if (!isa<mlir::gpu::GPUThreadMappingAttr>(*mapping.begin()))
+      return WalkResult::advance();
+
+    SmallVector<Operation *> results;
+    if (failed(scf::forallToForLoop(rewriter, forallOp, &results))) {
+      forallOp.emitOpError() << "failed to transform scf.forall to scf.for";
+      return WalkResult::interrupt();
+    }
+    // Set attribute to unroll this loop later in this pass.
+    for (Operation *res : results) {
+      scf::ForOp forOp = dyn_cast<scf::ForOp>(res);
+      if (!forOp) {
+        forallOp.emitOpError() << "failed to retrieve generated scf.for from "
+                                  "scf::forallToForLoop conversion";
         return WalkResult::interrupt();
       }
-      return WalkResult::advance();
-    });
-    if (workgroupRes.wasInterrupted()) return WalkResult::interrupt();
+      forOp->setAttr(kAMDAIELoopUnroll,
+                     mlir::BoolAttr::get(forOp->getContext(), true));
+    }
     return WalkResult::advance();
   });
   if (res.wasInterrupted()) return failure();
@@ -59,7 +77,7 @@ LogicalResult hoistAffineApplyDependingOnFor(ModuleOp moduleOp) {
 ///   2) Try hoisting dma ops outside the scf.for operation.
 ///   3) Unroll and distribute the logical objectfifos remaining in the scf.for
 ///   loop.
-class AMDAIEUnrollWorkgroupLoops : public OpRewritePattern<scf::ForOp> {
+class AMDAIEUnrollLocalLoops : public OpRewritePattern<scf::ForOp> {
   using OpRewritePattern<scf::ForOp>::OpRewritePattern;
 
   /// Hoist dma ops outside the scf.for operation if there are no dependencies
@@ -213,8 +231,10 @@ class AMDAIEUnrollWorkgroupLoops : public OpRewritePattern<scf::ForOp> {
 
   LogicalResult matchAndRewrite(scf::ForOp forOp,
                                 PatternRewriter &rewriter) const override {
-    // Only unroll loops within a workgroup
-    if (!forOp->getParentOfType<AMDAIE::WorkgroupOp>()) return failure();
+    // Unroll loops only if annotated to be unrolled earlier in the pass.
+    if (!forOp->hasAttr(kAMDAIELoopUnroll) ||
+        !cast<BoolAttr>(forOp->getAttr(kAMDAIELoopUnroll)).getValue())
+      return failure();
 
     // Skip for ops with nested for ops. Wait until nested ones get resolved
     // first.
@@ -271,9 +291,6 @@ LogicalResult assignLocalAieTiles(ModuleOp moduleOp) {
   moduleOp->walk([&](AMDAIE::DmaCpyNdOp dmaOp) {
     for (Operation *userOp : dmaOp->getUsers()) {
       if (auto coreOp = userOp->getParentOfType<AMDAIE::CoreOp>()) {
-        auto workgroupOp = coreOp->getParentOfType<AMDAIE::WorkgroupOp>();
-        if (!workgroupOp) continue;
-
         Attribute sourceMemspace = dmaOp.getSourceObjectFifo().getMemorySpace();
         Attribute targetMemspace = dmaOp.getTargetObjectFifo().getMemorySpace();
         if (sourceMemspace &&
@@ -288,11 +305,9 @@ LogicalResult assignLocalAieTiles(ModuleOp moduleOp) {
                      coreOp.getTileOp().getResult());
         }
 
-        // Move tile to beginning of workgroup to make sure ssa values are not
-        // dominated
-        Block *workgroupBlock = workgroupOp.getBody();
-        rewriter.moveOpBefore(coreOp.getTileOp(), workgroupBlock,
-                              workgroupBlock->begin());
+        // Move tile to beginning of parent block.
+        rewriter.moveOpBefore(coreOp.getTileOp(), coreOp->getBlock(),
+                              coreOp->getBlock()->begin());
       }
     }
     return WalkResult::advance();
@@ -456,26 +471,26 @@ class AssignAieTiles
   }
 };
 
-class AMDAIEUnrollAndDistributeWorkgroupPass
-    : public impl::AMDAIEUnrollAndDistributeWorkgroupBase<
-          AMDAIEUnrollAndDistributeWorkgroupPass> {
+class AMDAIEDistributeCoresAndObjectFifosPass
+    : public impl::AMDAIEDistributeCoresAndObjectFifosBase<
+          AMDAIEDistributeCoresAndObjectFifosPass> {
  public:
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<AMDAIEDialect>();
   }
 
-  AMDAIEUnrollAndDistributeWorkgroupPass() = default;
-  AMDAIEUnrollAndDistributeWorkgroupPass(
-      const AMDAIEUnrollAndDistributeWorkgroupPass &pass){};
+  AMDAIEDistributeCoresAndObjectFifosPass() = default;
+  AMDAIEDistributeCoresAndObjectFifosPass(
+      const AMDAIEDistributeCoresAndObjectFifosPass &pass){};
   void runOnOperation() override;
 };
 
-void AMDAIEUnrollAndDistributeWorkgroupPass::runOnOperation() {
+void AMDAIEDistributeCoresAndObjectFifosPass::runOnOperation() {
   MLIRContext *context = &getContext();
   ModuleOp moduleOp = getOperation();
-  // Convert scf.forall operations within a workgroup to nested scf.for
-  // operations.
-  if (failed(workgroupForallToFor(moduleOp))) {
+  // Convert local scf.forall operations selected for parallel distribution to
+  // nested scf.for operations.
+  if (failed(localForallToFor(moduleOp))) {
     return signalPassFailure();
   }
   // Hoist the affine apply ops on scf.for induction variables to the
@@ -483,12 +498,12 @@ void AMDAIEUnrollAndDistributeWorkgroupPass::runOnOperation() {
   if (failed(hoistAffineApplyDependingOnFor(moduleOp))) {
     return signalPassFailure();
   }
-  // Unroll loops inside the workgroups and try hoisting dma operations if
+  // Unroll local parallel loops and try hoisting dma operations if
   // possible.
-  RewritePatternSet unrollWorkgroupPatterns(context);
-  unrollWorkgroupPatterns.insert<AMDAIEUnrollWorkgroupLoops>(context);
+  RewritePatternSet unrollLocalLoopsPatterns(context);
+  unrollLocalLoopsPatterns.insert<AMDAIEUnrollLocalLoops>(context);
   if (failed(applyPatternsAndFoldGreedily(
-          moduleOp, std::move(unrollWorkgroupPatterns)))) {
+          moduleOp, std::move(unrollLocalLoopsPatterns)))) {
     return signalPassFailure();
   }
   // Assign tile locations to logical objectfifos on local (L1) memory.
@@ -506,8 +521,8 @@ void AMDAIEUnrollAndDistributeWorkgroupPass::runOnOperation() {
 
 }  // namespace
 
-std::unique_ptr<Pass> createAMDAIEUnrollAndDistributeWorkgroupPass() {
-  return std::make_unique<AMDAIEUnrollAndDistributeWorkgroupPass>();
+std::unique_ptr<Pass> createAMDAIEDistributeCoresAndObjectFifosPass() {
+  return std::make_unique<AMDAIEDistributeCoresAndObjectFifosPass>();
 }
 
 }  // namespace mlir::iree_compiler::AMDAIE
