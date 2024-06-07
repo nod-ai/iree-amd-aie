@@ -238,6 +238,12 @@ LogicalResult AIETargetBackend::serializeExecutable(
         "_", exportOpName.substr(0, 42), std::to_string(ordinal));
     entryPointNames.emplace_back(entryPointName);
     entryPointOrdinals[entryPointName] = ordinal;
+    // error out if we think the name will most likely be too long
+    // for the artifact generation to succeed we set this cut-off at 50
+    // characters
+    if (entryPointName.size() > 50)
+      return exportOp.emitError()
+             << "entry point name: " << entryPointName << "is too long!";
   }
   uint64_t ordinalCount = entryPointOrdinals.size();
 
