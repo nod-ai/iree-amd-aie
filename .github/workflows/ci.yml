@@ -150,8 +150,3 @@ jobs:
         run: |
           source .venv/bin/activate
           bash build_tools/ci/print_ir_aie2xclbin/print_ir_aie2xclbin.sh iree-install/bin print_ir_aie2xclbin_results
-
-      - name: Clean up
-        if: ${{ always() }}
-        run: |
-          for kern in /lib/firmware/amdnpu/1502/github.${GITHUB_RUN_ID}.${GITHUB_RUN_ATTEMPT}.*; do sudo /opt/xilinx/xrt/amdxdna/rm_xclbin.sh "$kern"; done

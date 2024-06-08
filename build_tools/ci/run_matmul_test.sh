@@ -23,7 +23,7 @@
 
 set -euox pipefail
 
-if [ "$#" -lt 2 ] || [ "$#" -gt 7 ]; then
+if [ "$#" -lt 2 ] || [ "$#" -gt 6 ]; then
 
    # The expected parameters are
    #    1) <output-dir>            (required)
@@ -32,8 +32,7 @@ if [ "$#" -lt 2 ] || [ "$#" -gt 7 ]; then
    #    4) <peano-install-dir>     (optional)
    #    5) <xrt-dir>               (optional)
    #    6) <vitis-install-dir>     (optional)
-   #    7) <do-signing>            (optional)
-    echo -e "Illegal number of parameters: $#, expected 2-7 parameters." \
+    echo -e "Illegal number of parameters: $#, expected 2-6 parameters." \
             "\n The parameters are as follows:" \
             "\n     1) <output-dir>               (required)" \
             "\n     2) <iree-install-dir>         (required)" \
@@ -41,11 +40,10 @@ if [ "$#" -lt 2 ] || [ "$#" -gt 7 ]; then
             "\n     4) <peano-install-dir>        (optional)" \
             "\n     5) <xrt-dir>                  (optional)" \
             "\n     6) <vitis-install-dir>        (optional)" \
-            "\n     7) <do-signing>               (optional)" \
             "\n Example, dependent on environment variables:" \
             "\n     ./run_matmul_test.sh  " \
             "results_dir_tmp  \$IREE_INSTALL_DIR  \$MLIR_AIE_INSTALL_DIR  " \
-            "\$PEANO_INSTALL_DIR  /opt/xilinx/xrt  \$VITIS_INSTALL_PATH 0"
+            "\$PEANO_INSTALL_DIR  /opt/xilinx/xrt  \$VITIS_INSTALL_PATH"
     exit 1
 fi
 
@@ -133,13 +131,6 @@ if [ ! -d "${VITIS}" ]; then
   exit 1
 fi
 
-# Parameter 7) <do-signing>
-if [ -z "${7-}" ]; then
-  DO_SIGNING=1
-else
-  DO_SIGNING=$7
-fi
-
 THIS_DIR="$(cd $(dirname $0) && pwd)"
 ROOT_DIR="$(cd $THIS_DIR/../.. && pwd)"
 
@@ -159,6 +150,8 @@ else
 fi
 
 source $XRT_DIR/setup.sh
+# Circumvent xclbin security (no longer needed as of April 2024 XDNA driver)
+export XRT_HACK_UNSECURE_LOADING_XCLBIN=1
 
 cd ${OUTPUT_DIR}
 
@@ -437,45 +430,8 @@ function run_matmul_test() {
       --iree-hal-target-backends=${target_backend} \
       -o "${calls_vmfb}"
 
-  # Extract function names from the mlir file
-  function_names=$(grep -oP '@\K\S+(?=\()' ${matmul_ir})
 
   compiled_time=$(date +%s%3N)
-
-
-  # Behavior of <do-signing> depends on if the script for
-  # signing xclbins is found:
-  #
-  # do-signing     |  setup_xclbin_firmware.sh found | Behavior
-  # -------------- | ------------------------------- | -------------
-  # 1              | yes                             | Sign XCLBIN
-  # 1              | no                              | Error
-  # 0              | no/yes                          | Skip signing
-  # -------------- | ------------------------------- | -------------
-
-  if [ $DO_SIGNING -eq 0 ]; then
-    echo "**** Skipping XCLBIN signing: DO_SIGNING set to 0 ****"
-  else
-    # Informed guess where the signing script is.TODO: make this a script param.
-    SIGNER=${XRT_DIR}/amdxdna/setup_xclbin_firmware.sh
-    if [ ! -f "$SIGNER" ]; then
-      echo "**** With DO_SIGNING=1, the script for signing xclbins was not found at $SIGNER ****"
-      exit 1
-    fi
-    # Iterate over each function name and sign the corresponding XCLBIN
-    for func_name in $function_names; do
-      # Location of XCLBIN files
-      XCLBIN_DIR="module_${func_name}_dispatch_0_amdaie_xclbin_fb"
-      # Define the XCLBIN variable
-      XCLBIN="module_${func_name}_dispatch_0_amdaie_xclbin_fb.xclbin"
-      # Ensure unique file name
-      echo "**** Getting unique id for XCLBIN ****"
-      XCLBIN_UNIQ="github.${GITHUB_RUN_ID}.${GITHUB_RUN_ATTEMPT}.${XCLBIN}"
-      cp "${XCLBIN_DIR}/${XCLBIN}" "${XCLBIN_DIR}/${XCLBIN_UNIQ}"
-      # Deploy firmware
-      sudo $SIGNER -dev Phoenix -xclbin "${XCLBIN_DIR}/${XCLBIN_UNIQ}"
-    done
-  fi
 
   echo "**** Running '${name}' matmul tests ****"
 

@@ -30,6 +30,9 @@ void addPackPeelBasedPassPipeline(OpPassManager &passManager,
 void addPadPackBasedPassPipeline(OpPassManager &passManager,
                                  TilingConfig &tilingConfig);
 
+/// Populates passes needed to link HAL executables across AIE targets.
+void buildAMDAIELinkingPassPipeline(OpPassManager &passManager);
+
 /// Create a pass to convert AIR DMA ops into AMDAIE DMA ops operating on
 /// logical objectFifos.
 std::unique_ptr<Pass> createAMDAIEAIRDmaAMDAIEDmaPass();

@@ -578,6 +578,17 @@ void addMLIRAIRAIELoweringPasses(OpPassManager &passManager, bool packPeel) {
   passManager.addPass(createCanonicalizerPass());
 }
 
+// NOTE: this runs on the top-level program module containing all hal.executable
+// ops.
+void buildAMDAIELinkingPassPipeline(OpPassManager &passManager) {
+  // Link together executables. This may produce some IR duplication.
+  passManager.addPass(createAMDAIELinkExecutablesPass());
+
+  // Cleanup IR duplication.
+  passManager.addNestedPass<IREE::HAL::ExecutableOp>(
+      mlir::createCanonicalizerPass());
+}
+
 namespace {
 #define GEN_PASS_REGISTRATION
 #include "iree-amd-aie/Transforms/Passes.h.inc"

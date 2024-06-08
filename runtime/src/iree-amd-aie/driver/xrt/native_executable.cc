@@ -78,9 +78,10 @@ static iree_status_t iree_amd_aie_hal_xrt_native_executable_flatbuffer_verify(
     }
   }
 
-  flatbuffers_string_t xclbin =
-      iree_amd_aie_hal_xrt_ExecutableDef_xclbin_get(executable_def);
-  if (flatbuffers_string_len(xclbin) == 0) {
+  iree_amd_aie_hal_xrt_XclbinDef_vec_t xclbins =
+      iree_amd_aie_hal_xrt_ExecutableDef_xclbins_get(executable_def);
+  size_t number_xclbin = iree_amd_aie_hal_xrt_XclbinDef_vec_len(xclbins);
+  if (number_xclbin == 0) {
     return iree_make_status(IREE_STATUS_INVALID_ARGUMENT, "no xclbin present");
   }
 
@@ -115,15 +116,17 @@ iree_status_t iree_hal_xrt_native_executable_create(
       iree_amd_aie_hal_xrt_ExecutableDef_as_root(
           executable_params->executable_data.data);
 
+  flatbuffers_uint32_vec_t xclbin_indices_vec =
+      iree_amd_aie_hal_xrt_ExecutableDef_xclbin_indices_get(executable_def);
+
+  flatbuffers_uint32_vec_t asm_instr_indices_vec =
+      iree_amd_aie_hal_xrt_ExecutableDef_asm_instr_indices_get(executable_def);
+
   flatbuffers_string_vec_t entry_points_vec =
       iree_amd_aie_hal_xrt_ExecutableDef_entry_points_get(executable_def);
 
-  flatbuffers_string_t xclbin_fb =
-      iree_amd_aie_hal_xrt_ExecutableDef_xclbin_get(executable_def);
-
-  // XRT API needs this vector and cant actually read a void*.
-  std::vector<char> xclbinVector(xclbin_fb,
-                                 xclbin_fb + flatbuffers_string_len(xclbin_fb));
+  iree_amd_aie_hal_xrt_XclbinDef_vec_t xclbins_vec =
+      iree_amd_aie_hal_xrt_ExecutableDef_xclbins_get(executable_def);
 
   iree_amd_aie_hal_xrt_AsmInstDef_vec_t asm_instrs_vec =
       iree_amd_aie_hal_xrt_ExecutableDef_asm_instrs_get(executable_def);
@@ -136,8 +139,10 @@ iree_status_t iree_hal_xrt_native_executable_create(
   // still live.
   iree_host_size_t total_entry_point_name_chars = 0;
   IREE_TRACE({
-    for (iree_host_size_t i = 0; i < entry_point_count; i++) {
-      const char* entry_name = flatbuffers_string_vec_at(entry_points_vec, i);
+    for (iree_host_size_t entry_ordinal = 0; entry_ordinal < entry_point_count;
+         entry_ordinal++) {
+      const char* entry_name =
+          flatbuffers_string_vec_at(entry_points_vec, entry_ordinal);
       total_entry_point_name_chars += flatbuffers_string_len(entry_name);
     }
   });
@@ -156,21 +161,35 @@ iree_status_t iree_hal_xrt_native_executable_create(
 
   iree_hal_resource_initialize(&iree_hal_xrt_native_executable_vtable,
                                &executable->resource);
-  xrt::xclbin xclbin;
-  try {
-    xclbin = xrt::xclbin(xclbinVector);
-  } catch (std::runtime_error& e) {
-    return iree_make_status(IREE_STATUS_INTERNAL, "XCLBIN load error: %s",
-                            e.what());
-  }
-  device.register_xclbin(xclbin);
-  xrt::hw_context context(device, xclbin.get_uuid());
   executable->host_allocator = host_allocator;
   executable->entry_point_count = entry_point_count;
-  for (iree_host_size_t i = 0; i < entry_point_count; i++) {
-    const char* entry_name = flatbuffers_string_vec_at(entry_points_vec, i);
+  for (iree_host_size_t entry_ordinal = 0; entry_ordinal < entry_point_count;
+       entry_ordinal++) {
+    const char* entry_name =
+        flatbuffers_string_vec_at(entry_points_vec, entry_ordinal);
+    uint32_t xclbin_index =
+        flatbuffers_uint32_vec_at(xclbin_indices_vec, entry_ordinal);
+    iree_amd_aie_hal_xrt_XclbinDef_table_t xclbin_def =
+        iree_amd_aie_hal_xrt_XclbinDef_vec_at(xclbins_vec, xclbin_index);
+    flatbuffers_string_t xclbin_fb =
+        iree_amd_aie_hal_xrt_XclbinDef_xclbin_get(xclbin_def);
+
+    // XRT API needs this vector and cant actually read a void*.
+    std::vector<char> xclbinVector(
+        xclbin_fb, xclbin_fb + flatbuffers_string_len(xclbin_fb));
+    xrt::xclbin xclbin;
+    try {
+      xclbin = xrt::xclbin(xclbinVector);
+    } catch (std::runtime_error& e) {
+      return iree_make_status(IREE_STATUS_INTERNAL, "XCLBIN load error: %s",
+                              e.what());
+    }
+    device.register_xclbin(xclbin);
+    xrt::hw_context context(device, xclbin.get_uuid());
+    uint32_t asm_instr_index =
+        flatbuffers_uint32_vec_at(asm_instr_indices_vec, entry_ordinal);
     iree_amd_aie_hal_xrt_AsmInstDef_table_t asminst_def =
-        iree_amd_aie_hal_xrt_AsmInstDef_vec_at(asm_instrs_vec, i);
+        iree_amd_aie_hal_xrt_AsmInstDef_vec_at(asm_instrs_vec, asm_instr_index);
     flatbuffers_uint32_vec_t asm_inst =
         iree_amd_aie_hal_xrt_AsmInstDef_asm_inst_get(asminst_def);
     uint32_t num_instr = flatbuffers_uint32_vec_len(asm_inst);
@@ -198,11 +217,12 @@ iree_status_t iree_hal_xrt_native_executable_create(
     }
     // The Ryzen AI device is not cache coherent, so it is important to sync
     instr->sync(XCL_BO_SYNC_BO_TO_DEVICE);
-    iree_hal_xrt_kernel_params_t* params = &executable->entry_points[i];
+    iree_hal_xrt_kernel_params_t* params =
+        &executable->entry_points[entry_ordinal];
     params->kernel = kernel.release();
     params->instr = instr.release();
     params->num_instr = num_instr;
-    params->layout = executable_params->pipeline_layouts[i];
+    params->layout = executable_params->pipeline_layouts[entry_ordinal];
     iree_hal_pipeline_layout_retain(params->layout);
 
     // Stash the entry point name in the string table for use when tracing.
@@ -221,7 +241,8 @@ iree_status_t iree_hal_xrt_native_executable_create(
             iree_amd_aie_hal_xrt_ExecutableDef_source_locations_get(
                 executable_def);
         iree_amd_aie_hal_xrt_FileLineLocDef_table_t source_loc =
-            iree_amd_aie_hal_xrt_FileLineLocDef_vec_at(source_locs_vec, i);
+            iree_amd_aie_hal_xrt_FileLineLocDef_vec_at(source_locs_vec,
+                                                       entry_ordinal);
         flatbuffers_string_t filename =
             iree_amd_aie_hal_xrt_FileLineLocDef_filename_get(source_loc);
         uint32_t line =
