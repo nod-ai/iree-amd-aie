@@ -21,8 +21,14 @@ table AsmInstDef {
   asm_inst:[uint32];
 }
 
+
+// XCLBINs.
+table XclbinDef {
+  xclbin:string;
+}
+
 table ExecutableDef {
-  // A map of entry point ordinals to string names as used by XRT
+  // A map of entry point ordinals to string names as used in XCLBIN(s)
   entry_points:[string];
 
   // xclbin container format (also known as AXLF) is defined in file xclbin.h. 
@@ -39,9 +45,22 @@ table ExecutableDef {
   // End-users load this file via XRT xclLoadXclbin() API. 
   // XRT userspace and kernel space components consume different sections of xclbin by 
   // programming the hardware and initializing key data structures in XRT userspace libraries and XRT kernel drivers.
+
+  // A map of entry point ordinals to the indices of the containing XCLBINs (the following field).
+  // This list has the same size as the entry_points list.
+  // This list currently is just a range (0, number of entry points] but will change when we start doing
+  // kernel merging in the backend. 
+  xclbin_indices:[uint32];
+
   
-  // XCLBIN string of the module.
-  xclbin:string;
+  // XCLBIN strings of the entry points.
+  xclbins: [XclbinDef];
+
+  // A map of entry point ordinals to the indices of the containing asm_instrs (the following field).
+  // This list has the same size as the entry_points list.
+  // This list currently is just a range (0, number of entry points] but can chnage if kernels decide to
+  // share the instruction streams.
+  asm_instr_indices:[uint32];
 
   // Assembly instructions stream for LX6 processor to run for each kernel
   // The number of kernels and by extention the number of asm instruction streams

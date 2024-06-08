@@ -67,7 +67,6 @@ void appendVectorizationToPipeline(OpPassManager &funcPassManager) {
   funcPassManager.addPass(createAMDAIECleanupPass());
   funcPassManager.addPass(createAMDAIEInsertLoopsForVectorizationPass());
   funcPassManager.addPass(createAMDAIEVectorizationPass());
-  funcPassManager.addPass(createCanonicalizerPass());
 }
 
 //===---------------------------------------------------------------------===//
@@ -77,10 +76,15 @@ void appendVectorizationToPipeline(OpPassManager &funcPassManager) {
 static FailureOr<Value> aieComprehensiveBufferizeAllocationFn(
     OpBuilder &builder, Location loc, MemRefType memRefType,
     ValueRange dynamicSizes, unsigned alignment) {
+  int64_t numDims = memRefType.getShape().size();
+  AMDAIEMemSpace memSpace = AMDAIEMemSpace::Local;
+  if (clUsePipeline == AIEPassPipeline::PackPeelPipeline && numDims == 4) {
+    memSpace = AMDAIEMemSpace::Shared;
+  }
+
   OpBuilder::InsertionGuard g(builder);
-  // Set the memory space attribute as local for now
   auto memorySpaceAttr =
-      AMDAIEMemSpaceAttr::get(builder.getContext(), AMDAIEMemSpace::Local);
+      AMDAIEMemSpaceAttr::get(builder.getContext(), memSpace);
   MemRefType allocType =
       MemRefType::get(memRefType.getShape(), memRefType.getElementType(),
                       AffineMap(), memorySpaceAttr);
@@ -252,6 +256,10 @@ void addPackPeelBasedPassPipeline(OpPassManager &funcPassManager,
   // Fuse unpack/elementwise consumer ops into the last inner forall loop
   funcPassManager.addPass(createAMDAIEFuseConsumerIntoLoopPass());
 
+  // Note: canonicalizer pass should not run starting from here until
+  // bufferization to avoid creating redundant allocation and data copy.
+  // TODO (vivian): solve the bufferization problem upstream
+
   // Fuse pack ops into the last inner forall loop
   {
     AMDAIEFusePackIntoLoopOptions fusePackOptions;
@@ -386,6 +394,7 @@ void addPadPackBasedPassPipeline(OpPassManager &funcPassManager,
   }
   // Vectorization passes
   appendVectorizationToPipeline(funcPassManager);
+  funcPassManager.addPass(createCanonicalizerPass());
 
   // Comprehensive bufferization
   addAMDAIEBufferizePasses(funcPassManager);
@@ -567,6 +576,17 @@ void addMLIRAIRAIELoweringPasses(OpPassManager &passManager, bool packPeel) {
 
   passManager.addPass(xilinx::airrt::createAIRRtToNpuPass());
   passManager.addPass(createCanonicalizerPass());
+}
+
+// NOTE: this runs on the top-level program module containing all hal.executable
+// ops.
+void buildAMDAIELinkingPassPipeline(OpPassManager &passManager) {
+  // Link together executables. This may produce some IR duplication.
+  passManager.addPass(createAMDAIELinkExecutablesPass());
+
+  // Cleanup IR duplication.
+  passManager.addNestedPass<IREE::HAL::ExecutableOp>(
+      mlir::createCanonicalizerPass());
 }
 
 namespace {
