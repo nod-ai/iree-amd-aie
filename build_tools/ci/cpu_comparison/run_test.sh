@@ -2,6 +2,16 @@
 #
 # Copyright 2024 The IREE Authors
 
+# There are two ways to add tests using this script:
+# 1) add a complete test file in `/test_files` which should follow the same format
+#    shown in the test example `/test_files/matmul_int32.mlir`.
+# 2) use the existing template in `/test_files` to run matmul-like tests, just by
+#    changing the input shapes and data types. This method is especially useful
+#    if one wants to run multiple tests with the same operations but different
+#    data shapes and types. For future development, if one wants to add tests for
+#    other operations, an IR template should be added following the example in
+#    `/test_template/matmul_elementwise_MxNxK.mlir`.
+
 set -euox pipefail
 
 if [ "$#" -lt 2 ] || [ "$#" -gt 6 ]; then
@@ -270,10 +280,10 @@ function run_test() {
       --mlir-disable-threading \
       -o "${aie_vmfb}"
 
-   echo "**** Generating CPU .vmfb file ****"
-   ${IREE_COMPILE_EXE} "${test_file}"  \
-       --iree-hal-target-backends=llvm-cpu \
-       -o "${cpu_vmfb}"
+  echo "**** Generating CPU .vmfb file ****"
+  ${IREE_COMPILE_EXE} "${test_file}"  \
+      --iree-hal-target-backends=llvm-cpu \
+      -o "${cpu_vmfb}"
 
   # Load the contents of OUTPUT_DIR/{name}_command_args.txt into a variable:
   input_output_line=$(cat ${OUTPUT_DIR}/${name}_input_args.txt)
