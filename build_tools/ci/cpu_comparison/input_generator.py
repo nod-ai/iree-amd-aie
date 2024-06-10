@@ -89,7 +89,8 @@ def get_numpy_type(element_type):
         return np.int8
     elif element_type == "bfloat16" or element_type == "bf16":
         raise ValueError(
-            "Type 'bfloat16' is not supported along this path through the program (something went wrong)."
+            "Type 'bfloat16' is not supported along this path through the "
+            "program (something went wrong)."
         )
     else:
         raise ValueError("Invalid or unsupported element type: " + element_type)
@@ -132,7 +133,79 @@ def write_input(bin_filename, num_elements, element_type, input_number):
         file.write(data)
 
 
-def generate_inputs(output_dir, name_prefix, m, n, k, lhs_rhs_type, acc_type):
+def generate_inputs(filename, write_dir):
+    """
+    Parse the input file 'filename' and generate binary files for the inputs of
+    the mlir function.
+    """
+
+    name = os.path.splitext(os.path.basename(filename))[0]
+
+    input_args = []
+
+    with open(filename, "r") as file:
+        input_number = 1
+
+        for line in file:
+            line = line.strip()
+            tokens = line.split()
+            if len(tokens) > 2 and tokens[0] == "//":
+
+                # Lines of the form '// input 3x40xf32'
+                if tokens[1] == "input":
+
+                    sub_tokens = tokens[2].split("x")
+                    element_type = sub_tokens[-1]
+
+                    num_elements = 1
+                    for i in range(len(sub_tokens) - 1):
+                        num_elements *= int(sub_tokens[i])
+                    bin_filename = os.path.join(
+                        write_dir, name + "_input" + str(input_number) + ".bin"
+                    )
+                    input_args.append('--input="%s=@%s"' % (tokens[2], bin_filename))
+                    write_input(bin_filename, num_elements, element_type, input_number)
+                    input_number += 1
+
+            if (len(tokens) == 2) and tokens[0] == "//input":
+                raise ValueError(
+                    'Expect input of the form "// input 3x40xf32", '
+                    'spacing incorrect in line: ' + line
+                )
+
+    # Try and check that the number of inputs is correct, raise error if
+    # suspected to be incorrect. This isn't perfect, but hopefully it will
+    # catch some errors than it detects false positives.
+
+    # Find all func.funcs and count their operands:
+    func_num_inputs = []
+    with open(filename, "r") as file:
+        all_lines = file.read()
+        func_func_index = all_lines.find("func.func")
+        while func_func_index != -1:
+            open_paren_index = all_lines.find("(", func_func_index)
+            close_paren_index = all_lines.find(")", open_paren_index)
+            num_colons = all_lines.count(":", open_paren_index, close_paren_index)
+            func_num_inputs.append(num_colons)
+            func_func_index = all_lines.find("func.func", close_paren_index)
+
+    # If the number of inputs initially detected doesn't correspond to the
+    # number of inputs in any of the mlir functions, raise an error.
+    if len(input_args) not in func_num_inputs:
+        raise ValueError(
+            f"Number of inputs generated does not match the number of inputs in "
+            f"any of the mlir functions. The number of inputs generated is "
+            f"{len(input_args)}, the number of inputs in the mlir functions are "
+            f"{func_num_inputs}"
+        )
+
+    command_flags = "  ".join(input_args)
+    command_arg_filename = os.path.join(write_dir, name + "_input_args.txt")
+    with open(command_arg_filename, "w") as file:
+        file.write(command_flags)
+
+
+def generate_inputs_with_template(output_dir, name_prefix, m, n, k, lhs_rhs_type, acc_type):
     """
     Generate mlir file from the template test file and
     binary files for the inputs of the mlir function.
@@ -197,8 +270,13 @@ def generate_inputs(output_dir, name_prefix, m, n, k, lhs_rhs_type, acc_type):
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 8:
-        print("Usage: python input_generator.py <input_file> <output_dir> <m> <n> <k> <lhs_rhs_type> <acc_type>")
-        sys.exit(1)
-
-    generate_inputs(sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4], sys.argv[5], sys.argv[6], sys.argv[7])
+    if len(sys.argv) == 3:
+        # Usage: python input_generator.py <input_file> <output_dir>
+        generate_inputs(sys.argv[1], sys.argv[2])
+    elif len(sys.argv) == 8:
+        # Usage: python input_generator.py <input_file> <output_dir> \
+        # <m> <n> <k> <lhs_rhs_type> <acc_type>
+        generate_inputs_with_template(sys.argv[1], sys.argv[2], sys.argv[3],
+                        sys.argv[4], sys.argv[5], sys.argv[6], sys.argv[7])
+    else:
+        raise ValueError("Incorrect number of input arguments.")

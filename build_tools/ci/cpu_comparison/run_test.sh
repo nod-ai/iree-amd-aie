@@ -132,6 +132,7 @@ function run_test() {
 
   # Options without defaults
   # ========================
+  local test_file=""
   local lhs_rhs_type=""
   local acc_type=""
   local m=""
@@ -156,6 +157,10 @@ function run_test() {
         ;;
       --atol)
         atol="$2"
+        shift 2
+        ;;
+      --test_file)
+        test_file="$2"
         shift 2
         ;;
       --peano_install_path)
@@ -207,35 +212,51 @@ function run_test() {
 
   set -x
 
-  # Generate a name for the test based on name_prefix and the matmul dimensions 
-  # and data types, assuming m, n, k are just single integers:
-  name="${name_prefix}_${m}x${n}x${k}_${lhs_rhs_type}_${acc_type}"
+  if [ -n "${test_file}" ]; then
+    # Update test_file to be a complete path to the file
+    test_file=$(realpath "${test_file}")
 
-  # Disable exit on failure:
-  set +e
+    # Now test_file is a string of the /path/to/name.mlir.
+    # Confirm this with clear error messages, and extract 'name' as a variable
+    name=$(basename "${test_file}" .mlir)
 
-  # Running 'python3 ${INPUT_GENERATOR} ${test_file} ${OUTPUT_DIR}' does 3 things.
-  # 1) it creates a mlir file using the test template;
-  # 2) it creates binary files with the data that will be consumed as inputs
-  #    by iree-run-module;
-  # 3) it prints a line with the names of the binary files, which
-  #    iree-run-module will have appended (input and output flags).
-  #
-  python3 ${INPUT_GENERATOR} ${OUTPUT_DIR} ${name_prefix} ${m} ${n} ${k} ${lhs_rhs_type} ${acc_type}
+    # Running 'python3 ${INPUT_GENERATOR} ${test_file} ${OUTPUT_DIR}' does 2 things.
+    # 1) it creates binary files with the data that will be consumed as inputs
+    #    by iree-run-module
+    # 2) it prints a line with the names of the binary files, which
+    #    iree-run-module will have appended (input and output flags).
+    #
+    python3 ${INPUT_GENERATOR} ${test_file} ${OUTPUT_DIR}
+  else
+    # Generate a name for the test based on name_prefix and the matmul dimensions
+    # and data types, assuming m, n, k are just single integers:
+    name="${name_prefix}_${m}x${n}x${k}_${lhs_rhs_type}_${acc_type}"
 
-  # Load the contents of OUTPUT_DIR/{name}_command_args.txt into a variable:
-  input_output_line=$(cat ${OUTPUT_DIR}/${name}_input_args.txt)
+    # Running 'python3 ${INPUT_GENERATOR} ${test_file} ${OUTPUT_DIR}' does 3 things.
+    # 1) it creates a mlir file using the test template;
+    # 2) it creates binary files with the data that will be consumed as inputs
+    #    by iree-run-module;
+    # 3) it prints a line with the names of the binary files, which
+    #    iree-run-module will have appended (input and output flags).
+    #
+    python3 ${INPUT_GENERATOR} ${OUTPUT_DIR} ${name_prefix} ${m} ${n} ${k} ${lhs_rhs_type} ${acc_type}
 
-  # Path of the test mlir and vmfb files
-  test_file="${OUTPUT_DIR}/${name}.mlir"
-  aie_vmfb="${OUTPUT_DIR}/${name}_aie.vmfb"
-  cpu_vmfb="${OUTPUT_DIR}/${name}_cpu.vmfb"
+    # Path of the test mlir and vmfb files
+    test_file="${OUTPUT_DIR}/${name}.mlir"
+  fi
 
   # Assert that the test file is exist
   if [ -z "${test_file}" ]; then
     echo "The test file must be provided."
     exit 1
   fi
+  echo "**** Running test for ${test_file} ****"
+
+  # Disable exit on failure:
+  set +e
+
+  aie_vmfb="${OUTPUT_DIR}/${name}_aie.vmfb"
+  cpu_vmfb="${OUTPUT_DIR}/${name}_cpu.vmfb"
 
   echo "**** Generating AIE .vmfb file for ${name} ****"
   ${IREE_COMPILE_EXE} "${test_file}"  \
@@ -254,17 +275,6 @@ function run_test() {
        --iree-hal-target-backends=llvm-cpu \
        -o "${cpu_vmfb}"
 
-  # Extract function names from the mlir file
-  function_names=$(grep -oP '@\K\S+(?=\()' ${test_file})
-
-  # Running 'python3 ${INPUT_GENERATOR} ${test_file} ${OUTPUT_DIR}' does 2 things.
-  # 1) it creates binary files with the data that will be consumed as inputs
-  #    by iree-run-module
-  # 2) it prints a line with the names of the binary files, which
-  #    iree-run-module will have appended (input and output flags).
-  #
-  python3 ${INPUT_GENERATOR} ${test_file} ${OUTPUT_DIR}
-
   # Load the contents of OUTPUT_DIR/{name}_command_args.txt into a variable:
   input_output_line=$(cat ${OUTPUT_DIR}/${name}_input_args.txt)
 
@@ -281,10 +291,15 @@ function run_test() {
 }
 
 run_test \
+  --test_file ${THIS_DIR}/test_files/matmul_int32.mlir
+
+run_test \
    --name_prefix "matmul" \
    --lhs_rhs_type "bf16" \
    --acc_type "f32" \
-   --m "8"  --n "32" --k "64"
+   --m "8"  --n "32" --k "64" \
+   --rtol 1e-10 \
+   --atol 1e-10
 
 run_test \
    --name_prefix "matmul_elementwise" \
