@@ -1,6 +1,6 @@
-// RUN: iree-opt --split-input-file --pass-pipeline="builtin.module(iree-amdaie-insert-aie-workgroup)" --verify-diagnostics %s | FileCheck %s
+// RUN: iree-opt --split-input-file --pass-pipeline="builtin.module(iree-amdaie-insert-cores)" --verify-diagnostics %s | FileCheck %s
 
-func.func @insert_aie_workgroup_with_non_normalized_forall() {
+func.func @insert_cores_with_non_normalized_forall() {
   %c2 = arith.constant 2 : index
   scf.forall (%arg0, %arg1) in (1, 1) {
     // expected-error @+1 {{scf.forall operations must be normalized before core operation insertion}}
@@ -12,60 +12,50 @@ func.func @insert_aie_workgroup_with_non_normalized_forall() {
 
 // -----
 
-// CHECK-LABEL: @insert_aie_workgroup
-// CHECK: scf.forall (%[[ARG0:.*]], %[[ARG1:.*]]) in (1, 1) {
-// CHECK:   amdaie.workgroup {
-// CHECK:     scf.forall (%[[ARG2:.*]], %[[ARG3:.*]]) in (1, 2) {
-// CHECK:       %[[DMA_CPY0:.*]] = amdaie.dma_cpy_nd
-// CHECK:       %[[DMA_CPY1:.*]] = amdaie.dma_cpy_nd
-// CHECK:       %[[DMA_CPY2:.*]] = amdaie.dma_cpy_nd
-// CHECK:       %[[DMA_CPY3:.*]] = amdaie.dma_cpy_nd
-// CHECK:       %[[C2:.*]] = arith.constant 2 : index
-// CHECK:       %[[ADD:.*]] = arith.addi %[[ARG2]], %[[C2]] : index
-// CHECK:       %[[TILE0:.*]] = amdaie.tile(%[[ARG3]], %[[ADD]])
-// CHECK:       %[[CORE0:.*]] = amdaie.core(%[[TILE0]]) {
-// CHECK:         linalg.fill
-// CHECK:         amdaie.logicalobjectfifo.consume(%[[DMA_CPY2]])
-// CHECK:         amdaie.logicalobjectfifo.consume(%[[DMA_CPY3]])
-// CHECK:         linalg.generic
-// CHECK:         amdaie.end
-// CHECK:       }
-// CHECK:     } {mapping = [#gpu.thread<y>, #gpu.thread<x>]}
-// CHECK:     amdaie.controlcode {
-// CHECK:       amdaie.end
-// CHECK:     }
-// CHECK:   }
-// CHECK:   amdaie.workgroup {
-// CHECK:     scf.forall (%[[ARG2:.*]], %[[ARG3:.*]]) in (1, 2) {
-// CHECK:       %[[DMA_CPY0:.*]] = amdaie.dma_cpy_nd
-// CHECK:       %[[DMA_CPY1:.*]] = amdaie.dma_cpy_nd
-// CHECK:       %[[DMA_CPY2:.*]] = amdaie.dma_cpy_nd
-// CHECK:       %[[DMA_CPY3:.*]] = amdaie.dma_cpy_nd
-// CHECK:       %[[DMA_CPY4:.*]] = amdaie.dma_cpy_nd
-// CHECK:       %[[DMA_CPY5:.*]] = amdaie.dma_cpy_nd
-// CHECK:       %[[C2:.*]] = arith.constant 2 : index
-// CHECK:       %[[ADD:.*]] = arith.addi %[[ARG2]], %[[C2]] : index
-// CHECK:       %[[TILE1:.*]] = amdaie.tile(%[[ARG3]], %[[ADD]])
-// CHECK:       %[[CORE1:.*]] = amdaie.core(%[[TILE1]]) {
-// CHECK:         linalg.fill ins(%c0_i32 : i32) outs(%alloc_1 : memref<4x8x4x8xi32, 2>)
-// CHECK:         amdaie.logicalobjectfifo.consume(%[[DMA_CPY2]])
-// CHECK:         amdaie.logicalobjectfifo.consume(%[[DMA_CPY3]])
-// CHECK:         linalg.generic
-// CHECK:         amdaie.logicalobjectfifo.produce(%[[DMA_CPY4]])
-// CHECK:         amdaie.end
-// CHECK:       }
-// CHECK:     } {mapping = [#gpu.thread<y>, #gpu.thread<x>]}
-// CHECK:     amdaie.controlcode {
-// CHECK:       amdaie.end
-// CHECK:     }
-// CHECK:   }
-// CHECK: } {mapping = [#gpu.block<y>, #gpu.block<x>]}
+// CHECK-LABEL: @insert_cores
+// CHECK:       scf.forall (%[[ARG0:.*]], %[[ARG1:.*]]) in (1, 1) {
+// CHECK:         scf.forall (%[[ARG2:.*]], %[[ARG3:.*]]) in (1, 2) {
+// CHECK:           %[[DMA_CPY0:.*]] = amdaie.dma_cpy_nd
+// CHECK:           %[[DMA_CPY1:.*]] = amdaie.dma_cpy_nd
+// CHECK:           %[[DMA_CPY2:.*]] = amdaie.dma_cpy_nd
+// CHECK:           %[[DMA_CPY3:.*]] = amdaie.dma_cpy_nd
+// CHECK:           %[[C2:.*]] = arith.constant 2 : index
+// CHECK:           %[[ADD:.*]] = arith.addi %[[ARG2]], %[[C2]] : index
+// CHECK:           %[[TILE0:.*]] = amdaie.tile(%[[ARG3]], %[[ADD]])
+// CHECK:           %[[CORE0:.*]] = amdaie.core(%[[TILE0]]) {
+// CHECK:             linalg.fill
+// CHECK:             amdaie.logicalobjectfifo.consume(%[[DMA_CPY2]])
+// CHECK:             amdaie.logicalobjectfifo.consume(%[[DMA_CPY3]])
+// CHECK:             linalg.generic
+// CHECK:             amdaie.end
+// CHECK:           }
+// CHECK:         } {mapping = [#gpu.thread<y>, #gpu.thread<x>]}
+// CHECK:         scf.forall (%[[ARG2:.*]], %[[ARG3:.*]]) in (1, 2) {
+// CHECK:           %[[DMA_CPY0:.*]] = amdaie.dma_cpy_nd
+// CHECK:           %[[DMA_CPY1:.*]] = amdaie.dma_cpy_nd
+// CHECK:           %[[DMA_CPY2:.*]] = amdaie.dma_cpy_nd
+// CHECK:           %[[DMA_CPY3:.*]] = amdaie.dma_cpy_nd
+// CHECK:           %[[DMA_CPY4:.*]] = amdaie.dma_cpy_nd
+// CHECK:           %[[DMA_CPY5:.*]] = amdaie.dma_cpy_nd
+// CHECK:           %[[C2:.*]] = arith.constant 2 : index
+// CHECK:           %[[ADD:.*]] = arith.addi %[[ARG2]], %[[C2]] : index
+// CHECK:           %[[TILE1:.*]] = amdaie.tile(%[[ARG3]], %[[ADD]])
+// CHECK:           %[[CORE1:.*]] = amdaie.core(%[[TILE1]]) {
+// CHECK:             linalg.fill ins(%c0_i32 : i32) outs(%alloc_1 : memref<4x8x4x8xi32, 2>)
+// CHECK:             amdaie.logicalobjectfifo.consume(%[[DMA_CPY2]])
+// CHECK:             amdaie.logicalobjectfifo.consume(%[[DMA_CPY3]])
+// CHECK:             linalg.generic
+// CHECK:             amdaie.logicalobjectfifo.produce(%[[DMA_CPY4]])
+// CHECK:             amdaie.end
+// CHECK:           }
+// CHECK:         } {mapping = [#gpu.thread<y>, #gpu.thread<x>]}
+// CHECK:       } {mapping = [#gpu.block<y>, #gpu.block<x>]}
 #map = affine_map<(d0) -> (d0 * 32)>
 #map1 = affine_map<(d0, d1, d2, d3, d4, d5) -> (d2, d0, d3, d5)>
 #map2 = affine_map<(d0, d1, d2, d3, d4, d5) -> (d1, d2, d5, d4)>
 #map3 = affine_map<(d0, d1, d2, d3, d4, d5) -> (d1, d0, d3, d4)>
 module {
-  func.func @insert_aie_workgroup() {
+  func.func @insert_cores() {
     %c1024 = arith.constant 1024 : index
     %c512 = arith.constant 512 : index
     %c1 = arith.constant 1 : index

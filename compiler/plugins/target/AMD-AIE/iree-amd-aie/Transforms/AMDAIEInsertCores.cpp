@@ -3,6 +3,16 @@
 // Licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+//===----------------------------------------------------------------------===//
+//
+// This file implements the insertion of `amdaie.core` operations in the
+// innermost `scf.forall` operations with thread mapping. Each core has a tile
+// location which is computed from the for loop's induction variables. This pass
+// will probably be updated in the future to work with loops with block mapping
+// as well.
+//
+//===----------------------------------------------------------------------===//
 
 #include "iree-amd-aie/IR/AMDAIEDialect.h"
 #include "iree-amd-aie/IR/AMDAIEOps.h"
@@ -11,7 +21,7 @@
 #include "iree-amd-aie/Transforms/Transforms.h"
 #include "iree/compiler/Codegen/TransformStrategies/GPU/Common.h"
 
-#define DEBUG_TYPE "iree-amdaie-insert-aie-workgroup"
+#define DEBUG_TYPE "iree-amdaie-insert-cores"
 
 namespace mlir::iree_compiler::AMDAIE {
 
@@ -30,74 +40,38 @@ void getAttributeMapping(SmallVector<scf::ForallOp> forallOps,
   }
 }
 
-/// Insert workgroups around `scf::Forall` ops with thread mapping.
-/// NOTE: This can be extended to block mapping as well later.
-LogicalResult insertWorkgroupOps(mlir::ModuleOp moduleOp) {
-  IRRewriter rewriter(moduleOp.getContext());
-  moduleOp->walk([&](scf::ForallOp forallOp) {
-    if (forallOp.getNumResults() != 0) {
-      return WalkResult::advance();
-    }
-    if (!forallOp.getMapping().has_value()) {
-      return WalkResult::advance();
-    }
-    SmallVector<Attribute> threadMapping =
-        llvm::to_vector(forallOp.getMapping()->getValue());
-    if (llvm::any_of(threadMapping, [](Attribute map) {
-          return !llvm::isa<mlir::gpu::GPUThreadMappingAttr>(map);
-        })) {
-      return WalkResult::advance();
-    }
-    if (threadMapping.size() != 2) {
-      return WalkResult::advance();
-    }
-    // Create the workgroup region
-    rewriter.setInsertionPoint(forallOp);
-    auto workgroupOp =
-        rewriter.create<AMDAIE::WorkgroupOp>(rewriter.getUnknownLoc());
-    rewriter.moveOpBefore(forallOp, workgroupOp.getControlCode());
-    return WalkResult::advance();
-  });
-  return success();
-}
-
 /// Insert core ops inside innermost forall ops around computational ops and
 /// add synchronization ops along the way to synchronize with surrounding
 /// dma ops.
-LogicalResult insertCoreOpsInWorkgroup(mlir::ModuleOp moduleOp) {
+LogicalResult insertCoreOps(mlir::ModuleOp moduleOp) {
   IRRewriter rewriter(moduleOp.getContext());
-  WalkResult res = moduleOp->walk([&](AMDAIE::WorkgroupOp workgroupOp) {
-    // Find innermost forall loops
-    SmallVector<scf::ForallOp> innermostForallLoops =
-        getInnermostForallLoops(workgroupOp);
-    if (innermostForallLoops.empty()) {
-      workgroupOp.emitOpError() << "contains no nested forall op";
-      return WalkResult::interrupt();
-    }
-    if (innermostForallLoops.size() != 1) {
-      workgroupOp.emitOpError()
-          << "multiple innermost foralls not supported for now";
-      return WalkResult::interrupt();
-    }
-    scf::ForallOp innermostForall = innermostForallLoops[0];
-    if (!innermostForall.isNormalized()) {
-      innermostForall.emitOpError()
+  WalkResult res = moduleOp->walk([&](scf::ForallOp forallOp) {
+    // Currently, innermost `scf.forall` operations are expected to have thread
+    // mapping and are therefore selected for insertion of cores. Advance if no
+    // thread mapping.
+    SmallVector<Attribute> mapping =
+        llvm::to_vector(forallOp.getMapping()->getValue());
+    if (!isa<mlir::gpu::GPUThreadMappingAttr>(*mapping.begin()))
+      return WalkResult::advance();
+
+    if (!forallOp.isNormalized()) {
+      forallOp.emitOpError()
           << "scf.forall operations must be normalized before core "
              "operation insertion";
       return WalkResult::interrupt();
     }
-    auto parentOps = getInclusiveParentsOfType<scf::ForallOp>(innermostForall);
+    auto parentOps = getInclusiveParentsOfType<scf::ForallOp>(forallOp);
     DenseMap<Attribute, Value> attrMapping;
     getAttributeMapping(parentOps, attrMapping);
-    if (!attrMapping.contains(gpu::threadX(workgroupOp->getContext())) ||
-        !attrMapping.contains(gpu::threadY(workgroupOp->getContext()))) {
-      workgroupOp.emitOpError() << "no forall with thread mapping found";
+    if (!attrMapping.contains(gpu::threadX(forallOp->getContext())) ||
+        !attrMapping.contains(gpu::threadY(forallOp->getContext()))) {
+      forallOp.emitOpError() << "no forall with thread mapping found";
       return WalkResult::interrupt();
     }
-    Value threadX = attrMapping[gpu::threadX(workgroupOp->getContext())];
-    Value threadY = attrMapping[gpu::threadY(workgroupOp->getContext())];
+    Value threadX = attrMapping[gpu::threadX(forallOp->getContext())];
+    Value threadY = attrMapping[gpu::threadY(forallOp->getContext())];
     // Create CoreOp at the end of the innermost forall
-    rewriter.setInsertionPoint(innermostForall.getBody()->getTerminator());
+    rewriter.setInsertionPoint(forallOp.getBody()->getTerminator());
     auto coreOp = rewriter.create<AMDAIE::CoreOp>(rewriter.getUnknownLoc(),
                                                   threadX, threadY);
     Region &region = coreOp.getRegion();
@@ -108,7 +82,7 @@ LogicalResult insertCoreOpsInWorkgroup(mlir::ModuleOp moduleOp) {
     // Walk all operations in the workgroup and fill in the CoreOp with
     // computational ops (linalg) and synchronization ops to synchronize
     // with the workgroup DMA ops.
-    WalkResult workgroupRes = workgroupOp->walk([&](Operation *op) {
+    WalkResult forallRes = forallOp->walk([&](Operation *op) {
       // Skip operations already inside core ops
       if (op->getParentOfType<AMDAIE::CoreOp>()) return WalkResult::advance();
       if (auto dmaOp = dyn_cast<AMDAIE::DmaCpyNdOp>(op)) {
@@ -135,42 +109,40 @@ LogicalResult insertCoreOpsInWorkgroup(mlir::ModuleOp moduleOp) {
               rewriter.getUnknownLoc(), SmallVector<Type, 1>{}, dmaOp);
         }
       } else if (auto linalgOp = dyn_cast<linalg::LinalgOp>(op)) {
+        rewriter.setInsertionPoint(endOp);
         rewriter.moveOpBefore(linalgOp, endOp);
       }
       return WalkResult::advance();
     });
-    if (workgroupRes.wasInterrupted()) return WalkResult::interrupt();
+    if (forallRes.wasInterrupted()) return WalkResult::interrupt();
     return WalkResult::advance();
   });
   if (res.wasInterrupted()) return failure();
   return success();
 }
 
-class AMDAIEInsertAIEWorkgroupPass
-    : public impl::AMDAIEInsertAIEWorkgroupBase<AMDAIEInsertAIEWorkgroupPass> {
+class AMDAIEInsertCoresPass
+    : public impl::AMDAIEInsertCoresBase<AMDAIEInsertCoresPass> {
  public:
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<linalg::LinalgDialect, AMDAIEDialect>();
   }
 
-  AMDAIEInsertAIEWorkgroupPass() = default;
-  AMDAIEInsertAIEWorkgroupPass(const AMDAIEInsertAIEWorkgroupPass &pass){};
+  AMDAIEInsertCoresPass() = default;
+  AMDAIEInsertCoresPass(const AMDAIEInsertCoresPass &pass){};
   void runOnOperation() override;
 };
 
-void AMDAIEInsertAIEWorkgroupPass::runOnOperation() {
-  if (failed(insertWorkgroupOps(getOperation()))) {
-    return signalPassFailure();
-  }
-  if (failed(insertCoreOpsInWorkgroup(getOperation()))) {
+void AMDAIEInsertCoresPass::runOnOperation() {
+  if (failed(insertCoreOps(getOperation()))) {
     return signalPassFailure();
   }
 }
 
 }  // namespace
 
-std::unique_ptr<Pass> createAMDAIEInsertAIEWorkgroupPass() {
-  return std::make_unique<AMDAIEInsertAIEWorkgroupPass>();
+std::unique_ptr<Pass> createAMDAIEInsertCoresPass() {
+  return std::make_unique<AMDAIEInsertCoresPass>();
 }
 
 }  // namespace mlir::iree_compiler::AMDAIE
