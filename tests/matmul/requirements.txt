@@ -1,3 +1,8 @@
 PyYAML>=5.4.1
 requests>=2.28.0
 enum_tools==0.6.4
+numpy
+-f https://github.com/nod-ai/prototype-aie-toolchain/releases/expanded_assets/release
+xaiepy
+-f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/latest-wheels
+aie-python-bindings-debug

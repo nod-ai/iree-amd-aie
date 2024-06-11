@@ -364,10 +364,10 @@ iree_cc_library(
     AIETargets
   SRCS
     "XCLBinGen.cpp"
-    "${IREE_MLIR_AIE_SOURCE_DIR}/lib/Targets/AIETargetBCF.cpp"
-    "${IREE_MLIR_AIE_SOURCE_DIR}/lib/Targets/AIETargetLdScript.cpp"
-    "${IREE_MLIR_AIE_SOURCE_DIR}/lib/Targets/AIETargetNPU.cpp"
-    "${IREE_MLIR_AIE_SOURCE_DIR}/lib/Targets/AIETargetCDODirect.cpp"
+    "AIETargetBCF.cpp"
+    "AIETargetLdScript.cpp"
+    "AIETargetNPU.cpp"
+    "AIETargetCDODirect.cpp"
   DEPS
     ::AIEDialectIR
     ::AIEDialectIR

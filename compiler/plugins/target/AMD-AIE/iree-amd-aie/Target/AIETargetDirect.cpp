@@ -206,12 +206,6 @@ LogicalResult AIETargetDirectBackend::serializeExecutable(
   if (failed(maybeWorkDir)) return failure();
   auto workDir = maybeWorkDir.value();
 
-  xilinx::XCLBinGenConfig TK;
-  TK.TempDir = workDir.str();
-  TK.TargetArch = "AIE2";
-  TK.UseChess = true;
-  TK.Verbose = true;
-
   SmallVector<std::string> entryPointNames;
   for (auto exportOp : variantOp.getExportOps()) {
     entryPointNames.emplace_back(exportOp.getSymName().substr(0, 48));
@@ -221,9 +215,15 @@ LogicalResult AIETargetDirectBackend::serializeExecutable(
     return moduleOp.emitOpError("Expected a single entry point");
   }
 
+  xilinx::XCLBinGenConfig TK;
+  TK.TempDir = workDir.str();
+  TK.TargetArch = "AIE2";
+  TK.UseChess = true;
+  TK.Verbose = true;
   TK.XCLBinKernelName = entryPointNames[0];
   TK.XCLBinKernelID = "0x101";
   TK.XCLBinInstanceName = "FOO";
+
   SmallString<128> xclbinPath(workDir);
   llvm::sys::path::append(xclbinPath, basename + ".xclbin");
   SmallString<128> npuInstPath(workDir);
