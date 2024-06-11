@@ -9,8 +9,12 @@
 #include <fstream>
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
+#include "aie/Dialect/AIEVec/IR/AIEVecDialect.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
+#include "aie/Dialect/XLLVM/XLLVMDialect.h"
 #include "aie/Passes.h"
+#include "aie/Target/LLVMIR/Dialect/XLLVM/XLLVMToLLVMIRTranslation.h"
+#include "aie/XCLBinGen.h"
 #include "air/Dialect/AIR/AIRDialect.h"
 #include "air/Dialect/AIRRt/AIRRtDialect.h"
 #include "iree-amd-aie/IR/AMDAIEDialect.h"
@@ -29,15 +33,22 @@
 #include "llvm/Support/Path.h"
 #include "llvm/Support/Program.h"
 #include "llvm/Support/ToolOutputFile.h"
+#include "mlir/Conversion/FuncToLLVM/ConvertFuncToLLVM.h"
 #include "mlir/Conversion/Passes.h"
 #include "mlir/Dialect/Affine/Passes.h"
+#include "mlir/Dialect/DLTI/DLTI.h"
+#include "mlir/Dialect/EmitC/IR/EmitC.h"
+#include "mlir/Dialect/Func/Extensions/AllExtensions.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/Passes.h"
+#include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/Dialect/MemRef/Transforms/Passes.h"
 #include "mlir/Dialect/Transform/IR/TransformDialect.h"
+#include "mlir/Dialect/Vector/IR/VectorOps.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Support/FileUtilities.h"
+#include "mlir/Target/LLVMIR/Dialect/All.h"
 #include "mlir/Target/LLVMIR/Export.h"
 #include "mlir/Transforms/Passes.h"
 #include "runtime/plugins/AMD-AIE/iree-amd-aie/schemas/xrt_executable_def_builder.h"
@@ -126,7 +137,22 @@ class AIETargetDirectBackend final : public IREE::HAL::TargetBackend {
                     IREE::LinalgExt::IREELinalgExtDialect,
                     transform::TransformDialect, xilinx::AIE::AIEDialect,
                     xilinx::AIEX::AIEXDialect, xilinx::air::airDialect,
-                    xilinx::airrt::AIRRtDialect>();
+                    xilinx::xllvm::XLLVMDialect, xilinx::aievec::AIEVecDialect,
+                    emitc::EmitCDialect, LLVM::LLVMDialect, func::FuncDialect,
+                    cf::ControlFlowDialect, DLTIDialect, arith::ArithDialect,
+                    memref::MemRefDialect, math::MathDialect,
+                    vector::VectorDialect, xilinx::airrt::AIRRtDialect>();
+
+    registerBuiltinDialectTranslation(registry);
+    registerLLVMDialectTranslation(registry);
+    xilinx::xllvm::registerXLLVMDialectTranslation(registry);
+    arith::registerConvertArithToLLVMInterface(registry);
+    cf::registerConvertControlFlowToLLVMInterface(registry);
+    func::registerAllExtensions(registry);
+    registerConvertFuncToLLVMInterface(registry);
+    index::registerConvertIndexToLLVMInterface(registry);
+    registerConvertMathToLLVMInterface(registry);
+    registerConvertMemRefToLLVMInterface(registry);
   }
 
   void buildTranslationPassPipeline(IREE::HAL::ExecutableTargetAttr,
@@ -153,10 +179,6 @@ LogicalResult AIETargetDirectBackend::serializeExecutable(
       llvm::join_items("_", serOptions.dumpBaseName, variantOp.getName());
 
   auto maybeWorkDir = [&]() -> FailureOr<SmallString<128>> {
-    // If a path for intermediates has been specified, assume it is common for
-    // all executables compiling in parallel, and so create an
-    // executable-specific subdir to keep this executable's intermediates
-    // separate.
     if (!serOptions.dumpIntermediatesPath.empty()) {
       SmallString<128> workDir{serOptions.dumpIntermediatesPath};
       llvm::sys::path::append(workDir, basename);
@@ -169,9 +191,6 @@ LogicalResult AIETargetDirectBackend::serializeExecutable(
       return workDir;
     }
 
-    // No path for intermediates: make a temporary directory for this
-    // executable that is certain to be distinct from the dir of any other
-    // executable.
     SmallString<128> workDirFromScratch;
     auto err = llvm::sys::fs::createUniqueDirectory(
         /* prefix = */ variantOp.getName(), workDirFromScratch);
@@ -187,47 +206,75 @@ LogicalResult AIETargetDirectBackend::serializeExecutable(
   if (failed(maybeWorkDir)) return failure();
   auto workDir = maybeWorkDir.value();
 
-  ModuleOp coreMod = moduleOp.clone();
-  PassManager passManager(coreMod->getContext(), ModuleOp::getOperationName());
-  passManager.addPass(xilinx::AIE::createAIECoreToStandardPass());
-  passManager.addPass(xilinx::AIEX::createAIEXToStandardPass());
-  // convert to LLVM dialect
-  passManager.addPass(createCanonicalizerPass());
-  passManager.addPass(createCSEPass());
-  passManager.addPass(createConvertVectorToLLVMPass());
-  passManager.addPass(createIREEExpandStridedMetadataPass());
-  passManager.addPass(createLowerAffinePass());
-  passManager.addPass(createConvertMathToLLVMPass());
-  passManager.addPass(createArithToLLVMConversionPass());
-  passManager.addPass(createIREEExpandStridedMetadataPass());
-  passManager.addPass(createFinalizeMemRefToLLVMConversionPass());
-  ConvertFuncToLLVMPassOptions funcToLlvmPassOptions;
-  funcToLlvmPassOptions.useBarePtrCallConv = true;
-  passManager.addPass(createConvertFuncToLLVMPass(funcToLlvmPassOptions));
-  passManager.addPass(createConvertControlFlowToLLVMPass());
-  passManager.addPass(createCanonicalizerPass());
-  passManager.addPass(createCSEPass());
+  xilinx::XCLBinGenConfig TK;
+  TK.TempDir = workDir.str();
+  TK.TargetArch = "AIE2";
+  TK.UseChess = true;
+  TK.Verbose = true;
 
-  if (failed(passManager.run(coreMod))) {
-    variantOp.emitError() << "failed to run translation of source "
-                             "executable to target executable for backend "
-                          << variantOp.getTarget();
-    return failure();
+  SmallVector<std::string> entryPointNames;
+  for (auto exportOp : variantOp.getExportOps()) {
+    entryPointNames.emplace_back(exportOp.getSymName().substr(0, 48));
   }
 
-  std::string llvmir;
-  llvm::raw_string_ostream os(llvmir);
-  llvm::LLVMContext llvmContext;
-  auto llvmModule = translateModuleToLLVMIR(coreMod, llvmContext);
-  llvmModule->dump();
-  llvmModule->print(os, nullptr);
+  if (entryPointNames.size() != 1) {
+    return moduleOp.emitOpError("Expected a single entry point");
+  }
 
-  if (failed(xilinx::AIE::AIETranslateToCDODirect(moduleOp, workDir)))
+  TK.XCLBinKernelName = entryPointNames[0];
+  TK.XCLBinKernelID = "0x101";
+  TK.XCLBinInstanceName = "FOO";
+  SmallString<128> xclbinPath(workDir);
+  llvm::sys::path::append(xclbinPath, basename + ".xclbin");
+  SmallString<128> npuInstPath(workDir);
+  llvm::sys::path::append(npuInstPath, basename + ".npu.txt");
+
+  if (failed(aie2xclbin(variantOp->getContext(), moduleOp, TK, npuInstPath,
+                        xclbinPath)))
     return failure();
 
-  moduleOp.emitOpError(
-      "unimplemented AIETargetDirectBackend::serializeExecutable");
-  return failure();
+  std::vector<uint32_t> npuInstrs;
+
+  std::ifstream instrFile(static_cast<std::string>(npuInstPath));
+  std::string line;
+  while (std::getline(instrFile, line)) {
+    std::istringstream iss(line);
+    uint32_t a;
+    if (!(iss >> std::hex >> a)) {
+      return moduleOp.emitOpError("Unable to parse instruction file");
+    }
+    npuInstrs.push_back(a);
+  }
+
+  std::string errorMessage;
+  auto xclbinIn = openInputFile(xclbinPath, &errorMessage);
+  if (!xclbinIn) {
+    moduleOp.emitOpError() << "Failed to open xclbin file: " << errorMessage;
+  }
+
+  // Serialize the executable to flatbuffer format
+  FlatbufferBuilder builder;
+  iree_amd_aie_hal_xrt_ExecutableDef_start_as_root(builder);
+  auto entryPointsRef = builder.createStringVec(entryPointNames);
+
+  iree_amd_aie_hal_xrt_ExecutableDef_entry_points_add(builder, entryPointsRef);
+  iree_amd_aie_hal_xrt_AsmInstDef_vec_start(builder);
+  auto npuInstrsVec = builder.createInt32Vec(npuInstrs);
+  iree_amd_aie_hal_xrt_AsmInstDef_vec_push_create(builder, npuInstrsVec);
+  auto npuInstrsRef = iree_amd_aie_hal_xrt_AsmInstDef_vec_end(builder);
+  iree_amd_aie_hal_xrt_ExecutableDef_asm_instrs_add(builder, npuInstrsRef);
+  auto xclbinStringRef = builder.createString(xclbinIn->getBuffer());
+  iree_amd_aie_hal_xrt_ExecutableDef_xclbins_add(builder, xclbinStringRef);
+  iree_amd_aie_hal_xrt_ExecutableDef_end_as_root(builder);
+
+  auto binaryOp = executableBuilder.create<IREE::HAL::ExecutableBinaryOp>(
+      variantOp.getLoc(), variantOp.getSymName(),
+      variantOp.getTarget().getFormat(),
+      builder.getBufferAttr(executableBuilder.getContext()));
+  binaryOp.setMimeTypeAttr(
+      executableBuilder.getStringAttr("application/x-flatbuffers"));
+
+  return success();
 }
 
 std::shared_ptr<IREE::HAL::TargetDevice> createTargetDirect(

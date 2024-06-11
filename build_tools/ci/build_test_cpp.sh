@@ -39,6 +39,15 @@ ccache -z
 XRT_BUILD_DIR=$repo_root/xrt-build
 XRT_INSTALL_DIR=$repo_root/xrt-install
 $this_dir/build_xrt.sh $XRT_BUILD_DIR $XRT_INSTALL_DIR
+echo "Assuming that this is the 'CI case'."
+export VITIS=/opt/Xilinx/Vitis/2023.2
+
+echo "Looking for chess-clang"
+echo $(find $VITIS -name chess-clang)
+
+echo "Looking for chess-llvm-link"
+echo $(find $VITIS -name chess-llvm-link)
+
 
 echo "Building IREE"
 echo "============="
@@ -87,7 +96,14 @@ cmake --build "$build_dir" --target iree-install-dist
 
 echo "CTest"
 echo "-----"
-ctest --test-dir "$build_dir" -R amd-aie --output-on-failure
+
+if [ -d "$VITIS" ]; then
+  echo "running all tests"
+  ctest --test-dir "$build_dir" -R amd-aie --output-on-failure
+else
+  echo "not running running VITIS tests"
+  ctest --test-dir "$build_dir" -R amd-aie -E xclbin --output-on-failure
+fi
 
 # Show ccache stats.
 ccache --show-stats

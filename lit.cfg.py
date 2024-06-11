@@ -12,6 +12,7 @@
 
 import os
 import tempfile
+from pathlib import Path
 
 import lit.formats
 
@@ -27,6 +28,12 @@ config.environment.update(
         if k.startswith("IREE_") or k in passthrough_env_vars
     }
 )
+
+config.environment["VITIS"] = "/opt/Xilinx/Vitis/2023.2"
+XILINXD_LICENSE_FILE = Path(
+    os.getenv("XILINXD_LICENSE_FILE", Path.home() / ".Xilinx/aie.lic")
+).absolute()
+config.environment["XILINXD_LICENSE_FILE"] = str(XILINXD_LICENSE_FILE)
 
 # Use the most preferred temp directory.
 config.test_exec_root = (

@@ -1,6 +1,8 @@
-// RUN: not iree-compile --compile-mode=hal-executable --iree-hal-target-backends=amd-aie-direct %s 2>&1 | FileCheck %s
+// RUN: iree-compile --compile-mode=hal-executable --iree-hal-target-backends=amd-aie-direct %s | FileCheck %s
 
 // CHECK: Generating:{{.*}}aie_cdo_elfs.bin
+// CHECK: Generating:{{.*}}aie_cdo_init.bin
+// CHECK: Generating:{{.*}}aie_cdo_enable.bin
 module attributes {hal.device.targets = [#hal.device.target<"amd-aie-direct", [#hal.executable.target<"amd-aie-direct", "amdaie-xclbin-fb", {target_arch = "chip-tbd", ukernels = "none"}>]>]} {
   hal.executable private @dummy1 {
     hal.executable.variant public @amdaie_xclbin_fb target(<"amd-aie-direct", "amdaie-xclbin-fb", {target_arch = "chip-tbd", ukernels = "none"}>) {
