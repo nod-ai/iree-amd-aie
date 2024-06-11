@@ -299,6 +299,7 @@ class AMDAIEPackToDmaPass
  public:
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<tensor::TensorDialect, linalg::LinalgDialect,
+                    IREE::LinalgExt::IREELinalgExtDialect,
                     xilinx::air::airDialect>();
   }
 
