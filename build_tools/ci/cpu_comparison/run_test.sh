@@ -10,7 +10,7 @@
 #    if one wants to run multiple tests with the same operations but different
 #    data shapes and types. For future development, if one wants to add tests for
 #    other operations, an IR template should be added following the example in
-#    `/test_template/matmul_elementwise_MxNxK.mlir`.
+#    `/test_template/matmul_bias_MxK_KxN_MxN.mlir`.
 
 set -euox pipefail
 
@@ -312,14 +312,14 @@ run_test \
    --atol 1e-10
 
 run_test \
-   --name_prefix "matmul_elementwise" \
+   --name_prefix "matmul_bias_2d" \
    --pipeline "pack-peel" \
    --lhs_rhs_type "i32" \
    --acc_type "i32" \
    --m "128"  --n "128" --k "256"
 
 run_test \
-   --name_prefix "matmul_elementwise" \
+   --name_prefix "matmul_bias_1d" \
    --pipeline "pack-peel" \
    --lhs_rhs_type "bf16" \
    --acc_type "f32" \

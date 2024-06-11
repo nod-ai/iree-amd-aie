@@ -216,16 +216,22 @@ def generate_inputs_with_template(output_dir, name_prefix, m, n, k, lhs_rhs_type
     replace['K'] = k
     replace['TYPE1'] = lhs_rhs_type
     replace['TYPE2'] = acc_type
-    if name_prefix == "matmul":
-        replace['ZERO'] = 0 if acc_type[0] == 'i' else 0.0
+    replace['ZERO'] = 0 if acc_type[0] == 'i' else 0.0
+    if "matmul_bias" in name_prefix:
+        replace['ADD'] = "arith.addi" if acc_type[0] == 'i' else "arith.addf"
 
     # Currently, for matmul_elementwise test, we only consider two cases:
     # 1) input and accumulation are integer number;
     # 2) input data type is bf16 and accumulation type is f32.
-    if name_prefix == "matmul_elementwise" and lhs_rhs_type == "bf16" and acc_type == "f32":
-        in_file_name = f"{name_prefix}_MxNxK_bf16_f32.mlir"
+    # In the current example tests, the elementwise ops can be 1-d or 2-d bias.
+    if name_prefix == "matmul":
+        in_file_name = "matmul_MxK_KxN.mlir"
+    elif name_prefix == "matmul_bias_1d":
+        in_file_name = "matmul_bias_MxK_KxN_N.mlir"
+    elif name_prefix == "matmul_bias_2d":
+        in_file_name = "matmul_bias_MxK_KxN_MxN.mlir"
     else:
-        in_file_name = f"{name_prefix}_MxNxK.mlir"
+        raise ValueError("The operation is currently not supported.")
     out_file_name = f"{name_prefix}_{m}x{n}x{k}_{lhs_rhs_type}_{acc_type}"
     in_dir = os.path.join(sys.path[0], "test_template")
     write_generated_mlir(in_dir, in_file_name, output_dir, out_file_name, replace)
