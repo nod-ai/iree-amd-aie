@@ -21,9 +21,6 @@ void registerAIETransformPasses() {
   registerAIECoreToStandard();
   registerAIERoutePathfinderFlows();
   registerAIELocalizeLocks();
-  registerAIENormalizeAddressSpaces();
-  registerAIEObjectFifoRegisterProcess();
   registerAIEObjectFifoStatefulTransform();
-  registerAIERoutePacketFlows();
 }
 }  // namespace mlir::iree_compiler::AMDAIE

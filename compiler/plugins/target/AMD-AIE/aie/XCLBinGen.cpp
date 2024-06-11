@@ -195,11 +195,7 @@ static void addAIELoweringPasses(OpPassManager &pm) {
   OpPassManager &devicePM = pm.nest<AIE::DeviceOp>();
   devicePM.addPass(AIE::createAIEAssignLockIDsPass());
   devicePM.addPass(AIE::createAIEAssignBufferDescriptorIDsPass());
-  devicePM.addPass(AIE::createAIEObjectFifoRegisterProcessPass());
   devicePM.addPass(AIE::createAIEObjectFifoStatefulTransformPass());
-  devicePM.addPass(AIEX::createAIEBroadcastPacketPass());
-  devicePM.addPass(AIE::createAIERoutePacketFlowsPass());
-  devicePM.addPass(AIEX::createAIELowerMulticastPass());
   devicePM.addPass(AIE::createAIEAssignBufferAddressesBasicPass());
   pm.addPass(createConvertSCFToCFPass());
 }
@@ -447,11 +443,6 @@ static LogicalResult generateCDO(MLIRContext *context, ModuleOp moduleOp,
   applyConfigToPassManager(TK, passManager);
 
   passManager.addNestedPass<AIE::DeviceOp>(AIE::createAIEPathfinderPass());
-  passManager.addNestedPass<AIE::DeviceOp>(
-      AIEX::createAIEBroadcastPacketPass());
-  passManager.addNestedPass<AIE::DeviceOp>(
-      AIE::createAIERoutePacketFlowsPass());
-  passManager.addNestedPass<AIE::DeviceOp>(AIEX::createAIELowerMulticastPass());
   if (failed(passManager.run(copy)))
     return moduleOp.emitOpError(
         "failed to run passes to prepare of XCLBin generation");
@@ -758,7 +749,6 @@ static LogicalResult generateObject(MLIRContext *context, ModuleOp moduleOp,
   applyConfigToPassManager(TK, pm);
 
   pm.addNestedPass<AIE::DeviceOp>(AIE::createAIELocalizeLocksPass());
-  pm.addNestedPass<AIE::DeviceOp>(AIE::createAIENormalizeAddressSpacesPass());
   pm.addPass(AIE::createAIECoreToStandardPass());
   pm.addPass(AIEX::createAIEXToStandardPass());
 

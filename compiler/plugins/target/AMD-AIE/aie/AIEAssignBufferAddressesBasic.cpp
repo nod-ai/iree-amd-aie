@@ -12,7 +12,6 @@
 #include "AIEAssignBufferAddressesBasic.h"
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
-#include "aie/Dialect/AIE/Transforms/AIEPasses.h"
 #include "llvm/ADT/Twine.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/Pass/Pass.h"

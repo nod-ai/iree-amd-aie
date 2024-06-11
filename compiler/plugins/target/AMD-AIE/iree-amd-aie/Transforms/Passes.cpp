@@ -448,12 +448,7 @@ void buildAMDAIELowerObjectFIFO(OpPassManager &variantPassManager) {
   devicePassMan.addPass(xilinx::AIE::createAIEAssignBufferAddressesBasicPass());
   devicePassMan.addPass(xilinx::AIE::createAIEAssignLockIDsPass());
   devicePassMan.addPass(xilinx::AIE::createAIEPathfinderPass());
-  devicePassMan.addPass(xilinx::AIE::createAIEPathfinderPass());
   devicePassMan.addPass(xilinx::AIE::createAIELocalizeLocksPass());
-  devicePassMan.addPass(xilinx::AIE::createAIENormalizeAddressSpacesPass());
-  devicePassMan.addPass(xilinx::AIE::createAIELocalizeLocksPass());
-//  modulePassManager.addPass(xilinx::AIE::createAIECoreToStandardPass());
-//  modulePassManager.addPass(xilinx::AIEX::createAIEXToStandardPass());
 
   LLVM_DEBUG({
     llvm::dbgs() << "Using AMDAIE pass pipeline:\n";
