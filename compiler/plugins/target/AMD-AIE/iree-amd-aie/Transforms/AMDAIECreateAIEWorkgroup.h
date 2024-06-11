@@ -31,10 +31,17 @@ class IRRewriterAndMapper : public IRRewriter {
     return IRRewriter::clone(op, mapper);
   }
 
+  /// Checks to see if a mapping for 'from' exists.
+  bool contains(Value from) const { return mapper.contains(from); }
+
+  /// Inserts a new mapping for 'from' to 'to'. If there is an existing mapping,
+  /// it is overwritten.
+  void map(Value from, Value to) { mapper.map(from, to); }
+
   /// Create an operation of the specific op type at the current insertion point
   /// and lookup and replace the operands based on IR map.
   template <typename OpTy, typename... Args>
-  OpTy createAndLookup(Location location, Args &&... args) {
+  OpTy createAndLookup(Location location, Args &&...args) {
     OpTy newOp =
         IRRewriter::create<OpTy>(location, std::forward<Args>(args)...);
     for (unsigned i = 0, e = newOp->getNumOperands(); i != e; ++i) {
@@ -48,7 +55,7 @@ class IRRewriterAndMapper : public IRRewriter {
   /// operands are looked up and replaced with values found in the IR map if
   /// found.
   template <typename OpTy, typename... Args>
-  OpTy createAndMap(Location location, Operation *op, Args &&... args) {
+  OpTy createAndMap(Location location, Operation *op, Args &&...args) {
     assert(op && "expected non-null op");
     OpTy newOp = createAndLookup<OpTy>(location, std::forward<Args>(args)...);
     mapOperations(op, newOp.getOperation());
@@ -91,7 +98,7 @@ class IRRewriterAndMapper : public IRRewriter {
 struct CreateAndMapFunctor {
   template <typename OpTy, typename... Args>
   static OpTy Call(IRRewriterAndMapper &rewriter, Location location,
-                   Operation *op, Args &&... args) {
+                   Operation *op, Args &&...args) {
     return rewriter.createAndMap<OpTy>(location, op,
                                        std::forward<Args>(args)...);
   }
@@ -101,7 +108,7 @@ struct CreateAndMapFunctor {
 struct CreateAndLookupFunctor {
   template <typename OpTy, typename... Args>
   static OpTy Call(IRRewriterAndMapper &rewriter, Location location,
-                   Operation *op, Args &&... args) {
+                   Operation *op, Args &&...args) {
     return rewriter.createAndLookup<OpTy>(location,
                                           std::forward<Args>(args)...);
   }
@@ -110,7 +117,7 @@ struct CreateAndLookupFunctor {
 /// Utility to create a new op using the provided `TFunctor`.
 template <class TFunctor, typename OpTy, typename... Args>
 OpTy createOp(IRRewriterAndMapper &rewriter, Location location, Operation *op,
-              Args &&... args) {
+              Args &&...args) {
   return TFunctor::template Call<OpTy>(rewriter, location, op,
                                        std::forward<Args>(args)...);
 }
@@ -188,24 +195,55 @@ class CoreContext {
 // Recursive workgroup builder functions
 //===----------------------------------------------------------------------===//
 
-/// Recursive workgroup build function for an operation.
-LogicalResult workgroupBuild(IRRewriterAndMapper &rewriter, Operation *op,
-                             Block *target, Block *controlCode,
-                             CoreContext &contextCoreMap,
-                             Block::iterator targetBegin,
-                             Block::iterator controlCodeBegin,
-                             Block::iterator controlCodeEnd);
+class WorkgroupBuilder {
+ public:
+  WorkgroupBuilder(IRRewriterAndMapper &rewriter,
+                   IRRewriterAndMapper &controlCodeRewriter)
+      : rewriter(rewriter), controlCodeRewriter(controlCodeRewriter) {}
+  WorkgroupBuilder(IRRewriterAndMapper &&rewriter,
+                   IRRewriterAndMapper &controlCodeRewriter) = delete;
 
-/// Recursive workgroup build function for a block with a provided source and
-/// end point.
-LogicalResult workgroupBuild(IRRewriterAndMapper &rewriter, Block *source,
-                             Block *target, Block *controlCode,
-                             CoreContext &contextCoreMap,
-                             Block::iterator sourceBegin,
-                             Block::iterator sourceEnd,
-                             Block::iterator targetBegin,
-                             Block::iterator controlCodeBegin,
-                             Block::iterator controlCodeEnd);
+  /// Recursive workgroup build function for an operation.
+  LogicalResult build(Operation *op, Block *target, Block *controlCode,
+                      CoreContext &contextCoreMap, Block::iterator targetBegin,
+                      Block::iterator controlCodeBegin,
+                      Block::iterator controlCodeEnd);
+
+  /// Recursive workgroup build function for a block with a provided source and
+  /// end point.
+  LogicalResult build(Block *source, Block *target, Block *controlCode,
+                      CoreContext &contextCoreMap, Block::iterator sourceBegin,
+                      Block::iterator sourceEnd, Block::iterator targetBegin,
+                      Block::iterator controlCodeBegin,
+                      Block::iterator controlCodeEnd);
+
+ private:
+  LogicalResult buildForDmaCpyNdOp(AMDAIE::DmaCpyNdOp dmaOp, Block *target,
+                                   Block *controlCode, CoreContext &coreContext,
+                                   Block::iterator targetBegin,
+                                   Block::iterator controlCodeBegin,
+                                   Block::iterator controlCodeEnd);
+
+  template <typename OpTy>
+  LogicalResult buildForSingleBody(OpTy op, Block *target, Block *controlCode,
+                                   CoreContext &coreContext,
+                                   Block::iterator targetBegin,
+                                   Block::iterator controlCodeBegin,
+                                   Block::iterator controlCodeEnd);
+
+  LogicalResult buildForWorkgroupOp(AMDAIE::WorkgroupOp workgroupOp,
+                                    Block *target, Block *controlCode,
+                                    CoreContext &coreContext,
+                                    Block::iterator targetBegin,
+                                    Block::iterator controlCodeBegin,
+                                    Block::iterator controlCodeEnd);
+
+  /// The rewriter to be used.
+  IRRewriterAndMapper &rewriter;
+
+  /// Rewriter and mapper for the control code context.
+  IRRewriterAndMapper &controlCodeRewriter;
+};
 
 }  // namespace mlir::iree_compiler::AMDAIE
 
