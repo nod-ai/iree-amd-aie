@@ -209,7 +209,6 @@ fi
 
 ${FILECHECK_EXE} --input-file ${STDOUT_FULLPATH} $SOURCE_MLIR_FILE
 
-
 SOURCE_MLIR_FILE="${THIS}/buffers_xclbin.mlir"
 
 IREE_COMPILE_COMMAND="${IREE_COMPILE_EXE} \
@@ -232,5 +231,28 @@ if [ ! -f "${STDOUT_FULLPATH}" ]; then
 fi
 
 ${FILECHECK_EXE} --input-file ${OUTPUT}/module_dummy1_amdaie_xclbin_fb/kernels.json $SOURCE_MLIR_FILE
+
+SOURCE_MLIR_FILE="${THIS}/npu_instgen.mlir"
+
+IREE_COMPILE_COMMAND="${IREE_COMPILE_EXE} \
+${SOURCE_MLIR_FILE} \
+--compile-mode=hal-executable \
+--iree-hal-target-backends=amd-aie-direct \
+--iree-amd-aie-peano-install-dir=${PEANO} \
+--iree-amd-aie-mlir-aie-install-dir=${MLIR_AIE} \
+--iree-amd-aie-vitis-install-dir=${VITIS} \
+--iree-hal-dump-executable-intermediates-to=${OUTPUT} \
+--iree-hal-dump-executable-files-to=${OUTPUT} \
+--mlir-disable-threading \
+--iree-amd-aie-show-invoked-commands"
+
+echo "Executing command: $IREE_COMPILE_COMMAND"
+eval $IREE_COMPILE_COMMAND 1> ${STDOUT_FULLPATH}
+if [ ! -f "${STDOUT_FULLPATH}" ]; then
+  echo "stdout file was not created: ${STDOUT_FULLPATH}"
+  exit 1
+fi
+
+${FILECHECK_EXE} --input-file ${OUTPUT}/module_dummy1_amdaie_xclbin_fb/dummy2_0.npu.txt $SOURCE_MLIR_FILE
 
 echo "Test of printing in aie2xclbin passed."
