@@ -311,21 +311,21 @@ void AMDAIEPackToDmaPass::runOnOperation() {
   MLIRContext *context = &getContext();
   IRRewriter rewriter(context);
 
-  auto walkResult =
-      getOperation()->walk([&rewriter](Operation *op) -> WalkResult {
-        if (auto packOp = dyn_cast_or_null<IREE::LinalgExt::PackOp>(op)) {
-          if (failed(rewriteAsDma(packOp, rewriter))) {
-            return WalkResult::interrupt();
-          }
-        }
-        if (auto unPackOp = dyn_cast_or_null<IREE::LinalgExt::UnPackOp>(op)) {
-          if (failed(rewriteAsDma(unPackOp, rewriter))) {
-            return WalkResult::interrupt();
-          }
+  auto walkResult = getOperation()->walk(
+      [&rewriter](IREE::LinalgExt::PackOp op) -> WalkResult {
+        if (failed(rewriteAsDma(op, rewriter))) {
+          return WalkResult::interrupt();
         }
         return WalkResult::advance();
       });
-
+  if (walkResult.wasInterrupted()) signalPassFailure();
+  walkResult = getOperation()->walk(
+      [&rewriter](IREE::LinalgExt::UnPackOp op) -> WalkResult {
+        if (failed(rewriteAsDma(op, rewriter))) {
+          return WalkResult::interrupt();
+        }
+        return WalkResult::advance();
+      });
   if (walkResult.wasInterrupted()) signalPassFailure();
 }
 
