@@ -95,6 +95,67 @@ iree_tablegen_library(
 
 iree_tablegen_library(
   NAME
+    AIEVecOpsGen
+  TD_FILE
+    "${IREE_MLIR_AIE_SOURCE_DIR}/include/aie/Dialect/AIEVec/IR/AIEVecOps.td"
+  OUTS
+    -gen-op-decls Dialect/AIEVec/IR/AIEVecOps.h.inc
+    -gen-op-defs Dialect/AIEVec/IR/AIEVecOps.cpp.inc
+)
+
+iree_tablegen_library(
+  NAME
+    AIEVecConversionPassIncGen
+  TD_FILE
+    "${IREE_MLIR_AIE_SOURCE_DIR}/include/aie/Conversion/Passes.td"
+  OUTS
+    # this doesn't follow the correct naming convention but it's burned in downstream
+    -gen-pass-decls Conversion/Passes.h.inc
+    -gen-enum-decls Conversion/PassesEnums.h.inc
+    -gen-enum-defs Conversion/PassesEnums.cpp.inc
+)
+
+iree_tablegen_library(
+  NAME
+    AIEVecPassIncGen
+  TD_FILE
+    "${IREE_MLIR_AIE_SOURCE_DIR}/include/aie/Dialect/AIEVec/Transforms/Passes.td"
+  OUTS
+    -gen-pass-decls Dialect/AIEVec/Transforms/Passes.h.inc
+)
+
+iree_tablegen_library(
+  NAME
+    AIEVecAnalysisPassesIncGen
+  TD_FILE
+    "${IREE_MLIR_AIE_SOURCE_DIR}/include/aie/Dialect/AIEVec/Analysis/Passes.td"
+  OUTS
+    -gen-pass-decls Dialect/AIEVec/Analysis/Passes.h.inc
+)
+
+iree_tablegen_library(
+  NAME
+    AIEVecXLLVMOpsGen
+  TD_FILE
+    "${IREE_MLIR_AIE_SOURCE_DIR}/include/aie/Dialect/XLLVM/IR/XLLVMOps.td"
+  OUTS
+    -gen-dialect-decls -dialect=xllvm Dialect/XLLVM/IR/XLLVMDialect.h.inc
+    -gen-dialect-defs -dialect=xllvm Dialect/XLLVM/IR/XLLVMDialect.cpp.inc
+    -gen-op-decls Dialect/XLLVM/IR/XLLVMOps.h.inc
+    -gen-op-defs Dialect/XLLVM/IR/XLLVMOps.cpp.inc
+)
+
+iree_tablegen_library(
+  NAME
+    AIEVecXLLVMConversionPassIncGen
+  TD_FILE
+    "${IREE_MLIR_AIE_SOURCE_DIR}/include/aie/Dialect/XLLVM/IR/XLLVMOps.td"
+  OUTS
+    -gen-llvmir-conversions Dialect/XLLVM/IR/XLLVMConversions.inc
+)
+
+iree_tablegen_library(
+  NAME
     AIEInterfacesGen
   TD_FILE
     "${IREE_MLIR_AIE_SOURCE_DIR}/include/aie/Dialect/AIE/IR/AIEInterfaces.td"
@@ -169,6 +230,7 @@ iree_cc_library(
   SRCS
     ${IREE_MLIR_AIE_SOURCE_DIR}/lib/Dialect/AIEVec/IR/AIEVecOps.cpp
     ${IREE_MLIR_AIE_SOURCE_DIR}/lib/Dialect/AIEVec/IR/AIEVecTypes.cpp
+    ${IREE_MLIR_AIE_SOURCE_DIR}/lib/Dialect/XLLVM/XLLVMOps.cpp
   DEPS
     ::defs
     ::AIEVecOpsGen
@@ -177,14 +239,30 @@ iree_cc_library(
     MLIRIR
 )
 
-iree_tablegen_library(
+iree_cc_library(
   NAME
-    AIEVecOpsGen
-  TD_FILE
-    "${IREE_MLIR_AIE_SOURCE_DIR}/include/aie/Dialect/AIEVec/IR/AIEVecOps.td"
-  OUTS
-    -gen-op-decls Dialect/AIEVec/IR/AIEVecOps.h.inc
-    -gen-op-defs Dialect/AIEVec/IR/AIEVecOps.cpp.inc
+    AIEVecConvertToLLVM
+  SRCS
+    "${IREE_MLIR_AIE_SOURCE_DIR}/lib/Conversion/AIEVecToLLVM/AIEVecToLLVM.cpp"
+    "${IREE_MLIR_AIE_SOURCE_DIR}/lib/Target/LLVMIR/Dialect/XLLVM/XLLVMToLLVMIRTranslation.cpp"
+    "${IREE_MLIR_AIE_SOURCE_DIR}/lib/Dialect/AIEVec/Transforms/IntervalReuse.cpp"
+    "${IREE_MLIR_AIE_SOURCE_DIR}/lib/Dialect/AIEVec/Transforms/AIEVectorize.cpp"
+    "${IREE_MLIR_AIE_SOURCE_DIR}/lib/Dialect/AIEVec/Transforms/ConvertVectorToAIEVec.cpp"
+    "${IREE_MLIR_AIE_SOURCE_DIR}/lib/Dialect/AIEVec/Transforms/VectorToVectorConversions.cpp"
+    "${IREE_MLIR_AIE_SOURCE_DIR}/lib/Dialect/AIEVec/Transforms/VectorToAIEVecConversions.cpp"
+    "${IREE_MLIR_AIE_SOURCE_DIR}/lib/Dialect/AIEVec/Transforms/AIEVecOptimizations.cpp"
+    "${IREE_MLIR_AIE_SOURCE_DIR}/lib/Dialect/AIEVec/Transforms/FoldMulAddChainToConvOp.cpp"
+    "${IREE_MLIR_AIE_SOURCE_DIR}/lib/Dialect/AIEVec/Transforms/CopyRemoval.cpp"
+    "${IREE_MLIR_AIE_SOURCE_DIR}/lib/Dialect/AIEVec/Transforms/DynamicSizeNoImplicitBroadcast.cpp"
+    "${IREE_MLIR_AIE_SOURCE_DIR}/lib/Dialect/AIEVec/Utils/Utils.cpp"
+  DEPS
+    ::defs
+    ::AIEVecDialectIR
+    ::AIEVecAnalysisPassesIncGen
+    ::AIEVecConversionPassIncGen
+    ::AIEVecPassIncGen
+    ::AIEVecXLLVMConversionPassIncGen
+    ::AIEVecXLLVMOpsGen
 )
 
 ###############################################################################
@@ -276,20 +354,35 @@ iree_cc_library(
     ::defs
     ::AIEXDialectIR
     ::AIEXTransformPassHeaders
-    MLIRToLLVMIRTranslationRegistration
-    MLIRFuncAllExtensions
 )
 
 ###############################################################################
 # AIE CDO Generation
 ###############################################################################
 
+if(MSVC)
+  set(UUID "Rpcrt4.lib")
+else()
+  find_library (UUID uuid REQUIRED)
+endif()
+
 iree_cc_library(
   NAME
-    AIETargetCDODirect
+    AIETargets
   SRCS
+    "XCLBinGen.cpp"
+    "${IREE_MLIR_AIE_SOURCE_DIR}/lib/Targets/AIETargetBCF.cpp"
+    "${IREE_MLIR_AIE_SOURCE_DIR}/lib/Targets/AIETargetLdScript.cpp"
+    "${IREE_MLIR_AIE_SOURCE_DIR}/lib/Targets/AIETargetNPU.cpp"
     "${IREE_MLIR_AIE_SOURCE_DIR}/lib/Targets/AIETargetCDODirect.cpp"
   DEPS
     ::AIEDialectIR
+    ::AIEDialectIR
+    ::AIETransformPasses
+    ::AIEVecDialectIR
+    ::AIEVecConvertToLLVM
+    MLIRToLLVMIRTranslationRegistration
+    MLIRFuncAllExtensions
+    ${UUID}
     iree-amd-aie::runtime::iree_aie_runtime_static
 )
