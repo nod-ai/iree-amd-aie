@@ -6,6 +6,7 @@
 
 #include "air/Dialect/AIR/AIRDialect.h"
 #include "iree-amd-aie/Transforms/Passes.h"
+#include "iree/compiler/Dialect/LinalgExt/IR/LinalgExtDialect.h"
 #include "iree/compiler/Dialect/LinalgExt/IR/LinalgExtOps.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/Dialect/Arith/Utils/Utils.h"
