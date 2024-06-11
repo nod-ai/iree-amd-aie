@@ -16,11 +16,11 @@ iree_cc_library(
   NAME
     AIETargets
   SRCS
+    "AIETargetBCF.cpp"
+    "AIETargetCDODirect.cpp"
+    "AIETargetLdScript.cpp"
+    "AIETargetNPU.cpp"
     "XCLBinGen.cpp"
-    "${IREE_MLIR_AIE_SOURCE_DIR}/lib/Targets/AIETargetBCF.cpp"
-    "${IREE_MLIR_AIE_SOURCE_DIR}/lib/Targets/AIETargetLdScript.cpp"
-    "${IREE_MLIR_AIE_SOURCE_DIR}/lib/Targets/AIETargetNPU.cpp"
-    "${IREE_MLIR_AIE_SOURCE_DIR}/lib/Targets/AIETargetCDODirect.cpp"
   DEPS
     iree::target::amd-aie::aie::AIEDialectIR
     iree::target::amd-aie::aie::AIEXDialectIR
