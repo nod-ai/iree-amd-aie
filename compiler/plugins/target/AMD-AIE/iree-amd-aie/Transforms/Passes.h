@@ -101,9 +101,9 @@ std::unique_ptr<Pass> createAMDAIEInsertLoopsForVectorizationPass();
 std::unique_ptr<Pass> createAMDAIEFusePackIntoLoopPass(
     AMDAIEFusePackIntoLoopOptions options = {});
 
-/// Create pass to insert AIE workgroups around forall loops selected
-/// for parallel execution.
-std::unique_ptr<Pass> createAMDAIEInsertAIEWorkgroupPass();
+/// Create pass to insert `amdaie.core` operations inside the innermost
+/// `scf.forall` operations selected for parallel execution.
+std::unique_ptr<Pass> createAMDAIEInsertCoresPass();
 
 /// Links AMDAIE HAL executables within the top-level program module.
 std::unique_ptr<OperationPass<mlir::ModuleOp>>
