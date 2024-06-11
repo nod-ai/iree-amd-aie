@@ -11,7 +11,15 @@ module attributes {hal.device.targets = [#hal.device.target<"amd-aie-direct", [#
       }
       builtin.module {
         aie.device(npu1_4col) {
-          func.func @test0(%arg0: memref<16xf32>, %arg1: memref<16xf32>) {
+          %tile_0_2 = aie.tile(0, 2)
+          %core_0_2 = aie.core(%tile_0_2) {
+            %c0 = arith.constant 0 : index
+            %0 = memref.alloc() : memref<10xf32>
+            %1 = memref.load %0[%c0] : memref<10xf32>
+            memref.store %1, %0[%c0] : memref<10xf32>
+            aie.end
+          }
+          func.func @sequence(%arg0: memref<16xf32>, %arg1: memref<16xf32>) {
 
             // TXN header
             // CHECK: 06030100

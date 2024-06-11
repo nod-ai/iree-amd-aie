@@ -15,13 +15,12 @@
 #include <unordered_map>
 #include <utility>
 
+#include "AIETargets.h"
+#include "Passes.h"
 #include "aie/AIEAssignBufferAddressesBasic.h"
 #include "aie/Conversion/AIEVecToLLVM/AIEVecToLLVM.h"
-#include "aie/Dialect/AIE/Transforms/AIEPasses.h"
 #include "aie/Dialect/AIEVec/Pipelines/Passes.h"
-#include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
 #include "aie/Target/LLVMIR/Dialect/XLLVM/XLLVMToLLVMIRTranslation.h"
-#include "aie/Targets/AIETargets.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/FileUtilities.h"
 #include "llvm/Support/JSON.h"
@@ -35,8 +34,8 @@
 #include "mlir/Conversion/FuncToLLVM/ConvertFuncToLLVMPass.h"
 #include "mlir/Conversion/MathToLLVM/MathToLLVM.h"
 #include "mlir/Conversion/MemRefToLLVM/MemRefToLLVM.h"
-#include "mlir/Conversion/SCFToControlFlow/SCFToControlFlow.h"
 #include "mlir/Conversion/VectorToLLVM/ConvertVectorToLLVMPass.h"
+#include "mlir/Dialect/Linalg/Passes.h"
 #include "mlir/Dialect/MemRef/Transforms/Passes.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Pass/PassManager.h"
@@ -188,16 +187,6 @@ static std::string getUUIDString() {
   val = std::string(uuid);
 #endif
   return val;
-}
-static void addAIELoweringPasses(OpPassManager &pm) {
-  pm.addPass(createLowerAffinePass());
-  pm.addPass(AIE::createAIECanonicalizeDevicePass());
-  OpPassManager &devicePM = pm.nest<AIE::DeviceOp>();
-  devicePM.addPass(AIE::createAIEAssignLockIDsPass());
-  devicePM.addPass(AIE::createAIEAssignBufferDescriptorIDsPass());
-  devicePM.addPass(AIE::createAIEObjectFifoStatefulTransformPass());
-  devicePM.addPass(AIE::createAIEAssignBufferAddressesBasicPass());
-  pm.addPass(createConvertSCFToCFPass());
 }
 
 static void addLowerToLLVMPasses(OpPassManager &pm) {
@@ -366,7 +355,7 @@ static LogicalResult generateCoreElfFiles(ModuleOp moduleOp,
                                           XCLBinGenConfig &TK) {
   auto deviceOps = moduleOp.getOps<AIE::DeviceOp>();
   if (!llvm::hasSingleElement(deviceOps))
-    return moduleOp.emitOpError("expected a single device op");
+    return moduleOp.emitOpError(": expected a single device op");
 
   AIE::DeviceOp deviceOp = *deviceOps.begin();
   auto tileOps = deviceOp.getOps<AIE::TileOp>();
@@ -400,14 +389,14 @@ static LogicalResult generateCoreElfFiles(ModuleOp moduleOp,
       if (!bcfOutput) return coreOp.emitOpError(errorMessage);
 
       if (failed(AIE::AIETranslateToBCF(moduleOp, bcfOutput->os(), col, row)))
-        return coreOp.emitOpError("Failed to generate BCF");
+        return coreOp.emitOpError(": Failed to generate BCF");
       bcfOutput->keep();
     }
 
     std::vector<std::string> extractedIncludes;
     {
       auto bcfFileIn = openInputFile(bcfPath, &errorMessage);
-      if (!bcfFileIn) moduleOp.emitOpError(errorMessage);
+      if (!bcfFileIn) return moduleOp.emitOpError(errorMessage);
 
       std::string bcfFile = std::string(bcfFileIn->getBuffer());
       std::regex r("_include _file (.*)");
@@ -427,8 +416,10 @@ static LogicalResult generateCoreElfFiles(ModuleOp moduleOp,
     for (const auto &inc : extractedIncludes) flags.push_back(inc);
     auto chessArgs_ = chessArgs(TK.AIEToolsDir, chessworkDir.str().str());
     chessArgs_.insert(chessArgs_.end(), flags.begin(), flags.end());
+    if (!sys::fs::exists(chessExe))
+      return moduleOp.emitOpError(": chess can't be found");
     if (runTool(chessExe, chessArgs_, TK.Verbose) != 0)
-      coreOp.emitOpError("Failed to link with xbridge");
+      return coreOp.emitOpError(": Failed to link with xbridge");
   }
   return success();
 }
@@ -436,70 +427,42 @@ static LogicalResult generateCoreElfFiles(ModuleOp moduleOp,
 static LogicalResult generateCDO(MLIRContext *context, ModuleOp moduleOp,
                                  XCLBinGenConfig &TK) {
   ModuleOp copy = moduleOp.clone();
-  std::string errorMessage;
-  // This corresponds to `process_host_cgen`, which is listed as host
-  // compilation in aiecc.py... not sure we need this.
-  PassManager passManager(context, ModuleOp::getOperationName());
-  applyConfigToPassManager(TK, passManager);
-
-  passManager.addNestedPass<AIE::DeviceOp>(AIE::createAIEPathfinderPass());
-  if (failed(passManager.run(copy)))
-    return moduleOp.emitOpError(
-        "failed to run passes to prepare of XCLBin generation");
-
   if (failed(AIE::AIETranslateToCDODirect(copy, TK.TempDir)))
-    return moduleOp.emitOpError("failed to emit CDO");
-
+    return moduleOp.emitOpError(": failed to emit CDO");
   copy->erase();
   return success();
 }
 
 static json::Object makeKernelJSON(std::string name, std::string id,
-                                   std::string instance) {
+                                   std::string instance, int numArgs) {
+  json::Array args{json::Object{{"name", "opcode"},
+                                {"address-qualifier", "SCALAR"},
+                                {"type", "uint64_t"},
+                                {"offset", "0x00"}},
+                   json::Object{{"name", "instr"},
+                                {"memory-connection", "SRAM"},
+                                {"address-qualifier", "GLOBAL"},
+                                {"type", "char *"},
+                                {"offset", "0x08"}},
+                   json::Object{{"name", "ninstr"},
+                                {"address-qualifier", "SCALAR"},
+                                {"type", "uint32_t"},
+                                {"offset", "0x10"}}};
+  for (int arg = 0; arg < numArgs; ++arg) {
+    args.push_back(json::Object{{"name", "bo" + std::to_string(arg)},
+                                {"memory-connection", "HOST"},
+                                {"address-qualifier", "GLOBAL"},
+                                {"type", "void *"},
+                                {"offset", std::to_string(0x14 + 0x8 * arg)}});
+  }
+
   return json::Object{
       {"name", name},
       {"type", "dpu"},
       {"extended-data",
        json::Object{
            {"subtype", "DPU"}, {"functional", "0"}, {"dpu_kernel_id", id}}},
-      {"arguments", json::Array{json::Object{{"name", "opcode"},
-                                             {"address-qualifier", "SCALAR"},
-                                             {"type", "uint64_t"},
-                                             {"offset", "0x00"}},
-                                json::Object{{"name", "instr"},
-                                             {"memory-connection", "SRAM"},
-                                             {"address-qualifier", "GLOBAL"},
-                                             {"type", "char *"},
-                                             {"offset", "0x08"}},
-                                json::Object{{"name", "ninstr"},
-                                             {"address-qualifier", "SCALAR"},
-                                             {"type", "uint32_t"},
-                                             {"offset", "0x10"}},
-                                json::Object{{"name", "bo0"},
-                                             {"memory-connection", "HOST"},
-                                             {"address-qualifier", "GLOBAL"},
-                                             {"type", "void*"},
-                                             {"offset", "0x14"}},
-                                json::Object{{"name", "bo1"},
-                                             {"memory-connection", "HOST"},
-                                             {"address-qualifier", "GLOBAL"},
-                                             {"type", "void*"},
-                                             {"offset", "0x1c"}},
-                                json::Object{{"name", "bo2"},
-                                             {"memory-connection", "HOST"},
-                                             {"address-qualifier", "GLOBAL"},
-                                             {"type", "void*"},
-                                             {"offset", "0x24"}},
-                                json::Object{{"name", "bo3"},
-                                             {"memory-connection", "HOST"},
-                                             {"address-qualifier", "GLOBAL"},
-                                             {"type", "void*"},
-                                             {"offset", "0x2c"}},
-                                json::Object{{"name", "bo4"},
-                                             {"memory-connection", "HOST"},
-                                             {"address-qualifier", "GLOBAL"},
-                                             {"type", "void*"},
-                                             {"offset", "0x34"}}}},
+      {"arguments", std::move(args)},
       {"instances", json::Array{json::Object{{"name", instance}}}}};
 }
 
@@ -572,7 +535,8 @@ static LogicalResult generateXCLBin(MLIRContext *context, ModuleOp moduleOp,
                   "type": "PRIMARY",
                   "pdi_id": "0x01",
                   "dpu_kernel_ids": [
-                    "0x901"
+                    ")" + TK.XCLBinKernelID +
+                                          R"("
                   ],
                   "pre_cdo_groups": [
                     "0xC1"
@@ -595,13 +559,24 @@ static LogicalResult generateXCLBin(MLIRContext *context, ModuleOp moduleOp,
     auto kernelsJsonOut = openOutputFile(kernelsJsonFile, &errorMessage);
     if (!kernelsJsonOut) return moduleOp.emitOpError(errorMessage);
 
+    // TODO(max): should be gotten from the dispatch not this func (which will
+    // eventually disappear)
+    std::optional<int> numArgs;
+    moduleOp.walk([&numArgs](func::FuncOp sequenceFunc) {
+      if (sequenceFunc.getName() == "sequence")
+        numArgs = sequenceFunc.getArgumentTypes().size();
+    });
+    if (!numArgs)
+      return moduleOp.emitOpError(
+          "Couldn't find func.func @sequence to count args");
+
     json::Object kernels_data{
         {"ps-kernels",
          json::Object{
              {"kernels",
               json::Array{// TODO: Support for multiple kernels
                           makeKernelJSON(TK.XCLBinKernelName, TK.XCLBinKernelID,
-                                         TK.XCLBinInstanceName)}}}}};
+                                         TK.XCLBinInstanceName, *numArgs)}}}}};
     kernelsJsonOut->os() << formatv("{0:2}",
                                     json::Value(std::move(kernels_data)));
     kernelsJsonOut->keep();
@@ -643,9 +618,9 @@ static LogicalResult generateXCLBin(MLIRContext *context, ModuleOp moduleOp,
 
     if (auto bootgen = sys::findProgramByName("bootgen")) {
       if (runTool(*bootgen, flags, TK.Verbose) != 0)
-        return moduleOp.emitOpError("failed to execute bootgen");
+        return moduleOp.emitOpError(": failed to execute bootgen");
     } else {
-      return moduleOp.emitOpError("could not find bootgen");
+      return moduleOp.emitOpError(": could not find bootgen");
     }
   }
 
@@ -667,9 +642,9 @@ static LogicalResult generateXCLBin(MLIRContext *context, ModuleOp moduleOp,
 
     if (auto xclbinutil = sys::findProgramByName("xclbinutil")) {
       if (runTool(*xclbinutil, flags, TK.Verbose) != 0)
-        return moduleOp.emitOpError("failed to execute xclbinutil");
+        return moduleOp.emitOpError(": failed to execute xclbinutil");
     } else {
-      return moduleOp.emitOpError("could not find xclbinutil");
+      return moduleOp.emitOpError(": could not find xclbinutil");
     }
   }
   return success();
@@ -766,7 +741,7 @@ static LogicalResult generateObject(MLIRContext *context, ModuleOp moduleOp,
     }();
 
     if (failed(vectorToAIEVecOptions.parseFromString(optionsString))) {
-      return moduleOp.emitOpError("Failed to parse options from '")
+      return moduleOp.emitOpError(": Failed to parse options from '")
              << optionsString
              << "': Failed to construct ConvertVectorToAIEVecOptions.";
     }
@@ -784,7 +759,7 @@ static LogicalResult generateObject(MLIRContext *context, ModuleOp moduleOp,
 
   ModuleOp copy = moduleOp.clone();
   if (failed(pm.run(copy)))
-    return moduleOp.emitOpError("Failed to lower to LLVM");
+    return moduleOp.emitOpError(": Failed to lower to LLVM");
 
   SmallString<64> LLVMIRFile(TK.TempDir);
   sys::path::append(LLVMIRFile, "input.ll");
@@ -792,34 +767,31 @@ static LogicalResult generateObject(MLIRContext *context, ModuleOp moduleOp,
   llvm::LLVMContext llvmContext;
   auto llvmModule = translateModuleToLLVMIR(copy, llvmContext);
   if (!llvmModule)
-    return moduleOp.emitOpError("Failed to translate module to LLVMIR");
+    return moduleOp.emitOpError(": Failed to translate module to LLVMIR");
 
+  std::string llvmirString;
   std::string errorMessage;
   {
+    raw_string_ostream llvmirStream(llvmirString);
+    llvmModule->print(llvmirStream, nullptr);
+    llvmirString = chesshack(llvmirString);
     auto output = openOutputFile(LLVMIRFile, &errorMessage);
     if (!output) return moduleOp.emitOpError(errorMessage);
-    llvmModule->print(output->os(), nullptr);
+    output->os() << llvmirString;
     output->keep();
   }
 
   SmallString<64> chessExe(TK.AIEToolsDir);
   sys::path::append(chessExe, "bin", "unwrapped", "lnx64.o", "xchesscc");
-  SmallString<64> chessworkDir(TK.TempDir);
-  sys::path::append(chessworkDir, "chesswork");
-  SmallString<64> chessIntrinsicsLL(TK.InstallDir);
+  SmallString<64> chessIntrinsicsLL(TK.TempDir);
   sys::path::append(chessIntrinsicsLL, "chess_intrinsic_wrapper.ll");
   {
-    auto chessIntrinsicWrapperLlFile = openOutputFile(chessIntrinsicsLL);
-    if (!chessIntrinsicWrapperLlFile) moduleOp.emitOpError(errorMessage);
+    auto chessIntrinsicWrapperLlFile =
+        openOutputFile(chessIntrinsicsLL, &errorMessage);
+    if (!chessIntrinsicWrapperLlFile) return moduleOp.emitOpError(errorMessage);
 
     chessIntrinsicWrapperLlFile->os() << _CHESS_INTRINSIC_WRAPPER_LL;
     chessIntrinsicWrapperLlFile->keep();
-  }
-
-  std::string llvmirString;
-  {
-    raw_string_ostream llvmirStream(llvmirString);
-    llvmModule->print(llvmirStream, nullptr);
   }
 
   SmallString<64> chesslinkedFile(TK.TempDir);
@@ -827,37 +799,43 @@ static LogicalResult generateObject(MLIRContext *context, ModuleOp moduleOp,
   SmallString<64> chessLlvmLinkBin(TK.AIEToolsDir);
   sys::path::append(chessLlvmLinkBin, "tps", "lnx64", "target_aie_ml");
   sys::path::append(chessLlvmLinkBin, "bin", "LNa64bin", "chess-llvm-link");
+  if (!sys::fs::exists(chessLlvmLinkBin))
+    return moduleOp.emitOpError(": chess-llvm-link can't be found");
 
   if (runTool(chessLlvmLinkBin,
               {std::string(LLVMIRFile), std::string(chessIntrinsicsLL),
                "--opaque-pointers=1", "-S", "-o", std::string(chesslinkedFile)},
               TK.Verbose) != 0)
-    moduleOp.emitOpError("Couldn't link in the intrinsics");
+    return moduleOp.emitOpError(": Couldn't link in the intrinsics");
 
   std::string mungedLLVMIR;
   {
     auto chesslinkedIn = openInputFile(chesslinkedFile, &errorMessage);
-    if (!chesslinkedIn) moduleOp.emitOpError(errorMessage);
+    if (!chesslinkedIn) return moduleOp.emitOpError(errorMessage);
 
     mungedLLVMIR = std::string(chesslinkedIn->getBuffer());
     mungedLLVMIR = chesshack(mungedLLVMIR);
   }
   {
-    auto chesslinkedOut = openOutputFile(chesslinkedFile);
-    if (!chesslinkedOut) moduleOp.emitOpError(errorMessage);
+    auto chesslinkedOut = openOutputFile(chesslinkedFile, &errorMessage);
+    if (!chesslinkedOut) return moduleOp.emitOpError(errorMessage);
 
     chesslinkedOut->os() << mungedLLVMIR;
     chesslinkedOut->keep();
   }
 
+  SmallString<64> chessworkDir(TK.TempDir);
+  sys::path::append(chessworkDir, "chesswork");
   auto chessArgs_ = chessArgs(TK.AIEToolsDir, chessworkDir.str().str());
   chessArgs_.push_back("-c");
   chessArgs_.push_back(std::string(chesslinkedFile));
   chessArgs_.push_back("-o");
   chessArgs_.push_back(std::string(outputFile));
+  if (!sys::fs::exists(chessExe))
+    return moduleOp.emitOpError(": chess can't be found");
 
   if (runTool(chessExe, chessArgs_, TK.Verbose) != 0)
-    return moduleOp.emitOpError("Failed to assemble with chess");
+    return moduleOp.emitOpError(": Failed to assemble with chess");
   copy->erase();
   return success();
 }
@@ -865,21 +843,8 @@ static LogicalResult generateObject(MLIRContext *context, ModuleOp moduleOp,
 LogicalResult xilinx::aie2xclbin(MLIRContext *ctx, ModuleOp moduleOp,
                                  XCLBinGenConfig &TK, StringRef OutputNPU,
                                  StringRef OutputXCLBin) {
-  if (failed(xilinx::findVitis(TK))) moduleOp.emitOpError("VITIS not found");
-
-  PassManager pm(ctx, moduleOp.getOperationName());
-  applyConfigToPassManager(TK, pm);
-
-  addAIELoweringPasses(pm);
-
-  if (TK.Verbose) {
-    llvm::outs() << "Running: ";
-    pm.printAsTextualPipeline(llvm::outs());
-    llvm::outs() << "\n";
-  }
-
-  if (failed(pm.run(moduleOp)))
-    return moduleOp.emitOpError("AIE lowering pipline failed");
+  if (failed(xilinx::findVitis(TK)))
+    return moduleOp.emitOpError(": VITIS not found");
 
   TK.TargetArch = StringRef(TK.TargetArch).trim();
 
@@ -896,17 +861,14 @@ LogicalResult xilinx::aie2xclbin(MLIRContext *ctx, ModuleOp moduleOp,
     pm.addNestedPass<AIE::DeviceOp>(AIEX::createAIEDmaToNpuPass());
     ModuleOp copy = moduleOp.clone();
     if (failed(pm.run(copy)))
-      return moduleOp.emitOpError("NPU Instruction pipeline failed");
+      return moduleOp.emitOpError(": NPU Instruction pipeline failed");
 
     std::string errorMessage;
     auto output = openOutputFile(OutputNPU, &errorMessage);
-    if (!output) {
-      llvm::errs() << errorMessage << "\n";
-      return moduleOp.emitOpError("");
-    }
+    if (!output) return moduleOp.emitOpError(errorMessage);
 
     if (failed(AIE::AIETranslateToNPU(copy, output->os())))
-      return moduleOp.emitOpError("NPU Instruction translation failed");
+      return moduleOp.emitOpError(": NPU Instruction translation failed");
 
     output->keep();
     copy->erase();
@@ -915,16 +877,16 @@ LogicalResult xilinx::aie2xclbin(MLIRContext *ctx, ModuleOp moduleOp,
   SmallString<64> object(TK.TempDir);
   sys::path::append(object, "input.o");
   if (failed(generateObject(ctx, moduleOp, TK, std::string(object))))
-    return moduleOp.emitOpError("Failed to generate object");
+    return moduleOp.emitOpError(": Failed to generate object");
 
   if (failed(generateCoreElfFiles(moduleOp, object, TK)))
-    return moduleOp.emitOpError("Failed to generate core ELF file(s)");
+    return moduleOp.emitOpError(": Failed to generate core ELF file(s)");
 
   if (failed(generateCDO(ctx, moduleOp, TK)))
-    return moduleOp.emitOpError("Failed to generate CDO");
+    return moduleOp.emitOpError(": Failed to generate CDO");
 
   if (failed(generateXCLBin(ctx, moduleOp, TK, OutputXCLBin)))
-    return moduleOp.emitOpError("Failed to generate XCLBin");
+    return moduleOp.emitOpError(": Failed to generate XCLBin");
 
   return success();
 }

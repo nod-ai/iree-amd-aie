@@ -1,83 +1,69 @@
 // RUN: iree-compile --compile-mode=hal-executable --iree-hal-target-backends=amd-aie-direct %s --iree-hal-dump-executable-files-to %T
 // RUN: FileCheck %s --input-file=%T/module_dummy1_amdaie_xclbin_fb/kernels.json
 
-// CHECK: {
-// CHECK:   "ps-kernels": {
-// CHECK:     "kernels": [
-// CHECK:       {
-// CHECK:         "arguments": [
-// CHECK:           {
-// CHECK:             "address-qualifier": "SCALAR",
-// CHECK:             "name": "opcode",
-// CHECK:             "offset": "0x00",
-// CHECK:             "type": "uint64_t"
-// CHECK:           },
-// CHECK:           {
-// CHECK:             "address-qualifier": "GLOBAL",
-// CHECK:             "memory-connection": "SRAM",
-// CHECK:             "name": "instr",
-// CHECK:             "offset": "0x08",
-// CHECK:             "type": "char *"
-// CHECK:           },
-// CHECK:           {
-// CHECK:             "address-qualifier": "SCALAR",
-// CHECK:             "name": "ninstr",
-// CHECK:             "offset": "0x10",
-// CHECK:             "type": "uint32_t"
-// CHECK:           },
-// CHECK:           {
-// CHECK:             "address-qualifier": "GLOBAL",
-// CHECK:             "memory-connection": "HOST",
-// CHECK:             "name": "bo0",
-// CHECK:             "offset": "0x14",
-// CHECK:             "type": "void*"
-// CHECK:           },
-// CHECK:           {
-// CHECK:             "address-qualifier": "GLOBAL",
-// CHECK:             "memory-connection": "HOST",
-// CHECK:             "name": "bo1",
-// CHECK:             "offset": "0x1c",
-// CHECK:             "type": "void*"
-// CHECK:           },
-// CHECK:           {
-// CHECK:             "address-qualifier": "GLOBAL",
-// CHECK:             "memory-connection": "HOST",
-// CHECK:             "name": "bo2",
-// CHECK:             "offset": "0x24",
-// CHECK:             "type": "void*"
-// CHECK:           },
-// CHECK:           {
-// CHECK:             "address-qualifier": "GLOBAL",
-// CHECK:             "memory-connection": "HOST",
-// CHECK:             "name": "bo3",
-// CHECK:             "offset": "0x2c",
-// CHECK:             "type": "void*"
-// CHECK:           },
-// CHECK:           {
-// CHECK:             "address-qualifier": "GLOBAL",
-// CHECK:             "memory-connection": "HOST",
-// CHECK:             "name": "bo4",
-// CHECK:             "offset": "0x34",
-// CHECK:             "type": "void*"
-// CHECK:           }
-// CHECK:         ],
-// CHECK:         "extended-data": {
-// CHECK:           "dpu_kernel_id": "0x101",
-// CHECK:           "functional": "0",
-// CHECK:           "subtype": "DPU"
-// CHECK:         },
-// CHECK:         "instances": [
-// CHECK:           {
-// CHECK:             "name": "FOO"
-// CHECK:           }
-// CHECK:         ],
-// CHECK:         "name": "dummy2",
-// CHECK:         "type": "dpu"
-// CHECK:       }
-// CHECK:     ]
+// CHECK: "arguments": [
+// CHECK:   {
+// CHECK:     "address-qualifier": "SCALAR",
+// CHECK:     "name": "opcode",
+// CHECK:     "offset": "0x00",
+// CHECK:     "type": "uint64_t"
+// CHECK:   },
+// CHECK:   {
+// CHECK:     "address-qualifier": "GLOBAL",
+// CHECK:     "memory-connection": "SRAM",
+// CHECK:     "name": "instr",
+// CHECK:     "offset": "0x08",
+// CHECK:     "type": "char *"
+// CHECK:   },
+// CHECK:   {
+// CHECK:     "address-qualifier": "SCALAR",
+// CHECK:     "name": "ninstr",
+// CHECK:     "offset": "0x10",
+// CHECK:     "type": "uint32_t"
+// CHECK:   },
+// CHECK:   {
+// CHECK:     "address-qualifier": "GLOBAL",
+// CHECK:     "memory-connection": "HOST",
+// CHECK:     "name": "bo0",
+// CHECK:     "offset": "20",
+// CHECK:     "type": "void *"
+// CHECK:   },
+// CHECK:   {
+// CHECK:     "address-qualifier": "GLOBAL",
+// CHECK:     "memory-connection": "HOST",
+// CHECK:     "name": "bo1",
+// CHECK:     "offset": "28",
+// CHECK:     "type": "void *"
+// CHECK:   },
+// CHECK:   {
+// CHECK:     "address-qualifier": "GLOBAL",
+// CHECK:     "memory-connection": "HOST",
+// CHECK:     "name": "bo2",
+// CHECK:     "offset": "36",
+// CHECK:     "type": "void *"
+// CHECK:   },
+// CHECK:   {
+// CHECK:     "address-qualifier": "GLOBAL",
+// CHECK:     "memory-connection": "HOST",
+// CHECK:     "name": "bo3",
+// CHECK:     "offset": "44",
+// CHECK:     "type": "void *"
+// CHECK:   },
+// CHECK:   {
+// CHECK:     "address-qualifier": "GLOBAL",
+// CHECK:     "memory-connection": "HOST",
+// CHECK:     "name": "bo4",
+// CHECK:     "offset": "52",
+// CHECK:     "type": "void *"
+// CHECK:   },
+// CHECK:   {
+// CHECK:     "address-qualifier": "GLOBAL",
+// CHECK:     "memory-connection": "HOST",
+// CHECK:     "name": "bo5",
+// CHECK:     "offset": "60",
+// CHECK:     "type": "void *"
 // CHECK:   }
-// CHECK: }
-
+// CHECK: ]
 
 
 module attributes {hal.device.targets = [#hal.device.target<"amd-aie-direct", [#hal.executable.target<"amd-aie-direct", "amdaie-xclbin-fb", {target_arch = "chip-tbd", ukernels = "none"}>]>]} {

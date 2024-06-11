@@ -16,6 +16,7 @@
 #include "iree/compiler/Codegen/Common/Passes.h"
 #include "iree/compiler/Dialect/LinalgExt/Transforms/Passes.h"
 #include "iree/compiler/Utils/PassUtils.h"
+#include "mlir/Conversion/SCFToControlFlow/SCFToControlFlow.h"
 #include "mlir/Dialect/Affine/Passes.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/Passes.h"
@@ -441,14 +442,19 @@ void buildAMDAIETransformPassPipeline(OpPassManager &variantPassManager) {
 
 void buildAMDAIELowerObjectFIFO(OpPassManager &variantPassManager) {
   OpPassManager &modulePassManager = variantPassManager.nest<ModuleOp>();
+  modulePassManager.addPass(createCanonicalizerPass());
+  modulePassManager.addPass(createConvertLinalgToLoopsPass());
+  modulePassManager.addPass(memref::createFoldMemRefAliasOpsPass());
   modulePassManager.addPass(xilinx::AIE::createAIECanonicalizeDevicePass());
   auto &devicePassMan = modulePassManager.nest<xilinx::AIE::DeviceOp>();
+  devicePassMan.addPass(xilinx::AIE::createAIEAssignLockIDsPass());
   devicePassMan.addPass(
       xilinx::AIE::createAIEObjectFifoStatefulTransformPass());
+  devicePassMan.addPass(xilinx::AIE::createAIEAssignBufferDescriptorIDsPass());
   devicePassMan.addPass(xilinx::AIE::createAIEAssignBufferAddressesBasicPass());
-  devicePassMan.addPass(xilinx::AIE::createAIEAssignLockIDsPass());
-  devicePassMan.addPass(xilinx::AIE::createAIEPathfinderPass());
-  devicePassMan.addPass(xilinx::AIE::createAIELocalizeLocksPass());
+  modulePassManager.addPass(createConvertSCFToCFPass());
+  modulePassManager.addNestedPass<xilinx::AIE::DeviceOp>(
+      xilinx::AIE::createAIEPathfinderPass());
 
   LLVM_DEBUG({
     llvm::dbgs() << "Using AMDAIE pass pipeline:\n";
