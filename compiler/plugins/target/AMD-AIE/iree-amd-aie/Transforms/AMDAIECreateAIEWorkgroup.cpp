@@ -64,9 +64,9 @@ LogicalResult workgroupBuildForCircularDmaCpyNdOp(
 
 /// DmaCpyNd operations are converted into CircularDmaCpyNd operations by moving
 /// the strided access specifiers to an npu dma instruction, followed by a wait.
-LogicalResult workgroupBuildForDmaCpyNdOp(
-    IRRewriterAndMapper &rewriter, AMDAIE::DmaCpyNdOp dmaOp, Block *target,
-    Block *controlCode, CoreContext &coreContext, Block::iterator targetBegin,
+LogicalResult WorkgroupBuilder::buildForDmaCpyNdOp(
+    AMDAIE::DmaCpyNdOp dmaOp, Block *target, Block *controlCode,
+    CoreContext &coreContext, Block::iterator targetBegin,
     Block::iterator controlCodeBegin, Block::iterator controlCodeEnd) {
   LLVM_DEBUG(llvm::dbgs() << "workgroupBuild [amdaie.dma_cpy_nd] Start\n");
   Attribute sourceMemSpace = dmaOp.getSourceObjectFifo().getMemorySpace();
@@ -125,14 +125,14 @@ LogicalResult workgroupBuildForDmaCpyNdOp(
       circularDmaSourceSizes, circularDmaSourceStrides);
 
   IRRewriter::InsertPoint dmaInsertionPoint = rewriter.saveInsertionPoint();
-  rewriter.setInsertionPoint(controlCode, controlCodeEnd);
-  auto ipuDmaCpy = rewriter.createAndLookup<AMDAIE::NpuDmaCpyNdOp>(
+  controlCodeRewriter.setInsertionPoint(controlCode, controlCodeEnd);
+  auto ipuDmaCpy = controlCodeRewriter.createAndLookup<AMDAIE::NpuDmaCpyNdOp>(
       loc, newDmaOp.getResult(), ipuDmaTargetOffsets, ipuDmaTargetSizes,
       ipuDmaTargetStrides, ipuDmaSourceOffsets, ipuDmaSourceSizes,
       ipuDmaSourceStrides);
   DMAChannelDir direction =
       !sourceMemSpace ? DMAChannelDir::MM2S : DMAChannelDir::S2MM;
-  rewriter.createAndLookup<AMDAIE::NpuDmaWaitOp>(
+  controlCodeRewriter.createAndLookup<AMDAIE::NpuDmaWaitOp>(
       rewriter.getUnknownLoc(), SmallVector<Type, 1>{}, ipuDmaCpy.getResult(),
       direction);
   rewriter.restoreInsertionPoint(dmaInsertionPoint);
@@ -180,14 +180,15 @@ FailureOr<OpTy> createNewLoopOp(IRRewriterAndMapper &rewriter,
 ///   2. Create a new operation from the provided operation of type `OpTy` and
 ///   insert it in the control code block around the existing control code body.
 template <typename OpTy>
-LogicalResult workgroupBuildForSingleBody(
-    IRRewriterAndMapper &rewriter, OpTy op, Block *target, Block *controlCode,
-    CoreContext &coreContext, Block::iterator targetBegin,
-    Block::iterator controlCodeBegin, Block::iterator controlCodeEnd) {
+LogicalResult WorkgroupBuilder::buildForSingleBody(
+    OpTy op, Block *target, Block *controlCode, CoreContext &coreContext,
+    Block::iterator targetBegin, Block::iterator controlCodeBegin,
+    Block::iterator controlCodeEnd) {
   LLVM_DEBUG(llvm::dbgs() << "workgroupBuild [" << OpTy::getOperationName()
                           << "] Start\n");
+  controlCodeRewriter.setInsertionPoint(controlCode, controlCodeEnd);
   FailureOr<OpTy> maybeControlCodeOp =
-      createNewLoopOp<CreateAndMapFunctor, OpTy>(rewriter, op);
+      createNewLoopOp<CreateAndMapFunctor, OpTy>(controlCodeRewriter, op);
   if (failed(maybeControlCodeOp)) {
     return op.emitOpError("failed to create a new loop");
   }
@@ -196,28 +197,28 @@ LogicalResult workgroupBuildForSingleBody(
   // Create a new core map and control code block for visiting the nested ops.
   CoreContext nestedCoreContext(rewriter);
   Block *nestedControlCode = rewriter.createBlock(controlCode->getParent());
-  if (failed(workgroupBuild(
-          rewriter, op.getBody(), target, nestedControlCode, nestedCoreContext,
-          op.getBody()->begin(), std::prev(op.getBody()->end()), target->end(),
-          nestedControlCode->begin(), nestedControlCode->end()))) {
+  if (failed(build(op.getBody(), target, nestedControlCode, nestedCoreContext,
+                   op.getBody()->begin(), std::prev(op.getBody()->end()),
+                   target->end(), nestedControlCode->begin(),
+                   nestedControlCode->end()))) {
     return op.emitOpError() << "failed to add scf.for body to workgroup";
   }
 
   // Create a new scf.for for every nested core and insert into the core
   // op around all existing ops, except for the terminator.
   for (auto &&[coordinate, coreOp] : nestedCoreContext.getCoreMap()) {
-    FailureOr<OpTy> maybeCoreOp =
+    FailureOr<OpTy> maybeOp =
         createNewLoopOp<CreateAndLookupFunctor, OpTy>(rewriter, op);
-    if (failed(maybeCoreOp)) {
+    if (failed(maybeOp)) {
       return op.emitOpError("failed to create a new loop");
     }
-    auto newCoreOp = maybeCoreOp.value();
-    Block::iterator insertIt = newCoreOp.getBody()->begin();
+    auto newOp = maybeOp.value();
+    Block::iterator insertIt = newOp.getBody()->begin();
     Block::iterator coreBegin = coreOp.getBody()->begin();
     Block::iterator coreEnd = coreOp.getBody()->getTerminator()->getIterator();
-    newCoreOp.getBody()->getOperations().splice(
+    newOp.getBody()->getOperations().splice(
         insertIt, coreOp.getBody()->getOperations(), coreBegin, coreEnd);
-    rewriter.moveOpBefore(newCoreOp, coreOp.getBody()->getTerminator());
+    rewriter.moveOpBefore(newOp, coreOp.getBody()->getTerminator());
   }
   coreContext.mergeContext(nestedCoreContext);
 
@@ -232,19 +233,15 @@ LogicalResult workgroupBuildForSingleBody(
 
 /// Skip workgroup operations and just build their bodies.
 /// TODO(jornt): Get rid of the insertion of workgroups before this pass.
-LogicalResult workgroupBuildForWorkgroupOp(IRRewriterAndMapper &rewriter,
-                                           AMDAIE::WorkgroupOp workgroupOp,
-                                           Block *target, Block *controlCode,
-                                           CoreContext &coreContext,
-                                           Block::iterator targetBegin,
-                                           Block::iterator controlCodeBegin,
-                                           Block::iterator controlCodeEnd) {
+LogicalResult WorkgroupBuilder::buildForWorkgroupOp(
+    AMDAIE::WorkgroupOp workgroupOp, Block *target, Block *controlCode,
+    CoreContext &coreContext, Block::iterator targetBegin,
+    Block::iterator controlCodeBegin, Block::iterator controlCodeEnd) {
   LLVM_DEBUG(llvm::dbgs() << "workgroupBuild [amdaie.workgroup] Start\n");
-  if (failed(workgroupBuild(rewriter, workgroupOp.getBody(), target,
-                            controlCode, coreContext,
-                            workgroupOp.getBody()->begin(),
-                            std::prev(workgroupOp.getBody()->end()),
-                            target->end(), controlCodeBegin, controlCodeEnd))) {
+  if (failed(build(workgroupOp.getBody(), target, controlCode, coreContext,
+                   workgroupOp.getBody()->begin(),
+                   std::prev(workgroupOp.getBody()->end()), target->end(),
+                   controlCodeBegin, controlCodeEnd))) {
     return workgroupOp.emitOpError()
            << "failed to add workgroup body to workgroup";
   }
@@ -253,12 +250,13 @@ LogicalResult workgroupBuildForWorkgroupOp(IRRewriterAndMapper &rewriter,
 }
 
 /// Recursive workgroup build function for an operation.
-LogicalResult workgroupBuild(IRRewriterAndMapper &rewriter, Operation *op,
-                             Block *target, Block *controlCode,
-                             CoreContext &coreContext,
-                             Block::iterator targetBegin,
-                             Block::iterator controlCodeBegin,
-                             Block::iterator controlCodeEnd) {
+LogicalResult WorkgroupBuilder::build(Operation *op, Block *target,
+                                      Block *controlCode,
+                                      CoreContext &coreContext,
+                                      Block::iterator targetBegin,
+                                      Block::iterator controlCodeBegin,
+                                      Block::iterator controlCodeEnd) {
+  OpBuilder::InsertionGuard guard(rewriter);
   return TypeSwitch<Operation *, LogicalResult>(op)
       .Case<AMDAIE::CoreOp>([&](auto coreOp) {
         return workgroupBuildForCoreOp(rewriter, coreOp, target, controlCode,
@@ -271,28 +269,41 @@ LogicalResult workgroupBuild(IRRewriterAndMapper &rewriter, Operation *op,
             controlCodeBegin, controlCodeEnd);
       })
       .Case<AMDAIE::DmaCpyNdOp>([&](auto dmaOp) {
-        return workgroupBuildForDmaCpyNdOp(rewriter, dmaOp, target, controlCode,
-                                           coreContext, targetBegin,
-                                           controlCodeBegin, controlCodeEnd);
+        return buildForDmaCpyNdOp(dmaOp, target, controlCode, coreContext,
+                                  targetBegin, controlCodeBegin,
+                                  controlCodeEnd);
       })
       .Case<scf::ForallOp>([&](auto forallOp) {
-        return workgroupBuildForSingleBody<scf::ForallOp>(
-            rewriter, forallOp, target, controlCode, coreContext, targetBegin,
+        return buildForSingleBody<scf::ForallOp>(
+            forallOp, target, controlCode, coreContext, targetBegin,
             controlCodeBegin, controlCodeEnd);
       })
       .Case<scf::ForOp>([&](auto forOp) {
-        return workgroupBuildForSingleBody<scf::ForOp>(
-            rewriter, forOp, target, controlCode, coreContext, targetBegin,
-            controlCodeBegin, controlCodeEnd);
+        return buildForSingleBody<scf::ForOp>(forOp, target, controlCode,
+                                              coreContext, targetBegin,
+                                              controlCodeBegin, controlCodeEnd);
       })
       .Case<AMDAIE::WorkgroupOp>([&](auto workgroupOp) {
-        return workgroupBuildForWorkgroupOp(
-            rewriter, workgroupOp, target, controlCode, coreContext,
-            targetBegin, controlCodeBegin, controlCodeEnd);
+        return buildForWorkgroupOp(workgroupOp, target, controlCode,
+                                   coreContext, targetBegin, controlCodeBegin,
+                                   controlCodeEnd);
       })
       .Default([&](Operation *) {
         // All other operations are cloned.
-        rewriter.cloneAndMap(*op);
+        // Case 1: Try to clone in workgroup.
+        if (llvm::all_of(op->getOperands(), [&](Value operand) {
+              return rewriter.contains(operand);
+            })) {
+          rewriter.cloneAndMap(*op);
+        }
+        // Case 2: Try to clone in controlcode.
+        if (llvm::all_of(op->getOperands(), [&](Value operand) {
+              return controlCodeRewriter.contains(operand);
+            })) {
+          controlCodeRewriter.setInsertionPoint(controlCode, controlCodeEnd);
+          controlCodeRewriter.cloneAndMap(*op);
+        }
+        // TODO(avarma): Case 3: Try to clone in core.
         return success();
       });
   return success();
@@ -300,18 +311,17 @@ LogicalResult workgroupBuild(IRRewriterAndMapper &rewriter, Operation *op,
 
 /// Recursive workgroup build function for a block with a provided source and
 /// end point.
-LogicalResult workgroupBuild(
-    IRRewriterAndMapper &rewriter, Block *source, Block *target,
-    Block *controlCode, CoreContext &coreContext, Block::iterator sourceBegin,
-    Block::iterator sourceEnd, Block::iterator targetBegin,
-    Block::iterator controlCodeBegin, Block::iterator controlCodeEnd) {
+LogicalResult WorkgroupBuilder::build(
+    Block *source, Block *target, Block *controlCode, CoreContext &coreContext,
+    Block::iterator sourceBegin, Block::iterator sourceEnd,
+    Block::iterator targetBegin, Block::iterator controlCodeBegin,
+    Block::iterator controlCodeEnd) {
   OpBuilder::InsertionGuard guard(rewriter);
   rewriter.setInsertionPoint(target, targetBegin);
   for (Block::iterator it = sourceBegin; it != sourceEnd; ++it) {
     OpBuilder::InsertionGuard guard(rewriter);
-    if (failed(workgroupBuild(rewriter, &(*it), target, controlCode,
-                              coreContext, targetBegin, controlCodeBegin,
-                              controlCodeEnd))) {
+    if (failed(build(&(*it), target, controlCode, coreContext, targetBegin,
+                     controlCodeBegin, controlCodeEnd))) {
       return failure();
     }
   }
@@ -324,8 +334,23 @@ namespace {
 /// code.
 LogicalResult createSingleWorkgroupAndControlCode(func::FuncOp funcOp) {
   IRRewriterAndMapper rewriter(funcOp.getContext());
+  IRRewriterAndMapper controlCodeRewriter(funcOp.getContext());
   Block *funcBlock = &funcOp.getBody().front();
   Block *newBlock = rewriter.createBlock(&funcOp.getRegion());
+
+  // Create an idempotent mapping of FuncOp's blockArgument with itself.
+  // The reason to do this is -> while building the workgroup of a function
+  // we would be cloning an operation to :-
+  // 1. Workgroup body.
+  // 2. Controlcode.
+  // 3. Core op (TODO(avarma): Not implemented yet).
+  // Each of these cloning would be dependent on the respective IRMapper.
+  // Specifically we would be checking if the IRMapper has the necessary operand
+  // values to perform a successful clone.
+  for (Value val : funcBlock->getArguments()) {
+    rewriter.map(val, val);
+    controlCodeRewriter.map(val, val);
+  }
 
   // Create the workgroup op to be filled in with AIE DMAs, cores and the
   // control code.
@@ -339,11 +364,12 @@ LogicalResult createSingleWorkgroupAndControlCode(func::FuncOp funcOp) {
 
   // Recursively build the workgroup and control code.
   CoreContext coreContext(rewriter);
-  if (failed(workgroupBuild(rewriter, funcBlock, newWorkgroupBlock,
-                            controlCodeBlock, coreContext, funcBlock->begin(),
-                            std::prev(funcBlock->end()),
-                            newWorkgroupBlock->begin(),
-                            controlCodeBlock->begin(), controlCodeEnd))) {
+  WorkgroupBuilder builder(rewriter, controlCodeRewriter);
+  if (failed(builder.build(funcBlock, newWorkgroupBlock, controlCodeBlock,
+                           coreContext, funcBlock->begin(),
+                           std::prev(funcBlock->end()),
+                           newWorkgroupBlock->begin(),
+                           controlCodeBlock->begin(), controlCodeEnd))) {
     return failure();
   }
 
