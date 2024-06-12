@@ -174,22 +174,6 @@ module {
 
 // -----
 
-// expected-error @+1 {{There is no scf.for/forall loop to fuse with}}
-func.func @no_scf_forall() {
-  return
-}
-
-// -----
-
-func.func @no_compute_op() {
-  // expected-error @+1 {{Could not find any compute op}}
-  scf.forall (%arg0, %arg1) in (1,2) {
-  }
-  return
-}
-
-// -----
-
 func.func @no_user_of_producer(%arg0: tensor<64xf32>) {
   scf.forall (%arg1, %arg2) in (1,2) {
     // expected-error @+1 {{Expected only one user of the compute op}}

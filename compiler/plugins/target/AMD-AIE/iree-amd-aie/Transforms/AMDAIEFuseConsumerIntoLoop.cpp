@@ -66,8 +66,9 @@ void AMDAIEFuseConsumerIntoLoopPass::runOnOperation() {
         });
 
     if (!scfLoopOp) {
-      funcOp->emitOpError("There is no scf.for/forall loop to fuse with");
-      return signalPassFailure();
+      LLVM_DEBUG(llvm::dbgs()
+                 << "There is no scf.for/forall loop to fuse with\n");
+      return;
     }
 
     // Search the compute op and its consumer slices.
@@ -79,8 +80,8 @@ void AMDAIEFuseConsumerIntoLoopPass::runOnOperation() {
         });
 
     if (!linalgOp) {
-      scfLoopOp->emitOpError("Could not find any compute op");
-      return signalPassFailure();
+      LLVM_DEBUG(llvm::dbgs() << "Could not find any compute op\n");
+      return;
     }
 
     Value::user_range users = linalgOp->getResult(0).getUsers();

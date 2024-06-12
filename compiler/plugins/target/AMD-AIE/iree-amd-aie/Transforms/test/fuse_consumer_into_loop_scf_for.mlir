@@ -178,25 +178,6 @@ module {
 
 // -----
 
-// expected-error @+1 {{There is no scf.for/forall loop to fuse with}}
-func.func @no_scf_for() {
-  return
-}
-
-// -----
-
-func.func @no_compute_op() {
-  %c0 = arith.constant 0 : index
-  %c1 = arith.constant 1 : index
-  %c8 = arith.constant 8 : index
-  // expected-error @+1 {{Could not find any compute op}}
-  scf.for %arg2 = %c0 to %c8 step %c1 {
-  }
-  return
-}
-
-// -----
-
 func.func @no_user_of_producer(%arg0: tensor<64xf32>) {
   %c0 = arith.constant 0 : index
   %c1 = arith.constant 1 : index
