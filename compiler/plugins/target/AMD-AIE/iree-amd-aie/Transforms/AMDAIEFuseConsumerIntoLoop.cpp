@@ -67,7 +67,7 @@ void AMDAIEFuseConsumerIntoLoopPass::runOnOperation() {
 
     if (!scfLoopOp) {
       LLVM_DEBUG(llvm::dbgs()
-                 << "There is no scf.for/forall loop to fuse with.\n");
+                 << "There is no scf.for/forall loop to fuse with\n");
       return;
     }
 
@@ -80,36 +80,31 @@ void AMDAIEFuseConsumerIntoLoopPass::runOnOperation() {
         });
 
     if (!linalgOp) {
-      LLVM_DEBUG(llvm::dbgs() << "----- Could not find any compute op \n");
+      LLVM_DEBUG(llvm::dbgs() << "Could not find any compute op\n");
       return;
     }
 
     Value::user_range users = linalgOp->getResult(0).getUsers();
     if (!llvm::hasSingleElement(users)) {
-      LLVM_DEBUG(llvm::dbgs()
-                 << "----- Expected only one user of the compute op : "
-                 << linalgOp << "\n");
-      return;
+      linalgOp->emitOpError("Expected only one user of the compute op");
+      return signalPassFailure();
     }
 
     Operation *terminatorStoreOp = *(users.begin());
     if (!(isa<tensor::InsertSliceOp, tensor::ParallelInsertSliceOp>(
             terminatorStoreOp))) {
-      LLVM_DEBUG(llvm::dbgs()
-                 << "----- Expected either tensor.insert_slice OR "
-                    "tensor.parallel_insert_slice to be the only user of the "
-                    "compute op : "
-                 << linalgOp << "\n");
-      return;
+      terminatorStoreOp->emitOpError(
+          "Expected either tensor.insert_slice OR tensor.parallel_insert_slice "
+          "to be the only user of the compute op");
+      return signalPassFailure();
     }
 
     std::optional<scf::SCFFuseConsumerOfSliceResult> fusedConsumer =
         scf::tileAndFuseConsumerOfSlice(rewriter, terminatorStoreOp);
     if (!fusedConsumer) {
-      LLVM_DEBUG(
-          llvm::dbgs()
-          << "Failed to fuse any consumer op into the producer scf loop\n");
-      return;
+      terminatorStoreOp->emitOpError(
+          "Failed to fuse any consumer op into the producer");
+      return signalPassFailure();
     }
     fusedConsumer->origConsumerOperand->getOwner()->erase();
   }
