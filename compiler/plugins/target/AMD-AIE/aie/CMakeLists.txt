@@ -359,6 +359,31 @@ else()
   find_library (UUID uuid REQUIRED)
 endif()
 
+
+include(/home/mlevental/dev_projects/llvm-project/install/lib/cmake/llvm/LLVMExports.cmake)
+include(/home/mlevental/dev_projects/llvm-project/install/lib/cmake/mlir/MLIRTargets.cmake)
+
+add_library(ChessHack SHARED AIEChessHack.cpp)
+target_link_libraries(ChessHack PRIVATE
+  MLIR15::MLIRTargetLLVMIRExport
+  MLIR15::MLIRLLVMToLLVMIRTranslation
+  LLVM15::LLVMBinaryFormat
+  LLVM15::LLVMBitReader
+  LLVM15::LLVMBitWriter
+  LLVM15::LLVMLinker
+  LLVM15::LLVMObject
+  LLVM15::LLVMipo
+)
+target_link_options(ChessHack PRIVATE -Bsymbolic -Bsymbolic-functions)
+
+get_property(the_include_dirs TARGET ChessHack PROPERTY INCLUDE_DIRECTORIES)
+list(FILTER the_include_dirs EXCLUDE REGEX "mlir/include*")
+set_property(TARGET ChessHack PROPERTY INCLUDE_DIRECTORIES ${the_include_dirs})
+get_property(the_include_dirs TARGET ChessHack PROPERTY INCLUDE_DIRECTORIES)
+#message(FATAL_ERROR ${the_include_dirs})
+
+target_include_directories(ChessHack PRIVATE /home/mlevental/dev_projects/llvm-project/install/include)
+
 iree_cc_library(
   NAME
     AIETargets
@@ -374,6 +399,7 @@ iree_cc_library(
     ::AIETransformPasses
     ::AIEVecDialectIR
     ::AIEVecConvertToLLVM
+    ChessHack
     MLIRToLLVMIRTranslationRegistration
     MLIRFuncAllExtensions
     ${UUID}

@@ -8,6 +8,7 @@
 //
 //===---------------------------------------------------------------------===//
 
+#include "AIEChessHack.h"
 #include "XCLBinGen.h"
 
 #include <regex>
@@ -725,69 +726,29 @@ static LogicalResult generateObject(MLIRContext *context, ModuleOp moduleOp,
   if (failed(pm.run(copy)))
     return moduleOp.emitOpError(": Failed to lower to LLVM");
 
-  SmallString<64> LLVMIRFile(TK.TempDir);
-  sys::path::append(LLVMIRFile, "input.ll");
-
-  llvm::LLVMContext llvmContext;
-  auto llvmModule = translateModuleToLLVMIR(copy, llvmContext);
-  if (!llvmModule)
-    return moduleOp.emitOpError(": Failed to translate module to LLVMIR");
-
-  std::string llvmirString;
-  std::string errorMessage;
-  {
-    raw_string_ostream llvmirStream(llvmirString);
-    llvmModule->print(llvmirStream, nullptr);
-    llvmirString = chesshack(llvmirString);
-    auto output = openOutputFile(LLVMIRFile, &errorMessage);
-    if (!output) return moduleOp.emitOpError(errorMessage);
-    output->os() << llvmirString;
-    output->keep();
-  }
+  std::string llvmDialectString;
+  raw_string_ostream llvmDialectStream(llvmDialectString);
+  copy.print(llvmDialectStream);
+  std::optional<std::string> llvmirString;
+  if (llvmirString = xilinx::AIE::AIETranslateModuleToLLVMIR(llvmDialectString);
+      !llvmirString.has_value())
+    return moduleOp.emitOpError(": couldn't translate llvm dialect to llvm ir");
+  std::string chessWrapper(_CHESS_INTRINSIC_WRAPPER_LL);
+  SmallString<64> chesslinkedFile(TK.TempDir);
+  sys::path::append(chesslinkedFile, "input.chesslinked.ll");
+  if (auto chesslinked =
+          xilinx::AIE::AIELLVMLink({*llvmirString, chessWrapper});
+      chesslinked.has_value()) {
+    std::string errorMessage;
+    auto chesslinkedOut = openOutputFile(chesslinkedFile, &errorMessage);
+    if (!chesslinkedOut) return moduleOp.emitOpError(errorMessage);
+    chesslinkedOut->os() << *chesslinked;
+    chesslinkedOut->keep();
+  } else
+    return moduleOp.emitOpError(": couldn't llvm-link chess wrapper");
 
   SmallString<64> chessExe(TK.AIEToolsDir);
   sys::path::append(chessExe, "bin", "unwrapped", "lnx64.o", "xchesscc");
-  SmallString<64> chessIntrinsicsLL(TK.TempDir);
-  sys::path::append(chessIntrinsicsLL, "chess_intrinsic_wrapper.ll");
-  {
-    auto chessIntrinsicWrapperLlFile =
-        openOutputFile(chessIntrinsicsLL, &errorMessage);
-    if (!chessIntrinsicWrapperLlFile) return moduleOp.emitOpError(errorMessage);
-
-    chessIntrinsicWrapperLlFile->os() << _CHESS_INTRINSIC_WRAPPER_LL;
-    chessIntrinsicWrapperLlFile->keep();
-  }
-
-  SmallString<64> chesslinkedFile(TK.TempDir);
-  sys::path::append(chesslinkedFile, "input.chesslinked.ll");
-  SmallString<64> chessLlvmLinkBin(TK.AIEToolsDir);
-  sys::path::append(chessLlvmLinkBin, "tps", "lnx64", "target");
-  sys::path::append(chessLlvmLinkBin, "bin", "LNa64bin", "chess-llvm-link");
-  if (!sys::fs::exists(chessLlvmLinkBin))
-    return moduleOp.emitOpError(": chess-llvm-link can't be found");
-
-  if (runTool(chessLlvmLinkBin,
-              {std::string(LLVMIRFile), std::string(chessIntrinsicsLL),
-               "--opaque-pointers=1", "-S", "-o", std::string(chesslinkedFile)},
-              TK.Verbose) != 0)
-    return moduleOp.emitOpError(": Couldn't link in the intrinsics");
-
-  std::string mungedLLVMIR;
-  {
-    auto chesslinkedIn = openInputFile(chesslinkedFile, &errorMessage);
-    if (!chesslinkedIn) return moduleOp.emitOpError(errorMessage);
-
-    mungedLLVMIR = std::string(chesslinkedIn->getBuffer());
-    mungedLLVMIR = chesshack(mungedLLVMIR);
-  }
-  {
-    auto chesslinkedOut = openOutputFile(chesslinkedFile, &errorMessage);
-    if (!chesslinkedOut) return moduleOp.emitOpError(errorMessage);
-
-    chesslinkedOut->os() << mungedLLVMIR;
-    chesslinkedOut->keep();
-  }
-
   SmallString<64> chessworkDir(TK.TempDir);
   sys::path::append(chessworkDir, "chesswork");
   auto chessArgs_ = chessArgs(TK.AIEToolsDir, chessworkDir.str().str());
