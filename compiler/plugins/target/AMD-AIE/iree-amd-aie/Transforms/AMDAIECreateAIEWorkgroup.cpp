@@ -186,14 +186,12 @@ LogicalResult WorkgroupBuilder::buildForSingleBody(
     Block::iterator controlCodeEnd) {
   LLVM_DEBUG(llvm::dbgs() << "workgroupBuild [" << OpTy::getOperationName()
                           << "] Start\n");
-  IRRewriter::InsertPoint oldInsertionPoint = rewriter.saveInsertionPoint();
   controlCodeRewriter.setInsertionPoint(controlCode, controlCodeEnd);
   FailureOr<OpTy> maybeControlCodeOp =
       createNewLoopOp<CreateAndMapFunctor, OpTy>(controlCodeRewriter, op);
   if (failed(maybeControlCodeOp)) {
     return op.emitOpError("failed to create a new loop");
   }
-  rewriter.restoreInsertionPoint(oldInsertionPoint);
   OpTy newControlCodeForOp = maybeControlCodeOp.value();
 
   // Create a new core map and control code block for visiting the nested ops.

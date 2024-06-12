@@ -218,12 +218,17 @@ class WorkgroupBuilder {
                       Block::iterator controlCodeEnd);
 
  private:
+  /// Build function that handles `amdaie.dma_cpy_nd` by converting it into a
+  /// workgroup DMA with potentially corresponding control code.
   LogicalResult buildForDmaCpyNdOp(AMDAIE::DmaCpyNdOp dmaOp, Block *target,
                                    Block *controlCode, CoreContext &coreContext,
                                    Block::iterator targetBegin,
                                    Block::iterator controlCodeBegin,
                                    Block::iterator controlCodeEnd);
 
+  /// Build function that handles operations with a single body and inserts in
+  /// both the control code as well as inside all the cores after visiting the
+  /// body.
   template <typename OpTy>
   LogicalResult buildForSingleBody(OpTy op, Block *target, Block *controlCode,
                                    CoreContext &coreContext,
@@ -231,6 +236,8 @@ class WorkgroupBuilder {
                                    Block::iterator controlCodeBegin,
                                    Block::iterator controlCodeEnd);
 
+  /// Build function that handles `amdaie.workgroup` by visiting the body and
+  /// converting and inserting it into the single `amdaie.workgroup`.
   LogicalResult buildForWorkgroupOp(AMDAIE::WorkgroupOp workgroupOp,
                                     Block *target, Block *controlCode,
                                     CoreContext &coreContext,
@@ -238,7 +245,8 @@ class WorkgroupBuilder {
                                     Block::iterator controlCodeBegin,
                                     Block::iterator controlCodeEnd);
 
-  /// The rewriter to be used.
+  /// The main rewriter to be used for the workgroup body, excluding control
+  /// code and core operations (future work).
   IRRewriterAndMapper &rewriter;
 
   /// Rewriter and mapper for the control code context.
