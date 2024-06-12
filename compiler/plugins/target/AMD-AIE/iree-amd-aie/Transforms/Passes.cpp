@@ -472,7 +472,7 @@ void addMLIRAIRAIELoweringPasses(OpPassManager &passManager, bool packPeel) {
   passManager.addPass(createCSEPass());
 
   passManager.addPass(xilinx::air::createAIRDependencyPass());
-  if (!clMatmulElementwiseFusion) {
+  if (!(packPeel && clMatmulElementwiseFusion)) {
     passManager.addPass(xilinx::air::createAIRDependencyScheduleOptPass());
     passManager.addPass(xilinx::air::createAIRSpecializeDmaBroadcast());
   }
@@ -496,7 +496,7 @@ void addMLIRAIRAIELoweringPasses(OpPassManager &passManager, bool packPeel) {
     {
       xilinx::air::AIRFuseChannelsOptions options;
       std::vector<std::string> mode;
-      if (clMatmulElementwiseFusion) {
+      if (packPeel && clMatmulElementwiseFusion) {
         mode.push_back("L1");
       }
       options.clAggressiveMode = ArrayRef(mode);
