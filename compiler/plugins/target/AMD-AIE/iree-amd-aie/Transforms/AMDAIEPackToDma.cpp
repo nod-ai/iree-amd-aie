@@ -6,6 +6,7 @@
 
 #include "air/Dialect/AIR/AIRDialect.h"
 #include "iree-amd-aie/Transforms/Passes.h"
+#include "iree/compiler/Dialect/LinalgExt/IR/LinalgExtDialect.h"
 #include "iree/compiler/Dialect/LinalgExt/IR/LinalgExtOps.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/Dialect/Arith/Utils/Utils.h"
@@ -299,6 +300,7 @@ class AMDAIEPackToDmaPass
  public:
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<tensor::TensorDialect, linalg::LinalgDialect,
+                    IREE::LinalgExt::IREELinalgExtDialect,
                     xilinx::air::airDialect>();
   }
 
@@ -311,21 +313,21 @@ void AMDAIEPackToDmaPass::runOnOperation() {
   MLIRContext *context = &getContext();
   IRRewriter rewriter(context);
 
-  auto walkResult =
-      getOperation()->walk([&rewriter](Operation *op) -> WalkResult {
-        if (auto packOp = dyn_cast_or_null<IREE::LinalgExt::PackOp>(op)) {
-          if (failed(rewriteAsDma(packOp, rewriter))) {
-            return WalkResult::interrupt();
-          }
-        }
-        if (auto unPackOp = dyn_cast_or_null<IREE::LinalgExt::UnPackOp>(op)) {
-          if (failed(rewriteAsDma(unPackOp, rewriter))) {
-            return WalkResult::interrupt();
-          }
+  auto walkResult = getOperation()->walk(
+      [&rewriter](IREE::LinalgExt::PackOp op) -> WalkResult {
+        if (failed(rewriteAsDma(op, rewriter))) {
+          return WalkResult::interrupt();
         }
         return WalkResult::advance();
       });
-
+  if (walkResult.wasInterrupted()) signalPassFailure();
+  walkResult = getOperation()->walk(
+      [&rewriter](IREE::LinalgExt::UnPackOp op) -> WalkResult {
+        if (failed(rewriteAsDma(op, rewriter))) {
+          return WalkResult::interrupt();
+        }
+        return WalkResult::advance();
+      });
   if (walkResult.wasInterrupted()) signalPassFailure();
 }
 

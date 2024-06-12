@@ -27,10 +27,6 @@ SmallVector<OpTy> getInclusiveParentsOfType(Operation *op) {
   return res;
 }
 
-/// Return a vector with the innermost forall loops within the provided op's
-/// scope
-SmallVector<scf::ForallOp> getInnermostForallLoops(Operation *op);
-
 }  // namespace mlir::iree_compiler::AMDAIE
 
 #endif

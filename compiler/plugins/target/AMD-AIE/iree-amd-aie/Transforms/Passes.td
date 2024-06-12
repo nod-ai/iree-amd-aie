@@ -146,10 +146,11 @@ def AMDAIEHoistForLoopAffineApply : Pass<"iree-amdaie-hoist-for-affine-apply"> {
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEHoistForLoopAffineApplyPass()";
 }
 
-def AMDAIEInsertAIEWorkgroup :
-  Pass<"iree-amdaie-insert-aie-workgroup", "ModuleOp"> {
-  let summary = "Insert AIE workgroups around forall loops selected for parallel execution.";
-  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEInsertAIEWorkgroupPass()";
+def AMDAIEInsertCores :
+  Pass<"iree-amdaie-insert-cores", "ModuleOp"> {
+  let summary = "Insert `amdaie.core` operations inside the innermost "
+                "`scf.forall` operations selected for parallel execution.";
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEInsertCoresPass()";
 }
 
 def AMDAIEInsertLoopsForVectorization :
