@@ -153,10 +153,13 @@ func.func @error_dma_cpy_nd_L2_L1(%arg0: memref<1x1x8x16xi32, 2>, %arg1: memref<
 
 // CHECK-LABEL: @for
 // CHECK:       amdaie.workgroup
-// CHECK-DAG:     %[[C0:.+]] = arith.constant 0 : index
-// CHECK-DAG:     %[[C1:.+]] = arith.constant 1 : index
-// CHECK-DAG:     %[[C8:.+]] = arith.constant 8 : index
+// CHECK-DAG:     arith.constant 0 : index
+// CHECK-DAG:     arith.constant 1 : index
+// CHECK-DAG:     arith.constant 8 : index
 // CHECK:         amdaie.controlcode
+// CHECK-DAG:       %[[C0:.+]] = arith.constant 0 : index
+// CHECK-DAG:       %[[C1:.+]] = arith.constant 1 : index
+// CHECK-DAG:       %[[C8:.+]] = arith.constant 8 : index
 // CHECK:           scf.for %{{.*}} = %[[C0]] to %[[C8]] step %[[C1]]
 func.func @for() {
   %c0 = arith.constant 0 : index
@@ -183,7 +186,10 @@ func.func @for() {
 // CHECK-DAG:     %{{.+}} = amdaie.core(%[[TILE_1]])
 // CHECK:           scf.for %{{.*}} = %[[C0]] to %[[C8]] step %[[C1]]
 // CHECK:         amdaie.controlcode
-// CHECK:           scf.for %{{.*}} = %[[C0]] to %[[C8]] step %[[C1]]
+// CHECK-DAG:       %[[C0_1:.+]] = arith.constant 0 : index
+// CHECK-DAG:       %[[C1_1:.+]] = arith.constant 1 : index
+// CHECK-DAG:       %[[C8_1:.+]] = arith.constant 8 : index
+// CHECK:           scf.for %{{.*}} = %[[C0_1]] to %[[C8_1]] step %[[C1_1]]
 func.func @for_cores() {
   %c0 = arith.constant 0 : index
   %c1 = arith.constant 1 : index
@@ -219,7 +225,10 @@ func.func @for_cores() {
 // CHECK-SAME:    %[[FROMMEMREF1]][] [] []
 // CHECK-SAME:    (!amdaie.logicalobjectfifo<memref<8x16xi32, 1>>, !amdaie.logicalobjectfifo<memref<1x1x8x16xi32>>)
 // CHECK:         amdaie.controlcode
-// CHECK:           scf.for %[[ARG:.+]] = %[[C0]] to %[[C8]] step %[[C1]]
+// CHECK-DAG:       %[[C0_1:.+]] = arith.constant 0 : index
+// CHECK-DAG:       %[[C1_1:.+]] = arith.constant 1 : index
+// CHECK-DAG:       %[[C8_1:.+]] = arith.constant 8 : index
+// CHECK:           scf.for %[[ARG:.+]] = %[[C0_1]] to %[[C8_1]] step %[[C1_1]]
 // CHECK:             %[[IPU_DMA:.+]] = amdaie.npu.dma_cpy_nd %[[DMA]]
 // CHECK-SAME:        [] [] []
 // CHECK-SAME:        [0, 0, 0, 0] [1, 1, 8, 16] [128, 16, %[[ARG]], 1]
@@ -335,11 +344,14 @@ func.func @forall_dmas(%arg0: memref<1x1x8x16xi32>, %arg1: memref<8x16xi32, 1>) 
 // CHECK:           amdaie.logicalobjectfifo.consume(%[[DMA]])
 // CHECK:           scf.for %{{.*}} = %[[C0]] to %[[C8]] step %[[C1]]
 // CHECK:         amdaie.controlcode
+// CHECK-DAG:       %[[C0_1:.+]] = arith.constant 0 : index
+// CHECK-DAG:       %[[C1_1:.+]] = arith.constant 1 : index
+// CHECK-DAG:       %[[C8_1:.+]] = arith.constant 8 : index
 // CHECK:           %[[IPU_DMA:.+]] = amdaie.npu.dma_cpy_nd %[[DMA]]
 // CHECK-SAME:      [] [] []
 // CHECK-SAME:      [] [] []
 // CHECK:           amdaie.npu.dma_wait(%[[IPU_DMA]], S2MM)
-// CHECK:           scf.for %{{.*}} = %[[C0]] to %[[C8]] step %[[C1]]
+// CHECK:           scf.for %{{.*}} = %[[C0_1]] to %[[C8_1]] step %[[C1_1]]
 func.func @merge_cores(%arg0: memref<1x1x8x16xi32>, %arg1: memref<8x16xi32, 1>) {
   %c0 = arith.constant 0 : index
   %c1 = arith.constant 1 : index
@@ -412,11 +424,14 @@ func.func @merge_cores(%arg0: memref<1x1x8x16xi32>, %arg1: memref<8x16xi32, 1>) 
 // CHECK:             amdaie.logicalobjectfifo.consume(%[[DMA2]])
 // CHECK:             linalg.fill
 // CHECK:         amdaie.controlcode
+// CHECK-DAG:       %[[C0_1:.+]] = arith.constant 0 : index
+// CHECK-DAG:       %[[C1_1:.+]] = arith.constant 1 : index
+// CHECK-DAG:       %[[C8_1:.+]] = arith.constant 8 : index
 // CHECK:           %[[IPU_DMA_0:.+]] = amdaie.npu.dma_cpy_nd %[[DMA0]]
 // CHECK-SAME:      [] [] []
 // CHECK-SAME:      [] [] []
 // CHECK:           amdaie.npu.dma_wait(%[[IPU_DMA_0]], S2MM)
-// CHECK:           scf.for %{{.*}} = %[[C0]] to %[[C8]] step %[[C1]]
+// CHECK:           scf.for %{{.*}} = %[[C0_1]] to %[[C8_1]] step %[[C1_1]]
 // CHECK:             %[[IPU_DMA_1:.+]] = amdaie.npu.dma_cpy_nd %[[DMA1]]
 // CHECK-SAME:        [] [] []
 // CHECK-SAME:        [] [] []
