@@ -1,7 +1,7 @@
 
 // RUN: iree-opt --aie-objectFifo-stateful-transform %s | FileCheck %s
 
-// CHECK-LABEL:   aie.device(xcvc1902) {
+// CHECK-LABEL:   aie.device(npu1_4col) {
 // CHECK:           memref.global "public" @broadcast_of_0_cons : memref<16xi32>
 // CHECK:           memref.global "public" @broadcast_of_1_cons : memref<16xi32>
 // CHECK:           memref.global "public" @broadcast_of_2_cons : memref<16xi32>
@@ -14,32 +14,28 @@
 // CHECK:           %[[TILE_3_3:.*]] = aie.tile(3, 3)
 // CHECK:           %[[BROADCAST_OF_0_CONS_BUFF_0:.*]] = aie.buffer(%[[TILE_1_2]]) {sym_name = "broadcast_of_0_cons_buff_0"} : memref<16xi32>
 // CHECK:           %[[BROADCAST_OF_0_CONS_BUFF_1:.*]] = aie.buffer(%[[TILE_1_2]]) {sym_name = "broadcast_of_0_cons_buff_1"} : memref<16xi32>
-// CHECK:           %[[BROADCAST_OF_0_CONS_LOCK_0:.*]] = aie.lock(%[[TILE_1_2]], 0) {init = 0 : i32, sym_name = "broadcast_of_0_cons_lock_0"}
-// CHECK:           %[[BROADCAST_OF_0_CONS_LOCK_1:.*]] = aie.lock(%[[TILE_1_2]], 1) {init = 0 : i32, sym_name = "broadcast_of_0_cons_lock_1"}
+// CHECK:           %[[BROADCAST_OF_0_CONS_PROD_LOCK:.*]] = aie.lock(%[[TILE_1_2]], 0) {init = 2 : i32, sym_name = "broadcast_of_0_cons_prod_lock"}
+// CHECK:           %[[BROADCAST_OF_0_CONS_CONS_LOCK:.*]] = aie.lock(%[[TILE_1_2]], 1) {init = 0 : i32, sym_name = "broadcast_of_0_cons_cons_lock"}
 // CHECK:           %[[BROADCAST_OF_1_CONS_BUFF_0:.*]] = aie.buffer(%[[TILE_1_4]]) {sym_name = "broadcast_of_1_cons_buff_0"} : memref<16xi32>
 // CHECK:           %[[BROADCAST_OF_1_CONS_BUFF_1:.*]] = aie.buffer(%[[TILE_1_4]]) {sym_name = "broadcast_of_1_cons_buff_1"} : memref<16xi32>
 // CHECK:           %[[BROADCAST_OF_1_CONS_BUFF_2:.*]] = aie.buffer(%[[TILE_1_4]]) {sym_name = "broadcast_of_1_cons_buff_2"} : memref<16xi32>
-// CHECK:           %[[BROADCAST_OF_1_CONS_LOCK_0:.*]] = aie.lock(%[[TILE_1_4]], 0) {init = 0 : i32, sym_name = "broadcast_of_1_cons_lock_0"}
-// CHECK:           %[[BROADCAST_OF_1_CONS_LOCK_1:.*]] = aie.lock(%[[TILE_1_4]], 1) {init = 0 : i32, sym_name = "broadcast_of_1_cons_lock_1"}
-// CHECK:           %[[BROADCAST_OF_1_CONS_LOCK_2:.*]] = aie.lock(%[[TILE_1_4]], 2) {init = 0 : i32, sym_name = "broadcast_of_1_cons_lock_2"}
+// CHECK:           %[[BROADCAST_OF_1_CONS_PROD_LOCK:.*]] = aie.lock(%[[TILE_1_4]], 0) {init = 3 : i32, sym_name = "broadcast_of_1_cons_prod_lock"}
+// CHECK:           %[[BROADCAST_OF_1_CONS_CONS_LOCK:.*]] = aie.lock(%[[TILE_1_4]], 1) {init = 0 : i32, sym_name = "broadcast_of_1_cons_cons_lock"}
 // CHECK:           %[[BROADCAST_OF_2_CONS_BUFF_0:.*]] = aie.buffer(%[[TILE_3_2]]) {sym_name = "broadcast_of_2_cons_buff_0"} : memref<16xi32>
 // CHECK:           %[[BROADCAST_OF_2_CONS_BUFF_1:.*]] = aie.buffer(%[[TILE_3_2]]) {sym_name = "broadcast_of_2_cons_buff_1"} : memref<16xi32>
 // CHECK:           %[[BROADCAST_OF_2_CONS_BUFF_2:.*]] = aie.buffer(%[[TILE_3_2]]) {sym_name = "broadcast_of_2_cons_buff_2"} : memref<16xi32>
 // CHECK:           %[[BROADCAST_OF_2_CONS_BUFF_3:.*]] = aie.buffer(%[[TILE_3_2]]) {sym_name = "broadcast_of_2_cons_buff_3"} : memref<16xi32>
-// CHECK:           %[[BROADCAST_OF_2_CONS_LOCK_0:.*]] = aie.lock(%[[TILE_3_2]], 0) {init = 0 : i32, sym_name = "broadcast_of_2_cons_lock_0"}
-// CHECK:           %[[BROADCAST_OF_2_CONS_LOCK_1:.*]] = aie.lock(%[[TILE_3_2]], 1) {init = 0 : i32, sym_name = "broadcast_of_2_cons_lock_1"}
-// CHECK:           %[[BROADCAST_OF_2_CONS_LOCK_2:.*]] = aie.lock(%[[TILE_3_2]], 2) {init = 0 : i32, sym_name = "broadcast_of_2_cons_lock_2"}
-// CHECK:           %[[BROADCAST_OF_2_CONS_LOCK_3:.*]] = aie.lock(%[[TILE_3_2]], 3) {init = 0 : i32, sym_name = "broadcast_of_2_cons_lock_3"}
+// CHECK:           %[[BROADCAST_OF_2_CONS_PROD_LOCK:.*]] = aie.lock(%[[TILE_3_2]], 0) {init = 4 : i32, sym_name = "broadcast_of_2_cons_prod_lock"}
+// CHECK:           %[[BROADCAST_OF_2_CONS_CONS_LOCK:.*]] = aie.lock(%[[TILE_3_2]], 1) {init = 0 : i32, sym_name = "broadcast_of_2_cons_cons_lock"}
 // CHECK:           %[[BROADCAST_OF_3_CONS_BUFF_0:.*]] = aie.buffer(%[[TILE_3_3]]) {sym_name = "broadcast_of_3_cons_buff_0"} : memref<16xi32>
 // CHECK:           %[[BROADCAST_OF_3_CONS_BUFF_1:.*]] = aie.buffer(%[[TILE_3_3]]) {sym_name = "broadcast_of_3_cons_buff_1"} : memref<16xi32>
 // CHECK:           %[[BROADCAST_OF_3_CONS_BUFF_2:.*]] = aie.buffer(%[[TILE_3_3]]) {sym_name = "broadcast_of_3_cons_buff_2"} : memref<16xi32>
-// CHECK:           %[[BROADCAST_OF_3_CONS_LOCK_0:.*]] = aie.lock(%[[TILE_3_3]], 0) {init = 0 : i32, sym_name = "broadcast_of_3_cons_lock_0"}
-// CHECK:           %[[BROADCAST_OF_3_CONS_LOCK_1:.*]] = aie.lock(%[[TILE_3_3]], 1) {init = 0 : i32, sym_name = "broadcast_of_3_cons_lock_1"}
-// CHECK:           %[[BROADCAST_OF_3_CONS_LOCK_2:.*]] = aie.lock(%[[TILE_3_3]], 2) {init = 0 : i32, sym_name = "broadcast_of_3_cons_lock_2"}
+// CHECK:           %[[BROADCAST_OF_3_CONS_PROD_LOCK:.*]] = aie.lock(%[[TILE_3_3]], 0) {init = 3 : i32, sym_name = "broadcast_of_3_cons_prod_lock"}
+// CHECK:           %[[BROADCAST_OF_3_CONS_CONS_LOCK:.*]] = aie.lock(%[[TILE_3_3]], 1) {init = 0 : i32, sym_name = "broadcast_of_3_cons_cons_lock"}
 // CHECK:           %[[BROADCAST_OF_BUFF_0:.*]] = aie.buffer(%[[TILE_1_3]]) {sym_name = "broadcast_of_buff_0"} : memref<16xi32>
 // CHECK:           %[[BROADCAST_OF_BUFF_1:.*]] = aie.buffer(%[[TILE_1_3]]) {sym_name = "broadcast_of_buff_1"} : memref<16xi32>
-// CHECK:           %[[BROADCAST_OF_LOCK_0:.*]] = aie.lock(%[[TILE_1_3]], 0) {init = 0 : i32, sym_name = "broadcast_of_lock_0"}
-// CHECK:           %[[BROADCAST_OF_LOCK_1:.*]] = aie.lock(%[[TILE_1_3]], 1) {init = 0 : i32, sym_name = "broadcast_of_lock_1"}
+// CHECK:           %[[BROADCAST_OF_PROD_LOCK:.*]] = aie.lock(%[[TILE_1_3]], 0) {init = 2 : i32, sym_name = "broadcast_of_prod_lock"}
+// CHECK:           %[[BROADCAST_OF_CONS_LOCK:.*]] = aie.lock(%[[TILE_1_3]], 1) {init = 0 : i32, sym_name = "broadcast_of_cons_lock"}
 // CHECK:           aie.flow(%[[TILE_1_3]], DMA : 0, %[[TILE_3_3]], DMA : 0)
 // CHECK:           aie.flow(%[[TILE_1_3]], DMA : 0, %[[TILE_3_2]], DMA : 0)
 // CHECK:           aie.flow(%[[TILE_1_3]], DMA : 0, %[[TILE_1_4]], DMA : 0)
@@ -53,12 +49,12 @@
 // CHECK:             %[[C12:.*]] = arith.constant 12 : index
 // CHECK:             %[[C2:.*]] = arith.constant 2 : index
 // CHECK:             scf.for %[[ARG0:.*]] = %[[C0]] to %[[C12]] step %[[C2]] {
-// CHECK:               aie.use_lock(%[[BROADCAST_OF_LOCK_0]], Acquire, 0)
+// CHECK:               aie.use_lock(%[[BROADCAST_OF_PROD_LOCK]], AcquireGreaterEqual, 1)
 // CHECK:               func.call @some_work(%[[BROADCAST_OF_BUFF_0]]) : (memref<16xi32>) -> ()
-// CHECK:               aie.use_lock(%[[BROADCAST_OF_LOCK_0]], Release, 1)
-// CHECK:               aie.use_lock(%[[BROADCAST_OF_LOCK_1]], Acquire, 0)
+// CHECK:               aie.use_lock(%[[BROADCAST_OF_CONS_LOCK]], Release, 1)
+// CHECK:               aie.use_lock(%[[BROADCAST_OF_PROD_LOCK]], AcquireGreaterEqual, 1)
 // CHECK:               func.call @some_work(%[[BROADCAST_OF_BUFF_1]]) : (memref<16xi32>) -> ()
-// CHECK:               aie.use_lock(%[[BROADCAST_OF_LOCK_1]], Release, 1)
+// CHECK:               aie.use_lock(%[[BROADCAST_OF_CONS_LOCK]], Release, 1)
 // CHECK:             }
 // CHECK:             aie.end
 // CHECK:           }
@@ -68,12 +64,12 @@
 // CHECK:             %[[C12:.*]] = arith.constant 12 : index
 // CHECK:             %[[C2:.*]] = arith.constant 2 : index
 // CHECK:             scf.for %[[ARG0:.*]] = %[[C0]] to %[[C12]] step %[[C2]] {
-// CHECK:               aie.use_lock(%[[BROADCAST_OF_0_CONS_LOCK_0]], Acquire, 1)
+// CHECK:               aie.use_lock(%[[BROADCAST_OF_0_CONS_CONS_LOCK]], AcquireGreaterEqual, 1)
 // CHECK:               func.call @some_work(%[[BROADCAST_OF_0_CONS_BUFF_0]]) : (memref<16xi32>) -> ()
-// CHECK:               aie.use_lock(%[[BROADCAST_OF_0_CONS_LOCK_0]], Release, 0)
-// CHECK:               aie.use_lock(%[[BROADCAST_OF_0_CONS_LOCK_1]], Acquire, 1)
+// CHECK:               aie.use_lock(%[[BROADCAST_OF_0_CONS_PROD_LOCK]], Release, 1)
+// CHECK:               aie.use_lock(%[[BROADCAST_OF_0_CONS_CONS_LOCK]], AcquireGreaterEqual, 1)
 // CHECK:               func.call @some_work(%[[BROADCAST_OF_0_CONS_BUFF_1]]) : (memref<16xi32>) -> ()
-// CHECK:               aie.use_lock(%[[BROADCAST_OF_0_CONS_LOCK_1]], Release, 0)
+// CHECK:               aie.use_lock(%[[BROADCAST_OF_0_CONS_PROD_LOCK]], Release, 1)
 // CHECK:             }
 // CHECK:             aie.end
 // CHECK:           }
@@ -83,24 +79,18 @@
 // CHECK:             %[[C12:.*]] = arith.constant 12 : index
 // CHECK:             %[[C3:.*]] = arith.constant 3 : index
 // CHECK:             scf.for %[[ARG0:.*]] = %[[C0]] to %[[C12]] step %[[C3]] {
-// CHECK:               aie.use_lock(%[[BROADCAST_OF_1_CONS_LOCK_0]], Acquire, 1)
-// CHECK:               aie.use_lock(%[[BROADCAST_OF_1_CONS_LOCK_1]], Acquire, 1)
+// CHECK:               aie.use_lock(%[[BROADCAST_OF_1_CONS_CONS_LOCK]], AcquireGreaterEqual, 2)
 // CHECK:               func.call @some_work(%[[BROADCAST_OF_1_CONS_BUFF_0]]) : (memref<16xi32>) -> ()
 // CHECK:               func.call @some_work(%[[BROADCAST_OF_1_CONS_BUFF_1]]) : (memref<16xi32>) -> ()
-// CHECK:               aie.use_lock(%[[BROADCAST_OF_1_CONS_LOCK_0]], Release, 0)
-// CHECK:               aie.use_lock(%[[BROADCAST_OF_1_CONS_LOCK_1]], Release, 0)
-// CHECK:               aie.use_lock(%[[BROADCAST_OF_1_CONS_LOCK_2]], Acquire, 1)
-// CHECK:               aie.use_lock(%[[BROADCAST_OF_1_CONS_LOCK_0]], Acquire, 1)
+// CHECK:               aie.use_lock(%[[BROADCAST_OF_1_CONS_PROD_LOCK]], Release, 2)
+// CHECK:               aie.use_lock(%[[BROADCAST_OF_1_CONS_CONS_LOCK]], AcquireGreaterEqual, 2)
 // CHECK:               func.call @some_work(%[[BROADCAST_OF_1_CONS_BUFF_2]]) : (memref<16xi32>) -> ()
 // CHECK:               func.call @some_work(%[[BROADCAST_OF_1_CONS_BUFF_0]]) : (memref<16xi32>) -> ()
-// CHECK:               aie.use_lock(%[[BROADCAST_OF_1_CONS_LOCK_2]], Release, 0)
-// CHECK:               aie.use_lock(%[[BROADCAST_OF_1_CONS_LOCK_0]], Release, 0)
-// CHECK:               aie.use_lock(%[[BROADCAST_OF_1_CONS_LOCK_1]], Acquire, 1)
-// CHECK:               aie.use_lock(%[[BROADCAST_OF_1_CONS_LOCK_2]], Acquire, 1)
+// CHECK:               aie.use_lock(%[[BROADCAST_OF_1_CONS_PROD_LOCK]], Release, 2)
+// CHECK:               aie.use_lock(%[[BROADCAST_OF_1_CONS_CONS_LOCK]], AcquireGreaterEqual, 2)
 // CHECK:               func.call @some_work(%[[BROADCAST_OF_1_CONS_BUFF_1]]) : (memref<16xi32>) -> ()
 // CHECK:               func.call @some_work(%[[BROADCAST_OF_1_CONS_BUFF_2]]) : (memref<16xi32>) -> ()
-// CHECK:               aie.use_lock(%[[BROADCAST_OF_1_CONS_LOCK_1]], Release, 0)
-// CHECK:               aie.use_lock(%[[BROADCAST_OF_1_CONS_LOCK_2]], Release, 0)
+// CHECK:               aie.use_lock(%[[BROADCAST_OF_1_CONS_PROD_LOCK]], Release, 2)
 // CHECK:             }
 // CHECK:             aie.end
 // CHECK:           }
@@ -110,28 +100,26 @@
 // CHECK:             %[[C12:.*]] = arith.constant 12 : index
 // CHECK:             %[[C4:.*]] = arith.constant 4 : index
 // CHECK:             scf.for %[[ARG0:.*]] = %[[C0]] to %[[C12]] step %[[C4]] {
-// CHECK:               aie.use_lock(%[[BROADCAST_OF_2_CONS_LOCK_0]], Acquire, 1)
-// CHECK:               aie.use_lock(%[[BROADCAST_OF_2_CONS_LOCK_1]], Acquire, 1)
-// CHECK:               aie.use_lock(%[[BROADCAST_OF_2_CONS_LOCK_2]], Acquire, 1)
+// CHECK:               aie.use_lock(%[[BROADCAST_OF_2_CONS_CONS_LOCK]], AcquireGreaterEqual, 3)
 // CHECK:               func.call @some_work(%[[BROADCAST_OF_2_CONS_BUFF_0]]) : (memref<16xi32>) -> ()
 // CHECK:               func.call @some_work(%[[BROADCAST_OF_2_CONS_BUFF_1]]) : (memref<16xi32>) -> ()
 // CHECK:               func.call @some_work(%[[BROADCAST_OF_2_CONS_BUFF_2]]) : (memref<16xi32>) -> ()
-// CHECK:               aie.use_lock(%[[BROADCAST_OF_2_CONS_LOCK_0]], Release, 0)
-// CHECK:               aie.use_lock(%[[BROADCAST_OF_2_CONS_LOCK_3]], Acquire, 1)
+// CHECK:               aie.use_lock(%[[BROADCAST_OF_2_CONS_PROD_LOCK]], Release, 1)
+// CHECK:               aie.use_lock(%[[BROADCAST_OF_2_CONS_CONS_LOCK]], AcquireGreaterEqual, 1)
 // CHECK:               func.call @some_work(%[[BROADCAST_OF_2_CONS_BUFF_1]]) : (memref<16xi32>) -> ()
 // CHECK:               func.call @some_work(%[[BROADCAST_OF_2_CONS_BUFF_2]]) : (memref<16xi32>) -> ()
 // CHECK:               func.call @some_work(%[[BROADCAST_OF_2_CONS_BUFF_3]]) : (memref<16xi32>) -> ()
-// CHECK:               aie.use_lock(%[[BROADCAST_OF_2_CONS_LOCK_1]], Release, 0)
-// CHECK:               aie.use_lock(%[[BROADCAST_OF_2_CONS_LOCK_0]], Acquire, 1)
+// CHECK:               aie.use_lock(%[[BROADCAST_OF_2_CONS_PROD_LOCK]], Release, 1)
+// CHECK:               aie.use_lock(%[[BROADCAST_OF_2_CONS_CONS_LOCK]], AcquireGreaterEqual, 1)
 // CHECK:               func.call @some_work(%[[BROADCAST_OF_2_CONS_BUFF_2]]) : (memref<16xi32>) -> ()
 // CHECK:               func.call @some_work(%[[BROADCAST_OF_2_CONS_BUFF_3]]) : (memref<16xi32>) -> ()
 // CHECK:               func.call @some_work(%[[BROADCAST_OF_2_CONS_BUFF_0]]) : (memref<16xi32>) -> ()
-// CHECK:               aie.use_lock(%[[BROADCAST_OF_2_CONS_LOCK_2]], Release, 0)
-// CHECK:               aie.use_lock(%[[BROADCAST_OF_2_CONS_LOCK_1]], Acquire, 1)
+// CHECK:               aie.use_lock(%[[BROADCAST_OF_2_CONS_PROD_LOCK]], Release, 1)
+// CHECK:               aie.use_lock(%[[BROADCAST_OF_2_CONS_CONS_LOCK]], AcquireGreaterEqual, 1)
 // CHECK:               func.call @some_work(%[[BROADCAST_OF_2_CONS_BUFF_3]]) : (memref<16xi32>) -> ()
 // CHECK:               func.call @some_work(%[[BROADCAST_OF_2_CONS_BUFF_0]]) : (memref<16xi32>) -> ()
 // CHECK:               func.call @some_work(%[[BROADCAST_OF_2_CONS_BUFF_1]]) : (memref<16xi32>) -> ()
-// CHECK:               aie.use_lock(%[[BROADCAST_OF_2_CONS_LOCK_3]], Release, 0)
+// CHECK:               aie.use_lock(%[[BROADCAST_OF_2_CONS_PROD_LOCK]], Release, 1)
 // CHECK:             }
 // CHECK:             aie.end
 // CHECK:           }
@@ -141,33 +129,32 @@
 // CHECK:             %[[C12:.*]] = arith.constant 12 : index
 // CHECK:             %[[C3:.*]] = arith.constant 3 : index
 // CHECK:             scf.for %[[ARG0:.*]] = %[[C0]] to %[[C12]] step %[[C3]] {
-// CHECK:               aie.use_lock(%[[BROADCAST_OF_3_CONS_LOCK_0]], Acquire, 1)
-// CHECK:               aie.use_lock(%[[BROADCAST_OF_3_CONS_LOCK_1]], Acquire, 1)
+// CHECK:               aie.use_lock(%[[BROADCAST_OF_3_CONS_CONS_LOCK]], AcquireGreaterEqual, 2)
 // CHECK:               func.call @some_work(%[[BROADCAST_OF_3_CONS_BUFF_0]]) : (memref<16xi32>) -> ()
 // CHECK:               func.call @some_work(%[[BROADCAST_OF_3_CONS_BUFF_1]]) : (memref<16xi32>) -> ()
-// CHECK:               aie.use_lock(%[[BROADCAST_OF_3_CONS_LOCK_0]], Release, 0)
-// CHECK:               aie.use_lock(%[[BROADCAST_OF_3_CONS_LOCK_2]], Acquire, 1)
+// CHECK:               aie.use_lock(%[[BROADCAST_OF_3_CONS_PROD_LOCK]], Release, 1)
+// CHECK:               aie.use_lock(%[[BROADCAST_OF_3_CONS_CONS_LOCK]], AcquireGreaterEqual, 1)
 // CHECK:               func.call @some_work(%[[BROADCAST_OF_3_CONS_BUFF_1]]) : (memref<16xi32>) -> ()
 // CHECK:               func.call @some_work(%[[BROADCAST_OF_3_CONS_BUFF_2]]) : (memref<16xi32>) -> ()
-// CHECK:               aie.use_lock(%[[BROADCAST_OF_3_CONS_LOCK_1]], Release, 0)
-// CHECK:               aie.use_lock(%[[BROADCAST_OF_3_CONS_LOCK_0]], Acquire, 1)
+// CHECK:               aie.use_lock(%[[BROADCAST_OF_3_CONS_PROD_LOCK]], Release, 1)
+// CHECK:               aie.use_lock(%[[BROADCAST_OF_3_CONS_CONS_LOCK]], AcquireGreaterEqual, 1)
 // CHECK:               func.call @some_work(%[[BROADCAST_OF_3_CONS_BUFF_2]]) : (memref<16xi32>) -> ()
 // CHECK:               func.call @some_work(%[[BROADCAST_OF_3_CONS_BUFF_0]]) : (memref<16xi32>) -> ()
-// CHECK:               aie.use_lock(%[[BROADCAST_OF_3_CONS_LOCK_2]], Release, 0)
+// CHECK:               aie.use_lock(%[[BROADCAST_OF_3_CONS_PROD_LOCK]], Release, 1)
 // CHECK:             }
 // CHECK:             aie.end
 // CHECK:           }
 // CHECK:           %[[MEM_1_3:.*]] = aie.mem(%[[TILE_1_3]]) {
 // CHECK:             %[[VAL_0:.*]] = aie.dma_start(MM2S, 0, ^bb1, ^bb3)
 // CHECK:           ^bb1:
-// CHECK:             aie.use_lock(%[[BROADCAST_OF_LOCK_0]], Acquire, 1)
+// CHECK:             aie.use_lock(%[[BROADCAST_OF_CONS_LOCK]], AcquireGreaterEqual, 1)
 // CHECK:             aie.dma_bd(%[[BROADCAST_OF_BUFF_0]] : memref<16xi32>, 0, 16)
-// CHECK:             aie.use_lock(%[[BROADCAST_OF_LOCK_0]], Release, 0)
+// CHECK:             aie.use_lock(%[[BROADCAST_OF_PROD_LOCK]], Release, 1)
 // CHECK:             aie.next_bd ^bb2
 // CHECK:           ^bb2:
-// CHECK:             aie.use_lock(%[[BROADCAST_OF_LOCK_1]], Acquire, 1)
+// CHECK:             aie.use_lock(%[[BROADCAST_OF_CONS_LOCK]], AcquireGreaterEqual, 1)
 // CHECK:             aie.dma_bd(%[[BROADCAST_OF_BUFF_1]] : memref<16xi32>, 0, 16)
-// CHECK:             aie.use_lock(%[[BROADCAST_OF_LOCK_1]], Release, 0)
+// CHECK:             aie.use_lock(%[[BROADCAST_OF_PROD_LOCK]], Release, 1)
 // CHECK:             aie.next_bd ^bb1
 // CHECK:           ^bb3:
 // CHECK:             aie.end
@@ -175,14 +162,14 @@
 // CHECK:           %[[MEM_1_2:.*]] = aie.mem(%[[TILE_1_2]]) {
 // CHECK:             %[[VAL_1:.*]] = aie.dma_start(S2MM, 0, ^bb1, ^bb3)
 // CHECK:           ^bb1:
-// CHECK:             aie.use_lock(%[[BROADCAST_OF_0_CONS_LOCK_0]], Acquire, 0)
+// CHECK:             aie.use_lock(%[[BROADCAST_OF_0_CONS_PROD_LOCK]], AcquireGreaterEqual, 1)
 // CHECK:             aie.dma_bd(%[[BROADCAST_OF_0_CONS_BUFF_0]] : memref<16xi32>, 0, 16)
-// CHECK:             aie.use_lock(%[[BROADCAST_OF_0_CONS_LOCK_0]], Release, 1)
+// CHECK:             aie.use_lock(%[[BROADCAST_OF_0_CONS_CONS_LOCK]], Release, 1)
 // CHECK:             aie.next_bd ^bb2
 // CHECK:           ^bb2:
-// CHECK:             aie.use_lock(%[[BROADCAST_OF_0_CONS_LOCK_1]], Acquire, 0)
+// CHECK:             aie.use_lock(%[[BROADCAST_OF_0_CONS_PROD_LOCK]], AcquireGreaterEqual, 1)
 // CHECK:             aie.dma_bd(%[[BROADCAST_OF_0_CONS_BUFF_1]] : memref<16xi32>, 0, 16)
-// CHECK:             aie.use_lock(%[[BROADCAST_OF_0_CONS_LOCK_1]], Release, 1)
+// CHECK:             aie.use_lock(%[[BROADCAST_OF_0_CONS_CONS_LOCK]], Release, 1)
 // CHECK:             aie.next_bd ^bb1
 // CHECK:           ^bb3:
 // CHECK:             aie.end
@@ -190,19 +177,19 @@
 // CHECK:           %[[MEM_1_4:.*]] = aie.mem(%[[TILE_1_4]]) {
 // CHECK:             %[[VAL_2:.*]] = aie.dma_start(S2MM, 0, ^bb1, ^bb4)
 // CHECK:           ^bb1:
-// CHECK:             aie.use_lock(%[[BROADCAST_OF_1_CONS_LOCK_0]], Acquire, 0)
+// CHECK:             aie.use_lock(%[[BROADCAST_OF_1_CONS_PROD_LOCK]], AcquireGreaterEqual, 1)
 // CHECK:             aie.dma_bd(%[[BROADCAST_OF_1_CONS_BUFF_0]] : memref<16xi32>, 0, 16)
-// CHECK:             aie.use_lock(%[[BROADCAST_OF_1_CONS_LOCK_0]], Release, 1)
+// CHECK:             aie.use_lock(%[[BROADCAST_OF_1_CONS_CONS_LOCK]], Release, 1)
 // CHECK:             aie.next_bd ^bb2
 // CHECK:           ^bb2:
-// CHECK:             aie.use_lock(%[[BROADCAST_OF_1_CONS_LOCK_1]], Acquire, 0)
+// CHECK:             aie.use_lock(%[[BROADCAST_OF_1_CONS_PROD_LOCK]], AcquireGreaterEqual, 1)
 // CHECK:             aie.dma_bd(%[[BROADCAST_OF_1_CONS_BUFF_1]] : memref<16xi32>, 0, 16)
-// CHECK:             aie.use_lock(%[[BROADCAST_OF_1_CONS_LOCK_1]], Release, 1)
+// CHECK:             aie.use_lock(%[[BROADCAST_OF_1_CONS_CONS_LOCK]], Release, 1)
 // CHECK:             aie.next_bd ^bb3
 // CHECK:           ^bb3:
-// CHECK:             aie.use_lock(%[[BROADCAST_OF_1_CONS_LOCK_2]], Acquire, 0)
+// CHECK:             aie.use_lock(%[[BROADCAST_OF_1_CONS_PROD_LOCK]], AcquireGreaterEqual, 1)
 // CHECK:             aie.dma_bd(%[[BROADCAST_OF_1_CONS_BUFF_2]] : memref<16xi32>, 0, 16)
-// CHECK:             aie.use_lock(%[[BROADCAST_OF_1_CONS_LOCK_2]], Release, 1)
+// CHECK:             aie.use_lock(%[[BROADCAST_OF_1_CONS_CONS_LOCK]], Release, 1)
 // CHECK:             aie.next_bd ^bb1
 // CHECK:           ^bb4:
 // CHECK:             aie.end
@@ -210,24 +197,24 @@
 // CHECK:           %[[MEM_3_2:.*]] = aie.mem(%[[TILE_3_2]]) {
 // CHECK:             %[[VAL_3:.*]] = aie.dma_start(S2MM, 0, ^bb1, ^bb5)
 // CHECK:           ^bb1:
-// CHECK:             aie.use_lock(%[[BROADCAST_OF_2_CONS_LOCK_0]], Acquire, 0)
+// CHECK:             aie.use_lock(%[[BROADCAST_OF_2_CONS_PROD_LOCK]], AcquireGreaterEqual, 1)
 // CHECK:             aie.dma_bd(%[[BROADCAST_OF_2_CONS_BUFF_0]] : memref<16xi32>, 0, 16)
-// CHECK:             aie.use_lock(%[[BROADCAST_OF_2_CONS_LOCK_0]], Release, 1)
+// CHECK:             aie.use_lock(%[[BROADCAST_OF_2_CONS_CONS_LOCK]], Release, 1)
 // CHECK:             aie.next_bd ^bb2
 // CHECK:           ^bb2:
-// CHECK:             aie.use_lock(%[[BROADCAST_OF_2_CONS_LOCK_1]], Acquire, 0)
+// CHECK:             aie.use_lock(%[[BROADCAST_OF_2_CONS_PROD_LOCK]], AcquireGreaterEqual, 1)
 // CHECK:             aie.dma_bd(%[[BROADCAST_OF_2_CONS_BUFF_1]] : memref<16xi32>, 0, 16)
-// CHECK:             aie.use_lock(%[[BROADCAST_OF_2_CONS_LOCK_1]], Release, 1)
+// CHECK:             aie.use_lock(%[[BROADCAST_OF_2_CONS_CONS_LOCK]], Release, 1)
 // CHECK:             aie.next_bd ^bb3
 // CHECK:           ^bb3:
-// CHECK:             aie.use_lock(%[[BROADCAST_OF_2_CONS_LOCK_2]], Acquire, 0)
+// CHECK:             aie.use_lock(%[[BROADCAST_OF_2_CONS_PROD_LOCK]], AcquireGreaterEqual, 1)
 // CHECK:             aie.dma_bd(%[[BROADCAST_OF_2_CONS_BUFF_2]] : memref<16xi32>, 0, 16)
-// CHECK:             aie.use_lock(%[[BROADCAST_OF_2_CONS_LOCK_2]], Release, 1)
+// CHECK:             aie.use_lock(%[[BROADCAST_OF_2_CONS_CONS_LOCK]], Release, 1)
 // CHECK:             aie.next_bd ^bb4
 // CHECK:           ^bb4:
-// CHECK:             aie.use_lock(%[[BROADCAST_OF_2_CONS_LOCK_3]], Acquire, 0)
+// CHECK:             aie.use_lock(%[[BROADCAST_OF_2_CONS_PROD_LOCK]], AcquireGreaterEqual, 1)
 // CHECK:             aie.dma_bd(%[[BROADCAST_OF_2_CONS_BUFF_3]] : memref<16xi32>, 0, 16)
-// CHECK:             aie.use_lock(%[[BROADCAST_OF_2_CONS_LOCK_3]], Release, 1)
+// CHECK:             aie.use_lock(%[[BROADCAST_OF_2_CONS_CONS_LOCK]], Release, 1)
 // CHECK:             aie.next_bd ^bb1
 // CHECK:           ^bb5:
 // CHECK:             aie.end
@@ -235,19 +222,19 @@
 // CHECK:           %[[MEM_3_3:.*]] = aie.mem(%[[TILE_3_3]]) {
 // CHECK:             %[[VAL_4:.*]] = aie.dma_start(S2MM, 0, ^bb1, ^bb4)
 // CHECK:           ^bb1:
-// CHECK:             aie.use_lock(%[[BROADCAST_OF_3_CONS_LOCK_0]], Acquire, 0)
+// CHECK:             aie.use_lock(%[[BROADCAST_OF_3_CONS_PROD_LOCK]], AcquireGreaterEqual, 1)
 // CHECK:             aie.dma_bd(%[[BROADCAST_OF_3_CONS_BUFF_0]] : memref<16xi32>, 0, 16)
-// CHECK:             aie.use_lock(%[[BROADCAST_OF_3_CONS_LOCK_0]], Release, 1)
+// CHECK:             aie.use_lock(%[[BROADCAST_OF_3_CONS_CONS_LOCK]], Release, 1)
 // CHECK:             aie.next_bd ^bb2
 // CHECK:           ^bb2:
-// CHECK:             aie.use_lock(%[[BROADCAST_OF_3_CONS_LOCK_1]], Acquire, 0)
+// CHECK:             aie.use_lock(%[[BROADCAST_OF_3_CONS_PROD_LOCK]], AcquireGreaterEqual, 1)
 // CHECK:             aie.dma_bd(%[[BROADCAST_OF_3_CONS_BUFF_1]] : memref<16xi32>, 0, 16)
-// CHECK:             aie.use_lock(%[[BROADCAST_OF_3_CONS_LOCK_1]], Release, 1)
+// CHECK:             aie.use_lock(%[[BROADCAST_OF_3_CONS_CONS_LOCK]], Release, 1)
 // CHECK:             aie.next_bd ^bb3
 // CHECK:           ^bb3:
-// CHECK:             aie.use_lock(%[[BROADCAST_OF_3_CONS_LOCK_2]], Acquire, 0)
+// CHECK:             aie.use_lock(%[[BROADCAST_OF_3_CONS_PROD_LOCK]], AcquireGreaterEqual, 1)
 // CHECK:             aie.dma_bd(%[[BROADCAST_OF_3_CONS_BUFF_2]] : memref<16xi32>, 0, 16)
-// CHECK:             aie.use_lock(%[[BROADCAST_OF_3_CONS_LOCK_2]], Release, 1)
+// CHECK:             aie.use_lock(%[[BROADCAST_OF_3_CONS_CONS_LOCK]], Release, 1)
 // CHECK:             aie.next_bd ^bb1
 // CHECK:           ^bb4:
 // CHECK:             aie.end
@@ -255,7 +242,7 @@
 // CHECK:         }
 
 module @broadcast {
- aie.device(xcvc1902) {
+ aie.device(npu1_4col) {
     %tile12 = aie.tile(1, 2)
     %tile13 = aie.tile(1, 3)
     %tile14 = aie.tile(1, 4)

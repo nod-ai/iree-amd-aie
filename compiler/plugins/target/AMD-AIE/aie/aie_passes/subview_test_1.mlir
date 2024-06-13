@@ -1,7 +1,7 @@
 
 // RUN: iree-opt --aie-objectFifo-stateful-transform %s | FileCheck %s
 
-// CHECK-LABEL:   aie.device(xcvc1902) {
+// CHECK-LABEL:   aie.device(npu1_4col) {
 // CHECK:           memref.global "public" @objfifo : memref<16xi32>
 // CHECK:           %[[TILE_1_2:.*]] = aie.tile(1, 2)
 // CHECK:           %[[TILE_1_3:.*]] = aie.tile(1, 3)
@@ -9,25 +9,22 @@
 // CHECK:           %[[OBJFIFO_BUFF_1:.*]] = aie.buffer(%[[TILE_1_2]]) {sym_name = "objfifo_buff_1"} : memref<16xi32>
 // CHECK:           %[[OBJFIFO_BUFF_2:.*]] = aie.buffer(%[[TILE_1_2]]) {sym_name = "objfifo_buff_2"} : memref<16xi32>
 // CHECK:           %[[OBJFIFO_BUFF_3:.*]] = aie.buffer(%[[TILE_1_2]]) {sym_name = "objfifo_buff_3"} : memref<16xi32>
-// CHECK:           %[[OBJFIFO_LOCK_0:.*]] = aie.lock(%[[TILE_1_2]], 0) {init = 0 : i32, sym_name = "objfifo_lock_0"}
-// CHECK:           %[[OBJFIFO_LOCK_1:.*]] = aie.lock(%[[TILE_1_2]], 1) {init = 0 : i32, sym_name = "objfifo_lock_1"}
-// CHECK:           %[[OBJFIFO_LOCK_2:.*]] = aie.lock(%[[TILE_1_2]], 2) {init = 0 : i32, sym_name = "objfifo_lock_2"}
-// CHECK:           %[[OBJFIFO_LOCK_3:.*]] = aie.lock(%[[TILE_1_2]], 3) {init = 0 : i32, sym_name = "objfifo_lock_3"}
+// CHECK:           %[[OBJFIFO_PROD_LOCK:.*]] = aie.lock(%[[TILE_1_2]], 0) {init = 4 : i32, sym_name = "objfifo_prod_lock"}
+// CHECK:           %[[OBJFIFO_CONS_LOCK:.*]] = aie.lock(%[[TILE_1_2]], 1) {init = 0 : i32, sym_name = "objfifo_cons_lock"}
 // CHECK:           func.func @some_work(%[[ARG0:.*]]: memref<16xi32>) {
 // CHECK:             return
 // CHECK:           }
 // CHECK:           %[[CORE_1_2:.*]] = aie.core(%[[TILE_1_2]]) {
-// CHECK:             aie.use_lock(%[[OBJFIFO_LOCK_0]], Acquire, 0)
-// CHECK:             aie.use_lock(%[[OBJFIFO_LOCK_1]], Acquire, 0)
+// CHECK:             aie.use_lock(%[[OBJFIFO_PROD_LOCK]], AcquireGreaterEqual, 2)
 // CHECK:             func.call @some_work(%[[OBJFIFO_BUFF_0]]) : (memref<16xi32>) -> ()
 // CHECK:             func.call @some_work(%[[OBJFIFO_BUFF_1]]) : (memref<16xi32>) -> ()
-// CHECK:             aie.use_lock(%[[OBJFIFO_LOCK_2]], Acquire, 0)
+// CHECK:             aie.use_lock(%[[OBJFIFO_PROD_LOCK]], AcquireGreaterEqual, 1)
 // CHECK:             func.call @some_work(%[[OBJFIFO_BUFF_0]]) : (memref<16xi32>) -> ()
 // CHECK:             func.call @some_work(%[[OBJFIFO_BUFF_1]]) : (memref<16xi32>) -> ()
 // CHECK:             func.call @some_work(%[[OBJFIFO_BUFF_2]]) : (memref<16xi32>) -> ()
-// CHECK:             aie.use_lock(%[[OBJFIFO_LOCK_0]], Release, 1)
-// CHECK:             aie.use_lock(%[[OBJFIFO_LOCK_1]], Release, 1)
-// CHECK:             aie.use_lock(%[[OBJFIFO_LOCK_3]], Acquire, 0)
+// CHECK:             aie.use_lock(%[[OBJFIFO_CONS_LOCK]], Release, 1)
+// CHECK:             aie.use_lock(%[[OBJFIFO_CONS_LOCK]], Release, 1)
+// CHECK:             aie.use_lock(%[[OBJFIFO_PROD_LOCK]], AcquireGreaterEqual, 1)
 // CHECK:             func.call @some_work(%[[OBJFIFO_BUFF_2]]) : (memref<16xi32>) -> ()
 // CHECK:             func.call @some_work(%[[OBJFIFO_BUFF_3]]) : (memref<16xi32>) -> ()
 // CHECK:             func.call @some_work(%[[OBJFIFO_BUFF_2]]) : (memref<16xi32>) -> ()
@@ -37,7 +34,7 @@
 // CHECK:         }
 
 module @singleFifo {
-    aie.device(xcvc1902) {
+    aie.device(npu1_4col) {
         %tile12 = aie.tile(1, 2)
         %tile13 = aie.tile(1, 3)
         aie.objectfifo @objfifo (%tile12, {%tile13}, 4 : i32) : !aie.objectfifo<memref<16xi32>>

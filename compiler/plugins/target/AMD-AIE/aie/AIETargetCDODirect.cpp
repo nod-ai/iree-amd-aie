@@ -500,46 +500,23 @@ struct AIEControl {
       XAie_LocType tileLoc = XAie_TileLoc(col, row);
 
       // handle DMA ops separately
-      auto dmaOps = llvm::to_vector_of<DMAOp>(
-          memOp.getOperation()->getRegion(0).getOps<DMAOp>());
-      if (!dmaOps.empty()) {
-        for (auto dmaOp : dmaOps)
-          for (auto &bdRegion : dmaOp.getBds()) {
-            Block &block = bdRegion.getBlocks().front();
-            if (failed(
-                    configureLocksAndBd(devInst, block, tileLoc, targetModel)))
-              return failure();
-          }
-      } else {
-        for (Block &block : memOp.getOperation()->getRegion(0)) {
-          if (block.getOps<DMABDOp>().empty()) continue;
-          if (failed(configureLocksAndBd(devInst, block, tileLoc, targetModel)))
+      for (Block &block : memOp.getOperation()->getRegion(0)) {
+        if (block.getOps<DMABDOp>().empty()) continue;
+        if (failed(configureLocksAndBd(devInst, block, tileLoc, targetModel)))
+          return failure();
+      }
+
+      for (Block &block : memOp.getOperation()->getRegion(0)) {
+        for (auto op : block.getOps<DMAStartOp>()) {
+          DMABDOp bd = *op.getDest()->getOps<DMABDOp>().begin();
+          int chNum = op.getChannelIndex();
+          auto channelDir = op.getChannelDir();
+          if (failed(pushToBdQueueAndEnable(
+                  devInst, *bd.getOperation(), tileLoc, chNum, channelDir,
+                  bd.getBdId().value(), op.getRepeatCount())))
             return failure();
         }
       }
-
-      if (!dmaOps.empty())
-        for (auto dmaOp : dmaOps) {
-          auto &block = dmaOp.getBds().front().getBlocks().front();
-          DMABDOp bd = *block.getOps<DMABDOp>().begin();
-          if (failed(pushToBdQueueAndEnable(
-                  devInst, *dmaOp.getOperation(), tileLoc,
-                  dmaOp.getChannelIndex(), dmaOp.getChannelDir(),
-                  bd.getBdId().value(), dmaOp.getRepeatCount())))
-            return failure();
-        }
-      else
-        for (Block &block : memOp.getOperation()->getRegion(0)) {
-          for (auto op : block.getOps<DMAStartOp>()) {
-            DMABDOp bd = *op.getDest()->getOps<DMABDOp>().begin();
-            int chNum = op.getChannelIndex();
-            auto channelDir = op.getChannelDir();
-            if (failed(pushToBdQueueAndEnable(
-                    devInst, *bd.getOperation(), tileLoc, chNum, channelDir,
-                    bd.getBdId().value(), op.getRepeatCount())))
-              return failure();
-          }
-        }
     }
 
     // StreamSwitch (switchbox) configuration
@@ -647,17 +624,15 @@ struct AIEControl {
     }
 
     // Cascade configuration
-    if (targetModel.getTargetArch() == AIEArch::AIE2) {
-      for (auto configOp : targetOp.getOps<ConfigureCascadeOp>()) {
-        TileOp tile = cast<TileOp>(configOp.getTile().getDefiningOp());
-        auto tileLoc = XAie_TileLoc(tile.getCol(), tile.getRow());
-        TRY_XAIE_API_EMIT_ERROR(
-            targetOp, XAie_CoreConfigAccumulatorControl, &devInst, tileLoc,
-            WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE.at(
-                static_cast<WireBundle>(configOp.getInputDir())),
-            WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE.at(
-                static_cast<WireBundle>(configOp.getOutputDir())));
-      }
+    for (auto configOp : targetOp.getOps<ConfigureCascadeOp>()) {
+      TileOp tile = cast<TileOp>(configOp.getTile().getDefiningOp());
+      auto tileLoc = XAie_TileLoc(tile.getCol(), tile.getRow());
+      TRY_XAIE_API_EMIT_ERROR(
+          targetOp, XAie_CoreConfigAccumulatorControl, &devInst, tileLoc,
+          WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE.at(
+              static_cast<WireBundle>(configOp.getInputDir())),
+          WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE.at(
+              static_cast<WireBundle>(configOp.getOutputDir())));
     }
 
     return success();
