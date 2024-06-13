@@ -33,14 +33,17 @@ if [ "$#" -lt 2 ] || [ "$#" -gt 6 ]; then
     exit 1
 fi
 
-
-# All temporary files should end up in the output directory. 
+# All generated files should end up in the output directory.
 OUTPUT_DIR=`realpath "$1"`
-mkdir -p ${OUTPUT_DIR}
-if [ ! -d "${OUTPUT_DIR}" ]; then
-  echo "Failed to locate on construct OUTPUT_DIR '${OUTPUT_DIR}'."
-  exit 1
-fi
+DIRECT_OUTPUT_DIR="${OUTPUT_DIR}/direct"
+UKERNEL_OUTPUT_DIR="${OUTPUT_DIR}/ukernel"
+for dir in ${OUTPUT_DIR} ${DIRECT_OUTPUT_DIR} ${UKERNEL_OUTPUT_DIR}; do
+  mkdir -p ${dir}
+  if [ ! -d "${dir}" ]; then
+    echo "Failed to locate or construct directory '${dir}'."
+    exit 1
+  fi
+done
 
 IREE_INSTALL_DIR=`realpath "$2"`
 if [ ! -d "${IREE_INSTALL_DIR}" ]; then
@@ -115,19 +118,14 @@ THIS_DIR="$(cd $(dirname $0) && pwd)"
 ROOT_DIR="$(cd $THIS_DIR/../.. && pwd)"
 
 source $XRT_DIR/setup.sh
+export XRT_HACK_UNSECURE_LOADING_XCLBIN=1
 
-    # --m "8192" --k "2432" --n "2432"  \
-
-# M=1024
-# N=1024
-# K=1024
-
-M=8192
-K=2432
-N=2432
+M=2048
+K=4096
+N=2048
 
 # Create a file ${OUTPUT_DIR}/generated_linalg_matmul.mlir
-# by running 'generate_linalg_matmul.py with arguments M, K, and N. 
+# by running 'generate_linalg_matmul.py with arguments M, K, and N.
 GENERATE_SCRIPT="${THIS_DIR}/generate_linalg_matmul.py"
 SOURCE_MLIR_FILE="${OUTPUT_DIR}/generated_linalg_matmul.mlir"
 if [ ! -f "${GENERATE_SCRIPT}" ]; then
@@ -140,27 +138,49 @@ eval $GENERATE_COMMAND
 
 THIS="$(cd $(dirname $0) && pwd)"
 
-# Construct the iree-compile command. 
-IREE_COMPILE_COMMAND="${IREE_COMPILE_EXE} \
-${SOURCE_MLIR_FILE} \
---iree-hal-target-backends=amd-aie \
---iree-amd-aie-peano-install-dir=${PEANO} \
---iree-amd-aie-mlir-aie-install-dir=${MLIR_AIE_INSTALL} \
---iree-amd-aie-vitis-install-dir=${VITIS} \
---iree-hal-dump-executable-files-to=${OUTPUT_DIR} \
--o ${OUTPUT_DIR}/test_artefact.vmfb \
---iree-amd-aie-show-invoked-commands"
+BASE_COMPILATION_FLAGS="-iree-hal-target-backends=amd-aie \
+-iree-amd-aie-peano-install-dir=${PEANO} \
+-iree-amd-aie-mlir-aie-install-dir=${MLIR_AIE_INSTALL} \
+-iree-amd-aie-vitis-install-dir=${VITIS} \
+-iree-amd-aie-show-invoked-commands"
 
-#--mlir-print-ir-after-all \
+DIRECT_COMPILATION_FLAGS="${BASE_COMPILATION_FLAGS} \
+  --iree-hal-dump-executable-files-to=${DIRECT_OUTPUT_DIR} \
+  -o ${DIRECT_OUTPUT_DIR}/test_artefact.vmfb"
+
+UKERNEL_COMPILATION_FLAGS="${BASE_COMPILATION_FLAGS} \
+  --iree-amdaie-enable-ukernels=all \
+  --iree-hal-dump-executable-files-to=${UKERNEL_OUTPUT_DIR} \
+  -o ${UKERNEL_OUTPUT_DIR}/test_artefact.vmfb"
+
+if [ -f "${UKERNEL_OUTPUT_DIR}/mm.o" ]; then
+  echo "File 'mm.o' already exists in ${UKERNEL_OUTPUT_DIR}."
+else
+  SRC_DIR="${MLIR_AIE_INSTALL}/aie_kernels/mm.o"
+  ln -s ${SRC_DIR} ${OUTPUT_DIR}/mm.o
+fi
+
+cd ${OUTPUT_DIR}
+
+
+IREE_DIRECT_COMPILE_COMMAND="${IREE_COMPILE_EXE} ${SOURCE_MLIR_FILE} ${DIRECT_COMPILATION_FLAGS}"
+IREE_UKERNEL_COMPILE_COMMAND="${IREE_COMPILE_EXE} ${SOURCE_MLIR_FILE} ${UKERNEL_COMPILATION_FLAGS}"
 
 # Execute the command to generate the .vmfb, .xclbin, .npu.txt files, etc.
-echo "Executing command: $IREE_COMPILE_COMMAND"
-eval $IREE_COMPILE_COMMAND 
+echo "Executing command: $IREE_DIRECT_COMPILE_COMMAND"
+eval $IREE_DIRECT_COMPILE_COMMAND
 
-if [ ! -f "${OUTPUT_DIR}/test_artefact.vmfb" ]; then
-  echo "test_artefact.vmfb was not created: ${OUTPUT_DIR}/test_artefact.vmfb"
-  exit 1
-fi
+
+# Do the same as above, but for the UKERNEL compilation:
+echo "Executing command: $IREE_UKERNEL_COMPILE_COMMAND"
+eval $IREE_UKERNEL_COMPILE_COMMAND
+
+for dir in ${DIRECT_OUTPUT_DIR} ${UKERNEL_OUTPUT_DIR}; do
+  if [ ! -f "${dir}/test_artefact.vmfb" ]; then
+    echo "test_artefact.vmfb was not created: ${dir}/test_artefact.vmfb"
+    exit 1
+  fi
+done
 
 # Get the full path of test.cpp (which is in the same directory as this script).
 TEST_CPP="${THIS_DIR}/test.cpp"
@@ -168,21 +188,24 @@ TEST_CPP="${THIS_DIR}/test.cpp"
 FLAGS="-Wall -I${XRT_DIR}/include -L${XRT_DIR}/lib -luuid -lxrt_coreutil -lrt -lstdc++"
 g++ ${TEST_CPP} -o ${OUTPUT_DIR}/test.exe ${FLAGS}
 
-# =============================================
-# ==== YCM VIM SETUP =======================
-# =======================================
-YCM_EXTRA_CONF="${THIS_DIR}/.ycm_extra_conf.py"
-echo "def Settings( **kwargs ):" > ${YCM_EXTRA_CONF}
-echo "  return {" >> ${YCM_EXTRA_CONF}
-echo "    'flags': [ '-x', 'c++'," >> ${YCM_EXTRA_CONF}
-for flag in ${FLAGS}; do
-  echo "              '${flag}'," >> ${YCM_EXTRA_CONF}
-done
-echo "            ]" >> ${YCM_EXTRA_CONF}
-echo "  }" >> ${YCM_EXTRA_CONF}
-# ====================
-# =================
-# ==============
+# Wrapped in "false" as most users don't use YCM:
+false && {
+  # =============================================
+  # ==== YCM VIM SETUP =======================
+  # =======================================
+  YCM_EXTRA_CONF="${THIS_DIR}/.ycm_extra_conf.py"
+  echo "def Settings( **kwargs ):" > ${YCM_EXTRA_CONF}
+  echo "  return {" >> ${YCM_EXTRA_CONF}
+  echo "    'flags': [ '-x', 'c++'," >> ${YCM_EXTRA_CONF}
+  for flag in ${FLAGS}; do
+    echo "              '${flag}'," >> ${YCM_EXTRA_CONF}
+  done
+  echo "            ]" >> ${YCM_EXTRA_CONF}
+  echo "  }" >> ${YCM_EXTRA_CONF}
+  # ====================
+  # =================
+  # ==============
+}
 
 # Verify that ${OUTPUT_DIR}/test.exe exists:
 if [ ! -f "${OUTPUT_DIR}/test.exe" ]; then
@@ -190,39 +213,36 @@ if [ ! -f "${OUTPUT_DIR}/test.exe" ]; then
   exit 1
 fi
 
-# We expect to find a file with the .xclbin extension in the output directory, 
-# or in a subdirectory of the output directory. Locate it if possible. 
-XCLBIN_FILE=""
-for file in `find ${OUTPUT_DIR} -name "*.xclbin"`; do
-  XCLBIN_FILE="${file}"
+for dir in direct ukernel; do
+  echo "Benchmarking ${dir}."
+ 
+  XCLBIN_FILE=""
+  for file in `find ${OUTPUT_DIR}/${dir} -name "*.xclbin"`; do
+    XCLBIN_FILE="${file}"
+  done
+  if [ -z "${XCLBIN_FILE}" ]; then
+    echo "No .xclbin file found in the output directory or any of its subdirectories."
+    exit 1
+  else
+    echo "Found .xclbin file: ${XCLBIN_FILE}"
+  fi
+
+  IPU_TXT_FILE=""
+  for file in `find ${OUTPUT_DIR}/${dir} -name "*.npu.txt"`; do
+    IPU_TXT_FILE="${file}"
+  done
+  if [ -z "${IPU_TXT_FILE}" ]; then
+    echo "No .npu.txt file found in the output directory or any of its subdirectories."
+    exit 1
+  else
+    echo "Found .npu.txt file: ${IPU_TXT_FILE}"
+  fi
+
+  BENCHMARK_RESULTS_FN="${dir}/benchmark_results.txt"
+
+  ${OUTPUT_DIR}/test.exe ${XCLBIN_FILE} ${IPU_TXT_FILE} ${M} ${K} ${N} ${BENCHMARK_RESULTS_FN}
+
+  # TODO(newling) Lit test on results file confirming that the results are reasonable.
 done
-if [ -z "${XCLBIN_FILE}" ]; then
-  echo "No .xclbin file found in the output directory or any of its subdirectories."
-  exit 1
-else
-  echo "Found .xclbin file: ${XCLBIN_FILE}"
-fi
-
-# Maybe sign the XCLBIN file (CI moonshot). 
-SIGNER=${XRT_DIR}/amdxdna/setup_xclbin_firmware.sh
-if [ ! -f "$SIGNER" ]; then
-  echo "**** Skipping XCLBIN signing: $SIGNER not found ****"
-else
-  sudo $SIGNER -dev Phoenix -xclbin "${XCLBIN_FILE}"
-fi
-
-# Just like above for the XCLBIN file, we expect to find a .npu.txt file in the output directory.
-IPU_TXT_FILE=""
-for file in `find ${OUTPUT_DIR} -name "*.npu.txt"`; do
-  IPU_TXT_FILE="${file}"
-done
-if [ -z "${IPU_TXT_FILE}" ]; then
-  echo "No .npu.txt file found in the output directory or any of its subdirectories."
-  exit 1
-else
-  echo "Found .npu.txt file: ${IPU_TXT_FILE}"
-fi
-
-${OUTPUT_DIR}/test.exe ${XCLBIN_FILE} ${IPU_TXT_FILE} ${M} ${K} ${N} 
 
 

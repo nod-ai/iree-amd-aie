@@ -1,23 +1,30 @@
 def generate(M, N, K):
     """
     Create MLIR linalg matmul function with given dimensions M, N, K.
-    Initialize the output with '7.0'
+    Initialize the output with '0.0'
     bfloat16 operands, float32 output.
     """
 
     mlirStr = """
 !A = tensor<%dx%dxbf16>
 !B = tensor<%dx%dxbf16>
-!C = tensor<%dx%dxf32>"""%(M, K, K, N, M, N)
+!C = tensor<%dx%dxf32>""" % (
+        M,
+        K,
+        K,
+        N,
+        M,
+        N,
+    )
 
-    mlirStr+="""
+    mlirStr += """
 
-// C = 7 + A @ B (The '@' symbol denotes matrix multiplication)
+// C = 0 + A @ B (The '@' symbol denotes matrix multiplication)
 func.func @matmul(%A : !A, %B : !B) -> !C {
 
-  // Initialize output tensor with '7'
+  // Initialize output tensor with '0'
   %init_acc = tensor.empty() : !C
-  %c0_acc_type = arith.constant 7.0 : f32
+  %c0_acc_type = arith.constant 0.0 : f32
 
   %acc = linalg.fill ins(%c0_acc_type : f32)
                      outs(%init_acc : !C) -> !C
@@ -30,9 +37,9 @@ func.func @matmul(%A : !A, %B : !B) -> !C {
     return mlirStr
 
 
-
 if __name__ == "__main__":
     import sys
+
     if len(sys.argv) != 4:
         print(f"Usage: {sys.argv[0]} M=int N=int K=int")
         sys.exit(1)
@@ -57,4 +64,3 @@ if __name__ == "__main__":
         sys.exit(1)
 
     print(generate(M, N, K))
-

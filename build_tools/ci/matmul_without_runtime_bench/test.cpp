@@ -9,25 +9,44 @@
 //===----------------------------------------------------------------------===//
 
 #include <bits/stdc++.h>
+
 #include <chrono>
 #include <cstdint>
 #include <cstring>
 #include <iostream>
+#include <sstream>
 #include <vector>
 
 #include "xrt/xrt_bo.h"
 #include "xrt/xrt_device.h"
 #include "xrt/xrt_kernel.h"
 
-int main(int argc, const char *argv[]) {
+using bf16 = uint16_t;
 
-  if (argc != 6) {
+// Method from Dave to convert float to bf16:
+static bf16 float_to_bf16(float value) {
+  bf16 bf = (bf16)(((*reinterpret_cast<uint32_t *>(&value))) >> 16);
+  return bf;
+}
+
+std::vector<float> generateRandomFloats(uint32_t nVals, uint32_t seed) {
+  std::vector<float> vals(nVals);
+  std::mt19937 gen(seed);
+  // floats from the set [0.0f, 1.0f, 2.0f, 3.0f, 4.0f):
+  std::uniform_int_distribution<int> dis(0, 4);
+  for (uint32_t i = 0; i < nVals; ++i) {
+    vals[i] = static_cast<float>(dis(gen));
+  }
+  return vals;
+}
+
+int main(int argc, const char *argv[]) {
+  if (argc != 7) {
     std::string errorMessage =
-        "Usage: thisProgram <pathToXclbin> <pathToInstrFile> <M> <K> <N>.";
+        "Usage: thisProgram <pathToXclbin> <pathToInstrFile> <M> <K> <N> <results_file>.";
     std::cerr << errorMessage;
     return 1;
   }
-
 
   // Get the xclbin from file:
   std::string xclbin_path = argv[1];
@@ -40,14 +59,13 @@ int main(int argc, const char *argv[]) {
   }
   auto xclbin = xrt::xclbin(xclbin_path);
 
-
   // Get the lx6 instructions from file:
   std::vector<uint32_t> instr_v;
   {
     std::string instr_path = argv[2];
     std::ifstream instr_file(instr_path);
     if (!instr_file.good()) {
-      std::cerr << "Unable to open lx6 instruction file: " << instr_path
+      std::cerr << "Unable to open lx[0-9] instructions file: " << instr_path
                 << std::endl;
       return 1;
     }
@@ -56,13 +74,12 @@ int main(int argc, const char *argv[]) {
       std::istringstream iss(line);
       uint32_t a;
       if (!(iss >> std::hex >> a)) {
-        std::cerr << "Unable to parse instruction file" << std::endl;
+        std::cerr << "Unable to parse instructions file" << std::endl;
         return 1;
       }
       instr_v.push_back(a);
     }
   }
-
 
   // Get kernel from xclbin and register it with a device:
   auto device = xrt::device(/* device_index */ 0);
@@ -86,13 +103,26 @@ int main(int argc, const char *argv[]) {
   N = std::stoi(NStr);
 
 
+  // Obtain results file (full path) from argv[6]:
+  std::string results_file = argv[6];
+
+  // Check the results_file is a valid file, and we can open it:
+  {
+    std::ofstream results(results_file);
+    if (!results.good()) {
+      std::cerr << "Unable to open results file: " << results_file << std::endl;
+      return 1;
+    }
+  }
+
+
   xrt::hw_context context(device, xclbin.get_uuid());
   auto kernel = xrt::kernel(context, kernelName);
 
   int sizeInstructions = instr_v.size() * sizeof(int32_t);
-  int nBytesA = M * K * sizeof(int32_t);
-  int nBytesB = N * K * sizeof(int32_t);
-  int nBytesC = M * N * sizeof(int32_t);
+  int nBytesA = M * K * sizeof(bf16);
+  int nBytesB = N * K * sizeof(bf16);
+  int nBytesC = M * N * sizeof(float);
 
   auto bo_instr = xrt::bo(device, sizeInstructions, XCL_BO_FLAGS_CACHEABLE,
                           kernel.group_id(0));
@@ -106,60 +136,125 @@ int main(int argc, const char *argv[]) {
   void *bufInstr = bo_instr.map<void *>();
   memcpy(bufInstr, instr_v.data(), instr_v.size() * sizeof(int32_t));
 
+  auto aFloatValues = generateRandomFloats(M * K, 0);
+  auto bFloatValues = generateRandomFloats(N * K, 1);
+
+  std::vector<bf16> aBfValues(M * K);
+  std::vector<bf16> bBfValues(N * K);
+  for (int i = 0; i < M * K; ++i) {
+    aBfValues[i] = float_to_bf16(aFloatValues[i]);
+  }
+  for (int i = 0; i < N * K; ++i) {
+    bBfValues[i] = float_to_bf16(bFloatValues[i]);
+  }
+
   // Initialize A and B with 1's:
-  int32_t *bufA = bo_a.map<int32_t *>();
-  std::vector<int> AVec(M * K, 1);
-  memcpy(bufA, AVec.data(), (AVec.size() * sizeof(int32_t)));
+  bf16 *bufA = bo_a.map<bf16 *>();
+  memcpy(bufA, aBfValues.data(), (aBfValues.size() * sizeof(bf16)));
 
-  int32_t *bufB = bo_b.map<int32_t *>();
-  std::vector<int> BVec(N * K, 1);
-  memcpy(bufB, BVec.data(), (BVec.size() * sizeof(int32_t)));
+  bf16 *bufB = bo_b.map<bf16 *>();
+  memcpy(bufB, bBfValues.data(), (bBfValues.size() * sizeof(bf16)));
 
-  int32_t *bufC = bo_c.map<int32_t *>();
+  float *bufC = bo_c.map<float *>();
 
-  double totalTime;
-  double minTime = 1e9;
-  double maxTime = 0;
   int nIters = 10;
+
+  std::vector<double> allTimes;
   for (int i = 0; i < nIters; ++i) {
+
     bo_instr.sync(XCL_BO_SYNC_BO_TO_DEVICE);
     bo_a.sync(XCL_BO_SYNC_BO_TO_DEVICE);
     bo_b.sync(XCL_BO_SYNC_BO_TO_DEVICE);
     bo_c.sync(XCL_BO_SYNC_BO_TO_DEVICE);
 
-
     // We will time the run, and print it.
     auto start = std::chrono::high_resolution_clock::now();
     auto run = kernel(bo_instr, instr_v.size(), bo_a, bo_b, bo_c);
+
+    std::cout << "Run number " << i << " started\n";
     run.wait();
     auto end = std::chrono::high_resolution_clock::now();
 
     bo_c.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
+    std::cout << "Run number " << i << " finished\n";
 
     double dt =
         std::chrono::duration_cast<std::chrono::nanoseconds>(end - start)
             .count();
 
-    totalTime += dt;
-    minTime = std::min(minTime, dt);
-    maxTime = std::max(maxTime, dt);
+    allTimes.push_back(dt / 1e9);
 
     std::cout << "Elapsed time on run " << i << ": " << dt << " [ns]\n";
   }
 
-  double avgTime = totalTime / nIters;
-  std::cout << "Average time over runs: " << avgTime << " [ns]\n";
-  std::cout << "Min time over runs: " << minTime << " [ns]\n";
-  std::cout << "Max time over runs: " << maxTime << " [ns]\n";
+  double totalTime = std::accumulate(allTimes.begin(), allTimes.end(), 0.0);
+  double minTime = *std::min_element(allTimes.begin(), allTimes.end());
 
-  double nOps = static_cast<double>(M) * static_cast<double>(N) * static_cast<double>(K) * 2;
-  std::cout << "With M=" << M << ", K=" << K << ", N=" << N
-            << ", nOps = " << nOps << std::endl;
+  double nOps = static_cast<double>(M) * static_cast<double>(N) *
+                static_cast<double>(K) * 2;
 
-  // How many operations per second, for the fastest run? 
-  double opsPerSec = nOps / minTime * 1e9;
-  std::cout << "Operations per second (fastest run): " << opsPerSec << std::endl;
-  std::cout << "Tera operations per second (fastest run): " << opsPerSec / 1e12 << std::endl;
+  std::vector<double> allTeraOpsPerSec {};
+  for (auto t : allTimes) {
+    allTeraOpsPerSec.push_back(nOps / t / 1e12);
+  }
+
+  std::ostringstream summary;
+  summary << "Benchmark summary\n";
+  summary << "=================\n";
+  summary << "m: " << M << "\n";
+  summary << "k: " << K << "\n";
+  summary << "n: " << N << "\n";
+  summary << "number of operations (2*M*N*K): " << nOps << "\n";
+  summary << "execution times for all " << nIters << " runs [s]: \n    ";
+  for (auto t : allTimes) {
+    summary << t << " ";
+  }
+  summary << "\nteraops/second over all " << nIters << " runs: \n    ";
+  for (auto t : allTeraOpsPerSec) {
+    summary << t << " ";
+  }
+  summary << "\n";
+  summary << "mean time over runs: " << totalTime / nIters << " [s]\n";
+  summary << "minimum time over runs: " << minTime << " [s]\n";
+  summary << "max teraops/second: " << nOps / minTime / 1e3 << " [tops/s]\n";
+
+  std::string summaryStr = summary.str();
+  std::cout << summaryStr << std::endl;
+
+  // Perform numerical correctness testing on 100 randomly selected elements in
+  // C:
+
+
+  std::cout << "\nPerforming numerical correctness testing on results\n";
+  int nValsToTest = 100;
+  for (int i = 0; i < nValsToTest; ++i) {
+    int row = rand() % M;
+    int col = rand() % N;
+    float sum = 0;
+    for (int k = 0; k < K; ++k) {
+      sum += aFloatValues[row * K + k] * bFloatValues[k * N + col];
+    }
+    float cVal = bufC[row * N + col];
+    if (fabs(sum - cVal) > 1e-3) {
+      std::cerr << "Numerical correctness test failed at row " << row
+                << ", col " << col << ". Expected " << sum << ", got " << cVal
+                << std::endl;
+      return 1;
+    } else {
+      std::cout << "(good)" << std::flush;
+      if (i % 20 == 19) {
+        std::cout << std::endl;
+      }
+    }
+  }
+  std::cout << "\nNumerics look good for " << nValsToTest
+            << " random elements in 'C'." << std::endl;
+
+  // Write a summary of the benchmark results to the results file, new line for each entry:
+  {
+    std::ofstream results(results_file, std::ios_base::app);
+    results << summaryStr << std::endl;
+  }
 
   return 0;
 }
