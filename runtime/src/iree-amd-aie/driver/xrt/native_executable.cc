@@ -128,6 +128,9 @@ iree_status_t iree_hal_xrt_native_executable_create(
   iree_amd_aie_hal_xrt_XclbinDef_vec_t xclbins_vec =
       iree_amd_aie_hal_xrt_ExecutableDef_xclbins_get(executable_def);
 
+  iree_host_size_t number_xclbin =
+      iree_amd_aie_hal_xrt_XclbinDef_vec_len(xclbins_vec);
+
   iree_amd_aie_hal_xrt_AsmInstDef_vec_t asm_instrs_vec =
       iree_amd_aie_hal_xrt_ExecutableDef_asm_instrs_get(executable_def);
 
@@ -163,17 +166,15 @@ iree_status_t iree_hal_xrt_native_executable_create(
                                &executable->resource);
   executable->host_allocator = host_allocator;
   executable->entry_point_count = entry_point_count;
-  for (iree_host_size_t entry_ordinal = 0; entry_ordinal < entry_point_count;
-       entry_ordinal++) {
-    const char* entry_name =
-        flatbuffers_string_vec_at(entry_points_vec, entry_ordinal);
-    uint32_t xclbin_index =
-        flatbuffers_uint32_vec_at(xclbin_indices_vec, entry_ordinal);
+  // collect all the hardware contexts first as muliple entry points can map to
+  // the same context and this way we dont need to keep reloading them.
+  std::vector<xrt::hw_context> contexts;
+  for (iree_host_size_t xclbin_index = 0; xclbin_index < number_xclbin;
+       xclbin_index++) {
     iree_amd_aie_hal_xrt_XclbinDef_table_t xclbin_def =
         iree_amd_aie_hal_xrt_XclbinDef_vec_at(xclbins_vec, xclbin_index);
     flatbuffers_string_t xclbin_fb =
         iree_amd_aie_hal_xrt_XclbinDef_xclbin_get(xclbin_def);
-
     // XRT API needs this vector and cant actually read a void*.
     std::vector<char> xclbinVector(
         xclbin_fb, xclbin_fb + flatbuffers_string_len(xclbin_fb));
@@ -186,6 +187,14 @@ iree_status_t iree_hal_xrt_native_executable_create(
     }
     device.register_xclbin(xclbin);
     xrt::hw_context context(device, xclbin.get_uuid());
+    contexts.push_back(context);
+  }
+  for (iree_host_size_t entry_ordinal = 0; entry_ordinal < entry_point_count;
+       entry_ordinal++) {
+    const char* entry_name =
+        flatbuffers_string_vec_at(entry_points_vec, entry_ordinal);
+    uint32_t xclbin_index =
+        flatbuffers_uint32_vec_at(xclbin_indices_vec, entry_ordinal);
     uint32_t asm_instr_index =
         flatbuffers_uint32_vec_at(asm_instr_indices_vec, entry_ordinal);
     iree_amd_aie_hal_xrt_AsmInstDef_table_t asminst_def =
@@ -196,7 +205,8 @@ iree_status_t iree_hal_xrt_native_executable_create(
     std::unique_ptr<xrt::kernel> kernel;
     std::unique_ptr<xrt::bo> instr;
     try {
-      kernel = std::make_unique<xrt::kernel>(context, entry_name);
+      kernel =
+          std::make_unique<xrt::kernel>(contexts[xclbin_index], entry_name);
       // XCL_BO_FLAGS_CACHEABLE is used to indicate that this is an instruction
       // buffer that resides in instr_memory. This buffer is always passed as
       // the second argument to the kernel and we can use the

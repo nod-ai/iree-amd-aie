@@ -268,6 +268,8 @@ LogicalResult AIETargetBackend::serializeExecutable(
   SmallVector<uint32_t> xclbinIndices(ordinalCount);
   SmallVector<uint32_t> asmInstrIndices(ordinalCount);
 
+  SmallVector<SmallString<128>> xclbinPaths;
+
   for (size_t i = 0; i < entryPointNames.size(); i++) {
     uint64_t ordinal = entryPointOrdinals.at(entryPointNames[i]);
 
@@ -300,18 +302,34 @@ LogicalResult AIETargetBackend::serializeExecutable(
     llvm::sys::path::append(npuInstPath,
                             entryPointNamesFb[ordinal] + ".npu.txt");
 
-    SmallVector<StringRef> cmdArgs{aie2xclbin,
-                                   inputMlirPath,
-                                   "--peano",
-                                   options.peanoInstallDir,
-                                   "--xclbin-name",
-                                   xclbinPath,
-                                   "--npu-insts-name",
-                                   npuInstPath,
-                                   "--xclbin-kernel-name",
-                                   entryPointNamesFb[ordinal],
-                                   "--tmpdir",
-                                   entryPointWorkDir};
+    // Convert ordinal to hexadecimal string for xclbin kern id
+    std::stringstream ss;
+    ss << "0x" << std::hex << ordinal + 10;
+    std::string ordinalHex = ss.str();
+
+    SmallVector<StringRef> cmdArgs;
+    SmallVector<StringRef> cmdArgsBase{aie2xclbin,
+                                       inputMlirPath,
+                                       "--peano",
+                                       options.peanoInstallDir,
+                                       "--xclbin-name",
+                                       xclbinPath,
+                                       "--npu-insts-name",
+                                       npuInstPath,
+                                       "--xclbin-kernel-name",
+                                       entryPointNamesFb[ordinal],
+                                       "--tmpdir",
+                                       entryPointWorkDir,
+                                       "--xclbin-kernel-id",
+                                       ordinalHex};
+    cmdArgs = cmdArgsBase;
+    bool AttemptingMerge = false;
+    if (i > 0) {
+      cmdArgs.push_back("--input-xclbin-name");
+      cmdArgs.push_back(xclbinPaths.back());
+      AttemptingMerge = true;
+    }
+    xclbinPaths.push_back(xclbinPath);
 
     auto addOpt = [&](StringRef arg, bool value) {
       if (value) cmdArgs.push_back(arg);
@@ -350,11 +368,24 @@ LogicalResult AIETargetBackend::serializeExecutable(
     {
       SmallVector<StringRef> cmdEnvRefs{cmdEnv.begin(), cmdEnv.end()};
       int result = llvm::sys::ExecuteAndWait(cmdArgs[0], cmdArgs, cmdEnvRefs);
-      if (result != 0)
+      if (result != 0 && AttemptingMerge) {
+        // we failed to create xclbin but maybe we failed becuase we were trying
+        // to merge the kerenel in exisiting kernel, try again to see if perhaps
+        // we have success if we dont try to merge.
+        AttemptingMerge = false;
+        result =
+            llvm::sys::ExecuteAndWait(cmdArgsBase[0], cmdArgsBase, cmdEnvRefs);
+        xclbinPaths.push_back(xclbinPath);
+      }
+      if (result != 0) {
         return moduleOp.emitOpError(
             "Failed to produce an XCLBin with external tool.");
+      }
+      // delete the previous xclbin if we were able to merge as the new one now
+      // will have all the kernels from the previous one.
+      if (AttemptingMerge) xclbinPaths.erase(xclbinPaths.end() - 2);
+      xclbinIndices[ordinal] = xclbinPaths.size() - 1;
     }
-
     std::ifstream instrFile(static_cast<std::string>(npuInstPath));
     std::string line;
     while (std::getline(instrFile, line)) {
@@ -369,7 +400,7 @@ LogicalResult AIETargetBackend::serializeExecutable(
     asmInstrIndices[ordinal] = asmInstrRefs.size();
     asmInstrRefs.push_back(
         iree_amd_aie_hal_xrt_AsmInstDef_create(builder, npuInstrsVec));
-
+    /*
     xclbinIn = openInputFile(xclbinPath, &errorMessage);
     if (!xclbinIn) {
       moduleOp.emitOpError() << "Failed to open xclbin file: " << errorMessage;
@@ -378,7 +409,21 @@ LogicalResult AIETargetBackend::serializeExecutable(
     xclbinIndices[ordinal] = xclbinRefs.size();
     xclbinRefs.push_back(
         iree_amd_aie_hal_xrt_XclbinDef_create(builder, xclbinStringRef));
+    */
   }
+  // write out the final xclbins to flatbuffer
+  for (auto xclbinPath : xclbinPaths) {
+    llvm::outs() << "writing xclbin from path: " << xclbinPath << "\n";
+    std::string errorMessage;
+    xclbinIn = openInputFile(xclbinPath, &errorMessage);
+    if (!xclbinIn) {
+      moduleOp.emitOpError() << "Failed to open xclbin file: " << errorMessage;
+    }
+    auto xclbinStringRef = builder.createString(xclbinIn->getBuffer());
+    xclbinRefs.push_back(
+        iree_amd_aie_hal_xrt_XclbinDef_create(builder, xclbinStringRef));
+  }
+
   // Serialize the executable to flatbuffer format
   auto entryPointsRef = builder.createStringVec(entryPointNamesFb);
 
