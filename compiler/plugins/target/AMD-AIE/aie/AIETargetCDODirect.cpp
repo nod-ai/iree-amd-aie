@@ -6,7 +6,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "AIETargets.h"
-#include "aie/Dialect/AIE/IR/AIETargetModel.h"
+#include "iree-amd-aie/runtime/iree_aie_runtime.h"
+
 extern "C" {
 #include "cdo-driver/cdo_driver.h"
 }
@@ -189,7 +190,7 @@ auto ps = std::filesystem::path::preferred_separator;
 namespace xilinx::AIE {
 
 LogicalResult configureLocksInBdBlock(XAie_DmaDesc &dmaTileBd, Block &block,
-                                      const AIETargetModel &targetModel,
+                                      AMDAIENPUTargetModel targetModel,
                                       XAie_LocType &tileLoc) {
   LLVM_DEBUG(llvm::dbgs() << "\nstart configuring bds\n");
   std::optional<int> acqValue, relValue, acqLockId, relLockId;
@@ -235,8 +236,7 @@ LogicalResult configureLocksInBdBlock(XAie_DmaDesc &dmaTileBd, Block &block,
 }
 
 LogicalResult configureBdInBlock(XAie_DevInst &devInst, XAie_DmaDesc &dmaTileBd,
-                                 Block &block,
-                                 const AIETargetModel &targetModel,
+                                 Block &block, AMDAIENPUTargetModel targetModel,
                                  XAie_LocType &tileLoc, int bdId,
                                  std::optional<int> nextBdId) {
   std::optional<int> packetType;
@@ -360,7 +360,7 @@ LogicalResult pushToBdQueueAndEnable(XAie_DevInst &devInst, Operation &op,
 
 LogicalResult configureLocksAndBd(XAie_DevInst &devInst, Block &block,
                                   XAie_LocType tileLoc,
-                                  const AIETargetModel &targetModel) {
+                                  AMDAIENPUTargetModel targetModel) {
   DMABDOp bd = *block.getOps<DMABDOp>().begin();
   assert(bd.getBdId().has_value() &&
          "DMABDOp must have assigned bd_id; did you forget to run "
@@ -382,7 +382,7 @@ struct AIEControl {
   XAie_DevInst devInst;
 
   AIEControl(size_t partitionStartCol, bool aieSim, bool xaieDebug,
-             const AIETargetModel &tm) {
+             AMDAIENPUTargetModel tm) {
     size_t partitionNumCols = tm.columns();
     size_t deviceRows = tm.rows();
     size_t deviceCols = tm.columns() + partitionStartCol;
@@ -489,7 +489,7 @@ struct AIEControl {
                    << "lock op missing either id or init" << lockOp << "\n");
     });
 
-    const AIETargetModel &targetModel = targetOp.getTargetModel();
+    AMDAIENPUTargetModel targetModel = targetOp.getTargetModel();
 
     auto memOps = llvm::to_vector_of<TileElement>(targetOp.getOps<MemOp>());
     llvm::append_range(memOps, targetOp.getOps<MemTileDMAOp>());

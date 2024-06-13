@@ -11,16 +11,15 @@
 #ifndef AIE_PATHFINDER_H
 #define AIE_PATHFINDER_H
 
-#include "aie/Dialect/AIE/IR/AIEDialect.h"
-#include "aie/Dialect/AIE/IR/AIETargetModel.h"
-
-#include "llvm/ADT/DirectedGraph.h"
-#include "llvm/ADT/GraphTraits.h"
-
 #include <algorithm>
 #include <iostream>
 #include <list>
 #include <set>
+
+#include "aie/Dialect/AIE/IR/AIEDialect.h"
+#include "iree-amd-aie/runtime/iree_aie_runtime.h"
+#include "llvm/ADT/DirectedGraph.h"
+#include "llvm/ADT/GraphTraits.h"
 
 namespace xilinx::AIE {
 
@@ -60,11 +59,11 @@ using Channel = struct Channel {
   Switchbox &src;
   Switchbox &target;
   WireBundle bundle;
-  int maxCapacity = 0;  // maximum number of routing resources
-  double demand = 0.0;  // indicates how many flows want to use this Channel
-  int usedCapacity = 0; // how many flows are actually using this Channel
-  std::set<int> fixedCapacity; // channels not available to the algorithm
-  int overCapacityCount = 0;   // history of Channel being over capacity
+  int maxCapacity = 0;   // maximum number of routing resources
+  double demand = 0.0;   // indicates how many flows want to use this Channel
+  int usedCapacity = 0;  // how many flows are actually using this Channel
+  std::set<int> fixedCapacity;  // channels not available to the algorithm
+  int overCapacityCount = 0;    // history of Channel being over capacity
 };
 
 struct SwitchboxNode;
@@ -87,7 +86,8 @@ using ChannelEdge = struct ChannelEdge : ChannelEdgeBase, Channel {
   explicit ChannelEdge(SwitchboxNode &target) = delete;
   ChannelEdge(SwitchboxNode &src, SwitchboxNode &target, WireBundle bundle,
               int maxCapacity)
-      : ChannelEdgeBase(target), Channel(src, target, bundle, maxCapacity),
+      : ChannelEdgeBase(target),
+        Channel(src, target, bundle, maxCapacity),
         src(src) {}
 
   // This class isn't designed to copied or moved.
@@ -98,7 +98,7 @@ using ChannelEdge = struct ChannelEdge : ChannelEdgeBase, Channel {
 };
 
 class SwitchboxGraph : public SwitchboxGraphBase {
-public:
+ public:
   SwitchboxGraph() = default;
   ~SwitchboxGraph() = default;
 };
@@ -187,31 +187,31 @@ using FlowNode = struct FlowNode {
 };
 
 class Router {
-public:
+ public:
   Router() = default;
   // This has to go first so it can serve as a key function.
   // https://lld.llvm.org/missingkeyfunction
   virtual ~Router() = default;
   virtual void initialize(int maxCol, int maxRow,
-                          const AIETargetModel &targetModel) = 0;
+                          AMDAIENPUTargetModel targetModel) = 0;
   virtual void addFlow(TileID srcCoords, Port srcPort, TileID dstCoords,
                        Port dstPort) = 0;
   virtual bool addFixedConnection(ConnectOp connectOp) = 0;
-  virtual std::optional<std::map<PathEndPoint, SwitchSettings>>
-  findPaths(int maxIterations) = 0;
+  virtual std::optional<std::map<PathEndPoint, SwitchSettings>> findPaths(
+      int maxIterations) = 0;
   virtual Switchbox *getSwitchbox(TileID coords) = 0;
 };
 
 class Pathfinder : public Router {
-public:
+ public:
   Pathfinder() = default;
   void initialize(int maxCol, int maxRow,
-                  const AIETargetModel &targetModel) override;
+                  AMDAIENPUTargetModel targetModel) override;
   void addFlow(TileID srcCoords, Port srcPort, TileID dstCoords,
                Port dstPort) override;
   bool addFixedConnection(ConnectOp connectOp) override;
-  std::optional<std::map<PathEndPoint, SwitchSettings>>
-  findPaths(int maxIterations) override;
+  std::optional<std::map<PathEndPoint, SwitchSettings>> findPaths(
+      int maxIterations) override;
 
   Switchbox *getSwitchbox(TileID coords) override {
     auto *sb = std::find_if(graph.begin(), graph.end(), [&](SwitchboxNode *sb) {
@@ -221,7 +221,7 @@ public:
     return *sb;
   }
 
-private:
+ private:
   SwitchboxGraph graph;
   std::vector<FlowNode> flows;
   std::map<TileID, SwitchboxNode> grid;
@@ -235,7 +235,7 @@ private:
 // Detailed routing is received as SwitchboxSettings
 // It then converts these settings to MLIR operations
 class DynamicTileAnalysis {
-public:
+ public:
   int maxCol, maxRow;
   std::shared_ptr<Router> pathfinder;
   std::map<PathEndPoint, SwitchSettings> flowSolutions;
@@ -246,7 +246,7 @@ public:
   llvm::DenseMap<TileID, ShimMuxOp> coordToShimMux;
   llvm::DenseMap<int, PLIOOp> coordToPLIO;
 
-  const int maxIterations = 1000; // how long until declared unroutable
+  const int maxIterations = 1000;  // how long until declared unroutable
 
   DynamicTileAnalysis() : pathfinder(std::make_shared<Pathfinder>()) {}
   DynamicTileAnalysis(std::shared_ptr<Router> p) : pathfinder(std::move(p)) {}
@@ -263,7 +263,7 @@ public:
   ShimMuxOp getShimMux(mlir::OpBuilder &builder, int col);
 };
 
-} // namespace xilinx::AIE
+}  // namespace xilinx::AIE
 
 // For some mysterious reason, the only way to get the priorityQueue(cmp)
 // comparison in dijkstraShortestPaths to work correctly is to define
@@ -281,7 +281,7 @@ struct less<xilinx::AIE::Switchbox *> {
     return *a < *b;
   }
 };
-} // namespace std
+}  // namespace std
 
 namespace llvm {
 
@@ -342,7 +342,7 @@ inline raw_ostream &operator<<(raw_ostream &os,
   return os;
 }
 
-} // namespace llvm
+}  // namespace llvm
 
 template <>
 struct std::hash<xilinx::AIE::Switchbox> {

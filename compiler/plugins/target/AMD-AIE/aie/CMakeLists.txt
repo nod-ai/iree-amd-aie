@@ -26,7 +26,6 @@ iree_cc_library(
     AIEDialectIR
   SRCS
     ${IREE_MLIR_AIE_SOURCE_DIR}/lib/Dialect/AIE/IR/AIEDialect.cpp
-    ${IREE_MLIR_AIE_SOURCE_DIR}/lib/Dialect/AIE/IR/AIETargetModel.cpp
   DEPS
     ::defs
     ::AIEAttrsGen
@@ -322,6 +321,7 @@ iree_cc_library(
     ::AIETransformPassHeaders
     ::AIEXDialectIR
     ::AIEXTransformPassHeaders
+    iree-amd-aie::runtime::iree_aie_runtime_static
 )
 
 ###############################################################################

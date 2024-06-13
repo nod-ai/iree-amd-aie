@@ -16,6 +16,7 @@
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "d_ary_heap.h"
+#include "iree-amd-aie/runtime/iree_aie_runtime.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/Support/Debug.h"
@@ -213,7 +214,7 @@ void xilinx::AIE::registerAIEAssignBufferAddressesBasic() {
 #define ODD_BD_ID_START 24
 
 struct BdIdGenerator {
-  BdIdGenerator(int col, int row, const AIETargetModel &targetModel)
+  BdIdGenerator(int col, int row, AMDAIENPUTargetModel targetModel)
       : col(col), row(row), isMemTile(targetModel.isMemTile(col, row)) {}
 
   int32_t nextBdId(int channelIndex) {
@@ -244,7 +245,7 @@ struct AIEAssignBufferDescriptorIDsPass
           AIEAssignBufferDescriptorIDsPass> {
   void runOnOperation() override {
     DeviceOp targetOp = getOperation();
-    const AIETargetModel &targetModel = targetOp.getTargetModel();
+    AMDAIENPUTargetModel targetModel = targetOp.getTargetModel();
 
     auto memOps = llvm::to_vector_of<TileElement>(targetOp.getOps<MemOp>());
     llvm::append_range(memOps, targetOp.getOps<MemTileDMAOp>());
@@ -2876,7 +2877,7 @@ ShimMuxOp DynamicTileAnalysis::getShimMux(OpBuilder &builder, int col) {
 }
 
 void Pathfinder::initialize(int maxCol, int maxRow,
-                            const AIETargetModel &targetModel) {
+                            AMDAIENPUTargetModel targetModel) {
   // make grid of switchboxes
   int id = 0;
   for (int row = 0; row <= maxRow; row++) {
