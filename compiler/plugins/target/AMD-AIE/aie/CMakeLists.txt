@@ -266,7 +266,7 @@ iree_cc_library(
 )
 
 ###############################################################################
-# AIE Transform Passes
+# AIE Passes
 ###############################################################################
 
 iree_tablegen_library(
@@ -282,38 +282,12 @@ iree_cc_library(
   NAME
     AIETransformPassHeaders
   HDRS
-    "${IREE_MLIR_AIE_SOURCE_DIR}/include/aie/Dialect/AIE/Transforms/Passes.h"
     "Passes.h.inc"
   DEPS
     ::AIETransformPassesIncGen
     MLIRPass
   PUBLIC
 )
-
-iree_cc_library(
-  NAME
-    AIETransformPasses
-  SRCS
-    "AIETransformPasses.cpp"
-    "AIEAssignBufferAddressesBasic.cpp"
-    "AIEAssignBufferDescriptorIDs.cpp"
-    "AIEAssignLockIDs.cpp"
-    "AIECanonicalizeDevice.cpp"
-    "AIECoreToStandard.cpp"
-    "AIECreatePathFindFlows.cpp"
-    "AIELocalizeLocks.cpp"
-    "AIEObjectFifoStatefulTransform.cpp"
-    "AIEPathFinder.cpp"
-  DEPS
-    ::defs
-    ::AIEDialectIR
-    ::AIENormalizeAddressSpacesGen
-    ::AIETransformPassHeaders
-)
-
-###############################################################################
-# AIEX Transform Passes
-###############################################################################
 
 iree_tablegen_library(
   NAME
@@ -328,7 +302,6 @@ iree_cc_library(
   NAME
     AIEXTransformPassHeaders
   HDRS
-    "${IREE_MLIR_AIE_SOURCE_DIR}/include/aie/Dialect/AIEX/Transforms/Passes.h"
     "Passes.h.inc"
   DEPS
     ::AIEXTransformPassesIncGen
@@ -338,13 +311,15 @@ iree_cc_library(
 
 iree_cc_library(
   NAME
-    AIEXTransformPasses
+    AIEPass
   SRCS
-    "AIEXTransformPasses.cpp"
     "AIEDmaToNpu.cpp"
-    "AIEXToStandard.cpp"
+    "AIEPass.cpp"
   DEPS
     ::defs
+    ::AIEDialectIR
+    ::AIENormalizeAddressSpacesGen
+    ::AIETransformPassHeaders
     ::AIEXDialectIR
     ::AIEXTransformPassHeaders
 )
@@ -356,7 +331,7 @@ iree_cc_library(
 if(MSVC)
   set(UUID "Rpcrt4.lib")
 else()
-  find_library (UUID uuid REQUIRED)
+  find_library(UUID uuid REQUIRED)
 endif()
 
 iree_cc_library(
@@ -364,14 +339,12 @@ iree_cc_library(
     AIETargets
   SRCS
     "XCLBinGen.cpp"
-    "AIETargetBCF.cpp"
-    "AIETargetLdScript.cpp"
-    "AIETargetNPU.cpp"
+    "AIETargets.cpp"
     "AIETargetCDODirect.cpp"
   DEPS
     ::AIEDialectIR
     ::AIEDialectIR
-    ::AIETransformPasses
+    ::AIEPass
     ::AIEVecDialectIR
     ::AIEVecConvertToLLVM
     MLIRToLLVMIRTranslationRegistration

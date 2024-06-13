@@ -6,7 +6,6 @@
 
 #include "iree-amd-aie/Transforms/Passes.h"
 
-#include "aie/AIEAssignBufferAddressesBasic.h"
 #include "aie/Passes.h"
 #include "air/Conversion/Passes.h"
 #include "air/Transform/Passes.h"
@@ -445,7 +444,6 @@ void buildAMDAIELowerObjectFIFO(OpPassManager &variantPassManager) {
   modulePassManager.addPass(createCanonicalizerPass());
   modulePassManager.addPass(createConvertLinalgToLoopsPass());
   modulePassManager.addPass(memref::createFoldMemRefAliasOpsPass());
-  modulePassManager.addPass(xilinx::AIE::createAIECanonicalizeDevicePass());
   auto &devicePassMan = modulePassManager.nest<xilinx::AIE::DeviceOp>();
   devicePassMan.addPass(xilinx::AIE::createAIEAssignLockIDsPass());
   devicePassMan.addPass(

@@ -8,14 +8,13 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "Passes.h"
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
-#include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
-
+#include "llvm/ADT/DenseMap.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
-#include "llvm/ADT/DenseMap.h"
 
 using namespace mlir;
 using namespace xilinx;
@@ -397,7 +396,7 @@ struct DmaWaitToNpuPattern : OpConversionPattern<NpuDmaWaitOp> {
   }
 };
 
-struct AIEDmaToNpuPass : AIEDmaToNpuBase<AIEDmaToNpuPass> {
+struct AIEDmaToNpuPass : xilinx::AIEX::impl::AIEDmaToNpuBase<AIEDmaToNpuPass> {
   void runOnOperation() override {
 
     ShimDMAllocationGetter cachingGetter;

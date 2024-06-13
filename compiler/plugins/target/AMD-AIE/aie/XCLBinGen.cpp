@@ -17,7 +17,6 @@
 
 #include "AIETargets.h"
 #include "Passes.h"
-#include "aie/AIEAssignBufferAddressesBasic.h"
 #include "aie/Conversion/AIEVecToLLVM/AIEVecToLLVM.h"
 #include "aie/Dialect/AIEVec/Pipelines/Passes.h"
 #include "aie/Target/LLVMIR/Dialect/XLLVM/XLLVMToLLVMIRTranslation.h"

@@ -4,6 +4,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
+
 #include "AIETargets.h"
 #include "aie/Dialect/AIE/IR/AIETargetModel.h"
 extern "C" {
@@ -323,7 +324,8 @@ LogicalResult configureBdInBlock(XAie_DevInst &devInst, XAie_DmaDesc &dmaTileBd,
   }
 
   if (packetID) {
-    if (!packetType) bdOp.emitError("must have packetType with packetID");
+    if (!packetType)
+      return bdOp.emitError("must have packetType with packetID");
     if (bdOp.getLen() == 0)
       return bdOp.emitOpError(
           "For MM2S channels, if Buffer_Length=0 then Enable_Packet must be "
@@ -379,14 +381,11 @@ struct AIEControl {
   XAie_Config configPtr;
   XAie_DevInst devInst;
 
-  AIEControl(bool aieSim, bool xaieDebug, const BaseNPUTargetModel &tm) {
-    // The first column in the NPU lacks a shim tile.  AIE-RT exposes some of
-    // the internals about how this is modeled in a somewhat awkward way.
-    size_t partitionStartCol = tm.isVirtualized() ? 1 : 0;
+  AIEControl(size_t partitionStartCol, bool aieSim, bool xaieDebug,
+             const AIETargetModel &tm) {
     size_t partitionNumCols = tm.columns();
     size_t deviceRows = tm.rows();
     size_t deviceCols = tm.columns() + partitionStartCol;
-
     configPtr = XAie_Config{
         /*AieGen*/ XAIE_DEV_GEN_AIEML,
         /*BaseAddr*/ XAIE_BASE_ADDR,
@@ -409,6 +408,7 @@ struct AIEControl {
     //		more memory from the user application for resource management.
     XAie_InstDeclare(_devInst, &configPtr);
     devInst = _devInst;
+    // TODO(max): what is the "partition"?
     TRY_XAIE_API_FATAL_ERROR(XAie_SetupPartitionConfig, &devInst,
                              XAIE_PARTITION_BASE_ADDR, partitionStartCol,
                              partitionNumCols);
@@ -547,7 +547,8 @@ struct AIEControl {
       int32_t col = switchboxOp.colIndex();
       int32_t row = switchboxOp.rowIndex();
       XAie_LocType tileLoc = XAie_TileLoc(col, row);
-      assert(targetModel.isNPU() && "Only NPU currently supported");
+      //      assert(targetOp.getDevice() == AIEDevice::npu &&
+      //             "Only NPU currently supported");
       if (row == 0) {
         // FIXME hack for TCT routing
         // TODO Support both channels
@@ -690,10 +691,10 @@ void initializeCDOGenerator(byte_ordering endianness, bool cdoDebug) {
 
 LogicalResult generateCDOBinary(const StringRef outputPath,
                                 const std::function<LogicalResult()> &cb) {
-  startCDOFileStream(outputPath.str().c_str());
-  FileHeader();
   // Never generate a completely empty CDO file.  If the file only contains a
   // header, then bootgen flags it as invalid.
+  startCDOFileStream(outputPath.str().c_str());
+  FileHeader();
   insertNoOpCommand(4);
   if (failed(cb())) return failure();
   configureHeader();
@@ -719,7 +720,7 @@ LogicalResult generateCDOBinariesSeparately(AIEControl &ctl,
           [&ctl, &targetOp] { return ctl.addInitConfigToCDO(targetOp); })))
     return failure();
 
-  if (enableCores &&
+  if (enableCores && !targetOp.getOps<CoreOp>().empty() &&
       failed(generateCDOBinary(
           (llvm::Twine(workDirPath) + std::string(1, ps) + "aie_cdo_enable.bin")
               .str(),
@@ -750,19 +751,14 @@ LogicalResult AIETranslateToCDODirect(ModuleOp m, llvm::StringRef workDirPath,
                                       byte_ordering endianness,
                                       bool emitUnified, bool cdoDebug,
                                       bool aieSim, bool xaieDebug,
+                                      size_t partitionStartCol,
                                       bool enableCores) {
   auto devOps = m.getOps<DeviceOp>();
   assert(llvm::range_size(devOps) == 1 &&
          "only exactly 1 device op supported.");
   DeviceOp targetOp = *devOps.begin();
-  const BaseNPUTargetModel &targetModel =
-      (const BaseNPUTargetModel &)targetOp.getTargetModel();
-
-  // things like XAIE_MEM_TILE_ROW_START and the missing
-  // shim dma on tile (0,0) are hard-coded assumptions about NPU...
-  assert(targetModel.isNPU() && "Only NPU currently supported");
-
-  AIEControl ctl(aieSim, xaieDebug, targetModel);
+  AIEControl ctl(partitionStartCol, aieSim, xaieDebug,
+                 targetOp.getTargetModel());
   initializeCDOGenerator(endianness, cdoDebug);
   if (emitUnified)
     return generateCDOUnified(ctl, workDirPath, targetOp, aieSim, enableCores);
@@ -775,10 +771,12 @@ namespace xilinx::AIE {
 LogicalResult AIETranslateToCDODirect(ModuleOp m, llvm::StringRef workDirPath,
                                       bool bigEndian, bool emitUnified,
                                       bool cdoDebug, bool aieSim,
-                                      bool xaieDebug, bool enableCores) {
+                                      bool xaieDebug, size_t partitionStartCol,
+                                      bool enableCores) {
   byte_ordering endianness =
       bigEndian ? byte_ordering::Big_Endian : byte_ordering::Little_Endian;
   return AIETranslateToCDODirect(m, workDirPath, endianness, emitUnified,
-                                 cdoDebug, aieSim, xaieDebug, enableCores);
+                                 cdoDebug, aieSim, xaieDebug, partitionStartCol,
+                                 enableCores);
 }
 }  // namespace xilinx::AIE
