@@ -110,6 +110,11 @@ def AMDAIE_TileOp: AMDAIE_Op<"tile", [
 
   let extraClassDeclaration = [{
     bool hasStaticLocation();
+    // Comparator for `amdaie.tile` based on column index.
+    static bool tileColumnComparator(AMDAIE::TileOp &a, AMDAIE::TileOp &b);
+    // Comparator for `amdaie.tile` values based on column index first and then
+    // row index.
+    static bool tileValueColumnAndRowComparator(Value a, Value b);
   }];
 }
 
@@ -319,6 +324,53 @@ def AMDAIE_NpuDmaWaitOp: AMDAIE_Op<"npu.dma_wait", []> {
 // IREE AMDAIE LogicalObjectFifo Ops
 //===----------------------------------------------------------------------===//
 
+def AMDAIE_LogicalObjectFifoAccessOp : AMDAIE_Op<"logicalobjectfifo.access"> {
+  let summary = "Operation to access the encapsulated memref from a logical"
+                "objectFifo.";
+  let description = [{
+    Returns the encapsulated memref from a logical objectFifo. This is meant to
+    be used within `amdaie.core` operations to access and operate on the memref.
+    Has a memory `access_type` argument that indicates the type of access being
+    done. This can be used to generate a correct (semaphore) synchronization
+    scheme to access the logical objectFifo's content.
+
+    Example:
+    ```mlir
+      %tile = amdaie.tile(%c1, %c3)
+      %alloc = memref.alloc() : memref<8x16xi32, 2>
+      %0 = amdaie.logicalobjectfifo.from_memref %alloc, {%tile} : memref<8x16xi32, 2>
+        -> !amdaie.logicalobjectfifo<memref<8x16xi32, 2>>
+      %core = amdaie.core(%tile) {
+        %1 = amdaie.logicalobjectfifo.access(%0, Read) : 
+          !amdaie.logicalobjectfifo<memref<8x16xi32, 2>> ->  memref<8x16xi32, 2>
+    ```
+  }];
+
+  let arguments = (
+    ins AnyAMDAIELogicalObjectFifoType:$input,
+        MemoryAccess:$access_type
+  ); 
+
+  let results = (outs AnyMemRef:$output);
+
+  let assemblyFormat = [{
+    `(` $input `,` $access_type `)`  attr-dict `:` type($input) `->` type($output)
+  }];
+
+  let builders = [
+    // Build a LogicalObjectFifoAccessOp with a logicalObjectFifo value and access
+    // type.
+    OpBuilder<(ins "mlir::Value":$input, "MemoryAccess":$access_type)>
+  ];
+
+  let extraClassDeclaration = [{
+    LogicalObjectFifoFromMemrefOp getLogicalObjectFifo();
+  }];
+
+  // let hasVerifier = 1;
+  let cppNamespace = "mlir::iree_compiler::AMDAIE";
+}
+
 def AMDAIE_LogicalObjectFifoAcquire: 
     AMDAIE_Op<"logicalobjectfifo.acquire", []> {
   let summary = "Semaphore operation to acquire objects from a logical"
@@ -430,7 +482,12 @@ def AMDAIE_LogicalObjectFifoFromMemrefOp
 
   // Build a LogicalObjectFifoFromMemrefOp with just a memref value.
   let builders = [
-    OpBuilder<(ins "mlir::Value":$memref)>
+    OpBuilder<(ins "mlir::Value":$memref)>,
+    // Build `LogicalObjectFifoFromMemrefOp` with an array of static tile
+    // locations.
+    OpBuilder<
+      (ins "mlir::Value":$memref, 
+           "::llvm::ArrayRef<std::pair<int64_t, int64_t>>":$tileLocations)>
   ];
 
   let extraClassDeclaration = [{

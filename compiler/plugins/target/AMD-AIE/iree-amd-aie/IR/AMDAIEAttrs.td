@@ -41,6 +41,18 @@ def LogicalObjectFifoPort: I32EnumAttr<"LogicalObjectFifoPort",
   let cppNamespace = "mlir::iree_compiler::AMDAIE";
 }
 
+def MemoryAccess: I32EnumAttr<"MemoryAccess",
+  "The memory access type",
+  [
+    I32EnumAttrCase<"None", 0>,
+    I32EnumAttrCase<"Read", 1>,
+    I32EnumAttrCase<"Write", 2>,
+    I32EnumAttrCase<"Any", 3>,
+  ]
+  > {
+  let cppNamespace = "mlir::iree_compiler::AMDAIE";
+}
+
 def AMDAIE_MemSpace_Global : I32EnumAttrCase<"Global", 0>;
 def AMDAIE_MemSpace_Shared : I32EnumAttrCase<"Shared", 1>;
 def AMDAIE_MemSpace_Local : I32EnumAttrCase<"Local", 2>;
