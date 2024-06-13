@@ -326,13 +326,19 @@ static iree_status_t iree_hal_xrt_direct_command_buffer_dispatch(
 
   xrt::run run = xrt::run(kernel);
 
+  // set opcode for transaction binary execution
+  unsigned int opcode = 3;
+
   // Index to push arguments on the kernel.
   iree_host_size_t arg_index = 0;
 
-  // First argument is the LX6 instructions.
+  // First argument is the opcode.
+  run.set_arg(arg_index++, opcode);
+
+  // Second argument is the LX6 instructions.
   run.set_arg(arg_index++, instr);
 
-  // Second argument is the number of LX6 instructions.
+  // Third argument is the number of LX6 instructions.
   run.set_arg(arg_index++, num_instr);
 
   // Copy descriptors from all sets to the end of the current segment for later

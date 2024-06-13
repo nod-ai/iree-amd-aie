@@ -199,11 +199,11 @@ iree_status_t iree_hal_xrt_native_executable_create(
       kernel = std::make_unique<xrt::kernel>(context, entry_name);
       // XCL_BO_FLAGS_CACHEABLE is used to indicate that this is an instruction
       // buffer that resides in instr_memory. This buffer is always passed as
-      // the first argument to the kernel and we can use the
-      // kernel.group_id(/*index of first argument*/=0) to get the group_id.
+      // the second argument to the kernel and we can use the
+      // kernel.group_id(/*index of second argument*/=1) to get the group_id.
       instr = std::make_unique<xrt::bo>(device, num_instr * sizeof(uint32_t),
                                         XCL_BO_FLAGS_CACHEABLE,
-                                        kernel.get()->group_id(0));
+                                        kernel.get()->group_id(1));
     } catch (...) {
       iree_hal_executable_destroy((iree_hal_executable_t*)executable);
       IREE_TRACE_ZONE_END(z0);
