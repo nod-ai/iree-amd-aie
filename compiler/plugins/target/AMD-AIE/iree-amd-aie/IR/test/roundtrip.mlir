@@ -116,6 +116,15 @@ func.func @dma_cpy_nd_mixed(%arg0: !amdaie.logicalobjectfifo<memref<1x1x8x16xi32
 
 // -----
 
+// CHECK-LABEL: func.func @logicalobjectfifo_access
+// CHECK:       amdaie.logicalobjectfifo.access
+func.func @logicalobjectfifo_access(%arg0: !amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 2>>) {
+  %0 = amdaie.logicalobjectfifo.access(%arg0, Write) : !amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 2>> -> memref<1x1x8x16xi32, 2 : i32>
+  return
+}
+
+// -----
+
 // CHECK-LABEL: func.func @logicalobjectfifo_acquire
 // CHECK:       %[[DMA:.+]] = amdaie.dma_cpy_nd
 // CHECK:       amdaie.logicalobjectfifo.acquire

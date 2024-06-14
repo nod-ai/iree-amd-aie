@@ -264,6 +264,12 @@ LogicalResult coreToAIE(IRRewriter &rewriter, AMDAIE::CoreOp coreOp,
   auto walkResult = aieCoreOp.walk([&](Operation *op) {
     rewriter.setInsertionPoint(op);
     if (TypeSwitch<Operation *, LogicalResult>(op)
+            .Case<AMDAIE::LogicalObjectFifoAccessOp>([&](auto accessOp) {
+              // TODO(jornt): Temporary until access operations are used for
+              // inserting synchronization stubs instead of consume/produce.
+              rewriter.eraseOp(accessOp);
+              return success();
+            })
             .Case<AMDAIE::LogicalObjectFifoAcquire>([&](auto acquireOp) {
               return acquireOpToAIE(rewriter, acquireOp, mapper,
                                     localMemrefMapper);

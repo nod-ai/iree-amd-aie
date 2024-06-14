@@ -329,6 +329,22 @@ LogicalObjectFifoFromMemrefOp CircularDmaCpyNdOp::getTargetObjectFifo() {
 };
 
 //===----------------------------------------------------------------------===//
+// AMDAIE_LogicalObjectFifoAccessOp
+//===----------------------------------------------------------------------===//
+
+void LogicalObjectFifoAccessOp::build(OpBuilder &b,
+                                      mlir::OperationState &result, Value input,
+                                      MemoryAccess accessType) {
+  auto type = llvm::cast<LogicalObjectFifoType>(input.getType());
+  build(b, result, type.getElementType(), input, accessType);
+}
+
+LogicalObjectFifoFromMemrefOp
+LogicalObjectFifoAccessOp::getLogicalObjectFifo() {
+  return dyn_cast<LogicalObjectFifoFromMemrefOp>(getInput().getDefiningOp());
+};
+
+//===----------------------------------------------------------------------===//
 // AMDAIE_LogicalObjectFifoAcquire
 //===----------------------------------------------------------------------===//
 
@@ -341,6 +357,26 @@ void LogicalObjectFifoAcquire::build(OpBuilder &b, mlir::OperationState &result,
 // AMDAIE_LogicalObjectFifoFromMemrefOp
 //===----------------------------------------------------------------------===//
 
+/// Build with an array of static tile locations.
+void LogicalObjectFifoFromMemrefOp::build(
+    OpBuilder &b, mlir::OperationState &result, Value memref,
+    ArrayRef<std::pair<int64_t, int64_t>> tileLocations) {
+  SmallVector<Value> tiles;
+  tiles.reserve(tileLocations.size());
+  for (auto [column, row] : tileLocations) {
+    auto colIndex = b.create<arith::ConstantIndexOp>(b.getUnknownLoc(), column);
+    auto rowIndex = b.create<arith::ConstantIndexOp>(b.getUnknownLoc(), row);
+    auto tileOp =
+        b.create<AMDAIE::TileOp>(b.getUnknownLoc(), colIndex, rowIndex);
+    tiles.push_back(tileOp.getResult());
+  }
+  // For deterministic order.
+  llvm::sort(tiles.begin(), tiles.end(),
+             TileOp::tileValueColumnAndRowComparator);
+  auto type = LogicalObjectFifoType::get(cast<MemRefType>(memref.getType()));
+  build(b, result, type, memref, tiles);
+}
+
 LogicalResult LogicalObjectFifoFromMemrefOp::canonicalize(
     LogicalObjectFifoFromMemrefOp logicalObjectFifo,
     PatternRewriter &rewriter) {
@@ -349,23 +385,19 @@ LogicalResult LogicalObjectFifoFromMemrefOp::canonicalize(
     return success();
   }
 
-  auto comparator = [](Value a, Value b) -> bool {
-    TileOp tileA = dyn_cast<TileOp>(a.getDefiningOp());
-    TileOp tileB = dyn_cast<TileOp>(b.getDefiningOp());
-    int64_t colA = getConstantIntValue(tileA.getCol()).value();
-    int64_t rowA = getConstantIntValue(tileA.getRow()).value();
-    int64_t colB = getConstantIntValue(tileB.getCol()).value();
-    int64_t rowB = getConstantIntValue(tileB.getRow()).value();
-    if (colA == colB) return rowA < rowB;
-    return colA < colB;
-  };
   SmallVector<Value> tiles = logicalObjectFifo.getTiles();
-  if (llvm::is_sorted(tiles, comparator)) {
+  if (llvm::is_sorted(tiles, TileOp::tileValueColumnAndRowComparator)) {
+    // Still erase duplicates.
+    tiles.erase(std::unique(tiles.begin(), tiles.end()), tiles.end());
     return success();
   }
 
-  // If tiles are not sorted, sort them and replace the logical objectfifo
-  llvm::sort(tiles.begin(), tiles.end(), comparator);
+  // If tiles are not sorted, sort them, erase duplicates and replace the
+  // logical objectfifo.
+  llvm::sort(tiles.begin(), tiles.end(),
+             TileOp::tileValueColumnAndRowComparator);
+  tiles.erase(std::unique(tiles.begin(), tiles.end()), tiles.end());
+
   rewriter.replaceOpWithNewOp<AMDAIE::LogicalObjectFifoFromMemrefOp>(
       logicalObjectFifo,
       llvm::cast<LogicalObjectFifoType>(
@@ -531,6 +563,23 @@ void TileOp::getAsmResultNames(function_ref<void(Value, StringRef)> setNameFn) {
 bool TileOp::hasStaticLocation() {
   return getConstantIntValue(getCol()) && getConstantIntValue(getRow());
 }
+
+bool TileOp::tileColumnComparator(AMDAIE::TileOp &a, AMDAIE::TileOp &b) {
+  int64_t colA = getConstantIntValue(a.getCol()).value();
+  int64_t colB = getConstantIntValue(b.getCol()).value();
+  return colA < colB;
+}
+
+bool TileOp::tileValueColumnAndRowComparator(Value a, Value b) {
+  TileOp tileA = dyn_cast<AMDAIE::TileOp>(a.getDefiningOp());
+  TileOp tileB = dyn_cast<AMDAIE::TileOp>(b.getDefiningOp());
+  int64_t colA = getConstantIntValue(tileA.getCol()).value();
+  int64_t rowA = getConstantIntValue(tileA.getRow()).value();
+  int64_t colB = getConstantIntValue(tileB.getCol()).value();
+  int64_t rowB = getConstantIntValue(tileB.getRow()).value();
+  if (colA == colB) return rowA < rowB;
+  return colA < colB;
+};
 
 //===----------------------------------------------------------------------===//
 // AMDAIE_WorkgroupOp
