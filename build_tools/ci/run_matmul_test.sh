@@ -638,7 +638,7 @@ run_matmul_test \
     --lhs_rhs_type "bf16" \
     --acc_type "f32" \
     --m "64"  --n "64" --k "128" \
-    --expect_compile_failure "1"
+    --num_repeat_runs "0"
 
 run_matmul_test \
     --name_prefix "packPeelLarge" \
