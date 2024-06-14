@@ -8,13 +8,13 @@ iree_lit_test_suite(
   NAME
     lit
   SRCS
+    "access_to_acquire_release.mlir"
     "aie_link_executables.mlir"
     "air_dma_to_amdaie_dma.mlir"
     "bridge_to_air.mlir"
     "bufferize_to_allocation.mlir"
     "canonicalize_dma.mlir"
     "canonicalize_doubly_strided_op.mlir"
-    "consume_produce_to_acquire_release.mlir"
     "controlcode_loop_unrolling.mlir"
     "create_aie_workgroup.mlir"
     "create_logical_objectfifo_link.mlir"
