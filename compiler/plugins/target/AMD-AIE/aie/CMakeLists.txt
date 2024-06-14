@@ -6,7 +6,7 @@
 
 set(IREE_PACKAGE_ROOT_DIR "${CMAKE_CURRENT_LIST_DIR}")
 set(IREE_PACKAGE_ROOT_PREFIX "iree::target::amd-aie::aie")
-
+add_subdirectory(aie_passes)
 list(APPEND IREE_COMPILER_TABLEGEN_INCLUDE_DIRS
     "${IREE_MLIR_AIE_SOURCE_DIR}/include")
 
