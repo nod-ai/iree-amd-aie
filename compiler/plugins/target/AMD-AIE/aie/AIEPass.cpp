@@ -1408,13 +1408,11 @@ struct AIELocalizeLocksPass
   }
   void runOnOperation() override {
     DeviceOp device = getOperation();
-
+    AMDAIENPUDeviceModel deviceModel =
+        mlir::iree_compiler::AMDAIE::getDeviceModel(
+            static_cast<AMDAIEDevice>(device.getDevice()));
     for (auto coreOp : device.getOps<CoreOp>()) {
       // Collect the locks used in this core.
-      AMDAIENPUDeviceModel deviceModel =
-          mlir::iree_compiler::AMDAIE::getDeviceModel(
-              static_cast<AMDAIEDevice>(device.getDevice()));
-
       auto thisTile = dyn_cast<TileOp>(coreOp.getTile().getDefiningOp());
       int col = thisTile.colIndex();
       int row = thisTile.rowIndex();
