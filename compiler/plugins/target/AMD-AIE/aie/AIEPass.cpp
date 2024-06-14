@@ -16,7 +16,7 @@
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "d_ary_heap.h"
-#include "iree-amd-aie/runtime/iree_aie_runtime.h"
+#include "iree-amd-aie/aie_runtime/iree_aie_runtime.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/Support/Debug.h"
@@ -47,6 +47,43 @@
 using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIE;
+
+const std::map<xilinx::AIE::WireBundle, StrmSwPortType>
+    _WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE = {
+        {xilinx::AIE::WireBundle::Core, StrmSwPortType::CORE},
+        {xilinx::AIE::WireBundle::DMA, StrmSwPortType::DMA},
+        {xilinx::AIE::WireBundle::Ctrl, StrmSwPortType::CTRL},
+        {xilinx::AIE::WireBundle::FIFO, StrmSwPortType::FIFO},
+        {xilinx::AIE::WireBundle::South, StrmSwPortType::SOUTH},
+        {xilinx::AIE::WireBundle::West, StrmSwPortType::WEST},
+        {xilinx::AIE::WireBundle::North, StrmSwPortType::NORTH},
+        {xilinx::AIE::WireBundle::East, StrmSwPortType::EAST},
+        // missing PLIO from WireBundle
+        // missing NOC from WireBundle
+        {xilinx::AIE::WireBundle::Trace, StrmSwPortType::TRACE},
+};
+
+const std::map<StrmSwPortType, xilinx::AIE::WireBundle>
+    _STRM_SW_PORT_TYPE_TO_WIRE_BUNDLE = {
+        {StrmSwPortType::CORE, xilinx::AIE::WireBundle::Core},
+        {StrmSwPortType::DMA, xilinx::AIE::WireBundle::DMA},
+        {StrmSwPortType::CTRL, xilinx::AIE::WireBundle::Ctrl},
+        {StrmSwPortType::FIFO, xilinx::AIE::WireBundle::FIFO},
+        {StrmSwPortType::SOUTH, xilinx::AIE::WireBundle::South},
+        {StrmSwPortType::WEST, xilinx::AIE::WireBundle::West},
+        {StrmSwPortType::NORTH, xilinx::AIE::WireBundle::North},
+        {StrmSwPortType::EAST, xilinx::AIE::WireBundle::East},
+        {StrmSwPortType::TRACE, xilinx::AIE::WireBundle::Trace},
+};
+
+inline StrmSwPortType WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE(
+    xilinx::AIE::WireBundle w) {
+  return _WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE.at(w);
+}
+
+xilinx::AIE::WireBundle STRM_SW_PORT_TYPE_TO_WIRE_BUNDLE(StrmSwPortType s) {
+  return _STRM_SW_PORT_TYPE_TO_WIRE_BUNDLE.at(s);
+}
 
 template <typename DerivedT>
 class AIEAssignBufferAddressesPassBasicBase
@@ -128,13 +165,19 @@ struct AIEAssignBufferAddressesPassBasic
       }
     });
 
+    AMDAIENPUDeviceModel deviceModel =
+        mlir::iree_compiler::AMDAIE::getDeviceModel(
+            static_cast<AMDAIEDevice>(device.getDevice()));
     for (auto tile : device.getOps<TileOp>()) {
-      const auto &targetModel = getTargetModel(tile);
       int maxDataMemorySize = 0;
-      if (tile.isMemTile())
-        maxDataMemorySize = targetModel.getMemTileSize();
+      if (tile.isShimTile())
+        continue;
+      else if (tile.isMemTile())
+        maxDataMemorySize =
+            deviceModel.getMemTileSize(tile.colIndex(), tile.rowIndex());
       else
-        maxDataMemorySize = targetModel.getLocalMemorySize();
+        maxDataMemorySize =
+            deviceModel.getLocalMemorySize(tile.colIndex(), tile.rowIndex());
       SmallVector<BufferOp, 4> buffers;
       // Collect all the buffers for this tile.
       device.walk<WalkOrder::PreOrder>([&](BufferOp buffer) {
@@ -167,9 +210,8 @@ struct AIEAssignBufferAddressesPassBasic
             tile.emitOpError("allocated buffers exceeded available memory\n");
         auto &note = error.attachNote() << "MemoryMap:\n";
         auto printbuffer = [&](StringRef name, int address, int size) {
-          note << "\t" << name << " \t"
-               << ": 0x" << llvm::utohexstr(address) << "-0x"
-               << llvm::utohexstr(address + size - 1) << " \t(" << size
+          note << "\t" << name << " \t" << ": 0x" << llvm::utohexstr(address)
+               << "-0x" << llvm::utohexstr(address + size - 1) << " \t(" << size
                << " bytes)\n";
         };
         if (stacksize > 0)
@@ -214,8 +256,8 @@ void xilinx::AIE::registerAIEAssignBufferAddressesBasic() {
 #define ODD_BD_ID_START 24
 
 struct BdIdGenerator {
-  BdIdGenerator(int col, int row, AMDAIENPUTargetModel targetModel)
-      : col(col), row(row), isMemTile(targetModel.isMemTile(col, row)) {}
+  BdIdGenerator(int col, int row, AMDAIENPUDeviceModel deviceModel)
+      : col(col), row(row), isMemTile(deviceModel.isMemTile(col, row)) {}
 
   int32_t nextBdId(int channelIndex) {
     int32_t bdId = isMemTile && channelIndex & 1 ? oddBdId++ : evenBdId++;
@@ -244,17 +286,19 @@ struct AIEAssignBufferDescriptorIDsPass
     : xilinx::AIE::impl::AIEAssignBufferDescriptorIDsBase<
           AIEAssignBufferDescriptorIDsPass> {
   void runOnOperation() override {
-    DeviceOp targetOp = getOperation();
-    AMDAIENPUTargetModel targetModel = targetOp.getTargetModel();
+    DeviceOp device = getOperation();
+    AMDAIENPUDeviceModel deviceModel =
+        mlir::iree_compiler::AMDAIE::getDeviceModel(
+            static_cast<AMDAIEDevice>(device.getDevice()));
 
-    auto memOps = llvm::to_vector_of<TileElement>(targetOp.getOps<MemOp>());
-    llvm::append_range(memOps, targetOp.getOps<MemTileDMAOp>());
-    llvm::append_range(memOps, targetOp.getOps<ShimDMAOp>());
+    auto memOps = llvm::to_vector_of<TileElement>(device.getOps<MemOp>());
+    llvm::append_range(memOps, device.getOps<MemTileDMAOp>());
+    llvm::append_range(memOps, device.getOps<ShimDMAOp>());
     for (TileElement memOp : memOps) {
       int col = memOp.getTileID().col;
       int row = memOp.getTileID().row;
 
-      BdIdGenerator gen(col, row, targetModel);
+      BdIdGenerator gen(col, row, deviceModel);
       memOp->walk<WalkOrder::PreOrder>([&](DMABDOp bd) {
         if (bd.getBdId().has_value()) gen.assignBdId(bd.getBdId().value());
       });
@@ -320,8 +364,9 @@ struct AIEAssignBufferDescriptorIDsPass
 std::unique_ptr<OperationPass<DeviceOp>>
 AIE::createAIEAssignBufferDescriptorIDsPass() {
   return std::make_unique<AIEAssignBufferDescriptorIDsPass>();
-}  //===- AIEAssignLockIDs.cpp -------------------------------------*- C++
-   //-*-===//
+}
+
+//===- AIEAssignLockIDs.cpp -------------------------------------*- C++
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -846,14 +891,10 @@ struct AIECoreToStandardPass
       m.emitOpError("expected AIE.device operation at toplevel");
       return signalPassFailure();
     }
-    DeviceOp device = *m.getOps<DeviceOp>().begin();
-    const auto &targetModel = device.getTargetModel();
-
     // Ensure that we don't have an incorrect target triple.  This may override
     // some bogus target triple in the original mlir.
     m->setAttr(LLVM::LLVMDialect::getTargetTripleAttrName(),
-               builder.getStringAttr(
-                   getArchIntrinsicString(targetModel.getTargetArch())));
+               builder.getStringAttr(getArchIntrinsicString(AIEArch::AIE2)));
 
     DenseMap<Operation *, SmallVector<BufferOp, 4>> tileToBuffers;
 
@@ -862,7 +903,7 @@ struct AIECoreToStandardPass
     // peano/llvm-project/llvm/lib/Target/AIE/AIEInstrInfo.td Also take a look
     // at the tests: peano/llvm-project/llvm/test/CodeGen/AIE
     builder.setInsertionPointToStart(m.getBody());
-    declareAIEIntrinsics(targetModel.getTargetArch(), builder);
+    declareAIEIntrinsics(AIEArch::AIE2, builder);
 
     IRMapping mapper;
     ConversionTarget target(getContext());
@@ -894,6 +935,7 @@ struct AIECoreToStandardPass
 
     // Move all the func.func ops and memref.globals from the device to the
     // module
+    DeviceOp device = *m.getOps<DeviceOp>().begin();
     outlineOps<memref::GlobalOp>(device);
     outlineOps<func::FuncOp>(device);
 
@@ -914,6 +956,7 @@ struct AIECoreToStandardPass
 std::unique_ptr<OperationPass<ModuleOp>> AIE::createAIECoreToStandardPass() {
   return std::make_unique<AIECoreToStandardPass>();
 }
+
 //===- AIECreatePathfindFlows.cpp -------------------------------*- C++ -*-===//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
@@ -940,22 +983,24 @@ struct ConvertFlowsToInterconnect : OpConversionPattern<FlowOp> {
 
   void addConnection(ConversionPatternRewriter &rewriter,
                      // could be a shim-mux or a switchbox.
-                     Interconnect op, FlowOp flowOp, WireBundle inBundle,
-                     int inIndex, WireBundle outBundle, int outIndex) const {
+                     Interconnect op, FlowOp flowOp, StrmSwPortType inBundle,
+                     int inIndex, StrmSwPortType outBundle,
+                     int outIndex) const {
     Region &r = op.getConnections();
     Block &b = r.front();
     auto point = rewriter.saveInsertionPoint();
     rewriter.setInsertionPoint(b.getTerminator());
 
-    rewriter.create<ConnectOp>(rewriter.getUnknownLoc(), inBundle, inIndex,
-                               outBundle, outIndex);
+    rewriter.create<ConnectOp>(
+        rewriter.getUnknownLoc(), STRM_SW_PORT_TYPE_TO_WIRE_BUNDLE(inBundle),
+        inIndex, STRM_SW_PORT_TYPE_TO_WIRE_BUNDLE(outBundle), outIndex);
 
     rewriter.restoreInsertionPoint(point);
 
     LLVM_DEBUG(llvm::dbgs()
                << "\t\taddConnection() (" << op.colIndex() << ","
-               << op.rowIndex() << ") " << stringifyWireBundle(inBundle)
-               << inIndex << " -> " << stringifyWireBundle(outBundle)
+               << op.rowIndex() << ") " << stringifyStrmSwPortType(inBundle)
+               << inIndex << " -> " << stringifyStrmSwPortType(outBundle)
                << outIndex << "\n");
   }
 
@@ -964,22 +1009,22 @@ struct ConvertFlowsToInterconnect : OpConversionPattern<FlowOp> {
     Operation *Op = flowOp.getOperation();
 
     auto srcTile = cast<TileOp>(flowOp.getSource().getDefiningOp());
-    TileID srcCoords = {srcTile.colIndex(), srcTile.rowIndex()};
-    auto srcBundle = flowOp.getSourceBundle();
+    TileLoc srcCoords = {srcTile.colIndex(), srcTile.rowIndex()};
+    auto srcBundle = WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE(flowOp.getSourceBundle());
     auto srcChannel = flowOp.getSourceChannel();
-    Port srcPort = {srcBundle, srcChannel};
+    ::Port srcPort = {srcBundle, srcChannel};
 
 #ifndef NDEBUG
     auto dstTile = cast<TileOp>(flowOp.getDest().getDefiningOp());
-    TileID dstCoords = {dstTile.colIndex(), dstTile.rowIndex()};
-    auto dstBundle = flowOp.getDestBundle();
+    TileLoc dstCoords = {dstTile.colIndex(), dstTile.rowIndex()};
+    auto dstBundle = WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE(flowOp.getDestBundle());
     auto dstChannel = flowOp.getDestChannel();
     LLVM_DEBUG(llvm::dbgs()
                << "\n\t---Begin rewrite() for flowOp: (" << srcCoords.col
-               << ", " << srcCoords.row << ")" << stringifyWireBundle(srcBundle)
-               << srcChannel << " -> (" << dstCoords.col << ", "
-               << dstCoords.row << ")" << stringifyWireBundle(dstBundle)
-               << dstChannel << "\n\t");
+               << ", " << srcCoords.row << ")"
+               << stringifyStrmSwPortType(srcBundle) << srcChannel << " -> ("
+               << dstCoords.col << ", " << dstCoords.row << ")"
+               << stringifyStrmSwPortType(dstBundle) << dstChannel << "\n\t");
 #endif
 
     // if the flow (aka "net") for this FlowOp hasn't been processed yet,
@@ -996,31 +1041,14 @@ struct ConvertFlowsToInterconnect : OpConversionPattern<FlowOp> {
         if (curr == srcSB &&
             analyzer.getTile(rewriter, srcSB.col, srcSB.row).isShimNOCTile()) {
           // shim DMAs at start of flows
-          if (srcBundle == WireBundle::DMA) {
+          if (srcBundle == StrmSwPortType::DMA) {
             shimCh = srcChannel == 0
                          ? 3
                          : 7;  // must be either DMA0 -> N3 or DMA1 -> N7
             ShimMuxOp shimMuxOp = analyzer.getShimMux(rewriter, srcSB.col);
             addConnection(rewriter,
                           cast<Interconnect>(shimMuxOp.getOperation()), flowOp,
-                          srcBundle, srcChannel, WireBundle::North, shimCh);
-          } else if (srcBundle ==
-                     WireBundle::NOC) {  // must be NOC0/NOC1 -> N2/N3 or
-                                         // NOC2/NOC3 -> N6/N7
-            shimCh = srcChannel >= 2 ? srcChannel + 4 : srcChannel + 2;
-            ShimMuxOp shimMuxOp = analyzer.getShimMux(rewriter, srcSB.col);
-            addConnection(rewriter,
-                          cast<Interconnect>(shimMuxOp.getOperation()), flowOp,
-                          srcBundle, srcChannel, WireBundle::North, shimCh);
-          } else if (srcBundle ==
-                     WireBundle::PLIO) {  // PLIO at start of flows with mux
-            if (srcChannel == 2 || srcChannel == 3 || srcChannel == 6 ||
-                srcChannel == 7) {  // Only some PLIO requrie mux
-              ShimMuxOp shimMuxOp = analyzer.getShimMux(rewriter, srcSB.col);
-              addConnection(
-                  rewriter, cast<Interconnect>(shimMuxOp.getOperation()),
-                  flowOp, srcBundle, srcChannel, WireBundle::North, shimCh);
-            }
+                          srcBundle, srcChannel, StrmSwPortType::NORTH, shimCh);
           }
         }
         for (const auto &[bundle, channel] : setting.dsts) {
@@ -1028,40 +1056,34 @@ struct ConvertFlowsToInterconnect : OpConversionPattern<FlowOp> {
           if (curr == srcSB && analyzer.getTile(rewriter, srcSB.col, srcSB.row)
                                    .isShimNOCorPLTile()) {
             addConnection(rewriter, cast<Interconnect>(swOp.getOperation()),
-                          flowOp, WireBundle::South, shimCh, bundle, channel);
+                          flowOp, StrmSwPortType::SOUTH, shimCh, bundle,
+                          channel);
           } else if (analyzer.getTile(rewriter, curr.col, curr.row)
                          .isShimNOCorPLTile() &&
-                     (bundle == WireBundle::DMA || bundle == WireBundle::PLIO ||
-                      bundle == WireBundle::NOC)) {
+                     (bundle == StrmSwPortType::DMA)) {
             shimCh = channel;
             if (analyzer.getTile(rewriter, curr.col, curr.row)
                     .isShimNOCTile()) {
               // shim DMAs at end of flows
-              if (bundle == WireBundle::DMA) {
+              if (bundle == StrmSwPortType::DMA) {
                 shimCh = channel == 0
                              ? 2
                              : 3;  // must be either N2 -> DMA0 or N3 -> DMA1
                 ShimMuxOp shimMuxOp = analyzer.getShimMux(rewriter, curr.col);
                 addConnection(
                     rewriter, cast<Interconnect>(shimMuxOp.getOperation()),
-                    flowOp, WireBundle::North, shimCh, bundle, channel);
-              } else if (bundle == WireBundle::NOC) {
-                shimCh = channel + 2;  // must be either N2/3/4/5 -> NOC0/1/2/3
-                ShimMuxOp shimMuxOp = analyzer.getShimMux(rewriter, curr.col);
-                addConnection(
-                    rewriter, cast<Interconnect>(shimMuxOp.getOperation()),
-                    flowOp, WireBundle::North, shimCh, bundle, channel);
+                    flowOp, StrmSwPortType::NORTH, shimCh, bundle, channel);
               } else if (channel >=
                          2) {  // must be PLIO...only PLIO >= 2 require mux
                 ShimMuxOp shimMuxOp = analyzer.getShimMux(rewriter, curr.col);
                 addConnection(
                     rewriter, cast<Interconnect>(shimMuxOp.getOperation()),
-                    flowOp, WireBundle::North, shimCh, bundle, channel);
+                    flowOp, StrmSwPortType::NORTH, shimCh, bundle, channel);
               }
             }
             addConnection(rewriter, cast<Interconnect>(swOp.getOperation()),
                           flowOp, setting.src.bundle, setting.src.channel,
-                          WireBundle::South, shimCh);
+                          StrmSwPortType::SOUTH, shimCh);
           } else {
             // otherwise, regular switchbox connection
             addConnection(rewriter, cast<Interconnect>(swOp.getOperation()),
@@ -1070,8 +1092,7 @@ struct ConvertFlowsToInterconnect : OpConversionPattern<FlowOp> {
           }
         }
 
-        LLVM_DEBUG(llvm::dbgs() << curr << ": " << setting << " | "
-                                << "\n");
+        LLVM_DEBUG(llvm::dbgs() << curr << ": " << setting << " | " << "\n");
       }
 
       LLVM_DEBUG(llvm::dbgs()
@@ -1092,9 +1113,9 @@ void AIEPathfinderPass::runOnOperation() {
   // create analysis pass with routing graph for entire device
   LLVM_DEBUG(llvm::dbgs() << "---Begin AIEPathfinderPass---\n");
 
-  DeviceOp d = getOperation();
-  if (failed(analyzer.runAnalysis(d))) return signalPassFailure();
-  OpBuilder builder = OpBuilder::atBlockEnd(d.getBody());
+  DeviceOp device = getOperation();
+  if (failed(analyzer.runAnalysis(device))) return signalPassFailure();
+  OpBuilder builder = OpBuilder::atBlockEnd(device.getBody());
 
   // Apply rewrite rule to switchboxes to add assignments to every 'connect'
   // operation inside
@@ -1106,8 +1127,9 @@ void AIEPathfinderPass::runOnOperation() {
   target.addLegalOp<EndOp>();
 
   RewritePatternSet patterns(&getContext());
-  patterns.insert<ConvertFlowsToInterconnect>(d.getContext(), d, analyzer);
-  if (failed(applyPartialConversion(d, target, std::move(patterns))))
+  patterns.insert<ConvertFlowsToInterconnect>(device.getContext(), device,
+                                              analyzer);
+  if (failed(applyPartialConversion(device, target, std::move(patterns))))
     return signalPassFailure();
 
   // Populate wires between switchboxes and tiles.
@@ -1127,23 +1149,31 @@ void AIEPathfinderPass::runOnOperation() {
         // connections east-west between stream switches
         if (analyzer.coordToSwitchbox.count({col - 1, row})) {
           auto westsw = analyzer.coordToSwitchbox[{col - 1, row}];
-          builder.create<WireOp>(builder.getUnknownLoc(), westsw,
-                                 WireBundle::East, sw, WireBundle::West);
+          builder.create<WireOp>(
+              builder.getUnknownLoc(), westsw,
+              STRM_SW_PORT_TYPE_TO_WIRE_BUNDLE(StrmSwPortType::EAST), sw,
+              STRM_SW_PORT_TYPE_TO_WIRE_BUNDLE(StrmSwPortType::WEST));
         }
       }
       if (row > 0) {
         // connections between abstract 'core' of tile
-        builder.create<WireOp>(builder.getUnknownLoc(), tile, WireBundle::Core,
-                               sw, WireBundle::Core);
+        builder.create<WireOp>(
+            builder.getUnknownLoc(), tile,
+            STRM_SW_PORT_TYPE_TO_WIRE_BUNDLE(StrmSwPortType::CORE), sw,
+            STRM_SW_PORT_TYPE_TO_WIRE_BUNDLE(StrmSwPortType::CORE));
         // connections between abstract 'dma' of tile
-        builder.create<WireOp>(builder.getUnknownLoc(), tile, WireBundle::DMA,
-                               sw, WireBundle::DMA);
+        builder.create<WireOp>(
+            builder.getUnknownLoc(), tile,
+            STRM_SW_PORT_TYPE_TO_WIRE_BUNDLE(StrmSwPortType::DMA), sw,
+            STRM_SW_PORT_TYPE_TO_WIRE_BUNDLE(StrmSwPortType::DMA));
         // connections north-south inside array ( including connection to shim
         // row)
         if (analyzer.coordToSwitchbox.count({col, row - 1})) {
           auto southsw = analyzer.coordToSwitchbox[{col, row - 1}];
-          builder.create<WireOp>(builder.getUnknownLoc(), southsw,
-                                 WireBundle::North, sw, WireBundle::South);
+          builder.create<WireOp>(
+              builder.getUnknownLoc(), southsw,
+              STRM_SW_PORT_TYPE_TO_WIRE_BUNDLE(StrmSwPortType::NORTH), sw,
+              STRM_SW_PORT_TYPE_TO_WIRE_BUNDLE(StrmSwPortType::SOUTH));
         }
       } else if (row == 0) {
         if (tile.isShimNOCTile()) {
@@ -1151,27 +1181,35 @@ void AIEPathfinderPass::runOnOperation() {
             auto shimsw = analyzer.coordToShimMux[{col, 0}];
             builder.create<WireOp>(
                 builder.getUnknownLoc(), shimsw,
-                WireBundle::North,  // Changed to connect into the north
-                sw, WireBundle::South);
+                STRM_SW_PORT_TYPE_TO_WIRE_BUNDLE(
+                    StrmSwPortType::NORTH),  // Changed to connect into the
+                                             // north
+                sw, STRM_SW_PORT_TYPE_TO_WIRE_BUNDLE(StrmSwPortType::SOUTH));
             // PLIO is attached to shim mux
             if (analyzer.coordToPLIO.count(col)) {
               auto plio = analyzer.coordToPLIO[col];
-              builder.create<WireOp>(builder.getUnknownLoc(), plio,
-                                     WireBundle::North, shimsw,
-                                     WireBundle::South);
+              builder.create<WireOp>(
+                  builder.getUnknownLoc(), plio,
+                  STRM_SW_PORT_TYPE_TO_WIRE_BUNDLE(StrmSwPortType::NORTH),
+                  shimsw,
+                  STRM_SW_PORT_TYPE_TO_WIRE_BUNDLE(StrmSwPortType::SOUTH));
             }
 
             // abstract 'DMA' connection on tile is attached to shim mux ( in
             // row 0 )
-            builder.create<WireOp>(builder.getUnknownLoc(), tile,
-                                   WireBundle::DMA, shimsw, WireBundle::DMA);
+            builder.create<WireOp>(
+                builder.getUnknownLoc(), tile,
+                STRM_SW_PORT_TYPE_TO_WIRE_BUNDLE(StrmSwPortType::DMA), shimsw,
+                STRM_SW_PORT_TYPE_TO_WIRE_BUNDLE(StrmSwPortType::DMA));
           }
         } else if (tile.isShimPLTile()) {
           // PLIO is attached directly to switch
           if (analyzer.coordToPLIO.count(col)) {
             auto plio = analyzer.coordToPLIO[col];
-            builder.create<WireOp>(builder.getUnknownLoc(), plio,
-                                   WireBundle::North, sw, WireBundle::South);
+            builder.create<WireOp>(
+                builder.getUnknownLoc(), plio,
+                STRM_SW_PORT_TYPE_TO_WIRE_BUNDLE(StrmSwPortType::NORTH), sw,
+                STRM_SW_PORT_TYPE_TO_WIRE_BUNDLE(StrmSwPortType::SOUTH));
           }
         }
       }
@@ -1180,16 +1218,21 @@ void AIEPathfinderPass::runOnOperation() {
 
   // If the routing violates architecture-specific routing constraints, then
   // attempt to partially reroute.
-  const auto &targetModel = d.getTargetModel();
+  AMDAIENPUDeviceModel deviceModel =
+      mlir::iree_compiler::AMDAIE::getDeviceModel(
+          static_cast<AMDAIEDevice>(device.getDevice()));
   std::vector<ConnectOp> problemConnects;
-  d.walk([&](ConnectOp connect) {
+  device.walk([&](ConnectOp connect) {
     if (auto sw = connect->getParentOfType<SwitchboxOp>()) {
       // Constraint: memtile stream switch constraints
       if (auto tile = sw.getTileOp();
           tile.isMemTile() &&
-          !targetModel.isLegalMemtileConnection(
-              connect.getSourceBundle(), connect.getSourceChannel(),
-              connect.getDestBundle(), connect.getDestChannel())) {
+          !deviceModel.isLegalMemtileConnection(
+              tile.colIndex(), tile.rowIndex(),
+              WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE(connect.getSourceBundle()),
+              connect.getSourceChannel(),
+              WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE(connect.getDestBundle()),
+              connect.getDestChannel())) {
         problemConnects.push_back(connect);
       }
     }
@@ -1198,8 +1241,9 @@ void AIEPathfinderPass::runOnOperation() {
   for (auto connect : problemConnects) {
     auto swBox = connect->getParentOfType<SwitchboxOp>();
     builder.setInsertionPoint(connect);
-    auto northSw = getSwitchbox(d, swBox.colIndex(), swBox.rowIndex() + 1);
-    if (auto southSw = getSwitchbox(d, swBox.colIndex(), swBox.rowIndex() - 1);
+    auto northSw = getSwitchbox(device, swBox.colIndex(), swBox.rowIndex() + 1);
+    if (auto southSw =
+            getSwitchbox(device, swBox.colIndex(), swBox.rowIndex() - 1);
         !attemptFixupMemTileRouting(builder, northSw, southSw, connect))
       return signalPassFailure();
   }
@@ -1210,36 +1254,40 @@ bool AIEPathfinderPass::attemptFixupMemTileRouting(const OpBuilder &builder,
                                                    SwitchboxOp southSwOp,
                                                    ConnectOp &problemConnect) {
   int problemNorthChannel;
-  if (problemConnect.getSourceBundle() == WireBundle::North) {
+  if (WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE(problemConnect.getSourceBundle()) ==
+      StrmSwPortType::NORTH) {
     problemNorthChannel = problemConnect.getSourceChannel();
-  } else if (problemConnect.getDestBundle() == WireBundle::North) {
+  } else if (WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE(problemConnect.getDestBundle()) ==
+             StrmSwPortType::NORTH) {
     problemNorthChannel = problemConnect.getDestChannel();
   } else
     return false;  // Problem is not about n-s routing
   int problemSouthChannel;
-  if (problemConnect.getSourceBundle() == WireBundle::South) {
+  if (WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE(problemConnect.getSourceBundle()) ==
+      StrmSwPortType::SOUTH) {
     problemSouthChannel = problemConnect.getSourceChannel();
-  } else if (problemConnect.getDestBundle() == WireBundle::South) {
+  } else if (WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE(problemConnect.getDestBundle()) ==
+             StrmSwPortType::SOUTH) {
     problemSouthChannel = problemConnect.getDestChannel();
   } else
     return false;  // Problem is not about n-s routing
 
   // Attempt to reroute northern neighbouring sw
   if (reconnectConnectOps(builder, northSwOp, problemConnect, true,
-                          WireBundle::South, problemNorthChannel,
+                          StrmSwPortType::SOUTH, problemNorthChannel,
                           problemSouthChannel))
     return true;
   if (reconnectConnectOps(builder, northSwOp, problemConnect, false,
-                          WireBundle::South, problemNorthChannel,
+                          StrmSwPortType::SOUTH, problemNorthChannel,
                           problemSouthChannel))
     return true;
   // Otherwise, attempt to reroute southern neighbouring sw
   if (reconnectConnectOps(builder, southSwOp, problemConnect, true,
-                          WireBundle::North, problemSouthChannel,
+                          StrmSwPortType::NORTH, problemSouthChannel,
                           problemNorthChannel))
     return true;
   if (reconnectConnectOps(builder, southSwOp, problemConnect, false,
-                          WireBundle::North, problemSouthChannel,
+                          StrmSwPortType::NORTH, problemSouthChannel,
                           problemNorthChannel))
     return true;
   return false;
@@ -1249,40 +1297,44 @@ bool AIEPathfinderPass::reconnectConnectOps(const OpBuilder &builder,
                                             SwitchboxOp sw,
                                             ConnectOp problemConnect,
                                             bool isIncomingToSW,
-                                            WireBundle problemBundle,
+                                            StrmSwPortType problemBundle,
                                             int problemChan, int emptyChan) {
   bool hasEmptyChannelSlot = true;
   bool foundCandidateForFixup = false;
   ConnectOp candidate;
   if (isIncomingToSW) {
     for (ConnectOp connect : sw.getOps<ConnectOp>()) {
-      if (connect.getDestBundle() == problemBundle &&
+      if (WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE(connect.getDestBundle()) ==
+              problemBundle &&
           connect.getDestChannel() == problemChan) {
         candidate = connect;
         foundCandidateForFixup = true;
       }
-      if (connect.getDestBundle() == problemBundle &&
+      if (WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE(connect.getDestBundle()) ==
+              problemBundle &&
           connect.getDestChannel() == emptyChan) {
         hasEmptyChannelSlot = false;
       }
     }
   } else {
     for (ConnectOp connect : sw.getOps<ConnectOp>()) {
-      if (connect.getSourceBundle() == problemBundle &&
+      if (WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE(connect.getSourceBundle()) ==
+              problemBundle &&
           connect.getSourceChannel() == problemChan) {
         candidate = connect;
         foundCandidateForFixup = true;
       }
-      if (connect.getSourceBundle() == problemBundle &&
+      if (WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE(connect.getSourceBundle()) ==
+              problemBundle &&
           connect.getSourceChannel() == emptyChan) {
         hasEmptyChannelSlot = false;
       }
     }
   }
   if (foundCandidateForFixup && hasEmptyChannelSlot) {
-    WireBundle problemBundleOpposite = problemBundle == WireBundle::North
-                                           ? WireBundle::South
-                                           : WireBundle::North;
+    StrmSwPortType problemBundleOpposite =
+        problemBundle == StrmSwPortType::NORTH ? StrmSwPortType::SOUTH
+                                               : StrmSwPortType::NORTH;
     // Found empty channel slot, perform reroute
     if (isIncomingToSW) {
       replaceConnectOpWithNewDest(builder, candidate, problemBundle, emptyChan);
@@ -1300,25 +1352,24 @@ bool AIEPathfinderPass::reconnectConnectOps(const OpBuilder &builder,
 }
 
 // Replace connect op
-ConnectOp AIEPathfinderPass::replaceConnectOpWithNewDest(OpBuilder builder,
-                                                         ConnectOp connect,
-                                                         WireBundle newBundle,
-                                                         int newChannel) {
+ConnectOp AIEPathfinderPass::replaceConnectOpWithNewDest(
+    OpBuilder builder, ConnectOp connect, StrmSwPortType newBundle,
+    int newChannel) {
   builder.setInsertionPoint(connect);
   auto newOp = builder.create<ConnectOp>(
       builder.getUnknownLoc(), connect.getSourceBundle(),
-      connect.getSourceChannel(), newBundle, newChannel);
+      connect.getSourceChannel(), STRM_SW_PORT_TYPE_TO_WIRE_BUNDLE(newBundle),
+      newChannel);
   connect.erase();
   return newOp;
 }
-ConnectOp AIEPathfinderPass::replaceConnectOpWithNewSource(OpBuilder builder,
-                                                           ConnectOp connect,
-                                                           WireBundle newBundle,
-                                                           int newChannel) {
+ConnectOp AIEPathfinderPass::replaceConnectOpWithNewSource(
+    OpBuilder builder, ConnectOp connect, StrmSwPortType newBundle,
+    int newChannel) {
   builder.setInsertionPoint(connect);
-  auto newOp = builder.create<ConnectOp>(builder.getUnknownLoc(), newBundle,
-                                         newChannel, connect.getDestBundle(),
-                                         connect.getDestChannel());
+  auto newOp = builder.create<ConnectOp>(
+      builder.getUnknownLoc(), STRM_SW_PORT_TYPE_TO_WIRE_BUNDLE(newBundle),
+      newChannel, connect.getDestBundle(), connect.getDestChannel());
   connect.erase();
   return newOp;
 }
@@ -1338,6 +1389,7 @@ std::unique_ptr<OperationPass<DeviceOp>> createAIEPathfinderPass() {
 }
 
 }  // namespace xilinx::AIE
+
 //===- AIELocalizeLocks.cpp ---------------------------------------*- C++
 //-*-===//
 //
@@ -1355,11 +1407,13 @@ struct AIELocalizeLocksPass
     registry.insert<arith::ArithDialect>();
   }
   void runOnOperation() override {
-    DeviceOp deviceOp = getOperation();
+    DeviceOp device = getOperation();
 
-    for (auto coreOp : deviceOp.getOps<CoreOp>()) {
+    for (auto coreOp : device.getOps<CoreOp>()) {
       // Collect the locks used in this core.
-      const auto &targetModel = getTargetModel(coreOp);
+      AMDAIENPUDeviceModel deviceModel =
+          mlir::iree_compiler::AMDAIE::getDeviceModel(
+              static_cast<AMDAIEDevice>(device.getDevice()));
 
       auto thisTile = dyn_cast<TileOp>(coreOp.getTile().getDefiningOp());
       int col = thisTile.colIndex();
@@ -1367,9 +1421,9 @@ struct AIELocalizeLocksPass
 
       // Find the neighboring tiles
       SmallVector<TileOp, 4> accessibleTiles;
-      for (auto tile : deviceOp.getOps<TileOp>())
+      for (auto tile : device.getOps<TileOp>())
         if (int dstRow = tile.rowIndex();
-            targetModel.isLegalMemAffinity(col, row, tile.colIndex(), dstRow))
+            deviceModel.hasLegalMemAffinity(col, row, tile.colIndex(), dstRow))
           accessibleTiles.push_back(tile);
 
       for (auto tile : accessibleTiles) {
@@ -1377,16 +1431,16 @@ struct AIELocalizeLocksPass
         int dstRow = tile.rowIndex();
         int cardinalMemOffset = 0;
 
-        int numLocks = targetModel.getNumLocks(dstCol, dstRow);
+        int numLocks = deviceModel.getNumLocks(dstCol, dstRow);
         for (auto user : tile.getResult().getUsers())
           if (auto lock = dyn_cast<LockOp>(user)) {
-            if (targetModel.isMemSouth(col, row, dstCol, dstRow))
+            if (deviceModel.hasMemSouth(col, row, dstCol, dstRow))
               cardinalMemOffset = 0;
-            else if (targetModel.isMemWest(col, row, dstCol, dstRow))
+            else if (deviceModel.hasMemWest(col, row, dstCol, dstRow))
               cardinalMemOffset = numLocks;
-            else if (targetModel.isMemNorth(col, row, dstCol, dstRow))
+            else if (deviceModel.hasMemNorth(col, row, dstCol, dstRow))
               cardinalMemOffset = 2 * numLocks;
-            else if (targetModel.isMemEast(col, row, dstCol, dstRow))
+            else if (deviceModel.hasMemEast(col, row, dstCol, dstRow))
               cardinalMemOffset = 3 * numLocks;
             else
               llvm_unreachable("Found illegal lock user!");
@@ -1410,8 +1464,10 @@ struct AIELocalizeLocksPass
 
 std::unique_ptr<OperationPass<DeviceOp>> AIE::createAIELocalizeLocksPass() {
   return std::make_unique<AIELocalizeLocksPass>();
-}  //===- AIEObjectFifoStatefulTransform.cpp ----------------------*- MLIR
-   //-*-===//
+}
+
+//===- AIEObjectFifoStatefulTransform.cpp ----------------------*- MLIR
+//-*-===//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -1425,8 +1481,6 @@ std::unique_ptr<OperationPass<DeviceOp>> AIE::createAIELocalizeLocksPass() {
 
 #include <numeric>
 #include <set>
-
-#define LOOP_VAR_DEPENDENCY (-2)
 
 //===----------------------------------------------------------------------===//
 // Lock Analysis
@@ -1447,9 +1501,12 @@ class LockAnalysis {
 
   /// Given a tile, returns next usable lockID for that tile.
   int getLockID(TileOp &tileOp) {
-    const auto &targetModel = getTargetModel(tileOp);
+    DeviceOp device = tileOp->getParentOfType<DeviceOp>();
+    AMDAIENPUDeviceModel deviceModel =
+        mlir::iree_compiler::AMDAIE::getDeviceModel(
+            static_cast<AMDAIEDevice>(device.getDevice()));
     for (unsigned i = 0;
-         i < targetModel.getNumLocks(tileOp.getCol(), tileOp.getRow()); i++)
+         i < deviceModel.getNumLocks(tileOp.getCol(), tileOp.getRow()); i++)
       if (int usageCnt = locksPerTile[{tileOp, i}]; usageCnt == 0) {
         locksPerTile[{tileOp, i}] = 1;
         return i;
@@ -1532,24 +1589,27 @@ struct AIEObjectFifoStatefulTransformPass
   ///   * 1 if it is that of the second input tile,
   ///   * 0 is no memory module is shared.
   bool isSharedMemory(TileOp a, TileOp b, int *share_direction) {
-    const auto &targetModel = getTargetModel(a.getOperation());
+    DeviceOp device = a->getParentOfType<DeviceOp>();
+    AMDAIENPUDeviceModel deviceModel =
+        mlir::iree_compiler::AMDAIE::getDeviceModel(
+            static_cast<AMDAIEDevice>(device.getDevice()));
 
     if ((a.isShimTile() && !b.isShimTile()) ||
         (!a.isShimTile() && b.isShimTile())) {
       *share_direction = 0;
       return false;
     }
-    if ((targetModel.isMemTile(a.getCol(), a.getRow()) &&
-         !targetModel.isMemTile(b.getCol(), b.getRow())) ||
-        (!targetModel.isMemTile(a.getCol(), a.getRow()) &&
-         targetModel.isMemTile(b.getCol(), b.getRow()))) {
+    if ((deviceModel.isMemTile(a.getCol(), a.getRow()) &&
+         !deviceModel.isMemTile(b.getCol(), b.getRow())) ||
+        (!deviceModel.isMemTile(a.getCol(), a.getRow()) &&
+         deviceModel.isMemTile(b.getCol(), b.getRow()))) {
       *share_direction = 0;
       return false;
     }
-    bool rightShared = targetModel.isLegalMemAffinity(
+    bool rightShared = deviceModel.hasLegalMemAffinity(
         a.colIndex(), a.rowIndex(), b.colIndex(), b.rowIndex());
 
-    bool leftShared = targetModel.isLegalMemAffinity(
+    bool leftShared = deviceModel.hasLegalMemAffinity(
         b.colIndex(), b.rowIndex(), a.colIndex(), a.rowIndex());
 
     if (leftShared)
@@ -2465,10 +2525,12 @@ struct AIEObjectFifoStatefulTransformPass
 
         // create flow
         builder.setInsertionPointAfter(producer);
-        builder.create<FlowOp>(builder.getUnknownLoc(),
-                               producer.getProducerTile(), WireBundle::DMA,
-                               producerChan.channel, consumer.getProducerTile(),
-                               WireBundle::DMA, consumerChan.channel);
+        builder.create<FlowOp>(
+            builder.getUnknownLoc(), producer.getProducerTile(),
+            STRM_SW_PORT_TYPE_TO_WIRE_BUNDLE(StrmSwPortType::DMA),
+            producerChan.channel, consumer.getProducerTile(),
+            STRM_SW_PORT_TYPE_TO_WIRE_BUNDLE(StrmSwPortType::DMA),
+            consumerChan.channel);
       }
     }
 
@@ -2759,23 +2821,22 @@ LogicalResult DynamicTileAnalysis::runAnalysis(DeviceOp &device) {
     maxRow = std::max(maxRow, tileOp.rowIndex());
   }
 
-  pathfinder->initialize(maxCol, maxRow, device.getTargetModel());
+  pathfinder->initialize(maxCol, maxRow,
+                         mlir::iree_compiler::AMDAIE::getDeviceModel(
+                             static_cast<AMDAIEDevice>(device.getDevice())));
 
   // for each flow in the device, add it to pathfinder
   // each source can map to multiple different destinations (fanout)
   for (FlowOp flowOp : device.getOps<FlowOp>()) {
     TileOp srcTile = cast<TileOp>(flowOp.getSource().getDefiningOp());
     TileOp dstTile = cast<TileOp>(flowOp.getDest().getDefiningOp());
-    TileID srcCoords = {srcTile.colIndex(), srcTile.rowIndex()};
-    TileID dstCoords = {dstTile.colIndex(), dstTile.rowIndex()};
-    Port srcPort = {flowOp.getSourceBundle(), flowOp.getSourceChannel()};
-    Port dstPort = {flowOp.getDestBundle(), flowOp.getDestChannel()};
-    LLVM_DEBUG(llvm::dbgs()
-               << "\tAdding Flow: (" << srcCoords.col << ", " << srcCoords.row
-               << ")" << stringifyWireBundle(srcPort.bundle) << srcPort.channel
-               << " -> (" << dstCoords.col << ", " << dstCoords.row << ")"
-               << stringifyWireBundle(dstPort.bundle) << dstPort.channel
-               << "\n");
+    TileLoc srcCoords = {srcTile.colIndex(), srcTile.rowIndex()};
+    TileLoc dstCoords = {dstTile.colIndex(), dstTile.rowIndex()};
+    ::Port srcPort = {
+        WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE(flowOp.getSourceBundle()),
+        flowOp.getSourceChannel()};
+    ::Port dstPort = {WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE(flowOp.getDestBundle()),
+                      flowOp.getDestChannel()};
     pathfinder->addFlow(srcCoords, srcPort, dstCoords, dstPort);
   }
 
@@ -2877,7 +2938,7 @@ ShimMuxOp DynamicTileAnalysis::getShimMux(OpBuilder &builder, int col) {
 }
 
 void Pathfinder::initialize(int maxCol, int maxRow,
-                            AMDAIENPUTargetModel targetModel) {
+                            AMDAIENPUDeviceModel deviceModel) {
   // make grid of switchboxes
   int id = 0;
   for (int row = 0; row <= maxRow; row++) {
@@ -2889,9 +2950,9 @@ void Pathfinder::initialize(int maxCol, int maxRow,
         SwitchboxNode &southernNeighbor = grid.at({col, row - 1});
         // get the number of outgoing connections on the south side - outgoing
         // because these correspond to rhs of a connect op
-        if (uint32_t maxCapacity = targetModel.getNumDestSwitchboxConnections(
-                col, row, WireBundle::South)) {
-          edges.emplace_back(thisNode, southernNeighbor, WireBundle::South,
+        if (uint32_t maxCapacity = deviceModel.getNumDestSwitchboxConnections(
+                col, row, StrmSwPortType::SOUTH)) {
+          edges.emplace_back(thisNode, southernNeighbor, StrmSwPortType::SOUTH,
                              maxCapacity);
           (void)graph.connect(thisNode, southernNeighbor, edges.back());
         }
@@ -2899,9 +2960,9 @@ void Pathfinder::initialize(int maxCol, int maxRow,
         // because they correspond to connections on the southside that are then
         // routed using internal connect ops through the switchbox (i.e., lhs of
         // connect ops)
-        if (uint32_t maxCapacity = targetModel.getNumSourceSwitchboxConnections(
-                col, row, WireBundle::South)) {
-          edges.emplace_back(southernNeighbor, thisNode, WireBundle::North,
+        if (uint32_t maxCapacity = deviceModel.getNumSourceSwitchboxConnections(
+                col, row, StrmSwPortType::SOUTH)) {
+          edges.emplace_back(southernNeighbor, thisNode, StrmSwPortType::NORTH,
                              maxCapacity);
           (void)graph.connect(southernNeighbor, thisNode, edges.back());
         }
@@ -2909,15 +2970,15 @@ void Pathfinder::initialize(int maxCol, int maxRow,
 
       if (col > 0) {  // if not in col 0 add channel to East/West
         SwitchboxNode &westernNeighbor = grid.at({col - 1, row});
-        if (uint32_t maxCapacity = targetModel.getNumDestSwitchboxConnections(
-                col, row, WireBundle::West)) {
-          edges.emplace_back(thisNode, westernNeighbor, WireBundle::West,
+        if (uint32_t maxCapacity = deviceModel.getNumDestSwitchboxConnections(
+                col, row, StrmSwPortType::WEST)) {
+          edges.emplace_back(thisNode, westernNeighbor, StrmSwPortType::WEST,
                              maxCapacity);
           (void)graph.connect(thisNode, westernNeighbor, edges.back());
         }
-        if (uint32_t maxCapacity = targetModel.getNumSourceSwitchboxConnections(
-                col, row, WireBundle::West)) {
-          edges.emplace_back(westernNeighbor, thisNode, WireBundle::East,
+        if (uint32_t maxCapacity = deviceModel.getNumSourceSwitchboxConnections(
+                col, row, StrmSwPortType::WEST)) {
+          edges.emplace_back(westernNeighbor, thisNode, StrmSwPortType::EAST,
                              maxCapacity);
           (void)graph.connect(westernNeighbor, thisNode, edges.back());
         }
@@ -2928,15 +2989,15 @@ void Pathfinder::initialize(int maxCol, int maxRow,
 
 // Add a flow from src to dst can have an arbitrary number of dst locations due
 // to fanout.
-void Pathfinder::addFlow(TileID srcCoords, Port srcPort, TileID dstCoords,
-                         Port dstPort) {
+void Pathfinder::addFlow(TileLoc srcCoords, ::Port srcPort, TileLoc dstCoords,
+                         ::Port dstPort) {
   // check if a flow with this source already exists
   for (auto &[src, dsts] : flows) {
     SwitchboxNode *existingSrc = src.sb;
     assert(existingSrc && "nullptr flow source");
-    if (Port existingPort = src.port; existingSrc->col == srcCoords.col &&
-                                      existingSrc->row == srcCoords.row &&
-                                      existingPort == srcPort) {
+    if (::Port existingPort = src.port; existingSrc->col == srcCoords.col &&
+                                        existingSrc->row == srcCoords.row &&
+                                        existingPort == srcPort) {
       // find the vertex corresponding to the destination
       auto *matchingSb = std::find_if(
           graph.begin(), graph.end(), [&](const SwitchboxNode *sb) {
@@ -2970,15 +3031,18 @@ bool Pathfinder::addFixedConnection(ConnectOp connectOp) {
   // TODO: keep track of capacity?
   if (sb.getTileOp().isShimNOCTile()) return true;
 
-  TileID sbTile = sb.getTileID();
-  WireBundle sourceBundle = connectOp.getSourceBundle();
-  WireBundle destBundle = connectOp.getDestBundle();
+  TileLoc sbTile = {sb.colIndex(), sb.rowIndex()};
+  StrmSwPortType sourceBundle =
+      WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE(connectOp.getSourceBundle());
+  StrmSwPortType destBundle =
+      WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE(connectOp.getDestBundle());
 
   // find the correct Channel and indicate the fixed direction
   // outgoing connection
   auto matchingCh =
       std::find_if(edges.begin(), edges.end(), [&](ChannelEdge &ch) {
-        return static_cast<TileID>(ch.src) == sbTile && ch.bundle == destBundle;
+        return static_cast<TileLoc>(ch.src) == sbTile &&
+               ch.bundle == destBundle;
       });
   if (matchingCh != edges.end())
     return matchingCh->fixedCapacity.insert(connectOp.getDestChannel())
@@ -2987,8 +3051,8 @@ bool Pathfinder::addFixedConnection(ConnectOp connectOp) {
 
   // incoming connection
   matchingCh = std::find_if(edges.begin(), edges.end(), [&](ChannelEdge &ch) {
-    return static_cast<TileID>(ch.target) == sbTile &&
-           ch.bundle == getConnectingBundle(sourceBundle);
+    return static_cast<TileLoc>(ch.target) == sbTile &&
+           ch.bundle == getConnectingStrmSwPortType(sourceBundle);
   });
   if (matchingCh != edges.end())
     return matchingCh->fixedCapacity.insert(connectOp.getSourceChannel())
@@ -3078,8 +3142,9 @@ std::optional<std::map<PathEndPoint, SwitchSettings>> Pathfinder::findPaths(
         LLVM_DEBUG(llvm::dbgs()
                    << "Too much capacity on Edge (" << e.getTargetNode().col
                    << ", " << e.getTargetNode().row << ") . "
-                   << stringifyWireBundle(e.bundle) << "\t: used_capacity = "
-                   << e.usedCapacity << "\t: Demand = " << e.demand << "\n");
+                   << stringifyStrmSwPortType(e.bundle)
+                   << "\t: used_capacity = " << e.usedCapacity
+                   << "\t: Demand = " << e.demand << "\n");
         e.overCapacityCount++;
         LLVM_DEBUG(llvm::dbgs()
                    << "over_capacity_count = " << e.overCapacityCount << "\n");
@@ -3158,7 +3223,7 @@ std::optional<std::map<PathEndPoint, SwitchSettings>> Pathfinder::findPaths(
           while (ch->fixedCapacity.count(ch->usedCapacity)) ch->usedCapacity++;
 
           // add the entrance port for this Switchbox
-          switchSettings[*curr].src = {getConnectingBundle(ch->bundle),
+          switchSettings[*curr].src = {getConnectingStrmSwPortType(ch->bundle),
                                        ch->usedCapacity};
           // add the current Switchbox to the map of the predecessor
           switchSettings[*preds[curr]].dsts.insert(
@@ -3183,6 +3248,7 @@ std::optional<std::map<PathEndPoint, SwitchSettings>> Pathfinder::findPaths(
 
   return routingSolution;
 }
+
 //===- AIEXToStandard.cpp ---------------------------------------*- C++ -*-===//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.

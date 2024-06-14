@@ -7,6 +7,7 @@
 set(IREE_PACKAGE_ROOT_DIR "${CMAKE_CURRENT_LIST_DIR}")
 set(IREE_PACKAGE_ROOT_PREFIX "iree::target::amd-aie::aie")
 add_subdirectory(aie_passes)
+add_subdirectory(aie_passesbkup)
 list(APPEND IREE_COMPILER_TABLEGEN_INCLUDE_DIRS
     "${IREE_MLIR_AIE_SOURCE_DIR}/include")
 
@@ -26,6 +27,7 @@ iree_cc_library(
     AIEDialectIR
   SRCS
     ${IREE_MLIR_AIE_SOURCE_DIR}/lib/Dialect/AIE/IR/AIEDialect.cpp
+    ${IREE_MLIR_AIE_SOURCE_DIR}/lib/Dialect/AIE/IR/AIETargetModel.cpp
   DEPS
     ::defs
     ::AIEAttrsGen
@@ -321,7 +323,7 @@ iree_cc_library(
     ::AIETransformPassHeaders
     ::AIEXDialectIR
     ::AIEXTransformPassHeaders
-    iree-amd-aie::runtime::iree_aie_runtime_static
+    iree-amd-aie::aie_runtime::iree_aie_runtime_static
 )
 
 ###############################################################################
@@ -342,7 +344,6 @@ iree_cc_library(
     "AIETargets.cpp"
     "AIETargetCDODirect.cpp"
   DEPS
-    ::AIEDialectIR
     ::AIEDialectIR
     ::AIEPass
     ::AIEVecDialectIR

@@ -1,7 +1,7 @@
 
 // RUN: iree-opt --aie-assign-lock-ids --split-input-file %s | FileCheck %s
 
-// CHECK-LABEL:   aie.device(xcvc1902) {
+// CHECK-LABEL:   aie.device(npu1_4col) {
 // CHECK:           %[[TILE_2_2:.*]] = aie.tile(2, 2)
 // CHECK:           %[[TILE_2_3:.*]] = aie.tile(2, 3)
 // CHECK:           %[[TILE_3_3:.*]] = aie.tile(3, 3)
@@ -33,12 +33,10 @@
 // CHECK:           %[[LOCK_3_4_20:.*]] = aie.lock(%[[TILE_3_4]], 1)
 // CHECK:           %[[LOCK_3_4_21:.*]] = aie.lock(%[[TILE_3_4]], 2)
 // CHECK:           %[[LOCK_3_4_22:.*]] = aie.lock(%[[TILE_3_4]], 3)
-// CHECK:           %[[TILE_6_0:.*]] = aie.tile(6, 0)
-// CHECK:           %[[LOCK_6_0:.*]] = aie.lock(%[[TILE_6_0]], 0)
 // CHECK:         }
 
 module @test_assign_lockIDs {
- aie.device(xcvc1902) {
+ aie.device(npu1_4col) {
   %t22 = aie.tile(2, 2)
   %t23 = aie.tile(2, 3)
   %t33 = aie.tile(3, 3)
@@ -70,14 +68,12 @@ module @test_assign_lockIDs {
   %l34_1 = aie.lock(%t34)
   %l34_2 = aie.lock(%t34)
   %l34_3 = aie.lock(%t34)
-  %t60 = aie.tile(6, 0)
-  %l60 = aie.lock(%t60)
  }
 }
 
 // -----
 
-// CHECK-LABEL:   aie.device(xcve2802) {
+// CHECK-LABEL:   aie.device(npu1_4col) {
 // CHECK:           %[[TILE_1_1:.*]] = aie.tile(1, 1)
 // CHECK:           %[[LOCK_1_1:.*]] = aie.lock(%[[TILE_1_1]], 1)
 // CHECK:           %[[LOCK_1_1_0:.*]] = aie.lock(%[[TILE_1_1]], 0)
@@ -102,7 +98,7 @@ module @test_assign_lockIDs {
 // CHECK:         }
 
 module @memTileTest {
-  aie.device(xcve2802) {
+  aie.device(npu1_4col) {
     // Memory tiles on xcve have 64 locks.
     %tmemtile = aie.tile(1,1)
     %l0 = aie.lock(%tmemtile, 1)

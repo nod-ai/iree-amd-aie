@@ -1,7 +1,7 @@
 
 // RUN: iree-opt --aie-objectFifo-stateful-transform %s | FileCheck %s
 
-// CHECK-LABEL:   aie.device(xcve2302) {
+// CHECK-LABEL:   aie.device(npu1_4col) {
 // CHECK:           memref.global "public" @outC_cons : memref<16x16xi16>
 // CHECK:           memref.global "public" @outC : memref<16x16xi16>
 // CHECK:           memref.global "public" @inB_cons : memref<8x16xi16>
@@ -126,7 +126,7 @@
 // CHECK:         }
 
 module @matmul {
-  aie.device(xcve2302) {
+  aie.device(npu1_4col) {
     %t00 = aie.tile(0, 0)
     %t02 = aie.tile(0, 2)
     aie.objectfifo @inA  (%t00, { %t02 }, 2 : i32) : !aie.objectfifo<memref<16x8xi16>>

@@ -1,7 +1,7 @@
 
 // RUN: iree-opt --aie-assign-bd-ids %s | FileCheck %s
 
-// CHECK-LABEL:   aie.device(xcve2302) {
+// CHECK-LABEL:   aie.device(npu1_4col) {
 // CHECK:           %[[TILE_2_1:.*]] = aie.tile(2, 1)
 // CHECK:           %[[IN:.*]] = aie.buffer(%[[TILE_2_1]]) {address = 8192 : i32, sym_name = "in"} : memref<16xi32>
 // CHECK:           %[[OUT:.*]] = aie.buffer(%[[TILE_2_1]]) {address = 1824 : i32, sym_name = "out"} : memref<16xi32>
@@ -43,7 +43,7 @@
 // CHECK:         }
 
 module @aie_module  {
-  aie.device(xcve2302) {
+  aie.device(npu1_4col) {
     %t01 = aie.tile(2, 1)
     %buf01_0 = aie.buffer(%t01) { address = 8192 : i32, sym_name = "in" } : memref<16xi32>
     %buf01_1 = aie.buffer(%t01) { address = 1824 : i32, sym_name = "out" } : memref<16xi32>

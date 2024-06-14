@@ -1,7 +1,7 @@
 
 // RUN: iree-opt --aie-objectFifo-stateful-transform %s | FileCheck %s
 
-// CHECK-LABEL:   aie.device(xcve2302) {
+// CHECK-LABEL:   aie.device(npu1_4col) {
 // CHECK:           memref.global "public" @fifo : memref<i32>
 // CHECK:           %[[C0:.*]] = arith.constant 0 : index
 // CHECK:           %[[C1:.*]] = arith.constant 1 : index
@@ -97,7 +97,7 @@
 // CHECK:         }
 
 module @aie2_static_l1 {
-    aie.device(xcve2302) {
+    aie.device(npu1_4col) {
         %i_c0 = arith.constant 0 : index
         %i_c1 = arith.constant 1 : index
         %i_c2 = arith.constant 2 : index

@@ -13,3 +13,19 @@ iree_lit_test_suite(
   LABELS
     "hostonly"
 )
+
+iree_cc_test(
+  NAME
+    DeviceModelTestCppTest
+  SRCS
+    "DeviceModelTest.cpp"
+  DEPS
+    gtest
+    iree::target::amd-aie::aie::AIEDialectIR
+    iree-amd-aie::aie_runtime::iree_aie_runtime_static
+    MLIRViewLikeInterface
+    MLIRDataLayoutInterfaces
+    MLIRMemRefDialect
+    MLIRArithDialect
+    MLIRFuncDialect
+)

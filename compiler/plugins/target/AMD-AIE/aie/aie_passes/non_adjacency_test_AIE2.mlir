@@ -1,7 +1,7 @@
 
 // RUN: iree-opt --aie-objectFifo-stateful-transform %s | FileCheck %s
 
-// CHECK-LABEL:   aie.device(xcve2302) {
+// CHECK-LABEL:   aie.device(npu1_4col) {
 // CHECK:           memref.global "public" @of_cons : memref<16xi32>
 // CHECK:           memref.global "public" @of : memref<16xi32>
 // CHECK:           %[[TILE_1_2:.*]] = aie.tile(1, 2)
@@ -81,7 +81,7 @@
 // CHECK:         }
 
 module @non_adjacency_AIE2 {
-    aie.device(xcve2302) {
+    aie.device(npu1_4col) {
         %tile12 = aie.tile(1, 2)
         %tile33 = aie.tile(3, 3)
         aie.objectfifo @of (%tile12, {%tile33}, 2 : i32) : !aie.objectfifo<memref<16xi32>>

@@ -1,7 +1,7 @@
 
 // RUN: iree-opt --aie-objectFifo-stateful-transform %s | FileCheck %s
 
-// CHECK-LABEL:   aie.device(xcve2302) {
+// CHECK-LABEL:   aie.device(npu1_4col) {
 // CHECK:           memref.global "public" @link4_cons : memref<12xi32>
 // CHECK:           memref.global "public" @link4 : memref<12xi32>
 // CHECK:           memref.global "public" @link3_cons : memref<20xi32>
@@ -148,7 +148,7 @@
 // CHECK:         }
 
 module @link_distribute {
-    aie.device(xcve2302) {
+    aie.device(npu1_4col) {
         %tile20 = aie.tile(2, 0)
         %tile21 = aie.tile(2, 1)
         %tile22 = aie.tile(2, 2)

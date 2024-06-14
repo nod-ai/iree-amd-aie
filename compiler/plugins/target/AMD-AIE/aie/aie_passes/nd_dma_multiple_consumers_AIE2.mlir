@@ -1,7 +1,7 @@
 
 // RUN: iree-opt --aie-objectFifo-stateful-transform %s | FileCheck %s
 
-// CHECK-LABEL:   aie.device(xcve2302) {
+// CHECK-LABEL:   aie.device(npu1_4col) {
 // CHECK:           memref.global "public" @of3_cons : memref<256xi32>
 // CHECK:           memref.global "public" @of3 : memref<256xi32>
 // CHECK:           memref.global "public" @of1_cons : memref<256xi32>
@@ -184,7 +184,7 @@
 // CHECK:         }
 
 module @ndDMAObjFifoAIE2 {
- aie.device(xcve2302) {
+ aie.device(npu1_4col) {
     %tile12 = aie.tile(1, 2)
     %tile13 = aie.tile(1, 3)
     %tile33 = aie.tile(3, 3)

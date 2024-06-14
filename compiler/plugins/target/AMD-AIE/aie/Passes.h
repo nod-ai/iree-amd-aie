@@ -94,15 +94,17 @@ struct AIEPathfinderPass
 
   bool reconnectConnectOps(const mlir::OpBuilder &builder, SwitchboxOp sw,
                            ConnectOp problemConnect, bool isIncomingToSW,
-                           WireBundle problemBundle, int problemChan,
+                           StrmSwPortType problemBundle, int problemChan,
                            int emptyChan);
 
   ConnectOp replaceConnectOpWithNewDest(mlir::OpBuilder builder,
-                                        ConnectOp connect, WireBundle newBundle,
+                                        ConnectOp connect,
+                                        StrmSwPortType newBundle,
                                         int newChannel);
   ConnectOp replaceConnectOpWithNewSource(mlir::OpBuilder builder,
                                           ConnectOp connect,
-                                          WireBundle newBundle, int newChannel);
+                                          StrmSwPortType newBundle,
+                                          int newChannel);
 
   SwitchboxOp getSwitchbox(DeviceOp &d, int col, int row);
 };

@@ -147,6 +147,8 @@ iree_cc_library(
 )
 
 target_link_libraries(iree-amd-aie_aie_runtime_iree_aie_runtime_static
-                      PRIVATE aienginev2)
+        PRIVATE aienginev2 LLVMSupport)
+target_include_directories(iree-amd-aie_aie_runtime_iree_aie_runtime_static
+        PRIVATE ${LLVM_INCLUDE_DIRS})
 
 add_subdirectory(test)

@@ -17,16 +17,48 @@
 #include <set>
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
-#include "iree-amd-aie/runtime/iree_aie_runtime.h"
+#include "iree-amd-aie/aie_runtime/iree_aie_runtime.h"
 #include "llvm/ADT/DirectedGraph.h"
 #include "llvm/ADT/GraphTraits.h"
 
-namespace xilinx::AIE {
+namespace llvm {
+template <>
+struct DenseMapInfo<TileLoc> {
+  using FirstInfo = DenseMapInfo<int>;
+  using SecondInfo = DenseMapInfo<int>;
 
-using Switchbox = struct Switchbox : TileID {
+  static TileLoc getEmptyKey() {
+    return {FirstInfo::getEmptyKey(), SecondInfo::getEmptyKey()};
+  }
+
+  static TileLoc getTombstoneKey() {
+    return {FirstInfo::getTombstoneKey(), SecondInfo::getTombstoneKey()};
+  }
+
+  static unsigned getHashValue(const TileLoc &t) {
+    return detail::combineHashValue(FirstInfo::getHashValue(t.col),
+                                    SecondInfo::getHashValue(t.row));
+  }
+
+  static bool isEqual(const TileLoc &lhs, const TileLoc &rhs) {
+    return lhs == rhs;
+  }
+};
+}  // namespace llvm
+
+template <>
+struct std::hash<TileLoc> {
+  std::size_t operator()(const TileLoc &s) const noexcept {
+    std::size_t h1 = std::hash<int>{}(s.col);
+    std::size_t h2 = std::hash<int>{}(s.row);
+    return h1 ^ (h2 << 1);
+  }
+};
+
+using Switchbox = struct Switchbox : TileLoc {
   // Necessary for initializer construction?
-  Switchbox(TileID t) : TileID(t) {}
-  Switchbox(int col, int row) : TileID{col, row} {}
+  Switchbox(TileLoc t) : TileLoc(t) {}
+  Switchbox(int col, int row) : TileLoc{col, row} {}
   friend std::ostream &operator<<(std::ostream &os, const Switchbox &s) {
     os << "Switchbox(" << s.col << ", " << s.row << ")";
     return os;
@@ -35,12 +67,13 @@ using Switchbox = struct Switchbox : TileID {
   GENERATE_TO_STRING(Switchbox);
 
   bool operator==(const Switchbox &rhs) const {
-    return static_cast<TileID>(*this) == rhs;
+    return static_cast<TileLoc>(*this) == rhs;
   }
 };
 
 using Channel = struct Channel {
-  Channel(Switchbox &src, Switchbox &target, WireBundle bundle, int maxCapacity)
+  Channel(Switchbox &src, Switchbox &target, StrmSwPortType bundle,
+          int maxCapacity)
       : src(src), target(target), bundle(bundle), maxCapacity(maxCapacity) {}
 
   friend std::ostream &operator<<(std::ostream &os, const Channel &c) {
@@ -58,12 +91,79 @@ using Channel = struct Channel {
 
   Switchbox &src;
   Switchbox &target;
-  WireBundle bundle;
+  StrmSwPortType bundle;
   int maxCapacity = 0;   // maximum number of routing resources
   double demand = 0.0;   // indicates how many flows want to use this Channel
   int usedCapacity = 0;  // how many flows are actually using this Channel
   std::set<int> fixedCapacity;  // channels not available to the algorithm
   int overCapacityCount = 0;    // history of Channel being over capacity
+};
+
+#define GENERATE_TO_STRING(TYPE_WITH_INSERTION_OP)                \
+  friend std::string to_string(const TYPE_WITH_INSERTION_OP &s) { \
+    std::ostringstream ss;                                        \
+    ss << s;                                                      \
+    return ss.str();                                              \
+  }
+
+typedef struct Port {
+  StrmSwPortType bundle;
+  int channel;
+
+  bool operator==(const Port &rhs) const {
+    return std::tie(bundle, channel) == std::tie(rhs.bundle, rhs.channel);
+  }
+
+  bool operator!=(const Port &rhs) const { return !(*this == rhs); }
+
+  bool operator<(const Port &rhs) const {
+    return std::tie(bundle, channel) < std::tie(rhs.bundle, rhs.channel);
+  }
+
+  friend std::ostream &operator<<(std::ostream &os, const Port &port) {
+    os << "(";
+    switch (port.bundle) {
+      case StrmSwPortType::CORE:
+        os << "Core";
+        break;
+      case StrmSwPortType::DMA:
+        os << "DMA";
+        break;
+      case StrmSwPortType::NORTH:
+        os << "N";
+        break;
+      case StrmSwPortType::EAST:
+        os << "E";
+        break;
+      case StrmSwPortType::SOUTH:
+        os << "S";
+        break;
+      case StrmSwPortType::WEST:
+        os << "W";
+        break;
+      default:
+        os << "X";
+        break;
+    }
+    os << ": " << std::to_string(port.channel) << ")";
+    return os;
+  }
+
+  GENERATE_TO_STRING(Port)
+
+  friend llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
+                                       const Port &port) {
+    os << to_string(port);
+    return os;
+  }
+
+} Port;
+
+template <>
+struct std::less<Port> {
+  bool operator()(const Port &a, const Port &b) const {
+    return a.bundle == b.bundle ? a.channel < b.channel : a.bundle < b.bundle;
+  }
 };
 
 struct SwitchboxNode;
@@ -78,13 +178,11 @@ using SwitchboxNode = struct SwitchboxNode : SwitchboxNodeBase, Switchbox {
   int id;
 };
 
-// warning: 'xilinx::AIE::ChannelEdge::src' will be initialized after
-// SwitchboxNode &src; [-Wreorder]
 using ChannelEdge = struct ChannelEdge : ChannelEdgeBase, Channel {
   using Channel::Channel;
 
   explicit ChannelEdge(SwitchboxNode &target) = delete;
-  ChannelEdge(SwitchboxNode &src, SwitchboxNode &target, WireBundle bundle,
+  ChannelEdge(SwitchboxNode &src, SwitchboxNode &target, StrmSwPortType bundle,
               int maxCapacity)
       : ChannelEdgeBase(target),
         Channel(src, target, bundle, maxCapacity),
@@ -193,27 +291,27 @@ class Router {
   // https://lld.llvm.org/missingkeyfunction
   virtual ~Router() = default;
   virtual void initialize(int maxCol, int maxRow,
-                          AMDAIENPUTargetModel targetModel) = 0;
-  virtual void addFlow(TileID srcCoords, Port srcPort, TileID dstCoords,
+                          AMDAIENPUDeviceModel targetModel) = 0;
+  virtual void addFlow(TileLoc srcCoords, Port srcPort, TileLoc dstCoords,
                        Port dstPort) = 0;
-  virtual bool addFixedConnection(ConnectOp connectOp) = 0;
+  virtual bool addFixedConnection(xilinx::AIE::ConnectOp connectOp) = 0;
   virtual std::optional<std::map<PathEndPoint, SwitchSettings>> findPaths(
       int maxIterations) = 0;
-  virtual Switchbox *getSwitchbox(TileID coords) = 0;
+  virtual Switchbox *getSwitchbox(TileLoc coords) = 0;
 };
 
 class Pathfinder : public Router {
  public:
   Pathfinder() = default;
   void initialize(int maxCol, int maxRow,
-                  AMDAIENPUTargetModel targetModel) override;
-  void addFlow(TileID srcCoords, Port srcPort, TileID dstCoords,
+                  AMDAIENPUDeviceModel targetModel) override;
+  void addFlow(TileLoc srcCoords, Port srcPort, TileLoc dstCoords,
                Port dstPort) override;
-  bool addFixedConnection(ConnectOp connectOp) override;
+  bool addFixedConnection(xilinx::AIE::ConnectOp connectOp) override;
   std::optional<std::map<PathEndPoint, SwitchSettings>> findPaths(
       int maxIterations) override;
 
-  Switchbox *getSwitchbox(TileID coords) override {
+  Switchbox *getSwitchbox(TileLoc coords) override {
     auto *sb = std::find_if(graph.begin(), graph.end(), [&](SwitchboxNode *sb) {
       return sb->col == coords.col && sb->row == coords.row;
     });
@@ -224,7 +322,7 @@ class Pathfinder : public Router {
  private:
   SwitchboxGraph graph;
   std::vector<FlowNode> flows;
-  std::map<TileID, SwitchboxNode> grid;
+  std::map<TileLoc, SwitchboxNode> grid;
   // Use a list instead of a vector because nodes have an edge list of raw
   // pointers to edges (so growing a vector would invalidate the pointers).
   std::list<ChannelEdge> edges;
@@ -241,29 +339,28 @@ class DynamicTileAnalysis {
   std::map<PathEndPoint, SwitchSettings> flowSolutions;
   std::map<PathEndPoint, bool> processedFlows;
 
-  llvm::DenseMap<TileID, TileOp> coordToTile;
-  llvm::DenseMap<TileID, SwitchboxOp> coordToSwitchbox;
-  llvm::DenseMap<TileID, ShimMuxOp> coordToShimMux;
-  llvm::DenseMap<int, PLIOOp> coordToPLIO;
+  llvm::DenseMap<TileLoc, xilinx::AIE::TileOp> coordToTile;
+  llvm::DenseMap<TileLoc, xilinx::AIE::SwitchboxOp> coordToSwitchbox;
+  llvm::DenseMap<TileLoc, xilinx::AIE::ShimMuxOp> coordToShimMux;
+  llvm::DenseMap<int, xilinx::AIE::PLIOOp> coordToPLIO;
 
   const int maxIterations = 1000;  // how long until declared unroutable
 
   DynamicTileAnalysis() : pathfinder(std::make_shared<Pathfinder>()) {}
   DynamicTileAnalysis(std::shared_ptr<Router> p) : pathfinder(std::move(p)) {}
 
-  mlir::LogicalResult runAnalysis(DeviceOp &device);
+  mlir::LogicalResult runAnalysis(xilinx::AIE::DeviceOp &device);
 
   int getMaxCol() const { return maxCol; }
   int getMaxRow() const { return maxRow; }
 
-  TileOp getTile(mlir::OpBuilder &builder, int col, int row);
+  xilinx::AIE::TileOp getTile(mlir::OpBuilder &builder, int col, int row);
 
-  SwitchboxOp getSwitchbox(mlir::OpBuilder &builder, int col, int row);
+  xilinx::AIE::SwitchboxOp getSwitchbox(mlir::OpBuilder &builder, int col,
+                                        int row);
 
-  ShimMuxOp getShimMux(mlir::OpBuilder &builder, int col);
+  xilinx::AIE::ShimMuxOp getShimMux(mlir::OpBuilder &builder, int col);
 };
-
-}  // namespace xilinx::AIE
 
 // For some mysterious reason, the only way to get the priorityQueue(cmp)
 // comparison in dijkstraShortestPaths to work correctly is to define
@@ -275,9 +372,8 @@ class DynamicTileAnalysis {
 // (try moving this below the llvm namespace...)
 namespace std {
 template <>
-struct less<xilinx::AIE::Switchbox *> {
-  bool operator()(const xilinx::AIE::Switchbox *a,
-                  const xilinx::AIE::Switchbox *b) const {
+struct less<Switchbox *> {
+  bool operator()(const Switchbox *a, const Switchbox *b) const {
     return *a < *b;
   }
 };
@@ -286,20 +382,20 @@ struct less<xilinx::AIE::Switchbox *> {
 namespace llvm {
 
 template <>
-struct GraphTraits<xilinx::AIE::SwitchboxNode *> {
-  using NodeRef = xilinx::AIE::SwitchboxNode *;
+struct GraphTraits<SwitchboxNode *> {
+  using NodeRef = SwitchboxNode *;
 
-  static xilinx::AIE::SwitchboxNode *SwitchboxGraphGetSwitchbox(
-      DGEdge<xilinx::AIE::SwitchboxNode, xilinx::AIE::ChannelEdge> *P) {
+  static SwitchboxNode *SwitchboxGraphGetSwitchbox(
+      DGEdge<SwitchboxNode, ChannelEdge> *P) {
     return &P->getTargetNode();
   }
 
   // Provide a mapped iterator so that the GraphTrait-based implementations can
   // find the target nodes without having to explicitly go through the edges.
   using ChildIteratorType =
-      mapped_iterator<xilinx::AIE::SwitchboxNode::iterator,
+      mapped_iterator<SwitchboxNode::iterator,
                       decltype(&SwitchboxGraphGetSwitchbox)>;
-  using ChildEdgeIteratorType = xilinx::AIE::SwitchboxNode::iterator;
+  using ChildEdgeIteratorType = SwitchboxNode::iterator;
 
   static NodeRef getEntryNode(NodeRef N) { return N; }
   static ChildIteratorType child_begin(NodeRef N) {
@@ -316,22 +412,14 @@ struct GraphTraits<xilinx::AIE::SwitchboxNode *> {
 };
 
 template <>
-struct GraphTraits<xilinx::AIE::SwitchboxGraph *>
-    : GraphTraits<xilinx::AIE::SwitchboxNode *> {
-  using nodes_iterator = xilinx::AIE::SwitchboxGraph::iterator;
-  static NodeRef getEntryNode(xilinx::AIE::SwitchboxGraph *DG) {
-    return *DG->begin();
-  }
-  static nodes_iterator nodes_begin(xilinx::AIE::SwitchboxGraph *DG) {
-    return DG->begin();
-  }
-  static nodes_iterator nodes_end(xilinx::AIE::SwitchboxGraph *DG) {
-    return DG->end();
-  }
+struct GraphTraits<SwitchboxGraph *> : GraphTraits<SwitchboxNode *> {
+  using nodes_iterator = SwitchboxGraph::iterator;
+  static NodeRef getEntryNode(SwitchboxGraph *DG) { return *DG->begin(); }
+  static nodes_iterator nodes_begin(SwitchboxGraph *DG) { return DG->begin(); }
+  static nodes_iterator nodes_end(SwitchboxGraph *DG) { return DG->end(); }
 };
 
-inline raw_ostream &operator<<(raw_ostream &os,
-                               const xilinx::AIE::SwitchSettings &ss) {
+inline raw_ostream &operator<<(raw_ostream &os, const SwitchSettings &ss) {
   std::stringstream s;
   s << "\tSwitchSettings: ";
   for (const auto &[sb, setting] : ss) {
@@ -342,20 +430,71 @@ inline raw_ostream &operator<<(raw_ostream &os,
   return os;
 }
 
-}  // namespace llvm
-
 template <>
-struct std::hash<xilinx::AIE::Switchbox> {
-  std::size_t operator()(const xilinx::AIE::Switchbox &s) const noexcept {
-    return std::hash<xilinx::AIE::TileID>{}(s);
+struct DenseMapInfo<StrmSwPortType> {
+  using StorageInfo = ::llvm::DenseMapInfo<uint32_t>;
+
+  static inline StrmSwPortType getEmptyKey() {
+    return static_cast<StrmSwPortType>(StorageInfo::getEmptyKey());
+  }
+
+  static inline StrmSwPortType getTombstoneKey() {
+    return static_cast<StrmSwPortType>(StorageInfo::getTombstoneKey());
+  }
+
+  static unsigned getHashValue(const StrmSwPortType &val) {
+    return StorageInfo::getHashValue(static_cast<uint32_t>(val));
+  }
+
+  static bool isEqual(const StrmSwPortType &lhs, const StrmSwPortType &rhs) {
+    return lhs == rhs;
   }
 };
 
 template <>
-struct std::hash<xilinx::AIE::PathEndPoint> {
-  std::size_t operator()(const xilinx::AIE::PathEndPoint &pe) const noexcept {
-    std::size_t h1 = std::hash<xilinx::AIE::Port>{}(pe.port);
-    std::size_t h2 = std::hash<xilinx::AIE::Switchbox>{}(pe.sb);
+struct DenseMapInfo<Port> {
+  using FirstInfo = DenseMapInfo<StrmSwPortType>;
+  using SecondInfo = DenseMapInfo<int>;
+
+  static Port getEmptyKey() {
+    return {FirstInfo::getEmptyKey(), SecondInfo::getEmptyKey()};
+  }
+
+  static Port getTombstoneKey() {
+    return {FirstInfo::getTombstoneKey(), SecondInfo::getTombstoneKey()};
+  }
+
+  static unsigned getHashValue(const Port &d) {
+    return detail::combineHashValue(FirstInfo::getHashValue(d.bundle),
+                                    SecondInfo::getHashValue(d.channel));
+  }
+
+  static bool isEqual(const Port &lhs, const Port &rhs) { return lhs == rhs; }
+};
+
+}  // namespace llvm
+
+template <>
+struct std::hash<Port> {
+  std::size_t operator()(const Port &p) const noexcept {
+    std::size_t h1 = std::hash<StrmSwPortType>{}(p.bundle);
+    std::size_t h2 = std::hash<int>{}(p.channel);
+    return h1 ^ h2 << 1;
+  }
+};
+
+template <>
+struct std::hash<Switchbox> {
+  std::size_t operator()(const Switchbox &s) const noexcept {
+    return std::hash<TileLoc>{}(s);
+  }
+};
+
+template <>
+struct std::hash<PathEndPoint> {
+  std::size_t operator()(const PathEndPoint &pe) const noexcept {
+    std::size_t h1 = std::hash<Port>{}(pe.port);
+    std::size_t h2 = std::hash<Switchbox>{}(pe.sb);
     return h1 ^ (h2 << 1);
   }
 };
