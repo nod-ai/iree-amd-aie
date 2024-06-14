@@ -14,5 +14,6 @@ namespace {
 namespace mlir::iree_compiler::AMDAIE {
 void registerAIEXTransformPasses() {
   registerAIEXToStandard();
+  registerAIEDmaToNpu();
 }
 }  // namespace mlir::iree_compiler::AMDAIE

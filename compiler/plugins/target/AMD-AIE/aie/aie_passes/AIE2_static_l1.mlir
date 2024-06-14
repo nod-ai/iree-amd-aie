@@ -106,8 +106,8 @@ module @aie2_static_l1 {
         func.func @store2(%val0: i32, %val1: i32, %base : index, %buf : memref<16xi32>) -> () {
                 %ic0 = arith.constant 0 : index
                 %ic1 = arith.constant 1 : index
-                %idx0 = index.add %ic0, %base
-                %idx1 = index.add %ic1, %base
+                %idx0 = arith.addi %ic0, %base : index
+                %idx1 = arith.addi %ic1, %base : index
                 memref.store %val0, %buf[%idx0] : memref<16xi32>
                 memref.store %val1, %buf[%idx1] : memref<16xi32>
                 return

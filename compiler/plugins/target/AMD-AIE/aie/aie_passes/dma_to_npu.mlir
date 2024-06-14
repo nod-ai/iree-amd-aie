@@ -12,10 +12,10 @@
 
 // TODO - more
 // CHECK-LABEL: dma_memcpy_nd_0
-// CHECK: aiex.npu.writebd_shimtile
+// CHECK: aiex.npu.writebd
 // CHECK-SAME: ddr_id = 0 : i32
 // CHECK-SAME: valid_bd = 1 : i32
-// CHECK: aiex.npu.writebd_shimtile
+// CHECK: aiex.npu.writebd
 // CHECK-SAME: ddr_id = 1 : i32
 module  {
   aie.device(npu1_4col) {
@@ -34,7 +34,7 @@ module  {
 // -----
 
 // CHECK-LABEL: dma_wait_s2mm
-// CHECK: aiex.npu.writebd_shimtile
+// CHECK: aiex.npu.writebd
 // CHECK-SAME: ddr_id = 0 : i32
 // CHECK-SAME: valid_bd = 1 : i32
 // CHECK: aiex.npu.write32
@@ -60,7 +60,7 @@ module  {
 // -----
 
 // CHECK-LABEL: dma_wait_mm2s
-// CHECK: aiex.npu.writebd_shimtile
+// CHECK: aiex.npu.writebd
 // CHECK-SAME: ddr_id = 0 : i32
 // CHECK-SAME: valid_bd = 1 : i32
 // CHECK: aiex.npu.write32

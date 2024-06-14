@@ -33,7 +33,6 @@ module @ndDMAObjFifoAIE2 {
                                            <size = 8, stride = 8>,
                                            <size = 4, stride = 1>],
                         {%tile13, %tile23}, 2 : i32) : !aie.objectfifo<memref<128xi32>>
-   // expected-error@+1 {{'aie.objectfifo.link' op currently does not support objectFifos with dimensionsToStream and multiple consumers.}}
    aie.objectfifo.link [ @of0 ] -> [ @of1, @of2 ] ()
  }
 }

@@ -1,4 +1,4 @@
-// RUN: iree-opt --split-input-file --pass-pipeline="builtin.module(iree-amdaie-lower-to-aie,aie-canonicalize-device,aie.device(aie-assign-lock-ids,aie-register-objectFifos,aie-objectFifo-stateful-transform,aie-assign-bd-ids,aie-assign-buffer-addresses-basic))" --verify-diagnostics %s | FileCheck %s
+// RUN: iree-opt --split-input-file --pass-pipeline="builtin.module(iree-amdaie-lower-to-aie,aie-canonicalize-device,aie.device(aie-assign-lock-ids,aie-objectFifo-stateful-transform,aie-assign-bd-ids,aie-assign-buffer-addresses-basic))" --verify-diagnostics %s | FileCheck %s
 
 // CHECK:    memref.global "public" @obj1_cons : memref<32x32xi32, 1>
 // CHECK:    memref.global "public" @obj1 : memref<32x32xi32, 1>
