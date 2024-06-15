@@ -1,13 +1,3 @@
-//===- npu_instgen.mlir ----------------------------------------*- MLIR -*-===//
-//
-// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-// (c) Copyright 2023-2024 Advanced Micro Devices, Inc. or its affiliates
-//
-//===----------------------------------------------------------------------===//
-
 // RUN: iree-compile --compile-mode=hal-executable --iree-hal-target-backends=amd-aie-direct %s --iree-hal-dump-executable-files-to %T
 // RUN: FileCheck %s --input-file=%T/module_dummy1_amdaie_xclbin_fb/module_dummy1_amdaie_xclbin_fb.npu.txt
 

@@ -1,56 +1,53 @@
-//===- lower_buffer_and_lock.mlir ------------------------------*- MLIR -*-===//
-//
-// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-// (c) Copyright 2021 Xilinx Inc.
-//
-//===----------------------------------------------------------------------===//
+// RUN: iree-opt --aie-localize-locks --aie-standard-lowering %s | FileCheck %s
 
-// RUN: iree-opt --aie-localize-locks --aie-standard-lowering="tilecol=1 tilerow=1" %s | FileCheck --check-prefix=CHECK11 %s
-// RUN: iree-opt --aie-localize-locks --aie-standard-lowering="tilecol=1 tilerow=2" %s | FileCheck --check-prefix=CHECK12 %s
+// CHECK-LABEL:   memref.global "public" @a : memref<256xi32>
+// CHECK:         func.func private @debug_i32(i32)
+// CHECK:         func.func private @llvm.aie.event0()
+// CHECK:         func.func private @llvm.aie.event1()
+// CHECK:         func.func private @llvm.aie.put.ms(i32, i32)
+// CHECK:         func.func private @llvm.aie.put.wms(i32, i128)
+// CHECK:         func.func private @llvm.aie.put.fms(i32, f32)
+// CHECK:         func.func private @llvm.aie.get.ss(i32) -> i32
+// CHECK:         func.func private @llvm.aie.get.wss(i32) -> i128
+// CHECK:         func.func private @llvm.aie.get.fss(i32) -> f32
+// CHECK:         func.func private @llvm.aie.put.mcd(i384)
+// CHECK:         func.func private @llvm.aie.get.scd() -> i384
+// CHECK:         func.func private @llvm.aie.lock.acquire.reg(i32, i32)
+// CHECK:         func.func private @llvm.aie.lock.release.reg(i32, i32)
 
-// Test LLVM lowering for lock accesses and memory accesses (LockOp, UseLockOp, and BufferOp)
-// Things to make sure:
-//   - LockID: depending on which tile (or memory module) a lock is instantiated, create a lock ID
-//             that has correct offset from a core's view (based on cardinal direction)
-//   - Buffer: depending on which tile (or memory module) a buffer is instantiated, create an LLVM
-//             static allocation (for now) for each core that can access to the buffer
+// CHECK-LABEL:   func.func @core_1_2() {
+// CHECK:           %[[C8:.*]] = arith.constant 8 : index
+// CHECK:           %[[VAL_0:.*]] = arith.index_cast %[[C8]] : index to i32
+// CHECK:           %[[C1_I32:.*]] = arith.constant 1 : i32
+// CHECK:           call @llvm.aie.lock.acquire.reg(%[[VAL_0]], %[[C1_I32]]) : (i32, i32) -> ()
+// CHECK:           %[[C16:.*]] = arith.constant 16 : index
+// CHECK:           %[[VAL_1:.*]] = memref.get_global @a : memref<256xi32>
+// CHECK:           memref.assume_alignment %[[VAL_1]], 32 : memref<256xi32>
+// CHECK:           %[[VAL_2:.*]] = memref.load %[[VAL_1]]{{\[}}%[[C16]]] : memref<256xi32>
+// CHECK:           %[[VAL_3:.*]] = arith.index_cast %[[C8]] : index to i32
+// CHECK:           %[[C0_I32:.*]] = arith.constant 0 : i32
+// CHECK:           call @llvm.aie.lock.release.reg(%[[VAL_3]], %[[C0_I32]]) : (i32, i32) -> ()
+// CHECK:           return
+// CHECK:         }
+
+// CHECK-LABEL:   func.func @core_1_1() {
+// CHECK:           %[[C56:.*]] = arith.constant 56 : index
+// CHECK:           %[[VAL_0:.*]] = arith.index_cast %[[C56]] : index to i32
+// CHECK:           %[[C0_I32:.*]] = arith.constant 0 : i32
+// CHECK:           call @llvm.aie.lock.acquire.reg(%[[VAL_0]], %[[C0_I32]]) : (i32, i32) -> ()
+// CHECK:           %[[C1_I32:.*]] = arith.constant 1 : i32
+// CHECK:           %[[C16:.*]] = arith.constant 16 : index
+// CHECK:           %[[VAL_1:.*]] = memref.get_global @a : memref<256xi32>
+// CHECK:           memref.assume_alignment %[[VAL_1]], 32 : memref<256xi32>
+// CHECK:           memref.store %[[C1_I32]], %[[VAL_1]]{{\[}}%[[C16]]] : memref<256xi32>
+// CHECK:           %[[VAL_2:.*]] = arith.index_cast %[[C56]] : index to i32
+// CHECK:           %[[C1_I32_0:.*]] = arith.constant 1 : i32
+// CHECK:           call @llvm.aie.lock.release.reg(%[[VAL_2]], %[[C1_I32_0]]) : (i32, i32) -> ()
+// CHECK:           return
+// CHECK:         }
+
 module @test_core_llvm1 {
  aie.device(xcvc1902) {
-// CHECK11:  memref.global "public" @a : memref<256xi32>
-// CHECK11:  func.func @core_1_1() {
-// CHECK11:    %c56 = arith.constant 56 : index
-// CHECK11:    %0 = arith.index_cast %c56 : index to i32
-// CHECK11:    %c0_i32 = arith.constant 0 : i32
-// CHECK11:    call @llvm.aie.lock.acquire.reg(%0, %c0_i32) : (i32, i32) -> ()
-// CHECK11:    %c1_i32 = arith.constant 1 : i32
-// CHECK11:    %c16 = arith.constant 16 : index
-// CHECK11:    %1 = memref.get_global @a : memref<256xi32>
-// CHECK11:    memref.assume_alignment %1, 32 : memref<256xi32>
-// CHECK11:    memref.store %c1_i32, %1[%c16] : memref<256xi32>
-// CHECK11:    %2 = arith.index_cast %c56 : index to i32
-// CHECK11:    %c1_i32_0 = arith.constant 1 : i32
-// CHECK11:    call @llvm.aie.lock.release.reg(%2, %c1_i32_0) : (i32, i32) -> ()
-// CHECK11:    return
-// CHECK11:  }
-
-// CHECK12:  memref.global "public" @a : memref<256xi32>
-// CHECK12:  func.func @core_1_2() {
-// CHECK12:    %c8 = arith.constant 8 : index
-// CHECK12:    %0 = arith.index_cast %c8 : index to i32
-// CHECK12:    %c1_i32 = arith.constant 1 : i32
-// CHECK12:    call @llvm.aie.lock.acquire.reg(%0, %c1_i32) : (i32, i32) -> ()
-// CHECK12:    %c16 = arith.constant 16 : index
-// CHECK12:    %1 = memref.get_global @a : memref<256xi32>
-// CHECK12:    memref.assume_alignment %1, 32 : memref<256xi32>
-// CHECK12:    %2 = memref.load %1[%c16] : memref<256xi32>
-// CHECK12:    %3 = arith.index_cast %c8 : index to i32
-// CHECK12:    %c0_i32 = arith.constant 0 : i32
-// CHECK12:    call @llvm.aie.lock.release.reg(%3, %c0_i32) : (i32, i32) -> ()
-// CHECK12:    return
-// CHECK12:  }
   %tile11 = aie.tile(1, 1)
   %tile12 = aie.tile(1, 2)
 

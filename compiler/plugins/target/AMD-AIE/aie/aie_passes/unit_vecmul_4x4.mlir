@@ -1,897 +1,888 @@
-//===- vecmul_4x4.mlir -----------------------------------------*- MLIR -*-===//
-//
-// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-// (c) Copyright 2021 Xilinx Inc.
-//
-//===----------------------------------------------------------------------===//
 
 // RUN: iree-opt --aie-create-pathfinder-flows %s | FileCheck %s
 
 // CHECK-LABEL:   aie.device(xcvc1902) {
-// CHECK:           %[[VAL_0:.*]] = aie.tile(47, 2)
-// CHECK:           %[[VAL_1:.*]] = aie.tile(47, 1)
-// CHECK:           %[[VAL_2:.*]] = aie.tile(47, 0)
-// CHECK:           %[[VAL_3:.*]] = aie.tile(3, 3)
-// CHECK:           %[[VAL_4:.*]] = aie.tile(10, 5)
-// CHECK:           %[[VAL_5:.*]] = aie.lock(%[[VAL_4]], 2)
-// CHECK:           %[[VAL_6:.*]] = aie.buffer(%[[VAL_4]]) {sym_name = "buf47"} : memref<64xi32, 2>
-// CHECK:           %[[VAL_7:.*]] = aie.lock(%[[VAL_4]], 1)
-// CHECK:           %[[VAL_8:.*]] = aie.buffer(%[[VAL_4]]) {sym_name = "buf46"} : memref<64xi32, 2>
-// CHECK:           %[[VAL_9:.*]] = aie.lock(%[[VAL_4]], 0)
-// CHECK:           %[[VAL_10:.*]] = aie.buffer(%[[VAL_4]]) {sym_name = "buf45"} : memref<64xi32, 2>
-// CHECK:           %[[VAL_11:.*]] = aie.mem(%[[VAL_4]]) {
+// CHECK:           %[[TILE_47_2:.*]] = aie.tile(47, 2)
+// CHECK:           %[[TILE_47_1:.*]] = aie.tile(47, 1)
+// CHECK:           %[[TILE_47_0:.*]] = aie.tile(47, 0)
+// CHECK:           %[[TILE_3_3:.*]] = aie.tile(3, 3)
+// CHECK:           %[[TILE_10_5:.*]] = aie.tile(10, 5)
+// CHECK:           %[[LOCK_10_5:.*]] = aie.lock(%[[TILE_10_5]], 2)
+// CHECK:           %[[BUF47:.*]] = aie.buffer(%[[TILE_10_5]]) {sym_name = "buf47"} : memref<64xi32, 2>
+// CHECK:           %[[LOCK_10_5_0:.*]] = aie.lock(%[[TILE_10_5]], 1)
+// CHECK:           %[[BUF46:.*]] = aie.buffer(%[[TILE_10_5]]) {sym_name = "buf46"} : memref<64xi32, 2>
+// CHECK:           %[[LOCK_10_5_1:.*]] = aie.lock(%[[TILE_10_5]], 0)
+// CHECK:           %[[BUF45:.*]] = aie.buffer(%[[TILE_10_5]]) {sym_name = "buf45"} : memref<64xi32, 2>
+// CHECK:           %[[MEM_10_5:.*]] = aie.mem(%[[TILE_10_5]]) {
+// CHECK:             %[[VAL_0:.*]] = aie.dma_start(S2MM, 0, ^bb1, ^bb4)
+// CHECK:           ^bb1:
+// CHECK:             aie.use_lock(%[[LOCK_10_5_1]], Acquire, 0)
+// CHECK:             aie.dma_bd(%[[BUF45]] : memref<64xi32, 2>, 0, 64)
+// CHECK:             aie.use_lock(%[[LOCK_10_5_1]], Release, 1)
+// CHECK:             aie.next_bd ^bb1
+// CHECK:           ^bb2:
+// CHECK:             %[[VAL_1:.*]] = aie.dma_start(S2MM, 1, ^bb3, ^bb6)
+// CHECK:           ^bb3:
+// CHECK:             aie.use_lock(%[[LOCK_10_5_0]], Acquire, 0)
+// CHECK:             aie.dma_bd(%[[BUF46]] : memref<64xi32, 2>, 0, 64)
+// CHECK:             aie.use_lock(%[[LOCK_10_5_0]], Release, 1)
+// CHECK:             aie.next_bd ^bb3
+// CHECK:           ^bb4:
+// CHECK:             %[[VAL_2:.*]] = aie.dma_start(MM2S, 0, ^bb5, ^bb2)
+// CHECK:           ^bb5:
+// CHECK:             aie.use_lock(%[[LOCK_10_5]], Acquire, 1)
+// CHECK:             aie.dma_bd(%[[BUF47]] : memref<64xi32, 2>, 0, 64)
+// CHECK:             aie.use_lock(%[[LOCK_10_5]], Release, 0)
+// CHECK:             aie.next_bd ^bb5
+// CHECK:           ^bb6:
+// CHECK:             aie.end
+// CHECK:           }
+// CHECK:           %[[CORE_10_5:.*]] = aie.core(%[[TILE_10_5]]) {
+// CHECK:             cf.br ^bb1
+// CHECK:           ^bb1:
+// CHECK:             cf.br ^bb2
+// CHECK:           ^bb2:
+// CHECK:             aie.use_lock(%[[LOCK_10_5_1]], Acquire, 1)
+// CHECK:             aie.use_lock(%[[LOCK_10_5_0]], Acquire, 1)
+// CHECK:             aie.use_lock(%[[LOCK_10_5]], Acquire, 0)
+// CHECK:             affine.for %[[ARG0:.*]] = 0 to 64 {
+// CHECK:               %[[VAL_3:.*]] = affine.load %[[BUF45]]{{\[}}%[[ARG0]]] : memref<64xi32, 2>
+// CHECK:               %[[VAL_4:.*]] = affine.load %[[BUF46]]{{\[}}%[[ARG0]]] : memref<64xi32, 2>
+// CHECK:               %[[VAL_5:.*]] = arith.muli %[[VAL_3]], %[[VAL_4]] : i32
+// CHECK:               affine.store %[[VAL_5]], %[[BUF47]]{{\[}}%[[ARG0]]] : memref<64xi32, 2>
+// CHECK:             }
+// CHECK:             aie.use_lock(%[[LOCK_10_5]], Release, 1)
+// CHECK:             aie.use_lock(%[[LOCK_10_5_0]], Release, 0)
+// CHECK:             aie.use_lock(%[[LOCK_10_5_1]], Release, 0)
+// CHECK:             cf.br ^bb1
+// CHECK:           }
+// CHECK:           %[[TILE_46_2:.*]] = aie.tile(46, 2)
+// CHECK:           %[[TILE_46_1:.*]] = aie.tile(46, 1)
+// CHECK:           %[[TILE_46_0:.*]] = aie.tile(46, 0)
+// CHECK:           %[[TILE_2_3:.*]] = aie.tile(2, 3)
+// CHECK:           %[[TILE_9_5:.*]] = aie.tile(9, 5)
+// CHECK:           %[[LOCK_9_5:.*]] = aie.lock(%[[TILE_9_5]], 2)
+// CHECK:           %[[BUF44:.*]] = aie.buffer(%[[TILE_9_5]]) {sym_name = "buf44"} : memref<64xi32, 2>
+// CHECK:           %[[LOCK_9_5_2:.*]] = aie.lock(%[[TILE_9_5]], 1)
+// CHECK:           %[[BUF43:.*]] = aie.buffer(%[[TILE_9_5]]) {sym_name = "buf43"} : memref<64xi32, 2>
+// CHECK:           %[[LOCK_9_5_3:.*]] = aie.lock(%[[TILE_9_5]], 0)
+// CHECK:           %[[BUF42:.*]] = aie.buffer(%[[TILE_9_5]]) {sym_name = "buf42"} : memref<64xi32, 2>
+// CHECK:           %[[MEM_9_5:.*]] = aie.mem(%[[TILE_9_5]]) {
+// CHECK:             %[[VAL_6:.*]] = aie.dma_start(S2MM, 0, ^bb1, ^bb4)
+// CHECK:           ^bb1:
+// CHECK:             aie.use_lock(%[[LOCK_9_5_3]], Acquire, 0)
+// CHECK:             aie.dma_bd(%[[BUF42]] : memref<64xi32, 2>, 0, 64)
+// CHECK:             aie.use_lock(%[[LOCK_9_5_3]], Release, 1)
+// CHECK:             aie.next_bd ^bb1
+// CHECK:           ^bb2:
+// CHECK:             %[[VAL_7:.*]] = aie.dma_start(S2MM, 1, ^bb3, ^bb6)
+// CHECK:           ^bb3:
+// CHECK:             aie.use_lock(%[[LOCK_9_5_2]], Acquire, 0)
+// CHECK:             aie.dma_bd(%[[BUF43]] : memref<64xi32, 2>, 0, 64)
+// CHECK:             aie.use_lock(%[[LOCK_9_5_2]], Release, 1)
+// CHECK:             aie.next_bd ^bb3
+// CHECK:           ^bb4:
+// CHECK:             %[[VAL_8:.*]] = aie.dma_start(MM2S, 0, ^bb5, ^bb2)
+// CHECK:           ^bb5:
+// CHECK:             aie.use_lock(%[[LOCK_9_5]], Acquire, 1)
+// CHECK:             aie.dma_bd(%[[BUF44]] : memref<64xi32, 2>, 0, 64)
+// CHECK:             aie.use_lock(%[[LOCK_9_5]], Release, 0)
+// CHECK:             aie.next_bd ^bb5
+// CHECK:           ^bb6:
+// CHECK:             aie.end
+// CHECK:           }
+// CHECK:           %[[CORE_9_5:.*]] = aie.core(%[[TILE_9_5]]) {
+// CHECK:             cf.br ^bb1
+// CHECK:           ^bb1:
+// CHECK:             cf.br ^bb2
+// CHECK:           ^bb2:
+// CHECK:             aie.use_lock(%[[LOCK_9_5_3]], Acquire, 1)
+// CHECK:             aie.use_lock(%[[LOCK_9_5_2]], Acquire, 1)
+// CHECK:             aie.use_lock(%[[LOCK_9_5]], Acquire, 0)
+// CHECK:             affine.for %[[ARG0:.*]] = 0 to 64 {
+// CHECK:               %[[VAL_9:.*]] = affine.load %[[BUF42]]{{\[}}%[[ARG0]]] : memref<64xi32, 2>
+// CHECK:               %[[VAL_10:.*]] = affine.load %[[BUF43]]{{\[}}%[[ARG0]]] : memref<64xi32, 2>
+// CHECK:               %[[VAL_11:.*]] = arith.muli %[[VAL_9]], %[[VAL_10]] : i32
+// CHECK:               affine.store %[[VAL_11]], %[[BUF44]]{{\[}}%[[ARG0]]] : memref<64xi32, 2>
+// CHECK:             }
+// CHECK:             aie.use_lock(%[[LOCK_9_5]], Release, 1)
+// CHECK:             aie.use_lock(%[[LOCK_9_5_2]], Release, 0)
+// CHECK:             aie.use_lock(%[[LOCK_9_5_3]], Release, 0)
+// CHECK:             cf.br ^bb1
+// CHECK:           }
+// CHECK:           %[[TILE_43_2:.*]] = aie.tile(43, 2)
+// CHECK:           %[[TILE_43_1:.*]] = aie.tile(43, 1)
+// CHECK:           %[[TILE_43_0:.*]] = aie.tile(43, 0)
+// CHECK:           %[[TILE_1_3:.*]] = aie.tile(1, 3)
+// CHECK:           %[[TILE_8_5:.*]] = aie.tile(8, 5)
+// CHECK:           %[[LOCK_8_5:.*]] = aie.lock(%[[TILE_8_5]], 2)
+// CHECK:           %[[BUF41:.*]] = aie.buffer(%[[TILE_8_5]]) {sym_name = "buf41"} : memref<64xi32, 2>
+// CHECK:           %[[LOCK_8_5_4:.*]] = aie.lock(%[[TILE_8_5]], 1)
+// CHECK:           %[[BUF40:.*]] = aie.buffer(%[[TILE_8_5]]) {sym_name = "buf40"} : memref<64xi32, 2>
+// CHECK:           %[[LOCK_8_5_5:.*]] = aie.lock(%[[TILE_8_5]], 0)
+// CHECK:           %[[BUF39:.*]] = aie.buffer(%[[TILE_8_5]]) {sym_name = "buf39"} : memref<64xi32, 2>
+// CHECK:           %[[MEM_8_5:.*]] = aie.mem(%[[TILE_8_5]]) {
 // CHECK:             %[[VAL_12:.*]] = aie.dma_start(S2MM, 0, ^bb1, ^bb4)
 // CHECK:           ^bb1:
-// CHECK:             aie.use_lock(%[[VAL_9]], Acquire, 0)
-// CHECK:             aie.dma_bd(%[[VAL_10]] : memref<64xi32, 2>, 0, 64)
-// CHECK:             aie.use_lock(%[[VAL_9]], Release, 1)
+// CHECK:             aie.use_lock(%[[LOCK_8_5_5]], Acquire, 0)
+// CHECK:             aie.dma_bd(%[[BUF39]] : memref<64xi32, 2>, 0, 64)
+// CHECK:             aie.use_lock(%[[LOCK_8_5_5]], Release, 1)
 // CHECK:             aie.next_bd ^bb1
 // CHECK:           ^bb2:
 // CHECK:             %[[VAL_13:.*]] = aie.dma_start(S2MM, 1, ^bb3, ^bb6)
 // CHECK:           ^bb3:
-// CHECK:             aie.use_lock(%[[VAL_7]], Acquire, 0)
-// CHECK:             aie.dma_bd(%[[VAL_8]] : memref<64xi32, 2>, 0, 64)
-// CHECK:             aie.use_lock(%[[VAL_7]], Release, 1)
+// CHECK:             aie.use_lock(%[[LOCK_8_5_4]], Acquire, 0)
+// CHECK:             aie.dma_bd(%[[BUF40]] : memref<64xi32, 2>, 0, 64)
+// CHECK:             aie.use_lock(%[[LOCK_8_5_4]], Release, 1)
 // CHECK:             aie.next_bd ^bb3
 // CHECK:           ^bb4:
 // CHECK:             %[[VAL_14:.*]] = aie.dma_start(MM2S, 0, ^bb5, ^bb2)
 // CHECK:           ^bb5:
-// CHECK:             aie.use_lock(%[[VAL_5]], Acquire, 1)
-// CHECK:             aie.dma_bd(%[[VAL_6]] : memref<64xi32, 2>, 0, 64)
-// CHECK:             aie.use_lock(%[[VAL_5]], Release, 0)
+// CHECK:             aie.use_lock(%[[LOCK_8_5]], Acquire, 1)
+// CHECK:             aie.dma_bd(%[[BUF41]] : memref<64xi32, 2>, 0, 64)
+// CHECK:             aie.use_lock(%[[LOCK_8_5]], Release, 0)
 // CHECK:             aie.next_bd ^bb5
 // CHECK:           ^bb6:
 // CHECK:             aie.end
 // CHECK:           }
-// CHECK:           %[[VAL_15:.*]] = aie.core(%[[VAL_4]]) {
+// CHECK:           %[[CORE_8_5:.*]] = aie.core(%[[TILE_8_5]]) {
 // CHECK:             cf.br ^bb1
 // CHECK:           ^bb1:
 // CHECK:             cf.br ^bb2
 // CHECK:           ^bb2:
-// CHECK:             aie.use_lock(%[[VAL_9]], Acquire, 1)
-// CHECK:             aie.use_lock(%[[VAL_7]], Acquire, 1)
-// CHECK:             aie.use_lock(%[[VAL_5]], Acquire, 0)
-// CHECK:             affine.for %[[VAL_16:.*]] = 0 to 64 {
-// CHECK:               %[[VAL_17:.*]] = affine.load %[[VAL_10]]{{\[}}%[[VAL_16]]] : memref<64xi32, 2>
-// CHECK:               %[[VAL_18:.*]] = affine.load %[[VAL_8]]{{\[}}%[[VAL_16]]] : memref<64xi32, 2>
-// CHECK:               %[[VAL_19:.*]] = arith.muli %[[VAL_17]], %[[VAL_18]] : i32
-// CHECK:               affine.store %[[VAL_19]], %[[VAL_6]]{{\[}}%[[VAL_16]]] : memref<64xi32, 2>
+// CHECK:             aie.use_lock(%[[LOCK_8_5_5]], Acquire, 1)
+// CHECK:             aie.use_lock(%[[LOCK_8_5_4]], Acquire, 1)
+// CHECK:             aie.use_lock(%[[LOCK_8_5]], Acquire, 0)
+// CHECK:             affine.for %[[ARG0:.*]] = 0 to 64 {
+// CHECK:               %[[VAL_15:.*]] = affine.load %[[BUF39]]{{\[}}%[[ARG0]]] : memref<64xi32, 2>
+// CHECK:               %[[VAL_16:.*]] = affine.load %[[BUF40]]{{\[}}%[[ARG0]]] : memref<64xi32, 2>
+// CHECK:               %[[VAL_17:.*]] = arith.muli %[[VAL_15]], %[[VAL_16]] : i32
+// CHECK:               affine.store %[[VAL_17]], %[[BUF41]]{{\[}}%[[ARG0]]] : memref<64xi32, 2>
 // CHECK:             }
-// CHECK:             aie.use_lock(%[[VAL_5]], Release, 1)
-// CHECK:             aie.use_lock(%[[VAL_7]], Release, 0)
-// CHECK:             aie.use_lock(%[[VAL_9]], Release, 0)
+// CHECK:             aie.use_lock(%[[LOCK_8_5]], Release, 1)
+// CHECK:             aie.use_lock(%[[LOCK_8_5_4]], Release, 0)
+// CHECK:             aie.use_lock(%[[LOCK_8_5_5]], Release, 0)
 // CHECK:             cf.br ^bb1
 // CHECK:           }
-// CHECK:           %[[VAL_20:.*]] = aie.tile(46, 2)
-// CHECK:           %[[VAL_21:.*]] = aie.tile(46, 1)
-// CHECK:           %[[VAL_22:.*]] = aie.tile(46, 0)
-// CHECK:           %[[VAL_23:.*]] = aie.tile(2, 3)
-// CHECK:           %[[VAL_24:.*]] = aie.tile(9, 5)
-// CHECK:           %[[VAL_25:.*]] = aie.lock(%[[VAL_24]], 2)
-// CHECK:           %[[VAL_26:.*]] = aie.buffer(%[[VAL_24]]) {sym_name = "buf44"} : memref<64xi32, 2>
-// CHECK:           %[[VAL_27:.*]] = aie.lock(%[[VAL_24]], 1)
-// CHECK:           %[[VAL_28:.*]] = aie.buffer(%[[VAL_24]]) {sym_name = "buf43"} : memref<64xi32, 2>
-// CHECK:           %[[VAL_29:.*]] = aie.lock(%[[VAL_24]], 0)
-// CHECK:           %[[VAL_30:.*]] = aie.buffer(%[[VAL_24]]) {sym_name = "buf42"} : memref<64xi32, 2>
-// CHECK:           %[[VAL_31:.*]] = aie.mem(%[[VAL_24]]) {
-// CHECK:             %[[VAL_32:.*]] = aie.dma_start(S2MM, 0, ^bb1, ^bb4)
+// CHECK:           %[[TILE_42_2:.*]] = aie.tile(42, 2)
+// CHECK:           %[[TILE_42_1:.*]] = aie.tile(42, 1)
+// CHECK:           %[[TILE_42_0:.*]] = aie.tile(42, 0)
+// CHECK:           %[[TILE_0_3:.*]] = aie.tile(0, 3)
+// CHECK:           %[[TILE_7_5:.*]] = aie.tile(7, 5)
+// CHECK:           %[[LOCK_7_5:.*]] = aie.lock(%[[TILE_7_5]], 2)
+// CHECK:           %[[BUF38:.*]] = aie.buffer(%[[TILE_7_5]]) {sym_name = "buf38"} : memref<64xi32, 2>
+// CHECK:           %[[LOCK_7_5_6:.*]] = aie.lock(%[[TILE_7_5]], 1)
+// CHECK:           %[[BUF37:.*]] = aie.buffer(%[[TILE_7_5]]) {sym_name = "buf37"} : memref<64xi32, 2>
+// CHECK:           %[[LOCK_7_5_7:.*]] = aie.lock(%[[TILE_7_5]], 0)
+// CHECK:           %[[BUF36:.*]] = aie.buffer(%[[TILE_7_5]]) {sym_name = "buf36"} : memref<64xi32, 2>
+// CHECK:           %[[MEM_7_5:.*]] = aie.mem(%[[TILE_7_5]]) {
+// CHECK:             %[[VAL_18:.*]] = aie.dma_start(S2MM, 0, ^bb1, ^bb4)
 // CHECK:           ^bb1:
-// CHECK:             aie.use_lock(%[[VAL_29]], Acquire, 0)
-// CHECK:             aie.dma_bd(%[[VAL_30]] : memref<64xi32, 2>, 0, 64)
-// CHECK:             aie.use_lock(%[[VAL_29]], Release, 1)
+// CHECK:             aie.use_lock(%[[LOCK_7_5_7]], Acquire, 0)
+// CHECK:             aie.dma_bd(%[[BUF36]] : memref<64xi32, 2>, 0, 64)
+// CHECK:             aie.use_lock(%[[LOCK_7_5_7]], Release, 1)
 // CHECK:             aie.next_bd ^bb1
 // CHECK:           ^bb2:
-// CHECK:             %[[VAL_33:.*]] = aie.dma_start(S2MM, 1, ^bb3, ^bb6)
+// CHECK:             %[[VAL_19:.*]] = aie.dma_start(S2MM, 1, ^bb3, ^bb6)
 // CHECK:           ^bb3:
-// CHECK:             aie.use_lock(%[[VAL_27]], Acquire, 0)
-// CHECK:             aie.dma_bd(%[[VAL_28]] : memref<64xi32, 2>, 0, 64)
-// CHECK:             aie.use_lock(%[[VAL_27]], Release, 1)
+// CHECK:             aie.use_lock(%[[LOCK_7_5_6]], Acquire, 0)
+// CHECK:             aie.dma_bd(%[[BUF37]] : memref<64xi32, 2>, 0, 64)
+// CHECK:             aie.use_lock(%[[LOCK_7_5_6]], Release, 1)
 // CHECK:             aie.next_bd ^bb3
 // CHECK:           ^bb4:
-// CHECK:             %[[VAL_34:.*]] = aie.dma_start(MM2S, 0, ^bb5, ^bb2)
+// CHECK:             %[[VAL_20:.*]] = aie.dma_start(MM2S, 0, ^bb5, ^bb2)
 // CHECK:           ^bb5:
-// CHECK:             aie.use_lock(%[[VAL_25]], Acquire, 1)
-// CHECK:             aie.dma_bd(%[[VAL_26]] : memref<64xi32, 2>, 0, 64)
-// CHECK:             aie.use_lock(%[[VAL_25]], Release, 0)
+// CHECK:             aie.use_lock(%[[LOCK_7_5]], Acquire, 1)
+// CHECK:             aie.dma_bd(%[[BUF38]] : memref<64xi32, 2>, 0, 64)
+// CHECK:             aie.use_lock(%[[LOCK_7_5]], Release, 0)
 // CHECK:             aie.next_bd ^bb5
 // CHECK:           ^bb6:
 // CHECK:             aie.end
 // CHECK:           }
-// CHECK:           %[[VAL_35:.*]] = aie.core(%[[VAL_24]]) {
+// CHECK:           %[[CORE_7_5:.*]] = aie.core(%[[TILE_7_5]]) {
 // CHECK:             cf.br ^bb1
 // CHECK:           ^bb1:
 // CHECK:             cf.br ^bb2
 // CHECK:           ^bb2:
-// CHECK:             aie.use_lock(%[[VAL_29]], Acquire, 1)
-// CHECK:             aie.use_lock(%[[VAL_27]], Acquire, 1)
-// CHECK:             aie.use_lock(%[[VAL_25]], Acquire, 0)
-// CHECK:             affine.for %[[VAL_36:.*]] = 0 to 64 {
-// CHECK:               %[[VAL_37:.*]] = affine.load %[[VAL_30]]{{\[}}%[[VAL_36]]] : memref<64xi32, 2>
-// CHECK:               %[[VAL_38:.*]] = affine.load %[[VAL_28]]{{\[}}%[[VAL_36]]] : memref<64xi32, 2>
-// CHECK:               %[[VAL_39:.*]] = arith.muli %[[VAL_37]], %[[VAL_38]] : i32
-// CHECK:               affine.store %[[VAL_39]], %[[VAL_26]]{{\[}}%[[VAL_36]]] : memref<64xi32, 2>
+// CHECK:             aie.use_lock(%[[LOCK_7_5_7]], Acquire, 1)
+// CHECK:             aie.use_lock(%[[LOCK_7_5_6]], Acquire, 1)
+// CHECK:             aie.use_lock(%[[LOCK_7_5]], Acquire, 0)
+// CHECK:             affine.for %[[ARG0:.*]] = 0 to 64 {
+// CHECK:               %[[VAL_21:.*]] = affine.load %[[BUF36]]{{\[}}%[[ARG0]]] : memref<64xi32, 2>
+// CHECK:               %[[VAL_22:.*]] = affine.load %[[BUF37]]{{\[}}%[[ARG0]]] : memref<64xi32, 2>
+// CHECK:               %[[VAL_23:.*]] = arith.muli %[[VAL_21]], %[[VAL_22]] : i32
+// CHECK:               affine.store %[[VAL_23]], %[[BUF38]]{{\[}}%[[ARG0]]] : memref<64xi32, 2>
 // CHECK:             }
-// CHECK:             aie.use_lock(%[[VAL_25]], Release, 1)
-// CHECK:             aie.use_lock(%[[VAL_27]], Release, 0)
-// CHECK:             aie.use_lock(%[[VAL_29]], Release, 0)
+// CHECK:             aie.use_lock(%[[LOCK_7_5]], Release, 1)
+// CHECK:             aie.use_lock(%[[LOCK_7_5_6]], Release, 0)
+// CHECK:             aie.use_lock(%[[LOCK_7_5_7]], Release, 0)
 // CHECK:             cf.br ^bb1
 // CHECK:           }
-// CHECK:           %[[VAL_40:.*]] = aie.tile(43, 2)
-// CHECK:           %[[VAL_41:.*]] = aie.tile(43, 1)
-// CHECK:           %[[VAL_42:.*]] = aie.tile(43, 0)
-// CHECK:           %[[VAL_43:.*]] = aie.tile(1, 3)
-// CHECK:           %[[VAL_44:.*]] = aie.tile(8, 5)
-// CHECK:           %[[VAL_45:.*]] = aie.lock(%[[VAL_44]], 2)
-// CHECK:           %[[VAL_46:.*]] = aie.buffer(%[[VAL_44]]) {sym_name = "buf41"} : memref<64xi32, 2>
-// CHECK:           %[[VAL_47:.*]] = aie.lock(%[[VAL_44]], 1)
-// CHECK:           %[[VAL_48:.*]] = aie.buffer(%[[VAL_44]]) {sym_name = "buf40"} : memref<64xi32, 2>
-// CHECK:           %[[VAL_49:.*]] = aie.lock(%[[VAL_44]], 0)
-// CHECK:           %[[VAL_50:.*]] = aie.buffer(%[[VAL_44]]) {sym_name = "buf39"} : memref<64xi32, 2>
-// CHECK:           %[[VAL_51:.*]] = aie.mem(%[[VAL_44]]) {
-// CHECK:             %[[VAL_52:.*]] = aie.dma_start(S2MM, 0, ^bb1, ^bb4)
+// CHECK:           %[[TILE_35_2:.*]] = aie.tile(35, 2)
+// CHECK:           %[[TILE_35_1:.*]] = aie.tile(35, 1)
+// CHECK:           %[[TILE_35_0:.*]] = aie.tile(35, 0)
+// CHECK:           %[[TILE_10_4:.*]] = aie.tile(10, 4)
+// CHECK:           %[[LOCK_10_4:.*]] = aie.lock(%[[TILE_10_4]], 2)
+// CHECK:           %[[BUF35:.*]] = aie.buffer(%[[TILE_10_4]]) {sym_name = "buf35"} : memref<64xi32, 2>
+// CHECK:           %[[LOCK_10_4_8:.*]] = aie.lock(%[[TILE_10_4]], 1)
+// CHECK:           %[[BUF34:.*]] = aie.buffer(%[[TILE_10_4]]) {sym_name = "buf34"} : memref<64xi32, 2>
+// CHECK:           %[[LOCK_10_4_9:.*]] = aie.lock(%[[TILE_10_4]], 0)
+// CHECK:           %[[BUF33:.*]] = aie.buffer(%[[TILE_10_4]]) {sym_name = "buf33"} : memref<64xi32, 2>
+// CHECK:           %[[MEM_10_4:.*]] = aie.mem(%[[TILE_10_4]]) {
+// CHECK:             %[[VAL_24:.*]] = aie.dma_start(S2MM, 0, ^bb1, ^bb4)
 // CHECK:           ^bb1:
-// CHECK:             aie.use_lock(%[[VAL_49]], Acquire, 0)
-// CHECK:             aie.dma_bd(%[[VAL_50]] : memref<64xi32, 2>, 0, 64)
-// CHECK:             aie.use_lock(%[[VAL_49]], Release, 1)
+// CHECK:             aie.use_lock(%[[LOCK_10_4_9]], Acquire, 0)
+// CHECK:             aie.dma_bd(%[[BUF33]] : memref<64xi32, 2>, 0, 64)
+// CHECK:             aie.use_lock(%[[LOCK_10_4_9]], Release, 1)
 // CHECK:             aie.next_bd ^bb1
 // CHECK:           ^bb2:
-// CHECK:             %[[VAL_53:.*]] = aie.dma_start(S2MM, 1, ^bb3, ^bb6)
+// CHECK:             %[[VAL_25:.*]] = aie.dma_start(S2MM, 1, ^bb3, ^bb6)
 // CHECK:           ^bb3:
-// CHECK:             aie.use_lock(%[[VAL_47]], Acquire, 0)
-// CHECK:             aie.dma_bd(%[[VAL_48]] : memref<64xi32, 2>, 0, 64)
-// CHECK:             aie.use_lock(%[[VAL_47]], Release, 1)
+// CHECK:             aie.use_lock(%[[LOCK_10_4_8]], Acquire, 0)
+// CHECK:             aie.dma_bd(%[[BUF34]] : memref<64xi32, 2>, 0, 64)
+// CHECK:             aie.use_lock(%[[LOCK_10_4_8]], Release, 1)
 // CHECK:             aie.next_bd ^bb3
 // CHECK:           ^bb4:
-// CHECK:             %[[VAL_54:.*]] = aie.dma_start(MM2S, 0, ^bb5, ^bb2)
+// CHECK:             %[[VAL_26:.*]] = aie.dma_start(MM2S, 0, ^bb5, ^bb2)
 // CHECK:           ^bb5:
-// CHECK:             aie.use_lock(%[[VAL_45]], Acquire, 1)
-// CHECK:             aie.dma_bd(%[[VAL_46]] : memref<64xi32, 2>, 0, 64)
-// CHECK:             aie.use_lock(%[[VAL_45]], Release, 0)
+// CHECK:             aie.use_lock(%[[LOCK_10_4]], Acquire, 1)
+// CHECK:             aie.dma_bd(%[[BUF35]] : memref<64xi32, 2>, 0, 64)
+// CHECK:             aie.use_lock(%[[LOCK_10_4]], Release, 0)
 // CHECK:             aie.next_bd ^bb5
 // CHECK:           ^bb6:
 // CHECK:             aie.end
 // CHECK:           }
-// CHECK:           %[[VAL_55:.*]] = aie.core(%[[VAL_44]]) {
+// CHECK:           %[[CORE_10_4:.*]] = aie.core(%[[TILE_10_4]]) {
 // CHECK:             cf.br ^bb1
 // CHECK:           ^bb1:
 // CHECK:             cf.br ^bb2
 // CHECK:           ^bb2:
-// CHECK:             aie.use_lock(%[[VAL_49]], Acquire, 1)
-// CHECK:             aie.use_lock(%[[VAL_47]], Acquire, 1)
-// CHECK:             aie.use_lock(%[[VAL_45]], Acquire, 0)
-// CHECK:             affine.for %[[VAL_56:.*]] = 0 to 64 {
-// CHECK:               %[[VAL_57:.*]] = affine.load %[[VAL_50]]{{\[}}%[[VAL_56]]] : memref<64xi32, 2>
-// CHECK:               %[[VAL_58:.*]] = affine.load %[[VAL_48]]{{\[}}%[[VAL_56]]] : memref<64xi32, 2>
+// CHECK:             aie.use_lock(%[[LOCK_10_4_9]], Acquire, 1)
+// CHECK:             aie.use_lock(%[[LOCK_10_4_8]], Acquire, 1)
+// CHECK:             aie.use_lock(%[[LOCK_10_4]], Acquire, 0)
+// CHECK:             affine.for %[[ARG0:.*]] = 0 to 64 {
+// CHECK:               %[[VAL_27:.*]] = affine.load %[[BUF33]]{{\[}}%[[ARG0]]] : memref<64xi32, 2>
+// CHECK:               %[[VAL_28:.*]] = affine.load %[[BUF34]]{{\[}}%[[ARG0]]] : memref<64xi32, 2>
+// CHECK:               %[[VAL_29:.*]] = arith.muli %[[VAL_27]], %[[VAL_28]] : i32
+// CHECK:               affine.store %[[VAL_29]], %[[BUF35]]{{\[}}%[[ARG0]]] : memref<64xi32, 2>
+// CHECK:             }
+// CHECK:             aie.use_lock(%[[LOCK_10_4]], Release, 1)
+// CHECK:             aie.use_lock(%[[LOCK_10_4_8]], Release, 0)
+// CHECK:             aie.use_lock(%[[LOCK_10_4_9]], Release, 0)
+// CHECK:             cf.br ^bb1
+// CHECK:           }
+// CHECK:           %[[TILE_34_2:.*]] = aie.tile(34, 2)
+// CHECK:           %[[TILE_34_1:.*]] = aie.tile(34, 1)
+// CHECK:           %[[TILE_34_0:.*]] = aie.tile(34, 0)
+// CHECK:           %[[TILE_9_4:.*]] = aie.tile(9, 4)
+// CHECK:           %[[LOCK_9_4:.*]] = aie.lock(%[[TILE_9_4]], 2)
+// CHECK:           %[[BUF32:.*]] = aie.buffer(%[[TILE_9_4]]) {sym_name = "buf32"} : memref<64xi32, 2>
+// CHECK:           %[[LOCK_9_4_10:.*]] = aie.lock(%[[TILE_9_4]], 1)
+// CHECK:           %[[BUF31:.*]] = aie.buffer(%[[TILE_9_4]]) {sym_name = "buf31"} : memref<64xi32, 2>
+// CHECK:           %[[LOCK_9_4_11:.*]] = aie.lock(%[[TILE_9_4]], 0)
+// CHECK:           %[[BUF30:.*]] = aie.buffer(%[[TILE_9_4]]) {sym_name = "buf30"} : memref<64xi32, 2>
+// CHECK:           %[[MEM_9_4:.*]] = aie.mem(%[[TILE_9_4]]) {
+// CHECK:             %[[VAL_30:.*]] = aie.dma_start(S2MM, 0, ^bb1, ^bb4)
+// CHECK:           ^bb1:
+// CHECK:             aie.use_lock(%[[LOCK_9_4_11]], Acquire, 0)
+// CHECK:             aie.dma_bd(%[[BUF30]] : memref<64xi32, 2>, 0, 64)
+// CHECK:             aie.use_lock(%[[LOCK_9_4_11]], Release, 1)
+// CHECK:             aie.next_bd ^bb1
+// CHECK:           ^bb2:
+// CHECK:             %[[VAL_31:.*]] = aie.dma_start(S2MM, 1, ^bb3, ^bb6)
+// CHECK:           ^bb3:
+// CHECK:             aie.use_lock(%[[LOCK_9_4_10]], Acquire, 0)
+// CHECK:             aie.dma_bd(%[[BUF31]] : memref<64xi32, 2>, 0, 64)
+// CHECK:             aie.use_lock(%[[LOCK_9_4_10]], Release, 1)
+// CHECK:             aie.next_bd ^bb3
+// CHECK:           ^bb4:
+// CHECK:             %[[VAL_32:.*]] = aie.dma_start(MM2S, 0, ^bb5, ^bb2)
+// CHECK:           ^bb5:
+// CHECK:             aie.use_lock(%[[LOCK_9_4]], Acquire, 1)
+// CHECK:             aie.dma_bd(%[[BUF32]] : memref<64xi32, 2>, 0, 64)
+// CHECK:             aie.use_lock(%[[LOCK_9_4]], Release, 0)
+// CHECK:             aie.next_bd ^bb5
+// CHECK:           ^bb6:
+// CHECK:             aie.end
+// CHECK:           }
+// CHECK:           %[[CORE_9_4:.*]] = aie.core(%[[TILE_9_4]]) {
+// CHECK:             cf.br ^bb1
+// CHECK:           ^bb1:
+// CHECK:             cf.br ^bb2
+// CHECK:           ^bb2:
+// CHECK:             aie.use_lock(%[[LOCK_9_4_11]], Acquire, 1)
+// CHECK:             aie.use_lock(%[[LOCK_9_4_10]], Acquire, 1)
+// CHECK:             aie.use_lock(%[[LOCK_9_4]], Acquire, 0)
+// CHECK:             affine.for %[[ARG0:.*]] = 0 to 64 {
+// CHECK:               %[[VAL_33:.*]] = affine.load %[[BUF30]]{{\[}}%[[ARG0]]] : memref<64xi32, 2>
+// CHECK:               %[[VAL_34:.*]] = affine.load %[[BUF31]]{{\[}}%[[ARG0]]] : memref<64xi32, 2>
+// CHECK:               %[[VAL_35:.*]] = arith.muli %[[VAL_33]], %[[VAL_34]] : i32
+// CHECK:               affine.store %[[VAL_35]], %[[BUF32]]{{\[}}%[[ARG0]]] : memref<64xi32, 2>
+// CHECK:             }
+// CHECK:             aie.use_lock(%[[LOCK_9_4]], Release, 1)
+// CHECK:             aie.use_lock(%[[LOCK_9_4_10]], Release, 0)
+// CHECK:             aie.use_lock(%[[LOCK_9_4_11]], Release, 0)
+// CHECK:             cf.br ^bb1
+// CHECK:           }
+// CHECK:           %[[TILE_27_2:.*]] = aie.tile(27, 2)
+// CHECK:           %[[TILE_27_1:.*]] = aie.tile(27, 1)
+// CHECK:           %[[TILE_27_0:.*]] = aie.tile(27, 0)
+// CHECK:           %[[TILE_1_2:.*]] = aie.tile(1, 2)
+// CHECK:           %[[TILE_8_4:.*]] = aie.tile(8, 4)
+// CHECK:           %[[LOCK_8_4:.*]] = aie.lock(%[[TILE_8_4]], 2)
+// CHECK:           %[[BUF29:.*]] = aie.buffer(%[[TILE_8_4]]) {sym_name = "buf29"} : memref<64xi32, 2>
+// CHECK:           %[[LOCK_8_4_12:.*]] = aie.lock(%[[TILE_8_4]], 1)
+// CHECK:           %[[BUF28:.*]] = aie.buffer(%[[TILE_8_4]]) {sym_name = "buf28"} : memref<64xi32, 2>
+// CHECK:           %[[LOCK_8_4_13:.*]] = aie.lock(%[[TILE_8_4]], 0)
+// CHECK:           %[[BUF27:.*]] = aie.buffer(%[[TILE_8_4]]) {sym_name = "buf27"} : memref<64xi32, 2>
+// CHECK:           %[[MEM_8_4:.*]] = aie.mem(%[[TILE_8_4]]) {
+// CHECK:             %[[VAL_36:.*]] = aie.dma_start(S2MM, 0, ^bb1, ^bb4)
+// CHECK:           ^bb1:
+// CHECK:             aie.use_lock(%[[LOCK_8_4_13]], Acquire, 0)
+// CHECK:             aie.dma_bd(%[[BUF27]] : memref<64xi32, 2>, 0, 64)
+// CHECK:             aie.use_lock(%[[LOCK_8_4_13]], Release, 1)
+// CHECK:             aie.next_bd ^bb1
+// CHECK:           ^bb2:
+// CHECK:             %[[VAL_37:.*]] = aie.dma_start(S2MM, 1, ^bb3, ^bb6)
+// CHECK:           ^bb3:
+// CHECK:             aie.use_lock(%[[LOCK_8_4_12]], Acquire, 0)
+// CHECK:             aie.dma_bd(%[[BUF28]] : memref<64xi32, 2>, 0, 64)
+// CHECK:             aie.use_lock(%[[LOCK_8_4_12]], Release, 1)
+// CHECK:             aie.next_bd ^bb3
+// CHECK:           ^bb4:
+// CHECK:             %[[VAL_38:.*]] = aie.dma_start(MM2S, 0, ^bb5, ^bb2)
+// CHECK:           ^bb5:
+// CHECK:             aie.use_lock(%[[LOCK_8_4]], Acquire, 1)
+// CHECK:             aie.dma_bd(%[[BUF29]] : memref<64xi32, 2>, 0, 64)
+// CHECK:             aie.use_lock(%[[LOCK_8_4]], Release, 0)
+// CHECK:             aie.next_bd ^bb5
+// CHECK:           ^bb6:
+// CHECK:             aie.end
+// CHECK:           }
+// CHECK:           %[[CORE_8_4:.*]] = aie.core(%[[TILE_8_4]]) {
+// CHECK:             cf.br ^bb1
+// CHECK:           ^bb1:
+// CHECK:             cf.br ^bb2
+// CHECK:           ^bb2:
+// CHECK:             aie.use_lock(%[[LOCK_8_4_13]], Acquire, 1)
+// CHECK:             aie.use_lock(%[[LOCK_8_4_12]], Acquire, 1)
+// CHECK:             aie.use_lock(%[[LOCK_8_4]], Acquire, 0)
+// CHECK:             affine.for %[[ARG0:.*]] = 0 to 64 {
+// CHECK:               %[[VAL_39:.*]] = affine.load %[[BUF27]]{{\[}}%[[ARG0]]] : memref<64xi32, 2>
+// CHECK:               %[[VAL_40:.*]] = affine.load %[[BUF28]]{{\[}}%[[ARG0]]] : memref<64xi32, 2>
+// CHECK:               %[[VAL_41:.*]] = arith.muli %[[VAL_39]], %[[VAL_40]] : i32
+// CHECK:               affine.store %[[VAL_41]], %[[BUF29]]{{\[}}%[[ARG0]]] : memref<64xi32, 2>
+// CHECK:             }
+// CHECK:             aie.use_lock(%[[LOCK_8_4]], Release, 1)
+// CHECK:             aie.use_lock(%[[LOCK_8_4_12]], Release, 0)
+// CHECK:             aie.use_lock(%[[LOCK_8_4_13]], Release, 0)
+// CHECK:             cf.br ^bb1
+// CHECK:           }
+// CHECK:           %[[TILE_26_2:.*]] = aie.tile(26, 2)
+// CHECK:           %[[TILE_26_1:.*]] = aie.tile(26, 1)
+// CHECK:           %[[TILE_26_0:.*]] = aie.tile(26, 0)
+// CHECK:           %[[TILE_0_2:.*]] = aie.tile(0, 2)
+// CHECK:           %[[TILE_7_4:.*]] = aie.tile(7, 4)
+// CHECK:           %[[LOCK_7_4:.*]] = aie.lock(%[[TILE_7_4]], 2)
+// CHECK:           %[[BUF26:.*]] = aie.buffer(%[[TILE_7_4]]) {sym_name = "buf26"} : memref<64xi32, 2>
+// CHECK:           %[[LOCK_7_4_14:.*]] = aie.lock(%[[TILE_7_4]], 1)
+// CHECK:           %[[BUF25:.*]] = aie.buffer(%[[TILE_7_4]]) {sym_name = "buf25"} : memref<64xi32, 2>
+// CHECK:           %[[LOCK_7_4_15:.*]] = aie.lock(%[[TILE_7_4]], 0)
+// CHECK:           %[[BUF24:.*]] = aie.buffer(%[[TILE_7_4]]) {sym_name = "buf24"} : memref<64xi32, 2>
+// CHECK:           %[[MEM_7_4:.*]] = aie.mem(%[[TILE_7_4]]) {
+// CHECK:             %[[VAL_42:.*]] = aie.dma_start(S2MM, 0, ^bb1, ^bb4)
+// CHECK:           ^bb1:
+// CHECK:             aie.use_lock(%[[LOCK_7_4_15]], Acquire, 0)
+// CHECK:             aie.dma_bd(%[[BUF24]] : memref<64xi32, 2>, 0, 64)
+// CHECK:             aie.use_lock(%[[LOCK_7_4_15]], Release, 1)
+// CHECK:             aie.next_bd ^bb1
+// CHECK:           ^bb2:
+// CHECK:             %[[VAL_43:.*]] = aie.dma_start(S2MM, 1, ^bb3, ^bb6)
+// CHECK:           ^bb3:
+// CHECK:             aie.use_lock(%[[LOCK_7_4_14]], Acquire, 0)
+// CHECK:             aie.dma_bd(%[[BUF25]] : memref<64xi32, 2>, 0, 64)
+// CHECK:             aie.use_lock(%[[LOCK_7_4_14]], Release, 1)
+// CHECK:             aie.next_bd ^bb3
+// CHECK:           ^bb4:
+// CHECK:             %[[VAL_44:.*]] = aie.dma_start(MM2S, 0, ^bb5, ^bb2)
+// CHECK:           ^bb5:
+// CHECK:             aie.use_lock(%[[LOCK_7_4]], Acquire, 1)
+// CHECK:             aie.dma_bd(%[[BUF26]] : memref<64xi32, 2>, 0, 64)
+// CHECK:             aie.use_lock(%[[LOCK_7_4]], Release, 0)
+// CHECK:             aie.next_bd ^bb5
+// CHECK:           ^bb6:
+// CHECK:             aie.end
+// CHECK:           }
+// CHECK:           %[[CORE_7_4:.*]] = aie.core(%[[TILE_7_4]]) {
+// CHECK:             cf.br ^bb1
+// CHECK:           ^bb1:
+// CHECK:             cf.br ^bb2
+// CHECK:           ^bb2:
+// CHECK:             aie.use_lock(%[[LOCK_7_4_15]], Acquire, 1)
+// CHECK:             aie.use_lock(%[[LOCK_7_4_14]], Acquire, 1)
+// CHECK:             aie.use_lock(%[[LOCK_7_4]], Acquire, 0)
+// CHECK:             affine.for %[[ARG0:.*]] = 0 to 64 {
+// CHECK:               %[[VAL_45:.*]] = affine.load %[[BUF24]]{{\[}}%[[ARG0]]] : memref<64xi32, 2>
+// CHECK:               %[[VAL_46:.*]] = affine.load %[[BUF25]]{{\[}}%[[ARG0]]] : memref<64xi32, 2>
+// CHECK:               %[[VAL_47:.*]] = arith.muli %[[VAL_45]], %[[VAL_46]] : i32
+// CHECK:               affine.store %[[VAL_47]], %[[BUF26]]{{\[}}%[[ARG0]]] : memref<64xi32, 2>
+// CHECK:             }
+// CHECK:             aie.use_lock(%[[LOCK_7_4]], Release, 1)
+// CHECK:             aie.use_lock(%[[LOCK_7_4_14]], Release, 0)
+// CHECK:             aie.use_lock(%[[LOCK_7_4_15]], Release, 0)
+// CHECK:             cf.br ^bb1
+// CHECK:           }
+// CHECK:           %[[TILE_19_2:.*]] = aie.tile(19, 2)
+// CHECK:           %[[TILE_19_1:.*]] = aie.tile(19, 1)
+// CHECK:           %[[TILE_19_0:.*]] = aie.tile(19, 0)
+// CHECK:           %[[TILE_10_3:.*]] = aie.tile(10, 3)
+// CHECK:           %[[LOCK_10_3:.*]] = aie.lock(%[[TILE_10_3]], 2)
+// CHECK:           %[[BUF23:.*]] = aie.buffer(%[[TILE_10_3]]) {sym_name = "buf23"} : memref<64xi32, 2>
+// CHECK:           %[[LOCK_10_3_16:.*]] = aie.lock(%[[TILE_10_3]], 1)
+// CHECK:           %[[BUF22:.*]] = aie.buffer(%[[TILE_10_3]]) {sym_name = "buf22"} : memref<64xi32, 2>
+// CHECK:           %[[LOCK_10_3_17:.*]] = aie.lock(%[[TILE_10_3]], 0)
+// CHECK:           %[[BUF21:.*]] = aie.buffer(%[[TILE_10_3]]) {sym_name = "buf21"} : memref<64xi32, 2>
+// CHECK:           %[[MEM_10_3:.*]] = aie.mem(%[[TILE_10_3]]) {
+// CHECK:             %[[VAL_48:.*]] = aie.dma_start(S2MM, 0, ^bb1, ^bb4)
+// CHECK:           ^bb1:
+// CHECK:             aie.use_lock(%[[LOCK_10_3_17]], Acquire, 0)
+// CHECK:             aie.dma_bd(%[[BUF21]] : memref<64xi32, 2>, 0, 64)
+// CHECK:             aie.use_lock(%[[LOCK_10_3_17]], Release, 1)
+// CHECK:             aie.next_bd ^bb1
+// CHECK:           ^bb2:
+// CHECK:             %[[VAL_49:.*]] = aie.dma_start(S2MM, 1, ^bb3, ^bb6)
+// CHECK:           ^bb3:
+// CHECK:             aie.use_lock(%[[LOCK_10_3_16]], Acquire, 0)
+// CHECK:             aie.dma_bd(%[[BUF22]] : memref<64xi32, 2>, 0, 64)
+// CHECK:             aie.use_lock(%[[LOCK_10_3_16]], Release, 1)
+// CHECK:             aie.next_bd ^bb3
+// CHECK:           ^bb4:
+// CHECK:             %[[VAL_50:.*]] = aie.dma_start(MM2S, 0, ^bb5, ^bb2)
+// CHECK:           ^bb5:
+// CHECK:             aie.use_lock(%[[LOCK_10_3]], Acquire, 1)
+// CHECK:             aie.dma_bd(%[[BUF23]] : memref<64xi32, 2>, 0, 64)
+// CHECK:             aie.use_lock(%[[LOCK_10_3]], Release, 0)
+// CHECK:             aie.next_bd ^bb5
+// CHECK:           ^bb6:
+// CHECK:             aie.end
+// CHECK:           }
+// CHECK:           %[[CORE_10_3:.*]] = aie.core(%[[TILE_10_3]]) {
+// CHECK:             cf.br ^bb1
+// CHECK:           ^bb1:
+// CHECK:             cf.br ^bb2
+// CHECK:           ^bb2:
+// CHECK:             aie.use_lock(%[[LOCK_10_3_17]], Acquire, 1)
+// CHECK:             aie.use_lock(%[[LOCK_10_3_16]], Acquire, 1)
+// CHECK:             aie.use_lock(%[[LOCK_10_3]], Acquire, 0)
+// CHECK:             affine.for %[[ARG0:.*]] = 0 to 64 {
+// CHECK:               %[[VAL_51:.*]] = affine.load %[[BUF21]]{{\[}}%[[ARG0]]] : memref<64xi32, 2>
+// CHECK:               %[[VAL_52:.*]] = affine.load %[[BUF22]]{{\[}}%[[ARG0]]] : memref<64xi32, 2>
+// CHECK:               %[[VAL_53:.*]] = arith.muli %[[VAL_51]], %[[VAL_52]] : i32
+// CHECK:               affine.store %[[VAL_53]], %[[BUF23]]{{\[}}%[[ARG0]]] : memref<64xi32, 2>
+// CHECK:             }
+// CHECK:             aie.use_lock(%[[LOCK_10_3]], Release, 1)
+// CHECK:             aie.use_lock(%[[LOCK_10_3_16]], Release, 0)
+// CHECK:             aie.use_lock(%[[LOCK_10_3_17]], Release, 0)
+// CHECK:             cf.br ^bb1
+// CHECK:           }
+// CHECK:           %[[TILE_18_2:.*]] = aie.tile(18, 2)
+// CHECK:           %[[TILE_18_1:.*]] = aie.tile(18, 1)
+// CHECK:           %[[TILE_18_0:.*]] = aie.tile(18, 0)
+// CHECK:           %[[TILE_9_3:.*]] = aie.tile(9, 3)
+// CHECK:           %[[LOCK_9_3:.*]] = aie.lock(%[[TILE_9_3]], 2)
+// CHECK:           %[[BUF20:.*]] = aie.buffer(%[[TILE_9_3]]) {sym_name = "buf20"} : memref<64xi32, 2>
+// CHECK:           %[[LOCK_9_3_18:.*]] = aie.lock(%[[TILE_9_3]], 1)
+// CHECK:           %[[BUF19:.*]] = aie.buffer(%[[TILE_9_3]]) {sym_name = "buf19"} : memref<64xi32, 2>
+// CHECK:           %[[LOCK_9_3_19:.*]] = aie.lock(%[[TILE_9_3]], 0)
+// CHECK:           %[[BUF18:.*]] = aie.buffer(%[[TILE_9_3]]) {sym_name = "buf18"} : memref<64xi32, 2>
+// CHECK:           %[[MEM_9_3:.*]] = aie.mem(%[[TILE_9_3]]) {
+// CHECK:             %[[VAL_54:.*]] = aie.dma_start(S2MM, 0, ^bb1, ^bb4)
+// CHECK:           ^bb1:
+// CHECK:             aie.use_lock(%[[LOCK_9_3_19]], Acquire, 0)
+// CHECK:             aie.dma_bd(%[[BUF18]] : memref<64xi32, 2>, 0, 64)
+// CHECK:             aie.use_lock(%[[LOCK_9_3_19]], Release, 1)
+// CHECK:             aie.next_bd ^bb1
+// CHECK:           ^bb2:
+// CHECK:             %[[VAL_55:.*]] = aie.dma_start(S2MM, 1, ^bb3, ^bb6)
+// CHECK:           ^bb3:
+// CHECK:             aie.use_lock(%[[LOCK_9_3_18]], Acquire, 0)
+// CHECK:             aie.dma_bd(%[[BUF19]] : memref<64xi32, 2>, 0, 64)
+// CHECK:             aie.use_lock(%[[LOCK_9_3_18]], Release, 1)
+// CHECK:             aie.next_bd ^bb3
+// CHECK:           ^bb4:
+// CHECK:             %[[VAL_56:.*]] = aie.dma_start(MM2S, 0, ^bb5, ^bb2)
+// CHECK:           ^bb5:
+// CHECK:             aie.use_lock(%[[LOCK_9_3]], Acquire, 1)
+// CHECK:             aie.dma_bd(%[[BUF20]] : memref<64xi32, 2>, 0, 64)
+// CHECK:             aie.use_lock(%[[LOCK_9_3]], Release, 0)
+// CHECK:             aie.next_bd ^bb5
+// CHECK:           ^bb6:
+// CHECK:             aie.end
+// CHECK:           }
+// CHECK:           %[[CORE_9_3:.*]] = aie.core(%[[TILE_9_3]]) {
+// CHECK:             cf.br ^bb1
+// CHECK:           ^bb1:
+// CHECK:             cf.br ^bb2
+// CHECK:           ^bb2:
+// CHECK:             aie.use_lock(%[[LOCK_9_3_19]], Acquire, 1)
+// CHECK:             aie.use_lock(%[[LOCK_9_3_18]], Acquire, 1)
+// CHECK:             aie.use_lock(%[[LOCK_9_3]], Acquire, 0)
+// CHECK:             affine.for %[[ARG0:.*]] = 0 to 64 {
+// CHECK:               %[[VAL_57:.*]] = affine.load %[[BUF18]]{{\[}}%[[ARG0]]] : memref<64xi32, 2>
+// CHECK:               %[[VAL_58:.*]] = affine.load %[[BUF19]]{{\[}}%[[ARG0]]] : memref<64xi32, 2>
 // CHECK:               %[[VAL_59:.*]] = arith.muli %[[VAL_57]], %[[VAL_58]] : i32
-// CHECK:               affine.store %[[VAL_59]], %[[VAL_46]]{{\[}}%[[VAL_56]]] : memref<64xi32, 2>
+// CHECK:               affine.store %[[VAL_59]], %[[BUF20]]{{\[}}%[[ARG0]]] : memref<64xi32, 2>
 // CHECK:             }
-// CHECK:             aie.use_lock(%[[VAL_45]], Release, 1)
-// CHECK:             aie.use_lock(%[[VAL_47]], Release, 0)
-// CHECK:             aie.use_lock(%[[VAL_49]], Release, 0)
+// CHECK:             aie.use_lock(%[[LOCK_9_3]], Release, 1)
+// CHECK:             aie.use_lock(%[[LOCK_9_3_18]], Release, 0)
+// CHECK:             aie.use_lock(%[[LOCK_9_3_19]], Release, 0)
 // CHECK:             cf.br ^bb1
 // CHECK:           }
-// CHECK:           %[[VAL_60:.*]] = aie.tile(42, 2)
-// CHECK:           %[[VAL_61:.*]] = aie.tile(42, 1)
-// CHECK:           %[[VAL_62:.*]] = aie.tile(42, 0)
-// CHECK:           %[[VAL_63:.*]] = aie.tile(0, 3)
-// CHECK:           %[[VAL_64:.*]] = aie.tile(7, 5)
-// CHECK:           %[[VAL_65:.*]] = aie.lock(%[[VAL_64]], 2)
-// CHECK:           %[[VAL_66:.*]] = aie.buffer(%[[VAL_64]]) {sym_name = "buf38"} : memref<64xi32, 2>
-// CHECK:           %[[VAL_67:.*]] = aie.lock(%[[VAL_64]], 1)
-// CHECK:           %[[VAL_68:.*]] = aie.buffer(%[[VAL_64]]) {sym_name = "buf37"} : memref<64xi32, 2>
-// CHECK:           %[[VAL_69:.*]] = aie.lock(%[[VAL_64]], 0)
-// CHECK:           %[[VAL_70:.*]] = aie.buffer(%[[VAL_64]]) {sym_name = "buf36"} : memref<64xi32, 2>
-// CHECK:           %[[VAL_71:.*]] = aie.mem(%[[VAL_64]]) {
+// CHECK:           %[[TILE_11_2:.*]] = aie.tile(11, 2)
+// CHECK:           %[[TILE_11_1:.*]] = aie.tile(11, 1)
+// CHECK:           %[[TILE_11_0:.*]] = aie.tile(11, 0)
+// CHECK:           %[[TILE_1_1:.*]] = aie.tile(1, 1)
+// CHECK:           %[[TILE_8_3:.*]] = aie.tile(8, 3)
+// CHECK:           %[[LOCK_8_3:.*]] = aie.lock(%[[TILE_8_3]], 2)
+// CHECK:           %[[BUF17:.*]] = aie.buffer(%[[TILE_8_3]]) {sym_name = "buf17"} : memref<64xi32, 2>
+// CHECK:           %[[LOCK_8_3_20:.*]] = aie.lock(%[[TILE_8_3]], 1)
+// CHECK:           %[[BUF16:.*]] = aie.buffer(%[[TILE_8_3]]) {sym_name = "buf16"} : memref<64xi32, 2>
+// CHECK:           %[[LOCK_8_3_21:.*]] = aie.lock(%[[TILE_8_3]], 0)
+// CHECK:           %[[BUF15:.*]] = aie.buffer(%[[TILE_8_3]]) {sym_name = "buf15"} : memref<64xi32, 2>
+// CHECK:           %[[MEM_8_3:.*]] = aie.mem(%[[TILE_8_3]]) {
+// CHECK:             %[[VAL_60:.*]] = aie.dma_start(S2MM, 0, ^bb1, ^bb4)
+// CHECK:           ^bb1:
+// CHECK:             aie.use_lock(%[[LOCK_8_3_21]], Acquire, 0)
+// CHECK:             aie.dma_bd(%[[BUF15]] : memref<64xi32, 2>, 0, 64)
+// CHECK:             aie.use_lock(%[[LOCK_8_3_21]], Release, 1)
+// CHECK:             aie.next_bd ^bb1
+// CHECK:           ^bb2:
+// CHECK:             %[[VAL_61:.*]] = aie.dma_start(S2MM, 1, ^bb3, ^bb6)
+// CHECK:           ^bb3:
+// CHECK:             aie.use_lock(%[[LOCK_8_3_20]], Acquire, 0)
+// CHECK:             aie.dma_bd(%[[BUF16]] : memref<64xi32, 2>, 0, 64)
+// CHECK:             aie.use_lock(%[[LOCK_8_3_20]], Release, 1)
+// CHECK:             aie.next_bd ^bb3
+// CHECK:           ^bb4:
+// CHECK:             %[[VAL_62:.*]] = aie.dma_start(MM2S, 0, ^bb5, ^bb2)
+// CHECK:           ^bb5:
+// CHECK:             aie.use_lock(%[[LOCK_8_3]], Acquire, 1)
+// CHECK:             aie.dma_bd(%[[BUF17]] : memref<64xi32, 2>, 0, 64)
+// CHECK:             aie.use_lock(%[[LOCK_8_3]], Release, 0)
+// CHECK:             aie.next_bd ^bb5
+// CHECK:           ^bb6:
+// CHECK:             aie.end
+// CHECK:           }
+// CHECK:           %[[CORE_8_3:.*]] = aie.core(%[[TILE_8_3]]) {
+// CHECK:             cf.br ^bb1
+// CHECK:           ^bb1:
+// CHECK:             cf.br ^bb2
+// CHECK:           ^bb2:
+// CHECK:             aie.use_lock(%[[LOCK_8_3_21]], Acquire, 1)
+// CHECK:             aie.use_lock(%[[LOCK_8_3_20]], Acquire, 1)
+// CHECK:             aie.use_lock(%[[LOCK_8_3]], Acquire, 0)
+// CHECK:             affine.for %[[ARG0:.*]] = 0 to 64 {
+// CHECK:               %[[VAL_63:.*]] = affine.load %[[BUF15]]{{\[}}%[[ARG0]]] : memref<64xi32, 2>
+// CHECK:               %[[VAL_64:.*]] = affine.load %[[BUF16]]{{\[}}%[[ARG0]]] : memref<64xi32, 2>
+// CHECK:               %[[VAL_65:.*]] = arith.muli %[[VAL_63]], %[[VAL_64]] : i32
+// CHECK:               affine.store %[[VAL_65]], %[[BUF17]]{{\[}}%[[ARG0]]] : memref<64xi32, 2>
+// CHECK:             }
+// CHECK:             aie.use_lock(%[[LOCK_8_3]], Release, 1)
+// CHECK:             aie.use_lock(%[[LOCK_8_3_20]], Release, 0)
+// CHECK:             aie.use_lock(%[[LOCK_8_3_21]], Release, 0)
+// CHECK:             cf.br ^bb1
+// CHECK:           }
+// CHECK:           %[[TILE_10_1:.*]] = aie.tile(10, 1)
+// CHECK:           %[[TILE_10_0:.*]] = aie.tile(10, 0)
+// CHECK:           %[[TILE_0_1:.*]] = aie.tile(0, 1)
+// CHECK:           %[[TILE_7_3:.*]] = aie.tile(7, 3)
+// CHECK:           %[[LOCK_7_3:.*]] = aie.lock(%[[TILE_7_3]], 2)
+// CHECK:           %[[BUF14:.*]] = aie.buffer(%[[TILE_7_3]]) {sym_name = "buf14"} : memref<64xi32, 2>
+// CHECK:           %[[LOCK_7_3_22:.*]] = aie.lock(%[[TILE_7_3]], 1)
+// CHECK:           %[[BUF13:.*]] = aie.buffer(%[[TILE_7_3]]) {sym_name = "buf13"} : memref<64xi32, 2>
+// CHECK:           %[[LOCK_7_3_23:.*]] = aie.lock(%[[TILE_7_3]], 0)
+// CHECK:           %[[BUF12:.*]] = aie.buffer(%[[TILE_7_3]]) {sym_name = "buf12"} : memref<64xi32, 2>
+// CHECK:           %[[MEM_7_3:.*]] = aie.mem(%[[TILE_7_3]]) {
+// CHECK:             %[[VAL_66:.*]] = aie.dma_start(S2MM, 0, ^bb1, ^bb4)
+// CHECK:           ^bb1:
+// CHECK:             aie.use_lock(%[[LOCK_7_3_23]], Acquire, 0)
+// CHECK:             aie.dma_bd(%[[BUF12]] : memref<64xi32, 2>, 0, 64)
+// CHECK:             aie.use_lock(%[[LOCK_7_3_23]], Release, 1)
+// CHECK:             aie.next_bd ^bb1
+// CHECK:           ^bb2:
+// CHECK:             %[[VAL_67:.*]] = aie.dma_start(S2MM, 1, ^bb3, ^bb6)
+// CHECK:           ^bb3:
+// CHECK:             aie.use_lock(%[[LOCK_7_3_22]], Acquire, 0)
+// CHECK:             aie.dma_bd(%[[BUF13]] : memref<64xi32, 2>, 0, 64)
+// CHECK:             aie.use_lock(%[[LOCK_7_3_22]], Release, 1)
+// CHECK:             aie.next_bd ^bb3
+// CHECK:           ^bb4:
+// CHECK:             %[[VAL_68:.*]] = aie.dma_start(MM2S, 0, ^bb5, ^bb2)
+// CHECK:           ^bb5:
+// CHECK:             aie.use_lock(%[[LOCK_7_3]], Acquire, 1)
+// CHECK:             aie.dma_bd(%[[BUF14]] : memref<64xi32, 2>, 0, 64)
+// CHECK:             aie.use_lock(%[[LOCK_7_3]], Release, 0)
+// CHECK:             aie.next_bd ^bb5
+// CHECK:           ^bb6:
+// CHECK:             aie.end
+// CHECK:           }
+// CHECK:           %[[CORE_7_3:.*]] = aie.core(%[[TILE_7_3]]) {
+// CHECK:             cf.br ^bb1
+// CHECK:           ^bb1:
+// CHECK:             cf.br ^bb2
+// CHECK:           ^bb2:
+// CHECK:             aie.use_lock(%[[LOCK_7_3_23]], Acquire, 1)
+// CHECK:             aie.use_lock(%[[LOCK_7_3_22]], Acquire, 1)
+// CHECK:             aie.use_lock(%[[LOCK_7_3]], Acquire, 0)
+// CHECK:             affine.for %[[ARG0:.*]] = 0 to 64 {
+// CHECK:               %[[VAL_69:.*]] = affine.load %[[BUF12]]{{\[}}%[[ARG0]]] : memref<64xi32, 2>
+// CHECK:               %[[VAL_70:.*]] = affine.load %[[BUF13]]{{\[}}%[[ARG0]]] : memref<64xi32, 2>
+// CHECK:               %[[VAL_71:.*]] = arith.muli %[[VAL_69]], %[[VAL_70]] : i32
+// CHECK:               affine.store %[[VAL_71]], %[[BUF14]]{{\[}}%[[ARG0]]] : memref<64xi32, 2>
+// CHECK:             }
+// CHECK:             aie.use_lock(%[[LOCK_7_3]], Release, 1)
+// CHECK:             aie.use_lock(%[[LOCK_7_3_22]], Release, 0)
+// CHECK:             aie.use_lock(%[[LOCK_7_3_23]], Release, 0)
+// CHECK:             cf.br ^bb1
+// CHECK:           }
+// CHECK:           %[[TILE_7_1:.*]] = aie.tile(7, 1)
+// CHECK:           %[[TILE_7_0:.*]] = aie.tile(7, 0)
+// CHECK:           %[[TILE_10_2:.*]] = aie.tile(10, 2)
+// CHECK:           %[[LOCK_10_2:.*]] = aie.lock(%[[TILE_10_2]], 2)
+// CHECK:           %[[BUF11:.*]] = aie.buffer(%[[TILE_10_2]]) {sym_name = "buf11"} : memref<64xi32, 2>
+// CHECK:           %[[LOCK_10_2_24:.*]] = aie.lock(%[[TILE_10_2]], 1)
+// CHECK:           %[[BUF10:.*]] = aie.buffer(%[[TILE_10_2]]) {sym_name = "buf10"} : memref<64xi32, 2>
+// CHECK:           %[[LOCK_10_2_25:.*]] = aie.lock(%[[TILE_10_2]], 0)
+// CHECK:           %[[BUF9:.*]] = aie.buffer(%[[TILE_10_2]]) {sym_name = "buf9"} : memref<64xi32, 2>
+// CHECK:           %[[MEM_10_2:.*]] = aie.mem(%[[TILE_10_2]]) {
 // CHECK:             %[[VAL_72:.*]] = aie.dma_start(S2MM, 0, ^bb1, ^bb4)
 // CHECK:           ^bb1:
-// CHECK:             aie.use_lock(%[[VAL_69]], Acquire, 0)
-// CHECK:             aie.dma_bd(%[[VAL_70]] : memref<64xi32, 2>, 0, 64)
-// CHECK:             aie.use_lock(%[[VAL_69]], Release, 1)
+// CHECK:             aie.use_lock(%[[LOCK_10_2_25]], Acquire, 0)
+// CHECK:             aie.dma_bd(%[[BUF9]] : memref<64xi32, 2>, 0, 64)
+// CHECK:             aie.use_lock(%[[LOCK_10_2_25]], Release, 1)
 // CHECK:             aie.next_bd ^bb1
 // CHECK:           ^bb2:
 // CHECK:             %[[VAL_73:.*]] = aie.dma_start(S2MM, 1, ^bb3, ^bb6)
 // CHECK:           ^bb3:
-// CHECK:             aie.use_lock(%[[VAL_67]], Acquire, 0)
-// CHECK:             aie.dma_bd(%[[VAL_68]] : memref<64xi32, 2>, 0, 64)
-// CHECK:             aie.use_lock(%[[VAL_67]], Release, 1)
+// CHECK:             aie.use_lock(%[[LOCK_10_2_24]], Acquire, 0)
+// CHECK:             aie.dma_bd(%[[BUF10]] : memref<64xi32, 2>, 0, 64)
+// CHECK:             aie.use_lock(%[[LOCK_10_2_24]], Release, 1)
 // CHECK:             aie.next_bd ^bb3
 // CHECK:           ^bb4:
 // CHECK:             %[[VAL_74:.*]] = aie.dma_start(MM2S, 0, ^bb5, ^bb2)
 // CHECK:           ^bb5:
-// CHECK:             aie.use_lock(%[[VAL_65]], Acquire, 1)
-// CHECK:             aie.dma_bd(%[[VAL_66]] : memref<64xi32, 2>, 0, 64)
-// CHECK:             aie.use_lock(%[[VAL_65]], Release, 0)
+// CHECK:             aie.use_lock(%[[LOCK_10_2]], Acquire, 1)
+// CHECK:             aie.dma_bd(%[[BUF11]] : memref<64xi32, 2>, 0, 64)
+// CHECK:             aie.use_lock(%[[LOCK_10_2]], Release, 0)
 // CHECK:             aie.next_bd ^bb5
 // CHECK:           ^bb6:
 // CHECK:             aie.end
 // CHECK:           }
-// CHECK:           %[[VAL_75:.*]] = aie.core(%[[VAL_64]]) {
+// CHECK:           %[[CORE_10_2:.*]] = aie.core(%[[TILE_10_2]]) {
 // CHECK:             cf.br ^bb1
 // CHECK:           ^bb1:
 // CHECK:             cf.br ^bb2
 // CHECK:           ^bb2:
-// CHECK:             aie.use_lock(%[[VAL_69]], Acquire, 1)
-// CHECK:             aie.use_lock(%[[VAL_67]], Acquire, 1)
-// CHECK:             aie.use_lock(%[[VAL_65]], Acquire, 0)
-// CHECK:             affine.for %[[VAL_76:.*]] = 0 to 64 {
-// CHECK:               %[[VAL_77:.*]] = affine.load %[[VAL_70]]{{\[}}%[[VAL_76]]] : memref<64xi32, 2>
-// CHECK:               %[[VAL_78:.*]] = affine.load %[[VAL_68]]{{\[}}%[[VAL_76]]] : memref<64xi32, 2>
-// CHECK:               %[[VAL_79:.*]] = arith.muli %[[VAL_77]], %[[VAL_78]] : i32
-// CHECK:               affine.store %[[VAL_79]], %[[VAL_66]]{{\[}}%[[VAL_76]]] : memref<64xi32, 2>
+// CHECK:             aie.use_lock(%[[LOCK_10_2_25]], Acquire, 1)
+// CHECK:             aie.use_lock(%[[LOCK_10_2_24]], Acquire, 1)
+// CHECK:             aie.use_lock(%[[LOCK_10_2]], Acquire, 0)
+// CHECK:             affine.for %[[ARG0:.*]] = 0 to 64 {
+// CHECK:               %[[VAL_75:.*]] = affine.load %[[BUF9]]{{\[}}%[[ARG0]]] : memref<64xi32, 2>
+// CHECK:               %[[VAL_76:.*]] = affine.load %[[BUF10]]{{\[}}%[[ARG0]]] : memref<64xi32, 2>
+// CHECK:               %[[VAL_77:.*]] = arith.muli %[[VAL_75]], %[[VAL_76]] : i32
+// CHECK:               affine.store %[[VAL_77]], %[[BUF11]]{{\[}}%[[ARG0]]] : memref<64xi32, 2>
 // CHECK:             }
-// CHECK:             aie.use_lock(%[[VAL_65]], Release, 1)
-// CHECK:             aie.use_lock(%[[VAL_67]], Release, 0)
-// CHECK:             aie.use_lock(%[[VAL_69]], Release, 0)
+// CHECK:             aie.use_lock(%[[LOCK_10_2]], Release, 1)
+// CHECK:             aie.use_lock(%[[LOCK_10_2_24]], Release, 0)
+// CHECK:             aie.use_lock(%[[LOCK_10_2_25]], Release, 0)
 // CHECK:             cf.br ^bb1
 // CHECK:           }
-// CHECK:           %[[VAL_80:.*]] = aie.tile(35, 2)
-// CHECK:           %[[VAL_81:.*]] = aie.tile(35, 1)
-// CHECK:           %[[VAL_82:.*]] = aie.tile(35, 0)
-// CHECK:           %[[VAL_83:.*]] = aie.tile(10, 4)
-// CHECK:           %[[VAL_84:.*]] = aie.lock(%[[VAL_83]], 2)
-// CHECK:           %[[VAL_85:.*]] = aie.buffer(%[[VAL_83]]) {sym_name = "buf35"} : memref<64xi32, 2>
-// CHECK:           %[[VAL_86:.*]] = aie.lock(%[[VAL_83]], 1)
-// CHECK:           %[[VAL_87:.*]] = aie.buffer(%[[VAL_83]]) {sym_name = "buf34"} : memref<64xi32, 2>
-// CHECK:           %[[VAL_88:.*]] = aie.lock(%[[VAL_83]], 0)
-// CHECK:           %[[VAL_89:.*]] = aie.buffer(%[[VAL_83]]) {sym_name = "buf33"} : memref<64xi32, 2>
-// CHECK:           %[[VAL_90:.*]] = aie.mem(%[[VAL_83]]) {
-// CHECK:             %[[VAL_91:.*]] = aie.dma_start(S2MM, 0, ^bb1, ^bb4)
+// CHECK:           %[[TILE_6_2:.*]] = aie.tile(6, 2)
+// CHECK:           %[[TILE_6_1:.*]] = aie.tile(6, 1)
+// CHECK:           %[[TILE_6_0:.*]] = aie.tile(6, 0)
+// CHECK:           %[[TILE_9_2:.*]] = aie.tile(9, 2)
+// CHECK:           %[[LOCK_9_2:.*]] = aie.lock(%[[TILE_9_2]], 2)
+// CHECK:           %[[BUF8:.*]] = aie.buffer(%[[TILE_9_2]]) {sym_name = "buf8"} : memref<64xi32, 2>
+// CHECK:           %[[LOCK_9_2_26:.*]] = aie.lock(%[[TILE_9_2]], 1)
+// CHECK:           %[[BUF7:.*]] = aie.buffer(%[[TILE_9_2]]) {sym_name = "buf7"} : memref<64xi32, 2>
+// CHECK:           %[[LOCK_9_2_27:.*]] = aie.lock(%[[TILE_9_2]], 0)
+// CHECK:           %[[BUF6:.*]] = aie.buffer(%[[TILE_9_2]]) {sym_name = "buf6"} : memref<64xi32, 2>
+// CHECK:           %[[MEM_9_2:.*]] = aie.mem(%[[TILE_9_2]]) {
+// CHECK:             %[[VAL_78:.*]] = aie.dma_start(S2MM, 0, ^bb1, ^bb4)
 // CHECK:           ^bb1:
-// CHECK:             aie.use_lock(%[[VAL_88]], Acquire, 0)
-// CHECK:             aie.dma_bd(%[[VAL_89]] : memref<64xi32, 2>, 0, 64)
-// CHECK:             aie.use_lock(%[[VAL_88]], Release, 1)
+// CHECK:             aie.use_lock(%[[LOCK_9_2_27]], Acquire, 0)
+// CHECK:             aie.dma_bd(%[[BUF6]] : memref<64xi32, 2>, 0, 64)
+// CHECK:             aie.use_lock(%[[LOCK_9_2_27]], Release, 1)
 // CHECK:             aie.next_bd ^bb1
 // CHECK:           ^bb2:
-// CHECK:             %[[VAL_92:.*]] = aie.dma_start(S2MM, 1, ^bb3, ^bb6)
+// CHECK:             %[[VAL_79:.*]] = aie.dma_start(S2MM, 1, ^bb3, ^bb6)
 // CHECK:           ^bb3:
-// CHECK:             aie.use_lock(%[[VAL_86]], Acquire, 0)
-// CHECK:             aie.dma_bd(%[[VAL_87]] : memref<64xi32, 2>, 0, 64)
-// CHECK:             aie.use_lock(%[[VAL_86]], Release, 1)
+// CHECK:             aie.use_lock(%[[LOCK_9_2_26]], Acquire, 0)
+// CHECK:             aie.dma_bd(%[[BUF7]] : memref<64xi32, 2>, 0, 64)
+// CHECK:             aie.use_lock(%[[LOCK_9_2_26]], Release, 1)
 // CHECK:             aie.next_bd ^bb3
 // CHECK:           ^bb4:
-// CHECK:             %[[VAL_93:.*]] = aie.dma_start(MM2S, 0, ^bb5, ^bb2)
+// CHECK:             %[[VAL_80:.*]] = aie.dma_start(MM2S, 0, ^bb5, ^bb2)
 // CHECK:           ^bb5:
-// CHECK:             aie.use_lock(%[[VAL_84]], Acquire, 1)
-// CHECK:             aie.dma_bd(%[[VAL_85]] : memref<64xi32, 2>, 0, 64)
-// CHECK:             aie.use_lock(%[[VAL_84]], Release, 0)
+// CHECK:             aie.use_lock(%[[LOCK_9_2]], Acquire, 1)
+// CHECK:             aie.dma_bd(%[[BUF8]] : memref<64xi32, 2>, 0, 64)
+// CHECK:             aie.use_lock(%[[LOCK_9_2]], Release, 0)
 // CHECK:             aie.next_bd ^bb5
 // CHECK:           ^bb6:
 // CHECK:             aie.end
 // CHECK:           }
-// CHECK:           %[[VAL_94:.*]] = aie.core(%[[VAL_83]]) {
+// CHECK:           %[[CORE_9_2:.*]] = aie.core(%[[TILE_9_2]]) {
 // CHECK:             cf.br ^bb1
 // CHECK:           ^bb1:
 // CHECK:             cf.br ^bb2
 // CHECK:           ^bb2:
-// CHECK:             aie.use_lock(%[[VAL_88]], Acquire, 1)
-// CHECK:             aie.use_lock(%[[VAL_86]], Acquire, 1)
-// CHECK:             aie.use_lock(%[[VAL_84]], Acquire, 0)
-// CHECK:             affine.for %[[VAL_95:.*]] = 0 to 64 {
-// CHECK:               %[[VAL_96:.*]] = affine.load %[[VAL_89]]{{\[}}%[[VAL_95]]] : memref<64xi32, 2>
-// CHECK:               %[[VAL_97:.*]] = affine.load %[[VAL_87]]{{\[}}%[[VAL_95]]] : memref<64xi32, 2>
-// CHECK:               %[[VAL_98:.*]] = arith.muli %[[VAL_96]], %[[VAL_97]] : i32
-// CHECK:               affine.store %[[VAL_98]], %[[VAL_85]]{{\[}}%[[VAL_95]]] : memref<64xi32, 2>
+// CHECK:             aie.use_lock(%[[LOCK_9_2_27]], Acquire, 1)
+// CHECK:             aie.use_lock(%[[LOCK_9_2_26]], Acquire, 1)
+// CHECK:             aie.use_lock(%[[LOCK_9_2]], Acquire, 0)
+// CHECK:             affine.for %[[ARG0:.*]] = 0 to 64 {
+// CHECK:               %[[VAL_81:.*]] = affine.load %[[BUF6]]{{\[}}%[[ARG0]]] : memref<64xi32, 2>
+// CHECK:               %[[VAL_82:.*]] = affine.load %[[BUF7]]{{\[}}%[[ARG0]]] : memref<64xi32, 2>
+// CHECK:               %[[VAL_83:.*]] = arith.muli %[[VAL_81]], %[[VAL_82]] : i32
+// CHECK:               affine.store %[[VAL_83]], %[[BUF8]]{{\[}}%[[ARG0]]] : memref<64xi32, 2>
 // CHECK:             }
-// CHECK:             aie.use_lock(%[[VAL_84]], Release, 1)
-// CHECK:             aie.use_lock(%[[VAL_86]], Release, 0)
-// CHECK:             aie.use_lock(%[[VAL_88]], Release, 0)
+// CHECK:             aie.use_lock(%[[LOCK_9_2]], Release, 1)
+// CHECK:             aie.use_lock(%[[LOCK_9_2_26]], Release, 0)
+// CHECK:             aie.use_lock(%[[LOCK_9_2_27]], Release, 0)
 // CHECK:             cf.br ^bb1
 // CHECK:           }
-// CHECK:           %[[VAL_99:.*]] = aie.tile(34, 2)
-// CHECK:           %[[VAL_100:.*]] = aie.tile(34, 1)
-// CHECK:           %[[VAL_101:.*]] = aie.tile(34, 0)
-// CHECK:           %[[VAL_102:.*]] = aie.tile(9, 4)
-// CHECK:           %[[VAL_103:.*]] = aie.lock(%[[VAL_102]], 2)
-// CHECK:           %[[VAL_104:.*]] = aie.buffer(%[[VAL_102]]) {sym_name = "buf32"} : memref<64xi32, 2>
-// CHECK:           %[[VAL_105:.*]] = aie.lock(%[[VAL_102]], 1)
-// CHECK:           %[[VAL_106:.*]] = aie.buffer(%[[VAL_102]]) {sym_name = "buf31"} : memref<64xi32, 2>
-// CHECK:           %[[VAL_107:.*]] = aie.lock(%[[VAL_102]], 0)
-// CHECK:           %[[VAL_108:.*]] = aie.buffer(%[[VAL_102]]) {sym_name = "buf30"} : memref<64xi32, 2>
-// CHECK:           %[[VAL_109:.*]] = aie.mem(%[[VAL_102]]) {
-// CHECK:             %[[VAL_110:.*]] = aie.dma_start(S2MM, 0, ^bb1, ^bb4)
+// CHECK:           %[[TILE_3_2:.*]] = aie.tile(3, 2)
+// CHECK:           %[[TILE_3_1:.*]] = aie.tile(3, 1)
+// CHECK:           %[[TILE_3_0:.*]] = aie.tile(3, 0)
+// CHECK:           %[[TILE_1_0:.*]] = aie.tile(1, 0)
+// CHECK:           %[[TILE_8_2:.*]] = aie.tile(8, 2)
+// CHECK:           %[[LOCK_8_2:.*]] = aie.lock(%[[TILE_8_2]], 2)
+// CHECK:           %[[BUF5:.*]] = aie.buffer(%[[TILE_8_2]]) {sym_name = "buf5"} : memref<64xi32, 2>
+// CHECK:           %[[LOCK_8_2_28:.*]] = aie.lock(%[[TILE_8_2]], 1)
+// CHECK:           %[[BUF4:.*]] = aie.buffer(%[[TILE_8_2]]) {sym_name = "buf4"} : memref<64xi32, 2>
+// CHECK:           %[[LOCK_8_2_29:.*]] = aie.lock(%[[TILE_8_2]], 0)
+// CHECK:           %[[BUF3:.*]] = aie.buffer(%[[TILE_8_2]]) {sym_name = "buf3"} : memref<64xi32, 2>
+// CHECK:           %[[MEM_8_2:.*]] = aie.mem(%[[TILE_8_2]]) {
+// CHECK:             %[[VAL_84:.*]] = aie.dma_start(S2MM, 0, ^bb1, ^bb4)
 // CHECK:           ^bb1:
-// CHECK:             aie.use_lock(%[[VAL_107]], Acquire, 0)
-// CHECK:             aie.dma_bd(%[[VAL_108]] : memref<64xi32, 2>, 0, 64)
-// CHECK:             aie.use_lock(%[[VAL_107]], Release, 1)
+// CHECK:             aie.use_lock(%[[LOCK_8_2_29]], Acquire, 0)
+// CHECK:             aie.dma_bd(%[[BUF3]] : memref<64xi32, 2>, 0, 64)
+// CHECK:             aie.use_lock(%[[LOCK_8_2_29]], Release, 1)
 // CHECK:             aie.next_bd ^bb1
 // CHECK:           ^bb2:
-// CHECK:             %[[VAL_111:.*]] = aie.dma_start(S2MM, 1, ^bb3, ^bb6)
+// CHECK:             %[[VAL_85:.*]] = aie.dma_start(S2MM, 1, ^bb3, ^bb6)
 // CHECK:           ^bb3:
-// CHECK:             aie.use_lock(%[[VAL_105]], Acquire, 0)
-// CHECK:             aie.dma_bd(%[[VAL_106]] : memref<64xi32, 2>, 0, 64)
-// CHECK:             aie.use_lock(%[[VAL_105]], Release, 1)
+// CHECK:             aie.use_lock(%[[LOCK_8_2_28]], Acquire, 0)
+// CHECK:             aie.dma_bd(%[[BUF4]] : memref<64xi32, 2>, 0, 64)
+// CHECK:             aie.use_lock(%[[LOCK_8_2_28]], Release, 1)
 // CHECK:             aie.next_bd ^bb3
 // CHECK:           ^bb4:
-// CHECK:             %[[VAL_112:.*]] = aie.dma_start(MM2S, 0, ^bb5, ^bb2)
+// CHECK:             %[[VAL_86:.*]] = aie.dma_start(MM2S, 0, ^bb5, ^bb2)
 // CHECK:           ^bb5:
-// CHECK:             aie.use_lock(%[[VAL_103]], Acquire, 1)
-// CHECK:             aie.dma_bd(%[[VAL_104]] : memref<64xi32, 2>, 0, 64)
-// CHECK:             aie.use_lock(%[[VAL_103]], Release, 0)
+// CHECK:             aie.use_lock(%[[LOCK_8_2]], Acquire, 1)
+// CHECK:             aie.dma_bd(%[[BUF5]] : memref<64xi32, 2>, 0, 64)
+// CHECK:             aie.use_lock(%[[LOCK_8_2]], Release, 0)
 // CHECK:             aie.next_bd ^bb5
 // CHECK:           ^bb6:
 // CHECK:             aie.end
 // CHECK:           }
-// CHECK:           %[[VAL_113:.*]] = aie.core(%[[VAL_102]]) {
+// CHECK:           %[[CORE_8_2:.*]] = aie.core(%[[TILE_8_2]]) {
 // CHECK:             cf.br ^bb1
 // CHECK:           ^bb1:
 // CHECK:             cf.br ^bb2
 // CHECK:           ^bb2:
-// CHECK:             aie.use_lock(%[[VAL_107]], Acquire, 1)
-// CHECK:             aie.use_lock(%[[VAL_105]], Acquire, 1)
-// CHECK:             aie.use_lock(%[[VAL_103]], Acquire, 0)
-// CHECK:             affine.for %[[VAL_114:.*]] = 0 to 64 {
-// CHECK:               %[[VAL_115:.*]] = affine.load %[[VAL_108]]{{\[}}%[[VAL_114]]] : memref<64xi32, 2>
-// CHECK:               %[[VAL_116:.*]] = affine.load %[[VAL_106]]{{\[}}%[[VAL_114]]] : memref<64xi32, 2>
-// CHECK:               %[[VAL_117:.*]] = arith.muli %[[VAL_115]], %[[VAL_116]] : i32
-// CHECK:               affine.store %[[VAL_117]], %[[VAL_104]]{{\[}}%[[VAL_114]]] : memref<64xi32, 2>
+// CHECK:             aie.use_lock(%[[LOCK_8_2_29]], Acquire, 1)
+// CHECK:             aie.use_lock(%[[LOCK_8_2_28]], Acquire, 1)
+// CHECK:             aie.use_lock(%[[LOCK_8_2]], Acquire, 0)
+// CHECK:             affine.for %[[ARG0:.*]] = 0 to 64 {
+// CHECK:               %[[VAL_87:.*]] = affine.load %[[BUF3]]{{\[}}%[[ARG0]]] : memref<64xi32, 2>
+// CHECK:               %[[VAL_88:.*]] = affine.load %[[BUF4]]{{\[}}%[[ARG0]]] : memref<64xi32, 2>
+// CHECK:               %[[VAL_89:.*]] = arith.muli %[[VAL_87]], %[[VAL_88]] : i32
+// CHECK:               affine.store %[[VAL_89]], %[[BUF5]]{{\[}}%[[ARG0]]] : memref<64xi32, 2>
 // CHECK:             }
-// CHECK:             aie.use_lock(%[[VAL_103]], Release, 1)
-// CHECK:             aie.use_lock(%[[VAL_105]], Release, 0)
-// CHECK:             aie.use_lock(%[[VAL_107]], Release, 0)
+// CHECK:             aie.use_lock(%[[LOCK_8_2]], Release, 1)
+// CHECK:             aie.use_lock(%[[LOCK_8_2_28]], Release, 0)
+// CHECK:             aie.use_lock(%[[LOCK_8_2_29]], Release, 0)
 // CHECK:             cf.br ^bb1
 // CHECK:           }
-// CHECK:           %[[VAL_118:.*]] = aie.tile(27, 2)
-// CHECK:           %[[VAL_119:.*]] = aie.tile(27, 1)
-// CHECK:           %[[VAL_120:.*]] = aie.tile(27, 0)
-// CHECK:           %[[VAL_121:.*]] = aie.tile(1, 2)
-// CHECK:           %[[VAL_122:.*]] = aie.tile(8, 4)
-// CHECK:           %[[VAL_123:.*]] = aie.lock(%[[VAL_122]], 2)
-// CHECK:           %[[VAL_124:.*]] = aie.buffer(%[[VAL_122]]) {sym_name = "buf29"} : memref<64xi32, 2>
-// CHECK:           %[[VAL_125:.*]] = aie.lock(%[[VAL_122]], 1)
-// CHECK:           %[[VAL_126:.*]] = aie.buffer(%[[VAL_122]]) {sym_name = "buf28"} : memref<64xi32, 2>
-// CHECK:           %[[VAL_127:.*]] = aie.lock(%[[VAL_122]], 0)
-// CHECK:           %[[VAL_128:.*]] = aie.buffer(%[[VAL_122]]) {sym_name = "buf27"} : memref<64xi32, 2>
-// CHECK:           %[[VAL_129:.*]] = aie.mem(%[[VAL_122]]) {
-// CHECK:             %[[VAL_130:.*]] = aie.dma_start(S2MM, 0, ^bb1, ^bb4)
+// CHECK:           %[[TILE_2_2:.*]] = aie.tile(2, 2)
+// CHECK:           %[[TILE_2_1:.*]] = aie.tile(2, 1)
+// CHECK:           %[[TILE_2_0:.*]] = aie.tile(2, 0)
+// CHECK:           %[[TILE_0_0:.*]] = aie.tile(0, 0)
+// CHECK:           %[[TILE_7_2:.*]] = aie.tile(7, 2)
+// CHECK:           %[[LOCK_7_2:.*]] = aie.lock(%[[TILE_7_2]], 2)
+// CHECK:           %[[BUF2:.*]] = aie.buffer(%[[TILE_7_2]]) {sym_name = "buf2"} : memref<64xi32, 2>
+// CHECK:           %[[LOCK_7_2_30:.*]] = aie.lock(%[[TILE_7_2]], 1)
+// CHECK:           %[[BUF1:.*]] = aie.buffer(%[[TILE_7_2]]) {sym_name = "buf1"} : memref<64xi32, 2>
+// CHECK:           %[[LOCK_7_2_31:.*]] = aie.lock(%[[TILE_7_2]], 0)
+// CHECK:           %[[BUF0:.*]] = aie.buffer(%[[TILE_7_2]]) {sym_name = "buf0"} : memref<64xi32, 2>
+// CHECK:           %[[MEM_7_2:.*]] = aie.mem(%[[TILE_7_2]]) {
+// CHECK:             %[[VAL_90:.*]] = aie.dma_start(S2MM, 0, ^bb1, ^bb4)
 // CHECK:           ^bb1:
-// CHECK:             aie.use_lock(%[[VAL_127]], Acquire, 0)
-// CHECK:             aie.dma_bd(%[[VAL_128]] : memref<64xi32, 2>, 0, 64)
-// CHECK:             aie.use_lock(%[[VAL_127]], Release, 1)
+// CHECK:             aie.use_lock(%[[LOCK_7_2_31]], Acquire, 0)
+// CHECK:             aie.dma_bd(%[[BUF0]] : memref<64xi32, 2>, 0, 64)
+// CHECK:             aie.use_lock(%[[LOCK_7_2_31]], Release, 1)
 // CHECK:             aie.next_bd ^bb1
 // CHECK:           ^bb2:
-// CHECK:             %[[VAL_131:.*]] = aie.dma_start(S2MM, 1, ^bb3, ^bb6)
+// CHECK:             %[[VAL_91:.*]] = aie.dma_start(S2MM, 1, ^bb3, ^bb6)
 // CHECK:           ^bb3:
-// CHECK:             aie.use_lock(%[[VAL_125]], Acquire, 0)
-// CHECK:             aie.dma_bd(%[[VAL_126]] : memref<64xi32, 2>, 0, 64)
-// CHECK:             aie.use_lock(%[[VAL_125]], Release, 1)
+// CHECK:             aie.use_lock(%[[LOCK_7_2_30]], Acquire, 0)
+// CHECK:             aie.dma_bd(%[[BUF1]] : memref<64xi32, 2>, 0, 64)
+// CHECK:             aie.use_lock(%[[LOCK_7_2_30]], Release, 1)
 // CHECK:             aie.next_bd ^bb3
 // CHECK:           ^bb4:
-// CHECK:             %[[VAL_132:.*]] = aie.dma_start(MM2S, 0, ^bb5, ^bb2)
+// CHECK:             %[[VAL_92:.*]] = aie.dma_start(MM2S, 0, ^bb5, ^bb2)
 // CHECK:           ^bb5:
-// CHECK:             aie.use_lock(%[[VAL_123]], Acquire, 1)
-// CHECK:             aie.dma_bd(%[[VAL_124]] : memref<64xi32, 2>, 0, 64)
-// CHECK:             aie.use_lock(%[[VAL_123]], Release, 0)
+// CHECK:             aie.use_lock(%[[LOCK_7_2]], Acquire, 1)
+// CHECK:             aie.dma_bd(%[[BUF2]] : memref<64xi32, 2>, 0, 64)
+// CHECK:             aie.use_lock(%[[LOCK_7_2]], Release, 0)
 // CHECK:             aie.next_bd ^bb5
 // CHECK:           ^bb6:
 // CHECK:             aie.end
 // CHECK:           }
-// CHECK:           %[[VAL_133:.*]] = aie.core(%[[VAL_122]]) {
+// CHECK:           %[[CORE_7_2:.*]] = aie.core(%[[TILE_7_2]]) {
 // CHECK:             cf.br ^bb1
 // CHECK:           ^bb1:
 // CHECK:             cf.br ^bb2
 // CHECK:           ^bb2:
-// CHECK:             aie.use_lock(%[[VAL_127]], Acquire, 1)
-// CHECK:             aie.use_lock(%[[VAL_125]], Acquire, 1)
-// CHECK:             aie.use_lock(%[[VAL_123]], Acquire, 0)
-// CHECK:             affine.for %[[VAL_134:.*]] = 0 to 64 {
-// CHECK:               %[[VAL_135:.*]] = affine.load %[[VAL_128]]{{\[}}%[[VAL_134]]] : memref<64xi32, 2>
-// CHECK:               %[[VAL_136:.*]] = affine.load %[[VAL_126]]{{\[}}%[[VAL_134]]] : memref<64xi32, 2>
-// CHECK:               %[[VAL_137:.*]] = arith.muli %[[VAL_135]], %[[VAL_136]] : i32
-// CHECK:               affine.store %[[VAL_137]], %[[VAL_124]]{{\[}}%[[VAL_134]]] : memref<64xi32, 2>
+// CHECK:             aie.use_lock(%[[LOCK_7_2_31]], Acquire, 1)
+// CHECK:             aie.use_lock(%[[LOCK_7_2_30]], Acquire, 1)
+// CHECK:             aie.use_lock(%[[LOCK_7_2]], Acquire, 0)
+// CHECK:             affine.for %[[ARG0:.*]] = 0 to 64 {
+// CHECK:               %[[VAL_93:.*]] = affine.load %[[BUF0]]{{\[}}%[[ARG0]]] : memref<64xi32, 2>
+// CHECK:               %[[VAL_94:.*]] = affine.load %[[BUF1]]{{\[}}%[[ARG0]]] : memref<64xi32, 2>
+// CHECK:               %[[VAL_95:.*]] = arith.muli %[[VAL_93]], %[[VAL_94]] : i32
+// CHECK:               affine.store %[[VAL_95]], %[[BUF2]]{{\[}}%[[ARG0]]] : memref<64xi32, 2>
 // CHECK:             }
-// CHECK:             aie.use_lock(%[[VAL_123]], Release, 1)
-// CHECK:             aie.use_lock(%[[VAL_125]], Release, 0)
-// CHECK:             aie.use_lock(%[[VAL_127]], Release, 0)
+// CHECK:             aie.use_lock(%[[LOCK_7_2]], Release, 1)
+// CHECK:             aie.use_lock(%[[LOCK_7_2_30]], Release, 0)
+// CHECK:             aie.use_lock(%[[LOCK_7_2_31]], Release, 0)
 // CHECK:             cf.br ^bb1
 // CHECK:           }
-// CHECK:           %[[VAL_138:.*]] = aie.tile(26, 2)
-// CHECK:           %[[VAL_139:.*]] = aie.tile(26, 1)
-// CHECK:           %[[VAL_140:.*]] = aie.tile(26, 0)
-// CHECK:           %[[VAL_141:.*]] = aie.tile(0, 2)
-// CHECK:           %[[VAL_142:.*]] = aie.tile(7, 4)
-// CHECK:           %[[VAL_143:.*]] = aie.lock(%[[VAL_142]], 2)
-// CHECK:           %[[VAL_144:.*]] = aie.buffer(%[[VAL_142]]) {sym_name = "buf26"} : memref<64xi32, 2>
-// CHECK:           %[[VAL_145:.*]] = aie.lock(%[[VAL_142]], 1)
-// CHECK:           %[[VAL_146:.*]] = aie.buffer(%[[VAL_142]]) {sym_name = "buf25"} : memref<64xi32, 2>
-// CHECK:           %[[VAL_147:.*]] = aie.lock(%[[VAL_142]], 0)
-// CHECK:           %[[VAL_148:.*]] = aie.buffer(%[[VAL_142]]) {sym_name = "buf24"} : memref<64xi32, 2>
-// CHECK:           %[[VAL_149:.*]] = aie.mem(%[[VAL_142]]) {
-// CHECK:             %[[VAL_150:.*]] = aie.dma_start(S2MM, 0, ^bb1, ^bb4)
-// CHECK:           ^bb1:
-// CHECK:             aie.use_lock(%[[VAL_147]], Acquire, 0)
-// CHECK:             aie.dma_bd(%[[VAL_148]] : memref<64xi32, 2>, 0, 64)
-// CHECK:             aie.use_lock(%[[VAL_147]], Release, 1)
-// CHECK:             aie.next_bd ^bb1
-// CHECK:           ^bb2:
-// CHECK:             %[[VAL_151:.*]] = aie.dma_start(S2MM, 1, ^bb3, ^bb6)
-// CHECK:           ^bb3:
-// CHECK:             aie.use_lock(%[[VAL_145]], Acquire, 0)
-// CHECK:             aie.dma_bd(%[[VAL_146]] : memref<64xi32, 2>, 0, 64)
-// CHECK:             aie.use_lock(%[[VAL_145]], Release, 1)
-// CHECK:             aie.next_bd ^bb3
-// CHECK:           ^bb4:
-// CHECK:             %[[VAL_152:.*]] = aie.dma_start(MM2S, 0, ^bb5, ^bb2)
-// CHECK:           ^bb5:
-// CHECK:             aie.use_lock(%[[VAL_143]], Acquire, 1)
-// CHECK:             aie.dma_bd(%[[VAL_144]] : memref<64xi32, 2>, 0, 64)
-// CHECK:             aie.use_lock(%[[VAL_143]], Release, 0)
-// CHECK:             aie.next_bd ^bb5
-// CHECK:           ^bb6:
-// CHECK:             aie.end
-// CHECK:           }
-// CHECK:           %[[VAL_153:.*]] = aie.core(%[[VAL_142]]) {
-// CHECK:             cf.br ^bb1
-// CHECK:           ^bb1:
-// CHECK:             cf.br ^bb2
-// CHECK:           ^bb2:
-// CHECK:             aie.use_lock(%[[VAL_147]], Acquire, 1)
-// CHECK:             aie.use_lock(%[[VAL_145]], Acquire, 1)
-// CHECK:             aie.use_lock(%[[VAL_143]], Acquire, 0)
-// CHECK:             affine.for %[[VAL_154:.*]] = 0 to 64 {
-// CHECK:               %[[VAL_155:.*]] = affine.load %[[VAL_148]]{{\[}}%[[VAL_154]]] : memref<64xi32, 2>
-// CHECK:               %[[VAL_156:.*]] = affine.load %[[VAL_146]]{{\[}}%[[VAL_154]]] : memref<64xi32, 2>
-// CHECK:               %[[VAL_157:.*]] = arith.muli %[[VAL_155]], %[[VAL_156]] : i32
-// CHECK:               affine.store %[[VAL_157]], %[[VAL_144]]{{\[}}%[[VAL_154]]] : memref<64xi32, 2>
-// CHECK:             }
-// CHECK:             aie.use_lock(%[[VAL_143]], Release, 1)
-// CHECK:             aie.use_lock(%[[VAL_145]], Release, 0)
-// CHECK:             aie.use_lock(%[[VAL_147]], Release, 0)
-// CHECK:             cf.br ^bb1
-// CHECK:           }
-// CHECK:           %[[VAL_158:.*]] = aie.tile(19, 2)
-// CHECK:           %[[VAL_159:.*]] = aie.tile(19, 1)
-// CHECK:           %[[VAL_160:.*]] = aie.tile(19, 0)
-// CHECK:           %[[VAL_161:.*]] = aie.tile(10, 3)
-// CHECK:           %[[VAL_162:.*]] = aie.lock(%[[VAL_161]], 2)
-// CHECK:           %[[VAL_163:.*]] = aie.buffer(%[[VAL_161]]) {sym_name = "buf23"} : memref<64xi32, 2>
-// CHECK:           %[[VAL_164:.*]] = aie.lock(%[[VAL_161]], 1)
-// CHECK:           %[[VAL_165:.*]] = aie.buffer(%[[VAL_161]]) {sym_name = "buf22"} : memref<64xi32, 2>
-// CHECK:           %[[VAL_166:.*]] = aie.lock(%[[VAL_161]], 0)
-// CHECK:           %[[VAL_167:.*]] = aie.buffer(%[[VAL_161]]) {sym_name = "buf21"} : memref<64xi32, 2>
-// CHECK:           %[[VAL_168:.*]] = aie.mem(%[[VAL_161]]) {
-// CHECK:             %[[VAL_169:.*]] = aie.dma_start(S2MM, 0, ^bb1, ^bb4)
-// CHECK:           ^bb1:
-// CHECK:             aie.use_lock(%[[VAL_166]], Acquire, 0)
-// CHECK:             aie.dma_bd(%[[VAL_167]] : memref<64xi32, 2>, 0, 64)
-// CHECK:             aie.use_lock(%[[VAL_166]], Release, 1)
-// CHECK:             aie.next_bd ^bb1
-// CHECK:           ^bb2:
-// CHECK:             %[[VAL_170:.*]] = aie.dma_start(S2MM, 1, ^bb3, ^bb6)
-// CHECK:           ^bb3:
-// CHECK:             aie.use_lock(%[[VAL_164]], Acquire, 0)
-// CHECK:             aie.dma_bd(%[[VAL_165]] : memref<64xi32, 2>, 0, 64)
-// CHECK:             aie.use_lock(%[[VAL_164]], Release, 1)
-// CHECK:             aie.next_bd ^bb3
-// CHECK:           ^bb4:
-// CHECK:             %[[VAL_171:.*]] = aie.dma_start(MM2S, 0, ^bb5, ^bb2)
-// CHECK:           ^bb5:
-// CHECK:             aie.use_lock(%[[VAL_162]], Acquire, 1)
-// CHECK:             aie.dma_bd(%[[VAL_163]] : memref<64xi32, 2>, 0, 64)
-// CHECK:             aie.use_lock(%[[VAL_162]], Release, 0)
-// CHECK:             aie.next_bd ^bb5
-// CHECK:           ^bb6:
-// CHECK:             aie.end
-// CHECK:           }
-// CHECK:           %[[VAL_172:.*]] = aie.core(%[[VAL_161]]) {
-// CHECK:             cf.br ^bb1
-// CHECK:           ^bb1:
-// CHECK:             cf.br ^bb2
-// CHECK:           ^bb2:
-// CHECK:             aie.use_lock(%[[VAL_166]], Acquire, 1)
-// CHECK:             aie.use_lock(%[[VAL_164]], Acquire, 1)
-// CHECK:             aie.use_lock(%[[VAL_162]], Acquire, 0)
-// CHECK:             affine.for %[[VAL_173:.*]] = 0 to 64 {
-// CHECK:               %[[VAL_174:.*]] = affine.load %[[VAL_167]]{{\[}}%[[VAL_173]]] : memref<64xi32, 2>
-// CHECK:               %[[VAL_175:.*]] = affine.load %[[VAL_165]]{{\[}}%[[VAL_173]]] : memref<64xi32, 2>
-// CHECK:               %[[VAL_176:.*]] = arith.muli %[[VAL_174]], %[[VAL_175]] : i32
-// CHECK:               affine.store %[[VAL_176]], %[[VAL_163]]{{\[}}%[[VAL_173]]] : memref<64xi32, 2>
-// CHECK:             }
-// CHECK:             aie.use_lock(%[[VAL_162]], Release, 1)
-// CHECK:             aie.use_lock(%[[VAL_164]], Release, 0)
-// CHECK:             aie.use_lock(%[[VAL_166]], Release, 0)
-// CHECK:             cf.br ^bb1
-// CHECK:           }
-// CHECK:           %[[VAL_177:.*]] = aie.tile(18, 2)
-// CHECK:           %[[VAL_178:.*]] = aie.tile(18, 1)
-// CHECK:           %[[VAL_179:.*]] = aie.tile(18, 0)
-// CHECK:           %[[VAL_180:.*]] = aie.tile(9, 3)
-// CHECK:           %[[VAL_181:.*]] = aie.lock(%[[VAL_180]], 2)
-// CHECK:           %[[VAL_182:.*]] = aie.buffer(%[[VAL_180]]) {sym_name = "buf20"} : memref<64xi32, 2>
-// CHECK:           %[[VAL_183:.*]] = aie.lock(%[[VAL_180]], 1)
-// CHECK:           %[[VAL_184:.*]] = aie.buffer(%[[VAL_180]]) {sym_name = "buf19"} : memref<64xi32, 2>
-// CHECK:           %[[VAL_185:.*]] = aie.lock(%[[VAL_180]], 0)
-// CHECK:           %[[VAL_186:.*]] = aie.buffer(%[[VAL_180]]) {sym_name = "buf18"} : memref<64xi32, 2>
-// CHECK:           %[[VAL_187:.*]] = aie.mem(%[[VAL_180]]) {
-// CHECK:             %[[VAL_188:.*]] = aie.dma_start(S2MM, 0, ^bb1, ^bb4)
-// CHECK:           ^bb1:
-// CHECK:             aie.use_lock(%[[VAL_185]], Acquire, 0)
-// CHECK:             aie.dma_bd(%[[VAL_186]] : memref<64xi32, 2>, 0, 64)
-// CHECK:             aie.use_lock(%[[VAL_185]], Release, 1)
-// CHECK:             aie.next_bd ^bb1
-// CHECK:           ^bb2:
-// CHECK:             %[[VAL_189:.*]] = aie.dma_start(S2MM, 1, ^bb3, ^bb6)
-// CHECK:           ^bb3:
-// CHECK:             aie.use_lock(%[[VAL_183]], Acquire, 0)
-// CHECK:             aie.dma_bd(%[[VAL_184]] : memref<64xi32, 2>, 0, 64)
-// CHECK:             aie.use_lock(%[[VAL_183]], Release, 1)
-// CHECK:             aie.next_bd ^bb3
-// CHECK:           ^bb4:
-// CHECK:             %[[VAL_190:.*]] = aie.dma_start(MM2S, 0, ^bb5, ^bb2)
-// CHECK:           ^bb5:
-// CHECK:             aie.use_lock(%[[VAL_181]], Acquire, 1)
-// CHECK:             aie.dma_bd(%[[VAL_182]] : memref<64xi32, 2>, 0, 64)
-// CHECK:             aie.use_lock(%[[VAL_181]], Release, 0)
-// CHECK:             aie.next_bd ^bb5
-// CHECK:           ^bb6:
-// CHECK:             aie.end
-// CHECK:           }
-// CHECK:           %[[VAL_191:.*]] = aie.core(%[[VAL_180]]) {
-// CHECK:             cf.br ^bb1
-// CHECK:           ^bb1:
-// CHECK:             cf.br ^bb2
-// CHECK:           ^bb2:
-// CHECK:             aie.use_lock(%[[VAL_185]], Acquire, 1)
-// CHECK:             aie.use_lock(%[[VAL_183]], Acquire, 1)
-// CHECK:             aie.use_lock(%[[VAL_181]], Acquire, 0)
-// CHECK:             affine.for %[[VAL_192:.*]] = 0 to 64 {
-// CHECK:               %[[VAL_193:.*]] = affine.load %[[VAL_186]]{{\[}}%[[VAL_192]]] : memref<64xi32, 2>
-// CHECK:               %[[VAL_194:.*]] = affine.load %[[VAL_184]]{{\[}}%[[VAL_192]]] : memref<64xi32, 2>
-// CHECK:               %[[VAL_195:.*]] = arith.muli %[[VAL_193]], %[[VAL_194]] : i32
-// CHECK:               affine.store %[[VAL_195]], %[[VAL_182]]{{\[}}%[[VAL_192]]] : memref<64xi32, 2>
-// CHECK:             }
-// CHECK:             aie.use_lock(%[[VAL_181]], Release, 1)
-// CHECK:             aie.use_lock(%[[VAL_183]], Release, 0)
-// CHECK:             aie.use_lock(%[[VAL_185]], Release, 0)
-// CHECK:             cf.br ^bb1
-// CHECK:           }
-// CHECK:           %[[VAL_196:.*]] = aie.tile(11, 2)
-// CHECK:           %[[VAL_197:.*]] = aie.tile(11, 1)
-// CHECK:           %[[VAL_198:.*]] = aie.tile(11, 0)
-// CHECK:           %[[VAL_199:.*]] = aie.tile(1, 1)
-// CHECK:           %[[VAL_200:.*]] = aie.tile(8, 3)
-// CHECK:           %[[VAL_201:.*]] = aie.lock(%[[VAL_200]], 2)
-// CHECK:           %[[VAL_202:.*]] = aie.buffer(%[[VAL_200]]) {sym_name = "buf17"} : memref<64xi32, 2>
-// CHECK:           %[[VAL_203:.*]] = aie.lock(%[[VAL_200]], 1)
-// CHECK:           %[[VAL_204:.*]] = aie.buffer(%[[VAL_200]]) {sym_name = "buf16"} : memref<64xi32, 2>
-// CHECK:           %[[VAL_205:.*]] = aie.lock(%[[VAL_200]], 0)
-// CHECK:           %[[VAL_206:.*]] = aie.buffer(%[[VAL_200]]) {sym_name = "buf15"} : memref<64xi32, 2>
-// CHECK:           %[[VAL_207:.*]] = aie.mem(%[[VAL_200]]) {
-// CHECK:             %[[VAL_208:.*]] = aie.dma_start(S2MM, 0, ^bb1, ^bb4)
-// CHECK:           ^bb1:
-// CHECK:             aie.use_lock(%[[VAL_205]], Acquire, 0)
-// CHECK:             aie.dma_bd(%[[VAL_206]] : memref<64xi32, 2>, 0, 64)
-// CHECK:             aie.use_lock(%[[VAL_205]], Release, 1)
-// CHECK:             aie.next_bd ^bb1
-// CHECK:           ^bb2:
-// CHECK:             %[[VAL_209:.*]] = aie.dma_start(S2MM, 1, ^bb3, ^bb6)
-// CHECK:           ^bb3:
-// CHECK:             aie.use_lock(%[[VAL_203]], Acquire, 0)
-// CHECK:             aie.dma_bd(%[[VAL_204]] : memref<64xi32, 2>, 0, 64)
-// CHECK:             aie.use_lock(%[[VAL_203]], Release, 1)
-// CHECK:             aie.next_bd ^bb3
-// CHECK:           ^bb4:
-// CHECK:             %[[VAL_210:.*]] = aie.dma_start(MM2S, 0, ^bb5, ^bb2)
-// CHECK:           ^bb5:
-// CHECK:             aie.use_lock(%[[VAL_201]], Acquire, 1)
-// CHECK:             aie.dma_bd(%[[VAL_202]] : memref<64xi32, 2>, 0, 64)
-// CHECK:             aie.use_lock(%[[VAL_201]], Release, 0)
-// CHECK:             aie.next_bd ^bb5
-// CHECK:           ^bb6:
-// CHECK:             aie.end
-// CHECK:           }
-// CHECK:           %[[VAL_211:.*]] = aie.core(%[[VAL_200]]) {
-// CHECK:             cf.br ^bb1
-// CHECK:           ^bb1:
-// CHECK:             cf.br ^bb2
-// CHECK:           ^bb2:
-// CHECK:             aie.use_lock(%[[VAL_205]], Acquire, 1)
-// CHECK:             aie.use_lock(%[[VAL_203]], Acquire, 1)
-// CHECK:             aie.use_lock(%[[VAL_201]], Acquire, 0)
-// CHECK:             affine.for %[[VAL_212:.*]] = 0 to 64 {
-// CHECK:               %[[VAL_213:.*]] = affine.load %[[VAL_206]]{{\[}}%[[VAL_212]]] : memref<64xi32, 2>
-// CHECK:               %[[VAL_214:.*]] = affine.load %[[VAL_204]]{{\[}}%[[VAL_212]]] : memref<64xi32, 2>
-// CHECK:               %[[VAL_215:.*]] = arith.muli %[[VAL_213]], %[[VAL_214]] : i32
-// CHECK:               affine.store %[[VAL_215]], %[[VAL_202]]{{\[}}%[[VAL_212]]] : memref<64xi32, 2>
-// CHECK:             }
-// CHECK:             aie.use_lock(%[[VAL_201]], Release, 1)
-// CHECK:             aie.use_lock(%[[VAL_203]], Release, 0)
-// CHECK:             aie.use_lock(%[[VAL_205]], Release, 0)
-// CHECK:             cf.br ^bb1
-// CHECK:           }
-// CHECK:           %[[VAL_216:.*]] = aie.tile(10, 1)
-// CHECK:           %[[VAL_217:.*]] = aie.tile(10, 0)
-// CHECK:           %[[VAL_218:.*]] = aie.tile(0, 1)
-// CHECK:           %[[VAL_219:.*]] = aie.tile(7, 3)
-// CHECK:           %[[VAL_220:.*]] = aie.lock(%[[VAL_219]], 2)
-// CHECK:           %[[VAL_221:.*]] = aie.buffer(%[[VAL_219]]) {sym_name = "buf14"} : memref<64xi32, 2>
-// CHECK:           %[[VAL_222:.*]] = aie.lock(%[[VAL_219]], 1)
-// CHECK:           %[[VAL_223:.*]] = aie.buffer(%[[VAL_219]]) {sym_name = "buf13"} : memref<64xi32, 2>
-// CHECK:           %[[VAL_224:.*]] = aie.lock(%[[VAL_219]], 0)
-// CHECK:           %[[VAL_225:.*]] = aie.buffer(%[[VAL_219]]) {sym_name = "buf12"} : memref<64xi32, 2>
-// CHECK:           %[[VAL_226:.*]] = aie.mem(%[[VAL_219]]) {
-// CHECK:             %[[VAL_227:.*]] = aie.dma_start(S2MM, 0, ^bb1, ^bb4)
-// CHECK:           ^bb1:
-// CHECK:             aie.use_lock(%[[VAL_224]], Acquire, 0)
-// CHECK:             aie.dma_bd(%[[VAL_225]] : memref<64xi32, 2>, 0, 64)
-// CHECK:             aie.use_lock(%[[VAL_224]], Release, 1)
-// CHECK:             aie.next_bd ^bb1
-// CHECK:           ^bb2:
-// CHECK:             %[[VAL_228:.*]] = aie.dma_start(S2MM, 1, ^bb3, ^bb6)
-// CHECK:           ^bb3:
-// CHECK:             aie.use_lock(%[[VAL_222]], Acquire, 0)
-// CHECK:             aie.dma_bd(%[[VAL_223]] : memref<64xi32, 2>, 0, 64)
-// CHECK:             aie.use_lock(%[[VAL_222]], Release, 1)
-// CHECK:             aie.next_bd ^bb3
-// CHECK:           ^bb4:
-// CHECK:             %[[VAL_229:.*]] = aie.dma_start(MM2S, 0, ^bb5, ^bb2)
-// CHECK:           ^bb5:
-// CHECK:             aie.use_lock(%[[VAL_220]], Acquire, 1)
-// CHECK:             aie.dma_bd(%[[VAL_221]] : memref<64xi32, 2>, 0, 64)
-// CHECK:             aie.use_lock(%[[VAL_220]], Release, 0)
-// CHECK:             aie.next_bd ^bb5
-// CHECK:           ^bb6:
-// CHECK:             aie.end
-// CHECK:           }
-// CHECK:           %[[VAL_230:.*]] = aie.core(%[[VAL_219]]) {
-// CHECK:             cf.br ^bb1
-// CHECK:           ^bb1:
-// CHECK:             cf.br ^bb2
-// CHECK:           ^bb2:
-// CHECK:             aie.use_lock(%[[VAL_224]], Acquire, 1)
-// CHECK:             aie.use_lock(%[[VAL_222]], Acquire, 1)
-// CHECK:             aie.use_lock(%[[VAL_220]], Acquire, 0)
-// CHECK:             affine.for %[[VAL_231:.*]] = 0 to 64 {
-// CHECK:               %[[VAL_232:.*]] = affine.load %[[VAL_225]]{{\[}}%[[VAL_231]]] : memref<64xi32, 2>
-// CHECK:               %[[VAL_233:.*]] = affine.load %[[VAL_223]]{{\[}}%[[VAL_231]]] : memref<64xi32, 2>
-// CHECK:               %[[VAL_234:.*]] = arith.muli %[[VAL_232]], %[[VAL_233]] : i32
-// CHECK:               affine.store %[[VAL_234]], %[[VAL_221]]{{\[}}%[[VAL_231]]] : memref<64xi32, 2>
-// CHECK:             }
-// CHECK:             aie.use_lock(%[[VAL_220]], Release, 1)
-// CHECK:             aie.use_lock(%[[VAL_222]], Release, 0)
-// CHECK:             aie.use_lock(%[[VAL_224]], Release, 0)
-// CHECK:             cf.br ^bb1
-// CHECK:           }
-// CHECK:           %[[VAL_235:.*]] = aie.tile(7, 1)
-// CHECK:           %[[VAL_236:.*]] = aie.tile(7, 0)
-// CHECK:           %[[VAL_237:.*]] = aie.tile(10, 2)
-// CHECK:           %[[VAL_238:.*]] = aie.lock(%[[VAL_237]], 2)
-// CHECK:           %[[VAL_239:.*]] = aie.buffer(%[[VAL_237]]) {sym_name = "buf11"} : memref<64xi32, 2>
-// CHECK:           %[[VAL_240:.*]] = aie.lock(%[[VAL_237]], 1)
-// CHECK:           %[[VAL_241:.*]] = aie.buffer(%[[VAL_237]]) {sym_name = "buf10"} : memref<64xi32, 2>
-// CHECK:           %[[VAL_242:.*]] = aie.lock(%[[VAL_237]], 0)
-// CHECK:           %[[VAL_243:.*]] = aie.buffer(%[[VAL_237]]) {sym_name = "buf9"} : memref<64xi32, 2>
-// CHECK:           %[[VAL_244:.*]] = aie.mem(%[[VAL_237]]) {
-// CHECK:             %[[VAL_245:.*]] = aie.dma_start(S2MM, 0, ^bb1, ^bb4)
-// CHECK:           ^bb1:
-// CHECK:             aie.use_lock(%[[VAL_242]], Acquire, 0)
-// CHECK:             aie.dma_bd(%[[VAL_243]] : memref<64xi32, 2>, 0, 64)
-// CHECK:             aie.use_lock(%[[VAL_242]], Release, 1)
-// CHECK:             aie.next_bd ^bb1
-// CHECK:           ^bb2:
-// CHECK:             %[[VAL_246:.*]] = aie.dma_start(S2MM, 1, ^bb3, ^bb6)
-// CHECK:           ^bb3:
-// CHECK:             aie.use_lock(%[[VAL_240]], Acquire, 0)
-// CHECK:             aie.dma_bd(%[[VAL_241]] : memref<64xi32, 2>, 0, 64)
-// CHECK:             aie.use_lock(%[[VAL_240]], Release, 1)
-// CHECK:             aie.next_bd ^bb3
-// CHECK:           ^bb4:
-// CHECK:             %[[VAL_247:.*]] = aie.dma_start(MM2S, 0, ^bb5, ^bb2)
-// CHECK:           ^bb5:
-// CHECK:             aie.use_lock(%[[VAL_238]], Acquire, 1)
-// CHECK:             aie.dma_bd(%[[VAL_239]] : memref<64xi32, 2>, 0, 64)
-// CHECK:             aie.use_lock(%[[VAL_238]], Release, 0)
-// CHECK:             aie.next_bd ^bb5
-// CHECK:           ^bb6:
-// CHECK:             aie.end
-// CHECK:           }
-// CHECK:           %[[VAL_248:.*]] = aie.core(%[[VAL_237]]) {
-// CHECK:             cf.br ^bb1
-// CHECK:           ^bb1:
-// CHECK:             cf.br ^bb2
-// CHECK:           ^bb2:
-// CHECK:             aie.use_lock(%[[VAL_242]], Acquire, 1)
-// CHECK:             aie.use_lock(%[[VAL_240]], Acquire, 1)
-// CHECK:             aie.use_lock(%[[VAL_238]], Acquire, 0)
-// CHECK:             affine.for %[[VAL_249:.*]] = 0 to 64 {
-// CHECK:               %[[VAL_250:.*]] = affine.load %[[VAL_243]]{{\[}}%[[VAL_249]]] : memref<64xi32, 2>
-// CHECK:               %[[VAL_251:.*]] = affine.load %[[VAL_241]]{{\[}}%[[VAL_249]]] : memref<64xi32, 2>
-// CHECK:               %[[VAL_252:.*]] = arith.muli %[[VAL_250]], %[[VAL_251]] : i32
-// CHECK:               affine.store %[[VAL_252]], %[[VAL_239]]{{\[}}%[[VAL_249]]] : memref<64xi32, 2>
-// CHECK:             }
-// CHECK:             aie.use_lock(%[[VAL_238]], Release, 1)
-// CHECK:             aie.use_lock(%[[VAL_240]], Release, 0)
-// CHECK:             aie.use_lock(%[[VAL_242]], Release, 0)
-// CHECK:             cf.br ^bb1
-// CHECK:           }
-// CHECK:           %[[VAL_253:.*]] = aie.tile(6, 2)
-// CHECK:           %[[VAL_254:.*]] = aie.tile(6, 1)
-// CHECK:           %[[VAL_255:.*]] = aie.tile(6, 0)
-// CHECK:           %[[VAL_256:.*]] = aie.tile(9, 2)
-// CHECK:           %[[VAL_257:.*]] = aie.lock(%[[VAL_256]], 2)
-// CHECK:           %[[VAL_258:.*]] = aie.buffer(%[[VAL_256]]) {sym_name = "buf8"} : memref<64xi32, 2>
-// CHECK:           %[[VAL_259:.*]] = aie.lock(%[[VAL_256]], 1)
-// CHECK:           %[[VAL_260:.*]] = aie.buffer(%[[VAL_256]]) {sym_name = "buf7"} : memref<64xi32, 2>
-// CHECK:           %[[VAL_261:.*]] = aie.lock(%[[VAL_256]], 0)
-// CHECK:           %[[VAL_262:.*]] = aie.buffer(%[[VAL_256]]) {sym_name = "buf6"} : memref<64xi32, 2>
-// CHECK:           %[[VAL_263:.*]] = aie.mem(%[[VAL_256]]) {
-// CHECK:             %[[VAL_264:.*]] = aie.dma_start(S2MM, 0, ^bb1, ^bb4)
-// CHECK:           ^bb1:
-// CHECK:             aie.use_lock(%[[VAL_261]], Acquire, 0)
-// CHECK:             aie.dma_bd(%[[VAL_262]] : memref<64xi32, 2>, 0, 64)
-// CHECK:             aie.use_lock(%[[VAL_261]], Release, 1)
-// CHECK:             aie.next_bd ^bb1
-// CHECK:           ^bb2:
-// CHECK:             %[[VAL_265:.*]] = aie.dma_start(S2MM, 1, ^bb3, ^bb6)
-// CHECK:           ^bb3:
-// CHECK:             aie.use_lock(%[[VAL_259]], Acquire, 0)
-// CHECK:             aie.dma_bd(%[[VAL_260]] : memref<64xi32, 2>, 0, 64)
-// CHECK:             aie.use_lock(%[[VAL_259]], Release, 1)
-// CHECK:             aie.next_bd ^bb3
-// CHECK:           ^bb4:
-// CHECK:             %[[VAL_266:.*]] = aie.dma_start(MM2S, 0, ^bb5, ^bb2)
-// CHECK:           ^bb5:
-// CHECK:             aie.use_lock(%[[VAL_257]], Acquire, 1)
-// CHECK:             aie.dma_bd(%[[VAL_258]] : memref<64xi32, 2>, 0, 64)
-// CHECK:             aie.use_lock(%[[VAL_257]], Release, 0)
-// CHECK:             aie.next_bd ^bb5
-// CHECK:           ^bb6:
-// CHECK:             aie.end
-// CHECK:           }
-// CHECK:           %[[VAL_267:.*]] = aie.core(%[[VAL_256]]) {
-// CHECK:             cf.br ^bb1
-// CHECK:           ^bb1:
-// CHECK:             cf.br ^bb2
-// CHECK:           ^bb2:
-// CHECK:             aie.use_lock(%[[VAL_261]], Acquire, 1)
-// CHECK:             aie.use_lock(%[[VAL_259]], Acquire, 1)
-// CHECK:             aie.use_lock(%[[VAL_257]], Acquire, 0)
-// CHECK:             affine.for %[[VAL_268:.*]] = 0 to 64 {
-// CHECK:               %[[VAL_269:.*]] = affine.load %[[VAL_262]]{{\[}}%[[VAL_268]]] : memref<64xi32, 2>
-// CHECK:               %[[VAL_270:.*]] = affine.load %[[VAL_260]]{{\[}}%[[VAL_268]]] : memref<64xi32, 2>
-// CHECK:               %[[VAL_271:.*]] = arith.muli %[[VAL_269]], %[[VAL_270]] : i32
-// CHECK:               affine.store %[[VAL_271]], %[[VAL_258]]{{\[}}%[[VAL_268]]] : memref<64xi32, 2>
-// CHECK:             }
-// CHECK:             aie.use_lock(%[[VAL_257]], Release, 1)
-// CHECK:             aie.use_lock(%[[VAL_259]], Release, 0)
-// CHECK:             aie.use_lock(%[[VAL_261]], Release, 0)
-// CHECK:             cf.br ^bb1
-// CHECK:           }
-// CHECK:           %[[VAL_272:.*]] = aie.tile(3, 2)
-// CHECK:           %[[VAL_273:.*]] = aie.tile(3, 1)
-// CHECK:           %[[VAL_274:.*]] = aie.tile(3, 0)
-// CHECK:           %[[VAL_275:.*]] = aie.tile(1, 0)
-// CHECK:           %[[VAL_276:.*]] = aie.tile(8, 2)
-// CHECK:           %[[VAL_277:.*]] = aie.lock(%[[VAL_276]], 2)
-// CHECK:           %[[VAL_278:.*]] = aie.buffer(%[[VAL_276]]) {sym_name = "buf5"} : memref<64xi32, 2>
-// CHECK:           %[[VAL_279:.*]] = aie.lock(%[[VAL_276]], 1)
-// CHECK:           %[[VAL_280:.*]] = aie.buffer(%[[VAL_276]]) {sym_name = "buf4"} : memref<64xi32, 2>
-// CHECK:           %[[VAL_281:.*]] = aie.lock(%[[VAL_276]], 0)
-// CHECK:           %[[VAL_282:.*]] = aie.buffer(%[[VAL_276]]) {sym_name = "buf3"} : memref<64xi32, 2>
-// CHECK:           %[[VAL_283:.*]] = aie.mem(%[[VAL_276]]) {
-// CHECK:             %[[VAL_284:.*]] = aie.dma_start(S2MM, 0, ^bb1, ^bb4)
-// CHECK:           ^bb1:
-// CHECK:             aie.use_lock(%[[VAL_281]], Acquire, 0)
-// CHECK:             aie.dma_bd(%[[VAL_282]] : memref<64xi32, 2>, 0, 64)
-// CHECK:             aie.use_lock(%[[VAL_281]], Release, 1)
-// CHECK:             aie.next_bd ^bb1
-// CHECK:           ^bb2:
-// CHECK:             %[[VAL_285:.*]] = aie.dma_start(S2MM, 1, ^bb3, ^bb6)
-// CHECK:           ^bb3:
-// CHECK:             aie.use_lock(%[[VAL_279]], Acquire, 0)
-// CHECK:             aie.dma_bd(%[[VAL_280]] : memref<64xi32, 2>, 0, 64)
-// CHECK:             aie.use_lock(%[[VAL_279]], Release, 1)
-// CHECK:             aie.next_bd ^bb3
-// CHECK:           ^bb4:
-// CHECK:             %[[VAL_286:.*]] = aie.dma_start(MM2S, 0, ^bb5, ^bb2)
-// CHECK:           ^bb5:
-// CHECK:             aie.use_lock(%[[VAL_277]], Acquire, 1)
-// CHECK:             aie.dma_bd(%[[VAL_278]] : memref<64xi32, 2>, 0, 64)
-// CHECK:             aie.use_lock(%[[VAL_277]], Release, 0)
-// CHECK:             aie.next_bd ^bb5
-// CHECK:           ^bb6:
-// CHECK:             aie.end
-// CHECK:           }
-// CHECK:           %[[VAL_287:.*]] = aie.core(%[[VAL_276]]) {
-// CHECK:             cf.br ^bb1
-// CHECK:           ^bb1:
-// CHECK:             cf.br ^bb2
-// CHECK:           ^bb2:
-// CHECK:             aie.use_lock(%[[VAL_281]], Acquire, 1)
-// CHECK:             aie.use_lock(%[[VAL_279]], Acquire, 1)
-// CHECK:             aie.use_lock(%[[VAL_277]], Acquire, 0)
-// CHECK:             affine.for %[[VAL_288:.*]] = 0 to 64 {
-// CHECK:               %[[VAL_289:.*]] = affine.load %[[VAL_282]]{{\[}}%[[VAL_288]]] : memref<64xi32, 2>
-// CHECK:               %[[VAL_290:.*]] = affine.load %[[VAL_280]]{{\[}}%[[VAL_288]]] : memref<64xi32, 2>
-// CHECK:               %[[VAL_291:.*]] = arith.muli %[[VAL_289]], %[[VAL_290]] : i32
-// CHECK:               affine.store %[[VAL_291]], %[[VAL_278]]{{\[}}%[[VAL_288]]] : memref<64xi32, 2>
-// CHECK:             }
-// CHECK:             aie.use_lock(%[[VAL_277]], Release, 1)
-// CHECK:             aie.use_lock(%[[VAL_279]], Release, 0)
-// CHECK:             aie.use_lock(%[[VAL_281]], Release, 0)
-// CHECK:             cf.br ^bb1
-// CHECK:           }
-// CHECK:           %[[VAL_292:.*]] = aie.tile(2, 2)
-// CHECK:           %[[VAL_293:.*]] = aie.tile(2, 1)
-// CHECK:           %[[VAL_294:.*]] = aie.tile(2, 0)
-// CHECK:           %[[VAL_295:.*]] = aie.tile(0, 0)
-// CHECK:           %[[VAL_296:.*]] = aie.tile(7, 2)
-// CHECK:           %[[VAL_297:.*]] = aie.lock(%[[VAL_296]], 2)
-// CHECK:           %[[VAL_298:.*]] = aie.buffer(%[[VAL_296]]) {sym_name = "buf2"} : memref<64xi32, 2>
-// CHECK:           %[[VAL_299:.*]] = aie.lock(%[[VAL_296]], 1)
-// CHECK:           %[[VAL_300:.*]] = aie.buffer(%[[VAL_296]]) {sym_name = "buf1"} : memref<64xi32, 2>
-// CHECK:           %[[VAL_301:.*]] = aie.lock(%[[VAL_296]], 0)
-// CHECK:           %[[VAL_302:.*]] = aie.buffer(%[[VAL_296]]) {sym_name = "buf0"} : memref<64xi32, 2>
-// CHECK:           %[[VAL_303:.*]] = aie.mem(%[[VAL_296]]) {
-// CHECK:             %[[VAL_304:.*]] = aie.dma_start(S2MM, 0, ^bb1, ^bb4)
-// CHECK:           ^bb1:
-// CHECK:             aie.use_lock(%[[VAL_301]], Acquire, 0)
-// CHECK:             aie.dma_bd(%[[VAL_302]] : memref<64xi32, 2>, 0, 64)
-// CHECK:             aie.use_lock(%[[VAL_301]], Release, 1)
-// CHECK:             aie.next_bd ^bb1
-// CHECK:           ^bb2:
-// CHECK:             %[[VAL_305:.*]] = aie.dma_start(S2MM, 1, ^bb3, ^bb6)
-// CHECK:           ^bb3:
-// CHECK:             aie.use_lock(%[[VAL_299]], Acquire, 0)
-// CHECK:             aie.dma_bd(%[[VAL_300]] : memref<64xi32, 2>, 0, 64)
-// CHECK:             aie.use_lock(%[[VAL_299]], Release, 1)
-// CHECK:             aie.next_bd ^bb3
-// CHECK:           ^bb4:
-// CHECK:             %[[VAL_306:.*]] = aie.dma_start(MM2S, 0, ^bb5, ^bb2)
-// CHECK:           ^bb5:
-// CHECK:             aie.use_lock(%[[VAL_297]], Acquire, 1)
-// CHECK:             aie.dma_bd(%[[VAL_298]] : memref<64xi32, 2>, 0, 64)
-// CHECK:             aie.use_lock(%[[VAL_297]], Release, 0)
-// CHECK:             aie.next_bd ^bb5
-// CHECK:           ^bb6:
-// CHECK:             aie.end
-// CHECK:           }
-// CHECK:           %[[VAL_307:.*]] = aie.core(%[[VAL_296]]) {
-// CHECK:             cf.br ^bb1
-// CHECK:           ^bb1:
-// CHECK:             cf.br ^bb2
-// CHECK:           ^bb2:
-// CHECK:             aie.use_lock(%[[VAL_301]], Acquire, 1)
-// CHECK:             aie.use_lock(%[[VAL_299]], Acquire, 1)
-// CHECK:             aie.use_lock(%[[VAL_297]], Acquire, 0)
-// CHECK:             affine.for %[[VAL_308:.*]] = 0 to 64 {
-// CHECK:               %[[VAL_309:.*]] = affine.load %[[VAL_302]]{{\[}}%[[VAL_308]]] : memref<64xi32, 2>
-// CHECK:               %[[VAL_310:.*]] = affine.load %[[VAL_300]]{{\[}}%[[VAL_308]]] : memref<64xi32, 2>
-// CHECK:               %[[VAL_311:.*]] = arith.muli %[[VAL_309]], %[[VAL_310]] : i32
-// CHECK:               affine.store %[[VAL_311]], %[[VAL_298]]{{\[}}%[[VAL_308]]] : memref<64xi32, 2>
-// CHECK:             }
-// CHECK:             aie.use_lock(%[[VAL_297]], Release, 1)
-// CHECK:             aie.use_lock(%[[VAL_299]], Release, 0)
-// CHECK:             aie.use_lock(%[[VAL_301]], Release, 0)
-// CHECK:             cf.br ^bb1
-// CHECK:           }
-// CHECK:           %[[VAL_312:.*]] = aie.switchbox(%[[VAL_294]]) {
+// CHECK:           %[[SWITCHBOX_2_0:.*]] = aie.switchbox(%[[TILE_2_0]]) {
 // CHECK:             aie.connect<South : 3, North : 0>
 // CHECK:             aie.connect<South : 7, North : 1>
 // CHECK:             aie.connect<North : 0, South : 2>
 // CHECK:             aie.connect<North : 1, South : 3>
 // CHECK:           }
-// CHECK:           %[[VAL_313:.*]] = aie.shim_mux(%[[VAL_294]]) {
+// CHECK:           %[[SHIM_MUX_2_0:.*]] = aie.shim_mux(%[[TILE_2_0]]) {
 // CHECK:             aie.connect<DMA : 0, North : 3>
 // CHECK:             aie.connect<DMA : 1, North : 7>
 // CHECK:             aie.connect<North : 2, DMA : 0>
 // CHECK:             aie.connect<North : 3, DMA : 1>
 // CHECK:           }
-// CHECK:           %[[VAL_314:.*]] = aie.switchbox(%[[VAL_293]]) {
+// CHECK:           %[[SWITCHBOX_2_1:.*]] = aie.switchbox(%[[TILE_2_1]]) {
 // CHECK:             aie.connect<South : 0, North : 0>
 // CHECK:             aie.connect<South : 1, North : 1>
 // CHECK:             aie.connect<North : 0, South : 0>
 // CHECK:             aie.connect<North : 1, South : 1>
 // CHECK:           }
-// CHECK:           %[[VAL_315:.*]] = aie.switchbox(%[[VAL_292]]) {
+// CHECK:           %[[SWITCHBOX_2_2:.*]] = aie.switchbox(%[[TILE_2_2]]) {
 // CHECK:             aie.connect<South : 0, East : 0>
 // CHECK:             aie.connect<South : 1, East : 1>
 // CHECK:             aie.connect<East : 0, South : 0>
 // CHECK:             aie.connect<East : 1, South : 1>
 // CHECK:           }
-// CHECK:           %[[VAL_316:.*]] = aie.switchbox(%[[VAL_272]]) {
+// CHECK:           %[[SWITCHBOX_3_2:.*]] = aie.switchbox(%[[TILE_3_2]]) {
 // CHECK:             aie.connect<West : 0, East : 0>
 // CHECK:             aie.connect<West : 1, East : 1>
 // CHECK:             aie.connect<East : 0, West : 0>
@@ -899,8 +890,8 @@
 // CHECK:             aie.connect<East : 2, South : 0>
 // CHECK:             aie.connect<East : 3, South : 1>
 // CHECK:           }
-// CHECK:           %[[VAL_317:.*]] = aie.tile(4, 2)
-// CHECK:           %[[VAL_318:.*]] = aie.switchbox(%[[VAL_317]]) {
+// CHECK:           %[[TILE_4_2:.*]] = aie.tile(4, 2)
+// CHECK:           %[[SWITCHBOX_4_2:.*]] = aie.switchbox(%[[TILE_4_2]]) {
 // CHECK:             aie.connect<West : 0, East : 0>
 // CHECK:             aie.connect<West : 1, East : 1>
 // CHECK:             aie.connect<East : 0, West : 0>
@@ -908,8 +899,8 @@
 // CHECK:             aie.connect<East : 2, West : 2>
 // CHECK:             aie.connect<East : 3, West : 3>
 // CHECK:           }
-// CHECK:           %[[VAL_319:.*]] = aie.tile(5, 2)
-// CHECK:           %[[VAL_320:.*]] = aie.switchbox(%[[VAL_319]]) {
+// CHECK:           %[[TILE_5_2:.*]] = aie.tile(5, 2)
+// CHECK:           %[[SWITCHBOX_5_2:.*]] = aie.switchbox(%[[TILE_5_2]]) {
 // CHECK:             aie.connect<West : 0, East : 0>
 // CHECK:             aie.connect<West : 1, East : 1>
 // CHECK:             aie.connect<East : 0, West : 0>
@@ -917,7 +908,7 @@
 // CHECK:             aie.connect<East : 2, West : 2>
 // CHECK:             aie.connect<East : 3, West : 3>
 // CHECK:           }
-// CHECK:           %[[VAL_321:.*]] = aie.switchbox(%[[VAL_253]]) {
+// CHECK:           %[[SWITCHBOX_6_2:.*]] = aie.switchbox(%[[TILE_6_2]]) {
 // CHECK:             aie.connect<West : 0, East : 0>
 // CHECK:             aie.connect<West : 1, East : 1>
 // CHECK:             aie.connect<East : 0, West : 0>
@@ -927,7 +918,7 @@
 // CHECK:             aie.connect<East : 2, West : 2>
 // CHECK:             aie.connect<East : 3, West : 3>
 // CHECK:           }
-// CHECK:           %[[VAL_322:.*]] = aie.switchbox(%[[VAL_296]]) {
+// CHECK:           %[[SWITCHBOX_7_2:.*]] = aie.switchbox(%[[TILE_7_2]]) {
 // CHECK:             aie.connect<West : 0, DMA : 0>
 // CHECK:             aie.connect<West : 1, DMA : 1>
 // CHECK:             aie.connect<DMA : 0, West : 0>
@@ -939,29 +930,29 @@
 // CHECK:             aie.connect<North : 0, South : 0>
 // CHECK:             aie.connect<North : 1, South : 1>
 // CHECK:           }
-// CHECK:           %[[VAL_323:.*]] = aie.switchbox(%[[VAL_274]]) {
+// CHECK:           %[[SWITCHBOX_3_0:.*]] = aie.switchbox(%[[TILE_3_0]]) {
 // CHECK:             aie.connect<South : 3, East : 0>
 // CHECK:             aie.connect<South : 7, East : 1>
 // CHECK:             aie.connect<North : 0, South : 2>
 // CHECK:             aie.connect<North : 1, South : 3>
 // CHECK:           }
-// CHECK:           %[[VAL_324:.*]] = aie.shim_mux(%[[VAL_274]]) {
+// CHECK:           %[[SHIM_MUX_3_0:.*]] = aie.shim_mux(%[[TILE_3_0]]) {
 // CHECK:             aie.connect<DMA : 0, North : 3>
 // CHECK:             aie.connect<DMA : 1, North : 7>
 // CHECK:             aie.connect<North : 2, DMA : 0>
 // CHECK:             aie.connect<North : 3, DMA : 1>
 // CHECK:           }
-// CHECK:           %[[VAL_325:.*]] = aie.tile(4, 0)
-// CHECK:           %[[VAL_326:.*]] = aie.switchbox(%[[VAL_325]]) {
+// CHECK:           %[[TILE_4_0:.*]] = aie.tile(4, 0)
+// CHECK:           %[[SWITCHBOX_4_0:.*]] = aie.switchbox(%[[TILE_4_0]]) {
 // CHECK:             aie.connect<West : 0, East : 0>
 // CHECK:             aie.connect<West : 1, East : 1>
 // CHECK:           }
-// CHECK:           %[[VAL_327:.*]] = aie.tile(5, 0)
-// CHECK:           %[[VAL_328:.*]] = aie.switchbox(%[[VAL_327]]) {
+// CHECK:           %[[TILE_5_0:.*]] = aie.tile(5, 0)
+// CHECK:           %[[SWITCHBOX_5_0:.*]] = aie.switchbox(%[[TILE_5_0]]) {
 // CHECK:             aie.connect<West : 0, East : 0>
 // CHECK:             aie.connect<West : 1, East : 1>
 // CHECK:           }
-// CHECK:           %[[VAL_329:.*]] = aie.switchbox(%[[VAL_255]]) {
+// CHECK:           %[[SWITCHBOX_6_0:.*]] = aie.switchbox(%[[TILE_6_0]]) {
 // CHECK:             aie.connect<West : 0, North : 0>
 // CHECK:             aie.connect<West : 1, North : 1>
 // CHECK:             aie.connect<South : 3, East : 0>
@@ -969,13 +960,13 @@
 // CHECK:             aie.connect<North : 0, South : 2>
 // CHECK:             aie.connect<North : 1, South : 3>
 // CHECK:           }
-// CHECK:           %[[VAL_330:.*]] = aie.switchbox(%[[VAL_254]]) {
+// CHECK:           %[[SWITCHBOX_6_1:.*]] = aie.switchbox(%[[TILE_6_1]]) {
 // CHECK:             aie.connect<South : 0, North : 0>
 // CHECK:             aie.connect<South : 1, North : 1>
 // CHECK:             aie.connect<East : 0, South : 0>
 // CHECK:             aie.connect<East : 1, South : 1>
 // CHECK:           }
-// CHECK:           %[[VAL_331:.*]] = aie.switchbox(%[[VAL_276]]) {
+// CHECK:           %[[SWITCHBOX_8_2:.*]] = aie.switchbox(%[[TILE_8_2]]) {
 // CHECK:             aie.connect<West : 0, DMA : 0>
 // CHECK:             aie.connect<West : 1, DMA : 1>
 // CHECK:             aie.connect<DMA : 0, West : 0>
@@ -987,13 +978,13 @@
 // CHECK:             aie.connect<East : 2, North : 2>
 // CHECK:             aie.connect<North : 1, South : 1>
 // CHECK:           }
-// CHECK:           %[[VAL_332:.*]] = aie.shim_mux(%[[VAL_255]]) {
+// CHECK:           %[[SHIM_MUX_6_0:.*]] = aie.shim_mux(%[[TILE_6_0]]) {
 // CHECK:             aie.connect<DMA : 0, North : 3>
 // CHECK:             aie.connect<DMA : 1, North : 7>
 // CHECK:             aie.connect<North : 2, DMA : 0>
 // CHECK:             aie.connect<North : 3, DMA : 1>
 // CHECK:           }
-// CHECK:           %[[VAL_333:.*]] = aie.switchbox(%[[VAL_236]]) {
+// CHECK:           %[[SWITCHBOX_7_0:.*]] = aie.switchbox(%[[TILE_7_0]]) {
 // CHECK:             aie.connect<West : 0, East : 0>
 // CHECK:             aie.connect<West : 1, East : 1>
 // CHECK:             aie.connect<South : 3, East : 2>
@@ -1001,15 +992,15 @@
 // CHECK:             aie.connect<North : 0, South : 2>
 // CHECK:             aie.connect<North : 1, South : 3>
 // CHECK:           }
-// CHECK:           %[[VAL_334:.*]] = aie.tile(8, 0)
-// CHECK:           %[[VAL_335:.*]] = aie.switchbox(%[[VAL_334]]) {
+// CHECK:           %[[TILE_8_0:.*]] = aie.tile(8, 0)
+// CHECK:           %[[SWITCHBOX_8_0:.*]] = aie.switchbox(%[[TILE_8_0]]) {
 // CHECK:             aie.connect<West : 0, East : 0>
 // CHECK:             aie.connect<West : 1, East : 1>
 // CHECK:             aie.connect<West : 2, East : 2>
 // CHECK:             aie.connect<West : 3, East : 3>
 // CHECK:           }
-// CHECK:           %[[VAL_336:.*]] = aie.tile(9, 0)
-// CHECK:           %[[VAL_337:.*]] = aie.switchbox(%[[VAL_336]]) {
+// CHECK:           %[[TILE_9_0:.*]] = aie.tile(9, 0)
+// CHECK:           %[[SWITCHBOX_9_0:.*]] = aie.switchbox(%[[TILE_9_0]]) {
 // CHECK:             aie.connect<West : 0, North : 0>
 // CHECK:             aie.connect<West : 1, North : 1>
 // CHECK:             aie.connect<West : 2, East : 0>
@@ -1017,8 +1008,8 @@
 // CHECK:             aie.connect<East : 0, North : 2>
 // CHECK:             aie.connect<East : 1, North : 3>
 // CHECK:           }
-// CHECK:           %[[VAL_338:.*]] = aie.tile(9, 1)
-// CHECK:           %[[VAL_339:.*]] = aie.switchbox(%[[VAL_338]]) {
+// CHECK:           %[[TILE_9_1:.*]] = aie.tile(9, 1)
+// CHECK:           %[[SWITCHBOX_9_1:.*]] = aie.switchbox(%[[TILE_9_1]]) {
 // CHECK:             aie.connect<South : 0, North : 0>
 // CHECK:             aie.connect<South : 1, North : 1>
 // CHECK:             aie.connect<South : 2, West : 0>
@@ -1032,7 +1023,7 @@
 // CHECK:             aie.connect<West : 1, East : 1>
 // CHECK:             aie.connect<North : 1, East : 2>
 // CHECK:           }
-// CHECK:           %[[VAL_340:.*]] = aie.switchbox(%[[VAL_256]]) {
+// CHECK:           %[[SWITCHBOX_9_2:.*]] = aie.switchbox(%[[TILE_9_2]]) {
 // CHECK:             aie.connect<South : 0, DMA : 0>
 // CHECK:             aie.connect<South : 1, DMA : 1>
 // CHECK:             aie.connect<DMA : 0, West : 0>
@@ -1046,17 +1037,17 @@
 // CHECK:             aie.connect<East : 3, North : 4>
 // CHECK:             aie.connect<North : 1, South : 1>
 // CHECK:           }
-// CHECK:           %[[VAL_341:.*]] = aie.switchbox(%[[VAL_273]]) {
+// CHECK:           %[[SWITCHBOX_3_1:.*]] = aie.switchbox(%[[TILE_3_1]]) {
 // CHECK:             aie.connect<North : 0, South : 0>
 // CHECK:             aie.connect<North : 1, South : 1>
 // CHECK:           }
-// CHECK:           %[[VAL_342:.*]] = aie.shim_mux(%[[VAL_236]]) {
+// CHECK:           %[[SHIM_MUX_7_0:.*]] = aie.shim_mux(%[[TILE_7_0]]) {
 // CHECK:             aie.connect<DMA : 0, North : 3>
 // CHECK:             aie.connect<DMA : 1, North : 7>
 // CHECK:             aie.connect<North : 2, DMA : 0>
 // CHECK:             aie.connect<North : 3, DMA : 1>
 // CHECK:           }
-// CHECK:           %[[VAL_343:.*]] = aie.switchbox(%[[VAL_217]]) {
+// CHECK:           %[[SWITCHBOX_10_0:.*]] = aie.switchbox(%[[TILE_10_0]]) {
 // CHECK:             aie.connect<West : 0, North : 0>
 // CHECK:             aie.connect<West : 1, North : 1>
 // CHECK:             aie.connect<South : 3, West : 0>
@@ -1068,7 +1059,7 @@
 // CHECK:             aie.connect<North : 0, South : 2>
 // CHECK:             aie.connect<North : 1, South : 3>
 // CHECK:           }
-// CHECK:           %[[VAL_344:.*]] = aie.switchbox(%[[VAL_216]]) {
+// CHECK:           %[[SWITCHBOX_10_1:.*]] = aie.switchbox(%[[TILE_10_1]]) {
 // CHECK:             aie.connect<South : 0, North : 0>
 // CHECK:             aie.connect<South : 1, North : 1>
 // CHECK:             aie.connect<South : 2, West : 0>
@@ -1084,7 +1075,7 @@
 // CHECK:             aie.connect<West : 2, East : 0>
 // CHECK:             aie.connect<North : 1, East : 1>
 // CHECK:           }
-// CHECK:           %[[VAL_345:.*]] = aie.switchbox(%[[VAL_237]]) {
+// CHECK:           %[[SWITCHBOX_10_2:.*]] = aie.switchbox(%[[TILE_10_2]]) {
 // CHECK:             aie.connect<South : 0, DMA : 0>
 // CHECK:             aie.connect<South : 1, DMA : 1>
 // CHECK:             aie.connect<DMA : 0, West : 0>
@@ -1098,15 +1089,15 @@
 // CHECK:             aie.connect<East : 2, North : 3>
 // CHECK:             aie.connect<North : 1, South : 1>
 // CHECK:           }
-// CHECK:           %[[VAL_346:.*]] = aie.switchbox(%[[VAL_219]]) {
+// CHECK:           %[[SWITCHBOX_7_3:.*]] = aie.switchbox(%[[TILE_7_3]]) {
 // CHECK:             aie.connect<East : 0, DMA : 0>
 // CHECK:             aie.connect<East : 1, DMA : 1>
 // CHECK:             aie.connect<DMA : 0, South : 0>
 // CHECK:             aie.connect<East : 2, North : 0>
 // CHECK:             aie.connect<North : 0, South : 1>
 // CHECK:           }
-// CHECK:           %[[VAL_347:.*]] = aie.tile(8, 1)
-// CHECK:           %[[VAL_348:.*]] = aie.switchbox(%[[VAL_347]]) {
+// CHECK:           %[[TILE_8_1:.*]] = aie.tile(8, 1)
+// CHECK:           %[[SWITCHBOX_8_1:.*]] = aie.switchbox(%[[TILE_8_1]]) {
 // CHECK:             aie.connect<East : 0, North : 0>
 // CHECK:             aie.connect<East : 1, North : 1>
 // CHECK:             aie.connect<North : 0, West : 0>
@@ -1115,7 +1106,7 @@
 // CHECK:             aie.connect<West : 0, East : 0>
 // CHECK:             aie.connect<North : 1, East : 1>
 // CHECK:           }
-// CHECK:           %[[VAL_349:.*]] = aie.switchbox(%[[VAL_200]]) {
+// CHECK:           %[[SWITCHBOX_8_3:.*]] = aie.switchbox(%[[TILE_8_3]]) {
 // CHECK:             aie.connect<South : 0, West : 0>
 // CHECK:             aie.connect<South : 1, West : 1>
 // CHECK:             aie.connect<East : 0, DMA : 0>
@@ -1125,20 +1116,20 @@
 // CHECK:             aie.connect<East : 2, North : 0>
 // CHECK:             aie.connect<North : 0, South : 1>
 // CHECK:           }
-// CHECK:           %[[VAL_350:.*]] = aie.shim_mux(%[[VAL_217]]) {
+// CHECK:           %[[SHIM_MUX_10_0:.*]] = aie.shim_mux(%[[TILE_10_0]]) {
 // CHECK:             aie.connect<DMA : 0, North : 3>
 // CHECK:             aie.connect<DMA : 1, North : 7>
 // CHECK:             aie.connect<North : 2, DMA : 0>
 // CHECK:             aie.connect<North : 3, DMA : 1>
 // CHECK:           }
-// CHECK:           %[[VAL_351:.*]] = aie.switchbox(%[[VAL_235]]) {
+// CHECK:           %[[SWITCHBOX_7_1:.*]] = aie.switchbox(%[[TILE_7_1]]) {
 // CHECK:             aie.connect<North : 0, West : 0>
 // CHECK:             aie.connect<East : 0, West : 1>
 // CHECK:             aie.connect<East : 1, South : 0>
 // CHECK:             aie.connect<East : 2, South : 1>
 // CHECK:             aie.connect<North : 1, East : 0>
 // CHECK:           }
-// CHECK:           %[[VAL_352:.*]] = aie.switchbox(%[[VAL_180]]) {
+// CHECK:           %[[SWITCHBOX_9_3:.*]] = aie.switchbox(%[[TILE_9_3]]) {
 // CHECK:             aie.connect<South : 0, West : 0>
 // CHECK:             aie.connect<South : 1, West : 1>
 // CHECK:             aie.connect<East : 0, DMA : 0>
@@ -1152,7 +1143,7 @@
 // CHECK:             aie.connect<North : 0, South : 1>
 // CHECK:             aie.connect<North : 1, East : 0>
 // CHECK:           }
-// CHECK:           %[[VAL_353:.*]] = aie.switchbox(%[[VAL_198]]) {
+// CHECK:           %[[SWITCHBOX_11_0:.*]] = aie.switchbox(%[[TILE_11_0]]) {
 // CHECK:             aie.connect<South : 3, West : 0>
 // CHECK:             aie.connect<South : 7, West : 1>
 // CHECK:             aie.connect<East : 0, West : 2>
@@ -1162,13 +1153,13 @@
 // CHECK:             aie.connect<North : 0, South : 2>
 // CHECK:             aie.connect<North : 1, South : 3>
 // CHECK:           }
-// CHECK:           %[[VAL_354:.*]] = aie.shim_mux(%[[VAL_198]]) {
+// CHECK:           %[[SHIM_MUX_11_0:.*]] = aie.shim_mux(%[[TILE_11_0]]) {
 // CHECK:             aie.connect<DMA : 0, North : 3>
 // CHECK:             aie.connect<DMA : 1, North : 7>
 // CHECK:             aie.connect<North : 2, DMA : 0>
 // CHECK:             aie.connect<North : 3, DMA : 1>
 // CHECK:           }
-// CHECK:           %[[VAL_355:.*]] = aie.switchbox(%[[VAL_161]]) {
+// CHECK:           %[[SWITCHBOX_10_3:.*]] = aie.switchbox(%[[TILE_10_3]]) {
 // CHECK:             aie.connect<South : 0, West : 0>
 // CHECK:             aie.connect<South : 1, West : 1>
 // CHECK:             aie.connect<East : 0, DMA : 0>
@@ -1181,49 +1172,49 @@
 // CHECK:             aie.connect<North : 0, South : 1>
 // CHECK:             aie.connect<West : 0, East : 0>
 // CHECK:           }
-// CHECK:           %[[VAL_356:.*]] = aie.tile(12, 0)
-// CHECK:           %[[VAL_357:.*]] = aie.switchbox(%[[VAL_356]]) {
+// CHECK:           %[[TILE_12_0:.*]] = aie.tile(12, 0)
+// CHECK:           %[[SWITCHBOX_12_0:.*]] = aie.switchbox(%[[TILE_12_0]]) {
 // CHECK:             aie.connect<East : 0, West : 0>
 // CHECK:             aie.connect<East : 1, West : 1>
 // CHECK:             aie.connect<East : 2, West : 2>
 // CHECK:             aie.connect<East : 3, West : 3>
 // CHECK:           }
-// CHECK:           %[[VAL_358:.*]] = aie.tile(13, 0)
-// CHECK:           %[[VAL_359:.*]] = aie.switchbox(%[[VAL_358]]) {
+// CHECK:           %[[TILE_13_0:.*]] = aie.tile(13, 0)
+// CHECK:           %[[SWITCHBOX_13_0:.*]] = aie.switchbox(%[[TILE_13_0]]) {
 // CHECK:             aie.connect<East : 0, West : 0>
 // CHECK:             aie.connect<East : 1, West : 1>
 // CHECK:             aie.connect<East : 2, West : 2>
 // CHECK:             aie.connect<East : 3, West : 3>
 // CHECK:           }
-// CHECK:           %[[VAL_360:.*]] = aie.tile(14, 0)
-// CHECK:           %[[VAL_361:.*]] = aie.switchbox(%[[VAL_360]]) {
+// CHECK:           %[[TILE_14_0:.*]] = aie.tile(14, 0)
+// CHECK:           %[[SWITCHBOX_14_0:.*]] = aie.switchbox(%[[TILE_14_0]]) {
 // CHECK:             aie.connect<East : 0, West : 0>
 // CHECK:             aie.connect<East : 1, West : 1>
 // CHECK:             aie.connect<East : 2, West : 2>
 // CHECK:             aie.connect<East : 3, West : 3>
 // CHECK:           }
-// CHECK:           %[[VAL_362:.*]] = aie.tile(15, 0)
-// CHECK:           %[[VAL_363:.*]] = aie.switchbox(%[[VAL_362]]) {
+// CHECK:           %[[TILE_15_0:.*]] = aie.tile(15, 0)
+// CHECK:           %[[SWITCHBOX_15_0:.*]] = aie.switchbox(%[[TILE_15_0]]) {
 // CHECK:             aie.connect<East : 0, West : 0>
 // CHECK:             aie.connect<East : 1, West : 1>
 // CHECK:             aie.connect<East : 2, West : 2>
 // CHECK:             aie.connect<East : 3, West : 3>
 // CHECK:           }
-// CHECK:           %[[VAL_364:.*]] = aie.tile(16, 0)
-// CHECK:           %[[VAL_365:.*]] = aie.switchbox(%[[VAL_364]]) {
+// CHECK:           %[[TILE_16_0:.*]] = aie.tile(16, 0)
+// CHECK:           %[[SWITCHBOX_16_0:.*]] = aie.switchbox(%[[TILE_16_0]]) {
 // CHECK:             aie.connect<East : 0, West : 0>
 // CHECK:             aie.connect<East : 1, West : 1>
 // CHECK:             aie.connect<East : 2, West : 2>
 // CHECK:             aie.connect<East : 3, West : 3>
 // CHECK:           }
-// CHECK:           %[[VAL_366:.*]] = aie.tile(17, 0)
-// CHECK:           %[[VAL_367:.*]] = aie.switchbox(%[[VAL_366]]) {
+// CHECK:           %[[TILE_17_0:.*]] = aie.tile(17, 0)
+// CHECK:           %[[SWITCHBOX_17_0:.*]] = aie.switchbox(%[[TILE_17_0]]) {
 // CHECK:             aie.connect<East : 0, West : 0>
 // CHECK:             aie.connect<East : 1, West : 1>
 // CHECK:             aie.connect<East : 2, West : 2>
 // CHECK:             aie.connect<East : 3, West : 3>
 // CHECK:           }
-// CHECK:           %[[VAL_368:.*]] = aie.switchbox(%[[VAL_179]]) {
+// CHECK:           %[[SWITCHBOX_18_0:.*]] = aie.switchbox(%[[TILE_18_0]]) {
 // CHECK:             aie.connect<South : 3, West : 0>
 // CHECK:             aie.connect<South : 7, West : 1>
 // CHECK:             aie.connect<East : 0, West : 2>
@@ -1233,13 +1224,13 @@
 // CHECK:             aie.connect<North : 0, South : 2>
 // CHECK:             aie.connect<North : 1, South : 3>
 // CHECK:           }
-// CHECK:           %[[VAL_369:.*]] = aie.shim_mux(%[[VAL_179]]) {
+// CHECK:           %[[SHIM_MUX_18_0:.*]] = aie.shim_mux(%[[TILE_18_0]]) {
 // CHECK:             aie.connect<DMA : 0, North : 3>
 // CHECK:             aie.connect<DMA : 1, North : 7>
 // CHECK:             aie.connect<North : 2, DMA : 0>
 // CHECK:             aie.connect<North : 3, DMA : 1>
 // CHECK:           }
-// CHECK:           %[[VAL_370:.*]] = aie.switchbox(%[[VAL_197]]) {
+// CHECK:           %[[SWITCHBOX_11_1:.*]] = aie.switchbox(%[[TILE_11_1]]) {
 // CHECK:             aie.connect<South : 0, North : 0>
 // CHECK:             aie.connect<South : 1, North : 1>
 // CHECK:             aie.connect<East : 0, West : 0>
@@ -1249,7 +1240,7 @@
 // CHECK:             aie.connect<West : 0, South : 0>
 // CHECK:             aie.connect<West : 1, South : 1>
 // CHECK:           }
-// CHECK:           %[[VAL_371:.*]] = aie.switchbox(%[[VAL_196]]) {
+// CHECK:           %[[SWITCHBOX_11_2:.*]] = aie.switchbox(%[[TILE_11_2]]) {
 // CHECK:             aie.connect<South : 0, North : 0>
 // CHECK:             aie.connect<South : 1, North : 1>
 // CHECK:             aie.connect<South : 2, West : 0>
@@ -1257,15 +1248,15 @@
 // CHECK:             aie.connect<East : 1, West : 2>
 // CHECK:             aie.connect<North : 0, East : 0>
 // CHECK:           }
-// CHECK:           %[[VAL_372:.*]] = aie.tile(11, 3)
-// CHECK:           %[[VAL_373:.*]] = aie.switchbox(%[[VAL_372]]) {
+// CHECK:           %[[TILE_11_3:.*]] = aie.tile(11, 3)
+// CHECK:           %[[SWITCHBOX_11_3:.*]] = aie.switchbox(%[[TILE_11_3]]) {
 // CHECK:             aie.connect<South : 0, West : 0>
 // CHECK:             aie.connect<South : 1, West : 1>
 // CHECK:             aie.connect<East : 0, West : 2>
 // CHECK:             aie.connect<East : 1, West : 3>
 // CHECK:             aie.connect<West : 0, South : 0>
 // CHECK:           }
-// CHECK:           %[[VAL_374:.*]] = aie.switchbox(%[[VAL_160]]) {
+// CHECK:           %[[SWITCHBOX_19_0:.*]] = aie.switchbox(%[[TILE_19_0]]) {
 // CHECK:             aie.connect<South : 3, West : 0>
 // CHECK:             aie.connect<South : 7, West : 1>
 // CHECK:             aie.connect<East : 0, West : 2>
@@ -1275,55 +1266,55 @@
 // CHECK:             aie.connect<North : 0, South : 2>
 // CHECK:             aie.connect<North : 1, South : 3>
 // CHECK:           }
-// CHECK:           %[[VAL_375:.*]] = aie.shim_mux(%[[VAL_160]]) {
+// CHECK:           %[[SHIM_MUX_19_0:.*]] = aie.shim_mux(%[[TILE_19_0]]) {
 // CHECK:             aie.connect<DMA : 0, North : 3>
 // CHECK:             aie.connect<DMA : 1, North : 7>
 // CHECK:             aie.connect<North : 2, DMA : 0>
 // CHECK:             aie.connect<North : 3, DMA : 1>
 // CHECK:           }
-// CHECK:           %[[VAL_376:.*]] = aie.switchbox(%[[VAL_142]]) {
+// CHECK:           %[[SWITCHBOX_7_4:.*]] = aie.switchbox(%[[TILE_7_4]]) {
 // CHECK:             aie.connect<South : 0, DMA : 0>
 // CHECK:             aie.connect<East : 0, DMA : 1>
 // CHECK:             aie.connect<DMA : 0, South : 0>
 // CHECK:           }
-// CHECK:           %[[VAL_377:.*]] = aie.tile(12, 1)
-// CHECK:           %[[VAL_378:.*]] = aie.switchbox(%[[VAL_377]]) {
+// CHECK:           %[[TILE_12_1:.*]] = aie.tile(12, 1)
+// CHECK:           %[[SWITCHBOX_12_1:.*]] = aie.switchbox(%[[TILE_12_1]]) {
 // CHECK:             aie.connect<East : 0, West : 0>
 // CHECK:             aie.connect<East : 1, West : 1>
 // CHECK:             aie.connect<East : 2, West : 2>
 // CHECK:             aie.connect<East : 3, West : 3>
 // CHECK:           }
-// CHECK:           %[[VAL_379:.*]] = aie.tile(13, 1)
-// CHECK:           %[[VAL_380:.*]] = aie.switchbox(%[[VAL_379]]) {
+// CHECK:           %[[TILE_13_1:.*]] = aie.tile(13, 1)
+// CHECK:           %[[SWITCHBOX_13_1:.*]] = aie.switchbox(%[[TILE_13_1]]) {
 // CHECK:             aie.connect<East : 0, West : 0>
 // CHECK:             aie.connect<East : 1, West : 1>
 // CHECK:             aie.connect<East : 2, West : 2>
 // CHECK:             aie.connect<East : 3, West : 3>
 // CHECK:           }
-// CHECK:           %[[VAL_381:.*]] = aie.tile(14, 1)
-// CHECK:           %[[VAL_382:.*]] = aie.switchbox(%[[VAL_381]]) {
+// CHECK:           %[[TILE_14_1:.*]] = aie.tile(14, 1)
+// CHECK:           %[[SWITCHBOX_14_1:.*]] = aie.switchbox(%[[TILE_14_1]]) {
 // CHECK:             aie.connect<East : 0, West : 0>
 // CHECK:             aie.connect<East : 1, West : 1>
 // CHECK:             aie.connect<East : 2, West : 2>
 // CHECK:             aie.connect<East : 3, West : 3>
 // CHECK:           }
-// CHECK:           %[[VAL_383:.*]] = aie.tile(15, 1)
-// CHECK:           %[[VAL_384:.*]] = aie.switchbox(%[[VAL_383]]) {
+// CHECK:           %[[TILE_15_1:.*]] = aie.tile(15, 1)
+// CHECK:           %[[SWITCHBOX_15_1:.*]] = aie.switchbox(%[[TILE_15_1]]) {
 // CHECK:             aie.connect<East : 0, West : 0>
 // CHECK:             aie.connect<East : 1, West : 1>
 // CHECK:             aie.connect<East : 2, West : 2>
 // CHECK:             aie.connect<East : 3, West : 3>
 // CHECK:           }
-// CHECK:           %[[VAL_385:.*]] = aie.tile(16, 1)
-// CHECK:           %[[VAL_386:.*]] = aie.switchbox(%[[VAL_385]]) {
+// CHECK:           %[[TILE_16_1:.*]] = aie.tile(16, 1)
+// CHECK:           %[[SWITCHBOX_16_1:.*]] = aie.switchbox(%[[TILE_16_1]]) {
 // CHECK:             aie.connect<East : 0, West : 0>
 // CHECK:             aie.connect<East : 1, West : 1>
 // CHECK:             aie.connect<East : 2, West : 2>
 // CHECK:             aie.connect<East : 3, West : 3>
 // CHECK:             aie.connect<North : 0, East : 0>
 // CHECK:           }
-// CHECK:           %[[VAL_387:.*]] = aie.tile(17, 1)
-// CHECK:           %[[VAL_388:.*]] = aie.switchbox(%[[VAL_387]]) {
+// CHECK:           %[[TILE_17_1:.*]] = aie.tile(17, 1)
+// CHECK:           %[[SWITCHBOX_17_1:.*]] = aie.switchbox(%[[TILE_17_1]]) {
 // CHECK:             aie.connect<East : 0, West : 0>
 // CHECK:             aie.connect<East : 1, West : 1>
 // CHECK:             aie.connect<East : 2, West : 2>
@@ -1332,7 +1323,7 @@
 // CHECK:             aie.connect<North : 1, East : 1>
 // CHECK:             aie.connect<West : 0, East : 2>
 // CHECK:           }
-// CHECK:           %[[VAL_389:.*]] = aie.switchbox(%[[VAL_178]]) {
+// CHECK:           %[[SWITCHBOX_18_1:.*]] = aie.switchbox(%[[TILE_18_1]]) {
 // CHECK:             aie.connect<South : 0, West : 0>
 // CHECK:             aie.connect<South : 1, West : 1>
 // CHECK:             aie.connect<East : 0, West : 2>
@@ -1341,49 +1332,49 @@
 // CHECK:             aie.connect<West : 1, South : 1>
 // CHECK:             aie.connect<West : 2, East : 0>
 // CHECK:           }
-// CHECK:           %[[VAL_390:.*]] = aie.tile(20, 0)
-// CHECK:           %[[VAL_391:.*]] = aie.switchbox(%[[VAL_390]]) {
+// CHECK:           %[[TILE_20_0:.*]] = aie.tile(20, 0)
+// CHECK:           %[[SWITCHBOX_20_0:.*]] = aie.switchbox(%[[TILE_20_0]]) {
 // CHECK:             aie.connect<East : 0, West : 0>
 // CHECK:             aie.connect<East : 1, West : 1>
 // CHECK:             aie.connect<East : 2, West : 2>
 // CHECK:             aie.connect<East : 3, West : 3>
 // CHECK:           }
-// CHECK:           %[[VAL_392:.*]] = aie.tile(21, 0)
-// CHECK:           %[[VAL_393:.*]] = aie.switchbox(%[[VAL_392]]) {
+// CHECK:           %[[TILE_21_0:.*]] = aie.tile(21, 0)
+// CHECK:           %[[SWITCHBOX_21_0:.*]] = aie.switchbox(%[[TILE_21_0]]) {
 // CHECK:             aie.connect<East : 0, West : 0>
 // CHECK:             aie.connect<East : 1, West : 1>
 // CHECK:             aie.connect<East : 2, West : 2>
 // CHECK:             aie.connect<East : 3, West : 3>
 // CHECK:           }
-// CHECK:           %[[VAL_394:.*]] = aie.tile(22, 0)
-// CHECK:           %[[VAL_395:.*]] = aie.switchbox(%[[VAL_394]]) {
+// CHECK:           %[[TILE_22_0:.*]] = aie.tile(22, 0)
+// CHECK:           %[[SWITCHBOX_22_0:.*]] = aie.switchbox(%[[TILE_22_0]]) {
 // CHECK:             aie.connect<East : 0, West : 0>
 // CHECK:             aie.connect<East : 1, West : 1>
 // CHECK:             aie.connect<East : 2, West : 2>
 // CHECK:             aie.connect<East : 3, West : 3>
 // CHECK:           }
-// CHECK:           %[[VAL_396:.*]] = aie.tile(23, 0)
-// CHECK:           %[[VAL_397:.*]] = aie.switchbox(%[[VAL_396]]) {
+// CHECK:           %[[TILE_23_0:.*]] = aie.tile(23, 0)
+// CHECK:           %[[SWITCHBOX_23_0:.*]] = aie.switchbox(%[[TILE_23_0]]) {
 // CHECK:             aie.connect<East : 0, West : 0>
 // CHECK:             aie.connect<East : 1, West : 1>
 // CHECK:             aie.connect<East : 2, West : 2>
 // CHECK:             aie.connect<East : 3, West : 3>
 // CHECK:           }
-// CHECK:           %[[VAL_398:.*]] = aie.tile(24, 0)
-// CHECK:           %[[VAL_399:.*]] = aie.switchbox(%[[VAL_398]]) {
+// CHECK:           %[[TILE_24_0:.*]] = aie.tile(24, 0)
+// CHECK:           %[[SWITCHBOX_24_0:.*]] = aie.switchbox(%[[TILE_24_0]]) {
 // CHECK:             aie.connect<East : 0, West : 0>
 // CHECK:             aie.connect<East : 1, West : 1>
 // CHECK:             aie.connect<East : 2, West : 2>
 // CHECK:             aie.connect<East : 3, West : 3>
 // CHECK:           }
-// CHECK:           %[[VAL_400:.*]] = aie.tile(25, 0)
-// CHECK:           %[[VAL_401:.*]] = aie.switchbox(%[[VAL_400]]) {
+// CHECK:           %[[TILE_25_0:.*]] = aie.tile(25, 0)
+// CHECK:           %[[SWITCHBOX_25_0:.*]] = aie.switchbox(%[[TILE_25_0]]) {
 // CHECK:             aie.connect<East : 0, West : 0>
 // CHECK:             aie.connect<East : 1, West : 1>
 // CHECK:             aie.connect<East : 2, West : 2>
 // CHECK:             aie.connect<East : 3, West : 3>
 // CHECK:           }
-// CHECK:           %[[VAL_402:.*]] = aie.switchbox(%[[VAL_140]]) {
+// CHECK:           %[[SWITCHBOX_26_0:.*]] = aie.switchbox(%[[TILE_26_0]]) {
 // CHECK:             aie.connect<South : 3, West : 0>
 // CHECK:             aie.connect<South : 7, West : 1>
 // CHECK:             aie.connect<East : 0, West : 2>
@@ -1391,18 +1382,18 @@
 // CHECK:             aie.connect<East : 2, North : 0>
 // CHECK:             aie.connect<East : 3, North : 1>
 // CHECK:           }
-// CHECK:           %[[VAL_403:.*]] = aie.shim_mux(%[[VAL_140]]) {
+// CHECK:           %[[SHIM_MUX_26_0:.*]] = aie.shim_mux(%[[TILE_26_0]]) {
 // CHECK:             aie.connect<DMA : 0, North : 3>
 // CHECK:             aie.connect<DMA : 1, North : 7>
 // CHECK:           }
-// CHECK:           %[[VAL_404:.*]] = aie.switchbox(%[[VAL_122]]) {
+// CHECK:           %[[SWITCHBOX_8_4:.*]] = aie.switchbox(%[[TILE_8_4]]) {
 // CHECK:             aie.connect<South : 0, West : 0>
 // CHECK:             aie.connect<East : 0, DMA : 0>
 // CHECK:             aie.connect<East : 1, DMA : 1>
 // CHECK:             aie.connect<DMA : 0, South : 0>
 // CHECK:             aie.connect<North : 0, East : 0>
 // CHECK:           }
-// CHECK:           %[[VAL_405:.*]] = aie.switchbox(%[[VAL_102]]) {
+// CHECK:           %[[SWITCHBOX_9_4:.*]] = aie.switchbox(%[[TILE_9_4]]) {
 // CHECK:             aie.connect<South : 0, West : 0>
 // CHECK:             aie.connect<South : 1, West : 1>
 // CHECK:             aie.connect<South : 2, DMA : 0>
@@ -1412,13 +1403,13 @@
 // CHECK:             aie.connect<East : 0, North : 0>
 // CHECK:             aie.connect<East : 1, North : 1>
 // CHECK:           }
-// CHECK:           %[[VAL_406:.*]] = aie.switchbox(%[[VAL_159]]) {
+// CHECK:           %[[SWITCHBOX_19_1:.*]] = aie.switchbox(%[[TILE_19_1]]) {
 // CHECK:             aie.connect<South : 0, West : 0>
 // CHECK:             aie.connect<South : 1, West : 1>
 // CHECK:             aie.connect<North : 0, South : 0>
 // CHECK:             aie.connect<West : 0, South : 1>
 // CHECK:           }
-// CHECK:           %[[VAL_407:.*]] = aie.switchbox(%[[VAL_120]]) {
+// CHECK:           %[[SWITCHBOX_27_0:.*]] = aie.switchbox(%[[TILE_27_0]]) {
 // CHECK:             aie.connect<South : 3, West : 0>
 // CHECK:             aie.connect<South : 7, West : 1>
 // CHECK:             aie.connect<East : 0, West : 2>
@@ -1426,44 +1417,44 @@
 // CHECK:             aie.connect<East : 2, North : 0>
 // CHECK:             aie.connect<East : 3, North : 1>
 // CHECK:           }
-// CHECK:           %[[VAL_408:.*]] = aie.shim_mux(%[[VAL_120]]) {
+// CHECK:           %[[SHIM_MUX_27_0:.*]] = aie.shim_mux(%[[TILE_27_0]]) {
 // CHECK:             aie.connect<DMA : 0, North : 3>
 // CHECK:             aie.connect<DMA : 1, North : 7>
 // CHECK:           }
-// CHECK:           %[[VAL_409:.*]] = aie.tile(12, 2)
-// CHECK:           %[[VAL_410:.*]] = aie.switchbox(%[[VAL_409]]) {
+// CHECK:           %[[TILE_12_2:.*]] = aie.tile(12, 2)
+// CHECK:           %[[SWITCHBOX_12_2:.*]] = aie.switchbox(%[[TILE_12_2]]) {
 // CHECK:             aie.connect<East : 0, West : 0>
 // CHECK:             aie.connect<East : 1, West : 1>
 // CHECK:             aie.connect<West : 0, East : 0>
 // CHECK:           }
-// CHECK:           %[[VAL_411:.*]] = aie.tile(13, 2)
-// CHECK:           %[[VAL_412:.*]] = aie.switchbox(%[[VAL_411]]) {
+// CHECK:           %[[TILE_13_2:.*]] = aie.tile(13, 2)
+// CHECK:           %[[SWITCHBOX_13_2:.*]] = aie.switchbox(%[[TILE_13_2]]) {
 // CHECK:             aie.connect<East : 0, West : 0>
 // CHECK:             aie.connect<East : 1, West : 1>
 // CHECK:             aie.connect<West : 0, East : 0>
 // CHECK:           }
-// CHECK:           %[[VAL_413:.*]] = aie.tile(14, 2)
-// CHECK:           %[[VAL_414:.*]] = aie.switchbox(%[[VAL_413]]) {
+// CHECK:           %[[TILE_14_2:.*]] = aie.tile(14, 2)
+// CHECK:           %[[SWITCHBOX_14_2:.*]] = aie.switchbox(%[[TILE_14_2]]) {
 // CHECK:             aie.connect<East : 0, West : 0>
 // CHECK:             aie.connect<East : 1, West : 1>
 // CHECK:             aie.connect<West : 0, East : 0>
 // CHECK:           }
-// CHECK:           %[[VAL_415:.*]] = aie.tile(15, 2)
-// CHECK:           %[[VAL_416:.*]] = aie.switchbox(%[[VAL_415]]) {
+// CHECK:           %[[TILE_15_2:.*]] = aie.tile(15, 2)
+// CHECK:           %[[SWITCHBOX_15_2:.*]] = aie.switchbox(%[[TILE_15_2]]) {
 // CHECK:             aie.connect<East : 0, West : 0>
 // CHECK:             aie.connect<East : 1, West : 1>
 // CHECK:             aie.connect<West : 0, East : 0>
 // CHECK:             aie.connect<North : 0, East : 1>
 // CHECK:           }
-// CHECK:           %[[VAL_417:.*]] = aie.tile(16, 2)
-// CHECK:           %[[VAL_418:.*]] = aie.switchbox(%[[VAL_417]]) {
+// CHECK:           %[[TILE_16_2:.*]] = aie.tile(16, 2)
+// CHECK:           %[[SWITCHBOX_16_2:.*]] = aie.switchbox(%[[TILE_16_2]]) {
 // CHECK:             aie.connect<East : 0, West : 0>
 // CHECK:             aie.connect<East : 1, West : 1>
 // CHECK:             aie.connect<West : 0, East : 0>
 // CHECK:             aie.connect<West : 1, South : 0>
 // CHECK:           }
-// CHECK:           %[[VAL_419:.*]] = aie.tile(17, 2)
-// CHECK:           %[[VAL_420:.*]] = aie.switchbox(%[[VAL_419]]) {
+// CHECK:           %[[TILE_17_2:.*]] = aie.tile(17, 2)
+// CHECK:           %[[SWITCHBOX_17_2:.*]] = aie.switchbox(%[[TILE_17_2]]) {
 // CHECK:             aie.connect<East : 0, West : 0>
 // CHECK:             aie.connect<East : 1, West : 1>
 // CHECK:             aie.connect<North : 0, South : 0>
@@ -1471,28 +1462,28 @@
 // CHECK:             aie.connect<East : 3, North : 1>
 // CHECK:             aie.connect<West : 0, South : 1>
 // CHECK:           }
-// CHECK:           %[[VAL_421:.*]] = aie.switchbox(%[[VAL_177]]) {
+// CHECK:           %[[SWITCHBOX_18_2:.*]] = aie.switchbox(%[[TILE_18_2]]) {
 // CHECK:             aie.connect<East : 0, West : 0>
 // CHECK:             aie.connect<East : 1, West : 1>
 // CHECK:             aie.connect<East : 2, West : 2>
 // CHECK:             aie.connect<East : 3, West : 3>
 // CHECK:           }
-// CHECK:           %[[VAL_422:.*]] = aie.switchbox(%[[VAL_158]]) {
+// CHECK:           %[[SWITCHBOX_19_2:.*]] = aie.switchbox(%[[TILE_19_2]]) {
 // CHECK:             aie.connect<East : 0, West : 0>
 // CHECK:             aie.connect<East : 1, West : 1>
 // CHECK:             aie.connect<East : 2, West : 2>
 // CHECK:             aie.connect<East : 3, West : 3>
 // CHECK:             aie.connect<North : 0, South : 0>
 // CHECK:           }
-// CHECK:           %[[VAL_423:.*]] = aie.tile(20, 1)
-// CHECK:           %[[VAL_424:.*]] = aie.switchbox(%[[VAL_423]]) {
+// CHECK:           %[[TILE_20_1:.*]] = aie.tile(20, 1)
+// CHECK:           %[[SWITCHBOX_20_1:.*]] = aie.switchbox(%[[TILE_20_1]]) {
 // CHECK:             aie.connect<East : 0, North : 0>
 // CHECK:             aie.connect<East : 1, North : 1>
 // CHECK:             aie.connect<East : 2, North : 2>
 // CHECK:             aie.connect<East : 3, North : 3>
 // CHECK:           }
-// CHECK:           %[[VAL_425:.*]] = aie.tile(20, 2)
-// CHECK:           %[[VAL_426:.*]] = aie.switchbox(%[[VAL_425]]) {
+// CHECK:           %[[TILE_20_2:.*]] = aie.tile(20, 2)
+// CHECK:           %[[SWITCHBOX_20_2:.*]] = aie.switchbox(%[[TILE_20_2]]) {
 // CHECK:             aie.connect<South : 0, West : 0>
 // CHECK:             aie.connect<South : 1, West : 1>
 // CHECK:             aie.connect<South : 2, North : 0>
@@ -1500,42 +1491,42 @@
 // CHECK:             aie.connect<East : 0, West : 2>
 // CHECK:             aie.connect<East : 1, West : 3>
 // CHECK:           }
-// CHECK:           %[[VAL_427:.*]] = aie.tile(21, 1)
-// CHECK:           %[[VAL_428:.*]] = aie.switchbox(%[[VAL_427]]) {
+// CHECK:           %[[TILE_21_1:.*]] = aie.tile(21, 1)
+// CHECK:           %[[SWITCHBOX_21_1:.*]] = aie.switchbox(%[[TILE_21_1]]) {
 // CHECK:             aie.connect<East : 0, West : 0>
 // CHECK:             aie.connect<East : 1, West : 1>
 // CHECK:             aie.connect<East : 2, West : 2>
 // CHECK:             aie.connect<East : 3, West : 3>
 // CHECK:           }
-// CHECK:           %[[VAL_429:.*]] = aie.tile(22, 1)
-// CHECK:           %[[VAL_430:.*]] = aie.switchbox(%[[VAL_429]]) {
+// CHECK:           %[[TILE_22_1:.*]] = aie.tile(22, 1)
+// CHECK:           %[[SWITCHBOX_22_1:.*]] = aie.switchbox(%[[TILE_22_1]]) {
 // CHECK:             aie.connect<East : 0, West : 0>
 // CHECK:             aie.connect<East : 1, West : 1>
 // CHECK:             aie.connect<East : 2, West : 2>
 // CHECK:             aie.connect<East : 3, West : 3>
 // CHECK:           }
-// CHECK:           %[[VAL_431:.*]] = aie.tile(23, 1)
-// CHECK:           %[[VAL_432:.*]] = aie.switchbox(%[[VAL_431]]) {
+// CHECK:           %[[TILE_23_1:.*]] = aie.tile(23, 1)
+// CHECK:           %[[SWITCHBOX_23_1:.*]] = aie.switchbox(%[[TILE_23_1]]) {
 // CHECK:             aie.connect<East : 0, West : 0>
 // CHECK:             aie.connect<East : 1, West : 1>
 // CHECK:             aie.connect<East : 2, West : 2>
 // CHECK:             aie.connect<East : 3, West : 3>
 // CHECK:           }
-// CHECK:           %[[VAL_433:.*]] = aie.tile(24, 1)
-// CHECK:           %[[VAL_434:.*]] = aie.switchbox(%[[VAL_433]]) {
+// CHECK:           %[[TILE_24_1:.*]] = aie.tile(24, 1)
+// CHECK:           %[[SWITCHBOX_24_1:.*]] = aie.switchbox(%[[TILE_24_1]]) {
 // CHECK:             aie.connect<East : 0, West : 0>
 // CHECK:             aie.connect<East : 1, West : 1>
 // CHECK:             aie.connect<East : 2, West : 2>
 // CHECK:             aie.connect<East : 3, West : 3>
 // CHECK:           }
-// CHECK:           %[[VAL_435:.*]] = aie.tile(25, 1)
-// CHECK:           %[[VAL_436:.*]] = aie.switchbox(%[[VAL_435]]) {
+// CHECK:           %[[TILE_25_1:.*]] = aie.tile(25, 1)
+// CHECK:           %[[SWITCHBOX_25_1:.*]] = aie.switchbox(%[[TILE_25_1]]) {
 // CHECK:             aie.connect<East : 0, West : 0>
 // CHECK:             aie.connect<East : 1, West : 1>
 // CHECK:             aie.connect<East : 2, West : 2>
 // CHECK:             aie.connect<East : 3, West : 3>
 // CHECK:           }
-// CHECK:           %[[VAL_437:.*]] = aie.switchbox(%[[VAL_139]]) {
+// CHECK:           %[[SWITCHBOX_26_1:.*]] = aie.switchbox(%[[TILE_26_1]]) {
 // CHECK:             aie.connect<South : 0, West : 0>
 // CHECK:             aie.connect<South : 1, West : 1>
 // CHECK:             aie.connect<East : 0, West : 2>
@@ -1543,49 +1534,49 @@
 // CHECK:             aie.connect<East : 2, North : 0>
 // CHECK:             aie.connect<East : 3, North : 1>
 // CHECK:           }
-// CHECK:           %[[VAL_438:.*]] = aie.tile(28, 0)
-// CHECK:           %[[VAL_439:.*]] = aie.switchbox(%[[VAL_438]]) {
+// CHECK:           %[[TILE_28_0:.*]] = aie.tile(28, 0)
+// CHECK:           %[[SWITCHBOX_28_0:.*]] = aie.switchbox(%[[TILE_28_0]]) {
 // CHECK:             aie.connect<East : 0, West : 0>
 // CHECK:             aie.connect<East : 1, West : 1>
 // CHECK:             aie.connect<East : 2, West : 2>
 // CHECK:             aie.connect<East : 3, West : 3>
 // CHECK:           }
-// CHECK:           %[[VAL_440:.*]] = aie.tile(29, 0)
-// CHECK:           %[[VAL_441:.*]] = aie.switchbox(%[[VAL_440]]) {
+// CHECK:           %[[TILE_29_0:.*]] = aie.tile(29, 0)
+// CHECK:           %[[SWITCHBOX_29_0:.*]] = aie.switchbox(%[[TILE_29_0]]) {
 // CHECK:             aie.connect<East : 0, West : 0>
 // CHECK:             aie.connect<East : 1, West : 1>
 // CHECK:             aie.connect<East : 2, West : 2>
 // CHECK:             aie.connect<East : 3, West : 3>
 // CHECK:           }
-// CHECK:           %[[VAL_442:.*]] = aie.tile(30, 0)
-// CHECK:           %[[VAL_443:.*]] = aie.switchbox(%[[VAL_442]]) {
+// CHECK:           %[[TILE_30_0:.*]] = aie.tile(30, 0)
+// CHECK:           %[[SWITCHBOX_30_0:.*]] = aie.switchbox(%[[TILE_30_0]]) {
 // CHECK:             aie.connect<East : 0, West : 0>
 // CHECK:             aie.connect<East : 1, West : 1>
 // CHECK:             aie.connect<East : 2, West : 2>
 // CHECK:             aie.connect<East : 3, West : 3>
 // CHECK:           }
-// CHECK:           %[[VAL_444:.*]] = aie.tile(31, 0)
-// CHECK:           %[[VAL_445:.*]] = aie.switchbox(%[[VAL_444]]) {
+// CHECK:           %[[TILE_31_0:.*]] = aie.tile(31, 0)
+// CHECK:           %[[SWITCHBOX_31_0:.*]] = aie.switchbox(%[[TILE_31_0]]) {
 // CHECK:             aie.connect<East : 0, West : 0>
 // CHECK:             aie.connect<East : 1, West : 1>
 // CHECK:             aie.connect<East : 2, West : 2>
 // CHECK:             aie.connect<East : 3, West : 3>
 // CHECK:           }
-// CHECK:           %[[VAL_446:.*]] = aie.tile(32, 0)
-// CHECK:           %[[VAL_447:.*]] = aie.switchbox(%[[VAL_446]]) {
+// CHECK:           %[[TILE_32_0:.*]] = aie.tile(32, 0)
+// CHECK:           %[[SWITCHBOX_32_0:.*]] = aie.switchbox(%[[TILE_32_0]]) {
 // CHECK:             aie.connect<East : 0, West : 0>
 // CHECK:             aie.connect<East : 1, West : 1>
 // CHECK:             aie.connect<East : 2, West : 2>
 // CHECK:             aie.connect<East : 3, West : 3>
 // CHECK:           }
-// CHECK:           %[[VAL_448:.*]] = aie.tile(33, 0)
-// CHECK:           %[[VAL_449:.*]] = aie.switchbox(%[[VAL_448]]) {
+// CHECK:           %[[TILE_33_0:.*]] = aie.tile(33, 0)
+// CHECK:           %[[SWITCHBOX_33_0:.*]] = aie.switchbox(%[[TILE_33_0]]) {
 // CHECK:             aie.connect<East : 0, West : 0>
 // CHECK:             aie.connect<East : 1, West : 1>
 // CHECK:             aie.connect<East : 2, West : 2>
 // CHECK:             aie.connect<East : 3, West : 3>
 // CHECK:           }
-// CHECK:           %[[VAL_450:.*]] = aie.switchbox(%[[VAL_101]]) {
+// CHECK:           %[[SWITCHBOX_34_0:.*]] = aie.switchbox(%[[TILE_34_0]]) {
 // CHECK:             aie.connect<South : 3, West : 0>
 // CHECK:             aie.connect<South : 7, West : 1>
 // CHECK:             aie.connect<East : 0, West : 2>
@@ -1593,11 +1584,11 @@
 // CHECK:             aie.connect<East : 2, North : 0>
 // CHECK:             aie.connect<East : 3, North : 1>
 // CHECK:           }
-// CHECK:           %[[VAL_451:.*]] = aie.shim_mux(%[[VAL_101]]) {
+// CHECK:           %[[SHIM_MUX_34_0:.*]] = aie.shim_mux(%[[TILE_34_0]]) {
 // CHECK:             aie.connect<DMA : 0, North : 3>
 // CHECK:             aie.connect<DMA : 1, North : 7>
 // CHECK:           }
-// CHECK:           %[[VAL_452:.*]] = aie.switchbox(%[[VAL_83]]) {
+// CHECK:           %[[SWITCHBOX_10_4:.*]] = aie.switchbox(%[[TILE_10_4]]) {
 // CHECK:             aie.connect<South : 0, DMA : 0>
 // CHECK:             aie.connect<South : 1, DMA : 1>
 // CHECK:             aie.connect<DMA : 0, South : 0>
@@ -1606,24 +1597,24 @@
 // CHECK:             aie.connect<East : 2, West : 0>
 // CHECK:             aie.connect<East : 3, West : 1>
 // CHECK:           }
-// CHECK:           %[[VAL_453:.*]] = aie.tile(12, 3)
-// CHECK:           %[[VAL_454:.*]] = aie.switchbox(%[[VAL_453]]) {
+// CHECK:           %[[TILE_12_3:.*]] = aie.tile(12, 3)
+// CHECK:           %[[SWITCHBOX_12_3:.*]] = aie.switchbox(%[[TILE_12_3]]) {
 // CHECK:             aie.connect<East : 0, West : 0>
 // CHECK:             aie.connect<East : 1, West : 1>
 // CHECK:           }
-// CHECK:           %[[VAL_455:.*]] = aie.tile(13, 3)
-// CHECK:           %[[VAL_456:.*]] = aie.switchbox(%[[VAL_455]]) {
+// CHECK:           %[[TILE_13_3:.*]] = aie.tile(13, 3)
+// CHECK:           %[[SWITCHBOX_13_3:.*]] = aie.switchbox(%[[TILE_13_3]]) {
 // CHECK:             aie.connect<East : 0, West : 0>
 // CHECK:             aie.connect<East : 1, West : 1>
 // CHECK:           }
-// CHECK:           %[[VAL_457:.*]] = aie.tile(14, 3)
-// CHECK:           %[[VAL_458:.*]] = aie.switchbox(%[[VAL_457]]) {
+// CHECK:           %[[TILE_14_3:.*]] = aie.tile(14, 3)
+// CHECK:           %[[SWITCHBOX_14_3:.*]] = aie.switchbox(%[[TILE_14_3]]) {
 // CHECK:             aie.connect<East : 0, West : 0>
 // CHECK:             aie.connect<East : 1, West : 1>
 // CHECK:             aie.connect<North : 0, East : 0>
 // CHECK:           }
-// CHECK:           %[[VAL_459:.*]] = aie.tile(15, 3)
-// CHECK:           %[[VAL_460:.*]] = aie.switchbox(%[[VAL_459]]) {
+// CHECK:           %[[TILE_15_3:.*]] = aie.tile(15, 3)
+// CHECK:           %[[SWITCHBOX_15_3:.*]] = aie.switchbox(%[[TILE_15_3]]) {
 // CHECK:             aie.connect<East : 0, West : 0>
 // CHECK:             aie.connect<East : 1, West : 1>
 // CHECK:             aie.connect<East : 2, North : 0>
@@ -1631,16 +1622,16 @@
 // CHECK:             aie.connect<North : 0, East : 0>
 // CHECK:             aie.connect<West : 0, South : 0>
 // CHECK:           }
-// CHECK:           %[[VAL_461:.*]] = aie.tile(16, 3)
-// CHECK:           %[[VAL_462:.*]] = aie.switchbox(%[[VAL_461]]) {
+// CHECK:           %[[TILE_16_3:.*]] = aie.tile(16, 3)
+// CHECK:           %[[SWITCHBOX_16_3:.*]] = aie.switchbox(%[[TILE_16_3]]) {
 // CHECK:             aie.connect<East : 0, West : 0>
 // CHECK:             aie.connect<East : 1, West : 1>
 // CHECK:             aie.connect<East : 2, West : 2>
 // CHECK:             aie.connect<East : 3, West : 3>
 // CHECK:             aie.connect<West : 0, East : 0>
 // CHECK:           }
-// CHECK:           %[[VAL_463:.*]] = aie.tile(17, 3)
-// CHECK:           %[[VAL_464:.*]] = aie.switchbox(%[[VAL_463]]) {
+// CHECK:           %[[TILE_17_3:.*]] = aie.tile(17, 3)
+// CHECK:           %[[SWITCHBOX_17_3:.*]] = aie.switchbox(%[[TILE_17_3]]) {
 // CHECK:             aie.connect<East : 0, West : 0>
 // CHECK:             aie.connect<East : 1, West : 1>
 // CHECK:             aie.connect<East : 2, West : 2>
@@ -1649,23 +1640,23 @@
 // CHECK:             aie.connect<South : 0, North : 0>
 // CHECK:             aie.connect<South : 1, North : 1>
 // CHECK:           }
-// CHECK:           %[[VAL_465:.*]] = aie.tile(18, 3)
-// CHECK:           %[[VAL_466:.*]] = aie.switchbox(%[[VAL_465]]) {
+// CHECK:           %[[TILE_18_3:.*]] = aie.tile(18, 3)
+// CHECK:           %[[SWITCHBOX_18_3:.*]] = aie.switchbox(%[[TILE_18_3]]) {
 // CHECK:             aie.connect<East : 0, West : 0>
 // CHECK:             aie.connect<East : 1, West : 1>
 // CHECK:             aie.connect<East : 2, West : 2>
 // CHECK:             aie.connect<East : 3, West : 3>
 // CHECK:           }
-// CHECK:           %[[VAL_467:.*]] = aie.tile(19, 3)
-// CHECK:           %[[VAL_468:.*]] = aie.switchbox(%[[VAL_467]]) {
+// CHECK:           %[[TILE_19_3:.*]] = aie.tile(19, 3)
+// CHECK:           %[[SWITCHBOX_19_3:.*]] = aie.switchbox(%[[TILE_19_3]]) {
 // CHECK:             aie.connect<East : 0, West : 0>
 // CHECK:             aie.connect<East : 1, West : 1>
 // CHECK:             aie.connect<East : 2, West : 2>
 // CHECK:             aie.connect<East : 3, West : 3>
 // CHECK:             aie.connect<North : 0, South : 0>
 // CHECK:           }
-// CHECK:           %[[VAL_469:.*]] = aie.tile(20, 3)
-// CHECK:           %[[VAL_470:.*]] = aie.switchbox(%[[VAL_469]]) {
+// CHECK:           %[[TILE_20_3:.*]] = aie.tile(20, 3)
+// CHECK:           %[[SWITCHBOX_20_3:.*]] = aie.switchbox(%[[TILE_20_3]]) {
 // CHECK:             aie.connect<South : 0, West : 0>
 // CHECK:             aie.connect<South : 1, West : 1>
 // CHECK:             aie.connect<East : 0, West : 2>
@@ -1673,7 +1664,7 @@
 // CHECK:             aie.connect<East : 2, North : 0>
 // CHECK:             aie.connect<East : 3, North : 1>
 // CHECK:           }
-// CHECK:           %[[VAL_471:.*]] = aie.switchbox(%[[VAL_119]]) {
+// CHECK:           %[[SWITCHBOX_27_1:.*]] = aie.switchbox(%[[TILE_27_1]]) {
 // CHECK:             aie.connect<South : 0, West : 0>
 // CHECK:             aie.connect<South : 1, West : 1>
 // CHECK:             aie.connect<East : 0, West : 2>
@@ -1681,7 +1672,7 @@
 // CHECK:             aie.connect<East : 2, North : 0>
 // CHECK:             aie.connect<East : 3, North : 1>
 // CHECK:           }
-// CHECK:           %[[VAL_472:.*]] = aie.switchbox(%[[VAL_82]]) {
+// CHECK:           %[[SWITCHBOX_35_0:.*]] = aie.switchbox(%[[TILE_35_0]]) {
 // CHECK:             aie.connect<South : 3, West : 0>
 // CHECK:             aie.connect<South : 7, West : 1>
 // CHECK:             aie.connect<East : 0, West : 2>
@@ -1689,16 +1680,16 @@
 // CHECK:             aie.connect<East : 2, North : 0>
 // CHECK:             aie.connect<East : 3, North : 1>
 // CHECK:           }
-// CHECK:           %[[VAL_473:.*]] = aie.shim_mux(%[[VAL_82]]) {
+// CHECK:           %[[SHIM_MUX_35_0:.*]] = aie.shim_mux(%[[TILE_35_0]]) {
 // CHECK:             aie.connect<DMA : 0, North : 3>
 // CHECK:             aie.connect<DMA : 1, North : 7>
 // CHECK:           }
-// CHECK:           %[[VAL_474:.*]] = aie.switchbox(%[[VAL_64]]) {
+// CHECK:           %[[SWITCHBOX_7_5:.*]] = aie.switchbox(%[[TILE_7_5]]) {
 // CHECK:             aie.connect<East : 0, DMA : 0>
 // CHECK:             aie.connect<East : 1, DMA : 1>
 // CHECK:             aie.connect<DMA : 0, East : 0>
 // CHECK:           }
-// CHECK:           %[[VAL_475:.*]] = aie.switchbox(%[[VAL_44]]) {
+// CHECK:           %[[SWITCHBOX_8_5:.*]] = aie.switchbox(%[[TILE_8_5]]) {
 // CHECK:             aie.connect<East : 0, West : 0>
 // CHECK:             aie.connect<East : 1, West : 1>
 // CHECK:             aie.connect<West : 0, East : 0>
@@ -1706,7 +1697,7 @@
 // CHECK:             aie.connect<East : 3, DMA : 1>
 // CHECK:             aie.connect<DMA : 0, South : 0>
 // CHECK:           }
-// CHECK:           %[[VAL_476:.*]] = aie.switchbox(%[[VAL_24]]) {
+// CHECK:           %[[SWITCHBOX_9_5:.*]] = aie.switchbox(%[[TILE_9_5]]) {
 // CHECK:             aie.connect<East : 0, West : 0>
 // CHECK:             aie.connect<East : 1, West : 1>
 // CHECK:             aie.connect<West : 0, East : 0>
@@ -1716,7 +1707,7 @@
 // CHECK:             aie.connect<South : 1, DMA : 1>
 // CHECK:             aie.connect<DMA : 0, East : 1>
 // CHECK:           }
-// CHECK:           %[[VAL_477:.*]] = aie.switchbox(%[[VAL_4]]) {
+// CHECK:           %[[SWITCHBOX_10_5:.*]] = aie.switchbox(%[[TILE_10_5]]) {
 // CHECK:             aie.connect<East : 0, West : 0>
 // CHECK:             aie.connect<East : 1, West : 1>
 // CHECK:             aie.connect<West : 0, East : 0>
@@ -1727,8 +1718,8 @@
 // CHECK:             aie.connect<East : 3, DMA : 1>
 // CHECK:             aie.connect<DMA : 0, East : 2>
 // CHECK:           }
-// CHECK:           %[[VAL_478:.*]] = aie.tile(11, 5)
-// CHECK:           %[[VAL_479:.*]] = aie.switchbox(%[[VAL_478]]) {
+// CHECK:           %[[TILE_11_5:.*]] = aie.tile(11, 5)
+// CHECK:           %[[SWITCHBOX_11_5:.*]] = aie.switchbox(%[[TILE_11_5]]) {
 // CHECK:             aie.connect<East : 0, West : 0>
 // CHECK:             aie.connect<East : 1, West : 1>
 // CHECK:             aie.connect<West : 0, East : 0>
@@ -1737,8 +1728,8 @@
 // CHECK:             aie.connect<East : 3, West : 3>
 // CHECK:             aie.connect<West : 2, East : 2>
 // CHECK:           }
-// CHECK:           %[[VAL_480:.*]] = aie.tile(12, 5)
-// CHECK:           %[[VAL_481:.*]] = aie.switchbox(%[[VAL_480]]) {
+// CHECK:           %[[TILE_12_5:.*]] = aie.tile(12, 5)
+// CHECK:           %[[SWITCHBOX_12_5:.*]] = aie.switchbox(%[[TILE_12_5]]) {
 // CHECK:             aie.connect<East : 0, West : 0>
 // CHECK:             aie.connect<East : 1, West : 1>
 // CHECK:             aie.connect<West : 0, East : 0>
@@ -1747,8 +1738,8 @@
 // CHECK:             aie.connect<East : 3, West : 3>
 // CHECK:             aie.connect<West : 2, East : 2>
 // CHECK:           }
-// CHECK:           %[[VAL_482:.*]] = aie.tile(13, 5)
-// CHECK:           %[[VAL_483:.*]] = aie.switchbox(%[[VAL_482]]) {
+// CHECK:           %[[TILE_13_5:.*]] = aie.tile(13, 5)
+// CHECK:           %[[SWITCHBOX_13_5:.*]] = aie.switchbox(%[[TILE_13_5]]) {
 // CHECK:             aie.connect<East : 0, West : 0>
 // CHECK:             aie.connect<East : 1, West : 1>
 // CHECK:             aie.connect<West : 0, East : 0>
@@ -1757,8 +1748,8 @@
 // CHECK:             aie.connect<East : 3, West : 3>
 // CHECK:             aie.connect<West : 2, South : 0>
 // CHECK:           }
-// CHECK:           %[[VAL_484:.*]] = aie.tile(14, 5)
-// CHECK:           %[[VAL_485:.*]] = aie.switchbox(%[[VAL_484]]) {
+// CHECK:           %[[TILE_14_5:.*]] = aie.tile(14, 5)
+// CHECK:           %[[SWITCHBOX_14_5:.*]] = aie.switchbox(%[[TILE_14_5]]) {
 // CHECK:             aie.connect<East : 0, West : 0>
 // CHECK:             aie.connect<East : 1, West : 1>
 // CHECK:             aie.connect<West : 0, East : 0>
@@ -1766,8 +1757,8 @@
 // CHECK:             aie.connect<East : 2, West : 2>
 // CHECK:             aie.connect<East : 3, West : 3>
 // CHECK:           }
-// CHECK:           %[[VAL_486:.*]] = aie.tile(15, 4)
-// CHECK:           %[[VAL_487:.*]] = aie.switchbox(%[[VAL_486]]) {
+// CHECK:           %[[TILE_15_4:.*]] = aie.tile(15, 4)
+// CHECK:           %[[SWITCHBOX_15_4:.*]] = aie.switchbox(%[[TILE_15_4]]) {
 // CHECK:             aie.connect<South : 0, North : 0>
 // CHECK:             aie.connect<South : 1, North : 1>
 // CHECK:             aie.connect<North : 0, South : 0>
@@ -1776,8 +1767,8 @@
 // CHECK:             aie.connect<East : 2, West : 2>
 // CHECK:             aie.connect<East : 3, West : 3>
 // CHECK:           }
-// CHECK:           %[[VAL_488:.*]] = aie.tile(15, 5)
-// CHECK:           %[[VAL_489:.*]] = aie.switchbox(%[[VAL_488]]) {
+// CHECK:           %[[TILE_15_5:.*]] = aie.tile(15, 5)
+// CHECK:           %[[SWITCHBOX_15_5:.*]] = aie.switchbox(%[[TILE_15_5]]) {
 // CHECK:             aie.connect<South : 0, West : 0>
 // CHECK:             aie.connect<South : 1, West : 1>
 // CHECK:             aie.connect<West : 0, South : 0>
@@ -1785,49 +1776,49 @@
 // CHECK:             aie.connect<East : 0, West : 2>
 // CHECK:             aie.connect<East : 1, West : 3>
 // CHECK:           }
-// CHECK:           %[[VAL_490:.*]] = aie.tile(21, 3)
-// CHECK:           %[[VAL_491:.*]] = aie.switchbox(%[[VAL_490]]) {
+// CHECK:           %[[TILE_21_3:.*]] = aie.tile(21, 3)
+// CHECK:           %[[SWITCHBOX_21_3:.*]] = aie.switchbox(%[[TILE_21_3]]) {
 // CHECK:             aie.connect<East : 0, West : 0>
 // CHECK:             aie.connect<East : 1, West : 1>
 // CHECK:             aie.connect<East : 2, West : 2>
 // CHECK:             aie.connect<East : 3, West : 3>
 // CHECK:           }
-// CHECK:           %[[VAL_492:.*]] = aie.tile(22, 3)
-// CHECK:           %[[VAL_493:.*]] = aie.switchbox(%[[VAL_492]]) {
+// CHECK:           %[[TILE_22_3:.*]] = aie.tile(22, 3)
+// CHECK:           %[[SWITCHBOX_22_3:.*]] = aie.switchbox(%[[TILE_22_3]]) {
 // CHECK:             aie.connect<East : 0, West : 0>
 // CHECK:             aie.connect<East : 1, West : 1>
 // CHECK:             aie.connect<East : 2, West : 2>
 // CHECK:             aie.connect<East : 3, West : 3>
 // CHECK:           }
-// CHECK:           %[[VAL_494:.*]] = aie.tile(23, 3)
-// CHECK:           %[[VAL_495:.*]] = aie.switchbox(%[[VAL_494]]) {
+// CHECK:           %[[TILE_23_3:.*]] = aie.tile(23, 3)
+// CHECK:           %[[SWITCHBOX_23_3:.*]] = aie.switchbox(%[[TILE_23_3]]) {
 // CHECK:             aie.connect<East : 0, West : 0>
 // CHECK:             aie.connect<East : 1, West : 1>
 // CHECK:             aie.connect<East : 2, West : 2>
 // CHECK:             aie.connect<East : 3, West : 3>
 // CHECK:           }
-// CHECK:           %[[VAL_496:.*]] = aie.tile(24, 2)
-// CHECK:           %[[VAL_497:.*]] = aie.switchbox(%[[VAL_496]]) {
+// CHECK:           %[[TILE_24_2:.*]] = aie.tile(24, 2)
+// CHECK:           %[[SWITCHBOX_24_2:.*]] = aie.switchbox(%[[TILE_24_2]]) {
 // CHECK:             aie.connect<East : 0, North : 0>
 // CHECK:             aie.connect<East : 1, North : 1>
 // CHECK:             aie.connect<East : 2, West : 0>
 // CHECK:             aie.connect<East : 3, West : 1>
 // CHECK:           }
-// CHECK:           %[[VAL_498:.*]] = aie.tile(24, 3)
-// CHECK:           %[[VAL_499:.*]] = aie.switchbox(%[[VAL_498]]) {
+// CHECK:           %[[TILE_24_3:.*]] = aie.tile(24, 3)
+// CHECK:           %[[SWITCHBOX_24_3:.*]] = aie.switchbox(%[[TILE_24_3]]) {
 // CHECK:             aie.connect<South : 0, West : 0>
 // CHECK:             aie.connect<South : 1, West : 1>
 // CHECK:             aie.connect<East : 0, West : 2>
 // CHECK:             aie.connect<East : 1, West : 3>
 // CHECK:           }
-// CHECK:           %[[VAL_500:.*]] = aie.tile(25, 2)
-// CHECK:           %[[VAL_501:.*]] = aie.switchbox(%[[VAL_500]]) {
+// CHECK:           %[[TILE_25_2:.*]] = aie.tile(25, 2)
+// CHECK:           %[[SWITCHBOX_25_2:.*]] = aie.switchbox(%[[TILE_25_2]]) {
 // CHECK:             aie.connect<East : 0, West : 0>
 // CHECK:             aie.connect<East : 1, West : 1>
 // CHECK:             aie.connect<East : 2, West : 2>
 // CHECK:             aie.connect<East : 3, West : 3>
 // CHECK:           }
-// CHECK:           %[[VAL_502:.*]] = aie.switchbox(%[[VAL_138]]) {
+// CHECK:           %[[SWITCHBOX_26_2:.*]] = aie.switchbox(%[[TILE_26_2]]) {
 // CHECK:             aie.connect<South : 0, West : 0>
 // CHECK:             aie.connect<South : 1, West : 1>
 // CHECK:             aie.connect<East : 0, West : 2>
@@ -1835,97 +1826,97 @@
 // CHECK:             aie.connect<East : 2, North : 0>
 // CHECK:             aie.connect<East : 3, North : 1>
 // CHECK:           }
-// CHECK:           %[[VAL_503:.*]] = aie.tile(28, 1)
-// CHECK:           %[[VAL_504:.*]] = aie.switchbox(%[[VAL_503]]) {
+// CHECK:           %[[TILE_28_1:.*]] = aie.tile(28, 1)
+// CHECK:           %[[SWITCHBOX_28_1:.*]] = aie.switchbox(%[[TILE_28_1]]) {
 // CHECK:             aie.connect<East : 0, West : 0>
 // CHECK:             aie.connect<East : 1, West : 1>
 // CHECK:             aie.connect<East : 2, West : 2>
 // CHECK:             aie.connect<East : 3, West : 3>
 // CHECK:           }
-// CHECK:           %[[VAL_505:.*]] = aie.tile(29, 1)
-// CHECK:           %[[VAL_506:.*]] = aie.switchbox(%[[VAL_505]]) {
+// CHECK:           %[[TILE_29_1:.*]] = aie.tile(29, 1)
+// CHECK:           %[[SWITCHBOX_29_1:.*]] = aie.switchbox(%[[TILE_29_1]]) {
 // CHECK:             aie.connect<East : 0, West : 0>
 // CHECK:             aie.connect<East : 1, West : 1>
 // CHECK:             aie.connect<East : 2, West : 2>
 // CHECK:             aie.connect<East : 3, West : 3>
 // CHECK:           }
-// CHECK:           %[[VAL_507:.*]] = aie.tile(30, 1)
-// CHECK:           %[[VAL_508:.*]] = aie.switchbox(%[[VAL_507]]) {
+// CHECK:           %[[TILE_30_1:.*]] = aie.tile(30, 1)
+// CHECK:           %[[SWITCHBOX_30_1:.*]] = aie.switchbox(%[[TILE_30_1]]) {
 // CHECK:             aie.connect<East : 0, West : 0>
 // CHECK:             aie.connect<East : 1, West : 1>
 // CHECK:             aie.connect<East : 2, West : 2>
 // CHECK:             aie.connect<East : 3, West : 3>
 // CHECK:           }
-// CHECK:           %[[VAL_509:.*]] = aie.tile(31, 1)
-// CHECK:           %[[VAL_510:.*]] = aie.switchbox(%[[VAL_509]]) {
+// CHECK:           %[[TILE_31_1:.*]] = aie.tile(31, 1)
+// CHECK:           %[[SWITCHBOX_31_1:.*]] = aie.switchbox(%[[TILE_31_1]]) {
 // CHECK:             aie.connect<East : 0, West : 0>
 // CHECK:             aie.connect<East : 1, West : 1>
 // CHECK:             aie.connect<East : 2, West : 2>
 // CHECK:             aie.connect<East : 3, West : 3>
 // CHECK:           }
-// CHECK:           %[[VAL_511:.*]] = aie.tile(32, 1)
-// CHECK:           %[[VAL_512:.*]] = aie.switchbox(%[[VAL_511]]) {
+// CHECK:           %[[TILE_32_1:.*]] = aie.tile(32, 1)
+// CHECK:           %[[SWITCHBOX_32_1:.*]] = aie.switchbox(%[[TILE_32_1]]) {
 // CHECK:             aie.connect<East : 0, West : 0>
 // CHECK:             aie.connect<East : 1, West : 1>
 // CHECK:             aie.connect<East : 2, West : 2>
 // CHECK:             aie.connect<East : 3, West : 3>
 // CHECK:           }
-// CHECK:           %[[VAL_513:.*]] = aie.tile(33, 1)
-// CHECK:           %[[VAL_514:.*]] = aie.switchbox(%[[VAL_513]]) {
+// CHECK:           %[[TILE_33_1:.*]] = aie.tile(33, 1)
+// CHECK:           %[[SWITCHBOX_33_1:.*]] = aie.switchbox(%[[TILE_33_1]]) {
 // CHECK:             aie.connect<East : 0, West : 0>
 // CHECK:             aie.connect<East : 1, West : 1>
 // CHECK:             aie.connect<East : 2, West : 2>
 // CHECK:             aie.connect<East : 3, West : 3>
 // CHECK:           }
-// CHECK:           %[[VAL_515:.*]] = aie.switchbox(%[[VAL_100]]) {
+// CHECK:           %[[SWITCHBOX_34_1:.*]] = aie.switchbox(%[[TILE_34_1]]) {
 // CHECK:             aie.connect<South : 0, West : 0>
 // CHECK:             aie.connect<South : 1, West : 1>
 // CHECK:             aie.connect<East : 0, West : 2>
 // CHECK:             aie.connect<East : 1, West : 3>
 // CHECK:           }
-// CHECK:           %[[VAL_516:.*]] = aie.tile(36, 0)
-// CHECK:           %[[VAL_517:.*]] = aie.switchbox(%[[VAL_516]]) {
+// CHECK:           %[[TILE_36_0:.*]] = aie.tile(36, 0)
+// CHECK:           %[[SWITCHBOX_36_0:.*]] = aie.switchbox(%[[TILE_36_0]]) {
 // CHECK:             aie.connect<East : 0, West : 0>
 // CHECK:             aie.connect<East : 1, West : 1>
 // CHECK:             aie.connect<East : 2, West : 2>
 // CHECK:             aie.connect<East : 3, West : 3>
 // CHECK:           }
-// CHECK:           %[[VAL_518:.*]] = aie.tile(37, 0)
-// CHECK:           %[[VAL_519:.*]] = aie.switchbox(%[[VAL_518]]) {
+// CHECK:           %[[TILE_37_0:.*]] = aie.tile(37, 0)
+// CHECK:           %[[SWITCHBOX_37_0:.*]] = aie.switchbox(%[[TILE_37_0]]) {
 // CHECK:             aie.connect<East : 0, West : 0>
 // CHECK:             aie.connect<East : 1, West : 1>
 // CHECK:             aie.connect<East : 2, West : 2>
 // CHECK:             aie.connect<East : 3, West : 3>
 // CHECK:           }
-// CHECK:           %[[VAL_520:.*]] = aie.tile(38, 0)
-// CHECK:           %[[VAL_521:.*]] = aie.switchbox(%[[VAL_520]]) {
+// CHECK:           %[[TILE_38_0:.*]] = aie.tile(38, 0)
+// CHECK:           %[[SWITCHBOX_38_0:.*]] = aie.switchbox(%[[TILE_38_0]]) {
 // CHECK:             aie.connect<East : 0, West : 0>
 // CHECK:             aie.connect<East : 1, West : 1>
 // CHECK:             aie.connect<East : 2, West : 2>
 // CHECK:             aie.connect<East : 3, West : 3>
 // CHECK:           }
-// CHECK:           %[[VAL_522:.*]] = aie.tile(39, 0)
-// CHECK:           %[[VAL_523:.*]] = aie.switchbox(%[[VAL_522]]) {
+// CHECK:           %[[TILE_39_0:.*]] = aie.tile(39, 0)
+// CHECK:           %[[SWITCHBOX_39_0:.*]] = aie.switchbox(%[[TILE_39_0]]) {
 // CHECK:             aie.connect<East : 0, West : 0>
 // CHECK:             aie.connect<East : 1, West : 1>
 // CHECK:             aie.connect<East : 2, West : 2>
 // CHECK:             aie.connect<East : 3, West : 3>
 // CHECK:           }
-// CHECK:           %[[VAL_524:.*]] = aie.tile(40, 0)
-// CHECK:           %[[VAL_525:.*]] = aie.switchbox(%[[VAL_524]]) {
+// CHECK:           %[[TILE_40_0:.*]] = aie.tile(40, 0)
+// CHECK:           %[[SWITCHBOX_40_0:.*]] = aie.switchbox(%[[TILE_40_0]]) {
 // CHECK:             aie.connect<East : 0, West : 0>
 // CHECK:             aie.connect<East : 1, West : 1>
 // CHECK:             aie.connect<East : 2, West : 2>
 // CHECK:             aie.connect<East : 3, West : 3>
 // CHECK:           }
-// CHECK:           %[[VAL_526:.*]] = aie.tile(41, 0)
-// CHECK:           %[[VAL_527:.*]] = aie.switchbox(%[[VAL_526]]) {
+// CHECK:           %[[TILE_41_0:.*]] = aie.tile(41, 0)
+// CHECK:           %[[SWITCHBOX_41_0:.*]] = aie.switchbox(%[[TILE_41_0]]) {
 // CHECK:             aie.connect<East : 0, West : 0>
 // CHECK:             aie.connect<East : 1, West : 1>
 // CHECK:             aie.connect<East : 2, West : 2>
 // CHECK:             aie.connect<East : 3, West : 3>
 // CHECK:           }
-// CHECK:           %[[VAL_528:.*]] = aie.switchbox(%[[VAL_62]]) {
+// CHECK:           %[[SWITCHBOX_42_0:.*]] = aie.switchbox(%[[TILE_42_0]]) {
 // CHECK:             aie.connect<South : 3, West : 0>
 // CHECK:             aie.connect<South : 7, West : 1>
 // CHECK:             aie.connect<East : 0, West : 2>
@@ -1933,1025 +1924,1025 @@
 // CHECK:             aie.connect<East : 2, North : 0>
 // CHECK:             aie.connect<East : 3, North : 1>
 // CHECK:           }
-// CHECK:           %[[VAL_529:.*]] = aie.shim_mux(%[[VAL_62]]) {
+// CHECK:           %[[SHIM_MUX_42_0:.*]] = aie.shim_mux(%[[TILE_42_0]]) {
 // CHECK:             aie.connect<DMA : 0, North : 3>
 // CHECK:             aie.connect<DMA : 1, North : 7>
 // CHECK:           }
-// CHECK:           %[[VAL_530:.*]] = aie.tile(11, 4)
-// CHECK:           %[[VAL_531:.*]] = aie.switchbox(%[[VAL_530]]) {
+// CHECK:           %[[TILE_11_4:.*]] = aie.tile(11, 4)
+// CHECK:           %[[SWITCHBOX_11_4:.*]] = aie.switchbox(%[[TILE_11_4]]) {
 // CHECK:             aie.connect<East : 0, West : 0>
 // CHECK:             aie.connect<East : 1, West : 1>
 // CHECK:             aie.connect<East : 2, West : 2>
 // CHECK:             aie.connect<East : 3, West : 3>
 // CHECK:           }
-// CHECK:           %[[VAL_532:.*]] = aie.tile(12, 4)
-// CHECK:           %[[VAL_533:.*]] = aie.switchbox(%[[VAL_532]]) {
+// CHECK:           %[[TILE_12_4:.*]] = aie.tile(12, 4)
+// CHECK:           %[[SWITCHBOX_12_4:.*]] = aie.switchbox(%[[TILE_12_4]]) {
 // CHECK:             aie.connect<East : 0, West : 0>
 // CHECK:             aie.connect<East : 1, West : 1>
 // CHECK:             aie.connect<East : 2, West : 2>
 // CHECK:             aie.connect<East : 3, West : 3>
 // CHECK:           }
-// CHECK:           %[[VAL_534:.*]] = aie.tile(13, 4)
-// CHECK:           %[[VAL_535:.*]] = aie.switchbox(%[[VAL_534]]) {
+// CHECK:           %[[TILE_13_4:.*]] = aie.tile(13, 4)
+// CHECK:           %[[SWITCHBOX_13_4:.*]] = aie.switchbox(%[[TILE_13_4]]) {
 // CHECK:             aie.connect<East : 0, West : 0>
 // CHECK:             aie.connect<East : 1, West : 1>
 // CHECK:             aie.connect<East : 2, West : 2>
 // CHECK:             aie.connect<East : 3, West : 3>
 // CHECK:             aie.connect<North : 0, East : 0>
 // CHECK:           }
-// CHECK:           %[[VAL_536:.*]] = aie.tile(14, 4)
-// CHECK:           %[[VAL_537:.*]] = aie.switchbox(%[[VAL_536]]) {
+// CHECK:           %[[TILE_14_4:.*]] = aie.tile(14, 4)
+// CHECK:           %[[SWITCHBOX_14_4:.*]] = aie.switchbox(%[[TILE_14_4]]) {
 // CHECK:             aie.connect<East : 0, West : 0>
 // CHECK:             aie.connect<East : 1, West : 1>
 // CHECK:             aie.connect<East : 2, West : 2>
 // CHECK:             aie.connect<East : 3, West : 3>
 // CHECK:             aie.connect<West : 0, South : 0>
 // CHECK:           }
-// CHECK:           %[[VAL_538:.*]] = aie.tile(16, 4)
-// CHECK:           %[[VAL_539:.*]] = aie.switchbox(%[[VAL_538]]) {
+// CHECK:           %[[TILE_16_4:.*]] = aie.tile(16, 4)
+// CHECK:           %[[SWITCHBOX_16_4:.*]] = aie.switchbox(%[[TILE_16_4]]) {
 // CHECK:             aie.connect<East : 0, West : 0>
 // CHECK:             aie.connect<East : 1, West : 1>
 // CHECK:             aie.connect<East : 2, West : 2>
 // CHECK:             aie.connect<East : 3, West : 3>
 // CHECK:             aie.connect<North : 0, East : 0>
 // CHECK:           }
-// CHECK:           %[[VAL_540:.*]] = aie.tile(17, 4)
-// CHECK:           %[[VAL_541:.*]] = aie.switchbox(%[[VAL_540]]) {
+// CHECK:           %[[TILE_17_4:.*]] = aie.tile(17, 4)
+// CHECK:           %[[SWITCHBOX_17_4:.*]] = aie.switchbox(%[[TILE_17_4]]) {
 // CHECK:             aie.connect<South : 0, West : 0>
 // CHECK:             aie.connect<South : 1, West : 1>
 // CHECK:             aie.connect<East : 0, West : 2>
 // CHECK:             aie.connect<East : 1, West : 3>
 // CHECK:             aie.connect<West : 0, East : 0>
 // CHECK:           }
-// CHECK:           %[[VAL_542:.*]] = aie.tile(21, 2)
-// CHECK:           %[[VAL_543:.*]] = aie.switchbox(%[[VAL_542]]) {
+// CHECK:           %[[TILE_21_2:.*]] = aie.tile(21, 2)
+// CHECK:           %[[SWITCHBOX_21_2:.*]] = aie.switchbox(%[[TILE_21_2]]) {
 // CHECK:             aie.connect<East : 0, West : 0>
 // CHECK:             aie.connect<East : 1, West : 1>
 // CHECK:           }
-// CHECK:           %[[VAL_544:.*]] = aie.tile(22, 2)
-// CHECK:           %[[VAL_545:.*]] = aie.switchbox(%[[VAL_544]]) {
+// CHECK:           %[[TILE_22_2:.*]] = aie.tile(22, 2)
+// CHECK:           %[[SWITCHBOX_22_2:.*]] = aie.switchbox(%[[TILE_22_2]]) {
 // CHECK:             aie.connect<East : 0, West : 0>
 // CHECK:             aie.connect<East : 1, West : 1>
 // CHECK:           }
-// CHECK:           %[[VAL_546:.*]] = aie.tile(23, 2)
-// CHECK:           %[[VAL_547:.*]] = aie.switchbox(%[[VAL_546]]) {
+// CHECK:           %[[TILE_23_2:.*]] = aie.tile(23, 2)
+// CHECK:           %[[SWITCHBOX_23_2:.*]] = aie.switchbox(%[[TILE_23_2]]) {
 // CHECK:             aie.connect<East : 0, West : 0>
 // CHECK:             aie.connect<East : 1, West : 1>
 // CHECK:           }
-// CHECK:           %[[VAL_548:.*]] = aie.switchbox(%[[VAL_118]]) {
+// CHECK:           %[[SWITCHBOX_27_2:.*]] = aie.switchbox(%[[TILE_27_2]]) {
 // CHECK:             aie.connect<South : 0, West : 0>
 // CHECK:             aie.connect<South : 1, West : 1>
 // CHECK:             aie.connect<East : 0, West : 2>
 // CHECK:             aie.connect<East : 1, West : 3>
 // CHECK:           }
-// CHECK:           %[[VAL_549:.*]] = aie.switchbox(%[[VAL_81]]) {
+// CHECK:           %[[SWITCHBOX_35_1:.*]] = aie.switchbox(%[[TILE_35_1]]) {
 // CHECK:             aie.connect<South : 0, West : 0>
 // CHECK:             aie.connect<South : 1, West : 1>
 // CHECK:           }
-// CHECK:           %[[VAL_550:.*]] = aie.switchbox(%[[VAL_42]]) {
+// CHECK:           %[[SWITCHBOX_43_0:.*]] = aie.switchbox(%[[TILE_43_0]]) {
 // CHECK:             aie.connect<South : 3, West : 0>
 // CHECK:             aie.connect<South : 7, West : 1>
 // CHECK:             aie.connect<East : 0, West : 2>
 // CHECK:             aie.connect<East : 1, West : 3>
 // CHECK:           }
-// CHECK:           %[[VAL_551:.*]] = aie.shim_mux(%[[VAL_42]]) {
+// CHECK:           %[[SHIM_MUX_43_0:.*]] = aie.shim_mux(%[[TILE_43_0]]) {
 // CHECK:             aie.connect<DMA : 0, North : 3>
 // CHECK:             aie.connect<DMA : 1, North : 7>
 // CHECK:           }
-// CHECK:           %[[VAL_552:.*]] = aie.tile(18, 4)
-// CHECK:           %[[VAL_553:.*]] = aie.switchbox(%[[VAL_552]]) {
+// CHECK:           %[[TILE_18_4:.*]] = aie.tile(18, 4)
+// CHECK:           %[[SWITCHBOX_18_4:.*]] = aie.switchbox(%[[TILE_18_4]]) {
 // CHECK:             aie.connect<East : 0, West : 0>
 // CHECK:             aie.connect<East : 1, West : 1>
 // CHECK:             aie.connect<West : 0, East : 0>
 // CHECK:             aie.connect<East : 2, North : 0>
 // CHECK:             aie.connect<East : 3, North : 1>
 // CHECK:           }
-// CHECK:           %[[VAL_554:.*]] = aie.tile(19, 4)
-// CHECK:           %[[VAL_555:.*]] = aie.switchbox(%[[VAL_554]]) {
+// CHECK:           %[[TILE_19_4:.*]] = aie.tile(19, 4)
+// CHECK:           %[[SWITCHBOX_19_4:.*]] = aie.switchbox(%[[TILE_19_4]]) {
 // CHECK:             aie.connect<East : 0, West : 0>
 // CHECK:             aie.connect<East : 1, West : 1>
 // CHECK:             aie.connect<West : 0, South : 0>
 // CHECK:             aie.connect<East : 2, West : 2>
 // CHECK:             aie.connect<East : 3, West : 3>
 // CHECK:           }
-// CHECK:           %[[VAL_556:.*]] = aie.tile(20, 4)
-// CHECK:           %[[VAL_557:.*]] = aie.switchbox(%[[VAL_556]]) {
+// CHECK:           %[[TILE_20_4:.*]] = aie.tile(20, 4)
+// CHECK:           %[[SWITCHBOX_20_4:.*]] = aie.switchbox(%[[TILE_20_4]]) {
 // CHECK:             aie.connect<South : 0, West : 0>
 // CHECK:             aie.connect<South : 1, West : 1>
 // CHECK:             aie.connect<East : 0, West : 2>
 // CHECK:             aie.connect<East : 1, West : 3>
 // CHECK:           }
-// CHECK:           %[[VAL_558:.*]] = aie.tile(25, 3)
-// CHECK:           %[[VAL_559:.*]] = aie.switchbox(%[[VAL_558]]) {
+// CHECK:           %[[TILE_25_3:.*]] = aie.tile(25, 3)
+// CHECK:           %[[SWITCHBOX_25_3:.*]] = aie.switchbox(%[[TILE_25_3]]) {
 // CHECK:             aie.connect<East : 0, West : 0>
 // CHECK:             aie.connect<East : 1, West : 1>
 // CHECK:           }
-// CHECK:           %[[VAL_560:.*]] = aie.tile(26, 3)
-// CHECK:           %[[VAL_561:.*]] = aie.switchbox(%[[VAL_560]]) {
+// CHECK:           %[[TILE_26_3:.*]] = aie.tile(26, 3)
+// CHECK:           %[[SWITCHBOX_26_3:.*]] = aie.switchbox(%[[TILE_26_3]]) {
 // CHECK:             aie.connect<South : 0, West : 0>
 // CHECK:             aie.connect<South : 1, West : 1>
 // CHECK:           }
-// CHECK:           %[[VAL_562:.*]] = aie.tile(28, 2)
-// CHECK:           %[[VAL_563:.*]] = aie.switchbox(%[[VAL_562]]) {
+// CHECK:           %[[TILE_28_2:.*]] = aie.tile(28, 2)
+// CHECK:           %[[SWITCHBOX_28_2:.*]] = aie.switchbox(%[[TILE_28_2]]) {
 // CHECK:             aie.connect<East : 0, West : 0>
 // CHECK:             aie.connect<East : 1, West : 1>
 // CHECK:           }
-// CHECK:           %[[VAL_564:.*]] = aie.tile(29, 2)
-// CHECK:           %[[VAL_565:.*]] = aie.switchbox(%[[VAL_564]]) {
+// CHECK:           %[[TILE_29_2:.*]] = aie.tile(29, 2)
+// CHECK:           %[[SWITCHBOX_29_2:.*]] = aie.switchbox(%[[TILE_29_2]]) {
 // CHECK:             aie.connect<East : 0, West : 0>
 // CHECK:             aie.connect<East : 1, West : 1>
 // CHECK:           }
-// CHECK:           %[[VAL_566:.*]] = aie.tile(30, 2)
-// CHECK:           %[[VAL_567:.*]] = aie.switchbox(%[[VAL_566]]) {
+// CHECK:           %[[TILE_30_2:.*]] = aie.tile(30, 2)
+// CHECK:           %[[SWITCHBOX_30_2:.*]] = aie.switchbox(%[[TILE_30_2]]) {
 // CHECK:             aie.connect<East : 0, West : 0>
 // CHECK:             aie.connect<East : 1, West : 1>
 // CHECK:           }
-// CHECK:           %[[VAL_568:.*]] = aie.tile(31, 2)
-// CHECK:           %[[VAL_569:.*]] = aie.switchbox(%[[VAL_568]]) {
+// CHECK:           %[[TILE_31_2:.*]] = aie.tile(31, 2)
+// CHECK:           %[[SWITCHBOX_31_2:.*]] = aie.switchbox(%[[TILE_31_2]]) {
 // CHECK:             aie.connect<East : 0, West : 0>
 // CHECK:             aie.connect<East : 1, West : 1>
 // CHECK:           }
-// CHECK:           %[[VAL_570:.*]] = aie.tile(32, 2)
-// CHECK:           %[[VAL_571:.*]] = aie.switchbox(%[[VAL_570]]) {
+// CHECK:           %[[TILE_32_2:.*]] = aie.tile(32, 2)
+// CHECK:           %[[SWITCHBOX_32_2:.*]] = aie.switchbox(%[[TILE_32_2]]) {
 // CHECK:             aie.connect<East : 0, West : 0>
 // CHECK:             aie.connect<East : 1, West : 1>
 // CHECK:           }
-// CHECK:           %[[VAL_572:.*]] = aie.tile(33, 2)
-// CHECK:           %[[VAL_573:.*]] = aie.switchbox(%[[VAL_572]]) {
+// CHECK:           %[[TILE_33_2:.*]] = aie.tile(33, 2)
+// CHECK:           %[[SWITCHBOX_33_2:.*]] = aie.switchbox(%[[TILE_33_2]]) {
 // CHECK:             aie.connect<East : 0, West : 0>
 // CHECK:             aie.connect<East : 1, West : 1>
 // CHECK:           }
-// CHECK:           %[[VAL_574:.*]] = aie.switchbox(%[[VAL_99]]) {
+// CHECK:           %[[SWITCHBOX_34_2:.*]] = aie.switchbox(%[[TILE_34_2]]) {
 // CHECK:             aie.connect<East : 0, West : 0>
 // CHECK:             aie.connect<East : 1, West : 1>
 // CHECK:           }
-// CHECK:           %[[VAL_575:.*]] = aie.switchbox(%[[VAL_80]]) {
+// CHECK:           %[[SWITCHBOX_35_2:.*]] = aie.switchbox(%[[TILE_35_2]]) {
 // CHECK:             aie.connect<East : 0, West : 0>
 // CHECK:             aie.connect<East : 1, West : 1>
 // CHECK:           }
-// CHECK:           %[[VAL_576:.*]] = aie.tile(36, 2)
-// CHECK:           %[[VAL_577:.*]] = aie.switchbox(%[[VAL_576]]) {
+// CHECK:           %[[TILE_36_2:.*]] = aie.tile(36, 2)
+// CHECK:           %[[SWITCHBOX_36_2:.*]] = aie.switchbox(%[[TILE_36_2]]) {
 // CHECK:             aie.connect<East : 0, West : 0>
 // CHECK:             aie.connect<East : 1, West : 1>
 // CHECK:           }
-// CHECK:           %[[VAL_578:.*]] = aie.tile(37, 2)
-// CHECK:           %[[VAL_579:.*]] = aie.switchbox(%[[VAL_578]]) {
+// CHECK:           %[[TILE_37_2:.*]] = aie.tile(37, 2)
+// CHECK:           %[[SWITCHBOX_37_2:.*]] = aie.switchbox(%[[TILE_37_2]]) {
 // CHECK:             aie.connect<East : 0, West : 0>
 // CHECK:             aie.connect<East : 1, West : 1>
 // CHECK:           }
-// CHECK:           %[[VAL_580:.*]] = aie.tile(38, 2)
-// CHECK:           %[[VAL_581:.*]] = aie.switchbox(%[[VAL_580]]) {
+// CHECK:           %[[TILE_38_2:.*]] = aie.tile(38, 2)
+// CHECK:           %[[SWITCHBOX_38_2:.*]] = aie.switchbox(%[[TILE_38_2]]) {
 // CHECK:             aie.connect<East : 0, West : 0>
 // CHECK:             aie.connect<East : 1, West : 1>
 // CHECK:           }
-// CHECK:           %[[VAL_582:.*]] = aie.tile(39, 2)
-// CHECK:           %[[VAL_583:.*]] = aie.switchbox(%[[VAL_582]]) {
+// CHECK:           %[[TILE_39_2:.*]] = aie.tile(39, 2)
+// CHECK:           %[[SWITCHBOX_39_2:.*]] = aie.switchbox(%[[TILE_39_2]]) {
 // CHECK:             aie.connect<East : 0, West : 0>
 // CHECK:             aie.connect<East : 1, West : 1>
 // CHECK:           }
-// CHECK:           %[[VAL_584:.*]] = aie.tile(40, 2)
-// CHECK:           %[[VAL_585:.*]] = aie.switchbox(%[[VAL_584]]) {
+// CHECK:           %[[TILE_40_2:.*]] = aie.tile(40, 2)
+// CHECK:           %[[SWITCHBOX_40_2:.*]] = aie.switchbox(%[[TILE_40_2]]) {
 // CHECK:             aie.connect<East : 0, West : 0>
 // CHECK:             aie.connect<East : 1, West : 1>
 // CHECK:           }
-// CHECK:           %[[VAL_586:.*]] = aie.tile(41, 1)
-// CHECK:           %[[VAL_587:.*]] = aie.switchbox(%[[VAL_586]]) {
+// CHECK:           %[[TILE_41_1:.*]] = aie.tile(41, 1)
+// CHECK:           %[[SWITCHBOX_41_1:.*]] = aie.switchbox(%[[TILE_41_1]]) {
 // CHECK:             aie.connect<East : 0, North : 0>
 // CHECK:             aie.connect<East : 1, North : 1>
 // CHECK:           }
-// CHECK:           %[[VAL_588:.*]] = aie.tile(41, 2)
-// CHECK:           %[[VAL_589:.*]] = aie.switchbox(%[[VAL_588]]) {
+// CHECK:           %[[TILE_41_2:.*]] = aie.tile(41, 2)
+// CHECK:           %[[SWITCHBOX_41_2:.*]] = aie.switchbox(%[[TILE_41_2]]) {
 // CHECK:             aie.connect<South : 0, West : 0>
 // CHECK:             aie.connect<South : 1, West : 1>
 // CHECK:           }
-// CHECK:           %[[VAL_590:.*]] = aie.switchbox(%[[VAL_61]]) {
+// CHECK:           %[[SWITCHBOX_42_1:.*]] = aie.switchbox(%[[TILE_42_1]]) {
 // CHECK:             aie.connect<South : 0, West : 0>
 // CHECK:             aie.connect<South : 1, West : 1>
 // CHECK:           }
-// CHECK:           %[[VAL_591:.*]] = aie.tile(44, 0)
-// CHECK:           %[[VAL_592:.*]] = aie.switchbox(%[[VAL_591]]) {
+// CHECK:           %[[TILE_44_0:.*]] = aie.tile(44, 0)
+// CHECK:           %[[SWITCHBOX_44_0:.*]] = aie.switchbox(%[[TILE_44_0]]) {
 // CHECK:             aie.connect<East : 0, West : 0>
 // CHECK:             aie.connect<East : 1, West : 1>
 // CHECK:           }
-// CHECK:           %[[VAL_593:.*]] = aie.tile(45, 0)
-// CHECK:           %[[VAL_594:.*]] = aie.switchbox(%[[VAL_593]]) {
+// CHECK:           %[[TILE_45_0:.*]] = aie.tile(45, 0)
+// CHECK:           %[[SWITCHBOX_45_0:.*]] = aie.switchbox(%[[TILE_45_0]]) {
 // CHECK:             aie.connect<East : 0, West : 0>
 // CHECK:             aie.connect<East : 1, West : 1>
 // CHECK:           }
-// CHECK:           %[[VAL_595:.*]] = aie.switchbox(%[[VAL_22]]) {
+// CHECK:           %[[SWITCHBOX_46_0:.*]] = aie.switchbox(%[[TILE_46_0]]) {
 // CHECK:             aie.connect<South : 3, West : 0>
 // CHECK:             aie.connect<South : 7, West : 1>
 // CHECK:             aie.connect<East : 0, North : 0>
 // CHECK:             aie.connect<East : 1, North : 1>
 // CHECK:           }
-// CHECK:           %[[VAL_596:.*]] = aie.shim_mux(%[[VAL_22]]) {
+// CHECK:           %[[SHIM_MUX_46_0:.*]] = aie.shim_mux(%[[TILE_46_0]]) {
 // CHECK:             aie.connect<DMA : 0, North : 3>
 // CHECK:             aie.connect<DMA : 1, North : 7>
 // CHECK:           }
-// CHECK:           %[[VAL_597:.*]] = aie.tile(16, 5)
-// CHECK:           %[[VAL_598:.*]] = aie.switchbox(%[[VAL_597]]) {
+// CHECK:           %[[TILE_16_5:.*]] = aie.tile(16, 5)
+// CHECK:           %[[SWITCHBOX_16_5:.*]] = aie.switchbox(%[[TILE_16_5]]) {
 // CHECK:             aie.connect<West : 0, South : 0>
 // CHECK:             aie.connect<East : 0, West : 0>
 // CHECK:             aie.connect<East : 1, West : 1>
 // CHECK:           }
-// CHECK:           %[[VAL_599:.*]] = aie.tile(17, 5)
-// CHECK:           %[[VAL_600:.*]] = aie.switchbox(%[[VAL_599]]) {
+// CHECK:           %[[TILE_17_5:.*]] = aie.tile(17, 5)
+// CHECK:           %[[SWITCHBOX_17_5:.*]] = aie.switchbox(%[[TILE_17_5]]) {
 // CHECK:             aie.connect<East : 0, West : 0>
 // CHECK:             aie.connect<East : 1, West : 1>
 // CHECK:           }
-// CHECK:           %[[VAL_601:.*]] = aie.tile(18, 5)
-// CHECK:           %[[VAL_602:.*]] = aie.switchbox(%[[VAL_601]]) {
+// CHECK:           %[[TILE_18_5:.*]] = aie.tile(18, 5)
+// CHECK:           %[[SWITCHBOX_18_5:.*]] = aie.switchbox(%[[TILE_18_5]]) {
 // CHECK:             aie.connect<South : 0, West : 0>
 // CHECK:             aie.connect<South : 1, West : 1>
 // CHECK:           }
-// CHECK:           %[[VAL_603:.*]] = aie.tile(21, 4)
-// CHECK:           %[[VAL_604:.*]] = aie.switchbox(%[[VAL_603]]) {
+// CHECK:           %[[TILE_21_4:.*]] = aie.tile(21, 4)
+// CHECK:           %[[SWITCHBOX_21_4:.*]] = aie.switchbox(%[[TILE_21_4]]) {
 // CHECK:             aie.connect<East : 0, West : 0>
 // CHECK:             aie.connect<East : 1, West : 1>
 // CHECK:           }
-// CHECK:           %[[VAL_605:.*]] = aie.tile(22, 4)
-// CHECK:           %[[VAL_606:.*]] = aie.switchbox(%[[VAL_605]]) {
+// CHECK:           %[[TILE_22_4:.*]] = aie.tile(22, 4)
+// CHECK:           %[[SWITCHBOX_22_4:.*]] = aie.switchbox(%[[TILE_22_4]]) {
 // CHECK:             aie.connect<East : 0, West : 0>
 // CHECK:             aie.connect<East : 1, West : 1>
 // CHECK:           }
-// CHECK:           %[[VAL_607:.*]] = aie.tile(23, 4)
-// CHECK:           %[[VAL_608:.*]] = aie.switchbox(%[[VAL_607]]) {
+// CHECK:           %[[TILE_23_4:.*]] = aie.tile(23, 4)
+// CHECK:           %[[SWITCHBOX_23_4:.*]] = aie.switchbox(%[[TILE_23_4]]) {
 // CHECK:             aie.connect<East : 0, West : 0>
 // CHECK:             aie.connect<East : 1, West : 1>
 // CHECK:           }
-// CHECK:           %[[VAL_609:.*]] = aie.tile(24, 4)
-// CHECK:           %[[VAL_610:.*]] = aie.switchbox(%[[VAL_609]]) {
+// CHECK:           %[[TILE_24_4:.*]] = aie.tile(24, 4)
+// CHECK:           %[[SWITCHBOX_24_4:.*]] = aie.switchbox(%[[TILE_24_4]]) {
 // CHECK:             aie.connect<East : 0, West : 0>
 // CHECK:             aie.connect<East : 1, West : 1>
 // CHECK:           }
-// CHECK:           %[[VAL_611:.*]] = aie.tile(25, 4)
-// CHECK:           %[[VAL_612:.*]] = aie.switchbox(%[[VAL_611]]) {
+// CHECK:           %[[TILE_25_4:.*]] = aie.tile(25, 4)
+// CHECK:           %[[SWITCHBOX_25_4:.*]] = aie.switchbox(%[[TILE_25_4]]) {
 // CHECK:             aie.connect<East : 0, West : 0>
 // CHECK:             aie.connect<East : 1, West : 1>
 // CHECK:           }
-// CHECK:           %[[VAL_613:.*]] = aie.tile(26, 4)
-// CHECK:           %[[VAL_614:.*]] = aie.switchbox(%[[VAL_613]]) {
+// CHECK:           %[[TILE_26_4:.*]] = aie.tile(26, 4)
+// CHECK:           %[[SWITCHBOX_26_4:.*]] = aie.switchbox(%[[TILE_26_4]]) {
 // CHECK:             aie.connect<East : 0, West : 0>
 // CHECK:             aie.connect<East : 1, West : 1>
 // CHECK:           }
-// CHECK:           %[[VAL_615:.*]] = aie.tile(27, 4)
-// CHECK:           %[[VAL_616:.*]] = aie.switchbox(%[[VAL_615]]) {
+// CHECK:           %[[TILE_27_4:.*]] = aie.tile(27, 4)
+// CHECK:           %[[SWITCHBOX_27_4:.*]] = aie.switchbox(%[[TILE_27_4]]) {
 // CHECK:             aie.connect<East : 0, West : 0>
 // CHECK:             aie.connect<East : 1, West : 1>
 // CHECK:           }
-// CHECK:           %[[VAL_617:.*]] = aie.tile(28, 4)
-// CHECK:           %[[VAL_618:.*]] = aie.switchbox(%[[VAL_617]]) {
+// CHECK:           %[[TILE_28_4:.*]] = aie.tile(28, 4)
+// CHECK:           %[[SWITCHBOX_28_4:.*]] = aie.switchbox(%[[TILE_28_4]]) {
 // CHECK:             aie.connect<East : 0, West : 0>
 // CHECK:             aie.connect<East : 1, West : 1>
 // CHECK:           }
-// CHECK:           %[[VAL_619:.*]] = aie.tile(29, 4)
-// CHECK:           %[[VAL_620:.*]] = aie.switchbox(%[[VAL_619]]) {
+// CHECK:           %[[TILE_29_4:.*]] = aie.tile(29, 4)
+// CHECK:           %[[SWITCHBOX_29_4:.*]] = aie.switchbox(%[[TILE_29_4]]) {
 // CHECK:             aie.connect<East : 0, West : 0>
 // CHECK:             aie.connect<East : 1, West : 1>
 // CHECK:           }
-// CHECK:           %[[VAL_621:.*]] = aie.tile(30, 4)
-// CHECK:           %[[VAL_622:.*]] = aie.switchbox(%[[VAL_621]]) {
+// CHECK:           %[[TILE_30_4:.*]] = aie.tile(30, 4)
+// CHECK:           %[[SWITCHBOX_30_4:.*]] = aie.switchbox(%[[TILE_30_4]]) {
 // CHECK:             aie.connect<East : 0, West : 0>
 // CHECK:             aie.connect<East : 1, West : 1>
 // CHECK:           }
-// CHECK:           %[[VAL_623:.*]] = aie.tile(31, 4)
-// CHECK:           %[[VAL_624:.*]] = aie.switchbox(%[[VAL_623]]) {
+// CHECK:           %[[TILE_31_4:.*]] = aie.tile(31, 4)
+// CHECK:           %[[SWITCHBOX_31_4:.*]] = aie.switchbox(%[[TILE_31_4]]) {
 // CHECK:             aie.connect<East : 0, West : 0>
 // CHECK:             aie.connect<East : 1, West : 1>
 // CHECK:           }
-// CHECK:           %[[VAL_625:.*]] = aie.tile(32, 4)
-// CHECK:           %[[VAL_626:.*]] = aie.switchbox(%[[VAL_625]]) {
+// CHECK:           %[[TILE_32_4:.*]] = aie.tile(32, 4)
+// CHECK:           %[[SWITCHBOX_32_4:.*]] = aie.switchbox(%[[TILE_32_4]]) {
 // CHECK:             aie.connect<East : 0, West : 0>
 // CHECK:             aie.connect<East : 1, West : 1>
 // CHECK:           }
-// CHECK:           %[[VAL_627:.*]] = aie.tile(33, 4)
-// CHECK:           %[[VAL_628:.*]] = aie.switchbox(%[[VAL_627]]) {
+// CHECK:           %[[TILE_33_4:.*]] = aie.tile(33, 4)
+// CHECK:           %[[SWITCHBOX_33_4:.*]] = aie.switchbox(%[[TILE_33_4]]) {
 // CHECK:             aie.connect<East : 0, West : 0>
 // CHECK:             aie.connect<East : 1, West : 1>
 // CHECK:           }
-// CHECK:           %[[VAL_629:.*]] = aie.tile(34, 4)
-// CHECK:           %[[VAL_630:.*]] = aie.switchbox(%[[VAL_629]]) {
+// CHECK:           %[[TILE_34_4:.*]] = aie.tile(34, 4)
+// CHECK:           %[[SWITCHBOX_34_4:.*]] = aie.switchbox(%[[TILE_34_4]]) {
 // CHECK:             aie.connect<East : 0, West : 0>
 // CHECK:             aie.connect<East : 1, West : 1>
 // CHECK:           }
-// CHECK:           %[[VAL_631:.*]] = aie.tile(35, 4)
-// CHECK:           %[[VAL_632:.*]] = aie.switchbox(%[[VAL_631]]) {
+// CHECK:           %[[TILE_35_4:.*]] = aie.tile(35, 4)
+// CHECK:           %[[SWITCHBOX_35_4:.*]] = aie.switchbox(%[[TILE_35_4]]) {
 // CHECK:             aie.connect<East : 0, West : 0>
 // CHECK:             aie.connect<East : 1, West : 1>
 // CHECK:           }
-// CHECK:           %[[VAL_633:.*]] = aie.tile(36, 4)
-// CHECK:           %[[VAL_634:.*]] = aie.switchbox(%[[VAL_633]]) {
+// CHECK:           %[[TILE_36_4:.*]] = aie.tile(36, 4)
+// CHECK:           %[[SWITCHBOX_36_4:.*]] = aie.switchbox(%[[TILE_36_4]]) {
 // CHECK:             aie.connect<East : 0, West : 0>
 // CHECK:             aie.connect<East : 1, West : 1>
 // CHECK:           }
-// CHECK:           %[[VAL_635:.*]] = aie.tile(37, 4)
-// CHECK:           %[[VAL_636:.*]] = aie.switchbox(%[[VAL_635]]) {
+// CHECK:           %[[TILE_37_4:.*]] = aie.tile(37, 4)
+// CHECK:           %[[SWITCHBOX_37_4:.*]] = aie.switchbox(%[[TILE_37_4]]) {
 // CHECK:             aie.connect<East : 0, West : 0>
 // CHECK:             aie.connect<East : 1, West : 1>
 // CHECK:           }
-// CHECK:           %[[VAL_637:.*]] = aie.tile(38, 4)
-// CHECK:           %[[VAL_638:.*]] = aie.switchbox(%[[VAL_637]]) {
+// CHECK:           %[[TILE_38_4:.*]] = aie.tile(38, 4)
+// CHECK:           %[[SWITCHBOX_38_4:.*]] = aie.switchbox(%[[TILE_38_4]]) {
 // CHECK:             aie.connect<East : 0, West : 0>
 // CHECK:             aie.connect<East : 1, West : 1>
 // CHECK:           }
-// CHECK:           %[[VAL_639:.*]] = aie.tile(39, 4)
-// CHECK:           %[[VAL_640:.*]] = aie.switchbox(%[[VAL_639]]) {
+// CHECK:           %[[TILE_39_4:.*]] = aie.tile(39, 4)
+// CHECK:           %[[SWITCHBOX_39_4:.*]] = aie.switchbox(%[[TILE_39_4]]) {
 // CHECK:             aie.connect<East : 0, West : 0>
 // CHECK:             aie.connect<East : 1, West : 1>
 // CHECK:           }
-// CHECK:           %[[VAL_641:.*]] = aie.tile(40, 4)
-// CHECK:           %[[VAL_642:.*]] = aie.switchbox(%[[VAL_641]]) {
+// CHECK:           %[[TILE_40_4:.*]] = aie.tile(40, 4)
+// CHECK:           %[[SWITCHBOX_40_4:.*]] = aie.switchbox(%[[TILE_40_4]]) {
 // CHECK:             aie.connect<East : 0, West : 0>
 // CHECK:             aie.connect<East : 1, West : 1>
 // CHECK:           }
-// CHECK:           %[[VAL_643:.*]] = aie.tile(41, 4)
-// CHECK:           %[[VAL_644:.*]] = aie.switchbox(%[[VAL_643]]) {
+// CHECK:           %[[TILE_41_4:.*]] = aie.tile(41, 4)
+// CHECK:           %[[SWITCHBOX_41_4:.*]] = aie.switchbox(%[[TILE_41_4]]) {
 // CHECK:             aie.connect<East : 0, West : 0>
 // CHECK:             aie.connect<East : 1, West : 1>
 // CHECK:           }
-// CHECK:           %[[VAL_645:.*]] = aie.tile(42, 3)
-// CHECK:           %[[VAL_646:.*]] = aie.switchbox(%[[VAL_645]]) {
+// CHECK:           %[[TILE_42_3:.*]] = aie.tile(42, 3)
+// CHECK:           %[[SWITCHBOX_42_3:.*]] = aie.switchbox(%[[TILE_42_3]]) {
 // CHECK:             aie.connect<East : 0, North : 0>
 // CHECK:             aie.connect<East : 1, North : 1>
 // CHECK:           }
-// CHECK:           %[[VAL_647:.*]] = aie.tile(42, 4)
-// CHECK:           %[[VAL_648:.*]] = aie.switchbox(%[[VAL_647]]) {
+// CHECK:           %[[TILE_42_4:.*]] = aie.tile(42, 4)
+// CHECK:           %[[SWITCHBOX_42_4:.*]] = aie.switchbox(%[[TILE_42_4]]) {
 // CHECK:             aie.connect<South : 0, West : 0>
 // CHECK:             aie.connect<South : 1, West : 1>
 // CHECK:           }
-// CHECK:           %[[VAL_649:.*]] = aie.tile(43, 3)
-// CHECK:           %[[VAL_650:.*]] = aie.switchbox(%[[VAL_649]]) {
+// CHECK:           %[[TILE_43_3:.*]] = aie.tile(43, 3)
+// CHECK:           %[[SWITCHBOX_43_3:.*]] = aie.switchbox(%[[TILE_43_3]]) {
 // CHECK:             aie.connect<East : 0, West : 0>
 // CHECK:             aie.connect<East : 1, West : 1>
 // CHECK:           }
-// CHECK:           %[[VAL_651:.*]] = aie.tile(44, 3)
-// CHECK:           %[[VAL_652:.*]] = aie.switchbox(%[[VAL_651]]) {
+// CHECK:           %[[TILE_44_3:.*]] = aie.tile(44, 3)
+// CHECK:           %[[SWITCHBOX_44_3:.*]] = aie.switchbox(%[[TILE_44_3]]) {
 // CHECK:             aie.connect<East : 0, West : 0>
 // CHECK:             aie.connect<East : 1, West : 1>
 // CHECK:           }
-// CHECK:           %[[VAL_653:.*]] = aie.tile(45, 2)
-// CHECK:           %[[VAL_654:.*]] = aie.switchbox(%[[VAL_653]]) {
+// CHECK:           %[[TILE_45_2:.*]] = aie.tile(45, 2)
+// CHECK:           %[[SWITCHBOX_45_2:.*]] = aie.switchbox(%[[TILE_45_2]]) {
 // CHECK:             aie.connect<East : 0, North : 0>
 // CHECK:             aie.connect<East : 1, North : 1>
 // CHECK:           }
-// CHECK:           %[[VAL_655:.*]] = aie.tile(45, 3)
-// CHECK:           %[[VAL_656:.*]] = aie.switchbox(%[[VAL_655]]) {
+// CHECK:           %[[TILE_45_3:.*]] = aie.tile(45, 3)
+// CHECK:           %[[SWITCHBOX_45_3:.*]] = aie.switchbox(%[[TILE_45_3]]) {
 // CHECK:             aie.connect<South : 0, West : 0>
 // CHECK:             aie.connect<South : 1, West : 1>
 // CHECK:           }
-// CHECK:           %[[VAL_657:.*]] = aie.switchbox(%[[VAL_21]]) {
+// CHECK:           %[[SWITCHBOX_46_1:.*]] = aie.switchbox(%[[TILE_46_1]]) {
 // CHECK:             aie.connect<South : 0, North : 0>
 // CHECK:             aie.connect<South : 1, North : 1>
 // CHECK:           }
-// CHECK:           %[[VAL_658:.*]] = aie.switchbox(%[[VAL_20]]) {
+// CHECK:           %[[SWITCHBOX_46_2:.*]] = aie.switchbox(%[[TILE_46_2]]) {
 // CHECK:             aie.connect<South : 0, West : 0>
 // CHECK:             aie.connect<South : 1, West : 1>
 // CHECK:           }
-// CHECK:           %[[VAL_659:.*]] = aie.switchbox(%[[VAL_2]]) {
+// CHECK:           %[[SWITCHBOX_47_0:.*]] = aie.switchbox(%[[TILE_47_0]]) {
 // CHECK:             aie.connect<South : 3, West : 0>
 // CHECK:             aie.connect<South : 7, West : 1>
 // CHECK:           }
-// CHECK:           %[[VAL_660:.*]] = aie.shim_mux(%[[VAL_2]]) {
+// CHECK:           %[[SHIM_MUX_47_0:.*]] = aie.shim_mux(%[[TILE_47_0]]) {
 // CHECK:             aie.connect<DMA : 0, North : 3>
 // CHECK:             aie.connect<DMA : 1, North : 7>
 // CHECK:           }
-// CHECK:           aie.wire(%[[VAL_661:.*]] : North, %[[VAL_662:.*]] : South)
-// CHECK:           aie.wire(%[[VAL_294]] : DMA, %[[VAL_661]] : DMA)
-// CHECK:           aie.wire(%[[VAL_293]] : Core, %[[VAL_663:.*]] : Core)
-// CHECK:           aie.wire(%[[VAL_293]] : DMA, %[[VAL_663]] : DMA)
-// CHECK:           aie.wire(%[[VAL_662]] : North, %[[VAL_663]] : South)
-// CHECK:           aie.wire(%[[VAL_292]] : Core, %[[VAL_664:.*]] : Core)
-// CHECK:           aie.wire(%[[VAL_292]] : DMA, %[[VAL_664]] : DMA)
-// CHECK:           aie.wire(%[[VAL_663]] : North, %[[VAL_664]] : South)
-// CHECK:           aie.wire(%[[VAL_662]] : East, %[[VAL_665:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_666:.*]] : North, %[[VAL_665]] : South)
-// CHECK:           aie.wire(%[[VAL_274]] : DMA, %[[VAL_666]] : DMA)
-// CHECK:           aie.wire(%[[VAL_663]] : East, %[[VAL_667:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_273]] : Core, %[[VAL_667]] : Core)
-// CHECK:           aie.wire(%[[VAL_273]] : DMA, %[[VAL_667]] : DMA)
-// CHECK:           aie.wire(%[[VAL_665]] : North, %[[VAL_667]] : South)
-// CHECK:           aie.wire(%[[VAL_664]] : East, %[[VAL_668:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_272]] : Core, %[[VAL_668]] : Core)
-// CHECK:           aie.wire(%[[VAL_272]] : DMA, %[[VAL_668]] : DMA)
-// CHECK:           aie.wire(%[[VAL_667]] : North, %[[VAL_668]] : South)
-// CHECK:           aie.wire(%[[VAL_665]] : East, %[[VAL_669:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_668]] : East, %[[VAL_670:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_317]] : Core, %[[VAL_670]] : Core)
-// CHECK:           aie.wire(%[[VAL_317]] : DMA, %[[VAL_670]] : DMA)
-// CHECK:           aie.wire(%[[VAL_669]] : East, %[[VAL_671:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_670]] : East, %[[VAL_672:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_319]] : Core, %[[VAL_672]] : Core)
-// CHECK:           aie.wire(%[[VAL_319]] : DMA, %[[VAL_672]] : DMA)
-// CHECK:           aie.wire(%[[VAL_671]] : East, %[[VAL_673:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_674:.*]] : North, %[[VAL_673]] : South)
-// CHECK:           aie.wire(%[[VAL_255]] : DMA, %[[VAL_674]] : DMA)
-// CHECK:           aie.wire(%[[VAL_254]] : Core, %[[VAL_675:.*]] : Core)
-// CHECK:           aie.wire(%[[VAL_254]] : DMA, %[[VAL_675]] : DMA)
-// CHECK:           aie.wire(%[[VAL_673]] : North, %[[VAL_675]] : South)
-// CHECK:           aie.wire(%[[VAL_672]] : East, %[[VAL_676:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_253]] : Core, %[[VAL_676]] : Core)
-// CHECK:           aie.wire(%[[VAL_253]] : DMA, %[[VAL_676]] : DMA)
-// CHECK:           aie.wire(%[[VAL_675]] : North, %[[VAL_676]] : South)
-// CHECK:           aie.wire(%[[VAL_673]] : East, %[[VAL_677:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_678:.*]] : North, %[[VAL_677]] : South)
-// CHECK:           aie.wire(%[[VAL_236]] : DMA, %[[VAL_678]] : DMA)
-// CHECK:           aie.wire(%[[VAL_675]] : East, %[[VAL_679:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_235]] : Core, %[[VAL_679]] : Core)
-// CHECK:           aie.wire(%[[VAL_235]] : DMA, %[[VAL_679]] : DMA)
-// CHECK:           aie.wire(%[[VAL_677]] : North, %[[VAL_679]] : South)
-// CHECK:           aie.wire(%[[VAL_676]] : East, %[[VAL_680:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_296]] : Core, %[[VAL_680]] : Core)
-// CHECK:           aie.wire(%[[VAL_296]] : DMA, %[[VAL_680]] : DMA)
-// CHECK:           aie.wire(%[[VAL_679]] : North, %[[VAL_680]] : South)
-// CHECK:           aie.wire(%[[VAL_219]] : Core, %[[VAL_681:.*]] : Core)
-// CHECK:           aie.wire(%[[VAL_219]] : DMA, %[[VAL_681]] : DMA)
-// CHECK:           aie.wire(%[[VAL_680]] : North, %[[VAL_681]] : South)
-// CHECK:           aie.wire(%[[VAL_142]] : Core, %[[VAL_682:.*]] : Core)
-// CHECK:           aie.wire(%[[VAL_142]] : DMA, %[[VAL_682]] : DMA)
-// CHECK:           aie.wire(%[[VAL_681]] : North, %[[VAL_682]] : South)
-// CHECK:           aie.wire(%[[VAL_64]] : Core, %[[VAL_683:.*]] : Core)
-// CHECK:           aie.wire(%[[VAL_64]] : DMA, %[[VAL_683]] : DMA)
-// CHECK:           aie.wire(%[[VAL_682]] : North, %[[VAL_683]] : South)
-// CHECK:           aie.wire(%[[VAL_677]] : East, %[[VAL_684:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_679]] : East, %[[VAL_685:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_347]] : Core, %[[VAL_685]] : Core)
-// CHECK:           aie.wire(%[[VAL_347]] : DMA, %[[VAL_685]] : DMA)
-// CHECK:           aie.wire(%[[VAL_684]] : North, %[[VAL_685]] : South)
-// CHECK:           aie.wire(%[[VAL_680]] : East, %[[VAL_686:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_276]] : Core, %[[VAL_686]] : Core)
-// CHECK:           aie.wire(%[[VAL_276]] : DMA, %[[VAL_686]] : DMA)
-// CHECK:           aie.wire(%[[VAL_685]] : North, %[[VAL_686]] : South)
-// CHECK:           aie.wire(%[[VAL_681]] : East, %[[VAL_687:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_200]] : Core, %[[VAL_687]] : Core)
-// CHECK:           aie.wire(%[[VAL_200]] : DMA, %[[VAL_687]] : DMA)
-// CHECK:           aie.wire(%[[VAL_686]] : North, %[[VAL_687]] : South)
-// CHECK:           aie.wire(%[[VAL_682]] : East, %[[VAL_688:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_122]] : Core, %[[VAL_688]] : Core)
-// CHECK:           aie.wire(%[[VAL_122]] : DMA, %[[VAL_688]] : DMA)
-// CHECK:           aie.wire(%[[VAL_687]] : North, %[[VAL_688]] : South)
-// CHECK:           aie.wire(%[[VAL_683]] : East, %[[VAL_689:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_44]] : Core, %[[VAL_689]] : Core)
-// CHECK:           aie.wire(%[[VAL_44]] : DMA, %[[VAL_689]] : DMA)
-// CHECK:           aie.wire(%[[VAL_688]] : North, %[[VAL_689]] : South)
-// CHECK:           aie.wire(%[[VAL_684]] : East, %[[VAL_690:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_685]] : East, %[[VAL_691:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_338]] : Core, %[[VAL_691]] : Core)
-// CHECK:           aie.wire(%[[VAL_338]] : DMA, %[[VAL_691]] : DMA)
-// CHECK:           aie.wire(%[[VAL_690]] : North, %[[VAL_691]] : South)
-// CHECK:           aie.wire(%[[VAL_686]] : East, %[[VAL_692:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_256]] : Core, %[[VAL_692]] : Core)
-// CHECK:           aie.wire(%[[VAL_256]] : DMA, %[[VAL_692]] : DMA)
-// CHECK:           aie.wire(%[[VAL_691]] : North, %[[VAL_692]] : South)
-// CHECK:           aie.wire(%[[VAL_687]] : East, %[[VAL_693:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_180]] : Core, %[[VAL_693]] : Core)
-// CHECK:           aie.wire(%[[VAL_180]] : DMA, %[[VAL_693]] : DMA)
-// CHECK:           aie.wire(%[[VAL_692]] : North, %[[VAL_693]] : South)
-// CHECK:           aie.wire(%[[VAL_688]] : East, %[[VAL_694:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_102]] : Core, %[[VAL_694]] : Core)
-// CHECK:           aie.wire(%[[VAL_102]] : DMA, %[[VAL_694]] : DMA)
-// CHECK:           aie.wire(%[[VAL_693]] : North, %[[VAL_694]] : South)
-// CHECK:           aie.wire(%[[VAL_689]] : East, %[[VAL_695:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_24]] : Core, %[[VAL_695]] : Core)
-// CHECK:           aie.wire(%[[VAL_24]] : DMA, %[[VAL_695]] : DMA)
-// CHECK:           aie.wire(%[[VAL_694]] : North, %[[VAL_695]] : South)
-// CHECK:           aie.wire(%[[VAL_690]] : East, %[[VAL_696:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_697:.*]] : North, %[[VAL_696]] : South)
-// CHECK:           aie.wire(%[[VAL_217]] : DMA, %[[VAL_697]] : DMA)
-// CHECK:           aie.wire(%[[VAL_691]] : East, %[[VAL_698:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_216]] : Core, %[[VAL_698]] : Core)
-// CHECK:           aie.wire(%[[VAL_216]] : DMA, %[[VAL_698]] : DMA)
-// CHECK:           aie.wire(%[[VAL_696]] : North, %[[VAL_698]] : South)
-// CHECK:           aie.wire(%[[VAL_692]] : East, %[[VAL_699:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_237]] : Core, %[[VAL_699]] : Core)
-// CHECK:           aie.wire(%[[VAL_237]] : DMA, %[[VAL_699]] : DMA)
-// CHECK:           aie.wire(%[[VAL_698]] : North, %[[VAL_699]] : South)
-// CHECK:           aie.wire(%[[VAL_693]] : East, %[[VAL_700:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_161]] : Core, %[[VAL_700]] : Core)
-// CHECK:           aie.wire(%[[VAL_161]] : DMA, %[[VAL_700]] : DMA)
-// CHECK:           aie.wire(%[[VAL_699]] : North, %[[VAL_700]] : South)
-// CHECK:           aie.wire(%[[VAL_694]] : East, %[[VAL_701:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_83]] : Core, %[[VAL_701]] : Core)
-// CHECK:           aie.wire(%[[VAL_83]] : DMA, %[[VAL_701]] : DMA)
-// CHECK:           aie.wire(%[[VAL_700]] : North, %[[VAL_701]] : South)
-// CHECK:           aie.wire(%[[VAL_695]] : East, %[[VAL_702:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_4]] : Core, %[[VAL_702]] : Core)
-// CHECK:           aie.wire(%[[VAL_4]] : DMA, %[[VAL_702]] : DMA)
-// CHECK:           aie.wire(%[[VAL_701]] : North, %[[VAL_702]] : South)
-// CHECK:           aie.wire(%[[VAL_696]] : East, %[[VAL_703:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_704:.*]] : North, %[[VAL_703]] : South)
-// CHECK:           aie.wire(%[[VAL_198]] : DMA, %[[VAL_704]] : DMA)
-// CHECK:           aie.wire(%[[VAL_698]] : East, %[[VAL_705:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_197]] : Core, %[[VAL_705]] : Core)
-// CHECK:           aie.wire(%[[VAL_197]] : DMA, %[[VAL_705]] : DMA)
-// CHECK:           aie.wire(%[[VAL_703]] : North, %[[VAL_705]] : South)
-// CHECK:           aie.wire(%[[VAL_699]] : East, %[[VAL_706:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_196]] : Core, %[[VAL_706]] : Core)
-// CHECK:           aie.wire(%[[VAL_196]] : DMA, %[[VAL_706]] : DMA)
-// CHECK:           aie.wire(%[[VAL_705]] : North, %[[VAL_706]] : South)
-// CHECK:           aie.wire(%[[VAL_700]] : East, %[[VAL_707:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_372]] : Core, %[[VAL_707]] : Core)
-// CHECK:           aie.wire(%[[VAL_372]] : DMA, %[[VAL_707]] : DMA)
-// CHECK:           aie.wire(%[[VAL_706]] : North, %[[VAL_707]] : South)
-// CHECK:           aie.wire(%[[VAL_701]] : East, %[[VAL_708:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_530]] : Core, %[[VAL_708]] : Core)
-// CHECK:           aie.wire(%[[VAL_530]] : DMA, %[[VAL_708]] : DMA)
-// CHECK:           aie.wire(%[[VAL_707]] : North, %[[VAL_708]] : South)
-// CHECK:           aie.wire(%[[VAL_702]] : East, %[[VAL_709:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_478]] : Core, %[[VAL_709]] : Core)
-// CHECK:           aie.wire(%[[VAL_478]] : DMA, %[[VAL_709]] : DMA)
-// CHECK:           aie.wire(%[[VAL_708]] : North, %[[VAL_709]] : South)
-// CHECK:           aie.wire(%[[VAL_703]] : East, %[[VAL_710:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_705]] : East, %[[VAL_711:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_377]] : Core, %[[VAL_711]] : Core)
-// CHECK:           aie.wire(%[[VAL_377]] : DMA, %[[VAL_711]] : DMA)
-// CHECK:           aie.wire(%[[VAL_710]] : North, %[[VAL_711]] : South)
-// CHECK:           aie.wire(%[[VAL_706]] : East, %[[VAL_712:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_409]] : Core, %[[VAL_712]] : Core)
-// CHECK:           aie.wire(%[[VAL_409]] : DMA, %[[VAL_712]] : DMA)
-// CHECK:           aie.wire(%[[VAL_711]] : North, %[[VAL_712]] : South)
-// CHECK:           aie.wire(%[[VAL_707]] : East, %[[VAL_713:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_453]] : Core, %[[VAL_713]] : Core)
-// CHECK:           aie.wire(%[[VAL_453]] : DMA, %[[VAL_713]] : DMA)
-// CHECK:           aie.wire(%[[VAL_712]] : North, %[[VAL_713]] : South)
-// CHECK:           aie.wire(%[[VAL_708]] : East, %[[VAL_714:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_532]] : Core, %[[VAL_714]] : Core)
-// CHECK:           aie.wire(%[[VAL_532]] : DMA, %[[VAL_714]] : DMA)
-// CHECK:           aie.wire(%[[VAL_713]] : North, %[[VAL_714]] : South)
-// CHECK:           aie.wire(%[[VAL_709]] : East, %[[VAL_715:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_480]] : Core, %[[VAL_715]] : Core)
-// CHECK:           aie.wire(%[[VAL_480]] : DMA, %[[VAL_715]] : DMA)
-// CHECK:           aie.wire(%[[VAL_714]] : North, %[[VAL_715]] : South)
-// CHECK:           aie.wire(%[[VAL_710]] : East, %[[VAL_716:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_711]] : East, %[[VAL_717:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_379]] : Core, %[[VAL_717]] : Core)
-// CHECK:           aie.wire(%[[VAL_379]] : DMA, %[[VAL_717]] : DMA)
-// CHECK:           aie.wire(%[[VAL_716]] : North, %[[VAL_717]] : South)
-// CHECK:           aie.wire(%[[VAL_712]] : East, %[[VAL_718:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_411]] : Core, %[[VAL_718]] : Core)
-// CHECK:           aie.wire(%[[VAL_411]] : DMA, %[[VAL_718]] : DMA)
-// CHECK:           aie.wire(%[[VAL_717]] : North, %[[VAL_718]] : South)
-// CHECK:           aie.wire(%[[VAL_713]] : East, %[[VAL_719:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_455]] : Core, %[[VAL_719]] : Core)
-// CHECK:           aie.wire(%[[VAL_455]] : DMA, %[[VAL_719]] : DMA)
-// CHECK:           aie.wire(%[[VAL_718]] : North, %[[VAL_719]] : South)
-// CHECK:           aie.wire(%[[VAL_714]] : East, %[[VAL_720:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_534]] : Core, %[[VAL_720]] : Core)
-// CHECK:           aie.wire(%[[VAL_534]] : DMA, %[[VAL_720]] : DMA)
-// CHECK:           aie.wire(%[[VAL_719]] : North, %[[VAL_720]] : South)
-// CHECK:           aie.wire(%[[VAL_715]] : East, %[[VAL_721:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_482]] : Core, %[[VAL_721]] : Core)
-// CHECK:           aie.wire(%[[VAL_482]] : DMA, %[[VAL_721]] : DMA)
-// CHECK:           aie.wire(%[[VAL_720]] : North, %[[VAL_721]] : South)
-// CHECK:           aie.wire(%[[VAL_716]] : East, %[[VAL_722:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_717]] : East, %[[VAL_723:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_381]] : Core, %[[VAL_723]] : Core)
-// CHECK:           aie.wire(%[[VAL_381]] : DMA, %[[VAL_723]] : DMA)
-// CHECK:           aie.wire(%[[VAL_722]] : North, %[[VAL_723]] : South)
-// CHECK:           aie.wire(%[[VAL_718]] : East, %[[VAL_724:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_413]] : Core, %[[VAL_724]] : Core)
-// CHECK:           aie.wire(%[[VAL_413]] : DMA, %[[VAL_724]] : DMA)
-// CHECK:           aie.wire(%[[VAL_723]] : North, %[[VAL_724]] : South)
-// CHECK:           aie.wire(%[[VAL_719]] : East, %[[VAL_725:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_457]] : Core, %[[VAL_725]] : Core)
-// CHECK:           aie.wire(%[[VAL_457]] : DMA, %[[VAL_725]] : DMA)
-// CHECK:           aie.wire(%[[VAL_724]] : North, %[[VAL_725]] : South)
-// CHECK:           aie.wire(%[[VAL_720]] : East, %[[VAL_726:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_536]] : Core, %[[VAL_726]] : Core)
-// CHECK:           aie.wire(%[[VAL_536]] : DMA, %[[VAL_726]] : DMA)
-// CHECK:           aie.wire(%[[VAL_725]] : North, %[[VAL_726]] : South)
-// CHECK:           aie.wire(%[[VAL_721]] : East, %[[VAL_727:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_484]] : Core, %[[VAL_727]] : Core)
-// CHECK:           aie.wire(%[[VAL_484]] : DMA, %[[VAL_727]] : DMA)
-// CHECK:           aie.wire(%[[VAL_726]] : North, %[[VAL_727]] : South)
-// CHECK:           aie.wire(%[[VAL_722]] : East, %[[VAL_728:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_723]] : East, %[[VAL_729:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_383]] : Core, %[[VAL_729]] : Core)
-// CHECK:           aie.wire(%[[VAL_383]] : DMA, %[[VAL_729]] : DMA)
-// CHECK:           aie.wire(%[[VAL_728]] : North, %[[VAL_729]] : South)
-// CHECK:           aie.wire(%[[VAL_724]] : East, %[[VAL_730:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_415]] : Core, %[[VAL_730]] : Core)
-// CHECK:           aie.wire(%[[VAL_415]] : DMA, %[[VAL_730]] : DMA)
-// CHECK:           aie.wire(%[[VAL_729]] : North, %[[VAL_730]] : South)
-// CHECK:           aie.wire(%[[VAL_725]] : East, %[[VAL_731:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_459]] : Core, %[[VAL_731]] : Core)
-// CHECK:           aie.wire(%[[VAL_459]] : DMA, %[[VAL_731]] : DMA)
-// CHECK:           aie.wire(%[[VAL_730]] : North, %[[VAL_731]] : South)
-// CHECK:           aie.wire(%[[VAL_726]] : East, %[[VAL_732:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_486]] : Core, %[[VAL_732]] : Core)
-// CHECK:           aie.wire(%[[VAL_486]] : DMA, %[[VAL_732]] : DMA)
-// CHECK:           aie.wire(%[[VAL_731]] : North, %[[VAL_732]] : South)
-// CHECK:           aie.wire(%[[VAL_727]] : East, %[[VAL_733:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_488]] : Core, %[[VAL_733]] : Core)
-// CHECK:           aie.wire(%[[VAL_488]] : DMA, %[[VAL_733]] : DMA)
-// CHECK:           aie.wire(%[[VAL_732]] : North, %[[VAL_733]] : South)
-// CHECK:           aie.wire(%[[VAL_728]] : East, %[[VAL_734:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_729]] : East, %[[VAL_735:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_385]] : Core, %[[VAL_735]] : Core)
-// CHECK:           aie.wire(%[[VAL_385]] : DMA, %[[VAL_735]] : DMA)
-// CHECK:           aie.wire(%[[VAL_734]] : North, %[[VAL_735]] : South)
-// CHECK:           aie.wire(%[[VAL_730]] : East, %[[VAL_736:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_417]] : Core, %[[VAL_736]] : Core)
-// CHECK:           aie.wire(%[[VAL_417]] : DMA, %[[VAL_736]] : DMA)
-// CHECK:           aie.wire(%[[VAL_735]] : North, %[[VAL_736]] : South)
-// CHECK:           aie.wire(%[[VAL_731]] : East, %[[VAL_737:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_461]] : Core, %[[VAL_737]] : Core)
-// CHECK:           aie.wire(%[[VAL_461]] : DMA, %[[VAL_737]] : DMA)
-// CHECK:           aie.wire(%[[VAL_736]] : North, %[[VAL_737]] : South)
-// CHECK:           aie.wire(%[[VAL_732]] : East, %[[VAL_738:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_538]] : Core, %[[VAL_738]] : Core)
-// CHECK:           aie.wire(%[[VAL_538]] : DMA, %[[VAL_738]] : DMA)
-// CHECK:           aie.wire(%[[VAL_737]] : North, %[[VAL_738]] : South)
-// CHECK:           aie.wire(%[[VAL_733]] : East, %[[VAL_739:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_597]] : Core, %[[VAL_739]] : Core)
-// CHECK:           aie.wire(%[[VAL_597]] : DMA, %[[VAL_739]] : DMA)
-// CHECK:           aie.wire(%[[VAL_738]] : North, %[[VAL_739]] : South)
-// CHECK:           aie.wire(%[[VAL_734]] : East, %[[VAL_740:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_735]] : East, %[[VAL_741:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_387]] : Core, %[[VAL_741]] : Core)
-// CHECK:           aie.wire(%[[VAL_387]] : DMA, %[[VAL_741]] : DMA)
-// CHECK:           aie.wire(%[[VAL_740]] : North, %[[VAL_741]] : South)
-// CHECK:           aie.wire(%[[VAL_736]] : East, %[[VAL_742:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_419]] : Core, %[[VAL_742]] : Core)
-// CHECK:           aie.wire(%[[VAL_419]] : DMA, %[[VAL_742]] : DMA)
-// CHECK:           aie.wire(%[[VAL_741]] : North, %[[VAL_742]] : South)
-// CHECK:           aie.wire(%[[VAL_737]] : East, %[[VAL_743:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_463]] : Core, %[[VAL_743]] : Core)
-// CHECK:           aie.wire(%[[VAL_463]] : DMA, %[[VAL_743]] : DMA)
-// CHECK:           aie.wire(%[[VAL_742]] : North, %[[VAL_743]] : South)
-// CHECK:           aie.wire(%[[VAL_738]] : East, %[[VAL_744:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_540]] : Core, %[[VAL_744]] : Core)
-// CHECK:           aie.wire(%[[VAL_540]] : DMA, %[[VAL_744]] : DMA)
-// CHECK:           aie.wire(%[[VAL_743]] : North, %[[VAL_744]] : South)
-// CHECK:           aie.wire(%[[VAL_739]] : East, %[[VAL_745:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_599]] : Core, %[[VAL_745]] : Core)
-// CHECK:           aie.wire(%[[VAL_599]] : DMA, %[[VAL_745]] : DMA)
-// CHECK:           aie.wire(%[[VAL_744]] : North, %[[VAL_745]] : South)
-// CHECK:           aie.wire(%[[VAL_740]] : East, %[[VAL_746:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_747:.*]] : North, %[[VAL_746]] : South)
-// CHECK:           aie.wire(%[[VAL_179]] : DMA, %[[VAL_747]] : DMA)
-// CHECK:           aie.wire(%[[VAL_741]] : East, %[[VAL_748:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_178]] : Core, %[[VAL_748]] : Core)
-// CHECK:           aie.wire(%[[VAL_178]] : DMA, %[[VAL_748]] : DMA)
-// CHECK:           aie.wire(%[[VAL_746]] : North, %[[VAL_748]] : South)
-// CHECK:           aie.wire(%[[VAL_742]] : East, %[[VAL_749:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_177]] : Core, %[[VAL_749]] : Core)
-// CHECK:           aie.wire(%[[VAL_177]] : DMA, %[[VAL_749]] : DMA)
-// CHECK:           aie.wire(%[[VAL_748]] : North, %[[VAL_749]] : South)
-// CHECK:           aie.wire(%[[VAL_743]] : East, %[[VAL_750:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_465]] : Core, %[[VAL_750]] : Core)
-// CHECK:           aie.wire(%[[VAL_465]] : DMA, %[[VAL_750]] : DMA)
-// CHECK:           aie.wire(%[[VAL_749]] : North, %[[VAL_750]] : South)
-// CHECK:           aie.wire(%[[VAL_744]] : East, %[[VAL_751:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_552]] : Core, %[[VAL_751]] : Core)
-// CHECK:           aie.wire(%[[VAL_552]] : DMA, %[[VAL_751]] : DMA)
-// CHECK:           aie.wire(%[[VAL_750]] : North, %[[VAL_751]] : South)
-// CHECK:           aie.wire(%[[VAL_745]] : East, %[[VAL_752:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_601]] : Core, %[[VAL_752]] : Core)
-// CHECK:           aie.wire(%[[VAL_601]] : DMA, %[[VAL_752]] : DMA)
-// CHECK:           aie.wire(%[[VAL_751]] : North, %[[VAL_752]] : South)
-// CHECK:           aie.wire(%[[VAL_746]] : East, %[[VAL_753:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_754:.*]] : North, %[[VAL_753]] : South)
-// CHECK:           aie.wire(%[[VAL_160]] : DMA, %[[VAL_754]] : DMA)
-// CHECK:           aie.wire(%[[VAL_748]] : East, %[[VAL_755:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_159]] : Core, %[[VAL_755]] : Core)
-// CHECK:           aie.wire(%[[VAL_159]] : DMA, %[[VAL_755]] : DMA)
-// CHECK:           aie.wire(%[[VAL_753]] : North, %[[VAL_755]] : South)
-// CHECK:           aie.wire(%[[VAL_749]] : East, %[[VAL_756:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_158]] : Core, %[[VAL_756]] : Core)
-// CHECK:           aie.wire(%[[VAL_158]] : DMA, %[[VAL_756]] : DMA)
-// CHECK:           aie.wire(%[[VAL_755]] : North, %[[VAL_756]] : South)
-// CHECK:           aie.wire(%[[VAL_750]] : East, %[[VAL_757:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_467]] : Core, %[[VAL_757]] : Core)
-// CHECK:           aie.wire(%[[VAL_467]] : DMA, %[[VAL_757]] : DMA)
-// CHECK:           aie.wire(%[[VAL_756]] : North, %[[VAL_757]] : South)
-// CHECK:           aie.wire(%[[VAL_751]] : East, %[[VAL_758:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_554]] : Core, %[[VAL_758]] : Core)
-// CHECK:           aie.wire(%[[VAL_554]] : DMA, %[[VAL_758]] : DMA)
-// CHECK:           aie.wire(%[[VAL_757]] : North, %[[VAL_758]] : South)
-// CHECK:           aie.wire(%[[VAL_753]] : East, %[[VAL_759:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_755]] : East, %[[VAL_760:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_423]] : Core, %[[VAL_760]] : Core)
-// CHECK:           aie.wire(%[[VAL_423]] : DMA, %[[VAL_760]] : DMA)
-// CHECK:           aie.wire(%[[VAL_759]] : North, %[[VAL_760]] : South)
-// CHECK:           aie.wire(%[[VAL_756]] : East, %[[VAL_761:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_425]] : Core, %[[VAL_761]] : Core)
-// CHECK:           aie.wire(%[[VAL_425]] : DMA, %[[VAL_761]] : DMA)
-// CHECK:           aie.wire(%[[VAL_760]] : North, %[[VAL_761]] : South)
-// CHECK:           aie.wire(%[[VAL_757]] : East, %[[VAL_762:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_469]] : Core, %[[VAL_762]] : Core)
-// CHECK:           aie.wire(%[[VAL_469]] : DMA, %[[VAL_762]] : DMA)
-// CHECK:           aie.wire(%[[VAL_761]] : North, %[[VAL_762]] : South)
-// CHECK:           aie.wire(%[[VAL_758]] : East, %[[VAL_763:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_556]] : Core, %[[VAL_763]] : Core)
-// CHECK:           aie.wire(%[[VAL_556]] : DMA, %[[VAL_763]] : DMA)
-// CHECK:           aie.wire(%[[VAL_762]] : North, %[[VAL_763]] : South)
-// CHECK:           aie.wire(%[[VAL_759]] : East, %[[VAL_764:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_760]] : East, %[[VAL_765:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_427]] : Core, %[[VAL_765]] : Core)
-// CHECK:           aie.wire(%[[VAL_427]] : DMA, %[[VAL_765]] : DMA)
-// CHECK:           aie.wire(%[[VAL_764]] : North, %[[VAL_765]] : South)
-// CHECK:           aie.wire(%[[VAL_761]] : East, %[[VAL_766:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_542]] : Core, %[[VAL_766]] : Core)
-// CHECK:           aie.wire(%[[VAL_542]] : DMA, %[[VAL_766]] : DMA)
-// CHECK:           aie.wire(%[[VAL_765]] : North, %[[VAL_766]] : South)
-// CHECK:           aie.wire(%[[VAL_762]] : East, %[[VAL_767:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_490]] : Core, %[[VAL_767]] : Core)
-// CHECK:           aie.wire(%[[VAL_490]] : DMA, %[[VAL_767]] : DMA)
-// CHECK:           aie.wire(%[[VAL_766]] : North, %[[VAL_767]] : South)
-// CHECK:           aie.wire(%[[VAL_763]] : East, %[[VAL_768:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_603]] : Core, %[[VAL_768]] : Core)
-// CHECK:           aie.wire(%[[VAL_603]] : DMA, %[[VAL_768]] : DMA)
-// CHECK:           aie.wire(%[[VAL_767]] : North, %[[VAL_768]] : South)
-// CHECK:           aie.wire(%[[VAL_764]] : East, %[[VAL_769:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_765]] : East, %[[VAL_770:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_429]] : Core, %[[VAL_770]] : Core)
-// CHECK:           aie.wire(%[[VAL_429]] : DMA, %[[VAL_770]] : DMA)
-// CHECK:           aie.wire(%[[VAL_769]] : North, %[[VAL_770]] : South)
-// CHECK:           aie.wire(%[[VAL_766]] : East, %[[VAL_771:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_544]] : Core, %[[VAL_771]] : Core)
-// CHECK:           aie.wire(%[[VAL_544]] : DMA, %[[VAL_771]] : DMA)
-// CHECK:           aie.wire(%[[VAL_770]] : North, %[[VAL_771]] : South)
-// CHECK:           aie.wire(%[[VAL_767]] : East, %[[VAL_772:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_492]] : Core, %[[VAL_772]] : Core)
-// CHECK:           aie.wire(%[[VAL_492]] : DMA, %[[VAL_772]] : DMA)
-// CHECK:           aie.wire(%[[VAL_771]] : North, %[[VAL_772]] : South)
-// CHECK:           aie.wire(%[[VAL_768]] : East, %[[VAL_773:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_605]] : Core, %[[VAL_773]] : Core)
-// CHECK:           aie.wire(%[[VAL_605]] : DMA, %[[VAL_773]] : DMA)
-// CHECK:           aie.wire(%[[VAL_772]] : North, %[[VAL_773]] : South)
-// CHECK:           aie.wire(%[[VAL_769]] : East, %[[VAL_774:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_770]] : East, %[[VAL_775:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_431]] : Core, %[[VAL_775]] : Core)
-// CHECK:           aie.wire(%[[VAL_431]] : DMA, %[[VAL_775]] : DMA)
-// CHECK:           aie.wire(%[[VAL_774]] : North, %[[VAL_775]] : South)
-// CHECK:           aie.wire(%[[VAL_771]] : East, %[[VAL_776:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_546]] : Core, %[[VAL_776]] : Core)
-// CHECK:           aie.wire(%[[VAL_546]] : DMA, %[[VAL_776]] : DMA)
-// CHECK:           aie.wire(%[[VAL_775]] : North, %[[VAL_776]] : South)
-// CHECK:           aie.wire(%[[VAL_772]] : East, %[[VAL_777:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_494]] : Core, %[[VAL_777]] : Core)
-// CHECK:           aie.wire(%[[VAL_494]] : DMA, %[[VAL_777]] : DMA)
-// CHECK:           aie.wire(%[[VAL_776]] : North, %[[VAL_777]] : South)
-// CHECK:           aie.wire(%[[VAL_773]] : East, %[[VAL_778:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_607]] : Core, %[[VAL_778]] : Core)
-// CHECK:           aie.wire(%[[VAL_607]] : DMA, %[[VAL_778]] : DMA)
-// CHECK:           aie.wire(%[[VAL_777]] : North, %[[VAL_778]] : South)
-// CHECK:           aie.wire(%[[VAL_774]] : East, %[[VAL_779:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_775]] : East, %[[VAL_780:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_433]] : Core, %[[VAL_780]] : Core)
-// CHECK:           aie.wire(%[[VAL_433]] : DMA, %[[VAL_780]] : DMA)
-// CHECK:           aie.wire(%[[VAL_779]] : North, %[[VAL_780]] : South)
-// CHECK:           aie.wire(%[[VAL_776]] : East, %[[VAL_781:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_496]] : Core, %[[VAL_781]] : Core)
-// CHECK:           aie.wire(%[[VAL_496]] : DMA, %[[VAL_781]] : DMA)
-// CHECK:           aie.wire(%[[VAL_780]] : North, %[[VAL_781]] : South)
-// CHECK:           aie.wire(%[[VAL_777]] : East, %[[VAL_782:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_498]] : Core, %[[VAL_782]] : Core)
-// CHECK:           aie.wire(%[[VAL_498]] : DMA, %[[VAL_782]] : DMA)
-// CHECK:           aie.wire(%[[VAL_781]] : North, %[[VAL_782]] : South)
-// CHECK:           aie.wire(%[[VAL_778]] : East, %[[VAL_783:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_609]] : Core, %[[VAL_783]] : Core)
-// CHECK:           aie.wire(%[[VAL_609]] : DMA, %[[VAL_783]] : DMA)
-// CHECK:           aie.wire(%[[VAL_782]] : North, %[[VAL_783]] : South)
-// CHECK:           aie.wire(%[[VAL_779]] : East, %[[VAL_784:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_780]] : East, %[[VAL_785:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_435]] : Core, %[[VAL_785]] : Core)
-// CHECK:           aie.wire(%[[VAL_435]] : DMA, %[[VAL_785]] : DMA)
-// CHECK:           aie.wire(%[[VAL_784]] : North, %[[VAL_785]] : South)
-// CHECK:           aie.wire(%[[VAL_781]] : East, %[[VAL_786:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_500]] : Core, %[[VAL_786]] : Core)
-// CHECK:           aie.wire(%[[VAL_500]] : DMA, %[[VAL_786]] : DMA)
-// CHECK:           aie.wire(%[[VAL_785]] : North, %[[VAL_786]] : South)
-// CHECK:           aie.wire(%[[VAL_782]] : East, %[[VAL_787:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_558]] : Core, %[[VAL_787]] : Core)
-// CHECK:           aie.wire(%[[VAL_558]] : DMA, %[[VAL_787]] : DMA)
-// CHECK:           aie.wire(%[[VAL_786]] : North, %[[VAL_787]] : South)
-// CHECK:           aie.wire(%[[VAL_783]] : East, %[[VAL_788:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_611]] : Core, %[[VAL_788]] : Core)
-// CHECK:           aie.wire(%[[VAL_611]] : DMA, %[[VAL_788]] : DMA)
-// CHECK:           aie.wire(%[[VAL_787]] : North, %[[VAL_788]] : South)
-// CHECK:           aie.wire(%[[VAL_784]] : East, %[[VAL_789:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_790:.*]] : North, %[[VAL_789]] : South)
-// CHECK:           aie.wire(%[[VAL_140]] : DMA, %[[VAL_790]] : DMA)
-// CHECK:           aie.wire(%[[VAL_785]] : East, %[[VAL_791:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_139]] : Core, %[[VAL_791]] : Core)
-// CHECK:           aie.wire(%[[VAL_139]] : DMA, %[[VAL_791]] : DMA)
-// CHECK:           aie.wire(%[[VAL_789]] : North, %[[VAL_791]] : South)
-// CHECK:           aie.wire(%[[VAL_786]] : East, %[[VAL_792:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_138]] : Core, %[[VAL_792]] : Core)
-// CHECK:           aie.wire(%[[VAL_138]] : DMA, %[[VAL_792]] : DMA)
-// CHECK:           aie.wire(%[[VAL_791]] : North, %[[VAL_792]] : South)
-// CHECK:           aie.wire(%[[VAL_787]] : East, %[[VAL_793:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_560]] : Core, %[[VAL_793]] : Core)
-// CHECK:           aie.wire(%[[VAL_560]] : DMA, %[[VAL_793]] : DMA)
-// CHECK:           aie.wire(%[[VAL_792]] : North, %[[VAL_793]] : South)
-// CHECK:           aie.wire(%[[VAL_788]] : East, %[[VAL_794:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_613]] : Core, %[[VAL_794]] : Core)
-// CHECK:           aie.wire(%[[VAL_613]] : DMA, %[[VAL_794]] : DMA)
-// CHECK:           aie.wire(%[[VAL_793]] : North, %[[VAL_794]] : South)
-// CHECK:           aie.wire(%[[VAL_789]] : East, %[[VAL_795:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_796:.*]] : North, %[[VAL_795]] : South)
-// CHECK:           aie.wire(%[[VAL_120]] : DMA, %[[VAL_796]] : DMA)
-// CHECK:           aie.wire(%[[VAL_791]] : East, %[[VAL_797:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_119]] : Core, %[[VAL_797]] : Core)
-// CHECK:           aie.wire(%[[VAL_119]] : DMA, %[[VAL_797]] : DMA)
-// CHECK:           aie.wire(%[[VAL_795]] : North, %[[VAL_797]] : South)
-// CHECK:           aie.wire(%[[VAL_792]] : East, %[[VAL_798:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_118]] : Core, %[[VAL_798]] : Core)
-// CHECK:           aie.wire(%[[VAL_118]] : DMA, %[[VAL_798]] : DMA)
-// CHECK:           aie.wire(%[[VAL_797]] : North, %[[VAL_798]] : South)
-// CHECK:           aie.wire(%[[VAL_794]] : East, %[[VAL_799:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_615]] : Core, %[[VAL_799]] : Core)
-// CHECK:           aie.wire(%[[VAL_615]] : DMA, %[[VAL_799]] : DMA)
-// CHECK:           aie.wire(%[[VAL_795]] : East, %[[VAL_800:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_797]] : East, %[[VAL_801:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_503]] : Core, %[[VAL_801]] : Core)
-// CHECK:           aie.wire(%[[VAL_503]] : DMA, %[[VAL_801]] : DMA)
-// CHECK:           aie.wire(%[[VAL_800]] : North, %[[VAL_801]] : South)
-// CHECK:           aie.wire(%[[VAL_798]] : East, %[[VAL_802:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_562]] : Core, %[[VAL_802]] : Core)
-// CHECK:           aie.wire(%[[VAL_562]] : DMA, %[[VAL_802]] : DMA)
-// CHECK:           aie.wire(%[[VAL_801]] : North, %[[VAL_802]] : South)
-// CHECK:           aie.wire(%[[VAL_799]] : East, %[[VAL_803:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_617]] : Core, %[[VAL_803]] : Core)
-// CHECK:           aie.wire(%[[VAL_617]] : DMA, %[[VAL_803]] : DMA)
-// CHECK:           aie.wire(%[[VAL_800]] : East, %[[VAL_804:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_801]] : East, %[[VAL_805:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_505]] : Core, %[[VAL_805]] : Core)
-// CHECK:           aie.wire(%[[VAL_505]] : DMA, %[[VAL_805]] : DMA)
-// CHECK:           aie.wire(%[[VAL_804]] : North, %[[VAL_805]] : South)
-// CHECK:           aie.wire(%[[VAL_802]] : East, %[[VAL_806:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_564]] : Core, %[[VAL_806]] : Core)
-// CHECK:           aie.wire(%[[VAL_564]] : DMA, %[[VAL_806]] : DMA)
-// CHECK:           aie.wire(%[[VAL_805]] : North, %[[VAL_806]] : South)
-// CHECK:           aie.wire(%[[VAL_803]] : East, %[[VAL_807:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_619]] : Core, %[[VAL_807]] : Core)
-// CHECK:           aie.wire(%[[VAL_619]] : DMA, %[[VAL_807]] : DMA)
-// CHECK:           aie.wire(%[[VAL_804]] : East, %[[VAL_808:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_805]] : East, %[[VAL_809:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_507]] : Core, %[[VAL_809]] : Core)
-// CHECK:           aie.wire(%[[VAL_507]] : DMA, %[[VAL_809]] : DMA)
-// CHECK:           aie.wire(%[[VAL_808]] : North, %[[VAL_809]] : South)
-// CHECK:           aie.wire(%[[VAL_806]] : East, %[[VAL_810:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_566]] : Core, %[[VAL_810]] : Core)
-// CHECK:           aie.wire(%[[VAL_566]] : DMA, %[[VAL_810]] : DMA)
-// CHECK:           aie.wire(%[[VAL_809]] : North, %[[VAL_810]] : South)
-// CHECK:           aie.wire(%[[VAL_807]] : East, %[[VAL_811:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_621]] : Core, %[[VAL_811]] : Core)
-// CHECK:           aie.wire(%[[VAL_621]] : DMA, %[[VAL_811]] : DMA)
-// CHECK:           aie.wire(%[[VAL_808]] : East, %[[VAL_812:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_809]] : East, %[[VAL_813:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_509]] : Core, %[[VAL_813]] : Core)
-// CHECK:           aie.wire(%[[VAL_509]] : DMA, %[[VAL_813]] : DMA)
-// CHECK:           aie.wire(%[[VAL_812]] : North, %[[VAL_813]] : South)
-// CHECK:           aie.wire(%[[VAL_810]] : East, %[[VAL_814:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_568]] : Core, %[[VAL_814]] : Core)
-// CHECK:           aie.wire(%[[VAL_568]] : DMA, %[[VAL_814]] : DMA)
-// CHECK:           aie.wire(%[[VAL_813]] : North, %[[VAL_814]] : South)
-// CHECK:           aie.wire(%[[VAL_811]] : East, %[[VAL_815:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_623]] : Core, %[[VAL_815]] : Core)
-// CHECK:           aie.wire(%[[VAL_623]] : DMA, %[[VAL_815]] : DMA)
-// CHECK:           aie.wire(%[[VAL_812]] : East, %[[VAL_816:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_813]] : East, %[[VAL_817:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_511]] : Core, %[[VAL_817]] : Core)
-// CHECK:           aie.wire(%[[VAL_511]] : DMA, %[[VAL_817]] : DMA)
-// CHECK:           aie.wire(%[[VAL_816]] : North, %[[VAL_817]] : South)
-// CHECK:           aie.wire(%[[VAL_814]] : East, %[[VAL_818:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_570]] : Core, %[[VAL_818]] : Core)
-// CHECK:           aie.wire(%[[VAL_570]] : DMA, %[[VAL_818]] : DMA)
-// CHECK:           aie.wire(%[[VAL_817]] : North, %[[VAL_818]] : South)
-// CHECK:           aie.wire(%[[VAL_815]] : East, %[[VAL_819:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_625]] : Core, %[[VAL_819]] : Core)
-// CHECK:           aie.wire(%[[VAL_625]] : DMA, %[[VAL_819]] : DMA)
-// CHECK:           aie.wire(%[[VAL_816]] : East, %[[VAL_820:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_817]] : East, %[[VAL_821:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_513]] : Core, %[[VAL_821]] : Core)
-// CHECK:           aie.wire(%[[VAL_513]] : DMA, %[[VAL_821]] : DMA)
-// CHECK:           aie.wire(%[[VAL_820]] : North, %[[VAL_821]] : South)
-// CHECK:           aie.wire(%[[VAL_818]] : East, %[[VAL_822:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_572]] : Core, %[[VAL_822]] : Core)
-// CHECK:           aie.wire(%[[VAL_572]] : DMA, %[[VAL_822]] : DMA)
-// CHECK:           aie.wire(%[[VAL_821]] : North, %[[VAL_822]] : South)
-// CHECK:           aie.wire(%[[VAL_819]] : East, %[[VAL_823:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_627]] : Core, %[[VAL_823]] : Core)
-// CHECK:           aie.wire(%[[VAL_627]] : DMA, %[[VAL_823]] : DMA)
-// CHECK:           aie.wire(%[[VAL_820]] : East, %[[VAL_824:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_825:.*]] : North, %[[VAL_824]] : South)
-// CHECK:           aie.wire(%[[VAL_101]] : DMA, %[[VAL_825]] : DMA)
-// CHECK:           aie.wire(%[[VAL_821]] : East, %[[VAL_826:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_100]] : Core, %[[VAL_826]] : Core)
-// CHECK:           aie.wire(%[[VAL_100]] : DMA, %[[VAL_826]] : DMA)
-// CHECK:           aie.wire(%[[VAL_824]] : North, %[[VAL_826]] : South)
-// CHECK:           aie.wire(%[[VAL_822]] : East, %[[VAL_827:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_99]] : Core, %[[VAL_827]] : Core)
-// CHECK:           aie.wire(%[[VAL_99]] : DMA, %[[VAL_827]] : DMA)
-// CHECK:           aie.wire(%[[VAL_826]] : North, %[[VAL_827]] : South)
-// CHECK:           aie.wire(%[[VAL_823]] : East, %[[VAL_828:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_629]] : Core, %[[VAL_828]] : Core)
-// CHECK:           aie.wire(%[[VAL_629]] : DMA, %[[VAL_828]] : DMA)
-// CHECK:           aie.wire(%[[VAL_824]] : East, %[[VAL_829:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_830:.*]] : North, %[[VAL_829]] : South)
-// CHECK:           aie.wire(%[[VAL_82]] : DMA, %[[VAL_830]] : DMA)
-// CHECK:           aie.wire(%[[VAL_826]] : East, %[[VAL_831:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_81]] : Core, %[[VAL_831]] : Core)
-// CHECK:           aie.wire(%[[VAL_81]] : DMA, %[[VAL_831]] : DMA)
-// CHECK:           aie.wire(%[[VAL_829]] : North, %[[VAL_831]] : South)
-// CHECK:           aie.wire(%[[VAL_827]] : East, %[[VAL_832:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_80]] : Core, %[[VAL_832]] : Core)
-// CHECK:           aie.wire(%[[VAL_80]] : DMA, %[[VAL_832]] : DMA)
-// CHECK:           aie.wire(%[[VAL_831]] : North, %[[VAL_832]] : South)
-// CHECK:           aie.wire(%[[VAL_828]] : East, %[[VAL_833:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_631]] : Core, %[[VAL_833]] : Core)
-// CHECK:           aie.wire(%[[VAL_631]] : DMA, %[[VAL_833]] : DMA)
-// CHECK:           aie.wire(%[[VAL_829]] : East, %[[VAL_834:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_832]] : East, %[[VAL_835:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_576]] : Core, %[[VAL_835]] : Core)
-// CHECK:           aie.wire(%[[VAL_576]] : DMA, %[[VAL_835]] : DMA)
-// CHECK:           aie.wire(%[[VAL_833]] : East, %[[VAL_836:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_633]] : Core, %[[VAL_836]] : Core)
-// CHECK:           aie.wire(%[[VAL_633]] : DMA, %[[VAL_836]] : DMA)
-// CHECK:           aie.wire(%[[VAL_834]] : East, %[[VAL_837:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_835]] : East, %[[VAL_838:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_578]] : Core, %[[VAL_838]] : Core)
-// CHECK:           aie.wire(%[[VAL_578]] : DMA, %[[VAL_838]] : DMA)
-// CHECK:           aie.wire(%[[VAL_836]] : East, %[[VAL_839:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_635]] : Core, %[[VAL_839]] : Core)
-// CHECK:           aie.wire(%[[VAL_635]] : DMA, %[[VAL_839]] : DMA)
-// CHECK:           aie.wire(%[[VAL_837]] : East, %[[VAL_840:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_838]] : East, %[[VAL_841:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_580]] : Core, %[[VAL_841]] : Core)
-// CHECK:           aie.wire(%[[VAL_580]] : DMA, %[[VAL_841]] : DMA)
-// CHECK:           aie.wire(%[[VAL_839]] : East, %[[VAL_842:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_637]] : Core, %[[VAL_842]] : Core)
-// CHECK:           aie.wire(%[[VAL_637]] : DMA, %[[VAL_842]] : DMA)
-// CHECK:           aie.wire(%[[VAL_840]] : East, %[[VAL_843:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_841]] : East, %[[VAL_844:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_582]] : Core, %[[VAL_844]] : Core)
-// CHECK:           aie.wire(%[[VAL_582]] : DMA, %[[VAL_844]] : DMA)
-// CHECK:           aie.wire(%[[VAL_842]] : East, %[[VAL_845:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_639]] : Core, %[[VAL_845]] : Core)
-// CHECK:           aie.wire(%[[VAL_639]] : DMA, %[[VAL_845]] : DMA)
-// CHECK:           aie.wire(%[[VAL_843]] : East, %[[VAL_846:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_844]] : East, %[[VAL_847:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_584]] : Core, %[[VAL_847]] : Core)
-// CHECK:           aie.wire(%[[VAL_584]] : DMA, %[[VAL_847]] : DMA)
-// CHECK:           aie.wire(%[[VAL_845]] : East, %[[VAL_848:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_641]] : Core, %[[VAL_848]] : Core)
-// CHECK:           aie.wire(%[[VAL_641]] : DMA, %[[VAL_848]] : DMA)
-// CHECK:           aie.wire(%[[VAL_846]] : East, %[[VAL_849:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_586]] : Core, %[[VAL_850:.*]] : Core)
-// CHECK:           aie.wire(%[[VAL_586]] : DMA, %[[VAL_850]] : DMA)
-// CHECK:           aie.wire(%[[VAL_849]] : North, %[[VAL_850]] : South)
-// CHECK:           aie.wire(%[[VAL_847]] : East, %[[VAL_851:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_588]] : Core, %[[VAL_851]] : Core)
-// CHECK:           aie.wire(%[[VAL_588]] : DMA, %[[VAL_851]] : DMA)
-// CHECK:           aie.wire(%[[VAL_850]] : North, %[[VAL_851]] : South)
-// CHECK:           aie.wire(%[[VAL_848]] : East, %[[VAL_852:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_643]] : Core, %[[VAL_852]] : Core)
-// CHECK:           aie.wire(%[[VAL_643]] : DMA, %[[VAL_852]] : DMA)
-// CHECK:           aie.wire(%[[VAL_849]] : East, %[[VAL_853:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_854:.*]] : North, %[[VAL_853]] : South)
-// CHECK:           aie.wire(%[[VAL_62]] : DMA, %[[VAL_854]] : DMA)
-// CHECK:           aie.wire(%[[VAL_850]] : East, %[[VAL_855:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_61]] : Core, %[[VAL_855]] : Core)
-// CHECK:           aie.wire(%[[VAL_61]] : DMA, %[[VAL_855]] : DMA)
-// CHECK:           aie.wire(%[[VAL_853]] : North, %[[VAL_855]] : South)
-// CHECK:           aie.wire(%[[VAL_645]] : Core, %[[VAL_856:.*]] : Core)
-// CHECK:           aie.wire(%[[VAL_645]] : DMA, %[[VAL_856]] : DMA)
-// CHECK:           aie.wire(%[[VAL_852]] : East, %[[VAL_857:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_647]] : Core, %[[VAL_857]] : Core)
-// CHECK:           aie.wire(%[[VAL_647]] : DMA, %[[VAL_857]] : DMA)
-// CHECK:           aie.wire(%[[VAL_856]] : North, %[[VAL_857]] : South)
-// CHECK:           aie.wire(%[[VAL_853]] : East, %[[VAL_858:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_859:.*]] : North, %[[VAL_858]] : South)
-// CHECK:           aie.wire(%[[VAL_42]] : DMA, %[[VAL_859]] : DMA)
-// CHECK:           aie.wire(%[[VAL_856]] : East, %[[VAL_860:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_649]] : Core, %[[VAL_860]] : Core)
-// CHECK:           aie.wire(%[[VAL_649]] : DMA, %[[VAL_860]] : DMA)
-// CHECK:           aie.wire(%[[VAL_858]] : East, %[[VAL_861:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_860]] : East, %[[VAL_862:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_651]] : Core, %[[VAL_862]] : Core)
-// CHECK:           aie.wire(%[[VAL_651]] : DMA, %[[VAL_862]] : DMA)
-// CHECK:           aie.wire(%[[VAL_861]] : East, %[[VAL_863:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_653]] : Core, %[[VAL_864:.*]] : Core)
-// CHECK:           aie.wire(%[[VAL_653]] : DMA, %[[VAL_864]] : DMA)
-// CHECK:           aie.wire(%[[VAL_862]] : East, %[[VAL_865:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_655]] : Core, %[[VAL_865]] : Core)
-// CHECK:           aie.wire(%[[VAL_655]] : DMA, %[[VAL_865]] : DMA)
-// CHECK:           aie.wire(%[[VAL_864]] : North, %[[VAL_865]] : South)
-// CHECK:           aie.wire(%[[VAL_863]] : East, %[[VAL_866:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_867:.*]] : North, %[[VAL_866]] : South)
-// CHECK:           aie.wire(%[[VAL_22]] : DMA, %[[VAL_867]] : DMA)
-// CHECK:           aie.wire(%[[VAL_21]] : Core, %[[VAL_868:.*]] : Core)
-// CHECK:           aie.wire(%[[VAL_21]] : DMA, %[[VAL_868]] : DMA)
-// CHECK:           aie.wire(%[[VAL_866]] : North, %[[VAL_868]] : South)
-// CHECK:           aie.wire(%[[VAL_864]] : East, %[[VAL_869:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_20]] : Core, %[[VAL_869]] : Core)
-// CHECK:           aie.wire(%[[VAL_20]] : DMA, %[[VAL_869]] : DMA)
-// CHECK:           aie.wire(%[[VAL_868]] : North, %[[VAL_869]] : South)
-// CHECK:           aie.wire(%[[VAL_866]] : East, %[[VAL_870:.*]] : West)
-// CHECK:           aie.wire(%[[VAL_871:.*]] : North, %[[VAL_870]] : South)
-// CHECK:           aie.wire(%[[VAL_2]] : DMA, %[[VAL_871]] : DMA)
+// CHECK:           aie.wire(%[[SHIM_MUX_2_0:.*]] : North, %[[SWITCHBOX_2_0:.*]] : South)
+// CHECK:           aie.wire(%[[TILE_2_0]] : DMA, %[[SHIM_MUX_2_0]] : DMA)
+// CHECK:           aie.wire(%[[TILE_2_1]] : Core, %[[SWITCHBOX_2_1:.*]] : Core)
+// CHECK:           aie.wire(%[[TILE_2_1]] : DMA, %[[SWITCHBOX_2_1]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_2_0]] : North, %[[SWITCHBOX_2_1]] : South)
+// CHECK:           aie.wire(%[[TILE_2_2]] : Core, %[[SWITCHBOX_2_2:.*]] : Core)
+// CHECK:           aie.wire(%[[TILE_2_2]] : DMA, %[[SWITCHBOX_2_2]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_2_1]] : North, %[[SWITCHBOX_2_2]] : South)
+// CHECK:           aie.wire(%[[SWITCHBOX_2_0]] : East, %[[SWITCHBOX_3_0:.*]] : West)
+// CHECK:           aie.wire(%[[SHIM_MUX_3_0:.*]] : North, %[[SWITCHBOX_3_0]] : South)
+// CHECK:           aie.wire(%[[TILE_3_0]] : DMA, %[[SHIM_MUX_3_0]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_2_1]] : East, %[[SWITCHBOX_3_1:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_3_1]] : Core, %[[SWITCHBOX_3_1]] : Core)
+// CHECK:           aie.wire(%[[TILE_3_1]] : DMA, %[[SWITCHBOX_3_1]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_3_0]] : North, %[[SWITCHBOX_3_1]] : South)
+// CHECK:           aie.wire(%[[SWITCHBOX_2_2]] : East, %[[SWITCHBOX_3_2:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_3_2]] : Core, %[[SWITCHBOX_3_2]] : Core)
+// CHECK:           aie.wire(%[[TILE_3_2]] : DMA, %[[SWITCHBOX_3_2]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_3_1]] : North, %[[SWITCHBOX_3_2]] : South)
+// CHECK:           aie.wire(%[[SWITCHBOX_3_0]] : East, %[[SWITCHBOX_4_0:.*]] : West)
+// CHECK:           aie.wire(%[[SWITCHBOX_3_2]] : East, %[[SWITCHBOX_4_2:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_4_2]] : Core, %[[SWITCHBOX_4_2]] : Core)
+// CHECK:           aie.wire(%[[TILE_4_2]] : DMA, %[[SWITCHBOX_4_2]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_4_0]] : East, %[[SWITCHBOX_5_0:.*]] : West)
+// CHECK:           aie.wire(%[[SWITCHBOX_4_2]] : East, %[[SWITCHBOX_5_2:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_5_2]] : Core, %[[SWITCHBOX_5_2]] : Core)
+// CHECK:           aie.wire(%[[TILE_5_2]] : DMA, %[[SWITCHBOX_5_2]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_5_0]] : East, %[[SWITCHBOX_6_0:.*]] : West)
+// CHECK:           aie.wire(%[[SHIM_MUX_6_0:.*]] : North, %[[SWITCHBOX_6_0]] : South)
+// CHECK:           aie.wire(%[[TILE_6_0]] : DMA, %[[SHIM_MUX_6_0]] : DMA)
+// CHECK:           aie.wire(%[[TILE_6_1]] : Core, %[[SWITCHBOX_6_1:.*]] : Core)
+// CHECK:           aie.wire(%[[TILE_6_1]] : DMA, %[[SWITCHBOX_6_1]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_6_0]] : North, %[[SWITCHBOX_6_1]] : South)
+// CHECK:           aie.wire(%[[SWITCHBOX_5_2]] : East, %[[SWITCHBOX_6_2:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_6_2]] : Core, %[[SWITCHBOX_6_2]] : Core)
+// CHECK:           aie.wire(%[[TILE_6_2]] : DMA, %[[SWITCHBOX_6_2]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_6_1]] : North, %[[SWITCHBOX_6_2]] : South)
+// CHECK:           aie.wire(%[[SWITCHBOX_6_0]] : East, %[[SWITCHBOX_7_0:.*]] : West)
+// CHECK:           aie.wire(%[[SHIM_MUX_7_0:.*]] : North, %[[SWITCHBOX_7_0]] : South)
+// CHECK:           aie.wire(%[[TILE_7_0]] : DMA, %[[SHIM_MUX_7_0]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_6_1]] : East, %[[SWITCHBOX_7_1:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_7_1]] : Core, %[[SWITCHBOX_7_1]] : Core)
+// CHECK:           aie.wire(%[[TILE_7_1]] : DMA, %[[SWITCHBOX_7_1]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_7_0]] : North, %[[SWITCHBOX_7_1]] : South)
+// CHECK:           aie.wire(%[[SWITCHBOX_6_2]] : East, %[[SWITCHBOX_7_2:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_7_2]] : Core, %[[SWITCHBOX_7_2]] : Core)
+// CHECK:           aie.wire(%[[TILE_7_2]] : DMA, %[[SWITCHBOX_7_2]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_7_1]] : North, %[[SWITCHBOX_7_2]] : South)
+// CHECK:           aie.wire(%[[TILE_7_3]] : Core, %[[SWITCHBOX_7_3:.*]] : Core)
+// CHECK:           aie.wire(%[[TILE_7_3]] : DMA, %[[SWITCHBOX_7_3]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_7_2]] : North, %[[SWITCHBOX_7_3]] : South)
+// CHECK:           aie.wire(%[[TILE_7_4]] : Core, %[[SWITCHBOX_7_4:.*]] : Core)
+// CHECK:           aie.wire(%[[TILE_7_4]] : DMA, %[[SWITCHBOX_7_4]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_7_3]] : North, %[[SWITCHBOX_7_4]] : South)
+// CHECK:           aie.wire(%[[TILE_7_5]] : Core, %[[SWITCHBOX_7_5:.*]] : Core)
+// CHECK:           aie.wire(%[[TILE_7_5]] : DMA, %[[SWITCHBOX_7_5]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_7_4]] : North, %[[SWITCHBOX_7_5]] : South)
+// CHECK:           aie.wire(%[[SWITCHBOX_7_0]] : East, %[[SWITCHBOX_8_0:.*]] : West)
+// CHECK:           aie.wire(%[[SWITCHBOX_7_1]] : East, %[[SWITCHBOX_8_1:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_8_1]] : Core, %[[SWITCHBOX_8_1]] : Core)
+// CHECK:           aie.wire(%[[TILE_8_1]] : DMA, %[[SWITCHBOX_8_1]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_8_0]] : North, %[[SWITCHBOX_8_1]] : South)
+// CHECK:           aie.wire(%[[SWITCHBOX_7_2]] : East, %[[SWITCHBOX_8_2:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_8_2]] : Core, %[[SWITCHBOX_8_2]] : Core)
+// CHECK:           aie.wire(%[[TILE_8_2]] : DMA, %[[SWITCHBOX_8_2]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_8_1]] : North, %[[SWITCHBOX_8_2]] : South)
+// CHECK:           aie.wire(%[[SWITCHBOX_7_3]] : East, %[[SWITCHBOX_8_3:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_8_3]] : Core, %[[SWITCHBOX_8_3]] : Core)
+// CHECK:           aie.wire(%[[TILE_8_3]] : DMA, %[[SWITCHBOX_8_3]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_8_2]] : North, %[[SWITCHBOX_8_3]] : South)
+// CHECK:           aie.wire(%[[SWITCHBOX_7_4]] : East, %[[SWITCHBOX_8_4:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_8_4]] : Core, %[[SWITCHBOX_8_4]] : Core)
+// CHECK:           aie.wire(%[[TILE_8_4]] : DMA, %[[SWITCHBOX_8_4]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_8_3]] : North, %[[SWITCHBOX_8_4]] : South)
+// CHECK:           aie.wire(%[[SWITCHBOX_7_5]] : East, %[[SWITCHBOX_8_5:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_8_5]] : Core, %[[SWITCHBOX_8_5]] : Core)
+// CHECK:           aie.wire(%[[TILE_8_5]] : DMA, %[[SWITCHBOX_8_5]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_8_4]] : North, %[[SWITCHBOX_8_5]] : South)
+// CHECK:           aie.wire(%[[SWITCHBOX_8_0]] : East, %[[SWITCHBOX_9_0:.*]] : West)
+// CHECK:           aie.wire(%[[SWITCHBOX_8_1]] : East, %[[SWITCHBOX_9_1:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_9_1]] : Core, %[[SWITCHBOX_9_1]] : Core)
+// CHECK:           aie.wire(%[[TILE_9_1]] : DMA, %[[SWITCHBOX_9_1]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_9_0]] : North, %[[SWITCHBOX_9_1]] : South)
+// CHECK:           aie.wire(%[[SWITCHBOX_8_2]] : East, %[[SWITCHBOX_9_2:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_9_2]] : Core, %[[SWITCHBOX_9_2]] : Core)
+// CHECK:           aie.wire(%[[TILE_9_2]] : DMA, %[[SWITCHBOX_9_2]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_9_1]] : North, %[[SWITCHBOX_9_2]] : South)
+// CHECK:           aie.wire(%[[SWITCHBOX_8_3]] : East, %[[SWITCHBOX_9_3:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_9_3]] : Core, %[[SWITCHBOX_9_3]] : Core)
+// CHECK:           aie.wire(%[[TILE_9_3]] : DMA, %[[SWITCHBOX_9_3]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_9_2]] : North, %[[SWITCHBOX_9_3]] : South)
+// CHECK:           aie.wire(%[[SWITCHBOX_8_4]] : East, %[[SWITCHBOX_9_4:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_9_4]] : Core, %[[SWITCHBOX_9_4]] : Core)
+// CHECK:           aie.wire(%[[TILE_9_4]] : DMA, %[[SWITCHBOX_9_4]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_9_3]] : North, %[[SWITCHBOX_9_4]] : South)
+// CHECK:           aie.wire(%[[SWITCHBOX_8_5]] : East, %[[SWITCHBOX_9_5:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_9_5]] : Core, %[[SWITCHBOX_9_5]] : Core)
+// CHECK:           aie.wire(%[[TILE_9_5]] : DMA, %[[SWITCHBOX_9_5]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_9_4]] : North, %[[SWITCHBOX_9_5]] : South)
+// CHECK:           aie.wire(%[[SWITCHBOX_9_0]] : East, %[[SWITCHBOX_10_0:.*]] : West)
+// CHECK:           aie.wire(%[[SHIM_MUX_10_0:.*]] : North, %[[SWITCHBOX_10_0]] : South)
+// CHECK:           aie.wire(%[[TILE_10_0]] : DMA, %[[SHIM_MUX_10_0]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_9_1]] : East, %[[SWITCHBOX_10_1:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_10_1]] : Core, %[[SWITCHBOX_10_1]] : Core)
+// CHECK:           aie.wire(%[[TILE_10_1]] : DMA, %[[SWITCHBOX_10_1]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_10_0]] : North, %[[SWITCHBOX_10_1]] : South)
+// CHECK:           aie.wire(%[[SWITCHBOX_9_2]] : East, %[[SWITCHBOX_10_2:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_10_2]] : Core, %[[SWITCHBOX_10_2]] : Core)
+// CHECK:           aie.wire(%[[TILE_10_2]] : DMA, %[[SWITCHBOX_10_2]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_10_1]] : North, %[[SWITCHBOX_10_2]] : South)
+// CHECK:           aie.wire(%[[SWITCHBOX_9_3]] : East, %[[SWITCHBOX_10_3:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_10_3]] : Core, %[[SWITCHBOX_10_3]] : Core)
+// CHECK:           aie.wire(%[[TILE_10_3]] : DMA, %[[SWITCHBOX_10_3]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_10_2]] : North, %[[SWITCHBOX_10_3]] : South)
+// CHECK:           aie.wire(%[[SWITCHBOX_9_4]] : East, %[[SWITCHBOX_10_4:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_10_4]] : Core, %[[SWITCHBOX_10_4]] : Core)
+// CHECK:           aie.wire(%[[TILE_10_4]] : DMA, %[[SWITCHBOX_10_4]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_10_3]] : North, %[[SWITCHBOX_10_4]] : South)
+// CHECK:           aie.wire(%[[SWITCHBOX_9_5]] : East, %[[SWITCHBOX_10_5:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_10_5]] : Core, %[[SWITCHBOX_10_5]] : Core)
+// CHECK:           aie.wire(%[[TILE_10_5]] : DMA, %[[SWITCHBOX_10_5]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_10_4]] : North, %[[SWITCHBOX_10_5]] : South)
+// CHECK:           aie.wire(%[[SWITCHBOX_10_0]] : East, %[[SWITCHBOX_11_0:.*]] : West)
+// CHECK:           aie.wire(%[[SHIM_MUX_11_0:.*]] : North, %[[SWITCHBOX_11_0]] : South)
+// CHECK:           aie.wire(%[[TILE_11_0]] : DMA, %[[SHIM_MUX_11_0]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_10_1]] : East, %[[SWITCHBOX_11_1:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_11_1]] : Core, %[[SWITCHBOX_11_1]] : Core)
+// CHECK:           aie.wire(%[[TILE_11_1]] : DMA, %[[SWITCHBOX_11_1]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_11_0]] : North, %[[SWITCHBOX_11_1]] : South)
+// CHECK:           aie.wire(%[[SWITCHBOX_10_2]] : East, %[[SWITCHBOX_11_2:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_11_2]] : Core, %[[SWITCHBOX_11_2]] : Core)
+// CHECK:           aie.wire(%[[TILE_11_2]] : DMA, %[[SWITCHBOX_11_2]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_11_1]] : North, %[[SWITCHBOX_11_2]] : South)
+// CHECK:           aie.wire(%[[SWITCHBOX_10_3]] : East, %[[SWITCHBOX_11_3:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_11_3]] : Core, %[[SWITCHBOX_11_3]] : Core)
+// CHECK:           aie.wire(%[[TILE_11_3]] : DMA, %[[SWITCHBOX_11_3]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_11_2]] : North, %[[SWITCHBOX_11_3]] : South)
+// CHECK:           aie.wire(%[[SWITCHBOX_10_4]] : East, %[[SWITCHBOX_11_4:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_11_4]] : Core, %[[SWITCHBOX_11_4]] : Core)
+// CHECK:           aie.wire(%[[TILE_11_4]] : DMA, %[[SWITCHBOX_11_4]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_11_3]] : North, %[[SWITCHBOX_11_4]] : South)
+// CHECK:           aie.wire(%[[SWITCHBOX_10_5]] : East, %[[SWITCHBOX_11_5:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_11_5]] : Core, %[[SWITCHBOX_11_5]] : Core)
+// CHECK:           aie.wire(%[[TILE_11_5]] : DMA, %[[SWITCHBOX_11_5]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_11_4]] : North, %[[SWITCHBOX_11_5]] : South)
+// CHECK:           aie.wire(%[[SWITCHBOX_11_0]] : East, %[[SWITCHBOX_12_0:.*]] : West)
+// CHECK:           aie.wire(%[[SWITCHBOX_11_1]] : East, %[[SWITCHBOX_12_1:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_12_1]] : Core, %[[SWITCHBOX_12_1]] : Core)
+// CHECK:           aie.wire(%[[TILE_12_1]] : DMA, %[[SWITCHBOX_12_1]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_12_0]] : North, %[[SWITCHBOX_12_1]] : South)
+// CHECK:           aie.wire(%[[SWITCHBOX_11_2]] : East, %[[SWITCHBOX_12_2:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_12_2]] : Core, %[[SWITCHBOX_12_2]] : Core)
+// CHECK:           aie.wire(%[[TILE_12_2]] : DMA, %[[SWITCHBOX_12_2]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_12_1]] : North, %[[SWITCHBOX_12_2]] : South)
+// CHECK:           aie.wire(%[[SWITCHBOX_11_3]] : East, %[[SWITCHBOX_12_3:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_12_3]] : Core, %[[SWITCHBOX_12_3]] : Core)
+// CHECK:           aie.wire(%[[TILE_12_3]] : DMA, %[[SWITCHBOX_12_3]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_12_2]] : North, %[[SWITCHBOX_12_3]] : South)
+// CHECK:           aie.wire(%[[SWITCHBOX_11_4]] : East, %[[SWITCHBOX_12_4:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_12_4]] : Core, %[[SWITCHBOX_12_4]] : Core)
+// CHECK:           aie.wire(%[[TILE_12_4]] : DMA, %[[SWITCHBOX_12_4]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_12_3]] : North, %[[SWITCHBOX_12_4]] : South)
+// CHECK:           aie.wire(%[[SWITCHBOX_11_5]] : East, %[[SWITCHBOX_12_5:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_12_5]] : Core, %[[SWITCHBOX_12_5]] : Core)
+// CHECK:           aie.wire(%[[TILE_12_5]] : DMA, %[[SWITCHBOX_12_5]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_12_4]] : North, %[[SWITCHBOX_12_5]] : South)
+// CHECK:           aie.wire(%[[SWITCHBOX_12_0]] : East, %[[SWITCHBOX_13_0:.*]] : West)
+// CHECK:           aie.wire(%[[SWITCHBOX_12_1]] : East, %[[SWITCHBOX_13_1:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_13_1]] : Core, %[[SWITCHBOX_13_1]] : Core)
+// CHECK:           aie.wire(%[[TILE_13_1]] : DMA, %[[SWITCHBOX_13_1]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_13_0]] : North, %[[SWITCHBOX_13_1]] : South)
+// CHECK:           aie.wire(%[[SWITCHBOX_12_2]] : East, %[[SWITCHBOX_13_2:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_13_2]] : Core, %[[SWITCHBOX_13_2]] : Core)
+// CHECK:           aie.wire(%[[TILE_13_2]] : DMA, %[[SWITCHBOX_13_2]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_13_1]] : North, %[[SWITCHBOX_13_2]] : South)
+// CHECK:           aie.wire(%[[SWITCHBOX_12_3]] : East, %[[SWITCHBOX_13_3:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_13_3]] : Core, %[[SWITCHBOX_13_3]] : Core)
+// CHECK:           aie.wire(%[[TILE_13_3]] : DMA, %[[SWITCHBOX_13_3]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_13_2]] : North, %[[SWITCHBOX_13_3]] : South)
+// CHECK:           aie.wire(%[[SWITCHBOX_12_4]] : East, %[[SWITCHBOX_13_4:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_13_4]] : Core, %[[SWITCHBOX_13_4]] : Core)
+// CHECK:           aie.wire(%[[TILE_13_4]] : DMA, %[[SWITCHBOX_13_4]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_13_3]] : North, %[[SWITCHBOX_13_4]] : South)
+// CHECK:           aie.wire(%[[SWITCHBOX_12_5]] : East, %[[SWITCHBOX_13_5:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_13_5]] : Core, %[[SWITCHBOX_13_5]] : Core)
+// CHECK:           aie.wire(%[[TILE_13_5]] : DMA, %[[SWITCHBOX_13_5]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_13_4]] : North, %[[SWITCHBOX_13_5]] : South)
+// CHECK:           aie.wire(%[[SWITCHBOX_13_0]] : East, %[[SWITCHBOX_14_0:.*]] : West)
+// CHECK:           aie.wire(%[[SWITCHBOX_13_1]] : East, %[[SWITCHBOX_14_1:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_14_1]] : Core, %[[SWITCHBOX_14_1]] : Core)
+// CHECK:           aie.wire(%[[TILE_14_1]] : DMA, %[[SWITCHBOX_14_1]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_14_0]] : North, %[[SWITCHBOX_14_1]] : South)
+// CHECK:           aie.wire(%[[SWITCHBOX_13_2]] : East, %[[SWITCHBOX_14_2:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_14_2]] : Core, %[[SWITCHBOX_14_2]] : Core)
+// CHECK:           aie.wire(%[[TILE_14_2]] : DMA, %[[SWITCHBOX_14_2]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_14_1]] : North, %[[SWITCHBOX_14_2]] : South)
+// CHECK:           aie.wire(%[[SWITCHBOX_13_3]] : East, %[[SWITCHBOX_14_3:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_14_3]] : Core, %[[SWITCHBOX_14_3]] : Core)
+// CHECK:           aie.wire(%[[TILE_14_3]] : DMA, %[[SWITCHBOX_14_3]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_14_2]] : North, %[[SWITCHBOX_14_3]] : South)
+// CHECK:           aie.wire(%[[SWITCHBOX_13_4]] : East, %[[SWITCHBOX_14_4:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_14_4]] : Core, %[[SWITCHBOX_14_4]] : Core)
+// CHECK:           aie.wire(%[[TILE_14_4]] : DMA, %[[SWITCHBOX_14_4]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_14_3]] : North, %[[SWITCHBOX_14_4]] : South)
+// CHECK:           aie.wire(%[[SWITCHBOX_13_5]] : East, %[[SWITCHBOX_14_5:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_14_5]] : Core, %[[SWITCHBOX_14_5]] : Core)
+// CHECK:           aie.wire(%[[TILE_14_5]] : DMA, %[[SWITCHBOX_14_5]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_14_4]] : North, %[[SWITCHBOX_14_5]] : South)
+// CHECK:           aie.wire(%[[SWITCHBOX_14_0]] : East, %[[SWITCHBOX_15_0:.*]] : West)
+// CHECK:           aie.wire(%[[SWITCHBOX_14_1]] : East, %[[SWITCHBOX_15_1:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_15_1]] : Core, %[[SWITCHBOX_15_1]] : Core)
+// CHECK:           aie.wire(%[[TILE_15_1]] : DMA, %[[SWITCHBOX_15_1]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_15_0]] : North, %[[SWITCHBOX_15_1]] : South)
+// CHECK:           aie.wire(%[[SWITCHBOX_14_2]] : East, %[[SWITCHBOX_15_2:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_15_2]] : Core, %[[SWITCHBOX_15_2]] : Core)
+// CHECK:           aie.wire(%[[TILE_15_2]] : DMA, %[[SWITCHBOX_15_2]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_15_1]] : North, %[[SWITCHBOX_15_2]] : South)
+// CHECK:           aie.wire(%[[SWITCHBOX_14_3]] : East, %[[SWITCHBOX_15_3:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_15_3]] : Core, %[[SWITCHBOX_15_3]] : Core)
+// CHECK:           aie.wire(%[[TILE_15_3]] : DMA, %[[SWITCHBOX_15_3]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_15_2]] : North, %[[SWITCHBOX_15_3]] : South)
+// CHECK:           aie.wire(%[[SWITCHBOX_14_4]] : East, %[[SWITCHBOX_15_4:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_15_4]] : Core, %[[SWITCHBOX_15_4]] : Core)
+// CHECK:           aie.wire(%[[TILE_15_4]] : DMA, %[[SWITCHBOX_15_4]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_15_3]] : North, %[[SWITCHBOX_15_4]] : South)
+// CHECK:           aie.wire(%[[SWITCHBOX_14_5]] : East, %[[SWITCHBOX_15_5:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_15_5]] : Core, %[[SWITCHBOX_15_5]] : Core)
+// CHECK:           aie.wire(%[[TILE_15_5]] : DMA, %[[SWITCHBOX_15_5]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_15_4]] : North, %[[SWITCHBOX_15_5]] : South)
+// CHECK:           aie.wire(%[[SWITCHBOX_15_0]] : East, %[[SWITCHBOX_16_0:.*]] : West)
+// CHECK:           aie.wire(%[[SWITCHBOX_15_1]] : East, %[[SWITCHBOX_16_1:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_16_1]] : Core, %[[SWITCHBOX_16_1]] : Core)
+// CHECK:           aie.wire(%[[TILE_16_1]] : DMA, %[[SWITCHBOX_16_1]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_16_0]] : North, %[[SWITCHBOX_16_1]] : South)
+// CHECK:           aie.wire(%[[SWITCHBOX_15_2]] : East, %[[SWITCHBOX_16_2:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_16_2]] : Core, %[[SWITCHBOX_16_2]] : Core)
+// CHECK:           aie.wire(%[[TILE_16_2]] : DMA, %[[SWITCHBOX_16_2]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_16_1]] : North, %[[SWITCHBOX_16_2]] : South)
+// CHECK:           aie.wire(%[[SWITCHBOX_15_3]] : East, %[[SWITCHBOX_16_3:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_16_3]] : Core, %[[SWITCHBOX_16_3]] : Core)
+// CHECK:           aie.wire(%[[TILE_16_3]] : DMA, %[[SWITCHBOX_16_3]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_16_2]] : North, %[[SWITCHBOX_16_3]] : South)
+// CHECK:           aie.wire(%[[SWITCHBOX_15_4]] : East, %[[SWITCHBOX_16_4:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_16_4]] : Core, %[[SWITCHBOX_16_4]] : Core)
+// CHECK:           aie.wire(%[[TILE_16_4]] : DMA, %[[SWITCHBOX_16_4]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_16_3]] : North, %[[SWITCHBOX_16_4]] : South)
+// CHECK:           aie.wire(%[[SWITCHBOX_15_5]] : East, %[[SWITCHBOX_16_5:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_16_5]] : Core, %[[SWITCHBOX_16_5]] : Core)
+// CHECK:           aie.wire(%[[TILE_16_5]] : DMA, %[[SWITCHBOX_16_5]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_16_4]] : North, %[[SWITCHBOX_16_5]] : South)
+// CHECK:           aie.wire(%[[SWITCHBOX_16_0]] : East, %[[SWITCHBOX_17_0:.*]] : West)
+// CHECK:           aie.wire(%[[SWITCHBOX_16_1]] : East, %[[SWITCHBOX_17_1:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_17_1]] : Core, %[[SWITCHBOX_17_1]] : Core)
+// CHECK:           aie.wire(%[[TILE_17_1]] : DMA, %[[SWITCHBOX_17_1]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_17_0]] : North, %[[SWITCHBOX_17_1]] : South)
+// CHECK:           aie.wire(%[[SWITCHBOX_16_2]] : East, %[[SWITCHBOX_17_2:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_17_2]] : Core, %[[SWITCHBOX_17_2]] : Core)
+// CHECK:           aie.wire(%[[TILE_17_2]] : DMA, %[[SWITCHBOX_17_2]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_17_1]] : North, %[[SWITCHBOX_17_2]] : South)
+// CHECK:           aie.wire(%[[SWITCHBOX_16_3]] : East, %[[SWITCHBOX_17_3:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_17_3]] : Core, %[[SWITCHBOX_17_3]] : Core)
+// CHECK:           aie.wire(%[[TILE_17_3]] : DMA, %[[SWITCHBOX_17_3]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_17_2]] : North, %[[SWITCHBOX_17_3]] : South)
+// CHECK:           aie.wire(%[[SWITCHBOX_16_4]] : East, %[[SWITCHBOX_17_4:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_17_4]] : Core, %[[SWITCHBOX_17_4]] : Core)
+// CHECK:           aie.wire(%[[TILE_17_4]] : DMA, %[[SWITCHBOX_17_4]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_17_3]] : North, %[[SWITCHBOX_17_4]] : South)
+// CHECK:           aie.wire(%[[SWITCHBOX_16_5]] : East, %[[SWITCHBOX_17_5:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_17_5]] : Core, %[[SWITCHBOX_17_5]] : Core)
+// CHECK:           aie.wire(%[[TILE_17_5]] : DMA, %[[SWITCHBOX_17_5]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_17_4]] : North, %[[SWITCHBOX_17_5]] : South)
+// CHECK:           aie.wire(%[[SWITCHBOX_17_0]] : East, %[[SWITCHBOX_18_0:.*]] : West)
+// CHECK:           aie.wire(%[[SHIM_MUX_18_0:.*]] : North, %[[SWITCHBOX_18_0]] : South)
+// CHECK:           aie.wire(%[[TILE_18_0]] : DMA, %[[SHIM_MUX_18_0]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_17_1]] : East, %[[SWITCHBOX_18_1:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_18_1]] : Core, %[[SWITCHBOX_18_1]] : Core)
+// CHECK:           aie.wire(%[[TILE_18_1]] : DMA, %[[SWITCHBOX_18_1]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_18_0]] : North, %[[SWITCHBOX_18_1]] : South)
+// CHECK:           aie.wire(%[[SWITCHBOX_17_2]] : East, %[[SWITCHBOX_18_2:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_18_2]] : Core, %[[SWITCHBOX_18_2]] : Core)
+// CHECK:           aie.wire(%[[TILE_18_2]] : DMA, %[[SWITCHBOX_18_2]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_18_1]] : North, %[[SWITCHBOX_18_2]] : South)
+// CHECK:           aie.wire(%[[SWITCHBOX_17_3]] : East, %[[SWITCHBOX_18_3:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_18_3]] : Core, %[[SWITCHBOX_18_3]] : Core)
+// CHECK:           aie.wire(%[[TILE_18_3]] : DMA, %[[SWITCHBOX_18_3]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_18_2]] : North, %[[SWITCHBOX_18_3]] : South)
+// CHECK:           aie.wire(%[[SWITCHBOX_17_4]] : East, %[[SWITCHBOX_18_4:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_18_4]] : Core, %[[SWITCHBOX_18_4]] : Core)
+// CHECK:           aie.wire(%[[TILE_18_4]] : DMA, %[[SWITCHBOX_18_4]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_18_3]] : North, %[[SWITCHBOX_18_4]] : South)
+// CHECK:           aie.wire(%[[SWITCHBOX_17_5]] : East, %[[SWITCHBOX_18_5:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_18_5]] : Core, %[[SWITCHBOX_18_5]] : Core)
+// CHECK:           aie.wire(%[[TILE_18_5]] : DMA, %[[SWITCHBOX_18_5]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_18_4]] : North, %[[SWITCHBOX_18_5]] : South)
+// CHECK:           aie.wire(%[[SWITCHBOX_18_0]] : East, %[[SWITCHBOX_19_0:.*]] : West)
+// CHECK:           aie.wire(%[[SHIM_MUX_19_0:.*]] : North, %[[SWITCHBOX_19_0]] : South)
+// CHECK:           aie.wire(%[[TILE_19_0]] : DMA, %[[SHIM_MUX_19_0]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_18_1]] : East, %[[SWITCHBOX_19_1:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_19_1]] : Core, %[[SWITCHBOX_19_1]] : Core)
+// CHECK:           aie.wire(%[[TILE_19_1]] : DMA, %[[SWITCHBOX_19_1]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_19_0]] : North, %[[SWITCHBOX_19_1]] : South)
+// CHECK:           aie.wire(%[[SWITCHBOX_18_2]] : East, %[[SWITCHBOX_19_2:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_19_2]] : Core, %[[SWITCHBOX_19_2]] : Core)
+// CHECK:           aie.wire(%[[TILE_19_2]] : DMA, %[[SWITCHBOX_19_2]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_19_1]] : North, %[[SWITCHBOX_19_2]] : South)
+// CHECK:           aie.wire(%[[SWITCHBOX_18_3]] : East, %[[SWITCHBOX_19_3:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_19_3]] : Core, %[[SWITCHBOX_19_3]] : Core)
+// CHECK:           aie.wire(%[[TILE_19_3]] : DMA, %[[SWITCHBOX_19_3]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_19_2]] : North, %[[SWITCHBOX_19_3]] : South)
+// CHECK:           aie.wire(%[[SWITCHBOX_18_4]] : East, %[[SWITCHBOX_19_4:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_19_4]] : Core, %[[SWITCHBOX_19_4]] : Core)
+// CHECK:           aie.wire(%[[TILE_19_4]] : DMA, %[[SWITCHBOX_19_4]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_19_3]] : North, %[[SWITCHBOX_19_4]] : South)
+// CHECK:           aie.wire(%[[SWITCHBOX_19_0]] : East, %[[SWITCHBOX_20_0:.*]] : West)
+// CHECK:           aie.wire(%[[SWITCHBOX_19_1]] : East, %[[SWITCHBOX_20_1:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_20_1]] : Core, %[[SWITCHBOX_20_1]] : Core)
+// CHECK:           aie.wire(%[[TILE_20_1]] : DMA, %[[SWITCHBOX_20_1]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_20_0]] : North, %[[SWITCHBOX_20_1]] : South)
+// CHECK:           aie.wire(%[[SWITCHBOX_19_2]] : East, %[[SWITCHBOX_20_2:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_20_2]] : Core, %[[SWITCHBOX_20_2]] : Core)
+// CHECK:           aie.wire(%[[TILE_20_2]] : DMA, %[[SWITCHBOX_20_2]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_20_1]] : North, %[[SWITCHBOX_20_2]] : South)
+// CHECK:           aie.wire(%[[SWITCHBOX_19_3]] : East, %[[SWITCHBOX_20_3:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_20_3]] : Core, %[[SWITCHBOX_20_3]] : Core)
+// CHECK:           aie.wire(%[[TILE_20_3]] : DMA, %[[SWITCHBOX_20_3]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_20_2]] : North, %[[SWITCHBOX_20_3]] : South)
+// CHECK:           aie.wire(%[[SWITCHBOX_19_4]] : East, %[[SWITCHBOX_20_4:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_20_4]] : Core, %[[SWITCHBOX_20_4]] : Core)
+// CHECK:           aie.wire(%[[TILE_20_4]] : DMA, %[[SWITCHBOX_20_4]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_20_3]] : North, %[[SWITCHBOX_20_4]] : South)
+// CHECK:           aie.wire(%[[SWITCHBOX_20_0]] : East, %[[SWITCHBOX_21_0:.*]] : West)
+// CHECK:           aie.wire(%[[SWITCHBOX_20_1]] : East, %[[SWITCHBOX_21_1:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_21_1]] : Core, %[[SWITCHBOX_21_1]] : Core)
+// CHECK:           aie.wire(%[[TILE_21_1]] : DMA, %[[SWITCHBOX_21_1]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_21_0]] : North, %[[SWITCHBOX_21_1]] : South)
+// CHECK:           aie.wire(%[[SWITCHBOX_20_2]] : East, %[[SWITCHBOX_21_2:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_21_2]] : Core, %[[SWITCHBOX_21_2]] : Core)
+// CHECK:           aie.wire(%[[TILE_21_2]] : DMA, %[[SWITCHBOX_21_2]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_21_1]] : North, %[[SWITCHBOX_21_2]] : South)
+// CHECK:           aie.wire(%[[SWITCHBOX_20_3]] : East, %[[SWITCHBOX_21_3:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_21_3]] : Core, %[[SWITCHBOX_21_3]] : Core)
+// CHECK:           aie.wire(%[[TILE_21_3]] : DMA, %[[SWITCHBOX_21_3]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_21_2]] : North, %[[SWITCHBOX_21_3]] : South)
+// CHECK:           aie.wire(%[[SWITCHBOX_20_4]] : East, %[[SWITCHBOX_21_4:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_21_4]] : Core, %[[SWITCHBOX_21_4]] : Core)
+// CHECK:           aie.wire(%[[TILE_21_4]] : DMA, %[[SWITCHBOX_21_4]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_21_3]] : North, %[[SWITCHBOX_21_4]] : South)
+// CHECK:           aie.wire(%[[SWITCHBOX_21_0]] : East, %[[SWITCHBOX_22_0:.*]] : West)
+// CHECK:           aie.wire(%[[SWITCHBOX_21_1]] : East, %[[SWITCHBOX_22_1:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_22_1]] : Core, %[[SWITCHBOX_22_1]] : Core)
+// CHECK:           aie.wire(%[[TILE_22_1]] : DMA, %[[SWITCHBOX_22_1]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_22_0]] : North, %[[SWITCHBOX_22_1]] : South)
+// CHECK:           aie.wire(%[[SWITCHBOX_21_2]] : East, %[[SWITCHBOX_22_2:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_22_2]] : Core, %[[SWITCHBOX_22_2]] : Core)
+// CHECK:           aie.wire(%[[TILE_22_2]] : DMA, %[[SWITCHBOX_22_2]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_22_1]] : North, %[[SWITCHBOX_22_2]] : South)
+// CHECK:           aie.wire(%[[SWITCHBOX_21_3]] : East, %[[SWITCHBOX_22_3:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_22_3]] : Core, %[[SWITCHBOX_22_3]] : Core)
+// CHECK:           aie.wire(%[[TILE_22_3]] : DMA, %[[SWITCHBOX_22_3]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_22_2]] : North, %[[SWITCHBOX_22_3]] : South)
+// CHECK:           aie.wire(%[[SWITCHBOX_21_4]] : East, %[[SWITCHBOX_22_4:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_22_4]] : Core, %[[SWITCHBOX_22_4]] : Core)
+// CHECK:           aie.wire(%[[TILE_22_4]] : DMA, %[[SWITCHBOX_22_4]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_22_3]] : North, %[[SWITCHBOX_22_4]] : South)
+// CHECK:           aie.wire(%[[SWITCHBOX_22_0]] : East, %[[SWITCHBOX_23_0:.*]] : West)
+// CHECK:           aie.wire(%[[SWITCHBOX_22_1]] : East, %[[SWITCHBOX_23_1:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_23_1]] : Core, %[[SWITCHBOX_23_1]] : Core)
+// CHECK:           aie.wire(%[[TILE_23_1]] : DMA, %[[SWITCHBOX_23_1]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_23_0]] : North, %[[SWITCHBOX_23_1]] : South)
+// CHECK:           aie.wire(%[[SWITCHBOX_22_2]] : East, %[[SWITCHBOX_23_2:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_23_2]] : Core, %[[SWITCHBOX_23_2]] : Core)
+// CHECK:           aie.wire(%[[TILE_23_2]] : DMA, %[[SWITCHBOX_23_2]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_23_1]] : North, %[[SWITCHBOX_23_2]] : South)
+// CHECK:           aie.wire(%[[SWITCHBOX_22_3]] : East, %[[SWITCHBOX_23_3:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_23_3]] : Core, %[[SWITCHBOX_23_3]] : Core)
+// CHECK:           aie.wire(%[[TILE_23_3]] : DMA, %[[SWITCHBOX_23_3]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_23_2]] : North, %[[SWITCHBOX_23_3]] : South)
+// CHECK:           aie.wire(%[[SWITCHBOX_22_4]] : East, %[[SWITCHBOX_23_4:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_23_4]] : Core, %[[SWITCHBOX_23_4]] : Core)
+// CHECK:           aie.wire(%[[TILE_23_4]] : DMA, %[[SWITCHBOX_23_4]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_23_3]] : North, %[[SWITCHBOX_23_4]] : South)
+// CHECK:           aie.wire(%[[SWITCHBOX_23_0]] : East, %[[SWITCHBOX_24_0:.*]] : West)
+// CHECK:           aie.wire(%[[SWITCHBOX_23_1]] : East, %[[SWITCHBOX_24_1:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_24_1]] : Core, %[[SWITCHBOX_24_1]] : Core)
+// CHECK:           aie.wire(%[[TILE_24_1]] : DMA, %[[SWITCHBOX_24_1]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_24_0]] : North, %[[SWITCHBOX_24_1]] : South)
+// CHECK:           aie.wire(%[[SWITCHBOX_23_2]] : East, %[[SWITCHBOX_24_2:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_24_2]] : Core, %[[SWITCHBOX_24_2]] : Core)
+// CHECK:           aie.wire(%[[TILE_24_2]] : DMA, %[[SWITCHBOX_24_2]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_24_1]] : North, %[[SWITCHBOX_24_2]] : South)
+// CHECK:           aie.wire(%[[SWITCHBOX_23_3]] : East, %[[SWITCHBOX_24_3:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_24_3]] : Core, %[[SWITCHBOX_24_3]] : Core)
+// CHECK:           aie.wire(%[[TILE_24_3]] : DMA, %[[SWITCHBOX_24_3]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_24_2]] : North, %[[SWITCHBOX_24_3]] : South)
+// CHECK:           aie.wire(%[[SWITCHBOX_23_4]] : East, %[[SWITCHBOX_24_4:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_24_4]] : Core, %[[SWITCHBOX_24_4]] : Core)
+// CHECK:           aie.wire(%[[TILE_24_4]] : DMA, %[[SWITCHBOX_24_4]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_24_3]] : North, %[[SWITCHBOX_24_4]] : South)
+// CHECK:           aie.wire(%[[SWITCHBOX_24_0]] : East, %[[SWITCHBOX_25_0:.*]] : West)
+// CHECK:           aie.wire(%[[SWITCHBOX_24_1]] : East, %[[SWITCHBOX_25_1:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_25_1]] : Core, %[[SWITCHBOX_25_1]] : Core)
+// CHECK:           aie.wire(%[[TILE_25_1]] : DMA, %[[SWITCHBOX_25_1]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_25_0]] : North, %[[SWITCHBOX_25_1]] : South)
+// CHECK:           aie.wire(%[[SWITCHBOX_24_2]] : East, %[[SWITCHBOX_25_2:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_25_2]] : Core, %[[SWITCHBOX_25_2]] : Core)
+// CHECK:           aie.wire(%[[TILE_25_2]] : DMA, %[[SWITCHBOX_25_2]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_25_1]] : North, %[[SWITCHBOX_25_2]] : South)
+// CHECK:           aie.wire(%[[SWITCHBOX_24_3]] : East, %[[SWITCHBOX_25_3:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_25_3]] : Core, %[[SWITCHBOX_25_3]] : Core)
+// CHECK:           aie.wire(%[[TILE_25_3]] : DMA, %[[SWITCHBOX_25_3]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_25_2]] : North, %[[SWITCHBOX_25_3]] : South)
+// CHECK:           aie.wire(%[[SWITCHBOX_24_4]] : East, %[[SWITCHBOX_25_4:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_25_4]] : Core, %[[SWITCHBOX_25_4]] : Core)
+// CHECK:           aie.wire(%[[TILE_25_4]] : DMA, %[[SWITCHBOX_25_4]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_25_3]] : North, %[[SWITCHBOX_25_4]] : South)
+// CHECK:           aie.wire(%[[SWITCHBOX_25_0]] : East, %[[SWITCHBOX_26_0:.*]] : West)
+// CHECK:           aie.wire(%[[SHIM_MUX_26_0:.*]] : North, %[[SWITCHBOX_26_0]] : South)
+// CHECK:           aie.wire(%[[TILE_26_0]] : DMA, %[[SHIM_MUX_26_0]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_25_1]] : East, %[[SWITCHBOX_26_1:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_26_1]] : Core, %[[SWITCHBOX_26_1]] : Core)
+// CHECK:           aie.wire(%[[TILE_26_1]] : DMA, %[[SWITCHBOX_26_1]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_26_0]] : North, %[[SWITCHBOX_26_1]] : South)
+// CHECK:           aie.wire(%[[SWITCHBOX_25_2]] : East, %[[SWITCHBOX_26_2:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_26_2]] : Core, %[[SWITCHBOX_26_2]] : Core)
+// CHECK:           aie.wire(%[[TILE_26_2]] : DMA, %[[SWITCHBOX_26_2]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_26_1]] : North, %[[SWITCHBOX_26_2]] : South)
+// CHECK:           aie.wire(%[[SWITCHBOX_25_3]] : East, %[[SWITCHBOX_26_3:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_26_3]] : Core, %[[SWITCHBOX_26_3]] : Core)
+// CHECK:           aie.wire(%[[TILE_26_3]] : DMA, %[[SWITCHBOX_26_3]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_26_2]] : North, %[[SWITCHBOX_26_3]] : South)
+// CHECK:           aie.wire(%[[SWITCHBOX_25_4]] : East, %[[SWITCHBOX_26_4:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_26_4]] : Core, %[[SWITCHBOX_26_4]] : Core)
+// CHECK:           aie.wire(%[[TILE_26_4]] : DMA, %[[SWITCHBOX_26_4]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_26_3]] : North, %[[SWITCHBOX_26_4]] : South)
+// CHECK:           aie.wire(%[[SWITCHBOX_26_0]] : East, %[[SWITCHBOX_27_0:.*]] : West)
+// CHECK:           aie.wire(%[[SHIM_MUX_27_0:.*]] : North, %[[SWITCHBOX_27_0]] : South)
+// CHECK:           aie.wire(%[[TILE_27_0]] : DMA, %[[SHIM_MUX_27_0]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_26_1]] : East, %[[SWITCHBOX_27_1:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_27_1]] : Core, %[[SWITCHBOX_27_1]] : Core)
+// CHECK:           aie.wire(%[[TILE_27_1]] : DMA, %[[SWITCHBOX_27_1]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_27_0]] : North, %[[SWITCHBOX_27_1]] : South)
+// CHECK:           aie.wire(%[[SWITCHBOX_26_2]] : East, %[[SWITCHBOX_27_2:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_27_2]] : Core, %[[SWITCHBOX_27_2]] : Core)
+// CHECK:           aie.wire(%[[TILE_27_2]] : DMA, %[[SWITCHBOX_27_2]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_27_1]] : North, %[[SWITCHBOX_27_2]] : South)
+// CHECK:           aie.wire(%[[SWITCHBOX_26_4]] : East, %[[SWITCHBOX_27_4:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_27_4]] : Core, %[[SWITCHBOX_27_4]] : Core)
+// CHECK:           aie.wire(%[[TILE_27_4]] : DMA, %[[SWITCHBOX_27_4]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_27_0]] : East, %[[SWITCHBOX_28_0:.*]] : West)
+// CHECK:           aie.wire(%[[SWITCHBOX_27_1]] : East, %[[SWITCHBOX_28_1:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_28_1]] : Core, %[[SWITCHBOX_28_1]] : Core)
+// CHECK:           aie.wire(%[[TILE_28_1]] : DMA, %[[SWITCHBOX_28_1]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_28_0]] : North, %[[SWITCHBOX_28_1]] : South)
+// CHECK:           aie.wire(%[[SWITCHBOX_27_2]] : East, %[[SWITCHBOX_28_2:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_28_2]] : Core, %[[SWITCHBOX_28_2]] : Core)
+// CHECK:           aie.wire(%[[TILE_28_2]] : DMA, %[[SWITCHBOX_28_2]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_28_1]] : North, %[[SWITCHBOX_28_2]] : South)
+// CHECK:           aie.wire(%[[SWITCHBOX_27_4]] : East, %[[SWITCHBOX_28_4:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_28_4]] : Core, %[[SWITCHBOX_28_4]] : Core)
+// CHECK:           aie.wire(%[[TILE_28_4]] : DMA, %[[SWITCHBOX_28_4]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_28_0]] : East, %[[SWITCHBOX_29_0:.*]] : West)
+// CHECK:           aie.wire(%[[SWITCHBOX_28_1]] : East, %[[SWITCHBOX_29_1:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_29_1]] : Core, %[[SWITCHBOX_29_1]] : Core)
+// CHECK:           aie.wire(%[[TILE_29_1]] : DMA, %[[SWITCHBOX_29_1]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_29_0]] : North, %[[SWITCHBOX_29_1]] : South)
+// CHECK:           aie.wire(%[[SWITCHBOX_28_2]] : East, %[[SWITCHBOX_29_2:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_29_2]] : Core, %[[SWITCHBOX_29_2]] : Core)
+// CHECK:           aie.wire(%[[TILE_29_2]] : DMA, %[[SWITCHBOX_29_2]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_29_1]] : North, %[[SWITCHBOX_29_2]] : South)
+// CHECK:           aie.wire(%[[SWITCHBOX_28_4]] : East, %[[SWITCHBOX_29_4:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_29_4]] : Core, %[[SWITCHBOX_29_4]] : Core)
+// CHECK:           aie.wire(%[[TILE_29_4]] : DMA, %[[SWITCHBOX_29_4]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_29_0]] : East, %[[SWITCHBOX_30_0:.*]] : West)
+// CHECK:           aie.wire(%[[SWITCHBOX_29_1]] : East, %[[SWITCHBOX_30_1:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_30_1]] : Core, %[[SWITCHBOX_30_1]] : Core)
+// CHECK:           aie.wire(%[[TILE_30_1]] : DMA, %[[SWITCHBOX_30_1]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_30_0]] : North, %[[SWITCHBOX_30_1]] : South)
+// CHECK:           aie.wire(%[[SWITCHBOX_29_2]] : East, %[[SWITCHBOX_30_2:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_30_2]] : Core, %[[SWITCHBOX_30_2]] : Core)
+// CHECK:           aie.wire(%[[TILE_30_2]] : DMA, %[[SWITCHBOX_30_2]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_30_1]] : North, %[[SWITCHBOX_30_2]] : South)
+// CHECK:           aie.wire(%[[SWITCHBOX_29_4]] : East, %[[SWITCHBOX_30_4:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_30_4]] : Core, %[[SWITCHBOX_30_4]] : Core)
+// CHECK:           aie.wire(%[[TILE_30_4]] : DMA, %[[SWITCHBOX_30_4]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_30_0]] : East, %[[SWITCHBOX_31_0:.*]] : West)
+// CHECK:           aie.wire(%[[SWITCHBOX_30_1]] : East, %[[SWITCHBOX_31_1:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_31_1]] : Core, %[[SWITCHBOX_31_1]] : Core)
+// CHECK:           aie.wire(%[[TILE_31_1]] : DMA, %[[SWITCHBOX_31_1]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_31_0]] : North, %[[SWITCHBOX_31_1]] : South)
+// CHECK:           aie.wire(%[[SWITCHBOX_30_2]] : East, %[[SWITCHBOX_31_2:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_31_2]] : Core, %[[SWITCHBOX_31_2]] : Core)
+// CHECK:           aie.wire(%[[TILE_31_2]] : DMA, %[[SWITCHBOX_31_2]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_31_1]] : North, %[[SWITCHBOX_31_2]] : South)
+// CHECK:           aie.wire(%[[SWITCHBOX_30_4]] : East, %[[SWITCHBOX_31_4:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_31_4]] : Core, %[[SWITCHBOX_31_4]] : Core)
+// CHECK:           aie.wire(%[[TILE_31_4]] : DMA, %[[SWITCHBOX_31_4]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_31_0]] : East, %[[SWITCHBOX_32_0:.*]] : West)
+// CHECK:           aie.wire(%[[SWITCHBOX_31_1]] : East, %[[SWITCHBOX_32_1:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_32_1]] : Core, %[[SWITCHBOX_32_1]] : Core)
+// CHECK:           aie.wire(%[[TILE_32_1]] : DMA, %[[SWITCHBOX_32_1]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_32_0]] : North, %[[SWITCHBOX_32_1]] : South)
+// CHECK:           aie.wire(%[[SWITCHBOX_31_2]] : East, %[[SWITCHBOX_32_2:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_32_2]] : Core, %[[SWITCHBOX_32_2]] : Core)
+// CHECK:           aie.wire(%[[TILE_32_2]] : DMA, %[[SWITCHBOX_32_2]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_32_1]] : North, %[[SWITCHBOX_32_2]] : South)
+// CHECK:           aie.wire(%[[SWITCHBOX_31_4]] : East, %[[SWITCHBOX_32_4:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_32_4]] : Core, %[[SWITCHBOX_32_4]] : Core)
+// CHECK:           aie.wire(%[[TILE_32_4]] : DMA, %[[SWITCHBOX_32_4]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_32_0]] : East, %[[SWITCHBOX_33_0:.*]] : West)
+// CHECK:           aie.wire(%[[SWITCHBOX_32_1]] : East, %[[SWITCHBOX_33_1:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_33_1]] : Core, %[[SWITCHBOX_33_1]] : Core)
+// CHECK:           aie.wire(%[[TILE_33_1]] : DMA, %[[SWITCHBOX_33_1]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_33_0]] : North, %[[SWITCHBOX_33_1]] : South)
+// CHECK:           aie.wire(%[[SWITCHBOX_32_2]] : East, %[[SWITCHBOX_33_2:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_33_2]] : Core, %[[SWITCHBOX_33_2]] : Core)
+// CHECK:           aie.wire(%[[TILE_33_2]] : DMA, %[[SWITCHBOX_33_2]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_33_1]] : North, %[[SWITCHBOX_33_2]] : South)
+// CHECK:           aie.wire(%[[SWITCHBOX_32_4]] : East, %[[SWITCHBOX_33_4:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_33_4]] : Core, %[[SWITCHBOX_33_4]] : Core)
+// CHECK:           aie.wire(%[[TILE_33_4]] : DMA, %[[SWITCHBOX_33_4]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_33_0]] : East, %[[SWITCHBOX_34_0:.*]] : West)
+// CHECK:           aie.wire(%[[SHIM_MUX_34_0:.*]] : North, %[[SWITCHBOX_34_0]] : South)
+// CHECK:           aie.wire(%[[TILE_34_0]] : DMA, %[[SHIM_MUX_34_0]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_33_1]] : East, %[[SWITCHBOX_34_1:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_34_1]] : Core, %[[SWITCHBOX_34_1]] : Core)
+// CHECK:           aie.wire(%[[TILE_34_1]] : DMA, %[[SWITCHBOX_34_1]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_34_0]] : North, %[[SWITCHBOX_34_1]] : South)
+// CHECK:           aie.wire(%[[SWITCHBOX_33_2]] : East, %[[SWITCHBOX_34_2:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_34_2]] : Core, %[[SWITCHBOX_34_2]] : Core)
+// CHECK:           aie.wire(%[[TILE_34_2]] : DMA, %[[SWITCHBOX_34_2]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_34_1]] : North, %[[SWITCHBOX_34_2]] : South)
+// CHECK:           aie.wire(%[[SWITCHBOX_33_4]] : East, %[[SWITCHBOX_34_4:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_34_4]] : Core, %[[SWITCHBOX_34_4]] : Core)
+// CHECK:           aie.wire(%[[TILE_34_4]] : DMA, %[[SWITCHBOX_34_4]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_34_0]] : East, %[[SWITCHBOX_35_0:.*]] : West)
+// CHECK:           aie.wire(%[[SHIM_MUX_35_0:.*]] : North, %[[SWITCHBOX_35_0]] : South)
+// CHECK:           aie.wire(%[[TILE_35_0]] : DMA, %[[SHIM_MUX_35_0]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_34_1]] : East, %[[SWITCHBOX_35_1:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_35_1]] : Core, %[[SWITCHBOX_35_1]] : Core)
+// CHECK:           aie.wire(%[[TILE_35_1]] : DMA, %[[SWITCHBOX_35_1]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_35_0]] : North, %[[SWITCHBOX_35_1]] : South)
+// CHECK:           aie.wire(%[[SWITCHBOX_34_2]] : East, %[[SWITCHBOX_35_2:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_35_2]] : Core, %[[SWITCHBOX_35_2]] : Core)
+// CHECK:           aie.wire(%[[TILE_35_2]] : DMA, %[[SWITCHBOX_35_2]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_35_1]] : North, %[[SWITCHBOX_35_2]] : South)
+// CHECK:           aie.wire(%[[SWITCHBOX_34_4]] : East, %[[SWITCHBOX_35_4:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_35_4]] : Core, %[[SWITCHBOX_35_4]] : Core)
+// CHECK:           aie.wire(%[[TILE_35_4]] : DMA, %[[SWITCHBOX_35_4]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_35_0]] : East, %[[SWITCHBOX_36_0:.*]] : West)
+// CHECK:           aie.wire(%[[SWITCHBOX_35_2]] : East, %[[SWITCHBOX_36_2:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_36_2]] : Core, %[[SWITCHBOX_36_2]] : Core)
+// CHECK:           aie.wire(%[[TILE_36_2]] : DMA, %[[SWITCHBOX_36_2]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_35_4]] : East, %[[SWITCHBOX_36_4:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_36_4]] : Core, %[[SWITCHBOX_36_4]] : Core)
+// CHECK:           aie.wire(%[[TILE_36_4]] : DMA, %[[SWITCHBOX_36_4]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_36_0]] : East, %[[SWITCHBOX_37_0:.*]] : West)
+// CHECK:           aie.wire(%[[SWITCHBOX_36_2]] : East, %[[SWITCHBOX_37_2:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_37_2]] : Core, %[[SWITCHBOX_37_2]] : Core)
+// CHECK:           aie.wire(%[[TILE_37_2]] : DMA, %[[SWITCHBOX_37_2]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_36_4]] : East, %[[SWITCHBOX_37_4:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_37_4]] : Core, %[[SWITCHBOX_37_4]] : Core)
+// CHECK:           aie.wire(%[[TILE_37_4]] : DMA, %[[SWITCHBOX_37_4]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_37_0]] : East, %[[SWITCHBOX_38_0:.*]] : West)
+// CHECK:           aie.wire(%[[SWITCHBOX_37_2]] : East, %[[SWITCHBOX_38_2:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_38_2]] : Core, %[[SWITCHBOX_38_2]] : Core)
+// CHECK:           aie.wire(%[[TILE_38_2]] : DMA, %[[SWITCHBOX_38_2]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_37_4]] : East, %[[SWITCHBOX_38_4:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_38_4]] : Core, %[[SWITCHBOX_38_4]] : Core)
+// CHECK:           aie.wire(%[[TILE_38_4]] : DMA, %[[SWITCHBOX_38_4]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_38_0]] : East, %[[SWITCHBOX_39_0:.*]] : West)
+// CHECK:           aie.wire(%[[SWITCHBOX_38_2]] : East, %[[SWITCHBOX_39_2:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_39_2]] : Core, %[[SWITCHBOX_39_2]] : Core)
+// CHECK:           aie.wire(%[[TILE_39_2]] : DMA, %[[SWITCHBOX_39_2]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_38_4]] : East, %[[SWITCHBOX_39_4:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_39_4]] : Core, %[[SWITCHBOX_39_4]] : Core)
+// CHECK:           aie.wire(%[[TILE_39_4]] : DMA, %[[SWITCHBOX_39_4]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_39_0]] : East, %[[SWITCHBOX_40_0:.*]] : West)
+// CHECK:           aie.wire(%[[SWITCHBOX_39_2]] : East, %[[SWITCHBOX_40_2:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_40_2]] : Core, %[[SWITCHBOX_40_2]] : Core)
+// CHECK:           aie.wire(%[[TILE_40_2]] : DMA, %[[SWITCHBOX_40_2]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_39_4]] : East, %[[SWITCHBOX_40_4:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_40_4]] : Core, %[[SWITCHBOX_40_4]] : Core)
+// CHECK:           aie.wire(%[[TILE_40_4]] : DMA, %[[SWITCHBOX_40_4]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_40_0]] : East, %[[SWITCHBOX_41_0:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_41_1]] : Core, %[[SWITCHBOX_41_1:.*]] : Core)
+// CHECK:           aie.wire(%[[TILE_41_1]] : DMA, %[[SWITCHBOX_41_1]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_41_0]] : North, %[[SWITCHBOX_41_1]] : South)
+// CHECK:           aie.wire(%[[SWITCHBOX_40_2]] : East, %[[SWITCHBOX_41_2:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_41_2]] : Core, %[[SWITCHBOX_41_2]] : Core)
+// CHECK:           aie.wire(%[[TILE_41_2]] : DMA, %[[SWITCHBOX_41_2]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_41_1]] : North, %[[SWITCHBOX_41_2]] : South)
+// CHECK:           aie.wire(%[[SWITCHBOX_40_4]] : East, %[[SWITCHBOX_41_4:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_41_4]] : Core, %[[SWITCHBOX_41_4]] : Core)
+// CHECK:           aie.wire(%[[TILE_41_4]] : DMA, %[[SWITCHBOX_41_4]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_41_0]] : East, %[[SWITCHBOX_42_0:.*]] : West)
+// CHECK:           aie.wire(%[[SHIM_MUX_42_0:.*]] : North, %[[SWITCHBOX_42_0]] : South)
+// CHECK:           aie.wire(%[[TILE_42_0]] : DMA, %[[SHIM_MUX_42_0]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_41_1]] : East, %[[SWITCHBOX_42_1:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_42_1]] : Core, %[[SWITCHBOX_42_1]] : Core)
+// CHECK:           aie.wire(%[[TILE_42_1]] : DMA, %[[SWITCHBOX_42_1]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_42_0]] : North, %[[SWITCHBOX_42_1]] : South)
+// CHECK:           aie.wire(%[[TILE_42_3]] : Core, %[[SWITCHBOX_42_3:.*]] : Core)
+// CHECK:           aie.wire(%[[TILE_42_3]] : DMA, %[[SWITCHBOX_42_3]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_41_4]] : East, %[[SWITCHBOX_42_4:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_42_4]] : Core, %[[SWITCHBOX_42_4]] : Core)
+// CHECK:           aie.wire(%[[TILE_42_4]] : DMA, %[[SWITCHBOX_42_4]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_42_3]] : North, %[[SWITCHBOX_42_4]] : South)
+// CHECK:           aie.wire(%[[SWITCHBOX_42_0]] : East, %[[SWITCHBOX_43_0:.*]] : West)
+// CHECK:           aie.wire(%[[SHIM_MUX_43_0:.*]] : North, %[[SWITCHBOX_43_0]] : South)
+// CHECK:           aie.wire(%[[TILE_43_0]] : DMA, %[[SHIM_MUX_43_0]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_42_3]] : East, %[[SWITCHBOX_43_3:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_43_3]] : Core, %[[SWITCHBOX_43_3]] : Core)
+// CHECK:           aie.wire(%[[TILE_43_3]] : DMA, %[[SWITCHBOX_43_3]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_43_0]] : East, %[[SWITCHBOX_44_0:.*]] : West)
+// CHECK:           aie.wire(%[[SWITCHBOX_43_3]] : East, %[[SWITCHBOX_44_3:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_44_3]] : Core, %[[SWITCHBOX_44_3]] : Core)
+// CHECK:           aie.wire(%[[TILE_44_3]] : DMA, %[[SWITCHBOX_44_3]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_44_0]] : East, %[[SWITCHBOX_45_0:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_45_2]] : Core, %[[SWITCHBOX_45_2:.*]] : Core)
+// CHECK:           aie.wire(%[[TILE_45_2]] : DMA, %[[SWITCHBOX_45_2]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_44_3]] : East, %[[SWITCHBOX_45_3:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_45_3]] : Core, %[[SWITCHBOX_45_3]] : Core)
+// CHECK:           aie.wire(%[[TILE_45_3]] : DMA, %[[SWITCHBOX_45_3]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_45_2]] : North, %[[SWITCHBOX_45_3]] : South)
+// CHECK:           aie.wire(%[[SWITCHBOX_45_0]] : East, %[[SWITCHBOX_46_0:.*]] : West)
+// CHECK:           aie.wire(%[[SHIM_MUX_46_0:.*]] : North, %[[SWITCHBOX_46_0]] : South)
+// CHECK:           aie.wire(%[[TILE_46_0]] : DMA, %[[SHIM_MUX_46_0]] : DMA)
+// CHECK:           aie.wire(%[[TILE_46_1]] : Core, %[[SWITCHBOX_46_1:.*]] : Core)
+// CHECK:           aie.wire(%[[TILE_46_1]] : DMA, %[[SWITCHBOX_46_1]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_46_0]] : North, %[[SWITCHBOX_46_1]] : South)
+// CHECK:           aie.wire(%[[SWITCHBOX_45_2]] : East, %[[SWITCHBOX_46_2:.*]] : West)
+// CHECK:           aie.wire(%[[TILE_46_2]] : Core, %[[SWITCHBOX_46_2]] : Core)
+// CHECK:           aie.wire(%[[TILE_46_2]] : DMA, %[[SWITCHBOX_46_2]] : DMA)
+// CHECK:           aie.wire(%[[SWITCHBOX_46_1]] : North, %[[SWITCHBOX_46_2]] : South)
+// CHECK:           aie.wire(%[[SWITCHBOX_46_0]] : East, %[[SWITCHBOX_47_0:.*]] : West)
+// CHECK:           aie.wire(%[[SHIM_MUX_47_0:.*]] : North, %[[SWITCHBOX_47_0]] : South)
+// CHECK:           aie.wire(%[[TILE_47_0]] : DMA, %[[SHIM_MUX_47_0]] : DMA)
 // CHECK:         }
 
 module @vecmul_4x4  {

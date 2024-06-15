@@ -1,18 +1,19 @@
-// RUN: iree-opt --aie-localize-locks --aie-standard-lowering="tilecol=1 tilerow=3" %s | FileCheck --check-prefix=CHECK %s
+// RUN: iree-opt --aie-localize-locks --aie-standard-lowering %s | FileCheck %s
 
-// CHECK: module @test attributes {llvm.target_triple = "aie"} {
-// CHECK:   func.func private @kernel(%arg0: index) {
-// CHECK-NEXT:     %0 = arith.index_cast %arg0 : index to i32
-// CHECK-NEXT:     %c0_i32 = arith.constant 0 : i32
-// CHECK-NEXT:     call @llvm.aie.lock.acquire.reg(%0, %c0_i32) : (i32, i32) -> ()
-// CHECK-NEXT:     return
-// CHECK:   }
-// CHECK:   func.func @core_1_3() {
-// CHECK:     %c48 = arith.constant 48 : index
-// CHECK:     call @kernel(%c48) : (index) -> ()
-// CHECK:     return
-// CHECK:   }
-// CHECK: }
+// CHECK-LABEL: module @test attributes {llvm.target_triple = "aie"} {
+// CHECK-LABEL:   func.func private @kernel(
+// CHECK-SAME:                              %[[ARG0:.*]]: index) {
+// CHECK:           %[[VAL_0:.*]] = arith.index_cast %[[ARG0]] : index to i32
+// CHECK:           %[[C0_I32:.*]] = arith.constant 0 : i32
+// CHECK:           call @llvm.aie.lock.acquire.reg(%[[VAL_0]], %[[C0_I32]]) : (i32, i32) -> ()
+// CHECK:           return
+// CHECK:         }
+
+// CHECK-LABEL:   func.func @core_1_3() {
+// CHECK:           %[[C48:.*]] = arith.constant 48 : index
+// CHECK:           call @kernel(%[[C48]]) : (index) -> ()
+// CHECK:           return
+// CHECK:         }
 
 module @test {
  aie.device(xcvc1902) {

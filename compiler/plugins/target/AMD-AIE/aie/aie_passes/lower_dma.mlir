@@ -1,20 +1,36 @@
-//===- lower_dma.mlir ------------------------------------------*- MLIR -*-===//
-//
-// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-// (c) Copyright 2021 Xilinx Inc.
-//
-//===----------------------------------------------------------------------===//
+// RUN: iree-opt --aie-localize-locks --aie-standard-lowering %s | FileCheck %s
 
-// RUN: iree-opt --aie-localize-locks --aie-standard-lowering="tilecol=3 tilerow=3" %s | FileCheck %s
+// CHECK-LABEL:   func.func @core_4_3() {
+// CHECK:           %[[C48:.*]] = arith.constant 48 : index
+// CHECK:           %[[C16:.*]] = arith.constant 16 : index
+// CHECK:           %[[C17:.*]] = arith.constant 17 : index
+// CHECK:           %[[VAL_0:.*]] = arith.index_cast %[[C48]] : index to i32
+// CHECK:           %[[C1_I32:.*]] = arith.constant 1 : i32
+// CHECK:           call @llvm.aie.lock.acquire.reg(%[[VAL_0]], %[[C1_I32]]) : (i32, i32) -> ()
+// CHECK:           %[[VAL_1:.*]] = arith.index_cast %[[C48]] : index to i32
+// CHECK:           %[[C0_I32:.*]] = arith.constant 0 : i32
+// CHECK:           call @llvm.aie.lock.release.reg(%[[VAL_1]], %[[C0_I32]]) : (i32, i32) -> ()
+// CHECK:           return
+// CHECK:         }
 
-// CHECK:    call @llvm.aie.lock.acquire.reg({{.*}}, %c0_i32) : (i32, i32) -> ()
-// CHECK:    call @llvm.aie.put.ms(%c0_i32_0, %c16_i32) : (i32, i32) -> ()
-// CHECK:    {{.*}} = call @llvm.aie.get.wss(%c0_i32_0) : (i32) -> i128
-// CHECK:    call @llvm.aie.put.mcd(%c1_i384) : (i384) -> ()
-// CHECK:    call @llvm.aie.lock.release.reg({{.*}}, %c1_i32) : (i32, i32) -> ()
+// CHECK-LABEL:   func.func @core_3_3() {
+// CHECK:           %[[C48:.*]] = arith.constant 48 : index
+// CHECK:           %[[C49:.*]] = arith.constant 49 : index
+// CHECK:           %[[VAL_0:.*]] = arith.index_cast %[[C48]] : index to i32
+// CHECK:           %[[C0_I32:.*]] = arith.constant 0 : i32
+// CHECK:           call @llvm.aie.lock.acquire.reg(%[[VAL_0]], %[[C0_I32]]) : (i32, i32) -> ()
+// CHECK:           %[[C16_I32:.*]] = arith.constant 16 : i32
+// CHECK:           %[[C0_I32_0:.*]] = arith.constant 0 : i32
+// CHECK:           call @llvm.aie.put.ms(%[[C0_I32_0]], %[[C16_I32]]) : (i32, i32) -> ()
+// CHECK:           %[[VAL_1:.*]] = call @llvm.aie.get.wss(%[[C0_I32_0]]) : (i32) -> i128
+// CHECK:           %[[C1_I384:.*]] = arith.constant 1 : i384
+// CHECK:           call @llvm.aie.put.mcd(%[[C1_I384]]) : (i384) -> ()
+// CHECK:           %[[VAL_2:.*]] = arith.index_cast %[[C48]] : index to i32
+// CHECK:           %[[C1_I32:.*]] = arith.constant 1 : i32
+// CHECK:           call @llvm.aie.lock.release.reg(%[[VAL_2]], %[[C1_I32]]) : (i32, i32) -> ()
+// CHECK:           return
+// CHECK:         }
+
 
 module @example0 {
  aie.device(xcvc1902) {

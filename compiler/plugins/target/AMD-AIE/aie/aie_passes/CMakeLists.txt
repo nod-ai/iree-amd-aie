@@ -1,90 +1,10 @@
+file(GLOB _mlir_files *.mlir)
+
 iree_lit_test_suite(
   NAME
     lit
   SRCS
-    AIE2_cyclostatic_dma.mlir
-    AIE2_cyclostatic_l1.mlir
-    AIE2_cyclostatic_l2.mlir
-    AIE2_delayed_release.mlir
-    AIE2_delayed_release_inside_funcs.mlir
-    AIE2_dynamic_locks.mlir
-    AIE2_static_l1.mlir
-    aiert_insts.mlir
-    aiex_standard_lowering.mlir
-    allocation_info_test.mlir
-    assign-lockIDs.mlir
-    base_test_AIE1.mlir
-    base_test_AIE2.mlir
-    basic.mlir
-    basic_alloc_simple.mlir
-    broadcast_error_test.mlir
-    broadcast_test.mlir
-    cyclostatic_AIE2_sharedMem.mlir
-    dma_to_npu.mlir
-    dma_to_npu_issue_token.mlir
-    link_test_AIE1.mlir
-    link_test_AIE2.mlir
-    link_test_DDR_to_L1.mlir
-    link_test_L1_to_DDR.mlir
-    link_test_broadcast.mlir
-    link_test_distribute.mlir
-    link_test_join.mlir
-    local_locks.mlir
-    locks1.mlir
-    loop_test.aie.mlir
-    loop_test_nested.mlir
-    lower_buffer.mlir
-    lower_buffer_and_lock.mlir
-    lower_dma.mlir
-    lower_event.mlir
-    lower_stream.mlir
-    matmul_test.mlir
-    memTile_test.mlir
-    nd_dma_base_AIE2.mlir
-    nd_dma_distribute_AIE2.mlir
-    nd_dma_distribute_AIE2_bad.mlir
-    nd_dma_distribute_broadcast_AIE2_bad.mlir
-    nd_dma_multiple_consumers_AIE2.mlir
-    nested_loop_test.mlir
-    non_adjacency_test_1.mlir
-    non_adjacency_test_2.mlir
-    non_adjacency_test_AIE2.mlir
-    npu_instgen.mlir
-    push_to_queue.mlir
-    register_external_buffers_test.mlir
-    roundtrip.mlir
-    same_core_producer_consumer_test.mlir
-    shimRow_mem_test.mlir
-    shim_AIE2_test.mlir
-    shim_broadcast_test.mlir
-    subview_test_1.mlir
-    subview_test_2.mlir
-    subview_test_3.mlir
-    tileDMA_test.mlir
-    unit_broadcast.mlir
-    unit_fixed_connections.mlir
-    unit_flow_test_1.mlir
-    unit_flow_test_2.mlir
-    unit_flow_test_3.mlir
-    unit_many_flows.mlir
-    unit_many_flows2.mlir
-    unit_maxiter_err_test.mlir
-    unit_memtile.mlir
-    unit_memtile_routing_constraints.mlir
-    unit_mmult.mlir
-    unit_more_flows_shim.mlir
-    unit_over_flows.mlir
-    unit_routed_herd_3x1.mlir
-    unit_routed_herd_3x2.mlir
-    unit_simple.mlir
-    unit_simple2.mlir
-    unit_simple_flows.mlir
-    unit_simple_flows2.mlir
-    unit_simple_flows_shim.mlir
-    unit_vecmul_4x4.mlir
-    useLock_in_func.mlir
-    user_assigned.mlir
-    via_DMA_test.mlir
+    ${_mlir_files}
   TOOLS
     ${IREE_LLD_TARGET}
     FileCheck

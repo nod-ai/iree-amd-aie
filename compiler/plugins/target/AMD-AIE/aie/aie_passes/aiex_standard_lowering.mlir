@@ -1,18 +1,14 @@
-//===- aiex_standard_lowering.mlir -----------------------------*- MLIR -*-===//
-//
-// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-// (c) Copyright 2024 Advanced Micro Devices, Inc.
-//
-//===----------------------------------------------------------------------===//
 
-// RUN: iree-opt --split-input-file --aiex-standard-lowering %s | FileCheck %s
+// RUN: iree-opt --aiex-standard-lowering %s | FileCheck %s
 
-// CHECK-LABEL: dma_and_wait
-// CHECK-NOT: aiex.npu.dma_memcpy_nd
-// CHECK-NOT: aiex.npu.dma_wait
+// CHECK-LABEL:   aie.device(npu1_4col) {
+// CHECK:           memref.global "public" @toMem : memref<16xi32>
+// CHECK:           func.func @dma_and_wait(%[[ARG0:.*]]: memref<16xi32>, %[[ARG1:.*]]: memref<16xi32>) {
+// CHECK:             return
+// CHECK:           }
+// CHECK:           aie.shim_dma_allocation @toMem(MM2S, 1, 1)
+// CHECK:         }
+
 module  {
   aie.device(npu1_4col) {
     memref.global "public" @toMem : memref<16xi32>
