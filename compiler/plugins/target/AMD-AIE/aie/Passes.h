@@ -134,12 +134,6 @@ inline void registerAIEDmaToNpu() {
   });
 }
 
-inline void registerAIEXToStandard() {
-  ::mlir::registerPass([]() -> std::unique_ptr<::mlir::Pass> {
-    return xilinx::AIEX::createAIEXToStandardPass();
-  });
-}
-
 }  // namespace xilinx::AIEX
 
 namespace mlir::iree_compiler::AMDAIE {

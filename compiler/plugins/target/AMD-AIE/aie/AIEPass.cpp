@@ -45,8 +45,9 @@
 #define DEBUG_TYPE "aie-pass"
 
 using namespace mlir;
-using namespace xilinx;
+using namespace mlir::vector;
 using namespace xilinx::AIE;
+using namespace xilinx::AIEX;
 
 const std::map<xilinx::AIE::WireBundle, StrmSwPortType>
     _WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE = {
@@ -87,59 +88,46 @@ xilinx::AIE::WireBundle STRM_SW_PORT_TYPE_TO_WIRE_BUNDLE(StrmSwPortType s) {
 
 template <typename DerivedT>
 class AIEAssignBufferAddressesPassBasicBase
-    : public ::mlir::OperationPass<DeviceOp> {
+    : public mlir::OperationPass<DeviceOp> {
  public:
   using Base = AIEAssignBufferAddressesPassBasicBase;
 
   AIEAssignBufferAddressesPassBasicBase()
-      : ::mlir::OperationPass<DeviceOp>(::mlir::TypeID::get<DerivedT>()) {}
+      : mlir::OperationPass<DeviceOp>(mlir::TypeID::get<DerivedT>()) {}
   AIEAssignBufferAddressesPassBasicBase(
       const AIEAssignBufferAddressesPassBasicBase &other)
-      : ::mlir::OperationPass<DeviceOp>(other) {}
-  AIEAssignBufferAddressesPassBasicBase &operator=(
-      const AIEAssignBufferAddressesPassBasicBase &) = delete;
-  AIEAssignBufferAddressesPassBasicBase(
-      AIEAssignBufferAddressesPassBasicBase &&) = delete;
-  AIEAssignBufferAddressesPassBasicBase &operator=(
-      AIEAssignBufferAddressesPassBasicBase &&) = delete;
-  ~AIEAssignBufferAddressesPassBasicBase() = default;
+      : mlir::OperationPass<DeviceOp>(other) {}
 
-  /// Returns the command-line argument attached to this pass.
-  static constexpr ::llvm::StringLiteral getArgumentName() {
-    return ::llvm::StringLiteral("aie-assign-buffer-addresses-basic");
+  static constexpr llvm::StringLiteral getArgumentName() {
+    return llvm::StringLiteral("aie-assign-buffer-addresses-basic");
   }
-  ::llvm::StringRef getArgument() const override {
+
+  llvm::StringRef getArgument() const override {
     return "aie-assign-buffer-addresses-basic";
   }
 
-  ::llvm::StringRef getDescription() const override {
+  llvm::StringRef getDescription() const override {
     return "Assign memory locations for buffers in each tile";
   }
 
-  /// Returns the derived pass name.
-  static constexpr ::llvm::StringLiteral getPassName() {
-    return ::llvm::StringLiteral("AIEAssignBufferAddressesBasic");
+  static constexpr llvm::StringLiteral getPassName() {
+    return llvm::StringLiteral("AIEAssignBufferAddressesBasic");
   }
-  ::llvm::StringRef getName() const override {
+
+  llvm::StringRef getName() const override {
     return "AIEAssignBufferAddressesBasic";
   }
 
-  /// Support isa/dyn_cast functionality for the derived pass class.
-  static bool classof(const ::mlir::Pass *pass) {
-    return pass->getTypeID() == ::mlir::TypeID::get<DerivedT>();
+  static bool classof(const mlir::Pass *pass) {
+    return pass->getTypeID() == mlir::TypeID::get<DerivedT>();
   }
 
-  /// A clone method to create a copy of this pass.
-  std::unique_ptr<::mlir::Pass> clonePass() const override {
+  std::unique_ptr<mlir::Pass> clonePass() const override {
     return std::make_unique<DerivedT>(*static_cast<const DerivedT *>(this));
   }
 
-  /// Register the dialects that must be loaded in the context before this pass.
-  void getDependentDialects(::mlir::DialectRegistry &registry) const override {}
+  void getDependentDialects(mlir::DialectRegistry &registry) const override {}
 
-  /// Explicitly declare the TypeID for this class. We declare an explicit
-  /// private instantiation because Pass classes should only be visible by the
-  /// current library.
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(
       AIEAssignBufferAddressesPassBasicBase<DerivedT>)
 };
@@ -232,7 +220,7 @@ struct AIEAssignBufferAddressesPassBasic
 };
 
 std::unique_ptr<OperationPass<DeviceOp>>
-AIE::createAIEAssignBufferAddressesBasicPass() {
+xilinx::AIE::createAIEAssignBufferAddressesBasicPass() {
   return std::make_unique<AIEAssignBufferAddressesPassBasic>();
 }
 
@@ -330,6 +318,7 @@ struct AIEAssignBufferDescriptorIDsPass
           bd.setBdId(gen.nextBdId(blockChannelMap[&block]));
       }
     }
+
     for (TileElement memOp : memOps) {
       DenseMap<Block *, int> blockBdIdMap;
       for (Block &block : memOp.getOperation()->getRegion(0)) {
@@ -362,7 +351,7 @@ struct AIEAssignBufferDescriptorIDsPass
 };
 
 std::unique_ptr<OperationPass<DeviceOp>>
-AIE::createAIEAssignBufferDescriptorIDsPass() {
+xilinx::AIE::createAIEAssignBufferDescriptorIDsPass() {
   return std::make_unique<AIEAssignBufferDescriptorIDsPass>();
 }
 
@@ -455,7 +444,8 @@ struct AIEAssignLockIDsPass
   }
 };
 
-std::unique_ptr<OperationPass<DeviceOp>> AIE::createAIEAssignLockIDsPass() {
+std::unique_ptr<OperationPass<DeviceOp>>
+xilinx::AIE::createAIEAssignLockIDsPass() {
   return std::make_unique<AIEAssignLockIDsPass>();
 }
 
@@ -469,11 +459,6 @@ std::unique_ptr<OperationPass<DeviceOp>> AIE::createAIEAssignLockIDsPass() {
 // (c) Copyright 2019 Xilinx Inc.
 //
 //===----------------------------------------------------------------------===//
-
-using namespace mlir;
-using namespace mlir::vector;
-using namespace xilinx;
-using namespace xilinx::AIE;
 
 static StringRef getArchIntrinsicString(AIEArch arch) { return "aie2"; }
 
@@ -521,47 +506,6 @@ static void declareAIEIntrinsics(AIEArch arch, OpBuilder &builder) {
   };
   registerIntrinsics(getAIE2Intrinsics(builder));
 }
-
-template <typename MyAIEOp>
-struct AIEOpRemoval : OpConversionPattern<MyAIEOp> {
-  using OpConversionPattern<MyAIEOp>::OpConversionPattern;
-  using OpAdaptor = typename MyAIEOp::Adaptor;
-  ModuleOp &module;
-
-  AIEOpRemoval(MLIRContext *context, ModuleOp &m, PatternBenefit benefit = 1)
-      : OpConversionPattern<MyAIEOp>(context, benefit), module(m) {}
-
-  LogicalResult matchAndRewrite(
-      MyAIEOp op, OpAdaptor adaptor,
-      ConversionPatternRewriter &rewriter) const override {
-    rewriter.eraseOp(op);
-    return success();
-  }
-};
-
-struct AIEDebugOpToStdLowering : OpConversionPattern<DebugOp> {
-  using OpConversionPattern::OpConversionPattern;
-  ModuleOp &module;
-
-  AIEDebugOpToStdLowering(MLIRContext *context, ModuleOp &m,
-                          PatternBenefit benefit = 1)
-      : OpConversionPattern(context, benefit), module(m) {}
-
-  LogicalResult matchAndRewrite(
-      DebugOp op, OpAdaptor adaptor,
-      ConversionPatternRewriter &rewriter) const override {
-    std::string funcName = "debug_i32";
-    auto func = module.lookupSymbol<func::FuncOp>(funcName);
-    if (!func)
-      return op.emitOpError("Could not find the intrinsic function ")
-             << funcName;
-    SmallVector<Value, 1> args;
-    args.push_back(op.getArg());
-    rewriter.create<func::CallOp>(rewriter.getUnknownLoc(), func, args);
-    rewriter.eraseOp(op);
-    return success();
-  }
-};
 
 struct AIEPutStreamToStdLowering : OpConversionPattern<PutStreamOp> {
   using OpConversionPattern::OpConversionPattern;
@@ -918,8 +862,8 @@ struct AIECoreToStandardPass
     RewritePatternSet patterns(&getContext());
     patterns.add<AIEPutStreamToStdLowering, AIEGetStreamToStdLowering,
                  AIEPutCascadeToStdLowering, AIEGetCascadeToStdLowering,
-                 AIEDebugOpToStdLowering, AIEUseLockToStdLowering,
-                 AIEEventOpToStdLowering>(m.getContext(), m);
+                 AIEUseLockToStdLowering, AIEEventOpToStdLowering>(
+        m.getContext(), m);
 
     patterns.add<AIEBufferToStandard>(m.getContext(), m, /*benefit*/ 1, tileCol,
                                       tileRow);
@@ -939,21 +883,14 @@ struct AIECoreToStandardPass
     outlineOps<memref::GlobalOp>(device);
     outlineOps<func::FuncOp>(device);
 
-    RewritePatternSet removepatterns(&getContext());
-    removepatterns.add<
-        AIEOpRemoval<DeviceOp>, AIEOpRemoval<TileOp>, AIEOpRemoval<FlowOp>,
-        AIEOpRemoval<MemOp>, AIEOpRemoval<ShimDMAOp>, AIEOpRemoval<ShimMuxOp>,
-        AIEOpRemoval<SwitchboxOp>, AIEOpRemoval<LockOp>, AIEOpRemoval<BufferOp>,
-        AIEOpRemoval<ExternalBufferOp>, AIEOpRemoval<ShimDMAAllocationOp>,
-        AIEOpRemoval<CascadeFlowOp>, AIEOpRemoval<ConfigureCascadeOp>>(
-        m.getContext(), m);
-
-    if (failed(applyPartialConversion(m, target, std::move(removepatterns))))
-      return signalPassFailure();
+    MLIRContext &context = getContext();
+    IRRewriter rewriter(&context);
+    rewriter.eraseOp(device);
   }
 };
 
-std::unique_ptr<OperationPass<ModuleOp>> AIE::createAIECoreToStandardPass() {
+std::unique_ptr<OperationPass<ModuleOp>>
+xilinx::AIE::createAIECoreToStandardPass() {
   return std::make_unique<AIECoreToStandardPass>();
 }
 
@@ -1460,7 +1397,8 @@ struct AIELocalizeLocksPass
   }
 };
 
-std::unique_ptr<OperationPass<DeviceOp>> AIE::createAIELocalizeLocksPass() {
+std::unique_ptr<OperationPass<DeviceOp>>
+xilinx::AIE::createAIELocalizeLocksPass() {
   return std::make_unique<AIELocalizeLocksPass>();
 }
 
@@ -2791,7 +2729,7 @@ struct AIEObjectFifoStatefulTransformPass
 };
 
 std::unique_ptr<OperationPass<DeviceOp>>
-AIE::createAIEObjectFifoStatefulTransformPass() {
+xilinx::AIE::createAIEObjectFifoStatefulTransformPass() {
   return std::make_unique<AIEObjectFifoStatefulTransformPass>();
 }
 
@@ -3247,60 +3185,6 @@ std::optional<std::map<PathEndPoint, SwitchSettings>> Pathfinder::findPaths(
   return routingSolution;
 }
 
-//===- AIEXToStandard.cpp ---------------------------------------*- C++ -*-===//
-//
-// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-// Copyright (C) 2023, Advanced Micro Devices, Inc.
-//
-//===----------------------------------------------------------------------===//
-
-using namespace xilinx::AIEX;
-
-template <typename MyAIEXOp>
-struct AIEXOpRemoval : OpConversionPattern<MyAIEXOp> {
-  using OpConversionPattern<MyAIEXOp>::OpConversionPattern;
-  using OpAdaptor = typename MyAIEXOp::Adaptor;
-  ModuleOp &module;
-
-  AIEXOpRemoval(MLIRContext *context, ModuleOp &m, PatternBenefit benefit = 1)
-      : OpConversionPattern<MyAIEXOp>(context, benefit), module(m) {}
-
-  LogicalResult matchAndRewrite(
-      MyAIEXOp op, OpAdaptor adaptor,
-      ConversionPatternRewriter &rewriter) const override {
-    Operation *Op = op.getOperation();
-    rewriter.eraseOp(Op);
-    return success();
-  }
-};
-
-struct AIEXToStandardPass
-    : xilinx::AIEX::impl::AIEXToStandardBase<AIEXToStandardPass> {
-  void runOnOperation() override {
-    ModuleOp m = getOperation();
-    ConversionTarget target(getContext());
-    RewritePatternSet removepatterns(&getContext());
-    removepatterns.add<AIEXOpRemoval<NpuDmaMemcpyNdOp>>(m.getContext(), m);
-    removepatterns.add<AIEXOpRemoval<NpuDmaWaitOp>>(m.getContext(), m);
-    removepatterns.add<AIEXOpRemoval<NpuPushQueueOp>>(m.getContext(), m);
-    removepatterns.add<AIEXOpRemoval<NpuWriteRTPOp>>(m.getContext(), m);
-    removepatterns.add<AIEXOpRemoval<NpuWrite32Op>>(m.getContext(), m);
-    removepatterns.add<AIEXOpRemoval<NpuSyncOp>>(m.getContext(), m);
-    removepatterns.add<AIEXOpRemoval<NpuWriteBdOp>>(m.getContext(), m);
-    removepatterns.add<AIEXOpRemoval<NpuAddressPatchOp>>(m.getContext(), m);
-
-    if (failed(applyPartialConversion(m, target, std::move(removepatterns))))
-      signalPassFailure();
-  }
-};
-
-std::unique_ptr<OperationPass<ModuleOp>> AIEX::createAIEXToStandardPass() {
-  return std::make_unique<AIEXToStandardPass>();
-}
-
 namespace mlir::iree_compiler::AMDAIE {
 void registerAIETransformPasses() {
   xilinx::AIE::registerAIEAssignLockIDs();
@@ -3314,8 +3198,5 @@ void registerAIETransformPasses() {
 }  // namespace mlir::iree_compiler::AMDAIE
 
 namespace mlir::iree_compiler::AMDAIE {
-void registerAIEXTransformPasses() {
-  xilinx::AIEX::registerAIEXToStandard();
-  xilinx::AIEX::registerAIEDmaToNpu();
-}
+void registerAIEXTransformPasses() { xilinx::AIEX::registerAIEDmaToNpu(); }
 }  // namespace mlir::iree_compiler::AMDAIE

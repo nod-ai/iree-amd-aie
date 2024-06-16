@@ -62,8 +62,6 @@ namespace {
 // manager. These control when (if ever) and what IR gets printed between
 // passes, and whether the pass manager uses multi-theading.
 void applyConfigToPassManager(XCLBinGenConfig &TK, PassManager &pm) {
-  //  pm.getContext()->disableMultithreading(TK.DisableThreading);
-
   bool printBefore = TK.PrintIRBeforeAll;
   auto shouldPrintBeforePass = [printBefore](Pass *, Operation *) {
     return printBefore;
@@ -724,7 +722,6 @@ static LogicalResult generateObject(MLIRContext *context, ModuleOp moduleOp,
 
   pm.addNestedPass<AIE::DeviceOp>(AIE::createAIELocalizeLocksPass());
   pm.addPass(AIE::createAIECoreToStandardPass());
-  pm.addPass(AIEX::createAIEXToStandardPass());
 
   // Convert specific vector dialect ops (like vector.contract) to the AIEVec
   // dialect
@@ -852,26 +849,30 @@ LogicalResult xilinx::aie2xclbin(MLIRContext *ctx, ModuleOp moduleOp,
     return moduleOp.emitOpError()
            << "Unexpected target architecture: " << TK.TargetArch;
 
-  // generateNPUInstructions
-  {
-    PassManager pm(ctx, moduleOp.getOperationName());
-    applyConfigToPassManager(TK, pm);
+  PassManager pm(ctx, moduleOp.getOperationName());
+  applyConfigToPassManager(TK, pm);
 
-    pm.addNestedPass<AIE::DeviceOp>(AIEX::createAIEDmaToNpuPass());
-    ModuleOp copy = moduleOp.clone();
-    if (failed(pm.run(copy)))
-      return moduleOp.emitOpError(": NPU Instruction pipeline failed");
+  pm.addNestedPass<AIE::DeviceOp>(AIEX::createAIEDmaToNpuPass());
+  if (failed(pm.run(moduleOp)))
+    return moduleOp.emitOpError(": NPU Instruction pipeline failed");
+  moduleOp->dump();
 
-    std::string errorMessage;
-    auto output = openOutputFile(OutputNPU, &errorMessage);
-    if (!output) return moduleOp.emitOpError(errorMessage);
+  // TODO(max): should be using UI32 resource or something like that...
+  ArrayRef<int32_t> signedNpuInstructionsAttr =
+      cast<DenseI32ArrayAttr>(
+          (*moduleOp.getOps<xilinx::AIE::DeviceOp>().begin())
+              ->getAttr("npu_instructions"))
+          .asArrayRef();
+  std::vector<uint32_t> unsignedNpuInstructions(
+      signedNpuInstructionsAttr.begin(), signedNpuInstructionsAttr.end());
+  for (const auto &item : unsignedNpuInstructions) std::cerr << item << "\n";
 
-    if (failed(AIE::AIETranslateToNPU(copy, output->os())))
-      return moduleOp.emitOpError(": NPU Instruction translation failed");
-
-    output->keep();
-    copy->erase();
-  }
+  std::string errorMessage;
+  auto output = openOutputFile(OutputNPU, &errorMessage);
+  if (!output) return moduleOp.emitOpError(errorMessage);
+  for (auto w : unsignedNpuInstructions)
+    output->os() << llvm::format("%08X\n", w);
+  output->keep();
 
   SmallString<64> object(TK.TempDir);
   sys::path::append(object, "input.o");
