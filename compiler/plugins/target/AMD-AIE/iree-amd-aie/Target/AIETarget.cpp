@@ -302,7 +302,7 @@ LogicalResult AIETargetBackend::serializeExecutable(
     llvm::sys::path::append(npuInstPath,
                             entryPointNamesFb[ordinal] + ".npu.txt");
 
-    // Convert ordinal to hexadecimal string for xclbin kern id
+    // Convert ordinal to hexadecimal string for xclbin kernel id.
     std::stringstream ss;
     ss << "0x" << std::hex << ordinal + 10;
     std::string ordinalHex = ss.str();
@@ -370,7 +370,7 @@ LogicalResult AIETargetBackend::serializeExecutable(
       int result = llvm::sys::ExecuteAndWait(cmdArgs[0], cmdArgs, cmdEnvRefs);
       if (result != 0 && AttemptingMerge) {
         // we failed to create xclbin but maybe we failed becuase we were trying
-        // to merge the kerenel in exisiting kernel, try again to see if perhaps
+        // to merge the kerenel in exisiting xclbin, try again to see if perhaps
         // we have success if we dont try to merge.
         AttemptingMerge = false;
         result =
@@ -400,18 +400,8 @@ LogicalResult AIETargetBackend::serializeExecutable(
     asmInstrIndices[ordinal] = asmInstrRefs.size();
     asmInstrRefs.push_back(
         iree_amd_aie_hal_xrt_AsmInstDef_create(builder, npuInstrsVec));
-    /*
-    xclbinIn = openInputFile(xclbinPath, &errorMessage);
-    if (!xclbinIn) {
-      moduleOp.emitOpError() << "Failed to open xclbin file: " << errorMessage;
-    }
-    auto xclbinStringRef = builder.createString(xclbinIn->getBuffer());
-    xclbinIndices[ordinal] = xclbinRefs.size();
-    xclbinRefs.push_back(
-        iree_amd_aie_hal_xrt_XclbinDef_create(builder, xclbinStringRef));
-    */
   }
-  // write out the final xclbins to flatbuffer
+  // Write out the final xclbins to flatbuffer.
   for (auto xclbinPath : xclbinPaths) {
     llvm::outs() << "writing xclbin from path: " << xclbinPath << "\n";
     std::string errorMessage;
@@ -424,7 +414,7 @@ LogicalResult AIETargetBackend::serializeExecutable(
         iree_amd_aie_hal_xrt_XclbinDef_create(builder, xclbinStringRef));
   }
 
-  // Serialize the executable to flatbuffer format
+  // Serialize the executable to flatbuffer format.
   auto entryPointsRef = builder.createStringVec(entryPointNamesFb);
 
   iree_amd_aie_hal_xrt_ExecutableDef_entry_points_add(builder, entryPointsRef);
