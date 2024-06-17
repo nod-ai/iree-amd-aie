@@ -33,6 +33,10 @@ void addPadPackBasedPassPipeline(OpPassManager &passManager,
 /// Populates passes needed to link HAL executables across AIE targets.
 void buildAMDAIELinkingPassPipeline(OpPassManager &passManager);
 
+/// Pass to convert logical objectFifo access operations to acquire/release
+/// semaphore operations.
+std::unique_ptr<Pass> createAMDAIEAccessToAcquireReleasePass();
+
 /// Create a pass to convert AIR DMA ops into AMDAIE DMA ops operating on
 /// logical objectFifos.
 std::unique_ptr<Pass> createAMDAIEAIRDmaAMDAIEDmaPass();
@@ -51,10 +55,6 @@ std::unique_ptr<Pass> createAMDAIECanonicalizeDmaPass();
 
 /// Create pass to canonicalize doubly strided operations.
 std::unique_ptr<Pass> createAMDAIECanonicalizeDoublyStridedOpPass();
-
-/// Pass to convert logical objectFifo consume/produce operation to
-/// acquire/release semaphore operations.
-std::unique_ptr<Pass> createAMDAIEConsumeProduceToAcquireReleasePass();
 
 /// Pass to unroll the loops within the control code regions.
 std::unique_ptr<Pass> createAMDAIEControlCodeLoopUnrollPass();

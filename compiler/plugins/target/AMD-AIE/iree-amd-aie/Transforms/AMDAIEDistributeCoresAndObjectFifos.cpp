@@ -480,12 +480,10 @@ LogicalResult insertLogicalObjectFifoAccess(ModuleOp moduleOp) {
             std::tuple<AMDAIE::LogicalObjectFifoFromMemrefOp,
                        AMDAIE::MemoryAccess>
                 value = memrefToLogicalObjectFifo[operand.get()];
-            rewriter.create<AMDAIE::LogicalObjectFifoAccessOp>(
+            auto accessOp = rewriter.create<AMDAIE::LogicalObjectFifoAccessOp>(
                 rewriter.getUnknownLoc(), std::get<0>(value),
                 std::get<1>(value));
-            // TODO(jornt): Temporary, enable after access operations are used
-            // for inserting synchronization stubs instead of consume/produce.
-            // linalgOp->setOperand(idx, accessOp);
+            linalgOp->setOperand(idx, accessOp);
           } else if (auto type =
                          llvm::dyn_cast<MemRefType>(operand.get().getType())) {
             Value memref = operand.get();
@@ -495,12 +493,10 @@ LogicalResult insertLogicalObjectFifoAccess(ModuleOp moduleOp) {
                     rewriter.getUnknownLoc(), LogicalObjectFifoType::get(type),
                     memref);
             rewriter.setInsertionPointToStart(coreOp.getBody());
-            rewriter.create<AMDAIE::LogicalObjectFifoAccessOp>(
+            auto accessOp = rewriter.create<AMDAIE::LogicalObjectFifoAccessOp>(
                 rewriter.getUnknownLoc(), logicalObjectFifo,
                 AMDAIE::MemoryAccess::None);
-            // TODO(jornt): Temporary, enable after access operations are used
-            // for inserting synchronization stubs instead of consume/produce.
-            // linalgOp->setOperand(idx, accessOp);
+            linalgOp->setOperand(idx, accessOp);
           }
         }
       }

@@ -10,6 +10,13 @@
 include "iree-amd-aie/IR/AMDAIEDialect.td"
 include "mlir/Pass/PassBase.td"
 
+def AMDAIEAccessToAcquireRelease :
+    Pass<"iree-amdaie-access-to-acquire-release", ""> {
+  let summary = "Convert logical objectFifo access operations to acquire/release "
+                "semaphore operations.";
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEAccessToAcquireReleasePass()";
+}
+
 def AMDAIEAIRDmaToAMDAIEDma :
   Pass<"iree-amdaie-air-dma-to-amdaie-dma", ""> {
   let summary = "Convert AIR DMA ops into AMDAIE DMA ops operating on logical objectFifos";
@@ -65,13 +72,6 @@ def AMDAIECleanup :
   let summary = "Pass to invoke several cleanup and canonicalization patterns.";
   let constructor =
       "mlir::iree_compiler::AMDAIE::createAMDAIECleanupPass()";
-}
-
-def AMDAIEConsumeProduceToAcquireRelease :
-    Pass<"iree-amdaie-consume-produce-to-acquire-release", ""> {
-  let summary = "Convert logical objectFifo consume/produce operation to "
-                "acquire/release semaphore operations.";
-  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEConsumeProduceToAcquireReleasePass()";
 }
 
 def AMDAIEControlCodeLoopUnroll :

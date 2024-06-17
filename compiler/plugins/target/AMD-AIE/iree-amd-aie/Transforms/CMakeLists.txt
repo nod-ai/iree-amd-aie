@@ -43,12 +43,12 @@ iree_cc_library(
     "AMDAIEUtils.h"
     "Transforms.h"
   SRCS
+    "AMDAIEAccessToAcquireRelease.cpp"
     "AMDAIEAddLoweringStrategy.cpp"
     "AMDAIEAIRDmaToAMDAIEDma.cpp"
     "AMDAIEBufferizeToAllocation.cpp"
     "AMDAIECanonicalizeDma.cpp"
     "AMDAIECanonicalizeDoublyStridedOp.cpp"
-    "AMDAIEConsumeProduceToAcquireRelease.cpp"
     "AMDAIEControlCodeLoopUnroll.cpp"
     "AMDAIECreateAIEWorkgroup.cpp"
     "AMDAIECreateLogicalObjectFifoLink.cpp"
