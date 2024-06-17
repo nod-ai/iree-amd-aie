@@ -483,7 +483,12 @@ LogicalResult distributeLocalMemoryAccess(ModuleOp moduleOp) {
     });
 
     WalkResult res = coreOp->walk([&](Operation *op) {
-      if (auto linalgOp = dyn_cast<linalg::LinalgOp>(op)) {
+      if (isa<linalg::LinalgOp>(op)) {
+        Operation *currOp = op;
+        while (currOp->getParentOp() != coreOp) {
+          currOp = currOp->getParentOp();
+        }
+        auto linalgOp = cast<linalg::LinalgOp>(op);
         for (auto &&[idx, operand] :
              llvm::enumerate(linalgOp->getOpOperands())) {
           if (memrefToLogicalObjectFifo.contains(operand.get())) {
@@ -498,6 +503,12 @@ LogicalResult distributeLocalMemoryAccess(ModuleOp moduleOp) {
           } else if (auto type =
                          llvm::dyn_cast<MemRefType>(operand.get().getType())) {
             Value memref = operand.get();
+            bool hasSubViewOp = false;
+            if (auto subViewOp = memref.getDefiningOp<memref::SubViewOp>()) {
+              memref = subViewOp.getViewSource();
+              type = cast<MemRefType>(memref.getType());
+              hasSubViewOp = true;
+            }
             rewriter.setInsertionPoint(coreOp);
             auto logicalObjectFifo =
                 rewriter.create<AMDAIE::LogicalObjectFifoFromMemrefOp>(
@@ -507,7 +518,12 @@ LogicalResult distributeLocalMemoryAccess(ModuleOp moduleOp) {
             auto accessOp = rewriter.create<AMDAIE::LogicalObjectFifoAccessOp>(
                 rewriter.getUnknownLoc(), logicalObjectFifo,
                 AMDAIE::MemoryAccess::Any);
-            linalgOp->setOperand(idx, accessOp);
+            if (hasSubViewOp) {
+              linalgOp->getOperand(idx).getDefiningOp()->setOperand(0,
+                                                                    accessOp);
+            } else {
+              linalgOp->setOperand(idx, accessOp);
+            }
           }
         }
       }
@@ -620,13 +636,15 @@ void findUsersInCoreAndAddTiles(
           dyn_cast<AMDAIE::TileOp>(rewriter.clone(*tileOp.getOperation()));
       tiles.insert(newTileOp.getResult());
     }
-    if (auto subviewOp = dyn_cast<memref::SubViewOp>(userOp)) {
-      findUsersInCoreAndAddTiles(rewriter, subviewOp, logicalObjectFifo, tiles);
-    } else if (auto userLogicalObjectFifo =
-                   dyn_cast<AMDAIE::LogicalObjectFifoFromMemrefOp>(userOp)) {
-      findUsersInCoreAndAddTiles(rewriter, userLogicalObjectFifo,
-                                 logicalObjectFifo, tiles);
-    }
+    // if (auto subviewOp = dyn_cast<memref::SubViewOp>(userOp)) {
+    //   findUsersInCoreAndAddTiles(rewriter, subviewOp, logicalObjectFifo,
+    //   tiles);
+    // } else if (auto userLogicalObjectFifo =
+    //                dyn_cast<AMDAIE::LogicalObjectFifoFromMemrefOp>(userOp)) {
+    //   findUsersInCoreAndAddTiles(rewriter, userLogicalObjectFifo,
+    //                              logicalObjectFifo, tiles);
+    // }
+    findUsersInCoreAndAddTiles(rewriter, userOp, logicalObjectFifo, tiles);
   }
 }
 

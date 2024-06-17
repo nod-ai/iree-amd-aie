@@ -67,7 +67,7 @@ void appendVectorizationToPipeline(OpPassManager &funcPassManager) {
   funcPassManager.addPass(createAMDAIECleanupPass());
   funcPassManager.addPass(createAMDAIEInsertLoopsForVectorizationPass());
   funcPassManager.addPass(createAMDAIEVectorizationPass());
-  funcPassManager.addPass(createCanonicalizerPass());
+  // funcPassManager.addPass(createCanonicalizerPass());
 }
 
 //===---------------------------------------------------------------------===//
