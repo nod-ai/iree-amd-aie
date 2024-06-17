@@ -262,9 +262,6 @@ function run_test() {
   fi
   echo "**** Running test for ${test_file} ****"
 
-  # Disable exit on failure:
-  set +e
-
   aie_vmfb="${OUTPUT_DIR}/${name}_aie.vmfb"
   cpu_vmfb="${OUTPUT_DIR}/${name}_cpu.vmfb"
 
@@ -283,6 +280,7 @@ function run_test() {
   echo "**** Generating CPU .vmfb file ****"
   ${IREE_COMPILE_EXE} "${test_file}"  \
       --iree-hal-target-backends=llvm-cpu \
+      --iree-llvmcpu-target-cpu-features=host \
       -o "${cpu_vmfb}"
 
   # Load the contents of OUTPUT_DIR/{name}_command_args.txt into a variable:
@@ -307,7 +305,7 @@ run_test \
    --name_prefix "matmul" \
    --lhs_rhs_type "bf16" \
    --acc_type "f32" \
-   --m "8"  --n "32" --k "64" \
+   --m "32"  --n "32" --k "64" \
    --rtol 1e-10 \
    --atol 1e-10
 
