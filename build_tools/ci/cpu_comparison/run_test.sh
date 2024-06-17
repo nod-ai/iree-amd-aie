@@ -280,7 +280,7 @@ function run_test() {
   echo "**** Generating CPU .vmfb file ****"
   ${IREE_COMPILE_EXE} "${test_file}"  \
       --iree-hal-target-backends=llvm-cpu \
-      --iree-llvmcpu-fail-on-large-vector=0 \
+      --iree-llvmcpu-target-cpu-features=host \
       -o "${cpu_vmfb}"
 
   # Load the contents of OUTPUT_DIR/{name}_command_args.txt into a variable:
