@@ -146,6 +146,16 @@ jobs:
           pip install numpy
           bash build_tools/ci/cpu_comparison/run_test.sh test_aie_vs_cpu iree-install
 
+      - name: E2E matmul with direct xrt calls
+        run: |
+          source .venv/bin/activate
+          bash build_tools/ci/use_xrt_directly/run_test.sh test1 iree-install
+
+      - name: Baremetal matmul performance benchmark
+        run: |
+          source .venv/bin/activate
+          bash build_tools/ci/matmul_without_runtime_bench/run_test.sh test1 iree-install
+
       - name: Printing IR from aie2xclbin
         run: |
           source .venv/bin/activate
