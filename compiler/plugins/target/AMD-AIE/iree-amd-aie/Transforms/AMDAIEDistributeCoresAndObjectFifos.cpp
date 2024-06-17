@@ -472,7 +472,12 @@ LogicalResult insertLogicalObjectFifoAccess(ModuleOp moduleOp) {
     });
 
     WalkResult res = coreOp->walk([&](Operation *op) {
-      if (auto linalgOp = dyn_cast<linalg::LinalgOp>(op)) {
+      if (isa<linalg::LinalgOp>(op)) {
+        Operation *currOp = op;
+        while (currOp->getParentOp() != coreOp) {
+          currOp = currOp->getParentOp();
+        }
+        auto linalgOp = cast<linalg::LinalgOp>(op);
         for (auto &&[idx, operand] :
              llvm::enumerate(linalgOp->getOpOperands())) {
           if (memrefToLogicalObjectFifo.contains(operand.get())) {
@@ -487,16 +492,34 @@ LogicalResult insertLogicalObjectFifoAccess(ModuleOp moduleOp) {
           } else if (auto type =
                          llvm::dyn_cast<MemRefType>(operand.get().getType())) {
             Value memref = operand.get();
+            bool hasSubViewOp = false;
+            if (auto subViewOp = memref.getDefiningOp<memref::SubViewOp>()) {
+              memref = subViewOp.getViewSource();
+              type = cast<MemRefType>(memref.getType());
+              hasSubViewOp = true;
+            }
             rewriter.setInsertionPoint(coreOp);
             auto logicalObjectFifo =
                 rewriter.create<AMDAIE::LogicalObjectFifoFromMemrefOp>(
                     rewriter.getUnknownLoc(), LogicalObjectFifoType::get(type),
                     memref);
             rewriter.setInsertionPointToStart(coreOp.getBody());
-            auto accessOp = rewriter.create<AMDAIE::LogicalObjectFifoAccessOp>(
-                rewriter.getUnknownLoc(), logicalObjectFifo,
-                AMDAIE::MemoryAccess::None);
-            linalgOp->setOperand(idx, accessOp);
+
+            if (hasSubViewOp) {
+              std::tuple<AMDAIE::LogicalObjectFifoFromMemrefOp,
+                         AMDAIE::MemoryAccess>
+                  value = memrefToLogicalObjectFifo[memref];
+              auto accessOp = rewriter.create<AMDAIE::LogicalObjectFifoAccessOp>(
+                  rewriter.getUnknownLoc(), std::get<0>(value),
+                  std::get<1>(value));
+              linalgOp->getOperand(idx).getDefiningOp()->setOperand(0,
+                                                                    accessOp);
+            } else {
+              auto accessOp = rewriter.create<AMDAIE::LogicalObjectFifoAccessOp>(
+                  rewriter.getUnknownLoc(), logicalObjectFifo,
+                  AMDAIE::MemoryAccess::None);
+              linalgOp->setOperand(idx, accessOp);
+            }
           }
         }
       }
