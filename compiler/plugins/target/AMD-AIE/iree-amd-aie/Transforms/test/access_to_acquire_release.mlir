@@ -46,6 +46,44 @@ func.func @write_access(%arg0: !amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 2>
 
 // -----
 
+// CHECK-LABEL: @none_access
+// CHECK-SAME:  %[[ARG0:.+]]: !amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 2>>
+// CHECK:       amdaie.core
+// CHECK:         %[[ACCESS:.+]] = amdaie.logicalobjectfifo.access(%[[ARG0]], None)
+// CHECK:         linalg.fill ins(%{{.+}} : i32) outs(%[[ACCESS]]
+func.func @none_access(%arg0: !amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 2>>) {
+  %c0_i32 = arith.constant 0 : i32
+  %c0 = arith.constant 0 : index
+  %tile = amdaie.tile(%c0, %c0)
+  %core = amdaie.core(%tile) {
+    %3 = amdaie.logicalobjectfifo.access(%arg0, None) : !amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 2>> -> memref<1x1x8x16xi32, 2>
+    linalg.fill ins(%c0_i32 : i32) outs(%3 : memref<1x1x8x16xi32, 2>)
+    amdaie.end
+  }
+  return
+}
+
+// -----
+
+// CHECK-LABEL: @any_access
+// CHECK-SAME:  %[[ARG0:.+]]: !amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 2>>
+// CHECK:       amdaie.core
+// CHECK:         %[[ACCESS:.+]] = amdaie.logicalobjectfifo.access(%[[ARG0]], Any)
+// CHECK:         linalg.fill ins(%{{.+}} : i32) outs(%[[ACCESS]]
+func.func @any_access(%arg0: !amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 2>>) {
+  %c0_i32 = arith.constant 0 : i32
+  %c0 = arith.constant 0 : index
+  %tile = amdaie.tile(%c0, %c0)
+  %core = amdaie.core(%tile) {
+    %3 = amdaie.logicalobjectfifo.access(%arg0, Any) : !amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 2>> -> memref<1x1x8x16xi32, 2>
+    linalg.fill ins(%c0_i32 : i32) outs(%3 : memref<1x1x8x16xi32, 2>)
+    amdaie.end
+  }
+  return
+}
+
+// -----
+
 // CHECK-LABEL: @read_and_write
 // CHECK:       %[[DMA0:.+]] = amdaie.circular_dma_cpy_nd
 // CHECK:       %[[DMA1:.+]] = amdaie.circular_dma_cpy_nd
