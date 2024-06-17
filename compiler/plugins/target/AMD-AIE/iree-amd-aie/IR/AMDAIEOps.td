@@ -402,12 +402,14 @@ def AMDAIE_LogicalObjectFifoAcquire:
         OptionalAttr<I32Attr>:$size
   );
 
+  let results = (outs AnyAMDAIELogicalObjectFifoType:$output);
+
   let assemblyFormat = [{
-    `(` $dma `,` $port `)` attr-dict
+    `(` $dma `,` $port `)` attr-dict `->` type($output)
   }];
 
   let builders = [
-    OpBuilder<(ins "mlir::Value":$dma, "LogicalObjectFifoPort":$port)>,
+    OpBuilder<(ins "mlir::TypeRange":$resultTypes, "mlir::Value":$dma, "LogicalObjectFifoPort":$port)>,
   ];
 }
 
