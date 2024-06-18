@@ -269,7 +269,7 @@ void addPackPeelBasedPassPipeline(OpPassManager &funcPassManager,
     funcPassManager.addPass(createAMDAIEFusePackIntoLoopPass(fusePackOptions));
   }
 
-  // Promote the elementwise input to local memory
+  // Promote the elementwise input to local memory, and hoist the allocation.
   {
     AMDAIEBufferizeToAllocationOptions bufferizeOptions;
     bufferizeOptions.memorySpace = 2;
@@ -277,6 +277,7 @@ void addPackPeelBasedPassPipeline(OpPassManager &funcPassManager,
     bufferizeOptions.bufferizeOperand = BufferizeOperand::Input;
     funcPassManager.addPass(
         createAMDAIEBufferizeToAllocationPass(bufferizeOptions));
+    funcPassManager.addPass(createHoistStaticallyBoundAllocationsPass());
   }
 
   // Lower to UKernels.
