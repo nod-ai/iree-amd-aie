@@ -323,11 +323,11 @@ LogicalResult AIETargetBackend::serializeExecutable(
                                        "--xclbin-kernel-id",
                                        ordinalHex};
     cmdArgs = cmdArgsBase;
-    bool AttemptingMerge = false;
+    bool attemptingMerge = false;
     if (i > 0) {
       cmdArgs.push_back("--input-xclbin-name");
       cmdArgs.push_back(xclbinPaths.back());
-      AttemptingMerge = true;
+      attemptingMerge = true;
     }
     xclbinPaths.push_back(xclbinPath);
 
@@ -368,11 +368,11 @@ LogicalResult AIETargetBackend::serializeExecutable(
     {
       SmallVector<StringRef> cmdEnvRefs{cmdEnv.begin(), cmdEnv.end()};
       int result = llvm::sys::ExecuteAndWait(cmdArgs[0], cmdArgs, cmdEnvRefs);
-      if (result != 0 && AttemptingMerge) {
+      if (result != 0 && attemptingMerge) {
         // we failed to create xclbin but maybe we failed becuase we were trying
         // to merge the kerenel in exisiting xclbin, try again to see if perhaps
         // we have success if we dont try to merge.
-        AttemptingMerge = false;
+        attemptingMerge = false;
         result =
             llvm::sys::ExecuteAndWait(cmdArgsBase[0], cmdArgsBase, cmdEnvRefs);
         xclbinPaths.push_back(xclbinPath);
@@ -383,7 +383,7 @@ LogicalResult AIETargetBackend::serializeExecutable(
       }
       // delete the previous xclbin if we were able to merge as the new one now
       // will have all the kernels from the previous one.
-      if (AttemptingMerge) xclbinPaths.erase(xclbinPaths.end() - 2);
+      if (attemptingMerge) xclbinPaths.erase(xclbinPaths.end() - 2);
       xclbinIndices[ordinal] = xclbinPaths.size() - 1;
     }
     std::ifstream instrFile(static_cast<std::string>(npuInstPath));

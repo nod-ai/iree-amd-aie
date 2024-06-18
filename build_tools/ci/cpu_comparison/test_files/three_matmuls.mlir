@@ -1,4 +1,4 @@
-// This test shows arbitory matmuls that would have producer consumer relationships
+// This test shows arbitrary matmuls that would have producer consumer relationships
 // across different dispatches running on CI.
 
 // These lines are strictly required by the script which generates input data:
