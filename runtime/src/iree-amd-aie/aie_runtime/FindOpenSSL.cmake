@@ -116,7 +116,7 @@ The following variables may be set to control search behavior:
   locations.  Useful on multi-lib systems.
 #]=======================================================================]
 
-set(USE_OUR_FIND_OPENSSL TRUE)
+set(USE_IREE_AMD_AIE_FIND_OPENSSL TRUE)
 
 macro(_OpenSSL_test_and_find_dependencies ssl_library crypto_library)
   unset(_OpenSSL_extra_static_deps)

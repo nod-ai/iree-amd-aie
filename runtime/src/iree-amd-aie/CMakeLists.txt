@@ -1,4 +1,4 @@
-# Copyright 2023 The IREE Authors
+# Copyright 2024 The IREE Authors
 #
 # Licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.
@@ -14,4 +14,9 @@ endif()
 # building the XRT driver code.
 add_subdirectory(schemas)
 
-add_subdirectory(runtime)
+# Contains libiree_aie_runtime, i.e., suitably encapsulated calls to aie-rt.
+# Note, "runtime" is currently a misnomer as all such calls are made at
+# compile/configuration time; the name is inspired by aie-rt itself
+# (where rt stands for runtime) and the fact that in the future, the plan is indeed
+# to make these same calls at runtime.
+add_subdirectory(aie_runtime)
