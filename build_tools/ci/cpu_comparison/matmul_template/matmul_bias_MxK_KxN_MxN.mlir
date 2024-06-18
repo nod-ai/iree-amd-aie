@@ -1,3 +1,7 @@
+// input ${M}x${K}x${TYPE1}
+// input ${K}x${N}x${TYPE1}
+// input ${M}x${N}x${TYPE2}
+
 func.func @matmul_bias(%arg0: tensor<${M}x${K}x${TYPE1}>, %arg1: tensor<${K}x${N}x${TYPE1}>, %arg2: tensor<${M}x${N}x${TYPE2}>) -> tensor<${M}x${N}x${TYPE2}>
 {
   %cst = arith.constant ${ZERO} : ${TYPE2}

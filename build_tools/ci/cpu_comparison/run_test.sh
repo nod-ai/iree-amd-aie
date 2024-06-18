@@ -2,15 +2,25 @@
 #
 # Copyright 2024 The IREE Authors
 
-# There are two ways to add tests using this script:
-# 1) add a complete test file in `/test_files` which should follow the same format
-#    shown in the test example `/test_files/matmul_int32.mlir`.
-# 2) use the existing template in `/test_files` to run matmul-like tests, just by
-#    changing the input shapes and data types. This method is especially useful
-#    if one wants to run multiple tests with the same operations but different
-#    data shapes and types. For future development, if one wants to add tests for
-#    other operations, an IR template should be added following the example in
-#    `/test_template/matmul_bias_MxK_KxN_MxN.mlir`.
+# This script is for running tests on the IREE AIE backend and
+# the IREE CPU backend, and comparing the results.
+#
+# There are a few ways to add tests:
+#
+# 1) add a single test file in `./test_files` which should follow the same
+#    format as the example `./test_files/matmul_int32.mlir`.
+#
+# 2) use an existing template in `./matmul_template` to generate a test file
+#    with a fixed structure. Currently a handful of matmul templates exist in
+#    that directory.
+#
+# 3) create a new matmul template in `./matmul_template`, for example if you
+#    want to add a new variant with tranposed operands or unary elementwise
+#    operations.
+#
+# 4) create a new template generator, duplicating the directory structure of
+#    ./matmul_template. For example you might want to create ./conv_template
+#
 
 set -euox pipefail
 
@@ -119,14 +129,20 @@ ROOT_DIR="$(cd $THIS_DIR/../.. && pwd)"
 # The name of the test file (will pass as command line argument in the future).
 INPUT_GENERATOR="${THIS_DIR}/input_generator.py"
 OUTPUT_COMPARER="${THIS_DIR}/output_comparer.py"
+MATMUL_GENERATOR="${THIS_DIR}/matmul_template/matmul_generator.py"
 
-# Verify that the input generator and output comparer scripts exist
+# Verify that the input generator, output comparer, and matmul generator
+# scripts exist.
 if [ ! -f "${INPUT_GENERATOR}" ]; then
   echo "Input generator script not found at ${INPUT_GENERATOR}"
   exit 1
 fi
 if [ ! -f "${OUTPUT_COMPARER}" ]; then
   echo "Output comparer script not found at ${OUTPUT_COMPARER}"
+  exit 1
+fi
+if [ ! -f "${MATMUL_GENERATOR}" ]; then
+  echo "Matmul generator script not found at ${MATMUL_GENERATOR}"
   exit 1
 fi
 
@@ -137,17 +153,69 @@ export XRT_HACK_UNSECURE_LOADING_XCLBIN=1
 
 cd ${OUTPUT_DIR}
 
+function generate_matmul_test() {
+
+  # Options without defaults
+  # ========================
+  local lhs_rhs_type=""
+  local acc_type=""
+  local m=""
+  local n=""
+  local k=""
+  local output_fn=""
+  local input_fn=""
+
+  # Options with defaults
+  # =====================
+
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --output_fn)
+        output_fn="$2"
+        shift 2
+        ;;
+      --input_fn)
+        input_fn="$2"
+        shift 2
+        ;;
+      --lhs_rhs_type)
+        lhs_rhs_type="$2"
+        shift 2
+        ;;
+      --acc_type)
+        acc_type="$2"
+        shift 2
+        ;;
+      --m)
+        m="$2"
+        shift 2
+        ;;
+      --n)
+        n="$2"
+        shift 2
+        ;;
+      --k)
+        k="$2"
+        shift 2
+        ;;
+      *)
+        echo "Unknown option: $1"
+        exit 1
+        ;;
+    esac
+  done
+
+  python3 ${MATMUL_GENERATOR} ${output_fn} ${input_fn} \
+          ${m} ${n} ${k} ${lhs_rhs_type} ${acc_type}
+
+}
+
 
 function run_test() {
 
   # Options without defaults
   # ========================
   local test_file=""
-  local lhs_rhs_type=""
-  local acc_type=""
-  local m=""
-  local n=""
-  local k=""
 
   # Options with defaults
   # =====================
@@ -157,7 +225,6 @@ function run_test() {
   local pipeline="pad-pack"
   local rtol="1e-6"
   local atol="1e-6"
-
 
   while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -193,26 +260,6 @@ function run_test() {
         name_prefix="$2"
         shift 2
         ;;
-      --lhs_rhs_type)
-        lhs_rhs_type="$2"
-        shift 2
-        ;;
-      --acc_type)
-        acc_type="$2"
-        shift 2
-        ;;
-      --m)
-        m="$2"
-        shift 2
-        ;;
-      --n)
-        n="$2"
-        shift 2
-        ;;
-      --k)
-        k="$2"
-        shift 2
-        ;;
       *)
         echo "Unknown option: $1"
         exit 1
@@ -220,46 +267,27 @@ function run_test() {
     esac
   done
 
-  set -x
-
-  if [ -n "${test_file}" ]; then
-    # Update test_file to be a complete path to the file
-    test_file=$(realpath "${test_file}")
-
-    # Now test_file is a string of the /path/to/name.mlir.
-    # Confirm this with clear error messages, and extract 'name' as a variable
-    name=$(basename "${test_file}" .mlir)
-
-    # Running 'python3 ${INPUT_GENERATOR} ${test_file} ${OUTPUT_DIR}' does 2 things.
-    # 1) it creates binary files with the data that will be consumed as inputs
-    #    by iree-run-module
-    # 2) it prints a line with the names of the binary files, which
-    #    iree-run-module will have appended (input and output flags).
-    #
-    python3 ${INPUT_GENERATOR} ${test_file} ${OUTPUT_DIR}
-  else
-    # Generate a name for the test based on name_prefix and the matmul dimensions
-    # and data types, assuming m, n, k are just single integers:
-    name="${name_prefix}_${m}x${n}x${k}_${lhs_rhs_type}_${acc_type}"
-
-    # Running 'python3 ${INPUT_GENERATOR} ${test_file} ${OUTPUT_DIR}' does 3 things.
-    # 1) it creates a mlir file using the test template;
-    # 2) it creates binary files with the data that will be consumed as inputs
-    #    by iree-run-module;
-    # 3) it prints a line with the names of the binary files, which
-    #    iree-run-module will have appended (input and output flags).
-    #
-    python3 ${INPUT_GENERATOR} ${OUTPUT_DIR} ${name_prefix} ${m} ${n} ${k} ${lhs_rhs_type} ${acc_type}
-
-    # Path of the test mlir and vmfb files
-    test_file="${OUTPUT_DIR}/${name}.mlir"
-  fi
-
   # Assert that the test file is exist
   if [ -z "${test_file}" ]; then
     echo "The test file must be provided."
     exit 1
   fi
+
+  # Update test_file to be a complete path to the file
+  test_file=$(realpath "${test_file}")
+
+  # Now test_file is a string of the /path/to/name.mlir.
+  # Confirm this with clear error messages, and extract 'name' as a variable
+  name=$(basename "${test_file}" .mlir)
+
+  # Running the ${INPUT_GENERATOR} script below does 2 things:
+  # 1) it creates binary files with the data that will be consumed as inputs
+  #    by iree-run-module
+  # 2) it prints a line with the names of the binary files, which
+  #    iree-run-module will have appended as input and output flags.
+  #
+  python3 ${INPUT_GENERATOR} ${test_file} ${OUTPUT_DIR}
+
   echo "**** Running test for ${test_file} ****"
 
   aie_vmfb="${OUTPUT_DIR}/${name}_aie.vmfb"
@@ -283,7 +311,6 @@ function run_test() {
       --iree-llvmcpu-target-cpu-features=host \
       -o "${cpu_vmfb}"
 
-  # Load the contents of OUTPUT_DIR/{name}_command_args.txt into a variable:
   input_output_line=$(cat ${OUTPUT_DIR}/${name}_input_args.txt)
 
   echo "Running the module through the CPU backend"
@@ -292,33 +319,37 @@ function run_test() {
   echo "Running the module through the AIE backend"
   eval "${IREE_RUN_EXE} --module=${aie_vmfb} ${input_output_line} --device=xrt --output=@${name}_aie.npy"
 
-  # Check if the output the files cpu.npy and aie.npy are the same. Pass in rtol and atol
+  # Check that values in cpu.npy and aie.npy are close enough.
   eval "python3 ${OUTPUT_COMPARER} ${name}_cpu.npy ${name}_aie.npy ${rtol} ${atol}"
-
-  set +x
 }
 
-run_test \
-  --test_file ${THIS_DIR}/test_files/matmul_int32.mlir
+# Example of running a test directly from an .mlir file with a function.
+run_test --test_file ${THIS_DIR}/test_files/matmul_int32.mlir
 
-run_test \
-   --name_prefix "matmul" \
+# Example of generating a matmul test from a template, and then running it.
+test_name=${OUTPUT_DIR}/test_from_template.mlir
+matmul_template_dir=${THIS_DIR}/matmul_template
+template_name=${matmul_template_dir}/matmul_MxK_KxN.mlir
+generate_matmul_test \
+   --output_fn ${test_name} \
+   --input_fn ${template_name} \
    --lhs_rhs_type "bf16" \
    --acc_type "f32" \
-   --m "32"  --n "32" --k "64" \
-   --rtol 1e-10 \
-   --atol 1e-10
+   --m "32"  --n "32" --k "64"
+run_test --test_file ${test_name} --rtol 1e-5 --atol 1e-5
 
-run_test \
-   --name_prefix "matmul_bias_2d" \
-   --pipeline "pack-peel" \
-   --lhs_rhs_type "i32" \
-   --acc_type "i32" \
+template_name=${matmul_template_dir}/matmul_bias_MxK_KxN_MxN.mlir
+generate_matmul_test \
+   --output_fn ${test_name} --input_fn ${template_name} \
+   --lhs_rhs_type "i32" --acc_type "i32" \
    --m "128"  --n "128" --k "256"
+run_test --test_file ${test_name} --pipeline "pack-peel" --rtol 0 --atol 0
 
-run_test \
-   --name_prefix "matmul_bias_1d" \
-   --pipeline "pack-peel" \
-   --lhs_rhs_type "bf16" \
-   --acc_type "f32" \
-   --m "1024" --n "1024" --k "512"
+template_name=${matmul_template_dir}/matmul_bias_MxK_KxN_N.mlir
+generate_matmul_test \
+   --output_fn ${test_name} --input_fn ${template_name} \
+   --lhs_rhs_type "bf16" --acc_type "f32" \
+   --m "1024"  --n "1024" --k "512"
+run_test --test_file ${test_name} --pipeline "pack-peel"
+
+

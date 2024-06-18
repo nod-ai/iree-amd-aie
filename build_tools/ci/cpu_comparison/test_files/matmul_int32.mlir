@@ -1,5 +1,4 @@
-// These lines are strictly required by the script which generates input data:
-//
+// These 2 lines are required by the script which generates input data:
 // input 128x128xi32
 // input 128x128xi32
 

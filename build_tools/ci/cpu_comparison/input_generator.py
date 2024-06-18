@@ -1,5 +1,4 @@
-# This python script is expected to be run from the command-line with 2
-# arguments:
+# This script is expected to be run from the command-line with 2 arguments:
 #
 #   1) the name of a file to parse.
 #   2) the directory where binary files will be written.
@@ -96,21 +95,6 @@ def get_numpy_type(element_type):
         raise ValueError("Invalid or unsupported element type: " + element_type)
 
 
-def write_generated_mlir(in_dir, in_file_name, out_dir, out_file_name, replace):
-    # map of keys to be replaced in the string
-    key_map = map(lambda s: "${" + s + "}", replace.keys())
-    key_map_escaped = map(re.escape, key_map)
-    regex = re.compile('|'.join(key_map_escaped))
-    out_file_path = os.path.join(out_dir, f"{out_file_name}.mlir")
-
-    if not os.path.exists(out_file_path):
-        in_file = open(os.path.join(in_dir, in_file_name), 'r')
-        with open(out_file_path, 'w') as out_file:
-            for line in in_file:
-                out_file.write(regex.sub(lambda m: str(replace[m.group(0)[2:-1]]), line))
-        in_file.close()
-
-
 def write_input(bin_filename, num_elements, element_type, input_number):
     # Random integer values in range [lower_bound, upper_bound)
     # will be generated for the input data.
@@ -170,7 +154,7 @@ def generate_inputs(filename, write_dir):
             if (len(tokens) == 2) and tokens[0] == "//input":
                 raise ValueError(
                     'Expect input of the form "// input 3x40xf32", '
-                    'spacing incorrect in line: ' + line
+                    "spacing incorrect in line: " + line
                 )
 
     # Try and check that the number of inputs is correct, raise error if
@@ -205,84 +189,10 @@ def generate_inputs(filename, write_dir):
         file.write(command_flags)
 
 
-def generate_inputs_with_template(output_dir, name_prefix, m, n, k, lhs_rhs_type, acc_type):
-    """
-    Generate mlir file from the template test file and
-    binary files for the inputs of the mlir function.
-    """
-    replace = dict({})
-    replace['M'] = m
-    replace['N'] = n
-    replace['K'] = k
-    replace['TYPE1'] = lhs_rhs_type
-    replace['TYPE2'] = acc_type
-    replace['ZERO'] = 0 if acc_type[0] == 'i' else 0.0
-    if "matmul_bias" in name_prefix:
-        replace['ADD'] = "arith.addi" if acc_type[0] == 'i' else "arith.addf"
-
-    # Currently, for matmul_elementwise test, we only consider two cases:
-    # 1) input and accumulation are integer number;
-    # 2) input data type is bf16 and accumulation type is f32.
-    # In the current example tests, the elementwise ops can be 1-d or 2-d bias.
-    if name_prefix == "matmul":
-        in_file_name = "matmul_MxK_KxN.mlir"
-    elif name_prefix == "matmul_bias_1d":
-        in_file_name = "matmul_bias_MxK_KxN_N.mlir"
-    elif name_prefix == "matmul_bias_2d":
-        in_file_name = "matmul_bias_MxK_KxN_MxN.mlir"
-    else:
-        raise ValueError("The operation is currently not supported.")
-    out_file_name = f"{name_prefix}_{m}x{n}x{k}_{lhs_rhs_type}_{acc_type}"
-    in_dir = os.path.join(sys.path[0], "test_template")
-    write_generated_mlir(in_dir, in_file_name, output_dir, out_file_name, replace)
-
-    if not os.path.exists(f'{output_dir}/{out_file_name}.mlir'):
-        print("Error generating mlir file!")
-
-    # Get the number of inputs from the test IR
-    num_inputs = 0
-    input_shapes = []
-    with open(f'{output_dir}/{out_file_name}.mlir', 'r') as file:
-        for line in file:
-            if "func.func" in line:
-                inputs = re.findall(r'\(.*?\)', line)[0]
-                num_inputs = len(inputs.split(','))
-                input_shapes = re.findall(r'\<.*?\>', inputs)
-                break
-
-    if num_inputs == 0 or len(input_shapes) == 0 \
-            or num_inputs != len(input_shapes):
-        print("Error getting number of inputs!")
-
-    # Generate input bin files
-    input_args = []
-    for idx in range(num_inputs):
-        bin_name = out_file_name + "_input" + str(idx) + ".bin"
-        bin_filename = os.path.join(output_dir, bin_name)
-
-        input_arg = input_shapes[idx][1:-1]
-        sub_tokens = input_arg.split("x")
-        element_type = sub_tokens[-1]
-        num_elements = 1
-        for i in range(len(sub_tokens) - 1):
-            num_elements *= int(sub_tokens[i])
-        input_args.append('--input="%s=@%s"' % (input_arg, bin_filename))
-        write_input(bin_filename, num_elements, element_type, idx)
-
-    command_flags = "  ".join(input_args)
-    command_arg_filename = os.path.join(output_dir, f"{out_file_name}_input_args.txt")
-    with open(command_arg_filename, "w") as file:
-        file.write(command_flags)
-
-
 if __name__ == "__main__":
     if len(sys.argv) == 3:
-        # Usage: python input_generator.py <input_file> <output_dir>
         generate_inputs(sys.argv[1], sys.argv[2])
-    elif len(sys.argv) == 8:
-        # Usage: python input_generator.py <input_file> <output_dir> \
-        # <m> <n> <k> <lhs_rhs_type> <acc_type>
-        generate_inputs_with_template(sys.argv[1], sys.argv[2], sys.argv[3],
-                        sys.argv[4], sys.argv[5], sys.argv[6], sys.argv[7])
     else:
-        raise ValueError("Incorrect number of input arguments.")
+        raise ValueError(
+            f"Incorrect number of input arguments, expected 3, got {len(sys.argv)}."
+        )
