@@ -254,6 +254,7 @@ iree_status_t iree_hal_xrt_native_executable_create(
     });
   }
   *out_executable = (iree_hal_executable_t*)executable;
+  IREE_TRACE_ZONE_END(z0);
   return iree_ok_status();
 }
 
