@@ -302,6 +302,9 @@ run_test \
   --test_file ${THIS_DIR}/test_files/matmul_int32.mlir
 
 run_test \
+  --test_file ${THIS_DIR}/test_files/three_matmuls.mlir
+
+run_test \
    --name_prefix "matmul" \
    --lhs_rhs_type "bf16" \
    --acc_type "f32" \
