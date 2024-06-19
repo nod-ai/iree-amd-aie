@@ -361,6 +361,7 @@ static iree_status_t iree_hal_xrt_device_queue_execute(
   }
   // Do we need to block here like vulkan HAL? Check if we run into some
   // correctness issue in the future.
+  IREE_TRACE_ZONE_END(z0);
   return iree_ok_status();
 }
 
