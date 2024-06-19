@@ -108,9 +108,13 @@ LogicalResult insertCoreOps(mlir::ModuleOp moduleOp) {
           rewriter.create<AMDAIE::LogicalObjectFifoConsume>(
               rewriter.getUnknownLoc(), SmallVector<Type, 1>{}, dmaOp);
         }
-      } else if (auto linalgOp = dyn_cast<linalg::LinalgOp>(op)) {
+      } else if (isa<linalg::LinalgOp>(op)) {
+        Operation *currOp = op;
+        while (currOp->getParentOp() != forallOp) {
+          currOp = currOp->getParentOp();
+        }
         rewriter.setInsertionPoint(endOp);
-        rewriter.moveOpBefore(linalgOp, endOp);
+        rewriter.moveOpBefore(currOp, endOp);
       }
       return WalkResult::advance();
     });
