@@ -16,9 +16,6 @@
 namespace xilinx {
 namespace AIE {
 
-mlir::LogicalResult AIETranslateToNPU(mlir::ModuleOp module,
-                                      llvm::raw_ostream &output);
-std::vector<uint32_t> AIETranslateToNPU(mlir::ModuleOp);
 mlir::LogicalResult AIETranslateToLdScript(mlir::ModuleOp module,
                                            llvm::raw_ostream &output,
                                            int tileCol, int tileRow);
