@@ -522,15 +522,28 @@ LogicalResult insertLogicalObjectFifoAccess(ModuleOp moduleOp) {
               type = cast<MemRefType>(memref.getType());
               hasSubViewOp = true;
             }
+
             rewriter.setInsertionPoint(coreOp);
             auto logicalObjectFifo =
                 rewriter.create<AMDAIE::LogicalObjectFifoFromMemrefOp>(
                     rewriter.getUnknownLoc(), LogicalObjectFifoType::get(type),
                     memref);
             rewriter.setInsertionPointToStart(coreOp.getBody());
-            auto accessOp = rewriter.create<AMDAIE::LogicalObjectFifoAccessOp>(
+
+            AMDAIE::LogicalObjectFifoAccessOp accessOp;
+            if (memrefToLogicalObjectFifo.contains(memref)) {
+              std::tuple<AMDAIE::LogicalObjectFifoFromMemrefOp,
+                         AMDAIE::MemoryAccess>
+                  value = memrefToLogicalObjectFifo[memref];
+              accessOp = rewriter.create<AMDAIE::LogicalObjectFifoAccessOp>(
+                  rewriter.getUnknownLoc(), std::get<0>(value),
+                  std::get<1>(value));
+            }
+            else{
+              accessOp = rewriter.create<AMDAIE::LogicalObjectFifoAccessOp>(
                 rewriter.getUnknownLoc(), logicalObjectFifo,
                 AMDAIE::MemoryAccess::None);
+            }
 
             if (hasSubViewOp) {
               linalgOp->getOperand(idx).getDefiningOp()->setOperand(0,
@@ -563,7 +576,13 @@ LogicalResult findUsersInCoreAndAddTiles(
       }
       tiles.insert(std::make_pair(column.value(), row.value()));
     }
-    return findUsersInCoreAndAddTiles(userOp, logicalObjectFifo, tiles);
+    if (auto subviewOp = dyn_cast<memref::SubViewOp>(userOp)) {
+      return findUsersInCoreAndAddTiles(subviewOp, logicalObjectFifo, tiles);
+    } else if (auto userLogicalObjectFifo =
+                   dyn_cast<AMDAIE::LogicalObjectFifoFromMemrefOp>(userOp)) {
+      return findUsersInCoreAndAddTiles(userLogicalObjectFifo,
+                                        logicalObjectFifo, tiles);
+    }
   }
   return success();
 }
