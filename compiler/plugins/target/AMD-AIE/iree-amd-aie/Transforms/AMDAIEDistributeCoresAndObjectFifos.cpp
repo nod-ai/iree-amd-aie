@@ -97,9 +97,12 @@ LogicalResult distributeLocalMemory(ModuleOp moduleOp) {
     if (dmaUsers.empty()) return WalkResult::advance();
     LLVM_DEBUG(llvm::dbgs() << "DMA users: " << dmaUsers.size() << "\n");
 
+    SmallVector<Operation *> allocOpUsers;
     for (Operation *userOp : allocOp->getUsers()) {
       auto subviewOp = dyn_cast<memref::SubViewOp>(userOp);
       if (!subviewOp) continue;
+      allocOpUsers.push_back(userOp);
+      if (subviewOp->getParentOfType<AMDAIE::CoreOp>()) continue;
 
       if (!memrefToNew.contains(allocOp)) {
         LLVM_DEBUG(llvm::dbgs() << "Create new allocate\n");
@@ -115,8 +118,20 @@ LogicalResult distributeLocalMemory(ModuleOp moduleOp) {
         newDeallocOp->moveBefore(&newAllocOp->getBlock()->back());
         memrefToNew[allocOp] = newAllocOp;
       }
+    }
+
+    for (Operation *userOp : allocOpUsers) {
+      auto subviewOp = dyn_cast<memref::SubViewOp>(userOp);
       auto newAlloc = memrefToNew[allocOp];
-      rewriter.replaceAllUsesWith(subviewOp, newAlloc);
+      if (subviewOp->getParentOfType<AMDAIE::CoreOp>()) {
+        rewriter.setInsertionPoint(subviewOp);
+        Value subview = rewriter.create<memref::SubViewOp>(
+            subviewOp.getLoc(), newAlloc, subviewOp.getMixedOffsets(),
+            subviewOp.getMixedSizes(), subviewOp.getMixedStrides());
+        rewriter.replaceAllUsesWith(subviewOp, subview);
+      } else {
+        rewriter.replaceAllUsesWith(subviewOp, newAlloc);
+      }
       toBeErased.push_back(subviewOp);
     }
 
@@ -238,6 +253,7 @@ class AMDAIEUnrollLocalLoops : public OpRewritePattern<scf::ForOp> {
   /// scf.for. This assumption could be removed in the future.
   template <typename Iterator>
   LogicalResult hoistDmaOps(PatternRewriter &rewriter, scf::ForOp forOp) const {
+    if (forOp->getParentOfType<AMDAIE::CoreOp>()) return failure();
     // Keep track of whether a hoist happened.
     bool hoistHappened{false};
 
@@ -480,7 +496,12 @@ LogicalResult insertLogicalObjectFifoAccess(ModuleOp moduleOp) {
     });
 
     WalkResult res = coreOp->walk([&](Operation *op) {
-      if (auto linalgOp = dyn_cast<linalg::LinalgOp>(op)) {
+      if (isa<linalg::LinalgOp>(op)) {
+        Operation *currOp = op;
+        while (currOp->getParentOp() != coreOp) {
+          currOp = currOp->getParentOp();
+        }
+        auto linalgOp = cast<linalg::LinalgOp>(op);
         for (auto &&[idx, operand] :
              llvm::enumerate(linalgOp->getOpOperands())) {
           if (memrefToLogicalObjectFifo.contains(operand.get())) {
@@ -495,6 +516,12 @@ LogicalResult insertLogicalObjectFifoAccess(ModuleOp moduleOp) {
           } else if (auto type =
                          llvm::dyn_cast<MemRefType>(operand.get().getType())) {
             Value memref = operand.get();
+            bool hasSubViewOp = false;
+            if (auto subViewOp = memref.getDefiningOp<memref::SubViewOp>()) {
+              memref = subViewOp.getViewSource();
+              type = cast<MemRefType>(memref.getType());
+              hasSubViewOp = true;
+            }
             rewriter.setInsertionPoint(coreOp);
             auto logicalObjectFifo =
                 rewriter.create<AMDAIE::LogicalObjectFifoFromMemrefOp>(
@@ -504,7 +531,13 @@ LogicalResult insertLogicalObjectFifoAccess(ModuleOp moduleOp) {
             auto accessOp = rewriter.create<AMDAIE::LogicalObjectFifoAccessOp>(
                 rewriter.getUnknownLoc(), logicalObjectFifo,
                 AMDAIE::MemoryAccess::None);
-            linalgOp->setOperand(idx, accessOp);
+
+            if (hasSubViewOp) {
+              linalgOp->getOperand(idx).getDefiningOp()->setOperand(0,
+                                                                    accessOp);
+            } else {
+              linalgOp->setOperand(idx, accessOp);
+            }
           }
         }
       }
@@ -530,13 +563,7 @@ LogicalResult findUsersInCoreAndAddTiles(
       }
       tiles.insert(std::make_pair(column.value(), row.value()));
     }
-    if (auto subviewOp = dyn_cast<memref::SubViewOp>(userOp)) {
-      return findUsersInCoreAndAddTiles(subviewOp, logicalObjectFifo, tiles);
-    } else if (auto userLogicalObjectFifo =
-                   dyn_cast<AMDAIE::LogicalObjectFifoFromMemrefOp>(userOp)) {
-      return findUsersInCoreAndAddTiles(userLogicalObjectFifo,
-                                        logicalObjectFifo, tiles);
-    }
+    return findUsersInCoreAndAddTiles(userOp, logicalObjectFifo, tiles);
   }
   return success();
 }
