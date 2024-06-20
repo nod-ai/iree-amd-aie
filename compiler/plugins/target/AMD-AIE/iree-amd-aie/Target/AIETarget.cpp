@@ -349,10 +349,12 @@ LogicalResult AIETargetBackend::serializeExecutable(
 
     {
       SmallVector<StringRef> cmdEnvRefs{cmdEnv.begin(), cmdEnv.end()};
-      int result = llvm::sys::ExecuteAndWait(cmdArgs[0], cmdArgs, cmdEnvRefs);
+      int result = llvm::sys::ExecuteAndWait(cmdArgs[0], cmdArgs, cmdEnvRefs,
+                                             {}, 0, 0, &errorMessage);
       if (result != 0)
-        return moduleOp.emitOpError(
-            "Failed to produce an XCLBin with external tool.");
+        return moduleOp.emitOpError()
+               << "Failed to produce an XCLBin with external tool: "
+               << errorMessage;
     }
 
     std::ifstream instrFile(static_cast<std::string>(npuInstPath));
