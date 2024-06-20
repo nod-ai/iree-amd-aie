@@ -1,9 +1,10 @@
-// Copyright 2023 The IREE Authors
+// Copyright 2024 The IREE Authors
 //
 // Licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+#include "AIEAssignBufferAddressesBasic.h"
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h"
 
 namespace {
@@ -13,15 +14,13 @@ namespace {
 
 namespace mlir::iree_compiler::AMDAIE {
 void registerAIETransformPasses() {
+  xilinx::AIE::registerAIEAssignBufferAddressesBasic();
+  registerAIEAssignBufferDescriptorIDs();
   registerAIEAssignLockIDs();
-  registerAIEAssignBufferAddresses();
   registerAIECanonicalizeDevice();
   registerAIECoreToStandard();
-  registerAIERoutePathfinderFlows();
   registerAIELocalizeLocks();
-  registerAIENormalizeAddressSpaces();
-  registerAIEObjectFifoRegisterProcess();
   registerAIEObjectFifoStatefulTransform();
-  registerAIERoutePacketFlows();
+  registerAIERoutePathfinderFlows();
 }
 }  // namespace mlir::iree_compiler::AMDAIE
