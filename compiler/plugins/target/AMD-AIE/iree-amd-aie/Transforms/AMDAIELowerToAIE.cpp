@@ -297,6 +297,26 @@ LogicalResult coreToAIE(IRRewriter &rewriter, AMDAIE::CoreOp coreOp,
             })
             .Default([&](Operation *op) {
               remapOperands(op, mapper);
+              if (auto oldSubViewOp = dyn_cast<memref::SubViewOp>(op)) {
+                // After updating the operands we only need to change the
+                // MemorySpaceAttr of the result.
+                // TODO(avarma): Confirm with Jorn.
+                auto memRefType =
+                    cast<MemRefType>(oldSubViewOp.getSource().getType());
+                MemRefType allocType = MemRefType::get(
+                    memRefType.getShape(), memRefType.getElementType(),
+                    MemRefLayoutAttrInterface{}, memRefType.getMemorySpace());
+                auto newSubViewOp = rewriter.create<memref::SubViewOp>(
+                    oldSubViewOp.getLoc(), allocType, oldSubViewOp.getSource(),
+                    oldSubViewOp.getMixedOffsets(),
+                    oldSubViewOp.getMixedSizes(),
+                    oldSubViewOp.getMixedStrides());
+                // Map old SubViewOp to a new SubViewOp.
+                mapper.map(oldSubViewOp.getOperation(),
+                           newSubViewOp.getOperation());
+                mapper.map(oldSubViewOp.getResult(), newSubViewOp.getResult());
+                toBeErased.push_back(oldSubViewOp);
+              }
               return success();
             })
             .failed()) {
