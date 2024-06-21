@@ -125,9 +125,18 @@ LogicalResult distributeLocalMemory(ModuleOp moduleOp) {
       auto newAlloc = memrefToNew[allocOp];
       if (subviewOp->getParentOfType<AMDAIE::CoreOp>()) {
         rewriter.setInsertionPoint(subviewOp);
+        // Modify the offset if the size of certain dimension becomes 1
+        SmallVector<OpFoldResult> offsets = subviewOp.getMixedOffsets();
+        SmallVector<OpFoldResult> newOffsets = offsets;
+        ArrayRef<int64_t> allocShape = newAlloc.getType().getShape();
+        for (int i = 0; i < allocShape.size(); ++i) {
+          if (allocShape[i] == 1) {
+            newOffsets[i] = rewriter.getIndexAttr(0);
+          }
+        }
         Value subview = rewriter.create<memref::SubViewOp>(
-            subviewOp.getLoc(), newAlloc, subviewOp.getMixedOffsets(),
-            subviewOp.getMixedSizes(), subviewOp.getMixedStrides());
+            subviewOp.getLoc(), newAlloc, newOffsets, subviewOp.getMixedSizes(),
+            subviewOp.getMixedStrides());
         rewriter.replaceAllUsesWith(subviewOp, subview);
       } else {
         rewriter.replaceAllUsesWith(subviewOp, newAlloc);
