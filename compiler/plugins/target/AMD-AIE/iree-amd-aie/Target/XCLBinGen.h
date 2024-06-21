@@ -1,12 +1,8 @@
-//===- XCLBinGen.h ---------------------------------------------*- C++ -*-===//
+// Copyright 2024 The IREE Authors
 //
-// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+// Licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-// (c) Copyright 2024 Xilinx Inc.
-//
-//===---------------------------------------------------------------------===//
 
 #include <string>
 
@@ -32,16 +28,16 @@ struct XCLBinGenConfig {
   std::string XCLBinKernelID;
   std::string XCLBinInstanceName;
   bool UseChess = false;
+  bool DisableThreading = false;
   bool PrintIRAfterAll = false;
   bool PrintIRBeforeAll = false;
   bool PrintIRModuleScope = false;
   bool Timing = false;
 };
 
-mlir::LogicalResult findVitis(XCLBinGenConfig &TK);
-
 mlir::LogicalResult aie2xclbin(mlir::MLIRContext *ctx, mlir::ModuleOp moduleOp,
-                               XCLBinGenConfig &TK, llvm::StringRef OutputNPU,
-                               llvm::StringRef OutputXCLBin);
+                               XCLBinGenConfig &TK, mlir::StringRef OutputNPU,
+                               mlir::StringRef OutputXCLBin,
+                               mlir::StringRef InputXCLBin = "");
 
 }  // namespace xilinx

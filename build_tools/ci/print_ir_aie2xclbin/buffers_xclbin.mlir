@@ -1,6 +1,3 @@
-// RUN: iree-compile --compile-mode=hal-executable --iree-hal-target-backends=amd-aie-direct %s --iree-hal-dump-executable-files-to %T
-// RUN: FileCheck %s --input-file=%T/module_dummy1_amdaie_xclbin_fb/kernels.json
-
 // CHECK: {
 // CHECK:   "ps-kernels": {
 // CHECK:     "kernels": [
@@ -59,6 +56,13 @@
 // CHECK:             "name": "bo4",
 // CHECK:             "offset": "0x34",
 // CHECK:             "type": "void*"
+// CHECK:           },
+// CHECK:           {
+// CHECK:             "address-qualifier": "GLOBAL",
+// CHECK:             "memory-connection": "HOST",
+// CHECK:             "name": "bo5",
+// CHECK:             "offset": "0x3c",
+// CHECK:             "type": "void*"
 // CHECK:           }
 // CHECK:         ],
 // CHECK:         "extended-data": {
@@ -71,14 +75,12 @@
 // CHECK:             "name": "FOO"
 // CHECK:           }
 // CHECK:         ],
-// CHECK:         "name": "dummy2",
+// CHECK:         "name": "dummy2_0",
 // CHECK:         "type": "dpu"
 // CHECK:       }
 // CHECK:     ]
 // CHECK:   }
 // CHECK: }
-
-
 
 module attributes {hal.device.targets = [#hal.device.target<"amd-aie-direct", [#hal.executable.target<"amd-aie-direct", "amdaie-xclbin-fb", {target_arch = "chip-tbd", ukernels = "none"}>]>]} {
   hal.executable private @dummy1 {
@@ -110,7 +112,7 @@ module attributes {hal.device.targets = [#hal.device.target<"amd-aie-direct", [#
           aie.shim_dma_allocation @in2(MM2S, 2, 0)
           aie.shim_dma_allocation @out2(S2MM, 2, 0)
 
-          func.func @sequence(%arg0: memref<1024xi32>, %arg1: memref<1024xi32>, %arg2: memref<1024xi32>, %arg3: memref<1024xi32>, %arg4: memref<1024xi32>, %arg5: memref<1024xi32>) {
+          func.func @dummy2(%arg0: memref<1024xi32>, %arg1: memref<1024xi32>, %arg2: memref<1024xi32>, %arg3: memref<1024xi32>, %arg4: memref<1024xi32>, %arg5: memref<1024xi32>) {
             aiex.npu.dma_memcpy_nd(0, 0, %arg0[0, 0, 0, 0][1, 1, 1, 1024][0, 0, 0]) {id = 0 : i64, metadata = @in0} : memref<1024xi32>
             aiex.npu.dma_memcpy_nd(0, 0, %arg1[0, 0, 0, 0][1, 1, 1, 1024][0, 0, 0]) {id = 1 : i64, metadata = @out0} : memref<1024xi32>
             aiex.npu.sync {channel = 0 : i32, column = 0 : i32, column_num = 1 : i32, direction = 0 : i32, row = 0 : i32, row_num = 1 : i32}

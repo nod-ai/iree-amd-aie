@@ -101,6 +101,7 @@ iree_install_targets(
 # aie-rt
 # ##############################################################################
 
+set(common_DIR ${CMAKE_CURRENT_LIST_DIR})
 set(_aie_rt_source_dir ${IREE_AMD_AIE_SOURCE_DIR}/third_party/aie-rt)
 set(_aie_rt_binary_include_dir ${CMAKE_BINARY_DIR}/include)
 

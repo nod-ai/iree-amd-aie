@@ -1,29 +1,21 @@
-//===- XCLBinGen.cpp -------------------------------------------*- C++ -*-===//
+// Copyright 2024 The IREE Authors
 //
-// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+// Licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-// (c) Copyright 2024 Xilinx Inc.
-//
-//===---------------------------------------------------------------------===//
 
 #include "XCLBinGen.h"
 
 #include <regex>
 #include <sstream>
 #include <unordered_map>
-#include <utility>
 
-#include "aie/AIEAssignBufferAddressesBasic.h"
 #include "aie/Conversion/AIEVecToLLVM/AIEVecToLLVM.h"
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h"
 #include "aie/Dialect/AIEVec/Pipelines/Passes.h"
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
-#include "aie/Target/LLVMIR/Dialect/XLLVM/XLLVMToLLVMIRTranslation.h"
 #include "aie/Targets/AIETargets.h"
 #include "llvm/Support/FileSystem.h"
-#include "llvm/Support/FileUtilities.h"
 #include "llvm/Support/JSON.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/Path.h"
@@ -64,7 +56,7 @@ namespace {
 // manager. These control when (if ever) and what IR gets printed between
 // passes, and whether the pass manager uses multi-theading.
 void applyConfigToPassManager(XCLBinGenConfig &TK, PassManager &pm) {
-  //  pm.getContext()->disableMultithreading(TK.DisableThreading);
+  pm.getContext()->disableMultithreading(TK.DisableThreading);
 
   bool printBefore = TK.PrintIRBeforeAll;
   auto shouldPrintBeforePass = [printBefore](Pass *, Operation *) {
@@ -84,7 +76,7 @@ void applyConfigToPassManager(XCLBinGenConfig &TK, PassManager &pm) {
 }
 }  // namespace
 
-LogicalResult xilinx::findVitis(XCLBinGenConfig &TK) {
+void findVitis(XCLBinGenConfig &TK) {
   const char *env_vitis = ::getenv("VITIS");
   if (env_vitis == nullptr) {
     if (auto vpp = sys::findProgramByName("v++")) {
@@ -114,7 +106,7 @@ LogicalResult xilinx::findVitis(XCLBinGenConfig &TK) {
     ::setenv("AIETOOLS", TK.AIEToolsDir.c_str(), 1);
 
     SmallString<64> aietools_bin_path(aietools_path);
-    sys::path::append(aietools_bin_path, "bin", "unwrapped", "lnx64.o");
+    sys::path::append(aietools_bin_path, "bin");
     const char *env_path = ::getenv("PATH");
     if (env_path == nullptr) env_path = "";
     SmallString<128> new_path(env_path);
@@ -122,48 +114,9 @@ LogicalResult xilinx::findVitis(XCLBinGenConfig &TK) {
     new_path += aietools_bin_path;
     new_path += sys::EnvPathSeparator;
     new_path += vitis_bin_path;
-
-    SmallString<64> chessccPath(aietools_path);
-    sys::path::append(chessccPath, "tps", "lnx64", "target_aie_ml");
-    sys::path::append(chessccPath, "bin", "LNa64bin");
-
-    SmallString<64> chessClangExe(chessccPath);
-    sys::path::append(chessClangExe, "chess-clang");
-    SmallString<64> chessLLVMLinkExe(chessccPath);
-    sys::path::append(chessLLVMLinkExe, "chess-llvm-link");
-    if (!sys::fs::exists(chessClangExe)) {
-      llvm::errs() << "ERROR: couldn't find chess-clang\n";
-      return failure();
-    }
-    if (!sys::fs::exists(chessLLVMLinkExe)) {
-      llvm::errs() << "ERROR: couldn't find chess-llvm-link\n";
-      return failure();
-    }
-
-    new_path += sys::EnvPathSeparator;
-    new_path += chessccPath;
-
     ::setenv("PATH", new_path.c_str(), 1);
-
-    SmallString<64> lnx64o(TK.AIEToolsDir);
-    sys::path::append(lnx64o, "lib", "lnx64.o");
-    SmallString<64> dotLib(TK.AIEToolsDir);
-    sys::path::append(dotLib, "lnx64", "tools", "dot", "lib");
-    SmallString<64> ldLibraryPath(::getenv("LD_LIBRARY_PATH"));
-    ::setenv(
-        "LD_LIBRARY_PATH",
-        (lnx64o + std::string{sys::EnvPathSeparator} + dotLib + ldLibraryPath)
-            .str()
-            .c_str(),
-        1);
-
-    SmallString<64> rdiDataDir_(TK.AIEToolsDir);
-    sys::path::append(rdiDataDir_, "data");
-    ::setenv("RDI_DATADIR", rdiDataDir_.c_str(), 1);
-
-    return success();
   } else {
-    return failure();
+    errs() << "VITIS not found ...\n";
   }
 }
 
@@ -188,17 +141,6 @@ static std::string getUUIDString() {
   val = std::string(uuid);
 #endif
   return val;
-}
-
-static void addAIELoweringPasses(OpPassManager &pm) {
-  pm.addPass(createLowerAffinePass());
-  pm.addPass(AIE::createAIECanonicalizeDevicePass());
-  OpPassManager &devicePM = pm.nest<AIE::DeviceOp>();
-  devicePM.addPass(AIE::createAIEAssignLockIDsPass());
-  devicePM.addPass(AIE::createAIEObjectFifoStatefulTransformPass());
-  devicePM.addPass(AIE::createAIEAssignBufferDescriptorIDsPass());
-  devicePM.addPass(AIE::createAIEAssignBufferAddressesBasicPass());
-  pm.addPass(createConvertSCFToCFPass());
 }
 
 static void addLowerToLLVMPasses(OpPassManager &pm) {
@@ -239,126 +181,24 @@ int runTool(StringRef Program, ArrayRef<std::string> Args, bool Verbose,
   std::optional<sys::ProcessStatistics> opt_stats(stats);
   SmallVector<StringRef, 8> PArgs = {Program};
   PArgs.append(Args.begin(), Args.end());
-  llvm::SmallString<64> OutputFile, ErrorFile;
-  llvm::sys::fs::createTemporaryFile("runtools-output", "" /*no-suffix*/,
-                                     OutputFile);
-  llvm::sys::fs::createTemporaryFile("runtools-error", "" /*no-suffix*/,
-                                     ErrorFile);
-  llvm::FileRemover OutputRemover(OutputFile.c_str());
-  llvm::FileRemover ErrorRemover(ErrorFile.c_str());
-  std::optional<StringRef> Redirects[] = {
-      std::nullopt,  // Stdin
-      OutputFile.str(),
-      ErrorFile.str(),
-  };
-  if (int result = sys::ExecuteAndWait(Program, PArgs, Env, Redirects, 0, 0,
-                                       &err_msg, nullptr, &opt_stats)) {
-    auto ErrorBuf = llvm::MemoryBuffer::getFile(ErrorFile.c_str());
-    llvm::errs() << ErrorBuf.get()->getBuffer();
-    return result;
-  } else {
-    if (Verbose)
-      llvm::outs() << (result == 0 ? "Succeeded " : "Failed ") << "in "
-                   << std::chrono::duration_cast<std::chrono::duration<float>>(
-                          stats.TotalTime)
-                          .count()
-                   << " code: " << result << "\n";
-    return result;
-  }
+  int result = sys::ExecuteAndWait(Program, PArgs, Env, {}, 0, 0, &err_msg,
+                                   nullptr, &opt_stats);
+  if (Verbose)
+    llvm::outs() << (result == 0 ? "Succeeded " : "Failed ") << "in "
+                 << std::chrono::duration_cast<std::chrono::duration<float>>(
+                        stats.TotalTime)
+                        .count()
+                 << " code: " << result << "\n";
+  return result;
 }
 
-const char *_CHESS_INTRINSIC_WRAPPER_LL = R"chess(
-; ModuleID = 'aie_runtime_lib/AIE2/chess_intrinsic_wrapper.cpp'
-source_filename = "aie_runtime_lib/AIE2/chess_intrinsic_wrapper.cpp"
-
-%struct.ipd.custom_type.uint2_t.uint2_t = type { i2 }
-
-; Function Attrs: mustprogress nounwind
-define dso_local void @llvm___aie2___acquire(i32 noundef %0, i32 noundef %1) local_unnamed_addr addrspace(1) #0 {
-  tail call addrspace(1) void @llvm.chess_memory_fence()
-  tail call addrspace(1) void @_Z25chess_separator_schedulerv() #4
-  tail call x86_regcallcc addrspace(1) void @__regcall3__chessintr_void_acquire_guarded___uint___uint(i32 zeroext %0, i32 zeroext %1) #4
-  tail call addrspace(1) void @_Z25chess_separator_schedulerv() #4
-  tail call addrspace(1) void @llvm.chess_memory_fence()
-  ret void
-}
-
-; Function Attrs: mustprogress nounwind
-define dso_local void @llvm___aie2___release(i32 noundef %0, i32 noundef %1) local_unnamed_addr addrspace(1) #0 {
-  tail call addrspace(1) void @llvm.chess_memory_fence()
-  tail call addrspace(1) void @_Z25chess_separator_schedulerv() #4
-  tail call x86_regcallcc addrspace(1) void @__regcall3__chessintr_void_release_guarded___uint___sint(i32 zeroext %0, i32 signext %1) #4
-  tail call addrspace(1) void @_Z25chess_separator_schedulerv() #4
-  tail call addrspace(1) void @llvm.chess_memory_fence()
-  ret void
-}
-
-; Function Attrs: nounwind
-define dso_local void @llvm___aie___event0() local_unnamed_addr addrspace(1) #1 {
-  tail call x86_regcallcc addrspace(1) void @__regcall3__chessintr_void_event_uint2_t(%struct.ipd.custom_type.uint2_t.uint2_t zeroinitializer) #4
-  ret void
-}
-
-; Function Attrs: nounwind
-define dso_local void @llvm___aie___event1() local_unnamed_addr addrspace(1) #1 {
-  tail call x86_regcallcc addrspace(1) void @__regcall3__chessintr_void_event_uint2_t(%struct.ipd.custom_type.uint2_t.uint2_t { i2 1 }) #4
-  ret void
-}
-
-; Function Attrs: mustprogress nounwind willreturn
-declare void @llvm.chess_memory_fence() addrspace(1) #2
-
-; Function Attrs: inaccessiblememonly nounwind
-declare dso_local void @_Z25chess_separator_schedulerv() local_unnamed_addr addrspace(1) #3
-
-; Function Attrs: inaccessiblememonly nounwind
-declare dso_local x86_regcallcc void @__regcall3__chessintr_void_acquire_guarded___uint___uint(i32 zeroext, i32 zeroext) local_unnamed_addr addrspace(1) #3
-
-; Function Attrs: inaccessiblememonly nounwind
-declare dso_local x86_regcallcc void @__regcall3__chessintr_void_release_guarded___uint___sint(i32 zeroext, i32 signext) local_unnamed_addr addrspace(1) #3
-
-; Function Attrs: inaccessiblememonly nounwind
-declare dso_local x86_regcallcc void @__regcall3__chessintr_void_event_uint2_t(%struct.ipd.custom_type.uint2_t.uint2_t) local_unnamed_addr addrspace(1) #3
-
-attributes #0 = { mustprogress nounwind "frame-pointer"="all" "min-legal-vector-width"="0" "no-builtin-memcpy" "no-trapping-math"="true" "stack-protector-buffer-size"="8" }
-attributes #1 = { nounwind "frame-pointer"="all" "min-legal-vector-width"="0" "no-builtin-memcpy" "no-trapping-math"="true" "stack-protector-buffer-size"="8" }
-attributes #2 = { mustprogress nounwind willreturn }
-attributes #3 = { inaccessiblememonly nounwind "frame-pointer"="all" "no-builtin-memcpy" "no-trapping-math"="true" "stack-protector-buffer-size"="8" }
-attributes #4 = { inaccessiblememonly nounwind "no-builtin-memcpy" }
-
-!llvm.linker.options = !{}
-!llvm.module.flags = !{!0, !1}
-
-!0 = !{i32 1, !"wchar_size", i32 4}
-!1 = !{i32 7, !"frame-pointer", i32 2}
-)chess";
-
-std::vector<std::string> chessArgs(const std::string &AIEToolsDir,
-                                   std::string workDir) {
-  SmallString<64> chessClang(AIEToolsDir);
-  sys::path::append(chessClang, "tps", "lnx64", "target_aie_ml");
-  sys::path::append(chessClang, "bin", "LNa64bin", "chess-clang");
-  SmallString<64> procModelLib(AIEToolsDir);
-  sys::path::append(procModelLib, "data", "aie_ml", "lib");
-  return {
-      "+P",
-      "4",  // parallel compilation (function + file level)
-      "-p",
-      "me",  // parallel compilation (function level only)
-      "-C",
-      "Release_LLVM",  // configuration
-      "-D__AIENGINE__",
-      "-D__AIE_ARCH__=20",
-      "-D__AIEARCH__=20",
-      "-Y",
-      "clang=" + chessClang.str().str(),
-      "-P",
-      procModelLib.str().str(),  // processor model directory
-      "-d",                      // disassemble output
-      "-f",                      // use LLVM frontend
-      "+w",
-      std::move(workDir),
-  };
+template <unsigned N>
+static void aieTargetDefines(SmallVector<std::string, N> &Args,
+                             std::string aie_target) {
+  if (aie_target == "AIE2")
+    Args.push_back("-D__AIEARCH__=20");
+  else
+    Args.push_back("-D__AIEARCH__=10");
 }
 
 // Generate the elf files for the core
@@ -392,44 +232,95 @@ static LogicalResult generateCoreElfFiles(ModuleOp moduleOp,
     SmallString<64> elfFile(TK.TempDir);
     sys::path::append(elfFile, elfFileName);
 
-    // Use xbridge (to remove any peano dependency with use-chess option)
-    SmallString<64> bcfPath(TK.TempDir);
-    sys::path::append(bcfPath, elfFileName + ".bcf");
+    if (TK.UseChess) {
+      // Use xbridge (to remove any peano dependency with use-chess option)
+      SmallString<64> bcfPath(TK.TempDir);
+      sys::path::append(bcfPath, elfFileName + ".bcf");
 
-    {
-      auto bcfOutput = openOutputFile(bcfPath, &errorMessage);
-      if (!bcfOutput) return coreOp.emitOpError(errorMessage);
+      {
+        auto bcfOutput = openOutputFile(bcfPath, &errorMessage);
+        if (!bcfOutput) return coreOp.emitOpError(errorMessage);
 
-      if (failed(AIE::AIETranslateToBCF(moduleOp, bcfOutput->os(), col, row)))
-        return coreOp.emitOpError("Failed to generate BCF");
-      bcfOutput->keep();
+        if (failed(AIE::AIETranslateToBCF(moduleOp, bcfOutput->os(), col, row)))
+          return coreOp.emitOpError("Failed to generate BCF");
+        bcfOutput->keep();
+      }
+
+      std::vector<std::string> extractedIncludes;
+      {
+        auto bcfFileIn = openInputFile(bcfPath, &errorMessage);
+        if (!bcfFileIn) moduleOp.emitOpError(errorMessage);
+
+        std::string bcfFile = std::string(bcfFileIn->getBuffer());
+        std::regex r("_include _file (.*)");
+        auto begin = std::sregex_iterator(bcfFile.begin(), bcfFile.end(), r);
+        auto end = std::sregex_iterator();
+        for (std::sregex_iterator i = begin; i != end; ++i)
+          extractedIncludes.push_back(i->str(1));
+      }
+
+      SmallString<64> chessWrapperBin(TK.InstallDir);
+      sys::path::append(chessWrapperBin, "bin", "xchesscc_wrapper");
+      SmallString<64> chessworkDir(TK.TempDir);
+      sys::path::append(chessworkDir, "chesswork");
+
+      SmallVector<std::string> flags{StringRef(TK.TargetArch).lower(),
+                                     "+w",
+                                     std::string(chessworkDir),
+                                     "-d",
+                                     "+l",
+                                     std::string(bcfPath),
+                                     "-o",
+                                     std::string(elfFile),
+                                     "-f",
+                                     std::string(objFile)};
+      for (const auto &inc : extractedIncludes) flags.push_back(inc);
+
+      if (runTool(chessWrapperBin, flags, TK.Verbose) != 0)
+        coreOp.emitOpError("Failed to link with xbridge");
+    } else {
+      SmallString<64> ldscript_path(TK.TempDir);
+      sys::path::append(ldscript_path, elfFileName + ".ld");
+      {
+        auto ldscript_output = openOutputFile(ldscript_path, &errorMessage);
+        if (!ldscript_output) return coreOp.emitOpError(errorMessage);
+
+        if (failed(AIE::AIETranslateToLdScript(moduleOp, ldscript_output->os(),
+                                               col, row)))
+          return coreOp.emitOpError("failed to generate ld script for core (")
+                 << col << "," << row << ")";
+        ldscript_output->keep();
+      }
+
+      // We are running a clang command for now, but really this is an lld
+      // command.
+      {
+        std::string targetLower = StringRef(TK.TargetArch).lower();
+        SmallVector<std::string, 10> flags;
+        flags.push_back("-O2");
+        std::string targetFlag = "--target=" + targetLower + "-none-elf";
+        flags.push_back(targetFlag);
+        flags.emplace_back(objFile);
+        SmallString<64> meBasicPath(TK.InstallDir);
+        sys::path::append(meBasicPath, "aie_runtime_lib",
+                          StringRef(TK.TargetArch).upper(), "me_basic.o");
+        flags.emplace_back(meBasicPath);
+        SmallString<64> libcPath(TK.PeanoDir);
+        sys::path::append(libcPath, "lib", targetLower + "-none-unknown-elf",
+                          "libc.a");
+        flags.emplace_back(libcPath);
+        flags.push_back("-Wl,--gc-sections");
+        std::string ldScriptFlag = "-Wl,-T," + std::string(ldscript_path);
+        flags.push_back(ldScriptFlag);
+        flags.push_back("-o");
+        flags.emplace_back(elfFile);
+        SmallString<64> clangBin(TK.PeanoDir);
+        sys::path::append(clangBin, "bin", "clang");
+        if (runTool(clangBin, flags, TK.Verbose) != 0)
+          return coreOp.emitOpError("failed to link elf file for core(")
+                 << col << "," << row << ")";
+      }
     }
-
-    std::vector<std::string> extractedIncludes;
-    {
-      auto bcfFileIn = openInputFile(bcfPath, &errorMessage);
-      if (!bcfFileIn) moduleOp.emitOpError(errorMessage);
-
-      std::string bcfFile = std::string(bcfFileIn->getBuffer());
-      std::regex r("_include _file (.*)");
-      auto begin = std::sregex_iterator(bcfFile.begin(), bcfFile.end(), r);
-      auto end = std::sregex_iterator();
-      for (std::sregex_iterator i = begin; i != end; ++i)
-        extractedIncludes.push_back(i->str(1));
-    }
-
-    SmallString<64> chessExe(TK.AIEToolsDir);
-    sys::path::append(chessExe, "bin", "unwrapped", "lnx64.o", "xchesscc");
-    SmallString<64> chessworkDir(TK.TempDir);
-    sys::path::append(chessworkDir, "chesswork");
-    SmallVector<std::string> flags{"+l", std::string(bcfPath),
-                                   "-o", std::string(elfFile),
-                                   "-f", std::string(objFile)};
-    for (const auto &inc : extractedIncludes) flags.push_back(inc);
-    auto chessArgs_ = chessArgs(TK.AIEToolsDir, chessworkDir.str().str());
-    chessArgs_.insert(chessArgs_.end(), flags.begin(), flags.end());
-    if (runTool(chessExe, chessArgs_, TK.Verbose) != 0)
-      coreOp.emitOpError("Failed to link with xbridge");
   }
   return success();
 }
@@ -500,13 +391,19 @@ static json::Object makeKernelJSON(std::string name, std::string id,
                                              {"memory-connection", "HOST"},
                                              {"address-qualifier", "GLOBAL"},
                                              {"type", "void*"},
-                                             {"offset", "0x34"}}}},
+                                             {"offset", "0x34"}},
+                                json::Object{{"name", "bo5"},
+                                             {"memory-connection", "HOST"},
+                                             {"address-qualifier", "GLOBAL"},
+                                             {"type", "void*"},
+                                             {"offset", "0x3c"}}}},
       {"instances", json::Array{json::Object{{"name", instance}}}}};
 }
 
 static LogicalResult generateXCLBin(MLIRContext *context, ModuleOp moduleOp,
                                     XCLBinGenConfig &TK,
-                                    const StringRef &Output) {
+                                    const StringRef &Output,
+                                    const StringRef &inputXclbin = "") {
   std::string errorMessage;
   // Create mem_topology.json.
   SmallString<64> memTopologyJsonFile(TK.TempDir);
@@ -573,7 +470,8 @@ static LogicalResult generateXCLBin(MLIRContext *context, ModuleOp moduleOp,
                   "type": "PRIMARY",
                   "pdi_id": "0x01",
                   "dpu_kernel_ids": [
-                    "0x901"
+                    ")" + TK.XCLBinKernelID +
+                                          R"("
                   ],
                   "pre_cdo_groups": [
                     "0xC1"
@@ -616,17 +514,17 @@ static LogicalResult generateXCLBin(MLIRContext *context, ModuleOp moduleOp,
 
     designBifOut->os() << "all:\n"
                        << "{\n"
-                       << "  id_code = 0x14ca8093\n"
-                       << "  extended_id_code = 0x01\n"
-                       << "  image\n"
-                       << "  {\n"
-                       << "    name=aie_image, id=0x1c000000\n"
-                       << "    { type=cdo\n"
-                       << "      file=" << TK.TempDir << "/aie_cdo_elfs.bin\n"
-                       << "      file=" << TK.TempDir << "/aie_cdo_init.bin\n"
-                       << "      file=" << TK.TempDir << "/aie_cdo_enable.bin\n"
-                       << "    }\n"
-                       << "  }\n"
+                       << "\tid_code = 0x14ca8093\n"
+                       << "\textended_id_code = 0x01\n"
+                       << "\timage\n"
+                       << "\t{\n"
+                       << "\t\tname=aie_image, id=0x1c000000\n"
+                       << "\t\t{ type=cdo\n"
+                       << "\t\t  file=" << TK.TempDir << "/aie_cdo_elfs.bin\n"
+                       << "\t\t  file=" << TK.TempDir << "/aie_cdo_init.bin\n"
+                       << "\t\t  file=" << TK.TempDir << "/aie_cdo_enable.bin\n"
+                       << "\t\t}\n"
+                       << "\t}\n"
                        << "}";
     designBifOut->keep();
   }
@@ -640,31 +538,67 @@ static LogicalResult generateXCLBin(MLIRContext *context, ModuleOp moduleOp,
                                       "-o",     std::string(designPdiFile),
                                       "-w"};
 
-    // use ./Xilinx/Vitis/2023.2/bin/bootgen for now (will link to lib soon)
-
-    if (auto bootgen = sys::findProgramByName("bootgen")) {
-      if (runTool(*bootgen, flags, TK.Verbose) != 0)
-        return moduleOp.emitOpError("failed to execute bootgen");
-    } else {
-      return moduleOp.emitOpError("could not find bootgen");
-    }
+    SmallString<64> bootgenBin(TK.InstallDir);
+    sys::path::append(bootgenBin, "bin", "bootgen");
+    if (runTool(bootgenBin, flags, TK.Verbose) != 0)
+      return moduleOp.emitOpError("failed to execute bootgen");
   }
-
+  SmallVector<std::string, 20> flags;
   // Execute the xclbinutil command.
+  std::string memArg = "MEM_TOPOLOGY:JSON:" + std::string(memTopologyJsonFile);
+  std::string partArg =
+      "AIE_PARTITION:JSON:" + std::string(aiePartitionJsonFile);
   {
-    std::string memArg =
-        "MEM_TOPOLOGY:JSON:" + std::string(memTopologyJsonFile);
-    std::string partArg =
-        "AIE_PARTITION:JSON:" + std::string(aiePartitionJsonFile);
-    SmallVector<std::string, 20> flags{"--add-replace-section",
-                                       memArg,
-                                       "--add-kernel",
-                                       std::string(kernelsJsonFile),
-                                       "--add-replace-section",
-                                       partArg,
-                                       "--force",
-                                       "--output",
-                                       std::string(Output)};
+    if (!inputXclbin.empty()) {
+      // Create aie_partition.json.
+      SmallString<64> aieInputPartitionJsonFile(TK.TempDir);
+      sys::path::append(aieInputPartitionJsonFile, "aie_input_partition.json");
+
+      std::string inputPartArg =
+          "AIE_PARTITION:JSON:" + std::string(aieInputPartitionJsonFile);
+      SmallVector<std::string, 20> inputFlags{"--dump-section", inputPartArg,
+                                              "--force", "--input",
+                                              std::string(inputXclbin)};
+      if (auto xclbinutil = sys::findProgramByName("xclbinutil")) {
+        if (runTool(*xclbinutil, inputFlags, TK.Verbose) != 0)
+          return moduleOp.emitOpError("failed to execute xclbinutil");
+      } else {
+        return moduleOp.emitOpError("could not find xclbinutil");
+      }
+      auto aieInputPartitionOut =
+          openInputFile(aieInputPartitionJsonFile, &errorMessage);
+      if (!aieInputPartitionOut) return moduleOp.emitOpError(errorMessage);
+      Expected<json::Value> aieInputPartitionOutValue =
+          llvm::json::parse(aieInputPartitionOut->getBuffer());
+      json::Array *aieInputPartionPDIs;
+      aieInputPartionPDIs = aieInputPartitionOutValue->getAsObject()
+                                ->getObject("aie_partition")
+                                ->getArray("PDIs");
+      auto aiePartitionOut = openInputFile(aiePartitionJsonFile, &errorMessage);
+      if (!aiePartitionOut) return moduleOp.emitOpError(errorMessage);
+      llvm::Expected<llvm::json::Value> aiePartitionOutValue =
+          llvm::json::parse(aiePartitionOut->getBuffer());
+      json::Array *aiePartionPDIs;
+      aiePartionPDIs = aiePartitionOutValue->getAsObject()
+                           ->getObject("aie_partition")
+                           ->getArray("PDIs");
+      aieInputPartionPDIs->insert(aieInputPartionPDIs->end(),
+                                  aiePartionPDIs->begin(),
+                                  aiePartionPDIs->end());
+      // rewrite aie partion json file
+      auto aiePartitionJsonOut =
+          openOutputFile(aiePartitionJsonFile, &errorMessage);
+      if (!aiePartitionJsonOut) return moduleOp.emitOpError(errorMessage);
+      aiePartitionJsonOut->os() << formatv("{0:2}", *aieInputPartitionOutValue);
+      aiePartitionJsonOut->keep();
+      flags.insert(flags.end(), {"--input", std::string(inputXclbin)});
+
+    } else {
+      flags.insert(flags.end(), {"--add-replace-section", memArg});
+    }
+    flags.insert(flags.end(), {"--add-kernel", std::string(kernelsJsonFile),
+                               "--add-replace-section", partArg, "--force",
+                               "--output", std::string(Output)});
 
     if (auto xclbinutil = sys::findProgramByName("xclbinutil")) {
       if (runTool(*xclbinutil, flags, TK.Verbose) != 0)
@@ -743,9 +677,10 @@ struct RemoveAlignment2FromLLVMLoadPass
 };
 }  // namespace
 
-static LogicalResult generateObject(MLIRContext *context, ModuleOp moduleOp,
-                                    XCLBinGenConfig &TK,
-                                    const std::string &outputFile) {
+static LogicalResult generateUnifiedObject(MLIRContext *context,
+                                           ModuleOp moduleOp,
+                                           XCLBinGenConfig &TK,
+                                           const std::string &outputFile) {
   PassManager pm(context, moduleOp.getOperationName());
   applyConfigToPassManager(TK, pm);
 
@@ -803,75 +738,94 @@ static LogicalResult generateObject(MLIRContext *context, ModuleOp moduleOp,
     output->keep();
   }
 
-  SmallString<64> chessExe(TK.AIEToolsDir);
-  sys::path::append(chessExe, "bin", "unwrapped", "lnx64.o", "xchesscc");
-  SmallString<64> chessworkDir(TK.TempDir);
-  sys::path::append(chessworkDir, "chesswork");
-  SmallString<64> chessIntrinsicsLL(TK.InstallDir);
-  sys::path::append(chessIntrinsicsLL, "chess_intrinsic_wrapper.ll");
-  {
-    auto chessIntrinsicWrapperLlFile = openOutputFile(chessIntrinsicsLL);
-    if (!chessIntrinsicWrapperLlFile) moduleOp.emitOpError(errorMessage);
+  if (TK.UseChess) {
+    SmallString<64> chessWrapperBin(TK.InstallDir);
+    sys::path::append(chessWrapperBin, "bin", "xchesscc_wrapper");
 
-    chessIntrinsicWrapperLlFile->os() << _CHESS_INTRINSIC_WRAPPER_LL;
-    chessIntrinsicWrapperLlFile->keep();
+    SmallString<64> chessworkDir(TK.TempDir);
+    sys::path::append(chessworkDir, "chesswork");
+
+    SmallString<64> chessIntrinsicsLL(TK.InstallDir);
+    sys::path::append(chessIntrinsicsLL, "aie_runtime_lib",
+                      StringRef(TK.TargetArch).upper(),
+                      "chess_intrinsic_wrapper.ll");
+
+    std::string llvmirString;
+    {
+      raw_string_ostream llvmirStream(llvmirString);
+      llvmModule->print(llvmirStream, nullptr);
+    }
+
+    SmallString<64> chesslinkedFile(TK.TempDir);
+    sys::path::append(chesslinkedFile, "input.chesslinked.ll");
+    SmallString<64> llvmLinkBin(TK.PeanoDir);
+    sys::path::append(llvmLinkBin, "bin", "llvm-link");
+    if (!sys::fs::exists(llvmLinkBin)) {
+      if (auto llvmLink = sys::findProgramByName("llvm-link"))
+        llvmLinkBin = *llvmLink;
+      else
+        moduleOp.emitOpError("Can't find llvm-link");
+    }
+    if (runTool(llvmLinkBin,
+                {std::string(LLVMIRFile), std::string(chessIntrinsicsLL), "-S",
+                 "-o", std::string(chesslinkedFile)},
+                TK.Verbose) != 0)
+      moduleOp.emitOpError("Couldn't link in the intrinsics");
+
+    std::string mungedLLVMIR;
+    {
+      auto chesslinkedIn = openInputFile(chesslinkedFile, &errorMessage);
+      if (!chesslinkedIn) moduleOp.emitOpError(errorMessage);
+
+      mungedLLVMIR = std::string(chesslinkedIn->getBuffer());
+      mungedLLVMIR = chesshack(mungedLLVMIR);
+    }
+    {
+      auto chesslinkedOut = openOutputFile(chesslinkedFile);
+      if (!chesslinkedOut) moduleOp.emitOpError(errorMessage);
+
+      chesslinkedOut->os() << mungedLLVMIR;
+      chesslinkedOut->keep();
+    }
+
+    if (runTool(chessWrapperBin,
+                {StringRef(TK.TargetArch).lower(), "+w",
+                 std::string(chessworkDir), "-c", "-d", "-f", "+P", "4",
+                 std::string(chesslinkedFile), "-o", std::string(outputFile)},
+                TK.Verbose) != 0)
+      return moduleOp.emitOpError("Failed to assemble with chess");
+  } else {
+    SmallString<64> peanoOptBin(TK.PeanoDir);
+    sys::path::append(peanoOptBin, "bin", "opt");
+    SmallString<64> peanoLLCBin(TK.PeanoDir);
+    sys::path::append(peanoLLCBin, "bin", "llc");
+
+    SmallString<64> OptLLVMIRFile(TK.TempDir);
+    sys::path::append(OptLLVMIRFile, "input.opt.ll");
+    if (runTool(peanoOptBin,
+                {"-O2", "--inline-threshold=10", "-S", std::string(LLVMIRFile),
+                 "--disable-builtin=memset", "-o", std::string(OptLLVMIRFile)},
+                TK.Verbose) != 0)
+      return moduleOp.emitOpError("Failed to optimize");
+
+    if (runTool(peanoLLCBin,
+                {std::string(OptLLVMIRFile), "-O2",
+                 "--march=" + StringRef(TK.TargetArch).lower(),
+                 "--function-sections", "--filetype=obj", "-o",
+                 std::string(outputFile)},
+                TK.Verbose) != 0)
+      return moduleOp.emitOpError("Failed to assemble");
   }
-
-  std::string llvmirString;
-  {
-    raw_string_ostream llvmirStream(llvmirString);
-    llvmModule->print(llvmirStream, nullptr);
-  }
-
-  SmallString<64> chesslinkedFile(TK.TempDir);
-  sys::path::append(chesslinkedFile, "input.chesslinked.ll");
-  SmallString<64> chessLlvmLinkBin(TK.AIEToolsDir);
-  sys::path::append(chessLlvmLinkBin, "tps", "lnx64", "target_aie_ml");
-  sys::path::append(chessLlvmLinkBin, "bin", "LNa64bin", "chess-llvm-link");
-
-  if (runTool(chessLlvmLinkBin,
-              {std::string(LLVMIRFile), std::string(chessIntrinsicsLL),
-               "--opaque-pointers=1", "-S", "-o", std::string(chesslinkedFile)},
-              TK.Verbose) != 0)
-    moduleOp.emitOpError("Couldn't link in the intrinsics");
-
-  std::string mungedLLVMIR;
-  {
-    auto chesslinkedIn = openInputFile(chesslinkedFile, &errorMessage);
-    if (!chesslinkedIn) moduleOp.emitOpError(errorMessage);
-
-    mungedLLVMIR = std::string(chesslinkedIn->getBuffer());
-    mungedLLVMIR = chesshack(mungedLLVMIR);
-  }
-  {
-    auto chesslinkedOut = openOutputFile(chesslinkedFile);
-    if (!chesslinkedOut) moduleOp.emitOpError(errorMessage);
-
-    chesslinkedOut->os() << mungedLLVMIR;
-    chesslinkedOut->keep();
-  }
-
-  auto chessArgs_ = chessArgs(TK.AIEToolsDir, chessworkDir.str().str());
-  chessArgs_.push_back("-c");
-  chessArgs_.push_back(std::string(chesslinkedFile));
-  chessArgs_.push_back("-o");
-  chessArgs_.push_back(std::string(outputFile));
-
-  if (runTool(chessExe, chessArgs_, TK.Verbose) != 0)
-    return moduleOp.emitOpError("Failed to assemble with chess");
   copy->erase();
   return success();
 }
 
 LogicalResult xilinx::aie2xclbin(MLIRContext *ctx, ModuleOp moduleOp,
                                  XCLBinGenConfig &TK, StringRef OutputNPU,
-                                 StringRef OutputXCLBin) {
-  if (failed(xilinx::findVitis(TK))) moduleOp.emitOpError("VITIS not found");
-
+                                 StringRef OutputXCLBin,
+                                 StringRef InputXCLBin) {
   PassManager pm(ctx, moduleOp.getOperationName());
   applyConfigToPassManager(TK, pm);
-
-  addAIELoweringPasses(pm);
 
   if (TK.Verbose) {
     llvm::outs() << "Running: ";
@@ -882,7 +836,7 @@ LogicalResult xilinx::aie2xclbin(MLIRContext *ctx, ModuleOp moduleOp,
   if (failed(pm.run(moduleOp)))
     return moduleOp.emitOpError("AIE lowering pipline failed");
 
-  TK.TargetArch = StringRef(TK.TargetArch).trim();
+  TK.TargetArch = "AIE2";
 
   std::regex target_regex("AIE.?");
   if (!std::regex_search(TK.TargetArch, target_regex))
@@ -913,18 +867,18 @@ LogicalResult xilinx::aie2xclbin(MLIRContext *ctx, ModuleOp moduleOp,
     copy->erase();
   }
 
-  SmallString<64> object(TK.TempDir);
-  sys::path::append(object, "input.o");
-  if (failed(generateObject(ctx, moduleOp, TK, std::string(object))))
-    return moduleOp.emitOpError("Failed to generate object");
+  SmallString<64> unifiedObj(TK.TempDir);
+  sys::path::append(unifiedObj, "input.o");
+  if (failed(generateUnifiedObject(ctx, moduleOp, TK, std::string(unifiedObj))))
+    return moduleOp.emitOpError("Failed to generate unified object");
 
-  if (failed(generateCoreElfFiles(moduleOp, object, TK)))
+  if (failed(generateCoreElfFiles(moduleOp, unifiedObj, TK)))
     return moduleOp.emitOpError("Failed to generate core ELF file(s)");
 
   if (failed(generateCDO(ctx, moduleOp, TK)))
     return moduleOp.emitOpError("Failed to generate CDO");
 
-  if (failed(generateXCLBin(ctx, moduleOp, TK, OutputXCLBin)))
+  if (failed(generateXCLBin(ctx, moduleOp, TK, OutputXCLBin, InputXCLBin)))
     return moduleOp.emitOpError("Failed to generate XCLBin");
 
   return success();

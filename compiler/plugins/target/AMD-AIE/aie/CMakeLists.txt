@@ -349,35 +349,4 @@ iree_cc_library(
     ::AIEXTransformPassHeaders
 )
 
-###############################################################################
-# AIE CDO Generation
-###############################################################################
-
-if(MSVC)
-  set(UUID "Rpcrt4.lib")
-else()
-  find_library (UUID uuid REQUIRED)
-endif()
-
-iree_cc_library(
-  NAME
-    AIETargets
-  SRCS
-    "XCLBinGen.cpp"
-    "${IREE_MLIR_AIE_SOURCE_DIR}/lib/Targets/AIETargetBCF.cpp"
-    "${IREE_MLIR_AIE_SOURCE_DIR}/lib/Targets/AIETargetLdScript.cpp"
-    "${IREE_MLIR_AIE_SOURCE_DIR}/lib/Targets/AIETargetNPU.cpp"
-    "${IREE_MLIR_AIE_SOURCE_DIR}/lib/Targets/AIETargetCDODirect.cpp"
-  DEPS
-    ::AIEDialectIR
-    ::AIEDialectIR
-    ::AIETransformPasses
-    ::AIEVecDialectIR
-    ::AIEVecConvertToLLVM
-    MLIRToLLVMIRTranslationRegistration
-    MLIRFuncAllExtensions
-    ${UUID}
-    iree-amd-aie::aie_runtime::iree_aie_runtime_static
-)
-
 add_subdirectory(test)

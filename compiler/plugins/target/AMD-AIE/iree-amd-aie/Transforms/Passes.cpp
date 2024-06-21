@@ -447,10 +447,9 @@ void buildAMDAIELowerObjectFIFO(OpPassManager &variantPassManager) {
       xilinx::AIE::createAIEObjectFifoStatefulTransformPass());
   devicePassMan.addPass(xilinx::AIE::createAIEAssignBufferAddressesBasicPass());
   devicePassMan.addPass(xilinx::AIE::createAIEAssignLockIDsPass());
+  devicePassMan.addPass(xilinx::AIE::createAIEAssignBufferDescriptorIDsPass());
   devicePassMan.addPass(xilinx::AIE::createAIEPathfinderPass());
   devicePassMan.addPass(xilinx::AIE::createAIELocalizeLocksPass());
-  modulePassManager.addPass(xilinx::AIE::createAIECoreToStandardPass());
-  modulePassManager.addPass(xilinx::AIEX::createAIEXToStandardPass());
 
   LLVM_DEBUG({
     llvm::dbgs() << "Using AMDAIE pass pipeline:\n";
@@ -586,8 +585,7 @@ void addMLIRAIRAIELoweringPasses(OpPassManager &passManager, bool packPeel) {
     std::vector<unsigned> tile_sizes;
     if (packPeel) {
       tile_sizes = {2, 2};
-    }
-    else{
+    } else {
       tile_sizes = {4, 4};
     }
     options.clTileSizes = ArrayRef(tile_sizes);

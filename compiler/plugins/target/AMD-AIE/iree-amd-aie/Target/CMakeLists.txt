@@ -6,6 +6,34 @@
 
 iree_add_all_subdirs()
 
+if(MSVC)
+  set(UUID "Rpcrt4.lib")
+else()
+  find_library (UUID uuid REQUIRED)
+endif()
+
+iree_cc_library(
+  NAME
+    AIETargets
+  SRCS
+    "XCLBinGen.cpp"
+    "${IREE_MLIR_AIE_SOURCE_DIR}/lib/Targets/AIETargetBCF.cpp"
+    "${IREE_MLIR_AIE_SOURCE_DIR}/lib/Targets/AIETargetLdScript.cpp"
+    "${IREE_MLIR_AIE_SOURCE_DIR}/lib/Targets/AIETargetNPU.cpp"
+    "${IREE_MLIR_AIE_SOURCE_DIR}/lib/Targets/AIETargetCDODirect.cpp"
+  DEPS
+    iree::target::amd-aie::aie::AIEDialectIR
+    iree::target::amd-aie::aie::AIEXDialectIR
+    iree::target::amd-aie::aie::AIETransformPasses
+    iree::target::amd-aie::aie::AIEXTransformPasses
+    iree::target::amd-aie::aie::AIEVecDialectIR
+    iree::target::amd-aie::aie::AIEVecConvertToLLVM
+    MLIRToLLVMIRTranslationRegistration
+    MLIRFuncAllExtensions
+    ${UUID}
+    iree-amd-aie::aie_runtime::iree_aie_runtime_static
+)
+
 iree_cc_library(
   NAME
     Target
@@ -16,10 +44,10 @@ iree_cc_library(
     "AIETarget.cpp"
     "AIETargetDirect.cpp"
   DEPS
+    ::AIETargets
     iree::compiler::Dialect::HAL::Target
     iree::target::amd-aie::IR::AMDAIEDialect
     iree::target::amd-aie::Transforms
-    iree::target::amd-aie::aie::AIETargets
     iree::target::amd-aie::air::AIRDialectIR
     iree::base::internal::flatcc::building
     iree::base::internal::flatcc::parsing
