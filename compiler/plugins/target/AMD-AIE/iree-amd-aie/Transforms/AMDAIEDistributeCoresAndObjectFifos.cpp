@@ -882,13 +882,6 @@ void AMDAIEDistributeCoresAndObjectFifosPass::runOnOperation() {
   MLIRContext *context = &getContext();
   ModuleOp moduleOp = getOperation();
 
-  if (failed(distributeLocalMemory(moduleOp))) {
-    moduleOp.emitOpError() << "local memory distribution failed";
-    return signalPassFailure();
-  }
-  LLVM_DEBUG(llvm::dbgs() << "Module after distributeLocalMemory: \n"
-                          << moduleOp << "\n");
-
   // Unroll local parallel loops and try hoisting dma operations if
   // possible.
   RewritePatternSet unrollLocalLoopsPatterns(context);

@@ -112,6 +112,13 @@ def AMDAIELocalForallToFor :
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIELocalForallToForPass()";
 }
 
+def AMDAIEDistributeLocalMemory :
+  Pass<"iree-amdaie-distribute-local-memory", "ModuleOp"> {
+  let summary = "Distribute local memory accesses through subviews by allocating a "
+                "single smaller memory.";
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEDistributeLocalMemoryPass()";
+}
+
 def AMDAIEDmaToCircularDma :
   Pass<"iree-amdaie-dma-to-circular-dma"> {
   let summary = "Convert dma operations to circular dma operations.";

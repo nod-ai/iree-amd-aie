@@ -84,6 +84,10 @@ std::unique_ptr<Pass> createAMDAIEDistributeCoresAndObjectFifosPass();
 /// nested scf.for operations.
 std::unique_ptr<Pass> createAMDAIELocalForallToForPass();
 
+/// Distribute local memory accesses through subviews by allocating a single
+/// smaller memory.
+std::unique_ptr<Pass> createAMDAIEDistributeLocalMemoryPass();
+
 /// Create a pass to convert dma operations to circular dma operations.
 std::unique_ptr<Pass> createAMDAIEDmaToCircularDmaPass();
 
