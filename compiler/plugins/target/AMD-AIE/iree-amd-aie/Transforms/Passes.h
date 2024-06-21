@@ -80,6 +80,10 @@ std::unique_ptr<Pass> createAMDAIEDecomposeLinalgExtPackUnPackToAIRPass();
 /// operations and distribute the logical objectFifos.
 std::unique_ptr<Pass> createAMDAIEDistributeCoresAndObjectFifosPass();
 
+/// Convert local scf.forall operations selected for parallel distribution to
+/// nested scf.for operations.
+std::unique_ptr<Pass> createAMDAIELocalForallToForPass();
+
 /// Create a pass to convert dma operations to circular dma operations.
 std::unique_ptr<Pass> createAMDAIEDmaToCircularDmaPass();
 

@@ -105,6 +105,13 @@ def AMDAIEDistributeCoresAndObjectFifos :
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEDistributeCoresAndObjectFifosPass()";
 }
 
+def AMDAIELocalForallToFor :
+  Pass<"iree-amdaie-local-forall-to-for", "ModuleOp"> {
+  let summary = "Convert local scf.forall operations selected for parallel"
+                "distribution to nested scf.for operations.";
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIELocalForallToForPass()";
+}
+
 def AMDAIEDmaToCircularDma :
   Pass<"iree-amdaie-dma-to-circular-dma"> {
   let summary = "Convert dma operations to circular dma operations.";

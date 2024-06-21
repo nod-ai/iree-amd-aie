@@ -882,23 +882,6 @@ void AMDAIEDistributeCoresAndObjectFifosPass::runOnOperation() {
   MLIRContext *context = &getContext();
   ModuleOp moduleOp = getOperation();
 
-  // Convert local scf.forall operations selected for parallel distribution to
-  // nested scf.for operations.
-  if (failed(localForallToFor(moduleOp))) {
-    moduleOp.emitOpError()
-        << "local `scf.forall` to `scf.for` conversion failed";
-    return signalPassFailure();
-  }
-
-  // Hoist the affine apply ops on scf.for induction variables to the
-  // corresponding scf.for's body.
-  if (failed(hoistAffineApplyDependingOnFor(moduleOp))) {
-    moduleOp.emitOpError() << "`affine.apply` hoisting failed";
-    return signalPassFailure();
-  }
-  LLVM_DEBUG(llvm::dbgs() << "Module after localForallToFor: \n"
-                          << moduleOp << "\n");
-
   if (failed(distributeLocalMemory(moduleOp))) {
     moduleOp.emitOpError() << "local memory distribution failed";
     return signalPassFailure();
