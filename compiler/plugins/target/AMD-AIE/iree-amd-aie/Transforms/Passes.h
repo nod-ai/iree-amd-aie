@@ -88,6 +88,9 @@ std::unique_ptr<Pass> createAMDAIELocalForallToForPass();
 /// smaller memory.
 std::unique_ptr<Pass> createAMDAIEDistributeLocalMemoryPass();
 
+/// Unroll local parallel loops and try hoisting dma operations if possible.
+std::unique_ptr<Pass> createAMDAIEUnrollLocalLoopsPass();
+
 /// Create a pass to convert dma operations to circular dma operations.
 std::unique_ptr<Pass> createAMDAIEDmaToCircularDmaPass();
 

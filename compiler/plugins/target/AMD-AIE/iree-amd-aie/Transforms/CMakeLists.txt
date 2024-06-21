@@ -55,6 +55,7 @@ iree_cc_library(
     "AMDAIEDistributeCoresAndObjectFifos.cpp"
     "AMDAIELocalForallToFor.cpp"
     "AMDAIEDistributeLocalMemory.cpp"
+    "AMDAIEUnrollLocalLoops.cpp"
     "AMDAIEDmaToCircularDma.cpp"
     "AMDAIEDmaUtils.cpp"
     "AMDAIEFuseConsumerIntoLoop.cpp"

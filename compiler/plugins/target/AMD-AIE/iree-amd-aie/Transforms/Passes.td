@@ -119,6 +119,12 @@ def AMDAIEDistributeLocalMemory :
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEDistributeLocalMemoryPass()";
 }
 
+def AMDAIEUnrollLocalLoops :
+  Pass<"iree-amdaie-unroll-local-loops", "ModuleOp"> {
+  let summary = "Unroll local parallel loops and try hoisting dma operations if possible.";
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEUnrollLocalLoopsPass()";
+}
+
 def AMDAIEDmaToCircularDma :
   Pass<"iree-amdaie-dma-to-circular-dma"> {
   let summary = "Convert dma operations to circular dma operations.";

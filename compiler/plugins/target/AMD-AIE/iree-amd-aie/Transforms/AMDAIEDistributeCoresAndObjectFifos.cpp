@@ -882,19 +882,6 @@ void AMDAIEDistributeCoresAndObjectFifosPass::runOnOperation() {
   MLIRContext *context = &getContext();
   ModuleOp moduleOp = getOperation();
 
-  // Unroll local parallel loops and try hoisting dma operations if
-  // possible.
-  RewritePatternSet unrollLocalLoopsPatterns(context);
-  unrollLocalLoopsPatterns.insert<AMDAIEUnrollLocalLoops>(context);
-  if (failed(applyPatternsAndFoldGreedily(
-          moduleOp, std::move(unrollLocalLoopsPatterns)))) {
-    moduleOp.emitOpError()
-        << "loop unrolling of loops selected for parallel execution failed";
-    return signalPassFailure();
-  }
-  LLVM_DEBUG(llvm::dbgs() << "Module after AMDAIEUnrollLocalLoops: \n"
-                          << moduleOp << "\n");
-
   // Insert `amdaie.logicalobjectfifo.access` operations which retrieve the
   // memrefs from logical objectfifos and update the computational operations to
   // operate on these local memrefs. These access operations will be used to
