@@ -1,5 +1,8 @@
 // RUN: iree-opt --aie-localize-locks --aie-standard-lowering %s | FileCheck %s
 
+// CHECK:         func.func private @llvm.aie2.put.ms(i32, i32)
+// CHECK:         func.func private @llvm.aie2.mcd.write.vec(vector<16xi32>, i32)
+
 // CHECK-LABEL:   func.func @core_2_3() {
 // CHECK:           %[[C48:.*]] = arith.constant 48 : index
 // CHECK:           %[[VAL_0:.*]] = arith.index_cast %[[C48]] : index to i32
@@ -20,20 +23,20 @@
 // CHECK:           call @llvm.aie2.acquire(%[[VAL_0]], %[[C0_I32]]) : (i32, i32) -> ()
 // CHECK:           %[[C16_I32:.*]] = arith.constant 16 : i32
 // CHECK:           %[[C0_I32_0:.*]] = arith.constant 0 : i32
-// CHECK:           %[[C0_I32_1:.*]] = arith.constant 0 : i32
-// CHECK:           call @llvm.aie2.put.ms(%[[C16_I32]], %[[C0_I32_1]]) : (i32, i32) -> ()
-// CHECK:           %[[CST:.*]] = arith.constant dense<0> : vector<16xi32>
 // CHECK:           %[[C1_I32:.*]] = arith.constant 1 : i32
+// CHECK:           call @llvm.aie2.put.ms(%[[C16_I32]], %[[C0_I32_0]]) : (i32, i32) -> ()
+// CHECK:           %[[CST:.*]] = arith.constant dense<0> : vector<16xi32>
 // CHECK:           call @llvm.aie2.mcd.write.vec(%[[CST]], %[[C1_I32]]) : (vector<16xi32>, i32) -> ()
 // CHECK:           %[[VAL_1:.*]] = arith.index_cast %[[C48]] : index to i32
-// CHECK:           %[[C1_I32_2:.*]] = arith.constant 1 : i32
-// CHECK:           call @llvm.aie2.release(%[[VAL_1]], %[[C1_I32_2]]) : (i32, i32) -> ()
+// CHECK:           %[[C1_I32_1:.*]] = arith.constant 1 : i32
+// CHECK:           call @llvm.aie2.release(%[[VAL_1]], %[[C1_I32_1]]) : (i32, i32) -> ()
 // CHECK:           return
 // CHECK:         }
 
-
 module @example0 {
  aie.device(npu1_4col) {
+ func.func private @llvm.aie2.put.ms(i32, i32) -> ()
+ func.func private @llvm.aie2.mcd.write.vec(vector<16xi32>, i32) -> ()
 
   // Odd  AIE rows: DMem on the East
   // Even AIE rows: DMem on the West
@@ -88,10 +91,11 @@ module @example0 {
     // code
     %val0 = arith.constant 16 : i32
     %0 = arith.constant 0 : i32
-    aie.put_stream(%0 : i32, %val0 : i32)
+    %1 = arith.constant 1 : i32
+    func.call @llvm.aie2.put.ms(%val0, %0) : (i32, i32) -> ()
     // %val1 = aie.get_stream(%0 : i32) : i128
     %val2 = arith.constant dense<0> : vector<16xi32>
-    aie.put_cascade(%val2: vector<16xi32>)
+    func.call @llvm.aie2.mcd.write.vec(%val2, %1) : (vector<16xi32>, i32) -> ()
     aie.use_lock(%l33_0, Release, 1)
     aie.end
   }

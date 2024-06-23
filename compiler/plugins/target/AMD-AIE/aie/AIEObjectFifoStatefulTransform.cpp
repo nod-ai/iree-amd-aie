@@ -264,45 +264,25 @@ struct AIEObjectFifoStatefulTransformPass
                                             ObjectFifoCreateOp op, int numElem,
                                             TileOp creation_tile) {
     std::vector<LockOp> locks;
-    auto dev = op->getParentOfType<DeviceOp>();
-    auto &target = dev.getTargetModel();
     if (creation_tile.isShimTile()) numElem = externalBuffersPerFifo[op].size();
-    if (target.getTargetArch() == AIEArch::AIE1) {
-      int of_elem_index =
-          0;  // used to give objectFifo elements a symbolic name
-      for (int i = 0; i < numElem; i++) {
-        // create corresponding aie1 locks
-        int lockID = lockAnalysis.getLockID(creation_tile);
-        assert(lockID >= 0 && "No more locks to allocate!");
-        auto lock = builder.create<LockOp>(builder.getUnknownLoc(),
-                                           creation_tile, lockID, 0);
-        lock.getOperation()->setAttr(
-            SymbolTable::getSymbolAttrName(),
-            builder.getStringAttr(op.name().str() + "_lock_" +
-                                  std::to_string(of_elem_index)));
-        locks.push_back(lock);
-        of_elem_index++;
-      }
-    } else {
-      // create corresponding aie2 locks
-      int prodLockID = lockAnalysis.getLockID(creation_tile);
-      assert(prodLockID >= 0 && "No more locks to allocate!");
-      auto prodLock = builder.create<LockOp>(
-          builder.getUnknownLoc(), creation_tile, prodLockID, numElem);
-      prodLock.getOperation()->setAttr(
-          SymbolTable::getSymbolAttrName(),
-          builder.getStringAttr(op.name().str() + "_prod_lock"));
-      locks.push_back(prodLock);
+    // create corresponding aie2 locks
+    int prodLockID = lockAnalysis.getLockID(creation_tile);
+    assert(prodLockID >= 0 && "No more locks to allocate!");
+    auto prodLock = builder.create<LockOp>(builder.getUnknownLoc(),
+                                           creation_tile, prodLockID, numElem);
+    prodLock.getOperation()->setAttr(
+        SymbolTable::getSymbolAttrName(),
+        builder.getStringAttr(op.name().str() + "_prod_lock"));
+    locks.push_back(prodLock);
 
-      int consLockID = lockAnalysis.getLockID(creation_tile);
-      assert(consLockID >= 0 && "No more locks to allocate!");
-      auto consLock = builder.create<LockOp>(builder.getUnknownLoc(),
-                                             creation_tile, consLockID, 0);
-      consLock.getOperation()->setAttr(
-          SymbolTable::getSymbolAttrName(),
-          builder.getStringAttr(op.name().str() + "_cons_lock"));
-      locks.push_back(consLock);
-    }
+    int consLockID = lockAnalysis.getLockID(creation_tile);
+    assert(consLockID >= 0 && "No more locks to allocate!");
+    auto consLock = builder.create<LockOp>(builder.getUnknownLoc(),
+                                           creation_tile, consLockID, 0);
+    consLock.getOperation()->setAttr(
+        SymbolTable::getSymbolAttrName(),
+        builder.getStringAttr(op.name().str() + "_cons_lock"));
+    locks.push_back(consLock);
     return locks;
   }
 
@@ -436,22 +416,13 @@ struct AIEObjectFifoStatefulTransformPass
     int acqMode = 1;
     int relMode = 1;
     auto acqLockAction = LockAction::Acquire;
-    auto dev = op->getParentOfType<DeviceOp>();
-    if (auto &target = dev.getTargetModel();
-        target.getTargetArch() == AIEArch::AIE1) {
-      acqMode = lockMode == 0 ? 1 : 0;
-      relMode = lockMode == 0 ? 0 : 1;
-      acqLock = locksPerFifo[op][blockIndex];
-      relLock = locksPerFifo[op][blockIndex];
-    } else {
-      acqMode = acqNum;
-      relMode = relNum;
-      acqLockAction = LockAction::AcquireGreaterEqual;
-      acqLock = channelDir == DMAChannelDir::S2MM ? locksPerFifo[op][0]
-                                                  : locksPerFifo[op][1];
-      relLock = channelDir == DMAChannelDir::S2MM ? locksPerFifo[op][1]
-                                                  : locksPerFifo[op][0];
-    }
+    acqMode = acqNum;
+    relMode = relNum;
+    acqLockAction = LockAction::AcquireGreaterEqual;
+    acqLock = channelDir == DMAChannelDir::S2MM ? locksPerFifo[op][0]
+                                                : locksPerFifo[op][1];
+    relLock = channelDir == DMAChannelDir::S2MM ? locksPerFifo[op][1]
+                                                : locksPerFifo[op][0];
     createBd(builder, acqLock, acqMode, acqLockAction, relLock, relMode, buff,
              offset, len, succ, dims);
   }
@@ -821,44 +792,25 @@ struct AIEObjectFifoStatefulTransformPass
       if (objFifoLinks.find(*linkOp) != objFifoLinks.end())
         target = objFifoLinks[*linkOp];
 
-    auto dev = op->getParentOfType<DeviceOp>();
-    if (auto &targetArch = dev.getTargetModel();
-        targetArch.getTargetArch() == AIEArch::AIE1) {
-      int lockMode = 0;
-      if ((port == ObjectFifoPort::Produce &&
-           lockAction == LockAction::Release) ||
-          (port == ObjectFifoPort::Consume &&
-           lockAction == LockAction::Acquire))
-        lockMode = 1;
-      for (int i = 0; i < numLocks; i++) {
-        int lockID = acc[{op, portNum}];
-        builder.create<UseLockOp>(builder.getUnknownLoc(),
-                                  locksPerFifo[target][lockID], lockAction,
-                                  lockMode);
-        acc[{op, portNum}] =
-            (lockID + 1) % op.size();  // update to next objFifo elem
-      }
+    if (numLocks == 0) return;
+    // search for the correct lock based on the port of the acq/rel
+    // operation e.g. acq as consumer is the read lock (second)
+    LockOp lock;
+    if (lockAction == LockAction::AcquireGreaterEqual) {
+      if (port == ObjectFifoPort::Produce)
+        lock = locksPerFifo[target][0];
+      else
+        lock = locksPerFifo[target][1];
     } else {
-      if (numLocks == 0) return;
-      // search for the correct lock based on the port of the acq/rel
-      // operation e.g. acq as consumer is the read lock (second)
-      LockOp lock;
-      if (lockAction == LockAction::AcquireGreaterEqual) {
-        if (port == ObjectFifoPort::Produce)
-          lock = locksPerFifo[target][0];
-        else
-          lock = locksPerFifo[target][1];
-      } else {
-        if (port == ObjectFifoPort::Produce)
-          lock = locksPerFifo[target][1];
-        else
-          lock = locksPerFifo[target][0];
-      }
-      builder.create<UseLockOp>(builder.getUnknownLoc(), lock, lockAction,
-                                numLocks);
-      acc[{op, portNum}] = (acc[{op, portNum}] + numLocks) %
-                           op.size();  // update to next objFifo elem
+      if (port == ObjectFifoPort::Produce)
+        lock = locksPerFifo[target][1];
+      else
+        lock = locksPerFifo[target][0];
     }
+    builder.create<UseLockOp>(builder.getUnknownLoc(), lock, lockAction,
+                              numLocks);
+    acc[{op, portNum}] = (acc[{op, portNum}] + numLocks) %
+                         op.size();  // update to next objFifo elem
   }
 
   /// Function used to check whether op is already contained in map.
@@ -1320,14 +1272,8 @@ struct AIEObjectFifoStatefulTransformPass
         else
           numCreate = 0;
 
-        auto dev = op->getParentOfType<DeviceOp>();
-        if (auto &targetArch = dev.getTargetModel();
-            targetArch.getTargetArch() == AIEArch::AIE1)
-          createUseLocks(builder, op, port, acqPerFifo, numCreate,
-                         LockAction::Acquire);
-        else
-          createUseLocks(builder, op, port, acqPerFifo, numCreate,
-                         LockAction::AcquireGreaterEqual);
+        createUseLocks(builder, op, port, acqPerFifo, numCreate,
+                       LockAction::AcquireGreaterEqual);
 
         // if objFifo was linked with others, find which objFifos
         // elements to use

@@ -74,100 +74,58 @@ struct AIEAssignBufferDescriptorIDsPass
         if (bd.getBdId().has_value()) gen.assignBdId(bd.getBdId().value());
       });
 
-      auto dmaOps = memOp.getOperation()->getRegion(0).getOps<DMAOp>();
-      if (!dmaOps.empty()) {
-        for (auto dmaOp : dmaOps) {
-          auto bdRegions = dmaOp.getBds();
-          for (auto &bdRegion : bdRegions) {
-            auto &block = bdRegion.getBlocks().front();
-            DMABDOp bd = *block.getOps<DMABDOp>().begin();
-            if (bd.getBdId().has_value())
-              assert(
-                  gen.bdIdAlreadyAssigned(bd.getBdId().value()) &&
-                  "bdId assigned by user but not found during previous walk");
-            else
-              bd.setBdId(gen.nextBdId(dmaOp.getChannelIndex()));
+      DenseMap<Block *, int> blockChannelMap;
+      // Associate with each block the channel index specified by the
+      // dma_start
+      for (Block &block : memOp.getOperation()->getRegion(0))
+        for (auto op : block.getOps<DMAStartOp>()) {
+          int chNum = op.getChannelIndex();
+          blockChannelMap[&block] = chNum;
+          Block *dest = op.getDest();
+          while (dest) {
+            blockChannelMap[dest] = chNum;
+            if (dest->hasNoSuccessors()) break;
+            dest = dest->getSuccessors()[0];
+            if (blockChannelMap.contains(dest)) dest = nullptr;
           }
         }
-      } else {
-        DenseMap<Block *, int> blockChannelMap;
-        // Associate with each block the channel index specified by the
-        // dma_start
-        for (Block &block : memOp.getOperation()->getRegion(0))
-          for (auto op : block.getOps<DMAStartOp>()) {
-            int chNum = op.getChannelIndex();
-            blockChannelMap[&block] = chNum;
-            Block *dest = op.getDest();
-            while (dest) {
-              blockChannelMap[dest] = chNum;
-              if (dest->hasNoSuccessors()) break;
-              dest = dest->getSuccessors()[0];
-              if (blockChannelMap.contains(dest)) dest = nullptr;
-            }
-          }
 
-        for (Block &block : memOp.getOperation()->getRegion(0)) {
-          if (block.getOps<DMABDOp>().empty()) continue;
-          assert(blockChannelMap.count(&block));
-          DMABDOp bd = (*block.getOps<DMABDOp>().begin());
-          if (bd.getBdId().has_value())
-            assert(gen.bdIdAlreadyAssigned(bd.getBdId().value()) &&
-                   "bdId assigned by user but not found during previous walk");
-          else
-            bd.setBdId(gen.nextBdId(blockChannelMap[&block]));
-        }
+      for (Block &block : memOp.getOperation()->getRegion(0)) {
+        if (block.getOps<DMABDOp>().empty()) continue;
+        assert(blockChannelMap.count(&block));
+        DMABDOp bd = (*block.getOps<DMABDOp>().begin());
+        if (bd.getBdId().has_value())
+          assert(gen.bdIdAlreadyAssigned(bd.getBdId().value()) &&
+                 "bdId assigned by user but not found during previous walk");
+        else
+          bd.setBdId(gen.nextBdId(blockChannelMap[&block]));
       }
     }
     for (TileElement memOp : memOps) {
-      auto dmaOps = memOp.getOperation()->getRegion(0).getOps<DMAOp>();
-      if (!dmaOps.empty()) {
-        for (auto dmaOp : dmaOps) {
-          auto bdRegions = dmaOp.getBds();
-          for (auto *bdRegionIt = bdRegions.begin();
-               bdRegionIt != bdRegions.end();) {
-            auto &block = bdRegionIt->getBlocks().front();
-            DMABDOp bd = *block.getOps<DMABDOp>().begin();
-            std::optional<int> nextBdId;
-            if (++bdRegionIt != bdRegions.end())
-              nextBdId =
-                  (*bdRegionIt->getBlocks().front().getOps<DMABDOp>().begin())
-                      .getBdId();
-            else if (dmaOp.getLoop())
-              nextBdId = (*bdRegions.front()
-                               .getBlocks()
-                               .front()
-                               .getOps<DMABDOp>()
-                               .begin())
-                             .getBdId();
-            bd.setNextBdId(nextBdId);
-          }
-        }
-      } else {
-        DenseMap<Block *, int> blockBdIdMap;
-        for (Block &block : memOp.getOperation()->getRegion(0)) {
-          if (block.getOps<DMABDOp>().empty()) continue;
-          DMABDOp bd = *block.getOps<DMABDOp>().begin();
-          assert(bd.getBdId().has_value() &&
-                 "DMABDOp should have bd_id assigned by now");
-          blockBdIdMap[&block] = bd.getBdId().value();
-        }
+      DenseMap<Block *, int> blockBdIdMap;
+      for (Block &block : memOp.getOperation()->getRegion(0)) {
+        if (block.getOps<DMABDOp>().empty()) continue;
+        DMABDOp bd = *block.getOps<DMABDOp>().begin();
+        assert(bd.getBdId().has_value() &&
+               "DMABDOp should have bd_id assigned by now");
+        blockBdIdMap[&block] = bd.getBdId().value();
+      }
 
-        for (Block &block : memOp.getOperation()->getRegion(0)) {
-          if (block.getOps<DMABDOp>().empty()) continue;
-          DMABDOp bd = *block.getOps<DMABDOp>().begin();
-          std::optional<int> nextBdId;
-          if (block.getNumSuccessors()) {
-            assert(llvm::range_size(block.getSuccessors()) == 1 &&
-                   "should have only one successor block");
-            Block *nextBlock = block.getSuccessor(0);
-            if (!blockBdIdMap.contains(nextBlock))
-              assert(nextBlock->getOperations().size() == 1 &&
-                     isa<EndOp>(nextBlock->getOperations().front()) &&
-                     "bb that's not in blockMap can only have aie.end");
-            else
-              nextBdId = blockBdIdMap[nextBlock];
-            bd.setNextBdId(nextBdId);
-          }
+      for (Block &block : memOp.getOperation()->getRegion(0)) {
+        if (block.getOps<DMABDOp>().empty()) continue;
+        DMABDOp bd = *block.getOps<DMABDOp>().begin();
+        std::optional<int> nextBdId;
+        if (block.getNumSuccessors()) {
+          assert(llvm::range_size(block.getSuccessors()) == 1 &&
+                 "should have only one successor block");
+          Block *nextBlock = block.getSuccessor(0);
+          if (!blockBdIdMap.contains(nextBlock))
+            assert(nextBlock->getOperations().size() == 1 &&
+                   isa<EndOp>(nextBlock->getOperations().front()) &&
+                   "bb that's not in blockMap can only have aie.end");
+          else
+            nextBdId = blockBdIdMap[nextBlock];
+          bd.setNextBdId(nextBdId);
         }
       }
     }

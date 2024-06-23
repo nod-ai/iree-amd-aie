@@ -6,7 +6,7 @@
 
 #include <vector>
 
-#include "AIETargets.h"
+#include "AMDAIETargets.h"
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "llvm/ADT/ArrayRef.h"
