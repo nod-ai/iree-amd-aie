@@ -253,7 +253,6 @@ LogicalResult AIETargetBackend::serializeExecutable(
 
   SmallString<128> aie2xclbin(options.mlirAieInstallDir);
   llvm::sys::path::append(aie2xclbin, "bin", "aie2xclbin");
-  std::vector<uint32_t> npuInstrs;
   std::unique_ptr<llvm::MemoryBuffer> xclbinIn;
 
   FlatbufferBuilder builder;
@@ -359,6 +358,8 @@ LogicalResult AIETargetBackend::serializeExecutable(
 
     std::ifstream instrFile(static_cast<std::string>(npuInstPath));
     std::string line;
+    // Vector to store LX6 instructions.
+    std::vector<uint32_t> npuInstrs;
     while (std::getline(instrFile, line)) {
       std::istringstream iss(line);
       uint32_t a;
