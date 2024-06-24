@@ -52,7 +52,7 @@ iree_cc_library(
     "AMDAIEControlCodeLoopUnroll.cpp"
     "AMDAIECreateAIEWorkgroup.cpp"
     "AMDAIECreateLogicalObjectFifoLink.cpp"
-    "AMDAIEDistributeCoresAndObjectFifos.cpp"
+    "AMDAIEDistributeSharedMemory.cpp"
     "AMDAIELocalForallToFor.cpp"
     "AMDAIEDistributeLocalMemory.cpp"
     "AMDAIEUnrollLocalLoops.cpp"

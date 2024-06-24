@@ -98,11 +98,11 @@ def AMDAIEDecomposeLinalgExtPackUnPackToAIR :
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEDecomposeLinalgExtPackUnPackToAIRPass()";
 }
 
-def AMDAIEDistributeCoresAndObjectFifos :
-  Pass<"iree-amdaie-distribute-cores-and-objectfifos", "ModuleOp"> {
-  let summary = "Unroll the scf.forall operations around `amdaie.core` "
-                "operations and distribute the logical objectFifos.";
-  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEDistributeCoresAndObjectFifosPass()";
+def AMDAIEDistributeSharedMemory :
+  Pass<"iree-amdaie-distribute-shared-memory", "ModuleOp"> {
+  let summary = "Allocate different memories for logical objectFifos on the same shared "
+                "memory tile to ensure different buffers will be used for them.";
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEDistributeSharedMemoryPass()";
 }
 
 def AMDAIELocalForallToFor :

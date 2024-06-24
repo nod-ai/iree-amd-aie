@@ -76,9 +76,9 @@ std::unique_ptr<Pass> createAMDAIECleanupPass();
 /// dialect.
 std::unique_ptr<Pass> createAMDAIEDecomposeLinalgExtPackUnPackToAIRPass();
 
-/// Create pass to unroll the scf.forall operations around `amdaie.core`
-/// operations and distribute the logical objectFifos.
-std::unique_ptr<Pass> createAMDAIEDistributeCoresAndObjectFifosPass();
+/// Create pass to allocate different memories for logical objectFifos on the
+/// same shared memory tile to ensure different buffers will be used for them.
+std::unique_ptr<Pass> createAMDAIEDistributeSharedMemoryPass();
 
 /// Convert local scf.forall operations selected for parallel distribution to
 /// nested scf.for operations.
