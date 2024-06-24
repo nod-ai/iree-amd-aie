@@ -879,41 +879,7 @@ class AMDAIEDistributeCoresAndObjectFifosPass
 };
 
 void AMDAIEDistributeCoresAndObjectFifosPass::runOnOperation() {
-  MLIRContext *context = &getContext();
   ModuleOp moduleOp = getOperation();
-
-  // Assign tile locations to logical objectfifos on local (L1) memory.
-  if (failed(assignLocalAieTiles(moduleOp))) {
-    moduleOp.emitOpError() << "local tile assignment failed";
-    return signalPassFailure();
-  }
-  LLVM_DEBUG(llvm::dbgs() << "Module after assignLocalAieTiles: \n"
-                          << moduleOp << "\n");
-
-  // Assign a set of potential tile locations to the remaining logical
-  // objectFifos.
-  RewritePatternSet assignAieTilePatters(context);
-  assignAieTilePatters.insert<FillAieTiles>(context);
-  if (failed(applyPatternsAndFoldGreedily(moduleOp,
-                                          std::move(assignAieTilePatters)))) {
-    moduleOp.emitOpError()
-        << "collection of tile candidates for logical objectFifos failed";
-    return signalPassFailure();
-  }
-  LLVM_DEBUG(llvm::dbgs() << "Module after FillAieTiles: \n"
-                          << moduleOp << "\n");
-
-  // Assign specific tile locations to objectFifos, starting from the set of
-  // potential tile locations filled in earlier.
-  if (failed(assignAieTilesAndDistributeLogicalObjectFifos(moduleOp))) {
-    moduleOp.emitOpError()
-        << "tile assignment and logical objectFifo distribution failed";
-    return signalPassFailure();
-  }
-  LLVM_DEBUG(llvm::dbgs()
-             << "Module after assignAieTilesAndDistributeLogicalObjectFifos: \n"
-             << moduleOp << "\n");
-
   // Allocate different memories for logical objectFifos on the same shared
   // memory tile to ensure different buffers will be used for them.
   if (failed(distributeSharedMemory(moduleOp))) {

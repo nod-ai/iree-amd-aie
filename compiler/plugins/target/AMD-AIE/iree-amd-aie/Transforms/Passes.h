@@ -97,6 +97,9 @@ std::unique_ptr<Pass> createAMDAIEUnrollLocalLoopsPass();
 /// assign local AIE tiles to local logical objectFifos later.
 std::unique_ptr<Pass> createAMDAIEInsertLogicalObjectfifoAccessPass();
 
+/// Assign tile locations to logical objectfifos.
+std::unique_ptr<Pass> createAMDAIEAssignTileLocationsPass();
+
 /// Create a pass to convert dma operations to circular dma operations.
 std::unique_ptr<Pass> createAMDAIEDmaToCircularDmaPass();
 

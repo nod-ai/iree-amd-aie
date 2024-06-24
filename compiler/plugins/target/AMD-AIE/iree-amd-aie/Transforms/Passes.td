@@ -133,6 +133,12 @@ def AMDAIEInsertLogicalObjectfifoAccess :
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEInsertLogicalObjectfifoAccessPass()";
 }
 
+def AMDAIEAssignTileLocations :
+  Pass<"iree-amdaie-assign-tile-locations", "ModuleOp"> {
+  let summary = "Assign tile locations to logical objectfifos";
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEAssignTileLocationsPass()";
+}
+
 def AMDAIEDmaToCircularDma :
   Pass<"iree-amdaie-dma-to-circular-dma"> {
   let summary = "Convert dma operations to circular dma operations.";
