@@ -66,13 +66,13 @@
 // CHECK:           }
 // CHECK:         ],
 // CHECK:         "extended-data": {
-// CHECK:           "dpu_kernel_id": "0x101",
+// CHECK:           "dpu_kernel_id": "0x0",
 // CHECK:           "functional": "0",
 // CHECK:           "subtype": "DPU"
 // CHECK:         },
 // CHECK:         "instances": [
 // CHECK:           {
-// CHECK:             "name": "FOO"
+// CHECK:             "name": "dummy2_0"
 // CHECK:           }
 // CHECK:         ],
 // CHECK:         "name": "dummy2_0",

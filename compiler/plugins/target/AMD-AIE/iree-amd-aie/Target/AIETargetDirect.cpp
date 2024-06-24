@@ -91,7 +91,7 @@ static xilinx::AIE::DeviceOp getDeviceOpFromEntryPoint(ModuleOp moduleOp,
 
 class AIETargetDirectDevice final : public IREE::HAL::TargetDevice {
  public:
-  AIETargetDirectDevice(const AMDAIEOptions &options) : options(options) {}
+  AIETargetDirectDevice(const AMDAIEOptions &options) {}
 
   IREE::HAL::DeviceTargetAttr getDefaultDeviceTarget(
       MLIRContext *context,
@@ -113,9 +113,6 @@ class AIETargetDirectDevice final : public IREE::HAL::TargetDevice {
                                             b.getStringAttr("amd-aie-direct"),
                                             configAttr, executableTargetAttrs);
   }
-
- private:
-  AMDAIEOptions options;
 };
 
 class AIETargetDirectBackend final : public IREE::HAL::TargetBackend {
@@ -186,9 +183,10 @@ class AIETargetDirectBackend final : public IREE::HAL::TargetBackend {
     buildAMDAIELinkingPassPipeline(passManager);
   }
 
-  LogicalResult serializeExecutable(const SerializationOptions &serOptions,
-                                    IREE::HAL::ExecutableVariantOp variantOp,
-                                    OpBuilder &executableBuilder) override;
+  LogicalResult serializeExecutable(
+      const SerializationOptions &serializationOptions,
+      IREE::HAL::ExecutableVariantOp variantOp,
+      OpBuilder &executableBuilder) override;
 
   const AMDAIEOptions &getOptions() const { return options; }
 
@@ -197,20 +195,20 @@ class AIETargetDirectBackend final : public IREE::HAL::TargetBackend {
 };
 
 LogicalResult AIETargetDirectBackend::serializeExecutable(
-    const SerializationOptions &serOptions,
+    const SerializationOptions &serializationOptions,
     IREE::HAL::ExecutableVariantOp variantOp, OpBuilder &executableBuilder) {
   ModuleOp moduleOp = variantOp.getInnerModule();
 
-  auto basename =
-      llvm::join_items("_", serOptions.dumpBaseName, variantOp.getName());
+  auto basename = llvm::join_items("_", serializationOptions.dumpBaseName,
+                                   variantOp.getName());
 
   auto maybeWorkDir = [&]() -> FailureOr<SmallString<128>> {
     // If a path for intermediates has been specified, assume it is common for
     // all executables compiling in parallel, and so create an
     // executable-specific subdir to keep this executable's intermediates
     // separate.
-    if (!serOptions.dumpIntermediatesPath.empty()) {
-      SmallString<128> workDir{serOptions.dumpIntermediatesPath};
+    if (!serializationOptions.dumpIntermediatesPath.empty()) {
+      SmallString<128> workDir{serializationOptions.dumpIntermediatesPath};
       llvm::sys::path::append(workDir, basename);
       auto ecode = llvm::sys::fs::create_directories(workDir);
       if (ecode) {
@@ -280,7 +278,6 @@ LogicalResult AIETargetDirectBackend::serializeExecutable(
   }
   uint64_t ordinalCount = entryPointOrdinals.size();
 
-  std::vector<uint32_t> npuInstrs;
   std::unique_ptr<llvm::MemoryBuffer> xclbinIn;
 
   FlatbufferBuilder builder;
@@ -336,8 +333,12 @@ LogicalResult AIETargetDirectBackend::serializeExecutable(
     TK.TempDir = entryPointWorkDir.str();
     TK.UseChess = options.useChess;
     TK.Verbose = options.showInvokedCommands;
-    TK.XCLBinInstanceName = "FOO";
-    TK.XCLBinKernelID = "0x101";
+    TK.XCLBinInstanceName = entryPointNamesFb[ordinal];
+
+    // Convert ordinal to hexadecimal string for xclbin kernel id.
+    std::stringstream ordinalHex;
+    ordinalHex << "0x" << std::hex << ordinal;
+    TK.XCLBinKernelID = ordinalHex.str();
     TK.XCLBinKernelName = entryPointNamesFb[ordinal];
 
     SmallString<64> aieToolsDir(options.vitisInstallDir);
@@ -350,6 +351,7 @@ LogicalResult AIETargetDirectBackend::serializeExecutable(
                           xclbinPath)))
       return failure();
 
+    std::vector<uint32_t> npuInstrs;
     std::ifstream instrFile(static_cast<std::string>(npuInstPath));
     std::string line;
     while (std::getline(instrFile, line)) {
