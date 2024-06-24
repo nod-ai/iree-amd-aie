@@ -4,8 +4,7 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#include "AIEAssignBufferAddressesBasic.h"
-
+#include "Passes.h"
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "llvm/ADT/Twine.h"
 #include "mlir/IR/Attributes.h"
@@ -17,6 +16,7 @@ using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIE;
 
+namespace mlir::iree_compiler::AMDAIE {
 struct AIEAssignBufferAddressesPassBasic : mlir::OperationPass<DeviceOp> {
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(
       AIEAssignBufferAddressesPassBasic)
@@ -85,12 +85,13 @@ struct AIEAssignBufferAddressesPassBasic : mlir::OperationPass<DeviceOp> {
 };
 
 std::unique_ptr<OperationPass<DeviceOp>>
-AIE::createAIEAssignBufferAddressesBasicPass() {
+createAIEAssignBufferAddressesBasicPass() {
   return std::make_unique<AIEAssignBufferAddressesPassBasic>();
 }
 
-void xilinx::AIE::registerAIEAssignBufferAddressesBasic() {
+void registerAIEAssignBufferAddressesBasic() {
   mlir::registerPass([]() -> std::unique_ptr<mlir::Pass> {
-    return xilinx::AIE::createAIEAssignBufferAddressesBasicPass();
+    return createAIEAssignBufferAddressesBasicPass();
   });
 }
+}  // namespace mlir::iree_compiler::AMDAIE

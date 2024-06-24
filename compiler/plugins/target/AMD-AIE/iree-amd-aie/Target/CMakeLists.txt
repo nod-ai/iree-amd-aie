@@ -24,8 +24,7 @@ iree_cc_library(
   DEPS
     iree::target::amd-aie::aie::AIEDialectIR
     iree::target::amd-aie::aie::AIEXDialectIR
-    iree::target::amd-aie::aie::AIETransformPasses
-    iree::target::amd-aie::aie::AIEXTransformPasses
+    iree::target::amd-aie::aie::AIEPasses
     iree::target::amd-aie::aie::AIEVecDialectIR
     iree::target::amd-aie::aie::AIEVecConvertToLLVM
     MLIRToLLVMIRTranslationRegistration

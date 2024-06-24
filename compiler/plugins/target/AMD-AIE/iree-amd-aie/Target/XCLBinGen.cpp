@@ -11,9 +11,8 @@
 #include <unordered_map>
 
 #include "aie/Conversion/AIEVecToLLVM/AIEVecToLLVM.h"
-#include "aie/Dialect/AIE/Transforms/AIEPasses.h"
 #include "aie/Dialect/AIEVec/Pipelines/Passes.h"
-#include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
+#include "aie/Passes.h"
 #include "aie/Targets/AIETargets.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/JSON.h"
@@ -334,7 +333,8 @@ static LogicalResult generateCDO(MLIRContext *context, ModuleOp moduleOp,
   PassManager passManager(context, ModuleOp::getOperationName());
   applyConfigToPassManager(TK, passManager);
 
-  passManager.addNestedPass<AIE::DeviceOp>(AIE::createAIEPathfinderPass());
+  passManager.addNestedPass<AIE::DeviceOp>(
+      mlir::iree_compiler::AMDAIE::createAIEPathfinderPass());
   if (failed(passManager.run(copy)))
     return moduleOp.emitOpError(
         "failed to run passes to prepare of XCLBin generation");
@@ -684,9 +684,10 @@ static LogicalResult generateUnifiedObject(MLIRContext *context,
   PassManager pm(context, moduleOp.getOperationName());
   applyConfigToPassManager(TK, pm);
 
-  pm.addNestedPass<AIE::DeviceOp>(AIE::createAIELocalizeLocksPass());
-  pm.addPass(AIE::createAIECoreToStandardPass());
-  pm.addPass(AIEX::createAIEXToStandardPass());
+  pm.addNestedPass<AIE::DeviceOp>(
+      mlir::iree_compiler::AMDAIE::createAIELocalizeLocksPass());
+  pm.addPass(mlir::iree_compiler::AMDAIE::createAIECoreToStandardPass());
+  pm.addPass(mlir::iree_compiler::AMDAIE::createAIEXToStandardPass());
 
   // Convert specific vector dialect ops (like vector.contract) to the AIEVec
   // dialect
@@ -848,7 +849,8 @@ LogicalResult xilinx::aie2xclbin(MLIRContext *ctx, ModuleOp moduleOp,
     PassManager pm(ctx, moduleOp.getOperationName());
     applyConfigToPassManager(TK, pm);
 
-    pm.addNestedPass<AIE::DeviceOp>(AIEX::createAIEDmaToNpuPass());
+    pm.addNestedPass<AIE::DeviceOp>(
+        mlir::iree_compiler::AMDAIE::createAIEDmaToNpuPass());
     ModuleOp copy = moduleOp.clone();
     if (failed(pm.run(copy)))
       return moduleOp.emitOpError("NPU Instruction pipeline failed");

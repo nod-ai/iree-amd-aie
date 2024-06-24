@@ -13,6 +13,7 @@
 #include "aie/Dialect/AIEVec/IR/AIEVecDialect.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "aie/Dialect/XLLVM/XLLVMDialect.h"
+#include "aie/Passes.h"
 #include "aie/Target/LLVMIR/Dialect/XLLVM/XLLVMToLLVMIRTranslation.h"
 #include "iree-amd-aie/IR/AMDAIEDialect.h"
 #include "iree-amd-aie/Transforms/Passes.h"
@@ -174,9 +175,17 @@ class AIETargetDirectBackend final : public IREE::HAL::TargetBackend {
     registerConvertMemRefToLLVMInterface(registry);
   }
 
-  void buildTranslationPassPipeline(IREE::HAL::ExecutableTargetAttr,
-                                    OpPassManager &passManager) override {
-    buildAMDAIELowerObjectFIFO(passManager);
+  void buildTranslationPassPipeline(
+      IREE::HAL::ExecutableTargetAttr,
+      OpPassManager &variantPassManager) override {
+    OpPassManager &modulePassManager = variantPassManager.nest<ModuleOp>();
+    auto &devicePassMan = modulePassManager.nest<xilinx::AIE::DeviceOp>();
+    devicePassMan.addPass(createAIEObjectFifoStatefulTransformPass());
+    devicePassMan.addPass(createAIEAssignBufferAddressesBasicPass());
+    devicePassMan.addPass(createAIEAssignLockIDsPass());
+    devicePassMan.addPass(createAIEAssignBufferDescriptorIDsPass());
+    devicePassMan.addPass(createAIEPathfinderPass());
+    devicePassMan.addPass(createAIELocalizeLocksPass());
   }
 
   void buildLinkingPassPipeline(OpPassManager &passManager) override {
