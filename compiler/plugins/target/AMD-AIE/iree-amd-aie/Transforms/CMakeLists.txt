@@ -4,6 +4,10 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+file(GLOB _cpp_files *.cpp)
+file(GLOB _h_files *.h)
+list(REMOVE_ITEM _h_files "PassDetail.h")
+
 set(IREE_PACKAGE_ROOT_DIR "${CMAKE_CURRENT_LIST_DIR}")
 set(IREE_PACKAGE_ROOT_PREFIX "iree::target::amd-aie::Transforms")
 iree_add_all_subdirs()
@@ -35,59 +39,9 @@ iree_cc_library(
   NAME
     Transforms
   HDRS
-    "KernelDispatch.h"
-    "Passes.h"
-    "AMDAIECreateAIEWorkgroup.h"
-    "AMDAIEDmaUtils.h"
-    "AMDAIEOpUtils.h"
-    "AMDAIEUtils.h"
-    "Transforms.h"
+    ${_h_files}
   SRCS
-    "AMDAIEAccessToAcquireRelease.cpp"
-    "AMDAIEAddLoweringStrategy.cpp"
-    "AMDAIEAIRDmaToAMDAIEDma.cpp"
-    "AMDAIEBufferizeToAllocation.cpp"
-    "AMDAIECanonicalizeDma.cpp"
-    "AMDAIECanonicalizeDoublyStridedOp.cpp"
-    "AMDAIEControlCodeLoopUnroll.cpp"
-    "AMDAIECreateAIEWorkgroup.cpp"
-    "AMDAIECreateLogicalObjectFifoLink.cpp"
-    "AMDAIEDistributeSharedMemory.cpp"
-    "AMDAIELocalForallToFor.cpp"
-    "AMDAIEDistributeLocalMemory.cpp"
-    "AMDAIEUnrollLocalLoops.cpp"
-    "AMDAIEInsertLogicalObjectfifoAccess.cpp"
-    "AMDAIEAssignTileLocations.cpp"
-    "AMDAIEDmaToCircularDma.cpp"
-    "AMDAIEDmaUtils.cpp"
-    "AMDAIEFuseConsumerIntoLoop.cpp"
-    "AMDAIEFuseFillIntoForall.cpp"
-    "AMDAIEFusePackIntoLoop.cpp"
-    "AMDAIEHoistForAffineApply.cpp"
-    "AMDAIEInsertCores.cpp"
-    "AMDAIEInsertLoopsForVectorization.cpp"
-    "AMDAIELinkExecutables.cpp" 
-    "AMDAIELocalizeLogicalObjectFifo.cpp"
-    "AMDAIELowerExecutableTarget.cpp"
-    "AMDAIELowerToAIE.cpp"
-    "AMDAIELowerToUKernels.cpp"
-    "AMDAIELowerWorkgroupCount.cpp"
-    "AMDAIEMapForallToCores.cpp"
-    "AMDAIENormalizeLoopBounds.cpp"
-    "AMDAIEPackAndTranspose.cpp"
-    "AMDAIEPackToDma.cpp"
-    "AMDAIEPad.cpp"
-    "AMDAIEPeelForLoop.cpp"
-    "AMDAIEPropagateDataLayout.cpp"
-    "AMDAIETile.cpp"
-    "AMDAIETileAndFuse.cpp"
-    "AMDAIEUtils.cpp"
-    "AMDAIEVectorization.cpp"
-    "BridgeToAIRPass.cpp"
-    "DecomposeLinalgExtPackUnPackToAIR.cpp"
-    "Cleanup.cpp"
-    "KernelDispatch.cpp"
-    "Passes.cpp"
+    ${_cpp_files}
   DEPS
     ::PassHeaders
     ::PassesIncGen
