@@ -5,18 +5,19 @@
 // The trick is to tile the 2-d convolution into 1-d convolution, and then
 // convert the 1-d convolution to a vector.contract.
 
-!input = tensor<2x32x14x14xf32>
-!weight = tensor<64x32x3x3xf32>
-!output = tensor<2x64x12x12xf32>
-
-func.func @conv_static(%input: !input, %weight: !weight) -> !output {
-    %cst = arith.constant 0.000000e+00 : f32
-    %2 = tensor.empty() : !output
-    %3 = linalg.fill ins(%cst : f32) outs(%2 : !output) -> !output
-    %4 = linalg.conv_2d_nchw_fchw {dilations = dense<1> : vector<2xi64>,
-                                   strides = dense<1> : vector<2xi64>}
-    ins(%input, %weight :!input, !weight) outs(%3 : !output) -> !output
-    return %4: !output
+func.func @conv_static_dispatch_0_conv_2d_nchw_fchw_2x64x12x12x32x3x3_f32() {
+  %cst = arith.constant 0.000000e+00 : f32
+  %c0 = arith.constant 0 : index
+  %0 = hal.interface.binding.subspan set(0) binding(0) type(storage_buffer) alignment(64) offset(%c0) flags(ReadOnly) : !flow.dispatch.tensor<readonly:tensor<2x32x14x14xf32>>
+  %1 = hal.interface.binding.subspan set(0) binding(1) type(storage_buffer) alignment(64) offset(%c0) flags(ReadOnly) : !flow.dispatch.tensor<readonly:tensor<64x32x3x3xf32>>
+  %2 = hal.interface.binding.subspan set(0) binding(2) type(storage_buffer) alignment(64) offset(%c0) : !flow.dispatch.tensor<writeonly:tensor<2x64x12x12xf32>>
+  %3 = flow.dispatch.tensor.load %0, offsets = [0, 0, 0, 0], sizes = [2, 32, 14, 14], strides = [1, 1, 1, 1] : !flow.dispatch.tensor<readonly:tensor<2x32x14x14xf32>> -> tensor<2x32x14x14xf32>
+  %4 = flow.dispatch.tensor.load %1, offsets = [0, 0, 0, 0], sizes = [64, 32, 3, 3], strides = [1, 1, 1, 1] : !flow.dispatch.tensor<readonly:tensor<64x32x3x3xf32>> -> tensor<64x32x3x3xf32>
+  %5 = tensor.empty() : tensor<2x64x12x12xf32>
+  %6 = linalg.fill ins(%cst : f32) outs(%5 : tensor<2x64x12x12xf32>) -> tensor<2x64x12x12xf32>
+  %7 = linalg.conv_2d_nchw_fchw {dilations = dense<1> : vector<2xi64>, strides = dense<1> : vector<2xi64>} ins(%3, %4 : tensor<2x32x14x14xf32>, tensor<64x32x3x3xf32>) outs(%6 : tensor<2x64x12x12xf32>) -> tensor<2x64x12x12xf32>
+  flow.dispatch.tensor.store %7, %2, offsets = [0, 0, 0, 0], sizes = [2, 64, 12, 12], strides = [1, 1, 1, 1] : tensor<2x64x12x12xf32> -> !flow.dispatch.tensor<writeonly:tensor<2x64x12x12xf32>>
+  return
 }
 
 !any = !transform.any_op
@@ -52,6 +53,7 @@ module attributes { transform.with_named_sequence } {
     %fill, %conv = transform.split_handle %ops : (!any) -> (!any, !any)
 
     // Air launch & segment processes 4 output channels of 1 image, patch size 4x4.
+    // conv_2d_nchw_fchw tiling dims: [N, OC, OH, OW, IC, KH, KW].
     %tiled_conv, %forall =
       transform.structured.tile_using_forall %conv tile_sizes [1, 4, 4, 4]
       : (!any) -> (!any, !any)
@@ -134,11 +136,11 @@ module attributes { transform.with_named_sequence } {
       transform.structured.bufferize_to_allocation %padded_result_local
       {memory_space = 2, bufferize_destination_only, emit_dealloc} : !any
 
-      // Create loop structure for each tile's execution.
-      // [0,0,0,0,8,1,1]
-      //  ^ ^ ^ ^ ^ ^ ^
-      //  | | | | | | |
-      //  N H W C K h w ===> 3 loops for K, h, w are inserted.
+    // Create loop structure for each tile's execution.
+    // [0, 0, 0, 0, 8, 1, 1]
+    //  ^  ^  ^  ^  ^  ^  ^
+    //  |  |  |  |  |  |  |
+    //  N  OC OH OW IC KH KW ===> 3 reduction loops using scf.for.
 
     %tiled_reduction, %loop0, %loop1, %loop2  =
       transform.structured.tile_using_for %padded_1 tile_sizes [0,0,0,0,8,1,1]
