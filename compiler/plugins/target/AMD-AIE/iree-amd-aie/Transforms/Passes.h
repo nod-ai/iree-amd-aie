@@ -91,6 +91,12 @@ std::unique_ptr<Pass> createAMDAIEDistributeLocalMemoryPass();
 /// Unroll local parallel loops and try hoisting dma operations if possible.
 std::unique_ptr<Pass> createAMDAIEUnrollLocalLoopsPass();
 
+/// Insert `amdaie.logicalobjectfifo.access` operations which retrieve the
+/// memrefs from logical objectfifos and update the computational operations to
+/// operate on these local memrefs. These access operations will be used to
+/// assign local AIE tiles to local logical objectFifos later.
+std::unique_ptr<Pass> createAMDAIEInsertLogicalObjectfifoAccessPass();
+
 /// Create a pass to convert dma operations to circular dma operations.
 std::unique_ptr<Pass> createAMDAIEDmaToCircularDmaPass();
 

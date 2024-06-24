@@ -125,6 +125,14 @@ def AMDAIEUnrollLocalLoops :
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEUnrollLocalLoopsPass()";
 }
 
+def AMDAIEInsertLogicalObjectfifoAccess :
+  Pass<"iree-amdaie-insert-logical-objectfifo-access", "ModuleOp"> {
+  let summary = "Insert `amdaie.logicalobjectfifo.access` operations which retrieve the "
+                "memrefs from logical objectfifos and update the computational operations to "
+                "operate on these local memrefs";
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEInsertLogicalObjectfifoAccessPass()";
+}
+
 def AMDAIEDmaToCircularDma :
   Pass<"iree-amdaie-dma-to-circular-dma"> {
   let summary = "Convert dma operations to circular dma operations.";

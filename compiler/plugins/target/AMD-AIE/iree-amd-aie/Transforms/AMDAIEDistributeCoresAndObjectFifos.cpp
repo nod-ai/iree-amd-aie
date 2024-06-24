@@ -882,18 +882,6 @@ void AMDAIEDistributeCoresAndObjectFifosPass::runOnOperation() {
   MLIRContext *context = &getContext();
   ModuleOp moduleOp = getOperation();
 
-  // Insert `amdaie.logicalobjectfifo.access` operations which retrieve the
-  // memrefs from logical objectfifos and update the computational operations to
-  // operate on these local memrefs. These access operations will be used to
-  // assign local AIE tiles to local logical objectFifos later.
-  if (failed(insertLogicalObjectFifoAccess(moduleOp))) {
-    moduleOp.emitOpError()
-        << "insertion of `amdaie.logicalobjectfif.access` operations failed";
-    return signalPassFailure();
-  }
-  LLVM_DEBUG(llvm::dbgs() << "Module after insertLogicalObjectFifoAccess: \n"
-                          << moduleOp << "\n");
-
   // Assign tile locations to logical objectfifos on local (L1) memory.
   if (failed(assignLocalAieTiles(moduleOp))) {
     moduleOp.emitOpError() << "local tile assignment failed";
