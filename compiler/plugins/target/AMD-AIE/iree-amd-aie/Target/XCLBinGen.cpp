@@ -10,6 +10,7 @@
 #include <sstream>
 #include <unordered_map>
 
+#include "AIETargets.h"
 #include "aie/Conversion/AIEVecToLLVM/AIEVecToLLVM.h"
 #include "aie/Dialect/AIEVec/Pipelines/Passes.h"
 #include "aie/Passes.h"
@@ -240,7 +241,8 @@ static LogicalResult generateCoreElfFiles(ModuleOp moduleOp,
         auto bcfOutput = openOutputFile(bcfPath, &errorMessage);
         if (!bcfOutput) return coreOp.emitOpError(errorMessage);
 
-        if (failed(AIE::AIETranslateToBCF(moduleOp, bcfOutput->os(), col, row)))
+        if (failed(mlir::iree_compiler::AMDAIE::AIETranslateToBCF(
+                moduleOp, bcfOutput->os(), col, row)))
           return coreOp.emitOpError("Failed to generate BCF");
         bcfOutput->keep();
       }
@@ -284,8 +286,8 @@ static LogicalResult generateCoreElfFiles(ModuleOp moduleOp,
         auto ldscript_output = openOutputFile(ldscript_path, &errorMessage);
         if (!ldscript_output) return coreOp.emitOpError(errorMessage);
 
-        if (failed(AIE::AIETranslateToLdScript(moduleOp, ldscript_output->os(),
-                                               col, row)))
+        if (failed(mlir::iree_compiler::AMDAIE::AIETranslateToLdScript(
+                moduleOp, ldscript_output->os(), col, row)))
           return coreOp.emitOpError("failed to generate ld script for core (")
                  << col << "," << row << ")";
         ldscript_output->keep();
@@ -339,7 +341,8 @@ static LogicalResult generateCDO(MLIRContext *context, ModuleOp moduleOp,
     return moduleOp.emitOpError(
         "failed to run passes to prepare of XCLBin generation");
 
-  if (failed(AIE::AIETranslateToCDODirect(copy, TK.TempDir)))
+  if (failed(mlir::iree_compiler::AMDAIE::AIETranslateToCDODirect(copy,
+                                                                  TK.TempDir)))
     return moduleOp.emitOpError("failed to emit CDO");
 
   copy->erase();
@@ -862,7 +865,8 @@ LogicalResult xilinx::aie2xclbin(MLIRContext *ctx, ModuleOp moduleOp,
       return moduleOp.emitOpError("");
     }
 
-    if (failed(AIE::AIETranslateToNPU(copy, output->os())))
+    if (failed(
+            mlir::iree_compiler::AMDAIE::AIETranslateToNPU(copy, output->os())))
       return moduleOp.emitOpError("NPU Instruction translation failed");
 
     output->keep();
