@@ -76,13 +76,13 @@ target_link_libraries(bootgen-lib PUBLIC OpenSSL::SSL OpenSSL::applink)
 # malloc.h is deprecated and should not be used
 # https://stackoverflow.com/a/56463133 If you want to use malloc, then include
 # stdlib.h
-file(READ ${_bootgen_source_dir}/cdo-npi.c FILE_CONTENTS)
-string(REPLACE "#include <malloc.h>" "" FILE_CONTENTS "${FILE_CONTENTS}")
-file(WRITE ${_bootgen_source_dir}/cdo-npi.c "${FILE_CONTENTS}")
+file(READ ${_bootgen_source_dir}/cdo-npi.c _file_contents)
+string(REPLACE "#include <malloc.h>" "" __file_contents "${_file_contents}")
+file(WRITE ${_bootgen_source_dir}/cdo-npi.c "${__file_contents}")
 
-file(READ ${_bootgen_source_dir}/cdo-alloc.c FILE_CONTENTS)
-string(REPLACE "#include <malloc.h>" "" FILE_CONTENTS "${FILE_CONTENTS}")
-file(WRITE ${_bootgen_source_dir}/cdo-alloc.c "${FILE_CONTENTS}")
+file(READ ${_bootgen_source_dir}/cdo-alloc.c _file_contents)
+string(REPLACE "#include <malloc.h>" "" __file_contents "${_file_contents}")
+file(WRITE ${_bootgen_source_dir}/cdo-alloc.c "${__file_contents}")
 
 # ##############################################################################
 # cdo-drver
@@ -101,6 +101,7 @@ iree_install_targets(
 # aie-rt
 # ##############################################################################
 
+set(common_DIR ${CMAKE_CURRENT_LIST_DIR})
 set(_aie_rt_source_dir ${IREE_AMD_AIE_SOURCE_DIR}/third_party/aie-rt)
 set(_aie_rt_binary_include_dir ${CMAKE_BINARY_DIR}/include)
 
