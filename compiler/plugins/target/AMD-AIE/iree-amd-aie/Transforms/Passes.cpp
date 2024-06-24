@@ -6,6 +6,8 @@
 
 #include "iree-amd-aie/Transforms/Passes.h"
 
+#include "aie/AIEAssignBufferAddressesBasic.h"
+#include "aie/Passes.h"
 #include "air/Conversion/Passes.h"
 #include "air/Transform/Passes.h"
 #include "iree-amd-aie/IR/AMDAIEAttrs.h"
@@ -288,7 +290,7 @@ void addPackPeelBasedPassPipeline(OpPassManager &funcPassManager,
 
   // Vectorization passes
   appendVectorizationToPipeline(funcPassManager);
-  
+
   // Comprehensive bufferization
   addAMDAIEBufferizePasses(funcPassManager);
   funcPassManager.addPass(createHoistStaticallyBoundAllocationsPass());
@@ -437,6 +439,25 @@ void buildAMDAIETransformPassPipeline(OpPassManager &variantPassManager) {
   });
 }
 
+void buildAMDAIELowerObjectFIFO(OpPassManager &variantPassManager) {
+  OpPassManager &modulePassManager = variantPassManager.nest<ModuleOp>();
+  modulePassManager.addPass(xilinx::AIE::createAIECanonicalizeDevicePass());
+  auto &devicePassMan = modulePassManager.nest<xilinx::AIE::DeviceOp>();
+  devicePassMan.addPass(
+      xilinx::AIE::createAIEObjectFifoStatefulTransformPass());
+  devicePassMan.addPass(xilinx::AIE::createAIEAssignBufferAddressesBasicPass());
+  devicePassMan.addPass(xilinx::AIE::createAIEAssignLockIDsPass());
+  devicePassMan.addPass(xilinx::AIE::createAIEAssignBufferDescriptorIDsPass());
+  devicePassMan.addPass(xilinx::AIE::createAIEPathfinderPass());
+  devicePassMan.addPass(xilinx::AIE::createAIELocalizeLocksPass());
+
+  LLVM_DEBUG({
+    llvm::dbgs() << "Using AMDAIE pass pipeline:\n";
+    variantPassManager.printAsTextualPipeline(llvm::dbgs());
+    llvm::dbgs() << "\n";
+  });
+}
+
 // TODO (Erwei): The "packPeel" temporary argument should be removed once
 // pack-peel and pack-pad share the same pass pipeline. See TODOs inlined below
 // for details.
@@ -564,8 +585,7 @@ void addMLIRAIRAIELoweringPasses(OpPassManager &passManager, bool packPeel) {
     std::vector<unsigned> tile_sizes;
     if (packPeel) {
       tile_sizes = {2, 2};
-    }
-    else{
+    } else {
       tile_sizes = {4, 4};
     }
     options.clTileSizes = ArrayRef(tile_sizes);
