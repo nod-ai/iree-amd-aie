@@ -6,6 +6,7 @@
 
 #include "iree-amd-aie/Transforms/Passes.h"
 
+#include "aie/Passes.h"
 #include "air/Conversion/Passes.h"
 #include "air/Transform/Passes.h"
 #include "iree-amd-aie/IR/AMDAIEAttrs.h"
@@ -14,6 +15,8 @@
 #include "iree/compiler/Codegen/Common/Passes.h"
 #include "iree/compiler/Dialect/LinalgExt/Transforms/Passes.h"
 #include "iree/compiler/Utils/PassUtils.h"
+#include "mlir/Conversion/AffineToStandard/AffineToStandard.h"
+#include "mlir/Conversion/SCFToControlFlow/SCFToControlFlow.h"
 #include "mlir/Dialect/Affine/Passes.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/Passes.h"
@@ -581,6 +584,17 @@ void addMLIRAIRAIELoweringPasses(OpPassManager &passManager, bool packPeel) {
 
   passManager.addPass(xilinx::airrt::createAIRRtToNpuPass());
   passManager.addPass(createCanonicalizerPass());
+
+  // Now lower using the AIE passes used by the mlir-air/mlir-aie flow.
+  passManager.addPass(createLowerAffinePass());
+  OpPassManager &devicePM = passManager.nest<xilinx::AIE::DeviceOp>();
+  devicePM.addPass(createAIEAssignLockIDsPass());
+  devicePM.addPass(createAIEObjectFifoStatefulTransformPass());
+  devicePM.addPass(createAIEAssignBufferDescriptorIDsPass());
+  devicePM.addPass(createAIEAssignBufferAddressesBasicPass());
+  devicePM.addPass(createAIEPathfinderPass());
+  devicePM.addPass(createAIELocalizeLocksPass());
+  passManager.addPass(createConvertSCFToCFPass());
 }
 
 // NOTE: this runs on the top-level program module containing all hal.executable

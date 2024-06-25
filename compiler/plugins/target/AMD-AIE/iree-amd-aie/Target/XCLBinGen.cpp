@@ -12,6 +12,7 @@
 
 #include "AMDAIETargets.h"
 #include "aie/Conversion/AIEVecToLLVM/AIEVecToLLVM.h"
+#include "aie/Dialect/AIE/Transforms/AIEPasses.h"
 #include "aie/Dialect/AIEVec/Pipelines/Passes.h"
 #include "aie/Passes.h"
 #include "aie/Targets/AIETargets.h"
@@ -686,6 +687,8 @@ static LogicalResult generateUnifiedObject(MLIRContext *context,
 
   pm.addNestedPass<AIE::DeviceOp>(
       mlir::iree_compiler::AMDAIE::createAIELocalizeLocksPass());
+  pm.addNestedPass<AIE::DeviceOp>(
+      xilinx::AIE::createAIENormalizeAddressSpacesPass());
   pm.addPass(mlir::iree_compiler::AMDAIE::createAIECoreToStandardPass());
   pm.addPass(mlir::iree_compiler::AMDAIE::createAIEXToStandardPass());
 
@@ -825,8 +828,10 @@ LogicalResult xilinx::aie2xclbin(MLIRContext *ctx, ModuleOp moduleOp,
                                  XCLBinGenConfig &TK, StringRef OutputNPU,
                                  StringRef OutputXCLBin,
                                  StringRef InputXCLBin) {
-  PassManager pm(ctx, moduleOp.getOperationName());
-  applyConfigToPassManager(TK, pm);
+  std::regex target_regex("AIE.?");
+  if (!std::regex_search(TK.TargetArch, target_regex))
+    return moduleOp.emitOpError()
+           << "Unexpected target architecture: " << TK.TargetArch;
 
   // generateNPUInstructions
   pm.addNestedPass<AIE::DeviceOp>(
@@ -843,13 +848,20 @@ LogicalResult xilinx::aie2xclbin(MLIRContext *ctx, ModuleOp moduleOp,
   std::vector<uint32_t> unsignedNpuInstructions(
       signedNpuInstructionsAttr.begin(), signedNpuInstructionsAttr.end());
 
-  std::string errorMessage;
-  auto output = openOutputFile(OutputNPU, &errorMessage);
-  if (!output) return moduleOp.emitOpError(errorMessage);
-  for (auto w : unsignedNpuInstructions)
-    output->os() << llvm::format("%08X\n", w);
-  output->keep();
+    std::string errorMessage;
+    auto output = openOutputFile(OutputNPU, &errorMessage);
+    if (!output) {
+      llvm::errs() << errorMessage << "\n";
+      return moduleOp.emitOpError("");
+    }
 
+    if (failed(
+            mlir::iree_compiler::AMDAIE::AIETranslateToNPU(copy, output->os())))
+      return moduleOp.emitOpError("NPU Instruction translation failed");
+
+    output->keep();
+    copy->erase();
+  }
   SmallString<64> unifiedObj(TK.TempDir);
   sys::path::append(unifiedObj, "input.o");
   if (failed(generateUnifiedObject(ctx, moduleOp, TK, std::string(unifiedObj))))

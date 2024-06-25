@@ -287,6 +287,10 @@ LogicalResult AIETargetDirectBackend::serializeExecutable(
   }
   uint64_t ordinalCount = entryPointOrdinals.size();
 
+  if (entryPointNames.empty()) {
+    return moduleOp.emitOpError("should contain some entry points");
+  }
+
   std::unique_ptr<llvm::MemoryBuffer> xclbinIn;
 
   FlatbufferBuilder builder;
@@ -342,7 +346,9 @@ LogicalResult AIETargetDirectBackend::serializeExecutable(
     TK.TempDir = entryPointWorkDir.str();
     TK.UseChess = options.useChess;
     TK.Verbose = options.showInvokedCommands;
-    TK.XCLBinInstanceName = entryPointNamesFb[ordinal];
+    // The instance name is appended to the kernel name so we dont want it to be
+    // something too long.
+    TK.XCLBinInstanceName = "IREE";
 
     // Convert ordinal to hexadecimal string for xclbin kernel id.
     std::stringstream ordinalHex;

@@ -304,6 +304,8 @@ iree_cc_library(
     "AIEObjectFifoStatefulTransform.cpp"
     "AIEDmaToNpu.cpp"
     "AIEXToStandard.cpp"
+    # Passes needed by AIR-AIE lowering
+    "${IREE_MLIR_AIE_SOURCE_DIR}/lib/Dialect/AIE/Transforms/AIENormalizeAddressSpaces.cpp"
   DEPS
     ::defs
     ::AIEDialectIR
