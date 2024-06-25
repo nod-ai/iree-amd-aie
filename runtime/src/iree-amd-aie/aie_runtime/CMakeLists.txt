@@ -16,6 +16,9 @@ if(NOT ${CMAKE_SIZEOF_VOID_P} EQUAL 8)
   )
 endif()
 
+# See https://github.com/Xilinx/mlir-aie/pull/1095
+cmake_minimum_required(VERSION 3.23)
+
 # We use our own, slightly modified, FindOpenSSL because of issues in
 # CMake's distribution of the same for versions prior to 3.29.
 # https://gitlab.kitware.com/cmake/cmake/-/issues/25702
