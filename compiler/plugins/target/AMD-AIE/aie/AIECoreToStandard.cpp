@@ -33,34 +33,11 @@ using namespace xilinx::AIE;
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h.inc"
 #undef GEN_PASS_DEF_AIECORETOSTANDARD
 
-template <typename MyAIEOp>
-struct AIEOpRemoval : OpConversionPattern<MyAIEOp> {
-  using OpConversionPattern<MyAIEOp>::OpConversionPattern;
-  using OpAdaptor = typename MyAIEOp::Adaptor;
-  ModuleOp &module;
-
-  AIEOpRemoval(MLIRContext *context, ModuleOp &m, PatternBenefit benefit = 1)
-      : OpConversionPattern<MyAIEOp>(context, benefit), module(m) {}
-
-  LogicalResult matchAndRewrite(
-      MyAIEOp op, OpAdaptor adaptor,
-      ConversionPatternRewriter &rewriter) const override {
-    rewriter.eraseOp(op);
-    return success();
-  }
-};
-
 struct AIEUseLockToStdLowering : OpConversionPattern<UseLockOp> {
   using OpConversionPattern::OpConversionPattern;
-  ModuleOp &module;
-
-  AIEUseLockToStdLowering(MLIRContext *context, ModuleOp &m,
-                          PatternBenefit benefit = 1)
-      : OpConversionPattern(context, benefit), module(m) {}
   LogicalResult matchAndRewrite(
       UseLockOp useLock, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
-    Type int32Type = IntegerType::get(rewriter.getContext(), 32);
     if (!isa<DeviceOp>(useLock->getParentOp())) {
       // Generate the intrinsic name
       std::string funcName = "llvm.aie2.";
@@ -68,21 +45,15 @@ struct AIEUseLockToStdLowering : OpConversionPattern<UseLockOp> {
         funcName += "acquire";
       else if (useLock.release())
         funcName += "release";
-
-      func::FuncOp useLockFunc = module.lookupSymbol<func::FuncOp>(funcName);
-      if (!useLockFunc) {
-        OpBuilder::InsertPoint ip = rewriter.saveInsertionPoint();
-        rewriter.setInsertionPointAfter(useLock->getParentOfType<DeviceOp>());
-        useLockFunc = rewriter.create<func::FuncOp>(
-            rewriter.getUnknownLoc(), funcName,
-            FunctionType::get(rewriter.getContext(), {int32Type, int32Type},
-                              {}));
-        rewriter.restoreInsertionPoint(ip);
-        useLockFunc.setPrivate();
-      }
+      // TODO(max): this can be simplified with
+      // SymbolTable::lookupNearestSymbolFrom if DeviceOp ceases to be a
+      // SymbolTable
+      func::FuncOp useLockFunc =
+          useLock->getParentOfType<ModuleOp>().lookupSymbol<func::FuncOp>(
+              funcName);
 
       SmallVector<Value, 2> args;
-      auto lockValue = useLock.getLockValue();
+      int lockValue = useLock.getLockValue();
 
       // AIE2 acquire greater equal is encoded as a negative value.
       if (useLock.acquireGE()) lockValue = -lockValue;
@@ -92,10 +63,10 @@ struct AIEUseLockToStdLowering : OpConversionPattern<UseLockOp> {
       args.push_back(rewriter.create<arith::ConstantOp>(
           useLock.getLoc(), IntegerType::get(rewriter.getContext(), 32),
           rewriter.getI32IntegerAttr(lockValue)));
-
       rewriter.create<func::CallOp>(rewriter.getUnknownLoc(), useLockFunc,
                                     args);
     }
+
     rewriter.eraseOp(useLock);
     return success();
   }
@@ -104,12 +75,13 @@ struct AIEUseLockToStdLowering : OpConversionPattern<UseLockOp> {
 struct AIEBufferToStandard : OpConversionPattern<BufferOp> {
   using OpConversionPattern::OpConversionPattern;
   ModuleOp &module;
+  // TODO(max): these should be optionals instead of checking against -1
+  // but the pass itself needs to be updated.
   int tileCol = 0;
   int tileRow = 0;
-  AIEBufferToStandard(MLIRContext *context, ModuleOp &m,
-                      PatternBenefit benefit = 1, int tileCol = -1,
+  AIEBufferToStandard(MLIRContext *context, ModuleOp &m, int tileCol = -1,
                       int tileRow = -1)
-      : OpConversionPattern(context, benefit),
+      : OpConversionPattern(context),
         module(m),
         tileCol(tileCol),
         tileRow(tileRow) {}
@@ -120,7 +92,7 @@ struct AIEBufferToStandard : OpConversionPattern<BufferOp> {
     auto t = llvm::cast<MemRefType>(buffer.getType());
     int col = llvm::cast<TileOp>(buffer.getTile().getDefiningOp()).getCol();
     int row = llvm::cast<TileOp>(buffer.getTile().getDefiningOp()).getRow();
-    auto symName = buffer.name().getValue();
+    StringRef symName = buffer.name().getValue();
     mlir::ElementsAttr initValue = buffer.getInitialValueAttr();
     // Don't emit initialization for cores that don't "own" the buffer (to
     // prevent duplication in the data section of the elf/object file)
@@ -131,7 +103,7 @@ struct AIEBufferToStandard : OpConversionPattern<BufferOp> {
         buffer.getType(), initValue, /*constant*/ false,
         /*alignment*/ nullptr);
 
-    for (auto &use : make_early_inc_range(buffer.getResult().getUses())) {
+    for (OpOperand &use : make_early_inc_range(buffer.getResult().getUses())) {
       Operation *user = use.getOwner();
       rewriter.setInsertionPoint(user);
       auto allocated = rewriter.create<memref::GetGlobalOp>(
@@ -139,7 +111,6 @@ struct AIEBufferToStandard : OpConversionPattern<BufferOp> {
       // Assume that buffers are aligned so they can be vectorized.
       rewriter.create<memref::AssumeAlignmentOp>(rewriter.getUnknownLoc(),
                                                  allocated, 32);
-
       use.set(allocated.getResult());
     }
 
@@ -149,20 +120,16 @@ struct AIEBufferToStandard : OpConversionPattern<BufferOp> {
 };
 struct AIECoreToStandardFunc : OpConversionPattern<CoreOp> {
   using OpConversionPattern::OpConversionPattern;
-  ModuleOp &module;
   IRMapping &mapper;
-  DenseMap<Operation *, SmallVector<BufferOp, 4>> &tileToBuffers;
+  // TODO(max): these should be optionals instead of checking against -1
+  // but the pass itself needs to be updated.
   int tileCol = 0;
   int tileRow = 0;
 
-  AIECoreToStandardFunc(
-      MLIRContext *context, ModuleOp &m, IRMapping &mapper,
-      DenseMap<Operation *, SmallVector<BufferOp, 4>> &tileToBuffers,
-      PatternBenefit benefit = 1, int tileCol = 1, int tileRow = 1)
-      : OpConversionPattern(context, benefit),
-        module(m),
+  AIECoreToStandardFunc(MLIRContext *context, IRMapping &mapper,
+                        int tileCol = 1, int tileRow = 1)
+      : OpConversionPattern(context),
         mapper(mapper),
-        tileToBuffers(tileToBuffers),
         tileCol(tileCol),
         tileRow(tileRow) {}
 
@@ -187,14 +154,12 @@ struct AIECoreToStandardFunc : OpConversionPattern<CoreOp> {
     auto coreFunc = rewriter.create<func::FuncOp>(
         rewriter.getUnknownLoc(), coreName,
         FunctionType::get(rewriter.getContext(), {}, {}));
-
     rewriter.cloneRegionBefore(op.getBody(), coreFunc.getBody(),
                                coreFunc.getBody().begin(), mapper);
 
     // Rewrite the AIE.end() op
     coreFunc.getBody().walk([&](Operation *childOp) {
       rewriter.setInsertionPointAfter(childOp);
-
       if (isa<EndOp>(childOp)) {
         rewriter.create<func::ReturnOp>(rewriter.getUnknownLoc(),
                                         ValueRange({}));
@@ -212,7 +177,6 @@ template <typename OpTy>
 void outlineOps(DeviceOp device) {
   SmallVector<OpTy, 16> ops;
   for (const auto &op : device.getOps<OpTy>()) ops.push_back(op);
-
   for (const auto &op : ops) op->moveBefore(device);
 }
 
@@ -233,8 +197,6 @@ struct AIECoreToStandardPass
     m->setAttr(LLVM::LLVMDialect::getTargetTripleAttrName(),
                builder.getStringAttr("aie2"));
 
-    DenseMap<Operation *, SmallVector<BufferOp, 4>> tileToBuffers;
-
     IRMapping mapper;
     ConversionTarget target(getContext());
     target.addLegalDialect<func::FuncDialect>();
@@ -246,16 +208,26 @@ struct AIECoreToStandardPass
     target.addLegalOp<func::FuncOp, ModuleOp>();
 
     RewritePatternSet patterns(&getContext());
-    patterns.add<AIEUseLockToStdLowering>(m.getContext(), m);
-    patterns.add<AIEBufferToStandard>(m.getContext(), m, /*benefit*/ 1, tileCol,
-                                      tileRow);
+
+    StringAttr privateSym = StringAttr::get(&getContext(), "private");
+    auto buildDecl = [&](const std::string &funcName) {
+      builder.create<func::FuncOp>(
+          builder.getUnknownLoc(), funcName,
+          FunctionType::get(builder.getContext(),
+                            {builder.getI32Type(), builder.getI32Type()}, {}),
+          privateSym, ArrayAttr{}, ArrayAttr{});
+    };
+    buildDecl("llvm.aie2.acquire");
+    buildDecl("llvm.aie2.release");
+
+    patterns.add<AIEUseLockToStdLowering>(m.getContext());
+    patterns.add<AIEBufferToStandard>(m.getContext(), m, tileCol, tileRow);
     if (failed(applyPartialConversion(m, target, std::move(patterns))))
       return signalPassFailure();
 
     RewritePatternSet outlinePatterns(&getContext());
-    outlinePatterns.add<AIECoreToStandardFunc>(m.getContext(), m, mapper,
-                                               tileToBuffers, /*benefit*/ 1,
-                                               tileCol, tileRow);
+    outlinePatterns.add<AIECoreToStandardFunc>(m.getContext(), mapper, tileCol,
+                                               tileRow);
     if (failed(applyPartialConversion(m, target, std::move(outlinePatterns))))
       return signalPassFailure();
 
@@ -265,17 +237,9 @@ struct AIECoreToStandardPass
     outlineOps<memref::GlobalOp>(device);
     outlineOps<func::FuncOp>(device);
 
-    RewritePatternSet removepatterns(&getContext());
-    removepatterns.add<
-        AIEOpRemoval<DeviceOp>, AIEOpRemoval<TileOp>, AIEOpRemoval<FlowOp>,
-        AIEOpRemoval<MemOp>, AIEOpRemoval<ShimDMAOp>, AIEOpRemoval<ShimMuxOp>,
-        AIEOpRemoval<SwitchboxOp>, AIEOpRemoval<LockOp>, AIEOpRemoval<BufferOp>,
-        AIEOpRemoval<ExternalBufferOp>, AIEOpRemoval<ShimDMAAllocationOp>,
-        AIEOpRemoval<CascadeFlowOp>, AIEOpRemoval<ConfigureCascadeOp>>(
-        m.getContext(), m);
-
-    if (failed(applyPartialConversion(m, target, std::move(removepatterns))))
-      return signalPassFailure();
+    MLIRContext &context = getContext();
+    IRRewriter rewriter(&context);
+    rewriter.eraseOp(device);
   }
 };
 
