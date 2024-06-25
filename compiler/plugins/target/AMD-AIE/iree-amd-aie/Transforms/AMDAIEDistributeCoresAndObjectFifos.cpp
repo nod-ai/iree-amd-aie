@@ -6,6 +6,7 @@
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "iree-amd-aie/IR/AMDAIEOps.h"
+#include "iree-amd-aie/Transforms/AMDAIEDmaUtils.h"
 #include "iree-amd-aie/Transforms/Passes.h"
 #include "iree-amd-aie/Transforms/Transforms.h"
 #include "iree/compiler/Codegen/TransformStrategies/GPU/Common.h"
@@ -134,11 +135,18 @@ LogicalResult distributeLocalMemory(ModuleOp moduleOp) {
         rewriter.replaceOp(dmaOp.getSourceObjectFifo(), source);
         rewriter.setInsertionPoint(dmaOp);
         auto newDmaOp = rewriter.create<AMDAIE::DmaCpyNdOp>(
-            dmaOp.getLoc(), dmaOp.getTarget(), dmaOp.getTargetOffsets(),
-            dmaOp.getTargetSizes(), dmaOp.getTargetStrides(), source,
-            dmaOp.getSourceOffsets(), dmaOp.getSourceSizes(),
-            dmaOp.getSourceStrides());
+            dmaOp.getLoc(), dmaOp.getTarget(), dmaOp.getTargetMixedOffsets(),
+            dmaOp.getTargetMixedSizes(), dmaOp.getTargetMixedStrides(), source,
+            dmaOp.getSourceMixedOffsets(), dmaOp.getSourceMixedSizes(),
+            dmaOp.getSourceMixedStrides());
         rewriter.replaceOp(dmaOp, newDmaOp);
+        // We have to discard non-zero offsets as subview has been replaced by a
+        // dedicated allocated memref.
+        SmallVector<int64_t> allocShape(type.getShape());
+        (void)discardAllNonZeroOffsets<CopyOpOperateOn::Source>(
+            rewriter,
+            cast<AMDAIE::DoublyStridedOpInterface>(newDmaOp.getOperation()),
+            allocShape);
       }
 
       // Insert dealloc

@@ -607,6 +607,83 @@ module {
 
 // -----
 
+// Ensure subviews on local memrefs inside cores are handled correctly by discarding the consuming DMAs' non-zero offsets. 
+// CHECK-LABEL: @local_subview_output
+// CHECK-DAG:   %[[C0:.+]] = arith.constant 0 : index
+// CHECK-DAG:   %[[C1:.+]] = arith.constant 1 : index
+// CHECK-DAG:   %[[C2:.+]] = arith.constant 2 : index
+// CHECK-DAG:   %[[C3:.+]] = arith.constant 3 : index
+// CHECK-DAG:   %[[C32:.+]] = arith.constant 32 : index
+// CHECK-DAG:   %[[ALLOC_0:.+]] = memref.alloc() : memref<1x1x32x32xi32, 2>
+// CHECK-DAG:   %[[ALLOC_1:.+]] = memref.alloc() : memref<2x2x32x32xi32, 1>
+// CHECK-DAG:   %[[ALLOC_2:.+]] = memref.alloc() : memref<64x64xi32>
+// CHECK:       scf.forall (%{{.+}}, %[[ARG1:.+]]) in (2, 2)
+// CHECK-DAG:     %[[TILE_0_2:.+]] = amdaie.tile(%[[C0]], %[[C2]])
+// CHECK-DAG:     %[[TILE_0_3:.+]] = amdaie.tile(%[[C0]], %[[C3]])
+// CHECK-DAG:     %[[TILE_1_2:.+]] = amdaie.tile(%[[C1]], %[[C2]])
+// CHECK-DAG:     %[[TILE_1_3:.+]] = amdaie.tile(%[[C1]], %[[C3]])
+// CHECK-DAG:     %[[TILE_0_0:.+]] = amdaie.tile(%[[C0]], %[[C0]])
+// CHECK-DAG:     %[[TILE_0_1:.+]] = amdaie.tile(%[[C0]], %[[C1]])
+// CHECK-DAG:     %[[FROM_MEMREF_0:.+]] = amdaie.logicalobjectfifo.from_memref %[[ALLOC_0]], {%[[TILE_0_2]]}
+// CHECK-DAG:     %[[FROM_MEMREF_1:.+]] = amdaie.logicalobjectfifo.from_memref %[[ALLOC_0]], {%[[TILE_1_2]]}
+// CHECK-DAG:     %[[FROM_MEMREF_2:.+]] = amdaie.logicalobjectfifo.from_memref %[[ALLOC_0]], {%[[TILE_0_3]]}
+// CHECK-DAG:     %[[FROM_MEMREF_3:.+]] = amdaie.logicalobjectfifo.from_memref %[[ALLOC_0]], {%[[TILE_1_3]]}
+// CHECK-DAG:     %[[FROM_MEMREF_4:.+]] = amdaie.logicalobjectfifo.from_memref %[[ALLOC_1]], {%[[TILE_0_1]]}
+// CHECK-DAG:     %[[FROM_MEMREF_5:.+]] = amdaie.logicalobjectfifo.from_memref %[[ALLOC_2]], {%[[TILE_0_0]]}
+// CHECK-DAG:     %[[DMA_0:.*]] = amdaie.dma_cpy_nd(%[[FROM_MEMREF_4]][%c0, %c0] [%c1, %c1] [%c1, %c1], %[[FROM_MEMREF_0]][%c0, %c0] [%c32, %c32] [%c32, %c1]
+// CHECK-DAG:     %[[CORE_0_2:.*]] = amdaie.core(%[[TILE_0_2]])
+// CHECK-DAG:       %[[VAL_0:.+]] = amdaie.logicalobjectfifo.access(%[[FROM_MEMREF_0]], Write)
+// CHECK-DAG:       linalg.fill ins(%{{.+}} : i32) outs(%[[VAL_0]] : memref<1x1x32x32xi32, 2>)
+// CHECK-DAG:       amdaie.logicalobjectfifo.produce(%[[DMA_0]])
+// CHECK-DAG:     %[[DMA_1:.*]] = amdaie.dma_cpy_nd(%[[FROM_MEMREF_4]][%c0, %c1] [%c1, %c1] [%c1, %c1], %[[FROM_MEMREF_1]][%c0, %c0] [%c32, %c32] [%c32, %c1]
+// CHECK-DAG:     %[[CORE_1_2:.*]] = amdaie.core(%[[TILE_1_2]])
+// CHECK-DAG:       %[[VAL_0:.+]] = amdaie.logicalobjectfifo.access(%[[FROM_MEMREF_1]], Write)
+// CHECK-DAG:       linalg.fill ins(%{{.+}} : i32) outs(%[[VAL_0]] : memref<1x1x32x32xi32, 2>)
+// CHECK-DAG:       amdaie.logicalobjectfifo.produce(%[[DMA_1]])
+// CHECK-DAG:     %[[DMA_2:.*]] = amdaie.dma_cpy_nd(%[[FROM_MEMREF_4]][%c1, %c0] [%c1, %c1] [%c1, %c1], %[[FROM_MEMREF_2]][%c0, %c0] [%c32, %c32] [%c32, %c1]
+// CHECK-DAG:     %[[CORE_0_3:.*]] = amdaie.core(%[[TILE_0_3]])
+// CHECK-DAG:       %[[VAL_0:.+]] = amdaie.logicalobjectfifo.access(%[[FROM_MEMREF_2]], Write)
+// CHECK-DAG:       linalg.fill ins(%{{.+}} : i32) outs(%[[VAL_0]] : memref<1x1x32x32xi32, 2>)
+// CHECK-DAG:       amdaie.logicalobjectfifo.produce(%[[DMA_2]])
+// CHECK-DAG:     %[[DMA_3:.*]] = amdaie.dma_cpy_nd(%[[FROM_MEMREF_4]][%c1, %c1] [%c1, %c1] [%c1, %c1], %[[FROM_MEMREF_3]][%c0, %c0] [%c32, %c32] [%c32, %c1]
+// CHECK-DAG:     %[[CORE_1_3:.*]] = amdaie.core(%[[TILE_1_3]])
+// CHECK-DAG:       %[[VAL_0:.+]] = amdaie.logicalobjectfifo.access(%[[FROM_MEMREF_3]], Write)
+// CHECK-DAG:       linalg.fill ins(%{{.+}} : i32) outs(%[[VAL_0]] : memref<1x1x32x32xi32, 2>)
+// CHECK-DAG:       amdaie.logicalobjectfifo.produce(%[[DMA_3]])
+module {
+  func.func @local_subview_output() {
+    %c0_i32 = arith.constant 0 : i32
+    %c1 = arith.constant 1 : index
+    %c2 = arith.constant 2 : index
+    %alloc_0 = memref.alloc() : memref<2x2x32x32xi32, 2>
+    %alloc_1 = memref.alloc() : memref<2x2x32x32xi32, 1>
+    %alloc_2 = memref.alloc() : memref<64x64xi32>
+    scf.forall (%arg0, %arg1) in (2, 2) {
+      %0 = amdaie.logicalobjectfifo.from_memref %alloc_0, {} : memref<2x2x32x32xi32, 2> -> !amdaie.logicalobjectfifo<memref<2x2x32x32xi32, 2>>
+      %1 = amdaie.logicalobjectfifo.from_memref %alloc_1, {} : memref<2x2x32x32xi32, 1> -> !amdaie.logicalobjectfifo<memref<2x2x32x32xi32, 1>>
+      %2 = amdaie.logicalobjectfifo.from_memref %alloc_2, {} : memref<64x64xi32> -> !amdaie.logicalobjectfifo<memref<64x64xi32>>
+      scf.forall (%arg2, %arg3) in (2, 2) {
+        %subview = memref.subview %alloc_0[%arg2, %arg3, 0, 0] [1, 1, 32, 32] [1, 1, 1, 1] : memref<2x2x32x32xi32, 2> to memref<1x1x32x32xi32, strided<[2048, 1024, 32, 1], offset: ?>, 2>
+        %8 = amdaie.dma_cpy_nd(%1[%arg2, %arg3] [%c1, %c1] [%c1, %c1], %0[%arg2, %arg3, 0, 0] [1, 1, 32, 32] [1, 1, 32, 1]) : (!amdaie.logicalobjectfifo<memref<2x2x32x32xi32, 1>>, !amdaie.logicalobjectfifo<memref<2x2x32x32xi32, 2>>)
+        %add = arith.addi %arg2, %c2 : index
+        %tile = amdaie.tile(%arg3, %add)
+        %core = amdaie.core(%tile) {
+          linalg.fill ins(%c0_i32 : i32) outs(%subview : memref<1x1x32x32xi32, strided<[2048, 1024, 32, 1], offset: ?>, 2>)
+          amdaie.logicalobjectfifo.produce(%8)
+          amdaie.end
+        }
+      } {mapping = [#gpu.thread<y>, #gpu.thread<x>]}
+      %9 = amdaie.dma_cpy_nd(%2[%arg1] [%c1] [%c1], %1[] [] []) : (!amdaie.logicalobjectfifo<memref<64x64xi32>>, !amdaie.logicalobjectfifo<memref<2x2x32x32xi32, 1>>)
+    } {mapping = [#gpu.block<y>, #gpu.block<x>]}
+    memref.dealloc %alloc_2 : memref<64x64xi32>
+    memref.dealloc %alloc_1 : memref<2x2x32x32xi32, 1>
+    memref.dealloc %alloc_0 : memref<2x2x32x32xi32, 2>
+    return
+  }
+}
+
+// -----
+
 // CHECK-LABEL:   @distribute_cores_and_objectfifos
 // CHECK-DAG:       %[[IN_B:.*]] = hal.interface.binding.subspan set(0) binding(1)
 // CHECK-DAG:       %[[IN_A:.*]] = hal.interface.binding.subspan set(0) binding(0)
