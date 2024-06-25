@@ -637,8 +637,8 @@ def AMDAIE_LogicalObjectFifoRelease:
 }
 
 class AMDAIE_DmaCpyNdBaseOp<string mnemonic, list<Trait> traits = []> :
-    AMDAIE_Op<mnemonic, traits # [AttrSizedOperandSegments, CopyOpInterface,
-    DoublyStridedOpInterface]> {
+    AMDAIE_Op<mnemonic, traits # [AttrSizedOperandSegments,
+    DoublyStridedCopyOpInterface]> {
   let summary = "The base DMA copy operator class";
   let description = [{
     The DMA operation represents a strided copy operation with an unlimited number of

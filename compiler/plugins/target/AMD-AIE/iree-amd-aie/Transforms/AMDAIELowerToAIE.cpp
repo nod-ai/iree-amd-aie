@@ -818,22 +818,6 @@ class AMDAIELowerToAIEPass
 };
 
 void AMDAIELowerToAIEPass::runOnOperation() {
-  // Add explicit link operations to avoid having to do this during conversion
-  // to AIEDialect operations.
-  Operation *parentOp = getOperation();
-  IRRewriter rewriter(parentOp->getContext());
-  WalkResult res = parentOp->walk(
-      [&](AMDAIE::LogicalObjectFifoFromMemrefOp logicalObjectFifo) {
-        if (failed(createLogicalObjectFifoLink(rewriter, logicalObjectFifo))) {
-          logicalObjectFifo.emitError() << "couldn't create a link operation";
-          return WalkResult::interrupt();
-        }
-        return WalkResult::advance();
-      });
-  if (res.wasInterrupted()) return signalPassFailure();
-  LLVM_DEBUG(llvm::dbgs() << "Module after createLogicalObjectFifoLink: "
-                          << getOperation());
-
   // Main function call to convert all operations into AIE dialect operations
   // inside an AIE device.
   if (failed(lowerToAIE(getOperation()))) {
