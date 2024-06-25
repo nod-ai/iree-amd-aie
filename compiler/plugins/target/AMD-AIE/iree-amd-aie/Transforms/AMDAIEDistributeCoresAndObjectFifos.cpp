@@ -101,7 +101,8 @@ LogicalResult distributeLocalMemory(ModuleOp moduleOp) {
     SmallVector<Operation *> allocOpUsers;
     for (Operation *userOp : allocOp->getUsers()) {
       auto subviewOp = dyn_cast<memref::SubViewOp>(userOp);
-      if (auto transferReadOp = dyn_cast<vector::TransferReadOp>(userOp)){
+      if (auto vectorTransferReadWriteOp =
+              isa<vector::TransferReadOp, vector::TransferWriteOp>(userOp)) {
         allocOpUsers.push_back(userOp);
       }
       if (!subviewOp) continue;
@@ -155,6 +156,14 @@ LogicalResult distributeLocalMemory(ModuleOp moduleOp) {
         llvm::outs() << "Read " << transferRead << "\n";
         rewriter.replaceAllUsesWith(transferReadOp, transferRead);
         toBeErased.push_back(transferReadOp);
+      } else if (auto transferWriteOp =
+                     dyn_cast<vector::TransferWriteOp>(userOp)) {
+        auto newAlloc = memrefToNew[allocOp];
+        rewriter.setInsertionPoint(transferWriteOp);
+        rewriter.create<vector::TransferWriteOp>(
+            transferWriteOp.getLoc(), transferWriteOp.getVector(), newAlloc,
+            transferWriteOp.getIndices());
+        toBeErased.push_back(transferWriteOp);
       }
     }
 
@@ -519,12 +528,14 @@ LogicalResult insertLogicalObjectFifoAccess(ModuleOp moduleOp) {
     });
 
     WalkResult res = coreOp->walk([&](Operation *op) {
-      if (isa<linalg::LinalgOp>(op)) {
+      DenseMap<Value, AMDAIE::LogicalObjectFifoAccessOp>
+          newMemrefToLogicalObjectFifoAccess;
+      if (isa<linalg::LinalgOp, vector::ContractionOp>(op)) {
         Operation *currOp = op;
         while (currOp->getParentOp() != coreOp) {
           currOp = currOp->getParentOp();
         }
-        auto linalgOp = cast<linalg::LinalgOp>(op);
+        Operation *linalgOp = op;
         for (auto &&[idx, operand] :
              llvm::enumerate(linalgOp->getOpOperands())) {
           if (memrefToLogicalObjectFifo.contains(operand.get())) {
@@ -536,14 +547,21 @@ LogicalResult insertLogicalObjectFifoAccess(ModuleOp moduleOp) {
                 rewriter.getUnknownLoc(), std::get<0>(value),
                 std::get<1>(value));
             linalgOp->setOperand(idx, accessOp);
-          } else if (auto type =
-                         llvm::dyn_cast<MemRefType>(operand.get().getType())) {
+          } else if (isa<memref::AllocOp, memref::SubViewOp,
+                         vector::TransferReadOp>(
+                         operand.get().getDefiningOp())) {
             Value memref = operand.get();
-            bool hasSubViewOp = false;
+            MemRefType type = dyn_cast<MemRefType>(operand.get().getType());
+            bool hasSubViewOrVectorTransferReadOp = false;
             if (auto subViewOp = memref.getDefiningOp<memref::SubViewOp>()) {
               memref = subViewOp.getViewSource();
               type = cast<MemRefType>(memref.getType());
-              hasSubViewOp = true;
+              hasSubViewOrVectorTransferReadOp = true;
+            } else if (auto transferReadOp =
+                           memref.getDefiningOp<vector::TransferReadOp>()) {
+              memref = transferReadOp.getSource();
+              type = cast<MemRefType>(memref.getType());
+              hasSubViewOrVectorTransferReadOp = true;
             }
 
             rewriter.setInsertionPoint(coreOp);
@@ -567,12 +585,38 @@ LogicalResult insertLogicalObjectFifoAccess(ModuleOp moduleOp) {
                 rewriter.getUnknownLoc(), logicalObjectFifo,
                 AMDAIE::MemoryAccess::None);
             }
+            newMemrefToLogicalObjectFifoAccess[memref] = accessOp;
 
-            if (hasSubViewOp) {
+            if (hasSubViewOrVectorTransferReadOp) {
               linalgOp->getOperand(idx).getDefiningOp()->setOperand(0,
                                                                     accessOp);
             } else {
               linalgOp->setOperand(idx, accessOp);
+            }
+          }
+        }
+
+        // Handle TransferWrite;
+        if (auto contractOp = dyn_cast<vector::ContractionOp>(op)) {
+          for (Operation *userOp : contractOp->getUsers()) {
+            if (auto transferWriteOp =
+                    dyn_cast<vector::TransferWriteOp>(userOp)) {
+              OpOperand &operand = transferWriteOp->getOpOperand(1);
+              if (newMemrefToLogicalObjectFifoAccess.contains(operand.get())) {
+                rewriter.setInsertionPointToStart(coreOp.getBody());
+                userOp->setOperand(
+                    1, newMemrefToLogicalObjectFifoAccess[operand.get()]);
+              } else if (memrefToLogicalObjectFifo.contains(operand.get())) {
+                rewriter.setInsertionPointToStart(coreOp.getBody());
+                std::tuple<AMDAIE::LogicalObjectFifoFromMemrefOp,
+                           AMDAIE::MemoryAccess>
+                    value = memrefToLogicalObjectFifo[operand.get()];
+                auto accessOp =
+                    rewriter.create<AMDAIE::LogicalObjectFifoAccessOp>(
+                        rewriter.getUnknownLoc(), std::get<0>(value),
+                        std::get<1>(value));
+                userOp->setOperand(1, accessOp);
+              }
             }
           }
         }
@@ -956,7 +1000,7 @@ class AMDAIEDistributeCoresAndObjectFifosPass
 };
 
 void AMDAIEDistributeCoresAndObjectFifosPass::runOnOperation() {
-  //MLIRContext *context = &getContext();
+  MLIRContext *context = &getContext();
   ModuleOp moduleOp = getOperation();
 
   // Convert local scf.forall operations selected for parallel distribution to
@@ -982,70 +1026,69 @@ void AMDAIEDistributeCoresAndObjectFifosPass::runOnOperation() {
   }
   LLVM_DEBUG(llvm::dbgs() << "Module after distributeLocalMemory: \n"
                           << moduleOp << "\n");
+  // Unroll local parallel loops and try hoisting dma operations if
+  // possible.
+  RewritePatternSet unrollLocalLoopsPatterns(context);
+  unrollLocalLoopsPatterns.insert<AMDAIEUnrollLocalLoops>(context);
+  if (failed(applyPatternsAndFoldGreedily(
+          moduleOp, std::move(unrollLocalLoopsPatterns)))) {
+    moduleOp.emitOpError()
+        << "loop unrolling of loops selected for parallel execution failed";
+    return signalPassFailure();
+  }
+  LLVM_DEBUG(llvm::dbgs() << "Module after AMDAIEUnrollLocalLoops: \n"
+                          << moduleOp << "\n");
 
-//  // Unroll local parallel loops and try hoisting dma operations if
-//  // possible.
-//  RewritePatternSet unrollLocalLoopsPatterns(context);
-//  unrollLocalLoopsPatterns.insert<AMDAIEUnrollLocalLoops>(context);
-//  if (failed(applyPatternsAndFoldGreedily(
-//          moduleOp, std::move(unrollLocalLoopsPatterns)))) {
-//    moduleOp.emitOpError()
-//        << "loop unrolling of loops selected for parallel execution failed";
-//    return signalPassFailure();
-//  }
-//  LLVM_DEBUG(llvm::dbgs() << "Module after AMDAIEUnrollLocalLoops: \n"
-//                          << moduleOp << "\n");
-//
-//  // Insert `amdaie.logicalobjectfifo.access` operations which retrieve the
-//  // memrefs from logical objectfifos and update the computational operations to
-//  // operate on these local memrefs. These access operations will be used to
-//  // assign local AIE tiles to local logical objectFifos later.
-//  if (failed(insertLogicalObjectFifoAccess(moduleOp))) {
-//    moduleOp.emitOpError()
-//        << "insertion of `amdaie.logicalobjectfif.access` operations failed";
-//    return signalPassFailure();
-//  }
-//  LLVM_DEBUG(llvm::dbgs() << "Module after insertLogicalObjectFifoAccess: \n"
-//                          << moduleOp << "\n");
-//
-//  // Assign tile locations to logical objectfifos on local (L1) memory.
-//  if (failed(assignLocalAieTiles(moduleOp))) {
-//    moduleOp.emitOpError() << "local tile assignment failed";
-//    return signalPassFailure();
-//  }
-//  LLVM_DEBUG(llvm::dbgs() << "Module after assignLocalAieTiles: \n"
-//                          << moduleOp << "\n");
-//
-//  // Assign a set of potential tile locations to the remaining logical
-//  // objectFifos.
-//  RewritePatternSet assignAieTilePatters(context);
-//  assignAieTilePatters.insert<FillAieTiles>(context);
-//  if (failed(applyPatternsAndFoldGreedily(moduleOp,
-//                                          std::move(assignAieTilePatters)))) {
-//    moduleOp.emitOpError()
-//        << "collection of tile candidates for logical objectFifos failed";
-//    return signalPassFailure();
-//  }
-//  LLVM_DEBUG(llvm::dbgs() << "Module after FillAieTiles: \n"
-//                          << moduleOp << "\n");
-//
-//  // Assign specific tile locations to objectFifos, starting from the set of
-//  // potential tile locations filled in earlier.
-//  if (failed(assignAieTilesAndDistributeLogicalObjectFifos(moduleOp))) {
-//    moduleOp.emitOpError()
-//        << "tile assignment and logical objectFifo distribution failed";
-//    return signalPassFailure();
-//  }
-//  LLVM_DEBUG(llvm::dbgs()
-//             << "Module after assignAieTilesAndDistributeLogicalObjectFifos: \n"
-//             << moduleOp << "\n");
-//
-//  // Allocate different memories for logical objectFifos on the same shared
-//  // memory tile to ensure different buffers will be used for them.
-//  if (failed(distributeSharedMemory(moduleOp))) {
-//    moduleOp.emitOpError() << "distribution of shared memory failed";
-//    return signalPassFailure();
-//  }
+  // Insert `amdaie.logicalobjectfifo.access` operations which retrieve the
+  // memrefs from logical objectfifos and update the computational operations to
+  // operate on these local memrefs. These access operations will be used to
+  // assign local AIE tiles to local logical objectFifos later.
+  if (failed(insertLogicalObjectFifoAccess(moduleOp))) {
+    moduleOp.emitOpError()
+        << "insertion of `amdaie.logicalobjectfif.access` operations failed";
+    return signalPassFailure();
+  }
+  LLVM_DEBUG(llvm::dbgs() << "Module after insertLogicalObjectFifoAccess: \n"
+                          << moduleOp << "\n");
+
+  // Assign tile locations to logical objectfifos on local (L1) memory.
+  if (failed(assignLocalAieTiles(moduleOp))) {
+    moduleOp.emitOpError() << "local tile assignment failed";
+    return signalPassFailure();
+  }
+  LLVM_DEBUG(llvm::dbgs() << "Module after assignLocalAieTiles: \n"
+                          << moduleOp << "\n");
+
+  // Assign a set of potential tile locations to the remaining logical
+  // objectFifos.
+  RewritePatternSet assignAieTilePatters(context);
+  assignAieTilePatters.insert<FillAieTiles>(context);
+  if (failed(applyPatternsAndFoldGreedily(moduleOp,
+                                          std::move(assignAieTilePatters)))) {
+    moduleOp.emitOpError()
+        << "collection of tile candidates for logical objectFifos failed";
+    return signalPassFailure();
+  }
+  LLVM_DEBUG(llvm::dbgs() << "Module after FillAieTiles: \n"
+                          << moduleOp << "\n");
+
+  // Assign specific tile locations to objectFifos, starting from the set of
+  // potential tile locations filled in earlier.
+  if (failed(assignAieTilesAndDistributeLogicalObjectFifos(moduleOp))) {
+    moduleOp.emitOpError()
+        << "tile assignment and logical objectFifo distribution failed";
+    return signalPassFailure();
+  }
+  LLVM_DEBUG(llvm::dbgs()
+             << "Module after assignAieTilesAndDistributeLogicalObjectFifos: \n"
+             << moduleOp << "\n");
+
+  // Allocate different memories for logical objectFifos on the same shared
+  // memory tile to ensure different buffers will be used for them.
+  if (failed(distributeSharedMemory(moduleOp))) {
+    moduleOp.emitOpError() << "distribution of shared memory failed";
+    return signalPassFailure();
+  }
 }
 
 }  // namespace

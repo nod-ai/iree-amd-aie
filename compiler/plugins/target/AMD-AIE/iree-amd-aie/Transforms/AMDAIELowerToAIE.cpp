@@ -720,7 +720,15 @@ LogicalResult lowerToAIE(ModuleOp moduleOp) {
       return a.getBinding().getZExtValue() < b.getBinding().getZExtValue();
     });
     SmallVector<Type> inputTypes;
-    for (auto op : subspanOps) inputTypes.push_back(op.getType());
+    for (auto op : subspanOps) {
+      auto inputType = cast<MemRefType>(op.getType());
+      if (inputType.getElementTypeBitWidth() != 32) {
+        auto inputShapeArr = inputType.getShape();
+        inputType = MemRefType::get(inputShapeArr, rewriter.getI32Type(),
+                                    MemRefLayoutAttrInterface{});
+      }
+      inputTypes.push_back(inputType);
+    }
     FunctionType funcType = rewriter.getFunctionType(inputTypes, TypeRange{});
     rewriter.setInsertionPoint(deviceBlock, deviceBlock->begin());
     auto ipuFuncOp = rewriter.create<func::FuncOp>(
