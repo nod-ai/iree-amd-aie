@@ -20,6 +20,7 @@
 #include "iree-amd-aie/Transforms/Passes.h"
 #include "iree-amd-aie/Transforms/Transforms.h"
 #include "iree/compiler/Codegen/TransformStrategies/GPU/Common.h"
+#include "mlir/Dialect/Vector/IR/VectorOps.h"
 
 #define DEBUG_TYPE "iree-amdaie-insert-cores"
 
@@ -108,6 +109,13 @@ LogicalResult insertCoreOps(mlir::ModuleOp moduleOp) {
           rewriter.create<AMDAIE::LogicalObjectFifoConsume>(
               rewriter.getUnknownLoc(), SmallVector<Type, 1>{}, dmaOp);
         }
+      } else if (isa<vector::ContractionOp>(op)) {
+        Operation *currOp = op;
+        while (currOp->getParentOp() != forallOp) {
+          currOp = currOp->getParentOp();
+        }
+        rewriter.setInsertionPoint(endOp);
+        rewriter.moveOpBefore(currOp, endOp);
       } else if (isa<linalg::LinalgOp>(op)) {
         Operation *currOp = op;
         while (currOp->getParentOp() != forallOp) {

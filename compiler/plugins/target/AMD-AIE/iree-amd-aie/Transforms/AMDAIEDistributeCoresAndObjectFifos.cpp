@@ -12,6 +12,7 @@
 #include "iree/compiler/Codegen/TransformStrategies/GPU/Common.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/SCF/Transforms/Transforms.h"
+#include "mlir/Dialect/Vector/IR/VectorOps.h"
 #include "mlir/IR/Iterators.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
@@ -100,6 +101,9 @@ LogicalResult distributeLocalMemory(ModuleOp moduleOp) {
     SmallVector<Operation *> allocOpUsers;
     for (Operation *userOp : allocOp->getUsers()) {
       auto subviewOp = dyn_cast<memref::SubViewOp>(userOp);
+      if (auto transferReadOp = dyn_cast<vector::TransferReadOp>(userOp)){
+        allocOpUsers.push_back(userOp);
+      }
       if (!subviewOp) continue;
       allocOpUsers.push_back(userOp);
       if (subviewOp->getParentOfType<AMDAIE::CoreOp>()) continue;
@@ -121,27 +125,37 @@ LogicalResult distributeLocalMemory(ModuleOp moduleOp) {
     }
 
     for (Operation *userOp : allocOpUsers) {
-      auto subviewOp = dyn_cast<memref::SubViewOp>(userOp);
-      auto newAlloc = memrefToNew[allocOp];
-      if (subviewOp->getParentOfType<AMDAIE::CoreOp>()) {
-        rewriter.setInsertionPoint(subviewOp);
-        // Modify the offset if the size of certain dimension becomes 1
-        SmallVector<OpFoldResult> offsets = subviewOp.getMixedOffsets();
-        SmallVector<OpFoldResult> newOffsets = offsets;
-        ArrayRef<int64_t> allocShape = newAlloc.getType().getShape();
-        for (int i = 0; i < allocShape.size(); ++i) {
-          if (allocShape[i] == 1) {
-            newOffsets[i] = rewriter.getIndexAttr(0);
+      if (auto subviewOp = dyn_cast<memref::SubViewOp>(userOp)){
+        auto newAlloc = memrefToNew[allocOp];
+        if (subviewOp->getParentOfType<AMDAIE::CoreOp>()) {
+          rewriter.setInsertionPoint(subviewOp);
+          // Modify the offset if the size of certain dimension becomes 1
+          SmallVector<OpFoldResult> offsets = subviewOp.getMixedOffsets();
+          SmallVector<OpFoldResult> newOffsets = offsets;
+          ArrayRef<int64_t> allocShape = newAlloc.getType().getShape();
+          for (int i = 0; i < allocShape.size(); ++i) {
+            if (allocShape[i] == 1) {
+              newOffsets[i] = rewriter.getIndexAttr(0);
+            }
           }
+          Value subview = rewriter.create<memref::SubViewOp>(
+              subviewOp.getLoc(), newAlloc, newOffsets, subviewOp.getMixedSizes(),
+              subviewOp.getMixedStrides());
+          rewriter.replaceAllUsesWith(subviewOp, subview);
+        } else {
+          rewriter.replaceAllUsesWith(subviewOp, newAlloc);
         }
-        Value subview = rewriter.create<memref::SubViewOp>(
-            subviewOp.getLoc(), newAlloc, newOffsets, subviewOp.getMixedSizes(),
-            subviewOp.getMixedStrides());
-        rewriter.replaceAllUsesWith(subviewOp, subview);
-      } else {
-        rewriter.replaceAllUsesWith(subviewOp, newAlloc);
+        toBeErased.push_back(subviewOp);
+      } else if (auto transferReadOp = dyn_cast<vector::TransferReadOp>(userOp)){
+        auto newAlloc = memrefToNew[allocOp];
+        llvm::outs() << "Alloc " << newAlloc << "\n";
+        rewriter.setInsertionPoint(transferReadOp);
+        Value transferRead = rewriter.create<vector::TransferReadOp>(
+            transferReadOp.getLoc(), transferReadOp.getType(), newAlloc, transferReadOp.getIndices());
+        llvm::outs() << "Read " << transferRead << "\n";
+        rewriter.replaceAllUsesWith(transferReadOp, transferRead);
+        toBeErased.push_back(transferReadOp);
       }
-      toBeErased.push_back(subviewOp);
     }
 
     // Update the alloc's DMA users.
@@ -942,7 +956,7 @@ class AMDAIEDistributeCoresAndObjectFifosPass
 };
 
 void AMDAIEDistributeCoresAndObjectFifosPass::runOnOperation() {
-  MLIRContext *context = &getContext();
+  //MLIRContext *context = &getContext();
   ModuleOp moduleOp = getOperation();
 
   // Convert local scf.forall operations selected for parallel distribution to
@@ -969,69 +983,69 @@ void AMDAIEDistributeCoresAndObjectFifosPass::runOnOperation() {
   LLVM_DEBUG(llvm::dbgs() << "Module after distributeLocalMemory: \n"
                           << moduleOp << "\n");
 
-  // Unroll local parallel loops and try hoisting dma operations if
-  // possible.
-  RewritePatternSet unrollLocalLoopsPatterns(context);
-  unrollLocalLoopsPatterns.insert<AMDAIEUnrollLocalLoops>(context);
-  if (failed(applyPatternsAndFoldGreedily(
-          moduleOp, std::move(unrollLocalLoopsPatterns)))) {
-    moduleOp.emitOpError()
-        << "loop unrolling of loops selected for parallel execution failed";
-    return signalPassFailure();
-  }
-  LLVM_DEBUG(llvm::dbgs() << "Module after AMDAIEUnrollLocalLoops: \n"
-                          << moduleOp << "\n");
-
-  // Insert `amdaie.logicalobjectfifo.access` operations which retrieve the
-  // memrefs from logical objectfifos and update the computational operations to
-  // operate on these local memrefs. These access operations will be used to
-  // assign local AIE tiles to local logical objectFifos later.
-  if (failed(insertLogicalObjectFifoAccess(moduleOp))) {
-    moduleOp.emitOpError()
-        << "insertion of `amdaie.logicalobjectfif.access` operations failed";
-    return signalPassFailure();
-  }
-  LLVM_DEBUG(llvm::dbgs() << "Module after insertLogicalObjectFifoAccess: \n"
-                          << moduleOp << "\n");
-
-  // Assign tile locations to logical objectfifos on local (L1) memory.
-  if (failed(assignLocalAieTiles(moduleOp))) {
-    moduleOp.emitOpError() << "local tile assignment failed";
-    return signalPassFailure();
-  }
-  LLVM_DEBUG(llvm::dbgs() << "Module after assignLocalAieTiles: \n"
-                          << moduleOp << "\n");
-
-  // Assign a set of potential tile locations to the remaining logical
-  // objectFifos.
-  RewritePatternSet assignAieTilePatters(context);
-  assignAieTilePatters.insert<FillAieTiles>(context);
-  if (failed(applyPatternsAndFoldGreedily(moduleOp,
-                                          std::move(assignAieTilePatters)))) {
-    moduleOp.emitOpError()
-        << "collection of tile candidates for logical objectFifos failed";
-    return signalPassFailure();
-  }
-  LLVM_DEBUG(llvm::dbgs() << "Module after FillAieTiles: \n"
-                          << moduleOp << "\n");
-
-  // Assign specific tile locations to objectFifos, starting from the set of
-  // potential tile locations filled in earlier.
-  if (failed(assignAieTilesAndDistributeLogicalObjectFifos(moduleOp))) {
-    moduleOp.emitOpError()
-        << "tile assignment and logical objectFifo distribution failed";
-    return signalPassFailure();
-  }
-  LLVM_DEBUG(llvm::dbgs()
-             << "Module after assignAieTilesAndDistributeLogicalObjectFifos: \n"
-             << moduleOp << "\n");
-
-  // Allocate different memories for logical objectFifos on the same shared
-  // memory tile to ensure different buffers will be used for them.
-  if (failed(distributeSharedMemory(moduleOp))) {
-    moduleOp.emitOpError() << "distribution of shared memory failed";
-    return signalPassFailure();
-  }
+//  // Unroll local parallel loops and try hoisting dma operations if
+//  // possible.
+//  RewritePatternSet unrollLocalLoopsPatterns(context);
+//  unrollLocalLoopsPatterns.insert<AMDAIEUnrollLocalLoops>(context);
+//  if (failed(applyPatternsAndFoldGreedily(
+//          moduleOp, std::move(unrollLocalLoopsPatterns)))) {
+//    moduleOp.emitOpError()
+//        << "loop unrolling of loops selected for parallel execution failed";
+//    return signalPassFailure();
+//  }
+//  LLVM_DEBUG(llvm::dbgs() << "Module after AMDAIEUnrollLocalLoops: \n"
+//                          << moduleOp << "\n");
+//
+//  // Insert `amdaie.logicalobjectfifo.access` operations which retrieve the
+//  // memrefs from logical objectfifos and update the computational operations to
+//  // operate on these local memrefs. These access operations will be used to
+//  // assign local AIE tiles to local logical objectFifos later.
+//  if (failed(insertLogicalObjectFifoAccess(moduleOp))) {
+//    moduleOp.emitOpError()
+//        << "insertion of `amdaie.logicalobjectfif.access` operations failed";
+//    return signalPassFailure();
+//  }
+//  LLVM_DEBUG(llvm::dbgs() << "Module after insertLogicalObjectFifoAccess: \n"
+//                          << moduleOp << "\n");
+//
+//  // Assign tile locations to logical objectfifos on local (L1) memory.
+//  if (failed(assignLocalAieTiles(moduleOp))) {
+//    moduleOp.emitOpError() << "local tile assignment failed";
+//    return signalPassFailure();
+//  }
+//  LLVM_DEBUG(llvm::dbgs() << "Module after assignLocalAieTiles: \n"
+//                          << moduleOp << "\n");
+//
+//  // Assign a set of potential tile locations to the remaining logical
+//  // objectFifos.
+//  RewritePatternSet assignAieTilePatters(context);
+//  assignAieTilePatters.insert<FillAieTiles>(context);
+//  if (failed(applyPatternsAndFoldGreedily(moduleOp,
+//                                          std::move(assignAieTilePatters)))) {
+//    moduleOp.emitOpError()
+//        << "collection of tile candidates for logical objectFifos failed";
+//    return signalPassFailure();
+//  }
+//  LLVM_DEBUG(llvm::dbgs() << "Module after FillAieTiles: \n"
+//                          << moduleOp << "\n");
+//
+//  // Assign specific tile locations to objectFifos, starting from the set of
+//  // potential tile locations filled in earlier.
+//  if (failed(assignAieTilesAndDistributeLogicalObjectFifos(moduleOp))) {
+//    moduleOp.emitOpError()
+//        << "tile assignment and logical objectFifo distribution failed";
+//    return signalPassFailure();
+//  }
+//  LLVM_DEBUG(llvm::dbgs()
+//             << "Module after assignAieTilesAndDistributeLogicalObjectFifos: \n"
+//             << moduleOp << "\n");
+//
+//  // Allocate different memories for logical objectFifos on the same shared
+//  // memory tile to ensure different buffers will be used for them.
+//  if (failed(distributeSharedMemory(moduleOp))) {
+//    moduleOp.emitOpError() << "distribution of shared memory failed";
+//    return signalPassFailure();
+//  }
 }
 
 }  // namespace
