@@ -4,7 +4,7 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#include "AIETargets.h"
+#include "AMDAIETargets.h"
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 
 using namespace mlir;

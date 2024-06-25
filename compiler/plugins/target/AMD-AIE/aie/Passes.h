@@ -76,7 +76,6 @@ std::unique_ptr<OperationPass<xilinx::AIE::DeviceOp>>
 createAIEObjectFifoStatefulTransformPass();
 std::unique_ptr<OperationPass<xilinx::AIE::DeviceOp>> createAIEPathfinderPass();
 std::unique_ptr<OperationPass<ModuleOp>> createAIECoreToStandardPass();
-
 std::unique_ptr<OperationPass<xilinx::AIE::DeviceOp>> createAIEDmaToNpuPass();
 std::unique_ptr<OperationPass<ModuleOp>> createAIEXToStandardPass();
 
