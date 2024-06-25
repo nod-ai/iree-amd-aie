@@ -5,7 +5,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
-#include "aie/Passes.h"
+#include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "air/Dialect/AIR/AIRDialect.h"
 #include "air/Passes.h"
 #include "iree-amd-aie/IR/AMDAIEDialect.h"
@@ -16,6 +16,19 @@
 #include "iree/compiler/PluginAPI/Client.h"
 
 namespace mlir::iree_compiler {
+
+namespace AMDAIE {
+extern void registerAIEAssignBufferAddressesBasic();
+extern void registerAIEAssignBufferDescriptorIDs();
+extern void registerAIEAssignLockIDs();
+extern void registerAIECoreToStandard();
+extern void registerAIELocalizeLocks();
+extern void registerAIEObjectFifoStatefulTransform();
+extern void registerAIERoutePathfinderFlows();
+extern void registerAIEDmaToNpu();
+extern void registerAIEXToStandardPass();
+}  // namespace AMDAIE
+
 namespace {
 
 struct AMDAIESession
@@ -23,8 +36,15 @@ struct AMDAIESession
                            PluginActivationPolicy::DefaultActivated> {
   static void registerPasses() {
     AMDAIE::registerAMDAIEPasses();
-    AMDAIE::registerAIETransformPasses();
-    AMDAIE::registerAIEXTransformPasses();
+    AMDAIE::registerAIEAssignBufferAddressesBasic();
+    AMDAIE::registerAIEAssignBufferDescriptorIDs();
+    AMDAIE::registerAIEAssignLockIDs();
+    AMDAIE::registerAIECoreToStandard();
+    AMDAIE::registerAIELocalizeLocks();
+    AMDAIE::registerAIEObjectFifoStatefulTransform();
+    AMDAIE::registerAIERoutePathfinderFlows();
+    AMDAIE::registerAIEDmaToNpu();
+    AMDAIE::registerAIEXToStandardPass();
     AMDAIE::registerAIRConversionPasses();
     AMDAIE::registerAIRTransformPasses();
   }

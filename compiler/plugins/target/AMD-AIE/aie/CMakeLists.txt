@@ -1,4 +1,4 @@
-# Copyright 2023 The IREE Authors
+# Copyright 2024 The IREE Authors
 #
 # Licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.
@@ -278,39 +278,6 @@ iree_tablegen_library(
     -gen-pass-decls Dialect/AIE/Transforms/AIEPasses.h.inc
 )
 
-iree_cc_library(
-  NAME
-    AIETransformPassHeaders
-  HDRS
-    "${IREE_MLIR_AIE_SOURCE_DIR}/include/aie/Dialect/AIE/Transforms/Passes.h"
-    "Passes.h.inc"
-  DEPS
-    ::AIETransformPassesIncGen
-    MLIRPass
-  PUBLIC
-)
-
-iree_cc_library(
-  NAME
-    AIETransformPasses
-  SRCS
-    "AIETransformPasses.cpp"
-    "AIEAssignBufferAddressesBasic.cpp"
-    "${IREE_MLIR_AIE_SOURCE_DIR}/lib/Dialect/AIE/Transforms/AIEAssignBufferDescriptorIDs.cpp"
-    "${IREE_MLIR_AIE_SOURCE_DIR}/lib/Dialect/AIE/Transforms/AIEAssignLockIDs.cpp"
-    "${IREE_MLIR_AIE_SOURCE_DIR}/lib/Dialect/AIE/Transforms/AIECanonicalizeDevice.cpp"
-    "${IREE_MLIR_AIE_SOURCE_DIR}/lib/Dialect/AIE/Transforms/AIECoreToStandard.cpp"
-    "${IREE_MLIR_AIE_SOURCE_DIR}/lib/Dialect/AIE/Transforms/AIECreatePathFindFlows.cpp"
-    "${IREE_MLIR_AIE_SOURCE_DIR}/lib/Dialect/AIE/Transforms/AIELocalizeLocks.cpp"
-    "${IREE_MLIR_AIE_SOURCE_DIR}/lib/Dialect/AIE/Transforms/AIEObjectFifoStatefulTransform.cpp"
-    "${IREE_MLIR_AIE_SOURCE_DIR}/lib/Dialect/AIE/Transforms/AIEPathFinder.cpp"
-  DEPS
-    ::defs
-    ::AIEDialectIR
-    ::AIENormalizeAddressSpacesGen
-    ::AIETransformPassHeaders
-)
-
 ###############################################################################
 # AIEX Transform Passes
 ###############################################################################
@@ -326,27 +293,24 @@ iree_tablegen_library(
 
 iree_cc_library(
   NAME
-    AIEXTransformPassHeaders
-  HDRS
-    "${IREE_MLIR_AIE_SOURCE_DIR}/include/aie/Dialect/AIEX/Transforms/Passes.h"
-    "Passes.h.inc"
-  DEPS
-    ::AIEXTransformPassesIncGen
-    MLIRPass
-  PUBLIC
-)
-
-iree_cc_library(
-  NAME
-    AIEXTransformPasses
+    AIEPasses
   SRCS
-    "AIEXTransformPasses.cpp"
-    "${IREE_MLIR_AIE_SOURCE_DIR}/lib/Dialect/AIEX/Transforms/AIEDmaToNpu.cpp"
-    "${IREE_MLIR_AIE_SOURCE_DIR}/lib/Dialect/AIEX/Transforms/AIEXToStandard.cpp"
+    "AIEAssignBufferAddressesBasic.cpp"
+    "AIEAssignBufferDescriptorIDs.cpp"
+    "AIEAssignLockIDs.cpp"
+    "AIECoreToStandard.cpp"
+    "AIECreatePathFindFlows.cpp"
+    "AIELocalizeLocks.cpp"
+    "AIEObjectFifoStatefulTransform.cpp"
+    "AIEDmaToNpu.cpp"
+    "AIEXToStandard.cpp"
   DEPS
     ::defs
+    ::AIEDialectIR
+    ::AIENormalizeAddressSpacesGen
     ::AIEXDialectIR
-    ::AIEXTransformPassHeaders
+    ::AIEXTransformPassesIncGen
+    ::AIETransformPassesIncGen
 )
 
 add_subdirectory(test)

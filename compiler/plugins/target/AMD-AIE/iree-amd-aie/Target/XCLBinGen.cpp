@@ -10,10 +10,10 @@
 #include <sstream>
 #include <unordered_map>
 
+#include "AIETargets.h"
 #include "aie/Conversion/AIEVecToLLVM/AIEVecToLLVM.h"
-#include "aie/Dialect/AIE/Transforms/AIEPasses.h"
 #include "aie/Dialect/AIEVec/Pipelines/Passes.h"
-#include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
+#include "aie/Passes.h"
 #include "aie/Targets/AIETargets.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/JSON.h"
@@ -241,7 +241,8 @@ static LogicalResult generateCoreElfFiles(ModuleOp moduleOp,
         auto bcfOutput = openOutputFile(bcfPath, &errorMessage);
         if (!bcfOutput) return coreOp.emitOpError(errorMessage);
 
-        if (failed(AIE::AIETranslateToBCF(moduleOp, bcfOutput->os(), col, row)))
+        if (failed(mlir::iree_compiler::AMDAIE::AIETranslateToBCF(
+                moduleOp, bcfOutput->os(), col, row)))
           return coreOp.emitOpError("Failed to generate BCF");
         bcfOutput->keep();
       }
@@ -285,8 +286,8 @@ static LogicalResult generateCoreElfFiles(ModuleOp moduleOp,
         auto ldscript_output = openOutputFile(ldscript_path, &errorMessage);
         if (!ldscript_output) return coreOp.emitOpError(errorMessage);
 
-        if (failed(AIE::AIETranslateToLdScript(moduleOp, ldscript_output->os(),
-                                               col, row)))
+        if (failed(mlir::iree_compiler::AMDAIE::AIETranslateToLdScript(
+                moduleOp, ldscript_output->os(), col, row)))
           return coreOp.emitOpError("failed to generate ld script for core (")
                  << col << "," << row << ")";
         ldscript_output->keep();
@@ -334,12 +335,14 @@ static LogicalResult generateCDO(MLIRContext *context, ModuleOp moduleOp,
   PassManager passManager(context, ModuleOp::getOperationName());
   applyConfigToPassManager(TK, passManager);
 
-  passManager.addNestedPass<AIE::DeviceOp>(AIE::createAIEPathfinderPass());
+  passManager.addNestedPass<AIE::DeviceOp>(
+      mlir::iree_compiler::AMDAIE::createAIEPathfinderPass());
   if (failed(passManager.run(copy)))
     return moduleOp.emitOpError(
         "failed to run passes to prepare of XCLBin generation");
 
-  if (failed(AIE::AIETranslateToCDODirect(copy, TK.TempDir)))
+  if (failed(mlir::iree_compiler::AMDAIE::AIETranslateToCDODirect(copy,
+                                                                  TK.TempDir)))
     return moduleOp.emitOpError("failed to emit CDO");
 
   copy->erase();
@@ -684,9 +687,10 @@ static LogicalResult generateUnifiedObject(MLIRContext *context,
   PassManager pm(context, moduleOp.getOperationName());
   applyConfigToPassManager(TK, pm);
 
-  pm.addNestedPass<AIE::DeviceOp>(AIE::createAIELocalizeLocksPass());
-  pm.addPass(AIE::createAIECoreToStandardPass());
-  pm.addPass(AIEX::createAIEXToStandardPass());
+  pm.addNestedPass<AIE::DeviceOp>(
+      mlir::iree_compiler::AMDAIE::createAIELocalizeLocksPass());
+  pm.addPass(mlir::iree_compiler::AMDAIE::createAIECoreToStandardPass());
+  pm.addPass(mlir::iree_compiler::AMDAIE::createAIEXToStandardPass());
 
   // Convert specific vector dialect ops (like vector.contract) to the AIEVec
   // dialect
@@ -848,7 +852,8 @@ LogicalResult xilinx::aie2xclbin(MLIRContext *ctx, ModuleOp moduleOp,
     PassManager pm(ctx, moduleOp.getOperationName());
     applyConfigToPassManager(TK, pm);
 
-    pm.addNestedPass<AIE::DeviceOp>(AIEX::createAIEDmaToNpuPass());
+    pm.addNestedPass<AIE::DeviceOp>(
+        mlir::iree_compiler::AMDAIE::createAIEDmaToNpuPass());
     ModuleOp copy = moduleOp.clone();
     if (failed(pm.run(copy)))
       return moduleOp.emitOpError("NPU Instruction pipeline failed");
@@ -860,7 +865,8 @@ LogicalResult xilinx::aie2xclbin(MLIRContext *ctx, ModuleOp moduleOp,
       return moduleOp.emitOpError("");
     }
 
-    if (failed(AIE::AIETranslateToNPU(copy, output->os())))
+    if (failed(
+            mlir::iree_compiler::AMDAIE::AIETranslateToNPU(copy, output->os())))
       return moduleOp.emitOpError("NPU Instruction translation failed");
 
     output->keep();
