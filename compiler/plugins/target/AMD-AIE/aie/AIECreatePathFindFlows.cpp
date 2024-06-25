@@ -284,11 +284,11 @@ struct hash<mlir::iree_compiler::AMDAIE::Switchbox> {
 };
 
 template <>
-struct std::hash<mlir::iree_compiler::AMDAIE::PathEndPoint> {
-  std::size_t operator()(
+struct hash<mlir::iree_compiler::AMDAIE::PathEndPoint> {
+  size_t operator()(
       const mlir::iree_compiler::AMDAIE::PathEndPoint &pe) const noexcept {
-    std::size_t h1 = hash<mlir::iree_compiler::AMDAIE::Port>{}(pe.port);
-    std::size_t h2 = hash<mlir::iree_compiler::AMDAIE::Switchbox>{}(pe.sb);
+    size_t h1 = hash<mlir::iree_compiler::AMDAIE::Port>{}(pe.port);
+    size_t h2 = hash<mlir::iree_compiler::AMDAIE::Switchbox>{}(pe.sb);
     return h1 ^ (h2 << 1);
   }
 };
