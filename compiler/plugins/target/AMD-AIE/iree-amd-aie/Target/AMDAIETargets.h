@@ -30,7 +30,6 @@ mlir::LogicalResult AIETranslateToBCF(mlir::ModuleOp module,
 mlir::LogicalResult AIETranslateToCDODirect(
     mlir::ModuleOp m, llvm::StringRef workDirPath, bool bigEndian = false,
     bool emitUnified = false, bool cdoDebug = false, bool aieSim = false,
-    bool xaieDebug = false, size_t partitionStartCol = 1,
     bool enableCores = true);
 
 inline void collectTiles(

@@ -118,21 +118,29 @@ add_subdirectory(${_aie_rt_source_dir}/driver/src iree_aie_runtime)
 
 get_target_property(_aie_runtime_compile_options aienginev2 COMPILE_OPTIONS)
 list(REMOVE_ITEM _aie_runtime_compile_options -D__AIEBAREMETAL__)
+
+set(XAIE_DEBUG "" CACHE STRING "")
+if(XAIE_DEBUG STREQUAL "ON")
+  set(XAIE_DEBUG "__AIEDEBUG__")
+endif()
+
 set_target_properties(
   aienginev2
   PROPERTIES COMPILE_OPTIONS
              "${_aie_runtime_compile_options};${bootgen_warning_ignores}")
 target_compile_definitions(aienginev2 PRIVATE ${XAIE_DEBUG} __AIECDO__)
 # For <elf.h>
+target_compile_options(aienginev2 PRIVATE -Wno-gnu-designator)
 target_include_directories(aienginev2 PRIVATE SYSTEM ${_bootgen_source_dir})
 target_link_libraries(aienginev2 PRIVATE cdo_driver)
 
 set(_cdo_externs "\
-extern void cdo_Write32(uint64_t, uint32_t); \
-extern void cdo_MaskWrite32(uint64_t, uint32_t, uint32_t); \
-extern void cdo_MaskPoll(uint64_t, uint32_t, uint32_t, uint32_t); \
-extern void cdo_BlockWrite32(uint64_t, const uint32_t*, uint32_t); \
-extern void cdo_BlockSet32(uint64_t, uint32_t, uint32_t);")
+#include <stdint.h> \n
+extern void cdo_Write32(uint64_t Addr, uint32_t Data); \
+extern void cdo_MaskWrite32(uint64_t Addr, uint32_t Mask, uint32_t Data); \
+extern void cdo_MaskPoll(uint64_t Addr, uint32_t Mask, uint32_t Expected_Value, uint32_t TimeoutInMS); \
+extern void cdo_BlockWrite32(uint64_t Addr, uint32_t* pData, uint32_t size); \
+extern void cdo_BlockSet32(uint64_t Addr, uint32_t Data, uint32_t size);")
 
 file(READ ${_aie_rt_source_dir}/driver/src/io_backend/ext/xaie_cdo.c _file_contents)
 string(REPLACE "#include \"cdo_rts.h\"" "${_cdo_externs}" __file_contents "${_file_contents}")
@@ -159,12 +167,11 @@ iree_cc_library(
     ${_aie_rt_binary_include_dir}
     # For <elf.h>
     ${_bootgen_source_dir}
+    ${LLVM_INCLUDE_DIRS}
   PUBLIC
 )
 
 target_link_libraries(iree-amd-aie_aie_runtime_iree_aie_runtime_static
   PRIVATE aienginev2 LLVMSupport)
-target_include_directories(iree-amd-aie_aie_runtime_iree_aie_runtime_static
-  PRIVATE ${LLVM_INCLUDE_DIRS})
 
 add_subdirectory(test)
