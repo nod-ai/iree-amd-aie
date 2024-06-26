@@ -341,6 +341,7 @@ LogicalResult AIETargetDirectBackend::serializeExecutable(
     TK.PrintIRAfterAll = options.aie2xclbinPrintIrAfterAll;
     TK.PrintIRBeforeAll = options.aie2xclbinPrintIrBeforeAll;
     TK.PrintIRModuleScope = options.aie2xclbinPrintIrModuleScope;
+    TK.Timing = options.aie2xclbinTiming;
     TK.TargetArch = "AIE2";
     TK.TempDir = entryPointWorkDir.str();
     TK.UseChess = options.useChess;
