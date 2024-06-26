@@ -132,8 +132,7 @@ AMDAIENPUDeviceModel::AMDAIENPUDeviceModel(
                     static_cast<uint8_t>(memTileRowStart + nMemTileRows),
                 .AieTileNumRows =
                     static_cast<uint8_t>(nRows - nMemTileRows - nShimTileRows),
-                .PartProp = {},
-                .Backend = XAIE_IO_BACKEND_CDO},
+                .PartProp = {}},
       devInst{} {
   TRY_XAIE_API_FATAL_ERROR(XAie_SetupPartitionConfig, &devInst,
                            XAIE_PARTITION_BASE_ADDR, partitionStartCol,
@@ -148,6 +147,7 @@ AMDAIENPUDeviceModel::AMDAIENPUDeviceModel(
     TRY_XAIE_API_FATAL_ERROR(XAie_SetIOBackend, &devInst, XAIE_IO_BACKEND_CDO);
 
   TRY_XAIE_API_FATAL_ERROR(XAie_UpdateNpiAddr, &devInst, NPI_ADDR);
+  TRY_XAIE_API_FATAL_ERROR(XAie_TurnEccOff, &devInst);
 }
 
 int AMDAIENPUDeviceModel::rows() const { return configPtr.NumRows; }
