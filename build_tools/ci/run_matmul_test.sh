@@ -602,9 +602,9 @@ run_matmul_test \
 run_matmul_test \
     --name_prefix "packPeel" \
     --pipeline "pack-peel" \
-    --lhs_rhs_type "i32" \
+    --lhs_rhs_type "i8" \
     --acc_type "i32" \
-    --m "64"  --n "64" --k "128"
+    --m "1024"  --n "1024" --k "512"
 
 # We're seeing intermittent numerical errors in these 3 tests,
 # needs investigation. TODO(newling/yzhang93): Add more info.
