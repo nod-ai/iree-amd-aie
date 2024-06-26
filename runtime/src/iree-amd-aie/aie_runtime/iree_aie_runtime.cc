@@ -117,8 +117,8 @@ bool isSouth(uint8_t srcCol, uint8_t srcRow, uint8_t dstCol, uint8_t dstRow) {
 AMDAIENPUDeviceModel::AMDAIENPUDeviceModel(
     uint8_t aieGen, uint64_t baseAddr, uint8_t colShift, uint8_t rowShift,
     uint8_t nColumns, uint8_t nRows, uint8_t memTileRowStart,
-    uint8_t nMemTileRows, uint8_t nShimTileRows, uint8_t partitionStartCol,
-    uint8_t partitionNumCols, bool aieSim, bool xaieDebug)
+    uint8_t nMemTileRows, uint8_t nShimTileRows, uint8_t partitionNumCols,
+    uint8_t partitionStartCol, bool aieSim, bool xaieDebug)
     : configPtr{.AieGen = aieGen,
                 .BaseAddr = baseAddr,
                 .ColShift = colShift,

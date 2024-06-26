@@ -26,21 +26,8 @@
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypeInterfaces.h"
 #include "mlir/IR/Operation.h"
-#include "mlir/IR/Region.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
-
-extern "C" {
-#include "xaiengine/xaie_core.h"
-#include "xaiengine/xaie_dma.h"
-#include "xaiengine/xaie_elfloader.h"
-#include "xaiengine/xaie_interrupt.h"
-#include "xaiengine/xaie_locks.h"
-#include "xaiengine/xaie_plif.h"
-#include "xaiengine/xaie_ss.h"
-#include "xaiengine/xaiegbl.h"
-#include "xaiengine/xaiegbl_defs.h"
-}
 
 #define DEBUG_TYPE "aie-generate-cdo"
 
@@ -285,10 +272,7 @@ LogicalResult configureLocksAndBd(Block &block, XAie_LocType tileLoc,
 
 struct AIEControl {
   AMDAIENPUDeviceModel deviceModel;
-
-  AIEControl(size_t partitionStartCol, bool aieSim, bool xaieDebug,
-             AMDAIENPUDeviceModel dm)
-      : deviceModel(dm) {}
+  AIEControl(AMDAIENPUDeviceModel dm) : deviceModel(dm) {}
 
   LogicalResult addAieElfToCDO(uint8_t col, uint8_t row,
                                const StringRef elfPath, bool aieSim) {
@@ -587,37 +571,22 @@ LogicalResult generateCDOUnified(mlir::iree_compiler::AMDAIE::AIEControl &ctl,
 
 namespace mlir::iree_compiler::AMDAIE {
 LogicalResult AIETranslateToCDODirect(ModuleOp m, llvm::StringRef workDirPath,
-                                      byte_ordering endianness,
-                                      bool emitUnified, bool cdoDebug,
-                                      bool aieSim, bool xaieDebug,
-                                      size_t partitionStartCol,
+                                      bool bigEndian, bool emitUnified,
+                                      bool cdoDebug, bool aieSim,
                                       bool enableCores) {
   auto devOps = m.getOps<DeviceOp>();
   assert(llvm::range_size(devOps) == 1 &&
          "only exactly 1 device op supported.");
   DeviceOp device = *devOps.begin();
   mlir::iree_compiler::AMDAIE::AIEControl ctl(
-      partitionStartCol, aieSim, xaieDebug,
       mlir::iree_compiler::AMDAIE::getDeviceModel(
           static_cast<AMDAIEDevice>(device.getDevice())));
+  byte_ordering endianness =
+      bigEndian ? byte_ordering::Big_Endian : byte_ordering::Little_Endian;
   initializeCDOGenerator(endianness, cdoDebug);
   if (emitUnified)
     return generateCDOUnified(ctl, workDirPath, device, aieSim, enableCores);
   return generateCDOBinariesSeparately(ctl, workDirPath, device, aieSim,
                                        enableCores);
-}
-
-// Not sure why but defining this with xilinx::AIE will create a duplicate
-// symbol in libAIETargets.a that then doesn't actually match the header?
-LogicalResult AIETranslateToCDODirect(ModuleOp m, llvm::StringRef workDirPath,
-                                      bool bigEndian, bool emitUnified,
-                                      bool cdoDebug, bool aieSim,
-                                      bool xaieDebug, size_t partitionStartCol,
-                                      bool enableCores) {
-  byte_ordering endianness =
-      bigEndian ? byte_ordering::Big_Endian : byte_ordering::Little_Endian;
-  return AIETranslateToCDODirect(m, workDirPath, endianness, emitUnified,
-                                 cdoDebug, aieSim, xaieDebug, partitionStartCol,
-                                 enableCores);
 }
 }  // namespace mlir::iree_compiler::AMDAIE

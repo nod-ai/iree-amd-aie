@@ -52,13 +52,16 @@ void insertNoOpCommand(unsigned int numPadBytes);
 
 #define XAIE2_BASE_ADDR 0x40000000
 #define XAIE1_BASE_ADDR 0x20000000000
-#define XAIE2_COL_SHIFT 25
-#define XAIE2_ROW_SHIFT 20
 #define XAIE1_COL_SHIFT 23
 #define XAIE1_ROW_SHIFT 18
-#define XAIE_SHIM_ROW 0
+#define XAIE2_BASE_ADDR 0x40000000
+#define XAIE2_COL_SHIFT 25
+#define XAIE2_ROW_SHIFT 20
 #define XAIE_MEM_TILE_ROW_START 1
+#define XAIE_NUM_MEM_TILE_ROWS 1
+#define XAIE_NUM_SHIM_TILE_ROWS 1
 #define XAIE_PARTITION_BASE_ADDR 0x0
+#define XAIE_SHIM_ROW 0
 
 #define NPI_ADDR 0x0
 #define NUM_LOCKS 16
@@ -207,11 +210,13 @@ struct AMDAIENPUDeviceModel {
   XAie_Config configPtr;
   XAie_DevInst devInst;
 
-  explicit AMDAIENPUDeviceModel(
-      uint8_t aieGen, uint64_t baseAddr, uint8_t colShift, uint8_t rowShift,
-      uint8_t nColumns, uint8_t, uint8_t memTileRowStart, uint8_t nMemTileRows,
-      uint8_t nShimTileRows, uint8_t partitionStartCol,
-      uint8_t partitionNumCols, bool aieSim = false, bool xaieDebug = false);
+  explicit AMDAIENPUDeviceModel(uint8_t aieGen, uint64_t baseAddr,
+                                uint8_t colShift, uint8_t rowShift,
+                                uint8_t nColumns, uint8_t,
+                                uint8_t memTileRowStart, uint8_t nMemTileRows,
+                                uint8_t nShimTileRows, uint8_t partitionNumCols,
+                                uint8_t partitionStartCol = 1,
+                                bool aieSim = false, bool xaieDebug = false);
 
   int rows() const;
   int columns() const;
