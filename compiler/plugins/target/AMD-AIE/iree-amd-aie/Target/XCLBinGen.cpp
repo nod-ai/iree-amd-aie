@@ -686,8 +686,8 @@ static LogicalResult generateUnifiedObject(MLIRContext *context,
 
   pm.addNestedPass<AIE::DeviceOp>(
       mlir::iree_compiler::AMDAIE::createAIELocalizeLocksPass());
-  /*pm.addNestedPass<AIE::DeviceOp>(
-      xilinx::AIE::createAIENormalizeAddressSpacesPass());*/
+  pm.addNestedPass<AIE::DeviceOp>(
+      xilinx::AIE::createAIENormalizeAddressSpacesPass());
   pm.addPass(mlir::iree_compiler::AMDAIE::createAIECoreToStandardPass());
   pm.addPass(mlir::iree_compiler::AMDAIE::createAIEXToStandardPass());
 
