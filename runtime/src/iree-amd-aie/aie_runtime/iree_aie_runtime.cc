@@ -102,8 +102,7 @@ AMDAIENPUDeviceModel::AMDAIENPUDeviceModel(
                     static_cast<uint8_t>(memTileRowStart + nMemTileRows),
                 .AieTileNumRows =
                     static_cast<uint8_t>(nRows - nMemTileRows - nShimTileRows),
-                .PartProp = {},
-                .Backend = XAIE_IO_BACKEND_CDO},
+                .PartProp = {}},
       devInst{} {
   TRY_XAIE_API_FATAL_ERROR(XAie_SetupPartitionConfig, &devInst,
                            XAIE_PARTITION_BASE_ADDR, partitionStartCol,

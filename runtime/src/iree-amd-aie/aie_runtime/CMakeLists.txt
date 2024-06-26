@@ -127,6 +127,17 @@ target_compile_definitions(aienginev2 PRIVATE ${XAIE_DEBUG} __AIECDO__)
 target_include_directories(aienginev2 PRIVATE SYSTEM ${_bootgen_source_dir})
 target_link_libraries(aienginev2 PRIVATE cdo_driver)
 
+set(_cdo_externs "\
+extern void cdo_Write32(uint64_t, uint32_t); \
+extern void cdo_MaskWrite32(uint64_t, uint32_t, uint32_t); \
+extern void cdo_MaskPoll(uint64_t, uint32_t, uint32_t, uint32_t); \
+extern void cdo_BlockWrite32(uint64_t, const uint32_t*, uint32_t); \
+extern void cdo_BlockSet32(uint64_t, uint32_t, uint32_t);")
+
+file(READ ${_aie_rt_source_dir}/driver/src/io_backend/ext/xaie_cdo.c _file_contents)
+string(REPLACE "#include \"cdo_rts.h\"" "${_cdo_externs}" __file_contents "${_file_contents}")
+file(WRITE ${_aie_rt_source_dir}/driver/src/io_backend/ext/xaie_cdo.c "${__file_contents}")
+
 iree_install_targets(
   TARGETS aienginev2
   COMPONENT IREEBundledLibraries
