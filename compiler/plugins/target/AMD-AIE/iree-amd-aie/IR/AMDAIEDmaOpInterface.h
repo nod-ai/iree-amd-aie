@@ -12,12 +12,29 @@
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/IR/PatternMatch.h"
+#include "mlir/Interfaces/CopyOpInterface.h"
 
 namespace mlir::iree_compiler::AMDAIE {
 
 class DoublyStridedOpInterface;
 
 namespace detail {
+
+/// Return the static base offset on the source side if it can be computed.
+/// Otherwise, returns nullopt.
+std::optional<int64_t> getSourceStaticBaseOffset(DoublyStridedOpInterface op);
+
+/// Return the static access extent on the source side if it can be computed.
+/// Otherwise, returns nullopt.
+std::optional<int64_t> getSourceStaticExtent(DoublyStridedOpInterface op);
+
+/// Return the static base offset on the target side if it can be computed.
+/// Otherwise, returns nullopt.
+std::optional<int64_t> getTargetStaticBaseOffset(DoublyStridedOpInterface op);
+
+/// Return the static access extent on the target side if it can be computed.
+/// Otherwise, returns nullopt.
+std::optional<int64_t> getTargetStaticExtent(DoublyStridedOpInterface op);
 
 /// Common verifier for doubly-strided operations.
 LogicalResult verifyDoublyStridedOp(DoublyStridedOpInterface op);

@@ -84,6 +84,7 @@ module {
       %obj2 = amdaie.logicalobjectfifo.from_memref %alloc_2, {%tile_0_2} : memref<4x8x4x8xi32, 2> -> !amdaie.logicalobjectfifo<memref<4x8x4x8xi32, 2>>
       %dma0 = amdaie.circular_dma_cpy_nd(%obj1[] [] [], %obj2[] [] []) : (!amdaie.logicalobjectfifo<memref<32x32xi32, 1>>, !amdaie.logicalobjectfifo<memref<4x8x4x8xi32, 2>>)
       %dma1 = amdaie.circular_dma_cpy_nd(%obj0[] [] [], %obj1[] [] []) : (!amdaie.logicalobjectfifo<memref<32x64xi32>>, !amdaie.logicalobjectfifo<memref<32x32xi32, 1>>)
+      amdaie.logicalobjectfifo.link[%dma0] -> [%dma1] ()
       memref.dealloc %alloc_2 : memref<4x8x4x8xi32, 2>
       memref.dealloc %alloc_1 : memref<32x32xi32, 1>
       memref.dealloc %alloc_0 : memref<32x64xi32>
@@ -132,6 +133,7 @@ module {
       %obj2 = amdaie.logicalobjectfifo.from_memref %alloc_2, {%tile_0_2} : memref<4x8x4x8xi32, 2> -> !amdaie.logicalobjectfifo<memref<4x8x4x8xi32, 2>>
       %dma0 = amdaie.circular_dma_cpy_nd(%obj1[] [] [], %obj2[%c0, %c0, %c0] [%c32, %c4, %c8] [%c8, %c256, %c1]) : (!amdaie.logicalobjectfifo<memref<32x32xi32, 1>>, !amdaie.logicalobjectfifo<memref<4x8x4x8xi32, 2>>)
       %dma1 = amdaie.circular_dma_cpy_nd(%obj0[] [] [], %obj1[] [] []) : (!amdaie.logicalobjectfifo<memref<32x64xi32>>, !amdaie.logicalobjectfifo<memref<32x32xi32, 1>>)
+      amdaie.logicalobjectfifo.link[%dma0] -> [%dma1] ()
       memref.dealloc %alloc_2 : memref<4x8x4x8xi32, 2>
       memref.dealloc %alloc_1 : memref<32x32xi32, 1>
       memref.dealloc %alloc_0 : memref<32x64xi32>
@@ -338,6 +340,7 @@ module {
       %obj2 = amdaie.logicalobjectfifo.from_memref %alloc_2, {%tile_0_2} : memref<4x8x4x8xi32, 2> -> !amdaie.logicalobjectfifo<memref<4x8x4x8xi32, 2>>
       %dma0 = amdaie.circular_dma_cpy_nd(%obj1[] [] [], %obj2[] [] []) : (!amdaie.logicalobjectfifo<memref<32x32xi32, 1>>, !amdaie.logicalobjectfifo<memref<4x8x4x8xi32, 2>>)
       %dma1 = amdaie.circular_dma_cpy_nd(%obj0[] [] [], %obj1[] [] []) : (!amdaie.logicalobjectfifo<memref<32x64xi32>>, !amdaie.logicalobjectfifo<memref<32x32xi32, 1>>)
+      amdaie.logicalobjectfifo.link[%dma0] -> [%dma1] ()
       memref.dealloc %alloc_2 : memref<4x8x4x8xi32, 2>
       memref.dealloc %alloc_1 : memref<32x32xi32, 1>
       amdaie.controlcode {
@@ -421,7 +424,8 @@ module {
       %obj1 = amdaie.logicalobjectfifo.from_memref %alloc_1, {%tile_0_1} : memref<32x32xi32, 1> -> !amdaie.logicalobjectfifo<memref<32x32xi32, 1>>
       %obj2 = amdaie.logicalobjectfifo.from_memref %alloc_2, {%tile_0_2, %tile_1_2} : memref<4x8x4x8xi32, 2> -> !amdaie.logicalobjectfifo<memref<4x8x4x8xi32, 2>>
       %dma0 = amdaie.circular_dma_cpy_nd(%obj1[] [] [], %obj0[] [] []) : (!amdaie.logicalobjectfifo<memref<32x32xi32, 1>>, !amdaie.logicalobjectfifo<memref<32x64xi32>>)
-      %dma1 = amdaie.circular_dma_cpy_nd(%obj2[] [] [], %obj1[] [] []) : (!amdaie.logicalobjectfifo<memref<4x8x4x8xi32, 2>>, !amdaie.logicalobjectfifo<memref<32x32xi32, 1>>) 
+      %dma1 = amdaie.circular_dma_cpy_nd(%obj2[] [] [], %obj1[] [] []) : (!amdaie.logicalobjectfifo<memref<4x8x4x8xi32, 2>>, !amdaie.logicalobjectfifo<memref<32x32xi32, 1>>)
+      amdaie.logicalobjectfifo.link[%dma0] -> [%dma1] ()
       %core_0_2 = amdaie.core(%tile_0_2) {
         %1 = amdaie.logicalobjectfifo.acquire(%dma1, Consume) {size = 1 : i32} -> !amdaie.logicalobjectfifo<memref<4x8x4x8xi32, 2>>
         %2 = amdaie.logicalobjectfifo.access(%1, Read) : !amdaie.logicalobjectfifo<memref<4x8x4x8xi32, 2>> -> memref<4x8x4x8xi32, 2>

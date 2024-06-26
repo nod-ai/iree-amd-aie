@@ -6,12 +6,99 @@
 
 #include "iree-amd-aie/IR/AMDAIEDmaOpInterface.h"
 
+#include "iree-amd-aie/IR/AMDAIEAttrs.h"
+#include "iree-amd-aie/Utils/Utils.h"
+
 /// Include the definitions of the dma-like interfaces.
 #include "iree-amd-aie/IR/AMDAIEDmaOpInterface.cpp.inc"
 
 namespace mlir::iree_compiler::AMDAIE {
 
 namespace detail {
+
+/// Utility to compute the static base offset on either the source or target
+/// side of a doubly strided operation.
+template <CopyOpOperateOn OperateOn>
+std::optional<int64_t> getStaticBaseOffset(DoublyStridedOpInterface op) {
+  int64_t baseOffset = 0;
+  SmallVector<OpFoldResult> offsets;
+  SmallVector<OpFoldResult> strides;
+  if constexpr (OperateOn == CopyOpOperateOn::Source) {
+    offsets = op.getSourceMixedOffsets();
+    strides = op.getSourceMixedStrides();
+  } else if constexpr (OperateOn == CopyOpOperateOn::Target) {
+    offsets = op.getTargetMixedOffsets();
+    strides = op.getTargetMixedStrides();
+  } else {
+    assert(false && "Function can only operate on Source or Target");
+  }
+  for (auto &&[offset, stride] : llvm::zip(offsets, strides)) {
+    std::optional<int64_t> constantOffset = getConstantIntValue(offset);
+    std::optional<int64_t> constantStride = getConstantIntValue(stride);
+    // If offset is zero, we can just continue to the next one. This enables
+    // the case where the stride is dynamic.
+    if (constantOffset && constantOffset.value() == 0) continue;
+    if (constantOffset && constantStride) {
+      baseOffset += (constantOffset.value() * constantStride.value());
+    } else {
+      return std::nullopt;
+    }
+  }
+  return baseOffset;
+}
+
+/// Utility to compute the static extent on either the source or target side
+/// of a doubly strided operation. The extent is the range of elements covered
+/// by the strided access pattern, starting from the base offset.
+///
+/// Returns std::nullopt if the extent can't be computed due to for example
+/// dynamic strides or sizes.
+///
+/// Returns 0 in case of empty offsets/strides/sizes, which represents a
+/// contiguous access of all values operated on.
+template <CopyOpOperateOn OperateOn>
+std::optional<int64_t> getStaticExtent(DoublyStridedOpInterface op) {
+  SmallVector<OpFoldResult> sizes;
+  SmallVector<OpFoldResult> strides;
+  if constexpr (OperateOn == CopyOpOperateOn::Source) {
+    sizes = op.getSourceMixedSizes();
+    strides = op.getSourceMixedStrides();
+  } else if constexpr (OperateOn == CopyOpOperateOn::Target) {
+    sizes = op.getTargetMixedSizes();
+    strides = op.getTargetMixedStrides();
+  } else {
+    assert(false && "Function can only operate on Source or Target");
+  }
+  std::optional<SmallVector<int64_t>> staticSizes = getConstantIntValues(sizes);
+  std::optional<SmallVector<int64_t>> staticStrides =
+      getConstantIntValues(strides);
+  if (!staticSizes || !staticStrides) return std::nullopt;
+  return getAccessRangeExtent(staticSizes.value(), staticStrides.value());
+}
+
+/// Return the static base offset on the source side if it can be computed.
+/// Otherwise, returns nullopt.
+std::optional<int64_t> getSourceStaticBaseOffset(DoublyStridedOpInterface op) {
+  return getStaticBaseOffset<CopyOpOperateOn::Source>(op);
+}
+
+/// Return the static access extent on the source side if it can be computed.
+/// Otherwise, returns nullopt.
+std::optional<int64_t> getSourceStaticExtent(DoublyStridedOpInterface op) {
+  return getStaticExtent<CopyOpOperateOn::Source>(op);
+}
+
+/// Return the static base offset on the target side if it can be computed.
+/// Otherwise, returns nullopt.
+std::optional<int64_t> getTargetStaticBaseOffset(DoublyStridedOpInterface op) {
+  return getStaticBaseOffset<CopyOpOperateOn::Target>(op);
+}
+
+/// Return the static access extent on the target side if it can be computed.
+/// Otherwise, returns nullopt.
+std::optional<int64_t> getTargetStaticExtent(DoublyStridedOpInterface op) {
+  return getStaticExtent<CopyOpOperateOn::Target>(op);
+}
 
 LogicalResult verifyStaticOrDynamicEntryInvariant(Operation *op, StringRef name,
                                                   ArrayRef<int64_t> staticVals,

@@ -8,6 +8,7 @@
 #define IREE_AMDAIE_DIALECT_DMAOPINTERFACE
 
 include "mlir/IR/OpBase.td"
+include "mlir/Interfaces/CopyOpInterface.td"
 
 //===----------------------------------------------------------------------===//
 // Defines the interface for dma-like operations.
@@ -149,6 +150,41 @@ def DoublyStridedOpInterface : OpInterface<"DoublyStridedOpInterface"> {
       }]
     >,
     InterfaceMethod<
+      /*desc=*/[{
+        Return the static base offset on the target side if it can be computed.
+        Otherwise, returns nullopt.
+      }],
+      /*retTy=*/"std::optional<int64_t>",
+      /*methodName=*/"getTargetStaticBaseOffset",
+      /*args=*/(ins),
+      /*methodBody=*/"",
+      /*defaultImplementation=*/[{
+        return detail::getTargetStaticBaseOffset(
+          ::mlir::cast<DoublyStridedOpInterface>($_op.getOperation()));
+      }]
+    >,
+    InterfaceMethod<
+      /*desc=*/[{
+        Return the static access range extent on the target side if it can be
+        computed. Otherwise, returns nullopt.
+
+        The extent is the number of elements in the range of elements being
+        accessed. This is the same as the last relative index (with regard to
+        base offset) being accessed + 1.
+
+        A return value of 0 is the result of empty offsets/strides/sizes and
+        represents a contiguous access of all values operated on.
+      }],
+      /*retTy=*/"std::optional<int64_t>",
+      /*methodName=*/"getTargetStaticExtent",
+      /*args=*/(ins),
+      /*methodBody=*/"",
+      /*defaultImplementation=*/[{
+        return detail::getTargetStaticExtent(
+          ::mlir::cast<DoublyStridedOpInterface>($_op.getOperation()));
+      }]
+    >,
+    InterfaceMethod<
       /*desc=*/"Return the dynamic source offsets.",
       /*retTy=*/"::mlir::OperandRange",
       /*methodName=*/"getSourceOffsets",
@@ -252,6 +288,41 @@ def DoublyStridedOpInterface : OpInterface<"DoublyStridedOpInterface"> {
     >,
     InterfaceMethod<
       /*desc=*/[{
+        Return the static base offset on the source side if it can be computed.
+        Otherwise, returns nullopt.
+      }],
+      /*retTy=*/"std::optional<int64_t>",
+      /*methodName=*/"getSourceStaticBaseOffset",
+      /*args=*/(ins),
+      /*methodBody=*/"",
+      /*defaultImplementation=*/[{
+        return detail::getSourceStaticBaseOffset(
+          ::mlir::cast<DoublyStridedOpInterface>($_op.getOperation()));
+      }]
+    >,
+    InterfaceMethod<
+      /*desc=*/[{
+        Return the static access range extent on the source side if it can be
+        computed. Otherwise, returns nullopt.
+        
+        The extent is the number of elements in the range of elements being
+        accessed. This is the same as the last relative index (with regard to
+        base offset) being accessed + 1.
+
+        A return value of 0 is the result of empty offsets/strides/sizes and
+        represents a contiguous access of all values operated on.
+      }],
+      /*retTy=*/"std::optional<int64_t>",
+      /*methodName=*/"getSourceStaticExtent",
+      /*args=*/(ins),
+      /*methodBody=*/"",
+      /*defaultImplementation=*/[{
+        return detail::getSourceStaticExtent(
+          ::mlir::cast<DoublyStridedOpInterface>($_op.getOperation()));
+      }]
+    >,
+    InterfaceMethod<
+      /*desc=*/[{
         A utility to create and return a new doubly strided operation from
         this one with new source and target offsets, sizes and strides.
       }],
@@ -279,6 +350,18 @@ def DoublyStridedOpInterface : OpInterface<"DoublyStridedOpInterface"> {
     return detail::verifyDoublyStridedOp(
         ::mlir::cast<DoublyStridedOpInterface>($_op));
   }];
+}
+
+def DoublyStridedCopyOpInterface : OpInterface<"DoublyStridedCopyOpInterface",
+   [DoublyStridedOpInterface, CopyOpInterface]> {
+  let description = [{
+    Interface for copy-like operations that are doubly-strided.
+
+    This is useful because not all doubly-strided operations have an explicit
+    `source` and `target` value. An example of this is `npu.dma_cpy_nd`, which
+    specifies source and target indirectly via a referenced DMA operation.
+  }];
+  let cppNamespace = "mlir::iree_compiler::AMDAIE";
 }
 
 #endif // IREE_AMDAIE_DIALECT_DMAOPINTERFACE
