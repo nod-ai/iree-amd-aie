@@ -8,6 +8,9 @@ find_package(Boost REQUIRED)
 include_directories(${Boost_INCLUDE_DIRS})
 
 set(IREE_AMD_AIE_SOURCE_DIR "${CMAKE_CURRENT_LIST_DIR}")
+set(IREE_MLIR_AIR_SOURCE_DIR "${IREE_AMD_AIE_SOURCE_DIR}/third_party/mlir-air/mlir")
+set(IREE_MLIR_AIE_SOURCE_DIR "${IREE_AMD_AIE_SOURCE_DIR}/third_party/mlir-aie")
+
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/compiler/plugins/target/AMD-AIE target/AMD-AIE)
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/tests/samples AMD-AIE/tests/samples)
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/tests/OPT/failing_tests AMD-AIE/tests/OPT/failing_tests)
