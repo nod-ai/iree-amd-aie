@@ -33,6 +33,7 @@ iree_lit_test_suite(
     "lower_to_ukernel.mlir"
     "lower_workgroup_count.mlir"
     "lowering_strategy.mlir"
+    "lowering_strategy_conv.mlir"
     "lowering_strategy_failures.mlir"
     "map_forall_to_cores.mlir"
     "normalize_loop_bounds.mlir"

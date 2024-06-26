@@ -19,6 +19,10 @@ namespace mlir::iree_compiler::AMDAIE {
 
 using detail::findLargestFactor;
 
+//===----------------------------------------------------------------------===//
+// Utility Functions
+//===----------------------------------------------------------------------===//
+
 namespace {
 
 FailureOr<std::array<uint32_t, 3>> getMatmulInstructionSize(
@@ -297,6 +301,78 @@ static SmallVector<int64_t> setInnerPermB(bool isMatmulTransposeB) {
   return innerPermB;
 }
 
+/// TODO(avarma): This currently is skipping checking for ext* ops.
+static bool bodyMatcherForMatmulTranspose(Value yieldVal, Block *body) {
+  Operation *addOp = yieldVal.getDefiningOp();
+  if (!isa_and_nonnull<arith::AddIOp, arith::AddFOp>(addOp)) {
+    return false;
+  }
+  Operation *mulOp = addOp->getOperand(1).getDefiningOp();
+  if (!isa_and_nonnull<arith::MulIOp, arith::MulFOp>(mulOp)) {
+    return false;
+  }
+  auto lhsBlockArg = dyn_cast<BlockArgument>(mulOp->getOperand(0));
+  auto rhsBlockArg = dyn_cast<BlockArgument>(mulOp->getOperand(1));
+  auto outBlockArg = dyn_cast<BlockArgument>(addOp->getOperand(0));
+  if (!lhsBlockArg || !rhsBlockArg || !outBlockArg ||
+      lhsBlockArg.getOwner() != body || rhsBlockArg.getOwner() != body ||
+      outBlockArg.getOwner() != body || lhsBlockArg.getArgNumber() != 0 ||
+      rhsBlockArg.getArgNumber() != 1 || outBlockArg.getArgNumber() != 2) {
+    return false;
+  }
+  return true;
+}
+
+/// `isMatmulTransposeB` is a utility function that aims to indentify whether a
+/// linalg.generic op is a matmul with rhs operand transposed.
+static bool isMatmulTransposeB(linalg::GenericOp genericOp) {
+  // Step 1. Test the body of the generic to indeed be what we expect for a
+  //         matmul transpose.
+  Block *body = genericOp.getBlock();
+  auto yieldOp = cast<linalg::YieldOp>(body->getTerminator());
+  Value yieldVal = yieldOp.getOperand(0);
+  if (!bodyMatcherForMatmulTranspose(yieldVal, body)) {
+    return false;
+  }
+  // Step 2. Check iterator types.
+  SmallVector<utils::IteratorType> matmulTransposeIteratorTypes = {
+      utils::IteratorType::parallel, utils::IteratorType::parallel,
+      utils::IteratorType::reduction};
+  SmallVector<utils::IteratorType> opIteratorTypes =
+      genericOp.getIteratorTypesArray();
+  if (matmulTransposeIteratorTypes != opIteratorTypes) {
+    return false;
+  }
+  // Step 3. Test the indexing maps.
+  ArrayAttr indexingMaps = genericOp.getIndexingMaps();
+  if (indexingMaps.size() != 3) return false;
+
+  AffineMap map0 = cast<AffineMapAttr>(indexingMaps[0]).getValue();
+  AffineMap map1 = cast<AffineMapAttr>(indexingMaps[1]).getValue();
+  AffineMap map2 = cast<AffineMapAttr>(indexingMaps[2]).getValue();
+
+  if (map0.getNumResults() != 2 || map1.getNumResults() != 2 ||
+      map2.getNumResults() != 2 || map0.getNumInputs() != 3 ||
+      map1.getNumInputs() != 3 || map2.getNumInputs() != 3) {
+    return false;
+  }
+
+  // Extract dimensions for MxK * NxK -> MxN
+  AffineExpr m = map2.getResult(0);
+  AffineExpr n = map2.getResult(1);
+  AffineExpr k = map0.getResult(1);
+  auto *context = indexingMaps.getContext();
+  auto mapA = AffineMapAttr::get(AffineMap::get(3, 0, {m, k}, context));
+  auto mapB = AffineMapAttr::get(AffineMap::get(3, 0, {n, k}, context));
+  auto mapC = AffineMapAttr::get(AffineMap::get(3, 0, {m, n}, context));
+  auto maps = ArrayAttr::get(context, {mapA, mapB, mapC});
+  return indexingMaps == maps;
+}
+
+//===----------------------------------------------------------------------===//
+// Root Configuration for Pipelines
+//===----------------------------------------------------------------------===//
+
 static LogicalResult setRootConfigForPackPeelPipeline(
     mlir::FunctionOpInterface entryPointFn, linalg::LinalgOp linalgOp,
     AIEConfig cfg, bool isMatmulTransposeB) {
@@ -422,73 +498,45 @@ static LogicalResult setRootConfigForPadPackPipeline(
   return success();
 }
 
-/// TODO(avarma): This currently is skipping checking for ext* ops.
-static bool bodyMatcherForMatmulTranspose(Value yieldVal, Block *body) {
-  Operation *addOp = yieldVal.getDefiningOp();
-  if (!isa_and_nonnull<arith::AddIOp, arith::AddFOp>(addOp)) {
-    return false;
+static LogicalResult setRootConfigForConvDecomposePipeline(
+    mlir::FunctionOpInterface entryPointFn, linalg::LinalgOp linalgOp,
+    AIEConfig cfg) {
+  auto maybeInstructionSize = getMatmulInstructionSize(linalgOp);
+  int64_t OW = 4;
+  int64_t OC = 4;
+  int64_t IC = 8;
+  if (succeeded(maybeInstructionSize)) {
+    auto instructionSize = maybeInstructionSize.value();
+    OW = instructionSize[0];
+    OC = instructionSize[1];
+    IC = instructionSize[2];
   }
-  Operation *mulOp = addOp->getOperand(1).getDefiningOp();
-  if (!isa_and_nonnull<arith::MulIOp, arith::MulFOp>(mulOp)) {
-    return false;
+
+  SmallVector<int64_t> TileSizeLevel0;
+  SmallVector<int64_t> TileSizeLevel1;
+  SmallVector<int64_t> TileSizeLevel2;
+  // Note: some of the tiling dimensions are hardcoded for now.
+  if (isa<linalg::Conv2DNhwcHwcfOp>(linalgOp)) {
+    // conv_2d_nhwc_hwcf tiling dims: [N, OH, OW, OC, KH, KW, IC].
+    TileSizeLevel0 = {0, 4, OW, OC, 0, 0, 0};
+    TileSizeLevel1 = {1, 1, OW, OC, 0, 0, 0};
+    TileSizeLevel2 = {0, 0, 0, 0, 1, 1, IC};
+  } else if (isa<linalg::Conv2DNchwFchwOp>(linalgOp)) {
+    // conv_2d_nchw_fchw tiling dims: [N, OC, OH, OW, IC, KH, KW].
+    TileSizeLevel0 = {0, OC, 4, OW, 0, 0, 0};
+    TileSizeLevel1 = {1, OC, 1, OW, 0, 0, 0};
+    TileSizeLevel2 = {0, 0, 0, 0, IC, 1, 1};
   }
-  auto lhsBlockArg = dyn_cast<BlockArgument>(mulOp->getOperand(0));
-  auto rhsBlockArg = dyn_cast<BlockArgument>(mulOp->getOperand(1));
-  auto outBlockArg = dyn_cast<BlockArgument>(addOp->getOperand(0));
-  if (!lhsBlockArg || !rhsBlockArg || !outBlockArg ||
-      lhsBlockArg.getOwner() != body || rhsBlockArg.getOwner() != body ||
-      outBlockArg.getOwner() != body || lhsBlockArg.getArgNumber() != 0 ||
-      rhsBlockArg.getArgNumber() != 1 || outBlockArg.getArgNumber() != 2) {
-    return false;
-  }
-  return true;
+  TileSizesListType tileSizes = {TileSizeLevel0, TileSizeLevel1,
+                                 TileSizeLevel2};
+  return setOpConfigAndEntryPointFnTranslation(
+      entryPointFn, linalgOp, tileSizes,
+      IREE::Codegen::DispatchLoweringPassPipeline::None);
 }
 
-/// `isMatmulTransposeB` is a utility function that aims to indentify whether a
-/// linalg.generic op is a matmul with rhs operand transposed.
-static bool isMatmulTransposeB(linalg::GenericOp genericOp) {
-  // Step 1. Test the body of the generic to indeed be what we expect for a
-  //         matmul transpose.
-  Block *body = genericOp.getBlock();
-  auto yieldOp = cast<linalg::YieldOp>(body->getTerminator());
-  Value yieldVal = yieldOp.getOperand(0);
-  if (!bodyMatcherForMatmulTranspose(yieldVal, body)) {
-    return false;
-  }
-  // Step 2. Check iterator types.
-  SmallVector<utils::IteratorType> matmulTransposeIteratorTypes = {
-      utils::IteratorType::parallel, utils::IteratorType::parallel,
-      utils::IteratorType::reduction};
-  SmallVector<utils::IteratorType> opIteratorTypes =
-      genericOp.getIteratorTypesArray();
-  if (matmulTransposeIteratorTypes != opIteratorTypes) {
-    return false;
-  }
-  // Step 3. Test the indexing maps.
-  ArrayAttr indexingMaps = genericOp.getIndexingMaps();
-  if (indexingMaps.size() != 3) return false;
-
-  AffineMap map0 = cast<AffineMapAttr>(indexingMaps[0]).getValue();
-  AffineMap map1 = cast<AffineMapAttr>(indexingMaps[1]).getValue();
-  AffineMap map2 = cast<AffineMapAttr>(indexingMaps[2]).getValue();
-
-  if (map0.getNumResults() != 2 || map1.getNumResults() != 2 ||
-      map2.getNumResults() != 2 || map0.getNumInputs() != 3 ||
-      map1.getNumInputs() != 3 || map2.getNumInputs() != 3) {
-    return false;
-  }
-
-  // Extract dimensions for MxK * NxK -> MxN
-  AffineExpr m = map2.getResult(0);
-  AffineExpr n = map2.getResult(1);
-  AffineExpr k = map0.getResult(1);
-  auto *context = indexingMaps.getContext();
-  auto mapA = AffineMapAttr::get(AffineMap::get(3, 0, {m, k}, context));
-  auto mapB = AffineMapAttr::get(AffineMap::get(3, 0, {n, k}, context));
-  auto mapC = AffineMapAttr::get(AffineMap::get(3, 0, {m, n}, context));
-  auto maps = ArrayAttr::get(context, {mapA, mapB, mapC});
-  return indexingMaps == maps;
-}
+//===----------------------------------------------------------------------===//
+// Root Configuration
+//===----------------------------------------------------------------------===//
 
 /// Sets the lowering configuration for a generic op implementing a
 /// transposition.
@@ -556,6 +604,20 @@ static LogicalResult setRootConfig(mlir::FunctionOpInterface entryPointFn,
   return linalgOp.emitError("Unhandled pass pipeline in setRootConfig.");
 }
 
+static LogicalResult setConvRootConfig(mlir::FunctionOpInterface entryPointFn,
+                                       linalg::ConvolutionOpInterface convOp,
+                                       AIEPassPipeline passPipeline,
+                                       AIEConfig cfg) {
+  assert(!getLoweringConfig<IREE::Codegen::LoweringConfigAttr>(convOp) &&
+         "expected lowering_config is not set");
+  auto linalgOp = cast<linalg::LinalgOp>(convOp.getOperation());
+
+  // Current tiling strategy is based on llvm-cpu ConvTileAndDecomposeExpert.
+  if (passPipeline == AIEPassPipeline::ConvDecomposePipeline)
+    return setRootConfigForConvDecomposePipeline(entryPointFn, linalgOp, cfg);
+  return linalgOp.emitError("Unhandled pass pipeline in setRootConfig.");
+}
+
 /// Redirects to methods that set the configuration based on operation type.
 static LogicalResult setRootConfigImpl(mlir::FunctionOpInterface entryPointFn,
                                        Operation *op,
@@ -566,6 +628,10 @@ static LogicalResult setRootConfigImpl(mlir::FunctionOpInterface entryPointFn,
         // TODO (nmeshram): This is very limited for now, plan is to
         // let it first crash for all the other ops and then consiously
         // add support for them, this way we can verify our work.
+        // TODO (vivian): add support for other conv interface ops
+        .Case<linalg::Conv2DNhwcHwcfOp, linalg::Conv2DNchwFchwOp>([&](auto op) {
+          return setConvRootConfig(entryPointFn, op, passPipeline, cfg);
+        })
         .Case<linalg::GenericOp>([&](auto op) {
           return setRootConfig(entryPointFn, op, passPipeline, cfg);
         })
@@ -599,6 +665,10 @@ static LogicalResult setTranslationInfoAndRootConfig(
     return failure();
   return success();
 }
+
+//===----------------------------------------------------------------------===//
+// Entry Point
+//===----------------------------------------------------------------------===//
 
 LogicalResult initAIELaunchConfig(FunctionOpInterface funcOp,
                                   AIEPassPipeline passPipeline, AIEConfig cfg) {

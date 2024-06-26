@@ -203,9 +203,11 @@ def AMDAIELowerExecutableTarget :
       "Pass pipeline to use while lowering to AIR dialect",
       [{::llvm::cl::values(
         clEnumValN(mlir::iree_compiler::AMDAIE::AIEPassPipeline::PackPeelPipeline, "pack-peel",
-                   "Use the pack-peel based lowering strategy."),
+                   "Use the pack-peel based lowering strategy for matmul-like ops."),
         clEnumValN(mlir::iree_compiler::AMDAIE::AIEPassPipeline::PadPackPipeline, "pad-pack",
-                   "Use the pad-pack based lowering strategy.")
+                   "Use the pad-pack based lowering strategy for matmul-like ops."),
+        clEnumValN(mlir::iree_compiler::AMDAIE::AIEPassPipeline::ConvDecomposePipeline, "conv-decompose",
+                   "Use the conv-decompose based lowering strategy for convolution interface ops.")
       )}]>
   ];
 }
@@ -221,9 +223,11 @@ def AMDAIELoweringStrategy :
       "Pass pipeline to use while lowering to AIR dialect",
       [{::llvm::cl::values(
         clEnumValN(mlir::iree_compiler::AMDAIE::AIEPassPipeline::PackPeelPipeline, "pack-peel",
-                   "Use the more advanced pack-based lowering strategy, including peeling and double-buffering."),
+                   "Use the pack-peel based lowering strategy for matmul-like ops."),
         clEnumValN(mlir::iree_compiler::AMDAIE::AIEPassPipeline::PadPackPipeline, "pad-pack",
-                   "Use the pad-pack based lowering strategy.")
+                   "Use the pad-pack based lowering strategy for matmul-like ops."),
+        clEnumValN(mlir::iree_compiler::AMDAIE::AIEPassPipeline::ConvDecomposePipeline, "conv-decompose",
+                   "Use the conv-decompose based lowering strategy for convolution interface ops.")
       )}]>,
     Option<"numCores", "num-cores", "int32_t", /*default=*/"1",
       "Choose the number of cores to use">

@@ -18,6 +18,7 @@ namespace mlir::iree_compiler::AMDAIE {
 enum class AIEPassPipeline : int32_t {
   PackPeelPipeline = 0,
   PadPackPipeline = 1,
+  ConvDecomposePipeline = 2,
   None = 2
 };
 
