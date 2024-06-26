@@ -861,6 +861,7 @@ LogicalResult xilinx::aie2xclbin(MLIRContext *ctx, ModuleOp moduleOp,
     output->keep();
     copy->erase();
   }
+
   SmallString<64> unifiedObj(TK.TempDir);
   sys::path::append(unifiedObj, "input.o");
   if (failed(generateUnifiedObject(ctx, moduleOp, TK, std::string(unifiedObj))))
