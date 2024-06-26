@@ -16,10 +16,10 @@ iree_cc_library(
   NAME
     AIETargets
   SRCS
-    "AIETargetBCF.cpp"
-    "AIETargetCDODirect.cpp"
-    "AIETargetLdScript.cpp"
-    "AIETargetNPU.cpp"
+    "AMDAIETargetBCF.cpp"
+    "AMDAIETargetCDODirect.cpp"
+    "AMDAIETargetLdScript.cpp"
+    "AMDAIETargetNPU.cpp"
     "XCLBinGen.cpp"
   DEPS
     iree::target::amd-aie::aie::AIEDialectIR
@@ -51,5 +51,6 @@ iree_cc_library(
     iree::base::internal::flatcc::building
     iree::base::internal::flatcc::parsing
     iree-amd-aie::schemas::xrt_executable_def_c_fbs
+    MLIRLLVMDialect
   PUBLIC
 )

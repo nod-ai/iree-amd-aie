@@ -10,7 +10,7 @@
 #include <sstream>
 #include <unordered_map>
 
-#include "AIETargets.h"
+#include "AMDAIETargets.h"
 #include "aie/Conversion/AIEVecToLLVM/AIEVecToLLVM.h"
 #include "aie/Dialect/AIEVec/Pipelines/Passes.h"
 #include "aie/Passes.h"
@@ -195,10 +195,7 @@ int runTool(StringRef Program, ArrayRef<std::string> Args, bool Verbose,
 template <unsigned N>
 static void aieTargetDefines(SmallVector<std::string, N> &Args,
                              std::string aie_target) {
-  if (aie_target == "AIE2")
-    Args.push_back("-D__AIEARCH__=20");
-  else
-    Args.push_back("-D__AIEARCH__=10");
+  Args.push_back("-D__AIEARCH__=20");
 }
 
 // Generate the elf files for the core
@@ -839,8 +836,6 @@ LogicalResult xilinx::aie2xclbin(MLIRContext *ctx, ModuleOp moduleOp,
 
   if (failed(pm.run(moduleOp)))
     return moduleOp.emitOpError("AIE lowering pipline failed");
-
-  TK.TargetArch = "AIE2";
 
   std::regex target_regex("AIE.?");
   if (!std::regex_search(TK.TargetArch, target_regex))

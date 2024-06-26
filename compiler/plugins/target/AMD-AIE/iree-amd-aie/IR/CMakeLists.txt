@@ -41,6 +41,7 @@ iree_cc_library(
     ::AMDAIEOpsGen
     ::AMDAIETypesGen
     ::PackingConfigGen
+    iree::target::amd-aie::Utils::Utils
     LLVMSupport
     MLIRIR
     MLIRParser

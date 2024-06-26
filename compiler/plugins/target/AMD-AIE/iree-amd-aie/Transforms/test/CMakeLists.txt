@@ -19,7 +19,7 @@ iree_lit_test_suite(
     "create_aie_workgroup.mlir"
     "create_logical_objectfifo_link.mlir"
     "disable_vectorization.mlir"
-    "distribute-cores-and-objectfifos.mlir"
+    "distribute_cores_and_objectfifos.mlir"
     "dma_to_circular_dma.mlir"
     "fuse_consumer_into_loop_scf_for.mlir"
     "fuse_consumer_into_loop_scf_forall.mlir"

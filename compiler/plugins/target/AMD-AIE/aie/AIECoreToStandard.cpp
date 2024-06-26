@@ -33,109 +33,6 @@ using namespace xilinx::AIE;
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h.inc"
 #undef GEN_PASS_DEF_AIECORETOSTANDARD
 
-static StringRef getArchIntrinsicString(AIEArch arch) {
-  switch (arch) {
-    case AIEArch::AIE1:
-      return "aie";
-    case AIEArch::AIE2:
-      return "aie2";
-  }
-  llvm::report_fatal_error("unsupported arch");
-}
-
-typedef std::tuple<const char *, std::vector<Type>, std::vector<Type>>
-    IntrinsicDecl;
-typedef std::vector<IntrinsicDecl> IntrinsicDecls;
-
-static auto getAIE1Intrinsics(OpBuilder &builder) {
-  Type int32Type = IntegerType::get(builder.getContext(), 32);
-  Type int128Type = IntegerType::get(builder.getContext(), 128);
-  Type int384Type = IntegerType::get(builder.getContext(), 384);
-  Type floatType = FloatType::getF32(builder.getContext());
-
-  // Note that not all of these are valid for a particular design, or needed.
-  // For right now, we will just accept the noise.
-  IntrinsicDecls functions = {
-      {"debug_i32", {int32Type}, {}},
-      {"llvm.aie.event0", {}, {}},
-      {"llvm.aie.event1", {}, {}},
-      {"llvm.aie.put.ms",
-       {int32Type, int32Type},
-       {}},  //(%channel, %value) -> ()
-      {"llvm.aie.put.wms",
-       {int32Type, int128Type},
-       {}},  //(%channel, %value) -> ()
-      {"llvm.aie.put.fms",
-       {int32Type, floatType},
-       {}},                                           //(%channel, %value) -> ()
-      {"llvm.aie.get.ss", {int32Type}, {int32Type}},  //(%channel, %value) -> ()
-      {"llvm.aie.get.wss",
-       {int32Type},
-       {int128Type}},  //(%channel, %value) -> ()
-      {"llvm.aie.get.fss",
-       {int32Type},
-       {floatType}},  //(%channel, %value) -> ()
-      {"llvm.aie.put.mcd", {int384Type}, {}},
-      {"llvm.aie.get.scd", {}, {int384Type}},
-      {"llvm.aie.lock.acquire.reg",
-       {int32Type, int32Type},
-       {}},  //(%lock_id, %lock_val) -> ()
-      {"llvm.aie.lock.release.reg",
-       {int32Type, int32Type},
-       {}},  //(%lock_id, %lock_val) -> ()
-  };
-  return functions;
-}
-
-static auto getAIE2Intrinsics(OpBuilder &builder) {
-  Type int32Type = IntegerType::get(builder.getContext(), 32);
-  Type accType = VectorType::get({16}, int32Type);
-  IntrinsicDecls functions = {
-      {"debug_i32", {int32Type}, {}},
-      {"llvm.aie2.put.ms",
-       {int32Type, int32Type},
-       {}},  //(%value, %tlast) -> ()
-      {"llvm.aie2.get.ss",
-       {},
-       {int32Type, int32Type}},  //() -> (%value, %tlast)
-      {"llvm.aie2.mcd.write.vec",
-       {accType, int32Type},
-       {}},  // (%value, %enable) -> ()
-      {"llvm.aie2.scd.read.vec",
-       {int32Type},
-       {accType}},  // (%enable) -> (%value)
-      {"llvm.aie2.acquire",
-       {int32Type, int32Type},
-       {}},  //(%lock_id, %lock_val) -> ()
-      {"llvm.aie2.release",
-       {int32Type, int32Type},
-       {}},  //(%lock_id, %lock_val) -> ()
-  };
-  return functions;
-}
-
-static void declareAIEIntrinsics(AIEArch arch, OpBuilder &builder) {
-  auto registerIntrinsics = [&builder](IntrinsicDecls functions) {
-    for (auto &i : functions) {
-      auto [name, argTypes, retTypes] = i;
-      builder
-          .create<func::FuncOp>(
-              builder.getUnknownLoc(), name,
-              FunctionType::get(builder.getContext(), argTypes, retTypes))
-          .setPrivate();
-    }
-  };
-  switch (arch) {
-    case AIEArch::AIE1:
-      registerIntrinsics(getAIE1Intrinsics(builder));
-      return;
-    case AIEArch::AIE2:
-      registerIntrinsics(getAIE2Intrinsics(builder));
-      return;
-  }
-  llvm::report_fatal_error("unsupported arch");
-}
-
 template <typename MyAIEOp>
 struct AIEOpRemoval : OpConversionPattern<MyAIEOp> {
   using OpConversionPattern<MyAIEOp>::OpConversionPattern;
@@ -153,187 +50,6 @@ struct AIEOpRemoval : OpConversionPattern<MyAIEOp> {
   }
 };
 
-struct AIEDebugOpToStdLowering : OpConversionPattern<DebugOp> {
-  using OpConversionPattern::OpConversionPattern;
-  ModuleOp &module;
-
-  AIEDebugOpToStdLowering(MLIRContext *context, ModuleOp &m,
-                          PatternBenefit benefit = 1)
-      : OpConversionPattern(context, benefit), module(m) {}
-
-  LogicalResult matchAndRewrite(
-      DebugOp op, OpAdaptor adaptor,
-      ConversionPatternRewriter &rewriter) const override {
-    std::string funcName = "debug_i32";
-    auto func = module.lookupSymbol<func::FuncOp>(funcName);
-    if (!func)
-      return op.emitOpError("Could not find the intrinsic function ")
-             << funcName;
-    SmallVector<Value, 1> args;
-    args.push_back(op.getArg());
-    rewriter.create<func::CallOp>(rewriter.getUnknownLoc(), func, args);
-    rewriter.eraseOp(op);
-    return success();
-  }
-};
-
-struct AIEPutStreamToStdLowering : OpConversionPattern<PutStreamOp> {
-  using OpConversionPattern::OpConversionPattern;
-  ModuleOp &module;
-
-  AIEPutStreamToStdLowering(MLIRContext *context, ModuleOp &m,
-                            PatternBenefit benefit = 1)
-      : OpConversionPattern(context, benefit), module(m) {}
-
-  LogicalResult matchAndRewrite(
-      PutStreamOp op, OpAdaptor adaptor,
-      ConversionPatternRewriter &rewriter) const override {
-    auto device = op->getParentOfType<DeviceOp>();
-    const auto &targetModel = device.getTargetModel();
-    std::string funcName;
-    if (targetModel.getTargetArch() == AIEArch::AIE1)
-      funcName = "llvm.aie.put.";
-    else
-      funcName = "llvm.aie2.put.";
-
-    if (op.isWideStream())
-      funcName += "wms";
-    else if (op.isFloatStream())
-      funcName += "fms";
-    else
-      funcName += "ms";
-
-    auto putMSFunc = module.lookupSymbol<func::FuncOp>(funcName);
-    if (!putMSFunc)
-      return op.emitOpError("Could not find the intrinsic function ")
-             << funcName;
-    SmallVector<Value, 2> args;
-    if (targetModel.getTargetArch() == AIEArch::AIE1) {
-      args.push_back(op.getChannel());
-      args.push_back(op.getStreamValue());
-    } else {
-      args.push_back(op.getStreamValue());
-      args.push_back(rewriter.create<arith::ConstantOp>(
-          op.getLoc(), IntegerType::get(rewriter.getContext(), 32),
-          rewriter.getI32IntegerAttr(0)));  // tlast
-    }
-    rewriter.create<func::CallOp>(rewriter.getUnknownLoc(), putMSFunc, args);
-    rewriter.eraseOp(op);
-    return success();
-  }
-};
-
-struct AIEGetStreamToStdLowering : OpConversionPattern<GetStreamOp> {
-  using OpConversionPattern::OpConversionPattern;
-  ModuleOp &module;
-
-  AIEGetStreamToStdLowering(MLIRContext *context, ModuleOp &m,
-                            PatternBenefit benefit = 1)
-      : OpConversionPattern(context, benefit), module(m) {}
-
-  LogicalResult matchAndRewrite(
-      GetStreamOp op, OpAdaptor adaptor,
-      ConversionPatternRewriter &rewriter) const override {
-    auto device = op->getParentOfType<DeviceOp>();
-    const auto &targetModel = device.getTargetModel();
-    std::string funcName;
-    if (targetModel.getTargetArch() == AIEArch::AIE1)
-      funcName = "llvm.aie.get.";
-    else
-      funcName = "llvm.aie2.get.";
-
-    if (op.isWideStream())
-      funcName += "wss";
-    else if (op.isFloatStream())
-      funcName += "fss";
-    else
-      funcName += "ss";
-
-    auto getSSFunc = module.lookupSymbol<func::FuncOp>(funcName);
-    if (!getSSFunc)
-      return op.emitOpError("Could not find the intrinsic function ")
-             << funcName;
-    SmallVector<Value, 2> args;
-    if (targetModel.getTargetArch() == AIEArch::AIE1)
-      args.push_back(op.getChannel());
-    auto getSSCall = rewriter.create<func::CallOp>(rewriter.getUnknownLoc(),
-                                                   getSSFunc, args);
-    rewriter.replaceOp(op, getSSCall.getResult(0));
-    // Capture TLAST in AIEv2?
-    return success();
-  }
-};
-
-struct AIEPutCascadeToStdLowering : OpConversionPattern<PutCascadeOp> {
-  using OpConversionPattern::OpConversionPattern;
-  ModuleOp &module;
-
-  AIEPutCascadeToStdLowering(MLIRContext *context, ModuleOp &m,
-                             PatternBenefit benefit = 1)
-      : OpConversionPattern(context, benefit), module(m) {}
-
-  LogicalResult matchAndRewrite(
-      PutCascadeOp op, OpAdaptor adaptor,
-      ConversionPatternRewriter &rewriter) const override {
-    auto device = op->getParentOfType<DeviceOp>();
-    const auto &targetModel = device.getTargetModel();
-    std::string funcName;
-    if (targetModel.getTargetArch() == AIEArch::AIE1)
-      funcName = "llvm.aie.put.mcd";
-    else
-      funcName = "llvm.aie2.mcd.write.vec";
-    auto putMCDFunc = module.lookupSymbol<func::FuncOp>(funcName);
-    if (!putMCDFunc)
-      return op.emitOpError("Could not find the intrinsic function ")
-             << funcName;
-    SmallVector<Value, 2> args;
-    args.push_back(op.getCascadeValue());
-    if (targetModel.getTargetArch() == AIEArch::AIE2)
-      args.push_back(rewriter.create<arith::ConstantOp>(
-          op.getLoc(), IntegerType::get(rewriter.getContext(), 32),
-          rewriter.getI32IntegerAttr(1)));  // enable
-
-    rewriter.create<func::CallOp>(rewriter.getUnknownLoc(), putMCDFunc, args);
-    rewriter.eraseOp(op);
-    return success();
-  }
-};
-
-struct AIEGetCascadeToStdLowering : OpConversionPattern<GetCascadeOp> {
-  using OpConversionPattern::OpConversionPattern;
-  ModuleOp &module;
-
-  AIEGetCascadeToStdLowering(MLIRContext *context, ModuleOp &m,
-                             PatternBenefit benefit = 1)
-      : OpConversionPattern(context, benefit), module(m) {}
-
-  LogicalResult matchAndRewrite(
-      GetCascadeOp op, OpAdaptor adaptor,
-      ConversionPatternRewriter &rewriter) const override {
-    auto device = op->getParentOfType<DeviceOp>();
-    const auto &targetModel = device.getTargetModel();
-    std::string funcName;
-    if (targetModel.getTargetArch() == AIEArch::AIE1)
-      funcName = "llvm.aie.get.scd";
-    else
-      funcName = "llvm.aie2.scd.read.vec";
-    auto getSCDFunc = module.lookupSymbol<func::FuncOp>(funcName);
-    if (!getSCDFunc)
-      return op.emitOpError("Could not find the intrinsic function ")
-             << funcName;
-    SmallVector<Value, 2> args;
-    if (targetModel.getTargetArch() == AIEArch::AIE2)
-      args.push_back(rewriter.create<arith::ConstantOp>(
-          op.getLoc(), IntegerType::get(rewriter.getContext(), 32),
-          rewriter.getI32IntegerAttr(1)));  // enable
-
-    auto getSCDCall = rewriter.create<func::CallOp>(rewriter.getUnknownLoc(),
-                                                    getSCDFunc, args);
-    rewriter.replaceOp(op, getSCDCall.getResult(0));
-    return success();
-  }
-};
-
 struct AIEUseLockToStdLowering : OpConversionPattern<UseLockOp> {
   using OpConversionPattern::OpConversionPattern;
   ModuleOp &module;
@@ -344,36 +60,32 @@ struct AIEUseLockToStdLowering : OpConversionPattern<UseLockOp> {
   LogicalResult matchAndRewrite(
       UseLockOp useLock, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
+    Type int32Type = IntegerType::get(rewriter.getContext(), 32);
     if (!isa<DeviceOp>(useLock->getParentOp())) {
-      auto device = useLock->getParentOfType<DeviceOp>();
-      if (!device) {
-        return module.emitOpError("Device Not found!");
-      }
-      const auto &targetModel = device.getTargetModel();
-
       // Generate the intrinsic name
-      std::string funcName;
-      if (targetModel.getTargetArch() == AIEArch::AIE1)
-        funcName = "llvm.aie.lock.";
-      else
-        funcName = "llvm.aie2.";
+      std::string funcName = "llvm.aie2.";
       if (useLock.acquire() || useLock.acquireGE())
         funcName += "acquire";
       else if (useLock.release())
         funcName += "release";
-      if (targetModel.getTargetArch() == AIEArch::AIE1) funcName += ".reg";
 
-      auto useLockFunc = module.lookupSymbol<func::FuncOp>(funcName);
-      if (!useLockFunc)
-        return useLock.emitOpError("Could not find the intrinsic function!");
+      func::FuncOp useLockFunc = module.lookupSymbol<func::FuncOp>(funcName);
+      if (!useLockFunc) {
+        OpBuilder::InsertPoint ip = rewriter.saveInsertionPoint();
+        rewriter.setInsertionPointAfter(useLock->getParentOfType<DeviceOp>());
+        useLockFunc = rewriter.create<func::FuncOp>(
+            rewriter.getUnknownLoc(), funcName,
+            FunctionType::get(rewriter.getContext(), {int32Type, int32Type},
+                              {}));
+        rewriter.restoreInsertionPoint(ip);
+        useLockFunc.setPrivate();
+      }
 
       SmallVector<Value, 2> args;
       auto lockValue = useLock.getLockValue();
 
       // AIE2 acquire greater equal is encoded as a negative value.
-      if (useLock.acquireGE()) {
-        lockValue = -lockValue;
-      }
+      if (useLock.acquireGE()) lockValue = -lockValue;
       args.push_back(rewriter.create<arith::IndexCastOp>(
           useLock.getLoc(), IntegerType::get(rewriter.getContext(), 32),
           useLock.getLock()));
@@ -435,7 +147,6 @@ struct AIEBufferToStandard : OpConversionPattern<BufferOp> {
     return success();
   }
 };
-
 struct AIECoreToStandardFunc : OpConversionPattern<CoreOp> {
   using OpConversionPattern::OpConversionPattern;
   ModuleOp &module;
@@ -505,30 +216,6 @@ void outlineOps(DeviceOp device) {
   for (const auto &op : ops) op->moveBefore(device);
 }
 
-// Lower AIE.event to llvm.aie.event intrinsic
-struct AIEEventOpToStdLowering : OpConversionPattern<EventOp> {
-  using OpConversionPattern::OpConversionPattern;
-  ModuleOp &module;
-
-  AIEEventOpToStdLowering(MLIRContext *context, ModuleOp &m,
-                          PatternBenefit benefit = 1)
-      : OpConversionPattern(context, benefit), module(m) {}
-
-  LogicalResult matchAndRewrite(
-      EventOp op, OpAdaptor adaptor,
-      ConversionPatternRewriter &rewriter) const override {
-    std::string funcName = "llvm.aie.event" + std::to_string(op.getVal());
-    auto eventFunc = module.lookupSymbol<func::FuncOp>(funcName);
-    if (!eventFunc)
-      return op.emitOpError("Could not find the intrinsic function ")
-             << funcName;
-    rewriter.create<func::CallOp>(rewriter.getUnknownLoc(), eventFunc,
-                                  ValueRange({}));
-    rewriter.eraseOp(op);
-    return success();
-  }
-};
-
 namespace mlir::iree_compiler::AMDAIE {
 struct AIECoreToStandardPass
     : ::impl::AIECoreToStandardBase<AIECoreToStandardPass> {
@@ -540,23 +227,13 @@ struct AIECoreToStandardPass
       m.emitOpError("expected AIE.device operation at toplevel");
       return signalPassFailure();
     }
-    DeviceOp device = *m.getOps<DeviceOp>().begin();
-    const auto &targetModel = device.getTargetModel();
 
     // Ensure that we don't have an incorrect target triple.  This may override
     // some bogus target triple in the original mlir.
     m->setAttr(LLVM::LLVMDialect::getTargetTripleAttrName(),
-               builder.getStringAttr(
-                   getArchIntrinsicString(targetModel.getTargetArch())));
+               builder.getStringAttr("aie2"));
 
     DenseMap<Operation *, SmallVector<BufferOp, 4>> tileToBuffers;
-
-    // Populate intrinsic functions
-    // Intrinsic information:
-    // peano/llvm-project/llvm/lib/Target/AIE/AIEInstrInfo.td Also take a look
-    // at the tests: peano/llvm-project/llvm/test/CodeGen/AIE
-    builder.setInsertionPointToStart(m.getBody());
-    declareAIEIntrinsics(targetModel.getTargetArch(), builder);
 
     IRMapping mapper;
     ConversionTarget target(getContext());
@@ -569,11 +246,7 @@ struct AIECoreToStandardPass
     target.addLegalOp<func::FuncOp, ModuleOp>();
 
     RewritePatternSet patterns(&getContext());
-    patterns.add<AIEPutStreamToStdLowering, AIEGetStreamToStdLowering,
-                 AIEPutCascadeToStdLowering, AIEGetCascadeToStdLowering,
-                 AIEDebugOpToStdLowering, AIEUseLockToStdLowering,
-                 AIEEventOpToStdLowering>(m.getContext(), m);
-
+    patterns.add<AIEUseLockToStdLowering>(m.getContext(), m);
     patterns.add<AIEBufferToStandard>(m.getContext(), m, /*benefit*/ 1, tileCol,
                                       tileRow);
     if (failed(applyPartialConversion(m, target, std::move(patterns))))
@@ -588,6 +261,7 @@ struct AIECoreToStandardPass
 
     // Move all the func.func ops and memref.globals from the device to the
     // module
+    DeviceOp device = *m.getOps<DeviceOp>().begin();
     outlineOps<memref::GlobalOp>(device);
     outlineOps<func::FuncOp>(device);
 
