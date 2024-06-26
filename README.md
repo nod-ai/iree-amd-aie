@@ -13,7 +13,7 @@ interfacing the AMD AIE accelerator to IREE.
 These instructions assume that you have an appropriate IREE checkout side by side
 with this repository have an IREE build setup in an `iree-build` directory that
 is also a sibling. This is not a requirement, but instructions will need to be
-changed for different paths.
+changed for different paths. The IREE build instructions are [here](https://iree.dev/building-from-source/getting-started).
 
 Preparing repository:
 
@@ -39,8 +39,9 @@ cmake -DIREE_CMAKE_PLUGIN_PATHS=../iree-amd-aie .
 ninja
 ```
 
-to build IREE with amd-aie plugin. Note for the time being building the amd-aie
-backend requires headers-only Boost library. On Ubuntu you can do this with
+to build IREE with amd-aie plugin. Some developers have observed a cmake dependency related build failure when there is not first a build of IREE without the iree-amd-aie plugin. So we recommend first building IREE without the plugin, by configuring and building without the IREE_CMAKE_PLUGIN_PATHS.
+
+Note for the time being building the amd-aie backend requires headers-only Boost library. On Ubuntu you can do this with
 
 ```
 sudo apt-get install libboost-dev
