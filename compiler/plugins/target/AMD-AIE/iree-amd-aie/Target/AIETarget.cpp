@@ -337,7 +337,6 @@ LogicalResult AIETargetBackend::serializeExecutable(
                             entryPointNamesFb[ordinal] + ".npu.txt");
 
     xilinx::XCLBinGenConfig TK;
-    TK.DisableThreading = options.aie2xclbinDisableTheading;
     TK.PrintIRAfterAll = options.aie2xclbinPrintIrAfterAll;
     TK.PrintIRBeforeAll = options.aie2xclbinPrintIrBeforeAll;
     TK.PrintIRModuleScope = options.aie2xclbinPrintIrModuleScope;

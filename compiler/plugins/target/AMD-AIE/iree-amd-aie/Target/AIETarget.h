@@ -38,9 +38,6 @@ struct AMDAIEOptions {
   // Print IR before all MLIR passes run in aie2xclbin (to stderr).
   bool aie2xclbinPrintIrBeforeAll{false};
 
-  // Disable theading in MLIR passes in aie2xclbin.
-  bool aie2xclbinDisableTheading{false};
-
   // Print IR at module scope in MLIR passes in aie2xclbin.
   bool aie2xclbinPrintIrModuleScope{false};
 
@@ -73,10 +70,6 @@ struct AMDAIEOptions {
         llvm::cl::desc(
             "If true, print the IR before all MLIR passes run in aie2xclbin"));
 
-    binder.opt<bool>(
-        "aie2xclbin-disable-threading", aie2xclbinDisableTheading,
-        llvm::cl::cat(category),
-        llvm::cl::desc("Disable theading in MLIR passes in aie2xclbin"));
 
     binder.opt<bool>(
         "aie2xclbin-print-ir-module-scope", aie2xclbinPrintIrModuleScope,

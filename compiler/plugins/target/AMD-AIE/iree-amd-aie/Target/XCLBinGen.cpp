@@ -57,7 +57,6 @@ namespace {
 // manager. These control when (if ever) and what IR gets printed between
 // passes, and whether the pass manager uses multi-theading.
 void applyConfigToPassManager(XCLBinGenConfig &TK, PassManager &pm) {
-  pm.getContext()->disableMultithreading(TK.DisableThreading);
 
   bool printBefore = TK.PrintIRBeforeAll;
   auto shouldPrintBeforePass = [printBefore](Pass *, Operation *) {
