@@ -6,6 +6,8 @@
 
 #include "iree-amd-aie/Transforms/Passes.h"
 
+#include "aie/Dialect/AIE/Transforms/AIEPasses.h"
+#include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
 #include "aie/Passes.h"
 #include "air/Conversion/Passes.h"
 #include "air/Transform/Passes.h"
@@ -588,12 +590,14 @@ void addMLIRAIRAIELoweringPasses(OpPassManager &passManager, bool packPeel) {
   // Now lower using the AIE passes used by the mlir-air/mlir-aie flow.
   passManager.addPass(createLowerAffinePass());
   OpPassManager &devicePM = passManager.nest<xilinx::AIE::DeviceOp>();
-  devicePM.addPass(createAIEAssignLockIDsPass());
-  devicePM.addPass(createAIEObjectFifoStatefulTransformPass());
-  devicePM.addPass(createAIEAssignBufferDescriptorIDsPass());
-  devicePM.addPass(createAIEAssignBufferAddressesBasicPass());
-  devicePM.addPass(createAIEPathfinderPass());
-  devicePM.addPass(createAIELocalizeLocksPass());
+  devicePM.addPass(xilinx::AIE::createAIEAssignLockIDsPass());
+  devicePM.addPass(xilinx::AIE::createAIEObjectFifoRegisterProcessPass());
+  devicePM.addPass(xilinx::AIE::createAIEObjectFifoStatefulTransformPass());
+  devicePM.addPass(xilinx::AIE::createAIEAssignBufferDescriptorIDsPass());
+  devicePM.addPass(xilinx::AIEX::createAIEBroadcastPacketPass());
+  devicePM.addPass(xilinx::AIE::createAIERoutePacketFlowsPass());
+  devicePM.addPass(xilinx::AIEX::createAIELowerMulticastPass());
+  devicePM.addPass(xilinx::AIE::createAIEAssignBufferAddressesPass());
   passManager.addPass(createConvertSCFToCFPass());
 }
 
