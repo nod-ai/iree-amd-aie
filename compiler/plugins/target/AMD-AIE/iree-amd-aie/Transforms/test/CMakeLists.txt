@@ -16,6 +16,7 @@ iree_lit_test_suite(
     "canonicalize_dma.mlir"
     "canonicalize_doubly_strided_op.mlir"
     "controlcode_loop_unrolling.mlir"
+    "convert_core_forall_to_for.mlir"
     "create_aie_workgroup.mlir"
     "create_logical_objectfifo_link.mlir"
     "disable_vectorization.mlir"
