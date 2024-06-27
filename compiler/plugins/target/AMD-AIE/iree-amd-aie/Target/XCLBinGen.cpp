@@ -12,7 +12,6 @@
 
 #include "AMDAIETargets.h"
 #include "aie/Conversion/AIEVecToLLVM/AIEVecToLLVM.h"
-#include "aie/Dialect/AIE/Transforms/AIEPasses.h"
 #include "aie/Dialect/AIEVec/Pipelines/Passes.h"
 #include "aie/Passes.h"
 #include "aie/Targets/AIETargets.h"
