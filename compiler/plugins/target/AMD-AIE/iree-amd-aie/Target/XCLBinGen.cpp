@@ -827,10 +827,8 @@ LogicalResult xilinx::aie2xclbin(MLIRContext *ctx, ModuleOp moduleOp,
                                  XCLBinGenConfig &TK, StringRef OutputNPU,
                                  StringRef OutputXCLBin,
                                  StringRef InputXCLBin) {
-  std::regex target_regex("AIE.?");
-  if (!std::regex_search(TK.TargetArch, target_regex))
-    return moduleOp.emitOpError()
-           << "Unexpected target architecture: " << TK.TargetArch;
+ PassManager pm(ctx, moduleOp.getOperationName());
+  applyConfigToPassManager(TK, pm);
 
   // generateNPUInstructions
   pm.addNestedPass<AIE::DeviceOp>(
@@ -847,12 +845,12 @@ LogicalResult xilinx::aie2xclbin(MLIRContext *ctx, ModuleOp moduleOp,
   std::vector<uint32_t> unsignedNpuInstructions(
       signedNpuInstructionsAttr.begin(), signedNpuInstructionsAttr.end());
 
-    std::string errorMessage;
-    auto output = openOutputFile(OutputNPU, &errorMessage);
-    if (!output) {
-      llvm::errs() << errorMessage << "\n";
-      return moduleOp.emitOpError("");
-    }
+  std::string errorMessage;
+  auto output = openOutputFile(OutputNPU, &errorMessage);
+  if (!output) return moduleOp.emitOpError(errorMessage);
+  for (auto w : unsignedNpuInstructions)
+    output->os() << llvm::format("%08X\n", w);
+  output->keep();
 
     if (failed(
             mlir::iree_compiler::AMDAIE::AIETranslateToNPU(copy, output->os())))
