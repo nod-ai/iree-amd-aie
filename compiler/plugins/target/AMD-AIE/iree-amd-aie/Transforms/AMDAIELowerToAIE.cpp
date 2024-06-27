@@ -722,11 +722,11 @@ LogicalResult lowerToAIE(ModuleOp moduleOp) {
     SmallVector<Type> inputTypes;
     for (auto op : subspanOps) {
       auto inputType = cast<MemRefType>(op.getType());
-      if (inputType.getElementTypeBitWidth() != 32) {
-        auto inputShapeArr = inputType.getShape();
-        inputType = MemRefType::get(inputShapeArr, rewriter.getI32Type(),
-                                    MemRefLayoutAttrInterface{});
-      }
+      // if (inputType.getElementTypeBitWidth() != 32) {
+      //   auto inputShapeArr = inputType.getShape();
+      //   inputType = MemRefType::get(inputShapeArr, rewriter.getI32Type(),
+      //                               MemRefLayoutAttrInterface{});
+      // }
       inputTypes.push_back(inputType);
     }
     FunctionType funcType = rewriter.getFunctionType(inputTypes, TypeRange{});
