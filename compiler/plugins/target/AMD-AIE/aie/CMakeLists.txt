@@ -35,6 +35,7 @@ iree_cc_library(
     ::AIEOpsGen
     ::AIETypesGen
     MLIRIR
+    MLIREmitCDialect
 )
 
 iree_tablegen_library(
@@ -256,6 +257,7 @@ iree_cc_library(
     "${IREE_MLIR_AIE_SOURCE_DIR}/lib/Dialect/AIEVec/Transforms/DynamicSizeNoImplicitBroadcast.cpp"
     "${IREE_MLIR_AIE_SOURCE_DIR}/lib/Dialect/AIEVec/Utils/Utils.cpp"
   DEPS
+    MLIREmitCDialect
     ::defs
     ::AIEVecDialectIR
     ::AIEVecAnalysisPassesIncGen
