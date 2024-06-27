@@ -3,11 +3,9 @@
 
 // CHECK-LABEL:   aie.device(npu1_4col) {
 // CHECK:           func.func @sequence() {
-// CHECK:             aiex.npu.write32 {address = 119308 : ui32, column = 0 : i32, row = 0 : i32, value = 2147483651 : ui32}
-// CHECK:             aiex.npu.write32 {address = 119316 : ui32, column = 2 : i32, row = 0 : i32, value = 196610 : ui32}
 // CHECK:             return
 // CHECK:           }
-// CHECK:         }
+// CHECK:         } {npu_instructions = array<i32: 100860160, 261, 2, 64, 0, 0, 119308, 0, -2147483645, 24, 0, 0, 67228180, 0, 196610, 24>}
 
 module {
   aie.device(npu1_4col) {

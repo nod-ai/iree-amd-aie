@@ -31,11 +31,9 @@ struct AIELocalizeLocksPass
   }
   void runOnOperation() override {
     DeviceOp deviceOp = getOperation();
-
+    const auto &targetModel = getTargetModel(deviceOp);
     for (auto coreOp : deviceOp.getOps<CoreOp>()) {
       // Collect the locks used in this core.
-      const auto &targetModel = getTargetModel(coreOp);
-
       auto thisTile = dyn_cast<TileOp>(coreOp.getTile().getDefiningOp());
       int col = thisTile.colIndex();
       int row = thisTile.rowIndex();
@@ -51,8 +49,6 @@ struct AIELocalizeLocksPass
         int dstCol = tile.colIndex();
         int dstRow = tile.rowIndex();
         int cardinalMemOffset = 0;
-
-        const auto &targetModel = getTargetModel(tile);
         int numLocks = targetModel.getNumLocks(dstCol, dstRow);
         for (auto user : tile.getResult().getUsers())
           if (auto lock = dyn_cast<LockOp>(user)) {

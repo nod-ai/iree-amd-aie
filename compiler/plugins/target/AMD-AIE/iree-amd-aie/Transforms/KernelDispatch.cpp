@@ -19,6 +19,10 @@ namespace mlir::iree_compiler::AMDAIE {
 
 using detail::findLargestFactor;
 
+//===----------------------------------------------------------------------===//
+// Config Setting Helpers
+//===----------------------------------------------------------------------===//
+
 namespace {
 
 FailureOr<std::array<uint32_t, 3>> getMatmulInstructionSize(
@@ -43,7 +47,8 @@ FailureOr<std::array<uint32_t, 3>> getPackedSize(linalg::LinalgOp linalgOp,
   // Depending on the operand/result element types, there might be a specific
   // vector instruction size that must be used on AIE. Some types do not have
   // vector instructions, for example if operands are 32-bit types.
-  auto maybeInstructionSize = getMatmulInstructionSize(linalgOp);
+  FailureOr<std::array<uint32_t, 3>> maybeInstructionSize =
+      getMatmulInstructionSize(linalgOp);
 
   // Operand/result element types do not have vector instructions. In this case,
   // try for a packing of 4x4x8, but if the tensor dimensions M, N, and K are
@@ -297,6 +302,10 @@ static SmallVector<int64_t> setInnerPermB(bool isMatmulTransposeB) {
   return innerPermB;
 }
 
+//===----------------------------------------------------------------------===//
+// Configuration for Matmul Pipelines
+//===----------------------------------------------------------------------===//
+
 static LogicalResult setRootConfigForPackPeelPipeline(
     mlir::FunctionOpInterface entryPointFn, linalg::LinalgOp linalgOp,
     AIEConfig cfg, bool isMatmulTransposeB) {
@@ -356,12 +365,12 @@ static LogicalResult setRootConfigForPackPeelPipeline(
   // ------------------------------------------------------
   // -------------- Set lowering config -------------------
   // ------------------------------------------------------
-  SmallVector<int64_t> TileSizeLevel0 = {packPeelTiling.getM0(),
+  SmallVector<int64_t> tileSizeLevel0 = {packPeelTiling.getM0(),
                                          packPeelTiling.getN0()};
-  SmallVector<int64_t> TileSizeLevel1 = {0, 0, packPeelTiling.getK0()};
-  SmallVector<int64_t> TileSizeLevel2 = {1, 1, 0, 0, 0, 0};
-  TileSizesListType tileSizes = {TileSizeLevel0, TileSizeLevel1,
-                                 TileSizeLevel2};
+  SmallVector<int64_t> tileSizeLevel1 = {0, 0, packPeelTiling.getK0()};
+  SmallVector<int64_t> tileSizeLevel2 = {1, 1, 0, 0, 0, 0};
+  TileSizesListType tileSizes = {tileSizeLevel0, tileSizeLevel1,
+                                 tileSizeLevel2};
   if (failed(setOpConfigAndEntryPointFnTranslation(
           entryPointFn, linalgOp, tileSizes,
           IREE::Codegen::DispatchLoweringPassPipeline::Custom))) {
@@ -421,6 +430,51 @@ static LogicalResult setRootConfigForPadPackPipeline(
 
   return success();
 }
+
+//===----------------------------------------------------------------------===//
+// Configuration for Convolution Pipelines
+//===----------------------------------------------------------------------===//
+
+static LogicalResult setRootConfigForConvDecomposePipeline(
+    mlir::FunctionOpInterface entryPointFn, linalg::LinalgOp linalgOp,
+    AIEConfig cfg) {
+  FailureOr<std::array<uint32_t, 3>> maybeInstructionSize =
+      getMatmulInstructionSize(linalgOp);
+  int64_t OW = 4;
+  int64_t OC = 4;
+  int64_t IC = 8;
+  if (succeeded(maybeInstructionSize)) {
+    auto instructionSize = maybeInstructionSize.value();
+    OW = instructionSize[0];
+    OC = instructionSize[1];
+    IC = instructionSize[2];
+  }
+
+  SmallVector<int64_t> tileSizeLevel0;
+  SmallVector<int64_t> tileSizeLevel1;
+  SmallVector<int64_t> tileSizeLevel2;
+  // Note: some of the tiling dimensions are hardcoded for now.
+  if (isa<linalg::Conv2DNhwcHwcfOp>(linalgOp)) {
+    // conv_2d_nhwc_hwcf tiling dims: [N, OH, OW, OC, KH, KW, IC].
+    tileSizeLevel0 = {0, 4, OW, OC, 0, 0, 0};
+    tileSizeLevel1 = {1, 1, OW, OC, 0, 0, 0};
+    tileSizeLevel2 = {0, 0, 0, 0, 1, 1, IC};
+  } else if (isa<linalg::Conv2DNchwFchwOp>(linalgOp)) {
+    // conv_2d_nchw_fchw tiling dims: [N, OC, OH, OW, IC, KH, KW].
+    tileSizeLevel0 = {0, OC, 4, OW, 0, 0, 0};
+    tileSizeLevel1 = {1, OC, 1, OW, 0, 0, 0};
+    tileSizeLevel2 = {0, 0, 0, 0, IC, 1, 1};
+  }
+  TileSizesListType tileSizes = {tileSizeLevel0, tileSizeLevel1,
+                                 tileSizeLevel2};
+  return setOpConfigAndEntryPointFnTranslation(
+      entryPointFn, linalgOp, tileSizes,
+      IREE::Codegen::DispatchLoweringPassPipeline::None);
+}
+
+//===----------------------------------------------------------------------===//
+// Configuration for Matmul-Transpose
+//===----------------------------------------------------------------------===//
 
 /// TODO(avarma): This currently is skipping checking for ext* ops.
 static bool bodyMatcherForMatmulTranspose(Value yieldVal, Block *body) {
@@ -503,6 +557,10 @@ static LogicalResult setTransposeLikeOpRootConfig(
       "Unhandled pass pipeline in setTransposeLikeOpRootConfig.");
 }
 
+//===----------------------------------------------------------------------===//
+// Root Configurations
+//===----------------------------------------------------------------------===//
+
 static LogicalResult setRootConfig(mlir::FunctionOpInterface entryPointFn,
                                    linalg::GenericOp genericOp,
                                    AIEPassPipeline passPipeline,
@@ -556,6 +614,20 @@ static LogicalResult setRootConfig(mlir::FunctionOpInterface entryPointFn,
   return linalgOp.emitError("Unhandled pass pipeline in setRootConfig.");
 }
 
+static LogicalResult setConvRootConfig(mlir::FunctionOpInterface entryPointFn,
+                                       linalg::ConvolutionOpInterface convOp,
+                                       AIEPassPipeline passPipeline,
+                                       AIEConfig cfg) {
+  assert(!getLoweringConfig<IREE::Codegen::LoweringConfigAttr>(convOp) &&
+         "expected lowering_config is not set");
+  auto linalgOp = cast<linalg::LinalgOp>(convOp.getOperation());
+
+  // Current tiling strategy is based on llvm-cpu ConvTileAndDecomposeExpert.
+  if (passPipeline == AIEPassPipeline::ConvDecomposePipeline)
+    return setRootConfigForConvDecomposePipeline(entryPointFn, linalgOp, cfg);
+  return linalgOp.emitError("Unhandled pass pipeline in setConvRootConfig.");
+}
+
 /// Redirects to methods that set the configuration based on operation type.
 static LogicalResult setRootConfigImpl(mlir::FunctionOpInterface entryPointFn,
                                        Operation *op,
@@ -566,6 +638,10 @@ static LogicalResult setRootConfigImpl(mlir::FunctionOpInterface entryPointFn,
         // TODO (nmeshram): This is very limited for now, plan is to
         // let it first crash for all the other ops and then consiously
         // add support for them, this way we can verify our work.
+        // TODO (vivian): add support for other conv interface ops
+        .Case<linalg::Conv2DNhwcHwcfOp, linalg::Conv2DNchwFchwOp>([&](auto op) {
+          return setConvRootConfig(entryPointFn, op, passPipeline, cfg);
+        })
         .Case<linalg::GenericOp>([&](auto op) {
           return setRootConfig(entryPointFn, op, passPipeline, cfg);
         })
@@ -599,6 +675,10 @@ static LogicalResult setTranslationInfoAndRootConfig(
     return failure();
   return success();
 }
+
+//===----------------------------------------------------------------------===//
+// Entry Point
+//===----------------------------------------------------------------------===//
 
 LogicalResult initAIELaunchConfig(FunctionOpInterface funcOp,
                                   AIEPassPipeline passPipeline, AIEConfig cfg) {

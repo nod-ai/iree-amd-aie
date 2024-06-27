@@ -15,22 +15,18 @@ namespace mlir::iree_compiler::AMDAIE {
 /// Enum for pass pipelines to pick. Because of how the pass-pipeline
 /// enums are implemented using tablegen in IREE, it isnt extensible.
 /// This is an enum to pick different pass pipelines in IREE.
-enum class AIEPassPipeline : int32_t {
-  PackPeelPipeline = 0,
-  PadPackPipeline = 1,
-  None = 2
+enum class AIEPassPipeline {
+  PackPeelPipeline,
+  PadPackPipeline,
+  ConvDecomposePipeline,
+  None
 };
 
 /// Enum for types of loop peeling.
-enum class PeelingType : int32_t { First = 0, Last = 1, FirstLast = 2 };
+enum class PeelingType { First, Last, FirstLast };
 
 /// Enum for operands to be bufferized to allocation.
-enum class BufferizeOperand : int32_t {
-  InputOutput = 0,
-  Input = 1,
-  Output = 2,
-  DefOp = 3
-};
+enum class BufferizeOperand { InputOutput, Input, Output, DefOp };
 
 /// Struct specifying the number of cores to use. This will be replaced
 /// by a more versatile handling in the future.
