@@ -65,6 +65,9 @@ std::unique_ptr<Pass> createAMDAIECanonicalizeDoublyStridedOpPass();
 /// Pass to unroll the loops within the control code regions.
 std::unique_ptr<Pass> createAMDAIEControlCodeLoopUnrollPass();
 
+/// Pass to convert `scf.forall` to `scf.for` within `aie.core`.
+std::unique_ptr<Pass> createAMDAIEConvertCoreForallToForPass();
+
 /// Pass to create a single AIE workgroup.
 std::unique_ptr<Pass> createAMDAIECreateAIEWorkgroupPass();
 

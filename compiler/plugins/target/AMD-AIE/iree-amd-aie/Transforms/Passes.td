@@ -80,6 +80,12 @@ def AMDAIEControlCodeLoopUnroll :
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEControlCodeLoopUnrollPass()";
 }
 
+def AMDAIEConvertCoreForallToFor :
+    Pass<"iree-amdaie-convert-core-forall-to-for", ""> {
+  let summary = "Converts `scf.forall` to `scf.for` within `aie.core`.";
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEConvertCoreForallToForPass()";
+}
+
 def AMDAIECreateAIEWorkgroup :
   Pass<"iree-amdaie-create-aie-workgroup", "func::FuncOp"> {
   let summary = "Creates a single AIE workgroup.";
