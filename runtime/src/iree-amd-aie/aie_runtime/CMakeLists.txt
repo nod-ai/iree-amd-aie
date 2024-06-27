@@ -116,6 +116,211 @@ include(${_aie_rt_source_dir}/fal/cmake/collect.cmake)
 # build/include/xaiengine headers.
 add_subdirectory(${_aie_rt_source_dir}/driver/src iree_aie_runtime)
 
+# https://github.com/Xilinx/aie-rt/issues/4
+set(_incorrect_port_map "
+static const XAie_StrmSwPortMap AieMlMemTileStrmSwSlavePortMap[] =
+{
+	{
+		/* PhyPort 0 */
+		.PortType = DMA,
+		.PortNum = 0,
+	},
+	{
+		/* PhyPort 1 */
+		.PortType = DMA,
+		.PortNum = 1,
+	},
+	{
+		/* PhyPort 2 */
+		.PortType = DMA,
+		.PortNum = 2,
+	},
+	{
+		/* PhyPort 3 */
+		.PortType = DMA,
+		.PortNum = 3,
+	},
+	{
+		/* PhyPort 4 */
+		.PortType = DMA,
+		.PortNum = 4,
+	},
+	{
+		/* PhyPort 5 */
+		.PortType = DMA,
+		.PortNum = 5,
+	},
+	{
+		/* PhyPort 6 */
+		.PortType = CTRL,
+		.PortNum = 0,
+	},
+	{
+		/* PhyPort 7 */
+		.PortType = SOUTH,
+		.PortNum = 0,
+	},
+	{
+		/* PhyPort 8 */
+		.PortType = SOUTH,
+		.PortNum = 1,
+	},
+	{
+		/* PhyPort 9 */
+		.PortType = SOUTH,
+		.PortNum = 2,
+	},
+	{
+		/* PhyPort 10 */
+		.PortType = SOUTH,
+		.PortNum = 3,
+	},
+	{
+		/* PhyPort 11 */
+		.PortType = NORTH,
+		.PortNum = 0,
+	},
+	{
+		/* PhyPort 12 */
+		.PortType = NORTH,
+		.PortNum = 1,
+	},
+	{
+		/* PhyPort 13 */
+		.PortType = NORTH,
+		.PortNum = 2,
+	},
+	{
+		/* PhyPort 14 */
+		.PortType = NORTH,
+		.PortNum = 3,
+	},
+	{
+		/* PhyPort 15 */
+		.PortType = NORTH,
+		.PortNum = 4,
+	},
+	{
+		/* PhyPort 16 */
+		.PortType = NORTH,
+		.PortNum = 5,
+	},
+	{
+		/* PhyPort 17 */
+		.PortType = TRACE,
+		.PortNum = 0,
+	},
+};
+")
+
+set(_correct_port_map "
+static const XAie_StrmSwPortMap AieMlMemTileStrmSwSlavePortMap[] =
+{
+	{
+		/* PhyPort 0 */
+		.PortType = DMA,
+		.PortNum = 0,
+	},
+	{
+		/* PhyPort 1 */
+		.PortType = DMA,
+		.PortNum = 1,
+	},
+	{
+		/* PhyPort 2 */
+		.PortType = DMA,
+		.PortNum = 2,
+	},
+	{
+		/* PhyPort 3 */
+		.PortType = DMA,
+		.PortNum = 3,
+	},
+	{
+		/* PhyPort 4 */
+		.PortType = DMA,
+		.PortNum = 4,
+	},
+	{
+		/* PhyPort 5 */
+		.PortType = DMA,
+		.PortNum = 5,
+	},
+	{
+		/* PhyPort 6 */
+		.PortType = CTRL,
+		.PortNum = 0,
+	},
+	{
+		/* PhyPort 7 */
+		.PortType = SOUTH,
+		.PortNum = 0,
+	},
+	{
+		/* PhyPort 8 */
+		.PortType = SOUTH,
+		.PortNum = 1,
+	},
+	{
+		/* PhyPort 9 */
+		.PortType = SOUTH,
+		.PortNum = 2,
+	},
+	{
+		/* PhyPort 10 */
+		.PortType = SOUTH,
+		.PortNum = 3,
+	},
+  {
+      /* PhyPort 11 */
+      .PortType = SOUTH,
+      .PortNum = 4,
+  },
+  {
+      /* PhyPort 12 */
+      .PortType = SOUTH,
+      .PortNum = 5,
+  },
+  {
+      /* PhyPort 13 */
+      .PortType = NORTH,
+      .PortNum = 0,
+  },
+  {
+      /* PhyPort 14 */
+      .PortType = NORTH,
+      .PortNum = 1,
+  },
+  {
+      /* PhyPort 15 */
+      .PortType = NORTH,
+      .PortNum = 2,
+  },
+  {
+      /* PhyPort 16 */
+      .PortType = NORTH,
+      .PortNum = 3,
+  },
+  {
+		/* PhyPort 17 */
+		.PortType = TRACE,
+		.PortNum = 0,
+	},
+};
+")
+
+file(READ ${_aie_rt_source_dir}/driver/src/global/xaiemlgbl_reginit.c _file_contents)
+string(REPLACE "${_incorrect_port_map}" "${_correct_port_map}" __file_contents "${_file_contents}")
+file(WRITE ${_aie_rt_source_dir}/driver/src/global/xaiemlgbl_reginit.c "${__file_contents}")
+
+file(READ ${_aie_rt_source_dir}/driver/src/common/xaie_helper.c _file_contents)
+string(REPLACE "(ColType == 0U) || (ColType == 1U)" "0" __file_contents "${_file_contents}")
+file(WRITE ${_aie_rt_source_dir}/driver/src/common/xaie_helper.c "${__file_contents}")
+
+file(READ ${_aie_rt_source_dir}/driver/src/device/xaie_device_aieml.c _file_contents)
+string(REPLACE "(ColType == 0U) || (ColType == 1U)" "0" __file_contents "${_file_contents}")
+file(WRITE ${_aie_rt_source_dir}/driver/src/device/xaie_device_aieml.c "${__file_contents}")
+
 get_target_property(_aie_runtime_compile_options aienginev2 COMPILE_OPTIONS)
 list(REMOVE_ITEM _aie_runtime_compile_options -D__AIEBAREMETAL__)
 

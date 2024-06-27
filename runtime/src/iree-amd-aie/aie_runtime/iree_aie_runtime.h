@@ -32,6 +32,7 @@
 
 extern "C" {
 #include "xaiengine.h"
+#include "xaiengine/xaie_device_aieml.h"
 
 #define s8
 #define u8
@@ -67,61 +68,7 @@ void insertNoOpCommand(unsigned int numPadBytes);
 #define MEM_TILE_LOCK_ID_INCR 64
 #define BASE_ADDR_A_INCR 0x80000
 
-std::string AIERCTOSTR(AieRC rc);
-
-// https://stackoverflow.com/a/32230306
-template <typename H1>
-llvm::raw_ostream &showArgs(llvm::raw_ostream &out, const char *label,
-                            H1 &&value) {
-  return out << label << "=" << std::forward<H1>(value);
-}
-
-template <typename H1, typename... T>
-llvm::raw_ostream &showArgs(llvm::raw_ostream &out, const char *label,
-                            H1 &&value, T &&...rest) {
-  const char *pcomma = strchr(label, ',');
-  return showArgs(out.write(label, pcomma - label)
-                      << "=" << std::forward<H1>(value) << ',',
-                  pcomma + 1, std::forward<T>(rest)...);
-}
-
-llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const XAie_LocType &loc);
-
-llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const XAie_Lock &lock);
-
-llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const XAie_Packet &packet);
-
-#define SHOW_ARGS(os, ...) showArgs(os, #__VA_ARGS__, __VA_ARGS__)
-#define TRY_XAIE_API_FATAL_ERROR(API, ...)                              \
-  do {                                                                  \
-    LLVM_DEBUG(llvm::dbgs() << "XAIE API: " << #API << " with args: "); \
-    LLVM_DEBUG(SHOW_ARGS(llvm::dbgs(), __VA_ARGS__));                   \
-    LLVM_DEBUG(llvm::dbgs() << "\n");                                   \
-    if (auto r = API(__VA_ARGS__))                                      \
-      llvm::report_fatal_error(llvm::Twine(#API " failed with ") +      \
-                               AIERCTOSTR(r));                          \
-  } while (0)
-
 struct TileLoc {
-  // friend definition (will define the function as a non-member function in the
-  // namespace surrounding the class).
-  friend std::ostream &operator<<(std::ostream &os, const TileLoc &s) {
-    os << "TileLoc(" << s.col << ", " << s.row << ")";
-    return os;
-  }
-
-  friend std::string to_string(const TileLoc &s) {
-    std::ostringstream ss;
-    ss << s;
-    return ss.str();
-  }
-
-  friend llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
-                                       const TileLoc &s) {
-    os << to_string(s);
-    return os;
-  }
-
   inline bool operator<(const TileLoc &rhs) const {
     return std::tie(col, row) < std::tie(rhs.col, rhs.row);
   }
@@ -151,6 +98,14 @@ enum class AMDAIEDevice : uint32_t {
   npu1_4col = 8,
 };
 
+enum class AMDAIETileType : uint8_t {
+  AIETILE = 0U,
+  SHIMNOC = 1U,
+  SHIMPL = 2U,
+  MEMTILE = 3U,
+  MAX = 4U
+};
+
 struct AMDAIENPUDeviceModel {
   XAie_Config configPtr;
   XAie_DevInst devInst;
@@ -165,8 +120,8 @@ struct AMDAIENPUDeviceModel {
 
   int rows() const;
   int columns() const;
-  uint32_t getNumMemTileRows() const;
 
+  AMDAIETileType getTileType(uint8_t col, uint8_t row);
   bool isCoreTile(uint8_t col, uint8_t row);
   bool isMemTile(uint8_t col, uint8_t row);
   bool isShimNOCTile(uint8_t col, uint8_t row);
@@ -217,6 +172,49 @@ struct AMDAIENPUDeviceModel getDeviceModel(AMDAIEDevice device);
 }  // namespace mlir::iree_compiler::AMDAIE
 
 StrmSwPortType getConnectingStrmSwPortType(StrmSwPortType dir);
-std::string stringifyStrmSwPortType(StrmSwPortType val);
+
+// https://stackoverflow.com/a/32230306
+template <typename H1>
+llvm::raw_ostream &showArgs(llvm::raw_ostream &out, const char *label,
+                            H1 &&value) {
+  return out << label << "=" << std::forward<H1>(value);
+}
+
+template <typename H1, typename... T>
+llvm::raw_ostream &showArgs(llvm::raw_ostream &out, const char *label,
+                            H1 &&value, T &&...rest) {
+  const char *pcomma = strchr(label, ',');
+  return showArgs(out.write(label, pcomma - label)
+                      << "=" << std::forward<H1>(value) << ',',
+                  pcomma + 1, std::forward<T>(rest)...);
+}
+
+#define SHOW_ARGS(os, ...) showArgs(os, #__VA_ARGS__, __VA_ARGS__)
+#define TRY_XAIE_API_FATAL_ERROR(API, ...)                              \
+  do {                                                                  \
+    LLVM_DEBUG(llvm::dbgs() << "XAIE API: " << #API << " with args: "); \
+    LLVM_DEBUG(SHOW_ARGS(llvm::dbgs(), __VA_ARGS__));                   \
+    LLVM_DEBUG(llvm::dbgs() << "\n");                                   \
+    if (auto r = API(__VA_ARGS__))                                      \
+      llvm::report_fatal_error(llvm::Twine(#API " failed with ") +      \
+                               std::to_string(r));                      \
+  } while (0)
+
+#define OSTREAM_OP(O_TYPE, TYPE) O_TYPE &operator<<(O_TYPE &os, const TYPE &s);
+
+#define BOTH_OSTREAM_OP(OSTREAM_OP_, TYPE) \
+  OSTREAM_OP_(std::ostream, TYPE)          \
+  OSTREAM_OP_(llvm::raw_ostream, TYPE)
+
+#define BOTH_OSTREAM_OPS_FORALL_TYPES(OSTREAM_OP_, _) \
+  _(OSTREAM_OP_, TileLoc)                             \
+  _(OSTREAM_OP_, AMDAIETileType)                      \
+  _(OSTREAM_OP_, XAie_LocType)                        \
+  _(OSTREAM_OP_, XAie_Lock)                           \
+  _(OSTREAM_OP_, XAie_Packet)                         \
+  _(OSTREAM_OP_, StrmSwPortType)
+
+BOTH_OSTREAM_OPS_FORALL_TYPES(OSTREAM_OP, BOTH_OSTREAM_OP)
+#undef OSTREAM_OP
 
 #endif  // IREE_AIE_RUNTIME_H

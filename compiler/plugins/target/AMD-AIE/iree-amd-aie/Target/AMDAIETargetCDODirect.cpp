@@ -60,7 +60,7 @@ inline StrmSwPortType WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE(
     LLVM_DEBUG(SHOW_ARGS(llvm::dbgs(), __VA_ARGS__));                   \
     LLVM_DEBUG(llvm::dbgs() << "\n");                                   \
     if (auto r = API(__VA_ARGS__))                                      \
-      return OP.emitOpError() << #API " failed with " << AIERCTOSTR(r); \
+      return OP.emitOpError() << #API " failed with " << r;             \
   } while (0)
 
 #define TRY_XAIE_API_LOGICAL_RESULT(API, ...)                                  \
@@ -69,21 +69,13 @@ inline StrmSwPortType WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE(
     LLVM_DEBUG(SHOW_ARGS(llvm::dbgs(), __VA_ARGS__));                          \
     LLVM_DEBUG(llvm::dbgs() << "\n");                                          \
     if (auto r = API(__VA_ARGS__)) {                                           \
-      llvm::errs() << #API " failed with " << AIERCTOSTR(r);                   \
+      llvm::errs() << #API " failed with " << r;                               \
       return failure();                                                        \
     }                                                                          \
   } while (0)
 
 auto ps = std::filesystem::path::preferred_separator;
 
-#define XAIE_BASE_ADDR 0x40000000
-#define XAIE_COL_SHIFT 25
-#define XAIE_ROW_SHIFT 20
-#define XAIE_SHIM_ROW 0
-#define XAIE_MEM_TILE_ROW_START 1
-#define XAIE_PARTITION_BASE_ADDR 0x0
-
-#define NPI_ADDR 0x0
 #define NUM_LOCKS 16
 #define MEM_TILE_LOCK_ID_INCR 64
 #define BASE_ADDR_A_INCR 0x80000
