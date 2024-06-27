@@ -163,15 +163,19 @@ void AMDAIETileAndFusePass::runOnOperation() {
     options.setLoopType(scf::SCFTilingOptions::LoopType::ForallOp);
     // Here we assume there are always two levels of parallel (scf.forall)
     // loops, and the first level of tiling is always using scf.forall and
-    // mapped to blocks.
-    if (tilingLevel == 0) {
-      options.setMapping(
-          {gpu::GPUBlockMappingAttr::get(context, gpu::MappingId::DimY),
-           gpu::GPUBlockMappingAttr::get(context, gpu::MappingId::DimX)});
-    } else {
-      options.setMapping(
-          {gpu::GPUThreadMappingAttr::get(context, gpu::MappingId::DimY),
-           gpu::GPUThreadMappingAttr::get(context, gpu::MappingId::DimX)});
+    // mapped to blocks. Currently we are not using mapping attributes for
+    // Conv2d ops, because there could be four parallel tiling dimensions.
+    // TODO (vivian): create AIE specific mapping attributes.
+    if (!isa<linalg::Conv2DNhwcHwcfOp, linalg::Conv2DNchwFchwOp>(consumerOp)) {
+      if (tilingLevel == 0) {
+        options.setMapping(
+            {gpu::GPUBlockMappingAttr::get(context, gpu::MappingId::DimY),
+             gpu::GPUBlockMappingAttr::get(context, gpu::MappingId::DimX)});
+      } else {
+        options.setMapping(
+            {gpu::GPUThreadMappingAttr::get(context, gpu::MappingId::DimY),
+             gpu::GPUThreadMappingAttr::get(context, gpu::MappingId::DimX)});
+      }
     }
   }
 

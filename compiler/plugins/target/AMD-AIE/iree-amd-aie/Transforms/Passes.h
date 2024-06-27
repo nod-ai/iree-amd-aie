@@ -32,6 +32,10 @@ void addPackPeelBasedPassPipeline(OpPassManager &passManager,
 void addPadPackBasedPassPipeline(OpPassManager &passManager,
                                  TilingConfig &tilingConfig);
 
+/// Populates passes needed to lower the IR via a Conv-Decompose based approach.
+void addConvDecomposePassPipeline(OpPassManager &passManager,
+                                  TilingConfig &tilingConfig);
+
 /// Populates passes needed to link HAL executables across AIE targets.
 void buildAMDAIELinkingPassPipeline(OpPassManager &passManager);
 

@@ -21,13 +21,13 @@ namespace {
 
 static FailureOr<linalg::LinalgPaddingOptions>
 getFirstLevelLinalgPaddingOptions(IRRewriter &rewriter,
-                                  linalg::LinalgOp &matmulOp) {
+                                  linalg::LinalgOp &linalgOp) {
   linalg::LinalgPaddingOptions options;
   SmallVector<Attribute> paddingValues;
-  for (auto operand : matmulOp->getOperands()) {
+  for (auto operand : linalgOp->getOperands()) {
     auto type = dyn_cast<RankedTensorType>(operand.getType());
     if (!type) {
-      matmulOp->emitOpError("expected ranked tensor type");
+      linalgOp->emitOpError("expected ranked tensor type");
       return failure();
     }
     Type elementType = type.getElementType();
@@ -38,11 +38,11 @@ getFirstLevelLinalgPaddingOptions(IRRewriter &rewriter,
     }
   }
   options.paddingValues = paddingValues;
-  SmallVector<bool> packPaddings(matmulOp->getNumOperands(), true);
+  SmallVector<bool> packPaddings(linalgOp->getNumOperands(), true);
   options.packPaddings = packPaddings;
 
   SmallVector<int64_t> paddingDimensions;
-  for (unsigned i = 0, n = matmulOp.getNumLoops(); i < n; i++)
+  for (unsigned i = 0, n = linalgOp.getNumLoops(); i < n; i++)
     paddingDimensions.push_back(i);
   options.paddingDimensions = paddingDimensions;
 
@@ -55,13 +55,13 @@ getFirstLevelLinalgPaddingOptions(IRRewriter &rewriter,
 
 static FailureOr<linalg::LinalgPaddingOptions>
 getSecondLevelLinalgPaddingOptions(IRRewriter &rewriter,
-                                   linalg::LinalgOp &matmulOp) {
+                                   linalg::LinalgOp &linalgOp) {
   linalg::LinalgPaddingOptions options;
   SmallVector<Attribute> paddingValues;
-  for (auto operand : matmulOp->getOperands()) {
+  for (auto operand : linalgOp->getOperands()) {
     auto type = dyn_cast<RankedTensorType>(operand.getType());
     if (!type) {
-      matmulOp->emitOpError("expected ranked tensor type");
+      linalgOp->emitOpError("expected ranked tensor type");
       return failure();
     }
     Type elementType = type.getElementType();
@@ -72,13 +72,13 @@ getSecondLevelLinalgPaddingOptions(IRRewriter &rewriter,
     }
   }
   options.paddingValues = paddingValues;
-  SmallVector<bool> packPaddings(matmulOp->getNumOperands(), true);
+  SmallVector<bool> packPaddings(linalgOp->getNumOperands(), true);
   packPaddings[0] = false;
   packPaddings[1] = false;
   options.packPaddings = packPaddings;
 
   SmallVector<int64_t> paddingDimensions;
-  for (unsigned i = 0, n = matmulOp.getNumLoops(); i < n; i++)
+  for (unsigned i = 0, n = linalgOp.getNumLoops(); i < n; i++)
     paddingDimensions.push_back(i);
   options.paddingDimensions = paddingDimensions;
 
@@ -91,13 +91,13 @@ getSecondLevelLinalgPaddingOptions(IRRewriter &rewriter,
 
 static FailureOr<linalg::LinalgPaddingOptions>
 getThirdLevelLinalgPaddingOptions(IRRewriter &rewriter,
-                                  linalg::LinalgOp &matmulOp) {
+                                  linalg::LinalgOp &linalgOp) {
   linalg::LinalgPaddingOptions options;
   SmallVector<Attribute> paddingValues;
-  for (auto operand : matmulOp->getOperands()) {
+  for (auto operand : linalgOp->getOperands()) {
     auto type = dyn_cast<RankedTensorType>(operand.getType());
     if (!type) {
-      matmulOp->emitOpError("expected ranked tensor type");
+      linalgOp->emitOpError("expected ranked tensor type");
       return failure();
     }
     Type elementType = type.getElementType();
@@ -108,12 +108,12 @@ getThirdLevelLinalgPaddingOptions(IRRewriter &rewriter,
     }
   }
   options.paddingValues = paddingValues;
-  SmallVector<bool> packPaddings(matmulOp->getNumOperands(), true);
+  SmallVector<bool> packPaddings(linalgOp->getNumOperands(), true);
   packPaddings[2] = false;
   options.packPaddings = packPaddings;
 
   SmallVector<int64_t> paddingDimensions;
-  for (unsigned i = 0, n = matmulOp.getNumLoops(); i < n; i++)
+  for (unsigned i = 0, n = linalgOp.getNumLoops(); i < n; i++)
     paddingDimensions.push_back(i);
   options.paddingDimensions = paddingDimensions;
 
@@ -125,15 +125,15 @@ getThirdLevelLinalgPaddingOptions(IRRewriter &rewriter,
 }
 
 static FailureOr<linalg::LinalgPaddingOptions> getLinalgPaddingOptions(
-    IRRewriter &rewriter, linalg::LinalgOp &matmulOp, int64_t paddingLevel) {
+    IRRewriter &rewriter, linalg::LinalgOp &linalgOp, int64_t paddingLevel) {
   if (paddingLevel == 0) {
-    return getFirstLevelLinalgPaddingOptions(rewriter, matmulOp);
+    return getFirstLevelLinalgPaddingOptions(rewriter, linalgOp);
   }
   if (paddingLevel == 1) {
-    return getSecondLevelLinalgPaddingOptions(rewriter, matmulOp);
+    return getSecondLevelLinalgPaddingOptions(rewriter, linalgOp);
   }
   if (paddingLevel == 2) {
-    return getThirdLevelLinalgPaddingOptions(rewriter, matmulOp);
+    return getThirdLevelLinalgPaddingOptions(rewriter, linalgOp);
   }
   return failure();
 }
@@ -185,27 +185,28 @@ class AMDAIEPadPass : public impl::AMDAIEPadBase<AMDAIEPadPass> {
 void AMDAIEPadPass::runOnOperation() {
   MLIRContext *context = &getContext();
   mlir::FunctionOpInterface funcOp = getOperation();
-  linalg::LinalgOp matmulOp;
+  linalg::LinalgOp linalgOp;
   funcOp->walk([&](linalg::LinalgOp op) {
-    if (linalg::isaContractionOpInterface(op)) {
-      matmulOp = op;
+    if (linalg::isaContractionOpInterface(op) ||
+        linalg::isaConvolutionOpInterface(op)) {
+      linalgOp = op;
       return WalkResult::interrupt();
     }
     return WalkResult::advance();
   });
-  if (!matmulOp) {
+  if (!linalgOp) {
     LLVM_DEBUG(llvm::dbgs() << "----- skip, no matmul op -----\n");
     return;
   }
 
   IRRewriter rewriter(context);
   FailureOr<linalg::LinalgPaddingOptions> options =
-      getLinalgPaddingOptions(rewriter, matmulOp, paddingLevel);
+      getLinalgPaddingOptions(rewriter, linalgOp, paddingLevel);
   if (failed(options)) {
     funcOp->emitOpError("unknown padding level");
     return signalPassFailure();
   }
-  if (failed(applyPadAndConvertToDPS(rewriter, matmulOp, *options))) {
+  if (failed(applyPadAndConvertToDPS(rewriter, linalgOp, *options))) {
     funcOp->emitOpError("failed to apply pad");
     return signalPassFailure();
   }
