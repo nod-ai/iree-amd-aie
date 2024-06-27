@@ -602,9 +602,11 @@ void addMLIRAIELoweringPasses(OpPassManager &passManager) {
   devicePM.addPass(xilinx::AIE::createAIERoutePacketFlowsPass());
   devicePM.addPass(xilinx::AIEX::createAIELowerMulticastPass());
   devicePM.addPass(xilinx::AIE::createAIEAssignBufferAddressesPass());
-  devicePM.addPass(xilinx::AIE::createAIELocalizeLocksPass());
-  devicePM.addPass(xilinx::AIE::createAIENormalizeAddressSpacesPass());
   passManager.addPass(createConvertSCFToCFPass());
+  passManager.addNestedPass<xilinx::AIE::DeviceOp>(
+      xilinx::AIE::createAIELocalizeLocksPass());
+  passManager.addNestedPass<xilinx::AIE::DeviceOp>(
+      xilinx::AIE::createAIENormalizeAddressSpacesPass());
 }
 
 // NOTE: this runs on the top-level program module containing all hal.executable

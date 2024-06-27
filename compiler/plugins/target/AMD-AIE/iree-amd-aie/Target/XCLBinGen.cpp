@@ -682,6 +682,7 @@ static LogicalResult generateUnifiedObject(MLIRContext *context,
                                            const std::string &outputFile) {
   PassManager pm(context, moduleOp.getOperationName());
   applyConfigToPassManager(TK, pm);
+
   pm.addPass(mlir::iree_compiler::AMDAIE::createAIECoreToStandardPass());
   pm.addPass(mlir::iree_compiler::AMDAIE::createAIEXToStandardPass());
 
