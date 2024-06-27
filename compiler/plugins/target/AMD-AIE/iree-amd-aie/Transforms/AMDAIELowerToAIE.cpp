@@ -75,9 +75,14 @@ AIE::ObjectFifoCreateOp createObjectFifo(IRRewriter &rewriter,
   AIE::BDDimLayoutArrayAttr sourceDims =
       convertSizeStrideToBDDimLayoutArrayAttr(
           rewriter, dmaOp.getSourceMixedSizes(), dmaOp.getSourceMixedStrides());
-  SmallVector<AIE::BDDimLayoutArrayAttr> targetDimsVec;
-  targetDimsVec.push_back(convertSizeStrideToBDDimLayoutArrayAttr(
-      rewriter, dmaOp.getTargetMixedSizes(), dmaOp.getTargetMixedStrides()));
+  
+  AIE::BDDimLayoutArrayAttr layoutAttr =
+      convertSizeStrideToBDDimLayoutArrayAttr(
+          rewriter, dmaOp.getTargetMixedSizes(), dmaOp.getTargetMixedStrides());
+  // The aie.objectfifo expects a `BDDimLayoutArrayAttr` for each consumer. A
+  // single one for all consumers will error out.
+  SmallVector<AIE::BDDimLayoutArrayAttr> targetDimsVec(dstTiles.size(), layoutAttr);
+  
   AIE::BDDimLayoutArrayArrayAttr targetDims =
       AIE::BDDimLayoutArrayArrayAttr::get(rewriter.getContext(),
                                           ArrayRef(targetDimsVec));

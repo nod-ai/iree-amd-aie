@@ -548,10 +548,10 @@ static bool isMatmulTransposeB(linalg::GenericOp genericOp) {
 /// transposition.
 static LogicalResult setTransposeLikeOpRootConfig(
     mlir::FunctionOpInterface entryPointFn, linalg::LinalgOp linalgOp,
-    AIEPassPipeline passPipeline, AIEConfig cfg) {
-  if (passPipeline == AIEPassPipeline::PackPeelPipeline)
+    TilePassPipeline passPipeline, AIEConfig cfg) {
+  if (passPipeline == TilePassPipeline::PackPeelPipeline)
     return setRootConfigForPackPeelPipeline(entryPointFn, linalgOp, cfg, true);
-  else if (passPipeline == AIEPassPipeline::PadPackPipeline)
+  else if (passPipeline == TilePassPipeline::PadPackPipeline)
     return setRootConfigForPadPackPipeline(entryPointFn, linalgOp, cfg, true);
   return linalgOp.emitError(
       "Unhandled pass pipeline in setTransposeLikeOpRootConfig.");
@@ -563,7 +563,7 @@ static LogicalResult setTransposeLikeOpRootConfig(
 
 static LogicalResult setRootConfig(mlir::FunctionOpInterface entryPointFn,
                                    linalg::GenericOp genericOp,
-                                   AIEPassPipeline passPipeline,
+                                   TilePassPipeline passPipeline,
                                    AIEConfig cfg) {
   assert(!getLoweringConfig<IREE::Codegen::LoweringConfigAttr>(genericOp) &&
          "expected lowering_config is not set");
@@ -581,7 +581,7 @@ static LogicalResult setRootConfig(mlir::FunctionOpInterface entryPointFn,
 /// implements the contraction operation interface.
 static LogicalResult setRootConfig(mlir::FunctionOpInterface entryPointFn,
                                    linalg::ContractionOpInterface contractionOp,
-                                   AIEPassPipeline passPipeline,
+                                   TilePassPipeline passPipeline,
                                    AIEConfig cfg) {
   assert(!getLoweringConfig<IREE::Codegen::LoweringConfigAttr>(contractionOp) &&
          "expected lowering_config is not set");
@@ -607,23 +607,23 @@ static LogicalResult setRootConfig(mlir::FunctionOpInterface entryPointFn,
   // TODO (nmeshram) : This needs to be moved in a separate more generalized
   // logic. Also, need a flag to experiment between pad based and pack based
   // approach which will have different tile sizes and pass pipelines
-  if (passPipeline == AIEPassPipeline::PackPeelPipeline)
+  if (passPipeline == TilePassPipeline::PackPeelPipeline)
     return setRootConfigForPackPeelPipeline(entryPointFn, linalgOp, cfg, false);
-  if (passPipeline == AIEPassPipeline::PadPackPipeline)
+  if (passPipeline == TilePassPipeline::PadPackPipeline)
     return setRootConfigForPadPackPipeline(entryPointFn, linalgOp, cfg, false);
   return linalgOp.emitError("Unhandled pass pipeline in setRootConfig.");
 }
 
 static LogicalResult setConvRootConfig(mlir::FunctionOpInterface entryPointFn,
                                        linalg::ConvolutionOpInterface convOp,
-                                       AIEPassPipeline passPipeline,
+                                       TilePassPipeline passPipeline,
                                        AIEConfig cfg) {
   assert(!getLoweringConfig<IREE::Codegen::LoweringConfigAttr>(convOp) &&
          "expected lowering_config is not set");
   auto linalgOp = cast<linalg::LinalgOp>(convOp.getOperation());
 
   // Current tiling strategy is based on llvm-cpu ConvTileAndDecomposeExpert.
-  if (passPipeline == AIEPassPipeline::ConvDecomposePipeline)
+  if (passPipeline == TilePassPipeline::ConvDecomposePipeline)
     return setRootConfigForConvDecomposePipeline(entryPointFn, linalgOp, cfg);
   return linalgOp.emitError("Unhandled pass pipeline in setConvRootConfig.");
 }
@@ -631,7 +631,7 @@ static LogicalResult setConvRootConfig(mlir::FunctionOpInterface entryPointFn,
 /// Redirects to methods that set the configuration based on operation type.
 static LogicalResult setRootConfigImpl(mlir::FunctionOpInterface entryPointFn,
                                        Operation *op,
-                                       AIEPassPipeline passPipeline,
+                                       TilePassPipeline passPipeline,
                                        AIEConfig cfg) {
   auto setRootConfigFn = [&](Operation *op) -> LogicalResult {
     return TypeSwitch<Operation *, LogicalResult>(op)
@@ -656,7 +656,7 @@ static LogicalResult setRootConfigImpl(mlir::FunctionOpInterface entryPointFn,
 /// Sets the translation information to use for a dispatch region.
 static LogicalResult setTranslationInfoAndRootConfig(
     mlir::FunctionOpInterface entryPointFn, ArrayRef<Operation *> computeOps,
-    AIEPassPipeline passPipeline, AIEConfig cfg) {
+    TilePassPipeline passPipeline, AIEConfig cfg) {
   // Make sure that lowering_config is not preset on any compute ops.
   for (auto computeOp : computeOps) {
     if (getLoweringConfig<IREE::Codegen::LoweringConfigAttr>(computeOp))
@@ -681,7 +681,8 @@ static LogicalResult setTranslationInfoAndRootConfig(
 //===----------------------------------------------------------------------===//
 
 LogicalResult initAIELaunchConfig(FunctionOpInterface funcOp,
-                                  AIEPassPipeline passPipeline, AIEConfig cfg) {
+                                  TilePassPipeline passPipeline,
+                                  AIEConfig cfg) {
   if (getTranslationInfo(funcOp)) return success();
 
   // TODO (nmeshram): Need a default pipeline for control flow cases.

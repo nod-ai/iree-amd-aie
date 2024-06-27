@@ -135,7 +135,7 @@ ${SOURCE_MLIR_FILE} \
 --mlir-print-ir-after-all \
 --mlir-print-ir-module-scope \
 --mlir-disable-threading \
---iree-amdaie-use-pipeline=pad-pack \
+--iree-amdaie-tile-pipeline=pad-pack \
 -o ${OUTPUT}/test_artefact.vmfb \
 --iree-amd-aie-show-invoked-commands"
 
