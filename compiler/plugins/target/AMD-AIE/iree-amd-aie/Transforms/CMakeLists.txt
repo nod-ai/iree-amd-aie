@@ -50,6 +50,7 @@ iree_cc_library(
     "AMDAIECanonicalizeDma.cpp"
     "AMDAIECanonicalizeDoublyStridedOp.cpp"
     "AMDAIEControlCodeLoopUnroll.cpp"
+    "AMDAIEConvertCoreForallToFor.cpp"
     "AMDAIECreateAIEWorkgroup.cpp"
     "AMDAIECreateLogicalObjectFifoLink.cpp"
     "AMDAIEDistributeCoresAndObjectFifos.cpp"
