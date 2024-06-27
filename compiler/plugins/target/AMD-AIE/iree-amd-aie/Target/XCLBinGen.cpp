@@ -851,14 +851,6 @@ LogicalResult xilinx::aie2xclbin(MLIRContext *ctx, ModuleOp moduleOp,
     output->os() << llvm::format("%08X\n", w);
   output->keep();
 
-  if (failed(
-          mlir::iree_compiler::AMDAIE::AIETranslateToNPU(copy, output->os())))
-    return moduleOp.emitOpError("NPU Instruction translation failed");
-
-  output->keep();
-  copy->erase();
-  }
-
   SmallString<64> unifiedObj(TK.TempDir);
   sys::path::append(unifiedObj, "input.o");
   if (failed(generateUnifiedObject(ctx, moduleOp, TK, std::string(unifiedObj))))
