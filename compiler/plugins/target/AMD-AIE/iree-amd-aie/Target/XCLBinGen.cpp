@@ -57,7 +57,6 @@ namespace {
 // manager. These control when (if ever) and what IR gets printed between
 // passes, and whether the pass manager uses multi-theading.
 void applyConfigToPassManager(XCLBinGenConfig &TK, PassManager &pm) {
-
   bool printBefore = TK.PrintIRBeforeAll;
   auto shouldPrintBeforePass = [printBefore](Pass *, Operation *) {
     return printBefore;
@@ -827,7 +826,7 @@ LogicalResult xilinx::aie2xclbin(MLIRContext *ctx, ModuleOp moduleOp,
                                  XCLBinGenConfig &TK, StringRef OutputNPU,
                                  StringRef OutputXCLBin,
                                  StringRef InputXCLBin) {
- PassManager pm(ctx, moduleOp.getOperationName());
+  PassManager pm(ctx, moduleOp.getOperationName());
   applyConfigToPassManager(TK, pm);
 
   // generateNPUInstructions
@@ -852,12 +851,12 @@ LogicalResult xilinx::aie2xclbin(MLIRContext *ctx, ModuleOp moduleOp,
     output->os() << llvm::format("%08X\n", w);
   output->keep();
 
-    if (failed(
-            mlir::iree_compiler::AMDAIE::AIETranslateToNPU(copy, output->os())))
-      return moduleOp.emitOpError("NPU Instruction translation failed");
+  if (failed(
+          mlir::iree_compiler::AMDAIE::AIETranslateToNPU(copy, output->os())))
+    return moduleOp.emitOpError("NPU Instruction translation failed");
 
-    output->keep();
-    copy->erase();
+  output->keep();
+  copy->erase();
   }
 
   SmallString<64> unifiedObj(TK.TempDir);

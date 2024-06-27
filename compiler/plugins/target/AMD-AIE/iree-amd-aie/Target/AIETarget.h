@@ -70,7 +70,6 @@ struct AMDAIEOptions {
         llvm::cl::desc(
             "If true, print the IR before all MLIR passes run in aie2xclbin"));
 
-
     binder.opt<bool>(
         "aie2xclbin-print-ir-module-scope", aie2xclbinPrintIrModuleScope,
         llvm::cl::cat(category),
