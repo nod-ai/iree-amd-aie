@@ -428,9 +428,9 @@ void buildAMDAIETransformPassPipeline(OpPassManager &variantPassManager) {
   }
   modulePassManager.addPass(createLowerUKernelOpsToCallsPass());
   if (clUsePipeline == AIEPassPipeline::PadPackPipeline) {
-    addMLIRAIRAIELoweringPasses(modulePassManager, false);
+    addMLIRAIRLoweringPasses(modulePassManager, false);
   } else if (clUsePipeline == AIEPassPipeline::PackPeelPipeline) {
-    addMLIRAIRAIELoweringPasses(modulePassManager, true);
+    addMLIRAIRLoweringPasses(modulePassManager, true);
   }
   variantPassManager.addPass(createReconcileTranslationInfoPass());
   variantPassManager.addPass(createAMDAIELowerWorkgroupCountPass());
@@ -445,7 +445,7 @@ void buildAMDAIETransformPassPipeline(OpPassManager &variantPassManager) {
 // TODO (Erwei): The "packPeel" temporary argument should be removed once
 // pack-peel and pack-pad share the same pass pipeline. See TODOs inlined below
 // for details.
-void addMLIRAIRAIELoweringPasses(OpPassManager &passManager, bool packPeel) {
+void addMLIRAIRLoweringPasses(OpPassManager &passManager, bool packPeel) {
   // Add passes for preparing for lowering to MLIR-AIR
   passManager.addPass(createEraseHALDescriptorTypeFromMemRefPass());
   passManager.addPass(memref::createFoldMemRefAliasOpsPass());
@@ -587,7 +587,11 @@ void addMLIRAIRAIELoweringPasses(OpPassManager &passManager, bool packPeel) {
   passManager.addPass(xilinx::airrt::createAIRRtToNpuPass());
   passManager.addPass(createCanonicalizerPass());
 
-  // Now lower using the AIE passes used by the mlir-air/mlir-aie flow.
+  // Now lower using the AIE passes from MLIR-AIE.
+  addMLIRAIELoweringPasses(passManager);
+}
+
+void addMLIRAIELoweringPasses(OpPassManager &passManager) {
   passManager.addPass(createLowerAffinePass());
   OpPassManager &devicePM = passManager.nest<xilinx::AIE::DeviceOp>();
   devicePM.addPass(xilinx::AIE::createAIEAssignLockIDsPass());
@@ -598,6 +602,8 @@ void addMLIRAIRAIELoweringPasses(OpPassManager &passManager, bool packPeel) {
   devicePM.addPass(xilinx::AIE::createAIERoutePacketFlowsPass());
   devicePM.addPass(xilinx::AIEX::createAIELowerMulticastPass());
   devicePM.addPass(xilinx::AIE::createAIEAssignBufferAddressesPass());
+  devicePM.addPass(xilinx::AIE::createAIELocalizeLocksPass());
+  devicePM.addPass(xilinx::AIE::createAIENormalizeAddressSpacesPass());
   passManager.addPass(createConvertSCFToCFPass());
 }
 
