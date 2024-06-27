@@ -120,7 +120,7 @@ static iree_status_t iree_hal_xrt_buffer_map_range(
       IREE_HAL_MEMORY_TYPE_HOST_VISIBLE));
   IREE_RETURN_IF_ERROR(
       iree_hal_buffer_validate_usage(iree_hal_buffer_allowed_usage(base_buffer),
-                                     IREE_HAL_BUFFER_USAGE_MAPPING));
+                                     IREE_HAL_BUFFER_USAGE_MAPPING_SCOPED));
 
   void* host_ptr = buffer->buffer->map();
   IREE_ASSERT(host_ptr != NULL);  // Should be guaranteed by previous checks.
