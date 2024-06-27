@@ -19,6 +19,7 @@ enum class AIEPassPipeline {
   PackPeelPipeline,
   PadPackPipeline,
   ConvDecomposePipeline,
+  ObjectFifoPipeline,
   None
 };
 

@@ -107,7 +107,8 @@ void AMDAIELowerExecutableTargetPass::runOnOperation() {
       return;
     case IREE::Codegen::DispatchLoweringPassPipeline::Custom: {
       TilingConfig tilingConfig = getTilingConfigForPipeline(funcOp);
-      if (usePassPipeline == AIEPassPipeline::PackPeelPipeline) {
+      if (usePassPipeline == AIEPassPipeline::PackPeelPipeline ||
+          usePassPipeline == AIEPassPipeline::ObjectFifoPipeline) {
         addPackPeelBasedPassPipeline(executableLoweringPipeline, tilingConfig);
       } else if (usePassPipeline == AIEPassPipeline::PadPackPipeline) {
         addPadPackBasedPassPipeline(executableLoweringPipeline, tilingConfig);

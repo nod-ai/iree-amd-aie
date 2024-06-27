@@ -549,7 +549,8 @@ static bool isMatmulTransposeB(linalg::GenericOp genericOp) {
 static LogicalResult setTransposeLikeOpRootConfig(
     mlir::FunctionOpInterface entryPointFn, linalg::LinalgOp linalgOp,
     AIEPassPipeline passPipeline, AIEConfig cfg) {
-  if (passPipeline == AIEPassPipeline::PackPeelPipeline)
+  if (passPipeline == AIEPassPipeline::PackPeelPipeline ||
+      passPipeline == AIEPassPipeline::ObjectFifoPipeline)
     return setRootConfigForPackPeelPipeline(entryPointFn, linalgOp, cfg, true);
   else if (passPipeline == AIEPassPipeline::PadPackPipeline)
     return setRootConfigForPadPackPipeline(entryPointFn, linalgOp, cfg, true);
@@ -607,7 +608,8 @@ static LogicalResult setRootConfig(mlir::FunctionOpInterface entryPointFn,
   // TODO (nmeshram) : This needs to be moved in a separate more generalized
   // logic. Also, need a flag to experiment between pad based and pack based
   // approach which will have different tile sizes and pass pipelines
-  if (passPipeline == AIEPassPipeline::PackPeelPipeline)
+  if (passPipeline == AIEPassPipeline::PackPeelPipeline ||
+      passPipeline == AIEPassPipeline::ObjectFifoPipeline)
     return setRootConfigForPackPeelPipeline(entryPointFn, linalgOp, cfg, false);
   if (passPipeline == AIEPassPipeline::PadPackPipeline)
     return setRootConfigForPadPackPipeline(entryPointFn, linalgOp, cfg, false);

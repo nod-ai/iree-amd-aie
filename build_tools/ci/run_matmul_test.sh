@@ -727,3 +727,12 @@ run_matmul_test \
     --lhs_rhs_type "bf16" \
     --acc_type "f32" \
     --m "8192" --k "2432" --n "7296"
+
+###################################################################
+
+run_matmul_test \
+    --name_prefix "small" \
+    --pipeline "objectFifo" \
+    --lhs_rhs_type "i32" \
+    --acc_type "i32" \
+    --m "128" --k "256" --n "128"
