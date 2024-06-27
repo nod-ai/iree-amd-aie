@@ -79,6 +79,18 @@ std::string to_string(const AieRC &value) {
   llvm::report_fatal_error("Unhandled AieRC case");
 };
 
+std::string to_string(const AMDAIETileType value) {
+  switch (value) {
+    STRINGIFY_ENUM_CASE(AMDAIETileType::AIETILE)
+    STRINGIFY_ENUM_CASE(AMDAIETileType::SHIMNOC)
+    STRINGIFY_ENUM_CASE(AMDAIETileType::SHIMPL)
+    STRINGIFY_ENUM_CASE(AMDAIETileType::MEMTILE)
+    STRINGIFY_ENUM_CASE(AMDAIETileType::MAX)
+  }
+
+  llvm::report_fatal_error("Unhandled AMDAIETileType case");
+}
+
 STRINGIFY_2TUPLE_STRUCT(XAie_LocType, Col, Row)
 STRINGIFY_2TUPLE_STRUCT(XAie_Lock, LockId, LockVal)
 STRINGIFY_2TUPLE_STRUCT(XAie_Packet, PktId, PktType)
@@ -154,55 +166,57 @@ int AMDAIENPUDeviceModel::rows() const { return configPtr.NumRows; }
 
 int AMDAIENPUDeviceModel::columns() const { return configPtr.NumCols; }
 
-uint32_t AMDAIENPUDeviceModel::getNumMemTileRows() const {
-  return configPtr.MemTileNumRows;
-}
-
 // TODO(max): these are buried somewhere in aie-rt...
 uint32_t AMDAIENPUDeviceModel::getMemSouthBaseAddress() { return 0x00040000; }
 uint32_t AMDAIENPUDeviceModel::getMemWestBaseAddress() { return 0x00050000; }
 uint32_t AMDAIENPUDeviceModel::getMemNorthBaseAddress() { return 0x00060000; }
 uint32_t AMDAIENPUDeviceModel::getMemEastBaseAddress() { return 0x00070000; }
 
+// We would prefer to use aie-rt's GetTileTypeFromLoc, but it's wrong (thinks
+// both (0,0) and (0,1) are shimpl)
+AMDAIETileType AMDAIENPUDeviceModel::getTileType(uint8_t col, uint8_t row) {
+  return static_cast<AMDAIETileType>(
+      _XAieMl_GetTTypefromLoc(&devInst, XAie_TileLoc(col, row)));
+}
+
 bool AMDAIENPUDeviceModel::isCoreTile(uint8_t col, uint8_t row) {
-  return devInst.DevOps->GetTTypefromLoc(&devInst, {.Row = row, .Col = col}) ==
-         XAIEGBL_TILE_TYPE_AIETILE;
+  return getTileType(col, row) == AMDAIETileType::AIETILE;
 }
 
 bool AMDAIENPUDeviceModel::isMemTile(uint8_t col, uint8_t row) {
-  return devInst.DevOps->GetTTypefromLoc(&devInst, {.Row = row, .Col = col}) ==
-         XAIEGBL_TILE_TYPE_MEMTILE;
+  return getTileType(col, row) == AMDAIETileType::MEMTILE;
 }
 
 bool AMDAIENPUDeviceModel::isShimNOCTile(uint8_t col, uint8_t row) {
-  return devInst.DevOps->GetTTypefromLoc(&devInst, {.Row = row, .Col = col}) ==
-         XAIEGBL_TILE_TYPE_SHIMNOC;
+  return getTileType(col, row) == AMDAIETileType::SHIMNOC;
 }
 
 bool AMDAIENPUDeviceModel::isShimPLTile(uint8_t col, uint8_t row) {
-  return devInst.DevOps->GetTTypefromLoc(&devInst, {.Row = row, .Col = col}) ==
-         XAIEGBL_TILE_TYPE_SHIMPL;
+  return getTileType(col, row) == AMDAIETileType::SHIMPL;
 }
 
+// TODO(max): these should be optionals instead of returning 0.
 uint32_t AMDAIENPUDeviceModel::getNumLocks(uint8_t col, uint8_t row) {
-  uint8_t tileType =
-      devInst.DevOps->GetTTypefromLoc(&devInst, {.Row = row, .Col = col});
-  assert(tileType != XAIEGBL_TILE_TYPE_MAX && "invalid tile");
-  return devInst.DevProp.DevMod[tileType].LockMod->NumLocks;
+  AMDAIETileType tileType = getTileType(col, row);
+  if (tileType == AMDAIETileType::SHIMPL || tileType == AMDAIETileType::MAX)
+    return 0;
+  return devInst.DevProp.DevMod[static_cast<uint8_t>(tileType)]
+      .LockMod->NumLocks;
 }
 
 uint32_t AMDAIENPUDeviceModel::getNumBDs(uint8_t col, uint8_t row) {
-  uint8_t tileType =
-      devInst.DevOps->GetTTypefromLoc(&devInst, {.Row = row, .Col = col});
-  assert(tileType != XAIEGBL_TILE_TYPE_MAX && "invalid tile");
-  const XAie_DmaMod *dmaMod = devInst.DevProp.DevMod[tileType].DmaMod;
+  AMDAIETileType tileType = getTileType(col, row);
+  if (tileType == AMDAIETileType::SHIMPL || tileType == AMDAIETileType::MAX)
+    return 0;
+  const XAie_DmaMod *dmaMod =
+      devInst.DevProp.DevMod[static_cast<uint8_t>(tileType)].DmaMod;
   return dmaMod->NumBds;
 }
 
 std::optional<TileLoc> AMDAIENPUDeviceModel::getMemWest(TileLoc src) {
+  if (src.col - 1 < 0) return std::nullopt;
   XAie_LocType ret = XAie_TileLoc(src.col - 1, src.row);
-  if (devInst.DevOps->GetTTypefromLoc(&devInst, ret) == XAIEGBL_TILE_TYPE_MAX)
-    return std::nullopt;
+  if (getTileType(ret.Col, ret.Row) == AMDAIETileType::MAX) return std::nullopt;
   return ret;
 }
 
@@ -212,19 +226,20 @@ std::optional<TileLoc> AMDAIENPUDeviceModel::getMemEast(TileLoc src) {
 }
 
 std::optional<TileLoc> AMDAIENPUDeviceModel::getMemNorth(TileLoc src) {
+  if (src.row + 1 >= rows()) return std::nullopt;
   XAie_LocType ret = XAie_TileLoc(src.col, src.row + 1);
-  if (devInst.DevOps->GetTTypefromLoc(&devInst, ret) == XAIEGBL_TILE_TYPE_MAX)
-    return std::nullopt;
+  if (getTileType(ret.Col, ret.Row) == AMDAIETileType::MAX) return std::nullopt;
   return ret;
 }
 
 std::optional<TileLoc> AMDAIENPUDeviceModel::getMemSouth(TileLoc src) {
+  if (src.row - 1 < 0) return std::nullopt;
   XAie_LocType ret = XAie_TileLoc(src.col, src.row - 1);
-  auto tt = devInst.DevOps->GetTTypefromLoc(&devInst, ret);
+  auto tt = getTileType(ret.Col, ret.Row);
   // The first row doesn't have a tile memory south
   // Memtiles don't have memory adjacency to neighboring core tiles.
-  if (tt == XAIEGBL_TILE_TYPE_MAX || ret.Row == 0 ||
-      tt == XAIEGBL_TILE_TYPE_MEMTILE)
+  if (ret.Row == 0 || tt == AMDAIETileType::MAX ||
+      tt == AMDAIETileType::MEMTILE)
     return std::nullopt;
   return ret;
 }
@@ -252,10 +267,10 @@ bool AMDAIENPUDeviceModel::hasMemSouth(uint8_t srcCol, uint8_t srcRow,
 }
 
 uint32_t AMDAIENPUDeviceModel::getLocalMemorySize(uint8_t col, uint8_t row) {
-  auto tileLoc = XAie_TileLoc(col, row);
-  uint8_t tileType = devInst.DevOps->GetTTypefromLoc(&devInst, tileLoc);
-  assert(tileType != XAIEGBL_TILE_TYPE_MAX && "invalid tile");
-  return devInst.DevProp.DevMod[tileType].CoreMod->DataMemSize;
+  AMDAIETileType tileType = getTileType(col, row);
+  assert(tileType != AMDAIETileType::MAX && "invalid tile");
+  return devInst.DevProp.DevMod[static_cast<uint8_t>(tileType)]
+      .CoreMod->DataMemSize;
 }
 
 uint32_t AMDAIENPUDeviceModel::getMemInternalBaseAddress() {
@@ -263,10 +278,9 @@ uint32_t AMDAIENPUDeviceModel::getMemInternalBaseAddress() {
 }
 
 uint32_t AMDAIENPUDeviceModel::getMemTileSize(uint8_t col, uint8_t row) {
-  auto tileLoc = XAie_TileLoc(col, row);
-  uint8_t tileType = devInst.DevOps->GetTTypefromLoc(&devInst, tileLoc);
-  assert(tileType != XAIEGBL_TILE_TYPE_MAX && "invalid tile");
-  return devInst.DevProp.DevMod[tileType].MemMod->Size;
+  AMDAIETileType tileType = getTileType(col, row);
+  assert(tileType != AMDAIETileType::MAX && "invalid tile");
+  return devInst.DevProp.DevMod[static_cast<uint8_t>(tileType)].MemMod->Size;
 }
 
 bool AMDAIENPUDeviceModel::hasLegalMemAffinity(uint8_t coreCol, uint8_t coreRow,
@@ -292,16 +306,17 @@ bool AMDAIENPUDeviceModel::isLegalMemtileConnection(uint8_t col, uint8_t row,
   // this isn't correct but for agreement with mlir-aie...
   if (srcBundle == dstBundle and srcBundle != DMA) return true;
   assert(isMemTile(col, row) && "expected memtile");
-  auto tileLoc = XAie_TileLoc(col, row);
-  uint8_t tileType = devInst.DevOps->GetTTypefromLoc(&devInst, tileLoc);
-  assert(tileType != XAIEGBL_TILE_TYPE_MAX && "invalid tile");
-  const XAie_StrmMod *strmMod = devInst.DevProp.DevMod[tileType].StrmSw;
+  AMDAIETileType tileType = getTileType(col, row);
+  assert(tileType != AMDAIETileType::MAX && "invalid tile");
+  const XAie_StrmMod *strmMod =
+      devInst.DevProp.DevMod[static_cast<uint8_t>(tileType)].StrmSw;
   AieRC RC = strmMod->PortVerify(/*slave*/ srcBundle, srcChan,
                                  /*master*/ dstBundle, dstChan);
   if (RC != XAIE_OK) {
-    LLVM_DEBUG(llvm::dbgs() << "PortVerify failed with " << RC);
-    LLVM_DEBUG(SHOW_ARGS(llvm::dbgs(), col, row, srcBundle, srcChan, dstBundle,
-                         dstChan));
+    LLVM_DEBUG(llvm::dbgs() << "PortVerify failed with " << RC << "\n");
+    LLVM_DEBUG(SHOW_ARGS(llvm::dbgs(), col, row, srcBundle, (int)srcChan,
+                         dstBundle, (int)dstChan));
+    LLVM_DEBUG(llvm::dbgs() << "\n");
     return false;
   }
   return true;
@@ -310,28 +325,28 @@ bool AMDAIENPUDeviceModel::isLegalMemtileConnection(uint8_t col, uint8_t row,
 // source <-> slave and dest <-> master
 uint32_t AMDAIENPUDeviceModel::getNumSourceSwitchboxConnections(
     uint8_t col, uint8_t row, StrmSwPortType bundle) {
+  AMDAIETileType tileType = getTileType(col, row);
   // not sure if this makes sense but agrees with mlir-aie
   if ((bundle == NORTH && row == rows() - 1) || (bundle == WEST && col == 0) ||
-      (bundle == EAST && col == columns() - 1))
+      (bundle == EAST && col == columns() - 1) ||
+      tileType == AMDAIETileType::MAX)
     return 0;
-  uint8_t tileType =
-      devInst.DevOps->GetTTypefromLoc(&devInst, {.Row = row, .Col = col});
-  assert(tileType != XAIEGBL_TILE_TYPE_MAX && "invalid tile");
-  const XAie_StrmMod *strmMod = devInst.DevProp.DevMod[tileType].StrmSw;
+  const XAie_StrmMod *strmMod =
+      devInst.DevProp.DevMod[static_cast<uint8_t>(tileType)].StrmSw;
   return strmMod->SlvConfig[bundle].NumPorts;
 }
 
 uint32_t AMDAIENPUDeviceModel::getNumDestSwitchboxConnections(
     uint8_t col, uint8_t row, StrmSwPortType bundle) {
+  AMDAIETileType tileType = getTileType(col, row);
   // not sure if this makes sense but agrees with mlir-aie
   if ((bundle == NORTH && row == rows() - 1) || (bundle == WEST && col == 0) ||
-      (bundle == EAST && col == columns() - 1))
+      (bundle == EAST && col == columns() - 1) ||
+      tileType == AMDAIETileType::MAX)
     return 0;
 
-  uint8_t tileType =
-      devInst.DevOps->GetTTypefromLoc(&devInst, {.Row = row, .Col = col});
-  assert(tileType != XAIEGBL_TILE_TYPE_MAX && "invalid tile");
-  const XAie_StrmMod *strmMod = devInst.DevProp.DevMod[tileType].StrmSw;
+  const XAie_StrmMod *strmMod =
+      devInst.DevProp.DevMod[static_cast<uint8_t>(tileType)].StrmSw;
   return strmMod->MstrConfig[bundle].NumPorts;
 }
 
@@ -343,32 +358,62 @@ struct AMDAIENPUDeviceModel mlir::iree_compiler::AMDAIE::getDeviceModel(
                                   XAIE1_COL_SHIFT, XAIE1_ROW_SHIFT,
                                   /*numCols*/ 50, /*numRows*/ 9,
                                   /*memTileRowStart*/ 0, /*nMemTileRows*/ 0,
-                                  /*nShimTileRows*/ 0, /*partitionStartCol*/ 0,
-                                  /*partitionNumCols*/ 50);
+                                  /*nShimTileRows*/ 0,
+                                  /*partitionNumCols*/ 50,
+                                  /*partitionStartCol*/ 0);
     case AMDAIEDevice::xcve2302:
       return AMDAIENPUDeviceModel(XAIE_DEV_GEN_AIEML, XAIE2_BASE_ADDR,
                                   XAIE2_COL_SHIFT, XAIE2_ROW_SHIFT,
                                   /*numCols*/ 17, /*numRows*/ 4,
                                   /*memTileRowStart*/ 1, /*nMemTileRows*/ 1,
-                                  /*nShimTileRows*/ 1, /*partitionStartCol*/ 0,
-                                  /*partitionNumCols*/ 17);
+                                  /*nShimTileRows*/ 1,
+                                  /*partitionNumCols*/ 17,
+                                  /*partitionStartCol*/ 0);
     case AMDAIEDevice::xcve2802:
       return AMDAIENPUDeviceModel(XAIE_DEV_GEN_AIEML, XAIE2_BASE_ADDR,
                                   XAIE2_COL_SHIFT, XAIE2_ROW_SHIFT,
                                   /*numCols*/ 38, /*numRows*/ 11,
                                   /*memTileRowStart*/ 2, /*nMemTileRows*/ 1,
-                                  /*nShimTileRows*/ 1, /*partitionStartCol*/ 0,
-                                  /*partitionNumCols*/ 38);
+                                  /*nShimTileRows*/ 1,
+                                  /*partitionNumCols*/ 38,
+                                  /*partitionStartCol*/ 0);
     case AMDAIEDevice::npu:
+      return AMDAIENPUDeviceModel(XAIE_DEV_GEN_AIEML, XAIE2_BASE_ADDR,
+                                  XAIE2_COL_SHIFT, XAIE2_ROW_SHIFT,
+                                  /*numCols*/ 5,
+                                  /*numRows*/ 6,
+                                  /*memTileRowStart*/ 1,
+                                  /*nMemTileRows*/ 1,
+                                  /*nShimTileRows*/ 1,
+                                  /*partitionNumCols*/ 5,
+                                  /*partitionStartCol*/ 0);
     case AMDAIEDevice::npu1_1col:
     case AMDAIEDevice::npu1_2col:
     case AMDAIEDevice::npu1_3col:
     case AMDAIEDevice::npu1_4col:
       return AMDAIENPUDeviceModel(XAIE_DEV_GEN_AIEML, XAIE2_BASE_ADDR,
                                   XAIE2_COL_SHIFT, XAIE2_ROW_SHIFT,
-                                  /*numCols*/ 5, /*numRows*/ 6,
-                                  /*memTileRowStart*/ 1, /*nMemTileRows*/ 1,
-                                  /*nShimTileRows*/ 1, /*partitionStartCol*/ 0,
-                                  /*partitionNumCols*/ 5);
+                                  /*numCols*/ 4,
+                                  /*numRows*/ 6,
+                                  /*memTileRowStart*/ 1,
+                                  /*nMemTileRows*/ 1,
+                                  /*nShimTileRows*/ 1,
+                                  /*partitionNumCols*/ 4,
+                                  /*partitionStartCol*/ 0);
+  }
+}
+
+StrmSwPortType getConnectingStrmSwPortType(StrmSwPortType dir) {
+  switch (dir) {
+    case StrmSwPortType::NORTH:
+      return StrmSwPortType::SOUTH;
+    case StrmSwPortType::SOUTH:
+      return StrmSwPortType::NORTH;
+    case StrmSwPortType::EAST:
+      return StrmSwPortType::WEST;
+    case StrmSwPortType::WEST:
+      return StrmSwPortType::EAST;
+    default:
+      return dir;
   }
 }

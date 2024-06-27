@@ -186,12 +186,6 @@ int runTool(StringRef program, ArrayRef<std::string> args, bool verbose,
   return result;
 }
 
-template <unsigned N>
-static void aieTargetDefines(SmallVector<std::string, N> &Args,
-                             std::string aie_target) {
-  Args.push_back("-D__AIEARCH__=20");
-}
-
 // Generate the elf files for the core
 static LogicalResult generateCoreElfFiles(ModuleOp moduleOp,
                                           const StringRef objFile,
@@ -799,7 +793,7 @@ static LogicalResult generateUnifiedObject(MLIRContext *context,
                 {"-O2", "--inline-threshold=10", "-S", std::string(LLVMIRFile),
                  "--disable-builtin=memset", "-o", std::string(OptLLVMIRFile)},
                 TK.Verbose) != 0)
-      return moduleOp.emitOpError("Failed to optimize");
+      return moduleOp.emitOpError("Failed to optimize ll");
 
     if (runTool(peanoLLCBin,
                 {std::string(OptLLVMIRFile), "-O2",
@@ -807,7 +801,7 @@ static LogicalResult generateUnifiedObject(MLIRContext *context,
                  "--function-sections", "--filetype=obj", "-o",
                  std::string(outputFile)},
                 TK.Verbose) != 0)
-      return moduleOp.emitOpError("Failed to assemble");
+      return moduleOp.emitOpError("Failed to assemble ll");
   }
   copy->erase();
   return success();

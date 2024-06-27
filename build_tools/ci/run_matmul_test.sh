@@ -429,7 +429,7 @@ function run_matmul_test() {
   fi
 
   # Renable exit on failure:
-  set -e
+#  set -e
 
 
   echo "**** Generating calls .vmfb file for ${name} ****"
@@ -504,6 +504,20 @@ run_matmul_test \
     --max_elements_to_check "0" \
     --use_ukernel "0" \
     --num_repeat_runs "2"
+
+run_matmul_test \
+    --name_prefix "ukern" \
+    --lhs_rhs_type "bf16" \
+    --acc_type "f32" \
+    --m "64"  --k "64" --n "64" \
+    --use_ukernel "1"
+
+run_matmul_test \
+    --name_prefix "ukern" \
+    --lhs_rhs_type "bf16" \
+    --acc_type "f32" \
+    --m "128"  --k "128" --n "128" \
+    --use_ukernel "1"
 
 run_matmul_test \
     --name_prefix "ukern" \

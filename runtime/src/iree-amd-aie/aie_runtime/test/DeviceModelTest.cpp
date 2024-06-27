@@ -1,27 +1,25 @@
+// Copyright 2024 The IREE Authors
+//
+// Licensed under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+#include <set>
+#include <tuple>
+
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIE/IR/AIETargetModel.h"
-#include "gtest/gtest-spi.h"
+#include "gtest/gtest-param-test.h"
 #include "gtest/gtest.h"
 #include "iree-amd-aie/aie_runtime/iree_aie_runtime.h"
+#include "llvm/Support/FormatVariadic.h"
+
+#define NPU_NUM_COLS 4
+#define NPU_NUM_ROWS 6
 
 namespace {
 
 using namespace mlir::iree_compiler::AMDAIE;
-
-const std::map<xilinx::AIE::WireBundle, StrmSwPortType>
-    _WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE = {
-        {xilinx::AIE::WireBundle::Core, StrmSwPortType::CORE},
-        {xilinx::AIE::WireBundle::DMA, StrmSwPortType::DMA},
-        {xilinx::AIE::WireBundle::Ctrl, StrmSwPortType::CTRL},
-        {xilinx::AIE::WireBundle::FIFO, StrmSwPortType::FIFO},
-        {xilinx::AIE::WireBundle::South, StrmSwPortType::SOUTH},
-        {xilinx::AIE::WireBundle::West, StrmSwPortType::WEST},
-        {xilinx::AIE::WireBundle::North, StrmSwPortType::NORTH},
-        {xilinx::AIE::WireBundle::East, StrmSwPortType::EAST},
-        // missing PLIO from WireBundle
-        // missing NOC from WireBundle
-        {xilinx::AIE::WireBundle::Trace, StrmSwPortType::TRACE},
-};
 
 const std::map<StrmSwPortType, xilinx::AIE::WireBundle>
     _STRM_SW_PORT_TYPE_TO_WIRE_BUNDLE = {
@@ -36,180 +34,405 @@ const std::map<StrmSwPortType, xilinx::AIE::WireBundle>
         {StrmSwPortType::TRACE, xilinx::AIE::WireBundle::Trace},
 };
 
-inline StrmSwPortType WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE(
-    xilinx::AIE::WireBundle w) {
-  return _WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE.at(w);
-}
-
 xilinx::AIE::WireBundle STRM_SW_PORT_TYPE_TO_WIRE_BUNDLE(StrmSwPortType s) {
   return _STRM_SW_PORT_TYPE_TO_WIRE_BUNDLE.at(s);
 }
 
-TEST(EverythingExceptLegalMemConnection, Test0) {
+template <AMDAIEDevice D, xilinx::AIE::AIEDevice T, class... Types>
+class AMDAIENPUDeviceModelParameterizedTupleWholeNPUTestFixture
+    : public ::testing::TestWithParam<std::tuple<Types...>> {
+ public:
+  explicit AMDAIENPUDeviceModelParameterizedTupleWholeNPUTestFixture()
+      : deviceModel(mlir::iree_compiler::AMDAIE::getDeviceModel(D)),
+        targetModel(xilinx::AIE::getTargetModel(T)) {}
+
+ protected:
+  AMDAIENPUDeviceModel deviceModel;
+  const xilinx::AIE::AIETargetModel &targetModel;
+};
+
+template <class... Types>
+class AMDAIENPUDeviceModelParameterizedTupleTestWholeNPUFixture
+    : public AMDAIENPUDeviceModelParameterizedTupleWholeNPUTestFixture<
+          AMDAIEDevice::npu1_4col, xilinx::AIE::AIEDevice::npu1_4col,
+          Types...> {};
+
+class AMDAIENPUDeviceModelParameterizedNumColsNumRowsWholeNPUTestFixture
+    : public AMDAIENPUDeviceModelParameterizedTupleTestWholeNPUFixture<int,
+                                                                       int> {};
+
+class
+    AMDAIENPUDeviceModelParameterizedAllPairsTimesAllSwitchesWholeNPUTestFixture
+    : public AMDAIENPUDeviceModelParameterizedTupleTestWholeNPUFixture<int, int,
+                                                                       int> {};
+
+class AMDAIENPUDeviceModelParameterizedAllPairsTimesAllPairsWholeNPUTestFixture
+    : public AMDAIENPUDeviceModelParameterizedTupleTestWholeNPUFixture<
+          int, int, int, int> {};
+
+class AMDAIENPUDeviceModelParameterizedSixTupleWholeNPUTestFixture
+    : public AMDAIENPUDeviceModelParameterizedTupleTestWholeNPUFixture<
+          int, int, int, int, int, int> {};
+
+TEST(SameNumRowsCols, Test0) {
   AMDAIENPUDeviceModel deviceModel =
-      mlir::iree_compiler::AMDAIE::getDeviceModel(AMDAIEDevice::npu);
+      mlir::iree_compiler::AMDAIE::getDeviceModel(AMDAIEDevice::npu1);
   const xilinx::AIE::AIETargetModel &targetModel =
       xilinx::AIE::getTargetModel(xilinx::AIE::AIEDevice::npu1);
 
   EXPECT_EQ(deviceModel.rows(), targetModel.rows());
   EXPECT_EQ(deviceModel.columns(), targetModel.columns());
+}
 
-  EXPECT_NONFATAL_FAILURE(EXPECT_EQ(deviceModel.isShimNOCTile(0, 0),
-                                    targetModel.isShimNOCTile(0, 0)),
-                          "Expected equality of these values");
-
-  EXPECT_NONFATAL_FAILURE(
-      EXPECT_EQ(deviceModel.isShimPLTile(0, 0), targetModel.isShimPLTile(0, 0)),
-      "Expected equality of these values");
-
-  for (int c = 0; c < deviceModel.columns(); ++c) {
-    for (int r = 0; r < deviceModel.rows(); ++r) {
-      std::cout << "testing " << " c, r " << c << ", " << r << "\n";
-
-      EXPECT_EQ(deviceModel.isCoreTile(c, r), targetModel.isCoreTile(c, r))
-          << "Core tile disagree";
-      EXPECT_EQ(deviceModel.isMemTile(c, r), targetModel.isMemTile(c, r))
-          << "Mem tile disagree";
-      if (c > 0 || r > 0) {
-        EXPECT_EQ(deviceModel.isShimNOCTile(c, r),
-                  targetModel.isShimNOCTile(c, r))
-            << "ShimNOC tile disagree";
-        EXPECT_EQ(deviceModel.isShimPLTile(c, r),
-                  targetModel.isShimPLTile(c, r))
-            << "ShimPL tile disagree";
-      }
-
-      if (deviceModel.isCoreTile(c, r)) {
-        EXPECT_EQ(deviceModel.getLocalMemorySize(c, r),
-                  targetModel.getLocalMemorySize())
-            << "local size don't agree";
-      } else if (deviceModel.isMemTile(c, r)) {
-        EXPECT_EQ(deviceModel.getMemTileSize(c, r),
-                  targetModel.getMemTileSize())
-            << "memtile memory size don't agree";
-      }
-
-      EXPECT_EQ(deviceModel.getNumLocks(c, r), targetModel.getNumLocks(c, r))
-          << "Locks disagree";
-      EXPECT_EQ(deviceModel.getNumBDs(c, r), targetModel.getNumBDs(c, r))
-          << "BDs disagree";
-
-      TileLoc dloc = {c, r};
-      xilinx::AIE::TileID tloc = {c, r};
-
-      auto d = deviceModel.getMemWest(dloc);
-      auto t = targetModel.getMemWest(tloc);
-      EXPECT_EQ(d.has_value(), t.has_value()) << "MemWest disagree on exist";
-      if (d.has_value()) {
-        EXPECT_EQ(d->col, t->col) << "MemWest disagree on col";
-        EXPECT_EQ(d->row, t->row) << "MemWest disagree on row";
-      }
-
-      d = deviceModel.getMemEast(dloc);
-      t = targetModel.getMemEast(tloc);
-      EXPECT_EQ(d.has_value(), t.has_value()) << "MemEast disagree on exist";
-      if (d.has_value()) {
-        EXPECT_EQ(d->col, t->col) << "MemEast disagree on col";
-        EXPECT_EQ(d->row, t->row) << "MemEast disagree on row";
-      }
-
-      d = deviceModel.getMemNorth(dloc);
-      t = targetModel.getMemNorth(tloc);
-      EXPECT_EQ(d.has_value(), t.has_value()) << "MemNorth disagree on exist";
-      if (d.has_value()) {
-        EXPECT_EQ(d->col, t->col) << "MemNorth disagree on col";
-        EXPECT_EQ(d->row, t->row) << "MemNorth disagree on row";
-      }
-
-      d = deviceModel.getMemSouth(dloc);
-      t = targetModel.getMemSouth(tloc);
-      EXPECT_EQ(d.has_value(), t.has_value()) << "MemSouth disagree on exist";
-      if (d.has_value()) {
-        EXPECT_EQ(d->col, t->col) << "MemSouth disagree on col";
-        EXPECT_EQ(d->row, t->row) << "MemSouth disagree on row";
-      }
-
-      for (int cc = 0; cc < deviceModel.columns(); ++cc) {
-        for (int rr = 0; rr < deviceModel.rows(); ++rr) {
-          EXPECT_EQ(deviceModel.hasMemWest(c, r, cc, rr),
-                    targetModel.isMemWest(c, r, cc, rr))
-              << "hasMemWest disagree";
-          EXPECT_EQ(deviceModel.hasMemEast(c, r, cc, rr),
-                    targetModel.isMemEast(c, r, cc, rr))
-              << "hasMemEast disagree";
-          EXPECT_EQ(deviceModel.hasMemNorth(c, r, cc, rr),
-                    targetModel.isMemNorth(c, r, cc, rr))
-              << "hasMemNorth disagree";
-          EXPECT_EQ(deviceModel.hasMemSouth(c, r, cc, rr),
-                    targetModel.isMemSouth(c, r, cc, rr))
-              << "hasMemSouth disagree";
-          EXPECT_EQ(deviceModel.hasLegalMemAffinity(c, r, cc, rr),
-                    targetModel.isLegalMemAffinity(c, r, cc, rr))
-              << "hasLegalMemAffinity disagree";
-        }
-      }
-    }
+TEST_P(AMDAIENPUDeviceModelParameterizedNumColsNumRowsWholeNPUTestFixture,
+       CoreTilesAgree) {
+  auto [c, r] = GetParam();
+  EXPECT_EQ(deviceModel.isCoreTile(c, r), targetModel.isCoreTile(c, r))
+      << "Core tile disagree; " << deviceModel.getTileType(c, r);
+  if (deviceModel.isCoreTile(c, r)) {
+    EXPECT_EQ(deviceModel.getLocalMemorySize(c, r),
+              targetModel.getLocalMemorySize())
+        << "local size don't agree";
   }
 }
 
-TEST(LegalMemConnection, Test0) {
-  AMDAIENPUDeviceModel deviceModel =
-      mlir::iree_compiler::AMDAIE::getDeviceModel(AMDAIEDevice::npu);
-  const xilinx::AIE::AIETargetModel &targetModel =
-      xilinx::AIE::getTargetModel(xilinx::AIE::AIEDevice::npu1);
+TEST_P(AMDAIENPUDeviceModelParameterizedNumColsNumRowsWholeNPUTestFixture,
+       MemTilesAgree) {
+  auto [c, r] = GetParam();
 
-  EXPECT_EQ(deviceModel.rows(), targetModel.rows());
-  EXPECT_EQ(deviceModel.columns(), targetModel.columns());
-
-  for (int c = 0; c < deviceModel.columns(); ++c) {
-    for (int r = 0; r < deviceModel.rows(); ++r) {
-      std::cout << "testing " << " c, r " << c << ", " << r << "\n";
-      for (int strmSwPortType = 0; strmSwPortType < SS_PORT_TYPE_MAX;
-           ++strmSwPortType) {
-        auto srcSw = static_cast<StrmSwPortType>(strmSwPortType);
-        auto wireB = STRM_SW_PORT_TYPE_TO_WIRE_BUNDLE(srcSw);
-        auto dNumSrc =
-            deviceModel.getNumSourceSwitchboxConnections(c, r, srcSw);
-        auto tNumSrc =
-            targetModel.getNumSourceSwitchboxConnections(c, r, wireB);
-        EXPECT_EQ(dNumSrc, tNumSrc)
-            << "diff src for typ: " << stringifyStrmSwPortType(srcSw) << "\n";
-
-        auto dNumDst = deviceModel.getNumDestSwitchboxConnections(c, r, srcSw);
-        auto tNumDst = targetModel.getNumDestSwitchboxConnections(c, r, wireB);
-        EXPECT_EQ(dNumDst, tNumDst)
-            << "diff dest for typ: " << stringifyStrmSwPortType(srcSw) << "\n";
-
-        if (deviceModel.isMemTile(c, r)) {
-          for (int destStrmSwPortType = 0;
-               destStrmSwPortType < SS_PORT_TYPE_MAX; ++destStrmSwPortType) {
-            auto destSw = static_cast<StrmSwPortType>(destStrmSwPortType);
-            auto destWireb = STRM_SW_PORT_TYPE_TO_WIRE_BUNDLE(destSw);
-            auto dNumDst =
-                deviceModel.getNumDestSwitchboxConnections(c, r, destSw);
-            for (int srcChan = 0; srcChan < dNumSrc; ++srcChan) {
-              for (int dstChan = 0; dstChan < dNumDst; ++dstChan) {
-                auto disLegal = deviceModel.isLegalMemtileConnection(
-                    c, r, srcSw, srcChan, destSw, dstChan);
-                auto tisLegal = targetModel.isLegalMemtileConnection(
-                    wireB, srcChan, destWireb, dstChan);
-                if (disLegal != tisLegal) {
-                  std::cout << "isLegalMemtileConnection wrong (reports true "
-                               "when false): "
-                            << "src: " << stringifyStrmSwPortType(srcSw)
-                            << (int)srcChan
-                            << ", dst: " << stringifyStrmSwPortType(destSw)
-                            << (int)dstChan << "\n";
-                }
-                EXPECT_EQ(disLegal, tisLegal);
-              }
-            }
-          }
-        }
-      }
-    }
+  EXPECT_EQ(deviceModel.isMemTile(c, r), targetModel.isMemTile(c, r))
+      << "Mem tile disagree; " << deviceModel.getTileType(c, r) << " " << c
+      << ", " << r << "\n";
+  if (deviceModel.isMemTile(c, r)) {
+    EXPECT_EQ(deviceModel.getMemTileSize(c, r), targetModel.getMemTileSize())
+        << "memtile memory size don't agree; " << c << ", " << r << "\n";
   }
 }
+
+TEST_P(AMDAIENPUDeviceModelParameterizedNumColsNumRowsWholeNPUTestFixture,
+       ShimNOCTileAgree) {
+  auto [c, r] = GetParam();
+  EXPECT_EQ(deviceModel.isShimNOCTile(c, r), targetModel.isShimNOCTile(c, r))
+      << "ShimNOC tile disagree; " << deviceModel.getTileType(c, r);
+}
+
+TEST_P(AMDAIENPUDeviceModelParameterizedNumColsNumRowsWholeNPUTestFixture,
+       ShimPLTileAgree) {
+  auto [c, r] = GetParam();
+  EXPECT_EQ(deviceModel.isShimPLTile(c, r), targetModel.isShimPLTile(c, r))
+      << "ShimPL tile disagree; " << deviceModel.getTileType(c, r);
+}
+
+TEST_P(AMDAIENPUDeviceModelParameterizedNumColsNumRowsWholeNPUTestFixture,
+       NumLocksAgree) {
+  auto [c, r] = GetParam();
+  EXPECT_EQ(deviceModel.getNumLocks(c, r), targetModel.getNumLocks(c, r));
+}
+
+TEST_P(AMDAIENPUDeviceModelParameterizedNumColsNumRowsWholeNPUTestFixture,
+       NumBDsAgree) {
+  auto [c, r] = GetParam();
+  EXPECT_EQ(deviceModel.getNumBDs(c, r), targetModel.getNumBDs(c, r));
+}
+
+TEST_P(AMDAIENPUDeviceModelParameterizedNumColsNumRowsWholeNPUTestFixture,
+       MemWestAgree) {
+  auto [c, r] = GetParam();
+  TileLoc dloc = {c, r};
+  xilinx::AIE::TileID tloc = {c, r};
+  auto d = deviceModel.getMemWest(dloc);
+  auto t = targetModel.getMemWest(tloc);
+
+  EXPECT_EQ(d.has_value(), t.has_value()) << "MemWest disagree on exist ";
+  if (d.has_value()) {
+    EXPECT_EQ(d->col, t->col) << "MemWest disagree on col";
+    EXPECT_EQ(d->row, t->row) << "MemWest disagree on row";
+  }
+}
+
+TEST_P(AMDAIENPUDeviceModelParameterizedNumColsNumRowsWholeNPUTestFixture,
+       MemEastAgree) {
+  auto [c, r] = GetParam();
+  TileLoc dloc = {c, r};
+  xilinx::AIE::TileID tloc = {c, r};
+  auto d = deviceModel.getMemEast(dloc);
+  auto t = targetModel.getMemEast(tloc);
+  EXPECT_EQ(d.has_value(), t.has_value()) << "MemEast disagree on exist ";
+  if (d.has_value()) {
+    EXPECT_EQ(d->col, t->col) << "MemEast disagree on col";
+    EXPECT_EQ(d->row, t->row) << "MemEast disagree on row";
+  }
+}
+
+TEST_P(AMDAIENPUDeviceModelParameterizedNumColsNumRowsWholeNPUTestFixture,
+       MemNorthAgree) {
+  auto [c, r] = GetParam();
+  TileLoc dloc = {c, r};
+  xilinx::AIE::TileID tloc = {c, r};
+  auto d = deviceModel.getMemNorth(dloc);
+  auto t = targetModel.getMemNorth(tloc);
+  EXPECT_EQ(d.has_value(), t.has_value()) << "MemNorth disagree on exist ";
+  if (d.has_value()) {
+    EXPECT_EQ(d->col, t->col) << "MemNorth disagree on col";
+    EXPECT_EQ(d->row, t->row) << "MemNorth disagree on row";
+  }
+}
+
+TEST_P(AMDAIENPUDeviceModelParameterizedNumColsNumRowsWholeNPUTestFixture,
+       MemSouthAgree) {
+  auto [c, r] = GetParam();
+  TileLoc dloc = {c, r};
+  xilinx::AIE::TileID tloc = {c, r};
+  auto d = deviceModel.getMemSouth(dloc);
+  auto t = targetModel.getMemSouth(tloc);
+  EXPECT_EQ(d.has_value(), t.has_value()) << "MemSouth disagree on exist ";
+  if (d.has_value()) {
+    EXPECT_EQ(d->col, t->col) << "MemSouth disagree on col";
+    EXPECT_EQ(d->row, t->row) << "MemSouth disagree on row";
+  }
+}
+
+TEST_P(
+    AMDAIENPUDeviceModelParameterizedAllPairsTimesAllPairsWholeNPUTestFixture,
+    HasMemWestAgree) {
+  auto [c, r, cc, rr] = GetParam();
+  EXPECT_EQ(deviceModel.hasMemWest(c, r, cc, rr),
+            targetModel.isMemWest(c, r, cc, rr))
+      << "hasMemWest disagree";
+}
+
+TEST_P(
+    AMDAIENPUDeviceModelParameterizedAllPairsTimesAllPairsWholeNPUTestFixture,
+    HasMemEastAgree) {
+  auto [c, r, cc, rr] = GetParam();
+  EXPECT_EQ(deviceModel.hasMemEast(c, r, cc, rr),
+            targetModel.isMemEast(c, r, cc, rr))
+      << "hasMemEast disagree";
+}
+
+TEST_P(
+    AMDAIENPUDeviceModelParameterizedAllPairsTimesAllPairsWholeNPUTestFixture,
+    HasMemNorthAgree) {
+  auto [c, r, cc, rr] = GetParam();
+  EXPECT_EQ(deviceModel.hasMemNorth(c, r, cc, rr),
+            targetModel.isMemNorth(c, r, cc, rr))
+      << "hasMemNorth disagree";
+}
+
+TEST_P(
+    AMDAIENPUDeviceModelParameterizedAllPairsTimesAllPairsWholeNPUTestFixture,
+    HasMemSouthAgree) {
+  auto [c, r, cc, rr] = GetParam();
+  EXPECT_EQ(deviceModel.hasMemSouth(c, r, cc, rr),
+            targetModel.isMemSouth(c, r, cc, rr))
+      << "hasMemSouth disagree";
+}
+
+const std::map<std::tuple<int, int, StrmSwPortType>, std::tuple<int, int>,
+               std::less<>>
+    NumSourceSwitchboxConnectionsFails{
+        // c, r, port, deviceModelNumSrc, targetModelNumSrc
+        {{0, 0, TRACE}, {2, 1}},
+        //
+        {{1, 0, TRACE}, {2, 1}},
+        {{2, 0, TRACE}, {2, 1}},
+        {{3, 0, TRACE}, {2, 1}},
+        {{4, 0, TRACE}, {2, 1}}};
+
+TEST_P(
+    AMDAIENPUDeviceModelParameterizedAllPairsTimesAllSwitchesWholeNPUTestFixture,
+    NumSourceSwitchboxConnections) {
+  auto [c, r, strmSwPortType] = GetParam();
+  auto srcSw = static_cast<StrmSwPortType>(strmSwPortType);
+  auto wireB = STRM_SW_PORT_TYPE_TO_WIRE_BUNDLE(srcSw);
+  auto deviceModelNumSrc =
+      deviceModel.getNumSourceSwitchboxConnections(c, r, srcSw);
+  auto targetModelNumSrc =
+      targetModel.getNumSourceSwitchboxConnections(c, r, wireB);
+  const auto tup = std::make_tuple(c, r, srcSw);
+  if (NumSourceSwitchboxConnectionsFails.count(tup)) {
+    auto [d, t] = NumSourceSwitchboxConnectionsFails.at(tup);
+    EXPECT_EQ(deviceModelNumSrc, d);
+    EXPECT_EQ(targetModelNumSrc, t);
+  } else
+    EXPECT_EQ(deviceModelNumSrc, targetModelNumSrc)
+        << "diff src # for switch typ: " << srcSw << "\n";
+}
+
+TEST_P(
+    AMDAIENPUDeviceModelParameterizedAllPairsTimesAllSwitchesWholeNPUTestFixture,
+    NumDestSwitchboxConnections) {
+  auto [c, r, strmSwPortType] = GetParam();
+  auto dstSw = static_cast<StrmSwPortType>(strmSwPortType);
+  auto wireB = STRM_SW_PORT_TYPE_TO_WIRE_BUNDLE(dstSw);
+  auto deviceModelNumDst =
+      deviceModel.getNumDestSwitchboxConnections(c, r, dstSw);
+  auto targetModelNumDst =
+      targetModel.getNumDestSwitchboxConnections(c, r, wireB);
+  EXPECT_EQ(deviceModelNumDst, targetModelNumDst)
+      << "diff dest # for switch typ: " << dstSw << "\n";
+}
+
+class AMDAIENPUDeviceModelParameterizedMemtileConnectivityWholeNPUTestFixture
+    : public AMDAIENPUDeviceModelParameterizedTupleTestWholeNPUFixture<int,
+                                                                       int> {};
+
+#define u8 uint8_t
+extern "C" {
+#include "xaiengine/xaie_ss_aieml.h"
+}
+#undef u8
+
+#define X_ false
+#define O_ true
+
+const std::vector<std::vector<bool>> MEMTILE_CONNECTIVITY = {
+    {O_, X_, X_, X_, X_, X_, O_, O_, O_, O_, O_, O_, O_, O_, O_, O_, O_},
+    {X_, O_, X_, X_, X_, X_, O_, O_, O_, O_, O_, O_, O_, O_, O_, O_, O_},
+    {X_, X_, O_, X_, X_, X_, O_, O_, O_, O_, O_, O_, O_, O_, O_, O_, O_},
+    {X_, X_, X_, O_, X_, X_, O_, O_, O_, O_, O_, O_, O_, O_, O_, O_, O_},
+    {X_, X_, X_, X_, O_, X_, O_, O_, O_, O_, O_, O_, O_, O_, O_, O_, O_},
+    {X_, X_, X_, X_, X_, O_, O_, O_, O_, O_, O_, O_, O_, O_, O_, O_, O_},
+    {X_, X_, X_, X_, X_, O_, X_, O_, O_, O_, O_, O_, O_, O_, O_, O_, O_},
+    {O_, O_, O_, O_, O_, O_, O_, O_, X_, X_, X_, O_, X_, X_, X_, X_, X_},
+    {O_, O_, O_, O_, O_, O_, O_, X_, O_, X_, X_, X_, O_, X_, X_, X_, X_},
+    {O_, O_, O_, O_, O_, O_, O_, X_, X_, O_, X_, X_, X_, O_, X_, X_, X_},
+    {O_, O_, O_, O_, O_, O_, O_, X_, X_, X_, O_, X_, X_, X_, O_, X_, X_},
+    {O_, O_, O_, O_, O_, O_, O_, X_, X_, X_, X_, X_, X_, X_, X_, O_, X_},
+    {O_, O_, O_, O_, O_, O_, O_, X_, X_, X_, X_, X_, X_, X_, X_, X_, O_},
+    {O_, O_, O_, O_, O_, O_, O_, O_, X_, X_, X_, O_, X_, X_, X_, X_, X_},
+    {O_, O_, O_, O_, O_, O_, O_, X_, O_, X_, X_, X_, O_, X_, X_, X_, X_},
+    {O_, O_, O_, O_, O_, O_, O_, X_, X_, O_, X_, X_, X_, O_, X_, X_, X_},
+    {O_, O_, O_, O_, O_, O_, O_, X_, X_, X_, O_, X_, X_, X_, O_, X_, X_},
+    {X_, X_, X_, X_, X_, O_, X_, O_, O_, O_, O_, X_, X_, X_, X_, X_, X_}};
+
+TEST_P(AMDAIENPUDeviceModelParameterizedMemtileConnectivityWholeNPUTestFixture,
+       VerifyAIERTAIE2MemTileConnectivity) {
+  auto [slavePhyPort, masterPhyPort] = GetParam();
+  StrmSwPortType slaveLogicalPortType, masterLogicalPortType;
+  uint8_t slaveLogicalPortNum, masterLogicalPortNum;
+
+  XAie_LocType tileLoc = XAie_TileLoc(/*col=*/3, /*row=*/1);
+  XAie_StrmSwPhysicalToLogicalPort(&deviceModel.devInst, tileLoc,
+                                   XAIE_STRMSW_SLAVE, slavePhyPort,
+                                   &slaveLogicalPortType, &slaveLogicalPortNum);
+  XAie_StrmSwPhysicalToLogicalPort(
+      &deviceModel.devInst, tileLoc, XAIE_STRMSW_MASTER, masterPhyPort,
+      &masterLogicalPortType, &masterLogicalPortNum);
+
+  AieRC RC = _XAieMl_MemTile_StrmSwCheckPortValidity(
+      slaveLogicalPortType, slaveLogicalPortNum, masterLogicalPortType,
+      masterLogicalPortNum);
+
+  bool connected = MEMTILE_CONNECTIVITY[slavePhyPort][masterPhyPort];
+  EXPECT_EQ(RC == XAIE_OK, connected)
+      << "slave: " << slaveLogicalPortType << (int)slaveLogicalPortNum << ": "
+      << slavePhyPort << "\n"
+      << "master: " << masterLogicalPortType << (int)masterLogicalPortNum
+      << ": " << masterPhyPort << "\n\n";
+}
+
+// mlir-aie reports true when it should be false
+const std::set<std::tuple<int, int, int, int>> IsLegalMemtileConnectionFails{
+    // ctrl
+    {CTRL, 0, DMA, 0},
+    // trace
+    {TRACE, 0, CTRL, 0},
+    {TRACE, 0, DMA, 0},
+    {TRACE, 0, DMA, 1},
+    {TRACE, 0, DMA, 2},
+    {TRACE, 0, DMA, 3},
+    {TRACE, 0, DMA, 4},
+    {TRACE, 0, NORTH, 0},
+    {TRACE, 0, NORTH, 1},
+    {TRACE, 0, NORTH, 2},
+    {TRACE, 0, NORTH, 3},
+    {TRACE, 0, NORTH, 4},
+    {TRACE, 0, NORTH, 5},
+};
+
+TEST_P(AMDAIENPUDeviceModelParameterizedSixTupleWholeNPUTestFixture,
+       IsLegalMemtileConnection) {
+  auto [c, r, srcStrmSwPortType, destStrmSwPortType, srcChan, dstChan] =
+      GetParam();
+
+  // TODO(max): maybe there's a way in gtest for the generators to be
+  // parameterized?
+  if ((srcStrmSwPortType == CTRL || destStrmSwPortType == CTRL) &&
+      (srcChan > 0 || dstChan > 0))
+    return;
+  if (srcStrmSwPortType == TRACE && srcChan > 0) return;
+  if (srcStrmSwPortType == NORTH && srcChan > 3) return;
+  if (destStrmSwPortType == SOUTH && srcChan > 3) return;
+
+  auto srcSw = static_cast<StrmSwPortType>(srcStrmSwPortType);
+  auto srcWireB = STRM_SW_PORT_TYPE_TO_WIRE_BUNDLE(srcSw);
+  if (deviceModel.isMemTile(c, r)) {
+    auto destSw = static_cast<StrmSwPortType>(destStrmSwPortType);
+    auto destWireb = STRM_SW_PORT_TYPE_TO_WIRE_BUNDLE(destSw);
+    auto deviceModelIsLegal = deviceModel.isLegalMemtileConnection(
+        c, r, srcSw, srcChan, destSw, dstChan);
+    auto targetModelIsLegal = targetModel.isLegalMemtileConnection(
+        srcWireB, srcChan, destWireb, dstChan);
+
+    if ((srcStrmSwPortType == DMA && destStrmSwPortType == DMA &&
+         srcChan != dstChan) ||
+        IsLegalMemtileConnectionFails.count(
+            {srcStrmSwPortType, srcChan, destStrmSwPortType, dstChan}))
+      EXPECT_NE(deviceModelIsLegal, targetModelIsLegal)
+          << "c,r: " << c << ", " << r << "\n"
+          << "src: " << srcSw << srcChan << "\n"
+          << "dst: " << destSw << dstChan << "\n\n";
+    else
+      EXPECT_EQ(deviceModelIsLegal, targetModelIsLegal)
+          << "c,r: " << c << ", " << r << "\n"
+          << "src: " << srcSw << srcChan << "\n"
+          << "dst: " << destSw << dstChan << "\n\n";
+  }
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    NumRowsNumColsTests,
+    AMDAIENPUDeviceModelParameterizedNumColsNumRowsWholeNPUTestFixture,
+    ::testing::Combine(::testing::Range(0, NPU_NUM_COLS),
+                       ::testing::Range(0, NPU_NUM_ROWS)));
+
+INSTANTIATE_TEST_SUITE_P(
+    AllPairsTimesAllPairsTests,
+    AMDAIENPUDeviceModelParameterizedAllPairsTimesAllPairsWholeNPUTestFixture,
+    ::testing::Combine(::testing::Range(0, NPU_NUM_COLS),
+                       ::testing::Range(0, NPU_NUM_ROWS),
+                       ::testing::Range(0, NPU_NUM_COLS),
+                       ::testing::Range(0, NPU_NUM_ROWS)));
+
+INSTANTIATE_TEST_SUITE_P(
+    AllPairsTimesAllSwitchesTests,
+    AMDAIENPUDeviceModelParameterizedAllPairsTimesAllSwitchesWholeNPUTestFixture,
+    ::testing::Combine(::testing::Range(0, NPU_NUM_COLS),
+                       ::testing::Range(0, NPU_NUM_ROWS),
+                       ::testing::Range(0,
+                                        static_cast<int>(SS_PORT_TYPE_MAX))));
+
+INSTANTIATE_TEST_SUITE_P(
+    VerifyAIERTAIE2MemTileConnectivity,
+    AMDAIENPUDeviceModelParameterizedMemtileConnectivityWholeNPUTestFixture,
+    ::testing::Combine(::testing::Range(0, (int)MEMTILE_CONNECTIVITY.size()),
+                       ::testing::Range(0,
+                                        (int)MEMTILE_CONNECTIVITY[0].size())));
+
+#define MAX_CHANNELS 6
+
+// Figure 6-9: Stream-switch ports and connectivity matri
+const std::vector<int> legalSlaves{DMA, CTRL, SOUTH, NORTH, TRACE};
+const std::vector<int> legalMasters{DMA, CTRL, SOUTH, NORTH};
+
+INSTANTIATE_TEST_SUITE_P(
+    IsLegalMemtileConnectionTests,
+    AMDAIENPUDeviceModelParameterizedSixTupleWholeNPUTestFixture,
+    ::testing::Combine(
+        ::testing::Range(0, NPU_NUM_COLS), ::testing::Range(0, NPU_NUM_ROWS),
+        ::testing::ValuesIn(legalSlaves), ::testing::ValuesIn(legalMasters),
+        ::testing::Range(0, MAX_CHANNELS), ::testing::Range(0, MAX_CHANNELS)));
 
 }  // namespace
 

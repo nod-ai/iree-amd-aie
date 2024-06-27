@@ -67,14 +67,6 @@ StrmSwPortType toStrmT(WireBundle w) {
 
 auto ps = std::filesystem::path::preferred_separator;
 
-#define XAIE_BASE_ADDR 0x40000000
-#define XAIE_COL_SHIFT 25
-#define XAIE_ROW_SHIFT 20
-#define XAIE_SHIM_ROW 0
-#define XAIE_MEM_TILE_ROW_START 1
-#define XAIE_PARTITION_BASE_ADDR 0x0
-
-#define NPI_ADDR 0x0
 #define NUM_LOCKS 16
 #define MEM_TILE_LOCK_ID_INCR 64
 #define BASE_ADDR_A_INCR 0x80000
