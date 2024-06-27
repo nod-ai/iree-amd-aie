@@ -682,11 +682,6 @@ static LogicalResult generateUnifiedObject(MLIRContext *context,
                                            const std::string &outputFile) {
   PassManager pm(context, moduleOp.getOperationName());
   applyConfigToPassManager(TK, pm);
-
-  /*pm.addNestedPass<AIE::DeviceOp>(
-      mlir::iree_compiler::AMDAIE::createAIELocalizeLocksPass());
-  pm.addNestedPass<AIE::DeviceOp>(
-      xilinx::AIE::createAIENormalizeAddressSpacesPass());*/
   pm.addPass(mlir::iree_compiler::AMDAIE::createAIECoreToStandardPass());
   pm.addPass(mlir::iree_compiler::AMDAIE::createAIEXToStandardPass());
 
