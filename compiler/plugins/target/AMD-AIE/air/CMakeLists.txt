@@ -246,6 +246,7 @@ iree_cc_library(
     "${IREE_MLIR_AIR_SOURCE_DIR}/lib/Transform/AIRDependency.cpp"
     "${IREE_MLIR_AIR_SOURCE_DIR}/lib/Transform/AIRDependencyScheduleOpt.cpp"
     "${IREE_MLIR_AIR_SOURCE_DIR}/lib/Transform/AIRDependencyCanonicalize.cpp"
+    "${IREE_MLIR_AIR_SOURCE_DIR}/lib/Transform/AIRDmaToChannel.cpp"
   DEPS
     ::defs
     iree::target::amd-aie::aie::AIEDialectIR
