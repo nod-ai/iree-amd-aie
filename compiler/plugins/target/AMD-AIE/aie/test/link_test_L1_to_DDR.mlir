@@ -1,5 +1,5 @@
 
-// RUN: iree-opt --aie-objectFifo-stateful-transform %s | FileCheck %s
+// RUN: iree-opt --amdaie-objectFifo-stateful-transform %s | FileCheck %s
 
 // CHECK-LABEL:   aie.device(xcve2302) {
 // CHECK:           memref.global "public" @from_memTile_cons : memref<48xi32>

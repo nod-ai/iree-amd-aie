@@ -1,5 +1,5 @@
 
-// RUN: iree-opt --aie-dma-to-npu %s | FileCheck %s
+// RUN: iree-opt --amdaie-dma-to-npu %s | FileCheck %s
 
 // CHECK-LABEL:   aie.device(npu1_4col) {
 // CHECK:           func.func @sequence() {

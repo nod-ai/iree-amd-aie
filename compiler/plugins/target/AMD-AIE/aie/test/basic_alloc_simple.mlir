@@ -1,5 +1,5 @@
 
-// RUN: iree-opt --aie-assign-buffer-addresses-basic %s | FileCheck %s
+// RUN: iree-opt --amdaie-assign-buffer-addresses-basic %s | FileCheck %s
 
 // CHECK-LABEL:   aie.device(xcvc1902) {
 // CHECK:           %[[TILE_3_3:.*]] = aie.tile(3, 3)

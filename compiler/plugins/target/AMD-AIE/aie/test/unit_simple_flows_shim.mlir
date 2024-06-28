@@ -1,5 +1,5 @@
 
-// RUN: iree-opt --split-input-file --aie-create-pathfinder-flows %s | FileCheck %s
+// RUN: iree-opt --split-input-file --amdaie-create-pathfinder-flows %s | FileCheck %s
 
 // CHECK-LABEL:   aie.device(xcvc1902) {
 // CHECK:           %[[TILE_2_1:.*]] = aie.tile(2, 1)

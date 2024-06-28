@@ -1,5 +1,5 @@
 
-// RUN: iree-opt --aie-standard-lowering %s | FileCheck %s
+// RUN: iree-opt --amdaie-standard-lowering %s | FileCheck %s
 
 // CHECK-LABEL:   func.func private @llvm.aie2.get.ss() -> (i32, i32)
 // CHECK:         func.func private @llvm.aie2.scd.read.vec(i32) -> vector<16xi32>

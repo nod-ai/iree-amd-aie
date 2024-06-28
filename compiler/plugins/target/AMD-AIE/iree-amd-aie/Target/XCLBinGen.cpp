@@ -331,7 +331,7 @@ static LogicalResult generateCDO(MLIRContext *context, ModuleOp moduleOp,
   applyConfigToPassManager(TK, passManager);
 
   passManager.addNestedPass<AIE::DeviceOp>(
-      mlir::iree_compiler::AMDAIE::createAIEPathfinderPass());
+      mlir::iree_compiler::AMDAIE::createAMDAIEPathfinderPass());
   if (failed(passManager.run(copy)))
     return moduleOp.emitOpError(
         "failed to run passes to prepare of XCLBin generation");
@@ -682,8 +682,8 @@ static LogicalResult generateUnifiedObject(MLIRContext *context,
   PassManager pm(context, moduleOp.getOperationName());
   applyConfigToPassManager(TK, pm);
 
-  pm.addPass(mlir::iree_compiler::AMDAIE::createAIECoreToStandardPass());
-  pm.addPass(mlir::iree_compiler::AMDAIE::createAIEXToStandardPass());
+  pm.addPass(mlir::iree_compiler::AMDAIE::createAMDAIECoreToStandardPass());
+  pm.addPass(mlir::iree_compiler::AMDAIE::createAMDAIEXToStandardPass());
 
   // Convert specific vector dialect ops (like vector.contract) to the AIEVec
   // dialect
@@ -826,7 +826,7 @@ LogicalResult xilinx::aie2xclbin(MLIRContext *ctx, ModuleOp moduleOp,
 
   // generateNPUInstructions
   pm.addNestedPass<AIE::DeviceOp>(
-      mlir::iree_compiler::AMDAIE::createAIEDmaToNpuPass());
+      mlir::iree_compiler::AMDAIE::createAMDAIEDmaToNpuPass());
   if (failed(pm.run(moduleOp)))
     return moduleOp.emitOpError(": NPU Instruction pipeline failed");
 

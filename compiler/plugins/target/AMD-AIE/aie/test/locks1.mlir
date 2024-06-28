@@ -1,5 +1,5 @@
 
-// RUN: iree-opt --aie-localize-locks %s | FileCheck %s
+// RUN: iree-opt --amdaie-localize-locks %s | FileCheck %s
 
 // CHECK-LABEL:   aie.device(xcvc1902) {
 // CHECK:           %[[TILE_1_1:.*]] = aie.tile(1, 1)

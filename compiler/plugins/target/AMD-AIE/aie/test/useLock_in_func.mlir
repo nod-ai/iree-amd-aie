@@ -1,4 +1,4 @@
-// RUN: iree-opt --aie-localize-locks --aie-standard-lowering %s | FileCheck %s
+// RUN: iree-opt --amdaie-localize-locks --amdaie-standard-lowering %s | FileCheck %s
 
 // CHECK-LABEL: module @test attributes {llvm.target_triple = "aie2"} {
 // CHECK-LABEL:   func.func private @kernel(

@@ -1,4 +1,4 @@
-// RUN: iree-opt --aie-standard-lowering %s | FileCheck %s
+// RUN: iree-opt --amdaie-standard-lowering %s | FileCheck %s
 
 // CHECK:         memref.global "public" @a : memref<4xi32>
 // CHECK-LABEL:   func.func @core_4_3() {

@@ -19,13 +19,7 @@ using namespace xilinx;
 using namespace xilinx::AIE;
 using namespace xilinx::AIEX;
 
-#define GEN_PASS_DECL_AIEDMATONPU
-#include "aie/Dialect/AIEX/Transforms/AIEXPasses.h.inc"
-#undef GEN_PASS_DECL_AIEDMATONPU
-
-#define GEN_PASS_DEF_AIEDMATONPU
-#include "aie/Dialect/AIEX/Transforms/AIEXPasses.h.inc"
-#undef GEN_PASS_DEF_AIEDMATONPU
+#define DEBUG_TYPE "amdaie-dma-to-npu"
 
 #define TXN_OPC_WRITE 0x0
 #define TXN_OPC_BLOCKWRITE 0x1
@@ -457,7 +451,26 @@ struct DmaWaitToNpuPattern : OpConversionPattern<NpuDmaWaitOp> {
 };
 
 namespace mlir::iree_compiler::AMDAIE {
-struct AIEDmaToNpuPass : ::impl::AIEDmaToNpuBase<AIEDmaToNpuPass> {
+struct AMDAIEDmaToNpuPass : mlir::OperationPass<DeviceOp> {
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(AMDAIEDmaToNpuPass)
+
+  AMDAIEDmaToNpuPass() : mlir::OperationPass<DeviceOp>(resolveTypeID()) {}
+
+  llvm::StringRef getArgument() const override { return "amdaie-dma-to-npu"; }
+
+  llvm::StringRef getName() const override { return "AMDAIEDmaToNpuPass"; }
+
+  std::unique_ptr<mlir::Pass> clonePass() const override {
+    return std::make_unique<AMDAIEDmaToNpuPass>(
+        *static_cast<const AMDAIEDmaToNpuPass *>(this));
+  }
+
+  void getDependentDialects(::mlir::DialectRegistry &registry) const override {
+    registry.insert<mlir::func::FuncDialect>();
+    registry.insert<xilinx::AIE::AIEDialect>();
+    registry.insert<xilinx::AIEX::AIEXDialect>();
+  }
+
   void runOnOperation() override {
     ShimDMAllocationGetter cachingGetter;
 
@@ -514,13 +527,13 @@ struct AIEDmaToNpuPass : ::impl::AIEDmaToNpuBase<AIEDmaToNpuPass> {
   }
 };
 
-std::unique_ptr<OperationPass<AIE::DeviceOp>> createAIEDmaToNpuPass() {
-  return std::make_unique<AIEDmaToNpuPass>();
+std::unique_ptr<OperationPass<AIE::DeviceOp>> createAMDAIEDmaToNpuPass() {
+  return std::make_unique<AMDAIEDmaToNpuPass>();
 }
 
-void registerAIEDmaToNpu() {
+void registerAMDAIEDmaToNpu() {
   mlir::registerPass(
-      []() -> std::unique_ptr<mlir::Pass> { return createAIEDmaToNpuPass(); });
+      []() -> std::unique_ptr<mlir::Pass> { return createAMDAIEDmaToNpuPass(); });
 }
 
 }  // namespace mlir::iree_compiler::AMDAIE

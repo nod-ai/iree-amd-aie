@@ -1,5 +1,5 @@
 
-// RUN: iree-opt --aie-assign-bd-ids %s | FileCheck %s
+// RUN: iree-opt --amdaie-assign-bd-ids %s | FileCheck %s
 
 // CHECK-LABEL:   aie.device(xcve2302) {
 // CHECK:           %[[TILE_2_1:.*]] = aie.tile(2, 1)

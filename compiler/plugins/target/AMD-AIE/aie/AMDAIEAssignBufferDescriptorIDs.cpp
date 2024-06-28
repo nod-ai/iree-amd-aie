@@ -10,21 +10,13 @@
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "mlir/Pass/Pass.h"
 
-#define DEBUG_TYPE "aie-assign-bd-ids"
+#define DEBUG_TYPE "amdaie-assign-bd-ids"
 #define EVEN_BD_ID_START 0
 #define ODD_BD_ID_START 24
 
 using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIE;
-
-#define GEN_PASS_DECL_AIEASSIGNBUFFERDESCRIPTORIDS
-#include "aie/Dialect/AIE/Transforms/AIEPasses.h.inc"
-#undef GEN_PASS_DECL_AIEASSIGNBUFFERDESCRIPTORIDS
-
-#define GEN_PASS_DEF_AIEASSIGNBUFFERDESCRIPTORIDS
-#include "aie/Dialect/AIE/Transforms/AIEPasses.h.inc"
-#undef GEN_PASS_DEF_AIEASSIGNBUFFERDESCRIPTORIDS
 
 struct BdIdGenerator {
   BdIdGenerator(int col, int row, const AIETargetModel &targetModel)
@@ -55,9 +47,26 @@ struct BdIdGenerator {
 
 namespace mlir::iree_compiler::AMDAIE {
 
-struct AIEAssignBufferDescriptorIDsPass
-    : ::impl::AIEAssignBufferDescriptorIDsBase<
-          AIEAssignBufferDescriptorIDsPass> {
+struct AMDAIEAssignBufferDescriptorIDsPass : mlir::OperationPass<DeviceOp> {
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(
+      AMDAIEAssignBufferDescriptorIDsPass)
+
+  AMDAIEAssignBufferDescriptorIDsPass()
+      : mlir::OperationPass<DeviceOp>(resolveTypeID()) {}
+
+  llvm::StringRef getArgument() const override {
+    return "amdaie-assign-bd-ids";
+  }
+
+  llvm::StringRef getName() const override {
+    return "AMDAIEAssignBufferDescriptorIDsPass";
+  }
+
+  std::unique_ptr<mlir::Pass> clonePass() const override {
+    return std::make_unique<AMDAIEAssignBufferDescriptorIDsPass>(
+        *static_cast<const AMDAIEAssignBufferDescriptorIDsPass *>(this));
+  }
+
   void runOnOperation() override {
     DeviceOp targetOp = getOperation();
     const AIETargetModel &targetModel = targetOp.getTargetModel();
@@ -133,13 +142,13 @@ struct AIEAssignBufferDescriptorIDsPass
 };
 
 std::unique_ptr<OperationPass<DeviceOp>>
-createAIEAssignBufferDescriptorIDsPass() {
-  return std::make_unique<AIEAssignBufferDescriptorIDsPass>();
+createAMDAIEAssignBufferDescriptorIDsPass() {
+  return std::make_unique<AMDAIEAssignBufferDescriptorIDsPass>();
 }
 
-void registerAIEAssignBufferDescriptorIDs() {
+void registerAMDAIEAssignBufferDescriptorIDs() {
   mlir::registerPass([]() -> std::unique_ptr<mlir::Pass> {
-    return createAIEAssignBufferDescriptorIDsPass();
+    return createAMDAIEAssignBufferDescriptorIDsPass();
   });
 }
 }  // namespace mlir::iree_compiler::AMDAIE

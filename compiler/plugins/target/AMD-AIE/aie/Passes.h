@@ -65,30 +65,35 @@ struct TileID {
 };
 
 std::unique_ptr<OperationPass<xilinx::AIE::DeviceOp>>
-createAIEAssignBufferAddressesBasicPass();
+createAMDAIEAssignBufferAddressesBasicPass();
 std::unique_ptr<OperationPass<xilinx::AIE::DeviceOp>>
-createAIEAssignBufferDescriptorIDsPass();
+createAMDAIEAssignBufferDescriptorIDsPass();
 std::unique_ptr<OperationPass<xilinx::AIE::DeviceOp>>
-createAIEAssignLockIDsPass();
+createAMDAIEAssignLockIDsPass();
 std::unique_ptr<OperationPass<xilinx::AIE::DeviceOp>>
-createAIELocalizeLocksPass();
+createAMDAIELocalizeLocksPass();
 std::unique_ptr<OperationPass<xilinx::AIE::DeviceOp>>
-createAIEObjectFifoStatefulTransformPass();
-std::unique_ptr<OperationPass<xilinx::AIE::DeviceOp>> createAIEPathfinderPass();
-std::unique_ptr<OperationPass<ModuleOp>> createAIECoreToStandardPass();
-std::unique_ptr<OperationPass<xilinx::AIE::DeviceOp>> createAIEDmaToNpuPass();
-std::unique_ptr<OperationPass<ModuleOp>> createAIEXToStandardPass();
+createAMDAIENormalizeAddressSpacesPass();
+std::unique_ptr<OperationPass<xilinx::AIE::DeviceOp>>
+createAMDAIEObjectFifoStatefulTransformPass();
+std::unique_ptr<OperationPass<xilinx::AIE::DeviceOp>>
+createAMDAIEPathfinderPass();
+std::unique_ptr<OperationPass<ModuleOp>> createAMDAIECoreToStandardPass();
+std::unique_ptr<OperationPass<xilinx::AIE::DeviceOp>>
+createAMDAIEDmaToNpuPass();
+std::unique_ptr<OperationPass<ModuleOp>> createAMDAIEXToStandardPass();
 
-void registerAIEAssignBufferAddressesBasic();
-void registerAIEAssignBufferDescriptorIDs();
-void registerAIEAssignLockIDs();
-void registerAIECoreToStandard();
-void registerAIELocalizeLocks();
-void registerAIEObjectFifoStatefulTransform();
-void registerAIERoutePathfinderFlows();
+void registerAMDAIEAssignBufferAddressesBasic();
+void registerAMDAIEAssignBufferDescriptorIDs();
+void registerAMDAIEAssignLockIDs();
+void registerAMDAIECoreToStandard();
+void registerAMDAIELocalizeLocks();
+void registerAMDAIENormalizeAddressSpaces();
+void registerAMDAIEObjectFifoStatefulTransform();
+void registerAMDAIERoutePathfinderFlows();
 
-void registerAIEDmaToNpu();
-void registerAIEXToStandardPass();
+void registerAMDAIEDmaToNpu();
+void registerAMDAIEXToStandardPass();
 
 }  // namespace mlir::iree_compiler::AMDAIE
 

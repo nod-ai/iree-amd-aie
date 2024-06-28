@@ -1,5 +1,5 @@
 
-// RUN: iree-opt --aie-objectFifo-stateful-transform %s | FileCheck %s
+// RUN: iree-opt --amdaie-objectFifo-stateful-transform %s | FileCheck %s
 
 // CHECK-LABEL:   aie.device(npu1_4col) {
 // CHECK:           memref.global "public" @broadcast_of_0_cons : memref<16xi32>
