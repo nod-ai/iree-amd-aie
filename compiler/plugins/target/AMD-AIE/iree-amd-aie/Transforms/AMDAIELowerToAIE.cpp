@@ -865,6 +865,76 @@ LogicalResult coreForallToFor(ModuleOp moduleOp) {
   return success();
 }
 
+static LogicalResult CastFunctionArgs(func::FuncOp funcOp,
+                                      PatternRewriter &rewriter) {
+  // only run on npu control functions
+  bool hasNpuOps = false;
+  funcOp.walk([&](AIEX::NpuDmaMemcpyNdOp dma) { hasNpuOps = true; });
+  if (!hasNpuOps)
+    return failure();
+
+  // cast all the function args to i32 types.
+  // this is in support of npu.dma_memcpy_nd which only allow 32bit types
+  mlir::FunctionType funcType = funcOp.getFunctionType();
+  SmallVector<Type> argTypes(funcType.getInputs());
+  for (int i = 0, e = argTypes.size(); i < e; i++) {
+    auto memrefTy = dyn_cast<MemRefType>(argTypes[i]);
+    if (!memrefTy)
+      continue;
+
+    unsigned int bitwidth = memrefTy.getElementTypeBitWidth();
+    if (bitwidth != 16 && bitwidth != 8)
+      continue;
+
+    unsigned int div = 32 / bitwidth;
+    unsigned int numElements = memrefTy.getNumElements() / div;
+    SmallVector<int64_t> shape{numElements};
+    MemRefType newMemrefTy =
+        MemRefType::get(shape, rewriter.getIntegerType(32));
+    argTypes[i] = newMemrefTy;
+    auto &entry = funcOp.front();
+    entry.insertArgument(i, newMemrefTy, rewriter.getUnknownLoc());
+    rewriter.setInsertionPointToStart(&entry);
+    // auto cast = rewriter.create<UnrealizedConversionCastOp>(
+    //     rewriter.getUnknownLoc(), memrefTy, entry.getArgument(i));
+    // With memref shape collapsed to 1d, the multi-dimensional offset also
+    // needs to be collapsed.
+    SmallVector<Operation *> users;
+    for (auto user : entry.getArgument(i + 1).getUsers()) {
+      if (auto cast_user = dyn_cast<UnrealizedConversionCastOp>(user)) {
+        assert(cast_user.getNumResults() == 1);
+        for (auto cast_r_user : cast_user.getResult(0).getUsers())
+          users.push_back(cast_r_user);
+      } else
+        users.push_back(user);
+    }
+    for (Operation *user : users) {
+      if (auto dmaUser = dyn_cast<AIEX::NpuDmaMemcpyNdOp>(user)) {
+        int oneDOffset = *getConstantIntValue(dmaUser.getMixedOffsets().back());
+        for (int j = dmaUser.getMixedOffsets().size() - 2; j > 0; j--)
+          oneDOffset += *getConstantIntValue(dmaUser.getMixedOffsets()[j]) *
+                        *getConstantIntValue(dmaUser.getMixedStrides()[j]);
+        rewriter.setInsertionPoint(dmaUser);
+        const std::vector<int64_t> newStaticOffsets = {0, 0, 0, oneDOffset};
+        rewriter.create<AIEX::NpuDmaMemcpyNdOp>(
+            rewriter.getUnknownLoc(), dmaUser.getX(), dmaUser.getY(),
+            dmaUser.getMemref(), SmallVector<Value>{}, dmaUser.getSizes(),
+            dmaUser.getStrides(), ArrayRef(newStaticOffsets),
+            dmaUser.getStaticSizes(), dmaUser.getStaticStrides(),
+            dmaUser.getMetadata(), dmaUser.getId());
+        rewriter.eraseOp(dmaUser);
+      }
+    }
+    // entry.getArgument(i + 1).replaceAllUsesWith(cast.getResult(0));
+    entry.getArgument(i + 1).replaceAllUsesWith(entry.getArgument(i));
+    entry.eraseArgument(i + 1);
+  }
+  auto newFuncType =
+      FunctionType::get(funcOp.getContext(), argTypes, funcType.getResults());
+  funcOp.setType(newFuncType);
+  return success();
+}
+
 class AMDAIELowerToAIEPass
     : public impl::AMDAIELowerToAIEBase<AMDAIELowerToAIEPass> {
  public:
@@ -898,10 +968,16 @@ void AMDAIELowerToAIEPass::runOnOperation() {
 
   // Main function call to convert all operations into AIE dialect operations
   // inside an AIE device.
+  
   if (failed(lowerToAIE(getOperation()))) {
     return signalPassFailure();
   }
   LLVM_DEBUG(llvm::dbgs() << "Module after lowerToAIE: " << getOperation());
+
+  // Cast buffers to i32 types
+  RewritePatternSet castPattern(parentOp->getContext());
+  castPattern.add(CastFunctionArgs);
+  (void)applyPatternsAndFoldGreedily(parentOp, std::move(castPattern));
 
   // Clean up the HAL bindings and it's uses as they are not needed anymore.
   if (failed(eraseHALBindings(getOperation()))) {

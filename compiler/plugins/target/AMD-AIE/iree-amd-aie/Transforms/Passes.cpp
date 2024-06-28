@@ -471,6 +471,7 @@ static void addAIELoweringPassesForPackPeel(OpPassManager &passManager) {
   passManager.addPass(createAMDAIECreateLogicalObjectFifoLinkPass());
   passManager.addPass(createCanonicalizerPass());
 
+  // passManager.addPass(createEmulateNarrowTypePass());
   passManager.addPass(createAMDAIELowerToAIEPass());
   passManager.addPass(createCanonicalizerPass());
 
