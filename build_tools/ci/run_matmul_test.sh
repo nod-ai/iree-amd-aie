@@ -507,10 +507,6 @@ run_matmul_test \
 # Disabled until the following issue is resolved:
 # https://github.com/Xilinx/llvm-aie/issues/102
 #
-# Note I'm not using the --expect_compile_failure flag here,
-# as that would require all developers to use the same verion
-# of peano, which we currently don't enforce. 
-#
 # run_matmul_test \
 #   --name_prefix "transpose_int32" \
 #   --lhs_rhs_type "i32" \
@@ -539,12 +535,14 @@ run_matmul_test \
 # with the error LLVM ERROR: unable to legalize instruction: %152:_(<2 x s32>) = G_FMUL %148:_, %150:_ (in function: core_0_2)
 # The later is what a more vectorization friendly packing looks like so this test is expected failing the test here.
 # TODO: check if the test will pass with a more recent llvm-aie and if it doesnt, report it upstream.
-run_matmul_test \
-   --name_prefix "failure_0" \
-   --lhs_rhs_type "i32" \
-   --acc_type "i32" \
-   --m "1"  --n "1" --k "1000" \
-   --expect_compile_failure "1"
+# Disabled until the following issue is resolved:
+# https://github.com/Xilinx/llvm-aie/issues/102
+# run_matmul_test \
+#    --name_prefix "failure_0" \
+#    --lhs_rhs_type "i32" \
+#    --acc_type "i32" \
+#    --m "1"  --n "1" --k "1000" \
+#    --expect_compile_failure "1"
 
 # The below matmul case passes with
 # tile_sizes = [52, 52], [0, 0, 63], [26, 26], [0, 0, 3], packedSizes = [2, 2, 7]
