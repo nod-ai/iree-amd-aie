@@ -565,9 +565,9 @@ run_matmul_test \
     --name_prefix "multiple_matmuls" \
     --lhs_rhs_type "i32" \
     --acc_type "i32" \
-    --m "512,8,16,7" \
-    --n "512,32,16,15" \
-    --k "256,16,8,9" \
+    --m "512,8,16" \
+    --n "512,32,16" \
+    --k "256,16,8" \
     --num_repeat_runs "0"
 
 run_matmul_test \
@@ -582,11 +582,13 @@ run_matmul_test \
     --acc_type "i32" \
     --m "8"  --n "32" --k "16"
 
-run_matmul_test \
-    --name_prefix "small" \
-    --lhs_rhs_type "i32" \
-    --acc_type "i32" \
-    --m "9"  --n "7" --k "16"
+# Disabled until the following issue is resolved:
+# https://github.com/Xilinx/llvm-aie/issues/102
+# run_matmul_test \
+#     --name_prefix "small" \
+#     --lhs_rhs_type "i32" \
+#     --acc_type "i32" \
+#     --m "9"  --n "7" --k "16"
 
 run_matmul_test \
     --name_prefix "large" \
