@@ -6,6 +6,9 @@
 
 #include "iree-amd-aie/Transforms/Passes.h"
 
+#include "aie/Dialect/AIE/Transforms/AIEPasses.h"
+#include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
+#include "aie/Passes.h"
 #include "air/Conversion/Passes.h"
 #include "air/Transform/Passes.h"
 #include "iree-amd-aie/IR/AMDAIEAttrs.h"
@@ -14,6 +17,8 @@
 #include "iree/compiler/Codegen/Common/Passes.h"
 #include "iree/compiler/Dialect/LinalgExt/Transforms/Passes.h"
 #include "iree/compiler/Utils/PassUtils.h"
+#include "mlir/Conversion/AffineToStandard/AffineToStandard.h"
+#include "mlir/Conversion/SCFToControlFlow/SCFToControlFlow.h"
 #include "mlir/Dialect/Affine/Passes.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/Passes.h"
@@ -423,9 +428,9 @@ void buildAMDAIETransformPassPipeline(OpPassManager &variantPassManager) {
   }
   modulePassManager.addPass(createLowerUKernelOpsToCallsPass());
   if (clUsePipeline == AIEPassPipeline::PadPackPipeline) {
-    addMLIRAIRAIELoweringPasses(modulePassManager, false);
+    addMLIRAIRLoweringPasses(modulePassManager, false);
   } else if (clUsePipeline == AIEPassPipeline::PackPeelPipeline) {
-    addMLIRAIRAIELoweringPasses(modulePassManager, true);
+    addMLIRAIRLoweringPasses(modulePassManager, true);
   }
   variantPassManager.addPass(createReconcileTranslationInfoPass());
   variantPassManager.addPass(createAMDAIELowerWorkgroupCountPass());
@@ -440,7 +445,7 @@ void buildAMDAIETransformPassPipeline(OpPassManager &variantPassManager) {
 // TODO (Erwei): The "packPeel" temporary argument should be removed once
 // pack-peel and pack-pad share the same pass pipeline. See TODOs inlined below
 // for details.
-void addMLIRAIRAIELoweringPasses(OpPassManager &passManager, bool packPeel) {
+void addMLIRAIRLoweringPasses(OpPassManager &passManager, bool packPeel) {
   // Add passes for preparing for lowering to MLIR-AIR
   passManager.addPass(createEraseHALDescriptorTypeFromMemRefPass());
   passManager.addPass(memref::createFoldMemRefAliasOpsPass());
@@ -581,6 +586,27 @@ void addMLIRAIRAIELoweringPasses(OpPassManager &passManager, bool packPeel) {
 
   passManager.addPass(xilinx::airrt::createAIRRtToNpuPass());
   passManager.addPass(createCanonicalizerPass());
+
+  // Now lower using the AIE passes from MLIR-AIE.
+  addMLIRAIELoweringPasses(passManager);
+}
+
+void addMLIRAIELoweringPasses(OpPassManager &passManager) {
+  passManager.addPass(createLowerAffinePass());
+  OpPassManager &devicePM = passManager.nest<xilinx::AIE::DeviceOp>();
+  devicePM.addPass(xilinx::AIE::createAIEAssignLockIDsPass());
+  devicePM.addPass(xilinx::AIE::createAIEObjectFifoRegisterProcessPass());
+  devicePM.addPass(xilinx::AIE::createAIEObjectFifoStatefulTransformPass());
+  devicePM.addPass(xilinx::AIE::createAIEAssignBufferDescriptorIDsPass());
+  devicePM.addPass(xilinx::AIEX::createAIEBroadcastPacketPass());
+  devicePM.addPass(xilinx::AIE::createAIERoutePacketFlowsPass());
+  devicePM.addPass(xilinx::AIEX::createAIELowerMulticastPass());
+  devicePM.addPass(xilinx::AIE::createAIEAssignBufferAddressesPass());
+  passManager.addPass(createConvertSCFToCFPass());
+  passManager.addNestedPass<xilinx::AIE::DeviceOp>(
+      xilinx::AIE::createAIELocalizeLocksPass());
+  passManager.addNestedPass<xilinx::AIE::DeviceOp>(
+      xilinx::AIE::createAIENormalizeAddressSpacesPass());
 }
 
 // NOTE: this runs on the top-level program module containing all hal.executable

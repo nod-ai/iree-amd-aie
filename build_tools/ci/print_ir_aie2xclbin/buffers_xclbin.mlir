@@ -72,7 +72,7 @@
 // CHECK:         },
 // CHECK:         "instances": [
 // CHECK:           {
-// CHECK:             "name": "dummy2_0"
+// CHECK:             "name": "IREE"
 // CHECK:           }
 // CHECK:         ],
 // CHECK:         "name": "dummy2_0",
