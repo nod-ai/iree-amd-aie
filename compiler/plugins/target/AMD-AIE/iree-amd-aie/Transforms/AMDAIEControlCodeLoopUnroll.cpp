@@ -7,9 +7,9 @@
 #include "iree-amd-aie/IR/AMDAIEOps.h"
 #include "iree-amd-aie/Transforms/Passes.h"
 #include "iree-amd-aie/Transforms/Transforms.h"
+#include "llvm/Support/MathExtras.h"
 #include "mlir/Dialect/SCF/Transforms/Transforms.h"
 #include "mlir/Dialect/SCF/Utils/Utils.h"
-#include "mlir/Support/MathExtras.h"
 
 #define DEBUG_TYPE "iree-amdaie-controlcode-loop-unroll"
 
@@ -50,7 +50,7 @@ LogicalResult controlCodeLoopUnroll(RewriterBase &rewriter,
           int64_t lbInt = lbCstOp.value();
           int64_t ubInt = ubCstOp.value();
           int64_t stepInt = stepCstOp.value();
-          int64_t tripCount = mlir::ceilDiv(ubInt - lbInt, stepInt);
+          int64_t tripCount = llvm::divideCeilSigned(ubInt - lbInt, stepInt);
           if (failed(loopUnrollByFactor(forOp, tripCount))) {
             forOp.emitOpError() << "failed to unroll scf.for";
             return WalkResult::interrupt();

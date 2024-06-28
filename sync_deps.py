@@ -7,7 +7,7 @@
 ### Update with: shark-workspace pin
 
 PINNED_VERSIONS = {
-  "iree": "42ac74291a81f495d9b34fcf444bf4b23b5a7966",
+  "iree": "36aec8a79cc616d126fe50f213d8b93ef298d6ba",
 }
 
 ORIGINS = {
