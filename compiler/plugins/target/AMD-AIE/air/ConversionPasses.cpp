@@ -17,7 +17,6 @@ void registerAIRConversionPasses() {
   registerAIRLoweringPass();
   registerAIRRtToNpuPass();
   registerCopyToDma();
-  registerDmaToChannel();
   registerParallelToHerd();
   registerParallelToLaunch();
 }

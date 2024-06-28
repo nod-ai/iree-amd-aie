@@ -30,5 +30,6 @@ void registerAIRTransformPasses() {
   registerAIRUnrollOuterPerfectlyNestedLoopsPass();
   registerAffineLoopOptPass();
   registerAIRSplitL2MemrefForBufferConstraintPass();
+  registerDmaToChannel();
 }
 }  // namespace mlir::iree_compiler::AMDAIE
