@@ -19,7 +19,6 @@ iree_cc_library(
     "AMDAIETargetBCF.cpp"
     "AMDAIETargetCDODirect.cpp"
     "AMDAIETargetLdScript.cpp"
-    "AMDAIETargetNPU.cpp"
     "XCLBinGen.cpp"
   DEPS
     iree::target::amd-aie::aie::AIEDialectIR

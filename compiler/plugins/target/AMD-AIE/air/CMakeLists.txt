@@ -177,7 +177,6 @@ iree_cc_library(
     "${IREE_MLIR_AIR_SOURCE_DIR}/lib/Conversion/AIRRtToNpuPass.cpp"
     "${IREE_MLIR_AIR_SOURCE_DIR}/lib/Conversion/AIRToAIEPass.cpp"
     "${IREE_MLIR_AIR_SOURCE_DIR}/lib/Conversion/AIRToAIESchedulingUtils.cpp"
-    "${IREE_MLIR_AIR_SOURCE_DIR}/lib/Conversion/AIRPipeline.cpp"
   DEPS
     ::defs
     ::AIRConversionPassHeaders

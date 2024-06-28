@@ -56,8 +56,6 @@ namespace {
 // manager. These control when (if ever) and what IR gets printed between
 // passes, and whether the pass manager uses multi-theading.
 void applyConfigToPassManager(XCLBinGenConfig &TK, PassManager &pm) {
-  pm.getContext()->disableMultithreading(TK.DisableThreading);
-
   bool printBefore = TK.PrintIRBeforeAll;
   auto shouldPrintBeforePass = [printBefore](Pass *, Operation *) {
     return printBefore;
@@ -684,8 +682,6 @@ static LogicalResult generateUnifiedObject(MLIRContext *context,
   PassManager pm(context, moduleOp.getOperationName());
   applyConfigToPassManager(TK, pm);
 
-  pm.addNestedPass<AIE::DeviceOp>(
-      mlir::iree_compiler::AMDAIE::createAIELocalizeLocksPass());
   pm.addPass(mlir::iree_compiler::AMDAIE::createAIECoreToStandardPass());
   pm.addPass(mlir::iree_compiler::AMDAIE::createAIEXToStandardPass());
 
@@ -828,45 +824,27 @@ LogicalResult xilinx::aie2xclbin(MLIRContext *ctx, ModuleOp moduleOp,
   PassManager pm(ctx, moduleOp.getOperationName());
   applyConfigToPassManager(TK, pm);
 
-  if (TK.Verbose) {
-    llvm::outs() << "Running: ";
-    pm.printAsTextualPipeline(llvm::outs());
-    llvm::outs() << "\n";
-  }
-
-  if (failed(pm.run(moduleOp)))
-    return moduleOp.emitOpError("AIE lowering pipline failed");
-
-  std::regex target_regex("AIE.?");
-  if (!std::regex_search(TK.TargetArch, target_regex))
-    return moduleOp.emitOpError()
-           << "Unexpected target architecture: " << TK.TargetArch;
-
   // generateNPUInstructions
-  {
-    PassManager pm(ctx, moduleOp.getOperationName());
-    applyConfigToPassManager(TK, pm);
+  pm.addNestedPass<AIE::DeviceOp>(
+      mlir::iree_compiler::AMDAIE::createAIEDmaToNpuPass());
+  if (failed(pm.run(moduleOp)))
+    return moduleOp.emitOpError(": NPU Instruction pipeline failed");
 
-    pm.addNestedPass<AIE::DeviceOp>(
-        mlir::iree_compiler::AMDAIE::createAIEDmaToNpuPass());
-    ModuleOp copy = moduleOp.clone();
-    if (failed(pm.run(copy)))
-      return moduleOp.emitOpError("NPU Instruction pipeline failed");
+  // TODO(max): should be using UI32 resource or something like that...
+  ArrayRef<int32_t> signedNpuInstructionsAttr =
+      cast<DenseI32ArrayAttr>(
+          (*moduleOp.getOps<xilinx::AIE::DeviceOp>().begin())
+              ->getAttr("npu_instructions"))
+          .asArrayRef();
+  std::vector<uint32_t> unsignedNpuInstructions(
+      signedNpuInstructionsAttr.begin(), signedNpuInstructionsAttr.end());
 
-    std::string errorMessage;
-    auto output = openOutputFile(OutputNPU, &errorMessage);
-    if (!output) {
-      llvm::errs() << errorMessage << "\n";
-      return moduleOp.emitOpError("");
-    }
-
-    if (failed(
-            mlir::iree_compiler::AMDAIE::AIETranslateToNPU(copy, output->os())))
-      return moduleOp.emitOpError("NPU Instruction translation failed");
-
-    output->keep();
-    copy->erase();
-  }
+  std::string errorMessage;
+  auto output = openOutputFile(OutputNPU, &errorMessage);
+  if (!output) return moduleOp.emitOpError(errorMessage);
+  for (auto w : unsignedNpuInstructions)
+    output->os() << llvm::format("%08X\n", w);
+  output->keep();
 
   SmallString<64> unifiedObj(TK.TempDir);
   sys::path::append(unifiedObj, "input.o");

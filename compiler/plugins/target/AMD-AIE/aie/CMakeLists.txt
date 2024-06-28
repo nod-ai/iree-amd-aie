@@ -35,6 +35,7 @@ iree_cc_library(
     ::AIEOpsGen
     ::AIETypesGen
     MLIRIR
+    MLIREmitCDialect
 )
 
 iree_tablegen_library(
@@ -256,6 +257,7 @@ iree_cc_library(
     "${IREE_MLIR_AIE_SOURCE_DIR}/lib/Dialect/AIEVec/Transforms/DynamicSizeNoImplicitBroadcast.cpp"
     "${IREE_MLIR_AIE_SOURCE_DIR}/lib/Dialect/AIEVec/Utils/Utils.cpp"
   DEPS
+    MLIREmitCDialect
     ::defs
     ::AIEVecDialectIR
     ::AIEVecAnalysisPassesIncGen
@@ -304,6 +306,31 @@ iree_cc_library(
     "AIEObjectFifoStatefulTransform.cpp"
     "AIEDmaToNpu.cpp"
     "AIEXToStandard.cpp"
+  DEPS
+    ::defs
+    ::AIEDialectIR
+    ::AIENormalizeAddressSpacesGen
+    ::AIEXDialectIR
+    ::AIEXTransformPassesIncGen
+    ::AIETransformPassesIncGen
+)
+
+iree_cc_library(
+  NAME
+    AIEPassesFromMLIRAIE
+  SRCS
+    # Passes needed by AIR-AIE lowering
+    "${IREE_MLIR_AIE_SOURCE_DIR}/lib/Dialect/AIE/Transforms/AIEObjectFifoStatefulTransform.cpp"
+    "${IREE_MLIR_AIE_SOURCE_DIR}/lib/Dialect/AIE/Transforms/AIEAssignLockIDs.cpp"
+    "${IREE_MLIR_AIE_SOURCE_DIR}/lib/Dialect/AIE/Transforms/AIEObjectFifoRegisterProcess.cpp"
+    "${IREE_MLIR_AIE_SOURCE_DIR}/lib/Dialect/AIE/Transforms/AIEAssignBufferDescriptorIDs.cpp"
+    "${IREE_MLIR_AIE_SOURCE_DIR}/lib/Dialect/AIEX/Transforms/AIECreateBroadcastPacket.cpp"
+    "${IREE_MLIR_AIE_SOURCE_DIR}/lib/Dialect/AIE/Transforms/AIECreatePacketFlows.cpp"
+    "${IREE_MLIR_AIE_SOURCE_DIR}/lib/Dialect/AIE/Transforms/AIENormalizeAddressSpaces.cpp"
+    "${IREE_MLIR_AIE_SOURCE_DIR}/lib/Dialect/AIE/Transforms/AIECanonicalizeDevice.cpp"
+    "${IREE_MLIR_AIE_SOURCE_DIR}/lib/Dialect/AIEX/Transforms/AIELowerMulticast.cpp"
+    "${IREE_MLIR_AIE_SOURCE_DIR}/lib/Dialect/AIE/Transforms/AIEAssignBuffers.cpp"
+    "${IREE_MLIR_AIE_SOURCE_DIR}/lib/Dialect/AIE/Transforms/AIELocalizeLocks.cpp"
   DEPS
     ::defs
     ::AIEDialectIR
