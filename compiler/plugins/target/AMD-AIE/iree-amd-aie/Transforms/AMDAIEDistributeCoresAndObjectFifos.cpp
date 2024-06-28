@@ -540,7 +540,7 @@ LogicalResult insertLogicalObjectFifoAccess(ModuleOp moduleOp) {
                 std::get<1>(value));
             linalgOp->setOperand(idx, accessOp);
           } else if (isa<memref::AllocOp, memref::SubViewOp,
-                         vector::TransferReadOp>(
+                         vector::TransferReadOp, arith::ExtFOp>(
                          operand.get().getDefiningOp())) {
             Value memref = operand.get();
             MemRefType type = dyn_cast<MemRefType>(operand.get().getType());
@@ -549,11 +549,17 @@ LogicalResult insertLogicalObjectFifoAccess(ModuleOp moduleOp) {
               memref = subViewOp.getViewSource();
               type = cast<MemRefType>(memref.getType());
               hasSubViewOrVectorTransferReadOp = true;
-            } else if (auto transferReadOp =
-                           memref.getDefiningOp<vector::TransferReadOp>()) {
-              memref = transferReadOp.getSource();
-              type = cast<MemRefType>(memref.getType());
-              hasSubViewOrVectorTransferReadOp = true;
+            } else {
+              // Very hacky and ugly - but all this is to see at least if it works.
+              if (auto extFOp = memref.getDefiningOp<arith::ExtFOp>()) {
+                memref = extFOp->getOperand(0);
+              }
+              if (auto transferReadOp =
+                            memref.getDefiningOp<vector::TransferReadOp>()) {
+                memref = transferReadOp.getSource();
+                type = cast<MemRefType>(memref.getType());
+                hasSubViewOrVectorTransferReadOp = true;
+              }
             }
 
             rewriter.setInsertionPoint(coreOp);
@@ -580,8 +586,12 @@ LogicalResult insertLogicalObjectFifoAccess(ModuleOp moduleOp) {
             newMemrefToLogicalObjectFifoAccess[memref] = accessOp;
 
             if (hasSubViewOrVectorTransferReadOp) {
-              linalgOp->getOperand(idx).getDefiningOp()->setOperand(0,
-                                                                    accessOp);
+              if (auto extFOp = dyn_cast<arith::ExtFOp>(operand.get().getDefiningOp())) {
+                extFOp->getOperand(0).getDefiningOp()->setOperand(0, accessOp);
+              } else {
+                linalgOp->getOperand(idx).getDefiningOp()->setOperand(0,
+                                                                      accessOp);
+              }
             } else {
               linalgOp->setOperand(idx, accessOp);
             }
