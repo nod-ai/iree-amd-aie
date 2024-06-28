@@ -38,10 +38,13 @@ static llvm::cl::opt<AIEPassPipeline> clUsePipeline(
     llvm::cl::values(
         clEnumValN(
             AIEPassPipeline::PackPeelPipeline, "pack-peel",
-            "Use the IREE lowering to AIR dialect through pack operation"),
-        clEnumValN(AIEPassPipeline::PadPackPipeline, "pad-pack",
-                   "Use the IREE lowering to AIR dialect through "
-                   "pad and pack operations")),
+            "Use the pack-peel based lowering strategy for matmul-like ops"),
+        clEnumValN(
+            AIEPassPipeline::PadPackPipeline, "pad-pack",
+            "Use the pad-pack based lowering strategy for matmul-like ops"),
+        clEnumValN(AIEPassPipeline::ConvDecomposePipeline, "conv-decompose",
+                   "Use the conv-decompose based lowering strategy for "
+                   "convolution interface ops")),
     llvm::cl::init(AIEPassPipeline::PadPackPipeline));
 
 static llvm::cl::opt<int32_t> clNumCores(
@@ -397,6 +400,104 @@ void addPadPackBasedPassPipeline(OpPassManager &funcPassManager,
     options.pathToUkernels = clPathToUkernels;
     funcPassManager.addPass(createAMDAIELowerToUKernelsPass(options));
   }
+  // Vectorization passes
+  appendVectorizationToPipeline(funcPassManager);
+  funcPassManager.addPass(createCanonicalizerPass());
+
+  // Comprehensive bufferization
+  addAMDAIEBufferizePasses(funcPassManager);
+}
+
+void addConvDecomposePassPipeline(OpPassManager &funcPassManager,
+                                  TilingConfig &tilingConfig) {
+  // First level tiling using scf.forall
+  {
+    AMDAIETileAndFuseOptions tileFuseOptions;
+    tileFuseOptions.tilingLevel = 0;
+    tileFuseOptions.useSCFFor = false;
+    funcPassManager.addPass(createAMDAIETileAndFusePass(tileFuseOptions));
+  }
+  funcPassManager.addPass(createAMDAIECleanupPass());
+  funcPassManager.addPass(createCanonicalizerPass());
+  funcPassManager.addPass(createCSEPass());
+
+  // Pad the linalg operation
+  {
+    AMDAIEPadOptions padOptions;
+    padOptions.paddingLevel = 0;
+    funcPassManager.addPass(createAMDAIEPadPass(padOptions));
+  }
+
+  // Promote the input and result to shared memory
+  {
+    AMDAIEBufferizeToAllocationOptions bufferizeOptions;
+    bufferizeOptions.memorySpace = 1;
+    bufferizeOptions.bufferizeOperand = BufferizeOperand::InputOutput;
+    funcPassManager.addPass(
+        createAMDAIEBufferizeToAllocationPass(bufferizeOptions));
+  }
+
+  // Second level tiling using scf.forall
+  {
+    AMDAIETileAndFuseOptions tileFuseOptions;
+    tileFuseOptions.tilingLevel = 1;
+    tileFuseOptions.useSCFFor = false;
+    funcPassManager.addPass(createAMDAIETileAndFusePass(tileFuseOptions));
+  }
+  funcPassManager.addPass(createAMDAIECleanupPass());
+  funcPassManager.addPass(createCanonicalizerPass());
+  funcPassManager.addPass(createCSEPass());
+
+  // Fuse fill op into the inner forall loop
+  funcPassManager.addPass(createAMDAIEFuseFillIntoForallPass());
+  funcPassManager.addPass(createCanonicalizerPass());
+
+  // Pad the linalg operation
+  {
+    AMDAIEPadOptions padOptions;
+    padOptions.paddingLevel = 1;
+    funcPassManager.addPass(createAMDAIEPadPass(padOptions));
+  }
+
+  // Only promote the result to local memory
+  {
+    AMDAIEBufferizeToAllocationOptions bufferizeOptions;
+    bufferizeOptions.memorySpace = 2;
+    bufferizeOptions.bufferizeOperand = BufferizeOperand::Output;
+    funcPassManager.addPass(
+        createAMDAIEBufferizeToAllocationPass(bufferizeOptions));
+  }
+
+  // Tile the reduction dimension using scf.for
+  {
+    AMDAIETileAndFuseOptions tileFuseOptions;
+    tileFuseOptions.tilingLevel = 2;
+    tileFuseOptions.useSCFFor = true;
+    funcPassManager.addPass(createAMDAIETileAndFusePass(tileFuseOptions));
+  }
+  funcPassManager.addPass(createAMDAIECleanupPass());
+  funcPassManager.addPass(createCanonicalizerPass());
+  funcPassManager.addPass(createCSEPass());
+
+  // Pad the linalg operation
+  {
+    AMDAIEPadOptions padOptions;
+    padOptions.paddingLevel = 2;
+    funcPassManager.addPass(createAMDAIEPadPass(padOptions));
+  }
+
+  // Promote the inputs to local memory
+  {
+    AMDAIEBufferizeToAllocationOptions bufferizeOptions;
+    bufferizeOptions.memorySpace = 2;
+    bufferizeOptions.bufferizeOperand = BufferizeOperand::Input;
+    funcPassManager.addPass(
+        createAMDAIEBufferizeToAllocationPass(bufferizeOptions));
+  }
+
+  // Decompose Conv2d ops to Conv1d ops
+  funcPassManager.addPass(createDecomposeConvolutionToLowerDimOpsPass());
+
   // Vectorization passes
   appendVectorizationToPipeline(funcPassManager);
   funcPassManager.addPass(createCanonicalizerPass());

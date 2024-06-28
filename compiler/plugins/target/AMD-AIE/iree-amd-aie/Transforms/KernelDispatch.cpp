@@ -469,7 +469,7 @@ static LogicalResult setRootConfigForConvDecomposePipeline(
                                  tileSizeLevel2};
   return setOpConfigAndEntryPointFnTranslation(
       entryPointFn, linalgOp, tileSizes,
-      IREE::Codegen::DispatchLoweringPassPipeline::None);
+      IREE::Codegen::DispatchLoweringPassPipeline::Custom);
 }
 
 //===----------------------------------------------------------------------===//

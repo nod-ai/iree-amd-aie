@@ -111,6 +111,8 @@ void AMDAIELowerExecutableTargetPass::runOnOperation() {
         addPackPeelBasedPassPipeline(executableLoweringPipeline, tilingConfig);
       } else if (usePassPipeline == AIEPassPipeline::PadPackPipeline) {
         addPadPackBasedPassPipeline(executableLoweringPipeline, tilingConfig);
+      } else if (usePassPipeline == AIEPassPipeline::ConvDecomposePipeline) {
+        addConvDecomposePassPipeline(executableLoweringPipeline, tilingConfig);
       }
     } break;
     default:

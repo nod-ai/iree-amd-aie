@@ -159,20 +159,23 @@ void AMDAIEBufferizeToAllocationPass::runOnOperation() {
   mlir::FunctionOpInterface funcOp = getOperation();
   linalg::LinalgOp linalgOp;
   funcOp->walk<WalkOrder::PostOrder, ReverseIterator>([&](linalg::LinalgOp op) {
+    if (!isElementwise(op) && !linalg::isaContractionOpInterface(op) &&
+        !linalg::isaConvolutionOpInterface(op)) {
+      return WalkResult::advance();
+    }
+    if (isa<linalg::FillOp>(op)) {
+      return WalkResult::advance();
+    }
     // Use flag `bufferizeElementwise` to indicate whether the target for
     // bufferization is an elementwise op.
-    if (bufferizeElementwise && isElementwise(op)) {
-      linalgOp = op;
-      return WalkResult::interrupt();
+    if (bufferizeElementwise && !isElementwise(op)) {
+      return WalkResult::advance();
     }
-    if (bufferizeElementwise && !isMatmulProducerOfElementwise(op)) {
-      return WalkResult::interrupt();
+    if (!bufferizeElementwise && isElementwise(op)) {
+      return WalkResult::advance();
     }
-    if (!bufferizeElementwise && linalg::isaContractionOpInterface(op)) {
-      linalgOp = op;
-      return WalkResult::interrupt();
-    }
-    return WalkResult::advance();
+    linalgOp = op;
+    return WalkResult::interrupt();
   });
 
   if (!linalgOp) {
