@@ -23,18 +23,10 @@ using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIE;
 
-#define DEBUG_TYPE "aie-create-pathfinder-flows"
+#define DEBUG_TYPE "amdaie-create-pathfinder-flows"
 #define OVER_CAPACITY_COEFF 0.02
 #define USED_CAPACITY_COEFF 0.02
 #define DEMAND_COEFF 1.1
-
-#define GEN_PASS_DECL_AIEROUTEPATHFINDERFLOWS
-#include "aie/Dialect/AIE/Transforms/AIEPasses.h.inc"
-#undef GEN_PASS_DECL_AIEROUTEPATHFINDERFLOWS
-
-#define GEN_PASS_DEF_AIEROUTEPATHFINDERFLOWS
-#include "aie/Dialect/AIE/Transforms/AIEPasses.h.inc"
-#undef GEN_PASS_DEF_AIEROUTEPATHFINDERFLOWS
 
 namespace mlir::iree_compiler::AMDAIE {
 struct Port {
@@ -1128,12 +1120,26 @@ struct ConvertFlowsToInterconnect : OpConversionPattern<FlowOp> {
 /// 3. rewrite flows to stream-switches using 'weights' from analysis pass.
 /// 4. check a region is legal
 /// 5. rewrite stream-switches (within a bounding box) back to flows
-struct AIEPathfinderPass
-    : ::impl::AIERoutePathfinderFlowsBase<AIEPathfinderPass> {
+struct AMDAIEPathfinderPass : mlir::OperationPass<DeviceOp> {
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(AMDAIEPathfinderPass)
+
+  AMDAIEPathfinderPass() : mlir::OperationPass<DeviceOp>(resolveTypeID()) {}
+
+  llvm::StringRef getArgument() const override {
+    return "amdaie-create-pathfinder-flows";
+  }
+
+  llvm::StringRef getName() const override { return "AMDAIEPathfinderPass"; }
+
+  std::unique_ptr<mlir::Pass> clonePass() const override {
+    return std::make_unique<AMDAIEPathfinderPass>(
+        *static_cast<const AMDAIEPathfinderPass *>(this));
+  }
+
   DynamicTileAnalysis analyzer;
-  AIEPathfinderPass() = default;
-  AIEPathfinderPass(DynamicTileAnalysis analyzer)
-      : analyzer(std::move(analyzer)) {}
+  AMDAIEPathfinderPass(DynamicTileAnalysis analyzer)
+      : mlir::OperationPass<DeviceOp>(resolveTypeID()),
+        analyzer(std::move(analyzer)) {}
 
   void runOnOperation() override;
 
@@ -1156,9 +1162,9 @@ struct AIEPathfinderPass
   SwitchboxOp getSwitchbox(DeviceOp &d, int col, int row);
 };
 
-void AIEPathfinderPass::runOnOperation() {
+void AMDAIEPathfinderPass::runOnOperation() {
   // create analysis pass with routing graph for entire device
-  LLVM_DEBUG(llvm::dbgs() << "---Begin AIEPathfinderPass---\n");
+  LLVM_DEBUG(llvm::dbgs() << "---Begin AMDAIEPathfinderPass---\n");
 
   DeviceOp d = getOperation();
   if (failed(analyzer.runAnalysis(d))) return signalPassFailure();
@@ -1273,10 +1279,9 @@ void AIEPathfinderPass::runOnOperation() {
   }
 }
 
-bool AIEPathfinderPass::attemptFixupMemTileRouting(const OpBuilder &builder,
-                                                   SwitchboxOp northSwOp,
-                                                   SwitchboxOp southSwOp,
-                                                   ConnectOp &problemConnect) {
+bool AMDAIEPathfinderPass::attemptFixupMemTileRouting(
+    const OpBuilder &builder, SwitchboxOp northSwOp, SwitchboxOp southSwOp,
+    ConnectOp &problemConnect) {
   int problemNorthChannel;
   if (problemConnect.getSourceBundle() == WireBundle::North) {
     problemNorthChannel = problemConnect.getSourceChannel();
@@ -1313,12 +1318,12 @@ bool AIEPathfinderPass::attemptFixupMemTileRouting(const OpBuilder &builder,
   return false;
 }
 
-bool AIEPathfinderPass::reconnectConnectOps(const OpBuilder &builder,
-                                            SwitchboxOp sw,
-                                            ConnectOp problemConnect,
-                                            bool isIncomingToSW,
-                                            WireBundle problemBundle,
-                                            int problemChan, int emptyChan) {
+bool AMDAIEPathfinderPass::reconnectConnectOps(const OpBuilder &builder,
+                                               SwitchboxOp sw,
+                                               ConnectOp problemConnect,
+                                               bool isIncomingToSW,
+                                               WireBundle problemBundle,
+                                               int problemChan, int emptyChan) {
   bool hasEmptyChannelSlot = true;
   bool foundCandidateForFixup = false;
   ConnectOp candidate;
@@ -1368,10 +1373,9 @@ bool AIEPathfinderPass::reconnectConnectOps(const OpBuilder &builder,
 }
 
 // Replace connect op
-ConnectOp AIEPathfinderPass::replaceConnectOpWithNewDest(OpBuilder builder,
-                                                         ConnectOp connect,
-                                                         WireBundle newBundle,
-                                                         int newChannel) {
+ConnectOp AMDAIEPathfinderPass::replaceConnectOpWithNewDest(
+    OpBuilder builder, ConnectOp connect, WireBundle newBundle,
+    int newChannel) {
   builder.setInsertionPoint(connect);
   auto newOp = builder.create<ConnectOp>(
       builder.getUnknownLoc(), connect.getSourceBundle(),
@@ -1379,10 +1383,10 @@ ConnectOp AIEPathfinderPass::replaceConnectOpWithNewDest(OpBuilder builder,
   connect.erase();
   return newOp;
 }
-ConnectOp AIEPathfinderPass::replaceConnectOpWithNewSource(OpBuilder builder,
-                                                           ConnectOp connect,
-                                                           WireBundle newBundle,
-                                                           int newChannel) {
+
+ConnectOp AMDAIEPathfinderPass::replaceConnectOpWithNewSource(
+    OpBuilder builder, ConnectOp connect, WireBundle newBundle,
+    int newChannel) {
   builder.setInsertionPoint(connect);
   auto newOp = builder.create<ConnectOp>(builder.getUnknownLoc(), newBundle,
                                          newChannel, connect.getDestBundle(),
@@ -1391,7 +1395,7 @@ ConnectOp AIEPathfinderPass::replaceConnectOpWithNewSource(OpBuilder builder,
   return newOp;
 }
 
-SwitchboxOp AIEPathfinderPass::getSwitchbox(DeviceOp &d, int col, int row) {
+SwitchboxOp AMDAIEPathfinderPass::getSwitchbox(DeviceOp &d, int col, int row) {
   SwitchboxOp output = nullptr;
   d.walk([&](SwitchboxOp swBox) {
     if (swBox.colIndex() == col && swBox.rowIndex() == row) {
@@ -1401,13 +1405,13 @@ SwitchboxOp AIEPathfinderPass::getSwitchbox(DeviceOp &d, int col, int row) {
   return output;
 }
 
-std::unique_ptr<OperationPass<DeviceOp>> createAIEPathfinderPass() {
-  return std::make_unique<AIEPathfinderPass>();
+std::unique_ptr<OperationPass<DeviceOp>> createAMDAIEPathfinderPass() {
+  return std::make_unique<AMDAIEPathfinderPass>();
 }
 
-void registerAIERoutePathfinderFlows() {
+void registerAMDAIERoutePathfinderFlows() {
   mlir::registerPass([]() -> std::unique_ptr<mlir::Pass> {
-    return createAIEPathfinderPass();
+    return createAMDAIEPathfinderPass();
   });
 }
 

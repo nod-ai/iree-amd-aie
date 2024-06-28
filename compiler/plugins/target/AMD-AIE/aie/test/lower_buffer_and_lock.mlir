@@ -1,4 +1,4 @@
-// RUN: iree-opt --aie-localize-locks --aie-standard-lowering %s | FileCheck %s
+// RUN: iree-opt --amdaie-localize-locks --amdaie-standard-lowering %s | FileCheck %s
 
 // CHECK-LABEL:   memref.global "public" @a : memref<256xi32>
 // CHECK-LABEL:   func.func @core_1_3() {

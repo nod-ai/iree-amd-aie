@@ -56,6 +56,7 @@ elseif(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
       -Wno-deprecated-declarations
       -Wno-deprecated-register
       -Wno-dynamic-class-memaccess
+      -Wno-format
       -Wno-implicit-fallthrough
       -Wno-incompatible-function-pointer-types
       -Wno-incompatible-pointer-types-discards-qualifiers

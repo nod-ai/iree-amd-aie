@@ -1,5 +1,5 @@
 
-// RUN: iree-opt --aie-assign-lock-ids --split-input-file %s | FileCheck %s
+// RUN: iree-opt --amdaie-assign-lock-ids --split-input-file %s | FileCheck %s
 
 // CHECK-LABEL:   aie.device(xcvc1902) {
 // CHECK:           %[[TILE_2_2:.*]] = aie.tile(2, 2)

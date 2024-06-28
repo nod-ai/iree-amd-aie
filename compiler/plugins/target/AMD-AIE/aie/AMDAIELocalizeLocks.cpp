@@ -9,26 +9,35 @@
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Pass/Pass.h"
 
-#define DEBUG_TYPE "aie-localize-locks"
+#define DEBUG_TYPE "amdaie-localize-locks"
 
 using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIE;
 
-#define GEN_PASS_DECL_AIELOCALIZELOCKS
-#include "aie/Dialect/AIE/Transforms/AIEPasses.h.inc"
-#undef GEN_PASS_DECL_AIELOCALIZELOCKS
-
-#define GEN_PASS_DEF_AIELOCALIZELOCKS
-#include "aie/Dialect/AIE/Transforms/AIEPasses.h.inc"
-#undef GEN_PASS_DEF_AIELOCALIZELOCKS
-
 namespace mlir::iree_compiler::AMDAIE {
-struct AIELocalizeLocksPass
-    : ::impl::AIELocalizeLocksBase<AIELocalizeLocksPass> {
-  void getDependentDialects(DialectRegistry &registry) const override {
-    registry.insert<arith::ArithDialect>();
+struct AMDAIELocalizeLocksPass : mlir::OperationPass<DeviceOp> {
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(AMDAIELocalizeLocksPass)
+
+  AMDAIELocalizeLocksPass() : mlir::OperationPass<DeviceOp>(resolveTypeID()) {}
+
+  llvm::StringRef getArgument() const override {
+    return "amdaie-localize-locks";
   }
+
+  llvm::StringRef getName() const override {
+    return " AMDAIELocalizeLocksPass";
+  }
+
+  std::unique_ptr<mlir::Pass> clonePass() const override {
+    return std::make_unique<AMDAIELocalizeLocksPass>(
+        *static_cast<const AMDAIELocalizeLocksPass *>(this));
+  }
+
+  void getDependentDialects(::mlir::DialectRegistry &registry) const override {
+    registry.insert<mlir::arith::ArithDialect>();
+  }
+
   void runOnOperation() override {
     DeviceOp deviceOp = getOperation();
     const auto &targetModel = getTargetModel(deviceOp);
@@ -79,13 +88,14 @@ struct AIELocalizeLocksPass
     }
   }
 };
-std::unique_ptr<OperationPass<DeviceOp>> createAIELocalizeLocksPass() {
-  return std::make_unique<AIELocalizeLocksPass>();
+
+std::unique_ptr<OperationPass<DeviceOp>> createAMDAIELocalizeLocksPass() {
+  return std::make_unique<AMDAIELocalizeLocksPass>();
 }
 
-void registerAIELocalizeLocks() {
+void registerAMDAIELocalizeLocks() {
   mlir::registerPass([]() -> std::unique_ptr<mlir::Pass> {
-    return createAIELocalizeLocksPass();
+    return createAMDAIELocalizeLocksPass();
   });
 }
 }  // namespace mlir::iree_compiler::AMDAIE

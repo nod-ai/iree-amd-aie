@@ -16,26 +16,27 @@
 #include "llvm/ADT/DenseMap.h"
 #include "mlir/Pass/Pass.h"
 
-#define DEBUG_TYPE "aie-assign-lock-ids"
+#define DEBUG_TYPE "amdaie-assign-lock-ids"
 
 using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIE;
 
-#define GEN_PASS_DECL_AIEASSIGNLOCKIDS
-#include "aie/Dialect/AIE/Transforms/AIEPasses.h.inc"
-#undef GEN_PASS_DECL_AIEASSIGNLOCKIDS
-
-#define GEN_PASS_DEF_AIEASSIGNLOCKIDS
-#include "aie/Dialect/AIE/Transforms/AIEPasses.h.inc"
-#undef GEN_PASS_DEF_AIEASSIGNLOCKIDS
-
 namespace mlir::iree_compiler::AMDAIE {
-struct AIEAssignLockIDsPass
-    : ::impl::AIEAssignLockIDsBase<AIEAssignLockIDsPass> {
-  void getDependentDialects(DialectRegistry &registry) const override {
-    registry.insert<func::FuncDialect>();
-    registry.insert<AIEDialect>();
+struct AMDAIEAssignLockIDsPass : mlir::OperationPass<DeviceOp> {
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(AMDAIEAssignLockIDsPass)
+
+  AMDAIEAssignLockIDsPass() : mlir::OperationPass<DeviceOp>(resolveTypeID()) {}
+
+  llvm::StringRef getArgument() const override {
+    return "amdaie-assign-lock-ids";
+  }
+
+  llvm::StringRef getName() const override { return "AMDAIEAssignLockIDsPass"; }
+
+  std::unique_ptr<mlir::Pass> clonePass() const override {
+    return std::make_unique<AMDAIEAssignLockIDsPass>(
+        *static_cast<const AMDAIEAssignLockIDsPass *>(this));
   }
 
   void runOnOperation() override {
@@ -102,13 +103,13 @@ struct AIEAssignLockIDsPass
     }
   }
 };
-std::unique_ptr<OperationPass<DeviceOp>> createAIEAssignLockIDsPass() {
-  return std::make_unique<AIEAssignLockIDsPass>();
+std::unique_ptr<OperationPass<DeviceOp>> createAMDAIEAssignLockIDsPass() {
+  return std::make_unique<AMDAIEAssignLockIDsPass>();
 }
 
-void registerAIEAssignLockIDs() {
+void registerAMDAIEAssignLockIDs() {
   mlir::registerPass([]() -> std::unique_ptr<mlir::Pass> {
-    return createAIEAssignLockIDsPass();
+    return createAMDAIEAssignLockIDsPass();
   });
 }
 }  // namespace mlir::iree_compiler::AMDAIE

@@ -297,22 +297,21 @@ iree_cc_library(
   NAME
     AIEPasses
   SRCS
-    "AIEAssignBufferAddressesBasic.cpp"
-    "AIEAssignBufferDescriptorIDs.cpp"
-    "AIEAssignLockIDs.cpp"
-    "AIECoreToStandard.cpp"
-    "AIECreatePathFindFlows.cpp"
-    "AIELocalizeLocks.cpp"
-    "AIEObjectFifoStatefulTransform.cpp"
-    "AIEDmaToNpu.cpp"
-    "AIEXToStandard.cpp"
+  "AMDAIEAssignBufferAddressesBasic.cpp"
+  "AMDAIEAssignBufferDescriptorIDs.cpp"
+  "AMDAIEAssignLockIDs.cpp"
+  "AMDAIECoreToStandard.cpp"
+  "AMDAIECreatePathFindFlows.cpp"
+  "AMDAIEDmaToNpu.cpp"
+  "AMDAIELocalizeLocks.cpp"
+  "AMDAIENormalizeAddressSpaces.cpp"
+  "AMDAIEObjectFifoStatefulTransform.cpp"
+  "AMDAIEXToStandard.cpp"
   DEPS
     ::defs
     ::AIEDialectIR
-    ::AIENormalizeAddressSpacesGen
     ::AIEXDialectIR
-    ::AIEXTransformPassesIncGen
-    ::AIETransformPassesIncGen
+    ::AIENormalizeAddressSpacesGen
 )
 
 iree_cc_library(
@@ -320,17 +319,24 @@ iree_cc_library(
     AIEPassesFromMLIRAIE
   SRCS
     # Passes needed by AIR-AIE lowering
-    "${IREE_MLIR_AIE_SOURCE_DIR}/lib/Dialect/AIE/Transforms/AIEObjectFifoStatefulTransform.cpp"
-    "${IREE_MLIR_AIE_SOURCE_DIR}/lib/Dialect/AIE/Transforms/AIEAssignLockIDs.cpp"
-    "${IREE_MLIR_AIE_SOURCE_DIR}/lib/Dialect/AIE/Transforms/AIEObjectFifoRegisterProcess.cpp"
+    # AIE dialect
     "${IREE_MLIR_AIE_SOURCE_DIR}/lib/Dialect/AIE/Transforms/AIEAssignBufferDescriptorIDs.cpp"
-    "${IREE_MLIR_AIE_SOURCE_DIR}/lib/Dialect/AIEX/Transforms/AIECreateBroadcastPacket.cpp"
-    "${IREE_MLIR_AIE_SOURCE_DIR}/lib/Dialect/AIE/Transforms/AIECreatePacketFlows.cpp"
-    "${IREE_MLIR_AIE_SOURCE_DIR}/lib/Dialect/AIE/Transforms/AIENormalizeAddressSpaces.cpp"
-    "${IREE_MLIR_AIE_SOURCE_DIR}/lib/Dialect/AIE/Transforms/AIECanonicalizeDevice.cpp"
-    "${IREE_MLIR_AIE_SOURCE_DIR}/lib/Dialect/AIEX/Transforms/AIELowerMulticast.cpp"
     "${IREE_MLIR_AIE_SOURCE_DIR}/lib/Dialect/AIE/Transforms/AIEAssignBuffers.cpp"
+    "${IREE_MLIR_AIE_SOURCE_DIR}/lib/Dialect/AIE/Transforms/AIEAssignLockIDs.cpp"
+    "${IREE_MLIR_AIE_SOURCE_DIR}/lib/Dialect/AIE/Transforms/AIECanonicalizeDevice.cpp"
+    "${IREE_MLIR_AIE_SOURCE_DIR}/lib/Dialect/AIE/Transforms/AIECoreToStandard.cpp"
+    "${IREE_MLIR_AIE_SOURCE_DIR}/lib/Dialect/AIE/Transforms/AIECreatePacketFlows.cpp"
+    "${IREE_MLIR_AIE_SOURCE_DIR}/lib/Dialect/AIE/Transforms/AIECreatePathFindFlows.cpp"
     "${IREE_MLIR_AIE_SOURCE_DIR}/lib/Dialect/AIE/Transforms/AIELocalizeLocks.cpp"
+    "${IREE_MLIR_AIE_SOURCE_DIR}/lib/Dialect/AIE/Transforms/AIENormalizeAddressSpaces.cpp"
+    "${IREE_MLIR_AIE_SOURCE_DIR}/lib/Dialect/AIE/Transforms/AIEObjectFifoRegisterProcess.cpp"
+    "${IREE_MLIR_AIE_SOURCE_DIR}/lib/Dialect/AIE/Transforms/AIEObjectFifoStatefulTransform.cpp"
+    "${IREE_MLIR_AIE_SOURCE_DIR}/lib/Dialect/AIE/Transforms/AIEPathFinder.cpp"
+    # AIEX dialect
+    "${IREE_MLIR_AIE_SOURCE_DIR}/lib/Dialect/AIEX/Transforms/AIECreateBroadcastPacket.cpp"
+    "${IREE_MLIR_AIE_SOURCE_DIR}/lib/Dialect/AIEX/Transforms/AIEDmaToNpu.cpp"
+    "${IREE_MLIR_AIE_SOURCE_DIR}/lib/Dialect/AIEX/Transforms/AIELowerMulticast.cpp"
+    "${IREE_MLIR_AIE_SOURCE_DIR}/lib/Dialect/AIEX/Transforms/AIEXToStandard.cpp"
   DEPS
     ::defs
     ::AIEDialectIR
