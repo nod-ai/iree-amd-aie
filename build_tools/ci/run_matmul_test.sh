@@ -504,11 +504,26 @@ run_matmul_test \
     --m "256"  --k "256" --n "256" \
     --use_ukernel "1"
 
+# Disabled until the following issue is resolved:
+# https://github.com/Xilinx/llvm-aie/issues/102
+#
+# Note I'm not using the --expect_compile_failure flag here,
+# as that would require all developers to use the same verion
+# of peano, which we currently don't enforce. 
+#
+# run_matmul_test \
+#   --name_prefix "transpose_int32" \
+#   --lhs_rhs_type "i32" \
+#   --acc_type "i32" \
+#   --m "8" --n "16" --k "32" \
+#   --do_transpose_rhs "1"
+
+
 run_matmul_test \
-  --name_prefix "transpose_int32" \
-  --lhs_rhs_type "i32" \
+  --name_prefix "transpose_i8_i32" \
+  --lhs_rhs_type "i8" \
   --acc_type "i32" \
-  --m "8" --n "16" --k "32" \
+  --m "16" --n "32" --k "64" \
   --do_transpose_rhs "1"
 
 run_matmul_test \
@@ -654,13 +669,6 @@ run_matmul_test \
     --acc_type "f32" \
     --m "128"  --n "128" --k "2304" \
 
-run_matmul_test \
-  --name_prefix "packPeel_t_i32" \
-  --pipeline "pack-peel" \
-  --lhs_rhs_type "i32" \
-  --acc_type "i32" \
-  --m "128" --n "256" --k "512" \
-  --do_transpose_rhs "1"
 
 run_matmul_test \
   --name_prefix "packPeel_t_bf16" \
