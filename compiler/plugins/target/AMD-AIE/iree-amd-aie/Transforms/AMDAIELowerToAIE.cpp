@@ -431,7 +431,7 @@ LogicalResult npuDmaCpyNdOpToAIE(IRRewriter &rewriter,
   // Convert bidirectional `amdaie.npu.dma_cpy_nd` op into two halves.
   if (dmaOp.hasSourceAddressing()) {
     SmallVector<Value> empty;
-    SmallVector<int64_t, 4> staticOffsets(4, 1);
+    SmallVector<int64_t, 4> staticOffsets(4, 0);
     SmallVector<int64_t, 4> staticSizes(4, 1);
     SmallVector<int64_t, 3> staticStrides(3, 1);
     if (failed(getStaticDims(dmaOp, dmaOp.getSourceMixedOffsets(),
@@ -459,7 +459,7 @@ LogicalResult npuDmaCpyNdOpToAIE(IRRewriter &rewriter,
   }
   if (dmaOp.hasTargetAddressing()) {
     SmallVector<Value> empty;
-    SmallVector<int64_t, 4> staticOffsets(4, 1);
+    SmallVector<int64_t, 4> staticOffsets(4, 0);
     SmallVector<int64_t, 4> staticSizes(4, 1);
     SmallVector<int64_t, 3> staticStrides(3, 1);
     if (failed(getStaticDims(dmaOp, dmaOp.getTargetMixedOffsets(),
@@ -737,6 +737,36 @@ LogicalResult lowerToAIE(ModuleOp moduleOp) {
     ipuFuncOp.setPublic();
     rewriter.setInsertionPointToStart(ipuFuncOp.addEntryBlock());
     rewriter.create<func::ReturnOp>(rewriter.getUnknownLoc());
+    // // TODO(avarm): Currently modifying the function arguments after forming NOT
+    // //              during. Will do it later. Currently all this is to see if how to
+    // //              make things work.
+    // // cast all the function args to i32 types.
+    // // this is in support of npu.dma_memcpy_nd which only allow 32bit types
+    // // mlir::FunctionType funcType = ipuFuncOp.getFunctionType();
+    // SmallVector<Type> argTypes(funcType.getInputs());
+    // for (int i = 0, e = argTypes.size(); i < e; i++) {
+    //   auto memrefTy = dyn_cast<MemRefType>(argTypes[i]);
+    //   if (!memrefTy)
+    //     continue;
+
+    //   unsigned int bitwidth = memrefTy.getElementTypeBitWidth();
+    //   if (bitwidth != 16 && bitwidth != 8)
+    //     continue;
+
+    //   unsigned int div = 32 / bitwidth;
+    //   unsigned int numElements = memrefTy.getNumElements() / div;
+    //   SmallVector<int64_t> shape{numElements};
+    //   MemRefType newMemrefTy =
+    //       MemRefType::get(shape, rewriter.getIntegerType(32));
+    //   argTypes[i] = newMemrefTy;
+    //   auto &entry = ipuFuncOp.front();
+    //   entry.insertArgument(i, newMemrefTy, rewriter.getUnknownLoc());
+    //   entry.getArgument(i + 1).replaceAllUsesWith(entry.getArgument(i));
+    //   entry.eraseArgument(i + 1);
+    // }
+    // auto newFuncType =
+    //     FunctionType::get(funcOp.getContext(), argTypes, funcType.getResults());
+    // ipuFuncOp.setType(newFuncType);
     for (int i = 0; i < ipuFuncOp.getNumArguments(); ++i) {
       bindingsMapper.map(subspanOps[i].getResult(), ipuFuncOp.getArgument(i));
     }
@@ -854,7 +884,9 @@ static LogicalResult CastFunctionArgs(func::FuncOp funcOp,
       continue;
 
     unsigned int bitwidth = memrefTy.getElementTypeBitWidth();
-    if (bitwidth != 16 && bitwidth != 8)
+    // if (bitwidth != 16 && bitwidth != 8)
+    if ((isa<IntegerType>(memrefTy.getElementType())) ||
+        (memrefTy.getShape().size() <= 1))
       continue;
 
     unsigned int div = 32 / bitwidth;
@@ -887,12 +919,34 @@ static LogicalResult CastFunctionArgs(func::FuncOp funcOp,
                         *getConstantIntValue(dmaUser.getMixedStrides()[j]);
         rewriter.setInsertionPoint(dmaUser);
         const std::vector<int64_t> newStaticOffsets = {0, 0, 0, oneDOffset};
+        SmallVector<int64_t> newStaticSizes;
+        for (int64_t size : dmaUser.getStaticSizes()) {
+          newStaticSizes.push_back(size);
+        }
+        SmallVector<int64_t> newStaticStrides;
+        for (int64_t stride : dmaUser.getStaticStrides()) {
+          newStaticStrides.push_back(stride);
+        }
+        newStaticSizes[newStaticSizes.size() - 1] /= 2;
+        for (unsigned i = 0, n = newStaticSizes.size(); i<n-1; i++) {
+          if (newStaticStrides[i] == 1) {
+            newStaticSizes[i] /= 2;
+          } else {
+            newStaticStrides[i] /= 2;
+          }
+        }
         rewriter.create<AIEX::NpuDmaMemcpyNdOp>(
             rewriter.getUnknownLoc(), dmaUser.getX(), dmaUser.getY(),
             dmaUser.getMemref(), SmallVector<Value>{}, dmaUser.getSizes(),
             dmaUser.getStrides(), ArrayRef(newStaticOffsets),
-            dmaUser.getStaticSizes(), dmaUser.getStaticStrides(),
+            newStaticSizes, newStaticStrides,
             dmaUser.getMetadata(), dmaUser.getId());
+        // rewriter.create<AIEX::NpuDmaMemcpyNdOp>(
+        //     rewriter.getUnknownLoc(), dmaUser.getX(), dmaUser.getY(),
+        //     dmaUser.getMemref(), SmallVector<Value>{}, dmaUser.getSizes(),
+        //     dmaUser.getStrides(), ArrayRef(newStaticOffsets),
+        //     dmaUser.getStaticSizes(), dmaUser.getStaticStrides(),
+        //     dmaUser.getMetadata(), dmaUser.getId());
         rewriter.eraseOp(dmaUser);
       }
     }
