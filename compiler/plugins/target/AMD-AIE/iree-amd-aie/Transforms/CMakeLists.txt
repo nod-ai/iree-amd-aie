@@ -96,6 +96,7 @@ iree_cc_library(
     iree::compiler::Dialect::LinalgExt::IR
     iree::compiler::Dialect::LinalgExt::Transforms
     iree::compiler::Utils
+    iree::target::amd-aie::aie::AIEPassesFromMLIRAIE
     iree::target::amd-aie::air::AIRConversionPasses
     iree::target::amd-aie::air::AIRTransformPasses
     IREELinalgTransformDialectPasses

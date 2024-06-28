@@ -103,7 +103,7 @@ jobs:
         run: |
           python3 -m venv .venv
           source .venv/bin/activate
-          pip install https://github.com/Xilinx/mlir-aie/releases/download/latest-wheels/mlir_aie-0.0.1.2024061222+3ac9566-py3-none-manylinux_2_35_x86_64.whl
+          pip install https://github.com/Xilinx/mlir-aie/releases/download/latest-wheels/mlir_aie-0.0.1.2024062422+7917990-py3-none-manylinux_2_35_x86_64.whl 
 
           pip install -r tests/matmul/requirements.txt
 

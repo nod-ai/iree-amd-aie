@@ -6,6 +6,9 @@
 
 #include "iree-amd-aie/Transforms/Passes.h"
 
+#include "aie/Dialect/AIE/Transforms/AIEPasses.h"
+#include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
+#include "aie/Passes.h"
 #include "air/Conversion/Passes.h"
 #include "air/Transform/Passes.h"
 #include "iree-amd-aie/IR/AMDAIEAttrs.h"
@@ -14,6 +17,8 @@
 #include "iree/compiler/Codegen/Common/Passes.h"
 #include "iree/compiler/Dialect/LinalgExt/Transforms/Passes.h"
 #include "iree/compiler/Utils/PassUtils.h"
+#include "mlir/Conversion/AffineToStandard/AffineToStandard.h"
+#include "mlir/Conversion/SCFToControlFlow/SCFToControlFlow.h"
 #include "mlir/Dialect/Affine/Passes.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/Passes.h"
@@ -33,10 +38,13 @@ static llvm::cl::opt<AIEPassPipeline> clUsePipeline(
     llvm::cl::values(
         clEnumValN(
             AIEPassPipeline::PackPeelPipeline, "pack-peel",
-            "Use the IREE lowering to AIR dialect through pack operation"),
-        clEnumValN(AIEPassPipeline::PadPackPipeline, "pad-pack",
-                   "Use the IREE lowering to AIR dialect through "
-                   "pad and pack operations")),
+            "Use the pack-peel based lowering strategy for matmul-like ops"),
+        clEnumValN(
+            AIEPassPipeline::PadPackPipeline, "pad-pack",
+            "Use the pad-pack based lowering strategy for matmul-like ops"),
+        clEnumValN(AIEPassPipeline::ConvDecomposePipeline, "conv-decompose",
+                   "Use the conv-decompose based lowering strategy for "
+                   "convolution interface ops")),
     llvm::cl::init(AIEPassPipeline::PadPackPipeline));
 
 static llvm::cl::opt<int32_t> clNumCores(
@@ -400,6 +408,104 @@ void addPadPackBasedPassPipeline(OpPassManager &funcPassManager,
   addAMDAIEBufferizePasses(funcPassManager);
 }
 
+void addConvDecomposePassPipeline(OpPassManager &funcPassManager,
+                                  TilingConfig &tilingConfig) {
+  // First level tiling using scf.forall
+  {
+    AMDAIETileAndFuseOptions tileFuseOptions;
+    tileFuseOptions.tilingLevel = 0;
+    tileFuseOptions.useSCFFor = false;
+    funcPassManager.addPass(createAMDAIETileAndFusePass(tileFuseOptions));
+  }
+  funcPassManager.addPass(createAMDAIECleanupPass());
+  funcPassManager.addPass(createCanonicalizerPass());
+  funcPassManager.addPass(createCSEPass());
+
+  // Pad the linalg operation
+  {
+    AMDAIEPadOptions padOptions;
+    padOptions.paddingLevel = 0;
+    funcPassManager.addPass(createAMDAIEPadPass(padOptions));
+  }
+
+  // Promote the input and result to shared memory
+  {
+    AMDAIEBufferizeToAllocationOptions bufferizeOptions;
+    bufferizeOptions.memorySpace = 1;
+    bufferizeOptions.bufferizeOperand = BufferizeOperand::InputOutput;
+    funcPassManager.addPass(
+        createAMDAIEBufferizeToAllocationPass(bufferizeOptions));
+  }
+
+  // Second level tiling using scf.forall
+  {
+    AMDAIETileAndFuseOptions tileFuseOptions;
+    tileFuseOptions.tilingLevel = 1;
+    tileFuseOptions.useSCFFor = false;
+    funcPassManager.addPass(createAMDAIETileAndFusePass(tileFuseOptions));
+  }
+  funcPassManager.addPass(createAMDAIECleanupPass());
+  funcPassManager.addPass(createCanonicalizerPass());
+  funcPassManager.addPass(createCSEPass());
+
+  // Fuse fill op into the inner forall loop
+  funcPassManager.addPass(createAMDAIEFuseFillIntoForallPass());
+  funcPassManager.addPass(createCanonicalizerPass());
+
+  // Pad the linalg operation
+  {
+    AMDAIEPadOptions padOptions;
+    padOptions.paddingLevel = 1;
+    funcPassManager.addPass(createAMDAIEPadPass(padOptions));
+  }
+
+  // Only promote the result to local memory
+  {
+    AMDAIEBufferizeToAllocationOptions bufferizeOptions;
+    bufferizeOptions.memorySpace = 2;
+    bufferizeOptions.bufferizeOperand = BufferizeOperand::Output;
+    funcPassManager.addPass(
+        createAMDAIEBufferizeToAllocationPass(bufferizeOptions));
+  }
+
+  // Tile the reduction dimension using scf.for
+  {
+    AMDAIETileAndFuseOptions tileFuseOptions;
+    tileFuseOptions.tilingLevel = 2;
+    tileFuseOptions.useSCFFor = true;
+    funcPassManager.addPass(createAMDAIETileAndFusePass(tileFuseOptions));
+  }
+  funcPassManager.addPass(createAMDAIECleanupPass());
+  funcPassManager.addPass(createCanonicalizerPass());
+  funcPassManager.addPass(createCSEPass());
+
+  // Pad the linalg operation
+  {
+    AMDAIEPadOptions padOptions;
+    padOptions.paddingLevel = 2;
+    funcPassManager.addPass(createAMDAIEPadPass(padOptions));
+  }
+
+  // Promote the inputs to local memory
+  {
+    AMDAIEBufferizeToAllocationOptions bufferizeOptions;
+    bufferizeOptions.memorySpace = 2;
+    bufferizeOptions.bufferizeOperand = BufferizeOperand::Input;
+    funcPassManager.addPass(
+        createAMDAIEBufferizeToAllocationPass(bufferizeOptions));
+  }
+
+  // Decompose Conv2d ops to Conv1d ops
+  funcPassManager.addPass(createDecomposeConvolutionToLowerDimOpsPass());
+
+  // Vectorization passes
+  appendVectorizationToPipeline(funcPassManager);
+  funcPassManager.addPass(createCanonicalizerPass());
+
+  // Comprehensive bufferization
+  addAMDAIEBufferizePasses(funcPassManager);
+}
+
 void buildAMDAIETransformPassPipeline(OpPassManager &variantPassManager) {
   OpPassManager &modulePassManager = variantPassManager.nest<ModuleOp>();
   {
@@ -423,9 +529,9 @@ void buildAMDAIETransformPassPipeline(OpPassManager &variantPassManager) {
   }
   modulePassManager.addPass(createLowerUKernelOpsToCallsPass());
   if (clUsePipeline == AIEPassPipeline::PadPackPipeline) {
-    addMLIRAIRAIELoweringPasses(modulePassManager, false);
+    addMLIRAIRLoweringPasses(modulePassManager, false);
   } else if (clUsePipeline == AIEPassPipeline::PackPeelPipeline) {
-    addMLIRAIRAIELoweringPasses(modulePassManager, true);
+    addMLIRAIRLoweringPasses(modulePassManager, true);
   }
   variantPassManager.addPass(createReconcileTranslationInfoPass());
   variantPassManager.addPass(createAMDAIELowerWorkgroupCountPass());
@@ -440,7 +546,7 @@ void buildAMDAIETransformPassPipeline(OpPassManager &variantPassManager) {
 // TODO (Erwei): The "packPeel" temporary argument should be removed once
 // pack-peel and pack-pad share the same pass pipeline. See TODOs inlined below
 // for details.
-void addMLIRAIRAIELoweringPasses(OpPassManager &passManager, bool packPeel) {
+void addMLIRAIRLoweringPasses(OpPassManager &passManager, bool packPeel) {
   // Add passes for preparing for lowering to MLIR-AIR
   passManager.addPass(createEraseHALDescriptorTypeFromMemRefPass());
   passManager.addPass(memref::createFoldMemRefAliasOpsPass());
@@ -581,6 +687,27 @@ void addMLIRAIRAIELoweringPasses(OpPassManager &passManager, bool packPeel) {
 
   passManager.addPass(xilinx::airrt::createAIRRtToNpuPass());
   passManager.addPass(createCanonicalizerPass());
+
+  // Now lower using the AIE passes from MLIR-AIE.
+  addMLIRAIELoweringPasses(passManager);
+}
+
+void addMLIRAIELoweringPasses(OpPassManager &passManager) {
+  passManager.addPass(createLowerAffinePass());
+  OpPassManager &devicePM = passManager.nest<xilinx::AIE::DeviceOp>();
+  devicePM.addPass(xilinx::AIE::createAIEAssignLockIDsPass());
+  devicePM.addPass(xilinx::AIE::createAIEObjectFifoRegisterProcessPass());
+  devicePM.addPass(xilinx::AIE::createAIEObjectFifoStatefulTransformPass());
+  devicePM.addPass(xilinx::AIE::createAIEAssignBufferDescriptorIDsPass());
+  devicePM.addPass(xilinx::AIEX::createAIEBroadcastPacketPass());
+  devicePM.addPass(xilinx::AIE::createAIERoutePacketFlowsPass());
+  devicePM.addPass(xilinx::AIEX::createAIELowerMulticastPass());
+  devicePM.addPass(xilinx::AIE::createAIEAssignBufferAddressesPass());
+  passManager.addPass(createConvertSCFToCFPass());
+  passManager.addNestedPass<xilinx::AIE::DeviceOp>(
+      xilinx::AIE::createAIELocalizeLocksPass());
+  passManager.addNestedPass<xilinx::AIE::DeviceOp>(
+      xilinx::AIE::createAIENormalizeAddressSpacesPass());
 }
 
 // NOTE: this runs on the top-level program module containing all hal.executable

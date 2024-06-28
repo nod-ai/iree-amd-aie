@@ -131,7 +131,6 @@ ${SOURCE_MLIR_FILE} \
 --aie2xclbin-print-ir-after-all \
 --aie2xclbin-print-ir-before-all \
 --aie2xclbin-print-ir-module-scope \
---aie2xclbin-disable-threading \
 --aie2xclbin-timing \
 --mlir-print-ir-after-all \
 --mlir-print-ir-module-scope \

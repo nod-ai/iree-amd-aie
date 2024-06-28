@@ -56,8 +56,6 @@ namespace {
 // manager. These control when (if ever) and what IR gets printed between
 // passes, and whether the pass manager uses multi-theading.
 void applyConfigToPassManager(XCLBinGenConfig &TK, PassManager &pm) {
-  pm.getContext()->disableMultithreading(TK.DisableThreading);
-
   bool printBefore = TK.PrintIRBeforeAll;
   auto shouldPrintBeforePass = [printBefore](Pass *, Operation *) {
     return printBefore;
@@ -684,8 +682,6 @@ static LogicalResult generateUnifiedObject(MLIRContext *context,
   PassManager pm(context, moduleOp.getOperationName());
   applyConfigToPassManager(TK, pm);
 
-  pm.addNestedPass<AIE::DeviceOp>(
-      mlir::iree_compiler::AMDAIE::createAIELocalizeLocksPass());
   pm.addPass(mlir::iree_compiler::AMDAIE::createAIECoreToStandardPass());
   pm.addPass(mlir::iree_compiler::AMDAIE::createAIEXToStandardPass());
 
