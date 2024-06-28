@@ -5,7 +5,9 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
+#include "aie/Dialect/AIE/Transforms/AIEPasses.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
+#include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
 #include "air/Dialect/AIR/AIRDialect.h"
 #include "air/Passes.h"
 #include "iree-amd-aie/IR/AMDAIEDialect.h"
@@ -18,15 +20,16 @@
 namespace mlir::iree_compiler {
 
 namespace AMDAIE {
-extern void registerAIEAssignBufferAddressesBasic();
-extern void registerAIEAssignBufferDescriptorIDs();
-extern void registerAIEAssignLockIDs();
-extern void registerAIECoreToStandard();
-extern void registerAIELocalizeLocks();
-extern void registerAIEObjectFifoStatefulTransform();
-extern void registerAIERoutePathfinderFlows();
-extern void registerAIEDmaToNpu();
-extern void registerAIEXToStandardPass();
+extern void registerAMDAIEAssignBufferAddressesBasic();
+extern void registerAMDAIEAssignBufferDescriptorIDs();
+extern void registerAMDAIEAssignLockIDs();
+extern void registerAMDAIECoreToStandard();
+extern void registerAMDAIELocalizeLocks();
+extern void registerAMDAIENormalizeAddressSpaces();
+extern void registerAMDAIEObjectFifoStatefulTransform();
+extern void registerAMDAIERoutePathfinderFlows();
+extern void registerAMDAIEDmaToNpu();
+extern void registerAMDAIEXToStandardPass();
 }  // namespace AMDAIE
 
 namespace {
@@ -36,17 +39,29 @@ struct AMDAIESession
                            PluginActivationPolicy::DefaultActivated> {
   static void registerPasses() {
     AMDAIE::registerAMDAIEPasses();
-    AMDAIE::registerAIEAssignBufferAddressesBasic();
-    AMDAIE::registerAIEAssignBufferDescriptorIDs();
-    AMDAIE::registerAIEAssignLockIDs();
-    AMDAIE::registerAIECoreToStandard();
-    AMDAIE::registerAIELocalizeLocks();
-    AMDAIE::registerAIEObjectFifoStatefulTransform();
-    AMDAIE::registerAIERoutePathfinderFlows();
-    AMDAIE::registerAIEDmaToNpu();
-    AMDAIE::registerAIEXToStandardPass();
+    AMDAIE::registerAMDAIEAssignBufferAddressesBasic();
+    AMDAIE::registerAMDAIEAssignBufferDescriptorIDs();
+    AMDAIE::registerAMDAIEAssignLockIDs();
+    AMDAIE::registerAMDAIECoreToStandard();
+    AMDAIE::registerAMDAIELocalizeLocks();
+    AMDAIE::registerAMDAIENormalizeAddressSpaces();
+    AMDAIE::registerAMDAIEObjectFifoStatefulTransform();
+    AMDAIE::registerAMDAIERoutePathfinderFlows();
+    AMDAIE::registerAMDAIEDmaToNpu();
+    AMDAIE::registerAMDAIEXToStandardPass();
     AMDAIE::registerAIRConversionPasses();
     AMDAIE::registerAIRTransformPasses();
+
+    xilinx::AIE::registerAIEAssignBufferAddresses();
+    xilinx::AIE::registerAIEAssignBufferDescriptorIDs();
+    xilinx::AIE::registerAIEAssignLockIDs();
+    xilinx::AIE::registerAIECoreToStandard();
+    xilinx::AIE::registerAIELocalizeLocks();
+    xilinx::AIE::registerAIENormalizeAddressSpaces();
+    xilinx::AIE::registerAIEObjectFifoStatefulTransform();
+    xilinx::AIE::registerAIERoutePathfinderFlows();
+    xilinx::AIEX::registerAIEDmaToNpu();
+    xilinx::AIEX::registerAIEXToStandardPass();
   }
 
   void onRegisterDialects(DialectRegistry &registry) override {

@@ -1,4 +1,4 @@
-// RUN: iree-opt --aie-standard-lowering %s | FileCheck %s
+// RUN: iree-opt --amdaie-standard-lowering %s | FileCheck %s
 // XFAIL: *
 // event not supported for aie2?
 

@@ -1,5 +1,5 @@
 
-// RUN: iree-opt --aiex-standard-lowering %s | FileCheck %s
+// RUN: iree-opt --amdaiex-standard-lowering %s | FileCheck %s
 
 // CHECK-LABEL:   aie.device(npu1_4col) {
 // CHECK:           memref.global "public" @toMem : memref<16xi32>

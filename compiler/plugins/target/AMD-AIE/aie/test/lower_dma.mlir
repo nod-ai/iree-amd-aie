@@ -1,4 +1,4 @@
-// RUN: iree-opt --aie-localize-locks --aie-standard-lowering %s | FileCheck %s
+// RUN: iree-opt --amdaie-localize-locks --amdaie-standard-lowering %s | FileCheck %s
 
 // CHECK:         func.func private @llvm.aie2.put.ms(i32, i32)
 // CHECK:         func.func private @llvm.aie2.mcd.write.vec(vector<16xi32>, i32)

@@ -27,15 +27,7 @@ using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIE;
 
-#define GEN_PASS_DECL_AIEOBJECTFIFOSTATEFULTRANSFORM
-#include "aie/Dialect/AIE/Transforms/AIEPasses.h.inc"
-#undef GEN_PASS_DECL_AIEOBJECTFIFOSTATEFULTRANSFORM
-
-#define GEN_PASS_DEF_AIEOBJECTFIFOSTATEFULTRANSFORM
-#include "aie/Dialect/AIE/Transforms/AIEPasses.h.inc"
-#undef GEN_PASS_DEF_AIEOBJECTFIFOSTATEFULTRANSFORM
-
-#define DEBUG_TYPE "aie-objectFifo-stateful-transform"
+#define DEBUG_TYPE "amdaie-objectFifo-stateful-transform"
 
 #define LOOP_VAR_DEPENDENCY (-2)
 
@@ -119,9 +111,34 @@ class DMAChannelAnalysis {
 //===----------------------------------------------------------------------===//
 
 namespace mlir::iree_compiler::AMDAIE {
-struct AIEObjectFifoStatefulTransformPass
-    : ::impl::AIEObjectFifoStatefulTransformBase<
-          AIEObjectFifoStatefulTransformPass> {
+struct AMDAIEObjectFifoStatefulTransformPass : mlir::OperationPass<DeviceOp> {
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(
+      AMDAIEObjectFifoStatefulTransformPass)
+
+  AMDAIEObjectFifoStatefulTransformPass()
+      : mlir::OperationPass<DeviceOp>(resolveTypeID()) {}
+
+  llvm::StringRef getArgument() const override {
+    return "amdaie-objectFifo-stateful-transform";
+  }
+
+  llvm::StringRef getName() const override {
+    return " AMDAIEObjectFifoStatefulTransformPass";
+  }
+
+  std::unique_ptr<mlir::Pass> clonePass() const override {
+    return std::make_unique<AMDAIEObjectFifoStatefulTransformPass>(
+        *static_cast<const AMDAIEObjectFifoStatefulTransformPass *>(this));
+  }
+
+  void getDependentDialects(::mlir::DialectRegistry &registry) const override {
+    registry.insert<mlir::scf::SCFDialect>();
+    registry.insert<mlir::func::FuncDialect>();
+    registry.insert<mlir::arith::ArithDialect>();
+    registry.insert<mlir::memref::MemRefDialect>();
+    registry.insert<xilinx::AIE::AIEDialect>();
+  }
+
   DenseMap<ObjectFifoCreateOp, std::vector<BufferOp>>
       buffersPerFifo;  // maps each objFifo to its corresponding buffer
   DenseMap<ObjectFifoCreateOp, std::vector<ExternalBufferOp>>
@@ -427,7 +444,7 @@ struct AIEObjectFifoStatefulTransformPass
              offset, len, succ, dims);
   }
 
-  /// Function that either calls createAIETileDMA(), createShimDMA() or
+  /// Function that either calls createAMDAIETileDMA(), createShimDMA() or
   /// createMemTileDMA() based on op tile row value.
   void createDMA(DeviceOp &device, OpBuilder &builder, ObjectFifoCreateOp op,
                  DMAChannelDir channelDir, int channelIndex, int lockMode,
@@ -439,14 +456,14 @@ struct AIEObjectFifoStatefulTransformPass
       createMemTileDMA(device, builder, op, channelDir, channelIndex, lockMode,
                        dims);
     } else {
-      createAIETileDMA(device, builder, op, channelDir, channelIndex, lockMode,
+      createAMDAIETileDMA(device, builder, op, channelDir, channelIndex, lockMode,
                        dims);
     }
   }
 
   /// Function used to create a MemOp region with a DMA channel.
   /// It uses creatBdBlock(), see there for lockMode input.
-  void createAIETileDMA(DeviceOp &device, OpBuilder &builder,
+  void createAMDAIETileDMA(DeviceOp &device, OpBuilder &builder,
                         ObjectFifoCreateOp op, DMAChannelDir channelDir,
                         int channelIndex, int lockMode,
                         BDDimLayoutArrayAttr dims) {
@@ -1342,14 +1359,15 @@ struct AIEObjectFifoStatefulTransformPass
       (*it)->erase();
   }
 };
+
 std::unique_ptr<OperationPass<DeviceOp>>
-createAIEObjectFifoStatefulTransformPass() {
-  return std::make_unique<AIEObjectFifoStatefulTransformPass>();
+createAMDAIEObjectFifoStatefulTransformPass() {
+  return std::make_unique<AMDAIEObjectFifoStatefulTransformPass>();
 }
 
-void registerAIEObjectFifoStatefulTransform() {
+void registerAMDAIEObjectFifoStatefulTransform() {
   mlir::registerPass([]() -> std::unique_ptr<mlir::Pass> {
-    return createAIEObjectFifoStatefulTransformPass();
+    return createAMDAIEObjectFifoStatefulTransformPass();
   });
 }
 }  // namespace mlir::iree_compiler::AMDAIE

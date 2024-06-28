@@ -10,39 +10,30 @@
 #include "mlir/IR/Attributes.h"
 #include "mlir/Pass/Pass.h"
 
-#define DEBUG_TYPE "aie-assign-buffers-basic"
+#define DEBUG_TYPE "amdaie-assign-buffers-basic"
 
 using namespace mlir;
-using namespace xilinx;
 using namespace xilinx::AIE;
 
 namespace mlir::iree_compiler::AMDAIE {
-struct AIEAssignBufferAddressesPassBasic : mlir::OperationPass<DeviceOp> {
+struct AMDAIEAssignBufferAddressesPassBasic : mlir::OperationPass<DeviceOp> {
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(
-      AIEAssignBufferAddressesPassBasic)
+      AMDAIEAssignBufferAddressesPassBasic)
 
-  AIEAssignBufferAddressesPassBasic()
+  AMDAIEAssignBufferAddressesPassBasic()
       : mlir::OperationPass<DeviceOp>(resolveTypeID()) {}
-  AIEAssignBufferAddressesPassBasic(
-      const AIEAssignBufferAddressesPassBasic &other)
-      : mlir::OperationPass<DeviceOp>(other) {}
 
   llvm::StringRef getArgument() const override {
-    return "aie-assign-buffer-addresses-basic";
+    return "amdaie-assign-buffer-addresses-basic";
   }
 
   llvm::StringRef getName() const override {
-    return "AIEAssignBufferAddressesBasic";
+    return "AMDAIEAssignBufferAddressesBasic";
   }
 
   std::unique_ptr<mlir::Pass> clonePass() const override {
-    return std::make_unique<AIEAssignBufferAddressesPassBasic>(
-        *static_cast<const AIEAssignBufferAddressesPassBasic *>(this));
-  }
-
-  void getDependentDialects(DialectRegistry &registry) const override {
-    registry.insert<func::FuncDialect>();
-    registry.insert<AIEDialect>();
+    return std::make_unique<AMDAIEAssignBufferAddressesPassBasic>(
+        *static_cast<const AMDAIEAssignBufferAddressesPassBasic *>(this));
   }
 
   void runOnOperation() override {
@@ -85,13 +76,13 @@ struct AIEAssignBufferAddressesPassBasic : mlir::OperationPass<DeviceOp> {
 };
 
 std::unique_ptr<OperationPass<DeviceOp>>
-createAIEAssignBufferAddressesBasicPass() {
-  return std::make_unique<AIEAssignBufferAddressesPassBasic>();
+createAMDAIEAssignBufferAddressesBasicPass() {
+  return std::make_unique<AMDAIEAssignBufferAddressesPassBasic>();
 }
 
-void registerAIEAssignBufferAddressesBasic() {
+void registerAMDAIEAssignBufferAddressesBasic() {
   mlir::registerPass([]() -> std::unique_ptr<mlir::Pass> {
-    return createAIEAssignBufferAddressesBasicPass();
+    return createAMDAIEAssignBufferAddressesBasicPass();
   });
 }
 }  // namespace mlir::iree_compiler::AMDAIE

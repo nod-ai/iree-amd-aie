@@ -1,4 +1,4 @@
-// RUN: iree-opt --aie-standard-lowering %s | FileCheck %s
+// RUN: iree-opt --amdaie-standard-lowering %s | FileCheck %s
 
 // CHECK-LABEL:   func.func @core_3_3() {
 // CHECK:           %[[C56:.*]] = arith.constant 56 : index

@@ -180,12 +180,13 @@ class AIETargetDirectBackend final : public IREE::HAL::TargetBackend {
       OpPassManager &variantPassManager) override {
     OpPassManager &modulePassManager = variantPassManager.nest<ModuleOp>();
     auto &devicePassMan = modulePassManager.nest<xilinx::AIE::DeviceOp>();
-    devicePassMan.addPass(createAIEObjectFifoStatefulTransformPass());
-    devicePassMan.addPass(createAIEAssignBufferAddressesBasicPass());
-    devicePassMan.addPass(createAIEAssignLockIDsPass());
-    devicePassMan.addPass(createAIEAssignBufferDescriptorIDsPass());
-    devicePassMan.addPass(createAIEPathfinderPass());
-    devicePassMan.addPass(createAIELocalizeLocksPass());
+    devicePassMan.addPass(createAMDAIEObjectFifoStatefulTransformPass());
+    devicePassMan.addPass(createAMDAIEAssignBufferAddressesBasicPass());
+    devicePassMan.addPass(createAMDAIEAssignLockIDsPass());
+    devicePassMan.addPass(createAMDAIEAssignBufferDescriptorIDsPass());
+    devicePassMan.addPass(createAMDAIEPathfinderPass());
+    devicePassMan.addPass(createAMDAIELocalizeLocksPass());
+    devicePassMan.addPass(createAMDAIENormalizeAddressSpacesPass());
   }
 
   void buildLinkingPassPipeline(OpPassManager &passManager) override {

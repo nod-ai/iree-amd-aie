@@ -20,20 +20,14 @@
 #include "mlir/Tools/mlir-translate/MlirTranslateMain.h"
 #include "mlir/Transforms/DialectConversion.h"
 
+#define DEBUG_TYPE "amdaie-standard-lowering"
+
 using namespace mlir;
 using namespace mlir::vector;
 using namespace xilinx;
 using namespace xilinx::AIE;
 
-#define GEN_PASS_DECL_AIECORETOSTANDARD
-#include "aie/Dialect/AIE/Transforms/AIEPasses.h.inc"
-#undef GEN_PASS_DECL_AIECORETOSTANDARD
-
-#define GEN_PASS_DEF_AIECORETOSTANDARD
-#include "aie/Dialect/AIE/Transforms/AIEPasses.h.inc"
-#undef GEN_PASS_DEF_AIECORETOSTANDARD
-
-struct AIEUseLockToStdLowering : OpConversionPattern<UseLockOp> {
+struct AMDAIEUseLockToStdLowering : OpConversionPattern<UseLockOp> {
   using OpConversionPattern::OpConversionPattern;
   LogicalResult matchAndRewrite(
       UseLockOp useLock, OpAdaptor adaptor,
@@ -72,15 +66,15 @@ struct AIEUseLockToStdLowering : OpConversionPattern<UseLockOp> {
   }
 };
 
-struct AIEBufferToStandard : OpConversionPattern<BufferOp> {
+struct AMDAIEBufferToStandard : OpConversionPattern<BufferOp> {
   using OpConversionPattern::OpConversionPattern;
   ModuleOp &module;
   // TODO(max): these should be optionals instead of checking against -1
   // but the pass itself needs to be updated.
   int tileCol = 0;
   int tileRow = 0;
-  AIEBufferToStandard(MLIRContext *context, ModuleOp &m, int tileCol = -1,
-                      int tileRow = -1)
+  AMDAIEBufferToStandard(MLIRContext *context, ModuleOp &m, int tileCol = -1,
+                         int tileRow = -1)
       : OpConversionPattern(context),
         module(m),
         tileCol(tileCol),
@@ -118,7 +112,8 @@ struct AIEBufferToStandard : OpConversionPattern<BufferOp> {
     return success();
   }
 };
-struct AIECoreToStandardFunc : OpConversionPattern<CoreOp> {
+
+struct AMDAIECoreToStandardFunc : OpConversionPattern<CoreOp> {
   using OpConversionPattern::OpConversionPattern;
   IRMapping &mapper;
   // TODO(max): these should be optionals instead of checking against -1
@@ -126,8 +121,8 @@ struct AIECoreToStandardFunc : OpConversionPattern<CoreOp> {
   int tileCol = 0;
   int tileRow = 0;
 
-  AIECoreToStandardFunc(MLIRContext *context, IRMapping &mapper,
-                        int tileCol = 1, int tileRow = 1)
+  AMDAIECoreToStandardFunc(MLIRContext *context, IRMapping &mapper,
+                           int tileCol = 1, int tileRow = 1)
       : OpConversionPattern(context),
         mapper(mapper),
         tileCol(tileCol),
@@ -181,8 +176,41 @@ void outlineOps(DeviceOp device) {
 }
 
 namespace mlir::iree_compiler::AMDAIE {
-struct AIECoreToStandardPass
-    : ::impl::AIECoreToStandardBase<AIECoreToStandardPass> {
+struct AMDAIECoreToStandardPass : mlir::OperationPass<ModuleOp> {
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(AMDAIECoreToStandardPass)
+
+  AMDAIECoreToStandardPass() : mlir::OperationPass<ModuleOp>(resolveTypeID()) {}
+  AMDAIECoreToStandardPass(const AMDAIECoreToStandardPass &other)
+      : mlir::OperationPass<mlir::ModuleOp>(other) {}
+
+  llvm::StringRef getArgument() const override {
+    return "amdaie-standard-lowering";
+  }
+
+  llvm::StringRef getName() const override {
+    return "AMDAIECoreToStandardPass";
+  }
+
+  std::unique_ptr<mlir::Pass> clonePass() const override {
+    return std::make_unique<AMDAIECoreToStandardPass>(
+        *static_cast<const AMDAIECoreToStandardPass *>(this));
+  }
+
+  void getDependentDialects(mlir::DialectRegistry &registry) const override {
+    registry.insert<mlir::func::FuncDialect>();
+    registry.insert<mlir::memref::MemRefDialect>();
+    registry.insert<xilinx::AIE::AIEDialect>();
+  }
+
+  mlir::Pass::Option<unsigned> tileCol{
+      *this, "tilecol",
+      llvm::cl::desc("X coordinate of tile to generate code for"),
+      llvm::cl::init(-1)};
+  mlir::Pass::Option<unsigned> tileRow{
+      *this, "tilerow",
+      llvm::cl::desc("Y coordinate of tile to generate code for"),
+      llvm::cl::init(-1)};
+
   void runOnOperation() override {
     ModuleOp m = getOperation();
     OpBuilder builder = OpBuilder::atBlockEnd(m.getBody());
@@ -220,14 +248,14 @@ struct AIECoreToStandardPass
     buildDecl("llvm.aie2.acquire");
     buildDecl("llvm.aie2.release");
 
-    patterns.add<AIEUseLockToStdLowering>(m.getContext());
-    patterns.add<AIEBufferToStandard>(m.getContext(), m, tileCol, tileRow);
+    patterns.add<AMDAIEUseLockToStdLowering>(m.getContext());
+    patterns.add<AMDAIEBufferToStandard>(m.getContext(), m, tileCol, tileRow);
     if (failed(applyPartialConversion(m, target, std::move(patterns))))
       return signalPassFailure();
 
     RewritePatternSet outlinePatterns(&getContext());
-    outlinePatterns.add<AIECoreToStandardFunc>(m.getContext(), mapper, tileCol,
-                                               tileRow);
+    outlinePatterns.add<AMDAIECoreToStandardFunc>(m.getContext(), mapper,
+                                                  tileCol, tileRow);
     if (failed(applyPartialConversion(m, target, std::move(outlinePatterns))))
       return signalPassFailure();
 
@@ -243,13 +271,13 @@ struct AIECoreToStandardPass
   }
 };
 
-std::unique_ptr<OperationPass<ModuleOp>> createAIECoreToStandardPass() {
-  return std::make_unique<AIECoreToStandardPass>();
+std::unique_ptr<OperationPass<ModuleOp>> createAMDAIECoreToStandardPass() {
+  return std::make_unique<AMDAIECoreToStandardPass>();
 }
 
-void registerAIECoreToStandard() {
+void registerAMDAIECoreToStandard() {
   mlir::registerPass([]() -> std::unique_ptr<mlir::Pass> {
-    return createAIECoreToStandardPass();
+    return createAMDAIECoreToStandardPass();
   });
 }
 }  // namespace mlir::iree_compiler::AMDAIE
