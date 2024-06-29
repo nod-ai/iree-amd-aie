@@ -8,6 +8,7 @@ iree_lit_test_suite(
   NAME
     lit
   SRCS
+    "conv_pipeline_e2e.mlir"
     "matmul_peeled_objectfifo.mlir"
     "pack_peel_pipeline_matmul.mlir"
     "pack_peel_pipeline_matmul_elementwise.mlir"
