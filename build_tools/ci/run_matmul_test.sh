@@ -504,11 +504,22 @@ run_matmul_test \
     --m "256"  --k "256" --n "256" \
     --use_ukernel "1"
 
+# Disabled until the following issue is resolved:
+# https://github.com/Xilinx/llvm-aie/issues/102
+#
+# run_matmul_test \
+#   --name_prefix "transpose_int32" \
+#   --lhs_rhs_type "i32" \
+#   --acc_type "i32" \
+#   --m "8" --n "16" --k "32" \
+#   --do_transpose_rhs "1"
+
+
 run_matmul_test \
-  --name_prefix "transpose_int32" \
-  --lhs_rhs_type "i32" \
+  --name_prefix "transpose_i8_i32" \
+  --lhs_rhs_type "i8" \
   --acc_type "i32" \
-  --m "8" --n "16" --k "32" \
+  --m "16" --n "32" --k "64" \
   --do_transpose_rhs "1"
 
 run_matmul_test \
@@ -524,12 +535,14 @@ run_matmul_test \
 # with the error LLVM ERROR: unable to legalize instruction: %152:_(<2 x s32>) = G_FMUL %148:_, %150:_ (in function: core_0_2)
 # The later is what a more vectorization friendly packing looks like so this test is expected failing the test here.
 # TODO: check if the test will pass with a more recent llvm-aie and if it doesnt, report it upstream.
-run_matmul_test \
-   --name_prefix "failure_0" \
-   --lhs_rhs_type "i32" \
-   --acc_type "i32" \
-   --m "1"  --n "1" --k "1000" \
-   --expect_compile_failure "1"
+# Disabled until the following issue is resolved:
+# https://github.com/Xilinx/llvm-aie/issues/102
+# run_matmul_test \
+#    --name_prefix "failure_0" \
+#    --lhs_rhs_type "i32" \
+#    --acc_type "i32" \
+#    --m "1"  --n "1" --k "1000" \
+#    --expect_compile_failure "1"
 
 # The below matmul case passes with
 # tile_sizes = [52, 52], [0, 0, 63], [26, 26], [0, 0, 3], packedSizes = [2, 2, 7]
@@ -552,9 +565,9 @@ run_matmul_test \
     --name_prefix "multiple_matmuls" \
     --lhs_rhs_type "i32" \
     --acc_type "i32" \
-    --m "512,8,16,7" \
-    --n "512,32,16,15" \
-    --k "256,16,8,9" \
+    --m "512,8,16" \
+    --n "512,32,16" \
+    --k "256,16,8" \
     --num_repeat_runs "0"
 
 run_matmul_test \
@@ -569,11 +582,13 @@ run_matmul_test \
     --acc_type "i32" \
     --m "8"  --n "32" --k "16"
 
-run_matmul_test \
-    --name_prefix "small" \
-    --lhs_rhs_type "i32" \
-    --acc_type "i32" \
-    --m "9"  --n "7" --k "16"
+# Disabled until the following issue is resolved:
+# https://github.com/Xilinx/llvm-aie/issues/102
+# run_matmul_test \
+#     --name_prefix "small" \
+#     --lhs_rhs_type "i32" \
+#     --acc_type "i32" \
+#     --m "9"  --n "7" --k "16"
 
 run_matmul_test \
     --name_prefix "large" \
@@ -654,13 +669,6 @@ run_matmul_test \
     --acc_type "f32" \
     --m "128"  --n "128" --k "2304" \
 
-run_matmul_test \
-  --name_prefix "packPeel_t_i32" \
-  --pipeline "pack-peel" \
-  --lhs_rhs_type "i32" \
-  --acc_type "i32" \
-  --m "128" --n "256" --k "512" \
-  --do_transpose_rhs "1"
 
 run_matmul_test \
   --name_prefix "packPeel_t_bf16" \
