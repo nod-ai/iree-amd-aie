@@ -17,3 +17,11 @@
 # Runtime
 /runtime/ @nirvedhmeshram
 
+# AIE Passes
+/compiler/plugins/target/AMD-AIE/aie @makslevental
+
+# Target emission
+/compiler/plugins/target/AMD-AIE/iree-amd-aie/Target/AMDAIETarget* @makslevental
+/compiler/plugins/target/AMD-AIE/iree-amd-aie/Target/AIETargetDirect* @makslevental
+/compiler/plugins/target/AMD-AIE/iree-amd-aie/Target/XCLBinGen* @makslevental @nirvedhmeshram @newling
+
