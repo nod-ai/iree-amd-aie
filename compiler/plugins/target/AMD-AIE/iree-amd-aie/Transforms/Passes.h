@@ -28,6 +28,8 @@ void buildAMDAIETransformPassPipeline(OpPassManager &pm);
 
 void buildAMDAIELowerObjectFIFO(OpPassManager &variantPassManager);
 
+void addLowerToLLVMPasses(OpPassManager &pm);
+
 /// Populates passes needed to lower the IR via a Pack-Peel based approach.
 void addPackPeelBasedPassPipeline(OpPassManager &passManager,
                                   TilingConfig &tilingConfig);
