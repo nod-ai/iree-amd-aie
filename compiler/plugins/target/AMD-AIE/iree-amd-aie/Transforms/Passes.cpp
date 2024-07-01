@@ -662,6 +662,11 @@ void addMLIRAIRLoweringPasses(OpPassManager &passManager,
   passManager.addPass(xilinx::air::createAIRLoweringPass());
   {
     xilinx::air::AffineLoopOptPassOptions options;
+    // tile_sizes contains a list of N tiling factors for the N innermost loop
+    // nests lowered from the outer scf.forall. The N innermost loops were tiled
+    // with given factors, and subsequently unrolled in
+    // AIRUnrollOuterPerfectlyNestedLoopsPass, to enforce SHIM DMA BD count
+    // within the hardware limit.
     std::vector<unsigned> tile_sizes;
     if (passPipeline == AIEPassPipeline::PackPeelPipeline) {
       tile_sizes = {2, 2};
@@ -674,6 +679,9 @@ void addMLIRAIRLoweringPasses(OpPassManager &passManager,
         xilinx::air::createAffineLoopOptPass(options));
   }
   {
+    // AIRUnrollOuterPerfectlyNestedLoopsPass unrolls the remaining outer loop
+    // nests that were left untiled by the previous AffineLoopOptPass,
+    // generating NPU sequence representing the SHIM DMA BDs.
     xilinx::air::AIRUnrollOuterPerfectlyNestedLoopsPassOptions options;
     if (passPipeline == AIEPassPipeline::ConvDecomposePipeline)
       options.clDepth = 4;
