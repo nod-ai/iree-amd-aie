@@ -136,11 +136,9 @@ int runTool(StringRef program, ArrayRef<std::string> args, bool verbose,
   if (verbose) {
     llvm::outs() << "Run: ";
     if (env)
-      for (auto &s : *env)
-        llvm::outs() << " " << s;
+      for (auto &s : *env) llvm::outs() << " " << s;
     llvm::outs() << " " << program;
-    for (auto &s : args)
-      llvm::outs() << " " << s;
+    for (auto &s : args) llvm::outs() << " " << s;
     llvm::outs() << "\n";
   }
   std::string errMsg;
@@ -151,8 +149,8 @@ int runTool(StringRef program, ArrayRef<std::string> args, bool verbose,
 
   SmallVector<char> temporaryPath;
   {
-    constexpr const char *const prefix{"tmpRunTool"};
-    constexpr const char *const suffix{"Logging"};
+    std::string prefix{"tmpRunTool"};
+    std::string suffix{"Logging"};
     if (auto errorCode =
             llvm::sys::fs::createTemporaryFile(prefix, suffix, temporaryPath)) {
       llvm::errs() << "Failed to create temporary file: " << errorCode.message()
@@ -176,9 +174,14 @@ int runTool(StringRef program, ArrayRef<std::string> args, bool verbose,
     llvm::outs() << exitStatusStr << " in " << totalTime
                  << " [s]. Exit code=" << result << "\n";
     std::ifstream t(temporaryPathRef.str());
-    std::stringstream buffer;
-    buffer << t.rdbuf();
-    llvm::outs() << buffer.str();
+    if (t.is_open() && t.good()) {
+      std::stringstream buffer;
+      buffer << t.rdbuf();
+      llvm::outs() << buffer.str();
+    } else {
+      llvm::outs() << "Failed to open temporary file " << temporaryPathRef.str()
+                   << ", not printing output\n";
+    }
   }
   return result;
 }
