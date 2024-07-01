@@ -592,21 +592,17 @@ void addMLIRAIRLoweringPasses(OpPassManager &passManager,
     passManager.addNestedPass<func::FuncOp>(
         xilinx::air::createAIRSplitL2MemrefForBufferConstraintPass());
   passManager.addPass(xilinx::air::createAIRIsolateAsyncDmaLoopNests());
-  // TODO (Erwei): Check for this pass's stability, to ensure backward
-  // compatibility with pad-pack pipeline.
-  if (passPipeline == AIEPassPipeline::PackPeelPipeline) {
-    passManager.addPass(createCanonicalizerPass());
-    passManager.addPass(createCSEPass());
-    {
-      xilinx::air::AIRFuseChannelsOptions options;
-      std::vector<std::string> mode;
-      if (passPipeline == AIEPassPipeline::PackPeelPipeline &&
-          clMatmulElementwiseFusion) {
-        mode.push_back("L1");
-      }
-      options.clAggressiveMode = ArrayRef(mode);
-      passManager.addPass(xilinx::air::createAIRFuseChannels(options));
+  passManager.addPass(createCanonicalizerPass());
+  passManager.addPass(createCSEPass());
+  {
+    xilinx::air::AIRFuseChannelsOptions options;
+    std::vector<std::string> mode;
+    if (passPipeline == AIEPassPipeline::PackPeelPipeline &&
+        clMatmulElementwiseFusion) {
+      mode.push_back("L1");
     }
+    options.clAggressiveMode = ArrayRef(mode);
+    passManager.addPass(xilinx::air::createAIRFuseChannels(options));
   }
   passManager.addPass(createCanonicalizerPass());
   passManager.addPass(createCSEPass());
