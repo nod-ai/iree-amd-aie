@@ -87,8 +87,6 @@ iree_cc_library(
   DEPS
     ::PassHeaders
     ::PassesIncGen
-    iree::target::amd-aie::IR::AMDAIEDialect
-    MLIRSupport
     iree::compiler::Codegen::Common::TransformDialectInterpreterPass
     iree::compiler::Codegen::Dialect::Codegen::IR::IREECodegenDialect
     iree::compiler::Dialect::HAL::IR
@@ -96,16 +94,22 @@ iree_cc_library(
     iree::compiler::Dialect::LinalgExt::IR
     iree::compiler::Dialect::LinalgExt::Transforms
     iree::compiler::Utils
-    iree::target::amd-aie::aie::AIEPassesFromMLIRAIE
+    iree::target::amd-aie::IR::AMDAIEDialect
+    iree::target::amd-aie::aie::AIEDialectIR
+    iree::target::amd-aie::aie::AIEPasses
+    iree::target::amd-aie::aie::AIEVecConvertToLLVM
+    iree::target::amd-aie::aie::AIEVecDialectIR
+    iree::target::amd-aie::aie::AIEXDialectIR
     iree::target::amd-aie::air::AIRConversionPasses
     iree::target::amd-aie::air::AIRTransformPasses
     IREELinalgTransformDialectPasses
+    MLIRFuncAllExtensions
     MLIRFuncDialect
     MLIRFunctionInterfaces
-    MLIRLinalgDialect
-    MLIRLinalgTransforms
     MLIRLLVMCommonConversion
     MLIRLLVMDialect
+    MLIRLinalgDialect
+    MLIRLinalgTransforms
     MLIRMemRefDialect
     MLIRPDLDialect
     MLIRPDLInterpDialect
@@ -114,8 +118,10 @@ iree_cc_library(
     MLIRSCFToControlFlow
     MLIRSCFTransforms
     MLIRSCFUtils
+    MLIRSupport
     MLIRTensorDialect
     MLIRTensorTransforms
+    MLIRToLLVMIRTranslationRegistration
     MLIRTransforms
     MLIRVectorDialect
     MLIRVectorToLLVM

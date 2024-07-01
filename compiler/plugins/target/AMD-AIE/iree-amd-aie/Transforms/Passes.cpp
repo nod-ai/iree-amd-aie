@@ -6,19 +6,22 @@
 
 #include "iree-amd-aie/Transforms/Passes.h"
 
-#include "aie/Dialect/AIE/Transforms/AIEPasses.h"
-#include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
+#include "aie/Conversion/AIEVecToLLVM/AIEVecToLLVM.h"
 #include "aie/Passes.h"
 #include "air/Conversion/Passes.h"
 #include "air/Transform/Passes.h"
 #include "iree-amd-aie/IR/AMDAIEAttrs.h"
 #include "iree-dialects/Dialect/LinalgTransform/Passes.h"
-#include "iree/compiler/Codegen/Common/PassUtils.h"
 #include "iree/compiler/Codegen/Common/Passes.h"
-#include "iree/compiler/Dialect/LinalgExt/Transforms/Passes.h"
 #include "iree/compiler/Utils/PassUtils.h"
 #include "mlir/Conversion/AffineToStandard/AffineToStandard.h"
+#include "mlir/Conversion/ArithToLLVM/ArithToLLVM.h"
+#include "mlir/Conversion/ControlFlowToLLVM/ControlFlowToLLVM.h"
+#include "mlir/Conversion/FuncToLLVM/ConvertFuncToLLVMPass.h"
+#include "mlir/Conversion/MathToLLVM/MathToLLVM.h"
+#include "mlir/Conversion/MemRefToLLVM/MemRefToLLVM.h"
 #include "mlir/Conversion/SCFToControlFlow/SCFToControlFlow.h"
+#include "mlir/Conversion/VectorToLLVM/ConvertVectorToLLVMPass.h"
 #include "mlir/Dialect/Affine/Passes.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/Passes.h"
@@ -707,19 +710,16 @@ void addMLIRAIRLoweringPasses(OpPassManager &passManager,
 void addMLIRAIELoweringPasses(OpPassManager &passManager) {
   passManager.addPass(createLowerAffinePass());
   OpPassManager &devicePM = passManager.nest<xilinx::AIE::DeviceOp>();
-  devicePM.addPass(xilinx::AIE::createAIEAssignLockIDsPass());
-  devicePM.addPass(xilinx::AIE::createAIEObjectFifoRegisterProcessPass());
-  devicePM.addPass(xilinx::AIE::createAIEObjectFifoStatefulTransformPass());
-  devicePM.addPass(xilinx::AIE::createAIEAssignBufferDescriptorIDsPass());
-  devicePM.addPass(xilinx::AIEX::createAIEBroadcastPacketPass());
-  devicePM.addPass(xilinx::AIE::createAIERoutePacketFlowsPass());
-  devicePM.addPass(xilinx::AIEX::createAIELowerMulticastPass());
-  devicePM.addPass(xilinx::AIE::createAIEAssignBufferAddressesPass());
+  devicePM.addPass(createAMDAIEAssignBufferAddressesBasicPass());
+  devicePM.addPass(createAMDAIEAssignLockIDsPass());
+  devicePM.addPass(createAMDAIEAssignBufferDescriptorIDsPass());
+  devicePM.addPass(createAMDAIEObjectFifoStatefulTransformPass());
+  devicePM.addPass(createAMDAIEPathfinderPass());
   passManager.addPass(createConvertSCFToCFPass());
   passManager.addNestedPass<xilinx::AIE::DeviceOp>(
-      xilinx::AIE::createAIELocalizeLocksPass());
+      createAMDAIELocalizeLocksPass());
   passManager.addNestedPass<xilinx::AIE::DeviceOp>(
-      xilinx::AIE::createAIENormalizeAddressSpacesPass());
+      createAMDAIENormalizeAddressSpacesPass());
 }
 
 // NOTE: this runs on the top-level program module containing all hal.executable
@@ -731,6 +731,28 @@ void buildAMDAIELinkingPassPipeline(OpPassManager &passManager) {
   // Cleanup IR duplication.
   passManager.addNestedPass<IREE::HAL::ExecutableOp>(
       mlir::createCanonicalizerPass());
+}
+
+void addLowerToLLVMPasses(OpPassManager &pm) {
+  pm.addPass(createCanonicalizerPass());
+  pm.addPass(createCSEPass());
+  pm.addPass(xilinx::aievec::createConvertAIEVecToLLVMPass());
+  pm.addPass(createConvertVectorToLLVMPass());
+  pm.addPass(memref::createExpandStridedMetadataPass());
+  pm.addPass(createLowerAffinePass());
+  pm.addPass(createConvertMathToLLVMPass());
+  pm.addPass(createArithToLLVMConversionPass());
+  pm.addPass(createFinalizeMemRefToLLVMConversionPass());
+  pm.addPass(createCanonicalizerPass());
+  pm.addPass(createCSEPass());
+  ConvertFuncToLLVMPassOptions opts;
+  opts.useBarePtrCallConv = true;
+  pm.addPass(createConvertFuncToLLVMPass(opts));
+  pm.addPass(createCanonicalizerPass());
+  pm.addPass(createCSEPass());
+  pm.addPass(createConvertControlFlowToLLVMPass());
+  pm.addPass(createCanonicalizerPass());
+  pm.addPass(createCSEPass());
 }
 
 namespace {

@@ -5,9 +5,8 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
-#include "aie/Dialect/AIE/Transforms/AIEPasses.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
-#include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
+#include "aie/Passes.h"
 #include "air/Dialect/AIR/AIRDialect.h"
 #include "air/Passes.h"
 #include "iree-amd-aie/IR/AMDAIEDialect.h"
@@ -18,20 +17,6 @@
 #include "iree/compiler/PluginAPI/Client.h"
 
 namespace mlir::iree_compiler {
-
-namespace AMDAIE {
-extern void registerAMDAIEAssignBufferAddressesBasic();
-extern void registerAMDAIEAssignBufferDescriptorIDs();
-extern void registerAMDAIEAssignLockIDs();
-extern void registerAMDAIECoreToStandard();
-extern void registerAMDAIELocalizeLocks();
-extern void registerAMDAIENormalizeAddressSpaces();
-extern void registerAMDAIEObjectFifoStatefulTransform();
-extern void registerAMDAIERoutePathfinderFlows();
-extern void registerAMDAIEDmaToNpu();
-extern void registerAMDAIEXToStandardPass();
-}  // namespace AMDAIE
-
 namespace {
 
 struct AMDAIESession
@@ -51,17 +36,6 @@ struct AMDAIESession
     AMDAIE::registerAMDAIEXToStandardPass();
     AMDAIE::registerAIRConversionPasses();
     AMDAIE::registerAIRTransformPasses();
-
-    xilinx::AIE::registerAIEAssignBufferAddresses();
-    xilinx::AIE::registerAIEAssignBufferDescriptorIDs();
-    xilinx::AIE::registerAIEAssignLockIDs();
-    xilinx::AIE::registerAIECoreToStandard();
-    xilinx::AIE::registerAIELocalizeLocks();
-    xilinx::AIE::registerAIENormalizeAddressSpaces();
-    xilinx::AIE::registerAIEObjectFifoStatefulTransform();
-    xilinx::AIE::registerAIERoutePathfinderFlows();
-    xilinx::AIEX::registerAIEDmaToNpu();
-    xilinx::AIEX::registerAIEXToStandardPass();
   }
 
   void onRegisterDialects(DialectRegistry &registry) override {
