@@ -528,16 +528,7 @@ void buildAMDAIETransformPassPipeline(OpPassManager &variantPassManager) {
         [&]() { return createAMDAIELowerExecutableTargetPass(options); });
   }
   modulePassManager.addPass(createLowerUKernelOpsToCallsPass());
-  if (clUsePipeline == AIEPassPipeline::PadPackPipeline) {
-    addMLIRAIRLoweringPasses(modulePassManager,
-                             AIEPassPipeline::PadPackPipeline);
-  } else if (clUsePipeline == AIEPassPipeline::PackPeelPipeline) {
-    addMLIRAIRLoweringPasses(modulePassManager,
-                             AIEPassPipeline::PackPeelPipeline);
-  } else if (clUsePipeline == AIEPassPipeline::ConvDecomposePipeline) {
-    addMLIRAIRLoweringPasses(modulePassManager,
-                             AIEPassPipeline::ConvDecomposePipeline);
-  }
+  addMLIRAIRLoweringPasses(modulePassManager, clUsePipeline);
   variantPassManager.addPass(createReconcileTranslationInfoPass());
   variantPassManager.addPass(createAMDAIELowerWorkgroupCountPass());
 
