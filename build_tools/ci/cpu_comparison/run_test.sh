@@ -326,6 +326,9 @@ function run_test() {
 # Example of running a test directly from an .mlir file with a function.
 run_test --test_file ${THIS_DIR}/test_files/matmul_int32.mlir
 
+# Example of running a test directly from an .mlir file with a function.
+run_test --test_file ${THIS_DIR}/test_files/conv_int32.mlir --pipeline "conv-decompose"
+
 # An example of an arbitrary graph with three matmuls which form three dispatches.
 run_test --test_file ${THIS_DIR}/test_files/three_matmuls.mlir
 
