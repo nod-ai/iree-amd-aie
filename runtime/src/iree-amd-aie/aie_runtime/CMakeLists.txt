@@ -214,98 +214,97 @@ static const XAie_StrmSwPortMap AieMlMemTileStrmSwSlavePortMap[] =
 ")
 
 set(_correct_port_map "
-static const XAie_StrmSwPortMap AieMlMemTileStrmSwSlavePortMap[] =
-{
-	{
-		/* PhyPort 0 */
-		.PortType = DMA,
-		.PortNum = 0,
-	},
-	{
-		/* PhyPort 1 */
-		.PortType = DMA,
-		.PortNum = 1,
-	},
-	{
-		/* PhyPort 2 */
-		.PortType = DMA,
-		.PortNum = 2,
-	},
-	{
-		/* PhyPort 3 */
-		.PortType = DMA,
-		.PortNum = 3,
-	},
-	{
-		/* PhyPort 4 */
-		.PortType = DMA,
-		.PortNum = 4,
-	},
-	{
-		/* PhyPort 5 */
-		.PortType = DMA,
-		.PortNum = 5,
-	},
-	{
-		/* PhyPort 6 */
-		.PortType = CTRL,
-		.PortNum = 0,
-	},
-	{
-		/* PhyPort 7 */
-		.PortType = SOUTH,
-		.PortNum = 0,
-	},
-	{
-		/* PhyPort 8 */
-		.PortType = SOUTH,
-		.PortNum = 1,
-	},
-	{
-		/* PhyPort 9 */
-		.PortType = SOUTH,
-		.PortNum = 2,
-	},
-	{
-		/* PhyPort 10 */
-		.PortType = SOUTH,
-		.PortNum = 3,
-	},
-  {
-      /* PhyPort 11 */
-      .PortType = SOUTH,
-      .PortNum = 4,
-  },
-  {
-      /* PhyPort 12 */
-      .PortType = SOUTH,
-      .PortNum = 5,
-  },
-  {
-      /* PhyPort 13 */
-      .PortType = NORTH,
-      .PortNum = 0,
-  },
-  {
-      /* PhyPort 14 */
-      .PortType = NORTH,
-      .PortNum = 1,
-  },
-  {
-      /* PhyPort 15 */
-      .PortType = NORTH,
-      .PortNum = 2,
-  },
-  {
-      /* PhyPort 16 */
-      .PortType = NORTH,
-      .PortNum = 3,
-  },
-  {
-		/* PhyPort 17 */
-		.PortType = TRACE,
-		.PortNum = 0,
-	},
+static const XAie_StrmSwPortMap AieMlMemTileStrmSwSlavePortMap[] = {
+    {
+        /* PhyPort 0 */
+        .PortType = DMA,
+        .PortNum = 0,
+    },
+    {
+        /* PhyPort 1 */
+        .PortType = DMA,
+        .PortNum = 1,
+    },
+    {
+        /* PhyPort 2 */
+        .PortType = DMA,
+        .PortNum = 2,
+    },
+    {
+        /* PhyPort 3 */
+        .PortType = DMA,
+        .PortNum = 3,
+    },
+    {
+        /* PhyPort 4 */
+        .PortType = DMA,
+        .PortNum = 4,
+    },
+    {
+        /* PhyPort 5 */
+        .PortType = DMA,
+        .PortNum = 5,
+    },
+    {
+        /* PhyPort 6 */
+        .PortType = CTRL,
+        .PortNum = 0,
+    },
+    {
+        /* PhyPort 7 */
+        .PortType = SOUTH,
+        .PortNum = 0,
+    },
+    {
+        /* PhyPort 8 */
+        .PortType = SOUTH,
+        .PortNum = 1,
+    },
+    {
+        /* PhyPort 9 */
+        .PortType = SOUTH,
+        .PortNum = 2,
+    },
+    {
+        /* PhyPort 10 */
+        .PortType = SOUTH,
+        .PortNum = 3,
+    },
+    {
+        /* PhyPort 11 */
+        .PortType = SOUTH,
+        .PortNum = 4,
+    },
+    {
+        /* PhyPort 12 */
+        .PortType = SOUTH,
+        .PortNum = 5,
+    },
+    {
+        /* PhyPort 13 */
+        .PortType = NORTH,
+        .PortNum = 0,
+    },
+    {
+        /* PhyPort 14 */
+        .PortType = NORTH,
+        .PortNum = 1,
+    },
+    {
+        /* PhyPort 15 */
+        .PortType = NORTH,
+        .PortNum = 2,
+    },
+    {
+        /* PhyPort 16 */
+        .PortType = NORTH,
+        .PortNum = 3,
+    },
+    {
+        /* PhyPort 17 */
+        .PortType = TRACE,
+        .PortNum = 0,
+    },
 };
 ")
 
