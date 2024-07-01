@@ -187,7 +187,6 @@ class AIETargetDirectBackend final : public IREE::HAL::TargetBackend {
     devicePassMan.addPass(createAMDAIEPathfinderPass());
     devicePassMan.addPass(createAMDAIELocalizeLocksPass());
     devicePassMan.addPass(createAMDAIENormalizeAddressSpacesPass());
-    devicePassMan.addPass(createAMDAIEDmaToNpuPass());
   }
 
   void buildLinkingPassPipeline(OpPassManager &passManager) override {

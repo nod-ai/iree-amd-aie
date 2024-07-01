@@ -429,7 +429,7 @@ function run_matmul_test() {
   fi
 
   # Renable exit on failure:
-#  set -e
+  set -e
 
 
   echo "**** Generating calls .vmfb file for ${name} ****"

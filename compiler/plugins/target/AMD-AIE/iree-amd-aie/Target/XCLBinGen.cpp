@@ -311,6 +311,29 @@ static LogicalResult generateCoreElfFiles(ModuleOp moduleOp,
   return success();
 }
 
+static LogicalResult generateCDO(MLIRContext *context, ModuleOp moduleOp,
+                                 XCLBinGenConfig &TK) {
+  ModuleOp copy = moduleOp.clone();
+  std::string errorMessage;
+  // This corresponds to `process_host_cgen`, which is listed as host
+  // compilation in aiecc.py... not sure we need this.
+  PassManager passManager(context, ModuleOp::getOperationName());
+  applyConfigToPassManager(TK, passManager);
+
+  passManager.addNestedPass<AIE::DeviceOp>(
+      mlir::iree_compiler::AMDAIE::createAMDAIEPathfinderPass());
+  if (failed(passManager.run(copy)))
+    return moduleOp.emitOpError(
+        "failed to run passes to prepare of XCLBin generation");
+
+  if (failed(mlir::iree_compiler::AMDAIE::AIETranslateToCDODirect(copy,
+                                                                  TK.TempDir)))
+    return moduleOp.emitOpError("failed to emit CDO");
+
+  copy->erase();
+  return success();
+}
+
 static json::Object makeKernelJSON(std::string name, std::string id,
                                    std::string instance) {
   return json::Object{
@@ -788,6 +811,15 @@ LogicalResult xilinx::aie2xclbin(MLIRContext *ctx, ModuleOp moduleOp,
                                  XCLBinGenConfig &TK, StringRef OutputNPU,
                                  StringRef OutputXCLBin,
                                  StringRef InputXCLBin) {
+  PassManager pm(ctx, moduleOp.getOperationName());
+  applyConfigToPassManager(TK, pm);
+
+  // generateNPUInstructions
+  pm.addNestedPass<AIE::DeviceOp>(
+      mlir::iree_compiler::AMDAIE::createAMDAIEDmaToNpuPass());
+  if (failed(pm.run(moduleOp)))
+    return moduleOp.emitOpError(": NPU Instruction pipeline failed");
+
   // TODO(max): should be using UI32 resource or something like that...
   ArrayRef<int32_t> signedNpuInstructionsAttr =
       cast<DenseI32ArrayAttr>(
@@ -806,21 +838,13 @@ LogicalResult xilinx::aie2xclbin(MLIRContext *ctx, ModuleOp moduleOp,
 
   SmallString<64> unifiedObj(TK.TempDir);
   sys::path::append(unifiedObj, "input.o");
-
-  // you need this clone/copy because createAMDAIECoreToStandardPass will
-  // outline aie.device and AIETranslateToCDODirect won't work
-  // *but* you can't run AIETranslateToCDODirect first because it needs
-  // the elf file
-  ModuleOp moduleOpCopy = moduleOp.clone();
-
   if (failed(generateUnifiedObject(ctx, moduleOp, TK, std::string(unifiedObj))))
     return moduleOp.emitOpError("Failed to generate unified object");
 
   if (failed(generateCoreElfFiles(moduleOp, unifiedObj, TK)))
     return moduleOp.emitOpError("Failed to generate core ELF file(s)");
 
-  if (failed(mlir::iree_compiler::AMDAIE::AIETranslateToCDODirect(moduleOpCopy,
-                                                                  TK.TempDir)))
+  if (failed(generateCDO(ctx, moduleOp, TK)))
     return moduleOp.emitOpError("Failed to generate CDO");
 
   if (failed(generateXCLBin(ctx, moduleOp, TK, OutputXCLBin, InputXCLBin)))
