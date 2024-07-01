@@ -10,11 +10,9 @@
 
 #include "XCLBinGen.h"
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
-#include "aie/Dialect/AIE/Transforms/AIEPasses.h"
 #include "aie/Dialect/AIEVec/IR/AIEVecDialect.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "aie/Dialect/XLLVM/XLLVMDialect.h"
-#include "aie/Passes.h"
 #include "aie/Target/LLVMIR/Dialect/XLLVM/XLLVMToLLVMIRTranslation.h"
 #include "air/Dialect/AIR/AIRDialect.h"
 #include "air/Dialect/AIRRt/AIRRtDialect.h"
@@ -367,8 +365,8 @@ LogicalResult AIETargetBackend::serializeExecutable(
     OwningOpRef<ModuleOp> owningModuleOp =
         parseSourceFile<ModuleOp>(inputMlirPath, srcMgr, pcfg);
 
-    if (failed(aie2xclbin(variantOp->getContext(), *owningModuleOp, TK, npuInstPath,
-                          xclbinPath)))
+    if (failed(aie2xclbin(variantOp->getContext(), *owningModuleOp, TK,
+                          npuInstPath, xclbinPath)))
       return failure();
 
     std::ifstream instrFile(static_cast<std::string>(npuInstPath));
