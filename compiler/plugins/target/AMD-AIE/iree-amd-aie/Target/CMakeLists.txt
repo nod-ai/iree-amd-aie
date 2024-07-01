@@ -21,15 +21,9 @@ iree_cc_library(
     "AMDAIETargetLdScript.cpp"
     "XCLBinGen.cpp"
   DEPS
-    iree::target::amd-aie::aie::AIEDialectIR
-    iree::target::amd-aie::aie::AIEXDialectIR
-    iree::target::amd-aie::aie::AIEPasses
-    iree::target::amd-aie::aie::AIEVecDialectIR
-    iree::target::amd-aie::aie::AIEVecConvertToLLVM
-    MLIRToLLVMIRTranslationRegistration
-    MLIRFuncAllExtensions
     ${UUID}
     iree-amd-aie::aie_runtime::iree_aie_runtime_static
+    iree::target::amd-aie::Transforms
 )
 
 iree_cc_library(
@@ -43,13 +37,13 @@ iree_cc_library(
     "AIETargetDirect.cpp"
   DEPS
     ::AIETargets
+    iree-amd-aie::schemas::xrt_executable_def_c_fbs
+    iree::base::internal::flatcc::building
+    iree::base::internal::flatcc::parsing
     iree::compiler::Dialect::HAL::Target
     iree::target::amd-aie::IR::AMDAIEDialect
     iree::target::amd-aie::Transforms
     iree::target::amd-aie::air::AIRDialectIR
-    iree::base::internal::flatcc::building
-    iree::base::internal::flatcc::parsing
-    iree-amd-aie::schemas::xrt_executable_def_c_fbs
     MLIRLLVMDialect
   PUBLIC
 )

@@ -7,6 +7,7 @@
 #include "iree-amd-aie/Transforms/Passes.h"
 #include "llvm/ADT/STLExtras.h"
 #include "mlir/Dialect/Linalg/Transforms/Transforms.h"
+#include "iree-amd-aie/Transforms/AMDAIEUtils.h"
 
 namespace mlir::iree_compiler::AMDAIE {
 
@@ -73,6 +74,22 @@ class AMDAIEInsertLoopsForVectorizationPass
 
     // Matmul-like ops have 3 operands.
     if (genericOp->getNumOperands() != 3) return failure();
+
+    // Check that the operands and result are of vectorizable types, if they are
+    // not, then do not tile.
+    auto hasAieVectorizableTypes = [genericOp]() -> bool {
+      auto elType = [](Value v) {
+        return cast<ShapedType>(v.getType()).getElementType();
+      };
+      auto lhsType = elType(genericOp->getOperand(0));
+      auto rhsType = elType(genericOp->getOperand(1));
+      auto resType = elType(genericOp->getResult(0));
+      FailureOr<std::array<uint32_t, 3>> maybeSize =
+          ::mlir::iree_compiler::AMDAIE::getAIEMatmulInstructionSize(
+              lhsType, rhsType, resType);
+      return !failed(maybeSize);
+    }();
+    if (!hasAieVectorizableTypes) return failure();
 
     // Don't transform to scf.for loops unless there is at least one
     // non-singleton loop to construct. This isn't strictly necessary, but

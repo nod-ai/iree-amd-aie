@@ -11,30 +11,19 @@
 #include <unordered_map>
 
 #include "AMDAIETargets.h"
-#include "aie/Conversion/AIEVecToLLVM/AIEVecToLLVM.h"
 #include "aie/Dialect/AIEVec/Pipelines/Passes.h"
-#include "aie/Passes.h"
 #include "aie/Targets/AIETargets.h"
+#include "iree-amd-aie/Transforms/Passes.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/JSON.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/Path.h"
 #include "llvm/Support/Program.h"
 #include "llvm/Support/ToolOutputFile.h"
-#include "mlir/Conversion/AffineToStandard/AffineToStandard.h"
-#include "mlir/Conversion/ArithToLLVM/ArithToLLVM.h"
-#include "mlir/Conversion/ControlFlowToLLVM/ControlFlowToLLVM.h"
-#include "mlir/Conversion/FuncToLLVM/ConvertFuncToLLVMPass.h"
-#include "mlir/Conversion/MathToLLVM/MathToLLVM.h"
-#include "mlir/Conversion/MemRefToLLVM/MemRefToLLVM.h"
-#include "mlir/Conversion/SCFToControlFlow/SCFToControlFlow.h"
-#include "mlir/Conversion/VectorToLLVM/ConvertVectorToLLVMPass.h"
-#include "mlir/Dialect/MemRef/Transforms/Passes.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Support/FileUtilities.h"
 #include "mlir/Target/LLVMIR/Export.h"
-#include "mlir/Transforms/Passes.h"
 
 #ifdef _WIN32
 #include "windows.h"
@@ -139,29 +128,6 @@ static std::string getUUIDString() {
   val = std::string(uuid);
 #endif
   return val;
-}
-
-static void addLowerToLLVMPasses(OpPassManager &pm) {
-  pm.addPass(createCanonicalizerPass());
-  pm.addPass(createCSEPass());
-  pm.addPass(xilinx::aievec::createConvertAIEVecToLLVMPass());
-
-  pm.addPass(createConvertVectorToLLVMPass());
-  pm.addPass(memref::createExpandStridedMetadataPass());
-  pm.addPass(createLowerAffinePass());
-  pm.addPass(createConvertMathToLLVMPass());
-  pm.addPass(createArithToLLVMConversionPass());
-  pm.addPass(createFinalizeMemRefToLLVMConversionPass());
-  pm.addPass(createCanonicalizerPass());
-  pm.addPass(createCSEPass());
-  ConvertFuncToLLVMPassOptions opts;
-  opts.useBarePtrCallConv = true;
-  pm.addPass(createConvertFuncToLLVMPass(opts));
-  pm.addPass(createCanonicalizerPass());
-  pm.addPass(createCSEPass());
-  pm.addPass(createConvertControlFlowToLLVMPass());
-  pm.addPass(createCanonicalizerPass());
-  pm.addPass(createCSEPass());
 }
 
 int runTool(StringRef Program, ArrayRef<std::string> Args, bool Verbose,
@@ -706,7 +672,7 @@ static LogicalResult generateUnifiedObject(MLIRContext *context,
     xilinx::aievec::buildConvertVectorToAIEVec(pm, vectorToAIEVecOptions);
   }
 
-  addLowerToLLVMPasses(pm);
+  mlir::iree_compiler::AMDAIE::addLowerToLLVMPasses(pm);
   pm.addPass(std::make_unique<RemoveAlignment2FromLLVMLoadPass>());
 
   if (TK.Verbose) {

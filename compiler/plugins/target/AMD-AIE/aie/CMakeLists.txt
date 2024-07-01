@@ -21,23 +21,6 @@ iree_cc_library(
 # AIE Dialect
 ###############################################################################
 
-iree_cc_library(
-  NAME
-    AIEDialectIR
-  SRCS
-    ${IREE_MLIR_AIE_SOURCE_DIR}/lib/Dialect/AIE/IR/AIEDialect.cpp
-    ${IREE_MLIR_AIE_SOURCE_DIR}/lib/Dialect/AIE/IR/AIETargetModel.cpp
-  DEPS
-    ::defs
-    ::AIEAttrsGen
-    ::AIEDialectGen
-    ::AIEInterfacesGen
-    ::AIEOpsGen
-    ::AIETypesGen
-    MLIRIR
-    MLIREmitCDialect
-)
-
 iree_tablegen_library(
   NAME
     AIEAttrsGen
@@ -62,6 +45,66 @@ iree_tablegen_library(
 
 iree_tablegen_library(
   NAME
+    AIEInterfacesGen
+  TD_FILE
+    "${IREE_MLIR_AIE_SOURCE_DIR}/include/aie/Dialect/AIE/IR/AIEInterfaces.td"
+  OUTS
+    -gen-op-interface-decls Dialect/AIE/IR/AIEInterfaces.h.inc
+    -gen-op-interface-defs Dialect/AIE/IR/AIEInterfaces.cpp.inc
+)
+
+iree_tablegen_library(
+  NAME
+    AIEOpsGen
+  TD_FILE
+    "${IREE_MLIR_AIE_SOURCE_DIR}/include/aie/Dialect/AIE/IR/AIEOps.td"
+  OUTS
+    -gen-op-decls Dialect/AIE/IR/AIEOps.h.inc
+    -gen-op-defs Dialect/AIE/IR/AIEOps.cpp.inc
+)
+
+iree_tablegen_library(
+  NAME
+    AIETypesGen
+  TD_FILE
+    "${IREE_MLIR_AIE_SOURCE_DIR}/include/aie/Dialect/AIE/IR/AIETypes.td"
+  OUTS
+    -gen-typedef-decls -typedefs-dialect=AIE Dialect/AIE/IR/AIETypes.h.inc
+    -gen-typedef-defs -typedefs-dialect=AIE Dialect/AIE/IR/AIETypes.cpp.inc
+)
+
+iree_tablegen_library(
+  NAME
+    AIENormalizeAddressSpacesGen
+  TD_FILE
+    "${IREE_MLIR_AIE_SOURCE_DIR}/include/aie/Dialect/AIE/Transforms/AIENormalizeAddressSpaces.td"
+  OUTS
+    -gen-rewriters Dialect/AIE/Transforms/AIENormalizeAddressSpaces.inc
+)
+
+iree_cc_library(
+  NAME
+    AIEDialectIR
+  SRCS
+    ${IREE_MLIR_AIE_SOURCE_DIR}/lib/Dialect/AIE/IR/AIEDialect.cpp
+    ${IREE_MLIR_AIE_SOURCE_DIR}/lib/Dialect/AIE/IR/AIETargetModel.cpp
+  DEPS
+    ::defs
+    ::AIEAttrsGen
+    ::AIEDialectGen
+    ::AIEInterfacesGen
+    ::AIEOpsGen
+    ::AIETypesGen
+    MLIRIR
+    MLIREmitCDialect
+)
+
+###############################################################################
+# AIEX Dialect
+###############################################################################
+
+iree_tablegen_library(
+  NAME
     AIEXDialectGen
   TD_FILE
     "${IREE_MLIR_AIE_SOURCE_DIR}/include/aie/Dialect/AIEX/IR/AIEX.td"
@@ -69,6 +112,33 @@ iree_tablegen_library(
     -gen-dialect-decls -dialect=aiex Dialect/AIEX/IR/AIEXDialect.h.inc
     -gen-dialect-defs -dialect=aiex Dialect/AIEX/IR/AIEXDialect.cpp.inc
 )
+
+iree_tablegen_library(
+  NAME
+    AIEXOpsGen
+  TD_FILE
+    "${IREE_MLIR_AIE_SOURCE_DIR}/include/aie/Dialect/AIEX/IR/AIEX.td"
+  OUTS
+    -gen-op-decls Dialect/AIEX/IR/AIEX.h.inc
+    -gen-op-defs Dialect/AIEX/IR/AIEX.cpp.inc
+)
+
+iree_cc_library(
+  NAME
+    AIEXDialectIR
+  SRCS
+    ${IREE_MLIR_AIE_SOURCE_DIR}/lib/Dialect/AIEX/IR/AIEXDialect.cpp
+  DEPS
+    ::defs
+    ::AIEDialectIR
+    ::AIEXOpsGen
+    ::AIEXDialectGen
+    MLIRIR
+)
+
+###############################################################################
+# AIEVec Dialect
+###############################################################################
 
 iree_tablegen_library(
   NAME
@@ -155,76 +225,6 @@ iree_tablegen_library(
     -gen-llvmir-conversions Dialect/XLLVM/IR/XLLVMConversions.inc
 )
 
-iree_tablegen_library(
-  NAME
-    AIEInterfacesGen
-  TD_FILE
-    "${IREE_MLIR_AIE_SOURCE_DIR}/include/aie/Dialect/AIE/IR/AIEInterfaces.td"
-  OUTS
-    -gen-op-interface-decls Dialect/AIE/IR/AIEInterfaces.h.inc
-    -gen-op-interface-defs Dialect/AIE/IR/AIEInterfaces.cpp.inc
-)
-
-iree_tablegen_library(
-  NAME
-    AIEOpsGen
-  TD_FILE
-    "${IREE_MLIR_AIE_SOURCE_DIR}/include/aie/Dialect/AIE/IR/AIEOps.td"
-  OUTS
-    -gen-op-decls Dialect/AIE/IR/AIEOps.h.inc
-    -gen-op-defs Dialect/AIE/IR/AIEOps.cpp.inc
-)
-
-iree_tablegen_library(
-  NAME
-    AIETypesGen
-  TD_FILE
-    "${IREE_MLIR_AIE_SOURCE_DIR}/include/aie/Dialect/AIE/IR/AIETypes.td"
-  OUTS
-    -gen-typedef-decls -typedefs-dialect=AIE Dialect/AIE/IR/AIETypes.h.inc
-    -gen-typedef-defs -typedefs-dialect=AIE Dialect/AIE/IR/AIETypes.cpp.inc
-)
-
-iree_tablegen_library(
-  NAME
-    AIENormalizeAddressSpacesGen
-  TD_FILE
-    "${IREE_MLIR_AIE_SOURCE_DIR}/include/aie/Dialect/AIE/Transforms/AIENormalizeAddressSpaces.td"
-  OUTS
-    -gen-rewriters Dialect/AIE/Transforms/AIENormalizeAddressSpaces.inc
-)
-
-###############################################################################
-# AIEX Dialect
-###############################################################################
-
-iree_cc_library(
-  NAME
-    AIEXDialectIR
-  SRCS
-    ${IREE_MLIR_AIE_SOURCE_DIR}/lib/Dialect/AIEX/IR/AIEXDialect.cpp
-  DEPS
-    ::defs
-    ::AIEDialectIR
-    ::AIEXOpsGen
-    ::AIEXDialectGen
-    MLIRIR
-)
-
-iree_tablegen_library(
-  NAME
-    AIEXOpsGen
-  TD_FILE
-    "${IREE_MLIR_AIE_SOURCE_DIR}/include/aie/Dialect/AIEX/IR/AIEX.td"
-  OUTS
-    -gen-op-decls Dialect/AIEX/IR/AIEX.h.inc
-    -gen-op-defs Dialect/AIEX/IR/AIEX.cpp.inc
-)
-
-###############################################################################
-# AIEVec Dialect
-###############################################################################
-
 iree_cc_library(
   NAME
     AIEVecDialectIR
@@ -268,82 +268,28 @@ iree_cc_library(
 )
 
 ###############################################################################
-# AIE Transform Passes
+# in-tree AIE and AIEX passes
 ###############################################################################
-
-iree_tablegen_library(
-  NAME
-    AIETransformPassesIncGen
-  TD_FILE
-    "${IREE_MLIR_AIE_SOURCE_DIR}/include/aie/Dialect/AIE/Transforms/AIEPasses.td"
-  OUTS
-    -gen-pass-decls Dialect/AIE/Transforms/AIEPasses.h.inc
-)
-
-###############################################################################
-# AIEX Transform Passes
-###############################################################################
-
-iree_tablegen_library(
-  NAME
-    AIEXTransformPassesIncGen
-  TD_FILE
-    "${IREE_MLIR_AIE_SOURCE_DIR}/include/aie/Dialect/AIEX/Transforms/AIEXPasses.td"
-  OUTS
-    -gen-pass-decls Dialect/AIEX/Transforms/AIEXPasses.h.inc
-)
 
 iree_cc_library(
   NAME
     AIEPasses
   SRCS
-  "AMDAIEAssignBufferAddressesBasic.cpp"
-  "AMDAIEAssignBufferDescriptorIDs.cpp"
-  "AMDAIEAssignLockIDs.cpp"
-  "AMDAIECoreToStandard.cpp"
-  "AMDAIECreatePathFindFlows.cpp"
-  "AMDAIEDmaToNpu.cpp"
-  "AMDAIELocalizeLocks.cpp"
-  "AMDAIENormalizeAddressSpaces.cpp"
-  "AMDAIEObjectFifoStatefulTransform.cpp"
-  "AMDAIEXToStandard.cpp"
+    AMDAIEAssignBufferAddressesBasic.cpp
+    AMDAIEAssignBufferDescriptorIDs.cpp
+    AMDAIEAssignLockIDs.cpp
+    AMDAIECoreToStandard.cpp
+    AMDAIECreatePathFindFlows.cpp
+    AMDAIEDmaToNpu.cpp
+    AMDAIELocalizeLocks.cpp
+    AMDAIENormalizeAddressSpaces.cpp
+    AMDAIEObjectFifoStatefulTransform.cpp
+    AMDAIEXToStandard.cpp
   DEPS
     ::defs
     ::AIEDialectIR
     ::AIEXDialectIR
     ::AIENormalizeAddressSpacesGen
-)
-
-iree_cc_library(
-  NAME
-    AIEPassesFromMLIRAIE
-  SRCS
-    # Passes needed by AIR-AIE lowering
-    # AIE dialect
-    "${IREE_MLIR_AIE_SOURCE_DIR}/lib/Dialect/AIE/Transforms/AIEAssignBufferDescriptorIDs.cpp"
-    "${IREE_MLIR_AIE_SOURCE_DIR}/lib/Dialect/AIE/Transforms/AIEAssignBuffers.cpp"
-    "${IREE_MLIR_AIE_SOURCE_DIR}/lib/Dialect/AIE/Transforms/AIEAssignLockIDs.cpp"
-    "${IREE_MLIR_AIE_SOURCE_DIR}/lib/Dialect/AIE/Transforms/AIECanonicalizeDevice.cpp"
-    "${IREE_MLIR_AIE_SOURCE_DIR}/lib/Dialect/AIE/Transforms/AIECoreToStandard.cpp"
-    "${IREE_MLIR_AIE_SOURCE_DIR}/lib/Dialect/AIE/Transforms/AIECreatePacketFlows.cpp"
-    "${IREE_MLIR_AIE_SOURCE_DIR}/lib/Dialect/AIE/Transforms/AIECreatePathFindFlows.cpp"
-    "${IREE_MLIR_AIE_SOURCE_DIR}/lib/Dialect/AIE/Transforms/AIELocalizeLocks.cpp"
-    "${IREE_MLIR_AIE_SOURCE_DIR}/lib/Dialect/AIE/Transforms/AIENormalizeAddressSpaces.cpp"
-    "${IREE_MLIR_AIE_SOURCE_DIR}/lib/Dialect/AIE/Transforms/AIEObjectFifoRegisterProcess.cpp"
-    "${IREE_MLIR_AIE_SOURCE_DIR}/lib/Dialect/AIE/Transforms/AIEObjectFifoStatefulTransform.cpp"
-    "${IREE_MLIR_AIE_SOURCE_DIR}/lib/Dialect/AIE/Transforms/AIEPathFinder.cpp"
-    # AIEX dialect
-    "${IREE_MLIR_AIE_SOURCE_DIR}/lib/Dialect/AIEX/Transforms/AIECreateBroadcastPacket.cpp"
-    "${IREE_MLIR_AIE_SOURCE_DIR}/lib/Dialect/AIEX/Transforms/AIEDmaToNpu.cpp"
-    "${IREE_MLIR_AIE_SOURCE_DIR}/lib/Dialect/AIEX/Transforms/AIELowerMulticast.cpp"
-    "${IREE_MLIR_AIE_SOURCE_DIR}/lib/Dialect/AIEX/Transforms/AIEXToStandard.cpp"
-  DEPS
-    ::defs
-    ::AIEDialectIR
-    ::AIENormalizeAddressSpacesGen
-    ::AIEXDialectIR
-    ::AIEXTransformPassesIncGen
-    ::AIETransformPassesIncGen
 )
 
 add_subdirectory(test)
