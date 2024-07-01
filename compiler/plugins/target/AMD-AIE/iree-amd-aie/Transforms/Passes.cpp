@@ -777,6 +777,7 @@ void addMLIRAIELoweringPasses(OpPassManager &passManager) {
       createAMDAIELocalizeLocksPass());
   passManager.addNestedPass<xilinx::AIE::DeviceOp>(
       createAMDAIENormalizeAddressSpacesPass());
+  passManager.addNestedPass<xilinx::AIE::DeviceOp>(createAMDAIEDmaToNpuPass());
 }
 
 // NOTE: this runs on the top-level program module containing all hal.executable
