@@ -531,7 +531,7 @@ void buildAMDAIETransformPassPipeline(OpPassManager &variantPassManager) {
         [&]() { return createAMDAIELowerExecutableTargetPass(options); });
   }
   modulePassManager.addPass(createLowerUKernelOpsToCallsPass());
-  addMLIRAIRLoweringPasses(modulePassManager, clUsePipeline);
+  addMLIRAIRLoweringPasses(modulePassManager);
   variantPassManager.addPass(createReconcileTranslationInfoPass());
   variantPassManager.addPass(createAMDAIELowerWorkgroupCountPass());
 
@@ -545,14 +545,13 @@ void buildAMDAIETransformPassPipeline(OpPassManager &variantPassManager) {
 // TODO (Erwei): The "packPeel" temporary argument should be removed once
 // pack-peel and pack-pad share the same pass pipeline. See TODOs inlined below
 // for details.
-void addMLIRAIRLoweringPasses(OpPassManager &passManager,
-                              AIEPassPipeline passPipeline) {
+void addMLIRAIRLoweringPasses(OpPassManager &passManager) {
   // Add passes for preparing for lowering to MLIR-AIR
   passManager.addPass(createEraseHALDescriptorTypeFromMemRefPass());
   passManager.addPass(memref::createFoldMemRefAliasOpsPass());
   passManager.addPass(createAMDAIEBridgeToAIRPass());
   // TODO (Erwei): Figure out a way to work with AMDAIEPackToDmaPass.
-  if (passPipeline == AIEPassPipeline::PackPeelPipeline)
+  if (clUsePipeline == AIEPassPipeline::PackPeelPipeline)
     passManager.addPass(createAMDAIEDecomposeLinalgExtPackUnPackToAIRPass());
   else
     passManager.addPass(createAMDAIEPackToDmaPass());
@@ -578,7 +577,7 @@ void addMLIRAIRLoweringPasses(OpPassManager &passManager,
   passManager.addPass(createCSEPass());
 
   passManager.addPass(xilinx::air::createAIRDependencyPass());
-  if (!(passPipeline == AIEPassPipeline::PackPeelPipeline &&
+  if (!(clUsePipeline == AIEPassPipeline::PackPeelPipeline &&
         clMatmulElementwiseFusion)) {
     passManager.addPass(xilinx::air::createAIRDependencyScheduleOptPass());
     passManager.addPass(xilinx::air::createAIRSpecializeDmaBroadcast());
@@ -591,7 +590,7 @@ void addMLIRAIRLoweringPasses(OpPassManager &passManager,
   passManager.addPass(createCSEPass());
   // TODO (Erwei): This pass currently doesn't support pack-peel pipeline. This
   // pass needs to work in order to get multiple AIE columns to work.
-  if (passPipeline != AIEPassPipeline::PackPeelPipeline)
+  if (clUsePipeline != AIEPassPipeline::PackPeelPipeline)
     passManager.addNestedPass<func::FuncOp>(
         xilinx::air::createAIRSplitL2MemrefForBufferConstraintPass());
   passManager.addPass(xilinx::air::createAIRIsolateAsyncDmaLoopNests());
@@ -600,7 +599,7 @@ void addMLIRAIRLoweringPasses(OpPassManager &passManager,
   {
     xilinx::air::AIRFuseChannelsOptions options;
     std::vector<std::string> mode;
-    if (passPipeline == AIEPassPipeline::PackPeelPipeline &&
+    if (clUsePipeline == AIEPassPipeline::PackPeelPipeline &&
         clMatmulElementwiseFusion) {
       mode.push_back("L1");
     }
@@ -671,9 +670,9 @@ void addMLIRAIRLoweringPasses(OpPassManager &passManager,
     // AIRUnrollOuterPerfectlyNestedLoopsPass, to enforce SHIM DMA BD count
     // within the hardware limit.
     std::vector<unsigned> tile_sizes;
-    if (passPipeline == AIEPassPipeline::PackPeelPipeline) {
+    if (clUsePipeline == AIEPassPipeline::PackPeelPipeline) {
       tile_sizes = {2, 2};
-    } else if (passPipeline == AIEPassPipeline::PadPackPipeline) {
+    } else if (clUsePipeline == AIEPassPipeline::PadPackPipeline) {
       tile_sizes = {4, 4};
     } else
       tile_sizes = {};
@@ -686,7 +685,7 @@ void addMLIRAIRLoweringPasses(OpPassManager &passManager,
     // nests that were left untiled by the previous AffineLoopOptPass,
     // generating NPU sequence representing the SHIM DMA BDs.
     xilinx::air::AIRUnrollOuterPerfectlyNestedLoopsPassOptions options;
-    if (passPipeline == AIEPassPipeline::ConvDecomposePipeline)
+    if (clUsePipeline == AIEPassPipeline::ConvDecomposePipeline)
       options.clDepth = 4;
     else
       options.clDepth = 2;
