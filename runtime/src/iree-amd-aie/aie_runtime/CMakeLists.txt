@@ -116,16 +116,239 @@ include(${_aie_rt_source_dir}/fal/cmake/collect.cmake)
 # build/include/xaiengine headers.
 add_subdirectory(${_aie_rt_source_dir}/driver/src iree_aie_runtime)
 
+# https://github.com/Xilinx/aie-rt/issues/4
+set(_incorrect_port_map "
+static const XAie_StrmSwPortMap AieMlMemTileStrmSwSlavePortMap[] =
+{
+	{
+		/* PhyPort 0 */
+		.PortType = DMA,
+		.PortNum = 0,
+	},
+	{
+		/* PhyPort 1 */
+		.PortType = DMA,
+		.PortNum = 1,
+	},
+	{
+		/* PhyPort 2 */
+		.PortType = DMA,
+		.PortNum = 2,
+	},
+	{
+		/* PhyPort 3 */
+		.PortType = DMA,
+		.PortNum = 3,
+	},
+	{
+		/* PhyPort 4 */
+		.PortType = DMA,
+		.PortNum = 4,
+	},
+	{
+		/* PhyPort 5 */
+		.PortType = DMA,
+		.PortNum = 5,
+	},
+	{
+		/* PhyPort 6 */
+		.PortType = CTRL,
+		.PortNum = 0,
+	},
+	{
+		/* PhyPort 7 */
+		.PortType = SOUTH,
+		.PortNum = 0,
+	},
+	{
+		/* PhyPort 8 */
+		.PortType = SOUTH,
+		.PortNum = 1,
+	},
+	{
+		/* PhyPort 9 */
+		.PortType = SOUTH,
+		.PortNum = 2,
+	},
+	{
+		/* PhyPort 10 */
+		.PortType = SOUTH,
+		.PortNum = 3,
+	},
+	{
+		/* PhyPort 11 */
+		.PortType = NORTH,
+		.PortNum = 0,
+	},
+	{
+		/* PhyPort 12 */
+		.PortType = NORTH,
+		.PortNum = 1,
+	},
+	{
+		/* PhyPort 13 */
+		.PortType = NORTH,
+		.PortNum = 2,
+	},
+	{
+		/* PhyPort 14 */
+		.PortType = NORTH,
+		.PortNum = 3,
+	},
+	{
+		/* PhyPort 15 */
+		.PortType = NORTH,
+		.PortNum = 4,
+	},
+	{
+		/* PhyPort 16 */
+		.PortType = NORTH,
+		.PortNum = 5,
+	},
+	{
+		/* PhyPort 17 */
+		.PortType = TRACE,
+		.PortNum = 0,
+	},
+};
+")
+
+set(_correct_port_map "
+static const XAie_StrmSwPortMap AieMlMemTileStrmSwSlavePortMap[] = {
+    {
+        /* PhyPort 0 */
+        .PortType = DMA,
+        .PortNum = 0,
+    },
+    {
+        /* PhyPort 1 */
+        .PortType = DMA,
+        .PortNum = 1,
+    },
+    {
+        /* PhyPort 2 */
+        .PortType = DMA,
+        .PortNum = 2,
+    },
+    {
+        /* PhyPort 3 */
+        .PortType = DMA,
+        .PortNum = 3,
+    },
+    {
+        /* PhyPort 4 */
+        .PortType = DMA,
+        .PortNum = 4,
+    },
+    {
+        /* PhyPort 5 */
+        .PortType = DMA,
+        .PortNum = 5,
+    },
+    {
+        /* PhyPort 6 */
+        .PortType = CTRL,
+        .PortNum = 0,
+    },
+    {
+        /* PhyPort 7 */
+        .PortType = SOUTH,
+        .PortNum = 0,
+    },
+    {
+        /* PhyPort 8 */
+        .PortType = SOUTH,
+        .PortNum = 1,
+    },
+    {
+        /* PhyPort 9 */
+        .PortType = SOUTH,
+        .PortNum = 2,
+    },
+    {
+        /* PhyPort 10 */
+        .PortType = SOUTH,
+        .PortNum = 3,
+    },
+    {
+        /* PhyPort 11 */
+        .PortType = SOUTH,
+        .PortNum = 4,
+    },
+    {
+        /* PhyPort 12 */
+        .PortType = SOUTH,
+        .PortNum = 5,
+    },
+    {
+        /* PhyPort 13 */
+        .PortType = NORTH,
+        .PortNum = 0,
+    },
+    {
+        /* PhyPort 14 */
+        .PortType = NORTH,
+        .PortNum = 1,
+    },
+    {
+        /* PhyPort 15 */
+        .PortType = NORTH,
+        .PortNum = 2,
+    },
+    {
+        /* PhyPort 16 */
+        .PortType = NORTH,
+        .PortNum = 3,
+    },
+    {
+        /* PhyPort 17 */
+        .PortType = TRACE,
+        .PortNum = 0,
+    },
+};
+")
+
+file(READ ${_aie_rt_source_dir}/driver/src/global/xaiemlgbl_reginit.c _file_contents)
+string(REPLACE "${_incorrect_port_map}" "${_correct_port_map}" __file_contents "${_file_contents}")
+file(WRITE ${_aie_rt_source_dir}/driver/src/global/xaiemlgbl_reginit.c "${__file_contents}")
+
+file(READ ${_aie_rt_source_dir}/driver/src/common/xaie_helper.c _file_contents)
+string(REPLACE "(ColType == 0U) || (ColType == 1U)" "0" __file_contents "${_file_contents}")
+file(WRITE ${_aie_rt_source_dir}/driver/src/common/xaie_helper.c "${__file_contents}")
+
+file(READ ${_aie_rt_source_dir}/driver/src/device/xaie_device_aieml.c _file_contents)
+string(REPLACE "(ColType == 0U) || (ColType == 1U)" "0" __file_contents "${_file_contents}")
+file(WRITE ${_aie_rt_source_dir}/driver/src/device/xaie_device_aieml.c "${__file_contents}")
+
 get_target_property(_aie_runtime_compile_options aienginev2 COMPILE_OPTIONS)
 list(REMOVE_ITEM _aie_runtime_compile_options -D__AIEBAREMETAL__)
+
+set(XAIE_DEBUG "" CACHE STRING "")
+if(XAIE_DEBUG STREQUAL "ON")
+  set(XAIE_DEBUG "__AIEDEBUG__")
+endif()
+
 set_target_properties(
   aienginev2
   PROPERTIES COMPILE_OPTIONS
              "${_aie_runtime_compile_options};${bootgen_warning_ignores}")
 target_compile_definitions(aienginev2 PRIVATE ${XAIE_DEBUG} __AIECDO__)
 # For <elf.h>
+target_compile_options(aienginev2 PRIVATE -Wno-gnu-designator)
 target_include_directories(aienginev2 PRIVATE SYSTEM ${_bootgen_source_dir})
 target_link_libraries(aienginev2 PRIVATE cdo_driver)
+
+set(_cdo_externs "\
+#include <stdint.h> \n
+extern void cdo_Write32(uint64_t Addr, uint32_t Data); \
+extern void cdo_MaskWrite32(uint64_t Addr, uint32_t Mask, uint32_t Data); \
+extern void cdo_MaskPoll(uint64_t Addr, uint32_t Mask, uint32_t Expected_Value, uint32_t TimeoutInMS); \
+extern void cdo_BlockWrite32(uint64_t Addr, uint32_t* pData, uint32_t size); \
+extern void cdo_BlockSet32(uint64_t Addr, uint32_t Data, uint32_t size);")
+
+file(READ ${_aie_rt_source_dir}/driver/src/io_backend/ext/xaie_cdo.c _file_contents)
+string(REPLACE "#include \"cdo_rts.h\"" "${_cdo_externs}" __file_contents "${_file_contents}")
+file(WRITE ${_aie_rt_source_dir}/driver/src/io_backend/ext/xaie_cdo.c "${__file_contents}")
 
 iree_install_targets(
   TARGETS aienginev2
@@ -148,10 +371,11 @@ iree_cc_library(
     ${_aie_rt_binary_include_dir}
     # For <elf.h>
     ${_bootgen_source_dir}
+    ${LLVM_INCLUDE_DIRS}
   PUBLIC
 )
 
 target_link_libraries(iree-amd-aie_aie_runtime_iree_aie_runtime_static
-                      PRIVATE aienginev2)
+  PRIVATE aienginev2 LLVMSupport)
 
 add_subdirectory(test)

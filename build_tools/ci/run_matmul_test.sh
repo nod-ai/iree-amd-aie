@@ -509,6 +509,20 @@ run_matmul_test \
     --name_prefix "ukern" \
     --lhs_rhs_type "bf16" \
     --acc_type "f32" \
+    --m "64"  --k "64" --n "64" \
+    --use_ukernel "1"
+
+run_matmul_test \
+    --name_prefix "ukern" \
+    --lhs_rhs_type "bf16" \
+    --acc_type "f32" \
+    --m "128"  --k "128" --n "128" \
+    --use_ukernel "1"
+
+run_matmul_test \
+    --name_prefix "ukern" \
+    --lhs_rhs_type "bf16" \
+    --acc_type "f32" \
     --m "256"  --k "256" --n "256" \
     --use_ukernel "1"
 
