@@ -6,6 +6,7 @@
 
 #include "XCLBinGen.h"
 
+#include <fstream>
 #include <regex>
 #include <sstream>
 #include <unordered_map>
@@ -130,29 +131,58 @@ static std::string getUUIDString() {
   return val;
 }
 
-int runTool(StringRef Program, ArrayRef<std::string> Args, bool Verbose,
-            std::optional<ArrayRef<StringRef>> Env = std::nullopt) {
-  if (Verbose) {
-    llvm::outs() << "Run:";
-    if (Env)
-      for (auto &s : *Env) llvm::outs() << " " << s;
-    llvm::outs() << " " << Program;
-    for (auto &s : Args) llvm::outs() << " " << s;
+int runTool(StringRef program, ArrayRef<std::string> args, bool verbose,
+            std::optional<ArrayRef<StringRef>> env = std::nullopt) {
+  if (verbose) {
+    llvm::outs() << "Run: ";
+    if (env)
+      for (auto &s : *env) llvm::outs() << " " << s;
+    llvm::outs() << " " << program;
+    for (auto &s : args) llvm::outs() << " " << s;
     llvm::outs() << "\n";
   }
-  std::string err_msg;
+  std::string errMsg;
   sys::ProcessStatistics stats;
-  std::optional<sys::ProcessStatistics> opt_stats(stats);
-  SmallVector<StringRef, 8> PArgs = {Program};
-  PArgs.append(Args.begin(), Args.end());
-  int result = sys::ExecuteAndWait(Program, PArgs, Env, {}, 0, 0, &err_msg,
-                                   nullptr, &opt_stats);
-  if (Verbose)
-    llvm::outs() << (result == 0 ? "Succeeded " : "Failed ") << "in "
-                 << std::chrono::duration_cast<std::chrono::duration<float>>(
-                        stats.TotalTime)
-                        .count()
-                 << " code: " << result << "\n";
+  std::optional<sys::ProcessStatistics> optStats(stats);
+  SmallVector<StringRef, 8> pArgs = {program};
+  pArgs.append(args.begin(), args.end());
+
+  SmallVector<char> temporaryPath;
+  {
+    std::string prefix{"tmpRunTool"};
+    std::string suffix{"Logging"};
+    auto errorCode =
+        llvm::sys::fs::createTemporaryFile(prefix, suffix, temporaryPath);
+    if (errorCode) {
+      llvm::errs() << "Failed to create temporary file: " << errorCode.message()
+                   << "\n";
+      return -1;
+    }
+  }
+  std::string temporaryPathStr =
+      std::string(temporaryPath.begin(), temporaryPath.size());
+  StringRef temporaryPathRef(temporaryPathStr);
+  auto tp = std::optional<StringRef>(temporaryPathRef);
+  int result =
+      sys::ExecuteAndWait(program, pArgs, env, /* redirects */ {tp, tp, tp}, 0,
+                          0, &errMsg, nullptr, &optStats);
+  if (verbose) {
+    auto totalTime = std::chrono::duration_cast<std::chrono::duration<float>>(
+                         stats.TotalTime)
+                         .count();
+    std::string exitStatusStr = result == 0 ? "Succeeded" : "Failed";
+    llvm::outs() << exitStatusStr << " in " << totalTime
+                 << " [s]. Exit code=" << result << "\n";
+    std::ifstream t(temporaryPathRef.str());
+    if (t.is_open() && t.good()) {
+      std::stringstream buffer;
+      buffer << t.rdbuf();
+      llvm::outs() << buffer.str();
+    } else {
+      llvm::outs() << "Failed to open temporary file " << temporaryPathRef.str()
+                   << ", not printing output\n";
+    }
+  }
   return result;
 }
 
