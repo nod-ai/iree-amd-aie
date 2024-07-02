@@ -231,24 +231,6 @@ LogicalResult WorkgroupBuilder::buildForSingleBody(
   return success();
 }
 
-/// Skip workgroup operations and just build their bodies.
-/// TODO(jornt): Get rid of the insertion of workgroups before this pass.
-LogicalResult WorkgroupBuilder::buildForWorkgroupOp(
-    AMDAIE::WorkgroupOp workgroupOp, Block *target, Block *controlCode,
-    CoreContext &coreContext, Block::iterator targetBegin,
-    Block::iterator controlCodeBegin, Block::iterator controlCodeEnd) {
-  LLVM_DEBUG(llvm::dbgs() << "workgroupBuild [amdaie.workgroup] Start\n");
-  if (failed(build(workgroupOp.getBody(), target, controlCode, coreContext,
-                   workgroupOp.getBody()->begin(),
-                   std::prev(workgroupOp.getBody()->end()), target->end(),
-                   controlCodeBegin, controlCodeEnd))) {
-    return workgroupOp.emitOpError()
-           << "failed to add workgroup body to workgroup";
-  }
-  LLVM_DEBUG(llvm::dbgs() << "workgroupBuild [amdaie.workgroup] End\n");
-  return success();
-}
-
 /// Recursive workgroup build function for an operation.
 LogicalResult WorkgroupBuilder::build(Operation *op, Block *target,
                                       Block *controlCode,
@@ -284,9 +266,8 @@ LogicalResult WorkgroupBuilder::build(Operation *op, Block *target,
                                               controlCodeBegin, controlCodeEnd);
       })
       .Case<AMDAIE::WorkgroupOp>([&](auto workgroupOp) {
-        return buildForWorkgroupOp(workgroupOp, target, controlCode,
-                                   coreContext, targetBegin, controlCodeBegin,
-                                   controlCodeEnd);
+        return workgroupOp.emitOpError()
+               << "not supported in `amdaie.workgroup` creation";
       })
       .Default([&](Operation *) {
         // All other operations are cloned.
