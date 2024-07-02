@@ -98,6 +98,12 @@ def AMDAIECreateLogicalObjectFifoLink :
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIECreateLogicalObjectFifoLinkPass()";
 }
 
+def AMDAIECreateReferenceToAllocation :
+    InterfacePass<"iree-amdaie-create-reference-to-allocation", "mlir::FunctionOpInterface"> {
+  let summary = "Create references to allocations in L1 memory space.";
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIECreateReferenceToAllocationPass()";
+}
+
 def AMDAIEDecomposeLinalgExtPackUnPackToAIR :
     Pass<"iree-amdaie-decompose-pack-unpack-to-air", ""> {
   let summary = "Decompose LinalgExt pack/unpack ops into patterns compatible to AIR.";

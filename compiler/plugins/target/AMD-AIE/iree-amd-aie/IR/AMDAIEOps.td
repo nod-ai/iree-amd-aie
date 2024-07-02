@@ -781,4 +781,26 @@ def AMDAIE_CircularDmaCpyNdOp: AMDAIE_DmaCpyNdBaseOp<"circular_dma_cpy_nd", [Pur
   let hasVerifier = 0;
 }
 
+def AMDAIE_ReferenceToOp: AMDAIE_Op<"reference_to"> {
+  let summary = "The operation that creates reference to a memref allocation";
+  let description = [{
+    This operation creates a reference to a global memref allocation. It has the same type
+    as the allocation it refers to, but has a local scope that is not hoistable across the AIE tiles.
+
+    Example:
+
+    ```mlir
+    %0 = memref.alloc() : memref<1x1x8x4x8x4xi32, 2 : i32>
+    %1 = amdaie.reference_to %0 : memref<1x1x8x4x8x4xi32, 2 : i32>
+    ```
+
+  }];
+
+  let arguments = (ins AnyMemRef:$memref);
+
+  let results = (outs AnyMemRef:$output);
+
+  let assemblyFormat = "$memref attr-dict `:` type($memref) `->` type($output)";
+}
+
 #endif // IREE_AMDAIE_DIALECT_IREEAMDAIE_OPS
