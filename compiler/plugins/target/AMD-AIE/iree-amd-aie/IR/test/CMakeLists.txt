@@ -4,15 +4,15 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+file(GLOB _mlir_files *.mlir)
+
 iree_add_all_subdirs()
 
 iree_lit_test_suite(
   NAME
     lit
   SRCS
-    "canonicalize.mlir"
-    "invalid.mlir"
-    "roundtrip.mlir"
+    ${_mlir_files}
   TOOLS
     FileCheck
     iree-opt
