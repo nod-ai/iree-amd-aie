@@ -4,17 +4,13 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+file(GLOB _mlir_files *.mlir)
+
 iree_lit_test_suite(
   NAME
     lit
   SRCS
-    "conv_pipeline_e2e.mlir"
-    "matmul_peeled_objectfifo.mlir"
-    "matmul_peeled_objectfifo_e2e.mlir"
-    "pack_peel_pipeline_matmul.mlir"
-    "pack_peel_pipeline_matmul_elementwise.mlir"
-    "pad_pack_pipeline_e2e.mlir"
-    "xdna_oplib_plugin.mlir"
+    ${_mlir_files}
   TOOLS
     ${IREE_LLD_TARGET}
     FileCheck
