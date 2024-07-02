@@ -1,4 +1,4 @@
-// RUN: iree-compile --iree-hal-target-backends=amd-aie --compile-to=executable-sources %s | iree-opt --pass-pipeline="builtin.module(hal.executable(hal.executable.variant(iree-hal-translate-target-executable-variants{target=amd-aie})))" --iree-amdaie-use-pipeline=pad-pack --split-input-file | FileCheck %s --check-prefix=CPP
+// RUN: iree-compile --iree-hal-target-backends=amd-aie --compile-to=executable-sources %s | iree-opt --pass-pipeline="builtin.module(hal.executable(hal.executable.variant(iree-hal-translate-target-executable-variants{target=amd-aie})))" --iree-amdaie-tile-pipeline=pad-pack --split-input-file | FileCheck %s --check-prefix=CPP
 
 // This test demonstrates Pad-Pack pipeline based e2e lowering.
 

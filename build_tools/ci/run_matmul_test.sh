@@ -174,6 +174,8 @@ function run_matmul_test() {
 
   # Options with defaults
   # =====================
+  local lower_to_aie_pipeline="air"
+
   # name_prefix: A prefix for the name of the test. The full test name will be
   # extended with m,n,k if they are unique.
   local name_prefix="noprefix"
@@ -188,7 +190,7 @@ function run_matmul_test() {
 
   local vitis_path="${VITIS}"
 
-  local pipeline="pad-pack"
+  local tile_pipeline="pad-pack"
 
   # By default, the m,n,k provided are used, and there are no dynamic tensor
   # dimensions.
@@ -216,6 +218,10 @@ function run_matmul_test() {
 
   while [ "$#" -gt 0 ]; do
     case "$1" in
+      --lower_to_aie_pipeline)
+        lower_to_aie_pipeline="$2"
+        shift 2
+        ;;
       --num_repeat_runs)
         num_repeat_runs="$2"
         shift 2
@@ -268,8 +274,8 @@ function run_matmul_test() {
         vitis_path="$2"
         shift 2
         ;;
-      --pipeline)
-        pipeline="$2"
+      --tile_pipeline)
+        tile_pipeline="$2"
         shift 2
         ;;
       --dynamicity)
@@ -369,7 +375,8 @@ function run_matmul_test() {
   set +e
 
   compilation_flags="--iree-hal-target-backends=${target_backend} \
-                      --iree-amdaie-use-pipeline=${pipeline} \
+                      --iree-amdaie-lower-to-aie-pipeline=${lower_to_aie_pipeline} \
+                      --iree-amdaie-tile-pipeline=${tile_pipeline} \
                       --iree-amd-aie-peano-install-dir=${peano_install_path} \
                       --iree-amd-aie-mlir-aie-install-dir=${mlir_aie_install_path} \
                       --iree-amd-aie-vitis-install-dir=${vitis_path} \
@@ -485,7 +492,8 @@ run_matmul_test \
     --peano_install_path "${PEANO}" \
     --mlir_aie_install_path "${MLIR_AIE_INSTALL}" \
     --vitis_path  "${VITIS}" \
-    --pipeline "pad-pack" \
+    --lower_to_aie_pipeline "air" \
+    --tile_pipeline "pad-pack" \
     --m "64" \
     --n "64" \
     --k "64" \
@@ -616,7 +624,7 @@ run_matmul_test \
 
 run_matmul_test \
     --name_prefix "packPeel" \
-    --pipeline "pack-peel" \
+    --tile_pipeline "pack-peel" \
     --lhs_rhs_type "i32" \
     --acc_type "i32" \
     --m "64"  --n "64" --k "128"
@@ -649,7 +657,7 @@ run_matmul_test \
 #     }
 run_matmul_test \
     --name_prefix "packPeel" \
-    --pipeline "pack-peel" \
+    --tile_pipeline "pack-peel" \
     --lhs_rhs_type "bf16" \
     --acc_type "f32" \
     --m "64"  --n "64" --k "128" \
@@ -657,14 +665,14 @@ run_matmul_test \
 
 run_matmul_test \
     --name_prefix "packPeelLarge" \
-    --pipeline "pack-peel" \
+    --tile_pipeline "pack-peel" \
     --lhs_rhs_type "bf16" \
     --acc_type "f32" \
     --m "512"  --n "512" --k "512" \
 
 run_matmul_test \
     --name_prefix "packPeel2304" \
-    --pipeline "pack-peel" \
+    --tile_pipeline "pack-peel" \
     --lhs_rhs_type "bf16" \
     --acc_type "f32" \
     --m "128"  --n "128" --k "2304" \
@@ -672,7 +680,7 @@ run_matmul_test \
 
 run_matmul_test \
   --name_prefix "packPeel_t_bf16" \
-  --pipeline "pack-peel" \
+  --tile_pipeline "pack-peel" \
   --lhs_rhs_type "bf16" \
   --acc_type "f32" \
   --m "128" --n "256" --k "512" \
@@ -727,3 +735,13 @@ run_matmul_test \
     --lhs_rhs_type "bf16" \
     --acc_type "f32" \
     --m "8192" --k "2432" --n "7296"
+
+###################################################################
+
+run_matmul_test \
+    --name_prefix "small" \
+    --lower_to_aie_pipeline "objectFifo" \
+    --tile_pipeline "pack-peel" \
+    --lhs_rhs_type "i32" \
+    --acc_type "i32" \
+    --m "128" --k "256" --n "128"

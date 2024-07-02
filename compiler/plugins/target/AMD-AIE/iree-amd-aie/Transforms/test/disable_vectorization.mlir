@@ -1,6 +1,6 @@
 // This test demonstrates enabling / disabling vectorization in the default
 // pipeline (note that below the pipeline is not specified explicitly with
-// the flag --iree-amdaie-use-pipeline). We check 3 paths:
+// the flag --iree-amdaie-tile-pipeline). We check 3 paths:
 //
 // 1) Explicitly disabling vectorization with
 //             --iree-amdaie-enable-vectorization-passes=0

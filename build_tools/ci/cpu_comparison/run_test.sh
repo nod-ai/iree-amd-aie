@@ -296,7 +296,7 @@ function run_test() {
   echo "**** Generating AIE .vmfb file for ${name} ****"
   ${IREE_COMPILE_EXE} "${test_file}"  \
       --iree-hal-target-backends=amd-aie \
-      --iree-amdaie-use-pipeline=${pipeline} \
+      --iree-amdaie-tile-pipeline=${pipeline} \
       --iree-amdaie-matmul-elementwise-fusion \
       --iree-amd-aie-peano-install-dir=${peano_install_path} \
       --iree-amd-aie-mlir-aie-install-dir=${mlir_aie_install_path} \
