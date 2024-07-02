@@ -401,19 +401,6 @@ struct AMDAIENPUDeviceModel mlir::iree_compiler::AMDAIE::getDeviceModel(
                                   /*partitionNumCols*/ 4,
                                   /*partitionStartCol*/ 0);
   }
-}
 
-StrmSwPortType getConnectingStrmSwPortType(StrmSwPortType dir) {
-  switch (dir) {
-    case StrmSwPortType::NORTH:
-      return StrmSwPortType::SOUTH;
-    case StrmSwPortType::SOUTH:
-      return StrmSwPortType::NORTH;
-    case StrmSwPortType::EAST:
-      return StrmSwPortType::WEST;
-    case StrmSwPortType::WEST:
-      return StrmSwPortType::EAST;
-    default:
-      return dir;
-  }
+  llvm::report_fatal_error("Unhandled AMDAIEDevice case");
 }

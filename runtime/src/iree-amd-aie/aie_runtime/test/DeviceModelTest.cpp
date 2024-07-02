@@ -277,11 +277,9 @@ class AMDAIENPUDeviceModelParameterizedMemtileConnectivityWholeNPUTestFixture
     : public AMDAIENPUDeviceModelParameterizedTupleTestWholeNPUFixture<int,
                                                                        int> {};
 
-#define u8 uint8_t
 extern "C" {
 #include "xaiengine/xaie_ss_aieml.h"
 }
-#undef u8
 
 #define X_ false
 #define O_ true

@@ -19,14 +19,15 @@ endif()
 # See https://github.com/Xilinx/mlir-aie/pull/1095
 cmake_minimum_required(VERSION 3.23)
 
-# We use our own, slightly modified, FindOpenSSL because of issues in
-# CMake's distribution of the same for versions prior to 3.29.
+# We use our own, slightly modified, FindOpenSSL because of issues in CMake's
+# distribution of the same for versions prior to 3.29.
 # https://gitlab.kitware.com/cmake/cmake/-/issues/25702
 find_package(OpenSSL)
 if(NOT DEFINED OPENSSL_FOUND OR NOT ${OPENSSL_FOUND})
   list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}")
   find_package(OpenSSL)
-  if(NOT DEFINED USE_IREE_AMD_AIE_FIND_OPENSSL OR NOT ${USE_IREE_AMD_AIE_FIND_OPENSSL})
+  if(NOT DEFINED USE_IREE_AMD_AIE_FIND_OPENSSL
+     OR NOT ${USE_IREE_AMD_AIE_FIND_OPENSSL})
     message(FATAL_ERROR "Didn't pickup/use adjacent FindOpenSSL.cmake")
   endif()
   if(NOT DEFINED OPENSSL_FOUND OR NOT ${OPENSSL_FOUND})

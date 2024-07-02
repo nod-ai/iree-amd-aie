@@ -172,38 +172,6 @@ struct AMDAIENPUDeviceModel getDeviceModel(AMDAIEDevice device);
 
 }  // namespace mlir::iree_compiler::AMDAIE
 
-StrmSwPortType getConnectingStrmSwPortType(StrmSwPortType dir);
-
-#define OSTREAM_OP(O_TYPE, TYPE) O_TYPE &operator<<(O_TYPE &os, const TYPE &s);
-
-namespace mlir::iree_compiler::AMDAIE {
-#define TO_STRING(TYPE) std::string to_string(const TYPE &t);
-
-#define TO_STRINGS(_) \
-  _(AieRC)            \
-  _(XAie_LocType)     \
-  _(XAie_Lock)        \
-  _(XAie_Packet)
-
-    TO_STRINGS(TO_STRING)
-#undef TO_STRING
-#undef TO_STRINGS
-}  // namespace mlir::iree_compiler::AMDAIE
-
-#define BOTH_OSTREAM_OP(OSTREAM_OP_, TYPE) \
-  OSTREAM_OP_(std::ostream, TYPE)          \
-  OSTREAM_OP_(llvm::raw_ostream, TYPE)
-
-#define BOTH_OSTREAM_OPS_FORALL_TYPES(OSTREAM_OP_, _) \
-  _(OSTREAM_OP_, AieRC)                               \
-  _(OSTREAM_OP_, StrmSwPortType)                      \
-  _(OSTREAM_OP_, XAie_LocType)                        \
-  _(OSTREAM_OP_, XAie_Lock)                           \
-  _(OSTREAM_OP_, XAie_Packet)
-
-BOTH_OSTREAM_OPS_FORALL_TYPES(OSTREAM_OP, BOTH_OSTREAM_OP)
-#undef OSTREAM_OP
-
 // https://stackoverflow.com/a/32230306
 template <typename H1>
 llvm::raw_ostream &showArgs(llvm::raw_ostream &out, const char *label,
@@ -262,5 +230,41 @@ static_assert(XAIE_OK == 0);
       return failure();                                                 \
     }                                                                   \
   } while (0)
+
+#define OSTREAM_OP(O_TYPE, TYPE) O_TYPE &operator<<(O_TYPE &os, const TYPE &s);
+
+namespace mlir::iree_compiler::AMDAIE {
+#define TO_STRING(TYPE) std::string to_string(const TYPE &t);
+
+#define TO_STRINGS(_) \
+  _(AieRC)            \
+  _(TileLoc)          \
+  _(AMDAIETileType)   \
+  _(XAie_LocType)     \
+  _(XAie_Lock)        \
+  _(StrmSwPortType)   \
+  _(XAie_Packet)
+
+    TO_STRINGS(TO_STRING)
+#undef TO_STRING
+#undef TO_STRINGS
+}  // namespace mlir::iree_compiler::AMDAIE
+
+#define BOTH_OSTREAM_OP(OSTREAM_OP_, TYPE) \
+  OSTREAM_OP_(std::ostream, TYPE)          \
+  OSTREAM_OP_(llvm::raw_ostream, TYPE)
+
+#define BOTH_OSTREAM_OPS_FORALL_TYPES(OSTREAM_OP_, _) \
+  _(OSTREAM_OP_, AieRC)                               \
+  _(OSTREAM_OP_, TileLoc)                             \
+  _(OSTREAM_OP_, AMDAIETileType)                      \
+  _(OSTREAM_OP_, XAie_LocType)                        \
+  _(OSTREAM_OP_, XAie_Lock)                           \
+  _(OSTREAM_OP_, XAie_Packet)                         \
+  _(OSTREAM_OP_, StrmSwPortType)
+
+BOTH_OSTREAM_OPS_FORALL_TYPES(OSTREAM_OP, BOTH_OSTREAM_OP)
+#undef OSTREAM_OP
+
 
 #endif  // IREE_AIE_RUNTIME_H
