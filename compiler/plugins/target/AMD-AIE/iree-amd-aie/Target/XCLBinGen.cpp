@@ -6,10 +6,10 @@
 
 #include "XCLBinGen.h"
 
+#include <fstream>
 #include <regex>
 #include <sstream>
 #include <unordered_map>
-#include <fstream>
 
 #include "AMDAIETargets.h"
 #include "aie/Dialect/AIEVec/Pipelines/Passes.h"
@@ -151,21 +151,21 @@ int runTool(StringRef program, ArrayRef<std::string> args, bool verbose,
   {
     std::string prefix{"tmpRunTool"};
     std::string suffix{"Logging"};
-    if (auto errorCode =
-            llvm::sys::fs::createTemporaryFile(prefix, suffix, temporaryPath)) {
+    auto errorCode =
+        llvm::sys::fs::createTemporaryFile(prefix, suffix, temporaryPath);
+    if (errorCode) {
       llvm::errs() << "Failed to create temporary file: " << errorCode.message()
                    << "\n";
       return -1;
     }
   }
-  StringRef temporaryPathRef(temporaryPath.begin(), temporaryPath.size());
-  auto optTemporaryPathRef = std::optional<StringRef>(temporaryPathRef);
-  ArrayRef<std::optional<StringRef>> redirects{
-      optTemporaryPathRef, optTemporaryPathRef, optTemporaryPathRef};
-
-  int result = sys::ExecuteAndWait(program, pArgs, env, redirects, 0, 0,
-                                   &errMsg, nullptr, &optStats);
-
+  std::string temporaryPathStr =
+      std::string(temporaryPath.begin(), temporaryPath.size());
+  StringRef temporaryPathRef(temporaryPathStr);
+  auto tp = std::optional<StringRef>(temporaryPathRef);
+  int result =
+      sys::ExecuteAndWait(program, pArgs, env, /* redirects */ {tp, tp, tp}, 0,
+                          0, &errMsg, nullptr, &optStats);
   if (verbose) {
     auto totalTime = std::chrono::duration_cast<std::chrono::duration<float>>(
                          stats.TotalTime)
