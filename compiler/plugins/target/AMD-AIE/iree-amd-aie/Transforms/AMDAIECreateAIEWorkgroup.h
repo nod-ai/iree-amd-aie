@@ -236,15 +236,6 @@ class WorkgroupBuilder {
                                    Block::iterator controlCodeBegin,
                                    Block::iterator controlCodeEnd);
 
-  /// Build function that handles `amdaie.workgroup` by visiting the body and
-  /// converting and inserting it into the single `amdaie.workgroup`.
-  LogicalResult buildForWorkgroupOp(AMDAIE::WorkgroupOp workgroupOp,
-                                    Block *target, Block *controlCode,
-                                    CoreContext &coreContext,
-                                    Block::iterator targetBegin,
-                                    Block::iterator controlCodeBegin,
-                                    Block::iterator controlCodeEnd);
-
   /// The main rewriter to be used for the workgroup body, excluding control
   /// code and core operations (future work).
   IRRewriterAndMapper &rewriter;
