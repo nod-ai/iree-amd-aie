@@ -12,10 +12,17 @@
 
 namespace mlir::iree_compiler::AMDAIE {
 
-/// Enum for pass pipelines to pick. Because of how the pass-pipeline
+/// Enum for AIE lowering pipelines to pick.
+enum class LowerToAIEPassPipeline {
+  AIR,
+  ObjectFifo,
+  None
+};
+
+/// Enum for tiling pass pipelines to pick. Because of how the pass-pipeline
 /// enums are implemented using tablegen in IREE, it isnt extensible.
 /// This is an enum to pick different pass pipelines in IREE.
-enum class AIEPassPipeline {
+enum class TilePassPipeline {
   PackPeelPipeline,
   PadPackPipeline,
   ConvDecomposePipeline,
@@ -35,7 +42,7 @@ struct AIEConfig {
 };
 
 LogicalResult initAIELaunchConfig(FunctionOpInterface funcOp,
-                                  AIEPassPipeline usePassPipeline,
+                                  TilePassPipeline usePassPipeline,
                                   AIEConfig cfg);
 
 }  // namespace mlir::iree_compiler::AMDAIE
