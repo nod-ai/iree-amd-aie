@@ -360,7 +360,8 @@ LogicalResult AIETargetDirectBackend::serializeExecutable(
     SmallString<64> aieToolsDir(options.vitisInstallDir);
     llvm::sys::path::append(aieToolsDir, "aietools");
     TK.AIEToolsDir = aieToolsDir.str();
-    TK.InstallDir = options.mlirAieInstallDir;
+    TK.MLIRAIEInstallDir = options.mlirAieInstallDir;
+    TK.AMDAIEInstallDir = options.amdAieInstallDir;
     TK.PeanoDir = options.peanoInstallDir;
 
     if (failed(aie2xclbin(variantOp->getContext(), moduleOp, TK, npuInstPath,

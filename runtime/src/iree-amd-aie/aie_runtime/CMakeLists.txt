@@ -22,6 +22,7 @@ cmake_minimum_required(VERSION 3.23)
 # We use our own, slightly modified, FindOpenSSL because of issues in
 # CMake's distribution of the same for versions prior to 3.29.
 # https://gitlab.kitware.com/cmake/cmake/-/issues/25702
+set(OPENSSL_USE_STATIC_LIBS TRUE CACHE BOOL "" FORCE)
 find_package(OpenSSL)
 if(NOT DEFINED OPENSSL_FOUND OR NOT ${OPENSSL_FOUND})
   list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}")
@@ -35,16 +36,47 @@ if(NOT DEFINED OPENSSL_FOUND OR NOT ${OPENSSL_FOUND})
 endif()
 message(STATUS "OpenSSL include directories:" ${OPENSSL_INCLUDE_DIR})
 
+# https://stackoverflow.com/a/49216539/9045206
+macro(remove_flag_from_target _target _flag)
+    get_target_property(_target_cxx_flags ${_target} COMPILE_OPTIONS)
+    if(_target_cxx_flags)
+        list(REMOVE_ITEM _target_cxx_flags ${_flag})
+        set_target_properties(${_target} PROPERTIES COMPILE_OPTIONS "${_target_cxx_flags}")
+    endif()
+endmacro()
+
+macro(replace_string_in_file _file _match_string _replace_string)
+    file(READ ${_file} _file_contents)
+    string(REPLACE ${_match_string} ${_replace_string} __file_contents "${_file_contents}")
+    file(WRITE ${_file}  "${__file_contents}")
+endmacro()
+
+find_package(Threads REQUIRED)
+find_package(Boost REQUIRED COMPONENTS system program_options filesystem)
+message(STATUS "Boost include directories:" ${Boost_INCLUDE_DIRS})
+
+if(NOT WIN32)
+    find_package(RapidJSON REQUIRED)
+endif()
+
 # ##############################################################################
 # Bootgen
 # ##############################################################################
 
 set(_bootgen_source_dir ${IREE_AMD_AIE_SOURCE_DIR}/third_party/bootgen)
+
+# malloc.h is deprecated and should not be used
+# https://stackoverflow.com/a/56463133 If you want to use malloc, then include stdlib.h
+replace_string_in_file(${_bootgen_source_dir}/cdo-npi.c "#include <malloc.h>" "#include <stdlib.h>")
+replace_string_in_file(${_bootgen_source_dir}/cdo-alloc.c "#include <malloc.h>" "#include <stdlib.h>")
+
 file(GLOB _bootgen_sources "${_bootgen_source_dir}/*.c"
      "${_bootgen_source_dir}/*.cpp")
+# build exe separately
 list(REMOVE_ITEM _bootgen_sources "${_bootgen_source_dir}/main.cpp")
 
 add_library(bootgen-lib STATIC ${_bootgen_sources})
+
 if(CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
   target_compile_definitions(bootgen-lib PUBLIC YY_NO_UNISTD_H)
 elseif(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
@@ -68,7 +100,7 @@ elseif(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
       -Wno-deprecated-copy -Wno-non-virtual-dtor -Wno-overloaded-virtual
       -Wno-register -Wno-reorder -Wno-suggest-override)
 endif()
-target_compile_options(bootgen-lib PRIVATE
+target_compile_options(bootgen-lib PUBLIC
                        $<$<COMPILE_LANGUAGE:C>:${bootgen_c_warning_ignores}>
                        $<$<COMPILE_LANGUAGE:CXX>:${bootgen_c_warning_ignores};${bootgen_cxx_warning_ignores}>)
 target_include_directories(bootgen-lib PUBLIC ${_bootgen_source_dir}
@@ -76,16 +108,18 @@ target_include_directories(bootgen-lib PUBLIC ${_bootgen_source_dir}
 target_compile_definitions(bootgen-lib PUBLIC OPENSSL_USE_APPLINK)
 target_link_libraries(bootgen-lib PUBLIC OpenSSL::SSL OpenSSL::applink)
 
-# malloc.h is deprecated and should not be used
-# https://stackoverflow.com/a/56463133 If you want to use malloc, then include
-# stdlib.h
-file(READ ${_bootgen_source_dir}/cdo-npi.c _file_contents)
-string(REPLACE "#include <malloc.h>" "" __file_contents "${_file_contents}")
-file(WRITE ${_bootgen_source_dir}/cdo-npi.c "${__file_contents}")
+iree_cc_binary(
+  NAME
+    bootgen
+  SRCS
+    "${_bootgen_source_dir}/main.cpp"
+  COPTS
+    -fexceptions
+  INSTALL_COMPONENT
+    IREETools-Runtime
+)
 
-file(READ ${_bootgen_source_dir}/cdo-alloc.c _file_contents)
-string(REPLACE "#include <malloc.h>" "" __file_contents "${_file_contents}")
-file(WRITE ${_bootgen_source_dir}/cdo-alloc.c "${__file_contents}")
+target_link_libraries(iree-amd-aie_aie_runtime_bootgen PRIVATE bootgen-lib)
 
 # ##############################################################################
 # cdo-drver
@@ -353,6 +387,83 @@ iree_install_targets(
   COMPONENT IREEBundledLibraries
   EXPORT_SET Runtime
 )
+
+# ##############################################################################
+# xclbinutil
+# ##############################################################################
+
+# obv we have python but XRT uses this var to look for an ancient version of pybind (and fail)
+replace_string_in_file(${IREE_XRT_SOURCE_DIR}/python/pybind11/CMakeLists.txt "if (HAS_PYTHON)" "if (FALSE)")
+
+# remove ssl dep
+replace_string_in_file(${IREE_XRT_SOURCE_DIR}/runtime_src/tools/xclbinutil/XclBinUtilMain.cxx "bValidateSignature == true" "false")
+
+set(_xclbinutil_source_dir
+    ${IREE_AMD_AIE_SOURCE_DIR}/third_party/XRT/src/runtime_src/tools/xclbinutil)
+
+# transformcdo target
+add_subdirectory(${_xclbinutil_source_dir}/aie-pdi-transform aie-pdi-transform)
+
+configure_file(${IREE_XRT_SOURCE_DIR}/CMake/config/version.h.in ${_xclbinutil_source_dir}/version.h)
+
+file(
+  GLOB
+  _xclbinutil_srcs
+  "${_xclbinutil_source_dir}/DTC*.cxx"
+  "${_xclbinutil_source_dir}/FDT*.cxx"
+  "${_xclbinutil_source_dir}/CBOR.cxx"
+  "${_xclbinutil_source_dir}/RapidJsonUtilities.cxx"
+  "${_xclbinutil_source_dir}/KernelUtilities.cxx"
+  "${_xclbinutil_source_dir}/ElfUtilities.cxx"
+  "${_xclbinutil_source_dir}/FormattedOutput.cxx"
+  "${_xclbinutil_source_dir}/ParameterSectionData.cxx"
+  "${_xclbinutil_source_dir}/Section.cxx"
+  # Note: Due to linking dependency issue, this entry needs to be before the other sections
+  "${_xclbinutil_source_dir}/Section*.cxx"
+  "${_xclbinutil_source_dir}/Resources*.cxx"
+  "${_xclbinutil_source_dir}/XclBinClass.cxx"
+  NoOpXclBinSignature.cxx
+  "${_xclbinutil_source_dir}/XclBinUtilities.cxx")
+
+# shared not static because static will let linker trim SectionMemTopology
+# initializers...
+add_library(xclbinutil-lib STATIC ${_xclbinutil_srcs})
+
+if(NOT WIN32)
+  target_compile_definitions(xclbinutil-lib
+                             PUBLIC ENABLE_JSON_SCHEMA_VALIDATION)
+  target_link_libraries(xclbinutil-lib PUBLIC transformcdo)
+else()
+  target_compile_options(xclbinutil-lib PUBLIC "/EHsc")
+  # if you get LINK : fatal error LNK1104: cannot open file
+  # 'libboost_filesystem-vc142-mt-gd-x64-1_74.lib'
+  # target_compile_definitions(xclbinutil-lib PUBLIC BOOST_ALL_DYN_LINK)
+endif()
+
+set(THREADS_PREFER_PTHREAD_FLAG ON)
+target_link_libraries(xclbinutil-lib PUBLIC ${Boost_LIBRARIES} Threads::Threads)
+target_include_directories(xclbinutil-lib PUBLIC ${XRT_BINARY_DIR}/gen
+                                                 ${Boost_INCLUDE_DIRS}
+                                                 ${IREE_XRT_SOURCE_DIR}/runtime_src/core/include
+                                                 ${_xclbinutil_source_dir})
+
+iree_cc_binary(
+  NAME
+    amdaie_xclbinutil
+  SRCS
+    "${_xclbinutil_source_dir}/xclbinutil.cxx"
+    "${_xclbinutil_source_dir}/XclBinUtilMain.cxx"
+  DEPS
+    xclbinutil-lib
+  COPTS
+    -fexceptions
+    -frtti
+  INSTALL_COMPONENT
+    IREETools-Runtime
+  PUBLIC
+)
+
+target_link_libraries(iree-amd-aie_aie_runtime_amdaie_xclbinutil PRIVATE xclbinutil-lib)
 
 # ##############################################################################
 # iree-aie-runtime-static
