@@ -51,6 +51,7 @@ void AMDAIECreateReferenceToAllocationPass::runOnOperation() {
     for (Operation *userOp : allocOp->getUsers()) {
       if (isa<memref::DeallocOp>(userOp)) {
         dealloc = userOp;
+        break;
       }
     }
     SmallPtrSet<Operation *, 2> exceptions(

@@ -785,13 +785,16 @@ def AMDAIE_ReferenceToOp: AMDAIE_Op<"reference_to"> {
   let summary = "The operation that creates reference to a memref allocation";
   let description = [{
     This operation creates a reference to a global memref allocation. It has the same type
-    as the allocation it refers to, but has a local scope that is not hoistable across the AIE tiles.
+    as the allocation it refers to, but has a local scope that is not hoistable across the
+    `scf.forall/scf.for` loops. With this operation, each AIE tile could access its own
+    local memory allocation while the global allocation is kept outside the loops for any
+    sequential access.
 
     Example:
 
     ```mlir
     %0 = memref.alloc() : memref<1x1x8x4x8x4xi32, 2 : i32>
-    %1 = amdaie.reference_to %0 : memref<1x1x8x4x8x4xi32, 2 : i32>
+    %1 = amdaie.reference_to %0 : memref<1x1x8x4x8x4xi32, 2 : i32> -> memref<1x1x8x4x8x4xi32, 2 : i32>
     ```
 
   }];
