@@ -4,12 +4,6 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#include "AMDAIETargets.h"
-#include "aie/Dialect/AIE/IR/AIETargetModel.h"
-extern "C" {
-#include "cdo-driver/cdo_driver.h"
-}
-
 #include <algorithm>
 #include <cassert>
 #include <cstddef>  // size_t
@@ -21,8 +15,11 @@ extern "C" {
 #include <optional>
 #include <string>
 
+#include "AMDAIETargets.h"
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIE/IR/AIEEnums.h"
+#include "aie/Dialect/AIE/IR/AIETargetModel.h"
+#include "iree-amd-aie/aie_runtime/iree_aie_runtime.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/Twine.h"
@@ -54,120 +51,34 @@ using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIE;
 
-#define AIERC_STR(x) x, #x
-static const std::map<AieRC, std::string> AIERCTOSTR = {
-    {AIERC_STR(XAIE_OK)},
-    {AIERC_STR(XAIE_ERR)},
-    {AIERC_STR(XAIE_INVALID_DEVICE)},
-    {AIERC_STR(XAIE_INVALID_RANGE)},
-    {AIERC_STR(XAIE_INVALID_ARGS)},
-    {AIERC_STR(XAIE_INVALID_TILE)},
-    {AIERC_STR(XAIE_ERR_STREAM_PORT)},
-    {AIERC_STR(XAIE_INVALID_DMA_TILE)},
-    {AIERC_STR(XAIE_INVALID_BD_NUM)},
-    {AIERC_STR(XAIE_ERR_OUTOFBOUND)},
-    {AIERC_STR(XAIE_INVALID_DATA_MEM_ADDR)},
-    {AIERC_STR(XAIE_INVALID_ELF)},
-    {AIERC_STR(XAIE_CORE_STATUS_TIMEOUT)},
-    {AIERC_STR(XAIE_INVALID_CHANNEL_NUM)},
-    {AIERC_STR(XAIE_INVALID_LOCK)},
-    {AIERC_STR(XAIE_INVALID_DMA_DIRECTION)},
-    {AIERC_STR(XAIE_INVALID_PLIF_WIDTH)},
-    {AIERC_STR(XAIE_INVALID_LOCK_ID)},
-    {AIERC_STR(XAIE_INVALID_LOCK_VALUE)},
-    {AIERC_STR(XAIE_LOCK_RESULT_FAILED)},
-    {AIERC_STR(XAIE_INVALID_DMA_DESC)},
-    {AIERC_STR(XAIE_INVALID_ADDRESS)},
-    {AIERC_STR(XAIE_FEATURE_NOT_SUPPORTED)},
-    {AIERC_STR(XAIE_INVALID_BURST_LENGTH)},
-    {AIERC_STR(XAIE_INVALID_BACKEND)},
-    {AIERC_STR(XAIE_INSUFFICIENT_BUFFER_SIZE)},
-    {AIERC_STR(XAIE_ERR_MAX)}};
-#undef AIERC_STR
-
-static const std::map<WireBundle, StrmSwPortType>
-    WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE = {
-        {WireBundle::Core, StrmSwPortType::CORE},
-        {WireBundle::DMA, StrmSwPortType::DMA},
-        {WireBundle::Ctrl, StrmSwPortType::CTRL},
-        {WireBundle::FIFO, StrmSwPortType::FIFO},
-        {WireBundle::South, StrmSwPortType::SOUTH},
-        {WireBundle::West, StrmSwPortType::WEST},
-        {WireBundle::North, StrmSwPortType::NORTH},
-        {WireBundle::East, StrmSwPortType::EAST},
-        // missing PLIO from WireBundle
-        // missing NOC from WireBundle
-        {WireBundle::Trace, StrmSwPortType::TRACE},
-};
-
-// https://stackoverflow.com/a/32230306
-template <typename H1>
-raw_ostream &showArgs(raw_ostream &out, const char *label, H1 &&value) {
-  return out << label << "=" << std::forward<H1>(value);
+StrmSwPortType toStrmT(WireBundle w) {
+  switch (w) {
+    case WireBundle::Core:
+      return StrmSwPortType::CORE;
+    case WireBundle::DMA:
+      return StrmSwPortType::DMA;
+    case WireBundle::FIFO:
+      return StrmSwPortType::FIFO;
+    case WireBundle::South:
+      return StrmSwPortType::SOUTH;
+    case WireBundle::West:
+      return StrmSwPortType::WEST;
+    case WireBundle::North:
+      return StrmSwPortType::NORTH;
+    case WireBundle::East:
+      return StrmSwPortType::EAST;
+    case WireBundle::PLIO:
+      llvm::report_fatal_error("unhandled PLIO");
+    case WireBundle::NOC:
+      llvm::report_fatal_error("unhandled NOC");
+    case WireBundle::Trace:
+      return StrmSwPortType::TRACE;
+    case WireBundle::Ctrl:
+      return StrmSwPortType::CTRL;
+    default:
+      llvm::report_fatal_error("unhandled WireBundle");
+  }
 }
-
-template <typename H1, typename... T>
-raw_ostream &showArgs(raw_ostream &out, const char *label, H1 &&value,
-                      T &&...rest) {
-  const char *pcomma = strchr(label, ',');
-  return showArgs(out.write(label, pcomma - label)
-                      << "=" << std::forward<H1>(value) << ',',
-                  pcomma + 1, std::forward<T>(rest)...);
-}
-
-#define SHOW_ARGS(os, ...) showArgs(os, #__VA_ARGS__, __VA_ARGS__)
-
-raw_ostream &operator<<(raw_ostream &os, const XAie_LocType &loc) {
-  os << "XAie_LocType(col: " << std::to_string(loc.Col)
-     << ", row: " << std::to_string(loc.Row) << ")";
-  return os;
-}
-
-raw_ostream &operator<<(raw_ostream &os, const XAie_Lock &lock) {
-  os << "XAie_Lock(id: " << std::to_string(lock.LockId)
-     << ", val: " << std::to_string(lock.LockVal) << ")";
-  return os;
-}
-
-raw_ostream &operator<<(raw_ostream &os, const XAie_Packet &packet) {
-  os << "XAie_Packet(id: " << std::to_string(packet.PktId)
-     << ", type: " << std::to_string(packet.PktType) << ")";
-  return os;
-}
-
-// So that we can use the pattern if(auto r = TRY_XAIE_API...) { // r is nonzero
-// }
-static_assert(XAIE_OK == 0);
-
-#define TRY_XAIE_API_FATAL_ERROR(API, ...)                                     \
-  do {                                                                         \
-    LLVM_DEBUG(llvm::dbgs() << "trying XAIE API: " << #API << " with args: "); \
-    LLVM_DEBUG(SHOW_ARGS(llvm::dbgs(), __VA_ARGS__));                          \
-    LLVM_DEBUG(llvm::dbgs() << "\n");                                          \
-    if (auto r = API(__VA_ARGS__))                                             \
-      llvm::report_fatal_error(llvm::Twine(#API " failed with ") +             \
-                               AIERCTOSTR.at(r));                              \
-  } while (0)
-
-#define TRY_XAIE_API_EMIT_ERROR(OP, API, ...)                                  \
-  do {                                                                         \
-    LLVM_DEBUG(llvm::dbgs() << "trying XAIE API: " << #API << " with args: "); \
-    LLVM_DEBUG(SHOW_ARGS(llvm::dbgs(), __VA_ARGS__));                          \
-    LLVM_DEBUG(llvm::dbgs() << "\n");                                          \
-    if (auto r = API(__VA_ARGS__))                                             \
-      return OP.emitOpError() << #API " failed with " << AIERCTOSTR.at(r);     \
-  } while (0)
-
-#define TRY_XAIE_API_LOGICAL_RESULT(API, ...)                                  \
-  do {                                                                         \
-    LLVM_DEBUG(llvm::dbgs() << "trying XAIE API: " << #API << " with args: "); \
-    LLVM_DEBUG(SHOW_ARGS(llvm::dbgs(), __VA_ARGS__));                          \
-    LLVM_DEBUG(llvm::dbgs() << "\n");                                          \
-    if (auto r = API(__VA_ARGS__)) {                                           \
-      llvm::errs() << #API " failed with " << AIERCTOSTR.at(r);                \
-      return failure();                                                        \
-    }                                                                          \
-  } while (0)
 
 auto ps = std::filesystem::path::preferred_separator;
 
@@ -538,10 +449,8 @@ struct AIEControl {
       for (auto connectOp : b.getOps<ConnectOp>())
         TRY_XAIE_API_EMIT_ERROR(
             switchboxOp, XAie_StrmConnCctEnable, &devInst, tileLoc,
-            WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE.at(connectOp.getSourceBundle()),
-            connectOp.sourceIndex(),
-            WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE.at(connectOp.getDestBundle()),
-            connectOp.destIndex());
+            toStrmT(connectOp.getSourceBundle()), connectOp.sourceIndex(),
+            toStrmT(connectOp.getDestBundle()), connectOp.destIndex());
 
       for (auto connectOp : b.getOps<MasterSetOp>()) {
         int mask = 0;
@@ -565,8 +474,8 @@ struct AIEControl {
             isdma ? XAIE_SS_PKT_DROP_HEADER : XAIE_SS_PKT_DONOT_DROP_HEADER;
         TRY_XAIE_API_EMIT_ERROR(
             connectOp, XAie_StrmPktSwMstrPortEnable, &devInst, tileLoc,
-            WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE.at(connectOp.getDestBundle()),
-            connectOp.destIndex(), dropHeader, arbiter, mask);
+            toStrmT(connectOp.getDestBundle()), connectOp.destIndex(),
+            dropHeader, arbiter, mask);
       }
 
       for (auto connectOp : b.getOps<PacketRulesOp>()) {
@@ -578,15 +487,13 @@ struct AIEControl {
           int msel = amselOp.getMselValue();
           TRY_XAIE_API_EMIT_ERROR(
               connectOp, XAie_StrmPktSwSlavePortEnable, &devInst, tileLoc,
-              WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE.at(connectOp.getSourceBundle()),
-              connectOp.sourceIndex());
+              toStrmT(connectOp.getSourceBundle()), connectOp.sourceIndex());
           auto packetInit = XAie_PacketInit(slotOp.valueInt(), /*PktType*/ 0);
           // TODO Need to better define packet id,type used here
           TRY_XAIE_API_EMIT_ERROR(
               connectOp, XAie_StrmPktSwSlaveSlotEnable, &devInst, tileLoc,
-              WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE.at(connectOp.getSourceBundle()),
-              connectOp.sourceIndex(), slot, packetInit, slotOp.maskInt(), msel,
-              arbiter);
+              toStrmT(connectOp.getSourceBundle()), connectOp.sourceIndex(),
+              slot, packetInit, slotOp.maskInt(), msel, arbiter);
           slot++;
         }
       }
@@ -616,10 +523,8 @@ struct AIEControl {
       for (auto connectOp : b.getOps<ConnectOp>())
         TRY_XAIE_API_EMIT_ERROR(
             switchboxOp, XAie_StrmConnCctEnable, &devInst, tileLoc,
-            WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE.at(connectOp.getSourceBundle()),
-            connectOp.sourceIndex(),
-            WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE.at(connectOp.getDestBundle()),
-            connectOp.destIndex());
+            toStrmT(connectOp.getSourceBundle()), connectOp.sourceIndex(),
+            toStrmT(connectOp.getDestBundle()), connectOp.destIndex());
     }
 
     // Cascade configuration
@@ -628,10 +533,8 @@ struct AIEControl {
       auto tileLoc = XAie_TileLoc(tile.getCol(), tile.getRow());
       TRY_XAIE_API_EMIT_ERROR(
           targetOp, XAie_CoreConfigAccumulatorControl, &devInst, tileLoc,
-          WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE.at(
-              static_cast<WireBundle>(configOp.getInputDir())),
-          WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE.at(
-              static_cast<WireBundle>(configOp.getOutputDir())));
+          toStrmT(static_cast<WireBundle>(configOp.getInputDir())),
+          toStrmT(static_cast<WireBundle>(configOp.getOutputDir())));
     }
 
     return success();
