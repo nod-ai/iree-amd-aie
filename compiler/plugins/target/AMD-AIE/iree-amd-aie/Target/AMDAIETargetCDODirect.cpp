@@ -401,8 +401,7 @@ struct AIEControl {
         static_cast<uint8_t>(XAIE_MEM_TILE_ROW_START + tm.getNumMemTileRows()),
         /*AieTileNumRows*/
         static_cast<uint8_t>(tm.rows() - tm.getNumMemTileRows() - 1),
-        /*PartProp*/ {},
-        /*Backend*/ XAIE_IO_BACKEND_CDO};
+        /*PartProp*/ {}};
 
     // Quoting: The instance of a device must be always declared using this
     //		macro. In future, the same macro will be expanded to allocate
