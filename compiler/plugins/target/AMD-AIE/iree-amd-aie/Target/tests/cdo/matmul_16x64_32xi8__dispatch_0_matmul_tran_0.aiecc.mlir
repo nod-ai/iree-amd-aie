@@ -267,7 +267,7 @@ aie.device(npu1_4col) {
 
 // CHECK: trying XAIE API: XAie_SetupPartitionConfig with args: &devInst={{.+}}, 0x0=0, partitionStartCol=1, partitionNumCols=4
 // CHECK: trying XAIE API: XAie_CfgInitialize with args: &devInst={{.+}}, &configPtr=
-// CHECK: trying XAIE API: XAie_SetIOBackend with args: &devInst={{.+}}, XAIE_IO_BACKEND_CDO=2
+// CHECK: trying XAIE API: XAie_SetIOBackend with args: &devInst={{.+}}, XAIE_IO_BACKEND_CDO=1
 // CHECK: trying XAIE API: XAie_UpdateNpiAddr with args: &devInst={{.+}}, 0x0=0
 // CHECK: trying XAIE API: XAie_LoadElf with args: &devInst={{.+}}, XAie_TileLoc(col=XAie_LocType(col: 0, row: 2), row)={{.+}}/matmul_16x64_32xi8__dispatch_0_matmul_transpose_b_16x32x64_i8xi8xi32_0_core_0_2.elf, elfPath.str().c_str(), aieSim=0
 // CHECK: trying XAIE API: XAie_CoreReset with args: &devInst={{.+}}, tileLoc=XAie_LocType(col: 0, row: 2)
