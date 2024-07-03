@@ -290,7 +290,7 @@ static LogicalResult generateCoreElfFiles(ModuleOp moduleOp,
         SmallString<64> meBasicPath(TK.InstallDir);
         sys::path::append(meBasicPath, "aie_runtime_lib",
                           StringRef(TK.TargetArch).upper(), "me_basic.o");
-        flags.emplace_back(meBasicPath);
+//        flags.emplace_back(meBasicPath);
         SmallString<64> libcPath(TK.PeanoDir);
         sys::path::append(libcPath, "lib", targetLower + "-none-unknown-elf",
                           "libc.a");

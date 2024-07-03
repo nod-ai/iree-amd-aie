@@ -91,6 +91,7 @@ std::string to_string(const AMDAIETileType value) {
   llvm::report_fatal_error("Unhandled AMDAIETileType case");
 }
 
+STRINGIFY_2TUPLE_STRUCT(TileLoc, col, row)
 STRINGIFY_2TUPLE_STRUCT(XAie_LocType, Col, Row)
 STRINGIFY_2TUPLE_STRUCT(XAie_Lock, LockId, LockVal)
 STRINGIFY_2TUPLE_STRUCT(XAie_Packet, PktId, PktType)
@@ -146,9 +147,11 @@ AMDAIENPUDeviceModel::AMDAIENPUDeviceModel(
                     static_cast<uint8_t>(nRows - nMemTileRows - nShimTileRows),
                 .PartProp = {}},
       devInst{} {
+  int partitionStartCol_ = partitionStartCol;
+  int partitionNumCols_ = partitionNumCols;
   TRY_XAIE_API_FATAL_ERROR(XAie_SetupPartitionConfig, &devInst,
-                           XAIE_PARTITION_BASE_ADDR, partitionStartCol,
-                           partitionNumCols);
+                           XAIE_PARTITION_BASE_ADDR, partitionStartCol_,
+                           partitionNumCols_);
   TRY_XAIE_API_FATAL_ERROR(XAie_CfgInitialize, &devInst, &configPtr);
   if (aieSim) {
     TRY_XAIE_API_FATAL_ERROR(XAie_SetIOBackend, &devInst, XAIE_IO_BACKEND_SIM);
@@ -159,6 +162,8 @@ AMDAIENPUDeviceModel::AMDAIENPUDeviceModel(
     TRY_XAIE_API_FATAL_ERROR(XAie_SetIOBackend, &devInst, XAIE_IO_BACKEND_CDO);
 
   TRY_XAIE_API_FATAL_ERROR(XAie_UpdateNpiAddr, &devInst, NPI_ADDR);
+
+  // TODO(max): this prevents some (most?) elfs from returning values?
   TRY_XAIE_API_FATAL_ERROR(XAie_TurnEccOff, &devInst);
 }
 

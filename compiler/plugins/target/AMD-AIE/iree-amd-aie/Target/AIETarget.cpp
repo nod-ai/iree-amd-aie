@@ -74,8 +74,8 @@ static llvm::cl::opt<std::string> clEnableAMDAIEUkernels(
 // Hence we need to find the func.func that coresponds to the export op symbol
 // and return its parent aie.device Op. This is what we will pass to the
 // `aie2xclbin` tool for artifact generation per entry point
-static std::optional<xilinx::AIE::DeviceOp> getDeviceOpFromEntryPoint(
-    ModuleOp moduleOp, StringRef exportOpName) {
+static xilinx::AIE::DeviceOp getDeviceOpFromEntryPoint(ModuleOp moduleOp,
+                                                       StringRef exportOpName) {
   xilinx::AIE::DeviceOp deviceOp;
 
   moduleOp.walk([&](func::FuncOp funcOp) {
@@ -85,13 +85,11 @@ static std::optional<xilinx::AIE::DeviceOp> getDeviceOpFromEntryPoint(
     }
     return WalkResult::advance();
   });
-
   if (!deviceOp) {
     moduleOp.emitError()
         << "failed to find aie.device containing func.func with symbol "
         << exportOpName;
   }
-
   return deviceOp;
 }
 
@@ -260,11 +258,7 @@ LogicalResult AIETargetBackend::serializeExecutable(
     }
 
     StringRef exportOpName = exportOp.getSymName();
-    if (auto deviceOp = getDeviceOpFromEntryPoint(moduleOp, exportOpName);
-        deviceOp.has_value())
-      deviceOps.push_back(*deviceOp);
-    else
-      return failure();
+    deviceOps.push_back(getDeviceOpFromEntryPoint(moduleOp, exportOpName));
 
     // The xclbin kernel name, appended with instance name suffix (`:MLIRAIEV1`,
     // 10 chars) is required by the xclbinutil to have a length smaller or equal

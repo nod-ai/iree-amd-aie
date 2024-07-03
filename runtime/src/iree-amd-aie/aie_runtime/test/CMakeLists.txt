@@ -40,8 +40,6 @@ iree_cc_test(
     gtest
     iree::target::amd-aie::aie::AIEDialectIR
     iree-amd-aie::aie_runtime::iree_aie_runtime_static
-  COPTS
-    -Wno-macro-redefined
 )
 
 target_include_directories(

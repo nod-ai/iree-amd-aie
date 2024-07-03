@@ -506,10 +506,10 @@ void initializeCDOGenerator(byte_ordering endianness, bool cdoDebug) {
 
 LogicalResult generateCDOBinary(const StringRef outputPath,
                                 const std::function<LogicalResult()> &cb) {
-  // Never generate a completely empty CDO file.  If the file only contains a
-  // header, then bootgen flags it as invalid.
   startCDOFileStream(outputPath.str().c_str());
   FileHeader();
+  // Never generate a completely empty CDO file.  If the file only contains a
+  // header, then bootgen flags it as invalid.
   insertNoOpCommand(4);
   if (failed(cb())) return failure();
   configureHeader();

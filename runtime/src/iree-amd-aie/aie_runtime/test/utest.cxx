@@ -14,8 +14,8 @@
 int main(int argc, char** argv) {
   std::string elfPath(argv[1]);
 
-  uint8_t col = 1;
-  uint8_t partitionStartCol = 1;
+  uint8_t col = 0;
+  uint8_t partitionStartCol = 0;
   uint8_t partitionNumCols = 4;
 
   AMDAIENPUDeviceModel deviceModel(
