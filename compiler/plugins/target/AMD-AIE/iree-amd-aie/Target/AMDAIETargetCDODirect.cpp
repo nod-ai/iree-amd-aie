@@ -423,6 +423,7 @@ struct AIEControl {
                                XAIE_IO_BACKEND_CDO);
 
     TRY_XAIE_API_FATAL_ERROR(XAie_UpdateNpiAddr, &devInst, NPI_ADDR);
+    TRY_XAIE_API_FATAL_ERROR(XAie_TurnEccOff, &devInst);
   }
 
   LogicalResult addAieElfToCDO(uint8_t col, uint8_t row,
