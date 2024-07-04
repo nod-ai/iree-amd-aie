@@ -2,7 +2,7 @@
 
 // CHECK-LABEL: func.func @single_alloc
 // CHECK:  %[[ALLOC:.+]] = memref.alloc() : memref<8x16xi32, 2 : i32>
-// CHECK:  %[[REFER:.+]] = amdaie.reference_to %[[ALLOC]] : memref<8x16xi32, 2 : i32> -> memref<8x16xi32, 2 : i32>
+// CHECK:  %[[REFER:.+]] = amdaie.reference_to %[[ALLOC]] : memref<8x16xi32, 2 : i32>
 // CHECK:  %[[USER:.+]] = bufferization.to_tensor %[[REFER]] restrict writable : memref<8x16xi32, 2 : i32>
 // CHECK:  linalg.copy ins(%{{.*}}) outs(%[[USER:.+]])
 // CHECK:  memref.dealloc %[[ALLOC]] : memref<8x16xi32, 2 : i32>
