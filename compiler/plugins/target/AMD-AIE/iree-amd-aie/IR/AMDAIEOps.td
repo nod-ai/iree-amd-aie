@@ -8,6 +8,7 @@
 #define IREE_AMDAIE_DIALECT_IREEAMDAIE_OPS
 
 include "mlir/Interfaces/CopyOpInterface.td"
+include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 include "mlir/Interfaces/ViewLikeInterface.td"
 include "mlir/IR/OpAsmInterface.td"
@@ -64,9 +65,6 @@ def AMDAIE_CoreOp: AMDAIE_Op<"core", [SingleBlock]>, Results<(outs Index)> {
   let assemblyFormat = [{ `(` $tile `)` regions attr-dict }];
   
   let builders = [
-    OpBuilder<(ins "mlir::Value":$tile), [{
-      build($_builder, $_state, $_builder.getIndexType(), tile);
-    }]>,
     OpBuilder<(ins "mlir::Value":$coreCol, "mlir::Value":$coreRow)>,
   ];
 
@@ -102,11 +100,6 @@ def AMDAIE_TileOp: AMDAIE_Op<"tile", [
 
   let assemblyFormat = [{ `(` $col `,` $row `)` attr-dict }];
 
-  let builders = [
-    OpBuilder<(ins "mlir::Value":$col, "mlir::Value":$row), [{
-      build($_builder, $_state, $_builder.getIndexType(), col, row);
-    }]>
-  ];
 
   let extraClassDeclaration = [{
     bool hasStaticLocation();
@@ -779,6 +772,31 @@ def AMDAIE_CircularDmaCpyNdOp: AMDAIE_DmaCpyNdBaseOp<"circular_dma_cpy_nd", [Pur
   }];
 
   let hasVerifier = 0;
+}
+
+def AMDAIE_ReferenceToOp: AMDAIE_Op<"reference_to", [SameOperandsAndResultType]> {
+  let summary = "The operation that creates reference to a memref allocation";
+  let description = [{
+    This operation creates a reference to a global memref allocation. It has the same type
+    as the allocation it refers to, but has a local scope that is not hoistable across the
+    `scf.forall/scf.for` loops. With this operation, each AIE tile could access its own
+    local memory allocation while the global allocation is kept outside the loops for any
+    sequential access.
+
+    Example:
+
+    ```mlir
+    %0 = memref.alloc() : memref<1x1x8x4x8x4xi32, 2 : i32>
+    %1 = amdaie.reference_to %0 : memref<1x1x8x4x8x4xi32, 2 : i32>
+    ```
+
+  }];
+
+  let arguments = (ins AnyMemRef:$memref);
+
+  let results = (outs AnyMemRef:$output);
+
+  let assemblyFormat = "$memref attr-dict `:` type($memref)";
 }
 
 #endif // IREE_AMDAIE_DIALECT_IREEAMDAIE_OPS
