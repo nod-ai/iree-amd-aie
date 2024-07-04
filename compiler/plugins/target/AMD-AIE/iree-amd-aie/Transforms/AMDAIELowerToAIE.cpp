@@ -366,14 +366,14 @@ LogicalResult circularDmaToAIE(IRRewriter &rewriter,
 namespace {
 
 /// Utility to get the static offsets, sizes and strides for
-/// `AIEX::NpuDmaMemcpyNdOp`.
-LogicalResult getStaticDims(Operation *op,
-                            const SmallVector<OpFoldResult> &offsets,
-                            const SmallVector<OpFoldResult> &sizes,
-                            const SmallVector<OpFoldResult> &strides,
-                            SmallVectorImpl<int64_t> &staticOffsets,
-                            SmallVectorImpl<int64_t> &staticSizes,
-                            SmallVectorImpl<int64_t> &staticStrides) {
+/// `AIEX::NpuDmaMemcpyNdOp` with explicit addressing.
+LogicalResult getStaticDimsForExplicitAddressing(
+    Operation *op, const SmallVector<OpFoldResult> &offsets,
+    const SmallVector<OpFoldResult> &sizes,
+    const SmallVector<OpFoldResult> &strides,
+    SmallVectorImpl<int64_t> &staticOffsets,
+    SmallVectorImpl<int64_t> &staticSizes,
+    SmallVectorImpl<int64_t> &staticStrides) {
   if (offsets.size() > staticOffsets.size()) {
     return op->emitError() << "size of `offsets` should be smaller or equal to "
                               "size of `staticOffsets`";
@@ -401,6 +401,31 @@ LogicalResult getStaticDims(Operation *op,
   return success();
 }
 
+/// Utility to get the static offsets, sizes and strides for
+/// `AIEX::NpuDmaMemcpyNdOp` with implicit addressing.
+LogicalResult getStaticDimsForImplicitAddressing(
+    Operation *op, MemRefType memrefType, SmallVectorImpl<int64_t> &staticSizes,
+    SmallVectorImpl<int64_t> &staticStrides) {
+  SmallVector<int64_t> shapeArr;
+  for (auto shape : memrefType.getShape()) shapeArr.push_back(shape);
+  int64_t sizeIndex = staticSizes.size() - 1;
+  for (int64_t i = shapeArr.size() - 1; i >= 0; i--) {
+    staticSizes[sizeIndex--] = shapeArr[i];
+  }
+  int64_t strideIndex = staticStrides.size() - 1;
+  // Since aiex.npu.dma_cpy_nd expects 3-dimensional stride attribute, it has
+  // the 4-th implicit dimension as 1. Hence we store that in `prevStride`.
+  int64_t prevStride = 1;
+  for (int64_t i = shapeArr.size() - 1; i >= 0; i--) {
+    staticStrides[strideIndex] = shapeArr[i] * prevStride;
+    prevStride = staticStrides[strideIndex--];
+  }
+  for (int64_t i = strideIndex; i >= 0; i--) {
+    staticStrides[i] = staticStrides[i + 1];
+  }
+  return success();
+}
+
 /// Convert the `amdaie.npu.dma_cpy_nd` operation to `aiex.npu.dma_memcpy_nd`.
 LogicalResult npuDmaCpyNdOpToAIE(IRRewriter &rewriter,
                                  AMDAIE::NpuDmaCpyNdOp dmaOp,
@@ -408,16 +433,47 @@ LogicalResult npuDmaCpyNdOpToAIE(IRRewriter &rewriter,
                                  IRMapping &mapper, IRMapping &bindingsMapper) {
   rewriter.setInsertionPoint(dmaOp);
   // Convert bidirectional `amdaie.npu.dma_cpy_nd` op into two halves.
-  if (dmaOp.hasSourceAddressing()) {
+
+  // TODO(avarma): The logic for checking implicit L3 addressing should just be
+  // part of AMDAIEOps.td. Confirm and address during PR.
+  MemRefType sourceMemrefType =
+      cast<LogicalObjectFifoType>(dmaOp.getDmaCpyNdOp().getSourceType())
+          .getElementType();
+  Attribute sourceMemSpaceAttr = sourceMemrefType.getMemorySpace();
+  MemRefType targetMemrefType =
+      cast<LogicalObjectFifoType>(dmaOp.getDmaCpyNdOp().getTargetType())
+          .getElementType();
+  Attribute targetMemSpaceAttr = targetMemrefType.getMemorySpace();
+  if (dmaOp.hasSourceAddressing() || !sourceMemSpaceAttr) {
+    // DmaOp has source addressing on L3 either explicitly or implicitly.
     SmallVector<Value> empty;
-    SmallVector<int64_t, 4> staticOffsets(4, 1);
-    SmallVector<int64_t, 4> staticSizes(4, 1);
-    SmallVector<int64_t, 4> staticStrides(4, 1);
-    if (failed(getStaticDims(dmaOp, dmaOp.getSourceMixedOffsets(),
-                             dmaOp.getSourceMixedSizes(),
-                             dmaOp.getSourceMixedStrides(), staticOffsets,
-                             staticSizes, staticStrides))) {
-      return failure();
+    SmallVector<int64_t, 4> staticOffsets;
+    SmallVector<int64_t, 4> staticSizes;
+    SmallVector<int64_t, 3> staticStrides;
+    if (dmaOp.hasSourceAddressing()) {
+      SmallVector<int64_t, 4> _staticOffsets(4, 1);
+      SmallVector<int64_t, 4> _staticSizes(4, 1);
+      SmallVector<int64_t, 3> _staticStrides(4, 1);
+      if (failed(getStaticDimsForExplicitAddressing(
+              dmaOp, dmaOp.getSourceMixedOffsets(), dmaOp.getSourceMixedSizes(),
+              dmaOp.getSourceMixedStrides(), _staticOffsets, _staticSizes,
+              _staticStrides))) {
+        return failure();
+      }
+      staticOffsets = _staticOffsets;
+      staticSizes = _staticSizes;
+      staticStrides = _staticStrides;
+    } else {
+      SmallVector<int64_t, 4> _staticOffsets(4, 0);
+      SmallVector<int64_t, 4> _staticSizes(4, 0);
+      SmallVector<int64_t, 3> _staticStrides(4, 1);
+      if (failed(getStaticDimsForImplicitAddressing(
+              dmaOp, sourceMemrefType, _staticSizes, _staticStrides))) {
+        return failure();
+      }
+      staticOffsets = _staticOffsets;
+      staticSizes = _staticSizes;
+      staticStrides = _staticStrides;
     }
 
     AMDAIE::CircularDmaCpyNdOp dmaCpyNd = dmaOp.getDmaCpyNdOp();
@@ -436,16 +492,36 @@ LogicalResult npuDmaCpyNdOpToAIE(IRRewriter &rewriter,
         empty, empty, staticOffsets, staticSizes, staticStrides,
         objFifo.getName(), 0, issueToken);
   }
-  if (dmaOp.hasTargetAddressing()) {
+  if (dmaOp.hasTargetAddressing() || !targetMemSpaceAttr) {
+    // DmaOp has target addressing on L3 either explicitly or implicitly.
     SmallVector<Value> empty;
-    SmallVector<int64_t, 4> staticOffsets(4, 1);
-    SmallVector<int64_t, 4> staticSizes(4, 1);
-    SmallVector<int64_t, 4> staticStrides(4, 1);
-    if (failed(getStaticDims(dmaOp, dmaOp.getTargetMixedOffsets(),
-                             dmaOp.getTargetMixedSizes(),
-                             dmaOp.getTargetMixedStrides(), staticOffsets,
-                             staticSizes, staticStrides))) {
-      return failure();
+    SmallVector<int64_t, 4> staticOffsets;
+    SmallVector<int64_t, 4> staticSizes;
+    SmallVector<int64_t, 3> staticStrides;
+    if (dmaOp.hasTargetAddressing()) {
+      SmallVector<int64_t, 4> _staticOffsets(4, 1);
+      SmallVector<int64_t, 4> _staticSizes(4, 1);
+      SmallVector<int64_t, 3> _staticStrides(4, 1);
+      if (failed(getStaticDimsForExplicitAddressing(
+              dmaOp, dmaOp.getTargetMixedOffsets(), dmaOp.getTargetMixedSizes(),
+              dmaOp.getTargetMixedStrides(), _staticOffsets, _staticSizes,
+              _staticStrides))) {
+        return failure();
+      }
+      staticOffsets = _staticOffsets;
+      staticSizes = _staticSizes;
+      staticStrides = _staticStrides;
+    } else {
+      SmallVector<int64_t, 4> _staticOffsets(4, 0);
+      SmallVector<int64_t, 4> _staticSizes(4, 0);
+      SmallVector<int64_t, 3> _staticStrides(4, 1);
+      if (failed(getStaticDimsForImplicitAddressing(
+              dmaOp, targetMemrefType, _staticSizes, _staticStrides))) {
+        return failure();
+      }
+      staticOffsets = _staticOffsets;
+      staticSizes = _staticSizes;
+      staticStrides = _staticStrides;
     }
     AMDAIE::CircularDmaCpyNdOp dmaCpyNd = dmaOp.getDmaCpyNdOp();
     Value memref =
