@@ -20,6 +20,7 @@
 #include "iree-amd-aie/Transforms/Passes.h"
 #include "iree-amd-aie/Transforms/Transforms.h"
 #include "iree/compiler/Codegen/TransformStrategies/GPU/Common.h"
+#include "mlir/Dialect/Vector/IR/VectorOps.h"
 
 #define DEBUG_TYPE "iree-amdaie-insert-cores"
 
@@ -111,6 +112,16 @@ LogicalResult insertCoreOps(mlir::ModuleOp moduleOp) {
       } else if (auto linalgOp = dyn_cast<linalg::LinalgOp>(op)) {
         rewriter.setInsertionPoint(endOp);
         rewriter.moveOpBefore(linalgOp, endOp);
+      } else if (isa<vector::ContractionOp>(op)) {
+        // Because vector.contract op is surrounded by vectorized loop nest, we
+        // need to traverse to the outermost loop to move the entire vectorized
+        // computation within amdaie.core op.
+        Operation *currOp = op;
+        while (currOp->getParentOp() != forallOp) {
+          currOp = currOp->getParentOp();
+        }
+        rewriter.setInsertionPoint(endOp);
+        rewriter.moveOpBefore(currOp, endOp);
       }
       return WalkResult::advance();
     });
