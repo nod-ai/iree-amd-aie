@@ -68,12 +68,9 @@ elseif(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
       -Wno-deprecated-copy -Wno-non-virtual-dtor -Wno-overloaded-virtual
       -Wno-register -Wno-reorder -Wno-suggest-override)
 endif()
-target_compile_options(
-  bootgen-lib
-  PRIVATE
-    $<$<COMPILE_LANGUAGE:C>:${bootgen_c_warning_ignores}>
-    $<$<COMPILE_LANGUAGE:CXX>:${bootgen_c_warning_ignores};${bootgen_cxx_warning_ignores}>
-)
+target_compile_options(bootgen-lib PRIVATE
+                       $<$<COMPILE_LANGUAGE:C>:${bootgen_c_warning_ignores}>
+                       $<$<COMPILE_LANGUAGE:CXX>:${bootgen_c_warning_ignores};${bootgen_cxx_warning_ignores}>)
 target_include_directories(bootgen-lib PUBLIC ${_bootgen_source_dir}
                                               ${OPENSSL_INCLUDE_DIR})
 target_compile_definitions(bootgen-lib PUBLIC OPENSSL_USE_APPLINK)
