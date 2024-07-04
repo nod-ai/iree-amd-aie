@@ -186,6 +186,12 @@ int runTool(StringRef program, ArrayRef<std::string> args, bool verbose,
   return result;
 }
 
+template <unsigned N>
+static void aieTargetDefines(SmallVector<std::string, N> &Args,
+                             std::string aie_target) {
+  Args.push_back("-D__AIEARCH__=20");
+}
+
 // Generate the elf files for the core
 static LogicalResult generateCoreElfFiles(ModuleOp moduleOp,
                                           const StringRef objFile,
@@ -290,7 +296,7 @@ static LogicalResult generateCoreElfFiles(ModuleOp moduleOp,
         SmallString<64> meBasicPath(TK.InstallDir);
         sys::path::append(meBasicPath, "aie_runtime_lib",
                           StringRef(TK.TargetArch).upper(), "me_basic.o");
-//        flags.emplace_back(meBasicPath);
+        flags.emplace_back(meBasicPath);
         SmallString<64> libcPath(TK.PeanoDir);
         sys::path::append(libcPath, "lib", targetLower + "-none-unknown-elf",
                           "libc.a");

@@ -21,7 +21,7 @@
 #   3. Run: `./run_matmul_tests.sh <output_dir_path> <iree_install_path> [<mlir_aie_install_path>] [<peano_install_path>] [<xrt_path>] [<vitis_path>] [do_signing]`
 #      The directories above in square brackets are optional, the first 2 directories are required.
 
-set -euo pipefail
+set -euox pipefail
 
 if [ "$#" -lt 2 ] || [ "$#" -gt 6 ]; then
 
@@ -67,8 +67,8 @@ for dir in "${IREE_INSTALL_DIR}" "${IREE_INSTALL_DIR}/bin" "${IREE_INSTALL_DIR}/
   if [ -f "${dir}/iree-compile" ]; then
     IREE_COMPILE_EXE="${dir}/iree-compile"
   fi
-  if [ -f "${dir}/iree-e2e-matmul-test" ]; then
-    TEST_RUNNER="${dir}/iree-e2e-matmul-test"
+  if [ -f "${dir}/testing/e2e/iree-e2e-matmul-test" ]; then
+    TEST_RUNNER="${dir}/testing/e2e/iree-e2e-matmul-test"
   fi
 done
 
@@ -305,6 +305,9 @@ function run_matmul_test() {
     esac
   done
 
+  set -x
+
+
   # Record the current time in milliseconds. Record the time at certain
   # checkpoints, and print statistics summarizing how much time is spent in
   # compilation and execution.
@@ -402,7 +405,8 @@ function run_matmul_test() {
 
 
   echo "**** Generating matmul .vmfb file for ${name} ****"
-  ${IREE_COMPILE_EXE} "${matmul_ir}" ${compilation_flags} -o "${matmul_vmfb}" &> $name.log
+  ${IREE_COMPILE_EXE} "${matmul_ir}" \
+    ${compilation_flags} -o "${matmul_vmfb}"
 
 
   compileResult=$?
@@ -423,6 +427,10 @@ function run_matmul_test() {
       exit 1
     fi
   fi
+
+  # Renable exit on failure:
+  set -e
+
 
   echo "**** Generating calls .vmfb file for ${name} ****"
   ${IREE_COMPILE_EXE} "${calls_ir}" \
@@ -449,8 +457,7 @@ function run_matmul_test() {
     return_status=$?
     if [ $return_status -ne 0 ]; then
       echo "Command returned with status: ${return_status}"
-    else
-      echo "${name} PASS!!!"
+      exit 1
     fi
   done
 
@@ -461,6 +468,8 @@ function run_matmul_test() {
   echo "Time spent in generation: $((generated_time - start_time)) [ms]"
   echo "Time spent in compilation: $((compiled_time - generated_time)) [ms]"
   echo "Time spent in execution and verification: $((end_time - compiled_time)) [ms]"
+
+  set +x
 }
 
 ########################################################
@@ -501,7 +510,7 @@ run_matmul_test \
     --lhs_rhs_type "bf16" \
     --acc_type "f32" \
     --m "256"  --k "256" --n "256" \
-    --use_ukernel "0"
+    --use_ukernel "1"
 
 # Disabled until the following issue is resolved:
 # https://github.com/Xilinx/llvm-aie/issues/102

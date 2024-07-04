@@ -4,6 +4,19 @@
 // https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: # Apache-2.0 WITH LLVM-exception
 
+#include <cstdint>
+
+extern "C" {
+#include "xaiengine.h"
+#include "xaiengine/xaie_device_aieml.h"
+#define s8
+#define u8
+#define u16
+#define s32
+#define u32
+#define u64
+}
+
 #include "iree_aie_runtime.h"
 
 #define DEBUG_TYPE "iree-aie-runtime"
@@ -79,7 +92,7 @@ std::string to_string(const AieRC &value) {
   llvm::report_fatal_error("Unhandled AieRC case");
 };
 
-std::string to_string(const AMDAIETileType value) {
+std::string to_string(const AMDAIETileType &value) {
   switch (value) {
     STRINGIFY_ENUM_CASE(AMDAIETileType::AIETILE)
     STRINGIFY_ENUM_CASE(AMDAIETileType::SHIMNOC)

@@ -7,6 +7,11 @@
 #include <set>
 #include <tuple>
 
+extern "C" {
+#include "xaiengine.h"
+#include "xaiengine/xaie_ss_aieml.h"
+}
+
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIE/IR/AIETargetModel.h"
 #include "gtest/gtest-param-test.h"
@@ -277,10 +282,6 @@ class AMDAIENPUDeviceModelParameterizedMemtileConnectivityWholeNPUTestFixture
     : public AMDAIENPUDeviceModelParameterizedTupleTestWholeNPUFixture<int,
                                                                        int> {};
 
-extern "C" {
-#include "xaiengine/xaie_ss_aieml.h"
-}
-
 #define X_ false
 #define O_ true
 
@@ -408,8 +409,8 @@ INSTANTIATE_TEST_SUITE_P(
     AMDAIENPUDeviceModelParameterizedAllPairsTimesAllSwitchesWholeNPUTestFixture,
     ::testing::Combine(::testing::Range(0, NPU_NUM_COLS),
                        ::testing::Range(0, NPU_NUM_ROWS),
-                       ::testing::Range(0,
-                                        static_cast<int>(SS_PORT_TYPE_MAX))));
+                       ::testing::Values(CORE, DMA, CTRL, FIFO, SOUTH, WEST,
+                                         NORTH, EAST, TRACE)));
 
 INSTANTIATE_TEST_SUITE_P(
     VerifyAIERTAIE2MemTileConnectivity,

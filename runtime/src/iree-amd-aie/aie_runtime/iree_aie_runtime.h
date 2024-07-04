@@ -33,6 +33,12 @@
 extern "C" {
 #include "xaiengine.h"
 #include "xaiengine/xaie_device_aieml.h"
+#define s8
+#define u8
+#define u16
+#define s32
+#define u32
+#define u64
 
 enum byte_ordering { Little_Endian, Big_Endian };
 void startCDOFileStream(const char *cdoFileName);
@@ -43,13 +49,6 @@ void setEndianness(bool endianness);
 void configureHeader();
 void insertNoOpCommand(unsigned int numPadBytes);
 }
-
-#define s8
-#define u8
-#define u16
-#define s32
-#define u32
-#define u64
 
 #define XAIE2_BASE_ADDR 0x40000000
 #define XAIE1_BASE_ADDR 0x20000000000
@@ -70,6 +69,7 @@ void insertNoOpCommand(unsigned int numPadBytes);
 #define BASE_ADDR_A_INCR 0x80000
 
 struct TileLoc {
+  int col, row;
   inline bool operator<(const TileLoc &rhs) const {
     return std::tie(col, row) < std::tie(rhs.col, rhs.row);
   }
@@ -83,8 +83,6 @@ struct TileLoc {
   operator XAie_LocType() const { return XAie_TileLoc(col, row); }
   TileLoc(XAie_LocType loc) : col(loc.Col), row(loc.Row) {}
   TileLoc(int col, int row) : col(col), row(row) {}
-
-  int col, row;
 };
 
 enum class AMDAIEDevice : uint32_t {
@@ -176,23 +174,23 @@ struct AMDAIENPUDeviceModel getDeviceModel(AMDAIEDevice device);
 template <typename H1>
 llvm::raw_ostream &showArgs(llvm::raw_ostream &out, const char *label,
                             H1 &&value) {
-    if constexpr (std::is_pointer<H1>::value)
-        return out << label << "=" << "ptr";
-    else
-        return out << label << "=" << std::forward<H1>(value);
+  if constexpr (std::is_pointer<H1>::value)
+    return out << label << "=" << "ptr";
+  else
+    return out << label << "=" << std::forward<H1>(value);
 }
 
 template <typename H1, typename... T>
 llvm::raw_ostream &showArgs(llvm::raw_ostream &out, const char *label,
                             H1 &&value, T &&...rest) {
-    const char *pcomma = strchr(label, ',');
-    if constexpr (std::is_pointer<H1>::value)
-        return showArgs(out.write(label, pcomma - label) << "=ptr,", pcomma + 1,
-                        std::forward<T>(rest)...);
-    else
-        return showArgs(out.write(label, pcomma - label)
-                                << "=" << std::forward<H1>(value) << ',',
-                        pcomma + 1, std::forward<T>(rest)...);
+  const char *pcomma = strchr(label, ',');
+  if constexpr (std::is_pointer<H1>::value)
+    return showArgs(out.write(label, pcomma - label) << "=ptr,", pcomma + 1,
+                    std::forward<T>(rest)...);
+  else
+    return showArgs(out.write(label, pcomma - label)
+                        << "=" << std::forward<H1>(value) << ',',
+                    pcomma + 1, std::forward<T>(rest)...);
 }
 
 #define SHOW_ARGS(os, ...) showArgs(os, #__VA_ARGS__, __VA_ARGS__)
@@ -237,15 +235,15 @@ namespace mlir::iree_compiler::AMDAIE {
 #define TO_STRING(TYPE) std::string to_string(const TYPE &t);
 
 #define TO_STRINGS(_) \
-  _(AieRC)            \
-  _(TileLoc)          \
   _(AMDAIETileType)   \
+  _(AieRC)            \
+  _(StrmSwPortType)   \
+  _(TileLoc)          \
   _(XAie_LocType)     \
   _(XAie_Lock)        \
-  _(StrmSwPortType)   \
   _(XAie_Packet)
 
-    TO_STRINGS(TO_STRING)
+TO_STRINGS(TO_STRING)
 #undef TO_STRING
 #undef TO_STRINGS
 }  // namespace mlir::iree_compiler::AMDAIE
@@ -255,16 +253,15 @@ namespace mlir::iree_compiler::AMDAIE {
   OSTREAM_OP_(llvm::raw_ostream, TYPE)
 
 #define BOTH_OSTREAM_OPS_FORALL_TYPES(OSTREAM_OP_, _) \
-  _(OSTREAM_OP_, AieRC)                               \
-  _(OSTREAM_OP_, TileLoc)                             \
   _(OSTREAM_OP_, AMDAIETileType)                      \
+  _(OSTREAM_OP_, AieRC)                               \
+  _(OSTREAM_OP_, StrmSwPortType)                      \
+  _(OSTREAM_OP_, TileLoc)                             \
   _(OSTREAM_OP_, XAie_LocType)                        \
   _(OSTREAM_OP_, XAie_Lock)                           \
-  _(OSTREAM_OP_, XAie_Packet)                         \
-  _(OSTREAM_OP_, StrmSwPortType)
+  _(OSTREAM_OP_, XAie_Packet)
 
 BOTH_OSTREAM_OPS_FORALL_TYPES(OSTREAM_OP, BOTH_OSTREAM_OP)
 #undef OSTREAM_OP
-
 
 #endif  // IREE_AIE_RUNTIME_H
