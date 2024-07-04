@@ -12,11 +12,11 @@
 // CHECK-DAG:   aie.core(%[[TILE_0_3]])
 // CHECK-DAG:   aie.core(%[[TILE_1_3]])
 // CHECK-DAG:   func.func @matmul_i32_dispatch_0_matmul_128x128x256_i32(%[[ARG0:.+]]: memref<128x256xi32>, %[[ARG1:.+]]: memref<256x128xi32>, %[[ARG2:.+]]: memref<128x128xi32>)
-// CHECK-DAG:     aiex.npu.dma_memcpy_nd(0, 0, %[[ARG0]][1, 1, 0, 0][1, 1, 64, 32][1, 1, 256]) {id = 0 : i64, issue_token = true, metadata = @[[OBJ0:.+]]}
+// CHECK-DAG:     aiex.npu.dma_memcpy_nd(0, 0, %[[ARG0]][1, 1, 0, 0][1, 1, 64, 32][1, 1, 256, 1]) {id = 0 : i64, issue_token = true, metadata = @[[OBJ0:.+]]}
 // CHECK-DAG:     aiex.npu.dma_wait {symbol = @[[OBJ0]]}
-// CHECK-DAG:     aiex.npu.dma_memcpy_nd(0, 0, %[[ARG1]][1, 0, 0, 0][1, 2, 32, 32][1, 32, 128]) {id = 0 : i64, issue_token = true, metadata = @[[OBJ1:.+]]}
+// CHECK-DAG:     aiex.npu.dma_memcpy_nd(0, 0, %[[ARG1]][1, 0, 0, 0][1, 2, 32, 32][1, 32, 128, 1]) {id = 0 : i64, issue_token = true, metadata = @[[OBJ1:.+]]}
 // CHECK-DAG:     aiex.npu.dma_wait {symbol = @[[OBJ1]]}
-// CHECK-DAG:     aiex.npu.dma_memcpy_nd(0, 0, %[[ARG2]][1, 1, 0, 0][1, 1, 64, 64][1, 1, 128]) {id = 0 : i64, issue_token = true, metadata = @[[OBJ10:.+]]}
+// CHECK-DAG:     aiex.npu.dma_memcpy_nd(0, 0, %[[ARG2]][1, 1, 0, 0][1, 1, 64, 64][1, 1, 128, 1]) {id = 0 : i64, issue_token = true, metadata = @[[OBJ10:.+]]}
 // CHECK-DAG:     aiex.npu.dma_wait {symbol = @[[OBJ10]]}
 // CHECK-DAG:   aie.shim_dma_allocation @[[OBJ0]](MM2S, 0, 0)
 // CHECK-DAG:   aie.shim_dma_allocation @[[OBJ1]](MM2S, 1, 0)
