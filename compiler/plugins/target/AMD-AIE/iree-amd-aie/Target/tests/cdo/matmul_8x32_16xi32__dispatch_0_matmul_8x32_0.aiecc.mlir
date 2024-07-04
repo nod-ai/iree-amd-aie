@@ -190,162 +190,164 @@ aie.device(npu1_4col) {
 } {sym_name = "matmul_8x32_16xi32__dispatch_0_matmul_8x32x16_i32_0"}
 }
 
-// CHECK: XAIE API: XAie_SetupPartitionConfig with args: &devInst=ptr, 0x0=0, partitionStartCol=1, partitionNumCols=4
+// CHECK: XAIE API: XAie_SetupPartitionConfig with args: &devInst=ptr, 0x0=0, partitionStartCol_=0, partitionNumCols_=4
 // CHECK: XAIE API: XAie_CfgInitialize with args: &devInst=ptr, &configPtr=ptr
 // CHECK: XAIE API: XAie_SetIOBackend with args: &devInst=ptr, XAIE_IO_BACKEND_CDO=1
 // CHECK: XAIE API: XAie_UpdateNpiAddr with args: &devInst=ptr, 0x0=0
 // CHECK: XAIE API: XAie_TurnEccOff with args: &devInst=ptr
-// CHECK: XAIE API: XAie_LockSetValue with args: &devInst=ptr, tileLoc=XAie_LocType(Col: 1, Row: 1), locInit=XAie_Lock(LockId: 1, LockVal: 1)
-// CHECK: XAIE API: XAie_LockSetValue with args: &devInst=ptr, tileLoc=XAie_LocType(Col: 1, Row: 1), locInit=XAie_Lock(LockId: 0, LockVal: 0)
-// CHECK: XAIE API: XAie_LockSetValue with args: &devInst=ptr, tileLoc=XAie_LocType(Col: 0, Row: 1), locInit=XAie_Lock(LockId: 1, LockVal: 1)
-// CHECK: XAIE API: XAie_LockSetValue with args: &devInst=ptr, tileLoc=XAie_LocType(Col: 0, Row: 1), locInit=XAie_Lock(LockId: 0, LockVal: 0)
-// CHECK: XAIE API: XAie_LockSetValue with args: &devInst=ptr, tileLoc=XAie_LocType(Col: 2, Row: 1), locInit=XAie_Lock(LockId: 1, LockVal: 1)
-// CHECK: XAIE API: XAie_LockSetValue with args: &devInst=ptr, tileLoc=XAie_LocType(Col: 2, Row: 1), locInit=XAie_Lock(LockId: 0, LockVal: 0)
-// CHECK: XAIE API: XAie_LockSetValue with args: &devInst=ptr, tileLoc=XAie_LocType(Col: 0, Row: 2), locInit=XAie_Lock(LockId: 5, LockVal: 1)
-// CHECK: XAIE API: XAie_LockSetValue with args: &devInst=ptr, tileLoc=XAie_LocType(Col: 0, Row: 2), locInit=XAie_Lock(LockId: 4, LockVal: 0)
-// CHECK: XAIE API: XAie_LockSetValue with args: &devInst=ptr, tileLoc=XAie_LocType(Col: 0, Row: 2), locInit=XAie_Lock(LockId: 3, LockVal: 1)
-// CHECK: XAIE API: XAie_LockSetValue with args: &devInst=ptr, tileLoc=XAie_LocType(Col: 0, Row: 2), locInit=XAie_Lock(LockId: 2, LockVal: 0)
-// CHECK: XAIE API: XAie_LockSetValue with args: &devInst=ptr, tileLoc=XAie_LocType(Col: 0, Row: 2), locInit=XAie_Lock(LockId: 1, LockVal: 1)
-// CHECK: XAIE API: XAie_LockSetValue with args: &devInst=ptr, tileLoc=XAie_LocType(Col: 0, Row: 2), locInit=XAie_Lock(LockId: 0, LockVal: 0)
-// CHECK: XAIE API: XAie_DmaDescInit with args: &devInst=ptr, &dmaTileBd=ptr, tileLoc=XAie_LocType(Col: 0, Row: 2)
+
+// CHECK: XAIE API: XAie_LockSetValue with args: &deviceModel.devInst=ptr, tileLoc=XAie_LocType(Col: 1, Row: 1), locInit=XAie_Lock(LockId: 1, LockVal: 1)
+// CHECK: XAIE API: XAie_LockSetValue with args: &deviceModel.devInst=ptr, tileLoc=XAie_LocType(Col: 1, Row: 1), locInit=XAie_Lock(LockId: 0, LockVal: 0)
+// CHECK: XAIE API: XAie_LockSetValue with args: &deviceModel.devInst=ptr, tileLoc=XAie_LocType(Col: 0, Row: 1), locInit=XAie_Lock(LockId: 1, LockVal: 1)
+// CHECK: XAIE API: XAie_LockSetValue with args: &deviceModel.devInst=ptr, tileLoc=XAie_LocType(Col: 0, Row: 1), locInit=XAie_Lock(LockId: 0, LockVal: 0)
+// CHECK: XAIE API: XAie_LockSetValue with args: &deviceModel.devInst=ptr, tileLoc=XAie_LocType(Col: 2, Row: 1), locInit=XAie_Lock(LockId: 1, LockVal: 1)
+// CHECK: XAIE API: XAie_LockSetValue with args: &deviceModel.devInst=ptr, tileLoc=XAie_LocType(Col: 2, Row: 1), locInit=XAie_Lock(LockId: 0, LockVal: 0)
+// CHECK: XAIE API: XAie_LockSetValue with args: &deviceModel.devInst=ptr, tileLoc=XAie_LocType(Col: 0, Row: 2), locInit=XAie_Lock(LockId: 5, LockVal: 1)
+// CHECK: XAIE API: XAie_LockSetValue with args: &deviceModel.devInst=ptr, tileLoc=XAie_LocType(Col: 0, Row: 2), locInit=XAie_Lock(LockId: 4, LockVal: 0)
+// CHECK: XAIE API: XAie_LockSetValue with args: &deviceModel.devInst=ptr, tileLoc=XAie_LocType(Col: 0, Row: 2), locInit=XAie_Lock(LockId: 3, LockVal: 1)
+// CHECK: XAIE API: XAie_LockSetValue with args: &deviceModel.devInst=ptr, tileLoc=XAie_LocType(Col: 0, Row: 2), locInit=XAie_Lock(LockId: 2, LockVal: 0)
+// CHECK: XAIE API: XAie_LockSetValue with args: &deviceModel.devInst=ptr, tileLoc=XAie_LocType(Col: 0, Row: 2), locInit=XAie_Lock(LockId: 1, LockVal: 1)
+// CHECK: XAIE API: XAie_LockSetValue with args: &deviceModel.devInst=ptr, tileLoc=XAie_LocType(Col: 0, Row: 2), locInit=XAie_Lock(LockId: 0, LockVal: 0)
+// CHECK: XAIE API: XAie_DmaDescInit with args: &deviceModel.devInst=ptr, &dmaTileBd=ptr, tileLoc=XAie_LocType(Col: 0, Row: 2)
 
 // CHECK: start configuring bds
 // CHECK: XAIE API: dmaTileBd.DmaMod->SetLock with args: &dmaTileBd=ptr, acqLock=XAie_Lock(LockId: 3, LockVal: -1), relLock=XAie_Lock(LockId: 2, LockVal: 1), acqEn=1, relEn=0
 // CHECK: XAIE API: XAie_DmaSetAddrLen with args: &dmaTileBd=ptr, basePlusOffsetInBytes=1024, lenInBytes=512
 // CHECK: XAIE API: XAie_DmaSetNextBd with args: &dmaTileBd=ptr, nextBdId.value()=0, enableNextBd=1
 // CHECK: XAIE API: XAie_DmaEnableBd with args: &dmaTileBd=ptr
-// CHECK: XAIE API: XAie_DmaWriteBd with args: &devInst=ptr, &dmaTileBd=ptr, tileLoc=XAie_LocType(Col: 0, Row: 2), bdId=0
+// CHECK: XAIE API: XAie_DmaWriteBd with args: &deviceModel.devInst=ptr, &dmaTileBd=ptr, tileLoc=XAie_LocType(Col: 0, Row: 2), bdId=0
 
 // CHECK: end configuring bds
-// CHECK: XAIE API: XAie_DmaDescInit with args: &devInst=ptr, &dmaTileBd=ptr, tileLoc=XAie_LocType(Col: 0, Row: 2)
+// CHECK: XAIE API: XAie_DmaDescInit with args: &deviceModel.devInst=ptr, &dmaTileBd=ptr, tileLoc=XAie_LocType(Col: 0, Row: 2)
 
 // CHECK: start configuring bds
 // CHECK: XAIE API: dmaTileBd.DmaMod->SetLock with args: &dmaTileBd=ptr, acqLock=XAie_Lock(LockId: 5, LockVal: -1), relLock=XAie_Lock(LockId: 4, LockVal: 1), acqEn=1, relEn=0
 // CHECK: XAIE API: XAie_DmaSetAddrLen with args: &dmaTileBd=ptr, basePlusOffsetInBytes=1536, lenInBytes=2048
 // CHECK: XAIE API: XAie_DmaSetNextBd with args: &dmaTileBd=ptr, nextBdId.value()=1, enableNextBd=1
 // CHECK: XAIE API: XAie_DmaEnableBd with args: &dmaTileBd=ptr
-// CHECK: XAIE API: XAie_DmaWriteBd with args: &devInst=ptr, &dmaTileBd=ptr, tileLoc=XAie_LocType(Col: 0, Row: 2), bdId=1
+// CHECK: XAIE API: XAie_DmaWriteBd with args: &deviceModel.devInst=ptr, &dmaTileBd=ptr, tileLoc=XAie_LocType(Col: 0, Row: 2), bdId=1
 
 // CHECK: end configuring bds
-// CHECK: XAIE API: XAie_DmaDescInit with args: &devInst=ptr, &dmaTileBd=ptr, tileLoc=XAie_LocType(Col: 0, Row: 2)
+// CHECK: XAIE API: XAie_DmaDescInit with args: &deviceModel.devInst=ptr, &dmaTileBd=ptr, tileLoc=XAie_LocType(Col: 0, Row: 2)
 
 // CHECK: start configuring bds
 // CHECK: XAIE API: dmaTileBd.DmaMod->SetLock with args: &dmaTileBd=ptr, acqLock=XAie_Lock(LockId: 0, LockVal: -1), relLock=XAie_Lock(LockId: 1, LockVal: 1), acqEn=1, relEn=0
 // CHECK: XAIE API: XAie_DmaSetMultiDimAddr with args: &dmaTileBd=ptr, &dmaTileBdTensor=ptr, basePlusOffsetInBytes=3584, lenInBytes=1024
 // CHECK: XAIE API: XAie_DmaSetNextBd with args: &dmaTileBd=ptr, nextBdId.value()=2, enableNextBd=1
 // CHECK: XAIE API: XAie_DmaEnableBd with args: &dmaTileBd=ptr
-// CHECK: XAIE API: XAie_DmaWriteBd with args: &devInst=ptr, &dmaTileBd=ptr, tileLoc=XAie_LocType(Col: 0, Row: 2), bdId=2
+// CHECK: XAIE API: XAie_DmaWriteBd with args: &deviceModel.devInst=ptr, &dmaTileBd=ptr, tileLoc=XAie_LocType(Col: 0, Row: 2), bdId=2
 
 // CHECK: end configuring bds
-// CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: &devInst=ptr, tileLoc=XAie_LocType(Col: 0, Row: 2), chNum=0, direction=0, bdId=0, repeatCount=2, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelEnable with args: &devInst=ptr, tileLoc=XAie_LocType(Col: 0, Row: 2), chNum=0, direction=0
-// CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: &devInst=ptr, tileLoc=XAie_LocType(Col: 0, Row: 2), chNum=1, direction=0, bdId=1, repeatCount=2, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelEnable with args: &devInst=ptr, tileLoc=XAie_LocType(Col: 0, Row: 2), chNum=1, direction=0
-// CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: &devInst=ptr, tileLoc=XAie_LocType(Col: 0, Row: 2), chNum=0, direction=1, bdId=2, repeatCount=2, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelEnable with args: &devInst=ptr, tileLoc=XAie_LocType(Col: 0, Row: 2), chNum=0, direction=1
-// CHECK: XAIE API: XAie_DmaDescInit with args: &devInst=ptr, &dmaTileBd=ptr, tileLoc=XAie_LocType(Col: 2, Row: 1)
+// CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: &deviceModel.devInst=ptr, tileLoc=XAie_LocType(Col: 0, Row: 2), chNum=0, direction=0, bdId=0, repeatCount=2, enTokenIssue=0
+// CHECK: XAIE API: XAie_DmaChannelEnable with args: &deviceModel.devInst=ptr, tileLoc=XAie_LocType(Col: 0, Row: 2), chNum=0, direction=0
+// CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: &deviceModel.devInst=ptr, tileLoc=XAie_LocType(Col: 0, Row: 2), chNum=1, direction=0, bdId=1, repeatCount=2, enTokenIssue=0
+// CHECK: XAIE API: XAie_DmaChannelEnable with args: &deviceModel.devInst=ptr, tileLoc=XAie_LocType(Col: 0, Row: 2), chNum=1, direction=0
+// CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: &deviceModel.devInst=ptr, tileLoc=XAie_LocType(Col: 0, Row: 2), chNum=0, direction=1, bdId=2, repeatCount=2, enTokenIssue=0
+// CHECK: XAIE API: XAie_DmaChannelEnable with args: &deviceModel.devInst=ptr, tileLoc=XAie_LocType(Col: 0, Row: 2), chNum=0, direction=1
+// CHECK: XAIE API: XAie_DmaDescInit with args: &deviceModel.devInst=ptr, &dmaTileBd=ptr, tileLoc=XAie_LocType(Col: 2, Row: 1)
 
 // CHECK: start configuring bds
 // CHECK: XAIE API: dmaTileBd.DmaMod->SetLock with args: &dmaTileBd=ptr, acqLock=XAie_Lock(LockId: 65, LockVal: -1), relLock=XAie_Lock(LockId: 64, LockVal: 1), acqEn=1, relEn=0
 // CHECK: XAIE API: XAie_DmaSetAddrLen with args: &dmaTileBd=ptr, basePlusOffsetInBytes=524288, lenInBytes=1024
 // CHECK: XAIE API: XAie_DmaSetNextBd with args: &dmaTileBd=ptr, nextBdId.value()=0, enableNextBd=1
 // CHECK: XAIE API: XAie_DmaEnableBd with args: &dmaTileBd=ptr
-// CHECK: XAIE API: XAie_DmaWriteBd with args: &devInst=ptr, &dmaTileBd=ptr, tileLoc=XAie_LocType(Col: 2, Row: 1), bdId=0
+// CHECK: XAIE API: XAie_DmaWriteBd with args: &deviceModel.devInst=ptr, &dmaTileBd=ptr, tileLoc=XAie_LocType(Col: 2, Row: 1), bdId=0
 
 // CHECK: end configuring bds
-// CHECK: XAIE API: XAie_DmaDescInit with args: &devInst=ptr, &dmaTileBd=ptr, tileLoc=XAie_LocType(Col: 2, Row: 1)
+// CHECK: XAIE API: XAie_DmaDescInit with args: &deviceModel.devInst=ptr, &dmaTileBd=ptr, tileLoc=XAie_LocType(Col: 2, Row: 1)
 
 // CHECK: start configuring bds
 // CHECK: XAIE API: dmaTileBd.DmaMod->SetLock with args: &dmaTileBd=ptr, acqLock=XAie_Lock(LockId: 64, LockVal: -1), relLock=XAie_Lock(LockId: 65, LockVal: 1), acqEn=1, relEn=0
 // CHECK: XAIE API: XAie_DmaSetAddrLen with args: &dmaTileBd=ptr, basePlusOffsetInBytes=524288, lenInBytes=1024
 // CHECK: XAIE API: XAie_DmaSetNextBd with args: &dmaTileBd=ptr, nextBdId.value()=1, enableNextBd=1
 // CHECK: XAIE API: XAie_DmaEnableBd with args: &dmaTileBd=ptr
-// CHECK: XAIE API: XAie_DmaWriteBd with args: &devInst=ptr, &dmaTileBd=ptr, tileLoc=XAie_LocType(Col: 2, Row: 1), bdId=1
+// CHECK: XAIE API: XAie_DmaWriteBd with args: &deviceModel.devInst=ptr, &dmaTileBd=ptr, tileLoc=XAie_LocType(Col: 2, Row: 1), bdId=1
 
 // CHECK: end configuring bds
-// CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: &devInst=ptr, tileLoc=XAie_LocType(Col: 2, Row: 1), chNum=0, direction=0, bdId=0, repeatCount=2, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelEnable with args: &devInst=ptr, tileLoc=XAie_LocType(Col: 2, Row: 1), chNum=0, direction=0
-// CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: &devInst=ptr, tileLoc=XAie_LocType(Col: 2, Row: 1), chNum=0, direction=1, bdId=1, repeatCount=2, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelEnable with args: &devInst=ptr, tileLoc=XAie_LocType(Col: 2, Row: 1), chNum=0, direction=1
-// CHECK: XAIE API: XAie_DmaDescInit with args: &devInst=ptr, &dmaTileBd=ptr, tileLoc=XAie_LocType(Col: 0, Row: 1)
+// CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: &deviceModel.devInst=ptr, tileLoc=XAie_LocType(Col: 2, Row: 1), chNum=0, direction=0, bdId=0, repeatCount=2, enTokenIssue=0
+// CHECK: XAIE API: XAie_DmaChannelEnable with args: &deviceModel.devInst=ptr, tileLoc=XAie_LocType(Col: 2, Row: 1), chNum=0, direction=0
+// CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: &deviceModel.devInst=ptr, tileLoc=XAie_LocType(Col: 2, Row: 1), chNum=0, direction=1, bdId=1, repeatCount=2, enTokenIssue=0
+// CHECK: XAIE API: XAie_DmaChannelEnable with args: &deviceModel.devInst=ptr, tileLoc=XAie_LocType(Col: 2, Row: 1), chNum=0, direction=1
+// CHECK: XAIE API: XAie_DmaDescInit with args: &deviceModel.devInst=ptr, &dmaTileBd=ptr, tileLoc=XAie_LocType(Col: 0, Row: 1)
 
 // CHECK: start configuring bds
 // CHECK: XAIE API: dmaTileBd.DmaMod->SetLock with args: &dmaTileBd=ptr, acqLock=XAie_Lock(LockId: 65, LockVal: -1), relLock=XAie_Lock(LockId: 64, LockVal: 1), acqEn=1, relEn=0
 // CHECK: XAIE API: XAie_DmaSetAddrLen with args: &dmaTileBd=ptr, basePlusOffsetInBytes=524288, lenInBytes=512
 // CHECK: XAIE API: XAie_DmaSetNextBd with args: &dmaTileBd=ptr, nextBdId.value()=0, enableNextBd=1
 // CHECK: XAIE API: XAie_DmaEnableBd with args: &dmaTileBd=ptr
-// CHECK: XAIE API: XAie_DmaWriteBd with args: &devInst=ptr, &dmaTileBd=ptr, tileLoc=XAie_LocType(Col: 0, Row: 1), bdId=0
+// CHECK: XAIE API: XAie_DmaWriteBd with args: &deviceModel.devInst=ptr, &dmaTileBd=ptr, tileLoc=XAie_LocType(Col: 0, Row: 1), bdId=0
 
 // CHECK: end configuring bds
-// CHECK: XAIE API: XAie_DmaDescInit with args: &devInst=ptr, &dmaTileBd=ptr, tileLoc=XAie_LocType(Col: 0, Row: 1)
+// CHECK: XAIE API: XAie_DmaDescInit with args: &deviceModel.devInst=ptr, &dmaTileBd=ptr, tileLoc=XAie_LocType(Col: 0, Row: 1)
 
 // CHECK: start configuring bds
 // CHECK: XAIE API: dmaTileBd.DmaMod->SetLock with args: &dmaTileBd=ptr, acqLock=XAie_Lock(LockId: 64, LockVal: -1), relLock=XAie_Lock(LockId: 65, LockVal: 1), acqEn=1, relEn=0
 // CHECK: XAIE API: XAie_DmaSetMultiDimAddr with args: &dmaTileBd=ptr, &dmaTileBdTensor=ptr, basePlusOffsetInBytes=524288, lenInBytes=512
 // CHECK: XAIE API: XAie_DmaSetNextBd with args: &dmaTileBd=ptr, nextBdId.value()=1, enableNextBd=1
 // CHECK: XAIE API: XAie_DmaEnableBd with args: &dmaTileBd=ptr
-// CHECK: XAIE API: XAie_DmaWriteBd with args: &devInst=ptr, &dmaTileBd=ptr, tileLoc=XAie_LocType(Col: 0, Row: 1), bdId=1
+// CHECK: XAIE API: XAie_DmaWriteBd with args: &deviceModel.devInst=ptr, &dmaTileBd=ptr, tileLoc=XAie_LocType(Col: 0, Row: 1), bdId=1
 
 // CHECK: end configuring bds
-// CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: &devInst=ptr, tileLoc=XAie_LocType(Col: 0, Row: 1), chNum=0, direction=0, bdId=0, repeatCount=2, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelEnable with args: &devInst=ptr, tileLoc=XAie_LocType(Col: 0, Row: 1), chNum=0, direction=0
-// CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: &devInst=ptr, tileLoc=XAie_LocType(Col: 0, Row: 1), chNum=0, direction=1, bdId=1, repeatCount=2, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelEnable with args: &devInst=ptr, tileLoc=XAie_LocType(Col: 0, Row: 1), chNum=0, direction=1
-// CHECK: XAIE API: XAie_DmaDescInit with args: &devInst=ptr, &dmaTileBd=ptr, tileLoc=XAie_LocType(Col: 1, Row: 1)
+// CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: &deviceModel.devInst=ptr, tileLoc=XAie_LocType(Col: 0, Row: 1), chNum=0, direction=0, bdId=0, repeatCount=2, enTokenIssue=0
+// CHECK: XAIE API: XAie_DmaChannelEnable with args: &deviceModel.devInst=ptr, tileLoc=XAie_LocType(Col: 0, Row: 1), chNum=0, direction=0
+// CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: &deviceModel.devInst=ptr, tileLoc=XAie_LocType(Col: 0, Row: 1), chNum=0, direction=1, bdId=1, repeatCount=2, enTokenIssue=0
+// CHECK: XAIE API: XAie_DmaChannelEnable with args: &deviceModel.devInst=ptr, tileLoc=XAie_LocType(Col: 0, Row: 1), chNum=0, direction=1
+// CHECK: XAIE API: XAie_DmaDescInit with args: &deviceModel.devInst=ptr, &dmaTileBd=ptr, tileLoc=XAie_LocType(Col: 1, Row: 1)
 
 // CHECK: start configuring bds
 // CHECK: XAIE API: dmaTileBd.DmaMod->SetLock with args: &dmaTileBd=ptr, acqLock=XAie_Lock(LockId: 65, LockVal: -1), relLock=XAie_Lock(LockId: 64, LockVal: 1), acqEn=1, relEn=0
 // CHECK: XAIE API: XAie_DmaSetAddrLen with args: &dmaTileBd=ptr, basePlusOffsetInBytes=524288, lenInBytes=2048
 // CHECK: XAIE API: XAie_DmaSetNextBd with args: &dmaTileBd=ptr, nextBdId.value()=0, enableNextBd=1
 // CHECK: XAIE API: XAie_DmaEnableBd with args: &dmaTileBd=ptr
-// CHECK: XAIE API: XAie_DmaWriteBd with args: &devInst=ptr, &dmaTileBd=ptr, tileLoc=XAie_LocType(Col: 1, Row: 1), bdId=0
+// CHECK: XAIE API: XAie_DmaWriteBd with args: &deviceModel.devInst=ptr, &dmaTileBd=ptr, tileLoc=XAie_LocType(Col: 1, Row: 1), bdId=0
 
 // CHECK: end configuring bds
-// CHECK: XAIE API: XAie_DmaDescInit with args: &devInst=ptr, &dmaTileBd=ptr, tileLoc=XAie_LocType(Col: 1, Row: 1)
+// CHECK: XAIE API: XAie_DmaDescInit with args: &deviceModel.devInst=ptr, &dmaTileBd=ptr, tileLoc=XAie_LocType(Col: 1, Row: 1)
 
 // CHECK: start configuring bds
 // CHECK: XAIE API: dmaTileBd.DmaMod->SetLock with args: &dmaTileBd=ptr, acqLock=XAie_Lock(LockId: 64, LockVal: -1), relLock=XAie_Lock(LockId: 65, LockVal: 1), acqEn=1, relEn=0
 // CHECK: XAIE API: XAie_DmaSetMultiDimAddr with args: &dmaTileBd=ptr, &dmaTileBdTensor=ptr, basePlusOffsetInBytes=524288, lenInBytes=2048
 // CHECK: XAIE API: XAie_DmaSetNextBd with args: &dmaTileBd=ptr, nextBdId.value()=1, enableNextBd=1
 // CHECK: XAIE API: XAie_DmaEnableBd with args: &dmaTileBd=ptr
-// CHECK: XAIE API: XAie_DmaWriteBd with args: &devInst=ptr, &dmaTileBd=ptr, tileLoc=XAie_LocType(Col: 1, Row: 1), bdId=1
+// CHECK: XAIE API: XAie_DmaWriteBd with args: &deviceModel.devInst=ptr, &dmaTileBd=ptr, tileLoc=XAie_LocType(Col: 1, Row: 1), bdId=1
 
 // CHECK: end configuring bds
-// CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: &devInst=ptr, tileLoc=XAie_LocType(Col: 1, Row: 1), chNum=0, direction=0, bdId=0, repeatCount=2, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelEnable with args: &devInst=ptr, tileLoc=XAie_LocType(Col: 1, Row: 1), chNum=0, direction=0
-// CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: &devInst=ptr, tileLoc=XAie_LocType(Col: 1, Row: 1), chNum=0, direction=1, bdId=1, repeatCount=2, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelEnable with args: &devInst=ptr, tileLoc=XAie_LocType(Col: 1, Row: 1), chNum=0, direction=1
-// CHECK: XAIE API: XAie_StrmConnCctEnable with args: &devInst=ptr, tileLoc=XAie_LocType(Col: 0, Row: 0), CTRL=StrmSwPortType::CTRL, slvPortNum=0, SOUTH=StrmSwPortType::SOUTH, mstrPortNum=0
-// CHECK: XAIE API: XAie_StrmConnCctEnable with args: &devInst=ptr, tileLoc=XAie_LocType(Col: 0, Row: 0), toStrmT(connectOp.getSourceBundle())=StrmSwPortType::SOUTH, connectOp.sourceIndex()=3, toStrmT(connectOp.getDestBundle())=StrmSwPortType::NORTH, connectOp.destIndex()=0
-// CHECK: XAIE API: XAie_StrmConnCctEnable with args: &devInst=ptr, tileLoc=XAie_LocType(Col: 0, Row: 0), toStrmT(connectOp.getSourceBundle())=StrmSwPortType::SOUTH, connectOp.sourceIndex()=7, toStrmT(connectOp.getDestBundle())=StrmSwPortType::EAST, connectOp.destIndex()=0
-// CHECK: XAIE API: XAie_StrmConnCctEnable with args: &devInst=ptr, tileLoc=XAie_LocType(Col: 0, Row: 0), toStrmT(connectOp.getSourceBundle())=StrmSwPortType::EAST, connectOp.sourceIndex()=0, toStrmT(connectOp.getDestBundle())=StrmSwPortType::SOUTH, connectOp.destIndex()=2
-// CHECK: XAIE API: XAie_StrmConnCctEnable with args: &devInst=ptr, tileLoc=XAie_LocType(Col: 0, Row: 1), toStrmT(connectOp.getSourceBundle())=StrmSwPortType::SOUTH, connectOp.sourceIndex()=0, toStrmT(connectOp.getDestBundle())=StrmSwPortType::DMA, connectOp.destIndex()=0
-// CHECK: XAIE API: XAie_StrmConnCctEnable with args: &devInst=ptr, tileLoc=XAie_LocType(Col: 0, Row: 1), toStrmT(connectOp.getSourceBundle())=StrmSwPortType::DMA, connectOp.sourceIndex()=0, toStrmT(connectOp.getDestBundle())=StrmSwPortType::NORTH, connectOp.destIndex()=0
-// CHECK: XAIE API: XAie_StrmConnCctEnable with args: &devInst=ptr, tileLoc=XAie_LocType(Col: 1, Row: 0), CTRL=StrmSwPortType::CTRL, slvPortNum=0, SOUTH=StrmSwPortType::SOUTH, mstrPortNum=0
-// CHECK: XAIE API: XAie_StrmConnCctEnable with args: &devInst=ptr, tileLoc=XAie_LocType(Col: 1, Row: 0), toStrmT(connectOp.getSourceBundle())=StrmSwPortType::WEST, connectOp.sourceIndex()=0, toStrmT(connectOp.getDestBundle())=StrmSwPortType::NORTH, connectOp.destIndex()=0
-// CHECK: XAIE API: XAie_StrmConnCctEnable with args: &devInst=ptr, tileLoc=XAie_LocType(Col: 1, Row: 0), toStrmT(connectOp.getSourceBundle())=StrmSwPortType::EAST, connectOp.sourceIndex()=0, toStrmT(connectOp.getDestBundle())=StrmSwPortType::WEST, connectOp.destIndex()=0
-// CHECK: XAIE API: XAie_StrmConnCctEnable with args: &devInst=ptr, tileLoc=XAie_LocType(Col: 1, Row: 1), toStrmT(connectOp.getSourceBundle())=StrmSwPortType::SOUTH, connectOp.sourceIndex()=0, toStrmT(connectOp.getDestBundle())=StrmSwPortType::DMA, connectOp.destIndex()=0
-// CHECK: XAIE API: XAie_StrmConnCctEnable with args: &devInst=ptr, tileLoc=XAie_LocType(Col: 1, Row: 1), toStrmT(connectOp.getSourceBundle())=StrmSwPortType::DMA, connectOp.sourceIndex()=0, toStrmT(connectOp.getDestBundle())=StrmSwPortType::NORTH, connectOp.destIndex()=0
-// CHECK: XAIE API: XAie_StrmConnCctEnable with args: &devInst=ptr, tileLoc=XAie_LocType(Col: 2, Row: 0), CTRL=StrmSwPortType::CTRL, slvPortNum=0, SOUTH=StrmSwPortType::SOUTH, mstrPortNum=0
-// CHECK: XAIE API: XAie_StrmConnCctEnable with args: &devInst=ptr, tileLoc=XAie_LocType(Col: 2, Row: 0), toStrmT(connectOp.getSourceBundle())=StrmSwPortType::NORTH, connectOp.sourceIndex()=0, toStrmT(connectOp.getDestBundle())=StrmSwPortType::WEST, connectOp.destIndex()=0
-// CHECK: XAIE API: XAie_StrmConnCctEnable with args: &devInst=ptr, tileLoc=XAie_LocType(Col: 2, Row: 1), toStrmT(connectOp.getSourceBundle())=StrmSwPortType::DMA, connectOp.sourceIndex()=0, toStrmT(connectOp.getDestBundle())=StrmSwPortType::SOUTH, connectOp.destIndex()=0
-// CHECK: XAIE API: XAie_StrmConnCctEnable with args: &devInst=ptr, tileLoc=XAie_LocType(Col: 2, Row: 1), toStrmT(connectOp.getSourceBundle())=StrmSwPortType::NORTH, connectOp.sourceIndex()=0, toStrmT(connectOp.getDestBundle())=StrmSwPortType::DMA, connectOp.destIndex()=0
-// CHECK: XAIE API: XAie_StrmConnCctEnable with args: &devInst=ptr, tileLoc=XAie_LocType(Col: 0, Row: 2), toStrmT(connectOp.getSourceBundle())=StrmSwPortType::SOUTH, connectOp.sourceIndex()=0, toStrmT(connectOp.getDestBundle())=StrmSwPortType::DMA, connectOp.destIndex()=0
-// CHECK: XAIE API: XAie_StrmConnCctEnable with args: &devInst=ptr, tileLoc=XAie_LocType(Col: 0, Row: 2), toStrmT(connectOp.getSourceBundle())=StrmSwPortType::EAST, connectOp.sourceIndex()=0, toStrmT(connectOp.getDestBundle())=StrmSwPortType::DMA, connectOp.destIndex()=1
-// CHECK: XAIE API: XAie_StrmConnCctEnable with args: &devInst=ptr, tileLoc=XAie_LocType(Col: 0, Row: 2), toStrmT(connectOp.getSourceBundle())=StrmSwPortType::DMA, connectOp.sourceIndex()=0, toStrmT(connectOp.getDestBundle())=StrmSwPortType::EAST, connectOp.destIndex()=0
-// CHECK: XAIE API: XAie_StrmConnCctEnable with args: &devInst=ptr, tileLoc=XAie_LocType(Col: 1, Row: 2), toStrmT(connectOp.getSourceBundle())=StrmSwPortType::SOUTH, connectOp.sourceIndex()=0, toStrmT(connectOp.getDestBundle())=StrmSwPortType::WEST, connectOp.destIndex()=0
-// CHECK: XAIE API: XAie_StrmConnCctEnable with args: &devInst=ptr, tileLoc=XAie_LocType(Col: 1, Row: 2), toStrmT(connectOp.getSourceBundle())=StrmSwPortType::WEST, connectOp.sourceIndex()=0, toStrmT(connectOp.getDestBundle())=StrmSwPortType::EAST, connectOp.destIndex()=0
-// CHECK: XAIE API: XAie_StrmConnCctEnable with args: &devInst=ptr, tileLoc=XAie_LocType(Col: 2, Row: 2), toStrmT(connectOp.getSourceBundle())=StrmSwPortType::WEST, connectOp.sourceIndex()=0, toStrmT(connectOp.getDestBundle())=StrmSwPortType::SOUTH, connectOp.destIndex()=0
-// CHECK: XAIE API: XAie_EnableShimDmaToAieStrmPort with args: &devInst=ptr, tileLoc=XAie_LocType(Col: 0, Row: 0), connectOp.destIndex()=3
-// CHECK: XAIE API: XAie_EnableShimDmaToAieStrmPort with args: &devInst=ptr, tileLoc=XAie_LocType(Col: 0, Row: 0), connectOp.destIndex()=7
-// CHECK: XAIE API: XAie_EnableAieToShimDmaStrmPort with args: &devInst=ptr, tileLoc=XAie_LocType(Col: 0, Row: 0), connectOp.sourceIndex()=2
+// CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: &deviceModel.devInst=ptr, tileLoc=XAie_LocType(Col: 1, Row: 1), chNum=0, direction=0, bdId=0, repeatCount=2, enTokenIssue=0
+// CHECK: XAIE API: XAie_DmaChannelEnable with args: &deviceModel.devInst=ptr, tileLoc=XAie_LocType(Col: 1, Row: 1), chNum=0, direction=0
+// CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: &deviceModel.devInst=ptr, tileLoc=XAie_LocType(Col: 1, Row: 1), chNum=0, direction=1, bdId=1, repeatCount=2, enTokenIssue=0
+// CHECK: XAIE API: XAie_DmaChannelEnable with args: &deviceModel.devInst=ptr, tileLoc=XAie_LocType(Col: 1, Row: 1), chNum=0, direction=1
+// CHECK: XAIE API: XAie_StrmConnCctEnable with args: &deviceModel.devInst=ptr, tileLoc=XAie_LocType(Col: 0, Row: 0), CTRL=StrmSwPortType::CTRL, slvPortNum=0, SOUTH=StrmSwPortType::SOUTH, mstrPortNum=0
+// CHECK: XAIE API: XAie_StrmConnCctEnable with args: &deviceModel.devInst=ptr, tileLoc=XAie_LocType(Col: 0, Row: 0), toStrmT(connectOp.getSourceBundle())=StrmSwPortType::SOUTH, connectOp.sourceIndex()=3, toStrmT(connectOp.getDestBundle())=StrmSwPortType::NORTH, connectOp.destIndex()=0
+// CHECK: XAIE API: XAie_StrmConnCctEnable with args: &deviceModel.devInst=ptr, tileLoc=XAie_LocType(Col: 0, Row: 0), toStrmT(connectOp.getSourceBundle())=StrmSwPortType::SOUTH, connectOp.sourceIndex()=7, toStrmT(connectOp.getDestBundle())=StrmSwPortType::EAST, connectOp.destIndex()=0
+// CHECK: XAIE API: XAie_StrmConnCctEnable with args: &deviceModel.devInst=ptr, tileLoc=XAie_LocType(Col: 0, Row: 0), toStrmT(connectOp.getSourceBundle())=StrmSwPortType::EAST, connectOp.sourceIndex()=0, toStrmT(connectOp.getDestBundle())=StrmSwPortType::SOUTH, connectOp.destIndex()=2
+// CHECK: XAIE API: XAie_StrmConnCctEnable with args: &deviceModel.devInst=ptr, tileLoc=XAie_LocType(Col: 0, Row: 1), toStrmT(connectOp.getSourceBundle())=StrmSwPortType::SOUTH, connectOp.sourceIndex()=0, toStrmT(connectOp.getDestBundle())=StrmSwPortType::DMA, connectOp.destIndex()=0
+// CHECK: XAIE API: XAie_StrmConnCctEnable with args: &deviceModel.devInst=ptr, tileLoc=XAie_LocType(Col: 0, Row: 1), toStrmT(connectOp.getSourceBundle())=StrmSwPortType::DMA, connectOp.sourceIndex()=0, toStrmT(connectOp.getDestBundle())=StrmSwPortType::NORTH, connectOp.destIndex()=0
+// CHECK: XAIE API: XAie_StrmConnCctEnable with args: &deviceModel.devInst=ptr, tileLoc=XAie_LocType(Col: 1, Row: 0), CTRL=StrmSwPortType::CTRL, slvPortNum=0, SOUTH=StrmSwPortType::SOUTH, mstrPortNum=0
+// CHECK: XAIE API: XAie_StrmConnCctEnable with args: &deviceModel.devInst=ptr, tileLoc=XAie_LocType(Col: 1, Row: 0), toStrmT(connectOp.getSourceBundle())=StrmSwPortType::WEST, connectOp.sourceIndex()=0, toStrmT(connectOp.getDestBundle())=StrmSwPortType::NORTH, connectOp.destIndex()=0
+// CHECK: XAIE API: XAie_StrmConnCctEnable with args: &deviceModel.devInst=ptr, tileLoc=XAie_LocType(Col: 1, Row: 0), toStrmT(connectOp.getSourceBundle())=StrmSwPortType::EAST, connectOp.sourceIndex()=0, toStrmT(connectOp.getDestBundle())=StrmSwPortType::WEST, connectOp.destIndex()=0
+// CHECK: XAIE API: XAie_StrmConnCctEnable with args: &deviceModel.devInst=ptr, tileLoc=XAie_LocType(Col: 1, Row: 1), toStrmT(connectOp.getSourceBundle())=StrmSwPortType::SOUTH, connectOp.sourceIndex()=0, toStrmT(connectOp.getDestBundle())=StrmSwPortType::DMA, connectOp.destIndex()=0
+// CHECK: XAIE API: XAie_StrmConnCctEnable with args: &deviceModel.devInst=ptr, tileLoc=XAie_LocType(Col: 1, Row: 1), toStrmT(connectOp.getSourceBundle())=StrmSwPortType::DMA, connectOp.sourceIndex()=0, toStrmT(connectOp.getDestBundle())=StrmSwPortType::NORTH, connectOp.destIndex()=0
+// CHECK: XAIE API: XAie_StrmConnCctEnable with args: &deviceModel.devInst=ptr, tileLoc=XAie_LocType(Col: 2, Row: 0), CTRL=StrmSwPortType::CTRL, slvPortNum=0, SOUTH=StrmSwPortType::SOUTH, mstrPortNum=0
+// CHECK: XAIE API: XAie_StrmConnCctEnable with args: &deviceModel.devInst=ptr, tileLoc=XAie_LocType(Col: 2, Row: 0), toStrmT(connectOp.getSourceBundle())=StrmSwPortType::NORTH, connectOp.sourceIndex()=0, toStrmT(connectOp.getDestBundle())=StrmSwPortType::WEST, connectOp.destIndex()=0
+// CHECK: XAIE API: XAie_StrmConnCctEnable with args: &deviceModel.devInst=ptr, tileLoc=XAie_LocType(Col: 2, Row: 1), toStrmT(connectOp.getSourceBundle())=StrmSwPortType::DMA, connectOp.sourceIndex()=0, toStrmT(connectOp.getDestBundle())=StrmSwPortType::SOUTH, connectOp.destIndex()=0
+// CHECK: XAIE API: XAie_StrmConnCctEnable with args: &deviceModel.devInst=ptr, tileLoc=XAie_LocType(Col: 2, Row: 1), toStrmT(connectOp.getSourceBundle())=StrmSwPortType::NORTH, connectOp.sourceIndex()=0, toStrmT(connectOp.getDestBundle())=StrmSwPortType::DMA, connectOp.destIndex()=0
+// CHECK: XAIE API: XAie_StrmConnCctEnable with args: &deviceModel.devInst=ptr, tileLoc=XAie_LocType(Col: 0, Row: 2), toStrmT(connectOp.getSourceBundle())=StrmSwPortType::SOUTH, connectOp.sourceIndex()=0, toStrmT(connectOp.getDestBundle())=StrmSwPortType::DMA, connectOp.destIndex()=0
+// CHECK: XAIE API: XAie_StrmConnCctEnable with args: &deviceModel.devInst=ptr, tileLoc=XAie_LocType(Col: 0, Row: 2), toStrmT(connectOp.getSourceBundle())=StrmSwPortType::EAST, connectOp.sourceIndex()=0, toStrmT(connectOp.getDestBundle())=StrmSwPortType::DMA, connectOp.destIndex()=1
+// CHECK: XAIE API: XAie_StrmConnCctEnable with args: &deviceModel.devInst=ptr, tileLoc=XAie_LocType(Col: 0, Row: 2), toStrmT(connectOp.getSourceBundle())=StrmSwPortType::DMA, connectOp.sourceIndex()=0, toStrmT(connectOp.getDestBundle())=StrmSwPortType::EAST, connectOp.destIndex()=0
+// CHECK: XAIE API: XAie_StrmConnCctEnable with args: &deviceModel.devInst=ptr, tileLoc=XAie_LocType(Col: 1, Row: 2), toStrmT(connectOp.getSourceBundle())=StrmSwPortType::SOUTH, connectOp.sourceIndex()=0, toStrmT(connectOp.getDestBundle())=StrmSwPortType::WEST, connectOp.destIndex()=0
+// CHECK: XAIE API: XAie_StrmConnCctEnable with args: &deviceModel.devInst=ptr, tileLoc=XAie_LocType(Col: 1, Row: 2), toStrmT(connectOp.getSourceBundle())=StrmSwPortType::WEST, connectOp.sourceIndex()=0, toStrmT(connectOp.getDestBundle())=StrmSwPortType::EAST, connectOp.destIndex()=0
+// CHECK: XAIE API: XAie_StrmConnCctEnable with args: &deviceModel.devInst=ptr, tileLoc=XAie_LocType(Col: 2, Row: 2), toStrmT(connectOp.getSourceBundle())=StrmSwPortType::WEST, connectOp.sourceIndex()=0, toStrmT(connectOp.getDestBundle())=StrmSwPortType::SOUTH, connectOp.destIndex()=0
+// CHECK: XAIE API: XAie_EnableShimDmaToAieStrmPort with args: &deviceModel.devInst=ptr, tileLoc=XAie_LocType(Col: 0, Row: 0), connectOp.destIndex()=3
+// CHECK: XAIE API: XAie_EnableShimDmaToAieStrmPort with args: &deviceModel.devInst=ptr, tileLoc=XAie_LocType(Col: 0, Row: 0), connectOp.destIndex()=7
+// CHECK: XAIE API: XAie_EnableAieToShimDmaStrmPort with args: &deviceModel.devInst=ptr, tileLoc=XAie_LocType(Col: 0, Row: 0), connectOp.sourceIndex()=2
+
 // CHECK: Generating: {{.+}}aie_cdo_elfs.bin
 // CHECK: Generating: {{.+}}aie_cdo_init.bin
-// CHECK: Generating: {{.+}}aie_cdo_enable.bin
 // CHECK: Generating: {{.+}}aie_cdo_elfs.bin
 // CHECK: (NOP Command): Payload Length: 0
 // CHECK: Generating: {{.+}}aie_cdo_init.bin
 // CHECK: (NOP Command): Payload Length: 0
+
 // CHECK: (Write64): Address:  0x00000000021C0010 Data:  0x00000001
 // CHECK: (Write64): Address:  0x00000000021C0000 Data:  0x00000000
 // CHECK: (Write64): Address:  0x00000000001C0010 Data:  0x00000001
@@ -513,5 +515,3 @@ aie.device(npu1_4col) {
 // CHECK: (MaskWrite64): Address: 0x000000000001F000  Mask: 0x00000C00  Data: 0x00000400
 // CHECK: (MaskWrite64): Address: 0x000000000001F000  Mask: 0x0000C000  Data: 0x00004000
 // CHECK: (MaskWrite64): Address: 0x000000000001F004  Mask: 0x00000030  Data: 0x00000010
-// CHECK: Generating: {{.+}}aie_cdo_enable.bin
-// CHECK: (NOP Command): Payload Length: 0
