@@ -18,11 +18,8 @@
 #include "mlir/Dialect/Utils/StaticValueUtils.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/IRMapping.h"
-#include "mlir/IR/Iterators.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
-#include "mlir/Tools/mlir-translate/MlirTranslateMain.h"
-#include "mlir/Transforms/DialectConversion.h"
 
 using namespace mlir;
 using namespace xilinx;
@@ -30,8 +27,6 @@ using namespace xilinx::AIE;
 using namespace mlir::iree_compiler::AMDAIE;
 
 #define DEBUG_TYPE "amdaie-objectFifo-stateful-transform"
-
-#define LOOP_VAR_DEPENDENCY (-2)
 
 //===----------------------------------------------------------------------===//
 // Lock Analysis
@@ -516,7 +511,7 @@ struct AMDAIEObjectFifoStatefulTransformPass : mlir::OperationPass<DeviceOp> {
       auto newMemOp =
           builder.create<MemOp>(builder.getUnknownLoc(), objFifoTileOp);
       {
-        OpBuilder::InsertionGuard g(builder);
+        OpBuilder::InsertionGuard gg(builder);
         builder.setInsertionPointToStart(&newMemOp.getRegion().emplaceBlock());
         builder.create<EndOp>(builder.getUnknownLoc());
       }
@@ -586,7 +581,7 @@ struct AMDAIEObjectFifoStatefulTransformPass : mlir::OperationPass<DeviceOp> {
       auto newDMAOp = builder.create<ShimDMAOp>(
           builder.getUnknownLoc(), builder.getIndexType(), objFifoTileOp);
       {
-        OpBuilder::InsertionGuard g(builder);
+        OpBuilder::InsertionGuard gg(builder);
         builder.setInsertionPointToStart(&newDMAOp.getRegion().emplaceBlock());
         builder.create<EndOp>(builder.getUnknownLoc());
       }
@@ -664,9 +659,10 @@ struct AMDAIEObjectFifoStatefulTransformPass : mlir::OperationPass<DeviceOp> {
             for (auto fifoIn : linkOp->getInputObjectFifos()) {
               auto fifoType =
                   llvm::cast<AIEObjectFifoType>(fifoIn.getElemType());
-              auto elemType = llvm::cast<MemRefType>(fifoType.getElementType());
+              auto fifoElemType =
+                  llvm::cast<MemRefType>(fifoType.getElementType());
               if (fifoIn.name() == op.name()) break;
-              extraOffset += elemType.getNumElements();
+              extraOffset += fifoElemType.getNumElements();
             }
           }
         } else if (linkOp->isDistribute()) {
@@ -679,9 +675,10 @@ struct AMDAIEObjectFifoStatefulTransformPass : mlir::OperationPass<DeviceOp> {
             for (auto fifoOut : linkOp->getOutputObjectFifos()) {
               auto fifoType =
                   llvm::cast<AIEObjectFifoType>(fifoOut.getElemType());
-              auto elemType = llvm::cast<MemRefType>(fifoType.getElementType());
+              auto fifoElemType =
+                  llvm::cast<MemRefType>(fifoType.getElementType());
               if (fifoOut.name() == op.name()) break;
-              extraOffset += elemType.getNumElements();
+              extraOffset += fifoElemType.getNumElements();
             }
           }
         } else {
@@ -718,7 +715,7 @@ struct AMDAIEObjectFifoStatefulTransformPass : mlir::OperationPass<DeviceOp> {
       auto newDMAOp =
           builder.create<MemTileDMAOp>(builder.getUnknownLoc(), objFifoTileOp);
       {
-        OpBuilder::InsertionGuard g(builder);
+        OpBuilder::InsertionGuard gg(builder);
         builder.setInsertionPointToStart(&newDMAOp.getRegion().emplaceBlock());
         builder.create<EndOp>(builder.getUnknownLoc());
       }
@@ -954,9 +951,8 @@ struct AMDAIEObjectFifoStatefulTransformPass : mlir::OperationPass<DeviceOp> {
     // We are going to create additional createObjectFifoOps, so get a copy of
     // all "original" ones before the loop to avoid looping over newly created
     // ones.
-    std::vector<ObjectFifoCreateOp> createFifoOps;
-    auto range = device.getOps<ObjectFifoCreateOp>();
-    createFifoOps.insert(createFifoOps.end(), range.begin(), range.end());
+    llvm::SmallVector<ObjectFifoCreateOp> createFifoOps =
+        llvm::to_vector(device.getOps<ObjectFifoCreateOp>());
     for (auto createOp : createFifoOps) {
       std::vector<ObjectFifoCreateOp> splitConsumerFifos;
       int consumerIndex = 0;
