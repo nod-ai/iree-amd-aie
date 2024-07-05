@@ -272,3 +272,14 @@ func.func @workgroup() {
   }
   return
 }
+
+// -----
+
+// CHECK-LABEL: @reference_to()
+// CHECK:       %[[ALLOC:.+]] = memref.alloc()
+// CHECK:       amdaie.reference_to %[[ALLOC]]
+func.func @reference_to() {
+  %0 = memref.alloc() : memref<1x1x8x4x8x4xi32>
+  %1 = amdaie.reference_to %0 : memref<1x1x8x4x8x4xi32>
+  return
+}

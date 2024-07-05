@@ -22,6 +22,7 @@ cmake_minimum_required(VERSION 3.23)
 # We use our own, slightly modified, FindOpenSSL because of issues in CMake's
 # distribution of the same for versions prior to 3.29.
 # https://gitlab.kitware.com/cmake/cmake/-/issues/25702
+set(OPENSSL_USE_STATIC_LIBS TRUE CACHE BOOL "" FORCE)
 find_package(OpenSSL)
 if(NOT DEFINED OPENSSL_FOUND OR NOT ${OPENSSL_FOUND})
   list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}")
@@ -36,20 +37,43 @@ if(NOT DEFINED OPENSSL_FOUND OR NOT ${OPENSSL_FOUND})
 endif()
 message(STATUS "OpenSSL include directories:" ${OPENSSL_INCLUDE_DIR})
 
+# https://stackoverflow.com/a/49216539/9045206
+macro(remove_flag_from_target _target _flag)
+    get_target_property(_target_cxx_flags ${_target} COMPILE_OPTIONS)
+    if(_target_cxx_flags)
+        list(REMOVE_ITEM _target_cxx_flags ${_flag})
+        set_target_properties(${_target} PROPERTIES COMPILE_OPTIONS "${_target_cxx_flags}")
+    endif()
+endmacro()
+
+macro(replace_string_in_file _file _match_string _replace_string)
+    file(READ ${_file} _file_contents)
+    string(REPLACE ${_match_string} ${_replace_string} __file_contents "${_file_contents}")
+    file(WRITE ${_file}  "${__file_contents}")
+endmacro()
+
 # ##############################################################################
 # Bootgen
 # ##############################################################################
 
 set(_bootgen_source_dir ${IREE_AMD_AIE_SOURCE_DIR}/third_party/bootgen)
+
+# malloc.h is deprecated and should not be used
+# https://stackoverflow.com/a/56463133 If you want to use malloc, then include stdlib.h
+replace_string_in_file(${_bootgen_source_dir}/cdo-npi.c "#include <malloc.h>" "#include <stdlib.h>")
+replace_string_in_file(${_bootgen_source_dir}/cdo-alloc.c "#include <malloc.h>" "#include <stdlib.h>")
+
 file(GLOB _bootgen_sources "${_bootgen_source_dir}/*.c"
      "${_bootgen_source_dir}/*.cpp")
+# build exe separately
 list(REMOVE_ITEM _bootgen_sources "${_bootgen_source_dir}/main.cpp")
 
 add_library(bootgen-lib STATIC ${_bootgen_sources})
+
 if(CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
   target_compile_definitions(bootgen-lib PUBLIC YY_NO_UNISTD_H)
 elseif(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
-  set(bootgen_c_warning_ignores
+  set(_bootgen_c_warning_ignores
       -Wno-cast-qual
       -Wno-covered-switch-default
       -Wno-date-time
@@ -65,28 +89,32 @@ elseif(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
       -Wno-sign-compare
       -Wno-tautological-overlap-compare
       -Wno-unused)
-  set(bootgen_cxx_warning_ignores
+  set(_bootgen_cxx_warning_ignores
       -Wno-deprecated-copy -Wno-non-virtual-dtor -Wno-overloaded-virtual
       -Wno-register -Wno-reorder -Wno-suggest-override)
 endif()
-target_compile_options(bootgen-lib PRIVATE
-                       $<$<COMPILE_LANGUAGE:C>:${bootgen_c_warning_ignores}>
-                       $<$<COMPILE_LANGUAGE:CXX>:${bootgen_c_warning_ignores};${bootgen_cxx_warning_ignores}>)
+target_compile_options(bootgen-lib PUBLIC
+                       $<$<COMPILE_LANGUAGE:C>:${_bootgen_c_warning_ignores}>
+                       $<$<COMPILE_LANGUAGE:CXX>:${_bootgen_c_warning_ignores};${_bootgen_cxx_warning_ignores}>)
 target_include_directories(bootgen-lib PUBLIC ${_bootgen_source_dir}
                                               ${OPENSSL_INCLUDE_DIR})
 target_compile_definitions(bootgen-lib PUBLIC OPENSSL_USE_APPLINK)
 target_link_libraries(bootgen-lib PUBLIC OpenSSL::SSL OpenSSL::applink)
 
-# malloc.h is deprecated and should not be used
-# https://stackoverflow.com/a/56463133 If you want to use malloc, then include
-# stdlib.h
-file(READ ${_bootgen_source_dir}/cdo-npi.c _file_contents)
-string(REPLACE "#include <malloc.h>" "" __file_contents "${_file_contents}")
-file(WRITE ${_bootgen_source_dir}/cdo-npi.c "${__file_contents}")
+iree_cc_binary(
+  NAME
+    amdaie_bootgen
+  SRCS
+    "${_bootgen_source_dir}/main.cpp"
+  COPTS
+    -fexceptions
+  INSTALL_COMPONENT
+    IREETools-Runtime
+)
 
-file(READ ${_bootgen_source_dir}/cdo-alloc.c _file_contents)
-string(REPLACE "#include <malloc.h>" "" __file_contents "${_file_contents}")
-file(WRITE ${_bootgen_source_dir}/cdo-alloc.c "${__file_contents}")
+target_link_libraries(iree-amd-aie_aie_runtime_amdaie_bootgen PRIVATE bootgen-lib)
+set_target_properties(iree-amd-aie_aie_runtime_amdaie_bootgen
+                      PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/tools")
 
 # ##############################################################################
 # cdo-drver
@@ -354,6 +382,102 @@ iree_install_targets(
   COMPONENT IREEBundledLibraries
   EXPORT_SET Runtime
 )
+
+# ##############################################################################
+# xclbinutil
+# ##############################################################################
+
+# Note: we do not simply add the subdirectory and use the imported target because
+# XRT will build in its entirety when we do `ninja install` for IREE.
+
+# obv we have python but XRT uses this var to look for an ancient version of pybind (and fail)
+replace_string_in_file(${IREE_XRT_SOURCE_DIR}/python/pybind11/CMakeLists.txt "if (HAS_PYTHON)" "if (FALSE)")
+
+# remove ssl dep
+replace_string_in_file(${IREE_XRT_SOURCE_DIR}/runtime_src/tools/xclbinutil/XclBinUtilMain.cxx "bValidateSignature == true" "false")
+
+set(_xclbinutil_source_dir ${IREE_XRT_SOURCE_DIR}/runtime_src/tools/xclbinutil)
+
+# transformcdo target
+add_subdirectory(${_xclbinutil_source_dir}/aie-pdi-transform aie-pdi-transform)
+
+# otherwise the various stois that read these will explode...
+# XRT/src/runtime_src/tools/xclbinutil/XclBinClass.cxx#L55
+file(READ ${IREE_XRT_SOURCE_DIR}/CMakeLists.txt _xrt_cmake_file_contents)
+string(REGEX MATCH "XRT_VERSION_MAJOR ([0-9]+)" XRT_VERSION_MAJOR ${_xrt_cmake_file_contents})
+# note CMAKE_MATCH_0 is the whole match...
+set(XRT_VERSION_MAJOR ${CMAKE_MATCH_1})
+string(REGEX MATCH "XRT_VERSION_MINOR ([0-9]+)" XRT_VERSION_MINOR ${_xrt_cmake_file_contents})
+set(XRT_VERSION_MINOR ${CMAKE_MATCH_1})
+string(REGEX MATCH "XRT_VERSION_PATCH ([0-9]+)" XRT_VERSION_PATCH ${_xrt_cmake_file_contents})
+set(XRT_VERSION_PATCH ${CMAKE_MATCH_1})
+set(XRT_VERSION_STRING ${XRT_VERSION_MAJOR}.${XRT_VERSION_MINOR}.${XRT_VERSION_PATCH} CACHE INTERNAL "")
+configure_file(${IREE_XRT_SOURCE_DIR}/CMake/config/version.h.in ${_xclbinutil_source_dir}/version.h)
+
+file(
+  GLOB
+  _xclbinutil_srcs
+  "${_xclbinutil_source_dir}/DTC*.cxx"
+  "${_xclbinutil_source_dir}/FDT*.cxx"
+  "${_xclbinutil_source_dir}/CBOR.cxx"
+  "${_xclbinutil_source_dir}/RapidJsonUtilities.cxx"
+  "${_xclbinutil_source_dir}/KernelUtilities.cxx"
+  "${_xclbinutil_source_dir}/ElfUtilities.cxx"
+  "${_xclbinutil_source_dir}/FormattedOutput.cxx"
+  "${_xclbinutil_source_dir}/ParameterSectionData.cxx"
+  "${_xclbinutil_source_dir}/Section.cxx"
+  # Note: Due to linking dependency issue, this entry needs to be before the other sections
+  "${_xclbinutil_source_dir}/Section*.cxx"
+  "${_xclbinutil_source_dir}/Resources*.cxx"
+  "${_xclbinutil_source_dir}/XclBinClass.cxx"
+  NoOpXclBinSignature.cxx
+  "${_xclbinutil_source_dir}/XclBinUtilities.cxx"
+  # Unlike bootgen, xclbinutil cannot be built separately as a static archive (I wish!)
+  # because the linker will DCE static initializers in SectionMemTopology.cxx
+  # and then --add-replace-section:MEM_TOPOLOGY won't work...
+  # XRT/src/runtime_src/tools/xclbinutil/SectionMemTopology.cxx#L26-L41
+  "${_xclbinutil_source_dir}/xclbinutil.cxx"
+  "${_xclbinutil_source_dir}/XclBinUtilMain.cxx"
+)
+
+iree_cc_binary(
+  NAME
+    amdaie_xclbinutil
+  SRCS
+    ${_xclbinutil_srcs}
+  COPTS
+    -fexceptions
+    -frtti
+  INSTALL_COMPONENT
+    IREETools-Runtime
+  PUBLIC
+)
+
+set(_xclbin_libs ${Boost_LIBRARIES} Threads::Threads)
+
+if(WIN32)
+  target_compile_options(iree-amd-aie_aie_runtime_amdaie_xclbinutil
+                         PRIVATE "/EHsc")
+  # Uncomment if you get LINK : fatal error LNK1104: cannot open file
+  # 'libboost_filesystem-vc142-mt-gd-x64-1_74.lib'
+  # target_compile_definitions(xclbinutil-lib PUBLIC BOOST_ALL_DYN_LINK
+else()
+  target_compile_definitions(iree-amd-aie_aie_runtime_amdaie_xclbinutil
+                             PRIVATE ENABLE_JSON_SCHEMA_VALIDATION)
+  list(APPEND _xclbin_libs transformcdo)
+endif()
+
+set(THREADS_PREFER_PTHREAD_FLAG ON)
+target_link_libraries(iree-amd-aie_aie_runtime_amdaie_xclbinutil
+                      PRIVATE ${_xclbin_libs})
+target_include_directories(iree-amd-aie_aie_runtime_amdaie_xclbinutil
+                           PRIVATE ${XRT_BINARY_DIR}/gen
+                                   ${Boost_INCLUDE_DIRS}
+                                   ${IREE_XRT_SOURCE_DIR}/runtime_src/core/include
+                                   ${_xclbinutil_source_dir})
+
+set_target_properties(iree-amd-aie_aie_runtime_amdaie_xclbinutil
+                      PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/tools")
 
 # ##############################################################################
 # iree-aie-runtime-static

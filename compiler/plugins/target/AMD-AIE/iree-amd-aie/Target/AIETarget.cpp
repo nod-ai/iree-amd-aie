@@ -356,7 +356,8 @@ LogicalResult AIETargetBackend::serializeExecutable(
     SmallString<64> aieToolsDir(options.vitisInstallDir);
     llvm::sys::path::append(aieToolsDir, "aietools");
     TK.AIEToolsDir = aieToolsDir.str();
-    TK.InstallDir = options.mlirAieInstallDir;
+    TK.MLIRAIEInstallDir = options.mlirAieInstallDir;
+    TK.AMDAIEInstallDir = options.amdAieInstallDir;
     TK.PeanoDir = options.peanoInstallDir;
 
     ParserConfig pcfg(variantOp->getContext());

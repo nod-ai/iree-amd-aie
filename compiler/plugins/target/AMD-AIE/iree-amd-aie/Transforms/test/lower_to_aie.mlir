@@ -315,7 +315,7 @@ module {
 // CHECK-SAME:    %[[ARG0]]
 // CHECK-SAME:    [1, 1, 0, 32]
 // CHECK-SAME:    [1, 1, 32, 32]
-// CHECK-SAME:    [1, 1, 64]
+// CHECK-SAME:    [1, 1, 64, 1]
 // CHECK-SAME:    issue_token = true
 // CHECK-SAME:    @[[OBJ1]]
 // CHECK-NEXT:    aiex.npu.dma_wait
@@ -397,7 +397,7 @@ module {
 // CHECK-SAME:    %[[ARG0]]
 // CHECK-SAME:    [1, 1, 0, 32]
 // CHECK-SAME:    [1, 1, 32, 32]
-// CHECK-SAME:    [1, 1, 64]
+// CHECK-SAME:    [1, 1, 64, 1]
 // CHECK-SAME:    issue_token = true
 // CHECK-SAME:    @[[OBJ0]]
 // CHECK-NEXT:    aiex.npu.dma_wait

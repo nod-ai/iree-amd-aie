@@ -36,6 +36,14 @@ jobs:
         with:
           submodules: recursive
 
+      - name: Install static libs
+        run: |
+          dnf install -y almalinux-release-devel
+          yum remove -y openssl-devel zlib-devel boost boost-all || true
+          yum install -y openssl-static  zlib-static
+          yum install -y protobuf-devel protobuf-compiler
+          yum install -y boost-static
+
       - name: Sync source deps
         run: |
           python ./sync_deps.py
@@ -103,7 +111,7 @@ jobs:
         run: |
           python3 -m venv .venv
           source .venv/bin/activate
-          pip install https://github.com/Xilinx/mlir-aie/releases/download/latest-wheels/mlir_aie-0.0.1.2024062422+7917990-py3-none-manylinux_2_35_x86_64.whl 
+          pip install https://github.com/Xilinx/mlir-aie/releases/download/latest-wheels/mlir_aie-0.0.1.2024070222+76460fe-py3-none-manylinux_2_35_x86_64.whl
 
           pip install -r tests/matmul/requirements.txt
 
@@ -149,4 +157,4 @@ jobs:
       - name: Printing IR from aie2xclbin
         run: |
           source .venv/bin/activate
-          bash build_tools/ci/print_ir_aie2xclbin/print_ir_aie2xclbin.sh iree-install/bin print_ir_aie2xclbin_results
+          bash build_tools/ci/print_ir_aie2xclbin/print_ir_aie2xclbin.sh iree-install print_ir_aie2xclbin_results

@@ -188,6 +188,8 @@ function run_matmul_test() {
 
   local mlir_aie_install_path="${MLIR_AIE_INSTALL}"
 
+  local amd_aie_install_path="${IREE_INSTALL_DIR}"
+
   local vitis_path="${VITIS}"
 
   local tile_pipeline="pad-pack"
@@ -268,6 +270,10 @@ function run_matmul_test() {
         ;;
       --mlir_aie_install_path)
         mlir_aie_install_path="$2"
+        shift 2
+        ;;
+      --amd_aie_install_path)
+        amd_aie_install_path="$2"
         shift 2
         ;;
      --vitis_path)
@@ -379,6 +385,7 @@ function run_matmul_test() {
                       --iree-amdaie-tile-pipeline=${tile_pipeline} \
                       --iree-amd-aie-peano-install-dir=${peano_install_path} \
                       --iree-amd-aie-mlir-aie-install-dir=${mlir_aie_install_path} \
+                      --iree-amd-aie-install-dir=${amd_aie_install_path} \
                       --iree-amd-aie-vitis-install-dir=${vitis_path} \
                       --iree-hal-dump-executable-files-to=$PWD \
                       --iree-amd-aie-show-invoked-commands"
@@ -491,6 +498,7 @@ run_matmul_test \
     --device "xrt" \
     --peano_install_path "${PEANO}" \
     --mlir_aie_install_path "${MLIR_AIE_INSTALL}" \
+    --amd_aie_install_path "${IREE_INSTALL_DIR}" \
     --vitis_path  "${VITIS}" \
     --lower_to_aie_pipeline "air" \
     --tile_pipeline "pad-pack" \

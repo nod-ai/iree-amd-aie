@@ -221,6 +221,7 @@ function run_test() {
   # =====================
   local peano_install_path="${PEANO}"
   local mlir_aie_install_path="${MLIR_AIE_INSTALL}"
+  local amd_aie_install_path="${IREE_INSTALL_DIR}"
   local vitis_path="${VITIS}"
   local pipeline="pad-pack"
   local rtol="1e-6"
@@ -246,6 +247,10 @@ function run_test() {
         ;;
       --mlir_aie_install_path)
         mlir_aie_install_path="$2"
+        shift 2
+        ;;
+      --amd_aie_install_path)
+        amd_aie_install_path="$2"
         shift 2
         ;;
      --vitis_path)
@@ -300,6 +305,7 @@ function run_test() {
       --iree-amdaie-matmul-elementwise-fusion \
       --iree-amd-aie-peano-install-dir=${peano_install_path} \
       --iree-amd-aie-mlir-aie-install-dir=${mlir_aie_install_path} \
+      --iree-amd-aie-install-dir=${amd_aie_install_path} \
       --iree-amd-aie-vitis-install-dir=${vitis_path} \
       --iree-hal-dump-executable-files-to=$PWD \
       --mlir-disable-threading \
@@ -325,9 +331,6 @@ function run_test() {
 
 # Example of running a test directly from an .mlir file with a function.
 run_test --test_file ${THIS_DIR}/test_files/matmul_int32.mlir
-
-# Example of running a test directly from an .mlir file with a function.
-run_test --test_file ${THIS_DIR}/test_files/conv_int32.mlir --pipeline "conv-decompose"
 
 # An example of an arbitrary graph with three matmuls which form three dispatches.
 run_test --test_file ${THIS_DIR}/test_files/three_matmuls.mlir
@@ -358,4 +361,7 @@ generate_matmul_test \
    --m "1024"  --n "1024" --k "512"
 run_test --test_file ${test_name} --pipeline "pack-peel"
 
+# Conv2d tests.
+run_test --test_file ${THIS_DIR}/test_files/conv_int32.mlir --pipeline "conv-decompose"
+run_test --test_file ${THIS_DIR}/test_files/conv_bf16.mlir --pipeline "conv-decompose"
 
