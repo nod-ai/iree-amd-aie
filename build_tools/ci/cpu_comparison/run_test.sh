@@ -326,9 +326,6 @@ function run_test() {
 # Example of running a test directly from an .mlir file with a function.
 run_test --test_file ${THIS_DIR}/test_files/matmul_int32.mlir
 
-# Example of running a test directly from an .mlir file with a function.
-run_test --test_file ${THIS_DIR}/test_files/conv_int32.mlir --pipeline "conv-decompose"
-
 # An example of an arbitrary graph with three matmuls which form three dispatches.
 run_test --test_file ${THIS_DIR}/test_files/three_matmuls.mlir
 
@@ -358,4 +355,7 @@ generate_matmul_test \
    --m "1024"  --n "1024" --k "512"
 run_test --test_file ${test_name} --pipeline "pack-peel"
 
+# Conv2d tests.
+run_test --test_file ${THIS_DIR}/test_files/conv_int32.mlir --pipeline "conv-decompose"
+run_test --test_file ${THIS_DIR}/test_files/conv_bf16.mlir --pipeline "conv-decompose"
 

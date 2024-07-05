@@ -75,14 +75,15 @@ AIE::ObjectFifoCreateOp createObjectFifo(IRRewriter &rewriter,
   AIE::BDDimLayoutArrayAttr sourceDims =
       convertSizeStrideToBDDimLayoutArrayAttr(
           rewriter, dmaOp.getSourceMixedSizes(), dmaOp.getSourceMixedStrides());
-  
+
   AIE::BDDimLayoutArrayAttr layoutAttr =
       convertSizeStrideToBDDimLayoutArrayAttr(
           rewriter, dmaOp.getTargetMixedSizes(), dmaOp.getTargetMixedStrides());
   // The aie.objectfifo expects a `BDDimLayoutArrayAttr` for each consumer. A
   // single one for all consumers will error out.
-  SmallVector<AIE::BDDimLayoutArrayAttr> targetDimsVec(dstTiles.size(), layoutAttr);
-  
+  SmallVector<AIE::BDDimLayoutArrayAttr> targetDimsVec(dstTiles.size(),
+                                                       layoutAttr);
+
   AIE::BDDimLayoutArrayArrayAttr targetDims =
       AIE::BDDimLayoutArrayArrayAttr::get(rewriter.getContext(),
                                           ArrayRef(targetDimsVec));
@@ -381,10 +382,7 @@ LogicalResult getStaticDims(Operation *op,
     return op->emitError() << "size of `sizes` should be smaller or equal to "
                               "size of `staticSizes`";
   }
-  if ((strides.size() - 1) > staticStrides.size()) {
-    // NOTE: The AIE strides assume last stride to be one and that dimension is
-    // made implicit. Therefore the condition uses `strides.size() - 1`. Also
-    // see check underneath.
+  if (strides.size() > staticStrides.size()) {
     return op->emitError() << "size of `strides` should be smaller or equal to "
                               "size of `staticStrides`";
   }
@@ -397,8 +395,8 @@ LogicalResult getStaticDims(Operation *op,
   for (int i = 0; i < sizes.size(); ++i)
     staticSizes[staticSizes.size() - sizes.size() + i] =
         getConstantIntValue(sizes[i]).value();
-  for (int i = 0; i < strides.size() - 1; ++i)
-    staticStrides[staticStrides.size() - (strides.size() - 1) + i] =
+  for (int i = 0; i < strides.size(); ++i)
+    staticStrides[staticStrides.size() - strides.size() + i] =
         getConstantIntValue(strides[i]).value();
   return success();
 }
@@ -414,7 +412,7 @@ LogicalResult npuDmaCpyNdOpToAIE(IRRewriter &rewriter,
     SmallVector<Value> empty;
     SmallVector<int64_t, 4> staticOffsets(4, 1);
     SmallVector<int64_t, 4> staticSizes(4, 1);
-    SmallVector<int64_t, 3> staticStrides(3, 1);
+    SmallVector<int64_t, 4> staticStrides(4, 1);
     if (failed(getStaticDims(dmaOp, dmaOp.getSourceMixedOffsets(),
                              dmaOp.getSourceMixedSizes(),
                              dmaOp.getSourceMixedStrides(), staticOffsets,
@@ -442,7 +440,7 @@ LogicalResult npuDmaCpyNdOpToAIE(IRRewriter &rewriter,
     SmallVector<Value> empty;
     SmallVector<int64_t, 4> staticOffsets(4, 1);
     SmallVector<int64_t, 4> staticSizes(4, 1);
-    SmallVector<int64_t, 3> staticStrides(3, 1);
+    SmallVector<int64_t, 4> staticStrides(4, 1);
     if (failed(getStaticDims(dmaOp, dmaOp.getTargetMixedOffsets(),
                              dmaOp.getTargetMixedSizes(),
                              dmaOp.getTargetMixedStrides(), staticOffsets,
@@ -818,7 +816,7 @@ class AMDAIELowerToAIEPass
   }
 
   AMDAIELowerToAIEPass() = default;
-  AMDAIELowerToAIEPass(const AMDAIELowerToAIEPass &pass){};
+  AMDAIELowerToAIEPass(const AMDAIELowerToAIEPass &pass) {};
   void runOnOperation() override;
 };
 
