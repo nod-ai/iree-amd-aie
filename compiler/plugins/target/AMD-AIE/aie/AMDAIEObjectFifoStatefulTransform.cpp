@@ -856,6 +856,42 @@ LogicalResult unrollForLoops(DeviceOp &device, OpBuilder &builder,
   return success();
 }
 
+/// Function used to create a UseLockOp based on input parameters.
+/// acc is an accumulator map that tracks the indices of the next locks to
+/// acquire (or release). Uses op to find index of acc for next lockID.
+/// Updates acc.
+void createUseLocks(
+    OpBuilder &builder, ObjectFifoCreateOp op, ObjectFifoPort port,
+    DenseMap<std::pair<ObjectFifoCreateOp, int>, int> &acc, int numLocks,
+    LockAction lockAction,
+    DenseMap<ObjectFifoLinkOp, ObjectFifoCreateOp> &objFifoLinks,
+    DenseMap<ObjectFifoCreateOp, std::vector<LockOp>> &locksPerFifo) {
+  ObjectFifoCreateOp target = op;
+  auto portNum = port == ObjectFifoPort::Produce ? 0 : 1;
+  if (auto linkOp = getOptionalLinkOp(op))
+    if (objFifoLinks.find(*linkOp) != objFifoLinks.end())
+      target = objFifoLinks[*linkOp];
+
+  if (numLocks == 0) return;
+  // search for the correct lock based on the port of the acq/rel
+  // operation e.g. acq as consumer is the read lock (second)
+  LockOp lock;
+  if (lockAction == LockAction::AcquireGreaterEqual) {
+    if (port == ObjectFifoPort::Produce)
+      lock = locksPerFifo[target][0];
+    else
+      lock = locksPerFifo[target][1];
+  } else {
+    if (port == ObjectFifoPort::Produce)
+      lock = locksPerFifo[target][1];
+    else
+      lock = locksPerFifo[target][0];
+  }
+  builder.create<UseLockOp>(builder.getUnknownLoc(), lock, lockAction,
+                            numLocks);
+  acc[{op, portNum}] = (acc[{op, portNum}] + numLocks) %
+                       op.size();  // update to next objFifo elem
+}
 //===----------------------------------------------------------------------===//
 // Create objectFifos Pass
 //===----------------------------------------------------------------------===//
@@ -905,41 +941,6 @@ struct AMDAIEObjectFifoStatefulTransformPass : mlir::OperationPass<DeviceOp> {
   std::vector<ObjectFifoCreateOp>
       splitBecauseLink;  // objfifos which have been split because they are
   // part of a Link, not because they didn't have a shared memory module
-
-  /// Function used to create a UseLockOp based on input parameters.
-  /// acc is an accumulator map that tracks the indices of the next locks to
-  /// acquire (or release). Uses op to find index of acc for next lockID.
-  /// Updates acc.
-  void createUseLocks(OpBuilder &builder, ObjectFifoCreateOp op,
-                      ObjectFifoPort port,
-                      DenseMap<std::pair<ObjectFifoCreateOp, int>, int> &acc,
-                      int numLocks, LockAction lockAction) {
-    ObjectFifoCreateOp target = op;
-    auto portNum = port == ObjectFifoPort::Produce ? 0 : 1;
-    if (auto linkOp = getOptionalLinkOp(op))
-      if (objFifoLinks.find(*linkOp) != objFifoLinks.end())
-        target = objFifoLinks[*linkOp];
-
-    if (numLocks == 0) return;
-    // search for the correct lock based on the port of the acq/rel
-    // operation e.g. acq as consumer is the read lock (second)
-    LockOp lock;
-    if (lockAction == LockAction::AcquireGreaterEqual) {
-      if (port == ObjectFifoPort::Produce)
-        lock = locksPerFifo[target][0];
-      else
-        lock = locksPerFifo[target][1];
-    } else {
-      if (port == ObjectFifoPort::Produce)
-        lock = locksPerFifo[target][1];
-      else
-        lock = locksPerFifo[target][0];
-    }
-    builder.create<UseLockOp>(builder.getUnknownLoc(), lock, lockAction,
-                              numLocks);
-    acc[{op, portNum}] = (acc[{op, portNum}] + numLocks) %
-                         op.size();  // update to next objFifo elem
-  }
 
   void runOnOperation() override {
     DeviceOp device = getOperation();
@@ -1180,7 +1181,7 @@ struct AMDAIEObjectFifoStatefulTransformPass : mlir::OperationPass<DeviceOp> {
         // release locks
         int numLocks = releaseOp.relNumber();
         createUseLocks(builder, op, port, relPerFifo, numLocks,
-                       LockAction::Release);
+                       LockAction::Release, objFifoLinks, locksPerFifo);
 
         // register release op
         if (releaseOps.find({op, portNum}) != releaseOps.end()) {
@@ -1314,7 +1315,8 @@ struct AMDAIEObjectFifoStatefulTransformPass : mlir::OperationPass<DeviceOp> {
           numCreate = 0;
 
         createUseLocks(builder, op, port, acqPerFifo, numCreate,
-                       LockAction::AcquireGreaterEqual);
+                       LockAction::AcquireGreaterEqual, objFifoLinks,
+                       locksPerFifo);
 
         // if objFifo was linked with others, find which objFifos
         // elements to use
