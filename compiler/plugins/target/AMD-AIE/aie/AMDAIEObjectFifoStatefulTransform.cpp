@@ -900,6 +900,45 @@ void createUseLocks(
                        op.size();  // update to next objFifo elem
 }
 
+void replaceReleaseOp(
+    ObjectFifoReleaseOp releaseOp, OpBuilder builder,
+    DenseMap<std::pair<ObjectFifoCreateOp, int>, int> &relPerFifo,
+    DenseMap<ObjectFifoLinkOp, ObjectFifoCreateOp> &objFifoLinks,
+    DenseMap<ObjectFifoCreateOp, std::vector<LockOp>> &locksPerFifo,
+    DenseMap<std::pair<ObjectFifoCreateOp, int>,
+             std::vector<ObjectFifoReleaseOp>> &releaseOps) {
+  builder.setInsertionPointAfter(releaseOp);
+  ObjectFifoCreateOp op = releaseOp.getObjectFifo();
+  auto port = releaseOp.getPort();
+  auto portNum = port == ObjectFifoPort::Produce ? 0 : 1;
+  auto core = releaseOp->getParentOfType<CoreOp>();
+
+  if (auto linkOp = getOptionalLinkOp(op)) {
+    if (core.getTile() == *linkOp->getOptionalSharedTile()) {
+      releaseOp->emitOpError(
+          "currently cannot access objectFifo used in "
+          "ObjectFifoLinkOp");
+      return;
+    }
+  }
+
+  // update index of next element to release for this objectFifo
+  updateAndReturnIndex(relPerFifo, {op, portNum});
+
+  // release locks
+  int numLocks = releaseOp.relNumber();
+  createUseLocks(builder, op, port, relPerFifo, numLocks, LockAction::Release,
+                 objFifoLinks, locksPerFifo);
+
+  // register release op
+  if (releaseOps.find({op, portNum}) != releaseOps.end()) {
+    releaseOps[{op, portNum}].push_back(releaseOp);
+  } else {
+    std::vector release = {releaseOp};
+    releaseOps[{op, portNum}] = release;
+  }
+}
+
 void replaceObjectAcquireOp(
     ObjectFifoAcquireOp acquireOp, OpBuilder builder,
     DenseMap<std::pair<ObjectFifoCreateOp, int>, int> &acqPerFifo,
@@ -1242,6 +1281,7 @@ struct AMDAIEObjectFifoStatefulTransformPass : mlir::OperationPass<DeviceOp> {
     //===------------------------------------------------------------------===//
     // Create flows and tile DMAs
     //===------------------------------------------------------------------===//
+
     // Only the objectFifos we split above require DMA communication; the others
     // rely on shared memory and share the same buffers.
     for (auto &[producer, consumers] : splitFifos) {
@@ -1296,6 +1336,7 @@ struct AMDAIEObjectFifoStatefulTransformPass : mlir::OperationPass<DeviceOp> {
     //===------------------------------------------------------------------===//
     // Replace ops
     //===------------------------------------------------------------------===//
+
     for (auto coreOp : device.getOps<CoreOp>()) {
       // maps each "subview" to its buffer references (subviews
       // are created by AcquireOps)
@@ -1320,37 +1361,10 @@ struct AMDAIEObjectFifoStatefulTransformPass : mlir::OperationPass<DeviceOp> {
       //===----------------------------------------------------------------===//
       // Replace objectFifo.release ops
       //===----------------------------------------------------------------===//
+
       coreOp.walk([&](ObjectFifoReleaseOp releaseOp) {
-        builder.setInsertionPointAfter(releaseOp);
-        ObjectFifoCreateOp op = releaseOp.getObjectFifo();
-        auto port = releaseOp.getPort();
-        auto portNum = port == ObjectFifoPort::Produce ? 0 : 1;
-        auto core = releaseOp->getParentOfType<CoreOp>();
-
-        if (auto linkOp = getOptionalLinkOp(op)) {
-          if (core.getTile() == *linkOp->getOptionalSharedTile()) {
-            releaseOp->emitOpError(
-                "currently cannot access objectFifo used in "
-                "ObjectFifoLinkOp");
-            return;
-          }
-        }
-
-        // update index of next element to release for this objectFifo
-        updateAndReturnIndex(relPerFifo, {op, portNum});
-
-        // release locks
-        int numLocks = releaseOp.relNumber();
-        createUseLocks(builder, op, port, relPerFifo, numLocks,
-                       LockAction::Release, objFifoLinks, locksPerFifo);
-
-        // register release op
-        if (releaseOps.find({op, portNum}) != releaseOps.end()) {
-          releaseOps[{op, portNum}].push_back(releaseOp);
-        } else {
-          std::vector release = {releaseOp};
-          releaseOps[{op, portNum}] = release;
-        }
+        replaceReleaseOp(releaseOp, builder, relPerFifo, objFifoLinks,
+                         locksPerFifo, releaseOps);
       });
 
       //===----------------------------------------------------------------===//
