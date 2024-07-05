@@ -248,6 +248,48 @@ int findObjectFifoSize(DeviceOp &device, Value tile,
   return objFifo.size();
 }
 
+/// Function used to replace uses of split objectFifos.
+void replaceSplitFifo(ObjectFifoCreateOp originalOp, ObjectFifoCreateOp newOp,
+                      TileOp tile) {
+  auto original =
+      originalOp->getAttrOfType<StringAttr>(SymbolTable::getSymbolAttrName());
+  auto newSymbol =
+      newOp->getAttrOfType<StringAttr>(SymbolTable::getSymbolAttrName());
+  for (auto user : tile->getUsers())
+    if (isa<CoreOp>(user))
+      if (auto res =
+              SymbolTable::replaceAllSymbolUses(original, newSymbol, user);
+          res.failed())
+        llvm_unreachable("unreachable");
+}
+
+/// Function used to add an external buffer to the externalBuffersPerFifo map.
+void addExternalBuffer(
+    ObjectFifoCreateOp fifo, ExternalBufferOp buff,
+    DenseMap<ObjectFifoCreateOp, std::vector<ExternalBufferOp>>
+        &externalBuffersPerFifo) {
+  if (externalBuffersPerFifo.find(fifo) == externalBuffersPerFifo.end()) {
+    std::vector<ExternalBufferOp> buffs;
+    externalBuffersPerFifo[fifo] = buffs;
+  }
+  externalBuffersPerFifo[fifo].push_back(buff);
+}
+
+/// Function used to detect all external buffers associated with parent
+/// objectFifo and tile then map them to child objectFifo.
+void detectExternalBuffers(
+    DeviceOp &device, ObjectFifoCreateOp parent, ObjectFifoCreateOp child,
+    Value tile,
+    DenseMap<ObjectFifoCreateOp, std::vector<ExternalBufferOp>>
+        &externalBuffersPerFifo) {
+  for (auto regOp : device.getOps<ObjectFifoRegisterExternalBuffersOp>())
+    if (auto objFifo = regOp.getObjectFifo();
+        regOp.getTile() == tile && objFifo == parent)
+      for (auto extBuff : regOp.getExternalBuffers())
+        addExternalBuffer(child, extBuff.getDefiningOp<ExternalBufferOp>(),
+                          externalBuffersPerFifo);
+}
+
 //===----------------------------------------------------------------------===//
 // Create objectFifos Pass
 //===----------------------------------------------------------------------===//
@@ -876,41 +918,6 @@ struct AMDAIEObjectFifoStatefulTransformPass : mlir::OperationPass<DeviceOp> {
     return map[pair];
   }
 
-  /// Function used to add an external buffer to the externalBuffersPerFifo map.
-  void addExternalBuffer(ObjectFifoCreateOp fifo, ExternalBufferOp buff) {
-    if (externalBuffersPerFifo.find(fifo) == externalBuffersPerFifo.end()) {
-      std::vector<ExternalBufferOp> buffs;
-      externalBuffersPerFifo[fifo] = buffs;
-    }
-    externalBuffersPerFifo[fifo].push_back(buff);
-  }
-
-  /// Function used to detect all external buffers associated with parent
-  /// objectFifo and tile then map them to child objectFifo.
-  void detectExternalBuffers(DeviceOp &device, ObjectFifoCreateOp parent,
-                             ObjectFifoCreateOp child, Value tile) {
-    for (auto regOp : device.getOps<ObjectFifoRegisterExternalBuffersOp>())
-      if (auto objFifo = regOp.getObjectFifo();
-          regOp.getTile() == tile && objFifo == parent)
-        for (auto extBuff : regOp.getExternalBuffers())
-          addExternalBuffer(child, extBuff.getDefiningOp<ExternalBufferOp>());
-  }
-
-  /// Function used to replace uses of split objectFifos.
-  void replaceSplitFifo(ObjectFifoCreateOp originalOp, ObjectFifoCreateOp newOp,
-                        TileOp tile) {
-    auto original =
-        originalOp->getAttrOfType<StringAttr>(SymbolTable::getSymbolAttrName());
-    auto newSymbol =
-        newOp->getAttrOfType<StringAttr>(SymbolTable::getSymbolAttrName());
-    for (auto user : tile->getUsers())
-      if (isa<CoreOp>(user))
-        if (auto res =
-                SymbolTable::replaceAllSymbolUses(original, newSymbol, user);
-            res.failed())
-          llvm_unreachable("unreachable");
-  }
-
   /// Function used to generate, from an objectFifo with a shimTile endpoint, a
   /// shimDMAAllocationOp containing the channelDir, channelIndex and
   /// shimTile col assigned by the objectFifo lowering.
@@ -994,7 +1001,8 @@ struct AMDAIEObjectFifoStatefulTransformPass : mlir::OperationPass<DeviceOp> {
 
         // identify external buffers that were registered to the consumer fifo
         if (consumerTile.getDefiningOp<TileOp>().isShimTile())
-          detectExternalBuffers(device, createOp, consumerFifo, consumerTile);
+          detectExternalBuffers(device, createOp, consumerFifo, consumerTile,
+                                externalBuffersPerFifo);
 
         // record that this objectFifo was split; it will require DMA config
         splitConsumerFifos.push_back(consumerFifo);
@@ -1037,7 +1045,8 @@ struct AMDAIEObjectFifoStatefulTransformPass : mlir::OperationPass<DeviceOp> {
       // the producer objectFifo
       if (createOp.getProducerTileOp().isShimTile())
         detectExternalBuffers(device, createOp, createOp,
-                              createOp.getProducerTile());
+                              createOp.getProducerTile(),
+                              externalBuffersPerFifo);
 
       // if split, the necessary size for producer fifo might change
       if (shared)
