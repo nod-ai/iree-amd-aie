@@ -790,6 +790,39 @@ void createDMA(
   }
 }
 
+/// Function used to check whether op is already contained in map.
+/// If it is then return the associated int, if not create new entry and
+/// return 0.
+int updateAndReturnIndex(DenseMap<std::pair<ObjectFifoCreateOp, int>, int> &map,
+                         std::pair<ObjectFifoCreateOp, int> pair) {
+  if (map.find(pair) == map.end()) {
+    map[pair] = 0;
+    return 0;
+  }
+  return map[pair];
+}
+
+/// Function used to generate, from an objectFifo with a shimTile endpoint, a
+/// shimDMAAllocationOp containing the channelDir, channelIndex and
+/// shimTile col assigned by the objectFifo lowering.
+void createObjectFifoAllocationInfo(OpBuilder &builder, MLIRContext *ctx,
+                                    FlatSymbolRefAttr obj_fifo, int colIndex,
+                                    DMAChannelDir channelDir,
+                                    int channelIndex) {
+  builder.create<ShimDMAAllocationOp>(builder.getUnknownLoc(), obj_fifo,
+                                      DMAChannelDirAttr::get(ctx, channelDir),
+                                      builder.getI64IntegerAttr(channelIndex),
+                                      builder.getI64IntegerAttr(colIndex));
+}
+
+// Function that computes the Least Common Multiplier of the values
+// of a vector.
+int computeLCM(std::set<int> values) {
+  int lcm = 1;
+  for (int i : values) lcm = i * lcm / std::gcd(i, lcm);
+  return lcm;
+}
+
 //===----------------------------------------------------------------------===//
 // Create objectFifos Pass
 //===----------------------------------------------------------------------===//
@@ -839,14 +872,6 @@ struct AMDAIEObjectFifoStatefulTransformPass : mlir::OperationPass<DeviceOp> {
   std::vector<ObjectFifoCreateOp>
       splitBecauseLink;  // objfifos which have been split because they are
   // part of a Link, not because they didn't have a shared memory module
-
-  // Function that computes the Least Common Multiplier of the values
-  // of a vector.
-  int computeLCM(std::set<int> values) {
-    int lcm = 1;
-    for (int i : values) lcm = i * lcm / std::gcd(i, lcm);
-    return lcm;
-  }
 
   // Function that unrolls for-loops that contain objectFifo operations.
   LogicalResult unrollForLoops(DeviceOp &device, OpBuilder &builder,
@@ -921,32 +946,6 @@ struct AMDAIEObjectFifoStatefulTransformPass : mlir::OperationPass<DeviceOp> {
                               numLocks);
     acc[{op, portNum}] = (acc[{op, portNum}] + numLocks) %
                          op.size();  // update to next objFifo elem
-  }
-
-  /// Function used to check whether op is already contained in map.
-  /// If it is then return the associated int, if not create new entry and
-  /// return 0.
-  int updateAndReturnIndex(
-      DenseMap<std::pair<ObjectFifoCreateOp, int>, int> &map,
-      std::pair<ObjectFifoCreateOp, int> pair) {
-    if (map.find(pair) == map.end()) {
-      map[pair] = 0;
-      return 0;
-    }
-    return map[pair];
-  }
-
-  /// Function used to generate, from an objectFifo with a shimTile endpoint, a
-  /// shimDMAAllocationOp containing the channelDir, channelIndex and
-  /// shimTile col assigned by the objectFifo lowering.
-  void createObjectFifoAllocationInfo(OpBuilder &builder, MLIRContext *ctx,
-                                      FlatSymbolRefAttr obj_fifo, int colIndex,
-                                      DMAChannelDir channelDir,
-                                      int channelIndex) {
-    builder.create<ShimDMAAllocationOp>(builder.getUnknownLoc(), obj_fifo,
-                                        DMAChannelDirAttr::get(ctx, channelDir),
-                                        builder.getI64IntegerAttr(channelIndex),
-                                        builder.getI64IntegerAttr(colIndex));
   }
 
   void runOnOperation() override {
