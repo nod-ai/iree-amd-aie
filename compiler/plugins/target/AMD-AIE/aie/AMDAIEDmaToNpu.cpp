@@ -312,15 +312,9 @@ struct DmaToNpuPattern : OpConversionPattern<NpuDmaMemcpyNdOp> {
     auto issue_token = BoolAttr::get(ctx, false);
     auto repeat_count = zero;
 
-    llvm::SmallVector<int64_t, 4> strides = llvm::map_to_vector(
-        llvm::reverse(op.getMixedStrides()),
-        [](OpFoldResult s) { return getConstantIntValue(s).value(); });
-    llvm::SmallVector<int64_t, 4> sizes = llvm::map_to_vector(
-        llvm::reverse(op.getMixedSizes()),
-        [](OpFoldResult s) { return getConstantIntValue(s).value(); });
-    llvm::SmallVector<int64_t, 4> offsets = llvm::map_to_vector(
-        llvm::reverse(op.getMixedOffsets()),
-        [](OpFoldResult s) { return getConstantIntValue(s).value(); });
+    llvm::SmallVector<int64_t, 4> strides = op.getStridesInAddressGranularity();
+    llvm::SmallVector<int64_t, 4> sizes = op.getSizesInAddressGranularity();
+    int64_t offset = op.getOffsetInBytes();
 
     // column
     column = IntegerAttr::get(i32ty, col);
@@ -343,19 +337,6 @@ struct DmaToNpuPattern : OpConversionPattern<NpuDmaMemcpyNdOp> {
     buffer_length = IntegerAttr::get(i32ty, sizes[2] * sizes[1] * sizes[0]);
 
     // buffer_offset
-    size_t stride = 1;
-    size_t offset = 0;
-    MemRefType my_memref = op.getMemref().getType();
-    auto shape = my_memref.getShape();
-    size_t R = shape.size();
-    size_t el_bit_width = my_memref.getElementTypeBitWidth();
-    assert(el_bit_width % 8 == 0 &&
-           "Expected Memref element bitwidth to be multiple of 8.");
-    size_t S = el_bit_width / 8;
-    for (size_t i = 0; i < R; i++) {
-      offset += offsets[i] * stride * S;
-      stride *= shape[R - i - 1];
-    }
     buffer_offset = IntegerAttr::get(i32ty, offset);
 
     // d0_size
@@ -532,8 +513,9 @@ std::unique_ptr<OperationPass<AIE::DeviceOp>> createAMDAIEDmaToNpuPass() {
 }
 
 void registerAMDAIEDmaToNpu() {
-  mlir::registerPass(
-      []() -> std::unique_ptr<mlir::Pass> { return createAMDAIEDmaToNpuPass(); });
+  mlir::registerPass([]() -> std::unique_ptr<mlir::Pass> {
+    return createAMDAIEDmaToNpuPass();
+  });
 }
 
 }  // namespace mlir::iree_compiler::AMDAIE
