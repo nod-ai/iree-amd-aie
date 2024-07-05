@@ -105,6 +105,114 @@ class DMAChannelAnalysis {
   }
 };
 
+/// Function that returns true if two tiles in the AIE array share a memory
+/// module. share_direction is equal to:
+///   * -1 if the shared memory module is that of the first input tile,
+///   * 1 if it is that of the second input tile,
+///   * 0 is no memory module is shared.
+bool isSharedMemory(TileOp a, TileOp b, int *share_direction) {
+  DeviceOp device = a->getParentOfType<DeviceOp>();
+  AMDAIEDeviceModel deviceModel =
+      getDeviceModel(static_cast<AMDAIEDevice>(device.getDevice()));
+
+  if ((a.isShimTile() && !b.isShimTile()) ||
+      (!a.isShimTile() && b.isShimTile())) {
+    *share_direction = 0;
+    return false;
+  }
+  if ((deviceModel.isMemTile(a.getCol(), a.getRow()) &&
+       !deviceModel.isMemTile(b.getCol(), b.getRow())) ||
+      (!deviceModel.isMemTile(a.getCol(), a.getRow()) &&
+       deviceModel.isMemTile(b.getCol(), b.getRow()))) {
+    *share_direction = 0;
+    return false;
+  }
+  bool rightShared = deviceModel.hasLegalMemAffinity(
+      a.colIndex(), a.rowIndex(), b.colIndex(), b.rowIndex());
+
+  bool leftShared = deviceModel.hasLegalMemAffinity(
+      b.colIndex(), b.rowIndex(), a.colIndex(), a.rowIndex());
+
+  if (leftShared)
+    *share_direction = -1;
+  else if (rightShared)
+    *share_direction = 1;
+  else
+    *share_direction = 0;
+
+  return leftShared || rightShared;
+}
+
+/// Function to retrieve ObjectFifoLinkOp of ObjectFifoCreateOp,
+/// if it belongs to one.
+std::optional<ObjectFifoLinkOp> getOptionalLinkOp(ObjectFifoCreateOp op) {
+  auto device = op->getParentOfType<DeviceOp>();
+  for (ObjectFifoLinkOp linkOp : device.getOps<ObjectFifoLinkOp>()) {
+    for (ObjectFifoCreateOp in : linkOp.getInputObjectFifos())
+      if (in == op) return {linkOp};
+    for (ObjectFifoCreateOp out : linkOp.getOutputObjectFifos())
+      if (out == op) return {linkOp};
+  }
+  return {};
+}
+
+// Return true if the objectFifo created by createOp requires a DMA to be set
+// up. This is the case if the tiles are not adjacent (no shared memory), if
+// the objectFifo broadcasts to multiple tiles, if one of the consumers or
+// the producer wants to use the multi-dimensional address generation
+// features of the DMA, if the objectFifo is part of a LinkOp, or if the
+// via_DMA attribute of the objectFifo is set.
+bool requiresDMAs(ObjectFifoCreateOp createOp, int &share_direction,
+                  std::vector<ObjectFifoCreateOp> &splitBecauseLink) {
+  bool hasSharedMemory = false;
+  bool atLeastOneConsumerWantsTransform = false;
+  bool isUsedInLinkOp = false;
+
+  if (createOp.getVia_DMA()) return true;
+
+  if (createOp.getConsumerTiles().size() == 1 &&
+      createOp.getDimensionsToStream().empty()) {
+    // Test for shared memory
+    for (auto consumerTile : createOp.getConsumerTiles()) {
+      if (auto consumerTileOp =
+              dyn_cast<TileOp>(consumerTile.getDefiningOp())) {
+        if (std::count(splitBecauseLink.begin(), splitBecauseLink.end(),
+                       createOp))
+          hasSharedMemory =
+              isSharedMemory(createOp.getProducerTileOp(),
+                             createOp.getProducerTileOp(), &share_direction);
+        else
+          hasSharedMemory = isSharedMemory(createOp.getProducerTileOp(),
+                                           consumerTileOp, &share_direction);
+      }
+    }
+  }
+
+  // Only test for use of data layout transformations if we are in the shared
+  // memory case; otherwise, we will return `true` in any case.
+  if (hasSharedMemory) {
+    // Even if just one of the consumers in the list of consumers wants to
+    // perform a memory transform, we need to use DMAs.
+    for (BDDimLayoutArrayAttr dims :
+         createOp.getDimensionsFromStreamPerConsumer())
+      if (!dims.empty()) {
+        atLeastOneConsumerWantsTransform = true;
+        break;
+      }
+  }
+
+  // Only test for this objfifo belonging to a LinkOp if we are in the shared
+  // memory case; otherwise, we will return `true` in any case.
+  if (hasSharedMemory) {
+    if (auto linkOp = getOptionalLinkOp(createOp)) {
+      splitBecauseLink.push_back(createOp);
+      isUsedInLinkOp = true;
+    }
+  }
+
+  return !hasSharedMemory || atLeastOneConsumerWantsTransform || isUsedInLinkOp;
+}
+
 //===----------------------------------------------------------------------===//
 // Create objectFifos Pass
 //===----------------------------------------------------------------------===//
@@ -154,114 +262,6 @@ struct AMDAIEObjectFifoStatefulTransformPass : mlir::OperationPass<DeviceOp> {
   std::vector<ObjectFifoCreateOp>
       splitBecauseLink;  // objfifos which have been split because they are
   // part of a Link, not because they didn't have a shared memory module
-
-  /// Function that returns true if two tiles in the AIE array share a memory
-  /// module. share_direction is equal to:
-  ///   * -1 if the shared memory module is that of the first input tile,
-  ///   * 1 if it is that of the second input tile,
-  ///   * 0 is no memory module is shared.
-  bool isSharedMemory(TileOp a, TileOp b, int *share_direction) {
-    DeviceOp device = a->getParentOfType<DeviceOp>();
-    AMDAIEDeviceModel deviceModel =
-        getDeviceModel(static_cast<AMDAIEDevice>(device.getDevice()));
-
-    if ((a.isShimTile() && !b.isShimTile()) ||
-        (!a.isShimTile() && b.isShimTile())) {
-      *share_direction = 0;
-      return false;
-    }
-    if ((deviceModel.isMemTile(a.getCol(), a.getRow()) &&
-         !deviceModel.isMemTile(b.getCol(), b.getRow())) ||
-        (!deviceModel.isMemTile(a.getCol(), a.getRow()) &&
-         deviceModel.isMemTile(b.getCol(), b.getRow()))) {
-      *share_direction = 0;
-      return false;
-    }
-    bool rightShared = deviceModel.hasLegalMemAffinity(
-        a.colIndex(), a.rowIndex(), b.colIndex(), b.rowIndex());
-
-    bool leftShared = deviceModel.hasLegalMemAffinity(
-        b.colIndex(), b.rowIndex(), a.colIndex(), a.rowIndex());
-
-    if (leftShared)
-      *share_direction = -1;
-    else if (rightShared)
-      *share_direction = 1;
-    else
-      *share_direction = 0;
-
-    return leftShared || rightShared;
-  }
-
-  // Return true if the objectFifo created by createOp requires a DMA to be set
-  // up. This is the case if the tiles are not adjacent (no shared memory), if
-  // the objectFifo broadcasts to multiple tiles, if one of the consumers or
-  // the producer wants to use the multi-dimensional address generation
-  // features of the DMA, if the objectFifo is part of a LinkOp, or if the
-  // via_DMA attribute of the objectFifo is set.
-  bool requiresDMAs(ObjectFifoCreateOp createOp, int &share_direction) {
-    bool hasSharedMemory = false;
-    bool atLeastOneConsumerWantsTransform = false;
-    bool isUsedInLinkOp = false;
-
-    if (createOp.getVia_DMA()) return true;
-
-    if (createOp.getConsumerTiles().size() == 1 &&
-        createOp.getDimensionsToStream().empty()) {
-      // Test for shared memory
-      for (auto consumerTile : createOp.getConsumerTiles()) {
-        if (auto consumerTileOp =
-                dyn_cast<TileOp>(consumerTile.getDefiningOp())) {
-          if (std::count(splitBecauseLink.begin(), splitBecauseLink.end(),
-                         createOp))
-            hasSharedMemory =
-                isSharedMemory(createOp.getProducerTileOp(),
-                               createOp.getProducerTileOp(), &share_direction);
-          else
-            hasSharedMemory = isSharedMemory(createOp.getProducerTileOp(),
-                                             consumerTileOp, &share_direction);
-        }
-      }
-    }
-
-    // Only test for use of data layout transformations if we are in the shared
-    // memory case; otherwise, we will return `true` in any case.
-    if (hasSharedMemory) {
-      // Even if just one of the consumers in the list of consumers wants to
-      // perform a memory transform, we need to use DMAs.
-      for (BDDimLayoutArrayAttr dims :
-           createOp.getDimensionsFromStreamPerConsumer())
-        if (!dims.empty()) {
-          atLeastOneConsumerWantsTransform = true;
-          break;
-        }
-    }
-
-    // Only test for this objfifo belonging to a LinkOp if we are in the shared
-    // memory case; otherwise, we will return `true` in any case.
-    if (hasSharedMemory) {
-      if (auto linkOp = getOptionalLinkOp(createOp)) {
-        splitBecauseLink.push_back(createOp);
-        isUsedInLinkOp = true;
-      }
-    }
-
-    return !hasSharedMemory || atLeastOneConsumerWantsTransform ||
-           isUsedInLinkOp;
-  }
-
-  /// Function to retrieve ObjectFifoLinkOp of ObjectFifoCreateOp,
-  /// if it belongs to one.
-  std::optional<ObjectFifoLinkOp> getOptionalLinkOp(ObjectFifoCreateOp op) {
-    auto device = op->getParentOfType<DeviceOp>();
-    for (ObjectFifoLinkOp linkOp : device.getOps<ObjectFifoLinkOp>()) {
-      for (ObjectFifoCreateOp in : linkOp.getInputObjectFifos())
-        if (in == op) return {linkOp};
-      for (ObjectFifoCreateOp out : linkOp.getOutputObjectFifos())
-        if (out == op) return {linkOp};
-    }
-    return {};
-  }
 
   ObjectFifoCreateOp createObjectFifo(
       OpBuilder &builder, AIEObjectFifoType datatype, std::string name,
@@ -962,7 +962,8 @@ struct AMDAIEObjectFifoStatefulTransformPass : mlir::OperationPass<DeviceOp> {
 
       // Only FIFOs using DMA are split into two ends;
       // skip in shared memory case
-      if (int share_direction = 0; !requiresDMAs(createOp, share_direction))
+      if (int share_direction = 0;
+          !requiresDMAs(createOp, share_direction, splitBecauseLink))
         continue;
 
       for (auto consumerTile : createOp.getConsumerTiles()) {
@@ -1033,7 +1034,7 @@ struct AMDAIEObjectFifoStatefulTransformPass : mlir::OperationPass<DeviceOp> {
     //===------------------------------------------------------------------===//
     for (auto createOp : device.getOps<ObjectFifoCreateOp>()) {
       int share_direction = 0;
-      bool shared = !requiresDMAs(createOp, share_direction);
+      bool shared = !requiresDMAs(createOp, share_direction, splitBecauseLink);
 
       // add all tiles that contain an objectFifo to objectFifoTiles for later
       // loop unrolling pass
