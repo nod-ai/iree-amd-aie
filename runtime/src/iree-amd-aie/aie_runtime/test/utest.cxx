@@ -45,8 +45,7 @@ int main(int argc, char** argv) {
       .AieTileRowStart = XAIE_MEM_TILE_ROW_START + NPU_NUM_MEM_TILE_ROWS,
       .AieTileNumRows =
           NPU_NUM_ROWS - NPU_NUM_MEM_TILE_ROWS - XAIE_NUM_SHIM_TILE_ROWS,
-      .PartProp = partitionProp,
-      .Backend = XAIE_IO_BACKEND_CDO};
+      .PartProp = partitionProp};
 
   uint8_t partitionStartCol = 1;
   uint8_t partitionNumCols = 1;

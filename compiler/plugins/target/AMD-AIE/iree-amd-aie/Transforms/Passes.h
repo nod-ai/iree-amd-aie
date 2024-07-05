@@ -84,6 +84,9 @@ std::unique_ptr<Pass> createAMDAIECreateAIEWorkgroupPass();
 /// and outputs.
 std::unique_ptr<Pass> createAMDAIECreateLogicalObjectFifoLinkPass();
 
+/// Pass to create references to allocations in L1 memory space.
+std::unique_ptr<Pass> createAMDAIECreateReferenceToAllocationPass();
+
 /// Create a pass to vectorize operations.
 std::unique_ptr<Pass> createAMDAIEVectorizationPass();
 
