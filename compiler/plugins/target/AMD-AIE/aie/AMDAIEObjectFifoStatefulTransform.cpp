@@ -416,6 +416,373 @@ void createObjectFifoElements(
   locksPerFifo[op] = locks;
 }
 
+/// Function that returns a pointer to the block of a Region
+/// that contains the AIEEndOp.
+Block *findEndOpBlock(Region &r) {
+  Block *endBlock = nullptr;
+  for (auto &bl : r.getBlocks())
+    if (!bl.getOps<EndOp>().empty()) endBlock = &bl;
+  return endBlock;
+}
+
+/// Function used to create a Bd block.
+template <typename MyOp>
+void createBd(OpBuilder &builder, LockOp acqLock, int acqMode,
+              LockAction acqLockAction, LockOp relLock, int relMode, MyOp buff,
+              int offset, int len, Block *succ, BDDimLayoutArrayAttr dims) {
+  builder.create<UseLockOp>(builder.getUnknownLoc(), acqLock, acqLockAction,
+                            acqMode);
+  if (!dims.getValue().empty())
+    builder.create<DMABDOp>(builder.getUnknownLoc(), buff, offset, len, dims);
+  else
+    builder.create<DMABDOp>(builder.getUnknownLoc(), buff, offset, len);
+
+  builder.create<UseLockOp>(builder.getUnknownLoc(), relLock,
+                            LockAction::Release, relMode);
+  builder.create<NextBDOp>(builder.getUnknownLoc(), succ);
+}
+
+/// Function used to create a Bd block.
+/// If lockMode is 0 we create a consumerDMA (i.e. on producer tile) else a
+/// producerDMA (i.e. on consumer tile).
+template <typename MyOp>
+void createBdBlock(
+    OpBuilder &builder, ObjectFifoCreateOp op, int lockMode, int acqNum,
+    int relNum, MyOp buff, int offset, int len, DMAChannelDir channelDir,
+    size_t blockIndex, Block *succ, BDDimLayoutArrayAttr dims,
+    DenseMap<ObjectFifoCreateOp, std::vector<LockOp>> &locksPerFifo) {
+  LockOp acqLock;
+  LockOp relLock;
+  int acqMode = 1;
+  int relMode = 1;
+  auto acqLockAction = LockAction::Acquire;
+  acqMode = acqNum;
+  relMode = relNum;
+  acqLockAction = LockAction::AcquireGreaterEqual;
+  acqLock = channelDir == DMAChannelDir::S2MM ? locksPerFifo[op][0]
+                                              : locksPerFifo[op][1];
+  relLock = channelDir == DMAChannelDir::S2MM ? locksPerFifo[op][1]
+                                              : locksPerFifo[op][0];
+  createBd(builder, acqLock, acqMode, acqLockAction, relLock, relMode, buff,
+           offset, len, succ, dims);
+}
+
+/// Function used to create a MemOp region with a DMA channel.
+/// It uses creatBdBlock(), see there for lockMode input.
+void createAMDAIETileDMA(
+    DeviceOp &device, OpBuilder &builder, ObjectFifoCreateOp op,
+    DMAChannelDir channelDir, int channelIndex, int lockMode,
+    BDDimLayoutArrayAttr dims,
+    DenseMap<ObjectFifoLinkOp, ObjectFifoCreateOp> &objFifoLinks,
+    DenseMap<ObjectFifoCreateOp, std::vector<BufferOp>> &buffersPerFifo,
+    DenseMap<ObjectFifoCreateOp, std::vector<LockOp>> &locksPerFifo) {
+  size_t numBlocks = op.size();
+  if (numBlocks == 0) return;
+
+  int acqNum = 1;
+  int relNum = 1;
+
+  auto fifo = llvm::cast<AIEObjectFifoType>(op.getElemType());
+  auto elemType = llvm::cast<MemRefType>(fifo.getElementType());
+  int len = elemType.getNumElements();
+
+  // search for the buffers/locks (based on if this objFifo has a link)
+  ObjectFifoCreateOp target = op;
+  if (std::optional<ObjectFifoLinkOp> linkOp = getOptionalLinkOp(op);
+      linkOp.has_value())
+    if (objFifoLinks.find(linkOp.value()) != objFifoLinks.end())
+      target = objFifoLinks[linkOp.value()];
+
+  // search for MemOp
+  Operation *producerMem = nullptr;
+  for (auto memOp : device.getOps<MemOp>()) {
+    if (memOp.getTile() == op.getProducerTile()) {
+      producerMem = memOp.getOperation();
+      break;
+    }
+  }
+
+    // if none exists, create one
+  TileOp objFifoTileOp = target.getProducerTileOp();
+  if (producerMem == nullptr) {
+    if (device->getNumRegions() != 1)
+      assert(false && "expected num regions for device op");
+    OpBuilder::InsertionGuard g(builder);
+    builder.setInsertionPointToEnd(device.getBody());
+    auto newMemOp =
+        builder.create<MemOp>(builder.getUnknownLoc(), objFifoTileOp);
+    {
+      OpBuilder::InsertionGuard g(builder);
+      builder.setInsertionPointToStart(&newMemOp.getRegion().emplaceBlock());
+      builder.create<EndOp>(builder.getUnknownLoc());
+    }
+    producerMem = newMemOp.getOperation();
+  }
+  Block *endBlock = findEndOpBlock(producerMem->getRegion(0));
+  Block *lastDmaBlock = endBlock->getSinglePredecessor();
+  Block *dmaBlock = builder.createBlock(endBlock);
+  Block *bdBlock = builder.createBlock(endBlock);
+
+  // create DMA channel
+  builder.setInsertionPointToStart(dmaBlock);
+  builder.create<DMAStartOp>(builder.getUnknownLoc(), channelDir, channelIndex,
+                             /*repeatCount*/ 0, bdBlock, endBlock);
+  if (lastDmaBlock != nullptr)
+    lastDmaBlock->getTerminator()->setSuccessor(dmaBlock, 1);
+
+  // create Bd blocks
+  Block *succ;
+  Block *curr = bdBlock;
+  size_t blockIndex = 0;
+  for (size_t i = 0; i < numBlocks; i++) {
+    if (blockIndex >= buffersPerFifo[target].size()) break;
+    if (i == numBlocks - 1)
+      succ = bdBlock;
+    else
+      succ = builder.createBlock(endBlock);
+
+    builder.setInsertionPointToStart(curr);
+    createBdBlock<BufferOp>(builder, target, lockMode, acqNum, relNum,
+                            buffersPerFifo[target][blockIndex], /*offset*/ 0,
+                            len, channelDir, blockIndex, succ, dims,
+                            locksPerFifo);
+    curr = succ;
+    blockIndex++;
+  }
+}
+
+/// Function used to create a ShimDMAOp region with a DMA channel.
+/// It uses creatBdBlock(), see there for lockMode input.
+void createShimDMA(
+    DeviceOp &device, OpBuilder &builder, ObjectFifoCreateOp op,
+    DMAChannelDir channelDir, int channelIndex, int lockMode,
+    BDDimLayoutArrayAttr dims,
+    DenseMap<ObjectFifoCreateOp, std::vector<ExternalBufferOp>>
+        &externalBuffersPerFifo,
+    DenseMap<ObjectFifoCreateOp, std::vector<LockOp>> &locksPerFifo) {
+  size_t numBlocks = externalBuffersPerFifo[op].size();
+  if (numBlocks == 0) return;
+
+  int acqNum = 1;
+  int relNum = 1;
+
+  // search for ShimDMAOp
+  Operation *producerDMA = nullptr;
+  for (auto dmaOp : device.getOps<ShimDMAOp>()) {
+    if (dmaOp.getTile() == op.getProducerTile()) {
+      producerDMA = dmaOp.getOperation();
+      break;
+    }
+  }
+
+  // if none exists, create one
+  TileOp objFifoTileOp = op.getProducerTileOp();
+  if (producerDMA == nullptr) {
+    if (device->getNumRegions() != 1)
+      assert(false && "expected num regions for device op");
+    OpBuilder::InsertionGuard g(builder);
+    builder.setInsertionPointToEnd(device.getBody());
+    auto newDMAOp = builder.create<ShimDMAOp>(
+        builder.getUnknownLoc(), builder.getIndexType(), objFifoTileOp);
+    {
+      OpBuilder::InsertionGuard g(builder);
+      builder.setInsertionPointToStart(&newDMAOp.getRegion().emplaceBlock());
+      builder.create<EndOp>(builder.getUnknownLoc());
+    }
+    producerDMA = newDMAOp.getOperation();
+  }
+
+  Block *endBlock = findEndOpBlock(producerDMA->getRegion(0));
+  Block *lastDmaBlock = endBlock->getSinglePredecessor();
+  Block *dmaBlock = builder.createBlock(endBlock);
+  Block *bdBlock = builder.createBlock(endBlock);
+
+  // create DMA channel
+  builder.setInsertionPointToStart(dmaBlock);
+  builder.create<DMAStartOp>(builder.getUnknownLoc(), channelDir, channelIndex,
+                             /*repeatCout*/ 0, bdBlock, endBlock);
+  if (lastDmaBlock != nullptr)
+    lastDmaBlock->getTerminator()->setSuccessor(dmaBlock, 1);
+
+  // create Bd blocks
+  Block *succ;
+  Block *curr = bdBlock;
+  size_t blockIndex = 0;
+  for (size_t i = 0; i < numBlocks; i++) {
+    if (blockIndex >= externalBuffersPerFifo[op].size()) break;
+    if (i == numBlocks - 1)
+      succ = bdBlock;
+    else
+      succ = builder.createBlock(endBlock);
+
+    MemRefType buffer = externalBuffersPerFifo[op][blockIndex].getType();
+    int len = buffer.getNumElements();
+    builder.setInsertionPointToStart(curr);
+    createBdBlock<ExternalBufferOp>(builder, op, lockMode, acqNum, relNum,
+                                    externalBuffersPerFifo[op][blockIndex],
+                                    /*offset*/ 0, len, channelDir, blockIndex,
+                                    succ, dims, locksPerFifo);
+    curr = succ;
+    blockIndex++;
+  }
+}
+
+/// Function used to create a MemTileDMAOp region with a DMA channel.
+/// It uses creatBdBlock(), see there for lockMode input.
+void createMemTileDMA(
+    DeviceOp &device, OpBuilder &builder, ObjectFifoCreateOp op,
+    DMAChannelDir channelDir, int channelIndex, int lockMode,
+    BDDimLayoutArrayAttr dims,
+    DenseMap<ObjectFifoLinkOp, ObjectFifoCreateOp> &objFifoLinks,
+    DenseMap<ObjectFifoCreateOp, std::vector<BufferOp>> &buffersPerFifo,
+    DenseMap<ObjectFifoCreateOp, std::vector<LockOp>> &locksPerFifo) {
+  size_t numBlocks = op.size();
+  if (numBlocks == 0) return;
+
+  auto fifo = llvm::cast<AIEObjectFifoType>(op.getElemType());
+  auto elemType = llvm::cast<MemRefType>(fifo.getElementType());
+  int lenOut = elemType.getNumElements();
+  int acqNum = 1;
+  int relNum = 1;
+
+  // search for the buffers/locks (based on if this objFifo has a link)
+  // identify size difference between input and output memrefs
+  ObjectFifoCreateOp target = op;
+  bool isDistribute = false;
+  bool isJoin = false;
+  int extraOffset = 0;
+  if (auto linkOp = getOptionalLinkOp(op)) {
+    if (objFifoLinks.find(*linkOp) != objFifoLinks.end()) {
+      target = objFifoLinks[*linkOp];
+
+      if (linkOp->isJoin()) {
+        // find offset based on order of this op in join list
+        isJoin = true;
+        if (target == op) {
+          acqNum = linkOp->getFifoIns().size();
+          relNum = linkOp->getFifoIns().size();
+        } else {
+          for (auto fifoIn : linkOp->getInputObjectFifos()) {
+            auto fifoType =
+                llvm::cast<AIEObjectFifoType>(fifoIn.getElemType());
+            auto elemType = llvm::cast<MemRefType>(fifoType.getElementType());
+            if (fifoIn.name() == op.name()) break;
+            extraOffset += elemType.getNumElements();
+          }
+        }
+      } else if (linkOp->isDistribute()) {
+        // find offset based on order of this op in distribute list
+        isDistribute = true;
+        if (target == op) {
+          acqNum = linkOp->getFifoOuts().size();
+          relNum = linkOp->getFifoOuts().size();
+        } else {
+          for (auto fifoOut : linkOp->getOutputObjectFifos()) {
+            auto fifoType =
+                llvm::cast<AIEObjectFifoType>(fifoOut.getElemType());
+            auto elemType = llvm::cast<MemRefType>(fifoType.getElementType());
+            if (fifoOut.name() == op.name()) break;
+            extraOffset += elemType.getNumElements();
+          }
+        }
+      } else {
+        if (target != op) {
+          auto targetFifo =
+              llvm::cast<AIEObjectFifoType>(target.getElemType());
+          auto targetElemType =
+              llvm::cast<MemRefType>(targetFifo.getElementType());
+          lenOut = targetElemType.getNumElements();
+        }
+      }
+
+      // check if current op is of smaller size in link
+      if (target != op) numBlocks = target.size();
+    }
+  }
+
+  // search for MemTileDMAOp
+  Operation *producerDMA = nullptr;
+  for (auto dmaOp : device.getOps<MemTileDMAOp>()) {
+    if (dmaOp.getTile() == target.getProducerTile()) {
+      producerDMA = dmaOp.getOperation();
+      break;
+    }
+  }
+
+  // if none exists, create one
+  TileOp objFifoTileOp = target.getProducerTileOp();
+  if (producerDMA == nullptr) {
+    if (device->getNumRegions() != 1)
+      assert(false && "expected num regions for device op");
+    OpBuilder::InsertionGuard g(builder);
+    builder.setInsertionPointToEnd(device.getBody());
+    auto newDMAOp =
+        builder.create<MemTileDMAOp>(builder.getUnknownLoc(), objFifoTileOp);
+    {
+      OpBuilder::InsertionGuard g(builder);
+      builder.setInsertionPointToStart(&newDMAOp.getRegion().emplaceBlock());
+      builder.create<EndOp>(builder.getUnknownLoc());
+    }
+    producerDMA = newDMAOp.getOperation();
+  }
+
+  Block *endBlock = findEndOpBlock(producerDMA->getRegion(0));
+  Block *lastDmaBlock = endBlock->getSinglePredecessor();
+  Block *dmaBlock = builder.createBlock(endBlock);
+  Block *bdBlock = builder.createBlock(endBlock);
+
+  // create DMA channel
+  builder.setInsertionPointToStart(dmaBlock);
+  builder.create<DMAStartOp>(builder.getUnknownLoc(), channelDir, channelIndex,
+                             /*repeatCount*/ 0, bdBlock, endBlock);
+  if (lastDmaBlock != nullptr)
+    lastDmaBlock->getTerminator()->setSuccessor(dmaBlock, 1);
+
+  // create Bd blocks
+  Block *succ;
+  Block *curr = bdBlock;
+  size_t blockIndex = 0;
+  for (size_t i = 0; i < numBlocks; i++) {
+    if (blockIndex >= buffersPerFifo[target].size()) break;
+    if (i == numBlocks - 1)
+      succ = bdBlock;
+    else
+      succ = builder.createBlock(endBlock);
+
+    builder.setInsertionPointToStart(curr);
+    int offset = 0;
+    if (isDistribute || isJoin) offset = extraOffset;
+    createBdBlock<BufferOp>(builder, target, lockMode, acqNum, relNum,
+                            buffersPerFifo[target][blockIndex], offset, lenOut,
+                            channelDir, blockIndex, succ, dims, locksPerFifo);
+    curr = succ;
+    blockIndex++;
+  }
+}
+
+/// Function that either calls createAMDAIETileDMA(), createShimDMA() or
+/// createMemTileDMA() based on op tile row value.
+void createDMA(
+    DeviceOp &device, OpBuilder &builder, ObjectFifoCreateOp op,
+    DMAChannelDir channelDir, int channelIndex, int lockMode,
+    BDDimLayoutArrayAttr dims,
+    DenseMap<ObjectFifoCreateOp, std::vector<ExternalBufferOp>>
+        &externalBuffersPerFifo,
+    DenseMap<ObjectFifoCreateOp, std::vector<LockOp>> &locksPerFifo,
+    DenseMap<ObjectFifoLinkOp, ObjectFifoCreateOp> &objFifoLinks,
+    DenseMap<ObjectFifoCreateOp, std::vector<BufferOp>> &buffersPerFifo) {
+  if (op.getProducerTileOp().isShimTile()) {
+    createShimDMA(device, builder, op, channelDir, channelIndex, lockMode, dims,
+                  externalBuffersPerFifo, locksPerFifo);
+  } else if (op.getProducerTileOp().isMemTile()) {
+    createMemTileDMA(device, builder, op, channelDir, channelIndex, lockMode,
+                     dims, objFifoLinks, buffersPerFifo, locksPerFifo);
+  } else {
+    createAMDAIETileDMA(device, builder, op, channelDir, channelIndex, lockMode,
+                        dims, objFifoLinks, buffersPerFifo, locksPerFifo);
+  }
+}
+
 //===----------------------------------------------------------------------===//
 // Create objectFifos Pass
 //===----------------------------------------------------------------------===//
@@ -465,360 +832,6 @@ struct AMDAIEObjectFifoStatefulTransformPass : mlir::OperationPass<DeviceOp> {
   std::vector<ObjectFifoCreateOp>
       splitBecauseLink;  // objfifos which have been split because they are
   // part of a Link, not because they didn't have a shared memory module
-
-  /// Function that returns a pointer to the block of a Region
-  /// that contains the AIEEndOp.
-  Block *findEndOpBlock(Region &r) {
-    Block *endBlock = nullptr;
-    for (auto &bl : r.getBlocks())
-      if (!bl.getOps<EndOp>().empty()) endBlock = &bl;
-    return endBlock;
-  }
-
-  /// Function used to create a Bd block.
-  template <typename MyOp>
-  void createBd(OpBuilder &builder, LockOp acqLock, int acqMode,
-                LockAction acqLockAction, LockOp relLock, int relMode,
-                MyOp buff, int offset, int len, Block *succ,
-                BDDimLayoutArrayAttr dims) {
-    builder.create<UseLockOp>(builder.getUnknownLoc(), acqLock, acqLockAction,
-                              acqMode);
-    if (!dims.getValue().empty())
-      builder.create<DMABDOp>(builder.getUnknownLoc(), buff, offset, len, dims);
-    else
-      builder.create<DMABDOp>(builder.getUnknownLoc(), buff, offset, len);
-
-    builder.create<UseLockOp>(builder.getUnknownLoc(), relLock,
-                              LockAction::Release, relMode);
-    builder.create<NextBDOp>(builder.getUnknownLoc(), succ);
-  }
-
-  /// Function used to create a Bd block.
-  /// If lockMode is 0 we create a consumerDMA (i.e. on producer tile) else a
-  /// producerDMA (i.e. on consumer tile).
-  template <typename MyOp>
-  void createBdBlock(OpBuilder &builder, ObjectFifoCreateOp op, int lockMode,
-                     int acqNum, int relNum, MyOp buff, int offset, int len,
-                     DMAChannelDir channelDir, size_t blockIndex, Block *succ,
-                     BDDimLayoutArrayAttr dims) {
-    LockOp acqLock;
-    LockOp relLock;
-    int acqMode = 1;
-    int relMode = 1;
-    auto acqLockAction = LockAction::Acquire;
-    acqMode = acqNum;
-    relMode = relNum;
-    acqLockAction = LockAction::AcquireGreaterEqual;
-    acqLock = channelDir == DMAChannelDir::S2MM ? locksPerFifo[op][0]
-                                                : locksPerFifo[op][1];
-    relLock = channelDir == DMAChannelDir::S2MM ? locksPerFifo[op][1]
-                                                : locksPerFifo[op][0];
-    createBd(builder, acqLock, acqMode, acqLockAction, relLock, relMode, buff,
-             offset, len, succ, dims);
-  }
-
-  /// Function that either calls createAMDAIETileDMA(), createShimDMA() or
-  /// createMemTileDMA() based on op tile row value.
-  void createDMA(DeviceOp &device, OpBuilder &builder, ObjectFifoCreateOp op,
-                 DMAChannelDir channelDir, int channelIndex, int lockMode,
-                 BDDimLayoutArrayAttr dims) {
-    if (op.getProducerTileOp().isShimTile()) {
-      createShimDMA(device, builder, op, channelDir, channelIndex, lockMode,
-                    dims);
-    } else if (op.getProducerTileOp().isMemTile()) {
-      createMemTileDMA(device, builder, op, channelDir, channelIndex, lockMode,
-                       dims);
-    } else {
-      createAMDAIETileDMA(device, builder, op, channelDir, channelIndex,
-                          lockMode, dims);
-    }
-  }
-
-  /// Function used to create a MemOp region with a DMA channel.
-  /// It uses creatBdBlock(), see there for lockMode input.
-  void createAMDAIETileDMA(DeviceOp &device, OpBuilder &builder,
-                           ObjectFifoCreateOp op, DMAChannelDir channelDir,
-                           int channelIndex, int lockMode,
-                           BDDimLayoutArrayAttr dims) {
-    size_t numBlocks = op.size();
-    if (numBlocks == 0) return;
-
-    int acqNum = 1;
-    int relNum = 1;
-
-    auto fifo = llvm::cast<AIEObjectFifoType>(op.getElemType());
-    auto elemType = llvm::cast<MemRefType>(fifo.getElementType());
-    int len = elemType.getNumElements();
-
-    // search for the buffers/locks (based on if this objFifo has a link)
-    ObjectFifoCreateOp target = op;
-    if (std::optional<ObjectFifoLinkOp> linkOp = getOptionalLinkOp(op);
-        linkOp.has_value())
-      if (objFifoLinks.find(linkOp.value()) != objFifoLinks.end())
-        target = objFifoLinks[linkOp.value()];
-
-    // search for MemOp
-    Operation *producerMem = nullptr;
-    for (auto memOp : device.getOps<MemOp>()) {
-      if (memOp.getTile() == op.getProducerTile()) {
-        producerMem = memOp.getOperation();
-        break;
-      }
-    }
-
-    // if none exists, create one
-    TileOp objFifoTileOp = target.getProducerTileOp();
-    if (producerMem == nullptr) {
-      if (device->getNumRegions() != 1)
-        assert(false && "expected num regions for device op");
-      OpBuilder::InsertionGuard g(builder);
-      builder.setInsertionPointToEnd(device.getBody());
-      auto newMemOp =
-          builder.create<MemOp>(builder.getUnknownLoc(), objFifoTileOp);
-      {
-        OpBuilder::InsertionGuard g(builder);
-        builder.setInsertionPointToStart(&newMemOp.getRegion().emplaceBlock());
-        builder.create<EndOp>(builder.getUnknownLoc());
-      }
-      producerMem = newMemOp.getOperation();
-    }
-    Block *endBlock = findEndOpBlock(producerMem->getRegion(0));
-    Block *lastDmaBlock = endBlock->getSinglePredecessor();
-    Block *dmaBlock = builder.createBlock(endBlock);
-    Block *bdBlock = builder.createBlock(endBlock);
-
-    // create DMA channel
-    builder.setInsertionPointToStart(dmaBlock);
-    builder.create<DMAStartOp>(builder.getUnknownLoc(), channelDir,
-                               channelIndex, /*repeatCount*/ 0, bdBlock,
-                               endBlock);
-    if (lastDmaBlock != nullptr)
-      lastDmaBlock->getTerminator()->setSuccessor(dmaBlock, 1);
-
-    // create Bd blocks
-    Block *succ;
-    Block *curr = bdBlock;
-    size_t blockIndex = 0;
-    for (size_t i = 0; i < numBlocks; i++) {
-      if (blockIndex >= buffersPerFifo[target].size()) break;
-      if (i == numBlocks - 1)
-        succ = bdBlock;
-      else
-        succ = builder.createBlock(endBlock);
-
-      builder.setInsertionPointToStart(curr);
-      createBdBlock<BufferOp>(builder, target, lockMode, acqNum, relNum,
-                              buffersPerFifo[target][blockIndex], /*offset*/ 0,
-                              len, channelDir, blockIndex, succ, dims);
-      curr = succ;
-      blockIndex++;
-    }
-  }
-
-  /// Function used to create a ShimDMAOp region with a DMA channel.
-  /// It uses creatBdBlock(), see there for lockMode input.
-  void createShimDMA(DeviceOp &device, OpBuilder &builder,
-                     ObjectFifoCreateOp op, DMAChannelDir channelDir,
-                     int channelIndex, int lockMode,
-                     BDDimLayoutArrayAttr dims) {
-    size_t numBlocks = externalBuffersPerFifo[op].size();
-    if (numBlocks == 0) return;
-
-    int acqNum = 1;
-    int relNum = 1;
-
-    // search for ShimDMAOp
-    Operation *producerDMA = nullptr;
-    for (auto dmaOp : device.getOps<ShimDMAOp>()) {
-      if (dmaOp.getTile() == op.getProducerTile()) {
-        producerDMA = dmaOp.getOperation();
-        break;
-      }
-    }
-
-    // if none exists, create one
-    TileOp objFifoTileOp = op.getProducerTileOp();
-    if (producerDMA == nullptr) {
-      if (device->getNumRegions() != 1)
-        assert(false && "expected num regions for device op");
-      OpBuilder::InsertionGuard g(builder);
-      builder.setInsertionPointToEnd(device.getBody());
-      auto newDMAOp = builder.create<ShimDMAOp>(
-          builder.getUnknownLoc(), builder.getIndexType(), objFifoTileOp);
-      {
-        OpBuilder::InsertionGuard g(builder);
-        builder.setInsertionPointToStart(&newDMAOp.getRegion().emplaceBlock());
-        builder.create<EndOp>(builder.getUnknownLoc());
-      }
-      producerDMA = newDMAOp.getOperation();
-    }
-
-    Block *endBlock = findEndOpBlock(producerDMA->getRegion(0));
-    Block *lastDmaBlock = endBlock->getSinglePredecessor();
-    Block *dmaBlock = builder.createBlock(endBlock);
-    Block *bdBlock = builder.createBlock(endBlock);
-
-    // create DMA channel
-    builder.setInsertionPointToStart(dmaBlock);
-    builder.create<DMAStartOp>(builder.getUnknownLoc(), channelDir,
-                               channelIndex, /*repeatCout*/ 0, bdBlock,
-                               endBlock);
-    if (lastDmaBlock != nullptr)
-      lastDmaBlock->getTerminator()->setSuccessor(dmaBlock, 1);
-
-    // create Bd blocks
-    Block *succ;
-    Block *curr = bdBlock;
-    size_t blockIndex = 0;
-    for (size_t i = 0; i < numBlocks; i++) {
-      if (blockIndex >= externalBuffersPerFifo[op].size()) break;
-      if (i == numBlocks - 1)
-        succ = bdBlock;
-      else
-        succ = builder.createBlock(endBlock);
-
-      MemRefType buffer = externalBuffersPerFifo[op][blockIndex].getType();
-      int len = buffer.getNumElements();
-      builder.setInsertionPointToStart(curr);
-      createBdBlock<ExternalBufferOp>(builder, op, lockMode, acqNum, relNum,
-                                      externalBuffersPerFifo[op][blockIndex],
-                                      /*offset*/ 0, len, channelDir, blockIndex,
-                                      succ, dims);
-      curr = succ;
-      blockIndex++;
-    }
-  }
-
-  /// Function used to create a MemTileDMAOp region with a DMA channel.
-  /// It uses creatBdBlock(), see there for lockMode input.
-  void createMemTileDMA(DeviceOp &device, OpBuilder &builder,
-                        ObjectFifoCreateOp op, DMAChannelDir channelDir,
-                        int channelIndex, int lockMode,
-                        BDDimLayoutArrayAttr dims) {
-    size_t numBlocks = op.size();
-    if (numBlocks == 0) return;
-
-    auto fifo = llvm::cast<AIEObjectFifoType>(op.getElemType());
-    auto elemType = llvm::cast<MemRefType>(fifo.getElementType());
-    int lenOut = elemType.getNumElements();
-    int acqNum = 1;
-    int relNum = 1;
-
-    // search for the buffers/locks (based on if this objFifo has a link)
-    // identify size difference between input and output memrefs
-    ObjectFifoCreateOp target = op;
-    bool isDistribute = false;
-    bool isJoin = false;
-    int extraOffset = 0;
-    if (auto linkOp = getOptionalLinkOp(op)) {
-      if (objFifoLinks.find(*linkOp) != objFifoLinks.end()) {
-        target = objFifoLinks[*linkOp];
-
-        if (linkOp->isJoin()) {
-          // find offset based on order of this op in join list
-          isJoin = true;
-          if (target == op) {
-            acqNum = linkOp->getFifoIns().size();
-            relNum = linkOp->getFifoIns().size();
-          } else {
-            for (auto fifoIn : linkOp->getInputObjectFifos()) {
-              auto fifoType =
-                  llvm::cast<AIEObjectFifoType>(fifoIn.getElemType());
-              auto elemType = llvm::cast<MemRefType>(fifoType.getElementType());
-              if (fifoIn.name() == op.name()) break;
-              extraOffset += elemType.getNumElements();
-            }
-          }
-        } else if (linkOp->isDistribute()) {
-          // find offset based on order of this op in distribute list
-          isDistribute = true;
-          if (target == op) {
-            acqNum = linkOp->getFifoOuts().size();
-            relNum = linkOp->getFifoOuts().size();
-          } else {
-            for (auto fifoOut : linkOp->getOutputObjectFifos()) {
-              auto fifoType =
-                  llvm::cast<AIEObjectFifoType>(fifoOut.getElemType());
-              auto elemType = llvm::cast<MemRefType>(fifoType.getElementType());
-              if (fifoOut.name() == op.name()) break;
-              extraOffset += elemType.getNumElements();
-            }
-          }
-        } else {
-          if (target != op) {
-            auto targetFifo =
-                llvm::cast<AIEObjectFifoType>(target.getElemType());
-            auto targetElemType =
-                llvm::cast<MemRefType>(targetFifo.getElementType());
-            lenOut = targetElemType.getNumElements();
-          }
-        }
-
-        // check if current op is of smaller size in link
-        if (target != op) numBlocks = target.size();
-      }
-    }
-
-    // search for MemTileDMAOp
-    Operation *producerDMA = nullptr;
-    for (auto dmaOp : device.getOps<MemTileDMAOp>()) {
-      if (dmaOp.getTile() == target.getProducerTile()) {
-        producerDMA = dmaOp.getOperation();
-        break;
-      }
-    }
-
-    // if none exists, create one
-    TileOp objFifoTileOp = target.getProducerTileOp();
-    if (producerDMA == nullptr) {
-      if (device->getNumRegions() != 1)
-        assert(false && "expected num regions for device op");
-      OpBuilder::InsertionGuard g(builder);
-      builder.setInsertionPointToEnd(device.getBody());
-      auto newDMAOp =
-          builder.create<MemTileDMAOp>(builder.getUnknownLoc(), objFifoTileOp);
-      {
-        OpBuilder::InsertionGuard g(builder);
-        builder.setInsertionPointToStart(&newDMAOp.getRegion().emplaceBlock());
-        builder.create<EndOp>(builder.getUnknownLoc());
-      }
-      producerDMA = newDMAOp.getOperation();
-    }
-
-    Block *endBlock = findEndOpBlock(producerDMA->getRegion(0));
-    Block *lastDmaBlock = endBlock->getSinglePredecessor();
-    Block *dmaBlock = builder.createBlock(endBlock);
-    Block *bdBlock = builder.createBlock(endBlock);
-
-    // create DMA channel
-    builder.setInsertionPointToStart(dmaBlock);
-    builder.create<DMAStartOp>(builder.getUnknownLoc(), channelDir,
-                               channelIndex, /*repeatCount*/ 0, bdBlock,
-                               endBlock);
-    if (lastDmaBlock != nullptr)
-      lastDmaBlock->getTerminator()->setSuccessor(dmaBlock, 1);
-
-    // create Bd blocks
-    Block *succ;
-    Block *curr = bdBlock;
-    size_t blockIndex = 0;
-    for (size_t i = 0; i < numBlocks; i++) {
-      if (blockIndex >= buffersPerFifo[target].size()) break;
-      if (i == numBlocks - 1)
-        succ = bdBlock;
-      else
-        succ = builder.createBlock(endBlock);
-
-      builder.setInsertionPointToStart(curr);
-      int offset = 0;
-      if (isDistribute || isJoin) offset = extraOffset;
-      createBdBlock<BufferOp>(builder, target, lockMode, acqNum, relNum,
-                              buffersPerFifo[target][blockIndex], offset,
-                              lenOut, channelDir, blockIndex, succ, dims);
-      curr = succ;
-      blockIndex++;
-    }
-  }
 
   // Function that computes the Least Common Multiplier of the values
   // of a vector.
@@ -1077,7 +1090,9 @@ struct AMDAIEObjectFifoStatefulTransformPass : mlir::OperationPass<DeviceOp> {
       DMAChannel producerChan =
           dmaAnalysis.getMasterDMAChannel(producer.getProducerTile());
       createDMA(device, builder, producer, producerChan.direction,
-                producerChan.channel, 0, producer.getDimensionsToStreamAttr());
+                producerChan.channel, 0, producer.getDimensionsToStreamAttr(),
+                externalBuffersPerFifo, locksPerFifo, objFifoLinks,
+                buffersPerFifo);
       // generate objectFifo allocation info
       builder.setInsertionPoint(&device.getBody()->back());
       if (producer.getProducerTileOp().isShimTile())
@@ -1093,7 +1108,8 @@ struct AMDAIEObjectFifoStatefulTransformPass : mlir::OperationPass<DeviceOp> {
         BDDimLayoutArrayAttr consumerDims =
             consumer.getDimensionsFromStreamPerConsumer()[0];
         createDMA(device, builder, consumer, consumerChan.direction,
-                  consumerChan.channel, 1, consumerDims);
+                  consumerChan.channel, 1, consumerDims, externalBuffersPerFifo,
+                  locksPerFifo, objFifoLinks, buffersPerFifo);
         // generate objectFifo allocation info
         builder.setInsertionPoint(&device.getBody()->back());
         if (consumer.getProducerTileOp().isShimTile())
