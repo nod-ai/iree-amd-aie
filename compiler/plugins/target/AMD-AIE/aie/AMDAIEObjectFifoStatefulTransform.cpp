@@ -1206,6 +1206,55 @@ void createObjectFifosAndLocks(
   }
 }
 
+void createFlowsAndTileDMAs(
+    OpBuilder builder, DeviceOp device, ObjectFifoCreateOp producer,
+    std::vector<ObjectFifoCreateOp> &consumers, DMAChannelAnalysis &dmaAnalysis,
+    DenseMap<ObjectFifoCreateOp, std::vector<ExternalBufferOp>>
+        &externalBuffersPerFifo,
+    DenseMap<ObjectFifoCreateOp, std::vector<LockOp>> &locksPerFifo,
+    DenseMap<ObjectFifoLinkOp, ObjectFifoCreateOp> &objFifoLinks,
+    DenseMap<ObjectFifoCreateOp, std::vector<BufferOp>> &buffersPerFifo) {
+  // create producer tile DMA
+  DMAChannel producerChan =
+      dmaAnalysis.getMasterDMAChannel(producer.getProducerTile());
+  createDMA(device, builder, producer, producerChan.direction,
+            producerChan.channel, 0, producer.getDimensionsToStreamAttr(),
+            externalBuffersPerFifo, locksPerFifo, objFifoLinks, buffersPerFifo);
+  // generate objectFifo allocation info
+  builder.setInsertionPoint(&device.getBody()->back());
+  MLIRContext *ctx = builder.getContext();
+  if (producer.getProducerTileOp().isShimTile())
+    createObjectFifoAllocationInfo(
+        builder, ctx, SymbolRefAttr::get(ctx, producer.getName()),
+        producer.getProducerTileOp().colIndex(), producerChan.direction,
+        producerChan.channel);
+
+  for (auto consumer : consumers) {
+    // create consumer tile DMA
+    DMAChannel consumerChan =
+        dmaAnalysis.getSlaveDMAChannel(consumer.getProducerTile());
+    BDDimLayoutArrayAttr consumerDims =
+        consumer.getDimensionsFromStreamPerConsumer()[0];
+    createDMA(device, builder, consumer, consumerChan.direction,
+              consumerChan.channel, 1, consumerDims, externalBuffersPerFifo,
+              locksPerFifo, objFifoLinks, buffersPerFifo);
+    // generate objectFifo allocation info
+    builder.setInsertionPoint(&device.getBody()->back());
+    if (consumer.getProducerTileOp().isShimTile())
+      createObjectFifoAllocationInfo(
+          builder, ctx, SymbolRefAttr::get(ctx, producer.getName()),
+          consumer.getProducerTileOp().colIndex(), consumerChan.direction,
+          consumerChan.channel);
+
+    // create flow
+    builder.setInsertionPointAfter(producer);
+    builder.create<FlowOp>(builder.getUnknownLoc(), producer.getProducerTile(),
+                           WireBundle::DMA, producerChan.channel,
+                           consumer.getProducerTile(), WireBundle::DMA,
+                           consumerChan.channel);
+  }
+}
+
 //===----------------------------------------------------------------------===//
 // Create objectFifos Pass
 //===----------------------------------------------------------------------===//
@@ -1244,7 +1293,6 @@ struct AMDAIEObjectFifoStatefulTransformPass : mlir::OperationPass<DeviceOp> {
     LockAnalysis lockAnalysis(device);
     DMAChannelAnalysis dmaAnalysis(device);
     OpBuilder builder = OpBuilder::atBlockEnd(device.getBody());
-    auto ctx = device->getContext();
     // track cores to check for loops during unrolling
     std::set<TileOp> objectFifoTiles;
     // maps each objFifo to its corresponding buffer
@@ -1301,45 +1349,9 @@ struct AMDAIEObjectFifoStatefulTransformPass : mlir::OperationPass<DeviceOp> {
     // Only the objectFifos we split above require DMA communication; the others
     // rely on shared memory and share the same buffers.
     for (auto &[producer, consumers] : splitFifos) {
-      // create producer tile DMA
-      DMAChannel producerChan =
-          dmaAnalysis.getMasterDMAChannel(producer.getProducerTile());
-      createDMA(device, builder, producer, producerChan.direction,
-                producerChan.channel, 0, producer.getDimensionsToStreamAttr(),
-                externalBuffersPerFifo, locksPerFifo, objFifoLinks,
-                buffersPerFifo);
-      // generate objectFifo allocation info
-      builder.setInsertionPoint(&device.getBody()->back());
-      if (producer.getProducerTileOp().isShimTile())
-        createObjectFifoAllocationInfo(
-            builder, ctx, SymbolRefAttr::get(ctx, producer.getName()),
-            producer.getProducerTileOp().colIndex(), producerChan.direction,
-            producerChan.channel);
-
-      for (auto consumer : consumers) {
-        // create consumer tile DMA
-        DMAChannel consumerChan =
-            dmaAnalysis.getSlaveDMAChannel(consumer.getProducerTile());
-        BDDimLayoutArrayAttr consumerDims =
-            consumer.getDimensionsFromStreamPerConsumer()[0];
-        createDMA(device, builder, consumer, consumerChan.direction,
-                  consumerChan.channel, 1, consumerDims, externalBuffersPerFifo,
-                  locksPerFifo, objFifoLinks, buffersPerFifo);
-        // generate objectFifo allocation info
-        builder.setInsertionPoint(&device.getBody()->back());
-        if (consumer.getProducerTileOp().isShimTile())
-          createObjectFifoAllocationInfo(
-              builder, ctx, SymbolRefAttr::get(ctx, producer.getName()),
-              consumer.getProducerTileOp().colIndex(), consumerChan.direction,
-              consumerChan.channel);
-
-        // create flow
-        builder.setInsertionPointAfter(producer);
-        builder.create<FlowOp>(builder.getUnknownLoc(),
-                               producer.getProducerTile(), WireBundle::DMA,
-                               producerChan.channel, consumer.getProducerTile(),
-                               WireBundle::DMA, consumerChan.channel);
-      }
+      createFlowsAndTileDMAs(builder, device, producer, consumers, dmaAnalysis,
+                             externalBuffersPerFifo, locksPerFifo, objFifoLinks,
+                             buffersPerFifo);
     }
 
     //===------------------------------------------------------------------===//
