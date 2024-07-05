@@ -155,9 +155,9 @@ aie.device(npu1_4col) {
     memref.assume_alignment %arg0, 64 : memref<2048xi32>
     memref.assume_alignment %arg1, 64 : memref<2048xi32>
     memref.assume_alignment %arg2, 64 : memref<64x64xf32>
-    aiex.npu.dma_memcpy_nd(0, 0, %arg0[0, 0, 0, 0][1, 1, 64, 32][0, 0, 32]) {id = 0 : i64, metadata = @airMemcpyId4} : memref<2048xi32>
-    aiex.npu.dma_memcpy_nd(0, 0, %arg1[0, 0, 0, 0][1, 1, 64, 32][0, 0, 32]) {id = 1 : i64, metadata = @airMemcpyId5} : memref<2048xi32>
-    aiex.npu.dma_memcpy_nd(0, 0, %arg2[0, 0, 0, 0][1, 1, 64, 64][0, 0, 64]) {id = 2 : i64, metadata = @airMemcpyId12} : memref<64x64xf32>
+    aiex.npu.dma_memcpy_nd(0, 0, %arg0[0, 0, 0, 0][1, 1, 64, 32][0, 0, 32, 1]) {id = 0 : i64, metadata = @airMemcpyId4} : memref<2048xi32>
+    aiex.npu.dma_memcpy_nd(0, 0, %arg1[0, 0, 0, 0][1, 1, 64, 32][0, 0, 32, 1]) {id = 1 : i64, metadata = @airMemcpyId5} : memref<2048xi32>
+    aiex.npu.dma_memcpy_nd(0, 0, %arg2[0, 0, 0, 0][1, 1, 64, 64][0, 0, 64, 1]) {id = 2 : i64, metadata = @airMemcpyId12} : memref<64x64xf32>
     aiex.npu.sync {channel = 0 : i32, column = 0 : i32, column_num = 1 : i32, direction = 0 : i32, row = 0 : i32, row_num = 1 : i32}
     return
   }
