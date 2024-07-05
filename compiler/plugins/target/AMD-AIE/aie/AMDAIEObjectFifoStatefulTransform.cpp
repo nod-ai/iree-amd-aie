@@ -932,6 +932,86 @@ void replaceReleaseOp(
   }
 }
 
+void createAdditionalFifoOp(
+    DeviceOp device, ObjectFifoCreateOp createOp, OpBuilder builder,
+    std::vector<ObjectFifoCreateOp> &splitBecauseLink,
+    DenseMap<ObjectFifoCreateOp, std::vector<ExternalBufferOp>>
+        &externalBuffersPerFifo,
+    std::vector<std::pair<ObjectFifoCreateOp, std::vector<ObjectFifoCreateOp>>>
+        &splitFifos) {
+  std::vector<ObjectFifoCreateOp> splitConsumerFifos;
+  int consumerIndex = 0;
+  int consumerDepth = createOp.size();
+  ArrayRef<BDDimLayoutArrayAttr> consumerDims =
+      createOp.getDimensionsFromStreamPerConsumer();
+
+  // Only FIFOs using DMA are split into two ends;
+  // skip in shared memory case
+  if (int share_direction = 0;
+      !requiresDMAs(createOp, share_direction, splitBecauseLink))
+    return;
+
+  for (auto consumerTile : createOp.getConsumerTiles()) {
+    auto consumerTileOp = dyn_cast<TileOp>(consumerTile.getDefiningOp());
+
+    if (isa<ArrayAttr>(createOp.getElemNumber())) {
+      // +1 to account for 1st depth (producer)
+      consumerDepth = createOp.size(consumerIndex + 1);
+    } else {
+      consumerDepth = findObjectFifoSize(device, consumerTileOp, createOp);
+    }
+
+    builder.setInsertionPointAfter(createOp);
+    auto datatype = llvm::cast<AIEObjectFifoType>(createOp.getElemType());
+    auto consumerObjFifoSize =
+        builder.getIntegerAttr(builder.getI32Type(), consumerDepth);
+    // rename and replace split objectFifo
+    std::string consumerFifoName;
+    if (createOp.getConsumerTiles().size() > 1) {
+      consumerFifoName =
+          createOp.name().str() + "_" + std::to_string(consumerIndex) + "_cons";
+    } else {
+      consumerFifoName = createOp.name().str() + "_cons";
+    }
+    BDDimLayoutArrayAttr emptyDims =
+        BDDimLayoutArrayAttr::get(builder.getContext(), {});
+    BDDimLayoutArrayAttr singletonFromStreamDims = BDDimLayoutArrayAttr::get(
+        builder.getContext(),
+        ArrayRef<BDDimLayoutAttr>{consumerDims[consumerIndex]});
+    BDDimLayoutArrayArrayAttr fromStreamDims = BDDimLayoutArrayArrayAttr::get(
+        builder.getContext(), singletonFromStreamDims);
+
+    ObjectFifoCreateOp consumerFifo = builder.create<ObjectFifoCreateOp>(
+        builder.getUnknownLoc(), consumerFifoName, consumerTile,
+        consumerTile, consumerObjFifoSize, datatype, emptyDims,
+        fromStreamDims);
+    replaceSplitFifo(createOp, consumerFifo, consumerTileOp);
+
+    // identify external buffers that were registered to the consumer fifo
+    if (consumerTile.getDefiningOp<TileOp>().isShimTile())
+      detectExternalBuffers(device, createOp, consumerFifo, consumerTile,
+                            externalBuffersPerFifo);
+
+    // record that this objectFifo was split; it will require DMA config
+    splitConsumerFifos.push_back(consumerFifo);
+
+    // update the linkOp if the split objFifo was originally its start point
+    if (auto linkOp = getOptionalLinkOp(createOp))
+      for (ObjectFifoCreateOp fifoIn : linkOp->getInputObjectFifos())
+        if (fifoIn.name() == createOp.name() &&
+            consumerTile == *linkOp->getOptionalSharedTile())
+          if (failed(SymbolTable::replaceAllSymbolUses(
+                  createOp, consumerFifo.name(), linkOp->getOperation())))
+            llvm::report_fatal_error("unable to update all symbol uses");
+
+    consumerIndex++;
+  }
+
+  if (!splitConsumerFifos.empty()) {
+    splitFifos.emplace_back(createOp, splitConsumerFifos);
+  }
+}
+
 void replaceObjectAcquireOp(
     ObjectFifoAcquireOp acquireOp, OpBuilder builder,
     DenseMap<std::pair<ObjectFifoCreateOp, int>, int> &acqPerFifo,
@@ -1151,80 +1231,9 @@ struct AMDAIEObjectFifoStatefulTransformPass : mlir::OperationPass<DeviceOp> {
     std::vector<ObjectFifoCreateOp> createFifoOps;
     auto range = device.getOps<ObjectFifoCreateOp>();
     createFifoOps.insert(createFifoOps.end(), range.begin(), range.end());
-    for (auto createOp : createFifoOps) {
-      std::vector<ObjectFifoCreateOp> splitConsumerFifos;
-      int consumerIndex = 0;
-      int consumerDepth = createOp.size();
-      ArrayRef<BDDimLayoutArrayAttr> consumerDims =
-          createOp.getDimensionsFromStreamPerConsumer();
-
-      // Only FIFOs using DMA are split into two ends;
-      // skip in shared memory case
-      if (int share_direction = 0;
-          !requiresDMAs(createOp, share_direction, splitBecauseLink))
-        continue;
-
-      for (auto consumerTile : createOp.getConsumerTiles()) {
-        auto consumerTileOp = dyn_cast<TileOp>(consumerTile.getDefiningOp());
-
-        if (isa<ArrayAttr>(createOp.getElemNumber())) {
-          // +1 to account for 1st depth (producer)
-          consumerDepth = createOp.size(consumerIndex + 1);
-        } else {
-          consumerDepth = findObjectFifoSize(device, consumerTileOp, createOp);
-        }
-
-        builder.setInsertionPointAfter(createOp);
-        auto datatype = llvm::cast<AIEObjectFifoType>(createOp.getElemType());
-        auto consumerObjFifoSize =
-            builder.getIntegerAttr(builder.getI32Type(), consumerDepth);
-        // rename and replace split objectFifo
-        std::string consumerFifoName;
-        if (createOp.getConsumerTiles().size() > 1) {
-          consumerFifoName = createOp.name().str() + "_" +
-                             std::to_string(consumerIndex) + "_cons";
-        } else {
-          consumerFifoName = createOp.name().str() + "_cons";
-        }
-        BDDimLayoutArrayAttr emptyDims =
-            BDDimLayoutArrayAttr::get(builder.getContext(), {});
-        BDDimLayoutArrayAttr singletonFromStreamDims =
-            BDDimLayoutArrayAttr::get(
-                builder.getContext(),
-                ArrayRef<BDDimLayoutAttr>{consumerDims[consumerIndex]});
-        BDDimLayoutArrayArrayAttr fromStreamDims =
-            BDDimLayoutArrayArrayAttr::get(builder.getContext(),
-                                           singletonFromStreamDims);
-
-        ObjectFifoCreateOp consumerFifo = builder.create<ObjectFifoCreateOp>(
-            builder.getUnknownLoc(), consumerFifoName, consumerTile,
-            consumerTile, consumerObjFifoSize, datatype, emptyDims,
-            fromStreamDims);
-        replaceSplitFifo(createOp, consumerFifo, consumerTileOp);
-
-        // identify external buffers that were registered to the consumer fifo
-        if (consumerTile.getDefiningOp<TileOp>().isShimTile())
-          detectExternalBuffers(device, createOp, consumerFifo, consumerTile,
-                                externalBuffersPerFifo);
-
-        // record that this objectFifo was split; it will require DMA config
-        splitConsumerFifos.push_back(consumerFifo);
-
-        // update the linkOp if the split objFifo was originally its start point
-        if (auto linkOp = getOptionalLinkOp(createOp))
-          for (ObjectFifoCreateOp fifoIn : linkOp->getInputObjectFifos())
-            if (fifoIn.name() == createOp.name() &&
-                consumerTile == *linkOp->getOptionalSharedTile())
-              if (failed(SymbolTable::replaceAllSymbolUses(
-                      createOp, consumerFifo.name(), linkOp->getOperation())))
-                llvm::report_fatal_error("unable to update all symbol uses");
-
-        consumerIndex++;
-      }
-
-      if (!splitConsumerFifos.empty()) {
-        splitFifos.emplace_back(createOp, splitConsumerFifos);
-      }
+    for (ObjectFifoCreateOp createOp : createFifoOps) {
+      createAdditionalFifoOp(device, createOp, builder, splitBecauseLink,
+                             externalBuffersPerFifo, splitFifos);
     }
 
     //===------------------------------------------------------------------===//
