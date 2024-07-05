@@ -298,18 +298,6 @@ struct AMDAIEObjectFifoStatefulTransformPass : mlir::OperationPass<DeviceOp> {
       splitBecauseLink;  // objfifos which have been split because they are
   // part of a Link, not because they didn't have a shared memory module
 
-  ObjectFifoCreateOp createObjectFifo(
-      OpBuilder &builder, AIEObjectFifoType datatype, std::string name,
-      Value prodTile, Value consTile, Attribute depth,
-      BDDimLayoutArrayAttr dimensionsToStream,
-      BDDimLayoutArrayArrayAttr dimensionsFromStreamPerConsumer) {
-    auto ofName = builder.getStringAttr(name);
-    auto fifo = builder.create<ObjectFifoCreateOp>(
-        builder.getUnknownLoc(), ofName, prodTile, consTile, depth, datatype,
-        dimensionsToStream, dimensionsFromStreamPerConsumer);
-    return fifo;
-  }
-
   /// Function used to create objectFifo locks based on target architecture.
   /// Called by createObjectFifoElements().
   std::vector<LockOp> createObjectFifoLocks(OpBuilder &builder,
@@ -998,9 +986,10 @@ struct AMDAIEObjectFifoStatefulTransformPass : mlir::OperationPass<DeviceOp> {
             BDDimLayoutArrayArrayAttr::get(builder.getContext(),
                                            singletonFromStreamDims);
 
-        ObjectFifoCreateOp consumerFifo = createObjectFifo(
-            builder, datatype, consumerFifoName, consumerTile, consumerTile,
-            consumerObjFifoSize, emptyDims, fromStreamDims);
+        ObjectFifoCreateOp consumerFifo = builder.create<ObjectFifoCreateOp>(
+            builder.getUnknownLoc(), consumerFifoName, consumerTile,
+            consumerTile, consumerObjFifoSize, datatype, emptyDims,
+            fromStreamDims);
         replaceSplitFifo(createOp, consumerFifo, consumerTileOp);
 
         // identify external buffers that were registered to the consumer fifo
