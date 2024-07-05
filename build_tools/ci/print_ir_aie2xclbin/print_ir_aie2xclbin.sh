@@ -56,15 +56,15 @@ if [ "$#" -eq 6 ]; then
   MLIR_AIE="$6"
 fi
 
-IREE_COMPILE="$1"
-if [ -d "${IREE_COMPILE}" ]; then
-   IREE_COMPILE=`realpath "${IREE_COMPILE}"`
-else
-  echo "IREE_COMPILE does not exist: ${IREE_COMPILE}."
+IREE_INSTALL_DIR="$1"
+if [ ! -d "${IREE_INSTALL_DIR}/bin" ]; then
+  echo "IREE_INSTALL_DIR/bin does not exist: ${IREE_INSTALL_DIR}/bin."
   exit 1
+else
+  IREE_INSTALL_DIR=`realpath "${IREE_INSTALL_DIR}"`
 fi
 
-IREE_COMPILE_EXE="${IREE_COMPILE}/iree-compile"
+IREE_COMPILE_EXE="${IREE_INSTALL_DIR}/bin/iree-compile"
 if [ ! -x "${IREE_COMPILE_EXE}" ]; then
   echo "IREE_COMPILE_EXE does not exist or isn't executable: ${IREE_COMPILE_EXE}."
   exit 1
@@ -103,14 +103,14 @@ else
   exit 1
 fi
 
-# There might be a FileCheck program in the IREE_COMPILE. Check.
+# There might be a FileCheck program in the IREE_INSTALL_DIR. Check.
 # Do not fail if it is not there, we can also check if it already on PATH.
-if [ -x "${IREE_COMPILE}/FileCheck" ]; then
-  FILECHECK_EXE="${IREE_COMPILE}/FileCheck"
+if [ -x "${IREE_INSTALL_DIR}/bin/FileCheck" ]; then
+  FILECHECK_EXE="${IREE_INSTALL_DIR}/bin/FileCheck"
 elif [ -x "$(command -v FileCheck)" ]; then
   FILECHECK_EXE="$(command -v FileCheck)"
 else
-  echo "FileCheck does not exist or isn't executable in ${IREE_COMPILE} or on PATH."
+  echo "FileCheck does not exist or isn't executable in ${IREE_INSTALL_DIR}/bin or on PATH."
   exit 1
 fi
 
@@ -126,6 +126,7 @@ ${SOURCE_MLIR_FILE} \
 --iree-hal-target-backends=amd-aie \
 --iree-amd-aie-peano-install-dir=${PEANO} \
 --iree-amd-aie-mlir-aie-install-dir=${MLIR_AIE} \
+--iree-amd-aie-install-dir=${IREE_INSTALL_DIR} \
 --iree-amd-aie-vitis-install-dir=${VITIS} \
 --iree-hal-dump-executable-files-to=${OUTPUT} \
 --aie2xclbin-print-ir-after-all \
@@ -193,6 +194,7 @@ ${SOURCE_MLIR_FILE} \
 --iree-hal-target-backends=amd-aie-direct \
 --iree-amd-aie-peano-install-dir=${PEANO} \
 --iree-amd-aie-mlir-aie-install-dir=${MLIR_AIE} \
+--iree-amd-aie-install-dir=${IREE_INSTALL_DIR} \
 --iree-amd-aie-vitis-install-dir=${VITIS} \
 --iree-hal-dump-executable-intermediates-to=${OUTPUT} \
 --iree-hal-dump-executable-files-to=${OUTPUT} \
@@ -216,6 +218,7 @@ ${SOURCE_MLIR_FILE} \
 --iree-hal-target-backends=amd-aie-direct \
 --iree-amd-aie-peano-install-dir=${PEANO} \
 --iree-amd-aie-mlir-aie-install-dir=${MLIR_AIE} \
+--iree-amd-aie-install-dir=${IREE_INSTALL_DIR} \
 --iree-amd-aie-vitis-install-dir=${VITIS} \
 --iree-hal-dump-executable-intermediates-to=${OUTPUT} \
 --iree-hal-dump-executable-files-to=${OUTPUT} \
@@ -239,6 +242,7 @@ ${SOURCE_MLIR_FILE} \
 --iree-hal-target-backends=amd-aie-direct \
 --iree-amd-aie-peano-install-dir=${PEANO} \
 --iree-amd-aie-mlir-aie-install-dir=${MLIR_AIE} \
+--iree-amd-aie-install-dir=${IREE_INSTALL_DIR} \
 --iree-amd-aie-vitis-install-dir=${VITIS} \
 --iree-hal-dump-executable-intermediates-to=${OUTPUT} \
 --iree-hal-dump-executable-files-to=${OUTPUT} \

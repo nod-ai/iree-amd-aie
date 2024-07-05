@@ -28,7 +28,7 @@ iree_cc_library(
 
 add_dependencies(iree_target_amd-aie_Target_AIETargets
         iree-amd-aie_aie_runtime_amdaie_xclbinutil
-        iree-amd-aie_aie_runtime_bootgen)
+        iree-amd-aie_aie_runtime_amdaie_bootgen)
 
 iree_cc_library(
   NAME

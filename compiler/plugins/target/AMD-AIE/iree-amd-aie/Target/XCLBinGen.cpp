@@ -533,7 +533,11 @@ static LogicalResult generateXCLBin(MLIRContext *context, ModuleOp moduleOp,
                                       "-w"};
 
     SmallString<64> bootgenBin(TK.AMDAIEInstallDir);
-    sys::path::append(bootgenBin, "bin", "bootgen");
+    sys::path::append(bootgenBin, "bin", "amdaie_bootgen");
+    if (!sys::fs::exists(bootgenBin)) {
+      bootgenBin = TK.AMDAIEInstallDir;
+      sys::path::append(bootgenBin, "tools", "amdaie_bootgen");
+    }
     if (runTool(bootgenBin, flags, TK.Verbose) != 0)
       return moduleOp.emitOpError("failed to execute bootgen");
   }
@@ -544,6 +548,10 @@ static LogicalResult generateXCLBin(MLIRContext *context, ModuleOp moduleOp,
       "AIE_PARTITION:JSON:" + std::string(aiePartitionJsonFile);
   SmallString<64> xclbinutilBin(TK.AMDAIEInstallDir);
   sys::path::append(xclbinutilBin, "bin", "amdaie_xclbinutil");
+  if (!sys::fs::exists(xclbinutilBin)) {
+    xclbinutilBin = TK.AMDAIEInstallDir;
+    sys::path::append(xclbinutilBin, "tools", "amdaie_xclbinutil");
+  }
   {
     if (!inputXclbin.empty()) {
       // Create aie_partition.json.

@@ -221,6 +221,7 @@ function run_test() {
   # =====================
   local peano_install_path="${PEANO}"
   local mlir_aie_install_path="${MLIR_AIE_INSTALL}"
+  local amd_aie_install_path="${IREE_INSTALL_DIR}"
   local vitis_path="${VITIS}"
   local pipeline="pad-pack"
   local rtol="1e-6"
@@ -246,6 +247,10 @@ function run_test() {
         ;;
       --mlir_aie_install_path)
         mlir_aie_install_path="$2"
+        shift 2
+        ;;
+      --amd_aie_install_path)
+        amd_aie_install_path="$2"
         shift 2
         ;;
      --vitis_path)
@@ -300,6 +305,7 @@ function run_test() {
       --iree-amdaie-matmul-elementwise-fusion \
       --iree-amd-aie-peano-install-dir=${peano_install_path} \
       --iree-amd-aie-mlir-aie-install-dir=${mlir_aie_install_path} \
+      --iree-amd-aie-install-dir=${amd_aie_install_path} \
       --iree-amd-aie-vitis-install-dir=${vitis_path} \
       --iree-hal-dump-executable-files-to=$PWD \
       --mlir-disable-threading \

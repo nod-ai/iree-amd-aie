@@ -51,14 +51,6 @@ macro(replace_string_in_file _file _match_string _replace_string)
     file(WRITE ${_file}  "${__file_contents}")
 endmacro()
 
-find_package(Threads REQUIRED)
-find_package(Boost REQUIRED COMPONENTS system program_options filesystem)
-message(STATUS "Boost include directories:" ${Boost_INCLUDE_DIRS})
-
-if(NOT WIN32)
-    find_package(RapidJSON REQUIRED)
-endif()
-
 # ##############################################################################
 # Bootgen
 # ##############################################################################
@@ -80,7 +72,7 @@ add_library(bootgen-lib STATIC ${_bootgen_sources})
 if(CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
   target_compile_definitions(bootgen-lib PUBLIC YY_NO_UNISTD_H)
 elseif(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
-  set(bootgen_c_warning_ignores
+  set(_bootgen_c_warning_ignores
       -Wno-cast-qual
       -Wno-covered-switch-default
       -Wno-date-time
@@ -96,13 +88,13 @@ elseif(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
       -Wno-sign-compare
       -Wno-tautological-overlap-compare
       -Wno-unused)
-  set(bootgen_cxx_warning_ignores
+  set(_bootgen_cxx_warning_ignores
       -Wno-deprecated-copy -Wno-non-virtual-dtor -Wno-overloaded-virtual
       -Wno-register -Wno-reorder -Wno-suggest-override)
 endif()
 target_compile_options(bootgen-lib PUBLIC
-                       $<$<COMPILE_LANGUAGE:C>:${bootgen_c_warning_ignores}>
-                       $<$<COMPILE_LANGUAGE:CXX>:${bootgen_c_warning_ignores};${bootgen_cxx_warning_ignores}>)
+                       $<$<COMPILE_LANGUAGE:C>:${_bootgen_c_warning_ignores}>
+                       $<$<COMPILE_LANGUAGE:CXX>:${_bootgen_c_warning_ignores};${_bootgen_cxx_warning_ignores}>)
 target_include_directories(bootgen-lib PUBLIC ${_bootgen_source_dir}
                                               ${OPENSSL_INCLUDE_DIR})
 target_compile_definitions(bootgen-lib PUBLIC OPENSSL_USE_APPLINK)
@@ -110,7 +102,7 @@ target_link_libraries(bootgen-lib PUBLIC OpenSSL::SSL OpenSSL::applink)
 
 iree_cc_binary(
   NAME
-    bootgen
+    amdaie_bootgen
   SRCS
     "${_bootgen_source_dir}/main.cpp"
   COPTS
@@ -119,7 +111,9 @@ iree_cc_binary(
     IREETools-Runtime
 )
 
-target_link_libraries(iree-amd-aie_aie_runtime_bootgen PRIVATE bootgen-lib)
+target_link_libraries(iree-amd-aie_aie_runtime_amdaie_bootgen PRIVATE bootgen-lib)
+set_target_properties(iree-amd-aie_aie_runtime_amdaie_bootgen
+                      PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/tools")
 
 # ##############################################################################
 # cdo-drver
@@ -392,18 +386,31 @@ iree_install_targets(
 # xclbinutil
 # ##############################################################################
 
+# Note: we do not simply add the subdirectory and use the imported target because
+# XRT will build in its entirety when we do `ninja install` for IREE.
+
 # obv we have python but XRT uses this var to look for an ancient version of pybind (and fail)
 replace_string_in_file(${IREE_XRT_SOURCE_DIR}/python/pybind11/CMakeLists.txt "if (HAS_PYTHON)" "if (FALSE)")
 
 # remove ssl dep
 replace_string_in_file(${IREE_XRT_SOURCE_DIR}/runtime_src/tools/xclbinutil/XclBinUtilMain.cxx "bValidateSignature == true" "false")
 
-set(_xclbinutil_source_dir
-    ${IREE_AMD_AIE_SOURCE_DIR}/third_party/XRT/src/runtime_src/tools/xclbinutil)
+set(_xclbinutil_source_dir ${IREE_XRT_SOURCE_DIR}/runtime_src/tools/xclbinutil)
 
 # transformcdo target
 add_subdirectory(${_xclbinutil_source_dir}/aie-pdi-transform aie-pdi-transform)
 
+# otherwise the various stois that read these will explode...
+# XRT/src/runtime_src/tools/xclbinutil/XclBinClass.cxx#L55
+file(READ ${IREE_XRT_SOURCE_DIR}/CMakeLists.txt _xrt_cmake_file_contents)
+string(REGEX MATCH "XRT_VERSION_MAJOR ([0-9]+)" XRT_VERSION_MAJOR ${_xrt_cmake_file_contents})
+# note CMAKE_MATCH_0 is the whole match...
+set(XRT_VERSION_MAJOR ${CMAKE_MATCH_1})
+string(REGEX MATCH "XRT_VERSION_MINOR ([0-9]+)" XRT_VERSION_MINOR ${_xrt_cmake_file_contents})
+set(XRT_VERSION_MINOR ${CMAKE_MATCH_1})
+string(REGEX MATCH "XRT_VERSION_PATCH ([0-9]+)" XRT_VERSION_PATCH ${_xrt_cmake_file_contents})
+set(XRT_VERSION_PATCH ${CMAKE_MATCH_1})
+set(XRT_VERSION_STRING ${XRT_VERSION_MAJOR}.${XRT_VERSION_MINOR}.${XRT_VERSION_PATCH} CACHE INTERNAL "")
 configure_file(${IREE_XRT_SOURCE_DIR}/CMake/config/version.h.in ${_xclbinutil_source_dir}/version.h)
 
 file(
@@ -423,38 +430,20 @@ file(
   "${_xclbinutil_source_dir}/Resources*.cxx"
   "${_xclbinutil_source_dir}/XclBinClass.cxx"
   NoOpXclBinSignature.cxx
-  "${_xclbinutil_source_dir}/XclBinUtilities.cxx")
-
-# shared not static because static will let linker trim SectionMemTopology
-# initializers...
-add_library(xclbinutil-lib STATIC ${_xclbinutil_srcs})
-
-if(NOT WIN32)
-  target_compile_definitions(xclbinutil-lib
-                             PUBLIC ENABLE_JSON_SCHEMA_VALIDATION)
-  target_link_libraries(xclbinutil-lib PUBLIC transformcdo)
-else()
-  target_compile_options(xclbinutil-lib PUBLIC "/EHsc")
-  # if you get LINK : fatal error LNK1104: cannot open file
-  # 'libboost_filesystem-vc142-mt-gd-x64-1_74.lib'
-  # target_compile_definitions(xclbinutil-lib PUBLIC BOOST_ALL_DYN_LINK)
-endif()
-
-set(THREADS_PREFER_PTHREAD_FLAG ON)
-target_link_libraries(xclbinutil-lib PUBLIC ${Boost_LIBRARIES} Threads::Threads)
-target_include_directories(xclbinutil-lib PUBLIC ${XRT_BINARY_DIR}/gen
-                                                 ${Boost_INCLUDE_DIRS}
-                                                 ${IREE_XRT_SOURCE_DIR}/runtime_src/core/include
-                                                 ${_xclbinutil_source_dir})
+  "${_xclbinutil_source_dir}/XclBinUtilities.cxx"
+  # Unlike bootgen, xclbinutil cannot be built separately as a static archive (I wish!)
+  # because the linker will DCE static initializers in SectionMemTopology.cxx
+  # and then --add-replace-section:MEM_TOPOLOGY won't work...
+  # XRT/src/runtime_src/tools/xclbinutil/SectionMemTopology.cxx#L26-L41
+  "${_xclbinutil_source_dir}/xclbinutil.cxx"
+  "${_xclbinutil_source_dir}/XclBinUtilMain.cxx"
+)
 
 iree_cc_binary(
   NAME
     amdaie_xclbinutil
   SRCS
-    "${_xclbinutil_source_dir}/xclbinutil.cxx"
-    "${_xclbinutil_source_dir}/XclBinUtilMain.cxx"
-  DEPS
-    xclbinutil-lib
+    ${_xclbinutil_srcs}
   COPTS
     -fexceptions
     -frtti
@@ -463,7 +452,31 @@ iree_cc_binary(
   PUBLIC
 )
 
-target_link_libraries(iree-amd-aie_aie_runtime_amdaie_xclbinutil PRIVATE xclbinutil-lib)
+set(_xclbin_libs ${Boost_LIBRARIES} Threads::Threads)
+
+if(WIN32)
+  target_compile_options(iree-amd-aie_aie_runtime_amdaie_xclbinutil
+                         PRIVATE "/EHsc")
+  # Uncomment if you get LINK : fatal error LNK1104: cannot open file
+  # 'libboost_filesystem-vc142-mt-gd-x64-1_74.lib'
+  # target_compile_definitions(xclbinutil-lib PUBLIC BOOST_ALL_DYN_LINK
+else()
+  target_compile_definitions(iree-amd-aie_aie_runtime_amdaie_xclbinutil
+                             PRIVATE ENABLE_JSON_SCHEMA_VALIDATION)
+  list(APPEND _xclbin_libs transformcdo)
+endif()
+
+set(THREADS_PREFER_PTHREAD_FLAG ON)
+target_link_libraries(iree-amd-aie_aie_runtime_amdaie_xclbinutil
+                      PRIVATE ${_xclbin_libs})
+target_include_directories(iree-amd-aie_aie_runtime_amdaie_xclbinutil
+                           PRIVATE ${XRT_BINARY_DIR}/gen
+                                   ${Boost_INCLUDE_DIRS}
+                                   ${IREE_XRT_SOURCE_DIR}/runtime_src/core/include
+                                   ${_xclbinutil_source_dir})
+
+set_target_properties(iree-amd-aie_aie_runtime_amdaie_xclbinutil
+                      PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/tools")
 
 # ##############################################################################
 # iree-aie-runtime-static
