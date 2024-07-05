@@ -816,6 +816,46 @@ int computeLCM(std::set<int> values) {
   return lcm;
 }
 
+// Function that unrolls for-loops that contain objectFifo operations.
+LogicalResult unrollForLoops(DeviceOp &device, OpBuilder &builder,
+                             std::set<TileOp> &objectFifoTiles) {
+  for (auto coreOp : device.getOps<CoreOp>()) {
+    if (objectFifoTiles.count(coreOp.getTileOp()) > 0) {
+      WalkResult res = coreOp.walk([&](scf::ForOp forLoop) {
+        // look for operations on objectFifos
+        // when multiple fifos in same loop, must use the smallest
+        // common multiplier as the unroll factor
+        bool found = false;
+        std::set<int> objFifoSizes;
+        Block *body = forLoop.getBody();
+
+        for (auto acqOp : body->getOps<ObjectFifoAcquireOp>()) {
+          if (acqOp.getOperation()->getParentOp() == forLoop) {
+            found = true;
+            ObjectFifoCreateOp op = acqOp.getObjectFifo();
+            objFifoSizes.insert(op.size());
+          }
+        }
+
+        int unrollFactor =
+            computeLCM(objFifoSizes);  // also counts original loop body
+
+        if (found) {
+          if (failed(mlir::loopUnrollByFactor(forLoop, unrollFactor))) {
+            forLoop.emitOpError()
+                << "could not be unrolled with unrollFactor: " << unrollFactor
+                << "\n";
+            return WalkResult::interrupt();
+          }
+        }
+        return WalkResult::advance();
+      });
+      if (res.wasInterrupted()) return failure();
+    }
+  }
+  return success();
+}
+
 //===----------------------------------------------------------------------===//
 // Create objectFifos Pass
 //===----------------------------------------------------------------------===//
@@ -865,46 +905,6 @@ struct AMDAIEObjectFifoStatefulTransformPass : mlir::OperationPass<DeviceOp> {
   std::vector<ObjectFifoCreateOp>
       splitBecauseLink;  // objfifos which have been split because they are
   // part of a Link, not because they didn't have a shared memory module
-
-  // Function that unrolls for-loops that contain objectFifo operations.
-  LogicalResult unrollForLoops(DeviceOp &device, OpBuilder &builder,
-                               std::set<TileOp> objectFifoTiles) {
-    for (auto coreOp : device.getOps<CoreOp>()) {
-      if (objectFifoTiles.count(coreOp.getTileOp()) > 0) {
-        WalkResult res = coreOp.walk([&](scf::ForOp forLoop) {
-          // look for operations on objectFifos
-          // when multiple fifos in same loop, must use the smallest
-          // common multiplier as the unroll factor
-          bool found = false;
-          std::set<int> objFifoSizes;
-          Block *body = forLoop.getBody();
-
-          for (auto acqOp : body->getOps<ObjectFifoAcquireOp>()) {
-            if (acqOp.getOperation()->getParentOp() == forLoop) {
-              found = true;
-              ObjectFifoCreateOp op = acqOp.getObjectFifo();
-              objFifoSizes.insert(op.size());
-            }
-          }
-
-          int unrollFactor =
-              computeLCM(objFifoSizes);  // also counts original loop body
-
-          if (found) {
-            if (failed(mlir::loopUnrollByFactor(forLoop, unrollFactor))) {
-              forLoop.emitOpError()
-                  << "could not be unrolled with unrollFactor: " << unrollFactor
-                  << "\n";
-              return WalkResult::interrupt();
-            }
-          }
-          return WalkResult::advance();
-        });
-        if (res.wasInterrupted()) return failure();
-      }
-    }
-    return success();
-  }
 
   /// Function used to create a UseLockOp based on input parameters.
   /// acc is an accumulator map that tracks the indices of the next locks to
