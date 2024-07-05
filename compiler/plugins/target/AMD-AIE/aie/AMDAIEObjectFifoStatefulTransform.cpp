@@ -932,35 +932,37 @@ struct AMDAIEObjectFifoStatefulTransformPass : mlir::OperationPass<DeviceOp> {
     registry.insert<xilinx::AIE::AIEDialect>();
   }
 
-  DenseMap<ObjectFifoCreateOp, std::vector<BufferOp>>
-      buffersPerFifo;  // maps each objFifo to its corresponding buffer
-  DenseMap<ObjectFifoCreateOp, std::vector<ExternalBufferOp>>
-      externalBuffersPerFifo;  // maps each objFifo to its corresponding
-  // external buffers
-  DenseMap<ObjectFifoCreateOp, std::vector<LockOp>>
-      locksPerFifo;  // maps each objFifo to its corresponding locks
-  std::vector<std::pair<ObjectFifoCreateOp, std::vector<ObjectFifoCreateOp>>>
-      splitFifos;  // maps each objFifo between non-adjacent tiles to its
-  // corresponding consumer objectFifos
-  DenseMap<ObjectFifoLinkOp, ObjectFifoCreateOp>
-      objFifoLinks;  // maps each ObjectFifoLinkOp to objFifo whose elements
-  // have been created and should be used
-  std::vector<ObjectFifoCreateOp>
-      splitBecauseLink;  // objfifos which have been split because they are
-  // part of a Link, not because they didn't have a shared memory module
-
   void runOnOperation() override {
     DeviceOp device = getOperation();
     LockAnalysis lockAnalysis(device);
     DMAChannelAnalysis dmaAnalysis(device);
     OpBuilder builder = OpBuilder::atBlockEnd(device.getBody());
     auto ctx = device->getContext();
-    std::set<TileOp>
-        objectFifoTiles;  // track cores to check for loops during unrolling
+    // track cores to check for loops during unrolling
+    std::set<TileOp> objectFifoTiles;
+    // maps each objFifo to its corresponding buffer
+    DenseMap<ObjectFifoCreateOp, std::vector<BufferOp>> buffersPerFifo;
+    // maps each objFifo to its corresponding
+    // external buffers
+    DenseMap<ObjectFifoCreateOp, std::vector<ExternalBufferOp>>
+        externalBuffersPerFifo;
+    // maps each objFifo to its corresponding locks
+    DenseMap<ObjectFifoCreateOp, std::vector<LockOp>> locksPerFifo;
+    // maps each objFifo between non-adjacent tiles to its
+    // corresponding consumer objectFifos
+    std::vector<std::pair<ObjectFifoCreateOp, std::vector<ObjectFifoCreateOp>>>
+        splitFifos;
+    // maps each ObjectFifoLinkOp to objFifo whose elements
+    // have been created and should be used
+    DenseMap<ObjectFifoLinkOp, ObjectFifoCreateOp> objFifoLinks;
+    // objfifos which have been split because they are
+    // part of a Link, not because they didn't have a shared memory module
+    std::vector<ObjectFifoCreateOp> splitBecauseLink;
 
     //===------------------------------------------------------------------===//
     // Split objectFifos into a consumer end and producer end if needed
     //===------------------------------------------------------------------===//
+
     // We are going to create additional createObjectFifoOps, so get a copy of
     // all "original" ones before the loop to avoid looping over newly created
     // ones.
@@ -1047,6 +1049,7 @@ struct AMDAIEObjectFifoStatefulTransformPass : mlir::OperationPass<DeviceOp> {
     // - Populate a list of tiles containing objectFifos for later processing of
     //   the acquires/releases (uses of the FIFO).
     //===------------------------------------------------------------------===//
+
     for (auto createOp : device.getOps<ObjectFifoCreateOp>()) {
       int share_direction = 0;
       bool shared = !requiresDMAs(createOp, share_direction, splitBecauseLink);
@@ -1144,23 +1147,25 @@ struct AMDAIEObjectFifoStatefulTransformPass : mlir::OperationPass<DeviceOp> {
     // Replace ops
     //===------------------------------------------------------------------===//
     for (auto coreOp : device.getOps<CoreOp>()) {
-      DenseMap<ObjectFifoAcquireOp, std::vector<BufferOp *>>
-          subviews;  // maps each "subview" to its buffer references (subviews
+      // maps each "subview" to its buffer references (subviews
       // are created by AcquireOps)
-      DenseMap<std::pair<ObjectFifoCreateOp, int>, std::vector<int>>
-          acquiresPerFifo;  // maps each objFifo to indices of buffers acquired
+      DenseMap<ObjectFifoAcquireOp, std::vector<BufferOp *>> subviews;
+      // maps each objFifo to indices of buffers acquired
       // in latest subview of that objFifo (useful to
       // cascade acquired elements to next AcquireOp)
+      DenseMap<std::pair<ObjectFifoCreateOp, int>, std::vector<int>>
+          acquiresPerFifo;
+      // useful to check which ReleaseOp has taken place before
+      // an AcquireOp per objFifo
       DenseMap<std::pair<ObjectFifoCreateOp, int>,
                std::vector<ObjectFifoReleaseOp>>
-          releaseOps;  // useful to check which ReleaseOp has taken place before
-      // an AcquireOp per objFifo
-      DenseMap<std::pair<ObjectFifoCreateOp, int>, int>
-          acqPerFifo;  // maps each objFifo to its next index to acquire within
+          releaseOps;
+      // maps each objFifo to its next index to acquire within
       // this CoreOp
-      DenseMap<std::pair<ObjectFifoCreateOp, int>, int>
-          relPerFifo;  // maps each objFifo to its next index to release within
+      DenseMap<std::pair<ObjectFifoCreateOp, int>, int> acqPerFifo;
+      // maps each objFifo to its next index to release within
       // this CoreOp
+      DenseMap<std::pair<ObjectFifoCreateOp, int>, int> relPerFifo;
 
       //===----------------------------------------------------------------===//
       // Replace objectFifo.release ops
@@ -1201,6 +1206,7 @@ struct AMDAIEObjectFifoStatefulTransformPass : mlir::OperationPass<DeviceOp> {
       //===----------------------------------------------------------------===//
       // Replace objectFifo.acquire ops
       //===----------------------------------------------------------------===//
+
       coreOp.walk([&](ObjectFifoAcquireOp acquireOp) {
         ObjectFifoCreateOp op = acquireOp.getObjectFifo();
         builder.setInsertionPointAfter(acquireOp);
@@ -1219,9 +1225,9 @@ struct AMDAIEObjectFifoStatefulTransformPass : mlir::OperationPass<DeviceOp> {
         }
 
         // index of next element to acquire for this objectFifo
-        int start = updateAndReturnIndex(
-            acqPerFifo, {op, portNum});  // useful for keeping track of which
+        // useful for keeping track of which
         // indices are acquired
+        int start = updateAndReturnIndex(acqPerFifo, {op, portNum});
 
         // check how many elements have been released in between this AcquireOp
         // and the previous one
@@ -1348,6 +1354,7 @@ struct AMDAIEObjectFifoStatefulTransformPass : mlir::OperationPass<DeviceOp> {
       //===----------------------------------------------------------------===//
       // Replace subview.access ops
       //===----------------------------------------------------------------===//
+
       coreOp.walk([&](ObjectFifoSubviewAccessOp accessOp) {
         auto acqOp = accessOp.getSubview().getDefiningOp<ObjectFifoAcquireOp>();
         if (ObjectFifoCreateOp op = acqOp.getObjectFifo();
