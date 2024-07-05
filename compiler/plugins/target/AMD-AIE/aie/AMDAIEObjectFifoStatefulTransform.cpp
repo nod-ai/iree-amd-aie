@@ -982,9 +982,8 @@ void createAdditionalFifoOp(
         builder.getContext(), singletonFromStreamDims);
 
     ObjectFifoCreateOp consumerFifo = builder.create<ObjectFifoCreateOp>(
-        builder.getUnknownLoc(), consumerFifoName, consumerTile,
-        consumerTile, consumerObjFifoSize, datatype, emptyDims,
-        fromStreamDims);
+        builder.getUnknownLoc(), consumerFifoName, consumerTile, consumerTile,
+        consumerObjFifoSize, datatype, emptyDims, fromStreamDims);
     replaceSplitFifo(createOp, consumerFifo, consumerTileOp);
 
     // identify external buffers that were registered to the consumer fifo
@@ -1161,6 +1160,52 @@ void replaceObjectAcquireOp(
   acquiresPerFifo[{op, portNum}] = acquiredIndices;
 }
 
+void createObjectFifosAndLocks(
+    OpBuilder builder, DeviceOp device, ObjectFifoCreateOp createOp,
+    std::vector<ObjectFifoCreateOp> &splitBecauseLink,
+    std::set<TileOp> &objectFifoTiles,
+    DenseMap<ObjectFifoCreateOp, std::vector<ExternalBufferOp>>
+        &externalBuffersPerFifo,
+    LockAnalysis &lockAnalysis,
+    DenseMap<ObjectFifoLinkOp, ObjectFifoCreateOp> &objFifoLinks,
+    DenseMap<ObjectFifoCreateOp, std::vector<BufferOp>> &buffersPerFifo,
+    DenseMap<ObjectFifoCreateOp, std::vector<LockOp>> &locksPerFifo) {
+  int share_direction = 0;
+  bool shared = !requiresDMAs(createOp, share_direction, splitBecauseLink);
+
+  // add all tiles that contain an objectFifo to objectFifoTiles for later
+  // loop unrolling pass
+  objectFifoTiles.insert(createOp.getProducerTileOp());
+  for (auto consumerTile : createOp.getConsumerTiles()) {
+    auto consumerTileOp = dyn_cast<TileOp>(consumerTile.getDefiningOp());
+    objectFifoTiles.insert(consumerTileOp);
+  }
+
+  // identify external buffers that were registered to
+  // the producer objectFifo
+  if (createOp.getProducerTileOp().isShimTile())
+    detectExternalBuffers(device, createOp, createOp,
+                          createOp.getProducerTile(), externalBuffersPerFifo);
+
+  // if split, the necessary size for producer fifo might change
+  if (shared)
+    createObjectFifoElements(builder, lockAnalysis, createOp, share_direction,
+                             objFifoLinks, externalBuffersPerFifo,
+                             buffersPerFifo, locksPerFifo);
+  else {
+    if (isa<ArrayAttr>(createOp.getElemNumber()))
+      createOp.setElemNumberAttr(builder.getI32IntegerAttr(createOp.size()));
+    else {
+      int prodMaxAcquire =
+          findObjectFifoSize(device, createOp.getProducerTileOp(), createOp);
+      createOp.setElemNumberAttr(builder.getI32IntegerAttr(prodMaxAcquire));
+    }
+    createObjectFifoElements(builder, lockAnalysis, createOp, share_direction,
+                             objFifoLinks, externalBuffersPerFifo,
+                             buffersPerFifo, locksPerFifo);
+  }
+}
+
 //===----------------------------------------------------------------------===//
 // Create objectFifos Pass
 //===----------------------------------------------------------------------===//
@@ -1242,43 +1287,11 @@ struct AMDAIEObjectFifoStatefulTransformPass : mlir::OperationPass<DeviceOp> {
     //   the acquires/releases (uses of the FIFO).
     //===------------------------------------------------------------------===//
 
-    for (auto createOp : device.getOps<ObjectFifoCreateOp>()) {
-      int share_direction = 0;
-      bool shared = !requiresDMAs(createOp, share_direction, splitBecauseLink);
-
-      // add all tiles that contain an objectFifo to objectFifoTiles for later
-      // loop unrolling pass
-      objectFifoTiles.insert(createOp.getProducerTileOp());
-      for (auto consumerTile : createOp.getConsumerTiles()) {
-        auto consumerTileOp = dyn_cast<TileOp>(consumerTile.getDefiningOp());
-        objectFifoTiles.insert(consumerTileOp);
-      }
-
-      // identify external buffers that were registered to
-      // the producer objectFifo
-      if (createOp.getProducerTileOp().isShimTile())
-        detectExternalBuffers(device, createOp, createOp,
-                              createOp.getProducerTile(),
-                              externalBuffersPerFifo);
-
-      // if split, the necessary size for producer fifo might change
-      if (shared)
-        createObjectFifoElements(
-            builder, lockAnalysis, createOp, share_direction, objFifoLinks,
-            externalBuffersPerFifo, buffersPerFifo, locksPerFifo);
-      else {
-        if (isa<ArrayAttr>(createOp.getElemNumber()))
-          createOp.setElemNumberAttr(
-              builder.getI32IntegerAttr(createOp.size()));
-        else {
-          int prodMaxAcquire = findObjectFifoSize(
-              device, createOp.getProducerTileOp(), createOp);
-          createOp.setElemNumberAttr(builder.getI32IntegerAttr(prodMaxAcquire));
-        }
-        createObjectFifoElements(
-            builder, lockAnalysis, createOp, share_direction, objFifoLinks,
-            externalBuffersPerFifo, buffersPerFifo, locksPerFifo);
-      }
+    for (ObjectFifoCreateOp createOp : device.getOps<ObjectFifoCreateOp>()) {
+      createObjectFifosAndLocks(builder, device, createOp, splitBecauseLink,
+                                objectFifoTiles, externalBuffersPerFifo,
+                                lockAnalysis, objFifoLinks, buffersPerFifo,
+                                locksPerFifo);
     }
 
     //===------------------------------------------------------------------===//
