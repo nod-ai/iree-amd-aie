@@ -290,6 +290,139 @@ void detectExternalBuffers(
                           externalBuffersPerFifo);
 }
 
+/// Function used to create objectFifo locks based on target architecture.
+/// Called by createObjectFifoElements().
+std::vector<LockOp> createObjectFifoLocks(
+    OpBuilder &builder, LockAnalysis &lockAnalysis, ObjectFifoCreateOp op,
+    int numElem, TileOp creation_tile,
+    DenseMap<ObjectFifoCreateOp, std::vector<ExternalBufferOp>>
+        &externalBuffersPerFifo) {
+  std::vector<LockOp> locks;
+  if (creation_tile.isShimTile()) numElem = externalBuffersPerFifo[op].size();
+  // create corresponding aie2 locks
+  int prodLockID = lockAnalysis.getLockID(creation_tile);
+  if (prodLockID < 0) {
+    creation_tile->emitOpError("No more locks to allocate!");
+    assert(prodLockID >= 0);
+  }
+  auto prodLock = builder.create<LockOp>(builder.getUnknownLoc(),
+                                         creation_tile, prodLockID, numElem);
+  prodLock.getOperation()->setAttr(
+      SymbolTable::getSymbolAttrName(),
+      builder.getStringAttr(op.name().str() + "_prod_lock"));
+  locks.push_back(prodLock);
+
+  int consLockID = lockAnalysis.getLockID(creation_tile);
+  if (consLockID < 0) {
+    creation_tile->emitOpError("No more locks to allocate!");
+    assert(consLockID >= 0);
+  }
+  auto consLock = builder.create<LockOp>(builder.getUnknownLoc(), creation_tile,
+                                         consLockID, 0);
+  consLock.getOperation()->setAttr(
+      SymbolTable::getSymbolAttrName(),
+      builder.getStringAttr(op.name().str() + "_cons_lock"));
+  locks.push_back(consLock);
+  return locks;
+}
+
+/// Function used to create objectFifo elements and their locks.
+/// It maps the input objectFifo to associated buffers and locks.
+void createObjectFifoElements(
+    OpBuilder &builder, LockAnalysis &lockAnalysis, ObjectFifoCreateOp op,
+    int share_direction,
+    DenseMap<ObjectFifoLinkOp, ObjectFifoCreateOp> &objFifoLinks,
+    DenseMap<ObjectFifoCreateOp, std::vector<ExternalBufferOp>>
+        &externalBuffersPerFifo,
+    DenseMap<ObjectFifoCreateOp, std::vector<BufferOp>> &buffersPerFifo,
+    DenseMap<ObjectFifoCreateOp, std::vector<LockOp>> &locksPerFifo) {
+  if (!op.size()) return;
+
+  std::vector<BufferOp> buffers;
+  auto fifo = llvm::cast<AIEObjectFifoType>(op.getElemType());
+  auto elemType = llvm::cast<MemRefType>(fifo.getElementType());
+  int numElem = op.size();
+  int of_elem_index = 0;  // used to give objectFifo elements a symbolic name
+
+  // if this objectFifo is linked to another, check if the other's elements
+  // have already been created (the elements that are created are those of
+  // the objFifo with elements of bigger size)
+  bool linked = false;
+  auto linkOp = getOptionalLinkOp(op);
+  if (linkOp) {
+    auto fifoIn = linkOp->getInputObjectFifos()[0];
+    auto fifoOut = linkOp->getOutputObjectFifos()[0];
+    linked = true;
+    if (objFifoLinks.find(*linkOp) != objFifoLinks.end())
+      return;  // elements have already been created
+    if (linkOp->isJoin()) {
+      // if join, fifoOut has bigger size
+      if (op.name() != fifoOut.name()) return;
+    } else if (linkOp->isDistribute()) {
+      // if distribute, fifoIn has bigger size
+      if (op.name() != fifoIn.name()) return;
+    } else {
+      auto fifoInType = llvm::cast<AIEObjectFifoType>(
+          linkOp->getInputObjectFifos()[0].getElemType());
+      auto elemInType = llvm::cast<MemRefType>(fifoInType.getElementType());
+      int inSize = elemInType.getNumElements();
+
+      auto fifoOutType = llvm::cast<AIEObjectFifoType>(
+          linkOp->getOutputObjectFifos()[0].getElemType());
+      auto elemOutType = llvm::cast<MemRefType>(fifoOutType.getElementType());
+
+      if (int outSize = elemOutType.getNumElements(); inSize >= outSize) {
+        if (op.name() != fifoIn.name()) return;
+      } else {
+        if (linkOp->getOutputObjectFifos()[0] != op) return;
+      }
+    }
+  }
+
+  TileOp creation_tile;
+  if (share_direction == 0 || share_direction == -1)
+    creation_tile = op.getProducerTileOp();
+  else {
+    auto consumerTileOp =
+        dyn_cast<TileOp>(op.getConsumerTiles()[0].getDefiningOp());
+    creation_tile = consumerTileOp;
+  }
+
+  // Reset opbuilder location to after the last tile declaration
+  Operation *t = nullptr;
+  auto dev = op->getParentOfType<DeviceOp>();
+  for (auto tile_op : dev.getBody()->getOps<TileOp>()) {
+    t = tile_op.getOperation();
+  }
+  builder.setInsertionPointAfter(t);
+  for (int i = 0; i < numElem; i++) {
+    // if shimTile external buffers are collected from input code
+    // create as many locks as there are external buffers
+    if (!creation_tile.isShimTile()) {
+      auto buff = builder.create<BufferOp>(
+          builder.getUnknownLoc(), elemType, creation_tile,
+          builder.getStringAttr(op.name().str() + "_buff_" +
+                                std::to_string(of_elem_index)),
+          /*address*/ nullptr, /*initial_value*/ nullptr,
+          /*mem_bank*/ nullptr);
+      buffers.push_back(buff);
+    }
+    of_elem_index++;
+  }
+  if (linked) {
+    if (linkOp->isDistribute())
+      numElem *= linkOp->getFifoOuts().size();
+    else if (linkOp->isJoin())
+      numElem *= linkOp->getFifoIns().size();
+    objFifoLinks[*linkOp] = op;
+  }
+  std::vector<LockOp> locks =
+      createObjectFifoLocks(builder, lockAnalysis, op, numElem, creation_tile,
+                            externalBuffersPerFifo);
+  buffersPerFifo[op] = buffers;
+  locksPerFifo[op] = locks;
+}
+
 //===----------------------------------------------------------------------===//
 // Create objectFifos Pass
 //===----------------------------------------------------------------------===//
@@ -339,132 +472,6 @@ struct AMDAIEObjectFifoStatefulTransformPass : mlir::OperationPass<DeviceOp> {
   std::vector<ObjectFifoCreateOp>
       splitBecauseLink;  // objfifos which have been split because they are
   // part of a Link, not because they didn't have a shared memory module
-
-  /// Function used to create objectFifo locks based on target architecture.
-  /// Called by createObjectFifoElements().
-  std::vector<LockOp> createObjectFifoLocks(OpBuilder &builder,
-                                            LockAnalysis &lockAnalysis,
-                                            ObjectFifoCreateOp op, int numElem,
-                                            TileOp creation_tile) {
-    std::vector<LockOp> locks;
-    if (creation_tile.isShimTile()) numElem = externalBuffersPerFifo[op].size();
-    // create corresponding aie2 locks
-    int prodLockID = lockAnalysis.getLockID(creation_tile);
-    if (prodLockID < 0) {
-      creation_tile->emitOpError("No more locks to allocate!");
-      assert(prodLockID >= 0);
-    }
-    auto prodLock = builder.create<LockOp>(builder.getUnknownLoc(),
-                                           creation_tile, prodLockID, numElem);
-    prodLock.getOperation()->setAttr(
-        SymbolTable::getSymbolAttrName(),
-        builder.getStringAttr(op.name().str() + "_prod_lock"));
-    locks.push_back(prodLock);
-
-    int consLockID = lockAnalysis.getLockID(creation_tile);
-    if (consLockID < 0) {
-      creation_tile->emitOpError("No more locks to allocate!");
-      assert(consLockID >= 0);
-    }
-
-    auto consLock = builder.create<LockOp>(builder.getUnknownLoc(),
-                                           creation_tile, consLockID, 0);
-    consLock.getOperation()->setAttr(
-        SymbolTable::getSymbolAttrName(),
-        builder.getStringAttr(op.name().str() + "_cons_lock"));
-    locks.push_back(consLock);
-    return locks;
-  }
-
-  /// Function used to create objectFifo elements and their locks.
-  /// It maps the input objectFifo to associated buffers and locks.
-  void createObjectFifoElements(OpBuilder &builder, LockAnalysis &lockAnalysis,
-                                ObjectFifoCreateOp op, int share_direction) {
-    if (!op.size()) return;
-
-    std::vector<BufferOp> buffers;
-    auto fifo = llvm::cast<AIEObjectFifoType>(op.getElemType());
-    auto elemType = llvm::cast<MemRefType>(fifo.getElementType());
-    int numElem = op.size();
-    int of_elem_index = 0;  // used to give objectFifo elements a symbolic name
-
-    // if this objectFifo is linked to another, check if the other's elements
-    // have already been created (the elements that are created are those of
-    // the objFifo with elements of bigger size)
-    bool linked = false;
-    auto linkOp = getOptionalLinkOp(op);
-    if (linkOp) {
-      auto fifoIn = linkOp->getInputObjectFifos()[0];
-      auto fifoOut = linkOp->getOutputObjectFifos()[0];
-      linked = true;
-      if (objFifoLinks.find(*linkOp) != objFifoLinks.end())
-        return;  // elements have already been created
-      if (linkOp->isJoin()) {
-        // if join, fifoOut has bigger size
-        if (op.name() != fifoOut.name()) return;
-      } else if (linkOp->isDistribute()) {
-        // if distribute, fifoIn has bigger size
-        if (op.name() != fifoIn.name()) return;
-      } else {
-        auto fifoInType = llvm::cast<AIEObjectFifoType>(
-            linkOp->getInputObjectFifos()[0].getElemType());
-        auto elemInType = llvm::cast<MemRefType>(fifoInType.getElementType());
-        int inSize = elemInType.getNumElements();
-
-        auto fifoOutType = llvm::cast<AIEObjectFifoType>(
-            linkOp->getOutputObjectFifos()[0].getElemType());
-        auto elemOutType = llvm::cast<MemRefType>(fifoOutType.getElementType());
-
-        if (int outSize = elemOutType.getNumElements(); inSize >= outSize) {
-          if (op.name() != fifoIn.name()) return;
-        } else {
-          if (linkOp->getOutputObjectFifos()[0] != op) return;
-        }
-      }
-    }
-
-    TileOp creation_tile;
-    if (share_direction == 0 || share_direction == -1)
-      creation_tile = op.getProducerTileOp();
-    else {
-      auto consumerTileOp =
-          dyn_cast<TileOp>(op.getConsumerTiles()[0].getDefiningOp());
-      creation_tile = consumerTileOp;
-    }
-
-    // Reset opbuilder location to after the last tile declaration
-    Operation *t = nullptr;
-    auto dev = op->getParentOfType<DeviceOp>();
-    for (auto tile_op : dev.getBody()->getOps<TileOp>()) {
-      t = tile_op.getOperation();
-    }
-    builder.setInsertionPointAfter(t);
-    for (int i = 0; i < numElem; i++) {
-      // if shimTile external buffers are collected from input code
-      // create as many locks as there are external buffers
-      if (!creation_tile.isShimTile()) {
-        auto buff = builder.create<BufferOp>(
-            builder.getUnknownLoc(), elemType, creation_tile,
-            builder.getStringAttr(op.name().str() + "_buff_" +
-                                  std::to_string(of_elem_index)),
-            /*address*/ nullptr, /*initial_value*/ nullptr,
-            /*mem_bank*/ nullptr);
-        buffers.push_back(buff);
-      }
-      of_elem_index++;
-    }
-    if (linked) {
-      if (linkOp->isDistribute())
-        numElem *= linkOp->getFifoOuts().size();
-      else if (linkOp->isJoin())
-        numElem *= linkOp->getFifoIns().size();
-      objFifoLinks[*linkOp] = op;
-    }
-    std::vector<LockOp> locks = createObjectFifoLocks(builder, lockAnalysis, op,
-                                                      numElem, creation_tile);
-    buffersPerFifo[op] = buffers;
-    locksPerFifo[op] = locks;
-  }
 
   /// Function that returns a pointer to the block of a Region
   /// that contains the AIEEndOp.
@@ -1050,8 +1057,9 @@ struct AMDAIEObjectFifoStatefulTransformPass : mlir::OperationPass<DeviceOp> {
 
       // if split, the necessary size for producer fifo might change
       if (shared)
-        createObjectFifoElements(builder, lockAnalysis, createOp,
-                                 share_direction);
+        createObjectFifoElements(
+            builder, lockAnalysis, createOp, share_direction, objFifoLinks,
+            externalBuffersPerFifo, buffersPerFifo, locksPerFifo);
       else {
         if (isa<ArrayAttr>(createOp.getElemNumber()))
           createOp.setElemNumberAttr(
@@ -1061,8 +1069,9 @@ struct AMDAIEObjectFifoStatefulTransformPass : mlir::OperationPass<DeviceOp> {
               device, createOp.getProducerTileOp(), createOp);
           createOp.setElemNumberAttr(builder.getI32IntegerAttr(prodMaxAcquire));
         }
-        createObjectFifoElements(builder, lockAnalysis, createOp,
-                                 share_direction);
+        createObjectFifoElements(
+            builder, lockAnalysis, createOp, share_direction, objFifoLinks,
+            externalBuffersPerFifo, buffersPerFifo, locksPerFifo);
       }
     }
 
