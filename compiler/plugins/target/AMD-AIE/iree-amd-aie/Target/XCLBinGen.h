@@ -19,7 +19,8 @@ namespace xilinx {
 struct XCLBinGenConfig {
   std::string TargetArch;
   std::string PeanoDir;
-  std::string InstallDir;
+  std::string MLIRAIEInstallDir;
+  std::string AMDAIEInstallDir;
   std::string AIEToolsDir;
   std::string TempDir;
   bool Verbose;

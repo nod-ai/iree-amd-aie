@@ -251,7 +251,7 @@ static LogicalResult generateCoreElfFiles(ModuleOp moduleOp,
           extractedIncludes.push_back(i->str(1));
       }
 
-      SmallString<64> chessWrapperBin(TK.InstallDir);
+      SmallString<64> chessWrapperBin(TK.MLIRAIEInstallDir);
       sys::path::append(chessWrapperBin, "bin", "xchesscc_wrapper");
       SmallString<64> chessworkDir(TK.TempDir);
       sys::path::append(chessworkDir, "chesswork");
@@ -293,7 +293,7 @@ static LogicalResult generateCoreElfFiles(ModuleOp moduleOp,
         std::string targetFlag = "--target=" + targetLower + "-none-elf";
         flags.push_back(targetFlag);
         flags.emplace_back(objFile);
-        SmallString<64> meBasicPath(TK.InstallDir);
+        SmallString<64> meBasicPath(TK.MLIRAIEInstallDir);
         sys::path::append(meBasicPath, "aie_runtime_lib",
                           StringRef(TK.TargetArch).upper(), "me_basic.o");
         flags.emplace_back(meBasicPath);
@@ -532,8 +532,12 @@ static LogicalResult generateXCLBin(MLIRContext *context, ModuleOp moduleOp,
                                       "-o",     std::string(designPdiFile),
                                       "-w"};
 
-    SmallString<64> bootgenBin(TK.InstallDir);
-    sys::path::append(bootgenBin, "bin", "bootgen");
+    SmallString<64> bootgenBin(TK.AMDAIEInstallDir);
+    sys::path::append(bootgenBin, "bin", "amdaie_bootgen");
+    if (!sys::fs::exists(bootgenBin)) {
+      bootgenBin = TK.AMDAIEInstallDir;
+      sys::path::append(bootgenBin, "tools", "amdaie_bootgen");
+    }
     if (runTool(bootgenBin, flags, TK.Verbose) != 0)
       return moduleOp.emitOpError("failed to execute bootgen");
   }
@@ -542,6 +546,12 @@ static LogicalResult generateXCLBin(MLIRContext *context, ModuleOp moduleOp,
   std::string memArg = "MEM_TOPOLOGY:JSON:" + std::string(memTopologyJsonFile);
   std::string partArg =
       "AIE_PARTITION:JSON:" + std::string(aiePartitionJsonFile);
+  SmallString<64> xclbinutilBin(TK.AMDAIEInstallDir);
+  sys::path::append(xclbinutilBin, "bin", "amdaie_xclbinutil");
+  if (!sys::fs::exists(xclbinutilBin)) {
+    xclbinutilBin = TK.AMDAIEInstallDir;
+    sys::path::append(xclbinutilBin, "tools", "amdaie_xclbinutil");
+  }
   {
     if (!inputXclbin.empty()) {
       // Create aie_partition.json.
@@ -553,12 +563,9 @@ static LogicalResult generateXCLBin(MLIRContext *context, ModuleOp moduleOp,
       SmallVector<std::string, 20> inputFlags{"--dump-section", inputPartArg,
                                               "--force", "--input",
                                               std::string(inputXclbin)};
-      if (auto xclbinutil = sys::findProgramByName("xclbinutil")) {
-        if (runTool(*xclbinutil, inputFlags, TK.Verbose) != 0)
-          return moduleOp.emitOpError("failed to execute xclbinutil");
-      } else {
-        return moduleOp.emitOpError("could not find xclbinutil");
-      }
+
+      if (runTool(xclbinutilBin, inputFlags, TK.Verbose) != 0)
+        return moduleOp.emitOpError("failed to execute xclbinutil");
       auto aieInputPartitionOut =
           openInputFile(aieInputPartitionJsonFile, &errorMessage);
       if (!aieInputPartitionOut) return moduleOp.emitOpError(errorMessage);
@@ -586,7 +593,6 @@ static LogicalResult generateXCLBin(MLIRContext *context, ModuleOp moduleOp,
       aiePartitionJsonOut->os() << formatv("{0:2}", *aieInputPartitionOutValue);
       aiePartitionJsonOut->keep();
       flags.insert(flags.end(), {"--input", std::string(inputXclbin)});
-
     } else {
       flags.insert(flags.end(), {"--add-replace-section", memArg});
     }
@@ -594,12 +600,8 @@ static LogicalResult generateXCLBin(MLIRContext *context, ModuleOp moduleOp,
                                "--add-replace-section", partArg, "--force",
                                "--output", std::string(Output)});
 
-    if (auto xclbinutil = sys::findProgramByName("xclbinutil")) {
-      if (runTool(*xclbinutil, flags, TK.Verbose) != 0)
-        return moduleOp.emitOpError("failed to execute xclbinutil");
-    } else {
-      return moduleOp.emitOpError("could not find xclbinutil");
-    }
+    if (runTool(xclbinutilBin, flags, TK.Verbose) != 0)
+      return moduleOp.emitOpError("failed to execute xclbinutil");
   }
   return success();
 }
@@ -732,13 +734,13 @@ static LogicalResult generateUnifiedObject(MLIRContext *context,
   }
 
   if (TK.UseChess) {
-    SmallString<64> chessWrapperBin(TK.InstallDir);
+    SmallString<64> chessWrapperBin(TK.MLIRAIEInstallDir);
     sys::path::append(chessWrapperBin, "bin", "xchesscc_wrapper");
 
     SmallString<64> chessworkDir(TK.TempDir);
     sys::path::append(chessworkDir, "chesswork");
 
-    SmallString<64> chessIntrinsicsLL(TK.InstallDir);
+    SmallString<64> chessIntrinsicsLL(TK.MLIRAIEInstallDir);
     sys::path::append(chessIntrinsicsLL, "aie_runtime_lib",
                       StringRef(TK.TargetArch).upper(),
                       "chess_intrinsic_wrapper.ll");

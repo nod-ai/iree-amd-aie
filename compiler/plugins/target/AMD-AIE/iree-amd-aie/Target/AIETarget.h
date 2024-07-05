@@ -20,6 +20,8 @@ struct AMDAIEOptions {
   // TODO(MaheshRavishankar): Remove this dependency.
   std::string mlirAieInstallDir;
 
+  std::string amdAieInstallDir;
+
   // Path to Peano installation directory.
   std::string peanoInstallDir;
 
@@ -52,6 +54,11 @@ struct AMDAIEOptions {
         "iree-amd-aie-mlir-aie-install-dir", mlirAieInstallDir,
         llvm::cl::cat(category),
         llvm::cl::desc("Path to MLIR-AIE installation directory"));
+
+    binder.opt<std::string>(
+        "iree-amd-aie-install-dir", amdAieInstallDir, llvm::cl::cat(category),
+        llvm::cl::desc("Path to AMDAIE installation directory (typically the "
+                       "IREE install directory)"));
 
     binder.opt<std::string>(
         "iree-amd-aie-peano-install-dir", peanoInstallDir,
