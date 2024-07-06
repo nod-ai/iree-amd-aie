@@ -33,7 +33,7 @@ int main(int argc, char** argv) {
   XAie_PartitionProp partitionProp;
 
   XAie_Config config = {
-      .AieGen = XAIE_DEV_GEN_AIEML,
+      .AieGen = XAIE_DEV_GEN_AIE2IPU,
       .BaseAddr = XAIE_BASE_ADDR,
       .ColShift = XAIE_COL_SHIFT,
       .RowShift = XAIE_ROW_SHIFT,
