@@ -6,11 +6,9 @@
 
 #include <algorithm>
 #include <cassert>
-#include <cstddef>  // size_t
 #include <cstdint>  // uint
 #include <cstdlib>  // calloc
 #include <filesystem>
-#include <functional>
 #include <map>
 #include <optional>
 #include <string>
@@ -18,7 +16,6 @@
 #include "AMDAIETargets.h"
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIE/IR/AIEEnums.h"
-#include "aie/Dialect/AIE/IR/AIETargetModel.h"
 #include "iree-amd-aie/aie_runtime/iree_aie_runtime.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
@@ -29,28 +26,14 @@
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypeInterfaces.h"
 #include "mlir/IR/Operation.h"
-#include "mlir/IR/Region.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
-
-extern "C" {
-#include "xaiengine/xaie_core.h"
-#include "xaiengine/xaie_dma.h"
-#include "xaiengine/xaie_elfloader.h"
-#include "xaiengine/xaie_interrupt.h"
-#include "xaiengine/xaie_locks.h"
-#include "xaiengine/xaie_plif.h"
-#include "xaiengine/xaie_ss.h"
-#include "xaiengine/xaiegbl.h"
-#include "xaiengine/xaiegbl_defs.h"
-}
 
 #define DEBUG_TYPE "aie-generate-cdo"
 
 using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIE;
-using namespace mlir::iree_compiler::AMDAIE;
 
 StrmSwPortType toStrmT(WireBundle w) {
   switch (w) {
@@ -83,24 +66,10 @@ StrmSwPortType toStrmT(WireBundle w) {
 
 auto ps = std::filesystem::path::preferred_separator;
 
-#define XAIE_BASE_ADDR 0x40000000
-#define XAIE_COL_SHIFT 25
-#define XAIE_ROW_SHIFT 20
-#define XAIE_SHIM_ROW 0
-#define XAIE_MEM_TILE_ROW_START 1
-#define XAIE_PARTITION_BASE_ADDR 0x0
-
-#define NPI_ADDR 0x0
-#define NUM_LOCKS 16
-#define EVEN_BD_NUM_START 0
-#define ODD_BD_NUM_START 24
-#define MEM_TILE_LOCK_ID_INCR 64
-#define BASE_ADDR_A_INCR 0x80000
-
-namespace xilinx::AIE {
+namespace mlir::iree_compiler::AMDAIE {
 
 LogicalResult configureLocksInBdBlock(XAie_DmaDesc &dmaTileBd, Block &block,
-                                      const AIETargetModel &targetModel,
+                                      AMDAIEDeviceModel deviceModel,
                                       XAie_LocType &tileLoc) {
   LLVM_DEBUG(llvm::dbgs() << "\nstart configuring bds\n");
   std::optional<int> acqValue, relValue, acqLockId, relLockId;
@@ -130,9 +99,9 @@ LogicalResult configureLocksInBdBlock(XAie_DmaDesc &dmaTileBd, Block &block,
   assert(acqValue && relValue && acqLockId && relLockId &&
          "expected both use_lock(acquire) and use_lock(release) with bd");
 
-  if (targetModel.isMemTile(tileLoc.Col, tileLoc.Row)) {
-    if (acqLockId) acqLockId.value() += MEM_TILE_LOCK_ID_INCR;
-    if (relLockId) relLockId.value() += MEM_TILE_LOCK_ID_INCR;
+  if (deviceModel.isMemTile(tileLoc.Col, tileLoc.Row)) {
+    if (acqLockId) acqLockId.value() += XAIE2IPU_MEM_TILE_LOCK_ID_INCR;
+    if (relLockId) relLockId.value() += XAIE2IPU_MEM_TILE_LOCK_ID_INCR;
   }
 
   // no RelEn in the arch spec even though the API requires you to set it?
@@ -145,9 +114,8 @@ LogicalResult configureLocksInBdBlock(XAie_DmaDesc &dmaTileBd, Block &block,
   return success();
 }
 
-LogicalResult configureBdInBlock(XAie_DevInst &devInst, XAie_DmaDesc &dmaTileBd,
-                                 Block &block,
-                                 const AIETargetModel &targetModel,
+LogicalResult configureBdInBlock(XAie_DmaDesc &dmaTileBd, Block &block,
+                                 AMDAIEDeviceModel deviceModel,
                                  XAie_LocType &tileLoc, int bdId,
                                  std::optional<int> nextBdId) {
   std::optional<int> packetType;
@@ -163,7 +131,7 @@ LogicalResult configureBdInBlock(XAie_DevInst &devInst, XAie_DmaDesc &dmaTileBd,
 
   auto bdOp = *block.getOps<DMABDOp>().begin();
 
-  if (targetModel.isShimNOCTile(tileLoc.Col, tileLoc.Row)) {
+  if (deviceModel.isShimNOCTile(tileLoc.Col, tileLoc.Row)) {
     // write them out like this so they show up with names in debug prints
     size_t smid = 0;
     size_t burstLen = 16;  // (10):BLEN=16 (256Byte) (corresponds to
@@ -177,13 +145,13 @@ LogicalResult configureBdInBlock(XAie_DevInst &devInst, XAie_DmaDesc &dmaTileBd,
 
   // StringRef FifoMode = disable; // FIXME: when to enable FIFO mode?
   int baseAddr = 0;
-  if (!targetModel.isShimNOCTile(tileLoc.Col, tileLoc.Row)) {
+  if (!deviceModel.isShimNOCTile(tileLoc.Col, tileLoc.Row)) {
     auto bufferOp = cast<AIE::BufferOp>(bdOp.getBuffer().getDefiningOp());
     if (!bufferOp.getAddress())
       return bufferOp.emitError("buffer must have address assigned");
     baseAddr = bufferOp.getAddress().value();
-    if (targetModel.isMemTile(tileLoc.Col, tileLoc.Row))
-      baseAddr += BASE_ADDR_A_INCR;
+    if (deviceModel.isMemTile(tileLoc.Col, tileLoc.Row))
+      baseAddr += XAIE2IPU_ADDR_ARRAY_OFF;
   }
 
   std::optional<llvm::ArrayRef<BDDimLayoutAttr>> dims = bdOp.getDimensions();
@@ -235,7 +203,8 @@ LogicalResult configureBdInBlock(XAie_DevInst &devInst, XAie_DmaDesc &dmaTileBd,
   }
 
   if (packetID) {
-    if (!packetType) bdOp.emitError("must have packetType with packetID");
+    if (!packetType)
+      return bdOp.emitError("must have packetType with packetID");
     if (bdOp.getLen() == 0)
       return bdOp.emitOpError(
           "For MM2S channels, if Buffer_Length=0 then Enable_Packet must be "
@@ -245,111 +214,66 @@ LogicalResult configureBdInBlock(XAie_DevInst &devInst, XAie_DmaDesc &dmaTileBd,
         XAie_PacketInit(packetID.value(), packetType.value()));
   }
   TRY_XAIE_API_EMIT_ERROR(bdOp, XAie_DmaEnableBd, &dmaTileBd);
-  TRY_XAIE_API_EMIT_ERROR(bdOp, XAie_DmaWriteBd, &devInst, &dmaTileBd, tileLoc,
-                          bdId);
+  TRY_XAIE_API_EMIT_ERROR(bdOp, XAie_DmaWriteBd, &deviceModel.devInst,
+                          &dmaTileBd, tileLoc, bdId);
   LLVM_DEBUG(llvm::dbgs() << "\nend configuring bds\n");
   return success();
 };
 
-LogicalResult pushToBdQueueAndEnable(XAie_DevInst &devInst, Operation &op,
-                                     XAie_LocType &tileLoc, int chNum,
-                                     const DMAChannelDir &channelDir, int bdId,
-                                     int repeatCount) {
+LogicalResult pushToBdQueueAndEnable(AMDAIEDeviceModel &deviceModel,
+                                     Operation &op, XAie_LocType &tileLoc,
+                                     int chNum, const DMAChannelDir &channelDir,
+                                     int bdId, int repeatCount) {
   XAie_DmaDirection direction =
       channelDir == DMAChannelDir::S2MM ? DMA_S2MM : DMA_MM2S;
   auto enTokenIssue = tileLoc.Row == 0 && direction == DMA_S2MM;
   // in english repeat_count==0 means "do it once" and don't repeat but
   // libxaie treats repeat_count=1 as do it once.
   repeatCount += 1;
-  TRY_XAIE_API_EMIT_ERROR(op, XAie_DmaChannelSetStartQueue, &devInst, tileLoc,
-                          chNum, direction, bdId, repeatCount, enTokenIssue);
-  TRY_XAIE_API_EMIT_ERROR(op, XAie_DmaChannelEnable, &devInst, tileLoc, chNum,
-                          direction);
+  TRY_XAIE_API_EMIT_ERROR(op, XAie_DmaChannelSetStartQueue,
+                          &deviceModel.devInst, tileLoc, chNum, direction, bdId,
+                          repeatCount, enTokenIssue);
+  TRY_XAIE_API_EMIT_ERROR(op, XAie_DmaChannelEnable, &deviceModel.devInst,
+                          tileLoc, chNum, direction);
   return success();
 };
 
-LogicalResult configureLocksAndBd(XAie_DevInst &devInst, Block &block,
-                                  XAie_LocType tileLoc,
-                                  const AIETargetModel &targetModel) {
+LogicalResult configureLocksAndBd(Block &block, XAie_LocType tileLoc,
+                                  AMDAIEDeviceModel &deviceModel) {
   DMABDOp bd = *block.getOps<DMABDOp>().begin();
   assert(bd.getBdId().has_value() &&
          "DMABDOp must have assigned bd_id; did you forget to run "
          "aie-assign-bd-ids?");
   XAie_DmaDesc dmaTileBd;
-  TRY_XAIE_API_EMIT_ERROR(bd, XAie_DmaDescInit, &devInst, &dmaTileBd, tileLoc);
+  TRY_XAIE_API_EMIT_ERROR(bd, XAie_DmaDescInit, &deviceModel.devInst,
+                          &dmaTileBd, tileLoc);
   if (!block.getOps<UseLockOp>().empty() &&
-      failed(configureLocksInBdBlock(dmaTileBd, block, targetModel, tileLoc)))
+      failed(configureLocksInBdBlock(dmaTileBd, block, deviceModel, tileLoc)))
     return failure();
   if (!block.getOps<DMABDOp>().empty() &&
-      failed(configureBdInBlock(devInst, dmaTileBd, block, targetModel, tileLoc,
+      failed(configureBdInBlock(dmaTileBd, block, deviceModel, tileLoc,
                                 bd.getBdId().value(), bd.getNextBdId())))
     return failure();
   return success();
 };
 
 struct AIEControl {
-  XAie_Config configPtr;
-  XAie_DevInst devInst;
-
-  AIEControl(bool aieSim, bool xaieDebug, const BaseNPUTargetModel &tm) {
-    // The first column in the NPU lacks a shim tile.  AIE-RT exposes some of
-    // the internals about how this is modeled in a somewhat awkward way.
-    size_t partitionStartCol = tm.isVirtualized() ? 1 : 0;
-    size_t partitionNumCols = tm.columns();
-    size_t deviceRows = tm.rows();
-    size_t deviceCols = tm.columns() + partitionStartCol;
-
-    configPtr = XAie_Config{
-        /*AieGen*/ XAIE_DEV_GEN_AIE2IPU,
-        /*BaseAddr*/ XAIE_BASE_ADDR,
-        /*ColShift*/ XAIE_COL_SHIFT,
-        /*RowShift*/ XAIE_ROW_SHIFT,
-        /*NumRows*/ static_cast<uint8_t>(deviceRows),
-        /*NumCols*/ static_cast<uint8_t>(deviceCols),
-        /*ShimRowNum*/ XAIE_SHIM_ROW,
-        /*MemTileRowStart*/ XAIE_MEM_TILE_ROW_START,
-        /*MemTileNumRows*/ static_cast<uint8_t>(tm.getNumMemTileRows()),
-        /*AieTileRowStart*/
-        static_cast<uint8_t>(XAIE_MEM_TILE_ROW_START + tm.getNumMemTileRows()),
-        /*AieTileNumRows*/
-        static_cast<uint8_t>(tm.rows() - tm.getNumMemTileRows() - 1),
-        /*PartProp*/ {}};
-
-    // Quoting: The instance of a device must be always declared using this
-    //		macro. In future, the same macro will be expanded to allocate
-    //		more memory from the user application for resource management.
-    XAie_InstDeclare(_devInst, &configPtr);
-    devInst = _devInst;
-    TRY_XAIE_API_FATAL_ERROR(XAie_SetupPartitionConfig, &devInst,
-                             XAIE_PARTITION_BASE_ADDR, partitionStartCol,
-                             partitionNumCols);
-    TRY_XAIE_API_FATAL_ERROR(XAie_CfgInitialize, &devInst, &configPtr);
-    if (aieSim) {
-      TRY_XAIE_API_FATAL_ERROR(XAie_SetIOBackend, &devInst,
-                               XAIE_IO_BACKEND_SIM);
-    } else if (xaieDebug)
-      TRY_XAIE_API_FATAL_ERROR(XAie_SetIOBackend, &devInst,
-                               XAIE_IO_BACKEND_DEBUG);
-    else
-      TRY_XAIE_API_FATAL_ERROR(XAie_SetIOBackend, &devInst,
-                               XAIE_IO_BACKEND_CDO);
-
-    TRY_XAIE_API_FATAL_ERROR(XAie_UpdateNpiAddr, &devInst, NPI_ADDR);
-    TRY_XAIE_API_FATAL_ERROR(XAie_TurnEccOff, &devInst);
-  }
+  AMDAIEDeviceModel deviceModel;
+  AIEControl(AMDAIEDeviceModel dm) : deviceModel(dm) {}
 
   LogicalResult addAieElfToCDO(uint8_t col, uint8_t row,
                                const StringRef elfPath, bool aieSim) {
     // loadSym: Load symbols from .map file. This argument is not used when
     // __AIESIM__ is not defined.
-    TRY_XAIE_API_LOGICAL_RESULT(XAie_LoadElf, &devInst, XAie_TileLoc(col, row),
-                                elfPath.str().c_str(), /*loadSym*/ aieSim);
+    TRY_XAIE_API_LOGICAL_RESULT(XAie_LoadElf, &deviceModel.devInst,
+                                XAie_TileLoc(col, row), elfPath.str().c_str(),
+                                /*loadSym*/ aieSim);
     return success();
   }
 
-  LogicalResult addAieElfsToCDO(DeviceOp &targetOp, const StringRef workDirPath,
+  LogicalResult addAieElfsToCDO(DeviceOp &device, const StringRef workDirPath,
                                 bool aieSim) {
-    for (auto tileOp : targetOp.getOps<TileOp>())
+    for (auto tileOp : device.getOps<TileOp>())
       if (tileOp.isShimNOCorPLTile()) {
         // Resets no needed with V2 kernel driver
       } else {
@@ -374,38 +298,41 @@ struct AIEControl {
     return success();
   }
 
-  LogicalResult addInitConfigToCDO(DeviceOp &targetOp) {
-    for (auto tileOp : targetOp.getOps<TileOp>()) {
+  LogicalResult addInitConfigToCDO(DeviceOp &device) {
+    for (auto tileOp : device.getOps<TileOp>()) {
       auto tileLoc = XAie_TileLoc(tileOp.colIndex(), tileOp.rowIndex());
       if (!tileOp.isShimTile() && tileOp.getCoreOp()) {
-        TRY_XAIE_API_EMIT_ERROR(tileOp, XAie_CoreReset, &devInst, tileLoc);
-        TRY_XAIE_API_EMIT_ERROR(tileOp, XAie_CoreUnreset, &devInst, tileLoc);
+        TRY_XAIE_API_EMIT_ERROR(tileOp, XAie_CoreReset, &deviceModel.devInst,
+                                tileLoc);
+        TRY_XAIE_API_EMIT_ERROR(tileOp, XAie_CoreUnreset, &deviceModel.devInst,
+                                tileLoc);
         // Set locks to zero
-        for (uint8_t l = 0; l < NUM_LOCKS; l++) {
+        for (uint8_t l = 0;
+             l < deviceModel.getNumLocks(tileOp.getCol(), tileOp.getRow());
+             l++) {
           auto locInit = XAie_LockInit(l, 0);
-          TRY_XAIE_API_EMIT_ERROR(tileOp, XAie_LockSetValue, &devInst, tileLoc,
-                                  locInit);
+          TRY_XAIE_API_EMIT_ERROR(tileOp, XAie_LockSetValue,
+                                  &deviceModel.devInst, tileLoc, locInit);
         }
       }
     }
 
     // Set locks with explicit initializers
-    targetOp.walk<WalkOrder::PreOrder>([&](LockOp lockOp) {
+    device.walk<WalkOrder::PreOrder>([&](LockOp lockOp) {
       if (lockOp.getLockID() && lockOp.getInit()) {
         auto tileLoc = XAie_TileLoc(lockOp.getTileOp().colIndex(),
                                     lockOp.getTileOp().rowIndex());
         auto locInit = XAie_LockInit(*lockOp.getLockID(), *lockOp.getInit());
-        TRY_XAIE_API_FATAL_ERROR(XAie_LockSetValue, &devInst, tileLoc, locInit);
+        TRY_XAIE_API_FATAL_ERROR(XAie_LockSetValue, &deviceModel.devInst,
+                                 tileLoc, locInit);
       } else
         LLVM_DEBUG(llvm::dbgs()
                    << "lock op missing either id or init" << lockOp << "\n");
     });
 
-    const AIETargetModel &targetModel = targetOp.getTargetModel();
-
-    auto memOps = llvm::to_vector_of<TileElement>(targetOp.getOps<MemOp>());
-    llvm::append_range(memOps, targetOp.getOps<MemTileDMAOp>());
-    llvm::append_range(memOps, targetOp.getOps<ShimDMAOp>());
+    auto memOps = llvm::to_vector_of<TileElement>(device.getOps<MemOp>());
+    llvm::append_range(memOps, device.getOps<MemTileDMAOp>());
+    llvm::append_range(memOps, device.getOps<ShimDMAOp>());
     for (TileElement memOp : memOps) {
       int col = memOp.getTileID().col;
       int row = memOp.getTileID().row;
@@ -414,7 +341,7 @@ struct AIEControl {
       // handle DMA ops separately
       for (Block &block : memOp.getOperation()->getRegion(0)) {
         if (block.getOps<DMABDOp>().empty()) continue;
-        if (failed(configureLocksAndBd(devInst, block, tileLoc, targetModel)))
+        if (failed(configureLocksAndBd(block, tileLoc, deviceModel)))
           return failure();
       }
 
@@ -424,7 +351,7 @@ struct AIEControl {
           int chNum = op.getChannelIndex();
           auto channelDir = op.getChannelDir();
           if (failed(pushToBdQueueAndEnable(
-                  devInst, *bd.getOperation(), tileLoc, chNum, channelDir,
+                  deviceModel, *bd.getOperation(), tileLoc, chNum, channelDir,
                   bd.getBdId().value(), op.getRepeatCount())))
             return failure();
         }
@@ -432,24 +359,24 @@ struct AIEControl {
     }
 
     // StreamSwitch (switchbox) configuration
-    for (auto switchboxOp : targetOp.getOps<SwitchboxOp>()) {
+    for (auto switchboxOp : device.getOps<SwitchboxOp>()) {
       int32_t col = switchboxOp.colIndex();
       int32_t row = switchboxOp.rowIndex();
       XAie_LocType tileLoc = XAie_TileLoc(col, row);
-      assert(targetModel.isNPU() && "Only NPU currently supported");
       if (row == 0) {
         // FIXME hack for TCT routing
         // TODO Support both channels
         auto slvPortNum = 0;
         auto mstrPortNum = 0;
-        TRY_XAIE_API_EMIT_ERROR(switchboxOp, XAie_StrmConnCctEnable, &devInst,
-                                tileLoc, CTRL, slvPortNum, SOUTH, mstrPortNum);
+        TRY_XAIE_API_EMIT_ERROR(switchboxOp, XAie_StrmConnCctEnable,
+                                &deviceModel.devInst, tileLoc, CTRL, slvPortNum,
+                                SOUTH, mstrPortNum);
       }
 
       Block &b = switchboxOp.getConnections().front();
       for (auto connectOp : b.getOps<ConnectOp>())
         TRY_XAIE_API_EMIT_ERROR(
-            switchboxOp, XAie_StrmConnCctEnable, &devInst, tileLoc,
+            switchboxOp, XAie_StrmConnCctEnable, &deviceModel.devInst, tileLoc,
             toStrmT(connectOp.getSourceBundle()), connectOp.sourceIndex(),
             toStrmT(connectOp.getDestBundle()), connectOp.destIndex());
 
@@ -474,8 +401,8 @@ struct AIEControl {
         auto dropHeader =
             isdma ? XAIE_SS_PKT_DROP_HEADER : XAIE_SS_PKT_DONOT_DROP_HEADER;
         TRY_XAIE_API_EMIT_ERROR(
-            connectOp, XAie_StrmPktSwMstrPortEnable, &devInst, tileLoc,
-            toStrmT(connectOp.getDestBundle()), connectOp.destIndex(),
+            connectOp, XAie_StrmPktSwMstrPortEnable, &deviceModel.devInst,
+            tileLoc, toStrmT(connectOp.getDestBundle()), connectOp.destIndex(),
             dropHeader, arbiter, mask);
       }
 
@@ -486,21 +413,23 @@ struct AIEControl {
           AMSelOp amselOp = cast<AMSelOp>(slotOp.getAmsel().getDefiningOp());
           int arbiter = amselOp.arbiterIndex();
           int msel = amselOp.getMselValue();
-          TRY_XAIE_API_EMIT_ERROR(
-              connectOp, XAie_StrmPktSwSlavePortEnable, &devInst, tileLoc,
-              toStrmT(connectOp.getSourceBundle()), connectOp.sourceIndex());
+          TRY_XAIE_API_EMIT_ERROR(connectOp, XAie_StrmPktSwSlavePortEnable,
+                                  &deviceModel.devInst, tileLoc,
+                                  toStrmT(connectOp.getSourceBundle()),
+                                  connectOp.sourceIndex());
           auto packetInit = XAie_PacketInit(slotOp.valueInt(), /*PktType*/ 0);
           // TODO Need to better define packet id,type used here
-          TRY_XAIE_API_EMIT_ERROR(
-              connectOp, XAie_StrmPktSwSlaveSlotEnable, &devInst, tileLoc,
-              toStrmT(connectOp.getSourceBundle()), connectOp.sourceIndex(),
-              slot, packetInit, slotOp.maskInt(), msel, arbiter);
+          TRY_XAIE_API_EMIT_ERROR(connectOp, XAie_StrmPktSwSlaveSlotEnable,
+                                  &deviceModel.devInst, tileLoc,
+                                  toStrmT(connectOp.getSourceBundle()),
+                                  connectOp.sourceIndex(), slot, packetInit,
+                                  slotOp.maskInt(), msel, arbiter);
           slot++;
         }
       }
     }
 
-    for (auto muxOp : targetOp.getOps<ShimMuxOp>()) {
+    for (auto muxOp : device.getOps<ShimMuxOp>()) {
       // NOTE ShimMux always connects from the south as directions are
       // defined relative to the tile stream switch.
       auto tileLoc =
@@ -510,56 +439,59 @@ struct AIEControl {
         // demux!
         if (connectOp.getSourceBundle() == WireBundle::North)
           TRY_XAIE_API_EMIT_ERROR(muxOp, XAie_EnableAieToShimDmaStrmPort,
-                                  &devInst, tileLoc, connectOp.sourceIndex());
+                                  &deviceModel.devInst, tileLoc,
+                                  connectOp.sourceIndex());
         // mux
         if (connectOp.getDestBundle() == WireBundle::North)
           TRY_XAIE_API_EMIT_ERROR(muxOp, XAie_EnableShimDmaToAieStrmPort,
-                                  &devInst, tileLoc, connectOp.destIndex());
+                                  &deviceModel.devInst, tileLoc,
+                                  connectOp.destIndex());
       }
     }
 
-    for (auto switchboxOp : targetOp.getOps<ShimSwitchboxOp>()) {
+    for (auto switchboxOp : device.getOps<ShimSwitchboxOp>()) {
       Block &b = switchboxOp.getConnections().front();
       auto tileLoc = XAie_TileLoc(switchboxOp.getCol(), 0);
       for (auto connectOp : b.getOps<ConnectOp>())
         TRY_XAIE_API_EMIT_ERROR(
-            switchboxOp, XAie_StrmConnCctEnable, &devInst, tileLoc,
+            switchboxOp, XAie_StrmConnCctEnable, &deviceModel.devInst, tileLoc,
             toStrmT(connectOp.getSourceBundle()), connectOp.sourceIndex(),
             toStrmT(connectOp.getDestBundle()), connectOp.destIndex());
     }
 
     // Cascade configuration
-    for (auto configOp : targetOp.getOps<ConfigureCascadeOp>()) {
+    for (auto configOp : device.getOps<ConfigureCascadeOp>()) {
       TileOp tile = cast<TileOp>(configOp.getTile().getDefiningOp());
       auto tileLoc = XAie_TileLoc(tile.getCol(), tile.getRow());
       TRY_XAIE_API_EMIT_ERROR(
-          targetOp, XAie_CoreConfigAccumulatorControl, &devInst, tileLoc,
-          toStrmT(static_cast<WireBundle>(configOp.getInputDir())),
+          device, XAie_CoreConfigAccumulatorControl, &deviceModel.devInst,
+          tileLoc, toStrmT(static_cast<WireBundle>(configOp.getInputDir())),
           toStrmT(static_cast<WireBundle>(configOp.getOutputDir())));
     }
 
     return success();
   }
 
-  LogicalResult addCoreEnableToCDO(DeviceOp &targetOp) {
+  LogicalResult addCoreEnableToCDO(DeviceOp &device) {
     // Start execution of all the cores.
-    for (auto tileOp : targetOp.getOps<TileOp>()) {
+    for (auto tileOp : device.getOps<TileOp>()) {
       auto tileLoc = XAie_TileLoc(tileOp.colIndex(), tileOp.rowIndex());
       if (!tileOp.isShimTile() && tileOp.getCoreOp())
-        TRY_XAIE_API_EMIT_ERROR(targetOp, XAie_CoreEnable, &devInst, tileLoc);
+        TRY_XAIE_API_EMIT_ERROR(device, XAie_CoreEnable, &deviceModel.devInst,
+                                tileLoc);
     }
     return success();
   }
 
-  void dmaUpdateBdAddr(DeviceOp &targetOp, int col, int row, size_t addr,
+  void dmaUpdateBdAddr(DeviceOp &device, int col, int row, size_t addr,
                        size_t bdId) {
     auto tileLoc = XAie_TileLoc(col, row);
-    TRY_XAIE_API_FATAL_ERROR(XAie_DmaUpdateBdAddr, &devInst, tileLoc, addr,
-                             bdId);
+    TRY_XAIE_API_FATAL_ERROR(XAie_DmaUpdateBdAddr, &deviceModel.devInst,
+                             tileLoc, addr, bdId);
   }
 };
 
-}  // namespace xilinx::AIE
+}  // namespace mlir::iree_compiler::AMDAIE
 
 void initializeCDOGenerator(byte_ordering endianness, bool cdoDebug) {
   // Enables AXI-MM prints for configs being added in CDO
@@ -580,84 +512,68 @@ LogicalResult generateCDOBinary(const StringRef outputPath,
   return success();
 }
 
-LogicalResult generateCDOBinariesSeparately(AIEControl &ctl,
-                                            const StringRef workDirPath,
-                                            DeviceOp &targetOp, bool aieSim,
-                                            bool enableCores) {
+LogicalResult generateCDOBinariesSeparately(
+    mlir::iree_compiler::AMDAIE::AIEControl &ctl, const StringRef workDirPath,
+    DeviceOp &device, bool aieSim, bool enableCores) {
   if (failed(generateCDOBinary(
           (llvm::Twine(workDirPath) + std::string(1, ps) + "aie_cdo_elfs.bin")
               .str(),
-          [&ctl, &targetOp, &workDirPath, &aieSim] {
-            return ctl.addAieElfsToCDO(targetOp, workDirPath, aieSim);
+          [&ctl, &device, &workDirPath, &aieSim] {
+            return ctl.addAieElfsToCDO(device, workDirPath, aieSim);
           })))
     return failure();
 
   if (failed(generateCDOBinary(
           (llvm::Twine(workDirPath) + std::string(1, ps) + "aie_cdo_init.bin")
               .str(),
-          [&ctl, &targetOp] { return ctl.addInitConfigToCDO(targetOp); })))
+          [&ctl, &device] { return ctl.addInitConfigToCDO(device); })))
     return failure();
 
-  if (enableCores &&
+  if (enableCores && !device.getOps<CoreOp>().empty() &&
       failed(generateCDOBinary(
           (llvm::Twine(workDirPath) + std::string(1, ps) + "aie_cdo_enable.bin")
               .str(),
-          [&ctl, &targetOp] { return ctl.addCoreEnableToCDO(targetOp); })))
+          [&ctl, &device] { return ctl.addCoreEnableToCDO(device); })))
     return failure();
 
   return success();
 }
 
-LogicalResult generateCDOUnified(AIEControl &ctl, const StringRef workDirPath,
-                                 DeviceOp &targetOp, bool aieSim,
-                                 bool enableCores) {
+LogicalResult generateCDOUnified(mlir::iree_compiler::AMDAIE::AIEControl &ctl,
+                                 const StringRef workDirPath, DeviceOp &device,
+                                 bool aieSim, bool enableCores) {
   return generateCDOBinary(
       (llvm::Twine(workDirPath) + std::string(1, ps) + "aie_cdo.bin").str(),
-      [&ctl, &targetOp, &workDirPath, &aieSim, &enableCores] {
-        if (!targetOp.getOps<CoreOp>().empty() &&
-            failed(ctl.addAieElfsToCDO(targetOp, workDirPath, aieSim)))
+      [&ctl, &device, &workDirPath, &aieSim, &enableCores] {
+        if (!device.getOps<CoreOp>().empty() &&
+            failed(ctl.addAieElfsToCDO(device, workDirPath, aieSim)))
           return failure();
-        if (failed(ctl.addInitConfigToCDO(targetOp))) return failure();
-        if (enableCores && !targetOp.getOps<CoreOp>().empty() &&
-            failed(ctl.addCoreEnableToCDO(targetOp)))
+        if (failed(ctl.addInitConfigToCDO(device))) return failure();
+        if (enableCores && !device.getOps<CoreOp>().empty() &&
+            failed(ctl.addCoreEnableToCDO(device)))
           return failure();
         return success();
       });
 }
 
-LogicalResult AIETranslateToCDODirect(ModuleOp m, llvm::StringRef workDirPath,
-                                      byte_ordering endianness,
-                                      bool emitUnified, bool cdoDebug,
-                                      bool aieSim, bool xaieDebug,
-                                      bool enableCores) {
-  auto devOps = m.getOps<DeviceOp>();
-  assert(llvm::range_size(devOps) == 1 &&
-         "only exactly 1 device op supported.");
-  DeviceOp targetOp = *devOps.begin();
-  const BaseNPUTargetModel &targetModel =
-      (const BaseNPUTargetModel &)targetOp.getTargetModel();
-
-  // things like XAIE_MEM_TILE_ROW_START and the missing
-  // shim dma on tile (0,0) are hard-coded assumptions about NPU...
-  assert(targetModel.isNPU() && "Only NPU currently supported");
-
-  AIEControl ctl(aieSim, xaieDebug, targetModel);
-  initializeCDOGenerator(endianness, cdoDebug);
-  if (emitUnified)
-    return generateCDOUnified(ctl, workDirPath, targetOp, aieSim, enableCores);
-  return generateCDOBinariesSeparately(ctl, workDirPath, targetOp, aieSim,
-                                       enableCores);
-}
-// Not sure why but defining this with xilinx::AIE will create a duplicate
-// symbol in libAIETargets.a that then doesn't actually match the header?
 namespace mlir::iree_compiler::AMDAIE {
 LogicalResult AIETranslateToCDODirect(ModuleOp m, llvm::StringRef workDirPath,
                                       bool bigEndian, bool emitUnified,
                                       bool cdoDebug, bool aieSim,
-                                      bool xaieDebug, bool enableCores) {
+                                      bool enableCores) {
+  auto devOps = m.getOps<DeviceOp>();
+  assert(llvm::range_size(devOps) == 1 &&
+         "only exactly 1 device op supported.");
+  DeviceOp device = *devOps.begin();
+  mlir::iree_compiler::AMDAIE::AIEControl ctl(
+      mlir::iree_compiler::AMDAIE::getDeviceModel(
+          static_cast<AMDAIEDevice>(device.getDevice())));
   byte_ordering endianness =
       bigEndian ? byte_ordering::Big_Endian : byte_ordering::Little_Endian;
-  return AIETranslateToCDODirect(m, workDirPath, endianness, emitUnified,
-                                 cdoDebug, aieSim, xaieDebug, enableCores);
+  initializeCDOGenerator(endianness, cdoDebug);
+  if (emitUnified)
+    return generateCDOUnified(ctl, workDirPath, device, aieSim, enableCores);
+  return generateCDOBinariesSeparately(ctl, workDirPath, device, aieSim,
+                                       enableCores);
 }
 }  // namespace mlir::iree_compiler::AMDAIE
