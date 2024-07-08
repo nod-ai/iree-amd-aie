@@ -8,8 +8,8 @@
 // CHECK:           memref.global "public" @inB : memref<8x16xi16>
 // CHECK:           memref.global "public" @inA_cons : memref<16x8xi16>
 // CHECK:           memref.global "public" @inA : memref<16x8xi16>
-// CHECK:           %[[TILE_0_0:.*]] = aie.tile(0, 0)
-// CHECK:           %[[TILE_0_2:.*]] = aie.tile(0, 2)
+// CHECK:           %[[TILE_0_0:.*]] = aie.tile(2, 0)
+// CHECK:           %[[TILE_0_2:.*]] = aie.tile(2, 2)
 // CHECK:           %[[OUTC_CONS_PROD_LOCK:.*]] = aie.lock(%[[TILE_0_0]], 4) {init = 0 : i32, sym_name = "outC_cons_prod_lock"}
 // CHECK:           %[[OUTC_CONS_CONS_LOCK:.*]] = aie.lock(%[[TILE_0_0]], 5) {init = 0 : i32, sym_name = "outC_cons_cons_lock"}
 // CHECK:           %[[OUTC_BUFF_0:.*]] = aie.buffer(%[[TILE_0_2]]) {sym_name = "outC_buff_0"} : memref<16x16xi16>
@@ -37,7 +37,7 @@
 // CHECK:           func.func @matmul_scalar_i16_i16(%[[ARG0:.*]]: memref<16x8xi16>, %[[ARG1:.*]]: memref<8x16xi16>, %[[ARG2:.*]]: memref<16x16xi16>) {
 // CHECK:             return
 // CHECK:           }
-// CHECK:           aie.shim_dma_allocation @inA(MM2S, 0, 0)
+// CHECK:           aie.shim_dma_allocation @inA(MM2S, 0, 2)
 // CHECK:           %[[CORE_0_2:.*]] = aie.core(%[[TILE_0_2]]) {
 // CHECK:             %[[C0:.*]] = arith.constant 0 : index
 // CHECK:             %[[C1:.*]] = arith.constant 1 : index
@@ -82,8 +82,8 @@
 // CHECK:             }
 // CHECK:             aie.end
 // CHECK:           }
-// CHECK:           aie.shim_dma_allocation @inB(MM2S, 1, 0)
-// CHECK:           aie.shim_dma_allocation @outC(S2MM, 0, 0)
+// CHECK:           aie.shim_dma_allocation @inB(MM2S, 1, 2)
+// CHECK:           aie.shim_dma_allocation @outC(S2MM, 0, 2)
 // CHECK:           %[[MEM_0_2:.*]] = aie.mem(%[[TILE_0_2]]) {
 // CHECK:             %[[VAL_0:.*]] = aie.dma_start(S2MM, 0, ^bb1, ^bb3)
 // CHECK:           ^bb1:
@@ -127,8 +127,8 @@
 
 module @matmul {
   aie.device(xcve2302) {
-    %t00 = aie.tile(0, 0)
-    %t02 = aie.tile(0, 2)
+    %t00 = aie.tile(2, 0)
+    %t02 = aie.tile(2, 2)
     aie.objectfifo @inA  (%t00, { %t02 }, 2 : i32) : !aie.objectfifo<memref<16x8xi16>>
     aie.objectfifo @inB  (%t00, { %t02 }, 2 : i32) : !aie.objectfifo<memref<8x16xi16>>
     aie.objectfifo @outC (%t02, { %t00 }, 2 : i32) : !aie.objectfifo<memref<16x16xi16>>

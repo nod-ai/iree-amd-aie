@@ -1,5 +1,5 @@
 
-// RUN: iree-opt --amdaie-objectFifo-stateful-transform %s
+// RUN: iree-opt --amdaie-objectFifo-stateful-transform %s | FileCheck %s
 
 // CHECK-LABEL:   aie.device(xcve2302) {
 // CHECK:           memref.global "public" @of2_cons : memref<128xi32>
@@ -8,10 +8,10 @@
 // CHECK:           memref.global "public" @of1 : memref<128xi32>
 // CHECK:           memref.global "public" @of0_cons : memref<256xi32>
 // CHECK:           memref.global "public" @of0 : memref<256xi32>
-// CHECK:           %[[TILE_1_0:.*]] = aie.tile(1, 0)
-// CHECK:           %[[TILE_1_1:.*]] = aie.tile(1, 1)
-// CHECK:           %[[TILE_2_2:.*]] = aie.tile(2, 2)
-// CHECK:           %[[TILE_2_3:.*]] = aie.tile(2, 3)
+// CHECK:           %[[TILE_1_0:.*]] = aie.tile(2, 0)
+// CHECK:           %[[TILE_1_1:.*]] = aie.tile(2, 1)
+// CHECK:           %[[TILE_2_2:.*]] = aie.tile(3, 2)
+// CHECK:           %[[TILE_2_3:.*]] = aie.tile(3, 3)
 // CHECK:           %[[OF2_CONS_BUFF_0:.*]] = aie.buffer(%[[TILE_2_3]]) {sym_name = "of2_cons_buff_0"} : memref<128xi32>
 // CHECK:           %[[OF2_CONS_BUFF_1:.*]] = aie.buffer(%[[TILE_2_3]]) {sym_name = "of2_cons_buff_1"} : memref<128xi32>
 // CHECK:           %[[OF2_CONS_PROD_LOCK:.*]] = aie.lock(%[[TILE_2_3]], 0) {init = 2 : i32, sym_name = "of2_cons_prod_lock"}
@@ -29,7 +29,7 @@
 // CHECK:           aie.flow(%[[TILE_1_0]], DMA : 0, %[[TILE_1_1]], DMA : 0)
 // CHECK:           aie.flow(%[[TILE_1_1]], DMA : 0, %[[TILE_2_2]], DMA : 0)
 // CHECK:           aie.flow(%[[TILE_1_1]], DMA : 1, %[[TILE_2_3]], DMA : 0)
-// CHECK:           aie.shim_dma_allocation @of0(MM2S, 0, 1)
+// CHECK:           aie.shim_dma_allocation @of0(MM2S, 0, 2)
 // CHECK:           %[[MEMTILE_DMA_1_1:.*]] = aie.memtile_dma(%[[TILE_1_1]]) {
 // CHECK:             %[[VAL_0:.*]] = aie.dma_start(S2MM, 0, ^bb1, ^bb3)
 // CHECK:           ^bb1:
@@ -103,10 +103,10 @@
 
 module @ndDMAObjFifoAIE2 {
  aie.device(xcve2302) {
-    %tile10 = aie.tile(1, 0)
-    %tile11 = aie.tile(1, 1)
-    %tile22 = aie.tile(2, 2)
-    %tile23 = aie.tile(2, 3)
+    %tile10 = aie.tile(2, 0)
+    %tile11 = aie.tile(2, 1)
+    %tile22 = aie.tile(3, 2)
+    %tile23 = aie.tile(3, 3)
     aie.objectfifo @of0 (%tile10, {%tile11},
                          2 : i32) : !aie.objectfifo<memref<256xi32>>
     aie.objectfifo @of1 (%tile11 toStream [<size = 4, stride = 64>,
@@ -119,7 +119,6 @@ module @ndDMAObjFifoAIE2 {
                                            <size = 8, stride = 8>,
                                            <size = 4, stride = 1>],
                         {%tile23}, 2 : i32) : !aie.objectfifo<memref<128xi32>>
-   // expected-error@+1 {{'aie.objectfifo.link' op currently does not support objectFifos with dimensionsFromStreamPerConsumer.}}
    aie.objectfifo.link [ @of0 ] -> [ @of1, @of2 ] ()
  }
 }
