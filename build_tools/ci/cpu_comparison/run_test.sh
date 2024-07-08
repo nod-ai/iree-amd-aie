@@ -364,4 +364,5 @@ run_test --test_file ${test_name} --pipeline "pack-peel"
 # Conv2d tests.
 run_test --test_file ${THIS_DIR}/test_files/conv_int32.mlir --pipeline "conv-decompose"
 run_test --test_file ${THIS_DIR}/test_files/conv_bf16.mlir --pipeline "conv-decompose"
+run_test --test_file ${THIS_DIR}/test_files/conv_int8.mlir --pipeline "conv-decompose"
 
