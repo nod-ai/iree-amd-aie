@@ -9,6 +9,7 @@
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Passes.h"
+#include "iree-amd-aie/aie_runtime/iree_aie_runtime.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/Support/LogicalResult.h"
@@ -34,7 +35,7 @@ mlir::LogicalResult AIETranslateToCDODirect(
 
 inline void collectTiles(
     xilinx::AIE::DeviceOp &device,
-    DenseMap<mlir::iree_compiler::AMDAIE::TileID, Operation *> &tiles) {
+    DenseMap<mlir::iree_compiler::AMDAIE::TileLoc, Operation *> &tiles) {
   for (auto tile : device.getOps<xilinx::AIE::TileOp>()) {
     int colIndex = tile.colIndex();
     int rowIndex = tile.rowIndex();

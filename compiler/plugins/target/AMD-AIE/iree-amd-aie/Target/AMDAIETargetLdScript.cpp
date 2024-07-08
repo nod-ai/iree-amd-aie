@@ -58,21 +58,22 @@ static void writeLDScriptMap(raw_ostream &output, BufferOp buf, int offset) {
 // }
 LogicalResult mlir::iree_compiler::AMDAIE::AIETranslateToLdScript(
     ModuleOp module, raw_ostream &output, int tileCol, int tileRow) {
-  DenseMap<TileID, Operation *> tiles;
+  DenseMap<TileLoc, Operation *> tiles;
   DenseMap<Operation *, SmallVector<BufferOp, 4>> buffers;
 
   if (module.getOps<DeviceOp>().empty()) {
     module.emitOpError("expected AIE.device operation at toplevel");
   }
-  DeviceOp targetOp = *(module.getOps<DeviceOp>().begin());
+  DeviceOp deviceOp = *(module.getOps<DeviceOp>().begin());
 
-  collectTiles(targetOp, tiles);
-  ::collectBuffers(targetOp, buffers);
+  collectTiles(deviceOp, tiles);
+  ::collectBuffers(deviceOp, buffers);
 
-  for (auto tile : targetOp.getOps<TileOp>())
+  AMDAIEDeviceModel deviceModel =
+      getDeviceModel(static_cast<AMDAIEDevice>(deviceOp.getDevice()));
+  for (auto tile : deviceOp.getOps<TileOp>())
     if (tile.colIndex() == tileCol && tile.rowIndex() == tileRow) {
-      TileID srcCoord = {tile.colIndex(), tile.rowIndex()};
-      const auto &targetModel = getTargetModel(tile);
+      TileLoc srcCoord = {tile.colIndex(), tile.rowIndex()};
 
       // Figure out how much memory we have left for random allocations
       auto core = tile.getCoreOp();
@@ -82,10 +83,8 @@ LogicalResult mlir::iree_compiler::AMDAIE::AIETranslateToLdScript(
         int numBytes = buf.getAllocationSize();
         max = std::max(max, bufferBaseAddr + numBytes);
       }
-      int origin =
-          targetModel.getMemInternalBaseAddress({srcCoord.col, srcCoord.row}) +
-          max;
-      int length = targetModel.getLocalMemorySize() - max;
+      int origin = deviceModel.getMemInternalBaseAddress() + max;
+      int length = deviceModel.getCoreTileLocalMemorySize() - max;
       output << R"THESCRIPT(
 MEMORY
 {
@@ -117,7 +116,7 @@ SECTIONS
      *(.rodata*)
   } > data
 )THESCRIPT";
-      auto doBuffer = [&](std::optional<xilinx::AIE::TileID> tile, int offset,
+      auto doBuffer = [&](std::optional<TileLoc> tile, int offset,
                           std::string dir) {
         if (tile) {
           if (tiles.count({tile->col, tile->row}))
@@ -126,15 +125,14 @@ SECTIONS
         } else {
           output << "/* No tile with memory exists to the " << dir << ". */\n";
           output << ". = 0x" << llvm::utohexstr(offset) << ";\n";
-          uint32_t localMemSize = targetModel.getLocalMemorySize();
+          uint32_t localMemSize = deviceModel.getCoreTileLocalMemorySize();
           output << ". += 0x" << llvm::utohexstr(localMemSize) << ";\n";
         }
       };
 
       // Stack
       output << ". = 0x"
-             << llvm::utohexstr(
-                    targetModel.getMemInternalBaseAddress(srcCoord()))
+             << llvm::utohexstr(deviceModel.getMemInternalBaseAddress())
              << ";\n";
       output << "_sp_start_value_DM_stack = .;\n";
 
@@ -144,14 +142,14 @@ SECTIONS
       else
         output << "/* no stack allocated */\n";
 
-      doBuffer(targetModel.getMemSouth(srcCoord()),
-               targetModel.getMemSouthBaseAddress(), std::string("south"));
-      doBuffer(targetModel.getMemWest(srcCoord()),
-               targetModel.getMemWestBaseAddress(), std::string("west"));
-      doBuffer(targetModel.getMemNorth(srcCoord()),
-               targetModel.getMemNorthBaseAddress(), std::string("north"));
-      doBuffer(targetModel.getMemEast(srcCoord()),
-               targetModel.getMemEastBaseAddress(), std::string("east"));
+      doBuffer(deviceModel.getMemSouth(srcCoord),
+               deviceModel.getMemSouthBaseAddress(), std::string("south"));
+      doBuffer(deviceModel.getMemWest(srcCoord),
+               deviceModel.getMemWestBaseAddress(), std::string("west"));
+      doBuffer(deviceModel.getMemNorth(srcCoord),
+               deviceModel.getMemNorthBaseAddress(), std::string("north"));
+      doBuffer(deviceModel.getMemEast(srcCoord),
+               deviceModel.getMemEastBaseAddress(), std::string("east"));
 
       output << "  .bss : { *(.bss) } > data\n";
       output << "  .bss.DMb.4 : { *(.bss.DMb.4) } > data\n";

@@ -35,6 +35,7 @@ using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIE;
 
+namespace {
 StrmSwPortType toStrmT(WireBundle w) {
   switch (w) {
     case WireBundle::Core:
@@ -63,6 +64,7 @@ StrmSwPortType toStrmT(WireBundle w) {
       llvm::report_fatal_error("unhandled WireBundle");
   }
 }
+}  // namespace
 
 auto ps = std::filesystem::path::preferred_separator;
 

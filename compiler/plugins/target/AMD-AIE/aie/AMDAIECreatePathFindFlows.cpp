@@ -11,6 +11,7 @@
 #include "Passes.h"
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "d_ary_heap.h"
+#include "iree-amd-aie/aie_runtime/iree_aie_runtime.h"
 #include "llvm/ADT/DenseMapInfo.h"
 #include "llvm/ADT/DirectedGraph.h"
 #include "llvm/ADT/GraphTraits.h"
@@ -27,6 +28,37 @@ using namespace xilinx::AIE;
 #define OVER_CAPACITY_COEFF 0.02
 #define USED_CAPACITY_COEFF 0.02
 #define DEMAND_COEFF 1.1
+
+namespace {
+StrmSwPortType toStrmT(WireBundle w) {
+  switch (w) {
+    case WireBundle::Core:
+      return StrmSwPortType::CORE;
+    case WireBundle::DMA:
+      return StrmSwPortType::DMA;
+    case WireBundle::FIFO:
+      return StrmSwPortType::FIFO;
+    case WireBundle::South:
+      return StrmSwPortType::SOUTH;
+    case WireBundle::West:
+      return StrmSwPortType::WEST;
+    case WireBundle::North:
+      return StrmSwPortType::NORTH;
+    case WireBundle::East:
+      return StrmSwPortType::EAST;
+    case WireBundle::PLIO:
+      llvm::report_fatal_error("unhandled PLIO");
+    case WireBundle::NOC:
+      llvm::report_fatal_error("unhandled NOC");
+    case WireBundle::Trace:
+      return StrmSwPortType::TRACE;
+    case WireBundle::Ctrl:
+      return StrmSwPortType::CTRL;
+    default:
+      llvm::report_fatal_error("unhandled WireBundle");
+  }
+}
+}  // namespace
 
 namespace mlir::iree_compiler::AMDAIE {
 struct Port {
@@ -128,10 +160,10 @@ typedef struct DMAChannel {
   }
 } DMAChannel;
 
-struct Switchbox : TileID {
+struct Switchbox : TileLoc {
   // Necessary for initializer construction?
-  Switchbox(TileID t) : TileID(t) {}
-  Switchbox(int col, int row) : TileID{col, row} {}
+  Switchbox(TileLoc t) : TileLoc(t) {}
+  Switchbox(int col, int row) : TileLoc{col, row} {}
   friend std::ostream &operator<<(std::ostream &os, const Switchbox &s) {
     os << "Switchbox(" << s.col << ", " << s.row << ")";
     return os;
@@ -140,7 +172,7 @@ struct Switchbox : TileID {
   GENERATE_TO_STRING(Switchbox);
 
   bool operator==(const Switchbox &rhs) const {
-    return static_cast<TileID>(*this) == rhs;
+    return static_cast<TileLoc>(*this) == rhs;
   }
 };
 
@@ -243,9 +275,9 @@ struct PathEndPoint {
 
 namespace std {
 template <>
-struct hash<mlir::iree_compiler::AMDAIE::TileID> {
+struct hash<mlir::iree_compiler::AMDAIE::TileLoc> {
   size_t operator()(
-      const mlir::iree_compiler::AMDAIE::TileID &s) const noexcept {
+      const mlir::iree_compiler::AMDAIE::TileLoc &s) const noexcept {
     size_t h1 = hash<int>{}(s.col);
     size_t h2 = hash<int>{}(s.row);
     return h1 ^ (h2 << 1);
@@ -271,7 +303,7 @@ template <>
 struct hash<mlir::iree_compiler::AMDAIE::Switchbox> {
   size_t operator()(
       const mlir::iree_compiler::AMDAIE::Switchbox &s) const noexcept {
-    return hash<mlir::iree_compiler::AMDAIE::TileID>{}(s);
+    return hash<mlir::iree_compiler::AMDAIE::TileLoc>{}(s);
   }
 };
 
@@ -343,14 +375,14 @@ struct FlowNode {
 class Pathfinder {
  public:
   Pathfinder() = default;
-  void initialize(int maxCol, int maxRow,
-                  const xilinx::AIE::AIETargetModel &targetModel);
-  void addFlow(TileID srcCoords, Port srcPort, TileID dstCoords, Port dstPort);
+  void initialize(int maxCol, int maxRow, AMDAIEDeviceModel &deviceModel);
+  void addFlow(TileLoc srcCoords, Port srcPort, TileLoc dstCoords,
+               Port dstPort);
   bool addFixedConnection(xilinx::AIE::ConnectOp connectOp);
   std::optional<std::map<PathEndPoint, SwitchSettings>> findPaths(
       int maxIterations);
 
-  Switchbox *getSwitchbox(TileID coords) {
+  Switchbox *getSwitchbox(TileLoc coords) {
     auto *sb = std::find_if(graph.begin(), graph.end(), [&](SwitchboxNode *sb) {
       return sb->col == coords.col && sb->row == coords.row;
     });
@@ -361,7 +393,7 @@ class Pathfinder {
  private:
   SwitchboxGraph graph;
   std::vector<FlowNode> flows;
-  std::map<TileID, SwitchboxNode> grid;
+  std::map<TileLoc, SwitchboxNode> grid;
   // Use a list instead of a vector because nodes have an edge list of raw
   // pointers to edges (so growing a vector would invalidate the pointers).
   std::list<ChannelEdge> edges;
@@ -378,9 +410,9 @@ class DynamicTileAnalysis {
   std::map<PathEndPoint, SwitchSettings> flowSolutions;
   std::map<PathEndPoint, bool> processedFlows;
 
-  llvm::DenseMap<TileID, xilinx::AIE::TileOp> coordToTile;
-  llvm::DenseMap<TileID, xilinx::AIE::SwitchboxOp> coordToSwitchbox;
-  llvm::DenseMap<TileID, xilinx::AIE::ShimMuxOp> coordToShimMux;
+  llvm::DenseMap<TileLoc, xilinx::AIE::TileOp> coordToTile;
+  llvm::DenseMap<TileLoc, xilinx::AIE::SwitchboxOp> coordToSwitchbox;
+  llvm::DenseMap<TileLoc, xilinx::AIE::ShimMuxOp> coordToShimMux;
   llvm::DenseMap<int, xilinx::AIE::PLIOOp> coordToPLIO;
 
   const int maxIterations = 1000;  // how long until declared unroutable
@@ -530,15 +562,17 @@ LogicalResult DynamicTileAnalysis::runAnalysis(DeviceOp &device) {
     maxRow = std::max(maxRow, tileOp.rowIndex());
   }
 
-  pathfinder->initialize(maxCol, maxRow, device.getTargetModel());
+  AMDAIEDeviceModel deviceModel =
+      getDeviceModel(static_cast<AMDAIEDevice>(device.getDevice()));
+  pathfinder->initialize(maxCol, maxRow, deviceModel);
 
   // for each flow in the device, add it to pathfinder
   // each source can map to multiple different destinations (fanout)
   for (FlowOp flowOp : device.getOps<FlowOp>()) {
     TileOp srcTile = cast<TileOp>(flowOp.getSource().getDefiningOp());
     TileOp dstTile = cast<TileOp>(flowOp.getDest().getDefiningOp());
-    TileID srcCoords = {srcTile.colIndex(), srcTile.rowIndex()};
-    TileID dstCoords = {dstTile.colIndex(), dstTile.rowIndex()};
+    TileLoc srcCoords = {srcTile.colIndex(), srcTile.rowIndex()};
+    TileLoc dstCoords = {dstTile.colIndex(), dstTile.rowIndex()};
     Port srcPort = {flowOp.getSourceBundle(), flowOp.getSourceChannel()};
     Port dstPort = {flowOp.getDestBundle(), flowOp.getDestChannel()};
     LLVM_DEBUG(llvm::dbgs()
@@ -594,7 +628,7 @@ LogicalResult DynamicTileAnalysis::runAnalysis(DeviceOp &device) {
   for (auto shimmuxOp : device.getOps<ShimMuxOp>()) {
     int col = shimmuxOp.colIndex();
     int row = shimmuxOp.rowIndex();
-    assert(coordToShimMux.count(TileID{col, row}) == 0);
+    assert(coordToShimMux.count(TileLoc{col, row}) == 0);
     coordToShimMux[{col, row}] = shimmuxOp;
   }
 
@@ -648,7 +682,7 @@ ShimMuxOp DynamicTileAnalysis::getShimMux(OpBuilder &builder, int col) {
 }
 
 void Pathfinder::initialize(int maxCol, int maxRow,
-                            const AIETargetModel &targetModel) {
+                            AMDAIEDeviceModel &deviceModel) {
   // make grid of switchboxes
   int id = 0;
   for (int row = 0; row <= maxRow; row++) {
@@ -660,8 +694,8 @@ void Pathfinder::initialize(int maxCol, int maxRow,
         SwitchboxNode &southernNeighbor = grid.at({col, row - 1});
         // get the number of outgoing connections on the south side - outgoing
         // because these correspond to rhs of a connect op
-        if (uint32_t maxCapacity = targetModel.getNumDestSwitchboxConnections(
-                col, row, WireBundle::South)) {
+        if (uint32_t maxCapacity = deviceModel.getNumDestSwitchboxConnections(
+                col, row, toStrmT(WireBundle::South))) {
           edges.emplace_back(thisNode, southernNeighbor, WireBundle::South,
                              maxCapacity);
           (void)graph.connect(thisNode, southernNeighbor, edges.back());
@@ -670,8 +704,8 @@ void Pathfinder::initialize(int maxCol, int maxRow,
         // because they correspond to connections on the southside that are then
         // routed using internal connect ops through the switchbox (i.e., lhs of
         // connect ops)
-        if (uint32_t maxCapacity = targetModel.getNumSourceSwitchboxConnections(
-                col, row, WireBundle::South)) {
+        if (uint32_t maxCapacity = deviceModel.getNumSourceSwitchboxConnections(
+                col, row, toStrmT(WireBundle::South))) {
           edges.emplace_back(southernNeighbor, thisNode, WireBundle::North,
                              maxCapacity);
           (void)graph.connect(southernNeighbor, thisNode, edges.back());
@@ -680,14 +714,14 @@ void Pathfinder::initialize(int maxCol, int maxRow,
 
       if (col > 0) {  // if not in col 0 add channel to East/West
         SwitchboxNode &westernNeighbor = grid.at({col - 1, row});
-        if (uint32_t maxCapacity = targetModel.getNumDestSwitchboxConnections(
-                col, row, WireBundle::West)) {
+        if (uint32_t maxCapacity = deviceModel.getNumDestSwitchboxConnections(
+                col, row, toStrmT(WireBundle::West))) {
           edges.emplace_back(thisNode, westernNeighbor, WireBundle::West,
                              maxCapacity);
           (void)graph.connect(thisNode, westernNeighbor, edges.back());
         }
-        if (uint32_t maxCapacity = targetModel.getNumSourceSwitchboxConnections(
-                col, row, WireBundle::West)) {
+        if (uint32_t maxCapacity = deviceModel.getNumSourceSwitchboxConnections(
+                col, row, toStrmT(WireBundle::West))) {
           edges.emplace_back(westernNeighbor, thisNode, WireBundle::East,
                              maxCapacity);
           (void)graph.connect(westernNeighbor, thisNode, edges.back());
@@ -699,7 +733,7 @@ void Pathfinder::initialize(int maxCol, int maxRow,
 
 // Add a flow from src to dst can have an arbitrary number of dst locations due
 // to fanout.
-void Pathfinder::addFlow(TileID srcCoords, Port srcPort, TileID dstCoords,
+void Pathfinder::addFlow(TileLoc srcCoords, Port srcPort, TileLoc dstCoords,
                          Port dstPort) {
   // check if a flow with this source already exists
   for (auto &[src, dsts] : flows) {
@@ -741,7 +775,7 @@ bool Pathfinder::addFixedConnection(ConnectOp connectOp) {
   // TODO: keep track of capacity?
   if (sb.getTileOp().isShimNOCTile()) return true;
 
-  TileID sbTile(sb.getTileID().col, sb.getTileID().row);
+  TileLoc sbTile(sb.getTileID().col, sb.getTileID().row);
   WireBundle sourceBundle = connectOp.getSourceBundle();
   WireBundle destBundle = connectOp.getDestBundle();
 
@@ -749,7 +783,8 @@ bool Pathfinder::addFixedConnection(ConnectOp connectOp) {
   // outgoing connection
   auto matchingCh =
       std::find_if(edges.begin(), edges.end(), [&](ChannelEdge &ch) {
-        return static_cast<TileID>(ch.src) == sbTile && ch.bundle == destBundle;
+        return static_cast<TileLoc>(ch.src) == sbTile &&
+               ch.bundle == destBundle;
       });
   if (matchingCh != edges.end())
     return matchingCh->fixedCapacity.insert(connectOp.getDestChannel())
@@ -758,7 +793,7 @@ bool Pathfinder::addFixedConnection(ConnectOp connectOp) {
 
   // incoming connection
   matchingCh = std::find_if(edges.begin(), edges.end(), [&](ChannelEdge &ch) {
-    return static_cast<TileID>(ch.target) == sbTile &&
+    return static_cast<TileLoc>(ch.target) == sbTile &&
            ch.bundle == getConnectingBundle(sourceBundle);
   });
   if (matchingCh != edges.end())
@@ -992,14 +1027,14 @@ struct ConvertFlowsToInterconnect : OpConversionPattern<FlowOp> {
     Operation *Op = flowOp.getOperation();
 
     auto srcTile = cast<TileOp>(flowOp.getSource().getDefiningOp());
-    TileID srcCoords = {srcTile.colIndex(), srcTile.rowIndex()};
+    TileLoc srcCoords = {srcTile.colIndex(), srcTile.rowIndex()};
     auto srcBundle = flowOp.getSourceBundle();
     auto srcChannel = flowOp.getSourceChannel();
     Port srcPort = {srcBundle, srcChannel};
 
 #ifndef NDEBUG
     auto dstTile = cast<TileOp>(flowOp.getDest().getDefiningOp());
-    TileID dstCoords = {dstTile.colIndex(), dstTile.rowIndex()};
+    TileLoc dstCoords = {dstTile.colIndex(), dstTile.rowIndex()};
     auto dstBundle = flowOp.getDestBundle();
     auto dstChannel = flowOp.getDestChannel();
     LLVM_DEBUG(llvm::dbgs()
@@ -1254,16 +1289,18 @@ void AMDAIEPathfinderPass::runOnOperation() {
 
   // If the routing violates architecture-specific routing constraints, then
   // attempt to partially reroute.
-  const auto &targetModel = d.getTargetModel();
+  AMDAIEDeviceModel deviceModel =
+      getDeviceModel(static_cast<AMDAIEDevice>(d.getDevice()));
   std::vector<ConnectOp> problemConnects;
   d.walk([&](ConnectOp connect) {
     if (auto sw = connect->getParentOfType<SwitchboxOp>()) {
       // Constraint: memtile stream switch constraints
       if (auto tile = sw.getTileOp();
           tile.isMemTile() &&
-          !targetModel.isLegalMemtileConnection(
-              connect.getSourceBundle(), connect.getSourceChannel(),
-              connect.getDestBundle(), connect.getDestChannel())) {
+          !deviceModel.isLegalMemtileConnection(
+              tile.getCol(), tile.getRow(), toStrmT(connect.getSourceBundle()),
+              connect.getSourceChannel(), toStrmT(connect.getDestBundle()),
+              connect.getDestChannel())) {
         problemConnects.push_back(connect);
       }
     }
