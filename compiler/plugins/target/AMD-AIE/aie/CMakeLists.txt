@@ -297,6 +297,7 @@ iree_cc_library(
     AMDAIEXToStandard.cpp
   DEPS
     ::defs
+    iree-amd-aie::aie_runtime::iree_aie_runtime_static
     ::AIEDialectIR
     ::AIEXDialectIR
     ::AIENormalizeAddressSpacesGen
