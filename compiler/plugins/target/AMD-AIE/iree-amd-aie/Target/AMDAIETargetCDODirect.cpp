@@ -50,6 +50,7 @@ extern "C" {
 using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIE;
+using namespace mlir::iree_compiler::AMDAIE;
 
 StrmSwPortType toStrmT(WireBundle w) {
   switch (w) {
