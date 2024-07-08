@@ -37,19 +37,28 @@ endif()
 message(STATUS "OpenSSL include directories:" ${OPENSSL_INCLUDE_DIR})
 
 # https://stackoverflow.com/a/49216539/9045206
-macro(remove_flag_from_target _target _flag)
+function(remove_flag_from_target _target _flag)
     get_target_property(_target_cxx_flags ${_target} COMPILE_OPTIONS)
     if(_target_cxx_flags)
-        list(REMOVE_ITEM _target_cxx_flags ${_flag})
-        set_target_properties(${_target} PROPERTIES COMPILE_OPTIONS "${_target_cxx_flags}")
+      list(REMOVE_ITEM _target_cxx_flags ${_flag})
+      set_target_properties(${_target} PROPERTIES COMPILE_OPTIONS "${_target_cxx_flags}")
     endif()
-endmacro()
+endfunction()
 
-macro(replace_string_in_file _file _match_string _replace_string)
-    file(READ ${_file} _file_contents)
-    string(REPLACE ${_match_string} ${_replace_string} __file_contents "${_file_contents}")
-    file(WRITE ${_file}  "${__file_contents}")
-endmacro()
+function(replace_string_in_file _file _match_string _replace_string)
+    if(NOT (EXISTS ${_file}))
+      message(FATAL_ERROR "file ${_file} does not exist")
+    endif()
+    file(READ "${_file}" _file_contents)
+    if(_file_contents STREQUAL "")
+      message(FATAL_ERROR "empty file contents for ${_file}")
+    endif()
+    string(REPLACE "${_match_string}" "${_replace_string}" _file_contents "${_file_contents}")
+    if(_file_contents STREQUAL "")
+      message(FATAL_ERROR "empty replacement contents for ${_file}")
+    endif()
+    file(WRITE "${_file}" "${_file_contents}")
+endfunction()
 
 # ##############################################################################
 # Bootgen
@@ -332,17 +341,9 @@ static const XAie_StrmSwPortMap AieMlMemTileStrmSwSlavePortMap[] = {
 };
 ")
 
-file(READ ${_aie_rt_source_dir}/driver/src/global/xaiemlgbl_reginit.c _file_contents)
-string(REPLACE "${_incorrect_port_map}" "${_correct_port_map}" __file_contents "${_file_contents}")
-file(WRITE ${_aie_rt_source_dir}/driver/src/global/xaiemlgbl_reginit.c "${__file_contents}")
-
-file(READ ${_aie_rt_source_dir}/driver/src/common/xaie_helper.c _file_contents)
-string(REPLACE "(ColType == 0U) || (ColType == 1U)" "0" __file_contents "${_file_contents}")
-file(WRITE ${_aie_rt_source_dir}/driver/src/common/xaie_helper.c "${__file_contents}")
-
-file(READ ${_aie_rt_source_dir}/driver/src/device/xaie_device_aieml.c _file_contents)
-string(REPLACE "(ColType == 0U) || (ColType == 1U)" "0" __file_contents "${_file_contents}")
-file(WRITE ${_aie_rt_source_dir}/driver/src/device/xaie_device_aieml.c "${__file_contents}")
+replace_string_in_file(
+  ${_aie_rt_source_dir}/driver/src/global/xaie2ipugbl_reginit.c
+  "${_incorrect_port_map}" "${_correct_port_map}")
 
 get_target_property(_aie_runtime_compile_options xaiengine COMPILE_OPTIONS)
 list(REMOVE_ITEM _aie_runtime_compile_options -D__AIEBAREMETAL__)
@@ -372,9 +373,9 @@ extern void cdo_MaskPoll(uint64_t Addr, uint32_t Mask, uint32_t Expected_Value, 
 extern void cdo_BlockWrite32(uint64_t Addr, uint32_t* pData, uint32_t size); \
 extern void cdo_BlockSet32(uint64_t Addr, uint32_t Data, uint32_t size);")
 
-file(READ ${_aie_rt_source_dir}/driver/src/io_backend/ext/xaie_cdo.c _file_contents)
-string(REPLACE "#include \"cdo_rts.h\"" "${_cdo_externs}" __file_contents "${_file_contents}")
-file(WRITE ${_aie_rt_source_dir}/driver/src/io_backend/ext/xaie_cdo.c "${__file_contents}")
+replace_string_in_file(
+  ${_aie_rt_source_dir}/driver/src/io_backend/ext/xaie_cdo.c
+  "#include \"cdo_rts.h\"" "${_cdo_externs}")
 
 iree_install_targets(
   TARGETS xaiengine

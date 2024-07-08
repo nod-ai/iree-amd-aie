@@ -299,7 +299,7 @@ struct AIEControl {
     size_t deviceCols = tm.columns() + partitionStartCol;
 
     configPtr = XAie_Config{
-        /*AieGen*/ XAIE_DEV_GEN_AIEML,
+        /*AieGen*/ XAIE_DEV_GEN_AIE2IPU,
         /*BaseAddr*/ XAIE_BASE_ADDR,
         /*ColShift*/ XAIE_COL_SHIFT,
         /*RowShift*/ XAIE_ROW_SHIFT,
