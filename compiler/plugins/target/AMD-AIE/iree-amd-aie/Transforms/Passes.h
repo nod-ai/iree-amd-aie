@@ -101,6 +101,10 @@ std::unique_ptr<Pass> createAMDAIEDecomposeLinalgExtPackUnPackToAIRPass();
 /// operations and distribute the logical objectFifos.
 std::unique_ptr<Pass> createAMDAIEDistributeCoresAndObjectFifosPass();
 
+/// Create a pass to subsume loop iterations into DMA operations' access
+/// patterns.
+std::unique_ptr<Pass> createAMDAIEDmaLoopSubsumptionPass();
+
 /// Create a pass to convert dma operations to circular dma operations.
 std::unique_ptr<Pass> createAMDAIEDmaToCircularDmaPass();
 
