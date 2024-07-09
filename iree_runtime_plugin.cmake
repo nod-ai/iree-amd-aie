@@ -20,7 +20,7 @@ if(IREE_AMD_AIE_ENABLE_XRT_DRIVER)
   set(Boost_USE_STATIC_LIBS ON CACHE BOOL "" FORCE)
   find_package(XRT REQUIRED)
   find_package(Threads REQUIRED)
-  find_package(Boost REQUIRED COMPONENTS system program_options filesystem)
+  find_package(Boost REQUIRED COMPONENTS filesystem program_options system)
   message(STATUS "Boost include directories:" ${Boost_INCLUDE_DIRS})
 
   if(NOT WIN32)
