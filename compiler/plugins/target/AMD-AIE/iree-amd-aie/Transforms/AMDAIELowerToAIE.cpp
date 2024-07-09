@@ -406,6 +406,8 @@ LogicalResult getStaticDimsForExplicitAddressing(
 LogicalResult getStaticDimsForImplicitAddressing(
     Operation *op, MemRefType memrefType, SmallVectorImpl<int64_t> &staticSizes,
     SmallVectorImpl<int64_t> &staticStrides) {
+  assert((staticSizes.size() == staticStrides.size()) &&
+         "static size and strides should be of same size");
   // 1. Static sizes.
   SmallVector<int64_t> shapeArr = llvm::to_vector(memrefType.getShape());
   // staticOffsets/staticSizes/staticStrides all have same size.
