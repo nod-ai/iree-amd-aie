@@ -312,22 +312,22 @@ module {
 // CHECK:       aie.objectfifo.link [@[[OBJ0]]] -> [@[[OBJ1]]]
 // CHECK:       func.func @controlcode(%[[ARG0:.+]]: memref<32x64xi32>
 // CHECK:         aiex.npu.dma_memcpy_nd
-// CHECK-SAME:            %[[ARG0]][1, 1, 0, 32][1, 1, 32, 32][1, 1, 64, 1]
+// CHECK-SAME:            %[[ARG0]][0, 0, 0, 32][1, 1, 32, 32][0, 0, 64, 1]
 // CHECK-SAME:            issue_token = true
 // CHECK-SAME:            metadata = @[[OBJ1]]
 // CHECK-NEXT:    aiex.npu.dma_wait {symbol = @[[OBJ1]]}
 // CHECK:         aiex.npu.dma_memcpy_nd
-// CHECK-SAME:            %[[ARG0]][0, 0, 0, 0][0, 0, 32, 64][2048, 2048, 64, 1]
+// CHECK-SAME:            %[[ARG0]][0, 0, 0, 0][1, 1, 32, 64][0, 0, 64, 1]
 // CHECK-SAME:            issue_token = true
 // CHECK-SAME:            metadata = @[[OBJ1]]
 // CHECK-NEXT:    aiex.npu.dma_wait {symbol = @[[OBJ1]]}
 // CHECK:         aiex.npu.dma_memcpy_nd
-// CHECK-SAME:            %[[ARG0]][1, 1, 0, 32][1, 1, 32, 32][1, 1, 64, 1]
+// CHECK-SAME:            %[[ARG0]][0, 0, 0, 32][1, 1, 32, 32][0, 0, 64, 1]
 // CHECK-SAME:            issue_token = true
 // CHECK-SAME:            metadata = @[[OBJ2]]
 // CHECK-NEXT:    aiex.npu.dma_wait {symbol = @[[OBJ2]]}
 // CHECK:         aiex.npu.dma_memcpy_nd
-// CHECK-SAME:            %[[ARG0]][0, 0, 0, 0][0, 0, 32, 64][2048, 2048, 64, 1]
+// CHECK-SAME:            %[[ARG0]][0, 0, 0, 0][1, 1, 32, 64][0, 0, 64, 1]
 // CHECK-SAME:            issue_token = true
 // CHECK-SAME:            metadata = @[[OBJ2]]
 // CHECK-NEXT:    aiex.npu.dma_wait {symbol = @[[OBJ2]]}
@@ -415,9 +415,9 @@ module {
 // CHECK-SAME:  %[[ARG0:.+]]: memref<32x64xi32>
 // CHECK:         aiex.npu.dma_memcpy_nd
 // CHECK-SAME:    %[[ARG0]]
-// CHECK-SAME:    [1, 1, 0, 32]
+// CHECK-SAME:    [0, 0, 0, 32]
 // CHECK-SAME:    [1, 1, 32, 32]
-// CHECK-SAME:    [1, 1, 64, 1]
+// CHECK-SAME:    [0, 0, 64, 1]
 // CHECK-SAME:    issue_token = true
 // CHECK-SAME:    @[[OBJ0]]
 // CHECK-NEXT:    aiex.npu.dma_wait

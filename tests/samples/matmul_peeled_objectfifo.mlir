@@ -14,8 +14,8 @@
 // CHECK-SAME:    %[[ARG0]]
 // CHECK-DAG:     aiex.npu.dma_memcpy_nd
 // CHECK-SAME:    %[[ARG1]]
-// CHECK-DAG:     aiex.npu.dma_memcpy_nd(0, 0, %[[ARG2]][1, 1, 0, 0][1, 1, 32, 32][1, 1, 64, 1]
-// CHECK-DAG:     aiex.npu.dma_memcpy_nd(0, 0, %[[ARG2]][1, 1, 0, 32][1, 1, 32, 32][1, 1, 64, 1]
+// CHECK-DAG:     aiex.npu.dma_memcpy_nd(0, 0, %[[ARG2]][0, 0, 0, 0][1, 1, 32, 32][0, 0, 64, 1]
+// CHECK-DAG:     aiex.npu.dma_memcpy_nd(0, 0, %[[ARG2]][0, 0, 0, 32][1, 1, 32, 32][0, 0, 64, 1]
 #map = affine_map<(d0) -> (d0 * 32)>
 #map1 = affine_map<(d0) -> (d0 * 64)>
 #map2 = affine_map<(d0, d1, d2, d3, d4, d5) -> (d2, d0, d3, d5)>
