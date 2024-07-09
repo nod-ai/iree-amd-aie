@@ -801,7 +801,7 @@ static LogicalResult generateUnifiedObject(MLIRContext *context,
                 {"-O2", "--inline-threshold=10", "-S", std::string(LLVMIRFile),
                  "--disable-builtin=memset", "-o", std::string(OptLLVMIRFile)},
                 TK.Verbose) != 0)
-      return moduleOp.emitOpError("Failed to optimize");
+      return moduleOp.emitOpError("Failed to optimize ll");
 
     if (runTool(peanoLLCBin,
                 {std::string(OptLLVMIRFile), "-O2",
@@ -809,7 +809,7 @@ static LogicalResult generateUnifiedObject(MLIRContext *context,
                  "--function-sections", "--filetype=obj", "-o",
                  std::string(outputFile)},
                 TK.Verbose) != 0)
-      return moduleOp.emitOpError("Failed to assemble");
+      return moduleOp.emitOpError("Failed to assemble ll");
   }
   copy->erase();
   return success();
