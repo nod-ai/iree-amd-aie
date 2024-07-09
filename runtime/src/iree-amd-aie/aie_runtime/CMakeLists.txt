@@ -388,97 +388,103 @@ iree_install_targets(
 # xclbinutil
 # ##############################################################################
 
-# Note: we do not simply add the subdirectory and use the imported target because
-# XRT will build in its entirety when we do `ninja install` for IREE.
+if(IREE_AMD_AIE_ENABLE_XRT_DRIVER)
+  # Note: we do not simply add the subdirectory and use the imported target because
+  # XRT will build in its entirety when we do `ninja install` for IREE.
 
-# obv we have python but XRT uses this var to look for an ancient version of pybind (and fail)
-replace_string_in_file(${IREE_XRT_SOURCE_DIR}/python/pybind11/CMakeLists.txt "if (HAS_PYTHON)" "if (FALSE)")
+  # obv we have python but XRT uses this var to look for an ancient version of pybind (and fail)
+  replace_string_in_file(${IREE_XRT_SOURCE_DIR}/python/pybind11/CMakeLists.txt "if (HAS_PYTHON)" "if (FALSE)")
 
-# remove ssl dep
-replace_string_in_file(${IREE_XRT_SOURCE_DIR}/runtime_src/tools/xclbinutil/XclBinUtilMain.cxx "bValidateSignature == true" "false")
+  # remove ssl dep
+  replace_string_in_file(${IREE_XRT_SOURCE_DIR}/runtime_src/tools/xclbinutil/XclBinUtilMain.cxx "bValidateSignature == true" "false")
 
-set(_xclbinutil_source_dir ${IREE_XRT_SOURCE_DIR}/runtime_src/tools/xclbinutil)
+  set(_xclbinutil_source_dir ${IREE_XRT_SOURCE_DIR}/runtime_src/tools/xclbinutil)
 
-# transformcdo target
-add_subdirectory(${_xclbinutil_source_dir}/aie-pdi-transform aie-pdi-transform)
+  # transformcdo target
+  add_subdirectory(${_xclbinutil_source_dir}/aie-pdi-transform aie-pdi-transform)
 
-# otherwise the various stois that read these will explode...
-# XRT/src/runtime_src/tools/xclbinutil/XclBinClass.cxx#L55
-file(READ ${IREE_XRT_SOURCE_DIR}/CMakeLists.txt _xrt_cmake_file_contents)
-string(REGEX MATCH "XRT_VERSION_MAJOR ([0-9]+)" XRT_VERSION_MAJOR ${_xrt_cmake_file_contents})
-# note CMAKE_MATCH_0 is the whole match...
-set(XRT_VERSION_MAJOR ${CMAKE_MATCH_1})
-string(REGEX MATCH "XRT_VERSION_MINOR ([0-9]+)" XRT_VERSION_MINOR ${_xrt_cmake_file_contents})
-set(XRT_VERSION_MINOR ${CMAKE_MATCH_1})
-string(REGEX MATCH "XRT_VERSION_PATCH ([0-9]+)" XRT_VERSION_PATCH ${_xrt_cmake_file_contents})
-set(XRT_VERSION_PATCH ${CMAKE_MATCH_1})
-set(XRT_VERSION_STRING ${XRT_VERSION_MAJOR}.${XRT_VERSION_MINOR}.${XRT_VERSION_PATCH} CACHE INTERNAL "")
-configure_file(${IREE_XRT_SOURCE_DIR}/CMake/config/version.h.in ${_xclbinutil_source_dir}/version.h)
+  # otherwise the various stois that read these will explode...
+  # XRT/src/runtime_src/tools/xclbinutil/XclBinClass.cxx#L55
+  file(READ ${IREE_XRT_SOURCE_DIR}/CMakeLists.txt _xrt_cmake_file_contents)
+  string(REGEX MATCH "XRT_VERSION_MAJOR ([0-9]+)" XRT_VERSION_MAJOR ${_xrt_cmake_file_contents})
+  # note CMAKE_MATCH_0 is the whole match...
+  set(XRT_VERSION_MAJOR ${CMAKE_MATCH_1})
+  string(REGEX MATCH "XRT_VERSION_MINOR ([0-9]+)" XRT_VERSION_MINOR ${_xrt_cmake_file_contents})
+  set(XRT_VERSION_MINOR ${CMAKE_MATCH_1})
+  string(REGEX MATCH "XRT_VERSION_PATCH ([0-9]+)" XRT_VERSION_PATCH ${_xrt_cmake_file_contents})
+  set(XRT_VERSION_PATCH ${CMAKE_MATCH_1})
+  set(XRT_VERSION_STRING ${XRT_VERSION_MAJOR}.${XRT_VERSION_MINOR}.${XRT_VERSION_PATCH} CACHE INTERNAL "")
+  configure_file(${IREE_XRT_SOURCE_DIR}/CMake/config/version.h.in ${_xclbinutil_source_dir}/version.h)
 
-file(
-  GLOB
-  _xclbinutil_srcs
-  "${_xclbinutil_source_dir}/DTC*.cxx"
-  "${_xclbinutil_source_dir}/FDT*.cxx"
-  "${_xclbinutil_source_dir}/CBOR.cxx"
-  "${_xclbinutil_source_dir}/RapidJsonUtilities.cxx"
-  "${_xclbinutil_source_dir}/KernelUtilities.cxx"
-  "${_xclbinutil_source_dir}/ElfUtilities.cxx"
-  "${_xclbinutil_source_dir}/FormattedOutput.cxx"
-  "${_xclbinutil_source_dir}/ParameterSectionData.cxx"
-  "${_xclbinutil_source_dir}/Section.cxx"
-  # Note: Due to linking dependency issue, this entry needs to be before the other sections
-  "${_xclbinutil_source_dir}/Section*.cxx"
-  "${_xclbinutil_source_dir}/Resources*.cxx"
-  "${_xclbinutil_source_dir}/XclBinClass.cxx"
-  NoOpXclBinSignature.cxx
-  "${_xclbinutil_source_dir}/XclBinUtilities.cxx"
-  # Unlike bootgen, xclbinutil cannot be built separately as a static archive (I wish!)
-  # because the linker will DCE static initializers in SectionMemTopology.cxx
-  # and then --add-replace-section:MEM_TOPOLOGY won't work...
-  # XRT/src/runtime_src/tools/xclbinutil/SectionMemTopology.cxx#L26-L41
-  "${_xclbinutil_source_dir}/xclbinutil.cxx"
-  "${_xclbinutil_source_dir}/XclBinUtilMain.cxx"
-)
+  file(
+    GLOB
+    _xclbinutil_srcs
+    "${_xclbinutil_source_dir}/DTC*.cxx"
+    "${_xclbinutil_source_dir}/FDT*.cxx"
+    "${_xclbinutil_source_dir}/CBOR.cxx"
+    "${_xclbinutil_source_dir}/RapidJsonUtilities.cxx"
+    "${_xclbinutil_source_dir}/KernelUtilities.cxx"
+    "${_xclbinutil_source_dir}/ElfUtilities.cxx"
+    "${_xclbinutil_source_dir}/FormattedOutput.cxx"
+    "${_xclbinutil_source_dir}/ParameterSectionData.cxx"
+    "${_xclbinutil_source_dir}/Section.cxx"
+    # Note: Due to linking dependency issue, this entry needs to be before the other sections
+    "${_xclbinutil_source_dir}/Section*.cxx"
+    "${_xclbinutil_source_dir}/Resources*.cxx"
+    "${_xclbinutil_source_dir}/XclBinClass.cxx"
+    NoOpXclBinSignature.cxx
+    "${_xclbinutil_source_dir}/XclBinUtilities.cxx"
+    # Unlike bootgen, xclbinutil cannot be built separately as a static archive (I wish!)
+    # because the linker will DCE static initializers in SectionMemTopology.cxx
+    # and then --add-replace-section:MEM_TOPOLOGY won't work...
+    # XRT/src/runtime_src/tools/xclbinutil/SectionMemTopology.cxx#L26-L41
+    "${_xclbinutil_source_dir}/xclbinutil.cxx"
+    "${_xclbinutil_source_dir}/XclBinUtilMain.cxx"
+  )
 
-iree_cc_binary(
-  NAME
-    amdaie_xclbinutil
-  SRCS
-    ${_xclbinutil_srcs}
-  COPTS
-    -fexceptions
-    -frtti
-  INSTALL_COMPONENT
-    IREETools-Runtime
-  PUBLIC
-)
+  iree_cc_binary(
+    NAME
+      amdaie_xclbinutil
+    SRCS
+      ${_xclbinutil_srcs}
+    COPTS
+      -fexceptions
+      -frtti
+    INSTALL_COMPONENT
+      IREETools-Runtime
+    PUBLIC
+  )
 
-set(_xclbin_libs ${Boost_LIBRARIES} Threads::Threads)
+  set(THREADS_PREFER_PTHREAD_FLAG ON)
+  set(_xclbin_libs
+      Boost::filesystem
+      Boost::program_options
+      Boost::system
+      Threads::Threads)
 
-if(WIN32)
-  target_compile_options(iree-amd-aie_aie_runtime_amdaie_xclbinutil
-                         PRIVATE "/EHsc")
-  # Uncomment if you get LINK : fatal error LNK1104: cannot open file
-  # 'libboost_filesystem-vc142-mt-gd-x64-1_74.lib'
-  # target_compile_definitions(xclbinutil-lib PUBLIC BOOST_ALL_DYN_LINK
-else()
-  target_compile_definitions(iree-amd-aie_aie_runtime_amdaie_xclbinutil
-                             PRIVATE ENABLE_JSON_SCHEMA_VALIDATION)
-  list(APPEND _xclbin_libs transformcdo)
+  if(WIN32)
+    target_compile_options(iree-amd-aie_aie_runtime_amdaie_xclbinutil
+                           PRIVATE "/EHsc")
+    # Uncomment if you get LINK : fatal error LNK1104: cannot open file
+    # 'libboost_filesystem-vc142-mt-gd-x64-1_74.lib'
+    # target_compile_definitions(xclbinutil-lib PUBLIC BOOST_ALL_DYN_LINK
+  else()
+    target_compile_definitions(iree-amd-aie_aie_runtime_amdaie_xclbinutil
+                               PRIVATE ENABLE_JSON_SCHEMA_VALIDATION)
+    list(APPEND _xclbin_libs transformcdo)
+  endif()
+
+  target_link_libraries(iree-amd-aie_aie_runtime_amdaie_xclbinutil
+                        PRIVATE ${_xclbin_libs})
+  target_include_directories(iree-amd-aie_aie_runtime_amdaie_xclbinutil
+                             PRIVATE ${XRT_BINARY_DIR}/gen
+                                     ${Boost_INCLUDE_DIRS}
+                                     ${IREE_XRT_SOURCE_DIR}/runtime_src/core/include
+                                     ${_xclbinutil_source_dir})
+
+  set_target_properties(iree-amd-aie_aie_runtime_amdaie_xclbinutil
+                        PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/tools")
 endif()
-
-set(THREADS_PREFER_PTHREAD_FLAG ON)
-target_link_libraries(iree-amd-aie_aie_runtime_amdaie_xclbinutil
-                      PRIVATE ${_xclbin_libs})
-target_include_directories(iree-amd-aie_aie_runtime_amdaie_xclbinutil
-                           PRIVATE ${XRT_BINARY_DIR}/gen
-                                   ${Boost_INCLUDE_DIRS}
-                                   ${IREE_XRT_SOURCE_DIR}/runtime_src/core/include
-                                   ${_xclbinutil_source_dir})
-
-set_target_properties(iree-amd-aie_aie_runtime_amdaie_xclbinutil
-                      PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/tools")
 
 # ##############################################################################
 # iree-aie-runtime-static
