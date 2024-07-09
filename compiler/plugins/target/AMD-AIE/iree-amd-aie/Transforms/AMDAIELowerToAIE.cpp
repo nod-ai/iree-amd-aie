@@ -408,6 +408,12 @@ LogicalResult getStaticDimsForImplicitAddressing(
     SmallVectorImpl<int64_t> &staticStrides) {
   // 1. Static sizes.
   SmallVector<int64_t> shapeArr = llvm::to_vector(memrefType.getShape());
+  // staticOffsets/staticSizes/staticStrides all have same size.
+  if (shapeArr.size() > staticSizes.size()) {
+    op->emitError() << "implicit source/target L3 memref has rank greater than "
+                       "the expected static offsets/sizes/strides rank (4)";
+    return failure();
+  }
   std::copy(shapeArr.begin(), shapeArr.end(),
             staticSizes.end() - shapeArr.size());
   // 2. Static strides.
