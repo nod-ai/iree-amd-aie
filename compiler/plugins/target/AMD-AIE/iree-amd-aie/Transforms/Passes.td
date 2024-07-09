@@ -117,6 +117,12 @@ def AMDAIEDistributeCoresAndObjectFifos :
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEDistributeCoresAndObjectFifosPass()";
 }
 
+def AMDAIEDmaLoopSubsumption :
+  Pass<"iree-amdaie-dma-loop-subsumption"> {
+  let summary = "Subsume loop iterations into DMA operations' access patterns.";
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEDmaLoopSubsumptionPass()";
+}
+
 def AMDAIEDmaToCircularDma :
   Pass<"iree-amdaie-dma-to-circular-dma"> {
   let summary = "Convert dma operations to circular dma operations.";

@@ -15,6 +15,7 @@ iree_cc_library(
     "AMDAIEAttrs.h"
     "AMDAIEDialect.h"
     "AMDAIEOps.h"
+    "AMDAIETargetModel.h"
     "AMDAIETypes.h"
   TEXTUAL_HDRS
     "AMDAIEAttrs.cpp.inc"

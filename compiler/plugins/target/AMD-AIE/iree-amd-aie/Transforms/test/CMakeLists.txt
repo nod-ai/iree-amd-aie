@@ -22,6 +22,7 @@ iree_lit_test_suite(
     "create_reference_to_allocation.mlir"
     "disable_vectorization.mlir"
     "distribute_cores_and_objectfifos.mlir"
+    "dma_loop_subsumption.mlir"
     "dma_to_circular_dma.mlir"
     "fuse_consumer_into_loop_scf_for.mlir"
     "fuse_consumer_into_loop_scf_forall.mlir"

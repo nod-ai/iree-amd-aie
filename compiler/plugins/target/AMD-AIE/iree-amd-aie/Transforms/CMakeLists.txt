@@ -55,6 +55,7 @@ iree_cc_library(
     "AMDAIECreateLogicalObjectFifoLink.cpp"
     "AMDAIECreateReferenceToAllocation.cpp"
     "AMDAIEDistributeCoresAndObjectFifos.cpp"
+    "AMDAIEDmaLoopSubsumption.cpp"
     "AMDAIEDmaToCircularDma.cpp"
     "AMDAIEDmaUtils.cpp"
     "AMDAIEFuseConsumerIntoLoop.cpp"
