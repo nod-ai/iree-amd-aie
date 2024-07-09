@@ -35,11 +35,6 @@ export CMAKE_CXX_COMPILER_LAUNCHER=ccache
 # Clear ccache stats.
 ccache -z
 
-# Build XRT.
-XRT_BUILD_DIR=$repo_root/xrt-build
-XRT_INSTALL_DIR=$repo_root/xrt-install
-$this_dir/build_xrt.sh $XRT_BUILD_DIR $XRT_INSTALL_DIR
-
 echo "Building IREE"
 echo "============="
 echo '{
@@ -73,8 +68,7 @@ cmake -S "$iree_dir" -B "$build_dir" \
   -DIREE_INPUT_TOSA=OFF \
   -DIREE_INPUT_STABLEHLO=OFF \
   -DIREE_CMAKE_PLUGIN_PATHS=../iree-amd-aie \
-  -DIREE_EXTERNAL_HAL_DRIVERS=xrt \
-  -DXRT_DIR=$XRT_INSTALL_DIR/opt/xilinx/xrt/share/cmake/XRT
+  -DIREE_EXTERNAL_HAL_DRIVERS=xrt
 
 echo "Building all"
 echo "------------"

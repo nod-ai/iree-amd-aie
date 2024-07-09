@@ -398,9 +398,6 @@ replace_string_in_file(${IREE_XRT_SOURCE_DIR}/runtime_src/tools/xclbinutil/XclBi
 
 set(_xclbinutil_source_dir ${IREE_XRT_SOURCE_DIR}/runtime_src/tools/xclbinutil)
 
-# transformcdo target
-add_subdirectory(${_xclbinutil_source_dir}/aie-pdi-transform aie-pdi-transform)
-
 # otherwise the various stois that read these will explode...
 # XRT/src/runtime_src/tools/xclbinutil/XclBinClass.cxx#L55
 file(READ ${IREE_XRT_SOURCE_DIR}/CMakeLists.txt _xrt_cmake_file_contents)
@@ -453,7 +450,11 @@ iree_cc_binary(
   PUBLIC
 )
 
-set(_xclbin_libs ${Boost_LIBRARIES} Threads::Threads)
+set(_xclbin_libs
+    Boost::filesystem
+    Boost::system
+    Boost::program_options
+    Threads::Threads)
 
 if(WIN32)
   target_compile_options(iree-amd-aie_aie_runtime_amdaie_xclbinutil
@@ -472,7 +473,6 @@ target_link_libraries(iree-amd-aie_aie_runtime_amdaie_xclbinutil
                       PRIVATE ${_xclbin_libs})
 target_include_directories(iree-amd-aie_aie_runtime_amdaie_xclbinutil
                            PRIVATE ${XRT_BINARY_DIR}/gen
-                                   ${Boost_INCLUDE_DIRS}
                                    ${IREE_XRT_SOURCE_DIR}/runtime_src/core/include
                                    ${_xclbinutil_source_dir})
 
