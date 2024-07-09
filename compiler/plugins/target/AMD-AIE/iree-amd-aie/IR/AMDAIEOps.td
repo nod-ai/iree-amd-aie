@@ -241,6 +241,29 @@ def AMDAIE_NpuDmaCpyNdOp: AMDAIE_Op<"npu.dma_cpy_nd",
   let extraClassDeclaration = [{
     // Check whether this dma operation has a wait user.
     bool hasDmaWaitOpUser();
+
+    // Helper method to return the memory space of source as an integer. If
+    // no memory space attribute, this indicates a global memory space and
+    // we return 0. Else cast the memory space attribute to an integer. 
+    uint64_t getSourceMemorySpaceAsUInt() {
+      MemRefType sourceMemrefType =
+          cast<LogicalObjectFifoType>(getDmaCpyNdOp().getSourceType())
+          .getElementType();
+      Attribute memSpace = sourceMemrefType.getMemorySpace();
+      return memSpace ? dyn_cast<IntegerAttr>(memSpace).getInt() : 0;
+    }
+    
+    // Helper method to return the memory space of target as an integer. If
+    // no memory space attribute, this indicates a global memory space and
+    // we return 0. Else cast the memory space attribute to an integer. 
+    uint64_t getTargetMemorySpaceAsUInt() {
+      MemRefType targetMemrefType =
+          cast<LogicalObjectFifoType>(getDmaCpyNdOp().getTargetType())
+          .getElementType();
+      Attribute memSpace = targetMemrefType.getMemorySpace();
+      return memSpace ? dyn_cast<IntegerAttr>(memSpace).getInt() : 0;
+    }
+    
     // Check whether this operation has addressing on the source side.
     bool hasSourceAddressing() {
       return !getSourceMixedOffsets().empty() || !getSourceMixedSizes().empty() 

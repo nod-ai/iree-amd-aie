@@ -300,26 +300,37 @@ module {
 
 // -----
 
+// Test to show mix of implicit/explicit source/target addressing in amdaie.npu.dma_cpy_nd.
+
 // CHECK:       aie.device
 // CHECK-DAG:   %[[TILE_0_2:.+]] = aie.tile(0, 2)
 // CHECK-DAG:   %[[TILE_0_1:.+]] = aie.tile(0, 1)
 // CHECK-DAG:   %[[TILE_0_0:.+]] = aie.tile(0, 0)
 // CHECK:       aie.objectfifo @[[OBJ0:.+]](%[[TILE_0_2]], {%[[TILE_0_1]]}
 // CHECK-NEXT:  aie.objectfifo @[[OBJ1:.+]](%[[TILE_0_1]], {%[[TILE_0_0]]}
-// CHECK-NEXT:  aie.objectfifo.link
-// CHECK-SAME:  @[[OBJ0]]
-// CHECK-SAME:  @[[OBJ1]]
-// CHECK:       func.func @controlcode
-// CHECK-SAME:  %[[ARG0:.+]]: memref<32x64xi32>
+// CHECK-NEXT:  aie.objectfifo @[[OBJ2:.+]](%[[TILE_0_0]], {%[[TILE_0_1]]}
+// CHECK:       aie.objectfifo.link [@[[OBJ0]]] -> [@[[OBJ1]]]
+// CHECK:       func.func @controlcode(%[[ARG0:.+]]: memref<32x64xi32>
 // CHECK:         aiex.npu.dma_memcpy_nd
-// CHECK-SAME:    %[[ARG0]]
-// CHECK-SAME:    [1, 1, 0, 32]
-// CHECK-SAME:    [1, 1, 32, 32]
-// CHECK-SAME:    [1, 1, 64, 1]
-// CHECK-SAME:    issue_token = true
-// CHECK-SAME:    @[[OBJ1]]
-// CHECK-NEXT:    aiex.npu.dma_wait
-// CHECK-SAME:    @[[OBJ1]]
+// CHECK-SAME:            %[[ARG0]][0, 0, 0, 32][1, 1, 32, 32][0, 0, 64, 1]
+// CHECK-SAME:            issue_token = true
+// CHECK-SAME:            metadata = @[[OBJ1]]
+// CHECK-NEXT:    aiex.npu.dma_wait {symbol = @[[OBJ1]]}
+// CHECK:         aiex.npu.dma_memcpy_nd
+// CHECK-SAME:            %[[ARG0]][0, 0, 0, 0][1, 1, 32, 64][0, 0, 64, 1]
+// CHECK-SAME:            issue_token = true
+// CHECK-SAME:            metadata = @[[OBJ1]]
+// CHECK-NEXT:    aiex.npu.dma_wait {symbol = @[[OBJ1]]}
+// CHECK:         aiex.npu.dma_memcpy_nd
+// CHECK-SAME:            %[[ARG0]][0, 0, 0, 32][1, 1, 32, 32][0, 0, 64, 1]
+// CHECK-SAME:            issue_token = true
+// CHECK-SAME:            metadata = @[[OBJ2]]
+// CHECK-NEXT:    aiex.npu.dma_wait {symbol = @[[OBJ2]]}
+// CHECK:         aiex.npu.dma_memcpy_nd
+// CHECK-SAME:            %[[ARG0]][0, 0, 0, 0][1, 1, 32, 64][0, 0, 64, 1]
+// CHECK-SAME:            issue_token = true
+// CHECK-SAME:            metadata = @[[OBJ2]]
+// CHECK-NEXT:    aiex.npu.dma_wait {symbol = @[[OBJ2]]}
 module {
   func.func @controlcode() {
     amdaie.workgroup {
@@ -339,13 +350,62 @@ module {
       %obj1 = amdaie.logicalobjectfifo.from_memref %alloc_1, {%tile_0_1} : memref<32x32xi32, 1> -> !amdaie.logicalobjectfifo<memref<32x32xi32, 1>>
       %obj2 = amdaie.logicalobjectfifo.from_memref %alloc_2, {%tile_0_2} : memref<4x8x4x8xi32, 2> -> !amdaie.logicalobjectfifo<memref<4x8x4x8xi32, 2>>
       %dma0 = amdaie.circular_dma_cpy_nd(%obj1[] [] [], %obj2[] [] []) : (!amdaie.logicalobjectfifo<memref<32x32xi32, 1>>, !amdaie.logicalobjectfifo<memref<4x8x4x8xi32, 2>>)
+      %dma_target_l3 = amdaie.circular_dma_cpy_nd(%obj0[] [] [], %obj1[] [] []) : (!amdaie.logicalobjectfifo<memref<32x64xi32>>, !amdaie.logicalobjectfifo<memref<32x32xi32, 1>>)
+      %dma_source_l3 = amdaie.circular_dma_cpy_nd(%obj1[] [] [], %obj0[] [] []) : (!amdaie.logicalobjectfifo<memref<32x32xi32, 1>>, !amdaie.logicalobjectfifo<memref<32x64xi32>>)
       %dma1 = amdaie.circular_dma_cpy_nd(%obj0[] [] [], %obj1[] [] []) : (!amdaie.logicalobjectfifo<memref<32x64xi32>>, !amdaie.logicalobjectfifo<memref<32x32xi32, 1>>)
-      amdaie.logicalobjectfifo.link[%dma0] -> [%dma1] ()
+      amdaie.logicalobjectfifo.link[%dma0] -> [%dma_target_l3] ()
       memref.dealloc %alloc_2 : memref<4x8x4x8xi32, 2>
       memref.dealloc %alloc_1 : memref<32x32xi32, 1>
       amdaie.controlcode {
-        %npu_dma = amdaie.npu.dma_cpy_nd %dma1([%c0, %c32] [%c32, %c32] [%c64, %c1], [] [] [])
-        amdaie.npu.dma_wait(%npu_dma, S2MM)
+        %npu_dma_0 = amdaie.npu.dma_cpy_nd %dma_target_l3([%c0, %c32] [%c32, %c32] [%c64, %c1], [] [] [])
+        amdaie.npu.dma_wait(%npu_dma_0, S2MM)
+        %npu_dma_1 = amdaie.npu.dma_cpy_nd %dma_target_l3([] [] [], [] [] [])
+        amdaie.npu.dma_wait(%npu_dma_1, S2MM)
+        %npu_dma_2 = amdaie.npu.dma_cpy_nd %dma_source_l3([] [] [], [%c0, %c32] [%c32, %c32] [%c64, %c1])
+        amdaie.npu.dma_wait(%npu_dma_2, MM2S)
+        %npu_dma_3 = amdaie.npu.dma_cpy_nd %dma_source_l3([] [] [], [] [] [])
+        amdaie.npu.dma_wait(%npu_dma_3, MM2S)
+
+        amdaie.end
+      }
+    }
+    return
+  }
+}
+
+// -----
+
+// Test to demonstrate invalid implicit L3 memref type that has rank greater than that
+// expected for static offsets/sizes/strides.
+module {
+  func.func @controlcode_invalid_implicit_l3_memref() {
+    amdaie.workgroup {
+      %c0 = arith.constant 0 : index
+      %c1 = arith.constant 1 : index
+      %c2 = arith.constant 2 : index
+      %c32 = arith.constant 32 : index
+      %c64 = arith.constant 64 : index
+      %2 = hal.interface.binding.subspan set(0) binding(2) type(storage_buffer) alignment(64) offset(%c0) : memref<32x16x64x128x32xi32>
+      memref.assume_alignment %2, 64 : memref<32x16x64x128x32xi32>
+      %tile_0_0 = amdaie.tile(%c0, %c0)
+      %tile_0_1 = amdaie.tile(%c0, %c1)
+      %tile_0_2 = amdaie.tile(%c0, %c2)
+      %alloc_1 = memref.alloc() : memref<32x32xi32, 1>
+      %alloc_2 = memref.alloc() : memref<4x8x4x8xi32, 2>
+      %obj0 = amdaie.logicalobjectfifo.from_memref %2, {%tile_0_0} : memref<32x16x64x128x32xi32> -> !amdaie.logicalobjectfifo<memref<32x16x64x128x32xi32>>
+      %obj1 = amdaie.logicalobjectfifo.from_memref %alloc_1, {%tile_0_1} : memref<32x32xi32, 1> -> !amdaie.logicalobjectfifo<memref<32x32xi32, 1>>
+      %obj2 = amdaie.logicalobjectfifo.from_memref %alloc_2, {%tile_0_2} : memref<4x8x4x8xi32, 2> -> !amdaie.logicalobjectfifo<memref<4x8x4x8xi32, 2>>
+      %dma0 = amdaie.circular_dma_cpy_nd(%obj1[] [] [], %obj2[] [] []) : (!amdaie.logicalobjectfifo<memref<32x32xi32, 1>>, !amdaie.logicalobjectfifo<memref<4x8x4x8xi32, 2>>)
+      %dma_target_l3 = amdaie.circular_dma_cpy_nd(%obj0[] [] [], %obj1[] [] []) : (!amdaie.logicalobjectfifo<memref<32x16x64x128x32xi32>>, !amdaie.logicalobjectfifo<memref<32x32xi32, 1>>)
+      amdaie.logicalobjectfifo.link[%dma0] -> [%dma_target_l3] ()
+      memref.dealloc %alloc_2 : memref<4x8x4x8xi32, 2>
+      memref.dealloc %alloc_1 : memref<32x32xi32, 1>
+      // expected-error @+1 {{could not convert to AIEDialect ops}}
+      amdaie.controlcode {
+        // expected-error @+1 {{implicit source/target L3 memref has rank greater than the expected static offsets/sizes/strides rank (4)}}
+        %npu_dma_1 = amdaie.npu.dma_cpy_nd %dma_target_l3([] [] [], [] [] [])
+        amdaie.npu.dma_wait(%npu_dma_1, S2MM)
+        
         amdaie.end
       }
     }
@@ -395,9 +455,9 @@ module {
 // CHECK-SAME:  %[[ARG0:.+]]: memref<32x64xi32>
 // CHECK:         aiex.npu.dma_memcpy_nd
 // CHECK-SAME:    %[[ARG0]]
-// CHECK-SAME:    [1, 1, 0, 32]
+// CHECK-SAME:    [0, 0, 0, 32]
 // CHECK-SAME:    [1, 1, 32, 32]
-// CHECK-SAME:    [1, 1, 64, 1]
+// CHECK-SAME:    [0, 0, 64, 1]
 // CHECK-SAME:    issue_token = true
 // CHECK-SAME:    @[[OBJ0]]
 // CHECK-NEXT:    aiex.npu.dma_wait

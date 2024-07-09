@@ -753,3 +753,11 @@ run_matmul_test \
     --lhs_rhs_type "i32" \
     --acc_type "i32" \
     --m "128" --k "256" --n "128"
+
+run_matmul_test \
+    --name_prefix "small" \
+    --lower_to_aie_pipeline "objectFifo" \
+    --tile_pipeline "pack-peel" \
+    --lhs_rhs_type "i32" \
+    --acc_type "i32" \
+    --m "32" --k "32" --n "32"
