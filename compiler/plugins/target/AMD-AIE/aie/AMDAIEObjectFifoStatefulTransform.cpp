@@ -9,6 +9,7 @@
 
 #include "Passes.h"
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
+#include "iree-amd-aie/aie_runtime/iree_aie_runtime.h"
 #include "mlir/Analysis/TopologicalSortUtils.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
@@ -26,6 +27,7 @@
 using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIE;
+using namespace mlir::iree_compiler::AMDAIE;
 
 #define DEBUG_TYPE "amdaie-objectFifo-stateful-transform"
 
@@ -50,9 +52,11 @@ class LockAnalysis {
 
   /// Given a tile, returns next usable lockID for that tile.
   int getLockID(TileOp &tileOp) {
-    const auto &targetModel = getTargetModel(tileOp);
+    DeviceOp device = tileOp->getParentOfType<DeviceOp>();
+    AMDAIEDeviceModel deviceModel =
+        getDeviceModel(static_cast<AMDAIEDevice>(device.getDevice()));
     for (unsigned i = 0;
-         i < targetModel.getNumLocks(tileOp.getCol(), tileOp.getRow()); i++)
+         i < deviceModel.getNumLocks(tileOp.getCol(), tileOp.getRow()); i++)
       if (int usageCnt = locksPerTile[{tileOp, i}]; usageCnt == 0) {
         locksPerTile[{tileOp, i}] = 1;
         return i;
@@ -162,24 +166,26 @@ struct AMDAIEObjectFifoStatefulTransformPass : mlir::OperationPass<DeviceOp> {
   ///   * 1 if it is that of the second input tile,
   ///   * 0 is no memory module is shared.
   bool isSharedMemory(TileOp a, TileOp b, int *share_direction) {
-    const auto &targetModel = getTargetModel(a.getOperation());
+    DeviceOp device = a->getParentOfType<DeviceOp>();
+    AMDAIEDeviceModel deviceModel =
+        getDeviceModel(static_cast<AMDAIEDevice>(device.getDevice()));
 
     if ((a.isShimTile() && !b.isShimTile()) ||
         (!a.isShimTile() && b.isShimTile())) {
       *share_direction = 0;
       return false;
     }
-    if ((targetModel.isMemTile(a.getCol(), a.getRow()) &&
-         !targetModel.isMemTile(b.getCol(), b.getRow())) ||
-        (!targetModel.isMemTile(a.getCol(), a.getRow()) &&
-         targetModel.isMemTile(b.getCol(), b.getRow()))) {
+    if ((deviceModel.isMemTile(a.getCol(), a.getRow()) &&
+         !deviceModel.isMemTile(b.getCol(), b.getRow())) ||
+        (!deviceModel.isMemTile(a.getCol(), a.getRow()) &&
+         deviceModel.isMemTile(b.getCol(), b.getRow()))) {
       *share_direction = 0;
       return false;
     }
-    bool rightShared = targetModel.isLegalMemAffinity(
+    bool rightShared = deviceModel.hasLegalMemAffinity(
         a.colIndex(), a.rowIndex(), b.colIndex(), b.rowIndex());
 
-    bool leftShared = targetModel.isLegalMemAffinity(
+    bool leftShared = deviceModel.hasLegalMemAffinity(
         b.colIndex(), b.rowIndex(), a.colIndex(), a.rowIndex());
 
     if (leftShared)
@@ -284,7 +290,10 @@ struct AMDAIEObjectFifoStatefulTransformPass : mlir::OperationPass<DeviceOp> {
     if (creation_tile.isShimTile()) numElem = externalBuffersPerFifo[op].size();
     // create corresponding aie2 locks
     int prodLockID = lockAnalysis.getLockID(creation_tile);
-    assert(prodLockID >= 0 && "No more locks to allocate!");
+    if (prodLockID < 0) {
+      creation_tile->emitOpError("No more locks to allocate!");
+      assert(prodLockID >= 0);
+    }
     auto prodLock = builder.create<LockOp>(builder.getUnknownLoc(),
                                            creation_tile, prodLockID, numElem);
     prodLock.getOperation()->setAttr(
@@ -293,7 +302,11 @@ struct AMDAIEObjectFifoStatefulTransformPass : mlir::OperationPass<DeviceOp> {
     locks.push_back(prodLock);
 
     int consLockID = lockAnalysis.getLockID(creation_tile);
-    assert(consLockID >= 0 && "No more locks to allocate!");
+    if (consLockID < 0) {
+      creation_tile->emitOpError("No more locks to allocate!");
+      assert(consLockID >= 0);
+    }
+
     auto consLock = builder.create<LockOp>(builder.getUnknownLoc(),
                                            creation_tile, consLockID, 0);
     consLock.getOperation()->setAttr(
@@ -456,17 +469,17 @@ struct AMDAIEObjectFifoStatefulTransformPass : mlir::OperationPass<DeviceOp> {
       createMemTileDMA(device, builder, op, channelDir, channelIndex, lockMode,
                        dims);
     } else {
-      createAMDAIETileDMA(device, builder, op, channelDir, channelIndex, lockMode,
-                       dims);
+      createAMDAIETileDMA(device, builder, op, channelDir, channelIndex,
+                          lockMode, dims);
     }
   }
 
   /// Function used to create a MemOp region with a DMA channel.
   /// It uses creatBdBlock(), see there for lockMode input.
   void createAMDAIETileDMA(DeviceOp &device, OpBuilder &builder,
-                        ObjectFifoCreateOp op, DMAChannelDir channelDir,
-                        int channelIndex, int lockMode,
-                        BDDimLayoutArrayAttr dims) {
+                           ObjectFifoCreateOp op, DMAChannelDir channelDir,
+                           int channelIndex, int lockMode,
+                           BDDimLayoutArrayAttr dims) {
     size_t numBlocks = op.size();
     if (numBlocks == 0) return;
 

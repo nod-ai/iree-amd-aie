@@ -543,7 +543,7 @@ run_matmul_test \
   --lhs_rhs_type "bf16" \
   --acc_type "f32" \
   --m "256" --n "256" --k "256" \
-  --do_transpose_rhs "1" \
+  --do_transpose_rhs "1"
 
 # The below matmul case passes with
 # tile_sizes = [[1, 1], [0, 0, 250], [1, 1], [0, 0, 2]], packedSizes = [1, 1, 5]
@@ -676,14 +676,14 @@ run_matmul_test \
     --tile_pipeline "pack-peel" \
     --lhs_rhs_type "bf16" \
     --acc_type "f32" \
-    --m "512"  --n "512" --k "512" \
+    --m "512"  --n "512" --k "512"
 
 run_matmul_test \
     --name_prefix "packPeel2304" \
     --tile_pipeline "pack-peel" \
     --lhs_rhs_type "bf16" \
     --acc_type "f32" \
-    --m "128"  --n "128" --k "2304" \
+    --m "128"  --n "128" --k "2304"
 
 
 run_matmul_test \
@@ -692,7 +692,7 @@ run_matmul_test \
   --lhs_rhs_type "bf16" \
   --acc_type "f32" \
   --m "128" --n "256" --k "512" \
-  --do_transpose_rhs "1" \
+  --do_transpose_rhs "1"
 
 ###################################################################
 

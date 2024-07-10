@@ -95,6 +95,16 @@ iree_cc_library(
     ::AIEInterfacesGen
     ::AIEOpsGen
     ::AIETypesGen
+    # mlir::DataLayout::closest(mlir::Operation*)
+    MLIRDataLayoutInterfaces
+    # mlir::OffsetSizeAndStrideOpInterface::getOffsets()
+    MLIRViewLikeInterface
+    # mlir::arith::ConstantOp::getValue()
+    MLIRArithDialect
+    # mlir::detail::TypeIDResolver<mlir::func::FuncOp, void>::id
+    MLIRFuncDialect
+    # mlir::detail::TypeIDResolver<mlir::memref::AllocOp, void>::id
+    MLIRMemRefDialect
     MLIRIR
     MLIREmitCDialect
 )
@@ -287,6 +297,7 @@ iree_cc_library(
     AMDAIEXToStandard.cpp
   DEPS
     ::defs
+    iree-amd-aie::aie_runtime::iree_aie_runtime_static
     ::AIEDialectIR
     ::AIEXDialectIR
     ::AIENormalizeAddressSpacesGen

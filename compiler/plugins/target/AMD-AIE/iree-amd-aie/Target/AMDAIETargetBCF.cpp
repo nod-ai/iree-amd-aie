@@ -19,15 +19,15 @@ std::string utohexstr(uint32_t u) { return "0x" + llvm::utohexstr(u); }
 namespace mlir::iree_compiler::AMDAIE {
 LogicalResult AIETranslateToBCF(ModuleOp module, raw_ostream &output,
                                 int tileCol, int tileRow) {
-  DenseMap<TileID, Operation *> tiles;
+  DenseMap<TileLoc, Operation *> tiles;
   DenseMap<Operation *, SmallVector<BufferOp, 4>> buffers;
 
   if (module.getOps<DeviceOp>().empty())
     module.emitOpError("expected aie.device operation at toplevel");
-  DeviceOp targetOp = *(module.getOps<DeviceOp>().begin());
+  DeviceOp deviceOp = *(module.getOps<DeviceOp>().begin());
 
-  collectTiles(targetOp, tiles);
-  ::collectBuffers(targetOp, buffers);
+  collectTiles(deviceOp, tiles);
+  ::collectBuffers(deviceOp, buffers);
 
   // _entry_point _main_init
   // _symbol      _main _after _main_init
@@ -40,10 +40,11 @@ LogicalResult AIETranslateToBCF(ModuleOp module, raw_ostream &output,
   // see
   // // Include all symbols from rom.c
   // _include _file rom.o
-  for (auto tile : targetOp.getOps<TileOp>())
+  AMDAIEDeviceModel deviceModel =
+      getDeviceModel(static_cast<AMDAIEDevice>(deviceOp.getDevice()));
+  for (auto tile : deviceOp.getOps<TileOp>())
     if (tile.colIndex() == tileCol && tile.rowIndex() == tileRow) {
-      const auto &targetModel = getTargetModel(tile);
-      TileID srcCoord = {tile.colIndex(), tile.rowIndex()};
+      TileLoc srcCoord = {tile.colIndex(), tile.rowIndex()};
 
       std::string corefunc = std::string("core_") +
                              std::to_string(tile.getCol()) + "_" +
@@ -58,16 +59,16 @@ LogicalResult AIETranslateToBCF(ModuleOp module, raw_ostream &output,
       int stacksize = 0;
       if (auto core = tile.getCoreOp()) stacksize = core.getStackSize();
       output << "_stack DM_stack "
-             << utohexstr(targetModel.getMemInternalBaseAddress(
-                    {srcCoord.col, srcCoord.row}))
-             << " " << utohexstr(stacksize) << " // stack for core\n";
+             << utohexstr(deviceModel.getMemInternalBaseAddress()) << " "
+             << utohexstr(stacksize) << " // stack for core\n";
 
-      auto doBuffer = [&](std::optional<xilinx::AIE::TileID> tile, int offset,
+      auto doBuffer = [&](std::optional<TileLoc> tile, int offset,
                           const std::string &dir) {
         if (tile) {
           output << "// " + dir +
                         " -------------------------------------------------\n";
-          uint32_t localMemSize = targetModel.getLocalMemorySize();
+          uint32_t localMemSize =
+              deviceModel.getLocalMemorySize(tile->col, tile->row);
           if (srcCoord != tile)
             output << "_reserved DMb " << utohexstr(offset) << " "
                    << utohexstr(localMemSize) << " "
@@ -75,8 +76,8 @@ LogicalResult AIETranslateToBCF(ModuleOp module, raw_ostream &output,
                    << " neighbor\n\n";
           // TODO How to set as reserved if no buffer exists (or reserve
           // remaining buffer)
-          if (tiles.count(TileID(*tile))) {
-            for (auto buf : buffers[tiles[TileID(*tile)]]) {
+          if (tiles.count(TileLoc(*tile))) {
+            for (auto buf : buffers[tiles[TileLoc(*tile)]]) {
               std::string bufName(buf.name().getValue());
               int bufferBaseAddr = getBufferBaseAddress(buf);
               int numBytes = buf.getAllocationSize();
@@ -96,7 +97,7 @@ LogicalResult AIETranslateToBCF(ModuleOp module, raw_ostream &output,
             }
           }
         } else {
-          uint32_t localMemSize = targetModel.getLocalMemorySize();
+          uint32_t localMemSize = deviceModel.getCoreTileLocalMemorySize();
           output << "_reserved DMb " << utohexstr(offset) << " "
                  << utohexstr(localMemSize) << " "
                  << " // No tile with memory exists to the " << dir << ".\n";
@@ -104,14 +105,14 @@ LogicalResult AIETranslateToBCF(ModuleOp module, raw_ostream &output,
       };
 
       output << "\n// mapping neighbors tile memory\n";
-      doBuffer(targetModel.getMemSouth(srcCoord()),
-               targetModel.getMemSouthBaseAddress(), std::string("south"));
-      doBuffer(targetModel.getMemWest(srcCoord()),
-               targetModel.getMemWestBaseAddress(), std::string("west"));
-      doBuffer(targetModel.getMemNorth(srcCoord()),
-               targetModel.getMemNorthBaseAddress(), std::string("north"));
-      doBuffer(targetModel.getMemEast(srcCoord()),
-               targetModel.getMemEastBaseAddress(), std::string("east"));
+      doBuffer(deviceModel.getMemSouth(srcCoord),
+               deviceModel.getMemSouthBaseAddress(), std::string("south"));
+      doBuffer(deviceModel.getMemWest(srcCoord),
+               deviceModel.getMemWestBaseAddress(), std::string("west"));
+      doBuffer(deviceModel.getMemNorth(srcCoord),
+               deviceModel.getMemNorthBaseAddress(), std::string("north"));
+      doBuffer(deviceModel.getMemEast(srcCoord),
+               deviceModel.getMemEastBaseAddress(), std::string("east"));
       output << "// end mapping neighbors tile memory\n\n";
       output << "_reserved DMb 0x80000 0x80000 // And everything else "
                 "the core can't see\n";

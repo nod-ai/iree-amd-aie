@@ -6,6 +6,7 @@
 
 #include "Passes.h"
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
+#include "iree-amd-aie/aie_runtime/iree_aie_runtime.h"
 #include "llvm/ADT/Twine.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/Pass/Pass.h"
@@ -49,7 +50,8 @@ struct AMDAIEAssignBufferAddressesPassBasic : mlir::OperationPass<DeviceOp> {
       tileToBuffers[buffer.getTileOp()].insert(buffer);
     });
 
-    const auto &targetModel = getTargetModel(device);
+    AMDAIEDeviceModel deviceModel = mlir::iree_compiler::AMDAIE::getDeviceModel(
+        static_cast<AMDAIEDevice>(device.getDevice()));
     for (auto [tile, buffers] : tileToBuffers) {
       // Leave room at the bottom of the address range for stack
       int64_t address = 0;
@@ -62,9 +64,11 @@ struct AMDAIEAssignBufferAddressesPassBasic : mlir::OperationPass<DeviceOp> {
 
       int maxDataMemorySize;
       if (tile.isMemTile())
-        maxDataMemorySize = targetModel.getMemTileSize();
+        maxDataMemorySize =
+            deviceModel.getMemTileSize(tile.getCol(), tile.getRow());
       else
-        maxDataMemorySize = targetModel.getLocalMemorySize();
+        maxDataMemorySize =
+            deviceModel.getLocalMemorySize(tile.getCol(), tile.getRow());
       if (address > maxDataMemorySize) {
         InFlightDiagnostic error =
             tile.emitOpError("allocated buffers exceeded available memory (")

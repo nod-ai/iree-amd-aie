@@ -7,10 +7,10 @@
 // CHECK:           memref.global "public" @mem_in_0_cons : memref<3000xi32>
 // CHECK:           memref.global "public" @mem_in_1_cons : memref<3000xi32>
 // CHECK:           memref.global "public" @mem_in : memref<3000xi32>
-// CHECK:           %[[TILE_0_0:.*]] = aie.tile(0, 0)
-// CHECK:           %[[TILE_0_1:.*]] = aie.tile(0, 1)
-// CHECK:           %[[TILE_0_2:.*]] = aie.tile(0, 2)
-// CHECK:           %[[TILE_0_3:.*]] = aie.tile(0, 3)
+// CHECK:           %[[TILE_0_0:.*]] = aie.tile(2, 0)
+// CHECK:           %[[TILE_0_1:.*]] = aie.tile(2, 1)
+// CHECK:           %[[TILE_0_2:.*]] = aie.tile(2, 2)
+// CHECK:           %[[TILE_0_3:.*]] = aie.tile(2, 3)
 // CHECK:           %[[MEM_OUT_CONS_BUFF_0:.*]] = aie.buffer(%[[TILE_0_3]]) {sym_name = "mem_out_cons_buff_0"} : memref<3000xi32>
 // CHECK:           %[[MEM_OUT_CONS_BUFF_1:.*]] = aie.buffer(%[[TILE_0_3]]) {sym_name = "mem_out_cons_buff_1"} : memref<3000xi32>
 // CHECK:           %[[MEM_OUT_CONS_BUFF_2:.*]] = aie.buffer(%[[TILE_0_3]]) {sym_name = "mem_out_cons_buff_2"} : memref<3000xi32>
@@ -42,7 +42,7 @@
 // CHECK:             memref.store %[[C11_I32]], %[[MEM_IN_0_CONS_BUFF_0]]{{\[}}%[[C0]]] : memref<3000xi32>
 // CHECK:             aie.end
 // CHECK:           }
-// CHECK:           aie.shim_dma_allocation @mem_in(MM2S, 0, 0)
+// CHECK:           aie.shim_dma_allocation @mem_in(MM2S, 0, 2)
 // CHECK:           %[[CORE_0_3:.*]] = aie.core(%[[TILE_0_3]]) {
 // CHECK:             %[[C11_I32:.*]] = arith.constant 11 : i32
 // CHECK:             %[[C0:.*]] = arith.constant 0 : index
@@ -171,10 +171,10 @@
 
 module @link_AIE2 {
     aie.device(xcve2302) {
-        %tile00 = aie.tile(0, 0)
-        %tile01 = aie.tile(0, 1)
-        %tile02 = aie.tile(0, 2)
-        %tile03 = aie.tile(0, 3)
+        %tile00 = aie.tile(2, 0)
+        %tile01 = aie.tile(2, 1)
+        %tile02 = aie.tile(2, 2)
+        %tile03 = aie.tile(2, 3)
         aie.objectfifo @mem_in (%tile00, {%tile02, %tile01}, [2,2,7]) : !aie.objectfifo<memref<3000xi32>>
         aie.objectfifo @mem_out (%tile01, {%tile03}, 7 : i32) : !aie.objectfifo<memref<3000xi32>>
         aie.objectfifo.link [@mem_in] -> [@mem_out] ()

@@ -13,6 +13,7 @@
 
 #include "Passes.h"
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
+#include "iree-amd-aie/aie_runtime/iree_aie_runtime.h"
 #include "llvm/ADT/DenseMap.h"
 #include "mlir/Pass/Pass.h"
 
@@ -80,10 +81,12 @@ struct AMDAIEAssignLockIDsPass : mlir::OperationPass<DeviceOp> {
       }
     });
 
+    AMDAIEDeviceModel deviceModel = mlir::iree_compiler::AMDAIE::getDeviceModel(
+        static_cast<AMDAIEDevice>(device.getDevice()));
     // IR mutation: assign locks to all unassigned lock ops.
     for (auto [tileOp, locks] : tileToLocks) {
-      const auto locksPerTile =
-          getTargetModel(tileOp).getNumLocks(tileOp.getCol(), tileOp.getRow());
+      uint32_t locksPerTile =
+          deviceModel.getNumLocks(tileOp.getCol(), tileOp.getRow());
       uint32_t nextID = 0;
       for (auto lockOp : locks.unassigned) {
         while (nextID < locksPerTile &&
