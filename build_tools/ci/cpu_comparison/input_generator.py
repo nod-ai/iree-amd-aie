@@ -99,7 +99,7 @@ def verify_determinism():
     we don't want OS, numpy version, etc, influencing random values.
     """
     seed = 1
-    rng = np.random.Generator(np.random.MT19937(np.random.SeedSequence(1)))
+    rng = np.random.Generator(np.random.MT19937(np.random.SeedSequence(seed)))
     test_values = [x for x in rng.integers(0, 100000, 4)]
     expected_test_values = [24067, 90095, 72958, 10894]
     if test_values != expected_test_values:
@@ -121,7 +121,8 @@ def write_input(bin_filename, num_elements, element_type, input_number):
 
     verify_determinism()
     # We have now verified that approach below is deterministic across platforms.
-    seed = input_number
+    # The seed is fixed for each operand (input_number). 
+    seed = 1 + input_number
     rng = np.random.Generator(np.random.MT19937(np.random.SeedSequence(seed)))
 
     data = None
