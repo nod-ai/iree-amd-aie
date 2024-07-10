@@ -37,7 +37,7 @@ class LockAnalysis {
       locksPerTile[{lockOp.getTile(), lockOp.getLockIDValue()}] = 1;
   }
 
-  // Given a tile, returns next usable lockID for that tile.
+  /// Given a tile, returns next usable lockID for that tile.
   int getLockID(TileOp &tileOp) {
     DeviceOp device = tileOp->getParentOfType<DeviceOp>();
     AMDAIEDeviceModel deviceModel =
@@ -75,12 +75,12 @@ class DMAChannelAnalysis {
     }
   }
 
-  // Given an AIE tile, returns its next usable producer channel.
+  /// Given an AIE tile, returns its next usable producer channel.
   DMAChannel getProducerDMAChannel(Value tile) {
     return {DMAChannelDir::MM2S, producerChannelsPerTile[tile]++};
   }
 
-  // Given an AIE tile, returns its next usable consumer channel.
+  /// Given an AIE tile, returns its next usable consumer channel.
   DMAChannel getConsumerDMAChannel(Value tile) {
     return {DMAChannelDir::S2MM, consumerChannelsPerTile[tile]++};
   }
@@ -88,8 +88,8 @@ class DMAChannelAnalysis {
 
 enum SharedMemoryDirection { LHS = -1, RHS = 1, NONE = 0 };
 
-// Retrieve ObjectFifoLinkOp of ObjectFifoCreateOp,
-// if it belongs to one.
+/// Retrieve ObjectFifoLinkOp of ObjectFifoCreateOp,
+/// if it belongs to one.
 std::optional<ObjectFifoLinkOp> getOptionalLinkOp(ObjectFifoCreateOp op) {
   auto device = op->getParentOfType<DeviceOp>();
   for (ObjectFifoLinkOp linkOp : device.getOps<ObjectFifoLinkOp>()) {
@@ -101,11 +101,11 @@ std::optional<ObjectFifoLinkOp> getOptionalLinkOp(ObjectFifoCreateOp op) {
   return {};
 }
 
-// Return true if the objectFifo created by createOp requires a DMA to be set
-// up. This is the case if the tiles are not adjacent (no shared memory), if
-// the objectFifo broadcasts to multiple tiles, if one of the consumers or
-// the producer wants to use the multi-dimensional address generation
-// features of the DMA, if the objectFifo is part of a LinkOp.
+/// Return true if the objectFifo created by createOp requires a DMA to be set
+/// up. This is the case if the tiles are not adjacent (no shared memory), if
+/// the objectFifo broadcasts to multiple tiles, if one of the consumers or
+/// the producer wants to use the multi-dimensional address generation
+/// features of the DMA, if the objectFifo is part of a LinkOp.
 bool requiresDMAs(ObjectFifoCreateOp createOp,
                   SharedMemoryDirection &shareDirection,
                   std::vector<ObjectFifoCreateOp> &splitBecauseLink) {
@@ -173,10 +173,10 @@ bool requiresDMAs(ObjectFifoCreateOp createOp,
   return !(shareDirection == LHS || shareDirection == RHS);
 }
 
-// Find the size of an objectFifo after split based on
-// the maximum number of elements (of the original objectFifo) acquired
-// by a process running on given tile. If no CoreOp exists for this tile
-// return 0.
+/// Find the size of an objectFifo after split based on
+/// the maximum number of elements (of the original objectFifo) acquired
+/// by a process running on given tile. If no CoreOp exists for this tile
+/// return 0.
 int findObjectFifoSize(DeviceOp &device, Value tile,
                        ObjectFifoCreateOp objFifo) {
   if (objFifo.size() == 0) return 0;
