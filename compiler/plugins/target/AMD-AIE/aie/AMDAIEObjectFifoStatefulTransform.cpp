@@ -201,26 +201,27 @@ int findObjectFifoSize(DeviceOp &device, Value tile,
   return objFifo.size();
 }
 
-template <typename MemOp, typename BufferOp>
-void createMemDMA(
-    DeviceOp &device, OpBuilder &builder, ObjectFifoCreateOp op,
+/// Translate ObjectFifoCreateOp to corresponding DMABD, UseLocks, and NextBDs.
+/// Work on <MemTileDMAOp> and <MemOp>.
+template <typename MemOp>
+void createDMA(
+    DeviceOp &device, OpBuilder &builder, ObjectFifoCreateOp createOp,
     ObjectFifoCreateOp target, DMAChannelDir channelDir, int channelIndex,
     BDDimLayoutArrayAttr dims, size_t numBlocks, size_t acqNum, size_t relNum,
     int64_t len, int64_t offset,
     DenseMap<ObjectFifoCreateOp, std::vector<BufferOp>> &buffersPerFifo,
     DenseMap<ObjectFifoCreateOp, std::vector<LockOp>> &locksPerFifo) {
-  // search for MemOp
-  Operation *producerMem = nullptr;
+  Operation *producer = nullptr;
   for (auto memOp : device.getOps<MemOp>()) {
-    if (memOp.getTile() == op.getProducerTile()) {
-      producerMem = memOp.getOperation();
+    if (memOp.getTile() == createOp.getProducerTile()) {
+      producer = memOp.getOperation();
       break;
     }
   }
 
   // if none exists, create one
   TileOp objFifoTileOp = target.getProducerTileOp();
-  if (!producerMem) {
+  if (!producer) {
     if (device->getNumRegions() != 1)
       llvm::report_fatal_error("expected num regions for device op");
     OpBuilder::InsertionGuard g(builder);
@@ -232,10 +233,10 @@ void createMemDMA(
       builder.setInsertionPointToStart(&newMemOp.getRegion().emplaceBlock());
       builder.create<EndOp>(builder.getUnknownLoc());
     }
-    producerMem = newMemOp.getOperation();
+    producer = newMemOp.getOperation();
   }
 
-  Block &endBlock = producerMem->getRegion(0).getBlocks().back();
+  Block &endBlock = producer->getRegion(0).getBlocks().back();
   assert(!endBlock.getOps<EndOp>().empty() &&
          "expected last block to have aie.end");
   Block *lastDmaBlock = endBlock.getSinglePredecessor(),
@@ -282,66 +283,70 @@ void createMemDMA(
   }
 }
 
+/// Translate ObjectFifoCreateOp on AIE tiles to corresponding DMABD, UseLocks,
+/// and NextBDs.
 void createAMDAIETileDMA(
-    DeviceOp &device, OpBuilder &builder, ObjectFifoCreateOp op,
+    DeviceOp &device, OpBuilder &builder, ObjectFifoCreateOp createOp,
     DMAChannelDir channelDir, int channelIndex, BDDimLayoutArrayAttr dims,
     DenseMap<ObjectFifoLinkOp, ObjectFifoCreateOp> &objFifoLinks,
     DenseMap<ObjectFifoCreateOp, std::vector<BufferOp>> &buffersPerFifo,
     DenseMap<ObjectFifoCreateOp, std::vector<LockOp>> &locksPerFifo) {
-  size_t numBlocks = op.size();
+  size_t numBlocks = createOp.size();
   if (numBlocks == 0) return;
   // search for the buffers/locks (based on if this objFifo has a link)
-  ObjectFifoCreateOp target = op;
-  if (std::optional<ObjectFifoLinkOp> linkOp = getOptionalLinkOp(op);
+  ObjectFifoCreateOp target = createOp;
+  if (std::optional<ObjectFifoLinkOp> linkOp = getOptionalLinkOp(createOp);
       linkOp.has_value())
     if (objFifoLinks.find(linkOp.value()) != objFifoLinks.end())
       target = objFifoLinks[linkOp.value()];
 
-  auto fifo = llvm::cast<AIEObjectFifoType>(op.getElemType());
+  auto fifo = llvm::cast<AIEObjectFifoType>(createOp.getElemType());
   auto elemType = llvm::cast<MemRefType>(fifo.getElementType());
   int64_t len = elemType.getNumElements();
-  createMemDMA<MemOp, BufferOp>(device, builder, op, target, channelDir,
-                                channelIndex, dims, numBlocks,
-                                /*acqNum*/ 1, /*relNum*/ 1, len, /*offset*/ 0,
-                                buffersPerFifo, locksPerFifo);
+  createDMA<MemOp>(device, builder, createOp, target, channelDir, channelIndex,
+                   dims, numBlocks,
+                   /*acqNum*/ 1, /*relNum*/ 1, len, /*offset*/ 0,
+                   buffersPerFifo, locksPerFifo);
 }
 
+/// Translate ObjectFifoCreateOp on Mem tiles to corresponding DMABD, UseLocks,
+/// and NextBDs.
 void createMemTileDMA(
-    DeviceOp &device, OpBuilder &builder, ObjectFifoCreateOp op,
+    DeviceOp &device, OpBuilder &builder, ObjectFifoCreateOp createOp,
     DMAChannelDir channelDir, int channelIndex, BDDimLayoutArrayAttr dims,
     DenseMap<ObjectFifoLinkOp, ObjectFifoCreateOp> &objFifoLinks,
     DenseMap<ObjectFifoCreateOp, std::vector<BufferOp>> &buffersPerFifo,
     DenseMap<ObjectFifoCreateOp, std::vector<LockOp>> &locksPerFifo) {
-  size_t numBlocks = op.size();
+  size_t numBlocks = createOp.size();
   if (numBlocks == 0) return;
 
-  auto fifo = llvm::cast<AIEObjectFifoType>(op.getElemType());
+  auto fifo = llvm::cast<AIEObjectFifoType>(createOp.getElemType());
   auto elemType = llvm::cast<MemRefType>(fifo.getElementType());
   int64_t lenOut = elemType.getNumElements();
   size_t acqNum = 1;
   size_t relNum = 1;
   int64_t extraOffset = 0;
-  ObjectFifoCreateOp target = op;
+  ObjectFifoCreateOp target = createOp;
 
-  auto getExtraOffset = [&acqNum, &relNum, &extraOffset, &target, &op](
+  auto getExtraOffset = [&acqNum, &relNum, &extraOffset, &target, &createOp](
                             ObjectFifoLinkOp linkOp,
                             const std::vector<ObjectFifoCreateOp> &fifos,
                             size_t size) {
-    if (target == op) {
+    if (target == createOp) {
       acqNum = size;
       relNum = size;
     } else
       for (auto fifoIn : fifos) {
         auto fifoType = llvm::cast<AIEObjectFifoType>(fifoIn.getElemType());
         auto fifoElemType = llvm::cast<MemRefType>(fifoType.getElementType());
-        if (fifoIn.name() == op.name()) break;
+        if (fifoIn.name() == createOp.name()) break;
         extraOffset += fifoElemType.getNumElements();
       }
   };
 
   // search for the buffers/locks (based on if this objFifo has a link)
   // identify size difference between input and output memrefs
-  if (auto linkOp = getOptionalLinkOp(op);
+  if (auto linkOp = getOptionalLinkOp(createOp);
       objFifoLinks.find(*linkOp) != objFifoLinks.end()) {
     target = objFifoLinks[*linkOp];
     if (linkOp->isJoin())
@@ -352,22 +357,22 @@ void createMemTileDMA(
       // find offset based on order of this op in distribute list
       getExtraOffset(*linkOp, linkOp->getOutputObjectFifos(),
                      linkOp->getFifoOuts().size());
-    else if (target != op) {
+    else if (target != createOp) {
       auto targetFifo = llvm::cast<AIEObjectFifoType>(target.getElemType());
       auto targetElemType = llvm::cast<MemRefType>(targetFifo.getElementType());
       lenOut = targetElemType.getNumElements();
     }
 
-    // check if current op is of smaller size in link
-    if (target != op) numBlocks = target.size();
+    // check if current createOp is of smaller size in link
+    if (target != createOp) numBlocks = target.size();
   }
 
-  createMemDMA<MemTileDMAOp, BufferOp>(
-      device, builder, op, target, channelDir, channelIndex, dims, numBlocks,
-      acqNum, relNum, lenOut, extraOffset, buffersPerFifo, locksPerFifo);
+  createDMA<MemTileDMAOp>(device, builder, createOp, target, channelDir,
+                          channelIndex, dims, numBlocks, acqNum, relNum, lenOut,
+                          extraOffset, buffersPerFifo, locksPerFifo);
 }
 
-// Unroll for-loops that contain objectFifo operations.
+/// Unroll for-loops that contain objectFifo operations.
 LogicalResult unrollForLoops(DeviceOp &device,
                              std::set<TileOp> &objectFifoTiles) {
   for (auto coreOp : device.getOps<CoreOp>()) {
@@ -406,10 +411,9 @@ LogicalResult unrollForLoops(DeviceOp &device,
   return success();
 }
 
-// Create a UseLockOp based on input parameters.
-// acc is an accumulator map that tracks the indices of the next locks to
-// acquire (or release). Uses op to find index of acc for next lockID.
-// Updates acc.
+/// Create a UseLockOp based on input parameters. `acc` is an accumulator map
+/// that tracks the indices of the next locks to acquire (or release). Uses op
+/// to find index of acc for next lockID and updates acc.
 void createUseLocks(
     OpBuilder &builder, ObjectFifoCreateOp op, ObjectFifoPort port,
     DenseMap<std::pair<ObjectFifoCreateOp, int>, int> &acc, size_t numLocks,
@@ -443,6 +447,7 @@ void createUseLocks(
       (acc[opPort] + numLocks) % op.size();  // update to next objFifo elem
 }
 
+/// Replace (not really - add) ObjectFifoReleaseOp with appropriate UseLockOp.
 void replaceReleaseOp(
     ObjectFifoReleaseOp releaseOp, OpBuilder builder,
     DenseMap<std::pair<ObjectFifoCreateOp, int>, int> &relPerFifo,
@@ -473,7 +478,7 @@ void replaceReleaseOp(
     releaseOps[opPort] = {releaseOp};
 }
 
-// Split objectFifos into a consumer end and producer end if needed
+/// Split objectFifos into a consumer end and producer end if needed
 void splitFifo(
     DeviceOp device, ObjectFifoCreateOp createOp, OpBuilder builder,
     std::vector<std::pair<ObjectFifoCreateOp, std::vector<ObjectFifoCreateOp>>>
@@ -548,6 +553,7 @@ void splitFifo(
   splitFifos.emplace_back(createOp, splitConsumerFifos);
 }
 
+/// Replace (not really - add) ObjectFifoAcquireOp with appropriate UseLockOp.
 void replaceObjectAcquireOp(
     ObjectFifoAcquireOp acquireOp, OpBuilder builder,
     DenseMap<std::pair<ObjectFifoCreateOp, int>, int> &acqPerFifo,
@@ -666,9 +672,9 @@ void replaceObjectAcquireOp(
   acquiresPerFifo[opPort] = acquiredIndices;
 }
 
-// - Create objectFifo buffers and locks.
-// - Populate a list of tiles containing objectFifos for later processing of
-//   the acquires/releases (uses of the FIFO).
+/// Create objectFifo buffers and locks. Also populate a list of tiles
+/// containing objectFifos for later processing of the acquires/releases (uses
+/// of the FIFO).
 void createBuffersAndLocks(
     OpBuilder builder, DeviceOp device, ObjectFifoCreateOp createOp,
     std::vector<ObjectFifoCreateOp> &splitBecauseLink,
@@ -795,6 +801,8 @@ void createBuffersAndLocks(
   locksPerFifo[createOp] = locks;
 }
 
+/// Translate ObjectFifoCreateOp ops into routing primitives (Flows) and DMA
+/// primitives (DMABD, DMAStart, Buffer, UseLock).
 void createFlowsAndTileDMAs(
     OpBuilder builder, DeviceOp device, ObjectFifoCreateOp producer,
     std::vector<ObjectFifoCreateOp> &consumers, DMAChannelAnalysis &dmaAnalysis,
