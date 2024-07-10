@@ -53,34 +53,35 @@ class LockAnalysis {
 };
 
 class DMAChannelAnalysis {
-  DenseMap<Value, int> masterChannelsPerTile;
-  DenseMap<Value, int> slaveChannelsPerTile;
+  DenseMap<Value, int> producerChannelsPerTile;
+  DenseMap<Value, int> consumerChannelsPerTile;
 
  public:
   DMAChannelAnalysis(DeviceOp &device) {
-    // go over the channels used for each tile and update the master/slave
+    // go over the channels used for each tile and update the producer/consumer
     // channel maps
     for (auto memOp : device.getOps<MemOp>()) {
       Region &r = memOp.getBody();
+      auto tile = memOp.getTile();
       for (auto &bl : r.getBlocks()) {
         for (auto op : bl.getOps<DMAStartOp>()) {
-          if (op.isSend())
-            getMasterDMAChannel(memOp.getTile());
+          if (op.getChannelDir() == DMAChannelDir::MM2S)
+            getProducerDMAChannel(tile);
           else
-            getSlaveDMAChannel(memOp.getTile());
+            getConsumerDMAChannel(tile);
         }
       }
     }
   }
 
-  // Given an AIE tile, returns its next usable master channel.
-  DMAChannel getMasterDMAChannel(Value tile) {
-    return {DMAChannelDir::MM2S, masterChannelsPerTile[tile]++};
+  // Given an AIE tile, returns its next usable producer channel.
+  DMAChannel getProducerDMAChannel(Value tile) {
+    return {DMAChannelDir::MM2S, producerChannelsPerTile[tile]++};
   }
 
-  // Given an AIE tile, returns its next usable slave channel.
-  DMAChannel getSlaveDMAChannel(Value tile) {
-    return {DMAChannelDir::S2MM, slaveChannelsPerTile[tile]++};
+  // Given an AIE tile, returns its next usable consumer channel.
+  DMAChannel getConsumerDMAChannel(Value tile) {
+    return {DMAChannelDir::S2MM, consumerChannelsPerTile[tile]++};
   }
 };
 
@@ -815,7 +816,7 @@ void createFlowsAndTileDMAs(
   };
   // create producer tile DMA
   DMAChannel producerChan =
-      dmaAnalysis.getMasterDMAChannel(producer.getProducerTile());
+      dmaAnalysis.getProducerDMAChannel(producer.getProducerTile());
   createDMA(producer, producerChan.direction, producerChan.channel,
             producer.getDimensionsToStreamAttr());
   // generate objectFifo allocation info
@@ -828,7 +829,7 @@ void createFlowsAndTileDMAs(
   for (auto consumer : consumers) {
     // create consumer tile DMA
     DMAChannel consumerChan =
-        dmaAnalysis.getSlaveDMAChannel(consumer.getProducerTile());
+        dmaAnalysis.getConsumerDMAChannel(consumer.getProducerTile());
     BDDimLayoutArrayAttr consumerDims =
         consumer.getDimensionsFromStreamPerConsumer()[0];
     createDMA(consumer, consumerChan.direction, consumerChan.channel,
