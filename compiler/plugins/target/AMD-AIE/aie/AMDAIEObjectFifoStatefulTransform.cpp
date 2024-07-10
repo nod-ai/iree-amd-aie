@@ -105,42 +105,39 @@ class DMAChannelAnalysis {
   }
 };
 
+enum SharedMemoryDirection { LHS = -1, RHS = 1, NONE = 0 };
 /// Function that returns true if two tiles in the AIE array share a memory
-/// module. share_direction is equal to:
+/// module. shareDirection is equal to:
 ///   * -1 if the shared memory module is that of the first input tile,
 ///   * 1 if it is that of the second input tile,
 ///   * 0 is no memory module is shared.
-bool isSharedMemory(TileOp a, TileOp b, int *share_direction) {
+SharedMemoryDirection haveSharedMemory(TileOp a, TileOp b) {
   DeviceOp device = a->getParentOfType<DeviceOp>();
   AMDAIEDeviceModel deviceModel =
       getDeviceModel(static_cast<AMDAIEDevice>(device.getDevice()));
 
   if ((a.isShimTile() && !b.isShimTile()) ||
-      (!a.isShimTile() && b.isShimTile())) {
-    *share_direction = 0;
-    return false;
-  }
+      (!a.isShimTile() && b.isShimTile()))
+    return NONE;
+
   if ((deviceModel.isMemTile(a.getCol(), a.getRow()) &&
        !deviceModel.isMemTile(b.getCol(), b.getRow())) ||
       (!deviceModel.isMemTile(a.getCol(), a.getRow()) &&
-       deviceModel.isMemTile(b.getCol(), b.getRow()))) {
-    *share_direction = 0;
-    return false;
-  }
+       deviceModel.isMemTile(b.getCol(), b.getRow())))
+    return NONE;
+
   bool rightShared = deviceModel.hasLegalMemAffinity(
       a.colIndex(), a.rowIndex(), b.colIndex(), b.rowIndex());
 
-  bool leftShared = deviceModel.hasLegalMemAffinity(
-      b.colIndex(), b.rowIndex(), a.colIndex(), a.rowIndex());
+  bool leftShared = deviceModel.hasLegalMemAffinity(b.colIndex(), b.rowIndex(),
+                                                    a.colIndex(), a.rowIndex());
 
   if (leftShared)
-    *share_direction = -1;
+    return LHS;
   else if (rightShared)
-    *share_direction = 1;
+    return RHS;
   else
-    *share_direction = 0;
-
-  return leftShared || rightShared;
+    return NONE;
 }
 
 /// Function to retrieve ObjectFifoLinkOp of ObjectFifoCreateOp,
@@ -162,12 +159,9 @@ std::optional<ObjectFifoLinkOp> getOptionalLinkOp(ObjectFifoCreateOp op) {
 // the producer wants to use the multi-dimensional address generation
 // features of the DMA, if the objectFifo is part of a LinkOp, or if the
 // via_DMA attribute of the objectFifo is set.
-bool requiresDMAs(ObjectFifoCreateOp createOp, int &share_direction,
+bool requiresDMAs(ObjectFifoCreateOp createOp,
+                  SharedMemoryDirection &shareDirection,
                   std::vector<ObjectFifoCreateOp> &splitBecauseLink) {
-  bool hasSharedMemory = false;
-  bool atLeastOneConsumerWantsTransform = false;
-  bool isUsedInLinkOp = false;
-
   if (createOp.getVia_DMA()) return true;
 
   if (createOp.getConsumerTiles().size() == 1 &&
@@ -178,19 +172,19 @@ bool requiresDMAs(ObjectFifoCreateOp createOp, int &share_direction,
               dyn_cast<TileOp>(consumerTile.getDefiningOp())) {
         if (std::count(splitBecauseLink.begin(), splitBecauseLink.end(),
                        createOp))
-          hasSharedMemory =
-              isSharedMemory(createOp.getProducerTileOp(),
-                             createOp.getProducerTileOp(), &share_direction);
+          shareDirection = haveSharedMemory(createOp.getProducerTileOp(),
+                                            createOp.getProducerTileOp());
         else
-          hasSharedMemory = isSharedMemory(createOp.getProducerTileOp(),
-                                           consumerTileOp, &share_direction);
+          shareDirection =
+              haveSharedMemory(createOp.getProducerTileOp(), consumerTileOp);
       }
     }
   }
 
+  bool atLeastOneConsumerWantsTransform = false;
   // Only test for use of data layout transformations if we are in the shared
   // memory case; otherwise, we will return `true` in any case.
-  if (hasSharedMemory) {
+  if (shareDirection == LHS || shareDirection == RHS) {
     // Even if just one of the consumers in the list of consumers wants to
     // perform a memory transform, we need to use DMAs.
     for (BDDimLayoutArrayAttr dims :
@@ -203,14 +197,16 @@ bool requiresDMAs(ObjectFifoCreateOp createOp, int &share_direction,
 
   // Only test for this objfifo belonging to a LinkOp if we are in the shared
   // memory case; otherwise, we will return `true` in any case.
-  if (hasSharedMemory) {
+  bool isUsedInLinkOp = false;
+  if (shareDirection == LHS || shareDirection == RHS) {
     if (auto linkOp = getOptionalLinkOp(createOp)) {
       splitBecauseLink.push_back(createOp);
       isUsedInLinkOp = true;
     }
   }
 
-  return !hasSharedMemory || atLeastOneConsumerWantsTransform || isUsedInLinkOp;
+  return !(shareDirection == LHS || shareDirection == RHS) ||
+         atLeastOneConsumerWantsTransform || isUsedInLinkOp;
 }
 
 /// Function used to find the size of an objectFifo after split based on
@@ -305,8 +301,8 @@ std::vector<LockOp> createObjectFifoLocks(
     creation_tile->emitOpError("No more locks to allocate!");
     assert(prodLockID >= 0);
   }
-  auto prodLock = builder.create<LockOp>(builder.getUnknownLoc(),
-                                         creation_tile, prodLockID, numElem);
+  auto prodLock = builder.create<LockOp>(builder.getUnknownLoc(), creation_tile,
+                                         prodLockID, numElem);
   prodLock.getOperation()->setAttr(
       SymbolTable::getSymbolAttrName(),
       builder.getStringAttr(op.name().str() + "_prod_lock"));
@@ -330,7 +326,7 @@ std::vector<LockOp> createObjectFifoLocks(
 /// It maps the input objectFifo to associated buffers and locks.
 void createObjectFifoElements(
     OpBuilder &builder, LockAnalysis &lockAnalysis, ObjectFifoCreateOp op,
-    int share_direction,
+    int shareDirection,
     DenseMap<ObjectFifoLinkOp, ObjectFifoCreateOp> &objFifoLinks,
     DenseMap<ObjectFifoCreateOp, std::vector<ExternalBufferOp>>
         &externalBuffersPerFifo,
@@ -380,7 +376,7 @@ void createObjectFifoElements(
   }
 
   TileOp creation_tile;
-  if (share_direction == 0 || share_direction == -1)
+  if (shareDirection == 0 || shareDirection == -1)
     creation_tile = op.getProducerTileOp();
   else {
     auto consumerTileOp =
@@ -954,8 +950,8 @@ void createAdditionalFifoOp(
 
   // Only FIFOs using DMA are split into two ends;
   // skip in shared memory case
-  if (int share_direction = 0;
-      !requiresDMAs(createOp, share_direction, splitBecauseLink))
+  if (SharedMemoryDirection shareDirection = NONE;
+      !requiresDMAs(createOp, shareDirection, splitBecauseLink))
     return;
 
   for (auto consumerTile : createOp.getConsumerTiles()) {
@@ -1177,8 +1173,8 @@ void createObjectFifosAndLocks(
     DenseMap<ObjectFifoLinkOp, ObjectFifoCreateOp> &objFifoLinks,
     DenseMap<ObjectFifoCreateOp, std::vector<BufferOp>> &buffersPerFifo,
     DenseMap<ObjectFifoCreateOp, std::vector<LockOp>> &locksPerFifo) {
-  int share_direction = 0;
-  bool shared = !requiresDMAs(createOp, share_direction, splitBecauseLink);
+  SharedMemoryDirection shareDirection = NONE;
+  bool shared = !requiresDMAs(createOp, shareDirection, splitBecauseLink);
 
   // add all tiles that contain an objectFifo to objectFifoTiles for later
   // loop unrolling pass
@@ -1196,7 +1192,7 @@ void createObjectFifosAndLocks(
 
   // if split, the necessary size for producer fifo might change
   if (shared)
-    createObjectFifoElements(builder, lockAnalysis, createOp, share_direction,
+    createObjectFifoElements(builder, lockAnalysis, createOp, shareDirection,
                              objFifoLinks, externalBuffersPerFifo,
                              buffersPerFifo, locksPerFifo);
   else {
@@ -1207,7 +1203,7 @@ void createObjectFifosAndLocks(
           findObjectFifoSize(device, createOp.getProducerTileOp(), createOp);
       createOp.setElemNumberAttr(builder.getI32IntegerAttr(prodMaxAcquire));
     }
-    createObjectFifoElements(builder, lockAnalysis, createOp, share_direction,
+    createObjectFifoElements(builder, lockAnalysis, createOp, shareDirection,
                              objFifoLinks, externalBuffersPerFifo,
                              buffersPerFifo, locksPerFifo);
   }
