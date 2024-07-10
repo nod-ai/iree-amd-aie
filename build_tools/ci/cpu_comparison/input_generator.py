@@ -1,11 +1,12 @@
-# This script is expected to be run from the command-line with 2 arguments:
+# This script is expected to be run from the command-line with 3 arguments:
 #
 #   1) the name of a file to parse.
 #   2) the directory where binary files will be written.
+#   3) a random seed.
 #
 # Example:
 # ```
-# python input_generator.py <input_file> <output_dir>
+# python input_generator.py <input_file> <output_dir> <seed>
 # ```
 #
 # The file <input_file> contains an mlir function, and header information
@@ -93,13 +94,18 @@ def get_numpy_type(element_type):
         raise ValueError("Invalid or unsupported element type: " + element_type)
 
 
+def get_generator(seed):
+    return np.random.Generator(np.random.MT19937(np.random.SeedSequence(seed)))
+
+
 def verify_determinism():
     """
     Assert that the approach we use is deterministic across space and time...
-    we don't want OS, numpy version, etc, influencing random values.
+    we don't want OS, numpy version, etc, influencing random values. Only the seed
+    should influence the random values.
     """
     seed = 1
-    rng = np.random.Generator(np.random.MT19937(np.random.SeedSequence(seed)))
+    rng = get_generator(seed)
     test_values = [x for x in rng.integers(0, 100000, 4)]
     expected_test_values = [24067, 90095, 72958, 10894]
     if test_values != expected_test_values:
@@ -113,17 +119,13 @@ def verify_determinism():
         raise ValueError(message)
 
 
-def write_input(bin_filename, num_elements, element_type, input_number):
+def write_input(bin_filename, num_elements, element_type, input_number, input_seed):
     # Random integer values in range [lower_bound, upper_bound)
     # will be generated for the input data.
     lower_bound = 0
     upper_bound = 10
 
-    verify_determinism()
-    # We have now verified that approach below is deterministic across platforms.
-    # The seed is fixed for each operand (input_number). 
-    seed = 1 + input_number
-    rng = np.random.Generator(np.random.MT19937(np.random.SeedSequence(seed)))
+    rng = get_generator(input_seed)
 
     data = None
     if element_type == "bfloat16" or element_type == "bf16":
@@ -137,11 +139,13 @@ def write_input(bin_filename, num_elements, element_type, input_number):
         file.write(data)
 
 
-def generate_inputs(filename, write_dir):
+def generate_inputs(filename, write_dir, seed):
     """
     Parse the input file 'filename' and generate binary files for the inputs of
     the mlir function.
     """
+
+    verify_determinism()
 
     name = os.path.splitext(os.path.basename(filename))[0]
 
@@ -168,7 +172,17 @@ def generate_inputs(filename, write_dir):
                         write_dir, name + "_input" + str(input_number) + ".bin"
                     )
                     input_args.append('--input="%s=@%s"' % (tokens[2], bin_filename))
-                    write_input(bin_filename, num_elements, element_type, input_number)
+                    # Each input has a distinct seed, based on its input number.
+                    # This is to ensure that operands are not populated with the
+                    # same values.
+                    input_seed = seed + input_number
+                    write_input(
+                        bin_filename,
+                        num_elements,
+                        element_type,
+                        input_number,
+                        input_seed,
+                    )
                     input_number += 1
 
             if (len(tokens) == 2) and tokens[0] == "//input":
@@ -210,9 +224,15 @@ def generate_inputs(filename, write_dir):
 
 
 if __name__ == "__main__":
-    if len(sys.argv) == 3:
-        generate_inputs(sys.argv[1], sys.argv[2])
+    if len(sys.argv) == 4:
+        seed = int(sys.argv[3])
+        generate_inputs(sys.argv[1], sys.argv[2], seed)
     else:
-        raise ValueError(
-            f"Incorrect number of input arguments, expected 3, got {len(sys.argv)}."
+        error_message = (
+            f"Incorrect number of input arguments. Expected 3, got {len(sys.argv) - 1}. "
+            f"Expected arguments are: "
+            f"1) the name of a file to parse. "
+            f"2) the directory where binary files will be written. "
+            f"3) a random seed. Runs with the same seed will be deterministic across platforms."
         )
+        raise ValueError(error_message)
