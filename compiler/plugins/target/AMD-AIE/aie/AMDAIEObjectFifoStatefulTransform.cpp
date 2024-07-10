@@ -43,11 +43,13 @@ class LockAnalysis {
     AMDAIEDeviceModel deviceModel =
         getDeviceModel(static_cast<AMDAIEDevice>(device.getDevice()));
     for (int i = 0;
-         i < deviceModel.getNumLocks(tileOp.getCol(), tileOp.getRow()); i++)
-      if (int usageCnt = locksPerTile[{tileOp, i}]; usageCnt == 0) {
-        locksPerTile[{tileOp, i}] = 1;
+         i < deviceModel.getNumLocks(tileOp.getCol(), tileOp.getRow()); i++) {
+      std::pair<Value, int> lockId = {tileOp, i};
+      if (int usageCnt = locksPerTile[lockId]; usageCnt == 0) {
+        locksPerTile[lockId] = 1;
         return i;
       }
+    }
     return -1;
   }
 };
@@ -65,10 +67,9 @@ class DMAChannelAnalysis {
       auto tile = memOp.getTile();
       for (auto &bl : r.getBlocks()) {
         for (auto op : bl.getOps<DMAStartOp>()) {
-          if (op.getChannelDir() == DMAChannelDir::MM2S)
-            getProducerDMAChannel(tile);
-          else
-            getConsumerDMAChannel(tile);
+          op.getChannelDir() == DMAChannelDir::MM2S
+              ? getProducerDMAChannel(tile)
+              : getConsumerDMAChannel(tile);
         }
       }
     }
@@ -436,17 +437,12 @@ void createUseLocks(
   // search for the correct lock based on the port of the acq/rel
   // operation e.g. acq as consumer is the read lock (second)
   LockOp lock;
-  if (lockAction == LockAction::AcquireGreaterEqual) {
-    if (port == ObjectFifoPort::Produce)
-      lock = locksPerFifo.at(target)[0];
-    else
-      lock = locksPerFifo.at(target)[1];
-  } else {
-    if (port == ObjectFifoPort::Produce)
-      lock = locksPerFifo.at(target)[1];
-    else
-      lock = locksPerFifo.at(target)[0];
-  }
+  std::vector<LockOp> locks = locksPerFifo.at(target);
+  if (lockAction == LockAction::AcquireGreaterEqual)
+    lock = port == ObjectFifoPort::Produce ? locks[0] : locks[1];
+  else
+    lock = port == ObjectFifoPort::Produce ? locks[1] : locks[0];
+
   builder.create<UseLockOp>(builder.getUnknownLoc(), lock, lockAction,
                             numLocks);
   std::pair<ObjectFifoCreateOp, int> opPort = {op, static_cast<int>(port)};
@@ -655,11 +651,7 @@ void replaceObjectAcquireOp(
   // acquire locks
   size_t numLocks = acquireOp.acqNumber();
   size_t alreadyAcq = acquiredIndices.size();
-  size_t numCreate;
-  if (numLocks > alreadyAcq)
-    numCreate = numLocks - alreadyAcq;
-  else
-    numCreate = 0;
+  size_t numCreate = numLocks > alreadyAcq ? numLocks - alreadyAcq : 0;
 
   {
     OpBuilder::InsertionGuard gg(builder);
