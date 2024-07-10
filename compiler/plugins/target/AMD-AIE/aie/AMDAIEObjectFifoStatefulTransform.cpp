@@ -10,6 +10,7 @@
 #include "Passes.h"
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "iree-amd-aie/aie_runtime/iree_aie_runtime.h"
+#include "llvm/ADT/STLExtras.h"
 #include "mlir/Analysis/TopologicalSortUtils.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
@@ -17,7 +18,6 @@
 #include "mlir/Dialect/SCF/Utils/Utils.h"
 #include "mlir/Dialect/Utils/StaticValueUtils.h"
 #include "mlir/IR/Attributes.h"
-#include "mlir/IR/IRMapping.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
 
@@ -28,9 +28,6 @@ using namespace mlir::iree_compiler::AMDAIE;
 
 #define DEBUG_TYPE "amdaie-objectFifo-stateful-transform"
 
-//===----------------------------------------------------------------------===//
-// Lock Analysis
-//===----------------------------------------------------------------------===//
 class LockAnalysis {
   DenseMap<std::pair<Value, int>, int> locksPerTile;
 
@@ -45,12 +42,12 @@ class LockAnalysis {
     }
   }
 
-  /// Given a tile, returns next usable lockID for that tile.
+  // Given a tile, returns next usable lockID for that tile.
   int getLockID(TileOp &tileOp) {
     DeviceOp device = tileOp->getParentOfType<DeviceOp>();
     AMDAIEDeviceModel deviceModel =
         getDeviceModel(static_cast<AMDAIEDevice>(device.getDevice()));
-    for (unsigned i = 0;
+    for (int i = 0;
          i < deviceModel.getNumLocks(tileOp.getCol(), tileOp.getRow()); i++)
       if (int usageCnt = locksPerTile[{tileOp, i}]; usageCnt == 0) {
         locksPerTile[{tileOp, i}] = 1;
@@ -60,9 +57,6 @@ class LockAnalysis {
   }
 };
 
-//===----------------------------------------------------------------------===//
-// TileDMA Channel Analysis
-//===----------------------------------------------------------------------===//
 class DMAChannelAnalysis {
   DenseMap<Value, int> masterChannelsPerTile;
   DenseMap<Value, int> slaveChannelsPerTile;
@@ -84,7 +78,7 @@ class DMAChannelAnalysis {
     }
   }
 
-  /// Given an AIE tile, returns its next usable master channel.
+  // Given an AIE tile, returns its next usable master channel.
   DMAChannel getMasterDMAChannel(Value tile) {
     if (masterChannelsPerTile.find(tile) == masterChannelsPerTile.end())
       masterChannelsPerTile[tile] = 0;
@@ -94,7 +88,7 @@ class DMAChannelAnalysis {
     return dmaChan;
   }
 
-  /// Given an AIE tile, returns its next usable slave channel.
+  // Given an AIE tile, returns its next usable slave channel.
   DMAChannel getSlaveDMAChannel(Value tile) {
     if (slaveChannelsPerTile.find(tile) == slaveChannelsPerTile.end())
       slaveChannelsPerTile[tile] = 0;
@@ -106,42 +100,9 @@ class DMAChannelAnalysis {
 };
 
 enum SharedMemoryDirection { LHS = -1, RHS = 1, NONE = 0 };
-/// Function that returns true if two tiles in the AIE array share a memory
-/// module. shareDirection is equal to:
-///   * -1 if the shared memory module is that of the first input tile,
-///   * 1 if it is that of the second input tile,
-///   * 0 is no memory module is shared.
-SharedMemoryDirection haveSharedMemory(TileOp a, TileOp b) {
-  DeviceOp device = a->getParentOfType<DeviceOp>();
-  AMDAIEDeviceModel deviceModel =
-      getDeviceModel(static_cast<AMDAIEDevice>(device.getDevice()));
 
-  if ((a.isShimTile() && !b.isShimTile()) ||
-      (!a.isShimTile() && b.isShimTile()))
-    return NONE;
-
-  if ((deviceModel.isMemTile(a.getCol(), a.getRow()) &&
-       !deviceModel.isMemTile(b.getCol(), b.getRow())) ||
-      (!deviceModel.isMemTile(a.getCol(), a.getRow()) &&
-       deviceModel.isMemTile(b.getCol(), b.getRow())))
-    return NONE;
-
-  bool rightShared = deviceModel.hasLegalMemAffinity(
-      a.colIndex(), a.rowIndex(), b.colIndex(), b.rowIndex());
-
-  bool leftShared = deviceModel.hasLegalMemAffinity(b.colIndex(), b.rowIndex(),
-                                                    a.colIndex(), a.rowIndex());
-
-  if (leftShared)
-    return LHS;
-  else if (rightShared)
-    return RHS;
-  else
-    return NONE;
-}
-
-/// Function to retrieve ObjectFifoLinkOp of ObjectFifoCreateOp,
-/// if it belongs to one.
+// Retrieve ObjectFifoLinkOp of ObjectFifoCreateOp,
+// if it belongs to one.
 std::optional<ObjectFifoLinkOp> getOptionalLinkOp(ObjectFifoCreateOp op) {
   auto device = op->getParentOfType<DeviceOp>();
   for (ObjectFifoLinkOp linkOp : device.getOps<ObjectFifoLinkOp>()) {
@@ -157,62 +118,78 @@ std::optional<ObjectFifoLinkOp> getOptionalLinkOp(ObjectFifoCreateOp op) {
 // up. This is the case if the tiles are not adjacent (no shared memory), if
 // the objectFifo broadcasts to multiple tiles, if one of the consumers or
 // the producer wants to use the multi-dimensional address generation
-// features of the DMA, if the objectFifo is part of a LinkOp, or if the
-// via_DMA attribute of the objectFifo is set.
+// features of the DMA, if the objectFifo is part of a LinkOp.
 bool requiresDMAs(ObjectFifoCreateOp createOp,
                   SharedMemoryDirection &shareDirection,
                   std::vector<ObjectFifoCreateOp> &splitBecauseLink) {
-  if (createOp.getVia_DMA()) return true;
+  DeviceOp device = createOp->getParentOfType<DeviceOp>();
+  auto haveSharedMemory = [&device](TileOp a, TileOp b) {
+    AMDAIEDeviceModel deviceModel =
+        getDeviceModel(static_cast<AMDAIEDevice>(device.getDevice()));
+
+    if ((a.isShimTile() && !b.isShimTile()) ||
+        (!a.isShimTile() && b.isShimTile()))
+      return NONE;
+
+    if ((deviceModel.isMemTile(a.getCol(), a.getRow()) &&
+         !deviceModel.isMemTile(b.getCol(), b.getRow())) ||
+        (!deviceModel.isMemTile(a.getCol(), a.getRow()) &&
+         deviceModel.isMemTile(b.getCol(), b.getRow())))
+      return NONE;
+
+    bool rightShared = deviceModel.hasLegalMemAffinity(a.getCol(), a.getRow(),
+                                                       b.getCol(), b.getRow());
+
+    bool leftShared = deviceModel.hasLegalMemAffinity(b.getCol(), b.getRow(),
+                                                      a.getCol(), a.getRow());
+
+    if (leftShared)
+      return LHS;
+    else if (rightShared)
+      return RHS;
+    else
+      return NONE;
+  };
 
   if (createOp.getConsumerTiles().size() == 1 &&
-      createOp.getDimensionsToStream().empty()) {
+      createOp.getDimensionsToStream().empty())
     // Test for shared memory
     for (auto consumerTile : createOp.getConsumerTiles()) {
-      if (auto consumerTileOp =
-              dyn_cast<TileOp>(consumerTile.getDefiningOp())) {
-        if (std::count(splitBecauseLink.begin(), splitBecauseLink.end(),
-                       createOp))
-          shareDirection = haveSharedMemory(createOp.getProducerTileOp(),
-                                            createOp.getProducerTileOp());
-        else
-          shareDirection =
-              haveSharedMemory(createOp.getProducerTileOp(), consumerTileOp);
-      }
+      auto consumerTileOp = dyn_cast<TileOp>(consumerTile.getDefiningOp());
+      if (!consumerTileOp) continue;
+      if (std::count(splitBecauseLink.begin(), splitBecauseLink.end(),
+                     createOp))
+        shareDirection = haveSharedMemory(createOp.getProducerTileOp(),
+                                          createOp.getProducerTileOp());
+      else
+        shareDirection =
+            haveSharedMemory(createOp.getProducerTileOp(), consumerTileOp);
     }
-  }
 
-  bool atLeastOneConsumerWantsTransform = false;
-  // Only test for use of data layout transformations if we are in the shared
-  // memory case; otherwise, we will return `true` in any case.
   if (shareDirection == LHS || shareDirection == RHS) {
+    // Only test for use of data layout transformations if we are in the shared
+    // memory case; otherwise, we will return `true` in any case.
     // Even if just one of the consumers in the list of consumers wants to
     // perform a memory transform, we need to use DMAs.
     for (BDDimLayoutArrayAttr dims :
          createOp.getDimensionsFromStreamPerConsumer())
-      if (!dims.empty()) {
-        atLeastOneConsumerWantsTransform = true;
-        break;
-      }
-  }
+      if (!dims.empty()) return true;
 
-  // Only test for this objfifo belonging to a LinkOp if we are in the shared
-  // memory case; otherwise, we will return `true` in any case.
-  bool isUsedInLinkOp = false;
-  if (shareDirection == LHS || shareDirection == RHS) {
+    // Only test for this objfifo belonging to a LinkOp if we are in the shared
+    // memory case; otherwise, we will return `true` in any case.
     if (auto linkOp = getOptionalLinkOp(createOp)) {
       splitBecauseLink.push_back(createOp);
-      isUsedInLinkOp = true;
+      return true;
     }
   }
 
-  return !(shareDirection == LHS || shareDirection == RHS) ||
-         atLeastOneConsumerWantsTransform || isUsedInLinkOp;
+  return !(shareDirection == LHS || shareDirection == RHS);
 }
 
-/// Function used to find the size of an objectFifo after split based on
-/// the maximum number of elements (of the original objectFifo) acquired
-/// by a process running on given tile. If no CoreOp exists for this tile
-/// return 0.
+// Find the size of an objectFifo after split based on
+// the maximum number of elements (of the original objectFifo) acquired
+// by a process running on given tile. If no CoreOp exists for this tile
+// return 0.
 int findObjectFifoSize(DeviceOp &device, Value tile,
                        ObjectFifoCreateOp objFifo) {
   if (objFifo.size() == 0) return 0;
@@ -220,282 +197,32 @@ int findObjectFifoSize(DeviceOp &device, Value tile,
   // if memTile, size is equal to objFifo size
   if (tile.getDefiningOp<TileOp>().isMemTile()) return objFifo.size();
 
-  // if shimTile, size is equal to number of external buffers
-  if (tile.getDefiningOp<TileOp>().isShimTile())
-    for (auto regOp : device.getOps<ObjectFifoRegisterExternalBuffersOp>()) {
-      if (regOp.getTile() == tile) return regOp.getExternalBuffers().size();
-    }
-
   int maxAcquire = 0;
-  for (auto coreOp : device.getOps<CoreOp>())
-    if (coreOp.getTile() == tile)
-      coreOp.walk([&](ObjectFifoAcquireOp acqOp) {
-        if (auto createOp = acqOp.getObjectFifo(); createOp == objFifo)
-          if (acqOp.acqNumber() > maxAcquire) maxAcquire = acqOp.acqNumber();
-      });
+  for (auto coreOp : make_filter_range(
+           device.getOps<CoreOp>(),
+           [&tile](auto coreOp) { return coreOp.getTile() == tile; }))
+    coreOp.walk([&](ObjectFifoAcquireOp acqOp) {
+      if (acqOp.getObjectFifo() == objFifo && acqOp.acqNumber() > maxAcquire)
+        maxAcquire = acqOp.acqNumber();
+    });
 
-  if (maxAcquire > 0) {
-    if (maxAcquire == 1 && objFifo.size() == 1) return 1;
-    return maxAcquire + 1;
-    // +1 because objectFifo size is always 1 bigger than maxAcquire to allow
-    // for prefetching: simplest case scenario is at least a ping-pong buffer
-  }
+  if (maxAcquire == 1 && objFifo.size() == 1) return 1;
+
+  // +1 because objectFifo size is always 1 bigger than maxAcquire to allow
+  // for prefetching: simplest case scenario is at least a ping-pong buffer
+  if (maxAcquire > 0) return maxAcquire + 1;
 
   return objFifo.size();
 }
 
-/// Function used to replace uses of split objectFifos.
-void replaceSplitFifo(ObjectFifoCreateOp originalOp, ObjectFifoCreateOp newOp,
-                      TileOp tile) {
-  auto original =
-      originalOp->getAttrOfType<StringAttr>(SymbolTable::getSymbolAttrName());
-  auto newSymbol =
-      newOp->getAttrOfType<StringAttr>(SymbolTable::getSymbolAttrName());
-  for (auto user : tile->getUsers())
-    if (isa<CoreOp>(user))
-      if (auto res =
-              SymbolTable::replaceAllSymbolUses(original, newSymbol, user);
-          res.failed())
-        llvm_unreachable("unreachable");
-}
-
-/// Function used to add an external buffer to the externalBuffersPerFifo map.
-void addExternalBuffer(
-    ObjectFifoCreateOp fifo, ExternalBufferOp buff,
-    DenseMap<ObjectFifoCreateOp, std::vector<ExternalBufferOp>>
-        &externalBuffersPerFifo) {
-  if (externalBuffersPerFifo.find(fifo) == externalBuffersPerFifo.end()) {
-    std::vector<ExternalBufferOp> buffs;
-    externalBuffersPerFifo[fifo] = buffs;
-  }
-  externalBuffersPerFifo[fifo].push_back(buff);
-}
-
-/// Function used to detect all external buffers associated with parent
-/// objectFifo and tile then map them to child objectFifo.
-void detectExternalBuffers(
-    DeviceOp &device, ObjectFifoCreateOp parent, ObjectFifoCreateOp child,
-    Value tile,
-    DenseMap<ObjectFifoCreateOp, std::vector<ExternalBufferOp>>
-        &externalBuffersPerFifo) {
-  for (auto regOp : device.getOps<ObjectFifoRegisterExternalBuffersOp>())
-    if (auto objFifo = regOp.getObjectFifo();
-        regOp.getTile() == tile && objFifo == parent)
-      for (auto extBuff : regOp.getExternalBuffers())
-        addExternalBuffer(child, extBuff.getDefiningOp<ExternalBufferOp>(),
-                          externalBuffersPerFifo);
-}
-
-/// Function used to create objectFifo locks based on target architecture.
-/// Called by createObjectFifoElements().
-std::vector<LockOp> createObjectFifoLocks(
-    OpBuilder &builder, LockAnalysis &lockAnalysis, ObjectFifoCreateOp op,
-    int numElem, TileOp creation_tile,
-    DenseMap<ObjectFifoCreateOp, std::vector<ExternalBufferOp>>
-        &externalBuffersPerFifo) {
-  std::vector<LockOp> locks;
-  if (creation_tile.isShimTile()) numElem = externalBuffersPerFifo[op].size();
-  // create corresponding aie2 locks
-  int prodLockID = lockAnalysis.getLockID(creation_tile);
-  if (prodLockID < 0) {
-    creation_tile->emitOpError("No more locks to allocate!");
-    assert(prodLockID >= 0);
-  }
-  auto prodLock = builder.create<LockOp>(builder.getUnknownLoc(), creation_tile,
-                                         prodLockID, numElem);
-  prodLock.getOperation()->setAttr(
-      SymbolTable::getSymbolAttrName(),
-      builder.getStringAttr(op.name().str() + "_prod_lock"));
-  locks.push_back(prodLock);
-
-  int consLockID = lockAnalysis.getLockID(creation_tile);
-  if (consLockID < 0) {
-    creation_tile->emitOpError("No more locks to allocate!");
-    assert(consLockID >= 0);
-  }
-  auto consLock = builder.create<LockOp>(builder.getUnknownLoc(), creation_tile,
-                                         consLockID, 0);
-  consLock.getOperation()->setAttr(
-      SymbolTable::getSymbolAttrName(),
-      builder.getStringAttr(op.name().str() + "_cons_lock"));
-  locks.push_back(consLock);
-  return locks;
-}
-
-/// Function used to create objectFifo elements and their locks.
-/// It maps the input objectFifo to associated buffers and locks.
-void createObjectFifoElements(
-    OpBuilder &builder, LockAnalysis &lockAnalysis, ObjectFifoCreateOp op,
-    int shareDirection,
-    DenseMap<ObjectFifoLinkOp, ObjectFifoCreateOp> &objFifoLinks,
-    DenseMap<ObjectFifoCreateOp, std::vector<ExternalBufferOp>>
-        &externalBuffersPerFifo,
-    DenseMap<ObjectFifoCreateOp, std::vector<BufferOp>> &buffersPerFifo,
-    DenseMap<ObjectFifoCreateOp, std::vector<LockOp>> &locksPerFifo) {
-  if (!op.size()) return;
-
-  std::vector<BufferOp> buffers;
-  auto fifo = llvm::cast<AIEObjectFifoType>(op.getElemType());
-  auto elemType = llvm::cast<MemRefType>(fifo.getElementType());
-  int numElem = op.size();
-  int of_elem_index = 0;  // used to give objectFifo elements a symbolic name
-
-  // if this objectFifo is linked to another, check if the other's elements
-  // have already been created (the elements that are created are those of
-  // the objFifo with elements of bigger size)
-  bool linked = false;
-  auto linkOp = getOptionalLinkOp(op);
-  if (linkOp) {
-    auto fifoIn = linkOp->getInputObjectFifos()[0];
-    auto fifoOut = linkOp->getOutputObjectFifos()[0];
-    linked = true;
-    if (objFifoLinks.find(*linkOp) != objFifoLinks.end())
-      return;  // elements have already been created
-    if (linkOp->isJoin()) {
-      // if join, fifoOut has bigger size
-      if (op.name() != fifoOut.name()) return;
-    } else if (linkOp->isDistribute()) {
-      // if distribute, fifoIn has bigger size
-      if (op.name() != fifoIn.name()) return;
-    } else {
-      auto fifoInType = llvm::cast<AIEObjectFifoType>(
-          linkOp->getInputObjectFifos()[0].getElemType());
-      auto elemInType = llvm::cast<MemRefType>(fifoInType.getElementType());
-      int inSize = elemInType.getNumElements();
-
-      auto fifoOutType = llvm::cast<AIEObjectFifoType>(
-          linkOp->getOutputObjectFifos()[0].getElemType());
-      auto elemOutType = llvm::cast<MemRefType>(fifoOutType.getElementType());
-
-      if (int outSize = elemOutType.getNumElements(); inSize >= outSize) {
-        if (op.name() != fifoIn.name()) return;
-      } else {
-        if (linkOp->getOutputObjectFifos()[0] != op) return;
-      }
-    }
-  }
-
-  TileOp creation_tile;
-  if (shareDirection == 0 || shareDirection == -1)
-    creation_tile = op.getProducerTileOp();
-  else {
-    auto consumerTileOp =
-        dyn_cast<TileOp>(op.getConsumerTiles()[0].getDefiningOp());
-    creation_tile = consumerTileOp;
-  }
-
-  // Reset opbuilder location to after the last tile declaration
-  Operation *t = nullptr;
-  auto dev = op->getParentOfType<DeviceOp>();
-  for (auto tile_op : dev.getBody()->getOps<TileOp>()) {
-    t = tile_op.getOperation();
-  }
-  builder.setInsertionPointAfter(t);
-  for (int i = 0; i < numElem; i++) {
-    // if shimTile external buffers are collected from input code
-    // create as many locks as there are external buffers
-    if (!creation_tile.isShimTile()) {
-      auto buff = builder.create<BufferOp>(
-          builder.getUnknownLoc(), elemType, creation_tile,
-          builder.getStringAttr(op.name().str() + "_buff_" +
-                                std::to_string(of_elem_index)),
-          /*address*/ nullptr, /*initial_value*/ nullptr,
-          /*mem_bank*/ nullptr);
-      buffers.push_back(buff);
-    }
-    of_elem_index++;
-  }
-  if (linked) {
-    if (linkOp->isDistribute())
-      numElem *= linkOp->getFifoOuts().size();
-    else if (linkOp->isJoin())
-      numElem *= linkOp->getFifoIns().size();
-    objFifoLinks[*linkOp] = op;
-  }
-  std::vector<LockOp> locks =
-      createObjectFifoLocks(builder, lockAnalysis, op, numElem, creation_tile,
-                            externalBuffersPerFifo);
-  buffersPerFifo[op] = buffers;
-  locksPerFifo[op] = locks;
-}
-
-/// Function that returns a pointer to the block of a Region
-/// that contains the AIEEndOp.
-Block *findEndOpBlock(Region &r) {
-  Block *endBlock = nullptr;
-  for (auto &bl : r.getBlocks())
-    if (!bl.getOps<EndOp>().empty()) endBlock = &bl;
-  return endBlock;
-}
-
-/// Function used to create a Bd block.
-template <typename MyOp>
-void createBd(OpBuilder &builder, LockOp acqLock, int acqMode,
-              LockAction acqLockAction, LockOp relLock, int relMode, MyOp buff,
-              int offset, int len, Block *succ, BDDimLayoutArrayAttr dims) {
-  builder.create<UseLockOp>(builder.getUnknownLoc(), acqLock, acqLockAction,
-                            acqMode);
-  if (!dims.getValue().empty())
-    builder.create<DMABDOp>(builder.getUnknownLoc(), buff, offset, len, dims);
-  else
-    builder.create<DMABDOp>(builder.getUnknownLoc(), buff, offset, len);
-
-  builder.create<UseLockOp>(builder.getUnknownLoc(), relLock,
-                            LockAction::Release, relMode);
-  builder.create<NextBDOp>(builder.getUnknownLoc(), succ);
-}
-
-/// Function used to create a Bd block.
-/// If lockMode is 0 we create a consumerDMA (i.e. on producer tile) else a
-/// producerDMA (i.e. on consumer tile).
-template <typename MyOp>
-void createBdBlock(
-    OpBuilder &builder, ObjectFifoCreateOp op, int lockMode, int acqNum,
-    int relNum, MyOp buff, int offset, int len, DMAChannelDir channelDir,
-    size_t blockIndex, Block *succ, BDDimLayoutArrayAttr dims,
-    DenseMap<ObjectFifoCreateOp, std::vector<LockOp>> &locksPerFifo) {
-  LockOp acqLock;
-  LockOp relLock;
-  int acqMode = 1;
-  int relMode = 1;
-  auto acqLockAction = LockAction::Acquire;
-  acqMode = acqNum;
-  relMode = relNum;
-  acqLockAction = LockAction::AcquireGreaterEqual;
-  acqLock = channelDir == DMAChannelDir::S2MM ? locksPerFifo[op][0]
-                                              : locksPerFifo[op][1];
-  relLock = channelDir == DMAChannelDir::S2MM ? locksPerFifo[op][1]
-                                              : locksPerFifo[op][0];
-  createBd(builder, acqLock, acqMode, acqLockAction, relLock, relMode, buff,
-           offset, len, succ, dims);
-}
-
-/// Function used to create a MemOp region with a DMA channel.
-/// It uses creatBdBlock(), see there for lockMode input.
-void createAMDAIETileDMA(
+template <typename MemOp, typename BufferOp>
+void createMemDMA(
     DeviceOp &device, OpBuilder &builder, ObjectFifoCreateOp op,
-    DMAChannelDir channelDir, int channelIndex, int lockMode,
-    BDDimLayoutArrayAttr dims,
-    DenseMap<ObjectFifoLinkOp, ObjectFifoCreateOp> &objFifoLinks,
+    ObjectFifoCreateOp target, DMAChannelDir channelDir, int channelIndex,
+    BDDimLayoutArrayAttr dims, size_t numBlocks, size_t acqNum, size_t relNum,
+    int64_t len, int64_t offset,
     DenseMap<ObjectFifoCreateOp, std::vector<BufferOp>> &buffersPerFifo,
     DenseMap<ObjectFifoCreateOp, std::vector<LockOp>> &locksPerFifo) {
-  size_t numBlocks = op.size();
-  if (numBlocks == 0) return;
-
-  int acqNum = 1;
-  int relNum = 1;
-
-  auto fifo = llvm::cast<AIEObjectFifoType>(op.getElemType());
-  auto elemType = llvm::cast<MemRefType>(fifo.getElementType());
-  int len = elemType.getNumElements();
-
-  // search for the buffers/locks (based on if this objFifo has a link)
-  ObjectFifoCreateOp target = op;
-  if (std::optional<ObjectFifoLinkOp> linkOp = getOptionalLinkOp(op);
-      linkOp.has_value())
-    if (objFifoLinks.find(linkOp.value()) != objFifoLinks.end())
-      target = objFifoLinks[linkOp.value()];
-
   // search for MemOp
   Operation *producerMem = nullptr;
   for (auto memOp : device.getOps<MemOp>()) {
@@ -507,9 +234,9 @@ void createAMDAIETileDMA(
 
   // if none exists, create one
   TileOp objFifoTileOp = target.getProducerTileOp();
-  if (producerMem == nullptr) {
+  if (!producerMem) {
     if (device->getNumRegions() != 1)
-      assert(false && "expected num regions for device op");
+      llvm::report_fatal_error("expected num regions for device op");
     OpBuilder::InsertionGuard g(builder);
     builder.setInsertionPointToEnd(device.getBody());
     auto newMemOp =
@@ -521,121 +248,81 @@ void createAMDAIETileDMA(
     }
     producerMem = newMemOp.getOperation();
   }
-  Block *endBlock = findEndOpBlock(producerMem->getRegion(0));
-  Block *lastDmaBlock = endBlock->getSinglePredecessor();
-  Block *dmaBlock = builder.createBlock(endBlock);
-  Block *bdBlock = builder.createBlock(endBlock);
+
+  Block &endBlock = producerMem->getRegion(0).getBlocks().back();
+  assert(!endBlock.getOps<EndOp>().empty() &&
+         "expected last block to have aie.end");
+  Block *lastDmaBlock = endBlock.getSinglePredecessor(),
+        *dmaBlock = builder.createBlock(&endBlock),
+        *bdBlock = builder.createBlock(&endBlock);
 
   // create DMA channel
   builder.setInsertionPointToStart(dmaBlock);
   builder.create<DMAStartOp>(builder.getUnknownLoc(), channelDir, channelIndex,
-                             /*repeatCount*/ 0, bdBlock, endBlock);
-  if (lastDmaBlock != nullptr)
-    lastDmaBlock->getTerminator()->setSuccessor(dmaBlock, 1);
+                             /*repeatCount*/ 0, bdBlock, &endBlock);
+  if (lastDmaBlock) lastDmaBlock->getTerminator()->setSuccessor(dmaBlock, 1);
+
+  auto createBdBlockOps = [&](BufferOp buff, Block *succ) {
+    LockOp acqLock = channelDir == DMAChannelDir::S2MM
+                         ? locksPerFifo[target][0]
+                         : locksPerFifo[target][1],
+           relLock = channelDir == DMAChannelDir::S2MM
+                         ? locksPerFifo[target][1]
+                         : locksPerFifo[target][0];
+    builder.create<UseLockOp>(builder.getUnknownLoc(), acqLock,
+                              LockAction::AcquireGreaterEqual, acqNum);
+    if (!dims.getValue().empty())
+      builder.create<DMABDOp>(builder.getUnknownLoc(), buff, offset, len, dims);
+    else
+      builder.create<DMABDOp>(builder.getUnknownLoc(), buff, offset, len);
+
+    builder.create<UseLockOp>(builder.getUnknownLoc(), relLock,
+                              LockAction::Release, relNum);
+    builder.create<NextBDOp>(builder.getUnknownLoc(), succ);
+  };
 
   // create Bd blocks
-  Block *succ;
-  Block *curr = bdBlock;
-  size_t blockIndex = 0;
-  for (size_t i = 0; i < numBlocks; i++) {
-    if (blockIndex >= buffersPerFifo[target].size()) break;
-    if (i == numBlocks - 1)
+  Block *succ = nullptr, *curr = bdBlock;
+  numBlocks = std::min(numBlocks, buffersPerFifo[target].size());
+  for (size_t blockIndex = 0; blockIndex < numBlocks; ++blockIndex) {
+    if (blockIndex == numBlocks - 1)
       succ = bdBlock;
     else
-      succ = builder.createBlock(endBlock);
+      succ = builder.createBlock(&endBlock);
 
     builder.setInsertionPointToStart(curr);
-    createBdBlock<BufferOp>(builder, target, lockMode, acqNum, relNum,
-                            buffersPerFifo[target][blockIndex], /*offset*/ 0,
-                            len, channelDir, blockIndex, succ, dims,
-                            locksPerFifo);
+    createBdBlockOps(buffersPerFifo[target][blockIndex], succ);
     curr = succ;
-    blockIndex++;
   }
 }
 
-/// Function used to create a ShimDMAOp region with a DMA channel.
-/// It uses creatBdBlock(), see there for lockMode input.
-void createShimDMA(
+void createAMDAIETileDMA(
     DeviceOp &device, OpBuilder &builder, ObjectFifoCreateOp op,
-    DMAChannelDir channelDir, int channelIndex, int lockMode,
-    BDDimLayoutArrayAttr dims,
-    DenseMap<ObjectFifoCreateOp, std::vector<ExternalBufferOp>>
-        &externalBuffersPerFifo,
+    DMAChannelDir channelDir, int channelIndex, BDDimLayoutArrayAttr dims,
+    DenseMap<ObjectFifoLinkOp, ObjectFifoCreateOp> &objFifoLinks,
+    DenseMap<ObjectFifoCreateOp, std::vector<BufferOp>> &buffersPerFifo,
     DenseMap<ObjectFifoCreateOp, std::vector<LockOp>> &locksPerFifo) {
-  size_t numBlocks = externalBuffersPerFifo[op].size();
+  size_t numBlocks = op.size();
   if (numBlocks == 0) return;
+  // search for the buffers/locks (based on if this objFifo has a link)
+  ObjectFifoCreateOp target = op;
+  if (std::optional<ObjectFifoLinkOp> linkOp = getOptionalLinkOp(op);
+      linkOp.has_value())
+    if (objFifoLinks.find(linkOp.value()) != objFifoLinks.end())
+      target = objFifoLinks[linkOp.value()];
 
-  int acqNum = 1;
-  int relNum = 1;
-
-  // search for ShimDMAOp
-  Operation *producerDMA = nullptr;
-  for (auto dmaOp : device.getOps<ShimDMAOp>()) {
-    if (dmaOp.getTile() == op.getProducerTile()) {
-      producerDMA = dmaOp.getOperation();
-      break;
-    }
-  }
-
-  // if none exists, create one
-  TileOp objFifoTileOp = op.getProducerTileOp();
-  if (producerDMA == nullptr) {
-    if (device->getNumRegions() != 1)
-      assert(false && "expected num regions for device op");
-    OpBuilder::InsertionGuard g(builder);
-    builder.setInsertionPointToEnd(device.getBody());
-    auto newDMAOp = builder.create<ShimDMAOp>(
-        builder.getUnknownLoc(), builder.getIndexType(), objFifoTileOp);
-    {
-      OpBuilder::InsertionGuard gg(builder);
-      builder.setInsertionPointToStart(&newDMAOp.getRegion().emplaceBlock());
-      builder.create<EndOp>(builder.getUnknownLoc());
-    }
-    producerDMA = newDMAOp.getOperation();
-  }
-
-  Block *endBlock = findEndOpBlock(producerDMA->getRegion(0));
-  Block *lastDmaBlock = endBlock->getSinglePredecessor();
-  Block *dmaBlock = builder.createBlock(endBlock);
-  Block *bdBlock = builder.createBlock(endBlock);
-
-  // create DMA channel
-  builder.setInsertionPointToStart(dmaBlock);
-  builder.create<DMAStartOp>(builder.getUnknownLoc(), channelDir, channelIndex,
-                             /*repeatCout*/ 0, bdBlock, endBlock);
-  if (lastDmaBlock != nullptr)
-    lastDmaBlock->getTerminator()->setSuccessor(dmaBlock, 1);
-
-  // create Bd blocks
-  Block *succ;
-  Block *curr = bdBlock;
-  size_t blockIndex = 0;
-  for (size_t i = 0; i < numBlocks; i++) {
-    if (blockIndex >= externalBuffersPerFifo[op].size()) break;
-    if (i == numBlocks - 1)
-      succ = bdBlock;
-    else
-      succ = builder.createBlock(endBlock);
-
-    MemRefType buffer = externalBuffersPerFifo[op][blockIndex].getType();
-    int len = buffer.getNumElements();
-    builder.setInsertionPointToStart(curr);
-    createBdBlock<ExternalBufferOp>(builder, op, lockMode, acqNum, relNum,
-                                    externalBuffersPerFifo[op][blockIndex],
-                                    /*offset*/ 0, len, channelDir, blockIndex,
-                                    succ, dims, locksPerFifo);
-    curr = succ;
-    blockIndex++;
-  }
+  auto fifo = llvm::cast<AIEObjectFifoType>(op.getElemType());
+  auto elemType = llvm::cast<MemRefType>(fifo.getElementType());
+  int64_t len = elemType.getNumElements();
+  createMemDMA<MemOp, BufferOp>(device, builder, op, target, channelDir,
+                                channelIndex, dims, numBlocks,
+                                /*acqNum*/ 1, /*relNum*/ 1, len, /*offset*/ 0,
+                                buffersPerFifo, locksPerFifo);
 }
 
-/// Function used to create a MemTileDMAOp region with a DMA channel.
-/// It uses creatBdBlock(), see there for lockMode input.
 void createMemTileDMA(
     DeviceOp &device, OpBuilder &builder, ObjectFifoCreateOp op,
-    DMAChannelDir channelDir, int channelIndex, int lockMode,
-    BDDimLayoutArrayAttr dims,
+    DMAChannelDir channelDir, int channelIndex, BDDimLayoutArrayAttr dims,
     DenseMap<ObjectFifoLinkOp, ObjectFifoCreateOp> &objFifoLinks,
     DenseMap<ObjectFifoCreateOp, std::vector<BufferOp>> &buffersPerFifo,
     DenseMap<ObjectFifoCreateOp, std::vector<LockOp>> &locksPerFifo) {
@@ -644,233 +331,106 @@ void createMemTileDMA(
 
   auto fifo = llvm::cast<AIEObjectFifoType>(op.getElemType());
   auto elemType = llvm::cast<MemRefType>(fifo.getElementType());
-  int lenOut = elemType.getNumElements();
-  int acqNum = 1;
-  int relNum = 1;
+  int64_t lenOut = elemType.getNumElements();
+  size_t acqNum = 1;
+  size_t relNum = 1;
+  int64_t extraOffset = 0;
+  ObjectFifoCreateOp target = op;
+
+  auto getExtraOffset = [&acqNum, &relNum, &extraOffset, &target, &op](
+                            ObjectFifoLinkOp linkOp,
+                            const std::vector<ObjectFifoCreateOp> &fifos,
+                            size_t size) {
+    if (target == op) {
+      acqNum = size;
+      relNum = size;
+    } else
+      for (auto fifoIn : fifos) {
+        auto fifoType = llvm::cast<AIEObjectFifoType>(fifoIn.getElemType());
+        auto fifoElemType = llvm::cast<MemRefType>(fifoType.getElementType());
+        if (fifoIn.name() == op.name()) break;
+        extraOffset += fifoElemType.getNumElements();
+      }
+  };
 
   // search for the buffers/locks (based on if this objFifo has a link)
   // identify size difference between input and output memrefs
-  ObjectFifoCreateOp target = op;
-  bool isDistribute = false;
-  bool isJoin = false;
-  int extraOffset = 0;
-  if (auto linkOp = getOptionalLinkOp(op)) {
-    if (objFifoLinks.find(*linkOp) != objFifoLinks.end()) {
-      target = objFifoLinks[*linkOp];
-
-      if (linkOp->isJoin()) {
-        // find offset based on order of this op in join list
-        isJoin = true;
-        if (target == op) {
-          acqNum = linkOp->getFifoIns().size();
-          relNum = linkOp->getFifoIns().size();
-        } else {
-          for (auto fifoIn : linkOp->getInputObjectFifos()) {
-            auto fifoType = llvm::cast<AIEObjectFifoType>(fifoIn.getElemType());
-            auto fifoElemType =
-                llvm::cast<MemRefType>(fifoType.getElementType());
-            if (fifoIn.name() == op.name()) break;
-            extraOffset += fifoElemType.getNumElements();
-          }
-        }
-      } else if (linkOp->isDistribute()) {
-        // find offset based on order of this op in distribute list
-        isDistribute = true;
-        if (target == op) {
-          acqNum = linkOp->getFifoOuts().size();
-          relNum = linkOp->getFifoOuts().size();
-        } else {
-          for (auto fifoOut : linkOp->getOutputObjectFifos()) {
-            auto fifoType =
-                llvm::cast<AIEObjectFifoType>(fifoOut.getElemType());
-            auto fifoElemType =
-                llvm::cast<MemRefType>(fifoType.getElementType());
-            if (fifoOut.name() == op.name()) break;
-            extraOffset += fifoElemType.getNumElements();
-          }
-        }
-      } else {
-        if (target != op) {
-          auto targetFifo = llvm::cast<AIEObjectFifoType>(target.getElemType());
-          auto targetElemType =
-              llvm::cast<MemRefType>(targetFifo.getElementType());
-          lenOut = targetElemType.getNumElements();
-        }
-      }
-
-      // check if current op is of smaller size in link
-      if (target != op) numBlocks = target.size();
+  if (auto linkOp = getOptionalLinkOp(op);
+      objFifoLinks.find(*linkOp) != objFifoLinks.end()) {
+    target = objFifoLinks[*linkOp];
+    if (linkOp->isJoin())
+      // find offset based on order of this op in join list
+      getExtraOffset(*linkOp, linkOp->getInputObjectFifos(),
+                     linkOp->getFifoIns().size());
+    else if (linkOp->isDistribute())
+      // find offset based on order of this op in distribute list
+      getExtraOffset(*linkOp, linkOp->getOutputObjectFifos(),
+                     linkOp->getFifoOuts().size());
+    else if (target != op) {
+      auto targetFifo = llvm::cast<AIEObjectFifoType>(target.getElemType());
+      auto targetElemType = llvm::cast<MemRefType>(targetFifo.getElementType());
+      lenOut = targetElemType.getNumElements();
     }
+
+    // check if current op is of smaller size in link
+    if (target != op) numBlocks = target.size();
   }
 
-  // search for MemTileDMAOp
-  Operation *producerDMA = nullptr;
-  for (auto dmaOp : device.getOps<MemTileDMAOp>()) {
-    if (dmaOp.getTile() == target.getProducerTile()) {
-      producerDMA = dmaOp.getOperation();
-      break;
-    }
-  }
-
-  // if none exists, create one
-  TileOp objFifoTileOp = target.getProducerTileOp();
-  if (producerDMA == nullptr) {
-    if (device->getNumRegions() != 1)
-      assert(false && "expected num regions for device op");
-    OpBuilder::InsertionGuard g(builder);
-    builder.setInsertionPointToEnd(device.getBody());
-    auto newDMAOp =
-        builder.create<MemTileDMAOp>(builder.getUnknownLoc(), objFifoTileOp);
-    {
-      OpBuilder::InsertionGuard gg(builder);
-      builder.setInsertionPointToStart(&newDMAOp.getRegion().emplaceBlock());
-      builder.create<EndOp>(builder.getUnknownLoc());
-    }
-    producerDMA = newDMAOp.getOperation();
-  }
-
-  Block *endBlock = findEndOpBlock(producerDMA->getRegion(0));
-  Block *lastDmaBlock = endBlock->getSinglePredecessor();
-  Block *dmaBlock = builder.createBlock(endBlock);
-  Block *bdBlock = builder.createBlock(endBlock);
-
-  // create DMA channel
-  builder.setInsertionPointToStart(dmaBlock);
-  builder.create<DMAStartOp>(builder.getUnknownLoc(), channelDir, channelIndex,
-                             /*repeatCount*/ 0, bdBlock, endBlock);
-  if (lastDmaBlock != nullptr)
-    lastDmaBlock->getTerminator()->setSuccessor(dmaBlock, 1);
-
-  // create Bd blocks
-  Block *succ;
-  Block *curr = bdBlock;
-  size_t blockIndex = 0;
-  for (size_t i = 0; i < numBlocks; i++) {
-    if (blockIndex >= buffersPerFifo[target].size()) break;
-    if (i == numBlocks - 1)
-      succ = bdBlock;
-    else
-      succ = builder.createBlock(endBlock);
-
-    builder.setInsertionPointToStart(curr);
-    int offset = 0;
-    if (isDistribute || isJoin) offset = extraOffset;
-    createBdBlock<BufferOp>(builder, target, lockMode, acqNum, relNum,
-                            buffersPerFifo[target][blockIndex], offset, lenOut,
-                            channelDir, blockIndex, succ, dims, locksPerFifo);
-    curr = succ;
-    blockIndex++;
-  }
+  createMemDMA<MemTileDMAOp, BufferOp>(
+      device, builder, op, target, channelDir, channelIndex, dims, numBlocks,
+      acqNum, relNum, lenOut, extraOffset, buffersPerFifo, locksPerFifo);
 }
 
-/// Function that either calls createAMDAIETileDMA(), createShimDMA() or
-/// createMemTileDMA() based on op tile row value.
-void createDMA(
-    DeviceOp &device, OpBuilder &builder, ObjectFifoCreateOp op,
-    DMAChannelDir channelDir, int channelIndex, int lockMode,
-    BDDimLayoutArrayAttr dims,
-    DenseMap<ObjectFifoCreateOp, std::vector<ExternalBufferOp>>
-        &externalBuffersPerFifo,
-    DenseMap<ObjectFifoCreateOp, std::vector<LockOp>> &locksPerFifo,
-    DenseMap<ObjectFifoLinkOp, ObjectFifoCreateOp> &objFifoLinks,
-    DenseMap<ObjectFifoCreateOp, std::vector<BufferOp>> &buffersPerFifo) {
-  if (op.getProducerTileOp().isShimTile()) {
-    createShimDMA(device, builder, op, channelDir, channelIndex, lockMode, dims,
-                  externalBuffersPerFifo, locksPerFifo);
-  } else if (op.getProducerTileOp().isMemTile()) {
-    createMemTileDMA(device, builder, op, channelDir, channelIndex, lockMode,
-                     dims, objFifoLinks, buffersPerFifo, locksPerFifo);
-  } else {
-    createAMDAIETileDMA(device, builder, op, channelDir, channelIndex, lockMode,
-                        dims, objFifoLinks, buffersPerFifo, locksPerFifo);
-  }
-}
-
-/// Function used to check whether op is already contained in map.
-/// If it is then return the associated int, if not create new entry and
-/// return 0.
-int updateAndReturnIndex(DenseMap<std::pair<ObjectFifoCreateOp, int>, int> &map,
-                         std::pair<ObjectFifoCreateOp, int> pair) {
-  if (map.find(pair) == map.end()) {
-    map[pair] = 0;
-    return 0;
-  }
-  return map[pair];
-}
-
-/// Function used to generate, from an objectFifo with a shimTile endpoint, a
-/// shimDMAAllocationOp containing the channelDir, channelIndex and
-/// shimTile col assigned by the objectFifo lowering.
-void createObjectFifoAllocationInfo(OpBuilder &builder, MLIRContext *ctx,
-                                    FlatSymbolRefAttr obj_fifo, int colIndex,
-                                    DMAChannelDir channelDir,
-                                    int channelIndex) {
-  builder.create<ShimDMAAllocationOp>(builder.getUnknownLoc(), obj_fifo,
-                                      DMAChannelDirAttr::get(ctx, channelDir),
-                                      builder.getI64IntegerAttr(channelIndex),
-                                      builder.getI64IntegerAttr(colIndex));
-}
-
-// Function that computes the Least Common Multiplier of the values
-// of a vector.
-int computeLCM(std::set<int> values) {
-  int lcm = 1;
-  for (int i : values) lcm = i * lcm / std::gcd(i, lcm);
-  return lcm;
-}
-
-// Function that unrolls for-loops that contain objectFifo operations.
-LogicalResult unrollForLoops(DeviceOp &device, OpBuilder &builder,
+// Unroll for-loops that contain objectFifo operations.
+LogicalResult unrollForLoops(DeviceOp &device,
                              std::set<TileOp> &objectFifoTiles) {
   for (auto coreOp : device.getOps<CoreOp>()) {
-    if (objectFifoTiles.count(coreOp.getTileOp()) > 0) {
-      WalkResult res = coreOp.walk([&](scf::ForOp forLoop) {
-        // look for operations on objectFifos
-        // when multiple fifos in same loop, must use the smallest
-        // common multiplier as the unroll factor
-        bool found = false;
-        std::set<int> objFifoSizes;
-        Block *body = forLoop.getBody();
+    if (!objectFifoTiles.count(coreOp.getTileOp())) continue;
 
-        for (auto acqOp : body->getOps<ObjectFifoAcquireOp>()) {
-          if (acqOp.getOperation()->getParentOp() == forLoop) {
-            found = true;
-            ObjectFifoCreateOp op = acqOp.getObjectFifo();
-            objFifoSizes.insert(op.size());
-          }
+    WalkResult res = coreOp.walk([&](scf::ForOp forLoop) {
+      // look for operations on objectFifos
+      // when multiple fifos in same loop, must use the smallest
+      // common multiplier as the unroll factor
+      bool found = false;
+      std::set<int> objFifoSizes;
+      Block *body = forLoop.getBody();
+      for (auto acqOp : body->getOps<ObjectFifoAcquireOp>()) {
+        if (acqOp.getOperation()->getParentOp() == forLoop) {
+          found = true;
+          ObjectFifoCreateOp op = acqOp.getObjectFifo();
+          objFifoSizes.insert(op.size());
         }
+      }
+      // also counts original loop body
+      int unrollFactor = std::accumulate(
+          objFifoSizes.begin(), objFifoSizes.end(), 1, std::lcm<int, int>);
+      if (found && failed(mlir::loopUnrollByFactor(forLoop, unrollFactor))) {
+        forLoop.emitOpError()
+            << "could not be unrolled with unrollFactor: " << unrollFactor
+            << "\n";
+        return WalkResult::interrupt();
+      }
 
-        int unrollFactor =
-            computeLCM(objFifoSizes);  // also counts original loop body
+      return WalkResult::advance();
+    });
 
-        if (found) {
-          if (failed(mlir::loopUnrollByFactor(forLoop, unrollFactor))) {
-            forLoop.emitOpError()
-                << "could not be unrolled with unrollFactor: " << unrollFactor
-                << "\n";
-            return WalkResult::interrupt();
-          }
-        }
-        return WalkResult::advance();
-      });
-      if (res.wasInterrupted()) return failure();
-    }
+    if (res.wasInterrupted()) return failure();
   }
+
   return success();
 }
 
-/// Function used to create a UseLockOp based on input parameters.
-/// acc is an accumulator map that tracks the indices of the next locks to
-/// acquire (or release). Uses op to find index of acc for next lockID.
-/// Updates acc.
+// Create a UseLockOp based on input parameters.
+// acc is an accumulator map that tracks the indices of the next locks to
+// acquire (or release). Uses op to find index of acc for next lockID.
+// Updates acc.
 void createUseLocks(
     OpBuilder &builder, ObjectFifoCreateOp op, ObjectFifoPort port,
-    DenseMap<std::pair<ObjectFifoCreateOp, int>, int> &acc, int numLocks,
+    DenseMap<std::pair<ObjectFifoCreateOp, int>, int> &acc, size_t numLocks,
     LockAction lockAction,
     DenseMap<ObjectFifoLinkOp, ObjectFifoCreateOp> &objFifoLinks,
     DenseMap<ObjectFifoCreateOp, std::vector<LockOp>> &locksPerFifo) {
   ObjectFifoCreateOp target = op;
-  auto portNum = port == ObjectFifoPort::Produce ? 0 : 1;
   if (auto linkOp = getOptionalLinkOp(op))
     if (objFifoLinks.find(*linkOp) != objFifoLinks.end())
       target = objFifoLinks[*linkOp];
@@ -892,8 +452,9 @@ void createUseLocks(
   }
   builder.create<UseLockOp>(builder.getUnknownLoc(), lock, lockAction,
                             numLocks);
-  acc[{op, portNum}] = (acc[{op, portNum}] + numLocks) %
-                       op.size();  // update to next objFifo elem
+  std::pair<ObjectFifoCreateOp, int> opPort = {op, static_cast<int>(port)};
+  acc[opPort] =
+      (acc[opPort] + numLocks) % op.size();  // update to next objFifo elem
 }
 
 void replaceReleaseOp(
@@ -905,113 +466,100 @@ void replaceReleaseOp(
              std::vector<ObjectFifoReleaseOp>> &releaseOps) {
   builder.setInsertionPointAfter(releaseOp);
   ObjectFifoCreateOp op = releaseOp.getObjectFifo();
-  auto port = releaseOp.getPort();
-  auto portNum = port == ObjectFifoPort::Produce ? 0 : 1;
   auto core = releaseOp->getParentOfType<CoreOp>();
-
-  if (auto linkOp = getOptionalLinkOp(op)) {
-    if (core.getTile() == *linkOp->getOptionalSharedTile()) {
-      releaseOp->emitOpError(
+  if (auto linkOp = getOptionalLinkOp(op))
+    if (core.getTile() == *linkOp->getOptionalSharedTile())
+      llvm::report_fatal_error(
           "currently cannot access objectFifo used in "
           "ObjectFifoLinkOp");
-      return;
-    }
-  }
 
+  auto port = releaseOp.getPort();
+  std::pair<ObjectFifoCreateOp, int> opPort = {op, static_cast<int>(port)};
   // update index of next element to release for this objectFifo
-  updateAndReturnIndex(relPerFifo, {op, portNum});
-
+  (void)relPerFifo[opPort];
   // release locks
-  int numLocks = releaseOp.relNumber();
-  createUseLocks(builder, op, port, relPerFifo, numLocks, LockAction::Release,
-                 objFifoLinks, locksPerFifo);
-
+  createUseLocks(builder, op, port, relPerFifo, releaseOp.relNumber(),
+                 LockAction::Release, objFifoLinks, locksPerFifo);
   // register release op
-  if (releaseOps.find({op, portNum}) != releaseOps.end()) {
-    releaseOps[{op, portNum}].push_back(releaseOp);
-  } else {
-    std::vector release = {releaseOp};
-    releaseOps[{op, portNum}] = release;
-  }
+  if (releaseOps.find(opPort) != releaseOps.end())
+    releaseOps[opPort].push_back(releaseOp);
+  else
+    releaseOps[opPort] = {releaseOp};
 }
 
-void createAdditionalFifoOp(
+// Split objectFifos into a consumer end and producer end if needed
+void splitFifo(
     DeviceOp device, ObjectFifoCreateOp createOp, OpBuilder builder,
-    std::vector<ObjectFifoCreateOp> &splitBecauseLink,
-    DenseMap<ObjectFifoCreateOp, std::vector<ExternalBufferOp>>
-        &externalBuffersPerFifo,
     std::vector<std::pair<ObjectFifoCreateOp, std::vector<ObjectFifoCreateOp>>>
         &splitFifos) {
-  std::vector<ObjectFifoCreateOp> splitConsumerFifos;
-  int consumerIndex = 0;
-  int consumerDepth = createOp.size();
   ArrayRef<BDDimLayoutArrayAttr> consumerDims =
       createOp.getDimensionsFromStreamPerConsumer();
+  int consumerDepth;
+  BDDimLayoutArrayAttr emptyDims =
+      BDDimLayoutArrayAttr::get(builder.getContext(), {});
+  std::string consumerFifoName;
 
-  // Only FIFOs using DMA are split into two ends;
-  // skip in shared memory case
-  if (SharedMemoryDirection shareDirection = NONE;
-      !requiresDMAs(createOp, shareDirection, splitBecauseLink))
-    return;
+  auto replaceSplitFifo = [&createOp](ObjectFifoCreateOp newOp, TileOp tile) {
+    auto original =
+        createOp->getAttrOfType<StringAttr>(SymbolTable::getSymbolAttrName());
+    auto newSymbol =
+        newOp->getAttrOfType<StringAttr>(SymbolTable::getSymbolAttrName());
+    for (auto user : tile->getUsers())
+      if (isa<CoreOp>(user) &&
+          failed(SymbolTable::replaceAllSymbolUses(original, newSymbol, user)))
+        llvm::report_fatal_error("couldn't replace all symbols uses");
+  };
 
+  int consumerIndex = 0;
+  auto datatype = cast<AIEObjectFifoType>(createOp.getElemType());
+  MLIRContext *ctx = builder.getContext();
+  std::vector<ObjectFifoCreateOp> splitConsumerFifos;
   for (auto consumerTile : createOp.getConsumerTiles()) {
-    auto consumerTileOp = dyn_cast<TileOp>(consumerTile.getDefiningOp());
-
-    if (isa<ArrayAttr>(createOp.getElemNumber())) {
+    auto consumerTileOp = cast<TileOp>(consumerTile.getDefiningOp());
+    if (isa<ArrayAttr>(createOp.getElemNumber()))
       // +1 to account for 1st depth (producer)
       consumerDepth = createOp.size(consumerIndex + 1);
-    } else {
+    else
       consumerDepth = findObjectFifoSize(device, consumerTileOp, createOp);
-    }
 
-    builder.setInsertionPointAfter(createOp);
-    auto datatype = llvm::cast<AIEObjectFifoType>(createOp.getElemType());
     auto consumerObjFifoSize =
         builder.getIntegerAttr(builder.getI32Type(), consumerDepth);
     // rename and replace split objectFifo
-    std::string consumerFifoName;
-    if (createOp.getConsumerTiles().size() > 1) {
+    if (createOp.getConsumerTiles().size() > 1)
       consumerFifoName =
           createOp.name().str() + "_" + std::to_string(consumerIndex) + "_cons";
-    } else {
+    else
       consumerFifoName = createOp.name().str() + "_cons";
-    }
-    BDDimLayoutArrayAttr emptyDims =
-        BDDimLayoutArrayAttr::get(builder.getContext(), {});
-    BDDimLayoutArrayAttr singletonFromStreamDims = BDDimLayoutArrayAttr::get(
-        builder.getContext(),
-        ArrayRef<BDDimLayoutAttr>{consumerDims[consumerIndex]});
-    BDDimLayoutArrayArrayAttr fromStreamDims = BDDimLayoutArrayArrayAttr::get(
-        builder.getContext(), singletonFromStreamDims);
 
+    BDDimLayoutArrayAttr singletonFromStreamDims =
+        BDDimLayoutArrayAttr::get(ctx, {consumerDims[consumerIndex]});
+    BDDimLayoutArrayArrayAttr fromStreamDims =
+        BDDimLayoutArrayArrayAttr::get(ctx, singletonFromStreamDims);
+
+    builder.setInsertionPointAfter(createOp);
     ObjectFifoCreateOp consumerFifo = builder.create<ObjectFifoCreateOp>(
         builder.getUnknownLoc(), consumerFifoName, consumerTile, consumerTile,
         consumerObjFifoSize, datatype, emptyDims, fromStreamDims);
-    replaceSplitFifo(createOp, consumerFifo, consumerTileOp);
-
-    // identify external buffers that were registered to the consumer fifo
-    if (consumerTile.getDefiningOp<TileOp>().isShimTile())
-      detectExternalBuffers(device, createOp, consumerFifo, consumerTile,
-                            externalBuffersPerFifo);
+    replaceSplitFifo(consumerFifo, consumerTileOp);
 
     // record that this objectFifo was split; it will require DMA config
     splitConsumerFifos.push_back(consumerFifo);
 
     // update the linkOp if the split objFifo was originally its start point
-    if (auto linkOp = getOptionalLinkOp(createOp))
-      for (ObjectFifoCreateOp fifoIn : linkOp->getInputObjectFifos())
-        if (fifoIn.name() == createOp.name() &&
-            consumerTile == *linkOp->getOptionalSharedTile())
-          if (failed(SymbolTable::replaceAllSymbolUses(
-                  createOp, consumerFifo.name(), linkOp->getOperation())))
-            llvm::report_fatal_error("unable to update all symbol uses");
-
     consumerIndex++;
+    auto linkOp = getOptionalLinkOp(createOp);
+    if (!linkOp) continue;
+    for (ObjectFifoCreateOp fifoIn : linkOp->getInputObjectFifos())
+      if (fifoIn.name() == createOp.name() &&
+          consumerTile == *linkOp->getOptionalSharedTile() &&
+          failed(SymbolTable::replaceAllSymbolUses(
+              createOp, consumerFifo.name(), linkOp->getOperation())))
+        llvm::report_fatal_error("unable to update all symbol uses");
   }
 
-  if (!splitConsumerFifos.empty()) {
-    splitFifos.emplace_back(createOp, splitConsumerFifos);
-  }
+  assert(!splitConsumerFifos.empty() &&
+         "expected some fifos to have been split");
+  splitFifos.emplace_back(createOp, splitConsumerFifos);
 }
 
 void replaceObjectAcquireOp(
@@ -1027,113 +575,83 @@ void replaceObjectAcquireOp(
     DenseMap<ObjectFifoAcquireOp, std::vector<BufferOp *>> &subviews) {
   ObjectFifoCreateOp op = acquireOp.getObjectFifo();
   builder.setInsertionPointAfter(acquireOp);
-  auto port = acquireOp.getPort();
-  auto portNum = port == ObjectFifoPort::Produce ? 0 : 1;
   auto core = acquireOp->getParentOfType<CoreOp>();
-
   auto linkOp = getOptionalLinkOp(op);
-  if (linkOp) {
-    if (core.getTile() == *linkOp->getOptionalSharedTile()) {
-      acquireOp->emitOpError(
-          "currently cannot access objectFifo used in "
-          "ObjectFifoLinkOp");
-      return;
-    }
-  }
+  if (linkOp && core.getTile() == *linkOp->getOptionalSharedTile())
+    llvm::report_fatal_error(
+        "currently cannot access objectFifo used in "
+        "ObjectFifoLinkOp");
 
   // index of next element to acquire for this objectFifo
   // useful for keeping track of which
   // indices are acquired
-  int start = updateAndReturnIndex(acqPerFifo, {op, portNum});
+  auto port = acquireOp.getPort();
+  std::pair<ObjectFifoCreateOp, int> opPort = {op, static_cast<int>(port)};
+  int start = acqPerFifo[opPort];
+  Block *acqBlock = acquireOp.getOperation()->getBlock();
+  Operation *acqBlockDefOp = acqBlock->getParentOp();
+  Block *acqParentOpBlock = acqBlockDefOp->getBlock();
 
   // check how many elements have been released in between this AcquireOp
   // and the previous one
   int numRel = 0;
-  for (auto relOp : releaseOps[{op, portNum}]) {
+  for (auto relOp : releaseOps[opPort]) {
+    if (relOp.getObjectFifo() != op) continue;
+    Block *relBlock = relOp.getOperation()->getBlock();
+    Operation *relBlockDefOp = relBlock->getParentOp();
+    Block *relParentOpBlock = relBlockDefOp->getBlock();
     // TODO: operations may not be in the same block: currently only
     // support one block level of difference
+    // TODO(max): don't try to simplify these conditionals because the
+    // conditions aren't mutually exclusive...
 
-    if (ObjectFifoCreateOp otherOp = relOp.getObjectFifo(); op == otherOp) {
-      // if they are already in the same block, check if releaseOp
-      // happened before
-      if (acquireOp.getOperation()->getBlock() ==
-          relOp.getOperation()->getBlock()) {
-        if (!acquireOp->isBeforeInBlock(relOp)) {
-          releaseOps[{op, portNum}].erase(releaseOps[{op, portNum}].begin());
-          // to ensure that we do not account
-          // the ReleaseOps again later,
-          // after the subview is created
-          numRel += relOp.relNumber();
-        }
-      } else {
-        // else, check if releaseOp happened before the block region
-        // with the acquireOp
-        if (Operation *acqBlockDefOp =
-                acquireOp.getOperation()->getBlock()->getParentOp();
-            relOp.getOperation()->getBlock() == acqBlockDefOp->getBlock()) {
-          if (!acqBlockDefOp->isBeforeInBlock(relOp)) {
-            releaseOps[{op, portNum}].erase(
-                releaseOps[{op, portNum}]
-                    .begin());  // to ensure that we do not account
-            // the ReleaseOps again later, after
-            // the subview is created
-            numRel += relOp.relNumber();
-          }
-
-          // else, check if the block region with releaseOp happened
-          // before...
-        } else {
-          // ...the acquireOp
-          if (Operation *relBlockDefOp =
-                  relOp.getOperation()->getBlock()->getParentOp();
-              acquireOp.getOperation()->getBlock() ==
-              relBlockDefOp->getBlock()) {
-            if (!acquireOp->isBeforeInBlock(relBlockDefOp)) {
-              releaseOps[{op, portNum}].erase(
-                  releaseOps[{op, portNum}]
-                      .begin());  // to ensure that we do not account
-              // the ReleaseOps again later,
-              // after the subview is created
-              numRel += relOp.relNumber();
-            }
-
-            // ...the block region with the acquireOp
-          } else if (acqBlockDefOp->getBlock() == relBlockDefOp->getBlock()) {
-            if (!acqBlockDefOp->isBeforeInBlock(relBlockDefOp)) {
-              releaseOps[{op, portNum}].erase(
-                  releaseOps[{op, portNum}]
-                      .begin());  // to ensure that we do not account
-              // the ReleaseOps again later,
-              // after the subview is created
-              numRel += relOp.relNumber();
-            }
-          }
-        }
+    // if they are already in the same block, check if releaseOp
+    // happened before
+    if (acqBlock == relBlock) {
+      if (!acquireOp->isBeforeInBlock(relOp)) {
+        // to ensure that we do not account
+        // the ReleaseOps again later,
+        // after the subview is created
+        releaseOps[opPort].erase(releaseOps[opPort].begin());
+        numRel += relOp.relNumber();
+      }
+    } else if (acqBlock == relParentOpBlock) {
+      if (!acquireOp->isBeforeInBlock(relBlockDefOp)) {
+        releaseOps[opPort].erase(releaseOps[opPort].begin());
+        numRel += relOp.relNumber();
+      }
+    } else if (relBlock == acqParentOpBlock) {
+      if (!acqBlockDefOp->isBeforeInBlock(relOp)) {
+        releaseOps[opPort].erase(releaseOps[opPort].begin());
+        numRel += relOp.relNumber();
+      }
+    } else if (acqParentOpBlock == relParentOpBlock) {
+      if (!acqBlockDefOp->isBeforeInBlock(relBlockDefOp)) {
+        releaseOps[opPort].erase(releaseOps[opPort].begin());
+        numRel += relOp.relNumber();
       }
     }
   }
 
   // track indices of elements to acquire
   std::vector<int> acquiredIndices;
-  if (!acquiresPerFifo[{op, portNum}].empty()) {
+  if (!acquiresPerFifo[opPort].empty()) {
     // take into account what has already been acquired by previous
     // AcquireOp in program order
-    acquiredIndices = acquiresPerFifo[{op, portNum}];
+    acquiredIndices = acquiresPerFifo[opPort];
     // take into account what has been released in-between
-    if (static_cast<size_t>(numRel) > acquiredIndices.size()) {
-      acquireOp->emitOpError(
+    if (static_cast<size_t>(numRel) > acquiredIndices.size())
+      llvm::report_fatal_error(
           "cannot release more elements than are "
           "already acquired");
-      return;
-    }
     for (int i = 0; i < numRel; i++)
       acquiredIndices.erase(acquiredIndices.begin());
   }
 
   // acquire locks
-  int numLocks = acquireOp.acqNumber();
-  int alreadyAcq = acquiredIndices.size();
-  int numCreate;
+  size_t numLocks = acquireOp.acqNumber();
+  size_t alreadyAcq = acquiredIndices.size();
+  size_t numCreate;
   if (numLocks > alreadyAcq)
     numCreate = numLocks - alreadyAcq;
   else
@@ -1145,9 +663,8 @@ void replaceObjectAcquireOp(
   // if objFifo was linked with others, find which objFifos
   // elements to use
   ObjectFifoCreateOp target = op;
-  if (linkOp)
-    if (objFifoLinks.find(*linkOp) != objFifoLinks.end())
-      target = objFifoLinks[*linkOp];
+  if (linkOp && objFifoLinks.find(*linkOp) != objFifoLinks.end())
+    target = objFifoLinks[*linkOp];
 
   // create subview: buffers that were already acquired + new acquires
   for (int i = 0; i < numCreate; i++) {
@@ -1160,77 +677,168 @@ void replaceObjectAcquireOp(
     subviewRefs.push_back(&buffersPerFifo[target][index]);
 
   subviews[acquireOp] = subviewRefs;
-  acquiresPerFifo[{op, portNum}] = acquiredIndices;
+  acquiresPerFifo[opPort] = acquiredIndices;
 }
 
-void createObjectFifosAndLocks(
+// - Create objectFifo buffers and locks.
+// - Populate a list of tiles containing objectFifos for later processing of
+//   the acquires/releases (uses of the FIFO).
+void createBuffersAndLocks(
     OpBuilder builder, DeviceOp device, ObjectFifoCreateOp createOp,
     std::vector<ObjectFifoCreateOp> &splitBecauseLink,
-    std::set<TileOp> &objectFifoTiles,
-    DenseMap<ObjectFifoCreateOp, std::vector<ExternalBufferOp>>
-        &externalBuffersPerFifo,
-    LockAnalysis &lockAnalysis,
+    std::set<TileOp> &objectFifoTiles, LockAnalysis &lockAnalysis,
     DenseMap<ObjectFifoLinkOp, ObjectFifoCreateOp> &objFifoLinks,
     DenseMap<ObjectFifoCreateOp, std::vector<BufferOp>> &buffersPerFifo,
     DenseMap<ObjectFifoCreateOp, std::vector<LockOp>> &locksPerFifo) {
-  SharedMemoryDirection shareDirection = NONE;
-  bool shared = !requiresDMAs(createOp, shareDirection, splitBecauseLink);
-
   // add all tiles that contain an objectFifo to objectFifoTiles for later
   // loop unrolling pass
   objectFifoTiles.insert(createOp.getProducerTileOp());
   for (auto consumerTile : createOp.getConsumerTiles()) {
-    auto consumerTileOp = dyn_cast<TileOp>(consumerTile.getDefiningOp());
+    auto consumerTileOp = cast<TileOp>(consumerTile.getDefiningOp());
     objectFifoTiles.insert(consumerTileOp);
   }
 
-  // identify external buffers that were registered to
-  // the producer objectFifo
-  if (createOp.getProducerTileOp().isShimTile())
-    detectExternalBuffers(device, createOp, createOp,
-                          createOp.getProducerTile(), externalBuffersPerFifo);
-
   // if split, the necessary size for producer fifo might change
-  if (shared)
-    createObjectFifoElements(builder, lockAnalysis, createOp, shareDirection,
-                             objFifoLinks, externalBuffersPerFifo,
-                             buffersPerFifo, locksPerFifo);
-  else {
+  SharedMemoryDirection shareDirection = NONE;
+  if (requiresDMAs(createOp, shareDirection, splitBecauseLink)) {
+    IntegerAttr elemNumberAttr;
     if (isa<ArrayAttr>(createOp.getElemNumber()))
-      createOp.setElemNumberAttr(builder.getI32IntegerAttr(createOp.size()));
-    else {
-      int prodMaxAcquire =
-          findObjectFifoSize(device, createOp.getProducerTileOp(), createOp);
-      createOp.setElemNumberAttr(builder.getI32IntegerAttr(prodMaxAcquire));
-    }
-    createObjectFifoElements(builder, lockAnalysis, createOp, shareDirection,
-                             objFifoLinks, externalBuffersPerFifo,
-                             buffersPerFifo, locksPerFifo);
+      elemNumberAttr = builder.getI32IntegerAttr(createOp.size());
+    else
+      elemNumberAttr = builder.getI32IntegerAttr(
+          findObjectFifoSize(device, createOp.getProducerTileOp(), createOp));
+    createOp.setElemNumberAttr(elemNumberAttr);
   }
+
+  if (!createOp.size()) return;
+
+  auto fifo = llvm::cast<AIEObjectFifoType>(createOp.getElemType());
+  auto elemType = llvm::cast<MemRefType>(fifo.getElementType());
+
+  // if this objectFifo is linked to another, check if the other's elements
+  // have already been created (the elements that are created are those of
+  // the objFifo with elements of bigger size)
+  auto linkOp = getOptionalLinkOp(createOp);
+  if (linkOp) {
+    auto fifoIn = linkOp->getInputObjectFifos()[0],
+         fifoOut = linkOp->getOutputObjectFifos()[0];
+    // elements have already been created
+    if (objFifoLinks.find(*linkOp) != objFifoLinks.end()) return;
+    // if join, fifoOut has bigger size
+    if (linkOp->isJoin() && createOp.name() != fifoOut.name()) return;
+    // if distribute, fifoIn has bigger size
+    if (linkOp->isDistribute() && createOp.name() != fifoIn.name()) return;
+
+    auto fifoInType = llvm::cast<AIEObjectFifoType>(
+             linkOp->getInputObjectFifos()[0].getElemType()),
+         fifoOutType = llvm::cast<AIEObjectFifoType>(
+             linkOp->getOutputObjectFifos()[0].getElemType());
+    auto elemInType = llvm::cast<MemRefType>(fifoInType.getElementType()),
+         elemOutType = llvm::cast<MemRefType>(fifoOutType.getElementType());
+    int64_t inSize = elemInType.getNumElements();
+    if (int64_t outSize = elemOutType.getNumElements(); inSize >= outSize) {
+      if (createOp.name() != fifoIn.name()) return;
+    } else if (linkOp->getOutputObjectFifos()[0] != createOp)
+      return;
+  }
+
+  TileOp creationTile;
+  if (shareDirection == NONE || shareDirection == LHS)
+    creationTile = createOp.getProducerTileOp();
+  else
+    creationTile = cast<TileOp>(createOp.getConsumerTiles()[0].getDefiningOp());
+
+  // Reset opbuilder location to after the last tile declaration
+  auto tiles =
+      createOp->getParentOfType<DeviceOp>().getBody()->getOps<TileOp>();
+  assert(!tiles.empty() && "no tiles in device");
+  builder.setInsertionPointAfter(*std::prev(tiles.end(), 1));
+
+  size_t numElem = createOp.size();
+  // if shimTile external buffers are collected from input code
+  if (!creationTile.isShimTile()) {
+    std::vector<BufferOp> buffers;
+    // create as many locks as there are external buffers
+    for (int ofElemIndex = 0; ofElemIndex < numElem; ofElemIndex++) {
+      auto buff = builder.create<BufferOp>(
+          builder.getUnknownLoc(), elemType, creationTile,
+          builder.getStringAttr(createOp.name().str() + "_buff_" +
+                                std::to_string(ofElemIndex)),
+          /*address*/ nullptr, /*initial_value*/ nullptr,
+          /*mem_bank*/ nullptr);
+      buffers.push_back(buff);
+    }
+    buffersPerFifo[createOp] = buffers;
+  }
+
+  if (linkOp) {
+    if (linkOp->isDistribute())
+      numElem *= linkOp->getFifoOuts().size();
+    else if (linkOp->isJoin())
+      numElem *= linkOp->getFifoIns().size();
+    objFifoLinks[*linkOp] = createOp;
+  }
+
+  if (creationTile.isShimTile()) numElem = 0;
+
+  // create corresponding aie2 locks
+  int prodLockID = lockAnalysis.getLockID(creationTile);
+  if (prodLockID < 0) {
+    creationTile->emitOpError("No more locks to allocate!");
+    assert(prodLockID >= 0);
+  }
+  auto prodLock = builder.create<LockOp>(builder.getUnknownLoc(), creationTile,
+                                         prodLockID, numElem);
+  prodLock.getOperation()->setAttr(
+      SymbolTable::getSymbolAttrName(),
+      builder.getStringAttr(createOp.name().str() + "_prod_lock"));
+  std::vector<LockOp> locks{prodLock};
+
+  int consLockID = lockAnalysis.getLockID(creationTile);
+  if (consLockID < 0) {
+    creationTile->emitOpError("No more locks to allocate!");
+    assert(consLockID >= 0);
+  }
+  auto consLock = builder.create<LockOp>(builder.getUnknownLoc(), creationTile,
+                                         consLockID, 0);
+  consLock.getOperation()->setAttr(
+      SymbolTable::getSymbolAttrName(),
+      builder.getStringAttr(createOp.name().str() + "_cons_lock"));
+  locks.push_back(consLock);
+
+  locksPerFifo[createOp] = locks;
 }
 
 void createFlowsAndTileDMAs(
     OpBuilder builder, DeviceOp device, ObjectFifoCreateOp producer,
     std::vector<ObjectFifoCreateOp> &consumers, DMAChannelAnalysis &dmaAnalysis,
-    DenseMap<ObjectFifoCreateOp, std::vector<ExternalBufferOp>>
-        &externalBuffersPerFifo,
     DenseMap<ObjectFifoCreateOp, std::vector<LockOp>> &locksPerFifo,
     DenseMap<ObjectFifoLinkOp, ObjectFifoCreateOp> &objFifoLinks,
     DenseMap<ObjectFifoCreateOp, std::vector<BufferOp>> &buffersPerFifo) {
+  auto createDMA = [&device, &builder, &locksPerFifo, &objFifoLinks,
+                    &buffersPerFifo](ObjectFifoCreateOp op,
+                                     DMAChannelDir channelDir, int channelIndex,
+                                     BDDimLayoutArrayAttr dims) {
+    if (op.getProducerTileOp().isShimTile())
+      return;
+    else if (op.getProducerTileOp().isMemTile())
+      createMemTileDMA(device, builder, op, channelDir, channelIndex, dims,
+                       objFifoLinks, buffersPerFifo, locksPerFifo);
+    else
+      createAMDAIETileDMA(device, builder, op, channelDir, channelIndex, dims,
+                          objFifoLinks, buffersPerFifo, locksPerFifo);
+  };
   // create producer tile DMA
   DMAChannel producerChan =
       dmaAnalysis.getMasterDMAChannel(producer.getProducerTile());
-  createDMA(device, builder, producer, producerChan.direction,
-            producerChan.channel, 0, producer.getDimensionsToStreamAttr(),
-            externalBuffersPerFifo, locksPerFifo, objFifoLinks, buffersPerFifo);
+  createDMA(producer, producerChan.direction, producerChan.channel,
+            producer.getDimensionsToStreamAttr());
   // generate objectFifo allocation info
   builder.setInsertionPoint(&device.getBody()->back());
-  MLIRContext *ctx = builder.getContext();
   if (producer.getProducerTileOp().isShimTile())
-    createObjectFifoAllocationInfo(
-        builder, ctx, SymbolRefAttr::get(ctx, producer.getName()),
-        producer.getProducerTileOp().colIndex(), producerChan.direction,
-        producerChan.channel);
+    builder.create<ShimDMAAllocationOp>(
+        builder.getUnknownLoc(), producer.getName(), producerChan.direction,
+        producerChan.channel, producer.getProducerTileOp().getCol());
 
   for (auto consumer : consumers) {
     // create consumer tile DMA
@@ -1238,16 +846,14 @@ void createFlowsAndTileDMAs(
         dmaAnalysis.getSlaveDMAChannel(consumer.getProducerTile());
     BDDimLayoutArrayAttr consumerDims =
         consumer.getDimensionsFromStreamPerConsumer()[0];
-    createDMA(device, builder, consumer, consumerChan.direction,
-              consumerChan.channel, 1, consumerDims, externalBuffersPerFifo,
-              locksPerFifo, objFifoLinks, buffersPerFifo);
+    createDMA(consumer, consumerChan.direction, consumerChan.channel,
+              consumerDims);
     // generate objectFifo allocation info
     builder.setInsertionPoint(&device.getBody()->back());
     if (consumer.getProducerTileOp().isShimTile())
-      createObjectFifoAllocationInfo(
-          builder, ctx, SymbolRefAttr::get(ctx, producer.getName()),
-          consumer.getProducerTileOp().colIndex(), consumerChan.direction,
-          consumerChan.channel);
+      builder.create<ShimDMAAllocationOp>(
+          builder.getUnknownLoc(), producer.getName(), consumerChan.direction,
+          consumerChan.channel, consumer.getProducerTileOp().getCol());
 
     // create flow
     builder.setInsertionPointAfter(producer);
@@ -1257,10 +863,6 @@ void createFlowsAndTileDMAs(
                            consumerChan.channel);
   }
 }
-
-//===----------------------------------------------------------------------===//
-// Create objectFifos Pass
-//===----------------------------------------------------------------------===//
 
 namespace mlir::iree_compiler::AMDAIE {
 struct AMDAIEObjectFifoStatefulTransformPass : mlir::OperationPass<DeviceOp> {
@@ -1300,10 +902,6 @@ struct AMDAIEObjectFifoStatefulTransformPass : mlir::OperationPass<DeviceOp> {
     std::set<TileOp> objectFifoTiles;
     // maps each objFifo to its corresponding buffer
     DenseMap<ObjectFifoCreateOp, std::vector<BufferOp>> buffersPerFifo;
-    // maps each objFifo to its corresponding
-    // external buffers
-    DenseMap<ObjectFifoCreateOp, std::vector<ExternalBufferOp>>
-        externalBuffersPerFifo;
     // maps each objFifo to its corresponding locks
     DenseMap<ObjectFifoCreateOp, std::vector<LockOp>> locksPerFifo;
     // maps each objFifo between non-adjacent tiles to its
@@ -1317,56 +915,29 @@ struct AMDAIEObjectFifoStatefulTransformPass : mlir::OperationPass<DeviceOp> {
     // part of a Link, not because they didn't have a shared memory module
     std::vector<ObjectFifoCreateOp> splitBecauseLink;
 
-    //===------------------------------------------------------------------===//
-    // Split objectFifos into a consumer end and producer end if needed
-    //===------------------------------------------------------------------===//
-
-    // We are going to create additional createObjectFifoOps, so get a copy of
-    // all "original" ones before the loop to avoid looping over newly created
-    // ones.
     llvm::SmallVector<ObjectFifoCreateOp> createFifoOps =
         llvm::to_vector(device.getOps<ObjectFifoCreateOp>());
     for (ObjectFifoCreateOp createOp : createFifoOps) {
-      createAdditionalFifoOp(device, createOp, builder, splitBecauseLink,
-                             externalBuffersPerFifo, splitFifos);
+      if (auto _shareDirection = NONE;
+          !requiresDMAs(createOp, _shareDirection, splitBecauseLink))
+        continue;
+      splitFifo(device, createOp, builder, splitFifos);
     }
 
-    //===------------------------------------------------------------------===//
-    // - Create objectFifo buffers and locks.
-    // - Populate a list of tiles containing objectFifos for later processing of
-    //   the acquires/releases (uses of the FIFO).
-    //===------------------------------------------------------------------===//
-
-    for (ObjectFifoCreateOp createOp : device.getOps<ObjectFifoCreateOp>()) {
-      createObjectFifosAndLocks(builder, device, createOp, splitBecauseLink,
-                                objectFifoTiles, externalBuffersPerFifo,
-                                lockAnalysis, objFifoLinks, buffersPerFifo,
-                                locksPerFifo);
-    }
-
-    //===------------------------------------------------------------------===//
-    // Create flows and tile DMAs
-    //===------------------------------------------------------------------===//
+    for (ObjectFifoCreateOp createOp : device.getOps<ObjectFifoCreateOp>())
+      createBuffersAndLocks(builder, device, createOp, splitBecauseLink,
+                            objectFifoTiles, lockAnalysis, objFifoLinks,
+                            buffersPerFifo, locksPerFifo);
 
     // Only the objectFifos we split above require DMA communication; the others
     // rely on shared memory and share the same buffers.
-    for (auto &[producer, consumers] : splitFifos) {
+    for (auto &[producer, consumers] : splitFifos)
       createFlowsAndTileDMAs(builder, device, producer, consumers, dmaAnalysis,
-                             externalBuffersPerFifo, locksPerFifo, objFifoLinks,
-                             buffersPerFifo);
-    }
+                             locksPerFifo, objFifoLinks, buffersPerFifo);
 
-    //===------------------------------------------------------------------===//
-    // Unroll for loops
-    //===------------------------------------------------------------------===//
-    if (failed(unrollForLoops(device, builder, objectFifoTiles))) {
-      signalPassFailure();
-    }
+    if (failed(unrollForLoops(device, objectFifoTiles))) signalPassFailure();
 
-    //===------------------------------------------------------------------===//
     // Replace ops
-    //===------------------------------------------------------------------===//
-
     for (auto coreOp : device.getOps<CoreOp>()) {
       // maps each "subview" to its buffer references (subviews
       // are created by AcquireOps)
@@ -1388,18 +959,10 @@ struct AMDAIEObjectFifoStatefulTransformPass : mlir::OperationPass<DeviceOp> {
       // this CoreOp
       DenseMap<std::pair<ObjectFifoCreateOp, int>, int> relPerFifo;
 
-      //===----------------------------------------------------------------===//
-      // Replace objectFifo.release ops
-      //===----------------------------------------------------------------===//
-
       coreOp.walk([&](ObjectFifoReleaseOp releaseOp) {
         replaceReleaseOp(releaseOp, builder, relPerFifo, objFifoLinks,
                          locksPerFifo, releaseOps);
       });
-
-      //===----------------------------------------------------------------===//
-      // Replace objectFifo.acquire ops
-      //===----------------------------------------------------------------===//
 
       coreOp.walk([&](ObjectFifoAcquireOp acquireOp) {
         replaceObjectAcquireOp(acquireOp, builder, acqPerFifo, releaseOps,
@@ -1407,19 +970,14 @@ struct AMDAIEObjectFifoStatefulTransformPass : mlir::OperationPass<DeviceOp> {
                                buffersPerFifo, subviews);
       });
 
-      //===----------------------------------------------------------------===//
       // Replace subview.access ops
-      //===----------------------------------------------------------------===//
-
       coreOp.walk([&](ObjectFifoSubviewAccessOp accessOp) {
         auto acqOp = accessOp.getSubview().getDefiningOp<ObjectFifoAcquireOp>();
         if (ObjectFifoCreateOp op = acqOp.getObjectFifo();
-            getOptionalLinkOp(op)) {
-          accessOp->emitOpError(
+            getOptionalLinkOp(op))
+          llvm::report_fatal_error(
               "currently cannot access objectFifo used in "
               "ObjectFifoLinkOp");
-          return;
-        }
         accessOp.getOutput().replaceAllUsesWith(
             subviews[acqOp][accessOp.getIndex()]->getBuffer());
       });
@@ -1428,19 +986,17 @@ struct AMDAIEObjectFifoStatefulTransformPass : mlir::OperationPass<DeviceOp> {
     // make global symbols to replace the to be erased ObjectFifoCreateOps
     for (auto createOp : device.getOps<ObjectFifoCreateOp>()) {
       builder.setInsertionPointToStart(&device.getBodyRegion().front());
-      auto sym_name = createOp.getName();
+      auto symName = createOp.getName();
       createOp->setAttr(SymbolTable::getSymbolAttrName(),
-                        builder.getStringAttr("__erase_" + sym_name));
+                        builder.getStringAttr("__erase_" + symName));
       auto memrefType = llvm::cast<AIEObjectFifoType>(createOp.getElemType())
                             .getElementType();
-      builder.create<memref::GlobalOp>(builder.getUnknownLoc(), sym_name,
+      builder.create<memref::GlobalOp>(builder.getUnknownLoc(), symName,
                                        builder.getStringAttr("public"),
                                        memrefType, nullptr, false, nullptr);
     }
 
-    //===------------------------------------------------------------------===//
     // Remove old ops
-    //===------------------------------------------------------------------===//
     SetVector<Operation *> opsToErase;
     device.walk([&](Operation *op) {
       if (isa<ObjectFifoCreateOp, ObjectFifoLinkOp,
