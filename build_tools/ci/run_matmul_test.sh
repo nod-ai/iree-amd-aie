@@ -96,7 +96,7 @@ fi
 
 # Parameter 4) <peano-install-dir>
 if [ -z "${4-}" ]; then
-  PEANO=/opt/llvm-aie
+  PEANO=`realpath .venv/lib/python3.10/site-packages/llvm-aie`
 else
   PEANO=`realpath "$4"`
 fi

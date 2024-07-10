@@ -39,7 +39,7 @@ mkdir -p ${OUTPUT}
 # The CI case:
 if [ "$#" -eq 2 ]; then
   echo "Assuming that this is the 'CI case' as 2 parameters were provided."
-  PEANO=/opt/llvm-aie
+  PEANO=`realpath .venv/lib/python3.10/site-packages/llvm-aie`
   XRT=/opt/xilinx/xrt
   VITIS=/opt/Xilinx/Vitis/2023.2
   MLIR_AIE=`realpath .venv/lib/python3.10/site-packages/mlir_aie`
