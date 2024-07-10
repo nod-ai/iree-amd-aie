@@ -244,9 +244,13 @@ void createDMA(
         *bdBlock = builder.createBlock(&endBlock);
 
   // create DMA channel
-  builder.setInsertionPointToStart(dmaBlock);
-  builder.create<DMAStartOp>(builder.getUnknownLoc(), channelDir, channelIndex,
-                             /*repeatCount*/ 0, bdBlock, &endBlock);
+  {
+    OpBuilder::InsertionGuard gg(builder);
+    builder.setInsertionPointToStart(dmaBlock);
+    builder.create<DMAStartOp>(builder.getUnknownLoc(), channelDir,
+                               channelIndex,
+                               /*repeatCount*/ 0, bdBlock, &endBlock);
+  }
   if (lastDmaBlock) lastDmaBlock->getTerminator()->setSuccessor(dmaBlock, 1);
 
   auto createBdBlockOps = [&](BufferOp buff, Block *succ) {
@@ -277,6 +281,7 @@ void createDMA(
     else
       succ = builder.createBlock(&endBlock);
 
+    OpBuilder::InsertionGuard gg(builder);
     builder.setInsertionPointToStart(curr);
     createBdBlockOps(buffersPerFifo.at(target)[blockIndex], succ);
     curr = succ;
@@ -457,7 +462,6 @@ void replaceReleaseOp(
     const DenseMap<ObjectFifoCreateOp, std::vector<LockOp>> &locksPerFifo,
     DenseMap<std::pair<ObjectFifoCreateOp, int>,
              std::vector<ObjectFifoReleaseOp>> &releaseOps) {
-  builder.setInsertionPointAfter(releaseOp);
   ObjectFifoCreateOp op = releaseOp.getObjectFifo();
   auto core = releaseOp->getParentOfType<CoreOp>();
   if (auto linkOp = getOptionalLinkOp(op))
@@ -471,8 +475,12 @@ void replaceReleaseOp(
   // update index of next element to release for this objectFifo
   (void)relPerFifo[opPort];
   // release locks
-  createUseLocks(builder, op, port, relPerFifo, releaseOp.relNumber(),
-                 LockAction::Release, objFifoLinks, locksPerFifo);
+  {
+    OpBuilder::InsertionGuard gg(builder);
+    builder.setInsertionPointAfter(releaseOp);
+    createUseLocks(builder, op, port, relPerFifo, releaseOp.relNumber(),
+                   LockAction::Release, objFifoLinks, locksPerFifo);
+  }
   // register release op
   if (releaseOps.find(opPort) != releaseOps.end())
     releaseOps[opPort].push_back(releaseOp);
@@ -529,14 +537,16 @@ void splitFifo(
     BDDimLayoutArrayArrayAttr fromStreamDims =
         BDDimLayoutArrayArrayAttr::get(ctx, singletonFromStreamDims);
 
-    builder.setInsertionPointAfter(createOp);
-    ObjectFifoCreateOp consumerFifo = builder.create<ObjectFifoCreateOp>(
-        builder.getUnknownLoc(), consumerFifoName, consumerTile, consumerTile,
-        consumerObjFifoSize, datatype, emptyDims, fromStreamDims);
-    replaceSplitFifo(consumerFifo, consumerTileOp);
+    {
+      builder.setInsertionPointAfter(createOp);
+      ObjectFifoCreateOp consumerFifo = builder.create<ObjectFifoCreateOp>(
+          builder.getUnknownLoc(), consumerFifoName, consumerTile, consumerTile,
+          consumerObjFifoSize, datatype, emptyDims, fromStreamDims);
+      replaceSplitFifo(consumerFifo, consumerTileOp);
 
-    // record that this objectFifo was split; it will require DMA config
-    splitConsumerFifos.push_back(consumerFifo);
+      // record that this objectFifo was split; it will require DMA config
+      splitConsumerFifos.push_back(consumerFifo);
+    }
 
     // update the linkOp if the split objFifo was originally its start point
     consumerIndex++;
@@ -546,7 +556,8 @@ void splitFifo(
       if (fifoIn.name() == createOp.name() &&
           consumerTile == *linkOp->getOptionalSharedTile() &&
           failed(SymbolTable::replaceAllSymbolUses(
-              createOp, consumerFifo.name(), linkOp->getOperation())))
+              createOp, StringAttr::get(ctx, consumerFifoName),
+              linkOp->getOperation())))
         llvm::report_fatal_error("unable to update all symbol uses");
   }
 
@@ -568,7 +579,6 @@ void replaceObjectAcquireOp(
     const DenseMap<ObjectFifoCreateOp, std::vector<BufferOp>> &buffersPerFifo,
     DenseMap<ObjectFifoAcquireOp, std::vector<BufferOp>> &subviews) {
   ObjectFifoCreateOp op = acquireOp.getObjectFifo();
-  builder.setInsertionPointAfter(acquireOp);
   auto core = acquireOp->getParentOfType<CoreOp>();
   auto linkOp = getOptionalLinkOp(op);
   if (linkOp && core.getTile() == *linkOp->getOptionalSharedTile())
@@ -651,8 +661,12 @@ void replaceObjectAcquireOp(
   else
     numCreate = 0;
 
-  createUseLocks(builder, op, port, acqPerFifo, numCreate,
-                 LockAction::AcquireGreaterEqual, objFifoLinks, locksPerFifo);
+  {
+    OpBuilder::InsertionGuard gg(builder);
+    builder.setInsertionPointAfter(acquireOp);
+    createUseLocks(builder, op, port, acqPerFifo, numCreate,
+                   LockAction::AcquireGreaterEqual, objFifoLinks, locksPerFifo);
+  }
 
   // if objFifo was linked with others, find which objFifos
   // elements to use
@@ -746,6 +760,8 @@ void createBuffersAndLocks(
   auto tiles =
       createOp->getParentOfType<DeviceOp>().getBody()->getOps<TileOp>();
   assert(!tiles.empty() && "no tiles in device");
+
+  OpBuilder::InsertionGuard gg(builder);
   builder.setInsertionPointAfter(*std::prev(tiles.end(), 1));
 
   size_t numElem = createOp.size();
@@ -831,6 +847,7 @@ void createFlowsAndTileDMAs(
   createDMA(producer, producerChan.direction, producerChan.channel,
             producer.getDimensionsToStreamAttr());
   // generate objectFifo allocation info
+  OpBuilder::InsertionGuard g(builder);
   builder.setInsertionPoint(&device.getBody()->back());
   if (producer.getProducerTileOp().isShimTile())
     builder.create<ShimDMAAllocationOp>(
@@ -846,6 +863,7 @@ void createFlowsAndTileDMAs(
     createDMA(consumer, consumerChan.direction, consumerChan.channel,
               consumerDims);
     // generate objectFifo allocation info
+    OpBuilder::InsertionGuard gg(builder);
     builder.setInsertionPoint(&device.getBody()->back());
     if (consumer.getProducerTileOp().isShimTile())
       builder.create<ShimDMAAllocationOp>(
@@ -853,11 +871,14 @@ void createFlowsAndTileDMAs(
           consumerChan.channel, consumer.getProducerTileOp().getCol());
 
     // create flow
-    builder.setInsertionPointAfter(producer);
-    builder.create<FlowOp>(builder.getUnknownLoc(), producer.getProducerTile(),
-                           WireBundle::DMA, producerChan.channel,
-                           consumer.getProducerTile(), WireBundle::DMA,
-                           consumerChan.channel);
+    {
+      OpBuilder::InsertionGuard ggg(builder);
+      builder.setInsertionPointAfter(producer);
+      builder.create<FlowOp>(builder.getUnknownLoc(),
+                             producer.getProducerTile(), WireBundle::DMA,
+                             producerChan.channel, consumer.getProducerTile(),
+                             WireBundle::DMA, consumerChan.channel);
+    }
   }
 }
 
@@ -982,6 +1003,7 @@ struct AMDAIEObjectFifoStatefulTransformPass : mlir::OperationPass<DeviceOp> {
 
     // make global symbols to replace the to be erased ObjectFifoCreateOps
     for (auto createOp : device.getOps<ObjectFifoCreateOp>()) {
+      OpBuilder::InsertionGuard gg(builder);
       builder.setInsertionPointToStart(&device.getBodyRegion().front());
       auto symName = createOp.getName();
       createOp->setAttr(SymbolTable::getSymbolAttrName(),
