@@ -33,13 +33,8 @@ class LockAnalysis {
 
  public:
   LockAnalysis(DeviceOp &device) {
-    // go over the locks created for each tile and update the index in
-    // locksPerTile
-    for (auto lockOp : device.getOps<LockOp>()) {
-      auto tile = lockOp.getTile();
-      auto lockID = lockOp.getLockIDValue();
-      locksPerTile[{tile, lockID}] = 1;
-    }
+    for (auto lockOp : device.getOps<LockOp>())
+      locksPerTile[{lockOp.getTile(), lockOp.getLockIDValue()}] = 1;
   }
 
   // Given a tile, returns next usable lockID for that tile.
@@ -80,22 +75,12 @@ class DMAChannelAnalysis {
 
   // Given an AIE tile, returns its next usable master channel.
   DMAChannel getMasterDMAChannel(Value tile) {
-    if (masterChannelsPerTile.find(tile) == masterChannelsPerTile.end())
-      masterChannelsPerTile[tile] = 0;
-    else
-      masterChannelsPerTile[tile]++;
-    DMAChannel dmaChan = {DMAChannelDir::MM2S, masterChannelsPerTile[tile]};
-    return dmaChan;
+    return {DMAChannelDir::MM2S, masterChannelsPerTile[tile]++};
   }
 
   // Given an AIE tile, returns its next usable slave channel.
   DMAChannel getSlaveDMAChannel(Value tile) {
-    if (slaveChannelsPerTile.find(tile) == slaveChannelsPerTile.end())
-      slaveChannelsPerTile[tile] = 0;
-    else
-      slaveChannelsPerTile[tile]++;
-    DMAChannel dmaChan = {DMAChannelDir::S2MM, slaveChannelsPerTile[tile]};
-    return dmaChan;
+    return {DMAChannelDir::S2MM, slaveChannelsPerTile[tile]++};
   }
 };
 
