@@ -209,8 +209,8 @@ void createDMA(
     ObjectFifoCreateOp target, DMAChannelDir channelDir, int channelIndex,
     BDDimLayoutArrayAttr dims, size_t numBlocks, size_t acqNum, size_t relNum,
     int64_t len, int64_t offset,
-    DenseMap<ObjectFifoCreateOp, std::vector<BufferOp>> &buffersPerFifo,
-    DenseMap<ObjectFifoCreateOp, std::vector<LockOp>> &locksPerFifo) {
+    const DenseMap<ObjectFifoCreateOp, std::vector<BufferOp>> &buffersPerFifo,
+    const DenseMap<ObjectFifoCreateOp, std::vector<LockOp>> &locksPerFifo) {
   Operation *producer = nullptr;
   for (auto memOp : device.getOps<MemOp>()) {
     if (memOp.getTile() == createOp.getProducerTile()) {
@@ -251,11 +251,11 @@ void createDMA(
 
   auto createBdBlockOps = [&](BufferOp buff, Block *succ) {
     LockOp acqLock = channelDir == DMAChannelDir::S2MM
-                         ? locksPerFifo[target][0]
-                         : locksPerFifo[target][1],
+                         ? locksPerFifo.at(target)[0]
+                         : locksPerFifo.at(target)[1],
            relLock = channelDir == DMAChannelDir::S2MM
-                         ? locksPerFifo[target][1]
-                         : locksPerFifo[target][0];
+                         ? locksPerFifo.at(target)[1]
+                         : locksPerFifo.at(target)[0];
     builder.create<UseLockOp>(builder.getUnknownLoc(), acqLock,
                               LockAction::AcquireGreaterEqual, acqNum);
     if (!dims.getValue().empty())
@@ -270,7 +270,7 @@ void createDMA(
 
   // create Bd blocks
   Block *succ = nullptr, *curr = bdBlock;
-  numBlocks = std::min(numBlocks, buffersPerFifo[target].size());
+  numBlocks = std::min(numBlocks, buffersPerFifo.at(target).size());
   for (size_t blockIndex = 0; blockIndex < numBlocks; ++blockIndex) {
     if (blockIndex == numBlocks - 1)
       succ = bdBlock;
@@ -278,7 +278,7 @@ void createDMA(
       succ = builder.createBlock(&endBlock);
 
     builder.setInsertionPointToStart(curr);
-    createBdBlockOps(buffersPerFifo[target][blockIndex], succ);
+    createBdBlockOps(buffersPerFifo.at(target)[blockIndex], succ);
     curr = succ;
   }
 }
@@ -288,9 +288,9 @@ void createDMA(
 void createAMDAIETileDMA(
     DeviceOp &device, OpBuilder &builder, ObjectFifoCreateOp createOp,
     DMAChannelDir channelDir, int channelIndex, BDDimLayoutArrayAttr dims,
-    DenseMap<ObjectFifoLinkOp, ObjectFifoCreateOp> &objFifoLinks,
-    DenseMap<ObjectFifoCreateOp, std::vector<BufferOp>> &buffersPerFifo,
-    DenseMap<ObjectFifoCreateOp, std::vector<LockOp>> &locksPerFifo) {
+    const DenseMap<ObjectFifoLinkOp, ObjectFifoCreateOp> &objFifoLinks,
+    const DenseMap<ObjectFifoCreateOp, std::vector<BufferOp>> &buffersPerFifo,
+    const DenseMap<ObjectFifoCreateOp, std::vector<LockOp>> &locksPerFifo) {
   size_t numBlocks = createOp.size();
   if (numBlocks == 0) return;
   // search for the buffers/locks (based on if this objFifo has a link)
@@ -298,7 +298,7 @@ void createAMDAIETileDMA(
   if (std::optional<ObjectFifoLinkOp> linkOp = getOptionalLinkOp(createOp);
       linkOp.has_value())
     if (objFifoLinks.find(linkOp.value()) != objFifoLinks.end())
-      target = objFifoLinks[linkOp.value()];
+      target = objFifoLinks.at(linkOp.value());
 
   auto fifo = llvm::cast<AIEObjectFifoType>(createOp.getElemType());
   auto elemType = llvm::cast<MemRefType>(fifo.getElementType());
@@ -314,9 +314,9 @@ void createAMDAIETileDMA(
 void createMemTileDMA(
     DeviceOp &device, OpBuilder &builder, ObjectFifoCreateOp createOp,
     DMAChannelDir channelDir, int channelIndex, BDDimLayoutArrayAttr dims,
-    DenseMap<ObjectFifoLinkOp, ObjectFifoCreateOp> &objFifoLinks,
-    DenseMap<ObjectFifoCreateOp, std::vector<BufferOp>> &buffersPerFifo,
-    DenseMap<ObjectFifoCreateOp, std::vector<LockOp>> &locksPerFifo) {
+    const DenseMap<ObjectFifoLinkOp, ObjectFifoCreateOp> &objFifoLinks,
+    const DenseMap<ObjectFifoCreateOp, std::vector<BufferOp>> &buffersPerFifo,
+    const DenseMap<ObjectFifoCreateOp, std::vector<LockOp>> &locksPerFifo) {
   size_t numBlocks = createOp.size();
   if (numBlocks == 0) return;
 
@@ -325,6 +325,7 @@ void createMemTileDMA(
   int64_t lenOut = elemType.getNumElements();
   size_t acqNum = 1;
   size_t relNum = 1;
+  // offset based on order of this op in join/distribute list
   int64_t extraOffset = 0;
   ObjectFifoCreateOp target = createOp;
 
@@ -348,16 +349,17 @@ void createMemTileDMA(
   // identify size difference between input and output memrefs
   if (auto linkOp = getOptionalLinkOp(createOp);
       objFifoLinks.find(*linkOp) != objFifoLinks.end()) {
-    target = objFifoLinks[*linkOp];
-    if (linkOp->isJoin())
+    target = objFifoLinks.at(*linkOp);
+    if (linkOp->isJoin()) {
       // find offset based on order of this op in join list
       getExtraOffset(*linkOp, linkOp->getInputObjectFifos(),
                      linkOp->getFifoIns().size());
-    else if (linkOp->isDistribute())
+    } else if (linkOp->isDistribute()) {
       // find offset based on order of this op in distribute list
       getExtraOffset(*linkOp, linkOp->getOutputObjectFifos(),
                      linkOp->getFifoOuts().size());
-    else if (target != createOp) {
+
+    } else if (target != createOp) {
       auto targetFifo = llvm::cast<AIEObjectFifoType>(target.getElemType());
       auto targetElemType = llvm::cast<MemRefType>(targetFifo.getElementType());
       lenOut = targetElemType.getNumElements();
@@ -374,7 +376,7 @@ void createMemTileDMA(
 
 /// Unroll for-loops that contain objectFifo operations.
 LogicalResult unrollForLoops(DeviceOp &device,
-                             std::set<TileOp> &objectFifoTiles) {
+                             const std::set<TileOp> &objectFifoTiles) {
   for (auto coreOp : device.getOps<CoreOp>()) {
     if (!objectFifoTiles.count(coreOp.getTileOp())) continue;
 
@@ -418,12 +420,12 @@ void createUseLocks(
     OpBuilder &builder, ObjectFifoCreateOp op, ObjectFifoPort port,
     DenseMap<std::pair<ObjectFifoCreateOp, int>, int> &acc, size_t numLocks,
     LockAction lockAction,
-    DenseMap<ObjectFifoLinkOp, ObjectFifoCreateOp> &objFifoLinks,
-    DenseMap<ObjectFifoCreateOp, std::vector<LockOp>> &locksPerFifo) {
+    const DenseMap<ObjectFifoLinkOp, ObjectFifoCreateOp> &objFifoLinks,
+    const DenseMap<ObjectFifoCreateOp, std::vector<LockOp>> &locksPerFifo) {
   ObjectFifoCreateOp target = op;
   if (auto linkOp = getOptionalLinkOp(op))
     if (objFifoLinks.find(*linkOp) != objFifoLinks.end())
-      target = objFifoLinks[*linkOp];
+      target = objFifoLinks.at(*linkOp);
 
   if (numLocks == 0) return;
   // search for the correct lock based on the port of the acq/rel
@@ -431,14 +433,14 @@ void createUseLocks(
   LockOp lock;
   if (lockAction == LockAction::AcquireGreaterEqual) {
     if (port == ObjectFifoPort::Produce)
-      lock = locksPerFifo[target][0];
+      lock = locksPerFifo.at(target)[0];
     else
-      lock = locksPerFifo[target][1];
+      lock = locksPerFifo.at(target)[1];
   } else {
     if (port == ObjectFifoPort::Produce)
-      lock = locksPerFifo[target][1];
+      lock = locksPerFifo.at(target)[1];
     else
-      lock = locksPerFifo[target][0];
+      lock = locksPerFifo.at(target)[0];
   }
   builder.create<UseLockOp>(builder.getUnknownLoc(), lock, lockAction,
                             numLocks);
@@ -451,8 +453,8 @@ void createUseLocks(
 void replaceReleaseOp(
     ObjectFifoReleaseOp releaseOp, OpBuilder builder,
     DenseMap<std::pair<ObjectFifoCreateOp, int>, int> &relPerFifo,
-    DenseMap<ObjectFifoLinkOp, ObjectFifoCreateOp> &objFifoLinks,
-    DenseMap<ObjectFifoCreateOp, std::vector<LockOp>> &locksPerFifo,
+    const DenseMap<ObjectFifoLinkOp, ObjectFifoCreateOp> &objFifoLinks,
+    const DenseMap<ObjectFifoCreateOp, std::vector<LockOp>> &locksPerFifo,
     DenseMap<std::pair<ObjectFifoCreateOp, int>,
              std::vector<ObjectFifoReleaseOp>> &releaseOps) {
   builder.setInsertionPointAfter(releaseOp);
@@ -561,10 +563,10 @@ void replaceObjectAcquireOp(
              std::vector<ObjectFifoReleaseOp>> &releaseOps,
     DenseMap<std::pair<ObjectFifoCreateOp, int>, std::vector<int>>
         &acquiresPerFifo,
-    DenseMap<ObjectFifoLinkOp, ObjectFifoCreateOp> &objFifoLinks,
-    DenseMap<ObjectFifoCreateOp, std::vector<LockOp>> &locksPerFifo,
-    DenseMap<ObjectFifoCreateOp, std::vector<BufferOp>> &buffersPerFifo,
-    DenseMap<ObjectFifoAcquireOp, std::vector<BufferOp *>> &subviews) {
+    const DenseMap<ObjectFifoLinkOp, ObjectFifoCreateOp> &objFifoLinks,
+    const DenseMap<ObjectFifoCreateOp, std::vector<LockOp>> &locksPerFifo,
+    const DenseMap<ObjectFifoCreateOp, std::vector<BufferOp>> &buffersPerFifo,
+    DenseMap<ObjectFifoAcquireOp, std::vector<BufferOp>> &subviews) {
   ObjectFifoCreateOp op = acquireOp.getObjectFifo();
   builder.setInsertionPointAfter(acquireOp);
   auto core = acquireOp->getParentOfType<CoreOp>();
@@ -656,17 +658,17 @@ void replaceObjectAcquireOp(
   // elements to use
   ObjectFifoCreateOp target = op;
   if (linkOp && objFifoLinks.find(*linkOp) != objFifoLinks.end())
-    target = objFifoLinks[*linkOp];
+    target = objFifoLinks.at(*linkOp);
 
   // create subview: buffers that were already acquired + new acquires
   for (int i = 0; i < numCreate; i++) {
     acquiredIndices.push_back(start);
     start = (start + 1) % op.size();
   }
-  std::vector<BufferOp *> subviewRefs;
+  std::vector<BufferOp> subviewRefs;
   subviewRefs.reserve(acquiredIndices.size());
   for (auto index : acquiredIndices)
-    subviewRefs.push_back(&buffersPerFifo[target][index]);
+    subviewRefs.push_back(buffersPerFifo.at(target)[index]);
 
   subviews[acquireOp] = subviewRefs;
   acquiresPerFifo[opPort] = acquiredIndices;
@@ -805,10 +807,11 @@ void createBuffersAndLocks(
 /// primitives (DMABD, DMAStart, Buffer, UseLock).
 void createFlowsAndTileDMAs(
     OpBuilder builder, DeviceOp device, ObjectFifoCreateOp producer,
-    std::vector<ObjectFifoCreateOp> &consumers, DMAChannelAnalysis &dmaAnalysis,
-    DenseMap<ObjectFifoCreateOp, std::vector<LockOp>> &locksPerFifo,
-    DenseMap<ObjectFifoLinkOp, ObjectFifoCreateOp> &objFifoLinks,
-    DenseMap<ObjectFifoCreateOp, std::vector<BufferOp>> &buffersPerFifo) {
+    const std::vector<ObjectFifoCreateOp> &consumers,
+    DMAChannelAnalysis &dmaAnalysis,
+    const DenseMap<ObjectFifoCreateOp, std::vector<LockOp>> &locksPerFifo,
+    const DenseMap<ObjectFifoLinkOp, ObjectFifoCreateOp> &objFifoLinks,
+    const DenseMap<ObjectFifoCreateOp, std::vector<BufferOp>> &buffersPerFifo) {
   auto createDMA = [&device, &builder, &locksPerFifo, &objFifoLinks,
                     &buffersPerFifo](ObjectFifoCreateOp op,
                                      DMAChannelDir channelDir, int channelIndex,
@@ -935,7 +938,7 @@ struct AMDAIEObjectFifoStatefulTransformPass : mlir::OperationPass<DeviceOp> {
     for (auto coreOp : device.getOps<CoreOp>()) {
       // maps each "subview" to its buffer references (subviews
       // are created by AcquireOps)
-      DenseMap<ObjectFifoAcquireOp, std::vector<BufferOp *>> subviews;
+      DenseMap<ObjectFifoAcquireOp, std::vector<BufferOp>> subviews;
       // maps each objFifo to indices of buffers acquired
       // in latest subview of that objFifo (useful to
       // cascade acquired elements to next AcquireOp)
@@ -973,7 +976,7 @@ struct AMDAIEObjectFifoStatefulTransformPass : mlir::OperationPass<DeviceOp> {
               "currently cannot access objectFifo used in "
               "ObjectFifoLinkOp");
         accessOp.getOutput().replaceAllUsesWith(
-            subviews[acqOp][accessOp.getIndex()]->getBuffer());
+            subviews[acqOp][accessOp.getIndex()].getBuffer());
       });
     }
 
