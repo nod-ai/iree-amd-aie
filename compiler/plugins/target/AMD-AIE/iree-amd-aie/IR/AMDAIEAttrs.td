@@ -11,6 +11,22 @@ include "iree-amd-aie/IR/AMDAIEDialect.td"
 include "mlir/IR/AttrTypeBase.td"
 include "mlir/IR/EnumAttr.td"
 
+def AMDAIE_AMDAIEDevice: I32EnumAttr<"AMDAIEDevice",
+  "Enum with target AMDAIE devices.",
+  [
+    I32EnumAttrCase<"xcvc1902", 1>,
+    I32EnumAttrCase<"xcve2302", 2>,
+    I32EnumAttrCase<"xcve2802", 3>,
+    I32EnumAttrCase<"npu1", 4>,
+    I32EnumAttrCase<"npu1_1col", 5>,
+    I32EnumAttrCase<"npu1_2col", 6>,
+    I32EnumAttrCase<"npu1_3col", 7>,
+    I32EnumAttrCase<"npu1_4col", 8>
+  ]>
+{
+  let cppNamespace = "mlir::iree_compiler::AMDAIE";
+}
+
 def AMDAIE_CopyOpOperateOn: I32EnumAttr<"CopyOpOperateOn",
   "Enables templated functions that operate on either source or target of "
   "copy/dma operations",

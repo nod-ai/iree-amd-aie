@@ -12,6 +12,16 @@
 
 namespace mlir::iree_compiler::AMDAIE {
 
+std::optional<AMDAIEDevice> getConfigAMDAIEDevice(
+    IREE::HAL::ExecutableTargetAttr targetAttr) {
+  if (!targetAttr) return std::nullopt;
+  auto config = targetAttr.getConfiguration();
+  if (!config) return std::nullopt;
+  std::optional<StringAttr> attr = config.getAs<StringAttr>("target_device");
+  if (!attr) return std::nullopt;
+  return AMDAIE::symbolizeEnum<AMDAIEDevice>(attr.value().getValue());
+}
+
 namespace {
 
 /// Generate a DenseMap key we can use for the element types (alternatives
@@ -23,7 +33,7 @@ constexpr uint32_t getElementTypeKey(uint32_t a, uint32_t b, uint32_t c) {
 
 /// Map from (LHS bitwidth, RHS bitwidth, Accumulator bitwidth) to the AIE
 /// instruction size (m, n, k) for the integer types with those bitwidths.
-const auto& getIntegerMatmulInstructionSizeMap() {
+const auto &getIntegerMatmulInstructionSizeMap() {
   // Sanity check.
   static_assert(getElementTypeKey(1, 2, 3) == 1 + 2 * 256 + 3 * 65536);
 
@@ -60,7 +70,7 @@ const auto& getIntegerMatmulInstructionSizeMap() {
 
 FailureOr<std::array<uint32_t, 3>> getAIEIntegerMatmulInstructionSize(
     uint32_t nBitsLhs, uint32_t nBitsRhs, uint32_t nBitsAcc) {
-  const auto& mapForIntTypes = getIntegerMatmulInstructionSizeMap();
+  const auto &mapForIntTypes = getIntegerMatmulInstructionSizeMap();
   auto it =
       mapForIntTypes.find(getElementTypeKey(nBitsLhs, nBitsRhs, nBitsAcc));
   if (it == mapForIntTypes.end()) {
@@ -77,8 +87,7 @@ FailureOr<std::array<uint32_t, 3>> getAIEMatmulInstructionSize(Type elTypeLhs,
                           isa<FloatType>(elTypeAcc);
 
   bool allInteger = isa<IntegerType>(elTypeLhs) &&
-                    isa<IntegerType>(elTypeRhs) &&
-                    isa<IntegerType>(elTypeAcc);
+                    isa<IntegerType>(elTypeRhs) && isa<IntegerType>(elTypeAcc);
 
   if (!allInteger && !allFloatingPoint) {
     return failure();
@@ -103,7 +112,7 @@ FailureOr<std::array<uint32_t, 3>> getAIEMatmulInstructionSize(Type elTypeLhs,
 
 FailureOr<unsigned> getTilingScaleFactor(Type elemType) {
   unsigned bitWidth = elemType.getIntOrFloatBitWidth();
-  if (bitWidth %8 != 0) return failure();
+  if (bitWidth % 8 != 0) return failure();
   if (bitWidth > 64) return failure();
   return 64 / bitWidth;
 }

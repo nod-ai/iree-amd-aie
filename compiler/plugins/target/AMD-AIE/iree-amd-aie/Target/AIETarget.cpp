@@ -16,6 +16,7 @@
 #include "aie/Target/LLVMIR/Dialect/XLLVM/XLLVMToLLVMIRTranslation.h"
 #include "air/Dialect/AIR/AIRDialect.h"
 #include "air/Dialect/AIRRt/AIRRtDialect.h"
+#include "iree-amd-aie/IR/AMDAIEAttrs.h"
 #include "iree-amd-aie/IR/AMDAIEDialect.h"
 #include "iree-amd-aie/Transforms/Passes.h"
 #include "iree-dialects/Dialect/LinalgTransform/Passes.h"
@@ -47,6 +48,25 @@
 #define DEBUG_TYPE "aie-target"
 
 namespace mlir::iree_compiler::AMDAIE {
+
+/// Command line option for selecting the target AIE device.
+static llvm::cl::opt<AMDAIEDevice> clAMDAIETargetDevice(
+    "iree-amdaie-target-device",
+    llvm::cl::desc("Sets the target device architecture."),
+    llvm::cl::values(
+        clEnumValN(AMDAIEDevice::xcvc1902, "xcvc1902", "The xcvc1902 device"),
+        clEnumValN(AMDAIEDevice::xcve2302, "xcve2302", "The xcve2302 device"),
+        clEnumValN(AMDAIEDevice::xcve2802, "xcve2802", "The xcve2802 device"),
+        clEnumValN(AMDAIEDevice::npu1, "npu1", "Default Phoenix NPU"),
+        clEnumValN(AMDAIEDevice::npu1_1col, "npu1_1col",
+                   "Phoenix NPU with a single column"),
+        clEnumValN(AMDAIEDevice::npu1_2col, "npu1_2col",
+                   "Phoenix NPU with two columns"),
+        clEnumValN(AMDAIEDevice::npu1_3col, "npu1_3col",
+                   "Phoenix NPU with three columns"),
+        clEnumValN(AMDAIEDevice::npu1_4col, "npu1_4col",
+                   "Phoenix NPU with four columns")),
+    llvm::cl::init(AMDAIEDevice::npu1_4col));
 
 static llvm::cl::opt<std::string> clEnableAMDAIEUkernels(
     "iree-amdaie-enable-ukernels",
@@ -142,8 +162,10 @@ class AIETargetBackend final : public IREE::HAL::TargetBackend {
     auto addConfig = [&](StringRef name, Attribute value) {
       configItems.emplace_back(StringAttr::get(context, name), value);
     };
-    // Set target arch
-    addConfig("target_arch", StringAttr::get(context, "chip-tbd"));
+    // Set target device
+    addConfig(
+        "target_device",
+        StringAttr::get(context, AMDAIE::stringifyEnum(clAMDAIETargetDevice)));
     // Set microkernel enabling flag.
     addConfig("ukernels", StringAttr::get(context, clEnableAMDAIEUkernels));
     auto configAttr = b.getDictionaryAttr(configItems);
