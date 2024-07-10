@@ -104,7 +104,7 @@ def verify_determinism():
     expected_test_values = [24067, 90095, 72958, 10894]
     if test_values != expected_test_values:
         message = (
-            "The approach for generating psuedo-random numbers does not appear to be "
+            "The approach for generating pseudo-random numbers does not appear to be "
             "reproducible across platforms (OSs, numpy versions, etc.). The expected "
             "pseudo-random values (generated on a different platform) were "
             f"{expected_test_values}, but the values generated on this platform are "
