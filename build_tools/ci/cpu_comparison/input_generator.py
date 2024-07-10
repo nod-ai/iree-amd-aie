@@ -62,11 +62,9 @@ def convert_f32_to_bf16(float32_value):
     return np.uint16(bf16_int_repr)
 
 
-def generate_bfloat16_data(num_values, lower_bound, upper_bound):
+def generate_bfloat16_data(num_values, lower_bound, upper_bound, rng):
 
-    float_data = np.random.randint(lower_bound, upper_bound, num_values).astype(
-        np.float32
-    )
+    float_data = rng.integers(lower_bound, upper_bound, num_values).astype(np.float32)
 
     # Convert float32 data to bfloat16
     bf16_data = [convert_f32_to_bf16(f) for f in float_data]
@@ -95,22 +93,43 @@ def get_numpy_type(element_type):
         raise ValueError("Invalid or unsupported element type: " + element_type)
 
 
+def verify_determinism():
+    """
+    Assert that the approach we use is deterministic across space and time...
+    we don't want OS, numpy version, etc, influencing random values.
+    """
+    seed = 1
+    rng = np.random.Generator(np.random.MT19937(np.random.SeedSequence(1)))
+    test_values = [x for x in rng.integers(0, 100000, 4)]
+    expected_test_values = [24067, 90095, 72958, 10894]
+    if test_values != expected_test_values:
+        message = (
+            "The approach for generating psuedo-random numbers does not appear to be "
+            "reproducible across platforms (OSs, numpy versions, etc.). The expected "
+            "pseudo-random values (generated on a different platform) were "
+            f"{expected_test_values}, but the values generated on this platform are "
+            f"{test_values}."
+        )
+        raise ValueError(message)
+
+
 def write_input(bin_filename, num_elements, element_type, input_number):
     # Random integer values in range [lower_bound, upper_bound)
     # will be generated for the input data.
     lower_bound = 0
     upper_bound = 10
 
-    # Fix the seed for each input, based on the input number.
-    np.random.seed(1 + input_number)
+    verify_determinism()
+    # We have now verified that approach below is deterministic across platforms.
+    seed = input_number
+    rng = np.random.Generator(np.random.MT19937(np.random.SeedSequence(seed)))
 
     data = None
     if element_type == "bfloat16" or element_type == "bf16":
-        data = generate_bfloat16_data(num_elements, lower_bound, upper_bound)
+        data = generate_bfloat16_data(num_elements, lower_bound, upper_bound, rng)
     else:
         dtype = get_numpy_type(element_type)
-        tensor = np.random.randint(lower_bound, upper_bound, num_elements).astype(dtype)
-        # Binary date from 'tensor'
+        tensor = rng.integers(lower_bound, upper_bound, num_elements).astype(dtype)
         data = tensor.tobytes()
 
     with open(bin_filename, "wb") as file:
