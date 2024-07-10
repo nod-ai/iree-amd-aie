@@ -187,16 +187,13 @@ static iree_status_t iree_hal_xrt_device_create_command_buffer(
     iree_hal_queue_affinity_t queue_affinity, iree_host_size_t binding_capacity,
     iree_hal_command_buffer_t** out_command_buffer) {
   iree_hal_xrt_device_t* device = iree_hal_xrt_device_cast(base_device);
-  if (iree_any_bit_set(mode, IREE_HAL_COMMAND_BUFFER_MODE_NESTED))
-    return iree_make_status(IREE_STATUS_UNIMPLEMENTED,
-                            "nested command buffer not yet supported");
   if (!iree_all_bits_set(mode, IREE_HAL_COMMAND_BUFFER_MODE_ONE_SHOT))
     return iree_make_status(IREE_STATUS_UNIMPLEMENTED,
                             "unimplmented multi-shot command buffer");
   return iree_hal_deferred_command_buffer_create(
-      base_device, mode, command_categories, binding_capacity,
-      &device->block_pool, iree_hal_device_host_allocator(base_device),
-      out_command_buffer);
+      iree_hal_device_allocator(base_device), mode, command_categories,
+      binding_capacity, &device->block_pool,
+      iree_hal_device_host_allocator(base_device), out_command_buffer);
 }
 
 static iree_status_t iree_hal_xrt_device_create_descriptor_set_layout(
@@ -340,7 +337,8 @@ static iree_status_t iree_hal_xrt_device_queue_execute(
     const iree_hal_semaphore_list_t wait_semaphore_list,
     const iree_hal_semaphore_list_t signal_semaphore_list,
     iree_host_size_t command_buffer_count,
-    iree_hal_command_buffer_t* const* command_buffers) {
+    iree_hal_command_buffer_t* const* command_buffers,
+    iree_hal_buffer_binding_table_t const* binding_tables) {
   IREE_TRACE_ZONE_BEGIN(z0);
   iree_hal_xrt_device_t* device = iree_hal_xrt_device_cast(base_device);
   for (iree_host_size_t i = 0; i < command_buffer_count; i++) {
@@ -351,7 +349,8 @@ static iree_status_t iree_hal_xrt_device_queue_execute(
         IREE_HAL_COMMAND_BUFFER_MODE_UNVALIDATED;
     IREE_RETURN_AND_END_ZONE_IF_ERROR(
         z0, iree_hal_xrt_direct_command_buffer_create(
-                base_device, mode, IREE_HAL_COMMAND_CATEGORY_ANY,
+                iree_hal_device_allocator(base_device), mode,
+                IREE_HAL_COMMAND_CATEGORY_ANY,
                 /*binding_capacity=*/0, &device->block_pool,
                 device->host_allocator, &xrt_command_buffer));
     IREE_RETURN_AND_END_ZONE_IF_ERROR(
