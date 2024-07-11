@@ -12,7 +12,7 @@
 !B_TYPE = tensor<32x4xf32>
 !C_TYPE = tensor<4x32xf32>
 !D_TYPE = tensor<4x4xf32>
-func.func @two_mm(%lhs : !A_TYPE,
+func.func @three_$mm$(%lhs : !A_TYPE,
     %rhs : !A_TYPE, %rhs_2 : !B_TYPE, %lhs_2 : !C_TYPE) -> !D_TYPE {
   %empty = tensor.empty() : !A_TYPE
   %empty_2 = tensor.empty() : !B_TYPE
