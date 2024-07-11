@@ -3,16 +3,6 @@
 // CHECK-LABEL:   aie.device(npu1_4col) {
 // CHECK:           memref.global "public" @of_toMem : memref<32xi32>
 // CHECK:           memref.global "public" @of_fromMem : memref<32xi32>
-// CHECK:           func.func @sequence(%[[ARG0:.*]]: memref<4x2x8xi32>, %[[ARG1:.*]]: memref<32xi32>, %[[ARG2:.*]]: memref<64xi32>) {
-// CHECK:             %[[C0_I64:.*]] = arith.constant 0 : i64
-// CHECK:             %[[C1_I64:.*]] = arith.constant 1 : i64
-// CHECK:             %[[C2_I64:.*]] = arith.constant 2 : i64
-// CHECK:             %[[C4_I64:.*]] = arith.constant 4 : i64
-// CHECK:             %[[C8_I64:.*]] = arith.constant 8 : i64
-// CHECK:             %[[C16_I64:.*]] = arith.constant 16 : i64
-// CHECK:             %[[C32_I64:.*]] = arith.constant 32 : i64
-// CHECK:             return
-// CHECK:           }
 // CHECK:           aie.shim_dma_allocation @of_fromMem(MM2S, 0, 0)
 // CHECK:           aie.shim_dma_allocation @of_toMem(S2MM, 0, 0)
 // CHECK:         } {npu_instructions = array<i32: 100860160, 261, 6, 256, 1, 0, 118816, 48, 32, 0, 0, 0, -2147483648, 0, 0, 33554432, 129, 48, 0, 0, 0, 0, 118820, 0, 2, 0, 0, 0, 0, 0, 119300, 0, -2147483647, 24, 1, 0, 118784, 48, 32, 128, 0, 8388608, -2145386489, 15, 0, 33554432, 129, 48, 0, 0, 0, 0, 118788, 0, 0, 0, 128, 0, 0, 0, 119316, 0, 0, 24>}
