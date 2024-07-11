@@ -227,6 +227,8 @@ function run_test() {
   local rtol="1e-6"
   local atol="1e-6"
   local seed="1"
+  local use_ukernel="0"
+  local expect_compile_failure="0"
 
   while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -240,6 +242,14 @@ function run_test() {
         ;;
       --atol)
         atol="$2"
+        shift 2
+        ;;
+      --use_ukernel)
+        use_ukernel="$2"
+        shift 2
+        ;;
+      --expect_compile_failure)
+        expect_compile_failure="$2"
         shift 2
         ;;
       --test_file)
@@ -303,9 +313,9 @@ function run_test() {
   aie_vmfb="${OUTPUT_DIR}/${name}_aie.vmfb"
   cpu_vmfb="${OUTPUT_DIR}/${name}_cpu.vmfb"
 
+
   echo "**** Generating AIE .vmfb file for ${name} ****"
-  ${IREE_COMPILE_EXE} "${test_file}"  \
-      --iree-hal-target-backends=amd-aie \
+  compilation_flags="--iree-hal-target-backends=amd-aie \
       --iree-amdaie-tile-pipeline=${pipeline} \
       --iree-amdaie-matmul-elementwise-fusion \
       --iree-amd-aie-peano-install-dir=${peano_install_path} \
@@ -313,8 +323,56 @@ function run_test() {
       --iree-amd-aie-install-dir=${amd_aie_install_path} \
       --iree-amd-aie-vitis-install-dir=${vitis_path} \
       --iree-hal-dump-executable-files-to=$PWD \
-      --mlir-disable-threading \
-      -o "${aie_vmfb}"
+      --mlir-disable-threading -o ${aie_vmfb}"
+
+
+  # TODO(newling) The following logic is copied from run_matmul_test.sh,
+  # factorize out common code in these 2 test scripts to increase
+  # maintainability: https://github.com/nod-ai/iree-amd-aie/issues/532
+  if [ $use_ukernel -ne 0 ]; then
+    compilation_flags="${compilation_flags} --iree-amdaie-enable-ukernels=all"
+
+    # The flag '--iree-amdaie-path-to-ukernels' currently does not work,
+    # see for example https://github.com/nod-ai/iree-amd-aie/issues/340.
+    # Therefore we need to manually copy (or link) the mm.o file to the
+    # directory in which iree-compile is run. iree-compile is run in the
+    # output directory. Create the softlink only if it is has not already
+    # been created.
+    if [ -f "${OUTPUT_DIR}/mm.o" ]; then
+      echo "File 'mm.o' already exists in ${OUTPUT_DIR}."
+    else
+      SRC_DIR="${mlir_aie_install_path}/aie_kernels/mm.o"
+      ln -s ${SRC_DIR} ${OUTPUT_DIR}/mm.o
+    fi
+  fi
+
+
+  # Disable exit on error, so that we can do a custom triage of compilation
+  # failures.
+  set +e
+
+  ${IREE_COMPILE_EXE} ${test_file} ${compilation_flags}
+  compileResult=$?
+
+  # Handle cases other than when compilation is expected to, and does, succeed:
+  if [ $expect_compile_failure -ne 0 ]; then
+    if [ $compileResult -ne 0 ]; then
+      echo "Expected compilation failure, got compilation failure."
+      return 0
+    else
+      echo "Expected compilation failure, got compilation success."
+      exit 1
+    fi
+  else
+    if [ $compileResult -ne 0 ]; then
+      echo "Expected compilation success, got compilation failure."
+      exit 1
+    fi
+  fi
+
+  # Re-enable the exit on error, to stop the script as soon as an error occurs.
+  set -e
+
 
   echo "**** Generating CPU .vmfb file ****"
   ${IREE_COMPILE_EXE} "${test_file}"  \
@@ -359,12 +417,14 @@ generate_matmul_test \
    --m "128"  --n "128" --k "256"
 run_test --test_file ${test_name} --pipeline "pack-peel" --rtol 0 --atol 0
 
+
 template_name=${matmul_template_dir}/matmul_bias_MxK_KxN_N.mlir
 generate_matmul_test \
    --output_fn ${test_name} --input_fn ${template_name} \
    --lhs_rhs_type "bf16" --acc_type "f32" \
    --m "1024"  --n "1024" --k "512"
 run_test --test_file ${test_name} --pipeline "pack-peel"
+run_test --test_file ${test_name} --pipeline "pack-peel" --use_ukernel 1
 
 # Conv2d tests.
 run_test --test_file ${THIS_DIR}/test_files/conv_int32.mlir --pipeline "conv-decompose"
