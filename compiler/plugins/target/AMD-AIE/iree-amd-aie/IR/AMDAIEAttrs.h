@@ -7,9 +7,10 @@
 //===- IREECodegenAttrs.h - Codegen dialect attributes --------------------===//
 //===----------------------------------------------------------------------===//
 
-#ifndef IREE_COMPILER_AMDAIE_DIALECT_PACKINGCONFIG_H_
-#define IREE_COMPILER_AMDAIE_DIALECT_PACKINGCONFIG_H_
+#ifndef IREE_COMPILER_AMDAIE_DIALECT_ATTRS_H_
+#define IREE_COMPILER_AMDAIE_DIALECT_ATTRS_H_
 
+#include "iree-amd-aie/aie_runtime/AMDAIEEnums.h"
 #include "mlir/IR/BuiltinAttributes.h"
 
 // clang-format off
@@ -37,4 +38,4 @@ void setPackingConfig(Operation *op, AMDAIE::PackingConfigAttr config);
 
 }  // namespace mlir::iree_compiler
 
-#endif  // IREE_COMPILER_AMDAIE_DIALECT_PACKINGCONFIG_H_
+#endif  // IREE_COMPILER_AMDAIE_DIALECT_ATTRS_H_

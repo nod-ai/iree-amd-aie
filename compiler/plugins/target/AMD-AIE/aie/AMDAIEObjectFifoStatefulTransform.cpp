@@ -22,9 +22,39 @@
 #include "mlir/Pass/Pass.h"
 
 using namespace mlir;
-using namespace xilinx;
-using namespace xilinx::AIE;
 using namespace mlir::iree_compiler::AMDAIE;
+
+using xilinx::AIE::AIEObjectFifoType;
+using xilinx::AIE::BDDimLayoutArrayArrayAttr;
+using xilinx::AIE::BDDimLayoutArrayAttr;
+using xilinx::AIE::BDDimLayoutAttr;
+using xilinx::AIE::BufferOp;
+using xilinx::AIE::CoreOp;
+using xilinx::AIE::DeviceOp;
+using xilinx::AIE::DMABDOp;
+using xilinx::AIE::DMAChannel;
+using xilinx::AIE::DMAChannelDirAttr;
+using xilinx::AIE::DMAStartOp;
+using xilinx::AIE::EndOp;
+using xilinx::AIE::ExternalBufferOp;
+using xilinx::AIE::FlowOp;
+using xilinx::AIE::LockAction;
+using xilinx::AIE::LockOp;
+using xilinx::AIE::MemOp;
+using xilinx::AIE::MemTileDMAOp;
+using xilinx::AIE::NextBDOp;
+using xilinx::AIE::ObjectFifoAcquireOp;
+using xilinx::AIE::ObjectFifoCreateOp;
+using xilinx::AIE::ObjectFifoLinkOp;
+using xilinx::AIE::ObjectFifoPort;
+using xilinx::AIE::ObjectFifoRegisterExternalBuffersOp;
+using xilinx::AIE::ObjectFifoReleaseOp;
+using xilinx::AIE::ObjectFifoSubviewAccessOp;
+using xilinx::AIE::ShimDMAAllocationOp;
+using xilinx::AIE::ShimDMAOp;
+using xilinx::AIE::TileOp;
+using xilinx::AIE::UseLockOp;
+using xilinx::AIE::WireBundle;
 
 #define DEBUG_TYPE "amdaie-objectFifo-stateful-transform"
 
@@ -67,7 +97,7 @@ class DMAChannelAnalysis {
       auto tile = memOp.getTile();
       for (auto &bl : r.getBlocks()) {
         for (auto op : bl.getOps<DMAStartOp>()) {
-          op.getChannelDir() == DMAChannelDir::MM2S
+          static_cast<DMAChannelDir>(op.getChannelDir()) == DMAChannelDir::MM2S
               ? getProducerDMAChannel(tile)
               : getConsumerDMAChannel(tile);
         }
@@ -77,12 +107,14 @@ class DMAChannelAnalysis {
 
   /// Given an AIE tile, returns its next usable producer channel.
   DMAChannel getProducerDMAChannel(Value tile) {
-    return {DMAChannelDir::MM2S, producerChannelsPerTile[tile]++};
+    return {static_cast<xilinx::AIE::DMAChannelDir>(DMAChannelDir::MM2S),
+            producerChannelsPerTile[tile]++};
   }
 
   /// Given an AIE tile, returns its next usable consumer channel.
   DMAChannel getConsumerDMAChannel(Value tile) {
-    return {DMAChannelDir::S2MM, consumerChannelsPerTile[tile]++};
+    return {static_cast<xilinx::AIE::DMAChannelDir>(DMAChannelDir::S2MM),
+            consumerChannelsPerTile[tile]++};
   }
 };
 
@@ -248,9 +280,10 @@ void createDMA(
   {
     OpBuilder::InsertionGuard gg(builder);
     builder.setInsertionPointToStart(dmaBlock);
-    builder.create<DMAStartOp>(builder.getUnknownLoc(), channelDir,
-                               channelIndex,
-                               /*repeatCount*/ 0, bdBlock, &endBlock);
+    builder.create<DMAStartOp>(
+        builder.getUnknownLoc(),
+        static_cast<xilinx::AIE::DMAChannelDir>(channelDir), channelIndex,
+        /*repeatCount*/ 0, bdBlock, &endBlock);
   }
   if (lastDmaBlock) lastDmaBlock->getTerminator()->setSuccessor(dmaBlock, 1);
 
@@ -836,8 +869,8 @@ void createFlowsAndTileDMAs(
   // create producer tile DMA
   DMAChannel producerChan =
       dmaAnalysis.getProducerDMAChannel(producer.getProducerTile());
-  createDMA(producer, producerChan.direction, producerChan.channel,
-            producer.getDimensionsToStreamAttr());
+  createDMA(producer, static_cast<DMAChannelDir>(producerChan.direction),
+            producerChan.channel, producer.getDimensionsToStreamAttr());
   // generate objectFifo allocation info
   OpBuilder::InsertionGuard g(builder);
   builder.setInsertionPoint(&device.getBody()->back());
@@ -852,8 +885,8 @@ void createFlowsAndTileDMAs(
         dmaAnalysis.getConsumerDMAChannel(consumer.getProducerTile());
     BDDimLayoutArrayAttr consumerDims =
         consumer.getDimensionsFromStreamPerConsumer()[0];
-    createDMA(consumer, consumerChan.direction, consumerChan.channel,
-              consumerDims);
+    createDMA(consumer, static_cast<DMAChannelDir>(consumerChan.direction),
+              consumerChan.channel, consumerDims);
     // generate objectFifo allocation info
     OpBuilder::InsertionGuard gg(builder);
     builder.setInsertionPoint(&device.getBody()->back());
