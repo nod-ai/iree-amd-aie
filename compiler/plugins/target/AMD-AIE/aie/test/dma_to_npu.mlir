@@ -82,7 +82,7 @@ module  {
       return
     }
     aie.shim_dma_allocation @toMem (MM2S, 1, 1)
-  } {sym_name = "explicit_sym_name"}
+  } {sym_name = "explicit_sym_name_0"}
 }
 
 // -----

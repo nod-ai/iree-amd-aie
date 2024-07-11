@@ -520,12 +520,13 @@ struct AMDAIEDmaToNpuPass : mlir::OperationPass<DeviceOp> {
     SmallVector<func::FuncOp> funcOps;
     device->walk([&](func::FuncOp funcOp) {
       // if the deviceOp has a symbol name attached to it we look for the funcOp
-      // that matches that symbol, if not we collect all funcOps
-      if (!symName || symName.str() == funcOp.getSymName())
+      // that partically matches that symbol, if not we collect all funcOps
+      if (!symName ||
+          symName.str().find(funcOp.getSymName().str()) != std::string::npos)
         funcOps.push_back(funcOp);
     });
-    // If multiple functions get found we dont know which one is the entry point
-    // fuction and in that case we wont delete any functions.
+    // If exactly one entry point function is found we can delete it. For any
+    // other result we do not make any change.
     if (funcOps.size() == 1) funcOps[0].erase();
   }
 };
