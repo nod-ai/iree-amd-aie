@@ -198,3 +198,55 @@ func.func @zero_fill_with_matmul(%arg0 : tensor<?x?x?x?xbf16>, %arg1 : tensor<?x
 // CHECK-SAME:       fn_def_attrs {link_with = "/custom/path/to/ukernels/mm.o"}
 // CHECK-SAME:       strided_outer_dims(0)
 //      CHECK:   return %[[MATMUL_MICRO_KERNEL]]
+
+// -----
+
+// In this test, we have a linalg.fill followed by a linalg.matmul, followed by
+// a linalg.generic representing x -> x + 1. The linalg.matmul should be lowered
+// to a ukernel, as should the linalg.fill, but the final elementwise addition
+// should not be.
+func.func @zero_fill_matmul_elmwise(%arg0 : tensor<?x?x?x?xbf16>, %arg1 : tensor<?x?x?x?xbf16>,
+    %arg2 : tensor<?x?x?x?xbf16>) -> tensor<?x?x?x?xbf16> attributes {
+  hal.executable.target = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb",
+  {target_arch = "chip-tbd", ukernels = "all"}>
+} {
+  %cst = arith.constant 0.0 : bf16
+  %cst_1 = arith.constant 1.0 : bf16
+  %fill = linalg.fill ins(%cst : bf16) outs(%arg2 : tensor<?x?x?x?xbf16>) -> tensor<?x?x?x?xbf16>
+  %matmul = linalg.generic {indexing_maps = [
+                         affine_map<(d0, d1, d2, d3, d4, d5) -> (d2, d0, d3, d5)>,
+                         affine_map<(d0, d1, d2, d3, d4, d5) -> (d1, d2, d5, d4)>,
+                         affine_map<(d0, d1, d2, d3, d4, d5) -> (d1, d0, d3, d4)>],
+                       iterator_types = ["parallel", "parallel", "reduction",
+                                         "parallel", "parallel", "reduction"]
+                      } ins(%arg0, %arg1 : tensor<?x?x?x?xbf16>, tensor<?x?x?x?xbf16>)
+                        outs(%fill : tensor<?x?x?x?xbf16>)
+      {
+        ^bb0(%in: bf16, %in_9: bf16, %out: bf16):
+          %22 = arith.mulf %in, %in_9 : bf16
+          %23 = arith.addf %out, %22 : bf16
+          linalg.yield %23 : bf16
+      } -> tensor<?x?x?x?xbf16>
+  // Perform an elementwise addition of 1 to the result of the matmul.
+  %matmul_add = linalg.generic {indexing_maps = [
+                             affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>,
+                             affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>],
+                         iterator_types = ["parallel", "parallel", "parallel", "parallel"]}
+                           ins(%matmul : tensor<?x?x?x?xbf16>)
+                           outs(%arg2 : tensor<?x?x?x?xbf16>)
+      {
+      ^bb0(%in: bf16, %out: bf16):
+          %1 = arith.addf %in, %cst_1 : bf16
+          linalg.yield %1 : bf16
+      } -> tensor<?x?x?x?xbf16>
+
+  return %matmul_add : tensor<?x?x?x?xbf16>
+}
+// CHECK: func @zero_fill_matmul_elmwise
+// CHECK-NOT: linalg.fill
+// CHECK: iree_codegen.ukernel.generic "zero_bf16"
+// CHECK-NOT: linalg.fill
+// CHECK: iree_codegen.ukernel.generic "matmul_bf16_bf16"
+// CHECK: linalg.generic
+// CHECK-SAME: iterator_types = ["parallel", "parallel", "parallel", "parallel"]
+// CHECK: return
