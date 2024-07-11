@@ -65,9 +65,9 @@ module  {
 // CHECK-LABEL:   aie.device(npu1_4col) {
 // CHECK:           memref.global "public" @toMem : memref<16xi32>
 // CHECK:           func.func @pretend_microkernel
-// CHECK-NOT:       func.func  @explicit_sym_name
+// CHECK-NOT:       func.func @explicit_sym_name
 // CHECK:           aie.shim_dma_allocation @toMem(MM2S, 1, 1)
-// CHECK:         } {npu_instructions = array<i32: 100860160, 261, 4, 152, 1, 0, 33673248, 48, 256, 0, 0, 16777216, -2147483585, 0, 0, 33554432, 129, 48, 0, 0, 0, 0, 33673252, 0, 0, 0, 0, 0, 0, 0, 33673756, 0, 1, 24, 128, 16, 65537, 16843008>, sym_name = "explicit_sym_name"}
+// CHECK:         } {npu_instructions = array<i32: 100860160, 261, 4, 152, 1, 0, 33673248, 48, 256, 0, 0, 16777216, -2147483585, 0, 0, 33554432, 129, 48, 0, 0, 0, 0, 33673252, 0, 0, 0, 0, 0, 0, 0, 33673756, 0, 1, 24, 128, 16, 65537, 16843008>, sym_name = "explicit_sym_name_0"}
 
 module  {
   aie.device(npu1_4col) {
