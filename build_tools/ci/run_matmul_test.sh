@@ -402,9 +402,8 @@ function run_matmul_test() {
     compilation_flags="${compilation_flags} \
                         --iree-amdaie-enable-ukernels=all"
 
-
     # The flag '--iree-amdaie-path-to-ukernels' currently does not work,
-    # see for example https://github.com/nod-ai/iree-amd-aie/issues/340
+    # see for example https://github.com/nod-ai/iree-amd-aie/issues/340.
     # Therefore we need to manually copy (or link) the mm.o file to the
     # directory in which iree-compile is run. iree-compile is run in the
     # output directory. Create the softlink only if it is has not already
