@@ -490,6 +490,38 @@ endif()
 # iree-aie-runtime-static
 # ##############################################################################
 
+iree_tablegen_library(
+  NAME
+    AMDAIEEnumsGen
+  TD_FILE
+    "AMDAIEEnums.td"
+  OUTS
+    --gen-enum-decls AMDAIEEnums.h.inc
+    --gen-enum-defs AMDAIEEnums.cpp.inc
+)
+
+iree_cc_library(
+  NAME
+    AMDAIEEnums
+  HDRS
+    "AMDAIEEnums.h"
+  TEXTUAL_HDRS
+    "AMDAIEEnums.cpp.inc"
+    "AMDAIEEnums.h.inc"
+  SRCS
+    "AMDAIEEnums.cpp"
+  DEPS
+    LLVMSupport
+    MLIRIR
+    MLIRParser
+    MLIRSupport
+  PUBLIC
+)
+
+# TODO(max): not sure why adding DEPS AMDAIEEnumsGen to AMDAIEEnums doesn't work...
+add_dependencies(iree-amd-aie_aie_runtime_AMDAIEEnums
+                 iree-amd-aie_aie_runtime_AMDAIEEnumsGen)
+
 iree_cc_library(
   NAME
     iree_aie_runtime_static
@@ -503,6 +535,8 @@ iree_cc_library(
     ${_aie_rt_binary_include_dir}
     # For <elf.h>
     ${_bootgen_source_dir}
+  DEPS
+    ::AMDAIEEnums
   PUBLIC
 )
 
