@@ -9,7 +9,7 @@
 // CHECK:           %[[TILE_2_0:.*]] = aie.tile(2, 0)
 // CHECK:           %[[TILE_2_1:.*]] = aie.tile(2, 1)
 // CHECK:           %[[TILE_2_2:.*]] = aie.tile(2, 2)
-// CHECK:           %[[FROM_MEMTILE_CONS_PROD_LOCK:.*]] = aie.lock(%[[TILE_2_0]], 0) {init = 1 : i32, sym_name = "from_memTile_cons_prod_lock"}
+// CHECK:           %[[FROM_MEMTILE_CONS_PROD_LOCK:.*]] = aie.lock(%[[TILE_2_0]], 0) {init = 0 : i32, sym_name = "from_memTile_cons_prod_lock"}
 // CHECK:           %[[FROM_MEMTILE_CONS_CONS_LOCK:.*]] = aie.lock(%[[TILE_2_0]], 1) {init = 0 : i32, sym_name = "from_memTile_cons_cons_lock"}
 // CHECK:           %[[FROM_MEMTILE_BUFF_0:.*]] = aie.buffer(%[[TILE_2_1]]) {sym_name = "from_memTile_buff_0"} : memref<48xi32>
 // CHECK:           %[[FROM_MEMTILE_BUFF_1:.*]] = aie.buffer(%[[TILE_2_1]]) {sym_name = "from_memTile_buff_1"} : memref<48xi32>
@@ -37,6 +37,7 @@
 // CHECK:           ^bb3:
 // CHECK:             aie.end
 // CHECK:           }
+// CHECK:           aie.shim_dma_allocation @from_memTile(S2MM, 0, 2)
 // CHECK:           %[[MEMTILE_DMA_2_1:.*]] = aie.memtile_dma(%[[TILE_2_1]]) {
 // CHECK:             %[[VAL_1:.*]] = aie.dma_start(S2MM, 0, ^bb1, ^bb3)
 // CHECK:           ^bb1:
@@ -62,17 +63,6 @@
 // CHECK:             aie.use_lock(%[[FROM_MEMTILE_PROD_LOCK]], Release, 1)
 // CHECK:             aie.next_bd ^bb4
 // CHECK:           ^bb6:
-// CHECK:             aie.end
-// CHECK:           }
-// CHECK:           aie.shim_dma_allocation @from_memTile(S2MM, 0, 2)
-// CHECK:           %[[SHIM_DMA_2_0:.*]] = aie.shim_dma(%[[TILE_2_0]]) {
-// CHECK:             %[[VAL_3:.*]] = aie.dma_start(S2MM, 0, ^bb1, ^bb2)
-// CHECK:           ^bb1:
-// CHECK:             aie.use_lock(%[[FROM_MEMTILE_CONS_PROD_LOCK]], AcquireGreaterEqual, 1)
-// CHECK:             aie.dma_bd(%[[EXT_BUFF_IN]] : memref<48xi32>, 0, 48)
-// CHECK:             aie.use_lock(%[[FROM_MEMTILE_CONS_CONS_LOCK]], Release, 1)
-// CHECK:             aie.next_bd ^bb1
-// CHECK:           ^bb2:
 // CHECK:             aie.end
 // CHECK:           }
 // CHECK:         }
