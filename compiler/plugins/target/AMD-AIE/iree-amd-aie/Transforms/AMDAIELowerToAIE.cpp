@@ -17,6 +17,7 @@
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "iree-amd-aie/IR/AMDAIEDialect.h"
 #include "iree-amd-aie/IR/AMDAIEOps.h"
+#include "iree-amd-aie/Transforms/AMDAIEUtils.h"
 #include "iree-amd-aie/Transforms/Passes.h"
 #include "iree-amd-aie/Transforms/Transforms.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
@@ -729,13 +730,23 @@ LogicalResult workgroupToAIE(IRRewriter &rewriter,
 LogicalResult lowerToAIE(ModuleOp moduleOp) {
   IRRewriter rewriter(moduleOp.getContext());
   Block *moduleBlock = &moduleOp->getRegion(0).front();
+
+  // Retrieve the AMDAIEDevice from the executable target attribute.
+  auto targetAttr = IREE::HAL::ExecutableTargetAttr::lookup(moduleOp);
+  auto test = IREE::HAL::DeviceTargetAttr::lookup(moduleOp);
+  std::optional<AMDAIEDevice> device = getConfigAMDAIEDevice(targetAttr);
+  if (!device)
+    return moduleOp.emitOpError()
+           << "No AMDAIEDevice found in the target attribute configuration";
+  xilinx::AIE::AIEDevice aieDevice = static_cast<xilinx::AIE::AIEDevice>(
+      static_cast<uint32_t>(device.value()));
+
   auto funcRes = moduleOp.walk([&](func::FuncOp funcOp) {
     // Insert AIE DeviceOp
     rewriter.setInsertionPoint(moduleBlock, moduleBlock->begin());
     auto deviceOp = rewriter.create<xilinx::AIE::DeviceOp>(
         rewriter.getUnknownLoc(),
-        xilinx::AIE::AIEDeviceAttr::get(rewriter.getContext(),
-                                        xilinx::AIE::AIEDevice::npu1_4col));
+        xilinx::AIE::AIEDeviceAttr::get(rewriter.getContext(), aieDevice));
     deviceOp.getRegion().emplaceBlock();
     Block *deviceBlock = &deviceOp.getRegion().front();
 
@@ -868,7 +879,7 @@ class AMDAIELowerToAIEPass
   }
 
   AMDAIELowerToAIEPass() = default;
-  AMDAIELowerToAIEPass(const AMDAIELowerToAIEPass &pass) {};
+  AMDAIELowerToAIEPass(const AMDAIELowerToAIEPass &pass){};
   void runOnOperation() override;
 };
 

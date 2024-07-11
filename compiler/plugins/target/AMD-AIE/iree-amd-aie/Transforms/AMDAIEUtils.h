@@ -9,10 +9,16 @@
 
 #include <array>
 
+#include "iree-amd-aie/IR/AMDAIEAttrs.h"
+#include "iree/compiler/Dialect/HAL/IR/HALOps.h"
 #include "mlir/Dialect/Linalg/Utils/Utils.h"
 #include "mlir/IR/Types.h"
 
 namespace mlir::iree_compiler::AMDAIE {
+
+/// Returns the target AMDAIE device.
+std::optional<AMDAIEDevice> getConfigAMDAIEDevice(
+    IREE::HAL::ExecutableTargetAttr targetAttr);
 
 // This function is based on the following table pulled from the
 // AIEVec_MatMulOp documentation in

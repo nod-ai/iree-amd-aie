@@ -15,6 +15,7 @@
 #include "aie/Dialect/XLLVM/XLLVMDialect.h"
 #include "aie/Passes.h"
 #include "aie/Target/LLVMIR/Dialect/XLLVM/XLLVMToLLVMIRTranslation.h"
+#include "iree-amd-aie/IR/AMDAIEAttrs.h"
 #include "iree-amd-aie/IR/AMDAIEDialect.h"
 #include "iree-amd-aie/Transforms/Passes.h"
 #include "iree-dialects/Dialect/LinalgTransform/Passes.h"
@@ -141,8 +142,10 @@ class AIETargetDirectBackend final : public IREE::HAL::TargetBackend {
     auto addConfig = [&](StringRef name, Attribute value) {
       configItems.emplace_back(StringAttr::get(context, name), value);
     };
-    // Set target arch
-    addConfig("target_arch", StringAttr::get(context, "chip-tbd"));
+    // Set target device
+    addConfig("target_device",
+              StringAttr::get(context,
+                              AMDAIE::stringifyEnum(AMDAIEDevice::npu1_4col)));
     // Set microkernel enabling flag.
     addConfig("ukernels",
               StringAttr::get(context, /*clEnableAMDAIEUkernels*/ ""));

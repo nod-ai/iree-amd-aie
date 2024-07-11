@@ -182,6 +182,8 @@ function run_matmul_test() {
 
   local target_backend="amd-aie"
 
+  local target_device="npu1_4col"
+
   local device="xrt"
 
   local peano_install_path="${PEANO}"
@@ -254,6 +256,10 @@ function run_matmul_test() {
         ;;
       --use_ukernel)
         use_ukernel="$2"
+        shift 2
+        ;;
+      --target_device)
+        target_device="$2"
         shift 2
         ;;
       --target_backend)
@@ -381,6 +387,7 @@ function run_matmul_test() {
   set +e
 
   compilation_flags="--iree-hal-target-backends=${target_backend} \
+                      --iree-amdaie-target-device=${target_device} \
                       --iree-amdaie-lower-to-aie-pipeline=${lower_to_aie_pipeline} \
                       --iree-amdaie-tile-pipeline=${tile_pipeline} \
                       --iree-amd-aie-peano-install-dir=${peano_install_path} \
@@ -495,6 +502,7 @@ run_matmul_test \
     --lhs_rhs_type "bf16" \
     --acc_type "f32" \
     --target_backend "amd-aie" \
+    --target_device "npu1_4col" \
     --device "xrt" \
     --peano_install_path "${PEANO}" \
     --mlir_aie_install_path "${MLIR_AIE_INSTALL}" \

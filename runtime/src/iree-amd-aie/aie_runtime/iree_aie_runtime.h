@@ -10,10 +10,14 @@
 #include <optional>
 #include <ostream>
 #include <sstream>
+#include <tuple>
 
 #include "llvm/ADT/Twine.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/FormattedStream.h"
+// clang-format off
+#include "iree-amd-aie/aie_runtime/AMDAIEEnums.h"
+// clang-format on
 
 extern "C" {
 #include "xaie_hwcfg.h"
@@ -54,17 +58,6 @@ struct TileLoc {
   }
 
   bool operator!=(const TileLoc& rhs) const { return !(*this == rhs); }
-};
-
-enum class AMDAIEDevice : uint32_t {
-  xcvc1902 = 1,
-  xcve2302 = 2,
-  xcve2802 = 3,
-  npu1 = 4,
-  npu1_1col = 5,
-  npu1_2col = 6,
-  npu1_3col = 7,
-  npu1_4col = 8,
 };
 
 enum class AMDAIETileType : uint8_t {

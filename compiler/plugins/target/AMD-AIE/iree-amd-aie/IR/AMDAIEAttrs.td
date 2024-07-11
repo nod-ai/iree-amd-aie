@@ -21,16 +21,6 @@ def AMDAIE_CopyOpOperateOn: I32EnumAttr<"CopyOpOperateOn",
 {
 }
 
-def DMAChannelDir: I32EnumAttr<"DMAChannelDir",
-  "DMA Channel direction. Either stream to memory (`S2MM`) or memory to stream "
-  "(`MM2S`)",
-  [
-    I32EnumAttrCase<"S2MM", 0>,
-    I32EnumAttrCase<"MM2S", 1>
-  ]> {
-  let cppNamespace = "mlir::iree_compiler::AMDAIE";
-}
-
 def LogicalObjectFifoPort: I32EnumAttr<"LogicalObjectFifoPort",
   "The logical objectfifo ports.",
   [
