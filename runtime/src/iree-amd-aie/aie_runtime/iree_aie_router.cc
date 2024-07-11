@@ -6,319 +6,28 @@
 
 #include "iree_aie_router.h"
 
+#include <set>
+
+#include "d_ary_heap.h"
 #include "iree_aie_runtime.h"
 #include "llvm/ADT/DenseMapInfo.h"
 #include "llvm/ADT/DirectedGraph.h"
-#include "llvm/ADT/GraphTraits.h"
+
+#define DEBUG_TYPE "iree-aie-runtime-router"
+
+#define OVER_CAPACITY_COEFF 0.02
+#define USED_CAPACITY_COEFF 0.02
+#define DEMAND_COEFF 1.1
 
 namespace mlir::iree_compiler::AMDAIE {
-struct SwitchboxNode;
-struct ChannelEdge;
-using SwitchboxNodeBase = llvm::DGNode<SwitchboxNode, ChannelEdge>;
-using ChannelEdgeBase = llvm::DGEdge<SwitchboxNode, ChannelEdge>;
-using SwitchboxGraphBase = llvm::DirectedGraph<SwitchboxNode, ChannelEdge>;
-
-struct SwitchboxNode : SwitchboxNodeBase, Switchbox {
-  using Switchbox::Switchbox;
-  SwitchboxNode(int col, int row, int id) : Switchbox{col, row}, id{id} {}
-  int id;
-};
-
-// warning: 'mlir::iree_compiler::AMDAIE::ChannelEdge::src' will be initialized
-// after SwitchboxNode &src; [-Wreorder]
-struct ChannelEdge : ChannelEdgeBase, Channel {
-  using Channel::Channel;
-
-  explicit ChannelEdge(SwitchboxNode &target) = delete;
-  ChannelEdge(SwitchboxNode &src, SwitchboxNode &target, StrmSwPortType bundle,
-              int maxCapacity)
-      : ChannelEdgeBase(target),
-        Channel(src, target, toStrmT(bundle), maxCapacity),
-        src(src) {}
-
-  // This class isn't designed to copied or moved.
-  ChannelEdge(const ChannelEdge &E) = delete;
-  ChannelEdge &operator=(ChannelEdge &&E) = delete;
-
-  SwitchboxNode &src;
-};
-
-class SwitchboxGraph : public SwitchboxGraphBase {
- public:
-  SwitchboxGraph() = default;
-  ~SwitchboxGraph() = default;
-};
-
-using SwitchSettings = std::map<Switchbox, SwitchSetting>;
-
-// A Flow defines source and destination vertices
-// Only one source, but any number of destinations (fanout)
-struct PathEndPointNode : PathEndPoint {
-  PathEndPointNode(SwitchboxNode *sb, Port port)
-      : PathEndPoint{*sb, port}, sb(sb) {}
-  SwitchboxNode *sb;
-};
-
-struct FlowNode {
-  PathEndPointNode src;
-  std::vector<PathEndPointNode> dsts;
-};
-
-class Pathfinder {
- public:
-  Pathfinder() = default;
-  void initialize(int maxCol, int maxRow, AMDAIEDeviceModel &deviceModel);
-  void addFlow(TileLoc srcCoords, Port srcPort, TileLoc dstCoords,
-               Port dstPort);
-  bool addFixedConnection(ConnectOp connectOp);
-  std::optional<std::map<PathEndPoint, SwitchSettings>> findPaths(
-      int maxIterations);
-
-  Switchbox *getSwitchbox(TileLoc coords) {
-    auto *sb = std::find_if(graph.begin(), graph.end(), [&](SwitchboxNode *sb) {
-      return sb->col == coords.col && sb->row == coords.row;
-    });
-    assert(sb != graph.end() && "couldn't find sb");
-    return *sb;
-  }
-
- private:
-  SwitchboxGraph graph;
-  std::vector<FlowNode> flows;
-  std::map<TileLoc, SwitchboxNode> grid;
-  // Use a list instead of a vector because nodes have an edge list of raw
-  // pointers to edges (so growing a vector would invalidate the pointers).
-  std::list<ChannelEdge> edges;
-};
-
-// DynamicTileAnalysis integrates the Pathfinder class into the MLIR
-// environment. It passes flows to the Pathfinder as ordered pairs of ints.
-// Detailed routing is received as SwitchboxSettings
-// It then converts these settings to MLIR operations
-class DynamicTileAnalysis {
- public:
-  int maxCol, maxRow;
-  std::shared_ptr<Pathfinder> pathfinder;
-  std::map<PathEndPoint, SwitchSettings> flowSolutions;
-  std::map<PathEndPoint, bool> processedFlows;
-
-  llvm::DenseMap<TileLoc, TileOp> coordToTile;
-  llvm::DenseMap<TileLoc, SwitchboxOp> coordToSwitchbox;
-  llvm::DenseMap<TileLoc, ShimMuxOp> coordToShimMux;
-  llvm::DenseMap<int, PLIOOp> coordToPLIO;
-
-  const int maxIterations = 1000;  // how long until declared unroutable
-
-  DynamicTileAnalysis() : pathfinder(std::make_shared<Pathfinder>()) {}
-  DynamicTileAnalysis(std::shared_ptr<Pathfinder> p)
-      : pathfinder(std::move(p)) {}
-
-  mlir::LogicalResult runAnalysis(DeviceOp &device);
-
-  int getMaxCol() const { return maxCol; }
-  int getMaxRow() const { return maxRow; }
-
-  TileOp getTile(mlir::OpBuilder &builder, int col, int row);
-
-  SwitchboxOp getSwitchbox(mlir::OpBuilder &builder, int col, int row);
-
-  ShimMuxOp getShimMux(mlir::OpBuilder &builder, int col);
-};
-
-}  // namespace mlir::iree_compiler::AMDAIE
-
-namespace llvm {
-
-template <>
-struct GraphTraits<SwitchboxNode *> {
-  using NodeRef = SwitchboxNode *;
-
-  static SwitchboxNode *SwitchboxGraphGetSwitchbox(
-      DGEdge<SwitchboxNode, ChannelEdge> *P) {
-    return &P->getTargetNode();
-  }
-
-  // Provide a mapped iterator so that the GraphTrait-based implementations
-  // can find the target nodes without having to explicitly go through the
-  // edges.
-  using ChildIteratorType =
-      mapped_iterator<SwitchboxNode::iterator,
-                      decltype(&SwitchboxGraphGetSwitchbox)>;
-  using ChildEdgeIteratorType = SwitchboxNode::iterator;
-
-  static NodeRef getEntryNode(NodeRef N) { return N; }
-  static ChildIteratorType child_begin(NodeRef N) {
-    return {N->begin(), &SwitchboxGraphGetSwitchbox};
-  }
-  static ChildIteratorType child_end(NodeRef N) {
-    return {N->end(), &SwitchboxGraphGetSwitchbox};
-  }
-
-  static ChildEdgeIteratorType child_edge_begin(NodeRef N) {
-    return N->begin();
-  }
-  static ChildEdgeIteratorType child_edge_end(NodeRef N) { return N->end(); }
-};
-
-template <>
-struct GraphTraits<SwitchboxGraph *> : GraphTraits<SwitchboxNode *> {
-  using nodes_iterator = SwitchboxGraph::iterator;
-  static NodeRef getEntryNode(SwitchboxGraph *DG) { return *DG->begin(); }
-  static nodes_iterator nodes_begin(SwitchboxGraph *DG) { return DG->begin(); }
-  static nodes_iterator nodes_end(SwitchboxGraph *DG) { return DG->end(); }
-};
-
-inline raw_ostream &operator<<(raw_ostream &os, const SwitchSettings &ss) {
-  std::stringstream s;
-  s << "\tSwitchSettings: ";
-  for (const auto &[sb, setting] : ss) {
-    s << sb << ": " << setting << " | ";
-  }
-  s << "\n";
-  os << s.str();
-  return os;
-}
-
-}  // namespace llvm
-
-namespace mlir::iree_compiler::AMDAIE {
-
-LogicalResult DynamicTileAnalysis::runAnalysis(DeviceOp &device) {
-  LLVM_DEBUG(llvm::dbgs() << "\t---Begin DynamicTileAnalysis Constructor---\n");
-  // find the maxCol and maxRow
-  maxCol = 0;
-  maxRow = 0;
-  for (TileOp tileOp : device.getOps<TileOp>()) {
-    maxCol = std::max(maxCol, tileOp.colIndex());
-    maxRow = std::max(maxRow, tileOp.rowIndex());
-  }
-
-  AMDAIEDeviceModel deviceModel =
-      getDeviceModel(static_cast<AMDAIEDevice>(device.getDevice()));
-  pathfinder->initialize(maxCol, maxRow, deviceModel);
-
-  // for each flow in the device, add it to pathfinder
-  // each source can map to multiple different destinations (fanout)
-  for (FlowOp flowOp : device.getOps<FlowOp>()) {
-    TileOp srcTile = cast<TileOp>(flowOp.getSource().getDefiningOp());
-    TileOp dstTile = cast<TileOp>(flowOp.getDest().getDefiningOp());
-    TileLoc srcCoords = {srcTile.colIndex(), srcTile.rowIndex()};
-    TileLoc dstCoords = {dstTile.colIndex(), dstTile.rowIndex()};
-    Port srcPort = {toStrmT(flowOp.getSourceBundle()),
-                    flowOp.getSourceChannel()};
-    Port dstPort = {toStrmT(flowOp.getDestBundle()), flowOp.getDestChannel()};
-    LLVM_DEBUG(llvm::dbgs()
-               << "\tAdding Flow: (" << srcCoords.col << ", " << srcCoords.row
-               << ")" << srcPort.bundle << srcPort.channel << " -> ("
-               << dstCoords.col << ", " << dstCoords.row << ")"
-               << dstPort.bundle << dstPort.channel << "\n");
-    pathfinder->addFlow(srcCoords, srcPort, dstCoords, dstPort);
-  }
-
-  // add existing connections so Pathfinder knows which resources are
-  // available search all existing SwitchBoxOps for exising connections
-  for (SwitchboxOp switchboxOp : device.getOps<SwitchboxOp>()) {
-    for (ConnectOp connectOp : switchboxOp.getOps<ConnectOp>()) {
-      if (!pathfinder->addFixedConnection(connectOp))
-        return switchboxOp.emitOpError() << "Couldn't connect " << connectOp;
-    }
-  }
-
-  // all flows are now populated, call the congestion-aware pathfinder
-  // algorithm
-  // check whether the pathfinder algorithm creates a legal routing
-  if (auto maybeFlowSolutions = pathfinder->findPaths(maxIterations))
-    flowSolutions = maybeFlowSolutions.value();
-  else
-    return device.emitError("Unable to find a legal routing");
-
-  // initialize all flows as unprocessed to prep for rewrite
-  for (const auto &[pathEndPoint, switchSetting] : flowSolutions) {
-    processedFlows[pathEndPoint] = false;
-    LLVM_DEBUG(llvm::dbgs() << "Flow starting at (" << pathEndPoint.sb.col
-                            << "," << pathEndPoint.sb.row << "):\t");
-    LLVM_DEBUG(llvm::dbgs() << switchSetting);
-  }
-
-  // fill in coords to TileOps, SwitchboxOps, and ShimMuxOps
-  for (auto tileOp : device.getOps<TileOp>()) {
-    int col, row;
-    col = tileOp.colIndex();
-    row = tileOp.rowIndex();
-    maxCol = std::max(maxCol, col);
-    maxRow = std::max(maxRow, row);
-    assert(coordToTile.count({col, row}) == 0);
-    coordToTile[{col, row}] = tileOp;
-  }
-  for (auto switchboxOp : device.getOps<SwitchboxOp>()) {
-    int col = switchboxOp.colIndex();
-    int row = switchboxOp.rowIndex();
-    assert(coordToSwitchbox.count({col, row}) == 0);
-    coordToSwitchbox[{col, row}] = switchboxOp;
-  }
-  for (auto shimmuxOp : device.getOps<ShimMuxOp>()) {
-    int col = shimmuxOp.colIndex();
-    int row = shimmuxOp.rowIndex();
-    assert(coordToShimMux.count(TileLoc{col, row}) == 0);
-    coordToShimMux[{col, row}] = shimmuxOp;
-  }
-
-  LLVM_DEBUG(llvm::dbgs() << "\t---End DynamicTileAnalysis Constructor---\n");
-  return success();
-}
-
-TileOp DynamicTileAnalysis::getTile(OpBuilder &builder, int col, int row) {
-  if (coordToTile.count({col, row})) {
-    return coordToTile[{col, row}];
-  }
-  auto tileOp = builder.create<TileOp>(builder.getUnknownLoc(), col, row);
-  coordToTile[{col, row}] = tileOp;
-  maxCol = std::max(maxCol, col);
-  maxRow = std::max(maxRow, row);
-  return tileOp;
-}
-
-SwitchboxOp DynamicTileAnalysis::getSwitchbox(OpBuilder &builder, int col,
-                                              int row) {
-  assert(col >= 0);
-  assert(row >= 0);
-  if (coordToSwitchbox.count({col, row})) {
-    return coordToSwitchbox[{col, row}];
-  }
-  auto switchboxOp = builder.create<SwitchboxOp>(builder.getUnknownLoc(),
-                                                 getTile(builder, col, row));
-  SwitchboxOp::ensureTerminator(switchboxOp.getConnections(), builder,
-                                builder.getUnknownLoc());
-  coordToSwitchbox[{col, row}] = switchboxOp;
-  maxCol = std::max(maxCol, col);
-  maxRow = std::max(maxRow, row);
-  return switchboxOp;
-}
-
-ShimMuxOp DynamicTileAnalysis::getShimMux(OpBuilder &builder, int col) {
-  assert(col >= 0);
-  int row = 0;
-  if (coordToShimMux.count({col, row})) {
-    return coordToShimMux[{col, row}];
-  }
-  assert(getTile(builder, col, row).isShimNOCTile());
-  auto switchboxOp = builder.create<ShimMuxOp>(builder.getUnknownLoc(),
-                                               getTile(builder, col, row));
-  SwitchboxOp::ensureTerminator(switchboxOp.getConnections(), builder,
-                                builder.getUnknownLoc());
-  coordToShimMux[{col, row}] = switchboxOp;
-  maxCol = std::max(maxCol, col);
-  maxRow = std::max(maxRow, row);
-  return switchboxOp;
-}
 
 void Pathfinder::initialize(int maxCol, int maxRow,
                             AMDAIEDeviceModel &deviceModel) {
-  // make grid of switchboxes
-  int id = 0;
+  int nodeId = 0;
   for (int row = 0; row <= maxRow; row++) {
     for (int col = 0; col <= maxCol; col++) {
-      auto [it, _] = grid.insert({{col, row}, SwitchboxNode{col, row, id++}});
+      auto [it, _] =
+          grid.insert({{col, row}, SwitchboxNode{col, row, nodeId++}});
       (void)graph.addNode(it->second);
       SwitchboxNode &thisNode = grid.at({col, row});
       if (row > 0) {  // if not in row 0 add channel to North/South
@@ -326,8 +35,8 @@ void Pathfinder::initialize(int maxCol, int maxRow,
         // get the number of outgoing connections on the south side - outgoing
         // because these correspond to rhs of a connect op
         if (uint32_t maxCapacity = deviceModel.getNumDestSwitchboxConnections(
-                col, row, toStrmT(StrmSwPortType::South))) {
-          edges.emplace_back(thisNode, southernNeighbor, StrmSwPortType::South,
+                col, row, StrmSwPortType::SOUTH)) {
+          edges.emplace_back(thisNode, southernNeighbor, StrmSwPortType::SOUTH,
                              maxCapacity);
           (void)graph.connect(thisNode, southernNeighbor, edges.back());
         }
@@ -336,8 +45,8 @@ void Pathfinder::initialize(int maxCol, int maxRow,
         // routed using internal connect ops through the switchbox (i.e., lhs of
         // connect ops)
         if (uint32_t maxCapacity = deviceModel.getNumSourceSwitchboxConnections(
-                col, row, toStrmT(StrmSwPortType::South))) {
-          edges.emplace_back(southernNeighbor, thisNode, StrmSwPortType::North,
+                col, row, StrmSwPortType::SOUTH)) {
+          edges.emplace_back(southernNeighbor, thisNode, StrmSwPortType::NORTH,
                              maxCapacity);
           (void)graph.connect(southernNeighbor, thisNode, edges.back());
         }
@@ -346,14 +55,14 @@ void Pathfinder::initialize(int maxCol, int maxRow,
       if (col > 0) {  // if not in col 0 add channel to East/West
         SwitchboxNode &westernNeighbor = grid.at({col - 1, row});
         if (uint32_t maxCapacity = deviceModel.getNumDestSwitchboxConnections(
-                col, row, toStrmT(StrmSwPortType::West))) {
-          edges.emplace_back(thisNode, westernNeighbor, StrmSwPortType::West,
+                col, row, StrmSwPortType::WEST)) {
+          edges.emplace_back(thisNode, westernNeighbor, StrmSwPortType::WEST,
                              maxCapacity);
           (void)graph.connect(thisNode, westernNeighbor, edges.back());
         }
         if (uint32_t maxCapacity = deviceModel.getNumSourceSwitchboxConnections(
-                col, row, toStrmT(StrmSwPortType::West))) {
-          edges.emplace_back(westernNeighbor, thisNode, StrmSwPortType::East,
+                col, row, StrmSwPortType::WEST)) {
+          edges.emplace_back(westernNeighbor, thisNode, StrmSwPortType::EAST,
                              maxCapacity);
           (void)graph.connect(westernNeighbor, thisNode, edges.back());
         }
@@ -401,14 +110,11 @@ void Pathfinder::addFlow(TileLoc srcCoords, Port srcPort, TileLoc dstCoords,
 
 // Keep track of connections already used in the AIE; Pathfinder algorithm will
 // avoid using these.
-bool Pathfinder::addFixedConnection(ConnectOp connectOp) {
-  auto sb = connectOp->getParentOfType<SwitchboxOp>();
-  // TODO: keep track of capacity?
-  if (sb.getTileOp().isShimNOCTile()) return true;
-
-  TileLoc sbTile(sb.getTileID().col, sb.getTileID().row);
-  StrmSwPortType sourceBundle = connectOp.getSourceBundle();
-  StrmSwPortType destBundle = connectOp.getDestBundle();
+bool Pathfinder::addFixedConnection(Connect connectOp) {
+  Switchbox sb = connectOp.sb;
+  TileLoc sbTile(sb.col, sb.row);
+  StrmSwPortType sourceBundle = connectOp.src.bundle;
+  StrmSwPortType destBundle = connectOp.dst.bundle;
 
   // find the correct Channel and indicate the fixed direction
   // outgoing connection
@@ -418,8 +124,7 @@ bool Pathfinder::addFixedConnection(ConnectOp connectOp) {
                ch.bundle == destBundle;
       });
   if (matchingCh != edges.end())
-    return matchingCh->fixedCapacity.insert(connectOp.getDestChannel())
-               .second ||
+    return matchingCh->fixedCapacity.insert(connectOp.dst.channel).second ||
            true;
 
   // incoming connection
@@ -428,8 +133,7 @@ bool Pathfinder::addFixedConnection(ConnectOp connectOp) {
            ch.bundle == getConnectingBundle(sourceBundle);
   });
   if (matchingCh != edges.end())
-    return matchingCh->fixedCapacity.insert(connectOp.getSourceChannel())
-               .second ||
+    return matchingCh->fixedCapacity.insert(connectOp.src.channel).second ||
            true;
 
   return false;
@@ -500,7 +204,6 @@ std::map<SwitchboxNode *, SwitchboxNode *> dijkstraShortestPaths(
 // If no legal routing can be found after maxIterations, returns empty vector.
 std::optional<std::map<PathEndPoint, SwitchSettings>> Pathfinder::findPaths(
     const int maxIterations) {
-  LLVM_DEBUG(llvm::dbgs() << "Begin Pathfinder::findPaths\n");
   int iterationCount = 0;
   std::map<PathEndPoint, SwitchSettings> routingSolution;
 
@@ -512,14 +215,7 @@ std::optional<std::map<PathEndPoint, SwitchSettings>> Pathfinder::findPaths(
     bool legal = true;  // assume legal until found otherwise
     for (auto &e : edges) {
       if (e.usedCapacity > e.maxCapacity) {
-        LLVM_DEBUG(llvm::dbgs()
-                   << "Too much capacity on Edge (" << e.getTargetNode().col
-                   << ", " << e.getTargetNode().row << ") . " << e.bundle
-                   << "\t: used_capacity = " << e.usedCapacity
-                   << "\t: Demand = " << e.demand << "\n");
         e.overCapacityCount++;
-        LLVM_DEBUG(llvm::dbgs()
-                   << "over_capacity_count = " << e.overCapacityCount << "\n");
         legal = false;
         break;
       }
@@ -529,8 +225,6 @@ std::optional<std::map<PathEndPoint, SwitchSettings>> Pathfinder::findPaths(
   };
 
   do {
-    LLVM_DEBUG(llvm::dbgs()
-               << "Begin findPaths iteration #" << iterationCount << "\n");
     // update demand on all channels
     for (auto &ch : edges) {
       if (ch.fixedCapacity.size() >=
@@ -543,13 +237,7 @@ std::optional<std::map<PathEndPoint, SwitchSettings>> Pathfinder::findPaths(
       }
     }
     // if reach maxIterations, throw an error since no routing can be found
-    if (++iterationCount > maxIterations) {
-      LLVM_DEBUG(llvm::dbgs()
-                 << "Pathfinder: maxIterations has been exceeded ("
-                 << maxIterations
-                 << " iterations)...unable to find routing for flows.\n");
-      return std::nullopt;
-    }
+    if (++iterationCount > maxIterations) return std::nullopt;
 
     // "rip up" all routes, i.e. set used capacity in each Channel to 0
     routingSolution.clear();
@@ -603,11 +291,7 @@ std::optional<std::map<PathEndPoint, SwitchSettings>> Pathfinder::findPaths(
 
           ch->usedCapacity++;
           // if at capacity, bump demand to discourage using this Channel
-          if (ch->usedCapacity >= ch->maxCapacity) {
-            LLVM_DEBUG(llvm::dbgs() << "ch over capacity: " << ch << "\n");
-            // this means the order matters!
-            ch->demand *= DEMAND_COEFF;
-          }
+          if (ch->usedCapacity >= ch->maxCapacity) ch->demand *= DEMAND_COEFF;
 
           processed.insert(curr);
           curr = preds[curr];
@@ -620,164 +304,16 @@ std::optional<std::map<PathEndPoint, SwitchSettings>> Pathfinder::findPaths(
 
   return routingSolution;
 }
-// allocates channels between switchboxes ( but does not assign them)
-// instantiates shim-muxes AND allocates channels ( no need to rip these up in )
-struct ConvertFlowsToInterconnect : OpConversionPattern<FlowOp> {
-  using OpConversionPattern::OpConversionPattern;
-  DeviceOp &device;
-  DynamicTileAnalysis &analyzer;
-  ConvertFlowsToInterconnect(MLIRContext *context, DeviceOp &d,
-                             DynamicTileAnalysis &a, PatternBenefit benefit = 1)
-      : OpConversionPattern(context, benefit), device(d), analyzer(a) {}
 
-  LogicalResult match(FlowOp op) const override { return success(); }
+std::optional<std::map<PathEndPoint, SwitchSettings>> findPaths(
+    int maxIterations);
 
-  void addConnection(ConversionPatternRewriter &rewriter,
-                     // could be a shim-mux or a switchbox.
-                     Interconnect op, FlowOp flowOp, StrmSwPortType inBundle,
-                     int inIndex, StrmSwPortType outBundle, int outIndex) const {
-    Region &r = op.getConnections();
-    Block &b = r.front();
-    auto point = rewriter.saveInsertionPoint();
-    rewriter.setInsertionPoint(b.getTerminator());
+Switchbox *Pathfinder::getSwitchbox(TileLoc coords) {
+  auto *sb = std::find_if(graph.begin(), graph.end(), [&](SwitchboxNode *sb) {
+    return sb->col == coords.col && sb->row == coords.row;
+  });
+  assert(sb != graph.end() && "couldn't find sb");
+  return *sb;
+}
 
-    rewriter.create<ConnectOp>(rewriter.getUnknownLoc(), inBundle, inIndex,
-                               outBundle, outIndex);
-
-    rewriter.restoreInsertionPoint(point);
-
-    LLVM_DEBUG(llvm::dbgs()
-               << "\t\taddConnection() (" << op.colIndex() << ","
-               << op.rowIndex() << ") " << stringifyStrmSwPortType(inBundle)
-               << inIndex << " -> " << stringifyStrmSwPortType(outBundle)
-               << outIndex << "\n");
-  }
-
-  void rewrite(FlowOp flowOp, OpAdaptor adaptor,
-               ConversionPatternRewriter &rewriter) const override {
-    Operation *Op = flowOp.getOperation();
-
-    auto srcTile = cast<TileOp>(flowOp.getSource().getDefiningOp());
-    TileLoc srcCoords = {srcTile.colIndex(), srcTile.rowIndex()};
-    auto srcBundle = flowOp.getSourceBundle();
-    auto srcChannel = flowOp.getSourceChannel();
-    Port srcPort = {toStrmT(srcBundle), srcChannel};
-
-#ifndef NDEBUG
-    auto dstTile = cast<TileOp>(flowOp.getDest().getDefiningOp());
-    TileLoc dstCoords = {dstTile.colIndex(), dstTile.rowIndex()};
-    auto dstBundle = flowOp.getDestBundle();
-    auto dstChannel = flowOp.getDestChannel();
-    LLVM_DEBUG(llvm::dbgs()
-               << "\n\t---Begin rewrite() for flowOp: (" << srcCoords.col
-               << ", " << srcCoords.row << ")" << stringifyStrmSwPortType(srcBundle)
-               << srcChannel << " -> (" << dstCoords.col << ", "
-               << dstCoords.row << ")" << stringifyStrmSwPortType(dstBundle)
-               << dstChannel << "\n\t");
-#endif
-
-    // if the flow (aka "net") for this FlowOp hasn't been processed yet,
-    // add all switchbox connections to implement the flow
-    Switchbox srcSB = {srcCoords.col, srcCoords.row};
-    if (PathEndPoint srcPoint = {srcSB, srcPort};
-        !analyzer.processedFlows[srcPoint]) {
-      SwitchSettings settings = analyzer.flowSolutions[srcPoint];
-      // add connections for all the Switchboxes in SwitchSettings
-      for (const auto &[curr, setting] : settings) {
-        SwitchboxOp swOp = analyzer.getSwitchbox(rewriter, curr.col, curr.row);
-        int shimCh = srcChannel;
-        // TODO: must reserve N3, N7, S2, S3 for DMA connections
-        if (curr == srcSB &&
-            analyzer.getTile(rewriter, srcSB.col, srcSB.row).isShimNOCTile()) {
-          // shim DMAs at start of flows
-          if (srcBundle == StrmSwPortType::DMA) {
-            shimCh = srcChannel == 0
-                         ? 3
-                         : 7;  // must be either DMA0 -> N3 or DMA1 -> N7
-            ShimMuxOp shimMuxOp = analyzer.getShimMux(rewriter, srcSB.col);
-            addConnection(rewriter,
-                          cast<Interconnect>(shimMuxOp.getOperation()), flowOp,
-                          srcBundle, srcChannel, StrmSwPortType::North, shimCh);
-          } else if (srcBundle ==
-                     StrmSwPortType::NOC) {  // must be NOC0/NOC1 -> N2/N3 or
-            // NOC2/NOC3 -> N6/N7
-            shimCh = srcChannel >= 2 ? srcChannel + 4 : srcChannel + 2;
-            ShimMuxOp shimMuxOp = analyzer.getShimMux(rewriter, srcSB.col);
-            addConnection(rewriter,
-                          cast<Interconnect>(shimMuxOp.getOperation()), flowOp,
-                          srcBundle, srcChannel, StrmSwPortType::North, shimCh);
-          } else if (srcBundle ==
-                     StrmSwPortType::PLIO) {  // PLIO at start of flows with mux
-            if (srcChannel == 2 || srcChannel == 3 || srcChannel == 6 ||
-                srcChannel == 7) {  // Only some PLIO requrie mux
-              ShimMuxOp shimMuxOp = analyzer.getShimMux(rewriter, srcSB.col);
-              addConnection(
-                  rewriter, cast<Interconnect>(shimMuxOp.getOperation()),
-                  flowOp, srcBundle, srcChannel, StrmSwPortType::North, shimCh);
-            }
-          }
-        }
-        for (const auto &[bundle, channel] : setting.dsts) {
-          // handle special shim connectivity
-          if (curr == srcSB && analyzer.getTile(rewriter, srcSB.col, srcSB.row)
-                                   .isShimNOCorPLTile()) {
-            addConnection(rewriter, cast<Interconnect>(swOp.getOperation()),
-                          flowOp, StrmSwPortType::South, shimCh, toWireB(bundle),
-                          channel);
-          } else if (analyzer.getTile(rewriter, curr.col, curr.row)
-                         .isShimNOCorPLTile() &&
-                     (bundle == StrmSwPortType::DMA || bundle == StrmSwPortType::PLIO ||
-                      bundle == StrmSwPortType::NOC)) {
-            shimCh = channel;
-            if (analyzer.getTile(rewriter, curr.col, curr.row)
-                    .isShimNOCTile()) {
-              // shim DMAs at end of flows
-              if (bundle == StrmSwPortType::DMA) {
-                shimCh = channel == 0
-                             ? 2
-                             : 3;  // must be either N2 -> DMA0 or N3 -> DMA1
-                ShimMuxOp shimMuxOp = analyzer.getShimMux(rewriter, curr.col);
-                addConnection(rewriter,
-                              cast<Interconnect>(shimMuxOp.getOperation()),
-                              flowOp, StrmSwPortType::North, shimCh,
-                              toWireB(bundle), channel);
-              } else if (bundle == StrmSwPortType::NOC) {
-                shimCh = channel + 2;  // must be either N2/3/4/5 -> NOC0/1/2/3
-                ShimMuxOp shimMuxOp = analyzer.getShimMux(rewriter, curr.col);
-                addConnection(rewriter,
-                              cast<Interconnect>(shimMuxOp.getOperation()),
-                              flowOp, StrmSwPortType::North, shimCh,
-                              toWireB(bundle), channel);
-              } else if (channel >=
-                         2) {  // must be PLIO...only PLIO >= 2 require mux
-                ShimMuxOp shimMuxOp = analyzer.getShimMux(rewriter, curr.col);
-                addConnection(rewriter,
-                              cast<Interconnect>(shimMuxOp.getOperation()),
-                              flowOp, StrmSwPortType::North, shimCh,
-                              toWireB(bundle), channel);
-              }
-            }
-            addConnection(rewriter, cast<Interconnect>(swOp.getOperation()),
-                          flowOp, toWireB(setting.src.bundle),
-                          setting.src.channel, StrmSwPortType::South, shimCh);
-          } else {
-            // otherwise, regular switchbox connection
-            addConnection(rewriter, cast<Interconnect>(swOp.getOperation()),
-                          flowOp, toWireB(setting.src.bundle),
-                          setting.src.channel, toWireB(bundle), channel);
-          }
-        }
-
-        LLVM_DEBUG(llvm::dbgs() << curr << ": " << setting << " | " << "\n");
-      }
-
-      LLVM_DEBUG(llvm::dbgs()
-                 << "\n\t\tFinished adding ConnectOps to implement flowOp.\n");
-      analyzer.processedFlows[srcPoint] = true;
-    } else
-      LLVM_DEBUG(llvm::dbgs() << "Flow already processed!\n");
-
-    rewriter.eraseOp(Op);
-  }
-};
 }  // namespace mlir::iree_compiler::AMDAIE

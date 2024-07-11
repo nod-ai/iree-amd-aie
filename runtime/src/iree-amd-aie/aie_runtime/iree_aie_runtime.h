@@ -75,15 +75,6 @@ struct Port {
   }
 };
 
-struct Connect {
-  Port src;
-  Port dst;
-
-  bool operator==(const Connect& rhs) const {
-    return std::tie(src, dst) == std::tie(rhs.src, rhs.dst);
-  }
-};
-
 struct DMAChannel {
   DMAChannelDir direction;
   int channel;
@@ -99,6 +90,16 @@ struct Switchbox : TileLoc {
   Switchbox(int col, int row) : TileLoc{col, row} {}
   bool operator==(const Switchbox& rhs) const {
     return static_cast<TileLoc>(*this) == rhs;
+  }
+};
+
+struct Connect {
+  Switchbox sb;
+  Port src;
+  Port dst;
+
+  bool operator==(const Connect& rhs) const {
+    return std::tie(src, dst) == std::tie(rhs.src, rhs.dst);
   }
 };
 
@@ -130,7 +131,8 @@ struct SwitchSetting {
   bool operator<(const SwitchSetting& rhs) const { return src < rhs.src; }
 };
 
-using SwitchSettings = DenseMap<Switchbox, SwitchSetting>;
+// not DenseMap for ordering
+using SwitchSettings = std::map<Switchbox, SwitchSetting>;
 
 // A Flow defines source and destination vertices
 // Only one source, but any number of destinations (fanout)
