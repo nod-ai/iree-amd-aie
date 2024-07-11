@@ -467,6 +467,31 @@ template <>
 struct DenseMapInfo<mlir::iree_compiler::AMDAIE::Switchbox>
     : DenseMapInfo<mlir::iree_compiler::AMDAIE::TileLoc> {};
 
+template <>
+struct DenseMapInfo<mlir::iree_compiler::AMDAIE::PathEndPoint> {
+  using FirstInfo = DenseMapInfo<mlir::iree_compiler::AMDAIE::Switchbox>;
+  using SecondInfo = DenseMapInfo<mlir::iree_compiler::AMDAIE::Port>;
+
+  static mlir::iree_compiler::AMDAIE::PathEndPoint getEmptyKey() {
+    return {FirstInfo::getEmptyKey(), SecondInfo::getEmptyKey()};
+  }
+
+  static mlir::iree_compiler::AMDAIE::PathEndPoint getTombstoneKey() {
+    return {FirstInfo::getTombstoneKey(), SecondInfo::getTombstoneKey()};
+  }
+
+  static unsigned getHashValue(
+      const mlir::iree_compiler::AMDAIE::PathEndPoint& d) {
+    return detail::combineHashValue(FirstInfo::getHashValue(d.sb),
+                                    SecondInfo::getHashValue(d.port));
+  }
+
+  static bool isEqual(const mlir::iree_compiler::AMDAIE::PathEndPoint& lhs,
+                      const mlir::iree_compiler::AMDAIE::PathEndPoint& rhs) {
+    return lhs == rhs;
+  }
+};
+
 }  // namespace llvm
 
 #endif  // IREE_AIE_RUNTIME_H

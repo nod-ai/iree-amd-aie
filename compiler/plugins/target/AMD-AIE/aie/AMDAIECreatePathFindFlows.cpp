@@ -28,6 +28,8 @@ using mlir::iree_compiler::AMDAIE::AMDAIEDevice;
 using mlir::iree_compiler::AMDAIE::AMDAIEDeviceModel;
 using mlir::iree_compiler::AMDAIE::Channel;
 using mlir::iree_compiler::AMDAIE::getConnectingBundle;
+using mlir::iree_compiler::AMDAIE::PathEndPoint;
+using mlir::iree_compiler::AMDAIE::Port;
 using mlir::iree_compiler::AMDAIE::Switchbox;
 using mlir::iree_compiler::AMDAIE::SwitchSetting;
 using mlir::iree_compiler::AMDAIE::TileLoc;
@@ -108,101 +110,6 @@ bool operator==(const StrmSwPortType &lhs, const WireBundle &rhs) {
   return lhs == toStrmT(rhs);
 }
 }  // namespace
-
-using Port = mlir::iree_compiler::AMDAIE::Port;
-
-namespace std {
-template <>
-struct less<Port> {
-  bool operator()(const Port &a, const Port &b) const {
-    return a.bundle == b.bundle ? a.channel < b.channel : a.bundle < b.bundle;
-  }
-};
-
-template <>
-struct hash<Port> {
-  size_t operator()(const Port &p) const noexcept {
-    size_t h1 = hash<StrmSwPortType>{}(p.bundle);
-    size_t h2 = hash<int>{}(p.channel);
-    return h1 ^ h2 << 1;
-  }
-};
-}  // namespace std
-
-namespace {
-
-// A Flow defines source and destination vertices
-// Only one source, but any number of destinations (fanout)
-struct PathEndPoint {
-  Switchbox sb;
-  Port port;
-
-  friend std::ostream &operator<<(std::ostream &os, const PathEndPoint &s) {
-    os << "PathEndPoint(" << s.sb << ": " << s.port << ")";
-    return os;
-  }
-
-  GENERATE_TO_STRING(PathEndPoint)
-
-  friend llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
-                                       const PathEndPoint &s) {
-    os << to_string(s);
-    return os;
-  }
-
-  // Needed for the std::maps that store PathEndPoint.
-  bool operator<(const PathEndPoint &rhs) const {
-    return std::tie(sb, port) < std::tie(rhs.sb, rhs.port);
-  }
-
-  bool operator==(const PathEndPoint &rhs) const {
-    return std::tie(sb, port) == std::tie(rhs.sb, rhs.port);
-  }
-};
-
-}  // namespace
-
-namespace std {
-template <>
-struct hash<TileLoc> {
-  size_t operator()(const TileLoc &s) const noexcept {
-    size_t h1 = hash<int>{}(s.col);
-    size_t h2 = hash<int>{}(s.row);
-    return h1 ^ (h2 << 1);
-  }
-};
-// For some mysterious reason, the only way to get the priorityQueue(cmp)
-// comparison in dijkstraShortestPaths to work correctly is to define
-// this template specialization for the pointers. Overloading operator
-// will not work. Furthermore, if  you try to move this into AIEPathFinder.cpp
-// you'll get a compile error about
-// "specialization of ‘std::less<Switchbox*>’ after
-// instantiation" because one of the graph traits below is doing the comparison
-// internally (try moving this below the llvm namespace...)
-template <>
-struct less<Switchbox *> {
-  bool operator()(const Switchbox *a, const Switchbox *b) const {
-    return *a < *b;
-  }
-};
-
-template <>
-struct hash<Switchbox> {
-  size_t operator()(const Switchbox &s) const noexcept {
-    return hash<TileLoc>{}(s);
-  }
-};
-
-template <>
-struct hash<PathEndPoint> {
-  size_t operator()(const PathEndPoint &pe) const noexcept {
-    size_t h1 = hash<Port>{}(pe.port);
-    size_t h2 = hash<Switchbox>{}(pe.sb);
-    return h1 ^ (h2 << 1);
-  }
-};
-
-}  // namespace std
 
 namespace {
 struct SwitchboxNode;
