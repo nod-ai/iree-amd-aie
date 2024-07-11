@@ -216,6 +216,7 @@ function run_test() {
   # Options without defaults
   # ========================
   local test_file=""
+  local function=""
 
   # Options with defaults
   # =====================
@@ -278,6 +279,10 @@ function run_test() {
         ;;
       --name_prefix)
         name_prefix="$2"
+        shift 2
+        ;;
+      --function)
+        function="$2"
         shift 2
         ;;
       *)
@@ -382,11 +387,13 @@ function run_test() {
 
   input_output_line=$(cat ${OUTPUT_DIR}/${name}_input_args.txt)
 
+  function_line="--function='${function}'"
+
   echo "Running the module through the CPU backend"
-  eval "${IREE_RUN_EXE} --module=${cpu_vmfb} ${input_output_line} --output=@${name}_cpu.npy"
+  eval "${IREE_RUN_EXE} --module=${cpu_vmfb} ${input_output_line} --output=@${name}_cpu.npy ${function_line}"
 
   echo "Running the module through the AIE backend"
-  eval "${IREE_RUN_EXE} --module=${aie_vmfb} ${input_output_line} --device=xrt --output=@${name}_aie.npy"
+  eval "${IREE_RUN_EXE} --module=${aie_vmfb} ${input_output_line} --device=xrt --output=@${name}_aie.npy ${function_line}"
 
   # Check that values in cpu.npy and aie.npy are close enough.
   eval "python3 ${OUTPUT_COMPARER} ${name}_cpu.npy ${name}_aie.npy ${rtol} ${atol}"
@@ -396,7 +403,7 @@ function run_test() {
 run_test --test_file ${THIS_DIR}/test_files/matmul_int32.mlir
 
 # An example of an arbitrary graph with three matmuls which form three dispatches.
-run_test --test_file ${THIS_DIR}/test_files/three_matmuls.mlir
+run_test --test_file ${THIS_DIR}/test_files/three_matmuls.mlir --function 'three_$mm$'
 
 # Example of generating a matmul test from a template, and then running it.
 test_name=${OUTPUT_DIR}/test_from_template.mlir
