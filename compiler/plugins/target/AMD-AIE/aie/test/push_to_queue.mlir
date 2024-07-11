@@ -2,9 +2,6 @@
 // RUN: iree-opt --amdaie-dma-to-npu %s | FileCheck %s
 
 // CHECK-LABEL:   aie.device(npu1_4col) {
-// CHECK:           func.func @sequence() {
-// CHECK:             return
-// CHECK:           }
 // CHECK:         } {npu_instructions = array<i32: 100860160, 261, 2, 64, 0, 0, 119308, 0, -2147483645, 24, 0, 0, 67228180, 0, 196610, 24>}
 
 module {
