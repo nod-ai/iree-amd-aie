@@ -131,8 +131,9 @@ static std::string getUUIDString() {
   return val;
 }
 
-int runTool(StringRef program, ArrayRef<std::string> args, bool verbose,
-            std::optional<ArrayRef<StringRef>> env = std::nullopt) {
+Expected<std::string> runTool(
+    StringRef program, ArrayRef<std::string> args, bool verbose,
+    std::optional<ArrayRef<StringRef>> env = std::nullopt) {
   if (verbose) {
     llvm::outs() << "Run: ";
     if (env)
@@ -156,9 +157,10 @@ int runTool(StringRef program, ArrayRef<std::string> args, bool verbose,
     if (errorCode) {
       llvm::errs() << "Failed to create temporary file: " << errorCode.message()
                    << "\n";
-      return -1;
+      return make_error<StringError>(errorCode);
     }
   }
+
   std::string temporaryPathStr =
       std::string(temporaryPath.begin(), temporaryPath.size());
   StringRef temporaryPathRef(temporaryPathStr);
@@ -166,6 +168,15 @@ int runTool(StringRef program, ArrayRef<std::string> args, bool verbose,
   int result =
       sys::ExecuteAndWait(program, pArgs, env, /* redirects */ {tp, tp, tp}, 0,
                           0, &errMsg, nullptr, &optStats);
+
+  std::ifstream t(temporaryPathRef.str());
+  std::stringstream buffer;
+  if (t.is_open() && t.good()) {
+    buffer << t.rdbuf();
+  } else if (verbose)
+    llvm::outs() << "Failed to open temporary file " << temporaryPathRef.str()
+                 << ", not printing output\n";
+
   if (verbose) {
     auto totalTime = std::chrono::duration_cast<std::chrono::duration<float>>(
                          stats.TotalTime)
@@ -173,23 +184,20 @@ int runTool(StringRef program, ArrayRef<std::string> args, bool verbose,
     std::string exitStatusStr = result == 0 ? "Succeeded" : "Failed";
     llvm::outs() << exitStatusStr << " in " << totalTime
                  << " [s]. Exit code=" << result << "\n";
-    std::ifstream t(temporaryPathRef.str());
-    if (t.is_open() && t.good()) {
-      std::stringstream buffer;
-      buffer << t.rdbuf();
-      llvm::outs() << buffer.str();
-    } else {
-      llvm::outs() << "Failed to open temporary file " << temporaryPathRef.str()
-                   << ", not printing output\n";
-    }
+    llvm::outs() << buffer.str();
   }
-  return result;
+
+  return buffer.str();
 }
 
-template <unsigned N>
-static void aieTargetDefines(SmallVector<std::string, N> &Args,
-                             std::string aie_target) {
-  Args.push_back("-D__AIEARCH__=20");
+bool useMeBasic(XCLBinGenConfig &TK) {
+  SmallString<64> peanoOptBin(TK.PeanoDir);
+  sys::path::append(peanoOptBin, "bin", "opt");
+  auto versionOrError = runTool(peanoOptBin, {"--version"}, TK.Verbose);
+  // default to "yes do use"
+  if (!versionOrError) return true;
+  std::regex r("LLVM version 17.0.0git", std::regex_constants::multiline);
+  return std::regex_search(versionOrError.get(), r);
 }
 
 // Generate the elf files for the core
@@ -268,7 +276,7 @@ static LogicalResult generateCoreElfFiles(ModuleOp moduleOp,
                                      std::string(objFile)};
       for (const auto &inc : extractedIncludes) flags.push_back(inc);
 
-      if (runTool(chessWrapperBin, flags, TK.Verbose) != 0)
+      if (!runTool(chessWrapperBin, flags, TK.Verbose))
         coreOp.emitOpError("Failed to link with xbridge");
     } else {
       SmallString<64> ldscript_path(TK.TempDir);
@@ -294,9 +302,11 @@ static LogicalResult generateCoreElfFiles(ModuleOp moduleOp,
         flags.push_back(targetFlag);
         flags.emplace_back(objFile);
         SmallString<64> meBasicPath(TK.MLIRAIEInstallDir);
-        sys::path::append(meBasicPath, "aie_runtime_lib",
-                          StringRef(TK.TargetArch).upper(), "me_basic.o");
-        flags.emplace_back(meBasicPath);
+        if (useMeBasic(TK)) {
+          sys::path::append(meBasicPath, "aie_runtime_lib",
+                            StringRef(TK.TargetArch).upper(), "me_basic.o");
+          flags.emplace_back(meBasicPath);
+        }
         SmallString<64> libcPath(TK.PeanoDir);
         sys::path::append(libcPath, "lib", targetLower + "-none-unknown-elf",
                           "libc.a");
@@ -308,7 +318,7 @@ static LogicalResult generateCoreElfFiles(ModuleOp moduleOp,
         flags.emplace_back(elfFile);
         SmallString<64> clangBin(TK.PeanoDir);
         sys::path::append(clangBin, "bin", "clang");
-        if (runTool(clangBin, flags, TK.Verbose) != 0)
+        if (!runTool(clangBin, flags, TK.Verbose))
           return coreOp.emitOpError("failed to link elf file for core(")
                  << col << "," << row << ")";
       }
@@ -538,7 +548,7 @@ static LogicalResult generateXCLBin(MLIRContext *context, ModuleOp moduleOp,
       bootgenBin = TK.AMDAIEInstallDir;
       sys::path::append(bootgenBin, "tools", "amdaie_bootgen");
     }
-    if (runTool(bootgenBin, flags, TK.Verbose) != 0)
+    if (!runTool(bootgenBin, flags, TK.Verbose))
       return moduleOp.emitOpError("failed to execute bootgen");
   }
   SmallVector<std::string, 20> flags;
@@ -564,7 +574,7 @@ static LogicalResult generateXCLBin(MLIRContext *context, ModuleOp moduleOp,
                                               "--force", "--input",
                                               std::string(inputXclbin)};
 
-      if (runTool(xclbinutilBin, inputFlags, TK.Verbose) != 0)
+      if (!runTool(xclbinutilBin, inputFlags, TK.Verbose))
         return moduleOp.emitOpError("failed to execute xclbinutil");
       auto aieInputPartitionOut =
           openInputFile(aieInputPartitionJsonFile, &errorMessage);
@@ -600,7 +610,7 @@ static LogicalResult generateXCLBin(MLIRContext *context, ModuleOp moduleOp,
                                "--add-replace-section", partArg, "--force",
                                "--output", std::string(Output)});
 
-    if (runTool(xclbinutilBin, flags, TK.Verbose) != 0)
+    if (!runTool(xclbinutilBin, flags, TK.Verbose))
       return moduleOp.emitOpError("failed to execute xclbinutil");
   }
   return success();
@@ -761,10 +771,10 @@ static LogicalResult generateUnifiedObject(MLIRContext *context,
       else
         moduleOp.emitOpError("Can't find llvm-link");
     }
-    if (runTool(llvmLinkBin,
-                {std::string(LLVMIRFile), std::string(chessIntrinsicsLL), "-S",
-                 "-o", std::string(chesslinkedFile)},
-                TK.Verbose) != 0)
+    if (!runTool(llvmLinkBin,
+                 {std::string(LLVMIRFile), std::string(chessIntrinsicsLL), "-S",
+                  "-o", std::string(chesslinkedFile)},
+                 TK.Verbose))
       moduleOp.emitOpError("Couldn't link in the intrinsics");
 
     std::string mungedLLVMIR;
@@ -783,11 +793,11 @@ static LogicalResult generateUnifiedObject(MLIRContext *context,
       chesslinkedOut->keep();
     }
 
-    if (runTool(chessWrapperBin,
-                {StringRef(TK.TargetArch).lower(), "+w",
-                 std::string(chessworkDir), "-c", "-d", "-f", "+P", "4",
-                 std::string(chesslinkedFile), "-o", std::string(outputFile)},
-                TK.Verbose) != 0)
+    if (!runTool(chessWrapperBin,
+                 {StringRef(TK.TargetArch).lower(), "+w",
+                  std::string(chessworkDir), "-c", "-d", "-f", "+P", "4",
+                  std::string(chesslinkedFile), "-o", std::string(outputFile)},
+                 TK.Verbose))
       return moduleOp.emitOpError("Failed to assemble with chess");
   } else {
     SmallString<64> peanoOptBin(TK.PeanoDir);
@@ -797,18 +807,18 @@ static LogicalResult generateUnifiedObject(MLIRContext *context,
 
     SmallString<64> OptLLVMIRFile(TK.TempDir);
     sys::path::append(OptLLVMIRFile, "input.opt.ll");
-    if (runTool(peanoOptBin,
-                {"-O2", "--inline-threshold=10", "-S", std::string(LLVMIRFile),
-                 "--disable-builtin=memset", "-o", std::string(OptLLVMIRFile)},
-                TK.Verbose) != 0)
+    if (!runTool(peanoOptBin,
+                 {"-O2", "--inline-threshold=10", "-S", std::string(LLVMIRFile),
+                  "--disable-builtin=memset", "-o", std::string(OptLLVMIRFile)},
+                 TK.Verbose))
       return moduleOp.emitOpError("Failed to optimize ll");
 
-    if (runTool(peanoLLCBin,
-                {std::string(OptLLVMIRFile), "-O2",
-                 "--march=" + StringRef(TK.TargetArch).lower(),
-                 "--function-sections", "--filetype=obj", "-o",
-                 std::string(outputFile)},
-                TK.Verbose) != 0)
+    if (!runTool(peanoLLCBin,
+                 {std::string(OptLLVMIRFile), "-O2",
+                  "--march=" + StringRef(TK.TargetArch).lower(),
+                  "--function-sections", "--filetype=obj", "-o",
+                  std::string(outputFile)},
+                 TK.Verbose))
       return moduleOp.emitOpError("Failed to assemble ll");
   }
   copy->erase();
