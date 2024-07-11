@@ -385,6 +385,9 @@ static_assert(XAIE_OK == 0);
       return failure();                                                 \
     }                                                                   \
   } while (0)
+
+StrmSwPortType getConnectingBundle(StrmSwPortType dir);
+
 }  // namespace mlir::iree_compiler::AMDAIE
 
 namespace llvm {

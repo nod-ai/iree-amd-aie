@@ -26,13 +26,13 @@ using namespace mlir;
 
 using mlir::iree_compiler::AMDAIE::AMDAIEDevice;
 using mlir::iree_compiler::AMDAIE::AMDAIEDeviceModel;
+using mlir::iree_compiler::AMDAIE::getConnectingBundle;
 using mlir::iree_compiler::AMDAIE::TileLoc;
 using xilinx::AIE::ConnectOp;
 using xilinx::AIE::DeviceOp;
 using xilinx::AIE::DMAChannelDir;
 using xilinx::AIE::EndOp;
 using xilinx::AIE::FlowOp;
-using xilinx::AIE::getConnectingBundle;
 using xilinx::AIE::Interconnect;
 using xilinx::AIE::PLIOOp;
 using xilinx::AIE::ShimMuxOp;
@@ -75,64 +75,38 @@ StrmSwPortType toStrmT(WireBundle w) {
   }
 }
 
+WireBundle toWireB(StrmSwPortType w) {
+  switch (w) {
+    case StrmSwPortType::CORE:
+      return WireBundle::Core;
+    case StrmSwPortType::DMA:
+      return WireBundle::DMA;
+    case StrmSwPortType::FIFO:
+      return WireBundle::FIFO;
+    case StrmSwPortType::SOUTH:
+      return WireBundle::South;
+    case StrmSwPortType::WEST:
+      return WireBundle::West;
+    case StrmSwPortType::NORTH:
+      return WireBundle::North;
+    case StrmSwPortType::EAST:
+      return WireBundle::East;
+    case StrmSwPortType::TRACE:
+      return WireBundle::Trace;
+    case StrmSwPortType::CTRL:
+      return WireBundle::Ctrl;
+    default:
+      llvm::report_fatal_error("unhandled WireBundle");
+  }
+}
+
 bool operator==(const StrmSwPortType &lhs, const WireBundle &rhs) {
+  if (rhs == WireBundle::PLIO || rhs == WireBundle::NOC) return false;
   return lhs == toStrmT(rhs);
 }
 }  // namespace
 
-namespace {
-struct Port {
-  WireBundle bundle;
-  int channel;
-
-  bool operator==(const Port &rhs) const {
-    return std::tie(bundle, channel) == std::tie(rhs.bundle, rhs.channel);
-  }
-
-  bool operator!=(const Port &rhs) const { return !(*this == rhs); }
-
-  bool operator<(const Port &rhs) const {
-    return std::tie(bundle, channel) < std::tie(rhs.bundle, rhs.channel);
-  }
-
-  friend std::ostream &operator<<(std::ostream &os, const Port &port) {
-    os << "(";
-    switch (port.bundle) {
-      case WireBundle::Core:
-        os << "Core";
-        break;
-      case WireBundle::DMA:
-        os << "DMA";
-        break;
-      case WireBundle::North:
-        os << "N";
-        break;
-      case WireBundle::East:
-        os << "E";
-        break;
-      case WireBundle::South:
-        os << "S";
-        break;
-      case WireBundle::West:
-        os << "W";
-        break;
-      default:
-        os << "X";
-        break;
-    }
-    os << ": " << std::to_string(port.channel) << ")";
-    return os;
-  }
-
-  GENERATE_TO_STRING(Port)
-
-  friend llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
-                                       const Port &port) {
-    os << to_string(port);
-    return os;
-  }
-};
-}  // namespace
+using Port = mlir::iree_compiler::AMDAIE::Port;
 
 namespace std {
 template <>
@@ -145,7 +119,7 @@ struct less<Port> {
 template <>
 struct hash<Port> {
   size_t operator()(const Port &p) const noexcept {
-    size_t h1 = hash<WireBundle>{}(p.bundle);
+    size_t h1 = hash<StrmSwPortType>{}(p.bundle);
     size_t h2 = hash<int>{}(p.channel);
     return h1 ^ h2 << 1;
   }
@@ -474,27 +448,6 @@ struct DenseMapInfo<DMAChannel> {
 };
 
 template <>
-struct DenseMapInfo<Port> {
-  using FirstInfo = DenseMapInfo<WireBundle>;
-  using SecondInfo = DenseMapInfo<int>;
-
-  static Port getEmptyKey() {
-    return {FirstInfo::getEmptyKey(), SecondInfo::getEmptyKey()};
-  }
-
-  static Port getTombstoneKey() {
-    return {FirstInfo::getTombstoneKey(), SecondInfo::getTombstoneKey()};
-  }
-
-  static unsigned getHashValue(const Port &d) {
-    return detail::combineHashValue(FirstInfo::getHashValue(d.bundle),
-                                    SecondInfo::getHashValue(d.channel));
-  }
-
-  static bool isEqual(const Port &lhs, const Port &rhs) { return lhs == rhs; }
-};
-
-template <>
 struct GraphTraits<SwitchboxNode *> {
   using NodeRef = SwitchboxNode *;
 
@@ -569,14 +522,14 @@ LogicalResult DynamicTileAnalysis::runAnalysis(DeviceOp &device) {
     TileOp dstTile = cast<TileOp>(flowOp.getDest().getDefiningOp());
     TileLoc srcCoords = {srcTile.colIndex(), srcTile.rowIndex()};
     TileLoc dstCoords = {dstTile.colIndex(), dstTile.rowIndex()};
-    Port srcPort = {flowOp.getSourceBundle(), flowOp.getSourceChannel()};
-    Port dstPort = {flowOp.getDestBundle(), flowOp.getDestChannel()};
+    Port srcPort = {toStrmT(flowOp.getSourceBundle()),
+                    flowOp.getSourceChannel()};
+    Port dstPort = {toStrmT(flowOp.getDestBundle()), flowOp.getDestChannel()};
     LLVM_DEBUG(llvm::dbgs()
                << "\tAdding Flow: (" << srcCoords.col << ", " << srcCoords.row
-               << ")" << stringifyWireBundle(srcPort.bundle) << srcPort.channel
-               << " -> (" << dstCoords.col << ", " << dstCoords.row << ")"
-               << stringifyWireBundle(dstPort.bundle) << dstPort.channel
-               << "\n");
+               << ")" << srcPort.bundle << srcPort.channel << " -> ("
+               << dstCoords.col << ", " << dstCoords.row << ")"
+               << dstPort.bundle << dstPort.channel << "\n");
     pathfinder->addFlow(srcCoords, srcPort, dstCoords, dstPort);
   }
 
@@ -960,11 +913,11 @@ std::optional<std::map<PathEndPoint, SwitchSettings>> Pathfinder::findPaths(
           while (ch->fixedCapacity.count(ch->usedCapacity)) ch->usedCapacity++;
 
           // add the entrance port for this Switchbox
-          switchSettings[*curr].src = {getConnectingBundle(ch->bundle),
+          switchSettings[*curr].src = {getConnectingBundle(toStrmT(ch->bundle)),
                                        ch->usedCapacity};
           // add the current Switchbox to the map of the predecessor
           switchSettings[*preds[curr]].dsts.insert(
-              {ch->bundle, ch->usedCapacity});
+              {toStrmT(ch->bundle), ch->usedCapacity});
 
           ch->usedCapacity++;
           // if at capacity, bump demand to discourage using this Channel
@@ -1026,7 +979,7 @@ struct ConvertFlowsToInterconnect : OpConversionPattern<FlowOp> {
     TileLoc srcCoords = {srcTile.colIndex(), srcTile.rowIndex()};
     auto srcBundle = flowOp.getSourceBundle();
     auto srcChannel = flowOp.getSourceChannel();
-    Port srcPort = {srcBundle, srcChannel};
+    Port srcPort = {toStrmT(srcBundle), srcChannel};
 
 #ifndef NDEBUG
     auto dstTile = cast<TileOp>(flowOp.getDest().getDefiningOp());
@@ -1087,7 +1040,8 @@ struct ConvertFlowsToInterconnect : OpConversionPattern<FlowOp> {
           if (curr == srcSB && analyzer.getTile(rewriter, srcSB.col, srcSB.row)
                                    .isShimNOCorPLTile()) {
             addConnection(rewriter, cast<Interconnect>(swOp.getOperation()),
-                          flowOp, WireBundle::South, shimCh, bundle, channel);
+                          flowOp, WireBundle::South, shimCh, toWireB(bundle),
+                          channel);
           } else if (analyzer.getTile(rewriter, curr.col, curr.row)
                          .isShimNOCorPLTile() &&
                      (bundle == WireBundle::DMA || bundle == WireBundle::PLIO ||
@@ -1101,31 +1055,34 @@ struct ConvertFlowsToInterconnect : OpConversionPattern<FlowOp> {
                              ? 2
                              : 3;  // must be either N2 -> DMA0 or N3 -> DMA1
                 ShimMuxOp shimMuxOp = analyzer.getShimMux(rewriter, curr.col);
-                addConnection(
-                    rewriter, cast<Interconnect>(shimMuxOp.getOperation()),
-                    flowOp, WireBundle::North, shimCh, bundle, channel);
+                addConnection(rewriter,
+                              cast<Interconnect>(shimMuxOp.getOperation()),
+                              flowOp, WireBundle::North, shimCh,
+                              toWireB(bundle), channel);
               } else if (bundle == WireBundle::NOC) {
                 shimCh = channel + 2;  // must be either N2/3/4/5 -> NOC0/1/2/3
                 ShimMuxOp shimMuxOp = analyzer.getShimMux(rewriter, curr.col);
-                addConnection(
-                    rewriter, cast<Interconnect>(shimMuxOp.getOperation()),
-                    flowOp, WireBundle::North, shimCh, bundle, channel);
+                addConnection(rewriter,
+                              cast<Interconnect>(shimMuxOp.getOperation()),
+                              flowOp, WireBundle::North, shimCh,
+                              toWireB(bundle), channel);
               } else if (channel >=
                          2) {  // must be PLIO...only PLIO >= 2 require mux
                 ShimMuxOp shimMuxOp = analyzer.getShimMux(rewriter, curr.col);
-                addConnection(
-                    rewriter, cast<Interconnect>(shimMuxOp.getOperation()),
-                    flowOp, WireBundle::North, shimCh, bundle, channel);
+                addConnection(rewriter,
+                              cast<Interconnect>(shimMuxOp.getOperation()),
+                              flowOp, WireBundle::North, shimCh,
+                              toWireB(bundle), channel);
               }
             }
             addConnection(rewriter, cast<Interconnect>(swOp.getOperation()),
-                          flowOp, setting.src.bundle, setting.src.channel,
-                          WireBundle::South, shimCh);
+                          flowOp, toWireB(setting.src.bundle),
+                          setting.src.channel, WireBundle::South, shimCh);
           } else {
             // otherwise, regular switchbox connection
             addConnection(rewriter, cast<Interconnect>(swOp.getOperation()),
-                          flowOp, setting.src.bundle, setting.src.channel,
-                          bundle, channel);
+                          flowOp, toWireB(setting.src.bundle),
+                          setting.src.channel, toWireB(bundle), channel);
           }
         }
 

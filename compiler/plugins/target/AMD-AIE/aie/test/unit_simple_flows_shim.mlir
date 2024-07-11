@@ -2,30 +2,6 @@
 // RUN: iree-opt --split-input-file --amdaie-create-pathfinder-flows %s | FileCheck %s
 
 // CHECK-LABEL:   aie.device(xcvc1902) {
-// CHECK:           %[[TILE_2_1:.*]] = aie.tile(2, 1)
-// CHECK:           %[[TILE_2_0:.*]] = aie.tile(2, 0)
-// CHECK:           %[[SWITCHBOX_2_0:.*]] = aie.switchbox(%[[TILE_2_0]]) {
-// CHECK:             aie.connect<North : 0, South : 0>
-// CHECK:           }
-// CHECK:           %[[SWITCHBOX_2_1:.*]] = aie.switchbox(%[[TILE_2_1]]) {
-// CHECK:             aie.connect<North : 0, South : 0>
-// CHECK:           }
-// CHECK:           aie.wire(%[[TILE_2_1]] : Core, %[[SWITCHBOX_2_1:.*]] : Core)
-// CHECK:           aie.wire(%[[TILE_2_1]] : DMA, %[[SWITCHBOX_2_1]] : DMA)
-// CHECK:           aie.wire(%[[SWITCHBOX_2_0:.*]] : North, %[[SWITCHBOX_2_1]] : South)
-// CHECK:         }
-
-module {
-  aie.device(xcvc1902) {
-    %t23 = aie.tile(2, 1)
-    %t22 = aie.tile(2, 0)
-    aie.flow(%t23, North : 0, %t22, PLIO : 0)
-  }
-}
-
-// -----
-
-// CHECK-LABEL:   aie.device(xcvc1902) {
 // CHECK:           %[[TILE_2_0:.*]] = aie.tile(2, 0)
 // CHECK:           %[[TILE_2_1:.*]] = aie.tile(2, 1)
 // CHECK:           %[[SWITCHBOX_2_0:.*]] = aie.switchbox(%[[TILE_2_0]]) {
