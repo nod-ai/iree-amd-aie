@@ -353,7 +353,9 @@ struct AIEControl {
           int chNum = op.getChannelIndex();
           auto channelDir = op.getChannelDir();
           if (failed(pushToBdQueueAndEnable(
-                  deviceModel, *bd.getOperation(), tileLoc, chNum, channelDir,
+                  deviceModel, *bd.getOperation(), tileLoc, chNum,
+                  static_cast<mlir::iree_compiler::AMDAIE::DMAChannelDir>(
+                      channelDir),
                   bd.getBdId().value(), op.getRepeatCount())))
             return failure();
         }
