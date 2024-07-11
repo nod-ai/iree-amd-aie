@@ -182,6 +182,8 @@ function run_matmul_test() {
 
   local target_backend="amd-aie"
 
+  local target_device="npu1_4col"
+
   local device="xrt"
 
   local peano_install_path="${PEANO}"
@@ -254,6 +256,10 @@ function run_matmul_test() {
         ;;
       --use_ukernel)
         use_ukernel="$2"
+        shift 2
+        ;;
+      --target_device)
+        target_device="$2"
         shift 2
         ;;
       --target_backend)
@@ -381,6 +387,7 @@ function run_matmul_test() {
   set +e
 
   compilation_flags="--iree-hal-target-backends=${target_backend} \
+                      --iree-amdaie-target-device=${target_device} \
                       --iree-amdaie-lower-to-aie-pipeline=${lower_to_aie_pipeline} \
                       --iree-amdaie-tile-pipeline=${tile_pipeline} \
                       --iree-amd-aie-peano-install-dir=${peano_install_path} \
@@ -495,6 +502,7 @@ run_matmul_test \
     --lhs_rhs_type "bf16" \
     --acc_type "f32" \
     --target_backend "amd-aie" \
+    --target_device "npu1_4col" \
     --device "xrt" \
     --peano_install_path "${PEANO}" \
     --mlir_aie_install_path "${MLIR_AIE_INSTALL}" \
@@ -543,7 +551,7 @@ run_matmul_test \
   --lhs_rhs_type "bf16" \
   --acc_type "f32" \
   --m "256" --n "256" --k "256" \
-  --do_transpose_rhs "1" \
+  --do_transpose_rhs "1"
 
 # The below matmul case passes with
 # tile_sizes = [[1, 1], [0, 0, 250], [1, 1], [0, 0, 2]], packedSizes = [1, 1, 5]
@@ -676,14 +684,14 @@ run_matmul_test \
     --tile_pipeline "pack-peel" \
     --lhs_rhs_type "bf16" \
     --acc_type "f32" \
-    --m "512"  --n "512" --k "512" \
+    --m "512"  --n "512" --k "512"
 
 run_matmul_test \
     --name_prefix "packPeel2304" \
     --tile_pipeline "pack-peel" \
     --lhs_rhs_type "bf16" \
     --acc_type "f32" \
-    --m "128"  --n "128" --k "2304" \
+    --m "128"  --n "128" --k "2304"
 
 
 run_matmul_test \
@@ -692,7 +700,7 @@ run_matmul_test \
   --lhs_rhs_type "bf16" \
   --acc_type "f32" \
   --m "128" --n "256" --k "512" \
-  --do_transpose_rhs "1" \
+  --do_transpose_rhs "1"
 
 ###################################################################
 

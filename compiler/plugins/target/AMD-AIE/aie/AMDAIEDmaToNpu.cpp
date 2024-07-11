@@ -7,6 +7,7 @@
 #include "Passes.h"
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
+#include "iree-amd-aie/aie_runtime/iree_aie_runtime.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/Support/Format.h"
@@ -15,6 +16,7 @@
 #include "mlir/Transforms/DialectConversion.h"
 
 using namespace mlir;
+using namespace mlir::iree_compiler::AMDAIE;
 using namespace xilinx;
 using namespace xilinx::AIE;
 using namespace xilinx::AIEX;
@@ -59,7 +61,9 @@ void appendSync(std::vector<uint32_t> &instructions, NpuSyncOp op) {
 
 void appendWrite32(std::vector<uint32_t> &instructions, NpuWrite32Op op) {
   auto words = reserveAndGetTail(instructions, 6);
-  const AIETargetModel &tm = op->getParentOfType<DeviceOp>().getTargetModel();
+  DeviceOp device = op->getParentOfType<DeviceOp>();
+  AMDAIEDeviceModel tm =
+      getDeviceModel(static_cast<AMDAIEDevice>(device.getDevice()));
 
   // XAIE_IO_WRITE
   words[0] = TXN_OPC_WRITE;
@@ -96,7 +100,9 @@ void appendAddressPatch(std::vector<uint32_t> &instructions,
 void appendWriteBdShimTile(std::vector<uint32_t> &instructions,
                            NpuWriteBdOp op) {
   auto words = reserveAndGetTail(instructions, 12);
-  const AIETargetModel &tm = op->getParentOfType<DeviceOp>().getTargetModel();
+  DeviceOp device = op->getParentOfType<DeviceOp>();
+  AMDAIEDeviceModel tm =
+      getDeviceModel(static_cast<AMDAIEDevice>(device.getDevice()));
 
   // XAIE_IO_BLOCKWRITE
   words[0] = TXN_OPC_BLOCKWRITE;
@@ -379,8 +385,8 @@ struct DmaToNpuPattern : OpConversionPattern<NpuDmaMemcpyNdOp> {
         iteration_size, iteration_stride, next_bd, row, use_next_bd, valid_bd,
         lock_rel_val, lock_rel_id, lock_acq_enable, lock_acq_val, lock_acq_id);
 
-    const AIE::AIETargetModel &tm =
-        op->getParentOfType<AIE::DeviceOp>().getTargetModel();
+    AMDAIEDeviceModel tm =
+        getDeviceModel(static_cast<AMDAIEDevice>(dev.getDevice()));
 
     uint32_t addr =
         (col << tm.getColumnShift()) | (0x1D004 + op.getId() * 0x20);

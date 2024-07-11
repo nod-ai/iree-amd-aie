@@ -226,11 +226,16 @@ function run_test() {
   local pipeline="pad-pack"
   local rtol="1e-6"
   local atol="1e-6"
+  local seed="1"
 
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --rtol)
         rtol="$2"
+        shift 2
+        ;;
+      --seed)
+        seed="$2"
         shift 2
         ;;
       --atol)
@@ -291,7 +296,7 @@ function run_test() {
   # 2) it prints a line with the names of the binary files, which
   #    iree-run-module will have appended as input and output flags.
   #
-  python3 ${INPUT_GENERATOR} ${test_file} ${OUTPUT_DIR}
+  python3 ${INPUT_GENERATOR} ${test_file} ${OUTPUT_DIR} ${seed}
 
   echo "**** Running test for ${test_file} ****"
 

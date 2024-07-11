@@ -1,7 +1,14 @@
 // RUN: iree-opt --split-input-file --pass-pipeline="builtin.module(iree-amdaie-lower-to-aie)" --verify-diagnostics %s | FileCheck %s
 
-// CHECK: module
+// expected-error @+1 {{No AMDAIEDevice found in the target attribute configuration}}
 module {
+}
+
+// -----
+
+// CHECK: module
+#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
+module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
 }
 
 // -----
@@ -9,7 +16,8 @@ module {
 // CHECK: module
 // CHECK: aie.device
 // CHECK: func.func @empty_func
-module {
+#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
+module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
   func.func @empty_func() {
     return
   }
@@ -20,7 +28,8 @@ module {
 // CHECK: module
 // CHECK: aie.device
 // CHECK: func.func @workgroup
-module {
+#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
+module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
   func.func @workgroup() {
     amdaie.workgroup {
       amdaie.controlcode {
@@ -38,7 +47,8 @@ module {
 // CHECK-SAME:  %{{.+}}: memref<1024x64xi32>
 // CHECK-SAME:  %{{.+}}: memref<32x64xi32>
 // CHECK-NOT:   memref.assume_alignment
-module {
+#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
+module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
   func.func @hal_bindings() {
     %c0 = arith.constant 0 : index
     %0 = hal.interface.binding.subspan set(0) binding(1) type(storage_buffer) alignment(64) offset(%c0) flags(ReadOnly) : memref<1024x64xi32>
@@ -67,7 +77,8 @@ module {
 // CHECK-SAME:  @[[OBJ0]]
 // CHECK-SAME:  @[[OBJ1]]
 // CHECK:       func.func @circular_dma_cpy_nd_and_link
-module {
+#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
+module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
   func.func @circular_dma_cpy_nd_and_link() {
     amdaie.workgroup {
       %c0 = arith.constant 0 : index
@@ -112,7 +123,8 @@ module {
 // CHECK-SAME:  @[[OBJ0]]
 // CHECK-SAME:  @[[OBJ1]]
 // CHECK:       func.func @circular_dma_cpy_sizes_and_strides
-module {
+#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
+module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
   func.func @circular_dma_cpy_sizes_and_strides() {
     amdaie.workgroup {
       %c0 = arith.constant 0 : index
@@ -161,7 +173,8 @@ module {
 // CHECK:         %[[REINTERPRET:.+]] = memref.reinterpret_cast %[[ACCESS]]
 // CHECK:         linalg.fill ins(%{{.+}} : i32) outs(%[[REINTERPRET]] : memref<32x32xi32, 1>)
 // CHECK:       func.func @tile_and_core_and_acquire
-module {
+#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
+module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
   func.func @tile_and_core_and_acquire() {
     amdaie.workgroup {
       %c0_i32 = arith.constant 0 : i32
@@ -217,7 +230,8 @@ module {
 // CHECK:         aie.objectfifo.subview.access
 // CHECK-SAME:    %[[ACQUIRE_1]]
 // CHECK:       func.func @tile_and_core_and_acquire_broadcast
-module {
+#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
+module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
   func.func @tile_and_core_and_acquire_broadcast() {
     amdaie.workgroup {
       %c0 = arith.constant 0 : index
@@ -266,7 +280,8 @@ module {
 // CHECK:       aie.core(%[[TILE_0_2]])
 // CHECK:         aie.objectfifo.release
 // CHECK:       func.func @tile_and_core_and_release
-module {
+#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
+module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
   func.func @tile_and_core_and_release() {
     amdaie.workgroup {
       %c0 = arith.constant 0 : index
@@ -331,7 +346,8 @@ module {
 // CHECK-SAME:            issue_token = true
 // CHECK-SAME:            metadata = @[[OBJ2]]
 // CHECK-NEXT:    aiex.npu.dma_wait {symbol = @[[OBJ2]]}
-module {
+#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
+module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
   func.func @controlcode() {
     amdaie.workgroup {
       %c0 = arith.constant 0 : index
@@ -377,7 +393,8 @@ module {
 
 // Test to demonstrate invalid implicit L3 memref type that has rank greater than that
 // expected for static offsets/sizes/strides.
-module {
+#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
+module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
   func.func @controlcode_invalid_implicit_l3_memref() {
     amdaie.workgroup {
       %c0 = arith.constant 0 : index
@@ -462,7 +479,8 @@ module {
 // CHECK-SAME:    @[[OBJ0]]
 // CHECK-NEXT:    aiex.npu.dma_wait
 // CHECK-SAME:    @[[OBJ0]]
-module {
+#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
+module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
   func.func @large_example() {
     amdaie.workgroup {
       %c0 = arith.constant 0 : index

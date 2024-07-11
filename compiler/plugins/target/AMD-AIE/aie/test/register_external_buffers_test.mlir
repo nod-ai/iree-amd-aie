@@ -11,13 +11,14 @@
 // CHECK:           %[[EXT_OF_CONS_BUFF_2:.*]] = aie.buffer(%[[TILE_3_2]]) {sym_name = "ext_of_cons_buff_2"} : memref<16xi32>
 // CHECK:           %[[EXT_OF_CONS_PROD_LOCK:.*]] = aie.lock(%[[TILE_3_2]], 0) {init = 3 : i32, sym_name = "ext_of_cons_prod_lock"}
 // CHECK:           %[[EXT_OF_CONS_CONS_LOCK:.*]] = aie.lock(%[[TILE_3_2]], 1) {init = 0 : i32, sym_name = "ext_of_cons_cons_lock"}
-// CHECK:           %[[EXT_OF_PROD_LOCK:.*]] = aie.lock(%[[TILE_3_0]], 0) {init = 1 : i32, sym_name = "ext_of_prod_lock"}
+// CHECK:           %[[EXT_OF_PROD_LOCK:.*]] = aie.lock(%[[TILE_3_0]], 0) {init = 0 : i32, sym_name = "ext_of_prod_lock"}
 // CHECK:           %[[EXT_OF_CONS_LOCK:.*]] = aie.lock(%[[TILE_3_0]], 1) {init = 0 : i32, sym_name = "ext_of_cons_lock"}
 // CHECK:           aie.flow(%[[TILE_3_0]], DMA : 0, %[[TILE_3_2]], DMA : 0)
 // CHECK:           %[[EXT_BUFFER_IN:.*]] = aie.external_buffer {sym_name = "ext_buffer_in"} : memref<64xi32>
 // CHECK:           func.func @some_work(%[[ARG0:.*]]: memref<16xi32>, %[[ARG1:.*]]: memref<16xi32>) {
 // CHECK:             return
 // CHECK:           }
+// CHECK:           aie.shim_dma_allocation @ext_of(MM2S, 0, 3)
 // CHECK:           %[[CORE_3_2:.*]] = aie.core(%[[TILE_3_2]]) {
 // CHECK:             %[[C0:.*]] = arith.constant 0 : index
 // CHECK:             %[[C1:.*]] = arith.constant 1 : index
@@ -27,19 +28,8 @@
 // CHECK:             aie.use_lock(%[[EXT_OF_CONS_PROD_LOCK]], Release, 1)
 // CHECK:             aie.end
 // CHECK:           }
-// CHECK:           aie.shim_dma_allocation @ext_of(MM2S, 0, 3)
-// CHECK:           %[[SHIM_DMA_3_0:.*]] = aie.shim_dma(%[[TILE_3_0]]) {
-// CHECK:             %[[VAL_0:.*]] = aie.dma_start(MM2S, 0, ^bb1, ^bb2)
-// CHECK:           ^bb1:
-// CHECK:             aie.use_lock(%[[EXT_OF_CONS_LOCK]], AcquireGreaterEqual, 1)
-// CHECK:             aie.dma_bd(%[[EXT_BUFFER_IN]] : memref<64xi32>, 0, 64)
-// CHECK:             aie.use_lock(%[[EXT_OF_PROD_LOCK]], Release, 1)
-// CHECK:             aie.next_bd ^bb1
-// CHECK:           ^bb2:
-// CHECK:             aie.end
-// CHECK:           }
 // CHECK:           %[[MEM_3_2:.*]] = aie.mem(%[[TILE_3_2]]) {
-// CHECK:             %[[VAL_1:.*]] = aie.dma_start(S2MM, 0, ^bb1, ^bb4)
+// CHECK:             %[[VAL_0:.*]] = aie.dma_start(S2MM, 0, ^bb1, ^bb4)
 // CHECK:           ^bb1:
 // CHECK:             aie.use_lock(%[[EXT_OF_CONS_PROD_LOCK]], AcquireGreaterEqual, 1)
 // CHECK:             aie.dma_bd(%[[EXT_OF_CONS_BUFF_0]] : memref<16xi32>, 0, 16)

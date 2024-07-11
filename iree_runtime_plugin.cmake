@@ -7,6 +7,8 @@
 include(FetchContent)
 
 set(IREE_AMD_AIE_SOURCE_DIR "${CMAKE_CURRENT_LIST_DIR}")
+set(IREE_MLIR_AIR_SOURCE_DIR "${IREE_AMD_AIE_SOURCE_DIR}/third_party/mlir-air/mlir")
+set(IREE_MLIR_AIE_SOURCE_DIR "${IREE_AMD_AIE_SOURCE_DIR}/third_party/mlir-aie")
 
 set(IREE_AMD_AIE_ENABLE_XRT_DRIVER OFF)
 if("xrt" IN_LIST IREE_EXTERNAL_HAL_DRIVERS)
@@ -18,7 +20,7 @@ if(IREE_AMD_AIE_ENABLE_XRT_DRIVER)
   set(Boost_USE_STATIC_LIBS ON CACHE BOOL "" FORCE)
   find_package(XRT REQUIRED)
   find_package(Threads REQUIRED)
-  find_package(Boost REQUIRED COMPONENTS system program_options filesystem)
+  find_package(Boost REQUIRED COMPONENTS filesystem program_options system)
   message(STATUS "Boost include directories:" ${Boost_INCLUDE_DIRS})
 
   if(NOT WIN32)

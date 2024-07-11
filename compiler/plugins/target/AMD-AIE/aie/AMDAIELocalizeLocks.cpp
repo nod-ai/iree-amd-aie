@@ -6,6 +6,7 @@
 
 #include "Passes.h"
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
+#include "iree-amd-aie/aie_runtime/iree_aie_runtime.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Pass/Pass.h"
 
@@ -40,7 +41,8 @@ struct AMDAIELocalizeLocksPass : mlir::OperationPass<DeviceOp> {
 
   void runOnOperation() override {
     DeviceOp deviceOp = getOperation();
-    const auto &targetModel = getTargetModel(deviceOp);
+    AMDAIEDeviceModel deviceModel =
+        getDeviceModel(static_cast<AMDAIEDevice>(deviceOp.getDevice()));
     for (auto coreOp : deviceOp.getOps<CoreOp>()) {
       // Collect the locks used in this core.
       auto thisTile = dyn_cast<TileOp>(coreOp.getTile().getDefiningOp());
@@ -51,23 +53,23 @@ struct AMDAIELocalizeLocksPass : mlir::OperationPass<DeviceOp> {
       SmallVector<TileOp, 4> accessibleTiles;
       for (auto tile : deviceOp.getOps<TileOp>())
         if (int dstRow = tile.rowIndex();
-            targetModel.isLegalMemAffinity(col, row, tile.colIndex(), dstRow))
+            deviceModel.hasLegalMemAffinity(col, row, tile.colIndex(), dstRow))
           accessibleTiles.push_back(tile);
 
       for (auto tile : accessibleTiles) {
         int dstCol = tile.colIndex();
         int dstRow = tile.rowIndex();
         int cardinalMemOffset = 0;
-        int numLocks = targetModel.getNumLocks(dstCol, dstRow);
+        int numLocks = deviceModel.getNumLocks(dstCol, dstRow);
         for (auto user : tile.getResult().getUsers())
           if (auto lock = dyn_cast<LockOp>(user)) {
-            if (targetModel.isMemSouth(col, row, dstCol, dstRow))
+            if (deviceModel.hasMemSouth(col, row, dstCol, dstRow))
               cardinalMemOffset = 0;
-            else if (targetModel.isMemWest(col, row, dstCol, dstRow))
+            else if (deviceModel.hasMemWest(col, row, dstCol, dstRow))
               cardinalMemOffset = numLocks;
-            else if (targetModel.isMemNorth(col, row, dstCol, dstRow))
+            else if (deviceModel.hasMemNorth(col, row, dstCol, dstRow))
               cardinalMemOffset = 2 * numLocks;
-            else if (targetModel.isMemEast(col, row, dstCol, dstRow))
+            else if (deviceModel.hasMemEast(col, row, dstCol, dstRow))
               cardinalMemOffset = 3 * numLocks;
             else
               llvm_unreachable("Found illegal lock user!");

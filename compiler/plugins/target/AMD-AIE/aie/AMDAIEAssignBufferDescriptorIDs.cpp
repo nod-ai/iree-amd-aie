@@ -8,9 +8,11 @@
 
 #include "Passes.h"
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
+#include "iree-amd-aie/aie_runtime/iree_aie_runtime.h"
 #include "mlir/Pass/Pass.h"
 
 #define DEBUG_TYPE "amdaie-assign-bd-ids"
+// TODO(max): find these in the device model
 #define EVEN_BD_ID_START 0
 #define ODD_BD_ID_START 24
 
@@ -18,9 +20,10 @@ using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIE;
 
+namespace mlir::iree_compiler::AMDAIE {
 struct BdIdGenerator {
-  BdIdGenerator(int col, int row, const AIETargetModel &targetModel)
-      : col(col), row(row), isMemTile(targetModel.isMemTile(col, row)) {}
+  BdIdGenerator(int col, int row, AMDAIEDeviceModel &deviceModel)
+      : col(col), row(row), isMemTile(deviceModel.isMemTile(col, row)) {}
 
   int32_t nextBdId(int channelIndex) {
     int32_t bdId = isMemTile && channelIndex & 1 ? oddBdId++ : evenBdId++;
@@ -45,8 +48,6 @@ struct BdIdGenerator {
   std::set<int32_t> alreadyAssigned;
 };
 
-namespace mlir::iree_compiler::AMDAIE {
-
 struct AMDAIEAssignBufferDescriptorIDsPass : mlir::OperationPass<DeviceOp> {
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(
       AMDAIEAssignBufferDescriptorIDsPass)
@@ -68,17 +69,18 @@ struct AMDAIEAssignBufferDescriptorIDsPass : mlir::OperationPass<DeviceOp> {
   }
 
   void runOnOperation() override {
-    DeviceOp targetOp = getOperation();
-    const AIETargetModel &targetModel = targetOp.getTargetModel();
+    DeviceOp deviceOp = getOperation();
+    AMDAIEDeviceModel deviceModel = mlir::iree_compiler::AMDAIE::getDeviceModel(
+        static_cast<AMDAIEDevice>(deviceOp.getDevice()));
 
-    auto memOps = llvm::to_vector_of<TileElement>(targetOp.getOps<MemOp>());
-    llvm::append_range(memOps, targetOp.getOps<MemTileDMAOp>());
-    llvm::append_range(memOps, targetOp.getOps<ShimDMAOp>());
+    auto memOps = llvm::to_vector_of<TileElement>(deviceOp.getOps<MemOp>());
+    llvm::append_range(memOps, deviceOp.getOps<MemTileDMAOp>());
+    llvm::append_range(memOps, deviceOp.getOps<ShimDMAOp>());
     for (TileElement memOp : memOps) {
       int col = memOp.getTileID().col;
       int row = memOp.getTileID().row;
 
-      BdIdGenerator gen(col, row, targetModel);
+      BdIdGenerator gen(col, row, deviceModel);
       memOp->walk<WalkOrder::PreOrder>([&](DMABDOp bd) {
         if (bd.getBdId().has_value()) gen.assignBdId(bd.getBdId().value());
       });

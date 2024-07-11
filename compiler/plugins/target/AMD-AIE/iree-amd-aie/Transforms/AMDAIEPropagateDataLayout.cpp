@@ -71,7 +71,7 @@ void AMDAIEPropagateDataLayoutPass::runOnOperation() {
   RewritePatternSet patterns(context);
 
   linalg::populateDataLayoutPropagationPatterns(
-      patterns, [](Operation *op) { return true; });
+      patterns, [](OpOperand *opOperand) { return true; });
   patterns.add<RemoveOutsDependency>(context);
 
   if (failed(applyPatternsAndFoldGreedily(getOperation(), std::move(patterns))))
