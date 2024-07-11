@@ -8,6 +8,8 @@
 
 #include <cstdint>
 
+#include "llvm/ADT/StringExtras.h"
+
 extern "C" {
 #include "xaiengine.h"
 #include "xaiengine/xaie_device_aie.h"
@@ -26,16 +28,6 @@ extern "C" {
 #define STRINGIFY_ENUM_CASE(case_) \
   case (case_):                    \
     return #case_;
-
-#define STRINGIFY_2TUPLE_STRUCT(Type, first, second) \
-  std::string to_string(const Type &t) {             \
-    std::string s = #Type "(" #first ": ";           \
-    s += std::to_string(t.first);                    \
-    s += ", " #second ": ";                          \
-    s += std::to_string(t.second);                   \
-    s += ")";                                        \
-    return s;                                        \
-  }
 
 namespace {
 bool isSame(uint8_t srcCol, uint8_t srcRow, uint8_t dstCol, uint8_t dstRow) {
@@ -60,6 +52,23 @@ bool isSouth(uint8_t srcCol, uint8_t srcRow, uint8_t dstCol, uint8_t dstRow) {
 }  // namespace
 
 namespace mlir::iree_compiler::AMDAIE {
+
+StrmSwPortType getConnectingBundle(StrmSwPortType dir) {
+  switch (dir) {
+    case StrmSwPortType::NORTH:
+      return StrmSwPortType::SOUTH;
+    case StrmSwPortType::SOUTH:
+      return StrmSwPortType::NORTH;
+    case StrmSwPortType::EAST:
+      return StrmSwPortType::WEST;
+    case StrmSwPortType::WEST:
+      return StrmSwPortType::EAST;
+    default:
+      return dir;
+  }
+}
+
+std::string to_string(const int &value) { return std::to_string(value); }
 
 std::string to_string(const StrmSwPortType &value) {
   switch (value) {
@@ -128,10 +137,56 @@ std::string to_string(const AMDAIETileType &value) {
   llvm::report_fatal_error("Unhandled AMDAIETileType case");
 }
 
+std::string to_string(const DMAChannelDir &value) {
+  switch (value) {
+    STRINGIFY_ENUM_CASE(DMAChannelDir::MM2S)
+    STRINGIFY_ENUM_CASE(DMAChannelDir::S2MM)
+  }
+
+  llvm::report_fatal_error("Unhandled AMDAIETileType case");
+}
+
+#define STRINGIFY_2TUPLE_STRUCT(Type, first, second) \
+  std::string to_string(const Type &t) {             \
+    std::string s = #Type "(" #first ": ";           \
+    s += to_string(t.first);                         \
+    s += ", " #second ": ";                          \
+    s += to_string(t.second);                        \
+    s += ")";                                        \
+    return s;                                        \
+  }
+
+std::string to_string(const SwitchSettings &settings) {
+  return "SwitchSettings(" +
+         llvm::join(llvm::map_range(
+                        llvm::make_range(settings.begin(), settings.end()),
+                        [](const llvm::detail::DenseMapPair<Switchbox,
+                                                            SwitchSetting> &p) {
+                          return to_string(p.getFirst()) + ": " +
+                                 to_string(p.getSecond());
+                        }),
+                    ", ") +
+         ")";
+}
+
+STRINGIFY_2TUPLE_STRUCT(Port, bundle, channel)
+STRINGIFY_2TUPLE_STRUCT(Connect, src, dst)
+STRINGIFY_2TUPLE_STRUCT(DMAChannel, direction, channel)
+STRINGIFY_2TUPLE_STRUCT(Switchbox, col, row)
 STRINGIFY_2TUPLE_STRUCT(TileLoc, col, row)
+STRINGIFY_2TUPLE_STRUCT(Channel, src, target)
 STRINGIFY_2TUPLE_STRUCT(XAie_LocType, Col, Row)
 STRINGIFY_2TUPLE_STRUCT(XAie_Lock, LockId, LockVal)
 STRINGIFY_2TUPLE_STRUCT(XAie_Packet, PktId, PktType)
+
+std::string to_string(const SwitchSetting &setting) {
+  return "SwitchSetting(" + to_string(setting.src) + " -> " + "{" +
+         llvm::join(
+             llvm::map_range(setting.dsts,
+                             [](const Port &port) { return to_string(port); }),
+             ", ") +
+         "})";
+}
 
 #define OSTREAM_OP(O_TYPE, TYPE)                     \
   O_TYPE &operator<<(O_TYPE &os, const TYPE &s) {    \

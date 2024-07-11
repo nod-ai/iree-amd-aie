@@ -20,11 +20,27 @@
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
 
-using namespace mlir;
-using namespace xilinx;
-using namespace xilinx::AIE;
-
 #define DEBUG_TYPE "amdaie-create-pathfinder-flows"
+
+using namespace mlir;
+
+using mlir::iree_compiler::AMDAIE::AMDAIEDevice;
+using mlir::iree_compiler::AMDAIE::AMDAIEDeviceModel;
+using mlir::iree_compiler::AMDAIE::TileLoc;
+using xilinx::AIE::ConnectOp;
+using xilinx::AIE::DeviceOp;
+using xilinx::AIE::DMAChannelDir;
+using xilinx::AIE::EndOp;
+using xilinx::AIE::FlowOp;
+using xilinx::AIE::getConnectingBundle;
+using xilinx::AIE::Interconnect;
+using xilinx::AIE::PLIOOp;
+using xilinx::AIE::ShimMuxOp;
+using xilinx::AIE::SwitchboxOp;
+using xilinx::AIE::TileOp;
+using xilinx::AIE::WireBundle;
+using xilinx::AIE::WireOp;
+
 #define OVER_CAPACITY_COEFF 0.02
 #define USED_CAPACITY_COEFF 0.02
 #define DEMAND_COEFF 1.1
@@ -58,11 +74,15 @@ StrmSwPortType toStrmT(WireBundle w) {
       llvm::report_fatal_error("unhandled WireBundle");
   }
 }
+
+bool operator==(const StrmSwPortType &lhs, const WireBundle &rhs) {
+  return lhs == toStrmT(rhs);
+}
 }  // namespace
 
-namespace mlir::iree_compiler::AMDAIE {
+namespace {
 struct Port {
-  xilinx::AIE::WireBundle bundle;
+  WireBundle bundle;
   int channel;
 
   bool operator==(const Port &rhs) const {
@@ -78,22 +98,22 @@ struct Port {
   friend std::ostream &operator<<(std::ostream &os, const Port &port) {
     os << "(";
     switch (port.bundle) {
-      case xilinx::AIE::WireBundle::Core:
+      case WireBundle::Core:
         os << "Core";
         break;
-      case xilinx::AIE::WireBundle::DMA:
+      case WireBundle::DMA:
         os << "DMA";
         break;
-      case xilinx::AIE::WireBundle::North:
+      case WireBundle::North:
         os << "N";
         break;
-      case xilinx::AIE::WireBundle::East:
+      case WireBundle::East:
         os << "E";
         break;
-      case xilinx::AIE::WireBundle::South:
+      case WireBundle::South:
         os << "S";
         break;
-      case xilinx::AIE::WireBundle::West:
+      case WireBundle::West:
         os << "W";
         break;
       default:
@@ -112,28 +132,27 @@ struct Port {
     return os;
   }
 };
-}  // namespace mlir::iree_compiler::AMDAIE
+}  // namespace
 
 namespace std {
 template <>
-struct less<mlir::iree_compiler::AMDAIE::Port> {
-  bool operator()(const mlir::iree_compiler::AMDAIE::Port &a,
-                  const mlir::iree_compiler::AMDAIE::Port &b) const {
+struct less<Port> {
+  bool operator()(const Port &a, const Port &b) const {
     return a.bundle == b.bundle ? a.channel < b.channel : a.bundle < b.bundle;
   }
 };
 
 template <>
-struct hash<mlir::iree_compiler::AMDAIE::Port> {
-  size_t operator()(const mlir::iree_compiler::AMDAIE::Port &p) const noexcept {
-    size_t h1 = hash<xilinx::AIE::WireBundle>{}(p.bundle);
+struct hash<Port> {
+  size_t operator()(const Port &p) const noexcept {
+    size_t h1 = hash<WireBundle>{}(p.bundle);
     size_t h2 = hash<int>{}(p.channel);
     return h1 ^ h2 << 1;
   }
 };
 }  // namespace std
 
-namespace mlir::iree_compiler::AMDAIE {
+namespace {
 
 #define GENERATE_TO_STRING(TYPE_WITH_INSERTION_OP)                \
   friend std::string to_string(const TYPE_WITH_INSERTION_OP &s) { \
@@ -152,7 +171,7 @@ typedef struct Connect {
 } Connect;
 
 typedef struct DMAChannel {
-  xilinx::AIE::DMAChannelDir direction;
+  DMAChannelDir direction;
   int channel;
 
   bool operator==(const DMAChannel &rhs) const {
@@ -177,8 +196,7 @@ struct Switchbox : TileLoc {
 };
 
 struct Channel {
-  Channel(Switchbox &src, Switchbox &target, xilinx::AIE::WireBundle bundle,
-          int maxCapacity)
+  Channel(Switchbox &src, Switchbox &target, WireBundle bundle, int maxCapacity)
       : src(src), target(target), bundle(bundle), maxCapacity(maxCapacity) {}
 
   friend std::ostream &operator<<(std::ostream &os, const Channel &c) {
@@ -196,7 +214,7 @@ struct Channel {
 
   Switchbox &src;
   Switchbox &target;
-  xilinx::AIE::WireBundle bundle;
+  WireBundle bundle;
   int maxCapacity = 0;   // maximum number of routing resources
   double demand = 0.0;   // indicates how many flows want to use this Channel
   int usedCapacity = 0;  // how many flows are actually using this Channel
@@ -271,13 +289,12 @@ struct PathEndPoint {
   }
 };
 
-}  // namespace mlir::iree_compiler::AMDAIE
+}  // namespace
 
 namespace std {
 template <>
-struct hash<mlir::iree_compiler::AMDAIE::TileLoc> {
-  size_t operator()(
-      const mlir::iree_compiler::AMDAIE::TileLoc &s) const noexcept {
+struct hash<TileLoc> {
+  size_t operator()(const TileLoc &s) const noexcept {
     size_t h1 = hash<int>{}(s.col);
     size_t h2 = hash<int>{}(s.row);
     return h1 ^ (h2 << 1);
@@ -288,38 +305,35 @@ struct hash<mlir::iree_compiler::AMDAIE::TileLoc> {
 // this template specialization for the pointers. Overloading operator
 // will not work. Furthermore, if  you try to move this into AIEPathFinder.cpp
 // you'll get a compile error about
-// "specialization of ‘std::less<mlir::iree_compiler::AMDAIE::Switchbox*>’ after
+// "specialization of ‘std::less<Switchbox*>’ after
 // instantiation" because one of the graph traits below is doing the comparison
 // internally (try moving this below the llvm namespace...)
 template <>
-struct less<mlir::iree_compiler::AMDAIE::Switchbox *> {
-  bool operator()(const mlir::iree_compiler::AMDAIE::Switchbox *a,
-                  const mlir::iree_compiler::AMDAIE::Switchbox *b) const {
+struct less<Switchbox *> {
+  bool operator()(const Switchbox *a, const Switchbox *b) const {
     return *a < *b;
   }
 };
 
 template <>
-struct hash<mlir::iree_compiler::AMDAIE::Switchbox> {
-  size_t operator()(
-      const mlir::iree_compiler::AMDAIE::Switchbox &s) const noexcept {
-    return hash<mlir::iree_compiler::AMDAIE::TileLoc>{}(s);
+struct hash<Switchbox> {
+  size_t operator()(const Switchbox &s) const noexcept {
+    return hash<TileLoc>{}(s);
   }
 };
 
 template <>
-struct hash<mlir::iree_compiler::AMDAIE::PathEndPoint> {
-  size_t operator()(
-      const mlir::iree_compiler::AMDAIE::PathEndPoint &pe) const noexcept {
-    size_t h1 = hash<mlir::iree_compiler::AMDAIE::Port>{}(pe.port);
-    size_t h2 = hash<mlir::iree_compiler::AMDAIE::Switchbox>{}(pe.sb);
+struct hash<PathEndPoint> {
+  size_t operator()(const PathEndPoint &pe) const noexcept {
+    size_t h1 = hash<Port>{}(pe.port);
+    size_t h2 = hash<Switchbox>{}(pe.sb);
     return h1 ^ (h2 << 1);
   }
 };
 
 }  // namespace std
 
-namespace mlir::iree_compiler::AMDAIE {
+namespace {
 struct SwitchboxNode;
 struct ChannelEdge;
 using SwitchboxNodeBase = llvm::DGNode<SwitchboxNode, ChannelEdge>;
@@ -338,8 +352,8 @@ struct ChannelEdge : ChannelEdgeBase, Channel {
   using Channel::Channel;
 
   explicit ChannelEdge(SwitchboxNode &target) = delete;
-  ChannelEdge(SwitchboxNode &src, SwitchboxNode &target,
-              xilinx::AIE::WireBundle bundle, int maxCapacity)
+  ChannelEdge(SwitchboxNode &src, SwitchboxNode &target, WireBundle bundle,
+              int maxCapacity)
       : ChannelEdgeBase(target),
         Channel(src, target, bundle, maxCapacity),
         src(src) {}
@@ -378,7 +392,7 @@ class Pathfinder {
   void initialize(int maxCol, int maxRow, AMDAIEDeviceModel &deviceModel);
   void addFlow(TileLoc srcCoords, Port srcPort, TileLoc dstCoords,
                Port dstPort);
-  bool addFixedConnection(xilinx::AIE::ConnectOp connectOp);
+  bool addFixedConnection(ConnectOp connectOp);
   std::optional<std::map<PathEndPoint, SwitchSettings>> findPaths(
       int maxIterations);
 
@@ -410,10 +424,10 @@ class DynamicTileAnalysis {
   std::map<PathEndPoint, SwitchSettings> flowSolutions;
   std::map<PathEndPoint, bool> processedFlows;
 
-  llvm::DenseMap<TileLoc, xilinx::AIE::TileOp> coordToTile;
-  llvm::DenseMap<TileLoc, xilinx::AIE::SwitchboxOp> coordToSwitchbox;
-  llvm::DenseMap<TileLoc, xilinx::AIE::ShimMuxOp> coordToShimMux;
-  llvm::DenseMap<int, xilinx::AIE::PLIOOp> coordToPLIO;
+  llvm::DenseMap<TileLoc, TileOp> coordToTile;
+  llvm::DenseMap<TileLoc, SwitchboxOp> coordToSwitchbox;
+  llvm::DenseMap<TileLoc, ShimMuxOp> coordToShimMux;
+  llvm::DenseMap<int, PLIOOp> coordToPLIO;
 
   const int maxIterations = 1000;  // how long until declared unroutable
 
@@ -421,78 +435,71 @@ class DynamicTileAnalysis {
   DynamicTileAnalysis(std::shared_ptr<Pathfinder> p)
       : pathfinder(std::move(p)) {}
 
-  mlir::LogicalResult runAnalysis(xilinx::AIE::DeviceOp &device);
+  mlir::LogicalResult runAnalysis(DeviceOp &device);
 
   int getMaxCol() const { return maxCol; }
   int getMaxRow() const { return maxRow; }
 
-  xilinx::AIE::TileOp getTile(mlir::OpBuilder &builder, int col, int row);
+  TileOp getTile(mlir::OpBuilder &builder, int col, int row);
 
-  xilinx::AIE::SwitchboxOp getSwitchbox(mlir::OpBuilder &builder, int col,
-                                        int row);
+  SwitchboxOp getSwitchbox(mlir::OpBuilder &builder, int col, int row);
 
-  xilinx::AIE::ShimMuxOp getShimMux(mlir::OpBuilder &builder, int col);
+  ShimMuxOp getShimMux(mlir::OpBuilder &builder, int col);
 };
 
-}  // namespace mlir::iree_compiler::AMDAIE
+}  // namespace
 
 namespace llvm {
 template <>
-struct DenseMapInfo<mlir::iree_compiler::AMDAIE::DMAChannel> {
-  using FirstInfo = DenseMapInfo<xilinx::AIE::DMAChannelDir>;
+struct DenseMapInfo<DMAChannel> {
+  using FirstInfo = DenseMapInfo<DMAChannelDir>;
   using SecondInfo = DenseMapInfo<int>;
 
-  static mlir::iree_compiler::AMDAIE::DMAChannel getEmptyKey() {
+  static DMAChannel getEmptyKey() {
     return {FirstInfo::getEmptyKey(), SecondInfo::getEmptyKey()};
   }
 
-  static mlir::iree_compiler::AMDAIE::DMAChannel getTombstoneKey() {
+  static DMAChannel getTombstoneKey() {
     return {FirstInfo::getTombstoneKey(), SecondInfo::getTombstoneKey()};
   }
 
-  static unsigned getHashValue(
-      const mlir::iree_compiler::AMDAIE::DMAChannel &d) {
+  static unsigned getHashValue(const DMAChannel &d) {
     return detail::combineHashValue(FirstInfo::getHashValue(d.direction),
                                     SecondInfo::getHashValue(d.channel));
   }
 
-  static bool isEqual(const mlir::iree_compiler::AMDAIE::DMAChannel &lhs,
-                      const mlir::iree_compiler::AMDAIE::DMAChannel &rhs) {
+  static bool isEqual(const DMAChannel &lhs, const DMAChannel &rhs) {
     return lhs == rhs;
   }
 };
 
 template <>
-struct DenseMapInfo<mlir::iree_compiler::AMDAIE::Port> {
-  using FirstInfo = DenseMapInfo<xilinx::AIE::WireBundle>;
+struct DenseMapInfo<Port> {
+  using FirstInfo = DenseMapInfo<WireBundle>;
   using SecondInfo = DenseMapInfo<int>;
 
-  static mlir::iree_compiler::AMDAIE::Port getEmptyKey() {
+  static Port getEmptyKey() {
     return {FirstInfo::getEmptyKey(), SecondInfo::getEmptyKey()};
   }
 
-  static mlir::iree_compiler::AMDAIE::Port getTombstoneKey() {
+  static Port getTombstoneKey() {
     return {FirstInfo::getTombstoneKey(), SecondInfo::getTombstoneKey()};
   }
 
-  static unsigned getHashValue(const mlir::iree_compiler::AMDAIE::Port &d) {
+  static unsigned getHashValue(const Port &d) {
     return detail::combineHashValue(FirstInfo::getHashValue(d.bundle),
                                     SecondInfo::getHashValue(d.channel));
   }
 
-  static bool isEqual(const mlir::iree_compiler::AMDAIE::Port &lhs,
-                      const mlir::iree_compiler::AMDAIE::Port &rhs) {
-    return lhs == rhs;
-  }
+  static bool isEqual(const Port &lhs, const Port &rhs) { return lhs == rhs; }
 };
 
 template <>
-struct GraphTraits<mlir::iree_compiler::AMDAIE::SwitchboxNode *> {
-  using NodeRef = mlir::iree_compiler::AMDAIE::SwitchboxNode *;
+struct GraphTraits<SwitchboxNode *> {
+  using NodeRef = SwitchboxNode *;
 
-  static mlir::iree_compiler::AMDAIE::SwitchboxNode *SwitchboxGraphGetSwitchbox(
-      DGEdge<mlir::iree_compiler::AMDAIE::SwitchboxNode,
-             mlir::iree_compiler::AMDAIE::ChannelEdge> *P) {
+  static SwitchboxNode *SwitchboxGraphGetSwitchbox(
+      DGEdge<SwitchboxNode, ChannelEdge> *P) {
     return &P->getTargetNode();
   }
 
@@ -500,10 +507,9 @@ struct GraphTraits<mlir::iree_compiler::AMDAIE::SwitchboxNode *> {
   // can find the target nodes without having to explicitly go through the
   // edges.
   using ChildIteratorType =
-      mapped_iterator<mlir::iree_compiler::AMDAIE::SwitchboxNode::iterator,
+      mapped_iterator<SwitchboxNode::iterator,
                       decltype(&SwitchboxGraphGetSwitchbox)>;
-  using ChildEdgeIteratorType =
-      mlir::iree_compiler::AMDAIE::SwitchboxNode::iterator;
+  using ChildEdgeIteratorType = SwitchboxNode::iterator;
 
   static NodeRef getEntryNode(NodeRef N) { return N; }
   static ChildIteratorType child_begin(NodeRef N) {
@@ -520,24 +526,14 @@ struct GraphTraits<mlir::iree_compiler::AMDAIE::SwitchboxNode *> {
 };
 
 template <>
-struct GraphTraits<mlir::iree_compiler::AMDAIE::SwitchboxGraph *>
-    : GraphTraits<mlir::iree_compiler::AMDAIE::SwitchboxNode *> {
-  using nodes_iterator = mlir::iree_compiler::AMDAIE::SwitchboxGraph::iterator;
-  static NodeRef getEntryNode(mlir::iree_compiler::AMDAIE::SwitchboxGraph *DG) {
-    return *DG->begin();
-  }
-  static nodes_iterator nodes_begin(
-      mlir::iree_compiler::AMDAIE::SwitchboxGraph *DG) {
-    return DG->begin();
-  }
-  static nodes_iterator nodes_end(
-      mlir::iree_compiler::AMDAIE::SwitchboxGraph *DG) {
-    return DG->end();
-  }
+struct GraphTraits<SwitchboxGraph *> : GraphTraits<SwitchboxNode *> {
+  using nodes_iterator = SwitchboxGraph::iterator;
+  static NodeRef getEntryNode(SwitchboxGraph *DG) { return *DG->begin(); }
+  static nodes_iterator nodes_begin(SwitchboxGraph *DG) { return DG->begin(); }
+  static nodes_iterator nodes_end(SwitchboxGraph *DG) { return DG->end(); }
 };
 
-inline raw_ostream &operator<<(
-    raw_ostream &os, const mlir::iree_compiler::AMDAIE::SwitchSettings &ss) {
+inline raw_ostream &operator<<(raw_ostream &os, const SwitchSettings &ss) {
   std::stringstream s;
   s << "\tSwitchSettings: ";
   for (const auto &[sb, setting] : ss) {
@@ -550,7 +546,7 @@ inline raw_ostream &operator<<(
 
 }  // namespace llvm
 
-namespace mlir::iree_compiler::AMDAIE {
+namespace {
 
 LogicalResult DynamicTileAnalysis::runAnalysis(DeviceOp &device) {
   LLVM_DEBUG(llvm::dbgs() << "\t---Begin DynamicTileAnalysis Constructor---\n");
@@ -1145,7 +1141,9 @@ struct ConvertFlowsToInterconnect : OpConversionPattern<FlowOp> {
     rewriter.eraseOp(Op);
   }
 };
+}  // namespace
 
+namespace mlir::iree_compiler::AMDAIE {
 /// Overall Flow:
 /// rewrite switchboxes to assign unassigned connections, ensure this can be
 /// done concurrently ( by different threads)

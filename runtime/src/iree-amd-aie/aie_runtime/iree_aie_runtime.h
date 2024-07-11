@@ -60,6 +60,96 @@ struct TileLoc {
   bool operator!=(const TileLoc& rhs) const { return !(*this == rhs); }
 };
 
+struct Port {
+  StrmSwPortType bundle;
+  int channel;
+
+  bool operator==(const Port& rhs) const {
+    return std::tie(bundle, channel) == std::tie(rhs.bundle, rhs.channel);
+  }
+
+  bool operator!=(const Port& rhs) const { return !(*this == rhs); }
+
+  bool operator<(const Port& rhs) const {
+    return std::tie(bundle, channel) < std::tie(rhs.bundle, rhs.channel);
+  }
+};
+
+struct Connect {
+  Port src;
+  Port dst;
+
+  bool operator==(const Connect& rhs) const {
+    return std::tie(src, dst) == std::tie(rhs.src, rhs.dst);
+  }
+};
+
+struct DMAChannel {
+  DMAChannelDir direction;
+  int channel;
+
+  bool operator==(const DMAChannel& rhs) const {
+    return std::tie(direction, channel) == std::tie(rhs.direction, rhs.channel);
+  }
+};
+
+struct Switchbox : TileLoc {
+  // Necessary for initializer construction?
+  Switchbox(TileLoc t) : TileLoc(t) {}
+  Switchbox(int col, int row) : TileLoc{col, row} {}
+  bool operator==(const Switchbox& rhs) const {
+    return static_cast<TileLoc>(*this) == rhs;
+  }
+};
+
+struct Channel {
+  Switchbox& src;
+  Switchbox& target;
+  StrmSwPortType bundle;
+  int maxCapacity = 0;   // maximum number of routing resources
+  double demand = 0.0;   // indicates how many flows want to use this Channel
+  int usedCapacity = 0;  // how many flows are actually using this Channel
+  DenseSet<int> fixedCapacity;  // channels not available to the algorithm
+  int overCapacityCount = 0;    // history of Channel being over capacity
+  Channel(Switchbox& src, Switchbox& target, StrmSwPortType bundle,
+          int maxCapacity)
+      : src(src), target(target), bundle(bundle), maxCapacity(maxCapacity) {}
+};
+
+// A SwitchSetting defines the required settings for a Switchbox for a flow
+// SwitchSetting.src is the incoming signal
+// SwitchSetting.dsts is the fanout
+struct SwitchSetting {
+  Port src;
+  DenseSet<Port> dsts;
+  SwitchSetting() = default;
+  SwitchSetting(Port src) : src(src) {}
+  SwitchSetting(Port src, DenseSet<Port> dsts)
+      : src(src), dsts(std::move(dsts)) {}
+
+  bool operator<(const SwitchSetting& rhs) const { return src < rhs.src; }
+};
+
+using SwitchSettings = DenseMap<Switchbox, SwitchSetting>;
+
+// A Flow defines source and destination vertices
+// Only one source, but any number of destinations (fanout)
+struct PathEndPoint {
+  Switchbox sb;
+  Port port;
+
+  // Needed for the std::maps that store PathEndPoint.
+  bool operator<(const PathEndPoint& rhs) const {
+    return std::tie(sb, port) < std::tie(rhs.sb, rhs.port);
+  }
+
+  bool operator==(const PathEndPoint& rhs) const {
+    return std::tie(sb, port) == std::tie(rhs.sb, rhs.port);
+  }
+};
+
+StrmSwPortType getConnectingBundle(StrmSwPortType dir);
+
 enum class AMDAIETileType : uint8_t {
   AIETILE = 0,
   SHIMNOC = 1,
@@ -194,6 +284,14 @@ struct AMDAIEDeviceModel getDeviceModel(AMDAIEDevice device);
   _(AMDAIETileType)   \
   _(AMDAIEDmaProp)    \
   _(AieRC)            \
+  _(Channel)          \
+  _(Connect)          \
+  _(DMAChannel)       \
+  _(DMAChannelDir)    \
+  _(Port)             \
+  _(SwitchSetting)    \
+  _(SwitchSettings)   \
+  _(Switchbox)        \
   _(StrmSwPortType)   \
   _(TileLoc)          \
   _(XAie_LocType)     \
@@ -210,6 +308,14 @@ TO_STRINGS(TO_STRING)
 
 #define BOTH_OSTREAM_OPS_FORALL_TYPES(OSTREAM_OP_, _)         \
   _(OSTREAM_OP_, mlir::iree_compiler::AMDAIE::AMDAIETileType) \
+  _(OSTREAM_OP_, mlir::iree_compiler::AMDAIE::Channel)        \
+  _(OSTREAM_OP_, mlir::iree_compiler::AMDAIE::Connect)        \
+  _(OSTREAM_OP_, mlir::iree_compiler::AMDAIE::DMAChannel)     \
+  _(OSTREAM_OP_, mlir::iree_compiler::AMDAIE::DMAChannelDir)  \
+  _(OSTREAM_OP_, mlir::iree_compiler::AMDAIE::Port)           \
+  _(OSTREAM_OP_, mlir::iree_compiler::AMDAIE::SwitchSetting)  \
+  _(OSTREAM_OP_, mlir::iree_compiler::AMDAIE::SwitchSettings) \
+  _(OSTREAM_OP_, mlir::iree_compiler::AMDAIE::Switchbox)      \
   _(OSTREAM_OP_, mlir::iree_compiler::AMDAIE::TileLoc)        \
   _(OSTREAM_OP_, AieRC)                                       \
   _(OSTREAM_OP_, StrmSwPortType)                              \
@@ -305,6 +411,60 @@ struct DenseMapInfo<mlir::iree_compiler::AMDAIE::TileLoc> {
     return lhs == rhs;
   }
 };
+
+template <>
+struct DenseMapInfo<mlir::iree_compiler::AMDAIE::DMAChannel> {
+  using FirstInfo = DenseMapInfo<mlir::iree_compiler::AMDAIE::DMAChannelDir>;
+  using SecondInfo = DenseMapInfo<int>;
+
+  static mlir::iree_compiler::AMDAIE::DMAChannel getEmptyKey() {
+    return {FirstInfo::getEmptyKey(), SecondInfo::getEmptyKey()};
+  }
+
+  static mlir::iree_compiler::AMDAIE::DMAChannel getTombstoneKey() {
+    return {FirstInfo::getTombstoneKey(), SecondInfo::getTombstoneKey()};
+  }
+
+  static unsigned getHashValue(
+      const mlir::iree_compiler::AMDAIE::DMAChannel& d) {
+    return detail::combineHashValue(FirstInfo::getHashValue(d.direction),
+                                    SecondInfo::getHashValue(d.channel));
+  }
+
+  static bool isEqual(const mlir::iree_compiler::AMDAIE::DMAChannel& lhs,
+                      const mlir::iree_compiler::AMDAIE::DMAChannel& rhs) {
+    return lhs == rhs;
+  }
+};
+
+template <>
+struct DenseMapInfo<mlir::iree_compiler::AMDAIE::Port> {
+  using FirstInfo = DenseMapInfo<StrmSwPortType>;
+  using SecondInfo = DenseMapInfo<int>;
+
+  static mlir::iree_compiler::AMDAIE::Port getEmptyKey() {
+    return {FirstInfo::getEmptyKey(), SecondInfo::getEmptyKey()};
+  }
+
+  static mlir::iree_compiler::AMDAIE::Port getTombstoneKey() {
+    return {FirstInfo::getTombstoneKey(), SecondInfo::getTombstoneKey()};
+  }
+
+  static unsigned getHashValue(const mlir::iree_compiler::AMDAIE::Port& d) {
+    return detail::combineHashValue(FirstInfo::getHashValue(d.bundle),
+                                    SecondInfo::getHashValue(d.channel));
+  }
+
+  static bool isEqual(const mlir::iree_compiler::AMDAIE::Port& lhs,
+                      const mlir::iree_compiler::AMDAIE::Port& rhs) {
+    return lhs == rhs;
+  }
+};
+
+template <>
+struct DenseMapInfo<mlir::iree_compiler::AMDAIE::Switchbox>
+    : DenseMapInfo<mlir::iree_compiler::AMDAIE::TileLoc> {};
+
 }  // namespace llvm
 
 #endif  // IREE_AIE_RUNTIME_H
