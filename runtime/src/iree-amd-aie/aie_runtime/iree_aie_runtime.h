@@ -138,7 +138,6 @@ struct PathEndPoint {
   Switchbox sb;
   Port port;
 
-  // Needed for the std::maps that store PathEndPoint.
   bool operator<(const PathEndPoint& rhs) const {
     return std::tie(sb, port) < std::tie(rhs.sb, rhs.port);
   }

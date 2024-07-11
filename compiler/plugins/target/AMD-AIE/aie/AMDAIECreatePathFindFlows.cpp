@@ -26,7 +26,10 @@ using namespace mlir;
 
 using mlir::iree_compiler::AMDAIE::AMDAIEDevice;
 using mlir::iree_compiler::AMDAIE::AMDAIEDeviceModel;
+using mlir::iree_compiler::AMDAIE::Channel;
 using mlir::iree_compiler::AMDAIE::getConnectingBundle;
+using mlir::iree_compiler::AMDAIE::Switchbox;
+using mlir::iree_compiler::AMDAIE::SwitchSetting;
 using mlir::iree_compiler::AMDAIE::TileLoc;
 using xilinx::AIE::ConnectOp;
 using xilinx::AIE::DeviceOp;
@@ -128,112 +131,6 @@ struct hash<Port> {
 
 namespace {
 
-#define GENERATE_TO_STRING(TYPE_WITH_INSERTION_OP)                \
-  friend std::string to_string(const TYPE_WITH_INSERTION_OP &s) { \
-    std::ostringstream ss;                                        \
-    ss << s;                                                      \
-    return ss.str();                                              \
-  }
-
-typedef struct Connect {
-  Port src;
-  Port dst;
-
-  bool operator==(const Connect &rhs) const {
-    return std::tie(src, dst) == std::tie(rhs.src, rhs.dst);
-  }
-} Connect;
-
-typedef struct DMAChannel {
-  DMAChannelDir direction;
-  int channel;
-
-  bool operator==(const DMAChannel &rhs) const {
-    return std::tie(direction, channel) == std::tie(rhs.direction, rhs.channel);
-  }
-} DMAChannel;
-
-struct Switchbox : TileLoc {
-  // Necessary for initializer construction?
-  Switchbox(TileLoc t) : TileLoc(t) {}
-  Switchbox(int col, int row) : TileLoc{col, row} {}
-  friend std::ostream &operator<<(std::ostream &os, const Switchbox &s) {
-    os << "Switchbox(" << s.col << ", " << s.row << ")";
-    return os;
-  }
-
-  GENERATE_TO_STRING(Switchbox);
-
-  bool operator==(const Switchbox &rhs) const {
-    return static_cast<TileLoc>(*this) == rhs;
-  }
-};
-
-struct Channel {
-  Channel(Switchbox &src, Switchbox &target, WireBundle bundle, int maxCapacity)
-      : src(src), target(target), bundle(bundle), maxCapacity(maxCapacity) {}
-
-  friend std::ostream &operator<<(std::ostream &os, const Channel &c) {
-    os << "Channel(src=" << c.src << ", dst=" << c.target << ")";
-    return os;
-  }
-
-  GENERATE_TO_STRING(Channel)
-
-  friend llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
-                                       const Channel &c) {
-    os << to_string(c);
-    return os;
-  }
-
-  Switchbox &src;
-  Switchbox &target;
-  WireBundle bundle;
-  int maxCapacity = 0;   // maximum number of routing resources
-  double demand = 0.0;   // indicates how many flows want to use this Channel
-  int usedCapacity = 0;  // how many flows are actually using this Channel
-  std::set<int> fixedCapacity;  // channels not available to the algorithm
-  int overCapacityCount = 0;    // history of Channel being over capacity
-};
-
-// A SwitchSetting defines the required settings for a Switchbox for a flow
-// SwitchSetting.src is the incoming signal
-// SwitchSetting.dsts is the fanout
-struct SwitchSetting {
-  SwitchSetting() = default;
-  SwitchSetting(Port src) : src(src) {}
-  SwitchSetting(Port src, std::set<Port> dsts)
-      : src(src), dsts(std::move(dsts)) {}
-  Port src;
-  std::set<Port> dsts;
-
-  // friend definition (will define the function as a non-member function of the
-  // namespace surrounding the class).
-  friend std::ostream &operator<<(std::ostream &os,
-                                  const SwitchSetting &setting) {
-    os << setting.src << " -> " << "{"
-       << join(llvm::map_range(setting.dsts,
-                               [](const Port &port) {
-                                 std::ostringstream ss;
-                                 ss << port;
-                                 return ss.str();
-                               }),
-               ", ")
-       << "}";
-    return os;
-  }
-
-  GENERATE_TO_STRING(SwitchSetting)
-
-  friend llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
-                                       const SwitchSetting &s) {
-    os << to_string(s);
-    return os;
-  }
-
-  bool operator<(const SwitchSetting &rhs) const { return src < rhs.src; }
-};
-
 // A Flow defines source and destination vertices
 // Only one source, but any number of destinations (fanout)
 struct PathEndPoint {
@@ -329,7 +226,7 @@ struct ChannelEdge : ChannelEdgeBase, Channel {
   ChannelEdge(SwitchboxNode &src, SwitchboxNode &target, WireBundle bundle,
               int maxCapacity)
       : ChannelEdgeBase(target),
-        Channel(src, target, bundle, maxCapacity),
+        Channel(src, target, toStrmT(bundle), maxCapacity),
         src(src) {}
 
   // This class isn't designed to copied or moved.
@@ -424,28 +321,6 @@ class DynamicTileAnalysis {
 }  // namespace
 
 namespace llvm {
-template <>
-struct DenseMapInfo<DMAChannel> {
-  using FirstInfo = DenseMapInfo<DMAChannelDir>;
-  using SecondInfo = DenseMapInfo<int>;
-
-  static DMAChannel getEmptyKey() {
-    return {FirstInfo::getEmptyKey(), SecondInfo::getEmptyKey()};
-  }
-
-  static DMAChannel getTombstoneKey() {
-    return {FirstInfo::getTombstoneKey(), SecondInfo::getTombstoneKey()};
-  }
-
-  static unsigned getHashValue(const DMAChannel &d) {
-    return detail::combineHashValue(FirstInfo::getHashValue(d.direction),
-                                    SecondInfo::getHashValue(d.channel));
-  }
-
-  static bool isEqual(const DMAChannel &lhs, const DMAChannel &rhs) {
-    return lhs == rhs;
-  }
-};
 
 template <>
 struct GraphTraits<SwitchboxNode *> {
@@ -832,9 +707,9 @@ std::optional<std::map<PathEndPoint, SwitchSettings>> Pathfinder::findPaths(
       if (e.usedCapacity > e.maxCapacity) {
         LLVM_DEBUG(llvm::dbgs()
                    << "Too much capacity on Edge (" << e.getTargetNode().col
-                   << ", " << e.getTargetNode().row << ") . "
-                   << stringifyWireBundle(e.bundle) << "\t: used_capacity = "
-                   << e.usedCapacity << "\t: Demand = " << e.demand << "\n");
+                   << ", " << e.getTargetNode().row << ") . " << e.bundle
+                   << "\t: used_capacity = " << e.usedCapacity
+                   << "\t: Demand = " << e.demand << "\n");
         e.overCapacityCount++;
         LLVM_DEBUG(llvm::dbgs()
                    << "over_capacity_count = " << e.overCapacityCount << "\n");
@@ -913,11 +788,11 @@ std::optional<std::map<PathEndPoint, SwitchSettings>> Pathfinder::findPaths(
           while (ch->fixedCapacity.count(ch->usedCapacity)) ch->usedCapacity++;
 
           // add the entrance port for this Switchbox
-          switchSettings[*curr].src = {getConnectingBundle(toStrmT(ch->bundle)),
+          switchSettings[*curr].src = {getConnectingBundle(ch->bundle),
                                        ch->usedCapacity};
           // add the current Switchbox to the map of the predecessor
           switchSettings[*preds[curr]].dsts.insert(
-              {toStrmT(ch->bundle), ch->usedCapacity});
+              {ch->bundle, ch->usedCapacity});
 
           ch->usedCapacity++;
           // if at capacity, bump demand to discourage using this Channel
