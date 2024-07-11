@@ -22,8 +22,9 @@
 
 #include "iree-amd-aie/IR/AMDAIEDialect.h"
 #include "iree-amd-aie/IR/AMDAIEOps.h"
-#include "iree-amd-aie/IR/AMDAIETargetModel.h"
+#include "iree-amd-aie/Transforms/AMDAIEUtils.h"
 #include "iree-amd-aie/Transforms/Passes.h"
+#include "iree-amd-aie/aie_runtime/iree_aie_runtime.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/IR/AffineExprVisitor.h"
@@ -32,6 +33,33 @@
 #define DEBUG_TYPE "iree-amdaie-dma-loop-subsumption"
 
 namespace mlir::iree_compiler::AMDAIE {
+
+// Constant specifying the number of inter-iteration dimension for DMA
+// operations.
+//
+// NOTE(jornt): this number is implicitly assumed in the device model and can't
+// be retrieved from it afaik.
+//
+// Some background:
+//
+// DMAs support multi-dimensional addressing through buffer descriptors in two
+// ways:
+// 1. Intra-iteration access pattern. Specified via 'strides' ('steps' in buffer
+// descriptor lingo), 'sizes' ('wraps' in buffer descriptro lingo) and
+// 'padding'. When a DMA executes a buffer descriptor, it will access the data
+// (read/write) as specified by the intra-iteration access pattern.
+// 2. Inter-iteration access pattern. Specified via an iteration 'stride',
+// 'size' and 'current_iteration' ('stride' is the same as 'stepsize' and 'size'
+// is the same as 'wrap' in buffer descriptor lingo). Here, 'current_iteration'
+// keeps track of the current execution iteration of the buffer descriptor and
+// is incremented after buffer descriptor execution. the 'stride' is the offset
+// to be used for each execution of the buffer descriptor, relative to the
+// previous one. When 'iteration_current' is equal to 'size', the
+// 'iteration_current' is reset to zero.
+//
+// Although DMAs can have a different number of intra-iteration dimensions, all
+// DMAs have a single inter-iteration dimension (at least in AIE2 and AIE2p).
+static const size_t kAMDAIEDmaNbInterDims = 1;
 
 namespace {
 
@@ -329,6 +357,15 @@ class SubsumeLoopIntoDMA
 
   LogicalResult matchAndRewrite(AMDAIE::DoublyStridedOpInterface op,
                                 PatternRewriter &rewriter) const override {
+    // Get the device model.
+    auto targetAttr = IREE::HAL::ExecutableTargetAttr::lookup(op);
+    std::optional<AMDAIEDevice> device = getConfigAMDAIEDevice(targetAttr);
+    if (!device)
+      return op.emitOpError()
+             << "No AMDAIEDevice found in the target attribute configuration";
+    AMDAIE::AMDAIEDeviceModel deviceModel =
+        AMDAIE::getDeviceModel(device.value());
+
     // Depending on the DMA being targetted, there can be a different number of
     // max dimensions supported by the hardware. Consider the different cases
     // for Shim, MemTile and core DMAs:
@@ -349,22 +386,29 @@ class SubsumeLoopIntoDMA
     //   be used for DMA access patterns.
     size_t sourceMaxNbDims{0};
     size_t targetMaxNbDims{0};
+    uint8_t shimNbIntraDims = deviceModel.getDmaProp<uint8_t>(
+        AMDAIE::AMDAIETileType::SHIMNOC, AMDAIE::AMDAIEDmaProp::NumAddrDim);
+    uint8_t memTileNbIntraDims = deviceModel.getDmaProp<uint8_t>(
+        AMDAIE::AMDAIETileType::MEMTILE, AMDAIE::AMDAIEDmaProp::NumAddrDim);
+    uint8_t coreNbIntraDims = deviceModel.getDmaProp<uint8_t>(
+        AMDAIE::AMDAIETileType::AIETILE, AMDAIE::AMDAIEDmaProp::NumAddrDim);
+
     if (auto npuDmaOp = dyn_cast<AMDAIE::NpuDmaCpyNdOp>(op.getOperation())) {
       uint64_t sourceMemspaceInt = npuDmaOp.getSourceMemorySpaceAsUInt();
       uint64_t targetMemspaceInt = npuDmaOp.getTargetMemorySpaceAsUInt();
       if (sourceMemspaceInt == 0) {
-        sourceMaxNbDims = kAMDAIEShimDmaNbIntraDims + kAMDAIEShimDmaNbInterDims;
+        sourceMaxNbDims = shimNbIntraDims + kAMDAIEDmaNbInterDims;
       } else if (sourceMemspaceInt == 1) {
-        sourceMaxNbDims = kAMDAIEMemTileDmaNbIntraDims;
+        sourceMaxNbDims = memTileNbIntraDims;
       } else if (sourceMemspaceInt == 2) {
-        sourceMaxNbDims = kAMDAIECoreDmaNbIntraDims;
+        sourceMaxNbDims = coreNbIntraDims;
       }
       if (targetMemspaceInt == 0) {
-        targetMaxNbDims = kAMDAIEShimDmaNbIntraDims + kAMDAIEShimDmaNbInterDims;
+        targetMaxNbDims = shimNbIntraDims + kAMDAIEDmaNbInterDims;
       } else if (targetMemspaceInt == 1) {
-        targetMaxNbDims = kAMDAIEMemTileDmaNbIntraDims;
+        targetMaxNbDims = memTileNbIntraDims;
       } else if (targetMemspaceInt == 2) {
-        targetMaxNbDims = kAMDAIECoreDmaNbIntraDims;
+        targetMaxNbDims = coreNbIntraDims;
       }
 
       // Check that the DMA this `amdaie.npu.dma_cpy_nd` operation is operating
