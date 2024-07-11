@@ -59,3 +59,54 @@ module  {
     aie.shim_dma_allocation @toMem (MM2S, 1, 1)
   }
 }
+
+// -----
+
+// CHECK-LABEL:   aie.device(npu1_4col) {
+// CHECK:           memref.global "public" @toMem : memref<16xi32>
+// CHECK:           func.func @pretend_microkernel
+// CHECK-NOT:       func.func  @explicit_sym_name
+// CHECK:           aie.shim_dma_allocation @toMem(MM2S, 1, 1)
+// CHECK:         } {npu_instructions = array<i32: 100860160, 261, 4, 152, 1, 0, 33673248, 48, 256, 0, 0, 16777216, -2147483585, 0, 0, 33554432, 129, 48, 0, 0, 0, 0, 33673252, 0, 0, 0, 0, 0, 0, 0, 33673756, 0, 1, 24, 128, 16, 65537, 16843008>, sym_name = "explicit_sym_name"}
+
+module  {
+  aie.device(npu1_4col) {
+    memref.global "public" @toMem : memref<16xi32>
+    func.func @pretend_microkernel(%arg0: memref<16xi32>, %arg1: memref<16xi32>) {
+      return
+    }
+
+    func.func @explicit_sym_name(%arg0: memref<16xi32>, %arg1: memref<16xi32>) {
+      aiex.npu.dma_memcpy_nd(0, 0, %arg0[0, 0, 0, 0][1, 1, 16, 16][0, 0, 64, 1]) { metadata = @toMem, id = 1 : i64 } : memref<16xi32>
+      aiex.npu.dma_wait {symbol = @toMem}
+      return
+    }
+    aie.shim_dma_allocation @toMem (MM2S, 1, 1)
+  } {sym_name = "explicit_sym_name"}
+}
+
+// -----
+
+// CHECK-LABEL:   aie.device(npu1_4col) {
+// CHECK:           memref.global "public" @toMem : memref<16xi32>
+// CHECK:           func.func @pretend_microkernel
+// CHECK:           func.func  @explicit_sym_name
+// CHECK:           aie.shim_dma_allocation @toMem(MM2S, 1, 1)
+// CHECK:         } {npu_instructions = array<i32: 100860160, 261, 4, 152, 1, 0, 33673248, 48, 256, 0, 0, 16777216, -2147483585, 0, 0, 33554432, 129, 48, 0, 0, 0, 0, 33673252, 0, 0, 0, 0, 0, 0, 0, 33673756, 0, 1, 24, 128, 16, 65537, 16843008>, sym_name = "wrong_sym_name"}
+
+module  {
+  aie.device(npu1_4col) {
+    memref.global "public" @toMem : memref<16xi32>
+    func.func @pretend_microkernel(%arg0: memref<16xi32>, %arg1: memref<16xi32>) {
+      return
+    }
+
+    func.func @explicit_sym_name(%arg0: memref<16xi32>, %arg1: memref<16xi32>) {
+      aiex.npu.dma_memcpy_nd(0, 0, %arg0[0, 0, 0, 0][1, 1, 16, 16][0, 0, 64, 1]) { metadata = @toMem, id = 1 : i64 } : memref<16xi32>
+      aiex.npu.dma_wait {symbol = @toMem}
+      return
+    }
+    aie.shim_dma_allocation @toMem (MM2S, 1, 1)
+  } {sym_name = "wrong_sym_name"}
+}
+
