@@ -733,7 +733,6 @@ LogicalResult lowerToAIE(ModuleOp moduleOp) {
 
   // Retrieve the AMDAIEDevice from the executable target attribute.
   auto targetAttr = IREE::HAL::ExecutableTargetAttr::lookup(moduleOp);
-  auto test = IREE::HAL::DeviceTargetAttr::lookup(moduleOp);
   std::optional<AMDAIEDevice> device = getConfigAMDAIEDevice(targetAttr);
   if (!device)
     return moduleOp.emitOpError()
