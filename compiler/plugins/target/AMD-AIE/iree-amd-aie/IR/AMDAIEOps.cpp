@@ -53,7 +53,7 @@ void CoreOp::build(OpBuilder &b, OperationState &result, Value coreCol,
   auto row =
       b.createOrFold<arith::AddIOp>(b.getUnknownLoc(), rowOffset, coreRow);
   auto tileOp = b.create<AMDAIE::TileOp>(b.getUnknownLoc(), coreCol, row);
-  build(b, result, b.getIndexType(), tileOp);
+  build(b, result, b.getIndexType(), tileOp, nullptr);
 }
 
 LogicalResult CoreOp::verify() {
