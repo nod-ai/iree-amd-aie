@@ -68,6 +68,34 @@ enum class AMDAIETileType : uint8_t {
   MAX = 4
 };
 
+/// Enum of DMA properties. Uses the offset within the `XAie_DmaMod` struct as
+/// underlying value to easily retrieve the specified property with a single
+/// getter method, while being versatile towards `XAie_DmaMod` struct changes.
+enum class AMDAIEDmaProp : uint8_t {
+  NumBds = offsetof(struct XAie_DmaMod, NumBds),
+  NumLocks = offsetof(struct XAie_DmaMod, NumLocks),
+  ChIdxOffset = offsetof(struct XAie_DmaMod, ChIdxOffset),
+  NumAddrDim = offsetof(struct XAie_DmaMod, NumAddrDim),
+  DoubleBuffering = offsetof(struct XAie_DmaMod, DoubleBuffering),
+  Compression = offsetof(struct XAie_DmaMod, Compression),
+  Padding = offsetof(struct XAie_DmaMod, Padding),
+  OutofOrderBdId = offsetof(struct XAie_DmaMod, OutofOrderBdId),
+  InterleaveMode = offsetof(struct XAie_DmaMod, InterleaveMode),
+  FifoMode = offsetof(struct XAie_DmaMod, FifoMode),
+  EnTokenIssue = offsetof(struct XAie_DmaMod, EnTokenIssue),
+  RepeatCount = offsetof(struct XAie_DmaMod, RepeatCount),
+  TlastSuppress = offsetof(struct XAie_DmaMod, TlastSuppress),
+  StartQueueBase = offsetof(struct XAie_DmaMod, StartQueueBase),
+  BaseAddr = offsetof(struct XAie_DmaMod, BaseAddr),
+  IdxOffset = offsetof(struct XAie_DmaMod, IdxOffset),
+  ChCtrlBase = offsetof(struct XAie_DmaMod, ChCtrlBase),
+  NumChannels = offsetof(struct XAie_DmaMod, NumChannels),
+  ChStatusBase = offsetof(struct XAie_DmaMod, ChStatusBase),
+  ChStatusOffset = offsetof(struct XAie_DmaMod, ChStatusOffset),
+  PadValueBase = offsetof(struct XAie_DmaMod, PadValueBase),
+  MAX = sizeof(struct XAie_DmaMod)
+};
+
 /*
  * This struct is meant to be a thin wrapper around aie-rt, which provides
  * the canonical representation/metadata for AIE devices; attributes like number
@@ -105,6 +133,14 @@ struct AMDAIEDeviceModel {
   bool isMemTile(uint8_t col, uint8_t row) const;
   bool isShimNOCTile(uint8_t col, uint8_t row) const;
   bool isShimPLTile(uint8_t col, uint8_t row) const;
+
+  /// Retrieve a DMA properpty for the specified tile type.
+  template <typename T>
+  T getDmaProp(AMDAIETileType tileType, AMDAIEDmaProp dmaProp) const {
+    const uint8_t* dmaMod = reinterpret_cast<const uint8_t*>(
+        devInst.DevProp.DevMod[static_cast<uint8_t>(tileType)].DmaMod);
+    return *((const T*)(dmaMod + static_cast<uint8_t>(dmaProp)));
+  }
 
   uint32_t getNumLocks(uint8_t col, uint8_t row) const;
 
@@ -156,6 +192,7 @@ struct AMDAIEDeviceModel getDeviceModel(AMDAIEDevice device);
 
 #define TO_STRINGS(_) \
   _(AMDAIETileType)   \
+  _(AMDAIEDmaProp)    \
   _(AieRC)            \
   _(StrmSwPortType)   \
   _(TileLoc)          \
@@ -188,7 +225,8 @@ template <typename H1>
 llvm::raw_ostream& showArgs(llvm::raw_ostream& out, const char* label,
                             H1&& value) {
   if constexpr (std::is_pointer<H1>::value)
-    return out << label << "=" << "ptr";
+    return out << label << "="
+               << "ptr";
   else
     return out << label << "=" << std::forward<H1>(value);
 }
