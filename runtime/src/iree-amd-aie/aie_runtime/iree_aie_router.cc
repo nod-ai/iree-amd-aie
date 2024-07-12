@@ -18,10 +18,13 @@
 #define OVER_CAPACITY_COEFF 0.02
 #define USED_CAPACITY_COEFF 0.02
 #define DEMAND_COEFF 1.1
+static constexpr double INF = std::numeric_limits<double>::max();
 
 namespace mlir::iree_compiler::AMDAIE {
 
-void Pathfinder::initialize(int maxCol, int maxRow,
+/// Create the initial graph of nearest neighbor relationships between
+/// switchboxes, including link capacity.
+void Router::initialize(int maxCol, int maxRow,
                             AMDAIEDeviceModel &deviceModel) {
   int nodeId = 0;
   for (int row = 0; row <= maxRow; row++) {
@@ -71,9 +74,9 @@ void Pathfinder::initialize(int maxCol, int maxRow,
   }
 }
 
-// Add a flow from src to dst can have an arbitrary number of dst locations due
-// to fanout.
-void Pathfinder::addFlow(TileLoc srcCoords, Port srcPort, TileLoc dstCoords,
+/// Add a flow from src to dst can have an arbitrary number of dst locations due
+/// to fanout.
+void Router::addFlow(TileLoc srcCoords, Port srcPort, TileLoc dstCoords,
                          Port dstPort) {
   // check if a flow with this source already exists
   for (auto &[src, dsts] : flows) {
@@ -108,9 +111,9 @@ void Pathfinder::addFlow(TileLoc srcCoords, Port srcPort, TileLoc dstCoords,
                    std::vector<PathEndPointNode>{{*matchingDstSb, dstPort}}});
 }
 
-// Keep track of connections already used in the AIE; Pathfinder algorithm will
-// avoid using these.
-bool Pathfinder::addFixedConnection(Connect connectOp) {
+/// Keep track of connections already used in the AIE; Pathfinder algorithm will
+/// avoid using these.
+bool Router::addFixedConnection(Connect connectOp) {
   Switchbox sb = connectOp.sb;
   TileLoc sbTile(sb.col, sb.row);
   StrmSwPortType sourceBundle = connectOp.src.bundle;
@@ -138,8 +141,6 @@ bool Pathfinder::addFixedConnection(Connect connectOp) {
 
   return false;
 }
-
-static constexpr double INF = std::numeric_limits<double>::max();
 
 std::map<SwitchboxNode *, SwitchboxNode *> dijkstraShortestPaths(
     const SwitchboxGraph &graph, SwitchboxNode *src) {
@@ -196,13 +197,13 @@ std::map<SwitchboxNode *, SwitchboxNode *> dijkstraShortestPaths(
   return preds;
 }
 
-// Perform congestion-aware routing for all flows which have been added.
-// Use Dijkstra's shortest path to find routes, and use "demand" as the weights.
-// If the routing finds too much congestion, update the demand weights
-// and repeat the process until a valid solution is found.
-// Returns a map specifying switchbox settings for all flows.
-// If no legal routing can be found after maxIterations, returns empty vector.
-std::optional<std::map<PathEndPoint, SwitchSettings>> Pathfinder::findPaths(
+/// Perform congestion-aware routing for all flows which have been added.
+/// Use Dijkstra's shortest path to find routes, and use "demand" as the
+/// weights. If the routing finds too much congestion, update the demand weights
+/// and repeat the process until a valid solution is found.
+/// Returns a map specifying switchbox settings for all flows.
+/// If no legal routing can be found after maxIterations, returns empty vector.
+std::optional<std::map<PathEndPoint, SwitchSettings>> Router::findPaths(
     const int maxIterations) {
   int iterationCount = 0;
   std::map<PathEndPoint, SwitchSettings> routingSolution;
@@ -308,7 +309,7 @@ std::optional<std::map<PathEndPoint, SwitchSettings>> Pathfinder::findPaths(
 std::optional<std::map<PathEndPoint, SwitchSettings>> findPaths(
     int maxIterations);
 
-Switchbox *Pathfinder::getSwitchbox(TileLoc coords) {
+Switchbox *Router::getSwitchbox(TileLoc coords) {
   auto *sb = std::find_if(graph.begin(), graph.end(), [&](SwitchboxNode *sb) {
     return sb->col == coords.col && sb->row == coords.row;
   });

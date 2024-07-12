@@ -28,8 +28,6 @@ struct SwitchboxNode : SwitchboxNodeBase, Switchbox {
   int id;
 };
 
-// warning: 'mlir::iree_compiler::AMDAIE::ChannelEdge::src' will be initialized
-// after SwitchboxNode &src; [-Wreorder]
 struct ChannelEdge : ChannelEdgeBase, Channel {
   using Channel::Channel;
   SwitchboxNode &src;
@@ -52,8 +50,8 @@ class SwitchboxGraph : public SwitchboxGraphBase {
   ~SwitchboxGraph() = default;
 };
 
-// A Flow defines source and destination vertices
-// Only one source, but any number of destinations (fanout)
+/// A Flow defines source and destination vertices
+/// Only one source, but any number of destinations (fanout)
 struct PathEndPointNode : PathEndPoint {
   SwitchboxNode *sb;
   PathEndPointNode(SwitchboxNode *sb, Port port)
@@ -125,7 +123,9 @@ struct GraphTraits<mlir::iree_compiler::AMDAIE::SwitchboxGraph *>
 
 namespace mlir::iree_compiler::AMDAIE {
 
-struct Pathfinder {
+/// The center of show: the router that builds a representation of the array,
+/// executes the routing algorithm, and holds the result routes.
+struct Router {
   SwitchboxGraph graph;
   std::vector<FlowNode> flows;
   std::map<TileLoc, SwitchboxNode> grid;
@@ -133,7 +133,7 @@ struct Pathfinder {
   // pointers to edges (so growing a vector would invalidate the pointers).
   std::list<ChannelEdge> edges;
 
-  Pathfinder() = default;
+  Router() = default;
   void initialize(int maxCol, int maxRow, AMDAIEDeviceModel &deviceModel);
   void addFlow(TileLoc srcCoords, Port srcPort, TileLoc dstCoords,
                Port dstPort);

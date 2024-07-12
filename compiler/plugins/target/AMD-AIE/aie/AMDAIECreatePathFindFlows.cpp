@@ -117,7 +117,7 @@ namespace mlir::iree_compiler::AMDAIE {
 class DynamicTileAnalysis {
  public:
   int maxCol, maxRow;
-  std::shared_ptr<Pathfinder> pathfinder;
+  std::shared_ptr<Router> pathfinder;
   std::map<PathEndPoint, SwitchSettings> flowSolutions;
   std::map<PathEndPoint, bool> processedFlows;
   llvm::DenseMap<TileLoc, TileOp> coordToTile;
@@ -126,7 +126,7 @@ class DynamicTileAnalysis {
 
   const int maxIterations = 1000;  // how long until declared unroutable
 
-  DynamicTileAnalysis() : pathfinder(std::make_shared<Pathfinder>()) {}
+  DynamicTileAnalysis() : pathfinder(std::make_shared<Router>()) {}
 
   mlir::LogicalResult runAnalysis(DeviceOp &device);
 
@@ -573,7 +573,7 @@ bool AMDAIEPathfinderPass::reconnectConnectOps(const OpBuilder &builder,
   bool hasEmptyChannelSlot = true;
   bool foundCandidateForFixup = false;
   ConnectOp candidate;
-  if (isIncomingToSW)
+  if (isIncomingToSW) {
     for (ConnectOp connect : sw.getOps<ConnectOp>()) {
       if (connect.getDestBundle() == problemBundle &&
           connect.getDestChannel() == problemChan) {
@@ -584,7 +584,7 @@ bool AMDAIEPathfinderPass::reconnectConnectOps(const OpBuilder &builder,
           connect.getDestChannel() == emptyChan)
         hasEmptyChannelSlot = false;
     }
-  else
+  } else {
     for (ConnectOp connect : sw.getOps<ConnectOp>()) {
       if (connect.getSourceBundle() == problemBundle &&
           connect.getSourceChannel() == problemChan) {
@@ -595,6 +595,7 @@ bool AMDAIEPathfinderPass::reconnectConnectOps(const OpBuilder &builder,
           connect.getSourceChannel() == emptyChan)
         hasEmptyChannelSlot = false;
     }
+  }
 
   if (foundCandidateForFixup && hasEmptyChannelSlot) {
     StrmSwPortType problemBundleOpposite =
