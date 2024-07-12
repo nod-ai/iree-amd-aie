@@ -21,7 +21,7 @@
 #   3. Run: `./run_matmul_tests.sh <output_dir_path> <iree_install_path> [<mlir_aie_install_path>] [<peano_install_path>] [<xrt_path>] [<vitis_path>] [do_signing]`
 #      The directories above in square brackets are optional, the first 2 directories are required.
 
-set -euox pipefail
+set -euo pipefail
 
 if [ "$#" -lt 2 ] || [ "$#" -gt 6 ]; then
 
@@ -118,11 +118,7 @@ fi
 
 # Parameter 6) <vitis-install-dir>
 if [ -z "${6-}" ]; then
-  # An alternate to a full vitis install, will work
-  # here but not for a full build of mlir-aie
-  # https://riallto.ai/install-riallto.html#install-riallto
-  # VITIS=/opt/Riallto/Vitis/2023.1
-  VITIS=/opt/Xilinx/Vitis/2023.2
+  VITIS=/opt/Xilinx/Vitis/2024.1
 else
   VITIS=`realpath "$6"`
 fi
@@ -193,6 +189,8 @@ function run_matmul_test() {
   local amd_aie_install_path="${IREE_INSTALL_DIR}"
 
   local vitis_path="${VITIS}"
+
+  local use_chess="false"
 
   local tile_pipeline="pad-pack"
 
@@ -282,6 +280,10 @@ function run_matmul_test() {
         amd_aie_install_path="$2"
         shift 2
         ;;
+      --use_chess)
+        use_chess="$2"
+        shift 2
+        ;;
      --vitis_path)
         vitis_path="$2"
         shift 2
@@ -317,7 +319,6 @@ function run_matmul_test() {
     esac
   done
 
-  set -x
 
 
   # Record the current time in milliseconds. Record the time at certain
@@ -394,6 +395,7 @@ function run_matmul_test() {
                       --iree-amd-aie-mlir-aie-install-dir=${mlir_aie_install_path} \
                       --iree-amd-aie-install-dir=${amd_aie_install_path} \
                       --iree-amd-aie-vitis-install-dir=${vitis_path} \
+                      --iree-amd-aie-enable-chess=${use_chess} \
                       --iree-hal-dump-executable-files-to=$PWD \
                       --iree-amd-aie-show-invoked-commands"
 
@@ -482,7 +484,6 @@ function run_matmul_test() {
   echo "Time spent in compilation: $((compiled_time - generated_time)) [ms]"
   echo "Time spent in execution and verification: $((end_time - compiled_time)) [ms]"
 
-  set +x
 }
 
 ########################################################
@@ -785,3 +786,48 @@ run_matmul_test \
     --lhs_rhs_type "i32" \
     --acc_type "i32" \
     --m "1536" --k "2048" --n "1536"
+
+###################################################################
+# Chess tests
+###################################################################
+
+run_matmul_test \
+    --name_prefix "chess_i32_matmul" \
+    --lhs_rhs_type "i32" \
+    --acc_type "i32" \
+    --m "64" \
+    --n "64" \
+    --k "64" \
+    --num_repeat_runs "0" \
+    --use_chess "1"
+
+run_matmul_test \
+    --name_prefix "chess_f32_matmul" \
+    --lhs_rhs_type "f32" \
+    --acc_type "f32" \
+    --m "64" \
+    --n "64" \
+    --k "64" \
+    --num_repeat_runs "0" \
+    --use_chess "1"
+
+run_matmul_test \
+    --name_prefix "chess_i32_matmul" \
+    --lhs_rhs_type "i32" \
+    --acc_type "i32" \
+    --m "128" \
+    --n "128" \
+    --k "128" \
+    --num_repeat_runs "0" \
+    --use_chess "1"
+
+run_matmul_test \
+    --name_prefix "chess_f32_matmul" \
+    --lhs_rhs_type "f32" \
+    --acc_type "f32" \
+    --m "128" \
+    --n "128" \
+    --k "128" \
+    --num_repeat_runs "0" \
+    --use_chess "1"
+

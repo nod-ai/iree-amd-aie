@@ -388,7 +388,9 @@ LogicalResult AIETargetBackend::serializeExecutable(
             /*tempDir=*/entryPointWorkDir.str().str(),
             /*useChess=*/options.useChess,
             /*verbose=*/options.showInvokedCommands,
-            /*mlirAIEInstallDir=*/options.mlirAieInstallDir,
+            /*vitisDir=*/options.vitisInstallDir.empty()
+                ? std::nullopt
+                : std::optional<std::string>{options.vitisInstallDir},
             /*targetArch=*/"AIE2",
             /*peanoDir=*/options.peanoInstallDir,
             /*xclBinKernelID=*/ordinalHex.str(),
