@@ -41,7 +41,8 @@ iree_cc_library(
     ::AMDAIEDmaOpInterfaceGen
     ::AMDAIEOpsGen
     ::AMDAIETypesGen
-    ::PackingConfigGen
+    ::AMDAIEAttrsGen
+    iree-amd-aie::aie_runtime::AMDAIEEnums
     iree::target::amd-aie::Utils::Utils
     LLVMSupport
     MLIRIR
@@ -62,7 +63,7 @@ iree_tablegen_library(
 
 iree_tablegen_library(
   NAME
-    PackingConfigGen
+    AMDAIEAttrsGen
   TD_FILE
     "AMDAIEAttrs.td"
   OUTS
@@ -83,6 +84,8 @@ iree_tablegen_library(
     -gen-typedef-defs AMDAIETypes.cpp.inc
 )
 
+list(APPEND IREE_COMPILER_TABLEGEN_INCLUDE_DIRS
+            ${IREE_AMD_AIE_RUNTIME_SOURCE_DIR})
 iree_tablegen_library(
   NAME
     AMDAIEOpsGen

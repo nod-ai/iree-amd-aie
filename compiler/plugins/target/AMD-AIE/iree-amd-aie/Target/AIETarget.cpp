@@ -113,6 +113,16 @@ static xilinx::AIE::DeviceOp getDeviceOpFromEntryPoint(ModuleOp moduleOp,
   return deviceOp;
 }
 
+// Utility to sanitize symbol names so that bootgen can generate the required
+// artifacts. Currently one known condition is that the symbol may not have a
+// `$` sign in it.. See https://github.com/nod-ai/iree-amd-aie/issues/513.
+static void sanitizeForBootgen(std::string &symbol) {
+  char dollar = '$';
+  symbol.erase(std::remove_if(symbol.begin(), symbol.end(),
+                              [&](char c) { return c == dollar; }),
+               symbol.end());
+}
+
 class AIETargetDevice final : public IREE::HAL::TargetDevice {
  public:
   AIETargetDevice(const AMDAIEOptions &options) : options(options) {}
@@ -224,7 +234,7 @@ LogicalResult AIETargetBackend::serializeExecutable(
 
   auto basename =
       llvm::join_items("_", serOptions.dumpBaseName, variantOp.getName());
-
+  sanitizeForBootgen(basename);
   auto maybeWorkDir = [&]() -> FailureOr<SmallString<128>> {
     // If a path for intermediates has been specified, assume it is common for
     // all executables compiling in parallel, and so create an
@@ -289,6 +299,7 @@ LogicalResult AIETargetBackend::serializeExecutable(
     // number to the name to gaurantee uniqueness within the executable.
     std::string entryPointName = llvm::join_items(
         "_", exportOpName.substr(0, 42), std::to_string(ordinal));
+    sanitizeForBootgen(entryPointName);
     entryPointNames.emplace_back(entryPointName);
     entryPointOrdinals[entryPointName] = ordinal;
     // error out if we think the name will most likely be too long
