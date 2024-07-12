@@ -49,6 +49,11 @@ struct TileLoc {
   TileLoc(XAie_LocType loc) : col(loc.Col), row(loc.Row) {}
   operator XAie_LocType() const { return XAie_TileLoc(col, row); }
 
+  // for getting free DenseMapInfo (see below)
+  using TupleType = std::tuple<int, int>;
+  TileLoc(std::tuple<int, int> t) : col(std::get<0>(t)), row(std::get<1>(t)) {}
+  operator std::tuple<int, int>() const { return {col, row}; }
+
   inline bool operator<(const TileLoc& rhs) const {
     return std::tie(col, row) < std::tie(rhs.col, rhs.row);
   }
@@ -63,6 +68,14 @@ struct TileLoc {
 struct Port {
   StrmSwPortType bundle;
   int channel;
+
+  Port() = default;
+  Port(StrmSwPortType bundle, int channel) : bundle(bundle), channel(channel) {}
+  // for getting free DenseMapInfo (see below)
+  using TupleType = std::tuple<StrmSwPortType, int>;
+  Port(std::tuple<StrmSwPortType, int> t)
+      : Port(std::get<0>(t), std::get<1>(t)) {}
+  operator std::tuple<StrmSwPortType, int>() const { return {bundle, channel}; }
 
   bool operator==(const Port& rhs) const {
     return std::tie(bundle, channel) == std::tie(rhs.bundle, rhs.channel);
@@ -79,6 +92,9 @@ struct DMAChannel {
   DMAChannelDir direction;
   int channel;
 
+  DMAChannel(DMAChannelDir direction, int channel)
+      : direction(direction), channel(channel) {}
+
   bool operator==(const DMAChannel& rhs) const {
     return std::tie(direction, channel) == std::tie(rhs.direction, rhs.channel);
   }
@@ -87,7 +103,9 @@ struct DMAChannel {
 struct Switchbox : TileLoc {
   // Necessary for initializer construction?
   Switchbox(TileLoc t) : TileLoc(t) {}
-  Switchbox(int col, int row) : TileLoc{col, row} {}
+  Switchbox(int col, int row) : TileLoc(col, row) {}
+  Switchbox(std::tuple<int, int> t) : TileLoc(t) {}
+
   bool operator==(const Switchbox& rhs) const {
     return static_cast<TileLoc>(*this) == rhs;
   }
@@ -97,6 +115,8 @@ struct Connect {
   Switchbox sb;
   Port src;
   Port dst;
+
+  Connect(Switchbox sb, Port src, Port dst) : sb(sb), src(src), dst(dst) {}
 
   bool operator==(const Connect& rhs) const {
     return std::tie(src, dst) == std::tie(rhs.src, rhs.dst);
@@ -392,107 +412,18 @@ StrmSwPortType getConnectingBundle(StrmSwPortType dir);
 }  // namespace mlir::iree_compiler::AMDAIE
 
 namespace llvm {
+
+template <typename TupleT>
+struct TupleStructDenseMapInfo : DenseMapInfo<TupleT> {};
+
 template <>
-struct DenseMapInfo<mlir::iree_compiler::AMDAIE::TileLoc> {
-  using FirstInfo = DenseMapInfo<int>;
-  using SecondInfo = DenseMapInfo<int>;
-
-  static mlir::iree_compiler::AMDAIE::TileLoc getEmptyKey() {
-    return {FirstInfo::getEmptyKey(), SecondInfo::getEmptyKey()};
-  }
-
-  static mlir::iree_compiler::AMDAIE::TileLoc getTombstoneKey() {
-    return {FirstInfo::getTombstoneKey(), SecondInfo::getTombstoneKey()};
-  }
-
-  static unsigned getHashValue(const mlir::iree_compiler::AMDAIE::TileLoc& t) {
-    return llvm::detail::combineHashValue(FirstInfo::getHashValue(t.col),
-                                          SecondInfo::getHashValue(t.row));
-  }
-
-  static bool isEqual(const mlir::iree_compiler::AMDAIE::TileLoc& lhs,
-                      const mlir::iree_compiler::AMDAIE::TileLoc& rhs) {
-    return lhs == rhs;
-  }
+struct DenseMapInfo<mlir::iree_compiler::AMDAIE::TileLoc>
+    : TupleStructDenseMapInfo<mlir::iree_compiler::AMDAIE::TileLoc::TupleType> {
 };
 
 template <>
-struct DenseMapInfo<mlir::iree_compiler::AMDAIE::DMAChannel> {
-  using FirstInfo = DenseMapInfo<mlir::iree_compiler::AMDAIE::DMAChannelDir>;
-  using SecondInfo = DenseMapInfo<int>;
-
-  static mlir::iree_compiler::AMDAIE::DMAChannel getEmptyKey() {
-    return {FirstInfo::getEmptyKey(), SecondInfo::getEmptyKey()};
-  }
-
-  static mlir::iree_compiler::AMDAIE::DMAChannel getTombstoneKey() {
-    return {FirstInfo::getTombstoneKey(), SecondInfo::getTombstoneKey()};
-  }
-
-  static unsigned getHashValue(
-      const mlir::iree_compiler::AMDAIE::DMAChannel& d) {
-    return detail::combineHashValue(FirstInfo::getHashValue(d.direction),
-                                    SecondInfo::getHashValue(d.channel));
-  }
-
-  static bool isEqual(const mlir::iree_compiler::AMDAIE::DMAChannel& lhs,
-                      const mlir::iree_compiler::AMDAIE::DMAChannel& rhs) {
-    return lhs == rhs;
-  }
-};
-
-template <>
-struct DenseMapInfo<mlir::iree_compiler::AMDAIE::Port> {
-  using FirstInfo = DenseMapInfo<StrmSwPortType>;
-  using SecondInfo = DenseMapInfo<int>;
-
-  static mlir::iree_compiler::AMDAIE::Port getEmptyKey() {
-    return {FirstInfo::getEmptyKey(), SecondInfo::getEmptyKey()};
-  }
-
-  static mlir::iree_compiler::AMDAIE::Port getTombstoneKey() {
-    return {FirstInfo::getTombstoneKey(), SecondInfo::getTombstoneKey()};
-  }
-
-  static unsigned getHashValue(const mlir::iree_compiler::AMDAIE::Port& d) {
-    return detail::combineHashValue(FirstInfo::getHashValue(d.bundle),
-                                    SecondInfo::getHashValue(d.channel));
-  }
-
-  static bool isEqual(const mlir::iree_compiler::AMDAIE::Port& lhs,
-                      const mlir::iree_compiler::AMDAIE::Port& rhs) {
-    return lhs == rhs;
-  }
-};
-
-template <>
-struct DenseMapInfo<mlir::iree_compiler::AMDAIE::Switchbox>
-    : DenseMapInfo<mlir::iree_compiler::AMDAIE::TileLoc> {};
-
-template <>
-struct DenseMapInfo<mlir::iree_compiler::AMDAIE::PathEndPoint> {
-  using FirstInfo = DenseMapInfo<mlir::iree_compiler::AMDAIE::Switchbox>;
-  using SecondInfo = DenseMapInfo<mlir::iree_compiler::AMDAIE::Port>;
-
-  static mlir::iree_compiler::AMDAIE::PathEndPoint getEmptyKey() {
-    return {FirstInfo::getEmptyKey(), SecondInfo::getEmptyKey()};
-  }
-
-  static mlir::iree_compiler::AMDAIE::PathEndPoint getTombstoneKey() {
-    return {FirstInfo::getTombstoneKey(), SecondInfo::getTombstoneKey()};
-  }
-
-  static unsigned getHashValue(
-      const mlir::iree_compiler::AMDAIE::PathEndPoint& d) {
-    return detail::combineHashValue(FirstInfo::getHashValue(d.sb),
-                                    SecondInfo::getHashValue(d.port));
-  }
-
-  static bool isEqual(const mlir::iree_compiler::AMDAIE::PathEndPoint& lhs,
-                      const mlir::iree_compiler::AMDAIE::PathEndPoint& rhs) {
-    return lhs == rhs;
-  }
-};
+struct DenseMapInfo<mlir::iree_compiler::AMDAIE::Port>
+    : TupleStructDenseMapInfo<mlir::iree_compiler::AMDAIE::Port::TupleType> {};
 
 }  // namespace llvm
 
