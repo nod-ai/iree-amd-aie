@@ -122,6 +122,27 @@ LogicalResult insertCoreOps(mlir::ModuleOp moduleOp) {
         }
         rewriter.setInsertionPoint(endOp);
         rewriter.moveOpBefore(currOp, endOp);
+      } else if (auto callOp = dyn_cast<func::CallOp>(op)) {
+        // Fetch name of the ukernel function to look up its declaration in the
+        // Symbol table.
+        StringRef fnName = callOp.getCallee();
+        auto fnDecl = dyn_cast_or_null<func::FuncOp>(
+            SymbolTable::lookupSymbolIn(moduleOp, fnName));
+        assert(fnDecl && "expected function declaration");
+        assert(fnDecl->hasAttr("link_with") &&
+               "expected 'link_with' construct for the function declaration");
+        // From the declaration of the function, we extract the value of
+        // attribute "link_with" and attach it to amdaie.core op.
+        // TODO(avarma): What to do when more than one func.call has different
+        // ukernel object file linking?
+        //               As of now this hasn't turned up yet, so will table this
+        //               for now.
+        coreOp.setLinkWith(fnDecl->getAttrOfType<StringAttr>("link_with"));
+        rewriter.setInsertionPoint(endOp);
+        rewriter.moveOpBefore(op, endOp);
+      } else if (isa<memref::ExtractStridedMetadataOp>(op)) {
+        rewriter.setInsertionPoint(endOp);
+        rewriter.moveOpBefore(op, endOp);
       }
       return WalkResult::advance();
     });

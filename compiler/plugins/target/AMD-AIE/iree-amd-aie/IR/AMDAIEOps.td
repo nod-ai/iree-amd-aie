@@ -55,10 +55,14 @@ def AMDAIE_CoreOp: AMDAIE_Op<"core", [SingleBlock]>, Results<(outs Index)> {
     indicating the location in the AIE array. This operation differs from the
     `CoreOp` defined in the AIE dialect in that it uses AMDAIE_TileOp, which
     accepts the column and row as indices instead of integers.
+
+    It has an optional attribute `link_with` which will carry the information to
+    relay to AIE core op for linking with Ukernel.
   }];
 
   let arguments = (
-    ins Index:$tile
+    ins Index:$tile,
+    OptionalAttr<StrAttr>:$link_with
   );
 
   let regions = (region SizedRegion<1>:$region);
