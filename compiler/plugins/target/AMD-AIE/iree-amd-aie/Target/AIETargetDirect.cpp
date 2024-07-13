@@ -10,11 +10,11 @@
 
 #include "XCLBinGen.h"
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
-#include "aie/Dialect/AIEVec/IR/AIEVecDialect.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
-#include "aie/Dialect/XLLVM/XLLVMDialect.h"
 #include "aie/Passes.h"
-#include "aie/Target/LLVMIR/Dialect/XLLVM/XLLVMToLLVMIRTranslation.h"
+#include "aievec/AIEVecDialect.h"
+#include "aievec/Passes.h"
+#include "aievec/XLLVMDialect.h"
 #include "iree-amd-aie/IR/AMDAIEAttrs.h"
 #include "iree-amd-aie/IR/AMDAIEDialect.h"
 #include "iree-amd-aie/Transforms/Passes.h"
@@ -163,14 +163,14 @@ class AIETargetDirectBackend final : public IREE::HAL::TargetBackend {
         mlir::iree_compiler::IREE::Codegen::IREECodegenDialect,
         IREE::LinalgExt::IREELinalgExtDialect, transform::TransformDialect,
         xilinx::AIE::AIEDialect, xilinx::AIEX::AIEXDialect,
-        xilinx::xllvm::XLLVMDialect, xilinx::aievec::AIEVecDialect,
-        emitc::EmitCDialect, LLVM::LLVMDialect, func::FuncDialect,
-        cf::ControlFlowDialect, DLTIDialect, arith::ArithDialect,
-        memref::MemRefDialect, math::MathDialect, vector::VectorDialect>();
+        aievec::xllvm::XLLVMDialect, aievec::AIEVecDialect, emitc::EmitCDialect,
+        LLVM::LLVMDialect, func::FuncDialect, cf::ControlFlowDialect,
+        DLTIDialect, arith::ArithDialect, memref::MemRefDialect,
+        math::MathDialect, vector::VectorDialect>();
 
     registerBuiltinDialectTranslation(registry);
     registerLLVMDialectTranslation(registry);
-    xilinx::xllvm::registerXLLVMDialectTranslation(registry);
+    aievec::registerXLLVMDialectTranslation(registry);
     arith::registerConvertArithToLLVMInterface(registry);
     cf::registerConvertControlFlowToLLVMInterface(registry);
     func::registerAllExtensions(registry);

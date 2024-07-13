@@ -12,8 +12,8 @@
 #include <unordered_map>
 
 #include "AMDAIETargets.h"
-#include "aie/Dialect/AIEVec/Pipelines/Passes.h"
 #include "aie/Targets/AIETargets.h"
+#include "aievec/Passes.h"
 #include "iree-amd-aie/Transforms/Passes.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/JSON.h"
@@ -735,7 +735,8 @@ static LogicalResult generateUnifiedObject(
   // Convert specific vector dialect ops (like vector.contract) to the AIEVec
   // dialect
   {
-    xilinx::aievec::ConvertVectorToAIEVecOptions vectorToAIEVecOptions{};
+    mlir::iree_compiler::aievec::ConvertVectorToAIEVecOptions
+        vectorToAIEVecOptions{};
 
     std::string optionsString = [&]() {
       std::ostringstream optionsStringStream;
@@ -750,7 +751,8 @@ static LogicalResult generateUnifiedObject(
              << optionsString
              << "': Failed to construct ConvertVectorToAIEVecOptions.";
     }
-    xilinx::aievec::buildConvertVectorToAIEVec(pm, vectorToAIEVecOptions);
+    mlir::iree_compiler::aievec::buildConvertVectorToAIEVec(
+        pm, vectorToAIEVecOptions);
   }
 
   mlir::iree_compiler::AMDAIE::addLowerToLLVMPasses(pm);
