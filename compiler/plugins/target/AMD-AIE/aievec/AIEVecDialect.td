@@ -17,14 +17,8 @@ include "mlir/IR/OpBase.td"
 
 def AIEVec_Dialect : Dialect {
   let name = "aievec";
-  let summary = "Types and operations for AIE vector dialect";
   let cppNamespace = "::mlir::iree_compiler::aievec";
-
   let useDefaultAttributePrinterParser = 1;
-
-  let extraClassDeclaration = [{
-    void registerTypes();
-  }];
 }
 
 #endif // AIEVEC_DIALECT

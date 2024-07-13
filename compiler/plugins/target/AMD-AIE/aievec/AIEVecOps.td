@@ -15,7 +15,6 @@
 
 // include "aie/Dialect/AIE/IR/AIEAttrs.td"
 include "AIEVecAttributes.td"
-include "AIEVecTypes.td"
 include "AIEVecTypeConstraints.td"
 
 include "mlir/Interfaces/InferTypeOpInterface.td"

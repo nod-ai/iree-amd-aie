@@ -29,8 +29,6 @@ iree_tablegen_library(
   OUTS
     -gen-dialect-decls -dialect=aievec AIEVecOpsDialect.h.inc
     -gen-dialect-defs -dialect=aievec AIEVecOpsDialect.cpp.inc
-    -gen-typedef-decls -typedefs-dialect=aievec AIEVecOpsTypes.h.inc
-    -gen-typedef-defs -typedefs-dialect=aievec AIEVecOpsTypes.cpp.inc
 )
 
 iree_tablegen_library(
@@ -59,12 +57,12 @@ iree_tablegen_library(
   NAME
     AIEVecXLLVMOpsGen
   TD_FILE
-    XLLVMOps.td
+    XLLVMAIE2IntrOps.td
   OUTS
     -gen-dialect-decls -dialect=xllvm XLLVMDialect.h.inc
     -gen-dialect-defs -dialect=xllvm XLLVMDialect.cpp.inc
-    -gen-op-decls XLLVMOps.h.inc
-    -gen-op-defs XLLVMOps.cpp.inc
+    -gen-op-decls XLLVMAIE2IntrOps.h.inc
+    -gen-op-defs XLLVMAIE2IntrOps.cpp.inc
     -gen-llvmir-conversions XLLVMConversions.inc
 )
 
@@ -73,7 +71,6 @@ iree_cc_library(
     AIEVecDialectIR
   SRCS
     AIEVecOps.cpp
-    AIEVecTypes.cpp
     XLLVMOps.cpp
   DEPS
     ::defs

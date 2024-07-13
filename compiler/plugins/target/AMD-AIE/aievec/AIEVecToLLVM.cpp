@@ -1209,20 +1209,20 @@ class UPDOpConversion : public mlir::ConvertOpToLLVMPattern<aievec::UPDOp> {
 
         std::stringstream ss;
         ss << "llvm.aie." << getVectorTypeString(resultType) << ".undef";
-        std::string intrinsicName = ss.str();
+        std::string intrinsicNameHere = ss.str();
 
-        auto func = module.lookupSymbol<LLVM::LLVMFuncOp>(
-            StringAttr::get(rewriter.getContext(), intrinsicName));
+        auto funcHere = module.lookupSymbol<LLVM::LLVMFuncOp>(
+            StringAttr::get(rewriter.getContext(), intrinsicNameHere));
 
-        if (!func) {
+        if (!funcHere) {
           OpBuilder::InsertionGuard guard(rewriter);
           rewriter.setInsertionPointToStart(module.getBody());
-          func = rewriter.create<LLVM::LLVMFuncOp>(
-              rewriter.getUnknownLoc(), intrinsicName,
+          funcHere = rewriter.create<LLVM::LLVMFuncOp>(
+              rewriter.getUnknownLoc(), intrinsicNameHere,
               LLVM::LLVMFunctionType::get(resultType, {}));
         }
         destValue =
-            rewriter.create<LLVM::CallOp>(op->getLoc(), func, ValueRange{})
+            rewriter.create<LLVM::CallOp>(op->getLoc(), funcHere, ValueRange{})
                 ->getOpResult(0);
       }
 
@@ -2306,6 +2306,12 @@ struct ConvertAIEVecToLLVMPass
 
 std::unique_ptr<mlir::Pass> createConvertAIEVecToLLVMPass() {
   return std::make_unique<ConvertAIEVecToLLVMPass>();
+}
+
+void registerConvertAIEVecToLLVMPass() {
+  mlir::registerPass([]() -> std::unique_ptr<mlir::Pass> {
+    return createConvertAIEVecToLLVMPass();
+  });
 }
 
 }  // namespace mlir::iree_compiler::aievec

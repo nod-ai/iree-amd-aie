@@ -17,6 +17,7 @@
 #include "mlir/Interfaces/InferTypeOpInterface.h"
 #include "mlir/Interfaces/SideEffectInterfaces.h"
 
+// clang-format off
 #include "aievec/AIEVecEnums.h.inc"
 #define GET_ATTRDEF_CLASSES
 #include "aievec/AIEVecAttributes.h.inc"
@@ -25,5 +26,6 @@
 
 #define GET_OP_CLASSES
 #include "aievec/AIEVecOps.h.inc"
+// clang-format on
 
-#endif // AIE_DIALECT_AIEVEC_IR_AIEVECOPS_H
+#endif  // AIE_DIALECT_AIEVEC_IR_AIEVECOPS_H

@@ -32,7 +32,6 @@ using namespace mlir::iree_compiler::aievec;
 //===----------------------------------------------------------------------===//
 
 void AIEVecDialect::initialize() {
-  registerTypes();
   addAttributes<
 #define GET_ATTRDEF_LIST
 #include "aievec/AIEVecAttributes.cpp.inc"

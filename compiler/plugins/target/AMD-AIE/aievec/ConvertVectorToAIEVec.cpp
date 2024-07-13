@@ -87,7 +87,7 @@ createRedundantLoadStoreOptimizationPass() {
 // Pipeline implementations
 //===---------------------------------------------------------------------------
 void mlir::iree_compiler::aievec::buildConvertVectorToAIEVec(
-    OpPassManager &pm, const ConvertVectorToAIEVecOptions &options) {
+    OpPassManager &pm) {
   // Pre-conversion passes.
   pm.addPass(createCanonicalizerPass());
   pm.addPass(createRedundantLoadStoreOptimizationPass());
@@ -97,8 +97,7 @@ void mlir::iree_compiler::aievec::buildConvertVectorToAIEVec(
   //============================================================================
 
   // NOTE: This sub-pipeline ingests arbitrary MLIR Vector code.
-  buildCanonicalizeVectorForAIEVec(
-      pm, options.getCanonicalizeVectorForAIEVecOptions());
+  buildCanonicalizeVectorForAIEVec(pm);
   // NOTE: At this stage, all the Vector code in the IR can be mapped
   // NOTE: to AIEVec operations.
 
@@ -108,7 +107,7 @@ void mlir::iree_compiler::aievec::buildConvertVectorToAIEVec(
 
   // NOTE: This sub-pipeline ingests MLIR Vector code that can be mapped to
   // NOTE: AIEVec operations.
-  buildLowerVectorToAIEVec(pm, options.getLowerVectorToAIEVecOptions());
+  buildLowerVectorToAIEVec(pm);
   // NOTE: At this stage, all vector operations are expressed in AIEVec dialect.
 
   // Post-conversion passes.

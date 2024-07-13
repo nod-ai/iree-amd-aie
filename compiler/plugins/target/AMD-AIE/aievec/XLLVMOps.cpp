@@ -29,7 +29,7 @@ using namespace mlir::iree_compiler::aievec::xllvm;
 void XLLVMDialect::initialize() {
   addOperations<
 #define GET_OP_LIST
-#include "aievec/XLLVMOps.cpp.inc"
+#include "aievec/XLLVMAIE2IntrOps.cpp.inc"
       >();
 }
 
@@ -67,4 +67,4 @@ llvm::CallInst *createExternalLLVMIntrinsicCall(
 }  // namespace mlir::iree_compiler::aievec::xllvm
 
 #define GET_OP_CLASSES
-#include "aievec/XLLVMOps.cpp.inc"
+#include "aievec/XLLVMAIE2IntrOps.cpp.inc"

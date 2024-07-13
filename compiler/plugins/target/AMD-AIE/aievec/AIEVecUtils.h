@@ -18,22 +18,10 @@
 
 #include "AIEVecDialect.h"
 #include "AIEVecOps.h"
-#include "AIEVecTypes.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
 
 namespace mlir::iree_compiler::aievec {
-
-// For input val, return its value in hex. Since we currently support each
-// offset value to be only 4 bits, the val must be < 16
-inline char getHexValue(int val) {
-  assert(val >= 0 && val < 16);
-  if (val <= 9) return '0' + val;
-  return 'A' + (val - 10);
-}
-
-// Return true if the number is a power of 2
-inline bool isPowerOfTwo(int32_t n) { return (n & (n - 1)) == 0; }
 
 // Create a vector type, given the lanes and underlying element type
 inline mlir::VectorType createVectorType(unsigned lanes,

@@ -39,7 +39,7 @@
 
 #define GET_OP_CLASSES
 #include "aievec/XLLVMDialect.h.inc"
-#include "aievec/XLLVMOps.h.inc"
+#include "aievec/XLLVMAIE2IntrOps.h.inc"
 
 namespace llvm {
 

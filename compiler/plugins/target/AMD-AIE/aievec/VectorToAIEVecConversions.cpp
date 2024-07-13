@@ -1010,262 +1010,6 @@ struct LowerVectorMulIOpToAIEVecMulOp : OpConversionPattern<arith::MulIOp> {
 };
 
 template <typename SrcOpTy, typename DstOpTy>
-struct LowerVectorAddOrSubOpToAIEVecAddElemOrSubElemOp
-    : OpConversionPattern<SrcOpTy> {
-  using OpConversionPattern<SrcOpTy>::OpConversionPattern;
-  using OpAdaptor = typename SrcOpTy::Adaptor;
-
-  LogicalResult matchAndRewrite(
-      SrcOpTy srcOp, OpAdaptor adaptor,
-      ConversionPatternRewriter &rewriter) const override {
-    VectorType resultType = dyn_cast<VectorType>(srcOp.getType());
-    if (!resultType) return failure();
-
-    // A set recording the vector lane size and element width we are supporting
-    // for AIE2.
-    llvm::SmallSet<std::pair<unsigned, signed>, 16> laneSizeElWidthPairSet;
-    laneSizeElWidthPairSet.insert({64, 8});
-    laneSizeElWidthPairSet.insert({32, 16});
-    laneSizeElWidthPairSet.insert({16, 32});
-    laneSizeElWidthPairSet.insert({32, 32});
-
-    auto lhs = adaptor.getLhs();
-    auto rhs = adaptor.getRhs();
-    auto lhsDefOp = lhs.getDefiningOp();
-    auto rhsDefOp = rhs.getDefiningOp();
-    if ((lhsDefOp && isa<arith::MulIOp>(lhsDefOp)) ||
-        (rhsDefOp && isa<arith::MulIOp>(rhsDefOp)) ||
-        (lhsDefOp && isa<arith::MulFOp>(lhsDefOp)) ||
-        (rhsDefOp && isa<arith::MulFOp>(rhsDefOp)))
-      return failure();
-
-    Type scalarType = resultType.getElementType();
-    unsigned resultElWidth = scalarType.getIntOrFloatBitWidth();
-    unsigned laneSize = aievec::getVectorLaneSize(resultType);
-
-    // Integer cases
-    if (isa<IntegerType>(scalarType)) {
-      if (!laneSizeElWidthPairSet.count(
-              std::make_pair(laneSize, resultElWidth)))
-        return failure();
-
-      // If the ops are defined without extension ops and with supported data
-      // type, the arith::AddI or arith::SubI can be directly replaced with
-      // aievec::AddElem or aievec::SubElem.
-      if (!lhsDefOp && !rhsDefOp) {
-        if (laneSize * resultElWidth == 512) {
-          rewriter.replaceOpWithNewOp<DstOpTy>(srcOp, srcOp.getType(), lhs,
-                                               rhs);
-          return success();
-        }
-        return genAddElemAIE2<SrcOpTy, DstOpTy>(rewriter, lhs, rhs, resultType,
-                                                srcOp);
-      }
-
-      // If element width is 32, we need to consider sign extension cases
-      if (resultElWidth == 32) {
-        auto lhsExt = getSourceOfWideningOp(lhs).value_or(nullptr);
-        auto rhsExt = getSourceOfWideningOp(rhs).value_or(nullptr);
-
-        if (!lhsExt && !rhsExt) {
-          if (laneSize * resultElWidth == 512) {
-            rewriter.replaceOpWithNewOp<DstOpTy>(srcOp, srcOp.getType(), lhs,
-                                                 rhs);
-            return success();
-          }
-          return genAddElemAIE2<SrcOpTy, DstOpTy>(rewriter, lhs, rhs,
-                                                  resultType, srcOp);
-        }
-
-        if (lhsExt && rhsExt) {
-          auto lval = lhsExt;
-          auto rval = rhsExt;
-          VectorType lSrcType = cast<VectorType>(lval.getType());
-
-          Type accType = aievec::getVectorOpDestType(lSrcType, /*AIE2 =*/true);
-          auto lUpsOp =
-              rewriter.create<aievec::UPSOp>(srcOp.getLoc(), accType, lval);
-          auto rUpsOp =
-              rewriter.create<aievec::UPSOp>(srcOp.getLoc(), accType, rval);
-          auto elemOp = rewriter.create<DstOpTy>(
-              srcOp.getLoc(), lUpsOp->getResult(0).getType(),
-              lUpsOp->getResult(0), rUpsOp->getResult(0));
-          rewriter.replaceOpWithNewOp<aievec::CastOp>(
-              srcOp, srcOp.getType(), elemOp.getResult(), /*isResAcc*/ false);
-          return success();
-        }
-
-        if (!lhsExt || !rhsExt) {
-          auto lval = lhsExt ? lhsExt : lhs;
-          auto rval = rhsExt ? rhsExt : rhs;
-          auto extVal = lhsExt ? lval : rval;
-          VectorType vType = cast<VectorType>(extVal.getType());
-          unsigned bitWidth = vType.getElementType().getIntOrFloatBitWidth();
-
-          if (bitWidth != 8 && bitWidth != 16) {
-            return genAddElemAIE2<SrcOpTy, DstOpTy>(rewriter, lhs, rhs,
-                                                    resultType, srcOp);
-          }
-
-          if (bitWidth * laneSize != 256) {
-            return genAddElemAIE2<SrcOpTy, DstOpTy>(rewriter, lhs, rhs,
-                                                    resultType, srcOp);
-          }
-
-          Type accType = nullptr;
-
-          if (bitWidth == 8) {
-            accType = aievec::getVectorOpDestType(vType, /*AIE2 =*/true);
-            Value valToUps = lhsExt ? lval : rval;
-            Value valToCast = lhsExt ? rval : lval;
-            auto upsOp = rewriter.create<aievec::UPSOp>(srcOp.getLoc(), accType,
-                                                        valToUps);
-            auto castOp = rewriter.create<aievec::CastOp>(
-                srcOp.getLoc(), resultType, valToCast, /*isResAcc*/ true);
-            Value lhsToElemOp =
-                lhsExt ? upsOp->getResult(0) : castOp->getResult(0);
-            Value rhsToElemOp =
-                lhsExt ? castOp->getResult(0) : upsOp->getResult(0);
-            auto elemOp = rewriter.create<DstOpTy>(
-                srcOp.getLoc(), upsOp->getResult(0).getType(), lhsToElemOp,
-                rhsToElemOp);
-            rewriter.replaceOpWithNewOp<aievec::CastOp>(
-                srcOp, srcOp.getType(), elemOp.getResult(), /*isResAcc*/ false);
-            return success();
-          }
-
-          if (bitWidth == 16) {
-            accType = aievec::getVectorOpDestType(resultType, /*AIE2 =*/true);
-            auto lUpsOp =
-                rewriter.create<aievec::UPSOp>(srcOp.getLoc(), accType, lval);
-            auto rUpsOp =
-                rewriter.create<aievec::UPSOp>(srcOp.getLoc(), accType, rval);
-
-            auto elemOp = rewriter.create<DstOpTy>(
-                srcOp.getLoc(), lUpsOp->getResult(0).getType(),
-                lUpsOp->getResult(0), rUpsOp->getResult(0));
-
-            auto shiftParamOp = rewriter.create<arith::ConstantOp>(
-                srcOp.getLoc(), rewriter.getI32IntegerAttr(0));
-            rewriter.replaceOpWithNewOp<aievec::SRSOp>(
-                srcOp, srcOp.getType(), elemOp.getResult(),
-                shiftParamOp.getResult());
-            return success();
-          }
-        }
-      } else {
-        rewriter.replaceOpWithNewOp<DstOpTy>(srcOp, srcOp.getType(), lhs, rhs);
-        return success();
-      }
-    }
-    // Float types
-    else {
-      if (laneSize != 16) return failure();
-
-      // v16float or v16bf16 with extension op case
-      if (resultElWidth == 32) {
-        if (!lhsDefOp && !rhsDefOp) {
-          return genAddElemAIE2<SrcOpTy, DstOpTy>(rewriter, lhs, rhs,
-                                                  resultType, srcOp);
-        }
-
-        auto lhsExt = getSourceOfWideningOp(lhs).value_or(nullptr);
-        auto rhsExt = getSourceOfWideningOp(rhs).value_or(nullptr);
-        // v16float
-        if (!lhsExt && !rhsExt) {
-          return genAddElemAIE2<SrcOpTy, DstOpTy>(rewriter, lhs, rhs,
-                                                  resultType, srcOp);
-        }
-
-        // v16bf16 with two extension ops
-        if (lhsExt && rhsExt) {
-          auto lval = lhsExt;
-          auto rval = rhsExt;
-          VectorType vType = cast<VectorType>(lval.getType());
-
-          Type accType = aievec::getVectorOpDestType(vType, /*AIE2 =*/true);
-          auto lUpsOp =
-              rewriter.create<aievec::UPSOp>(srcOp.getLoc(), accType, lval);
-          auto rUpsOp =
-              rewriter.create<aievec::UPSOp>(srcOp.getLoc(), accType, rval);
-          auto elemOp = rewriter.create<DstOpTy>(
-              srcOp.getLoc(), lUpsOp->getResult(0).getType(),
-              lUpsOp->getResult(0), rUpsOp->getResult(0));
-          rewriter.replaceOpWithNewOp<aievec::CastOp>(srcOp, srcOp.getType(),
-                                                      elemOp.getResult());
-          return success();
-        }
-
-        // v16bf16 with one extension op
-        if (!lhsExt || !rhsExt) {
-          auto lval = lhsExt ? lhsExt : lhs;
-          auto rval = rhsExt ? rhsExt : rhs;
-          auto extVal = lhsExt ? lval : rval;
-          VectorType vType = cast<VectorType>(extVal.getType());
-          Type accType = aievec::getVectorOpDestType(vType, /*AIE2 =*/true);
-
-          aievec::UPSOp upsOp;
-          aievec::CastOp castOp;
-          if (lhsExt) {
-            upsOp =
-                rewriter.create<aievec::UPSOp>(srcOp.getLoc(), accType, lval);
-            castOp = rewriter.create<aievec::CastOp>(srcOp.getLoc(), resultType,
-                                                     rval,
-                                                     /*isResAcc*/ true);
-          } else {
-            upsOp =
-                rewriter.create<aievec::UPSOp>(srcOp.getLoc(), accType, rval);
-            castOp = rewriter.create<aievec::CastOp>(srcOp.getLoc(), resultType,
-                                                     lval,
-                                                     /*isResAcc*/ true);
-          }
-
-          auto elemOp = rewriter.create<DstOpTy>(
-              srcOp.getLoc(), upsOp->getResult(0).getType(),
-              upsOp->getResult(0), castOp->getResult(0));
-
-          rewriter.replaceOpWithNewOp<aievec::CastOp>(
-              srcOp, srcOp.getType(), elemOp.getResult(), /*isResAcc*/ false);
-
-          return success();
-        }
-      }
-
-      // v16bfloat16
-      Type accType = aievec::getVectorOpDestType(resultType, /*AIE2 =*/true);
-      auto lUpsOp =
-          rewriter.create<aievec::UPSOp>(srcOp.getLoc(), accType, lhs);
-      auto rUpsOp =
-          rewriter.create<aievec::UPSOp>(srcOp.getLoc(), accType, rhs);
-      auto elemOp = rewriter.create<DstOpTy>(
-          srcOp.getLoc(), lUpsOp->getResult(0).getType(), lUpsOp->getResult(0),
-          rUpsOp->getResult(0));
-      auto shiftParamOp = rewriter.create<arith::ConstantOp>(
-          srcOp.getLoc(), rewriter.getI32IntegerAttr(0));
-      rewriter.replaceOpWithNewOp<aievec::SRSOp>(
-          srcOp, srcOp.getType(), elemOp.getResult(), shiftParamOp.getResult());
-
-      return success();
-    }
-
-    return failure();
-  }
-};
-
-using LowerVectorAddIOpToAIEVecAddElemOp =
-    LowerVectorAddOrSubOpToAIEVecAddElemOrSubElemOp<arith::AddIOp,
-                                                    aievec::AddElemOp>;
-using LowerVectorSubIOpToAIEVecSubElemOp =
-    LowerVectorAddOrSubOpToAIEVecAddElemOrSubElemOp<arith::SubIOp,
-                                                    aievec::SubElemOp>;
-using LowerVectorAddFOpToAIEVecAddElemOp =
-    LowerVectorAddOrSubOpToAIEVecAddElemOrSubElemOp<arith::AddFOp,
-                                                    aievec::AddElemOp>;
-using LowerVectorSubFOpToAIEVecSubElemOp =
-    LowerVectorAddOrSubOpToAIEVecAddElemOrSubElemOp<arith::SubFOp,
-                                                    aievec::SubElemOp>;
-
-template <typename SrcOpTy, typename DstOpTy>
 struct LowerVectorMinMaxOpToAIEVecMinMaxOp : OpConversionPattern<SrcOpTy> {
   using OpConversionPattern<SrcOpTy>::OpConversionPattern;
   using OpAdaptor = typename SrcOpTy::Adaptor;
@@ -2808,21 +2552,9 @@ static void populateAIEVecV1ConversionPatterns(RewritePatternSet &patterns) {
   // clang-format on
 }
 
-static void populateAIEVecV2ConversionPatterns(RewritePatternSet &patterns,
-                                               aievec::TargetBackend backend) {
+static void populateAIEVecV2ConversionPatterns(RewritePatternSet &patterns) {
   // clang-format off
   // TODO: Reorder these alphabetically
-  if (backend == aievec::TargetBackend::CPP) {
-    patterns.add<
-        LowerVectorTransferReadToAIEUPD
-      >(patterns.getContext(), 128, 1024, 256, 1024);
-    patterns.add<
-        LowerVectorAddFOpToAIEVecAddElemOp,
-        LowerVectorSubFOpToAIEVecSubElemOp,
-        LowerVectorAddIOpToAIEVecAddElemOp,
-        LowerVectorSubIOpToAIEVecSubElemOp
-      >(patterns.getContext());
-  }
   patterns.add<
       ComputeExpOpByLUTPattern,
       ComputeInvOpByLUTPattern,
@@ -2861,7 +2593,7 @@ static void populateAIEVecV2ConversionPatterns(RewritePatternSet &patterns,
       LowerVectorTransposeOpToAIEVecShuffleOpPattern
       >(patterns.getContext());
   patterns.add<LowerVectorContractionOpToAIEVecMatMulPattern
-      >(patterns.getContext(), backend == aievec::TargetBackend::CPP);
+      >(patterns.getContext(), false);
   // clang-format on
 }
 
@@ -2916,13 +2648,9 @@ static bool isInSigmoidOperationChain(math::ExpOp expOp) {
   return true;
 }
 
-static void configureAIEVecCommonLegalizations(ConversionTarget &target,
-                                               aievec::TargetBackend backend) {
+static void configureAIEVecCommonLegalizations(ConversionTarget &target) {
   target.addLegalDialect<mlir::iree_compiler::aievec::AIEVecDialect,
                          arith::ArithDialect, emitc::EmitCDialect>();
-  if (backend == aievec::TargetBackend::CPP) {
-    target.addIllegalOp<vector::TransferReadOp>();
-  }
   target.addIllegalOp<vector::ExtractStridedSliceOp>();
 
   target.addDynamicallyLegalOp<arith::ExtFOp>([](arith::ExtFOp extfOp) {
@@ -3217,10 +2945,6 @@ static void configureAIEVecCommonLegalizations(ConversionTarget &target,
     return laneSize * elWidth != 512;
   });
 
-  if (backend == aievec::TargetBackend::CPP) {
-    target.addDynamicallyLegalOp<arith::AddIOp>(
-        [](arith::AddIOp op) { return !isa<VectorType>(op.getType()); });
-  }
   target.addDynamicallyLegalOp<arith::AddFOp>(
       [](arith::AddFOp op) { return !isa<VectorType>(op.getType()); });
   target.addDynamicallyLegalOp<arith::SubIOp>(
@@ -3229,8 +2953,7 @@ static void configureAIEVecCommonLegalizations(ConversionTarget &target,
       [](arith::SubFOp op) { return !isa<VectorType>(op.getType()); });
 }
 
-static void configureAIEVecV1Legalizations(ConversionTarget &target,
-                                           aievec::TargetBackend backend) {
+static void configureAIEVecV1Legalizations(ConversionTarget &target) {
   target.addDynamicallyLegalOp<arith::MulIOp>(
       [](arith::MulIOp op) { return !isa<VectorType>(op.getType()); });
   target.addDynamicallyLegalOp<arith::MulFOp>(
@@ -3268,8 +2991,7 @@ static void configureAIEVecV1Legalizations(ConversionTarget &target,
   target.addLegalDialect<memref::MemRefDialect>();
 }
 
-static void configureAIEVecV2Legalizations(ConversionTarget &target,
-                                           aievec::TargetBackend backend) {
+static void configureAIEVecV2Legalizations(ConversionTarget &target) {
   target.addLegalOp<UnrealizedConversionCastOp>();
   target.addLegalOp<vector::ShapeCastOp>();
 
@@ -3285,19 +3007,6 @@ static void configureAIEVecV2Legalizations(ConversionTarget &target,
   elWidthSet.insert(8);
   elWidthSet.insert(16);
   elWidthSet.insert(32);
-
-  if (backend == aievec::TargetBackend::CPP) {
-    target.addDynamicallyLegalOp<arith::AddIOp>([=](arith::AddIOp op) {
-      auto resultType = dyn_cast<VectorType>(op.getType());
-      if (!resultType) return true;
-
-      auto resultElWidth = resultType.getElementType().getIntOrFloatBitWidth();
-      unsigned laneSize = aievec::getVectorLaneSize(resultType);
-
-      return !laneSizeElWidthPairSet.count(
-          std::make_pair(laneSize, resultElWidth));
-    });
-  }
 
   target.addDynamicallyLegalOp<arith::SubIOp>([=](arith::SubIOp op) {
     auto resultType = dyn_cast<VectorType>(op.getType());
@@ -3485,12 +3194,6 @@ struct LowerVectorToAIEVec : PassWrapper<LowerVectorToAIEVec, OperationPass<>> {
   LowerVectorToAIEVec() = default;
   LowerVectorToAIEVec(const LowerVectorToAIEVec &pass) : PassWrapper(pass) {}
 
-  LowerVectorToAIEVec(const LowerVectorToAIEVecOptions &options)
-      : LowerVectorToAIEVec() {
-    aieTarget = options.aieTarget;
-    TargetBackend = options.targetBackend;
-  }
-
   // In case we want to register this pass as a standalone pass for test
   // purposes.
   StringRef getArgument() const final { return "test-lower-vector-to-aievec"; }
@@ -3504,70 +3207,23 @@ struct LowerVectorToAIEVec : PassWrapper<LowerVectorToAIEVec, OperationPass<>> {
                     vector::VectorDialect, emitc::EmitCDialect>();
   }
 
-  Option<std::string> aieTarget{
-      *this, "aie-target",
-      llvm::cl::desc("Select AIE version: \"aie\" or \"aie2\". This will "
-                     "determine the vector size and available operations."),
-      llvm::cl::init("aie")};
-
-  Option<std::string> TargetBackend{
-      *this, "target-backend",
-      llvm::cl::desc("Select translation backend: \"cpp\" or \"llvmir\". This "
-                     "will determine the aievec operations used to convert "
-                     "from vector dialect."),
-      llvm::cl::init("cpp")};
-
   void runOnOperation() override {
     auto op = getOperation();
     MLIRContext *context = &getContext();
     RewritePatternSet patterns(context);
     ConversionTarget target(*context);
-    auto aieVersion = aievec::AIEArch::AIE;
-    if (!aieTarget.empty()) {
-      std::string target = aieTarget;
-      if (target == "aieml" || target == "aie2")
-        aieVersion = aievec::AIEArch::AIE2;
-      else if (target != "aie") {
-        op->emitError() << "unknown AIE target '" << aieTarget << "'";
-        return signalPassFailure();
-      }
-    }
-
-    aievec::TargetBackend backend = aievec::TargetBackend::CPP;
-    if (!TargetBackend.empty()) {
-      std::string backendStr = TargetBackend;
-      if (backendStr == "llvmir") {
-        backend = aievec::TargetBackend::LLVMIR;
-        if (aieVersion == aievec::AIEArch::AIE) {
-          op->emitError() << "targetting LLVM IR is not supported for AIEv1";
-          signalPassFailure();
-          return;
-        }
-      } else if (backendStr != "cpp") {
-        op->emitError() << "unknown target backend'" << TargetBackend << "'";
-        signalPassFailure();
-        return;
-      }
-    }
-
     populateAIEVecCommonConversionPatterns(patterns);
-    configureAIEVecCommonLegalizations(target, backend);
-    if (aieVersion == aievec::AIEArch::AIE) {
-      populateAIEVecV1ConversionPatterns(patterns);
-      configureAIEVecV1Legalizations(target, backend);
-    } else {
-      populateAIEVecV2ConversionPatterns(patterns, backend);
-      configureAIEVecV2Legalizations(target, backend);
-    }
+    configureAIEVecCommonLegalizations(target);
+    populateAIEVecV2ConversionPatterns(patterns);
+    configureAIEVecV2Legalizations(target);
 
     if (failed(applyPartialConversion(op, target, std::move(patterns))))
       return signalPassFailure();
   }
 };
 
-static std::unique_ptr<Pass> createLowerVectorToAIEVec(
-    const LowerVectorToAIEVecOptions &options) {
-  return std::make_unique<LowerVectorToAIEVec>(options);
+static std::unique_ptr<Pass> createLowerVectorToAIEVec() {
+  return std::make_unique<LowerVectorToAIEVec>();
 }
 
 //===---------------------------------------------------------------------------
@@ -3628,10 +3284,9 @@ struct SimplifyUPDOpsPass : PassWrapper<SimplifyUPDOpsPass, OperationPass<>> {
 //=============== Main Vector2AIEVec Pipeline Configuration ==================//
 //============================================================================//
 
-void mlir::iree_compiler::aievec::buildLowerVectorToAIEVec(
-    OpPassManager &pm, const LowerVectorToAIEVecOptions &options) {
+void mlir::iree_compiler::aievec::buildLowerVectorToAIEVec(OpPassManager &pm) {
   // Add lowering from `Vector` to `AIEVec`
-  pm.addPass(createLowerVectorToAIEVec(options));
+  pm.addPass(createLowerVectorToAIEVec());
   pm.addPass(createCanonicalizerPass());
 
   // Simplify UPD ops

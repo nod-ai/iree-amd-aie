@@ -13,15 +13,7 @@
 #ifndef AIE_DIALECT_AIEVEC_IR_AIEVECDIALECT_H
 #define AIE_DIALECT_AIEVEC_IR_AIEVECDIALECT_H
 
-#include "AIEVecTypes.h"
-
-namespace mlir::iree_compiler::aievec {
-
-class AIEVecDialect;
-// Translation from AIE vector code to C++
-void registerAIEVecToCppTranslation();
-
-}  // namespace mlir::iree_compiler::aievec
+#include "mlir/IR/Dialect.h"
 
 #define GET_OP_CLASSES
 #include "aievec/AIEVecOpsDialect.h.inc"
