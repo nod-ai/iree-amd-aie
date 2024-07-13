@@ -30,7 +30,7 @@ sudo apt-get install libboost-all-dev
 yum install -y boost-static
 ```
 
-## Building with IREE
+## Building (along with IREE)
 
 ### Just show me the CMake
 
