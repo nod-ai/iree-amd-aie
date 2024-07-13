@@ -129,7 +129,10 @@ static std::string getUUIDString() {
   return val;
 }
 
-Expected<std::string> runTool(
+// Returns either:
+//  -- the output of running the tool, if run without failure, or
+//  -- an empty optional, if the tool fails to run.
+std::optional<std::string> runTool(
     StringRef program, ArrayRef<std::string> args, bool verbose,
     std::optional<ArrayRef<StringRef>> env = std::nullopt) {
   if (verbose) {
@@ -140,12 +143,20 @@ Expected<std::string> runTool(
     for (auto &s : args) llvm::outs() << " " << s;
     llvm::outs() << "\n";
   }
+
+  // Check that 'program' is a valid path, if not, fail immediately. 
+  if (!sys::fs::exists(program)) {
+    llvm::errs() << "Program " << program << " does not exist\n";
+    return {};
+  }
+
+  // Run the program, piping any output to a temporary file (we only want to
+  // print to terminal if verbose is true).
   std::string errMsg;
   sys::ProcessStatistics stats;
   std::optional<sys::ProcessStatistics> optStats(stats);
   SmallVector<StringRef, 8> pArgs = {program};
   pArgs.append(args.begin(), args.end());
-
   SmallVector<char> temporaryPath;
   {
     std::string prefix{"tmpRunTool"};
@@ -155,7 +166,7 @@ Expected<std::string> runTool(
     if (errorCode) {
       llvm::errs() << "Failed to create temporary file: " << errorCode.message()
                    << "\n";
-      return make_error<StringError>(errorCode);
+      return {};
     }
   }
 
@@ -167,35 +178,54 @@ Expected<std::string> runTool(
       sys::ExecuteAndWait(program, pArgs, env, /* redirects */ {tp, tp, tp}, 0,
                           0, &errMsg, nullptr, &optStats);
 
-  std::ifstream t(temporaryPathRef.str());
-  std::stringstream buffer;
-  if (t.is_open() && t.good()) {
-    buffer << t.rdbuf();
-  } else if (verbose)
-    llvm::outs() << "Failed to open temporary file " << temporaryPathRef.str()
-                 << ", not printing output\n";
+  auto maybeOutputFromFile = [&]() -> std::optional<std::string> {
+    std::ifstream t(temporaryPathRef.str());
+    std::stringstream buffer;
+    if (t.is_open() && t.good()) {
+      buffer << t.rdbuf();
+      return buffer.str();
+    }
+    return nullptr;
+  }();
+
+  if (!maybeOutputFromFile) {
+    llvm::errs() << "Failed to open temporary file " << temporaryPathRef.str()
+                 << "\n";
+    return {};
+  }
+  auto outputFromFile = maybeOutputFromFile.value();
 
   if (verbose) {
     auto totalTime = std::chrono::duration_cast<std::chrono::duration<float>>(
                          stats.TotalTime)
                          .count();
     std::string exitStatusStr = result == 0 ? "Succeeded" : "Failed";
-    llvm::outs() << exitStatusStr << " in " << totalTime
+    llvm::outs() << exitStatusStr << " in totalTime " << totalTime
                  << " [s]. Exit code=" << result << "\n";
-    llvm::outs() << buffer.str();
+    llvm::outs() << outputFromFile << "\n";
   }
 
-  return buffer.str();
+  if (result != 0) {
+    llvm::errs() << "Failed to run tool: " << program << " "
+                 << llvm::join(args, " ") << " with error: " << errMsg << "\n";
+    return {};
+  }
+
+  return outputFromFile;
 }
 
 bool useMeBasic(const std::string &peanoDir, bool verbose) {
+  if (verbose)
+    llvm::outs() << "Checking if we should use me_basic, based on "
+                    "the version of peano\n";
   SmallString<64> peanoOptBin(peanoDir);
   sys::path::append(peanoOptBin, "bin", "opt");
-  auto versionOrError = runTool(peanoOptBin, {"--version"}, verbose);
+  auto maybeVersion = runTool(peanoOptBin, {"--version"}, verbose);
   // default to "yes do use"
-  if (!versionOrError) return true;
+  if (!maybeVersion) return true;
+  auto version = maybeVersion.value();
   std::regex r("LLVM version 17.0.0git", std::regex_constants::multiline);
-  return std::regex_search(versionOrError.get(), r);
+  return std::regex_search(version, r);
 }
 
 // Generate the elf files for the core
@@ -211,6 +241,8 @@ static LogicalResult generateCoreElfFiles(
   auto tileOps = deviceOp.getOps<AIE::TileOp>();
 
   std::string errorMessage;
+
+  const bool doUseMeBasic = !useChess && useMeBasic(peanoDir, verbose);
 
   for (auto tileOp : tileOps) {
     int col = tileOp.colIndex();
@@ -301,7 +333,7 @@ static LogicalResult generateCoreElfFiles(
         flags.push_back(targetFlag);
         flags.emplace_back(objFile);
         SmallString<64> meBasicPath(mlirAIEInstallDir);
-        if (useMeBasic(peanoDir, verbose)) {
+        if (doUseMeBasic) {
           sys::path::append(meBasicPath, "aie_runtime_lib",
                             StringRef(targetArch).upper(), "me_basic.o");
           flags.emplace_back(meBasicPath);
