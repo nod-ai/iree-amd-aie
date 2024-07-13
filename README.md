@@ -21,7 +21,29 @@ Preparing repository:
 git submodule update --init
 ```
 
-## Enabling in IREE
+Building the runtime driver (see below) for the amd-aie backend/plugin for IREE (this repo) requires Boost:
+
+```
+# Debian/Ubuntu
+sudo apt-get install libboost-all-dev
+# Alma/CentOS/RHEL
+yum install -y boost-static
+```
+
+## Building with IREE
+
+### Just show me the CMake
+
+```
+cmake -B $WHERE_YOU_WOULD_LIKE_TO_BUILD -S $IREE_REPO_SRC_DIR \
+-DIREE_CMAKE_PLUGIN_PATHS=$IREE_AMD_AIE_REPO_SRC_DIR -DIREE_BUILD_PYTHON_BINDINGS=ON \
+-DIREE_INPUT_STABLEHLO=OFF -DIREE_INPUT_TORCH=OFF -DIREE_INPUT_TOSA=OFF \
+-DIREE_HAL_DRIVER_DEFAULTS=OFF -DIREE_TARGET_BACKEND_DEFAULTS=OFF -DIREE_TARGET_BACKEND_LLVM_CPU=ON \
+-DIREE_BUILD_TESTS=ON -DIREE_EXTERNAL_HAL_DRIVERS=xrt -DXRT_DIR=$XRT_INSTALL_DIR/share/cmake/XRT \
+-DCMAKE_INSTALL_PREFIX=$WHERE_YOU_WOULD_LIKE_TO_INSTALL
+```
+
+### Instructions
 
 To pin IREE and its submodules (LLVM, etc) to commits which are compatible
 with this plugin, run
@@ -30,21 +52,42 @@ with this plugin, run
 python3 sync_deps.py
 ```
 
-from within the iree-amd-aie root directory. Then,
-
+from within the iree-amd-aie root directory. Then the bare minimum CMake configure command is
 
 ```
 cd ../iree-build
-cmake -DIREE_CMAKE_PLUGIN_PATHS=../iree-amd-aie .
+cmake -DIREE_BUILD_PYTHON_BINDINGS=ON -DIREE_CMAKE_PLUGIN_PATHS=$PWD/../iree-amd-aie .
 ninja
 ```
 
-to build IREE with amd-aie plugin. Note for the time being building the amd-aie
-backend requires headers-only Boost library. On Ubuntu you can do this with
+to build IREE with amd-aie plugin. Very likely, you will want to use `ccache` and `lld` (or some other modern linker like [mold](https://github.com/rui314/mold))
 
 ```
-sudo apt-get install libboost-dev
+-DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+-DCMAKE_EXE_LINKER_FLAGS="-fuse-ld=lld" -DCMAKE_SHARED_LINKER_FLAGS="-fuse-ld=lld"
 ```
+
+Note, if you don't plan on using any of IREE's frontends or backends/targets (e.g., you're doing work on this code base itself), you can opt-out with
+
+```
+-DIREE_INPUT_STABLEHLO=OFF -DIREE_INPUT_TORCH=OFF -DIREE_INPUT_TOSA=OFF
+-DIREE_HAL_DRIVER_DEFAULTS=OFF -DIREE_TARGET_BACKEND_DEFAULTS=OFF
+-DIREE_TARGET_BACKEND_LLVM_CPU=ON
+```
+
+With the above you can also skip cloning the `stablehlo` and `torch-mlir` submodules/repos but in this case you will need to add 
+
+```
+-DIREE_ERROR_ON_MISSING_SUBMODULES=OFF
+```
+
+Finally, if you're "bringing your own LLVM", i.e., you have a prebuilt/compiled distribution of LLVM you'd like to use, you can add
+
+```
+-DIREE_BUILD_BUNDLED_LLVM=OFF
+```
+
+Note, in this case you will need to supply `-DLLVM_EXTERNAL_LIT=$SOMEWHERE` (e.g., `pip install lit; SOMEWHERE=$(which lit)`).
 
 Lit tests specific to AIE can be run with something like:
 
