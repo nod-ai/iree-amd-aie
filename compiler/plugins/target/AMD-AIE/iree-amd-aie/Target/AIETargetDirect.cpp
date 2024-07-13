@@ -26,6 +26,7 @@
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/Path.h"
+#include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/ToolOutputFile.h"
 #include "mlir/Conversion/FuncToLLVM/ConvertFuncToLLVM.h"
 #include "mlir/Conversion/Passes.h"
@@ -36,6 +37,7 @@
 #include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/Dialect/Transform/IR/TransformDialect.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
+#include "mlir/Parser/Parser.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Support/FileUtilities.h"
 #include "mlir/Target/LLVMIR/Dialect/All.h"
@@ -341,34 +343,34 @@ LogicalResult AIETargetDirectBackend::serializeExecutable(
     llvm::sys::path::append(npuInstPath,
                             entryPointNamesFb[ordinal] + ".npu.txt");
 
-    xilinx::XCLBinGenConfig TK;
-    TK.PrintIRAfterAll = options.aie2xclbinPrintIrAfterAll;
-    TK.PrintIRBeforeAll = options.aie2xclbinPrintIrBeforeAll;
-    TK.PrintIRModuleScope = options.aie2xclbinPrintIrModuleScope;
-    TK.Timing = options.aie2xclbinTiming;
-    TK.TargetArch = "AIE2";
-    TK.TempDir = entryPointWorkDir.str();
-    TK.UseChess = options.useChess;
-    TK.Verbose = options.showInvokedCommands;
-    // The instance name is appended to the kernel name so we dont want it to be
-    // something too long.
-    TK.XCLBinInstanceName = "IREE";
-
     // Convert ordinal to hexadecimal string for xclbin kernel id.
     std::stringstream ordinalHex;
     ordinalHex << "0x" << std::hex << ordinal;
-    TK.XCLBinKernelID = ordinalHex.str();
-    TK.XCLBinKernelName = entryPointNamesFb[ordinal];
 
-    SmallString<64> aieToolsDir(options.vitisInstallDir);
-    llvm::sys::path::append(aieToolsDir, "aietools");
-    TK.AIEToolsDir = aieToolsDir.str();
-    TK.MLIRAIEInstallDir = options.mlirAieInstallDir;
-    TK.AMDAIEInstallDir = options.amdAieInstallDir;
-    TK.PeanoDir = options.peanoInstallDir;
+    ParserConfig pcfg(variantOp->getContext());
+    llvm::SourceMgr srcMgr;
 
-    if (failed(aie2xclbin(variantOp->getContext(), moduleOp, TK, npuInstPath,
-                          xclbinPath)))
+    OwningOpRef<ModuleOp> owningModuleOp =
+        parseSourceFile<ModuleOp>(inputMlirPath, srcMgr, pcfg);
+
+    if (failed(aie2xclbin(
+            /*ctx=*/variantOp->getContext(), /*moduleOp=*/*owningModuleOp,
+            /*outputNPU=*/npuInstPath.str().str(),
+            /*outputXCLBin=*/xclbinPath.str().str(),
+            /*printIRBeforeAll=*/options.aie2xclbinPrintIrBeforeAll,
+            /*printIRAfterAll=*/options.aie2xclbinPrintIrAfterAll,
+            /*printIRModuleScope=*/options.aie2xclbinPrintIrModuleScope,
+            /*timing=*/options.aie2xclbinTiming,
+            /*tempDir=*/entryPointWorkDir.str().str(),
+            /*useChess=*/options.useChess,
+            /*verbose=*/options.showInvokedCommands,
+            /*mlirAIEInstallDir=*/options.mlirAieInstallDir,
+            /*targetArch=*/"AIE2",
+            /*peanoDir=*/options.peanoInstallDir,
+            /*xclBinKernelID=*/ordinalHex.str(),
+            /*xclBinKernelName=*/entryPointNamesFb[ordinal],
+            /*xclBinInstanceName=*/"IREE",
+            /*amdAIEInstallDir=*/options.amdAieInstallDir)))
       return failure();
 
     std::vector<uint32_t> npuInstrs;

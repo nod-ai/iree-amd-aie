@@ -45,26 +45,25 @@ namespace {
 // Apply the pass manager specific options of the XCLBinGenConfig to the pass
 // manager. These control when (if ever) and what IR gets printed between
 // passes, and whether the pass manager uses multi-theading.
-void applyConfigToPassManager(XCLBinGenConfig &TK, PassManager &pm) {
-  bool printBefore = TK.PrintIRBeforeAll;
-  auto shouldPrintBeforePass = [printBefore](Pass *, Operation *) {
-    return printBefore;
+void applyConfigToPassManager(PassManager &pm, bool printIRBeforeAll,
+                              bool printIRAfterAll, bool printIRModuleScope,
+                              bool timing) {
+  auto shouldPrintBeforePass = [printIRBeforeAll](Pass *, Operation *) {
+    return printIRBeforeAll;
   };
 
-  bool printAfter = TK.PrintIRAfterAll;
-  auto shouldPrintAfterPass = [printAfter](Pass *, Operation *) {
-    return printAfter;
+  auto shouldPrintAfterPass = [printIRAfterAll](Pass *, Operation *) {
+    return printIRAfterAll;
   };
 
   pm.enableIRPrinting(shouldPrintBeforePass, shouldPrintAfterPass,
-                      TK.PrintIRModuleScope);
+                      printIRModuleScope);
 
-  bool timing = TK.Timing;
   if (timing) pm.enableTiming();
 }
 }  // namespace
 
-void findVitis(XCLBinGenConfig &TK) {
+void findVitis() {
   const char *env_vitis = ::getenv("VITIS");
   if (env_vitis == nullptr) {
     if (auto vpp = sys::findProgramByName("v++")) {
@@ -90,8 +89,7 @@ void findVitis(XCLBinGenConfig &TK) {
       aietools_path = vitis_path;
       sys::path::append(aietools_path, "cardano");
     }
-    TK.AIEToolsDir = std::string(aietools_path);
-    ::setenv("AIETOOLS", TK.AIEToolsDir.c_str(), 1);
+    ::setenv("AIETOOLS", aietools_path.c_str(), 1);
 
     SmallString<64> aietools_bin_path(aietools_path);
     sys::path::append(aietools_bin_path, "bin");
@@ -190,10 +188,10 @@ Expected<std::string> runTool(
   return buffer.str();
 }
 
-bool useMeBasic(XCLBinGenConfig &TK) {
-  SmallString<64> peanoOptBin(TK.PeanoDir);
+bool useMeBasic(const std::string &peanoDir, bool verbose) {
+  SmallString<64> peanoOptBin(peanoDir);
   sys::path::append(peanoOptBin, "bin", "opt");
-  auto versionOrError = runTool(peanoOptBin, {"--version"}, TK.Verbose);
+  auto versionOrError = runTool(peanoOptBin, {"--version"}, verbose);
   // default to "yes do use"
   if (!versionOrError) return true;
   std::regex r("LLVM version 17.0.0git", std::regex_constants::multiline);
@@ -201,9 +199,10 @@ bool useMeBasic(XCLBinGenConfig &TK) {
 }
 
 // Generate the elf files for the core
-static LogicalResult generateCoreElfFiles(ModuleOp moduleOp,
-                                          const StringRef objFile,
-                                          XCLBinGenConfig &TK) {
+static LogicalResult generateCoreElfFiles(
+    ModuleOp moduleOp, const StringRef objFile, const std::string &tempDir,
+    bool useChess, const std::string &mlirAIEInstallDir,
+    const std::string &targetArch, bool verbose, const std::string &peanoDir) {
   auto deviceOps = moduleOp.getOps<AIE::DeviceOp>();
   if (!llvm::hasSingleElement(deviceOps))
     return moduleOp.emitOpError("expected a single device op");
@@ -228,12 +227,12 @@ static LogicalResult generateCoreElfFiles(ModuleOp moduleOp,
       coreOp.setElfFile(elfFileName);
     }
 
-    SmallString<64> elfFile(TK.TempDir);
+    SmallString<64> elfFile(tempDir);
     sys::path::append(elfFile, elfFileName);
 
-    if (TK.UseChess) {
+    if (useChess) {
       // Use xbridge (to remove any peano dependency with use-chess option)
-      SmallString<64> bcfPath(TK.TempDir);
+      SmallString<64> bcfPath(tempDir);
       sys::path::append(bcfPath, elfFileName + ".bcf");
 
       {
@@ -259,12 +258,12 @@ static LogicalResult generateCoreElfFiles(ModuleOp moduleOp,
           extractedIncludes.push_back(i->str(1));
       }
 
-      SmallString<64> chessWrapperBin(TK.MLIRAIEInstallDir);
+      SmallString<64> chessWrapperBin(mlirAIEInstallDir);
       sys::path::append(chessWrapperBin, "bin", "xchesscc_wrapper");
-      SmallString<64> chessworkDir(TK.TempDir);
+      SmallString<64> chessworkDir(tempDir);
       sys::path::append(chessworkDir, "chesswork");
 
-      SmallVector<std::string> flags{StringRef(TK.TargetArch).lower(),
+      SmallVector<std::string> flags{StringRef(targetArch).lower(),
                                      "+w",
                                      std::string(chessworkDir),
                                      "-d",
@@ -276,10 +275,10 @@ static LogicalResult generateCoreElfFiles(ModuleOp moduleOp,
                                      std::string(objFile)};
       for (const auto &inc : extractedIncludes) flags.push_back(inc);
 
-      if (!runTool(chessWrapperBin, flags, TK.Verbose))
+      if (!runTool(chessWrapperBin, flags, verbose))
         coreOp.emitOpError("Failed to link with xbridge");
     } else {
-      SmallString<64> ldscript_path(TK.TempDir);
+      SmallString<64> ldscript_path(tempDir);
       sys::path::append(ldscript_path, elfFileName + ".ld");
       {
         auto ldscript_output = openOutputFile(ldscript_path, &errorMessage);
@@ -295,19 +294,19 @@ static LogicalResult generateCoreElfFiles(ModuleOp moduleOp,
       // We are running a clang command for now, but really this is an lld
       // command.
       {
-        std::string targetLower = StringRef(TK.TargetArch).lower();
+        std::string targetLower = StringRef(targetArch).lower();
         SmallVector<std::string, 10> flags;
         flags.push_back("-O2");
         std::string targetFlag = "--target=" + targetLower + "-none-elf";
         flags.push_back(targetFlag);
         flags.emplace_back(objFile);
-        SmallString<64> meBasicPath(TK.MLIRAIEInstallDir);
-        if (useMeBasic(TK)) {
+        SmallString<64> meBasicPath(mlirAIEInstallDir);
+        if (useMeBasic(peanoDir, verbose)) {
           sys::path::append(meBasicPath, "aie_runtime_lib",
-                            StringRef(TK.TargetArch).upper(), "me_basic.o");
+                            StringRef(targetArch).upper(), "me_basic.o");
           flags.emplace_back(meBasicPath);
         }
-        SmallString<64> libcPath(TK.PeanoDir);
+        SmallString<64> libcPath(peanoDir);
         sys::path::append(libcPath, "lib", targetLower + "-none-unknown-elf",
                           "libc.a");
         flags.emplace_back(libcPath);
@@ -316,9 +315,9 @@ static LogicalResult generateCoreElfFiles(ModuleOp moduleOp,
         flags.push_back(ldScriptFlag);
         flags.push_back("-o");
         flags.emplace_back(elfFile);
-        SmallString<64> clangBin(TK.PeanoDir);
+        SmallString<64> clangBin(peanoDir);
         sys::path::append(clangBin, "bin", "clang");
-        if (!runTool(clangBin, flags, TK.Verbose))
+        if (!runTool(clangBin, flags, verbose))
           return coreOp.emitOpError("failed to link elf file for core(")
                  << col << "," << row << ")";
       }
@@ -328,13 +327,16 @@ static LogicalResult generateCoreElfFiles(ModuleOp moduleOp,
 }
 
 static LogicalResult generateCDO(MLIRContext *context, ModuleOp moduleOp,
-                                 XCLBinGenConfig &TK) {
+                                 bool printIRBeforeAll, bool printIRAfterAll,
+                                 bool printIRModuleScope, bool timing,
+                                 const std::string &tempDir) {
   ModuleOp copy = moduleOp.clone();
   std::string errorMessage;
   // This corresponds to `process_host_cgen`, which is listed as host
   // compilation in aiecc.py... not sure we need this.
   PassManager passManager(context, ModuleOp::getOperationName());
-  applyConfigToPassManager(TK, passManager);
+  applyConfigToPassManager(passManager, printIRBeforeAll, printIRAfterAll,
+                           printIRModuleScope, timing);
 
   passManager.addNestedPass<AIE::DeviceOp>(
       mlir::iree_compiler::AMDAIE::createAMDAIEPathfinderPass());
@@ -342,16 +344,17 @@ static LogicalResult generateCDO(MLIRContext *context, ModuleOp moduleOp,
     return moduleOp.emitOpError(
         "failed to run passes to prepare of XCLBin generation");
 
-  if (failed(mlir::iree_compiler::AMDAIE::AIETranslateToCDODirect(copy,
-                                                                  TK.TempDir)))
+  if (failed(
+          mlir::iree_compiler::AMDAIE::AIETranslateToCDODirect(copy, tempDir)))
     return moduleOp.emitOpError("failed to emit CDO");
 
   copy->erase();
   return success();
 }
 
-static json::Object makeKernelJSON(std::string name, std::string id,
-                                   std::string instance) {
+static json::Object makeKernelJSON(const std::string &name,
+                                   const std::string &id,
+                                   const std::string &instance) {
   return json::Object{
       {"name", name},
       {"type", "dpu"},
@@ -404,13 +407,14 @@ static json::Object makeKernelJSON(std::string name, std::string id,
       {"instances", json::Array{json::Object{{"name", instance}}}}};
 }
 
-static LogicalResult generateXCLBin(MLIRContext *context, ModuleOp moduleOp,
-                                    XCLBinGenConfig &TK,
-                                    const StringRef &Output,
-                                    const StringRef &inputXclbin = "") {
+static LogicalResult generateXCLBin(
+    ModuleOp moduleOp, const std::string &Output, const std::string &tempDir,
+    const std::string &xclBinKernelID, const std::string &xclBinKernelName,
+    const std::string &xclBinInstanceName, const std::string &amdAIEInstallDir,
+    bool verbose, const std::string &inputXclbin = "") {
   std::string errorMessage;
   // Create mem_topology.json.
-  SmallString<64> memTopologyJsonFile(TK.TempDir);
+  SmallString<64> memTopologyJsonFile(tempDir);
   sys::path::append(memTopologyJsonFile, "mem_topology.json");
   {
     auto memTopologyJsonOut =
@@ -443,7 +447,7 @@ static LogicalResult generateXCLBin(MLIRContext *context, ModuleOp moduleOp,
   }
 
   // Create aie_partition.json.
-  SmallString<64> aiePartitionJsonFile(TK.TempDir);
+  SmallString<64> aiePartitionJsonFile(tempDir);
   sys::path::append(aiePartitionJsonFile, "aie_partition.json");
   {
     auto aiePartitionJsonOut =
@@ -474,7 +478,7 @@ static LogicalResult generateXCLBin(MLIRContext *context, ModuleOp moduleOp,
                   "type": "PRIMARY",
                   "pdi_id": "0x01",
                   "dpu_kernel_ids": [
-                    ")" + TK.XCLBinKernelID +
+                    ")" + xclBinKernelID +
                                           R"("
                   ],
                   "pre_cdo_groups": [
@@ -492,7 +496,7 @@ static LogicalResult generateXCLBin(MLIRContext *context, ModuleOp moduleOp,
   }
 
   // Create kernels.json.
-  SmallString<64> kernelsJsonFile(TK.TempDir);
+  SmallString<64> kernelsJsonFile(tempDir);
   sys::path::append(kernelsJsonFile, "kernels.json");
   {
     auto kernelsJsonOut = openOutputFile(kernelsJsonFile, &errorMessage);
@@ -503,14 +507,14 @@ static LogicalResult generateXCLBin(MLIRContext *context, ModuleOp moduleOp,
          json::Object{
              {"kernels",
               json::Array{// TODO: Support for multiple kernels
-                          makeKernelJSON(TK.XCLBinKernelName, TK.XCLBinKernelID,
-                                         TK.XCLBinInstanceName)}}}}};
+                          makeKernelJSON(xclBinKernelName, xclBinKernelID,
+                                         xclBinInstanceName)}}}}};
     kernelsJsonOut->os() << formatv("{0:2}",
                                     json::Value(std::move(kernels_data)));
     kernelsJsonOut->keep();
   }
   // Create design.bif.
-  SmallString<64> designBifFile(TK.TempDir);
+  SmallString<64> designBifFile(tempDir);
   sys::path::append(designBifFile, "design.bif");
   {
     auto designBifOut = openOutputFile(designBifFile, &errorMessage);
@@ -524,9 +528,9 @@ static LogicalResult generateXCLBin(MLIRContext *context, ModuleOp moduleOp,
                        << "\t{\n"
                        << "\t\tname=aie_image, id=0x1c000000\n"
                        << "\t\t{ type=cdo\n"
-                       << "\t\t  file=" << TK.TempDir << "/aie_cdo_elfs.bin\n"
-                       << "\t\t  file=" << TK.TempDir << "/aie_cdo_init.bin\n"
-                       << "\t\t  file=" << TK.TempDir << "/aie_cdo_enable.bin\n"
+                       << "\t\t  file=" << tempDir << "/aie_cdo_elfs.bin\n"
+                       << "\t\t  file=" << tempDir << "/aie_cdo_init.bin\n"
+                       << "\t\t  file=" << tempDir << "/aie_cdo_enable.bin\n"
                        << "\t\t}\n"
                        << "\t}\n"
                        << "}";
@@ -534,7 +538,7 @@ static LogicalResult generateXCLBin(MLIRContext *context, ModuleOp moduleOp,
   }
 
   // Execute the bootgen command.
-  SmallString<64> designPdiFile(TK.TempDir);
+  SmallString<64> designPdiFile(tempDir);
   sys::path::append(designPdiFile, "design.pdi");
   {
     SmallVector<std::string, 7> flags{"-arch",  "versal",
@@ -542,13 +546,13 @@ static LogicalResult generateXCLBin(MLIRContext *context, ModuleOp moduleOp,
                                       "-o",     std::string(designPdiFile),
                                       "-w"};
 
-    SmallString<64> bootgenBin(TK.AMDAIEInstallDir);
+    SmallString<64> bootgenBin(amdAIEInstallDir);
     sys::path::append(bootgenBin, "bin", "amdaie_bootgen");
     if (!sys::fs::exists(bootgenBin)) {
-      bootgenBin = TK.AMDAIEInstallDir;
+      bootgenBin = amdAIEInstallDir;
       sys::path::append(bootgenBin, "tools", "amdaie_bootgen");
     }
-    if (!runTool(bootgenBin, flags, TK.Verbose))
+    if (!runTool(bootgenBin, flags, verbose))
       return moduleOp.emitOpError("failed to execute bootgen");
   }
   SmallVector<std::string, 20> flags;
@@ -556,16 +560,16 @@ static LogicalResult generateXCLBin(MLIRContext *context, ModuleOp moduleOp,
   std::string memArg = "MEM_TOPOLOGY:JSON:" + std::string(memTopologyJsonFile);
   std::string partArg =
       "AIE_PARTITION:JSON:" + std::string(aiePartitionJsonFile);
-  SmallString<64> xclbinutilBin(TK.AMDAIEInstallDir);
+  SmallString<64> xclbinutilBin(amdAIEInstallDir);
   sys::path::append(xclbinutilBin, "bin", "amdaie_xclbinutil");
   if (!sys::fs::exists(xclbinutilBin)) {
-    xclbinutilBin = TK.AMDAIEInstallDir;
+    xclbinutilBin = amdAIEInstallDir;
     sys::path::append(xclbinutilBin, "tools", "amdaie_xclbinutil");
   }
   {
     if (!inputXclbin.empty()) {
       // Create aie_partition.json.
-      SmallString<64> aieInputPartitionJsonFile(TK.TempDir);
+      SmallString<64> aieInputPartitionJsonFile(tempDir);
       sys::path::append(aieInputPartitionJsonFile, "aie_input_partition.json");
 
       std::string inputPartArg =
@@ -574,7 +578,7 @@ static LogicalResult generateXCLBin(MLIRContext *context, ModuleOp moduleOp,
                                               "--force", "--input",
                                               std::string(inputXclbin)};
 
-      if (!runTool(xclbinutilBin, inputFlags, TK.Verbose))
+      if (!runTool(xclbinutilBin, inputFlags, verbose))
         return moduleOp.emitOpError("failed to execute xclbinutil");
       auto aieInputPartitionOut =
           openInputFile(aieInputPartitionJsonFile, &errorMessage);
@@ -610,7 +614,7 @@ static LogicalResult generateXCLBin(MLIRContext *context, ModuleOp moduleOp,
                                "--add-replace-section", partArg, "--force",
                                "--output", std::string(Output)});
 
-    if (!runTool(xclbinutilBin, flags, TK.Verbose))
+    if (!runTool(xclbinutilBin, flags, verbose))
       return moduleOp.emitOpError("failed to execute xclbinutil");
   }
   return success();
@@ -683,12 +687,15 @@ struct RemoveAlignment2FromLLVMLoadPass
 };
 }  // namespace
 
-static LogicalResult generateUnifiedObject(MLIRContext *context,
-                                           ModuleOp moduleOp,
-                                           XCLBinGenConfig &TK,
-                                           const std::string &outputFile) {
+static LogicalResult generateUnifiedObject(
+    MLIRContext *context, ModuleOp moduleOp, const std::string &outputFile,
+    bool printIRBeforeAll, bool printIRAfterAll, bool printIRModuleScope,
+    bool timing, bool useChess, bool verbose, const std::string &tempDir,
+    const std::string &mlirAIEInstallDir, const std::string &targetArch,
+    const std::string &peanoDir) {
   PassManager pm(context, moduleOp.getOperationName());
-  applyConfigToPassManager(TK, pm);
+  applyConfigToPassManager(pm, printIRBeforeAll, printIRAfterAll,
+                           printIRModuleScope, timing);
 
   pm.addPass(mlir::iree_compiler::AMDAIE::createAMDAIECoreToStandardPass());
   pm.addPass(mlir::iree_compiler::AMDAIE::createAMDAIEXToStandardPass());
@@ -701,7 +708,7 @@ static LogicalResult generateUnifiedObject(MLIRContext *context,
     std::string optionsString = [&]() {
       std::ostringstream optionsStringStream;
       optionsStringStream << "target-backend=";
-      optionsStringStream << (TK.UseChess ? "cpp" : "llvmir");
+      optionsStringStream << (useChess ? "cpp" : "llvmir");
       optionsStringStream << ' ' << "aie-target=aieml";
       return optionsStringStream.str();
     }();
@@ -717,7 +724,7 @@ static LogicalResult generateUnifiedObject(MLIRContext *context,
   mlir::iree_compiler::AMDAIE::addLowerToLLVMPasses(pm);
   pm.addPass(std::make_unique<RemoveAlignment2FromLLVMLoadPass>());
 
-  if (TK.Verbose) {
+  if (verbose) {
     llvm::outs() << "Running: ";
     pm.printAsTextualPipeline(llvm::outs());
     llvm::outs() << "\n";
@@ -727,7 +734,7 @@ static LogicalResult generateUnifiedObject(MLIRContext *context,
   if (failed(pm.run(copy)))
     return moduleOp.emitOpError("Failed to lower to LLVM");
 
-  SmallString<64> LLVMIRFile(TK.TempDir);
+  SmallString<64> LLVMIRFile(tempDir);
   sys::path::append(LLVMIRFile, "input.ll");
 
   llvm::LLVMContext llvmContext;
@@ -743,16 +750,16 @@ static LogicalResult generateUnifiedObject(MLIRContext *context,
     output->keep();
   }
 
-  if (TK.UseChess) {
-    SmallString<64> chessWrapperBin(TK.MLIRAIEInstallDir);
+  if (useChess) {
+    SmallString<64> chessWrapperBin(mlirAIEInstallDir);
     sys::path::append(chessWrapperBin, "bin", "xchesscc_wrapper");
 
-    SmallString<64> chessworkDir(TK.TempDir);
+    SmallString<64> chessworkDir(tempDir);
     sys::path::append(chessworkDir, "chesswork");
 
-    SmallString<64> chessIntrinsicsLL(TK.MLIRAIEInstallDir);
+    SmallString<64> chessIntrinsicsLL(mlirAIEInstallDir);
     sys::path::append(chessIntrinsicsLL, "aie_runtime_lib",
-                      StringRef(TK.TargetArch).upper(),
+                      StringRef(targetArch).upper(),
                       "chess_intrinsic_wrapper.ll");
 
     std::string llvmirString;
@@ -761,9 +768,9 @@ static LogicalResult generateUnifiedObject(MLIRContext *context,
       llvmModule->print(llvmirStream, nullptr);
     }
 
-    SmallString<64> chesslinkedFile(TK.TempDir);
+    SmallString<64> chesslinkedFile(tempDir);
     sys::path::append(chesslinkedFile, "input.chesslinked.ll");
-    SmallString<64> llvmLinkBin(TK.PeanoDir);
+    SmallString<64> llvmLinkBin(peanoDir);
     sys::path::append(llvmLinkBin, "bin", "llvm-link");
     if (!sys::fs::exists(llvmLinkBin)) {
       if (auto llvmLink = sys::findProgramByName("llvm-link"))
@@ -774,7 +781,7 @@ static LogicalResult generateUnifiedObject(MLIRContext *context,
     if (!runTool(llvmLinkBin,
                  {std::string(LLVMIRFile), std::string(chessIntrinsicsLL), "-S",
                   "-o", std::string(chesslinkedFile)},
-                 TK.Verbose))
+                 verbose))
       moduleOp.emitOpError("Couldn't link in the intrinsics");
 
     std::string mungedLLVMIR;
@@ -794,43 +801,49 @@ static LogicalResult generateUnifiedObject(MLIRContext *context,
     }
 
     if (!runTool(chessWrapperBin,
-                 {StringRef(TK.TargetArch).lower(), "+w",
+                 {StringRef(targetArch).lower(), "+w",
                   std::string(chessworkDir), "-c", "-d", "-f", "+P", "4",
                   std::string(chesslinkedFile), "-o", std::string(outputFile)},
-                 TK.Verbose))
+                 verbose))
       return moduleOp.emitOpError("Failed to assemble with chess");
   } else {
-    SmallString<64> peanoOptBin(TK.PeanoDir);
+    SmallString<64> peanoOptBin(peanoDir);
     sys::path::append(peanoOptBin, "bin", "opt");
-    SmallString<64> peanoLLCBin(TK.PeanoDir);
+    SmallString<64> peanoLLCBin(peanoDir);
     sys::path::append(peanoLLCBin, "bin", "llc");
 
-    SmallString<64> OptLLVMIRFile(TK.TempDir);
+    SmallString<64> OptLLVMIRFile(tempDir);
     sys::path::append(OptLLVMIRFile, "input.opt.ll");
     if (!runTool(peanoOptBin,
                  {"-O2", "--inline-threshold=10", "-S", std::string(LLVMIRFile),
                   "--disable-builtin=memset", "-o", std::string(OptLLVMIRFile)},
-                 TK.Verbose))
+                 verbose))
       return moduleOp.emitOpError("Failed to optimize ll");
 
-    if (!runTool(peanoLLCBin,
-                 {std::string(OptLLVMIRFile), "-O2",
-                  "--march=" + StringRef(TK.TargetArch).lower(),
-                  "--function-sections", "--filetype=obj", "-o",
-                  std::string(outputFile)},
-                 TK.Verbose))
+    if (!runTool(
+            peanoLLCBin,
+            {std::string(OptLLVMIRFile), "-O2",
+             "--march=" + StringRef(targetArch).lower(), "--function-sections",
+             "--filetype=obj", "-o", std::string(outputFile)},
+            verbose))
       return moduleOp.emitOpError("Failed to assemble ll");
   }
   copy->erase();
   return success();
 }
 
-LogicalResult xilinx::aie2xclbin(MLIRContext *ctx, ModuleOp moduleOp,
-                                 XCLBinGenConfig &TK, StringRef OutputNPU,
-                                 StringRef OutputXCLBin,
-                                 StringRef InputXCLBin) {
+LogicalResult aie2xclbin(
+    MLIRContext *ctx, ModuleOp moduleOp, const std::string &outputNPU,
+    const std::string &outputXCLBin, bool printIRBeforeAll,
+    bool printIRAfterAll, bool printIRModuleScope, bool timing,
+    const std::string &tempDir, bool useChess, bool verbose,
+    const std::string &mlirAIEInstallDir, const std::string &targetArch,
+    const std::string &peanoDir, const std::string &xclBinKernelID,
+    const std::string &xclBinKernelName, const std::string &xclBinInstanceName,
+    const std::string &amdAIEInstallDir, const std::string &InputXCLBin) {
   PassManager pm(ctx, moduleOp.getOperationName());
-  applyConfigToPassManager(TK, pm);
+  applyConfigToPassManager(pm, printIRBeforeAll, printIRAfterAll,
+                           printIRModuleScope, timing);
 
   // generateNPUInstructions
   pm.addNestedPass<AIE::DeviceOp>(
@@ -848,24 +861,32 @@ LogicalResult xilinx::aie2xclbin(MLIRContext *ctx, ModuleOp moduleOp,
       signedNpuInstructionsAttr.begin(), signedNpuInstructionsAttr.end());
 
   std::string errorMessage;
-  auto output = openOutputFile(OutputNPU, &errorMessage);
+  auto output = openOutputFile(outputNPU, &errorMessage);
   if (!output) return moduleOp.emitOpError(errorMessage);
   for (auto w : unsignedNpuInstructions)
     output->os() << llvm::format("%08X\n", w);
   output->keep();
 
-  SmallString<64> unifiedObj(TK.TempDir);
+  SmallString<64> unifiedObj(tempDir);
   sys::path::append(unifiedObj, "input.o");
-  if (failed(generateUnifiedObject(ctx, moduleOp, TK, std::string(unifiedObj))))
+  if (failed(generateUnifiedObject(
+          ctx, moduleOp, std::string(unifiedObj), printIRBeforeAll,
+          printIRAfterAll, printIRModuleScope, timing, useChess, verbose,
+          tempDir, mlirAIEInstallDir, targetArch, peanoDir)))
     return moduleOp.emitOpError("Failed to generate unified object");
 
-  if (failed(generateCoreElfFiles(moduleOp, unifiedObj, TK)))
+  if (failed(generateCoreElfFiles(moduleOp, unifiedObj, tempDir, useChess,
+                                  mlirAIEInstallDir, targetArch, verbose,
+                                  peanoDir)))
     return moduleOp.emitOpError("Failed to generate core ELF file(s)");
 
-  if (failed(generateCDO(ctx, moduleOp, TK)))
+  if (failed(generateCDO(ctx, moduleOp, printIRBeforeAll, printIRAfterAll,
+                         printIRModuleScope, timing, tempDir)))
     return moduleOp.emitOpError("Failed to generate CDO");
 
-  if (failed(generateXCLBin(ctx, moduleOp, TK, OutputXCLBin, InputXCLBin)))
+  if (failed(generateXCLBin(moduleOp, outputXCLBin, tempDir, xclBinKernelID,
+                            xclBinKernelName, xclBinInstanceName,
+                            amdAIEInstallDir, verbose, InputXCLBin)))
     return moduleOp.emitOpError("Failed to generate XCLBin");
 
   return success();
