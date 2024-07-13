@@ -328,6 +328,7 @@ function run_test() {
       --iree-amd-aie-install-dir=${amd_aie_install_path} \
       --iree-amd-aie-vitis-install-dir=${vitis_path} \
       --iree-hal-dump-executable-files-to=$PWD \
+      --iree-amd-aie-show-invoked-commands \
       --mlir-disable-threading -o ${aie_vmfb}"
 
 
