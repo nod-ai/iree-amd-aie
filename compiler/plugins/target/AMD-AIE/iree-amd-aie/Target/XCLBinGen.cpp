@@ -206,8 +206,8 @@ std::optional<std::string> runTool(
   }
 
   if (result != 0) {
-    llvm::errs() << "Failed to run tool: " << program << " "
-                 << llvm::join(args, " ") << " with error: " << errMsg << "\n";
+    llvm::errs() << "Failed to run tool: " << program << ". Error: '" << errMsg
+                 << "'\n";
     return {};
   }
 
