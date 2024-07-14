@@ -101,7 +101,6 @@ iree_cc_library(
     iree::target::amd-aie::aie::AIEPasses
     iree::target::amd-aie::aie::AIEXDialectIR
     iree::target::amd-aie::aievec::AIEVecConvertToLLVM
-    iree::target::amd-aie::aievec::AIEVecDialectIR
     iree::target::amd-aie::air::AIRConversionPasses
     iree::target::amd-aie::air::AIRTransformPasses
     IREELinalgTransformDialectPasses

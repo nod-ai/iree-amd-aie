@@ -125,55 +125,6 @@ inline mlir::AffineExpr flattenedStridedExpr(
   return expr;
 }
 
-// Construct a linearized affine expression for the upd op.
-inline mlir::AffineExpr constructLinearizedAffineExprForUPDOp(UPDOp updOp) {
-  auto memRefType = llvm::cast<mlir::MemRefType>(updOp.getSource().getType());
-  mlir::MLIRContext *context = memRefType.getContext();
-
-  llvm::SmallVector<mlir::AffineExpr, 8> exprVec;
-  llvm::SmallDenseMap<mlir::Value, mlir::AffineExpr, 8> indexToExprDimMap;
-  for (auto idxAndValue : llvm::enumerate(updOp.getIndices())) {
-    auto value = idxAndValue.value();
-    if (auto apOf = value.getDefiningOp<mlir::affine::AffineApplyOp>()) {
-      mlir::AffineMap map = apOf.getAffineMap();
-      // Cannot create linearized mlir::AffineExpr for complicated index.
-      if (map.getNumResults() != 1) return nullptr;
-
-      llvm::SmallVector<mlir::AffineExpr, 4> indexExprs;
-
-      for (auto index : apOf.getMapOperands())
-        if (auto cIdx = index.getDefiningOp<mlir::arith::ConstantOp>()) {
-          auto idxVal =
-              llvm::cast<mlir::IntegerAttr>(cIdx.getValue()).getValue();
-          unsigned idx = idxVal.getSExtValue();
-          indexExprs.push_back(getAffineConstantExpr(idx, context));
-        } else {
-          if (!indexToExprDimMap.count(index))
-            indexToExprDimMap[index] =
-                getAffineDimExpr(indexToExprDimMap.size(), context);
-          indexExprs.push_back(indexToExprDimMap[index]);
-        }
-
-      exprVec.push_back(map.getResult(0).replaceDims(indexExprs));
-    } else if (auto cOp = value.getDefiningOp<mlir::arith::ConstantOp>()) {
-      auto idxVal = llvm::cast<mlir::IntegerAttr>(cOp.getValue()).getValue();
-      unsigned idx = idxVal.getSExtValue();
-      exprVec.push_back(getAffineConstantExpr(idx, context));
-    } else {
-      if (!indexToExprDimMap.count(value))
-        indexToExprDimMap[value] =
-            getAffineDimExpr(indexToExprDimMap.size(), context);
-      exprVec.push_back(indexToExprDimMap[value]);
-    }
-  }
-
-  if (exprVec.empty()) return nullptr;
-
-  auto ret = flattenedStridedExpr(memRefType.getShape(), exprVec,
-                                  memRefType.getContext());
-  return ret;
-}
-
 // From a linearized affine expression, compute the base and the constant
 // offset. If the access is A[i][j+2] for an N*N array A, the linearized
 // expression will be A[i*N+j+2]. The base in this case will be (i*N+j), and the
