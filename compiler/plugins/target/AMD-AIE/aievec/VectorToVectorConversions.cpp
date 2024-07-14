@@ -495,25 +495,6 @@ static void populateCommonAIECanonicalizeConversionPatterns(
 }
 
 //============================================================================//
-//============== AIEv1-specific canonicalization configuration ===============//
-//============================================================================//
-
-static void configureAIEv1CanonicalizeLegalizations(ConversionTarget &target) {
-  target.addDynamicallyLegalOp<vector::TransferReadOp>(
-      [](vector::TransferReadOp op) {
-        return !op.getPermutationMap().isConstant() &&
-               getTransferReadAlignmentOffset(op, op.getVectorType(), 128)
-                       .value_or(0) == 0;
-      });
-}
-
-static void populateAIEv1CanonicalizeConversionPatterns(
-    RewritePatternSet &patterns) {
-  patterns.add<SplitUnalignedTransferReadPattern>(patterns.getContext(), 512,
-                                                  128);
-}
-
-//============================================================================//
 //============== AIE2-specific canonicalization configuration ===============//
 //============================================================================//
 
@@ -558,11 +539,8 @@ static void populateAIE2CanonicalizeConversionPatterns(
 struct CanonicalizeVectorForAIEVecPass
     : public PassWrapper<CanonicalizeVectorForAIEVecPass, OperationPass<>> {
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(CanonicalizeVectorForAIEVecPass)
-
-  // In case we want to register this pass as a standalone pass for test
-  // purposes.
   StringRef getArgument() const final {
-    return "test-canonicalize-vector-for-aievec";
+    return "canonicalize-vector-for-aievec";
   }
 
   StringRef getDescription() const final {

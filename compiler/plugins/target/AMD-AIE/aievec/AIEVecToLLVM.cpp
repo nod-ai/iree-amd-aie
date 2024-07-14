@@ -107,27 +107,6 @@ static SmallVector<Value> forceCastOperandsToSignature(OpBuilder &builder,
       }));
 }
 
-struct BufferParams {
-  uint32_t start;
-  uint32_t offsets;
-  uint32_t offsets_hi;
-  uint32_t step;
-  uint32_t square;
-};
-
-std::string getVectorTypeString(VectorType type, bool abbrev = false,
-                                bool acc = false) {
-  std::stringstream ss;
-  auto size = getVectorLaneSize(type);
-  ss << "v" << size;
-  if (auto intType = dyn_cast<IntegerType>(type.getElementType())) {
-    ss << (acc ? "acc" : abbrev ? "i" : "int") << intType.getWidth();
-  } else if (dyn_cast<FloatType>(type.getElementType())) {
-    ss << (abbrev ? "f" : "float");
-  }
-  return ss.str();
-}
-
 // Squashes the easy-to-read 16-bit square encoding into
 // the 8-bit encoding the configuration register uses
 uint32_t encodeSquare(uint32_t square) {
@@ -137,15 +116,6 @@ uint32_t encodeSquare(uint32_t square) {
   out |= ((square >> 8) & 0x3) << 4;
   out |= ((square >> 12) & 0x3) << 6;
   return out & 0xFF;
-}
-
-// Encode the configuration register with buffer parameters and options
-// TODO: struct to handle this?
-void encodeConf(uint32_t conf[2], const BufferParams &x, const BufferParams &z,
-                bool sub) {
-  conf[0] |= ((x.step & 0x3F) << 0) | ((z.step & 0x3F) << 8);
-  conf[1] |= (encodeSquare(x.square) << 0) | (encodeSquare(z.square) << 8);
-  conf[1] |= sub << 17;
 }
 
 class UPSOpConversion : public mlir::ConvertOpToLLVMPattern<aievec::UPSOp> {
@@ -677,9 +647,8 @@ class ShuffleOpConversion
   }
 };
 
-void populateAIEVecToLLVMConversionPatterns(
-    mlir::LLVMTypeConverter &converter, mlir::RewritePatternSet &patterns,
-    Aie2Fp32Emulation aie2Fp32EmulationOption) {
+void populateAIEVecToLLVMConversionPatterns(mlir::LLVMTypeConverter &converter,
+                                            mlir::RewritePatternSet &patterns) {
   patterns.add<
 
       UPSOpConversion, SRSOpConversion,
@@ -689,14 +658,6 @@ void populateAIEVecToLLVMConversionPatterns(
 
 struct ConvertAIEVecToLLVMPass
     : public PassWrapper<ConvertAIEVecToLLVMPass, OperationPass<ModuleOp>> {
-  ConvertAIEVecToLLVMPass(const ConvertAIEVecToLLVMOptions &options) {
-    aie2Fp32Emulation = options.aie2Fp32Emulation;
-  }
-  // both of these are deleted by default because Pass::Option has deleted
-  // defaults
-  ConvertAIEVecToLLVMPass() = default;
-  ConvertAIEVecToLLVMPass(const ConvertAIEVecToLLVMPass &pass) {}
-
   StringRef getArgument() const override { return "convert-aievec-to-llvm"; }
   StringRef getDescription() const override {
     return "This pass converts AIEVec dialect ops to LLVM dialect calls to "
@@ -708,29 +669,6 @@ struct ConvertAIEVecToLLVMPass
                     mlir::vector::VectorDialect, xllvm::XLLVMDialect>();
   }
 
-  mlir::Pass::Option<Aie2Fp32Emulation> aie2Fp32Emulation{
-      *this, "aie2-fp32-emulation-strategy",
-      llvm::cl::desc(
-          "Set the AIE2 FP32 emulation strategy. Elementwise multiplication "
-          "and matrix multiplication intrinsics for FP32 input type are "
-          "emulated using bfloat16 data-path."),
-      llvm::cl::init(Aie2Fp32Emulation::AccuracySafe),
-      llvm::cl::values(
-          clEnumValN(Aie2Fp32Emulation::AccuracySafe, "accuracy-safe",
-                     "Most accurate option since input fp32 number is split "
-                     "into 3 bfloat16 numbers. float a*b would require 9 mac "
-                     "operations due to 3 bfloat16 splits each."),
-          clEnumValN(
-              Aie2Fp32Emulation::AccuracyFast, "accuracy-fast",
-              "Fast and Accurate option. Input fp32 number is split in to 3 "
-              "bfloat16 numbers. In the 9 mac operations to emulate fp32 mul, "
-              "mac operations with LSBs are ignored. (3 last terms)."),
-          clEnumValN(
-              Aie2Fp32Emulation::AccuracyLow, "accuracy-low",
-              "Fast and least accurate option. Input fp32 number is split in "
-              "to 2 bfloat16 numbers. In the 4 mac operations to emulate fp32 "
-              "mul, mac operations with LSBs are ignored. (1 last term)."))};
-
   void runOnOperation() override {
     RewritePatternSet patterns(&getContext());
     LLVMTypeConverter converter(&getContext());
@@ -740,8 +678,7 @@ struct ConvertAIEVecToLLVMPass
     converter.addConversion(
         [&](VectorType type) -> std::optional<Type> { return type; });
 
-    populateAIEVecToLLVMConversionPatterns(converter, patterns,
-                                           aie2Fp32Emulation);
+    populateAIEVecToLLVMConversionPatterns(converter, patterns);
 
     LLVMConversionTarget target(getContext());
     target.addIllegalDialect<AIEVecDialect>();

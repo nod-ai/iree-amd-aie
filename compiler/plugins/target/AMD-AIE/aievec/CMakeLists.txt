@@ -7,16 +7,6 @@
 set(IREE_PACKAGE_ROOT_DIR "${CMAKE_CURRENT_LIST_DIR}")
 set(IREE_PACKAGE_ROOT_PREFIX "iree::target::amd-aie::aievec")
 
-list(APPEND IREE_COMPILER_TABLEGEN_INCLUDE_DIRS
-    "${IREE_MLIR_AIE_SOURCE_DIR}/include")
-
-iree_cc_library(
-  NAME
-    defs
-  INCLUDES
-    "${IREE_MLIR_AIE_SOURCE_DIR}/include"
-)
-
 ###############################################################################
 # AIEVec Dialect
 ###############################################################################
@@ -73,7 +63,6 @@ iree_cc_library(
     AIEVecOps.cpp
     XLLVMOps.cpp
   DEPS
-    ::defs
     ::AIEVecOpsGen
     ::AIEVecDialectGen
     ::AIEVecAttrsGen
@@ -93,7 +82,6 @@ iree_cc_library(
     XLLVMToLLVMIRTranslation.cpp
   DEPS
     MLIREmitCDialect
-    ::defs
     ::AIEVecDialectIR
     ::AIEVecXLLVMOpsGen
 )

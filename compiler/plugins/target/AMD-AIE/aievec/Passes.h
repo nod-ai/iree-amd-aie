@@ -19,20 +19,6 @@
 
 namespace mlir::iree_compiler::aievec {
 
-enum class Aie2Fp32Emulation : uint32_t {
-  AccuracySafe = 0,
-  AccuracyFast = 1,
-  AccuracyLow = 2,
-};
-
-struct ConvertAIEVecToLLVMOptions {
-  Aie2Fp32Emulation aie2Fp32Emulation = Aie2Fp32Emulation::AccuracySafe;
-};
-
-//===----------------------------------------------------------------------===//
-// Building and Registering.
-//===----------------------------------------------------------------------===//
-
 /// Adds the "convert-vector-to-aievec" pipeline to the `OpPassManager`. This
 /// pipeline takes `Vector` code, transforms it to make it compatible with the
 /// selected `AIE` target, lowers it to `AIEVec` dialect, and performs some

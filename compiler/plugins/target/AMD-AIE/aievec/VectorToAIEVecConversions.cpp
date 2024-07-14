@@ -12,7 +12,6 @@
 // to ops that can be translated to a sequence of valid AIEVec ops.
 //===----------------------------------------------------------------------===//
 
-#include <bitset>
 #include <optional>
 #include <tuple>
 
