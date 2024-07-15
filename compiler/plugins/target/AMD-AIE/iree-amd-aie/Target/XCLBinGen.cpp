@@ -12,8 +12,8 @@
 #include <unordered_map>
 
 #include "AMDAIETargets.h"
-#include "aie/Dialect/AIEVec/Pipelines/Passes.h"
 #include "aie/Targets/AIETargets.h"
+#include "aievec/Passes.h"
 #include "iree-amd-aie/Transforms/Passes.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/JSON.h"
@@ -144,7 +144,7 @@ std::optional<std::string> runTool(
     llvm::outs() << "\n";
   }
 
-  // Check that 'program' is a valid path, if not, fail immediately. 
+  // Check that 'program' is a valid path, if not, fail immediately.
   if (!sys::fs::exists(program)) {
     llvm::errs() << "Program " << program << " does not exist\n";
     return {};
@@ -731,28 +731,9 @@ static LogicalResult generateUnifiedObject(
 
   pm.addPass(mlir::iree_compiler::AMDAIE::createAMDAIECoreToStandardPass());
   pm.addPass(mlir::iree_compiler::AMDAIE::createAMDAIEXToStandardPass());
-
   // Convert specific vector dialect ops (like vector.contract) to the AIEVec
   // dialect
-  {
-    xilinx::aievec::ConvertVectorToAIEVecOptions vectorToAIEVecOptions{};
-
-    std::string optionsString = [&]() {
-      std::ostringstream optionsStringStream;
-      optionsStringStream << "target-backend=";
-      optionsStringStream << (useChess ? "cpp" : "llvmir");
-      optionsStringStream << ' ' << "aie-target=aieml";
-      return optionsStringStream.str();
-    }();
-
-    if (failed(vectorToAIEVecOptions.parseFromString(optionsString))) {
-      return moduleOp.emitOpError("Failed to parse options from '")
-             << optionsString
-             << "': Failed to construct ConvertVectorToAIEVecOptions.";
-    }
-    xilinx::aievec::buildConvertVectorToAIEVec(pm, vectorToAIEVecOptions);
-  }
-
+  mlir::iree_compiler::aievec::buildConvertVectorToAIEVec(pm);
   mlir::iree_compiler::AMDAIE::addLowerToLLVMPasses(pm);
   pm.addPass(std::make_unique<RemoveAlignment2FromLLVMLoadPass>());
 

@@ -7,6 +7,8 @@
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "aie/Passes.h"
+#include "aievec/AIEVecDialect.h"
+#include "aievec/Passes.h"
 #include "air/Dialect/AIR/AIRDialect.h"
 #include "air/Passes.h"
 #include "iree-amd-aie/IR/AMDAIEDialect.h"
@@ -36,11 +38,13 @@ struct AMDAIESession
     AMDAIE::registerAMDAIEXToStandardPass();
     AMDAIE::registerAIRConversionPasses();
     AMDAIE::registerAIRTransformPasses();
+    aievec::registerConvertAIEVecToLLVMPass();
   }
 
   void onRegisterDialects(DialectRegistry &registry) override {
     registry.insert<AMDAIE::AMDAIEDialect, xilinx::AIE::AIEDialect,
-                    xilinx::AIEX::AIEXDialect, xilinx::air::airDialect>();
+                    aievec::AIEVecDialect, xilinx::AIEX::AIEXDialect,
+                    xilinx::air::airDialect>();
   }
 
   void populateHALTargetDevices(IREE::HAL::TargetDeviceList &targets) override {

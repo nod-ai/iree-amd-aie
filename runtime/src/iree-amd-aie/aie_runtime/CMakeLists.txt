@@ -461,19 +461,20 @@ if(IREE_AMD_AIE_ENABLE_XRT_DRIVER)
       Boost::program_options
       Boost::system
       Threads::Threads)
+  set(_xclbinutil_compile_definitions -DBOOST_BIND_GLOBAL_PLACEHOLDERS)
 
   if(WIN32)
-    target_compile_options(iree-amd-aie_aie_runtime_amdaie_xclbinutil
-                           PRIVATE "/EHsc")
+    list(APPEND _xclbinutil_compile_definitions -D"/EHsc")
     # Uncomment if you get LINK : fatal error LNK1104: cannot open file
     # 'libboost_filesystem-vc142-mt-gd-x64-1_74.lib'
     # target_compile_definitions(xclbinutil-lib PUBLIC BOOST_ALL_DYN_LINK
   else()
-    target_compile_definitions(iree-amd-aie_aie_runtime_amdaie_xclbinutil
-                               PRIVATE ENABLE_JSON_SCHEMA_VALIDATION)
+    list(APPEND _xclbinutil_compile_definitions -DENABLE_JSON_SCHEMA_VALIDATION)
     list(APPEND _xclbin_libs transformcdo)
   endif()
 
+  target_compile_options(iree-amd-aie_aie_runtime_amdaie_xclbinutil
+                         PRIVATE ${_xclbinutil_compile_definitions})
   target_link_libraries(iree-amd-aie_aie_runtime_amdaie_xclbinutil
                         PRIVATE ${_xclbin_libs})
   target_include_directories(iree-amd-aie_aie_runtime_amdaie_xclbinutil
@@ -481,7 +482,6 @@ if(IREE_AMD_AIE_ENABLE_XRT_DRIVER)
                                      ${Boost_INCLUDE_DIRS}
                                      ${IREE_XRT_SOURCE_DIR}/runtime_src/core/include
                                      ${_xclbinutil_source_dir})
-
   set_target_properties(iree-amd-aie_aie_runtime_amdaie_xclbinutil
                         PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/tools")
 endif()
