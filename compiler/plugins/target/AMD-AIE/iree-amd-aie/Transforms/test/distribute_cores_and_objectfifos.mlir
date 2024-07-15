@@ -931,3 +931,98 @@ module {
     return
   }
 }
+
+// -----
+
+// CHECK-LABEL:   @distribute_cores_and_objectfifos_ukernel
+// CHECK-DAG:       %[[C0:.*]] = arith.constant 0 : index
+// CHECK-DAG:       %[[C1:.*]] = arith.constant 1 : index
+// CHECK-DAG:       %[[C2:.*]] = arith.constant 2 : index
+// CHECK-DAG:       %[[ALLOC:.*]] = memref.alloc() : memref<1x1x8x4x8x4xi32, 2 : i32>
+// CHECK-DAG:       %[[ALLOC_0:.*]] = memref.alloc() : memref<1x1x4x8x4x8xi32, 2 : i32>
+// CHECK-DAG:       %[[ALLOC_1:.*]] = memref.alloc() : memref<1x2x32x32xi32, 1 : i32>
+// CHECK-DAG:       %[[ALLOC_2:.*]] = memref.alloc() : memref<1x2x32x32xi32, 1 : i32>
+// CHECK-DAG:       %[[ALLOC_3:.*]] = memref.alloc() : memref<1x2x32x32xi32, 1 : i32>
+// CHECK-DAG:       %[[ALLOC_4:.*]] = memref.alloc() : memref<2x1x32x32xi32, 1 : i32>
+// CHECK-DAG:       %[[ALLOC_5:.*]] = memref.alloc() : memref<2x2x8x8x4x4xi32, 2 : i32>
+// CHECK-DAG:       %[[TILE_0_1:.*]] = amdaie.tile(%[[C0]], %[[C1]])
+// CHECK-DAG:       %[[FROM_MEMREF_0:.*]] = amdaie.logicalobjectfifo.from_memref %[[ALLOC_1]], {%[[TILE_0_1]]}
+// CHECK-DAG:       %[[FROM_MEMREF_1:.*]] = amdaie.logicalobjectfifo.from_memref %[[ALLOC_1]], {%[[TILE_0_1]]}
+// CHECK-DAG:       scf.forall (%{{.+}}, %{{.+}}) in (1, 1)
+// CHECK-DAG:         %[[TILE_0_2:.*]] = amdaie.tile(%[[C0]], %[[C2]])
+// CHECK-DAG:         %[[FROM_MEMREF_2:.*]] = amdaie.logicalobjectfifo.from_memref %[[ALLOC]], {%[[TILE_0_2]]}
+// CHECK-DAG:         %[[FROM_MEMREF_3:.*]] = amdaie.logicalobjectfifo.from_memref %[[ALLOC_0]], {%[[TILE_0_2]]}
+// CHECK-DAG:         %[[DMA_0:.*]] = amdaie.dma_cpy_nd(%[[FROM_MEMREF_3]]
+// CHECK-SAME:        %[[FROM_MEMREF_1]]
+// CHECK-DAG:         %[[DMA_1:.*]] = amdaie.dma_cpy_nd(%[[FROM_MEMREF_2]]
+// CHECK-SAME:        %[[FROM_MEMREF_0]]
+// CHECK-DAG:         %[[SUBVIEW:.*]] = memref.subview %[[ALLOC_5]]
+// CHECK-DAG:         %[[FROM_MEMREF_4:.*]] = amdaie.logicalobjectfifo.from_memref %[[SUBVIEW]], {%[[TILE_0_2]]}
+// CHECK-DAG:         %[[CORE_0:.*]] = amdaie.core(%[[TILE_0_2]])
+// CHECK-DAG:           %[[VAL_0:.+]] = amdaie.logicalobjectfifo.access(%[[FROM_MEMREF_2]], Read)
+// CHECK-DAG:           %[[VAL_1:.+]] = amdaie.logicalobjectfifo.access(%[[FROM_MEMREF_3]], Read)
+// CHECK-DAG:           %[[VAL_2:.+]] = amdaie.logicalobjectfifo.access(%[[FROM_MEMREF_4]], None)
+// CHECK-DAG:           amdaie.logicalobjectfifo.consume(%[[DMA_0]])
+// CHECK-DAG:           amdaie.logicalobjectfifo.consume(%[[DMA_1]])
+// CHECK-DAG:           linalg.fill
+// CHECK-DAG:           memref.extract_strided_metadata %[[VAL_1]]
+// CHECK-DAG:           memref.extract_strided_metadata %[[VAL_0]]
+// CHECK-DAG:           memref.extract_strided_metadata %[[VAL_2]]
+// CHECK-DAG:           func.call @matmul_i32_i32
+// CHECK-DAG:           amdaie.end
+// CHECK-DAG:         } {elf_file = "/path/to/ukernel.o"}
+module {
+  func.func private @matmul_i32_i32(memref<i32, 2 : i32>, index, memref<i32, 2 : i32>, index, memref<i32, 2 : i32>, index) attributes {link_with = "/path/to/ukernels.o", llvm.bareptr = true}
+  func.func @distribute_cores_and_objectfifos_ukernel() {
+    %c64 = arith.constant 64 : index
+    %c16 = arith.constant 16 : index
+    %c224 = arith.constant 224 : index
+    %c8 = arith.constant 8 : index
+    %c4 = arith.constant 4 : index
+    %c128 = arith.constant 128 : index
+    %c4096 = arith.constant 4096 : index
+    %c2048 = arith.constant 2048 : index
+    %c256 = arith.constant 256 : index
+    %c8192 = arith.constant 8192 : index
+    %c1024 = arith.constant 1024 : index
+    %c32 = arith.constant 32 : index
+    %c2 = arith.constant 2 : index
+    %c0 = arith.constant 0 : index
+    %c0_i32 = arith.constant 0 : i32
+    %c1 = arith.constant 1 : index
+    %alloc = memref.alloc() : memref<1x1x8x4x8x4xi32, 2 : i32>
+    %alloc_0 = memref.alloc() : memref<1x1x4x8x4x8xi32, 2 : i32>
+    %alloc_1 = memref.alloc() : memref<1x2x32x32xi32, 1 : i32>
+    %0 = amdaie.logicalobjectfifo.from_memref %alloc_1, {} : memref<1x2x32x32xi32, 1 : i32> -> !amdaie.logicalobjectfifo<memref<1x2x32x32xi32, 1 : i32>>
+    %alloc_2 = memref.alloc() : memref<2x1x32x32xi32, 1 : i32>
+    %1 = amdaie.logicalobjectfifo.from_memref %alloc_2, {} : memref<2x1x32x32xi32, 1 : i32> -> !amdaie.logicalobjectfifo<memref<2x1x32x32xi32, 1 : i32>>
+    %alloc_3 = memref.alloc() : memref<2x2x8x8x4x4xi32, 2 : i32>
+    scf.forall (%arg0, %arg1) in (1, 1) {
+      %13 = amdaie.logicalobjectfifo.from_memref %alloc, {} : memref<1x1x8x4x8x4xi32, 2 : i32> -> !amdaie.logicalobjectfifo<memref<1x1x8x4x8x4xi32, 2 : i32>>
+      %14 = amdaie.logicalobjectfifo.from_memref %alloc_0, {} : memref<1x1x4x8x4x8xi32, 2 : i32> -> !amdaie.logicalobjectfifo<memref<1x1x4x8x4x8xi32, 2 : i32>>
+      scf.forall (%arg2, %arg3) in (1, 1) {
+        %19 = amdaie.dma_cpy_nd(%14[%c0, %c0, %c0, %c0, %c0, %c0] [%c1, %c1, %c4, %c8, %c4, %c8] [%c1024, %c1024, %c256, %c32, %c8, %c1], %1[%arg2, %c0, %c0, %c0, %c0, %c0] [%c1, %c1, %c4, %c8, %c4, %c8] [%c1024, %c1024, %c8, %c128, %c32, %c1]) : (!amdaie.logicalobjectfifo<memref<1x1x4x8x4x8xi32, 2 : i32>>, !amdaie.logicalobjectfifo<memref<2x1x32x32xi32, 1 : i32>>)
+        %20 = amdaie.dma_cpy_nd(%13[%c0, %c0, %c0, %c0, %c0, %c0] [%c1, %c1, %c8, %c4, %c8, %c4] [%c1024, %c1024, %c128, %c32, %c4, %c1], %0[%c0, %arg3, %c0, %c0, %c0, %c0] [%c1, %c1, %c8, %c4, %c8, %c4] [%c2048, %c1024, %c4, %c256, %c32, %c1]) : (!amdaie.logicalobjectfifo<memref<1x1x8x4x8x4xi32, 2 : i32>>, !amdaie.logicalobjectfifo<memref<1x2x32x32xi32, 1 : i32>>)
+        %subview = memref.subview %alloc_3[%arg2, %arg3, 0, 0, 0, 0] [1, 1, 8, 8, 4, 4] [1, 1, 1, 1, 1, 1] : memref<2x2x8x8x4x4xi32, 2 : i32> to memref<1x1x8x8x4x4xi32, strided<[2048, 1024, 128, 16, 4, 1], offset: ?>, 2 : i32>
+        %21 = arith.addi %arg2, %c2 : index
+        %tile = amdaie.tile(%arg3, %21)
+        %22 = amdaie.core(%tile) {
+          amdaie.logicalobjectfifo.consume(%19)
+          amdaie.logicalobjectfifo.consume(%20)
+          linalg.fill ins(%c0_i32 : i32) outs(%subview : memref<1x1x8x8x4x4xi32, strided<[2048, 1024, 128, 16, 4, 1], offset: ?>, 2 : i32>)
+          %base_buffer, %offset, %sizes:6, %strides:6 = memref.extract_strided_metadata %alloc_0 : memref<1x1x4x8x4x8xi32, 2 : i32> -> memref<i32, 2 : i32>, index, index, index, index, index, index, index, index, index, index, index, index, index
+          %base_buffer_5, %offset_6, %sizes_7:6, %strides_8:6 = memref.extract_strided_metadata %alloc : memref<1x1x8x4x8x4xi32, 2 : i32> -> memref<i32, 2 : i32>, index, index, index, index, index, index, index, index, index, index, index, index, index
+          %base_buffer_9, %offset_10, %sizes_11:6, %strides_12:6 = memref.extract_strided_metadata %subview : memref<1x1x8x8x4x4xi32, strided<[2048, 1024, 128, 16, 4, 1], offset: ?>, 2 : i32> -> memref<i32, 2 : i32>, index, index, index, index, index, index, index, index, index, index, index, index, index
+          func.call @matmul_i32_i32(%base_buffer, %c0, %base_buffer_5, %c0, %base_buffer_9, %offset_10) : (memref<i32, 2 : i32>, index, memref<i32, 2 : i32>, index, memref<i32, 2 : i32>, index) -> ()
+          amdaie.end
+        } {elf_file = "/path/to/ukernel.o"}
+      } {mapping = [#gpu.thread<y>, #gpu.thread<x>]}
+    } {mapping = [#gpu.block<y>, #gpu.block<x>]}
+    memref.dealloc %alloc_3 : memref<2x2x8x8x4x4xi32, 2 : i32>
+    memref.dealloc %alloc_2 : memref<2x1x32x32xi32, 1 : i32>
+    memref.dealloc %alloc_1 : memref<1x2x32x32xi32, 1 : i32>
+    memref.dealloc %alloc_0 : memref<1x1x4x8x4x8xi32, 2 : i32>
+    memref.dealloc %alloc : memref<1x1x8x4x8x4xi32, 2 : i32>
+    return
+  }
+}
