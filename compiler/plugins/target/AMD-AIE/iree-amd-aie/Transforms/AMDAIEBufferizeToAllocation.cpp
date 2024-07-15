@@ -48,8 +48,7 @@ static SmallVector<Value> getInputOutputOperands(linalg::LinalgOp &linalgOp) {
   SmallVector<Value> operands;
   for (Value operand : linalgOp->getOperands()) {
     if (!isa<RankedTensorType>(operand.getType())) continue;
-    if (isMatmulProducerOfElementwise(linalgOp) && isMatmulInDefChain(operand))
-      continue;
+    if (isElementwise(linalgOp) && isMatmulInDefChain(operand)) continue;
     operands.push_back(operand);
   }
   return operands;
@@ -63,8 +62,7 @@ static SmallVector<Value> getInputOperands(linalg::LinalgOp &linalgOp) {
   SmallVector<Value> operands;
   for (Value operand : linalgOp.getDpsInputs()) {
     if (!isa<RankedTensorType>(operand.getType())) continue;
-    if (isMatmulProducerOfElementwise(linalgOp) && isMatmulInDefChain(operand))
-      continue;
+    if (isElementwise(linalgOp) && isMatmulInDefChain(operand)) continue;
     operands.push_back(operand);
   }
   return operands;
