@@ -105,12 +105,12 @@ class DMAChannelAnalysis {
   }
 
   /// Given an AIE tile, returns its next usable producer channel.
-  DMAChannel getProducerDMAChannel(Value tile) {
+  SwitchDMAConnection getProducerDMAChannel(Value tile) {
     return {DMAChannelDir::MM2S, producerChannelsPerTile[tile]++};
   }
 
   /// Given an AIE tile, returns its next usable consumer channel.
-  DMAChannel getConsumerDMAChannel(Value tile) {
+  SwitchDMAConnection getConsumerDMAChannel(Value tile) {
     return {DMAChannelDir::S2MM, consumerChannelsPerTile[tile]++};
   }
 };
@@ -864,7 +864,7 @@ void createFlowsAndTileDMAs(
                           objFifoLinks, buffersPerFifo, locksPerFifo);
   };
   // create producer tile DMA
-  DMAChannel producerChan =
+  SwitchDMAConnection producerChan =
       dmaAnalysis.getProducerDMAChannel(producer.getProducerTile());
   createDMA(producer, static_cast<DMAChannelDir>(producerChan.direction),
             producerChan.channel, producer.getDimensionsToStreamAttr());
@@ -879,7 +879,7 @@ void createFlowsAndTileDMAs(
 
   for (auto consumer : consumers) {
     // create consumer tile DMA
-    DMAChannel consumerChan =
+    SwitchDMAConnection consumerChan =
         dmaAnalysis.getConsumerDMAChannel(consumer.getProducerTile());
     BDDimLayoutArrayAttr consumerDims =
         consumer.getDimensionsFromStreamPerConsumer()[0];

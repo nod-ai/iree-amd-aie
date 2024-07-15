@@ -88,14 +88,14 @@ struct Port {
   }
 };
 
-struct DMAChannel {
+struct SwitchDMAConnection {
   DMAChannelDir direction;
   int channel;
 
-  DMAChannel(DMAChannelDir direction, int channel)
+  SwitchDMAConnection(DMAChannelDir direction, int channel)
       : direction(direction), channel(channel) {}
 
-  bool operator==(const DMAChannel& rhs) const {
+  bool operator==(const SwitchDMAConnection& rhs) const {
     return std::tie(direction, channel) == std::tie(rhs.direction, rhs.channel);
   }
 };
@@ -123,7 +123,7 @@ struct Connect {
   }
 };
 
-struct Channel {
+struct SwitchBoxConnection {
   Switchbox& src;
   Switchbox& target;
   StrmSwPortType bundle;
@@ -132,8 +132,8 @@ struct Channel {
   int usedCapacity = 0;  // how many flows are actually using this Channel
   DenseSet<int> fixedCapacity;  // channels not available to the algorithm
   int overCapacityCount = 0;    // history of Channel being over capacity
-  Channel(Switchbox& src, Switchbox& target, StrmSwPortType bundle,
-          int maxCapacity)
+  SwitchBoxConnection(Switchbox& src, Switchbox& target, StrmSwPortType bundle,
+                      int maxCapacity)
       : src(src), target(target), bundle(bundle), maxCapacity(maxCapacity) {}
 };
 
@@ -301,22 +301,22 @@ struct AMDAIEDeviceModel getDeviceModel(AMDAIEDevice device);
 #define OSTREAM_OP(O_TYPE, TYPE) O_TYPE& operator<<(O_TYPE& os, const TYPE& s);
 #define TO_STRING(TYPE) std::string to_string(const TYPE& t);
 
-#define TO_STRINGS(_) \
-  _(AMDAIETileType)   \
+#define TO_STRINGS(_)    \
+  _(AMDAIETileType)      \
   _(AMDAIEDmaProp)    \
-  _(AieRC)            \
-  _(Channel)          \
-  _(Connect)          \
-  _(DMAChannel)       \
-  _(DMAChannelDir)    \
-  _(Port)             \
-  _(SwitchSetting)    \
-  _(SwitchSettings)   \
-  _(Switchbox)        \
-  _(StrmSwPortType)   \
-  _(TileLoc)          \
-  _(XAie_LocType)     \
-  _(XAie_Lock)        \
+  _(AieRC)               \
+  _(Connect)             \
+  _(DMAChannelDir)       \
+  _(Port)                \
+  _(StrmSwPortType)      \
+  _(SwitchBoxConnection) \
+  _(SwitchDMAConnection) \
+  _(SwitchSetting)       \
+  _(SwitchSettings)      \
+  _(Switchbox)           \
+  _(TileLoc)             \
+  _(XAie_LocType)        \
+  _(XAie_Lock)           \
   _(XAie_Packet)
 
 TO_STRINGS(TO_STRING)
@@ -327,21 +327,21 @@ TO_STRINGS(TO_STRING)
   OSTREAM_OP_(std::ostream, TYPE)          \
   OSTREAM_OP_(llvm::raw_ostream, TYPE)
 
-#define BOTH_OSTREAM_OPS_FORALL_TYPES(OSTREAM_OP_, _)         \
-  _(OSTREAM_OP_, mlir::iree_compiler::AMDAIE::AMDAIETileType) \
-  _(OSTREAM_OP_, mlir::iree_compiler::AMDAIE::Channel)        \
-  _(OSTREAM_OP_, mlir::iree_compiler::AMDAIE::Connect)        \
-  _(OSTREAM_OP_, mlir::iree_compiler::AMDAIE::DMAChannel)     \
-  _(OSTREAM_OP_, mlir::iree_compiler::AMDAIE::DMAChannelDir)  \
-  _(OSTREAM_OP_, mlir::iree_compiler::AMDAIE::Port)           \
-  _(OSTREAM_OP_, mlir::iree_compiler::AMDAIE::SwitchSetting)  \
-  _(OSTREAM_OP_, mlir::iree_compiler::AMDAIE::SwitchSettings) \
-  _(OSTREAM_OP_, mlir::iree_compiler::AMDAIE::Switchbox)      \
-  _(OSTREAM_OP_, mlir::iree_compiler::AMDAIE::TileLoc)        \
-  _(OSTREAM_OP_, AieRC)                                       \
-  _(OSTREAM_OP_, StrmSwPortType)                              \
-  _(OSTREAM_OP_, XAie_LocType)                                \
-  _(OSTREAM_OP_, XAie_Lock)                                   \
+#define BOTH_OSTREAM_OPS_FORALL_TYPES(OSTREAM_OP_, _)              \
+  _(OSTREAM_OP_, mlir::iree_compiler::AMDAIE::AMDAIETileType)      \
+  _(OSTREAM_OP_, mlir::iree_compiler::AMDAIE::SwitchBoxConnection) \
+  _(OSTREAM_OP_, mlir::iree_compiler::AMDAIE::Connect)             \
+  _(OSTREAM_OP_, mlir::iree_compiler::AMDAIE::SwitchDMAConnection) \
+  _(OSTREAM_OP_, mlir::iree_compiler::AMDAIE::DMAChannelDir)       \
+  _(OSTREAM_OP_, mlir::iree_compiler::AMDAIE::Port)                \
+  _(OSTREAM_OP_, mlir::iree_compiler::AMDAIE::SwitchSetting)       \
+  _(OSTREAM_OP_, mlir::iree_compiler::AMDAIE::SwitchSettings)      \
+  _(OSTREAM_OP_, mlir::iree_compiler::AMDAIE::Switchbox)           \
+  _(OSTREAM_OP_, mlir::iree_compiler::AMDAIE::TileLoc)             \
+  _(OSTREAM_OP_, AieRC)                                            \
+  _(OSTREAM_OP_, StrmSwPortType)                                   \
+  _(OSTREAM_OP_, XAie_LocType)                                     \
+  _(OSTREAM_OP_, XAie_Lock)                                        \
   _(OSTREAM_OP_, XAie_Packet)
 
 BOTH_OSTREAM_OPS_FORALL_TYPES(OSTREAM_OP, BOTH_OSTREAM_OP)

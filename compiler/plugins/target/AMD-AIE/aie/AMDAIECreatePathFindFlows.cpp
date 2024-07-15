@@ -25,7 +25,6 @@ using namespace mlir;
 
 using mlir::iree_compiler::AMDAIE::AMDAIEDevice;
 using mlir::iree_compiler::AMDAIE::AMDAIEDeviceModel;
-using mlir::iree_compiler::AMDAIE::Channel;
 using mlir::iree_compiler::AMDAIE::getConnectingBundle;
 using mlir::iree_compiler::AMDAIE::PathEndPoint;
 using mlir::iree_compiler::AMDAIE::Port;
@@ -170,27 +169,29 @@ LogicalResult DynamicTileAnalysis::runAnalysis(DeviceOp &device) {
     for (ConnectOp connectOp : switchboxOp.getOps<ConnectOp>()) {
       auto sb = connectOp->getParentOfType<SwitchboxOp>();
       // Don't add handwritten connections for Shim NOC tiles.
-      // TODO(max): keep track of capacity so that even if we don't try to add those
-      // connections (as actual routes) we might consider checking if capacity 
-      // has been exceeded.
+      // TODO(max): keep track of capacity so that even if we don't try to add
+      // those connections (as actual routes) we might consider checking if
+      // capacity has been exceeded.
       if (sb.getTileOp().isShimNOCTile()) continue;
       if (!pathfinder->addFixedConnection(
               {{sb.colIndex(), sb.rowIndex()},
                {toStrmT(connectOp.getSourceBundle()),
                 connectOp.getSourceChannel()},
                {toStrmT(connectOp.getDestBundle()),
-                connectOp.getDestChannel()}}))
+                connectOp.getDestChannel()}})) {
         return switchboxOp.emitOpError() << "Couldn't connect " << connectOp;
+      }
     }
   }
 
   // all flows are now populated, call the congestion-aware pathfinder
   // algorithm
   // check whether the pathfinder algorithm creates a legal routing
-  if (auto maybeFlowSolutions = pathfinder->findPaths(maxIterations))
+  if (auto maybeFlowSolutions = pathfinder->findPaths(maxIterations)) {
     flowSolutions = maybeFlowSolutions.value();
-  else
+  } else {
     return device.emitError("Unable to find a legal routing");
+  }
 
   // initialize all flows as unprocessed to prep for rewrite
   for (const auto &[pathEndPoint, switchSetting] : flowSolutions)
@@ -447,16 +448,18 @@ void AMDAIEPathfinderPass::runOnOperation() {
   for (int col = 0; col <= analyzer.getMaxCol(); col++) {
     for (int row = 0; row <= analyzer.getMaxRow(); row++) {
       TileOp tile;
-      if (analyzer.coordToTile.count({col, row}))
+      if (analyzer.coordToTile.count({col, row})) {
         tile = analyzer.coordToTile[{col, row}];
-      else
+      } else {
         continue;
+      }
 
       SwitchboxOp sw;
-      if (analyzer.coordToSwitchbox.count({col, row}))
+      if (analyzer.coordToSwitchbox.count({col, row})) {
         sw = analyzer.coordToSwitchbox[{col, row}];
-      else
+      } else {
         continue;
+      }
 
       if (col > 0 && analyzer.coordToSwitchbox.count({col - 1, row})) {
         // connections east-west between stream switches
@@ -512,8 +515,9 @@ void AMDAIEPathfinderPass::runOnOperation() {
           !deviceModel.isLegalMemtileConnection(
               tile.getCol(), tile.getRow(), toStrmT(connect.getSourceBundle()),
               connect.getSourceChannel(), toStrmT(connect.getDestBundle()),
-              connect.getDestChannel()))
+              connect.getDestChannel())) {
         problemConnects.push_back(connect);
+      }
     }
   });
 
@@ -523,8 +527,9 @@ void AMDAIEPathfinderPass::runOnOperation() {
     builder.setInsertionPoint(connect);
     auto northSw = getSwitchbox(d, swBox.colIndex(), swBox.rowIndex() + 1);
     if (auto southSw = getSwitchbox(d, swBox.colIndex(), swBox.rowIndex() - 1);
-        !attemptFixupMemTileRouting(builder, northSw, southSw, connect))
+        !attemptFixupMemTileRouting(builder, northSw, southSw, connect)) {
       return signalPassFailure();
+    }
   }
 }
 
@@ -532,38 +537,44 @@ bool AMDAIEPathfinderPass::attemptFixupMemTileRouting(
     const OpBuilder &builder, SwitchboxOp northSwOp, SwitchboxOp southSwOp,
     ConnectOp &problemConnect) {
   int problemNorthChannel;
-  if (problemConnect.getSourceBundle() == StrmSwPortType::NORTH)
+  if (problemConnect.getSourceBundle() == StrmSwPortType::NORTH) {
     problemNorthChannel = problemConnect.getSourceChannel();
-  else if (problemConnect.getDestBundle() == StrmSwPortType::NORTH)
+  } else if (problemConnect.getDestBundle() == StrmSwPortType::NORTH) {
     problemNorthChannel = problemConnect.getDestChannel();
-  else
+  } else {
     return false;  // Problem is not about n-s routing
+  }
   int problemSouthChannel;
-  if (problemConnect.getSourceBundle() == StrmSwPortType::SOUTH)
+  if (problemConnect.getSourceBundle() == StrmSwPortType::SOUTH) {
     problemSouthChannel = problemConnect.getSourceChannel();
-  else if (problemConnect.getDestBundle() == StrmSwPortType::SOUTH)
+  } else if (problemConnect.getDestBundle() == StrmSwPortType::SOUTH) {
     problemSouthChannel = problemConnect.getDestChannel();
-  else
+  } else {
     return false;  // Problem is not about n-s routing
+  }
 
   // Attempt to reroute northern neighbouring sw
   if (reconnectConnectOps(builder, northSwOp, problemConnect, true,
                           StrmSwPortType::SOUTH, problemNorthChannel,
-                          problemSouthChannel))
+                          problemSouthChannel)) {
     return true;
+  }
   if (reconnectConnectOps(builder, northSwOp, problemConnect, false,
                           StrmSwPortType::SOUTH, problemNorthChannel,
-                          problemSouthChannel))
+                          problemSouthChannel)) {
     return true;
+  }
   // Otherwise, attempt to reroute southern neighbouring sw
   if (reconnectConnectOps(builder, southSwOp, problemConnect, true,
                           StrmSwPortType::NORTH, problemSouthChannel,
-                          problemNorthChannel))
+                          problemNorthChannel)) {
     return true;
+  }
   if (reconnectConnectOps(builder, southSwOp, problemConnect, false,
                           StrmSwPortType::NORTH, problemSouthChannel,
-                          problemNorthChannel))
+                          problemNorthChannel)) {
     return true;
+  }
   return false;
 }
 
@@ -584,8 +595,9 @@ bool AMDAIEPathfinderPass::reconnectConnectOps(const OpBuilder &builder,
         foundCandidateForFixup = true;
       }
       if (connect.getDestBundle() == problemBundle &&
-          connect.getDestChannel() == emptyChan)
+          connect.getDestChannel() == emptyChan) {
         hasEmptyChannelSlot = false;
+      }
     }
   } else {
     for (ConnectOp connect : sw.getOps<ConnectOp>()) {
@@ -595,8 +607,9 @@ bool AMDAIEPathfinderPass::reconnectConnectOps(const OpBuilder &builder,
         foundCandidateForFixup = true;
       }
       if (connect.getSourceBundle() == problemBundle &&
-          connect.getSourceChannel() == emptyChan)
+          connect.getSourceChannel() == emptyChan) {
         hasEmptyChannelSlot = false;
+      }
     }
   }
 

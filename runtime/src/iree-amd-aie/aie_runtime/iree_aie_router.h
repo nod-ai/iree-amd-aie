@@ -17,10 +17,12 @@
 
 namespace mlir::iree_compiler::AMDAIE {
 struct SwitchboxNode;
-struct ChannelEdge;
-using SwitchboxNodeBase = llvm::DGNode<SwitchboxNode, ChannelEdge>;
-using ChannelEdgeBase = llvm::DGEdge<SwitchboxNode, ChannelEdge>;
-using SwitchboxGraphBase = llvm::DirectedGraph<SwitchboxNode, ChannelEdge>;
+struct SwitchBoxConnectionEdge;
+using SwitchboxNodeBase = llvm::DGNode<SwitchboxNode, SwitchBoxConnectionEdge>;
+using SwitchBoxConnectionEdgeBase =
+    llvm::DGEdge<SwitchboxNode, SwitchBoxConnectionEdge>;
+using SwitchboxGraphBase =
+    llvm::DirectedGraph<SwitchboxNode, SwitchBoxConnectionEdge>;
 
 struct SwitchboxNode : SwitchboxNodeBase, Switchbox {
   using Switchbox::Switchbox;
@@ -28,20 +30,21 @@ struct SwitchboxNode : SwitchboxNodeBase, Switchbox {
   int id;
 };
 
-struct ChannelEdge : ChannelEdgeBase, Channel {
-  using Channel::Channel;
+struct SwitchBoxConnectionEdge : SwitchBoxConnectionEdgeBase,
+                                 SwitchBoxConnection {
+  using SwitchBoxConnection::SwitchBoxConnection;
   SwitchboxNode &src;
 
-  explicit ChannelEdge(SwitchboxNode &target) = delete;
-  ChannelEdge(SwitchboxNode &src, SwitchboxNode &target, StrmSwPortType bundle,
-              int maxCapacity)
-      : ChannelEdgeBase(target),
-        Channel(src, target, bundle, maxCapacity),
+  explicit SwitchBoxConnectionEdge(SwitchboxNode &target) = delete;
+  SwitchBoxConnectionEdge(SwitchboxNode &src, SwitchboxNode &target,
+                          StrmSwPortType bundle, int maxCapacity)
+      : SwitchBoxConnectionEdgeBase(target),
+        SwitchBoxConnection(src, target, bundle, maxCapacity),
         src(src) {}
 
   // This class isn't designed to copied or moved.
-  ChannelEdge(const ChannelEdge &E) = delete;
-  ChannelEdge &operator=(ChannelEdge &&E) = delete;
+  SwitchBoxConnectionEdge(const SwitchBoxConnectionEdge &E) = delete;
+  SwitchBoxConnectionEdge &operator=(SwitchBoxConnectionEdge &&E) = delete;
 };
 
 class SwitchboxGraph : public SwitchboxGraphBase {
@@ -73,7 +76,7 @@ struct GraphTraits<mlir::iree_compiler::AMDAIE::SwitchboxNode *> {
 
   static mlir::iree_compiler::AMDAIE::SwitchboxNode *SwitchboxGraphGetSwitchbox(
       DGEdge<mlir::iree_compiler::AMDAIE::SwitchboxNode,
-             mlir::iree_compiler::AMDAIE::ChannelEdge> *P) {
+             mlir::iree_compiler::AMDAIE::SwitchBoxConnectionEdge> *P) {
     return &P->getTargetNode();
   }
 
@@ -131,7 +134,7 @@ struct Router {
   std::map<TileLoc, SwitchboxNode> grid;
   // Use a list instead of a vector because nodes have an edge list of raw
   // pointers to edges (so growing a vector would invalidate the pointers).
-  std::list<ChannelEdge> edges;
+  std::list<SwitchBoxConnectionEdge> edges;
 
   Router() = default;
   void initialize(int maxCol, int maxRow, AMDAIEDeviceModel &deviceModel);

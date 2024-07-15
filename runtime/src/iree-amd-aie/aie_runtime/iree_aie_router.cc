@@ -25,7 +25,7 @@ namespace mlir::iree_compiler::AMDAIE {
 /// Create the initial graph of nearest neighbor relationships between
 /// switchboxes, including link capacity.
 void Router::initialize(int maxCol, int maxRow,
-                            AMDAIEDeviceModel &deviceModel) {
+                        AMDAIEDeviceModel &deviceModel) {
   int nodeId = 0;
   for (int row = 0; row <= maxRow; row++) {
     for (int col = 0; col <= maxCol; col++) {
@@ -77,7 +77,7 @@ void Router::initialize(int maxCol, int maxRow,
 /// Add a flow from src to dst can have an arbitrary number of dst locations due
 /// to fanout.
 void Router::addFlow(TileLoc srcCoords, Port srcPort, TileLoc dstCoords,
-                         Port dstPort) {
+                     Port dstPort) {
   // check if a flow with this source already exists
   for (auto &[src, dsts] : flows) {
     SwitchboxNode *existingSrc = src.sb;
@@ -119,25 +119,28 @@ bool Router::addFixedConnection(Connect connectOp) {
   StrmSwPortType sourceBundle = connectOp.src.bundle;
   StrmSwPortType destBundle = connectOp.dst.bundle;
 
-  // find the correct Channel and indicate the fixed direction
+  // find the correct SwitchBoxConnection and indicate the fixed direction
   // outgoing connection
-  auto matchingCh =
-      std::find_if(edges.begin(), edges.end(), [&](ChannelEdge &ch) {
+  auto matchingCh = std::find_if(
+      edges.begin(), edges.end(), [&](SwitchBoxConnectionEdge &ch) {
         return static_cast<TileLoc>(ch.src) == sbTile &&
                ch.bundle == destBundle;
       });
-  if (matchingCh != edges.end())
+  if (matchingCh != edges.end()) {
     return matchingCh->fixedCapacity.insert(connectOp.dst.channel).second ||
            true;
+  }
 
   // incoming connection
-  matchingCh = std::find_if(edges.begin(), edges.end(), [&](ChannelEdge &ch) {
-    return static_cast<TileLoc>(ch.target) == sbTile &&
-           ch.bundle == getConnectingBundle(sourceBundle);
-  });
-  if (matchingCh != edges.end())
+  matchingCh = std::find_if(
+      edges.begin(), edges.end(), [&](SwitchBoxConnectionEdge &ch) {
+        return static_cast<TileLoc>(ch.target) == sbTile &&
+               ch.bundle == getConnectingBundle(sourceBundle);
+      });
+  if (matchingCh != edges.end()) {
     return matchingCh->fixedCapacity.insert(connectOp.src.channel).second ||
            true;
+  }
 
   return false;
 }
@@ -160,24 +163,25 @@ std::map<SwitchboxNode *, SwitchboxNode *> dijkstraShortestPaths(
   for (SwitchboxNode *sb : graph) distance.emplace(sb, INF);
   distance[src] = 0.0;
 
-  std::map<SwitchboxNode *, std::vector<ChannelEdge *>> edges;
+  std::map<SwitchboxNode *, std::vector<SwitchBoxConnectionEdge *>> edges;
 
   enum Color { WHITE, GRAY, BLACK };
   std::map<SwitchboxNode *, Color> colors;
   for (SwitchboxNode *sb : graph) {
     colors[sb] = WHITE;
     edges[sb] = {sb->getEdges().begin(), sb->getEdges().end()};
-    std::sort(edges[sb].begin(), edges[sb].end(),
-              [](const ChannelEdge *c1, ChannelEdge *c2) {
-                return c1->getTargetNode().id < c2->getTargetNode().id;
-              });
+    std::sort(
+        edges[sb].begin(), edges[sb].end(),
+        [](const SwitchBoxConnectionEdge *c1, SwitchBoxConnectionEdge *c2) {
+          return c1->getTargetNode().id < c2->getTargetNode().id;
+        });
   }
 
   Q.push(src);
   while (!Q.empty()) {
     src = Q.top();
     Q.pop();
-    for (ChannelEdge *e : edges[src]) {
+    for (SwitchBoxConnectionEdge *e : edges[src]) {
       SwitchboxNode *dest = &e->getTargetNode();
       bool relax = distance[src] + e->demand < distance[dest];
       if (colors[dest] == WHITE) {
@@ -208,7 +212,7 @@ std::optional<std::map<PathEndPoint, SwitchSettings>> Router::findPaths(
   int iterationCount = 0;
   std::map<PathEndPoint, SwitchSettings> routingSolution;
 
-  // initialize all Channel histories to 0
+  // initialize all SwitchBoxConnection histories to 0
   for (auto &ch : edges) ch.overCapacityCount = 0;
 
   // Check that every channel does not exceed max capacity.
@@ -240,7 +244,8 @@ std::optional<std::map<PathEndPoint, SwitchSettings>> Router::findPaths(
     // if reach maxIterations, throw an error since no routing can be found
     if (++iterationCount > maxIterations) return std::nullopt;
 
-    // "rip up" all routes, i.e. set used capacity in each Channel to 0
+    // "rip up" all routes, i.e. set used capacity in each SwitchBoxConnection
+    // to 0
     routingSolution.clear();
     for (auto &ch : edges) ch.usedCapacity = 0;
 
@@ -271,14 +276,15 @@ std::optional<std::map<PathEndPoint, SwitchSettings>> Router::findPaths(
         // trace backwards until a vertex already processed is reached
         while (!processed.count(curr)) {
           // find the edge from the pred to curr by searching incident edges
-          SmallVector<ChannelEdge *, 10> channels;
+          SmallVector<SwitchBoxConnectionEdge *, 10> channels;
           graph.findIncomingEdgesToNode(*curr, channels);
-          auto *matchingCh = std::find_if(
-              channels.begin(), channels.end(),
-              [&](ChannelEdge *ch) { return ch->src == *preds[curr]; });
+          auto *matchingCh = std::find_if(channels.begin(), channels.end(),
+                                          [&](SwitchBoxConnectionEdge *ch) {
+                                            return ch->src == *preds[curr];
+                                          });
           assert(matchingCh != channels.end() && "couldn't find ch");
           // incoming edge
-          ChannelEdge *ch = *matchingCh;
+          SwitchBoxConnectionEdge *ch = *matchingCh;
 
           // don't use fixed channels
           while (ch->fixedCapacity.count(ch->usedCapacity)) ch->usedCapacity++;
@@ -291,7 +297,8 @@ std::optional<std::map<PathEndPoint, SwitchSettings>> Router::findPaths(
               {ch->bundle, ch->usedCapacity});
 
           ch->usedCapacity++;
-          // if at capacity, bump demand to discourage using this Channel
+          // if at capacity, bump demand to discourage using this
+          // SwitchBoxConnection
           if (ch->usedCapacity >= ch->maxCapacity) ch->demand *= DEMAND_COEFF;
 
           processed.insert(curr);
@@ -305,9 +312,6 @@ std::optional<std::map<PathEndPoint, SwitchSettings>> Router::findPaths(
 
   return routingSolution;
 }
-
-std::optional<std::map<PathEndPoint, SwitchSettings>> findPaths(
-    int maxIterations);
 
 Switchbox *Router::getSwitchbox(TileLoc coords) {
   auto *sb = std::find_if(graph.begin(), graph.end(), [&](SwitchboxNode *sb) {

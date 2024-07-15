@@ -169,12 +169,12 @@ std::string to_string(const SwitchSettings &settings) {
          ")";
 }
 
-STRINGIFY_2TUPLE_STRUCT(Port, bundle, channel)
 STRINGIFY_2TUPLE_STRUCT(Connect, src, dst)
-STRINGIFY_2TUPLE_STRUCT(DMAChannel, direction, channel)
+STRINGIFY_2TUPLE_STRUCT(Port, bundle, channel)
+STRINGIFY_2TUPLE_STRUCT(SwitchBoxConnection, src, target)
+STRINGIFY_2TUPLE_STRUCT(SwitchDMAConnection, direction, channel)
 STRINGIFY_2TUPLE_STRUCT(Switchbox, col, row)
 STRINGIFY_2TUPLE_STRUCT(TileLoc, col, row)
-STRINGIFY_2TUPLE_STRUCT(Channel, src, target)
 STRINGIFY_2TUPLE_STRUCT(XAie_LocType, Col, Row)
 STRINGIFY_2TUPLE_STRUCT(XAie_Lock, LockId, LockVal)
 STRINGIFY_2TUPLE_STRUCT(XAie_Packet, PktId, PktType)
