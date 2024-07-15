@@ -132,7 +132,10 @@ struct AMDAIEAssignBufferDescriptorIDsPass : mlir::OperationPass<DeviceOp> {
           Block *nextBlock = block.getSuccessor(0);
           if (!blockBdIdMap.contains(nextBlock))
             assert(nextBlock->getOperations().size() == 1 &&
-                   isa<EndOp>(nextBlock->getOperations().front()) &&
+                   // for some reason i can't stick both of ops in a single
+                   // isa<...>
+                   (isa<EndOp>(nextBlock->getOperations().front()) ||
+                    isa<DMAStartOp>(nextBlock->getOperations().front())) &&
                    "bb that's not in blockMap can only have aie.end");
           else
             nextBdId = blockBdIdMap[nextBlock];
