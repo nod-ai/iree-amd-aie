@@ -435,7 +435,7 @@ run_test --test_file ${test_name} --pipeline "pack-peel"
 run_test --test_file ${test_name} --pipeline "pack-peel" --use_ukernel 1
 
 # Conv2d tests.
-run_test --test_file ${THIS_DIR}/test_files/conv_int32.mlir --pipeline "conv-decompose"
-run_test --test_file ${THIS_DIR}/test_files/conv_bf16.mlir --pipeline "conv-decompose"
-run_test --test_file ${THIS_DIR}/test_files/conv_int8.mlir --pipeline "conv-decompose"
-
+run_test --test_file ${THIS_DIR}/test_files/conv2d_nhwc_int32.mlir --pipeline "conv-decompose"
+run_test --test_file ${THIS_DIR}/test_files/conv2d_nhwc_bf16.mlir --pipeline "conv-decompose"
+run_test --test_file ${THIS_DIR}/test_files/conv2d_nhwc_int8.mlir --pipeline "conv-decompose"
+run_test --test_file ${THIS_DIR}/test_files/conv2d_nhwc_q.mlir --pipeline "conv-decompose"

@@ -454,7 +454,8 @@ static LogicalResult setRootConfigForConvDecomposePipeline(
   SmallVector<int64_t> tileSizeLevel1;
   SmallVector<int64_t> tileSizeLevel2;
   // Note: some of the tiling dimensions are hardcoded for now.
-  if (isa<linalg::Conv2DNhwcHwcfOp>(linalgOp)) {
+  if (isa<linalg::Conv2DNhwcHwcfOp>(linalgOp) ||
+      isa<linalg::Conv2DNhwcHwcfQOp>(linalgOp)) {
     // conv_2d_nhwc_hwcf tiling dims: [N, OH, OW, OC, KH, KW, IC].
     tileSizeLevel0 = {0, 4, OW, OC, 0, 0, 0};
     tileSizeLevel1 = {1, 1, OW, OC, 0, 0, 0};
@@ -639,7 +640,8 @@ static LogicalResult setRootConfigImpl(mlir::FunctionOpInterface entryPointFn,
         // let it first crash for all the other ops and then consiously
         // add support for them, this way we can verify our work.
         // TODO (vivian): add support for other conv interface ops
-        .Case<linalg::Conv2DNhwcHwcfOp, linalg::Conv2DNchwFchwOp>([&](auto op) {
+        .Case<linalg::Conv2DNhwcHwcfOp, linalg::Conv2DNchwFchwOp,
+              linalg::Conv2DNhwcHwcfQOp>([&](auto op) {
           return setConvRootConfig(entryPointFn, op, passPipeline, cfg);
         })
         .Case<linalg::GenericOp>([&](auto op) {
