@@ -9,6 +9,20 @@ func.func @func() {
 
 // -----
 
+// CHECK-LABEL: module
+//       CHECK: @ukernel
+//       CHECK: @func
+//       CHECK:   amdaie.workgroup
+//       CHECK:     amdaie.controlcode
+module {
+  func.func private @ukernel(memref<i32, 2 : i32>, index) attributes {link_with = "/path/to/ukernels.o", llvm.bareptr = true}
+  func.func @func() {
+    return
+  }
+}
+
+// -----
+
 // CHECK-LABEL: @circular_dma_cpy_nd
 // CHECK:       amdaie.workgroup
 // CHECK:         amdaie.circular_dma_cpy_nd
