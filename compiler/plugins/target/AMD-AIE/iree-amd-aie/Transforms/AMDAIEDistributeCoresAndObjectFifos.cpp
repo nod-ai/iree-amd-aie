@@ -101,7 +101,8 @@ LogicalResult distributeLocalMemory(ModuleOp moduleOp) {
     SmallVector<Operation *> allocOpUsers;
     for (Operation *userOp : allocOp->getUsers()) {
       if (isa<memref::SubViewOp, vector::TransferReadOp,
-              vector::TransferWriteOp>(userOp)) {
+              vector::TransferWriteOp, memref::ExtractStridedMetadataOp>(
+              userOp)) {
         allocOpUsers.push_back(userOp);
       }
       auto subviewOp = dyn_cast<memref::SubViewOp>(userOp);
@@ -130,7 +131,8 @@ LogicalResult distributeLocalMemory(ModuleOp moduleOp) {
     // applicable:-
     // 1. vector.transfer_read.
     // 2. vector.transfer_write.
-    // 3. memref.subview - only for this op we would replace its uses with a new
+    // 3. memref.extract_strided_metadata.
+    // 4. memref.subview - only for this op we would replace its uses with a new
     //                     AllocOp and not replace the current AllocOp's use
     //                     within.
     memref::AllocOp newAlloc = memrefToNew[allocOp];
@@ -153,6 +155,15 @@ LogicalResult distributeLocalMemory(ModuleOp moduleOp) {
             transferWriteOp.getLoc(), transferWriteOp.getVector(), newAlloc,
             transferWriteOp.getIndices());
         toBeErased.push_back(transferWriteOp);
+      } else if (auto extractStridedMetadataOp =
+                     dyn_cast<memref::ExtractStridedMetadataOp>(userOp)) {
+        rewriter.setInsertionPoint(extractStridedMetadataOp);
+        auto newextractStridedMetadataOp =
+            rewriter.create<memref::ExtractStridedMetadataOp>(
+                extractStridedMetadataOp.getLoc(), newAlloc);
+        rewriter.replaceAllUsesWith(extractStridedMetadataOp.getResults(),
+                                    newextractStridedMetadataOp.getResults());
+        toBeErased.push_back(extractStridedMetadataOp);
       }
     }
 
@@ -522,8 +533,8 @@ LogicalResult insertLogicalObjectFifoAccess(ModuleOp moduleOp) {
     DenseMap<Value, AMDAIE::LogicalObjectFifoAccessOp>
         memrefToLogicalObjectFifoAccess;
     WalkResult res = coreOp->walk([&](Operation *op) {
-      if (isa<linalg::LinalgOp, vector::TransferReadOp,
-              vector::TransferWriteOp>(op)) {
+      if (isa<linalg::LinalgOp, vector::TransferReadOp, vector::TransferWriteOp,
+              memref::ExtractStridedMetadataOp>(op)) {
         for (auto &&[idx, operand] : llvm::enumerate(op->getOpOperands())) {
           if (memrefToLogicalObjectFifoAccess.contains(operand.get())) {
             op->setOperand(idx, memrefToLogicalObjectFifoAccess[operand.get()]);
