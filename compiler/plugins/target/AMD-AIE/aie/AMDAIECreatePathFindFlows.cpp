@@ -169,7 +169,10 @@ LogicalResult DynamicTileAnalysis::runAnalysis(DeviceOp &device) {
   for (SwitchboxOp switchboxOp : device.getOps<SwitchboxOp>()) {
     for (ConnectOp connectOp : switchboxOp.getOps<ConnectOp>()) {
       auto sb = connectOp->getParentOfType<SwitchboxOp>();
-      // TODO: keep track of capacity?
+      // Don't add handwritten connections for Shim NOC tiles.
+      // TODO(max): keep track of capacity so that even if we don't try to add those
+      // connections (as actual routes) we might consider checking if capacity 
+      // has been exceeded.
       if (sb.getTileOp().isShimNOCTile()) continue;
       if (!pathfinder->addFixedConnection(
               {{sb.colIndex(), sb.rowIndex()},
