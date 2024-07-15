@@ -3,6 +3,7 @@
 // Licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+#pragma once
 
 #include <string>
 
@@ -12,33 +13,12 @@
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Support/LogicalResult.h"
 
-#pragma once
-
-namespace xilinx {
-
-struct XCLBinGenConfig {
-  std::string TargetArch;
-  std::string PeanoDir;
-  std::string MLIRAIEInstallDir;
-  std::string AMDAIEInstallDir;
-  std::string AIEToolsDir;
-  std::string TempDir;
-  bool Verbose;
-  std::string HostArch;
-  std::string XCLBinKernelName;
-  std::string XCLBinKernelID;
-  std::string XCLBinInstanceName;
-  bool UseChess = false;
-  bool DisableThreading = false;
-  bool PrintIRAfterAll = false;
-  bool PrintIRBeforeAll = false;
-  bool PrintIRModuleScope = false;
-  bool Timing = false;
-};
-
-mlir::LogicalResult aie2xclbin(mlir::MLIRContext *ctx, mlir::ModuleOp moduleOp,
-                               XCLBinGenConfig &TK, mlir::StringRef OutputNPU,
-                               mlir::StringRef OutputXCLBin,
-                               mlir::StringRef InputXCLBin = "");
-
-}  // namespace xilinx
+mlir::LogicalResult aie2xclbin(
+    mlir::MLIRContext *ctx, mlir::ModuleOp moduleOp,
+    const std::string &outputNPU, const std::string &outputXCLBin,
+    bool printIRBeforeAll, bool printIRAfterAll, bool printIRModuleScope,
+    bool timing, const std::string &tempDir, bool useChess, bool verbose,
+    const std::string &mlirAIEInstallDir, const std::string &targetArch,
+    const std::string &peanoDir, const std::string &xclBinKernelID,
+    const std::string &xclBinKernelName, const std::string &xclBinInstanceName,
+    const std::string &amdAIEInstallDir, const std::string &InputXCLBin = "");

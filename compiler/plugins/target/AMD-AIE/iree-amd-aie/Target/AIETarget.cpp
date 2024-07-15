@@ -10,10 +10,10 @@
 
 #include "XCLBinGen.h"
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
-#include "aie/Dialect/AIEVec/IR/AIEVecDialect.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
-#include "aie/Dialect/XLLVM/XLLVMDialect.h"
-#include "aie/Target/LLVMIR/Dialect/XLLVM/XLLVMToLLVMIRTranslation.h"
+#include "aievec/AIEVecDialect.h"
+#include "aievec/Passes.h"
+#include "aievec/XLLVMDialect.h"
 #include "air/Dialect/AIR/AIRDialect.h"
 #include "air/Dialect/AIRRt/AIRRtDialect.h"
 #include "iree-amd-aie/IR/AMDAIEAttrs.h"
@@ -191,14 +191,14 @@ class AIETargetBackend final : public IREE::HAL::TargetBackend {
         IREE::LinalgExt::IREELinalgExtDialect, transform::TransformDialect,
         xilinx::AIE::AIEDialect, xilinx::AIEX::AIEXDialect,
         xilinx::air::airDialect, xilinx::airrt::AIRRtDialect,
-        xilinx::xllvm::XLLVMDialect, xilinx::aievec::AIEVecDialect,
-        emitc::EmitCDialect, LLVM::LLVMDialect, func::FuncDialect,
-        cf::ControlFlowDialect, DLTIDialect, arith::ArithDialect,
-        memref::MemRefDialect, math::MathDialect, vector::VectorDialect>();
+        aievec::xllvm::XLLVMDialect, aievec::AIEVecDialect, emitc::EmitCDialect,
+        LLVM::LLVMDialect, func::FuncDialect, cf::ControlFlowDialect,
+        DLTIDialect, arith::ArithDialect, memref::MemRefDialect,
+        math::MathDialect, vector::VectorDialect>();
 
     registerBuiltinDialectTranslation(registry);
     registerLLVMDialectTranslation(registry);
-    xilinx::xllvm::registerXLLVMDialectTranslation(registry);
+    aievec::registerXLLVMDialectTranslation(registry);
     arith::registerConvertArithToLLVMInterface(registry);
     cf::registerConvertControlFlowToLLVMInterface(registry);
     func::registerAllExtensions(registry);
@@ -367,31 +367,9 @@ LogicalResult AIETargetBackend::serializeExecutable(
     llvm::sys::path::append(npuInstPath,
                             entryPointNamesFb[ordinal] + ".npu.txt");
 
-    xilinx::XCLBinGenConfig TK;
-    TK.PrintIRAfterAll = options.aie2xclbinPrintIrAfterAll;
-    TK.PrintIRBeforeAll = options.aie2xclbinPrintIrBeforeAll;
-    TK.PrintIRModuleScope = options.aie2xclbinPrintIrModuleScope;
-    TK.Timing = options.aie2xclbinTiming;
-    TK.TargetArch = "AIE2";
-    TK.TempDir = entryPointWorkDir.str();
-    TK.UseChess = options.useChess;
-    TK.Verbose = options.showInvokedCommands;
-    // The instance name is appended to the kernel name so we dont want it to be
-    // something too long.
-    TK.XCLBinInstanceName = "IREE";
-
     // Convert ordinal to hexadecimal string for xclbin kernel id.
     std::stringstream ordinalHex;
     ordinalHex << "0x" << std::hex << ordinal;
-    TK.XCLBinKernelID = ordinalHex.str();
-    TK.XCLBinKernelName = entryPointNamesFb[ordinal];
-
-    SmallString<64> aieToolsDir(options.vitisInstallDir);
-    llvm::sys::path::append(aieToolsDir, "aietools");
-    TK.AIEToolsDir = aieToolsDir.str();
-    TK.MLIRAIEInstallDir = options.mlirAieInstallDir;
-    TK.AMDAIEInstallDir = options.amdAieInstallDir;
-    TK.PeanoDir = options.peanoInstallDir;
 
     ParserConfig pcfg(variantOp->getContext());
     llvm::SourceMgr srcMgr;
@@ -399,8 +377,24 @@ LogicalResult AIETargetBackend::serializeExecutable(
     OwningOpRef<ModuleOp> owningModuleOp =
         parseSourceFile<ModuleOp>(inputMlirPath, srcMgr, pcfg);
 
-    if (failed(aie2xclbin(variantOp->getContext(), *owningModuleOp, TK,
-                          npuInstPath, xclbinPath)))
+    if (failed(aie2xclbin(
+            /*ctx=*/variantOp->getContext(), /*moduleOp=*/*owningModuleOp,
+            /*outputNPU=*/npuInstPath.str().str(),
+            /*outputXCLBin=*/xclbinPath.str().str(),
+            /*printIRBeforeAll=*/options.aie2xclbinPrintIrBeforeAll,
+            /*printIRAfterAll=*/options.aie2xclbinPrintIrAfterAll,
+            /*printIRModuleScope=*/options.aie2xclbinPrintIrModuleScope,
+            /*timing=*/options.aie2xclbinTiming,
+            /*tempDir=*/entryPointWorkDir.str().str(),
+            /*useChess=*/options.useChess,
+            /*verbose=*/options.showInvokedCommands,
+            /*mlirAIEInstallDir=*/options.mlirAieInstallDir,
+            /*targetArch=*/"AIE2",
+            /*peanoDir=*/options.peanoInstallDir,
+            /*xclBinKernelID=*/ordinalHex.str(),
+            /*xclBinKernelName=*/entryPointNamesFb[ordinal],
+            /*xclBinInstanceName=*/"IREE",
+            /*amdAIEInstallDir=*/options.amdAieInstallDir)))
       return failure();
 
     std::ifstream instrFile(static_cast<std::string>(npuInstPath));

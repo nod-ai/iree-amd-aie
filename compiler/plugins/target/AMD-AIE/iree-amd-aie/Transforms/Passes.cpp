@@ -6,8 +6,8 @@
 
 #include "iree-amd-aie/Transforms/Passes.h"
 
-#include "aie/Conversion/AIEVecToLLVM/AIEVecToLLVM.h"
 #include "aie/Passes.h"
+#include "aievec/Passes.h"
 #include "air/Conversion/Passes.h"
 #include "air/Transform/Passes.h"
 #include "iree-amd-aie/IR/AMDAIEAttrs.h"
@@ -793,7 +793,7 @@ void buildAMDAIELinkingPassPipeline(OpPassManager &passManager) {
 void addLowerToLLVMPasses(OpPassManager &pm) {
   pm.addPass(createCanonicalizerPass());
   pm.addPass(createCSEPass());
-  pm.addPass(xilinx::aievec::createConvertAIEVecToLLVMPass());
+  pm.addPass(aievec::createConvertAIEVecToLLVMPass());
   pm.addPass(createConvertVectorToLLVMPass());
   pm.addPass(memref::createExpandStridedMetadataPass());
   pm.addPass(createLowerAffinePass());

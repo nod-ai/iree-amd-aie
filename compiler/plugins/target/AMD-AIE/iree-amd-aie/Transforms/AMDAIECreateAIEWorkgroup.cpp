@@ -314,6 +314,10 @@ namespace {
 /// Traverse the function operation and create a single workgroup and control
 /// code.
 LogicalResult createSingleWorkgroupAndControlCode(func::FuncOp funcOp) {
+  // Skip processing Ukernel function declarations which will be marked private.
+  if (funcOp.isPrivate()) {
+    return success();
+  }
   IRRewriterAndMapper rewriter(funcOp.getContext());
   IRRewriterAndMapper controlCodeRewriter(funcOp.getContext());
   Block *funcBlock = &funcOp.getBody().front();

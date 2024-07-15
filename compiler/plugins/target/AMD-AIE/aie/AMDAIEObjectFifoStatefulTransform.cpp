@@ -21,6 +21,8 @@
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
 
+#define DEBUG_TYPE "amdaie-objectFifo-stateful-transform"
+
 using namespace mlir;
 using namespace mlir::iree_compiler::AMDAIE;
 
@@ -32,7 +34,6 @@ using xilinx::AIE::BufferOp;
 using xilinx::AIE::CoreOp;
 using xilinx::AIE::DeviceOp;
 using xilinx::AIE::DMABDOp;
-using xilinx::AIE::DMAChannel;
 using xilinx::AIE::DMAChannelDirAttr;
 using xilinx::AIE::DMAStartOp;
 using xilinx::AIE::EndOp;
@@ -55,8 +56,6 @@ using xilinx::AIE::ShimDMAOp;
 using xilinx::AIE::TileOp;
 using xilinx::AIE::UseLockOp;
 using xilinx::AIE::WireBundle;
-
-#define DEBUG_TYPE "amdaie-objectFifo-stateful-transform"
 
 class LockAnalysis {
   DenseMap<std::pair<Value, int>, int> locksPerTile;
@@ -106,15 +105,13 @@ class DMAChannelAnalysis {
   }
 
   /// Given an AIE tile, returns its next usable producer channel.
-  DMAChannel getProducerDMAChannel(Value tile) {
-    return {static_cast<xilinx::AIE::DMAChannelDir>(DMAChannelDir::MM2S),
-            producerChannelsPerTile[tile]++};
+  SwitchDMAConnection getProducerDMAChannel(Value tile) {
+    return {DMAChannelDir::MM2S, producerChannelsPerTile[tile]++};
   }
 
   /// Given an AIE tile, returns its next usable consumer channel.
-  DMAChannel getConsumerDMAChannel(Value tile) {
-    return {static_cast<xilinx::AIE::DMAChannelDir>(DMAChannelDir::S2MM),
-            consumerChannelsPerTile[tile]++};
+  SwitchDMAConnection getConsumerDMAChannel(Value tile) {
+    return {DMAChannelDir::S2MM, consumerChannelsPerTile[tile]++};
   }
 };
 
@@ -867,7 +864,7 @@ void createFlowsAndTileDMAs(
                           objFifoLinks, buffersPerFifo, locksPerFifo);
   };
   // create producer tile DMA
-  DMAChannel producerChan =
+  SwitchDMAConnection producerChan =
       dmaAnalysis.getProducerDMAChannel(producer.getProducerTile());
   createDMA(producer, static_cast<DMAChannelDir>(producerChan.direction),
             producerChan.channel, producer.getDimensionsToStreamAttr());
@@ -876,12 +873,13 @@ void createFlowsAndTileDMAs(
   builder.setInsertionPoint(&device.getBody()->back());
   if (producer.getProducerTileOp().isShimTile())
     builder.create<ShimDMAAllocationOp>(
-        builder.getUnknownLoc(), producer.getName(), producerChan.direction,
+        builder.getUnknownLoc(), producer.getName(),
+        static_cast<xilinx::AIE::DMAChannelDir>(producerChan.direction),
         producerChan.channel, producer.getProducerTileOp().getCol());
 
   for (auto consumer : consumers) {
     // create consumer tile DMA
-    DMAChannel consumerChan =
+    SwitchDMAConnection consumerChan =
         dmaAnalysis.getConsumerDMAChannel(consumer.getProducerTile());
     BDDimLayoutArrayAttr consumerDims =
         consumer.getDimensionsFromStreamPerConsumer()[0];
@@ -892,7 +890,8 @@ void createFlowsAndTileDMAs(
     builder.setInsertionPoint(&device.getBody()->back());
     if (consumer.getProducerTileOp().isShimTile())
       builder.create<ShimDMAAllocationOp>(
-          builder.getUnknownLoc(), producer.getName(), consumerChan.direction,
+          builder.getUnknownLoc(), producer.getName(),
+          static_cast<xilinx::AIE::DMAChannelDir>(consumerChan.direction),
           consumerChan.channel, consumer.getProducerTileOp().getCol());
 
     // create flow
