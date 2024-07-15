@@ -22,6 +22,12 @@ std::optional<AMDAIEDevice> getConfigAMDAIEDevice(
   return AMDAIE::symbolizeEnum<AMDAIEDevice>(attr.value().getValue());
 }
 
+std::optional<AMDAIEDevice> getConfigAMDAIEDevice(Operation *op) {
+  auto targetAttr = IREE::HAL::ExecutableTargetAttr::lookup(op);
+  if (!targetAttr) return std::nullopt;
+  return getConfigAMDAIEDevice(targetAttr);
+}
+
 namespace {
 
 /// Generate a DenseMap key we can use for the element types (alternatives

@@ -1,5 +1,18 @@
 // RUN: iree-opt --split-input-file %s | FileCheck %s
 
+// CHECK-LABEL: func.func @bd_id
+// CHECK: %[[C0:.*]] = arith.constant 0 : index
+// CHECK: %[[TILE_0:.*]] = amdaie.tile(%[[C0]], %[[C0]])
+// CHECK: %[[BD_ID:.*]] = amdaie.bd_id(%[[TILE_0]], 0)
+func.func @bd_id() {
+  %c0 = arith.constant 0 : index
+  %tile = amdaie.tile(%c0, %c0)
+  %bd_id = amdaie.bd_id(%tile, 0)
+  return
+}
+
+// -----
+
 // CHECK-LABEL: func.func @core
 // CHECK: %[[C0:.*]] = arith.constant 0 : index
 // CHECK: %[[TILE_0:.*]] = amdaie.tile(%[[C0]], %[[C0]])
@@ -205,6 +218,34 @@ func.func @npu_dma_cpy_nd(%arg0: !amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 
   %c128 = arith.constant 128 : index
   %0 = amdaie.circular_dma_cpy_nd(%arg0[] [] [], %arg1[] [] []) : (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>)
   %1 = amdaie.npu.dma_cpy_nd %0([%c0, %c0, %c0, %c0] [%c1, %c1, %c8, %c16] [%c128, %c128, %c16, %c1], [%c0, %c0, %c0, %c0] [%c1, %c1, %c8, %c16] [%c128, %c16, %c16, %c1])
+  return
+}
+
+// -----
+
+// CHECK-LABEL: func.func @npu_dma_cpy_nd_bd_id
+// CHECK-DAG:   %[[C0:.+]] = arith.constant 0 : index
+// CHECK-DAG:   %[[C1:.+]] = arith.constant 1 : index
+// CHECK-DAG:   %[[C8:.+]] = arith.constant 8 : index
+// CHECK-DAG:   %[[C16:.+]] = arith.constant 16 : index
+// CHECK-DAG:   %[[C128:.+]] = arith.constant 128 : index
+// CHECK-DAG:   %[[TILE_0_0:.+]] = amdaie.tile(%[[C0]], %[[C0]])
+// CHECK-DAG:   %[[BD_ID_0_0:.+]] = amdaie.bd_id(%[[TILE_0_0]], 0)
+// CHECK-DAG:   %[[DMA0:.+]] = amdaie.circular_dma_cpy_nd
+// CHECK:       %{{.*}} = amdaie.npu.dma_cpy_nd
+// CHECK-SAME:  %[[DMA0]]
+// CHECK-SAME:  [%[[C0]], %[[C0]], %[[C0]], %[[C0]]] [%[[C1]], %[[C1]], %[[C8]], %[[C16]]] [%[[C128]], %[[C128]], %[[C16]], %[[C1]]] bd_id = %[[BD_ID_0_0]]
+// CHECK-SAME:  [%[[C0]], %[[C0]], %[[C0]], %[[C0]]] [%[[C1]], %[[C1]], %[[C8]], %[[C16]]] [%[[C128]], %[[C16]], %[[C16]], %[[C1]]] bd_id = %[[BD_ID_0_0]]
+func.func @npu_dma_cpy_nd_bd_id(%arg0: !amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, %arg1: !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>) {
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
+  %c8 = arith.constant 8 : index
+  %c16 = arith.constant 16 : index
+  %c128 = arith.constant 128 : index
+  %tile = amdaie.tile(%c0, %c0)
+  %bd_id = amdaie.bd_id(%tile, 0)
+  %0 = amdaie.circular_dma_cpy_nd(%arg0[] [] [], %arg1[] [] []) : (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>)
+  %1 = amdaie.npu.dma_cpy_nd %0([%c0, %c0, %c0, %c0] [%c1, %c1, %c8, %c16] [%c128, %c128, %c16, %c1] bd_id = %bd_id, [%c0, %c0, %c0, %c0] [%c1, %c1, %c8, %c16] [%c128, %c16, %c16, %c1]  bd_id = %bd_id)
   return
 }
 

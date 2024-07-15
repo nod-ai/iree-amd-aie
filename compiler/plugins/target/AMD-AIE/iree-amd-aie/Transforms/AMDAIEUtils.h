@@ -20,6 +20,10 @@ namespace mlir::iree_compiler::AMDAIE {
 std::optional<AMDAIEDevice> getConfigAMDAIEDevice(
     IREE::HAL::ExecutableTargetAttr targetAttr);
 
+/// Returns the AMDAIE device from an operation. Looks for an executable target
+/// attr in the AST.
+std::optional<AMDAIEDevice> getConfigAMDAIEDevice(Operation *op);
+
 // This function is based on the following table pulled from the
 // AIEVec_MatMulOp documentation in
 // mlir-aie/include/aie/Dialect/AIEVec/IR/AIEVecOps.td

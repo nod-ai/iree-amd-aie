@@ -490,6 +490,8 @@ endif()
 # iree-aie-runtime-static
 # ##############################################################################
 
+iree_add_all_subdirs()
+
 iree_tablegen_library(
   NAME
     AMDAIEEnumsGen
@@ -548,5 +550,3 @@ target_link_libraries(iree-amd-aie_aie_runtime_iree_aie_runtime_static
 # consumers (like tests) to link individually
 target_link_libraries(iree-amd-aie_aie_runtime_iree_aie_runtime_static
                       PUBLIC LLVMSupport)
-
-add_subdirectory(test)

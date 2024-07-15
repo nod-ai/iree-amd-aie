@@ -161,6 +161,45 @@ def AMDAIE_WorkgroupOp : AMDAIE_Op<"workgroup",
 }
 
 //===----------------------------------------------------------------------===//
+// IREE AMDAIE DMA Utility Ops
+//===----------------------------------------------------------------------===//
+
+def AMDAIE_BdIdOp: AMDAIE_Op<"bd_id", [
+    Pure,
+    DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>
+  ]>, Results<(outs Index)> {
+  let summary = "Represents a physical buffer descriptor ID on an AIE tile.";
+  let description = [{
+    This operation represents a buffer descriptor ID on an AIE tile. The buffer
+    descriptor ID is specified through a tile and an ID value, designating the
+    exact local buffer descriptor to be used on the tile. This op helps with
+    guaranteeing/verifying correct reuse of the same id across DMA operations.
+
+    Background: DMAs are programmed through buffer descriptors (BDs) with each
+    one having a corresponding BD ID. For example, initially, a BD with ID 0 is
+    configured by some actor and afterwards a DMA is programmed to execute BD ID
+    0. However, other DMAs can potentially reuse the same BD ID, resulting in
+    potential race conditions. For example, the BD with ID 0 on some AIE tile
+    could be reconfigured by some actor before having been fully executed by a
+    DMA, potentially leading to incorrect behaviour.
+
+    Example:
+
+    ```mlir
+    %tile = amdaie.tile(%c0, %c0)
+    %bd_id = amdaie.bd_id(%tile, 0)
+    ```
+  }];
+
+  let arguments = (
+    ins Index:$tile,
+        UI32Attr:$value
+  );
+
+  let assemblyFormat = [{ `(` $tile `,` $value `)` attr-dict }];
+}
+
+//===----------------------------------------------------------------------===//
 // IREE AMDAIE Npu Ops
 //===----------------------------------------------------------------------===//
 
@@ -206,7 +245,9 @@ def AMDAIE_NpuDmaCpyNdOp: AMDAIE_Op<"npu.dma_cpy_nd",
         Variadic<Index>:$source_strides,
         DenseI64ArrayAttr:$source_static_offsets,
         DenseI64ArrayAttr:$source_static_sizes,
-        DenseI64ArrayAttr:$source_static_strides
+        DenseI64ArrayAttr:$source_static_strides,
+        Optional<Index>:$target_bd_id,
+        Optional<Index>:$source_bd_id
   );
 
   let assemblyFormat = [{
@@ -215,10 +256,12 @@ def AMDAIE_NpuDmaCpyNdOp: AMDAIE_Op<"npu.dma_cpy_nd",
     custom<DynamicIndexList>($target_offsets, $target_static_offsets)
     custom<DynamicIndexList>($target_sizes, $target_static_sizes)
     custom<DynamicIndexList>($target_strides, $target_static_strides)
+    (`bd_id` `=` $target_bd_id^)?
     `,`
     custom<DynamicIndexList>($source_offsets, $source_static_offsets)
     custom<DynamicIndexList>($source_sizes, $source_static_sizes)
     custom<DynamicIndexList>($source_strides, $source_static_strides)
+    (`bd_id` `=` $source_bd_id^)?
     `)`
     attr-dict
   }];
@@ -230,17 +273,20 @@ def AMDAIE_NpuDmaCpyNdOp: AMDAIE_Op<"npu.dma_cpy_nd",
       "ArrayRef<OpFoldResult>":$target_strides,
       "ArrayRef<OpFoldResult>":$source_offsets,
       "ArrayRef<OpFoldResult>":$source_sizes,
-      "ArrayRef<OpFoldResult>":$source_strides)>,
+      "ArrayRef<OpFoldResult>":$source_strides, "::mlir::Value":$target_bd_id, 
+      "::mlir::Value":$source_bd_id)>,
     // Build a NpuDmaCpyNdOp with static entries.
     OpBuilder<(ins "Value":$dma, "ArrayRef<int64_t>":$target_offsets,
       "ArrayRef<int64_t>":$target_sizes, "ArrayRef<int64_t>":$target_strides,
       "ArrayRef<int64_t>":$source_offsets, "ArrayRef<int64_t>":$source_sizes,
-      "ArrayRef<int64_t>":$source_strides)>,
+      "ArrayRef<int64_t>":$source_strides, "::mlir::Value":$target_bd_id, 
+      "::mlir::Value":$source_bd_id)>,
     // Build a NpuDmaCpyNdOp with dynamic entries.
     OpBuilder<(ins "Value":$dma, "ValueRange":$target_offsets,
       "ValueRange":$target_sizes, "ValueRange":$target_strides,
       "ValueRange":$source_offsets, "ValueRange":$source_sizes,
-      "ValueRange":$source_strides)>
+      "ValueRange":$source_strides, "::mlir::Value":$target_bd_id, 
+      "::mlir::Value":$source_bd_id)>
   ];
 
   let extraClassDeclaration = [{
@@ -300,6 +346,18 @@ def AMDAIE_NpuDmaCpyNdOp: AMDAIE_Op<"npu.dma_cpy_nd",
     uint64_t getTargetMemorySpaceAsUInt() {
       Attribute memSpace = getTargetMemorySpace();
       return memSpace ? cast<IntegerAttr>(memSpace).getInt() : 0;
+    }
+
+    BdIdOp getSourceBdIdOp() {
+      Value bdIdValue = getSourceBdId();
+      if (!bdIdValue || !bdIdValue.getDefiningOp()) return nullptr;
+      return dyn_cast<BdIdOp>(bdIdValue.getDefiningOp());
+    }
+
+    BdIdOp getTargetBdIdOp() {
+      Value bdIdValue = getTargetBdId();
+      if (!bdIdValue || !bdIdValue.getDefiningOp()) return nullptr;
+      return dyn_cast<BdIdOp>(bdIdValue.getDefiningOp());
     }
 
     // A utility to create a new doubly strided operation from this one with a

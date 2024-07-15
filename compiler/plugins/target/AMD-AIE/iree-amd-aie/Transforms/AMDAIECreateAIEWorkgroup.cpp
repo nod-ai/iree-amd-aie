@@ -129,7 +129,7 @@ LogicalResult WorkgroupBuilder::buildForDmaCpyNdOp(
   auto ipuDmaCpy = controlCodeRewriter.createAndLookup<AMDAIE::NpuDmaCpyNdOp>(
       loc, newDmaOp.getResult(), ipuDmaTargetOffsets, ipuDmaTargetSizes,
       ipuDmaTargetStrides, ipuDmaSourceOffsets, ipuDmaSourceSizes,
-      ipuDmaSourceStrides);
+      ipuDmaSourceStrides, nullptr, nullptr);
   DMAChannelDir direction =
       !sourceMemSpace ? DMAChannelDir::MM2S : DMAChannelDir::S2MM;
   controlCodeRewriter.createAndLookup<AMDAIE::NpuDmaWaitOp>(
