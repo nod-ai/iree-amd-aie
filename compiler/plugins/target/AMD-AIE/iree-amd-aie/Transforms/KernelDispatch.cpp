@@ -436,7 +436,6 @@ static LogicalResult setRootConfigForPadPackPipeline(
 // Configuration for Convolution Pipelines
 //===----------------------------------------------------------------------===//
 
-
 static LogicalResult setRootConfigForConvDecomposePipeline(
     mlir::FunctionOpInterface entryPointFn, linalg::LinalgOp linalgOp,
     AIEConfig cfg) {
@@ -467,11 +466,6 @@ static LogicalResult setRootConfigForConvDecomposePipeline(
     tileSizeLevel0 = {0, OC, 4, OW, 0, 0, 0};
     tileSizeLevel1 = {1, OC, 1, OW, 0, 0, 0};
     tileSizeLevel2 = {0, 0, 0, 0, IC, 1, 1};
-  } else if (isa<linalg::DepthwiseConv2DNhwcHwcOp>(linalgOp)) {
-    // TODO: these are very ad hoc.
-    tileSizeLevel0 = {0, OW, OC, 16, 0, 0};
-    tileSizeLevel1 = {1, OW, OC, 4, 0, 0};
-    tileSizeLevel2 = {0, 1, 0, 0, 0, 0};
   }
   TileSizesListType tileSizes = {tileSizeLevel0, tileSizeLevel1,
                                  tileSizeLevel2};
@@ -480,11 +474,34 @@ static LogicalResult setRootConfigForConvDecomposePipeline(
       IREE::Codegen::DispatchLoweringPassPipeline::Custom);
 }
 
-// TODO:
 static LogicalResult setRootConfigForDepthwiseConvolutionDecomposePipeline(
     mlir::FunctionOpInterface entryPointFn, linalg::LinalgOp linalgOp,
     AIEConfig cfg) {
-  return setRootConfigForConvDecomposePipeline(entryPointFn, linalgOp, cfg);
+  FailureOr<std::array<uint32_t, 3>> maybeInstructionSize =
+      getMatmulInstructionSize(linalgOp);
+  int64_t OW = 4;
+  int64_t OC = 4;
+  if (succeeded(maybeInstructionSize)) {
+    auto instructionSize = maybeInstructionSize.value();
+    OW = instructionSize[0];
+    OC = instructionSize[1];
+  }
+  SmallVector<int64_t> tileSizeLevel0;
+  SmallVector<int64_t> tileSizeLevel1;
+  SmallVector<int64_t> tileSizeLevel2;
+  // Note: some of the tiling dimensions are hardcoded for now.
+  if (isa<linalg::DepthwiseConv2DNhwcHwcOp>(linalgOp)) {
+    tileSizeLevel0 = {0, OW, OC, 16, 0, 0};
+    tileSizeLevel1 = {1, OW, OC, 4, 0, 0};
+    tileSizeLevel2 = {0, 1, 0, 0, 0, 0};
+  } else {
+    assert(false && "Support must be added for this depthwise convolution op");
+  }
+  TileSizesListType tileSizes = {tileSizeLevel0, tileSizeLevel1,
+                                 tileSizeLevel2};
+  return setOpConfigAndEntryPointFnTranslation(
+      entryPointFn, linalgOp, tileSizes,
+      IREE::Codegen::DispatchLoweringPassPipeline::Custom);
 }
 
 //===----------------------------------------------------------------------===//
@@ -629,10 +646,13 @@ static LogicalResult setRootConfig(mlir::FunctionOpInterface entryPointFn,
   return linalgOp.emitError("Unhandled pass pipeline in setRootConfig.");
 }
 
-static LogicalResult setConvRootConfig(mlir::FunctionOpInterface entryPointFn,
-                                       linalg::ConvolutionOpInterface convOp,
-                                       TilePassPipeline passPipeline,
-                                       AIEConfig cfg) {
+// TODO (newling) naming: make "Conv" refer to both Conv2D and
+// DepthwiseConvolution, and rename the code and pipeline which is specific to
+// Conv2D to Conv2D.
+static LogicalResult setAllConvRootConfig(
+    mlir::FunctionOpInterface entryPointFn,
+    linalg::ConvolutionOpInterface convOp, TilePassPipeline passPipeline,
+    AIEConfig cfg) {
   assert(!getLoweringConfig<IREE::Codegen::LoweringConfigAttr>(convOp) &&
          "expected lowering_config is not set");
   auto linalgOp = cast<linalg::LinalgOp>(convOp.getOperation());
@@ -640,7 +660,8 @@ static LogicalResult setConvRootConfig(mlir::FunctionOpInterface entryPointFn,
   // Current tiling strategy is based on llvm-cpu ConvTileAndDecomposeExpert.
   if (passPipeline == TilePassPipeline::ConvDecomposePipeline)
     return setRootConfigForConvDecomposePipeline(entryPointFn, linalgOp, cfg);
-  if (passPipeline == TilePassPipeline::DepthwiseConvolutionDecomposePipeline)
+  else if (passPipeline ==
+           TilePassPipeline::DepthwiseConvolutionDecomposePipeline)
     return setRootConfigForDepthwiseConvolutionDecomposePipeline(entryPointFn,
                                                                  linalgOp, cfg);
 
@@ -662,7 +683,7 @@ static LogicalResult setRootConfigImpl(mlir::FunctionOpInterface entryPointFn,
         .Case<linalg::Conv2DNhwcHwcfOp, linalg::Conv2DNchwFchwOp,
               linalg::Conv2DNhwcHwcfQOp, linalg::DepthwiseConv2DNhwcHwcOp>(
             [&](auto op) {
-              return setConvRootConfig(entryPointFn, op, passPipeline, cfg);
+              return setAllConvRootConfig(entryPointFn, op, passPipeline, cfg);
             })
         .Case<linalg::GenericOp>([&](auto op) {
           return setRootConfig(entryPointFn, op, passPipeline, cfg);

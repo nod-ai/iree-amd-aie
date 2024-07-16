@@ -45,9 +45,10 @@ void addPadPackBasedPassPipeline(OpPassManager &passManager,
 void addConvDecomposePassPipeline(OpPassManager &passManager,
                                   TilingConfig &tilingConfig);
 
-/// TODO
+/// Append the passes needed to lower a linalg depthwise convolution through the
+/// depthwise-convolution-decompose pipeline.
 void addDepthwiseConvolutionDecomposePassPipeline(OpPassManager &passManager,
-                                          TilingConfig &tilingConfig);
+                                                  TilingConfig &tilingConfig);
 
 /// Populates passes needed to link HAL executables across AIE targets.
 void buildAMDAIELinkingPassPipeline(OpPassManager &passManager);
