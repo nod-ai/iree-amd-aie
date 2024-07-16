@@ -751,6 +751,7 @@ run_matmul_test \
     --acc_type "f32" \
     --m "8192" --k "2432" --n "7296"
 
+# ObjectFifo Matmul tests
 ###################################################################
 
 run_matmul_test \
@@ -768,3 +769,19 @@ run_matmul_test \
     --lhs_rhs_type "i32" \
     --acc_type "i32" \
     --m "32" --k "32" --n "32"
+
+run_matmul_test \
+    --name_prefix "medium" \
+    --lower_to_aie_pipeline "objectFifo" \
+    --tile_pipeline "pack-peel" \
+    --lhs_rhs_type "i32" \
+    --acc_type "i32" \
+    --m "1024" --k "1024" --n "1024"
+
+run_matmul_test \
+    --name_prefix "medium" \
+    --lower_to_aie_pipeline "objectFifo" \
+    --tile_pipeline "pack-peel" \
+    --lhs_rhs_type "i32" \
+    --acc_type "i32" \
+    --m "1536" --k "2048" --n "1536"
