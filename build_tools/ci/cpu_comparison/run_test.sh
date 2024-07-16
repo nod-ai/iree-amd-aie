@@ -30,13 +30,12 @@ if [ "$#" -lt 2 ] || [ "$#" -gt 6 ]; then
             "\n The parameters are as follows:" \
             "\n     1) <output-dir>               (required)" \
             "\n     2) <iree-install-dir>         (required)" \
-            "\n     3) <mlir-aie-install-dir>     (optional)" \
-            "\n     4) <peano-install-dir>        (optional)" \
-            "\n     5) <xrt-dir>                  (optional)" \
-            "\n     6) <vitis-install-dir>        (optional)" \
+            "\n     3) <peano-install-dir>        (optional)" \
+            "\n     4) <xrt-dir>                  (optional)" \
+            "\n     5) <vitis-install-dir>        (optional)" \
             "\n Example, dependent on environment variables:" \
             "\n     ./run_test.sh  " \
-            "results_dir_tmp  \$IREE_INSTALL_DIR  \$MLIR_AIE_INSTALL_DIR  " \
+            "results_dir_tmp  \$IREE_INSTALL_DIR " \
             "\$PEANO_INSTALL_DIR  /opt/xilinx/xrt  \$VITIS_INSTALL_PATH"
     exit 1
 fi
@@ -75,19 +74,8 @@ if [ -z "${IREE_RUN_EXE}" ]; then
   exit 1
 fi
 
-# Parameter 3) <mlir-aie-install-dir>
+# Parameter 3) <peano-install-dir>
 if [ -z "${3-}" ]; then
-  MLIR_AIE_INSTALL=`realpath .venv/lib/python3.10/site-packages/mlir_aie`
-else
-  MLIR_AIE_INSTALL=`realpath "$3"`
-fi
-if [ ! -d "${MLIR_AIE_INSTALL}" ]; then
-  echo "No directory '${MLIR_AIE_INSTALL}' (argument 3) found."
-  exit 1
-fi
-
-# Parameter 4) <peano-install-dir>
-if [ -z "${4-}" ]; then
   PEANO=/opt/llvm-aie
 else
   PEANO=`realpath "$4"`
@@ -97,8 +85,8 @@ if [ ! -d "${PEANO}" ]; then
   exit 1
 fi
 
-# Parameter 5) <xrt-dir>
-if [ -z "${5-}" ]; then
+# Parameter 4) <xrt-dir>
+if [ -z "${4-}" ]; then
   XRT_DIR=/opt/xilinx/xrt
 else
   XRT_DIR=`realpath "$5"`
@@ -108,13 +96,9 @@ if [ ! -d "${XRT_DIR}" ]; then
   exit 1
 fi
 
-# Parameter 6) <vitis-install-dir>
-if [ -z "${6-}" ]; then
-  # An alternate to a full vitis install, will work
-  # here but not for a full build of mlir-aie
-  # https://riallto.ai/install-riallto.html#install-riallto
-  # VITIS=/opt/Riallto/Vitis/2023.1
-  VITIS=/opt/Xilinx/Vitis/2023.2
+# Parameter 5) <vitis-install-dir>
+if [ -z "${5-}" ]; then
+  VITIS=/opt/Xilinx/Vitis/2024.1
 else
   VITIS=`realpath "$6"`
 fi
@@ -150,6 +134,8 @@ fi
 source $XRT_DIR/setup.sh
 # Circumvent xclbin security (no longer needed as of April 2024 XDNA driver)
 export XRT_HACK_UNSECURE_LOADING_XCLBIN=1
+
+MM_KERNEL_URL=https://github.com/nod-ai/iree-amd-aie/releases/download/ukernels/mm.o
 
 cd ${OUTPUT_DIR}
 
@@ -221,7 +207,6 @@ function run_test() {
   # Options with defaults
   # =====================
   local peano_install_path="${PEANO}"
-  local mlir_aie_install_path="${MLIR_AIE_INSTALL}"
   local amd_aie_install_path="${IREE_INSTALL_DIR}"
   local vitis_path="${VITIS}"
   local pipeline="pad-pack"
@@ -259,10 +244,6 @@ function run_test() {
         ;;
       --peano_install_path)
         peano_install_path="$2"
-        shift 2
-        ;;
-      --mlir_aie_install_path)
-        mlir_aie_install_path="$2"
         shift 2
         ;;
       --amd_aie_install_path)
@@ -324,7 +305,6 @@ function run_test() {
       --iree-amdaie-tile-pipeline=${pipeline} \
       --iree-amdaie-matmul-elementwise-fusion \
       --iree-amd-aie-peano-install-dir=${peano_install_path} \
-      --iree-amd-aie-mlir-aie-install-dir=${mlir_aie_install_path} \
       --iree-amd-aie-install-dir=${amd_aie_install_path} \
       --iree-amd-aie-vitis-install-dir=${vitis_path} \
       --iree-hal-dump-executable-files-to=$PWD \
@@ -347,8 +327,7 @@ function run_test() {
     if [ -f "${OUTPUT_DIR}/mm.o" ]; then
       echo "File 'mm.o' already exists in ${OUTPUT_DIR}."
     else
-      SRC_DIR="${mlir_aie_install_path}/aie_kernels/mm.o"
-      ln -s ${SRC_DIR} ${OUTPUT_DIR}/mm.o
+      wget $MM_KERNEL_URL -O  ${OUTPUT_DIR}/mm.o
     fi
   fi
 

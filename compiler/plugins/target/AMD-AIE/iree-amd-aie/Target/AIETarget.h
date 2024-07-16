@@ -16,10 +16,6 @@
 namespace mlir::iree_compiler::AMDAIE {
 
 struct AMDAIEOptions {
-  // Path to MLIR-AIE installation directory.
-  // TODO(MaheshRavishankar): Remove this dependency.
-  std::string mlirAieInstallDir;
-
   std::string amdAieInstallDir;
 
   // Path to Peano installation directory.
@@ -49,12 +45,6 @@ struct AMDAIEOptions {
  public:
   void bindOptions(OptionsBinder &binder) {
     static llvm::cl::OptionCategory category("AMD AIE Options");
-
-    binder.opt<std::string>(
-        "iree-amd-aie-mlir-aie-install-dir", mlirAieInstallDir,
-        llvm::cl::cat(category),
-        llvm::cl::desc("Path to MLIR-AIE installation directory"));
-
     binder.opt<std::string>(
         "iree-amd-aie-install-dir", amdAieInstallDir, llvm::cl::cat(category),
         llvm::cl::desc("Path to AMDAIE installation directory (typically the "
