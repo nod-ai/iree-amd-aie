@@ -415,8 +415,6 @@ bool AMDAIEDeviceModel::isLegalMemtileConnection(uint8_t col, uint8_t row,
                                                  uint8_t srcChan,
                                                  StrmSwPortType dstBundle,
                                                  uint8_t dstChan) const {
-  // TODO(max): this isn't correct but for agreement with mlir-aie...
-  if (srcBundle == dstBundle and srcBundle != DMA) return true;
   assert(isMemTile(col, row) && "expected memtile");
   AMDAIETileType tileType = getTileType(col, row);
   assert(tileType == AMDAIETileType::MEMTILE && "expected memtile");

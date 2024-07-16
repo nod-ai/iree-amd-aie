@@ -373,25 +373,6 @@ TEST_P(AMDAIENPUDeviceModelParameterizedMemtileConnectivityNPU4ColTestFixture,
       << ": " << masterPhyPort << "\n\n";
 }
 
-// mlir-aie reports true when it should be false
-const std::set<std::tuple<int, int, int, int>> IsLegalMemtileConnectionFails{
-    // srcPort, srcChan, dstPort, dstChan
-    {CTRL, 0, DMA, 0},
-    // trace
-    {TRACE, 0, CTRL, 0},
-    {TRACE, 0, DMA, 0},
-    {TRACE, 0, DMA, 1},
-    {TRACE, 0, DMA, 2},
-    {TRACE, 0, DMA, 3},
-    {TRACE, 0, DMA, 4},
-    {TRACE, 0, NORTH, 0},
-    {TRACE, 0, NORTH, 1},
-    {TRACE, 0, NORTH, 2},
-    {TRACE, 0, NORTH, 3},
-    {TRACE, 0, NORTH, 4},
-    {TRACE, 0, NORTH, 5},
-};
-
 TEST_P(AMDAIENPUDeviceModelParameterizedSixTupleNPU4ColTestFixture,
        IsLegalMemtileConnection) {
   auto [c, r, srcStrmSwPortType, destStrmSwPortType, srcChan, dstChan] =
@@ -413,22 +394,13 @@ TEST_P(AMDAIENPUDeviceModelParameterizedSixTupleNPU4ColTestFixture,
     auto destWireb = STRM_SW_PORT_TYPE_TO_WIRE_BUNDLE(destSw);
     auto deviceModelIsLegal = deviceModel.isLegalMemtileConnection(
         c, r, srcSw, srcChan, destSw, dstChan);
-    auto targetModelIsLegal = targetModel.isLegalMemtileConnection(
-        srcWireB, srcChan, destWireb, dstChan);
+    auto targetModelIsLegal = targetModel.isLegalTileConnection(
+        c, r, srcWireB, srcChan, destWireb, dstChan);
 
-    if ((srcStrmSwPortType == DMA && destStrmSwPortType == DMA &&
-         srcChan != dstChan) ||
-        IsLegalMemtileConnectionFails.count(
-            {srcStrmSwPortType, srcChan, destStrmSwPortType, dstChan}))
-      EXPECT_NE(deviceModelIsLegal, targetModelIsLegal)
-          << "c,r: " << c << ", " << r << "\n"
-          << "src: " << to_string(srcSw) << ", " << srcChan << "\n"
-          << "dst: " << to_string(destSw) << ", " << dstChan << "\n\n";
-    else
-      EXPECT_EQ(deviceModelIsLegal, targetModelIsLegal)
-          << "c,r: " << c << ", " << r << "\n"
-          << "src: " << to_string(srcSw) << ", " << srcChan << "\n"
-          << "dst: " << to_string(destSw) << ", " << dstChan << "\n\n";
+    EXPECT_EQ(deviceModelIsLegal, targetModelIsLegal)
+        << "c,r: " << c << ", " << r << "\n"
+        << "src: " << to_string(srcSw) << ", " << srcChan << "\n"
+        << "dst: " << to_string(destSw) << ", " << dstChan << "\n\n";
   }
 }
 
@@ -440,9 +412,9 @@ TEST(IsLegalMemtileConnectionSouth4, Test0) {
 
   auto deviceModelIsLegal = deviceModel.isLegalMemtileConnection(
       0, 1, StrmSwPortType::DMA, 2, StrmSwPortType::SOUTH, 4);
-  auto targetModelIsLegal = targetModel.isLegalMemtileConnection(
-      xilinx::AIE::WireBundle::DMA, 2, xilinx::AIE::WireBundle::South, 4);
-  EXPECT_NE(deviceModelIsLegal, targetModelIsLegal);
+  auto targetModelIsLegal = targetModel.isLegalTileConnection(
+      0, 1, xilinx::AIE::WireBundle::DMA, 2, xilinx::AIE::WireBundle::South, 4);
+  EXPECT_EQ(deviceModelIsLegal, targetModelIsLegal);
 }
 
 // setting a partition (i.e. using XAie_SetupPartitionConfig) actually changes

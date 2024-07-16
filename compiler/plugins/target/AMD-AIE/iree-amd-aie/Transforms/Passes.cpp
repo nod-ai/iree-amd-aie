@@ -751,6 +751,7 @@ void addMLIRAIRLoweringPasses(OpPassManager &passManager) {
     passManager.addNestedPass<func::FuncOp>(
         xilinx::air::createAffineLoopOptPass(options));
   }
+  passManager.addPass(createCanonicalizerPass());
   {
     // AIRUnrollOuterPerfectlyNestedLoopsPass unrolls the remaining outer loop
     // nests that were left untiled by the previous AffineLoopOptPass,
