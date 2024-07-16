@@ -421,6 +421,8 @@ bool AMDAIEDeviceModel::isLegalMemtileConnection(uint8_t col, uint8_t row,
   assert(tileType == AMDAIETileType::MEMTILE && "expected memtile");
   const XAie_StrmMod *strmMod =
       devInst.DevProp.DevMod[static_cast<uint8_t>(tileType)].StrmSw;
+  if (srcChan >= strmMod->SlvConfig[srcBundle].NumPorts) return false;
+  if (dstChan >= strmMod->MstrConfig[dstBundle].NumPorts) return false;
   AieRC RC = strmMod->PortVerify(/*slave*/ srcBundle, srcChan,
                                  /*master*/ dstBundle, dstChan);
   if (RC != XAIE_OK) {
