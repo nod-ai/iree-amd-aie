@@ -27,7 +27,7 @@ Type memRefToDefaultAddressSpace(Type t) {
   return t;
 }
 
-#include "aie/Dialect/AIE/Transforms/AIENormalizeAddressSpaces.inc"
+#include "AIENormalizeAddressSpaces.inc"
 
 }  // namespace
 
