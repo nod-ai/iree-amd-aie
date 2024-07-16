@@ -170,6 +170,7 @@ iree_cc_library(
     ::AIEDialectIR
     ::AIEXDialectIR
     ::AIENormalizeAddressSpacesGen
+    iree::target::amd-aie::Utils::Utils
 )
 
 add_subdirectory(test)

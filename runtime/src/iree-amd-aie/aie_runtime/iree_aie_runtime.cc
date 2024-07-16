@@ -7,6 +7,7 @@
 #include "iree_aie_runtime.h"
 
 #include <cstdint>
+#include <numeric>
 
 #include "llvm/ADT/StringExtras.h"
 
@@ -467,6 +468,32 @@ uint32_t AMDAIEDeviceModel::getColumnShift() const {
   return configPtr.ColShift;
 }
 uint32_t AMDAIEDeviceModel::getRowShift() const { return configPtr.RowShift; }
+
+DenseMap<uint32_t, SmallVector<uint32_t>>
+AMDAIEDeviceModel::getChannelToValidBdIds(AMDAIETileType tileType) const {
+  switch (tileType) {
+    case AMDAIETileType::MEMTILE: {
+      SmallVector<uint32_t> evenRange(24);
+      std::iota(evenRange.begin(), evenRange.end(), 0);
+      SmallVector<uint32_t> oddRange(24);
+      std::iota(oddRange.begin(), oddRange.end(), 24);
+      DenseMap<uint32_t, SmallVector<uint32_t>> channelToValidBdIds = {
+          {0, evenRange}, {1, oddRange},  {2, evenRange},
+          {3, oddRange},  {4, evenRange}, {5, oddRange}};
+      return channelToValidBdIds;
+    }
+    case AMDAIETileType::SHIMNOC: {
+      SmallVector<uint32_t> range(16);
+      std::iota(range.begin(), range.end(), 0);
+      DenseMap<uint32_t, SmallVector<uint32_t>> channelToValidBdIds = {
+          {0, range}, {1, range}};
+      return channelToValidBdIds;
+    }
+    default:
+      break;
+  }
+  llvm::report_fatal_error("Unhandled AMDAIETileType case");
+}
 
 struct AMDAIEDeviceModel getDeviceModel(AMDAIEDevice device) {
   switch (device) {

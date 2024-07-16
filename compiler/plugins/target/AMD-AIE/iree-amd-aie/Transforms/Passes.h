@@ -56,6 +56,9 @@ std::unique_ptr<Pass> createAMDAIEAccessToAcquireReleasePass();
 /// logical objectFifos.
 std::unique_ptr<Pass> createAMDAIEAIRDmaAMDAIEDmaPass();
 
+/// Create a pass to assign BD ids to `amdaie.npu.dma_cpy_nd` operations.
+std::unique_ptr<Pass> createAMDAIEAssignNpuDmaBdIdsPass();
+
 /// Create a pass to do some rewrites that help bridging the path to AIR/AIE
 /// lowering.
 std::unique_ptr<Pass> createAMDAIEBridgeToAIRPass();
