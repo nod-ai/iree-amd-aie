@@ -211,6 +211,61 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 
 // -----
 
+// CHECK:       aie.device
+// CHECK:       func.func private @ukernel(memref<i32, 1>, index) attributes {llvm.bareptr = true}
+// CHECK-DAG:   %[[TILE_0_2:.+]] = aie.tile(0, 2)
+// CHECK:       aie.core(%[[TILE_0_2]])
+// CHECK-DAG:     %[[C0:.*]] = arith.constant 0 : index
+// CHECK:         %[[ACQUIRE:.+]] = aie.objectfifo.acquire
+// CHECK-SAME:    Produce
+// CHECK:         %[[ACCESS:.+]] = aie.objectfifo.subview.access %[[ACQUIRE]]
+// CHECK:         %[[REINTERPRET:.+]] = memref.reinterpret_cast %[[ACCESS]]
+// CHECK:         linalg.fill ins(%{{.+}} : i32) outs(%[[REINTERPRET]] : memref<32x32xi32, 1>)
+// CHECK:         %[[BASE_BUFFER:.*]], %{{.+}}, %{{.+}}:2, %{{.+}}:2 = memref.extract_strided_metadata %[[REINTERPRET]] :
+// CHECK:         func.call @ukernel(%[[BASE_BUFFER]], %[[C0]]) : (memref<i32, 1>, index) -> ()
+// CHECK:         aie.end
+// CHECK:       } {link_with = "/path/to/ukernel.o"}
+// CHECK:       func.func @lower_to_aie_ukernel
+#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "all"}>
+module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
+  func.func private @ukernel(memref<i32, 2>, index) attributes {link_with = "/path/to/ukernel.o", llvm.bareptr = true}
+  func.func @lower_to_aie_ukernel() {
+    amdaie.workgroup {
+      %c0_i32 = arith.constant 0 : i32
+      %c0 = arith.constant 0 : index
+      %c1 = arith.constant 1 : index
+      %c2 = arith.constant 2 : index
+      %tile_0_0 = amdaie.tile(%c0, %c0)
+      %tile_0_1 = amdaie.tile(%c0, %c1)
+      %tile_0_2 = amdaie.tile(%c0, %c2)
+      %alloc_0 = memref.alloc() : memref<32x64xi32>
+      %alloc_1 = memref.alloc() : memref<32x32xi32, 2>
+      %alloc_2 = memref.alloc() : memref<4x8x4x8xi32, 1>
+      %obj0 = amdaie.logicalobjectfifo.from_memref %alloc_0, {%tile_0_0} : memref<32x64xi32> -> !amdaie.logicalobjectfifo<memref<32x64xi32>>
+      %obj1 = amdaie.logicalobjectfifo.from_memref %alloc_1, {%tile_0_1} : memref<32x32xi32, 2> -> !amdaie.logicalobjectfifo<memref<32x32xi32, 2>>
+      %obj2 = amdaie.logicalobjectfifo.from_memref %alloc_2, {%tile_0_2} : memref<4x8x4x8xi32, 1> -> !amdaie.logicalobjectfifo<memref<4x8x4x8xi32, 1>>
+      %dma0 = amdaie.circular_dma_cpy_nd(%obj1[] [] [], %obj2[] [] []) : (!amdaie.logicalobjectfifo<memref<32x32xi32, 2>>, !amdaie.logicalobjectfifo<memref<4x8x4x8xi32, 1>>)
+      %core_0_0 = amdaie.core(%tile_0_2) {
+        %0 = amdaie.logicalobjectfifo.acquire(%dma0, Produce) {size = 1 : i32} -> !amdaie.logicalobjectfifo<memref<32x32xi32, 2>>
+        %1 = amdaie.logicalobjectfifo.access(%0, Write) : !amdaie.logicalobjectfifo<memref<32x32xi32, 2>> -> memref<32x32xi32, 2>
+        linalg.fill ins(%c0_i32 : i32) outs(%1 : memref<32x32xi32, 2>)
+        %base_buffer, %offset, %sizes:2, %strides:2 = memref.extract_strided_metadata %1 : memref<32x32xi32, 2> -> memref<i32, 2>, index, index, index, index, index
+        func.call @ukernel(%base_buffer, %c0) : (memref<i32, 2>, index) -> ()
+        amdaie.end
+      } {link_with = "/path/to/ukernel.o"}
+      memref.dealloc %alloc_2 : memref<4x8x4x8xi32, 1>
+      memref.dealloc %alloc_1 : memref<32x32xi32, 2>
+      memref.dealloc %alloc_0 : memref<32x64xi32>
+      amdaie.controlcode {
+        amdaie.end
+      }
+    }
+    return
+  }
+}
+
+// -----
+
 // NOTE: Due to an AIE check that verifies whether AIE operations exist inside a
 // core, it's hard to create a very small minimal test.
 //

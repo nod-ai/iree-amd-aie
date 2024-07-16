@@ -222,6 +222,70 @@ LogicalResult coreLinalgOpToAIE(IRRewriter &rewriter, linalg::LinalgOp linalgOp,
   return success();
 }
 
+LogicalResult coreMemrefExtractStridedMetadataToAIE(
+    IRRewriter &rewriter,
+    memref::ExtractStridedMetadataOp extractStridedMetadataOp,
+    IRMapping &mapper, SmallVector<Operation *> &toBeErased) {
+  LLVM_DEBUG(llvm::dbgs() << "Convert [memref.extract_strided_metadata]\n");
+  OpBuilder::InsertionGuard guard(rewriter);
+  rewriter.setInsertionPoint(extractStridedMetadataOp);
+  Value newSource =
+      mapper.lookupOrDefault(extractStridedMetadataOp.getSource());
+  memref::ExtractStridedMetadataOp newExtractStridedMetadataOp =
+      rewriter.create<memref::ExtractStridedMetadataOp>(
+          extractStridedMetadataOp.getLoc(), newSource);
+  // Map old op to new op.
+  rewriter.replaceAllUsesWith(extractStridedMetadataOp->getResults(),
+                              newExtractStridedMetadataOp->getResults());
+  toBeErased.push_back(extractStridedMetadataOp);
+  return success();
+}
+
+LogicalResult coreFuncCallOpToAIE(IRRewriter &rewriter, func::CallOp oldCallOp,
+                                  IRMapping &mapper,
+                                  SmallVector<Operation *> &toBeErased) {
+  LLVM_DEBUG(llvm::dbgs() << "Convert [func.call / function declaration]\n");
+  // Form new argument(s) and function type for the func.call op.
+  SmallVector<Value> newArgs;
+  SmallVector<Type> newArgTypes;
+  SmallVector<Type> newResultTypes;
+  for (Value operand : oldCallOp.getOperands()) {
+    Value newOperand = mapper.lookupOrDefault(operand);
+    newArgs.push_back(newOperand);
+    newArgTypes.push_back(newOperand.getType());
+  }
+  FunctionType newFunctionType =
+      rewriter.getFunctionType(newArgTypes, newResultTypes);
+  // Fetch name of the ukernel function to look up its declaration in the
+  // Symbol table.
+  auto moduleOp = oldCallOp->getParentOfType<ModuleOp>();
+  StringRef fnName = oldCallOp.getCallee();
+  auto fnDecl = dyn_cast_or_null<func::FuncOp>(
+      SymbolTable::lookupSymbolIn(moduleOp, fnName));
+  assert(fnDecl && "expected function declaration");
+  // Check the mapper to see if we've already created a new function declaration
+  // with the new function type. If not, create the same. We need to create a
+  // new function declaration because the caller's function type has changed by
+  // this point.
+  if (!mapper.contains(fnDecl.getOperation())) {
+    OpBuilder::InsertionGuard g(rewriter);
+    auto symbolTableOp = SymbolTable::getNearestSymbolTable(oldCallOp);
+    rewriter.setInsertionPointToStart(&symbolTableOp->getRegion(0).front());
+    auto newFnDecl =
+        rewriter.create<func::FuncOp>(fnDecl.getLoc(), fnName, newFunctionType);
+    SymbolTable::setSymbolVisibility(newFnDecl,
+                                     SymbolTable::Visibility::Private);
+    newFnDecl->setAttr("llvm.bareptr", rewriter.getBoolAttr(true));
+    mapper.map(fnDecl.getOperation(), newFnDecl.getOperation());
+    fnDecl = newFnDecl;
+  }
+  // Fetch the new function declaration and create the new func.call op.
+  auto newFnDecl = cast<func::FuncOp>(mapper.lookupOrDefault(fnDecl));
+  rewriter.create<func::CallOp>(oldCallOp->getLoc(), newFnDecl, newArgs);
+  toBeErased.push_back(oldCallOp);
+  return success();
+}
+
 LogicalResult coreReleaseOpToAIE(IRRewriter &rewriter,
                                  AMDAIE::LogicalObjectFifoRelease releaseOp,
                                  IRMapping &mapper,
@@ -272,6 +336,8 @@ LogicalResult coreToAIE(IRRewriter &rewriter, AMDAIE::CoreOp coreOp,
   auto coreBlockEnd = coreBlock->getTerminator()->getIterator();
   aieCoreBlock->getOperations().splice(insertIt, coreBlock->getOperations(),
                                        coreBlockBegin, coreBlockEnd);
+  // Set the optional `link_with` attribute for ukernel path.
+  aieCoreOp.setLinkWith(coreOp.getLinkWith());
   rewriter.setInsertionPointToEnd(aieCoreBlock);
   rewriter.create<AIE::EndOp>(rewriter.getUnknownLoc());
 
@@ -301,6 +367,15 @@ LogicalResult coreToAIE(IRRewriter &rewriter, AMDAIE::CoreOp coreOp,
             })
             .Case<linalg::LinalgOp>([&](auto linalgOp) {
               return coreLinalgOpToAIE(rewriter, linalgOp, mapper, toBeErased);
+            })
+            .Case<memref::ExtractStridedMetadataOp>(
+                [&](auto extractStridedMetadataOp) {
+                  return coreMemrefExtractStridedMetadataToAIE(
+                      rewriter, extractStridedMetadataOp, mapper, toBeErased);
+                })
+            .Case<func::CallOp>([&](auto oldCallOp) {
+              return coreFuncCallOpToAIE(rewriter, oldCallOp, mapper,
+                                         toBeErased);
             })
             .Default([&](Operation *op) {
               remapOperands(op, mapper);
@@ -752,6 +827,9 @@ LogicalResult lowerToAIE(ModuleOp moduleOp) {
       static_cast<uint32_t>(device.value()));
 
   auto funcRes = moduleOp.walk([&](func::FuncOp funcOp) {
+    if (funcOp.isPrivate()) {
+      return WalkResult::advance();
+    }
     // Insert AIE DeviceOp
     rewriter.setInsertionPoint(moduleBlock, moduleBlock->begin());
     auto deviceOp = rewriter.create<xilinx::AIE::DeviceOp>(
@@ -915,6 +993,19 @@ void AMDAIELowerToAIEPass::runOnOperation() {
   if (failed(
           applyPatternsAndFoldGreedily(getOperation(), std::move(patterns)))) {
     return signalPassFailure();
+  }
+
+  // All Ukernel related function declarations will be within aie.device, so
+  // delete the ones outside from the SymbolTable.
+  SmallVector<func::FuncOp> eraseCandidateFuncOps;
+  getOperation()->walk([&](func::FuncOp funcOp) {
+    if (funcOp.isPrivate() && !funcOp->getParentOfType<AIE::DeviceOp>()) {
+      eraseCandidateFuncOps.push_back(funcOp);
+    }
+  });
+  SymbolTable symbolTable(getOperation());
+  for (func::FuncOp funcOp : eraseCandidateFuncOps) {
+    symbolTable.erase(funcOp);
   }
 }
 
