@@ -46,6 +46,7 @@ iree_cc_library(
     "AMDAIEAccessToAcquireRelease.cpp"
     "AMDAIEAddLoweringStrategy.cpp"
     "AMDAIEAIRDmaToAMDAIEDma.cpp"
+    "AMDAIEAssignNpuDmaBdIds.cpp"
     "AMDAIEBufferizeToAllocation.cpp"
     "AMDAIECanonicalizeDma.cpp"
     "AMDAIECanonicalizeDoublyStridedOp.cpp"
@@ -96,6 +97,8 @@ iree_cc_library(
     iree::compiler::Dialect::LinalgExt::IR
     iree::compiler::Dialect::LinalgExt::Transforms
     iree::compiler::Utils
+    iree-amd-aie::aie_runtime::iree_aie_runtime_static
+    iree-amd-aie::aie_runtime::Utils
     iree::target::amd-aie::IR::AMDAIEDialect
     iree::target::amd-aie::aie::AIEDialectIR
     iree::target::amd-aie::aie::AIEPasses

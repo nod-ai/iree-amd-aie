@@ -438,6 +438,10 @@ LogicalResult npuDmaCpyNdOpToAIE(IRRewriter &rewriter,
   rewriter.setInsertionPoint(dmaOp);
   // Convert bidirectional `amdaie.npu.dma_cpy_nd` op into two halves.
   if (dmaOp.hasSourceAddressing() || dmaOp.getSourceMemorySpaceAsUInt() == 0) {
+    AMDAIE::BdIdOp bdIdOp = dmaOp.getSourceBdIdOp();
+    if (!bdIdOp)
+      return dmaOp.emitOpError() << "expected to have a source BD ID op";
+
     // DmaOp either has explicit source addressing OR the defining op of its
     // source has its source on L3.
     SmallVector<Value> empty;
@@ -470,14 +474,17 @@ LogicalResult npuDmaCpyNdOpToAIE(IRRewriter &rewriter,
       return dmaOp.emitError()
              << "input isn't mapped to an `aie.objectifo` operation";
     }
-    // TODO(jornt): use bd_id != 0
     bool issueToken = dmaOp.hasDmaWaitOpUser();
     rewriter.create<AIEX::NpuDmaMemcpyNdOp>(
         rewriter.getUnknownLoc(), SmallVector<Type, 1>{}, 0, 0, memref, empty,
         empty, empty, staticOffsets, staticSizes, staticStrides,
-        objFifo.getName(), 0, issueToken);
+        objFifo.getName(), bdIdOp.getValue(), issueToken);
   }
   if (dmaOp.hasTargetAddressing() || dmaOp.getTargetMemorySpaceAsUInt() == 0) {
+    AMDAIE::BdIdOp bdIdOp = dmaOp.getTargetBdIdOp();
+    if (!bdIdOp)
+      return dmaOp.emitOpError() << "expected to have a target BD ID op";
+
     // DmaOp either has explicit target addressing OR the defining op of its
     // source has its target on L3.
     SmallVector<Value> empty;
@@ -510,11 +517,10 @@ LogicalResult npuDmaCpyNdOpToAIE(IRRewriter &rewriter,
              << "input isn't mapped to an `aie.objectifo` operation";
     }
     bool issueToken = dmaOp.hasDmaWaitOpUser();
-    // TODO(jornt): use bd_id != 0
     rewriter.create<AIEX::NpuDmaMemcpyNdOp>(
         rewriter.getUnknownLoc(), SmallVector<Type, 1>{}, 0, 0, memref, empty,
         empty, empty, staticOffsets, staticSizes, staticStrides,
-        objFifo.getName(), 0, issueToken);
+        objFifo.getName(), bdIdOp.getValue(), issueToken);
   }
   toBeErased.push_back(dmaOp);
   return success();
@@ -669,6 +675,11 @@ LogicalResult workgroupToAIE(IRRewriter &rewriter,
   int dmaId = 0;
   WalkResult res = workgroupOp.walk<WalkOrder::PreOrder>([&](Operation *op) {
     return TypeSwitch<Operation *, WalkResult>(op)
+        .Case<AMDAIE::BdIdOp>([&](auto bdIdOp) {
+          // BD ID ops are purely used for retrieving information in other ops
+          // so don't convert to AIE dialect.
+          return WalkResult::advance();
+        })
         .Case<AMDAIE::CircularDmaCpyNdOp>([&](auto dmaOp) {
           if (failed(circularDmaToAIE(rewriter, dmaOp, mapper, deviceBlock,
                                       dmaId))) {

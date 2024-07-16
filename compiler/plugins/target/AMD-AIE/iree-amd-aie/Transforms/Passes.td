@@ -23,6 +23,12 @@ def AMDAIEAIRDmaToAMDAIEDma :
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEAIRDmaAMDAIEDmaPass()";
 }
 
+def AMDAIEAssignNpuDmaBdIds :
+    Pass<"iree-amdaie-assign-npu-dma-bd-ids", ""> {
+  let summary = "Assign BD ids to `amdaie.npu.dma_cpy_nd` operations.";
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEAssignNpuDmaBdIdsPass()";
+}
+
 def AMDAIEBridgeToAIR : Pass<"iree-amdaie-bridge-to-air", ""> {
   let summary = "Perform transformations that allow hooking into AIR/AIE lowering";
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEBridgeToAIRPass()";

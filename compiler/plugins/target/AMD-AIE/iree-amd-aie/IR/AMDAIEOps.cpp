@@ -27,6 +27,14 @@ void AMDAIEDialect::initializeAMDAIEOps() {
 }
 
 //===----------------------------------------------------------------------===//
+// AMDAIE_BdIdOp
+//===----------------------------------------------------------------------===//
+
+void BdIdOp::getAsmResultNames(function_ref<void(Value, StringRef)> setNameFn) {
+  setNameFn(getResult(), "bd_id");
+}
+
+//===----------------------------------------------------------------------===//
 // AMDAIE_ControlCodeOp
 //===----------------------------------------------------------------------===//
 
@@ -430,14 +438,16 @@ void LogicalObjectFifoRelease::build(OpBuilder &b, mlir::OperationState &result,
 // AMDAIE_NpuDmaCpyNdOp
 //===----------------------------------------------------------------------===//
 
-// Build a NpuDmaCpyNdOp with mixed static and dynamic entries.
+// Build a NpuDmaCpyNdOp with mixed static and dynamic entries and target and
+// source BD IDs.
 void NpuDmaCpyNdOp::build(OpBuilder &b, OperationState &result, Value dma,
                           ArrayRef<OpFoldResult> targetOffsets,
                           ArrayRef<OpFoldResult> targetSizes,
                           ArrayRef<OpFoldResult> targetStrides,
                           ArrayRef<OpFoldResult> sourceOffsets,
                           ArrayRef<OpFoldResult> sourceSizes,
-                          ArrayRef<OpFoldResult> sourceStrides) {
+                          ArrayRef<OpFoldResult> sourceStrides,
+                          mlir::Value targetBdId, mlir::Value sourceBdId) {
   SmallVector<int64_t> staticTargetOffsets, staticTargetSizes,
       staticTargetStrides;
   SmallVector<int64_t> staticSourceOffsets, staticSourceSizes,
@@ -462,7 +472,7 @@ void NpuDmaCpyNdOp::build(OpBuilder &b, OperationState &result, Value dma,
         dynamicTargetSizes, dynamicTargetStrides, staticTargetOffsets,
         staticTargetSizes, staticTargetStrides, dynamicSourceOffsets,
         dynamicSourceSizes, dynamicSourceStrides, staticSourceOffsets,
-        staticSourceSizes, staticSourceStrides);
+        staticSourceSizes, staticSourceStrides, targetBdId, sourceBdId);
 }
 
 // Build a NpuDmaCpyNdOp with static entries.
@@ -472,7 +482,8 @@ void NpuDmaCpyNdOp::build(OpBuilder &b, OperationState &result, Value dma,
                           ArrayRef<int64_t> targetStrides,
                           ArrayRef<int64_t> sourceOffsets,
                           ArrayRef<int64_t> sourceSizes,
-                          ArrayRef<int64_t> sourceStrides) {
+                          ArrayRef<int64_t> sourceStrides,
+                          mlir::Value targetBdId, mlir::Value sourceBdId) {
   SmallVector<OpFoldResult> targetOffsetValues = llvm::to_vector<4>(
       llvm::map_range(targetOffsets, [&](int64_t v) -> OpFoldResult {
         return b.getI64IntegerAttr(v);
@@ -499,14 +510,15 @@ void NpuDmaCpyNdOp::build(OpBuilder &b, OperationState &result, Value dma,
       }));
   build(b, result, dma, targetOffsetValues, targetSizeValues,
         targetStrideValues, sourceOffsetValues, sourceSizeValues,
-        sourceStrideValues);
+        sourceStrideValues, targetBdId, sourceBdId);
 }
 
 // Build a NpuDmaCpyNdOp with dynamic entries.
 void NpuDmaCpyNdOp::build(OpBuilder &b, OperationState &result, Value dma,
                           ValueRange targetOffsets, ValueRange targetSizes,
                           ValueRange targetStrides, ValueRange sourceOffsets,
-                          ValueRange sourceSizes, ValueRange sourceStrides) {
+                          ValueRange sourceSizes, ValueRange sourceStrides,
+                          mlir::Value targetBdId, mlir::Value sourceBdId) {
   SmallVector<OpFoldResult> targetOffsetValues =
       llvm::to_vector<4>(llvm::map_range(
           targetOffsets, [](Value v) -> OpFoldResult { return v; }));
@@ -525,7 +537,7 @@ void NpuDmaCpyNdOp::build(OpBuilder &b, OperationState &result, Value dma,
           sourceStrides, [](Value v) -> OpFoldResult { return v; }));
   build(b, result, dma, targetOffsetValues, targetSizeValues,
         targetStrideValues, sourceOffsetValues, sourceSizeValues,
-        sourceStrideValues);
+        sourceStrideValues, targetBdId, sourceBdId);
 }
 
 DoublyStridedOpInterface NpuDmaCpyNdOp::createDoublyStridedOp(
@@ -544,7 +556,8 @@ DoublyStridedOpInterface NpuDmaCpyNdOp::createDoublyStridedOp(
       getValueOrCreateConstantIndexOp(rewriter, loc, newTargetStrides),
       getValueOrCreateConstantIndexOp(rewriter, loc, newSourceOffsets),
       getValueOrCreateConstantIndexOp(rewriter, loc, newSourceSizes),
-      getValueOrCreateConstantIndexOp(rewriter, loc, newSourceStrides));
+      getValueOrCreateConstantIndexOp(rewriter, loc, newSourceStrides),
+      getTargetBdId(), getSourceBdId());
   return cast<DoublyStridedOpInterface>(newOp.getOperation());
 }
 
