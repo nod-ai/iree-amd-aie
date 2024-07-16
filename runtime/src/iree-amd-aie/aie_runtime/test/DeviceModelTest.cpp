@@ -404,7 +404,7 @@ TEST_P(AMDAIENPUDeviceModelParameterizedSixTupleNPU4ColTestFixture,
     return;
   if (srcStrmSwPortType == TRACE && srcChan > 0) return;
   if (srcStrmSwPortType == NORTH && srcChan > 3) return;
-  if (destStrmSwPortType == SOUTH && srcChan > 3) return;
+  if (destStrmSwPortType == SOUTH && dstChan > 3) return;
 
   auto srcSw = static_cast<StrmSwPortType>(srcStrmSwPortType);
   auto srcWireB = STRM_SW_PORT_TYPE_TO_WIRE_BUNDLE(srcSw);
@@ -422,14 +422,27 @@ TEST_P(AMDAIENPUDeviceModelParameterizedSixTupleNPU4ColTestFixture,
             {srcStrmSwPortType, srcChan, destStrmSwPortType, dstChan}))
       EXPECT_NE(deviceModelIsLegal, targetModelIsLegal)
           << "c,r: " << c << ", " << r << "\n"
-          << "src: " << srcSw << srcChan << "\n"
-          << "dst: " << destSw << dstChan << "\n\n";
+          << "src: " << to_string(srcSw) << ", " << srcChan << "\n"
+          << "dst: " << to_string(destSw) << ", " << dstChan << "\n\n";
     else
       EXPECT_EQ(deviceModelIsLegal, targetModelIsLegal)
           << "c,r: " << c << ", " << r << "\n"
-          << "src: " << srcSw << srcChan << "\n"
-          << "dst: " << destSw << dstChan << "\n\n";
+          << "src: " << to_string(srcSw) << ", " << srcChan << "\n"
+          << "dst: " << to_string(destSw) << ", " << dstChan << "\n\n";
   }
+}
+
+TEST(IsLegalMemtileConnectionSouth4, Test0) {
+  AMDAIEDeviceModel deviceModel =
+      mlir::iree_compiler::AMDAIE::getDeviceModel(AMDAIEDevice::npu1_4col);
+  const xilinx::AIE::AIETargetModel &targetModel =
+      xilinx::AIE::getTargetModel(xilinx::AIE::AIEDevice::npu1_4col);
+
+  auto deviceModelIsLegal = deviceModel.isLegalMemtileConnection(
+      0, 1, StrmSwPortType::DMA, 2, StrmSwPortType::SOUTH, 4);
+  auto targetModelIsLegal = targetModel.isLegalMemtileConnection(
+      xilinx::AIE::WireBundle::DMA, 2, xilinx::AIE::WireBundle::South, 4);
+  EXPECT_NE(deviceModelIsLegal, targetModelIsLegal);
 }
 
 // setting a partition (i.e. using XAie_SetupPartitionConfig) actually changes
