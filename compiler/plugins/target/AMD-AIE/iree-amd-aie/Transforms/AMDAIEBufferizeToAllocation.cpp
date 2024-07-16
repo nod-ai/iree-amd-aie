@@ -45,15 +45,13 @@ static LogicalResult applyBufferizeToAllocation(RewriterBase &rewriter,
 /// elementwise op's input is the output of the matmul op and has already been
 /// promoted, there is no need to promote such operand again.
 static SmallVector<Value> getInputOutputOperands(linalg::LinalgOp &linalgOp) {
-  if (isMatmulProducerOfElementwise(linalgOp)) {
-    SmallVector<Value> operands;
-    for (Value operand : linalgOp->getOperands()) {
-      if (isMatmulInDefChain(operand)) continue;
-      operands.push_back(operand);
-    }
-    return operands;
+  SmallVector<Value> operands;
+  for (Value operand : linalgOp->getOperands()) {
+    if (!isa<RankedTensorType>(operand.getType())) continue;
+    if (isElementwise(linalgOp) && isMatmulInDefChain(operand)) continue;
+    operands.push_back(operand);
   }
-  return linalgOp->getOperands();
+  return operands;
 }
 
 /// Utility to fetch input operands from the LinalgOp (matmul or elementwise
@@ -61,15 +59,13 @@ static SmallVector<Value> getInputOutputOperands(linalg::LinalgOp &linalgOp) {
 /// input is the output of the matmul op and has already been promoted, there is
 /// no need to promote such operand again.
 static SmallVector<Value> getInputOperands(linalg::LinalgOp &linalgOp) {
-  if (isMatmulProducerOfElementwise(linalgOp)) {
-    SmallVector<Value> operands;
-    for (Value operand : linalgOp.getDpsInputs()) {
-      if (isMatmulInDefChain(operand)) continue;
-      operands.push_back(operand);
-    }
-    return operands;
+  SmallVector<Value> operands;
+  for (Value operand : linalgOp.getDpsInputs()) {
+    if (!isa<RankedTensorType>(operand.getType())) continue;
+    if (isElementwise(linalgOp) && isMatmulInDefChain(operand)) continue;
+    operands.push_back(operand);
   }
-  return linalgOp.getDpsInputs();
+  return operands;
 }
 
 /// Utility to fetch operands from the defining ops of LinalgOp's input

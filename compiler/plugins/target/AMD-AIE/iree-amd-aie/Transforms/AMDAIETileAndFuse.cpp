@@ -165,8 +165,10 @@ void AMDAIETileAndFusePass::runOnOperation() {
     // loops, and the first level of tiling is always using scf.forall and
     // mapped to blocks. Currently we are not using mapping attributes for
     // Conv2d ops, because there could be four parallel tiling dimensions.
+    // Somehow `linalg::isaConvolutionOpInterface()` doesn't work properly.
     // TODO (vivian): create AIE specific mapping attributes.
-    if (!isa<linalg::Conv2DNhwcHwcfOp, linalg::Conv2DNchwFchwOp>(consumerOp)) {
+    if (!isa<linalg::Conv2DNhwcHwcfOp, linalg::Conv2DNchwFchwOp,
+             linalg::Conv2DNhwcHwcfQOp>(consumerOp)) {
       if (tilingLevel == 0) {
         options.setMapping(
             {gpu::GPUBlockMappingAttr::get(context, gpu::MappingId::DimY),
