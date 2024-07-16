@@ -397,22 +397,10 @@ TEST_P(AMDAIENPUDeviceModelParameterizedSixTupleNPU4ColTestFixture,
     auto targetModelIsLegal = targetModel.isLegalTileConnection(
         c, r, srcWireB, srcChan, destWireb, dstChan);
 
-    // DeviceModel is currently taking cases such as (1) SOUTH0->SOUTH1 and (2)
-    // CTRL0->CTRL0 as being legal in memtile, which conflicts with the arch.
-    // spec.
-    if ((srcStrmSwPortType != DMA && destStrmSwPortType != DMA &&
-         srcChan != dstChan && srcStrmSwPortType == destStrmSwPortType) ||
-        (srcStrmSwPortType == CTRL && destStrmSwPortType == CTRL &&
-         srcChan == dstChan))
-      EXPECT_NE(deviceModelIsLegal, targetModelIsLegal)
-          << "c,r: " << c << ", " << r << "\n"
-          << "src: " << to_string(srcSw) << ", " << srcChan << "\n"
-          << "dst: " << to_string(destSw) << ", " << dstChan << "\n\n";
-    else
-      EXPECT_EQ(deviceModelIsLegal, targetModelIsLegal)
-          << "c,r: " << c << ", " << r << "\n"
-          << "src: " << to_string(srcSw) << ", " << srcChan << "\n"
-          << "dst: " << to_string(destSw) << ", " << dstChan << "\n\n";
+    EXPECT_EQ(deviceModelIsLegal, targetModelIsLegal)
+        << "c,r: " << c << ", " << r << "\n"
+        << "src: " << to_string(srcSw) << ", " << srcChan << "\n"
+        << "dst: " << to_string(destSw) << ", " << dstChan << "\n\n";
   }
 }
 
