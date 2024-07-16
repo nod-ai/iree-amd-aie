@@ -101,6 +101,7 @@ void AMDAIELowerExecutableTargetPass::runOnOperation() {
   if (!translationInfo) return;
 
   OpPassManager executableLoweringPipeline(func::FuncOp::getOperationName());
+
   switch (translationInfo.getDispatchLoweringPassPipeline()) {
       // No pipleline specified, nothing to do.
     case IREE::Codegen::DispatchLoweringPassPipeline::None:
@@ -113,6 +114,12 @@ void AMDAIELowerExecutableTargetPass::runOnOperation() {
         addPadPackBasedPassPipeline(executableLoweringPipeline, tilingConfig);
       } else if (usePassPipeline == TilePassPipeline::ConvDecomposePipeline) {
         addConvDecomposePassPipeline(executableLoweringPipeline, tilingConfig);
+      } else if (usePassPipeline ==
+                 TilePassPipeline::DepthwiseConvolutionDecomposePipeline) {
+        addDepthwiseConvolutionDecomposePassPipeline(executableLoweringPipeline,
+                                                     tilingConfig);
+      } else{
+        assert(false && "unhandled custom pipeline");
       }
     } break;
     default:

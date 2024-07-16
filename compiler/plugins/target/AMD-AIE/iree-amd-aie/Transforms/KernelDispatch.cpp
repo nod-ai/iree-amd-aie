@@ -10,6 +10,7 @@
 #include "iree-amd-aie/Transforms/AMDAIEUtils.h"
 #include "iree/compiler/Codegen/Dialect/Codegen/IR/IREECodegenAttrs.h"
 #include "iree/compiler/Codegen/Utils/CPUUtils.h"
+#include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/MemRef/Transforms/Transforms.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
@@ -435,6 +436,7 @@ static LogicalResult setRootConfigForPadPackPipeline(
 // Configuration for Convolution Pipelines
 //===----------------------------------------------------------------------===//
 
+
 static LogicalResult setRootConfigForConvDecomposePipeline(
     mlir::FunctionOpInterface entryPointFn, linalg::LinalgOp linalgOp,
     AIEConfig cfg) {
@@ -465,12 +467,24 @@ static LogicalResult setRootConfigForConvDecomposePipeline(
     tileSizeLevel0 = {0, OC, 4, OW, 0, 0, 0};
     tileSizeLevel1 = {1, OC, 1, OW, 0, 0, 0};
     tileSizeLevel2 = {0, 0, 0, 0, IC, 1, 1};
+  } else if (isa<linalg::DepthwiseConv2DNhwcHwcOp>(linalgOp)) {
+    // TODO: these are very ad hoc.
+    tileSizeLevel0 = {0, OW, OC, 16, 0, 0};
+    tileSizeLevel1 = {1, OW, OC, 4, 0, 0};
+    tileSizeLevel2 = {0, 1, 0, 0, 0, 0};
   }
   TileSizesListType tileSizes = {tileSizeLevel0, tileSizeLevel1,
                                  tileSizeLevel2};
   return setOpConfigAndEntryPointFnTranslation(
       entryPointFn, linalgOp, tileSizes,
       IREE::Codegen::DispatchLoweringPassPipeline::Custom);
+}
+
+// TODO:
+static LogicalResult setRootConfigForDepthwiseConvolutionDecomposePipeline(
+    mlir::FunctionOpInterface entryPointFn, linalg::LinalgOp linalgOp,
+    AIEConfig cfg) {
+  return setRootConfigForConvDecomposePipeline(entryPointFn, linalgOp, cfg);
 }
 
 //===----------------------------------------------------------------------===//
@@ -626,6 +640,10 @@ static LogicalResult setConvRootConfig(mlir::FunctionOpInterface entryPointFn,
   // Current tiling strategy is based on llvm-cpu ConvTileAndDecomposeExpert.
   if (passPipeline == TilePassPipeline::ConvDecomposePipeline)
     return setRootConfigForConvDecomposePipeline(entryPointFn, linalgOp, cfg);
+  if (passPipeline == TilePassPipeline::DepthwiseConvolutionDecomposePipeline)
+    return setRootConfigForDepthwiseConvolutionDecomposePipeline(entryPointFn,
+                                                                 linalgOp, cfg);
+
   return linalgOp.emitError("Unhandled pass pipeline in setConvRootConfig.");
 }
 
@@ -640,10 +658,12 @@ static LogicalResult setRootConfigImpl(mlir::FunctionOpInterface entryPointFn,
         // let it first crash for all the other ops and then consiously
         // add support for them, this way we can verify our work.
         // TODO (vivian): add support for other conv interface ops
+        // TODO (newling) can we use Case<linalg::ConvolutionOpInterface> ?
         .Case<linalg::Conv2DNhwcHwcfOp, linalg::Conv2DNchwFchwOp,
-              linalg::Conv2DNhwcHwcfQOp>([&](auto op) {
-          return setConvRootConfig(entryPointFn, op, passPipeline, cfg);
-        })
+              linalg::Conv2DNhwcHwcfQOp, linalg::DepthwiseConv2DNhwcHwcOp>(
+            [&](auto op) {
+              return setConvRootConfig(entryPointFn, op, passPipeline, cfg);
+            })
         .Case<linalg::GenericOp>([&](auto op) {
           return setRootConfig(entryPointFn, op, passPipeline, cfg);
         })

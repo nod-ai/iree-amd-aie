@@ -25,6 +25,7 @@ enum class LowerToAIEPassPipeline {
 enum class TilePassPipeline {
   PackPeelPipeline,
   PadPackPipeline,
+  DepthwiseConvolutionDecomposePipeline,
   ConvDecomposePipeline,
   None
 };

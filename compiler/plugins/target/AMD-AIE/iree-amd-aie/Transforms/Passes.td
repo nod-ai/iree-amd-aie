@@ -224,6 +224,8 @@ def AMDAIELowerExecutableTarget :
                    "Use the pack-peel based lowering strategy for matmul-like ops."),
         clEnumValN(mlir::iree_compiler::AMDAIE::TilePassPipeline::PadPackPipeline, "pad-pack",
                    "Use the pad-pack based lowering strategy for matmul-like ops."),
+        clEnumValN(mlir::iree_compiler::AMDAIE::TilePassPipeline::DepthwiseConvolutionDecomposePipeline, "depthwise-convolution-decompose",
+                   "Use the depthwise-convolution-decompose based lowering strategy for depthwise convolution opserations."),
         clEnumValN(mlir::iree_compiler::AMDAIE::TilePassPipeline::ConvDecomposePipeline, "conv-decompose",
                    "Use the conv-decompose based lowering strategy for convolution interface ops.")
       )}]>
@@ -244,6 +246,8 @@ def AMDAIELoweringStrategy :
                    "Use the pack-peel based lowering strategy for matmul-like ops."),
         clEnumValN(mlir::iree_compiler::AMDAIE::TilePassPipeline::PadPackPipeline, "pad-pack",
                    "Use the pad-pack based lowering strategy for matmul-like ops."),
+        clEnumValN(mlir::iree_compiler::AMDAIE::TilePassPipeline::DepthwiseConvolutionDecomposePipeline, "depthwise-convolution-decompose",
+                   "Use the depthwise-convolution-decompose based lowering strategy for depthwise convolution opserations."),
         clEnumValN(mlir::iree_compiler::AMDAIE::TilePassPipeline::ConvDecomposePipeline, "conv-decompose",
                    "Use the conv-decompose based lowering strategy for convolution interface ops.")
       )}]>,

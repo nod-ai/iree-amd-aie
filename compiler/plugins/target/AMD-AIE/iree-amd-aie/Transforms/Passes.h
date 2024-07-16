@@ -45,6 +45,10 @@ void addPadPackBasedPassPipeline(OpPassManager &passManager,
 void addConvDecomposePassPipeline(OpPassManager &passManager,
                                   TilingConfig &tilingConfig);
 
+/// TODO
+void addDepthwiseConvolutionDecomposePassPipeline(OpPassManager &passManager,
+                                          TilingConfig &tilingConfig);
+
 /// Populates passes needed to link HAL executables across AIE targets.
 void buildAMDAIELinkingPassPipeline(OpPassManager &passManager);
 
