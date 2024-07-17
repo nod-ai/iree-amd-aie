@@ -39,6 +39,12 @@
 #include <uuid/uuid.h>
 #endif
 
+// This is a string that contains the wrapped chess intrinsics (see top of the
+// included file for deeper explanation).
+static const std::string _CHESS_INTRINSIC_WRAPPER_CPP{
+#include "chess_intrinsic_wrapper.cpp"
+};
+
 using namespace llvm;
 using namespace mlir;
 using namespace xilinx;
@@ -66,7 +72,7 @@ void applyConfigToPassManager(PassManager &pm, bool printIRBeforeAll,
 }
 }  // namespace
 
-std::optional<std::string> findVitis(std::optional<std::string> &vitisDir) {
+FailureOr<std::string> findVitis(std::optional<std::string> &vitisDir) {
   if (!vitisDir) {
     const char *envVitis = ::getenv("VITIS");
     if (!envVitis) {
@@ -82,92 +88,93 @@ std::optional<std::string> findVitis(std::optional<std::string> &vitisDir) {
       }
     }
   }
-  if (vitisDir) {
-    SmallString<64> aieToolsPath(*vitisDir);
-    sys::path::append(aieToolsPath, "aietools");
-    if (!sys::fs::exists(aieToolsPath)) {
-      llvm::errs() << "ERROR: couldn't find aietools directory\n";
-      return std::nullopt;
-    }
+  if (!vitisDir) {
+    llvm::errs() << "ERROR: couldn't find vitis directory\n";
+    return failure();
+  };
 
-    SmallString<64> chessccPath(aieToolsPath);
-    sys::path::append(chessccPath, "tps", "lnx64", "target_aie_ml");
-    sys::path::append(chessccPath, "bin", "LNa64bin");
-
-    SmallString<64> path(::getenv("PATH"));
-    ::setenv(
-        "PATH",
-        (chessccPath + std::string{sys::EnvPathSeparator} + path).str().c_str(),
-        1);
-
-    SmallString<64> chessClangExe(chessccPath);
-    sys::path::append(chessClangExe, "chess-clang");
-    SmallString<64> chessLLVMLinkExe(chessccPath);
-    sys::path::append(chessLLVMLinkExe, "chess-llvm-link");
-    if (!sys::fs::exists(chessClangExe)) {
-      llvm::errs() << "ERROR: couldn't find chess-clang\n";
-      return std::nullopt;
-    }
-    if (!sys::fs::exists(chessLLVMLinkExe)) {
-      llvm::errs() << "ERROR: couldn't find chess-llvm-link\n";
-      return std::nullopt;
-    }
-
-    SmallString<64> lnx64o(aieToolsPath);
-    sys::path::append(lnx64o, "lib", "lnx64.o");
-    SmallString<64> dotLib(aieToolsPath);
-    sys::path::append(dotLib, "lnx64", "tools", "dot", "lib");
-    SmallString<64> ldLibraryPath(::getenv("LD_LIBRARY_PATH"));
-    ::setenv("LD_LIBRARY_PATH",
-             (lnx64o + std::string{sys::EnvPathSeparator} + dotLib +
-              std::string{sys::EnvPathSeparator} + ldLibraryPath)
-                 .str()
-                 .c_str(),
-             1);
-
-    SmallString<64> rdiDataDir(aieToolsPath);
-    sys::path::append(rdiDataDir, "data");
-    ::setenv("RDI_DATADIR", rdiDataDir.c_str(), 1);
-
-    return aieToolsPath.str().str();
-  } else {
-    return std::nullopt;
+  SmallString<64> aieToolsPath(*vitisDir);
+  sys::path::append(aieToolsPath, "aietools");
+  if (!sys::fs::exists(aieToolsPath)) {
+    llvm::errs() << "ERROR: couldn't find aietools directory\n";
+    return failure();
   }
+
+  SmallString<64> chessccPath(aieToolsPath);
+  sys::path::append(chessccPath, "tps", "lnx64", "target_aie_ml");
+  sys::path::append(chessccPath, "bin", "LNa64bin");
+
+  SmallString<64> path(::getenv("PATH"));
+  ::setenv(
+      "PATH",
+      (chessccPath + std::string{sys::EnvPathSeparator} + path).str().c_str(),
+      1);
+
+  SmallString<64> chessClangExe(chessccPath);
+  sys::path::append(chessClangExe, "chess-clang");
+  SmallString<64> chessLLVMLinkExe(chessccPath);
+  sys::path::append(chessLLVMLinkExe, "chess-llvm-link");
+  if (!sys::fs::exists(chessClangExe)) {
+    llvm::errs() << "ERROR: couldn't find chess-clang\n";
+    return failure();
+  }
+  if (!sys::fs::exists(chessLLVMLinkExe)) {
+    llvm::errs() << "ERROR: couldn't find chess-llvm-link\n";
+    return failure();
+  }
+
+  SmallString<64> lnx64o(aieToolsPath);
+  sys::path::append(lnx64o, "lib", "lnx64.o");
+  SmallString<64> dotLib(aieToolsPath);
+  sys::path::append(dotLib, "lnx64", "tools", "dot", "lib");
+  SmallString<64> ldLibraryPath(::getenv("LD_LIBRARY_PATH"));
+  ::setenv("LD_LIBRARY_PATH",
+           (lnx64o + std::string{sys::EnvPathSeparator} + dotLib +
+            std::string{sys::EnvPathSeparator} + ldLibraryPath)
+               .str()
+               .c_str(),
+           1);
+
+  SmallString<64> rdiDataDir(aieToolsPath);
+  sys::path::append(rdiDataDir, "data");
+  ::setenv("RDI_DATADIR", rdiDataDir.c_str(), 1);
+
+  return *vitisDir;
 }
 
-static const std::string _CHESS_INTRINSIC_WRAPPER_LL{
-#include "chess_instrinsics_wrapper.ll"
-};
+std::pair<std::string, std::vector<std::string>> makeChessArgs(
+    const std::string &vitisDir, const std::string &tempDir, bool verbose) {
+  SmallString<64> aieToolsDir(vitisDir);
+  sys::path::append(aieToolsDir, "aietools");
+  SmallString<64> chessworkDir(tempDir);
+  sys::path::append(chessworkDir, "chesswork");
+  SmallString<64> xChessCCExe(aieToolsDir);
+  sys::path::append(xChessCCExe, "bin", "unwrapped", "lnx64.o", "xchesscc");
 
-std::vector<std::string> makeChessArgs(const std::string &aieToolsDir,
-                                       std::string workDir) {
-  SmallString<64> chessClang(aieToolsDir);
-  sys::path::append(chessClang, "tps", "lnx64", "target_aie_ml");
-  sys::path::append(chessClang, "bin", "LNa64bin", "chess-clang");
   SmallString<64> procModelLib(aieToolsDir);
   sys::path::append(procModelLib, "data", "aie_ml", "lib");
-  return {
-      "+P",
-      "4",  // parallel compilation (function + file level)
-      "-p",
-      "me",
-      "-C",
-      "Release_LLVM",  // configuration
+
+  std::vector<std::string> flags{
+      // -j <threads> : parallel compilation (function + file level)
+      "-j4",
+      // -p <name> : processor
+      "-pme",
+      // -P <dir> : processor model directory
+      "-P" + procModelLib.str().str(),
+      // -f : use LLVM frontend (chess-clang)
+      "-f",
+      // -C <cfg> : configuration (for chess-clang)
+      "-CRelease_LLVM",
+      // +w <dir> : work directory
+      "+w" + tempDir,
       // for adf headers
       "-D__AIENGINE__",
       // for aie_api headers
       "-D__AIE_ARCH__=20",
-      "-Y",
-      "clang=" + chessClang.str().str(),
-      "-P",
-      procModelLib.str().str(),  // processor model directory
-      // TODO(max): possibly we can have chess do the linking for us?
-      // (and thus skip writing the bridge script and this flag)
-      "-d",  // disassemble output
-      "-f",  // use LLVM frontend
-      "+w",
-      std::move(workDir),
   };
+  // disassemble output
+  if (verbose) flags.emplace_back("-d");
+  return {xChessCCExe.str().str(), flags};
 }
 
 std::optional<std::string> dumpStrToDisk(const std::string &payload,
@@ -290,6 +297,22 @@ std::optional<std::string> runTool(
   return outputFromFile;
 }
 
+LogicalResult assembleUsingChess(const std::string &inputFile,
+                                 const std::string &outputFile,
+                                 const std::string &vitisDir,
+                                 const std::string &tempDir, bool verbose) {
+  auto [xChessCCExe, chessArgs] = makeChessArgs(vitisDir, tempDir, verbose);
+  chessArgs.push_back("-c");
+  chessArgs.push_back(inputFile);
+  chessArgs.push_back("-o");
+  chessArgs.push_back(outputFile);
+  if (!runTool(xChessCCExe, chessArgs, verbose)) {
+    llvm::errs() << "Failed to assemble with chess";
+    return failure();
+  }
+  return success();
+}
+
 bool useMeBasic(const std::string &peanoDir, bool verbose) {
   if (verbose)
     llvm::outs() << "Checking if we should use me_basic, based on "
@@ -339,6 +362,29 @@ static LogicalResult generateCoreElfFiles(
     sys::path::append(elfFile, elfFileName);
 
     if (useChess) {
+      SmallString<64> chessIntrinsicsCPPFile(tempDir);
+      sys::path::append(chessIntrinsicsCPPFile, "chess_intrinsic_wrapper.cpp");
+      if (auto maybeErr = dumpStrToDisk(_CHESS_INTRINSIC_WRAPPER_CPP,
+                                        chessIntrinsicsCPPFile.str().str());
+          maybeErr.has_value()) {
+        llvm::errs()
+            << "Failed to dump to disk chess_intrinsic_wrapper.cpp because: "
+            << maybeErr;
+        return failure();
+      }
+
+      SmallString<64> chessIntrinsicsObjFile(tempDir);
+      sys::path::append(chessIntrinsicsObjFile, "chess_intrinsic_wrapper.o");
+      auto maybeVitisDir = findVitis(vitisDir);
+      if (failed(maybeVitisDir)) return failure();
+
+      if (failed(assembleUsingChess(chessIntrinsicsCPPFile.c_str(),
+                                    chessIntrinsicsObjFile.c_str(), *vitisDir,
+                                    tempDir, verbose))) {
+        llvm::errs() << "Failed to assemble chess_intrinsic_wrapper.o";
+        return failure();
+      }
+
       // Use xbridge (to remove any peano dependency with use-chess option)
       SmallString<64> bcfPath(tempDir);
       sys::path::append(bcfPath, elfFileName + ".bcf");
@@ -355,10 +401,12 @@ static LogicalResult generateCoreElfFiles(
           llvm::errs() << "Failed to generate BCF";
           return failure();
         }
+        bcfOutput->os() << "_include _file chess_intrinsic_wrapper.o\n";
         bcfOutput->keep();
       }
 
-      std::vector<std::string> extractedIncludes;
+      std::vector<std::string> extractedIncludes{
+          chessIntrinsicsObjFile.c_str()};
       {
         auto bcfFileIn = openInputFile(bcfPath, &errorMessage);
         if (!bcfFileIn) {
@@ -370,22 +418,14 @@ static LogicalResult generateCoreElfFiles(
         std::regex r("_include _file (.*)");
         auto begin = std::sregex_iterator(bcfFile.begin(), bcfFile.end(), r);
         auto end = std::sregex_iterator();
-        for (std::sregex_iterator i = begin; i != end; ++i)
+        for (std::sregex_iterator i = begin; i != end; ++i) {
+          if (i->str(1) == "chess_intrinsic_wrapper.o") continue;
           extractedIncludes.push_back(i->str(1));
+        }
       }
 
-      auto aieToolsDir = findVitis(vitisDir);
-      if (!aieToolsDir) {
-        llvm::errs() << "Failed to find vitis";
-        return failure();
-      }
-      SmallString<64> chessworkDir(tempDir);
-      sys::path::append(chessworkDir, "chesswork");
-
-      SmallString<64> xChessCCExe(*aieToolsDir);
-      sys::path::append(xChessCCExe, "bin", "unwrapped", "lnx64.o", "xchesscc");
-      std::vector<std::string> chessArgs =
-          makeChessArgs(*aieToolsDir, chessworkDir.str().str());
+      auto [xChessCCExe, chessArgs] =
+          makeChessArgs(*vitisDir, tempDir, verbose);
       chessArgs.emplace_back(objFile);
       for (const auto &inc : extractedIncludes) chessArgs.emplace_back(inc);
       chessArgs.push_back("+l");
@@ -467,7 +507,7 @@ static LogicalResult generateCDO(MLIRContext *context, ModuleOp moduleOp,
   passManager.addNestedPass<AIE::DeviceOp>(
       mlir::iree_compiler::AMDAIE::createAMDAIEPathfinderPass());
   if (failed(passManager.run(copy))) {
-    llvm::errs() << "failed to run passes to prepare of XCLBin generation";
+    llvm::errs() << "failed to run passes to prepare for XCLBin generation";
     return failure();
   }
 
@@ -891,12 +931,6 @@ static LogicalResult generateUnifiedObject(
   }
 
   if (useChess) {
-    auto aieToolsDir = findVitis(vitisDir);
-    if (!aieToolsDir) {
-      llvm::errs() << "Failed to find vitis";
-      return failure();
-    }
-
     SmallString<64> inputLLChessHackedFile(tempDir);
     sys::path::append(inputLLChessHackedFile, "input.chesshacked.ll");
     {
@@ -917,63 +951,13 @@ static LogicalResult generateUnifiedObject(
         return failure();
       }
     }
-    SmallString<64> chessIntrinsicsLLFile(tempDir);
-    sys::path::append(chessIntrinsicsLLFile, "chess_intrinsic_wrapper.ll");
-    if (auto maybeErr = dumpStrToDisk(_CHESS_INTRINSIC_WRAPPER_LL,
-                                      chessIntrinsicsLLFile.str().str());
-        maybeErr.has_value()) {
-      llvm::errs()
-          << "Failed to dump to disk chess_intrinsic_wrapper.ll because: "
-          << maybeErr;
-      return failure();
-    }
 
-    SmallString<64> chesslinkedFile(tempDir);
-    sys::path::append(chesslinkedFile, "input.chesslinked.ll");
-    SmallString<64> chessLlvmLinkExe(*aieToolsDir);
-    sys::path::append(chessLlvmLinkExe, "tps", "lnx64", "target_aie_ml");
-    sys::path::append(chessLlvmLinkExe, "bin", "LNa64bin", "chess-llvm-link");
-    if (!runTool(chessLlvmLinkExe,
-                 {std::string(inputLLChessHackedFile),
-                  std::string(chessIntrinsicsLLFile), "--opaque-pointers=1",
-                  "-S", "-o", std::string(chesslinkedFile)},
-                 verbose)) {
-      llvm::errs() << "Failed to link in chess intrinsics";
-      return failure();
-    }
+    auto maybeVitisDir = findVitis(vitisDir);
+    if (failed(maybeVitisDir)) return failure();
 
-    std::string mungedLLVMIR;
-    {
-      auto chesslinkedIn = openInputFile(chesslinkedFile, &errorMessage);
-      if (!chesslinkedIn) {
-        llvm::errs()
-            << "Failed to open input.chesslinked.ll for writing because: "
-            << errorMessage;
-        return failure();
-      }
-
-      mungedLLVMIR = std::string(chesslinkedIn->getBuffer());
-      mungedLLVMIR = chesshack(mungedLLVMIR);
-    }
-    if (auto maybeErr =
-            dumpStrToDisk(mungedLLVMIR, chesslinkedFile.str().str());
-        maybeErr.has_value()) {
-      llvm::errs() << "Failed to dump to disk input.chesslinked.ll because: "
-                   << *maybeErr;
-      return failure();
-    }
-
-    SmallString<64> chessworkDir(tempDir);
-    sys::path::append(chessworkDir, "chesswork");
-    SmallString<64> xChessCCExe(*aieToolsDir);
-    sys::path::append(xChessCCExe, "bin", "unwrapped", "lnx64.o", "xchesscc");
-    auto chessArgs = makeChessArgs(*aieToolsDir, chessworkDir.str().str());
-    chessArgs.push_back("-c");
-    chessArgs.push_back(std::string(chesslinkedFile));
-    chessArgs.push_back("-o");
-    chessArgs.push_back(std::string(outputFile));
-    if (!runTool(xChessCCExe, chessArgs, verbose)) {
-      llvm::errs() << "Failed to assemble with chess";
+    if (failed(assembleUsingChess(inputLLChessHackedFile.c_str(), outputFile,
+                                  *vitisDir, tempDir, verbose))) {
+      llvm::errs() << "Failed to assemble input.o";
       return failure();
     }
   } else {

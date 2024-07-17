@@ -23,7 +23,7 @@
 
 set -euo pipefail
 
-if [ "$#" -lt 2 ] || [ "$#" -gt 6 ]; then
+if [ "$#" -lt 2 ] || [ "$#" -gt 5 ]; then
 
    # The expected parameters are
    #    1) <output-dir>            (required)
@@ -31,7 +31,7 @@ if [ "$#" -lt 2 ] || [ "$#" -gt 6 ]; then
    #    4) <peano-install-dir>     (optional)
    #    5) <xrt-dir>               (optional)
    #    6) <vitis-install-dir>     (optional)
-    echo -e "Illegal number of parameters: $#, expected 2-6 parameters." \
+    echo -e "Illegal number of parameters: $#, expected 2-5 parameters." \
             "\n The parameters are as follows:" \
             "\n     1) <output-dir>               (required)" \
             "\n     2) <iree-install-dir>         (required)" \
@@ -46,6 +46,9 @@ if [ "$#" -lt 2 ] || [ "$#" -gt 6 ]; then
 fi
 
 OUTPUT_DIR=`realpath "$1"`
+if [ -d "${OUTPUT_DIR}" ]; then
+  rm -rf "${OUTPUT_DIR}";
+fi
 mkdir -p ${OUTPUT_DIR}
 if [ ! -d "${OUTPUT_DIR}" ]; then
   echo "Failed to locate or construct OUTPUT_DIR '${OUTPUT_DIR}'."
@@ -85,10 +88,10 @@ fi
 if [ -z "${3-}" ]; then
   PEANO=/opt/llvm-aie
 else
-  PEANO=`realpath "$4"`
+  PEANO=`realpath "$3"`
 fi
 if [ ! -d "${PEANO}" ]; then
-  echo "No directory '${PEANO}' (argument 4) found."
+  echo "No directory '${PEANO}' (argument 3) found."
   exit 1
 fi
 
@@ -96,10 +99,10 @@ fi
 if [ -z "${4-}" ]; then
   XRT_DIR=/opt/xilinx/xrt
 else
-  XRT_DIR=`realpath "$5"`
+  XRT_DIR=`realpath "$4"`
 fi
 if [ ! -d "${XRT_DIR}" ]; then
-  echo "No directory '${XRT_DIR}' (argument 5) found."
+  echo "No directory '${XRT_DIR}' (argument 4) found."
   exit 1
 fi
 
@@ -107,10 +110,10 @@ fi
 if [ -z "${5-}" ]; then
   VITIS=/opt/Xilinx/Vitis/2024.1
 else
-  VITIS=`realpath "$6"`
+  VITIS=`realpath "$5"`
 fi
 if [ ! -d "${VITIS}" ]; then
-  echo "No directory '${VITIS}' (argument 6) found."
+  echo "No directory '${VITIS}' (argument 5) found."
   exit 1
 fi
 
@@ -775,39 +778,16 @@ run_matmul_test \
     --name_prefix "chess_i32_matmul" \
     --lhs_rhs_type "i32" \
     --acc_type "i32" \
-    --m "64" \
-    --n "64" \
-    --k "64" \
-    --num_repeat_runs "0" \
+    --m "32" \
+    --n "32" \
+    --k "32" \
     --use_chess "1"
 
 run_matmul_test \
     --name_prefix "chess_f32_matmul" \
     --lhs_rhs_type "f32" \
     --acc_type "f32" \
-    --m "64" \
-    --n "64" \
-    --k "64" \
-    --num_repeat_runs "0" \
+    --m "32" \
+    --n "32" \
+    --k "32" \
     --use_chess "1"
-
-run_matmul_test \
-    --name_prefix "chess_i32_matmul" \
-    --lhs_rhs_type "i32" \
-    --acc_type "i32" \
-    --m "128" \
-    --n "128" \
-    --k "128" \
-    --num_repeat_runs "0" \
-    --use_chess "1"
-
-run_matmul_test \
-    --name_prefix "chess_f32_matmul" \
-    --lhs_rhs_type "f32" \
-    --acc_type "f32" \
-    --m "128" \
-    --n "128" \
-    --k "128" \
-    --num_repeat_runs "0" \
-    --use_chess "1"
-

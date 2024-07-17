@@ -9,12 +9,12 @@
 set -euox pipefail
 
 # Check for the number of provided arguments
-if [ "$#" -ne 2 ] && [ "$#" -ne 6 ]; then
+if [ "$#" -ne 2 ] && [ "$#" -ne 5 ]; then
     echo -e "Illegal number of parameters: $#." \
             "\n For 2 parameters:" \
             "\n     1) <iree-compile-dir>" \
             "\n     2) <output-dir>" \
-            "\n For 6 parameters:" \
+            "\n For 5 parameters:" \
             "\n     1) <iree-compile-dir>" \
             "\n     2) <output-dir>" \
             "\n     3) <peano-install-dir>" \
@@ -46,7 +46,7 @@ echo "chess-clang: $(find $VITIS -name chess-clang)"
 echo "xchesscc: $(find $VITIS -name xchesscc)"
 
 # The local set-paths-manually case:
-if [ "$#" -eq 6 ]; then
+if [ "$#" -eq 5 ]; then
   PEANO="$3"
   XRT="$4"
   VITIS="$5"

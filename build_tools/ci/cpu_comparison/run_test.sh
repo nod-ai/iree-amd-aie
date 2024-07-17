@@ -24,9 +24,9 @@
 
 set -euox pipefail
 
-if [ "$#" -lt 2 ] || [ "$#" -gt 6 ]; then
+if [ "$#" -lt 2 ] || [ "$#" -gt 5 ]; then
 
-    echo -e "Illegal number of parameters: $#, expected 2-6 parameters." \
+    echo -e "Illegal number of parameters: $#, expected 2-5 parameters." \
             "\n The parameters are as follows:" \
             "\n     1) <output-dir>               (required)" \
             "\n     2) <iree-install-dir>         (required)" \
@@ -78,10 +78,10 @@ fi
 if [ -z "${3-}" ]; then
   PEANO=/opt/llvm-aie
 else
-  PEANO=`realpath "$4"`
+  PEANO=`realpath "$3"`
 fi
 if [ ! -d "${PEANO}" ]; then
-  echo "No directory '${PEANO}' (argument 4) found."
+  echo "No directory '${PEANO}' (argument 3) found."
   exit 1
 fi
 
@@ -89,10 +89,10 @@ fi
 if [ -z "${4-}" ]; then
   XRT_DIR=/opt/xilinx/xrt
 else
-  XRT_DIR=`realpath "$5"`
+  XRT_DIR=`realpath "$4"`
 fi
 if [ ! -d "${XRT_DIR}" ]; then
-  echo "No directory '${XRT_DIR}' (argument 5) found."
+  echo "No directory '${XRT_DIR}' (argument 4) found."
   exit 1
 fi
 
@@ -100,10 +100,10 @@ fi
 if [ -z "${5-}" ]; then
   VITIS=/opt/Xilinx/Vitis/2024.1
 else
-  VITIS=`realpath "$6"`
+  VITIS=`realpath "$5"`
 fi
 if [ ! -d "${VITIS}" ]; then
-  echo "No directory '${VITIS}' (argument 6) found."
+  echo "No directory '${VITIS}' (argument 5) found."
   exit 1
 fi
 
