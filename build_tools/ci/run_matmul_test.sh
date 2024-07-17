@@ -18,36 +18,37 @@
 #      `iree-e2e-matmul-test` to include support for the runtime HAL
 #      driver/device you wish to test.
 #   2. Update the paths in this script or specify them via environment variables
-#   3. Run: `./run_matmul_tests.sh <output_dir_path> <iree_install_path> [<mlir_aie_install_path>] [<peano_install_path>] [<xrt_path>] [<vitis_path>] [do_signing]`
+#   3. Run: `./run_matmul_tests.sh <output_dir_path> <iree_install_path> [<peano_install_path>] [<xrt_path>] [<vitis_path>] [do_signing]`
 #      The directories above in square brackets are optional, the first 2 directories are required.
 
-set -euox pipefail
+set -euo pipefail
 
-if [ "$#" -lt 2 ] || [ "$#" -gt 6 ]; then
+if [ "$#" -lt 2 ] || [ "$#" -gt 5 ]; then
 
    # The expected parameters are
    #    1) <output-dir>            (required)
    #    2) <iree-install-dir>      (required)
-   #    3) <mlir-aie-install-dir>  (optional)
    #    4) <peano-install-dir>     (optional)
    #    5) <xrt-dir>               (optional)
    #    6) <vitis-install-dir>     (optional)
-    echo -e "Illegal number of parameters: $#, expected 2-6 parameters." \
+    echo -e "Illegal number of parameters: $#, expected 2-5 parameters." \
             "\n The parameters are as follows:" \
             "\n     1) <output-dir>               (required)" \
             "\n     2) <iree-install-dir>         (required)" \
-            "\n     3) <mlir-aie-install-dir>     (optional)" \
-            "\n     4) <peano-install-dir>        (optional)" \
-            "\n     5) <xrt-dir>                  (optional)" \
-            "\n     6) <vitis-install-dir>        (optional)" \
+            "\n     3) <peano-install-dir>        (optional)" \
+            "\n     4) <xrt-dir>                  (optional)" \
+            "\n     5) <vitis-install-dir>        (optional)" \
             "\n Example, dependent on environment variables:" \
             "\n     ./run_matmul_test.sh  " \
-            "results_dir_tmp  \$IREE_INSTALL_DIR  \$MLIR_AIE_INSTALL_DIR  " \
+            "results_dir_tmp  \$IREE_INSTALL_DIR " \
             "\$PEANO_INSTALL_DIR  /opt/xilinx/xrt  \$VITIS_INSTALL_PATH"
     exit 1
 fi
 
 OUTPUT_DIR=`realpath "$1"`
+if [ -d "${OUTPUT_DIR}" ]; then
+  rm -rf "${OUTPUT_DIR}";
+fi
 mkdir -p ${OUTPUT_DIR}
 if [ ! -d "${OUTPUT_DIR}" ]; then
   echo "Failed to locate or construct OUTPUT_DIR '${OUTPUT_DIR}'."
@@ -83,51 +84,36 @@ if [ -z "${TEST_RUNNER}" ]; then
   exit 1
 fi
 
-# Parameter 3) <mlir-aie-install-dir>
+# Parameter 3) <peano-install-dir>
 if [ -z "${3-}" ]; then
-  MLIR_AIE_INSTALL=`realpath .venv/lib/python3.10/site-packages/mlir_aie`
-else
-  MLIR_AIE_INSTALL=`realpath "$3"`
-fi
-if [ ! -d "${MLIR_AIE_INSTALL}" ]; then
-  echo "No directory '${MLIR_AIE_INSTALL}' (argument 3) found."
-  exit 1
-fi
-
-# Parameter 4) <peano-install-dir>
-if [ -z "${4-}" ]; then
   PEANO=/opt/llvm-aie
 else
-  PEANO=`realpath "$4"`
+  PEANO=`realpath "$3"`
 fi
 if [ ! -d "${PEANO}" ]; then
-  echo "No directory '${PEANO}' (argument 4) found."
+  echo "No directory '${PEANO}' (argument 3) found."
   exit 1
 fi
 
-# Parameter 5) <xrt-dir>
-if [ -z "${5-}" ]; then
+# Parameter 4) <xrt-dir>
+if [ -z "${4-}" ]; then
   XRT_DIR=/opt/xilinx/xrt
 else
-  XRT_DIR=`realpath "$5"`
+  XRT_DIR=`realpath "$4"`
 fi
 if [ ! -d "${XRT_DIR}" ]; then
-  echo "No directory '${XRT_DIR}' (argument 5) found."
+  echo "No directory '${XRT_DIR}' (argument 4) found."
   exit 1
 fi
 
-# Parameter 6) <vitis-install-dir>
-if [ -z "${6-}" ]; then
-  # An alternate to a full vitis install, will work
-  # here but not for a full build of mlir-aie
-  # https://riallto.ai/install-riallto.html#install-riallto
-  # VITIS=/opt/Riallto/Vitis/2023.1
-  VITIS=/opt/Xilinx/Vitis/2023.2
+# Parameter 5) <vitis-install-dir>
+if [ -z "${5-}" ]; then
+  VITIS=/opt/Xilinx/Vitis/2024.1
 else
-  VITIS=`realpath "$6"`
+  VITIS=`realpath "$5"`
 fi
 if [ ! -d "${VITIS}" ]; then
-  echo "No directory '${VITIS}' (argument 6) found."
+  echo "No directory '${VITIS}' (argument 5) found."
   exit 1
 fi
 
@@ -152,6 +138,8 @@ fi
 source $XRT_DIR/setup.sh
 # Circumvent xclbin security (no longer needed as of April 2024 XDNA driver)
 export XRT_HACK_UNSECURE_LOADING_XCLBIN=1
+
+MM_KERNEL_URL=https://github.com/nod-ai/iree-amd-aie/releases/download/ukernels/mm.o
 
 cd ${OUTPUT_DIR}
 
@@ -188,11 +176,11 @@ function run_matmul_test() {
 
   local peano_install_path="${PEANO}"
 
-  local mlir_aie_install_path="${MLIR_AIE_INSTALL}"
-
   local amd_aie_install_path="${IREE_INSTALL_DIR}"
 
   local vitis_path="${VITIS}"
+
+  local use_chess="false"
 
   local tile_pipeline="pad-pack"
 
@@ -274,12 +262,12 @@ function run_matmul_test() {
         peano_install_path="$2"
         shift 2
         ;;
-      --mlir_aie_install_path)
-        mlir_aie_install_path="$2"
-        shift 2
-        ;;
       --amd_aie_install_path)
         amd_aie_install_path="$2"
+        shift 2
+        ;;
+      --use_chess)
+        use_chess="$2"
         shift 2
         ;;
      --vitis_path)
@@ -317,7 +305,6 @@ function run_matmul_test() {
     esac
   done
 
-  set -x
 
 
   # Record the current time in milliseconds. Record the time at certain
@@ -391,9 +378,9 @@ function run_matmul_test() {
                       --iree-amdaie-lower-to-aie-pipeline=${lower_to_aie_pipeline} \
                       --iree-amdaie-tile-pipeline=${tile_pipeline} \
                       --iree-amd-aie-peano-install-dir=${peano_install_path} \
-                      --iree-amd-aie-mlir-aie-install-dir=${mlir_aie_install_path} \
                       --iree-amd-aie-install-dir=${amd_aie_install_path} \
                       --iree-amd-aie-vitis-install-dir=${vitis_path} \
+                      --iree-amd-aie-enable-chess=${use_chess} \
                       --iree-hal-dump-executable-files-to=$PWD \
                       --iree-amd-aie-show-invoked-commands"
 
@@ -411,8 +398,7 @@ function run_matmul_test() {
     if [ -f "${OUTPUT_DIR}/mm.o" ]; then
       echo "File 'mm.o' already exists in ${OUTPUT_DIR}."
     else
-      SRC_DIR="${mlir_aie_install_path}/aie_kernels/mm.o"
-      ln -s ${SRC_DIR} ${OUTPUT_DIR}/mm.o
+      wget $MM_KERNEL_URL -O  ${OUTPUT_DIR}/mm.o
     fi
   fi
 
@@ -482,7 +468,6 @@ function run_matmul_test() {
   echo "Time spent in compilation: $((compiled_time - generated_time)) [ms]"
   echo "Time spent in execution and verification: $((end_time - compiled_time)) [ms]"
 
-  set +x
 }
 
 ########################################################
@@ -504,7 +489,6 @@ run_matmul_test \
     --target_device "npu1_4col" \
     --device "xrt" \
     --peano_install_path "${PEANO}" \
-    --mlir_aie_install_path "${MLIR_AIE_INSTALL}" \
     --amd_aie_install_path "${IREE_INSTALL_DIR}" \
     --vitis_path  "${VITIS}" \
     --lower_to_aie_pipeline "air" \
@@ -785,3 +769,25 @@ run_matmul_test \
     --lhs_rhs_type "i32" \
     --acc_type "i32" \
     --m "1536" --k "2048" --n "1536"
+
+###################################################################
+# Chess tests
+###################################################################
+
+run_matmul_test \
+    --name_prefix "chess_i32_matmul" \
+    --lhs_rhs_type "i32" \
+    --acc_type "i32" \
+    --m "32" \
+    --n "32" \
+    --k "32" \
+    --use_chess "1"
+
+run_matmul_test \
+    --name_prefix "chess_f32_matmul" \
+    --lhs_rhs_type "f32" \
+    --acc_type "f32" \
+    --m "32" \
+    --n "32" \
+    --k "32" \
+    --use_chess "1"
