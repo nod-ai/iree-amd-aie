@@ -121,14 +121,16 @@ void AMDAIECanonicalizeDoublyStridedOpPass::runOnOperation() {
   Operation *parentOp = getOperation();
   IRRewriter rewriter(parentOp->getContext());
 
+  // Fold DMA unit dimensions. Needs to happen before folding linear dimensions
+  // to avoid blocking detection of linear dimension folding opportunities due
+  // to a unit dimension in between.
+  parentOp->walk([&](AMDAIE::DoublyStridedOpInterface dmaOp) {
+    (void)foldDmaOpUnitDims(rewriter, dmaOp);
+  });
+
   // Fold linear dimensions within a DMA op.
   parentOp->walk([&](AMDAIE::DoublyStridedOpInterface dmaOp) {
     (void)foldDmaOpLinearDims(rewriter, dmaOp);
-  });
-
-  // Fold DMA unit dimensions.
-  parentOp->walk([&](AMDAIE::DoublyStridedOpInterface dmaOp) {
-    (void)foldDmaOpUnitDims(rewriter, dmaOp);
   });
 
   // Make DMA accesses with single dimension implicit.
