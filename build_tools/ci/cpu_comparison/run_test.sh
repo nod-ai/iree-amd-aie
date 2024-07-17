@@ -382,6 +382,7 @@ function run_test() {
   ${IREE_COMPILE_EXE} "${test_file}"  \
       --iree-hal-target-backends=llvm-cpu \
       --iree-llvmcpu-target-cpu-features=host \
+      --iree-opt-data-tiling=false \
       -o "${cpu_vmfb}"
 
   input_output_line=$(cat ${OUTPUT_DIR}/${name}_input_args.txt)
