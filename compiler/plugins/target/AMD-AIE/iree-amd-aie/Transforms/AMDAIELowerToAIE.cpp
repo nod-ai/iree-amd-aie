@@ -997,16 +997,12 @@ void AMDAIELowerToAIEPass::runOnOperation() {
 
   // All Ukernel related function declarations will be within aie.device, so
   // delete the ones outside from the SymbolTable.
-  SmallVector<func::FuncOp> eraseCandidateFuncOps;
+  SymbolTable symbolTable(getOperation());
   getOperation()->walk([&](func::FuncOp funcOp) {
     if (funcOp.isPrivate() && !funcOp->getParentOfType<AIE::DeviceOp>()) {
-      eraseCandidateFuncOps.push_back(funcOp);
+      symbolTable.erase(funcOp);
     }
   });
-  SymbolTable symbolTable(getOperation());
-  for (func::FuncOp funcOp : eraseCandidateFuncOps) {
-    symbolTable.erase(funcOp);
-  }
 }
 
 }  // namespace
