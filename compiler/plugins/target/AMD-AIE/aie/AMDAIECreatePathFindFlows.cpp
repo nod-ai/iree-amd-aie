@@ -512,7 +512,7 @@ void AMDAIEPathfinderPass::runOnOperation() {
       // Constraint: memtile stream switch constraints
       if (auto tile = sw.getTileOp();
           tile.isMemTile() &&
-          !deviceModel.isLegalMemtileConnection(
+          !deviceModel.isLegalSwitchInternalConnection(
               tile.getCol(), tile.getRow(), toStrmT(connect.getSourceBundle()),
               connect.getSourceChannel(), toStrmT(connect.getDestBundle()),
               connect.getDestChannel())) {

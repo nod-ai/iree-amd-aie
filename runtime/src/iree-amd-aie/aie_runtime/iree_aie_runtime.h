@@ -7,6 +7,7 @@
 #ifndef IREE_AIE_RUNTIME_H
 #define IREE_AIE_RUNTIME_H
 
+#include <bitset>
 #include <optional>
 #include <ostream>
 #include <sstream>
@@ -41,6 +42,11 @@ void insertNoOpCommand(unsigned int numPadBytes);
 }
 
 namespace mlir::iree_compiler::AMDAIE {
+
+using AIE2IPUCoreConnBitMap = std::vector<std::bitset<23>>;
+using AIE2IPUMemConnBitMap = std::vector<std::bitset<17>>;
+using AIE2IPUShimConnBitMap = std::vector<std::bitset<22>>;
+
 struct TileLoc {
   int col, row;
 
@@ -172,11 +178,11 @@ struct PathEndPoint {
 StrmSwPortType getConnectingBundle(StrmSwPortType dir);
 
 enum class AMDAIETileType : uint8_t {
-  AIETILE = 0,
-  SHIMNOC = 1,
-  SHIMPL = 2,
-  MEMTILE = 3,
-  MAX = 4
+  AIETILE = XAIEGBL_TILE_TYPE_AIETILE,
+  SHIMNOC = XAIEGBL_TILE_TYPE_SHIMNOC,
+  SHIMPL = XAIEGBL_TILE_TYPE_SHIMPL,
+  MEMTILE = XAIEGBL_TILE_TYPE_MEMTILE,
+  MAX = XAIEGBL_TILE_TYPE_MAX
 };
 
 /// Enum of DMA properties. Uses the offset within the `XAie_DmaMod` struct as
@@ -287,11 +293,15 @@ struct AMDAIEDeviceModel {
                                             StrmSwPortType bundle) const;
   uint32_t getNumDestSwitchboxConnections(uint8_t col, uint8_t row,
                                           StrmSwPortType bundle) const;
-  bool isLegalMemtileConnection(uint8_t col, uint8_t row,
-                                StrmSwPortType srcBundle, uint8_t srcChan,
-                                StrmSwPortType dstBundle,
-                                uint8_t dstChan) const;
-
+  std::optional<uint8_t> getPhyPortNum(uint8_t col, uint8_t row,
+                                       XAie_StrmPortIntf masterSlave,
+                                       StrmSwPortType bundle,
+                                       uint8_t channel) const;
+  bool isLegalSwitchInternalConnection(uint8_t col, uint8_t row,
+                                       StrmSwPortType srcBundle,
+                                       uint8_t srcChan,
+                                       StrmSwPortType dstBundle,
+                                       uint8_t dstChan) const;
   uint32_t getColumnShift() const;
   uint32_t getRowShift() const;
 
@@ -308,7 +318,7 @@ struct AMDAIEDeviceModel getDeviceModel(AMDAIEDevice device);
 
 #define TO_STRINGS(_)    \
   _(AMDAIETileType)      \
-  _(AMDAIEDmaProp)    \
+  _(AMDAIEDmaProp)       \
   _(AieRC)               \
   _(Connect)             \
   _(DMAChannelDir)       \
@@ -357,8 +367,7 @@ template <typename H1>
 llvm::raw_ostream& showArgs(llvm::raw_ostream& out, const char* label,
                             H1&& value) {
   if constexpr (std::is_pointer<H1>::value)
-    return out << label << "="
-               << "ptr";
+    return out << label << "=" << "ptr";
   else
     return out << label << "=" << std::forward<H1>(value);
 }
