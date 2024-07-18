@@ -258,6 +258,12 @@ def AMDAIELoweringStrategy :
   ];
 }
 
+def AMDAIELowerFuncArgs :
+    Pass<"iree-amdaie-lower-func-args", "ModuleOp"> {
+  let summary = "Lower to function arguments from iree's hal.interface.binding.subspan ops";
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIELowerFuncArgsPass()";
+}
+
 def AMDAIELowerToAIE :
     Pass<"iree-amdaie-lower-to-aie", "ModuleOp"> {
   let summary = "Lower from the AMDAIE dialect to the AIE/AIEX dialects";

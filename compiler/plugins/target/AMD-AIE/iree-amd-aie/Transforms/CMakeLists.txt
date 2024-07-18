@@ -68,6 +68,7 @@ iree_cc_library(
     "AMDAIELinkExecutables.cpp" 
     "AMDAIELocalizeLogicalObjectFifo.cpp"
     "AMDAIELowerExecutableTarget.cpp"
+    "AMDAIELowerFuncArgs.cpp"
     "AMDAIELowerToAIE.cpp"
     "AMDAIELowerToUKernels.cpp"
     "AMDAIELowerWorkgroupCount.cpp"

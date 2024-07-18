@@ -149,6 +149,9 @@ createAMDAIELowerExecutableTargetPass(
 std::unique_ptr<OperationPass<ModuleOp>> createAMDAIELoweringStrategyPass(
     AMDAIELoweringStrategyOptions options = {});
 
+/// Create pass to lower function arguments.
+std::unique_ptr<Pass> createAMDAIELowerFuncArgsPass();
+
 /// Create pass to lower from the AMDAIE dialect to the AIE/AIEX dialects.
 std::unique_ptr<Pass> createAMDAIELowerToAIEPass();
 

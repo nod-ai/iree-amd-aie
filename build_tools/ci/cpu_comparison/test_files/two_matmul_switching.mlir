@@ -1,4 +1,11 @@
-// This test shows switching between two matmuls and is useful to model the switching cost
+// This test shows switching between two matmuls and is useful to model the switching cost.
+// This test is a part of three test files that developers can look at together.
+// 1. two_matmul_switching.mlir => switches calls between two matmuls M,N,K size (8,4,8) and (8,8,4) 
+      4 times each (8 calls total). The graph ((8,4,8) -> (8,8,4)) x 4
+// 2. matmul_f32_8_4_8 => calls the (8,4,8) matmul 4 times hence doesnt have a switching cost so we
+      have a baseline for it. The graph is (8,4,8) x 4
+// 3. matmul_f32_8_8_4 => calls the (8,8,4) matmul 4 times hence doesnt have a switching cost so we
+      have a baseline for it. The graph is (8,8,4) x 4
 
 // These 2 lines are required by the script which generates input data:
 //
