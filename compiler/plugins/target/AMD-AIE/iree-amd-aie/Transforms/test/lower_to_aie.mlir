@@ -690,6 +690,76 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 
 // -----
 
+// CHECK:       aie.device(npu1_4col) {
+// CHECK:         %[[TILE_0_0:.*]] = aie.tile(0, 0)
+// CHECK:         %[[TILE_0_1:.*]] = aie.tile(0, 1)
+// CHECK:         aie.objectfifo @[[OBJ0:.*]](%[[TILE_0_0]], {%[[TILE_0_1]]}, 2 : i32) : !aie.objectfifo<memref<1024xbf16, 1>>
+// CHECK:         aie.objectfifo @[[OBJ1:.*]](%[[TILE_0_0]], {%[[TILE_0_1]]}, 2 : i32) : !aie.objectfifo<memref<1024xbf16, 1>>
+// CHECK:         aie.objectfifo @[[OBJ2:.*]](%[[TILE_0_1]]
+// CHECK-SAME:         %[[TILE_0_0]]}, 4 : i32) : !aie.objectfifo<memref<1024xf32, 1>>
+// CHECK:         func.func @bf16_f32_lit_test
+// CHECK-SAME:         (%[[LHS:.*]]: memref<512xi32>, %[[RHS:.*]]: memref<512xi32>, %[[OUT:.*]]: memref<32x32xf32>) {
+// CHECK:           aiex.npu.dma_memcpy_nd
+// CHECK-SAME:          %[[OUT]][0, 0, 0, 0][1, 1, 32, 32][0, 0, 32, 1]
+// CHECK-SAME:          issue_token = true
+// CHECK-SAME:          metadata = @[[OBJ2]]
+// CHECK-SAME:          memref<32x32xf32>
+// CHECK:           aiex.npu.dma_memcpy_nd
+// CHECK-SAME:          %[[RHS]][0, 0, 0, 0][1, 2, 32, 8][0, 8, 16, 1]
+// CHECK-SAME:          metadata = @[[OBJ1]]
+// CHECK-SAME:          memref<512xi32>
+// CHECK:           aiex.npu.dma_memcpy_nd
+// CHECK-SAME:          %[[LHS]][0, 0, 0, 0][1, 1, 32, 16][0, 0, 16, 1]
+// CHECK-SAME:          metadata = @[[OBJ0]]
+// CHECK-SAME:          memref<512xi32>
+#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
+module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
+  func.func @bf16_f32_lit_test() {
+    amdaie.workgroup {
+      %c0 = arith.constant 0 : index
+      %c1 = arith.constant 1 : index
+      %c2 = arith.constant 2 : index
+      %c32 = arith.constant 32 : index
+      %c16 = arith.constant 16 : index
+      %c512 = arith.constant 512 : index
+      %c256 = arith.constant 256 : index
+      %alloc = memref.alloc() : memref<2x2x16x16xf32, 1 : i32>
+      %alloc_0 = memref.alloc() : memref<1x2x32x16xbf16, 1 : i32>
+      %tile = amdaie.tile(%c0, %c1)
+      %0 = amdaie.logicalobjectfifo.from_memref %alloc, {%tile} : memref<2x2x16x16xf32, 1 : i32> -> !amdaie.logicalobjectfifo<memref<2x2x16x16xf32, 1 : i32>>
+      %1 = amdaie.logicalobjectfifo.from_memref %alloc_0, {%tile} : memref<1x2x32x16xbf16, 1 : i32> -> !amdaie.logicalobjectfifo<memref<1x2x32x16xbf16, 1 : i32>>
+      %2 = amdaie.logicalobjectfifo.from_memref %alloc_0, {%tile} : memref<1x2x32x16xbf16, 1 : i32> -> !amdaie.logicalobjectfifo<memref<2x1x16x32xbf16, 1 : i32>>
+      %3 = hal.interface.binding.subspan set(0) binding(0) type(storage_buffer) alignment(64) offset(%c0) flags(ReadOnly) : memref<32x32xbf16>
+      %tile_1 = amdaie.tile(%c0, %c0)
+      %bd_id = amdaie.bd_id(%tile_1, 2)
+      %bd_id_2 = amdaie.bd_id(%tile_1, 1)
+      %bd_id_3 = amdaie.bd_id(%tile_1, 0)
+      %4 = amdaie.logicalobjectfifo.from_memref %3, {%tile_1} : memref<32x32xbf16> -> !amdaie.logicalobjectfifo<memref<32x32xbf16>>
+      memref.assume_alignment %3, 64 : memref<32x32xbf16>
+      %5 = hal.interface.binding.subspan set(0) binding(1) type(storage_buffer) alignment(64) offset(%c0) flags(ReadOnly) : memref<32x32xbf16>
+      %6 = amdaie.logicalobjectfifo.from_memref %5, {%tile_1} : memref<32x32xbf16> -> !amdaie.logicalobjectfifo<memref<32x32xbf16>>
+      memref.assume_alignment %5, 64 : memref<32x32xbf16>
+      %7 = hal.interface.binding.subspan set(0) binding(2) type(storage_buffer) alignment(64) offset(%c0) : memref<32x32xf32>
+      %8 = amdaie.logicalobjectfifo.from_memref %7, {%tile_1} : memref<32x32xf32> -> !amdaie.logicalobjectfifo<memref<32x32xf32>>
+      %9 = amdaie.circular_dma_cpy_nd(%2[] [] [], %4[] [] []) : (!amdaie.logicalobjectfifo<memref<2x1x16x32xbf16, 1 : i32>>, !amdaie.logicalobjectfifo<memref<32x32xbf16>>)
+      %10 = amdaie.circular_dma_cpy_nd(%1[] [] [], %6[] [] []) : (!amdaie.logicalobjectfifo<memref<1x2x32x16xbf16, 1 : i32>>, !amdaie.logicalobjectfifo<memref<32x32xbf16>>)
+      %11 = amdaie.circular_dma_cpy_nd(%8[] [] [], %0[%c0, %c0, %c0, %c0] [%c2, %c16, %c2, %c16] [%c512, %c16, %c256, %c1]) : (!amdaie.logicalobjectfifo<memref<32x32xf32>>, !amdaie.logicalobjectfifo<memref<2x2x16x16xf32, 1 : i32>>)
+      amdaie.controlcode {
+        %12 = amdaie.npu.dma_cpy_nd %11([] [] [] bd_id = %bd_id_3, [] [] [])
+        %13 = amdaie.npu.dma_cpy_nd %10([] [] [], [%c0, %c0, %c0] [%c2, %c32, %c16] [%c16, %c32, %c1] bd_id = %bd_id_2)
+        %14 = amdaie.npu.dma_cpy_nd %9([] [] [], [] [] [] bd_id = %bd_id)
+        amdaie.npu.dma_wait(%12, S2MM)
+        amdaie.npu.dma_wait(%13, MM2S)
+        amdaie.npu.dma_wait(%14, MM2S)
+        amdaie.end
+      }
+    }
+    return
+  }
+}
+
+// -----
+
 // Test to demonstrate invalid implicit L3 memref type that has rank greater than that
 // expected for static offsets/sizes/strides.
 #executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>

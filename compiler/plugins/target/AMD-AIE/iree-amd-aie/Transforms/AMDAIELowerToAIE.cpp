@@ -971,6 +971,88 @@ class MoveAllDependenciesIntoOp : public OpRewritePattern<OpTy> {
   }
 };
 
+/// Utility to convert function arguments with memref element types' bitwidth
+/// either 8 or 16 to i32. This basically involves linearizing an N-d memref to
+/// 1-d i32 memref and adjusting the offset/size/stride metadata.
+static LogicalResult CastFunctionArgs(func::FuncOp funcOp,
+                                      PatternRewriter &rewriter) {
+  // only run on npu control functions
+  bool hasNpuOps = false;
+  funcOp.walk([&](AIEX::NpuDmaMemcpyNdOp dma) { hasNpuOps = true; });
+  if (!hasNpuOps) return failure();
+
+  // cast all the function args to i32 types.
+  // this is in support of npu.dma_memcpy_nd which only allow 32bit types
+  mlir::FunctionType funcType = funcOp.getFunctionType();
+  SmallVector<Type> argTypes(funcType.getInputs());
+  for (int i = 0, e = argTypes.size(); i < e; i++) {
+    auto memrefTy = dyn_cast<MemRefType>(argTypes[i]);
+    if (!memrefTy) continue;
+
+    unsigned int bitwidth = memrefTy.getElementTypeBitWidth();
+    if (bitwidth != 16 && bitwidth != 8) continue;
+
+    unsigned int div = 32 / bitwidth;
+    unsigned int numElements = memrefTy.getNumElements() / div;
+    SmallVector<int64_t> shape{numElements};
+    MemRefType newMemrefTy =
+        MemRefType::get(shape, rewriter.getIntegerType(32));
+    argTypes[i] = newMemrefTy;
+    auto &entry = funcOp.front();
+    entry.insertArgument(i, newMemrefTy, rewriter.getUnknownLoc());
+    rewriter.setInsertionPointToStart(&entry);
+    // With memref shape collapsed to 1d, the multi-dimensional offset also
+    // needs to be collapsed.
+    SmallVector<Operation *> users;
+    for (auto user : entry.getArgument(i + 1).getUsers()) {
+      if (auto cast_user = dyn_cast<UnrealizedConversionCastOp>(user)) {
+        assert(cast_user.getNumResults() == 1);
+        for (auto cast_r_user : cast_user.getResult(0).getUsers())
+          users.push_back(cast_r_user);
+      } else
+        users.push_back(user);
+    }
+    for (Operation *user : users) {
+      if (auto dmaUser = dyn_cast<AIEX::NpuDmaMemcpyNdOp>(user)) {
+        int oneDOffset = *getConstantIntValue(dmaUser.getMixedOffsets().back());
+        for (int j = dmaUser.getMixedOffsets().size() - 2; j > 0; j--)
+          oneDOffset += *getConstantIntValue(dmaUser.getMixedOffsets()[j]) *
+                        *getConstantIntValue(dmaUser.getMixedStrides()[j]);
+        rewriter.setInsertionPoint(dmaUser);
+        const std::vector<int64_t> newStaticOffsets = {0, 0, 0, oneDOffset};
+        SmallVector<int64_t> newStaticSizes;
+        for (int64_t size : dmaUser.getStaticSizes()) {
+          newStaticSizes.push_back(size);
+        }
+        SmallVector<int64_t> newStaticStrides;
+        for (int64_t stride : dmaUser.getStaticStrides()) {
+          newStaticStrides.push_back(stride);
+        }
+        newStaticSizes[newStaticSizes.size() - 1] /= 2;
+        for (unsigned i = 0, n = newStaticSizes.size(); i < n - 1; i++) {
+          if (newStaticStrides[i] == 1) {
+            newStaticSizes[i] /= 2;
+          } else {
+            newStaticStrides[i] /= 2;
+          }
+        }
+        rewriter.create<AIEX::NpuDmaMemcpyNdOp>(
+            rewriter.getUnknownLoc(), dmaUser.getX(), dmaUser.getY(),
+            dmaUser.getMemref(), SmallVector<Value>{}, dmaUser.getSizes(),
+            dmaUser.getStrides(), ArrayRef(newStaticOffsets), newStaticSizes,
+            newStaticStrides, dmaUser.getMetadata(), dmaUser.getId());
+        rewriter.eraseOp(dmaUser);
+      }
+    }
+    entry.getArgument(i + 1).replaceAllUsesWith(entry.getArgument(i));
+    entry.eraseArgument(i + 1);
+  }
+  auto newFuncType =
+      FunctionType::get(funcOp.getContext(), argTypes, funcType.getResults());
+  funcOp.setType(newFuncType);
+  return success();
+}
+
 class AMDAIELowerToAIEPass
     : public impl::AMDAIELowerToAIEBase<AMDAIELowerToAIEPass> {
  public:
@@ -991,6 +1073,11 @@ void AMDAIELowerToAIEPass::runOnOperation() {
     return signalPassFailure();
   }
   LLVM_DEBUG(llvm::dbgs() << "Module after lowerToAIE: " << getOperation());
+
+  // Cast buffers to i32 types if the bitwidth is 8 or 16.
+  RewritePatternSet castPattern(getOperation()->getContext());
+  castPattern.add(CastFunctionArgs);
+  (void)applyPatternsAndFoldGreedily(getOperation(), std::move(castPattern));
 
   // Clean up the HAL bindings and it's uses as they are not needed anymore.
   if (failed(eraseHALBindings(getOperation()))) {
