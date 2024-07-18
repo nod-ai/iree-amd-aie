@@ -30,8 +30,7 @@ namespace {
 //===----------------------------------------------------------------------===//
 
 LogicalResult lowerFuncArgs(ModuleOp moduleOp) {
-  IRRewriter rewriter(moduleOp.getContext());
-  auto funcRes = moduleOp.walk([&](func::FuncOp funcOp) {
+  auto funcRes = moduleOp.walk([](func::FuncOp funcOp) {
     if (funcOp.isPrivate()) {
       return WalkResult::advance();
     }
@@ -53,10 +52,10 @@ LogicalResult lowerFuncArgs(ModuleOp moduleOp) {
                                              functionType.getResults());
     funcOp.setType(newFunctionType);
     for (int i = 0; i < subspanOps.size(); ++i) {
-      auto newArg = funcOp.front().addArgument(inputTypes[i], funcOp->getLoc());
+      auto newArg = funcOp.front().addArgument(inputTypes[i], subspanOps[i]->getLoc());
       subspanOps[i].replaceAllUsesWith(newArg);
     }
-
+    LLVM_DEBUG(llvm::dbgs() << "function after lowerFuncArgs: " << funcOp);
     return WalkResult::advance();
   });
   if (funcRes.wasInterrupted()) return failure();
@@ -75,7 +74,6 @@ void AMDAIELowerFuncArgsPass::runOnOperation() {
   if (failed(lowerFuncArgs(getOperation()))) {
     return signalPassFailure();
   }
-  LLVM_DEBUG(llvm::dbgs() << "Module after lowerFuncArgs: " << getOperation());
 }
 
 }  // namespace
