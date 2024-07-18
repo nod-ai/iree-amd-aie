@@ -12,6 +12,7 @@
 #include <ostream>
 #include <sstream>
 #include <tuple>
+#include <valarray>
 
 #include "llvm/ADT/Twine.h"
 #include "llvm/Support/Debug.h"
@@ -43,9 +44,7 @@ void insertNoOpCommand(unsigned int numPadBytes);
 
 namespace mlir::iree_compiler::AMDAIE {
 
-using AIE2IPUCoreConnBitMap = std::vector<std::bitset<23>>;
-using AIE2IPUMemConnBitMap = std::vector<std::bitset<17>>;
-using AIE2IPUShimConnBitMap = std::vector<std::bitset<22>>;
+using ConnectivityMap = std::valarray<std::valarray<bool>>;
 
 struct TileLoc {
   int col, row;
@@ -297,6 +296,7 @@ struct AMDAIEDeviceModel {
                                        XAie_StrmPortIntf masterSlave,
                                        StrmSwPortType bundle,
                                        uint8_t channel) const;
+  ConnectivityMap getConnectivityMap(uint8_t col, uint8_t row) const;
   bool isLegalSwitchInternalConnection(uint8_t col, uint8_t row,
                                        StrmSwPortType srcBundle,
                                        uint8_t srcChan,

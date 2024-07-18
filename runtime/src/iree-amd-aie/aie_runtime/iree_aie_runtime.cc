@@ -9,6 +9,7 @@
 #include <bitset>
 #include <cstdint>
 #include <numeric>
+#include <valarray>
 
 #include "llvm/ADT/StringExtras.h"
 
@@ -55,110 +56,85 @@ bool isSouth(uint8_t srcCol, uint8_t srcRow, uint8_t dstCol, uint8_t dstRow) {
   return srcCol == dstCol && srcRow == dstRow + 1;
 }
 
-// clang-format off
-const AIE2IPUCoreConnBitMap AIE2IPU_CORETILE_CONNECTIVITY = {
-    {0b01111111111111111111111},
-    {0b11011111111111111111111},
-    {0b10111111111111111111111},
-    {0b10001111111111111111111},
-    {0b11111111111111111111111},
-    {0b11111100011111111111111},
-    {0b11111010011111111111111},
-    {0b11111001011111111111111},
-    {0b11111000111111111111111},
-    {0b11111000011111111111111},
-    {0b11111000011111111111111},
-    {0b11111111110001111111111},
-    {0b11111111101001111111111},
-    {0b11111111100101111111111},
-    {0b11111111100011111111111},
-    {0b11111111111111000001111},
-    {0b11111111111110100001111},
-    {0b11111111111110010001111},
-    {0b11111111111110001001111},
-    {0b11111111111111111111000},
-    {0b11111111111111111110100},
-    {0b11111111111111111110010},
-    {0b11111111111111111110001},
-    {0b01001111100000000000000},
-    {0b01001111100000000000000}};
-// clang-format on
+#define X false
+#define O true
 
 // clang-format off
-const AIE2IPUMemConnBitMap AIE2IPU_MEMTILE_CONNECTIVITY = {
-    {0b10000011111111111},
-    {0b01000011111111111},
-    {0b00100011111111111},
-    {0b00010011111111111},
-    {0b00001011111111111},
-    {0b00000111111111111},
-    {0b00000101111111111},
-    {0b11111111000100000},
-    {0b11111110100010000},
-    {0b11111110010001000},
-    {0b11111110001000100},
-    {0b11111110000000010},
-    {0b11111110000000001},
-    {0b11111111000100000},
-    {0b11111110100010000},
-    {0b11111110010001000},
-    {0b11111110001000100},
-    {0b00000101111000000}};
+const ConnectivityMap AIE2IPU_CORETILE_CONNECTIVITY = {
+    {X,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O},
+    {O,O,X,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O},
+    {O,X,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O},
+    {O,X,X,X,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O},
+    {O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O},
+    {O,O,O,O,O,O,X,X,X,O,O,O,O,O,O,O,O,O,O,O,O,O,O},
+    {O,O,O,O,O,X,O,X,X,O,O,O,O,O,O,O,O,O,O,O,O,O,O},
+    {O,O,O,O,O,X,X,O,X,O,O,O,O,O,O,O,O,O,O,O,O,O,O},
+    {O,O,O,O,O,X,X,X,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O},
+    {O,O,O,O,O,X,X,X,X,O,O,O,O,O,O,O,O,O,O,O,O,O,O},
+    {O,O,O,O,O,X,X,X,X,O,O,O,O,O,O,O,O,O,O,O,O,O,O},
+    {O,O,O,O,O,O,O,O,O,O,X,X,X,O,O,O,O,O,O,O,O,O,O},
+    {O,O,O,O,O,O,O,O,O,X,O,X,X,O,O,O,O,O,O,O,O,O,O},
+    {O,O,O,O,O,O,O,O,O,X,X,O,X,O,O,O,O,O,O,O,O,O,O},
+    {O,O,O,O,O,O,O,O,O,X,X,X,O,O,O,O,O,O,O,O,O,O,O},
+    {O,O,O,O,O,O,O,O,O,O,O,O,O,O,X,X,X,X,X,O,O,O,O},
+    {O,O,O,O,O,O,O,O,O,O,O,O,O,X,O,X,X,X,X,O,O,O,O},
+    {O,O,O,O,O,O,O,O,O,O,O,O,O,X,X,O,X,X,X,O,O,O,O},
+    {O,O,O,O,O,O,O,O,O,O,O,O,O,X,X,X,O,X,X,O,O,O,O},
+    {O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,X,X,X},
+    {O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,X,O,X,X},
+    {O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,X,X,O,X},
+    {O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,X,X,X,O},
+    {X,O,X,X,O,O,O,O,O,X,X,X,X,X,X,X,X,X,X,X,X,X,X},
+    {X,O,X,X,O,O,O,O,O,X,X,X,X,X,X,X,X,X,X,X,X,X,X}};
+
+const ConnectivityMap AIE2IPU_MEMTILE_CONNECTIVITY = {
+    {O,X,X,X,X,X,O,O,O,O,O,O,O,O,O,O,O,},
+    {X,O,X,X,X,X,O,O,O,O,O,O,O,O,O,O,O,},
+    {X,X,O,X,X,X,O,O,O,O,O,O,O,O,O,O,O,},
+    {X,X,X,O,X,X,O,O,O,O,O,O,O,O,O,O,O,},
+    {X,X,X,X,O,X,O,O,O,O,O,O,O,O,O,O,O,},
+    {X,X,X,X,X,O,O,O,O,O,O,O,O,O,O,O,O,},
+    {X,X,X,X,X,O,X,O,O,O,O,O,O,O,O,O,O,},
+    {O,O,O,O,O,O,O,O,X,X,X,O,X,X,X,X,X,},
+    {O,O,O,O,O,O,O,X,O,X,X,X,O,X,X,X,X,},
+    {O,O,O,O,O,O,O,X,X,O,X,X,X,O,X,X,X,},
+    {O,O,O,O,O,O,O,X,X,X,O,X,X,X,O,X,X,},
+    {O,O,O,O,O,O,O,X,X,X,X,X,X,X,X,O,X,},
+    {O,O,O,O,O,O,O,X,X,X,X,X,X,X,X,X,O,},
+    {O,O,O,O,O,O,O,O,X,X,X,O,X,X,X,X,X,},
+    {O,O,O,O,O,O,O,X,O,X,X,X,O,X,X,X,X,},
+    {O,O,O,O,O,O,O,X,X,O,X,X,X,O,X,X,X,},
+    {O,O,O,O,O,O,O,X,X,X,O,X,X,X,O,X,X,},
+    {X,X,X,X,X,O,X,O,O,O,O,X,X,X,X,X,X,}};
+
+const ConnectivityMap AIE2IPU_SHIMTILE_CONNECTIVITY = {
+    {X,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,},
+    {O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,},
+    {O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,},
+    {O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,},
+    {O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,},
+    {O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,},
+    {O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,},
+    {O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,},
+    {O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,},
+    {O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,},
+    {O,O,O,O,O,O,O,O,O,X,X,X,O,O,O,O,O,O,O,O,O,O,},
+    {O,O,O,O,O,O,O,O,X,O,X,X,O,O,O,O,O,O,O,O,O,O,},
+    {O,O,O,O,O,O,O,O,X,X,O,X,O,O,O,O,O,O,O,O,O,O,},
+    {O,O,O,O,O,O,O,O,X,X,X,O,O,O,O,O,O,O,O,O,O,O,},
+    {O,O,O,O,O,O,O,O,O,O,O,O,O,X,X,X,X,X,O,O,O,O,},
+    {O,O,O,O,O,O,O,O,O,O,O,O,X,O,X,X,X,X,O,O,O,O,},
+    {O,O,O,O,O,O,O,O,O,O,O,O,X,X,O,X,X,X,O,O,O,O,},
+    {O,O,O,O,O,O,O,O,O,O,O,O,X,X,X,O,X,X,O,O,O,O,},
+    {O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,X,X,X,},
+    {O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,X,O,X,X,},
+    {O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,X,X,O,X,},
+    {O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,O,X,X,X,O,},
+    {X,O,O,O,O,O,O,O,O,X,X,X,X,X,X,X,X,X,O,X,X,X,}};
 // clang-format on
 
-// clang-format off
-const AIE2IPUShimConnBitMap AIE2IPU_SHIMTILE_CONNECTIVITY = {
-    {0b0111111111111111111111},
-    {0b1111111111111111111111},
-    {0b1111111111111111111111},
-    {0b1111111111111111111111},
-    {0b1111111111111111111111},
-    {0b1111111111111111111111},
-    {0b1111111111111111111111},
-    {0b1111111111111111111111},
-    {0b1111111111111111111111},
-    {0b1111111111111111111111},
-    {0b1111111110001111111111},
-    {0b1111111101001111111111},
-    {0b1111111100101111111111},
-    {0b1111111100011111111111},
-    {0b1111111111111000001111},
-    {0b1111111111110100001111},
-    {0b1111111111110010001111},
-    {0b1111111111110001001111},
-    {0b1111111111111111111000},
-    {0b1111111111111111110100},
-    {0b1111111111111111110010},
-    {0b1111111111111111110001},
-    {0b0111111110000000001000}};
-// clang-format on
-
-template <size_t B>
-constexpr bool getBitSetPos(std::vector<std::bitset<B>> bitset, size_t i,
-                            size_t j) {
-  return bitset[i][B - j - 1];
-}
-
-template <typename Func>
-void operateOnConnectivityMap(AMDAIETileType tileType, Func cb) {
-  switch (tileType) {
-    case AMDAIETileType::AIETILE: {
-      cb(AIE2IPU_CORETILE_CONNECTIVITY);
-      return;
-    }
-    case AMDAIETileType::MEMTILE: {
-      cb(AIE2IPU_MEMTILE_CONNECTIVITY);
-      return;
-    }
-    case AMDAIETileType::SHIMNOC: {
-      cb(AIE2IPU_SHIMTILE_CONNECTIVITY);
-      return;
-    }
-    default:
-      break;
-  }
-  llvm::report_fatal_error("Unhandled AMDAIETileType case");
-}
+#undef X
+#undef O
 
 }  // namespace
 
@@ -532,6 +508,30 @@ std::optional<uint8_t> AMDAIEDeviceModel::getPhyPortNum(
   return phyPortNum;
 }
 
+ConnectivityMap AMDAIEDeviceModel::getConnectivityMap(uint8_t col,
+                                                      uint8_t row) const {
+  AMDAIETileType tileType = getTileType(col, row);
+  switch (devInst.DevProp.DevGen) {
+    case XAIE_DEV_GEN_AIEML:
+    case XAIE_DEV_GEN_AIE2IPU:
+      switch (tileType) {
+        case AMDAIETileType::AIETILE:
+          return AIE2IPU_CORETILE_CONNECTIVITY;
+        case AMDAIETileType::MEMTILE:
+          return AIE2IPU_MEMTILE_CONNECTIVITY;
+        case AMDAIETileType::SHIMNOC:
+          return AIE2IPU_SHIMTILE_CONNECTIVITY;
+        default:
+          break;
+      }
+      llvm::report_fatal_error("Unhandled AMDAIETileType case");
+    default:
+      break;
+  }
+  llvm::report_fatal_error(llvm::Twine("unknown AIE DevGen: ") +
+                           std::to_string((int)devInst.DevProp.DevGen));
+}
+
 bool AMDAIEDeviceModel::isLegalSwitchInternalConnection(
     uint8_t col, uint8_t row, StrmSwPortType srcBundle, uint8_t srcChan,
     StrmSwPortType dstBundle, uint8_t dstChan) const {
@@ -541,19 +541,14 @@ bool AMDAIEDeviceModel::isLegalSwitchInternalConnection(
                              col, row, XAIE_STRMSW_MASTER, dstBundle, dstChan);
   if (!phySrcPortNum) return false;
   if (!phyDstPortNum) return false;
-  bool isLegal;
-  auto cb = [&](auto connMap) {
-    assert(*phySrcPortNum < connMap.size() &&
-           "expected phySrcPortNum to be less than the number of rows in "
-           "connectivity map");
-    assert(*phyDstPortNum < connMap[*phySrcPortNum].size() &&
-           "expected phyDstPortNum to be less than the number of columns in "
-           "connectivity map");
-    isLegal = getBitSetPos(connMap, *phySrcPortNum, *phyDstPortNum);
-  };
-  AMDAIETileType tileType = getTileType(col, row);
-  operateOnConnectivityMap(tileType, cb);
-  return isLegal;
+  ConnectivityMap connMap = getConnectivityMap(col, row);
+  assert(*phySrcPortNum < connMap.size() &&
+         "expected phySrcPortNum to be less than the number of rows in "
+         "connectivity map");
+  assert(*phyDstPortNum < connMap[*phySrcPortNum].size() &&
+         "expected phyDstPortNum to be less than the number of columns in "
+         "connectivity map");
+  return connMap[*phySrcPortNum][*phyDstPortNum];
 }
 
 // source <-> slave and dest <-> master
