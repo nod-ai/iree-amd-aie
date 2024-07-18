@@ -136,6 +136,7 @@ LogicalResult distributeLocalMemory(ModuleOp moduleOp) {
     //                     AllocOp and not replace the current AllocOp's use
     //                     within.
     memref::AllocOp newAlloc = memrefToNew[allocOp];
+    ArrayRef<int64_t> newAllocShape = newAlloc.getType().getShape();
     for (Operation *userOp : allocOpUsers) {
       if (auto subviewOp = dyn_cast<memref::SubViewOp>(userOp)) {
         rewriter.replaceAllUsesWith(subviewOp, newAlloc);
@@ -143,17 +144,50 @@ LogicalResult distributeLocalMemory(ModuleOp moduleOp) {
       } else if (auto transferReadOp =
                      dyn_cast<vector::TransferReadOp>(userOp)) {
         rewriter.setInsertionPoint(transferReadOp);
-        Value newTransferReadOp = rewriter.create<vector::TransferReadOp>(
+        // For dimensions with size as 1 we set the indices as 0.
+        SmallVector<Value> newIndices = transferReadOp.getIndices();
+        Value c0 =
+            rewriter.create<arith::ConstantIndexOp>(transferReadOp.getLoc(), 0);
+        for (unsigned i = 0, n = newAllocShape.size(); i < n; i++) {
+          if (newAllocShape[i] == 1) newIndices[i] = c0;
+        }
+        auto newTransferReadOp = rewriter.create<vector::TransferReadOp>(
             transferReadOp.getLoc(), transferReadOp.getType(), newAlloc,
-            transferReadOp.getIndices());
-        rewriter.replaceAllUsesWith(transferReadOp, newTransferReadOp);
+            newIndices);
+        // The old vector.transfer_read has all `in_bounds` set as `true`. We
+        // therefore need to do the same on this new vector.transfer_read op
+        // else this would yield a masked load later on in the lowering stack.
+        SmallVector<bool, 4> bools(newTransferReadOp.getTransferRank(), true);
+        auto inBoundsAttr = rewriter.getBoolArrayAttr(bools);
+        rewriter.modifyOpInPlace(newTransferReadOp, [&]() {
+          newTransferReadOp->setAttr(newTransferReadOp.getInBoundsAttrName(),
+                                     inBoundsAttr);
+        });
+        rewriter.replaceAllUsesWith(transferReadOp,
+                                    newTransferReadOp.getResult());
         toBeErased.push_back(transferReadOp);
       } else if (auto transferWriteOp =
                      dyn_cast<vector::TransferWriteOp>(userOp)) {
         rewriter.setInsertionPoint(transferWriteOp);
-        rewriter.create<vector::TransferWriteOp>(
+        // For dimensions with size as 1 we set the indices as 0.
+        SmallVector<Value> newIndices = transferWriteOp.getIndices();
+        Value c0 = rewriter.create<arith::ConstantIndexOp>(
+            transferWriteOp.getLoc(), 0);
+        for (unsigned i = 0, n = newAllocShape.size(); i < n; i++) {
+          if (newAllocShape[i] == 1) newIndices[i] = c0;
+        }
+        auto newTransferWriteOp = rewriter.create<vector::TransferWriteOp>(
             transferWriteOp.getLoc(), transferWriteOp.getVector(), newAlloc,
-            transferWriteOp.getIndices());
+            newIndices);
+        // The old vector.transfer_write has all `in_bounds` set as `true`. We
+        // therefore need to do the same on this new vector.transfer_write op
+        // else this would yield a masked store later on in the lowering stack.
+        SmallVector<bool, 4> bools(newTransferWriteOp.getTransferRank(), true);
+        auto inBoundsAttr = rewriter.getBoolArrayAttr(bools);
+        rewriter.modifyOpInPlace(newTransferWriteOp, [&]() {
+          newTransferWriteOp->setAttr(newTransferWriteOp.getInBoundsAttrName(),
+                                      inBoundsAttr);
+        });
         toBeErased.push_back(transferWriteOp);
       } else if (auto extractStridedMetadataOp =
                      dyn_cast<memref::ExtractStridedMetadataOp>(userOp)) {

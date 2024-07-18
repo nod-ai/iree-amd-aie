@@ -832,6 +832,8 @@ module {
 // CHECK-DAG:       %[[C0:.*]] = arith.constant 0 : index
 // CHECK-DAG:       %[[C1:.*]] = arith.constant 1 : index
 // CHECK-DAG:       %[[C2:.*]] = arith.constant 2 : index
+// CHECK-DAG:       %[[C8:.*]] = arith.constant 8 : index
+// CHECK-DAG:       %[[C16:.*]] = arith.constant 16 : index
 // CHECK-DAG:       %[[ALLOC:.*]] = memref.alloc() : memref<1x1x16x8x8x4xbf16, 2 : i32>
 // CHECK-DAG:       %[[ALLOC_1:.*]] = memref.alloc() : memref<1x1x8x16x4x8xbf16, 2 : i32>
 // CHECK-DAG:       %[[ALLOC_2:.*]] = memref.alloc() : memref<1x2x64x64xbf16, 1 : i32>
@@ -858,11 +860,22 @@ module {
 // CHECK-DAG:           amdaie.logicalobjectfifo.consume(%[[DMA_0]])
 // CHECK-DAG:           amdaie.logicalobjectfifo.consume(%[[DMA_1]])
 // CHECK-DAG:           amdaie.logicalobjectfifo.produce(%[[DMA_2]])
-// CHECK-DAG:             vector.transfer_read %[[VAL_0]]
-// CHECK-DAG:             vector.transfer_read %[[VAL_1]]
-// CHECK-DAG:             vector.transfer_read %[[VAL_2]]
-// CHECK-DAG:             %[[CONTRACT:.*]] = vector.contract
-// CHECK-DAG:             vector.transfer_write %[[CONTRACT]], %[[VAL_2]]
+// CHECK-DAG:           scf.for %[[ARG2:.*]] = %[[C0]] to %[[C16]] step %[[C1]] {
+// CHECK-DAG:             scf.for %[[ARG3:.*]] = %[[C0]] to %[[C16]] step %[[C1]] {
+// CHECK-DAG:               scf.for %[[ARG4:.*]] = %[[C0]] to %[[C8]] step %[[C1]] {
+// CHECK-DAG:                 vector.transfer_read %[[VAL_0]]
+// CHECK-DAG-SAME:                      [%[[C0]], %[[C0]], %[[ARG4]], %[[ARG2]], %[[C0]], %[[C0]]]
+// CHECK-DAG-SAME:                      in_bounds = [true, true, true, true, true, true]
+// CHECK-DAG:                 vector.transfer_read %[[VAL_1]]
+// CHECK-DAG-SAME:                      [%[[C0]], %[[C0]], %[[ARG3]], %[[ARG4]], %[[C0]], %[[C0]]]
+// CHECK-DAG-SAME:                      in_bounds = [true, true, true, true, true, true]
+// CHECK-DAG:                 vector.transfer_read %[[VAL_2]]
+// CHECK-DAG-SAME:                      [%[[C0]], %[[C0]], %[[ARG3]], %[[ARG2]], %[[C0]], %[[C0]]]
+// CHECK-DAG-SAME:                      in_bounds = [true, true, true, true, true, true]
+// CHECK-DAG:                 %[[CONTRACT:.*]] = vector.contract
+// CHECK-DAG:                 vector.transfer_write %[[CONTRACT]], %[[VAL_2]]
+// CHECK-DAG-SAME:                      [%[[C0]], %[[C0]], %[[ARG3]], %[[ARG2]], %[[C0]], %[[C0]]]
+// CHECK-DAG-SAME:                      in_bounds = [true, true, true, true, true, true]
 module {
   func.func @distribute_cores_and_objectfifos_vectorization() {
     %c192 = arith.constant 192 : index
