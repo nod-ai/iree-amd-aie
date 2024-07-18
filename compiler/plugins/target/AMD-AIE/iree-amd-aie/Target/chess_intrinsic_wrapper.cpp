@@ -4,7 +4,8 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-// This file is actually a cpp raw string that contains this file https://github.com/Xilinx/mlir-aie/blob/626182746a720c85748e232366b8649386f24b3a/aie_runtime_lib/AIE2/chess_intrinsic_wrapper.cpp
+// This file is actually a cpp raw string that contains this file
+// https://github.com/Xilinx/mlir-aie/blob/626182746a720c85748e232366b8649386f24b3a/aie_runtime_lib/AIE2/chess_intrinsic_wrapper.cpp
 // Description from there follows:
 
 // This file contains symbols that are used in Chess compilation to implement

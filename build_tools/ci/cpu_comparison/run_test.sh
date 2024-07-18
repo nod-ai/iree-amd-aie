@@ -132,8 +132,6 @@ fi
 
 
 source $XRT_DIR/setup.sh
-# Circumvent xclbin security (no longer needed as of April 2024 XDNA driver)
-export XRT_HACK_UNSECURE_LOADING_XCLBIN=1
 
 MM_KERNEL_URL=https://github.com/nod-ai/iree-amd-aie/releases/download/ukernels/mm.o
 
@@ -309,7 +307,7 @@ function run_test() {
       --iree-amd-aie-vitis-install-dir=${vitis_path} \
       --iree-hal-dump-executable-files-to=$PWD \
       --iree-amd-aie-show-invoked-commands \
-      --mlir-disable-threading -o ${aie_vmfb}"
+      --iree-scheduling-optimize-bindings=false -o ${aie_vmfb}"
 
 
   # TODO(newling) The following logic is copied from run_matmul_test.sh,
@@ -384,6 +382,11 @@ run_test --test_file ${THIS_DIR}/test_files/matmul_int32.mlir
 
 # An example of an arbitrary graph with three matmuls which form three dispatches.
 run_test --test_file ${THIS_DIR}/test_files/three_matmuls.mlir --function 'three_$mm$'
+
+# tests that model kernel switching costs.
+run_test --test_file ${THIS_DIR}/test_files/two_matmul_switching.mlir
+run_test --test_file ${THIS_DIR}/test_files/matmul_f32_8_8_4.mlir
+run_test --test_file ${THIS_DIR}/test_files/matmul_f32_8_4_8.mlir
 
 # Example of generating a matmul test from a template, and then running it.
 test_name=${OUTPUT_DIR}/test_from_template.mlir
