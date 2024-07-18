@@ -10,10 +10,8 @@
 // CHECK-DAG:   aie.core(%[[TILE_1_2]])
 // CHECK:         aie.objectfifo.acquire @[[OBJ1]](Produce, 1)
 // CHECK:       func.func @matmul_i32(%[[ARG0:.+]]: memref<32x1024xi32>, %[[ARG1:.+]]: memref<1024x64xi32>, %[[ARG2:.+]]: memref<32x64xi32>)
-// CHECK-DAG:     aiex.npu.dma_memcpy_nd
-// CHECK-SAME:    %[[ARG0]]
-// CHECK-DAG:     aiex.npu.dma_memcpy_nd
-// CHECK-SAME:    %[[ARG1]]
+// CHECK-DAG:     aiex.npu.dma_memcpy_nd(0, 0, %[[ARG0]][0, 0, 0, 0][1, 1, 32, 64][0, 0, 1024, 1]
+// CHECK-DAG:     aiex.npu.dma_memcpy_nd(0, 0, %[[ARG1]][0, 0, 0, 0][1, 1, 64, 32][0, 0, 64, 1]
 // CHECK-DAG:     aiex.npu.dma_memcpy_nd(0, 0, %[[ARG2]][0, 0, 0, 0][1, 1, 32, 32][0, 0, 64, 1]
 // CHECK-DAG:     aiex.npu.dma_memcpy_nd(0, 0, %[[ARG2]][0, 0, 0, 32][1, 1, 32, 32][0, 0, 64, 1]
 #map = affine_map<(d0) -> (d0 * 32)>

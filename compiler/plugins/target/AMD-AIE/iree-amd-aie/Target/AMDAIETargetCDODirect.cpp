@@ -159,34 +159,45 @@ LogicalResult configureBdInBlock(XAie_DmaDesc &dmaTileBd, Block &block,
   std::optional<llvm::ArrayRef<BDDimLayoutAttr>> dims = bdOp.getDimensions();
   int lenInBytes = bdOp.getLenInBytes();
   int basePlusOffsetInBytes = baseAddr + bdOp.getOffsetInBytes();
+  int32_t bufferElementTypeWidthInBytes =
+      bdOp.getBufferElementTypeWidthInBytes();
+  // aie-rt expects multiples of 32b words (see docstring on
+  // XAie_DmaSetMultiDimAddr). Thus, elementWidthIn32bWords is possibly a
+  // fraction, e.g. bf16 => elementWidthIn32bWords == 0.5 so that size = 10 => 5
+  // 32b words
+  double elementWidthIn32bWords =
+      static_cast<double>(bufferElementTypeWidthInBytes) / 4.0;
+
   if (!dims) {
     TRY_XAIE_API_EMIT_ERROR(bdOp, XAie_DmaSetAddrLen, &dmaTileBd,
                             basePlusOffsetInBytes, lenInBytes);
   } else {
     XAie_DmaTensor dmaTileBdTensor = {};
     dmaTileBdTensor.NumDim = dims->size();
-    dmaTileBdTensor.Dim = static_cast<XAie_DmaDimDesc *>(
-        calloc(dmaTileBdTensor.NumDim, sizeof(XAie_DmaDimDesc)));
-    if (!dmaTileBdTensor.Dim)
-      return bdOp.emitError("couldn't allocate array of XAie_DmaDimDesc");
-    // libxaie requires stride in multiples of 32b
-    double elementWidthIn32bWords =
-        static_cast<double>(bdOp.getBufferElementTypeWidthInBytes()) / 4.0;
+    dmaTileBdTensor.Dim = new XAie_DmaDimDesc[dmaTileBdTensor.NumDim];
     for (size_t i = 0; i < dims->size(); i++) {
       // Pass down dimensions in reverse order; in the MLIR, this allows
-      // us to specify step sizes/wraps in the same order as we would
-      // access a multi-dim C array, with the highest dimension first.
-      int j = dims->size() - i - 1;
-      uint16_t size;
-      uint32_t stride;
+      // us to specify step sizes/strides in the same order as we would for
+      // RankedTensorType/MemRefType.
+      uint16_t size = dims.value()[i].getSize();
+      uint32_t stride = dims.value()[i].getStride();
+      size_t j = dims->size() - i - 1;
       if (j > 0) {
-        stride = static_cast<uint32_t>(dims.value()[i].getStride() *
-                                       elementWidthIn32bWords);
-        size = dims.value()[i].getSize();
+        if (stride * bufferElementTypeWidthInBytes % 4 != 0) {
+          return bdOp.emitOpError("`stride` on dim ")
+                 << i
+                 << ", times element width (in bytes), should "
+                    "be a multiple of 4 bytes";
+        }
+        stride = static_cast<uint32_t>(stride * elementWidthIn32bWords);
       } else {
-        stride = dims.value()[i].getStride();
-        size = static_cast<uint16_t>(dims.value()[i].getSize() *
-                                     elementWidthIn32bWords);
+        if (size * bufferElementTypeWidthInBytes % 4 != 0) {
+          return bdOp.emitOpError("`size` on dim ")
+                 << i
+                 << ", times element width (in bytes), should "
+                    "be a multiple of 4 bytes";
+        }
+        size = static_cast<uint16_t>(size * elementWidthIn32bWords);
       }
       stride = stride > 0 ? stride : 1;
       // Assume AIE-ML architecture (ie use AieMlDimDesc instead of AieDimDesc);
@@ -196,6 +207,37 @@ LogicalResult configureBdInBlock(XAie_DmaDesc &dmaTileBd, Block &block,
     TRY_XAIE_API_EMIT_ERROR(bdOp, XAie_DmaSetMultiDimAddr, &dmaTileBd,
                             &dmaTileBdTensor, basePlusOffsetInBytes,
                             lenInBytes);
+  }
+
+  // ND zero padding.
+  std::optional<llvm::ArrayRef<BDPadLayoutAttr>> padDims =
+      bdOp.getPadDimensions();
+  if (padDims) {
+    XAie_DmaPadTensor dmaPadTensor = {};
+    dmaPadTensor.NumDim = padDims->size();
+    dmaPadTensor.PadDesc = new XAie_PadDesc[dmaPadTensor.NumDim];
+    for (size_t i = 0; i < padDims->size(); i++) {
+      uint8_t before = padDims.value()[i].getConstPadBefore();
+      uint8_t after = padDims.value()[i].getConstPadAfter();
+      size_t j = padDims->size() - i - 1;
+      if (j == 0) {
+        if (before * bufferElementTypeWidthInBytes % 4 != 0) {
+          return bdOp.emitOpError(
+              "`before` padding on inner-most dim, times element width (in "
+              "bytes), should be a multiple of 4 bytes");
+        }
+        if (after * bufferElementTypeWidthInBytes % 4 != 0) {
+          return bdOp.emitOpError(
+              "`after` padding on inner-most dim, times element width (in "
+              "bytes), should be a multiple of 4 bytes");
+        }
+        before = static_cast<uint8_t>(before * elementWidthIn32bWords);
+        after = static_cast<uint8_t>(after * elementWidthIn32bWords);
+      }
+      dmaPadTensor.PadDesc[j] = {before, after};
+    }
+    TRY_XAIE_API_EMIT_ERROR(bdOp, XAie_DmaSetPadding, &dmaTileBd,
+                            &dmaPadTensor);
   }
 
   if (nextBdId) {

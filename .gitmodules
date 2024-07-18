@@ -1,15 +1,20 @@
 [submodule "third_party/XRT"]
 	path = third_party/XRT
 	url = https://github.com/Xilinx/XRT.git
+	shallow = true
 [submodule "third_party/mlir-air"]
 	path = third_party/mlir-air
 	url = https://github.com/nod-ai/mlir-air.git
+	shallow = true
 [submodule "third_party/mlir-aie"]
 	path = third_party/mlir-aie
 	url = https://github.com/nod-ai/mlir-aie.git
+	shallow = true
 [submodule "third_party/aie-rt"]
 	path = third_party/aie-rt
 	url = https://github.com/Xilinx/aie-rt.git
+	shallow = true
 [submodule "third_party/bootgen"]
 	path = third_party/bootgen
 	url = https://github.com/Xilinx/bootgen.git
+	shallow = true
