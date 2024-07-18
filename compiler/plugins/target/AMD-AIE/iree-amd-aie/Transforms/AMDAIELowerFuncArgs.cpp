@@ -24,7 +24,6 @@
 namespace mlir::iree_compiler::AMDAIE {
 
 namespace {
-  
 
 //===----------------------------------------------------------------------===//
 // Convert the module operation's contents to the AIE dialect
@@ -67,7 +66,6 @@ LogicalResult lowerFuncArgs(ModuleOp moduleOp) {
 class AMDAIELowerFuncArgsPass
     : public impl::AMDAIELowerFuncArgsBase<AMDAIELowerFuncArgsPass> {
  public:
-
   AMDAIELowerFuncArgsPass() = default;
   AMDAIELowerFuncArgsPass(const AMDAIELowerFuncArgsPass &pass){};
   void runOnOperation() override;
