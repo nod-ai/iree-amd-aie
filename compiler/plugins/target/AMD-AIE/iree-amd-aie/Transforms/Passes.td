@@ -127,6 +127,11 @@ def AMDAIEDmaLoopSubsumption :
   Pass<"iree-amdaie-dma-loop-subsumption"> {
   let summary = "Subsume loop iterations into DMA operations' access patterns.";
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEDmaLoopSubsumptionPass()";
+  let options = [
+    Option<"onlyZeroStrideOnOuterDim", "only-zero-stride-on-outer-dim", "bool", /*default=*/"true",
+      "Whether a stride of zero indicating a repeat is only supported on the "
+      "outer dimension. This is the case of AIE2(+).">
+  ];
 }
 
 def AMDAIEDmaToCircularDma :
@@ -256,6 +261,12 @@ def AMDAIELoweringStrategy :
     Option<"numCores", "num-cores", "int32_t", /*default=*/"1",
       "Choose the number of cores to use">
   ];
+}
+
+def AMDAIELowerFuncArgs :
+    Pass<"iree-amdaie-lower-func-args", "ModuleOp"> {
+  let summary = "Lower to function arguments from iree's hal.interface.binding.subspan ops";
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIELowerFuncArgsPass()";
 }
 
 def AMDAIELowerToAIE :

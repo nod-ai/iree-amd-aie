@@ -34,6 +34,18 @@
 
 namespace mlir::iree_compiler::AMDAIE {
 
+/// Utility to calculate the number of iterations of a loop with provided bounds
+/// and step: `ceilDiv(upperBound - lowerBound, step)`.
+int64_t calculateNbIterations(int64_t lowerBound, int64_t upperBound,
+                              int64_t step) {
+  int64_t diff = upperBound - lowerBound;
+  assert(diff > 0 &&
+         "expected positive difference between upper bound and lower "
+         "bound");
+  assert(step > 0 && "expected positive step");
+  return 1 + ((diff - 1) / step);
+}
+
 // Constant specifying the number of inter-iteration dimension for DMA
 // operations.
 //
@@ -112,18 +124,32 @@ LogicalResult moveUsersToHoistedDMAScope(Operation *parentOp) {
   return success();
 }
 
-class SubsumeLoopIntoDMA
+struct SubsumeLoopIntoDMA
     : public OpInterfaceRewritePattern<AMDAIE::DoublyStridedOpInterface> {
   using OpInterfaceRewritePattern::OpInterfaceRewritePattern;
 
+  SubsumeLoopIntoDMA(MLIRContext *context, bool onlyZeroStrideOnOuterDim)
+      : OpInterfaceRewritePattern(context),
+        onlyZeroStrideOnOuterDim(onlyZeroStrideOnOuterDim) {}
+
   /// Utility to add a loop iteration to an offsets/sizes/strides access
-  /// pattern.
+  /// pattern. This function handles following cases:
+  /// 1. If an offset which has an loop induction variable dependency can be
+  /// found, calculate the stride and size based on the dependency, potentially
+  /// taking into account an affine expression multiplier.
+  /// 2. If there is no loop induction variable dependency, the iteration means
+  /// that this strided operation is repeated `ceilDiv(upperBound - lowerBound,
+  /// step)` number of times, so a new dimension is added to the access pattern
+  /// with `stride == 0` and `size == ceilDiv(upperBound - lowerBound, step)`.
   LogicalResult addIterationToAccessPattern(
       RewriterBase &rewriter, int64_t lowerBound, int64_t upperBound,
       int64_t step, const DenseSet<Value> &inductionValues,
       SmallVector<OpFoldResult> &newOffsets,
       SmallVector<OpFoldResult> &newSizes,
       SmallVector<OpFoldResult> &newStrides) const {
+    const int64_t nbIterations =
+        calculateNbIterations(lowerBound, upperBound, step);
+
     SmallVector<OpFoldResult> insertOffsets;
     SmallVector<OpFoldResult> insertSizes;
     SmallVector<OpFoldResult> insertStrides;
@@ -159,23 +185,30 @@ class SubsumeLoopIntoDMA
 
         newOffsets[i] = getAsIndexOpFoldResult(rewriter.getContext(),
                                                lowerBound * offsetStride);
+
+        // Don't add a unit iteration to better use available dimensions.
+        // However, the current offset should be updated, therefore this check
+        // is placed after `newOffsets[i]` has been updated.
+        if (nbIterations == 1) continue;
+
         insertOffsets.push_back(
             getAsIndexOpFoldResult(rewriter.getContext(), 0));
-
-        // The step size is equal to the the number of iterations
-        // (ceilDiv(upperBound - lowerBound, step))
-        int64_t diff = upperBound - lowerBound;
-        assert(diff > 0 &&
-               "expected positive difference between upper bound and lower "
-               "bound");
-        assert(step > 0 && "expected positive step");
-        int64_t newSize = 1 + ((diff - 1) / step);
         insertSizes.push_back(
-            getAsIndexOpFoldResult(rewriter.getContext(), newSize));
-
+            getAsIndexOpFoldResult(rewriter.getContext(), nbIterations));
         insertStrides.push_back(
             getAsIndexOpFoldResult(rewriter.getContext(), stride));
       }
+    }
+    assert(insertOffsets.size() == insertSizes.size() &&
+           "expected same number of offsets and sizes to be inserted");
+    assert(insertOffsets.size() == insertStrides.size() &&
+           "expected same number of offsets and strides to be inserted");
+    // Handle the 'no loop dependency' case.
+    if (insertOffsets.empty() && nbIterations != 1) {
+      insertOffsets.push_back(getAsIndexOpFoldResult(rewriter.getContext(), 0));
+      insertSizes.push_back(
+          getAsIndexOpFoldResult(rewriter.getContext(), nbIterations));
+      insertStrides.push_back(getAsIndexOpFoldResult(rewriter.getContext(), 0));
     }
     newOffsets.insert(newOffsets.begin(), insertOffsets.begin(),
                       insertOffsets.end());
@@ -206,40 +239,78 @@ class SubsumeLoopIntoDMA
     SmallVector<OpFoldResult> newTargetSizes = op.getTargetMixedSizes();
     SmallVector<OpFoldResult> newTargetStrides = op.getTargetMixedStrides();
 
-    // Use source/target maxNbDims to check whether there are sufficient source
-    // and target dimensions. Otherwise, abort.
-    auto verifyNbDimsNeeded = [&](const SmallVector<Value> &dynamicOffsets,
-                                  size_t nbOffsets,
-                                  size_t maxNbDims) -> LogicalResult {
-      size_t counter = 0;
-      for (Value offset : dynamicOffsets)
-        if (allInductionValues.contains(offset)) counter++;
-      if (nbOffsets + counter > maxNbDims) return failure();
-      return success();
-    };
-    SmallVector<Value> dynamicSourceOffsets = op.getSourceOffsets();
-    SmallVector<Value> dynamicTargetOffsets = op.getTargetOffsets();
-    if (failed(verifyNbDimsNeeded(dynamicSourceOffsets, newSourceOffsets.size(),
-                                  sourceMaxNbDims)))
+    // Verify number of dimensions needed to subsume this loop into the strided
+    // access pattern and fail early if there aren't enough dimensions.
+    size_t nbNonUnitIterations{0};
+    for (auto &&[lb, ub, step] : llvm::zip(lowerBounds, upperBounds, steps)) {
+      const int64_t nbIterations = calculateNbIterations(lb, ub, step);
+      // We should not do any rewrite if we encounter a loop with no iterations.
+      if (nbIterations == 0) return failure();
+      if (nbIterations > 1) nbNonUnitIterations++;
+    }
+    if (newSourceOffsets.size() + nbNonUnitIterations > sourceMaxNbDims)
       return failure();
-    if (failed(verifyNbDimsNeeded(dynamicTargetOffsets, newTargetOffsets.size(),
-                                  targetMaxNbDims)))
+    if (newTargetOffsets.size() + nbNonUnitIterations > targetMaxNbDims)
       return failure();
+
+    // Fail if zero stride is only supported on the outer dimension and adding
+    // this loop to the strided access pattern would violate that.
+    if (onlyZeroStrideOnOuterDim) {
+      if (!newSourceStrides.empty()) {
+        std::optional<int64_t> outerStride =
+            getConstantIntValue(newSourceStrides[0]);
+        if (outerStride && outerStride.value() == 0) return failure();
+      }
+      if (!newTargetStrides.empty()) {
+        std::optional<int64_t> outerStride =
+            getConstantIntValue(newTargetStrides[0]);
+        if (outerStride && outerStride.value() == 0) return failure();
+      }
+
+      SmallVector<Value> dynamicSourceOffsets = op.getSourceOffsets();
+      SmallVector<Value> dynamicTargetOffsets = op.getTargetOffsets();
+      for (size_t i = 1; i < inductionValues.size(); i++) {
+        // Skip unit iterations.
+        int64_t lb = lowerBounds[i];
+        int64_t ub = upperBounds[i];
+        int64_t step = steps[i];
+        if (calculateNbIterations(lb, ub, step) == 1) continue;
+        const DenseSet<Value> &iterationIvValues = inductionValues[i];
+        // If there is no dependency on the loop for non-initial iterations,
+        // this will result in an non-outer stride of `0`, so fail.
+        if (!dynamicSourceOffsets.empty() &&
+            !llvm::any_of(dynamicSourceOffsets, [&](Value offset) {
+              return iterationIvValues.contains(offset);
+            })) {
+          return failure();
+        }
+        if (!dynamicTargetOffsets.empty() &&
+            !llvm::any_of(dynamicTargetOffsets, [&](Value offset) {
+              return iterationIvValues.contains(offset);
+            })) {
+          return failure();
+        }
+      }
+    }
 
     // Add the loop iterations to the DMA access patterns.
     for (auto &&[lb, ub, step, iterationIvValues] : llvm::reverse(
              llvm::zip(lowerBounds, upperBounds, steps, inductionValues))) {
       // Add loop iteration to the access pattern on the source side.
-      if (failed(addIterationToAccessPattern(
-              rewriter, lb, ub, step, iterationIvValues, newSourceOffsets,
-              newSourceSizes, newSourceStrides))) {
-        return failure();
+      if (!newSourceOffsets.empty()) {
+        if (failed(addIterationToAccessPattern(
+                rewriter, lb, ub, step, iterationIvValues, newSourceOffsets,
+                newSourceSizes, newSourceStrides))) {
+          return failure();
+        }
       }
       // Add loop iteration to the access pattern on the target side.
-      if (failed(addIterationToAccessPattern(
-              rewriter, lb, ub, step, iterationIvValues, newTargetOffsets,
-              newTargetSizes, newTargetStrides))) {
-        return failure();
+      if (!newTargetOffsets.empty()) {
+        if (failed(addIterationToAccessPattern(
+                rewriter, lb, ub, step, iterationIvValues, newTargetOffsets,
+                newTargetSizes, newTargetStrides))) {
+          return failure();
+        }
       }
     }
 
@@ -290,11 +361,6 @@ class SubsumeLoopIntoDMA
         curIvValues.insert(userApplyOp.getResult());
       }
     }
-    if (!llvm::any_of(op->getOperands(), [&](Value operand) {
-          return curIvValues.contains(operand);
-        })) {
-      return failure();
-    }
 
     SmallVector<int64_t> lowerBounds = {lowerBound.value()};
     SmallVector<int64_t> upperBounds = {upperBound.value()};
@@ -341,13 +407,6 @@ class SubsumeLoopIntoDMA
         }
       }
       inductionValues.push_back(curIvValues);
-    }
-    // Return early if the strided operation doesn't use any of the
-    // induction variable dependent values.
-    if (!llvm::any_of(op->getOperands(), [&](Value operand) {
-          return allInductionValues.contains(operand);
-        })) {
-      return failure();
     }
     return rewriteWithLoopLikeOpParent(op, rewriter, sourceMaxNbDims,
                                        targetMaxNbDims, lowerBounds.value(),
@@ -437,6 +496,13 @@ class SubsumeLoopIntoDMA
       return failure();
     }
   }
+
+ private:
+  // In AIE2(+), a stride with value `0`, indicating a repeat of the subsequent
+  // dimensions is only supported on the outer dimension through the use of a
+  // buffer descriptor repeat count. To not bake this limitation to deeply into
+  // the loop subsumption transformation, it's made an option with this flag.
+  bool onlyZeroStrideOnOuterDim;
 };
 
 class AMDAIEDmaLoopSubsumptionPass
@@ -448,6 +514,8 @@ class AMDAIEDmaLoopSubsumptionPass
 
   AMDAIEDmaLoopSubsumptionPass() = default;
   AMDAIEDmaLoopSubsumptionPass(const AMDAIEDmaLoopSubsumptionPass &pass){};
+  AMDAIEDmaLoopSubsumptionPass(const AMDAIEDmaLoopSubsumptionOptions &options)
+      : AMDAIEDmaLoopSubsumptionBase(options) {}
   void runOnOperation() override;
 };
 
@@ -455,7 +523,7 @@ void AMDAIEDmaLoopSubsumptionPass::runOnOperation() {
   Operation *parentOp = getOperation();
   MLIRContext *context = &getContext();
   RewritePatternSet patterns(context);
-  patterns.insert<SubsumeLoopIntoDMA>(context);
+  patterns.insert<SubsumeLoopIntoDMA>(context, onlyZeroStrideOnOuterDim);
   if (failed(applyPatternsAndFoldGreedily(parentOp, std::move(patterns)))) {
     parentOp->emitOpError("failed to subsume some loops into DMA operations");
     return signalPassFailure();
@@ -470,8 +538,9 @@ void AMDAIEDmaLoopSubsumptionPass::runOnOperation() {
 
 }  // namespace
 
-std::unique_ptr<Pass> createAMDAIEDmaLoopSubsumptionPass() {
-  return std::make_unique<AMDAIEDmaLoopSubsumptionPass>();
+std::unique_ptr<Pass> createAMDAIEDmaLoopSubsumptionPass(
+    AMDAIEDmaLoopSubsumptionOptions options) {
+  return std::make_unique<AMDAIEDmaLoopSubsumptionPass>(options);
 }
 
 }  // namespace mlir::iree_compiler::AMDAIE

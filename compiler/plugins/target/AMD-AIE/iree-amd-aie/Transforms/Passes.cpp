@@ -765,7 +765,7 @@ void addMLIRAIRLoweringPasses(OpPassManager &passManager) {
         xilinx::air::createAIRUnrollOuterPerfectlyNestedLoopsPass(options));
   }
   passManager.addPass(mlir::affine::createAffineExpandIndexOpsPass());
-
+  passManager.addPass(createAMDAIELowerFuncArgsPass());
   passManager.addPass(xilinx::airrt::createAIRRtToNpuPass());
   passManager.addPass(createCanonicalizerPass());
 

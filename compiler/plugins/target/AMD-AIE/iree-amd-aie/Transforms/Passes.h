@@ -106,7 +106,8 @@ std::unique_ptr<Pass> createAMDAIEDistributeCoresAndObjectFifosPass();
 
 /// Create a pass to subsume loop iterations into DMA operations' access
 /// patterns.
-std::unique_ptr<Pass> createAMDAIEDmaLoopSubsumptionPass();
+std::unique_ptr<Pass> createAMDAIEDmaLoopSubsumptionPass(
+    AMDAIEDmaLoopSubsumptionOptions options = {});
 
 /// Create a pass to convert dma operations to circular dma operations.
 std::unique_ptr<Pass> createAMDAIEDmaToCircularDmaPass();
@@ -148,6 +149,9 @@ createAMDAIELowerExecutableTargetPass(
 /// Create pass for adding lowering strategy configurations.
 std::unique_ptr<OperationPass<ModuleOp>> createAMDAIELoweringStrategyPass(
     AMDAIELoweringStrategyOptions options = {});
+
+/// Create pass to lower function arguments.
+std::unique_ptr<Pass> createAMDAIELowerFuncArgsPass();
 
 /// Create pass to lower from the AMDAIE dialect to the AIE/AIEX dialects.
 std::unique_ptr<Pass> createAMDAIELowerToAIEPass();
