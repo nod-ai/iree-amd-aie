@@ -136,6 +136,7 @@ LogicalResult distributeLocalMemory(ModuleOp moduleOp) {
     //                     AllocOp and not replace the current AllocOp's use
     //                     within.
     memref::AllocOp newAlloc = memrefToNew[allocOp];
+    ArrayRef<int64_t> newAllocShape = newAlloc.getType().getShape();
     for (Operation *userOp : allocOpUsers) {
       if (auto subviewOp = dyn_cast<memref::SubViewOp>(userOp)) {
         rewriter.replaceAllUsesWith(subviewOp, newAlloc);
@@ -143,17 +144,45 @@ LogicalResult distributeLocalMemory(ModuleOp moduleOp) {
       } else if (auto transferReadOp =
                      dyn_cast<vector::TransferReadOp>(userOp)) {
         rewriter.setInsertionPoint(transferReadOp);
-        Value newTransferReadOp = rewriter.create<vector::TransferReadOp>(
+        // Since in this function we're basically changing the L1 sizes of the
+        // Alloc, for dimensions with size as 1 we need to set the indices as 0.
+        // We need to do this at this step because there would be loop
+        // dependencies on the same and when we unroll those loops later in this
+        // pass we would have incorrect offset values being formed for those
+        // dimension.
+        SmallVector<Value> newIndices = transferReadOp.getIndices();
+        Value c0 =
+            rewriter.create<arith::ConstantIndexOp>(transferReadOp.getLoc(), 0);
+        for (unsigned i = 0, n = newAllocShape.size(); i < n; i++) {
+          if (newAllocShape[i] == 1) newIndices[i] = c0;
+        }
+        auto newTransferReadOp = rewriter.create<vector::TransferReadOp>(
             transferReadOp.getLoc(), transferReadOp.getType(), newAlloc,
-            transferReadOp.getIndices());
-        rewriter.replaceAllUsesWith(transferReadOp, newTransferReadOp);
+            newIndices, transferReadOp.getPermutationMapAttr(),
+            transferReadOp.getPadding(), transferReadOp.getMask(),
+            transferReadOp.getInBoundsAttr());
+        rewriter.replaceAllUsesWith(transferReadOp,
+                                    newTransferReadOp.getResult());
         toBeErased.push_back(transferReadOp);
       } else if (auto transferWriteOp =
                      dyn_cast<vector::TransferWriteOp>(userOp)) {
         rewriter.setInsertionPoint(transferWriteOp);
+        // Since in this function we're basically changing the L1 sizes of the
+        // Alloc, for dimensions with size as 1 we need to set the indices as 0.
+        // We need to do this at this step because there would be loop
+        // dependencies on the same and when we unroll those loops later in this
+        // pass we would have incorrect offset values being formed for those
+        // dimension.
+        SmallVector<Value> newIndices = transferWriteOp.getIndices();
+        Value c0 = rewriter.create<arith::ConstantIndexOp>(
+            transferWriteOp.getLoc(), 0);
+        for (unsigned i = 0, n = newAllocShape.size(); i < n; i++) {
+          if (newAllocShape[i] == 1) newIndices[i] = c0;
+        }
         rewriter.create<vector::TransferWriteOp>(
             transferWriteOp.getLoc(), transferWriteOp.getVector(), newAlloc,
-            transferWriteOp.getIndices());
+            newIndices, transferWriteOp.getPermutationMapAttr(),
+            transferWriteOp.getMask(), transferWriteOp.getInBoundsAttr());
         toBeErased.push_back(transferWriteOp);
       } else if (auto extractStridedMetadataOp =
                      dyn_cast<memref::ExtractStridedMetadataOp>(userOp)) {
