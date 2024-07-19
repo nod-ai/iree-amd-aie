@@ -981,8 +981,9 @@ static LogicalResult CastFunctionArgs(func::FuncOp funcOp,
   funcOp.walk([&](AIEX::NpuDmaMemcpyNdOp dma) { hasNpuOps = true; });
   if (!hasNpuOps) return failure();
 
-  // cast all the function args to i32 types.
-  // this is in support of npu.dma_memcpy_nd which only allow 32bit types
+  // Cast all the function args to i32 types.
+  // This is in support of npu.dma_memcpy_nd which only allow 32bit integer
+  // types.
   mlir::FunctionType funcType = funcOp.getFunctionType();
   SmallVector<Type> argTypes(funcType.getInputs());
   for (int i = 0, e = argTypes.size(); i < e; i++) {
@@ -991,6 +992,7 @@ static LogicalResult CastFunctionArgs(func::FuncOp funcOp,
 
     unsigned int bitwidth = memrefTy.getElementTypeBitWidth();
     if (bitwidth != 16 && bitwidth != 8) continue;
+    unsigned upcastingDivisor = 32 / bitwidth;
 
     unsigned int div = 32 / bitwidth;
     unsigned int numElements = memrefTy.getNumElements() / div;
@@ -1004,36 +1006,28 @@ static LogicalResult CastFunctionArgs(func::FuncOp funcOp,
     // With memref shape collapsed to 1d, the multi-dimensional offset also
     // needs to be collapsed.
     SmallVector<Operation *> users;
-    for (auto user : entry.getArgument(i + 1).getUsers()) {
-      if (auto cast_user = dyn_cast<UnrealizedConversionCastOp>(user)) {
-        assert(cast_user.getNumResults() == 1);
-        for (auto cast_r_user : cast_user.getResult(0).getUsers())
-          users.push_back(cast_r_user);
-      } else
-        users.push_back(user);
-    }
-    for (Operation *user : users) {
+    for (Operation *user : entry.getArgument(i + 1).getUsers()) {
       if (auto dmaUser = dyn_cast<AIEX::NpuDmaMemcpyNdOp>(user)) {
-        int oneDOffset = *getConstantIntValue(dmaUser.getMixedOffsets().back());
-        for (int j = dmaUser.getMixedOffsets().size() - 2; j > 0; j--)
+        int oneDOffset = 0;
+        for (int j = 0, n = dmaUser.getMixedOffsets().size(); j < n; j++)
           oneDOffset += *getConstantIntValue(dmaUser.getMixedOffsets()[j]) *
                         *getConstantIntValue(dmaUser.getMixedStrides()[j]);
         rewriter.setInsertionPoint(dmaUser);
-        const std::vector<int64_t> newStaticOffsets = {0, 0, 0, oneDOffset};
-        SmallVector<int64_t> newStaticSizes;
+        SmallVector<int64_t, 4> newStaticOffsets = {0, 0, 0, oneDOffset};
+        SmallVector<int64_t, 4> newStaticSizes;
         for (int64_t size : dmaUser.getStaticSizes()) {
           newStaticSizes.push_back(size);
         }
-        SmallVector<int64_t> newStaticStrides;
+        SmallVector<int64_t, 4> newStaticStrides;
         for (int64_t stride : dmaUser.getStaticStrides()) {
           newStaticStrides.push_back(stride);
         }
-        newStaticSizes[newStaticSizes.size() - 1] /= 2;
+        newStaticSizes[newStaticSizes.size() - 1] /= upcastingDivisor;
         for (unsigned i = 0, n = newStaticSizes.size(); i < n - 1; i++) {
           if (newStaticStrides[i] == 1) {
-            newStaticSizes[i] /= 2;
+            newStaticSizes[i] /= upcastingDivisor;
           } else {
-            newStaticStrides[i] /= 2;
+            newStaticStrides[i] /= upcastingDivisor;
           }
         }
         rewriter.create<AIEX::NpuDmaMemcpyNdOp>(

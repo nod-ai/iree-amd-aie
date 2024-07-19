@@ -690,6 +690,9 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 
 // -----
 
+// The following lit test checks conversion of bf16 -> i32 function arguments.
+// It also checks both all zero and non-zero offset cases.
+//
 // CHECK:       aie.device(npu1_4col) {
 // CHECK:         %[[TILE_0_0:.*]] = aie.tile(0, 0)
 // CHECK:         %[[TILE_0_1:.*]] = aie.tile(0, 1)
@@ -705,7 +708,7 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 // CHECK-SAME:          metadata = @[[OBJ2]]
 // CHECK-SAME:          memref<32x32xf32>
 // CHECK:           aiex.npu.dma_memcpy_nd
-// CHECK-SAME:          %[[RHS]][0, 0, 0, 0][1, 2, 32, 8][0, 8, 16, 1]
+// CHECK-SAME:          %[[RHS]][0, 0, 0, 34][1, 2, 32, 8][0, 8, 16, 1]
 // CHECK-SAME:          metadata = @[[OBJ1]]
 // CHECK-SAME:          memref<512xi32>
 // CHECK:           aiex.npu.dma_memcpy_nd
@@ -746,7 +749,7 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
       %11 = amdaie.circular_dma_cpy_nd(%8[] [] [], %0[%c0, %c0, %c0, %c0] [%c2, %c16, %c2, %c16] [%c512, %c16, %c256, %c1]) : (!amdaie.logicalobjectfifo<memref<32x32xf32>>, !amdaie.logicalobjectfifo<memref<2x2x16x16xf32, 1 : i32>>)
       amdaie.controlcode {
         %12 = amdaie.npu.dma_cpy_nd %11([] [] [] bd_id = %bd_id_3, [] [] [])
-        %13 = amdaie.npu.dma_cpy_nd %10([] [] [], [%c0, %c0, %c0] [%c2, %c32, %c16] [%c16, %c32, %c1] bd_id = %bd_id_2)
+        %13 = amdaie.npu.dma_cpy_nd %10([] [] [], [%c0, %c1, %c2] [%c2, %c32, %c16] [%c16, %c32, %c1] bd_id = %bd_id_2)
         %14 = amdaie.npu.dma_cpy_nd %9([] [] [], [] [] [] bd_id = %bd_id)
         amdaie.npu.dma_wait(%12, S2MM)
         amdaie.npu.dma_wait(%13, MM2S)
