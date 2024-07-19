@@ -413,8 +413,8 @@ TEST_P(AMDAIENPUDeviceModelParameterizedSixTupleNPU4ColTestFixture,
     auto destWireb = STRM_SW_PORT_TYPE_TO_WIRE_BUNDLE(destSw);
     auto deviceModelIsLegal = deviceModel.isLegalMemtileConnection(
         c, r, srcSw, srcChan, destSw, dstChan);
-    auto targetModelIsLegal = targetModel.isLegalMemtileConnection(
-        srcWireB, srcChan, destWireb, dstChan);
+    auto targetModelIsLegal = targetModel.isLegalTileConnection(
+        c, r, srcWireB, srcChan, destWireb, dstChan);
 
     if ((srcStrmSwPortType == DMA && destStrmSwPortType == DMA &&
          srcChan != dstChan) ||

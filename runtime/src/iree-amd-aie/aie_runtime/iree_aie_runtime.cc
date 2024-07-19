@@ -73,6 +73,8 @@ std::string to_string(const StrmSwPortType &value) {
     STRINGIFY_ENUM_CASE(StrmSwPortType::EAST)
     STRINGIFY_ENUM_CASE(StrmSwPortType::TRACE)
     STRINGIFY_ENUM_CASE(StrmSwPortType::UCTRLR)
+    STRINGIFY_ENUM_CASE(StrmSwPortType::NOC)
+    STRINGIFY_ENUM_CASE(StrmSwPortType::PLIO)
     STRINGIFY_ENUM_CASE(StrmSwPortType::SS_PORT_TYPE_MAX)
   }
 
@@ -230,6 +232,9 @@ AMDAIETileType AMDAIEDeviceModel::getTileType(uint8_t col, uint8_t row) const {
                              std::to_string((int)devInst.DevProp.DevGen));
 }
 
+llvm::SmallDenseSet<unsigned, 16> nocColumns = {
+    2, 3, 6, 7, 10, 11, 18, 19, 26, 27, 34, 35, 42, 43, 46, 47};
+
 bool AMDAIEDeviceModel::isCoreTile(uint8_t col, uint8_t row) const {
   return getTileType(col, row) == AMDAIETileType::AIETILE;
 }
@@ -239,11 +244,17 @@ bool AMDAIEDeviceModel::isMemTile(uint8_t col, uint8_t row) const {
 }
 
 bool AMDAIEDeviceModel::isShimNOCTile(uint8_t col, uint8_t row) const {
-  return getTileType(col, row) == AMDAIETileType::SHIMNOC;
+  if (devInst.DevProp.DevGen > XAIE_DEV_GEN_AIE)
+    return getTileType(col, row) == AMDAIETileType::SHIMNOC;
+  else
+    return row == 0 && nocColumns.contains(col);
 }
 
 bool AMDAIEDeviceModel::isShimPLTile(uint8_t col, uint8_t row) const {
-  return getTileType(col, row) == AMDAIETileType::SHIMPL;
+  if (devInst.DevProp.DevGen > XAIE_DEV_GEN_AIE)
+    return getTileType(col, row) == AMDAIETileType::SHIMPL;
+  else
+    return row == 0 && !nocColumns.contains(col);
 }
 
 // TODO(max): these should be optionals instead of returning 0.
@@ -360,14 +371,15 @@ bool AMDAIEDeviceModel::isLegalMemtileConnection(uint8_t col, uint8_t row,
                                                  StrmSwPortType dstBundle,
                                                  uint8_t dstChan) const {
   // TODO(max): this isn't correct but for agreement with mlir-aie...
-  if (srcBundle == dstBundle and srcBundle != DMA) return true;
+  if (srcBundle == dstBundle and srcBundle != StrmSwPortType::DMA) return true;
   assert(isMemTile(col, row) && "expected memtile");
   AMDAIETileType tileType = getTileType(col, row);
   assert(tileType == AMDAIETileType::MEMTILE && "expected memtile");
   const XAie_StrmMod *strmMod =
       devInst.DevProp.DevMod[static_cast<uint8_t>(tileType)].StrmSw;
-  AieRC RC = strmMod->PortVerify(/*slave*/ srcBundle, srcChan,
-                                 /*master*/ dstBundle, dstChan);
+  AieRC RC = strmMod->PortVerify(
+      /*slave*/ static_cast<::StrmSwPortType>(srcBundle), srcChan,
+      /*master*/ static_cast<::StrmSwPortType>(dstBundle), dstChan);
   if (RC != XAIE_OK) {
     LLVM_DEBUG(llvm::dbgs() << "PortVerify failed with " << RC << "\n");
     LLVM_DEBUG(SHOW_ARGS(llvm::dbgs(), col, row, srcBundle, (int)srcChan,
@@ -383,27 +395,29 @@ uint32_t AMDAIEDeviceModel::getNumSourceSwitchboxConnections(
     uint8_t col, uint8_t row, StrmSwPortType bundle) const {
   AMDAIETileType tileType = getTileType(col, row);
   // not sure if this makes sense but agrees with mlir-aie
-  if ((bundle == NORTH && row == rows() - 1) || (bundle == WEST && col == 0) ||
-      (bundle == EAST && col == columns() - 1) ||
+  if ((bundle == StrmSwPortType::NORTH && row == rows() - 1) ||
+      (bundle == StrmSwPortType::WEST && col == 0) ||
+      (bundle == StrmSwPortType::EAST && col == columns() - 1) ||
       tileType == AMDAIETileType::MAX)
     return 0;
   const XAie_StrmMod *strmMod =
       devInst.DevProp.DevMod[static_cast<uint8_t>(tileType)].StrmSw;
-  return strmMod->SlvConfig[bundle].NumPorts;
+  return strmMod->SlvConfig[static_cast<::StrmSwPortType>(bundle)].NumPorts;
 }
 
 uint32_t AMDAIEDeviceModel::getNumDestSwitchboxConnections(
     uint8_t col, uint8_t row, StrmSwPortType bundle) const {
   AMDAIETileType tileType = getTileType(col, row);
   // not sure if this makes sense but agrees with mlir-aie
-  if ((bundle == NORTH && row == rows() - 1) || (bundle == WEST && col == 0) ||
-      (bundle == EAST && col == columns() - 1) ||
+  if ((bundle == StrmSwPortType::NORTH && row == rows() - 1) ||
+      (bundle == StrmSwPortType::WEST && col == 0) ||
+      (bundle == StrmSwPortType::EAST && col == columns() - 1) ||
       tileType == AMDAIETileType::MAX)
     return 0;
 
   const XAie_StrmMod *strmMod =
       devInst.DevProp.DevMod[static_cast<uint8_t>(tileType)].StrmSw;
-  return strmMod->MstrConfig[bundle].NumPorts;
+  return strmMod->MstrConfig[static_cast<::StrmSwPortType>(bundle)].NumPorts;
 }
 
 uint32_t AMDAIEDeviceModel::getColumnShift() const {

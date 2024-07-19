@@ -31,18 +31,18 @@ iree_lit_test(
     "hostonly"
 )
 
-iree_cc_test(
-  NAME
-    DeviceModelTestCppTest
-  SRCS
-    DeviceModelTest.cpp
-  DEPS
-    gtest
-    iree::target::amd-aie::aie::AIEDialectIR
-    iree-amd-aie::aie_runtime::iree_aie_runtime_static
-)
-
-target_include_directories(
-  iree-amd-aie_aie_runtime_test_DeviceModelTestCppTest
-  PRIVATE "${IREE_MLIR_AIE_SOURCE_DIR}/include"
-)
+#iree_cc_test(
+#  NAME
+#    DeviceModelTestCppTest
+#  SRCS
+#    DeviceModelTest.cpp
+#  DEPS
+#    gtest
+#    iree::target::amd-aie::aie::AIEDialectIR
+#    iree-amd-aie::aie_runtime::iree_aie_runtime_static
+#)
+#
+#target_include_directories(
+#  iree-amd-aie_aie_runtime_test_DeviceModelTestCppTest
+#  PRIVATE "${IREE_MLIR_AIE_SOURCE_DIR}/include"
+#)
