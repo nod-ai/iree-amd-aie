@@ -72,7 +72,8 @@ std::unique_ptr<Pass> createAMDAIEBufferizeToAllocationPass(
 std::unique_ptr<Pass> createAMDAIECanonicalizeDmaPass();
 
 /// Create pass to canonicalize doubly strided operations.
-std::unique_ptr<Pass> createAMDAIECanonicalizeDoublyStridedOpPass();
+std::unique_ptr<Pass> createAMDAIECanonicalizeDoublyStridedOpPass(
+    AMDAIECanonicalizeDoublyStridedOpOptions options = {});
 
 /// Pass to unroll the loops within the control code regions.
 std::unique_ptr<Pass> createAMDAIEControlCodeLoopUnrollPass();
