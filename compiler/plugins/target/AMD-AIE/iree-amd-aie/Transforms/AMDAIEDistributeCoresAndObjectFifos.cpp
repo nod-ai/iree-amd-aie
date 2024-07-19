@@ -153,16 +153,9 @@ LogicalResult distributeLocalMemory(ModuleOp moduleOp) {
         }
         auto newTransferReadOp = rewriter.create<vector::TransferReadOp>(
             transferReadOp.getLoc(), transferReadOp.getType(), newAlloc,
-            newIndices);
-        // The old vector.transfer_read has all `in_bounds` set as `true`. We
-        // therefore need to do the same on this new vector.transfer_read op
-        // else this would yield a masked load later on in the lowering stack.
-        SmallVector<bool, 4> bools(newTransferReadOp.getTransferRank(), true);
-        auto inBoundsAttr = rewriter.getBoolArrayAttr(bools);
-        rewriter.modifyOpInPlace(newTransferReadOp, [&]() {
-          newTransferReadOp->setAttr(newTransferReadOp.getInBoundsAttrName(),
-                                     inBoundsAttr);
-        });
+            newIndices, transferReadOp.getPermutationMapAttr(),
+            transferReadOp.getPadding(), transferReadOp.getMask(),
+            transferReadOp.getInBoundsAttr());
         rewriter.replaceAllUsesWith(transferReadOp,
                                     newTransferReadOp.getResult());
         toBeErased.push_back(transferReadOp);
@@ -176,18 +169,10 @@ LogicalResult distributeLocalMemory(ModuleOp moduleOp) {
         for (unsigned i = 0, n = newAllocShape.size(); i < n; i++) {
           if (newAllocShape[i] == 1) newIndices[i] = c0;
         }
-        auto newTransferWriteOp = rewriter.create<vector::TransferWriteOp>(
+        rewriter.create<vector::TransferWriteOp>(
             transferWriteOp.getLoc(), transferWriteOp.getVector(), newAlloc,
-            newIndices);
-        // The old vector.transfer_write has all `in_bounds` set as `true`. We
-        // therefore need to do the same on this new vector.transfer_write op
-        // else this would yield a masked store later on in the lowering stack.
-        SmallVector<bool, 4> bools(newTransferWriteOp.getTransferRank(), true);
-        auto inBoundsAttr = rewriter.getBoolArrayAttr(bools);
-        rewriter.modifyOpInPlace(newTransferWriteOp, [&]() {
-          newTransferWriteOp->setAttr(newTransferWriteOp.getInBoundsAttrName(),
-                                      inBoundsAttr);
-        });
+            newIndices, transferWriteOp.getPermutationMapAttr(),
+            transferWriteOp.getMask(), transferWriteOp.getInBoundsAttr());
         toBeErased.push_back(transferWriteOp);
       } else if (auto extractStridedMetadataOp =
                      dyn_cast<memref::ExtractStridedMetadataOp>(userOp)) {
