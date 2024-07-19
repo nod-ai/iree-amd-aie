@@ -144,7 +144,12 @@ LogicalResult distributeLocalMemory(ModuleOp moduleOp) {
       } else if (auto transferReadOp =
                      dyn_cast<vector::TransferReadOp>(userOp)) {
         rewriter.setInsertionPoint(transferReadOp);
-        // For dimensions with size as 1 we set the indices as 0.
+        // Since in this function we're basically changing the L1 sizes of the
+        // Alloc, for dimensions with size as 1 we need to set the indices as 0.
+        // We need to do this at this step because there would be loop
+        // dependencies on the same and when we unroll those loops later in this
+        // pass we would have incorrect offset values being formed for those
+        // dimension.
         SmallVector<Value> newIndices = transferReadOp.getIndices();
         Value c0 =
             rewriter.create<arith::ConstantIndexOp>(transferReadOp.getLoc(), 0);
@@ -162,7 +167,12 @@ LogicalResult distributeLocalMemory(ModuleOp moduleOp) {
       } else if (auto transferWriteOp =
                      dyn_cast<vector::TransferWriteOp>(userOp)) {
         rewriter.setInsertionPoint(transferWriteOp);
-        // For dimensions with size as 1 we set the indices as 0.
+        // Since in this function we're basically changing the L1 sizes of the
+        // Alloc, for dimensions with size as 1 we need to set the indices as 0.
+        // We need to do this at this step because there would be loop
+        // dependencies on the same and when we unroll those loops later in this
+        // pass we would have incorrect offset values being formed for those
+        // dimension.
         SmallVector<Value> newIndices = transferWriteOp.getIndices();
         Value c0 = rewriter.create<arith::ConstantIndexOp>(
             transferWriteOp.getLoc(), 0);
