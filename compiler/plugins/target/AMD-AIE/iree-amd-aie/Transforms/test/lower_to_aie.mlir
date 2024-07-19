@@ -429,6 +429,45 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 
 #executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
 module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
+  func.func @npu_dma_cpy_nd_invalid_addressing() {
+    amdaie.workgroup {
+      %c0 = arith.constant 0 : index
+      %c1 = arith.constant 1 : index
+      %c2 = arith.constant 2 : index
+      %c32 = arith.constant 32 : index
+      %c64 = arith.constant 64 : index
+      %2 = hal.interface.binding.subspan set(0) binding(2) type(storage_buffer) alignment(64) offset(%c0) : memref<32x64xi32>
+      memref.assume_alignment %2, 64 : memref<32x64xi32>
+      %tile_0_0 = amdaie.tile(%c0, %c0)
+      %tile_0_1 = amdaie.tile(%c0, %c1)
+      %tile_0_2 = amdaie.tile(%c0, %c2)
+      %bd_id_0 = amdaie.bd_id(%tile_0_0, 0)
+      %alloc_1 = memref.alloc() : memref<32x32xi32, 1>
+      %alloc_2 = memref.alloc() : memref<4x8x4x8xi32, 2>
+      %obj0 = amdaie.logicalobjectfifo.from_memref %2, {%tile_0_0} : memref<32x64xi32> -> !amdaie.logicalobjectfifo<memref<32x64xi32>>
+      %obj1 = amdaie.logicalobjectfifo.from_memref %alloc_1, {%tile_0_1} : memref<32x32xi32, 1> -> !amdaie.logicalobjectfifo<memref<32x32xi32, 1>>
+      %obj2 = amdaie.logicalobjectfifo.from_memref %alloc_2, {%tile_0_2} : memref<4x8x4x8xi32, 2> -> !amdaie.logicalobjectfifo<memref<4x8x4x8xi32, 2>>
+      %dma0 = amdaie.circular_dma_cpy_nd(%obj1[] [] [], %obj2[] [] []) : (!amdaie.logicalobjectfifo<memref<32x32xi32, 1>>, !amdaie.logicalobjectfifo<memref<4x8x4x8xi32, 2>>)
+      %dma_target_l3 = amdaie.circular_dma_cpy_nd(%obj0[] [] [], %obj1[] [] []) : (!amdaie.logicalobjectfifo<memref<32x64xi32>>, !amdaie.logicalobjectfifo<memref<32x32xi32, 1>>)
+      amdaie.logicalobjectfifo.link[%dma0] -> [%dma_target_l3] ()
+      memref.dealloc %alloc_2 : memref<4x8x4x8xi32, 2>
+      memref.dealloc %alloc_1 : memref<32x32xi32, 1>
+      // expected-error @+1 {{could not convert to AIEDialect ops}}
+      amdaie.controlcode {
+        // expected-error @+1 {{op expected target addressing for DMA with target on L3}}
+        %npu_dma_0 = amdaie.npu.dma_cpy_nd %dma_target_l3([] [] [] bd_id = %bd_id_0, [] [] [])
+        amdaie.npu.dma_wait(%npu_dma_0, S2MM)
+        amdaie.end
+      }
+    }
+    return
+  }
+}
+
+// -----
+
+#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
+module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
   func.func @npu_dma_cpy_nd_with_invalid_repeat() {
     amdaie.workgroup {
       %c0 = arith.constant 0 : index
@@ -590,7 +629,7 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 // CHECK-SAME:            metadata = @[[OBJ1]]
 // CHECK-NEXT:    aiex.npu.dma_wait {symbol = @[[OBJ1]]}
 // CHECK:         aiex.npu.dma_memcpy_nd
-// CHECK-SAME:            %[[ARG0]][0, 0, 0, 0][1, 1, 32, 64][0, 0, 64, 1]
+// CHECK-SAME:            %[[ARG0]][0, 0, 0, 0][1, 1, 1, 1024][0, 0, 0, 1]
 // CHECK-SAME:            issue_token = true
 // CHECK-SAME:            metadata = @[[OBJ1]]
 // CHECK-NEXT:    aiex.npu.dma_wait {symbol = @[[OBJ1]]}
@@ -600,7 +639,7 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 // CHECK-SAME:            metadata = @[[OBJ2]]
 // CHECK-NEXT:    aiex.npu.dma_wait {symbol = @[[OBJ2]]}
 // CHECK:         aiex.npu.dma_memcpy_nd
-// CHECK-SAME:            %[[ARG0]][0, 0, 0, 0][1, 1, 32, 64][0, 0, 64, 1]
+// CHECK-SAME:            %[[ARG0]][0, 0, 0, 0][1, 1, 1, 2048][0, 0, 0, 1]
 // CHECK-SAME:            issue_token = true
 // CHECK-SAME:            metadata = @[[OBJ2]]
 // CHECK-NEXT:    aiex.npu.dma_wait {symbol = @[[OBJ2]]}
@@ -613,6 +652,8 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
       %c2 = arith.constant 2 : index
       %c32 = arith.constant 32 : index
       %c64 = arith.constant 64 : index
+      %c1024 = arith.constant 1024 : index
+      %c2048 = arith.constant 2048 : index
       %2 = hal.interface.binding.subspan set(0) binding(2) type(storage_buffer) alignment(64) offset(%c0) : memref<32x64xi32>
       memref.assume_alignment %2, 64 : memref<32x64xi32>
       %tile_0_0 = amdaie.tile(%c0, %c0)
@@ -634,13 +675,12 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
       amdaie.controlcode {
         %npu_dma_0 = amdaie.npu.dma_cpy_nd %dma_target_l3([%c0, %c32] [%c32, %c32] [%c64, %c1] bd_id = %bd_id_0, [] [] [])
         amdaie.npu.dma_wait(%npu_dma_0, S2MM)
-        %npu_dma_1 = amdaie.npu.dma_cpy_nd %dma_target_l3([] [] [] bd_id = %bd_id_0, [] [] [])
+        %npu_dma_1 = amdaie.npu.dma_cpy_nd %dma_target_l3([%c0] [%c1024] [%c1] bd_id = %bd_id_0, [] [] [])
         amdaie.npu.dma_wait(%npu_dma_1, S2MM)
         %npu_dma_2 = amdaie.npu.dma_cpy_nd %dma_source_l3([] [] [], [%c0, %c32] [%c32, %c32] [%c64, %c1] bd_id = %bd_id_0)
         amdaie.npu.dma_wait(%npu_dma_2, MM2S)
-        %npu_dma_3 = amdaie.npu.dma_cpy_nd %dma_source_l3([] [] [], [] [] [] bd_id = %bd_id_0)
+        %npu_dma_3 = amdaie.npu.dma_cpy_nd %dma_source_l3([] [] [], [%c0] [%c2048] [%c1] bd_id = %bd_id_0)
         amdaie.npu.dma_wait(%npu_dma_3, MM2S)
-
         amdaie.end
       }
     }
@@ -679,10 +719,9 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
       memref.dealloc %alloc_1 : memref<32x32xi32, 1>
       // expected-error @+1 {{could not convert to AIEDialect ops}}
       amdaie.controlcode {
-        // expected-error @+1 {{implicit source/target L3 memref has rank greater than the expected static offsets/sizes/strides rank (4)}}
+        // expected-error @+1 {{op expected target addressing for DMA with target on L3}}
         %npu_dma_1 = amdaie.npu.dma_cpy_nd %dma_target_l3([] [] [] bd_id = %bd_id_0, [] [] [])
         amdaie.npu.dma_wait(%npu_dma_1, S2MM)
-        
         amdaie.end
       }
     }

@@ -114,6 +114,9 @@ class AMDAIECanonicalizeDoublyStridedOpPass
   AMDAIECanonicalizeDoublyStridedOpPass() = default;
   AMDAIECanonicalizeDoublyStridedOpPass(
       const AMDAIECanonicalizeDoublyStridedOpPass &pass){};
+  AMDAIECanonicalizeDoublyStridedOpPass(
+      const AMDAIECanonicalizeDoublyStridedOpOptions &options)
+      : AMDAIECanonicalizeDoublyStridedOpBase(options) {}
   void runOnOperation() override;
 };
 
@@ -134,15 +137,17 @@ void AMDAIECanonicalizeDoublyStridedOpPass::runOnOperation() {
   });
 
   // Make DMA accesses with single dimension implicit.
-  parentOp->walk([&](AMDAIE::DoublyStridedOpInterface dmaOp) {
-    (void)foldDmaOpSingleDims(rewriter, dmaOp);
-  });
+  if (foldSingleDims) {
+    parentOp->walk([&](AMDAIE::DoublyStridedOpInterface dmaOp) {
+      (void)foldDmaOpSingleDims(rewriter, dmaOp);
+    });
+  }
 }
 
 }  // namespace
 
-std::unique_ptr<Pass> createAMDAIECanonicalizeDoublyStridedOpPass() {
-  return std::make_unique<AMDAIECanonicalizeDoublyStridedOpPass>();
+std::unique_ptr<Pass> createAMDAIECanonicalizeDoublyStridedOpPass(AMDAIECanonicalizeDoublyStridedOpOptions options) {
+  return std::make_unique<AMDAIECanonicalizeDoublyStridedOpPass>(options);
 }
 
 }  // namespace mlir::iree_compiler::AMDAIE

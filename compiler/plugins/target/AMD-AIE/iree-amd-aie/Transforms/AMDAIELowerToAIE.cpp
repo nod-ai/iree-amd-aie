@@ -54,7 +54,19 @@ namespace {
 AIE::BDDimLayoutArrayAttr convertSizeStrideToBDDimLayoutArrayAttr(
     IRRewriter &rewriter, const SmallVector<OpFoldResult> &sizes,
     const SmallVector<OpFoldResult> &strides) {
+  assert(sizes.size() == strides.size() &&
+         "expected stride and size vectors of same size");
   SmallVector<AIE::BDDimLayoutAttr, 4> bdDimLayoutAttr;
+  // If the access pattern (strides/sizes) have a single dimension, make it
+  // implicit with an empty `BDDimLayoutAttr` as this is what the AIE dialect
+  // expects.
+  if (strides.size() == 1) {
+    std::optional<int64_t> stride = getConstantIntValue(strides[0]);
+    if (stride && stride.value() == 1) {
+      return AIE::BDDimLayoutArrayAttr::get(rewriter.getContext(),
+                                            ArrayRef(bdDimLayoutAttr));
+    }
+  }
   bdDimLayoutAttr.reserve(sizes.size());
   for (auto [size, stride] : llvm::zip(sizes, strides)) {
     bdDimLayoutAttr.push_back(AIE::BDDimLayoutAttr::get(
@@ -477,34 +489,6 @@ LogicalResult getStaticDimsForExplicitAddressing(
   return success();
 }
 
-/// Utility to get the static sizes and strides for `AIEX::NpuDmaMemcpyNdOp`
-/// with implicit addressing.
-LogicalResult getStaticDimsForImplicitAddressing(
-    Operation *op, MemRefType memrefType, SmallVectorImpl<int64_t> &staticSizes,
-    SmallVectorImpl<int64_t> &staticStrides) {
-  assert((staticSizes.size() == staticStrides.size()) &&
-         "static size and strides should be of same size");
-  // 1. Static sizes.
-  SmallVector<int64_t> shapeArr = llvm::to_vector(memrefType.getShape());
-  // staticOffsets/staticSizes/staticStrides all have same size.
-  if (shapeArr.size() > staticSizes.size()) {
-    op->emitError() << "implicit source/target L3 memref has rank greater than "
-                       "the expected static offsets/sizes/strides rank (4)";
-    return failure();
-  }
-  std::copy(shapeArr.begin(), shapeArr.end(),
-            staticSizes.end() - shapeArr.size());
-  // 2. Static strides.
-  int64_t strideIndex = staticStrides.size() - 1;
-  // For contiguous access the strides for the last dimension is always 1.
-  int64_t prevStride = 1;
-  for (int64_t i = shapeArr.size() - 1; i >= 0; i--) {
-    staticStrides[strideIndex] = prevStride;
-    prevStride = staticStrides[strideIndex--] * shapeArr[i];
-  }
-  return success();
-}
-
 /// Utility to move 'repeat dimension' with stride 0 and size > 1 to outermost
 /// dimension as only that one can support a stride with value 0 in AIE2(+)
 /// hardware. But first check that such a dimension is actually the first 'real
@@ -544,7 +528,11 @@ LogicalResult npuDmaCpyNdOpToAIE(IRRewriter &rewriter,
                                  IRMapping &mapper, IRMapping &bindingsMapper) {
   rewriter.setInsertionPoint(dmaOp);
   // Convert bidirectional `amdaie.npu.dma_cpy_nd` op into two halves.
-  if (dmaOp.hasSourceAddressing() || dmaOp.getSourceMemorySpaceAsUInt() == 0) {
+  if (dmaOp.getSourceMemorySpaceAsUInt() == 0) {
+    if (!dmaOp.hasSourceAddressing()) {
+      return dmaOp.emitOpError()
+             << "expected source addressing for DMA with source on L3";
+    }
     AMDAIE::BdIdOp bdIdOp = dmaOp.getSourceBdIdOp();
     if (!bdIdOp)
       return dmaOp.emitOpError() << "expected to have a source BD ID op";
@@ -555,23 +543,12 @@ LogicalResult npuDmaCpyNdOpToAIE(IRRewriter &rewriter,
     SmallVector<int64_t, 4> staticOffsets(4, 0);
     SmallVector<int64_t, 4> staticSizes(4, 1);
     SmallVector<int64_t, 4> staticStrides(4, 0);
-    if (dmaOp.hasSourceAddressing()) {
-      if (failed(getStaticDimsForExplicitAddressing(
-              dmaOp, dmaOp.getSourceMixedOffsets(), dmaOp.getSourceMixedSizes(),
-              dmaOp.getSourceMixedStrides(), staticOffsets, staticSizes,
-              staticStrides))) {
-        return failure();
-      }
-    } else {
-      MemRefType sourceMemrefType =
-          cast<LogicalObjectFifoType>(dmaOp.getDmaCpyNdOp().getSourceType())
-              .getElementType();
-      if (failed(getStaticDimsForImplicitAddressing(
-              dmaOp, sourceMemrefType, staticSizes, staticStrides))) {
-        return failure();
-      }
+    if (failed(getStaticDimsForExplicitAddressing(
+            dmaOp, dmaOp.getSourceMixedOffsets(), dmaOp.getSourceMixedSizes(),
+            dmaOp.getSourceMixedStrides(), staticOffsets, staticSizes,
+            staticStrides))) {
+      return failure();
     }
-
     if (failed(canonicalizeNpuStridedPatternForAIE(staticOffsets, staticSizes,
                                                    staticStrides))) {
       return dmaOp.emitError() << "could not canonicalize for AIE";
@@ -592,7 +569,11 @@ LogicalResult npuDmaCpyNdOpToAIE(IRRewriter &rewriter,
         empty, empty, staticOffsets, staticSizes, staticStrides,
         objFifo.getName(), bdIdOp.getValue(), issueToken);
   }
-  if (dmaOp.hasTargetAddressing() || dmaOp.getTargetMemorySpaceAsUInt() == 0) {
+  if (dmaOp.getTargetMemorySpaceAsUInt() == 0) {
+    if (!dmaOp.hasTargetAddressing()) {
+      return dmaOp.emitOpError()
+             << "expected target addressing for DMA with target on L3";
+    }
     AMDAIE::BdIdOp bdIdOp = dmaOp.getTargetBdIdOp();
     if (!bdIdOp)
       return dmaOp.emitOpError() << "expected to have a target BD ID op";
@@ -603,23 +584,12 @@ LogicalResult npuDmaCpyNdOpToAIE(IRRewriter &rewriter,
     SmallVector<int64_t, 4> staticOffsets(4, 0);
     SmallVector<int64_t, 4> staticSizes(4, 1);
     SmallVector<int64_t, 4> staticStrides(4, 0);
-    if (dmaOp.hasTargetAddressing()) {
-      if (failed(getStaticDimsForExplicitAddressing(
-              dmaOp, dmaOp.getTargetMixedOffsets(), dmaOp.getTargetMixedSizes(),
-              dmaOp.getTargetMixedStrides(), staticOffsets, staticSizes,
-              staticStrides))) {
-        return failure();
-      }
-    } else {
-      MemRefType targetMemrefType =
-          cast<LogicalObjectFifoType>(dmaOp.getDmaCpyNdOp().getTargetType())
-              .getElementType();
-      if (failed(getStaticDimsForImplicitAddressing(
-              dmaOp, targetMemrefType, staticSizes, staticStrides))) {
-        return failure();
-      }
+    if (failed(getStaticDimsForExplicitAddressing(
+            dmaOp, dmaOp.getTargetMixedOffsets(), dmaOp.getTargetMixedSizes(),
+            dmaOp.getTargetMixedStrides(), staticOffsets, staticSizes,
+            staticStrides))) {
+      return failure();
     }
-
     if (failed(canonicalizeNpuStridedPatternForAIE(staticOffsets, staticSizes,
                                                    staticStrides))) {
       return dmaOp.emitError() << "could not canonicalize for AIE";

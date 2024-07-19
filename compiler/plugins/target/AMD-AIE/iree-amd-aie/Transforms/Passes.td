@@ -71,6 +71,10 @@ def AMDAIECanonicalizeDoublyStridedOp :
     Pass<"iree-amdaie-canonicalize-doubly-strided-op", ""> {
   let summary = "Canonicalize doubly strided DMA operations.";
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIECanonicalizeDoublyStridedOpPass()";
+  let options = [
+    Option<"foldSingleDims", "fold-single-dims", "bool", /*default=*/"false",
+      "Whether to fold single strided dimensions and make then implicit.">
+  ];
 }
 
 def AMDAIECleanup :
