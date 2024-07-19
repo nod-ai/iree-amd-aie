@@ -106,7 +106,8 @@ std::unique_ptr<Pass> createAMDAIEDistributeCoresAndObjectFifosPass();
 
 /// Create a pass to subsume loop iterations into DMA operations' access
 /// patterns.
-std::unique_ptr<Pass> createAMDAIEDmaLoopSubsumptionPass();
+std::unique_ptr<Pass> createAMDAIEDmaLoopSubsumptionPass(
+    AMDAIEDmaLoopSubsumptionOptions options = {});
 
 /// Create a pass to convert dma operations to circular dma operations.
 std::unique_ptr<Pass> createAMDAIEDmaToCircularDmaPass();

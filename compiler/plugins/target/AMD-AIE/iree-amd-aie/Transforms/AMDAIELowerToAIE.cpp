@@ -505,6 +505,38 @@ LogicalResult getStaticDimsForImplicitAddressing(
   return success();
 }
 
+/// Utility to move 'repeat dimension' with stride 0 and size > 1 to outermost
+/// dimension as only that one can support a stride with value 0 in AIE2(+)
+/// hardware. But first check that such a dimension is actually the first 'real
+/// dimension' in the access pattern.
+LogicalResult canonicalizeNpuStridedPatternForAIE(
+    SmallVectorImpl<int64_t> &offsets, SmallVectorImpl<int64_t> &sizes,
+    SmallVectorImpl<int64_t> &strides) {
+  bool foundNonUnitDim{false};
+  for (size_t i = 0; i < offsets.size(); i++) {
+    if (strides[i] == 0 && sizes[i] == 1) {
+      continue;
+    } else if (strides[i] == 0) {
+      assert(sizes[i] > 0 && "size should be positive");
+      if (foundNonUnitDim) return failure();
+      foundNonUnitDim = true;
+    } else {
+      foundNonUnitDim = true;
+    }
+  }
+  // Either dim 0 is a 'repeat dimension' or if the repeat is on a different
+  // dimension, it guaranteed to be preceded by unit dimensions based on the
+  // former check.
+  for (size_t i = 1; i < offsets.size(); i++) {
+    if (strides[i] == 0 && sizes[i] > 1) {
+      strides[0] = 0;
+      sizes[0] = sizes[i];
+      sizes[i] = 1;
+    }
+  }
+  return success();
+}
+
 /// Convert the `amdaie.npu.dma_cpy_nd` operation to `aiex.npu.dma_memcpy_nd`.
 LogicalResult npuDmaCpyNdOpToAIE(IRRewriter &rewriter,
                                  AMDAIE::NpuDmaCpyNdOp dmaOp,
@@ -538,6 +570,11 @@ LogicalResult npuDmaCpyNdOpToAIE(IRRewriter &rewriter,
               dmaOp, sourceMemrefType, staticSizes, staticStrides))) {
         return failure();
       }
+    }
+
+    if (failed(canonicalizeNpuStridedPatternForAIE(staticOffsets, staticSizes,
+                                                   staticStrides))) {
+      return dmaOp.emitError() << "could not canonicalize for AIE";
     }
 
     AMDAIE::CircularDmaCpyNdOp dmaCpyNd = dmaOp.getDmaCpyNdOp();
@@ -582,6 +619,12 @@ LogicalResult npuDmaCpyNdOpToAIE(IRRewriter &rewriter,
         return failure();
       }
     }
+
+    if (failed(canonicalizeNpuStridedPatternForAIE(staticOffsets, staticSizes,
+                                                   staticStrides))) {
+      return dmaOp.emitError() << "could not canonicalize for AIE";
+    }
+
     AMDAIE::CircularDmaCpyNdOp dmaCpyNd = dmaOp.getDmaCpyNdOp();
     Value memref =
         bindingsMapper.lookup(dmaCpyNd.getTargetObjectFifo().getMemref());
