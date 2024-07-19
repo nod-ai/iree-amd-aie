@@ -124,9 +124,13 @@ LogicalResult moveUsersToHoistedDMAScope(Operation *parentOp) {
   return success();
 }
 
-class SubsumeLoopIntoDMA
+struct SubsumeLoopIntoDMA
     : public OpInterfaceRewritePattern<AMDAIE::DoublyStridedOpInterface> {
   using OpInterfaceRewritePattern::OpInterfaceRewritePattern;
+
+  SubsumeLoopIntoDMA(MLIRContext *context, bool onlyZeroStrideOnOuterDim)
+      : OpInterfaceRewritePattern(context),
+        onlyZeroStrideOnOuterDim(onlyZeroStrideOnOuterDim) {}
 
   /// Utility to add a loop iteration to an offsets/sizes/strides access
   /// pattern. This function handles following cases:
@@ -248,6 +252,46 @@ class SubsumeLoopIntoDMA
       return failure();
     if (newTargetOffsets.size() + nbNonUnitIterations > targetMaxNbDims)
       return failure();
+
+    // Fail if zero stride is only supported on the outer dimension and adding
+    // this loop to the strided access pattern would violate that.
+    if (onlyZeroStrideOnOuterDim) {
+      if (!newSourceStrides.empty()) {
+        std::optional<int64_t> outerStride =
+            getConstantIntValue(newSourceStrides[0]);
+        if (outerStride && outerStride.value() == 0) return failure();
+      }
+      if (!newTargetStrides.empty()) {
+        std::optional<int64_t> outerStride =
+            getConstantIntValue(newTargetStrides[0]);
+        if (outerStride && outerStride.value() == 0) return failure();
+      }
+
+      SmallVector<Value> dynamicSourceOffsets = op.getSourceOffsets();
+      SmallVector<Value> dynamicTargetOffsets = op.getTargetOffsets();
+      for (size_t i = 1; i < inductionValues.size(); i++) {
+        // Skip unit iterations.
+        int64_t lb = lowerBounds[i];
+        int64_t ub = upperBounds[i];
+        int64_t step = steps[i];
+        if (calculateNbIterations(lb, ub, step) == 1) continue;
+        const DenseSet<Value> &iterationIvValues = inductionValues[i];
+        // If there is no dependency on the loop for non-initial iterations,
+        // this will result in an non-outer stride of `0`, so fail.
+        if (!dynamicSourceOffsets.empty() &&
+            !llvm::any_of(dynamicSourceOffsets, [&](Value offset) {
+              return iterationIvValues.contains(offset);
+            })) {
+          return failure();
+        }
+        if (!dynamicTargetOffsets.empty() &&
+            !llvm::any_of(dynamicTargetOffsets, [&](Value offset) {
+              return iterationIvValues.contains(offset);
+            })) {
+          return failure();
+        }
+      }
+    }
 
     // Add the loop iterations to the DMA access patterns.
     for (auto &&[lb, ub, step, iterationIvValues] : llvm::reverse(
@@ -452,6 +496,13 @@ class SubsumeLoopIntoDMA
       return failure();
     }
   }
+
+ private:
+  // In AIE2(+), a stride with value `0`, indicating a repeat of the subsequent
+  // dimensions is only supported on the outer dimension through the use of a
+  // buffer descriptor repeat count. To not bake this limitation to deeply into
+  // the loop subsumption transformation, it's made an option with this flag.
+  bool onlyZeroStrideOnOuterDim;
 };
 
 class AMDAIEDmaLoopSubsumptionPass
@@ -463,6 +514,8 @@ class AMDAIEDmaLoopSubsumptionPass
 
   AMDAIEDmaLoopSubsumptionPass() = default;
   AMDAIEDmaLoopSubsumptionPass(const AMDAIEDmaLoopSubsumptionPass &pass){};
+  AMDAIEDmaLoopSubsumptionPass(const AMDAIEDmaLoopSubsumptionOptions &options)
+      : AMDAIEDmaLoopSubsumptionBase(options) {}
   void runOnOperation() override;
 };
 
@@ -470,7 +523,7 @@ void AMDAIEDmaLoopSubsumptionPass::runOnOperation() {
   Operation *parentOp = getOperation();
   MLIRContext *context = &getContext();
   RewritePatternSet patterns(context);
-  patterns.insert<SubsumeLoopIntoDMA>(context);
+  patterns.insert<SubsumeLoopIntoDMA>(context, onlyZeroStrideOnOuterDim);
   if (failed(applyPatternsAndFoldGreedily(parentOp, std::move(patterns)))) {
     parentOp->emitOpError("failed to subsume some loops into DMA operations");
     return signalPassFailure();
@@ -485,8 +538,9 @@ void AMDAIEDmaLoopSubsumptionPass::runOnOperation() {
 
 }  // namespace
 
-std::unique_ptr<Pass> createAMDAIEDmaLoopSubsumptionPass() {
-  return std::make_unique<AMDAIEDmaLoopSubsumptionPass>();
+std::unique_ptr<Pass> createAMDAIEDmaLoopSubsumptionPass(
+    AMDAIEDmaLoopSubsumptionOptions options) {
+  return std::make_unique<AMDAIEDmaLoopSubsumptionPass>(options);
 }
 
 }  // namespace mlir::iree_compiler::AMDAIE

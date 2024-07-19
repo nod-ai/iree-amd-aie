@@ -1,4 +1,5 @@
-// RUN: iree-opt --pass-pipeline="builtin.module(func.func(iree-amdaie-dma-loop-subsumption,canonicalize))" --split-input-file --verify-diagnostics %s | FileCheck %s
+// RUN: iree-opt --pass-pipeline="builtin.module(func.func(iree-amdaie-dma-loop-subsumption{only-zero-stride-on-outer-dim=false},canonicalize))" --split-input-file %s | FileCheck %s
+// RUN: iree-opt --pass-pipeline="builtin.module(func.func(iree-amdaie-dma-loop-subsumption{only-zero-stride-on-outer-dim=true},canonicalize))" --split-input-file %s | FileCheck %s --check-prefix=OUTER-ZERO-STRIDE
 
 //===----------------------------------------------------------------------===//
 // Sanity checks for cases where no modification should happen.
@@ -1026,6 +1027,206 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
         scf.forall (%arg2, %arg3) = (2, 1) to (17, 8) step (3, 2) {
           %3 = amdaie.npu.dma_cpy_nd %0([%arg3, %arg2] [8, 16] [16, 1], [] [] [])
           amdaie.npu.dma_wait(%3, S2MM)
+        }
+        amdaie.end
+      }
+    }
+    return
+  }
+}
+
+// -----
+
+//===----------------------------------------------------------------------===//
+// Checks for `onlyZeroStrideOnOuterDim == true` option
+//===----------------------------------------------------------------------===//
+
+// OUTER-ZERO-STRIDE-LABEL: @for_outer_zero_stride_sanity_check
+// OUTER-ZERO-STRIDE-DAG:   %[[C0:.+]] = arith.constant 0 : index
+// OUTER-ZERO-STRIDE-DAG:   %[[C1:.+]] = arith.constant 1 : index
+// OUTER-ZERO-STRIDE-DAG:   %[[C6:.+]] = arith.constant 6 : index
+// OUTER-ZERO-STRIDE-DAG:   %[[C16:.+]] = arith.constant 16 : index
+// OUTER-ZERO-STRIDE:       %[[CIRC_DMA:.+]] = amdaie.circular_dma_cpy_nd
+// OUTER-ZERO-STRIDE:       amdaie.controlcode
+// OUTER-ZERO-STRIDE-NOT:   scf.for
+// OUTER-ZERO-STRIDE:       %[[NPU_DMA:.+]] = amdaie.npu.dma_cpy_nd %[[CIRC_DMA]]([%[[C0]], %[[C0]]] [%[[C6]], %[[C16]]] [%[[C1]], %[[C1]]], [] [] [])
+// OUTER-ZERO-STRIDE:       amdaie.npu.dma_wait(%[[NPU_DMA]], S2MM)
+#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
+module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
+  func.func @for_outer_zero_stride_sanity_check(%arg0: !amdaie.logicalobjectfifo<memref<1x1x8x16xi32>>, %arg1: !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>) {
+    %c0 = arith.constant 0 : index
+    %c1 = arith.constant 1 : index
+    %c6 = arith.constant 6 : index
+    amdaie.workgroup {
+      %0 = amdaie.circular_dma_cpy_nd(%arg0[] [] [], %arg1[] [] []) : (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32>>, !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>)
+      amdaie.controlcode {
+        scf.for %arg2 = %c0 to %c6 step %c1 {
+          %2 = amdaie.npu.dma_cpy_nd %0([%arg2] [16] [1], [] [] [])
+          amdaie.npu.dma_wait(%2, S2MM)
+        }
+        amdaie.end
+      }
+    }
+    return
+  }
+}
+
+// -----
+
+// Sanity check to ensure that loop subsumption still happens.
+// OUTER-ZERO-STRIDE-LABEL: @forall_outer_zero_stride_sanity_check
+// OUTER-ZERO-STRIDE-DAG:   %[[C0:.+]] = arith.constant 0 : index
+// OUTER-ZERO-STRIDE-DAG:   %[[C1:.+]] = arith.constant 1 : index
+// OUTER-ZERO-STRIDE-DAG:   %[[C2:.+]] = arith.constant 2 : index
+// OUTER-ZERO-STRIDE-DAG:   %[[C3:.+]] = arith.constant 3 : index
+// OUTER-ZERO-STRIDE-DAG:   %[[C4:.+]] = arith.constant 4 : index
+// OUTER-ZERO-STRIDE-DAG:   %[[C5:.+]] = arith.constant 5 : index
+// OUTER-ZERO-STRIDE-DAG:   %[[C8:.+]] = arith.constant 8 : index
+// OUTER-ZERO-STRIDE-DAG:   %[[C16:.+]] = arith.constant 16 : index
+// OUTER-ZERO-STRIDE-DAG:   %[[C32:.+]] = arith.constant 32 : index
+// OUTER-ZERO-STRIDE:       %[[CIRC_DMA:.+]] = amdaie.circular_dma_cpy_nd
+// OUTER-ZERO-STRIDE:       amdaie.controlcode
+// OUTER-ZERO-STRIDE-NOT:   scf.forall
+// OUTER-ZERO-STRIDE:       %[[NPU_DMA:.+]] = amdaie.npu.dma_cpy_nd %[[CIRC_DMA]]([%[[C0]], %[[C0]], %[[C1]], %[[C2]]] [%[[C5]], %[[C4]], %[[C8]], %[[C16]]] [%[[C3]], %[[C32]], %[[C16]], %[[C1]]], [] [] [])
+// OUTER-ZERO-STRIDE:       amdaie.npu.dma_wait(%[[NPU_DMA]], S2MM)
+#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
+module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
+  func.func @forall_outer_zero_stride_sanity_check(%arg0: !amdaie.logicalobjectfifo<memref<1x1x8x16xi32>>, %arg1: !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>) {
+    amdaie.workgroup {
+      %0 = amdaie.circular_dma_cpy_nd(%arg0[] [] [], %arg1[] [] []) : (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32>>, !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>)
+      amdaie.controlcode {
+        scf.forall (%arg2, %arg3) = (2, 1) to (17, 8) step (3, 2) {
+          %3 = amdaie.npu.dma_cpy_nd %0([%arg3, %arg2] [8, 16] [16, 1], [] [] [])
+          amdaie.npu.dma_wait(%3, S2MM)
+        }
+        amdaie.end
+      }
+    }
+    return
+  }
+}
+
+// -----
+
+// Ensure no modification in case of an out zero stride.
+// OUTER-ZERO-STRIDE:       #[[$MAP:.+]] = affine_map<(d0) -> (d0 * 16)>
+// OUTER-ZERO-STRIDE-LABEL: @for_outer_zero_stride
+// OUTER-ZERO-STRIDE-DAG:   %[[C0:.+]] = arith.constant 0 : index
+// OUTER-ZERO-STRIDE-DAG:   %[[C1:.+]] = arith.constant 1 : index
+// OUTER-ZERO-STRIDE-DAG:   %[[C6:.+]] = arith.constant 6 : index
+// OUTER-ZERO-STRIDE:       %[[CIRC_DMA:.+]] = amdaie.circular_dma_cpy_nd
+// OUTER-ZERO-STRIDE:       amdaie.controlcode
+// OUTER-ZERO-STRIDE:         scf.for %[[ARG2:.+]] = %[[C0]] to %[[C6]] step %[[C1]]
+// OUTER-ZERO-STRIDE:           %[[APPLY:.+]] = affine.apply #[[$MAP]](%[[ARG2]])
+// OUTER-ZERO-STRIDE:           %[[NPU_DMA:.+]] = amdaie.npu.dma_cpy_nd %[[CIRC_DMA]]([0, 0, %[[APPLY]]] [1, 8, 16] [0, 16, 1], [] [] [])
+// OUTER-ZERO-STRIDE:           amdaie.npu.dma_wait(%[[NPU_DMA]], S2MM)
+#map = affine_map<(d0) -> (d0 * 16)>
+#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
+module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
+  func.func @for_outer_zero_stride(%arg0: !amdaie.logicalobjectfifo<memref<1x1x8x16xi32>>, %arg1: !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>) {
+    %c0 = arith.constant 0 : index
+    %c1 = arith.constant 1 : index
+    %c6 = arith.constant 6 : index
+    amdaie.workgroup {
+      %0 = amdaie.circular_dma_cpy_nd(%arg0[] [] [], %arg1[] [] []) : (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32>>, !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>)
+      amdaie.controlcode {
+        scf.for %arg2 = %c0 to %c6 step %c1 {
+          %1 = affine.apply #map(%arg2)
+          %2 = amdaie.npu.dma_cpy_nd %0([0, 0, %1] [1, 8, 16] [0, 16, 1], [] [] [])
+          amdaie.npu.dma_wait(%2, S2MM)
+        }
+        amdaie.end
+      }
+    }
+    return
+  }
+}
+
+// -----
+
+// Ensure no modification in case of an out zero stride.
+// OUTER-ZERO-STRIDE:       #[[$MAP:.+]] = affine_map<(d0) -> (d0 * 16)>
+// OUTER-ZERO-STRIDE-LABEL: @forall_outer_zero_stride
+// OUTER-ZERO-STRIDE:       %[[CIRC_DMA:.+]] = amdaie.circular_dma_cpy_nd
+// OUTER-ZERO-STRIDE:       amdaie.controlcode
+// OUTER-ZERO-STRIDE:         scf.forall (%[[ARG2:.+]], %[[ARG3:.+]]) in (2, 6)
+// OUTER-ZERO-STRIDE:           %[[APPLY:.+]] = affine.apply #[[$MAP]](%[[ARG3]])
+// OUTER-ZERO-STRIDE:           %[[NPU_DMA:.+]] = amdaie.npu.dma_cpy_nd %[[CIRC_DMA]]([0, %[[APPLY]]] [8, 16] [0, 1], [] [] [])
+// OUTER-ZERO-STRIDE:           amdaie.npu.dma_wait(%[[NPU_DMA]], S2MM)
+#map = affine_map<(d0) -> (d0 * 16)>
+#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
+module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
+  func.func @forall_outer_zero_stride(%arg0: !amdaie.logicalobjectfifo<memref<1x1x8x16xi32>>, %arg1: !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>) {
+    amdaie.workgroup {
+      %0 = amdaie.circular_dma_cpy_nd(%arg0[] [] [], %arg1[] [] []) : (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32>>, !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>)
+      amdaie.controlcode {
+        scf.forall (%arg2, %arg3) in (2, 6) {
+          %1 = affine.apply #map(%arg3)
+          %2 = amdaie.npu.dma_cpy_nd %0([0, %1] [8, 16] [0, 1], [] [] [])
+          amdaie.npu.dma_wait(%2, S2MM)
+        }
+        amdaie.end
+      }
+    }
+    return
+  }
+}
+
+// -----
+
+// Ensure no modification in case of an out zero stride.
+// OUTER-ZERO-STRIDE:       #[[$MAP:.+]] = affine_map<(d0) -> (d0 * 16)>
+// OUTER-ZERO-STRIDE-LABEL: @forall_zero_stride_on_inner_forall_iteration
+// OUTER-ZERO-STRIDE:       %[[CIRC_DMA:.+]] = amdaie.circular_dma_cpy_nd
+// OUTER-ZERO-STRIDE:       amdaie.controlcode
+// OUTER-ZERO-STRIDE:         scf.forall (%[[ARG2:.+]], %[[ARG3:.+]]) in (2, 6)
+// OUTER-ZERO-STRIDE:           %[[APPLY:.+]] = affine.apply #[[$MAP]](%[[ARG2]])
+// OUTER-ZERO-STRIDE:           %[[NPU_DMA:.+]] = amdaie.npu.dma_cpy_nd %[[CIRC_DMA]]([0, %[[APPLY]]] [8, 16] [16, 1], [] [] [])
+// OUTER-ZERO-STRIDE:           amdaie.npu.dma_wait(%[[NPU_DMA]], S2MM)
+#map = affine_map<(d0) -> (d0 * 16)>
+#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
+module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
+  func.func @forall_zero_stride_on_inner_forall_iteration(%arg0: !amdaie.logicalobjectfifo<memref<1x1x8x16xi32>>, %arg1: !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>) {
+    amdaie.workgroup {
+      %0 = amdaie.circular_dma_cpy_nd(%arg0[] [] [], %arg1[] [] []) : (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32>>, !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>)
+      amdaie.controlcode {
+        scf.forall (%arg2, %arg3) in (2, 6) {
+          %1 = affine.apply #map(%arg2)
+          %2 = amdaie.npu.dma_cpy_nd %0([0, %1] [8, 16] [16, 1], [] [] [])
+          amdaie.npu.dma_wait(%2, S2MM)
+        }
+        amdaie.end
+      }
+    }
+    return
+  }
+}
+
+// -----
+
+// Ensure subsumption in case of a unit iteration.
+// OUTER-ZERO-STRIDE-LABEL: @forall_outer_zero_stride_with_unit_iteration
+// OUTER-ZERO-STRIDE-DAG:   %[[C0:.+]] = arith.constant 0 : index
+// OUTER-ZERO-STRIDE-DAG:   %[[C1:.+]] = arith.constant 1 : index
+// OUTER-ZERO-STRIDE-DAG:   %[[C2:.+]] = arith.constant 2 : index
+// OUTER-ZERO-STRIDE-DAG:   %[[C8:.+]] = arith.constant 8 : index
+// OUTER-ZERO-STRIDE-DAG:   %[[C16:.+]] = arith.constant 16 : index
+// OUTER-ZERO-STRIDE:       %[[CIRC_DMA:.+]] = amdaie.circular_dma_cpy_nd
+// OUTER-ZERO-STRIDE:       amdaie.controlcode
+// OUTER-ZERO-STRIDE-NOT:     scf.forall
+// OUTER-ZERO-STRIDE:         %[[NPU_DMA:.+]] = amdaie.npu.dma_cpy_nd %[[CIRC_DMA]]([%[[C0]], %[[C0]], %[[C0]]] [%[[C2]], %[[C8]], %[[C16]]] [%[[C16]], %[[C16]], %[[C1]]], [] [] [])
+// OUTER-ZERO-STRIDE:         amdaie.npu.dma_wait(%[[NPU_DMA]], S2MM)
+#map = affine_map<(d0) -> (d0 * 16)>
+#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
+module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
+  func.func @forall_outer_zero_stride_with_unit_iteration(%arg0: !amdaie.logicalobjectfifo<memref<1x1x8x16xi32>>, %arg1: !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>) {
+    amdaie.workgroup {
+      %0 = amdaie.circular_dma_cpy_nd(%arg0[] [] [], %arg1[] [] []) : (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32>>, !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>)
+      amdaie.controlcode {
+        scf.forall (%arg2, %arg3) in (2, 1) {
+          %1 = affine.apply #map(%arg2)
+          %2 = amdaie.npu.dma_cpy_nd %0([0, %1] [8, 16] [16, 1], [] [] [])
+          amdaie.npu.dma_wait(%2, S2MM)
         }
         amdaie.end
       }
