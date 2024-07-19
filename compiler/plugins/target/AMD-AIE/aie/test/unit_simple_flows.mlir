@@ -5,13 +5,13 @@
 // CHECK:           %[[TILE_2_3:.*]] = aie.tile(2, 3)
 // CHECK:           %[[TILE_2_2:.*]] = aie.tile(2, 2)
 // CHECK:           %[[SWITCHBOX_2_2:.*]] = aie.switchbox(%[[TILE_2_2]]) {
-// CHECK:             aie.connect<North : 0, Core : 1>
-// CHECK:             aie.connect<Core : 0, Core : 0>
-// CHECK:             aie.connect<Core : 1, North : 0>
+// CHECK-DAG:         aie.connect<North : 0, Core : 1>
+// CHECK-DAG:         aie.connect<Core : 0, Core : 0>
+// CHECK-DAG:         aie.connect<Core : 1, North : 0>
 // CHECK:           }
 // CHECK:           %[[SWITCHBOX_2_3:.*]] = aie.switchbox(%[[TILE_2_3]]) {
-// CHECK:             aie.connect<Core : 0, South : 0>
-// CHECK:             aie.connect<South : 0, Core : 1>
+// CHECK-DAG:         aie.connect<Core : 0, South : 0>
+// CHECK-DAG:         aie.connect<South : 0, Core : 1>
 // CHECK:           }
 // CHECK:           aie.wire(%[[TILE_2_2]] : Core, %[[SWITCHBOX_2_2:.*]] : Core)
 // CHECK:           aie.wire(%[[TILE_2_2]] : DMA, %[[SWITCHBOX_2_2]] : DMA)

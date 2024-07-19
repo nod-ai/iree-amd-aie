@@ -1,18 +1,18 @@
 
-// RUN: iree-opt --amdaie-create-pathfinder-flows %s | FileCheck %s
+// RUN: iree-opt --amdaie-create-pathfinder-flows="route-circuit=true route-packet=false" %s | FileCheck %s
 
 // CHECK-LABEL:   aie.device(xcvc1902) {
 // CHECK:           %[[TILE_0_1:.*]] = aie.tile(0, 1)
 // CHECK:           %[[TILE_1_2:.*]] = aie.tile(1, 2)
 // CHECK:           %[[TILE_0_2:.*]] = aie.tile(0, 2)
 // CHECK:           %[[SWITCHBOX_0_1:.*]] = aie.switchbox(%[[TILE_0_1]]) {
-// CHECK:             aie.connect<DMA : 0, North : 0>
+// CHECK-DAG:         aie.connect<DMA : 0, North : 0>
 // CHECK:           }
 // CHECK:           %[[SWITCHBOX_0_2:.*]] = aie.switchbox(%[[TILE_0_2]]) {
-// CHECK:             aie.connect<South : 0, East : 0>
+// CHECK-DAG:         aie.connect<South : 0, East : 0>
 // CHECK:           }
 // CHECK:           %[[SWITCHBOX_1_2:.*]] = aie.switchbox(%[[TILE_1_2]]) {
-// CHECK:             aie.connect<West : 0, Core : 1>
+// CHECK-DAG:         aie.connect<West : 0, Core : 1>
 // CHECK:           }
 // CHECK:           aie.packet_flow(16) {
 // CHECK:             aie.packet_source<%[[TILE_0_1]], Core : 0>
