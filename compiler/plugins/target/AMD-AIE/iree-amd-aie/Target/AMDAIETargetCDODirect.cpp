@@ -36,7 +36,7 @@ using namespace xilinx;
 using namespace xilinx::AIE;
 
 namespace {
-::StrmSwPortType toStrmT(WireBundle w) {
+StrmSwPortType toStrmT(WireBundle w) {
   switch (w) {
     case WireBundle::Core:
       return StrmSwPortType::CORE;

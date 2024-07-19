@@ -30,6 +30,7 @@ extern "C" {
 using namespace mlir::iree_compiler::AMDAIE;
 
 namespace {
+using mlir::iree_compiler::AMDAIE::StrmSwPortType;
 const std::map<StrmSwPortType, xilinx::AIE::WireBundle>
     _STRM_SW_PORT_TYPE_TO_WIRE_BUNDLE = {
         {StrmSwPortType::CORE, xilinx::AIE::WireBundle::Core},
@@ -81,7 +82,7 @@ class AMDAIENPUDeviceModelParameterizedAllPairsTimesAllPairsNPU4ColTestFixture
 
 class AMDAIENPUDeviceModelParameterizedSixTupleNPU4ColTestFixture
     : public AMDAIENPUDeviceModelParameterizedTupleTestNPU4ColFixture<
-          int, int, int, int, int, int> {};
+          int, int, StrmSwPortType, StrmSwPortType, int, int> {};
 
 TEST(SameNumRowsCols_NPU1, Test0) {
   AMDAIEDeviceModel deviceModel =
@@ -253,18 +254,18 @@ const std::map<std::tuple<int, int, StrmSwPortType>, std::tuple<int, int>,
                std::less<>>
     NumSourceSwitchboxConnectionsFails{
         // c, r, port, deviceModelNumSrc, targetModelNumSrc
-        {{0, 0, TRACE}, {2, 1}},
-        // trace
-        {{1, 0, TRACE}, {2, 1}},
-        {{2, 0, TRACE}, {2, 1}},
-        {{3, 0, TRACE}, {2, 1}},
-        {{4, 0, TRACE}, {2, 1}},
+        {{0, 0, StrmSwPortType::TRACE}, {2, 1}},
+        // traceStrmSwPortType::
+        {{1, 0, StrmSwPortType::TRACE}, {2, 1}},
+        {{2, 0, StrmSwPortType::TRACE}, {2, 1}},
+        {{3, 0, StrmSwPortType::TRACE}, {2, 1}},
+        {{4, 0, StrmSwPortType::TRACE}, {2, 1}},
         // east
-        {{3, 0, EAST}, {4, 0}},
-        {{3, 2, EAST}, {4, 0}},
-        {{3, 3, EAST}, {4, 0}},
-        {{3, 4, EAST}, {4, 0}},
-        {{3, 5, EAST}, {4, 0}}};
+        {{3, 0, StrmSwPortType::EAST}, {4, 0}},
+        {{3, 2, StrmSwPortType::EAST}, {4, 0}},
+        {{3, 3, StrmSwPortType::EAST}, {4, 0}},
+        {{3, 4, StrmSwPortType::EAST}, {4, 0}},
+        {{3, 5, StrmSwPortType::EAST}, {4, 0}}};
 
 TEST_P(
     AMDAIENPUDeviceModelParameterizedAllPairsTimesAllSwitchesNPU4ColTestFixture,
@@ -290,11 +291,11 @@ const std::map<std::tuple<int, int, StrmSwPortType>, std::tuple<int, int>,
                std::less<>>
     NumDestSwitchboxConnectionsFails{
         // c, r, port, deviceModelNumSrc, targetModelNumSrc
-        {{3, 0, EAST}, {4, 0}},
-        {{3, 2, EAST}, {4, 0}},
-        {{3, 3, EAST}, {4, 0}},
-        {{3, 4, EAST}, {4, 0}},
-        {{3, 5, EAST}, {4, 0}}};
+        {{3, 0, StrmSwPortType::EAST}, {4, 0}},
+        {{3, 2, StrmSwPortType::EAST}, {4, 0}},
+        {{3, 3, StrmSwPortType::EAST}, {4, 0}},
+        {{3, 4, StrmSwPortType::EAST}, {4, 0}},
+        {{3, 5, StrmSwPortType::EAST}, {4, 0}}};
 
 TEST_P(
     AMDAIENPUDeviceModelParameterizedAllPairsTimesAllSwitchesNPU4ColTestFixture,
@@ -350,7 +351,7 @@ const std::vector<std::vector<bool>> MEMTILE_CONNECTIVITY = {
 TEST_P(AMDAIENPUDeviceModelParameterizedMemtileConnectivityNPU4ColTestFixture,
        VerifyAIERTAIE2MemTileConnectivity) {
   auto [slavePhyPort, masterPhyPort] = GetParam();
-  StrmSwPortType slaveLogicalPortType, masterLogicalPortType;
+  ::StrmSwPortType slaveLogicalPortType, masterLogicalPortType;
   uint8_t slaveLogicalPortNum, masterLogicalPortNum;
 
   XAie_LocType tileLoc = XAie_TileLoc(/*col=*/3, /*row=*/1);
@@ -374,23 +375,24 @@ TEST_P(AMDAIENPUDeviceModelParameterizedMemtileConnectivityNPU4ColTestFixture,
 }
 
 // mlir-aie reports true when it should be false
-const std::set<std::tuple<int, int, int, int>> IsLegalMemtileConnectionFails{
-    // srcPort, srcChan, dstPort, dstChan
-    {CTRL, 0, DMA, 0},
-    // trace
-    {TRACE, 0, CTRL, 0},
-    {TRACE, 0, DMA, 0},
-    {TRACE, 0, DMA, 1},
-    {TRACE, 0, DMA, 2},
-    {TRACE, 0, DMA, 3},
-    {TRACE, 0, DMA, 4},
-    {TRACE, 0, NORTH, 0},
-    {TRACE, 0, NORTH, 1},
-    {TRACE, 0, NORTH, 2},
-    {TRACE, 0, NORTH, 3},
-    {TRACE, 0, NORTH, 4},
-    {TRACE, 0, NORTH, 5},
-};
+const std::set<std::tuple<StrmSwPortType, int, StrmSwPortType, int>>
+    IsLegalMemtileConnectionFails{
+        // srcPort, srcChan, dstPort, dstChan
+        {StrmSwPortType::CTRL, 0, StrmSwPortType::DMA, 0},
+        // trace
+        {StrmSwPortType::TRACE, 0, StrmSwPortType::CTRL, 0},
+        {StrmSwPortType::TRACE, 0, StrmSwPortType::DMA, 0},
+        {StrmSwPortType::TRACE, 0, StrmSwPortType::DMA, 1},
+        {StrmSwPortType::TRACE, 0, StrmSwPortType::DMA, 2},
+        {StrmSwPortType::TRACE, 0, StrmSwPortType::DMA, 3},
+        {StrmSwPortType::TRACE, 0, StrmSwPortType::DMA, 4},
+        {StrmSwPortType::TRACE, 0, StrmSwPortType::NORTH, 0},
+        {StrmSwPortType::TRACE, 0, StrmSwPortType::NORTH, 1},
+        {StrmSwPortType::TRACE, 0, StrmSwPortType::NORTH, 2},
+        {StrmSwPortType::TRACE, 0, StrmSwPortType::NORTH, 3},
+        {StrmSwPortType::TRACE, 0, StrmSwPortType::NORTH, 4},
+        {StrmSwPortType::TRACE, 0, StrmSwPortType::NORTH, 5},
+    };
 
 TEST_P(AMDAIENPUDeviceModelParameterizedSixTupleNPU4ColTestFixture,
        IsLegalMemtileConnection) {
@@ -399,12 +401,13 @@ TEST_P(AMDAIENPUDeviceModelParameterizedSixTupleNPU4ColTestFixture,
 
   // TODO(max): maybe there's a way in gtest for the generators to be
   // parameterized?
-  if ((srcStrmSwPortType == CTRL || destStrmSwPortType == CTRL) &&
+  if ((srcStrmSwPortType == StrmSwPortType::CTRL ||
+       destStrmSwPortType == StrmSwPortType::CTRL) &&
       (srcChan > 0 || dstChan > 0))
     return;
-  if (srcStrmSwPortType == TRACE && srcChan > 0) return;
-  if (srcStrmSwPortType == NORTH && srcChan > 3) return;
-  if (destStrmSwPortType == SOUTH && srcChan > 3) return;
+  if (srcStrmSwPortType == StrmSwPortType::TRACE && srcChan > 0) return;
+  if (srcStrmSwPortType == StrmSwPortType::NORTH && srcChan > 3) return;
+  if (destStrmSwPortType == StrmSwPortType::SOUTH && srcChan > 3) return;
 
   auto srcSw = static_cast<StrmSwPortType>(srcStrmSwPortType);
   auto srcWireB = STRM_SW_PORT_TYPE_TO_WIRE_BUNDLE(srcSw);
@@ -413,11 +416,11 @@ TEST_P(AMDAIENPUDeviceModelParameterizedSixTupleNPU4ColTestFixture,
     auto destWireb = STRM_SW_PORT_TYPE_TO_WIRE_BUNDLE(destSw);
     auto deviceModelIsLegal = deviceModel.isLegalMemtileConnection(
         c, r, srcSw, srcChan, destSw, dstChan);
-    auto targetModelIsLegal = targetModel.isLegalTileConnection(
-        c, r, srcWireB, srcChan, destWireb, dstChan);
+    auto targetModelIsLegal = targetModel.isLegalMemtileConnection(
+        srcWireB, srcChan, destWireb, dstChan);
 
-    if ((srcStrmSwPortType == DMA && destStrmSwPortType == DMA &&
-         srcChan != dstChan) ||
+    if ((srcStrmSwPortType == StrmSwPortType::DMA &&
+         destStrmSwPortType == StrmSwPortType::DMA && srcChan != dstChan) ||
         IsLegalMemtileConnectionFails.count(
             {srcStrmSwPortType, srcChan, destStrmSwPortType, dstChan}))
       EXPECT_NE(deviceModelIsLegal, targetModelIsLegal)
@@ -455,10 +458,14 @@ INSTANTIATE_TEST_SUITE_P(
 INSTANTIATE_TEST_SUITE_P(
     AllPairsTimesAllSwitchesTests,
     AMDAIENPUDeviceModelParameterizedAllPairsTimesAllSwitchesNPU4ColTestFixture,
-    ::testing::Combine(::testing::Range(0, NPU1_4COL_NUM_COLS),
-                       ::testing::Range(0, NPU1_4COL_NUM_ROWS),
-                       ::testing::Values(CORE, DMA, CTRL, FIFO, SOUTH, WEST,
-                                         NORTH, EAST, TRACE)));
+    ::testing::Combine(
+        ::testing::Range(0, NPU1_4COL_NUM_COLS),
+        ::testing::Range(0, NPU1_4COL_NUM_ROWS),
+        ::testing::Values(StrmSwPortType::CORE, StrmSwPortType::DMA,
+                          StrmSwPortType::CTRL, StrmSwPortType::FIFO,
+                          StrmSwPortType::SOUTH, StrmSwPortType::WEST,
+                          StrmSwPortType::NORTH, StrmSwPortType::EAST,
+                          StrmSwPortType::TRACE)));
 
 INSTANTIATE_TEST_SUITE_P(
     VerifyAIERTAIE2MemTileConnectivity,
@@ -470,8 +477,12 @@ INSTANTIATE_TEST_SUITE_P(
 #define MAX_CHANNELS 6
 
 // Figure 6-9: Stream-switch ports and connectivity matrix
-const std::vector<int> legalSlaves{DMA, CTRL, SOUTH, NORTH, TRACE};
-const std::vector<int> legalMasters{DMA, CTRL, SOUTH, NORTH};
+const std::vector<StrmSwPortType> legalSlaves{
+    StrmSwPortType::DMA, StrmSwPortType::CTRL, StrmSwPortType::SOUTH,
+    StrmSwPortType::NORTH, StrmSwPortType::TRACE};
+const std::vector<StrmSwPortType> legalMasters{
+    StrmSwPortType::DMA, StrmSwPortType::CTRL, StrmSwPortType::SOUTH,
+    StrmSwPortType::NORTH};
 
 INSTANTIATE_TEST_SUITE_P(
     IsLegalMemtileConnectionTests,

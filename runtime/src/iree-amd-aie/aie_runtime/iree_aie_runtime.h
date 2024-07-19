@@ -138,8 +138,8 @@ struct AMDAIEDeviceModel {
                              uint8_t devNColumns, uint8_t devNRows,
                              uint8_t memTileRowStart, uint8_t nMemTileRows,
                              uint8_t nShimTileRows, int partitionNumCols,
-                             int partitionStartCol, bool aieSim,
-                             bool xaieDebug);
+                             int partitionStartCol, bool aieSim, bool xaieDebug,
+                             AMDAIEDevice device);
 
   int rows() const;
   int columns() const;
@@ -149,6 +149,7 @@ struct AMDAIEDeviceModel {
   bool isMemTile(uint8_t col, uint8_t row) const;
   bool isShimNOCTile(uint8_t col, uint8_t row) const;
   bool isShimPLTile(uint8_t col, uint8_t row) const;
+  bool isShimNOCorPLTile(uint8_t col, uint8_t row) const;
 
   /// Retrieve a DMA properpty for the specified tile type.
   template <typename T>
@@ -192,153 +193,28 @@ struct AMDAIEDeviceModel {
                                             StrmSwPortType bundle) const;
   uint32_t getNumDestSwitchboxConnections(uint8_t col, uint8_t row,
                                           StrmSwPortType bundle) const;
+  uint32_t getNumSourceShimMuxConnections(uint8_t col, uint8_t row,
+                                          StrmSwPortType bundle) const;
+  uint32_t getNumDestShimMuxConnections(uint8_t col, uint8_t row,
+                                        StrmSwPortType bundle) const;
   bool isLegalMemtileConnection(uint8_t col, uint8_t row,
                                 StrmSwPortType srcBundle, uint8_t srcChan,
                                 StrmSwPortType dstBundle,
                                 uint8_t dstChan) const;
+  bool isLegalTileConnection(int col, int row, StrmSwPortType srcBundle,
+                             int srcChan, StrmSwPortType dstBundle,
+                             int dstChan) const;
 
   uint32_t getColumnShift() const;
   uint32_t getRowShift() const;
 
-  inline bool isShimNOCorPLTile(int col, int row) const {
-    return isShimNOCTile(col, row) || isShimPLTile(col, row);
-  }
-
-  uint32_t getNumDestShimMuxConnections(int col, int row,
-                                        StrmSwPortType bundle) const {
-    if (isShimNOCorPLTile(col, row)) switch (bundle) {
-        case StrmSwPortType::DMA:
-          return 2;
-        case StrmSwPortType::NOC:
-          return 4;
-        case StrmSwPortType::PLIO:
-          return 6;
-        case StrmSwPortType::SOUTH:
-          return 8;  // Connection to the south port of the stream switch
-        default:
-          return 0;
-      }
-
-    return 0;
-  }
-
-  uint32_t getNumSourceShimMuxConnections(int col, int row,
-                                          StrmSwPortType bundle) const {
-    if (isShimNOCorPLTile(col, row)) switch (bundle) {
-        case StrmSwPortType::DMA:
-          return 2;
-        case StrmSwPortType::NOC:
-          return 4;
-        case StrmSwPortType::PLIO:
-          return 8;
-        case StrmSwPortType::SOUTH:
-          return 6;  // Connection to the south port of the stream switch
-        default:
-          return 0;
-      }
-
-    return 0;
-  }
-
-  inline bool isLegalTileConnection(int col, int row, StrmSwPortType srcBundle,
-                                    int srcChan, StrmSwPortType dstBundle,
-                                    int dstChan) const {
-    // Check Channel Id within the range
-    if (srcChan >= int(getNumSourceSwitchboxConnections(col, row, srcBundle)))
-      return false;
-    if (dstChan >= int(getNumDestSwitchboxConnections(col, row, dstBundle)))
-      return false;
-
-    // Lambda function to check if a bundle is in a list
-    auto isBundleInList = [](StrmSwPortType bundle,
-                             std::initializer_list<StrmSwPortType> bundles) {
-      return std::find(bundles.begin(), bundles.end(), bundle) != bundles.end();
-    };
-
-    // Memtile
-    if (isMemTile(col, row)) {
-      if (srcBundle == StrmSwPortType::DMA) {
-        if (dstBundle == StrmSwPortType::DMA) return srcChan == dstChan;
-        if (isBundleInList(dstBundle,
-                           {StrmSwPortType::CTRL, StrmSwPortType::SOUTH,
-                            StrmSwPortType::NORTH}))
-          return true;
-      }
-      if (srcBundle == StrmSwPortType::CTRL) {
-        if (dstBundle == StrmSwPortType::DMA) return dstChan == 5;
-        if (isBundleInList(dstBundle,
-                           {StrmSwPortType::SOUTH, StrmSwPortType::NORTH}))
-          return true;
-      }
-      if (isBundleInList(srcBundle,
-                         {StrmSwPortType::SOUTH, StrmSwPortType::NORTH})) {
-        if (isBundleInList(dstBundle,
-                           {StrmSwPortType::DMA, StrmSwPortType::CTRL}))
-          return true;
-        if (isBundleInList(dstBundle,
-                           {StrmSwPortType::SOUTH, StrmSwPortType::NORTH}))
-          return srcChan == dstChan;
-      }
-      if (srcBundle == StrmSwPortType::TRACE) {
-        if (dstBundle == StrmSwPortType::DMA) return dstChan == 5;
-        if (dstBundle == StrmSwPortType::SOUTH) return true;
-      }
-    }
-    // Shimtile
-    else if (isShimNOCTile(col, row)) {
-      if (srcBundle == StrmSwPortType::CTRL)
-        return dstBundle != StrmSwPortType::CTRL;
-      if (isBundleInList(srcBundle,
-                         {StrmSwPortType::FIFO, StrmSwPortType::SOUTH}))
-        return isBundleInList(dstBundle,
-                              {StrmSwPortType::CTRL, StrmSwPortType::FIFO,
-                               StrmSwPortType::SOUTH, StrmSwPortType::WEST,
-                               StrmSwPortType::NORTH, StrmSwPortType::EAST});
-      if (isBundleInList(srcBundle,
-                         {StrmSwPortType::WEST, StrmSwPortType::NORTH,
-                          StrmSwPortType::EAST}))
-        return (srcBundle == dstBundle)
-                   ? (srcChan == dstChan)
-                   : isBundleInList(
-                         dstBundle,
-                         {StrmSwPortType::CTRL, StrmSwPortType::FIFO,
-                          StrmSwPortType::SOUTH, StrmSwPortType::WEST,
-                          StrmSwPortType::NORTH, StrmSwPortType::EAST});
-      if (srcBundle == StrmSwPortType::TRACE) {
-        if (isBundleInList(dstBundle,
-                           {StrmSwPortType::FIFO, StrmSwPortType::SOUTH}))
-          return true;
-        if (isBundleInList(dstBundle,
-                           {StrmSwPortType::WEST, StrmSwPortType::EAST}))
-          return dstChan == 0;
-      }
-    }
-    // Coretile
-    else if (isCoreTile(col, row)) {
-      if (isBundleInList(srcBundle,
-                         {StrmSwPortType::DMA, StrmSwPortType::FIFO,
-                          StrmSwPortType::SOUTH, StrmSwPortType::WEST,
-                          StrmSwPortType::NORTH, StrmSwPortType::EAST}))
-        if (isBundleInList(dstBundle,
-                           {StrmSwPortType::CORE, StrmSwPortType::DMA,
-                            StrmSwPortType::CTRL, StrmSwPortType::FIFO,
-                            StrmSwPortType::SOUTH, StrmSwPortType::WEST,
-                            StrmSwPortType::NORTH, StrmSwPortType::EAST}))
-          return (srcBundle == dstBundle) ? (srcChan == dstChan) : true;
-      if (srcBundle == StrmSwPortType::CORE)
-        return dstBundle != StrmSwPortType::CORE;
-      if (srcBundle == StrmSwPortType::CTRL)
-        return dstBundle != StrmSwPortType::CTRL &&
-               dstBundle != StrmSwPortType::DMA;
-      if (srcBundle == StrmSwPortType::TRACE) {
-        if (dstBundle == StrmSwPortType::DMA) return dstChan == 0;
-        if (isBundleInList(dstBundle,
-                           {StrmSwPortType::FIFO, StrmSwPortType::SOUTH}))
-          return true;
-      }
-    }
-    return false;
-  }
+ private:
+  AMDAIEDevice device;
+  uint32_t getNumShimMuxConnections(uint8_t col, uint8_t row,
+                                    StrmSwPortType bundle) const;
+  bool _isLegalTileConnection(int col, int row, StrmSwPortType srcBundle,
+                              int srcChan, StrmSwPortType dstBundle,
+                              int dstChan) const;
 };
 
 struct AMDAIEDeviceModel getDeviceModel(AMDAIEDevice device);
@@ -351,6 +227,7 @@ struct AMDAIEDeviceModel getDeviceModel(AMDAIEDevice device);
   _(AMDAIEDmaProp)    \
   _(AieRC)            \
   _(StrmSwPortType)   \
+  _(::StrmSwPortType) \
   _(TileLoc)          \
   _(XAie_LocType)     \
   _(XAie_Lock)        \
@@ -369,6 +246,7 @@ TO_STRINGS(TO_STRING)
   _(OSTREAM_OP_, mlir::iree_compiler::AMDAIE::TileLoc)        \
   _(OSTREAM_OP_, AieRC)                                       \
   _(OSTREAM_OP_, StrmSwPortType)                              \
+  _(OSTREAM_OP_, ::StrmSwPortType)                            \
   _(OSTREAM_OP_, XAie_LocType)                                \
   _(OSTREAM_OP_, XAie_Lock)                                   \
   _(OSTREAM_OP_, XAie_Packet)
