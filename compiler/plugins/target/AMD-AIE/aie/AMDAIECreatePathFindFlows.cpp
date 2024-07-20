@@ -11,7 +11,6 @@
 
 #include "Passes.h"
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
-#include "iree-amd-aie/aie_runtime/d_ary_heap.h"
 #include "iree-amd-aie/aie_runtime/iree_aie_router.h"
 #include "iree-amd-aie/aie_runtime/iree_aie_runtime.h"
 #include "llvm/ADT/DenseMapInfo.h"

@@ -59,7 +59,204 @@ STRINGIFY_2TUPLE_STRUCT(PathEndPoint, sb, port)
 
 BOTH_OSTREAM_OPS_FORALL_ROUTER_TYPES(OSTREAM_OP_DEFN, BOTH_OSTREAM_OP)
 
-static constexpr double INF = std::numeric_limits<double>::max();
+SwitchboxNode::SwitchboxNode(int col, int row, int id,
+                             const AMDAIEDeviceModel &targetModel)
+    : col{col}, row{row}, id{id} {
+  std::vector<StrmSwPortType> bundles = {
+      StrmSwPortType::CORE,  StrmSwPortType::DMA,  StrmSwPortType::FIFO,
+      StrmSwPortType::SOUTH, StrmSwPortType::WEST, StrmSwPortType::NORTH,
+      StrmSwPortType::EAST,  StrmSwPortType::PLIO, StrmSwPortType::NOC,
+      StrmSwPortType::TRACE, StrmSwPortType::CTRL};
+  std::vector<StrmSwPortType> shimBundles = {
+      StrmSwPortType::DMA, StrmSwPortType::NOC, StrmSwPortType::PLIO};
+
+  for (StrmSwPortType bundle : bundles) {
+    int maxCapacity =
+        targetModel.getNumSourceSwitchboxConnections(col, row, bundle);
+    if (targetModel.isShimNOCorPLTile(col, row) && maxCapacity == 0) {
+      // wordaround for shimMux, todo: integrate shimMux into routable grid
+      maxCapacity =
+          targetModel.getNumSourceShimMuxConnections(col, row, bundle);
+    }
+
+    for (int channel = 0; channel < maxCapacity; channel++) {
+      Port inPort = {bundle, channel};
+      inPortToId[inPort] = inPortId;
+      inPortId++;
+    }
+
+    maxCapacity = targetModel.getNumDestSwitchboxConnections(col, row, bundle);
+    if (targetModel.isShimNOCorPLTile(col, row) && maxCapacity == 0) {
+      // wordaround for shimMux, todo: integrate shimMux into routable grid
+      maxCapacity = targetModel.getNumDestShimMuxConnections(col, row, bundle);
+    }
+    for (int channel = 0; channel < maxCapacity; channel++) {
+      Port outPort = {bundle, channel};
+      outPortToId[outPort] = outPortId;
+      outPortId++;
+    }
+  }
+
+  connectionMatrix.resize(
+      inPortId, std::vector<Connectivity>(outPortId, Connectivity::AVAILABLE));
+
+  // illegal connection
+  for (const auto &[inPort, inId] : inPortToId) {
+    for (const auto &[outPort, outId] : outPortToId) {
+      if (!targetModel.isLegalTileConnection(col, row, inPort.bundle,
+                                             inPort.channel, outPort.bundle,
+                                             outPort.channel))
+        connectionMatrix[inId][outId] = Connectivity::INVALID;
+
+      if (targetModel.isShimNOCorPLTile(col, row)) {
+        // wordaround for shimMux, todo: integrate shimMux into routable grid
+        auto isBundleInList = [](StrmSwPortType bundle,
+                                 std::vector<StrmSwPortType> bundles) {
+          return std::find(bundles.begin(), bundles.end(), bundle) !=
+                 bundles.end();
+        };
+        if (isBundleInList(inPort.bundle, shimBundles) ||
+            isBundleInList(outPort.bundle, shimBundles))
+          connectionMatrix[inId][outId] = Connectivity::AVAILABLE;
+      }
+    }
+  }
+}
+
+// given a outPort, find availble input channel
+std::vector<int> SwitchboxNode::findAvailableChannelIn(StrmSwPortType inBundle,
+                                                       Port outPort,
+                                                       bool isPkt) {
+  std::vector<int> availableChannels;
+  if (outPortToId.count(outPort) > 0) {
+    int outId = outPortToId[outPort];
+    if (isPkt) {
+      for (const auto &[inPort, inId] : inPortToId) {
+        if (inPort.bundle == inBundle &&
+            connectionMatrix[inId][outId] != Connectivity::INVALID) {
+          bool available = true;
+          if (inPortPktCount.count(inPort) == 0) {
+            for (const auto &[_outPort, _outPortId] : outPortToId) {
+              if (connectionMatrix[inId][_outPortId] ==
+                  Connectivity::OCCUPIED) {
+                // occupied by others as circuit-switched
+                available = false;
+                break;
+              }
+            }
+          } else {
+            if (inPortPktCount[inPort] >= maxPktStream) {
+              // occupied by others as packet-switched but exceed max packet
+              // stream capacity
+              available = false;
+            }
+          }
+          if (available) availableChannels.push_back(inPort.channel);
+        }
+      }
+    } else {
+      for (const auto &[inPort, inId] : inPortToId) {
+        if (inPort.bundle == inBundle &&
+            connectionMatrix[inId][outId] == Connectivity::AVAILABLE) {
+          bool available = true;
+          for (const auto &[_outPort, _outPortId] : outPortToId) {
+            if (connectionMatrix[inId][_outPortId] == Connectivity::OCCUPIED) {
+              available = false;
+              break;
+            }
+          }
+          if (available) availableChannels.push_back(inPort.channel);
+        }
+      }
+    }
+  }
+  return availableChannels;
+}
+
+bool SwitchboxNode::allocate(Port inPort, Port outPort, bool isPkt) {
+  // invalid port
+  if (outPortToId.count(outPort) == 0 || inPortToId.count(inPort) == 0)
+    return false;
+
+  int inId = inPortToId[inPort];
+  int outId = outPortToId[outPort];
+
+  // invalid connection
+  if (connectionMatrix[inId][outId] == Connectivity::INVALID) return false;
+
+  if (isPkt) {
+    // a packet-switched stream to be allocated
+    if (inPortPktCount.count(inPort) == 0) {
+      for (const auto &[_outPort, _outPortId] : outPortToId) {
+        if (connectionMatrix[inId][_outPortId] == Connectivity::OCCUPIED) {
+          // occupied by others as circuit-switched, allocation fail!
+          return false;
+        }
+      }
+      // empty channel, allocation succeed!
+      inPortPktCount[inPort] = 1;
+      connectionMatrix[inId][outId] = Connectivity::OCCUPIED;
+      return true;
+    } else {
+      if (inPortPktCount[inPort] >= maxPktStream) {
+        // occupied by others as packet-switched but exceed max packet stream
+        // capacity, allocation fail!
+        return false;
+      } else {
+        // valid packet-switched, allocation succeed!
+        inPortPktCount[inPort]++;
+        return true;
+      }
+    }
+  } else {
+    // a circuit-switched stream to be allocated
+    if (connectionMatrix[inId][outId] == Connectivity::AVAILABLE) {
+      // empty channel, allocation succeed!
+      connectionMatrix[inId][outId] = Connectivity::OCCUPIED;
+      return true;
+    } else {
+      // occupied by others, allocation fail!
+      return false;
+    }
+  }
+}
+
+void SwitchboxNode::clearAllocation() {
+  for (int inId = 0; inId < inPortId; inId++) {
+    for (int outId = 0; outId < outPortId; outId++) {
+      if (connectionMatrix[inId][outId] != Connectivity::INVALID) {
+        connectionMatrix[inId][outId] = Connectivity::AVAILABLE;
+      }
+    }
+  }
+  inPortPktCount.clear();
+}
+
+ChannelEdge::ChannelEdge(SwitchboxNode *src, SwitchboxNode *target)
+    : src(src), target(target) {
+  // get bundle from src to target coordinates
+  if (src->col == target->col) {
+    if (src->row > target->row)
+      bundle = StrmSwPortType::SOUTH;
+    else
+      bundle = StrmSwPortType::NORTH;
+  } else {
+    if (src->col > target->col)
+      bundle = StrmSwPortType::WEST;
+    else
+      bundle = StrmSwPortType::EAST;
+  }
+
+  // maximum number of routing resources
+  maxCapacity = 0;
+  for (auto &[outPort, _] : src->outPortToId) {
+    if (outPort.bundle == bundle) {
+      maxCapacity++;
+    }
+  }
+}
+
+
 void Pathfinder::initialize(int maxCol, int maxRow,
                             const AMDAIEDeviceModel &targetModel) {
   // make grid of switchboxes
