@@ -117,7 +117,7 @@ WireBundle toWireB(StrmSwPortType w) {
 namespace mlir::iree_compiler::AMDAIE {
 enum class Connectivity { INVALID = -1, AVAILABLE = 0, OCCUPIED = 1 };
 
-using SwitchboxNode = struct SwitchboxNode {
+struct SwitchboxNode {
   SwitchboxNode(int col, int row, int id, int maxCol, int maxRow,
                 const AMDAIEDeviceModel &targetModel)
       : col{col}, row{row}, id{id} {
@@ -327,7 +327,7 @@ using SwitchboxNode = struct SwitchboxNode {
   const int maxPktStream = 32;
 };
 
-using ChannelEdge = struct ChannelEdge {
+struct ChannelEdge {
   ChannelEdge(SwitchboxNode *src, SwitchboxNode *target)
       : src(src), target(target) {
     // get bundle from src to target coordinates
@@ -375,7 +375,7 @@ using ChannelEdge = struct ChannelEdge {
 // A SwitchSetting defines the required settings for a SwitchboxNode for a flow
 // SwitchSetting.src is the incoming signal
 // SwitchSetting.dsts is the fanout
-using SwitchSetting = struct SwitchSetting {
+struct SwitchSetting {
   SwitchSetting() = default;
   SwitchSetting(Port src) : src(src) {}
   SwitchSetting(Port src, std::set<Port> dsts)
@@ -387,8 +387,7 @@ using SwitchSetting = struct SwitchSetting {
   // namespace surrounding the class).
   friend std::ostream &operator<<(std::ostream &os,
                                   const SwitchSetting &setting) {
-    os << setting.src << " -> "
-       << "{"
+    os << setting.src << " -> " << "{"
        << join(llvm::map_range(setting.dsts,
                                [](const Port &port) {
                                  std::ostringstream ss;
@@ -415,7 +414,7 @@ using SwitchSettings = std::map<SwitchboxNode, SwitchSetting>;
 
 // A Flow defines source and destination vertices
 // Only one source, but any number of destinations (fanout)
-using PathEndPoint = struct PathEndPoint {
+struct PathEndPoint {
   SwitchboxNode sb;
   Port port;
 
@@ -444,13 +443,13 @@ using PathEndPoint = struct PathEndPoint {
 
 // A Flow defines source and destination vertices
 // Only one source, but any number of destinations (fanout)
-using PathEndPointNode = struct PathEndPointNode : PathEndPoint {
+struct PathEndPointNode : PathEndPoint {
   PathEndPointNode(SwitchboxNode *sb, Port port)
       : PathEndPoint{*sb, port}, sb(sb) {}
   SwitchboxNode *sb;
 };
 
-using FlowNode = struct FlowNode {
+struct FlowNode {
   bool isPacketFlow;
   PathEndPointNode src;
   std::vector<PathEndPointNode> dsts;
@@ -640,7 +639,7 @@ LogicalResult DynamicTileAnalysis::runAnalysis(DeviceOp &device) {
   // algorithm
   // check whether the pathfinder algorithm creates a legal routing
   if (auto maybeFlowSolutions = pathfinder->findPaths(maxIterations))
-    flowSolutions = maybeFlowSolutions.value();
+    flowSolutions.swap(maybeFlowSolutions.value());
   else
     return device.emitError("Unable to find a legal routing");
 
@@ -1066,7 +1065,7 @@ std::optional<std::map<PathEndPoint, SwitchSettings>> Pathfinder::findPaths(
         }
       }
       // add this flow to the proposed solution
-      routingSolution[src] = switchSettings;
+      routingSolution[src].swap(switchSettings);
     }
 
   } while (!isLegal);  // continue iterations until a legal routing is found
@@ -1234,8 +1233,7 @@ struct ConvertFlowsToInterconnect : OpConversionPattern<FlowOp> {
           }
         }
 
-        LLVM_DEBUG(llvm::dbgs() << curr << ": " << setting << " | "
-                                << "\n");
+        LLVM_DEBUG(llvm::dbgs() << curr << ": " << setting << " | " << "\n");
       }
 
       LLVM_DEBUG(llvm::dbgs()
@@ -1844,14 +1842,14 @@ void AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder) {
     LLVM_DEBUG(llvm::dbgs()
                << "Port " << tile << " " << stringifyWireBundle(bundle) << " "
                << channel << '\n');
-    LLVM_DEBUG(llvm::dbgs() << "Mask "
-                            << "0x" << llvm::Twine::utohexstr(mask) << '\n');
-    LLVM_DEBUG(llvm::dbgs() << "ID "
-                            << "0x" << llvm::Twine::utohexstr(ID) << '\n');
+    LLVM_DEBUG(llvm::dbgs()
+               << "Mask " << "0x" << llvm::Twine::utohexstr(mask) << '\n');
+    LLVM_DEBUG(llvm::dbgs()
+               << "ID " << "0x" << llvm::Twine::utohexstr(ID) << '\n');
     for (int i = 0; i < 31; i++) {
       if ((i & mask) == (ID & mask))
-        LLVM_DEBUG(llvm::dbgs() << "matches flow ID "
-                                << "0x" << llvm::Twine::utohexstr(i) << '\n');
+        LLVM_DEBUG(llvm::dbgs() << "matches flow ID " << "0x"
+                                << llvm::Twine::utohexstr(i) << '\n');
     }
   }
 #endif
