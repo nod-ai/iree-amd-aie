@@ -45,8 +45,6 @@ using xilinx::AIE::Connect;
 using xilinx::AIE::Port;
 using xilinx::AIE::TileID;
 
-using AMDAIEDeviceModel = xilinx::AIE::AIETargetModel;
-
 #define DEBUG_TYPE "amdaie-create-pathfinder-flows"
 #define OVER_CAPACITY_COEFF 0.02
 #define USED_CAPACITY_COEFF 0.02

@@ -531,7 +531,7 @@ iree_cc_library(
     iree_aie_runtime.h
     xaie_hwcfg.h
   SRCS
-#    iree_aie_router.cc
+    iree_aie_router.cc
     iree_aie_runtime.cc
     xaie_hwcfg.c
   INCLUDES
