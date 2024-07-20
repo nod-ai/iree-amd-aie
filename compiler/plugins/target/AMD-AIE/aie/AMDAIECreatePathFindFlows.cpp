@@ -114,10 +114,9 @@ namespace mlir::iree_compiler::AMDAIE {
 // environment. It passes flows to the Pathfinder as ordered pairs of ints.
 // Detailed routing is received as SwitchboxSettings
 // It then converts these settings to MLIR operations
-class DynamicTileAnalysis {
- public:
-  int maxCol, maxRow;
-  Pathfinder pathfinder;
+struct DynamicTileAnalysis {
+  int maxCol{}, maxRow{};
+  Router pathfinder;
   std::map<PathEndPoint, SwitchSettings> flowSolutions;
   std::set<PathEndPoint> processedFlows;
 
@@ -126,10 +125,7 @@ class DynamicTileAnalysis {
   llvm::DenseMap<TileLoc, ShimMuxOp> coordToShimMux;
   llvm::DenseMap<int, PLIOOp> coordToPLIO;
 
-  const int maxIterations = 1000;  // how long until declared unroutable
-
   DynamicTileAnalysis() = default;
-  DynamicTileAnalysis(const Pathfinder &p) : pathfinder(std::move(p)) {}
 
   mlir::LogicalResult runAnalysis(DeviceOp &device);
 
@@ -137,17 +133,11 @@ class DynamicTileAnalysis {
   int getMaxRow() const { return maxRow; }
 
   TileOp getTile(mlir::OpBuilder &builder, int col, int row);
-
   SwitchboxOp getSwitchbox(mlir::OpBuilder &builder, int col, int row);
-
   ShimMuxOp getShimMux(mlir::OpBuilder &builder, int col);
 };
 
-}  // namespace mlir::iree_compiler::AMDAIE
-namespace mlir::iree_compiler::AMDAIE {
 LogicalResult DynamicTileAnalysis::runAnalysis(DeviceOp &device) {
-  LLVM_DEBUG(llvm::dbgs() << "\t---Begin DynamicTileAnalysis Constructor---\n");
-  // find the maxCol and maxRow
   maxCol = 0;
   maxRow = 0;
   for (TileOp tileOp : device.getOps<TileOp>()) {
@@ -155,9 +145,9 @@ LogicalResult DynamicTileAnalysis::runAnalysis(DeviceOp &device) {
     maxRow = std::max(maxRow, tileOp.rowIndex());
   }
 
-  AMDAIEDeviceModel targetModel =
+  AMDAIEDeviceModel deviceModel =
       getDeviceModel(static_cast<AMDAIEDevice>(device.getDevice()));
-  pathfinder.initialize(maxCol, maxRow, targetModel);
+  pathfinder.initialize(maxCol, maxRow, deviceModel);
 
   // for each flow in the device, add it to pathfinder
   // each source can map to multiple different destinations (fanout)
@@ -169,11 +159,6 @@ LogicalResult DynamicTileAnalysis::runAnalysis(DeviceOp &device) {
     Port srcPort = {toStrmT(flowOp.getSourceBundle()),
                     flowOp.getSourceChannel()};
     Port dstPort = {toStrmT(flowOp.getDestBundle()), flowOp.getDestChannel()};
-    LLVM_DEBUG(llvm::dbgs()
-               << "\tAdding Flow: (" << srcCoords.col << ", " << srcCoords.row
-               << ")" << srcPort.bundle << srcPort.channel << " -> ("
-               << dstCoords.col << ", " << dstCoords.row << ")"
-               << dstPort.bundle << dstPort.channel << "\n");
     pathfinder.addFlow(srcCoords, srcPort, dstCoords, dstPort, false);
   }
 
@@ -192,12 +177,6 @@ LogicalResult DynamicTileAnalysis::runAnalysis(DeviceOp &device) {
         dstTile = dyn_cast<TileOp>(pktDest.getTile().getDefiningOp());
         dstPort = {toStrmT(pktDest.port().bundle), pktDest.port().channel};
         dstCoords = {dstTile.colIndex(), dstTile.rowIndex()};
-        LLVM_DEBUG(llvm::dbgs()
-                   << "\tAdding Packet Flow: (" << srcCoords.col << ", "
-                   << srcCoords.row << ")" << srcPort.bundle << srcPort.channel
-                   << " -> (" << dstCoords.col << ", " << dstCoords.row << ")"
-                   << dstPort.bundle << dstPort.channel << "\n");
-        // todo: support many-to-one & many-to-many?
         pathfinder.addFlow(srcCoords, srcPort, dstCoords, dstPort, true);
       }
     }
@@ -221,7 +200,7 @@ LogicalResult DynamicTileAnalysis::runAnalysis(DeviceOp &device) {
   // all flows are now populated, call the congestion-aware pathfinder
   // algorithm
   // check whether the pathfinder algorithm creates a legal routing
-  if (auto maybeFlowSolutions = pathfinder.findPaths(maxIterations))
+  if (auto maybeFlowSolutions = pathfinder.findPaths(/*maxIterations=*/1000))
     flowSolutions.swap(maybeFlowSolutions.value());
   else
     return device.emitError("Unable to find a legal routing");
@@ -233,30 +212,33 @@ LogicalResult DynamicTileAnalysis::runAnalysis(DeviceOp &device) {
     row = tileOp.rowIndex();
     maxCol = std::max(maxCol, col);
     maxRow = std::max(maxRow, row);
-    assert(coordToTile.count({col, row}) == 0);
+    assert(coordToTile.count({col, row}) == 0 &&
+           "expected tile not in coordToTile yet");
     coordToTile[{col, row}] = tileOp;
   }
+
   for (auto switchboxOp : device.getOps<SwitchboxOp>()) {
     int col = switchboxOp.colIndex();
     int row = switchboxOp.rowIndex();
-    assert(coordToSwitchbox.count({col, row}) == 0);
+    assert(coordToSwitchbox.count({col, row}) == 0 &&
+           "expected tile not in coordToSwitchbox");
     coordToSwitchbox[{col, row}] = switchboxOp;
   }
+
   for (auto shimmuxOp : device.getOps<ShimMuxOp>()) {
     int col = shimmuxOp.colIndex();
     int row = shimmuxOp.rowIndex();
-    assert(coordToShimMux.count({col, row}) == 0);
+    assert(coordToShimMux.count({col, row}) == 0 &&
+           "expected tile not in coordToShimMux");
     coordToShimMux[{col, row}] = shimmuxOp;
   }
 
-  LLVM_DEBUG(llvm::dbgs() << "\t---End DynamicTileAnalysis Constructor---\n");
   return success();
 }
 
 TileOp DynamicTileAnalysis::getTile(OpBuilder &builder, int col, int row) {
-  if (coordToTile.count({col, row})) {
-    return coordToTile[{col, row}];
-  }
+  if (coordToTile.count({col, row})) return coordToTile[{col, row}];
+
   auto tileOp = builder.create<TileOp>(builder.getUnknownLoc(), col, row);
   coordToTile[{col, row}] = tileOp;
   maxCol = std::max(maxCol, col);
@@ -266,11 +248,10 @@ TileOp DynamicTileAnalysis::getTile(OpBuilder &builder, int col, int row) {
 
 SwitchboxOp DynamicTileAnalysis::getSwitchbox(OpBuilder &builder, int col,
                                               int row) {
-  assert(col >= 0);
-  assert(row >= 0);
-  if (coordToSwitchbox.count({col, row})) {
-    return coordToSwitchbox[{col, row}];
-  }
+  assert(col >= 0 && "expected col >=0");
+  assert(row >= 0 && "expected row >= 0");
+  if (coordToSwitchbox.count({col, row})) return coordToSwitchbox[{col, row}];
+
   auto switchboxOp = builder.create<SwitchboxOp>(builder.getUnknownLoc(),
                                                  getTile(builder, col, row));
   SwitchboxOp::ensureTerminator(switchboxOp.getConnections(), builder,
@@ -282,12 +263,12 @@ SwitchboxOp DynamicTileAnalysis::getSwitchbox(OpBuilder &builder, int col,
 }
 
 ShimMuxOp DynamicTileAnalysis::getShimMux(OpBuilder &builder, int col) {
-  assert(col >= 0);
+  assert(col >= 0 && "expected col >= 0");
   int row = 0;
-  if (coordToShimMux.count({col, row})) {
-    return coordToShimMux[{col, row}];
-  }
-  //  assert(getTile(builder, col, row).isShimNOCTile());
+  if (coordToShimMux.count({col, row})) return coordToShimMux[{col, row}];
+
+  assert(getTile(builder, col, row).isShimNOCTile() &&
+         "expected tile is ShimNOC");
   auto switchboxOp = builder.create<ShimMuxOp>(builder.getUnknownLoc(),
                                                getTile(builder, col, row));
   SwitchboxOp::ensureTerminator(switchboxOp.getConnections(), builder,
@@ -303,11 +284,14 @@ namespace mlir::iree_compiler::AMDAIE {
 
 struct ConvertFlowsToInterconnect : OpConversionPattern<FlowOp> {
   using OpConversionPattern::OpConversionPattern;
-  DeviceOp &device;
+  const AMDAIEDeviceModel &deviceModel;
   DynamicTileAnalysis &analyzer;
-  ConvertFlowsToInterconnect(MLIRContext *context, DeviceOp &d,
+  ConvertFlowsToInterconnect(MLIRContext *context,
+                             const AMDAIEDeviceModel &deviceModel,
                              DynamicTileAnalysis &a, PatternBenefit benefit = 1)
-      : OpConversionPattern(context, benefit), device(d), analyzer(a) {}
+      : OpConversionPattern(context, benefit),
+        deviceModel(deviceModel),
+        analyzer(a) {}
 
   LogicalResult matchAndRewrite(
       FlowOp flowOp, OpAdaptor adaptor,
@@ -317,18 +301,14 @@ struct ConvertFlowsToInterconnect : OpConversionPattern<FlowOp> {
     auto srcBundle = toStrmT(flowOp.getSourceBundle());
     auto srcChannel = flowOp.getSourceChannel();
     Port srcPort = {srcBundle, srcChannel};
-    SwitchboxNode srcSB =
-        analyzer.pathfinder.getSwitchboxNode({srcCoords.col, srcCoords.row});
-    PathEndPoint srcPe{srcSB, srcPort};
+    PathEndPoint srcPe{{srcCoords.col, srcCoords.row}, srcPort};
     if (analyzer.processedFlows.count(srcPe)) {
       rewriter.eraseOp(flowOp);
       return success();
     }
 
-    AMDAIEDeviceModel targetModel =
-        getDeviceModel(static_cast<AMDAIEDevice>(device.getDevice()));
     for (auto &[curr, conn] :
-         emitConnections(analyzer.flowSolutions, srcPe, targetModel)) {
+         emitConnections(analyzer.flowSolutions, srcPe, deviceModel)) {
       // create switchboxes eagerly just to agree with mlir-aie tests
       SwitchboxOp switchboxOp =
           analyzer.getSwitchbox(rewriter, curr.col, curr.row);
@@ -381,14 +361,6 @@ struct AIEPathfinderPass
   void runOnPacketFlow(DeviceOp d, mlir::OpBuilder &builder);
 
   typedef std::pair<mlir::Operation *, Port> PhysPort;
-
-  bool findPathToDest(SwitchSettings settings, TileLoc currTile,
-                      StrmSwPortType currDestBundle, int currDestChannel,
-                      TileLoc finalTile, StrmSwPortType finalDestBundle,
-                      int finalDestChannel);
-
-  mlir::Operation *getOrCreateTile(mlir::OpBuilder &builder, int col, int row);
-  SwitchboxOp getOrCreateSwitchbox(mlir::OpBuilder &builder, TileOp tile);
   mlir::Pass::Option<bool> clRouteCircuit{
       *this, "route-circuit",
       llvm::cl::desc("Flag to enable aie.flow lowering."),
@@ -409,11 +381,12 @@ void AIEPathfinderPass::runOnFlow(DeviceOp d, OpBuilder &builder) {
   target.addLegalOp<ShimMuxOp>();
   target.addLegalOp<EndOp>();
 
-  AMDAIEDeviceModel targetModel =
+  AMDAIEDeviceModel deviceModel =
       getDeviceModel(static_cast<AMDAIEDevice>(d.getDevice()));
 
   RewritePatternSet patterns(&getContext());
-  patterns.insert<ConvertFlowsToInterconnect>(d.getContext(), d, analyzer);
+  patterns.insert<ConvertFlowsToInterconnect>(d.getContext(), deviceModel,
+                                              analyzer);
   if (failed(applyPartialConversion(d, target, std::move(patterns))))
     return signalPassFailure();
 
@@ -421,24 +394,27 @@ void AIEPathfinderPass::runOnFlow(DeviceOp d, OpBuilder &builder) {
   for (int col = 0; col <= analyzer.getMaxCol(); col++) {
     for (int row = 0; row <= analyzer.getMaxRow(); row++) {
       TileOp tile;
-      if (analyzer.coordToTile.count({col, row}))
+      if (analyzer.coordToTile.count({col, row})) {
         tile = analyzer.coordToTile[{col, row}];
-      else
+      } else {
         continue;
-      SwitchboxOp sw;
-      if (analyzer.coordToSwitchbox.count({col, row}))
-        sw = analyzer.coordToSwitchbox[{col, row}];
-      else
-        continue;
-      if (col > 0) {
-        // connections east-west between stream switches
-        if (analyzer.coordToSwitchbox.count({col - 1, row})) {
-          auto westsw = analyzer.coordToSwitchbox[{col - 1, row}];
-          builder.create<WireOp>(builder.getUnknownLoc(), westsw,
-                                 toWireB(StrmSwPortType::EAST), sw,
-                                 toWireB(StrmSwPortType::WEST));
-        }
       }
+
+      SwitchboxOp sw;
+      if (analyzer.coordToSwitchbox.count({col, row})) {
+        sw = analyzer.coordToSwitchbox[{col, row}];
+      } else {
+        continue;
+      }
+
+      if (col > 0 && analyzer.coordToSwitchbox.count({col - 1, row})) {
+        // connections east-west between stream switches
+        auto westsw = analyzer.coordToSwitchbox[{col - 1, row}];
+        builder.create<WireOp>(builder.getUnknownLoc(), westsw,
+                               toWireB(StrmSwPortType::EAST), sw,
+                               toWireB(StrmSwPortType::WEST));
+      }
+
       if (row > 0) {
         // connections between abstract 'core' of tile
         builder.create<WireOp>(builder.getUnknownLoc(), tile,
@@ -456,57 +432,41 @@ void AIEPathfinderPass::runOnFlow(DeviceOp d, OpBuilder &builder) {
                                  toWireB(StrmSwPortType::NORTH), sw,
                                  toWireB(StrmSwPortType::SOUTH));
         }
-      } else if (row == 0) {
-        if (targetModel.isShimNOCTile(tile.getCol(), tile.getRow())) {
-          if (analyzer.coordToShimMux.count({col, 0})) {
-            auto shimsw = analyzer.coordToShimMux[{col, 0}];
-            builder.create<WireOp>(
-                builder.getUnknownLoc(), shimsw,
-                toWireB(StrmSwPortType::NORTH),  // Changed to connect into the
-                                                 // north
-                sw, toWireB(StrmSwPortType::SOUTH));
-            // PLIO is attached to shim mux
-            if (analyzer.coordToPLIO.count(col)) {
-              auto plio = analyzer.coordToPLIO[col];
-              builder.create<WireOp>(builder.getUnknownLoc(), plio,
-                                     toWireB(StrmSwPortType::NORTH), shimsw,
-                                     toWireB(StrmSwPortType::SOUTH));
-            }
-
-            // abstract 'DMA' connection on tile is attached to shim mux ( in
-            // row 0 )
-            builder.create<WireOp>(builder.getUnknownLoc(), tile,
-                                   toWireB(StrmSwPortType::DMA), shimsw,
-                                   toWireB(StrmSwPortType::DMA));
-          }
-        } else if (targetModel.isShimPLTile(tile.getCol(), tile.getRow())) {
-          // PLIO is attached directly to switch
-          if (analyzer.coordToPLIO.count(col)) {
-            auto plio = analyzer.coordToPLIO[col];
-            builder.create<WireOp>(builder.getUnknownLoc(), plio,
-                                   toWireB(StrmSwPortType::NORTH), sw,
-                                   toWireB(StrmSwPortType::SOUTH));
-          }
+      } else if (row == 0 &&
+                 deviceModel.isShimNOCTile(tile.getCol(), tile.getRow()) &&
+                 analyzer.coordToShimMux.count({col, 0})) {
+        auto shimsw = analyzer.coordToShimMux[{col, 0}];
+        // Changed to connect into the north
+        builder.create<WireOp>(builder.getUnknownLoc(), shimsw,
+                               toWireB(StrmSwPortType::NORTH), sw,
+                               toWireB(StrmSwPortType::SOUTH));
+        // PLIO is attached to shim mux
+        if (analyzer.coordToPLIO.count(col)) {
+          auto plio = analyzer.coordToPLIO[col];
+          builder.create<WireOp>(builder.getUnknownLoc(), plio,
+                                 toWireB(StrmSwPortType::NORTH), shimsw,
+                                 toWireB(StrmSwPortType::SOUTH));
+        }
+        // abstract 'DMA' connection on tile is attached to shim mux (in
+        // row 0)
+        builder.create<WireOp>(builder.getUnknownLoc(), tile,
+                               toWireB(StrmSwPortType::DMA), shimsw,
+                               toWireB(StrmSwPortType::DMA));
+      } else if (row == 0 &&
+                 deviceModel.isShimPLTile(tile.getCol(), tile.getRow())) {
+        // PLIO is attached directly to switch
+        if (analyzer.coordToPLIO.count(col)) {
+          auto plio = analyzer.coordToPLIO[col];
+          builder.create<WireOp>(builder.getUnknownLoc(), plio,
+                                 toWireB(StrmSwPortType::NORTH), sw,
+                                 toWireB(StrmSwPortType::SOUTH));
         }
       }
     }
   }
 }
 
-Operation *AIEPathfinderPass::getOrCreateTile(OpBuilder &builder, int col,
-                                              int row) {
-  TileLoc index = {col, row};
-  Operation *tileOp = tiles[index];
-  if (!tileOp) {
-    auto tile = builder.create<TileOp>(builder.getUnknownLoc(), col, row);
-    tileOp = tile.getOperation();
-    tiles[index] = tileOp;
-  }
-  return tileOp;
-}
-
-SwitchboxOp AIEPathfinderPass::getOrCreateSwitchbox(OpBuilder &builder,
-                                                    TileOp tile) {
+SwitchboxOp getOrCreateSwitchbox(OpBuilder &builder, TileOp tile) {
   for (auto i : tile.getResult().getUsers()) {
     if (llvm::isa<SwitchboxOp>(*i)) {
       return llvm::cast<SwitchboxOp>(*i);
@@ -515,81 +475,7 @@ SwitchboxOp AIEPathfinderPass::getOrCreateSwitchbox(OpBuilder &builder,
   return builder.create<SwitchboxOp>(builder.getUnknownLoc(), tile);
 }
 
-template <typename MyOp>
-struct AIEOpRemoval : OpConversionPattern<MyOp> {
-  using OpConversionPattern<MyOp>::OpConversionPattern;
-  using OpAdaptor = typename MyOp::Adaptor;
-
-  explicit AIEOpRemoval(MLIRContext *context, PatternBenefit benefit = 1)
-      : OpConversionPattern<MyOp>(context, benefit) {}
-
-  LogicalResult matchAndRewrite(
-      MyOp op, OpAdaptor adaptor,
-      ConversionPatternRewriter &rewriter) const override {
-    Operation *Op = op.getOperation();
-
-    rewriter.eraseOp(Op);
-    return success();
-  }
-};
-
-bool AIEPathfinderPass::findPathToDest(SwitchSettings settings,
-                                       TileLoc currTile,
-                                       StrmSwPortType currDestBundle,
-                                       int currDestChannel, TileLoc finalTile,
-                                       StrmSwPortType finalDestBundle,
-                                       int finalDestChannel) {
-  if ((currTile == finalTile) && (currDestBundle == finalDestBundle) &&
-      (currDestChannel == finalDestChannel)) {
-    return true;
-  }
-
-  StrmSwPortType neighbourSourceBundle;
-  TileLoc neighbourTile;
-  if (currDestBundle == StrmSwPortType::EAST) {
-    neighbourSourceBundle = StrmSwPortType::WEST;
-    neighbourTile = {currTile.col + 1, currTile.row};
-  } else if (currDestBundle == StrmSwPortType::WEST) {
-    neighbourSourceBundle = StrmSwPortType::EAST;
-    neighbourTile = {currTile.col - 1, currTile.row};
-  } else if (currDestBundle == StrmSwPortType::NORTH) {
-    neighbourSourceBundle = StrmSwPortType::SOUTH;
-    neighbourTile = {currTile.col, currTile.row + 1};
-  } else if (currDestBundle == StrmSwPortType::SOUTH) {
-    neighbourSourceBundle = StrmSwPortType::NORTH;
-    neighbourTile = {currTile.col, currTile.row - 1};
-  } else {
-    return false;
-  }
-
-  int neighbourSourceChannel = currDestChannel;
-  for (const auto &[sbNode, setting] : settings) {
-    TileLoc tile = {sbNode.col, sbNode.row};
-    if ((tile == neighbourTile) &&
-        (setting.src.bundle == neighbourSourceBundle) &&
-        (setting.src.channel == neighbourSourceChannel)) {
-      for (const auto &[bundle, channel] : setting.dsts) {
-        if (findPathToDest(settings, neighbourTile, bundle, channel, finalTile,
-                           finalDestBundle, finalDestChannel)) {
-          return true;
-        }
-      }
-    }
-  }
-
-  return false;
-}
-
 void AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder) {
-  ConversionTarget target(getContext());
-
-  // Map from a port and flowID to
-  DenseMap<std::pair<PhysPort, int>, SmallVector<PhysPort, 4>> packetFlows;
-  SmallVector<std::pair<PhysPort, int>, 4> slavePorts;
-  DenseMap<std::pair<PhysPort, int>, int> slaveAMSels;
-  // Map from a port to
-  DenseMap<PhysPort, Attribute> keepPktHeaderAttr;
-
   for (auto tileOp : device.getOps<TileOp>()) {
     int col = tileOp.colIndex();
     int row = tileOp.rowIndex();
@@ -597,6 +483,7 @@ void AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder) {
   }
 
   // The logical model of all the switchboxes.
+  DenseMap<PhysPort, Attribute> keepPktHeaderAttr;
   DenseMap<TileLoc, SmallVector<std::pair<Connect, int>, 8>> switchboxes;
   for (PacketFlowOp pktFlowOp : device.getOps<PacketFlowOp>()) {
     Region &r = pktFlowOp.getPorts();
@@ -619,66 +506,46 @@ void AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder) {
         if (pktFlowOp->hasAttr("keep_pkt_header"))
           keepPktHeaderAttr[{destTile, destPort}] =
               StringAttr::get(Op.getContext(), "true");
-        SwitchboxNode srcSB = analyzer.pathfinder.getSwitchboxNode(
-            {srcCoords.col, srcCoords.row});
-        PathEndPoint srcPoint = {srcSB, srcPort};
+        PathEndPoint srcPoint = {{srcCoords.col, srcCoords.row}, srcPort};
+        // TODO(max): when does this happen???
+        if (!analyzer.flowSolutions.count(srcPoint)) continue;
         SwitchSettings settings = analyzer.flowSolutions[srcPoint];
         // add connections for all the Switchboxes in SwitchSettings
         for (const auto &[curr, setting] : settings) {
           for (const auto &[bundle, channel] : setting.dsts) {
             TileLoc currTile = {curr.col, curr.row};
             // reject false broadcast
-            if (!findPathToDest(settings, currTile, bundle, channel, destCoords,
-                                destPort.bundle, destPort.channel))
+            if (!existsPathToDest(settings, currTile, bundle, channel,
+                                  destCoords, destPort.bundle,
+                                  destPort.channel)) {
               continue;
+            }
             Connect connect = {{setting.src.bundle, setting.src.channel},
                                {bundle, channel}};
-            if (std::find(
-                    switchboxes[currTile].begin(), switchboxes[currTile].end(),
-                    std::pair{connect, flowID}) == switchboxes[currTile].end())
+            if (std::find(switchboxes[currTile].begin(),
+                          switchboxes[currTile].end(),
+                          std::pair{connect, flowID}) ==
+                switchboxes[currTile].end()) {
               switchboxes[currTile].push_back({connect, flowID});
+            }
           }
         }
       }
     }
   }
 
-  LLVM_DEBUG(llvm::dbgs() << "Check switchboxes\n");
-
+  DenseMap<std::pair<PhysPort, int>, SmallVector<PhysPort, 4>> packetFlows;
+  SmallVector<std::pair<PhysPort, int>, 4> slavePorts;
   for (const auto &[tileId, connects] : switchboxes) {
-    int col = tileId.col;
-    int row = tileId.row;
-    Operation *tileOp = getOrCreateTile(builder, col, row);
-    LLVM_DEBUG(llvm::dbgs() << "***switchbox*** " << col << " " << row << '\n');
+    Operation *tileOp = tiles[{tileId.col, tileId.row}];
     for (const auto &[conn, flowID] : connects) {
-      Port sourcePort = conn.src;
-      Port destPort = conn.dst;
       auto sourceFlow =
-          std::make_pair(std::make_pair(tileOp, sourcePort), flowID);
-      packetFlows[sourceFlow].push_back({tileOp, destPort});
+          std::make_pair(std::make_pair(tileOp, conn.src), flowID);
+      packetFlows[sourceFlow].push_back({tileOp, conn.dst});
       slavePorts.push_back(sourceFlow);
-      LLVM_DEBUG(llvm::dbgs()
-                 << "flowID " << flowID << ':' << sourcePort.bundle << " "
-                 << sourcePort.channel << " -> " << destPort.bundle << " "
-                 << destPort.channel << "\n");
     }
   }
 
-  // amsel()
-  // masterset()
-  // packetrules()
-  // rule()
-
-  // Compute arbiter assignments. Each arbiter has four msels.
-  // Therefore, the number of "logical" arbiters is 6 x 4 = 24
-  // A master port can only be associated with one arbiter
-
-  // A map from Tile and master selectValue to the ports targetted by that
-  // master select.
-  DenseMap<std::pair<Operation *, int>, SmallVector<Port, 4>> masterAMSels;
-
-  // Count of currently used logical arbiters for each tile.
-  DenseMap<Operation *, int> amselValues;
   int numMsels = 4;
   int numArbiters = 6;
 
@@ -693,6 +560,12 @@ void AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder) {
               return lhsFlowID < rhsFlowID;
             });
 
+  // A map from Tile and master selectValue to the ports targetted by that
+  // master select.
+  DenseMap<std::pair<Operation *, int>, SmallVector<Port, 4>> masterAMSels;
+  DenseMap<std::pair<PhysPort, int>, int> slaveAMSels;
+  // Count of currently used logical arbiters for each tile.
+  DenseMap<Operation *, int> amselValues;
   // Check all multi-cast flows (same source, same ID). They should be
   // assigned the same arbiter and msel so that the flow can reach all the
   // destination ports at the same time For destination ports that appear in
@@ -703,6 +576,9 @@ void AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder) {
     Operation *tileOp = packetFlow.first.first.first;
     if (amselValues.count(tileOp) == 0) amselValues[tileOp] = 0;
 
+    // Compute arbiter assignments. Each arbiter has four msels.
+    // Therefore, the number of "logical" arbiters is 6 x 4 = 24
+    // A master port can only be associated with one arbiter
     // arb0: 6*0,   6*1,   6*2,   6*3
     // arb1: 6*0+1, 6*1+1, 6*2+1, 6*3+1
     // arb2: 6*0+2, 6*1+2, 6*2+2, 6*3+2
@@ -756,8 +632,7 @@ void AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder) {
       }
 
       for (auto dest : packetFlow.second) {
-        Port port = dest.second;
-        masterAMSels[{tileOp, amselValue}].push_back(port);
+        masterAMSels[{tileOp, amselValue}].push_back(dest.second);
       }
     }
 
@@ -769,28 +644,11 @@ void AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder) {
   // A map from a switchbox output port to the number of that port.
   DenseMap<PhysPort, SmallVector<int, 4>> mastersets;
   for (const auto &[physPort, ports] : masterAMSels) {
-    Operation *tileOp = physPort.first;
-    assert(tileOp && "expected tileop");
-    int amselValue = physPort.second;
+    assert(physPort.first && "expected tileop");
     for (auto port : ports) {
-      mastersets[{tileOp, port}].push_back(amselValue);
+      mastersets[{physPort.first, port}].push_back(physPort.second);
     }
   }
-
-  LLVM_DEBUG(llvm::dbgs() << "CHECK mastersets\n");
-#ifndef NDEBUG
-  for (const auto &[physPort, values] : mastersets) {
-    Operation *tileOp = physPort.first;
-    StrmSwPortType bundle = physPort.second.bundle;
-    int channel = physPort.second.channel;
-    assert(tileOp);
-    auto tile = dyn_cast<TileOp>(tileOp);
-    LLVM_DEBUG(llvm::dbgs() << "master " << tile << " " << bundle << " : "
-                            << channel << '\n');
-    for (auto value : values)
-      LLVM_DEBUG(llvm::dbgs() << "amsel: " << value << '\n');
-  }
-#endif
 
   // Compute mask values
   // Merging as many stream flows as possible
@@ -843,47 +701,27 @@ void AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder) {
     for (auto port : group) {
       int ID = port.second;
       for (int i = 0; i < 5; i++) {
-        if (mask[i] == -1)
+        if (mask[i] == -1) {
           mask[i] = ID >> i & 0x1;
-        else if (mask[i] != (ID >> i & 0x1))
-          mask[i] = 2;  // found bit difference --> mark as "don't care"
+        } else if (mask[i] != (ID >> i & 0x1)) {
+          // found bit difference --> mark as "don't care"
+          mask[i] = 2;
+        }
       }
     }
 
     int maskValue = 0;
     for (int i = 4; i >= 0; i--) {
-      if (mask[i] == 2)  // don't care
+      if (mask[i] == 2) {
+        // don't care
         mask[i] = 0;
-      else
+      } else {
         mask[i] = 1;
+      }
       maskValue = (maskValue << 1) + mask[i];
     }
     for (auto port : group) slaveMasks[port] = maskValue;
   }
-
-#ifndef NDEBUG
-  LLVM_DEBUG(llvm::dbgs() << "CHECK Slave Masks\n");
-  for (auto map : slaveMasks) {
-    auto port = map.first.first;
-    auto tile = dyn_cast<TileOp>(port.first);
-    StrmSwPortType bundle = port.second.bundle;
-    int channel = port.second.channel;
-    int ID = map.first.second;
-    int mask = map.second;
-
-    LLVM_DEBUG(llvm::dbgs()
-               << "Port " << tile << " " << bundle << " " << channel << '\n');
-    LLVM_DEBUG(llvm::dbgs()
-               << "Mask " << "0x" << llvm::Twine::utohexstr(mask) << '\n');
-    LLVM_DEBUG(llvm::dbgs()
-               << "ID " << "0x" << llvm::Twine::utohexstr(ID) << '\n');
-    for (int i = 0; i < 31; i++) {
-      if ((i & mask) == (ID & mask))
-        LLVM_DEBUG(llvm::dbgs() << "matches flow ID " << "0x"
-                                << llvm::Twine::utohexstr(i) << '\n');
-    }
-  }
-#endif
 
   // Realize the routes in MLIR
   for (auto map : tiles) {
@@ -931,7 +769,7 @@ void AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder) {
       SmallVector<int, 4> msels = mastersets[{tileOp, tileMaster}];
       SmallVector<Value, 4> amsels;
       for (auto msel : msels) {
-        assert(amselOps.count(msel) == 1);
+        assert(amselOps.count(msel) == 1 && "expected msel in amselOps");
         amsels.push_back(amselOps[msel]);
       }
 
@@ -953,7 +791,6 @@ void AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder) {
       StrmSwPortType bundle = port.second.bundle;
       int channel = port.second.channel;
       auto slave = port.second;
-
       int mask = slaveMasks[group.front()];
       int ID = group.front().second & mask;
 
@@ -961,8 +798,8 @@ void AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder) {
 #ifndef NDEBUG
       for (auto _slave : group) assert((_slave.second & mask) == ID);
 #endif
-      Value amsel = amselOps[slaveAMSels[group.front()]];
 
+      Value amsel = amselOps[slaveAMSels[group.front()]];
       PacketRulesOp packetrules;
       if (slaveRules.count(slave) == 0) {
         packetrules = builder.create<PacketRulesOp>(builder.getUnknownLoc(),
@@ -970,8 +807,9 @@ void AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder) {
         PacketRulesOp::ensureTerminator(packetrules.getRules(), builder,
                                         builder.getUnknownLoc());
         slaveRules[slave] = packetrules;
-      } else
+      } else {
         packetrules = slaveRules[slave];
+      }
 
       Block &rules = packetrules.getRules().front();
       builder.setInsertionPoint(rules.getTerminator());
@@ -979,21 +817,19 @@ void AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder) {
     }
   }
 
-  AMDAIEDeviceModel targetModel =
-      getDeviceModel(static_cast<AMDAIEDevice>(device.getDevice()));
-
   // Add support for shimDMA
   // From shimDMA to BLI: 1) shimDMA 0 --> North 3
   //                      2) shimDMA 1 --> North 7
   // From BLI to shimDMA: 1) North   2 --> shimDMA 0
   //                      2) North   3 --> shimDMA 1
-
+  AMDAIEDeviceModel deviceModel =
+      getDeviceModel(static_cast<AMDAIEDevice>(device.getDevice()));
   for (auto switchbox : make_early_inc_range(device.getOps<SwitchboxOp>())) {
     auto retVal = switchbox->getOperand(0);
     auto tileOp = retVal.getDefiningOp<TileOp>();
 
     // Check if it is a shim Tile
-    if (!targetModel.isShimNOCTile(tileOp.getCol(), tileOp.getRow())) continue;
+    if (!deviceModel.isShimNOCTile(tileOp.getCol(), tileOp.getRow())) continue;
 
     // Check if the switchbox is empty
     if (&switchbox.getBody()->front() == switchbox.getBody()->getTerminator())
@@ -1003,11 +839,11 @@ void AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder) {
     Block &b = r.front();
 
     // Find if the corresponding shimmux exsists or not
-    int shimExist = 0;
+    bool shimExist = false;
     ShimMuxOp shimOp;
     for (auto shimmux : device.getOps<ShimMuxOp>()) {
       if (shimmux.getTile() == tileOp) {
-        shimExist = 1;
+        shimExist = true;
         shimOp = shimmux;
         break;
       }
@@ -1026,7 +862,7 @@ void AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder) {
             Block *b1 = builder.createBlock(&r1);
             builder.setInsertionPointToEnd(b1);
             builder.create<EndOp>(builder.getUnknownLoc());
-            shimExist = 1;
+            shimExist = true;
           }
 
           Region &r0 = shimOp.getConnections();
@@ -1061,7 +897,7 @@ void AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder) {
             Block *b1 = builder.createBlock(&r1);
             builder.setInsertionPointToEnd(b1);
             builder.create<EndOp>(builder.getUnknownLoc());
-            shimExist = 1;
+            shimExist = true;
           }
 
           Region &r0 = shimOp.getConnections();
@@ -1085,17 +921,9 @@ void AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder) {
       }
     }
   }
-
-  RewritePatternSet patterns(&getContext());
-
-  if (failed(applyPartialConversion(device, target, std::move(patterns))))
-    signalPassFailure();
 }
 
 void AIEPathfinderPass::runOnOperation() {
-  // create analysis pass with routing graph for entire device
-  LLVM_DEBUG(llvm::dbgs() << "---Begin AIEPathfinderPass---\n");
-
   DeviceOp d = getOperation();
   if (failed(analyzer.runAnalysis(d))) return signalPassFailure();
   OpBuilder builder = OpBuilder::atBlockEnd(d.getBody());
@@ -1104,9 +932,6 @@ void AIEPathfinderPass::runOnOperation() {
   if (clRoutePacket) runOnPacketFlow(d, builder);
 }
 
-}  // namespace mlir::iree_compiler::AMDAIE
-
-namespace mlir::iree_compiler::AMDAIE {
 std::unique_ptr<OperationPass<DeviceOp>> createAMDAIEPathfinderPass() {
   return std::make_unique<AIEPathfinderPass>();
 }

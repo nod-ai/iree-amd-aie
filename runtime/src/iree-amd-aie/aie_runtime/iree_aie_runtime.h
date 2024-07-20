@@ -65,6 +65,8 @@ struct TileLoc {
 
   bool operator!=(const TileLoc& rhs) const { return !(*this == rhs); }
 };
+static_assert(std::is_standard_layout_v<TileLoc>,
+              "TileLoc is meant to be a standard layout type");
 
 struct SwitchDMAConnection {
   DMAChannelDir direction;
@@ -77,6 +79,8 @@ struct SwitchDMAConnection {
     return std::tie(direction, channel) == std::tie(rhs.direction, rhs.channel);
   }
 };
+static_assert(std::is_standard_layout_v<SwitchDMAConnection>,
+              "SwitchDMAConnection is meant to be a standard layout type");
 
 enum class AMDAIETileType : uint8_t {
   AIETILE = 0,

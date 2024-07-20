@@ -29,17 +29,8 @@ struct Port {
     return std::tie(bundle, channel) < std::tie(rhs.bundle, rhs.channel);
   }
 };
-}  // namespace mlir::iree_compiler::AMDAIE
-
-template <>
-struct std::less<mlir::iree_compiler::AMDAIE::Port> {
-  bool operator()(const mlir::iree_compiler::AMDAIE::Port &a,
-                  const mlir::iree_compiler::AMDAIE::Port &b) const {
-    return a.bundle == b.bundle ? a.channel < b.channel : a.bundle < b.bundle;
-  }
-};
-
-namespace mlir::iree_compiler::AMDAIE {
+static_assert(std::is_standard_layout_v<Port>,
+              "Port is meant to be a standard layout type");
 
 struct Connect {
   enum class Interconnect { shimMuxOp, swOp, unk };
@@ -57,14 +48,31 @@ struct Connect {
     return std::tie(src, dst) == std::tie(rhs.src, rhs.dst);
   }
 };
+static_assert(std::is_standard_layout_v<Connect>,
+              "Connect is meant to be a standard layout type");
 
-enum class Connectivity : int8_t { INVALID = -1, AVAILABLE = 0, OCCUPIED = 1 };
-struct SwitchboxNode {
-  int col, row, id;
+struct Switchbox : TileLoc {
+  // Necessary for initializer construction?
+  Switchbox(TileLoc t) : TileLoc(t) {}
+  Switchbox(int col, int row) : TileLoc(col, row) {}
+  Switchbox(std::tuple<int, int> t) : TileLoc(t) {}
+
+  bool operator==(const Switchbox &rhs) const {
+    return static_cast<TileLoc>(*this) == rhs;
+  }
+};
+static_assert(std::is_standard_layout_v<Switchbox>,
+              "Switchbox is meant to be a standard layout type");
+
+struct SwitchboxNode : Switchbox {
+  enum class Connectivity : int8_t {
+    INVALID = -1,
+    AVAILABLE = 0,
+    OCCUPIED = 1
+  };
+  int id;
   int inPortId = 0, outPortId = 0;
   std::map<Port, int> inPortToId, outPortToId;
-  // tenary representation of switchbox connectivity
-  // -1: invalid in arch, 0: empty and available, 1: occupued
   std::vector<std::vector<Connectivity>> connectionMatrix;
   // input ports with incoming packet-switched streams
   std::map<Port, int> inPortPktCount;
@@ -77,12 +85,18 @@ struct SwitchboxNode {
   bool allocate(Port inPort, Port outPort, bool isPkt);
   void clearAllocation();
 
-  bool operator<(const SwitchboxNode &rhs) const {
-    return std::tie(col, row) < std::tie(rhs.col, rhs.row);
+  bool operator==(const Switchbox &rhs) const {
+    return col == rhs.col && row == rhs.row;
   }
 
+  // TODO(max): do i really need to write this all out by hand?
   bool operator==(const SwitchboxNode &rhs) const {
-    return std::tie(col, row) == std::tie(rhs.col, rhs.row);
+    return col == rhs.col && row == rhs.row && id == rhs.id &&
+           inPortId == rhs.inPortId && outPortId == rhs.outPortId &&
+           inPortToId == rhs.inPortToId && outPortToId == rhs.outPortToId &&
+           connectionMatrix == rhs.connectionMatrix &&
+           inPortPktCount == rhs.inPortPktCount &&
+           maxPktStream == rhs.maxPktStream;
   }
 };
 
@@ -114,8 +128,11 @@ using SwitchSettings = std::map<SwitchboxNode, SwitchSetting>;
 // A Flow defines source and destination vertices
 // Only one source, but any number of destinations (fanout)
 struct PathEndPoint {
-  SwitchboxNode sb;
+  Switchbox sb;
   Port port;
+  PathEndPoint(Switchbox sb, Port port) : sb(sb), port(port) {}
+  PathEndPoint(uint8_t col, uint8_t row, Port port)
+      : PathEndPoint({col, row}, port) {}
   // Needed for the std::maps that store PathEndPoint.
   bool operator<(const PathEndPoint &rhs) const {
     return std::tie(sb, port) < std::tie(rhs.sb, rhs.port);
@@ -125,9 +142,10 @@ struct PathEndPoint {
     return std::tie(sb, port) == std::tie(rhs.sb, rhs.port);
   }
 };
+static_assert(std::is_standard_layout_v<PathEndPoint>,
+              "PathEndPoint is meant to be a standard layout type");
 
-// A Flow defines source and destination vertices
-// Only one source, but any number of destinations (fanout)
+// A node holds a pointer
 struct PathEndPointNode : PathEndPoint {
   PathEndPointNode(SwitchboxNode *sb, Port port)
       : PathEndPoint{*sb, port}, sb(sb) {}
@@ -140,8 +158,12 @@ struct FlowNode {
   std::vector<PathEndPointNode> dsts;
 };
 
-struct Pathfinder {
-  Pathfinder() = default;
+struct Router {
+  std::vector<FlowNode> flows;
+  std::map<TileLoc, SwitchboxNode> grid;
+  std::list<ChannelEdge> edges;
+
+  Router() = default;
   void initialize(int maxCol, int maxRow, const AMDAIEDeviceModel &targetModel);
   void addFlow(TileLoc srcCoords, Port srcPort, TileLoc dstCoords, Port dstPort,
                bool isPacketFlow);
@@ -150,42 +172,38 @@ struct Pathfinder {
       const std::vector<std::tuple<StrmSwPortType, int, StrmSwPortType, int>>
           &connects);
   std::optional<std::map<PathEndPoint, SwitchSettings>> findPaths(
-      int maxIterations);
+      int maxIterations = 1000);
 
   std::map<SwitchboxNode *, SwitchboxNode *> dijkstraShortestPaths(
-      SwitchboxNode *src);
-
-  SwitchboxNode getSwitchboxNode(TileLoc coords) { return grid.at(coords); }
-
-  std::vector<FlowNode> flows;
-  std::map<TileLoc, SwitchboxNode> grid;
-  std::list<ChannelEdge> edges;
-  std::map<ChannelEdge *, double> demand;
-  std::map<ChannelEdge *, int> overCapacity;
-  std::map<ChannelEdge *, int> usedCapacity;
+      SwitchboxNode *src, const std::map<ChannelEdge *, double> &demand);
 };
 
-std::vector<std::pair<SwitchboxNode, Connect>> emitConnections(
+std::vector<std::pair<Switchbox, Connect>> emitConnections(
     const std::map<PathEndPoint, SwitchSettings> &flowSolutions,
     const PathEndPoint &srcPoint, const AMDAIEDeviceModel &targetModel);
 
-#define TO_STRINGS(_) \
-  _(Connect)          \
-  _(Connectivity)     \
-  _(PathEndPoint)     \
-  _(Port)             \
-  _(SwitchSetting)    \
+bool existsPathToDest(const SwitchSettings &settings, TileLoc currTile,
+                      StrmSwPortType currDestBundle, int currDestChannel,
+                      TileLoc finalTile, StrmSwPortType finalDestBundle,
+                      int finalDestChannel);
+
+#define TO_STRINGS(_)            \
+  _(Connect)                     \
+  _(SwitchboxNode::Connectivity) \
+  _(PathEndPoint)                \
+  _(Port)                        \
+  _(SwitchSetting)               \
   _(SwitchboxNode)
 
 TO_STRINGS(TO_STRING_DECL)
 #undef TO_STRINGS
 
-#define BOTH_OSTREAM_OPS_FORALL_ROUTER_TYPES(OSTREAM_OP_, _) \
-  _(OSTREAM_OP_, mlir::iree_compiler::AMDAIE::Connect)       \
-  _(OSTREAM_OP_, mlir::iree_compiler::AMDAIE::Connectivity)  \
-  _(OSTREAM_OP_, mlir::iree_compiler::AMDAIE::PathEndPoint)  \
-  _(OSTREAM_OP_, mlir::iree_compiler::AMDAIE::Port)          \
-  _(OSTREAM_OP_, mlir::iree_compiler::AMDAIE::SwitchSetting) \
+#define BOTH_OSTREAM_OPS_FORALL_ROUTER_TYPES(OSTREAM_OP_, _)               \
+  _(OSTREAM_OP_, mlir::iree_compiler::AMDAIE::Connect)                     \
+  _(OSTREAM_OP_, mlir::iree_compiler::AMDAIE::SwitchboxNode::Connectivity) \
+  _(OSTREAM_OP_, mlir::iree_compiler::AMDAIE::PathEndPoint)                \
+  _(OSTREAM_OP_, mlir::iree_compiler::AMDAIE::Port)                        \
+  _(OSTREAM_OP_, mlir::iree_compiler::AMDAIE::SwitchSetting)               \
   _(OSTREAM_OP_, mlir::iree_compiler::AMDAIE::SwitchboxNode)
 
 BOTH_OSTREAM_OPS_FORALL_ROUTER_TYPES(OSTREAM_OP_DECL, BOTH_OSTREAM_OP)
@@ -231,20 +249,11 @@ struct DenseMapInfo<mlir::iree_compiler::AMDAIE::Port> {
 }  // namespace llvm
 
 template <>
-struct std::hash<mlir::iree_compiler::AMDAIE::SwitchboxNode> {
-  std::size_t operator()(
-      const mlir::iree_compiler::AMDAIE::SwitchboxNode &s) const noexcept {
-    return std::hash<mlir::iree_compiler::AMDAIE::TileLoc>{}({s.col, s.row});
-  }
-};
-
-template <>
 struct std::hash<mlir::iree_compiler::AMDAIE::PathEndPoint> {
   std::size_t operator()(
       const mlir::iree_compiler::AMDAIE::PathEndPoint &pe) const noexcept {
     std::size_t h1 = std::hash<mlir::iree_compiler::AMDAIE::Port>{}(pe.port);
-    std::size_t h2 =
-        std::hash<mlir::iree_compiler::AMDAIE::SwitchboxNode>{}(pe.sb);
+    std::size_t h2 = std::hash<mlir::iree_compiler::AMDAIE::TileLoc>{}(pe.sb);
     return h1 ^ (h2 << 1);
   }
 };
