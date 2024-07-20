@@ -15,6 +15,7 @@
 #include "llvm/ADT/Twine.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/FormattedStream.h"
+#include "macros.h"
 // clang-format off
 #include "iree-amd-aie/aie_runtime/AMDAIEEnums.h"
 // clang-format on
@@ -114,7 +115,7 @@ enum class AMDAIEDmaProp : uint8_t {
 };
 
 enum class StrmSwPortType : uint8_t {
-  CORE,
+  CORE = ::StrmSwPortType::CORE,
   DMA,
   CTRL,
   FIFO,
@@ -241,8 +242,7 @@ struct AMDAIEDeviceModel {
 
 struct AMDAIEDeviceModel getDeviceModel(AMDAIEDevice device);
 
-#define OSTREAM_OP(O_TYPE, TYPE) O_TYPE& operator<<(O_TYPE& os, const TYPE& s);
-#define TO_STRING(TYPE) std::string to_string(const TYPE& t);
+std::string to_string(const int& value);
 
 #define TO_STRINGS(_)    \
   _(AMDAIEDmaProp)       \
@@ -257,13 +257,8 @@ struct AMDAIEDeviceModel getDeviceModel(AMDAIEDevice device);
   _(XAie_Lock)           \
   _(XAie_Packet)
 
-TO_STRINGS(TO_STRING)
-#undef TO_STRING
+TO_STRINGS(TO_STRING_DECL)
 #undef TO_STRINGS
-
-#define BOTH_OSTREAM_OP(OSTREAM_OP_, TYPE) \
-  OSTREAM_OP_(std::ostream, TYPE)          \
-  OSTREAM_OP_(llvm::raw_ostream, TYPE)
 
 #define BOTH_OSTREAM_OPS_FORALL_TYPES(OSTREAM_OP_, _)              \
   _(OSTREAM_OP_, mlir::iree_compiler::AMDAIE::AMDAIETileType)      \
@@ -277,16 +272,14 @@ TO_STRINGS(TO_STRING)
   _(OSTREAM_OP_, XAie_Lock)                                        \
   _(OSTREAM_OP_, XAie_Packet)
 
-BOTH_OSTREAM_OPS_FORALL_TYPES(OSTREAM_OP, BOTH_OSTREAM_OP)
-#undef OSTREAM_OP
+BOTH_OSTREAM_OPS_FORALL_TYPES(OSTREAM_OP_DECL, BOTH_OSTREAM_OP)
 
 // https://stackoverflow.com/a/32230306
 template <typename H1>
 llvm::raw_ostream& showArgs(llvm::raw_ostream& out, const char* label,
                             H1&& value) {
   if constexpr (std::is_pointer<H1>::value)
-    return out << label << "="
-               << "ptr";
+    return out << label << "=" << "ptr";
   else
     return out << label << "=" << std::forward<H1>(value);
 }
@@ -354,5 +347,15 @@ struct DenseMapInfo<mlir::iree_compiler::AMDAIE::TileLoc>
     : TupleStructDenseMapInfo<mlir::iree_compiler::AMDAIE::TileLoc::TupleType> {
 };
 }  // namespace llvm
+
+template <>
+struct std::hash<mlir::iree_compiler::AMDAIE::TileLoc> {
+  std::size_t operator()(
+      const mlir::iree_compiler::AMDAIE::TileLoc& s) const noexcept {
+    std::size_t h1 = std::hash<int>{}(s.col);
+    std::size_t h2 = std::hash<int>{}(s.row);
+    return h1 ^ (h2 << 1);
+  }
+};
 
 #endif  // IREE_AIE_RUNTIME_H

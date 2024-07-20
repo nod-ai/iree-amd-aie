@@ -211,30 +211,13 @@ std::string to_string(const DMAChannelDir &value) {
   llvm::report_fatal_error("Unhandled AMDAIETileType case");
 }
 
-#define STRINGIFY_2TUPLE_STRUCT(Type, first, second) \
-  std::string to_string(const Type &t) {             \
-    std::string s = #Type "(" #first ": ";           \
-    s += to_string(t.first);                         \
-    s += ", " #second ": ";                          \
-    s += to_string(t.second);                        \
-    s += ")";                                        \
-    return s;                                        \
-  }
-
 STRINGIFY_2TUPLE_STRUCT(SwitchDMAConnection, direction, channel)
 STRINGIFY_2TUPLE_STRUCT(TileLoc, col, row)
 STRINGIFY_2TUPLE_STRUCT(XAie_LocType, Col, Row)
 STRINGIFY_2TUPLE_STRUCT(XAie_Lock, LockId, LockVal)
 STRINGIFY_2TUPLE_STRUCT(XAie_Packet, PktId, PktType)
 
-#define OSTREAM_OP(O_TYPE, TYPE)                     \
-  O_TYPE &operator<<(O_TYPE &os, const TYPE &s) {    \
-    os << mlir::iree_compiler::AMDAIE::to_string(s); \
-    return os;                                       \
-  }
-
-BOTH_OSTREAM_OPS_FORALL_TYPES(OSTREAM_OP, BOTH_OSTREAM_OP)
-#undef OSTREAM_OP
+BOTH_OSTREAM_OPS_FORALL_TYPES(OSTREAM_OP_DEFN, BOTH_OSTREAM_OP)
 
 AMDAIEDeviceModel::AMDAIEDeviceModel(
     uint8_t aieGen, uint64_t baseAddr, uint8_t colShift, uint8_t rowShift,
