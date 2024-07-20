@@ -140,6 +140,32 @@ source $XRT_DIR/setup.sh
 export XRT_HACK_UNSECURE_LOADING_XCLBIN=1
 
 MM_KERNEL_URL=https://github.com/nod-ai/iree-amd-aie/releases/download/ukernels/mm.o
+ME_BASIC_URL=https://github.com/nod-ai/iree-amd-aie/releases/download/ukernels/me_basic.o
+
+if [ -d "$PEANO" ]; then
+  PEANO_ME_BASIC_FP="$PEANO/lib/aie2-none-unknown-elf/me_basic.o"
+  if [ -f "$PEANO_ME_BASIC_FP" ]; then
+    echo "File 'me_basic.o' already exists at $PEANO_ME_BASIC_FP"
+  else
+    echo "Downloading 'me_basic.o' to $PEANO_ME_BASIC_FP"
+    wget $ME_BASIC_URL -O "$PEANO_ME_BASIC_FP"
+  fi
+else
+  echo "Peano install not found at $PEANO; not downloading me_basic."
+fi
+
+# The flag '--iree-amdaie-path-to-ukernels' currently does not work,
+# see for example https://github.com/nod-ai/iree-amd-aie/issues/340.
+# Therefore we need to manually copy (or link) the mm.o file to the
+# directory in which iree-compile is run. iree-compile is run in the
+# output directory. Create the softlink only if it is has not already
+# been created.
+if [ -f "${OUTPUT_DIR}/mm.o" ]; then
+  echo "File 'mm.o' already exists in ${OUTPUT_DIR}."
+else
+  echo "Downloading 'mm.o' to ${OUTPUT_DIR}/mm.o"
+  wget $MM_KERNEL_URL -O  "${OUTPUT_DIR}/mm.o"
+fi
 
 cd ${OUTPUT_DIR}
 
@@ -388,20 +414,7 @@ function run_matmul_test() {
 
     compilation_flags="${compilation_flags} \
                         --iree-amdaie-enable-ukernels=all"
-
-    # The flag '--iree-amdaie-path-to-ukernels' currently does not work,
-    # see for example https://github.com/nod-ai/iree-amd-aie/issues/340.
-    # Therefore we need to manually copy (or link) the mm.o file to the
-    # directory in which iree-compile is run. iree-compile is run in the
-    # output directory. Create the softlink only if it is has not already
-    # been created.
-    if [ -f "${OUTPUT_DIR}/mm.o" ]; then
-      echo "File 'mm.o' already exists in ${OUTPUT_DIR}."
-    else
-      wget $MM_KERNEL_URL -O  ${OUTPUT_DIR}/mm.o
-    fi
   fi
-
 
   echo "**** Generating matmul .vmfb file for ${name} ****"
   ${IREE_COMPILE_EXE} "${matmul_ir}" \
