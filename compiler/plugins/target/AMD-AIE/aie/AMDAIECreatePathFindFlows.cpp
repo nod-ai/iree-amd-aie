@@ -5,6 +5,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 #include <algorithm>
+#include <cassert>
 #include <list>
 #include <set>
 
@@ -117,9 +118,9 @@ namespace mlir::iree_compiler::AMDAIE {
 class DynamicTileAnalysis {
  public:
   int maxCol, maxRow;
-  std::shared_ptr<Pathfinder> pathfinder;
+  Pathfinder pathfinder;
   std::map<PathEndPoint, SwitchSettings> flowSolutions;
-  std::map<PathEndPoint, bool> processedFlows;
+  std::set<PathEndPoint> processedFlows;
 
   llvm::DenseMap<TileLoc, TileOp> coordToTile;
   llvm::DenseMap<TileLoc, SwitchboxOp> coordToSwitchbox;
@@ -128,9 +129,8 @@ class DynamicTileAnalysis {
 
   const int maxIterations = 1000;  // how long until declared unroutable
 
-  DynamicTileAnalysis() : pathfinder(std::make_shared<Pathfinder>()) {}
-  DynamicTileAnalysis(std::shared_ptr<Pathfinder> p)
-      : pathfinder(std::move(p)) {}
+  DynamicTileAnalysis() = default;
+  DynamicTileAnalysis(const Pathfinder &p) : pathfinder(std::move(p)) {}
 
   mlir::LogicalResult runAnalysis(DeviceOp &device);
 
@@ -158,9 +158,7 @@ LogicalResult DynamicTileAnalysis::runAnalysis(DeviceOp &device) {
 
   AMDAIEDeviceModel targetModel =
       getDeviceModel(static_cast<AMDAIEDevice>(device.getDevice()));
-  pathfinder->initialize(maxCol, maxRow, targetModel);
-
-  //  pathfinder->initialize(maxCol, maxRow, device.getTargetModel());
+  pathfinder.initialize(maxCol, maxRow, targetModel);
 
   // for each flow in the device, add it to pathfinder
   // each source can map to multiple different destinations (fanout)
@@ -177,7 +175,7 @@ LogicalResult DynamicTileAnalysis::runAnalysis(DeviceOp &device) {
                << ")" << srcPort.bundle << srcPort.channel << " -> ("
                << dstCoords.col << ", " << dstCoords.row << ")"
                << dstPort.bundle << dstPort.channel << "\n");
-    pathfinder->addFlow(srcCoords, srcPort, dstCoords, dstPort, false);
+    pathfinder.addFlow(srcCoords, srcPort, dstCoords, dstPort, false);
   }
 
   for (PacketFlowOp pktFlowOp : device.getOps<PacketFlowOp>()) {
@@ -201,7 +199,7 @@ LogicalResult DynamicTileAnalysis::runAnalysis(DeviceOp &device) {
                    << " -> (" << dstCoords.col << ", " << dstCoords.row << ")"
                    << dstPort.bundle << dstPort.channel << "\n");
         // todo: support many-to-one & many-to-many?
-        pathfinder->addFlow(srcCoords, srcPort, dstCoords, dstPort, true);
+        pathfinder.addFlow(srcCoords, srcPort, dstCoords, dstPort, true);
       }
     }
   }
@@ -216,26 +214,18 @@ LogicalResult DynamicTileAnalysis::runAnalysis(DeviceOp &device) {
                             toStrmT(connectOp.destPort().bundle),
                             connectOp.destPort().channel);
     }
-    if (!pathfinder->addFixedConnection(switchboxOp.colIndex(),
-                                        switchboxOp.rowIndex(), connects))
+    if (!pathfinder.addFixedConnection(switchboxOp.colIndex(),
+                                       switchboxOp.rowIndex(), connects))
       return switchboxOp.emitOpError() << "Unable to add fixed connections";
   }
 
   // all flows are now populated, call the congestion-aware pathfinder
   // algorithm
   // check whether the pathfinder algorithm creates a legal routing
-  if (auto maybeFlowSolutions = pathfinder->findPaths(maxIterations))
+  if (auto maybeFlowSolutions = pathfinder.findPaths(maxIterations))
     flowSolutions.swap(maybeFlowSolutions.value());
   else
     return device.emitError("Unable to find a legal routing");
-
-  // initialize all flows as unprocessed to prep for rewrite
-  for (const auto &[pathEndPoint, switchSetting] : flowSolutions) {
-    processedFlows[pathEndPoint] = false;
-    LLVM_DEBUG(llvm::dbgs() << "Flow starting at (" << pathEndPoint.sb.col
-                            << "," << pathEndPoint.sb.row << "):\t");
-    //    LLVM_DEBUG(llvm::dbgs() << switchSetting);
-  }
 
   // fill in coords to TileOps, SwitchboxOps, and ShimMuxOps
   for (auto tileOp : device.getOps<TileOp>()) {
@@ -310,270 +300,82 @@ ShimMuxOp DynamicTileAnalysis::getShimMux(OpBuilder &builder, int col) {
 }
 }  // namespace mlir::iree_compiler::AMDAIE
 
-static std::vector<Operation *> flowOps;
-
 namespace mlir::iree_compiler::AMDAIE {
 
 struct ConvertFlowsToInterconnect : OpConversionPattern<FlowOp> {
   using OpConversionPattern::OpConversionPattern;
   DeviceOp &device;
   DynamicTileAnalysis &analyzer;
-  bool keepFlowOp;
   ConvertFlowsToInterconnect(MLIRContext *context, DeviceOp &d,
-                             DynamicTileAnalysis &a, bool keepFlowOp,
-                             PatternBenefit benefit = 1)
-      : OpConversionPattern(context, benefit),
-        device(d),
-        analyzer(a),
-        keepFlowOp(keepFlowOp) {}
+                             DynamicTileAnalysis &a, PatternBenefit benefit = 1)
+      : OpConversionPattern(context, benefit), device(d), analyzer(a) {}
 
-  LogicalResult match(FlowOp op) const override { return success(); }
-
-  void addConnection(ConversionPatternRewriter &rewriter,
-                     // could be a shim-mux or a switchbox.
-                     Interconnect op, FlowOp flowOp, StrmSwPortType inBundle,
-                     int inIndex, StrmSwPortType outBundle,
-                     int outIndex) const {
-    Region &r = op.getConnections();
-    Block &b = r.front();
-    auto point = rewriter.saveInsertionPoint();
-    rewriter.setInsertionPoint(b.getTerminator());
-
-    rewriter.create<ConnectOp>(rewriter.getUnknownLoc(), toWireB(inBundle),
-                               inIndex, toWireB(outBundle), outIndex);
-
-    rewriter.restoreInsertionPoint(point);
-
-    LLVM_DEBUG(llvm::dbgs() << "\t\taddConnection() (" << op.colIndex() << ","
-                            << op.rowIndex() << ") " << inBundle << inIndex
-                            << " -> " << outBundle << outIndex << "\n");
-  }
-
-  void rewrite(FlowOp flowOp, OpAdaptor adaptor,
-               ConversionPatternRewriter &rewriter) const override {
-    Operation *Op = flowOp.getOperation();
-
+  LogicalResult matchAndRewrite(
+      FlowOp flowOp, OpAdaptor adaptor,
+      ConversionPatternRewriter &rewriter) const override {
     auto srcTile = cast<TileOp>(flowOp.getSource().getDefiningOp());
     TileLoc srcCoords = {srcTile.colIndex(), srcTile.rowIndex()};
     auto srcBundle = toStrmT(flowOp.getSourceBundle());
     auto srcChannel = flowOp.getSourceChannel();
     Port srcPort = {srcBundle, srcChannel};
-
-    if (keepFlowOp) {
-      auto *clonedOp = Op->clone();
-      flowOps.push_back(clonedOp);
+    SwitchboxNode srcSB =
+        analyzer.pathfinder.getSwitchboxNode({srcCoords.col, srcCoords.row});
+    PathEndPoint srcPe{srcSB, srcPort};
+    if (analyzer.processedFlows.count(srcPe)) {
+      rewriter.eraseOp(flowOp);
+      return success();
     }
 
     AMDAIEDeviceModel targetModel =
         getDeviceModel(static_cast<AMDAIEDevice>(device.getDevice()));
-
-#ifndef NDEBUG
-    auto dstTile = cast<TileOp>(flowOp.getDest().getDefiningOp());
-    TileLoc dstCoords = {dstTile.colIndex(), dstTile.rowIndex()};
-    auto dstBundle = flowOp.getDestBundle();
-    auto dstChannel = flowOp.getDestChannel();
-    LLVM_DEBUG(llvm::dbgs()
-               << "\n\t---Begin rewrite() for flowOp: (" << srcCoords.col
-               << ", " << srcCoords.row << ")" << srcBundle << srcChannel
-               << " -> (" << dstCoords.col << ", " << dstCoords.row << ")"
-               << dstBundle << dstChannel << "\n\t");
-#endif
-
-    // if the flow (aka "net") for this FlowOp hasn't been processed yet,
-    // add all switchbox connections to implement the flow
-    SwitchboxNode srcSB =
-        analyzer.pathfinder->getSwitchboxNode({srcCoords.col, srcCoords.row});
-    if (PathEndPoint srcPoint = {srcSB, srcPort};
-        !analyzer.processedFlows[srcPoint]) {
-      SwitchSettings settings = analyzer.flowSolutions[srcPoint];
-      // add connections for all the Switchboxes in SwitchSettings
-      for (const auto &[curr, setting] : settings) {
-        SwitchboxOp swOp = analyzer.getSwitchbox(rewriter, curr.col, curr.row);
-        int shimCh = srcChannel;
-        // TODO: must reserve N3, N7, S2, S3 for DMA connections
-        if (curr == srcSB && targetModel.isShimNOCTile(srcSB.col, srcSB.row)) {
-          // shim DMAs at start of flows
-          if (srcBundle == StrmSwPortType::DMA) {
-            shimCh = srcChannel == 0
-                         ? 3
-                         : 7;  // must be either DMA0 -> N3 or DMA1 -> N7
-            ShimMuxOp shimMuxOp = analyzer.getShimMux(rewriter, srcSB.col);
-            addConnection(rewriter,
-                          cast<Interconnect>(shimMuxOp.getOperation()), flowOp,
-                          srcBundle, srcChannel, StrmSwPortType::NORTH, shimCh);
-          } else if (srcBundle ==
-                     StrmSwPortType::NOC) {  // must be NOC0/NOC1 -> N2/N3 or
-                                             // NOC2/NOC3 -> N6/N7
-            shimCh = srcChannel >= 2 ? srcChannel + 4 : srcChannel + 2;
-            ShimMuxOp shimMuxOp = analyzer.getShimMux(rewriter, srcSB.col);
-            addConnection(rewriter,
-                          cast<Interconnect>(shimMuxOp.getOperation()), flowOp,
-                          srcBundle, srcChannel, StrmSwPortType::NORTH, shimCh);
-          } else if (srcBundle ==
-                     StrmSwPortType::PLIO) {  // PLIO at start of flows with mux
-            if (srcChannel == 2 || srcChannel == 3 || srcChannel == 6 ||
-                srcChannel == 7) {  // Only some PLIO requrie mux
-              ShimMuxOp shimMuxOp = analyzer.getShimMux(rewriter, srcSB.col);
-              addConnection(
-                  rewriter, cast<Interconnect>(shimMuxOp.getOperation()),
-                  flowOp, srcBundle, srcChannel, StrmSwPortType::NORTH, shimCh);
-            }
-          }
-        }
-
-        for (const auto &[bundle, channel] : setting.dsts) {
-          // handle special shim connectivity
-          if (curr == srcSB &&
-              targetModel.isShimNOCorPLTile(srcSB.col, srcSB.row)) {
-            addConnection(rewriter, cast<Interconnect>(swOp.getOperation()),
-                          flowOp, StrmSwPortType::SOUTH, shimCh, bundle,
-                          channel);
-          } else if (targetModel.isShimNOCorPLTile(curr.col, curr.row) &&
-                     (bundle == StrmSwPortType::DMA ||
-                      bundle == StrmSwPortType::PLIO ||
-                      bundle == StrmSwPortType::NOC)) {
-            shimCh = channel;
-            if (targetModel.isShimNOCTile(curr.col, curr.row)) {
-              // shim DMAs at end of flows
-              if (bundle == StrmSwPortType::DMA) {
-                shimCh = channel == 0
-                             ? 2
-                             : 3;  // must be either N2 -> DMA0 or N3 -> DMA1
-                ShimMuxOp shimMuxOp = analyzer.getShimMux(rewriter, curr.col);
-                addConnection(
-                    rewriter, cast<Interconnect>(shimMuxOp.getOperation()),
-                    flowOp, StrmSwPortType::NORTH, shimCh, bundle, channel);
-              } else if (bundle == StrmSwPortType::NOC) {
-                shimCh = channel + 2;  // must be either N2/3/4/5 -> NOC0/1/2/3
-                ShimMuxOp shimMuxOp = analyzer.getShimMux(rewriter, curr.col);
-                addConnection(
-                    rewriter, cast<Interconnect>(shimMuxOp.getOperation()),
-                    flowOp, StrmSwPortType::NORTH, shimCh, bundle, channel);
-              } else if (channel >=
-                         2) {  // must be PLIO...only PLIO >= 2 require mux
-                ShimMuxOp shimMuxOp = analyzer.getShimMux(rewriter, curr.col);
-                addConnection(
-                    rewriter, cast<Interconnect>(shimMuxOp.getOperation()),
-                    flowOp, StrmSwPortType::NORTH, shimCh, bundle, channel);
-              }
-            }
-            addConnection(rewriter, cast<Interconnect>(swOp.getOperation()),
-                          flowOp, setting.src.bundle, setting.src.channel,
-                          StrmSwPortType::SOUTH, shimCh);
-          } else {
-            // otherwise, regular switchbox connection
-            addConnection(rewriter, cast<Interconnect>(swOp.getOperation()),
-                          flowOp, setting.src.bundle, setting.src.channel,
-                          bundle, channel);
-          }
-        }
-
-        LLVM_DEBUG(llvm::dbgs() << curr << ": " << setting << " | " << "\n");
+    for (auto &[curr, conn] :
+         emitConnections(analyzer.flowSolutions, srcPe, targetModel)) {
+      // create switchboxes eagerly just to agree with mlir-aie tests
+      SwitchboxOp switchboxOp =
+          analyzer.getSwitchbox(rewriter, curr.col, curr.row);
+      Operation *op;
+      switch (conn.interconnect) {
+        case Connect::Interconnect::shimMuxOp:
+          op = analyzer.getShimMux(rewriter, conn.col).getOperation();
+          break;
+        case Connect::Interconnect::swOp:
+          op = switchboxOp.getOperation();
+          break;
+        case Connect::Interconnect::unk:
+          return flowOp->emitOpError("unsupported/unknown interconnect");
       }
 
-      LLVM_DEBUG(llvm::dbgs()
-                 << "\n\t\tFinished adding ConnectOps to implement flowOp.\n");
-      analyzer.processedFlows[srcPoint] = true;
-    } else
-      LLVM_DEBUG(llvm::dbgs() << "Flow already processed!\n");
+      Region &r = op->getRegion(0);
+      Block &b = r.front();
+      OpBuilder::InsertionGuard g(rewriter);
+      rewriter.setInsertionPoint(b.getTerminator());
+      rewriter.create<ConnectOp>(rewriter.getUnknownLoc(),
+                                 toWireB(conn.src.bundle), conn.src.channel,
+                                 toWireB(conn.dst.bundle), conn.dst.channel);
+    }
 
-    rewriter.eraseOp(Op);
+    analyzer.processedFlows.insert(srcPe);
+    rewriter.eraseOp(flowOp);
+    return success();
   }
 };
 
-}  // namespace mlir::iree_compiler::AMDAIE
-
-namespace mlir::iree_compiler::AMDAIE {
-
-template <typename DerivedT>
-class AIERoutePathfinderFlowsBase : public ::mlir::OperationPass<DeviceOp> {
- public:
-  using Base = AIERoutePathfinderFlowsBase;
-
-  AIERoutePathfinderFlowsBase()
-      : ::mlir::OperationPass<DeviceOp>(::mlir::TypeID::get<DerivedT>()) {}
-  AIERoutePathfinderFlowsBase(const AIERoutePathfinderFlowsBase &other)
-      : ::mlir::OperationPass<DeviceOp>(other) {}
-  AIERoutePathfinderFlowsBase &operator=(const AIERoutePathfinderFlowsBase &) =
-      delete;
-  AIERoutePathfinderFlowsBase(AIERoutePathfinderFlowsBase &&) = delete;
-  AIERoutePathfinderFlowsBase &operator=(AIERoutePathfinderFlowsBase &&) =
-      delete;
-  ~AIERoutePathfinderFlowsBase() = default;
-
-  /// Returns the command-line argument attached to this pass.
-  static constexpr ::llvm::StringLiteral getArgumentName() {
-    return ::llvm::StringLiteral("amdaie-create-pathfinder-flows");
-  }
-  ::llvm::StringRef getArgument() const override {
-    return "amdaie-create-pathfinder-flows";
-  }
-
-  ::llvm::StringRef getDescription() const override {
-    return "Route aie.flow and aie.packetflow operations through switchboxes";
-  }
-
-  /// Returns the derived pass name.
-  static constexpr ::llvm::StringLiteral getPassName() {
-    return ::llvm::StringLiteral("AIERoutePathfinderFlows");
-  }
-  ::llvm::StringRef getName() const override {
-    return "AIERoutePathfinderFlows";
-  }
-
-  /// Support isa/dyn_cast functionality for the derived pass class.
-  static bool classof(const ::mlir::Pass *pass) {
-    return pass->getTypeID() == ::mlir::TypeID::get<DerivedT>();
-  }
-
-  /// A clone method to create a copy of this pass.
-  std::unique_ptr<::mlir::Pass> clonePass() const override {
-    return std::make_unique<DerivedT>(*static_cast<const DerivedT *>(this));
-  }
-
-  /// Return the dialect that must be loaded in the context before this pass.
-  void getDependentDialects(::mlir::DialectRegistry &registry) const override {
-    registry.insert<xilinx::AIE::AIEDialect>();
-  }
-
-  /// Explicitly declare the TypeID for this class. We declare an explicit
-  /// private instantiation because Pass classes should only be visible by the
-  /// current library.
-  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(
-      AIERoutePathfinderFlowsBase<DerivedT>)
-
-  AIERoutePathfinderFlowsBase(const AIERoutePathfinderFlowsOptions &options)
-      : AIERoutePathfinderFlowsBase() {
-    clRouteCircuit = options.clRouteCircuit;
-    clRoutePacket = options.clRoutePacket;
-    clKeepFlowOp = options.clKeepFlowOp;
-  }
-
- protected:
-  ::mlir::Pass::Option<bool> clRouteCircuit{
-      *this, "route-circuit",
-      ::llvm::cl::desc("Flag to enable aie.flow lowering."),
-      ::llvm::cl::init(true)};
-  ::mlir::Pass::Option<bool> clRoutePacket{
-      *this, "route-packet",
-      ::llvm::cl::desc("Flag to enable aie.packetflow lowering."),
-      ::llvm::cl::init(true)};
-  ::mlir::Pass::Option<bool> clKeepFlowOp{
-      *this, "keep-flow-op",
-      ::llvm::cl::desc("Flag to not erase aie.flow/packetflow after its "
-                       "lowering,used for routing visualization."),
-      ::llvm::cl::init(false)};
-
- private:
-};
-
-struct AIEPathfinderPass : AIERoutePathfinderFlowsBase<AIEPathfinderPass> {
+struct AIEPathfinderPass
+    : PassWrapper<AIEPathfinderPass, OperationPass<DeviceOp>> {
   DynamicTileAnalysis analyzer;
   mlir::DenseMap<TileLoc, mlir::Operation *> tiles;
 
   AIEPathfinderPass() = default;
-  AIEPathfinderPass(DynamicTileAnalysis analyzer)
-      : analyzer(std::move(analyzer)) {}
+  AIEPathfinderPass(const AIEPathfinderPass &pass) : PassWrapper(pass) {}
+  AIEPathfinderPass(const AIERoutePathfinderFlowsOptions &options)
+      : AIEPathfinderPass() {
+    clRouteCircuit = options.clRouteCircuit;
+    clRoutePacket = options.clRoutePacket;
+  }
+
+  llvm::StringRef getArgument() const override {
+    return "amdaie-create-pathfinder-flows";
+  }
 
   void runOnOperation() override;
   void runOnFlow(DeviceOp d, mlir::OpBuilder &builder);
@@ -581,21 +383,21 @@ struct AIEPathfinderPass : AIERoutePathfinderFlowsBase<AIEPathfinderPass> {
 
   typedef std::pair<mlir::Operation *, Port> PhysPort;
 
-  typedef struct {
-    SwitchboxOp sw;
-    Port sourcePort;
-    Port destPort;
-  } SwConnection;
-
   bool findPathToDest(SwitchSettings settings, TileLoc currTile,
                       StrmSwPortType currDestBundle, int currDestChannel,
                       TileLoc finalTile, StrmSwPortType finalDestBundle,
                       int finalDestChannel);
 
-  SwitchboxOp getSwitchbox(DeviceOp &d, int col, int row);
-
   mlir::Operation *getOrCreateTile(mlir::OpBuilder &builder, int col, int row);
   SwitchboxOp getOrCreateSwitchbox(mlir::OpBuilder &builder, TileOp tile);
+  mlir::Pass::Option<bool> clRouteCircuit{
+      *this, "route-circuit",
+      llvm::cl::desc("Flag to enable aie.flow lowering."),
+      llvm::cl::init(true)};
+  mlir::Pass::Option<bool> clRoutePacket{
+      *this, "route-packet",
+      llvm::cl::desc("Flag to enable aie.packetflow lowering."),
+      llvm::cl::init(true)};
 };
 
 void AIEPathfinderPass::runOnFlow(DeviceOp d, OpBuilder &builder) {
@@ -612,14 +414,9 @@ void AIEPathfinderPass::runOnFlow(DeviceOp d, OpBuilder &builder) {
       getDeviceModel(static_cast<AMDAIEDevice>(d.getDevice()));
 
   RewritePatternSet patterns(&getContext());
-  patterns.insert<ConvertFlowsToInterconnect>(d.getContext(), d, analyzer,
-                                              clKeepFlowOp);
+  patterns.insert<ConvertFlowsToInterconnect>(d.getContext(), d, analyzer);
   if (failed(applyPartialConversion(d, target, std::move(patterns))))
     return signalPassFailure();
-
-  // Keep for visualization
-  if (clKeepFlowOp)
-    for (auto op : flowOps) builder.insert(op);
 
   // Populate wires between switchboxes and tiles.
   for (int col = 0; col <= analyzer.getMaxCol(); col++) {
@@ -823,28 +620,24 @@ void AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder) {
         if (pktFlowOp->hasAttr("keep_pkt_header"))
           keepPktHeaderAttr[{destTile, destPort}] =
               StringAttr::get(Op.getContext(), "true");
-        SwitchboxNode srcSB = analyzer.pathfinder->getSwitchboxNode(
+        SwitchboxNode srcSB = analyzer.pathfinder.getSwitchboxNode(
             {srcCoords.col, srcCoords.row});
-        if (PathEndPoint srcPoint = {srcSB, srcPort};
-            !analyzer.processedFlows[srcPoint]) {
-          SwitchSettings settings = analyzer.flowSolutions[srcPoint];
-          // add connections for all the Switchboxes in SwitchSettings
-          for (const auto &[curr, setting] : settings) {
-            for (const auto &[bundle, channel] : setting.dsts) {
-              TileLoc currTile = {curr.col, curr.row};
-              // reject false broadcast
-              if (!findPathToDest(settings, currTile, bundle, channel,
-                                  destCoords, destPort.bundle,
-                                  destPort.channel))
-                continue;
-              Connect connect = {{setting.src.bundle, setting.src.channel},
-                                 {bundle, channel}};
-              if (std::find(switchboxes[currTile].begin(),
-                            switchboxes[currTile].end(),
-                            std::pair{connect, flowID}) ==
-                  switchboxes[currTile].end())
-                switchboxes[currTile].push_back({connect, flowID});
-            }
+        PathEndPoint srcPoint = {srcSB, srcPort};
+        SwitchSettings settings = analyzer.flowSolutions[srcPoint];
+        // add connections for all the Switchboxes in SwitchSettings
+        for (const auto &[curr, setting] : settings) {
+          for (const auto &[bundle, channel] : setting.dsts) {
+            TileLoc currTile = {curr.col, curr.row};
+            // reject false broadcast
+            if (!findPathToDest(settings, currTile, bundle, channel, destCoords,
+                                destPort.bundle, destPort.channel))
+              continue;
+            Connect connect = {{setting.src.bundle, setting.src.channel},
+                               {bundle, channel}};
+            if (std::find(
+                    switchboxes[currTile].begin(), switchboxes[currTile].end(),
+                    std::pair{connect, flowID}) == switchboxes[currTile].end())
+              switchboxes[currTile].push_back({connect, flowID});
           }
         }
       }
@@ -978,11 +771,10 @@ void AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder) {
   DenseMap<PhysPort, SmallVector<int, 4>> mastersets;
   for (const auto &[physPort, ports] : masterAMSels) {
     Operation *tileOp = physPort.first;
-    assert(tileOp);
+    assert(tileOp && "expected tileop");
     int amselValue = physPort.second;
     for (auto port : ports) {
-      PhysPort physPort = {tileOp, port};
-      mastersets[physPort].push_back(amselValue);
+      mastersets[{tileOp, port}].push_back(amselValue);
     }
   }
 
@@ -1108,10 +900,9 @@ void AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder) {
     builder.setInsertionPoint(b.getTerminator());
 
     std::vector<bool> amselOpNeededVector(32);
-    for (const auto &map : mastersets) {
-      if (tileOp != map.first.first) continue;
-
-      for (auto value : map.second) {
+    for (const auto &masterset : mastersets) {
+      if (tileOp != masterset.first.first) continue;
+      for (auto value : masterset.second) {
         amselOpNeededVector[value] = true;
       }
     }
@@ -1129,9 +920,9 @@ void AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder) {
     // Create all the master set Ops
     // First collect the master sets for this tile.
     SmallVector<Port, 4> tileMasters;
-    for (const auto &map : mastersets) {
-      if (tileOp != map.first.first) continue;
-      tileMasters.push_back(map.first.second);
+    for (const auto &masterset : mastersets) {
+      if (tileOp != masterset.first.first) continue;
+      tileMasters.push_back(masterset.first.second);
     }
     // Sort them so we get a reasonable order
     std::sort(tileMasters.begin(), tileMasters.end());
@@ -1169,7 +960,7 @@ void AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder) {
 
       // Verify that we actually map all the ID's correctly.
 #ifndef NDEBUG
-      for (auto slave : group) assert((slave.second & mask) == ID);
+      for (auto _slave : group) assert((_slave.second & mask) == ID);
 #endif
       Value amsel = amselOps[slaveAMSels[group.front()]];
 
@@ -1298,9 +1089,6 @@ void AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder) {
 
   RewritePatternSet patterns(&getContext());
 
-  if (!clKeepFlowOp)
-    patterns.add<AIEOpRemoval<PacketFlowOp>>(device.getContext());
-
   if (failed(applyPartialConversion(device, target, std::move(patterns))))
     signalPassFailure();
 }
@@ -1315,16 +1103,6 @@ void AIEPathfinderPass::runOnOperation() {
 
   if (clRouteCircuit) runOnFlow(d, builder);
   if (clRoutePacket) runOnPacketFlow(d, builder);
-}
-
-SwitchboxOp AIEPathfinderPass::getSwitchbox(DeviceOp &d, int col, int row) {
-  SwitchboxOp output = nullptr;
-  d.walk([&](SwitchboxOp swBox) {
-    if (swBox.colIndex() == col && swBox.rowIndex() == row) {
-      output = swBox;
-    }
-  });
-  return output;
 }
 
 }  // namespace mlir::iree_compiler::AMDAIE

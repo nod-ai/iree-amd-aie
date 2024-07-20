@@ -15,7 +15,6 @@ namespace mlir::iree_compiler::AMDAIE {
 struct AIERoutePathfinderFlowsOptions {
   bool clRouteCircuit = true;
   bool clRoutePacket = true;
-  bool clKeepFlowOp = false;
 };
 
 std::unique_ptr<OperationPass<xilinx::AIE::DeviceOp>>

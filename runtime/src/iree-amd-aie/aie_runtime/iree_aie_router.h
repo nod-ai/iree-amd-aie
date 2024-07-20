@@ -42,8 +42,16 @@ struct std::less<mlir::iree_compiler::AMDAIE::Port> {
 namespace mlir::iree_compiler::AMDAIE {
 
 struct Connect {
+  enum class Interconnect { shimMuxOp, swOp, unk };
   Port src;
   Port dst;
+  Interconnect interconnect;
+  uint8_t col, row;
+
+  Connect(const Port &src, const Port &dst,
+          Interconnect interconnect = Interconnect::unk, uint8_t col = 0,
+          uint8_t row = 0)
+      : src(src), dst(dst), interconnect(interconnect), col(col), row(row) {}
 
   bool operator==(const Connect &rhs) const {
     return std::tie(src, dst) == std::tie(rhs.src, rhs.dst);
@@ -59,6 +67,8 @@ struct SwitchboxNode {
         StrmSwPortType::SOUTH, StrmSwPortType::WEST, StrmSwPortType::NORTH,
         StrmSwPortType::EAST,  StrmSwPortType::PLIO, StrmSwPortType::NOC,
         StrmSwPortType::TRACE, StrmSwPortType::CTRL};
+    std::vector<StrmSwPortType> shimBundles = {
+        StrmSwPortType::DMA, StrmSwPortType::NOC, StrmSwPortType::PLIO};
 
     for (StrmSwPortType bundle : bundles) {
       int maxCapacity =
@@ -107,10 +117,8 @@ struct SwitchboxNode {
             return std::find(bundles.begin(), bundles.end(), bundle) !=
                    bundles.end();
           };
-          std::vector<StrmSwPortType> bundles = {
-              StrmSwPortType::DMA, StrmSwPortType::NOC, StrmSwPortType::PLIO};
-          if (isBundleInList(inPort.bundle, bundles) ||
-              isBundleInList(outPort.bundle, bundles))
+          if (isBundleInList(inPort.bundle, shimBundles) ||
+              isBundleInList(outPort.bundle, shimBundles))
             connectionMatrix[inId][outId] = Connectivity::AVAILABLE;
         }
       }
@@ -129,8 +137,9 @@ struct SwitchboxNode {
               connectionMatrix[inId][outId] != Connectivity::INVALID) {
             bool available = true;
             if (inPortPktCount.count(inPort) == 0) {
-              for (const auto &[outPort, outId] : outPortToId) {
-                if (connectionMatrix[inId][outId] == Connectivity::OCCUPIED) {
+              for (const auto &[_outPort, _outPortId] : outPortToId) {
+                if (connectionMatrix[inId][_outPortId] ==
+                    Connectivity::OCCUPIED) {
                   // occupied by others as circuit-switched
                   available = false;
                   break;
@@ -151,8 +160,9 @@ struct SwitchboxNode {
           if (inPort.bundle == inBundle &&
               connectionMatrix[inId][outId] == Connectivity::AVAILABLE) {
             bool available = true;
-            for (const auto &[outPort, outId] : outPortToId) {
-              if (connectionMatrix[inId][outId] == Connectivity::OCCUPIED) {
+            for (const auto &[_outPort, _outPortId] : outPortToId) {
+              if (connectionMatrix[inId][_outPortId] ==
+                  Connectivity::OCCUPIED) {
                 available = false;
                 break;
               }
@@ -179,8 +189,8 @@ struct SwitchboxNode {
     if (isPkt) {
       // a packet-switched stream to be allocated
       if (inPortPktCount.count(inPort) == 0) {
-        for (const auto &[outPort, outId] : outPortToId) {
-          if (connectionMatrix[inId][outId] == Connectivity::OCCUPIED) {
+        for (const auto &[_outPort, _outPortId] : outPortToId) {
+          if (connectionMatrix[inId][_outPortId] == Connectivity::OCCUPIED) {
             // occupied by others as circuit-switched, allocation fail!
             return false;
           }
@@ -323,8 +333,7 @@ struct FlowNode {
   std::vector<PathEndPointNode> dsts;
 };
 
-class Pathfinder {
- public:
+struct Pathfinder {
   Pathfinder() = default;
   void initialize(int maxCol, int maxRow, const AMDAIEDeviceModel &targetModel);
   void addFlow(TileLoc srcCoords, Port srcPort, TileLoc dstCoords, Port dstPort,
@@ -341,7 +350,6 @@ class Pathfinder {
 
   SwitchboxNode getSwitchboxNode(TileLoc coords) { return grid.at(coords); }
 
- private:
   // Flows to be routed
   std::vector<FlowNode> flows;
 
@@ -362,6 +370,10 @@ class Pathfinder {
   // how many flows are actually using this Channel
   std::map<ChannelEdge *, int> usedCapacity;
 };
+
+std::vector<std::pair<SwitchboxNode, Connect>> emitConnections(
+    const std::map<PathEndPoint, SwitchSettings> &flowSolutions,
+    const PathEndPoint &srcPoint, const AMDAIEDeviceModel &targetModel);
 
 #define TO_STRINGS(_) \
   _(Connect)          \
