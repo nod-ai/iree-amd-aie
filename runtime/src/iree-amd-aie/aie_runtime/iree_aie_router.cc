@@ -33,7 +33,7 @@ std::string to_string(const SwitchSettings &settings) {
   return "SwitchSettings(" +
          llvm::join(llvm::map_range(
                         llvm::make_range(settings.begin(), settings.end()),
-                        [](const llvm::detail::DenseMapPair<SwitchboxNode,
+                        [](const llvm::detail::DenseMapPair<Switchbox,
                                                             SwitchSetting> &p) {
                           return to_string(p.getFirst()) + ": " +
                                  to_string(p.getSecond());
@@ -41,6 +41,45 @@ std::string to_string(const SwitchSettings &settings) {
                     ", ") +
          ")";
 }
+
+STRINGIFY_2TUPLE_STRUCT(Port, bundle, channel)
+STRINGIFY_2TUPLE_STRUCT(Connect, src, dst)
+STRINGIFY_2TUPLE_STRUCT(Switchbox, col, row)
+STRINGIFY_2TUPLE_STRUCT(PathEndPoint, sb, port)
+
+BOTH_OSTREAM_OPS_FORALL_ROUTER_TYPES(OSTREAM_OP_DEFN, BOTH_OSTREAM_OP)
+
+struct SwitchboxNode : Switchbox {
+  enum class Connectivity : int8_t {
+    INVALID = -1,
+    AVAILABLE = 0,
+    OCCUPIED = 1
+  };
+  int id;
+  int inPortId = 0, outPortId = 0;
+  std::map<Port, int> inPortToId, outPortToId;
+  std::vector<std::vector<Connectivity>> connectionMatrix;
+  // input ports with incoming packet-switched streams
+  std::map<Port, int> inPortPktCount;
+  // up to 32 packet-switched stram through a port
+  const int maxPktStream = 32;
+
+  SwitchboxNode(int col, int row, int id, const AMDAIEDeviceModel &targetModel);
+  std::vector<int> findAvailableChannelIn(StrmSwPortType inBundle, Port outPort,
+                                          bool isPkt);
+  bool allocate(Port inPort, Port outPort, bool isPkt);
+  void clearAllocation();
+
+  // TODO(max): do i really need to write this all out by hand?
+  bool operator==(const SwitchboxNode &rhs) const {
+    return col == rhs.col && row == rhs.row && id == rhs.id &&
+           inPortId == rhs.inPortId && outPortId == rhs.outPortId &&
+           inPortToId == rhs.inPortToId && outPortToId == rhs.outPortToId &&
+           connectionMatrix == rhs.connectionMatrix &&
+           inPortPktCount == rhs.inPortPktCount &&
+           maxPktStream == rhs.maxPktStream;
+  }
+};
 
 std::string to_string(const SwitchboxNode::Connectivity &value) {
   switch (value) {
@@ -51,14 +90,29 @@ std::string to_string(const SwitchboxNode::Connectivity &value) {
 
   llvm::report_fatal_error("Unhandled Connectivity case");
 }
-
-STRINGIFY_2TUPLE_STRUCT(Port, bundle, channel)
-STRINGIFY_2TUPLE_STRUCT(Connect, src, dst)
-STRINGIFY_2TUPLE_STRUCT(Switchbox, col, row)
 STRINGIFY_3TUPLE_STRUCT(SwitchboxNode, col, row, id)
-STRINGIFY_2TUPLE_STRUCT(PathEndPoint, sb, port)
 
-BOTH_OSTREAM_OPS_FORALL_ROUTER_TYPES(OSTREAM_OP_DEFN, BOTH_OSTREAM_OP)
+struct ChannelEdge {
+  SwitchboxNode *src;
+  SwitchboxNode *target;
+  int maxCapacity;
+  StrmSwPortType bundle;
+
+  ChannelEdge(SwitchboxNode *src, SwitchboxNode *target);
+};
+
+// A node holds a pointer
+struct PathEndPointNode : PathEndPoint {
+  PathEndPointNode(SwitchboxNode *sb, Port port)
+      : PathEndPoint{*sb, port}, sb(sb) {}
+  SwitchboxNode *sb;
+};
+
+struct FlowNode {
+  bool isPacketFlow;
+  PathEndPointNode src;
+  std::vector<PathEndPointNode> dsts;
+};
 
 SwitchboxNode::SwitchboxNode(int col, int row, int id,
                              const AMDAIEDeviceModel &targetModel)
@@ -249,21 +303,31 @@ ChannelEdge::ChannelEdge(SwitchboxNode *src, SwitchboxNode *target)
   }
 }
 
+struct RouterImpl {
+  std::vector<FlowNode> flows;
+  std::map<TileLoc, SwitchboxNode> grid;
+  std::list<ChannelEdge> edges;
+};
+
+Router::Router() { impl = new RouterImpl(); }
+Router::~Router() { delete impl; }
+
 void Router::initialize(int maxCol, int maxRow,
                         const AMDAIEDeviceModel &targetModel) {
   // make grid of switchboxes
   int id = 0;
   for (int row = 0; row <= maxRow; row++) {
     for (int col = 0; col <= maxCol; col++) {
-      grid.insert({{col, row}, SwitchboxNode{col, row, id++, targetModel}});
-      SwitchboxNode &thisNode = grid.at({col, row});
+      impl->grid.insert(
+          {{col, row}, SwitchboxNode{col, row, id++, targetModel}});
+      SwitchboxNode &thisNode = impl->grid.at({col, row});
       if (row > 0) {  // if not in row 0 add channel to North/South
-        SwitchboxNode &southernNeighbor = grid.at({col, row - 1});
+        SwitchboxNode &southernNeighbor = impl->grid.at({col, row - 1});
         // get the number of outgoing connections on the south side - outgoing
         // because these correspond to rhs of a connect op
         if (targetModel.getNumDestSwitchboxConnections(col, row,
                                                        StrmSwPortType::SOUTH)) {
-          edges.emplace_back(&thisNode, &southernNeighbor);
+          impl->edges.emplace_back(&thisNode, &southernNeighbor);
         }
         // get the number of incoming connections on the south side - incoming
         // because they correspond to connections on the southside that are then
@@ -271,20 +335,20 @@ void Router::initialize(int maxCol, int maxRow,
         // connect ops)
         if (targetModel.getNumSourceSwitchboxConnections(
                 col, row, StrmSwPortType::SOUTH)) {
-          edges.emplace_back(&southernNeighbor, &thisNode);
+          impl->edges.emplace_back(&southernNeighbor, &thisNode);
         }
       }
 
       if (col > 0) {
         // if not in col 0 add channel to East/West
-        SwitchboxNode &westernNeighbor = grid.at({col - 1, row});
+        SwitchboxNode &westernNeighbor = impl->grid.at({col - 1, row});
         if (targetModel.getNumDestSwitchboxConnections(col, row,
                                                        StrmSwPortType::WEST)) {
-          edges.emplace_back(&thisNode, &westernNeighbor);
+          impl->edges.emplace_back(&thisNode, &westernNeighbor);
         }
         if (targetModel.getNumSourceSwitchboxConnections(
                 col, row, StrmSwPortType::WEST)) {
-          edges.emplace_back(&westernNeighbor, &thisNode);
+          impl->edges.emplace_back(&westernNeighbor, &thisNode);
         }
       }
     }
@@ -296,24 +360,25 @@ void Router::initialize(int maxCol, int maxRow,
 void Router::addFlow(TileLoc srcCoords, Port srcPort, TileLoc dstCoords,
                      Port dstPort, bool isPacketFlow) {
   // check if a flow with this source already exists
-  for (auto &[isPkt, src, dsts] : flows) {
+  for (auto &[isPkt, src, dsts] : impl->flows) {
     SwitchboxNode *existingSrcPtr = src.sb;
     assert(existingSrcPtr && "nullptr flow source");
     if (Port existingPort = src.port; existingSrcPtr->col == srcCoords.col &&
                                       existingSrcPtr->row == srcCoords.row &&
                                       existingPort == srcPort) {
       // find the vertex corresponding to the destination
-      SwitchboxNode *matchingDstSbPtr = &grid.at(dstCoords);
+      SwitchboxNode *matchingDstSbPtr = &impl->grid.at(dstCoords);
       dsts.emplace_back(matchingDstSbPtr, dstPort);
       return;
     }
   }
 
   // If no existing flow was found with this source, create a new flow.
-  SwitchboxNode *matchingSrcSbPtr = &grid.at(srcCoords);
-  SwitchboxNode *matchingDstSbPtr = &grid.at(dstCoords);
-  flows.push_back({isPacketFlow, PathEndPointNode{matchingSrcSbPtr, srcPort},
-                   std::vector<PathEndPointNode>{{matchingDstSbPtr, dstPort}}});
+  SwitchboxNode *matchingSrcSbPtr = &impl->grid.at(srcCoords);
+  SwitchboxNode *matchingDstSbPtr = &impl->grid.at(dstCoords);
+  impl->flows.push_back(
+      {isPacketFlow, PathEndPointNode{matchingSrcSbPtr, srcPort},
+       std::vector<PathEndPointNode>{{matchingDstSbPtr, dstPort}}});
 }
 
 // Keep track of connections already used in the AIE; Pathfinder algorithm will
@@ -322,7 +387,7 @@ bool Router::addFixedConnection(
     int col, int row,
     const std::vector<std::tuple<StrmSwPortType, int, StrmSwPortType, int>>
         &connects) {
-  SwitchboxNode &sb = grid.at({col, row});
+  SwitchboxNode &sb = impl->grid.at({col, row});
   std::set<int> invalidInId, invalidOutId;
   for (auto &[sourceBundle, sourceChannel, destBundle, destChannel] :
        connects) {
@@ -353,11 +418,13 @@ bool Router::addFixedConnection(
   return true;
 }
 
-std::map<SwitchboxNode *, SwitchboxNode *> Router::dijkstraShortestPaths(
-    SwitchboxNode *src, const std::map<ChannelEdge *, double> &demand) {
+std::map<SwitchboxNode *, SwitchboxNode *> dijkstraShortestPaths(
+    SwitchboxNode *src, std::map<TileLoc, SwitchboxNode> &grid,
+    std::list<ChannelEdge> &edges,
+    const std::map<ChannelEdge *, double> &demand) {
   // Use std::map instead of DenseMap because DenseMap doesn't let you overwrite
   // tombstones.
-  auto distance = std::map<SwitchboxNode *, double>();
+  auto distance = std::map<SwitchboxNode *, double>{};
   auto preds = std::map<SwitchboxNode *, SwitchboxNode *>();
   std::map<SwitchboxNode *, uint64_t> indexInHeap;
   typedef d_ary_heap_indirect<
@@ -425,7 +492,7 @@ std::optional<std::map<PathEndPoint, SwitchSettings>> Router::findPaths(
   std::map<ChannelEdge *, double> demand;
 
   // initialize all Channel histories to 0
-  for (auto &ch : edges) {
+  for (auto &ch : impl->edges) {
     overCapacity[&ch] = 0;
     usedCapacity[&ch] = 0;
   }
@@ -433,7 +500,7 @@ std::optional<std::map<PathEndPoint, SwitchSettings>> Router::findPaths(
   bool isLegal = true;
 
   do {
-    for (auto &ch : edges) {
+    for (auto &ch : impl->edges) {
       double history = 1.0 + OVER_CAPACITY_COEFF * overCapacity[&ch];
       double congestion = 1.0 + USED_CAPACITY_COEFF * usedCapacity[&ch];
       demand[&ch] = history * congestion;
@@ -443,14 +510,14 @@ std::optional<std::map<PathEndPoint, SwitchSettings>> Router::findPaths(
 
     // "rip up" all routes
     routingSolution.clear();
-    for (auto &[tileID, node] : grid) node.clearAllocation();
-    for (auto &ch : edges) usedCapacity[&ch] = 0;
+    for (auto &[tileID, node] : impl->grid) node.clearAllocation();
+    for (auto &ch : impl->edges) usedCapacity[&ch] = 0;
     isLegal = true;
 
     auto findIncomingEdge =
         [&](std::map<SwitchboxNode *, SwitchboxNode *> preds,
             SwitchboxNode *sb) -> ChannelEdge * {
-      for (auto &e : edges) {
+      for (auto &e : impl->edges) {
         if (e.src == preds[sb] && e.target == sb) return &e;
       }
       return nullptr;
@@ -458,7 +525,7 @@ std::optional<std::map<PathEndPoint, SwitchSettings>> Router::findPaths(
 
     // for each flow, find the shortest path from source to destination
     // update used_capacity for the path between them
-    for (const auto &[isPkt, src, dsts] : flows) {
+    for (const auto &[isPkt, src, dsts] : impl->flows) {
       // Use dijkstra to find path given current demand from the start
       // switchbox; find the shortest paths to each other switchbox. Output is
       // in the predecessor map, which must then be processed to get individual
@@ -466,7 +533,7 @@ std::optional<std::map<PathEndPoint, SwitchSettings>> Router::findPaths(
       assert(src.sb && "nonexistent flow source");
       std::set<SwitchboxNode *> processed;
       std::map<SwitchboxNode *, SwitchboxNode *> preds =
-          dijkstraShortestPaths(src.sb, demand);
+          dijkstraShortestPaths(src.sb, impl->grid, impl->edges, demand);
 
       // trace the path of the flow backwards via predecessors
       // increment used_capacity for the associated channels
