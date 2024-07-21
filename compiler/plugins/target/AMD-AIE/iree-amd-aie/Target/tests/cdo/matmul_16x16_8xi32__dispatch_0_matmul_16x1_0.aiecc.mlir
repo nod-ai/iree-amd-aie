@@ -161,32 +161,6 @@ aie.device(npu1_4col) {
     aiex.npu.sync {channel = 0 : i32, column = 0 : i32, column_num = 1 : i32, direction = 0 : i32, row = 0 : i32, row_num = 1 : i32}
     return
   }
-  aie.wire(%shim_mux_0_0 : North, %switchbox_0_0 : South)
-  aie.wire(%tile_0_0 : DMA, %shim_mux_0_0 : DMA)
-  aie.wire(%tile_0_1 : Core, %switchbox_0_1 : Core)
-  aie.wire(%tile_0_1 : DMA, %switchbox_0_1 : DMA)
-  aie.wire(%switchbox_0_0 : North, %switchbox_0_1 : South)
-  aie.wire(%tile_0_2 : Core, %switchbox_0_2 : Core)
-  aie.wire(%tile_0_2 : DMA, %switchbox_0_2 : DMA)
-  aie.wire(%switchbox_0_1 : North, %switchbox_0_2 : South)
-  aie.wire(%switchbox_0_0 : East, %switchbox_1_0 : West)
-  aie.wire(%switchbox_0_1 : East, %switchbox_1_1 : West)
-  aie.wire(%tile_1_1 : Core, %switchbox_1_1 : Core)
-  aie.wire(%tile_1_1 : DMA, %switchbox_1_1 : DMA)
-  aie.wire(%switchbox_1_0 : North, %switchbox_1_1 : South)
-  aie.wire(%switchbox_0_2 : East, %switchbox_1_2 : West)
-  aie.wire(%tile_1_2 : Core, %switchbox_1_2 : Core)
-  aie.wire(%tile_1_2 : DMA, %switchbox_1_2 : DMA)
-  aie.wire(%switchbox_1_1 : North, %switchbox_1_2 : South)
-  aie.wire(%switchbox_1_0 : East, %switchbox_2_0 : West)
-  aie.wire(%switchbox_1_1 : East, %switchbox_2_1 : West)
-  aie.wire(%tile_2_1 : Core, %switchbox_2_1 : Core)
-  aie.wire(%tile_2_1 : DMA, %switchbox_2_1 : DMA)
-  aie.wire(%switchbox_2_0 : North, %switchbox_2_1 : South)
-  aie.wire(%switchbox_1_2 : East, %switchbox_2_2 : West)
-  aie.wire(%tile_2_2 : Core, %switchbox_2_2 : Core)
-  aie.wire(%tile_2_2 : DMA, %switchbox_2_2 : DMA)
-  aie.wire(%switchbox_2_1 : North, %switchbox_2_2 : South)
 } {sym_name = "matmul_16x16_8xi32__dispatch_0_matmul_16x16x8_i32_0"}
 }
 

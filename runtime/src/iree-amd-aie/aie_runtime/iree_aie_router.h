@@ -32,6 +32,8 @@ struct Port {
 static_assert(std::is_standard_layout_v<Port>,
               "Port is meant to be a standard layout type");
 
+using PhysPort = std::pair<TileLoc, Port>;
+
 struct Connect {
   enum class Interconnect { shimMuxOp, swOp, unk };
   Port src;
@@ -123,6 +125,16 @@ bool existsPathToDest(const SwitchSettings &settings, TileLoc currTile,
                       StrmSwPortType currDestBundle, int currDestChannel,
                       TileLoc finalTile, StrmSwPortType finalDestBundle,
                       int finalDestChannel);
+
+std::tuple<DenseMap<PhysPort, SmallVector<int, 4>>,
+           SmallVector<SmallVector<std::pair<PhysPort, int>, 4>, 4>,
+           DenseMap<std::pair<PhysPort, int>, int>,
+           DenseMap<std::pair<PhysPort, int>, int>>
+configurePacketFlows(
+    int numMsels, int numArbiters,
+    const DenseMap<TileLoc, SmallVector<std::pair<Connect, int>, 8>>
+        &switchboxes,
+    const SmallVector<TileLoc> &tiles);
 
 #define TO_STRINGS(_) \
   _(Connect)          \

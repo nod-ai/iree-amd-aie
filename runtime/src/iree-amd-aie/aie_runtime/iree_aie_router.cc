@@ -777,4 +777,198 @@ bool existsPathToDest(const SwitchSettings &settings, TileLoc currTile,
   return false;
 }
 
+std::tuple<DenseMap<PhysPort, SmallVector<int, 4>>,
+           SmallVector<SmallVector<std::pair<PhysPort, int>, 4>, 4>,
+           DenseMap<std::pair<PhysPort, int>, int>,
+           DenseMap<std::pair<PhysPort, int>, int>>
+configurePacketFlows(
+    int numMsels, int numArbiters,
+    const DenseMap<TileLoc, SmallVector<std::pair<Connect, int>, 8>>
+        &switchboxes,
+    const SmallVector<TileLoc> &tiles) {
+  DenseMap<std::pair<PhysPort, int>, SmallVector<PhysPort, 4>> packetFlows;
+  SmallVector<std::pair<PhysPort, int>, 4> slavePorts;
+  for (const auto &[tileId, connects] : switchboxes) {
+    for (const auto &[conn, flowID] : connects) {
+      auto sourceFlow =
+          std::make_pair(std::make_pair(tileId, conn.src), flowID);
+      packetFlows[sourceFlow].push_back({tileId, conn.dst});
+      slavePorts.push_back(sourceFlow);
+    }
+  }
+
+  std::vector<std::pair<std::pair<PhysPort, int>, SmallVector<PhysPort, 4>>>
+      sortedPacketFlows(packetFlows.begin(), packetFlows.end());
+
+  // To get determinsitic behaviour
+  std::sort(sortedPacketFlows.begin(), sortedPacketFlows.end(),
+            [](const auto &lhs, const auto &rhs) {
+              auto lhsFlowID = lhs.first.second;
+              auto rhsFlowID = rhs.first.second;
+              return lhsFlowID < rhsFlowID;
+            });
+
+  // A map from Tile and master selectValue to the ports targetted by that
+  // master select.
+  DenseMap<std::pair<TileLoc, int>, SmallVector<Port, 4>> masterAMSels;
+  DenseMap<std::pair<PhysPort, int>, int> slaveAMSels;
+  // Count of currently used logical arbiters for each tile.
+  DenseMap<TileLoc, int> amselValues;
+  // Check all multi-cast flows (same source, same ID). They should be
+  // assigned the same arbiter and msel so that the flow can reach all the
+  // destination ports at the same time For destination ports that appear in
+  // different (multicast) flows, it should have a different <arbiterID, msel>
+  // value pair for each flow
+  for (const auto &packetFlow : sortedPacketFlows) {
+    // The Source Tile of the flow
+    TileLoc tileOp = packetFlow.first.first.first;
+    if (amselValues.count(tileOp) == 0) amselValues[tileOp] = 0;
+
+    // Compute arbiter assignments. Each arbiter has four msels.
+    // Therefore, the number of "logical" arbiters is 6 x 4 = 24
+    // A master port can only be associated with one arbiter
+    // arb0: 6*0,   6*1,   6*2,   6*3
+    // arb1: 6*0+1, 6*1+1, 6*2+1, 6*3+1
+    // arb2: 6*0+2, 6*1+2, 6*2+2, 6*3+2
+    // arb3: 6*0+3, 6*1+3, 6*2+3, 6*3+3
+    // arb4: 6*0+4, 6*1+4, 6*2+4, 6*3+4
+    // arb5: 6*0+5, 6*1+5, 6*2+5, 6*3+5
+
+    int amselValue = amselValues[tileOp];
+    assert(amselValue < numArbiters && "Could not allocate new arbiter!");
+
+    // Find existing arbiter assignment
+    // If there is an assignment of an arbiter to a master port before, we
+    // assign all the master ports here with the same arbiter but different
+    // msel
+    // TODO(max): this logic is so wacky that even though it looks like
+    // foundMatchedDest = ~match it's not the case and replacing/fixing will
+    // blow up map accesses in AIEPathfiner::runOnPacketFlow
+    bool foundMatchedDest = false;
+    for (const auto &map : masterAMSels) {
+      if (map.first.first != tileOp) continue;
+      amselValue = map.first.second;
+      // check if same destinations
+      SmallVector<Port, 4> ports(masterAMSels[{tileOp, amselValue}]);
+      if (ports.size() != packetFlow.second.size()) continue;
+      bool matched = true;
+      for (auto dest : packetFlow.second) {
+        if (Port port = dest.second;
+            std::find(ports.begin(), ports.end(), port) == ports.end()) {
+          matched = false;
+          break;
+        }
+      }
+      if (matched) {
+        foundMatchedDest = true;
+        break;
+      }
+    }
+
+    if (!foundMatchedDest) {
+      bool foundAMSelValue = false;
+      for (int a = 0; a < numArbiters; a++) {
+        for (int i = 0; i < numMsels; i++) {
+          amselValue = a + i * numArbiters;
+          if (masterAMSels.count({tileOp, amselValue}) == 0) {
+            foundAMSelValue = true;
+            break;
+          }
+        }
+        if (foundAMSelValue) break;
+      }
+
+      for (auto dest : packetFlow.second) {
+        masterAMSels[{tileOp, amselValue}].push_back(dest.second);
+      }
+    }
+
+    slaveAMSels[packetFlow.first] = amselValue;
+    amselValues[tileOp] = amselValue % numArbiters;
+  }
+
+  // Compute the master set IDs
+  // A map from a switchbox output port to the number of that port.
+  DenseMap<PhysPort, SmallVector<int, 4>> mastersets;
+  for (const auto &[physPort, ports] : masterAMSels) {
+    for (auto port : ports) {
+      mastersets[{physPort.first, port}].push_back(physPort.second);
+    }
+  }
+
+  // Compute mask values
+  // Merging as many stream flows as possible
+  // The flows must originate from the same source port and have different IDs
+  // Two flows can be merged if they share the same destinations
+  SmallVector<SmallVector<std::pair<PhysPort, int>, 4>, 4> slaveGroups;
+  SmallVector<std::pair<PhysPort, int>, 4> workList(slavePorts);
+  while (!workList.empty()) {
+    auto slave1 = workList.pop_back_val();
+    Port slavePort1 = slave1.first.second;
+
+    bool foundgroup = false;
+    for (auto &group : slaveGroups) {
+      auto slave2 = group.front();
+      if (Port slavePort2 = slave2.first.second; slavePort1 != slavePort2)
+        continue;
+
+      bool matched = true;
+      auto dests1 = packetFlows[slave1];
+      auto dests2 = packetFlows[slave2];
+      if (dests1.size() != dests2.size()) continue;
+
+      for (auto dest1 : dests1) {
+        if (std::find(dests2.begin(), dests2.end(), dest1) == dests2.end()) {
+          matched = false;
+          break;
+        }
+      }
+
+      if (matched) {
+        group.push_back(slave1);
+        foundgroup = true;
+        break;
+      }
+    }
+
+    if (!foundgroup) {
+      SmallVector<std::pair<PhysPort, int>, 4> group({slave1});
+      slaveGroups.push_back(group);
+    }
+  }
+
+  DenseMap<std::pair<PhysPort, int>, int> slaveMasks;
+  for (const auto &group : slaveGroups) {
+    // Iterate over all the ID values in a group
+    // If bit n-th (n <= 5) of an ID value differs from bit n-th of another ID
+    // value, the bit position should be "don't care", and we will set the
+    // mask bit of that position to 0
+    int mask[5] = {-1, -1, -1, -1, -1};
+    for (auto port : group) {
+      int ID = port.second;
+      for (int i = 0; i < 5; i++) {
+        if (mask[i] == -1) {
+          mask[i] = ID >> i & 0x1;
+        } else if (mask[i] != (ID >> i & 0x1)) {
+          // found bit difference --> mark as "don't care"
+          mask[i] = 2;
+        }
+      }
+    }
+
+    int maskValue = 0;
+    for (int i = 4; i >= 0; i--) {
+      if (mask[i] == 2) {
+        // don't care
+        mask[i] = 0;
+      } else {
+        mask[i] = 1;
+      }
+      maskValue = (maskValue << 1) + mask[i];
+    }
+    for (auto port : group) slaveMasks[port] = maskValue;
+  }
+  return std::make_tuple(mastersets, slaveGroups, slaveMasks, slaveAMSels);
+}
+
 }  // namespace mlir::iree_compiler::AMDAIE
