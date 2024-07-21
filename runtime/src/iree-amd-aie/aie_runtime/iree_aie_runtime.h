@@ -46,7 +46,7 @@ struct TileLoc {
   int col, row;
 
   TileLoc(int col, int row) : col(col), row(row) {}
-  TileLoc() = default;
+  TileLoc() = delete;
   TileLoc(XAie_LocType loc) : col(loc.Col), row(loc.Row) {}
   operator XAie_LocType() const { return XAie_TileLoc(col, row); }
 
@@ -217,9 +217,9 @@ struct AMDAIEDeviceModel {
 
   uint32_t getNumBDs(uint8_t col, uint8_t row) const;
 
-  uint32_t getNumSourceSwitchboxConnections(uint8_t col, uint8_t row,
+  uint32_t getNumSourceSwitchBoxConnections(uint8_t col, uint8_t row,
                                             StrmSwPortType bundle) const;
-  uint32_t getNumDestSwitchboxConnections(uint8_t col, uint8_t row,
+  uint32_t getNumDestSwitchBoxConnections(uint8_t col, uint8_t row,
                                           StrmSwPortType bundle) const;
   bool isLegalTileConnection(uint8_t col, uint8_t row, StrmSwPortType srcBundle,
                              uint8_t srcChan, StrmSwPortType dstBundle,

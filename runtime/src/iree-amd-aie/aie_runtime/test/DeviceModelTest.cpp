@@ -252,7 +252,7 @@ TEST_P(AMDAIENPUDeviceModelParameterizedAllPairsTimesAllPairsNPU4ColTestFixture,
 
 const std::map<std::tuple<int, int, StrmSwPortType>, std::tuple<int, int>,
                std::less<>>
-    NumSourceSwitchboxConnectionsFails{
+    NumSourceSwitchBoxConnectionsFails{
         // c, r, port, deviceModelNumSrc, targetModelNumSrc
         {{0, 0, StrmSwPortType::TRACE}, {2, 1}},
         // trace
@@ -269,17 +269,17 @@ const std::map<std::tuple<int, int, StrmSwPortType>, std::tuple<int, int>,
 
 TEST_P(
     AMDAIENPUDeviceModelParameterizedAllPairsTimesAllSwitchesNPU4ColTestFixture,
-    NumSourceSwitchboxConnections) {
+    NumSourceSwitchBoxConnections) {
   auto [c, r, strmSwPortType] = GetParam();
   auto srcSw = static_cast<StrmSwPortType>(strmSwPortType);
   auto wireB = STRM_SW_PORT_TYPE_TO_WIRE_BUNDLE(srcSw);
   auto deviceModelNumSrc =
-      deviceModel.getNumSourceSwitchboxConnections(c, r, srcSw);
+      deviceModel.getNumSourceSwitchBoxConnections(c, r, srcSw);
   auto targetModelNumSrc =
       targetModel.getNumSourceSwitchboxConnections(c, r, wireB);
   const auto tup = std::make_tuple(c, r, srcSw);
-  if (NumSourceSwitchboxConnectionsFails.count(tup)) {
-    auto [d, t] = NumSourceSwitchboxConnectionsFails.at(tup);
+  if (NumSourceSwitchBoxConnectionsFails.count(tup)) {
+    auto [d, t] = NumSourceSwitchBoxConnectionsFails.at(tup);
     EXPECT_EQ(deviceModelNumSrc, d);
     EXPECT_EQ(targetModelNumSrc, t);
   } else
@@ -289,7 +289,7 @@ TEST_P(
 
 const std::map<std::tuple<int, int, StrmSwPortType>, std::tuple<int, int>,
                std::less<>>
-    NumDestSwitchboxConnectionsFails{
+    NumDestSwitchBoxConnectionsFails{
         // c, r, port, deviceModelNumSrc, targetModelNumSrc
         {{3, 0, StrmSwPortType::EAST}, {4, 0}},
         {{3, 2, StrmSwPortType::EAST}, {4, 0}},
@@ -299,17 +299,17 @@ const std::map<std::tuple<int, int, StrmSwPortType>, std::tuple<int, int>,
 
 TEST_P(
     AMDAIENPUDeviceModelParameterizedAllPairsTimesAllSwitchesNPU4ColTestFixture,
-    NumDestSwitchboxConnections) {
+    NumDestSwitchBoxConnections) {
   auto [c, r, strmSwPortType] = GetParam();
   auto dstSw = static_cast<StrmSwPortType>(strmSwPortType);
   auto wireB = STRM_SW_PORT_TYPE_TO_WIRE_BUNDLE(dstSw);
   auto deviceModelNumDst =
-      deviceModel.getNumDestSwitchboxConnections(c, r, dstSw);
+      deviceModel.getNumDestSwitchBoxConnections(c, r, dstSw);
   auto targetModelNumDst =
       targetModel.getNumDestSwitchboxConnections(c, r, wireB);
   const auto tup = std::make_tuple(c, r, dstSw);
-  if (NumDestSwitchboxConnectionsFails.count(tup)) {
-    auto [d, t] = NumDestSwitchboxConnectionsFails.at(tup);
+  if (NumDestSwitchBoxConnectionsFails.count(tup)) {
+    auto [d, t] = NumDestSwitchBoxConnectionsFails.at(tup);
     EXPECT_EQ(deviceModelNumDst, d);
     EXPECT_EQ(targetModelNumDst, t);
 

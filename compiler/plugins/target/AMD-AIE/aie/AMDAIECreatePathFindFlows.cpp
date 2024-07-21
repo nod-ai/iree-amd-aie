@@ -239,12 +239,12 @@ LogicalResult runOnPacketFlow(
 
   // The logical model of all the switchboxes.
   DenseMap<PhysPort, Attribute> keepPktHeaderAttr;
-  SwitchboxToConnectionFlowIDT switchboxes;
+  SwitchBoxToConnectionFlowIDT switchboxes;
   for (PacketFlowOp pktFlowOp : device.getOps<PacketFlowOp>()) {
     int flowID = pktFlowOp.IDInt();
     Port srcPort, destPort;
     TileOp srcTile, destTile;
-    TileLoc srcCoords, destCoords;
+    TileLoc srcCoords{-1, -1}, destCoords{-1, -1};
 
     Block &b = pktFlowOp.getPorts().front();
     for (Operation &Op : b.getOperations()) {
@@ -260,6 +260,7 @@ LogicalResult runOnPacketFlow(
         if (pktFlowOp->hasAttr("keep_pkt_header"))
           keepPktHeaderAttr[{{destCoords}, destPort}] =
               StringAttr::get(Op.getContext(), "true");
+        assert(srcCoords.col != -1 && srcCoords.row != -1);
         PathEndPoint srcPoint = {{srcCoords.col, srcCoords.row}, srcPort};
         // TODO(max): when does this happen???
         if (!flowSolutions.count(srcPoint)) continue;
@@ -495,7 +496,7 @@ void AIEPathfinderPass::runOnOperation() {
     Block &b = r.front();
     Port srcPort, dstPort;
     TileOp srcTile, dstTile;
-    TileLoc srcCoords, dstCoords;
+    TileLoc srcCoords{-1, -1}, dstCoords{-1, -1};
     for (Operation &Op : b.getOperations()) {
       if (auto pktSource = llvm::dyn_cast<PacketSourceOp>(Op)) {
         srcTile = llvm::cast<TileOp>(pktSource.getTile().getDefiningOp());
@@ -505,6 +506,7 @@ void AIEPathfinderPass::runOnOperation() {
         dstTile = llvm::cast<TileOp>(pktDest.getTile().getDefiningOp());
         dstPort = {toStrmT(pktDest.port().bundle), pktDest.port().channel};
         dstCoords = {dstTile.colIndex(), dstTile.rowIndex()};
+        assert(srcCoords.col != -1 && srcCoords.row != -1);
         pathfinder.addFlow(srcCoords, srcPort, dstCoords, dstPort, true);
       }
     }

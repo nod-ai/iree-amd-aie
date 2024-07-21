@@ -49,18 +49,18 @@ struct Connect {
 };
 ASSERT_STANDARD_LAYOUT(Connect);
 
-struct Switchbox : TileLoc {
-  Switchbox(TileLoc t) : TileLoc(t) {}
-  Switchbox(int col, int row) : TileLoc(col, row) {}
-  Switchbox(std::tuple<int, int> t) : TileLoc(t) {}
+struct SwitchBox : TileLoc {
+  SwitchBox(TileLoc t) : TileLoc(t) {}
+  SwitchBox(int col, int row) : TileLoc(col, row) {}
+  SwitchBox(std::tuple<int, int> t) : TileLoc(t) {}
 
-  bool operator==(const Switchbox &rhs) const {
+  bool operator==(const SwitchBox &rhs) const {
     return static_cast<TileLoc>(*this) == rhs;
   }
 };
-ASSERT_STANDARD_LAYOUT(Switchbox);
+ASSERT_STANDARD_LAYOUT(SwitchBox);
 
-// A SwitchSetting defines the required settings for a SwitchboxNode for a flow
+// A SwitchSetting defines the required settings for a SwitchBoxNode for a flow
 // SwitchSetting.src is the incoming signal
 // SwitchSetting.dsts is the fanout
 struct SwitchSetting {
@@ -74,14 +74,14 @@ struct SwitchSetting {
   bool operator<(const SwitchSetting &rhs) const { return src < rhs.src; }
 };
 
-using SwitchSettings = std::map<Switchbox, SwitchSetting>;
+using SwitchSettings = std::map<SwitchBox, SwitchSetting>;
 
 // A Flow defines source and destination vertices
 // Only one source, but any number of destinations (fanout)
 struct PathEndPoint {
-  Switchbox sb;
+  SwitchBox sb;
   Port port;
-  PathEndPoint(Switchbox sb, Port port) : sb(sb), port(port) {}
+  PathEndPoint(SwitchBox sb, Port port) : sb(sb), port(port) {}
   PathEndPoint(int col, int row, Port port) : PathEndPoint({col, row}, port) {}
   bool operator<(const PathEndPoint &rhs) const {
     return std::tie(sb, port) < std::tie(rhs.sb, rhs.port);
@@ -109,7 +109,7 @@ struct Router {
       int maxIterations = 1000);
 };
 
-std::vector<std::pair<Switchbox, Connect>> emitConnections(
+std::vector<std::pair<SwitchBox, Connect>> emitConnections(
     const std::map<PathEndPoint, SwitchSettings> &flowSolutions,
     const PathEndPoint &srcPoint, const AMDAIEDeviceModel &targetModel);
 
@@ -125,12 +125,12 @@ using SlaveGroupsT = SmallVector<SmallVector<std::pair<PhysPort, int>, 4>, 4>;
 using SlaveMasksT = DenseMap<std::pair<PhysPort, int>, int>;
 using SlaveAMSelsT = DenseMap<std::pair<PhysPort, int>, int>;
 using ConnectionAndFlowIDT = std::pair<Connect, int>;
-using SwitchboxToConnectionFlowIDT =
+using SwitchBoxToConnectionFlowIDT =
     DenseMap<TileLoc, SmallVector<ConnectionAndFlowIDT, 8>>;
 
 std::tuple<MasterSetsT, SlaveGroupsT, SlaveMasksT, SlaveAMSelsT>
 configurePacketFlows(int numMsels, int numArbiters,
-                     const SwitchboxToConnectionFlowIDT &switchboxes,
+                     const SwitchBoxToConnectionFlowIDT &switchboxes,
                      const SmallVector<TileLoc> &tiles);
 
 /// ============================= BEGIN ==================================

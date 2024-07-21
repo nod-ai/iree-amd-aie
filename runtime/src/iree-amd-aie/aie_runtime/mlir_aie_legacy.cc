@@ -29,7 +29,7 @@ bool isShimNOCorPLTile(int col, int row) {
   return isShimNOCTile(col, row) || isShimPLTile(col, row);
 }
 
-uint32_t getNumDestSwitchboxConnections(int col, int row,
+uint32_t getNumDestSwitchBoxConnections(int col, int row,
                                         StrmSwPortType bundle) {
   if (isShimNOCTile(col, row) || isShimPLTile(col, row)) switch (bundle) {
       case StrmSwPortType::FIFO:
@@ -78,7 +78,7 @@ uint32_t getNumDestSwitchboxConnections(int col, int row,
   }
 }
 
-uint32_t getNumSourceSwitchboxConnections(int col, int row,
+uint32_t getNumSourceSwitchBoxConnections(int col, int row,
                                           StrmSwPortType bundle) {
   if (isShimNOCTile(col, row) || isShimPLTile(col, row)) switch (bundle) {
       case StrmSwPortType::FIFO:
@@ -168,9 +168,9 @@ bool isMemTile(int col, int row) { return false; }
 bool isLegalTileConnection(int col, int row, StrmSwPortType srcBundle,
                            int srcChan, StrmSwPortType dstBundle, int dstChan) {
   // Check Channel Id within the range
-  if (srcChan >= int(getNumSourceSwitchboxConnections(col, row, srcBundle)))
+  if (srcChan >= int(getNumSourceSwitchBoxConnections(col, row, srcBundle)))
     return false;
-  if (dstChan >= int(getNumDestSwitchboxConnections(col, row, dstBundle)))
+  if (dstChan >= int(getNumDestSwitchBoxConnections(col, row, dstBundle)))
     return false;
 
   // Memtile
@@ -254,7 +254,7 @@ uint32_t getNumSourceShimMuxConnections(int col, int row,
   return 0;
 }
 
-uint32_t getNumDestSwitchboxConnections(int col, int row,
+uint32_t getNumDestSwitchBoxConnections(int col, int row,
                                         StrmSwPortType bundle) {
   if (isMemTile(col, row)) switch (bundle) {
       case StrmSwPortType::DMA:
@@ -317,7 +317,7 @@ uint32_t getNumDestSwitchboxConnections(int col, int row,
   }
 }
 
-uint32_t getNumSourceSwitchboxConnections(int col, int row,
+uint32_t getNumSourceSwitchBoxConnections(int col, int row,
                                           StrmSwPortType bundle) {
   if (isMemTile(col, row)) switch (bundle) {
       case StrmSwPortType::DMA:
@@ -391,9 +391,9 @@ uint32_t getNumSourceSwitchboxConnections(int col, int row,
 bool isLegalTileConnection(int col, int row, StrmSwPortType srcBundle,
                            int srcChan, StrmSwPortType dstBundle, int dstChan) {
   // Check Channel Id within the range
-  if (srcChan >= int(getNumSourceSwitchboxConnections(col, row, srcBundle)))
+  if (srcChan >= int(getNumSourceSwitchBoxConnections(col, row, srcBundle)))
     return false;
-  if (dstChan >= int(getNumDestSwitchboxConnections(col, row, dstBundle)))
+  if (dstChan >= int(getNumDestSwitchBoxConnections(col, row, dstBundle)))
     return false;
 
   // Lambda function to check if a bundle is in a list
@@ -560,29 +560,29 @@ uint32_t getNumDestShimMuxConnections(int col, int row, StrmSwPortType bundle,
   return getNumShimMuxConnections(col, row, bundle, deviceModel);
 }
 
-uint32_t getNumSourceSwitchboxConnections(
+uint32_t getNumSourceSwitchBoxConnections(
     int col, int row, StrmSwPortType bundle,
     const AMDAIEDeviceModel &deviceModel) {
   if (deviceModel.device == AMDAIEDevice::xcvc1902)
-    return MLIRAIELegacy::VC1902TargetModel::getNumSourceSwitchboxConnections(
+    return MLIRAIELegacy::VC1902TargetModel::getNumSourceSwitchBoxConnections(
         col, row, bundle);
   if (deviceModel.device == AMDAIEDevice::xcve2802)
-    return MLIRAIELegacy::VE2802TargetModel::getNumSourceSwitchboxConnections(
+    return MLIRAIELegacy::VE2802TargetModel::getNumSourceSwitchBoxConnections(
         col, row, bundle);
   assert(isNPUDevice(deviceModel.device) && "expected NPU device");
-  return deviceModel.getNumSourceSwitchboxConnections(col, row, bundle);
+  return deviceModel.getNumSourceSwitchBoxConnections(col, row, bundle);
 }
 
-uint32_t getNumDestSwitchboxConnections(int col, int row, StrmSwPortType bundle,
+uint32_t getNumDestSwitchBoxConnections(int col, int row, StrmSwPortType bundle,
                                         const AMDAIEDeviceModel &deviceModel) {
   if (deviceModel.device == AMDAIEDevice::xcvc1902)
-    return MLIRAIELegacy::VC1902TargetModel::getNumDestSwitchboxConnections(
+    return MLIRAIELegacy::VC1902TargetModel::getNumDestSwitchBoxConnections(
         col, row, bundle);
   if (deviceModel.device == AMDAIEDevice::xcve2802)
-    return MLIRAIELegacy::VE2802TargetModel::getNumDestSwitchboxConnections(
+    return MLIRAIELegacy::VE2802TargetModel::getNumDestSwitchBoxConnections(
         col, row, bundle);
   assert(isNPUDevice(deviceModel.device) && "expected NPU device");
-  return deviceModel.getNumDestSwitchboxConnections(col, row, bundle);
+  return deviceModel.getNumDestSwitchBoxConnections(col, row, bundle);
 }
 
 bool isLegalTileConnection(

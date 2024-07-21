@@ -27,10 +27,10 @@ extern "C" {
 #define DEBUG_TYPE "iree-aie-runtime"
 
 namespace MLIRAIELegacy {
-extern uint32_t getNumDestSwitchboxConnections(
+extern uint32_t getNumDestSwitchBoxConnections(
     int col, int row, mlir::iree_compiler::AMDAIE::StrmSwPortType bundle,
     const mlir::iree_compiler::AMDAIE::AMDAIEDeviceModel &deviceModel);
-extern uint32_t getNumSourceSwitchboxConnections(
+extern uint32_t getNumSourceSwitchBoxConnections(
     int col, int row, mlir::iree_compiler::AMDAIE::StrmSwPortType bundle,
     const mlir::iree_compiler::AMDAIE::AMDAIEDeviceModel &deviceModel);
 extern bool isLegalTileConnection(
@@ -384,10 +384,10 @@ bool AMDAIEDeviceModel::isLegalTileConnection(uint8_t col, uint8_t row,
 }
 
 // source <-> slave and dest <-> master
-uint32_t AMDAIEDeviceModel::getNumSourceSwitchboxConnections(
+uint32_t AMDAIEDeviceModel::getNumSourceSwitchBoxConnections(
     uint8_t col, uint8_t row, StrmSwPortType bundle) const {
   if (device == AMDAIEDevice::xcvc1902 || device == AMDAIEDevice::xcve2802) {
-    return MLIRAIELegacy::getNumSourceSwitchboxConnections(col, row, bundle,
+    return MLIRAIELegacy::getNumSourceSwitchBoxConnections(col, row, bundle,
                                                            *this);
   }
   assert(isNPUDevice(device) && "expected NPU device");
@@ -405,10 +405,10 @@ uint32_t AMDAIEDeviceModel::getNumSourceSwitchboxConnections(
   return strmMod->SlvConfig[CheckedAieRtCompatStrmSwPortType(bundle)].NumPorts;
 }
 
-uint32_t AMDAIEDeviceModel::getNumDestSwitchboxConnections(
+uint32_t AMDAIEDeviceModel::getNumDestSwitchBoxConnections(
     uint8_t col, uint8_t row, StrmSwPortType bundle) const {
   if (device == AMDAIEDevice::xcvc1902 || device == AMDAIEDevice::xcve2802) {
-    return MLIRAIELegacy::getNumDestSwitchboxConnections(col, row, bundle,
+    return MLIRAIELegacy::getNumDestSwitchBoxConnections(col, row, bundle,
                                                          *this);
   }
   assert(isNPUDevice(device) && "expected NPU device");
