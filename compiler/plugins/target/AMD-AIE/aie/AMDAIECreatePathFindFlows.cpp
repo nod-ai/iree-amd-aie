@@ -182,7 +182,7 @@ struct ConvertFlowsToInterconnect : OpConversionPattern<FlowOp> {
         case Connect::Interconnect::swOp:
           op = switchboxOp.getOperation();
           break;
-        case Connect::Interconnect::unk:
+        case Connect::Interconnect::nocare:
           return flowOp->emitOpError("unsupported/unknown interconnect");
       }
 
@@ -239,7 +239,7 @@ LogicalResult runOnPacketFlow(
 
   // The logical model of all the switchboxes.
   DenseMap<PhysPort, Attribute> keepPktHeaderAttr;
-  DenseMap<TileLoc, SmallVector<std::pair<Connect, int>, 8>> switchboxes;
+  SwitchboxToConnectionFlowIDT switchboxes;
   for (PacketFlowOp pktFlowOp : device.getOps<PacketFlowOp>()) {
     int flowID = pktFlowOp.IDInt();
     Port srcPort, destPort;
@@ -276,11 +276,11 @@ LogicalResult runOnPacketFlow(
             }
             Connect connect = {{setting.src.bundle, setting.src.channel},
                                {bundle, channel}};
+            ConnectionAndFlowIDT connFlow = {connect, flowID};
             if (std::find(switchboxes[currTile].begin(),
                           switchboxes[currTile].end(),
-                          std::pair{connect, flowID}) ==
-                switchboxes[currTile].end()) {
-              switchboxes[currTile].push_back({connect, flowID});
+                          connFlow) == switchboxes[currTile].end()) {
+              switchboxes[currTile].push_back(connFlow);
             }
           }
         }

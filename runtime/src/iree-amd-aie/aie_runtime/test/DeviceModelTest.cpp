@@ -394,7 +394,7 @@ TEST_P(AMDAIENPUDeviceModelParameterizedSixTupleNPU4ColTestFixture,
   if (deviceModel.isMemTile(c, r)) {
     auto destSw = destStrmSwPortType;
     auto destWireb = STRM_SW_PORT_TYPE_TO_WIRE_BUNDLE(destSw);
-    auto deviceModelIsLegal = deviceModel.isLegalMemtileConnection(
+    auto deviceModelIsLegal = deviceModel.isLegalTileConnection(
         c, r, srcSw, srcChan, destSw, dstChan);
     auto targetModelIsLegal = targetModel.isLegalTileConnection(
         c, r, srcWireB, srcChan, destWireb, dstChan);
@@ -412,7 +412,7 @@ TEST(IsLegalMemtileConnectionSouth4, Test0) {
   const xilinx::AIE::AIETargetModel &targetModel =
       xilinx::AIE::getTargetModel(xilinx::AIE::AIEDevice::npu1_4col);
 
-  auto deviceModelIsLegal = deviceModel.isLegalMemtileConnection(
+  auto deviceModelIsLegal = deviceModel.isLegalTileConnection(
       0, 1, StrmSwPortType::DMA, 2, StrmSwPortType::SOUTH, 4);
   auto targetModelIsLegal = targetModel.isLegalTileConnection(
       0, 1, xilinx::AIE::WireBundle::DMA, 2, xilinx::AIE::WireBundle::South, 4);

@@ -29,20 +29,17 @@ struct Port {
     return std::tie(bundle, channel) < std::tie(rhs.bundle, rhs.channel);
   }
 };
-static_assert(std::is_standard_layout_v<Port>,
-              "Port is meant to be a standard layout type");
-
-using PhysPort = std::pair<TileLoc, Port>;
+ASSERT_STANDARD_LAYOUT(Port);
 
 struct Connect {
-  enum class Interconnect { shimMuxOp, swOp, unk };
+  enum class Interconnect { shimMuxOp, swOp, nocare };
   Port src;
   Port dst;
   Interconnect interconnect;
   uint8_t col, row;
 
   Connect(const Port &src, const Port &dst,
-          Interconnect interconnect = Interconnect::unk, uint8_t col = 0,
+          Interconnect interconnect = Interconnect::nocare, uint8_t col = 0,
           uint8_t row = 0)
       : src(src), dst(dst), interconnect(interconnect), col(col), row(row) {}
 
@@ -50,11 +47,9 @@ struct Connect {
     return std::tie(src, dst) == std::tie(rhs.src, rhs.dst);
   }
 };
-static_assert(std::is_standard_layout_v<Connect>,
-              "Connect is meant to be a standard layout type");
+ASSERT_STANDARD_LAYOUT(Connect);
 
 struct Switchbox : TileLoc {
-  // Necessary for initializer construction?
   Switchbox(TileLoc t) : TileLoc(t) {}
   Switchbox(int col, int row) : TileLoc(col, row) {}
   Switchbox(std::tuple<int, int> t) : TileLoc(t) {}
@@ -63,8 +58,7 @@ struct Switchbox : TileLoc {
     return static_cast<TileLoc>(*this) == rhs;
   }
 };
-static_assert(std::is_standard_layout_v<Switchbox>,
-              "Switchbox is meant to be a standard layout type");
+ASSERT_STANDARD_LAYOUT(Switchbox);
 
 // A SwitchSetting defines the required settings for a SwitchboxNode for a flow
 // SwitchSetting.src is the incoming signal
@@ -89,7 +83,6 @@ struct PathEndPoint {
   Port port;
   PathEndPoint(Switchbox sb, Port port) : sb(sb), port(port) {}
   PathEndPoint(int col, int row, Port port) : PathEndPoint({col, row}, port) {}
-  // Needed for the std::maps that store PathEndPoint.
   bool operator<(const PathEndPoint &rhs) const {
     return std::tie(sb, port) < std::tie(rhs.sb, rhs.port);
   }
@@ -98,8 +91,7 @@ struct PathEndPoint {
     return std::tie(sb, port) == std::tie(rhs.sb, rhs.port);
   }
 };
-static_assert(std::is_standard_layout_v<PathEndPoint>,
-              "PathEndPoint is meant to be a standard layout type");
+ASSERT_STANDARD_LAYOUT(PathEndPoint);
 
 struct RouterImpl;
 struct Router {
@@ -126,15 +118,24 @@ bool existsPathToDest(const SwitchSettings &settings, TileLoc currTile,
                       TileLoc finalTile, StrmSwPortType finalDestBundle,
                       int finalDestChannel);
 
-std::tuple<DenseMap<PhysPort, SmallVector<int, 4>>,
-           SmallVector<SmallVector<std::pair<PhysPort, int>, 4>, 4>,
-           DenseMap<std::pair<PhysPort, int>, int>,
-           DenseMap<std::pair<PhysPort, int>, int>>
-configurePacketFlows(
-    int numMsels, int numArbiters,
-    const DenseMap<TileLoc, SmallVector<std::pair<Connect, int>, 8>>
-        &switchboxes,
-    const SmallVector<TileLoc> &tiles);
+using PhysPort = std::pair<TileLoc, Port>;
+// A map from a switchbox output (physical) port to the number of that port.
+using MasterSetsT = DenseMap<PhysPort, SmallVector<int, 4>>;
+using SlaveGroupsT = SmallVector<SmallVector<std::pair<PhysPort, int>, 4>, 4>;
+using SlaveMasksT = DenseMap<std::pair<PhysPort, int>, int>;
+using SlaveAMSelsT = DenseMap<std::pair<PhysPort, int>, int>;
+using ConnectionAndFlowIDT = std::pair<Connect, int>;
+using SwitchboxToConnectionFlowIDT =
+    DenseMap<TileLoc, SmallVector<ConnectionAndFlowIDT, 8>>;
+
+std::tuple<MasterSetsT, SlaveGroupsT, SlaveMasksT, SlaveAMSelsT>
+configurePacketFlows(int numMsels, int numArbiters,
+                     const SwitchboxToConnectionFlowIDT &switchboxes,
+                     const SmallVector<TileLoc> &tiles);
+
+/// ============================= BEGIN ==================================
+/// ================== stringification utils =============================
+/// ======================================================================
 
 #define TO_STRINGS(_) \
   _(Connect)          \

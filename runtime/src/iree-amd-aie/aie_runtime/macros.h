@@ -77,4 +77,8 @@
     return s;                                                       \
   }
 
+#define ASSERT_STANDARD_LAYOUT(p)             \
+  static_assert(std::is_standard_layout_v<p>, \
+                #p " is meant to be a standard layout type")
+
 #endif  // IREE_MACROS_H

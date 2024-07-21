@@ -533,6 +533,7 @@ iree_cc_library(
   SRCS
     iree_aie_router.cc
     iree_aie_runtime.cc
+    mlir_aie_legacy.cc
     xaie_hwcfg.c
   INCLUDES
     ${_aie_rt_binary_include_dir}

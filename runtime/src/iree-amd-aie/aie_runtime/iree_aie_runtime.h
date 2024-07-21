@@ -65,8 +65,7 @@ struct TileLoc {
 
   bool operator!=(const TileLoc& rhs) const { return !(*this == rhs); }
 };
-static_assert(std::is_standard_layout_v<TileLoc>,
-              "TileLoc is meant to be a standard layout type");
+ASSERT_STANDARD_LAYOUT(TileLoc);
 
 struct SwitchDMAConnection {
   DMAChannelDir direction;
@@ -79,8 +78,7 @@ struct SwitchDMAConnection {
     return std::tie(direction, channel) == std::tie(rhs.direction, rhs.channel);
   }
 };
-static_assert(std::is_standard_layout_v<SwitchDMAConnection>,
-              "SwitchDMAConnection is meant to be a standard layout type");
+ASSERT_STANDARD_LAYOUT(SwitchDMAConnection);
 
 enum class AMDAIETileType : uint8_t {
   AIETILE = 0,
@@ -129,10 +127,18 @@ enum class StrmSwPortType : uint8_t {
   EAST,
   TRACE,
   UCTRLR,
+  SS_PORT_TYPE_MAX,
+  // "illegal" types after max
   NOC,
   PLIO,
-  SS_PORT_TYPE_MAX
 };
+static_assert(static_cast<uint8_t>(StrmSwPortType::CORE) == 0,
+              "mlir::iree_compiler::AMDAIE::StrmSwPortType is out of sync with "
+              "aie-rt's StrmSwPortType");
+static_assert(static_cast<uint8_t>(StrmSwPortType::SS_PORT_TYPE_MAX) ==
+                  ::StrmSwPortType::SS_PORT_TYPE_MAX,
+              "mlir::iree_compiler::AMDAIE::StrmSwPortType is out of sync with "
+              "aie-rt's StrmSwPortType");
 
 /*
  * This struct is meant to be a thin wrapper around aie-rt, which provides
@@ -215,17 +221,9 @@ struct AMDAIEDeviceModel {
                                             StrmSwPortType bundle) const;
   uint32_t getNumDestSwitchboxConnections(uint8_t col, uint8_t row,
                                           StrmSwPortType bundle) const;
-  uint32_t getNumSourceShimMuxConnections(uint8_t col, uint8_t row,
-                                          StrmSwPortType bundle) const;
-  uint32_t getNumDestShimMuxConnections(uint8_t col, uint8_t row,
-                                        StrmSwPortType bundle) const;
-  bool isLegalMemtileConnection(uint8_t col, uint8_t row,
-                                StrmSwPortType srcBundle, uint8_t srcChan,
-                                StrmSwPortType dstBundle,
-                                uint8_t dstChan) const;
-  bool isLegalTileConnection(int col, int row, StrmSwPortType srcBundle,
-                             int srcChan, StrmSwPortType dstBundle,
-                             int dstChan) const;
+  bool isLegalTileConnection(uint8_t col, uint8_t row, StrmSwPortType srcBundle,
+                             uint8_t srcChan, StrmSwPortType dstBundle,
+                             uint8_t dstChan) const;
 
   uint32_t getColumnShift() const;
   uint32_t getRowShift() const;
@@ -235,16 +233,16 @@ struct AMDAIEDeviceModel {
   DenseMap<uint32_t, SmallVector<uint32_t>> getChannelToValidBdIds(
       AMDAIETileType tileType) const;
 
- private:
   AMDAIEDevice device;
-  uint32_t getNumShimMuxConnections(uint8_t col, uint8_t row,
-                                    StrmSwPortType bundle) const;
-  bool _isLegalTileConnection(int col, int row, StrmSwPortType srcBundle,
-                              int srcChan, StrmSwPortType dstBundle,
-                              int dstChan) const;
 };
 
 struct AMDAIEDeviceModel getDeviceModel(AMDAIEDevice device);
+StrmSwPortType getConnectingBundle(StrmSwPortType dir);
+bool isNPUDevice(mlir::iree_compiler::AMDAIE::AMDAIEDevice d);
+
+/// ============================= BEGIN ==================================
+/// ================== stringification utils =============================
+/// ======================================================================
 
 std::string to_string(const int& value);
 
@@ -336,8 +334,6 @@ static_assert(XAIE_OK == 0);
       return failure();                                                 \
     }                                                                   \
   } while (0)
-
-StrmSwPortType getConnectingBundle(StrmSwPortType dir);
 
 }  // namespace mlir::iree_compiler::AMDAIE
 
