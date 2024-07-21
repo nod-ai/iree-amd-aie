@@ -9,6 +9,7 @@
 
 #include <list>
 #include <map>
+#include <numeric>
 #include <set>
 
 #include "iree_aie_runtime.h"
@@ -44,7 +45,8 @@ struct Connect {
       : src(src), dst(dst), interconnect(interconnect), col(col), row(row) {}
 
   bool operator==(const Connect &rhs) const {
-    return std::tie(src, dst) == std::tie(rhs.src, rhs.dst);
+    return std::tie(src, dst, interconnect, col, row) ==
+           std::tie(rhs.src, rhs.dst, interconnect, col, row);
   }
 };
 ASSERT_STANDARD_LAYOUT(Connect);
@@ -60,9 +62,10 @@ struct SwitchBox : TileLoc {
 };
 ASSERT_STANDARD_LAYOUT(SwitchBox);
 
-// A SwitchSetting defines the required settings for a SwitchBoxNode for a flow
-// SwitchSetting.src is the incoming signal
-// SwitchSetting.dsts is the fanout
+/// A SwitchSetting defines the required conifgurations for an actual
+/// physical/device SwitchBox.
+/// SwitchSetting.src is the incoming signal
+/// SwitchSetting.dsts is the fanout
 struct SwitchSetting {
   Port src;
   std::set<Port> dsts;
@@ -76,8 +79,6 @@ struct SwitchSetting {
 
 using SwitchSettings = std::map<SwitchBox, SwitchSetting>;
 
-// A Flow defines source and destination vertices
-// Only one source, but any number of destinations (fanout)
 struct PathEndPoint {
   SwitchBox sb;
   Port port;
@@ -126,7 +127,7 @@ using SlaveMasksT = DenseMap<std::pair<PhysPort, int>, int>;
 using SlaveAMSelsT = DenseMap<std::pair<PhysPort, int>, int>;
 using ConnectionAndFlowIDT = std::pair<Connect, int>;
 using SwitchBoxToConnectionFlowIDT =
-    DenseMap<TileLoc, SmallVector<ConnectionAndFlowIDT, 8>>;
+    DenseMap<TileLoc, DenseSet<ConnectionAndFlowIDT>>;
 
 std::tuple<MasterSetsT, SlaveGroupsT, SlaveMasksT, SlaveAMSelsT>
 configurePacketFlows(int numMsels, int numArbiters,
@@ -188,6 +189,43 @@ struct DenseMapInfo<mlir::iree_compiler::AMDAIE::Port> {
 
   static bool isEqual(const mlir::iree_compiler::AMDAIE::Port &lhs,
                       const mlir::iree_compiler::AMDAIE::Port &rhs) {
+    return lhs == rhs;
+  }
+};
+
+template <>
+struct DenseMapInfo<mlir::iree_compiler::AMDAIE::Connect> {
+  using FirstInfo = DenseMapInfo<mlir::iree_compiler::AMDAIE::Port>;
+  using SecondInfo = DenseMapInfo<mlir::iree_compiler::AMDAIE::Port>;
+  using ThirdInfo =
+      DenseMapInfo<mlir::iree_compiler::AMDAIE::Connect::Interconnect>;
+  using FourthInfo = DenseMapInfo<uint8_t>;
+  using FifthInfo = DenseMapInfo<uint8_t>;
+
+  static mlir::iree_compiler::AMDAIE::Connect getEmptyKey() {
+    return {FirstInfo::getEmptyKey(), SecondInfo::getEmptyKey(),
+            ThirdInfo::getEmptyKey(), FourthInfo::getEmptyKey(),
+            FifthInfo::getEmptyKey()};
+  }
+
+  static mlir::iree_compiler::AMDAIE::Connect getTombstoneKey() {
+    return {FirstInfo::getTombstoneKey(), SecondInfo::getTombstoneKey(),
+            ThirdInfo::getTombstoneKey(), FourthInfo::getTombstoneKey(),
+            FifthInfo::getTombstoneKey()};
+  }
+
+  static unsigned getHashValue(const mlir::iree_compiler::AMDAIE::Connect &d) {
+    std::vector<unsigned> hashes{
+        FirstInfo::getHashValue(d.src), SecondInfo::getHashValue(d.dst),
+        ThirdInfo::getHashValue(d.interconnect),
+        FourthInfo::getHashValue(d.col), FifthInfo::getHashValue(d.row)};
+
+    return std::accumulate(hashes.begin(), hashes.end(), 0,
+                           detail::combineHashValue);
+  }
+
+  static bool isEqual(const mlir::iree_compiler::AMDAIE::Connect &lhs,
+                      const mlir::iree_compiler::AMDAIE::Connect &rhs) {
     return lhs == rhs;
   }
 };

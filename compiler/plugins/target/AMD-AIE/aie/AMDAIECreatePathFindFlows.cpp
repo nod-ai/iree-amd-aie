@@ -276,13 +276,10 @@ LogicalResult runOnPacketFlow(
               continue;
             }
             Connect connect = {{setting.src.bundle, setting.src.channel},
-                               {bundle, channel}};
+                               {bundle, channel},
+                               Connect::Interconnect::nocare};
             ConnectionAndFlowIDT connFlow = {connect, flowID};
-            if (std::find(switchboxes[currTile].begin(),
-                          switchboxes[currTile].end(),
-                          connFlow) == switchboxes[currTile].end()) {
-              switchboxes[currTile].push_back(connFlow);
-            }
+            switchboxes[currTile].insert(connFlow);
           }
         }
       }

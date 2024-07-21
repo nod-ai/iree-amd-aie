@@ -19,12 +19,12 @@ module @test_create_packet_flows4 {
 // CHECK:           %[[VAL_7:.*]] = aie.amsel<0> (1)
 // CHECK:           %[[VAL_4:.*]] = aie.masterset(Core : 0, %[[VAL_3:.*]])
 // CHECK:           %[[VAL_5:.*]] = aie.masterset(Core : 1, %[[VAL_2:.*]])
-// CHECK:           aie.packet_rules(West : 1) {
-// CHECK:             aie.rule(31, 0, %[[VAL_2]])
-// CHECK:           }
 // CHECK:           aie.packet_rules(West : 0) {
 // CHECK:             aie.rule(31, 1, %[[VAL_2]])
 // CHECK:             aie.rule(31, 0, %[[VAL_3]])
+// CHECK:           }
+// CHECK:           aie.packet_rules(West : 1) {
+// CHECK:             aie.rule(31, 0, %[[VAL_2]])
 // CHECK:           }
 // CHECK:         }
 // CHECK:       }

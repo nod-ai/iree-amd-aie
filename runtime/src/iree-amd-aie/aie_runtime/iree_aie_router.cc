@@ -132,12 +132,8 @@ SwitchBoxNode::SwitchBoxNode(int col, int row, int id,
     }
   }
 
-  std::vector<StrmSwPortType> shimBundles = {
+  DenseSet<StrmSwPortType> shimBundles = {
       StrmSwPortType::DMA, StrmSwPortType::NOC, StrmSwPortType::PLIO};
-  auto isBundleInList = [](StrmSwPortType bundle,
-                           std::vector<StrmSwPortType> bundles) {
-    return std::find(bundles.begin(), bundles.end(), bundle) != bundles.end();
-  };
   connectionMatrix.resize(
       inPortId, std::vector<Connectivity>(outPortId, Connectivity::AVAILABLE));
   for (const auto &[inPort, inId] : inPortToId) {
@@ -153,8 +149,8 @@ SwitchBoxNode::SwitchBoxNode(int col, int row, int id,
       if (deviceModel.isShimNOCorPLTile(col, row)) {
         // TODO(max): investigate copy-pasted todo; wordaround for shimMux,
         // todo: integrate shimMux into routable grid
-        if (isBundleInList(inPort.bundle, shimBundles) ||
-            isBundleInList(outPort.bundle, shimBundles)) {
+        if (shimBundles.contains(inPort.bundle) ||
+            shimBundles.contains(outPort.bundle)) {
           connectionMatrix[inId][outId] = Connectivity::AVAILABLE;
         }
       }
@@ -392,8 +388,7 @@ bool Router::addFixedConnection(
 
   for (const auto &[inPort, inId] : sb.inPortToId) {
     for (const auto &[outPort, outId] : sb.outPortToId) {
-      if (invalidInId.find(inId) != invalidInId.end() ||
-          invalidOutId.find(outId) != invalidOutId.end()) {
+      if (invalidInId.count(inId) || invalidOutId.count(outId)) {
         sb.connectionMatrix[inId][outId] = SwitchBoxNode::Connectivity::INVALID;
       }
     }
@@ -524,7 +519,7 @@ std::optional<std::map<PathEndPoint, SwitchSettings>> Router::findPaths(
       switchSettings[src.sb].src = src.port;
       processed.insert(&src.sb);
       // track destination ports used by src.sb
-      std::vector<Port> srcDestPorts;
+      DenseSet<Port> srcDestPorts;
       for (const PathEndPointNode &endPoint : dsts) {
         SwitchBoxNode *curr = &endPoint.sb;
         assert(curr && "endpoint has no source switchbox");
@@ -596,15 +591,13 @@ std::optional<std::map<PathEndPoint, SwitchSettings>> Router::findPaths(
 
           // allocation may fail, as we start from the dest of flow while
           // src.port is not chosen by router
-          if (*curr == src.sb &&
-              std::find(srcDestPorts.begin(), srcDestPorts.end(),
-                        lastDestPort) == srcDestPorts.end()) {
+          if (*curr == src.sb && !srcDestPorts.contains(lastDestPort)) {
             if (!src.sb.allocate(src.port, lastDestPort, isPkt)) {
               isLegal = false;
               overCapacity[ch]++;
             }
             if (!isLegal) break;
-            srcDestPorts.push_back(lastDestPort);
+            srcDestPorts.insert(lastDestPort);
           }
           if (!isLegal) break;
         }
@@ -762,23 +755,21 @@ bool existsPathToDest(const SwitchSettings &settings, TileLoc currTile,
 }
 
 std::tuple<MasterSetsT, SlaveGroupsT, SlaveMasksT, SlaveAMSelsT>
-configurePacketFlows(
-    int numMsels, int numArbiters,
-    const DenseMap<TileLoc, SmallVector<std::pair<Connect, int>, 8>>
-        &switchboxes,
-    const SmallVector<TileLoc> &tiles) {
-  DenseMap<std::pair<PhysPort, int>, SmallVector<PhysPort, 4>> packetFlows;
+configurePacketFlows(int numMsels, int numArbiters,
+                     const SwitchBoxToConnectionFlowIDT &switchboxes,
+                     const SmallVector<TileLoc> &tiles) {
+  DenseMap<std::pair<PhysPort, int>, DenseSet<PhysPort>> packetFlows;
   SmallVector<std::pair<PhysPort, int>, 4> slavePorts;
   for (const auto &[tileId, connects] : switchboxes) {
     for (const auto &[conn, flowID] : connects) {
       auto sourceFlow =
           std::make_pair(std::make_pair(tileId, conn.src), flowID);
-      packetFlows[sourceFlow].push_back({tileId, conn.dst});
+      packetFlows[sourceFlow].insert({tileId, conn.dst});
       slavePorts.push_back(sourceFlow);
     }
   }
 
-  std::vector<std::pair<std::pair<PhysPort, int>, SmallVector<PhysPort, 4>>>
+  std::vector<std::pair<std::pair<PhysPort, int>, DenseSet<PhysPort>>>
       sortedPacketFlows(packetFlows.begin(), packetFlows.end());
 
   // To get determinsitic behaviour
@@ -791,7 +782,7 @@ configurePacketFlows(
 
   // A map from Tile and master selectValue to the ports targeted by that
   // master select.
-  DenseMap<std::pair<TileLoc, int>, SmallVector<Port, 4>> masterAMSels;
+  DenseMap<std::pair<TileLoc, int>, DenseSet<Port>> masterAMSels;
   SlaveAMSelsT slaveAMSels;
   // Count of currently used logical arbiters for each tile.
   DenseMap<TileLoc, int> amselValues;
@@ -822,25 +813,17 @@ configurePacketFlows(
     // If there is an assignment of an arbiter to a master port before, we
     // assign all the master ports here with the same arbiter but different
     // msel
-    // TODO(max): this logic is so wacky that even though it looks like
-    // foundMatchedDest = ~match it's not the case and replacing/fixing will
-    // blow up map accesses in AIEPathfiner::runOnPacketFlow
     bool foundMatchedDest = false;
     for (const auto &map : masterAMSels) {
       if (map.first.first != tileOp) continue;
       amselValue = map.first.second;
       // check if same destinations
-      SmallVector<Port, 4> ports(masterAMSels[{tileOp, amselValue}]);
+      DenseSet<Port> ports(masterAMSels[{tileOp, amselValue}]);
       if (ports.size() != packetFlow.second.size()) continue;
-      bool matched = true;
-      for (auto dest : packetFlow.second) {
-        if (Port port = dest.second;
-            std::find(ports.begin(), ports.end(), port) == ports.end()) {
-          matched = false;
-          break;
-        }
-      }
-      if (matched) {
+      if (std::all_of(packetFlow.second.begin(), packetFlow.second.end(),
+                      [&ports](const std::pair<TileLoc, Port> &dest) {
+                        return ports.contains(dest.second);
+                      })) {
         foundMatchedDest = true;
         break;
       }
@@ -860,7 +843,7 @@ configurePacketFlows(
       }
 
       for (auto dest : packetFlow.second) {
-        masterAMSels[{tileOp, amselValue}].push_back(dest.second);
+        masterAMSels[{tileOp, amselValue}].insert(dest.second);
       }
     }
 
@@ -892,19 +875,13 @@ configurePacketFlows(
       if (Port slavePort2 = slave2.first.second; slavePort1 != slavePort2)
         continue;
 
-      bool matched = true;
       auto dests1 = packetFlows[slave1];
       auto dests2 = packetFlows[slave2];
       if (dests1.size() != dests2.size()) continue;
-
-      for (auto dest1 : dests1) {
-        if (std::find(dests2.begin(), dests2.end(), dest1) == dests2.end()) {
-          matched = false;
-          break;
-        }
-      }
-
-      if (matched) {
+      if (std::all_of(dests1.begin(), dests1.end(),
+                      [&dests2](const std::pair<TileLoc, Port> &dest1) {
+                        return dests2.contains(dest1);
+                      })) {
         group.push_back(slave1);
         foundgroup = true;
         break;
