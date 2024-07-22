@@ -158,7 +158,6 @@ SwitchBoxNode::SwitchBoxNode(int col, int row, int id,
   }
 }
 
-// given a outPort, find availble input channel
 std::vector<int> SwitchBoxNode::findAvailableChannelIn(StrmSwPortType inBundle,
                                                        Port outPort,
                                                        bool isPkt) {
@@ -337,8 +336,6 @@ void Router::initialize(int maxCol, int maxRow,
   }
 }
 
-// Add a flow from src to dst can have an arbitrary number of dst locations due
-// to fanout.
 void Router::addFlow(TileLoc srcCoords, Port srcPort, TileLoc dstCoords,
                      Port dstPort, bool isPacketFlow) {
   // check if a flow with this source already exists

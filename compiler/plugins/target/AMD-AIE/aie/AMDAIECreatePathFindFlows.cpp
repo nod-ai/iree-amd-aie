@@ -232,7 +232,6 @@ LogicalResult runOnPacketFlow(
     tiles[{col, row}] = tileOp;
   }
 
-  // The logical model of all the switchboxes.
   DenseMap<PhysPort, Attribute> keepPktHeaderAttr;
   SwitchBoxToConnectionFlowIDT switchboxes;
   for (PacketFlowOp pktFlowOp : device.getOps<PacketFlowOp>()) {
@@ -252,7 +251,6 @@ LogicalResult runOnPacketFlow(
         Port destPort = {toStrmT(pktDest.port().bundle),
                          pktDest.port().channel};
         TileLoc destCoord = {destTile.colIndex(), destTile.rowIndex()};
-        // Assign "keep_pkt_header flag"
         if (pktFlowOp->hasAttr("keep_pkt_header"))
           keepPktHeaderAttr[PhysPort{destCoord, destPort}] =
               StringAttr::get(Op.getContext(), "true");
@@ -455,6 +453,18 @@ LogicalResult runOnPacketFlow(
   return success();
 }
 
+/// Rough outline:
+/// 1. find aie.flow ops and translate them into the structs/data-structures the
+///    router expects
+/// 2. find aie.packet_flow ops and translate them into the
+///    structs/data-structures the router expects
+/// 3. add existing ("fixed") internal switchbox connections
+/// 4. run the router (findPaths)
+/// 5. run the ConvertFlowsToInterconnect rewrite pattern that uses the router
+///    results to translate flow ops into aie.switchbox ops that can contain
+///    aie.connects
+/// 6. feed the router results to runOnPacketFlow to insert packet routing ops
+/// (aie.packet_rules, aie.amsel, etc) into aie.switchboxes
 void AIEPathfinderPass::runOnOperation() {
   DeviceOp device = getOperation();
   Router pathfinder;
