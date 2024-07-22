@@ -20,13 +20,12 @@ struct Port {
   StrmSwPortType bundle;
   int channel;
 
-  // necessary for the SwitchSettings map in the Router::findPaths
-  Port() : bundle(StrmSwPortType::SS_PORT_TYPE_MAX), channel(-1) {}
+  Port() = delete;
   Port(StrmSwPortType b, int c) : bundle(b), channel(c) {}
   typedef std::tuple<StrmSwPortType, int> TupleType;
   Port(TupleType t) : Port(std::get<0>(t), std::get<1>(t)) {}
   operator TupleType() const { return {bundle, channel}; }
-  TUPLE_TYPE_STRUCT_OPS(Port)
+  TUPLE_LIKE_STRUCT_RELATIONAL_OPS(Port)
 };
 ASSERT_STANDARD_LAYOUT(Port);
 
@@ -46,7 +45,7 @@ struct Connect {
       : Connect(std::get<0>(t), std::get<1>(t), std::get<2>(t), std::get<3>(t),
                 std::get<4>(t)) {}
   operator TupleType() const { return {src, dst, interconnect, col, row}; }
-  TUPLE_TYPE_STRUCT_OPS(Connect)
+  TUPLE_LIKE_STRUCT_RELATIONAL_OPS(Connect)
 };
 ASSERT_STANDARD_LAYOUT(Connect);
 
@@ -55,7 +54,7 @@ struct SwitchBox : TileLoc {
   SwitchBox(int col, int row) : TileLoc(col, row) {}
   using TupleType = TileLoc::TupleType;
   SwitchBox(TupleType t) : TileLoc(t) {}
-  TUPLE_TYPE_STRUCT_OPS(SwitchBox)
+  TUPLE_LIKE_STRUCT_RELATIONAL_OPS(SwitchBox)
 };
 ASSERT_STANDARD_LAYOUT(SwitchBox);
 
@@ -85,7 +84,7 @@ struct PathEndPoint {
   using TupleType = std::tuple<SwitchBox, Port>;
   PathEndPoint(TupleType t) : PathEndPoint(std::get<0>(t), std::get<1>(t)) {}
   operator TupleType() const { return {sb, port}; }
-  TUPLE_TYPE_STRUCT_OPS(PathEndPoint)
+  TUPLE_LIKE_STRUCT_RELATIONAL_OPS(PathEndPoint)
 };
 ASSERT_STANDARD_LAYOUT(PathEndPoint);
 
@@ -121,7 +120,7 @@ struct PhysPort {
   using TupleType = std::tuple<TileLoc, Port>;
   PhysPort(TupleType t) : PhysPort(std::get<0>(t), std::get<1>(t)) {}
   operator TupleType() const { return {tileLoc, port}; }
-  TUPLE_TYPE_STRUCT_OPS(PhysPort)
+  TUPLE_LIKE_STRUCT_RELATIONAL_OPS(PhysPort)
 };
 
 struct PhysPortAndID {
@@ -131,7 +130,7 @@ struct PhysPortAndID {
   using TupleType = std::tuple<PhysPort, int>;
   PhysPortAndID(TupleType t) : PhysPortAndID(std::get<0>(t), std::get<1>(t)) {}
   operator TupleType() const { return {physPort, id}; }
-  TUPLE_TYPE_STRUCT_OPS(PhysPortAndID)
+  TUPLE_LIKE_STRUCT_RELATIONAL_OPS(PhysPortAndID)
 };
 
 // A map from a switchbox output (physical) port to the number of that port.

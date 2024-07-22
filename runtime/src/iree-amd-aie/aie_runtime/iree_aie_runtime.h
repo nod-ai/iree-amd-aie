@@ -55,7 +55,7 @@ struct TileLoc {
   using TupleType = std::tuple<int, int>;
   TileLoc(TupleType t) : TileLoc(std::get<0>(t), std::get<1>(t)) {}
   operator TupleType() const { return {col, row}; }
-  TUPLE_TYPE_STRUCT_OPS(TileLoc)
+  TUPLE_LIKE_STRUCT_RELATIONAL_OPS(TileLoc)
 };
 ASSERT_STANDARD_LAYOUT(TileLoc);
 
@@ -122,7 +122,6 @@ enum class StrmSwPortType : uint8_t {
   SS_PORT_TYPE_MAX,
   // "illegal" types after max
   NOC,
-  PLIO,
 };
 static_assert(static_cast<uint8_t>(StrmSwPortType::CORE) == 0,
               "mlir::iree_compiler::AMDAIE::StrmSwPortType is out of sync with "

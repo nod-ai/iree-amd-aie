@@ -101,8 +101,8 @@ SwitchBoxNode::SwitchBoxNode(int col, int row, int id,
   std::vector<StrmSwPortType> allBundles = {
       StrmSwPortType::CORE,  StrmSwPortType::DMA,  StrmSwPortType::FIFO,
       StrmSwPortType::SOUTH, StrmSwPortType::WEST, StrmSwPortType::NORTH,
-      StrmSwPortType::EAST,  StrmSwPortType::PLIO, StrmSwPortType::NOC,
-      StrmSwPortType::TRACE, StrmSwPortType::CTRL};
+      StrmSwPortType::EAST,  StrmSwPortType::NOC,  StrmSwPortType::TRACE,
+      StrmSwPortType::CTRL};
   for (StrmSwPortType bundle : allBundles) {
     uint32_t maxCapacity =
         deviceModel.getNumSourceSwitchBoxConnections(col, row, bundle);
@@ -132,8 +132,8 @@ SwitchBoxNode::SwitchBoxNode(int col, int row, int id,
     }
   }
 
-  DenseSet<StrmSwPortType> shimBundles = {
-      StrmSwPortType::DMA, StrmSwPortType::NOC, StrmSwPortType::PLIO};
+  DenseSet<StrmSwPortType> shimBundles = {StrmSwPortType::DMA,
+                                          StrmSwPortType::NOC};
   connectionMatrix.resize(
       inPortId, std::vector<Connectivity>(outPortId, Connectivity::AVAILABLE));
   for (const auto &[inPort, inId] : inPortToId) {
@@ -222,8 +222,9 @@ bool SwitchBoxNode::allocate(Port inPort, Port outPort, bool isPkt) {
     if (inPortPktCount.count(inPort) == 0) {
       for (const auto &[_outPort, _outPortId] : outPortToId) {
         // occupied by others as circuit-switched, allocation fail!
-        if (connectionMatrix[inId][_outPortId] == Connectivity::OCCUPIED)
+        if (connectionMatrix[inId][_outPortId] == Connectivity::OCCUPIED) {
           return false;
+        }
       }
       // empty channel, allocation succeed!
       inPortPktCount[inPort] = 1;
@@ -300,7 +301,7 @@ void Router::initialize(int maxCol, int maxRow,
   for (int row = 0; row <= maxRow; row++) {
     for (int col = 0; col <= maxCol; col++) {
       impl->grid.insert(
-          {{col, row}, SwitchBoxNode{col, row, nodeId++, deviceModel}});
+          {TileLoc{col, row}, SwitchBoxNode{col, row, nodeId++, deviceModel}});
       SwitchBoxNode &thisNode = impl->grid.at({col, row});
       if (row > 0) {  // if not in row 0 add channel to North/South
         SwitchBoxNode &southernNeighbor = impl->grid.at({col, row - 1});
@@ -526,7 +527,9 @@ std::optional<std::map<PathEndPoint, SwitchSettings>> Router::findPaths(
         if (switchSettings.count(*curr)) {
           switchSettings.at(*curr).dsts.insert(endPoint.port);
         } else {
-          switchSettings.emplace(*curr, SwitchSetting{{}, {endPoint.port}});
+          switchSettings.emplace(
+              *curr, SwitchSetting{Port{StrmSwPortType::SS_PORT_TYPE_MAX, -1},
+                                   {endPoint.port}});
         }
         Port lastDestPort = endPoint.port;
         // trace backwards until a vertex already processed is reached
@@ -552,7 +555,7 @@ std::optional<std::map<PathEndPoint, SwitchSettings>> Router::findPaths(
                 std::vector<int> availablePredChannels =
                     pred->findAvailableChannelIn(
                         getConnectingBundle(predCh->bundle),
-                        {ch->bundle, channel}, isPkt);
+                        Port{ch->bundle, channel}, isPkt);
                 if (!availablePredChannels.empty()) {
                   bFound = true;
                   break;
@@ -580,14 +583,19 @@ std::optional<std::map<PathEndPoint, SwitchSettings>> Router::findPaths(
           Port currSourcePort = {getConnectingBundle(ch->bundle), channel};
           assert(switchSettings.count(*curr) &&
                  "expected current node already in switchSettings");
-          switchSettings.at(*curr).src = {currSourcePort};
+          assert((switchSettings.at(*curr).src ==
+                  Port{StrmSwPortType::SS_PORT_TYPE_MAX, -1}) &&
+                 "expected src to not have been set yet");
+          switchSettings.at(*curr).src = currSourcePort;
           // add the current SwitchBox to the map of the predecessor
           Port predDestPort = {ch->bundle, channel};
           if (switchSettings.count(*preds[curr])) {
             switchSettings.at(*preds[curr]).dsts.insert(predDestPort);
           } else {
-            switchSettings.emplace(*preds[curr],
-                                   SwitchSetting{{}, {predDestPort}});
+            switchSettings.emplace(
+                *preds[curr],
+                SwitchSetting{Port{StrmSwPortType::SS_PORT_TYPE_MAX, -1},
+                              {predDestPort}});
           }
           lastDestPort = predDestPort;
 
@@ -658,14 +666,6 @@ std::vector<std::pair<SwitchBox, Connect>> emitConnections(
         shimCh = srcChannel >= 2 ? srcChannel + 4 : srcChannel + 2;
         addConnection(curr, srcBundle, srcChannel, StrmSwPortType::NORTH,
                       shimCh, shimMuxOp.first, shimMuxOp.second);
-      } else if (srcBundle == StrmSwPortType::PLIO) {
-        // PLIO at start of flows with mux
-        if (srcChannel == 2 || srcChannel == 3 || srcChannel == 6 ||
-            srcChannel == 7) {
-          // Only some PLIO requrie mux
-          addConnection(curr, srcBundle, srcChannel, StrmSwPortType::NORTH,
-                        shimCh, shimMuxOp.first, shimMuxOp.second);
-        }
       }
     }
 
@@ -679,7 +679,6 @@ std::vector<std::pair<SwitchBox, Connect>> emitConnections(
                       std::get<0>(swOp), std::get<1>(swOp), std::get<2>(swOp));
       } else if (deviceModel.isShimNOCorPLTile(curr.col, curr.row) &&
                  (bundle == StrmSwPortType::DMA ||
-                  bundle == StrmSwPortType::PLIO ||
                   bundle == StrmSwPortType::NOC)) {
         auto shimMuxOp =
             std::make_pair(Connect::Interconnect::shimMuxOp, curr.col);
@@ -694,10 +693,6 @@ std::vector<std::pair<SwitchBox, Connect>> emitConnections(
           } else if (bundle == StrmSwPortType::NOC) {
             // must be either N2/3/4/5 -> NOC0/1/2/3
             shimCh = channel + 2;
-            addConnection(curr, StrmSwPortType::NORTH, shimCh, bundle, channel,
-                          shimMuxOp.first, shimMuxOp.second);
-          } else if (channel >= 2) {
-            // must be PLIO...only PLIO >= 2 require mux
             addConnection(curr, StrmSwPortType::NORTH, shimCh, bundle, channel,
                           shimMuxOp.first, shimMuxOp.second);
           }
@@ -771,8 +766,8 @@ configurePacketFlows(int numMsels, int numArbiters,
   SmallVector<PhysPortAndID> slavePorts;
   for (const auto &[tileId, connects] : switchboxes) {
     for (const auto &[conn, flowID] : connects) {
-      PhysPortAndID sourceFlow = {{tileId, conn.src}, flowID};
-      packetFlows[sourceFlow].insert({tileId, conn.dst});
+      PhysPortAndID sourceFlow = {PhysPort{tileId, conn.src}, flowID};
+      packetFlows[sourceFlow].insert(PhysPort{tileId, conn.dst});
       slavePorts.push_back(sourceFlow);
     }
   }
@@ -861,7 +856,7 @@ configurePacketFlows(int numMsels, int numArbiters,
   MasterSetsT mastersets;
   for (const auto &[physPort, ports] : masterAMSels) {
     for (Port port : ports) {
-      mastersets[{physPort.first, port}].push_back(physPort.second);
+      mastersets[PhysPort{physPort.first, port}].push_back(physPort.second);
     }
   }
 

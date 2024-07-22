@@ -35,7 +35,6 @@ using xilinx::AIE::PacketFlowOp;
 using xilinx::AIE::PacketRuleOp;
 using xilinx::AIE::PacketRulesOp;
 using xilinx::AIE::PacketSourceOp;
-using xilinx::AIE::PLIOOp;
 using xilinx::AIE::ShimMuxOp;
 using xilinx::AIE::SwitchboxOp;
 using xilinx::AIE::TileOp;
@@ -64,8 +63,6 @@ StrmSwPortType toStrmT(xilinx::AIE::WireBundle w) {
       return StrmSwPortType::NORTH;
     case xilinx::AIE::WireBundle::East:
       return StrmSwPortType::EAST;
-    case xilinx::AIE::WireBundle::PLIO:
-      return StrmSwPortType::PLIO;
     case xilinx::AIE::WireBundle::NOC:
       return StrmSwPortType::NOC;
     case xilinx::AIE::WireBundle::Trace:
@@ -95,8 +92,6 @@ xilinx::AIE::WireBundle toWireB(StrmSwPortType w) {
       return xilinx::AIE::WireBundle::East;
     case StrmSwPortType::TRACE:
       return xilinx::AIE::WireBundle::Trace;
-    case StrmSwPortType::PLIO:
-      return xilinx::AIE::WireBundle::PLIO;
     case StrmSwPortType::NOC:
       return xilinx::AIE::WireBundle::NOC;
     case StrmSwPortType::CTRL:
@@ -242,7 +237,7 @@ LogicalResult runOnPacketFlow(
   SwitchBoxToConnectionFlowIDT switchboxes;
   for (PacketFlowOp pktFlowOp : device.getOps<PacketFlowOp>()) {
     int flowID = pktFlowOp.IDInt();
-    Port srcPort{};
+    Port srcPort{StrmSwPortType::SS_PORT_TYPE_MAX, -1};
     TileOp srcTile;
     TileLoc srcCoords{-1, -1};
 
@@ -256,16 +251,17 @@ LogicalResult runOnPacketFlow(
         TileOp destTile = llvm::cast<TileOp>(pktDest.getTile().getDefiningOp());
         Port destPort = {toStrmT(pktDest.port().bundle),
                          pktDest.port().channel};
-        TileLoc destCoords = {destTile.colIndex(), destTile.rowIndex()};
+        TileLoc destCoord = {destTile.colIndex(), destTile.rowIndex()};
         // Assign "keep_pkt_header flag"
         if (pktFlowOp->hasAttr("keep_pkt_header"))
-          keepPktHeaderAttr[{{destCoords}, destPort}] =
+          keepPktHeaderAttr[PhysPort{destCoord, destPort}] =
               StringAttr::get(Op.getContext(), "true");
         assert(srcPort.bundle != StrmSwPortType::SS_PORT_TYPE_MAX &&
                srcPort.channel != -1 && "expected srcPort to have been set");
         assert(srcCoords.col != -1 && srcCoords.row != -1 &&
                "expected srcCoords to have been set");
-        PathEndPoint srcPoint = {{srcCoords.col, srcCoords.row}, srcPort};
+        PathEndPoint srcPoint = {SwitchBox{srcCoords.col, srcCoords.row},
+                                 srcPort};
         // TODO(max): when does this happen???
         if (!flowSolutions.count(srcPoint)) continue;
         SwitchSettings settings = flowSolutions.at(srcPoint);
@@ -275,12 +271,12 @@ LogicalResult runOnPacketFlow(
             TileLoc currTile = {curr.col, curr.row};
             // reject false broadcast
             if (!existsPathToDest(settings, currTile, bundle, channel,
-                                  destCoords, destPort.bundle,
+                                  destCoord, destPort.bundle,
                                   destPort.channel)) {
               continue;
             }
-            Connect connect = {{setting.src.bundle, setting.src.channel},
-                               {bundle, channel},
+            Connect connect = {Port{setting.src.bundle, setting.src.channel},
+                               Port{bundle, channel},
                                Connect::Interconnect::nocare};
             ConnectionAndFlowIDT connFlow = {connect, flowID};
             switchboxes[currTile].insert(connFlow);
@@ -492,7 +488,7 @@ void AIEPathfinderPass::runOnOperation() {
   for (PacketFlowOp pktFlowOp : device.getOps<PacketFlowOp>()) {
     Region &r = pktFlowOp.getPorts();
     Block &b = r.front();
-    Port srcPort{};
+    Port srcPort{StrmSwPortType::SS_PORT_TYPE_MAX, -1};
     TileOp srcTile;
     TileLoc srcCoords{-1, -1};
     for (Operation &op : b.getOperations()) {

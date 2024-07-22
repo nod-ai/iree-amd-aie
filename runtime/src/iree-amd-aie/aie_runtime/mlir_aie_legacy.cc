@@ -136,8 +136,6 @@ uint32_t getNumDestShimMuxConnections(int col, int row, StrmSwPortType bundle) {
         return 2;
       case mlir::iree_compiler::AMDAIE::StrmSwPortType::NOC:
         return 4;
-      case StrmSwPortType::PLIO:
-        return 6;
       case StrmSwPortType::SOUTH:
         return 8;  // Connection to the south port of the stream switch
       default:
@@ -152,8 +150,6 @@ uint32_t getNumSourceShimMuxConnections(int col, int row,
         return 2;
       case StrmSwPortType::NOC:
         return 4;
-      case StrmSwPortType::PLIO:
-        return 8;
       case StrmSwPortType::SOUTH:
         return 6;  // Connection to the south port of the stream switch
       default:
@@ -225,8 +221,6 @@ uint32_t getNumDestShimMuxConnections(int col, int row, StrmSwPortType bundle) {
         return 2;
       case StrmSwPortType::NOC:
         return 4;
-      case StrmSwPortType::PLIO:
-        return 6;
       case StrmSwPortType::SOUTH:
         return 8;  // Connection to the south port of the stream switch
       default:
@@ -243,8 +237,6 @@ uint32_t getNumSourceShimMuxConnections(int col, int row,
         return 2;
       case StrmSwPortType::NOC:
         return 4;
-      case StrmSwPortType::PLIO:
-        return 8;
       case StrmSwPortType::SOUTH:
         return 6;  // Connection to the south port of the stream switch
       default:
@@ -526,8 +518,6 @@ uint32_t getNumShimMuxConnections(int col, int row, StrmSwPortType bundle,
         return 2;
       case StrmSwPortType::NOC:
         return 4;
-      case StrmSwPortType::PLIO:
-        return 8;
       case StrmSwPortType::SOUTH:
         return 6;  // Connection to the south port of the stream switch
       default:

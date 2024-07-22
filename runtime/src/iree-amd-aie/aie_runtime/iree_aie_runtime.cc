@@ -552,7 +552,6 @@ std::string to_string(const StrmSwPortType &value) {
     STRINGIFY_ENUM_CASE(StrmSwPortType::UCTRLR)
     STRINGIFY_ENUM_CASE(StrmSwPortType::SS_PORT_TYPE_MAX)
     STRINGIFY_ENUM_CASE(StrmSwPortType::NOC)
-    STRINGIFY_ENUM_CASE(StrmSwPortType::PLIO)
   }
 
   llvm::report_fatal_error("Unhandled StrmSwPortType case");

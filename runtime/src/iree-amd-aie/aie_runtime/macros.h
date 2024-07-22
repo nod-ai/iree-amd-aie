@@ -81,7 +81,7 @@
   static_assert(std::is_standard_layout_v<p>, \
                 #p " is meant to be a standard layout type")
 
-#define TUPLE_TYPE_STRUCT_OPS(T)               \
+#define TUPLE_LIKE_STRUCT_RELATIONAL_OPS(T)               \
   bool operator<(const T& rhs) const {         \
     return TupleType(*this) < TupleType(rhs);  \
   }                                            \
