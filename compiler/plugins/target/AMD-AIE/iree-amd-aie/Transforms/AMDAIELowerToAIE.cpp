@@ -991,11 +991,10 @@ static LogicalResult CastFunctionArgs(func::FuncOp funcOp,
     if (!memrefTy) continue;
 
     unsigned int bitwidth = memrefTy.getElementTypeBitWidth();
-    if (bitwidth != 16 && bitwidth != 8) continue;
+    if (bitwidth != 16 && bitwidth != 8 && bitwidth != 4) continue;
     unsigned upcastingDivisor = 32 / bitwidth;
 
-    unsigned int div = 32 / bitwidth;
-    unsigned int numElements = memrefTy.getNumElements() / div;
+    unsigned int numElements = memrefTy.getNumElements() / upcastingDivisor;
     SmallVector<int64_t> shape{numElements};
     MemRefType newMemrefTy =
         MemRefType::get(shape, rewriter.getIntegerType(32));
@@ -1013,6 +1012,7 @@ static LogicalResult CastFunctionArgs(func::FuncOp funcOp,
           oneDOffset += *getConstantIntValue(dmaUser.getMixedOffsets()[j]) *
                         *getConstantIntValue(dmaUser.getMixedStrides()[j]);
         rewriter.setInsertionPoint(dmaUser);
+        oneDOffset /= upcastingDivisor;
         SmallVector<int64_t, 4> newStaticOffsets = {0, 0, 0, oneDOffset};
         SmallVector<int64_t, 4> newStaticSizes;
         for (int64_t size : dmaUser.getStaticSizes()) {
@@ -1022,8 +1022,7 @@ static LogicalResult CastFunctionArgs(func::FuncOp funcOp,
         for (int64_t stride : dmaUser.getStaticStrides()) {
           newStaticStrides.push_back(stride);
         }
-        newStaticSizes[newStaticSizes.size() - 1] /= upcastingDivisor;
-        for (unsigned i = 0, n = newStaticSizes.size(); i < n - 1; i++) {
+        for (unsigned i = 0, n = newStaticSizes.size(); i < n; i++) {
           if (newStaticStrides[i] == 1) {
             newStaticSizes[i] /= upcastingDivisor;
           } else {
