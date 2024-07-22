@@ -157,8 +157,8 @@ struct ConvertFlowsToInterconnect : OpConversionPattern<FlowOp> {
       ConversionPatternRewriter &rewriter) const override {
     auto srcTile = llvm::cast<TileOp>(flowOp.getSource().getDefiningOp());
     TileLoc srcCoords = {srcTile.colIndex(), srcTile.rowIndex()};
-    auto srcBundle = toStrmT(flowOp.getSourceBundle());
-    auto srcChannel = flowOp.getSourceChannel();
+    StrmSwPortType srcBundle = toStrmT(flowOp.getSourceBundle());
+    int srcChannel = flowOp.getSourceChannel();
     Port srcPort = {srcBundle, srcChannel};
     PathEndPoint srcPe{srcCoords.col, srcCoords.row, srcPort};
     if (processedFlows.count(srcPe)) {
@@ -310,7 +310,7 @@ LogicalResult runOnPacketFlow(
     std::vector<bool> amselOpNeededVector(32);
     for (const auto &masterset : mastersets) {
       if (tileLoc != masterset.first.first) continue;
-      for (auto value : masterset.second) amselOpNeededVector[value] = true;
+      for (int value : masterset.second) amselOpNeededVector[value] = true;
     }
     // Create all the amsel Ops
     DenseMap<int, AMSelOp> amselOps;
@@ -324,17 +324,17 @@ LogicalResult runOnPacketFlow(
     }
     // Create all the master set Ops
     // First collect the master sets for this tile.
-    SmallVector<Port, 4> tileMasters;
+    SmallVector<Port> tileMasters;
     for (const auto &masterset : mastersets) {
       if (tileLoc != masterset.first.first) continue;
       tileMasters.push_back(masterset.first.second);
     }
     // Sort them so we get a reasonable order
     std::sort(tileMasters.begin(), tileMasters.end());
-    for (auto tileMaster : tileMasters) {
-      SmallVector<int, 4> msels = mastersets[{tileLoc, tileMaster}];
-      SmallVector<Value, 4> amsels;
-      for (auto msel : msels) {
+    for (Port tileMaster : tileMasters) {
+      SmallVector<int> msels = mastersets[{tileLoc, tileMaster}];
+      SmallVector<Value> amsels;
+      for (int msel : msels) {
         assert(amselOps.count(msel) == 1 && "expected msel in amselOps");
         amsels.push_back(amselOps[msel]);
       }
@@ -347,21 +347,21 @@ LogicalResult runOnPacketFlow(
 
     // Generate the packet rules
     DenseMap<Port, PacketRulesOp> slaveRules;
-    for (auto group : slaveGroups) {
+    for (SmallVector<PhysPortAndID> group : slaveGroups) {
       builder.setInsertionPoint(b.getTerminator());
 
-      auto port = group.front().first;
+      PhysPort port = group.front().first;
       if (tileLoc != port.first) continue;
 
       StrmSwPortType bundle = port.second.bundle;
       int channel = port.second.channel;
-      auto slave = port.second;
+      Port slave = port.second;
       int mask = slaveMasks[group.front()];
       int ID = group.front().second & mask;
 
 #ifndef NDEBUG
       // Verify that we actually map all the ID's correctly.
-      for (auto _slave : group) assert((_slave.second & mask) == ID);
+      for (PhysPortAndID _slave : group) assert((_slave.second & mask) == ID);
 #endif
 
       Value amsel = amselOps[slaveAMSels[group.front()]];

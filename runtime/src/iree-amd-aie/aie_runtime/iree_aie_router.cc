@@ -758,25 +758,24 @@ std::tuple<MasterSetsT, SlaveGroupsT, SlaveMasksT, SlaveAMSelsT>
 configurePacketFlows(int numMsels, int numArbiters,
                      const SwitchBoxToConnectionFlowIDT &switchboxes,
                      const SmallVector<TileLoc> &tiles) {
-  DenseMap<std::pair<PhysPort, int>, DenseSet<PhysPort>> packetFlows;
-  SmallVector<std::pair<PhysPort, int>, 4> slavePorts;
+  DenseMap<PhysPortAndID, DenseSet<PhysPort>> packetFlows;
+  SmallVector<PhysPortAndID> slavePorts;
   for (const auto &[tileId, connects] : switchboxes) {
     for (const auto &[conn, flowID] : connects) {
-      auto sourceFlow =
-          std::make_pair(std::make_pair(tileId, conn.src), flowID);
+      PhysPortAndID sourceFlow = {{tileId, conn.src}, flowID};
       packetFlows[sourceFlow].insert({tileId, conn.dst});
       slavePorts.push_back(sourceFlow);
     }
   }
 
-  std::vector<std::pair<std::pair<PhysPort, int>, DenseSet<PhysPort>>>
-      sortedPacketFlows(packetFlows.begin(), packetFlows.end());
+  std::vector<std::pair<PhysPortAndID, DenseSet<PhysPort>>> sortedPacketFlows(
+      packetFlows.begin(), packetFlows.end());
 
   // To get determinsitic behaviour
   std::sort(sortedPacketFlows.begin(), sortedPacketFlows.end(),
             [](const auto &lhs, const auto &rhs) {
-              auto lhsFlowID = lhs.first.second;
-              auto rhsFlowID = rhs.first.second;
+              int lhsFlowID = lhs.first.second;
+              int rhsFlowID = rhs.first.second;
               return lhsFlowID < rhsFlowID;
             });
 
@@ -842,7 +841,7 @@ configurePacketFlows(int numMsels, int numArbiters,
         if (foundAMSelValue) break;
       }
 
-      for (auto dest : packetFlow.second) {
+      for (PhysPort dest : packetFlow.second) {
         masterAMSels[{tileOp, amselValue}].insert(dest.second);
       }
     }
@@ -854,7 +853,7 @@ configurePacketFlows(int numMsels, int numArbiters,
   // Compute the master set IDs
   MasterSetsT mastersets;
   for (const auto &[physPort, ports] : masterAMSels) {
-    for (auto port : ports) {
+    for (Port port : ports) {
       mastersets[{physPort.first, port}].push_back(physPort.second);
     }
   }
@@ -864,14 +863,14 @@ configurePacketFlows(int numMsels, int numArbiters,
   // The flows must originate from the same source port and have different IDs
   // Two flows can be merged if they share the same destinations
   SlaveGroupsT slaveGroups;
-  SmallVector<std::pair<PhysPort, int>, 4> workList(slavePorts);
+  SmallVector<PhysPortAndID> workList(slavePorts);
   while (!workList.empty()) {
-    auto slave1 = workList.pop_back_val();
+    PhysPortAndID slave1 = workList.pop_back_val();
     Port slavePort1 = slave1.first.second;
 
     bool foundgroup = false;
     for (auto &group : slaveGroups) {
-      auto slave2 = group.front();
+      PhysPortAndID slave2 = group.front();
       if (Port slavePort2 = slave2.first.second; slavePort1 != slavePort2)
         continue;
 
@@ -889,8 +888,7 @@ configurePacketFlows(int numMsels, int numArbiters,
     }
 
     if (!foundgroup) {
-      SmallVector<std::pair<PhysPort, int>, 4> group({slave1});
-      slaveGroups.push_back(group);
+      slaveGroups.emplace_back(SmallVector<std::pair<PhysPort, int>>{slave1});
     }
   }
 
@@ -901,7 +899,7 @@ configurePacketFlows(int numMsels, int numArbiters,
     // value, the bit position should be "don't care", and we will set the
     // mask bit of that position to 0
     int mask[5] = {-1, -1, -1, -1, -1};
-    for (auto port : group) {
+    for (PhysPortAndID port : group) {
       int ID = port.second;
       for (int i = 0; i < 5; i++) {
         if (mask[i] == -1) {
@@ -923,7 +921,7 @@ configurePacketFlows(int numMsels, int numArbiters,
       }
       maskValue = (maskValue << 1) + mask[i];
     }
-    for (auto port : group) slaveMasks[port] = maskValue;
+    for (PhysPortAndID port : group) slaveMasks[port] = maskValue;
   }
   return std::make_tuple(mastersets, slaveGroups, slaveMasks, slaveAMSels);
 }

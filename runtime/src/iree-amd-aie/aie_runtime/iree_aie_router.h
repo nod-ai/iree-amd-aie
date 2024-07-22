@@ -120,11 +120,12 @@ bool existsPathToDest(const SwitchSettings &settings, TileLoc currTile,
                       int finalDestChannel);
 
 using PhysPort = std::pair<TileLoc, Port>;
+using PhysPortAndID = std::pair<PhysPort, int>;
 // A map from a switchbox output (physical) port to the number of that port.
-using MasterSetsT = DenseMap<PhysPort, SmallVector<int, 4>>;
-using SlaveGroupsT = SmallVector<SmallVector<std::pair<PhysPort, int>, 4>, 4>;
-using SlaveMasksT = DenseMap<std::pair<PhysPort, int>, int>;
-using SlaveAMSelsT = DenseMap<std::pair<PhysPort, int>, int>;
+using MasterSetsT = DenseMap<PhysPort, SmallVector<int>>;
+using SlaveGroupsT = SmallVector<SmallVector<PhysPortAndID>>;
+using SlaveMasksT = DenseMap<PhysPortAndID, int>;
+using SlaveAMSelsT = DenseMap<PhysPortAndID, int>;
 using ConnectionAndFlowIDT = std::pair<Connect, int>;
 using SwitchBoxToConnectionFlowIDT =
     DenseMap<TileLoc, DenseSet<ConnectionAndFlowIDT>>;
