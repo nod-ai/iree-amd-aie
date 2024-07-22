@@ -52,15 +52,15 @@ struct TileLoc {
 
   // for getting free DenseMapInfo (see below)
   using TupleType = std::tuple<int, int>;
-  TileLoc(std::tuple<int, int> t) : col(std::get<0>(t)), row(std::get<1>(t)) {}
-  operator std::tuple<int, int>() const { return {col, row}; }
+  TileLoc(TupleType t) : TileLoc(std::get<0>(t), std::get<1>(t)) {}
+  operator TupleType() const { return {col, row}; }
 
   inline bool operator<(const TileLoc& rhs) const {
-    return std::tie(col, row) < std::tie(rhs.col, rhs.row);
+    return TupleType(*this) < TupleType(rhs);
   }
 
   bool operator==(const TileLoc& rhs) const {
-    return std::tie(col, row) == std::tie(rhs.col, rhs.row);
+    return TupleType(*this) == TupleType(rhs);
   }
 
   bool operator!=(const TileLoc& rhs) const { return !(*this == rhs); }

@@ -20,6 +20,8 @@ struct Port {
   StrmSwPortType bundle;
   int channel;
 
+  Port() = delete;
+
   bool operator==(const Port &rhs) const {
     return std::tie(bundle, channel) == std::tie(rhs.bundle, rhs.channel);
   }
@@ -70,7 +72,8 @@ struct SwitchSetting {
   Port src;
   std::set<Port> dsts;
 
-  SwitchSetting() = default;
+  // deleted anyway because Port's is deleted
+  SwitchSetting() = delete;
   SwitchSetting(Port src) : src(src) {}
   SwitchSetting(Port src, std::set<Port> dsts)
       : src(src), dsts(std::move(dsts)) {}
@@ -119,8 +122,36 @@ bool existsPathToDest(const SwitchSettings &settings, TileLoc currTile,
                       TileLoc finalTile, StrmSwPortType finalDestBundle,
                       int finalDestChannel);
 
-using PhysPort = std::pair<TileLoc, Port>;
-using PhysPortAndID = std::pair<PhysPort, int>;
+struct PhysPort {
+  TileLoc tileLoc;
+  Port port;
+  PhysPort(TileLoc t, Port p) : tileLoc(t), port(p) {}
+  using TupleType = std::tuple<TileLoc, Port>;
+  PhysPort(TupleType t) : PhysPort(std::get<0>(t), std::get<1>(t)) {}
+  operator TupleType() const { return {tileLoc, port}; }
+  inline bool operator<(const PhysPort &rhs) const {
+    return TupleType(*this) < TupleType(rhs);
+  }
+  bool operator==(const PhysPort &rhs) const {
+    return TupleType(*this) == TupleType(rhs);
+  }
+};
+
+struct PhysPortAndID {
+  PhysPort physPort;
+  int id;
+  PhysPortAndID(PhysPort p, int i) : physPort(p), id(i) {}
+  using TupleType = std::tuple<PhysPort, int>;
+  PhysPortAndID(TupleType t) : PhysPortAndID(std::get<0>(t), std::get<1>(t)) {}
+  operator TupleType() const { return {physPort, id}; }
+  inline bool operator<(const PhysPortAndID &rhs) const {
+    return TupleType(*this) < TupleType(rhs);
+  }
+  bool operator==(const PhysPortAndID &rhs) const {
+    return std::tie(physPort, id) == std::tie(rhs.physPort, rhs.id);
+  }
+};
+
 // A map from a switchbox output (physical) port to the number of that port.
 using MasterSetsT = DenseMap<PhysPort, SmallVector<int>>;
 using SlaveGroupsT = SmallVector<SmallVector<PhysPortAndID>>;
@@ -230,6 +261,16 @@ struct DenseMapInfo<mlir::iree_compiler::AMDAIE::Connect> {
     return lhs == rhs;
   }
 };
+
+template <>
+struct DenseMapInfo<mlir::iree_compiler::AMDAIE::PhysPort>
+    : TupleStructDenseMapInfo<
+          mlir::iree_compiler::AMDAIE::PhysPort::TupleType> {};
+
+template <>
+struct DenseMapInfo<mlir::iree_compiler::AMDAIE::PhysPortAndID>
+    : TupleStructDenseMapInfo<
+          mlir::iree_compiler::AMDAIE::PhysPortAndID::TupleType> {};
 
 }  // namespace llvm
 

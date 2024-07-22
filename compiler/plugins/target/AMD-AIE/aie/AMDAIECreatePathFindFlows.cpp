@@ -242,9 +242,9 @@ LogicalResult runOnPacketFlow(
   SwitchBoxToConnectionFlowIDT switchboxes;
   for (PacketFlowOp pktFlowOp : device.getOps<PacketFlowOp>()) {
     int flowID = pktFlowOp.IDInt();
-    Port srcPort, destPort;
-    TileOp srcTile, destTile;
-    TileLoc srcCoords{-1, -1}, destCoords{-1, -1};
+    Port srcPort{StrmSwPortType::SS_PORT_TYPE_MAX, -1};
+    TileOp srcTile;
+    TileLoc srcCoords{-1, -1};
 
     Block &b = pktFlowOp.getPorts().front();
     for (Operation &Op : b.getOperations()) {
@@ -253,14 +253,18 @@ LogicalResult runOnPacketFlow(
         srcPort = {toStrmT(pktSource.port().bundle), pktSource.port().channel};
         srcCoords = {srcTile.colIndex(), srcTile.rowIndex()};
       } else if (auto pktDest = llvm::dyn_cast<PacketDestOp>(Op)) {
-        destTile = llvm::cast<TileOp>(pktDest.getTile().getDefiningOp());
-        destPort = {toStrmT(pktDest.port().bundle), pktDest.port().channel};
-        destCoords = {destTile.colIndex(), destTile.rowIndex()};
+        TileOp destTile = llvm::cast<TileOp>(pktDest.getTile().getDefiningOp());
+        Port destPort = {toStrmT(pktDest.port().bundle),
+                         pktDest.port().channel};
+        TileLoc destCoords = {destTile.colIndex(), destTile.rowIndex()};
         // Assign "keep_pkt_header flag"
         if (pktFlowOp->hasAttr("keep_pkt_header"))
           keepPktHeaderAttr[{{destCoords}, destPort}] =
               StringAttr::get(Op.getContext(), "true");
-        assert(srcCoords.col != -1 && srcCoords.row != -1);
+        assert(srcPort.bundle != StrmSwPortType::SS_PORT_TYPE_MAX &&
+               srcPort.channel != -1 && "expected srcPort to have been set");
+        assert(srcCoords.col != -1 && srcCoords.row != -1 &&
+               "expected srcCoords to have been set");
         PathEndPoint srcPoint = {{srcCoords.col, srcCoords.row}, srcPort};
         // TODO(max): when does this happen???
         if (!flowSolutions.count(srcPoint)) continue;
@@ -293,7 +297,7 @@ LogicalResult runOnPacketFlow(
 
   int numMsels = 4;
   int numArbiters = 6;
-  auto [mastersets, slaveGroups, slaveMasks, slaveAMSels] =
+  auto [masterSets, slaveGroups, slaveMasks, slaveAMSels] =
       configurePacketFlows(numMsels, numArbiters, switchboxes, tileLocs);
 
   // Realize the routes in MLIR
@@ -308,9 +312,9 @@ LogicalResult runOnPacketFlow(
     builder.setInsertionPoint(b.getTerminator());
 
     std::vector<bool> amselOpNeededVector(32);
-    for (const auto &masterset : mastersets) {
-      if (tileLoc != masterset.first.first) continue;
-      for (int value : masterset.second) amselOpNeededVector[value] = true;
+    for (const auto &[physPort, masterSet] : masterSets) {
+      if (tileLoc != physPort.tileLoc) continue;
+      for (int value : masterSet) amselOpNeededVector[value] = true;
     }
     // Create all the amsel Ops
     DenseMap<int, AMSelOp> amselOps;
@@ -325,14 +329,14 @@ LogicalResult runOnPacketFlow(
     // Create all the master set Ops
     // First collect the master sets for this tile.
     SmallVector<Port> tileMasters;
-    for (const auto &masterset : mastersets) {
-      if (tileLoc != masterset.first.first) continue;
-      tileMasters.push_back(masterset.first.second);
+    for (const auto &[physPort, _] : masterSets) {
+      if (tileLoc != physPort.tileLoc) continue;
+      tileMasters.push_back(physPort.port);
     }
     // Sort them so we get a reasonable order
     std::sort(tileMasters.begin(), tileMasters.end());
     for (Port tileMaster : tileMasters) {
-      SmallVector<int> msels = mastersets[{tileLoc, tileMaster}];
+      SmallVector<int> msels = masterSets[{tileLoc, tileMaster}];
       SmallVector<Value> amsels;
       for (int msel : msels) {
         assert(amselOps.count(msel) == 1 && "expected msel in amselOps");
@@ -349,19 +353,17 @@ LogicalResult runOnPacketFlow(
     DenseMap<Port, PacketRulesOp> slaveRules;
     for (SmallVector<PhysPortAndID> group : slaveGroups) {
       builder.setInsertionPoint(b.getTerminator());
-
-      PhysPort port = group.front().first;
-      if (tileLoc != port.first) continue;
-
-      StrmSwPortType bundle = port.second.bundle;
-      int channel = port.second.channel;
-      Port slave = port.second;
+      PhysPort physPort = group.front().physPort;
+      if (tileLoc != physPort.tileLoc) continue;
+      Port slave = physPort.port;
+      StrmSwPortType bundle = slave.bundle;
+      int channel = slave.channel;
       int mask = slaveMasks[group.front()];
-      int ID = group.front().second & mask;
+      int ID = group.front().id & mask;
 
 #ifndef NDEBUG
       // Verify that we actually map all the ID's correctly.
-      for (PhysPortAndID _slave : group) assert((_slave.second & mask) == ID);
+      for (PhysPortAndID _slave : group) assert((_slave.id & mask) == ID);
 #endif
 
       Value amsel = amselOps[slaveAMSels[group.front()]];
@@ -459,13 +461,12 @@ LogicalResult runOnPacketFlow(
 
 void AIEPathfinderPass::runOnOperation() {
   DeviceOp device = getOperation();
-  int maxCol{}, maxRow{};
   Router pathfinder;
   std::map<PathEndPoint, SwitchSettings> flowSolutions;
   std::set<PathEndPoint> processedFlows;
-
-  maxCol = 0;
-  maxRow = 0;
+  // don't be clever and remove these initializations because
+  // then you're doing a max against garbage data...
+  int maxCol = 0, maxRow = 0;
   for (TileOp tileOp : device.getOps<TileOp>()) {
     maxCol = std::max(maxCol, tileOp.colIndex());
     maxRow = std::max(maxRow, tileOp.rowIndex());
@@ -491,18 +492,20 @@ void AIEPathfinderPass::runOnOperation() {
   for (PacketFlowOp pktFlowOp : device.getOps<PacketFlowOp>()) {
     Region &r = pktFlowOp.getPorts();
     Block &b = r.front();
-    Port srcPort, dstPort;
-    TileOp srcTile, dstTile;
-    TileLoc srcCoords{-1, -1}, dstCoords{-1, -1};
-    for (Operation &Op : b.getOperations()) {
-      if (auto pktSource = llvm::dyn_cast<PacketSourceOp>(Op)) {
+    Port srcPort{StrmSwPortType::SS_PORT_TYPE_MAX, -1};
+    TileOp srcTile;
+    TileLoc srcCoords{-1, -1};
+    for (Operation &op : b.getOperations()) {
+      if (auto pktSource = llvm::dyn_cast<PacketSourceOp>(op)) {
         srcTile = llvm::cast<TileOp>(pktSource.getTile().getDefiningOp());
         srcPort = {toStrmT(pktSource.port().bundle), pktSource.port().channel};
         srcCoords = {srcTile.colIndex(), srcTile.rowIndex()};
-      } else if (auto pktDest = llvm::dyn_cast<PacketDestOp>(Op)) {
-        dstTile = llvm::cast<TileOp>(pktDest.getTile().getDefiningOp());
-        dstPort = {toStrmT(pktDest.port().bundle), pktDest.port().channel};
-        dstCoords = {dstTile.colIndex(), dstTile.rowIndex()};
+      } else if (auto pktDest = llvm::dyn_cast<PacketDestOp>(op)) {
+        TileOp dstTile = llvm::cast<TileOp>(pktDest.getTile().getDefiningOp());
+        Port dstPort = {toStrmT(pktDest.port().bundle), pktDest.port().channel};
+        TileLoc dstCoords = {dstTile.colIndex(), dstTile.rowIndex()};
+        assert(srcPort.bundle != StrmSwPortType::SS_PORT_TYPE_MAX &&
+               srcPort.channel != -1 && "expected srcPort to have been set");
         assert(srcCoords.col != -1 && srcCoords.row != -1);
         pathfinder.addFlow(srcCoords, srcPort, dstCoords, dstPort, true);
       }

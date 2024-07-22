@@ -516,15 +516,18 @@ std::optional<std::map<PathEndPoint, SwitchSettings>> Router::findPaths(
       // increment used_capacity for the associated channels
       SwitchSettings switchSettings;
       // set the input bundle for the source endpoint
-      switchSettings[src.sb].src = src.port;
+      switchSettings.emplace(src.sb, SwitchSetting{src.port, {}});
       processed.insert(&src.sb);
       // track destination ports used by src.sb
       DenseSet<Port> srcDestPorts;
       for (const PathEndPointNode &endPoint : dsts) {
         SwitchBoxNode *curr = &endPoint.sb;
         assert(curr && "endpoint has no source switchbox");
-        // set the output bundle for this destination endpoint
-        switchSettings[*curr].dsts.insert(endPoint.port);
+        if (switchSettings.count(*curr)) {
+          switchSettings.at(*curr).dsts.insert(endPoint.port);
+        } else {
+          switchSettings.emplace(*curr, SwitchSetting{{}, {endPoint.port}});
+        }
         Port lastDestPort = endPoint.port;
         // trace backwards until a vertex already processed is reached
         while (!processed.count(curr)) {
@@ -575,12 +578,18 @@ std::optional<std::map<PathEndPoint, SwitchSettings>> Router::findPaths(
 
           // add the entrance port for this SwitchBox
           Port currSourcePort = {getConnectingBundle(ch->bundle), channel};
-          switchSettings[*curr].src = {currSourcePort};
-
+          assert(switchSettings.count(*curr) &&
+                 "expected current node already in switchSettings");
+          switchSettings.at(*curr).src = {currSourcePort};
           // add the current SwitchBox to the map of the predecessor
-          Port PredDestPort = {ch->bundle, channel};
-          switchSettings[*preds[curr]].dsts.insert(PredDestPort);
-          lastDestPort = PredDestPort;
+          Port predDestPort = {ch->bundle, channel};
+          if (switchSettings.count(*preds[curr])) {
+            switchSettings.at(*preds[curr]).dsts.insert(predDestPort);
+          } else {
+            switchSettings.emplace(*preds[curr],
+                                   SwitchSetting{{}, {predDestPort}});
+          }
+          lastDestPort = predDestPort;
 
           // if at capacity, bump demand to discourage using this Channel
           // this means the order matters!
@@ -774,9 +783,7 @@ configurePacketFlows(int numMsels, int numArbiters,
   // To get determinsitic behaviour
   std::sort(sortedPacketFlows.begin(), sortedPacketFlows.end(),
             [](const auto &lhs, const auto &rhs) {
-              int lhsFlowID = lhs.first.second;
-              int rhsFlowID = rhs.first.second;
-              return lhsFlowID < rhsFlowID;
+              return lhs.first.id < rhs.first.id;
             });
 
   // A map from Tile and master selectValue to the ports targeted by that
@@ -790,10 +797,10 @@ configurePacketFlows(int numMsels, int numArbiters,
   // destination ports at the same time For destination ports that appear in
   // different (multicast) flows, it should have a different <arbiterID, msel>
   // value pair for each flow
-  for (const auto &packetFlow : sortedPacketFlows) {
+  for (const auto &[physPortAndID, packetFlowports] : sortedPacketFlows) {
     // The Source Tile of the flow
-    TileLoc tileOp = packetFlow.first.first.first;
-    if (amselValues.count(tileOp) == 0) amselValues[tileOp] = 0;
+    TileLoc tileLoc = physPortAndID.physPort.tileLoc;
+    if (amselValues.count(tileLoc) == 0) amselValues[tileLoc] = 0;
 
     // Compute arbiter assignments. Each arbiter has four msels.
     // Therefore, the number of "logical" arbiters is 6 x 4 = 24
@@ -805,7 +812,7 @@ configurePacketFlows(int numMsels, int numArbiters,
     // arb4: 6*0+4, 6*1+4, 6*2+4, 6*3+4
     // arb5: 6*0+5, 6*1+5, 6*2+5, 6*3+5
 
-    int amselValue = amselValues[tileOp];
+    int amselValue = amselValues[tileLoc];
     assert(amselValue < numArbiters && "Could not allocate new arbiter!");
 
     // Find existing arbiter assignment
@@ -814,14 +821,14 @@ configurePacketFlows(int numMsels, int numArbiters,
     // msel
     bool foundMatchedDest = false;
     for (const auto &map : masterAMSels) {
-      if (map.first.first != tileOp) continue;
+      if (map.first.first != tileLoc) continue;
       amselValue = map.first.second;
       // check if same destinations
-      DenseSet<Port> ports(masterAMSels[{tileOp, amselValue}]);
-      if (ports.size() != packetFlow.second.size()) continue;
-      if (std::all_of(packetFlow.second.begin(), packetFlow.second.end(),
-                      [&ports](const std::pair<TileLoc, Port> &dest) {
-                        return ports.contains(dest.second);
+      DenseSet<Port> ports(masterAMSels[{tileLoc, amselValue}]);
+      if (ports.size() != packetFlowports.size()) continue;
+      if (std::all_of(packetFlowports.begin(), packetFlowports.end(),
+                      [&ports](const PhysPort &dest) {
+                        return ports.contains(dest.port);
                       })) {
         foundMatchedDest = true;
         break;
@@ -833,7 +840,7 @@ configurePacketFlows(int numMsels, int numArbiters,
       for (int a = 0; a < numArbiters; a++) {
         for (int i = 0; i < numMsels; i++) {
           amselValue = a + i * numArbiters;
-          if (masterAMSels.count({tileOp, amselValue}) == 0) {
+          if (masterAMSels.count({tileLoc, amselValue}) == 0) {
             foundAMSelValue = true;
             break;
           }
@@ -841,13 +848,13 @@ configurePacketFlows(int numMsels, int numArbiters,
         if (foundAMSelValue) break;
       }
 
-      for (PhysPort dest : packetFlow.second) {
-        masterAMSels[{tileOp, amselValue}].insert(dest.second);
+      for (PhysPort dest : packetFlowports) {
+        masterAMSels[{tileLoc, amselValue}].insert(dest.port);
       }
     }
 
-    slaveAMSels[packetFlow.first] = amselValue;
-    amselValues[tileOp] = amselValue % numArbiters;
+    slaveAMSels[physPortAndID] = amselValue;
+    amselValues[tileLoc] = amselValue % numArbiters;
   }
 
   // Compute the master set IDs
@@ -866,19 +873,19 @@ configurePacketFlows(int numMsels, int numArbiters,
   SmallVector<PhysPortAndID> workList(slavePorts);
   while (!workList.empty()) {
     PhysPortAndID slave1 = workList.pop_back_val();
-    Port slavePort1 = slave1.first.second;
+    Port slavePort1 = slave1.physPort.port;
 
     bool foundgroup = false;
     for (auto &group : slaveGroups) {
       PhysPortAndID slave2 = group.front();
-      if (Port slavePort2 = slave2.first.second; slavePort1 != slavePort2)
+      if (Port slavePort2 = slave2.physPort.port; slavePort1 != slavePort2)
         continue;
 
       auto dests1 = packetFlows[slave1];
       auto dests2 = packetFlows[slave2];
       if (dests1.size() != dests2.size()) continue;
       if (std::all_of(dests1.begin(), dests1.end(),
-                      [&dests2](const std::pair<TileLoc, Port> &dest1) {
+                      [&dests2](const PhysPort &dest1) {
                         return dests2.contains(dest1);
                       })) {
         group.push_back(slave1);
@@ -888,7 +895,7 @@ configurePacketFlows(int numMsels, int numArbiters,
     }
 
     if (!foundgroup) {
-      slaveGroups.emplace_back(SmallVector<std::pair<PhysPort, int>>{slave1});
+      slaveGroups.emplace_back(SmallVector<PhysPortAndID>{slave1});
     }
   }
 
@@ -900,11 +907,10 @@ configurePacketFlows(int numMsels, int numArbiters,
     // mask bit of that position to 0
     int mask[5] = {-1, -1, -1, -1, -1};
     for (PhysPortAndID port : group) {
-      int ID = port.second;
       for (int i = 0; i < 5; i++) {
         if (mask[i] == -1) {
-          mask[i] = ID >> i & 0x1;
-        } else if (mask[i] != (ID >> i & 0x1)) {
+          mask[i] = port.id >> i & 0x1;
+        } else if (mask[i] != (port.id >> i & 0x1)) {
           // found bit difference --> mark as "don't care"
           mask[i] = 2;
         }

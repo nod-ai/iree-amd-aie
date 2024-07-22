@@ -10,6 +10,7 @@
 #include <numeric>
 
 #include "llvm/ADT/StringExtras.h"
+#include "llvm/Support/FormatVariadic.h"
 
 extern "C" {
 #include "xaiengine.h"
@@ -77,15 +78,16 @@ bool isAieRtCompatStrmSwPortType(
     unsigned int line, const char *function) {
 #ifndef NDEBUG
   if (!isAieRtCompatStrmSwPortType(t)) {
-    std::string s = "StrmSwPortType incompatible with aie-rt: " + to_string(t);
-    __assert_fail(s.c_str(), file, line, function);
+    llvm::report_fatal_error(llvm::formatv(
+        "{0}:{1}:{2}: StrmSwPortType  incompatible with aie-rt: {3}", file,
+        line, function, to_string(t)));
   }
 #endif
   return static_cast<::StrmSwPortType>(t);
 }
 // macro so that line numbers are preserved for where the check fails
 #define CheckedAieRtCompatStrmSwPortType(t) \
-  checkedAieRtCompatStrmSwPortType(t, __FILE__, __LINE__, __ASSERT_FUNCTION)
+  checkedAieRtCompatStrmSwPortType(t, __FILE__, __LINE__, __PRETTY_FUNCTION__)
 
 }  // namespace
 
