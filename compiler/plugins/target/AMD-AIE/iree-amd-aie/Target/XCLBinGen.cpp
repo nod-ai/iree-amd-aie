@@ -498,7 +498,7 @@ static LogicalResult generateCoreElfFiles(
 static LogicalResult generateCDO(MLIRContext *context, ModuleOp moduleOp,
                                  bool printIRBeforeAll, bool printIRAfterAll,
                                  bool printIRModuleScope, bool timing,
-                                 const std::string &tempDir) {
+                                 bool verbose, const std::string &tempDir) {
   ModuleOp copy = moduleOp.clone();
   std::string errorMessage;
   PassManager passManager(context, ModuleOp::getOperationName());
@@ -511,8 +511,9 @@ static LogicalResult generateCDO(MLIRContext *context, ModuleOp moduleOp,
     return failure();
   }
 
-  if (failed(mlir::iree_compiler::AMDAIE::AIETranslateToCDODirect(copy,
-                                                                  tempDir))) {
+  if (failed(mlir::iree_compiler::AMDAIE::AIETranslateToCDODirect(
+          copy, tempDir, /*bigEndian=*/false,
+          /*emitUnified=*/false, verbose))) {
     llvm::errs() << "failed to emit CDO";
     return failure();
   }
@@ -1041,7 +1042,7 @@ LogicalResult aie2xclbin(
     return moduleOp.emitOpError("Failed to generate core ELF file(s)");
 
   if (failed(generateCDO(ctx, moduleOp, printIRBeforeAll, printIRAfterAll,
-                         printIRModuleScope, timing, tempDir)))
+                         printIRModuleScope, timing, verbose, tempDir)))
     return moduleOp.emitOpError("Failed to generate CDO");
 
   if (failed(generateXCLBin(moduleOp, outputXCLBin, tempDir, xclBinKernelID,

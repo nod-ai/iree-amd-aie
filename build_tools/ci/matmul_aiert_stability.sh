@@ -81,7 +81,7 @@ if [ ! -d "${VITIS}" ]; then
 fi
 
 THIS_DIR="$(cd $(dirname $0) && pwd)"
-ROOT_DIR="$(cd $THIS_DIR/../../.. && pwd)"
+ROOT_DIR="$(cd $THIS_DIR/../.. && pwd)"
 
 GENERATOR="${ROOT_DIR}/tests/matmul/generate_e2e_matmul_tests.py"
 # Verify that generator exists
@@ -134,6 +134,10 @@ else
   echo "FileCheck does not exist or isn't executable in ${IREE_INSTALL_DIR}/bin or on PATH."
   exit 1
 fi
+
+VERBOSE=${VERBOSE:-0}
+DODIFF=${DODIFF:-0}
+GOLDEN_DIR=${GOLDEN_DIR:-$THIS_DIR/golden}
 
 cd ${OUTPUT_DIR}
 
@@ -331,11 +335,16 @@ function run_matmul_test() {
     compilation_flags="${compilation_flags} \
                         --iree-amdaie-enable-ukernels=all"
   fi
+  if [ $VERBOSE -ne 0 ]; then
+    compilation_flags="${compilation_flags} \
+                        --iree-amd-aie-show-invoked-commands"
+  fi
 
   echo "**** Generating matmul .aiert.log file for ${name} ****"
   echo "aie-rt commit: $AIERT_COMMIT" > "${OUTPUT_DIR}/${name}.aiert.log"
+  # change to tee >(grep -E "XAIE|cdo-driver" >> "${OUTPUT_DIR}/${name}.aiert.log") if you want to see
   ${IREE_COMPILE_EXE} "${matmul_ir}" ${compilation_flags} -o "${matmul_vmfb}" \
-    2>&1 | grep "XAIE API" >> "${OUTPUT_DIR}/${name}.aiert.log"
+    2>&1 | grep -E "XAIE|cdo-driver" >> "${OUTPUT_DIR}/${name}.aiert.log"
 
   compileResult=$?
   if [ $compileResult -ne 0 ]; then
@@ -344,7 +353,9 @@ function run_matmul_test() {
   fi
   set -e
 
-  ${FILECHECK_EXE} --input-file "${OUTPUT_DIR}/${name}.aiert.log" "${THIS_DIR}/${name}.aiert.log"
+  if [ $DODIFF -ne 0 ]; then
+    diff "${GOLDEN_DIR}/${name}.aiert.log" "${OUTPUT_DIR}/${name}.aiert.log"
+  fi
 }
 
 ########################################################

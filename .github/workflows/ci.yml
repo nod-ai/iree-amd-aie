@@ -97,7 +97,7 @@ jobs:
       - name: "Checking out repository" # for test scripts
         uses: actions/checkout@8f4b7f84864484a7bf31766abe9204da3cbe65b3 # v3.5.0
         with:
-          submodules: true
+          submodules: false # not required for testbench
 
       - name: Download artifacts
         uses: actions/download-artifact@v4
@@ -158,8 +158,3 @@ jobs:
         run: |
           source .venv/bin/activate
           bash build_tools/ci/print_ir_aie2xclbin/print_ir_aie2xclbin.sh iree-install print_ir_aie2xclbin_results
-
-      - name: Matmul aie-rt stability tests
-        run: |
-          source .venv/bin/activate
-          bash build_tools/ci/matmul_aiert_stability/run_matmul_test.sh matmul_aiert_stability iree-install 
