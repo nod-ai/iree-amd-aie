@@ -42,6 +42,7 @@ void insertNoOpCommand(unsigned int numPadBytes);
 }
 
 namespace mlir::iree_compiler::AMDAIE {
+
 struct TileLoc {
   int col, row;
 
@@ -54,16 +55,7 @@ struct TileLoc {
   using TupleType = std::tuple<int, int>;
   TileLoc(TupleType t) : TileLoc(std::get<0>(t), std::get<1>(t)) {}
   operator TupleType() const { return {col, row}; }
-
-  inline bool operator<(const TileLoc& rhs) const {
-    return TupleType(*this) < TupleType(rhs);
-  }
-
-  bool operator==(const TileLoc& rhs) const {
-    return TupleType(*this) == TupleType(rhs);
-  }
-
-  bool operator!=(const TileLoc& rhs) const { return !(*this == rhs); }
+  TUPLE_TYPE_STRUCT_OPS(TileLoc)
 };
 ASSERT_STANDARD_LAYOUT(TileLoc);
 

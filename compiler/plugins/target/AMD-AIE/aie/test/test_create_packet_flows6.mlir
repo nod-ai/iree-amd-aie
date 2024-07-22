@@ -21,7 +21,7 @@ module @test_create_packet_flows6 {
 // CHECK:           %{{.*}} = aie.amsel<0> (0)
 // CHECK:           %[[VAL_3:.*]] = aie.masterset(East : 0, %[[VAL_2:.*]])
 // CHECK:           aie.packet_rules(DMA : 0) {
-// CHECK:             aie.rule(28, 0, %[[VAL_2]])
+// CHECK-DAG:         aie.rule(28, 0, %[[VAL_2]])
 // CHECK:           }
 // CHECK:         }
 
@@ -32,8 +32,8 @@ module @test_create_packet_flows6 {
 // CHECK:           %[[VAL_8:.*]] = aie.masterset(DMA : 0, %[[VAL_7:.*]])
 // CHECK:           %[[VAL_9:.*]] = aie.masterset(East : 0, %[[VAL_6:.*]])
 // CHECK:           aie.packet_rules(West : 0) {
-// CHECK:             aie.rule(28, 0, %[[VAL_6]])
-// CHECK:             aie.rule(31, 0, %[[VAL_7]])
+// CHECK-DAG:         aie.rule(28, 0, %[[VAL_6]])
+// CHECK-DAG:         aie.rule(31, 0, %[[VAL_7]])
 // CHECK:           }
 // CHECK:         }
 
@@ -44,8 +44,8 @@ module @test_create_packet_flows6 {
 // CHECK:           %[[VAL_14:.*]] = aie.masterset(DMA : 0, %[[VAL_13:.*]])
 // CHECK:           %[[VAL_15:.*]] = aie.masterset(East : 0, %[[VAL_12:.*]])
 // CHECK:           aie.packet_rules(West : 0) {
-// CHECK:             aie.rule(30, 2, %[[VAL_12]])
-// CHECK:             aie.rule(31, 1, %[[VAL_13]])
+// CHECK-DAG:         aie.rule(30, 2, %[[VAL_12]])
+// CHECK-DAG:         aie.rule(31, 1, %[[VAL_13]])
 // CHECK:           }
 // CHECK:         }
 
@@ -56,8 +56,8 @@ module @test_create_packet_flows6 {
 // CHECK:           %[[VAL_20:.*]] = aie.masterset(DMA : 0, %[[VAL_19]])
 // CHECK:           %[[VAL_21:.*]] = aie.masterset(East : 0, %[[VAL_18]])
 // CHECK:           aie.packet_rules(West : 0) {
-// CHECK:             aie.rule(31, 3, %[[VAL_18]])
-// CHECK:             aie.rule(31, 2, %[[VAL_19]])
+// CHECK-DAG:         aie.rule(31, 3, %[[VAL_18]])
+// CHECK-DAG:         aie.rule(31, 2, %[[VAL_19]])
 // CHECK:           }
 // CHECK:         }
 
@@ -66,7 +66,7 @@ module @test_create_packet_flows6 {
 // CHECK:           %{{.*}} = aie.amsel<0> (0)
 // CHECK:           %[[VAL_25:.*]] = aie.masterset(DMA : 0, %[[VAL_24:.*]])
 // CHECK:           aie.packet_rules(West : 0) {
-// CHECK:             aie.rule(31, 3, %[[VAL_24]])
+// CHECK-DAG:         aie.rule(31, 3, %[[VAL_24]])
 // CHECK:           }
 // CHECK:         }
 // CHECK:       }

@@ -242,7 +242,7 @@ LogicalResult runOnPacketFlow(
   SwitchBoxToConnectionFlowIDT switchboxes;
   for (PacketFlowOp pktFlowOp : device.getOps<PacketFlowOp>()) {
     int flowID = pktFlowOp.IDInt();
-    Port srcPort{StrmSwPortType::SS_PORT_TYPE_MAX, -1};
+    Port srcPort{};
     TileOp srcTile;
     TileLoc srcCoords{-1, -1};
 
@@ -492,7 +492,7 @@ void AIEPathfinderPass::runOnOperation() {
   for (PacketFlowOp pktFlowOp : device.getOps<PacketFlowOp>()) {
     Region &r = pktFlowOp.getPorts();
     Block &b = r.front();
-    Port srcPort{StrmSwPortType::SS_PORT_TYPE_MAX, -1};
+    Port srcPort{};
     TileOp srcTile;
     TileLoc srcCoords{-1, -1};
     for (Operation &op : b.getOperations()) {

@@ -30,7 +30,7 @@ module @test_pktflow_weight_pusher {
 // CHECK:           %[[VAL_2:.*]] = aie.amsel<0> (0)
 // CHECK:           %[[VAL_3:.*]] = aie.masterset(DMA : 1, %[[VAL_2]])
 // CHECK:           aie.packet_rules(North : 0) {
-// CHECK:             aie.rule(31, 0, %[[VAL_2]])
+// CHECK-DAG:         aie.rule(31, 0, %[[VAL_2]])
 // CHECK:           }
 // CHECK:         }
 
@@ -39,7 +39,7 @@ module @test_pktflow_weight_pusher {
 // CHECK:           %[[VAL_6:.*]] = aie.amsel<0> (0)
 // CHECK:           %[[VAL_7:.*]] = aie.masterset(DMA : 1, %[[VAL_6]])
 // CHECK:           aie.packet_rules(North : 0) {
-// CHECK:             aie.rule(31, 4, %[[VAL_6]])
+// CHECK-DAG:         aie.rule(31, 4, %[[VAL_6]])
 // CHECK:           }
 // CHECK:         }
 
@@ -48,7 +48,7 @@ module @test_pktflow_weight_pusher {
 // CHECK:           %[[VAL_10:.*]] = aie.amsel<0> (0)
 // CHECK:           %[[VAL_11:.*]] = aie.masterset(DMA : 1, %[[VAL_10]])
 // CHECK:           aie.packet_rules(North : 0) {
-// CHECK:             aie.rule(31, 8, %[[VAL_10]])
+// CHECK-DAG:         aie.rule(31, 8, %[[VAL_10]])
 // CHECK:           }
 // CHECK:         }
 
@@ -57,7 +57,7 @@ module @test_pktflow_weight_pusher {
 // CHECK:           %[[VAL_14:.*]] = aie.amsel<0> (0)
 // CHECK:           %[[VAL_15:.*]] = aie.masterset(DMA : 1, %[[VAL_14]])
 // CHECK:           aie.packet_rules(North : 0) {
-// CHECK:             aie.rule(31, 12, %[[VAL_14]])
+// CHECK-DAG:         aie.rule(31, 12, %[[VAL_14]])
 // CHECK:           }
 // CHECK:         }
 
@@ -68,8 +68,8 @@ module @test_pktflow_weight_pusher {
 // CHECK:           %[[VAL_20:.*]] = aie.amsel<0> (0)
 // CHECK:           %[[VAL_21:.*]] = aie.masterset(South : 0, %[[VAL_20]])
 // CHECK:           aie.packet_rules(North : 0) {
-// CHECK:             aie.rule(31, 1, %[[VAL_18]])
-// CHECK:             aie.rule(31, 0, %[[VAL_20]])
+// CHECK-DAG:         aie.rule(31, 1, %[[VAL_18]])
+// CHECK-DAG:         aie.rule(31, 0, %[[VAL_20]])
 // CHECK:           }
 // CHECK:         }
 
@@ -80,8 +80,8 @@ module @test_pktflow_weight_pusher {
 // CHECK:           %[[VAL_26:.*]] = aie.amsel<0> (0)
 // CHECK:           %[[VAL_27:.*]] = aie.masterset(South : 0, %[[VAL_26]])
 // CHECK:           aie.packet_rules(North : 0) {
-// CHECK:             aie.rule(31, 5, %[[VAL_24]])
-// CHECK:             aie.rule(31, 4, %[[VAL_26]])
+// CHECK-DAG:         aie.rule(31, 5, %[[VAL_24]])
+// CHECK-DAG:         aie.rule(31, 4, %[[VAL_26]])
 // CHECK:           }
 // CHECK:         }
 
@@ -92,8 +92,8 @@ module @test_pktflow_weight_pusher {
 // CHECK:           %[[VAL_32:.*]] = aie.amsel<0> (1)
 // CHECK:           %[[VAL_33:.*]] = aie.masterset(DMA : 1, %[[VAL_32]])
 // CHECK:           aie.packet_rules(North : 0) {
-// CHECK:             aie.rule(31, 9, %[[VAL_32]])
-// CHECK:             aie.rule(31, 8, %[[VAL_30]])
+// CHECK-DAG:         aie.rule(31, 9, %[[VAL_32]])
+// CHECK-DAG:         aie.rule(31, 8, %[[VAL_30]])
 // CHECK:           }
 // CHECK:         }
 
@@ -104,8 +104,8 @@ module @test_pktflow_weight_pusher {
 // CHECK:           %[[VAL_38:.*]] = aie.amsel<0> (1)
 // CHECK:           %[[VAL_39:.*]] = aie.masterset(South : 0, %[[VAL_38]])
 // CHECK:           aie.packet_rules(North : 0) {
-// CHECK:             aie.rule(31, 13, %[[VAL_36]])
-// CHECK:             aie.rule(31, 12, %[[VAL_38]])
+// CHECK-DAG:         aie.rule(31, 13, %[[VAL_36]])
+// CHECK-DAG:         aie.rule(31, 12, %[[VAL_38]])
 // CHECK:           }
 // CHECK:         }
 
@@ -116,8 +116,8 @@ module @test_pktflow_weight_pusher {
 // CHECK:           %[[VAL_44:.*]] = aie.amsel<0> (1)
 // CHECK:           %[[VAL_45:.*]] = aie.masterset(South : 0, %[[VAL_44]])
 // CHECK:           aie.packet_rules(North : 0) {
-// CHECK:             aie.rule(31, 2, %[[VAL_42]])
-// CHECK:             aie.rule(30, 1, %[[VAL_44]])
+// CHECK-DAG:         aie.rule(31, 2, %[[VAL_42]])
+// CHECK-DAG:         aie.rule(30, 1, %[[VAL_44]])
 // CHECK:           }
 // CHECK:         }
 
@@ -128,8 +128,8 @@ module @test_pktflow_weight_pusher {
 // CHECK:           %[[VAL_50:.*]] = aie.amsel<0> (1)
 // CHECK:           %[[VAL_51:.*]] = aie.masterset(DMA : 1, %[[VAL_50]])
 // CHECK:           aie.packet_rules(North : 0) {
-// CHECK:             aie.rule(31, 6, %[[VAL_50]])
-// CHECK:             aie.rule(30, 5, %[[VAL_48]])
+// CHECK-DAG:         aie.rule(31, 6, %[[VAL_50]])
+// CHECK-DAG:         aie.rule(30, 5, %[[VAL_48]])
 // CHECK:           }
 // CHECK:         }
 
@@ -140,8 +140,8 @@ module @test_pktflow_weight_pusher {
 // CHECK:           %[[VAL_56:.*]] = aie.amsel<0> (0)
 // CHECK:           %[[VAL_57:.*]] = aie.masterset(South : 0, %[[VAL_56]])
 // CHECK:           aie.packet_rules(North : 0) {
-// CHECK:             aie.rule(31, 10, %[[VAL_54]])
-// CHECK:             aie.rule(30, 9, %[[VAL_56]])
+// CHECK-DAG:         aie.rule(31, 10, %[[VAL_54]])
+// CHECK-DAG:         aie.rule(30, 9, %[[VAL_56]])
 // CHECK:           }
 // CHECK:         }
 
@@ -152,8 +152,8 @@ module @test_pktflow_weight_pusher {
 // CHECK:           %[[VAL_62:.*]] = aie.amsel<0> (0)
 // CHECK:           %[[VAL_63:.*]] = aie.masterset(South : 0, %[[VAL_62]])
 // CHECK:           aie.packet_rules(North : 0) {
-// CHECK:             aie.rule(31, 14, %[[VAL_60]])
-// CHECK:             aie.rule(30, 13, %[[VAL_62]])
+// CHECK-DAG:         aie.rule(31, 14, %[[VAL_60]])
+// CHECK-DAG:         aie.rule(30, 13, %[[VAL_62]])
 // CHECK:           }
 // CHECK:         }
 
@@ -164,8 +164,8 @@ module @test_pktflow_weight_pusher {
 // CHECK:           %[[VAL_68:.*]] = aie.amsel<0> (1)
 // CHECK:           %[[VAL_69:.*]] = aie.masterset(South : 0, %[[VAL_68]])
 // CHECK:           aie.packet_rules(East : 0) {
-// CHECK:             aie.rule(31, 3, %[[VAL_66]])
-// CHECK:             aie.rule(28, 2, %[[VAL_68]])
+// CHECK-DAG:         aie.rule(31, 3, %[[VAL_66]])
+// CHECK-DAG:         aie.rule(28, 2, %[[VAL_68]])
 // CHECK:           }
 // CHECK:         }
 
@@ -178,9 +178,9 @@ module @test_pktflow_weight_pusher {
 // CHECK:           %[[VAL_76:.*]] = aie.amsel<0> (1)
 // CHECK:           %[[VAL_77:.*]] = aie.masterset(DMA : 1, %[[VAL_76]])
 // CHECK:           aie.packet_rules(East : 0) {
-// CHECK:             aie.rule(31, 7, %[[VAL_76]])
-// CHECK:             aie.rule(28, 6, %[[VAL_74]])
-// CHECK:             aie.rule(28, 3, %[[VAL_72]])
+// CHECK-DAG:         aie.rule(31, 7, %[[VAL_76]])
+// CHECK-DAG:         aie.rule(28, 6, %[[VAL_74]])
+// CHECK-DAG:         aie.rule(28, 3, %[[VAL_72]])
 // CHECK:           }
 // CHECK:         }
 
@@ -193,9 +193,9 @@ module @test_pktflow_weight_pusher {
 // CHECK:           %[[VAL_84:.*]] = aie.amsel<0> (0)
 // CHECK:           %[[VAL_85:.*]] = aie.masterset(West : 0, %[[VAL_84]])
 // CHECK:           aie.packet_rules(East : 0) {
-// CHECK:             aie.rule(31, 11, %[[VAL_82]])
-// CHECK:             aie.rule(28, 10, %[[VAL_80]])
-// CHECK:             aie.rule(24, 7, %[[VAL_84]])
+// CHECK-DAG:         aie.rule(31, 11, %[[VAL_82]])
+// CHECK-DAG:         aie.rule(28, 10, %[[VAL_80]])
+// CHECK-DAG:         aie.rule(24, 7, %[[VAL_84]])
 // CHECK:           }
 // CHECK:         }
 
@@ -208,9 +208,9 @@ module @test_pktflow_weight_pusher {
 // CHECK:           %[[VAL_92:.*]] = aie.amsel<0> (2)
 // CHECK:           %[[VAL_93:.*]] = aie.masterset(South : 0, %[[VAL_92]])
 // CHECK:           aie.packet_rules(East : 0) {
-// CHECK:             aie.rule(31, 15, %[[VAL_90]])
-// CHECK:             aie.rule(28, 14, %[[VAL_92]])
-// CHECK:             aie.rule(16, 11, %[[VAL_88]])
+// CHECK-DAG:         aie.rule(31, 15, %[[VAL_90]])
+// CHECK-DAG:         aie.rule(28, 14, %[[VAL_92]])
+// CHECK-DAG:         aie.rule(16, 11, %[[VAL_88]])
 // CHECK:           }
 // CHECK:         }
 
@@ -219,10 +219,10 @@ module @test_pktflow_weight_pusher {
 // CHECK:           %[[VAL_96:.*]] = aie.amsel<0> (0)
 // CHECK:           %[[VAL_97:.*]] = aie.masterset(West : 0, %[[VAL_96]])
 // CHECK:           aie.packet_rules(East : 0) {
-// CHECK:             aie.rule(24, 15, %[[VAL_96]])
+// CHECK-DAG:         aie.rule(24, 15, %[[VAL_96]])
 // CHECK:           }
 // CHECK:           aie.packet_rules(DMA : 0) {
-// CHECK:             aie.rule(24, 7, %[[VAL_96]])
+// CHECK-DAG:         aie.rule(24, 7, %[[VAL_96]])
 // CHECK:           }
 // CHECK:         }
 
@@ -231,7 +231,7 @@ module @test_pktflow_weight_pusher {
 // CHECK:           %[[VAL_100:.*]] = aie.amsel<0> (0)
 // CHECK:           %[[VAL_101:.*]] = aie.masterset(West : 0, %[[VAL_100]])
 // CHECK:           aie.packet_rules(DMA : 0) {
-// CHECK:             aie.rule(24, 15, %[[VAL_100]])
+// CHECK-DAG:         aie.rule(24, 15, %[[VAL_100]])
 // CHECK:           }
 // CHECK:         }
 // CHECK:       }

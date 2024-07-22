@@ -81,4 +81,13 @@
   static_assert(std::is_standard_layout_v<p>, \
                 #p " is meant to be a standard layout type")
 
+#define TUPLE_TYPE_STRUCT_OPS(T)               \
+  bool operator<(const T& rhs) const {         \
+    return TupleType(*this) < TupleType(rhs);  \
+  }                                            \
+  bool operator==(const T& rhs) const {        \
+    return TupleType(*this) == TupleType(rhs); \
+  }                                            \
+  bool operator!=(const T& rhs) const { return !(*this == rhs); }
+
 #endif  // IREE_MACROS_H

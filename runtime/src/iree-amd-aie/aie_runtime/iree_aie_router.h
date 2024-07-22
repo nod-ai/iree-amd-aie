@@ -20,17 +20,13 @@ struct Port {
   StrmSwPortType bundle;
   int channel;
 
-  Port() = delete;
-
-  bool operator==(const Port &rhs) const {
-    return std::tie(bundle, channel) == std::tie(rhs.bundle, rhs.channel);
-  }
-
-  bool operator!=(const Port &rhs) const { return !(*this == rhs); }
-
-  bool operator<(const Port &rhs) const {
-    return std::tie(bundle, channel) < std::tie(rhs.bundle, rhs.channel);
-  }
+  // necessary for the SwitchSettings map in the Router::findPaths
+  Port() : bundle(StrmSwPortType::SS_PORT_TYPE_MAX), channel(-1) {}
+  Port(StrmSwPortType b, int c) : bundle(b), channel(c) {}
+  typedef std::tuple<StrmSwPortType, int> TupleType;
+  Port(TupleType t) : Port(std::get<0>(t), std::get<1>(t)) {}
+  operator TupleType() const { return {bundle, channel}; }
+  TUPLE_TYPE_STRUCT_OPS(Port)
 };
 ASSERT_STANDARD_LAYOUT(Port);
 
@@ -45,22 +41,21 @@ struct Connect {
           Interconnect interconnect = Interconnect::nocare, uint8_t col = 0,
           uint8_t row = 0)
       : src(src), dst(dst), interconnect(interconnect), col(col), row(row) {}
-
-  bool operator==(const Connect &rhs) const {
-    return std::tie(src, dst, interconnect, col, row) ==
-           std::tie(rhs.src, rhs.dst, interconnect, col, row);
-  }
+  using TupleType = std::tuple<Port, Port, Interconnect, uint8_t, uint8_t>;
+  Connect(TupleType t)
+      : Connect(std::get<0>(t), std::get<1>(t), std::get<2>(t), std::get<3>(t),
+                std::get<4>(t)) {}
+  operator TupleType() const { return {src, dst, interconnect, col, row}; }
+  TUPLE_TYPE_STRUCT_OPS(Connect)
 };
 ASSERT_STANDARD_LAYOUT(Connect);
 
 struct SwitchBox : TileLoc {
   SwitchBox(TileLoc t) : TileLoc(t) {}
   SwitchBox(int col, int row) : TileLoc(col, row) {}
-  SwitchBox(std::tuple<int, int> t) : TileLoc(t) {}
-
-  bool operator==(const SwitchBox &rhs) const {
-    return static_cast<TileLoc>(*this) == rhs;
-  }
+  using TupleType = TileLoc::TupleType;
+  SwitchBox(TupleType t) : TileLoc(t) {}
+  TUPLE_TYPE_STRUCT_OPS(SwitchBox)
 };
 ASSERT_STANDARD_LAYOUT(SwitchBox);
 
@@ -85,15 +80,12 @@ using SwitchSettings = std::map<SwitchBox, SwitchSetting>;
 struct PathEndPoint {
   SwitchBox sb;
   Port port;
-  PathEndPoint(SwitchBox sb, Port port) : sb(sb), port(port) {}
   PathEndPoint(int col, int row, Port port) : PathEndPoint({col, row}, port) {}
-  bool operator<(const PathEndPoint &rhs) const {
-    return std::tie(sb, port) < std::tie(rhs.sb, rhs.port);
-  }
-
-  bool operator==(const PathEndPoint &rhs) const {
-    return std::tie(sb, port) == std::tie(rhs.sb, rhs.port);
-  }
+  PathEndPoint(SwitchBox sb, Port port) : sb(sb), port(port) {}
+  using TupleType = std::tuple<SwitchBox, Port>;
+  PathEndPoint(TupleType t) : PathEndPoint(std::get<0>(t), std::get<1>(t)) {}
+  operator TupleType() const { return {sb, port}; }
+  TUPLE_TYPE_STRUCT_OPS(PathEndPoint)
 };
 ASSERT_STANDARD_LAYOUT(PathEndPoint);
 
@@ -129,12 +121,7 @@ struct PhysPort {
   using TupleType = std::tuple<TileLoc, Port>;
   PhysPort(TupleType t) : PhysPort(std::get<0>(t), std::get<1>(t)) {}
   operator TupleType() const { return {tileLoc, port}; }
-  inline bool operator<(const PhysPort &rhs) const {
-    return TupleType(*this) < TupleType(rhs);
-  }
-  bool operator==(const PhysPort &rhs) const {
-    return TupleType(*this) == TupleType(rhs);
-  }
+  TUPLE_TYPE_STRUCT_OPS(PhysPort)
 };
 
 struct PhysPortAndID {
@@ -144,12 +131,7 @@ struct PhysPortAndID {
   using TupleType = std::tuple<PhysPort, int>;
   PhysPortAndID(TupleType t) : PhysPortAndID(std::get<0>(t), std::get<1>(t)) {}
   operator TupleType() const { return {physPort, id}; }
-  inline bool operator<(const PhysPortAndID &rhs) const {
-    return TupleType(*this) < TupleType(rhs);
-  }
-  bool operator==(const PhysPortAndID &rhs) const {
-    return std::tie(physPort, id) == std::tie(rhs.physPort, rhs.id);
-  }
+  TUPLE_TYPE_STRUCT_OPS(PhysPortAndID)
 };
 
 // A map from a switchbox output (physical) port to the number of that port.
@@ -202,65 +184,18 @@ struct std::hash<mlir::iree_compiler::AMDAIE::Port> {
 
 namespace llvm {
 template <>
-struct DenseMapInfo<mlir::iree_compiler::AMDAIE::Port> {
-  using FirstInfo = DenseMapInfo<mlir::iree_compiler::AMDAIE::StrmSwPortType>;
-  using SecondInfo = DenseMapInfo<int>;
+struct DenseMapInfo<mlir::iree_compiler::AMDAIE::Port>
+    : TupleStructDenseMapInfo<mlir::iree_compiler::AMDAIE::Port::TupleType> {};
 
-  static mlir::iree_compiler::AMDAIE::Port getEmptyKey() {
-    return {FirstInfo::getEmptyKey(), SecondInfo::getEmptyKey()};
-  }
-
-  static mlir::iree_compiler::AMDAIE::Port getTombstoneKey() {
-    return {FirstInfo::getTombstoneKey(), SecondInfo::getTombstoneKey()};
-  }
-
-  static unsigned getHashValue(const mlir::iree_compiler::AMDAIE::Port &d) {
-    return detail::combineHashValue(FirstInfo::getHashValue(d.bundle),
-                                    SecondInfo::getHashValue(d.channel));
-  }
-
-  static bool isEqual(const mlir::iree_compiler::AMDAIE::Port &lhs,
-                      const mlir::iree_compiler::AMDAIE::Port &rhs) {
-    return lhs == rhs;
-  }
+template <>
+struct DenseMapInfo<mlir::iree_compiler::AMDAIE::Connect>
+    : TupleStructDenseMapInfo<mlir::iree_compiler::AMDAIE::Connect::TupleType> {
 };
 
 template <>
-struct DenseMapInfo<mlir::iree_compiler::AMDAIE::Connect> {
-  using FirstInfo = DenseMapInfo<mlir::iree_compiler::AMDAIE::Port>;
-  using SecondInfo = DenseMapInfo<mlir::iree_compiler::AMDAIE::Port>;
-  using ThirdInfo =
-      DenseMapInfo<mlir::iree_compiler::AMDAIE::Connect::Interconnect>;
-  using FourthInfo = DenseMapInfo<uint8_t>;
-  using FifthInfo = DenseMapInfo<uint8_t>;
-
-  static mlir::iree_compiler::AMDAIE::Connect getEmptyKey() {
-    return {FirstInfo::getEmptyKey(), SecondInfo::getEmptyKey(),
-            ThirdInfo::getEmptyKey(), FourthInfo::getEmptyKey(),
-            FifthInfo::getEmptyKey()};
-  }
-
-  static mlir::iree_compiler::AMDAIE::Connect getTombstoneKey() {
-    return {FirstInfo::getTombstoneKey(), SecondInfo::getTombstoneKey(),
-            ThirdInfo::getTombstoneKey(), FourthInfo::getTombstoneKey(),
-            FifthInfo::getTombstoneKey()};
-  }
-
-  static unsigned getHashValue(const mlir::iree_compiler::AMDAIE::Connect &d) {
-    std::vector<unsigned> hashes{
-        FirstInfo::getHashValue(d.src), SecondInfo::getHashValue(d.dst),
-        ThirdInfo::getHashValue(d.interconnect),
-        FourthInfo::getHashValue(d.col), FifthInfo::getHashValue(d.row)};
-
-    return std::accumulate(hashes.begin(), hashes.end(), 0,
-                           detail::combineHashValue);
-  }
-
-  static bool isEqual(const mlir::iree_compiler::AMDAIE::Connect &lhs,
-                      const mlir::iree_compiler::AMDAIE::Connect &rhs) {
-    return lhs == rhs;
-  }
-};
+struct DenseMapInfo<mlir::iree_compiler::AMDAIE::SwitchBox>
+    : TupleStructDenseMapInfo<
+          mlir::iree_compiler::AMDAIE::SwitchBox::TupleType> {};
 
 template <>
 struct DenseMapInfo<mlir::iree_compiler::AMDAIE::PhysPort>

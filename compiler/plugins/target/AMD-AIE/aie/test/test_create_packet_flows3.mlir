@@ -21,11 +21,11 @@ module @test_create_packet_flows3 {
 // CHECK:           %[[VAL_4:.*]] = aie.masterset(Core : 0, %[[VAL_2:.*]])
 // CHECK:           %[[VAL_5:.*]] = aie.masterset(Core : 1,
 // CHECK-SACore :      %[[VAL_2]]
-// CHECK:           aie.packet_rules(West : 1) {
-// CHECK:             aie.rule(31, 1, %[[VAL_3:.*]])
-// CHECK:           }
 // CHECK:           aie.packet_rules(West : 0) {
-// CHECK:             aie.rule(31, 0, %[[VAL_2]])
+// CHECK-DAG:         aie.rule(31, 0, %[[VAL_2]])
+// CHECK:           }
+// CHECK:           aie.packet_rules(West : 1) {
+// CHECK-DAG:         aie.rule(31, 1, %[[VAL_3:.*]])
 // CHECK:           }
 // CHECK:         }
 // CHECK:       }
