@@ -80,21 +80,19 @@ module {
 // CHECK-DAG:     %[[TILE_0_2:.*]] = amdaie.tile(%[[C0]], %[[C2]])
 // CHECK-DAG:     %[[TILE_1_2:.*]] = amdaie.tile(%[[C1]], %[[C2]])
 // CHECK-DAG:     %[[TILE_0_1:.*]] = amdaie.tile(%[[C0]], %[[C1]])
-// CHECK-DAG:     %[[TILE_1_1:.*]] = amdaie.tile(%[[C1]], %[[C1]])
-// CHECK-DAG:     %[[FROM_MEMREF_0:.*]] = amdaie.logicalobjectfifo.from_memref %[[ALLOC_1]], {%[[TILE_1_1]]}
-// CHECK-DAG:     %[[FROM_MEMREF_1:.*]] = amdaie.logicalobjectfifo.from_memref %[[ALLOC_0]], {%[[TILE_0_1]]}
-// CHECK-DAG:     %[[FROM_MEMREF_2:.*]] = amdaie.logicalobjectfifo.from_memref %[[ALLOC_2]], {%[[TILE_1_2]]}
-// CHECK-DAG:     %[[FROM_MEMREF_3:.*]] = amdaie.logicalobjectfifo.from_memref %[[ALLOC_2]], {%[[TILE_0_2]]}
-// CHECK-DAG:     %[[DMA_0:.*]] = amdaie.dma_cpy_nd(%[[FROM_MEMREF_3]]
-// CHECK-SAME:    %[[FROM_MEMREF_1]]
+// CHECK-DAG:     %[[FROM_MEMREF_0:.*]] = amdaie.logicalobjectfifo.from_memref %[[ALLOC_0]], {%[[TILE_0_1]]}
+// CHECK-DAG:     %[[FROM_MEMREF_1:.*]] = amdaie.logicalobjectfifo.from_memref %[[ALLOC_2]], {%[[TILE_1_2]]}
+// CHECK-DAG:     %[[FROM_MEMREF_2:.*]] = amdaie.logicalobjectfifo.from_memref %[[ALLOC_2]], {%[[TILE_0_2]]}
+// CHECK-DAG:     %[[DMA_0:.*]] = amdaie.dma_cpy_nd(%[[FROM_MEMREF_2]]
+// CHECK-SAME:    %[[FROM_MEMREF_0]]
 // CHECK-DAG:     %[[CORE_0:.*]] = amdaie.core(%[[TILE_0_2]])
-// CHECK:           %[[VAL_0:.+]] = amdaie.logicalobjectfifo.access(%[[FROM_MEMREF_3]], Read)
+// CHECK:           %[[VAL_0:.+]] = amdaie.logicalobjectfifo.access(%[[FROM_MEMREF_2]], Read)
 // CHECK:           amdaie.logicalobjectfifo.consume(%[[DMA_0]])
 // CHECK:           linalg.fill ins(%{{.+}} : i32) outs(%[[VAL_0]] : memref<32x64xi32, 2>)
-// CHECK-DAG:     %[[DMA_1:.*]] = amdaie.dma_cpy_nd(%[[FROM_MEMREF_2]]
+// CHECK-DAG:     %[[DMA_1:.*]] = amdaie.dma_cpy_nd(%[[FROM_MEMREF_1]]
 // CHECK-SAME:    %[[FROM_MEMREF_0]]
 // CHECK-DAG:     %[[CORE_1:.*]] = amdaie.core(%[[TILE_1_2]])
-// CHECK:           %[[VAL_1:.+]] = amdaie.logicalobjectfifo.access(%[[FROM_MEMREF_2]], Read)
+// CHECK:           %[[VAL_1:.+]] = amdaie.logicalobjectfifo.access(%[[FROM_MEMREF_1]], Read)
 // CHECK:           amdaie.logicalobjectfifo.consume(%[[DMA_1]])
 // CHECK:           linalg.fill ins(%{{.+}} : i32) outs(%[[VAL_1]] : memref<32x64xi32, 2>)
 module {
@@ -369,14 +367,12 @@ module {
 // CHECK-DAG:     %[[TILE_1_2:.*]] = amdaie.tile(%[[C1]], %[[C2]])
 // CHECK-DAG:     %[[TILE_1_3:.*]] = amdaie.tile(%[[C1]], %[[C3]])
 // CHECK-DAG:     %[[TILE_0_1:.*]] = amdaie.tile(%[[C0]], %[[C1]])
-// CHECK-DAG:     %[[TILE_1_1:.*]] = amdaie.tile(%[[C1]], %[[C1]])
-// CHECK-DAG:     %[[FROM_MEMREF_0:.*]] = amdaie.logicalobjectfifo.from_memref %[[ALLOC_1]], {%[[TILE_1_1]]}
-// CHECK-DAG:     %[[FROM_MEMREF_1:.*]] = amdaie.logicalobjectfifo.from_memref %[[ALLOC_0]], {%[[TILE_0_1]]}
-// CHECK-DAG:     %[[FROM_MEMREF_2:.*]] = amdaie.logicalobjectfifo.from_memref %[[ALLOC_2]], {%[[TILE_1_2]], %[[TILE_1_3]]}
-// CHECK-DAG:     %[[FROM_MEMREF_3:.*]] = amdaie.logicalobjectfifo.from_memref %[[ALLOC_2]], {%[[TILE_0_2]], %[[TILE_0_3]]}
-// CHECK-DAG:     %[[DMA_0:.*]] = amdaie.dma_cpy_nd(%[[FROM_MEMREF_3]]
-// CHECK-SAME:    %[[FROM_MEMREF_1]]
-// CHECK-DAG:     %[[DMA_1:.*]] = amdaie.dma_cpy_nd(%[[FROM_MEMREF_2]]
+// CHECK-DAG:     %[[FROM_MEMREF_0:.*]] = amdaie.logicalobjectfifo.from_memref %[[ALLOC_0]], {%[[TILE_0_1]]}
+// CHECK-DAG:     %[[FROM_MEMREF_1:.*]] = amdaie.logicalobjectfifo.from_memref %[[ALLOC_2]], {%[[TILE_1_2]], %[[TILE_1_3]]}
+// CHECK-DAG:     %[[FROM_MEMREF_2:.*]] = amdaie.logicalobjectfifo.from_memref %[[ALLOC_2]], {%[[TILE_0_2]], %[[TILE_0_3]]}
+// CHECK-DAG:     %[[DMA_0:.*]] = amdaie.dma_cpy_nd(%[[FROM_MEMREF_2]]
+// CHECK-SAME:    %[[FROM_MEMREF_0]]
+// CHECK-DAG:     %[[DMA_1:.*]] = amdaie.dma_cpy_nd(%[[FROM_MEMREF_1]]
 // CHECK-SAME:    %[[FROM_MEMREF_0]]
 // CHECK-DAG:     %[[CORE_0_2:.*]] = amdaie.core(%[[TILE_0_2]])
 // CHECK-DAG:       amdaie.logicalobjectfifo.consume(%[[DMA_0]])
@@ -435,36 +431,34 @@ module {
 // CHECK-DAG:     %[[TILE_1_3:.+]] = amdaie.tile(%[[C1]], %[[C3]])
 // CHECK-DAG:     %[[TILE_0_0:.+]] = amdaie.tile(%[[C0]], %[[C0]])
 // CHECK-DAG:     %[[TILE_0_1:.+]] = amdaie.tile(%[[C0]], %[[C1]])
-// CHECK-DAG:     %[[TILE_1_0:.+]] = amdaie.tile(%[[C1]], %[[C0]])
 // CHECK-DAG:     %[[TILE_1_1:.+]] = amdaie.tile(%[[C1]], %[[C1]])
-// CHECK-DAG:     %[[FROM_MEMREF_0:.+]] = amdaie.logicalobjectfifo.from_memref %[[ALLOC_0]], {%[[TILE_1_0]]}
-// CHECK-DAG:     %[[FROM_MEMREF_1:.+]] = amdaie.logicalobjectfifo.from_memref %[[ALLOC_0]], {%[[TILE_0_0]]}
-// CHECK-DAG:     %[[FROM_MEMREF_2:.+]] = amdaie.logicalobjectfifo.from_memref %[[ALLOC_1]], {%[[TILE_1_1]]}
-// CHECK-DAG:     %[[FROM_MEMREF_3:.+]] = amdaie.logicalobjectfifo.from_memref %[[ALLOC_2]], {%[[TILE_0_1]]}
-// CHECK-DAG:     %[[FROM_MEMREF_4:.+]] = amdaie.logicalobjectfifo.from_memref %[[ALLOC_3]], {%[[TILE_1_2]], %[[TILE_1_3]]}
-// CHECK-DAG:     %[[FROM_MEMREF_5:.+]] = amdaie.logicalobjectfifo.from_memref %[[ALLOC_3]], {%[[TILE_0_2]], %[[TILE_0_3]]}
-// CHECK-DAG:     %[[DMA_0:.*]] = amdaie.dma_cpy_nd(%[[FROM_MEMREF_3]]
-// CHECK-SAME:    %[[FROM_MEMREF_1]]
-// CHECK-DAG:     %[[DMA_1:.*]] = amdaie.dma_cpy_nd(%[[FROM_MEMREF_5]]
-// CHECK-SAME:    %[[FROM_MEMREF_3]]
-// CHECK-DAG:     %[[DMA_2:.*]] = amdaie.dma_cpy_nd(%[[FROM_MEMREF_2]]
+// CHECK-DAG:     %[[FROM_MEMREF_0:.+]] = amdaie.logicalobjectfifo.from_memref %[[ALLOC_0]], {%[[TILE_0_0]]}
+// CHECK-DAG:     %[[FROM_MEMREF_1:.+]] = amdaie.logicalobjectfifo.from_memref %[[ALLOC_1]], {%[[TILE_1_1]]}
+// CHECK-DAG:     %[[FROM_MEMREF_2:.+]] = amdaie.logicalobjectfifo.from_memref %[[ALLOC_2]], {%[[TILE_0_1]]}
+// CHECK-DAG:     %[[FROM_MEMREF_3:.+]] = amdaie.logicalobjectfifo.from_memref %[[ALLOC_3]], {%[[TILE_1_2]], %[[TILE_1_3]]}
+// CHECK-DAG:     %[[FROM_MEMREF_4:.+]] = amdaie.logicalobjectfifo.from_memref %[[ALLOC_3]], {%[[TILE_0_2]], %[[TILE_0_3]]}
+// CHECK-DAG:     %[[DMA_0:.*]] = amdaie.dma_cpy_nd(%[[FROM_MEMREF_2]]
 // CHECK-SAME:    %[[FROM_MEMREF_0]]
-// CHECK-DAG:     %[[DMA_3:.*]] = amdaie.dma_cpy_nd(%[[FROM_MEMREF_4]]
+// CHECK-DAG:     %[[DMA_1:.*]] = amdaie.dma_cpy_nd(%[[FROM_MEMREF_4]]
 // CHECK-SAME:    %[[FROM_MEMREF_2]]
+// CHECK-DAG:     %[[DMA_2:.*]] = amdaie.dma_cpy_nd(%[[FROM_MEMREF_1]]
+// CHECK-SAME:    %[[FROM_MEMREF_0]]
+// CHECK-DAG:     %[[DMA_3:.*]] = amdaie.dma_cpy_nd(%[[FROM_MEMREF_3]]
+// CHECK-SAME:    %[[FROM_MEMREF_1]]
 // CHECK-DAG:     %[[CORE_0_2:.*]] = amdaie.core(%[[TILE_0_2]])
-// CHECK-DAG:       %[[VAL_0:.+]] = amdaie.logicalobjectfifo.access(%[[FROM_MEMREF_5]], Read)
+// CHECK-DAG:       %[[VAL_0:.+]] = amdaie.logicalobjectfifo.access(%[[FROM_MEMREF_4]], Read)
 // CHECK-DAG:       amdaie.logicalobjectfifo.consume(%[[DMA_1]])
 // CHECK-DAG:       linalg.fill ins(%{{.+}} : i32) outs(%[[VAL_0]] : memref<32x64xi32, 2>)
 // CHECK-DAG:     %[[CORE_1_2:.*]] = amdaie.core(%[[TILE_1_2]])
-// CHECK-DAG:       %[[VAL_0:.+]] = amdaie.logicalobjectfifo.access(%[[FROM_MEMREF_4]], Read)
+// CHECK-DAG:       %[[VAL_0:.+]] = amdaie.logicalobjectfifo.access(%[[FROM_MEMREF_3]], Read)
 // CHECK-DAG:       amdaie.logicalobjectfifo.consume(%[[DMA_3]])
 // CHECK-DAG:       linalg.fill ins(%{{.+}} : i32) outs(%[[VAL_0]] : memref<32x64xi32, 2>)
 // CHECK-DAG:     %[[CORE_0_3:.*]] = amdaie.core(%[[TILE_0_3]])
-// CHECK-DAG:       %[[VAL_0:.+]] = amdaie.logicalobjectfifo.access(%[[FROM_MEMREF_5]], Read)
+// CHECK-DAG:       %[[VAL_0:.+]] = amdaie.logicalobjectfifo.access(%[[FROM_MEMREF_4]], Read)
 // CHECK-DAG:       amdaie.logicalobjectfifo.consume(%[[DMA_1]])
 // CHECK-DAG:       linalg.fill ins(%{{.+}} : i32) outs(%[[VAL_0]] : memref<32x64xi32, 2>)
 // CHECK-DAG:     %[[CORE_1_3:.*]] = amdaie.core(%[[TILE_1_3]])
-// CHECK-DAG:       %[[VAL_0:.+]] = amdaie.logicalobjectfifo.access(%[[FROM_MEMREF_4]], Read)
+// CHECK-DAG:       %[[VAL_0:.+]] = amdaie.logicalobjectfifo.access(%[[FROM_MEMREF_3]], Read)
 // CHECK-DAG:       amdaie.logicalobjectfifo.consume(%[[DMA_3]])
 // CHECK-DAG:       linalg.fill ins(%{{.+}} : i32) outs(%[[VAL_0]] : memref<32x64xi32, 2>)
 module {
@@ -701,7 +695,6 @@ module {
 // CHECK-DAG:         %[[TILE_0_2:.*]] = amdaie.tile(%c0, %c2)
 // CHECK-DAG:         %[[TILE_0_1:.*]] = amdaie.tile(%c0, %c1)
 // CHECK-DAG:         %[[TILE_1_1:.*]] = amdaie.tile(%c1, %c1)
-// CHECK-DAG:         %[[TILE_1_0:.*]] = amdaie.tile(%c1, %c0)
 // CHECK-DAG:         %[[TILE_0_0:.*]] = amdaie.tile(%c0, %c0)
 // CHECK-DAG:         %[[FROM_MEMREF_0:.*]] = amdaie.logicalobjectfifo.from_memref %[[ALLOC_2]], {%[[TILE_0_1]]}
 // CHECK-DAG:         %[[FROM_MEMREF_1:.*]] = amdaie.logicalobjectfifo.from_memref %[[ALLOC_3]], {%[[TILE_1_1]]}
@@ -713,22 +706,20 @@ module {
 // CHECK-DAG:         %[[FROM_MEMREF_7:.*]] = amdaie.logicalobjectfifo.from_memref %[[ALLOC_0]], {%[[TILE_0_2]], %[[TILE_1_2]]}
 // CHECK-DAG:         %[[FROM_MEMREF_8:.*]] = amdaie.logicalobjectfifo.from_memref %[[ALLOC]], {%[[TILE_1_2]]}
 // CHECK-DAG:         %[[FROM_MEMREF_9:.*]] = amdaie.logicalobjectfifo.from_memref %[[ALLOC]], {%[[TILE_0_2]]}
-// CHECK-DAG:         %[[FROM_MEMREF_10:.*]] = amdaie.logicalobjectfifo.from_memref %[[OUTPUT]], {%[[TILE_1_0]]}
-// CHECK-DAG:         %[[FROM_MEMREF_11:.*]] = amdaie.logicalobjectfifo.from_memref %[[OUTPUT]], {%[[TILE_0_0]]}
-// CHECK-DAG:         %[[FROM_MEMREF_12:.*]] = amdaie.logicalobjectfifo.from_memref %[[IN_A]], {%[[TILE_0_0]]}
-// CHECK-DAG:         %[[FROM_MEMREF_13:.*]] = amdaie.logicalobjectfifo.from_memref %[[IN_B]], {%[[TILE_1_0]]}
-// CHECK-DAG:         %[[FROM_MEMREF_14:.*]] = amdaie.logicalobjectfifo.from_memref %[[IN_B]], {%[[TILE_0_0]]}
+// CHECK-DAG:         %[[FROM_MEMREF_10:.*]] = amdaie.logicalobjectfifo.from_memref %[[OUTPUT]], {%[[TILE_0_0]]}
+// CHECK-DAG:         %[[FROM_MEMREF_11:.*]] = amdaie.logicalobjectfifo.from_memref %[[IN_A]], {%[[TILE_0_0]]}
+// CHECK-DAG:         %[[FROM_MEMREF_12:.*]] = amdaie.logicalobjectfifo.from_memref %[[IN_B]], {%[[TILE_0_0]]}
 // CHECK-DAG:         %[[DMA_0:.*]] = amdaie.dma_cpy_nd(%[[FROM_MEMREF_0]]
-// CHECK-SAME:        %[[FROM_MEMREF_12]]
+// CHECK-SAME:        %[[FROM_MEMREF_11]]
 // CHECK-DAG:         %[[DMA_1:.*]] = amdaie.dma_cpy_nd(%[[FROM_MEMREF_7]]
 // CHECK-SAME:        %[[FROM_MEMREF_0]]
 // CHECK-DAG:         %[[DMA_2:.*]] = amdaie.dma_cpy_nd(%[[FROM_MEMREF_2]]
-// CHECK-SAME:        %[[FROM_MEMREF_14]]
+// CHECK-SAME:        %[[FROM_MEMREF_12]]
 // CHECK-DAG:         %[[DMA_3:.*]] = amdaie.dma_cpy_nd(%[[FROM_MEMREF_9]]
 // CHECK-SAME:        %[[FROM_MEMREF_2]]
 // CHECK-DAG:         %[[DMA_4:.*]] = amdaie.dma_cpy_nd(%[[FROM_MEMREF_4]]
 // CHECK-SAME:        %[[FROM_MEMREF_6]]
-// CHECK-DAG:         %[[DMA_5:.*]] = amdaie.dma_cpy_nd(%[[FROM_MEMREF_11]]
+// CHECK-DAG:         %[[DMA_5:.*]] = amdaie.dma_cpy_nd(%[[FROM_MEMREF_10]]
 // CHECK-SAME:        %[[FROM_MEMREF_4]]
 // CHECK-DAG:         %[[CORE_0:.*]] = amdaie.core(%[[TILE_0_2]])
 // CHECK-DAG:           %[[VAL_0:.+]] = amdaie.logicalobjectfifo.access(%[[FROM_MEMREF_7]], Read)
@@ -738,7 +729,7 @@ module {
 // CHECK-DAG:           amdaie.logicalobjectfifo.consume(%[[DMA_3]])
 // CHECK-DAG:           amdaie.logicalobjectfifo.produce(%[[DMA_4]])
 // CHECK-DAG:         %[[DMA_6:.*]] = amdaie.dma_cpy_nd(%[[FROM_MEMREF_1]]
-// CHECK-SAME:        %[[FROM_MEMREF_13]]
+// CHECK-SAME:        %[[FROM_MEMREF_12]]
 // CHECK-DAG:         %[[DMA_7:.*]] = amdaie.dma_cpy_nd(%[[FROM_MEMREF_8]]
 // CHECK-SAME:        %[[FROM_MEMREF_1]]
 // CHECK-DAG:         %[[DMA_8:.*]] = amdaie.dma_cpy_nd(%[[FROM_MEMREF_3]]
@@ -954,8 +945,6 @@ module {
 // CHECK-DAG:       %[[ALLOC:.*]] = memref.alloc() : memref<1x1x8x4x8x4xi32, 2 : i32>
 // CHECK-DAG:       %[[ALLOC_0:.*]] = memref.alloc() : memref<1x1x4x8x4x8xi32, 2 : i32>
 // CHECK-DAG:       %[[ALLOC_1:.*]] = memref.alloc() : memref<1x2x32x32xi32, 1 : i32>
-// CHECK-DAG:       %[[ALLOC_2:.*]] = memref.alloc() : memref<1x2x32x32xi32, 1 : i32>
-// CHECK-DAG:       %[[ALLOC_3:.*]] = memref.alloc() : memref<1x2x32x32xi32, 1 : i32>
 // CHECK-DAG:       %[[ALLOC_4:.*]] = memref.alloc() : memref<2x1x32x32xi32, 1 : i32>
 // CHECK-DAG:       %[[ALLOC_5:.*]] = memref.alloc() : memref<2x2x8x8x4x4xi32, 2 : i32>
 // CHECK-DAG:       %[[TILE_0_1:.*]] = amdaie.tile(%[[C0]], %[[C1]])
