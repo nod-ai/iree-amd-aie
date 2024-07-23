@@ -20,7 +20,8 @@ int main(int argc, char** argv) {
       XAIE2IPU_ROW_SHIFT, XAIE2IPU_NUM_COLS, XAIE2IPU_NUM_ROWS,
       XAIE2IPU_MEM_TILE_ROW_START, XAIE2IPU_MEM_TILE_NUM_ROWS,
       XAIE2IPU_SHIM_NUM_ROWS, partitionNumCols, partitionStartCol,
-      /*aieSim*/ false, /*xaieDebug*/ false);
+      /*aieSim*/ false, /*xaieDebug*/ false,
+      mlir::iree_compiler::AMDAIE::AMDAIEDevice::npu1_4col);
   XAie_LocType tile00 = {.Row = 0, .Col = col};
   XAie_LocType tile01 = {.Row = 1, .Col = col};
   XAie_LocType tile02 = {.Row = 2, .Col = col};

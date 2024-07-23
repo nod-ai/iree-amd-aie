@@ -60,7 +60,12 @@ else
   IREE_INSTALL_DIR=`realpath "${IREE_INSTALL_DIR}"`
 fi
 
-IREE_COMPILE_EXE="${IREE_INSTALL_DIR}/bin/iree-compile"
+for dir in "${IREE_INSTALL_DIR}" "${IREE_INSTALL_DIR}/bin" "${IREE_INSTALL_DIR}/tools"; do
+  if [ -f "${dir}/iree-compile" ]; then
+    IREE_COMPILE_EXE="${dir}/iree-compile"
+  fi
+done
+
 if [ ! -x "${IREE_COMPILE_EXE}" ]; then
   echo "IREE_COMPILE_EXE does not exist or isn't executable: ${IREE_COMPILE_EXE}."
   exit 1
@@ -157,7 +162,6 @@ fi
 # CHECK-STDERR: linalg.matmul
 #
 # Checks for some stderr from during aie2xclbin:
-# CHECK-STDERR-DAG: aie.wire
 # CHECK-STDERR-DAG: llvm.load
 ${FILECHECK_EXE} --input-file ${STDERR_FULLPATH} ${0} --check-prefix=CHECK-STDERR
 

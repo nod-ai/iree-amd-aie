@@ -333,7 +333,7 @@ void createAMDAIETileDMA(
   ObjectFifoCreateOp target = createOp;
   if (std::optional<ObjectFifoLinkOp> linkOp = getOptionalLinkOp(createOp);
       linkOp.has_value())
-    if (objFifoLinks.find(linkOp.value()) != objFifoLinks.end())
+    if (objFifoLinks.contains(linkOp.value()))
       target = objFifoLinks.at(linkOp.value());
 
   auto fifo = llvm::cast<AIEObjectFifoType>(createOp.getElemType());
@@ -384,7 +384,7 @@ void createMemTileDMA(
   // search for the buffers/locks (based on if this objFifo has a link)
   // identify size difference between input and output memrefs
   if (auto linkOp = getOptionalLinkOp(createOp);
-      objFifoLinks.find(*linkOp) != objFifoLinks.end()) {
+      objFifoLinks.contains(*linkOp)) {
     target = objFifoLinks.at(*linkOp);
     if (linkOp->isJoin()) {
       // find offset based on order of this op in join list
@@ -460,8 +460,7 @@ void createUseLocks(
     const DenseMap<ObjectFifoCreateOp, std::vector<LockOp>> &locksPerFifo) {
   ObjectFifoCreateOp target = op;
   if (auto linkOp = getOptionalLinkOp(op))
-    if (objFifoLinks.find(*linkOp) != objFifoLinks.end())
-      target = objFifoLinks.at(*linkOp);
+    if (objFifoLinks.contains(*linkOp)) target = objFifoLinks.at(*linkOp);
 
   if (numLocks == 0) return;
   // search for the correct lock based on the port of the acq/rel
@@ -508,10 +507,11 @@ void replaceReleaseOp(
                    LockAction::Release, objFifoLinks, locksPerFifo);
   }
   // register release op
-  if (releaseOps.find(opPort) != releaseOps.end())
+  if (releaseOps.contains(opPort)) {
     releaseOps[opPort].push_back(releaseOp);
-  else
+  } else {
     releaseOps[opPort] = {releaseOp};
+  }
 }
 
 /// Split objectFifos into a consumer end and producer end if needed
@@ -693,7 +693,7 @@ void replaceObjectAcquireOp(
   // if objFifo was linked with others, find which objFifos
   // elements to use
   ObjectFifoCreateOp target = op;
-  if (linkOp && objFifoLinks.find(*linkOp) != objFifoLinks.end())
+  if (linkOp && objFifoLinks.contains(*linkOp))
     target = objFifoLinks.at(*linkOp);
 
   // create subview: buffers that were already acquired + new acquires
@@ -753,7 +753,7 @@ void createBuffersAndLocks(
     auto fifoIn = linkOp->getInputObjectFifos()[0],
          fifoOut = linkOp->getOutputObjectFifos()[0];
     // elements have already been created
-    if (objFifoLinks.find(*linkOp) != objFifoLinks.end()) return;
+    if (objFifoLinks.contains(*linkOp)) return;
     // if join, fifoOut has bigger size
     if (linkOp->isJoin() && createOp.name() != fifoOut.name()) return;
     // if distribute, fifoIn has bigger size
