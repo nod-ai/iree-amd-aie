@@ -140,19 +140,6 @@ source $XRT_DIR/setup.sh
 export XRT_HACK_UNSECURE_LOADING_XCLBIN=1
 
 MM_KERNEL_URL=https://github.com/nod-ai/iree-amd-aie/releases/download/ukernels/mm.o
-ME_BASIC_URL=https://github.com/nod-ai/iree-amd-aie/releases/download/ukernels/me_basic.o
-
-if [ -d "$PEANO" ]; then
-  PEANO_ME_BASIC_FP="$PEANO/lib/aie2-none-unknown-elf/me_basic.o"
-  if [ -f "$PEANO_ME_BASIC_FP" ]; then
-    echo "File 'me_basic.o' already exists at $PEANO_ME_BASIC_FP"
-  else
-    echo "Downloading 'me_basic.o' to $PEANO_ME_BASIC_FP"
-    wget $ME_BASIC_URL -O "$PEANO_ME_BASIC_FP"
-  fi
-else
-  echo "Peano install not found at $PEANO; not downloading me_basic."
-fi
 
 # The flag '--iree-amdaie-path-to-ukernels' currently does not work,
 # see for example https://github.com/nod-ai/iree-amd-aie/issues/340.
