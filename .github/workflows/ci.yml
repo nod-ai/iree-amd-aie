@@ -150,9 +150,11 @@ jobs:
       - name : E2E comparison of AIE to llvm-cpu
         run: |
           source .venv/bin/activate
-          #install numpy (any version)
+          # install requirements
+          # TODO(newling) make requirements.txt file
           pip install numpy
-          bash build_tools/ci/cpu_comparison/run_test.sh test_aie_vs_cpu iree-install
+          pip install urllib
+          python3 build_tools/ci/cpu_comparison/run_test.py test_aie_vs_cpu iree-install
 
       - name: Printing IR from aie2xclbin
         run: |
