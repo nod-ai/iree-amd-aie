@@ -804,32 +804,6 @@ class FillAieTiles
   }
 };
 
-/// Return the user DMA operations and corresponding assigned tiles in the
-/// specified direction (source or target).
-template <CopyOpOperateOn OperateOn>
-SmallVector<std::pair<AMDAIE::DmaCpyNdOp, SmallVector<AMDAIE::TileOp>>>
-getUserDmasAndTiles(AMDAIE::LogicalObjectFifoFromMemrefOp logicalObjectFifo) {
-  SmallVector<std::pair<AMDAIE::DmaCpyNdOp, SmallVector<AMDAIE::TileOp>>>
-      dmaOps;
-  for (Operation *user : logicalObjectFifo->getUsers()) {
-    if (auto dmaOp = dyn_cast<AMDAIE::DmaCpyNdOp>(user)) {
-      ValueRange tileIndices;
-      if constexpr (OperateOn == CopyOpOperateOn::Source) {
-        if (dmaOp.getTargetObjectFifo() != logicalObjectFifo) continue;
-        tileIndices = dmaOp.getSourceObjectFifo().getTiles();
-      } else if constexpr (OperateOn == CopyOpOperateOn::Target) {
-        if (dmaOp.getSourceObjectFifo() != logicalObjectFifo) continue;
-        tileIndices = dmaOp.getTargetObjectFifo().getTiles();
-      }
-      SmallVector<AMDAIE::TileOp> tiles;
-      for (Value index : tileIndices)
-        tiles.push_back(dyn_cast<AMDAIE::TileOp>(index.getDefiningOp()));
-      dmaOps.push_back(std::make_pair(dmaOp, tiles));
-    }
-  }
-  return dmaOps;
-}
-
 /// Assign specific tile locations to objectFifos, starting from the set of
 /// potential tile locations filled in earlier.
 LogicalResult assignAieTilesAndDistributeLogicalObjectFifos(ModuleOp moduleOp) {
@@ -845,61 +819,16 @@ LogicalResult assignAieTilesAndDistributeLogicalObjectFifos(ModuleOp moduleOp) {
         [](Value tile) { return dyn_cast<TileOp>(tile.getDefiningOp()); });
     llvm::sort(tiles.begin(), tiles.end(),
                AMDAIE::TileOp::tileColumnComparator);
-    SmallVector<std::pair<AMDAIE::DmaCpyNdOp, SmallVector<AMDAIE::TileOp>>>
-        sourceDmaOps =
-            getUserDmasAndTiles<CopyOpOperateOn::Source>(logicalObjectFifo);
-    SmallVector<std::pair<AMDAIE::DmaCpyNdOp, SmallVector<AMDAIE::TileOp>>>
-        targetDmaOps =
-            getUserDmasAndTiles<CopyOpOperateOn::Target>(logicalObjectFifo);
 
-    // Assign tiles for following cases:
-    // 1) No source DMA operations (e.g. L3 -> L2): distribute onto multiple
-    // tiles to potentially use multiple shim DMAs for reading from global
-    // memory in different columns.
-    // 2) No target DMA operations (e.g. L2 -> L3):
-    // distribute onto multiple tiles to potentially use multiple shim DMAs for
-    // writing to global memory in different columns.
-    // 3) Default: assign first tile from the sorted sequence of potential
-    // tiles.
-    if (sourceDmaOps.empty() && targetDmaOps.size() == tiles.size()) {
-      llvm::sort(targetDmaOps.begin(), targetDmaOps.end(), dmaColComparator);
-      for (auto &&[tile, dmaOpElem] : llvm::zip(tiles, targetDmaOps)) {
-        rewriter.setInsertionPoint(logicalObjectFifo);
-        SmallVector<Value> tileResults = {cast<Value>(tile.getResult())};
-        auto newLogicalObjectFifo =
-            rewriter.create<AMDAIE::LogicalObjectFifoFromMemrefOp>(
-                rewriter.getUnknownLoc(),
-                cast<LogicalObjectFifoType>(
-                    logicalObjectFifo.getOutput().getType()),
-                logicalObjectFifo.getMemref(), tileResults);
-        dmaOpElem.first->replaceUsesOfWith(logicalObjectFifo.getResult(),
-                                           newLogicalObjectFifo.getResult());
-      }
-    } else if (targetDmaOps.empty() && sourceDmaOps.size() == tiles.size()) {
-      llvm::sort(sourceDmaOps.begin(), sourceDmaOps.end(), dmaColComparator);
-      for (auto &&[tile, dmaOpElem] : llvm::zip(tiles, sourceDmaOps)) {
-        rewriter.setInsertionPoint(logicalObjectFifo);
-        SmallVector<Value> tileResults = {cast<Value>(tile.getResult())};
-        auto newLogicalObjectFifo =
-            rewriter.create<AMDAIE::LogicalObjectFifoFromMemrefOp>(
-                rewriter.getUnknownLoc(),
-                cast<LogicalObjectFifoType>(
-                    logicalObjectFifo.getOutput().getType()),
-                logicalObjectFifo.getMemref(), tileResults);
-        dmaOpElem.first->replaceUsesOfWith(logicalObjectFifo.getResult(),
-                                           newLogicalObjectFifo.getResult());
-      }
-    } else {
-      // For now, use first tile in sorted list. This will need to become more
-      // complex in the future to account for potential hardware limitations and
-      // constraints.
-      SmallVector<Value> tileResults = {cast<Value>(tiles[0].getResult())};
-      rewriter.setInsertionPoint(logicalObjectFifo);
-      rewriter.replaceOpWithNewOp<AMDAIE::LogicalObjectFifoFromMemrefOp>(
-          logicalObjectFifo,
-          cast<LogicalObjectFifoType>(logicalObjectFifo.getOutput().getType()),
-          logicalObjectFifo.getMemref(), tileResults);
-    }
+    // For now, use first tile in sorted list.
+    // TODO(jornt): This will need to become more complex in the future to
+    // account for potential hardware limitations and constraints.
+    SmallVector<Value> tileResults = {cast<Value>(tiles[0].getResult())};
+    rewriter.setInsertionPoint(logicalObjectFifo);
+    rewriter.replaceOpWithNewOp<AMDAIE::LogicalObjectFifoFromMemrefOp>(
+        logicalObjectFifo,
+        cast<LogicalObjectFifoType>(logicalObjectFifo.getOutput().getType()),
+        logicalObjectFifo.getMemref(), tileResults);
     return WalkResult::advance();
   });
   return success();

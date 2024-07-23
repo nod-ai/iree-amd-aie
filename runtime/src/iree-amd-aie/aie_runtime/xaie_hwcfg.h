@@ -7,7 +7,7 @@
 #ifndef XAIE_HWCFG_H
 #define XAIE_HWCFG_H
 
-#include "export.h"
+#include "macros.h"
 
 // Gen AIE
 extern int XAIE1_AIE_TILE_NUM_ROWS;

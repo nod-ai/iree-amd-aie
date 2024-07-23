@@ -15,6 +15,7 @@
 #include "llvm/ADT/Twine.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/FormattedStream.h"
+#include "macros.h"
 // clang-format off
 #include "iree-amd-aie/aie_runtime/AMDAIEEnums.h"
 // clang-format on
@@ -41,6 +42,7 @@ void insertNoOpCommand(unsigned int numPadBytes);
 }
 
 namespace mlir::iree_compiler::AMDAIE {
+
 struct TileLoc {
   int col, row;
 
@@ -51,42 +53,11 @@ struct TileLoc {
 
   // for getting free DenseMapInfo (see below)
   using TupleType = std::tuple<int, int>;
-  TileLoc(std::tuple<int, int> t) : col(std::get<0>(t)), row(std::get<1>(t)) {}
-  operator std::tuple<int, int>() const { return {col, row}; }
-
-  inline bool operator<(const TileLoc& rhs) const {
-    return std::tie(col, row) < std::tie(rhs.col, rhs.row);
-  }
-
-  bool operator==(const TileLoc& rhs) const {
-    return std::tie(col, row) == std::tie(rhs.col, rhs.row);
-  }
-
-  bool operator!=(const TileLoc& rhs) const { return !(*this == rhs); }
+  TileLoc(TupleType t) : TileLoc(std::get<0>(t), std::get<1>(t)) {}
+  operator TupleType() const { return {col, row}; }
+  TUPLE_LIKE_STRUCT_RELATIONAL_OPS(TileLoc)
 };
-
-struct Port {
-  StrmSwPortType bundle;
-  int channel;
-
-  Port() = default;
-  Port(StrmSwPortType bundle, int channel) : bundle(bundle), channel(channel) {}
-  // for getting free DenseMapInfo (see below)
-  using TupleType = std::tuple<StrmSwPortType, int>;
-  Port(std::tuple<StrmSwPortType, int> t)
-      : Port(std::get<0>(t), std::get<1>(t)) {}
-  operator std::tuple<StrmSwPortType, int>() const { return {bundle, channel}; }
-
-  bool operator==(const Port& rhs) const {
-    return std::tie(bundle, channel) == std::tie(rhs.bundle, rhs.channel);
-  }
-
-  bool operator!=(const Port& rhs) const { return !(*this == rhs); }
-
-  bool operator<(const Port& rhs) const {
-    return std::tie(bundle, channel) < std::tie(rhs.bundle, rhs.channel);
-  }
-};
+ASSERT_STANDARD_LAYOUT(TileLoc);
 
 struct SwitchDMAConnection {
   DMAChannelDir direction;
@@ -99,77 +70,7 @@ struct SwitchDMAConnection {
     return std::tie(direction, channel) == std::tie(rhs.direction, rhs.channel);
   }
 };
-
-struct Switchbox : TileLoc {
-  // Necessary for initializer construction?
-  Switchbox(TileLoc t) : TileLoc(t) {}
-  Switchbox(int col, int row) : TileLoc(col, row) {}
-  Switchbox(std::tuple<int, int> t) : TileLoc(t) {}
-
-  bool operator==(const Switchbox& rhs) const {
-    return static_cast<TileLoc>(*this) == rhs;
-  }
-};
-
-struct Connect {
-  Switchbox sb;
-  Port src;
-  Port dst;
-
-  Connect(Switchbox sb, Port src, Port dst) : sb(sb), src(src), dst(dst) {}
-
-  bool operator==(const Connect& rhs) const {
-    return std::tie(src, dst) == std::tie(rhs.src, rhs.dst);
-  }
-};
-
-struct SwitchBoxConnection {
-  Switchbox& src;
-  Switchbox& target;
-  StrmSwPortType bundle;
-  int maxCapacity = 0;   // maximum number of routing resources
-  double demand = 0.0;   // indicates how many flows want to use this Channel
-  int usedCapacity = 0;  // how many flows are actually using this Channel
-  DenseSet<int> fixedCapacity;  // channels not available to the algorithm
-  int overCapacityCount = 0;    // history of Channel being over capacity
-  SwitchBoxConnection(Switchbox& src, Switchbox& target, StrmSwPortType bundle,
-                      int maxCapacity)
-      : src(src), target(target), bundle(bundle), maxCapacity(maxCapacity) {}
-};
-
-// A SwitchSetting defines the required settings for a Switchbox for a flow
-// SwitchSetting.src is the incoming signal
-// SwitchSetting.dsts is the fanout
-struct SwitchSetting {
-  Port src;
-  DenseSet<Port> dsts;
-  SwitchSetting() = default;
-  SwitchSetting(Port src) : src(src) {}
-  SwitchSetting(Port src, DenseSet<Port> dsts)
-      : src(src), dsts(std::move(dsts)) {}
-
-  bool operator<(const SwitchSetting& rhs) const { return src < rhs.src; }
-};
-
-// not DenseMap for ordering
-using SwitchSettings = std::map<Switchbox, SwitchSetting>;
-
-// A Flow defines source and destination vertices
-// Only one source, but any number of destinations (fanout)
-struct PathEndPoint {
-  Switchbox sb;
-  Port port;
-
-  bool operator<(const PathEndPoint& rhs) const {
-    return std::tie(sb, port) < std::tie(rhs.sb, rhs.port);
-  }
-
-  bool operator==(const PathEndPoint& rhs) const {
-    return std::tie(sb, port) == std::tie(rhs.sb, rhs.port);
-  }
-};
-
-StrmSwPortType getConnectingBundle(StrmSwPortType dir);
+ASSERT_STANDARD_LAYOUT(SwitchDMAConnection);
 
 enum class AMDAIETileType : uint8_t {
   AIETILE = 0,
@@ -207,6 +108,29 @@ enum class AMDAIEDmaProp : uint8_t {
   MAX = sizeof(struct XAie_DmaMod)
 };
 
+enum class StrmSwPortType : uint8_t {
+  CORE = ::StrmSwPortType::CORE,
+  DMA,
+  CTRL,
+  FIFO,
+  SOUTH,
+  WEST,
+  NORTH,
+  EAST,
+  TRACE,
+  UCTRLR,
+  SS_PORT_TYPE_MAX,
+  // "illegal" types after max
+  NOC,
+};
+static_assert(static_cast<uint8_t>(StrmSwPortType::CORE) == 0,
+              "mlir::iree_compiler::AMDAIE::StrmSwPortType is out of sync with "
+              "aie-rt's StrmSwPortType");
+static_assert(static_cast<uint8_t>(StrmSwPortType::SS_PORT_TYPE_MAX) ==
+                  ::StrmSwPortType::SS_PORT_TYPE_MAX,
+              "mlir::iree_compiler::AMDAIE::StrmSwPortType is out of sync with "
+              "aie-rt's StrmSwPortType");
+
 /*
  * This struct is meant to be a thin wrapper around aie-rt, which provides
  * the canonical representation/metadata for AIE devices; attributes like number
@@ -233,8 +157,8 @@ struct AMDAIEDeviceModel {
                              uint8_t devNColumns, uint8_t devNRows,
                              uint8_t memTileRowStart, uint8_t nMemTileRows,
                              uint8_t nShimTileRows, int partitionNumCols,
-                             int partitionStartCol, bool aieSim,
-                             bool xaieDebug);
+                             int partitionStartCol, bool aieSim, bool xaieDebug,
+                             AMDAIEDevice device);
 
   int rows() const;
   int columns() const;
@@ -244,6 +168,7 @@ struct AMDAIEDeviceModel {
   bool isMemTile(uint8_t col, uint8_t row) const;
   bool isShimNOCTile(uint8_t col, uint8_t row) const;
   bool isShimPLTile(uint8_t col, uint8_t row) const;
+  bool isShimNOCorPLTile(uint8_t col, uint8_t row) const;
 
   /// Retrieve a DMA properpty for the specified tile type.
   template <typename T>
@@ -283,14 +208,13 @@ struct AMDAIEDeviceModel {
 
   uint32_t getNumBDs(uint8_t col, uint8_t row) const;
 
-  uint32_t getNumSourceSwitchboxConnections(uint8_t col, uint8_t row,
+  uint32_t getNumSourceSwitchBoxConnections(uint8_t col, uint8_t row,
                                             StrmSwPortType bundle) const;
-  uint32_t getNumDestSwitchboxConnections(uint8_t col, uint8_t row,
+  uint32_t getNumDestSwitchBoxConnections(uint8_t col, uint8_t row,
                                           StrmSwPortType bundle) const;
-  bool isLegalMemtileConnection(uint8_t col, uint8_t row,
-                                StrmSwPortType srcBundle, uint8_t srcChan,
-                                StrmSwPortType dstBundle,
-                                uint8_t dstChan) const;
+  bool isLegalTileConnection(uint8_t col, uint8_t row, StrmSwPortType srcBundle,
+                             uint8_t srcChan, StrmSwPortType dstBundle,
+                             uint8_t dstChan) const;
 
   uint32_t getColumnShift() const;
   uint32_t getRowShift() const;
@@ -299,66 +223,56 @@ struct AMDAIEDeviceModel {
   /// TODO(jornt): find these ranges in the device model.
   DenseMap<uint32_t, SmallVector<uint32_t>> getChannelToValidBdIds(
       AMDAIETileType tileType) const;
+
+  AMDAIEDevice device;
 };
 
 struct AMDAIEDeviceModel getDeviceModel(AMDAIEDevice device);
+StrmSwPortType getConnectingBundle(StrmSwPortType dir);
+bool isNPUDevice(mlir::iree_compiler::AMDAIE::AMDAIEDevice d);
 
-#define OSTREAM_OP(O_TYPE, TYPE) O_TYPE& operator<<(O_TYPE& os, const TYPE& s);
-#define TO_STRING(TYPE) std::string to_string(const TYPE& t);
+/// ============================= BEGIN ==================================
+/// ================== stringification utils =============================
+/// ======================================================================
+
+std::string to_string(const int& value);
 
 #define TO_STRINGS(_)    \
+  _(AMDAIEDmaProp)       \
   _(AMDAIETileType)      \
-  _(AMDAIEDmaProp)    \
   _(AieRC)               \
-  _(Connect)             \
   _(DMAChannelDir)       \
-  _(Port)                \
   _(StrmSwPortType)      \
-  _(SwitchBoxConnection) \
   _(SwitchDMAConnection) \
-  _(SwitchSetting)       \
-  _(SwitchSettings)      \
-  _(Switchbox)           \
+  _(::StrmSwPortType)    \
   _(TileLoc)             \
   _(XAie_LocType)        \
   _(XAie_Lock)           \
   _(XAie_Packet)
 
-TO_STRINGS(TO_STRING)
-#undef TO_STRING
+TO_STRINGS(TO_STRING_DECL)
 #undef TO_STRINGS
-
-#define BOTH_OSTREAM_OP(OSTREAM_OP_, TYPE) \
-  OSTREAM_OP_(std::ostream, TYPE)          \
-  OSTREAM_OP_(llvm::raw_ostream, TYPE)
 
 #define BOTH_OSTREAM_OPS_FORALL_TYPES(OSTREAM_OP_, _)              \
   _(OSTREAM_OP_, mlir::iree_compiler::AMDAIE::AMDAIETileType)      \
-  _(OSTREAM_OP_, mlir::iree_compiler::AMDAIE::SwitchBoxConnection) \
-  _(OSTREAM_OP_, mlir::iree_compiler::AMDAIE::Connect)             \
+  _(OSTREAM_OP_, mlir::iree_compiler::AMDAIE::TileLoc)             \
   _(OSTREAM_OP_, mlir::iree_compiler::AMDAIE::SwitchDMAConnection) \
   _(OSTREAM_OP_, mlir::iree_compiler::AMDAIE::DMAChannelDir)       \
-  _(OSTREAM_OP_, mlir::iree_compiler::AMDAIE::Port)                \
-  _(OSTREAM_OP_, mlir::iree_compiler::AMDAIE::SwitchSetting)       \
-  _(OSTREAM_OP_, mlir::iree_compiler::AMDAIE::SwitchSettings)      \
-  _(OSTREAM_OP_, mlir::iree_compiler::AMDAIE::Switchbox)           \
-  _(OSTREAM_OP_, mlir::iree_compiler::AMDAIE::TileLoc)             \
   _(OSTREAM_OP_, AieRC)                                            \
   _(OSTREAM_OP_, StrmSwPortType)                                   \
+  _(OSTREAM_OP_, ::StrmSwPortType)                                 \
   _(OSTREAM_OP_, XAie_LocType)                                     \
   _(OSTREAM_OP_, XAie_Lock)                                        \
   _(OSTREAM_OP_, XAie_Packet)
 
-BOTH_OSTREAM_OPS_FORALL_TYPES(OSTREAM_OP, BOTH_OSTREAM_OP)
-#undef OSTREAM_OP
+BOTH_OSTREAM_OPS_FORALL_TYPES(OSTREAM_OP_DECL, BOTH_OSTREAM_OP)
 
 // https://stackoverflow.com/a/32230306
 template <typename H1>
 llvm::raw_ostream& showArgs(llvm::raw_ostream& out, const char* label,
                             H1&& value) {
   if constexpr (std::is_pointer<H1>::value)
-    return out << label << "="
-               << "ptr";
+    return out << label << "=" << "ptr";
   else
     return out << label << "=" << std::forward<H1>(value);
 }
@@ -412,8 +326,6 @@ static_assert(XAIE_OK == 0);
     }                                                                   \
   } while (0)
 
-StrmSwPortType getConnectingBundle(StrmSwPortType dir);
-
 }  // namespace mlir::iree_compiler::AMDAIE
 
 namespace llvm {
@@ -425,11 +337,16 @@ template <>
 struct DenseMapInfo<mlir::iree_compiler::AMDAIE::TileLoc>
     : TupleStructDenseMapInfo<mlir::iree_compiler::AMDAIE::TileLoc::TupleType> {
 };
+}  // namespace llvm
 
 template <>
-struct DenseMapInfo<mlir::iree_compiler::AMDAIE::Port>
-    : TupleStructDenseMapInfo<mlir::iree_compiler::AMDAIE::Port::TupleType> {};
-
-}  // namespace llvm
+struct std::hash<mlir::iree_compiler::AMDAIE::TileLoc> {
+  std::size_t operator()(
+      const mlir::iree_compiler::AMDAIE::TileLoc& s) const noexcept {
+    std::size_t h1 = std::hash<int>{}(s.col);
+    std::size_t h2 = std::hash<int>{}(s.row);
+    return h1 ^ (h2 << 1);
+  }
+};
 
 #endif  // IREE_AIE_RUNTIME_H

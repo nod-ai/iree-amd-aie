@@ -129,6 +129,16 @@ set_target_properties(iree-amd-aie_aie_runtime_amdaie_bootgen
 # cdo-drver
 # ##############################################################################
 
+replace_string_in_file(${_bootgen_source_dir}/cdo-driver/cdo_driver.c "\"(Write64)" "\"cdo-driver: (Write64)")
+replace_string_in_file(${_bootgen_source_dir}/cdo-driver/cdo_driver.c "\"(MaskWrite64)" "\"cdo-driver: (MaskWrite64)")
+replace_string_in_file(${_bootgen_source_dir}/cdo-driver/cdo_driver.c "\"(NOP Command)" "\"cdo-driver: (NOP Command)")
+replace_string_in_file(${_bootgen_source_dir}/cdo-driver/cdo_driver.c "\"(BlockWrite-DMAWriteCmd)" "\"cdo-driver: (BlockWrite-DMAWriteCmd)")
+replace_string_in_file(${_bootgen_source_dir}/cdo-driver/cdo_driver.c "Data@ 0x%\" PRIxPTR \"" "Data")
+replace_string_in_file(${_bootgen_source_dir}/cdo-driver/cdo_driver.c "(uintptr_t)(pData + i)," "")
+replace_string_in_file(${_bootgen_source_dir}/cdo-driver/cdo_driver.c "\"    Address:" "\"cdo-driver:     Address:")
+replace_string_in_file(${_bootgen_source_dir}/cdo-driver/cdo_driver.c "\"(BlockSet-DMAWriteCmd)" "\"cdo-driver: (BlockSet-DMAWriteCmd)")
+replace_string_in_file(${_bootgen_source_dir}/cdo-driver/cdo_driver.c "\"(MaskPoll64)" "\"cdo-driver: (MaskPoll64)")
+
 add_library(cdo_driver STATIC ${_bootgen_source_dir}/cdo-driver/cdo_driver.c)
 target_include_directories(cdo_driver PUBLIC ${_bootgen_source_dir}/cdo-driver)
 set_target_properties(cdo_driver PROPERTIES LINKER_LANGUAGE C)
@@ -533,6 +543,7 @@ iree_cc_library(
   SRCS
     iree_aie_router.cc
     iree_aie_runtime.cc
+    mlir_aie_legacy.cc
     xaie_hwcfg.c
   INCLUDES
     ${_aie_rt_binary_include_dir}

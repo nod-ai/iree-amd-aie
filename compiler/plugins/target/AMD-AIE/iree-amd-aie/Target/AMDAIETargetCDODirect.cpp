@@ -4,10 +4,8 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#include <algorithm>
 #include <cassert>
 #include <cstdint>  // uint
-#include <cstdlib>  // calloc
 #include <filesystem>
 #include <map>
 #include <optional>
@@ -616,6 +614,7 @@ LogicalResult AIETranslateToCDODirect(ModuleOp m, llvm::StringRef workDirPath,
           static_cast<AMDAIEDevice>(device.getDevice())));
   byte_ordering endianness =
       bigEndian ? byte_ordering::Big_Endian : byte_ordering::Little_Endian;
+  DEBUG_WITH_TYPE("aie-cdo-driver-debug", cdoDebug = true);
   initializeCDOGenerator(endianness, cdoDebug);
   if (emitUnified)
     return generateCDOUnified(ctl, workDirPath, device, aieSim, enableCores);
