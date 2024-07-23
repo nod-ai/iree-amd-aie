@@ -838,6 +838,22 @@ run_matmul_test \
     --acc_type "i32" \
     --m "1536" --k "2048" --n "1536"
 
+run_matmul_test \
+    --name_prefix "small" \
+    --lower_to_aie_pipeline "objectFifo" \
+    --tile_pipeline "pack-peel" \
+    --lhs_rhs_type "bf16" \
+    --acc_type "f32" \
+    --m "64" --k "64" --n "64"
+
+run_matmul_test \
+    --name_prefix "small" \
+    --lower_to_aie_pipeline "objectFifo" \
+    --tile_pipeline "pack-peel" \
+    --lhs_rhs_type "i8" \
+    --acc_type "i32" \
+    --m "64" --k "64" --n "64"
+
 ###################################################################
 # Chess tests
 ###################################################################
