@@ -368,11 +368,13 @@ function run_test() {
 
   set +e
   function_line="--function='${function}'"
+  echo "**** Running '${name}' test ${NUM_REPEATS} times (command ${function_line}) ****"
   for i in $(seq 1 $NUM_REPEATS); do
-    echo "Run number ${i} / ${NUM_REPEATS} of command ${function_line}"
+    echo "Run number ${i} / ${NUM_REPEATS}"
     echo "Running the module through the CPU backend"
     eval "${IREE_RUN_EXE} --module=${cpu_vmfb} ${input_output_line} --output=@${name}_cpu.npy ${function_line}"
 
+    bash $THIS_DIR/../reset_npu.sh
     echo "Running the module through the AIE backend"
     eval "${IREE_RUN_EXE} --module=${aie_vmfb} ${input_output_line} --device=xrt --output=@${name}_aie.npy ${function_line}"
 
@@ -434,6 +436,6 @@ run_test --test_file ${THIS_DIR}/test_files/conv2d_nhwc_int8.mlir --pipeline "co
 run_test --test_file ${THIS_DIR}/test_files/conv2d_nhwc_q.mlir --pipeline "conv-decompose"
 
 if [ $COMPARISON_TESTS_FAILS -ne 0 ]; then
-  echo "$COMPARISON_TESTS_FAILS matmul test failed!"
+  echo "$COMPARISON_TESTS_FAILS comparison tests failed!"
   exit 1
 fi
