@@ -34,7 +34,7 @@ LogicalResult readAccessToAcquireRelease(Operation *parentOp) {
   });
 
   for (AMDAIE::CoreOp coreOp : coreOps) {
-    DenseMap<Value, AMDAIE::LogicalObjectFifoAccessOp>
+    llvm::MapVector<Value, AMDAIE::LogicalObjectFifoAccessOp>
         logicalObjectFifoToLastAccess;
     WalkResult res =
         coreOp->walk([&](AMDAIE::LogicalObjectFifoAccessOp accessOp) {
@@ -112,7 +112,7 @@ LogicalResult writeAccessToAcquireRelease(Operation *parentOp) {
   for (AMDAIE::CoreOp coreOp : coreOps) {
     DenseMap<Value, SmallVector<AMDAIE::LogicalObjectFifoAccessOp>>
         logicalObjectFifoToAccesses;
-    DenseMap<Value, AMDAIE::LogicalObjectFifoAccessOp>
+    llvm::MapVector<Value, AMDAIE::LogicalObjectFifoAccessOp>
         logicalObjectFifoLastWriteAccesses;
     WalkResult res = coreOp->walk([&](AMDAIE::LogicalObjectFifoAccessOp
                                           accessOp) {
@@ -134,11 +134,11 @@ LogicalResult writeAccessToAcquireRelease(Operation *parentOp) {
         // Remove from last access as settled.
         logicalObjectFifoLastWriteAccesses.erase(prevAccess.getInput());
       }
-      // Insert acquire for write access at first `Any` access or at start
-      // of block.
+      // Insert acquire for write access at first `Any` access or before the
+      // current access op.
       if (accessOp.getAccessType() == AMDAIE::MemoryAccess::Write) {
         if (!logicalObjectFifoToAccesses.contains(accessOp.getInput())) {
-          rewriter.setInsertionPointToStart(accessOp->getBlock());
+          rewriter.setInsertionPoint(accessOp);
         } else {
           AMDAIE::LogicalObjectFifoAccessOp firstAccess =
               logicalObjectFifoToAccesses[accessOp.getInput()][0];
