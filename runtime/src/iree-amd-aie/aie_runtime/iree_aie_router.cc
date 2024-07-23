@@ -758,10 +758,12 @@ bool existsPathToDest(const SwitchSettings &settings, TileLoc currTile,
   return false;
 }
 
+/// Given switchbox configuration data produced by the router, emit
+/// configuration data for packet routing along those same switchboxes.
 std::tuple<MasterSetsT, SlaveGroupsT, SlaveMasksT, SlaveAMSelsT>
-configurePacketFlows(int numMsels, int numArbiters,
-                     const SwitchBoxToConnectionFlowIDT &switchboxes,
-                     const SmallVector<TileLoc> &tiles) {
+emitPacketRoutingConfiguration(int numMsels, int numArbiters,
+                               const SwitchBoxToConnectionFlowIDT &switchboxes,
+                               const SmallVector<TileLoc> &tiles) {
   DenseMap<PhysPortAndID, DenseSet<PhysPort>> packetFlows;
   SmallVector<PhysPortAndID> slavePorts;
   for (const auto &[tileId, connects] : switchboxes) {

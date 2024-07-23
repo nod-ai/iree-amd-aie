@@ -3,6 +3,15 @@
 // Licensed under the Apache License v2.0 with LLVM Exceptions. See
 // https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: # Apache-2.0 WITH LLVM-exception
+//===----------------------------------------------------------------------===//
+//
+// This file holds legacy (adapted from mlir-aie) device model data for xcvc1902
+// and xcve2802 devices. We will never target these devices but it's useful to
+// preserve support for them (for some time) in order to be able to run existing
+// lit tests for packet routing (all of which use those devices). Eventually
+// this file will be deleted.
+//
+//===----------------------------------------------------------------------===//
 
 #include "iree_aie_runtime.h"
 #include "llvm/ADT/DenseSet.h"

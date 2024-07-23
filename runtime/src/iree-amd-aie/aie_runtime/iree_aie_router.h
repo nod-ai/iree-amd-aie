@@ -58,7 +58,7 @@ struct SwitchBox : TileLoc {
 };
 ASSERT_STANDARD_LAYOUT(SwitchBox);
 
-/// A SwitchSetting defines the required conifgurations for an actual
+/// A SwitchSetting defines the required configurations for an actual
 /// physical/device SwitchBox.
 /// SwitchSetting.src is the incoming signal
 /// SwitchSetting.dsts is the fanout
@@ -143,9 +143,9 @@ using SwitchBoxToConnectionFlowIDT =
     DenseMap<TileLoc, DenseSet<ConnectionAndFlowIDT>>;
 
 std::tuple<MasterSetsT, SlaveGroupsT, SlaveMasksT, SlaveAMSelsT>
-configurePacketFlows(int numMsels, int numArbiters,
-                     const SwitchBoxToConnectionFlowIDT &switchboxes,
-                     const SmallVector<TileLoc> &tiles);
+emitPacketRoutingConfiguration(int numMsels, int numArbiters,
+                               const SwitchBoxToConnectionFlowIDT &switchboxes,
+                               const SmallVector<TileLoc> &tiles);
 
 /// ============================= BEGIN ==================================
 /// ================== stringification utils =============================

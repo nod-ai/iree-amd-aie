@@ -292,7 +292,8 @@ LogicalResult runOnPacketFlow(
   int numMsels = 4;
   int numArbiters = 6;
   auto [masterSets, slaveGroups, slaveMasks, slaveAMSels] =
-      configurePacketFlows(numMsels, numArbiters, switchboxes, tileLocs);
+      emitPacketRoutingConfiguration(numMsels, numArbiters, switchboxes,
+                                     tileLocs);
 
   // Realize the routes in MLIR
   for (auto &[tileLoc, tileOp] : tiles) {
