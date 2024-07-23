@@ -971,81 +971,6 @@ class MoveAllDependenciesIntoOp : public OpRewritePattern<OpTy> {
   }
 };
 
-/// Utility to convert function arguments with memref element types' bitwidth
-/// either 8 or 16 to i32. This basically involves linearizing an N-d memref to
-/// 1-d i32 memref and adjusting the offset/size/stride metadata.
-static LogicalResult CastFunctionArgs(func::FuncOp funcOp,
-                                      PatternRewriter &rewriter) {
-  // only run on npu control functions
-  bool hasNpuOps = false;
-  funcOp.walk([&](AIEX::NpuDmaMemcpyNdOp dma) { hasNpuOps = true; });
-  if (!hasNpuOps) return failure();
-
-  // Cast all the function args to i32 types.
-  // This is in support of npu.dma_memcpy_nd which only allow 32bit integer
-  // types.
-  mlir::FunctionType funcType = funcOp.getFunctionType();
-  SmallVector<Type> argTypes(funcType.getInputs());
-  for (int i = 0, e = argTypes.size(); i < e; i++) {
-    auto memrefTy = dyn_cast<MemRefType>(argTypes[i]);
-    if (!memrefTy) continue;
-
-    unsigned int bitwidth = memrefTy.getElementTypeBitWidth();
-    if (bitwidth != 16 && bitwidth != 8 && bitwidth != 4) continue;
-    unsigned upcastingDivisor = 32 / bitwidth;
-
-    unsigned int numElements = memrefTy.getNumElements() / upcastingDivisor;
-    SmallVector<int64_t> shape{numElements};
-    MemRefType newMemrefTy =
-        MemRefType::get(shape, rewriter.getIntegerType(32));
-    argTypes[i] = newMemrefTy;
-    auto &entry = funcOp.front();
-    entry.insertArgument(i, newMemrefTy, rewriter.getUnknownLoc());
-    rewriter.setInsertionPointToStart(&entry);
-    // With memref shape collapsed to 1d, the multi-dimensional offset also
-    // needs to be collapsed.
-    SmallVector<Operation *> users;
-    for (Operation *user : entry.getArgument(i + 1).getUsers()) {
-      if (auto dmaUser = dyn_cast<AIEX::NpuDmaMemcpyNdOp>(user)) {
-        int oneDOffset = 0;
-        for (int j = 0, n = dmaUser.getMixedOffsets().size(); j < n; j++)
-          oneDOffset += *getConstantIntValue(dmaUser.getMixedOffsets()[j]) *
-                        *getConstantIntValue(dmaUser.getMixedStrides()[j]);
-        rewriter.setInsertionPoint(dmaUser);
-        oneDOffset /= upcastingDivisor;
-        SmallVector<int64_t, 4> newStaticOffsets = {0, 0, 0, oneDOffset};
-        SmallVector<int64_t, 4> newStaticSizes;
-        for (int64_t size : dmaUser.getStaticSizes()) {
-          newStaticSizes.push_back(size);
-        }
-        SmallVector<int64_t, 4> newStaticStrides;
-        for (int64_t stride : dmaUser.getStaticStrides()) {
-          newStaticStrides.push_back(stride);
-        }
-        for (unsigned i = 0, n = newStaticSizes.size(); i < n; i++) {
-          if (newStaticStrides[i] == 1) {
-            newStaticSizes[i] /= upcastingDivisor;
-          } else {
-            newStaticStrides[i] /= upcastingDivisor;
-          }
-        }
-        rewriter.create<AIEX::NpuDmaMemcpyNdOp>(
-            rewriter.getUnknownLoc(), dmaUser.getX(), dmaUser.getY(),
-            dmaUser.getMemref(), SmallVector<Value>{}, dmaUser.getSizes(),
-            dmaUser.getStrides(), ArrayRef(newStaticOffsets), newStaticSizes,
-            newStaticStrides, dmaUser.getMetadata(), dmaUser.getId());
-        rewriter.eraseOp(dmaUser);
-      }
-    }
-    entry.getArgument(i + 1).replaceAllUsesWith(entry.getArgument(i));
-    entry.eraseArgument(i + 1);
-  }
-  auto newFuncType =
-      FunctionType::get(funcOp.getContext(), argTypes, funcType.getResults());
-  funcOp.setType(newFuncType);
-  return success();
-}
-
 class AMDAIELowerToAIEPass
     : public impl::AMDAIELowerToAIEBase<AMDAIELowerToAIEPass> {
  public:
@@ -1066,11 +991,6 @@ void AMDAIELowerToAIEPass::runOnOperation() {
     return signalPassFailure();
   }
   LLVM_DEBUG(llvm::dbgs() << "Module after lowerToAIE: " << getOperation());
-
-  // Cast buffers to i32 types if the bitwidth is 8 or 16.
-  RewritePatternSet castPattern(getOperation()->getContext());
-  castPattern.add(CastFunctionArgs);
-  (void)applyPatternsAndFoldGreedily(getOperation(), std::move(castPattern));
 
   // Clean up the HAL bindings and it's uses as they are not needed anymore.
   if (failed(eraseHALBindings(getOperation()))) {

@@ -690,9 +690,6 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 
 // -----
 
-// The following lit test checks conversion of bf16 -> i32 function arguments.
-// It also checks both all zero and non-zero offset cases.
-//
 // CHECK:       aie.device(npu1_4col) {
 // CHECK:         %[[TILE_0_0:.*]] = aie.tile(0, 0)
 // CHECK:         %[[TILE_0_1:.*]] = aie.tile(0, 1)
@@ -701,20 +698,20 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 // CHECK:         aie.objectfifo @[[OBJ2:.*]](%[[TILE_0_1]]
 // CHECK-SAME:         %[[TILE_0_0]]}, 4 : i32) : !aie.objectfifo<memref<1024xf32, 1>>
 // CHECK:         func.func @bf16_f32_lit_test
-// CHECK-SAME:         (%[[LHS:.*]]: memref<512xi32>, %[[RHS:.*]]: memref<512xi32>, %[[OUT:.*]]: memref<32x32xf32>) {
+// CHECK-SAME:         (%[[LHS:.*]]: memref<32x32xbf16>, %[[RHS:.*]]: memref<32x32xbf16>, %[[OUT:.*]]: memref<32x32xf32>) {
 // CHECK:           aiex.npu.dma_memcpy_nd
 // CHECK-SAME:          %[[OUT]][0, 0, 0, 0][1, 1, 1, 1024][0, 0, 0, 1]
 // CHECK-SAME:          issue_token = true
 // CHECK-SAME:          metadata = @[[OBJ2]]
 // CHECK-SAME:          memref<32x32xf32>
 // CHECK:           aiex.npu.dma_memcpy_nd
-// CHECK-SAME:          %[[RHS]][0, 0, 0, 17][1, 2, 32, 8][0, 8, 16, 1]
+// CHECK-SAME:          %[[RHS]][0, 0, 1, 2][1, 2, 32, 16][0, 16, 32, 1]
 // CHECK-SAME:          metadata = @[[OBJ1]]
-// CHECK-SAME:          memref<512xi32>
+// CHECK-SAME:          memref<32x32xbf16>
 // CHECK:           aiex.npu.dma_memcpy_nd
-// CHECK-SAME:          %[[LHS]][0, 0, 0, 0][1, 1, 1, 512][0, 0, 0, 1]
+// CHECK-SAME:          %[[LHS]][0, 0, 0, 0][1, 1, 1, 1024][0, 0, 0, 1]
 // CHECK-SAME:          metadata = @[[OBJ0]]
-// CHECK-SAME:          memref<512xi32>
+// CHECK-SAME:          memref<32x32xbf16>
 #executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
 module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
   func.func @bf16_f32_lit_test() {
