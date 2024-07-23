@@ -130,10 +130,11 @@ if [ ! -f "${MATMUL_GENERATOR}" ]; then
   exit 1
 fi
 
-
 source $XRT_DIR/setup.sh
 
 MM_KERNEL_URL=https://github.com/nod-ai/iree-amd-aie/releases/download/ukernels/mm.o
+NUM_REPEATS=${NUM_REPEATS:-1}
+export COMPARISON_TESTS_FAILS=0
 
 cd ${OUTPUT_DIR}
 
@@ -365,16 +366,28 @@ function run_test() {
 
   input_output_line=$(cat ${OUTPUT_DIR}/${name}_input_args.txt)
 
+  set +e
   function_line="--function='${function}'"
+  echo "**** Running '${name}' test ${NUM_REPEATS} times (command ${function_line}) ****"
+  for i in $(seq 1 $NUM_REPEATS); do
+    echo "Run number ${i} / ${NUM_REPEATS}"
+    echo "Running the module through the CPU backend"
+    eval "${IREE_RUN_EXE} --module=${cpu_vmfb} ${input_output_line} --output=@${name}_cpu.npy ${function_line}"
 
-  echo "Running the module through the CPU backend"
-  eval "${IREE_RUN_EXE} --module=${cpu_vmfb} ${input_output_line} --output=@${name}_cpu.npy ${function_line}"
+    bash $THIS_DIR/../reset_npu.sh
+    echo "Running the module through the AIE backend"
+    eval "${IREE_RUN_EXE} --module=${aie_vmfb} ${input_output_line} --device=xrt --output=@${name}_aie.npy ${function_line}"
 
-  echo "Running the module through the AIE backend"
-  eval "${IREE_RUN_EXE} --module=${aie_vmfb} ${input_output_line} --device=xrt --output=@${name}_aie.npy ${function_line}"
-
-  # Check that values in cpu.npy and aie.npy are close enough.
-  eval "python3 ${OUTPUT_COMPARER} ${name}_cpu.npy ${name}_aie.npy ${rtol} ${atol}"
+    # Check that values in cpu.npy and aie.npy are close enough.
+    eval "python3 ${OUTPUT_COMPARER} ${name}_cpu.npy ${name}_aie.npy ${rtol} ${atol}"
+    
+    return_status=$?
+    if [ $return_status -ne 0 ]; then
+      echo "'${name}' comparison failed!"
+      export COMPARISON_TESTS_FAILS=$(( $COMPARISON_TESTS_FAILS+1 ))
+    fi
+  done
+  set -e
 }
 
 # Example of running a test directly from an .mlir file with a function.
@@ -421,3 +434,8 @@ run_test --test_file ${THIS_DIR}/test_files/conv2d_nhwc_int32.mlir --pipeline "c
 run_test --test_file ${THIS_DIR}/test_files/conv2d_nhwc_bf16.mlir --pipeline "conv-decompose"
 run_test --test_file ${THIS_DIR}/test_files/conv2d_nhwc_int8.mlir --pipeline "conv-decompose"
 run_test --test_file ${THIS_DIR}/test_files/conv2d_nhwc_q.mlir --pipeline "conv-decompose"
+
+if [ $COMPARISON_TESTS_FAILS -ne 0 ]; then
+  echo "$COMPARISON_TESTS_FAILS comparison tests failed!"
+  exit 1
+fi

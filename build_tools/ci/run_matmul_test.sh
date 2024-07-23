@@ -169,6 +169,8 @@ fi
 
 cd ${OUTPUT_DIR}
 
+export MATMUL_TESTS_FAILS=0
+
 ###############################################################################
 # Define helper function                                                      #
 ###############################################################################
@@ -442,13 +444,10 @@ function run_matmul_test() {
 
   # Renable exit on failure:
   set -e
-
-
   echo "**** Generating calls .vmfb file for ${name} ****"
   ${IREE_COMPILE_EXE} "${calls_ir}" \
       --iree-hal-target-backends=${target_backend} \
       -o "${calls_vmfb}"
-
 
   compiled_time=$(date +%s%3N)
 
@@ -460,19 +459,20 @@ function run_matmul_test() {
       --device=${device} \
       --max_elements_to_check=${max_elements_to_check}"
 
+  set +e
 
-
-  echo "**** Running '${name}' matmul test ${num_repeat_runs} times ****"
+  echo "**** Running '${name}' matmul test ${num_repeat_runs} times (command ${COMMAND}) ****"
   for i in $(seq 1 $num_repeat_runs); do
-    echo "Run number ${i} / ${num_repeat_runs} of command ${COMMAND}"
+    bash $THIS_DIR/reset_npu.sh
+    echo "Run number ${i} / ${num_repeat_runs}"
     eval "${COMMAND}"
     return_status=$?
     if [ $return_status -ne 0 ]; then
-      echo "Command returned with status: ${return_status}"
-      exit 1
+      echo "'${name}' matmul test failed!"
+      export MATMUL_TESTS_FAILS=$(( $MATMUL_TESTS_FAILS+1 ))
     fi
   done
-
+  set -e
 
   end_time=$(date +%s%3N)
 
@@ -758,7 +758,8 @@ run_matmul_test \
     --tile_pipeline "pack-peel" \
     --lhs_rhs_type "i32" \
     --acc_type "i32" \
-    --m "32" --k "32" --n "32"
+    --m "32" --k "32" --n "32" \
+    --num_repeat_runs "10"
 
 run_matmul_test \
     --name_prefix "small" \
@@ -820,7 +821,8 @@ run_matmul_test \
     --tile_pipeline "pack-peel" \
     --lhs_rhs_type "i32" \
     --acc_type "i32" \
-    --m "128" --k "256" --n "128"
+    --m "128" --k "256" --n "128" \
+    --num_repeat_runs "10"
 
 run_matmul_test \
     --name_prefix "medium" \
@@ -828,7 +830,8 @@ run_matmul_test \
     --tile_pipeline "pack-peel" \
     --lhs_rhs_type "i32" \
     --acc_type "i32" \
-    --m "1024" --k "1024" --n "1024"
+    --m "1024" --k "1024" --n "1024" \
+    --num_repeat_runs "10"
 
 run_matmul_test \
     --name_prefix "medium" \
@@ -836,7 +839,8 @@ run_matmul_test \
     --tile_pipeline "pack-peel" \
     --lhs_rhs_type "i32" \
     --acc_type "i32" \
-    --m "1536" --k "2048" --n "1536"
+    --m "1536" --k "2048" --n "1536" \
+    --num_repeat_runs "10"
 
 run_matmul_test \
     --name_prefix "small" \
@@ -865,7 +869,8 @@ run_matmul_test \
     --m "32" \
     --n "32" \
     --k "32" \
-    --use_chess "1"
+    --use_chess "1" \
+    --num_repeat_runs "1"
 
 run_matmul_test \
     --name_prefix "chess_f32_matmul" \
@@ -874,4 +879,10 @@ run_matmul_test \
     --m "32" \
     --n "32" \
     --k "32" \
-    --use_chess "1"
+    --use_chess "1" \
+    --num_repeat_runs "1"
+
+if [ $MATMUL_TESTS_FAILS -ne 0 ]; then
+  echo "$MATMUL_TESTS_FAILS matmul tests failed!"
+  exit 1
+fi
