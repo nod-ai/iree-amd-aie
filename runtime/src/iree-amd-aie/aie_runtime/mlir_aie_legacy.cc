@@ -488,7 +488,7 @@ bool isShimNOCTile(int col, int row, const AMDAIEDeviceModel &deviceModel) {
     return MLIRAIELegacy::VC1902TargetModel::isShimNOCTile(col, row);
   if (deviceModel.device == AMDAIEDevice::xcve2802)
     return MLIRAIELegacy::VE2802TargetModel::isShimNOCTile(col, row);
-  assert(deviceModel.device == AMDAIEDevice::npu1_4col && "expected npu1_4col");
+  assert(isNPUDevice(deviceModel.device) && "expected NPU device");
   return deviceModel.getTileType(col, row) == AMDAIETileType::SHIMNOC;
 }
 
@@ -497,7 +497,7 @@ bool isShimNOCorPLTile(int col, int row, const AMDAIEDeviceModel &deviceModel) {
     return MLIRAIELegacy::VC1902TargetModel::isShimNOCorPLTile(col, row);
   if (deviceModel.device == AMDAIEDevice::xcve2802)
     return MLIRAIELegacy::VE2802TargetModel::isShimNOCorPLTile(col, row);
-  assert(deviceModel.device == AMDAIEDevice::npu1_4col && "expected npu1_4col");
+  assert(isNPUDevice(deviceModel.device) && "expected NPU device");
   return deviceModel.isShimNOCTile(col, row) ||
          deviceModel.isShimPLTile(col, row);
 }
@@ -507,7 +507,7 @@ bool isShimPLTile(int col, int row, const AMDAIEDeviceModel &deviceModel) {
     return MLIRAIELegacy::VC1902TargetModel::isShimPLTile(col, row);
   if (deviceModel.device == AMDAIEDevice::xcve2802)
     return MLIRAIELegacy::VE2802TargetModel::isShimPLTile(col, row);
-  assert(deviceModel.device == AMDAIEDevice::npu1_4col && "expected npu1_4col");
+  assert(isNPUDevice(deviceModel.device) && "expected NPU device");
   return deviceModel.getTileType(col, row) == AMDAIETileType::SHIMPL;
 }
 

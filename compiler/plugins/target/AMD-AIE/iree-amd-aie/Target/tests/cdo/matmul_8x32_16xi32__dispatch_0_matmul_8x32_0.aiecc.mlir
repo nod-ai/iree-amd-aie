@@ -336,30 +336,30 @@ aie.device(npu1_4col) {
 // CHECK: (Write64): Address:  0x000000000021F000 Data:  0x00000000
 // CHECK: (NOP Command): Payload Length: 2
 // CHECK: (BlockWrite-DMAWriteCmd): Start Address: 0x000000000021D000  Size: 6
-// CHECK:     Address: 0x000000000021D000  Data@ {{.+}} is: 0x00400080
-// CHECK:     Address: 0x000000000021D004  Data@ {{.+}} is: 0x00000000
-// CHECK:     Address: 0x000000000021D008  Data@ {{.+}} is: 0x00000000
-// CHECK:     Address: 0x000000000021D00C  Data@ {{.+}} is: 0x00000000
-// CHECK:     Address: 0x000000000021D010  Data@ {{.+}} is: 0x00000000
-// CHECK:     Address: 0x000000000021D014  Data@ {{.+}} is: 0x06045FE3
+// CHECK:     Address: 0x000000000021D000  Data is: 0x00400080
+// CHECK:     Address: 0x000000000021D004  Data is: 0x00000000
+// CHECK:     Address: 0x000000000021D008  Data is: 0x00000000
+// CHECK:     Address: 0x000000000021D00C  Data is: 0x00000000
+// CHECK:     Address: 0x000000000021D010  Data is: 0x00000000
+// CHECK:     Address: 0x000000000021D014  Data is: 0x06045FE3
 
 // CHECK: (NOP Command): Payload Length: 2
 // CHECK: (BlockWrite-DMAWriteCmd): Start Address: 0x000000000021D020  Size: 6
-// CHECK:     Address: 0x000000000021D020  Data@ {{.+}} is: 0x00600200
-// CHECK:     Address: 0x000000000021D024  Data@ {{.+}} is: 0x00000000
-// CHECK:     Address: 0x000000000021D028  Data@ {{.+}} is: 0x00000000
-// CHECK:     Address: 0x000000000021D02C  Data@ {{.+}} is: 0x00000000
-// CHECK:     Address: 0x000000000021D030  Data@ {{.+}} is: 0x00000000
-// CHECK:     Address: 0x000000000021D034  Data@ {{.+}} is: 0x0E049FE5
+// CHECK:     Address: 0x000000000021D020  Data is: 0x00600200
+// CHECK:     Address: 0x000000000021D024  Data is: 0x00000000
+// CHECK:     Address: 0x000000000021D028  Data is: 0x00000000
+// CHECK:     Address: 0x000000000021D02C  Data is: 0x00000000
+// CHECK:     Address: 0x000000000021D030  Data is: 0x00000000
+// CHECK:     Address: 0x000000000021D034  Data is: 0x0E049FE5
 
 // CHECK: (NOP Command): Payload Length: 2
 // CHECK: (BlockWrite-DMAWriteCmd): Start Address: 0x000000000021D040  Size: 6
-// CHECK:     Address: 0x000000000021D040  Data@ {{.+}} is: 0x00E00100
-// CHECK:     Address: 0x000000000021D044  Data@ {{.+}} is: 0x00000000
-// CHECK:     Address: 0x000000000021D048  Data@ {{.+}} is: 0x0003E000
-// CHECK:     Address: 0x000000000021D04C  Data@ {{.+}} is: 0x01008003
-// CHECK:     Address: 0x000000000021D050  Data@ {{.+}} is: 0x00000000
-// CHECK:     Address: 0x000000000021D054  Data@ {{.+}} is: 0x16043FE0
+// CHECK:     Address: 0x000000000021D040  Data is: 0x00E00100
+// CHECK:     Address: 0x000000000021D044  Data is: 0x00000000
+// CHECK:     Address: 0x000000000021D048  Data is: 0x0003E000
+// CHECK:     Address: 0x000000000021D04C  Data is: 0x01008003
+// CHECK:     Address: 0x000000000021D050  Data is: 0x00000000
+// CHECK:     Address: 0x000000000021D054  Data is: 0x16043FE0
 
 // CHECK: (Write64): Address:  0x000000000021DE04 Data:  0x00010000
 // CHECK: (MaskWrite64): Address: 0x000000000021DE00  Mask: 0x00000000  Data: 0x00000001
@@ -368,25 +368,25 @@ aie.device(npu1_4col) {
 // CHECK: (Write64): Address:  0x000000000021DE14 Data:  0x00010002
 // CHECK: (MaskWrite64): Address: 0x000000000021DE10  Mask: 0x00000000  Data: 0x00000001
 // CHECK: (BlockWrite-DMAWriteCmd): Start Address: 0x00000000041A0000  Size: 8
-// CHECK:     Address: 0x00000000041A0000  Data@ {{.+}} is: 0x00000100
-// CHECK:     Address: 0x00000000041A0004  Data@ {{.+}} is: 0x000A0000
-// CHECK:     Address: 0x00000000041A0008  Data@ {{.+}} is: 0x00000000
-// CHECK:     Address: 0x00000000041A000C  Data@ {{.+}} is: 0x00000000
-// CHECK:     Address: 0x00000000041A0010  Data@ {{.+}} is: 0x00000000
-// CHECK:     Address: 0x00000000041A0014  Data@ {{.+}} is: 0x00000000
-// CHECK:     Address: 0x00000000041A0018  Data@ {{.+}} is: 0x00000000
-// CHECK:     Address: 0x00000000041A001C  Data@ {{.+}} is: 0x8140FF41
+// CHECK:     Address: 0x00000000041A0000  Data is: 0x00000100
+// CHECK:     Address: 0x00000000041A0004  Data is: 0x000A0000
+// CHECK:     Address: 0x00000000041A0008  Data is: 0x00000000
+// CHECK:     Address: 0x00000000041A000C  Data is: 0x00000000
+// CHECK:     Address: 0x00000000041A0010  Data is: 0x00000000
+// CHECK:     Address: 0x00000000041A0014  Data is: 0x00000000
+// CHECK:     Address: 0x00000000041A0018  Data is: 0x00000000
+// CHECK:     Address: 0x00000000041A001C  Data is: 0x8140FF41
 
 // CHECK: (NOP Command): Payload Length: 0
 // CHECK: (BlockWrite-DMAWriteCmd): Start Address: 0x00000000041A0020  Size: 8
-// CHECK:     Address: 0x00000000041A0020  Data@ {{.+}} is: 0x00000100
-// CHECK:     Address: 0x00000000041A0024  Data@ {{.+}} is: 0x001A0000
-// CHECK:     Address: 0x00000000041A0028  Data@ {{.+}} is: 0x00000000
-// CHECK:     Address: 0x00000000041A002C  Data@ {{.+}} is: 0x00000000
-// CHECK:     Address: 0x00000000041A0030  Data@ {{.+}} is: 0x00000000
-// CHECK:     Address: 0x00000000041A0034  Data@ {{.+}} is: 0x00000000
-// CHECK:     Address: 0x00000000041A0038  Data@ {{.+}} is: 0x00000000
-// CHECK:     Address: 0x00000000041A003C  Data@ {{.+}} is: 0x8141FF40
+// CHECK:     Address: 0x00000000041A0020  Data is: 0x00000100
+// CHECK:     Address: 0x00000000041A0024  Data is: 0x001A0000
+// CHECK:     Address: 0x00000000041A0028  Data is: 0x00000000
+// CHECK:     Address: 0x00000000041A002C  Data is: 0x00000000
+// CHECK:     Address: 0x00000000041A0030  Data is: 0x00000000
+// CHECK:     Address: 0x00000000041A0034  Data is: 0x00000000
+// CHECK:     Address: 0x00000000041A0038  Data is: 0x00000000
+// CHECK:     Address: 0x00000000041A003C  Data is: 0x8141FF40
 
 // CHECK: (Write64): Address:  0x00000000041A0604 Data:  0x00010000
 // CHECK: (MaskWrite64): Address: 0x00000000041A0600  Mask: 0x00000000  Data: 0x00000001
@@ -394,25 +394,25 @@ aie.device(npu1_4col) {
 // CHECK: (MaskWrite64): Address: 0x00000000041A0630  Mask: 0x00000000  Data: 0x00000001
 // CHECK: (NOP Command): Payload Length: 2
 // CHECK: (BlockWrite-DMAWriteCmd): Start Address: 0x00000000001A0000  Size: 8
-// CHECK:     Address: 0x00000000001A0000  Data@ {{.+}} is: 0x00000080
-// CHECK:     Address: 0x00000000001A0004  Data@ {{.+}} is: 0x000A0000
-// CHECK:     Address: 0x00000000001A0008  Data@ {{.+}} is: 0x00000000
-// CHECK:     Address: 0x00000000001A000C  Data@ {{.+}} is: 0x00000000
-// CHECK:     Address: 0x00000000001A0010  Data@ {{.+}} is: 0x00000000
-// CHECK:     Address: 0x00000000001A0014  Data@ {{.+}} is: 0x00000000
-// CHECK:     Address: 0x00000000001A0018  Data@ {{.+}} is: 0x00000000
-// CHECK:     Address: 0x00000000001A001C  Data@ {{.+}} is: 0x8140FF41
+// CHECK:     Address: 0x00000000001A0000  Data is: 0x00000080
+// CHECK:     Address: 0x00000000001A0004  Data is: 0x000A0000
+// CHECK:     Address: 0x00000000001A0008  Data is: 0x00000000
+// CHECK:     Address: 0x00000000001A000C  Data is: 0x00000000
+// CHECK:     Address: 0x00000000001A0010  Data is: 0x00000000
+// CHECK:     Address: 0x00000000001A0014  Data is: 0x00000000
+// CHECK:     Address: 0x00000000001A0018  Data is: 0x00000000
+// CHECK:     Address: 0x00000000001A001C  Data is: 0x8140FF41
 
 // CHECK: (NOP Command): Payload Length: 0
 // CHECK: (BlockWrite-DMAWriteCmd): Start Address: 0x00000000001A0020  Size: 8
-// CHECK:     Address: 0x00000000001A0020  Data@ {{.+}} is: 0x00000080
-// CHECK:     Address: 0x00000000001A0024  Data@ {{.+}} is: 0x001A0000
-// CHECK:     Address: 0x00000000001A0028  Data@ {{.+}} is: 0x00100000
-// CHECK:     Address: 0x00000000001A002C  Data@ {{.+}} is: 0x0010000F
-// CHECK:     Address: 0x00000000001A0030  Data@ {{.+}} is: 0x00040007
-// CHECK:     Address: 0x00000000001A0034  Data@ {{.+}} is: 0x00000000
-// CHECK:     Address: 0x00000000001A0038  Data@ {{.+}} is: 0x00000000
-// CHECK:     Address: 0x00000000001A003C  Data@ {{.+}} is: 0x8141FF40
+// CHECK:     Address: 0x00000000001A0020  Data is: 0x00000080
+// CHECK:     Address: 0x00000000001A0024  Data is: 0x001A0000
+// CHECK:     Address: 0x00000000001A0028  Data is: 0x00100000
+// CHECK:     Address: 0x00000000001A002C  Data is: 0x0010000F
+// CHECK:     Address: 0x00000000001A0030  Data is: 0x00040007
+// CHECK:     Address: 0x00000000001A0034  Data is: 0x00000000
+// CHECK:     Address: 0x00000000001A0038  Data is: 0x00000000
+// CHECK:     Address: 0x00000000001A003C  Data is: 0x8141FF40
 
 // CHECK: (Write64): Address:  0x00000000001A0604 Data:  0x00010000
 // CHECK: (MaskWrite64): Address: 0x00000000001A0600  Mask: 0x00000000  Data: 0x00000001
@@ -420,25 +420,25 @@ aie.device(npu1_4col) {
 // CHECK: (MaskWrite64): Address: 0x00000000001A0630  Mask: 0x00000000  Data: 0x00000001
 // CHECK: (NOP Command): Payload Length: 2
 // CHECK: (BlockWrite-DMAWriteCmd): Start Address: 0x00000000021A0000  Size: 8
-// CHECK:     Address: 0x00000000021A0000  Data@ {{.+}} is: 0x00000200
-// CHECK:     Address: 0x00000000021A0004  Data@ {{.+}} is: 0x000A0000
-// CHECK:     Address: 0x00000000021A0008  Data@ {{.+}} is: 0x00000000
-// CHECK:     Address: 0x00000000021A000C  Data@ {{.+}} is: 0x00000000
-// CHECK:     Address: 0x00000000021A0010  Data@ {{.+}} is: 0x00000000
-// CHECK:     Address: 0x00000000021A0014  Data@ {{.+}} is: 0x00000000
-// CHECK:     Address: 0x00000000021A0018  Data@ {{.+}} is: 0x00000000
-// CHECK:     Address: 0x00000000021A001C  Data@ {{.+}} is: 0x8140FF41
+// CHECK:     Address: 0x00000000021A0000  Data is: 0x00000200
+// CHECK:     Address: 0x00000000021A0004  Data is: 0x000A0000
+// CHECK:     Address: 0x00000000021A0008  Data is: 0x00000000
+// CHECK:     Address: 0x00000000021A000C  Data is: 0x00000000
+// CHECK:     Address: 0x00000000021A0010  Data is: 0x00000000
+// CHECK:     Address: 0x00000000021A0014  Data is: 0x00000000
+// CHECK:     Address: 0x00000000021A0018  Data is: 0x00000000
+// CHECK:     Address: 0x00000000021A001C  Data is: 0x8140FF41
 
 // CHECK: (NOP Command): Payload Length: 0
 // CHECK: (BlockWrite-DMAWriteCmd): Start Address: 0x00000000021A0020  Size: 8
-// CHECK:     Address: 0x00000000021A0020  Data@ {{.+}} is: 0x00000200
-// CHECK:     Address: 0x00000000021A0024  Data@ {{.+}} is: 0x001A0000
-// CHECK:     Address: 0x00000000021A0028  Data@ {{.+}} is: 0x00080000
-// CHECK:     Address: 0x00000000021A002C  Data@ {{.+}} is: 0x0020001F
-// CHECK:     Address: 0x00000000021A0030  Data@ {{.+}} is: 0x00100003
-// CHECK:     Address: 0x00000000021A0034  Data@ {{.+}} is: 0x00000000
-// CHECK:     Address: 0x00000000021A0038  Data@ {{.+}} is: 0x00000000
-// CHECK:     Address: 0x00000000021A003C  Data@ {{.+}} is: 0x8141FF40
+// CHECK:     Address: 0x00000000021A0020  Data is: 0x00000200
+// CHECK:     Address: 0x00000000021A0024  Data is: 0x001A0000
+// CHECK:     Address: 0x00000000021A0028  Data is: 0x00080000
+// CHECK:     Address: 0x00000000021A002C  Data is: 0x0020001F
+// CHECK:     Address: 0x00000000021A0030  Data is: 0x00100003
+// CHECK:     Address: 0x00000000021A0034  Data is: 0x00000000
+// CHECK:     Address: 0x00000000021A0038  Data is: 0x00000000
+// CHECK:     Address: 0x00000000021A003C  Data is: 0x8141FF40
 
 // CHECK: (Write64): Address:  0x00000000021A0604 Data:  0x00010000
 // CHECK: (MaskWrite64): Address: 0x00000000021A0600  Mask: 0x00000000  Data: 0x00000001

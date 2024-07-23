@@ -1,13 +1,3 @@
-//===- circuit_and_packet_routing.mlir -------------------------*- MLIR -*-===//
-//
-// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-// (c) Copyright 2023 Xilinx Inc.
-//
-//===----------------------------------------------------------------------===//
-
 // RUN: iree-opt --amdaie-create-pathfinder-flows="route-circuit=false route-packet=true" %s | FileCheck %s
 
 // CHECK-LABEL: module @aie_module {

@@ -35,7 +35,6 @@ int main(int argc, char **argv) {
   llvm::StringRef mlirAbsPath(argv[1]);
   llvm::StringRef workDir(argv[2]);
 
-
   DialectRegistry registry;
   registerDialects(registry);
   MLIRContext context(registry);
@@ -44,6 +43,8 @@ int main(int argc, char **argv) {
   auto moduleOp = llvm::cast<ModuleOp>(
       mlir::parseSourceFile(mlirAbsPath, parserConfig).release());
   llvm::DebugFlag = true;
+  const char *debugTypes[2] = {"aie-generate-cdo", "iree-aie-runtime"};
+  llvm::setCurrentDebugTypes(debugTypes, 2);
   auto status = AIETranslateToCDODirect(moduleOp, workDir, false, false, false);
   std::vector<std::string> diagnostics;
   ScopedDiagnosticHandler handler(moduleOp.getContext(), [&](Diagnostic &d) {
@@ -55,6 +56,7 @@ int main(int argc, char **argv) {
     for (const auto &diagnostic : diagnostics) std::cerr << diagnostic << "\n";
 
   llvm::DebugFlag = false;
+  llvm::setCurrentDebugType("aie-cdo-driver-debug");
   status = AIETranslateToCDODirect(moduleOp, workDir, false, false, true);
   if (failed(status))
     for (const auto &diagnostic : diagnostics) std::cerr << diagnostic << "\n";

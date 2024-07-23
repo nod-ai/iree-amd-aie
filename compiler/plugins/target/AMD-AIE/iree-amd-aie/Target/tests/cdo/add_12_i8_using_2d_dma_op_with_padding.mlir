@@ -49,14 +49,14 @@ module {
 // CHECK: (Write64): Address:  0x00000000001C0010 Data:  0x00000000
 // CHECK: (NOP Command): Payload Length: 2
 // CHECK: (BlockWrite-DMAWriteCmd): Start Address: 0x00000000001A0000  Size: 8
-// CHECK:     Address: 0x00000000001A0000  Data@ {{.+}} is: 0x00000400
-// CHECK:     Address: 0x00000000001A0004  Data@ {{.+}} is: 0x040A0000
-// CHECK:     Address: 0x00000000001A0008  Data@ {{.+}} is: 0x001C0000
-// CHECK:     Address: 0x00000000001A000C  Data@ {{.+}} is: 0x107A000D
-// CHECK:     Address: 0x00000000001A0010  Data@ {{.+}} is: 0x00000000
-// CHECK:     Address: 0x00000000001A0014  Data@ {{.+}} is: 0x00820000
-// CHECK:     Address: 0x00000000001A0018  Data@ {{.+}} is: 0x00000000
-// CHECK:     Address: 0x00000000001A001C  Data@ {{.+}} is: 0x8140FF41
+// CHECK:     Address: 0x00000000001A0000  Data is: 0x00000400
+// CHECK:     Address: 0x00000000001A0004  Data is: 0x040A0000
+// CHECK:     Address: 0x00000000001A0008  Data is: 0x001C0000
+// CHECK:     Address: 0x00000000001A000C  Data is: 0x107A000D
+// CHECK:     Address: 0x00000000001A0010  Data is: 0x00000000
+// CHECK:     Address: 0x00000000001A0014  Data is: 0x00820000
+// CHECK:     Address: 0x00000000001A0018  Data is: 0x00000000
+// CHECK:     Address: 0x00000000001A001C  Data is: 0x8140FF41
 
 // CHECK: (Write64): Address:  0x00000000001A0604 Data:  0x00010000
 // CHECK: (MaskWrite64): Address: 0x00000000001A0600  Mask: 0x00000000  Data: 0x00000001

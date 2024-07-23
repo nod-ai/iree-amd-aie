@@ -1,12 +1,5 @@
-//===- aie2_memtile_connection.mlir ------------------------------------------------*- MLIR -*-===//
-//
-// Copyright (C) 2024, Advanced Micro Devices, Inc.
-// SPDX-License-Identifier: MIT
-//
-//===----------------------------------------------------------------------===//
-// REQUIRES: ryzen_ai, chess
-
 // RUN: iree-opt --amdaie-create-pathfinder-flows %s | FileCheck %s
+
 //CHECK:    %[[T00:.*]] = aie.tile(0, 0)
 //CHECK:    %[[T01:.*]] = aie.tile(0, 1)
 //CHECK:    %[[T02:.*]] = aie.tile(0, 2)

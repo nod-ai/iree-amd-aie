@@ -383,11 +383,12 @@ TEST_P(AMDAIENPUDeviceModelParameterizedSixTupleNPU4ColTestFixture,
   // parameterized?
   if ((srcStrmSwPortType == StrmSwPortType::CTRL ||
        destStrmSwPortType == StrmSwPortType::CTRL) &&
-      (srcChan > 0 || dstChan > 0))
+      (srcChan > 0 || dstChan > 0)) {
     return;
+  }
   if (srcStrmSwPortType == StrmSwPortType::TRACE && srcChan > 0) return;
   if (srcStrmSwPortType == StrmSwPortType::NORTH && srcChan > 3) return;
-  if (destStrmSwPortType == StrmSwPortType::SOUTH && srcChan > 3) return;
+  if (destStrmSwPortType == StrmSwPortType::SOUTH && dstChan > 3) return;
 
   auto srcSw = srcStrmSwPortType;
   auto srcWireB = STRM_SW_PORT_TYPE_TO_WIRE_BUNDLE(srcSw);

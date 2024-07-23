@@ -543,7 +543,7 @@ std::optional<std::map<PathEndPoint, SwitchSettings>> Router::findPaths(
             // TODO(max): investigate copy-pasted todo; todo: consider all
             // predecessors?
             int bFound = false;
-            auto &pred = preds[curr];
+            SwitchBoxNode *pred = preds[curr];
             if (!processed.count(pred) && *pred != src.sb) {
               SwitchBoxConnectionEdge *predCh = findIncomingEdge(preds, pred);
               assert(predCh != nullptr && "couldn't find ch");
@@ -627,6 +627,9 @@ std::optional<std::map<PathEndPoint, SwitchSettings>> Router::findPaths(
   return routingSolution;
 }
 
+/// Transform outputs produced by the router into representations (structs) that
+/// directly map to stream switch configuration ops (soon-to-be aie-rt calls).
+/// Namely pairs of (switchbox, internal connections).
 std::vector<std::pair<SwitchBox, Connect>> emitConnections(
     const std::map<PathEndPoint, SwitchSettings> &flowSolutions,
     const PathEndPoint &srcPoint, const AMDAIEDeviceModel &deviceModel) {

@@ -1,12 +1,5 @@
-//===- trace_packet_routing.mlir ------------------------------------------------*- MLIR -*-===//
-//
-// Copyright (C) 2024, Advanced Micro Devices, Inc.
-// SPDX-License-Identifier: MIT
-//
-//===----------------------------------------------------------------------===//
-// REQUIRES: ryzen_ai, chess
-
 // RUN: iree-opt --amdaie-create-pathfinder-flows %s | FileCheck %s
+
 // CHECK-LABEL: module @trace_packet_routing {
   
 module @trace_packet_routing {
