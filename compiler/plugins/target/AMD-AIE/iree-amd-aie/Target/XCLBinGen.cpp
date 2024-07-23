@@ -298,10 +298,10 @@ static LogicalResult assembleFileUsingChess(
   auto [xChessCCExe, args] = makeChessArgs(vitisDir, tempDir, verbose);
   args.reserve(args.size() + std::distance(extraArgs.begin(), extraArgs.end()));
   args.insert(args.end(), extraArgs.begin(), extraArgs.end());
-  args.push_back("-c");
-  args.push_back(inputFile);
-  args.push_back("-o");
-  args.push_back(outputFile);
+  args.emplace_back("-c");
+  args.emplace_back(inputFile);
+  args.emplace_back("-o");
+  args.emplace_back(outputFile);
   if (!runTool(xChessCCExe, args, verbose)) {
     llvm::errs() << "Failed to assemble " << inputFile << " with chess";
     return failure();
@@ -328,12 +328,12 @@ static LogicalResult assembleFileUsingPeano(
   std::vector<std::string> args;
   args.reserve(args.size() + std::distance(extraArgs.begin(), extraArgs.end()));
   args.insert(args.end(), extraArgs.begin(), extraArgs.end());
-  args.push_back("-O2");
+  args.emplace_back("-O2");
   // TODO(max): pipe target arch in somehow
-  args.push_back("--target=aie2-none-elf");
-  args.push_back("-c");
+  args.emplace_back("--target=aie2-none-elf");
+  args.emplace_back("-c");
   args.emplace_back(inputFile);
-  args.push_back("-o");
+  args.emplace_back("-o");
   args.emplace_back(outputFile);
   if (!runTool(peanoDir / "bin" / "clang", args, verbose)) {
     llvm::errs() << "Failed to assemble " << outputFile << ".o with peano";
@@ -459,7 +459,7 @@ static LogicalResult generateCoreElfFiles(ModuleOp moduleOp,
         auto end = std::sregex_iterator();
         for (std::sregex_iterator i = begin; i != end; ++i) {
           if (i->str(1) == "chess_intrinsic_wrapper.o") continue;
-          extractedIncludes.push_back(i->str(1));
+          extractedIncludes.emplace_back(i->str(1));
         }
       }
 
@@ -467,10 +467,10 @@ static LogicalResult generateCoreElfFiles(ModuleOp moduleOp,
           makeChessArgs(*vitisDir, tempDir, verbose);
       chessArgs.emplace_back(objFile);
       for (const auto &inc : extractedIncludes) chessArgs.emplace_back(inc);
-      chessArgs.push_back("+l");
-      chessArgs.push_back(bcfPath.c_str());
-      chessArgs.push_back("-o");
-      chessArgs.push_back(elfFile.c_str());
+      chessArgs.emplace_back("+l");
+      chessArgs.emplace_back(bcfPath);
+      chessArgs.emplace_back("-o");
+      chessArgs.emplace_back(elfFile);
       if (!runTool(xChessCCExe, chessArgs, verbose)) {
         llvm::errs() << "Failed to link with xbridge";
         return failure();
@@ -499,9 +499,8 @@ static LogicalResult generateCoreElfFiles(ModuleOp moduleOp,
       {
         std::string targetLower = StringRef(targetArch).lower();
         std::vector<std::string> flags;
-        flags.push_back("-O2");
-        std::string targetFlag = "--target=" + targetLower + "-none-elf";
-        flags.push_back(targetFlag);
+        flags.emplace_back("-O2");
+        flags.emplace_back("--target=" + targetLower + "-none-elf");
 
         if (buildCRT(peanoDir, verbose)) {
           auto crtObjFile = assembleStringUsingPeano(
@@ -515,10 +514,9 @@ static LogicalResult generateCoreElfFiles(ModuleOp moduleOp,
         }
 
         flags.emplace_back(objFile);
-        flags.push_back("-Wl,--gc-sections");
-        std::string ldScriptFlag = "-Wl,-T," + ldscriptPath.string();
-        flags.push_back(ldScriptFlag);
-        flags.push_back("-o");
+        flags.emplace_back("-Wl,--gc-sections");
+        flags.emplace_back("-Wl,-T," + ldscriptPath.string());
+        flags.emplace_back("-o");
         flags.emplace_back(elfFile);
         if (!runTool(peanoDir / "bin" / "clang", flags, verbose)) {
           llvm::errs() << "failed to link elf file for core(" << col << ","
