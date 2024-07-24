@@ -135,6 +135,8 @@ else
   echo "Python version: $("${IREE_PYTHON3_EXECUTABLE}" --version)"
 fi
 
+GITHUB_ACTIONS="${GITHUB_ACTIONS:-false}"
+
 source $XRT_DIR/setup.sh
 # Circumvent xclbin security (no longer needed as of April 2024 XDNA driver)
 export XRT_HACK_UNSECURE_LOADING_XCLBIN=1
@@ -450,7 +452,11 @@ function run_matmul_test() {
 
   echo "**** Running '${name}' matmul test ${num_repeat_runs} times (command ${COMMAND}) ****"
   for i in $(seq 1 $num_repeat_runs); do
-    bash $THIS_DIR/reset_npu.sh
+    # Only reset NPU in CI to facilitate easier local testing without sudo access.
+    if [ "${GITHUB_ACTIONS}" = true ]; then
+      echo "Reset NPU"
+      bash $THIS_DIR/reset_npu.sh
+    fi
     echo "Run number ${i} / ${num_repeat_runs}"
     eval "${COMMAND}"
     return_status=$?
