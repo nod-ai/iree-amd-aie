@@ -6,7 +6,9 @@
 
 #include "XCLBinGen.h"
 
+#include <filesystem>
 #include <fstream>
+#include <functional>
 #include <regex>
 #include <sstream>
 #include <unordered_map>
@@ -37,6 +39,7 @@
 #define setenv(name, var, ignore) _putenv_s(name, var)
 #else
 #include <uuid/uuid.h>
+
 #endif
 
 // This is a string that contains the wrapped chess intrinsics (see top of the
@@ -45,9 +48,17 @@ static const std::string _CHESS_INTRINSIC_WRAPPER_CPP{
 #include "chess_intrinsic_wrapper.cpp"
 };
 
+// This is a string that contains crt.c (see top of the
+// included file for deeper explanation).
+static const std::string _CRT{
+#include "crt.c"
+};
+
+using namespace std::placeholders;
 using namespace llvm;
 using namespace mlir;
 using namespace xilinx;
+using Path = std::filesystem::path;
 
 namespace {
 
@@ -72,7 +83,7 @@ void applyConfigToPassManager(PassManager &pm, bool printIRBeforeAll,
 }
 }  // namespace
 
-FailureOr<std::string> findVitis(std::optional<std::string> &vitisDir) {
+FailureOr<Path> findVitis(std::optional<Path> &vitisDir) {
   if (!vitisDir) {
     const char *envVitis = ::getenv("VITIS");
     if (!envVitis) {
@@ -91,82 +102,65 @@ FailureOr<std::string> findVitis(std::optional<std::string> &vitisDir) {
   if (!vitisDir) {
     llvm::errs() << "ERROR: couldn't find vitis directory\n";
     return failure();
-  };
+  }
 
-  SmallString<64> aieToolsPath(*vitisDir);
-  sys::path::append(aieToolsPath, "aietools");
-  if (!sys::fs::exists(aieToolsPath)) {
+  Path aieToolsPath = *vitisDir / "aietools";
+  if (!std::filesystem::exists(aieToolsPath)) {
     llvm::errs() << "ERROR: couldn't find aietools directory\n";
     return failure();
   }
 
-  SmallString<64> chessccPath(aieToolsPath);
-  sys::path::append(chessccPath, "tps", "lnx64", "target_aie_ml");
-  sys::path::append(chessccPath, "bin", "LNa64bin");
+  Path chessccPath =
+      aieToolsPath / "tps" / "lnx64" / "target_aie_ml" / "bin" / "LNa64bin";
 
-  SmallString<64> path(::getenv("PATH"));
-  ::setenv(
-      "PATH",
-      (chessccPath + std::string{sys::EnvPathSeparator} + path).str().c_str(),
-      1);
+  Path path(::getenv("PATH"));
+  ::setenv("PATH",
+           (chessccPath.string() + std::string{sys::EnvPathSeparator} +
+            path.string())
+               .c_str(),
+           1);
 
-  SmallString<64> chessClangExe(chessccPath);
-  sys::path::append(chessClangExe, "chess-clang");
-  SmallString<64> chessLLVMLinkExe(chessccPath);
-  sys::path::append(chessLLVMLinkExe, "chess-llvm-link");
-  if (!sys::fs::exists(chessClangExe)) {
+  if (!std::filesystem::exists(chessccPath / "chess-clang")) {
     llvm::errs() << "ERROR: couldn't find chess-clang\n";
     return failure();
   }
-  if (!sys::fs::exists(chessLLVMLinkExe)) {
+  if (!std::filesystem::exists(chessccPath / "chess-llvm-link")) {
     llvm::errs() << "ERROR: couldn't find chess-llvm-link\n";
     return failure();
   }
 
-  SmallString<64> lnx64o(aieToolsPath);
-  sys::path::append(lnx64o, "lib", "lnx64.o");
-  SmallString<64> dotLib(aieToolsPath);
-  sys::path::append(dotLib, "lnx64", "tools", "dot", "lib");
-  SmallString<64> ldLibraryPath(::getenv("LD_LIBRARY_PATH"));
-  ::setenv("LD_LIBRARY_PATH",
-           (lnx64o + std::string{sys::EnvPathSeparator} + dotLib +
-            std::string{sys::EnvPathSeparator} + ldLibraryPath)
-               .str()
-               .c_str(),
-           1);
+  Path lnx64o = aieToolsPath / "lib" / "lnx64.o";
+  Path dotLib = aieToolsPath / "lnx64" / "tools" / "dot" / "lib";
+  Path ldLibraryPath(::getenv("LD_LIBRARY_PATH"));
+  ::setenv(
+      "LD_LIBRARY_PATH",
+      (lnx64o.string() + std::string{sys::EnvPathSeparator} + dotLib.string() +
+       std::string{sys::EnvPathSeparator} + ldLibraryPath.string())
+          .c_str(),
+      1);
 
-  SmallString<64> rdiDataDir(aieToolsPath);
-  sys::path::append(rdiDataDir, "data");
-  ::setenv("RDI_DATADIR", rdiDataDir.c_str(), 1);
+  ::setenv("RDI_DATADIR", (aieToolsPath / "data").c_str(), 1);
 
   return *vitisDir;
 }
 
-std::pair<std::string, std::vector<std::string>> makeChessArgs(
-    const std::string &vitisDir, const std::string &tempDir, bool verbose) {
-  SmallString<64> aieToolsDir(vitisDir);
-  sys::path::append(aieToolsDir, "aietools");
-  SmallString<64> chessworkDir(tempDir);
-  sys::path::append(chessworkDir, "chesswork");
-  SmallString<64> xChessCCExe(aieToolsDir);
-  sys::path::append(xChessCCExe, "bin", "unwrapped", "lnx64.o", "xchesscc");
-
-  SmallString<64> procModelLib(aieToolsDir);
-  sys::path::append(procModelLib, "data", "aie_ml", "lib");
-
+std::pair<std::string, std::vector<std::string>> makeChessArgs(Path &vitisDir,
+                                                               Path &tempDir,
+                                                               bool verbose) {
+  Path aieToolsDir = vitisDir / "aietools";
   std::vector<std::string> flags{
       // -j <threads> : parallel compilation (function + file level)
       "-j4",
       // -p <name> : processor
       "-pme",
       // -P <dir> : processor model directory
-      "-P" + procModelLib.str().str(),
+      "-P" + (aieToolsDir / "data" / "aie_ml" / "lib").string(),
       // -f : use LLVM frontend (chess-clang)
       "-f",
       // -C <cfg> : configuration (for chess-clang)
       "-CRelease_LLVM",
       // +w <dir> : work directory
-      "+w" + tempDir,
+      "+w" + tempDir.string(),
       // for adf headers
       "-D__AIENGINE__",
       // for aie_api headers
@@ -174,7 +168,7 @@ std::pair<std::string, std::vector<std::string>> makeChessArgs(
   };
   // disassemble output
   if (verbose) flags.emplace_back("-d");
-  return {xChessCCExe.str().str(), flags};
+  return {aieToolsDir / "bin" / "unwrapped" / "lnx64.o" / "xchesscc", flags};
 }
 
 std::optional<std::string> dumpStrToDisk(const std::string &payload,
@@ -214,9 +208,9 @@ static std::string getUUIDString() {
 // Returns either:
 //  -- the output of running the tool, if run without failure, or
 //  -- an empty optional, if the tool fails to run.
-std::optional<std::string> runTool(
-    StringRef program, ArrayRef<std::string> args, bool verbose,
-    std::optional<ArrayRef<StringRef>> env = std::nullopt) {
+static std::optional<std::string> runTool(
+    const std::string &program, const std::vector<std::string> &args,
+    bool verbose, std::optional<ArrayRef<StringRef>> env = std::nullopt) {
   if (verbose) {
     llvm::outs() << "Run: ";
     if (env)
@@ -227,7 +221,7 @@ std::optional<std::string> runTool(
   }
 
   // Check that 'program' is a valid path, if not, fail immediately.
-  if (!sys::fs::exists(program)) {
+  if (!std::filesystem::exists(program)) {
     llvm::errs() << "Program " << program << " does not exist\n";
     return {};
   }
@@ -256,9 +250,9 @@ std::optional<std::string> runTool(
       std::string(temporaryPath.begin(), temporaryPath.size());
   StringRef temporaryPathRef(temporaryPathStr);
   auto tp = std::optional<StringRef>(temporaryPathRef);
-  int result =
-      sys::ExecuteAndWait(program, pArgs, env, /* redirects */ {tp, tp, tp}, 0,
-                          0, &errMsg, nullptr, &optStats);
+  int result = sys::ExecuteAndWait(program, pArgs, env,
+                                   /* redirects */ {tp, tp, tp}, 0, 0, &errMsg,
+                                   nullptr, &optStats);
 
   auto maybeOutputFromFile = [&]() -> std::optional<std::string> {
     std::ifstream t(temporaryPathRef.str());
@@ -297,41 +291,102 @@ std::optional<std::string> runTool(
   return outputFromFile;
 }
 
-LogicalResult assembleUsingChess(const std::string &inputFile,
-                                 const std::string &outputFile,
-                                 const std::string &vitisDir,
-                                 const std::string &tempDir, bool verbose) {
-  auto [xChessCCExe, chessArgs] = makeChessArgs(vitisDir, tempDir, verbose);
-  chessArgs.push_back("-c");
-  chessArgs.push_back(inputFile);
-  chessArgs.push_back("-o");
-  chessArgs.push_back(outputFile);
-  if (!runTool(xChessCCExe, chessArgs, verbose)) {
-    llvm::errs() << "Failed to assemble with chess";
+static LogicalResult assembleFileUsingChess(
+    const std::string &inputFile, const std::string &outputFile,
+    const std::vector<std::string> &extraArgs, Path &tempDir, Path &vitisDir,
+    bool verbose) {
+  auto [xChessCCExe, args] = makeChessArgs(vitisDir, tempDir, verbose);
+  args.reserve(args.size() + std::distance(extraArgs.begin(), extraArgs.end()));
+  args.insert(args.end(), extraArgs.begin(), extraArgs.end());
+  args.emplace_back("-c");
+  args.emplace_back(inputFile);
+  args.emplace_back("-o");
+  args.emplace_back(outputFile);
+  if (!runTool(xChessCCExe, args, verbose)) {
+    llvm::errs() << "Failed to assemble " << inputFile << " with chess";
     return failure();
   }
   return success();
 }
 
-bool useMeBasic(const std::string &peanoDir, bool verbose) {
+bool buildCRT(Path &peanoDir, bool verbose) {
   if (verbose)
     llvm::outs() << "Checking if we should use me_basic, based on "
                     "the version of peano\n";
-  SmallString<64> peanoOptBin(peanoDir);
-  sys::path::append(peanoOptBin, "bin", "opt");
-  auto maybeVersion = runTool(peanoOptBin, {"--version"}, verbose);
+  auto maybeVersion = runTool(peanoDir / "bin" / "opt", {"--version"}, verbose);
   // default to "yes do use"
   if (!maybeVersion) return true;
-  auto version = maybeVersion.value();
+  const auto &version = maybeVersion.value();
   std::regex r("LLVM version 17.0.0git", std::regex_constants::multiline);
   return std::regex_search(version, r);
 }
 
+static LogicalResult assembleFileUsingPeano(
+    const std::string &inputFile, const std::string &outputFile,
+    const std::vector<std::string> &extraArgs, Path &_tempDir, Path &peanoDir,
+    bool verbose) {
+  std::vector<std::string> args;
+  args.reserve(args.size() + std::distance(extraArgs.begin(), extraArgs.end()));
+  args.insert(args.end(), extraArgs.begin(), extraArgs.end());
+  args.emplace_back("-O2");
+  // TODO(max): pipe target arch in somehow
+  args.emplace_back("--target=aie2-none-elf");
+  args.emplace_back("-c");
+  args.emplace_back(inputFile);
+  args.emplace_back("-o");
+  args.emplace_back(outputFile);
+  if (!runTool(peanoDir / "bin" / "clang", args, verbose)) {
+    llvm::errs() << "Failed to assemble " << outputFile << ".o with peano";
+    return failure();
+  }
+  return success();
+}
+
+static_assert(std::is_same_v<decltype(assembleFileUsingPeano),
+                             decltype(assembleFileUsingChess)>);
+using FileAssemblerT = std::function<decltype(assembleFileUsingPeano)>;
+
+static FailureOr<std::string> assembleStringUsing(
+    const FileAssemblerT &assembler, const std::string &inputFileStr,
+    const std::string &inputFileName, const std::string &outputFileName,
+    Path &outputDir, const std::vector<std::string> &extraArgs, Path &workDir,
+    Path &toolDir, bool verbose = false) {
+  Path inputFile = workDir / inputFileName;
+  if (auto maybeErr = dumpStrToDisk(inputFileStr, inputFile);
+      maybeErr.has_value()) {
+    llvm::errs() << "Failed to dump to disk " << inputFile
+                 << " because: " << maybeErr;
+    return failure();
+  }
+
+  Path outputFile;
+  if (!sys::path::is_absolute(outputFileName)) {
+    outputFile = Path(outputDir) / outputFileName;
+  } else {
+    outputFile = outputFileName;
+  }
+  if (failed(assembler(inputFile, outputFile, extraArgs, workDir, toolDir,
+                       verbose))) {
+    llvm::errs() << "Failed to assemble " << outputFileName << ".o";
+    return failure();
+  }
+  return outputFile.string();
+}
+
+static auto assembleStringUsingChess =
+    std::bind(assembleStringUsing, assembleFileUsingChess, _1, _2, _3, _4, _5,
+              _6, _7, _8);
+static auto assembleStringUsingPeano =
+    std::bind(assembleStringUsing, assembleFileUsingPeano, _1, _2, _3, _4, _5,
+              _6, _7, _8);
+
 // Generate the elf files for the core
-static LogicalResult generateCoreElfFiles(
-    ModuleOp moduleOp, const StringRef objFile, const std::string &tempDir,
-    bool useChess, std::optional<std::string> &vitisDir,
-    const std::string &targetArch, bool verbose, const std::string &peanoDir) {
+static LogicalResult generateCoreElfFiles(ModuleOp moduleOp,
+                                          const std::string &objFile,
+                                          Path tempDir, bool useChess,
+                                          std::optional<Path> vitisDir,
+                                          const std::string &targetArch,
+                                          bool verbose, Path peanoDir) {
   auto deviceOps = moduleOp.getOps<AIE::DeviceOp>();
   if (!llvm::hasSingleElement(deviceOps))
     return moduleOp.emitOpError("expected a single device op");
@@ -340,8 +395,6 @@ static LogicalResult generateCoreElfFiles(
   auto tileOps = deviceOp.getOps<AIE::TileOp>();
 
   std::string errorMessage;
-
-  const bool doUseMeBasic = !useChess && useMeBasic(peanoDir, verbose);
 
   for (auto tileOp : tileOps) {
     int col = tileOp.colIndex();
@@ -358,39 +411,26 @@ static LogicalResult generateCoreElfFiles(
       coreOp.setElfFile(elfFileName);
     }
 
-    SmallString<64> elfFile(tempDir);
-    sys::path::append(elfFile, elfFileName);
+    Path elfFile = tempDir / elfFileName;
 
     if (useChess) {
-      SmallString<64> chessIntrinsicsCPPFile(tempDir);
-      sys::path::append(chessIntrinsicsCPPFile, "chess_intrinsic_wrapper.cpp");
-      if (auto maybeErr = dumpStrToDisk(_CHESS_INTRINSIC_WRAPPER_CPP,
-                                        chessIntrinsicsCPPFile.str().str());
-          maybeErr.has_value()) {
-        llvm::errs()
-            << "Failed to dump to disk chess_intrinsic_wrapper.cpp because: "
-            << maybeErr;
-        return failure();
-      }
-
-      SmallString<64> chessIntrinsicsObjFile(tempDir);
-      sys::path::append(chessIntrinsicsObjFile, "chess_intrinsic_wrapper.o");
-      auto maybeVitisDir = findVitis(vitisDir);
+      FailureOr<Path> maybeVitisDir = findVitis(vitisDir);
       if (failed(maybeVitisDir)) return failure();
-
-      if (failed(assembleUsingChess(chessIntrinsicsCPPFile.c_str(),
-                                    chessIntrinsicsObjFile.c_str(), *vitisDir,
-                                    tempDir, verbose))) {
-        llvm::errs() << "Failed to assemble chess_intrinsic_wrapper.o";
-        return failure();
-      }
+      auto chessIntrinsicsObjFile = assembleStringUsingChess(
+          /*inputFileStr=*/_CHESS_INTRINSIC_WRAPPER_CPP,
+          /*inputFileName=*/"chess_intrinsic_wrapper.cpp",
+          /*outputFileName=*/"chess_intrinsic_wrapper.o",
+          /*outputDir=*/tempDir,
+          /*extraArgs*/ std::vector<std::string>{},
+          /*workDir=*/tempDir,
+          /*vitisDir=*/*maybeVitisDir, verbose);
+      if (failed(chessIntrinsicsObjFile)) return failure();
 
       // Use xbridge (to remove any peano dependency with use-chess option)
-      SmallString<64> bcfPath(tempDir);
-      sys::path::append(bcfPath, elfFileName + ".bcf");
+      Path bcfPath = tempDir / (elfFileName + ".bcf");
 
       {
-        auto bcfOutput = openOutputFile(bcfPath, &errorMessage);
+        auto bcfOutput = openOutputFile(bcfPath.string(), &errorMessage);
         if (!bcfOutput) {
           llvm::errs() << "failed to open bcf file because: " << errorMessage;
           return failure();
@@ -405,10 +445,9 @@ static LogicalResult generateCoreElfFiles(
         bcfOutput->keep();
       }
 
-      std::vector<std::string> extractedIncludes{
-          chessIntrinsicsObjFile.c_str()};
+      std::vector<std::string> extractedIncludes{*chessIntrinsicsObjFile};
       {
-        auto bcfFileIn = openInputFile(bcfPath, &errorMessage);
+        auto bcfFileIn = openInputFile(bcfPath.string(), &errorMessage);
         if (!bcfFileIn) {
           llvm::errs() << "failed to open bcf because: " << errorMessage;
           return failure();
@@ -420,7 +459,7 @@ static LogicalResult generateCoreElfFiles(
         auto end = std::sregex_iterator();
         for (std::sregex_iterator i = begin; i != end; ++i) {
           if (i->str(1) == "chess_intrinsic_wrapper.o") continue;
-          extractedIncludes.push_back(i->str(1));
+          extractedIncludes.emplace_back(i->str(1));
         }
       }
 
@@ -428,19 +467,19 @@ static LogicalResult generateCoreElfFiles(
           makeChessArgs(*vitisDir, tempDir, verbose);
       chessArgs.emplace_back(objFile);
       for (const auto &inc : extractedIncludes) chessArgs.emplace_back(inc);
-      chessArgs.push_back("+l");
-      chessArgs.push_back(bcfPath.c_str());
-      chessArgs.push_back("-o");
-      chessArgs.push_back(elfFile.c_str());
+      chessArgs.emplace_back("+l");
+      chessArgs.emplace_back(bcfPath);
+      chessArgs.emplace_back("-o");
+      chessArgs.emplace_back(elfFile);
       if (!runTool(xChessCCExe, chessArgs, verbose)) {
         llvm::errs() << "Failed to link with xbridge";
         return failure();
       }
     } else {
-      SmallString<64> ldscriptPath(tempDir);
-      sys::path::append(ldscriptPath, elfFileName + ".ld");
+      Path ldscriptPath = tempDir / (elfFileName + ".ld");
       {
-        auto ldscriptOutput = openOutputFile(ldscriptPath, &errorMessage);
+        auto ldscriptOutput =
+            openOutputFile(ldscriptPath.string(), &errorMessage);
         if (!ldscriptOutput) {
           llvm::errs() << "Failed to open ldscript file because: "
                        << errorMessage;
@@ -458,33 +497,28 @@ static LogicalResult generateCoreElfFiles(
       // We are running a clang command for now, but really this is an lld
       // command.
       {
-        SmallString<64> peanoClangExe(peanoDir);
-        sys::path::append(peanoClangExe, "bin", "clang");
-
         std::string targetLower = StringRef(targetArch).lower();
-        SmallVector<std::string, 10> flags;
-        flags.push_back("-O2");
-        std::string targetFlag = "--target=" + targetLower + "-none-elf";
-        flags.push_back(targetFlag);
+        std::vector<std::string> flags;
+        flags.emplace_back("-O2");
+        flags.emplace_back("--target=" + targetLower + "-none-elf");
 
-        if (doUseMeBasic) {
-          SmallString<64> meBasicPath(peanoDir);
-          sys::path::append(meBasicPath, "lib",
-                            targetLower + "-none-unknown-elf", "me_basic.o");
-          flags.emplace_back(meBasicPath);
+        if (buildCRT(peanoDir, verbose)) {
+          auto crtObjFile = assembleStringUsingPeano(
+              /*inputFileStr= */ _CRT, /*inputFileName=*/"crt.c",
+              /*outputFileName=*/"crt.o",
+              /*outputDir=*/tempDir,
+              /*extraArgs*/ std::vector<std::string>{"-Wno-invalid-noreturn"},
+              /*workDir=*/tempDir, /*peanoDir=*/peanoDir, /*verbose=*/verbose);
+          if (failed(crtObjFile)) return failure();
+          flags.emplace_back(*crtObjFile);
         }
 
         flags.emplace_back(objFile);
-        SmallString<64> libcPath(peanoDir);
-        sys::path::append(libcPath, "lib", targetLower + "-none-unknown-elf",
-                          "libc.a");
-        flags.emplace_back(libcPath);
-        flags.push_back("-Wl,--gc-sections");
-        std::string ldScriptFlag = "-Wl,-T," + std::string(ldscriptPath);
-        flags.push_back(ldScriptFlag);
-        flags.push_back("-o");
+        flags.emplace_back("-Wl,--gc-sections");
+        flags.emplace_back("-Wl,-T," + ldscriptPath.string());
+        flags.emplace_back("-o");
         flags.emplace_back(elfFile);
-        if (!runTool(peanoClangExe, flags, verbose)) {
+        if (!runTool(peanoDir / "bin" / "clang", flags, verbose)) {
           llvm::errs() << "failed to link elf file for core(" << col << ","
                        << row << ")";
           return failure();
@@ -498,7 +532,7 @@ static LogicalResult generateCoreElfFiles(
 static LogicalResult generateCDO(MLIRContext *context, ModuleOp moduleOp,
                                  bool printIRBeforeAll, bool printIRAfterAll,
                                  bool printIRModuleScope, bool timing,
-                                 const std::string &tempDir) {
+                                 const Path &tempDir) {
   ModuleOp copy = moduleOp.clone();
   std::string errorMessage;
   PassManager passManager(context, ModuleOp::getOperationName());
@@ -511,8 +545,8 @@ static LogicalResult generateCDO(MLIRContext *context, ModuleOp moduleOp,
     return failure();
   }
 
-  if (failed(mlir::iree_compiler::AMDAIE::AIETranslateToCDODirect(copy,
-                                                                  tempDir))) {
+  if (failed(mlir::iree_compiler::AMDAIE::AIETranslateToCDODirect(
+          copy, tempDir.string()))) {
     llvm::errs() << "failed to emit CDO";
     return failure();
   }
@@ -576,15 +610,15 @@ static json::Object makeKernelJSON(const std::string &name,
       {"instances", json::Array{json::Object{{"name", instance}}}}};
 }
 
-static LogicalResult generateXCLBin(
-    ModuleOp moduleOp, const std::string &Output, const std::string &tempDir,
-    const std::string &xclBinKernelID, const std::string &xclBinKernelName,
-    const std::string &xclBinInstanceName, const std::string &amdAIEInstallDir,
-    bool verbose, const std::string &inputXclbin = "") {
+static LogicalResult generateXCLBin(const std::string &Output, Path tempDir,
+                                    const std::string &xclBinKernelID,
+                                    const std::string &xclBinKernelName,
+                                    const std::string &xclBinInstanceName,
+                                    Path amdAIEInstallDir, bool verbose,
+                                    const std::string &inputXclbin = "") {
   std::string errorMessage;
   // Create mem_topology.json.
-  SmallString<64> memTopologyJsonFile(tempDir);
-  sys::path::append(memTopologyJsonFile, "mem_topology.json");
+  Path memTopologyJsonFile = tempDir / "mem_topology.json";
   {
     std::string memTopologyData = R"({
       "mem_topology": {
@@ -607,8 +641,7 @@ static LogicalResult generateXCLBin(
           ]
       }
     })";
-    if (auto maybeErr =
-            dumpStrToDisk(memTopologyData, memTopologyJsonFile.str().str());
+    if (auto maybeErr = dumpStrToDisk(memTopologyData, memTopologyJsonFile);
         maybeErr.has_value()) {
       llvm::errs() << "failed to dump to disk mem_topology.json because: "
                    << *maybeErr;
@@ -617,8 +650,7 @@ static LogicalResult generateXCLBin(
   }
 
   // Create aie_partition.json.
-  SmallString<64> aiePartitionJsonFile(tempDir);
-  sys::path::append(aiePartitionJsonFile, "aie_partition.json");
+  Path aiePartitionJsonFile = tempDir / "aie_partition.json";
   {
     std::string uuidStr = getUUIDString();
     std::string aiePartitionJsonData = R"(
@@ -657,8 +689,8 @@ static LogicalResult generateXCLBin(
         }
       }
     )";
-    if (auto maybeErr = dumpStrToDisk(aiePartitionJsonData,
-                                      aiePartitionJsonFile.str().str());
+    if (auto maybeErr =
+            dumpStrToDisk(aiePartitionJsonData, aiePartitionJsonFile);
         maybeErr.has_value()) {
       llvm::errs() << "failed to dump to disk aie_partition.json because: "
                    << *maybeErr;
@@ -666,20 +698,18 @@ static LogicalResult generateXCLBin(
     }
   }
 
-  // Create kernels.json.
-  SmallString<64> kernelsJsonFile(tempDir);
-  sys::path::append(kernelsJsonFile, "kernels.json");
+  Path kernelsJsonFile = tempDir / "kernels.json";
   {
     // TODO: Support for multiple kernels
-    json::Object kernels_data{
+    json::Object kernelsData{
         {"ps-kernels",
          json::Object{{"kernels", json::Array{makeKernelJSON(
                                       xclBinKernelName, xclBinKernelID,
                                       xclBinInstanceName)}}}}};
 
     auto kernelStr =
-        llvm::formatv("{0:2}", json::Value(std::move(kernels_data)));
-    if (auto maybeErr = dumpStrToDisk(kernelStr, kernelsJsonFile.str().str());
+        llvm::formatv("{0:2}", json::Value(std::move(kernelsData)));
+    if (auto maybeErr = dumpStrToDisk(kernelStr, kernelsJsonFile);
         maybeErr.has_value()) {
       llvm::errs() << "failed to dump to disk kernels.json because: "
                    << *maybeErr;
@@ -687,10 +717,9 @@ static LogicalResult generateXCLBin(
     }
   }
   // Create design.bif.
-  SmallString<64> designBifFile(tempDir);
-  sys::path::append(designBifFile, "design.bif");
+  Path designBifFile = tempDir / "design.bif";
   {
-    auto designBifOut = openOutputFile(designBifFile, &errorMessage);
+    auto designBifOut = openOutputFile(designBifFile.string(), &errorMessage);
     if (!designBifOut) {
       llvm::errs() << "failed to open design.bif because: " << errorMessage;
       return failure();
@@ -714,54 +743,45 @@ static LogicalResult generateXCLBin(
   }
 
   // Execute the bootgen command.
-  SmallString<64> designPdiFile(tempDir);
-  sys::path::append(designPdiFile, "design.pdi");
   {
-    SmallVector<std::string, 7> flags{"-arch",  "versal",
-                                      "-image", std::string(designBifFile),
-                                      "-o",     std::string(designPdiFile),
-                                      "-w"};
+    std::vector<std::string> flags{"-arch",  "versal",
+                                   "-image", designBifFile,
+                                   "-o",     tempDir / "design.pdi",
+                                   "-w"};
 
-    SmallString<64> bootgenBin(amdAIEInstallDir);
-    sys::path::append(bootgenBin, "bin", "amdaie_bootgen");
-    if (!sys::fs::exists(bootgenBin)) {
-      bootgenBin = amdAIEInstallDir;
-      sys::path::append(bootgenBin, "tools", "amdaie_bootgen");
+    Path bootgenBin = amdAIEInstallDir / "bin" / "amdaie_bootgen";
+    if (!std::filesystem::exists(bootgenBin)) {
+      bootgenBin = amdAIEInstallDir / "tools" / "amdaie_bootgen";
     }
     if (!runTool(bootgenBin, flags, verbose)) {
       llvm::errs() << "failed to execute bootgen";
       return failure();
     }
   }
-  SmallVector<std::string, 20> flags;
+  std::vector<std::string> flags;
   // Execute the xclbinutil command.
-  std::string memArg = "MEM_TOPOLOGY:JSON:" + std::string(memTopologyJsonFile);
-  std::string partArg =
-      "AIE_PARTITION:JSON:" + std::string(aiePartitionJsonFile);
-  SmallString<64> xclbinutilBin(amdAIEInstallDir);
-  sys::path::append(xclbinutilBin, "bin", "amdaie_xclbinutil");
-  if (!sys::fs::exists(xclbinutilBin)) {
-    xclbinutilBin = amdAIEInstallDir;
-    sys::path::append(xclbinutilBin, "tools", "amdaie_xclbinutil");
+  std::string memArg = "MEM_TOPOLOGY:JSON:" + memTopologyJsonFile.string();
+  std::string partArg = "AIE_PARTITION:JSON:" + aiePartitionJsonFile.string();
+  Path xclbinutilBin = amdAIEInstallDir / "bin" / "amdaie_xclbinutil";
+  if (!std::filesystem::exists(xclbinutilBin)) {
+    xclbinutilBin = amdAIEInstallDir / "tools" / "amdaie_xclbinutil";
   }
   {
     if (!inputXclbin.empty()) {
       // Create aie_partition.json.
-      SmallString<64> aieInputPartitionJsonFile(tempDir);
-      sys::path::append(aieInputPartitionJsonFile, "aie_input_partition.json");
-
+      Path aieInputPartitionJsonFile = tempDir / "aie_input_partition.json";
       std::string inputPartArg =
-          "AIE_PARTITION:JSON:" + std::string(aieInputPartitionJsonFile);
-      SmallVector<std::string, 20> inputFlags{"--dump-section", inputPartArg,
-                                              "--force", "--input",
-                                              std::string(inputXclbin)};
+          "AIE_PARTITION:JSON:" + aieInputPartitionJsonFile.string();
+      std::vector<std::string> inputFlags{"--dump-section", inputPartArg,
+                                          "--force", "--input",
+                                          std::string(inputXclbin)};
 
       if (!runTool(xclbinutilBin, inputFlags, verbose)) {
         llvm::errs() << "failed to execute xclbinutil";
         return failure();
       }
       auto aieInputPartitionOut =
-          openInputFile(aieInputPartitionJsonFile, &errorMessage);
+          openInputFile(aieInputPartitionJsonFile.string(), &errorMessage);
       if (!aieInputPartitionOut) {
         llvm::errs() << "failed to open aie_input_partition.json because: "
                      << errorMessage;
@@ -773,7 +793,8 @@ static LogicalResult generateXCLBin(
       aieInputPartionPDIs = aieInputPartitionOutValue->getAsObject()
                                 ->getObject("aie_partition")
                                 ->getArray("PDIs");
-      auto aiePartitionOut = openInputFile(aiePartitionJsonFile, &errorMessage);
+      auto aiePartitionOut =
+          openInputFile(aiePartitionJsonFile.string(), &errorMessage);
       if (!aiePartitionOut) {
         llvm::errs() << "failed to open aie aie_input_partition.json for "
                         "output because: "
@@ -792,7 +813,7 @@ static LogicalResult generateXCLBin(
       // rewrite aie partion json file
       if (auto maybeErr =
               dumpStrToDisk(formatv("{0:2}", *aieInputPartitionOutValue),
-                            aiePartitionJsonFile.str().str());
+                            aiePartitionJsonFile);
           maybeErr.has_value()) {
         llvm::errs()
             << "failed to dump to disk aie_input_partition.json because: "
@@ -803,9 +824,9 @@ static LogicalResult generateXCLBin(
     } else {
       flags.insert(flags.end(), {"--add-replace-section", memArg});
     }
-    flags.insert(flags.end(), {"--add-kernel", std::string(kernelsJsonFile),
-                               "--add-replace-section", partArg, "--force",
-                               "--output", std::string(Output)});
+    flags.insert(flags.end(),
+                 {"--add-kernel", kernelsJsonFile, "--add-replace-section",
+                  partArg, "--force", "--output", std::string(Output)});
 
     if (!runTool(xclbinutilBin, flags, verbose)) {
       llvm::errs() << "failed to execute xclbinutil";
@@ -885,9 +906,9 @@ struct RemoveAlignment2FromLLVMLoadPass
 static LogicalResult generateUnifiedObject(
     MLIRContext *context, ModuleOp moduleOp, const std::string &outputFile,
     bool printIRBeforeAll, bool printIRAfterAll, bool printIRModuleScope,
-    bool timing, bool useChess, bool verbose, const std::string &tempDir,
-    std::optional<std::string> &vitisDir, const std::string &targetArch,
-    const std::string &peanoDir) {
+    bool timing, bool useChess, bool verbose, Path tempDir,
+    std::optional<Path> vitisDir, const std::string &targetArch,
+    Path peanoDir) {
   PassManager pm(context, moduleOp.getOperationName());
   applyConfigToPassManager(pm, printIRBeforeAll, printIRAfterAll,
                            printIRModuleScope, timing);
@@ -910,64 +931,44 @@ static LogicalResult generateUnifiedObject(
   if (failed(pm.run(copy)))
     return moduleOp.emitOpError("Failed to lower to LLVM");
 
-  SmallString<64> LLVMIRFile(tempDir);
-  sys::path::append(LLVMIRFile, "input.ll");
-
   llvm::LLVMContext llvmContext;
   auto llvmModule = translateModuleToLLVMIR(copy, llvmContext);
   if (!llvmModule)
     return moduleOp.emitOpError("Failed to translate module to LLVMIR");
-
-  std::string errorMessage;
+  std::string inputLLStr;
   {
-    auto output = openOutputFile(LLVMIRFile, &errorMessage);
-    if (!output) {
-      llvm::errs() << "failed to open output LLVMIRFile because: "
-                   << errorMessage;
-      return failure();
-    }
-    llvmModule->print(output->os(), nullptr);
-    output->keep();
+    llvm::raw_string_ostream rso(inputLLStr);
+    llvmModule->print(rso, nullptr);
   }
 
+  std::string errorMessage;
   if (useChess) {
-    SmallString<64> inputLLChessHackedFile(tempDir);
-    sys::path::append(inputLLChessHackedFile, "input.chesshacked.ll");
-    {
-      std::string inputLLStr;
-      auto inputLL = openInputFile(LLVMIRFile, &errorMessage);
-      if (!inputLL) {
-        llvm::errs() << "Failed to open input.ll file because: "
-                     << errorMessage;
-        return failure();
-      }
-      inputLLStr = std::string(inputLL->getBuffer());
-      std::string inputLLChessHackedStr = chesshack(inputLLStr);
-      if (auto maybeErr = dumpStrToDisk(inputLLChessHackedStr,
-                                        inputLLChessHackedFile.str().str());
-          maybeErr.has_value()) {
-        llvm::errs() << "Failed to dump to disk input.chesshacked.ll because: "
-                     << maybeErr;
-        return failure();
-      }
-    }
-
-    auto maybeVitisDir = findVitis(vitisDir);
+    Path inputLLChessHackedFile = tempDir / "input.chesshacked.ll";
+    std::string inputLLChessHackedStr = chesshack(inputLLStr);
+    FailureOr<Path> maybeVitisDir = findVitis(vitisDir);
     if (failed(maybeVitisDir)) return failure();
-
-    if (failed(assembleUsingChess(inputLLChessHackedFile.c_str(), outputFile,
-                                  *vitisDir, tempDir, verbose))) {
-      llvm::errs() << "Failed to assemble input.o";
+    FailureOr<std::string> chessIntrinsicsObjFile = assembleStringUsingChess(
+        /*inputFileStr=*/inputLLChessHackedStr,
+        /*inputFileName=*/"input.chesshacked.ll",
+        /*outputFileName=*/outputFile,
+        /*outputDir=*/tempDir,
+        /*extraArgs*/ std::vector<std::string>{},
+        /*workDir=*/tempDir,
+        /*vitisDir=*/*maybeVitisDir,
+        /*verbose=*/verbose);
+    if (failed(chessIntrinsicsObjFile)) return failure();
+  } else {
+    Path LLVMIRFile = tempDir / "input.ll";
+    if (auto maybeErr = dumpStrToDisk(inputLLStr, LLVMIRFile);
+        maybeErr.has_value()) {
+      llvm::errs() << "Failed to dump to disk input.ll"
+                   << " because: " << maybeErr;
       return failure();
     }
-  } else {
-    SmallString<64> peanoOptBin(peanoDir);
-    sys::path::append(peanoOptBin, "bin", "opt");
-    SmallString<64> peanoLLCBin(peanoDir);
-    sys::path::append(peanoLLCBin, "bin", "llc");
+    Path peanoOptBin = peanoDir / "bin" / "opt";
+    Path peanoLLCBin = peanoDir / "bin" / "llc";
 
-    SmallString<64> OptLLVMIRFile(tempDir);
-    sys::path::append(OptLLVMIRFile, "input.opt.ll");
+    Path OptLLVMIRFile = tempDir / "input.opt.ll";
     if (!runTool(peanoOptBin,
                  {"-O2", "--inline-threshold=10", "-S", std::string(LLVMIRFile),
                   "--disable-builtin=memset", "-o", std::string(OptLLVMIRFile)},
@@ -999,7 +1000,7 @@ LogicalResult aie2xclbin(
     const std::string &peanoDir, const std::string &xclBinKernelID,
     const std::string &xclBinKernelName, const std::string &xclBinInstanceName,
     const std::string &amdAIEInstallDir, const std::string &InputXCLBin) {
-  PassManager pm(ctx, moduleOp.getOperationName());
+  PassManager pm(ctx, mlir::ModuleOp::getOperationName());
   applyConfigToPassManager(pm, printIRBeforeAll, printIRAfterAll,
                            printIRModuleScope, timing);
   // generateNPUInstructions
@@ -1028,12 +1029,11 @@ LogicalResult aie2xclbin(
     output->os() << llvm::format("%08X\n", w);
   output->keep();
 
-  SmallString<64> unifiedObj(tempDir);
-  sys::path::append(unifiedObj, "input.o");
-  if (failed(generateUnifiedObject(
-          ctx, moduleOp, std::string(unifiedObj), printIRBeforeAll,
-          printIRAfterAll, printIRModuleScope, timing, useChess, verbose,
-          tempDir, vitisDir, targetArch, peanoDir)))
+  Path unifiedObj = Path(tempDir) / "input.o";
+  if (failed(generateUnifiedObject(ctx, moduleOp, unifiedObj, printIRBeforeAll,
+                                   printIRAfterAll, printIRModuleScope, timing,
+                                   useChess, verbose, tempDir, vitisDir,
+                                   targetArch, peanoDir)))
     return moduleOp.emitOpError("Failed to generate unified object");
 
   if (failed(generateCoreElfFiles(moduleOp, unifiedObj, tempDir, useChess,
@@ -1044,7 +1044,7 @@ LogicalResult aie2xclbin(
                          printIRModuleScope, timing, tempDir)))
     return moduleOp.emitOpError("Failed to generate CDO");
 
-  if (failed(generateXCLBin(moduleOp, outputXCLBin, tempDir, xclBinKernelID,
+  if (failed(generateXCLBin(outputXCLBin, tempDir, xclBinKernelID,
                             xclBinKernelName, xclBinInstanceName,
                             amdAIEInstallDir, verbose, InputXCLBin)))
     return moduleOp.emitOpError("Failed to generate XCLBin");
