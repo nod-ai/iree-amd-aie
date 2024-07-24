@@ -617,4 +617,15 @@ int columns(const mlir::iree_compiler::AMDAIE::AMDAIEDeviceModel &deviceModel) {
                            stringifyAMDAIEDevice(deviceModel.device));
 }
 
+bool isShimTile(int col, int row, const AMDAIEDeviceModel &deviceModel) {
+  // this is wrong but it agrees with mlir-aie
+  // https://github.com/Xilinx/mlir-aie/blob/a1fb6509b6551aad75c67cb8e5995c431e50f041/include/aie/Dialect/AIE/IR/AIEOps.td#L99
+  if (deviceModel.device == AMDAIEDevice::xcvc1902 ||
+      deviceModel.device == AMDAIEDevice::xcve2302 ||
+      deviceModel.device == AMDAIEDevice::xcve2802)
+    return row == 0;
+  assert(isNPUDevice(deviceModel.device) && "expected NPU device");
+  return deviceModel.isShimTile(col, row);
+}
+
 }  // namespace MLIRAIELegacy

@@ -63,7 +63,7 @@ struct AMDAIEAssignBufferAddressesPassBasic : mlir::OperationPass<DeviceOp> {
       }
 
       int maxDataMemorySize;
-      if (tile.isMemTile())
+      if (deviceModel.isMemTile(tile.getCol(), tile.getRow()))
         maxDataMemorySize =
             deviceModel.getMemTileSize(tile.getCol(), tile.getRow());
       else
