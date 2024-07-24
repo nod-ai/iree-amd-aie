@@ -39,6 +39,9 @@ extern bool isLegalTileConnection(
     int srcChan, mlir::iree_compiler::AMDAIE::StrmSwPortType dstBundle,
     int dstChan,
     const mlir::iree_compiler::AMDAIE::AMDAIEDeviceModel &deviceModel);
+extern bool isShimTile(
+    int col, int row,
+    const mlir::iree_compiler::AMDAIE::AMDAIEDeviceModel &deviceModel);
 int rows(const mlir::iree_compiler::AMDAIE::AMDAIEDeviceModel &deviceModel);
 int columns(const mlir::iree_compiler::AMDAIE::AMDAIEDeviceModel &deviceModel);
 }  // namespace MLIRAIELegacy
@@ -228,12 +231,20 @@ bool AMDAIEDeviceModel::isShimNOCTile(uint8_t col, uint8_t row) const {
   return getTileType(col, row) == AMDAIETileType::SHIMNOC;
 }
 
+bool AMDAIEDeviceModel::isShimPLTile(uint8_t col, uint8_t row) const {
+  return getTileType(col, row) == AMDAIETileType::SHIMPL;
+}
+
 bool AMDAIEDeviceModel::isShimNOCorPLTile(uint8_t col, uint8_t row) const {
   return isShimNOCTile(col, row) || isShimPLTile(col, row);
 }
 
-bool AMDAIEDeviceModel::isShimPLTile(uint8_t col, uint8_t row) const {
-  return getTileType(col, row) == AMDAIETileType::SHIMPL;
+bool AMDAIEDeviceModel::isShimTile(uint8_t col, uint8_t row) const {
+  if (device == AMDAIEDevice::xcvc1902 || device == AMDAIEDevice::xcve2302 ||
+      device == AMDAIEDevice::xcve2802)
+    return MLIRAIELegacy::isShimTile(col, row, *this);
+  assert(isNPUDevice(device) && "expected NPU device");
+  return row == configPtr.ShimRowNum;
 }
 
 // TODO(max): these should be optionals instead of returning 0.
