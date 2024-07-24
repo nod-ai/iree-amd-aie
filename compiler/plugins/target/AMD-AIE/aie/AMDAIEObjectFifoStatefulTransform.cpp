@@ -143,8 +143,10 @@ bool requiresDMAs(ObjectFifoCreateOp createOp,
     AMDAIEDeviceModel deviceModel =
         getDeviceModel(static_cast<AMDAIEDevice>(device.getDevice()));
 
-    if ((a.isShimTile() && !b.isShimTile()) ||
-        (!a.isShimTile() && b.isShimTile()))
+    if ((deviceModel.isShimTile(a.getCol(), a.getRow()) &&
+         !deviceModel.isShimTile(b.getCol(), b.getRow())) ||
+        (!deviceModel.isShimTile(a.getCol(), a.getRow()) &&
+         deviceModel.isShimTile(b.getCol(), b.getRow())))
       return NONE;
 
     if ((deviceModel.isMemTile(a.getCol(), a.getRow()) &&
@@ -210,8 +212,12 @@ int findObjectFifoSize(DeviceOp &device, Value tile,
                        ObjectFifoCreateOp objFifo) {
   if (objFifo.size() == 0) return 0;
 
+  AMDAIEDeviceModel deviceModel =
+      getDeviceModel(static_cast<AMDAIEDevice>(device.getDevice()));
   // if memTile, size is equal to objFifo size
-  if (tile.getDefiningOp<TileOp>().isMemTile()) return objFifo.size();
+  TileOp tileOp = tile.getDefiningOp<TileOp>();
+  if (deviceModel.isMemTile(tileOp.getCol(), tileOp.getRow()))
+    return objFifo.size();
 
   int maxAcquire = 0;
   for (auto coreOp : make_filter_range(
@@ -788,7 +794,9 @@ void createBuffersAndLocks(
 
   size_t numElem = createOp.size();
   // if shimTile external buffers are collected from input code
-  if (!creationTile.isShimTile()) {
+  AMDAIEDeviceModel deviceModel =
+      getDeviceModel(static_cast<AMDAIEDevice>(device.getDevice()));
+  if (!deviceModel.isShimTile(creationTile.getCol(), creationTile.getRow())) {
     std::vector<BufferOp> buffers;
     // create as many locks as there are external buffers
     for (int ofElemIndex = 0; ofElemIndex < numElem; ofElemIndex++) {
@@ -811,7 +819,8 @@ void createBuffersAndLocks(
     objFifoLinks[*linkOp] = createOp;
   }
 
-  if (creationTile.isShimTile()) numElem = 0;
+  if (deviceModel.isShimTile(creationTile.getCol(), creationTile.getRow()))
+    numElem = 0;
 
   // create corresponding aie2 locks
   int prodLockID = lockAnalysis.getLockID(creationTile);
@@ -850,13 +859,16 @@ void createFlowsAndTileDMAs(
     const DenseMap<ObjectFifoCreateOp, std::vector<LockOp>> &locksPerFifo,
     const DenseMap<ObjectFifoLinkOp, ObjectFifoCreateOp> &objFifoLinks,
     const DenseMap<ObjectFifoCreateOp, std::vector<BufferOp>> &buffersPerFifo) {
-  auto createDMA = [&device, &builder, &locksPerFifo, &objFifoLinks,
-                    &buffersPerFifo](ObjectFifoCreateOp op,
-                                     DMAChannelDir channelDir, int channelIndex,
-                                     BDDimLayoutArrayAttr dims) {
-    if (op.getProducerTileOp().isShimTile())
+  AMDAIEDeviceModel deviceModel =
+      getDeviceModel(static_cast<AMDAIEDevice>(device.getDevice()));
+  auto createDMA = [&deviceModel, &device, &builder, &locksPerFifo,
+                    &objFifoLinks, &buffersPerFifo](
+                       ObjectFifoCreateOp op, DMAChannelDir channelDir,
+                       int channelIndex, BDDimLayoutArrayAttr dims) {
+    auto producerOp = op.getProducerTileOp();
+    if (deviceModel.isShimTile(producerOp.getCol(), producerOp.getRow()))
       return;
-    else if (op.getProducerTileOp().isMemTile())
+    else if (deviceModel.isMemTile(producerOp.getCol(), producerOp.getRow()))
       createMemTileDMA(device, builder, op, channelDir, channelIndex, dims,
                        objFifoLinks, buffersPerFifo, locksPerFifo);
     else
@@ -871,7 +883,8 @@ void createFlowsAndTileDMAs(
   // generate objectFifo allocation info
   OpBuilder::InsertionGuard g(builder);
   builder.setInsertionPoint(&device.getBody()->back());
-  if (producer.getProducerTileOp().isShimTile())
+  if (deviceModel.isShimTile(producer.getProducerTileOp().getCol(),
+                             producer.getProducerTileOp().getRow()))
     builder.create<ShimDMAAllocationOp>(
         builder.getUnknownLoc(), producer.getName(),
         static_cast<xilinx::AIE::DMAChannelDir>(producerChan.direction),
@@ -888,7 +901,8 @@ void createFlowsAndTileDMAs(
     // generate objectFifo allocation info
     OpBuilder::InsertionGuard gg(builder);
     builder.setInsertionPoint(&device.getBody()->back());
-    if (consumer.getProducerTileOp().isShimTile())
+    if (deviceModel.isShimTile(consumer.getProducerTileOp().getCol(),
+                               consumer.getProducerTileOp().getRow()))
       builder.create<ShimDMAAllocationOp>(
           builder.getUnknownLoc(), producer.getName(),
           static_cast<xilinx::AIE::DMAChannelDir>(consumerChan.direction),

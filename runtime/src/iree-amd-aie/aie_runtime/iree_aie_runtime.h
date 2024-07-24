@@ -169,6 +169,7 @@ struct AMDAIEDeviceModel {
   bool isShimNOCTile(uint8_t col, uint8_t row) const;
   bool isShimPLTile(uint8_t col, uint8_t row) const;
   bool isShimNOCorPLTile(uint8_t col, uint8_t row) const;
+  bool isShimTile(uint8_t col, uint8_t row) const;
 
   /// Retrieve a DMA properpty for the specified tile type.
   template <typename T>

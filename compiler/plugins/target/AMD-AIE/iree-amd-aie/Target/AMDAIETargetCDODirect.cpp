@@ -316,7 +316,7 @@ struct AIEControl {
   LogicalResult addAieElfsToCDO(DeviceOp &device, const StringRef workDirPath,
                                 bool aieSim) {
     for (auto tileOp : device.getOps<TileOp>())
-      if (tileOp.isShimNOCorPLTile()) {
+      if (deviceModel.isShimNOCorPLTile(tileOp.getCol(), tileOp.getRow())) {
         // Resets no needed with V2 kernel driver
       } else {
         int col = tileOp.colIndex();
@@ -343,7 +343,8 @@ struct AIEControl {
   LogicalResult addInitConfigToCDO(DeviceOp &device) {
     for (auto tileOp : device.getOps<TileOp>()) {
       auto tileLoc = XAie_TileLoc(tileOp.colIndex(), tileOp.rowIndex());
-      if (!tileOp.isShimTile() && tileOp.getCoreOp()) {
+      if (!deviceModel.isShimTile(tileOp.getCol(), tileOp.getRow()) &&
+          tileOp.getCoreOp()) {
         TRY_XAIE_API_EMIT_ERROR(tileOp, XAie_CoreReset, &deviceModel.devInst,
                                 tileLoc);
         TRY_XAIE_API_EMIT_ERROR(tileOp, XAie_CoreUnreset, &deviceModel.devInst,
@@ -520,7 +521,8 @@ struct AIEControl {
     // Start execution of all the cores.
     for (auto tileOp : device.getOps<TileOp>()) {
       auto tileLoc = XAie_TileLoc(tileOp.colIndex(), tileOp.rowIndex());
-      if (!tileOp.isShimTile() && tileOp.getCoreOp())
+      if (!deviceModel.isShimTile(tileOp.getCol(), tileOp.getRow()) &&
+          tileOp.getCoreOp())
         TRY_XAIE_API_EMIT_ERROR(device, XAie_CoreEnable, &deviceModel.devInst,
                                 tileLoc);
     }
