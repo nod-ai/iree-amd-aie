@@ -630,7 +630,7 @@ std::optional<std::map<PathEndPoint, SwitchSettings>> Router::findPaths(
 /// Transform outputs produced by the router into representations (structs) that
 /// directly map to stream switch configuration ops (soon-to-be aie-rt calls).
 /// Namely pairs of (switchbox, internal connections).
-std::vector<std::pair<SwitchBox, Connect>> emitConnections(
+std::map<SwitchBox, std::vector<Connect>> emitConnections(
     const std::map<PathEndPoint, SwitchSettings> &flowSolutions,
     const PathEndPoint &srcPoint, const AMDAIEDeviceModel &deviceModel) {
   auto srcBundle = srcPoint.port.bundle;
@@ -639,15 +639,14 @@ std::vector<std::pair<SwitchBox, Connect>> emitConnections(
   // the first sb isn't necessary here at all but it's just to agree with
   // ordering in mlir-aie tests (see
   // ConvertFlowsToInterconnect::matchAndRewrite).
-  std::vector<std::pair<SwitchBox, Connect>> connections;
+  std::map<SwitchBox, std::vector<Connect>> connections;
   auto addConnection = [&connections](const SwitchBox &currSb,
                                       StrmSwPortType inBundle, int inIndex,
                                       StrmSwPortType outBundle, int outIndex,
                                       Connect::Interconnect op, uint8_t col = 0,
                                       uint8_t row = 0) {
-    connections.emplace_back(
-        currSb, Connect(Port{inBundle, inIndex}, Port{outBundle, outIndex}, op,
-                        col, row));
+    connections[currSb].emplace_back(Port{inBundle, inIndex},
+                                     Port{outBundle, outIndex}, op, col, row);
   };
   SwitchSettings settings = flowSolutions.at(srcPoint);
   for (const auto &[curr, setting] : settings) {
@@ -655,33 +654,33 @@ std::vector<std::pair<SwitchBox, Connect>> emitConnections(
     // TODO: must reserve N3, N7, S2, S3 for DMA connections
     if (curr == srcSB && deviceModel.isShimNOCTile(srcSB.col, srcSB.row)) {
       // shim DMAs at start of flows
-      auto shimMuxOp = std::pair(Connect::Interconnect::shimMuxOp, srcSB.col);
+      auto SHIMMUX = std::pair(Connect::Interconnect::SHIMMUX, srcSB.col);
       if (srcBundle == StrmSwPortType::DMA) {
         // must be either DMA0 -> N3 or DMA1 -> N7
         shimCh = srcChannel == 0 ? 3 : 7;
         addConnection(curr, srcBundle, srcChannel, StrmSwPortType::NORTH,
-                      shimCh, shimMuxOp.first, shimMuxOp.second);
+                      shimCh, SHIMMUX.first, SHIMMUX.second);
       } else if (srcBundle == StrmSwPortType::NOC) {
         // must be NOC0/NOC1 -> N2/N3 or NOC2/NOC3 -> N6/N7
         shimCh = srcChannel >= 2 ? srcChannel + 4 : srcChannel + 2;
         addConnection(curr, srcBundle, srcChannel, StrmSwPortType::NORTH,
-                      shimCh, shimMuxOp.first, shimMuxOp.second);
+                      shimCh, SHIMMUX.first, SHIMMUX.second);
       }
     }
 
-    auto swOp =
-        std::make_tuple(Connect::Interconnect::swOp, curr.col, curr.row);
+    auto SWB =
+        std::make_tuple(Connect::Interconnect::SWB, curr.col, curr.row);
     for (const auto &[bundle, channel] : setting.dsts) {
       // handle special shim connectivity
       if (curr == srcSB &&
           deviceModel.isShimNOCorPLTile(srcSB.col, srcSB.row)) {
         addConnection(curr, StrmSwPortType::SOUTH, shimCh, bundle, channel,
-                      std::get<0>(swOp), std::get<1>(swOp), std::get<2>(swOp));
+                      std::get<0>(SWB), std::get<1>(SWB), std::get<2>(SWB));
       } else if (deviceModel.isShimNOCorPLTile(curr.col, curr.row) &&
                  (bundle == StrmSwPortType::DMA ||
                   bundle == StrmSwPortType::NOC)) {
-        auto shimMuxOp =
-            std::make_pair(Connect::Interconnect::shimMuxOp, curr.col);
+        auto SHIMMUX =
+            std::make_pair(Connect::Interconnect::SHIMMUX, curr.col);
         shimCh = channel;
         if (deviceModel.isShimNOCTile(curr.col, curr.row)) {
           // shim DMAs at end of flows
@@ -689,22 +688,22 @@ std::vector<std::pair<SwitchBox, Connect>> emitConnections(
             // must be either N2 -> DMA0 or N3 -> DMA1
             shimCh = channel == 0 ? 2 : 3;
             addConnection(curr, StrmSwPortType::NORTH, shimCh, bundle, channel,
-                          shimMuxOp.first, shimMuxOp.second);
+                          SHIMMUX.first, SHIMMUX.second);
           } else if (bundle == StrmSwPortType::NOC) {
             // must be either N2/3/4/5 -> NOC0/1/2/3
             shimCh = channel + 2;
             addConnection(curr, StrmSwPortType::NORTH, shimCh, bundle, channel,
-                          shimMuxOp.first, shimMuxOp.second);
+                          SHIMMUX.first, SHIMMUX.second);
           }
         }
         addConnection(curr, setting.src.bundle, setting.src.channel,
-                      StrmSwPortType::SOUTH, shimCh, std::get<0>(swOp),
-                      std::get<1>(swOp), std::get<2>(swOp));
+                      StrmSwPortType::SOUTH, shimCh, std::get<0>(SWB),
+                      std::get<1>(SWB), std::get<2>(SWB));
       } else {
         // otherwise, regular switchbox connection
         addConnection(curr, setting.src.bundle, setting.src.channel, bundle,
-                      channel, std::get<0>(swOp), std::get<1>(swOp),
-                      std::get<2>(swOp));
+                      channel, std::get<0>(SWB), std::get<1>(SWB),
+                      std::get<2>(SWB));
       }
     }
   }

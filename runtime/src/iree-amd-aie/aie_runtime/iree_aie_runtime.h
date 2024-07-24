@@ -130,6 +130,9 @@ static_assert(static_cast<uint8_t>(StrmSwPortType::SS_PORT_TYPE_MAX) ==
                   ::StrmSwPortType::SS_PORT_TYPE_MAX,
               "mlir::iree_compiler::AMDAIE::StrmSwPortType is out of sync with "
               "aie-rt's StrmSwPortType");
+inline ::StrmSwPortType strmTtoStrmT(StrmSwPortType t) {
+  return static_cast<::StrmSwPortType>(t);
+}
 
 /*
  * This struct is meant to be a thin wrapper around aie-rt, which provides

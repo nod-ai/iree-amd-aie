@@ -164,29 +164,31 @@ struct ConvertFlowsToInterconnect : OpConversionPattern<FlowOp> {
     DeviceOp device = flowOp->getParentOfType<DeviceOp>();
     AMDAIEDeviceModel deviceModel =
         getDeviceModel(static_cast<AMDAIEDevice>(device.getDevice()));
-    for (auto &[curr, conn] :
+    for (auto &[curr, conns] :
          emitConnections(flowSolutions, srcPe, deviceModel)) {
-      // create switchboxes eagerly just to agree with mlir-aie tests
       SwitchboxOp switchboxOp =
           getOrCreateSwitchbox(rewriter, device, curr.col, curr.row);
-      Operation *op;
-      switch (conn.interconnect) {
-        case Connect::Interconnect::shimMuxOp:
-          op = getOrCreateShimMux(rewriter, device, conn.col).getOperation();
-          break;
-        case Connect::Interconnect::swOp:
-          op = switchboxOp.getOperation();
-          break;
-        case Connect::Interconnect::nocare:
-          return flowOp->emitOpError("unsupported/unknown interconnect");
-      }
+      for (const auto &conn : conns) {
+        // create switchboxes eagerly just to agree with mlir-aie tests
+        Operation *op;
+        switch (conn.interconnect) {
+          case Connect::Interconnect::SHIMMUX:
+            op = getOrCreateShimMux(rewriter, device, conn.col).getOperation();
+            break;
+          case Connect::Interconnect::SWB:
+            op = switchboxOp.getOperation();
+            break;
+          case Connect::Interconnect::NOCARE:
+            return flowOp->emitOpError("unsupported/unknown interconnect");
+        }
 
-      Block &b = op->getRegion(0).front();
-      OpBuilder::InsertionGuard g(rewriter);
-      rewriter.setInsertionPoint(b.getTerminator());
-      rewriter.create<ConnectOp>(rewriter.getUnknownLoc(),
-                                 toWireB(conn.src.bundle), conn.src.channel,
-                                 toWireB(conn.dst.bundle), conn.dst.channel);
+        Block &b = op->getRegion(0).front();
+        OpBuilder::InsertionGuard g(rewriter);
+        rewriter.setInsertionPoint(b.getTerminator());
+        rewriter.create<ConnectOp>(rewriter.getUnknownLoc(),
+                                   toWireB(conn.src.bundle), conn.src.channel,
+                                   toWireB(conn.dst.bundle), conn.dst.channel);
+      }
     }
 
     const_cast<ConvertFlowsToInterconnect *>(this)->processedFlows.insert(
@@ -275,7 +277,7 @@ LogicalResult runOnPacketFlow(
             }
             Connect connect = {Port{setting.src.bundle, setting.src.channel},
                                Port{bundle, channel},
-                               Connect::Interconnect::nocare};
+                               Connect::Interconnect::NOCARE};
             ConnectionAndFlowIDT connFlow = {connect, flowID};
             switchboxes[currTile].insert(connFlow);
           }

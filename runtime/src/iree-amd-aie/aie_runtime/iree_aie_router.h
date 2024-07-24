@@ -30,17 +30,17 @@ struct Port {
 ASSERT_STANDARD_LAYOUT(Port);
 
 struct Connect {
-  enum class Interconnect { shimMuxOp, swOp, nocare };
+  enum class Interconnect { SHIMMUX, SWB, NOCARE };
   Port src;
   Port dst;
   Interconnect interconnect;
-  uint8_t col, row;
+  int16_t col, row;
 
   Connect(const Port &src, const Port &dst,
-          Interconnect interconnect = Interconnect::nocare, uint8_t col = 0,
-          uint8_t row = 0)
+          Interconnect interconnect = Interconnect::NOCARE, int16_t col = -1,
+          int16_t row = -1)
       : src(src), dst(dst), interconnect(interconnect), col(col), row(row) {}
-  using TupleType = std::tuple<Port, Port, Interconnect, uint8_t, uint8_t>;
+  using TupleType = std::tuple<Port, Port, Interconnect, int16_t, int16_t>;
   Connect(TupleType t)
       : Connect(std::get<0>(t), std::get<1>(t), std::get<2>(t), std::get<3>(t),
                 std::get<4>(t)) {}
@@ -104,7 +104,7 @@ struct Router {
       int maxIterations = 1000);
 };
 
-std::vector<std::pair<SwitchBox, Connect>> emitConnections(
+std::map<SwitchBox, std::vector<Connect>> emitConnections(
     const std::map<PathEndPoint, SwitchSettings> &flowSolutions,
     const PathEndPoint &srcPoint, const AMDAIEDeviceModel &targetModel);
 

@@ -494,16 +494,6 @@ struct AIEControl {
       }
     }
 
-    for (auto switchboxOp : device.getOps<ShimSwitchboxOp>()) {
-      Block &b = switchboxOp.getConnections().front();
-      auto tileLoc = XAie_TileLoc(switchboxOp.getCol(), 0);
-      for (auto connectOp : b.getOps<ConnectOp>())
-        TRY_XAIE_API_EMIT_ERROR(
-            switchboxOp, XAie_StrmConnCctEnable, &deviceModel.devInst, tileLoc,
-            toStrmT(connectOp.getSourceBundle()), connectOp.sourceIndex(),
-            toStrmT(connectOp.getDestBundle()), connectOp.destIndex());
-    }
-
     // Cascade configuration
     for (auto configOp : device.getOps<ConfigureCascadeOp>()) {
       TileOp tile = cast<TileOp>(configOp.getTile().getDefiningOp());
