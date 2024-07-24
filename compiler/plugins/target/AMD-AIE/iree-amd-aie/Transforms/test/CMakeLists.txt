@@ -71,4 +71,6 @@ iree_cc_test(
   DEPS
     gtest
     iree::target::amd-aie::Transforms
+    iree::compiler::Dialect::HAL::IR
+    iree::compiler::Dialect::HAL::IR::HALDialect
 )
