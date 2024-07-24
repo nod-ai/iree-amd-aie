@@ -119,6 +119,8 @@ LogicalResult AIETranslateToBCF(ModuleOp module, raw_ostream &output,
       if (tile.getCoreOp() && tile.getCoreOp().getLinkWith())
         output << "_include _file "
                << tile.getCoreOp().getLinkWith().value().str() << "\n";
+      // chess's libc expects a _main not a main (despite what me_basic.c looks
+      // like...)
       output << "_resolve _main core_" << tile.getCol() << "_" << tile.getRow()
              << "\n";
     }

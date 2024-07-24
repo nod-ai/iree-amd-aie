@@ -158,7 +158,7 @@ SECTIONS
         if (auto fileAttr = coreOp.getLinkWith())
           output << "INPUT(" << fileAttr.value().str() << ")\n";
 
-        output << "PROVIDE(_main = core_" << tile.getCol() << "_"
+        output << "PROVIDE(main = core_" << tile.getCol() << "_"
                << tile.getRow() << ");\n";
       }
     }
