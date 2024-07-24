@@ -11,6 +11,7 @@
 #include <ostream>
 #include <sstream>
 #include <tuple>
+#include <type_traits>
 
 #include "llvm/ADT/Twine.h"
 #include "llvm/Support/Debug.h"
@@ -48,6 +49,8 @@ struct TileLoc {
 
   TileLoc(int col, int row) : col(col), row(row) {}
   TileLoc() = delete;
+  // for std::transform
+  TileLoc& operator=(const TileLoc& t) = default;
   TileLoc(XAie_LocType loc) : col(loc.Col), row(loc.Row) {}
   operator XAie_LocType() const { return XAie_TileLoc(col, row); }
 
@@ -275,7 +278,8 @@ BOTH_OSTREAM_OPS_FORALL_TYPES(OSTREAM_OP_DECL, BOTH_OSTREAM_OP)
 template <typename H1>
 llvm::raw_ostream& showArgs(llvm::raw_ostream& out, const char* label,
                             H1&& value) {
-  if constexpr (std::is_pointer<H1>::value)
+  if constexpr (std::is_pointer_v<H1> ||
+                std::is_pointer_v<std::remove_reference_t<H1>>)
     return out << label << "=" << "ptr";
   else
     return out << label << "=" << std::forward<H1>(value);
@@ -285,7 +289,8 @@ template <typename H1, typename... T>
 llvm::raw_ostream& showArgs(llvm::raw_ostream& out, const char* label,
                             H1&& value, T&&... rest) {
   const char* pcomma = strchr(label, ',');
-  if constexpr (std::is_pointer<H1>::value)
+  if constexpr (std::is_pointer_v<H1> ||
+                std::is_pointer_v<std::remove_reference_t<H1>>)
     return showArgs(out.write(label, pcomma - label) << "=ptr,", pcomma + 1,
                     std::forward<T>(rest)...);
   else
@@ -305,6 +310,7 @@ static_assert(XAIE_OK == 0);
     LLVM_DEBUG(llvm::dbgs() << "XAIE API: " << #API << " with args: "); \
     LLVM_DEBUG(SHOW_ARGS(llvm::dbgs(), __VA_ARGS__));                   \
     LLVM_DEBUG(llvm::dbgs() << "\n");                                   \
+    LLVM_DEBUG(llvm::dbgs().flush());                                   \
     if (auto r = API(__VA_ARGS__))                                      \
       llvm::report_fatal_error(llvm::Twine(#API " failed with ") +      \
                                to_string(r));                           \
@@ -315,6 +321,7 @@ static_assert(XAIE_OK == 0);
     LLVM_DEBUG(llvm::dbgs() << "XAIE API: " << #API << " with args: "); \
     LLVM_DEBUG(SHOW_ARGS(llvm::dbgs(), __VA_ARGS__));                   \
     LLVM_DEBUG(llvm::dbgs() << "\n");                                   \
+    LLVM_DEBUG(llvm::dbgs().flush());                                   \
     if (auto r = API(__VA_ARGS__))                                      \
       return OP.emitOpError() << #API " failed with " << r;             \
   } while (0)
@@ -324,6 +331,7 @@ static_assert(XAIE_OK == 0);
     LLVM_DEBUG(llvm::dbgs() << "XAIE API: " << #API << " with args: "); \
     LLVM_DEBUG(SHOW_ARGS(llvm::dbgs(), __VA_ARGS__));                   \
     LLVM_DEBUG(llvm::dbgs() << "\n");                                   \
+    LLVM_DEBUG(llvm::dbgs().flush());                                   \
     if (auto r = API(__VA_ARGS__)) {                                    \
       llvm::errs() << #API " failed with " << r;                        \
       return failure();                                                 \
