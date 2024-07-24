@@ -8,8 +8,8 @@
 // CHECK:             %[[VAL_2:.*]] = aie.masterset(Core : 0, %[[VAL_0]])
 // CHECK:             %[[VAL_3:.*]] = aie.masterset(Core : 1, %[[VAL_0]], %[[VAL_1]])
 // CHECK:             aie.packet_rules(West : 0) {
-// CHECK:               aie.rule(31, 0, %[[VAL_0]])
-// CHECK:               aie.rule(31, 1, %[[VAL_1]])
+// CHECK-DAG:           aie.rule(31, 0, %[[VAL_0]])
+// CHECK-DAG:           aie.rule(31, 1, %[[VAL_1]])
 // CHECK:             }
 // CHECK:           }
 // CHECK:           aie.packet_flow(0) {

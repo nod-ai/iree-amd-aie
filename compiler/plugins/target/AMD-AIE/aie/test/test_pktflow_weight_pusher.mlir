@@ -63,13 +63,13 @@
 // CHECK:             %[[VAL_19:.*]] = aie.masterset(DMA : 1, %[[VAL_18]])
 // CHECK:             %[[VAL_20:.*]] = aie.masterset(South : 0, %[[VAL_16]])
 // CHECK:             %[[VAL_21:.*]] = aie.masterset(West : 0, %[[VAL_17]])
-// CHECK:             aie.packet_rules(North : 0) {
-// CHECK-DAG:           aie.rule(27, 0, %[[VAL_16]])
-// CHECK-DAG:           aie.rule(31, 5, %[[VAL_17]])
-// CHECK:             }
 // CHECK:             aie.packet_rules(East : 0) {
-// CHECK-DAG:           aie.rule(31, 9, %[[VAL_18]])
-// CHECK-DAG:           aie.rule(31, 8, %[[VAL_16]])
+// CHECK:               aie.rule(31, 8, %[[VAL_16]])
+// CHECK:               aie.rule(31, 9, %[[VAL_18]])
+// CHECK:             }
+// CHECK:             aie.packet_rules(North : 0) {
+// CHECK:               aie.rule(27, 0, %[[VAL_16]])
+// CHECK:               aie.rule(31, 5, %[[VAL_17]])
 // CHECK:             }
 // CHECK:           }
 // CHECK:           %[[TILE_5_3:.*]] = aie.tile(5, 3)
@@ -188,12 +188,12 @@
 // CHECK:             %[[VAL_65:.*]] = aie.amsel<0> (1)
 // CHECK:             %[[VAL_66:.*]] = aie.masterset(South : 0, %[[VAL_64]])
 // CHECK:             %[[VAL_67:.*]] = aie.masterset(West : 0, %[[VAL_65]])
-// CHECK:             aie.packet_rules(East : 0) {
-// CHECK-DAG:           aie.rule(26, 10, %[[VAL_65]])
-// CHECK:             }
 // CHECK:             aie.packet_rules(DMA : 0) {
-// CHECK-DAG:           aie.rule(24, 0, %[[VAL_64]])
-// CHECK-DAG:           aie.rule(24, 0, %[[VAL_65]])
+// CHECK:               aie.rule(24, 0, %[[VAL_64]])
+// CHECK:               aie.rule(24, 0, %[[VAL_65]])
+// CHECK:             }
+// CHECK:             aie.packet_rules(East : 0) {
+// CHECK:               aie.rule(26, 10, %[[VAL_65]])
 // CHECK:             }
 // CHECK:           }
 // CHECK:           %[[TILE_7_5:.*]] = aie.tile(7, 5)
