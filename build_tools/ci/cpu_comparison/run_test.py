@@ -1,11 +1,10 @@
 # Copyright 2024 The IREE Authors
 
-import sys
+import os
 import numpy as np
 import subprocess
-import os
-import urllib.request
 import sys
+import urllib.request
 from input_generator import generate_inputs, verify_determinism
 from output_comparer import compare
 
@@ -88,11 +87,14 @@ def run_script(script, verbose):
     )
     stdout, stderr = process.communicate()
     if verbose:
-        print("\nStandard output from script:")
-        print(stdout.decode())
-        print("\nStandard error from script:")
-        print(stderr.decode())
-        print("\n")
+        stdout_decode = stdout.decode()
+        stderr_decode = stderr.decode()
+        if stdout_decode:
+            print("Standard output from script:")
+            print(stdout.decode())
+        if stderr_decode:
+            print("Standard error from script:")
+            print(stderr_decode)
     if process.returncode != 0:
         raise RuntimeError(
             f"Error executing script, error code was {process.returncode}"
@@ -160,26 +162,19 @@ def generate_aie_output(
     reset_npu_script = config.reset_npu_script
 
     script = f"""
-  # Fail on any error and print commands being run:
-  set -ex
+set -ex
+source {xrt_dir}/setup.sh
+cd {output_dir}
 
-  # Source XRT setup script
-  source {xrt_dir}/setup.sh
+# Reset NPU (only in CI to facilitate testing without sudo access).
+if [ "{github_actions}" = true ]; then
+  bash {reset_npu_script}
+fi
 
-  # Get ready
-  cd {output_dir}
+{iree_compile_exe} {test_file} {compilation_flags}
 
-  # Reset NPU (only in CI to facilitate testing without sudo access).
-  if [ "{github_actions}" = true ]; then
-    bash {reset_npu_script}
-  fi
-
-  # Compile
-  {iree_compile_exe} {test_file} {compilation_flags}
-
-  # Run
-  {iree_run_exe} --module={aie_vmfb} {input_flags} \
-          --device=xrt --output=@{aie_npy} {function_line}
+{iree_run_exe} --module={aie_vmfb} {input_flags} \
+        --device=xrt --output=@{aie_npy} {function_line}
     """
 
     # Replace all '$' symbols with '\$' to avoid bash expansion
@@ -214,19 +209,16 @@ def generate_llvm_cpu_output(
         function_line = f"--function={function_name}"
 
     script = f"""
-  # Fail on any error and print commands being run:
-  set -ex
-  cd {output_dir}
- 
-  # Source XRT setup script
-  source {xrt_dir}/setup.sh
- 
-  # Compile
-  {iree_compile_exe} {test_file} {compilation_flags}
- 
-  # Run
-  {iree_run_exe} --module={cpu_vmfb} {input_flags} \
-          --output=@{cpu_npy} {function_line}
+set -ex
+cd {output_dir}
+source {xrt_dir}/setup.sh
+
+# Compile
+{iree_compile_exe} {test_file} {compilation_flags}
+
+# Run
+{iree_run_exe} --module={cpu_vmfb} {input_flags} \
+        --output=@{cpu_npy} {function_line}
     """
 
     # Replace all '$' symbols with '\$' to avoid bash expansion
@@ -254,6 +246,7 @@ class TestConfig:
         verbose,
         return_on_fail,
     ):
+
         self.output_dir = output_dir
         self.iree_install_dir = iree_install_dir
         self.peano_dir = peano_dir
@@ -267,6 +260,66 @@ class TestConfig:
         file_parent_dir = os.path.dirname(file_dir)
         self.reset_npu_script = os.path.join(file_parent_dir, "reset_npu.sh")
 
+        # Try get the xrt and (linux) kernel versions.
+        self.kernel_version = "undetermined"
+        self.xrt_release = "undetermined"
+        self.xrt_hash_date = "undetermined"
+        xrt_bin_dir = os.path.join(xrt_dir, "bin")
+        xrt_smi_exe = os.path.join(xrt_bin_dir, "xrt-smi")
+        if not os.path.isfile(xrt_smi_exe):
+            xrt_smi_exe = os.path.join(xrt_bin_dir, "xbutil")
+        if not os.path.isfile(xrt_smi_exe):
+            raise RuntimeError(f"Neither xrt-smi nor xbutil found in {xrt_bin_dir}")
+
+        # Get the string output of the xrt-smi 'examine' command. Expect the
+        # string to look something like:
+        #
+        # ```
+        # System Configuration
+        # OS Name              : Linux
+        # Release              : 6.9.1-20240521t190425.46e42a4
+        # ...
+        #
+        # XRT
+        # Version              : 2.18.71
+        # Hash Date            : 2024-07-08 20:13:41
+        # ...
+        # ```
+        #
+        xrt_smi_output = subprocess.check_output([xrt_smi_exe, "examine"]).decode(
+            "utf-8"
+        )
+
+        # Try find the entries of the lines starting Release, Version, and
+        # Hash Date
+        xrt_smi_lines = xrt_smi_output.split("\n")
+        for line in xrt_smi_lines:
+            line = line.strip()
+            if line.startswith("Release"):
+                self.xrt_release = line.split(":")[1].strip()
+            if line.startswith("Version"):
+                self.kernel_version = line.split(":")[1].strip()
+            if line.startswith("Hash Date"):
+                self.xrt_hash_date = line.split(":")[1].strip()
+
+        # Try get the peano version. If installed via a wheel,
+        # there's a good chance there's a directory of
+        # of the form "llvm_aie-18.0.0.2024071901+ff089e9d.dist-info"
+        # Try get the version from this directory name:
+        self.peano_version = "undetermined"
+        peano_dir_parent = os.path.dirname(peano_dir)
+        peano_dir_parent_files = os.listdir(peano_dir_parent)
+        potentials = []
+        for directory in peano_dir_parent_files:
+            if os.path.isdir(
+                os.path.join(peano_dir_parent, directory)
+            ) and directory.startswith("llvm_aie-"):
+                potentials.append(directory)
+        if len(potentials) == 1:
+            self.peano_version = "maybe " + potentials[0].replace(
+                "llvm_aie-", ""
+            ).replace(".dist-info", "")
+
         # Populated at runtime
         self.failures = []
 
@@ -277,19 +330,45 @@ class TestConfig:
 
     def __str__(self):
         return f"""
-Settings used in all tests
-==========================
-xrt_dir:          {self.xrt_dir}
-verbose:          {self.verbose}
+Settings and versions used in all tests
+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-
 file_dir:         {self.file_dir}
-peano_dir:        {self.peano_dir}
-vitis_dir:        {self.vitis_dir}
-output_dir:       {self.output_dir}
-iree_run_exe:     {self.iree_run_exe}
-return_on_fail:   {self.return_on_fail}
-iree_install_dir: {self.iree_install_dir}
-reset_npu_script: {self.reset_npu_script}
 iree_compile_exe: {self.iree_compile_exe}
+iree_install_dir: {self.iree_install_dir}
+iree_run_exe:     {self.iree_run_exe}
+kernel_version:   {self.kernel_version}
+output_dir:       {self.output_dir}
+peano_version:    {self.peano_version}
+peano_dir:        {self.peano_dir}
+reset_npu_script: {self.reset_npu_script}
+return_on_fail:   {self.return_on_fail}
+verbose:          {self.verbose}
+vitis_dir:        {self.vitis_dir}
+xrt_dir:          {self.xrt_dir}
+xrt_hash_date:    {self.xrt_hash_date}
+xrt_release:      {self.xrt_release}
+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-
+
+Some information on the above settings / versions
+=================================================
+file_dir
+  The directory of this script
+iree_compile_exe
+  The path to the IREE compiler executable used to compile for both
+  AIE and CPU backends
+kernel_version
+  The version of the linux kernel. We try to get this by running
+  'xrt_smi examine' or 'xbutil examine'
+peano_version
+  The version of peano (llvm-aie). We try to get this by looking
+  for a 'dist-info' directory which carries a wheel's date. This is
+  just a hint, and it's not guaranteed to be correct. This is not
+  used in the tests, but included here as it might be useful for debugging.
+xrt_hash_date
+  Information obtained from 'xrt_smi examine' or 'xbutil examine' about
+  the version of XRT. This is not used in the tests, but included here
+  just to help in debugging.
+=================================================
         """
 
     def __repr__(self):
