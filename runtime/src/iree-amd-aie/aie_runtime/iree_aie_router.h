@@ -30,15 +30,14 @@ struct Port {
 ASSERT_STANDARD_LAYOUT(Port);
 
 struct Connect {
-  enum class Interconnect { shimMuxOp, swOp, nocare };
+  enum class Interconnect { SHIMMUX, SWB, NOCARE };
   Port src;
   Port dst;
   Interconnect interconnect;
   uint8_t col, row;
 
-  Connect(const Port &src, const Port &dst,
-          Interconnect interconnect = Interconnect::nocare, uint8_t col = 0,
-          uint8_t row = 0)
+  Connect(const Port &src, const Port &dst, Interconnect interconnect,
+          uint8_t col, uint8_t row)
       : src(src), dst(dst), interconnect(interconnect), col(col), row(row) {}
   using TupleType = std::tuple<Port, Port, Interconnect, uint8_t, uint8_t>;
   Connect(TupleType t)
@@ -104,7 +103,7 @@ struct Router {
       int maxIterations = 1000);
 };
 
-std::vector<std::pair<SwitchBox, Connect>> emitConnections(
+std::map<SwitchBox, std::vector<Connect>> emitConnections(
     const std::map<PathEndPoint, SwitchSettings> &flowSolutions,
     const PathEndPoint &srcPoint, const AMDAIEDeviceModel &targetModel);
 
@@ -134,18 +133,18 @@ struct PhysPortAndID {
 };
 
 // A map from a switchbox output (physical) port to the number of that port.
-using MasterSetsT = DenseMap<PhysPort, SmallVector<int>>;
-using SlaveGroupsT = SmallVector<SmallVector<PhysPortAndID>>;
-using SlaveMasksT = DenseMap<PhysPortAndID, int>;
-using SlaveAMSelsT = DenseMap<PhysPortAndID, int>;
+using MasterSetsT = std::map<PhysPort, std::vector<int>>;
+using SlaveGroupsT = std::vector<std::vector<PhysPortAndID>>;
+using SlaveMasksT = std::map<PhysPortAndID, int>;
+using SlaveAMSelsT = std::map<PhysPortAndID, int>;
 using ConnectionAndFlowIDT = std::pair<Connect, int>;
 using SwitchBoxToConnectionFlowIDT =
-    DenseMap<TileLoc, DenseSet<ConnectionAndFlowIDT>>;
+    std::map<TileLoc, DenseSet<ConnectionAndFlowIDT>>;
 
 std::tuple<MasterSetsT, SlaveGroupsT, SlaveMasksT, SlaveAMSelsT>
 emitPacketRoutingConfiguration(int numMsels, int numArbiters,
                                const SwitchBoxToConnectionFlowIDT &switchboxes,
-                               const SmallVector<TileLoc> &tiles);
+                               const std::vector<TileLoc> &tiles);
 
 /// ============================= BEGIN ==================================
 /// ================== stringification utils =============================

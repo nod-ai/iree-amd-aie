@@ -43,8 +43,9 @@ int main(int argc, char **argv) {
   auto moduleOp = llvm::cast<ModuleOp>(
       mlir::parseSourceFile(mlirAbsPath, parserConfig).release());
   llvm::DebugFlag = true;
-  const char *debugTypes[2] = {"aie-generate-cdo", "iree-aie-runtime"};
-  llvm::setCurrentDebugTypes(debugTypes, 2);
+  const char *debugTypes[3] = {"aie-generate-cdo", "iree-aie-runtime",
+                               "iree-aie-cdo-emitter"};
+  llvm::setCurrentDebugTypes(debugTypes, 3);
   auto status = AIETranslateToCDODirect(moduleOp, workDir, false, false, false);
   std::vector<std::string> diagnostics;
   ScopedDiagnosticHandler handler(moduleOp.getContext(), [&](Diagnostic &d) {

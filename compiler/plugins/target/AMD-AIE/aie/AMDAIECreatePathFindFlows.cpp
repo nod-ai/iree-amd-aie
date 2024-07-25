@@ -164,29 +164,31 @@ struct ConvertFlowsToInterconnect : OpConversionPattern<FlowOp> {
     DeviceOp device = flowOp->getParentOfType<DeviceOp>();
     AMDAIEDeviceModel deviceModel =
         getDeviceModel(static_cast<AMDAIEDevice>(device.getDevice()));
-    for (auto &[curr, conn] :
+    for (auto &[curr, conns] :
          emitConnections(flowSolutions, srcPe, deviceModel)) {
-      // create switchboxes eagerly just to agree with mlir-aie tests
       SwitchboxOp switchboxOp =
           getOrCreateSwitchbox(rewriter, device, curr.col, curr.row);
-      Operation *op;
-      switch (conn.interconnect) {
-        case Connect::Interconnect::shimMuxOp:
-          op = getOrCreateShimMux(rewriter, device, conn.col).getOperation();
-          break;
-        case Connect::Interconnect::swOp:
-          op = switchboxOp.getOperation();
-          break;
-        case Connect::Interconnect::nocare:
-          return flowOp->emitOpError("unsupported/unknown interconnect");
-      }
+      for (const auto &conn : conns) {
+        // create switchboxes eagerly just to agree with mlir-aie tests
+        Operation *op;
+        switch (conn.interconnect) {
+          case Connect::Interconnect::SHIMMUX:
+            op = getOrCreateShimMux(rewriter, device, conn.col).getOperation();
+            break;
+          case Connect::Interconnect::SWB:
+            op = switchboxOp.getOperation();
+            break;
+          case Connect::Interconnect::NOCARE:
+            return flowOp->emitOpError("unsupported/unknown interconnect");
+        }
 
-      Block &b = op->getRegion(0).front();
-      OpBuilder::InsertionGuard g(rewriter);
-      rewriter.setInsertionPoint(b.getTerminator());
-      rewriter.create<ConnectOp>(rewriter.getUnknownLoc(),
-                                 toWireB(conn.src.bundle), conn.src.channel,
-                                 toWireB(conn.dst.bundle), conn.dst.channel);
+        Block &b = op->getRegion(0).front();
+        OpBuilder::InsertionGuard g(rewriter);
+        rewriter.setInsertionPoint(b.getTerminator());
+        rewriter.create<ConnectOp>(rewriter.getUnknownLoc(),
+                                   toWireB(conn.src.bundle), conn.src.channel,
+                                   toWireB(conn.dst.bundle), conn.dst.channel);
+      }
     }
 
     const_cast<ConvertFlowsToInterconnect *>(this)->processedFlows.insert(
@@ -275,7 +277,9 @@ LogicalResult runOnPacketFlow(
             }
             Connect connect = {Port{setting.src.bundle, setting.src.channel},
                                Port{bundle, channel},
-                               Connect::Interconnect::nocare};
+                               Connect::Interconnect::NOCARE,
+                               static_cast<uint8_t>(currTile.col),
+                               static_cast<uint8_t>(currTile.row)};
             ConnectionAndFlowIDT connFlow = {connect, flowID};
             switchboxes[currTile].insert(connFlow);
           }
@@ -288,12 +292,14 @@ LogicalResult runOnPacketFlow(
       tiles, [](const llvm::detail::DenseMapPair<TileLoc, Operation *> &p) {
         return p.getFirst();
       });
+  // TODO(max): faster/smoother way to do this?
+  std::vector<TileLoc> tilesVec(tileLocs.begin(), tileLocs.end());
 
   int numMsels = 4;
   int numArbiters = 6;
   auto [masterSets, slaveGroups, slaveMasks, slaveAMSels] =
       emitPacketRoutingConfiguration(numMsels, numArbiters, switchboxes,
-                                     tileLocs);
+                                     tilesVec);
 
   // Realize the routes in MLIR
   for (auto &[tileLoc, tileOp] : tiles) {
@@ -331,8 +337,8 @@ LogicalResult runOnPacketFlow(
     // Sort them so we get a reasonable order
     std::sort(tileMasters.begin(), tileMasters.end());
     for (Port tileMaster : tileMasters) {
-      SmallVector<int> msels = masterSets[{tileLoc, tileMaster}];
-      SmallVector<Value> amsels;
+      std::vector<int> msels = masterSets[{tileLoc, tileMaster}];
+      std::vector<Value> amsels;
       for (int msel : msels) {
         assert(amselOps.count(msel) == 1 && "expected msel in amselOps");
         amsels.push_back(amselOps[msel]);
@@ -346,26 +352,25 @@ LogicalResult runOnPacketFlow(
 
     // Generate the packet rules
     DenseMap<Port, PacketRulesOp> slaveRules;
-    for (SmallVector<PhysPortAndID> group : slaveGroups) {
+    for (std::vector<PhysPortAndID> group : slaveGroups) {
       builder.setInsertionPoint(b.getTerminator());
-      PhysPort physPort = group.front().physPort;
+      PhysPortAndID physPortAndId = group.front();
+      PhysPort physPort = physPortAndId.physPort;
       if (tileLoc != physPort.tileLoc) continue;
       Port slave = physPort.port;
-      StrmSwPortType bundle = slave.bundle;
-      int channel = slave.channel;
-      int mask = slaveMasks[group.front()];
-      int ID = group.front().id & mask;
+      int mask = slaveMasks[physPortAndId];
+      int ID = physPortAndId.id & mask;
 
 #ifndef NDEBUG
       // Verify that we actually map all the ID's correctly.
       for (PhysPortAndID _slave : group) assert((_slave.id & mask) == ID);
 #endif
 
-      Value amsel = amselOps[slaveAMSels[group.front()]];
+      Value amsel = amselOps[slaveAMSels[physPortAndId]];
       PacketRulesOp packetrules;
       if (slaveRules.count(slave) == 0) {
-        packetrules = builder.create<PacketRulesOp>(builder.getUnknownLoc(),
-                                                    toWireB(bundle), channel);
+        packetrules = builder.create<PacketRulesOp>(
+            builder.getUnknownLoc(), toWireB(slave.bundle), slave.channel);
         PacketRulesOp::ensureTerminator(packetrules.getRules(), builder,
                                         builder.getUnknownLoc());
         slaveRules[slave] = packetrules;
