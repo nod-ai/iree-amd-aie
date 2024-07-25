@@ -10,6 +10,7 @@
 #include "iree-amd-aie/Transforms/AMDAIEUtils.h"
 #include "iree/compiler/Codegen/Dialect/Codegen/IR/IREECodegenAttrs.h"
 #include "iree/compiler/Codegen/Utils/CPUUtils.h"
+#include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/MemRef/Transforms/Transforms.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
@@ -465,6 +466,51 @@ static LogicalResult setRootConfigForConvDecomposePipeline(
     tileSizeLevel0 = {0, OC, 4, OW, 0, 0, 0};
     tileSizeLevel1 = {1, OC, 1, OW, 0, 0, 0};
     tileSizeLevel2 = {0, 0, 0, 0, IC, 1, 1};
+  } else if (isa<linalg::DepthwiseConv2DNhwcHwcOp>(linalgOp)) {
+    // Notes:
+    // =====
+    // Below we target a 4x4 array of AIE cores.
+    //
+    // An inherent property of depthwise convolutions is that they cannot be
+    // expressed in terms of matmuls, unlike the above (dense) conv-2ds. The
+    // tile sizes we choose below are therefore not constrained by the AIE
+    // matmul instructions.
+    //
+    // The logic is currently fragile, and there are no guardrails: there are
+    // no checks that the data tiles are not too large, or that the input
+    // dimensions are perfectly tiled by the hard-coded tile dimensions below.
+    // These will be done as a follow-up task.
+
+    // Outer most scf.forall tiling. Defines the sizes of data tiles in L2
+    // (shared memory). Specifically, with the values selected below
+    // - the output data has 4 x 4 x 16 elements.
+    // - the input data has 4 x (4 + kh) x (1 + kw) x 16 elements
+    // - the kernel has kh x kw x 16 elements.
+    // TODO(newling)
+    // 1) check that the output tile perfectly tiles the input image
+    // 2) check that the sum of the L2 (memtile) allocations is within memory
+    //    budget
+    tileSizeLevel0 = {
+        /* N */ 1,        /* output height */ 4, /* output width */ 4,
+        /* channel */ 16, /* kernel width */ 0,  /* kernel height */ 0};
+
+    // Inner-most scf.forall tiling. The iteration space corresponds to
+    // individual AIE cores.
+    tileSizeLevel1 = {
+        /* N */ 0,       /* output height */ 1, /* output width */ 0,
+        /* channel */ 4, /* kernel width */ 0,  /* kernel height */ 0};
+
+    // The scf.for loops that each core runs. The inner-most scf.for loop
+    // contains L1 allocations, which are copied to L2 at every iteration
+    // of the inner-most scf.for loop. These tile sizes define L1 allocation
+    // sizes. With the current design, we iterate over all kh x kw dimension,
+    // and perform a elementwise multiplication between a 4x4 tensor (from the
+    // input image) and a vector of size 4 (broadcast to 4x4).
+    tileSizeLevel2 = {
+        /* N */ 0,       /* output height */ 0, /* output width */ 0,
+        /* channel */ 0, /* kernel width */ 1,  /* kernel height */ 1};
+  } else {
+    assert(false && "Support must be added for this convolution op");
   }
   TileSizesListType tileSizes = {tileSizeLevel0, tileSizeLevel1,
                                  tileSizeLevel2};
@@ -641,9 +687,10 @@ static LogicalResult setRootConfigImpl(mlir::FunctionOpInterface entryPointFn,
         // add support for them, this way we can verify our work.
         // TODO (vivian): add support for other conv interface ops
         .Case<linalg::Conv2DNhwcHwcfOp, linalg::Conv2DNchwFchwOp,
-              linalg::Conv2DNhwcHwcfQOp>([&](auto op) {
-          return setConvRootConfig(entryPointFn, op, passPipeline, cfg);
-        })
+              linalg::Conv2DNhwcHwcfQOp, linalg::DepthwiseConv2DNhwcHwcOp>(
+            [&](auto op) {
+              return setConvRootConfig(entryPointFn, op, passPipeline, cfg);
+            })
         .Case<linalg::GenericOp>([&](auto op) {
           return setRootConfig(entryPointFn, op, passPipeline, cfg);
         })
