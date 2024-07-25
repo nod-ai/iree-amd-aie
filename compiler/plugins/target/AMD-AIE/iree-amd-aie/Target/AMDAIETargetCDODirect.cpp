@@ -88,7 +88,7 @@ StrmSwPortType toStrmT(WireBundle w) {
       llvm::report_fatal_error("unhandled WireBundle");
   }
 }
-auto ps = std::filesystem::path::preferred_separator;
+
 mlir::iree_compiler::AMDAIE::StrmSwPortType toAMDAIEStrmT(WireBundle w) {
   using mlir::iree_compiler::AMDAIE::StrmSwPortType;
   switch (w) {
@@ -138,7 +138,8 @@ mlir::iree_compiler::AMDAIE::Cascade::Direction toDir(CascadeDir dir) {
 namespace mlir::iree_compiler::AMDAIE {
 LogicalResult configureLocksAndBd(Block &block, const TileLoc &tileLoc,
                                   const AMDAIEDeviceModel &deviceModel) {
-  LLVM_DEBUG(llvm::dbgs() << "\nstart configuring bds\n");
+  FailureOr<XAie_DmaDesc> dmaTileBd = initDMADesc(deviceModel, tileLoc);
+  if (failed(dmaTileBd)) return failure();
   if (!block.getOps<UseLockOp>().empty()) {
     std::optional<int> acqValue, relValue, acqLockId, relLockId;
     bool acqEn;
@@ -165,8 +166,9 @@ LogicalResult configureLocksAndBd(Block &block, const TileLoc &tileLoc,
     }
     assert(acqValue && relValue && acqLockId && relLockId &&
            "expected both use_lock(acquire) and use_lock(release) with bd");
-    if (failed(configureLocksInBdBlock(deviceModel, tileLoc, acqValue, relValue,
-                                       acqLockId, relLockId, acqEn))) {
+    if (failed(configureLocksInBdBlock(deviceModel, dmaTileBd.value(), tileLoc,
+                                       acqValue, relValue, acqLockId, relLockId,
+                                       acqEn))) {
       return failure();
     }
   }
@@ -205,7 +207,8 @@ LogicalResult configureLocksAndBd(Block &block, const TileLoc &tileLoc,
     }
   }
   if (failed(configureBdInBlock(
-          deviceModel, tileLoc, static_cast<uint8_t>(*bdOp.getBdId()),
+          deviceModel, dmaTileBd.value(), tileLoc,
+          static_cast<uint8_t>(*bdOp.getBdId()),
           bdOp.getNextBdId().has_value()
               ? std::optional<uint8_t>{static_cast<uint8_t>(
                     *bdOp.getNextBdId())}
@@ -215,7 +218,6 @@ LogicalResult configureLocksAndBd(Block &block, const TileLoc &tileLoc,
           maybeDims, maybePadDims))) {
     return failure();
   }
-  LLVM_DEBUG(llvm::dbgs() << "\nend configuring bds\n");
   return success();
 }
 
@@ -250,7 +252,7 @@ LogicalResult addInitConfigToCDO(const AMDAIEDeviceModel &deviceModel,
   }
 
   // Set locks with explicit initializers
-  auto r = device.walk<WalkOrder::PreOrder>([&](LockOp lockOp) {
+  WalkResult r = device.walk<WalkOrder::PreOrder>([&](LockOp lockOp) {
     if (lockOp.getLockID() && lockOp.getInit()) {
       TileLoc tileLoc = {lockOp.getTileOp().getCol(),
                          lockOp.getTileOp().getRow()};
@@ -286,9 +288,8 @@ LogicalResult addInitConfigToCDO(const AMDAIEDeviceModel &deviceModel,
         auto channelDir = op.getChannelDir();
         if (failed(pushToBdQueueAndEnable(
                 deviceModel, tileLoc, chNum,
-                static_cast<mlir::iree_compiler::AMDAIE::DMAChannelDir>(
-                    channelDir),
-                bd.getBdId().value(), op.getRepeatCount())))
+                static_cast<DMAChannelDir>(channelDir), bd.getBdId().value(),
+                op.getRepeatCount())))
           return failure();
       }
     }
@@ -303,7 +304,7 @@ LogicalResult addInitConfigToCDO(const AMDAIEDeviceModel &deviceModel,
                                  connectOp.getSourceChannel()},
                             Port{toAMDAIEStrmT(connectOp.getDestBundle()),
                                  connectOp.getDestChannel()},
-                            Connect::Interconnect::SWB);
+                            Connect::Interconnect::SWB, swb.col, swb.row);
     }
     if (failed(configureStreamSwitch(deviceModel, swb, connects))) {
       return failure();
@@ -351,7 +352,7 @@ LogicalResult addInitConfigToCDO(const AMDAIEDeviceModel &deviceModel,
                                  connectOp.getSourceChannel()},
                             Port{toAMDAIEStrmT(connectOp.getDestBundle()),
                                  connectOp.getDestChannel()},
-                            Connect::Interconnect::SHIMMUX);
+                            Connect::Interconnect::SHIMMUX, swb.col, swb.row);
     }
     if (failed(configureStreamSwitch(deviceModel, swb, connects))) {
       return failure();
@@ -375,7 +376,9 @@ LogicalResult addCoreEnableToCDO(const AMDAIEDeviceModel &deviceModel,
   // Start execution of all the cores.
   for (auto tileOp : device.getOps<TileOp>()) {
     TileLoc tileLoc = {tileOp.getCol(), tileOp.getRow()};
-    if (failed(coreEnable(deviceModel, tileLoc))) return failure();
+    if (auto coreOp = tileOp.getCoreOp();
+        coreOp && failed(coreEnable(deviceModel, tileLoc)))
+      return failure();
   }
   return success();
 }
@@ -414,8 +417,8 @@ LogicalResult AIETranslateToCDODirect(ModuleOp m, llvm::StringRef workDirPath,
   assert(llvm::range_size(devOps) == 1 &&
          "only exactly 1 device op supported.");
   DeviceOp device = *devOps.begin();
-  AMDAIEDeviceModel deviceModel = mlir::iree_compiler::AMDAIE::getDeviceModel(
-      static_cast<AMDAIEDevice>(device.getDevice()));
+  AMDAIEDeviceModel deviceModel =
+      AMDAIE::getDeviceModel(static_cast<AMDAIEDevice>(device.getDevice()));
   byte_ordering endianness =
       bigEndian ? byte_ordering::Big_Endian : byte_ordering::Little_Endian;
   DEBUG_WITH_TYPE("aie-cdo-driver-debug", cdoDebug = true);

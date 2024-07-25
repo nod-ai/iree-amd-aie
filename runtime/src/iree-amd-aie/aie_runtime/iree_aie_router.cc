@@ -132,7 +132,7 @@ SwitchBoxNode::SwitchBoxNode(int col, int row, int id,
     }
   }
 
-  DenseSet<StrmSwPortType> shimBundles = {StrmSwPortType::DMA,
+  std::set<StrmSwPortType> shimBundles = {StrmSwPortType::DMA,
                                           StrmSwPortType::NOC};
   connectionMatrix.resize(
       inPortId, std::vector<Connectivity>(outPortId, Connectivity::AVAILABLE));
@@ -149,8 +149,8 @@ SwitchBoxNode::SwitchBoxNode(int col, int row, int id,
       if (deviceModel.isShimNOCorPLTile(col, row)) {
         // TODO(max): investigate copy-pasted todo; wordaround for shimMux,
         // todo: integrate shimMux into routable grid
-        if (shimBundles.contains(inPort.bundle) ||
-            shimBundles.contains(outPort.bundle)) {
+        if (shimBundles.count(inPort.bundle) ||
+            shimBundles.count(outPort.bundle)) {
           connectionMatrix[inId][outId] = Connectivity::AVAILABLE;
         }
       }
@@ -517,7 +517,7 @@ std::optional<std::map<PathEndPoint, SwitchSettings>> Router::findPaths(
       switchSettings.emplace(src.sb, SwitchSetting{src.port, {}});
       processed.insert(&src.sb);
       // track destination ports used by src.sb
-      DenseSet<Port> srcDestPorts;
+      std::set<Port> srcDestPorts;
       for (const PathEndPointNode &endPoint : dsts) {
         SwitchBoxNode *curr = &endPoint.sb;
         assert(curr && "endpoint has no source switchbox");
@@ -605,7 +605,7 @@ std::optional<std::map<PathEndPoint, SwitchSettings>> Router::findPaths(
 
           // allocation may fail, as we start from the dest of flow while
           // src.port is not chosen by router
-          if (*curr == src.sb && !srcDestPorts.contains(lastDestPort)) {
+          if (*curr == src.sb && !srcDestPorts.count(lastDestPort)) {
             if (!src.sb.allocate(src.port, lastDestPort, isPkt)) {
               isLegal = false;
               overCapacity[ch]++;
@@ -654,33 +654,31 @@ std::map<SwitchBox, std::vector<Connect>> emitConnections(
     // TODO: must reserve N3, N7, S2, S3 for DMA connections
     if (curr == srcSB && deviceModel.isShimNOCTile(srcSB.col, srcSB.row)) {
       // shim DMAs at start of flows
-      auto SHIMMUX = std::pair(Connect::Interconnect::SHIMMUX, srcSB.col);
+      auto shimMux = std::pair(Connect::Interconnect::SHIMMUX, srcSB.col);
       if (srcBundle == StrmSwPortType::DMA) {
         // must be either DMA0 -> N3 or DMA1 -> N7
         shimCh = srcChannel == 0 ? 3 : 7;
         addConnection(curr, srcBundle, srcChannel, StrmSwPortType::NORTH,
-                      shimCh, SHIMMUX.first, SHIMMUX.second);
+                      shimCh, shimMux.first, shimMux.second);
       } else if (srcBundle == StrmSwPortType::NOC) {
         // must be NOC0/NOC1 -> N2/N3 or NOC2/NOC3 -> N6/N7
         shimCh = srcChannel >= 2 ? srcChannel + 4 : srcChannel + 2;
         addConnection(curr, srcBundle, srcChannel, StrmSwPortType::NORTH,
-                      shimCh, SHIMMUX.first, SHIMMUX.second);
+                      shimCh, shimMux.first, shimMux.second);
       }
     }
 
-    auto SWB =
-        std::make_tuple(Connect::Interconnect::SWB, curr.col, curr.row);
+    auto sw = std::make_tuple(Connect::Interconnect::SWB, curr.col, curr.row);
     for (const auto &[bundle, channel] : setting.dsts) {
       // handle special shim connectivity
       if (curr == srcSB &&
           deviceModel.isShimNOCorPLTile(srcSB.col, srcSB.row)) {
         addConnection(curr, StrmSwPortType::SOUTH, shimCh, bundle, channel,
-                      std::get<0>(SWB), std::get<1>(SWB), std::get<2>(SWB));
+                      std::get<0>(sw), std::get<1>(sw), std::get<2>(sw));
       } else if (deviceModel.isShimNOCorPLTile(curr.col, curr.row) &&
                  (bundle == StrmSwPortType::DMA ||
                   bundle == StrmSwPortType::NOC)) {
-        auto SHIMMUX =
-            std::make_pair(Connect::Interconnect::SHIMMUX, curr.col);
+        auto shimMux = std::make_pair(Connect::Interconnect::SHIMMUX, curr.col);
         shimCh = channel;
         if (deviceModel.isShimNOCTile(curr.col, curr.row)) {
           // shim DMAs at end of flows
@@ -688,25 +686,27 @@ std::map<SwitchBox, std::vector<Connect>> emitConnections(
             // must be either N2 -> DMA0 or N3 -> DMA1
             shimCh = channel == 0 ? 2 : 3;
             addConnection(curr, StrmSwPortType::NORTH, shimCh, bundle, channel,
-                          SHIMMUX.first, SHIMMUX.second);
+                          shimMux.first, shimMux.second);
           } else if (bundle == StrmSwPortType::NOC) {
             // must be either N2/3/4/5 -> NOC0/1/2/3
             shimCh = channel + 2;
             addConnection(curr, StrmSwPortType::NORTH, shimCh, bundle, channel,
-                          SHIMMUX.first, SHIMMUX.second);
+                          shimMux.first, shimMux.second);
           }
         }
         addConnection(curr, setting.src.bundle, setting.src.channel,
-                      StrmSwPortType::SOUTH, shimCh, std::get<0>(SWB),
-                      std::get<1>(SWB), std::get<2>(SWB));
+                      StrmSwPortType::SOUTH, shimCh, std::get<0>(sw),
+                      std::get<1>(sw), std::get<2>(sw));
       } else {
         // otherwise, regular switchbox connection
         addConnection(curr, setting.src.bundle, setting.src.channel, bundle,
-                      channel, std::get<0>(SWB), std::get<1>(SWB),
-                      std::get<2>(SWB));
+                      channel, std::get<0>(sw), std::get<1>(sw),
+                      std::get<2>(sw));
       }
     }
   }
+  // sort for deterministic order in IR
+  for (auto &[_, conns] : connections) std::sort(conns.begin(), conns.end());
 
   return connections;
 }
@@ -762,9 +762,9 @@ bool existsPathToDest(const SwitchSettings &settings, TileLoc currTile,
 std::tuple<MasterSetsT, SlaveGroupsT, SlaveMasksT, SlaveAMSelsT>
 emitPacketRoutingConfiguration(int numMsels, int numArbiters,
                                const SwitchBoxToConnectionFlowIDT &switchboxes,
-                               const SmallVector<TileLoc> &tiles) {
-  DenseMap<PhysPortAndID, DenseSet<PhysPort>> packetFlows;
-  SmallVector<PhysPortAndID> slavePorts;
+                               const std::vector<TileLoc> &tiles) {
+  std::map<PhysPortAndID, std::set<PhysPort>> packetFlows;
+  std::vector<PhysPortAndID> slavePorts;
   for (const auto &[tileId, connects] : switchboxes) {
     for (const auto &[conn, flowID] : connects) {
       PhysPortAndID sourceFlow = {PhysPort{tileId, conn.src}, flowID};
@@ -773,21 +773,20 @@ emitPacketRoutingConfiguration(int numMsels, int numArbiters,
     }
   }
 
-  std::vector<std::pair<PhysPortAndID, DenseSet<PhysPort>>> sortedPacketFlows(
+  std::vector<std::pair<PhysPortAndID, std::set<PhysPort>>> sortedPacketFlows(
       packetFlows.begin(), packetFlows.end());
 
   // To get determinsitic behaviour
-  std::sort(sortedPacketFlows.begin(), sortedPacketFlows.end(),
-            [](const auto &lhs, const auto &rhs) {
-              return lhs.first.id < rhs.first.id;
-            });
+  std::sort(
+      sortedPacketFlows.begin(), sortedPacketFlows.end(),
+      [](const auto &lhs, const auto &rhs) { return lhs.first < rhs.first; });
 
   // A map from Tile and master selectValue to the ports targeted by that
   // master select.
-  DenseMap<std::pair<TileLoc, int>, DenseSet<Port>> masterAMSels;
+  std::map<std::pair<TileLoc, int>, std::set<Port>> masterAMSels;
   SlaveAMSelsT slaveAMSels;
   // Count of currently used logical arbiters for each tile.
-  DenseMap<TileLoc, int> amselValues;
+  std::map<TileLoc, int> amselValues;
   // Check all multi-cast flows (same source, same ID). They should be
   // assigned the same arbiter and msel so that the flow can reach all the
   // destination ports at the same time For destination ports that appear in
@@ -820,11 +819,11 @@ emitPacketRoutingConfiguration(int numMsels, int numArbiters,
       if (map.first.first != tileLoc) continue;
       amselValue = map.first.second;
       // check if same destinations
-      DenseSet<Port> ports(masterAMSels[{tileLoc, amselValue}]);
+      std::set<Port> ports(masterAMSels[{tileLoc, amselValue}]);
       if (ports.size() != packetFlowports.size()) continue;
       if (std::all_of(packetFlowports.begin(), packetFlowports.end(),
                       [&ports](const PhysPort &dest) {
-                        return ports.contains(dest.port);
+                        return ports.count(dest.port);
                       })) {
         foundMatchedDest = true;
         break;
@@ -866,7 +865,7 @@ emitPacketRoutingConfiguration(int numMsels, int numArbiters,
   // The flows must originate from the same source port and have different IDs
   // Two flows can be merged if they share the same destinations
   SlaveGroupsT slaveGroups;
-  SmallVector<PhysPortAndID> workList(slavePorts);
+  SmallVector<PhysPortAndID> workList(slavePorts.begin(), slavePorts.end());
   while (!workList.empty()) {
     PhysPortAndID slave1 = workList.pop_back_val();
     Port slavePort1 = slave1.physPort.port;
@@ -882,7 +881,7 @@ emitPacketRoutingConfiguration(int numMsels, int numArbiters,
       if (dests1.size() != dests2.size()) continue;
       if (std::all_of(dests1.begin(), dests1.end(),
                       [&dests2](const PhysPort &dest1) {
-                        return dests2.contains(dest1);
+                        return dests2.count(dest1);
                       })) {
         group.push_back(slave1);
         foundgroup = true;
@@ -891,7 +890,7 @@ emitPacketRoutingConfiguration(int numMsels, int numArbiters,
     }
 
     if (!foundgroup) {
-      slaveGroups.emplace_back(SmallVector<PhysPortAndID>{slave1});
+      slaveGroups.emplace_back(std::vector<PhysPortAndID>{slave1});
     }
   }
 
@@ -925,6 +924,11 @@ emitPacketRoutingConfiguration(int numMsels, int numArbiters,
     }
     for (PhysPortAndID port : group) slaveMasks[port] = maskValue;
   }
+  // sort for deterministic IR output
+  for (auto &[_, amsels] : mastersets) std::sort(amsels.begin(), amsels.end());
+  for (auto &item : slaveGroups) std::sort(item.begin(), item.end());
+  std::sort(slaveGroups.begin(), slaveGroups.end());
+
   return std::make_tuple(mastersets, slaveGroups, slaveMasks, slaveAMSels);
 }
 

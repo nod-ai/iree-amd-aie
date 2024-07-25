@@ -31,31 +31,27 @@ module {
 // CHECK: XAIE API: XAie_UpdateNpiAddr with args: &devInst=ptr, npiAddr=0
 // CHECK: XAIE API: XAie_TurnEccOff with args: &devInst=ptr
 
-// CHECK: XAIE API: XAie_LockSetValue with args: &deviceModel.devInst=ptr, tileLoc=XAie_LocType(Col: 0, Row: 1), locInit=XAie_Lock(LockId: 0, LockVal: 2)
-// CHECK: XAIE API: XAie_LockSetValue with args: &deviceModel.devInst=ptr, tileLoc=XAie_LocType(Col: 0, Row: 1), locInit=XAie_Lock(LockId: 1, LockVal: 0)
-// CHECK: XAIE API: XAie_DmaDescInit with args: &deviceModel.devInst=ptr, &dmaTileBd=ptr, tileLoc=XAie_LocType(Col: 0, Row: 1)
+// CHECK: XAIE API: XAie_LockSetValue with args: devInst=ptr, lock.tileLoc=TileLoc(col: 0, row: 1), locInit=XAie_Lock(LockId: 0, LockVal: 2)
+// CHECK: XAIE API: XAie_LockSetValue with args: devInst=ptr, lock.tileLoc=TileLoc(col: 0, row: 1), locInit=XAie_Lock(LockId: 1, LockVal: 0)
+// CHECK: XAIE API: XAie_DmaDescInit with args: devInst=ptr, &dmaTileBd=ptr, tileLoc=TileLoc(col: 0, row: 1)
 
-// CHECK: start configuring bds
 // CHECK: XAIE API: dmaTileBd.DmaMod->SetLock with args: &dmaTileBd=ptr, acqLock=XAie_Lock(LockId: 65, LockVal: -1), relLock=XAie_Lock(LockId: 64, LockVal: 1), acqEn=1, relEn=0
 // CHECK: XAIE API: XAie_DmaSetMultiDimAddr with args: &dmaTileBd=ptr, &dmaTileBdTensor=ptr, basePlusOffsetInBytes=524288, lenInBytes=64
 // CHECK: XAIE API: XAie_DmaSetPadding with args: &dmaTileBd=ptr, &dmaPadTensor=ptr
 // CHECK: XAIE API: XAie_DmaSetNextBd with args: &dmaTileBd=ptr, nextBdId.value()=1, enableNextBd=1
 // CHECK: XAIE API: XAie_DmaEnableBd with args: &dmaTileBd=ptr
-// CHECK: XAIE API: XAie_DmaWriteBd with args: &deviceModel.devInst=ptr, &dmaTileBd=ptr, tileLoc=XAie_LocType(Col: 0, Row: 1), bdId=0
+// CHECK: XAIE API: XAie_DmaWriteBd with args: devInst=ptr, &dmaTileBd=ptr, tileLoc=TileLoc(col: 0, row: 1), bdId=0
 
-// CHECK: end configuring bds
-// CHECK: XAIE API: XAie_DmaDescInit with args: &deviceModel.devInst=ptr, &dmaTileBd=ptr, tileLoc=XAie_LocType(Col: 0, Row: 1)
+// CHECK: XAIE API: XAie_DmaDescInit with args: devInst=ptr, &dmaTileBd=ptr, tileLoc=TileLoc(col: 0, row: 1)
 
-// CHECK: start configuring bds
 // CHECK: XAIE API: dmaTileBd.DmaMod->SetLock with args: &dmaTileBd=ptr, acqLock=XAie_Lock(LockId: 65, LockVal: -1), relLock=XAie_Lock(LockId: 64, LockVal: 1), acqEn=1, relEn=0
 // CHECK: XAIE API: XAie_DmaSetMultiDimAddr with args: &dmaTileBd=ptr, &dmaTileBdTensor=ptr, basePlusOffsetInBytes=524352, lenInBytes=64
 // CHECK: XAIE API: XAie_DmaSetPadding with args: &dmaTileBd=ptr, &dmaPadTensor=ptr
 // CHECK: XAIE API: XAie_DmaEnableBd with args: &dmaTileBd=ptr
-// CHECK: XAIE API: XAie_DmaWriteBd with args: &deviceModel.devInst=ptr, &dmaTileBd=ptr, tileLoc=XAie_LocType(Col: 0, Row: 1), bdId=1
+// CHECK: XAIE API: XAie_DmaWriteBd with args: devInst=ptr, &dmaTileBd=ptr, tileLoc=TileLoc(col: 0, row: 1), bdId=1
 
-// CHECK: end configuring bds
-// CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: &deviceModel.devInst=ptr, tileLoc=XAie_LocType(Col: 0, Row: 1), chNum=0, direction=0, bdId=0, repeatCount=2, enTokenIssue=0
-// CHECK: XAIE API: XAie_DmaChannelEnable with args: &deviceModel.devInst=ptr, tileLoc=XAie_LocType(Col: 0, Row: 1), chNum=0, direction=0
+// CHECK: XAIE API: XAie_DmaChannelSetStartQueue with args: devInst=ptr, tileLoc=TileLoc(col: 0, row: 1), chNum=0, direction=0, bdId=0, repeatCount=2, enTokenIssue=0
+// CHECK: XAIE API: XAie_DmaChannelEnable with args: devInst=ptr, tileLoc=TileLoc(col: 0, row: 1), chNum=0, direction=0
 
 // CHECK: (NOP Command): Payload Length: 0
 

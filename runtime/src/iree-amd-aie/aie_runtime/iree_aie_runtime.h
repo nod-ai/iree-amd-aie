@@ -279,10 +279,11 @@ template <typename H1>
 llvm::raw_ostream& showArgs(llvm::raw_ostream& out, const char* label,
                             H1&& value) {
   if constexpr (std::is_pointer_v<H1> ||
-                std::is_pointer_v<std::remove_reference_t<H1>>)
-    return out << label << "=" << "ptr";
-  else
-    return out << label << "=" << std::forward<H1>(value);
+                std::is_pointer_v<std::remove_reference_t<H1>>) {
+    return out << label << "=ptr";
+  } else {
+    return out << label << "=" << to_string(std::forward<H1>(value));
+  }
 }
 
 template <typename H1, typename... T>
@@ -290,13 +291,14 @@ llvm::raw_ostream& showArgs(llvm::raw_ostream& out, const char* label,
                             H1&& value, T&&... rest) {
   const char* pcomma = strchr(label, ',');
   if constexpr (std::is_pointer_v<H1> ||
-                std::is_pointer_v<std::remove_reference_t<H1>>)
+                std::is_pointer_v<std::remove_reference_t<H1>>) {
     return showArgs(out.write(label, pcomma - label) << "=ptr,", pcomma + 1,
                     std::forward<T>(rest)...);
-  else
+  } else {
     return showArgs(out.write(label, pcomma - label)
-                        << "=" << std::forward<H1>(value) << ',',
+                        << "=" << to_string(std::forward<H1>(value)) << ',',
                     pcomma + 1, std::forward<T>(rest)...);
+  }
 }
 
 #define SHOW_ARGS(os, ...) showArgs(os, #__VA_ARGS__, __VA_ARGS__)

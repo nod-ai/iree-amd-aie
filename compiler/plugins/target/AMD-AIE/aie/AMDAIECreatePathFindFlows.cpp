@@ -277,7 +277,9 @@ LogicalResult runOnPacketFlow(
             }
             Connect connect = {Port{setting.src.bundle, setting.src.channel},
                                Port{bundle, channel},
-                               Connect::Interconnect::NOCARE};
+                               Connect::Interconnect::NOCARE,
+                               static_cast<uint8_t>(currTile.col),
+                               static_cast<uint8_t>(currTile.row)};
             ConnectionAndFlowIDT connFlow = {connect, flowID};
             switchboxes[currTile].insert(connFlow);
           }
@@ -290,12 +292,14 @@ LogicalResult runOnPacketFlow(
       tiles, [](const llvm::detail::DenseMapPair<TileLoc, Operation *> &p) {
         return p.getFirst();
       });
+  // TODO(max): faster/smoother way to do this?
+  std::vector<TileLoc> tilesVec(tileLocs.begin(), tileLocs.end());
 
   int numMsels = 4;
   int numArbiters = 6;
   auto [masterSets, slaveGroups, slaveMasks, slaveAMSels] =
       emitPacketRoutingConfiguration(numMsels, numArbiters, switchboxes,
-                                     tileLocs);
+                                     tilesVec);
 
   // Realize the routes in MLIR
   for (auto &[tileLoc, tileOp] : tiles) {
@@ -333,8 +337,8 @@ LogicalResult runOnPacketFlow(
     // Sort them so we get a reasonable order
     std::sort(tileMasters.begin(), tileMasters.end());
     for (Port tileMaster : tileMasters) {
-      SmallVector<int> msels = masterSets[{tileLoc, tileMaster}];
-      SmallVector<Value> amsels;
+      std::vector<int> msels = masterSets[{tileLoc, tileMaster}];
+      std::vector<Value> amsels;
       for (int msel : msels) {
         assert(amselOps.count(msel) == 1 && "expected msel in amselOps");
         amsels.push_back(amselOps[msel]);
@@ -348,26 +352,25 @@ LogicalResult runOnPacketFlow(
 
     // Generate the packet rules
     DenseMap<Port, PacketRulesOp> slaveRules;
-    for (SmallVector<PhysPortAndID> group : slaveGroups) {
+    for (std::vector<PhysPortAndID> group : slaveGroups) {
       builder.setInsertionPoint(b.getTerminator());
-      PhysPort physPort = group.front().physPort;
+      PhysPortAndID physPortAndId = group.front();
+      PhysPort physPort = physPortAndId.physPort;
       if (tileLoc != physPort.tileLoc) continue;
       Port slave = physPort.port;
-      StrmSwPortType bundle = slave.bundle;
-      int channel = slave.channel;
-      int mask = slaveMasks[group.front()];
-      int ID = group.front().id & mask;
+      int mask = slaveMasks[physPortAndId];
+      int ID = physPortAndId.id & mask;
 
 #ifndef NDEBUG
       // Verify that we actually map all the ID's correctly.
       for (PhysPortAndID _slave : group) assert((_slave.id & mask) == ID);
 #endif
 
-      Value amsel = amselOps[slaveAMSels[group.front()]];
+      Value amsel = amselOps[slaveAMSels[physPortAndId]];
       PacketRulesOp packetrules;
       if (slaveRules.count(slave) == 0) {
-        packetrules = builder.create<PacketRulesOp>(builder.getUnknownLoc(),
-                                                    toWireB(bundle), channel);
+        packetrules = builder.create<PacketRulesOp>(
+            builder.getUnknownLoc(), toWireB(slave.bundle), slave.channel);
         PacketRulesOp::ensureTerminator(packetrules.getRules(), builder,
                                         builder.getUnknownLoc());
         slaveRules[slave] = packetrules;
