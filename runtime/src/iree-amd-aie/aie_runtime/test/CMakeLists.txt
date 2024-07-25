@@ -42,6 +42,25 @@ iree_cc_test(
     iree-amd-aie::aie_runtime::iree_aie_runtime_static
 )
 
+iree_cc_test(
+  NAME
+    test_0335_aie_dma_tile_dma_packet_switch_mode
+  SRCS
+    test_0335_aie_dma_tile_dma_packet_switch_mode.cc
+  DEPS
+    iree-amd-aie::aie_runtime::iree_aie_runtime_static
+)
+
+iree_cc_test(
+  NAME
+    test_1114_aie_stream_switch_packet_switch_control_packets.cc
+  SRCS
+    test_1114_aie_stream_switch_packet_switch_control_packets.cc
+  DEPS
+    iree-amd-aie::aie_runtime::iree_aie_runtime_static
+)
+
+
 target_include_directories(
   iree-amd-aie_aie_runtime_test_DeviceModelTestCppTest
   PRIVATE "${IREE_MLIR_AIE_SOURCE_DIR}/include"
