@@ -14,5 +14,3 @@ iree_lit_test_suite(
     FileCheck
     iree-compile
 )
-
-add_subdirectory(cdo)

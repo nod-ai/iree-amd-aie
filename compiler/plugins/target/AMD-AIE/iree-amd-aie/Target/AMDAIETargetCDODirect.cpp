@@ -13,7 +13,7 @@
 #include "AMDAIETargets.h"
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIE/IR/AIEEnums.h"
-#include "iree-amd-aie/aie_runtime/iree_aie_cdo_emitter.h"
+#include "iree-amd-aie/aie_runtime/iree_aie_configure.h"
 #include "iree-amd-aie/aie_runtime/iree_aie_runtime.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
@@ -29,7 +29,6 @@
 #define DEBUG_TYPE "aie-generate-cdo"
 
 using namespace mlir;
-using namespace xilinx;
 using xilinx::AIE::AMSelOp;
 using xilinx::AIE::BufferOp;
 using xilinx::AIE::CascadeDir;
@@ -42,7 +41,6 @@ using xilinx::AIE::DMABDPACKETOp;
 using xilinx::AIE::DMAChannelDir;
 using xilinx::AIE::DMAStartOp;
 using xilinx::AIE::Interconnect;
-using xilinx::AIE::LockAction;
 using xilinx::AIE::LockOp;
 using xilinx::AIE::MasterSetOp;
 using xilinx::AIE::MemOp;
@@ -60,34 +58,6 @@ using xilinx::AIE::WireBundle;
 using Path = std::filesystem::path;
 
 namespace {
-StrmSwPortType toStrmT(WireBundle w) {
-  switch (w) {
-    case WireBundle::Core:
-      return StrmSwPortType::CORE;
-    case WireBundle::DMA:
-      return StrmSwPortType::DMA;
-    case WireBundle::FIFO:
-      return StrmSwPortType::FIFO;
-    case WireBundle::South:
-      return StrmSwPortType::SOUTH;
-    case WireBundle::West:
-      return StrmSwPortType::WEST;
-    case WireBundle::North:
-      return StrmSwPortType::NORTH;
-    case WireBundle::East:
-      return StrmSwPortType::EAST;
-    case WireBundle::PLIO:
-      llvm::report_fatal_error("unhandled PLIO");
-    case WireBundle::NOC:
-      llvm::report_fatal_error("unhandled NOC");
-    case WireBundle::Trace:
-      return StrmSwPortType::TRACE;
-    case WireBundle::Ctrl:
-      return StrmSwPortType::CTRL;
-    default:
-      llvm::report_fatal_error("unhandled WireBundle");
-  }
-}
 
 mlir::iree_compiler::AMDAIE::StrmSwPortType toAMDAIEStrmT(WireBundle w) {
   using mlir::iree_compiler::AMDAIE::StrmSwPortType;
@@ -133,6 +103,18 @@ mlir::iree_compiler::AMDAIE::Cascade::Direction toDir(CascadeDir dir) {
   llvm::report_fatal_error("unhandled cascade dir");
 }
 
+mlir::iree_compiler::AMDAIE::Lock::Action toLock(xilinx::AIE::LockAction l) {
+  switch (l) {
+    case xilinx::AIE::LockAction::Acquire:
+      return mlir::iree_compiler::AMDAIE::Lock::Action::Acquire;
+    case xilinx::AIE::LockAction::AcquireGreaterEqual:
+      return mlir::iree_compiler::AMDAIE::Lock::Action::AcquireGreaterEqual;
+    case xilinx::AIE::LockAction::Release:
+      return mlir::iree_compiler::AMDAIE::Lock::Action::Release;
+  }
+  llvm::report_fatal_error("unhandled lock action");
+}
+
 }  // namespace
 
 namespace mlir::iree_compiler::AMDAIE {
@@ -140,38 +122,40 @@ LogicalResult configureLocksAndBd(Block &block, const TileLoc &tileLoc,
                                   const AMDAIEDeviceModel &deviceModel) {
   FailureOr<XAie_DmaDesc> dmaTileBd = initDMADesc(deviceModel, tileLoc);
   if (failed(dmaTileBd)) return failure();
-  if (!block.getOps<UseLockOp>().empty()) {
-    std::optional<int> acqValue, relValue, acqLockId, relLockId;
-    bool acqEn;
-    // switch (lock->getAc)
-    for (auto op : block.getOps<UseLockOp>()) {
-      // Only dyn_cast if you are going to check if it was of the type
-      // expected; if you aren't checking use cast instead as it will at
-      // least assert in debug mode with an easier to understand error than
-      // dereferencing.
-      LockOp lock = cast<LockOp>(op.getLock().getDefiningOp());
-      switch (op.getAction()) {
-        case LockAction::Acquire:
-        case LockAction::AcquireGreaterEqual:
-          acqEn = op.getAcqEn();
-          acqLockId = lock.getLockIDValue();
-          acqValue = op.getLockValue();
-          if (op.acquireGE()) acqValue.value() = -acqValue.value();
-          break;
-        case LockAction::Release:
-          relLockId = lock.getLockIDValue();
-          relValue = op.getLockValue();
-          break;
-      }
-    }
-    assert(acqValue && relValue && acqLockId && relLockId &&
-           "expected both use_lock(acquire) and use_lock(release) with bd");
-    if (failed(configureLocksInBdBlock(deviceModel, dmaTileBd.value(), tileLoc,
-                                       acqValue, relValue, acqLockId, relLockId,
-                                       acqEn))) {
-      return failure();
+  assert(!block.getOps<UseLockOp>().empty() && "BD block has no lock-usage");
+  std::optional<int> acqValue, relValue, acqLockId, relLockId;
+  bool acqEn;
+  // switch (lock->getAc)
+  for (auto op : block.getOps<UseLockOp>()) {
+    // Only dyn_cast if you are going to check if it was of the type
+    // expected; if you aren't checking use cast instead as it will at
+    // least assert in debug mode with an easier to understand error than
+    // dereferencing.
+    LockOp lock = cast<LockOp>(op.getLock().getDefiningOp());
+    switch (toLock(op.getAction())) {
+      case Lock::Action::Acquire:
+      case Lock::Action::AcquireGreaterEqual:
+        acqEn = op.getAcqEn();
+        acqLockId = lock.getLockIDValue();
+        acqValue = op.getLockValue();
+        if (op.acquireGE()) acqValue.value() = -acqValue.value();
+        break;
+      case Lock::Action::Release:
+        relLockId = lock.getLockIDValue();
+        relValue = op.getLockValue();
+        break;
     }
   }
+  assert(acqValue && relValue && acqLockId && relLockId &&
+         "expected both use_lock(acquire) and use_lock(release) with bd");
+  if (failed(configureDMALocks(deviceModel, dmaTileBd.value(), tileLoc,
+                               *acqValue, *relValue, *acqLockId, *relLockId,
+                               acqEn))) {
+    return failure();
+  }
+
+  // pull metadata related to packet routing, bdid, buffer length, size, stride
+  // to pass to aie-rt
   DMABDOp bdOp = *block.getOps<DMABDOp>().begin();
   assert(bdOp.getBdId().has_value() &&
          "DMABDOp must have assigned bd_id; did you forget to run "
@@ -187,7 +171,7 @@ LogicalResult configureLocksAndBd(Block &block, const TileLoc &tileLoc,
     packetID = packetOp.getPacketID();
   }
 
-  BufferOp bufferOp = cast<AIE::BufferOp>(bdOp.getBuffer().getDefiningOp());
+  BufferOp bufferOp = cast<BufferOp>(bdOp.getBuffer().getDefiningOp());
   if (!bufferOp.getAddress())
     return bufferOp.emitError("buffer must have address assigned");
   std::optional<std::vector<BDDimLayout>> maybeDims;
@@ -206,16 +190,16 @@ LogicalResult configureLocksAndBd(Block &block, const TileLoc &tileLoc,
           BDPadLayout{dim.getConstPadBefore(), dim.getConstPadAfter()});
     }
   }
-  if (failed(configureBdInBlock(
-          deviceModel, dmaTileBd.value(), tileLoc,
-          static_cast<uint8_t>(*bdOp.getBdId()),
-          bdOp.getNextBdId().has_value()
-              ? std::optional<uint8_t>{static_cast<uint8_t>(
-                    *bdOp.getNextBdId())}
-              : std::nullopt,
-          packetType, packetID, *bufferOp.getAddress(), bdOp.getLenInBytes(),
-          bdOp.getOffsetInBytes(), bdOp.getBufferElementTypeWidthInBytes(),
-          maybeDims, maybePadDims))) {
+  if (failed(configureDMABD(deviceModel, dmaTileBd.value(), tileLoc,
+                            static_cast<uint8_t>(*bdOp.getBdId()),
+                            bdOp.getNextBdId().has_value()
+                                ? std::optional<uint8_t>{static_cast<uint8_t>(
+                                      *bdOp.getNextBdId())}
+                                : std::nullopt,
+                            packetType, packetID, *bufferOp.getAddress(),
+                            bdOp.getLenInBytes(), bdOp.getOffsetInBytes(),
+                            bdOp.getBufferElementTypeWidthInBytes(), maybeDims,
+                            maybePadDims))) {
     return failure();
   }
   return success();
@@ -225,15 +209,20 @@ LogicalResult addAieElfsToCDO(const AMDAIEDeviceModel &deviceModel,
                               DeviceOp &device, const Path &workDirPath,
                               bool aieSim) {
   for (auto tileOp : device.getOps<TileOp>()) {
-    if (deviceModel.isShimNOCorPLTile(tileOp.getCol(), tileOp.getRow())) {
-      continue;
+    TileLoc tileLoc{tileOp.getCol(), tileOp.getRow()};
+    if (deviceModel.isShimNOCorPLTile(tileLoc.col, tileLoc.row)) continue;
+    if (auto coreOp = tileOp.getCoreOp()) {
+      std::string fileName;
+      if (auto elfFile = coreOp.getElfFile())
+        fileName = *elfFile;
+      else
+        fileName = "core_" + std::to_string(tileLoc.col) + "_" +
+                   std::to_string(tileLoc.row) + ".elf";
+      if (failed(addElfToTile(deviceModel, tileLoc, workDirPath / fileName,
+                              aieSim))) {
+        return failure();
+      }
     }
-    if (auto coreOp = tileOp.getCoreOp();
-        coreOp &&
-        failed(addElfToCDO(
-            deviceModel, workDirPath, {tileOp.getCol(), tileOp.getRow()},
-            std::optional<std::string>(coreOp.getElfFile()), aieSim)))
-      return failure();
   }
   return success();
 }
@@ -246,7 +235,7 @@ LogicalResult addInitConfigToCDO(const AMDAIEDeviceModel &deviceModel,
       continue;
     }
     if (auto coreOp = tileOp.getCoreOp();
-        coreOp && failed(resetUnresetCore(deviceModel, tileLoc))) {
+        coreOp && failed(resetUnResetCore(deviceModel, tileLoc))) {
       return failure();
     }
   }
@@ -257,7 +246,7 @@ LogicalResult addInitConfigToCDO(const AMDAIEDeviceModel &deviceModel,
       TileLoc tileLoc = {lockOp.getTileOp().getCol(),
                          lockOp.getTileOp().getRow()};
       Lock lock{tileLoc, static_cast<uint8_t>(*lockOp.getLockID()),
-                *lockOp.getInit()};
+                static_cast<int8_t>(*lockOp.getInit())};
       if (failed(initializeLock(deviceModel, lock)))
         return WalkResult::interrupt();
     }
@@ -318,10 +307,10 @@ LogicalResult addInitConfigToCDO(const AMDAIEDeviceModel &deviceModel,
         amSels.push_back({static_cast<uint8_t>(amsel.getArbiterID()),
                           static_cast<uint8_t>(amsel.getMsel())});
       }
-      if (failed(configureMasterSet(deviceModel, swb,
-                                    toAMDAIEStrmT(masterSetOp.getDestBundle()),
-                                    masterSetOp.getDestChannel(), amSels,
-                                    masterSetOp->hasAttr("keep_pkt_header"))))
+      if (failed(configureSwitchPacketMasters(
+              deviceModel, swb, toAMDAIEStrmT(masterSetOp.getDestBundle()),
+              masterSetOp.getDestChannel(), amSels,
+              masterSetOp->hasAttr("keep_pkt_header"))))
         return failure();
     }
 
@@ -331,7 +320,7 @@ LogicalResult addInitConfigToCDO(const AMDAIEDeviceModel &deviceModel,
       for (auto packetRuleOp : block.getOps<PacketRuleOp>()) {
         AMSelOp amselOp =
             cast<AMSelOp>(packetRuleOp.getAmsel().getDefiningOp());
-        if (failed(configurePacketRule(
+        if (failed(configureSwitchPacketSlaves(
                 deviceModel, swb,
                 toAMDAIEStrmT(packetRulesOp.getSourceBundle()),
                 packetRulesOp.getSourceChannel(),

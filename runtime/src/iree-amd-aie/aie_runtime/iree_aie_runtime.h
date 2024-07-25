@@ -62,6 +62,12 @@ struct TileLoc {
 };
 ASSERT_STANDARD_LAYOUT(TileLoc);
 
+static_assert(static_cast<uint8_t>(DMAChannelDir::MM2S) ==
+                      static_cast<uint8_t>(XAie_DmaDirection::DMA_MM2S) &&
+                  static_cast<uint8_t>(DMAChannelDir::S2MM) ==
+                      static_cast<uint8_t>(XAie_DmaDirection::DMA_S2MM),
+              "DMAChannelDir and XAie_DmaDirection don't line up");
+
 struct SwitchDMAConnection {
   DMAChannelDir direction;
   int channel;

@@ -41,16 +41,16 @@ int main(int argc, char** argv) {
   XAie_LockSetValue(&deviceModel.devInst, tile02, lock01);
   XAie_LockSetValue(&deviceModel.devInst, tile02, lock10);
 
-  XAie_DmaDesc dmaTileBd;
-  XAie_DmaDescInit(&deviceModel.devInst, &dmaTileBd, tile02);
+  XAie_DmaDesc dmaDesc;
+  XAie_DmaDescInit(&deviceModel.devInst, &dmaDesc, tile02);
   lock10 = XAie_Lock{.LockId = 1, .LockVal = -1};
-  dmaTileBd.DmaMod->SetLock(&dmaTileBd, lock10, lock01, /*AcqEn*/ 1,
+  dmaDesc.DmaMod->SetLock(&dmaDesc, lock10, lock01, /*AcqEn*/ 1,
                             /*RelEn*/ 0);
   // address 1024 is the beginning of the core's stack
-  XAie_DmaSetAddrLen(&dmaTileBd, /*Addr*/ 1024, /*Len*/ 4);
-  XAie_DmaEnableBd(&dmaTileBd);
+  XAie_DmaSetAddrLen(&dmaDesc, /*Addr*/ 1024, /*Len*/ 4);
+  XAie_DmaEnableBd(&dmaDesc);
   uint8_t bdNum = 0, chNum = 0;
-  XAie_DmaWriteBd(&deviceModel.devInst, &dmaTileBd, tile02, bdNum);
+  XAie_DmaWriteBd(&deviceModel.devInst, &dmaDesc, tile02, bdNum);
   XAie_DmaChannelSetStartQueue(&deviceModel.devInst, tile02, chNum,
                                XAie_DmaDirection::DMA_MM2S, bdNum,
                                /*RepeatCount*/ 1, /*EnTokenIssue*/ 0);

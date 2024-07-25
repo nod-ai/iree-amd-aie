@@ -4,12 +4,11 @@
 // https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: # Apache-2.0 WITH LLVM-exception
 
-#include "iree_aie_cdo_emitter.h"
+#include "iree_aie_configure.h"
 
 #include <cassert>
 #include <cstdint>
 #include <filesystem>
-#include <map>
 #include <optional>
 #include <string>
 
@@ -20,48 +19,50 @@
 #define DEBUG_TYPE "iree-aie-cdo-emitter"
 
 using Path = std::filesystem::path;
-auto ps = Path::preferred_separator;
 
 namespace mlir::iree_compiler::AMDAIE {
 
 FailureOr<XAie_DmaDesc> initDMADesc(const AMDAIEDeviceModel &deviceModel,
                                     const TileLoc &tileLoc) {
-  XAie_DmaDesc dmaTileBd;
+  XAie_DmaDesc dmaDesc;
   auto devInst = const_cast<XAie_DevInst *>(&deviceModel.devInst);
-  TRY_XAIE_API_LOGICAL_RESULT(XAie_DmaDescInit, devInst, &dmaTileBd, tileLoc);
-  return dmaTileBd;
+  TRY_XAIE_API_LOGICAL_RESULT(XAie_DmaDescInit, devInst, &dmaDesc, tileLoc);
+  return dmaDesc;
 }
 
-LogicalResult configureLocksInBdBlock(
-    const AMDAIEDeviceModel &deviceModel, XAie_DmaDesc &dmaTileBd,
-    const TileLoc &tileLoc, std::optional<uint8_t> acqValue,
-    std::optional<uint8_t> relValue, std::optional<uint8_t> acqLockId,
-    std::optional<uint8_t> relLockId, bool acqEn) {
-  assert(acqValue && relValue && acqLockId && relLockId &&
-         "expected both use_lock(acquire) and use_lock(release) with bd");
+LogicalResult configureDMALocks(const AMDAIEDeviceModel &deviceModel,
+                                XAie_DmaDesc &dmaDesc, const TileLoc &tileLoc,
+                                int8_t acqValue, int8_t relValue,
+                                uint8_t acqLockId, uint8_t relLockId,
+                                bool acqEn) {
+  assert(dmaDesc.IsReady == XAIE_COMPONENT_IS_READY &&
+         "XAie_DmaDescs need to be created using initDMADesc");
   if (deviceModel.isMemTile(tileLoc.col, tileLoc.row)) {
-    if (acqLockId) acqLockId.value() += XAIE2IPU_MEM_TILE_LOCK_ID_INCR;
-    if (relLockId) relLockId.value() += XAIE2IPU_MEM_TILE_LOCK_ID_INCR;
+    acqLockId += XAIE2IPU_MEM_TILE_LOCK_ID_INCR;
+    relLockId += XAIE2IPU_MEM_TILE_LOCK_ID_INCR;
   }
 
   // no RelEn in the arch spec even though the API requires you to set it?
   bool relEn = false;
-  XAie_Lock acqLock = XAie_LockInit(acqLockId.value(), acqValue.value());
-  XAie_Lock relLock = XAie_LockInit(relLockId.value(), relValue.value());
-  TRY_XAIE_API_LOGICAL_RESULT(dmaTileBd.DmaMod->SetLock, &dmaTileBd, acqLock,
+  XAie_Lock acqLock = XAie_LockInit(acqLockId, acqValue);
+  XAie_Lock relLock = XAie_LockInit(relLockId, relValue);
+  TRY_XAIE_API_LOGICAL_RESULT(dmaDesc.DmaMod->SetLock, &dmaDesc, acqLock,
                               relLock, acqEn, relEn);
   return success();
 }
 
-LogicalResult configureBdInBlock(
-    const AMDAIEDeviceModel &deviceModel, XAie_DmaDesc &dmaTileBd,
+LogicalResult configureDMABD(
+    const AMDAIEDeviceModel &deviceModel, XAie_DmaDesc &dmaDesc,
     const TileLoc &tileLoc, uint8_t bdId, std::optional<uint8_t> nextBdId,
     std::optional<uint8_t> packetType, std::optional<uint8_t> packetId,
     uint64_t baseAddr, uint64_t lenInBytes, uint64_t offsetInBytes,
     uint32_t bufferElementTypeWidthInBytes,
     const std::optional<std::vector<BDDimLayout>> &maybeDims,
     const std::optional<std::vector<BDPadLayout>> &maybePadDims) {
+  assert(dmaDesc.IsReady == XAIE_COMPONENT_IS_READY &&
+         "XAie_DmaDescs need to be created using initDMADesc");
   if (deviceModel.isShimNOCTile(tileLoc.col, tileLoc.row)) {
+    // TODO(max): revisit these values
     // write them out like this so they show up with names in debug prints
     size_t smid = 0;
     size_t burstLen = 16;  // (10):BLEN=16 (256Byte) (corresponds to
@@ -69,7 +70,7 @@ LogicalResult configureBdInBlock(
     size_t qOs = 0;
     size_t cache = 0;
     size_t secure = 0;
-    TRY_XAIE_API_LOGICAL_RESULT(XAie_DmaSetAxi, &dmaTileBd, smid, burstLen, qOs,
+    TRY_XAIE_API_LOGICAL_RESULT(XAie_DmaSetAxi, &dmaDesc, smid, burstLen, qOs,
                                 cache, secure);
   }
 
@@ -122,11 +123,11 @@ LogicalResult configureBdInBlock(
     }
 
     LLVM_DEBUG(llvm::dbgs() << dmaTileBdTensor << "\n");
-    TRY_XAIE_API_LOGICAL_RESULT(XAie_DmaSetMultiDimAddr, &dmaTileBd,
+    TRY_XAIE_API_LOGICAL_RESULT(XAie_DmaSetMultiDimAddr, &dmaDesc,
                                 &dmaTileBdTensor, basePlusOffsetInBytes,
                                 lenInBytes);
   } else {
-    TRY_XAIE_API_LOGICAL_RESULT(XAie_DmaSetAddrLen, &dmaTileBd,
+    TRY_XAIE_API_LOGICAL_RESULT(XAie_DmaSetAddrLen, &dmaDesc,
                                 basePlusOffsetInBytes, lenInBytes);
   }
 
@@ -158,12 +159,12 @@ LogicalResult configureBdInBlock(
       dmaPadTensor.PadDesc[j] = {before, after};
     }
     LLVM_DEBUG(llvm::dbgs() << dmaPadTensor << "\n");
-    TRY_XAIE_API_LOGICAL_RESULT(XAie_DmaSetPadding, &dmaTileBd, &dmaPadTensor);
+    TRY_XAIE_API_LOGICAL_RESULT(XAie_DmaSetPadding, &dmaDesc, &dmaPadTensor);
   }
 
   if (nextBdId) {
     auto enableNextBd = 1;
-    TRY_XAIE_API_LOGICAL_RESULT(XAie_DmaSetNextBd, &dmaTileBd, nextBdId.value(),
+    TRY_XAIE_API_LOGICAL_RESULT(XAie_DmaSetNextBd, &dmaDesc, nextBdId.value(),
                                 enableNextBd);
   }
 
@@ -180,22 +181,21 @@ LogicalResult configureBdInBlock(
     }
 
     TRY_XAIE_API_LOGICAL_RESULT(
-        XAie_DmaSetPkt, &dmaTileBd,
+        XAie_DmaSetPkt, &dmaDesc,
         XAie_PacketInit(packetId.value(), packetType.value()));
   }
-  TRY_XAIE_API_LOGICAL_RESULT(XAie_DmaEnableBd, &dmaTileBd);
+  TRY_XAIE_API_LOGICAL_RESULT(XAie_DmaEnableBd, &dmaDesc);
   auto devInst = const_cast<XAie_DevInst *>(&deviceModel.devInst);
-  TRY_XAIE_API_LOGICAL_RESULT(XAie_DmaWriteBd, devInst, &dmaTileBd, tileLoc,
+  TRY_XAIE_API_LOGICAL_RESULT(XAie_DmaWriteBd, devInst, &dmaDesc, tileLoc,
                               bdId);
   return success();
-};
+}
 
 LogicalResult pushToBdQueueAndEnable(const AMDAIEDeviceModel &deviceModel,
                                      const TileLoc &tileLoc, uint8_t chNum,
                                      const DMAChannelDir &channelDir,
                                      uint8_t bdId, uint32_t repeatCount) {
-  XAie_DmaDirection direction =
-      channelDir == DMAChannelDir::S2MM ? DMA_S2MM : DMA_MM2S;
+  XAie_DmaDirection direction = static_cast<XAie_DmaDirection>(channelDir);
   auto enTokenIssue = tileLoc.row == 0 && direction == DMA_S2MM;
   // in english repeat_count==0 means "do it once" and don't repeat but
   // libxaie treats repeat_count=1 as do it once.
@@ -207,27 +207,18 @@ LogicalResult pushToBdQueueAndEnable(const AMDAIEDeviceModel &deviceModel,
   TRY_XAIE_API_LOGICAL_RESULT(XAie_DmaChannelEnable, devInst, tileLoc, chNum,
                               direction);
   return success();
-};
+}
 
-LogicalResult addElfToCDO(const AMDAIEDeviceModel &deviceModel,
-                          const Path &workDirPath, const TileLoc &tileLoc,
-                          std::optional<std::string> elfFile, bool aieSim) {
-  // loadSym: Load symbols from .map file. This argument is not used when
-  // __AIESIM__ is not defined.
-  std::string fileName;
-  if (elfFile)
-    fileName = *elfFile;
-  else
-    fileName = "core_" + std::to_string(tileLoc.col) + "_" +
-               std::to_string(tileLoc.row) + ".elf";
-  Path elfPath = workDirPath / fileName;
+LogicalResult addElfToTile(const AMDAIEDeviceModel &deviceModel,
+                           const TileLoc &tileLoc, const Path &elfPath,
+                           bool aieSim) {
   auto devInst = const_cast<XAie_DevInst *>(&deviceModel.devInst);
   TRY_XAIE_API_LOGICAL_RESULT(XAie_LoadElf, devInst, tileLoc, elfPath.c_str(),
                               /*loadSym*/ aieSim);
   return success();
 }
 
-LogicalResult resetUnresetCore(const AMDAIEDeviceModel &deviceModel,
+LogicalResult resetUnResetCore(const AMDAIEDeviceModel &deviceModel,
                                const TileLoc &tileLoc) {
   auto devInst = const_cast<XAie_DevInst *>(&deviceModel.devInst);
   TRY_XAIE_API_LOGICAL_RESULT(XAie_CoreReset, devInst, tileLoc);
@@ -238,8 +229,7 @@ LogicalResult resetUnresetCore(const AMDAIEDeviceModel &deviceModel,
 LogicalResult initializeLock(const AMDAIEDeviceModel &deviceModel,
                              const Lock &lock) {
   auto devInst = const_cast<XAie_DevInst *>(&deviceModel.devInst);
-  // Set locks with explicit initializers
-  auto locInit = XAie_LockInit(lock.id, *lock.init);
+  auto locInit = XAie_LockInit(lock.id, lock.init);
   TRY_XAIE_API_FATAL_ERROR(XAie_LockSetValue, devInst, lock.tileLoc, locInit);
   return success();
 }
@@ -249,7 +239,9 @@ LogicalResult configureStreamSwitch(const AMDAIEDeviceModel &deviceModel,
                                     const std::vector<Connect> &connects) {
   auto devInst = const_cast<XAie_DevInst *>(&deviceModel.devInst);
   // FIXME hack for TCT routing
-  // TODO Support both channels
+  // TODO copy-pasted: Support both channels
+  // TODO(max): find a way to keep track so that multiple calls don't
+  // rewrite/overwrite with same data.
   if (tileLoc.row == 0) {
     auto slvPortNum = 0;
     auto mstrPortNum = 0;
@@ -264,6 +256,7 @@ LogicalResult configureStreamSwitch(const AMDAIEDeviceModel &deviceModel,
           strmTtoStrmT(connect.src.bundle), connect.src.channel,
           strmTtoStrmT(connect.dst.bundle), connect.dst.channel);
     } else if (connect.interconnect == Connect::Interconnect::SHIMMUX) {
+      // TODO(max): deprecate these - they're only for PL
       // NOTE ShimMux always connects from the south as directions are
       // defined relative to the tile stream switch.
       // demux!
@@ -281,42 +274,49 @@ LogicalResult configureStreamSwitch(const AMDAIEDeviceModel &deviceModel,
   return success();
 }
 
-LogicalResult configureMasterSet(const AMDAIEDeviceModel &deviceModel,
-                                 const SwitchBox &tileLoc,
-                                 const StrmSwPortType &destBundle,
-                                 uint8_t destChannel,
-                                 const std::vector<AMSel> &amSels,
-                                 bool keepPktHeader) {
-  uint8_t mSelEn = 0;
-  // TODO(max): is this negative a bit pattern or a sentinel value?
-  int arbiter = -1;
+LogicalResult configureSwitchPacketMasters(const AMDAIEDeviceModel &deviceModel,
+                                           const SwitchBox &tileLoc,
+                                           const StrmSwPortType &destBundle,
+                                           uint8_t destChannel,
+                                           const std::vector<AMSel> &amSels,
+                                           bool keepPktHeader) {
+  // Quoting Nathaniel:
+  // The 2 bit "msel" value on the slave port slot is a number 0-3.
+  // Packets routed according to that slot will go to all masters attached to
+  // the same arbiter which have the “msel”th bit set in their msel_enable
+  // field.
+
+  uint8_t masterSelect = 0;
+  int arbiterId = -1;
   for (auto amsel : amSels) {
     // TODO(max): this is very weird...
-    arbiter = amsel.arbiterId;
-    mSelEn |= (1 << amsel.msel);
+    arbiterId = amsel.arbiterId;
+    masterSelect |= (1 << amsel.masterSelect);
   }
+  assert(arbiterId != -1 && "didn't find an arbiterID");
 
   bool isdma = destBundle == StrmSwPortType::DMA;
   // assume a connection going south from row zero gets wired to shimdma
   // by a shimmux. TODO copy-pasted: fix the assumption
   if (!isdma && (tileLoc.row == 0)) isdma = destBundle == StrmSwPortType::SOUTH;
-  // Flag for overriding DROP_HEADER. TODO: Formalize this in tablegen
+  // Flag for overriding DROP_HEADER. TODO copy-pasted: Formalize this in
+  // tablegen
   isdma &= !keepPktHeader;
   auto dropHeader =
       isdma ? XAIE_SS_PKT_DROP_HEADER : XAIE_SS_PKT_DONOT_DROP_HEADER;
   auto devInst = const_cast<XAie_DevInst *>(&deviceModel.devInst);
   TRY_XAIE_API_LOGICAL_RESULT(XAie_StrmPktSwMstrPortEnable, devInst, tileLoc,
                               strmTtoStrmT(destBundle), destChannel, dropHeader,
-                              arbiter, mSelEn);
+                              arbiterId, masterSelect);
   return success();
 }
 
-LogicalResult configurePacketRule(const AMDAIEDeviceModel &deviceModel,
-                                  const SwitchBox &tileLoc,
-                                  const StrmSwPortType &srcBundle,
-                                  uint8_t srcChannel, const AMSel &amsel,
-                                  uint8_t packetId, uint8_t mask,
-                                  uint8_t slotNum) {
+LogicalResult configureSwitchPacketSlaves(const AMDAIEDeviceModel &deviceModel,
+                                          const SwitchBox &tileLoc,
+                                          const StrmSwPortType &srcBundle,
+                                          uint8_t srcChannel,
+                                          const AMSel &amsel, uint8_t packetId,
+                                          uint8_t mask, uint8_t slotNum) {
   auto devInst = const_cast<XAie_DevInst *>(&deviceModel.devInst);
   TRY_XAIE_API_LOGICAL_RESULT(XAie_StrmPktSwSlavePortEnable, devInst, tileLoc,
                               strmTtoStrmT(srcBundle), srcChannel);
@@ -324,7 +324,8 @@ LogicalResult configurePacketRule(const AMDAIEDeviceModel &deviceModel,
   // TODO Need to better define packet id,type used here
   TRY_XAIE_API_LOGICAL_RESULT(XAie_StrmPktSwSlaveSlotEnable, devInst, tileLoc,
                               strmTtoStrmT(srcBundle), srcChannel, slotNum,
-                              packetInit, mask, amsel.msel, amsel.arbiterId);
+                              packetInit, mask, amsel.masterSelect,
+                              amsel.arbiterId);
   return success();
 }
 
@@ -356,7 +357,7 @@ void initializeCDOGenerator(byte_ordering endianness, bool cdoDebug) {
   // Enables AXI-MM prints for configs being added in CDO
   if (cdoDebug) EnAXIdebug();
   setEndianness(endianness);
-};
+}
 
 LogicalResult generateCDOBinary(const Path &outputPath,
                                 const std::function<LogicalResult()> &cb) {
@@ -371,7 +372,7 @@ LogicalResult generateCDOBinary(const Path &outputPath,
   return success();
 }
 
-STRINGIFY_2TUPLE_STRUCT(XAie_AieMlDmaDimDesc, StepSize, Wrap);
+STRINGIFY_2TUPLE_STRUCT(XAie_AieMlDmaDimDesc, StepSize, Wrap)
 
 std::string to_string(const XAie_DmaDimDesc &v) {
   return to_string(v.AieMlDimDesc);
@@ -390,7 +391,7 @@ std::string to_string(const XAie_DmaTensor &v) {
          ")";
 }
 
-STRINGIFY_2TUPLE_STRUCT(XAie_PadDesc, Before, After);
+STRINGIFY_2TUPLE_STRUCT(XAie_PadDesc, Before, After)
 
 std::string to_string(const XAie_DmaPadTensor &v) {
   std::vector<XAie_PadDesc> pads;
