@@ -488,7 +488,6 @@ static LogicalResult setRootConfigForConvDecomposePipeline(
     // dimensions are perfectly tiled by the hard-coded tile dimensions below.
     // These will be done as a follow-up task.
     //
-    // depthwise_conv2d_nhwc_hwc tiling dims: [N, OH, OW, OC, KH, KW]
     //
     // Below we target a 4x4 array of AIE cores.
     auto getElementType = [](Value v) {
@@ -516,9 +515,11 @@ static LogicalResult setRootConfigForConvDecomposePipeline(
 
     const uint16_t OC_1 = OC_0 / 4;
 
+    // depthwise_conv2d_nhwc_hwc tiling dims:
+    //               [N, OH,   OW,   OC,   KH,KW]
     tileSizeLevel0 = {1, OH_0, OW_0, OC_0, 0, 0};
     tileSizeLevel1 = {1, OH_1, OW_0, OC_1, 0, 0};
-    tileSizeLevel2 = {1, OH_1, OW_0, OC_1, 1, 1};
+    tileSizeLevel2 = {0, 0, 0, 0, 1, 1};
   } else {
     assert(false && "Support must be added for this convolution op");
   }
