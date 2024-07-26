@@ -309,18 +309,6 @@ static LogicalResult assembleFileUsingChess(
   return success();
 }
 
-bool buildCRT(Path &peanoDir, bool verbose) {
-  if (verbose)
-    llvm::outs() << "Checking if we should use me_basic, based on "
-                    "the version of peano\n";
-  auto maybeVersion = runTool(peanoDir / "bin" / "opt", {"--version"}, verbose);
-  // default to "yes do use"
-  if (!maybeVersion) return true;
-  const auto &version = maybeVersion.value();
-  std::regex r("LLVM version 17.0.0git", std::regex_constants::multiline);
-  return std::regex_search(version, r);
-}
-
 static LogicalResult assembleFileUsingPeano(
     const std::string &inputFile, const std::string &outputFile,
     const std::vector<std::string> &extraArgs, Path &_tempDir, Path &peanoDir,
@@ -335,6 +323,7 @@ static LogicalResult assembleFileUsingPeano(
   args.emplace_back(inputFile);
   args.emplace_back("-o");
   args.emplace_back(outputFile);
+  if (verbose) args.emplace_back("-v");
   if (!runTool(peanoDir / "bin" / "clang", args, verbose)) {
     llvm::errs() << "Failed to assemble " << outputFile << ".o with peano";
     return failure();
@@ -500,24 +489,24 @@ static LogicalResult generateCoreElfFiles(ModuleOp moduleOp,
         std::string targetLower = StringRef(targetArch).lower();
         std::vector<std::string> flags;
         flags.emplace_back("-O2");
-        flags.emplace_back("--target=" + targetLower + "-none-elf");
+        flags.emplace_back("--target=" + targetLower + "-none-unknown-elf");
+        flags.emplace_back("-nostartfiles");
 
-        if (buildCRT(peanoDir, verbose)) {
-          auto crtObjFile = assembleStringUsingPeano(
-              /*inputFileStr= */ _CRT, /*inputFileName=*/"crt.c",
-              /*outputFileName=*/"crt.o",
-              /*outputDir=*/tempDir,
-              /*extraArgs*/ std::vector<std::string>{"-Wno-invalid-noreturn"},
-              /*workDir=*/tempDir, /*peanoDir=*/peanoDir, /*verbose=*/verbose);
-          if (failed(crtObjFile)) return failure();
-          flags.emplace_back(*crtObjFile);
-        }
+        auto crtObjFile = assembleStringUsingPeano(
+            /*inputFileStr= */ _CRT, /*inputFileName=*/"crt.c",
+            /*outputFileName=*/"crt.o",
+            /*outputDir=*/tempDir,
+            /*extraArgs*/ std::vector<std::string>{"-Wno-invalid-noreturn"},
+            /*workDir=*/tempDir, /*peanoDir=*/peanoDir, /*verbose=*/verbose);
+        if (failed(crtObjFile)) return failure();
+        flags.emplace_back(*crtObjFile);
 
         flags.emplace_back(objFile);
         flags.emplace_back("-Wl,--gc-sections");
         flags.emplace_back("-Wl,-T," + ldscriptPath.string());
         flags.emplace_back("-o");
         flags.emplace_back(elfFile);
+        if (verbose) flags.emplace_back("-v");
         if (!runTool(peanoDir / "bin" / "clang", flags, verbose)) {
           llvm::errs() << "failed to link elf file for core(" << col << ","
                        << row << ")";
