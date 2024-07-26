@@ -19,6 +19,7 @@
 #include "mlir/Conversion/AffineToStandard/AffineToStandard.h"
 #include "mlir/Dialect/Affine/Analysis/LoopAnalysis.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/Utils/ReshapeOpsUtils.h"
 #include "mlir/IR/PatternMatch.h"
@@ -307,7 +308,7 @@ struct FlattenMultDimTransferReadPattern
     auto inBoundsArrayAttrOpt = adaptor.getInBounds();
     if (inBoundsArrayAttrOpt) {
       SmallVector<bool> inBounds =
-          llvm::to_vector(inBoundsArrayAttrOpt.getAsValueRange<BoolAttr>());
+          llvm::to_vector(inBoundsArrayAttrOpt->getAsValueRange<BoolAttr>());
       SmallVector<bool> newInBounds({false});
       newInBounds[0] = std::all_of(inBounds.begin(), inBounds.end(),
                                    [](bool v) { return v; });
@@ -365,7 +366,7 @@ struct FlattenMultDimTransferWritePattern
     auto inBoundsArrayAttrOpt = adaptor.getInBounds();
     if (inBoundsArrayAttrOpt) {
       SmallVector<bool> inBounds =
-          llvm::to_vector(inBoundsArrayAttrOpt.getAsValueRange<BoolAttr>());
+          llvm::to_vector(inBoundsArrayAttrOpt->getAsValueRange<BoolAttr>());
       SmallVector<bool> newInBounds({false});
       newInBounds[0] = std::all_of(inBounds.begin(), inBounds.end(),
                                    [](bool v) { return v; });
@@ -475,60 +476,6 @@ struct ExtractTransposeFromContractionOp
   }
 };
 
-//============================================================================//
-//============ AIE2 canonicalization conversion patterns ===============//
-//============================================================================//
-
-//============================================================================//
-//================ Common AIE canonicalization configuration =================//
-//============================================================================//
-static void configureCommonAIECanonicalizeLegalizations(
-    ConversionTarget &target) {
-  target.addLegalDialect<arith::ArithDialect, affine::AffineDialect,
-                         memref::MemRefDialect, vector::VectorDialect>();
-}
-
-static void populateCommonAIECanonicalizeConversionPatterns(
-    RewritePatternSet &patterns) {
-  patterns.add<ConvertSplatTransferReadToBroadcastPattern>(
-      patterns.getContext());
-}
-
-//============================================================================//
-//============== AIE2-specific canonicalization configuration ===============//
-//============================================================================//
-
-static void configureAIE2CanonicalizeLegalizations(ConversionTarget &target) {
-  target.addDynamicallyLegalOp<vector::TransferReadOp>(
-      [](vector::TransferReadOp op) {
-        return !op.getPermutationMap().isConstant() &&
-               getTransferReadAlignmentOffset(op, op.getVectorType(), 256)
-                       .value_or(0) == 0 &&
-               op.getVector().getType().getRank() < 2;
-      });
-  target.addDynamicallyLegalOp<vector::TransferWriteOp>(
-      [](vector::TransferWriteOp op) {
-        return cast<VectorType>(op.getVector().getType()).getRank() < 2;
-      });
-  target.addDynamicallyLegalOp<vector::ContractionOp>(
-      [](vector::ContractionOp op) {
-        return !isGemmBTransposedContractionOp(op);
-      });
-}
-
-static void populateAIE2CanonicalizeConversionPatterns(
-    RewritePatternSet &patterns) {
-  patterns.add<SplitUnalignedTransferReadPattern>(patterns.getContext(), 1024,
-                                                  256);
-  patterns
-      .add<ExtractTransposeFromContractionOp, FlattenMultDimTransferReadPattern,
-           FlattenMultDimTransferWritePattern>(patterns.getContext());
-}
-
-//============================================================================//
-//=================== Common AIE Canonicalization Passes =====================//
-//============================================================================//
-
 // This pass converts standard vector ops into a subset of `Vector` ops more
 // amenable to being converted to `AIEVec`. So far, this process consists of
 // two steps:
@@ -558,10 +505,30 @@ struct CanonicalizeVectorForAIEVecPass
     RewritePatternSet patterns(context);
     ConversionTarget target(*context);
 
-    populateCommonAIECanonicalizeConversionPatterns(patterns);
-    configureCommonAIECanonicalizeLegalizations(target);
-    populateAIE2CanonicalizeConversionPatterns(patterns);
-    configureAIE2CanonicalizeLegalizations(target);
+    patterns.add<ConvertSplatTransferReadToBroadcastPattern>(
+        patterns.getContext());
+    target.addLegalDialect<arith::ArithDialect, affine::AffineDialect,
+                           memref::MemRefDialect, vector::VectorDialect>();
+    patterns.add<SplitUnalignedTransferReadPattern>(patterns.getContext(), 1024,
+                                                    256);
+    patterns.add<ExtractTransposeFromContractionOp,
+                 FlattenMultDimTransferReadPattern,
+                 FlattenMultDimTransferWritePattern>(patterns.getContext());
+    target.addDynamicallyLegalOp<vector::TransferReadOp>(
+        [](vector::TransferReadOp op) {
+          return !op.getPermutationMap().isConstant() &&
+                 getTransferReadAlignmentOffset(op, op.getVectorType(), 256)
+                         .value_or(0) == 0 &&
+                 op.getVector().getType().getRank() < 2;
+        });
+    target.addDynamicallyLegalOp<vector::TransferWriteOp>(
+        [](vector::TransferWriteOp op) {
+          return cast<VectorType>(op.getVector().getType()).getRank() < 2;
+        });
+    target.addDynamicallyLegalOp<vector::ContractionOp>(
+        [](vector::ContractionOp op) {
+          return !isGemmBTransposedContractionOp(op);
+        });
 
     if (failed(applyPartialConversion(op, target, std::move(patterns)))) {
       signalPassFailure();
@@ -572,10 +539,6 @@ struct CanonicalizeVectorForAIEVecPass
 static std::unique_ptr<::mlir::Pass> createCanonicalizeVectorForAIEVecPass() {
   return std::make_unique<CanonicalizeVectorForAIEVecPass>();
 }
-
-//============================================================================//
-//=============== Main Vector2Vector Pipeline Configuration ==================//
-//============================================================================//
 
 void mlir::iree_compiler::aievec::buildCanonicalizeVectorForAIEVec(
     OpPassManager &pm) {

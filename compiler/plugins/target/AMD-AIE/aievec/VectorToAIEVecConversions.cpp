@@ -292,23 +292,8 @@ struct LowerVectorTransposeOpToAIEVecShuffleOpPattern
 };
 
 //===----------------------------------------------------------------------===//
-// Pattern collection
-//===----------------------------------------------------------------------===//
-
-static void populateAIEVecV2ConversionPatterns(RewritePatternSet &patterns) {
-  // TODO: Reorder these alphabetically
-  patterns.add<LowerVectorTransposeOpToAIEVecShuffleOpPattern,
-               ConvertVectorFMAOpToAIEVecFMAElemOpPattern>(
-      patterns.getContext());
-  patterns.add<LowerVectorContractionOpToAIEVecMatMulPattern>(
-      patterns.getContext(), false);
-}
-
-//===----------------------------------------------------------------------===//
 // Legalizations
 //===----------------------------------------------------------------------===//
-
-// TODO: Review the validity of these legalizations beyond basic cases.
 
 static bool isInSigmoidOperationChain(math::ExpOp expOp) {
   if (auto negOp = dyn_cast<arith::NegFOp>(expOp.getOperand().getDefiningOp());
@@ -457,6 +442,49 @@ static bool hasSigmoidComputationChain(DivFOpTy divfOp, arith::NegFOp &negOp) {
   return negOp != nullptr;
 }
 
+// Convert a `vector.extract_strided_slice` op on 1D vectors into an
+// `aievec.shift` op.
+struct LowerVectorExtractStridedSliceOpAIE2Pattern
+    : OpConversionPattern<vector::ExtractStridedSliceOp> {
+  using OpConversionPattern::OpConversionPattern;
+
+  LogicalResult matchAndRewrite(
+      vector::ExtractStridedSliceOp extractOp, OpAdaptor adaptor,
+      ConversionPatternRewriter &rewriter) const override {
+    auto vType = cast<VectorType>(adaptor.getVector().getType());
+    if (vType.getRank() != 1) return failure();
+
+    int64_t stride = cast<IntegerAttr>(adaptor.getStrides()[0]).getInt();
+    if (stride != 1) return failure();
+
+    // We only accept the case where we are extracting a slice half the size of
+    // the input vector.
+    int64_t size = cast<IntegerAttr>(adaptor.getSizes()[0]).getInt();
+    if (vType.getNumElements() != 2 * size) return failure();
+
+    auto shortVecType = cast<VectorType>(extractOp.getResult().getType());
+    auto bottomHalf = rewriter
+                          .create<aievec::ExtOp>(
+                              extractOp.getLoc(), shortVecType,
+                              adaptor.getVector(), rewriter.getI8IntegerAttr(0))
+                          .getResult();
+    auto topHalf = rewriter
+                       .create<aievec::ExtOp>(extractOp.getLoc(), shortVecType,
+                                              adaptor.getVector(),
+                                              rewriter.getI8IntegerAttr(1))
+                       .getResult();
+    int64_t offset = cast<IntegerAttr>(adaptor.getOffsets()[0]).getInt();
+    int32_t shiftBytes = offset * getElementSizeInBits(vType) / 8;
+    auto shiftBytesConstOp = rewriter.create<arith::ConstantOp>(
+        extractOp.getLoc(), rewriter.getIntegerType(32),
+        rewriter.getI32IntegerAttr(shiftBytes));
+    rewriter.replaceOpWithNewOp<aievec::ShiftOp>(
+        extractOp, shortVecType, bottomHalf, topHalf, shiftBytesConstOp);
+
+    return success();
+  }
+};
+
 template <typename SrcOpTy>
 struct LowerExtOpPattern : OpConversionPattern<SrcOpTy> {
   using OpConversionPattern<SrcOpTy>::OpConversionPattern;
@@ -526,16 +554,6 @@ struct LowerTruncOpPattern : OpConversionPattern<SrcOpTy> {
 
 using LowerTruncFOpPattern = LowerTruncOpPattern<arith::TruncFOp>;
 using LowerTruncIOpPattern = LowerTruncOpPattern<arith::TruncIOp>;
-
-static void populateAIEVecCommonConversionPatterns(
-    RewritePatternSet &patterns) {
-  // clang-format off
-  patterns.add<LowerExtFOpPattern,
-               LowerExtSIOpPattern,
-               LowerTruncFOpPattern,
-               LowerTruncIOpPattern>(patterns.getContext());
-  // clang-format on
-}
 
 static void configureAIEVecCommonLegalizations(ConversionTarget &target) {
   target.addLegalDialect<mlir::iree_compiler::aievec::AIEVecDialect,
@@ -842,14 +860,6 @@ static void configureAIEVecCommonLegalizations(ConversionTarget &target) {
       [](arith::SubFOp op) { return !isa<VectorType>(op.getType()); });
 }
 
-static void configureAIEVecV1Legalizations(ConversionTarget &target) {
-  target.addDynamicallyLegalOp<arith::MulIOp>(
-      [](arith::MulIOp op) { return !isa<VectorType>(op.getType()); });
-  target.addDynamicallyLegalOp<arith::MulFOp>(
-      [](arith::MulFOp op) { return !isa<VectorType>(op.getType()); });
-  target.addLegalDialect<memref::MemRefDialect>();
-}
-
 static void configureAIEVecV2Legalizations(ConversionTarget &target) {
   target.addLegalOp<UnrealizedConversionCastOp>();
   target.addLegalOp<vector::ShapeCastOp>();
@@ -1072,9 +1082,18 @@ struct LowerVectorToAIEVec : PassWrapper<LowerVectorToAIEVec, OperationPass<>> {
     MLIRContext *context = &getContext();
     RewritePatternSet patterns(context);
     ConversionTarget target(*context);
-    populateAIEVecCommonConversionPatterns(patterns);
+    // clang-format off
+    patterns.add<LowerExtFOpPattern,
+        LowerExtSIOpPattern,
+        LowerTruncFOpPattern,
+        LowerTruncIOpPattern>(patterns.getContext());
+    // clang-format on
     configureAIEVecCommonLegalizations(target);
-    populateAIEVecV2ConversionPatterns(patterns);
+    patterns.add<LowerVectorTransposeOpToAIEVecShuffleOpPattern,
+                 ConvertVectorFMAOpToAIEVecFMAElemOpPattern>(
+        patterns.getContext());
+    patterns.add<LowerVectorContractionOpToAIEVecMatMulPattern>(
+        patterns.getContext(), false);
     configureAIEVecV2Legalizations(target);
 
     if (failed(applyPartialConversion(op, target, std::move(patterns))))
