@@ -10,6 +10,7 @@
 #include "iree-amd-aie/Transforms/AMDAIEUtils.h"
 #include "iree/compiler/Codegen/Dialect/Codegen/IR/IREECodegenAttrs.h"
 #include "iree/compiler/Codegen/Utils/CPUUtils.h"
+#include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/MemRef/Transforms/Transforms.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
@@ -24,6 +25,7 @@ using detail::findLargestFactor;
 //===----------------------------------------------------------------------===//
 
 namespace {
+
 
 FailureOr<std::array<uint32_t, 3>> getMatmulInstructionSize(
     linalg::LinalgOp op) {
@@ -472,6 +474,53 @@ static LogicalResult setRootConfigForConvDecomposePipeline(
     tileSizeLevel0 = {0, OC, 4, OW, 0, 0, 0};
     tileSizeLevel1 = {1, OC, 1, OW, 0, 0, 0};
     tileSizeLevel2 = {0, 0, 0, 0, IC, 1, 1};
+  } else if (isa<linalg::DepthwiseConv2DNhwcHwcOp>(linalgOp)) {
+    // Notes:
+    // =====
+    //
+    // An inherent property of depthwise convolutions is that they cannot be
+    // expressed in terms of matmuls, unlike the above (dense) conv-2ds. The
+    // tile sizes we choose below are therefore not constrained by the AIE
+    // matmul instructions.
+    //
+    // The logic is currently fragile, and there are no guardrails: there are
+    // no checks that the data tiles are not too large, or that the input
+    // dimensions are perfectly tiled by the hard-coded tile dimensions below.
+    // These will be done as a follow-up task.
+    //
+    // depthwise_conv2d_nhwc_hwc tiling dims: [N, OH, OW, OC, KH, KW]
+    //
+    // Below we target a 4x4 array of AIE cores.
+    auto getElementType = [](Value v) {
+      return cast<ShapedType>(v.getType()).getElementType();
+    };
+    const uint16_t OW_0 = 4;
+    const uint16_t OH_0 = 4;
+    const uint16_t OH_1 = 1;
+
+    auto operandType = getElementType(linalgOp->getOperand(0));
+    auto maybeMacWidth =
+        getAIEMacWidth(operandType, getElementType(linalgOp->getResult(0)));
+    uint16_t OC_0 = 16;
+    if (!failed(maybeMacWidth)) {
+      OC_0 = maybeMacWidth.value() / 4;
+    }
+    // If the operand type has fewer than 32-bits, we really should be able to
+    // get a mac-width for it Bail because we didn't, and there's probably just
+    // something missing in the table.
+    else if (operandType.getIntOrFloatBitWidth() < 32) {
+      return linalgOp.emitError(
+          "has an operand type with fewer than 32-bits, but no mac-width "
+          "could be determined.");
+    }
+
+    const uint16_t OC_1 = OC_0 / 4;
+
+    tileSizeLevel0 = {1, OH_0, OW_0, OC_0, 0, 0};
+    tileSizeLevel1 = {1, OH_1, OW_0, OC_1, 0, 0};
+    tileSizeLevel2 = {1, OH_1, OW_0, OC_1, 1, 1};
+  } else {
+    assert(false && "Support must be added for this convolution op");
   }
   TileSizesListType tileSizes = {tileSizeLevel0, tileSizeLevel1,
                                  tileSizeLevel2};
@@ -654,9 +703,10 @@ static LogicalResult setRootConfigImpl(
         // add support for them, this way we can verify our work.
         // TODO (vivian): add support for other conv interface ops
         .Case<linalg::Conv2DNhwcHwcfOp, linalg::Conv2DNchwFchwOp,
-              linalg::Conv2DNhwcHwcfQOp>([&](auto op) {
-          return setConvRootConfig(entryPointFn, op, passPipeline, cfg);
-        })
+              linalg::Conv2DNhwcHwcfQOp, linalg::DepthwiseConv2DNhwcHwcOp>(
+            [&](auto op) {
+              return setConvRootConfig(entryPointFn, op, passPipeline, cfg);
+            })
         .Case<linalg::GenericOp>([&](auto op) {
           return setRootConfig(entryPointFn, op, passPipeline,
                                useLowerToAIEPipeline, cfg);

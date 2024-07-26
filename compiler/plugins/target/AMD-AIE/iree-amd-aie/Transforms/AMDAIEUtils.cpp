@@ -85,6 +85,17 @@ FailureOr<std::array<uint32_t, 3>> getAIEIntegerMatmulInstructionSize(
   return it->second;
 }
 
+// The number of elements in a vector instruction for a given element type.
+FailureOr<uint32_t> getAIEMacWidth(Type inputType, Type outputType) {
+  // inputType = i8, outputType = i32:
+  if (inputType.isInteger(8) && outputType.isInteger(32)) return 32;
+  // inputType = i16, outputType = i32:
+  if (inputType.isInteger(16) && outputType.isInteger(32)) return 32;
+  // inputType = bf16, outputType = f32:
+  if (inputType.isBF16() && outputType.isF32()) return 16;
+  return failure();
+}
+
 FailureOr<std::array<uint32_t, 3>> getAIEMatmulInstructionSize(Type elTypeLhs,
                                                                Type elTypeRhs,
                                                                Type elTypeAcc) {
