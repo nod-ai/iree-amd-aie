@@ -33,6 +33,7 @@ import struct
 import sys
 import os
 import re
+from numpy.random import Generator, MT19937, SeedSequence
 
 
 def convert_f32_to_bf16(float32_value):
@@ -119,6 +120,28 @@ def verify_determinism():
         raise ValueError(message)
 
 
+def load_input(input_string):
+    """
+    input_string is of the form:
+    --input=128x128xi32=@/path/to/matmul_int32_input1.bin
+    """
+    split_on_equals = input_string.split("=")
+    if len(split_on_equals) != 3:
+        raise ValueError(
+            f"Expected exactly 3 '=' in the input string, got {len(split_on_equals) - 1}."
+        )
+
+    input_path = split_on_equals[2][1::]
+    input_shape_and_type = split_on_equals[1].split("x")
+    input_shape = input_shape_and_type[0:-1]
+    input_shape = [int(i) for i in input_shape]
+    input_type = input_shape_and_type[-1]
+    input_np_type = get_numpy_type(input_type)
+    matrix = np.fromfile(input_path, dtype=input_np_type)
+    matrix = matrix.reshape(input_shape)
+    return matrix
+
+
 def write_input(bin_filename, num_elements, element_type, input_number, input_seed):
     # Random integer values in range [lower_bound, upper_bound)
     # will be generated for the input data.
@@ -144,8 +167,6 @@ def generate_inputs(filename, write_dir, seed):
     Parse the input file 'filename' and generate binary files for the inputs of
     the mlir function.
     """
-
-    verify_determinism()
 
     name = os.path.splitext(os.path.basename(filename))[0]
 
@@ -218,21 +239,5 @@ def generate_inputs(filename, write_dir, seed):
         )
 
     command_flags = "  ".join(input_args)
-    command_arg_filename = os.path.join(write_dir, name + "_input_args.txt")
-    with open(command_arg_filename, "w") as file:
-        file.write(command_flags)
+    return command_flags
 
-
-if __name__ == "__main__":
-    if len(sys.argv) == 4:
-        seed = int(sys.argv[3])
-        generate_inputs(sys.argv[1], sys.argv[2], seed)
-    else:
-        error_message = (
-            f"Incorrect number of input arguments. Expected 3, got {len(sys.argv) - 1}. "
-            f"Expected arguments are: "
-            f"1) the name of a file to parse. "
-            f"2) the directory where binary files will be written. "
-            f"3) a random seed. Runs with the same seed will be deterministic across platforms."
-        )
-        raise ValueError(error_message)

@@ -24,6 +24,7 @@ def compare(npy_cpu1, npy_aie1, rtol, atol):
     # Values are not all close. Here is a summary of the differences:
     # Number of positions where values are different is 3 out of 16384
     # Maximum difference: 1.0
+    #
     # Discrepancies:
     # At index: 0 0
     # AIE value: 481.0
@@ -61,23 +62,5 @@ def compare(npy_cpu1, npy_aie1, rtol, atol):
             num_diff_positions - max_discrepancies_to_show
         )
 
-    raise ValueError(summary_string)
-
-
-if __name__ == "__main__":
-    import sys
-    import numpy as np
-
-    if len(sys.argv) != 5:
-        print(
-            "Usage: python output_comparer.py <cpu_output.npy> <aie_output.npy> <rtol> <atol>"
-        )
-
-    cpu_fn = sys.argv[1]
-    aie_fn = sys.argv[2]
-    rtol = float(sys.argv[3])
-    atol = float(sys.argv[4])
-    print("Comparing npy arrays in {} and {}".format(cpu_fn, aie_fn))
-    output1 = np.load(cpu_fn)
-    output2 = np.load(aie_fn)
-    compare(output1, output2, rtol=rtol, atol=atol)
+    print(summary_string)
+    return False
