@@ -122,21 +122,34 @@ def generate_aie_output(
         compilation_flags += ["--iree-amd-aie-show-invoked-commands"]
 
     if use_ukernel:
-        MM_KERNEL_URL = (
-            "https://github.com/nod-ai/iree-amd-aie/releases/download/ukernels/mm.o"
-        )
         compilation_flags += ["--iree-amdaie-enable-ukernels=all"]
         mm_fn = config.output_dir / "mm.o"
+
         if mm_fn.exists():
             if config.verbose:
                 print(f"File {mm_fn} already exists")
         else:
-            if config.verbose:
-                print(f"Attempting to download {MM_KERNEL_URL} to {mm_fn}")
-
-            urllib.request.urlretrieve(MM_KERNEL_URL, mm_fn)
+            # There is a script, whose path relative to this file is
+            # ../ukernels/xchesscc_wrapper. It takes 3 arguments:
+            # 1) vitis root directory
+            # 2) name of a source .cc file to compile
+            # 3) name of the output .o file
+            gp_dir = os.path.dirname(os.path.dirname(__file__))
+            ukernels_dir = os.path.join(gp_dir, "ukernels")
+            xchesscc_wrapper = os.path.join(ukernels_dir, "xchesscc_wrapper")
+            source_file = os.path.join(ukernels_dir, "mm.cc")
+            compilation_flags = [
+                xchesscc_wrapper,
+                config.vitis_dir,
+                source_file,
+                mm_fn,
+            ]
+            shell_out(compilation_flags, config.output_dir, config.verbose)
+            # If there is still no mm.o, there was a problem:
             if not mm_fn.exists():
-                raise RuntimeError("Failed to download mm.o")
+                raise RuntimeError(
+                    f"Could not find {mm_fn} after running the script to create it."
+                )
 
     start = time.monotonic_ns()
     shell_out(compilation_flags, config.output_dir, config.verbose)
@@ -618,6 +631,12 @@ def all_tests(
         tile_pipeline="pack-peel",
         lower_to_aie_pipeline="objectFifo",
     )
+
+    # Test with ukernel:
+    test_name = os.path.join(output_dir, "mm_ukernel_256_26_256.mlir")
+    template_name = os.path.join(matmul_template_dir, "matmul_MxK_KxN.mlir")
+    generate_matmul_test(test_name, template_name, 256, 256, 256, "bf16", "f32")
+    run_test(config, test_name, use_ukernel=True)
 
     # Test(s) of the form matmul(A,B) + C where A:MxK, B:KxN, C:N
     test_name = output_dir / "test_from_template_bias_N.mlir"

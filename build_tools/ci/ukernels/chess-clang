@@ -1,0 +1,31 @@
+#!/bin/bash
+#
+# =============================================================
+# THIS FILE COPIED FROM /mlir-aie/tools/chess-clang/chess-clang
+# =============================================================
+
+declare -a ArgsArr
+for var in "$@"
+do
+  if [ $var = "-xc++" ]; then
+    echo ""
+    echo "chess-clang script: removed '-xc++' argument from chess-clang
+          invocation";
+    echo ""
+  # Force using C++2a instead of C++11, it should be irrelevant when passing
+  # LLVM IR but it will remain for now so that if someone wishes to compile some
+  # modern C++ with xchescc for AI Engine they can do so. It also helps to show
+  # how you can manipulate the chess-clang arguments at the moment.
+  elif [ $var = "-std=c++11" ]; then
+    ArgsArr+=( "-std=c++2a" )
+  else
+    ArgsArr+=( "$var" )
+  fi
+done
+
+# aie_api.h spews tons of warnings here.
+ArgsArr+=( "-Wno-deprecated-declarations" )
+
+# Has to be invoked with exec, which means it never returns to this script
+# so this has to be the final invocation.
+exec $CHESSROOT/target/bin/LNa64bin/chess-clang "${ArgsArr[@]}"

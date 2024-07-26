@@ -141,21 +141,6 @@ source $XRT_DIR/setup.sh
 # Circumvent xclbin security (no longer needed as of April 2024 XDNA driver)
 export XRT_HACK_UNSECURE_LOADING_XCLBIN=1
 
-MM_KERNEL_URL=https://github.com/nod-ai/iree-amd-aie/releases/download/ukernels/mm.o
-
-# The flag '--iree-amdaie-path-to-ukernels' currently does not work,
-# see for example https://github.com/nod-ai/iree-amd-aie/issues/340.
-# Therefore we need to manually copy (or link) the mm.o file to the
-# directory in which iree-compile is run. iree-compile is run in the
-# output directory. Create the softlink only if it is has not already
-# been created.
-if [ -f "${OUTPUT_DIR}/mm.o" ]; then
-  echo "File 'mm.o' already exists in ${OUTPUT_DIR}."
-else
-  echo "Downloading 'mm.o' to ${OUTPUT_DIR}/mm.o"
-  wget $MM_KERNEL_URL -O  "${OUTPUT_DIR}/mm.o"
-fi
-
 cd ${OUTPUT_DIR}
 
 export MATMUL_TESTS_FAILS=0
@@ -216,9 +201,6 @@ function run_matmul_test() {
   # See https://github.com/iree-org/iree/blob/tools/testing/e2e/test_utils.c#L40-L47
   local max_elements_to_check="20000"
 
-  # The default is to not use microkernels.
-  local use_ukernel="0"
-
   # After compilation, the test with be run 'num_repeat_runs' times. This option (when
   # set greater than 1) is useful for shapes which might be 'flakey' and fail
   # intermittently. It is also useful if a test is know to fail at runtime but
@@ -257,10 +239,6 @@ function run_matmul_test() {
         ;;
       --acc_type)
         acc_type="$2"
-        shift 2
-        ;;
-      --use_ukernel)
-        use_ukernel="$2"
         shift 2
         ;;
       --target_device)
@@ -402,11 +380,6 @@ function run_matmul_test() {
                       --mlir-elide-resource-strings-if-larger=10 \
                       --iree-amd-aie-show-invoked-commands"
 
-  if [ $use_ukernel -ne 0 ]; then
-
-    compilation_flags="${compilation_flags} \
-                        --iree-amdaie-enable-ukernels=all"
-  fi
 
   echo "**** Generating matmul .vmfb file for ${name} ****"
   ${IREE_COMPILE_EXE} "${matmul_ir}" \
@@ -508,7 +481,6 @@ run_matmul_test \
     --expect_compile_failure "0" \
     --do_transpose_rhs "0" \
     --max_elements_to_check "0" \
-    --use_ukernel "0" \
     --num_repeat_runs "2"
 
 run_matmul_test \
@@ -516,7 +488,6 @@ run_matmul_test \
     --lhs_rhs_type "bf16" \
     --acc_type "f32" \
     --m "256"  --k "256" --n "256" \
-    --use_ukernel "1"
 
 # Disabled until the following issue is resolved:
 # https://github.com/Xilinx/llvm-aie/issues/102

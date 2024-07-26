@@ -1,0 +1,84 @@
+#!/bin/bash
+#
+# ==================================================================
+# THIS FILE IS BASED ON /mlir-aie/tools/chess-clang/xchesscc_wrapper
+# ==================================================================
+
+if [ "$#" -ne 3 ]; then
+    echo "Usage: ./xchesscc_wrapper /vitis/root/directory /path/to/src.c /path/to/src.o"
+    exit 1
+fi
+
+# Set vitis root directory (make complete path)
+vitis_root_dir=$1 #(realpath $1)
+if [ ! -d $vitis_root_dir ]; then
+    echo "Error: vitis root directory ${vitis_root_dir} does not exist"
+    exit 1
+fi
+
+# The file to compile:
+src_file=$(realpath $2)
+if [ ! -f $src_file ]; then
+    echo "Error: source file ${src_file} does not exist"
+    exit 1
+fi
+
+object_file=$(realpath $3)
+
+aietools_dir=$vitis_root_dir/aietools
+if [ ! -d $aietools_dir ]; then
+    echo "Error: aietools directory ${aietools_dir} does not exist"
+    exit 1
+fi
+
+aietools_include_dir=$aietools_dir/include
+if [ ! -d $aietools_include_dir ]; then
+    echo "Error: aietools include directory ${aietools_include_dir} does not exist"
+    exit 1
+fi
+
+rdi_datadir=$aietools_dir/data
+if [ ! -d $rdi_datadir ]; then
+    echo "Error: rdi data directory ${rdi_datadir} does not exist"
+    exit 1
+fi
+
+libdir=$rdi_datadir/aie_ml/lib
+if [ ! -d $libdir ]; then
+    echo "Error: target aie2 lib directory ${libdir} does not exist"
+    exit 1
+fi
+
+
+unwrapped_xchesscc=$aietools_dir/bin/unwrapped/lnx64.o/xchesscc
+if [ ! -f $unwrapped_xchesscc ]; then
+    echo "Error: unwrapped_xchesscc ${unwrapped_xchesscc} does not exist"
+    exit 1
+fi
+
+this_dir="$(cd $(dirname $0) && pwd)"
+chess_clang=$this_dir/chess-clang
+if [ ! -f $chess_clang ]; then
+    echo "Error: chess-clang ${chess_clang} does not exist"
+    exit 1
+fi
+
+# Print all the directories set thus far:
+echo "vitis_root_dir:        $vitis_root_dir"
+echo "aietools_dir:          $aietools_dir"
+echo "aietools_include_dir:  $aietools_include_dir"
+echo "rdi_datadir:           $rdi_datadir"
+echo "libdir:                $libdir"
+echo "unwrapped_xchesscc:    $unwrapped_xchesscc"
+echo "src_file:              $src_file"
+echo "object_file:           $object_file"
+echo "this_dir:              $this_dir"
+echo "chess_clang:           $chess_clang"
+
+export RDI_DATADIR=$rdi_datadir
+export LD_LIBRARY_PATH=$aietools_dir/lib/lnx64.o:$aietools_dir/lnx64/tools/dot/lib:$LD_LIBRARY_PATH
+
+export PATH=$this_dir:$aietools_dir/bin/unwrapped/lnx64.o:$aietools_dir/tps/lnx64/target/bin/LNa64bin
+# extra_defs="-D__AIENGINE__ -D__AIE_ARCH__=20 -D__AIEARCH__=20"
+extra_defs="-D__AIE_ARCH__=20 -D__AIEARCH__=20"
+$unwrapped_xchesscc -p me -C Release_LLVM $extra_defs -Y clang=$chess_clang -P $libdir -d -f -I$aietools_include_dir -c ${src_file} -o ${object_file}
