@@ -108,6 +108,9 @@ jobs:
         run: |
           mkdir iree-install
           tar -xf iree-dist.tar -C iree-install
+          wget https://github.com/Xilinx/llvm-aie/releases/download/nightly/llvm_aie-18.0.0.2024071901+ff089e9d-py3-none-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl \
+            -O llvm-aie.zip
+          unzip llvm-aie.zip
 
       - name: Create venv and install dependencies
         run: |
@@ -145,7 +148,7 @@ jobs:
           # on the guthub CI machine.
           sudo prlimit -lunlimited --pid $$
 
-          bash build_tools/ci/run_matmul_test.sh test_matmuls iree-install
+          bash build_tools/ci/run_matmul_test.sh test_matmuls iree-install $PWD/llvm-aie
 
       - name : E2E comparison of AIE to llvm-cpu
         run: |
@@ -153,8 +156,7 @@ jobs:
           # install requirements
           # TODO(newling) make requirements.txt file
           pip install numpy
-          python3 build_tools/ci/cpu_comparison/run_test.py test_aie_vs_cpu iree-install
-
+          python3 build_tools/ci/cpu_comparison/run_test.py test_aie_vs_cpu iree-install $PWD/llvm-aie
 
       - name: Printing IR from aie2xclbin
         run: |
