@@ -156,6 +156,7 @@ jobs:
           # install requirements
           # TODO(newling) make requirements.txt file
           pip install numpy
+          source /opt/xilinx/xrt/setup.sh
           python3 build_tools/ci/cpu_comparison/run_test.py test_aie_vs_cpu iree-install $PWD/llvm-aie
 
       - name: Printing IR from aie2xclbin
