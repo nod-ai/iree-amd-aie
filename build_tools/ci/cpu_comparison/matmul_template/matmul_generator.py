@@ -3,7 +3,7 @@ import re
 import os
 
 
-def generate(output_fn, input_fn, m, n, k, lhs_rhs_type, acc_type):
+def generate_matmul_test(output_fn, input_fn, m, n, k, lhs_rhs_type, acc_type):
     """
     Generate mlir file (output_fn) from the template file (input_fn).
     """
@@ -43,7 +43,7 @@ if __name__ == "__main__":
         )
         sys.exit(1)
 
-    generate(
+    generate_matmul_test(
         sys.argv[1],
         sys.argv[2],
         int(sys.argv[3]),
