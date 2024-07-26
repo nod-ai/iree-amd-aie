@@ -36,7 +36,7 @@ static void writeLDScriptMap(raw_ostream &output, BufferOp buf, int offset) {
 // {
 //   . = 0x0;
 //   .text : {
-//      // the _main_init symbol from crt0.o has to come at address zero.
+//      // the __start symbol from crt0.o has to come at address zero.
 //      *crt0.o(.text)
 //      . = 0x200;
 //      __ctors_start__ = .;
