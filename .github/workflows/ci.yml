@@ -110,7 +110,7 @@ jobs:
           tar -xf iree-dist.tar -C iree-install
           wget -q https://github.com/Xilinx/llvm-aie/releases/download/nightly/llvm_aie-18.0.0.2024071901+ff089e9d-py3-none-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl \
             -O llvm-aie.zip
-          unzip llvm-aie.zip
+          unzip -q llvm-aie.zip
 
       - name: Create venv and install dependencies
         run: |
