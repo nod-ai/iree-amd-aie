@@ -48,12 +48,6 @@ static const std::string _CHESS_INTRINSIC_WRAPPER_CPP{
 #include "chess_intrinsic_wrapper.cpp"
 };
 
-// This is a string that contains crt.c (see top of the
-// included file for deeper explanation).
-static const std::string _CRT{
-#include "crt.c"
-};
-
 using namespace std::placeholders;
 using namespace llvm;
 using namespace mlir;
@@ -318,7 +312,7 @@ static LogicalResult assembleFileUsingPeano(
   args.insert(args.end(), extraArgs.begin(), extraArgs.end());
   args.emplace_back("-O2");
   // TODO(max): pipe target arch in somehow
-  args.emplace_back("--target=aie2-none-elf");
+  args.emplace_back("--target=aie2-none-unknown-elf");
   args.emplace_back("-c");
   args.emplace_back(inputFile);
   args.emplace_back("-o");
@@ -483,35 +477,21 @@ static LogicalResult generateCoreElfFiles(ModuleOp moduleOp,
         ldscriptOutput->keep();
       }
 
-      // We are running a clang command for now, but really this is an lld
-      // command.
-      {
-        std::string targetLower = StringRef(targetArch).lower();
-        std::vector<std::string> flags;
-        flags.emplace_back("-O2");
-        flags.emplace_back("--target=" + targetLower + "-none-unknown-elf");
-        flags.emplace_back("-nostartfiles");
-
-        auto crtObjFile = assembleStringUsingPeano(
-            /*inputFileStr= */ _CRT, /*inputFileName=*/"crt.c",
-            /*outputFileName=*/"crt.o",
-            /*outputDir=*/tempDir,
-            /*extraArgs*/ std::vector<std::string>{"-Wno-invalid-noreturn"},
-            /*workDir=*/tempDir, /*peanoDir=*/peanoDir, /*verbose=*/verbose);
-        if (failed(crtObjFile)) return failure();
-        flags.emplace_back(*crtObjFile);
-
-        flags.emplace_back(objFile);
-        flags.emplace_back("-Wl,--gc-sections");
-        flags.emplace_back("-Wl,-T," + ldscriptPath.string());
-        flags.emplace_back("-o");
-        flags.emplace_back(elfFile);
-        if (verbose) flags.emplace_back("-v");
-        if (!runTool(peanoDir / "bin" / "clang", flags, verbose)) {
-          llvm::errs() << "failed to link elf file for core(" << col << ","
-                       << row << ")";
-          return failure();
-        }
+      std::string targetLower = StringRef(targetArch).lower();
+      std::vector<std::string> flags;
+      flags.emplace_back(objFile);
+      flags.emplace_back("--target=" + targetLower + "-none-unknown-elf");
+      flags.emplace_back("-Wl,--gc-sections");
+      flags.emplace_back("-Wl,-T," + ldscriptPath.string());
+      flags.emplace_back("-o");
+      flags.emplace_back(elfFile);
+      if (verbose) flags.emplace_back("-v");
+      // we run clang (ie cc) so that libc, libm, crt0/1 paths are injected
+      // automatically into the ld.lld invocation
+      if (!runTool(peanoDir / "bin" / "clang", flags, verbose)) {
+        llvm::errs() << "failed to link elf file for core(" << col << "," << row
+                     << ")";
+        return failure();
       }
     }
   }
