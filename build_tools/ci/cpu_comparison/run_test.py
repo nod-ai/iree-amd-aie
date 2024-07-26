@@ -157,6 +157,9 @@ def generate_aie_output(
     if function_name:
         function_line = f"--function={function_name}"
 
+    # Replace all '$' symbols with '\$' to avoid bash expansion
+    function_line = function_line.replace("$", "\\$")
+
     # We need to drop out of python to run the IREE compile command
     github_actions = "${GITHUB_ACTIONS}"
     reset_npu_script = config.reset_npu_script
@@ -187,8 +190,6 @@ echo "Time spent in compilation: $(($end_compile - $start_compile)) [ms]"
 echo "Time spent in running the model: $(($end_run - $end_compile)) [ms]"
     """
 
-    # Replace all '$' symbols with '\$' to avoid bash expansion
-    script = script.replace("$", "\\$")
     run_script(script, config.verbose)
     return np.load(aie_npy)
 
@@ -218,6 +219,9 @@ def generate_llvm_cpu_output(
     if function_name:
         function_line = f"--function={function_name}"
 
+    # Replace all '$' symbols with '\$' to avoid bash expansion
+    function_line = function_line.replace("$", "\\$")
+
     script = f"""
 set -ex
 cd {output_dir}
@@ -231,8 +235,6 @@ source {xrt_dir}/setup.sh
         --output=@{cpu_npy} {function_line}
     """
 
-    # Replace all '$' symbols with '\$' to avoid bash expansion
-    script = script.replace("$", "\\$")
     run_script(script, config.verbose)
     return np.load(cpu_npy)
 
