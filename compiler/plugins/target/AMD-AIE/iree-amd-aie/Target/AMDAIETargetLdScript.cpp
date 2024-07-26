@@ -36,8 +36,8 @@ static void writeLDScriptMap(raw_ostream &output, BufferOp buf, int offset) {
 // {
 //   . = 0x0;
 //   .text : {
-//      // the _main_init symbol from me_basic.o has to come at address zero.
-//      *me_basic.o(.text)
+//      // the _main_init symbol from crt0.o has to come at address zero.
+//      *crt0.o(.text)
 //      . = 0x200;
 //      __ctors_start__ = .;
 //      __init_array_start = .;
@@ -94,22 +94,13 @@ MEMORY
              << ", LENGTH = 0x" << llvm::utohexstr(length);
       output << R"THESCRIPT(
 }
-ENTRY(_main_init)
+ENTRY(__start)
 SECTIONS
 {
   . = 0x0;
   .text : {
-     /* the _main_init symbol from me_basic.o has to come at address zero. */
-     *me_basic.o(.text)
-     . = 0x200;
-     _ctors_start = .;
-     _init_array_start = .;
-     KEEP(SORT(*.init_array))
-     _ctors_end = .;
-     _init_array_end = .;
-     _dtors_start = .;
-     _dtors_end = .;
-     *(.text)
+    *crt0.o(.text*)
+    *(.text*)
   } > program
   .data : {
      *(.data*);
