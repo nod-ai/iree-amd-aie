@@ -166,15 +166,25 @@ set -ex
 source {xrt_dir}/setup.sh
 cd {output_dir}
 
+
 # Reset NPU (only in CI to facilitate testing without sudo access).
 if [ "{github_actions}" = true ]; then
   bash {reset_npu_script}
 fi
 
+start_compile=$(date +%s%3N)
+
 {iree_compile_exe} {test_file} {compilation_flags}
+
+end_compile=$(date +%s%3N)
 
 {iree_run_exe} --module={aie_vmfb} {input_flags} \
         --device=xrt --output=@{aie_npy} {function_line}
+
+end_run=$(date +%s%3N)
+
+echo "Time spent in compilation: $(($end_compile - $start_compile)) [ms]"
+echo "Time spent in running the model: $(($end_run - $end_compile)) [ms]"
     """
 
     # Replace all '$' symbols with '\$' to avoid bash expansion
