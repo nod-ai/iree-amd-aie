@@ -5,7 +5,6 @@
 import argparse
 import os
 import re
-import shutil
 import subprocess
 import time
 import urllib.request
@@ -192,7 +191,6 @@ class TestConfig:
         peano_dir,
         xrt_dir,
         vitis_dir,
-        n_repeats,
         file_dir,
         iree_compile_exe,
         iree_run_exe,
@@ -205,7 +203,6 @@ class TestConfig:
         self.peano_dir = peano_dir
         self.xrt_dir = xrt_dir
         self.vitis_dir = vitis_dir
-        self.n_repeats = n_repeats
         self.file_dir = file_dir
         self.iree_compile_exe = iree_compile_exe
         self.iree_run_exe = iree_run_exe
@@ -293,7 +290,6 @@ class TestConfig:
         iree_run_exe:         {self.iree_run_exe}
         kernel_version:       {self.linux_kernel}
         output_dir:           {self.output_dir}
-        n_repeats:            {self.n_repeats}
         peano_commit_hash:    {self.peano_commit_hash}
         peano_dir:            {self.peano_dir}
         reset_npu_script:     {self.reset_npu_script}
@@ -382,7 +378,6 @@ def run_all(
     peano_dir,
     xrt_dir,
     vitis_dir,
-    n_repeats,
     return_on_fail,
     verbose,
 ):
@@ -404,9 +399,8 @@ def run_all(
        ./matmul_template. For example you might want to create ./conv_template
     """
 
-    if output_dir.exists():
-        shutil.rmtree(output_dir)
-    output_dir.mkdir()
+    if not output_dir.exists():
+        output_dir.mkdir()
     if not iree_install_dir.exists():
         raise RuntimeError(f"'{iree_install_dir}' is not a directory.")
     iree_compile_exe = find_executable(iree_install_dir, "iree-compile")
@@ -419,7 +413,6 @@ def run_all(
         peano_dir,
         xrt_dir,
         vitis_dir,
-        n_repeats,
         file_dir,
         iree_compile_exe,
         iree_run_exe,
@@ -442,7 +435,7 @@ def run_all(
         "matmul_f32_8_8_4",
         "matmul_f32_8_4_8",
     ]:
-        run_test(config, test_files_dir / f"{name}.mlir", n_repeats=config.n_repeats)
+        run_test(config, test_files_dir / f"{name}.mlir")
 
     for name in [
         "conv2d_nhwc_int32",
@@ -463,7 +456,6 @@ def run_all(
         config,
         test_files_dir / "three_matmuls.mlir",
         function_name="three_$mm$",
-        n_repeats=config.n_repeats,
     )
 
     matmul_template_dir = file_dir / "matmul_template"
@@ -517,7 +509,6 @@ if __name__ == "__main__":
     parser.add_argument(
         "vitis_dir", nargs="?", default="/opt/Xilinx/Vitis/2024.1", type=abs_path
     )
-    parser.add_argument("-n", "--n-repeats", type=int, default=1)
     parser.add_argument("--return-on-fail", action="store_true", default=True)
     parser.add_argument("-v", "--verbose", action="store_true", default=True)
     args = parser.parse_args()
@@ -527,7 +518,6 @@ if __name__ == "__main__":
         args.peano_install_dir,
         args.xrt_dir,
         args.vitis_dir,
-        args.n_repeats,
         args.return_on_fail,
         args.verbose,
     )
