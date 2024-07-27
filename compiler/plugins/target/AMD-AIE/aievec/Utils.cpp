@@ -14,6 +14,7 @@
 
 #include "Utils.h"
 
+#include "AIEVecOps.h"
 #include "llvm/ADT/TypeSwitch.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
@@ -93,5 +94,36 @@ template std::optional<int64_t> getTransferReadAlignmentOffset(
 template std::optional<int64_t> getTransferReadAlignmentOffset(
     vector::TransferReadOp::Adaptor readOp, VectorType vType,
     int64_t alignment);
+
+std::optional<Value> getSourceOfWideningOp(Value src) {
+  // DropVectorUnitDimsAndDecomposeInsertExtractStridedSlicePass inserts shape
+  // casts that cancel out but not before this pass
+  if (auto shapeCastOp = src.getDefiningOp<vector::ShapeCastOp>())
+    return getSourceOfWideningOp(shapeCastOp.getSource());
+  if (auto extSIOp = src.getDefiningOp<arith::ExtSIOp>())
+    return extSIOp.getIn();
+  if (auto extUIOp = src.getDefiningOp<arith::ExtUIOp>())
+    return extUIOp.getIn();
+  if (auto extFOp = src.getDefiningOp<arith::ExtFOp>()) return extFOp.getIn();
+  if (auto srsOp = src.getDefiningOp<aievec::SRSOp>()) {
+    // Conversion through AIE intrinsics takes two steps:
+    //     1) Load to accumulator: aievec.ups
+    //     2) Move from accumulator: aievec.srs
+    auto srsSource = srsOp.getSource();
+    if (srsSource)
+      if (auto upsOp = srsSource.getDefiningOp<aievec::UPSOp>())
+        return upsOp.getSource();
+  }
+  if (auto castOp = src.getDefiningOp<aievec::CastOp>()) {
+    // Conversion through AIE intrinsics can also take the following two steps:
+    //     1) Load to accumulator: aievec.ups
+    //     2) Move from accumulator: aievec.cast
+    auto castSource = castOp.getSource();
+    if (castSource)
+      if (auto upsOp = castSource.getDefiningOp<aievec::UPSOp>())
+        return upsOp.getSource();
+  }
+  return {};
+}
 
 }  // namespace mlir::iree_compiler::aievec

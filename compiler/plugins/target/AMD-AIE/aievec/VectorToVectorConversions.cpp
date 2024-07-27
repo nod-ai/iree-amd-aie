@@ -19,13 +19,14 @@
 #include "mlir/Conversion/AffineToStandard/AffineToStandard.h"
 #include "mlir/Dialect/Affine/Analysis/LoopAnalysis.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
-#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/Utils/ReshapeOpsUtils.h"
+#include "mlir/Dialect/Vector/Transforms/VectorTransforms.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/DialectConversion.h"
+#include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
 #define DEBUG_TYPE "aievec-canonicalization"
 
@@ -66,7 +67,9 @@ static bool isGemmBTransposedContractionOp(vector::ContractionOp op) {
 
   auto innerLhsMap = indexingMaps[0].dropResults(outerMostResults);
   auto innerRhsMap = indexingMaps[1].dropResults(outerMostResults);
-  auto innerAccMap = indexingMaps[2].dropResults(outerMostResults);
+  AffineMap innerAccMap = indexingMaps[2];
+  if (indexingMaps[2].getNumResults() > innerLhsMap.getNumResults())
+    innerAccMap = indexingMaps[2].dropResults(outerMostResults);
 
   // Check whether they conform to a "transposed B" gemm
   auto ctx = op.getContext();
@@ -80,9 +83,10 @@ static bool isGemmBTransposedContractionOp(vector::ContractionOp op) {
       AffineMap::getPermutationMap(ArrayRef<unsigned>{2, 0, 1}, ctx)
           .dropResults(0);
   int64_t numOuterMostDims = indexingMaps[0].getNumDims() - 3;
-  return innerLhsMap == mmAidxMap.shiftDims(numOuterMostDims) &&
-         innerRhsMap == mmBidxMap.shiftDims(numOuterMostDims) &&
-         innerAccMap == mmCidxMap.shiftDims(numOuterMostDims);
+  auto r = innerLhsMap == mmAidxMap.shiftDims(numOuterMostDims) &&
+           innerRhsMap == mmBidxMap.shiftDims(numOuterMostDims) &&
+           innerAccMap == mmCidxMap.shiftDims(numOuterMostDims);
+  return r;
 }
 
 //============================================================================//
@@ -152,6 +156,26 @@ struct SplitUnalignedTransferReadPattern
 
   int64_t maxVectorSize;
   int64_t vectorAlignment;
+};
+
+// There is a possibility that, when the linalg op is converted to
+// contractions, lower precisions operands are cast to the target
+// precision outside the contraction. For those cases, we check.
+struct UndoLinalgWidening : public OpRewritePattern<vector::ContractionOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(vector::ContractionOp op,
+                                PatternRewriter &rewriter) const override {
+    auto maybeNarrowerLhs = getSourceOfWideningOp(op.getLhs());
+    auto maybeNarrowerRhs = getSourceOfWideningOp(op.getRhs());
+    if (!maybeNarrowerLhs || !maybeNarrowerRhs) return failure();
+    rewriter
+        .replaceOpWithNewOp<vector::ContractionOp>(
+            op, *maybeNarrowerLhs, *maybeNarrowerRhs, op.getAcc(),
+            op.getIndexingMaps(), op.getIteratorTypes())
+        .getResult();
+    return success();
+  }
 };
 
 // This pattern converts a `vector.transfer_read` with a splat permutation map
@@ -536,15 +560,84 @@ struct CanonicalizeVectorForAIEVecPass
   }
 };
 
-static std::unique_ptr<::mlir::Pass> createCanonicalizeVectorForAIEVecPass() {
+static std::unique_ptr<mlir::Pass> createCanonicalizeVectorForAIEVecPass() {
   return std::make_unique<CanonicalizeVectorForAIEVecPass>();
+}
+
+/// This is a copy-paste of
+/// iree/compiler/src/iree/compiler/Codegen/LLVMCPU/LLVMCPUDropVectorUnitDims.cpp
+/// which only works on FunctionOpInterface ops which aie.core is not (even
+/// though it should be).
+/// TODO(max): delete when we have our own aie.core
+namespace {
+struct DropVectorUnitDimsAndDecomposeInsertExtractStridedSlicePass
+    : public PassWrapper<
+          DropVectorUnitDimsAndDecomposeInsertExtractStridedSlicePass,
+          OperationPass<>> {
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(
+      DropVectorUnitDimsAndDecomposeInsertExtractStridedSlicePass)
+  StringRef getArgument() const final {
+    return "drop-vector-unit-dims-for-aievec";
+  }
+
+  StringRef getDescription() const final {
+    return "Pass to drop vector unit dims.";
+  }
+
+  void getDependentDialects(DialectRegistry &registry) const override {
+    registry.insert<memref::MemRefDialect, vector::VectorDialect>();
+  }
+  void runOnOperation() override;
+};
+
+void DropVectorUnitDimsAndDecomposeInsertExtractStridedSlicePass::
+    runOnOperation() {
+  MLIRContext *ctx = &getContext();
+  auto op = getOperation();
+
+  IRRewriter rewriter(ctx);
+  vector::transferOpflowOpt(rewriter, op);
+
+  RewritePatternSet patterns(ctx);
+  patterns.add<UndoLinalgWidening>(patterns.getContext());
+  vector::populateCastAwayVectorLeadingOneDimPatterns(patterns);
+  //  vector::populateVectorTransferCollapseInnerMostContiguousDimsPatterns(
+  //      patterns);
+  vector::populateVectorTransferDropUnitDimsPatterns(patterns);
+  vector::populateDropUnitDimWithShapeCastPatterns(patterns);
+
+  populateVectorInsertExtractStridedSliceDecompositionPatterns(patterns);
+
+  vector::InsertOp::getCanonicalizationPatterns(patterns, ctx);
+  vector::ExtractOp::getCanonicalizationPatterns(patterns, ctx);
+  vector::TransferReadOp::getCanonicalizationPatterns(patterns, ctx);
+  vector::TransferWriteOp::getCanonicalizationPatterns(patterns, ctx);
+  if (failed(applyPatternsAndFoldGreedily(op, std::move(patterns)))) {
+    return signalPassFailure();
+  }
+}
+}  // namespace
+
+std::unique_ptr<mlir::Pass>
+createDropVectorUnitDimsAndDecomposeInsertExtractStridedSlicePass() {
+  return std::make_unique<
+      DropVectorUnitDimsAndDecomposeInsertExtractStridedSlicePass>();
+}
+
+void mlir::iree_compiler::aievec::
+    registerDropVectorUnitDimsAndDecomposeInsertExtractStridedSlicePass() {
+  mlir::registerPass([]() -> std::unique_ptr<mlir::Pass> {
+    return createDropVectorUnitDimsAndDecomposeInsertExtractStridedSlicePass();
+  });
 }
 
 void mlir::iree_compiler::aievec::buildCanonicalizeVectorForAIEVec(
     OpPassManager &pm) {
   // Add `Vector` code canonicalization passes
-  // TODO: Add passes to unroll vector with unsupported types
-  // TODO: Add passes to split vectors that won't fit in registers
+  // TODO copy-pasted: Add passes to unroll vector with unsupported types
+  // TODO copy-pasted: Add passes to split vectors that won't fit in registers
   pm.addPass(createCopyRemovalPass());
+  pm.addPass(
+      createDropVectorUnitDimsAndDecomposeInsertExtractStridedSlicePass());
   pm.addPass(createCanonicalizeVectorForAIEVecPass());
 }

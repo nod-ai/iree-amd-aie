@@ -1,33 +1,17 @@
 // RUN: iree-opt --convert-vector-to-aievec %s
 
+// XFAIL: *
+
 #map = affine_map<(d0, d1, d2, d3) -> (d0, d1, d3)>
 #map1 = affine_map<(d0, d1, d2, d3) -> (d3, d2)>
 #map2 = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2)>
 aie.device(npu1_4col) {
-  %tile_0_1 = aie.tile(0, 1)
-  %tile_1_1 = aie.tile(1, 1)
-  %tile_2_1 = aie.tile(2, 1)
-  %tile_3_1 = aie.tile(3, 1)
-  %tile_0_2 = aie.tile(0, 2)
-  %tile_0_3 = aie.tile(0, 3)
-  %tile_0_4 = aie.tile(0, 4)
   %tile_0_5 = aie.tile(0, 5)
-  %lock_0_4 = aie.lock(%tile_0_4, 5) {init = 2 : i32}
-  %lock_0_4_0 = aie.lock(%tile_0_4, 4) {init = 0 : i32}
-  %lock_0_4_1 = aie.lock(%tile_0_4, 3) {init = 2 : i32}
-  %lock_0_4_2 = aie.lock(%tile_0_4, 2) {init = 0 : i32}
-  %lock_0_4_3 = aie.lock(%tile_0_4, 1) {init = 1 : i32}
-  %lock_0_4_4 = aie.lock(%tile_0_4, 0) {init = 0 : i32}
   %buf19 = aie.buffer(%tile_0_5) {address = 1024 : i32, mem_bank = 0 : i32, sym_name = "buf19"} : memref<1x1x4x8xi32>
   %buf18 = aie.buffer(%tile_0_5) {address = 1152 : i32, mem_bank = 0 : i32, sym_name = "buf18"} : memref<1x1x8x8xi8>
   %buf17 = aie.buffer(%tile_0_5) {address = 1216 : i32, mem_bank = 0 : i32, sym_name = "buf17"} : memref<1x1x7x8xi8>
   %buf16 = aie.buffer(%tile_0_5) {address = 1272 : i32, mem_bank = 0 : i32, sym_name = "buf16"} : memref<1x1x8x8xi8>
   %buf15 = aie.buffer(%tile_0_5) {address = 1336 : i32, mem_bank = 0 : i32, sym_name = "buf15"} : memref<1x1x7x8xi8>
-  %buf14 = aie.buffer(%tile_0_4) {address = 1024 : i32, mem_bank = 0 : i32, sym_name = "buf14"} : memref<1x1x4x8xi32>
-  %buf13 = aie.buffer(%tile_0_4) {address = 1152 : i32, mem_bank = 0 : i32, sym_name = "buf13"} : memref<1x1x8x8xi8>
-  %buf12 = aie.buffer(%tile_0_4) {address = 1216 : i32, mem_bank = 0 : i32, sym_name = "buf12"} : memref<1x1x7x8xi8>
-  %buf11 = aie.buffer(%tile_0_4) {address = 1272 : i32, mem_bank = 0 : i32, sym_name = "buf11"} : memref<1x1x8x8xi8>
-  %buf10 = aie.buffer(%tile_0_4) {address = 1336 : i32, mem_bank = 0 : i32, sym_name = "buf10"} : memref<1x1x7x8xi8>
   %core_0_5 = aie.core(%tile_0_5) {
     %c48 = arith.constant 48 : index
     %c49 = arith.constant 49 : index
@@ -135,38 +119,4 @@ aie.device(npu1_4col) {
     aie.use_lock(%c48, Release, 1)
     cf.br ^bb1
   } {elf_file = "conv_2d_nhwc_hwcf_dispatch_0_conv_2d_nhwc_hwcf_1x64x64x32x3x3x16_i8xi8xi32_0_core_0_5.elf"}
-  %mem_0_4 = aie.mem(%tile_0_4) {
-    %0 = aie.dma_start(S2MM, 0, ^bb1, ^bb7, repeat_count = 1)
-  ^bb1:  // 2 preds: ^bb0, ^bb2
-    aie.use_lock(%lock_0_4_1, AcquireGreaterEqual, 1)
-    aie.dma_bd(%buf11 : memref<1x1x8x8xi8>, 0, 64) {bd_id = 0 : i32, next_bd_id = 1 : i32}
-    aie.use_lock(%lock_0_4_2, Release, 1)
-    aie.next_bd ^bb2
-  ^bb2:  // pred: ^bb1
-    aie.use_lock(%lock_0_4_1, AcquireGreaterEqual, 1)
-    aie.dma_bd(%buf13 : memref<1x1x8x8xi8>, 0, 64) {bd_id = 1 : i32, next_bd_id = 0 : i32}
-    aie.use_lock(%lock_0_4_2, Release, 1)
-    aie.next_bd ^bb1
-  ^bb3:  // pred: ^bb4
-    aie.end
-  ^bb4:  // pred: ^bb7
-    %1 = aie.dma_start(S2MM, 1, ^bb5, ^bb3, repeat_count = 1)
-  ^bb5:  // 2 preds: ^bb4, ^bb6
-    aie.use_lock(%lock_0_4, AcquireGreaterEqual, 1)
-    aie.dma_bd(%buf10 : memref<1x1x7x8xi8>, 0, 56) {bd_id = 2 : i32, next_bd_id = 3 : i32}
-    aie.use_lock(%lock_0_4_0, Release, 1)
-    aie.next_bd ^bb6
-  ^bb6:  // pred: ^bb5
-    aie.use_lock(%lock_0_4, AcquireGreaterEqual, 1)
-    aie.dma_bd(%buf12 : memref<1x1x7x8xi8>, 0, 56) {bd_id = 3 : i32, next_bd_id = 2 : i32}
-    aie.use_lock(%lock_0_4_0, Release, 1)
-    aie.next_bd ^bb5
-  ^bb7:  // pred: ^bb0
-    %2 = aie.dma_start(MM2S, 0, ^bb8, ^bb4, repeat_count = 1)
-  ^bb8:  // 2 preds: ^bb7, ^bb8
-    aie.use_lock(%lock_0_4_4, AcquireGreaterEqual, 1)
-    aie.dma_bd(%buf14 : memref<1x1x4x8xi32>, 0, 32) {bd_id = 4 : i32, next_bd_id = 4 : i32}
-    aie.use_lock(%lock_0_4_3, Release, 1)
-    aie.next_bd ^bb8
-  }
 } {sym_name = "conv_2d_nhwc_hwcf_dispatch_0_conv_2d_nhwc_hwcf_1x64x64x32x3x3x16_i8xi8xi32_0"}

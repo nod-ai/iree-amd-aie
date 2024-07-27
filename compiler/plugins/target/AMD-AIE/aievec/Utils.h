@@ -38,6 +38,12 @@ std::optional<int64_t> getTransferReadAlignmentOffset(TransferReadLikeOp readOp,
                                                       mlir::VectorType vType,
                                                       int64_t alignment);
 
+// Given a Value, if it is defined by a widening op (arith:ExtSIOp,
+// arith::ExtUIOp, arith::ExtFOp, aievec::UPSOp + aievec::SRSOp,
+// aievec::UPSOp + aievec::CastOp, vector::ShapeCastOp), return the source of
+// the widening op.
+std::optional<Value> getSourceOfWideningOp(Value src);
+
 }  // namespace mlir::iree_compiler::aievec
 
 #endif  // AIE_DIALECT_AIEVEC_UTILS_UTILS_H

@@ -40,6 +40,8 @@ struct AMDAIESession
     AMDAIE::registerAIRTransformPasses();
     aievec::registerAIEVecPipelines();
     aievec::registerConvertAIEVecToLLVMPass();
+    aievec::
+        registerDropVectorUnitDimsAndDecomposeInsertExtractStridedSlicePass();
   }
 
   void onRegisterDialects(DialectRegistry &registry) override {

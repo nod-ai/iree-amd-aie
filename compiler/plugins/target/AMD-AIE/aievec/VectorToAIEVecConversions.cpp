@@ -41,36 +41,6 @@ using namespace vector;
 using namespace mlir::iree_compiler;
 using namespace mlir::iree_compiler::aievec;
 
-// Given a Value, if it is defined by a widening op (arith:ExtSIOp,
-// arith::ExtUIOp, arith::ExtFOp, aievec::UPSOp + aievec::SRSOp,
-// aievec::UPSOp + aievec::CastOp), return the source of the widening op.
-static std::optional<Value> getSourceOfWideningOp(Value src) {
-  if (auto extSIOp = src.getDefiningOp<arith::ExtSIOp>())
-    return extSIOp.getIn();
-  if (auto extUIOp = src.getDefiningOp<arith::ExtUIOp>())
-    return extUIOp.getIn();
-  if (auto extFOp = src.getDefiningOp<arith::ExtFOp>()) return extFOp.getIn();
-  if (auto srsOp = src.getDefiningOp<aievec::SRSOp>()) {
-    // Conversion through AIE intrinsics takes two steps:
-    //     1) Load to accumulator: aievec.ups
-    //     2) Move from accumulator: aievec.srs
-    auto srsSource = srsOp.getSource();
-    if (srsSource)
-      if (auto upsOp = srsSource.getDefiningOp<aievec::UPSOp>())
-        return upsOp.getSource();
-  }
-  if (auto castOp = src.getDefiningOp<aievec::CastOp>()) {
-    // Conversion through AIE intrinsics can also take the following two steps:
-    //     1) Load to accumulator: aievec.ups
-    //     2) Move from accumulator: aievec.cast
-    auto castSource = castOp.getSource();
-    if (castSource)
-      if (auto upsOp = castSource.getDefiningOp<aievec::UPSOp>())
-        return upsOp.getSource();
-  }
-  return std::optional<Value>();
-}
-
 // Convert `vector.fma` to `aievec.mac_elem`. Only `vector<16xf32>` and
 // `vector<16xbf16>` operand types are supported. In the case of vectors with
 // `f32` elemental type, this pattern will try to match `bf16` to `f32`
@@ -137,74 +107,81 @@ struct ConvertVectorFMAOpToAIEVecFMAElemOpPattern
   unsigned shiftParam;
 };
 
+static Value dropLeadingUnitDims(OpBuilder &b, Value v) {
+  auto vecTy = dyn_cast<VectorType>(v.getType());
+  if (!vecTy) return v;
+  auto vecShape = vecTy.getShape();
+
+  size_t numLeadUnitDims = 0;
+  while (numLeadUnitDims < vecShape.size() && vecShape[numLeadUnitDims] == 1)
+    numLeadUnitDims++;
+
+  if (!numLeadUnitDims) return v;
+
+  SmallVector<int64_t> newShape(vecShape.begin() + numLeadUnitDims,
+                                vecShape.end());
+  auto newVecTy = VectorType::get(newShape, vecTy.getElementType());
+  return b.create<vector::ShapeCastOp>(v.getLoc(), newVecTy, v).getResult();
+}
+
 // Convert a `vector.contract` op to an `aievec.matmul` op for AIE2
 struct LowerVectorContractionOpToAIEVecMatMulPattern
     : OpConversionPattern<vector::ContractionOp> {
   using OpConversionPattern::OpConversionPattern;
 
-  LowerVectorContractionOpToAIEVecMatMulPattern(MLIRContext *context,
-                                                bool matMoveToAcc = true)
-      : OpConversionPattern(context), matMoveToAcc(matMoveToAcc) {}
-
-  Value reshapeLeadingUnitDims(OpBuilder &b, Value v) const {
-    auto vecTy = dyn_cast<VectorType>(v.getType());
-    if (!vecTy) return v;
-    auto vecShape = vecTy.getShape();
-
-    size_t numLeadUnitDims = 0;
-    while (numLeadUnitDims < vecShape.size() && vecShape[numLeadUnitDims] == 1)
-      numLeadUnitDims++;
-
-    if (!numLeadUnitDims) return v;
-
-    SmallVector<int64_t> newShape(vecShape.begin() + numLeadUnitDims,
-                                  vecShape.end());
-    auto newVecTy = VectorType::get(newShape, vecTy.getElementType());
-    return b.create<vector::ShapeCastOp>(v.getLoc(), newVecTy, v).getResult();
-  }
+  LowerVectorContractionOpToAIEVecMatMulPattern(MLIRContext *context)
+      : OpConversionPattern(context) {}
 
   LogicalResult matchAndRewrite(
       vector::ContractionOp contractOp, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
-    auto lhs = reshapeLeadingUnitDims(rewriter, adaptor.getLhs());
-    auto rhs = reshapeLeadingUnitDims(rewriter, adaptor.getRhs());
-    auto acc = reshapeLeadingUnitDims(rewriter, adaptor.getAcc());
+    auto lhs = dropLeadingUnitDims(rewriter, adaptor.getLhs());
+    auto rhs = dropLeadingUnitDims(rewriter, adaptor.getRhs());
+    auto acc = dropLeadingUnitDims(rewriter, adaptor.getAcc());
     bool bReshapedAcc = (acc != adaptor.getAcc());
 
-    if (matMoveToAcc)
-      acc = rewriter.create<aievec::CastOp>(contractOp.getLoc(), acc.getType(),
-                                            acc, true);
-
-    auto matmulOp = rewriter.create<aievec::MatMulOp>(
-        contractOp.getLoc(), acc.getType(), lhs, rhs, acc);
+    aievec::MatMulOp matmulOp;
+    SmallVector<Diagnostic> failures;
     {
       // Replace diagnostics handler to silence errors when verifying the
       // validity of the `aievec.matmul` ops being generated.
-      ScopedDiagnosticHandler diagHandler(
-          contractOp.getContext(), [](Diagnostic &) { return success(); });
+      ScopedDiagnosticHandler diagHandler(contractOp.getContext(),
+                                          [&failures](Diagnostic &d) {
+                                            failures.push_back(std::move(d));
+                                            return success();
+                                          });
+      matmulOp = rewriter.create<aievec::MatMulOp>(
+          contractOp.getLoc(), acc.getType(), lhs, rhs, acc);
       if (failed(matmulOp.verifyInvariants())) {
         rewriter.eraseOp(matmulOp);
-        // There is a possibility that, when the linalg op is converted to
-        // contractions, lower precisions operands are cast to the target
-        // precission outside the contraction. For those cases, we check.
         lhs = adaptor.getLhs();
-        auto wideLhsValue = getSourceOfWideningOp(lhs).value_or(nullptr);
-        if (wideLhsValue) lhs = reshapeLeadingUnitDims(rewriter, wideLhsValue);
-
+        if (auto wideLhsValue = getSourceOfWideningOp(lhs))
+          lhs = dropLeadingUnitDims(rewriter, *wideLhsValue);
         rhs = adaptor.getRhs();
-        auto wideRhsValue = getSourceOfWideningOp(rhs).value_or(nullptr);
-        if (wideRhsValue) rhs = reshapeLeadingUnitDims(rewriter, wideRhsValue);
-
+        if (auto wideRhsValue = getSourceOfWideningOp(rhs))
+          rhs = dropLeadingUnitDims(rewriter, *wideRhsValue);
         matmulOp = rewriter.create<aievec::MatMulOp>(
             contractOp.getLoc(), acc.getType(), lhs, rhs, acc);
-        if (failed(matmulOp.verifyInvariants())) return failure();
+        // verifyInvariants emits diags
+        if (failed(matmulOp.verifyInvariants())) {
+          rewriter.eraseOp(matmulOp);
+          matmulOp = nullptr;
+        }
       }
+    }
+    if (!matmulOp) {
+      InFlightDiagnostic err = contractOp.emitError(
+          "resulting matmul failed to satisfy matmul invariants because:");
+      for (Diagnostic &failureDiag : failures) {
+        Diagnostic &note = err.attachNote(failureDiag.getLocation());
+        for (auto &arg : failureDiag.getArguments()) {
+          note.append(arg);
+        }
+      }
+      return err;
     }
 
     Value result = matmulOp.getResult();
-    if (matMoveToAcc)
-      result = rewriter.create<aievec::CastOp>(contractOp.getLoc(),
-                                               acc.getType(), matmulOp, false);
     if (bReshapedAcc)
       result = rewriter.create<vector::ShapeCastOp>(
           contractOp.getLoc(), adaptor.getAcc().getType(), result);
@@ -212,8 +189,6 @@ struct LowerVectorContractionOpToAIEVecMatMulPattern
 
     return success();
   }
-
-  bool matMoveToAcc;
 };
 
 // Convert a `vector.transpose` op to an `aievec.shuffle` op for AIE2.
@@ -228,14 +203,20 @@ struct LowerVectorTransposeOpToAIEVecShuffleOpPattern
     auto elemTyBitWidth = resTy.getElementTypeBitWidth();
     auto vBitWidth = std::accumulate(resShape.begin(), resShape.end(),
                                      elemTyBitWidth, std::multiplies<>());
-    if (vBitWidth != 512) return failure();
+    if (vBitWidth != 512) {
+      return transpOp->emitOpError("vector bit-width != 512");
+    }
 
-    if (elemTyBitWidth != 8 && elemTyBitWidth != 16 && elemTyBitWidth != 32)
-      return failure();
+    if (elemTyBitWidth != 8 && elemTyBitWidth != 16 && elemTyBitWidth != 32) {
+      return transpOp->emitOpError("element bit-width != 8, 16, 32");
+    }
 
     // Verify leading dimensions are all 1.
-    for (int64_t i = 0; i < static_cast<int64_t>(resShape.size() - 2); ++i)
-      if (resShape[i] != 1) return failure();
+    for (int64_t i = 0; i < static_cast<int64_t>(resShape.size() - 2); ++i) {
+      if (resShape[i] != 1) {
+        return transpOp.emitOpError("some leading dimension not 1");
+      }
+    }
 
     // Only permutation of the 2 innermost dimensions are supported.
     ArrayRef<int64_t> perm = transpOp.getPermutation();
@@ -256,7 +237,8 @@ struct LowerVectorTransposeOpToAIEVecShuffleOpPattern
           shuffleMode = aievec::ShuffleMode::T8_16X4;
           break;
         default:
-          return failure();
+          return transpOp->emitOpError(
+              "element bit-width == 8 but result shape last dim != 4, 8, 16");
       }
     } else if (elemTyBitWidth == 16) {
       switch (resShape.back()) {
@@ -273,10 +255,13 @@ struct LowerVectorTransposeOpToAIEVecShuffleOpPattern
           shuffleMode = aievec::ShuffleMode::T16_16X2;
           break;
         default:
-          return failure();
+          return transpOp->emitOpError(
+              "element bit-width == 16 but result shape last dim != 2, 4, 8, "
+              "16");
       }
-    } else if (resShape.back() != 4)
-      return failure();
+    } else if (resShape.back() != 4) {
+      return transpOp->emitOpError("result shape last dim != 4");
+    }
 
     auto flatVecTy =
         VectorType::get({512 / elemTyBitWidth}, resTy.getElementType());
@@ -1066,7 +1051,7 @@ struct LowerVectorToAIEVec : PassWrapper<LowerVectorToAIEVec, OperationPass<>> {
 
   // In case we want to register this pass as a standalone pass for test
   // purposes.
-  StringRef getArgument() const final { return "test-lower-vector-to-aievec"; }
+  StringRef getArgument() const final { return "lower-vector-to-aievec"; }
   StringRef getDescription() const final {
     return "Lower vector operations to AIE vector intrinsics";
   }
