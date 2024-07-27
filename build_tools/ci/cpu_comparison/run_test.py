@@ -13,7 +13,6 @@ from pathlib import Path
 from textwrap import dedent
 
 import numpy as np
-from setuptools.logging import configure
 
 from input_generator import generate_inputs, verify_determinism
 from matmul_template.matmul_generator import generate_matmul_test
