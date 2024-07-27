@@ -1,104 +1,70 @@
+#!/usr/bin/env python3
+
 # Copyright 2024 The IREE Authors
 
+import argparse
 import os
-import numpy as np
+import re
 import subprocess
-import sys
+import time
 import urllib.request
+from pathlib import Path
+from textwrap import dedent
+
+import numpy as np
+
 from input_generator import generate_inputs, verify_determinism
+from matmul_template.matmul_generator import generate_matmul_test
 from output_comparer import compare
 
-sys.path.append(os.path.join(os.path.dirname(__file__), "matmul_template"))
-from matmul_generator import generate_matmul_test
 
-
-def find_executable(install_dir, executable_name):
+def find_executable(install_dir: Path, executable_name):
     """
     Search for an executable in the given directory and its subdirectories
     'bin' and 'tools'. If the executable is not found, raise a RuntimeError.
     """
     search_dirs = [
         install_dir,
-        os.path.join(install_dir, "bin"),
-        os.path.join(install_dir, "tools"),
+        install_dir / "bin",
+        install_dir / "tools",
     ]
     for directory in search_dirs:
-        executable_path = os.path.join(directory, executable_name)
-        if os.path.isfile(executable_path):
+        executable_path = directory / executable_name
+        if executable_path.is_file():
             return executable_path
     raise RuntimeError(
         f"No '{executable_name}' executable found in '{install_dir}' or subdirectories."
     )
 
 
-def assert_num_args(argv):
-    if len(argv) < 2 or len(argv) > 5:
-        error_message = (
-            f"\n Illegal number of parameters: {len(argv)}, expected 2-5 parameters."
-            "\n The parameters are as follows:"
-            "\n     1) <output-dir>               (required)"
-            "\n     2) <iree-install-dir>         (required)"
-            "\n     3) <peano-install-dir>        (optional)"
-            "\n     4) <xrt-dir>                  (optional)"
-            "\n     5) <vitis-install-dir>        (optional)"
-            "\n Possible example (dependent on environment variables):"
-            "\n     python3 ./run_test.py "
-            "results_dir_tmp  $IREE_INSTALL_DIR  "
-            "$PEANO_INSTALL_DIR  /opt/xilinx/xrt  $VITIS_INSTALL_PATH"
-        )
-        raise RuntimeError(error_message)
-
-
-def validate_directory(directory):
-    if not os.path.isdir(directory):
-        raise RuntimeError(f"'{directory}' is not a directory.")
-
-
-def validate_file(file):
-    if not os.path.isfile(file):
-        raise RuntimeError(f"'{file}' is not a file.")
-
-
-def arg_or_default(argv, index, default):
-    path = default
-    if len(argv) > index:
-        path = argv[index]
-    path = os.path.realpath(path)
-    validate_directory(path)
-    return path
-
-
-def run_script(script, verbose):
+def shell_out(cmd: list, workdir=None, verbose=False):
+    if workdir is None:
+        workdir = Path.cwd()
+    if not isinstance(cmd, list):
+        cmd = [cmd]
+    for i, c in enumerate(cmd):
+        if isinstance(c, Path):
+            cmd[i] = str(c)
+    env = os.environ
     if verbose:
-        print(f"Running the following script:\n{script}")
+        _cmd = " ".join([f"{k}={v}" for k, v in env.items()]) + " " + " ".join(cmd)
+        print(f"Running the following command:\n{_cmd}")
 
-    bash_path = "/bin/bash"
-
-    # Confirm that /bin/bash is available:
-    if not os.path.isfile(bash_path):
-        raise RuntimeError("The bash shell is required to run a test script.")
-
-    process = subprocess.Popen(
-        script,
-        shell=True,
-        executable=bash_path,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-    )
-    stdout, stderr = process.communicate()
+    handle = subprocess.run(cmd, capture_output=True, cwd=workdir, env=env)
+    stderr_decode = handle.stderr.decode("utf-8").strip()
+    stdout_decode = handle.stdout.decode("utf-8").strip()
     if verbose:
-        stdout_decode = stdout.decode()
-        stderr_decode = stderr.decode()
         if stdout_decode:
             print("Standard output from script:")
-            print(stdout.decode())
+            print(stdout_decode)
         if stderr_decode:
             print("Standard error from script:")
             print(stderr_decode)
-    if process.returncode != 0:
+    if handle.returncode != 0:
         raise RuntimeError(
-            f"Error executing script, error code was {process.returncode}"
+            f"Error executing script, error code was {handle.returncode}"
         )
+    return stdout_decode, stderr_decode
 
 
 def generate_aie_output(
@@ -114,84 +80,65 @@ def generate_aie_output(
     Compile and run a test file for AIE, returning a numpy array of the output.
     """
 
-    peano_dir = config.peano_dir
-    iree_install_dir = config.iree_install_dir
-    vitis_dir = config.vitis_dir
-    xrt_dir = config.xrt_dir
-    iree_compile_exe = config.iree_compile_exe
-    iree_run_exe = config.iree_run_exe
-    output_dir = config.output_dir
-    verbose = config.verbose
-
-    aie_vmfb = os.path.join(output_dir, f"{name}_aie.vmfb")
-    aie_npy = os.path.join(output_dir, f"{name}_aie.npy")
-
-    compilation_flags = f"--iree-hal-target-backends=amd-aie \
- --iree-amdaie-tile-pipeline={pipeline} \
- --iree-amdaie-matmul-elementwise-fusion \
- --iree-amd-aie-peano-install-dir={peano_dir} \
- --iree-amd-aie-install-dir={iree_install_dir} \
- --iree-amd-aie-vitis-install-dir={vitis_dir} \
- --iree-hal-dump-executable-files-to={output_dir} \
- --iree-amd-aie-show-invoked-commands \
- --iree-scheduling-optimize-bindings=false \
- --mlir-elide-resource-strings-if-larger=10 \
- --mlir-disable-threading -o {aie_vmfb}"
+    compilation_flags = [
+        config.iree_compile_exe,
+        test_file,
+        "--iree-hal-target-backends=amd-aie",
+        f"--iree-amdaie-tile-pipeline={pipeline}",
+        "--iree-amdaie-matmul-elementwise-fusion",
+        f"--iree-amd-aie-peano-install-dir={config.peano_dir}",
+        f"--iree-amd-aie-install-dir={config.iree_install_dir}",
+        f"--iree-amd-aie-vitis-install-dir={config.vitis_dir}",
+        f"--iree-hal-dump-executable-files-to={config.output_dir}",
+        "--iree-scheduling-optimize-bindings=false",
+        f"--mlir-disable-threading",
+        "--mlir-elide-resource-strings-if-larger=10",
+        "-o",
+        config.output_dir / f"{name}_aie.vmfb",
+    ]
+    if config.verbose:
+        compilation_flags += ["--iree-amd-aie-show-invoked-commands"]
 
     if use_ukernel:
-
         MM_KERNEL_URL = (
             "https://github.com/nod-ai/iree-amd-aie/releases/download/ukernels/mm.o"
         )
-        compilation_flags += " --iree-amdaie-enable-ukernels=all"
-        mm_fn = os.path.join(output_dir, "mm.o")
-        if os.path.isfile(mm_fn):
-            if verbose:
+        compilation_flags += ["--iree-amdaie-enable-ukernels=all"]
+        mm_fn = config.output_dir / "mm.o"
+        if mm_fn.exists():
+            if config.verbose:
                 print(f"File {mm_fn} already exists")
         else:
-            if verbose:
+            if config.verbose:
                 print(f"Attempting to download {MM_KERNEL_URL} to {mm_fn}")
 
             urllib.request.urlretrieve(MM_KERNEL_URL, mm_fn)
+            if not mm_fn.exists():
+                raise RuntimeError("Failed to download mm.o")
 
-    function_line = ""
+    start = time.monotonic_ns()
+    shell_out(compilation_flags, config.output_dir, config.verbose)
+    compile_time = time.monotonic_ns() - start
+
+    aie_vmfb = config.output_dir / f"{name}_aie.vmfb"
+    aie_npy = config.output_dir / f"{name}_aie.npy"
+    run_args = [
+        config.iree_run_exe,
+        f"--module={aie_vmfb}",
+        *input_flags,
+        "--device=xrt",
+        f"--output=@{aie_npy}",
+    ]
     if function_name:
-        function_line = f"--function={function_name}"
+        run_args += [f"--function={function_name}"]
+    shell_out(config.reset_npu_script)
+    start = time.monotonic_ns()
+    shell_out(run_args, config.output_dir, config.verbose)
+    run_time = time.monotonic_ns() - start
 
-    # Replace all '$' symbols with '\$' to avoid bash expansion
-    function_line = function_line.replace("$", "\\$")
+    print(f"Time spent in compilation: {compile_time // 1e6} [ms]")
+    print(f"Time spent in running the model: {run_time // 1e6} [ms]")
 
-    # We need to drop out of python to run the IREE compile command
-    github_actions = "${GITHUB_ACTIONS}"
-    reset_npu_script = config.reset_npu_script
-
-    script = f"""
-set -ex
-source {xrt_dir}/setup.sh
-cd {output_dir}
-
-
-# Reset NPU (only in CI to facilitate testing without sudo access).
-if [ "{github_actions}" = true ]; then
-  bash {reset_npu_script}
-fi
-
-start_compile=$(date +%s%3N)
-
-{iree_compile_exe} {test_file} {compilation_flags}
-
-end_compile=$(date +%s%3N)
-
-{iree_run_exe} --module={aie_vmfb} {input_flags} \
-        --device=xrt --output=@{aie_npy} {function_line}
-
-end_run=$(date +%s%3N)
-
-echo "Time spent in compilation: $(($end_compile - $start_compile)) [ms]"
-echo "Time spent in running the model: $(($end_run - $end_compile)) [ms]"
-    """
-
-    run_script(script, config.verbose)
     return np.load(aie_npy)
 
 
@@ -206,37 +153,28 @@ def generate_llvm_cpu_output(
     Compile and run a test file for IREE's CPU backend, returning a numpy array
     of the output.
     """
-    iree_compile_exe = config.iree_compile_exe
-    iree_run_exe = config.iree_run_exe
-    output_dir = config.output_dir
-    xrt_dir = config.xrt_dir
 
-    cpu_vmfb = os.path.join(output_dir, f"{name}_cpu.vmfb")
-    cpu_npy = os.path.join(output_dir, f"{name}_cpu.npy")
-    compilation_flags = f"--iree-hal-target-backends=llvm-cpu \
-    --iree-llvmcpu-target-cpu-features=host -o {cpu_vmfb}"
+    cpu_vmfb = config.output_dir / f"{name}_cpu.vmfb"
+    compilation_flags = [
+        config.iree_compile_exe,
+        test_file,
+        "--iree-hal-target-backends=llvm-cpu",
+        "--iree-llvmcpu-target-cpu-features=host",
+        "-o",
+        f"{cpu_vmfb}",
+    ]
+    shell_out(compilation_flags, workdir=config.output_dir, verbose=config.verbose)
 
-    function_line = ""
+    cpu_npy = config.output_dir / f"{name}_cpu.npy"
+    run_args = [
+        config.iree_run_exe,
+        f"--module={cpu_vmfb}",
+        *input_flags,
+        f"--output=@{cpu_npy}",
+    ]
     if function_name:
-        function_line = f"--function={function_name}"
-
-    # Replace all '$' symbols with '\$' to avoid bash expansion
-    function_line = function_line.replace("$", "\\$")
-
-    script = f"""
-set -ex
-cd {output_dir}
-source {xrt_dir}/setup.sh
-
-# Compile
-{iree_compile_exe} {test_file} {compilation_flags}
-
-# Run
-{iree_run_exe} --module={cpu_vmfb} {input_flags} \
-        --output=@{cpu_npy} {function_line}
-    """
-
-    run_script(script, config.verbose)
+        run_args += [f"--function={function_name}"]
+    shell_out(run_args, workdir=config.output_dir, verbose=config.verbose)
     return np.load(cpu_npy)
 
 
@@ -270,18 +208,20 @@ class TestConfig:
         self.iree_run_exe = iree_run_exe
         self.return_on_fail = return_on_fail
         self.verbose = verbose
-        file_parent_dir = os.path.dirname(file_dir)
-        self.reset_npu_script = os.path.join(file_parent_dir, "reset_npu.sh")
+        self.reset_npu_script = file_dir.parent / "reset_npu.sh"
+        if not self.reset_npu_script.exists():
+            raise RuntimeError("Couldn't find reset_npu.sh")
 
         # Try get the xrt and (linux) kernel versions.
-        self.kernel_version = "undetermined"
-        self.xrt_release = "undetermined"
+        self.linux_kernel = "undetermined"
         self.xrt_hash_date = "undetermined"
-        xrt_bin_dir = os.path.join(xrt_dir, "bin")
-        xrt_smi_exe = os.path.join(xrt_bin_dir, "xrt-smi")
-        if not os.path.isfile(xrt_smi_exe):
-            xrt_smi_exe = os.path.join(xrt_bin_dir, "xbutil")
-        if not os.path.isfile(xrt_smi_exe):
+        self.xrt_hash = "undetermined"
+        self.xrt_release = "undetermined"
+        xrt_bin_dir = xrt_dir / "bin"
+        xrt_smi_exe = xrt_bin_dir / "xrt-smi"
+        if not xrt_smi_exe.exists():
+            xrt_smi_exe = xrt_bin_dir / "xbutil"
+        if not xrt_smi_exe.exists():
             raise RuntimeError(f"Neither xrt-smi nor xbutil found in {xrt_bin_dir}")
 
         # Get the string output of the xrt-smi 'examine' command. Expect the
@@ -299,39 +239,37 @@ class TestConfig:
         # ...
         # ```
         #
-        xrt_smi_output = subprocess.check_output([xrt_smi_exe, "examine"]).decode(
-            "utf-8"
+        system_info, xrt_info = (
+            subprocess.check_output([xrt_smi_exe, "examine"])
+            .decode("utf-8")
+            .split("XRT")
         )
 
-        # Try find the entries of the lines starting Release, Version, and
-        # Hash Date
-        xrt_smi_lines = xrt_smi_output.split("\n")
-        for line in xrt_smi_lines:
-            line = line.strip()
-            if line.startswith("Release"):
-                self.xrt_release = line.split(":")[1].strip()
-            if line.startswith("Version"):
-                self.kernel_version = line.split(":")[1].strip()
-            if line.startswith("Hash Date"):
-                self.xrt_hash_date = line.split(":")[1].strip()
+        linux_kernel = re.findall(r"Release\s+:\s(.*)", system_info, re.MULTILINE)
+        if linux_kernel:
+            self.linux_kernel = linux_kernel[0]
 
-        # Try get the peano version. If installed via a wheel,
-        # there's a good chance there's a directory of
-        # of the form "llvm_aie-18.0.0.2024071901+ff089e9d.dist-info"
-        # Try get the version from this directory name:
-        self.peano_version = "undetermined"
-        peano_dir_parent = os.path.dirname(peano_dir)
-        peano_dir_parent_files = os.listdir(peano_dir_parent)
-        potentials = []
-        for directory in peano_dir_parent_files:
-            if os.path.isdir(
-                os.path.join(peano_dir_parent, directory)
-            ) and directory.startswith("llvm_aie-"):
-                potentials.append(directory)
-        if len(potentials) == 1:
-            self.peano_version = "maybe " + potentials[0].replace(
-                "llvm_aie-", ""
-            ).replace(".dist-info", "")
+        xrt_release = re.findall(r"Version\s+:\s(.*)", xrt_info, re.MULTILINE)
+        if xrt_release:
+            self.xrt_release = xrt_release[0]
+
+        xrt_hash_date = re.findall(r"Hash Date\s+:\s(.*)", xrt_info, re.MULTILINE)
+        if xrt_hash_date:
+            self.xrt_hash_date = xrt_hash_date[0]
+
+        xrt_hash = re.findall(r"Hash\s+:\s(.*)", xrt_info, re.MULTILINE)
+        if xrt_hash:
+            self.xrt_hash = xrt_hash[0]
+
+        # no clue why but peano clang dumps -v to stderr
+        _, clang_v_output = shell_out([peano_dir / "bin" / "clang", "-v"])
+        peano_commit_hash = re.findall(
+            r"clang version \d+\.\d+\.\d+ \(https://github.com/Xilinx/llvm-aie (\w+)\)",
+            clang_v_output,
+            re.MULTILINE,
+        )
+        if peano_commit_hash:
+            self.peano_commit_hash = peano_commit_hash[0]
 
         # Populated at runtime
         self.failures = []
@@ -342,47 +280,50 @@ class TestConfig:
             )
 
     def __str__(self):
-        return f"""
-Settings and versions used in all tests
--+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-
-file_dir:         {self.file_dir}
-iree_compile_exe: {self.iree_compile_exe}
-iree_install_dir: {self.iree_install_dir}
-iree_run_exe:     {self.iree_run_exe}
-kernel_version:   {self.kernel_version}
-output_dir:       {self.output_dir}
-peano_version:    {self.peano_version}
-peano_dir:        {self.peano_dir}
-reset_npu_script: {self.reset_npu_script}
-return_on_fail:   {self.return_on_fail}
-verbose:          {self.verbose}
-vitis_dir:        {self.vitis_dir}
-xrt_dir:          {self.xrt_dir}
-xrt_hash_date:    {self.xrt_hash_date}
-xrt_release:      {self.xrt_release}
--+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-
+        return dedent(
+            f"""
+        Settings and versions used in all tests
+        -+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-
+        file_dir:             {self.file_dir}
+        iree_compile_exe:     {self.iree_compile_exe}
+        iree_install_dir:     {self.iree_install_dir}
+        iree_run_exe:         {self.iree_run_exe}
+        kernel_version:       {self.linux_kernel}
+        output_dir:           {self.output_dir}
+        peano_commit_hash:    {self.peano_commit_hash}
+        peano_dir:            {self.peano_dir}
+        reset_npu_script:     {self.reset_npu_script}
+        return_on_fail:       {self.return_on_fail}
+        verbose:              {self.verbose}
+        vitis_dir:            {self.vitis_dir}
+        xrt_dir:              {self.xrt_dir}
+        xrt_hash_date:        {self.xrt_hash_date}
+        xrt_hash:             {self.xrt_hash}
+        xrt_release:          {self.xrt_release}
+        -+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-
 
-Some information on the above settings / versions
-=================================================
-file_dir
-  The directory of this script
-iree_compile_exe
-  The path to the IREE compiler executable used to compile for both
-  AIE and CPU backends
-kernel_version
-  The version of the linux kernel. We try to get this by running
-  'xrt_smi examine' or 'xbutil examine'
-peano_version
-  The version of peano (llvm-aie). We try to get this by looking
-  for a 'dist-info' directory which carries a wheel's date. This is
-  just a hint, and it's not guaranteed to be correct. This is not
-  used in the tests, but included here as it might be useful for debugging.
-xrt_hash_date
-  Information obtained from 'xrt_smi examine' or 'xbutil examine' about
-  the version of XRT. This is not used in the tests, but included here
-  just to help in debugging.
-=================================================
+        Some information on the above settings / versions
+        =================================================
+        file_dir
+          The directory of this script
+        iree_compile_exe
+          The path to the IREE compiler executable used to compile for both
+          AIE and CPU backends
+        kernel_version
+          The version of the linux kernel. We try to get this by running
+          'xrt_smi examine' or 'xbutil examine'
+        peano_commit_hash
+          The version of peano (llvm-aie). We try to get this by looking
+          for a 'dist-info' directory which carries a wheel's date. This is
+          just a hint, and it's not guaranteed to be correct. This is not
+          used in the tests, but included here as it might be useful for debugging.
+        xrt_hash/date
+          Information obtained from 'xrt_smi examine' or 'xbutil examine' about
+          the version of XRT. This is not used in the tests, but included here
+          just to help in debugging.
+        =================================================
         """
+        )
 
     def __repr__(self):
         return self.__str__()
@@ -402,7 +343,7 @@ def run_test(
     if n_repeats == 0:
         return
 
-    name = os.path.basename(test_file).replace(".mlir", "")
+    name = Path(test_file).name.replace(".mlir", "")
 
     input_flags = generate_inputs(test_file, config.output_dir, seed)
 
@@ -412,7 +353,7 @@ def run_test(
 
     for i in range(n_repeats):
         if config.verbose:
-            print(f"Run #{i+1} of {n_repeats} for {test_file}")
+            print(f"Run #{i + 1} of {n_repeats} for {test_file}")
 
         aie_output = generate_aie_output(
             config,
@@ -431,7 +372,15 @@ def run_test(
                 raise RuntimeError("Test failed, exiting.")
 
 
-def run_all(argv):
+def run_all(
+    output_dir,
+    iree_install_dir,
+    peano_dir,
+    xrt_dir,
+    vitis_dir,
+    return_on_fail,
+    verbose,
+):
     """
     There are a few ways to add tests to this function:
 
@@ -450,26 +399,13 @@ def run_all(argv):
        ./matmul_template. For example you might want to create ./conv_template
     """
 
-    assert_num_args(argv)
-
-    output_dir = os.path.realpath(argv[0])
-    os.makedirs(output_dir, exist_ok=True)
-    validate_directory(output_dir)
-
-    iree_install_dir = os.path.realpath(argv[1])
-    validate_directory(iree_install_dir)
+    if not output_dir.exists():
+        output_dir.mkdir()
+    if not iree_install_dir.exists():
+        raise RuntimeError(f"'{iree_install_dir}' is not a directory.")
     iree_compile_exe = find_executable(iree_install_dir, "iree-compile")
     iree_run_exe = find_executable(iree_install_dir, "iree-run-module")
-
-    peano_dir = arg_or_default(argv, 2, "/opt/llvm-aie")
-    xrt_dir = arg_or_default(argv, 3, "/opt/xilinx/xrt")
-    vitis_dir = arg_or_default(argv, 4, "/opt/Xilinx/Vitis/2024.1")
-
-    file_dir = os.path.dirname(os.path.realpath(__file__))
-
-    # TODO(newling) expose these to user:
-    verbose = True
-    return_on_fail = True
+    file_dir = Path(__file__).parent
 
     config = TestConfig(
         output_dir,
@@ -490,17 +426,16 @@ def run_all(argv):
     verify_determinism()
 
     # Verify a very basic script runs before running the more complex tests
-    test_script = "pwd"
-    run_script(test_script, config.verbose)
+    shell_out(["pwd"], verbose=config.verbose)
 
-    test_files_dir = os.path.join(file_dir, "test_files")
+    test_files_dir = file_dir / "test_files"
     for name in [
         "matmul_int32",
         "two_matmul_switching",
         "matmul_f32_8_8_4",
         "matmul_f32_8_4_8",
     ]:
-        run_test(config, os.path.join(test_files_dir, f"{name}.mlir"))
+        run_test(config, test_files_dir / f"{name}.mlir")
 
     for name in [
         "conv2d_nhwc_int32",
@@ -512,35 +447,35 @@ def run_all(argv):
 
         run_test(
             config,
-            os.path.join(test_files_dir, f"{name}.mlir"),
+            test_files_dir / f"{name}.mlir",
             pipeline="conv-decompose",
             n_repeats=n_conv_repeats,
         )
 
     run_test(
         config,
-        os.path.join(test_files_dir, "three_matmuls.mlir"),
+        test_files_dir / "three_matmuls.mlir",
         function_name="three_$mm$",
     )
 
-    matmul_template_dir = os.path.join(file_dir, "matmul_template")
+    matmul_template_dir = file_dir / "matmul_template"
 
     # Test(s) of the form matmul(A,B) where A:MxK, B:KxN
-    test_name = os.path.join(output_dir, "test_from_template.mlir")
-    template_name = os.path.join(matmul_template_dir, "matmul_MxK_KxN.mlir")
+    test_name = output_dir / "test_from_template.mlir"
+    template_name = matmul_template_dir / "matmul_MxK_KxN.mlir"
     generate_matmul_test(test_name, template_name, 32, 32, 64, "bf16", "f32")
     run_test(config, test_name)
 
     # Test(s) of the form matmul(A,B) + C where A:MxK, B:KxN, C:N
-    test_name = os.path.join(output_dir, "test_from_template_bias_N.mlir")
-    template_name = os.path.join(matmul_template_dir, "matmul_bias_MxK_KxN_N.mlir")
+    test_name = output_dir / "test_from_template_bias_N.mlir"
+    template_name = matmul_template_dir / "matmul_bias_MxK_KxN_N.mlir"
     generate_matmul_test(test_name, template_name, 1024, 1024, 512, "bf16", "f32")
     run_test(config, test_name, pipeline="pack-peel", use_ukernel=True)
     run_test(config, test_name, pipeline="pack-peel", use_ukernel=False)
 
     # Test(s) of the form matmul(A,B) + C where A:MxK, B:KxN, C:MxN
-    test_name = os.path.join(output_dir, "test_from_template_full_bias.mlir")
-    template_name = os.path.join(matmul_template_dir, "matmul_bias_MxK_KxN_MxN.mlir")
+    test_name = output_dir / "test_from_template_full_bias.mlir"
+    template_name = matmul_template_dir / "matmul_bias_MxK_KxN_MxN.mlir"
     generate_matmul_test(test_name, template_name, 128, 128, 256, "i32", "i32")
     run_test(config, test_name, pipeline="pack-peel", rtol=0, atol=0)
 
@@ -560,4 +495,29 @@ def run_all(argv):
 
 
 if __name__ == "__main__":
-    run_all(sys.argv[1::])
+    parser = argparse.ArgumentParser(
+        prog="CPU comparison test",
+        description="This program compares numerical outputs on AIE against CPU",
+    )
+    abs_path = lambda x: Path(x).absolute()
+    parser.add_argument("output_dir", type=abs_path)
+    parser.add_argument("iree_install_dir", type=abs_path)
+    parser.add_argument(
+        "peano_install_dir", nargs="?", default="/opt/llvm-aie", type=abs_path
+    )
+    parser.add_argument("xrt_dir", nargs="?", default="/opt/xilinx/xrt", type=abs_path)
+    parser.add_argument(
+        "vitis_dir", nargs="?", default="/opt/Xilinx/Vitis/2024.1", type=abs_path
+    )
+    parser.add_argument("--return-on-fail", action="store_true", default=True)
+    parser.add_argument("-v", "--verbose", action="store_true", default=True)
+    args = parser.parse_args()
+    run_all(
+        args.output_dir,
+        args.iree_install_dir,
+        args.peano_install_dir,
+        args.xrt_dir,
+        args.vitis_dir,
+        args.return_on_fail,
+        args.verbose,
+    )

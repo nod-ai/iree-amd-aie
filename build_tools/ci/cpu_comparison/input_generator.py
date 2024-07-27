@@ -179,10 +179,8 @@ def generate_inputs(filename, write_dir, seed):
             line = line.strip()
             tokens = line.split()
             if len(tokens) > 2 and tokens[0] == "//":
-
                 # Lines of the form '// input 3x40xf32'
                 if tokens[1] == "input":
-
                     sub_tokens = tokens[2].split("x")
                     element_type = sub_tokens[-1]
 
@@ -192,7 +190,12 @@ def generate_inputs(filename, write_dir, seed):
                     bin_filename = os.path.join(
                         write_dir, name + "_input" + str(input_number) + ".bin"
                     )
-                    input_args.append('--input="%s=@%s"' % (tokens[2], bin_filename))
+                    if re.search(r"\s", str(bin_filename)):
+                        raise RuntimeError(
+                            f"input {tokens[2]}={bin_filename} has a space in the filename, which is not supported"
+                        )
+
+                    input_args.append(f"--input={tokens[2]}=@{bin_filename}")
                     # Each input has a distinct seed, based on its input number.
                     # This is to ensure that operands are not populated with the
                     # same values.
@@ -238,6 +241,4 @@ def generate_inputs(filename, write_dir, seed):
             f"{func_num_inputs}"
         )
 
-    command_flags = "  ".join(input_args)
-    return command_flags
-
+    return input_args
