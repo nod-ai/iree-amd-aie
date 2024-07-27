@@ -19,6 +19,7 @@
 
 namespace mlir::iree_compiler::aievec {
 
+void registerAIEVecPipelines();
 /// Adds the "convert-vector-to-aievec" pipeline to the `OpPassManager`. This
 /// pipeline takes `Vector` code, transforms it to make it compatible with the
 /// selected `AIE` target, lowers it to `AIEVec` dialect, and performs some

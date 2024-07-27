@@ -38,6 +38,7 @@ struct AMDAIESession
     AMDAIE::registerAMDAIEXToStandardPass();
     AMDAIE::registerAIRConversionPasses();
     AMDAIE::registerAIRTransformPasses();
+    aievec::registerAIEVecPipelines();
     aievec::registerConvertAIEVecToLLVMPass();
   }
 

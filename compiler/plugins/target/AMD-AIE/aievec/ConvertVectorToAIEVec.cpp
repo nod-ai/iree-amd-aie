@@ -114,3 +114,25 @@ void mlir::iree_compiler::aievec::buildConvertVectorToAIEVec(
   pm.addPass(createLoopInvariantCodeMotionPass());
   pm.addPass(createCanonicalizerPass());
 }
+
+void mlir::iree_compiler::aievec::registerAIEVecPipelines() {
+  PassPipelineRegistration<>(
+      "canonicalize-vector-for-aievec",
+      "This pass pipeline takes standard \"Vector\" code and converts it to "
+      "\"Vector\" code compatible with the selected AIE vector architecture.",
+      buildCanonicalizeVectorForAIEVec);
+
+  PassPipelineRegistration<>(
+      "lower-vector-to-aievec",
+      "This pass pipeline takes AIE-compatible \"Vector\" code and lowers it "
+      "to \"AIE\" vector code targeting the selected AIE vector "
+      "architecture.",
+      buildLowerVectorToAIEVec);
+
+  PassPipelineRegistration<>(
+      "convert-vector-to-aievec",
+      "This pass pipeline takes standard \"Vector\" code and converts it to "
+      "\"AIEVec\" code targeting the selected Xilinx AIE2 vector "
+      "architecture.",
+      buildConvertVectorToAIEVec);
+}
