@@ -135,6 +135,7 @@ def generate_aie_output(
  --iree-hal-dump-executable-files-to={output_dir} \
  --iree-amd-aie-show-invoked-commands \
  --iree-scheduling-optimize-bindings=false \
+ --mlir-elide-resource-strings-if-larger=10 \
  --mlir-disable-threading -o {aie_vmfb}"
 
     if use_ukernel:

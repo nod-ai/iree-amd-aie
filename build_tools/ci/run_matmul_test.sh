@@ -399,6 +399,7 @@ function run_matmul_test() {
                       --iree-amd-aie-vitis-install-dir=${vitis_path} \
                       --iree-amd-aie-enable-chess=${use_chess} \
                       --iree-hal-dump-executable-files-to=$PWD \
+                      --mlir-elide-resource-strings-if-larger=10 \
                       --iree-amd-aie-show-invoked-commands"
 
   if [ $use_ukernel -ne 0 ]; then
