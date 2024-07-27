@@ -1,8 +1,18 @@
 
 // RUN: iree-opt --amdaie-dma-to-npu %s | FileCheck %s
 
-// CHECK-LABEL:   aie.device(npu1_4col) {
-// CHECK:         } {npu_instructions = array<i32: 100860160, 261, 2, 64, 0, 0, 119308, 0, -2147483645, 24, 0, 0, 67228180, 0, 196610, 24>}
+// CHECK: module {
+// CHECK:   aie.device(npu1_4col) {
+// CHECK:   } {npu_instructions = dense_resource<npu_instructions> : tensor<16xui32>}
+// CHECK: }
+
+// CHECK: {-#
+// CHECK:   dialect_resources: {
+// CHECK:     builtin: {
+// CHECK:       npu_instructions: "0x040000000001030605010000020000004000000000000000000000000CD20100000000000300008018000000000000000000000014D20104000000000200030018000000"
+// CHECK:     }
+// CHECK:   }
+// CHECK: #-}
 
 module {
   aie.device(npu1_4col) {

@@ -24,6 +24,7 @@
 #include "llvm/Support/Path.h"
 #include "llvm/Support/Program.h"
 #include "llvm/Support/ToolOutputFile.h"
+#include "mlir/IR/AsmState.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Support/FileUtilities.h"
@@ -579,11 +580,12 @@ static json::Object makeKernelJSON(const std::string &name,
       {"instances", json::Array{json::Object{{"name", instance}}}}};
 }
 
-static LogicalResult generateXCLBin(const std::string &Output, Path tempDir,
+static LogicalResult generateXCLBin(const std::string &Output,
+                                    const Path &tempDir,
                                     const std::string &xclBinKernelID,
                                     const std::string &xclBinKernelName,
                                     const std::string &xclBinInstanceName,
-                                    Path amdAIEInstallDir, bool verbose,
+                                    const Path &amdAIEInstallDir, bool verbose,
                                     const std::string &inputXclbin = "") {
   std::string errorMessage;
   // Create mem_topology.json.
@@ -965,7 +967,7 @@ LogicalResult aie2xclbin(
     const std::string &outputXCLBin, bool printIRBeforeAll,
     bool printIRAfterAll, bool printIRModuleScope, bool timing,
     const std::string &tempDir, bool useChess, bool verbose,
-    std::optional<std::string> vitisDir, const std::string &targetArch,
+    const std::optional<std::string> &vitisDir, const std::string &targetArch,
     const std::string &peanoDir, const std::string &xclBinKernelID,
     const std::string &xclBinKernelName, const std::string &xclBinInstanceName,
     const std::string &amdAIEInstallDir, const std::string &InputXCLBin) {
@@ -978,14 +980,13 @@ LogicalResult aie2xclbin(
   if (failed(pm.run(moduleOp)))
     return moduleOp.emitOpError(": NPU Instruction pipeline failed");
 
-  // TODO(max): should be using UI32 resource or something like that...
-  ArrayRef<int32_t> signedNpuInstructionsAttr =
-      cast<DenseI32ArrayAttr>(
+  std::optional<ArrayRef<uint32_t>> npuInstructions =
+      cast<DenseUI32ResourceElementsAttr>(
           (*moduleOp.getOps<xilinx::AIE::DeviceOp>().begin())
               ->getAttr("npu_instructions"))
-          .asArrayRef();
-  std::vector<uint32_t> unsignedNpuInstructions(
-      signedNpuInstructionsAttr.begin(), signedNpuInstructionsAttr.end());
+          .tryGetAsArrayRef();
+  if (!npuInstructions)
+    return moduleOp.emitOpError(": No NPU instructions in device op");
 
   std::string errorMessage;
   auto output = openOutputFile(outputNPU, &errorMessage);
@@ -994,8 +995,7 @@ LogicalResult aie2xclbin(
                  << errorMessage;
     return failure();
   }
-  for (auto w : unsignedNpuInstructions)
-    output->os() << llvm::format("%08X\n", w);
+  for (auto w : *npuInstructions) output->os() << llvm::format("%08X\n", w);
   output->keep();
 
   Path unifiedObj = Path(tempDir) / "input.o";
