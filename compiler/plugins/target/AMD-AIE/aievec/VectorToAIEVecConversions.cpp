@@ -74,20 +74,12 @@ struct ConvertVectorFMAOpToAIEVecFMAElemOpPattern
       acc = rewriter.create<aievec::UPSOp>(
           fmaOp.getLoc(), VectorType::get({16}, rewriter.getF32Type()), acc,
           shiftParam);
-    else {
-      lhs = getSourceOfWideningOp(lhs).value_or(nullptr);
-      rhs = getSourceOfWideningOp(rhs).value_or(nullptr);
-      if (!lhs || !rhs)
-        return rewriter.notifyMatchFailure(
-            fmaOp,
-            "vector.fma operands are f32, and they don't come from "
-            "arith.extf on bf16; can't lower to aievec.");
-      if (!cast<VectorType>(lhs.getType()).getElementType().isBF16() ||
-          !cast<VectorType>(rhs.getType()).getElementType().isBF16())
-        return rewriter.notifyMatchFailure(
-            fmaOp,
-            "vector.fma operands come from arith.extf, but the source "
-            "of the widening op is not bf16; can't lower to aievec.");
+    if (!cast<VectorType>(lhs.getType()).getElementType().isBF16() ||
+        !cast<VectorType>(rhs.getType()).getElementType().isBF16()) {
+      return rewriter.notifyMatchFailure(
+          fmaOp,
+          "vector.fma operands come from arith.extf, but the source "
+          "of the widening op is not bf16; can't lower to aievec.");
     }
     Value newOp = rewriter.create<aievec::FMAElemOp>(
         fmaOp.getLoc(), acc.getType(), lhs, rhs, acc, /*fmsub=*/false);
@@ -139,54 +131,18 @@ struct LowerVectorContractionOpToAIEVecMatMulPattern
     auto rhs = dropLeadingUnitDims(rewriter, adaptor.getRhs());
     auto acc = dropLeadingUnitDims(rewriter, adaptor.getAcc());
     bool bReshapedAcc = (acc != adaptor.getAcc());
-
-    aievec::MatMulOp matmulOp;
-    SmallVector<Diagnostic> failures;
-    {
-      // Replace diagnostics handler to silence errors when verifying the
-      // validity of the `aievec.matmul` ops being generated.
-      ScopedDiagnosticHandler diagHandler(contractOp.getContext(),
-                                          [&failures](Diagnostic &d) {
-                                            failures.push_back(std::move(d));
-                                            return success();
-                                          });
-      matmulOp = rewriter.create<aievec::MatMulOp>(
-          contractOp.getLoc(), acc.getType(), lhs, rhs, acc);
-      if (failed(matmulOp.verifyInvariants())) {
-        rewriter.eraseOp(matmulOp);
-        lhs = adaptor.getLhs();
-        if (auto wideLhsValue = getSourceOfWideningOp(lhs))
-          lhs = dropLeadingUnitDims(rewriter, *wideLhsValue);
-        rhs = adaptor.getRhs();
-        if (auto wideRhsValue = getSourceOfWideningOp(rhs))
-          rhs = dropLeadingUnitDims(rewriter, *wideRhsValue);
-        matmulOp = rewriter.create<aievec::MatMulOp>(
-            contractOp.getLoc(), acc.getType(), lhs, rhs, acc);
-        // verifyInvariants emits diags
-        if (failed(matmulOp.verifyInvariants())) {
-          rewriter.eraseOp(matmulOp);
-          matmulOp = nullptr;
-        }
-      }
-    }
-    if (!matmulOp) {
-      InFlightDiagnostic err = contractOp.emitError(
+    auto matmulOp = rewriter.create<aievec::MatMulOp>(
+        contractOp.getLoc(), acc.getType(), lhs, rhs, acc);
+    if (failed(matmulOp.verifyInvariants())) {
+      return contractOp.emitError(
           "resulting matmul failed to satisfy matmul invariants because:");
-      for (Diagnostic &failureDiag : failures) {
-        Diagnostic &note = err.attachNote(failureDiag.getLocation());
-        for (auto &arg : failureDiag.getArguments()) {
-          note.append(arg);
-        }
-      }
-      return err;
     }
-
     Value result = matmulOp.getResult();
-    if (bReshapedAcc)
+    if (bReshapedAcc) {
       result = rewriter.create<vector::ShapeCastOp>(
           contractOp.getLoc(), adaptor.getAcc().getType(), result);
+    }
     rewriter.replaceOp(contractOp, result);
-
     return success();
   }
 };
@@ -426,49 +382,6 @@ static bool hasSigmoidComputationChain(DivFOpTy divfOp, arith::NegFOp &negOp) {
 
   return negOp != nullptr;
 }
-
-// Convert a `vector.extract_strided_slice` op on 1D vectors into an
-// `aievec.shift` op.
-struct LowerVectorExtractStridedSliceOpAIE2Pattern
-    : OpConversionPattern<vector::ExtractStridedSliceOp> {
-  using OpConversionPattern::OpConversionPattern;
-
-  LogicalResult matchAndRewrite(
-      vector::ExtractStridedSliceOp extractOp, OpAdaptor adaptor,
-      ConversionPatternRewriter &rewriter) const override {
-    auto vType = cast<VectorType>(adaptor.getVector().getType());
-    if (vType.getRank() != 1) return failure();
-
-    int64_t stride = cast<IntegerAttr>(adaptor.getStrides()[0]).getInt();
-    if (stride != 1) return failure();
-
-    // We only accept the case where we are extracting a slice half the size of
-    // the input vector.
-    int64_t size = cast<IntegerAttr>(adaptor.getSizes()[0]).getInt();
-    if (vType.getNumElements() != 2 * size) return failure();
-
-    auto shortVecType = cast<VectorType>(extractOp.getResult().getType());
-    auto bottomHalf = rewriter
-                          .create<aievec::ExtOp>(
-                              extractOp.getLoc(), shortVecType,
-                              adaptor.getVector(), rewriter.getI8IntegerAttr(0))
-                          .getResult();
-    auto topHalf = rewriter
-                       .create<aievec::ExtOp>(extractOp.getLoc(), shortVecType,
-                                              adaptor.getVector(),
-                                              rewriter.getI8IntegerAttr(1))
-                       .getResult();
-    int64_t offset = cast<IntegerAttr>(adaptor.getOffsets()[0]).getInt();
-    int32_t shiftBytes = offset * getElementSizeInBits(vType) / 8;
-    auto shiftBytesConstOp = rewriter.create<arith::ConstantOp>(
-        extractOp.getLoc(), rewriter.getIntegerType(32),
-        rewriter.getI32IntegerAttr(shiftBytes));
-    rewriter.replaceOpWithNewOp<aievec::ShiftOp>(
-        extractOp, shortVecType, bottomHalf, topHalf, shiftBytesConstOp);
-
-    return success();
-  }
-};
 
 template <typename SrcOpTy>
 struct LowerExtOpPattern : OpConversionPattern<SrcOpTy> {

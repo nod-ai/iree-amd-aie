@@ -154,17 +154,6 @@ def ExtI512I1024IntrOp :
     Arguments<(ins VectorOfLengthAndType<[32], [I32]>:$src,
                    I32:$idx)>;
 
-def ExtI128I512IntrOp :
-    AIEVec2_IntrOp<"extract.I128.I512",
-        [TypeIs<"res", VectorOfLengthAndType<[4], [I32]>>]>,
-    Arguments<(ins VectorOfLengthAndType<[16], [I32]>:$src)>;
-
-def ExtI256I1024IntrOp :
-    AIEVec2_IntrOp<"ext.I256.I1024",
-        [TypeIs<"res", VectorOfLengthAndType<[8], [I32]>>]>,
-    Arguments<(ins VectorOfLengthAndType<[32], [I32]>:$src,
-                   I32:$idx)>;
-
 // ----- CONCAT -----
 
 def ConcatI512I256IntrOp :
@@ -242,23 +231,5 @@ def Vector16BF16ToV16AccFloatIntrOp :
     AIEVec2_IntrOp<"v16bf16.to.v16accfloat",
         [TypeIs<"res", VectorOfLengthAndType<[8], [I64]>>]>,
     Arguments<(ins VectorOfLengthAndType<[16], [BF16]>:$src)>;
-
-// ----- SHIFT -----
-
-def VectorShiftI512I512IntrOp :
-    AIEVec2_IntrOp<"vshift.I512.I512",
-        [TypeIs<"res", VectorOfLengthAndType<[16], [I32]>>]>,
-    Arguments<(ins VectorOfLengthAndType<[16], [I32]>:$lhs,
-                   VectorOfLengthAndType<[16], [I32]>:$rhs,
-                   I32:$step,
-                   I32:$shift)>;
-
-def VectorShiftBF512BF512IntrOp :
-    AIEVec2_IntrOp<"vshift.bf512.bf512",
-        [TypeIs<"res", VectorOfLengthAndType<[32], [BF16]>>]>,
-    Arguments<(ins VectorOfLengthAndType<[32], [BF16]>:$lhs,
-                   VectorOfLengthAndType<[32], [BF16]>:$rhs,
-                   I32:$step,
-                   I32:$shift)>;
 
 #endif // AIE_DIALECT_XLLVM_IR_XLLVMAIE2INTROPS_TD

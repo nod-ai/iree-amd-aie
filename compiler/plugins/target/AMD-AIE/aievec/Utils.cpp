@@ -96,10 +96,6 @@ template std::optional<int64_t> getTransferReadAlignmentOffset(
     int64_t alignment);
 
 std::optional<Value> getSourceOfWideningOp(Value src) {
-  // DropVectorUnitDimsAndDecomposeInsertExtractStridedSlicePass inserts shape
-  // casts that cancel out but not before this pass
-  if (auto shapeCastOp = src.getDefiningOp<vector::ShapeCastOp>())
-    return getSourceOfWideningOp(shapeCastOp.getSource());
   if (auto extSIOp = src.getDefiningOp<arith::ExtSIOp>())
     return extSIOp.getIn();
   if (auto extUIOp = src.getDefiningOp<arith::ExtUIOp>())

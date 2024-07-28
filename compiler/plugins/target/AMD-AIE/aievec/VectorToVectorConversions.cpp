@@ -83,10 +83,9 @@ static bool isGemmBTransposedContractionOp(vector::ContractionOp op) {
       AffineMap::getPermutationMap(ArrayRef<unsigned>{2, 0, 1}, ctx)
           .dropResults(0);
   int64_t numOuterMostDims = indexingMaps[0].getNumDims() - 3;
-  auto r = innerLhsMap == mmAidxMap.shiftDims(numOuterMostDims) &&
-           innerRhsMap == mmBidxMap.shiftDims(numOuterMostDims) &&
-           innerAccMap == mmCidxMap.shiftDims(numOuterMostDims);
-  return r;
+  return innerLhsMap == mmAidxMap.shiftDims(numOuterMostDims) &&
+         innerRhsMap == mmBidxMap.shiftDims(numOuterMostDims) &&
+         innerAccMap == mmCidxMap.shiftDims(numOuterMostDims);
 }
 
 //============================================================================//
@@ -332,7 +331,7 @@ struct FlattenMultDimTransferReadPattern
     auto inBoundsArrayAttrOpt = adaptor.getInBounds();
     if (inBoundsArrayAttrOpt) {
       SmallVector<bool> inBounds =
-          llvm::to_vector(inBoundsArrayAttrOpt->getAsValueRange<BoolAttr>());
+          llvm::to_vector(inBoundsArrayAttrOpt.getAsValueRange<BoolAttr>());
       SmallVector<bool> newInBounds({false});
       newInBounds[0] = std::all_of(inBounds.begin(), inBounds.end(),
                                    [](bool v) { return v; });
@@ -390,7 +389,7 @@ struct FlattenMultDimTransferWritePattern
     auto inBoundsArrayAttrOpt = adaptor.getInBounds();
     if (inBoundsArrayAttrOpt) {
       SmallVector<bool> inBounds =
-          llvm::to_vector(inBoundsArrayAttrOpt->getAsValueRange<BoolAttr>());
+          llvm::to_vector(inBoundsArrayAttrOpt.getAsValueRange<BoolAttr>());
       SmallVector<bool> newInBounds({false});
       newInBounds[0] = std::all_of(inBounds.begin(), inBounds.end(),
                                    [](bool v) { return v; });
@@ -601,13 +600,9 @@ void DropVectorUnitDimsAndDecomposeInsertExtractStridedSlicePass::
   RewritePatternSet patterns(ctx);
   patterns.add<UndoLinalgWidening>(patterns.getContext());
   vector::populateCastAwayVectorLeadingOneDimPatterns(patterns);
-  //  vector::populateVectorTransferCollapseInnerMostContiguousDimsPatterns(
-  //      patterns);
   vector::populateVectorTransferDropUnitDimsPatterns(patterns);
   vector::populateDropUnitDimWithShapeCastPatterns(patterns);
-
   populateVectorInsertExtractStridedSliceDecompositionPatterns(patterns);
-
   vector::InsertOp::getCanonicalizationPatterns(patterns, ctx);
   vector::ExtractOp::getCanonicalizationPatterns(patterns, ctx);
   vector::TransferReadOp::getCanonicalizationPatterns(patterns, ctx);
