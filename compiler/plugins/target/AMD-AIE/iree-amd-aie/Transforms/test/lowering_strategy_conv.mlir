@@ -40,7 +40,7 @@ func.func @conv_static_dispatch_0_conv_2d_nhwc_hwcf_2x12x12x64x3x3x32_bf16xbf16x
 
 // -----
 
-// CHECK{LITERAL}: #config = #iree_codegen.lowering_config<tile_sizes = [[1, 4, 4, 16, 0, 0], [1, 1, 4, 4, 0, 0], [1, 1, 4, 4, 1, 1]]>
+// CHECK{LITERAL}: #config = #iree_codegen.lowering_config<tile_sizes = [[1, 4, 4, 16, 0, 0], [1, 1, 4, 4, 0, 0], [0, 0, 0, 0, 1, 1]]>
 func.func @conv_depthwise_channel_last_bf16(){
   %cst = arith.constant 0.000000e+00 : f32
   %c0 = arith.constant 0 : index
