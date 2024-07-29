@@ -90,7 +90,8 @@ def shell_out(cmd: list, workdir=None, verbose=False):
 def generate_aie_output(
     config,
     name,
-    pipeline,
+    tile_pipeline,
+    lower_to_aie_pipeline,
     use_ukernel,
     test_file,
     input_args,
@@ -104,7 +105,8 @@ def generate_aie_output(
         config.iree_compile_exe,
         test_file,
         "--iree-hal-target-backends=amd-aie",
-        f"--iree-amdaie-tile-pipeline={pipeline}",
+        f"--iree-amdaie-tile-pipeline={tile_pipeline}",
+        f"--iree-amdaie-lower-to-aie-pipeline={lower_to_aie_pipeline}",
         "--iree-amdaie-matmul-elementwise-fusion",
         f"--iree-amd-aie-peano-install-dir={config.peano_dir}",
         f"--iree-amd-aie-install-dir={config.iree_install_dir}",
@@ -368,7 +370,8 @@ def aie_vs_baseline(
     input_args,
     baseline_value,
     use_ukernel=False,
-    pipeline="pad-pack",
+    tile_pipeline="pad-pack",
+    lower_to_aie_pipeline="air",
     function_name=None,
     seed=1,
     rtol=1e-6,
@@ -411,7 +414,7 @@ def aie_vs_baseline(
         aie_output = generate_aie_output(
             config,
             name,
-            pipeline,
+            tile_pipeline,
             use_ukernel,
             test_file,
             input_args,
@@ -569,6 +572,13 @@ def all_tests(
     ]:
         aie_vs_llvm_cpu(config, test_files_dir / f"{name}.mlir")
 
+    # Try running matmul_int32 with different lower_to_aie_pipeline option:
+    run_test(
+        config,
+        test_files_dir / "matmul_int32.mlir",
+        lower_to_aie_pipeline="objectFifo",
+    )
+
     for name in [
         "conv2d_nhwc_int32",
         "conv2d_nhwc_bf16",
@@ -581,7 +591,7 @@ def all_tests(
         aie_vs_llvm_cpu(
             config,
             test_files_dir / f"{name}.mlir",
-            pipeline="conv-decompose",
+            tile_pipeline="conv-decompose",
             n_repeats=n_conv_repeats,
         )
 
@@ -603,8 +613,8 @@ def all_tests(
     test_name = output_dir / "test_from_template_bias_N.mlir"
     template_name = matmul_template_dir / "matmul_bias_MxK_KxN_N.mlir"
     generate_matmul_test(test_name, template_name, 1024, 1024, 512, "bf16", "f32")
-    aie_vs_llvm_cpu(config, test_name, pipeline="pack-peel", use_ukernel=True)
-    aie_vs_llvm_cpu(config, test_name, pipeline="pack-peel", use_ukernel=False)
+    run_test(config, test_name, tile_pipeline="pack-peel", use_ukernel=True)
+    run_test(config, test_name, tile_pipeline="pack-peel", use_ukernel=False)
 
     # Test(s) of the form matmul(A,B) + C where A:MxK, B:KxN, C:MxN
     test_name = output_dir / "test_from_template_full_bias.mlir"
