@@ -131,7 +131,8 @@ def generate_aie_output(
     ]
     if function_name:
         run_args += [f"--function={function_name}"]
-    shell_out(config.reset_npu_script)
+    if config.reset_npu_between_runs:
+        shell_out(config.reset_npu_script)
     start = time.monotonic_ns()
     shell_out(run_args, config.output_dir, config.verbose)
     run_time = time.monotonic_ns() - start
@@ -196,6 +197,7 @@ class TestConfig:
         iree_run_exe,
         verbose,
         return_on_fail,
+        reset_npu_between_runs,
     ):
 
         self.output_dir = output_dir
@@ -208,21 +210,26 @@ class TestConfig:
         self.iree_run_exe = iree_run_exe
         self.return_on_fail = return_on_fail
         self.verbose = verbose
-        self.reset_npu_script = file_dir.parent / "reset_npu.sh"
-        if not self.reset_npu_script.exists():
-            raise RuntimeError("Couldn't find reset_npu.sh")
+        self.reset_npu_between_runs = reset_npu_between_runs
 
         # Try get the xrt and (linux) kernel versions.
         self.linux_kernel = "undetermined"
         self.xrt_hash_date = "undetermined"
         self.xrt_hash = "undetermined"
         self.xrt_release = "undetermined"
+        self.peano_commit_hash = "undetermined"
         xrt_bin_dir = xrt_dir / "bin"
         xrt_smi_exe = xrt_bin_dir / "xrt-smi"
         if not xrt_smi_exe.exists():
             xrt_smi_exe = xrt_bin_dir / "xbutil"
         if not xrt_smi_exe.exists():
             raise RuntimeError(f"Neither xrt-smi nor xbutil found in {xrt_bin_dir}")
+
+        self.reset_npu_script = file_dir.parent / "reset_npu.sh"
+        if reset_npu_between_runs and not self.reset_npu_script.exists():
+            raise RuntimeError(
+                f"The file {self.reset_npu_script} does not exist, and reset_npu_script=True"
+            )
 
         # Get the string output of the xrt-smi 'examine' command. Expect the
         # string to look something like:
@@ -380,6 +387,7 @@ def run_all(
     vitis_dir,
     return_on_fail,
     verbose,
+    reset_npu_between_runs,
 ):
     """
     There are a few ways to add tests to this function:
@@ -418,6 +426,7 @@ def run_all(
         iree_run_exe,
         verbose,
         return_on_fail,
+        reset_npu_between_runs,
     )
     if verbose:
         print(config)
@@ -509,8 +518,45 @@ if __name__ == "__main__":
     parser.add_argument(
         "vitis_dir", nargs="?", default="/opt/Xilinx/Vitis/2024.1", type=abs_path
     )
-    parser.add_argument("--return-on-fail", action="store_true", default=True)
-    parser.add_argument("-v", "--verbose", action="store_true", default=True)
+
+    # This (and other boolean flags) could be made more 'slick' by using
+    # `action='store_true'` in the `add_argument` call, but this has
+    # problems with the default value of 1. It could be also be made nicer
+    # by using type=bool, but this also has issues. So going with this
+    # clunky design for now (feel free to improve).
+
+    cast_to_bool = lambda x: bool(x)
+    parser.add_argument(
+        "--return_on_fail",
+        nargs="?",
+        default=1,
+        type=cast_to_bool,
+        help=(
+            "If 0, then the script will continue running even if a test fails, "
+            "enumerating all failures. Otherwise the script will exit on the first failure."
+        ),
+    )
+
+    parser.add_argument(
+        "--verbose",
+        nargs="?",
+        default=1,
+        type=cast_to_bool,
+        help="If 0, then print statements are suppressed, otherwise they are printed.",
+    )
+
+    parser.add_argument(
+        "--reset_npu_between_runs",
+        nargs="?",
+        default=1,
+        type=cast_to_bool,
+        help=(
+            "If 0 then the NPU is not reset between runs, otherwise it is reset. "
+            "Resetting between runs can in theory help avoid certain types of "
+            "errors in parts of the stack which these tests are not designed to catch."
+        ),
+    )
+
     args = parser.parse_args()
     run_all(
         args.output_dir,
@@ -520,4 +566,5 @@ if __name__ == "__main__":
         args.vitis_dir,
         args.return_on_fail,
         args.verbose,
+        args.reset_npu_between_runs,
     )
