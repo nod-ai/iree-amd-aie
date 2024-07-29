@@ -315,7 +315,7 @@ static LogicalResult setRootConfigForPackPeelPipeline(
   bool isObjectFifo =
       useLowerToAIEPipeline == LowerToAIEPassPipeline::ObjectFifo;
   auto maybePackPeelTiling =
-      ParameterSetting::create(linalgOp, true, isObjectFifo);
+      ParameterSetting::create(linalgOp, /*isPackPeel=*/true, isObjectFifo);
   if (failed(maybePackPeelTiling)) return failure();
   auto packPeelTiling = maybePackPeelTiling.value();
 
@@ -388,7 +388,8 @@ static LogicalResult setRootConfigForPackPeelPipeline(
 static LogicalResult setRootConfigForPadPackPipeline(
     mlir::FunctionOpInterface entryPointFn, linalg::LinalgOp linalgOp,
     AIEConfig cfg, bool isMatmulTransposeB) {
-  auto maybePadPackTiling = ParameterSetting::create(linalgOp, false, false);
+  auto maybePadPackTiling = ParameterSetting::create(
+      linalgOp, /*isPackPeel=*/false, /*isObjectFifo=*/false);
   if (failed(maybePadPackTiling)) return failure();
   auto padPackTiling = maybePadPackTiling.value();
 
