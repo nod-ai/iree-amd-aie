@@ -524,11 +524,13 @@ if __name__ == "__main__":
     # problems with the default value of 1. It could be also be made nicer
     # by using type=bool, but this also has issues. So going with this
     # clunky design for now (feel free to improve).
+
+    cast_to_bool = lambda x: bool(x)
     parser.add_argument(
         "--return_on_fail",
         nargs="?",
         default=1,
-        type=int,
+        type=cast_to_bool,
         help=(
             "If 0, then the script will continue running even if a test fails, "
             "enumerating all failures. Otherwise the script will exit on the first failure."
@@ -539,7 +541,7 @@ if __name__ == "__main__":
         "--verbose",
         nargs="?",
         default=1,
-        type=int,
+        type=cast_to_bool,
         help="If 0, then print statements are suppressed, otherwise they are printed.",
     )
 
@@ -547,7 +549,7 @@ if __name__ == "__main__":
         "--reset_npu_between_runs",
         nargs="?",
         default=1,
-        type=int,
+        type=cast_to_bool,
         help=(
             "If 0 then the NPU is not reset between runs, otherwise it is reset. "
             "Resetting between runs can in theory help avoid certain types of "
