@@ -60,7 +60,7 @@ func.func @conv_depthwise_channel_last_bf16(){
 // -----
 // Same test as above, but where the operand type is i8. In this case we expect OC tile size of 32 (not 16) at level 0, and 8 at levels 1 and 2. This is because of the instruction size of AIE. 
 
-// CHECK{LITERAL}: #config = #iree_codegen.lowering_config<tile_sizes = [[1, 4, 4, 32, 0, 0], [1, 1, 4, 8, 0, 0], [1, 1, 4, 8, 1, 1]]>
+// CHECK{LITERAL}: #config = #iree_codegen.lowering_config<tile_sizes = [[1, 4, 4, 32, 0, 0], [1, 1, 4, 8, 0, 0], [0, 0, 0, 0, 1, 1]]>
 func.func @conv_depthwise_channel_last_i8(){
   %cst = arith.constant 0 : i32
   %c0 = arith.constant 0 : index
