@@ -131,7 +131,8 @@ def generate_aie_output(
     ]
     if function_name:
         run_args += [f"--function={function_name}"]
-    shell_out(config.reset_npu_script)
+    if config.reset_npu_between_runs:
+        shell_out(config.reset_npu_script)
     start = time.monotonic_ns()
     shell_out(run_args, config.output_dir, config.verbose)
     run_time = time.monotonic_ns() - start
@@ -209,12 +210,7 @@ class TestConfig:
         self.iree_run_exe = iree_run_exe
         self.return_on_fail = return_on_fail
         self.verbose = verbose
-        #TODO (max) : explain somewhere what resetting npu is, why we need to do 
-        # it (is this a workaround for a bug?)
-        if (reset_npu_between_runs):
-            self.reset_npu_script = file_dir.parent / "reset_npu.sh"
-            if not self.reset_npu_script.exists():
-                raise RuntimeError(f"The file {self.reset_npu_script} does not exist, and reset_npu_script=True")
+        self.reset_npu_between_runs = reset_npu_between_runs
 
         # Try get the xrt and (linux) kernel versions.
         self.linux_kernel = "undetermined"
@@ -228,6 +224,12 @@ class TestConfig:
             xrt_smi_exe = xrt_bin_dir / "xbutil"
         if not xrt_smi_exe.exists():
             raise RuntimeError(f"Neither xrt-smi nor xbutil found in {xrt_bin_dir}")
+
+        self.reset_npu_script = file_dir.parent / "reset_npu.sh"
+        if reset_npu_between_runs and not self.reset_npu_script.exists():
+            raise RuntimeError(
+                f"The file {self.reset_npu_script} does not exist, and reset_npu_script=True"
+            )
 
         # Get the string output of the xrt-smi 'examine' command. Expect the
         # string to look something like:
@@ -517,12 +519,42 @@ if __name__ == "__main__":
         "vitis_dir", nargs="?", default="/opt/Xilinx/Vitis/2024.1", type=abs_path
     )
 
-    # TODO(max) how do these get turned off?, how do I run with no verbose? 
-    parser.add_argument("--return-on-fail", action="store_true", default=True)
-    parser.add_argument("-v", "--verbose", action="store_true", default=True)
+    # This (and other boolean flags) could be made more 'slick' by using
+    # `action='store_true'` in the `add_argument` call, but this has
+    # problems with the default value of 1. It could be also be made nicer
+    # by using type=bool, but this also has issues. So going with this
+    # clunky design for now (feel free to improve).
+    parser.add_argument(
+        "--return_on_fail",
+        nargs="?",
+        default=1,
+        type=int,
+        help=(
+            "If 0, then the script will continue running even if a test fails, "
+            "enumerating all failures. Otherwise the script will exit on the first failure."
+        ),
+    )
 
-    # TODO(max)  How do I get this to work? I don't want to have to have a negative in the name option. 
-    parser.add_argument("--reset-npu-between-runs", action="store_false", default=True)
+    parser.add_argument(
+        "--verbose",
+        nargs="?",
+        default=1,
+        type=int,
+        help="If 0, then print statements are suppressed, otherwise they are printed.",
+    )
+
+    parser.add_argument(
+        "--reset_npu_between_runs",
+        nargs="?",
+        default=1,
+        type=int,
+        help=(
+            "If 0 then the NPU is not reset between runs, otherwise it is reset. "
+            "Resetting between runs can in theory help avoid certain types of "
+            "errors in parts of the stack which these tests are not designed to catch."
+        ),
+    )
+
     args = parser.parse_args()
     run_all(
         args.output_dir,
@@ -534,7 +566,3 @@ if __name__ == "__main__":
         args.verbose,
         args.reset_npu_between_runs,
     )
-
-
-
-
