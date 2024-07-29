@@ -592,6 +592,10 @@ void addAMDAIEObjectFifoLoweringPasses(OpPassManager &passManager) {
   passManager.addPass(createCSEPass());
   passManager.addPass(createCanonicalizerPass());
 
+  passManager.addPass(createAMDAIECombineStridedOpsPass());
+  passManager.addPass(createCSEPass());
+  passManager.addPass(createCanonicalizerPass());
+
   passManager.addPass(createAMDAIEAssignNpuDmaBdIdsPass());
   passManager.addPass(createCSEPass());
   passManager.addPass(createCanonicalizerPass());
