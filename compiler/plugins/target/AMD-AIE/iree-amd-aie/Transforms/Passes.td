@@ -263,7 +263,17 @@ def AMDAIELoweringStrategy :
                    "Use the conv-decompose based lowering strategy for convolution interface ops.")
       )}]>,
     Option<"numCores", "num-cores", "int32_t", /*default=*/"1",
-      "Choose the number of cores to use">
+      "Choose the number of cores to use">,
+    Option<"useLowerToAIEPipeline", "use-lower-to-aie-pipeline",
+      "mlir::iree_compiler::AMDAIE::LowerToAIEPassPipeline",
+      /*default=*/"mlir::iree_compiler::AMDAIE::LowerToAIEPassPipeline::AIR",
+      "Lowering pass pipeline to use",
+      [{::llvm::cl::values(
+        clEnumValN(mlir::iree_compiler::AMDAIE::LowerToAIEPassPipeline::ObjectFifo, "objectFifo",
+                   "Use the IREE lowering to objectFifos"),
+        clEnumValN(mlir::iree_compiler::AMDAIE::LowerToAIEPassPipeline::AIR, "air",
+                   "Use the IREE lowering through AIR")
+      )}]>
   ];
 }
 

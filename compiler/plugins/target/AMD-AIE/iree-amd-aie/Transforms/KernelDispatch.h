@@ -43,6 +43,7 @@ struct AIEConfig {
 
 LogicalResult initAIELaunchConfig(FunctionOpInterface funcOp,
                                   TilePassPipeline usePassPipeline,
+                                  LowerToAIEPassPipeline useLowerToAIEPipeline,
                                   AIEConfig cfg);
 
 }  // namespace mlir::iree_compiler::AMDAIE
