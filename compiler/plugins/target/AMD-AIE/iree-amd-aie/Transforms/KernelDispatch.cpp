@@ -169,7 +169,8 @@ FailureOr<ParameterSetting> ParameterSetting::create(linalg::LinalgOp linalgOp,
   // the element types of all tensors which need to be allocated in memory
   // simultaneously.
   FailureOr<unsigned> maybeScaleFactor =
-      getTilingScaleFactor(lhsType.getElementType());
+      isObjectFifo ? getTilingScaleFactor(initType.getElementType())
+                   : getTilingScaleFactor(lhsType.getElementType());
   if (failed(maybeScaleFactor)) {
     return linalgOp.emitOpError(
         "does not have the expected bitwidth (64, 32, 16, or 8), could not "
@@ -205,12 +206,7 @@ FailureOr<ParameterSetting> ParameterSetting::create(linalg::LinalgOp linalgOp,
 
     auto maxL0Size = 32 * scaleFactor;
     uint32_t M0 = findLargestFactor(M, maxL0Size, m1Pack * M1);
-    uint32_t N0 = 0;
-    if (isObjectFifo && scaleFactor > 2) {
-      N0 = findLargestFactor(N, 64, n1Pack * N1);
-    } else {
-      N0 = findLargestFactor(N, maxL0Size, n1Pack * N1);
-    }
+    uint32_t N0 = findLargestFactor(N, maxL0Size, n1Pack * N1);
 
     // In pack-peel pipeline there is only one level of tiling for K dimension,
     // so set K1 = 0. The packed outer K dimension needs to be 1, so set K0 = 1.
