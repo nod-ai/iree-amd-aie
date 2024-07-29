@@ -196,6 +196,7 @@ class TestConfig:
         iree_run_exe,
         verbose,
         return_on_fail,
+        reset_npu_between_runs,
     ):
 
         self.output_dir = output_dir
@@ -208,15 +209,19 @@ class TestConfig:
         self.iree_run_exe = iree_run_exe
         self.return_on_fail = return_on_fail
         self.verbose = verbose
-        self.reset_npu_script = file_dir.parent / "reset_npu.sh"
-        if not self.reset_npu_script.exists():
-            raise RuntimeError("Couldn't find reset_npu.sh")
+        #TODO (max) : explain somewhere what resetting npu is, why we need to do 
+        # it (is this a workaround for a bug?)
+        if (reset_npu_between_runs):
+            self.reset_npu_script = file_dir.parent / "reset_npu.sh"
+            if not self.reset_npu_script.exists():
+                raise RuntimeError(f"The file {self.reset_npu_script} does not exist, and reset_npu_script=True")
 
         # Try get the xrt and (linux) kernel versions.
         self.linux_kernel = "undetermined"
         self.xrt_hash_date = "undetermined"
         self.xrt_hash = "undetermined"
         self.xrt_release = "undetermined"
+        self.peano_commit_hash = "undetermined"
         xrt_bin_dir = xrt_dir / "bin"
         xrt_smi_exe = xrt_bin_dir / "xrt-smi"
         if not xrt_smi_exe.exists():
@@ -380,6 +385,7 @@ def run_all(
     vitis_dir,
     return_on_fail,
     verbose,
+    reset_npu_between_runs,
 ):
     """
     There are a few ways to add tests to this function:
@@ -418,6 +424,7 @@ def run_all(
         iree_run_exe,
         verbose,
         return_on_fail,
+        reset_npu_between_runs,
     )
     if verbose:
         print(config)
@@ -509,8 +516,13 @@ if __name__ == "__main__":
     parser.add_argument(
         "vitis_dir", nargs="?", default="/opt/Xilinx/Vitis/2024.1", type=abs_path
     )
+
+    # TODO(max) how do these get turned off?, how do I run with no verbose? 
     parser.add_argument("--return-on-fail", action="store_true", default=True)
     parser.add_argument("-v", "--verbose", action="store_true", default=True)
+
+    # TODO(max)  How do I get this to work? I don't want to have to have a negative in the name option. 
+    parser.add_argument("--reset-npu-between-runs", action="store_false", default=True)
     args = parser.parse_args()
     run_all(
         args.output_dir,
@@ -520,4 +532,9 @@ if __name__ == "__main__":
         args.vitis_dir,
         args.return_on_fail,
         args.verbose,
+        args.reset_npu_between_runs,
     )
+
+
+
+
