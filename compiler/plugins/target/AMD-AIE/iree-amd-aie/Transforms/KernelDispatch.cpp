@@ -498,11 +498,11 @@ static LogicalResult setRootConfigForConvDecomposePipeline(
     const uint16_t OH_1 = 1;
 
     auto operandType = getElementType(linalgOp->getOperand(0));
-    auto maybeMacWidth =
-        getAIEMacWidth(operandType, getElementType(linalgOp->getResult(0)));
+    auto maybeMacNumElements =
+        getAIEMacNumElements(operandType, getElementType(linalgOp->getResult(0)));
     uint16_t OC_0 = 16;
-    if (!failed(maybeMacWidth)) {
-      OC_0 = maybeMacWidth.value();
+    if (!failed(maybeMacNumElements)) {
+      OC_0 = maybeMacNumElements.value();
     }
     // If the operand type has fewer than 32-bits, we really should be able to
     // get a mac-width for it Bail because we didn't, and there's probably just

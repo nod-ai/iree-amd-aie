@@ -62,8 +62,9 @@ FailureOr<std::array<uint32_t, 3>> getAIEMatmulInstructionSize(Type elTypeLhs,
 FailureOr<std::array<uint32_t, 3>> getAIEIntegerMatmulInstructionSize(
     uint32_t nBitsLhs, uint32_t nBitsRhs, uint32_t nBitsAcc);
 
-// Return the number of elements in a vector fma/mul/add instruction that AIE supports. TODO(newling) reference to source of truth.
-FailureOr<uint32_t> getAIEMacWidth(Type inputType, Type outputType);
+// Return the number of elements in a vector fma/mul/add instruction that AIE
+// supports.
+FailureOr<uint32_t> getAIEMacNumElements(Type inputType, Type outputType);
 
 /// Utility function that, given an element type, computes tiling scaling factor
 /// as : 64/bitWidth.

@@ -86,12 +86,11 @@ FailureOr<std::array<uint32_t, 3>> getAIEIntegerMatmulInstructionSize(
 }
 
 // The number of elements in a vector instruction for a given element type.
-FailureOr<uint32_t> getAIEMacWidth(Type inputType, Type outputType) {
-  // inputType = i8, outputType = i32:
+// Reference:
+// https://www.xilinx.com/htmldocs/xilinx2023_2/aiengine_ml_intrinsics/intrinsics/group__intr__gpvectorop__mul__bf16xbf16.html
+FailureOr<uint32_t> getAIEMacNumElements(Type inputType, Type outputType) {
   if (inputType.isInteger(8) && outputType.isInteger(32)) return 32;
-  // inputType = i16, outputType = i32:
   if (inputType.isInteger(16) && outputType.isInteger(32)) return 32;
-  // inputType = bf16, outputType = f32:
   if (inputType.isBF16() && outputType.isF32()) return 16;
   return failure();
 }
