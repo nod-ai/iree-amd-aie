@@ -531,6 +531,7 @@ void buildAMDAIETransformPassPipeline(OpPassManager &variantPassManager) {
   {
     AMDAIELoweringStrategyOptions options;
     options.usePassPipeline = clUseTilePipeline;
+    options.useLowerToAIEPipeline = clUseLowerToAIEPipeline;
     options.numCores = clNumCores;
     modulePassManager.addPass(createAMDAIELoweringStrategyPass(options));
   }
