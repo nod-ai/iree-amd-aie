@@ -131,6 +131,10 @@ std::unique_ptr<Pass> createAMDAIEHoistForLoopAffineApplyPass();
 /// vectorization passes (to vector and aievec dialects).
 std::unique_ptr<Pass> createAMDAIEInsertLoopsForVectorizationPass();
 
+/// Create a pass to insert a temporary buffer and replace the `None` type
+/// logical objectFifo access op usage.
+std::unique_ptr<Pass> createAMDAIEInsertTemporaryBufferPass();
+
 /// Create a pass to fuse the pack operations into the for loops.
 std::unique_ptr<Pass> createAMDAIEFusePackIntoLoopPass(
     AMDAIEFusePackIntoLoopOptions options = {});

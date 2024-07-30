@@ -33,6 +33,7 @@ iree_lit_test_suite(
     "hoist_for_affine_apply.mlir"
     "insert_cores.mlir"
     "insert_loops_for_vectorization.mlir"
+    "insert_temporary_buffer.mlir"
     "localize_logical_objectfifo.mlir"
     "lower_func_args.mlir"
     "lower_to_aie.mlir"

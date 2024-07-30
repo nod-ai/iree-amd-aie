@@ -218,6 +218,12 @@ def AMDAIEInsertLoopsForVectorization :
      "mlir::iree_compiler::AMDAIE::createAMDAIEInsertLoopsForVectorizationPass()";
 }
 
+def AMDAIEInsertTemporaryBuffer :
+  Pass<"iree-amdaie-insert-temporary-buffer", ""> {
+  let summary = "Insert a temporary buffer to replace the `None` type logical objectFifo access op usage.";
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEInsertTemporaryBufferPass()";
+}
+
 def AMDAIELinkExecutables :
     Pass<"iree-amdaie-link-executables", "mlir::ModuleOp"> {
   let summary = "Links AMDAIE HAL executables within the top-level program module.";

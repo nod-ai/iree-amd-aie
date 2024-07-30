@@ -66,6 +66,7 @@ iree_cc_library(
     "AMDAIEHoistForAffineApply.cpp"
     "AMDAIEInsertCores.cpp"
     "AMDAIEInsertLoopsForVectorization.cpp"
+    "AMDAIEInsertTemporaryBuffer.cpp"
     "AMDAIELinkExecutables.cpp" 
     "AMDAIELocalizeLogicalObjectFifo.cpp"
     "AMDAIELowerExecutableTarget.cpp"
