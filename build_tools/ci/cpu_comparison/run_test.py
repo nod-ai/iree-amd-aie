@@ -15,7 +15,27 @@ import numpy as np
 
 from input_generator import generate_inputs, verify_determinism
 from matmul_template.matmul_generator import generate_matmul_test
+from input_generator import generate_inputs, verify_determinism, load_input
 from output_comparer import compare
+
+
+def matmul_from_input_strings(input_args):
+    """
+    Input 'input_args' should be a list with two strings, of the form
+
+    ["--input=3x40xf32=@<binary_file>", "input=2x2xi32=@<binary_file>"]
+
+    where the binary files contain the input matrices.
+
+    This function
+    1) loads the input matrices from the binary files
+    2) returns the result of multiplying the matrices together
+    """
+    if len(input_args) != 2:
+        raise RuntimeError(f"Expected 2 arguments, got {len(ab)}")
+    a = load_input(input_args[0])
+    b = load_input(input_args[1])
+    return np.matmul(a, b)
 
 
 def find_executable(install_dir: Path, executable_name):
@@ -73,7 +93,7 @@ def generate_aie_output(
     pipeline,
     use_ukernel,
     test_file,
-    input_flags,
+    input_args,
     function_name,
 ):
     """
@@ -125,7 +145,7 @@ def generate_aie_output(
     run_args = [
         config.iree_run_exe,
         f"--module={aie_vmfb}",
-        *input_flags,
+        *input_args,
         "--device=xrt",
         f"--output=@{aie_npy}",
     ]
@@ -147,7 +167,7 @@ def generate_llvm_cpu_output(
     config,
     name,
     test_file,
-    input_flags,
+    input_args,
     function_name,
 ):
     """
@@ -170,7 +190,7 @@ def generate_llvm_cpu_output(
     run_args = [
         config.iree_run_exe,
         f"--module={cpu_vmfb}",
-        *input_flags,
+        *input_args,
         f"--output=@{cpu_npy}",
     ]
     if function_name:
@@ -277,6 +297,8 @@ class TestConfig:
         )
         if peano_commit_hash:
             self.peano_commit_hash = peano_commit_hash[0]
+        else:
+            self.peano_commit_hash = "undetermined"
 
         # Populated at runtime
         self.failures = []
@@ -336,9 +358,15 @@ class TestConfig:
         return self.__str__()
 
 
-def run_test(
+def name_from_mlir_filename(mlir_filename):
+    return os.path.basename(mlir_filename).replace(".mlir", "")
+
+
+def aie_vs_baseline(
     config,
     test_file,
+    input_args,
+    baseline_value,
     use_ukernel=False,
     pipeline="pad-pack",
     function_name=None,
@@ -347,16 +375,34 @@ def run_test(
     atol=1e-6,
     n_repeats=1,
 ):
-    if n_repeats == 0:
-        return
+    """
+    If the outputs differ, add the test file to a list of failures.
+
+    Arguments to the function are:
+    config:
+        TestConfig containing any state which is common to all tests
+    test_file:
+        The path to the test (.mlir) file
+    input_args:
+        a string of the form
+        "--input=3x40xf32=@<binary_file> --input=2x2xi32=@<binary_file>"
+    baseline_value:
+        The expected output of running the test file through the AIE
+        backend. Computed any which way you like
+    use_ukernel:
+        Whether to use micro-kernels when running on the AIE backend
+    pipeline:
+        The tiling pipeline to use when compiling for the AIE backend
+    function_name:
+        The name of the function to run (the test file may contain multiple
+        functions)
+    ...
+    n_repeats:
+        The number of times to run the test. This is useful for tests which
+        may pass only sometimes due to driver issues, etc.
+    """
 
     name = Path(test_file).name.replace(".mlir", "")
-
-    input_flags = generate_inputs(test_file, config.output_dir, seed)
-
-    cpu_output = generate_llvm_cpu_output(
-        config, "matmul_int32", test_file, input_flags, function_name
-    )
 
     for i in range(n_repeats):
         if config.verbose:
@@ -368,18 +414,94 @@ def run_test(
             pipeline,
             use_ukernel,
             test_file,
-            input_flags,
+            input_args,
             function_name,
         )
 
-        same_result = compare(cpu_output, aie_output, rtol, atol)
+        same_result = compare(baseline_value, aie_output, rtol, atol)
         if not same_result:
             config.failures.append(test_file)
             if config.return_on_fail:
                 raise RuntimeError("Test failed, exiting.")
 
 
-def run_all(
+def aie_vs_llvm_cpu(
+    config,
+    test_file,
+    use_ukernel=False,
+    pipeline="pad-pack",
+    function_name=None,
+    seed=1,
+    rtol=1e-6,
+    atol=1e-6,
+    n_repeats=1,
+):
+    """
+    Compare the output obtained when compiling and running on IREE's
+    (nascent) AIE and (more mature) llvm-cpu backends.
+    """
+
+    if n_repeats == 0:
+        return
+
+    name = name_from_mlir_filename(test_file)
+
+    input_args = generate_inputs(test_file, config.output_dir, seed)
+
+    cpu_output = generate_llvm_cpu_output(
+        config, name, test_file, input_args, function_name
+    )
+
+    aie_vs_baseline(
+        config,
+        test_file,
+        input_args,
+        cpu_output,
+        use_ukernel,
+        pipeline,
+        function_name,
+        seed,
+        rtol,
+        atol,
+        n_repeats,
+    )
+
+
+def aie_vs_np_matmul(
+    config,
+    test_file,
+    use_ukernel=False,
+    pipeline="pad-pack",
+    function_name=None,
+    seed=1,
+    rtol=1e-6,
+    atol=1e-6,
+    n_repeats=1,
+):
+    """ """
+
+    if n_repeats == 0:
+        return
+
+    name = name_from_mlir_filename(test_file)
+    input_args = generate_inputs(test_file, config.output_dir, seed)
+    numpy_output = matmul_from_input_strings(input_args)
+    aie_vs_baseline(
+        config,
+        test_file,
+        input_args,
+        numpy_output,
+        use_ukernel,
+        pipeline,
+        function_name,
+        seed,
+        rtol,
+        atol,
+        n_repeats,
+    )
+
+
+def all_tests(
     output_dir,
     iree_install_dir,
     peano_dir,
@@ -438,13 +560,14 @@ def run_all(
     shell_out(["pwd"], verbose=config.verbose)
 
     test_files_dir = file_dir / "test_files"
+    aie_vs_np_matmul(config, test_files_dir / "matmul_int32.mlir")
     for name in [
         "matmul_int32",
         "two_matmul_switching",
         "matmul_f32_8_8_4",
         "matmul_f32_8_4_8",
     ]:
-        run_test(config, test_files_dir / f"{name}.mlir")
+        aie_vs_llvm_cpu(config, test_files_dir / f"{name}.mlir")
 
     for name in [
         "conv2d_nhwc_int32",
@@ -455,14 +578,14 @@ def run_all(
     ]:
         n_conv_repeats = 4
 
-        run_test(
+        aie_vs_llvm_cpu(
             config,
             test_files_dir / f"{name}.mlir",
             pipeline="conv-decompose",
             n_repeats=n_conv_repeats,
         )
 
-    run_test(
+    aie_vs_llvm_cpu(
         config,
         test_files_dir / "three_matmuls.mlir",
         function_name="three_$mm$",
@@ -474,20 +597,20 @@ def run_all(
     test_name = output_dir / "test_from_template.mlir"
     template_name = matmul_template_dir / "matmul_MxK_KxN.mlir"
     generate_matmul_test(test_name, template_name, 32, 32, 64, "bf16", "f32")
-    run_test(config, test_name)
+    aie_vs_llvm_cpu(config, test_name)
 
     # Test(s) of the form matmul(A,B) + C where A:MxK, B:KxN, C:N
     test_name = output_dir / "test_from_template_bias_N.mlir"
     template_name = matmul_template_dir / "matmul_bias_MxK_KxN_N.mlir"
     generate_matmul_test(test_name, template_name, 1024, 1024, 512, "bf16", "f32")
-    run_test(config, test_name, pipeline="pack-peel", use_ukernel=True)
-    run_test(config, test_name, pipeline="pack-peel", use_ukernel=False)
+    aie_vs_llvm_cpu(config, test_name, pipeline="pack-peel", use_ukernel=True)
+    aie_vs_llvm_cpu(config, test_name, pipeline="pack-peel", use_ukernel=False)
 
     # Test(s) of the form matmul(A,B) + C where A:MxK, B:KxN, C:MxN
     test_name = output_dir / "test_from_template_full_bias.mlir"
     template_name = matmul_template_dir / "matmul_bias_MxK_KxN_MxN.mlir"
     generate_matmul_test(test_name, template_name, 128, 128, 256, "i32", "i32")
-    run_test(config, test_name, pipeline="pack-peel", rtol=0, atol=0)
+    aie_vs_llvm_cpu(config, test_name, pipeline="pack-peel", rtol=0, atol=0)
 
     if config.failures:
         # Convert the list of failed tests into a map: test name to the
@@ -559,7 +682,7 @@ if __name__ == "__main__":
     )
 
     args = parser.parse_args()
-    run_all(
+    all_tests(
         args.output_dir,
         args.iree_install_dir,
         args.peano_install_dir,
