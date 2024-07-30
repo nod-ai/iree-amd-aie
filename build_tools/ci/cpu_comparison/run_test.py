@@ -630,7 +630,7 @@ def all_tests(
     test_name = output_dir / "test_from_template_full_bias.mlir"
     template_name = matmul_template_dir / "matmul_bias_MxK_KxN_MxN.mlir"
     generate_matmul_test(test_name, template_name, 128, 128, 256, "i32", "i32")
-    aie_vs_llvm_cpu(config, test_name, pipeline="pack-peel", rtol=0, atol=0)
+    aie_vs_llvm_cpu(config, test_name, tile_pipeline="pack-peel", rtol=0, atol=0)
 
     if config.failures:
         # Convert the list of failed tests into a map: test name to the
