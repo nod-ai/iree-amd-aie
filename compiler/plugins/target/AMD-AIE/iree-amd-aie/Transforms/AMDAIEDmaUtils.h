@@ -9,12 +9,68 @@
 
 #include "iree-amd-aie/IR/AMDAIEAttrs.h"
 #include "iree-amd-aie/IR/AMDAIEDmaOpInterface.h"
+#include "iree-amd-aie/aie_runtime/iree_aie_runtime.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/PatternMatch.h"
 
 namespace mlir::iree_compiler::AMDAIE {
+
+// Constant specifying the number of inter-iteration dimension for DMA
+// operations.
+//
+// NOTE(jornt): this number is implicitly assumed in the device model and can't
+// be retrieved from it afaik.
+//
+// Some background:
+//
+// DMAs support multi-dimensional addressing through buffer descriptors in two
+// ways:
+// 1. Intra-iteration access pattern. Specified via 'strides' ('steps' in buffer
+// descriptor lingo), 'sizes' ('wraps' in buffer descriptro lingo) and
+// 'padding'. When a DMA executes a buffer descriptor, it will access the data
+// (read/write) as specified by the intra-iteration access pattern.
+// 2. Inter-iteration access pattern. Specified via an iteration 'stride',
+// 'size' and 'current_iteration' ('stride' is the same as 'stepsize' and 'size'
+// is the same as 'wrap' in buffer descriptor lingo). Here, 'current_iteration'
+// keeps track of the current execution iteration of the buffer descriptor and
+// is incremented after buffer descriptor execution. the 'stride' is the offset
+// to be used for each execution of the buffer descriptor, relative to the
+// previous one. When 'iteration_current' is equal to 'size', the
+// 'iteration_current' is reset to zero.
+//
+// Although DMAs can have a different number of intra-iteration dimensions, all
+// DMAs have a single inter-iteration dimension (at least in AIE2 and AIE2p).
+static const size_t kAMDAIEDmaNbInterDims = 1;
+
+/// Check whether the two access patterns of strided operations can be combined
+/// into one. Takes a `maxNbDims` argument to check whether a combined access
+/// pattern would not exceed the maximum number of dimensions.
+bool areAccessPatternsCombinable(const SmallVector<OpFoldResult> &offsetsA,
+                                 const SmallVector<OpFoldResult> &sizesA,
+                                 const SmallVector<OpFoldResult> &stridesA,
+                                 const SmallVector<OpFoldResult> &offsetsB,
+                                 const SmallVector<OpFoldResult> &sizesB,
+                                 const SmallVector<OpFoldResult> &stridesB,
+                                 size_t maxNbDims);
+
+/// Combine two access patterns into a single one. Assumes that access pattern A
+/// belongs to a strided op which is ordered before the strided op B. Takes a
+/// `maxNbDims` argument to ensure that a combined access pattern would not
+/// exceed the maximum number of dimensions. Returns `success` if the access patterns
+/// were combined successfully.
+LogicalResult combineAccessPatterns(RewriterBase &rewriter,
+                                    const SmallVector<OpFoldResult> &offsetsA,
+                                    const SmallVector<OpFoldResult> &sizesA,
+                                    const SmallVector<OpFoldResult> &stridesA,
+                                    const SmallVector<OpFoldResult> &offsetsB,
+                                    const SmallVector<OpFoldResult> &sizesB,
+                                    const SmallVector<OpFoldResult> &stridesB,
+                                    SmallVector<OpFoldResult> &newOffsets,
+                                    SmallVector<OpFoldResult> &newSizes,
+                                    SmallVector<OpFoldResult> &newStrides,
+                                    size_t maxNbDims);
 
 /// Fold subsequent dimensions within a strided access pattern that describe a
 /// single linear access. Returns `success` if folding took place.
@@ -109,6 +165,62 @@ AMDAIE::DoublyStridedOpInterface discardAllNonZeroOffsets(
   rewriter.replaceOp(op, newDoublyStridedOp.getOperation());
   return newDoublyStridedOp;
 }
+
+/// Utility DMA configuration which is calculated based on AMDAIEDeviceModel
+/// information.
+///
+/// Context:
+/// Depending on the DMA being targetted, there can be a different
+/// number of max dimensions supported by the hardware. Consider the different
+/// cases for Shim, MemTile and core DMAs:
+/// - Shim DMAs: As the shim DMA typically isn't synchronized with other DMAs
+///   (through semaphore locks), the inter-iteration access pattern is
+///   typically used as an additional intra-iteration access pattern,
+///   resulting in 4 DMA dimensions which can be used to address global
+///   memory data.
+/// - As the MemTile DMAs are typically synchronized with other DMAs for
+///   stream-through, double-buffering purposes, the inter-iteration can't
+///   typically be used in the same way as the intra-iteration dimensions.
+///   Therefore, for now, only the intra-iteration dimensions can be used for
+///   DMA access patterns.
+/// - Core DMAs: As the core DMAs are typically synchronized with the core
+///   processor for data access purposes (read/write), the inter-iteration
+///   can't typically be used in the same way as the intra-iteration
+///   dimensions. Therefore, for now, only the intra-iteration dimensions can
+///   be used for DMA access patterns.
+struct DmaDimConfig {
+  /// The maximum number of addressing dimensions on the source side of the DMA.
+  uint8_t sourceMaxNbDims{0};
+  /// The maximum number of addressing dimensions on the target side of the DMA.
+  uint8_t targetMaxNbDims{0};
+  DmaDimConfig(const AMDAIE::AMDAIEDeviceModel &deviceModel,
+               uint8_t sourceMemspaceInt, uint8_t targetMemspaceInt) {
+    uint8_t shimNbIntraDims = deviceModel.getDmaProp<uint8_t>(
+        AMDAIE::AMDAIETileType::SHIMNOC, AMDAIE::AMDAIEDmaProp::NumAddrDim);
+    uint8_t memTileNbIntraDims = deviceModel.getDmaProp<uint8_t>(
+        AMDAIE::AMDAIETileType::MEMTILE, AMDAIE::AMDAIEDmaProp::NumAddrDim);
+    uint8_t coreNbIntraDims = deviceModel.getDmaProp<uint8_t>(
+        AMDAIE::AMDAIETileType::AIETILE, AMDAIE::AMDAIEDmaProp::NumAddrDim);
+    if (sourceMemspaceInt == 0) {
+      sourceMaxNbDims = shimNbIntraDims + kAMDAIEDmaNbInterDims;
+    } else if (sourceMemspaceInt == 1) {
+      sourceMaxNbDims = memTileNbIntraDims;
+    } else if (sourceMemspaceInt == 2) {
+      sourceMaxNbDims = coreNbIntraDims;
+    } else {
+      assert(false && "unsupported source memspace");
+    }
+    if (targetMemspaceInt == 0) {
+      targetMaxNbDims = shimNbIntraDims + kAMDAIEDmaNbInterDims;
+    } else if (targetMemspaceInt == 1) {
+      targetMaxNbDims = memTileNbIntraDims;
+    } else if (targetMemspaceInt == 2) {
+      targetMaxNbDims = coreNbIntraDims;
+    } else {
+      assert(false && "unsupported target memspace");
+    }
+  }
+};
 
 }  // namespace mlir::iree_compiler::AMDAIE
 

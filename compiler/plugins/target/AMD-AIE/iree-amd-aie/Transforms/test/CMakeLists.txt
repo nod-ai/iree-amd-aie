@@ -16,6 +16,7 @@ iree_lit_test_suite(
     "bufferize_to_allocation.mlir"
     "canonicalize_dma.mlir"
     "canonicalize_doubly_strided_op.mlir"
+    "combine_strided_ops.mlir"
     "controlcode_loop_unrolling.mlir"
     "convert_core_forall_to_for.mlir"
     "create_aie_workgroup.mlir"
@@ -61,6 +62,17 @@ iree_lit_test_suite(
     iree-opt
   LABELS
     "hostonly"
+)
+
+
+iree_cc_test(
+  NAME
+    AMDAIEDmaUtilsTest
+  SRCS
+    "AMDAIEDmaUtilsTest.cpp"
+  DEPS
+    gtest
+    iree::target::amd-aie::Transforms
 )
 
 

@@ -323,7 +323,7 @@ def AMDAIE_NpuDmaCpyNdOp: AMDAIE_Op<"npu.dma_cpy_nd",
     // Helper method to return the source memory space as an integer. If no 
     // memory space attribute, this indicates a global memory space and we
     // return 0. Else cast the memory space attribute to an integer. 
-    uint64_t getSourceMemorySpaceAsUInt() {
+    uint8_t getSourceMemorySpaceAsUInt() {
       Attribute memSpace = getSourceMemorySpace();
       return memSpace ? cast<IntegerAttr>(memSpace).getInt() : 0;
     }
@@ -343,7 +343,7 @@ def AMDAIE_NpuDmaCpyNdOp: AMDAIE_Op<"npu.dma_cpy_nd",
     // Helper method to return the target memory space as an integer. If no
     // memory space attribute, this indicates a global memory space and we
     // return 0. Else cast the memory space attribute to an integer. 
-    uint64_t getTargetMemorySpaceAsUInt() {
+    uint8_t getTargetMemorySpaceAsUInt() {
       Attribute memSpace = getTargetMemorySpace();
       return memSpace ? cast<IntegerAttr>(memSpace).getInt() : 0;
     }

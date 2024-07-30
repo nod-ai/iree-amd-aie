@@ -84,6 +84,12 @@ def AMDAIECleanup :
       "mlir::iree_compiler::AMDAIE::createAMDAIECleanupPass()";
 }
 
+def AMDAIECombineStridedOps :
+    Pass<"iree-amdaie-combine-strided-ops", ""> {
+  let summary = "Combine strided ops in same block if access patterns are compatible.";
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIECombineStridedOpsPass()";
+}
+
 def AMDAIEControlCodeLoopUnroll :
     Pass<"iree-amdaie-controlcode-loop-unroll", ""> {
   let summary = "Unroll the loops in the control code regions.";

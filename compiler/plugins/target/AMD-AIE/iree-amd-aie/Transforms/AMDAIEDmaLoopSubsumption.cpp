@@ -22,6 +22,7 @@
 
 #include "iree-amd-aie/IR/AMDAIEDialect.h"
 #include "iree-amd-aie/IR/AMDAIEOps.h"
+#include "iree-amd-aie/Transforms/AMDAIEDmaUtils.h"
 #include "iree-amd-aie/Transforms/AMDAIEUtils.h"
 #include "iree-amd-aie/Transforms/Passes.h"
 #include "iree-amd-aie/aie_runtime/iree_aie_runtime.h"
@@ -45,33 +46,6 @@ int64_t calculateNbIterations(int64_t lowerBound, int64_t upperBound,
   assert(step > 0 && "expected positive step");
   return 1 + ((diff - 1) / step);
 }
-
-// Constant specifying the number of inter-iteration dimension for DMA
-// operations.
-//
-// NOTE(jornt): this number is implicitly assumed in the device model and can't
-// be retrieved from it afaik.
-//
-// Some background:
-//
-// DMAs support multi-dimensional addressing through buffer descriptors in two
-// ways:
-// 1. Intra-iteration access pattern. Specified via 'strides' ('steps' in buffer
-// descriptor lingo), 'sizes' ('wraps' in buffer descriptro lingo) and
-// 'padding'. When a DMA executes a buffer descriptor, it will access the data
-// (read/write) as specified by the intra-iteration access pattern.
-// 2. Inter-iteration access pattern. Specified via an iteration 'stride',
-// 'size' and 'current_iteration' ('stride' is the same as 'stepsize' and 'size'
-// is the same as 'wrap' in buffer descriptor lingo). Here, 'current_iteration'
-// keeps track of the current execution iteration of the buffer descriptor and
-// is incremented after buffer descriptor execution. the 'stride' is the offset
-// to be used for each execution of the buffer descriptor, relative to the
-// previous one. When 'iteration_current' is equal to 'size', the
-// 'iteration_current' is reset to zero.
-//
-// Although DMAs can have a different number of intra-iteration dimensions, all
-// DMAs have a single inter-iteration dimension (at least in AIE2 and AIE2p).
-static const size_t kAMDAIEDmaNbInterDims = 1;
 
 namespace {
 
@@ -426,49 +400,17 @@ struct SubsumeLoopIntoDMA
         AMDAIE::getDeviceModel(device.value());
 
     // Depending on the DMA being targetted, there can be a different number of
-    // max dimensions supported by the hardware. Consider the different cases
-    // for Shim, MemTile and core DMAs:
-    // - Shim DMAs: As the shim DMA typically isn't synchronized with other DMAs
-    //   (through semaphore locks), the inter-iteration access pattern is
-    //   typically used as an additional intra-iteration access pattern,
-    //   resulting in 4 DMA dimensions which can be used to address global
-    //   memory data.
-    // - As the MemTile DMAs are typically synchronized with other DMAs for
-    //   stream-through, double-buffering purposes, the inter-iteration can't
-    //   typically be used in the same way as the intra-iteration dimensions.
-    //   Therefore, for now, only the intra-iteration dimensions can be used for
-    //   DMA access patterns.
-    // - Core DMAs: As the core DMAs are typically synchronized with the core
-    //   processor for data access purposes (read/write), the inter-iteration
-    //   can't typically be used in the same way as the intra-iteration
-    //   dimensions. Therefore, for now, only the intra-iteration dimensions can
-    //   be used for DMA access patterns.
+    // max dimensions supported by the hardware.
     size_t sourceMaxNbDims{0};
     size_t targetMaxNbDims{0};
-    uint8_t shimNbIntraDims = deviceModel.getDmaProp<uint8_t>(
-        AMDAIE::AMDAIETileType::SHIMNOC, AMDAIE::AMDAIEDmaProp::NumAddrDim);
-    uint8_t memTileNbIntraDims = deviceModel.getDmaProp<uint8_t>(
-        AMDAIE::AMDAIETileType::MEMTILE, AMDAIE::AMDAIEDmaProp::NumAddrDim);
-    uint8_t coreNbIntraDims = deviceModel.getDmaProp<uint8_t>(
-        AMDAIE::AMDAIETileType::AIETILE, AMDAIE::AMDAIEDmaProp::NumAddrDim);
 
     if (auto npuDmaOp = dyn_cast<AMDAIE::NpuDmaCpyNdOp>(op.getOperation())) {
-      uint64_t sourceMemspaceInt = npuDmaOp.getSourceMemorySpaceAsUInt();
-      uint64_t targetMemspaceInt = npuDmaOp.getTargetMemorySpaceAsUInt();
-      if (sourceMemspaceInt == 0) {
-        sourceMaxNbDims = shimNbIntraDims + kAMDAIEDmaNbInterDims;
-      } else if (sourceMemspaceInt == 1) {
-        sourceMaxNbDims = memTileNbIntraDims;
-      } else if (sourceMemspaceInt == 2) {
-        sourceMaxNbDims = coreNbIntraDims;
-      }
-      if (targetMemspaceInt == 0) {
-        targetMaxNbDims = shimNbIntraDims + kAMDAIEDmaNbInterDims;
-      } else if (targetMemspaceInt == 1) {
-        targetMaxNbDims = memTileNbIntraDims;
-      } else if (targetMemspaceInt == 2) {
-        targetMaxNbDims = coreNbIntraDims;
-      }
+      uint8_t sourceMemspaceInt = npuDmaOp.getSourceMemorySpaceAsUInt();
+      uint8_t targetMemspaceInt = npuDmaOp.getTargetMemorySpaceAsUInt();
+      AMDAIE::DmaDimConfig dmaDimConfig(deviceModel, sourceMemspaceInt,
+                                        targetMemspaceInt);
+      sourceMaxNbDims = dmaDimConfig.sourceMaxNbDims;
+      targetMaxNbDims = dmaDimConfig.targetMaxNbDims;
 
       // Check that the DMA this `amdaie.npu.dma_cpy_nd` operation is operating
       // on, is not being touched within the same scope. Otherwise, the rewrite
