@@ -574,6 +574,7 @@ def all_tests(
         "conv2d_nhwc_bf16",
         "conv2d_nhwc_int8",
         "conv2d_nhwc_q",
+        "depthwise_convolution_i32",
     ]:
         n_conv_repeats = 4
 
