@@ -19,7 +19,7 @@ from input_generator import generate_inputs, verify_determinism, load_input
 from output_comparer import compare
 
 
-def matmul_from_input_line(input_args):
+def matmul_from_input_strings(input_args):
     """
     Input 'input_args' should be a list with two strings, of the form
 
@@ -485,7 +485,7 @@ def aie_vs_np_matmul(
 
     name = name_from_mlir_filename(test_file)
     input_args = generate_inputs(test_file, config.output_dir, seed)
-    numpy_output = matmul_from_input_line(input_args)
+    numpy_output = matmul_from_input_strings(input_args)
     aie_vs_baseline(
         config,
         test_file,
