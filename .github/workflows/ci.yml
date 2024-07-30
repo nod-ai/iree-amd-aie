@@ -148,7 +148,7 @@ jobs:
           # on the guthub CI machine.
           sudo prlimit -lunlimited --pid $$
 
-          bash build_tools/ci/run_matmul_test.sh test_matmuls iree-install $PWD/llvm-aie
+          bash build_tools/ci/run_matmul_test.sh test_matmuls iree-install $PWD/llvm-aie build_tools/ci/mm.cc
 
       - name : E2E comparison of AIE to llvm-cpu
         run: |
