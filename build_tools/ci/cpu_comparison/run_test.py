@@ -612,7 +612,7 @@ def all_tests(
     test_name = output_dir / "test_from_objectfifo_basic.mlir"
     template_name = matmul_template_dir / "matmul_MxK_KxN.mlir"
     generate_matmul_test(test_name, template_name, 128, 256, 128, "i8", "i32")
-    run_test(
+    aie_vs_llvm_cpu(
         config,
         test_name,
         lower_to_aie_pipeline="objectFifo",
@@ -622,8 +622,8 @@ def all_tests(
     test_name = output_dir / "test_from_template_bias_N.mlir"
     template_name = matmul_template_dir / "matmul_bias_MxK_KxN_N.mlir"
     generate_matmul_test(test_name, template_name, 1024, 1024, 512, "bf16", "f32")
-    run_test(config, test_name, tile_pipeline="pack-peel", use_ukernel=True)
-    run_test(config, test_name, tile_pipeline="pack-peel", use_ukernel=False)
+    aie_vs_llvm_cpu(config, test_name, tile_pipeline="pack-peel", use_ukernel=True)
+    aie_vs_llvm_cpu(config, test_name, tile_pipeline="pack-peel", use_ukernel=False)
 
     # Test(s) of the form matmul(A,B) + C where A:MxK, B:KxN, C:MxN
     test_name = output_dir / "test_from_template_full_bias.mlir"
