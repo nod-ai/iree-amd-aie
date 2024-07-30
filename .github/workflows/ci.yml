@@ -118,6 +118,16 @@ jobs:
           source .venv/bin/activate
           pip install -r tests/matmul/requirements.txt
 
+
+      - name : E2E comparison of AIE to llvm-cpu
+        run: |
+          source .venv/bin/activate
+          # install requirements
+          # TODO(newling) make requirements.txt file
+          pip install numpy
+          source /opt/xilinx/xrt/setup.sh
+          python3 build_tools/ci/cpu_comparison/run_test.py test_aie_vs_cpu iree-install $PWD/llvm-aie
+
       - name: E2E correctness matmul test
         run: |
           source .venv/bin/activate
@@ -149,15 +159,6 @@ jobs:
           sudo prlimit -lunlimited --pid $$
 
           bash build_tools/ci/run_matmul_test.sh test_matmuls iree-install $PWD/llvm-aie
-
-      - name : E2E comparison of AIE to llvm-cpu
-        run: |
-          source .venv/bin/activate
-          # install requirements
-          # TODO(newling) make requirements.txt file
-          pip install numpy
-          source /opt/xilinx/xrt/setup.sh
-          python3 build_tools/ci/cpu_comparison/run_test.py test_aie_vs_cpu iree-install $PWD/llvm-aie
 
       - name: Printing IR from aie2xclbin
         run: |

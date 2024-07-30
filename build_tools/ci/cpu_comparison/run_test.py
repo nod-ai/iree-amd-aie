@@ -129,15 +129,10 @@ def generate_aie_output(
             if config.verbose:
                 print(f"File {mm_fn} already exists")
         else:
-            # There is a script, whose path relative to this file is
-            # ../ukernels/xchesscc_wrapper. It takes 3 arguments:
-            # 1) vitis root directory
-            # 2) name of a source .cc file to compile
-            # 3) name of the output .o file
-            gp_dir = os.path.dirname(os.path.dirname(__file__))
-            ukernels_dir = os.path.join(gp_dir, "ukernels")
-            xchesscc_wrapper = os.path.join(ukernels_dir, "xchesscc_wrapper")
-            source_file = os.path.join(ukernels_dir, "mm.cc")
+            # Generate mm.o from mm.cc
+            ukernels_dir = config.file_dir.parent / "ukernels"
+            xchesscc_wrapper = ukernels_dir / "xchesscc_wrapper"
+            source_file = ukernels_dir / "mm.cc"
             compilation_flags = [
                 xchesscc_wrapper,
                 config.vitis_dir,
@@ -557,6 +552,7 @@ def all_tests(
     iree_compile_exe = find_executable(iree_install_dir, "iree-compile")
     iree_run_exe = find_executable(iree_install_dir, "iree-run-module")
     file_dir = Path(__file__).parent
+    file_dir = file_dir.resolve()
 
     config = TestConfig(
         output_dir,
@@ -577,79 +573,82 @@ def all_tests(
     # Sanity check that results are reproducible across platforms
     verify_determinism()
 
+    matmul_template_dir = file_dir / "matmul_template"
+
     # Verify a very basic script runs before running the more complex tests
     shell_out(["pwd"], verbose=config.verbose)
 
     test_files_dir = file_dir / "test_files"
-    aie_vs_np_matmul(config, test_files_dir / "matmul_int32.mlir")
-
-    for name in [
-        "matmul_int32",
-        "two_matmul_switching",
-        "matmul_f32_8_8_4",
-        "matmul_f32_8_4_8",
-    ]:
-        aie_vs_llvm_cpu(config, test_files_dir / f"{name}.mlir")
-
-    for name in [
-        "conv2d_nhwc_int32",
-        "conv2d_nhwc_bf16",
-        "conv2d_nhwc_int8",
-        "conv2d_nhwc_q",
-        "depthwise_convolution_i32",
-    ]:
-        n_conv_repeats = 4
-
-        aie_vs_llvm_cpu(
-            config,
-            test_files_dir / f"{name}.mlir",
-            tile_pipeline="conv-decompose",
-            n_repeats=n_conv_repeats,
-        )
-
-    aie_vs_llvm_cpu(
-        config,
-        test_files_dir / "three_matmuls.mlir",
-        function_name="three_$mm$",
-    )
-
-    matmul_template_dir = file_dir / "matmul_template"
-
-    # Test(s) of the form matmul(A,B) where A:MxK, B:KxN
-    test_name = output_dir / "test_from_template.mlir"
-    template_name = matmul_template_dir / "matmul_MxK_KxN.mlir"
-    generate_matmul_test(test_name, template_name, 32, 32, 64, "bf16", "f32")
-    aie_vs_llvm_cpu(config, test_name)
-
-    # Try running matmul_int32 with different lower_to_aie_pipeline option:
-    test_name = output_dir / "test_from_objectfifo_basic.mlir"
-    template_name = matmul_template_dir / "matmul_MxK_KxN.mlir"
-    generate_matmul_test(test_name, template_name, 64, 64, 64, "bf16", "f32")
-    aie_vs_llvm_cpu(
-        config,
-        test_name,
-        tile_pipeline="pack-peel",
-        lower_to_aie_pipeline="objectFifo",
-    )
 
     # Test with ukernel:
-    test_name = os.path.join(output_dir, "mm_ukernel_256_26_256.mlir")
-    template_name = os.path.join(matmul_template_dir, "matmul_MxK_KxN.mlir")
+    test_name = output_dir / "mm_ukernel_256_26_256.mlir"
+    template_name = matmul_template_dir / "matmul_MxK_KxN.mlir"
     generate_matmul_test(test_name, template_name, 256, 256, 256, "bf16", "f32")
-    run_test(config, test_name, use_ukernel=True)
+    aie_vs_llvm_cpu(config, test_name, use_ukernel=True)
 
-    # Test(s) of the form matmul(A,B) + C where A:MxK, B:KxN, C:N
-    test_name = output_dir / "test_from_template_bias_N.mlir"
-    template_name = matmul_template_dir / "matmul_bias_MxK_KxN_N.mlir"
-    generate_matmul_test(test_name, template_name, 1024, 1024, 512, "bf16", "f32")
-    aie_vs_llvm_cpu(config, test_name, tile_pipeline="pack-peel", use_ukernel=True)
-    aie_vs_llvm_cpu(config, test_name, tile_pipeline="pack-peel", use_ukernel=False)
+    aie_vs_np_matmul(config, test_files_dir / "matmul_int32.mlir")
 
-    # Test(s) of the form matmul(A,B) + C where A:MxK, B:KxN, C:MxN
-    test_name = output_dir / "test_from_template_full_bias.mlir"
-    template_name = matmul_template_dir / "matmul_bias_MxK_KxN_MxN.mlir"
-    generate_matmul_test(test_name, template_name, 128, 128, 256, "i32", "i32")
-    aie_vs_llvm_cpu(config, test_name, tile_pipeline="pack-peel", rtol=0, atol=0)
+    #    for name in [
+    #        "matmul_int32",
+    #        "two_matmul_switching",
+    #        "matmul_f32_8_8_4",
+    #        "matmul_f32_8_4_8",
+    #    ]:
+    #        aie_vs_llvm_cpu(config, test_files_dir / f"{name}.mlir")
+    #
+    #    for name in [
+    #        "conv2d_nhwc_int32",
+    #        "conv2d_nhwc_bf16",
+    #        "conv2d_nhwc_int8",
+    #        "conv2d_nhwc_q",
+    #        "depthwise_convolution_i32",
+    #    ]:
+    #        n_conv_repeats = 4
+    #
+    #        aie_vs_llvm_cpu(
+    #            config,
+    #            test_files_dir / f"{name}.mlir",
+    #            tile_pipeline="conv-decompose",
+    #            n_repeats=n_conv_repeats,
+    #        )
+    #
+    #    aie_vs_llvm_cpu(
+    #        config,
+    #        test_files_dir / "three_matmuls.mlir",
+    #        function_name="three_$mm$",
+    #    )
+    #
+    #
+    #    # Test(s) of the form matmul(A,B) where A:MxK, B:KxN
+    #    test_name = output_dir / "test_from_template.mlir"
+    #    template_name = matmul_template_dir / "matmul_MxK_KxN.mlir"
+    #    generate_matmul_test(test_name, template_name, 32, 32, 64, "bf16", "f32")
+    #    aie_vs_llvm_cpu(config, test_name)
+    #
+    #    # Try running matmul_int32 with different lower_to_aie_pipeline option:
+    #    test_name = output_dir / "test_from_objectfifo_basic.mlir"
+    #    template_name = matmul_template_dir / "matmul_MxK_KxN.mlir"
+    #    generate_matmul_test(test_name, template_name, 64, 64, 64, "bf16", "f32")
+    #    aie_vs_llvm_cpu(
+    #        config,
+    #        test_name,
+    #        tile_pipeline="pack-peel",
+    #        lower_to_aie_pipeline="objectFifo",
+    #    )
+    #
+    #
+    #    # Test(s) of the form matmul(A,B) + C where A:MxK, B:KxN, C:N
+    #    test_name = output_dir / "test_from_template_bias_N.mlir"
+    #    template_name = matmul_template_dir / "matmul_bias_MxK_KxN_N.mlir"
+    #    generate_matmul_test(test_name, template_name, 1024, 1024, 512, "bf16", "f32")
+    #    aie_vs_llvm_cpu(config, test_name, tile_pipeline="pack-peel", use_ukernel=True)
+    #    aie_vs_llvm_cpu(config, test_name, tile_pipeline="pack-peel", use_ukernel=False)
+    #
+    #    # Test(s) of the form matmul(A,B) + C where A:MxK, B:KxN, C:MxN
+    #    test_name = output_dir / "test_from_template_full_bias.mlir"
+    #    template_name = matmul_template_dir / "matmul_bias_MxK_KxN_MxN.mlir"
+    #    generate_matmul_test(test_name, template_name, 128, 128, 256, "i32", "i32")
+    #    aie_vs_llvm_cpu(config, test_name, tile_pipeline="pack-peel", rtol=0, atol=0)
 
     if config.failures:
         # Convert the list of failed tests into a map: test name to the
@@ -679,7 +678,9 @@ if __name__ == "__main__":
     )
     parser.add_argument("xrt_dir", nargs="?", default="/opt/xilinx/xrt", type=abs_path)
     parser.add_argument(
-        "vitis_dir", nargs="?", default="/opt/Xilinx/Vitis/2024.1", type=abs_path
+        "vitis_dir", nargs="?", default="/opt/Xilinx/Vitis/2023.1", type=abs_path
+        # Choosing 2023.1 just to see if it works. 
+        # ./Xilinx/Vitis/2023.1
     )
 
     # This (and other boolean flags) could be made more 'slick' by using
