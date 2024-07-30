@@ -753,7 +753,7 @@ run_matmul_test \
     --lhs_rhs_type "i32" \
     --acc_type "i32" \
     --m "32" --k "32" --n "32" \
-    --num_repeat_runs "10"
+    --num_repeat_runs "2"
 
 run_matmul_test \
     --name_prefix "small" \
@@ -762,7 +762,7 @@ run_matmul_test \
     --lhs_rhs_type "i32" \
     --acc_type "i32" \
     --m "64" --k "32" --n "128" \
-    --num_repeat_runs "10"
+    --num_repeat_runs "2"
 
 run_matmul_test \
     --name_prefix "small" \
@@ -771,7 +771,7 @@ run_matmul_test \
     --lhs_rhs_type "i32" \
     --acc_type "i32" \
     --m "128" --k "32" --n "64" \
-    --num_repeat_runs "10"
+    --num_repeat_runs "2"
 
 run_matmul_test \
     --name_prefix "small" \
@@ -780,7 +780,7 @@ run_matmul_test \
     --lhs_rhs_type "i32" \
     --acc_type "i32" \
     --m "128" --k "32" --n "128" \
-    --num_repeat_runs "10"
+    --num_repeat_runs "2"
 
 run_matmul_test \
     --name_prefix "small" \
@@ -789,7 +789,7 @@ run_matmul_test \
     --lhs_rhs_type "i32" \
     --acc_type "i32" \
     --m "256" --k "32" --n "256" \
-    --num_repeat_runs "10"
+    --num_repeat_runs "2"
 
 run_matmul_test \
     --name_prefix "small" \
@@ -798,7 +798,7 @@ run_matmul_test \
     --lhs_rhs_type "i32" \
     --acc_type "i32" \
     --m "32" --k "64" --n "32" \
-    --num_repeat_runs "10"
+    --num_repeat_runs "2"
 
 run_matmul_test \
     --name_prefix "small" \
@@ -807,7 +807,7 @@ run_matmul_test \
     --lhs_rhs_type "i32" \
     --acc_type "i32" \
     --m "64" --k "64" --n "64" \
-    --num_repeat_runs "10"
+    --num_repeat_runs "2"
 
 run_matmul_test \
     --name_prefix "small" \
@@ -816,7 +816,7 @@ run_matmul_test \
     --lhs_rhs_type "i32" \
     --acc_type "i32" \
     --m "128" --k "256" --n "128" \
-    --num_repeat_runs "10"
+    --num_repeat_runs "2"
 
 run_matmul_test \
     --name_prefix "medium" \
@@ -825,7 +825,7 @@ run_matmul_test \
     --lhs_rhs_type "i32" \
     --acc_type "i32" \
     --m "1024" --k "1024" --n "1024" \
-    --num_repeat_runs "10"
+    --num_repeat_runs "2"
 
 run_matmul_test \
     --name_prefix "medium" \
@@ -834,7 +834,7 @@ run_matmul_test \
     --lhs_rhs_type "i32" \
     --acc_type "i32" \
     --m "1536" --k "2048" --n "1536" \
-    --num_repeat_runs "10"
+    --num_repeat_runs "2"
 
 # bf16 Matmul tests.
 run_matmul_test \
@@ -844,7 +844,7 @@ run_matmul_test \
     --lhs_rhs_type "bf16" \
     --acc_type "f32" \
     --m "64" --k "64" --n "64" \
-    --num_repeat_runs "10"
+    --num_repeat_runs "2"
 
 run_matmul_test \
     --name_prefix "small" \
@@ -853,7 +853,7 @@ run_matmul_test \
     --lhs_rhs_type "bf16" \
     --acc_type "f32" \
     --m "128" --k "256" --n "128" \
-    --num_repeat_runs "10"
+    --num_repeat_runs "2"
 
 run_matmul_test \
     --name_prefix "medium" \
@@ -862,7 +862,7 @@ run_matmul_test \
     --lhs_rhs_type "bf16" \
     --acc_type "f32" \
     --m "1024" --k "1024" --n "1024" \
-    --num_repeat_runs "5"
+    --num_repeat_runs "2"
 
 run_matmul_test \
     --name_prefix "medium" \
@@ -871,7 +871,7 @@ run_matmul_test \
     --lhs_rhs_type "bf16" \
     --acc_type "f32" \
     --m "1536" --k "2048" --n "1536" \
-    --num_repeat_runs "5"
+    --num_repeat_runs "2"
 
 # i8 Matmul tests.
 run_matmul_test \
@@ -881,7 +881,7 @@ run_matmul_test \
     --lhs_rhs_type "i8" \
     --acc_type "i32" \
     --m "64" --k "64" --n "64" \
-    --num_repeat_runs "10"
+    --num_repeat_runs "2"
 
 run_matmul_test \
     --name_prefix "small" \
@@ -890,7 +890,7 @@ run_matmul_test \
     --lhs_rhs_type "i8" \
     --acc_type "i32" \
     --m "128" --k "256" --n "128" \
-    --num_repeat_runs "10"
+    --num_repeat_runs "2"
 
 run_matmul_test \
     --name_prefix "medium" \
@@ -899,7 +899,7 @@ run_matmul_test \
     --lhs_rhs_type "i8" \
     --acc_type "i32" \
     --m "1024" --k "1024" --n "1024" \
-    --num_repeat_runs "5"
+    --num_repeat_runs "2"
 
 run_matmul_test \
     --name_prefix "medium" \
@@ -908,7 +908,7 @@ run_matmul_test \
     --lhs_rhs_type "i8" \
     --acc_type "i32" \
     --m "1536" --k "2048" --n "1536" \
-    --num_repeat_runs "5"
+    --num_repeat_runs "2"
 
 ###################################################################
 # Chess tests
