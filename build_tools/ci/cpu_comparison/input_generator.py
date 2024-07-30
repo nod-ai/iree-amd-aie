@@ -125,6 +125,9 @@ def load_input(input_string):
     input_string is of the form:
     --input=128x128xi32=@/path/to/matmul_int32_input1.bin
     """
+    # Remove all ' and " characters from the input string:
+    input_string = input_string.replace("'", "")
+    input_string = input_string.replace('"', "")
     split_on_equals = input_string.split("=")
     if len(split_on_equals) != 3:
         raise ValueError(
