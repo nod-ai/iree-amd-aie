@@ -6,7 +6,6 @@
 
 #include "gtest/gtest.h"
 #include "iree-amd-aie/Utils/Utils.h"
-#include "mlir/IR/PatternMatch.h"
 
 namespace {
 

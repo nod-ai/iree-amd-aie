@@ -8,6 +8,7 @@
 #include "iree/compiler/Codegen/Utils/Utils.h"
 #include "mlir/Dialect/GPU/IR/GPUDialect.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
+#include "mlir/Dialect/Linalg/IR/LinalgInterfaces.h"
 #include "mlir/Dialect/Linalg/Transforms/TilingInterfaceImpl.h"
 #include "mlir/Dialect/Linalg/Utils/Utils.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
@@ -165,10 +166,8 @@ void AMDAIETileAndFusePass::runOnOperation() {
     // loops, and the first level of tiling is always using scf.forall and
     // mapped to blocks. Currently we are not using mapping attributes for
     // Conv2d ops, because there could be four parallel tiling dimensions.
-    // Somehow `linalg::isaConvolutionOpInterface()` doesn't work properly.
     // TODO (vivian): create AIE specific mapping attributes.
-    if (!isa<linalg::Conv2DNhwcHwcfOp, linalg::Conv2DNchwFchwOp,
-             linalg::Conv2DNhwcHwcfQOp>(consumerOp)) {
+    if (!isa<linalg::ConvolutionOpInterface>(consumerOp.getOperation())) {
       if (tilingLevel == 0) {
         options.setMapping(
             {gpu::GPUBlockMappingAttr::get(context, gpu::MappingId::DimY),
