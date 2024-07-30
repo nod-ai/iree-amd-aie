@@ -611,10 +611,11 @@ def all_tests(
     # Try running matmul_int32 with different lower_to_aie_pipeline option:
     test_name = output_dir / "test_from_objectfifo_basic.mlir"
     template_name = matmul_template_dir / "matmul_MxK_KxN.mlir"
-    generate_matmul_test(test_name, template_name, 128, 256, 128, "i8", "i32")
+    generate_matmul_test(test_name, template_name, 64, 64, 64, "bf16", "f32")
     aie_vs_llvm_cpu(
         config,
         test_name,
+        tile_pipeline="pack-peel",
         lower_to_aie_pipeline="objectFifo",
     )
 
