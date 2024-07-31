@@ -178,35 +178,12 @@ ${FILECHECK_EXE} --input-file ${STDERR_FULLPATH} ${0} --check-prefix=CHECK-STDER
 # CHECK-STDOUT-DAG: MEM_TOPOLOGY
 ${FILECHECK_EXE} --input-file ${STDOUT_FULLPATH} ${0} --check-prefix=CHECK-STDOUT
 
-SOURCE_MLIR_FILE="${THIS}/basic_dma_transpose.mlir"
-
-IREE_COMPILE_COMMAND="${IREE_COMPILE_EXE} \
-${SOURCE_MLIR_FILE} \
---compile-mode=hal-executable \
---iree-hal-target-backends=amd-aie-direct \
---iree-amd-aie-peano-install-dir=${PEANO} \
---iree-amd-aie-install-dir=${IREE_INSTALL_DIR} \
---iree-amd-aie-vitis-install-dir=${VITIS} \
---iree-hal-dump-executable-intermediates-to=${OUTPUT} \
---iree-hal-dump-executable-files-to=${OUTPUT} \
---mlir-disable-threading \
---iree-amd-aie-show-invoked-commands"
-
-echo "Executing command: $IREE_COMPILE_COMMAND"
-eval $IREE_COMPILE_COMMAND 1> ${STDOUT_FULLPATH}
-if [ ! -f "${STDOUT_FULLPATH}" ]; then
-  echo "stdout file was not created: ${STDOUT_FULLPATH}"
-  exit 1
-fi
-
-${FILECHECK_EXE} --input-file ${STDOUT_FULLPATH} $SOURCE_MLIR_FILE
-
 SOURCE_MLIR_FILE="${THIS}/buffers_xclbin.mlir"
 
 IREE_COMPILE_COMMAND="${IREE_COMPILE_EXE} \
 ${SOURCE_MLIR_FILE} \
 --compile-mode=hal-executable \
---iree-hal-target-backends=amd-aie-direct \
+--iree-hal-target-backends=amd-aie \
 --iree-amd-aie-peano-install-dir=${PEANO} \
 --iree-amd-aie-install-dir=${IREE_INSTALL_DIR} \
 --iree-amd-aie-vitis-install-dir=${VITIS} \
@@ -229,7 +206,7 @@ SOURCE_MLIR_FILE="${THIS}/npu_instgen.mlir"
 IREE_COMPILE_COMMAND="${IREE_COMPILE_EXE} \
 ${SOURCE_MLIR_FILE} \
 --compile-mode=hal-executable \
---iree-hal-target-backends=amd-aie-direct \
+--iree-hal-target-backends=amd-aie \
 --iree-amd-aie-peano-install-dir=${PEANO} \
 --iree-amd-aie-install-dir=${IREE_INSTALL_DIR} \
 --iree-amd-aie-vitis-install-dir=${VITIS} \

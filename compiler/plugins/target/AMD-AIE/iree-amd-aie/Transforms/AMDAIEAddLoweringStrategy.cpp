@@ -49,6 +49,21 @@ class AMDAIELoweringStrategyPass
 
 void AMDAIELoweringStrategyPass::runOnOperation() {
   ModuleOp moduleOp = getOperation();
+
+  // Detect unsupported pipeline combinations.
+  {
+    bool padPack = usePassPipeline == TilePassPipeline::PadPackPipeline;
+    bool objectFifo =
+        useLowerToAIEPipeline == LowerToAIEPassPipeline::ObjectFifo;
+    if (padPack && objectFifo) {
+      moduleOp->emitError(
+          "Unsupported pair of pipelines, TilePassPipeline::PadPack "
+          "and LowerToAIEPassPipeline::ObjectFifo. Did you mean to use "
+          "TilePassPipeline::PackPeelPipeline instead?");
+      return signalPassFailure();
+    }
+  }
+
   // To simplify development, the number of cores can be passed as a flag during
   // compilation. In the future these parameters could be read from file.
   struct AIEConfig cfg = {numCores};

@@ -122,21 +122,7 @@ def generate_aie_output(
         compilation_flags += ["--iree-amd-aie-show-invoked-commands"]
 
     if use_ukernel:
-        MM_KERNEL_URL = (
-            "https://github.com/nod-ai/iree-amd-aie/releases/download/ukernels/mm.o"
-        )
         compilation_flags += ["--iree-amdaie-enable-ukernels=all"]
-        mm_fn = config.output_dir / "mm.o"
-        if mm_fn.exists():
-            if config.verbose:
-                print(f"File {mm_fn} already exists")
-        else:
-            if config.verbose:
-                print(f"Attempting to download {MM_KERNEL_URL} to {mm_fn}")
-
-            urllib.request.urlretrieve(MM_KERNEL_URL, mm_fn)
-            if not mm_fn.exists():
-                raise RuntimeError("Failed to download mm.o")
 
     start = time.monotonic_ns()
     shell_out(compilation_flags, config.output_dir, config.verbose)
