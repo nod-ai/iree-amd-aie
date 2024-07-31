@@ -164,7 +164,7 @@ std::pair<std::string, std::vector<std::string>> makeChessArgs(Path &vitisDir,
       // for adf headers
       "-D__AIENGINE__",
       // for aie_api headers
-      "-D__AIE_ARCH__=20",
+      "-D__AIE_ARCH__=20", "-D__AIEARCH__=20",
       // for aie_api headers
       "-I" + (aieToolsDir / "include").string()};
   // disassemble output
@@ -961,7 +961,31 @@ static LogicalResult generateUnifiedObject(
 
     Path OptLLVMIRFile = tempDir / "input.opt.ll";
     if (!runTool(peanoOptBin,
-                 {"-O2", "--inline-threshold=10", "-S", std::string(LLVMIRFile),
+                 {"-O2",
+                  //
+                  "--inline-threshold=10",
+                  //
+                  "-S", std::string(LLVMIRFile),
+                  // peano has no proper vectorization cost model for AIE
+                  "-vectorize-loops=false",
+                  //
+                  "-vectorize-slp=false",
+                  // An if-then-else cascade requires at least 5 delay slots for
+                  // evaluating the condition and 5 delay slots for one of the
+                  // branches, thus speculating 10 instructions should be fine
+                  "--two-entry-phi-node-folding-threshold=10",
+                  // Make sure to perform most optimizations before mandatory
+                  // inlinings, otherwise noalias attributes can get lost and
+                  // hurt AA results.
+                  "-mandatory-inlining-before-opt=false",
+                  // re-enable when we catch-up to
+                  // https://github.com/Xilinx/llvm-aie/pull/103 Perform
+                  // complete AA analysis on phi nodes.
+                  // "-basic-aa-full-phi-analysis=true",
+                  // Extend the max limit of the search depth in BasicAA
+                  // "-basic-aa-max-lookup-search-depth=10",
+                  //
+                  // missing from libc
                   "--disable-builtin=memset", "-o", std::string(OptLLVMIRFile)},
                  verbose)) {
       llvm::errs() << "Failed to optimize ll with peano";
