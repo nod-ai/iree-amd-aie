@@ -462,6 +462,23 @@ function run_matmul_test() {
 
 }
 
+# Helper function to run the same matmul test on an array of shapes with format 'MxKxN'.
+function run_matmul_test_on_shapes() {
+  shapes=()
+  while [[ $1 != --* ]]
+  do
+    shapes+=($1)
+    shift
+  done
+  for shape in "${shapes[@]}"
+  do
+    IFS="x" read -r -a elems <<< "${shape}"
+    run_matmul_test \
+        "$@" \
+        --m "${elems[0]}" --k "${elems[1]}" --n "${elems[2]}"
+  done
+}
+
 ########################################################
 # Run tests                                            #
 ########################################################
@@ -731,168 +748,82 @@ run_matmul_test \
 # ObjectFifo Matmul tests
 ###################################################################
 
-run_matmul_test \
+i32_shapes_small=(
+  '32x32x32'
+  '64x32x128'
+  '128x32x64'
+  '128x32x64'
+  '128x32x128'
+  '256x32x256'
+  '32x64x32'
+  '64x64x64'
+  '128x256x128'
+)
+
+i32_shapes_medium=(
+  '1024x1024x1024' 
+  '1536x2048x1536'
+)
+
+run_matmul_test_on_shapes ${i32_shapes_small[@]} \
     --name_prefix "small" \
     --lower_to_aie_pipeline "objectFifo" \
     --tile_pipeline "pack-peel" \
     --lhs_rhs_type "i32" \
     --acc_type "i32" \
-    --m "32" --k "32" --n "32" \
     --num_repeat_runs "2"
 
-run_matmul_test \
-    --name_prefix "small" \
-    --lower_to_aie_pipeline "objectFifo" \
-    --tile_pipeline "pack-peel" \
-    --lhs_rhs_type "i32" \
-    --acc_type "i32" \
-    --m "64" --k "32" --n "128" \
-    --num_repeat_runs "2"
-
-run_matmul_test \
-    --name_prefix "small" \
-    --lower_to_aie_pipeline "objectFifo" \
-    --tile_pipeline "pack-peel" \
-    --lhs_rhs_type "i32" \
-    --acc_type "i32" \
-    --m "128" --k "32" --n "64" \
-    --num_repeat_runs "2"
-
-run_matmul_test \
-    --name_prefix "small" \
-    --lower_to_aie_pipeline "objectFifo" \
-    --tile_pipeline "pack-peel" \
-    --lhs_rhs_type "i32" \
-    --acc_type "i32" \
-    --m "128" --k "32" --n "128" \
-    --num_repeat_runs "2"
-
-run_matmul_test \
-    --name_prefix "small" \
-    --lower_to_aie_pipeline "objectFifo" \
-    --tile_pipeline "pack-peel" \
-    --lhs_rhs_type "i32" \
-    --acc_type "i32" \
-    --m "256" --k "32" --n "256" \
-    --num_repeat_runs "2"
-
-run_matmul_test \
-    --name_prefix "small" \
-    --lower_to_aie_pipeline "objectFifo" \
-    --tile_pipeline "pack-peel" \
-    --lhs_rhs_type "i32" \
-    --acc_type "i32" \
-    --m "32" --k "64" --n "32" \
-    --num_repeat_runs "2"
-
-run_matmul_test \
-    --name_prefix "small" \
-    --lower_to_aie_pipeline "objectFifo" \
-    --tile_pipeline "pack-peel" \
-    --lhs_rhs_type "i32" \
-    --acc_type "i32" \
-    --m "64" --k "64" --n "64" \
-    --num_repeat_runs "2"
-
-run_matmul_test \
-    --name_prefix "small" \
-    --lower_to_aie_pipeline "objectFifo" \
-    --tile_pipeline "pack-peel" \
-    --lhs_rhs_type "i32" \
-    --acc_type "i32" \
-    --m "128" --k "256" --n "128" \
-    --num_repeat_runs "2"
-
-run_matmul_test \
+run_matmul_test_on_shapes ${i32_shapes_medium[@]} \
     --name_prefix "medium" \
     --lower_to_aie_pipeline "objectFifo" \
     --tile_pipeline "pack-peel" \
     --lhs_rhs_type "i32" \
     --acc_type "i32" \
-    --m "1024" --k "1024" --n "1024" \
-    --num_repeat_runs "2"
-
-run_matmul_test \
-    --name_prefix "medium" \
-    --lower_to_aie_pipeline "objectFifo" \
-    --tile_pipeline "pack-peel" \
-    --lhs_rhs_type "i32" \
-    --acc_type "i32" \
-    --m "1536" --k "2048" --n "1536" \
     --num_repeat_runs "2"
 
 # bf16 Matmul tests.
-run_matmul_test \
+
+bf16_i8_shapes_small=(
+  '64x64x64'
+  '128x256x128'
+)
+
+bf16_i8_shapes_medium=(
+  '1024x1024x1024'
+  '1536x2048x1536'
+)
+
+run_matmul_test_on_shapes ${bf16_i8_shapes_small[@]} \
     --name_prefix "small" \
     --lower_to_aie_pipeline "objectFifo" \
     --tile_pipeline "pack-peel" \
     --lhs_rhs_type "bf16" \
     --acc_type "f32" \
-    --m "64" --k "64" --n "64" \
     --num_repeat_runs "2"
 
-run_matmul_test \
-    --name_prefix "small" \
-    --lower_to_aie_pipeline "objectFifo" \
-    --tile_pipeline "pack-peel" \
-    --lhs_rhs_type "bf16" \
-    --acc_type "f32" \
-    --m "128" --k "256" --n "128" \
-    --num_repeat_runs "2"
-
-run_matmul_test \
+run_matmul_test_on_shapes ${bf16_i8_shapes_medium[@]} \
     --name_prefix "medium" \
     --lower_to_aie_pipeline "objectFifo" \
     --tile_pipeline "pack-peel" \
     --lhs_rhs_type "bf16" \
     --acc_type "f32" \
-    --m "1024" --k "1024" --n "1024" \
-    --num_repeat_runs "2"
-
-run_matmul_test \
-    --name_prefix "medium" \
-    --lower_to_aie_pipeline "objectFifo" \
-    --tile_pipeline "pack-peel" \
-    --lhs_rhs_type "bf16" \
-    --acc_type "f32" \
-    --m "1536" --k "2048" --n "1536" \
     --num_repeat_runs "2"
 
 # i8 Matmul tests.
-run_matmul_test \
+run_matmul_test_on_shapes ${bf16_i8_shapes_small[@]} \
     --name_prefix "small" \
     --lower_to_aie_pipeline "objectFifo" \
     --tile_pipeline "pack-peel" \
     --lhs_rhs_type "i8" \
     --acc_type "i32" \
-    --m "64" --k "64" --n "64" \
     --num_repeat_runs "2"
 
-run_matmul_test \
-    --name_prefix "small" \
-    --lower_to_aie_pipeline "objectFifo" \
-    --tile_pipeline "pack-peel" \
-    --lhs_rhs_type "i8" \
-    --acc_type "i32" \
-    --m "128" --k "256" --n "128" \
-    --num_repeat_runs "2"
-
-run_matmul_test \
+run_matmul_test_on_shapes ${bf16_i8_shapes_medium[@]} \
     --name_prefix "medium" \
     --lower_to_aie_pipeline "objectFifo" \
     --tile_pipeline "pack-peel" \
     --lhs_rhs_type "i8" \
     --acc_type "i32" \
-    --m "1024" --k "1024" --n "1024" \
-    --num_repeat_runs "2"
-
-run_matmul_test \
-    --name_prefix "medium" \
-    --lower_to_aie_pipeline "objectFifo" \
-    --tile_pipeline "pack-peel" \
-    --lhs_rhs_type "i8" \
-    --acc_type "i32" \
-    --m "1536" --k "2048" --n "1536" \
     --num_repeat_runs "2"
 
 ###################################################################
