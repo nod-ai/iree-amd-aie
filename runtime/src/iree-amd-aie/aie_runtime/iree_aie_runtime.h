@@ -160,6 +160,45 @@ inline ::StrmSwPortType strmTtoStrmT(StrmSwPortType t) {
   return static_cast<::StrmSwPortType>(t);
 }
 
+enum class XAie_TxnOpcode : uint8_t {
+  XAIE_IO_WRITE = ::XAie_TxnOpcode::XAIE_IO_WRITE,
+  XAIE_IO_BLOCKWRITE,
+  XAIE_IO_BLOCKSET,
+  XAIE_IO_MASKWRITE,
+  XAIE_IO_MASKPOLL,
+  XAIE_CONFIG_SHIMDMA_BD,
+  XAIE_CONFIG_SHIMDMA_DMABUF_BD,
+  XAIE_IO_CUSTOM_OP_BEGIN = ::XAie_TxnOpcode::XAIE_IO_CUSTOM_OP_BEGIN,
+  XAIE_IO_CUSTOM_OP_TCT = ::XAie_TxnOpcode::XAIE_IO_CUSTOM_OP_BEGIN,
+  XAIE_IO_CUSTOM_OP_DDR_PATCH,
+  XAIE_IO_CUSTOM_OP_READ_REGS,
+  XAIE_IO_CUSTOM_OP_RECORD_TIMER,
+  XAIE_IO_CUSTOM_OP_MERGE_SYNC,
+  XAIE_IO_CUSTOM_OP_NEXT,
+  XAIE_IO_CUSTOM_OP_MAX = ::XAie_TxnOpcode::XAIE_IO_CUSTOM_OP_MAX,
+};
+static_assert(static_cast<uint8_t>(XAie_TxnOpcode::XAIE_IO_WRITE) == 0,
+              "mlir::iree_compiler::AMDAIE::XAie_TxnOpcode is out of sync with "
+              "aie-rt's XAie_TxnOpcode");
+static_assert(
+    static_cast<uint8_t>(XAie_TxnOpcode::XAIE_CONFIG_SHIMDMA_DMABUF_BD) ==
+        ::XAie_TxnOpcode::XAIE_CONFIG_SHIMDMA_DMABUF_BD,
+    "mlir::iree_compiler::AMDAIE::XAie_TxnOpcode is out of sync with "
+    "aie-rt's XAie_TxnOpcode");
+static_assert(
+    static_cast<uint8_t>(XAie_TxnOpcode::XAIE_IO_CUSTOM_OP_DDR_PATCH) ==
+        ::XAie_TxnOpcode::XAIE_IO_CUSTOM_OP_DDR_PATCH,
+    "mlir::iree_compiler::AMDAIE::XAie_TxnOpcode is out of sync with "
+    "aie-rt's XAie_TxnOpcode");
+static_assert(static_cast<uint8_t>(XAie_TxnOpcode::XAIE_IO_CUSTOM_OP_NEXT) ==
+                  ::XAie_TxnOpcode::XAIE_IO_CUSTOM_OP_NEXT,
+              "mlir::iree_compiler::AMDAIE::XAie_TxnOpcode is out of sync with "
+              "aie-rt's XAie_TxnOpcode");
+
+inline ::XAie_TxnOpcode txnToTxn(XAie_TxnOpcode t) {
+  return static_cast<::XAie_TxnOpcode>(t);
+}
+
 /*
  * This struct is meant to be a thin wrapper around aie-rt, which provides
  * the canonical representation/metadata for AIE devices; attributes like number
@@ -279,17 +318,24 @@ bool isNPUDevice(mlir::iree_compiler::AMDAIE::AMDAIEDevice d);
 
 std::string to_string(const int& value);
 
-#define TO_STRINGS(_)    \
-  _(AMDAIEDmaProp)       \
-  _(AMDAIETileType)      \
-  _(AieRC)               \
-  _(DMAChannelDir)       \
-  _(StrmSwPortType)      \
-  _(SwitchDMAConnection) \
-  _(::StrmSwPortType)    \
-  _(TileLoc)             \
-  _(XAie_LocType)        \
-  _(XAie_Lock)           \
+#define TO_STRINGS(_)     \
+  _(AMDAIEDmaProp)        \
+  _(AMDAIETileType)       \
+  _(AieRC)                \
+  _(DMAChannelDir)        \
+  _(StrmSwPortType)       \
+  _(SwitchDMAConnection)  \
+  _(::StrmSwPortType)     \
+  _(TileLoc)              \
+  _(XAie_LocType)         \
+  _(XAie_Lock)            \
+  _(XAie_OpHdr)           \
+  _(XAie_Write32Hdr)      \
+  _(XAie_BlockWrite32Hdr) \
+  _(XAie_MaskWrite32Hdr)  \
+  _(XAie_CustomOpHdr)     \
+  _(XAie_TxnOpcode)       \
+  _(XAie_TxnCmd)          \
   _(XAie_Packet)
 
 TO_STRINGS(TO_STRING_DECL)
@@ -305,6 +351,13 @@ TO_STRINGS(TO_STRING_DECL)
   _(OSTREAM_OP_, ::StrmSwPortType)                                 \
   _(OSTREAM_OP_, XAie_LocType)                                     \
   _(OSTREAM_OP_, XAie_Lock)                                        \
+  _(OSTREAM_OP_, XAie_OpHdr)                                       \
+  _(OSTREAM_OP_, XAie_Write32Hdr)                                  \
+  _(OSTREAM_OP_, XAie_BlockWrite32Hdr)                             \
+  _(OSTREAM_OP_, XAie_MaskWrite32Hdr)                              \
+  _(OSTREAM_OP_, XAie_CustomOpHdr)                                 \
+  _(OSTREAM_OP_, XAie_TxnOpcode)                                   \
+  _(OSTREAM_OP_, XAie_TxnCmd)                                      \
   _(OSTREAM_OP_, XAie_Packet)
 
 BOTH_OSTREAM_OPS_FORALL_TYPES(OSTREAM_OP_DECL, BOTH_OSTREAM_OP)

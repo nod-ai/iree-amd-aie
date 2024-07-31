@@ -53,9 +53,18 @@ iree_cc_test(
 
 iree_cc_test(
   NAME
-    test_1114_aie_stream_switch_packet_switch_control_packets.cc
+    test_1114_aie_stream_switch_packet_switch_control_packets
   SRCS
     test_1114_aie_stream_switch_packet_switch_control_packets.cc
+  DEPS
+    iree-amd-aie::aie_runtime::iree_aie_runtime_static
+)
+
+iree_cc_test(
+  NAME
+    test_transaction
+  SRCS
+    test_transaction.cc
   DEPS
     iree-amd-aie::aie_runtime::iree_aie_runtime_static
 )
