@@ -396,7 +396,8 @@ LogicalResult AIETargetBackend::serializeExecutable(
             /*xclBinKernelID=*/ordinalHex.str(),
             /*xclBinKernelName=*/entryPointNamesFb[ordinal],
             /*xclBinInstanceName=*/"IREE",
-            /*amdAIEInstallDir=*/options.amdAieInstallDir)))
+            /*amdAIEInstallDir=*/options.amdAieInstallDir,
+            /*InputXCLBin=*/std::nullopt, /*ukernel=*/clEnableAMDAIEUkernels)))
       return failure();
 
     std::ifstream instrFile(static_cast<std::string>(npuInstPath));

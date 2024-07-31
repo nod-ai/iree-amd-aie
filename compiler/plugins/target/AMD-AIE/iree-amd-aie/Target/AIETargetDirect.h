@@ -16,9 +16,6 @@
 
 namespace mlir::iree_compiler::AMDAIE {
 
-std::shared_ptr<IREE::HAL::TargetDevice> createTargetDirect(
-    const AMDAIEOptions &options);
-
 std::shared_ptr<IREE::HAL::TargetBackend> createBackendDirect(
     const AMDAIEOptions &options);
 
