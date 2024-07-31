@@ -49,6 +49,11 @@ static const std::string _CHESS_INTRINSIC_WRAPPER_CPP{
 #include "chess_intrinsic_wrapper.cpp"
 };
 
+// This is a string that contains a mm kernel.
+static const std::string _MM_CC{
+#include "mm.cc"
+};
+
 using namespace std::placeholders;
 using namespace llvm;
 using namespace mlir;
@@ -160,7 +165,8 @@ std::pair<std::string, std::vector<std::string>> makeChessArgs(Path &vitisDir,
       "-D__AIENGINE__",
       // for aie_api headers
       "-D__AIE_ARCH__=20",
-  };
+      // for aie_api headers
+      "-I" + (aieToolsDir / "include").string()};
   // disassemble output
   if (verbose) flags.emplace_back("-d");
   return {aieToolsDir / "bin" / "unwrapped" / "lnx64.o" / "xchesscc", flags};
@@ -330,7 +336,7 @@ static_assert(std::is_same_v<decltype(assembleFileUsingPeano),
                              decltype(assembleFileUsingChess)>);
 using FileAssemblerT = std::function<decltype(assembleFileUsingPeano)>;
 
-static FailureOr<std::string> assembleStringUsing(
+static FailureOr<Path> assembleStringUsing(
     const FileAssemblerT &assembler, const std::string &inputFileStr,
     const std::string &inputFileName, const std::string &outputFileName,
     Path &outputDir, const std::vector<std::string> &extraArgs, Path &workDir,
@@ -354,7 +360,7 @@ static FailureOr<std::string> assembleStringUsing(
     llvm::errs() << "Failed to assemble " << outputFileName << ".o";
     return failure();
   }
-  return outputFile.string();
+  return outputFile;
 }
 
 static auto assembleStringUsingChess =
@@ -364,13 +370,14 @@ static auto assembleStringUsingPeano =
     std::bind(assembleStringUsing, assembleFileUsingPeano, _1, _2, _3, _4, _5,
               _6, _7, _8);
 
+static_assert(std::is_same_v<decltype(assembleStringUsingChess),
+                             decltype(assembleStringUsingPeano)>);
+
 // Generate the elf files for the core
-static LogicalResult generateCoreElfFiles(ModuleOp moduleOp,
-                                          const std::string &objFile,
-                                          Path tempDir, bool useChess,
-                                          std::optional<Path> vitisDir,
-                                          const std::string &targetArch,
-                                          bool verbose, Path peanoDir) {
+static LogicalResult generateCoreElfFiles(
+    ModuleOp moduleOp, const std::string &objFile, Path tempDir, bool useChess,
+    std::optional<Path> vitisDir, const std::string &targetArch, bool verbose,
+    Path peanoDir, const std::optional<std::string> &ukernel) {
   auto deviceOps = moduleOp.getOps<AIE::DeviceOp>();
   if (!llvm::hasSingleElement(deviceOps))
     return moduleOp.emitOpError("expected a single device op");
@@ -397,18 +404,47 @@ static LogicalResult generateCoreElfFiles(ModuleOp moduleOp,
 
     Path elfFile = tempDir / elfFileName;
 
+    Path cwd = std::filesystem::current_path();
+    FailureOr<Path> mmObjectFilePath;
+    if (ukernel && (ukernel == "mm" || ukernel == "all")) {
+      FailureOr<Path> maybeVitisDir = findVitis(vitisDir);
+      if (failed(maybeVitisDir)) {
+        llvm::errs() << "compiling ukernels currently requires chess (even if "
+                        "you're using peano)";
+        return failure();
+      }
+      if (!std::filesystem::exists(cwd / "mm.o")) {
+        mmObjectFilePath = assembleStringUsingChess(
+            /*inputFileStr=*/_MM_CC,
+            /*inputFileName=*/"mm.cc",
+            /*outputFileName=*/"mm.o",
+            /*outputDir=*/cwd,
+            /*extraArgs*/ std::vector<std::string>{},
+            /*workDir=*/tempDir,
+            /*vitisDir=*/*maybeVitisDir, verbose);
+        if (failed(mmObjectFilePath)) return failure();
+      } else {
+        mmObjectFilePath = cwd / "mm.o";
+      }
+    }
+
     if (useChess) {
       FailureOr<Path> maybeVitisDir = findVitis(vitisDir);
       if (failed(maybeVitisDir)) return failure();
-      auto chessIntrinsicsObjFile = assembleStringUsingChess(
-          /*inputFileStr=*/_CHESS_INTRINSIC_WRAPPER_CPP,
-          /*inputFileName=*/"chess_intrinsic_wrapper.cpp",
-          /*outputFileName=*/"chess_intrinsic_wrapper.o",
-          /*outputDir=*/tempDir,
-          /*extraArgs*/ std::vector<std::string>{},
-          /*workDir=*/tempDir,
-          /*vitisDir=*/*maybeVitisDir, verbose);
-      if (failed(chessIntrinsicsObjFile)) return failure();
+      FailureOr<Path> chessIntrinsicsObjFile;
+      if (!std::filesystem::exists(cwd / "chess_intrinsic_wrapper.o")) {
+        chessIntrinsicsObjFile = assembleStringUsingChess(
+            /*inputFileStr=*/_CHESS_INTRINSIC_WRAPPER_CPP,
+            /*inputFileName=*/"chess_intrinsic_wrapper.cpp",
+            /*outputFileName=*/"chess_intrinsic_wrapper.o",
+            /*outputDir=*/tempDir,
+            /*extraArgs*/ std::vector<std::string>{},
+            /*workDir=*/tempDir,
+            /*vitisDir=*/*maybeVitisDir, verbose);
+        if (failed(chessIntrinsicsObjFile)) return failure();
+      } else {
+        chessIntrinsicsObjFile = cwd / "chess_intrinsic_wrapper.o";
+      }
 
       // Use xbridge (to remove any peano dependency with use-chess option)
       Path bcfPath = tempDir / (elfFileName + ".bcf");
@@ -425,32 +461,16 @@ static LogicalResult generateCoreElfFiles(ModuleOp moduleOp,
           llvm::errs() << "Failed to generate BCF";
           return failure();
         }
-        bcfOutput->os() << "_include _file chess_intrinsic_wrapper.o\n";
         bcfOutput->keep();
-      }
-
-      std::vector<std::string> extractedIncludes{*chessIntrinsicsObjFile};
-      {
-        auto bcfFileIn = openInputFile(bcfPath.string(), &errorMessage);
-        if (!bcfFileIn) {
-          llvm::errs() << "failed to open bcf because: " << errorMessage;
-          return failure();
-        }
-
-        std::string bcfFile = std::string(bcfFileIn->getBuffer());
-        std::regex r("_include _file (.*)");
-        auto begin = std::sregex_iterator(bcfFile.begin(), bcfFile.end(), r);
-        auto end = std::sregex_iterator();
-        for (std::sregex_iterator i = begin; i != end; ++i) {
-          if (i->str(1) == "chess_intrinsic_wrapper.o") continue;
-          extractedIncludes.emplace_back(i->str(1));
-        }
       }
 
       auto [xChessCCExe, chessArgs] =
           makeChessArgs(*vitisDir, tempDir, verbose);
       chessArgs.emplace_back(objFile);
-      for (const auto &inc : extractedIncludes) chessArgs.emplace_back(inc);
+      chessArgs.emplace_back(chessIntrinsicsObjFile->string());
+      if (ukernel && (ukernel == "mm" || ukernel == "all")) {
+        chessArgs.emplace_back(mmObjectFilePath->string());
+      }
       chessArgs.emplace_back("+l");
       chessArgs.emplace_back(bcfPath);
       chessArgs.emplace_back("-o");
@@ -481,6 +501,9 @@ static LogicalResult generateCoreElfFiles(ModuleOp moduleOp,
       std::string targetLower = StringRef(targetArch).lower();
       std::vector<std::string> flags;
       flags.emplace_back(objFile);
+      if (ukernel && (ukernel == "mm" || ukernel == "all")) {
+        flags.emplace_back(mmObjectFilePath->string());
+      }
       flags.emplace_back("--target=" + targetLower + "-none-unknown-elf");
       flags.emplace_back("-Wl,--gc-sections");
       flags.emplace_back("-Wl,-T," + ldscriptPath.string());
@@ -580,13 +603,11 @@ static json::Object makeKernelJSON(const std::string &name,
       {"instances", json::Array{json::Object{{"name", instance}}}}};
 }
 
-static LogicalResult generateXCLBin(const std::string &Output,
-                                    const Path &tempDir,
-                                    const std::string &xclBinKernelID,
-                                    const std::string &xclBinKernelName,
-                                    const std::string &xclBinInstanceName,
-                                    const Path &amdAIEInstallDir, bool verbose,
-                                    const std::string &inputXclbin = "") {
+static LogicalResult generateXCLBin(
+    const std::string &Output, const Path &tempDir,
+    const std::string &xclBinKernelID, const std::string &xclBinKernelName,
+    const std::string &xclBinInstanceName, const Path &amdAIEInstallDir,
+    bool verbose, const std::optional<std::string> &inputXclbin) {
   std::string errorMessage;
   // Create mem_topology.json.
   Path memTopologyJsonFile = tempDir / "mem_topology.json";
@@ -738,14 +759,13 @@ static LogicalResult generateXCLBin(const std::string &Output,
     xclbinutilBin = amdAIEInstallDir / "tools" / "amdaie_xclbinutil";
   }
   {
-    if (!inputXclbin.empty()) {
+    if (inputXclbin) {
       // Create aie_partition.json.
       Path aieInputPartitionJsonFile = tempDir / "aie_input_partition.json";
       std::string inputPartArg =
           "AIE_PARTITION:JSON:" + aieInputPartitionJsonFile.string();
       std::vector<std::string> inputFlags{"--dump-section", inputPartArg,
-                                          "--force", "--input",
-                                          std::string(inputXclbin)};
+                                          "--force", "--input", *inputXclbin};
 
       if (!runTool(xclbinutilBin, inputFlags, verbose)) {
         llvm::errs() << "failed to execute xclbinutil";
@@ -791,7 +811,7 @@ static LogicalResult generateXCLBin(const std::string &Output,
             << errorMessage;
         return failure();
       }
-      flags.insert(flags.end(), {"--input", std::string(inputXclbin)});
+      flags.insert(flags.end(), {"--input", *inputXclbin});
     } else {
       flags.insert(flags.end(), {"--add-replace-section", memArg});
     }
@@ -970,7 +990,9 @@ LogicalResult aie2xclbin(
     const std::optional<std::string> &vitisDir, const std::string &targetArch,
     const std::string &peanoDir, const std::string &xclBinKernelID,
     const std::string &xclBinKernelName, const std::string &xclBinInstanceName,
-    const std::string &amdAIEInstallDir, const std::string &InputXCLBin) {
+    const std::string &amdAIEInstallDir,
+    const std::optional<std::string> &InputXCLBin,
+    const std::optional<std::string> &ukernel) {
   PassManager pm(ctx, mlir::ModuleOp::getOperationName());
   applyConfigToPassManager(pm, printIRBeforeAll, printIRAfterAll,
                            printIRModuleScope, timing);
@@ -1006,7 +1028,8 @@ LogicalResult aie2xclbin(
     return moduleOp.emitOpError("Failed to generate unified object");
 
   if (failed(generateCoreElfFiles(moduleOp, unifiedObj, tempDir, useChess,
-                                  vitisDir, targetArch, verbose, peanoDir)))
+                                  vitisDir, targetArch, verbose, peanoDir,
+                                  ukernel)))
     return moduleOp.emitOpError("Failed to generate core ELF file(s)");
 
   if (failed(generateCDO(ctx, moduleOp, printIRBeforeAll, printIRAfterAll,

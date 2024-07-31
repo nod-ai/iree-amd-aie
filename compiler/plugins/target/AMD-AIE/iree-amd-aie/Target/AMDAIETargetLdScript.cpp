@@ -39,13 +39,6 @@ static void writeLDScriptMap(raw_ostream &output, BufferOp buf, int offset) {
 //      // the __start symbol from crt0.o has to come at address zero.
 //      *crt0.o(.text)
 //      . = 0x200;
-//      __ctors_start__ = .;
-//      __init_array_start = .;
-//      KEEP(SORT(*)(.init_array))
-//      __ctors_end__ = .;
-//      __init_array_end = .;
-//      __dtors_start__ = .;
-//      __dtors_end__ = .;
 //      *(.text)
 //   } > program
 //   .data : { *(.data) } > data
@@ -146,9 +139,6 @@ SECTIONS
       output << "  .bss.DMb.4 : { *(.bss.DMb.4) } > data\n";
       output << "}\n";
       if (auto coreOp = tile.getCoreOp()) {
-        if (auto fileAttr = coreOp.getLinkWith())
-          output << "INPUT(" << fileAttr.value().str() << ")\n";
-
         output << "PROVIDE(main = core_" << tile.getCol() << "_"
                << tile.getRow() << ");\n";
       }
