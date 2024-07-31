@@ -6,45 +6,53 @@
 //===----------------------------------------------------------------------===//
 
 // Ensure no modification in case of a invalid affine expressions.
-// CHECK:       #[[$MAP:.+]] = affine_map<(d0) -> (d0 * 16)>
-// CHECK:       #[[$MAP1:.+]] = affine_map<(d0) -> (d0 * 16 + 3)>
-// CHECK:       #[[$MAP2:.+]] = affine_map<(d0) -> (d0 + 3)>
+// CHECK:       #[[$MAP0:.+]] = affine_map<(d0) -> ((d0 * 16) floordiv 5)>
+// CHECK:       #[[$MAP1:.+]] = affine_map<(d0) -> (d0 floordiv 16 + 3)>
+// CHECK:       #[[$MAP2:.+]] = affine_map<(d0) -> (d0 - 3)>
 // CHECK:       #[[$MAP3:.+]] = affine_map<(d0) -> (d0 * 16 + 48)>
 // CHECK-LABEL: @invalid_affine_expr
 // CHECK-DAG:   %[[C1:.+]] = arith.constant 1 : index
 // CHECK-DAG:   %[[C2:.+]] = arith.constant 2 : index
 // CHECK-DAG:   %[[C6:.+]] = arith.constant 6 : index
-// CHECK:       %[[CIRC_DMA:.+]] = amdaie.circular_dma_cpy_nd
+// CHECK:       %[[CIRC_DMA_1:.+]] = amdaie.circular_dma_cpy_nd
+// CHECK:       %[[CIRC_DMA_2:.+]] = amdaie.circular_dma_cpy_nd
+// CHECK:       %[[CIRC_DMA_3:.+]] = amdaie.circular_dma_cpy_nd
+// CHECK:       %[[CIRC_DMA_4:.+]] = amdaie.circular_dma_cpy_nd
 // CHECK:       amdaie.controlcode
 // CHECK:         scf.for %[[ARG2:.+]] = %[[C1]] to %[[C6]] step %[[C2]]
-// CHECK:           %[[APPLY1:.+]] = affine.apply #[[$MAP]](%[[ARG2]])
+// CHECK:           %[[APPLY1:.+]] = affine.apply #[[$MAP0]](%[[ARG2]])
+// CHECK:           amdaie.npu.dma_cpy_nd %[[CIRC_DMA_1]]([%[[APPLY1]]] [16] [1], [] [] [])
 // CHECK:           %[[APPLY2:.+]] = affine.apply #[[$MAP1]](%[[ARG2]])
-// CHECK:           amdaie.npu.dma_cpy_nd %[[CIRC_DMA]]([%[[APPLY2]]] [16] [1], [%[[APPLY1]]] [16] [1])
+// CHECK:           amdaie.npu.dma_cpy_nd %[[CIRC_DMA_2]]([%[[APPLY2]]] [16] [1], [] [] [])
 // CHECK:           %[[APPLY3:.+]] = affine.apply #[[$MAP2]](%[[ARG2]])
-// CHECK:           amdaie.npu.dma_cpy_nd %[[CIRC_DMA]]([%[[APPLY3]]] [16] [1], [] [] [])
+// CHECK:           amdaie.npu.dma_cpy_nd %[[CIRC_DMA_3]]([%[[APPLY3]]] [16] [1], [] [] [])
 // CHECK:           %[[APPLY4:.+]] = affine.apply #[[$MAP3]](%[[ARG2]])
-// CHECK:           amdaie.npu.dma_cpy_nd %[[CIRC_DMA]]([%[[APPLY4]]] [16] [1], [] [] [])
-#map = affine_map<(d0) -> (d0 * 16)>
-#map1 = affine_map<(d0) -> (d0 * 16 + 3)>
-#map2 = affine_map<(d0) -> (d0 + 3)>
+// CHECK:           amdaie.npu.dma_cpy_nd %[[CIRC_DMA_4]]([%[[APPLY4]]] [16] [1], [] [] [])
+#map0 = affine_map<(d0) -> (d0 * 16 floordiv 5)>
+#map1 = affine_map<(d0) -> (d0 floordiv 16 + 3)>
+#map2 = affine_map<(d0) -> (d0 - 3)>
 #map3 = affine_map<(d0) -> ((d0 + 3) * 16)>
 #executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
 module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
-  func.func @invalid_affine_expr(%arg0: !amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, %arg1: !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>) {
+  func.func @invalid_affine_expr(%arg0: !amdaie.logicalobjectfifo<memref<1x1x8x16xi32>>, %arg1: !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>) {
     %c1 = arith.constant 1 : index
     %c2 = arith.constant 2 : index
     %c6 = arith.constant 6 : index
     amdaie.workgroup {
-      %0 = amdaie.circular_dma_cpy_nd(%arg0[] [] [], %arg1[] [] []) : (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>)
+      %0 = amdaie.circular_dma_cpy_nd(%arg0[] [] [], %arg1[] [] []) : (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32>>, !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>)
+      %1 = amdaie.circular_dma_cpy_nd(%arg0[] [] [], %arg1[] [] []) : (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32>>, !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>)
+      %2 = amdaie.circular_dma_cpy_nd(%arg0[] [] [], %arg1[] [] []) : (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32>>, !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>)
+      %3 = amdaie.circular_dma_cpy_nd(%arg0[] [] [], %arg1[] [] []) : (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32>>, !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>)
       amdaie.controlcode {
         scf.for %arg2 = %c1 to %c6 step %c2 {
-          %1 = affine.apply #map(%arg2)
-          %2 = affine.apply #map1(%arg2)
-          %3 = amdaie.npu.dma_cpy_nd %0([%2] [16] [1], [%1] [16] [1])
-          %4 = affine.apply #map2(%arg2)
+          %4 = affine.apply #map0(%arg2)
           %5 = amdaie.npu.dma_cpy_nd %0([%4] [16] [1], [] [] [])
-          %6 = affine.apply #map3(%arg2)
-          %7 = amdaie.npu.dma_cpy_nd %0([%6] [16] [1], [] [] [])
+          %6 = affine.apply #map1(%arg2)
+          %7 = amdaie.npu.dma_cpy_nd %1([%6] [16] [1], [] [] [])
+          %8 = affine.apply #map2(%arg2)
+          %9 = amdaie.npu.dma_cpy_nd %2([%8] [16] [1], [] [] [])
+          %10 = affine.apply #map3(%arg2)
+          %11 = amdaie.npu.dma_cpy_nd %3([%10] [16] [1], [] [] [])
         }
         amdaie.end
       }
@@ -381,6 +389,232 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 
 // -----
 
+// Don't subsume if inter size (dim 0 in a four dimensional size array) or intra size 
+// (dim 1, 2, 3 in a four dimensional size array) is too large.
+// CHECK-LABEL: @exceed_max_size_source
+// CHECK-DAG:   %[[C0:.+]] = arith.constant 0 : index
+// CHECK-DAG:   %[[C1:.+]] = arith.constant 1 : index
+// CHECK-DAG:   %[[C8:.+]] = arith.constant 8 : index
+// CHECK-DAG:   %[[C16:.+]] = arith.constant 16 : index
+// CHECK-DAG:   %[[C63:.+]] = arith.constant 63 : index
+// CHECK-DAG:   %[[C64:.+]] = arith.constant 64 : index
+// CHECK-DAG:   %[[C1023:.+]] = arith.constant 1023 : index
+// CHECK-DAG:   %[[C1024:.+]] = arith.constant 1024 : index
+// CHECK:       %[[CIRC_DMA:.+]] = amdaie.circular_dma_cpy_nd
+// CHECK:       amdaie.controlcode
+// CHECK:         %{{.+}} = amdaie.npu.dma_cpy_nd %[[CIRC_DMA]]([] [] [], [%[[C0]], %[[C0]], %[[C0]], %[[C0]]] [%[[C63]], %[[C1]], %[[C8]], %[[C16]]] [%[[C0]], %[[C64]], %[[C16]], %[[C1]]])
+// CHECK:         scf.for %{{.+}} = %[[C0]] to %[[C64]] step %[[C1]]
+// CHECK:           %{{.+}} = amdaie.npu.dma_cpy_nd %[[CIRC_DMA]]([] [] [], [0, 0, 0] [1, 8, 16] [128, 16, 1])
+// CHECK:         }
+// CHECK:         %{{.+}} = amdaie.npu.dma_cpy_nd %[[CIRC_DMA]]([] [] [], [%[[C0]], %[[C0]], %[[C0]]] [%[[C1023]], %[[C8]], %[[C16]]] [%[[C0]], %[[C16]], %[[C1]]])
+// CHECK:         scf.for %{{.+}} = %[[C0]] to %[[C1024]] step %[[C1]]
+// CHECK:           %{{.+}} = amdaie.npu.dma_cpy_nd %[[CIRC_DMA]]([] [] [], [0, 0] [8, 16] [16, 1])
+// CHECK:         }
+#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
+module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
+  func.func @exceed_max_size_source(%arg0: !amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, %arg1: !amdaie.logicalobjectfifo<memref<8x16xi32>>) {
+    %c0 = arith.constant 0 : index
+    %c1 = arith.constant 1 : index
+    %c63 = arith.constant 63 : index
+    %c64 = arith.constant 64 : index
+    %c1023 = arith.constant 1023 : index
+    %c1024 = arith.constant 1024 : index
+    amdaie.workgroup {
+      %0 = amdaie.circular_dma_cpy_nd(%arg0[] [] [], %arg1[] [] []) : (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, !amdaie.logicalobjectfifo<memref<8x16xi32>>)
+      amdaie.controlcode {
+        scf.for %arg4 = %c0 to %c63 step %c1 {
+          %2 = amdaie.npu.dma_cpy_nd %0([] [] [], [0, 0, 0] [1, 8, 16] [64, 16, 1])
+        }
+        scf.for %arg5 = %c0 to %c64 step %c1 {
+          %2 = amdaie.npu.dma_cpy_nd %0([] [] [], [0, 0, 0] [1, 8, 16] [128, 16, 1])
+        }
+        scf.for %arg6 = %c0 to %c1023 step %c1 {
+          %3 = amdaie.npu.dma_cpy_nd %0([] [] [], [0, 0] [8, 16] [16, 1])
+        }
+        scf.for %arg7 = %c0 to %c1024 step %c1 {
+          %4 = amdaie.npu.dma_cpy_nd %0([] [] [], [0, 0] [8, 16] [16, 1])
+        }
+        amdaie.end
+      }
+    }
+    return
+  }
+}
+
+// -----
+
+// Don't subsume if inter size (dim 0 in a four dimensional size array) or intra size 
+// (dim 1, 2, 3 in a four dimensional size array) is too large.
+// CHECK-LABEL: @exceed_max_size_target
+// CHECK-DAG:   %[[C0:.+]] = arith.constant 0 : index
+// CHECK-DAG:   %[[C1:.+]] = arith.constant 1 : index
+// CHECK-DAG:   %[[C8:.+]] = arith.constant 8 : index
+// CHECK-DAG:   %[[C16:.+]] = arith.constant 16 : index
+// CHECK-DAG:   %[[C63:.+]] = arith.constant 63 : index
+// CHECK-DAG:   %[[C64:.+]] = arith.constant 64 : index
+// CHECK-DAG:   %[[C1023:.+]] = arith.constant 1023 : index
+// CHECK-DAG:   %[[C1024:.+]] = arith.constant 1024 : index
+// CHECK:       %[[CIRC_DMA:.+]] = amdaie.circular_dma_cpy_nd
+// CHECK:       amdaie.controlcode
+// CHECK:         %{{.+}} = amdaie.npu.dma_cpy_nd %[[CIRC_DMA]]([%[[C0]], %[[C0]], %[[C0]], %[[C0]]] [%[[C63]], %[[C1]], %[[C8]], %[[C16]]] [%[[C0]], %[[C64]], %[[C16]], %[[C1]]], [] [] [])
+// CHECK:         scf.for %{{.+}} = %[[C0]] to %[[C64]] step %[[C1]]
+// CHECK:           %{{.+}} = amdaie.npu.dma_cpy_nd %[[CIRC_DMA]]([0, 0, 0] [1, 8, 16] [128, 16, 1], [] [] [])
+// CHECK:         }
+// CHECK:         %{{.+}} = amdaie.npu.dma_cpy_nd %[[CIRC_DMA]]([%[[C0]], %[[C0]], %[[C0]]] [%[[C1023]], %[[C8]], %[[C16]]] [%[[C0]], %[[C16]], %[[C1]]], [] [] [])
+// CHECK:         scf.for %{{.+}} = %[[C0]] to %[[C1024]] step %[[C1]]
+// CHECK:           %{{.+}} = amdaie.npu.dma_cpy_nd %[[CIRC_DMA]]([0, 0] [8, 16] [16, 1], [] [] [])
+// CHECK:         }
+#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
+module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
+  func.func @exceed_max_size_target(%arg0: !amdaie.logicalobjectfifo<memref<1x1x8x16xi32>>, %arg1: !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>) {
+    %c0 = arith.constant 0 : index
+    %c1 = arith.constant 1 : index
+    %c63 = arith.constant 63 : index
+    %c64 = arith.constant 64 : index
+    %c1023 = arith.constant 1023 : index
+    %c1024 = arith.constant 1024 : index
+    amdaie.workgroup {
+      %0 = amdaie.circular_dma_cpy_nd(%arg0[] [] [], %arg1[] [] []) : (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32>>, !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>)
+      amdaie.controlcode {
+        scf.for %arg4 = %c0 to %c63 step %c1 {
+          %2 = amdaie.npu.dma_cpy_nd %0([0, 0, 0] [1, 8, 16] [64, 16, 1], [] [] [])
+        }
+        scf.for %arg5 = %c0 to %c64 step %c1 {
+          %2 = amdaie.npu.dma_cpy_nd %0([0, 0, 0] [1, 8, 16] [128, 16, 1], [] [] [])
+        }
+        scf.for %arg6 = %c0 to %c1023 step %c1 {
+          %3 = amdaie.npu.dma_cpy_nd %0([0, 0] [8, 16] [16, 1], [] [] [])
+        }
+        scf.for %arg7 = %c0 to %c1024 step %c1 {
+          %4 = amdaie.npu.dma_cpy_nd %0([0, 0] [8, 16] [16, 1], [] [] [])
+        }
+        amdaie.end
+      }
+    }
+    return
+  }
+}
+
+// -----
+
+// Don't subsume if inter stride (dim 0 in a four dimensional size array) or intra stride 
+// (dim 1, 2, 3 in a four dimensional size array) is too large.
+// CHECK:       #[[$MAP:.+]] = affine_map<(d0) -> (d0 * 1048577)>
+// CHECK-LABEL: @exceed_max_stride_source
+// CHECK-DAG:   %[[C0:.+]] = arith.constant 0 : index
+// CHECK-DAG:   %[[C1:.+]] = arith.constant 1 : index
+// CHECK-DAG:   %[[C8:.+]] = arith.constant 8 : index
+// CHECK-DAG:   %[[C16:.+]] = arith.constant 16 : index
+// CHECK-DAG:   %[[C32:.+]] = arith.constant 32 : index
+// CHECK-DAG:   %[[C64:.+]] = arith.constant 64 : index
+// CHECK-DAG:   %[[C1048576:.+]] = arith.constant 1048576 : index
+// CHECK:       %[[CIRC_DMA:.+]] = amdaie.circular_dma_cpy_nd
+// CHECK:       amdaie.controlcode
+// CHECK:         %{{.+}} = amdaie.npu.dma_cpy_nd %[[CIRC_DMA]]([] [] [], [%[[C0]], %[[C0]], %[[C0]], %[[C0]]] [%[[C32]], %[[C1]], %[[C8]], %[[C16]]] [%[[C1048576]], %[[C64]], %[[C16]], %[[C1]]])
+// CHECK:         scf.for %[[ARG5:.+]] = %[[C0]] to %[[C32]] step %[[C1]]
+// CHECK:           %[[APPLY1:.+]] = affine.apply #[[$MAP]](%[[ARG5]])
+// CHECK:           %{{.+}} = amdaie.npu.dma_cpy_nd %[[CIRC_DMA]]([] [] [], [0, 0, %[[APPLY1]]] [1, 8, 16] [64, 16, 1])
+// CHECK:         }
+// CHECK:         %{{.+}} = amdaie.npu.dma_cpy_nd %[[CIRC_DMA]]([] [] [], [%[[C0]], %[[C0]], %[[C0]]] [%[[C32]], %[[C8]], %[[C16]]] [%[[C1048576]], %[[C16]], %[[C1]]])
+// CHECK:         scf.for %[[ARG7:.+]] = %[[C0]] to %[[C32]] step %[[C1]]
+// CHECK:           %[[APPLY1:.+]] = affine.apply #[[$MAP]](%[[ARG7]])
+// CHECK:           %{{.+}} = amdaie.npu.dma_cpy_nd %[[CIRC_DMA]]([] [] [], [0, %[[APPLY1]]] [8, 16] [16, 1])
+// CHECK:         }
+#map = affine_map<(d0) -> (d0 * 1048576)>
+#map1 = affine_map<(d0) -> (d0 * 1048577)>
+#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
+module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
+  func.func @exceed_max_stride_source(%arg0: !amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, %arg1: !amdaie.logicalobjectfifo<memref<8x16xi32>>) {
+    %c0 = arith.constant 0 : index
+    %c1 = arith.constant 1 : index
+    %c32 = arith.constant 32 : index
+    amdaie.workgroup {
+      %0 = amdaie.circular_dma_cpy_nd(%arg0[] [] [], %arg1[] [] []) : (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, !amdaie.logicalobjectfifo<memref<8x16xi32>>)
+      amdaie.controlcode {
+        scf.for %arg4 = %c0 to %c32 step %c1 {
+          %affine1 = affine.apply #map(%arg4)
+          %2 = amdaie.npu.dma_cpy_nd %0([] [] [], [0, 0, %affine1] [1, 8, 16] [64, 16, 1])
+        }
+        scf.for %arg5 = %c0 to %c32 step %c1 {
+          %affine2 = affine.apply #map1(%arg5)
+          %3 = amdaie.npu.dma_cpy_nd %0([] [] [], [0, 0, %affine2] [1, 8, 16] [64, 16, 1])
+        }
+        scf.for %arg6 = %c0 to %c32 step %c1 {
+          %affine3 = affine.apply #map(%arg6)
+          %4 = amdaie.npu.dma_cpy_nd %0([] [] [], [0, %affine3] [8, 16] [16, 1])
+        }
+        scf.for %arg7 = %c0 to %c32 step %c1 {
+          %affine4 = affine.apply #map1(%arg7)
+          %5 = amdaie.npu.dma_cpy_nd %0([] [] [], [0, %affine4] [8, 16] [16, 1])
+        }
+        amdaie.end
+      }
+    }
+    return
+  }
+}
+
+// -----
+
+// Don't subsume if inter stride (dim 0 in a four dimensional size array) or intra stride 
+// (dim 1, 2, 3 in a four dimensional size array) is too large.
+// CHECK:       #[[$MAP:.+]] = affine_map<(d0) -> (d0 * 1048577)>
+// CHECK-LABEL: @exceed_max_stride_target
+// CHECK-DAG:   %[[C0:.+]] = arith.constant 0 : index
+// CHECK-DAG:   %[[C1:.+]] = arith.constant 1 : index
+// CHECK-DAG:   %[[C8:.+]] = arith.constant 8 : index
+// CHECK-DAG:   %[[C16:.+]] = arith.constant 16 : index
+// CHECK-DAG:   %[[C32:.+]] = arith.constant 32 : index
+// CHECK-DAG:   %[[C64:.+]] = arith.constant 64 : index
+// CHECK-DAG:   %[[C1048576:.+]] = arith.constant 1048576 : index
+// CHECK:       %[[CIRC_DMA:.+]] = amdaie.circular_dma_cpy_nd
+// CHECK:       amdaie.controlcode
+// CHECK:         %{{.+}} = amdaie.npu.dma_cpy_nd %[[CIRC_DMA]]([%[[C0]], %[[C0]], %[[C0]], %[[C0]]] [%[[C32]], %[[C1]], %[[C8]], %[[C16]]] [%[[C1048576]], %[[C64]], %[[C16]], %[[C1]]], [] [] [])
+// CHECK:         scf.for %[[ARG5:.+]] = %[[C0]] to %[[C32]] step %[[C1]]
+// CHECK:           %[[APPLY1:.+]] = affine.apply #[[$MAP]](%[[ARG5]])
+// CHECK:           %{{.+}} = amdaie.npu.dma_cpy_nd %[[CIRC_DMA]]([0, 0, %[[APPLY1]]] [1, 8, 16] [64, 16, 1], [] [] [])
+// CHECK:         }
+// CHECK:         %{{.+}} = amdaie.npu.dma_cpy_nd %[[CIRC_DMA]]([%[[C0]], %[[C0]], %[[C0]]] [%[[C32]], %[[C8]], %[[C16]]] [%[[C1048576]], %[[C16]], %[[C1]]], [] [] [])
+// CHECK:         scf.for %[[ARG7:.+]] = %[[C0]] to %[[C32]] step %[[C1]]
+// CHECK:           %[[APPLY1:.+]] = affine.apply #[[$MAP]](%[[ARG7]])
+// CHECK:           %{{.+}} = amdaie.npu.dma_cpy_nd %[[CIRC_DMA]]([0, %[[APPLY1]]] [8, 16] [16, 1], [] [] [])
+// CHECK:         }
+#map = affine_map<(d0) -> (d0 * 1048576)>
+#map1 = affine_map<(d0) -> (d0 * 1048577)>
+#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
+module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
+  func.func @exceed_max_stride_target(%arg0: !amdaie.logicalobjectfifo<memref<1x1x8x16xi32>>, %arg1: !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>) {
+    %c0 = arith.constant 0 : index
+    %c1 = arith.constant 1 : index
+    %c32 = arith.constant 32 : index
+    amdaie.workgroup {
+      %0 = amdaie.circular_dma_cpy_nd(%arg0[] [] [], %arg1[] [] []) : (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32>>, !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>)
+      amdaie.controlcode {
+        scf.for %arg4 = %c0 to %c32 step %c1 {
+          %affine1 = affine.apply #map(%arg4)
+          %2 = amdaie.npu.dma_cpy_nd %0([0, 0, %affine1] [1, 8, 16] [64, 16, 1], [] [] [])
+        }
+        scf.for %arg5 = %c0 to %c32 step %c1 {
+          %affine2 = affine.apply #map1(%arg5)
+          %3 = amdaie.npu.dma_cpy_nd %0([0, 0, %affine2] [1, 8, 16] [64, 16, 1], [] [] [])
+        }
+        scf.for %arg6 = %c0 to %c32 step %c1 {
+          %affine3 = affine.apply #map(%arg6)
+          %4 = amdaie.npu.dma_cpy_nd %0([0, %affine3] [8, 16] [16, 1], [] [] [])
+        }
+        scf.for %arg7 = %c0 to %c32 step %c1 {
+          %affine4 = affine.apply #map1(%arg7)
+          %5 = amdaie.npu.dma_cpy_nd %0([0, %affine4] [8, 16] [16, 1], [] [] [])
+        }
+        amdaie.end
+      }
+    }
+    return
+  }
+}
+
+// -----
+
 //===----------------------------------------------------------------------===//
 // Checks for loops with no dependencies, which should be subsumed. 
 //===----------------------------------------------------------------------===//
@@ -535,28 +769,40 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 //===----------------------------------------------------------------------===//
 
 // Check that loop subsumption happens in case of an identity affine expression.
-// CHECK-LABEL: @identity_affine_expr
+// CHECK-LABEL: @valid_affine_expr
 // CHECK-DAG:   %[[C0:.+]] = arith.constant 0 : index
 // CHECK-DAG:   %[[C1:.+]] = arith.constant 1 : index
 // CHECK-DAG:   %[[C6:.+]] = arith.constant 6 : index
 // CHECK-DAG:   %[[C16:.+]] = arith.constant 16 : index
-// CHECK:       %[[CIRC_DMA:.+]] = amdaie.circular_dma_cpy_nd
+// CHECK:       %[[CIRC_DMA_0:.+]] = amdaie.circular_dma_cpy_nd
+// CHECK:       %[[CIRC_DMA_1:.+]] = amdaie.circular_dma_cpy_nd
+// CHECK:       %[[CIRC_DMA_2:.+]] = amdaie.circular_dma_cpy_nd
 // CHECK:       amdaie.controlcode
 // CHECK-NOT:     scf.for
-// CHECK:         amdaie.npu.dma_cpy_nd %[[CIRC_DMA]]([%[[C0]], %[[C0]]] [%[[C6]], %[[C16]]] [%[[C1]], %[[C1]]], [] [] [])
-#map = affine_map<(d0) -> (d0)>
+// CHECK-DAG:         amdaie.npu.dma_cpy_nd %[[CIRC_DMA_0]]([%[[C0]], %[[C0]]] [%[[C6]], %[[C16]]] [%[[C1]], %[[C1]]], [] [] [])
+// CHECK-DAG:         amdaie.npu.dma_cpy_nd %[[CIRC_DMA_1]]([%[[C0]], %[[C0]]] [%[[C6]], %[[C16]]] [%[[C16]], %[[C1]]], [] [] [])
+// CHECK-DAG:         amdaie.npu.dma_cpy_nd %[[CIRC_DMA_2]]([%[[C0]], %[[C16]]] [%[[C6]], %[[C16]]] [%[[C16]], %[[C1]]], [] [] [])
+#map0 = affine_map<(d0) -> (d0)>
+#map1 = affine_map<(d0) -> (d0 * 16)>
+#map2 = affine_map<(d0) -> (d0 * 16 + 16)>
 #executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
 module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
-  func.func @identity_affine_expr(%arg0: !amdaie.logicalobjectfifo<memref<1x1x8x16xi32>>, %arg1: !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>) {
+  func.func @valid_affine_expr(%arg0: !amdaie.logicalobjectfifo<memref<1x1x8x16xi32>>, %arg1: !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>) {
     %c0 = arith.constant 0 : index
     %c1 = arith.constant 1 : index
     %c6 = arith.constant 6 : index
     amdaie.workgroup {
-      %0 = amdaie.circular_dma_cpy_nd(%arg0[] [] [], %arg1[] [] []) : (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32>>, !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>)
+      %dma0 = amdaie.circular_dma_cpy_nd(%arg0[] [] [], %arg1[] [] []) : (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32>>, !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>)
+      %dma1 = amdaie.circular_dma_cpy_nd(%arg0[] [] [], %arg1[] [] []) : (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32>>, !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>)
+      %dma2 = amdaie.circular_dma_cpy_nd(%arg0[] [] [], %arg1[] [] []) : (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32>>, !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>)
       amdaie.controlcode {
         scf.for %arg2 = %c0 to %c6 step %c1 {
-          %1 = affine.apply #map(%arg2)
-          %3 = amdaie.npu.dma_cpy_nd %0([%1] [16] [1], [] [] [])
+          %1 = affine.apply #map0(%arg2)
+          %2 = amdaie.npu.dma_cpy_nd %dma0([%1] [16] [1], [] [] [])
+          %3 = affine.apply #map1(%arg2)
+          %4 = amdaie.npu.dma_cpy_nd %dma1([%3] [16] [1], [] [] [])
+          %5 = affine.apply #map2(%arg2)
+          %6 = amdaie.npu.dma_cpy_nd %dma2([%5] [16] [1], [] [] [])
         }
         amdaie.end
       }
