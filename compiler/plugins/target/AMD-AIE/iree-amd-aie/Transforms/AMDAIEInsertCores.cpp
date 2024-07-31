@@ -18,7 +18,6 @@
 #include "iree-amd-aie/IR/AMDAIEOps.h"
 #include "iree-amd-aie/Transforms/AMDAIEOpUtils.h"
 #include "iree-amd-aie/Transforms/Passes.h"
-#include "iree-amd-aie/Transforms/Transforms.h"
 #include "iree/compiler/Codegen/TransformStrategies/GPU/Common.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
 
@@ -46,14 +45,21 @@ void getAttributeMapping(SmallVector<scf::ForallOp> forallOps,
 /// dma ops.
 LogicalResult insertCoreOps(mlir::ModuleOp moduleOp) {
   IRRewriter rewriter(moduleOp.getContext());
+
   WalkResult res = moduleOp->walk([&](scf::ForallOp forallOp) {
     // Currently, innermost `scf.forall` operations are expected to have thread
     // mapping and are therefore selected for insertion of cores. Advance if no
     // thread mapping.
-    SmallVector<Attribute> mapping =
-        llvm::to_vector(forallOp.getMapping()->getValue());
-    if (!isa<mlir::gpu::GPUThreadMappingAttr>(*mapping.begin()))
-      return WalkResult::advance();
+    {
+      auto maybeMapping = forallOp.getMapping();
+      if (!maybeMapping) return WalkResult::advance();
+
+      SmallVector<Attribute> mapping =
+          llvm::to_vector(maybeMapping->getValue());
+
+      if (!isa<mlir::gpu::GPUThreadMappingAttr>(*mapping.begin()))
+        return WalkResult::advance();
+    }
 
     if (!forallOp.isNormalized()) {
       forallOp.emitOpError()
@@ -62,6 +68,7 @@ LogicalResult insertCoreOps(mlir::ModuleOp moduleOp) {
       return WalkResult::interrupt();
     }
     auto parentOps = getInclusiveParentsOfType<scf::ForallOp>(forallOp);
+
     DenseMap<Attribute, Value> attrMapping;
     getAttributeMapping(parentOps, attrMapping);
     if (!attrMapping.contains(gpu::threadX(forallOp->getContext())) ||
@@ -75,6 +82,7 @@ LogicalResult insertCoreOps(mlir::ModuleOp moduleOp) {
     rewriter.setInsertionPoint(forallOp.getBody()->getTerminator());
     auto coreOp = rewriter.create<AMDAIE::CoreOp>(rewriter.getUnknownLoc(),
                                                   threadX, threadY);
+
     Region &region = coreOp.getRegion();
     Block *newBlock = rewriter.createBlock(&region);
     rewriter.setInsertionPointToStart(newBlock);
