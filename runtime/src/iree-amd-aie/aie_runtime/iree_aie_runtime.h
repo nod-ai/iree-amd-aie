@@ -117,6 +117,23 @@ enum class AMDAIEDmaProp : uint8_t {
   MAX = sizeof(struct XAie_DmaMod)
 };
 
+/// Enum of DMA BD properties. Uses the offset within the `XAie_DmaBdProp`
+/// struct as underlying value to easily retrieve the specified property with a
+/// single getter method, while being versatile towards `XAie_DmaBdProp` struct
+/// changes.
+enum class AMDAIEDmaBdProp : uint8_t {
+  AddrMax = offsetof(XAie_DmaBdProp, AddrMax),
+  AddrAlignMask = offsetof(XAie_DmaBdProp, AddrAlignMask),
+  AddrAlignShift = offsetof(XAie_DmaBdProp, AddrAlignShift),
+  LenActualOffset = offsetof(XAie_DmaBdProp, LenActualOffset),
+  StepSizeMax = offsetof(XAie_DmaBdProp, StepSizeMax),
+  WrapMax = offsetof(XAie_DmaBdProp, WrapMax),
+  IterStepSizeMax = offsetof(XAie_DmaBdProp, IterStepSizeMax),
+  IterWrapMax = offsetof(XAie_DmaBdProp, IterWrapMax),
+  IterCurrMax = offsetof(XAie_DmaBdProp, IterCurrMax),
+  MAX = sizeof(XAie_DmaBdProp)
+};
+
 enum class StrmSwPortType : uint8_t {
   CORE = ::StrmSwPortType::CORE,
   DMA,
@@ -183,12 +200,24 @@ struct AMDAIEDeviceModel {
   bool isShimNOCorPLTile(uint8_t col, uint8_t row) const;
   bool isShimTile(uint8_t col, uint8_t row) const;
 
-  /// Retrieve a DMA properpty for the specified tile type.
+  /// Retrieve a DMA property for the specified tile type.
   template <typename T>
   T getDmaProp(AMDAIETileType tileType, AMDAIEDmaProp dmaProp) const {
     const uint8_t* dmaMod = reinterpret_cast<const uint8_t*>(
         devInst.DevProp.DevMod[static_cast<uint8_t>(tileType)].DmaMod);
     return *((const T*)(dmaMod + static_cast<uint8_t>(dmaProp)));
+  }
+
+  /// Retrieve a DMA BD property for the specified tile type and BD id.
+  template <typename T>
+  T getDmaBdProp(AMDAIETileType tileType, uint8_t bd_id,
+                 AMDAIEDmaBdProp dmaBdProp) const {
+    const XAie_DmaMod* dmaMod =
+        devInst.DevProp.DevMod[static_cast<uint8_t>(tileType)].DmaMod;
+    assert(bd_id < dmaMod->NumBds && "BD id should be smaller than max");
+    const uint8_t* dmaBdMod =
+        reinterpret_cast<const uint8_t*>(&dmaMod->BdProp[bd_id]);
+    return *((const T*)(dmaBdMod + static_cast<uint8_t>(dmaBdProp)));
   }
 
   uint32_t getNumLocks(uint8_t col, uint8_t row) const;
