@@ -1,4 +1,4 @@
-// RUN: iree-opt --pass-pipeline="builtin.module(func.func(iree-amdaie-insert-temporary-buffer))" --split-input-file %s | FileCheck %s
+// RUN: iree-opt --pass-pipeline="builtin.module(func.func(iree-amdaie-none-access-to-temporary-buffer))" --split-input-file %s | FileCheck %s
 
 // CHECK-LABEL: @none_access_to_buffer
 // CHECK-SAME:  %[[ARG0:.+]]: !amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 2>>
@@ -87,6 +87,7 @@ func.func @single_none_access_multiple_users(%arg0: !amdaie.logicalobjectfifo<me
 // CHECK:         linalg.fill ins(%{{.+}} : i32) outs(%[[ALLOC]]
 // CHECK:         linalg.generic {{.+}} ins(%[[ALLOC]] : memref<1x1x8x16xi32, 2>) outs(%[[ACCESS_0]]
 // CHECK:         amdaie.logicalobjectfifo.release(%[[DMA1]], Produce)
+// CHECK:         memref.dealloc %[[ALLOC]] : memref<1x1x8x16xi32, 2>
 func.func @multiple_none_access_multiple_users(%arg0: !amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 2>>, %arg1: !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>, %arg2: !amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 2>>, %arg3: !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>, %arg4: memref<1x1x8x16xi32, 2>) {
   %c0 = arith.constant 0 : index
   %c0_i32 = arith.constant 0 : i32

@@ -9,7 +9,7 @@
 #include "mlir/IR/IRMapping.h"
 #include "mlir/IR/Iterators.h"
 
-#define DEBUG_TYPE "iree-amdaie-insert-temporary-buffer"
+#define DEBUG_TYPE "iree-amdaie-none-access-to-temporary-buffer"
 
 namespace mlir::iree_compiler::AMDAIE {
 
@@ -67,21 +67,21 @@ LogicalResult noneAccessOpToTemporaryBuffer(Operation *parentOp) {
   return success();
 }
 
-class AMDAIEInsertTemporaryBufferPass
-    : public impl::AMDAIEInsertTemporaryBufferBase<
-          AMDAIEInsertTemporaryBufferPass> {
+class AMDAIENoneAccessToTemporaryBufferPass
+    : public impl::AMDAIENoneAccessToTemporaryBufferBase<
+          AMDAIENoneAccessToTemporaryBufferPass> {
  public:
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<AMDAIEDialect, memref::MemRefDialect>();
   }
 
-  AMDAIEInsertTemporaryBufferPass() = default;
-  AMDAIEInsertTemporaryBufferPass(
-      const AMDAIEInsertTemporaryBufferPass &pass){};
+  AMDAIENoneAccessToTemporaryBufferPass() = default;
+  AMDAIENoneAccessToTemporaryBufferPass(
+      const AMDAIENoneAccessToTemporaryBufferPass &pass){};
   void runOnOperation() override;
 };
 
-void AMDAIEInsertTemporaryBufferPass::runOnOperation() {
+void AMDAIENoneAccessToTemporaryBufferPass::runOnOperation() {
   Operation *parentOp = getOperation();
   if (failed(noneAccessOpToTemporaryBuffer(parentOp))) {
     parentOp->emitOpError() << "failed to convert `None` type access "
@@ -99,7 +99,7 @@ void AMDAIEInsertTemporaryBufferPass::runOnOperation() {
 
 }  // namespace
 
-std::unique_ptr<Pass> createAMDAIEInsertTemporaryBufferPass() {
-  return std::make_unique<AMDAIEInsertTemporaryBufferPass>();
+std::unique_ptr<Pass> createAMDAIENoneAccessToTemporaryBufferPass() {
+  return std::make_unique<AMDAIENoneAccessToTemporaryBufferPass>();
 }
 }  // namespace mlir::iree_compiler::AMDAIE
