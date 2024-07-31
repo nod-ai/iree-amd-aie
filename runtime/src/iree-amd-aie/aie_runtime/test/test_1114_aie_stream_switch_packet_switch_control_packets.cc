@@ -4,10 +4,51 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+/*
+clang-format off
+
+RUN: test_1114_aie_stream_switch_packet_switch_control_packets | FileCheck %s
+
+CHECK: input addr 0 and output adder 20
+CHECK: Header version 0.1
+CHECK: Device Generation: 2
+CHECK: Cols, Rows, NumMemRows : (5, 6, 1)
+CHECK: TransactionSize: 536
+CHECK: NumOps: 18
+CHECK: XAie_Write32Hdr(OpHdr: XAie_OpHdr(Op: XAie_TxnOpcode::XAIE_IO_WRITE, Col: 2, Row: 4), RegOff: 2355460, Value: 3221225472, Size: 24)
+CHECK: XAie_Write32Hdr(OpHdr: XAie_OpHdr(Op: XAie_TxnOpcode::XAIE_IO_WRITE, Col: 2, Row: 16), RegOff: 2355728, Value: 2031872, Size: 24)
+CHECK: XAie_Write32Hdr(OpHdr: XAie_OpHdr(Op: XAie_TxnOpcode::XAIE_IO_WRITE, Col: 2, Row: 12), RegOff: 2355212, Value: 3221225608, Size: 24)
+CHECK: XAie_MaskWrite32Hdr(OpHdr: XAie_OpHdr(Op: XAie_TxnOpcode::XAIE_IO_MASKWRITE, Col: 2, Row: 16), RegOff: 2219536, Value: 2, Mask: 2, Size: 32)
+CHECK: XAie_MaskWrite32Hdr(OpHdr: XAie_OpHdr(Op: XAie_TxnOpcode::XAIE_IO_MASKWRITE, Col: 2, Row: 24), RegOff: 2219544, Value: 2, Mask: 2, Size: 32)
+CHECK: XAie_MaskWrite32Hdr(OpHdr: XAie_OpHdr(Op: XAie_TxnOpcode::XAIE_IO_MASKWRITE, Col: 2, Row: 0), RegOff: 2219520, Value: 2, Mask: 2, Size: 32)
+CHECK: XAie_MaskWrite32Hdr(OpHdr: XAie_OpHdr(Op: XAie_TxnOpcode::XAIE_IO_MASKWRITE, Col: 2, Row: 8), RegOff: 2219528, Value: 2, Mask: 2, Size: 32)
+CHECK: XAie_MaskWrite32Hdr(OpHdr: XAie_OpHdr(Op: XAie_TxnOpcode::XAIE_IO_MASKWRITE, Col: 2, Row: 16), RegOff: 2219536, Value: 0, Mask: 2, Size: 32)
+CHECK: XAie_MaskWrite32Hdr(OpHdr: XAie_OpHdr(Op: XAie_TxnOpcode::XAIE_IO_MASKWRITE, Col: 2, Row: 24), RegOff: 2219544, Value: 0, Mask: 2, Size: 32)
+CHECK: XAie_MaskWrite32Hdr(OpHdr: XAie_OpHdr(Op: XAie_TxnOpcode::XAIE_IO_MASKWRITE, Col: 2, Row: 0), RegOff: 2219520, Value: 0, Mask: 2, Size: 32)
+CHECK: XAie_MaskWrite32Hdr(OpHdr: XAie_OpHdr(Op: XAie_TxnOpcode::XAIE_IO_MASKWRITE, Col: 2, Row: 8), RegOff: 2219528, Value: 0, Mask: 2, Size: 32)
+CHECK: XAie_Write32Hdr(OpHdr: XAie_OpHdr(Op: XAie_TxnOpcode::XAIE_IO_WRITE, Col: 2, Row: 0), RegOff: 2097152, Value: 16777216, Size: 24)
+CHECK: XAie_Write32Hdr(OpHdr: XAie_OpHdr(Op: XAie_TxnOpcode::XAIE_IO_WRITE, Col: 2, Row: 4), RegOff: 2097156, Value: 1, Size: 24)
+CHECK: XAie_Write32Hdr(OpHdr: XAie_OpHdr(Op: XAie_TxnOpcode::XAIE_IO_WRITE, Col: 2, Row: 8), RegOff: 2097160, Value: 2, Size: 24)
+CHECK: XAie_BlockWrite32Hdr(OpHdr: XAie_OpHdr(Op: XAie_TxnOpcode::XAIE_IO_BLOCKWRITE, Col: 2, Row: 32), Col: 0, Row: 0, RegOff: 2215968, Size: 40)
+CHECK:    0x4021d020, 0x3
+CHECK:    0x4021d024, 0x40000000
+CHECK:    0x4021d028, 0x0
+CHECK:    0x4021d02c, 0x0
+CHECK:    0x4021d030, 0x0
+CHECK:    0x4021d034, 0x2000000
+CHECK: XAie_Write32Hdr(OpHdr: XAie_OpHdr(Op: XAie_TxnOpcode::XAIE_IO_WRITE, Col: 2, Row: 20), RegOff: 2219540, Value: 1, Size: 24)
+CHECK: XAie_Write32Hdr(OpHdr: XAie_OpHdr(Op: XAie_TxnOpcode::XAIE_IO_WRITE, Col: 2, Row: 16), RegOff: 2219536, Value: 1, Size: 24)
+CHECK: XAie_MaskPoll32Hdr(OpHdr: XAie_OpHdr(Op: XAie_TxnOpcode::XAIE_IO_MASKPOLL, Col: 2, Row: 16), RegOff: 2219792, Value: 0, Size: 32)
+
+clang-format on
+
+ */
+
 #include <unistd.h>
 
 #include <cstdio>
 
+#include "interpreter_op_impl.h"
 #include "iree-amd-aie/aie_runtime/iree_aie_runtime.h"
 
 #define DATA_SIZE 17
@@ -48,12 +89,6 @@
 int main(int argc, char **argv) {
   AieRC RC = XAIE_OK;
 
-  // initialize cdo-driver
-  EnAXIdebug();
-  setEndianness(Little_Endian);
-  startCDOFileStream("test_0335_aie_dma_tile_dma_packet_switch_mode.cdo");
-  FileHeader();
-
   // setup aie-rt
   XAie_SetupConfig(ConfigPtr, XAIE_DEV_GEN_AIEML, XAIE2IPU_BASE_ADDR,
                    XAIE2IPU_COL_SHIFT, XAIE2IPU_ROW_SHIFT, XAIE2IPU_NUM_COLS,
@@ -63,14 +98,9 @@ int main(int argc, char **argv) {
 
   XAie_InstDeclare(DevInst, &ConfigPtr);
   RC = XAie_CfgInitialize(&DevInst, &ConfigPtr);
-  fprintf(stdout, "Device_Configure_Intialization Done.\n");
-  RC = XAie_PartitionInitialize(&DevInst, NULL);
-  if (RC != XAIE_OK) {
-    fprintf(stderr, "Partition initialization failed.\n");
-    return -1;
-  }
-  XAie_SetIOBackend(&DevInst, XAIE_IO_BACKEND_CDO);
-  XAie_UpdateNpiAddr(&DevInst, XAIE2IPU_NPI_BASEADDR);
+
+  XAie_StartTransaction(&DevInst, XAIE_TRANSACTION_DISABLE_AUTO_FLUSH);
+
   XAie_TurnEccOff(&DevInst);
 
   uint32_t input_add = 0x0000;
@@ -80,8 +110,6 @@ int main(int argc, char **argv) {
   XAie_DmaDesc DmaWrDesc_MM2S;
   XAie_PartInitOpts Opts;
   u32 input[DATA_SIZE];
-  u32 output[DATA_SIZE];
-  u8 flag = 1;
   u8 TimeOut = 10;
   XAie_Packet pkt;
   pkt.PktId = 0;
@@ -92,11 +120,7 @@ int main(int argc, char **argv) {
   Opts.Locs = &Loc;
   Opts.NumUseTiles = 1;
   Opts.InitOpts = XAIE_PART_INIT_OPT_DEFAULT;
-  RC = XAie_PartitionInitialize(&DevInst, &Opts);
-  if (RC != XAIE_OK) {
-    fprintf(stderr, "Partition initialization failed.\n");
-    return -1;
-  }
+  //  RC = XAie_PartitionInitialize(&DevInst, &Opts);
 
   /************* First Lets Check WRITE operation **************/
   /* Create route through streamswitch connections */
@@ -207,32 +231,9 @@ int main(int argc, char **argv) {
     TimeOut--;
   }
 
-  /* Copy output data from tile to ddr */
-  for (uint32_t i = 0; i < WRRD_DATA_SIZE; i++) {
-    output[i] = 0;
-    XAie_DataMemRdWord(
-        &DevInst, Loc,
-        XAIE_TEST_AIE_TILE_MEMORY_MODULE_DATAMEMORY + output_add + i * 4,
-        (uint32_t *)&output + i);
-  }
+  SubmitSerializedTransaction(DevInst, /*startColIdx*/ 0);
 
-  fprintf(stdout, "Comparing output data with input data\n");
-  for (uint32_t i = 0; i < WRRD_DATA_SIZE; i++) {
-    if (input[i + 1] != output[i]) {
-      fprintf(stderr, "Data mismatch at %d\n", i);
-      flag = 0;
-      break;
-    }
-  }
-
-  XAie_Finish(&(DevInst));
-
-  if (!flag || RC) {
-    for (uint32_t i = 0; i < WRRD_DATA_SIZE; i++)
-      fprintf(stdout, "input[%d] = 0x%08X  |  output[%d] = 0x%08X \n", i,
-              input[i], i, output[i]);
-    return -1;
-  }
+  XAie_Finish(&DevInst);
 
   return 0;
 }

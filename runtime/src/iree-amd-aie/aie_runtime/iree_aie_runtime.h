@@ -317,6 +317,8 @@ bool isNPUDevice(mlir::iree_compiler::AMDAIE::AMDAIEDevice d);
 /// ======================================================================
 
 std::string to_string(const int& value);
+std::string to_string(const uint32_t& value);
+std::string to_string(const uint64_t& value);
 
 #define TO_STRINGS(_)     \
   _(AMDAIEDmaProp)        \
@@ -333,6 +335,7 @@ std::string to_string(const int& value);
   _(XAie_Write32Hdr)      \
   _(XAie_BlockWrite32Hdr) \
   _(XAie_MaskWrite32Hdr)  \
+  _(XAie_MaskPoll32Hdr)   \
   _(XAie_CustomOpHdr)     \
   _(XAie_TxnOpcode)       \
   _(XAie_TxnCmd)          \
@@ -355,6 +358,7 @@ TO_STRINGS(TO_STRING_DECL)
   _(OSTREAM_OP_, XAie_Write32Hdr)                                  \
   _(OSTREAM_OP_, XAie_BlockWrite32Hdr)                             \
   _(OSTREAM_OP_, XAie_MaskWrite32Hdr)                              \
+  _(OSTREAM_OP_, XAie_MaskPoll32Hdr)                               \
   _(OSTREAM_OP_, XAie_CustomOpHdr)                                 \
   _(OSTREAM_OP_, XAie_TxnOpcode)                                   \
   _(OSTREAM_OP_, XAie_TxnCmd)                                      \

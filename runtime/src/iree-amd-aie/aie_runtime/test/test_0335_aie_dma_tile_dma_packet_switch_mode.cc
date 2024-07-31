@@ -4,11 +4,135 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#include <unistd.h>
+/*
+clang-format off
 
+RUN: test_0335_aie_dma_tile_dma_packet_switch_mode | FileCheck %s
+
+CHECK: Header version 0.1
+CHECK: Device Generation: 2
+CHECK: Cols, Rows, NumMemRows : (5, 6, 1)
+CHECK: TransactionSize: 1168
+CHECK: NumOps: 31
+CHECK: XAie_BlockWrite32Hdr(OpHdr: XAie_OpHdr(Op: XAie_TxnOpcode::XAIE_IO_BLOCKWRITE, Col: 2, Row: 0), Col: 0, Row: 0, RegOff: 35667968, Size: 144)
+CHECK:    0x42204000, 0x1
+CHECK:    0x42204004, 0x2
+CHECK:    0x42204008, 0x3
+CHECK:    0x4220400c, 0x4
+CHECK:    0x42204010, 0x5
+CHECK:    0x42204014, 0x6
+CHECK:    0x42204018, 0x7
+CHECK:    0x4220401c, 0x8
+CHECK:    0x42204020, 0x9
+CHECK:    0x42204024, 0xa
+CHECK:    0x42204028, 0xb
+CHECK:    0x4220402c, 0xc
+CHECK:    0x42204030, 0xd
+CHECK:    0x42204034, 0xe
+CHECK:    0x42204038, 0xf
+CHECK:    0x4220403c, 0x10
+CHECK:    0x42204040, 0x11
+CHECK:    0x42204044, 0x12
+CHECK:    0x42204048, 0x13
+CHECK:    0x4220404c, 0x14
+CHECK:    0x42204050, 0x15
+CHECK:    0x42204054, 0x16
+CHECK:    0x42204058, 0x17
+CHECK:    0x4220405c, 0x18
+CHECK:    0x42204060, 0x19
+CHECK:    0x42204064, 0x1a
+CHECK:    0x42204068, 0x1b
+CHECK:    0x4220406c, 0x1c
+CHECK:    0x42204070, 0x1d
+CHECK:    0x42204074, 0x1e
+CHECK:    0x42204078, 0x1f
+CHECK:    0x4220407c, 0x20
+CHECK: XAie_BlockWrite32Hdr(OpHdr: XAie_OpHdr(Op: XAie_TxnOpcode::XAIE_IO_BLOCKWRITE, Col: 3, Row: 0), Col: 0, Row: 0, RegOff: 36716544, Size: 144)
+CHECK:    0x42304000, 0x21
+CHECK:    0x42304004, 0x22
+CHECK:    0x42304008, 0x23
+CHECK:    0x4230400c, 0x24
+CHECK:    0x42304010, 0x25
+CHECK:    0x42304014, 0x26
+CHECK:    0x42304018, 0x27
+CHECK:    0x4230401c, 0x28
+CHECK:    0x42304020, 0x29
+CHECK:    0x42304024, 0x2a
+CHECK:    0x42304028, 0x2b
+CHECK:    0x4230402c, 0x2c
+CHECK:    0x42304030, 0x2d
+CHECK:    0x42304034, 0x2e
+CHECK:    0x42304038, 0x2f
+CHECK:    0x4230403c, 0x30
+CHECK:    0x42304040, 0x31
+CHECK:    0x42304044, 0x32
+CHECK:    0x42304048, 0x33
+CHECK:    0x4230404c, 0x34
+CHECK:    0x42304050, 0x35
+CHECK:    0x42304054, 0x36
+CHECK:    0x42304058, 0x37
+CHECK:    0x4230405c, 0x38
+CHECK:    0x42304060, 0x39
+CHECK:    0x42304064, 0x3a
+CHECK:    0x42304068, 0x3b
+CHECK:    0x4230406c, 0x3c
+CHECK:    0x42304070, 0x3d
+CHECK:    0x42304074, 0x3e
+CHECK:    0x42304078, 0x3f
+CHECK:    0x4230407c, 0x40
+CHECK: XAie_Write32Hdr(OpHdr: XAie_OpHdr(Op: XAie_TxnOpcode::XAIE_IO_WRITE, Col: 2, Row: 4), RegOff: 35909892, Value: 3221225472, Size: 24)
+CHECK: XAie_Write32Hdr(OpHdr: XAie_OpHdr(Op: XAie_TxnOpcode::XAIE_IO_WRITE, Col: 3, Row: 20), RegOff: 36958484, Value: 3221225472, Size: 24)
+CHECK: XAie_Write32Hdr(OpHdr: XAie_OpHdr(Op: XAie_TxnOpcode::XAIE_IO_WRITE, Col: 2, Row: 16), RegOff: 35910160, Value: 2031872, Size: 24)
+CHECK: XAie_Write32Hdr(OpHdr: XAie_OpHdr(Op: XAie_TxnOpcode::XAIE_IO_WRITE, Col: 3, Row: 80), RegOff: 36958800, Value: 2031872, Size: 24)
+CHECK: XAie_Write32Hdr(OpHdr: XAie_OpHdr(Op: XAie_TxnOpcode::XAIE_IO_WRITE, Col: 2, Row: 52), RegOff: 35909684, Value: 3221225480, Size: 24)
+CHECK: XAie_Write32Hdr(OpHdr: XAie_OpHdr(Op: XAie_TxnOpcode::XAIE_IO_WRITE, Col: 3, Row: 4), RegOff: 36958212, Value: 3221225608, Size: 24)
+CHECK: XAie_MaskWrite32Hdr(OpHdr: XAie_OpHdr(Op: XAie_TxnOpcode::XAIE_IO_MASKWRITE, Col: 2, Row: 16), RegOff: 35773968, Value: 2, Mask: 2, Size: 32)
+CHECK: XAie_MaskWrite32Hdr(OpHdr: XAie_OpHdr(Op: XAie_TxnOpcode::XAIE_IO_MASKWRITE, Col: 2, Row: 24), RegOff: 35773976, Value: 2, Mask: 2, Size: 32)
+CHECK: XAie_MaskWrite32Hdr(OpHdr: XAie_OpHdr(Op: XAie_TxnOpcode::XAIE_IO_MASKWRITE, Col: 2, Row: 0), RegOff: 35773952, Value: 2, Mask: 2, Size: 32)
+CHECK: XAie_MaskWrite32Hdr(OpHdr: XAie_OpHdr(Op: XAie_TxnOpcode::XAIE_IO_MASKWRITE, Col: 2, Row: 8), RegOff: 35773960, Value: 2, Mask: 2, Size: 32)
+CHECK: XAie_MaskWrite32Hdr(OpHdr: XAie_OpHdr(Op: XAie_TxnOpcode::XAIE_IO_MASKWRITE, Col: 2, Row: 16), RegOff: 35773968, Value: 0, Mask: 2, Size: 32)
+CHECK: XAie_MaskWrite32Hdr(OpHdr: XAie_OpHdr(Op: XAie_TxnOpcode::XAIE_IO_MASKWRITE, Col: 2, Row: 24), RegOff: 35773976, Value: 0, Mask: 2, Size: 32)
+CHECK: XAie_MaskWrite32Hdr(OpHdr: XAie_OpHdr(Op: XAie_TxnOpcode::XAIE_IO_MASKWRITE, Col: 2, Row: 0), RegOff: 35773952, Value: 0, Mask: 2, Size: 32)
+CHECK: XAie_MaskWrite32Hdr(OpHdr: XAie_OpHdr(Op: XAie_TxnOpcode::XAIE_IO_MASKWRITE, Col: 2, Row: 8), RegOff: 35773960, Value: 0, Mask: 2, Size: 32)
+CHECK: XAie_MaskWrite32Hdr(OpHdr: XAie_OpHdr(Op: XAie_TxnOpcode::XAIE_IO_MASKWRITE, Col: 3, Row: 16), RegOff: 36822544, Value: 2, Mask: 2, Size: 32)
+CHECK: XAie_MaskWrite32Hdr(OpHdr: XAie_OpHdr(Op: XAie_TxnOpcode::XAIE_IO_MASKWRITE, Col: 3, Row: 24), RegOff: 36822552, Value: 2, Mask: 2, Size: 32)
+CHECK: XAie_MaskWrite32Hdr(OpHdr: XAie_OpHdr(Op: XAie_TxnOpcode::XAIE_IO_MASKWRITE, Col: 3, Row: 0), RegOff: 36822528, Value: 2, Mask: 2, Size: 32)
+CHECK: XAie_MaskWrite32Hdr(OpHdr: XAie_OpHdr(Op: XAie_TxnOpcode::XAIE_IO_MASKWRITE, Col: 3, Row: 8), RegOff: 36822536, Value: 2, Mask: 2, Size: 32)
+CHECK: XAie_MaskWrite32Hdr(OpHdr: XAie_OpHdr(Op: XAie_TxnOpcode::XAIE_IO_MASKWRITE, Col: 3, Row: 16), RegOff: 36822544, Value: 0, Mask: 2, Size: 32)
+CHECK: XAie_MaskWrite32Hdr(OpHdr: XAie_OpHdr(Op: XAie_TxnOpcode::XAIE_IO_MASKWRITE, Col: 3, Row: 24), RegOff: 36822552, Value: 0, Mask: 2, Size: 32)
+CHECK: XAie_MaskWrite32Hdr(OpHdr: XAie_OpHdr(Op: XAie_TxnOpcode::XAIE_IO_MASKWRITE, Col: 3, Row: 0), RegOff: 36822528, Value: 0, Mask: 2, Size: 32)
+CHECK: XAie_MaskWrite32Hdr(OpHdr: XAie_OpHdr(Op: XAie_TxnOpcode::XAIE_IO_MASKWRITE, Col: 3, Row: 8), RegOff: 36822536, Value: 0, Mask: 2, Size: 32)
+CHECK: XAie_BlockWrite32Hdr(OpHdr: XAie_OpHdr(Op: XAie_TxnOpcode::XAIE_IO_BLOCKWRITE, Col: 2, Row: 32), Col: 0, Row: 0, RegOff: 35770400, Size: 40)
+CHECK:    0x4221d020, 0x4000020
+CHECK:    0x4221d024, 0x40030000
+CHECK:    0x4221d028, 0x0
+CHECK:    0x4221d02c, 0x0
+CHECK:    0x4221d030, 0x0
+CHECK:    0x4221d034, 0x0
+CHECK: XAie_BlockWrite32Hdr(OpHdr: XAie_OpHdr(Op: XAie_TxnOpcode::XAIE_IO_BLOCKWRITE, Col: 3, Row: 32), Col: 0, Row: 0, RegOff: 36819232, Size: 40)
+CHECK:    0x4231d120, 0x4000020
+CHECK:    0x4231d124, 0x0
+CHECK:    0x4231d128, 0x0
+CHECK:    0x4231d12c, 0x0
+CHECK:    0x4231d130, 0x0
+CHECK:    0x4231d134, 0x0
+CHECK: XAie_Write32Hdr(OpHdr: XAie_OpHdr(Op: XAie_TxnOpcode::XAIE_IO_WRITE, Col: 2, Row: 20), RegOff: 35773972, Value: 1, Size: 24)
+CHECK: XAie_Write32Hdr(OpHdr: XAie_OpHdr(Op: XAie_TxnOpcode::XAIE_IO_WRITE, Col: 3, Row: 4), RegOff: 36822532, Value: 9, Size: 24)
+CHECK: XAie_Write32Hdr(OpHdr: XAie_OpHdr(Op: XAie_TxnOpcode::XAIE_IO_WRITE, Col: 2, Row: 16), RegOff: 35773968, Value: 1, Size: 24)
+CHECK: XAie_Write32Hdr(OpHdr: XAie_OpHdr(Op: XAie_TxnOpcode::XAIE_IO_WRITE, Col: 3, Row: 0), RegOff: 36822528, Value: 1, Size: 24)
+CHECK: XAie_MaskPoll32Hdr(OpHdr: XAie_OpHdr(Op: XAie_TxnOpcode::XAIE_IO_MASKPOLL, Col: 3, Row: 0), RegOff: 36822784, Value: 0, Size: 32)
+
+clang-format on
+*/
+
+#include <cstdint>
 #include <cstdio>
 
+#include "interpreter_op_impl.h"
 #include "iree-amd-aie/aie_runtime/iree_aie_runtime.h"
+
+using namespace mlir::iree_compiler;
+using namespace mlir::iree_compiler::AMDAIE;
 
 #define PACKET_SWITCH_MODE_TEST \
   1  // 1 - Paket switch mode test, 0 - Circuit switch mode test
@@ -24,14 +148,6 @@
 
 /************************** Function Definitions *****************************/
 int main(int argc, char **argv) {
-  AieRC RC = XAIE_OK;
-
-  // initialize cdo-driver
-  EnAXIdebug();
-  setEndianness(Little_Endian);
-  startCDOFileStream("test_0335_aie_dma_tile_dma_packet_switch_mode.cdo");
-  FileHeader();
-
   // setup aie-rt
   XAie_SetupConfig(ConfigPtr, XAIE_DEV_GEN_AIEML, XAIE2IPU_BASE_ADDR,
                    XAIE2IPU_COL_SHIFT, XAIE2IPU_ROW_SHIFT, XAIE2IPU_NUM_COLS,
@@ -40,18 +156,12 @@ int main(int argc, char **argv) {
                    XAIE2IPU_AIE_TILE_ROW_START, XAIE2IPU_AIE_TILE_NUM_ROWS);
 
   XAie_InstDeclare(DevInst, &ConfigPtr);
-  RC = XAie_CfgInitialize(&DevInst, &ConfigPtr);
-  fprintf(stdout, "Device_Configure_Intialization Done.\n");
-  RC = XAie_PartitionInitialize(&DevInst, NULL);
-  if (RC != XAIE_OK) {
-    fprintf(stderr, "Partition initialization failed.\n");
-    return -1;
-  }
-  XAie_SetIOBackend(&DevInst, XAIE_IO_BACKEND_CDO);
-  XAie_UpdateNpiAddr(&DevInst, XAIE2IPU_NPI_BASEADDR);
+  AieRC RC = XAie_CfgInitialize(&DevInst, &ConfigPtr);
   XAie_TurnEccOff(&DevInst);
 
   // config code
+
+  XAie_StartTransaction(&DevInst, XAIE_TRANSACTION_DISABLE_AUTO_FLUSH);
 
   uint32_t data[NUM_ELEMS];
   uint32_t buffer[NUM_ELEMS];
@@ -162,42 +272,13 @@ int main(int argc, char **argv) {
   }
 
   u8 TimeOut = 5;
-  sleep(1);
   while (TimeOut && XAie_DmaWaitForDone(&DevInst, Tile_2, 0, DMA_S2MM, 1000)) {
-    sleep(1);
     TimeOut--;
   }
-  /*
-   * Read data from aie data memory at DATA_MEM_INOUT_ADDR to compare
-   * with input data.
-   */
-  RC = XAie_DataMemBlockRead(&DevInst, Tile_2, DATA_MEM_INOUT_ADDR,
-                             (void *)buffer, NUM_ELEMS * sizeof(uint32_t));
-  if (RC != XAIE_OK) {
-    fprintf(stderr, "Failed to read from aie data memory.\n");
-    return -1;
-  }
 
-  /* Check for correctness */
-  for (uint8_t i = 0; i < NUM_ELEMS; i++) {
-    if (data[i] != buffer[i]) {
-      fprintf(stderr, "Data mismatch at index %d.\n", i);
-      fprintf(stderr, "AIE DMA FoT failed.\n");
-      return -1;
-    }
-  }
-  return 0;
+  SubmitSerializedTransaction(DevInst, /*startColIdx*/ 0);
 
-  fprintf(stdout, "AIE DMA FoT success.\n");
-
-  RC = XAie_PartitionTeardown(&DevInst);
-  if (RC != XAIE_OK) {
-    fprintf(stderr, "Partition teardown failed.\n");
-    return -1;
-  }
-
-  configureHeader();
-  endCurrentCDOFileStream();
+  XAie_Finish(&DevInst);
 
   return 0;
 }
