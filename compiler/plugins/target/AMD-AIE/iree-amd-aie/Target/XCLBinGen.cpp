@@ -255,7 +255,7 @@ static std::optional<std::string> runTool(
     const std::string &program, const std::vector<std::string> &args,
     bool verbose, std::optional<std::vector<std::string>> env = std::nullopt) {
   if (verbose) {
-    llvm::outs() << "Run: ";
+    llvm::outs() << "\nRun: ";
     if (env)
       for (auto &s : *env) llvm::outs() << " " << s;
     llvm::outs() << " " << program;
@@ -321,7 +321,7 @@ static std::optional<std::string> runTool(
                          stats.TotalTime)
                          .count();
     std::string exitStatusStr = result == 0 ? "Succeeded" : "Failed";
-    llvm::outs() << exitStatusStr << " in totalTime " << totalTime
+    llvm::outs() << "\n" << exitStatusStr << " in totalTime " << totalTime
                  << " [s]. Exit code=" << result << "\n";
     llvm::outs() << outputFromFile << "\n";
   }
@@ -995,7 +995,7 @@ static LogicalResult generateUnifiedObject(
   pm.addPass(std::make_unique<RemoveAlignment2FromLLVMLoadPass>());
 
   if (verbose) {
-    llvm::outs() << "Running: ";
+    llvm::outs() << "\nRunning: ";
     pm.printAsTextualPipeline(llvm::outs());
     llvm::outs() << "\n";
   }
