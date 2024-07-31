@@ -141,21 +141,6 @@ source $XRT_DIR/setup.sh
 # Circumvent xclbin security (no longer needed as of April 2024 XDNA driver)
 export XRT_HACK_UNSECURE_LOADING_XCLBIN=1
 
-MM_KERNEL_URL=https://github.com/nod-ai/iree-amd-aie/releases/download/ukernels/mm.o
-
-# The flag '--iree-amdaie-path-to-ukernels' currently does not work,
-# see for example https://github.com/nod-ai/iree-amd-aie/issues/340.
-# Therefore we need to manually copy (or link) the mm.o file to the
-# directory in which iree-compile is run. iree-compile is run in the
-# output directory. Create the softlink only if it is has not already
-# been created.
-if [ -f "${OUTPUT_DIR}/mm.o" ]; then
-  echo "File 'mm.o' already exists in ${OUTPUT_DIR}."
-else
-  echo "Downloading 'mm.o' to ${OUTPUT_DIR}/mm.o"
-  wget $MM_KERNEL_URL -O  "${OUTPUT_DIR}/mm.o"
-fi
-
 cd ${OUTPUT_DIR}
 
 export MATMUL_TESTS_FAILS=0
@@ -922,17 +907,18 @@ run_matmul_test \
     --n "32" \
     --k "32" \
     --use_chess "1" \
-    --num_repeat_runs "1"
+    --num_repeat_runs "10"
 
 run_matmul_test \
-    --name_prefix "chess_f32_matmul" \
-    --lhs_rhs_type "f32" \
+    --name_prefix "chess_bf16_ukernel" \
+    --lhs_rhs_type "bf16" \
     --acc_type "f32" \
-    --m "32" \
-    --n "32" \
-    --k "32" \
+    --m "64" \
+    --n "64" \
+    --k "64" \
     --use_chess "1" \
-    --num_repeat_runs "1"
+    --num_repeat_runs "10" \
+    --use_ukernel "1"
 
 if [ $MATMUL_TESTS_FAILS -ne 0 ]; then
   echo "$MATMUL_TESTS_FAILS matmul tests failed! Scroll up and look for the 🦄 and 🐞..."

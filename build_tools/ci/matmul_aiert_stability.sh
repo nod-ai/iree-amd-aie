@@ -102,7 +102,6 @@ source $XRT_DIR/setup.sh
 # Circumvent xclbin security (no longer needed as of April 2024 XDNA driver)
 export XRT_HACK_UNSECURE_LOADING_XCLBIN=1
 
-MM_KERNEL_URL=https://github.com/nod-ai/iree-amd-aie/releases/download/ukernels/mm.o
 ME_BASIC_URL=https://github.com/nod-ai/iree-amd-aie/releases/download/ukernels/me_basic.o
 
 if [ -d "$PEANO" ]; then
@@ -115,13 +114,6 @@ if [ -d "$PEANO" ]; then
   fi
 else
   echo "Peano install not found at $PEANO; not downloading me_basic."
-fi
-
-if [ -f "${OUTPUT_DIR}/mm.o" ]; then
-  echo "File 'mm.o' already exists in ${OUTPUT_DIR}."
-else
-  echo "Downloading 'mm.o' to ${OUTPUT_DIR}/mm.o"
-  wget $MM_KERNEL_URL -O  "${OUTPUT_DIR}/mm.o"
 fi
 
 AIERT_COMMIT=$(git submodule status $ROOT_DIR/third_party/aie-rt | cut -d' ' -f2)
