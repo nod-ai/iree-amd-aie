@@ -329,6 +329,12 @@ def AMDAIEMapForallToCores :
   ];
 }
 
+def AMDAIENoneAccessToTemporaryBuffer :
+  Pass<"iree-amdaie-none-access-to-temporary-buffer", ""> {
+  let summary = "Insert a temporary buffer to replace the `None` type logical objectFifo access op usage.";
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIENoneAccessToTemporaryBufferPass()";
+}
+
 def AMDAIENormalizeLoopBounds :
     Pass<"iree-amdaie-normalize-loop-bounds", ""> {
   let summary = "Normalize the loop bounds of `scf.for` and `scf.forall`";
