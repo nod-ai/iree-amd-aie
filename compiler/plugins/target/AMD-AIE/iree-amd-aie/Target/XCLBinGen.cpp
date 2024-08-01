@@ -147,20 +147,24 @@ FailureOr<Path> findVitis(std::optional<Path> &vitisDir) {
 
 static FailureOr<Path> findAMDAIETool(std::string toolName,
                                       const Path &amdAIEInstallDir) {
-  Path bootgenBin = "";
+  Path toolBinExe = "";
   if (!amdAIEInstallDir.empty()) {
-    bootgenBin = amdAIEInstallDir / toolName;
-    if (llvm::sys::fs::exists(bootgenBin.native())) return bootgenBin;
+    toolBinExe = amdAIEInstallDir / toolName;
+    if (llvm::sys::fs::exists(toolBinExe.native()))
+      return toolBinExe;
 
-    bootgenBin = amdAIEInstallDir / "bin" / toolName;
-    if (llvm::sys::fs::exists(bootgenBin.native())) return bootgenBin;
+    toolBinExe = amdAIEInstallDir / "bin" / toolName;
+    if (llvm::sys::fs::exists(toolBinExe.native()))
+      return toolBinExe;
 
-    bootgenBin = amdAIEInstallDir / "tools" / toolName;
-    if (llvm::sys::fs::exists(bootgenBin.native())) return bootgenBin;
+    toolBinExe = amdAIEInstallDir / "tools" / toolName;
+    if (llvm::sys::fs::exists(toolBinExe.native()))
+      return toolBinExe;
   }
 
-  bootgenBin = mlir::iree_compiler::findTool(toolName);
-  if (llvm::sys::fs::exists(bootgenBin.native())) return bootgenBin;
+  toolBinExe = mlir::iree_compiler::findTool(toolName);
+  if (llvm::sys::fs::exists(toolBinExe.native()))
+    return toolBinExe;
 
   llvm::errs() << "Could not find " << toolName
                << ". Check your --iree-amd-aie-install-dir flag";
@@ -765,7 +769,7 @@ static LogicalResult generateXCLBin(
                                    "-w"};
 
     FailureOr<Path> bootgenBin =
-        findAieamdTool("amdaie_bootgen", amdAIEInstallDir);
+        findAMDAIETool("amdaie_bootgen", amdAIEInstallDir);
 
     if (!succeeded(bootgenBin) ||
         !runTool(bootgenBin.value(), flags, verbose)) {
@@ -778,7 +782,7 @@ static LogicalResult generateXCLBin(
   std::string memArg = "MEM_TOPOLOGY:JSON:" + memTopologyJsonFile.string();
   std::string partArg = "AIE_PARTITION:JSON:" + aiePartitionJsonFile.string();
   FailureOr<Path> xclbinutilBin =
-      findAieamdTool("amdaie_xclbinutil", amdAIEInstallDir);
+      findAMDAIETool("amdaie_xclbinutil", amdAIEInstallDir);
 
   {
     if (inputXclbin) {
