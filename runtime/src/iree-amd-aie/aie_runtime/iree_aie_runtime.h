@@ -117,6 +117,23 @@ enum class AMDAIEDmaProp : uint8_t {
   MAX = sizeof(struct XAie_DmaMod)
 };
 
+/// Enum of DMA BD properties. Uses the offset within the `XAie_DmaBdProp`
+/// struct as underlying value to easily retrieve the specified property with a
+/// single getter method, while being versatile towards `XAie_DmaBdProp` struct
+/// changes.
+enum class AMDAIEDmaBdProp : uint8_t {
+  AddrMax = offsetof(XAie_DmaBdProp, AddrMax),
+  AddrAlignMask = offsetof(XAie_DmaBdProp, AddrAlignMask),
+  AddrAlignShift = offsetof(XAie_DmaBdProp, AddrAlignShift),
+  LenActualOffset = offsetof(XAie_DmaBdProp, LenActualOffset),
+  StepSizeMax = offsetof(XAie_DmaBdProp, StepSizeMax),
+  WrapMax = offsetof(XAie_DmaBdProp, WrapMax),
+  IterStepSizeMax = offsetof(XAie_DmaBdProp, IterStepSizeMax),
+  IterWrapMax = offsetof(XAie_DmaBdProp, IterWrapMax),
+  IterCurrMax = offsetof(XAie_DmaBdProp, IterCurrMax),
+  MAX = sizeof(XAie_DmaBdProp)
+};
+
 enum class StrmSwPortType : uint8_t {
   CORE = ::StrmSwPortType::CORE,
   DMA,
@@ -141,6 +158,45 @@ static_assert(static_cast<uint8_t>(StrmSwPortType::SS_PORT_TYPE_MAX) ==
               "aie-rt's StrmSwPortType");
 inline ::StrmSwPortType strmTtoStrmT(StrmSwPortType t) {
   return static_cast<::StrmSwPortType>(t);
+}
+
+enum class XAie_TxnOpcode : uint8_t {
+  XAIE_IO_WRITE = ::XAie_TxnOpcode::XAIE_IO_WRITE,
+  XAIE_IO_BLOCKWRITE,
+  XAIE_IO_BLOCKSET,
+  XAIE_IO_MASKWRITE,
+  XAIE_IO_MASKPOLL,
+  XAIE_CONFIG_SHIMDMA_BD,
+  XAIE_CONFIG_SHIMDMA_DMABUF_BD,
+  XAIE_IO_CUSTOM_OP_BEGIN = ::XAie_TxnOpcode::XAIE_IO_CUSTOM_OP_BEGIN,
+  XAIE_IO_CUSTOM_OP_TCT = ::XAie_TxnOpcode::XAIE_IO_CUSTOM_OP_BEGIN,
+  XAIE_IO_CUSTOM_OP_DDR_PATCH,
+  XAIE_IO_CUSTOM_OP_READ_REGS,
+  XAIE_IO_CUSTOM_OP_RECORD_TIMER,
+  XAIE_IO_CUSTOM_OP_MERGE_SYNC,
+  XAIE_IO_CUSTOM_OP_NEXT,
+  XAIE_IO_CUSTOM_OP_MAX = ::XAie_TxnOpcode::XAIE_IO_CUSTOM_OP_MAX,
+};
+static_assert(static_cast<uint8_t>(XAie_TxnOpcode::XAIE_IO_WRITE) == 0,
+              "mlir::iree_compiler::AMDAIE::XAie_TxnOpcode is out of sync with "
+              "aie-rt's XAie_TxnOpcode");
+static_assert(
+    static_cast<uint8_t>(XAie_TxnOpcode::XAIE_CONFIG_SHIMDMA_DMABUF_BD) ==
+        ::XAie_TxnOpcode::XAIE_CONFIG_SHIMDMA_DMABUF_BD,
+    "mlir::iree_compiler::AMDAIE::XAie_TxnOpcode is out of sync with "
+    "aie-rt's XAie_TxnOpcode");
+static_assert(
+    static_cast<uint8_t>(XAie_TxnOpcode::XAIE_IO_CUSTOM_OP_DDR_PATCH) ==
+        ::XAie_TxnOpcode::XAIE_IO_CUSTOM_OP_DDR_PATCH,
+    "mlir::iree_compiler::AMDAIE::XAie_TxnOpcode is out of sync with "
+    "aie-rt's XAie_TxnOpcode");
+static_assert(static_cast<uint8_t>(XAie_TxnOpcode::XAIE_IO_CUSTOM_OP_NEXT) ==
+                  ::XAie_TxnOpcode::XAIE_IO_CUSTOM_OP_NEXT,
+              "mlir::iree_compiler::AMDAIE::XAie_TxnOpcode is out of sync with "
+              "aie-rt's XAie_TxnOpcode");
+
+inline ::XAie_TxnOpcode txnToTxn(XAie_TxnOpcode t) {
+  return static_cast<::XAie_TxnOpcode>(t);
 }
 
 /*
@@ -183,12 +239,24 @@ struct AMDAIEDeviceModel {
   bool isShimNOCorPLTile(uint8_t col, uint8_t row) const;
   bool isShimTile(uint8_t col, uint8_t row) const;
 
-  /// Retrieve a DMA properpty for the specified tile type.
+  /// Retrieve a DMA property for the specified tile type.
   template <typename T>
   T getDmaProp(AMDAIETileType tileType, AMDAIEDmaProp dmaProp) const {
     const uint8_t* dmaMod = reinterpret_cast<const uint8_t*>(
         devInst.DevProp.DevMod[static_cast<uint8_t>(tileType)].DmaMod);
     return *((const T*)(dmaMod + static_cast<uint8_t>(dmaProp)));
+  }
+
+  /// Retrieve a DMA BD property for the specified tile type and BD id.
+  template <typename T>
+  T getDmaBdProp(AMDAIETileType tileType, uint8_t bd_id,
+                 AMDAIEDmaBdProp dmaBdProp) const {
+    const XAie_DmaMod* dmaMod =
+        devInst.DevProp.DevMod[static_cast<uint8_t>(tileType)].DmaMod;
+    assert(bd_id < dmaMod->NumBds && "BD id should be smaller than max");
+    const uint8_t* dmaBdMod =
+        reinterpret_cast<const uint8_t*>(&dmaMod->BdProp[bd_id]);
+    return *((const T*)(dmaBdMod + static_cast<uint8_t>(dmaBdProp)));
   }
 
   uint32_t getNumLocks(uint8_t col, uint8_t row) const;
@@ -249,18 +317,28 @@ bool isNPUDevice(mlir::iree_compiler::AMDAIE::AMDAIEDevice d);
 /// ======================================================================
 
 std::string to_string(const int& value);
+std::string to_string(const uint32_t& value);
+std::string to_string(const uint64_t& value);
 
-#define TO_STRINGS(_)    \
-  _(AMDAIEDmaProp)       \
-  _(AMDAIETileType)      \
-  _(AieRC)               \
-  _(DMAChannelDir)       \
-  _(StrmSwPortType)      \
-  _(SwitchDMAConnection) \
-  _(::StrmSwPortType)    \
-  _(TileLoc)             \
-  _(XAie_LocType)        \
-  _(XAie_Lock)           \
+#define TO_STRINGS(_)     \
+  _(AMDAIEDmaProp)        \
+  _(AMDAIETileType)       \
+  _(AieRC)                \
+  _(DMAChannelDir)        \
+  _(StrmSwPortType)       \
+  _(SwitchDMAConnection)  \
+  _(::StrmSwPortType)     \
+  _(TileLoc)              \
+  _(XAie_LocType)         \
+  _(XAie_Lock)            \
+  _(XAie_OpHdr)           \
+  _(XAie_Write32Hdr)      \
+  _(XAie_BlockWrite32Hdr) \
+  _(XAie_MaskWrite32Hdr)  \
+  _(XAie_MaskPoll32Hdr)   \
+  _(XAie_CustomOpHdr)     \
+  _(XAie_TxnOpcode)       \
+  _(XAie_TxnCmd)          \
   _(XAie_Packet)
 
 TO_STRINGS(TO_STRING_DECL)
@@ -276,6 +354,14 @@ TO_STRINGS(TO_STRING_DECL)
   _(OSTREAM_OP_, ::StrmSwPortType)                                 \
   _(OSTREAM_OP_, XAie_LocType)                                     \
   _(OSTREAM_OP_, XAie_Lock)                                        \
+  _(OSTREAM_OP_, XAie_OpHdr)                                       \
+  _(OSTREAM_OP_, XAie_Write32Hdr)                                  \
+  _(OSTREAM_OP_, XAie_BlockWrite32Hdr)                             \
+  _(OSTREAM_OP_, XAie_MaskWrite32Hdr)                              \
+  _(OSTREAM_OP_, XAie_MaskPoll32Hdr)                               \
+  _(OSTREAM_OP_, XAie_CustomOpHdr)                                 \
+  _(OSTREAM_OP_, XAie_TxnOpcode)                                   \
+  _(OSTREAM_OP_, XAie_TxnCmd)                                      \
   _(OSTREAM_OP_, XAie_Packet)
 
 BOTH_OSTREAM_OPS_FORALL_TYPES(OSTREAM_OP_DECL, BOTH_OSTREAM_OP)

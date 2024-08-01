@@ -58,17 +58,56 @@ Operation *getAncestorInBlock(Operation *op, Block *block) {
   return parent;
 }
 
-/// Utility affine expression visitor to retrieve the stride from the
-/// expression.
-struct RetrieveStrideSize : public AffineExprVisitor<RetrieveStrideSize> {
-  std::optional<int64_t> stride;
-  void visitMulExpr(AffineBinaryOpExpr expr) {
+/// Utility affine expression visitor to retrieve the scale and optional bias
+/// from the expression.
+struct RetrieveScaleAndBias
+    : public AffineExprVisitor<RetrieveScaleAndBias, LogicalResult> {
+  std::optional<int64_t> scale;
+  std::optional<int64_t> bias;
+  LogicalResult visitAffineBinaryOpExpr(AffineBinaryOpExpr /*expr*/) {
+    return failure();
+  }
+  LogicalResult visitConstantExpr(AffineConstantExpr /*expr*/) {
+    return failure();
+  }
+  LogicalResult visitDimExpr(AffineDimExpr /*expr*/) { return failure(); }
+  LogicalResult visitSymbolExpr(AffineSymbolExpr /*expr*/) { return failure(); }
+  LogicalResult visitMulExpr(AffineBinaryOpExpr expr) {
     if (auto rhsSize = dyn_cast<AffineConstantExpr>(expr.getRHS());
         isa<AffineDimExpr>(expr.getLHS())) {
-      stride = rhsSize.getValue();
+      scale = rhsSize.getValue();
     } else if (auto lhsSize = dyn_cast<AffineConstantExpr>(expr.getLHS());
                isa<AffineDimExpr>(expr.getRHS())) {
-      stride = lhsSize.getValue();
+      scale = lhsSize.getValue();
+    }
+    return success();
+  }
+  LogicalResult visitAddExpr(AffineBinaryOpExpr expr) {
+    if (bias) return failure();
+    if (auto rhsSize = dyn_cast<AffineConstantExpr>(expr.getRHS())) {
+      bias = rhsSize.getValue();
+      if (bias.value() < 0) return failure();
+      if (isa<AffineBinaryOpExpr>(expr.getLHS())) {
+        return visit(expr.getLHS());
+      } else if (isa<AffineDimExpr>(expr.getLHS())) {
+        scale = 1;
+        return success();
+      } else {
+        return failure();
+      }
+    } else if (auto lhsSize = dyn_cast<AffineConstantExpr>(expr.getLHS())) {
+      bias = lhsSize.getValue();
+      if (bias.value() < 0) return failure();
+      if (isa<AffineBinaryOpExpr>(expr.getRHS())) {
+        return visit(expr.getRHS());
+      } else if (isa<AffineDimExpr>(expr.getRHS())) {
+        scale = 1;
+        return success();
+      } else {
+        return failure();
+      }
+    } else {
+      return failure();
     }
   }
 };
@@ -106,71 +145,76 @@ struct SubsumeLoopIntoDMA
       : OpInterfaceRewritePattern(context),
         onlyZeroStrideOnOuterDim(onlyZeroStrideOnOuterDim) {}
 
-  /// Utility to add a loop iteration to an offsets/sizes/strides access
-  /// pattern. This function handles following cases:
+  /// Utility to add a loop iteration to a new offsets/sizes/strides access
+  /// pattern to be inserted into the existing pattern later. The loop iteration
+  /// is not inserted into the existing access pattern directly, so checks can
+  /// be done on the validity of new strides and sizes to abort the rewrite
+  /// before the IR is being rewritten.
+  ///
+  /// This function handles following cases:
   /// 1. If an offset which has an loop induction variable dependency can be
   /// found, calculate the stride and size based on the dependency, potentially
-  /// taking into account an affine expression multiplier.
-  /// 2. If there is no loop induction variable dependency, the iteration means
-  /// that this strided operation is repeated `ceilDiv(upperBound - lowerBound,
-  /// step)` number of times, so a new dimension is added to the access pattern
-  /// with `stride == 0` and `size == ceilDiv(upperBound - lowerBound, step)`.
-  LogicalResult addIterationToAccessPattern(
+  /// taking into account an affine expression scale and bias.
+  /// 2. If there is no loop induction variable dependency, the meaning of the
+  /// iteration is that this strided operation is repeated `ceilDiv(upperBound -
+  /// lowerBound, step)` number of times, so a new dimension is added to the
+  /// access pattern with `stride == 0` and `size == ceilDiv(upperBound -
+  /// lowerBound, step)`.
+  LogicalResult addIterationToNewAccessPattern(
       RewriterBase &rewriter, int64_t lowerBound, int64_t upperBound,
       int64_t step, const DenseSet<Value> &inductionValues,
-      SmallVector<OpFoldResult> &newOffsets,
-      SmallVector<OpFoldResult> &newSizes,
-      SmallVector<OpFoldResult> &newStrides) const {
+      const SmallVector<OpFoldResult> &offsets,
+      const SmallVector<OpFoldResult> &strides,
+      SmallVector<int64_t> &insertOffsets, SmallVector<int64_t> &insertSizes,
+      SmallVector<int64_t> &insertStrides,
+      SmallVector<std::pair<size_t, int64_t>> &updateOffsets) const {
     const int64_t nbIterations =
         calculateNbIterations(lowerBound, upperBound, step);
 
-    SmallVector<OpFoldResult> insertOffsets;
-    SmallVector<OpFoldResult> insertSizes;
-    SmallVector<OpFoldResult> insertStrides;
-    for (auto &&[i, offset] : llvm::enumerate(newOffsets)) {
-      Value offsetValue = getValueOrCreateConstantIndexOp(
-          rewriter, rewriter.getUnknownLoc(), offset);
-      if (inductionValues.contains(offsetValue)) {
+    bool loopDependency{false};
+    for (auto &&[i, offset] : llvm::enumerate(offsets)) {
+      if (auto offsetValue = dyn_cast_if_present<Value>(offset);
+          inductionValues.contains(offsetValue)) {
+        loopDependency = true;
         // Initialize the offsetStride to 1. This handles the case where an
         // induction variable is directly used as an offset inside a strided
         // operation.
         int64_t offsetStride = 1;
+        int64_t offsetBase = 0;
         // If the offset value is determined by an affine expression, retrieve
-        // the affine expression's stride.multiplier and calculate the actual
+        // the affine expression's stride scale and calculate the actual
         // offset stride.
         if (offsetValue.getDefiningOp() &&
             isa<affine::AffineApplyOp>(offsetValue.getDefiningOp())) {
           auto applyOp =
               cast<affine::AffineApplyOp>(offsetValue.getDefiningOp());
-          // Retrieve the stride from the affine map using an affine expression
-          // visitor. This is the place where invalid maps are filtered out.
-          // Invalid cases will have `retriever.stride == nullopt` after
-          // visiting.
+          // Retrieve the scale and optional bias from the affine map using an
+          // affine expression visitor. This is the place where invalid maps are
+          // filtered out. Invalid cases will have `retriever.scale == nullopt`
+          // after visiting.
           AffineMap affineMap = applyOp.getAffineMap();
-          RetrieveStrideSize retriever;
-          retriever.visit(affineMap.getResult(0));
-          if (!retriever.stride) return failure();
-          offsetStride *= retriever.stride.value();
+          RetrieveScaleAndBias retriever;
+          if (failed(retriever.visit(affineMap.getResult(0)))) return failure();
+          if (!retriever.scale) return failure();
+          offsetStride *= retriever.scale.value();
+          if (retriever.bias) offsetBase = retriever.bias.value();
         }
 
         // Multiplying by step size handles the non-normalized case.
         int64_t stride =
-            getConstantIntValue(newStrides[i]).value() * offsetStride * step;
+            getConstantIntValue(strides[i]).value() * offsetStride * step;
 
-        newOffsets[i] = getAsIndexOpFoldResult(rewriter.getContext(),
-                                               lowerBound * offsetStride);
+        updateOffsets.push_back(
+            std::make_pair(i, offsetBase + lowerBound * offsetStride));
 
         // Don't add a unit iteration to better use available dimensions.
         // However, the current offset should be updated, therefore this check
         // is placed after `newOffsets[i]` has been updated.
         if (nbIterations == 1) continue;
 
-        insertOffsets.push_back(
-            getAsIndexOpFoldResult(rewriter.getContext(), 0));
-        insertSizes.push_back(
-            getAsIndexOpFoldResult(rewriter.getContext(), nbIterations));
-        insertStrides.push_back(
-            getAsIndexOpFoldResult(rewriter.getContext(), stride));
+        insertOffsets.push_back(0);
+        insertSizes.push_back(nbIterations);
+        insertStrides.push_back(stride);
       }
     }
     assert(insertOffsets.size() == insertSizes.size() &&
@@ -178,17 +222,11 @@ struct SubsumeLoopIntoDMA
     assert(insertOffsets.size() == insertStrides.size() &&
            "expected same number of offsets and strides to be inserted");
     // Handle the 'no loop dependency' case.
-    if (insertOffsets.empty() && nbIterations != 1) {
-      insertOffsets.push_back(getAsIndexOpFoldResult(rewriter.getContext(), 0));
-      insertSizes.push_back(
-          getAsIndexOpFoldResult(rewriter.getContext(), nbIterations));
-      insertStrides.push_back(getAsIndexOpFoldResult(rewriter.getContext(), 0));
+    if (!loopDependency && nbIterations != 1) {
+      insertOffsets.push_back(0);
+      insertSizes.push_back(nbIterations);
+      insertStrides.push_back(0);
     }
-    newOffsets.insert(newOffsets.begin(), insertOffsets.begin(),
-                      insertOffsets.end());
-    newSizes.insert(newSizes.begin(), insertSizes.begin(), insertSizes.end());
-    newStrides.insert(newStrides.begin(), insertStrides.begin(),
-                      insertStrides.end());
     return success();
   }
 
@@ -196,7 +234,7 @@ struct SubsumeLoopIntoDMA
   /// operation.
   LogicalResult rewriteWithLoopLikeOpParent(
       AMDAIE::DoublyStridedOpInterface op, PatternRewriter &rewriter,
-      size_t sourceMaxNbDims, size_t targetMaxNbDims,
+      const AMDAIE::DmaDimConfig &dmaDimConfig,
       const SmallVector<int64_t> &lowerBounds,
       const SmallVector<int64_t> &upperBounds,
       const SmallVector<int64_t> &steps,
@@ -222,9 +260,11 @@ struct SubsumeLoopIntoDMA
       if (nbIterations == 0) return failure();
       if (nbIterations > 1) nbNonUnitIterations++;
     }
-    if (newSourceOffsets.size() + nbNonUnitIterations > sourceMaxNbDims)
+    if (newSourceOffsets.size() + nbNonUnitIterations >
+        dmaDimConfig.sourceMaxNbDims)
       return failure();
-    if (newTargetOffsets.size() + nbNonUnitIterations > targetMaxNbDims)
+    if (newTargetOffsets.size() + nbNonUnitIterations >
+        dmaDimConfig.targetMaxNbDims)
       return failure();
 
     // Fail if zero stride is only supported on the outer dimension and adding
@@ -267,26 +307,116 @@ struct SubsumeLoopIntoDMA
       }
     }
 
+    auto anyOutOfRange = [](const SmallVector<int64_t> &values,
+                            const SmallVector<uint32_t> &maxValues,
+                            size_t begin) -> bool {
+      assert(maxValues.size() - begin >= values.size() &&
+             "begin should be set so that the values don't exceed the max "
+             "values slice");
+      for (size_t i = 0; i < values.size(); ++i) {
+        int64_t value = values[i];
+        uint32_t maxValue = maxValues[begin + i];
+        if (value < 0 || value > maxValue) return true;
+      }
+      return false;
+    };
+
+    SmallVector<int64_t> insertSourceOffsets;
+    SmallVector<int64_t> insertSourceSizes;
+    SmallVector<int64_t> insertSourceStrides;
+    SmallVector<std::pair<size_t, int64_t>> updateSourceOffsets;
+    SmallVector<int64_t> insertTargetOffsets;
+    SmallVector<int64_t> insertTargetSizes;
+    SmallVector<int64_t> insertTargetStrides;
+    SmallVector<std::pair<size_t, int64_t>> updateTargetOffsets;
+
     // Add the loop iterations to the DMA access patterns.
-    for (auto &&[lb, ub, step, iterationIvValues] : llvm::reverse(
-             llvm::zip(lowerBounds, upperBounds, steps, inductionValues))) {
+    for (auto &&[lb, ub, step, iterationIvValues] :
+         llvm::zip(lowerBounds, upperBounds, steps, inductionValues)) {
       // Add loop iteration to the access pattern on the source side.
       if (!newSourceOffsets.empty()) {
-        if (failed(addIterationToAccessPattern(
+        if (failed(addIterationToNewAccessPattern(
                 rewriter, lb, ub, step, iterationIvValues, newSourceOffsets,
-                newSourceSizes, newSourceStrides))) {
+                newSourceStrides, insertSourceOffsets, insertSourceSizes,
+                insertSourceStrides, updateSourceOffsets))) {
           return failure();
         }
+        SmallVector<uint32_t> maxSizes =
+            dmaDimConfig.getMaxSizes<CopyOpOperateOn::Source>();
+        SmallVector<uint32_t> maxStrides =
+            dmaDimConfig.getMaxStrides<CopyOpOperateOn::Source>();
+        assert(maxSizes.size() >=
+                   insertSourceSizes.size() + newSourceSizes.size() &&
+               "Max number of dimensions exceeded");
+        size_t begin =
+            maxSizes.size() - insertSourceSizes.size() - newSourceSizes.size();
+        if (anyOutOfRange(insertSourceSizes, maxSizes, begin)) return failure();
+        if (anyOutOfRange(insertSourceStrides, maxStrides, begin))
+          return failure();
       }
       // Add loop iteration to the access pattern on the target side.
       if (!newTargetOffsets.empty()) {
-        if (failed(addIterationToAccessPattern(
+        if (failed(addIterationToNewAccessPattern(
                 rewriter, lb, ub, step, iterationIvValues, newTargetOffsets,
-                newTargetSizes, newTargetStrides))) {
+                newTargetStrides, insertTargetOffsets, insertTargetSizes,
+                insertTargetStrides, updateTargetOffsets))) {
           return failure();
         }
+        SmallVector<uint32_t> maxSizes =
+            dmaDimConfig.getMaxSizes<CopyOpOperateOn::Target>();
+        SmallVector<uint32_t> maxStrides =
+            dmaDimConfig.getMaxStrides<CopyOpOperateOn::Target>();
+        assert(maxSizes.size() >=
+                   insertTargetSizes.size() + newTargetSizes.size() &&
+               "Max number of dimensions exceeded");
+        size_t begin =
+            maxSizes.size() - insertTargetSizes.size() - newTargetSizes.size();
+        if (anyOutOfRange(insertTargetSizes, maxSizes, begin)) return failure();
+        if (anyOutOfRange(insertTargetStrides, maxStrides, begin))
+          return failure();
       }
     }
+
+    // Update the source and target access patterns.
+    auto toOpFoldResult =
+        [&](const SmallVector<int64_t> &values) -> SmallVector<OpFoldResult> {
+      return llvm::map_to_vector(values, [&](int64_t v) -> OpFoldResult {
+        return rewriter.getI64IntegerAttr(v);
+      });
+    };
+    for (auto &&[index, value] : updateSourceOffsets)
+      newSourceOffsets[index] = rewriter.getI64IntegerAttr(value);
+    SmallVector<OpFoldResult> insertSourceOffsetsOFR =
+        toOpFoldResult(insertSourceOffsets);
+    SmallVector<OpFoldResult> insertSourceSizesOFR =
+        toOpFoldResult(insertSourceSizes);
+    SmallVector<OpFoldResult> insertSourceStridesOFR =
+        toOpFoldResult(insertSourceStrides);
+    newSourceOffsets.insert(newSourceOffsets.begin(),
+                            insertSourceOffsetsOFR.begin(),
+                            insertSourceOffsetsOFR.end());
+    newSourceSizes.insert(newSourceSizes.begin(), insertSourceSizesOFR.begin(),
+                          insertSourceSizesOFR.end());
+    newSourceStrides.insert(newSourceStrides.begin(),
+                            insertSourceStridesOFR.begin(),
+                            insertSourceStridesOFR.end());
+
+    for (auto &&[index, value] : updateTargetOffsets)
+      newTargetOffsets[index] = rewriter.getI64IntegerAttr(value);
+    SmallVector<OpFoldResult> insertTargetOffsetsOFR =
+        toOpFoldResult(insertTargetOffsets);
+    SmallVector<OpFoldResult> insertTargetSizesOFR =
+        toOpFoldResult(insertTargetSizes);
+    SmallVector<OpFoldResult> insertTargetStridesOFR =
+        toOpFoldResult(insertTargetStrides);
+    newTargetOffsets.insert(newTargetOffsets.begin(),
+                            insertTargetOffsetsOFR.begin(),
+                            insertTargetOffsetsOFR.end());
+    newTargetSizes.insert(newTargetSizes.begin(), insertTargetSizesOFR.begin(),
+                          insertTargetSizesOFR.end());
+    newTargetStrides.insert(newTargetStrides.begin(),
+                            insertTargetStridesOFR.begin(),
+                            insertTargetStridesOFR.end());
 
     assert(newSourceOffsets.size() == newSourceSizes.size() &&
            "expected same number of source offsets and sizes");
@@ -310,10 +440,9 @@ struct SubsumeLoopIntoDMA
   /// Main rewrite function for a doubly strided operation with a `scf.for`
   /// parent operation. Only handle a loop induction variable with an
   /// optional `affine.apply` user for now.
-  LogicalResult rewriteWithForOpParent(AMDAIE::DoublyStridedOpInterface op,
-                                       PatternRewriter &rewriter,
-                                       size_t sourceMaxNbDims,
-                                       size_t targetMaxNbDims) const {
+  LogicalResult rewriteWithForOpParent(
+      AMDAIE::DoublyStridedOpInterface op, PatternRewriter &rewriter,
+      const AMDAIE::DmaDimConfig &dmaDimConfig) const {
     auto forOp = dyn_cast<scf::ForOp>(op->getParentOp());
     if (!forOp) return failure();
 
@@ -340,18 +469,17 @@ struct SubsumeLoopIntoDMA
     SmallVector<int64_t> upperBounds = {upperBound.value()};
     SmallVector<int64_t> steps = {step.value()};
     SmallVector<DenseSet<Value>> inductionValues = {curIvValues};
-    return rewriteWithLoopLikeOpParent(
-        op, rewriter, sourceMaxNbDims, targetMaxNbDims, lowerBounds,
-        upperBounds, steps, inductionValues, curIvValues);
+    return rewriteWithLoopLikeOpParent(op, rewriter, dmaDimConfig, lowerBounds,
+                                       upperBounds, steps, inductionValues,
+                                       curIvValues);
   }
 
   /// Main rewrite function for a doubly strided operation with a `scf.forall`
   /// parent operation. Only handle loop induction variables with an
   /// optional `affine.apply` user for now.
-  LogicalResult rewriteWithForallOpParent(AMDAIE::DoublyStridedOpInterface op,
-                                          PatternRewriter &rewriter,
-                                          size_t sourceMaxNbDims,
-                                          size_t targetMaxNbDims) const {
+  LogicalResult rewriteWithForallOpParent(
+      AMDAIE::DoublyStridedOpInterface op, PatternRewriter &rewriter,
+      const AMDAIE::DmaDimConfig &dmaDimConfig) const {
     auto forallOp = dyn_cast<scf::ForallOp>(op->getParentOp());
     if (!forallOp) return failure();
 
@@ -382,10 +510,9 @@ struct SubsumeLoopIntoDMA
       }
       inductionValues.push_back(curIvValues);
     }
-    return rewriteWithLoopLikeOpParent(op, rewriter, sourceMaxNbDims,
-                                       targetMaxNbDims, lowerBounds.value(),
-                                       upperBounds.value(), steps.value(),
-                                       inductionValues, allInductionValues);
+    return rewriteWithLoopLikeOpParent(
+        op, rewriter, dmaDimConfig, lowerBounds.value(), upperBounds.value(),
+        steps.value(), inductionValues, allInductionValues);
   }
 
   LogicalResult matchAndRewrite(AMDAIE::DoublyStridedOpInterface op,
@@ -399,18 +526,11 @@ struct SubsumeLoopIntoDMA
     AMDAIE::AMDAIEDeviceModel deviceModel =
         AMDAIE::getDeviceModel(device.value());
 
-    // Depending on the DMA being targetted, there can be a different number of
-    // max dimensions supported by the hardware.
-    size_t sourceMaxNbDims{0};
-    size_t targetMaxNbDims{0};
-
+    uint8_t sourceMemspaceInt;
+    uint8_t targetMemspaceInt;
     if (auto npuDmaOp = dyn_cast<AMDAIE::NpuDmaCpyNdOp>(op.getOperation())) {
-      uint8_t sourceMemspaceInt = npuDmaOp.getSourceMemorySpaceAsUInt();
-      uint8_t targetMemspaceInt = npuDmaOp.getTargetMemorySpaceAsUInt();
-      AMDAIE::DmaDimConfig dmaDimConfig(deviceModel, sourceMemspaceInt,
-                                        targetMemspaceInt);
-      sourceMaxNbDims = dmaDimConfig.sourceMaxNbDims;
-      targetMaxNbDims = dmaDimConfig.targetMaxNbDims;
+      sourceMemspaceInt = npuDmaOp.getSourceMemorySpaceAsUInt();
+      targetMemspaceInt = npuDmaOp.getTargetMemorySpaceAsUInt();
 
       // Check that the DMA this `amdaie.npu.dma_cpy_nd` operation is operating
       // on, is not being touched within the same scope. Otherwise, the rewrite
@@ -428,12 +548,13 @@ struct SubsumeLoopIntoDMA
       return failure();
     }
 
+    AMDAIE::DmaDimConfig dmaDimConfig(deviceModel, sourceMemspaceInt,
+                                      targetMemspaceInt);
+
     if (isa<scf::ForOp>(op->getParentOp())) {
-      return rewriteWithForOpParent(op, rewriter, sourceMaxNbDims,
-                                    targetMaxNbDims);
+      return rewriteWithForOpParent(op, rewriter, dmaDimConfig);
     } else if (isa<scf::ForallOp>(op->getParentOp())) {
-      return rewriteWithForallOpParent(op, rewriter, sourceMaxNbDims,
-                                       targetMaxNbDims);
+      return rewriteWithForallOpParent(op, rewriter, dmaDimConfig);
     } else {
       return failure();
     }
