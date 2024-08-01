@@ -46,25 +46,25 @@ void getAttributeMapping(SmallVector<scf::ForallOp> forallOps,
 LogicalResult insertCoreOps(mlir::ModuleOp moduleOp) {
   IRRewriter rewriter(moduleOp.getContext());
 
+  // Currently, innermost `scf.forall` operations are expected to have thread
+  // mapping. If none of the scf.forall operations has a thread mapping,
+  // the pass fails.
+  uint32_t numForallsWithThreadMapping = 0;
+  uint32_t numForalls = 0;
+
   WalkResult res = moduleOp->walk([&](scf::ForallOp forallOp) {
-    // Currently, innermost `scf.forall` operations are expected to have thread
-    // mapping and are therefore selected for insertion of cores. Fail if no
-    // thread mapping.
-    {
+    bool hasThreadMapping = [&]() {
       auto maybeMapping = forallOp.getMapping();
-      if (!maybeMapping) {
-        forallOp.emitOpError("does not have a mapping attribute");
-        return WalkResult::interrupt();
-      }
+      if (!maybeMapping) return false;
+      auto mapping = llvm::to_vector(maybeMapping->getValue());
+      if (mapping.empty()) return false;
+      if (!isa<mlir::gpu::GPUThreadMappingAttr>(*mapping.begin())) return false;
+      return true;
+    }();
 
-      SmallVector<Attribute> mapping =
-          llvm::to_vector(maybeMapping->getValue());
-
-      if (!isa<mlir::gpu::GPUThreadMappingAttr>(*mapping.begin())) {
-        forallOp.emitOpError("does not have a thread mapping attribute");
-        return WalkResult::interrupt();
-      }
-    }
+    ++numForalls;
+    if (!hasThreadMapping) return WalkResult::advance();
+    ++numForallsWithThreadMapping;
 
     if (!forallOp.isNormalized()) {
       forallOp.emitOpError()
@@ -163,6 +163,15 @@ LogicalResult insertCoreOps(mlir::ModuleOp moduleOp) {
     return WalkResult::advance();
   });
   if (res.wasInterrupted()) return failure();
+
+  if (numForalls > 0 && numForallsWithThreadMapping == 0) {
+    moduleOp.emitOpError()
+        << "has " << numForalls
+        << " scf.forall operations, but none has a (non-empty) thread "
+           "mapping. Conservatively bailing, as running this pass on such a "
+           "module is probably a mistake.";
+    return failure();
+  }
   return success();
 }
 
