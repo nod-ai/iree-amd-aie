@@ -145,7 +145,7 @@ FailureOr<Path> findVitis(std::optional<Path> &vitisDir) {
   return *vitisDir;
 }
 
-static FailureOr<Path> findAieamdTool(std::string toolName,
+static FailureOr<Path> findAMDAIETool(std::string toolName,
                                       const Path &amdAIEInstallDir) {
   Path bootgenBin = "";
   if (!amdAIEInstallDir.empty()) {
