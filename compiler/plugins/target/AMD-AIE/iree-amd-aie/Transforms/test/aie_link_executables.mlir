@@ -39,14 +39,15 @@ module attributes {hal.device.targets = [#device_target_amd_aie]} {
 util.func public @two_mm(%arg0: !hal.buffer_view, %arg1: !hal.buffer_view, %arg2: !hal.buffer_view) attributes {iree.abi.stub, iree.reflection = {iree.abi.declaration = "sync func @two_mm(%input0: tensor<512x512xf32>, %input1: tensor<512x512xf32>, %input2: tensor<512x256xf32>)"}} {
     %c1 = arith.constant 1 : index
     %c0 = arith.constant 0 : index
+    %c-1_i64 = arith.constant -1 : i64
     %device_0 = hal.devices.get %c0 : !hal.device
-    %cmd = hal.command_buffer.create device(%device_0 : !hal.device) mode("OneShot") categories("Transfer|Dispatch") : !hal.command_buffer
+    %cmd = hal.command_buffer.create device(%device_0 : !hal.device) mode("OneShot") categories("Transfer|Dispatch") affinity(%c-1_i64) : !hal.command_buffer
     %exe = hal.executable.lookup device(%device_0 : !hal.device) executable(@two_mm_dispatch_0) : !hal.executable
     %ordinal = hal.executable.export.ordinal target(@two_mm_dispatch_0::@amdaie_xclbin_fb::@two_mm_dispatch_0_matmul_512x512x512_f32) : index
-    hal.command_buffer.dispatch<%cmd : !hal.command_buffer> target(%exe : !hal.executable)[%ordinal] workgroups([%c1, %c1, %c1])
+    hal.command_buffer.dispatch<%cmd : !hal.command_buffer> target(%exe : !hal.executable)[%ordinal] workgroups([%c1, %c1, %c1]) flags("None")
     %exe_1 = hal.executable.lookup device(%device_0 : !hal.device) executable(@two_mm_dispatch_1) : !hal.executable
     %ordinal_1 = hal.executable.export.ordinal target(@two_mm_dispatch_1::@amdaie_xclbin_fb::@two_mm_dispatch_1_matmul_512x256x512_f32) : index
-    hal.command_buffer.dispatch<%cmd : !hal.command_buffer> target(%exe_1 : !hal.executable)[%ordinal_1] workgroups([%c1, %c1, %c1])
+    hal.command_buffer.dispatch<%cmd : !hal.command_buffer> target(%exe_1 : !hal.executable)[%ordinal_1] workgroups([%c1, %c1, %c1]) flags("None")
     util.return
   }
 }

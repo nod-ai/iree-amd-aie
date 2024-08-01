@@ -176,16 +176,16 @@ func.func @link_multiple_inputs_and_outputs_with_offsets(%arg0: memref<32x1024xi
 
 // Make sure offsets on the non-link side are not removed.
 // CHECK-LABEL: func.func @ensure_no_removal_of_offsets
-// CHECK:       %[[C1_0:.+]] = arith.constant 1 : index
-// CHECK:       %[[C1_1:.+]] = arith.constant 1 : index
-// CHECK:       %[[C1024:.+]] = arith.constant 1024 : index
+// CHECK-DAG:       %[[C1:.+]] = arith.constant 1 : index
+// CHECK-DAG:       %[[C1_0:.+]] = arith.constant 1 : index
+// CHECK-DAG:       %[[C1024:.+]] = arith.constant 1024 : index
 // CHECK:       %[[DMA0:.+]] = amdaie.circular_dma_cpy_nd
-// CHECK-SAME:  [%[[C1_0]]] [%[[C1_1]]] [%[[C1024]]]
-// CHECK:       %[[C1_2:.+]] = arith.constant 1 : index
-// CHECK:       %[[C1_3:.+]] = arith.constant 1 : index
-// CHECK:       %[[C2048:.+]] = arith.constant 2048 : index
+// CHECK-SAME:  [%[[C1_0]]] [%[[C1]]] [%[[C1024]]]
+// CHECK-DAG:       %[[C1_1:.+]] = arith.constant 1 : index
+// CHECK-DAG:       %[[C1_2:.+]] = arith.constant 1 : index
+// CHECK-DAG:       %[[C2048:.+]] = arith.constant 2048 : index
 // CHECK:       %[[DMA1:.+]] = amdaie.circular_dma_cpy_nd
-// CHECK-SAME:  [%[[C1_2]]] [%[[C1_3]]] [%[[C2048]]]
+// CHECK-SAME:  [%[[C1_2]]] [%[[C1_1]]] [%[[C2048]]]
 // CHECK:       amdaie.logicalobjectfifo.link[%[[DMA0]]] -> [%[[DMA1]]] ()
 func.func @ensure_no_removal_of_offsets(%arg0: memref<32x1024xi32>, %arg1: memref<32x64xi32, 1>, %arg2: memref<2x8x8x4x8xi32, 2>) {
   %0 = amdaie.logicalobjectfifo.from_memref %arg0, {} :memref<32x1024xi32> -> !amdaie.logicalobjectfifo<memref<32x1024xi32>>
