@@ -17,10 +17,10 @@ module{
 func.func @insert_cores_with_non_normalized_forall() {
   scf.forall (%arg0, %arg1) in (1, 1) {
     scf.forall (%arg2, %arg3) = (0, 0) to (4, 4) step (1, 1) {
-    } 
+    }
     scf.forall (%arg2, %arg3) = (0, 0) to (2, 2) step (1, 1) {
-    } 
-  } 
+    }
+  }
   return
 }
 }

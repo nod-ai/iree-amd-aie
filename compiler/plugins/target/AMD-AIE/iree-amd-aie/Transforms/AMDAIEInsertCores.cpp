@@ -44,7 +44,7 @@ DenseMap<Attribute, Value> getAttributeMapping(
   return attrMapping;
 }
 
-/// Partition of all scf.forall operations in the module into 3 sets: 
+/// Partition of all scf.forall operations in the module into 3 sets:
 ///
 /// 1. parents: scf.forall operations that have a child with a thread mapping
 /// 2. innerMostThreadMapped: scf.forall operations that have a thread mapping,
@@ -52,7 +52,6 @@ DenseMap<Attribute, Value> getAttributeMapping(
 /// 3. notThreadMapped: scf.forall operations that have no thread mapping, and
 ///    have no child with a thread mapping
 struct ForallsPartition {
-
   DenseSet<scf::ForallOp> parents;
   SmallVector<scf::ForallOp> innerMostThreadMapped;
   SmallVector<scf::ForallOp> notThreadMapped;
@@ -62,7 +61,7 @@ struct ForallsPartition {
     numForalls = 0;
 
     // Visit all scf.forall operations in the module in post order (most nested
-    // to least nested). 
+    // to least nested).
     moduleOp->walk<WalkOrder::PostOrder>([&](scf::ForallOp forallOp) {
       ++numForalls;
 
@@ -93,8 +92,7 @@ struct ForallsPartition {
       return WalkResult::advance();
     });
 
-    assert(numForalls == innerMostThreadMapped.size() +
-                             notThreadMapped.size() +
+    assert(numForalls == innerMostThreadMapped.size() + notThreadMapped.size() +
                              parents.size() &&
            "Expected complete partition of foralls");
   }
@@ -103,8 +101,7 @@ struct ForallsPartition {
 /// Insert core ops inside innermost forall ops around computational ops and
 /// add synchronization ops along the way to synchronize with surrounding
 /// dma ops.
-LogicalResult
-insertCoreOps(mlir::ModuleOp moduleOp) {
+LogicalResult insertCoreOps(mlir::ModuleOp moduleOp) {
   IRRewriter rewriter(moduleOp.getContext());
 
   ForallsPartition foralls(moduleOp);
