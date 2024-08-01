@@ -56,6 +56,8 @@ def find_executable(install_dir: Path, executable_name):
 def shell_out(cmd: list, workdir=None, verbose=False):
     if workdir is None:
         workdir = Path.cwd()
+    if not isinstance(cmd, list):
+        cmd = [cmd]
     for i, c in enumerate(cmd):
         if isinstance(c, Path):
             cmd[i] = str(c)
