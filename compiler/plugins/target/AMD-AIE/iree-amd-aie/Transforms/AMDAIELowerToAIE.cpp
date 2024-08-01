@@ -635,11 +635,11 @@ LogicalResult npuDmaWaitToAIE(IRRewriter &rewriter, AMDAIE::NpuDmaWaitOp waitOp,
 /// Insert the control code operations into the NPU instruction function.
 LogicalResult controlCodeToAie(IRRewriter &rewriter,
                                AMDAIE::ControlCodeOp &controlCodeOp,
-                               func::FuncOp &funcOp, IRMapping &mapper,
-                               IRMapping &bindingsMapper) {
+                               xilinx::AIEX::RuntimeSequenceOp &funcOp,
+                               IRMapping &mapper, IRMapping &bindingsMapper) {
   LLVM_DEBUG(llvm::dbgs() << "Convert [AMDAIE::ControlCodeOp]\n");
   Block *funcBlock = &funcOp.getBody().front();
-  rewriter.setInsertionPoint(funcBlock->getTerminator());
+  rewriter.setInsertionPointToEnd(funcBlock);
   auto insertIt = funcBlock->begin();
   auto controlCodeBegin = controlCodeOp.getBody()->begin();
   auto controlCodeEnd = controlCodeOp.getBody()->getTerminator()->getIterator();
@@ -752,8 +752,8 @@ LogicalResult tileToAIE(IRRewriter &rewriter, AMDAIE::TileOp tileOp,
 LogicalResult workgroupToAIE(IRRewriter &rewriter,
                              AMDAIE::WorkgroupOp workgroupOp,
                              xilinx::AIE::DeviceOp deviceOp,
-                             func::FuncOp ipuFuncOp, IRMapping &mapper,
-                             IRMapping &bindingsMapper) {
+                             xilinx::AIEX::RuntimeSequenceOp ipuFuncOp,
+                             IRMapping &mapper, IRMapping &bindingsMapper) {
   OpBuilder::InsertionGuard guard(rewriter);
   Block *deviceBlock = &deviceOp.getRegion().front();
   Block *deviceCoreBlock = rewriter.createBlock(&deviceOp.getRegion());
@@ -862,18 +862,14 @@ LogicalResult lowerToAIE(ModuleOp moduleOp) {
                               IREE::HAL::InterfaceBindingSubspanOp b) {
       return a.getBinding().getZExtValue() < b.getBinding().getZExtValue();
     });
-    SmallVector<Type> inputTypes;
-    for (auto op : subspanOps) inputTypes.push_back(op.getType());
-    FunctionType funcType = rewriter.getFunctionType(inputTypes, TypeRange{});
     rewriter.setInsertionPoint(deviceBlock, deviceBlock->begin());
-    auto ipuFuncOp = rewriter.create<func::FuncOp>(
-        rewriter.getUnknownLoc(), rewriter.getStringAttr(funcOp.getSymName()),
-        funcType);
-    ipuFuncOp.setPublic();
-    rewriter.setInsertionPointToStart(ipuFuncOp.addEntryBlock());
-    rewriter.create<func::ReturnOp>(rewriter.getUnknownLoc());
-    for (int i = 0; i < ipuFuncOp.getNumArguments(); ++i) {
-      bindingsMapper.map(subspanOps[i].getResult(), ipuFuncOp.getArgument(i));
+    auto ipuFuncOp = rewriter.create<xilinx::AIEX::RuntimeSequenceOp>(
+        rewriter.getUnknownLoc(), rewriter.getStringAttr(funcOp.getSymName()));
+    ipuFuncOp.getBody().push_back(new Block);
+    for (int i = 0, e = subspanOps.size(); i < e; i++) {
+      auto a = subspanOps[i].getResult();
+      ipuFuncOp.getBody().addArgument(a.getType(), a.getLoc());
+      bindingsMapper.map(a, ipuFuncOp.getBody().getArgument(i));
     }
 
     // Walk the AIE regions ops and convert ops into pure AIEDialect ops.

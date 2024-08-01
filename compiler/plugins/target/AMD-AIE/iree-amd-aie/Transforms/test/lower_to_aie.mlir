@@ -15,7 +15,7 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 
 // CHECK: module
 // CHECK: aie.device
-// CHECK: func.func @empty_func
+// CHECK: aiex.runtime_sequence @empty_func
 #executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
 module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
   func.func @empty_func() {
@@ -27,7 +27,7 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 
 // CHECK: module
 // CHECK: aie.device
-// CHECK: func.func @workgroup
+// CHECK: aiex.runtime_sequence @workgroup
 #executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
 module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
   func.func @workgroup() {
@@ -42,7 +42,7 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 
 // -----
 
-// CHECK:       func.func @hal_bindings
+// CHECK:       aiex.runtime_sequence @hal_bindings
 // CHECK-SAME:  %{{.+}}: memref<32x1024xi32>
 // CHECK-SAME:  %{{.+}}: memref<1024x64xi32>
 // CHECK-SAME:  %{{.+}}: memref<32x64xi32>
@@ -76,7 +76,7 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 // CHECK-NEXT:  aie.objectfifo.link
 // CHECK-SAME:  @[[OBJ0]]
 // CHECK-SAME:  @[[OBJ1]]
-// CHECK:       func.func @circular_dma_cpy_nd_and_link
+// CHECK:       aiex.runtime_sequence @circular_dma_cpy_nd_and_link
 #executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
 module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
   func.func @circular_dma_cpy_nd_and_link() {
@@ -122,7 +122,7 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 // CHECK-NEXT:  aie.objectfifo.link
 // CHECK-SAME:  @[[OBJ0]]
 // CHECK-SAME:  @[[OBJ1]]
-// CHECK:       func.func @circular_dma_cpy_sizes_and_strides
+// CHECK:       aiex.runtime_sequence @circular_dma_cpy_sizes_and_strides
 #executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
 module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
   func.func @circular_dma_cpy_sizes_and_strides() {
@@ -172,7 +172,7 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 // CHECK:         %[[ACCESS:.+]] = aie.objectfifo.subview.access %[[ACQUIRE]]
 // CHECK:         %[[REINTERPRET:.+]] = memref.reinterpret_cast %[[ACCESS]]
 // CHECK:         linalg.fill ins(%{{.+}} : i32) outs(%[[REINTERPRET]] : memref<32x32xi32, 1>)
-// CHECK:       func.func @tile_and_core_and_acquire
+// CHECK:       aiex.runtime_sequence @tile_and_core_and_acquire
 #executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
 module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
   func.func @tile_and_core_and_acquire() {
@@ -232,7 +232,7 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 // CHECK:         func.call @ukernel_B(%[[BASE_BUFFER]], %[[C0]], %[[BASE_BUFFER0]], %[[C0]]) : (memref<i32, 1>, index, memref<f32, 1>, index) -> ()
 // CHECK:         aie.end
 // CHECK:       } {link_with = "/path/to/ukernel.o"}
-// CHECK:       func.func @lower_to_aie_ukernel
+// CHECK:       aiex.runtime_sequence @lower_to_aie_ukernel
 #executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
 module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
   func.func private @ukernel_A(memref<i32, 2>, index) attributes {link_with = "/path/to/ukernel.o", llvm.bareptr = true}
@@ -303,7 +303,7 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 // CHECK-SAME:    Consume
 // CHECK:         aie.objectfifo.subview.access
 // CHECK-SAME:    %[[ACQUIRE_1]]
-// CHECK:       func.func @tile_and_core_and_acquire_broadcast
+// CHECK:       aiex.runtime_sequence @tile_and_core_and_acquire_broadcast
 #executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
 module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
   func.func @tile_and_core_and_acquire_broadcast() {
@@ -353,7 +353,7 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 // CHECK-DAG:   %{{.+}} = aie.tile(0, 0)
 // CHECK:       aie.core(%[[TILE_0_2]])
 // CHECK:         aie.objectfifo.release
-// CHECK:       func.func @tile_and_core_and_release
+// CHECK:       aiex.runtime_sequence @tile_and_core_and_release
 #executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
 module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
   func.func @tile_and_core_and_release() {
@@ -539,7 +539,7 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 // -----
 
 // CHECK:       aie.device
-// CHECK:       func.func @npu_dma_cpy_nd_with_repeat(%[[ARG0:.+]]: memref<32x64xi32>
+// CHECK:       aiex.runtime_sequence @npu_dma_cpy_nd_with_repeat(%[[ARG0:.+]]: memref<32x64xi32>
 // CHECK:       aiex.npu.dma_memcpy_nd(0, 0, %[[ARG0]][0, 0, 0, 32][2, 1, 1, 32][0, 0, 0, 1])
 #executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
 module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
@@ -576,7 +576,7 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 // -----
 
 // CHECK:       aie.device
-// CHECK:       func.func @npu_dma_cpy_nd_with_repeat_already_on_outer_dim(%[[ARG0:.+]]: memref<32x64xi32>
+// CHECK:       aiex.runtime_sequence @npu_dma_cpy_nd_with_repeat_already_on_outer_dim(%[[ARG0:.+]]: memref<32x64xi32>
 // CHECK:       aiex.npu.dma_memcpy_nd(0, 0, %[[ARG0]][0, 0, 0, 32][2, 1, 2, 32][2, 0, 16, 1])
 #executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
 module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
@@ -622,7 +622,7 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 // CHECK-NEXT:  aie.objectfifo @[[OBJ1:.+]](%[[TILE_0_1]], {%[[TILE_0_0]]}
 // CHECK-NEXT:  aie.objectfifo @[[OBJ2:.+]](%[[TILE_0_0]], {%[[TILE_0_1]]}
 // CHECK:       aie.objectfifo.link [@[[OBJ0]]] -> [@[[OBJ1]]]
-// CHECK:       func.func @controlcode(%[[ARG0:.+]]: memref<32x64xi32>
+// CHECK:       aiex.runtime_sequence @controlcode(%[[ARG0:.+]]: memref<32x64xi32>
 // CHECK:         aiex.npu.dma_memcpy_nd
 // CHECK-SAME:            %[[ARG0]][0, 0, 0, 32][1, 1, 32, 32][0, 0, 64, 1]
 // CHECK-SAME:            issue_token = true
@@ -697,7 +697,7 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 // CHECK:         aie.objectfifo @[[OBJ1:.*]](%[[TILE_0_0]], {%[[TILE_0_1]]}, 2 : i32) : !aie.objectfifo<memref<1024xbf16, 1>>
 // CHECK:         aie.objectfifo @[[OBJ2:.*]](%[[TILE_0_1]]
 // CHECK-SAME:         %[[TILE_0_0]]}, 4 : i32) : !aie.objectfifo<memref<1024xf32, 1>>
-// CHECK:         func.func @bf16_f32_lit_test
+// CHECK:         aiex.runtime_sequence @bf16_f32_lit_test
 // CHECK-SAME:         (%[[LHS:.*]]: memref<32x32xbf16>, %[[RHS:.*]]: memref<32x32xbf16>, %[[OUT:.*]]: memref<32x32xf32>) {
 // CHECK:           aiex.npu.dma_memcpy_nd
 // CHECK-SAME:          %[[OUT]][0, 0, 0, 0][1, 1, 1, 1024][0, 0, 0, 1]
@@ -838,7 +838,7 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 // CHECK:         }
 // CHECK:         aie.objectfifo.release
 // CHECK-SAME:    @[[OBJ1]]
-// CHECK:       func.func @large_example
+// CHECK:       aiex.runtime_sequence @large_example
 // CHECK-SAME:  %[[ARG0:.+]]: memref<32x64xi32>
 // CHECK:         aiex.npu.dma_memcpy_nd
 // CHECK-SAME:    %[[ARG0]]
