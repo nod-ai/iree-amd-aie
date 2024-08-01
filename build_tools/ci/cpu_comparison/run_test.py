@@ -9,6 +9,7 @@ import numpy as np
 import os
 from pathlib import Path
 import re
+from output_comparer import compare
 import subprocess
 from textwrap import dedent
 import time
