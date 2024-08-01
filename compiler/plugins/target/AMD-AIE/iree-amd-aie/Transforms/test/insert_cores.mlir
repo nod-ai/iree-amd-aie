@@ -12,6 +12,21 @@ func.func @insert_cores_with_non_normalized_forall() {
 
 // -----
 
+// expected-error @+1 {{has 3 scf.forall operations, but 0 scf.forall operations with a thread mapping. Conservatively bailing, as running this pass on such a module is probably a mistake}}
+module{
+func.func @insert_cores_with_non_normalized_forall() {
+  scf.forall (%arg0, %arg1) in (1, 1) {
+    scf.forall (%arg2, %arg3) = (0, 0) to (4, 4) step (1, 1) {
+    } 
+    scf.forall (%arg2, %arg3) = (0, 0) to (2, 2) step (1, 1) {
+    } 
+  } 
+  return
+}
+}
+
+// -----
+
 // CHECK-LABEL: @insert_cores
 // CHECK:       scf.forall (%[[ARG0:.*]], %[[ARG1:.*]]) in (1, 1) {
 // CHECK:         scf.forall (%[[ARG2:.*]], %[[ARG3:.*]]) in (1, 2) {

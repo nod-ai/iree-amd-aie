@@ -7,14 +7,12 @@
 #ifndef IREE_AMD_AIE_TRANSFORMS_AMDAIEOPUTILS_H_
 #define IREE_AMD_AIE_TRANSFORMS_AMDAIEOPUTILS_H_
 
-#include "mlir/Dialect/SCF/IR/SCF.h"
-#include "mlir/IR/Block.h"
 #include "mlir/IR/Operation.h"
 
 namespace mlir::iree_compiler::AMDAIE {
 
 /// Return a vector of the parent operations that are of type 'OpTy', including
-/// this op if it has type 'OpTy'
+/// argument 'op' if it has type 'OpTy'
 template <typename OpTy>
 SmallVector<OpTy> getInclusiveParentsOfType(Operation *op) {
   SmallVector<OpTy> res;
@@ -25,6 +23,15 @@ SmallVector<OpTy> getInclusiveParentsOfType(Operation *op) {
     }
   } while ((current = current->getParentOp()));
   return res;
+}
+
+/// Return a vector of the parent operations that are of type 'OpTy', not
+/// including 'op'
+template <typename OpTy>
+SmallVector<OpTy> getParentsOfType(Operation *op) {
+  auto parent = op->getParentOp();
+  if (!parent) return {};
+  return getInclusiveParentsOfType<OpTy>(parent);
 }
 
 }  // namespace mlir::iree_compiler::AMDAIE

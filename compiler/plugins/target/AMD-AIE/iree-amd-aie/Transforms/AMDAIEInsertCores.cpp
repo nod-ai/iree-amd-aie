@@ -19,7 +19,9 @@
 #include "iree-amd-aie/Transforms/AMDAIEOpUtils.h"
 #include "iree-amd-aie/Transforms/Passes.h"
 #include "iree/compiler/Codegen/TransformStrategies/GPU/Common.h"
+#include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
+#include "mlir/IR/Block.h"
 
 #define DEBUG_TYPE "iree-amdaie-insert-cores"
 
@@ -29,8 +31,9 @@ namespace {
 
 /// Utility to map the parallel mapping attributes to the corresponding
 /// induction variables.
-void getAttributeMapping(SmallVector<scf::ForallOp> forallOps,
-                         DenseMap<Attribute, Value> &attrMapping) {
+DenseMap<Attribute, Value> getAttributeMapping(
+    const SmallVector<scf::ForallOp> &forallOps) {
+  DenseMap<Attribute, Value> attrMapping;
   for (auto forallOp : forallOps) {
     if (!forallOp.getMapping().has_value()) continue;
     SmallVector<Attribute> mapping =
@@ -38,48 +41,97 @@ void getAttributeMapping(SmallVector<scf::ForallOp> forallOps,
     auto ivs = forallOp.getInductionVars();
     for (auto &&[attr, iv] : llvm::zip(mapping, ivs)) attrMapping[attr] = iv;
   }
+  return attrMapping;
 }
+
+/// Partition of all scf.forall operations in the module into 3 sets: 
+///
+/// 1. parents: scf.forall operations that have a child with a thread mapping
+/// 2. innerMostThreadMapped: scf.forall operations that have a thread mapping,
+///    and have no child with a thread mapping
+/// 3. notThreadMapped: scf.forall operations that have no thread mapping, and
+///    have no child with a thread mapping
+struct ForallsPartition {
+
+  DenseSet<scf::ForallOp> parents;
+  SmallVector<scf::ForallOp> innerMostThreadMapped;
+  SmallVector<scf::ForallOp> notThreadMapped;
+  uint32_t numForalls;
+
+  ForallsPartition(ModuleOp moduleOp) {
+    numForalls = 0;
+
+    // Visit all scf.forall operations in the module in post order (most nested
+    // to least nested). 
+    moduleOp->walk<WalkOrder::PostOrder>([&](scf::ForallOp forallOp) {
+      ++numForalls;
+
+      // Ops which are ancestors of ops with thread mappings will have already
+      // been inserted into the parents set.
+      if (parents.contains(forallOp)) return WalkResult::advance();
+
+      bool hasThreadMapping = [&]() {
+        auto maybeMapping = forallOp.getMapping();
+        if (!maybeMapping) return false;
+        auto mapping = llvm::to_vector(maybeMapping->getValue());
+        if (mapping.empty()) return false;
+        if (!isa<mlir::gpu::GPUThreadMappingAttr>(*mapping.begin()))
+          return false;
+        return true;
+      }();
+
+      if (!hasThreadMapping) {
+        notThreadMapped.push_back(forallOp);
+        return WalkResult::advance();
+      }
+
+      innerMostThreadMapped.push_back(forallOp);
+      auto parentForallOps = getParentsOfType<scf::ForallOp>(forallOp);
+      for (auto parentForallOp : parentForallOps) {
+        parents.insert(parentForallOp);
+      }
+      return WalkResult::advance();
+    });
+
+    assert(numForalls == innerMostThreadMapped.size() +
+                             notThreadMapped.size() +
+                             parents.size() &&
+           "Expected complete partition of foralls");
+  }
+};
 
 /// Insert core ops inside innermost forall ops around computational ops and
 /// add synchronization ops along the way to synchronize with surrounding
 /// dma ops.
-LogicalResult insertCoreOps(mlir::ModuleOp moduleOp) {
+LogicalResult
+insertCoreOps(mlir::ModuleOp moduleOp) {
   IRRewriter rewriter(moduleOp.getContext());
 
-  // Currently, innermost `scf.forall` operations are expected to have thread
-  // mapping. If none of the scf.forall operations has a thread mapping,
-  // the pass fails.
-  uint32_t numForallsWithThreadMapping = 0;
-  uint32_t numForalls = 0;
+  ForallsPartition foralls(moduleOp);
 
-  WalkResult res = moduleOp->walk([&](scf::ForallOp forallOp) {
-    bool hasThreadMapping = [&]() {
-      auto maybeMapping = forallOp.getMapping();
-      if (!maybeMapping) return false;
-      auto mapping = llvm::to_vector(maybeMapping->getValue());
-      if (mapping.empty()) return false;
-      if (!isa<mlir::gpu::GPUThreadMappingAttr>(*mapping.begin())) return false;
-      return true;
-    }();
+  if (foralls.innerMostThreadMapped.size() == 0 && foralls.numForalls != 0) {
+    moduleOp.emitOpError()
+        << "has " << foralls.numForalls
+        << " scf.forall operations, but 0 scf.forall operations with a thread "
+           "mapping. Conservatively bailing, as running this pass on such a "
+           "module is probably a mistake.";
+    return failure();
+  }
 
-    ++numForalls;
-    if (!hasThreadMapping) return WalkResult::advance();
-    ++numForallsWithThreadMapping;
-
+  for (auto forallOp : foralls.innerMostThreadMapped) {
     if (!forallOp.isNormalized()) {
-      forallOp.emitOpError()
-          << "scf.forall operations must be normalized before core "
-             "operation insertion";
-      return WalkResult::interrupt();
+      return forallOp.emitOpError()
+             << "scf.forall operations must be normalized before core "
+                "operation insertion";
     }
-    auto parentOps = getInclusiveParentsOfType<scf::ForallOp>(forallOp);
+  }
 
-    DenseMap<Attribute, Value> attrMapping;
-    getAttributeMapping(parentOps, attrMapping);
+  for (auto forallOp : foralls.innerMostThreadMapped) {
+    auto parentOps = getInclusiveParentsOfType<scf::ForallOp>(forallOp);
+    DenseMap<Attribute, Value> attrMapping = getAttributeMapping(parentOps);
     if (!attrMapping.contains(gpu::threadX(forallOp->getContext())) ||
         !attrMapping.contains(gpu::threadY(forallOp->getContext()))) {
-      forallOp.emitOpError() << "no forall with thread mapping found";
-      return WalkResult::interrupt();
+      return forallOp.emitOpError() << "no forall with thread mapping found";
     }
     Value threadX = attrMapping[gpu::threadX(forallOp->getContext())];
     Value threadY = attrMapping[gpu::threadY(forallOp->getContext())];
@@ -87,7 +139,6 @@ LogicalResult insertCoreOps(mlir::ModuleOp moduleOp) {
     rewriter.setInsertionPoint(forallOp.getBody()->getTerminator());
     auto coreOp = rewriter.create<AMDAIE::CoreOp>(rewriter.getUnknownLoc(),
                                                   threadX, threadY);
-
     Region &region = coreOp.getRegion();
     Block *newBlock = rewriter.createBlock(&region);
     rewriter.setInsertionPointToStart(newBlock);
@@ -159,18 +210,7 @@ LogicalResult insertCoreOps(mlir::ModuleOp moduleOp) {
       }
       return WalkResult::advance();
     });
-    if (forallRes.wasInterrupted()) return WalkResult::interrupt();
-    return WalkResult::advance();
-  });
-  if (res.wasInterrupted()) return failure();
-
-  if (numForalls > 0 && numForallsWithThreadMapping == 0) {
-    moduleOp.emitOpError()
-        << "has " << numForalls
-        << " scf.forall operations, but none has a (non-empty) thread "
-           "mapping. Conservatively bailing, as running this pass on such a "
-           "module is probably a mistake.";
-    return failure();
+    if (forallRes.wasInterrupted()) return failure();
   }
   return success();
 }
