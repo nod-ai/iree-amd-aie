@@ -548,6 +548,8 @@ struct AMDAIEDeviceModel getDeviceModel(AMDAIEDevice device) {
 /// ======================================================================
 
 std::string to_string(const int &value) { return std::to_string(value); }
+std::string to_string(const uint32_t &value) { return std::to_string(value); }
+std::string to_string(const uint64_t &value) { return std::to_string(value); }
 
 std::string to_string(const StrmSwPortType &value) {
   switch (value) {
@@ -636,6 +638,28 @@ std::string to_string(const AMDAIETileType &value) {
   llvm::report_fatal_error("Unhandled AMDAIETileType case");
 }
 
+std::string to_string(const XAie_TxnOpcode &value) {
+  switch (value) {
+    STRINGIFY_ENUM_CASE(XAie_TxnOpcode::XAIE_IO_WRITE)
+    STRINGIFY_ENUM_CASE(XAie_TxnOpcode::XAIE_IO_BLOCKWRITE)
+    STRINGIFY_ENUM_CASE(XAie_TxnOpcode::XAIE_IO_BLOCKSET)
+    STRINGIFY_ENUM_CASE(XAie_TxnOpcode::XAIE_IO_MASKWRITE)
+    STRINGIFY_ENUM_CASE(XAie_TxnOpcode::XAIE_IO_MASKPOLL)
+    STRINGIFY_ENUM_CASE(XAie_TxnOpcode::XAIE_CONFIG_SHIMDMA_BD)
+    STRINGIFY_ENUM_CASE(XAie_TxnOpcode::XAIE_CONFIG_SHIMDMA_DMABUF_BD)
+    //    STRINGIFY_ENUM_CASE(XAie_TxnOpcode::XAIE_IO_CUSTOM_OP_BEGIN)
+    STRINGIFY_ENUM_CASE(XAie_TxnOpcode::XAIE_IO_CUSTOM_OP_TCT)
+    STRINGIFY_ENUM_CASE(XAie_TxnOpcode::XAIE_IO_CUSTOM_OP_DDR_PATCH)
+    STRINGIFY_ENUM_CASE(XAie_TxnOpcode::XAIE_IO_CUSTOM_OP_READ_REGS)
+    STRINGIFY_ENUM_CASE(XAie_TxnOpcode::XAIE_IO_CUSTOM_OP_RECORD_TIMER)
+    STRINGIFY_ENUM_CASE(XAie_TxnOpcode::XAIE_IO_CUSTOM_OP_MERGE_SYNC)
+    STRINGIFY_ENUM_CASE(XAie_TxnOpcode::XAIE_IO_CUSTOM_OP_NEXT)
+    STRINGIFY_ENUM_CASE(XAie_TxnOpcode::XAIE_IO_CUSTOM_OP_MAX)
+  }
+
+  llvm::report_fatal_error("Unhandled XAie_TxnOpcode case");
+}
+
 std::string to_string(const DMAChannelDir &value) {
   switch (value) {
     STRINGIFY_ENUM_CASE(DMAChannelDir::MM2S)
@@ -650,6 +674,21 @@ STRINGIFY_2TUPLE_STRUCT(TileLoc, col, row)
 STRINGIFY_2TUPLE_STRUCT(XAie_LocType, Col, Row)
 STRINGIFY_2TUPLE_STRUCT(XAie_Lock, LockId, LockVal)
 STRINGIFY_2TUPLE_STRUCT(XAie_Packet, PktId, PktType)
+
+std::string to_string(const XAie_OpHdr &t) {
+  std::string s =
+      "XAie_OpHdr(Op: " + to_string(static_cast<XAie_TxnOpcode>(t.Op));
+  s += ", Col: " + to_string(t.Col);
+  s += ", Row: " + to_string(t.Row) + ")";
+  return s;
+}
+
+STRINGIFY_5TUPLE_STRUCT(XAie_TxnCmd, Opcode, Mask, RegOff, Value, Size)
+STRINGIFY_4TUPLE_STRUCT(XAie_Write32Hdr, OpHdr, RegOff, Value, Size)
+STRINGIFY_5TUPLE_STRUCT(XAie_MaskWrite32Hdr, OpHdr, RegOff, Value, Mask, Size)
+STRINGIFY_4TUPLE_STRUCT(XAie_MaskPoll32Hdr, OpHdr, RegOff, Value, Size)
+STRINGIFY_5TUPLE_STRUCT(XAie_BlockWrite32Hdr, OpHdr, Col, Row, RegOff, Size)
+STRINGIFY_2TUPLE_STRUCT(XAie_CustomOpHdr, OpHdr, Size)
 
 BOTH_OSTREAM_OPS_FORALL_TYPES(OSTREAM_OP_DEFN, BOTH_OSTREAM_OP)
 

@@ -36,11 +36,8 @@
 #include "windows.h"
 // For UUID stuff
 #include "rpcdce.h"
-
-#define setenv(name, var, ignore) _putenv_s(name, var)
 #else
 #include <uuid/uuid.h>
-
 #endif
 
 // This is a string that contains the wrapped chess intrinsics (see top of the
@@ -104,6 +101,20 @@ FailureOr<Path> findVitis(std::optional<Path> &vitisDir) {
     return failure();
   }
 
+  const char *licenseFile = ::getenv("XILINXD_LICENSE_FILE");
+  if (!licenseFile) {
+    licenseFile = ::getenv("LM_LICENSE_FILE");
+    if (!licenseFile) {
+      llvm::errs() << "ERROR: either XILINXD_LICENSE_FILE or LM_LICENSE_FILE "
+                      "must be set\n";
+      return failure();
+    }
+    if (!std::filesystem::exists(licenseFile)) {
+      llvm::errs() << "ERROR: license file" << licenseFile << " does not exist";
+      return failure();
+    }
+  }
+
   Path aieToolsPath = *vitisDir / "aietools";
   if (!std::filesystem::exists(aieToolsPath)) {
     llvm::errs() << "ERROR: couldn't find aietools directory\n";
@@ -113,13 +124,6 @@ FailureOr<Path> findVitis(std::optional<Path> &vitisDir) {
   Path chessccPath =
       aieToolsPath / "tps" / "lnx64" / "target_aie_ml" / "bin" / "LNa64bin";
 
-  Path path(::getenv("PATH"));
-  ::setenv("PATH",
-           (chessccPath.string() + std::string{sys::EnvPathSeparator} +
-            path.string())
-               .c_str(),
-           1);
-
   if (!std::filesystem::exists(chessccPath / "chess-clang")) {
     llvm::errs() << "ERROR: couldn't find chess-clang\n";
     return failure();
@@ -128,18 +132,6 @@ FailureOr<Path> findVitis(std::optional<Path> &vitisDir) {
     llvm::errs() << "ERROR: couldn't find chess-llvm-link\n";
     return failure();
   }
-
-  Path lnx64o = aieToolsPath / "lib" / "lnx64.o";
-  Path dotLib = aieToolsPath / "lnx64" / "tools" / "dot" / "lib";
-  Path ldLibraryPath(::getenv("LD_LIBRARY_PATH"));
-  ::setenv(
-      "LD_LIBRARY_PATH",
-      (lnx64o.string() + std::string{sys::EnvPathSeparator} + dotLib.string() +
-       std::string{sys::EnvPathSeparator} + ldLibraryPath.string())
-          .c_str(),
-      1);
-
-  ::setenv("RDI_DATADIR", (aieToolsPath / "data").c_str(), 1);
 
   return *vitisDir;
 }
@@ -164,12 +156,35 @@ std::pair<std::string, std::vector<std::string>> makeChessArgs(Path &vitisDir,
       // for adf headers
       "-D__AIENGINE__",
       // for aie_api headers
-      "-D__AIE_ARCH__=20",
+      "-D__AIE_ARCH__=20", "-D__AIEARCH__=20",
       // for aie_api headers
       "-I" + (aieToolsDir / "include").string()};
   // disassemble output
   if (verbose) flags.emplace_back("-d");
   return {aieToolsDir / "bin" / "unwrapped" / "lnx64.o" / "xchesscc", flags};
+}
+
+std::vector<std::string> makeChessEnv(Path &vitisDir) {
+  Path aieToolsPath = vitisDir / "aietools";
+  Path chessccPath =
+      aieToolsPath / "tps" / "lnx64" / "target_aie_ml" / "bin" / "LNa64bin";
+  Path path(::getenv("PATH"));
+  Path lnx64o = aieToolsPath / "lib" / "lnx64.o";
+  Path dotLib = aieToolsPath / "lnx64" / "tools" / "dot" / "lib";
+  Path ldLibraryPath(::getenv("LD_LIBRARY_PATH"));
+
+  std::string pathEnv = "PATH=" + chessccPath.string() +
+                        std::string{sys::EnvPathSeparator} + path.string();
+  std::string ldLibEnv = "LD_LIBRARY_PATH=" + lnx64o.string() +
+                         std::string{sys::EnvPathSeparator} + dotLib.string() +
+                         std::string{sys::EnvPathSeparator} +
+                         ldLibraryPath.string();
+  std::string rdiDataEnv = "RDI_DATADIR=" + (aieToolsPath / "data").string();
+  const char *licenseFile = ::getenv("XILINXD_LICENSE_FILE");
+  if (!licenseFile) licenseFile = ::getenv("LM_LICENSE_FILE");
+  std::string licenseFileEnv =
+      "XILINXD_LICENSE_FILE=" + std::string(licenseFile);
+  return {pathEnv, ldLibEnv, rdiDataEnv, licenseFileEnv};
 }
 
 std::optional<std::string> dumpStrToDisk(const std::string &payload,
@@ -211,7 +226,7 @@ static std::string getUUIDString() {
 //  -- an empty optional, if the tool fails to run.
 static std::optional<std::string> runTool(
     const std::string &program, const std::vector<std::string> &args,
-    bool verbose, std::optional<ArrayRef<StringRef>> env = std::nullopt) {
+    bool verbose, std::optional<std::vector<std::string>> env = std::nullopt) {
   if (verbose) {
     llvm::outs() << "Run: ";
     if (env)
@@ -251,7 +266,9 @@ static std::optional<std::string> runTool(
       std::string(temporaryPath.begin(), temporaryPath.size());
   StringRef temporaryPathRef(temporaryPathStr);
   auto tp = std::optional<StringRef>(temporaryPathRef);
-  int result = sys::ExecuteAndWait(program, pArgs, env,
+  llvm::SmallVector<llvm::StringRef> envSmallVec;
+  if (env) envSmallVec.append(env->begin(), env->end());
+  int result = sys::ExecuteAndWait(program, pArgs, envSmallVec,
                                    /* redirects */ {tp, tp, tp}, 0, 0, &errMsg,
                                    nullptr, &optStats);
 
@@ -303,11 +320,34 @@ static LogicalResult assembleFileUsingChess(
   args.emplace_back(inputFile);
   args.emplace_back("-o");
   args.emplace_back(outputFile);
-  if (!runTool(xChessCCExe, args, verbose)) {
+  std::vector<std::string> env = makeChessEnv(vitisDir);
+  if (!runTool(xChessCCExe, args, verbose, env)) {
     llvm::errs() << "Failed to assemble " << inputFile << " with chess";
     return failure();
   }
+
   return success();
+}
+
+std::vector<std::string> makePeanoOptArgs() {
+  return {
+      // peano has no proper vectorization cost model for AIE
+      "-vectorize-loops=false",
+      //
+      "-vectorize-slp=false",
+      // An if-then-else cascade requires at least 5 delay slots for
+      // evaluating the condition and 5 delay slots for one of the
+      // branches, thus speculating 10 instructions should be fine
+      "--two-entry-phi-node-folding-threshold=10",
+      // Make sure to perform most optimizations before mandatory
+      // inlinings, otherwise noalias attributes can get lost and
+      // hurt AA results.
+      "-mandatory-inlining-before-opt=false",
+      // complete AA analysis on phi nodes.
+      "-basic-aa-full-phi-analysis=true",
+      // Extend the max limit of the search depth in BasicAA
+      "-basic-aa-max-lookup-search-depth=10",
+  };
 }
 
 static LogicalResult assembleFileUsingPeano(
@@ -320,6 +360,19 @@ static LogicalResult assembleFileUsingPeano(
   args.emplace_back("-O2");
   // TODO(max): pipe target arch in somehow
   args.emplace_back("--target=aie2-none-unknown-elf");
+  std::vector<std::string> peanoArgs = makePeanoOptArgs();
+  args.reserve(args.size() + peanoArgs.size());
+  for (const auto &item : peanoArgs) {
+    args.emplace_back("-mllvm");
+    args.emplace_back(item);
+  }
+  args.emplace_back("-fno-use-init-array");
+  // Pass -fno-threadsafe-statics to prevent dependence on lock acquire/release
+  // handling for static local variables.
+  args.emplace_back("-fno-threadsafe-statics");
+  // Don't pull in system headers from /usr/include or /usr/local/include.
+  // All of the basic headers that we need come from the compiler.
+  args.emplace_back("-nostdsysteminc");
   args.emplace_back("-c");
   args.emplace_back(inputFile);
   args.emplace_back("-o");
@@ -475,7 +528,8 @@ static LogicalResult generateCoreElfFiles(
       chessArgs.emplace_back(bcfPath);
       chessArgs.emplace_back("-o");
       chessArgs.emplace_back(elfFile);
-      if (!runTool(xChessCCExe, chessArgs, verbose)) {
+      std::vector<std::string> env = makeChessEnv(*vitisDir);
+      if (!runTool(xChessCCExe, chessArgs, verbose, env)) {
         llvm::errs() << "Failed to link with xbridge";
         return failure();
       }
@@ -960,10 +1014,14 @@ static LogicalResult generateUnifiedObject(
     Path peanoLLCBin = peanoDir / "bin" / "llc";
 
     Path OptLLVMIRFile = tempDir / "input.opt.ll";
-    if (!runTool(peanoOptBin,
-                 {"-O2", "--inline-threshold=10", "-S", std::string(LLVMIRFile),
-                  "--disable-builtin=memset", "-o", std::string(OptLLVMIRFile)},
-                 verbose)) {
+    std::vector<std::string> args{
+        "-O2", "--inline-threshold=10", "-S", std::string(LLVMIRFile),
+        // missing from libc
+        "--disable-builtin=memset", "-o", std::string(OptLLVMIRFile)};
+    std::vector<std::string> peanoArgs = makePeanoOptArgs();
+    args.reserve(args.size() + peanoArgs.size());
+    args.insert(args.end(), peanoArgs.begin(), peanoArgs.end());
+    if (!runTool(peanoOptBin, args, verbose)) {
       llvm::errs() << "Failed to optimize ll with peano";
       return failure();
     }

@@ -77,6 +77,22 @@
     return s;                                                       \
   }
 
+#define STRINGIFY_5TUPLE_STRUCT(Type, first, second, third, fourth, fifth) \
+  std::string to_string(const Type& t) {                                   \
+    std::string s = #Type "(" #first ": ";                                 \
+    s += to_string(t.first);                                               \
+    s += ", " #second ": ";                                                \
+    s += to_string(t.second);                                              \
+    s += ", " #third ": ";                                                 \
+    s += to_string(t.third);                                               \
+    s += ", " #fourth ": ";                                                \
+    s += to_string(t.fourth);                                              \
+    s += ", " #fifth ": ";                                                 \
+    s += to_string(t.fifth);                                               \
+    s += ")";                                                              \
+    return s;                                                              \
+  }
+
 #define ASSERT_STANDARD_LAYOUT(p)             \
   static_assert(std::is_standard_layout_v<p>, \
                 #p " is meant to be a standard layout type")
