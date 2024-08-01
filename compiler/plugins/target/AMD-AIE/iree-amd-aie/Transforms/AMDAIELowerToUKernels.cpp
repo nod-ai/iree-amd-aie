@@ -80,6 +80,31 @@ static FnNameAndDefAttrs getFnNameAndDefAttrs(RewriterBase &rewriter,
 /// ================== SAME UTILITIES AS IREE LLVMCPU ====================
 /// ======================================================================
 
+/// Utility to fetch the element type as string.
+static std::string typeToString(Type type) {
+  std::string typeStr;
+  llvm::raw_string_ostream rso(typeStr);
+  type.print(rso);
+  return typeStr;
+}
+
+/// We need to fetch the tiling at M, N and K for the input tensors along with
+/// the intrinsics that the ukernel supports. The following utility helps us
+/// fetch the same.
+static std::tuple<int, int, int, int> getTilingInfo(ShapedType shapedType) {
+  SmallVector<int64_t> shapeVec(shapedType.getShape());
+  int index = 0;
+  if (shapeVec.size() == 6) {
+    index = 2;
+  } else {
+    assert(shapeVec.size() == 4 &&
+           "lhs/rhs/out shape should have rank either 4 or 6");
+  }
+  int M = shapeVec[index + 1] * shapeVec[index + 2];
+  int N = shapeVec[index] * shapeVec[index + 3];
+  return {M, N, shapeVec[index + 2], shapeVec[index + 3]};
+}
+
 /// Matches a linalg.generic operation which is basically a tiled matmul and
 /// converts it into a iree_codegen.ukernel."iree_amdaie_uk_matmul" operation,
 /// that is later lowered into a call to the microkernel.
@@ -93,33 +118,29 @@ static FailureOr<IREE::Codegen::UKernelOpInterface> matchDAGForUKernel(
   Value lhs = op.getDpsInputOperand(0)->get();
   Value rhs = op.getDpsInputOperand(1)->get();
   Value out = op.getDpsInitOperand(0)->get();
+  auto lhsType = llvm::cast<ShapedType>(lhs.getType());
+  auto rhsType = llvm::cast<ShapedType>(rhs.getType());
   auto outType = llvm::cast<ShapedType>(out.getType());
-  Type lhsElemType = llvm::cast<ShapedType>(lhs.getType()).getElementType();
-  Type rhsElemType = llvm::cast<ShapedType>(rhs.getType()).getElementType();
+  Type lhsElemType = lhsType.getElementType();
+  Type rhsElemType = rhsType.getElementType();
   Type outElemType = outType.getElementType();
 
-  std::string inputOutputElemType = "";
-  if (lhsElemType.isSignlessInteger(32) && rhsElemType.isSignlessInteger(32) &&
-      outElemType.isSignlessInteger(32)) {
-    inputOutputElemType = "i32_i32";
-  } else if (lhsElemType.isBF16() && rhsElemType.isBF16() &&
-             outElemType.isBF16()) {
-    inputOutputElemType = "bf16_bf16";
-  } else if (lhsElemType.isBF16() && rhsElemType.isBF16() &&
-             outElemType.isF32()) {
-    inputOutputElemType = "bf16_f32";
-  } else if (lhsElemType.isF32() && rhsElemType.isF32() &&
-             outElemType.isF32()) {
-    inputOutputElemType = "f32_f32";
-  } else {
-    return rewriter.notifyMatchFailure(
-        op, "unsupported combination of element types for microkernel");
-  }
+  // Tiling for M x K x N as well as the corresponding inner tiling intrinsics
+  // r x s x t.
+  int M, N, K, r, s, t;
+  std::tie(M, K, r, s) = getTilingInfo(lhsType);
+  std::tie(std::ignore, N, std::ignore, t) = getTilingInfo(outType);
+  std::string inputOutputElemTypeAndSize =
+      typeToString(lhsElemType) + "_" + typeToString(rhsElemType) + "_" +
+      typeToString(outElemType) + "_" + std::to_string(M) + "x" +
+      std::to_string(N) + "x" + std::to_string(K) + "_" + std::to_string(r) +
+      "x" + std::to_string(s) + "x" + std::to_string(t);
 
   Location loc = op.getLoc();
 
-  auto fn = getFnNameAndDefAttrs(rewriter, ukernelName, inputOutputElemType,
-                                 pathToUkernels, "mm.o");
+  auto fn =
+      getFnNameAndDefAttrs(rewriter, ukernelName, inputOutputElemTypeAndSize,
+                           pathToUkernels, "mm.o");
 
   // Create UKernel for AMD-AIE.
   auto genericMicroKernelOp = rewriter.create<IREE::Codegen::UKernelGenericOp>(
@@ -148,19 +169,16 @@ static FailureOr<IREE::Codegen::UKernelOpInterface> matchDAGForUKernel(
   auto outType = llvm::cast<ShapedType>(output.getType());
   Type outElemType = outType.getElementType();
 
-  std::string elemType = "";
-  if (outElemType.isBF16()) {
-    elemType = "bf16";
-  } else if (outElemType.isF32()) {
-    elemType = "f32";
-  } else {
-    return rewriter.notifyMatchFailure(
-        op, "unsupported combination of element types for microkernel");
-  }
+  // Tiling for M x N as well as the corresponding inner tiling intrinsics r x
+  // t.
+  int M, N, r, t;
+  std::tie(M, N, r, t) = getTilingInfo(outType);
+  std::string elemTypeAndSize = typeToString(outElemType) + "_" +
+                                std::to_string(M) + "x" + std::to_string(N);
 
   Location loc = op.getLoc();
 
-  auto fn = getFnNameAndDefAttrs(rewriter, ukernelName, elemType,
+  auto fn = getFnNameAndDefAttrs(rewriter, ukernelName, elemTypeAndSize,
                                  pathToUkernels, "mm.o");
 
   // Create UKernel for AMD-AIE.
