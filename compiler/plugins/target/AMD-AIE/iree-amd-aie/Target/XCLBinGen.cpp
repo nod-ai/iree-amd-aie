@@ -266,7 +266,8 @@ static std::optional<std::string> runTool(
       std::string(temporaryPath.begin(), temporaryPath.size());
   StringRef temporaryPathRef(temporaryPathStr);
   auto tp = std::optional<StringRef>(temporaryPathRef);
-  llvm::SmallVector<llvm::StringRef> envSmallVec(env->begin(), env->end());
+  llvm::SmallVector<llvm::StringRef> envSmallVec;
+  if (env) envSmallVec.append(env->begin(), env->end());
   int result = sys::ExecuteAndWait(program, pArgs, envSmallVec,
                                    /* redirects */ {tp, tp, tp}, 0, 0, &errMsg,
                                    nullptr, &optStats);
