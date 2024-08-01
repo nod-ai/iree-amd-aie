@@ -84,7 +84,7 @@ def shell_out(cmd: list, workdir=None, verbose=False):
     return stdout_decode, stderr_decode
 
 
-def generate_aie_artefacts(
+def generate_aie_vmfb(
     config,
     name,
     tile_pipeline,
@@ -95,8 +95,8 @@ def generate_aie_artefacts(
     function_name,
 ):
     """
-    Compile a test file for IREE's AIE backend, returning paths to
-    compiled artefacts.
+    Compile a test file for IREE's AIE backend, returning path to the compiled
+    module.
     """
 
     compilation_flags = [
@@ -132,7 +132,7 @@ def generate_aie_artefacts(
     if not aie_vmfb.exists():
         raise RuntimeError(f"Failed to compile {test_file} to {aie_vmfb}")
 
-    return {"vmfb_path": aie_vmfb}
+    return aie_vmfb
 
 
 def generate_aie_output(config, aie_vmfb, input_args, function_name, name):
@@ -413,7 +413,7 @@ def aie_vs_baseline(
 
     name = name_from_mlir_filename(test_file)
 
-    aie_artefacts = generate_aie_artefacts(
+    aie_vmfb = generate_aie_vmfb(
         config,
         name,
         tile_pipeline,
@@ -423,8 +423,6 @@ def aie_vs_baseline(
         input_args,
         function_name,
     )
-
-    aie_vmfb = aie_artefacts["vmfb_path"]
 
     if config.do_not_run_aie:
         if config.verbose:
