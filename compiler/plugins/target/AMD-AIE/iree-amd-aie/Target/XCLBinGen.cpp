@@ -744,6 +744,13 @@ static LogicalResult generateXCLBin(
     Path bootgenBin = amdAIEInstallDir / "bin" / "amdaie_bootgen";
     if (!std::filesystem::exists(bootgenBin)) {
       bootgenBin = amdAIEInstallDir / "tools" / "amdaie_bootgen";
+      if (!std::filesystem::exists(bootgenBin)) {
+        llvm::errs() << "Could not find bin/amdaie_bootgen or "
+                        "tools/amdaie_bootgen at location "
+                     << amdAIEInstallDir
+                     << ". Check your --iree-amd-aie-install-dir flag";
+        return failure();
+      }
     }
     if (!runTool(bootgenBin, flags, verbose)) {
       llvm::errs() << "failed to execute bootgen";
