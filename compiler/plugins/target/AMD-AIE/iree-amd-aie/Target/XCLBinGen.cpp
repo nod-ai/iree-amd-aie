@@ -17,6 +17,7 @@
 #include "aie/Targets/AIETargets.h"
 #include "aievec/Passes.h"
 #include "iree-amd-aie/Transforms/Passes.h"
+#include "iree/compiler/Utils/ToolUtils.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/JSON.h"
@@ -142,6 +143,28 @@ FailureOr<Path> findVitis(std::optional<Path> &vitisDir) {
   ::setenv("RDI_DATADIR", (aieToolsPath / "data").c_str(), 1);
 
   return *vitisDir;
+}
+
+static FailureOr<Path> findAieamdTool(std::string toolName,
+                                      const Path &amdAIEInstallDir) {
+  Path bootgenBin = "";
+  if (!amdAIEInstallDir.empty()) {
+    bootgenBin = amdAIEInstallDir / toolName;
+    if (llvm::sys::fs::exists(bootgenBin.native())) return bootgenBin;
+
+    bootgenBin = amdAIEInstallDir / "bin" / toolName;
+    if (llvm::sys::fs::exists(bootgenBin.native())) return bootgenBin;
+
+    bootgenBin = amdAIEInstallDir / "tools" / toolName;
+    if (llvm::sys::fs::exists(bootgenBin.native())) return bootgenBin;
+  }
+
+  bootgenBin = mlir::iree_compiler::findTool(toolName);
+  if (llvm::sys::fs::exists(bootgenBin.native())) return bootgenBin;
+
+  llvm::errs() << "Could not find " << toolName
+               << ". Check your --iree-amd-aie-install-dir flag";
+  return failure();
 }
 
 std::pair<std::string, std::vector<std::string>> makeChessArgs(Path &vitisDir,
@@ -741,18 +764,11 @@ static LogicalResult generateXCLBin(
                                    "-o",     tempDir / "design.pdi",
                                    "-w"};
 
-    Path bootgenBin = amdAIEInstallDir / "bin" / "amdaie_bootgen";
-    if (!std::filesystem::exists(bootgenBin)) {
-      bootgenBin = amdAIEInstallDir / "tools" / "amdaie_bootgen";
-      if (!std::filesystem::exists(bootgenBin)) {
-        llvm::errs() << "Could not find bin/amdaie_bootgen or "
-                        "tools/amdaie_bootgen at location "
-                     << amdAIEInstallDir
-                     << ". Check your --iree-amd-aie-install-dir flag";
-        return failure();
-      }
-    }
-    if (!runTool(bootgenBin, flags, verbose)) {
+    FailureOr<Path> bootgenBin =
+        findAieamdTool("amdaie_bootgen", amdAIEInstallDir);
+
+    if (!succeeded(bootgenBin) ||
+        !runTool(bootgenBin.value(), flags, verbose)) {
       llvm::errs() << "failed to execute bootgen";
       return failure();
     }
@@ -761,10 +777,9 @@ static LogicalResult generateXCLBin(
   // Execute the xclbinutil command.
   std::string memArg = "MEM_TOPOLOGY:JSON:" + memTopologyJsonFile.string();
   std::string partArg = "AIE_PARTITION:JSON:" + aiePartitionJsonFile.string();
-  Path xclbinutilBin = amdAIEInstallDir / "bin" / "amdaie_xclbinutil";
-  if (!std::filesystem::exists(xclbinutilBin)) {
-    xclbinutilBin = amdAIEInstallDir / "tools" / "amdaie_xclbinutil";
-  }
+  FailureOr<Path> xclbinutilBin =
+      findAieamdTool("amdaie_xclbinutil", amdAIEInstallDir);
+
   {
     if (inputXclbin) {
       // Create aie_partition.json.
@@ -774,7 +789,8 @@ static LogicalResult generateXCLBin(
       std::vector<std::string> inputFlags{"--dump-section", inputPartArg,
                                           "--force", "--input", *inputXclbin};
 
-      if (!runTool(xclbinutilBin, inputFlags, verbose)) {
+      if (!succeeded(xclbinutilBin) ||
+          !runTool(xclbinutilBin.value(), inputFlags, verbose)) {
         llvm::errs() << "failed to execute xclbinutil";
         return failure();
       }
@@ -826,7 +842,8 @@ static LogicalResult generateXCLBin(
                  {"--add-kernel", kernelsJsonFile, "--add-replace-section",
                   partArg, "--force", "--output", std::string(Output)});
 
-    if (!runTool(xclbinutilBin, flags, verbose)) {
+    if (!succeeded(xclbinutilBin) ||
+        !runTool(xclbinutilBin.value(), flags, verbose)) {
       llvm::errs() << "failed to execute xclbinutil";
       return failure();
     }
