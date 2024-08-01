@@ -24,7 +24,7 @@ func.func @matmul_elementwise_i32(%lhs: tensor<1024x512xi32>, %rhs: tensor<512x1
 //       CHECK:    aie.shim_dma_allocation
 //       CHECK:    aie.shim_dma_allocation
 //       CHECK:    aie.shim_dma_allocation
-//       CHECK:    func.func @matmul_elementwise_i32_dispatch_0_matmul_1024x1024x512_i32(%arg0: memref<1024x512xi32>, %arg1: memref<512x1024xi32>, %arg2: memref<1024x1024xi32>, %arg3: memref<1024x1024xi32>)
+//       CHECK:    aiex.runtime_sequence @matmul_elementwise_i32_dispatch_0_matmul_1024x1024x512_i32(%arg0: memref<1024x512xi32>, %arg1: memref<512x1024xi32>, %arg2: memref<1024x1024xi32>, %arg3: memref<1024x1024xi32>)
 //       CHECK:      aiex.npu.dma_memcpy_nd
 //       CHECK:      aiex.npu.dma_memcpy_nd
 //       CHECK:      aiex.npu.dma_memcpy_nd
@@ -56,7 +56,7 @@ func.func @matmul_elementwise_bf16_f32(%arg0: tensor<1024x512xbf16>, %arg1: tens
 //       CHECK:    aie.shim_dma_allocation
 //       CHECK:    aie.shim_dma_allocation
 //       CHECK:    aie.shim_dma_allocation
-//       CHECK:    func.func @matmul_elementwise_bf16_f32_dispatch_0_matmul_1024x1024x512_bf16xbf16xf32(%arg0: memref<262144xi32>, %arg1: memref<262144xi32>, %arg2: memref<1024xf32>, %arg3: memref<1024x1024xf32>)
+//       CHECK:    aiex.runtime_sequence @matmul_elementwise_bf16_f32_dispatch_0_matmul_1024x1024x512_bf16xbf16xf32(%arg0: memref<262144xi32>, %arg1: memref<262144xi32>, %arg2: memref<1024xf32>, %arg3: memref<1024x1024xf32>)
 //       CHECK:      aiex.npu.dma_memcpy_nd
 //       CHECK:      aiex.npu.dma_memcpy_nd
 //       CHECK:      aiex.npu.dma_memcpy_nd
@@ -83,7 +83,7 @@ func.func @matmul_elementwise_bf16(%arg0: tensor<512x512xbf16>, %arg1: tensor<51
 //       CHECK:    aie.shim_dma_allocation
 //       CHECK:    aie.shim_dma_allocation
 //       CHECK:    aie.shim_dma_allocation
-//       CHECK:    func.func @matmul_elementwise_bf16_dispatch_0_matmul_512x16384x512_bf16xbf16xf32(%arg0: memref<131072xi32>, %arg1: memref<4194304xi32>, %arg2: memref<512xf32>, %arg3: memref<4194304xi32>)
+//       CHECK:    aiex.runtime_sequence @matmul_elementwise_bf16_dispatch_0_matmul_512x16384x512_bf16xbf16xf32(%arg0: memref<131072xi32>, %arg1: memref<4194304xi32>, %arg2: memref<512xf32>, %arg3: memref<4194304xi32>)
 //       CHECK:      aiex.npu.dma_memcpy_nd
 //       CHECK:      aiex.npu.dma_memcpy_nd
 //       CHECK:      aiex.npu.dma_memcpy_nd
