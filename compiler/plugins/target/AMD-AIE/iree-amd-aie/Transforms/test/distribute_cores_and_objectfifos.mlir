@@ -86,14 +86,14 @@ module {
 // CHECK-DAG:     %[[DMA_0:.*]] = amdaie.dma_cpy_nd(%[[FROM_MEMREF_2]]
 // CHECK-SAME:    %[[FROM_MEMREF_0]]
 // CHECK-DAG:     %[[CORE_0:.*]] = amdaie.core(%[[TILE_0_2]])
-// CHECK:           %[[VAL_0:.+]] = amdaie.logicalobjectfifo.access(%[[FROM_MEMREF_2]], Read)
 // CHECK:           amdaie.logicalobjectfifo.consume(%[[DMA_0]])
+// CHECK:           %[[VAL_0:.+]] = amdaie.logicalobjectfifo.access(%[[FROM_MEMREF_2]], Read)
 // CHECK:           linalg.fill ins(%{{.+}} : i32) outs(%[[VAL_0]] : memref<32x64xi32, 2>)
 // CHECK-DAG:     %[[DMA_1:.*]] = amdaie.dma_cpy_nd(%[[FROM_MEMREF_1]]
 // CHECK-SAME:    %[[FROM_MEMREF_0]]
 // CHECK-DAG:     %[[CORE_1:.*]] = amdaie.core(%[[TILE_1_2]])
-// CHECK:           %[[VAL_1:.+]] = amdaie.logicalobjectfifo.access(%[[FROM_MEMREF_1]], Read)
 // CHECK:           amdaie.logicalobjectfifo.consume(%[[DMA_1]])
+// CHECK:           %[[VAL_1:.+]] = amdaie.logicalobjectfifo.access(%[[FROM_MEMREF_1]], Read)
 // CHECK:           linalg.fill ins(%{{.+}} : i32) outs(%[[VAL_1]] : memref<32x64xi32, 2>)
 module {
   func.func @unroll_dma() {
@@ -141,12 +141,12 @@ module {
 // CHECK-DAG:     %[[DMA_0:.*]] = amdaie.dma_cpy_nd(%[[FROM_MEMREF_1]]
 // CHECK-SAME:    %[[FROM_MEMREF_0]]
 // CHECK-DAG:     %[[CORE_0:.*]] = amdaie.core(%[[TILE_0_2]])
-// CHECK:           %[[VAL_0:.+]] = amdaie.logicalobjectfifo.access(%[[FROM_MEMREF_1]], Read)
 // CHECK:           amdaie.logicalobjectfifo.consume(%[[DMA_0]])
+// CHECK:           %[[VAL_0:.+]] = amdaie.logicalobjectfifo.access(%[[FROM_MEMREF_1]], Read)
 // CHECK:           linalg.fill ins(%{{.+}} : i32) outs(%[[VAL_0]] : memref<32x64xi32, 2>)
 // CHECK-DAG:     %[[CORE_1:.*]] = amdaie.core(%[[TILE_1_2]])
-// CHECK:           %[[VAL_0:.+]] = amdaie.logicalobjectfifo.access(%[[FROM_MEMREF_1]], Read)
 // CHECK:           amdaie.logicalobjectfifo.consume(%[[DMA_0]])
+// CHECK:           %[[VAL_0:.+]] = amdaie.logicalobjectfifo.access(%[[FROM_MEMREF_1]], Read)
 // CHECK:           linalg.fill ins(%{{.+}} : i32) outs(%[[VAL_0]] : memref<32x64xi32, 2>)
 module {
   func.func @hoist_dma_single_loop() {
@@ -526,35 +526,35 @@ module {
 // CHECK-DAG:     %[[DMA_0:.*]] = amdaie.dma_cpy_nd(%[[FROM_MEMREF_1]][] [] [], %[[FROM_MEMREF_0]][%[[ARG1]]]
 // CHECK-DAG:     %[[DMA_1:.*]] = amdaie.dma_cpy_nd(%[[FROM_MEMREF_3]][] [] [], %[[FROM_MEMREF_1]]
 // CHECK-DAG:     %[[DMA_2:.*]] = amdaie.dma_cpy_nd(%[[FROM_MEMREF_8]][%c0, %c0] [%c1, %c1] [%c1, %c1], %[[FROM_MEMREF_4]]
-// CHECK-DAG:     %[[CORE_0_2:.*]] = amdaie.core(%[[TILE_0_2]])
-// CHECK-DAG:       %[[VAL_0:.+]] = amdaie.logicalobjectfifo.access(%[[FROM_MEMREF_4]], Write)
-// CHECK-DAG:       %[[VAL_1:.+]] = amdaie.logicalobjectfifo.access(%[[FROM_MEMREF_3]], Read)
-// CHECK-DAG:       amdaie.logicalobjectfifo.consume(%[[DMA_1]])
-// CHECK-DAG:       linalg.fill ins(%{{.+}} : i32) outs(%[[VAL_1]] : memref<32x64xi32, 2>)
-// CHECK-DAG:       linalg.fill ins(%{{.+}} : i32) outs(%[[VAL_0]] : memref<32x32xi32, 2>)
-// CHECK-DAG:     %[[DMA_3:.*]] = amdaie.dma_cpy_nd(%[[FROM_MEMREF_8]][%c0, %c1] [%c1, %c1] [%c1, %c1], %[[FROM_MEMREF_5]]
-// CHECK-DAG:     %[[CORE_1_2:.*]] = amdaie.core(%[[TILE_1_2]])
-// CHECK-DAG:       %[[VAL_0:.+]] = amdaie.logicalobjectfifo.access(%[[FROM_MEMREF_5]], Write)
-// CHECK-DAG:       %[[VAL_1:.+]] = amdaie.logicalobjectfifo.access(%[[FROM_MEMREF_3]], Read)
-// CHECK-DAG:       amdaie.logicalobjectfifo.consume(%[[DMA_1]])
-// CHECK-DAG:       linalg.fill ins(%{{.+}} : i32) outs(%[[VAL_1]] : memref<32x64xi32, 2>)
-// CHECK-DAG:       linalg.fill ins(%{{.+}} : i32) outs(%[[VAL_0]] : memref<32x32xi32, 2>)
+// CHECK:         %[[CORE_0_2:.*]] = amdaie.core(%[[TILE_0_2]])
+// CHECK:           amdaie.logicalobjectfifo.consume(%[[DMA_1]])
+// CHECK:           %[[VAL_1:.+]] = amdaie.logicalobjectfifo.access(%[[FROM_MEMREF_3]], Read)
+// CHECK:           linalg.fill ins(%{{.+}} : i32) outs(%[[VAL_1]] : memref<32x64xi32, 2>)
+// CHECK:           %[[VAL_0:.+]] = amdaie.logicalobjectfifo.access(%[[FROM_MEMREF_4]], Write)
+// CHECK:           linalg.fill ins(%{{.+}} : i32) outs(%[[VAL_0]] : memref<32x32xi32, 2>)
+// CHECK:         %[[DMA_3:.*]] = amdaie.dma_cpy_nd(%[[FROM_MEMREF_8]][%c0, %c1] [%c1, %c1] [%c1, %c1], %[[FROM_MEMREF_5]]
+// CHECK:         %[[CORE_1_2:.*]] = amdaie.core(%[[TILE_1_2]])
+// CHECK:           amdaie.logicalobjectfifo.consume(%[[DMA_1]])
+// CHECK:           %[[VAL_1:.+]] = amdaie.logicalobjectfifo.access(%[[FROM_MEMREF_3]], Read)
+// CHECK:           linalg.fill ins(%{{.+}} : i32) outs(%[[VAL_1]] : memref<32x64xi32, 2>)
+// CHECK:           %[[VAL_0:.+]] = amdaie.logicalobjectfifo.access(%[[FROM_MEMREF_5]], Write)
+// CHECK:           linalg.fill ins(%{{.+}} : i32) outs(%[[VAL_0]] : memref<32x32xi32, 2>)
 // CHECK-DAG:     %[[DMA_4:.*]] = amdaie.dma_cpy_nd(%[[FROM_MEMREF_2]][] [] [], %[[FROM_MEMREF_1]]
 // CHECK-DAG:     %[[DMA_5:.*]] = amdaie.dma_cpy_nd(%[[FROM_MEMREF_8]][%c1, %c0] [%c1, %c1] [%c1, %c1], %[[FROM_MEMREF_6]]
-// CHECK-DAG:     %[[CORE_0_3:.*]] = amdaie.core(%[[TILE_0_3]])
-// CHECK-DAG:       %[[VAL_0:.+]] = amdaie.logicalobjectfifo.access(%[[FROM_MEMREF_6]], Write)
-// CHECK-DAG:       %[[VAL_1:.+]] = amdaie.logicalobjectfifo.access(%[[FROM_MEMREF_2]], Read)
-// CHECK-DAG:       amdaie.logicalobjectfifo.consume(%[[DMA_4]])
-// CHECK-DAG:       linalg.fill ins(%{{.+}} : i32) outs(%[[VAL_1]] : memref<32x64xi32, 2>)
-// CHECK-DAG:       linalg.fill ins(%{{.+}} : i32) outs(%[[VAL_0]] : memref<32x32xi32, 2>)
-// CHECK-DAG:     %[[DMA_6:.*]] = amdaie.dma_cpy_nd(%[[FROM_MEMREF_8]][%c1, %c1] [%c1, %c1] [%c1, %c1], %[[FROM_MEMREF_7]]
-// CHECK-DAG:     %[[CORE_1_3:.*]] = amdaie.core(%[[TILE_1_3]])
-// CHECK-DAG:       %[[VAL_0:.+]] = amdaie.logicalobjectfifo.access(%[[FROM_MEMREF_7]], Write)
-// CHECK-DAG:       %[[VAL_1:.+]] = amdaie.logicalobjectfifo.access(%[[FROM_MEMREF_2]], Read)
-// CHECK-DAG:       amdaie.logicalobjectfifo.consume(%[[DMA_4]])
-// CHECK-DAG:       linalg.fill ins(%{{.+}} : i32) outs(%[[VAL_1]] : memref<32x64xi32, 2>)
-// CHECK-DAG:       linalg.fill ins(%{{.+}} : i32) outs(%[[VAL_0]] : memref<32x32xi32, 2>)
-// CHECK-DAG:     %[[DMA_7:.*]] = amdaie.dma_cpy_nd(%[[FROM_MEMREF_9]][%[[ARG1]]] [%c1] [%c1], %[[FROM_MEMREF_8]]
+// CHECK:         %[[CORE_0_3:.*]] = amdaie.core(%[[TILE_0_3]])
+// CHECK:           amdaie.logicalobjectfifo.consume(%[[DMA_4]])
+// CHECK:           %[[VAL_1:.+]] = amdaie.logicalobjectfifo.access(%[[FROM_MEMREF_2]], Read)
+// CHECK:           linalg.fill ins(%{{.+}} : i32) outs(%[[VAL_1]] : memref<32x64xi32, 2>)
+// CHECK:           %[[VAL_0:.+]] = amdaie.logicalobjectfifo.access(%[[FROM_MEMREF_6]], Write)
+// CHECK:           linalg.fill ins(%{{.+}} : i32) outs(%[[VAL_0]] : memref<32x32xi32, 2>)
+// CHECK:         %[[DMA_6:.*]] = amdaie.dma_cpy_nd(%[[FROM_MEMREF_8]][%c1, %c1] [%c1, %c1] [%c1, %c1], %[[FROM_MEMREF_7]]
+// CHECK:         %[[CORE_1_3:.*]] = amdaie.core(%[[TILE_1_3]])
+// CHECK:           amdaie.logicalobjectfifo.consume(%[[DMA_4]])
+// CHECK:           %[[VAL_1:.+]] = amdaie.logicalobjectfifo.access(%[[FROM_MEMREF_2]], Read)
+// CHECK:           linalg.fill ins(%{{.+}} : i32) outs(%[[VAL_1]] : memref<32x64xi32, 2>)
+// CHECK:           %[[VAL_0:.+]] = amdaie.logicalobjectfifo.access(%[[FROM_MEMREF_7]], Write)
+// CHECK:           linalg.fill ins(%{{.+}} : i32) outs(%[[VAL_0]] : memref<32x32xi32, 2>)
+// CHECK:         %[[DMA_7:.*]] = amdaie.dma_cpy_nd(%[[FROM_MEMREF_9]][%[[ARG1]]] [%c1] [%c1], %[[FROM_MEMREF_8]]
 module {
   func.func @nested_dma_dependencies() {
     %c0_i32 = arith.constant 0 : i32
