@@ -14,16 +14,16 @@ iree_cc_binary(
   NAME
     aie_runtime_utest
   SRCS
-    "utest.cxx"
+    "utest.cc"
   DEPS
     iree-amd-aie::aie_runtime::iree_aie_runtime_static
 )
 
 iree_lit_test(
   NAME
-    aie_runtime_utest_test
+    aie_runtime_utest_lit_test
   TEST_FILE
-    "cdo_dump.txt"
+    utest.cc
   TOOLS
     ::aie_runtime_utest
     FileCheck
@@ -41,6 +41,70 @@ iree_cc_test(
     iree::target::amd-aie::aie::AIEDialectIR
     iree-amd-aie::aie_runtime::iree_aie_runtime_static
 )
+
+iree_cc_test(
+  NAME
+    test_0335_aie_dma_tile_dma_packet_switch_mode
+  SRCS
+    test_0335_aie_dma_tile_dma_packet_switch_mode.cc
+  DEPS
+    iree-amd-aie::aie_runtime::iree_aie_runtime_static
+)
+
+iree_lit_test(
+  NAME
+    test_0335_aie_dma_tile_dma_packet_switch_mode_lit_test
+  TEST_FILE
+    test_0335_aie_dma_tile_dma_packet_switch_mode.cc
+  TOOLS
+    ::test_0335_aie_dma_tile_dma_packet_switch_mode
+    FileCheck
+  LABELS
+    "hostonly"
+)
+
+iree_cc_test(
+  NAME
+    test_1114_aie_stream_switch_packet_switch_control_packets
+  SRCS
+    test_1114_aie_stream_switch_packet_switch_control_packets.cc
+  DEPS
+    iree-amd-aie::aie_runtime::iree_aie_runtime_static
+)
+
+iree_lit_test(
+  NAME
+    test_1114_aie_stream_switch_packet_switch_control_packets_lit_test
+  TEST_FILE
+    test_1114_aie_stream_switch_packet_switch_control_packets.cc
+  TOOLS
+    ::test_1114_aie_stream_switch_packet_switch_control_packets
+    FileCheck
+  LABELS
+    "hostonly"
+)
+
+iree_cc_test(
+  NAME
+    test_transaction
+  SRCS
+    test_transaction.cc
+  DEPS
+    iree-amd-aie::aie_runtime::iree_aie_runtime_static
+)
+
+iree_lit_test(
+  NAME
+    test_transaction_lit_test
+  TEST_FILE
+    test_transaction.cc
+  TOOLS
+    ::test_transaction
+    FileCheck
+  LABELS
+    "hostonly"
+)
+
 
 target_include_directories(
   iree-amd-aie_aie_runtime_test_DeviceModelTestCppTest
