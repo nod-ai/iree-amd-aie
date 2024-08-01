@@ -83,24 +83,25 @@ static llvm::cl::opt<std::string> clEnableAMDAIEUkernels(
 //   module {
 //     aie.device {
 //       ...
-//       func.func symbol1
+//       aiex.runtime_sequence symbol1
 //     }
 //     aie.device {
 //       ...
-//       func.func symbol2
+//       aiex.runtime_sequence symbol2
 //     }
 //   }
 // }
-// Hence we need to find the func.func that coresponds to the export op symbol
-// and return its parent aie.device Op. This is what we will pass to the
-// `aie2xclbin` tool for artifact generation per entry point
+// Hence we need to find the aiex.runtime_sequence that coresponds to the export
+// op symbol and return its parent aie.device Op. This is what we will pass to
+// the `aie2xclbin` tool for artifact generation per entry point.
 static xilinx::AIE::DeviceOp getDeviceOpFromEntryPoint(ModuleOp moduleOp,
                                                        StringRef exportOpName) {
   xilinx::AIE::DeviceOp deviceOp;
 
-  moduleOp.walk([&](func::FuncOp funcOp) {
-    if (funcOp.getSymName() == exportOpName) {
-      deviceOp = dyn_cast_or_null<xilinx::AIE::DeviceOp>(funcOp->getParentOp());
+  moduleOp.walk([&](xilinx::AIEX::RuntimeSequenceOp sequenceOp) {
+    if (sequenceOp.getSymName() == exportOpName) {
+      deviceOp =
+          dyn_cast_or_null<xilinx::AIE::DeviceOp>(sequenceOp->getParentOp());
       return WalkResult::interrupt();
     }
     return WalkResult::advance();

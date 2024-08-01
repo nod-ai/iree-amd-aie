@@ -11,7 +11,6 @@
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/Support/Format.h"
-#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/AsmState.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
@@ -255,7 +254,8 @@ struct PushToNpuPattern : OpConversionPattern<NpuPushQueueOp> {
     auto i32ty = IntegerType::get(op->getContext(), 32);
     auto column = IntegerAttr::get(i32ty, op.getColumn());
     auto row = IntegerAttr::get(i32ty, 0);
-    rewriter.create<NpuWrite32Op>(op->getLoc(), queue_offset, cmd, column, row);
+    rewriter.create<NpuWrite32Op>(op->getLoc(), queue_offset, cmd, nullptr,
+                                  column, row);
     rewriter.eraseOp(op);
 
     return success();
@@ -327,7 +327,11 @@ struct DmaToNpuPattern : OpConversionPattern<NpuDmaMemcpyNdOp> {
     column = IntegerAttr::get(i32ty, col);
 
     // arg_idx
-    Block &entryBB = op->getParentOfType<func::FuncOp>().getBody().front();
+    RuntimeSequenceOp seq_op = op->getParentOfType<RuntimeSequenceOp>();
+    assert(seq_op &&
+           "NpuDmaMemcpyNdOp must be inside a RuntimeSequenceOp; "
+           "verify() should have ensured this.");
+    Block &entryBB = seq_op.getBody().front();
     int arg_idx = -1;
     for (int i = 0, e = entryBB.getNumArguments(); i < e; i++) {
       if (entryBB.getArgument(i) == memref) {
@@ -523,17 +527,18 @@ struct AMDAIEDmaToNpuPass : mlir::OperationPass<DeviceOp> {
     // llvm where it can have a chance to crash in case the argument list is not
     // lowerable for reasons such as memref's with dynamic offsets.
     auto symName = dyn_cast_or_null<StringAttr>(device->getAttr("sym_name"));
-    SmallVector<func::FuncOp> funcOps;
-    device->walk([&](func::FuncOp funcOp) {
-      // if the deviceOp has a symbol name attached to it we look for the funcOp
-      // that partically matches that symbol, if not we collect all funcOps
+    SmallVector<RuntimeSequenceOp> seqOps;
+    device->walk([&](RuntimeSequenceOp seqOp) {
+      // if the deviceOp has a symbol name attached to it we look for the
+      // sequence op that partically matches that symbol, if not we collect all
+      // sequenceOps.
       if (!symName ||
-          symName.str().find(funcOp.getSymName().str()) != std::string::npos)
-        funcOps.push_back(funcOp);
+          symName.str().find(seqOp.getSymName()->str()) != std::string::npos)
+        seqOps.push_back(seqOp);
     });
     // If exactly one entry point function is found we can delete it. For any
     // other result we do not make any change.
-    if (funcOps.size() == 1) funcOps[0].erase();
+    if (seqOps.size() == 1) seqOps[0].erase();
   }
 };
 
