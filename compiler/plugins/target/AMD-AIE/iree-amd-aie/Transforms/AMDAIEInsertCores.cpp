@@ -48,17 +48,22 @@ LogicalResult insertCoreOps(mlir::ModuleOp moduleOp) {
 
   WalkResult res = moduleOp->walk([&](scf::ForallOp forallOp) {
     // Currently, innermost `scf.forall` operations are expected to have thread
-    // mapping and are therefore selected for insertion of cores. Advance if no
+    // mapping and are therefore selected for insertion of cores. Fail if no
     // thread mapping.
     {
       auto maybeMapping = forallOp.getMapping();
-      if (!maybeMapping) return WalkResult::advance();
+      if (!maybeMapping) {
+        forallOp.emitOpError("does not have a mapping attribute");
+        return WalkResult::interrupt();
+      }
 
       SmallVector<Attribute> mapping =
           llvm::to_vector(maybeMapping->getValue());
 
-      if (!isa<mlir::gpu::GPUThreadMappingAttr>(*mapping.begin()))
-        return WalkResult::advance();
+      if (!isa<mlir::gpu::GPUThreadMappingAttr>(*mapping.begin())) {
+        forallOp.emitOpError("does not have a thread mapping attribute");
+        return WalkResult::interrupt();
+      }
     }
 
     if (!forallOp.isNormalized()) {
