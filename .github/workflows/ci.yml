@@ -175,7 +175,7 @@ jobs:
 
           # Assert that output.log is empty (because verbose=0)
           if [ -s output.log ]; then
-            echo "output.log is not empty"
+            echo "output.log is not empty:"
             cat output.log
             exit 1
           else
