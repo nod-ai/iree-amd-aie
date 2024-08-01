@@ -81,18 +81,11 @@ static FnNameAndDefAttrs getFnNameAndDefAttrs(RewriterBase &rewriter,
 /// ======================================================================
 
 /// Utility to fetch the element type as string.
-static std::string typeToString(Type elemType) {
-  if (elemType.isSignlessInteger(8)) {
-    return "i8";
-  } else if (elemType.isSignlessInteger(32)) {
-    return "i32";
-  } else if (elemType.isBF16()) {
-    return "bf16";
-  } else if (elemType.isF32()) {
-    return "f32";
-  } else {
-    assert(false && "unsupported element type");
-  }
+static std::string typeToString(Type type) {
+  std::string typeStr;
+  llvm::raw_string_ostream rso(typeStr);
+  type.print(rso);
+  return typeStr;
 }
 
 /// We need to fetch the tiling at M, N and K for the input tensors along with
@@ -132,7 +125,7 @@ static FailureOr<IREE::Codegen::UKernelOpInterface> matchDAGForUKernel(
   Type rhsElemType = rhsType.getElementType();
   Type outElemType = outType.getElementType();
 
-  // Tiling for M x K x N as well as ithe corresponding inner tiling intrinsics
+  // Tiling for M x K x N as well as the corresponding inner tiling intrinsics
   // r x s x t.
   int M, N, K, r, s, t;
   std::tie(M, K, r, s) = getTilingInfo(lhsType);
@@ -176,7 +169,7 @@ static FailureOr<IREE::Codegen::UKernelOpInterface> matchDAGForUKernel(
   auto outType = llvm::cast<ShapedType>(output.getType());
   Type outElemType = outType.getElementType();
 
-  // Tiling for M x N as well as ithe corresponding inner tiling intrinsics r x
+  // Tiling for M x N as well as the corresponding inner tiling intrinsics r x
   // t.
   int M, N, r, t;
   std::tie(M, N, r, t) = getTilingInfo(outType);
