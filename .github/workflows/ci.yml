@@ -108,9 +108,7 @@ jobs:
         run: |
           mkdir iree-install
           tar -xf iree-dist.tar -C iree-install
-          wget -q https://github.com/Xilinx/llvm-aie/releases/download/nightly/llvm_aie-18.0.0.2024071901+ff089e9d-py3-none-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl \
-            -O llvm-aie.zip
-          unzip -q llvm-aie.zip
+          bash build_tools/download_peano.sh
 
       - name: Create venv and install dependencies
         run: |
@@ -148,7 +146,12 @@ jobs:
           # on the guthub CI machine.
           sudo prlimit -lunlimited --pid $$
 
-          bash build_tools/ci/run_matmul_test.sh test_matmuls iree-install $PWD/llvm-aie
+          bash build_tools/ci/run_matmul_test.sh \
+            test_matmuls \
+            iree-install \
+            $PWD/llvm-aie \
+            /opt/xilinx/xrt \
+            /opt/Xilinx/Vitis/2024.1
 
       - name : E2E comparison of AIE to llvm-cpu
         run: |
@@ -157,9 +160,19 @@ jobs:
           # TODO(newling) make requirements.txt file
           pip install numpy
           source /opt/xilinx/xrt/setup.sh
-          python3 build_tools/ci/cpu_comparison/run_test.py test_aie_vs_cpu iree-install $PWD/llvm-aie
+          python3 build_tools/ci/cpu_comparison/run_test.py \
+            test_aie_vs_cpu \
+            iree-install \
+            $PWD/llvm-aie \
+            /opt/xilinx/xrt \
+            /opt/Xilinx/Vitis/2024.1
 
       - name: Printing IR from aie2xclbin
         run: |
           source .venv/bin/activate
-          bash build_tools/ci/print_ir_aie2xclbin/print_ir_aie2xclbin.sh iree-install print_ir_aie2xclbin_results
+          bash build_tools/ci/print_ir_aie2xclbin/print_ir_aie2xclbin.sh \
+            iree-install \
+            print_ir_aie2xclbin_results \
+            $PWD/llvm-aie \
+            /opt/xilinx/xrt \
+            /opt/Xilinx/Vitis/2024.1
