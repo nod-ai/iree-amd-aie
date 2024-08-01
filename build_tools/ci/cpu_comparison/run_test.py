@@ -745,20 +745,11 @@ if __name__ == "__main__":
     abs_path = lambda x: Path(x).absolute()
     parser.add_argument("output_dir", type=abs_path)
     parser.add_argument("iree_install_dir", type=abs_path)
-    parser.add_argument(
-        "peano_install_dir", nargs="?", default="/opt/llvm-aie", type=abs_path
-    )
-    parser.add_argument("xrt_dir", nargs="?", default="/opt/xilinx/xrt", type=abs_path)
-    parser.add_argument(
-        "vitis_dir", nargs="?", default="/opt/Xilinx/Vitis/2024.1", type=abs_path
-    )
+    parser.add_argument("peano_install_dir", type=abs_path)
+    parser.add_argument("xrt_dir", type=abs_path)
+    parser.add_argument("vitis_dir", type=abs_path)
 
-    # This (and other boolean flags) could be made more 'slick' by using
-    # `action='store_true'` in the `add_argument` call, but this has
-    # problems with the default value of 1. It could be also be made nicer
-    # by using type=bool, but this also has issues. So going with this
-    # clunky design for now (feel free to improve).
-
+    # TODO(newling) make bool options boolean, not integer (tried but had issues)
     parser.add_argument(
         "--return_on_fail",
         nargs="?",
