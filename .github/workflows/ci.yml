@@ -178,7 +178,6 @@ jobs:
             echo "output.log is not empty"
             cat output.log
             exit 1
-          fi
           else
             echo "output.log is empty"
           fi
