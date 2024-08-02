@@ -3,17 +3,18 @@
 # Copyright 2024 The IREE Authors
 
 import argparse
+import os
+import re
+import subprocess
+import time
+from pathlib import Path
+from textwrap import dedent
+
+import numpy as np
+
 from input_generator import generate_inputs, verify_determinism, load_input
 from matmul_template.matmul_generator import generate_matmul_test
-import numpy as np
-import os
-from pathlib import Path
-import re
 from output_comparer import compare
-import subprocess
-from textwrap import dedent
-import time
-import urllib.request
 
 
 def matmul_from_input_strings(input_args):
@@ -29,7 +30,7 @@ def matmul_from_input_strings(input_args):
     2) returns the result of multiplying the matrices together
     """
     if len(input_args) != 2:
-        raise RuntimeError(f"Expected 2 arguments, got {len(ab)}")
+        raise RuntimeError(f"Expected 2 arguments, got {input_args=}")
     a = load_input(input_args[0])
     b = load_input(input_args[1])
     return np.matmul(a, b)
@@ -40,18 +41,12 @@ def find_executable(install_dir: Path, executable_name):
     Search for an executable in the given directory and its subdirectories
     'bin' and 'tools'. If the executable is not found, raise a RuntimeError.
     """
-    search_dirs = [
-        install_dir,
-        install_dir / "bin",
-        install_dir / "tools",
-    ]
+    search_dirs = [install_dir, install_dir / "bin", install_dir / "tools", ]
     for directory in search_dirs:
         executable_path = directory / executable_name
         if executable_path.is_file():
             return executable_path
-    raise RuntimeError(
-        f"No '{executable_name}' executable found in '{install_dir}' or subdirectories."
-    )
+    raise RuntimeError(f"No '{executable_name}' executable found in '{install_dir}' or subdirectories.")
 
 
 def shell_out(cmd: list, workdir=None, verbose=False):
@@ -78,44 +73,23 @@ def shell_out(cmd: list, workdir=None, verbose=False):
             print("Standard error from script:")
             print(stderr_decode)
     if handle.returncode != 0:
-        raise RuntimeError(
-            f"Error executing script, error code was {handle.returncode}"
-        )
+        raise RuntimeError(f"Error executing script, error code was {handle.returncode}")
     return stdout_decode, stderr_decode
 
 
-def generate_aie_vmfb(
-    config,
-    name,
-    tile_pipeline,
-    lower_to_aie_pipeline,
-    use_ukernel,
-    test_file,
-    input_args,
-    function_name,
-):
+def generate_aie_output(config, name, tile_pipeline, lower_to_aie_pipeline, use_ukernel, test_file, input_args,
+        function_name, ):
     """
-    Compile a test file for IREE's AIE backend, returning path to the compiled
-    module.
+    Compile and run a test file for AIE, returning a numpy array of the output.
     """
 
-    compilation_flags = [
-        config.iree_compile_exe,
-        test_file,
-        "--iree-hal-target-backends=amd-aie",
-        f"--iree-amdaie-tile-pipeline={tile_pipeline}",
-        f"--iree-amdaie-lower-to-aie-pipeline={lower_to_aie_pipeline}",
-        "--iree-amdaie-matmul-elementwise-fusion",
-        f"--iree-amd-aie-peano-install-dir={config.peano_dir}",
-        f"--iree-amd-aie-install-dir={config.iree_install_dir}",
-        f"--iree-amd-aie-vitis-install-dir={config.vitis_dir}",
-        f"--iree-hal-dump-executable-files-to={config.output_dir}",
-        "--iree-scheduling-optimize-bindings=false",
-        f"--mlir-disable-threading",
-        "--mlir-elide-resource-strings-if-larger=10",
-        "-o",
-        config.output_dir / f"{name}_aie.vmfb",
-    ]
+    compilation_flags = [config.iree_compile_exe, test_file, "--iree-hal-target-backends=amd-aie",
+        f"--iree-amdaie-tile-pipeline={tile_pipeline}", f"--iree-amdaie-lower-to-aie-pipeline={lower_to_aie_pipeline}",
+        "--iree-amdaie-matmul-elementwise-fusion", f"--iree-amd-aie-peano-install-dir={config.peano_dir}",
+        f"--iree-amd-aie-install-dir={config.iree_install_dir}", f"--iree-amd-aie-vitis-install-dir={config.vitis_dir}",
+        f"--iree-hal-dump-executable-files-to={config.output_dir}", "--iree-scheduling-optimize-bindings=false",
+        f"--mlir-disable-threading", "--mlir-elide-resource-strings-if-larger=10", "-o",
+        config.output_dir / f"{name}_aie.vmfb", ]
     if config.verbose:
         compilation_flags += ["--iree-amd-aie-show-invoked-commands"]
 
@@ -125,74 +99,37 @@ def generate_aie_vmfb(
     start = time.monotonic_ns()
     shell_out(compilation_flags, config.output_dir, config.verbose)
     compile_time = time.monotonic_ns() - start
-    if config.verbose:
-        print(f"Time spent in compilation: {compile_time // 1e6} [ms]")
 
     aie_vmfb = config.output_dir / f"{name}_aie.vmfb"
-    if not aie_vmfb.exists():
-        raise RuntimeError(f"Failed to compile {test_file} to {aie_vmfb}")
-
-    return aie_vmfb
-
-
-def generate_aie_output(config, aie_vmfb, input_args, function_name, name):
-    """
-    Run a compiled AIE module (aie_vmfb), returning a numpy array of the output.
-    """
-
     aie_npy = config.output_dir / f"{name}_aie.npy"
-    run_args = [
-        config.iree_run_exe,
-        f"--module={aie_vmfb}",
-        *input_args,
-        "--device=xrt",
-        f"--output=@{aie_npy}",
-    ]
+    run_args = [config.iree_run_exe, f"--module={aie_vmfb}", *input_args, "--device=xrt", f"--output=@{aie_npy}", ]
     if function_name:
         run_args += [f"--function={function_name}"]
     if config.reset_npu_between_runs:
         shell_out(config.reset_npu_script)
-
     start = time.monotonic_ns()
     shell_out(run_args, config.output_dir, config.verbose)
     run_time = time.monotonic_ns() - start
 
-    if config.verbose:
-        print(f"Time spent in running the model: {run_time // 1e6} [ms]")
+    print(f"Time spent in compilation: {compile_time // 1e6} [ms]")
+    print(f"Time spent in running the model: {run_time // 1e6} [ms]")
 
     return np.load(aie_npy)
 
 
-def generate_llvm_cpu_output(
-    config,
-    name,
-    test_file,
-    input_args,
-    function_name,
-):
+def generate_llvm_cpu_output(config, name, test_file, input_args, function_name, ):
     """
     Compile and run a test file for IREE's CPU backend, returning a numpy array
     of the output.
     """
 
     cpu_vmfb = config.output_dir / f"{name}_cpu.vmfb"
-    compilation_flags = [
-        config.iree_compile_exe,
-        test_file,
-        "--iree-hal-target-backends=llvm-cpu",
-        "--iree-llvmcpu-target-cpu-features=host",
-        "-o",
-        f"{cpu_vmfb}",
-    ]
+    compilation_flags = [config.iree_compile_exe, test_file, "--iree-hal-target-backends=llvm-cpu",
+        "--iree-llvmcpu-target-cpu-features=host", "-o", f"{cpu_vmfb}", ]
     shell_out(compilation_flags, workdir=config.output_dir, verbose=config.verbose)
 
     cpu_npy = config.output_dir / f"{name}_cpu.npy"
-    run_args = [
-        config.iree_run_exe,
-        f"--module={cpu_vmfb}",
-        *input_args,
-        f"--output=@{cpu_npy}",
-    ]
+    run_args = [config.iree_run_exe, f"--module={cpu_vmfb}", *input_args, f"--output=@{cpu_npy}", ]
     if function_name:
         run_args += [f"--function={function_name}"]
     shell_out(run_args, workdir=config.output_dir, verbose=config.verbose)
@@ -205,21 +142,8 @@ class TestConfig:
     records test failures.
     """
 
-    def __init__(
-        self,
-        output_dir,
-        iree_install_dir,
-        peano_dir,
-        xrt_dir,
-        vitis_dir,
-        file_dir,
-        iree_compile_exe,
-        iree_run_exe,
-        verbose,
-        return_on_fail,
-        reset_npu_between_runs,
-        do_not_run_aie,
-    ):
+    def __init__(self, output_dir, iree_install_dir, peano_dir, xrt_dir, vitis_dir, file_dir, iree_compile_exe,
+            iree_run_exe, verbose, return_on_fail, reset_npu_between_runs, ):
 
         self.output_dir = output_dir
         self.iree_install_dir = iree_install_dir
@@ -232,7 +156,6 @@ class TestConfig:
         self.return_on_fail = return_on_fail
         self.verbose = verbose
         self.reset_npu_between_runs = reset_npu_between_runs
-        self.do_not_run_aie = do_not_run_aie
 
         # Try get the xrt and (linux) kernel versions.
         self.linux_kernel = "undetermined"
@@ -249,9 +172,7 @@ class TestConfig:
 
         self.reset_npu_script = file_dir.parent / "reset_npu.sh"
         if reset_npu_between_runs and not self.reset_npu_script.exists():
-            raise RuntimeError(
-                f"The file {self.reset_npu_script} does not exist, and reset_npu_script=True"
-            )
+            raise RuntimeError(f"The file {self.reset_npu_script} does not exist, and reset_npu_script=True")
 
         # Get the string output of the xrt-smi 'examine' command. Expect the
         # string to look something like:
@@ -268,11 +189,7 @@ class TestConfig:
         # ...
         # ```
         #
-        system_info, xrt_info = (
-            subprocess.check_output([xrt_smi_exe, "examine"])
-            .decode("utf-8")
-            .split("XRT")
-        )
+        system_info, xrt_info = (subprocess.check_output([xrt_smi_exe, "examine"]).decode("utf-8").split("XRT"))
 
         linux_kernel = re.findall(r"Release\s+:\s(.*)", system_info, re.MULTILINE)
         if linux_kernel:
@@ -292,11 +209,8 @@ class TestConfig:
 
         # no clue why but peano clang dumps -v to stderr
         _, clang_v_output = shell_out([peano_dir / "bin" / "clang", "-v"])
-        peano_commit_hash = re.findall(
-            r"clang version \d+\.\d+\.\d+ \(https://github.com/Xilinx/llvm-aie (\w+)\)",
-            clang_v_output,
-            re.MULTILINE,
-        )
+        peano_commit_hash = re.findall(r"clang version \d+\.\d+\.\d+ \(https://github.com/Xilinx/llvm-aie (\w+)\)",
+            clang_v_output, re.MULTILINE, )
         if peano_commit_hash:
             self.peano_commit_hash = peano_commit_hash[0]
         else:
@@ -306,16 +220,12 @@ class TestConfig:
         self.failures = []
 
         if not isinstance(self.verbose, bool) and not isinstance(self.verbose, int):
-            raise ValueError(
-                f"verbose must be a boolean or integer, not {type(verbose)}"
-            )
+            raise ValueError(f"verbose must be a boolean or integer, not {type(verbose)}")
 
     def __str__(self):
-        return dedent(
-            f"""
+        return dedent(f"""
         Settings and versions used in all tests
         -+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-
-        do_not_run_aie:       {self.do_not_run_aie}
         file_dir:             {self.file_dir}
         iree_compile_exe:     {self.iree_compile_exe}
         iree_install_dir:     {self.iree_install_dir}
@@ -336,11 +246,6 @@ class TestConfig:
 
         Some information on the above settings / versions
         =================================================
-        do_not_run_aie
-          If True, then the AIE backend will not be run. This is useful for
-          ensuring that everything up to the AIE run and numerical comparison
-          is working correctly, for example if you are not on a device with
-          working AIE HW and runtime.
         file_dir
           The directory of this script
         iree_compile_exe
@@ -359,8 +264,7 @@ class TestConfig:
           the version of XRT. This is not used in the tests, but included here
           just to help in debugging.
         =================================================
-        """
-        )
+        """)
 
     def __repr__(self):
         return self.__str__()
@@ -370,20 +274,8 @@ def name_from_mlir_filename(mlir_filename):
     return os.path.basename(mlir_filename).replace(".mlir", "")
 
 
-def aie_vs_baseline(
-    config,
-    test_file,
-    input_args,
-    baseline_value,
-    use_ukernel,
-    tile_pipeline,
-    lower_to_aie_pipeline,
-    function_name,
-    seed,
-    rtol,
-    atol,
-    n_repeats,
-):
+def aie_vs_baseline(config, test_file, input_args, baseline_value, use_ukernel, tile_pipeline, lower_to_aie_pipeline,
+        function_name, seed, rtol, atol, n_repeats, ):
     """
     If the outputs differ, add the test file to a list of failures.
 
@@ -411,35 +303,14 @@ def aie_vs_baseline(
         may pass only sometimes due to driver issues, etc.
     """
 
-    name = name_from_mlir_filename(test_file)
-
-    aie_vmfb = generate_aie_vmfb(
-        config,
-        name,
-        tile_pipeline,
-        lower_to_aie_pipeline,
-        use_ukernel,
-        test_file,
-        input_args,
-        function_name,
-    )
-
-    if config.do_not_run_aie:
-        if config.verbose:
-            print(f"Skipping AIE run for {test_file} because 'do_not_run_aie=True'.")
-        return
+    name = Path(test_file).name.replace(".mlir", "")
 
     for i in range(n_repeats):
         if config.verbose:
             print(f"Run #{i + 1} of {n_repeats} for {test_file}")
 
-        aie_output = generate_aie_output(
-            config,
-            aie_vmfb,
-            input_args,
-            function_name,
-            name,
-        )
+        aie_output = generate_aie_output(config, name, tile_pipeline, lower_to_aie_pipeline, use_ukernel, test_file,
+            input_args, function_name, )
 
         same_result = compare(baseline_value, aie_output, rtol, atol)
         if not same_result:
@@ -448,18 +319,8 @@ def aie_vs_baseline(
                 raise RuntimeError("Test failed, exiting.")
 
 
-def aie_vs_llvm_cpu(
-    config,
-    test_file,
-    use_ukernel=False,
-    tile_pipeline="pad-pack",
-    lower_to_aie_pipeline="air",
-    function_name=None,
-    seed=1,
-    rtol=1e-6,
-    atol=1e-6,
-    n_repeats=1,
-):
+def aie_vs_llvm_cpu(config, test_file, use_ukernel=False, tile_pipeline="pad-pack", lower_to_aie_pipeline="air",
+        function_name=None, seed=1, rtol=1e-6, atol=1e-6, n_repeats=1, ):
     """
     Compare the output obtained when compiling and running on IREE's
     (nascent) AIE and (more mature) llvm-cpu backends.
@@ -472,38 +333,14 @@ def aie_vs_llvm_cpu(
 
     input_args = generate_inputs(test_file, config.output_dir, seed)
 
-    cpu_output = generate_llvm_cpu_output(
-        config, name, test_file, input_args, function_name
-    )
+    cpu_output = generate_llvm_cpu_output(config, name, test_file, input_args, function_name)
 
-    aie_vs_baseline(
-        config,
-        test_file,
-        input_args,
-        cpu_output,
-        use_ukernel,
-        tile_pipeline,
-        lower_to_aie_pipeline,
-        function_name,
-        seed,
-        rtol,
-        atol,
-        n_repeats,
-    )
+    aie_vs_baseline(config, test_file, input_args, cpu_output, use_ukernel, tile_pipeline, lower_to_aie_pipeline,
+        function_name, seed, rtol, atol, n_repeats, )
 
 
-def aie_vs_np_matmul(
-    config,
-    test_file,
-    use_ukernel=False,
-    tile_pipeline="pad-pack",
-    lower_to_aie_pipeline="air",
-    function_name=None,
-    seed=1,
-    rtol=1e-6,
-    atol=1e-6,
-    n_repeats=1,
-):
+def aie_vs_np_matmul(config, test_file, use_ukernel=False, tile_pipeline="pad-pack", lower_to_aie_pipeline="air",
+        function_name=None, seed=1, rtol=1e-6, atol=1e-6, n_repeats=1, ):
     """ """
 
     if n_repeats == 0:
@@ -512,154 +349,14 @@ def aie_vs_np_matmul(
     name = name_from_mlir_filename(test_file)
     input_args = generate_inputs(test_file, config.output_dir, seed)
     numpy_output = matmul_from_input_strings(input_args)
-    aie_vs_baseline(
-        config,
-        test_file,
-        input_args,
-        numpy_output,
-        use_ukernel,
-        tile_pipeline,
-        lower_to_aie_pipeline,
-        function_name,
-        seed,
-        rtol,
-        atol,
-        n_repeats,
-    )
+    aie_vs_baseline(config, test_file, input_args, numpy_output, use_ukernel, tile_pipeline, lower_to_aie_pipeline,
+        function_name, seed, rtol, atol, n_repeats, )
 
 
-class TestSet:
-    def __init__(self, name):
-        self.name = name
-
-    def run(self, config):
-        raise NotImplementedError("Subclasses must implement this method")
-
-
-class ConvolutionSet(TestSet):
-    def __init__(self):
-        super().__init__("Convolution")
-
-    def run(self, config):
-        test_files_dir = config.file_dir / "test_files"
-
-        for name in [
-            "conv2d_nhwc_int32",
-            "conv2d_nhwc_bf16",
-            "conv2d_nhwc_q",
-            "depthwise_convolution_i32",
-        ]:
-            n_conv_repeats = 4
-
-            aie_vs_llvm_cpu(
-                config,
-                test_files_dir / f"{name}.mlir",
-                tile_pipeline="conv-decompose",
-                lower_to_aie_pipeline="air",
-                n_repeats=n_conv_repeats,
-            )
-
-
-class MatmulSet(TestSet):
-    def __init__(self):
-        super().__init__("Matmul")
-
-    def run(self, config):
-
-        matmul_template_dir = config.file_dir / "matmul_template"
-        test_files_dir = config.file_dir / "test_files"
-        output_dir = config.output_dir
-
-        for name in [
-            "two_matmul_switching",
-            "matmul_f32_8_8_4",
-            "matmul_f32_8_4_8",
-        ]:
-            aie_vs_llvm_cpu(config, test_files_dir / f"{name}.mlir")
-
-        aie_vs_llvm_cpu(
-            config,
-            test_files_dir / "three_matmuls.mlir",
-            function_name="three_$mm$",
-        )
-
-        # Test(s) of the form matmul(A,B) where A:MxK, B:KxN
-        test_name = output_dir / "test_from_template.mlir"
-        template_name = matmul_template_dir / "matmul_MxK_KxN.mlir"
-        generate_matmul_test(test_name, template_name, 32, 32, 64, "bf16", "f32")
-        aie_vs_llvm_cpu(config, test_name)
-
-        # Test(s) of the form matmul(A,B) + C where A:MxK, B:KxN, C:N
-        test_name = output_dir / "test_from_template_bias_N.mlir"
-        template_name = matmul_template_dir / "matmul_bias_MxK_KxN_N.mlir"
-        generate_matmul_test(test_name, template_name, 1024, 1024, 512, "bf16", "f32")
-        aie_vs_llvm_cpu(config, test_name, tile_pipeline="pack-peel", use_ukernel=True)
-        aie_vs_llvm_cpu(config, test_name, tile_pipeline="pack-peel", use_ukernel=False)
-
-        # Test(s) of the form matmul(A,B) + C where A:MxK, B:KxN, C:MxN
-        test_name = output_dir / "test_from_template_full_bias.mlir"
-        template_name = matmul_template_dir / "matmul_bias_MxK_KxN_MxN.mlir"
-        generate_matmul_test(test_name, template_name, 128, 128, 256, "i32", "i32")
-        aie_vs_llvm_cpu(config, test_name, tile_pipeline="pack-peel", rtol=0, atol=0)
-
-
-class SmokeSet(TestSet):
-    def __init__(self):
-        super().__init__("Smoke")
-
-    def run(self, config):
-
-        file_dir = config.file_dir
-        output_dir = config.output_dir
-
-        test_files_dir = file_dir / "test_files"
-
-        # The most basic test, direct from .mlir file using all defaults
-        aie_vs_llvm_cpu(config, test_files_dir / "matmul_int32.mlir")
-
-        # Using a baseline other than llvm-cpu
-        aie_vs_np_matmul(config, test_files_dir / "matmul_int32.mlir")
-
-        # Convolution and int8
-        aie_vs_llvm_cpu(
-            config,
-            test_files_dir / f"conv2d_nhwc_int8.mlir",
-            tile_pipeline="conv-decompose",
-            lower_to_aie_pipeline="air",
-            n_repeats=2,
-        )
-
-        # Using objectFifo pipeline
-        matmul_template_dir = file_dir / "matmul_template"
-        test_name = output_dir / "test_from_objectfifo_basic.mlir"
-        template_name = matmul_template_dir / "matmul_MxK_KxN.mlir"
-        generate_matmul_test(test_name, template_name, 64, 64, 64, "bf16", "f32")
-        aie_vs_llvm_cpu(
-            config,
-            test_name,
-            tile_pipeline="pack-peel",
-            lower_to_aie_pipeline="objectFifo",
-        )
-
-
-def getTestPartition():
-    return [ConvolutionSet(), MatmulSet(), SmokeSet()]
-
-
-def all_tests(
-    output_dir,
-    iree_install_dir,
-    peano_dir,
-    xrt_dir,
-    vitis_dir,
-    return_on_fail,
-    verbose,
-    reset_npu_between_runs,
-    do_not_run_aie,
-    test_set,
-):
+def all_tests(output_dir, iree_install_dir, peano_dir, xrt_dir, vitis_dir, return_on_fail, verbose,
+        reset_npu_between_runs, ):
     """
-    There are a few ways to add tests to this script:
+    There are a few ways to add tests to this function:
 
     1) add a single test file in `./test_files` which should follow the same
        format as the example `./test_files/matmul_int32.mlir`.
@@ -684,20 +381,8 @@ def all_tests(
     iree_run_exe = find_executable(iree_install_dir, "iree-run-module")
     file_dir = Path(__file__).parent
 
-    config = TestConfig(
-        output_dir,
-        iree_install_dir,
-        peano_dir,
-        xrt_dir,
-        vitis_dir,
-        file_dir,
-        iree_compile_exe,
-        iree_run_exe,
-        verbose,
-        return_on_fail,
-        reset_npu_between_runs,
-        do_not_run_aie,
-    )
+    config = TestConfig(output_dir, iree_install_dir, peano_dir, xrt_dir, vitis_dir, file_dir, iree_compile_exe,
+        iree_run_exe, verbose, return_on_fail, reset_npu_between_runs, )
     if verbose:
         print(config)
 
@@ -707,21 +392,47 @@ def all_tests(
     # Verify a very basic script runs before running the more complex tests
     shell_out(["pwd"], verbose=config.verbose)
 
-    partition = getTestPartition()
-    partition_names = [p.name for p in partition]
-    map_to_partition = {p.name: p for p in partition}
-    if "All" in test_set:
-        test_set = partition_names
+    test_files_dir = file_dir / "test_files"
+    aie_vs_np_matmul(config, test_files_dir / "matmul_int32.mlir")
 
-    # For each test in test_set, find the partition it belongs to and run it
-    # if no partition is found, raise error.
-    for test in test_set:
-        if test not in partition_names:
-            raise ValueError(f"Test set '{test}' not found in available test sets.")
-        partition = map_to_partition[test]
-        partition.run(config)
+    for name in ["matmul_int32", "two_matmul_switching", "matmul_f32_8_8_4", "matmul_f32_8_4_8", ]:
+        aie_vs_llvm_cpu(config, test_files_dir / f"{name}.mlir")
 
-    # for p in partition:
+    for name in ["conv2d_nhwc_int32", "conv2d_nhwc_bf16", "conv2d_nhwc_int8", "conv2d_nhwc_q",
+        "depthwise_convolution_i32", ]:
+        n_conv_repeats = 4
+
+        aie_vs_llvm_cpu(config, test_files_dir / f"{name}.mlir", tile_pipeline="conv-decompose",
+            n_repeats=n_conv_repeats, )
+
+    aie_vs_llvm_cpu(config, test_files_dir / "three_matmuls.mlir", function_name="three_$mm$", )
+
+    matmul_template_dir = file_dir / "matmul_template"
+
+    # Test(s) of the form matmul(A,B) where A:MxK, B:KxN
+    test_name = output_dir / "test_from_template.mlir"
+    template_name = matmul_template_dir / "matmul_MxK_KxN.mlir"
+    generate_matmul_test(test_name, template_name, 32, 32, 64, "bf16", "f32")
+    aie_vs_llvm_cpu(config, test_name)
+
+    # Try running matmul_int32 with different lower_to_aie_pipeline option:
+    test_name = output_dir / "test_from_objectfifo_basic.mlir"
+    template_name = matmul_template_dir / "matmul_MxK_KxN.mlir"
+    generate_matmul_test(test_name, template_name, 64, 64, 64, "bf16", "f32")
+    aie_vs_llvm_cpu(config, test_name, tile_pipeline="pack-peel", lower_to_aie_pipeline="objectFifo", )
+
+    # Test(s) of the form matmul(A,B) + C where A:MxK, B:KxN, C:N
+    test_name = output_dir / "test_from_template_bias_N.mlir"
+    template_name = matmul_template_dir / "matmul_bias_MxK_KxN_N.mlir"
+    generate_matmul_test(test_name, template_name, 1024, 1024, 512, "bf16", "f32")
+    aie_vs_llvm_cpu(config, test_name, tile_pipeline="pack-peel", use_ukernel=True)
+    aie_vs_llvm_cpu(config, test_name, tile_pipeline="pack-peel", use_ukernel=False)
+
+    # Test(s) of the form matmul(A,B) + C where A:MxK, B:KxN, C:MxN
+    test_name = output_dir / "test_from_template_full_bias.mlir"
+    template_name = matmul_template_dir / "matmul_bias_MxK_KxN_MxN.mlir"
+    generate_matmul_test(test_name, template_name, 128, 128, 256, "i32", "i32")
+    aie_vs_llvm_cpu(config, test_name, tile_pipeline="pack-peel", rtol=0, atol=0)
 
     if config.failures:
         # Convert the list of failed tests into a map: test name to the
@@ -739,89 +450,33 @@ def all_tests(
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        prog="Testing AIE numerical correctness",
-        description="This program compares numerical outputs on AIE against baseline values",
-    )
+    parser = argparse.ArgumentParser(prog="CPU comparison test",
+        description="This program compares numerical outputs on AIE against CPU", )
     abs_path = lambda x: Path(x).absolute()
     parser.add_argument("output_dir", type=abs_path)
     parser.add_argument("iree_install_dir", type=abs_path)
-    parser.add_argument("peano_install_dir", type=abs_path)
-    parser.add_argument("xrt_dir", type=abs_path)
-    parser.add_argument("vitis_dir", type=abs_path)
+    parser.add_argument("peano_install_dir", nargs="?", default="/opt/llvm-aie", type=abs_path)
+    parser.add_argument("xrt_dir", nargs="?", default="/opt/xilinx/xrt", type=abs_path)
+    parser.add_argument("vitis_dir", nargs="?", default="/opt/Xilinx/Vitis/2024.1", type=abs_path)
 
-    # TODO(newling) make bool options boolean, not integer (tried but had issues)
-    parser.add_argument(
-        "--return_on_fail",
-        nargs="?",
-        default=1,
-        type=int,
-        help=(
-            "If 0, then the script will continue running even if a test fails, "
-            "enumerating all failures. Otherwise the script will exit on the first failure."
-        ),
-    )
+    # This (and other boolean flags) could be made more 'slick' by using
+    # `action='store_true'` in the `add_argument` call, but this has
+    # problems with the default value of 1. It could be also be made nicer
+    # by using type=bool, but this also has issues. So going with this
+    # clunky design for now (feel free to improve).
 
-    parser.add_argument(
-        "--verbose",
-        nargs="?",
-        default=1,
-        type=int,
-        help="If 0, then print statements are suppressed, otherwise they are printed.",
-    )
+    parser.add_argument("--return_on_fail", nargs="?", default=1, type=int,
+        help=("If 0, then the script will continue running even if a test fails, "
+              "enumerating all failures. Otherwise the script will exit on the first failure."), )
 
-    parser.add_argument(
-        "--reset_npu_between_runs",
-        nargs="?",
-        default=1,
-        type=int,
-        help=(
-            "If 0 then the NPU is not reset between runs, otherwise it is reset. "
-            "Resetting between runs can in theory help avoid certain types of "
-            "errors in parts of the stack which these tests are not designed to catch."
-        ),
-    )
+    parser.add_argument("--verbose", nargs="?", default=1, type=int,
+        help="If 0, then print statements are suppressed, otherwise they are printed.", )
 
-    parser.add_argument(
-        "--do_not_run_aie",
-        nargs="?",
-        default=0,
-        type=int,
-        help=(
-            "If 1, then the AIE backend will not be run. This is useful for "
-            "ensuring that everything up to the AIE run and numerical comparison "
-            "is working correctly, for example if you are not on a device with "
-            "working AIE HW and runtime."
-        ),
-    )
-
-    partition = getTestPartition()
-    partition_names = [p.name for p in partition]
-    partition_names_and_all = partition_names + ["All"]
-    help_string = (
-        "A comma-separated list of test sets. Available test sets are: "
-        + ", ".join(partition_names_and_all)
-    )
-
-    parser.add_argument(
-        "--test_set",
-        type=str,
-        help=help_string,
-        default="All",
-    )
+    parser.add_argument("--reset_npu_between_runs", nargs="?", default=1, type=int,
+        help=("If 0 then the NPU is not reset between runs, otherwise it is reset. "
+              "Resetting between runs can in theory help avoid certain types of "
+              "errors in parts of the stack which these tests are not designed to catch."), )
 
     args = parser.parse_args()
-
-    test_set_list = args.test_set.split(",")
-    all_tests(
-        args.output_dir,
-        args.iree_install_dir,
-        args.peano_install_dir,
-        args.xrt_dir,
-        args.vitis_dir,
-        args.return_on_fail,
-        args.verbose,
-        args.reset_npu_between_runs,
-        args.do_not_run_aie,
-        test_set_list,
-    )
+    all_tests(args.output_dir, args.iree_install_dir, args.peano_install_dir, args.xrt_dir, args.vitis_dir,
+        args.return_on_fail, args.verbose, args.reset_npu_between_runs, )
