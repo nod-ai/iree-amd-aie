@@ -204,7 +204,7 @@ def AMDAIE_BdIdOp: AMDAIE_Op<"bd_id", [
 //===----------------------------------------------------------------------===//
 
 def AMDAIE_NpuDmaCpyNdOp: AMDAIE_Op<"npu.dma_cpy_nd",
-    [AttrSizedOperandSegments, DoublyStridedOpInterface, MemoryEffects<[MemWrite, MemRead]>]>,
+    [AttrSizedOperandSegments, DoublyStridedOpInterface]>,
     Results<(outs Index)> {
   let summary = "The Npu uController's dma operator";
   let description = [{
@@ -619,7 +619,7 @@ def AMDAIE_LogicalObjectFifoFromMemrefOp
 }
 
 def AMDAIE_LogicalObjectFifoLink
-    : AMDAIE_Op<"logicalobjectfifo.link", [AttrSizedOperandSegments, MemoryEffects<[MemWrite, MemRead]> ]> {
+    : AMDAIE_Op<"logicalobjectfifo.link", [AttrSizedOperandSegments]> {
   let summary = "Link DMA operations operating on a logical objectFifo.";
   let description = [{
     The `amdaie.logicalobjectfifo.link` operation explicitly links the DMA
@@ -855,7 +855,7 @@ def AMDAIE_DmaCpyNdOp: AMDAIE_DmaCpyNdBaseOp<"dma_cpy_nd", []> {
   let hasVerifier = 0;
 }
 
-def AMDAIE_CircularDmaCpyNdOp: AMDAIE_DmaCpyNdBaseOp<"circular_dma_cpy_nd", [Pure, MemoryEffects<[MemWrite, MemRead]>]> {
+def AMDAIE_CircularDmaCpyNdOp: AMDAIE_DmaCpyNdBaseOp<"circular_dma_cpy_nd", [Pure]> {
   let summary = "The circular DMA copy operator";
   let description = [{
     The DMA operation represents a strided copy operation with an unlimited number of
