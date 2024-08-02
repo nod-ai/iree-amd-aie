@@ -7,7 +7,7 @@
 //       CPP:    aie.shim_dma_allocation
 //       CPP:    aie.shim_dma_allocation
 //       CPP:    aie.shim_dma_allocation
-//       CPP:    func.func @matmul_small_dispatch_0_matmul_8x32x16_i32(%arg0: memref<8x16xi32>, %arg1: memref<16x32xi32>, %arg2: memref<8x32xi32>)
+//       CPP:    aiex.runtime_sequence @matmul_small_dispatch_0_matmul_8x32x16_i32(%arg0: memref<8x16xi32>, %arg1: memref<16x32xi32>, %arg2: memref<8x32xi32>)
 //       CPP:      aiex.npu.dma_memcpy_nd
 //       CPP:      aiex.npu.dma_memcpy_nd
 //       CPP:      aiex.npu.dma_memcpy_nd
@@ -29,7 +29,7 @@ func.func @matmul_small(%lhs : tensor<8x16xi32>,
 //       CPP:    aie.shim_dma_allocation
 //       CPP:    aie.shim_dma_allocation
 //       CPP:    aie.shim_dma_allocation
-//       CPP:    func.func @matmul_large_dispatch_0_matmul_2048x2048x2048_i32(%arg0: memref<2048x2048xi32>, %arg1: memref<2048x2048xi32>, %arg2: memref<2048x2048xi32>)
+//       CPP:    aiex.runtime_sequence @matmul_large_dispatch_0_matmul_2048x2048x2048_i32(%arg0: memref<2048x2048xi32>, %arg1: memref<2048x2048xi32>, %arg2: memref<2048x2048xi32>)
 //       CPP:      aiex.npu.dma_memcpy_nd
 //       CPP:      aiex.npu.dma_memcpy_nd
 //       CPP:      aiex.npu.dma_memcpy_nd
@@ -54,7 +54,7 @@ func.func @matmul_large(%lhs: tensor<2048x2048xi32>, %rhs: tensor<2048x2048xi32>
 //       CPP:    aie.shim_dma_allocation
 //       CPP:    aie.shim_dma_allocation
 //       CPP:    aie.shim_dma_allocation
-//       CPP:    func.func @generic_matmul_transpose_static_dispatch_0_matmul_like_8x32x16_i32(%arg0: memref<8x16xi32>, %arg1: memref<32x16xi32>, %arg2: memref<8x32xi32>)
+//       CPP:    aiex.runtime_sequence @generic_matmul_transpose_static_dispatch_0_matmul_like_8x32x16_i32(%arg0: memref<8x16xi32>, %arg1: memref<32x16xi32>, %arg2: memref<8x32xi32>)
 //       CPP:      aiex.npu.dma_memcpy_nd
 //       CPP:      aiex.npu.dma_memcpy_nd
 //       CPP:      aiex.npu.dma_memcpy_nd
@@ -82,7 +82,7 @@ func.func @generic_matmul_transpose_static(%lhs : tensor<8x16xi32>,
 //       CPP:    aie.shim_dma_allocation
 //       CPP:    aie.shim_dma_allocation
 //       CPP:    aie.shim_dma_allocation
-//       CPP:    func.func @matmul_transpose_b_static_dispatch_0_matmul_transpose_b_8x32x16_i32(%arg0: memref<8x16xi32>, %arg1: memref<32x16xi32>, %arg2: memref<8x32xi32>)
+//       CPP:    aiex.runtime_sequence @matmul_transpose_b_static_dispatch_0_matmul_transpose_b_8x32x16_i32(%arg0: memref<8x16xi32>, %arg1: memref<32x16xi32>, %arg2: memref<8x32xi32>)
 //       CPP:      aiex.npu.dma_memcpy_nd
 //       CPP:      aiex.npu.dma_memcpy_nd
 //       CPP:      aiex.npu.dma_memcpy_nd

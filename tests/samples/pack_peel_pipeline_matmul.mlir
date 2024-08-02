@@ -15,7 +15,7 @@ func.func @matmul_i8_i32(%lhs: tensor<32x16xi8>, %rhs: tensor<16x32xi8>) -> tens
 //       CHECK:    aie.shim_dma_allocation
 //       CHECK:    aie.shim_dma_allocation
 //       CHECK:    aie.shim_dma_allocation
-//       CHECK:    func.func @matmul_i8_i32_dispatch_0_matmul_32x32x16_i8xi8xi32(%arg0: memref<128xi32>, %arg1: memref<128xi32>, %arg2: memref<32x32xi32>)
+//       CHECK:    aiex.runtime_sequence @matmul_i8_i32_dispatch_0_matmul_32x32x16_i8xi8xi32(%arg0: memref<128xi32>, %arg1: memref<128xi32>, %arg2: memref<32x32xi32>)
 //       CHECK:      aiex.npu.dma_memcpy_nd
 //       CHECK:      aiex.npu.dma_memcpy_nd
 //       CHECK:      aiex.npu.dma_memcpy_nd
@@ -38,7 +38,7 @@ func.func @matmul_bf16(%lhs: tensor<16x32xbf16>, %rhs: tensor<32x16xbf16>) -> te
 //       CHECK:    aie.shim_dma_allocation
 //       CHECK:    aie.shim_dma_allocation
 //       CHECK:    aie.shim_dma_allocation
-//       CHECK:    func.func @matmul_bf16_dispatch_0_matmul_16x16x32_bf16(%arg0: memref<256xi32>, %arg1: memref<256xi32>, %arg2: memref<128xi32>)
+//       CHECK:    aiex.runtime_sequence @matmul_bf16_dispatch_0_matmul_16x16x32_bf16(%arg0: memref<256xi32>, %arg1: memref<256xi32>, %arg2: memref<128xi32>)
 //       CHECK:      aiex.npu.dma_memcpy_nd
 //       CHECK:      aiex.npu.dma_memcpy_nd
 //       CHECK:      aiex.npu.dma_memcpy_nd
