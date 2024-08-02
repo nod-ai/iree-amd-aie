@@ -8,10 +8,6 @@ def generate_matmul_test(output_fn, input_fn, m, n, k, lhs_rhs_type, acc_type):
     Generate mlir file (output_fn) from the template file (input_fn).
     """
 
-    print(
-        f"Generating mlir function from template file {input_fn} with m={m}, n={n}, k={k}, lhs_rhs_type={lhs_rhs_type}, acc_type={acc_type}, and writing to {output_fn}"
-    )
-
     replace = dict({})
     replace["M"] = m
     replace["N"] = n
