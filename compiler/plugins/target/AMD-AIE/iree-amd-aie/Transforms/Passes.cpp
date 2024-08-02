@@ -584,6 +584,7 @@ void addAMDAIEObjectFifoLoweringPasses(OpPassManager &passManager) {
   passManager.addPass(createCSEPass());
 
   passManager.addPass(createAMDAIECanonicalizeDoublyStridedOpPass());
+  //passManager.addPass(createAMDAIEFlattenLogicalObjectFifoPass());
   passManager.addPass(createAMDAIEAccessToAcquireReleasePass());
   passManager.addPass(createAMDAIENoneAccessToTemporaryBufferPass());
   passManager.addPass(createCSEPass());

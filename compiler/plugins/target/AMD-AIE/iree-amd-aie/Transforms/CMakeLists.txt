@@ -60,6 +60,7 @@ iree_cc_library(
     "AMDAIEDmaLoopSubsumption.cpp"
     "AMDAIEDmaToCircularDma.cpp"
     "AMDAIEDmaUtils.cpp"
+    "AMDAIEFlattenLogicalObjectFifo.cpp"
     "AMDAIEFuseConsumerIntoLoop.cpp"
     "AMDAIEFuseFillIntoForall.cpp"
     "AMDAIEFusePackIntoLoop.cpp"
