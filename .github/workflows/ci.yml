@@ -144,6 +144,11 @@ jobs:
           # ```
           # on the guthub CI machine.
           sudo prlimit -lunlimited --pid $$
+          
+          pushd runtime/src/iree-amd-aie/aie_runtime/test/add_one_test
+          g++ -std=c++17 add_one.cc -o add_one
+          ./add_one $PWD
+          popd
 
           bash build_tools/ci/run_matmul_test.sh \
             test_matmuls \

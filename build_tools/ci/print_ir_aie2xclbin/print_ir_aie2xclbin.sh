@@ -30,6 +30,8 @@ if [ "$#" -ne 2 ] && [ "$#" -ne 5 ]; then
     exit 1
 fi
 
+THIS_DIR="$(cd $(dirname $0) && pwd)"
+ROOT_DIR="$(cd $THIS_DIR/../../.. && pwd)"
 
 OUTPUT=`realpath "${2}"`
 mkdir -p ${OUTPUT}
@@ -42,15 +44,15 @@ if [ "$#" -eq 2 ]; then
   VITIS=/opt/Xilinx/Vitis/2024.1
 fi
 
-echo "chess-clang: $(find $VITIS -name chess-clang)"
-echo "xchesscc: $(find $VITIS -name xchesscc)"
-
 # The local set-paths-manually case:
 if [ "$#" -eq 5 ]; then
   PEANO="$3"
   XRT="$4"
   VITIS="$5"
 fi
+
+echo "chess-clang: $(find $VITIS -name chess-clang)"
+echo "xchesscc: $(find $VITIS -name xchesscc)"
 
 IREE_INSTALL_DIR="$1"
 if [ ! -d "${IREE_INSTALL_DIR}/bin" ]; then

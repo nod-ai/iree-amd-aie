@@ -112,3 +112,4 @@ target_include_directories(
 )
 
 add_subdirectory(cdo)
+add_subdirectory(add_one_test)

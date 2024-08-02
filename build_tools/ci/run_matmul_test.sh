@@ -68,6 +68,9 @@ for dir in "${IREE_INSTALL_DIR}" "${IREE_INSTALL_DIR}/bin" "${IREE_INSTALL_DIR}/
   if [ -f "${dir}/iree-compile" ]; then
     IREE_COMPILE_EXE="${dir}/iree-compile"
   fi
+  if [ -f "${dir}/iree-e2e-matmul-test" ]; then
+    TEST_RUNNER="${dir}/iree-e2e-matmul-test"
+  fi
   if [ -f "${dir}/testing/e2e/iree-e2e-matmul-test" ]; then
     TEST_RUNNER="${dir}/testing/e2e/iree-e2e-matmul-test"
   fi
