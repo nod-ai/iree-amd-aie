@@ -176,10 +176,8 @@ static iree_status_t iree_hal_xrt_device_query_i64(
   if (iree_string_view_equal(category, IREE_SV("hal.executable.format"))) {
     *out_value =
         iree_string_view_equal(key, IREE_SV("amdaie-xclbin-fb")) ? 1 : 0;
-    printf("query succeedds\n");
     return iree_ok_status();
   }
-  printf("failed succeedds\n");
   return iree_make_status(IREE_STATUS_UNIMPLEMENTED, "unsupported query");
 }
 
