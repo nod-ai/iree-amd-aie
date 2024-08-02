@@ -116,6 +116,7 @@ jobs:
           source .venv/bin/activate
           pip install -r tests/matmul/requirements.txt
 
+
       - name: E2E correctness matmul test
         run: |
           source .venv/bin/activate
@@ -152,6 +153,34 @@ jobs:
             $PWD/llvm-aie \
             /opt/xilinx/xrt \
             /opt/Xilinx/Vitis/2024.1
+
+
+      - name : Smoke E2E comparison flag test
+        run: |
+          source .venv/bin/activate
+          # install requirements
+          # TODO(newling) make requirements.txt file
+          pip install numpy
+          source /opt/xilinx/xrt/setup.sh
+          python3 build_tools/ci/cpu_comparison/run_test.py \
+            test_aie_vs_cpu \
+            iree-install \
+            $PWD/llvm-aie \
+            /opt/xilinx/xrt \
+            /opt/Xilinx/Vitis/2024.1 \
+            --reset_npu_between_runs=0 \
+            --test_set='Smoke' \
+            --do_not_run_aie=1 \
+            --verbose=0
+
+          # Assert that output.log is empty (because verbose=0)
+          if [ -s output.log ]; then
+            echo "output.log is not empty:"
+            cat output.log
+            exit 1
+          else
+            echo "output.log is empty"
+          fi
 
       - name : E2E comparison of AIE to llvm-cpu
         run: |

@@ -3,20 +3,17 @@
 # Copyright 2024 The IREE Authors
 
 import argparse
+from input_generator import generate_inputs, verify_determinism, load_input
+from matmul_template.matmul_generator import generate_matmul_test
+import numpy as np
 import os
+from pathlib import Path
 import re
+from output_comparer import compare
 import subprocess
+from textwrap import dedent
 import time
 import urllib.request
-from pathlib import Path
-from textwrap import dedent
-
-import numpy as np
-
-from input_generator import generate_inputs, verify_determinism
-from matmul_template.matmul_generator import generate_matmul_test
-from input_generator import generate_inputs, verify_determinism, load_input
-from output_comparer import compare
 
 
 def matmul_from_input_strings(input_args):
@@ -87,7 +84,7 @@ def shell_out(cmd: list, workdir=None, verbose=False):
     return stdout_decode, stderr_decode
 
 
-def generate_aie_output(
+def generate_aie_vmfb(
     config,
     name,
     tile_pipeline,
@@ -98,7 +95,8 @@ def generate_aie_output(
     function_name,
 ):
     """
-    Compile and run a test file for AIE, returning a numpy array of the output.
+    Compile a test file for IREE's AIE backend, returning path to the compiled
+    module.
     """
 
     compilation_flags = [
@@ -127,8 +125,21 @@ def generate_aie_output(
     start = time.monotonic_ns()
     shell_out(compilation_flags, config.output_dir, config.verbose)
     compile_time = time.monotonic_ns() - start
+    if config.verbose:
+        print(f"Time spent in compilation: {compile_time // 1e6} [ms]")
 
     aie_vmfb = config.output_dir / f"{name}_aie.vmfb"
+    if not aie_vmfb.exists():
+        raise RuntimeError(f"Failed to compile {test_file} to {aie_vmfb}")
+
+    return aie_vmfb
+
+
+def generate_aie_output(config, aie_vmfb, input_args, function_name, name):
+    """
+    Run a compiled AIE module (aie_vmfb), returning a numpy array of the output.
+    """
+
     aie_npy = config.output_dir / f"{name}_aie.npy"
     run_args = [
         config.iree_run_exe,
@@ -141,12 +152,13 @@ def generate_aie_output(
         run_args += [f"--function={function_name}"]
     if config.reset_npu_between_runs:
         shell_out(config.reset_npu_script)
+
     start = time.monotonic_ns()
     shell_out(run_args, config.output_dir, config.verbose)
     run_time = time.monotonic_ns() - start
 
-    print(f"Time spent in compilation: {compile_time // 1e6} [ms]")
-    print(f"Time spent in running the model: {run_time // 1e6} [ms]")
+    if config.verbose:
+        print(f"Time spent in running the model: {run_time // 1e6} [ms]")
 
     return np.load(aie_npy)
 
@@ -206,6 +218,7 @@ class TestConfig:
         verbose,
         return_on_fail,
         reset_npu_between_runs,
+        do_not_run_aie,
     ):
 
         self.output_dir = output_dir
@@ -219,6 +232,7 @@ class TestConfig:
         self.return_on_fail = return_on_fail
         self.verbose = verbose
         self.reset_npu_between_runs = reset_npu_between_runs
+        self.do_not_run_aie = do_not_run_aie
 
         # Try get the xrt and (linux) kernel versions.
         self.linux_kernel = "undetermined"
@@ -301,6 +315,7 @@ class TestConfig:
             f"""
         Settings and versions used in all tests
         -+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-
+        do_not_run_aie:       {self.do_not_run_aie}
         file_dir:             {self.file_dir}
         iree_compile_exe:     {self.iree_compile_exe}
         iree_install_dir:     {self.iree_install_dir}
@@ -321,6 +336,11 @@ class TestConfig:
 
         Some information on the above settings / versions
         =================================================
+        do_not_run_aie
+          If True, then the AIE backend will not be run. This is useful for
+          ensuring that everything up to the AIE run and numerical comparison
+          is working correctly, for example if you are not on a device with
+          working AIE HW and runtime.
         file_dir
           The directory of this script
         iree_compile_exe
@@ -391,7 +411,23 @@ def aie_vs_baseline(
         may pass only sometimes due to driver issues, etc.
     """
 
-    name = Path(test_file).name.replace(".mlir", "")
+    name = name_from_mlir_filename(test_file)
+
+    aie_vmfb = generate_aie_vmfb(
+        config,
+        name,
+        tile_pipeline,
+        lower_to_aie_pipeline,
+        use_ukernel,
+        test_file,
+        input_args,
+        function_name,
+    )
+
+    if config.do_not_run_aie:
+        if config.verbose:
+            print(f"Skipping AIE run for {test_file} because 'do_not_run_aie=True'.")
+        return
 
     for i in range(n_repeats):
         if config.verbose:
@@ -399,13 +435,10 @@ def aie_vs_baseline(
 
         aie_output = generate_aie_output(
             config,
-            name,
-            tile_pipeline,
-            lower_to_aie_pipeline,
-            use_ukernel,
-            test_file,
+            aie_vmfb,
             input_args,
             function_name,
+            name,
         )
 
         same_result = compare(baseline_value, aie_output, rtol, atol)
@@ -495,6 +528,124 @@ def aie_vs_np_matmul(
     )
 
 
+class TestSet:
+    def __init__(self, name):
+        self.name = name
+
+    def run(self, config):
+        raise NotImplementedError("Subclasses must implement this method")
+
+
+class ConvolutionSet(TestSet):
+    def __init__(self):
+        super().__init__("Convolution")
+
+    def run(self, config):
+        test_files_dir = config.file_dir / "test_files"
+
+        for name in [
+            "conv2d_nhwc_int32",
+            "conv2d_nhwc_bf16",
+            "conv2d_nhwc_q",
+            "depthwise_convolution_i32",
+        ]:
+            n_conv_repeats = 4
+
+            aie_vs_llvm_cpu(
+                config,
+                test_files_dir / f"{name}.mlir",
+                tile_pipeline="conv-decompose",
+                lower_to_aie_pipeline="air",
+                n_repeats=n_conv_repeats,
+            )
+
+
+class MatmulSet(TestSet):
+    def __init__(self):
+        super().__init__("Matmul")
+
+    def run(self, config):
+
+        matmul_template_dir = config.file_dir / "matmul_template"
+        test_files_dir = config.file_dir / "test_files"
+        output_dir = config.output_dir
+
+        for name in [
+            "two_matmul_switching",
+            "matmul_f32_8_8_4",
+            "matmul_f32_8_4_8",
+        ]:
+            aie_vs_llvm_cpu(config, test_files_dir / f"{name}.mlir")
+
+        aie_vs_llvm_cpu(
+            config,
+            test_files_dir / "three_matmuls.mlir",
+            function_name="three_$mm$",
+        )
+
+        # Test(s) of the form matmul(A,B) where A:MxK, B:KxN
+        test_name = output_dir / "test_from_template.mlir"
+        template_name = matmul_template_dir / "matmul_MxK_KxN.mlir"
+        generate_matmul_test(test_name, template_name, 32, 32, 64, "bf16", "f32")
+        aie_vs_llvm_cpu(config, test_name)
+
+        # Test(s) of the form matmul(A,B) + C where A:MxK, B:KxN, C:N
+        test_name = output_dir / "test_from_template_bias_N.mlir"
+        template_name = matmul_template_dir / "matmul_bias_MxK_KxN_N.mlir"
+        generate_matmul_test(test_name, template_name, 1024, 1024, 512, "bf16", "f32")
+        aie_vs_llvm_cpu(config, test_name, tile_pipeline="pack-peel", use_ukernel=True)
+        aie_vs_llvm_cpu(config, test_name, tile_pipeline="pack-peel", use_ukernel=False)
+
+        # Test(s) of the form matmul(A,B) + C where A:MxK, B:KxN, C:MxN
+        test_name = output_dir / "test_from_template_full_bias.mlir"
+        template_name = matmul_template_dir / "matmul_bias_MxK_KxN_MxN.mlir"
+        generate_matmul_test(test_name, template_name, 128, 128, 256, "i32", "i32")
+        aie_vs_llvm_cpu(config, test_name, tile_pipeline="pack-peel", rtol=0, atol=0)
+
+
+class SmokeSet(TestSet):
+    def __init__(self):
+        super().__init__("Smoke")
+
+    def run(self, config):
+
+        file_dir = config.file_dir
+        output_dir = config.output_dir
+
+        test_files_dir = file_dir / "test_files"
+
+        # The most basic test, direct from .mlir file using all defaults
+        aie_vs_llvm_cpu(config, test_files_dir / "matmul_int32.mlir")
+
+        # Using a baseline other than llvm-cpu
+        aie_vs_np_matmul(config, test_files_dir / "matmul_int32.mlir")
+
+        # Convolution and int8
+        aie_vs_llvm_cpu(
+            config,
+            test_files_dir / f"conv2d_nhwc_int8.mlir",
+            tile_pipeline="conv-decompose",
+            lower_to_aie_pipeline="air",
+            n_repeats=2,
+        )
+
+        # Using objectFifo pipeline
+        matmul_template_dir = file_dir / "matmul_template"
+        test_name = output_dir / "test_from_objectfifo_basic.mlir"
+        template_name = matmul_template_dir / "matmul_MxK_KxN.mlir"
+        generate_matmul_test(test_name, template_name, 64, 64, 64, "bf16", "f32")
+        aie_vs_llvm_cpu(
+            config,
+            test_name,
+            tile_pipeline="pack-peel",
+            lower_to_aie_pipeline="objectFifo",
+        )
+
+
+def getTestPartition():
+    return [ConvolutionSet(), MatmulSet(), SmokeSet()]
+
+
 def all_tests(
     output_dir,
     iree_install_dir,
@@ -504,9 +655,11 @@ def all_tests(
     return_on_fail,
     verbose,
     reset_npu_between_runs,
+    do_not_run_aie,
+    test_set,
 ):
     """
-    There are a few ways to add tests to this function:
+    There are a few ways to add tests to this script:
 
     1) add a single test file in `./test_files` which should follow the same
        format as the example `./test_files/matmul_int32.mlir`.
@@ -543,6 +696,7 @@ def all_tests(
         verbose,
         return_on_fail,
         reset_npu_between_runs,
+        do_not_run_aie,
     )
     if verbose:
         print(config)
@@ -553,70 +707,21 @@ def all_tests(
     # Verify a very basic script runs before running the more complex tests
     shell_out(["pwd"], verbose=config.verbose)
 
-    test_files_dir = file_dir / "test_files"
-    aie_vs_np_matmul(config, test_files_dir / "matmul_int32.mlir")
+    partition = getTestPartition()
+    partition_names = [p.name for p in partition]
+    map_to_partition = {p.name: p for p in partition}
+    if "All" in test_set:
+        test_set = partition_names
 
-    for name in [
-        "matmul_int32",
-        "two_matmul_switching",
-        "matmul_f32_8_8_4",
-        "matmul_f32_8_4_8",
-    ]:
-        aie_vs_llvm_cpu(config, test_files_dir / f"{name}.mlir")
+    # For each test in test_set, find the partition it belongs to and run it
+    # if no partition is found, raise error.
+    for test in test_set:
+        if test not in partition_names:
+            raise ValueError(f"Test set '{test}' not found in available test sets.")
+        partition = map_to_partition[test]
+        partition.run(config)
 
-    for name in [
-        "conv2d_nhwc_int32",
-        "conv2d_nhwc_bf16",
-        "conv2d_nhwc_int8",
-        "conv2d_nhwc_q",
-        "depthwise_convolution_i32",
-    ]:
-        n_conv_repeats = 4
-
-        aie_vs_llvm_cpu(
-            config,
-            test_files_dir / f"{name}.mlir",
-            tile_pipeline="conv-decompose",
-            n_repeats=n_conv_repeats,
-        )
-
-    aie_vs_llvm_cpu(
-        config,
-        test_files_dir / "three_matmuls.mlir",
-        function_name="three_$mm$",
-    )
-
-    matmul_template_dir = file_dir / "matmul_template"
-
-    # Test(s) of the form matmul(A,B) where A:MxK, B:KxN
-    test_name = output_dir / "test_from_template.mlir"
-    template_name = matmul_template_dir / "matmul_MxK_KxN.mlir"
-    generate_matmul_test(test_name, template_name, 32, 32, 64, "bf16", "f32")
-    aie_vs_llvm_cpu(config, test_name)
-
-    # Try running matmul_int32 with different lower_to_aie_pipeline option:
-    test_name = output_dir / "test_from_objectfifo_basic.mlir"
-    template_name = matmul_template_dir / "matmul_MxK_KxN.mlir"
-    generate_matmul_test(test_name, template_name, 64, 64, 64, "bf16", "f32")
-    aie_vs_llvm_cpu(
-        config,
-        test_name,
-        tile_pipeline="pack-peel",
-        lower_to_aie_pipeline="objectFifo",
-    )
-
-    # Test(s) of the form matmul(A,B) + C where A:MxK, B:KxN, C:N
-    test_name = output_dir / "test_from_template_bias_N.mlir"
-    template_name = matmul_template_dir / "matmul_bias_MxK_KxN_N.mlir"
-    generate_matmul_test(test_name, template_name, 1024, 1024, 512, "bf16", "f32")
-    aie_vs_llvm_cpu(config, test_name, tile_pipeline="pack-peel", use_ukernel=True)
-    aie_vs_llvm_cpu(config, test_name, tile_pipeline="pack-peel", use_ukernel=False)
-
-    # Test(s) of the form matmul(A,B) + C where A:MxK, B:KxN, C:MxN
-    test_name = output_dir / "test_from_template_full_bias.mlir"
-    template_name = matmul_template_dir / "matmul_bias_MxK_KxN_MxN.mlir"
-    generate_matmul_test(test_name, template_name, 128, 128, 256, "i32", "i32")
-    aie_vs_llvm_cpu(config, test_name, tile_pipeline="pack-peel", rtol=0, atol=0)
+    # for p in partition:
 
     if config.failures:
         # Convert the list of failed tests into a map: test name to the
@@ -635,26 +740,17 @@ def all_tests(
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        prog="CPU comparison test",
-        description="This program compares numerical outputs on AIE against CPU",
+        prog="Testing AIE numerical correctness",
+        description="This program compares numerical outputs on AIE against baseline values",
     )
     abs_path = lambda x: Path(x).absolute()
     parser.add_argument("output_dir", type=abs_path)
     parser.add_argument("iree_install_dir", type=abs_path)
-    parser.add_argument(
-        "peano_install_dir", nargs="?", default="/opt/llvm-aie", type=abs_path
-    )
-    parser.add_argument("xrt_dir", nargs="?", default="/opt/xilinx/xrt", type=abs_path)
-    parser.add_argument(
-        "vitis_dir", nargs="?", default="/opt/Xilinx/Vitis/2024.1", type=abs_path
-    )
+    parser.add_argument("peano_install_dir", type=abs_path)
+    parser.add_argument("xrt_dir", type=abs_path)
+    parser.add_argument("vitis_dir", type=abs_path)
 
-    # This (and other boolean flags) could be made more 'slick' by using
-    # `action='store_true'` in the `add_argument` call, but this has
-    # problems with the default value of 1. It could be also be made nicer
-    # by using type=bool, but this also has issues. So going with this
-    # clunky design for now (feel free to improve).
-
+    # TODO(newling) make bool options boolean, not integer (tried but had issues)
     parser.add_argument(
         "--return_on_fail",
         nargs="?",
@@ -686,7 +782,37 @@ if __name__ == "__main__":
         ),
     )
 
+    parser.add_argument(
+        "--do_not_run_aie",
+        nargs="?",
+        default=0,
+        type=int,
+        help=(
+            "If 1, then the AIE backend will not be run. This is useful for "
+            "ensuring that everything up to the AIE run and numerical comparison "
+            "is working correctly, for example if you are not on a device with "
+            "working AIE HW and runtime."
+        ),
+    )
+
+    partition = getTestPartition()
+    partition_names = [p.name for p in partition]
+    partition_names_and_all = partition_names + ["All"]
+    help_string = (
+        "A comma-separated list of test sets. Available test sets are: "
+        + ", ".join(partition_names_and_all)
+    )
+
+    parser.add_argument(
+        "--test_set",
+        type=str,
+        help=help_string,
+        default="All",
+    )
+
     args = parser.parse_args()
+
+    test_set_list = args.test_set.split(",")
     all_tests(
         args.output_dir,
         args.iree_install_dir,
@@ -696,4 +822,6 @@ if __name__ == "__main__":
         args.return_on_fail,
         args.verbose,
         args.reset_npu_between_runs,
+        args.do_not_run_aie,
+        test_set_list,
     )
