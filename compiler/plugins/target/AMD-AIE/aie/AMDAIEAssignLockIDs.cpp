@@ -12,7 +12,7 @@
 // and only assigns lock IDs to locks without an ID.
 
 #include "Passes.h"
-#include "aie/Dialect/AIE/IR/AIEDialect.h"
+#include "AIEDialect.h"
 #include "iree-amd-aie/aie_runtime/iree_aie_runtime.h"
 #include "llvm/ADT/DenseMap.h"
 #include "mlir/Pass/Pass.h"

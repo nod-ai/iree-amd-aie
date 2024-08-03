@@ -8,7 +8,7 @@
 #include <set>
 
 #include "Passes.h"
-#include "aie/Dialect/AIE/IR/AIEDialect.h"
+#include "AIEDialect.h"
 #include "iree-amd-aie/aie_runtime/Utils/ChannelBdIdGenerator.h"
 #include "iree-amd-aie/aie_runtime/iree_aie_runtime.h"
 #include "mlir/Pass/Pass.h"

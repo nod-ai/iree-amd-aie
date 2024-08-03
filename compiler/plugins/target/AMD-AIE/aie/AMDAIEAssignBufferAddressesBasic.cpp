@@ -5,7 +5,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 #include "Passes.h"
-#include "aie/Dialect/AIE/IR/AIEDialect.h"
+#include "AIEDialect.h"
 #include "iree-amd-aie/aie_runtime/iree_aie_runtime.h"
 #include "llvm/ADT/Twine.h"
 #include "mlir/IR/Attributes.h"
