@@ -143,7 +143,7 @@ class AIETargetDevice final : public IREE::HAL::TargetDevice {
     targetRegistry.getTargetBackend("amd-aie")->getDefaultExecutableTargets(
         context, "amd-aie", configAttr, executableTargetAttrs);
 
-    return IREE::HAL::DeviceTargetAttr::get(context, b.getStringAttr("amd-aie"),
+    return IREE::HAL::DeviceTargetAttr::get(context, b.getStringAttr("xrt"),
                                             configAttr, executableTargetAttrs);
   }
 
@@ -155,7 +155,7 @@ class AIETargetBackend final : public IREE::HAL::TargetBackend {
  public:
   explicit AIETargetBackend(const AMDAIEOptions &options) : options(options) {}
 
-  std::string getLegacyDefaultDeviceID() const override { return "amd-aie"; }
+  std::string getLegacyDefaultDeviceID() const override { return "xrt"; }
 
   void getDefaultExecutableTargets(
       MLIRContext *context, StringRef deviceID, DictionaryAttr deviceConfigAttr,
