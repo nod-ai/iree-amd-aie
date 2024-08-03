@@ -10,16 +10,15 @@
 
 #include "AIEDialect.h"
 
+#include "llvm/ADT/DenseSet.h"
+#include "llvm/ADT/SmallSet.h"
+#include "llvm/ADT/TypeSwitch.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/IR/DialectImplementation.h"
 #include "mlir/IR/OpDefinition.h"
 #include "mlir/Interfaces/FoldInterfaces.h"
 #include "mlir/Transforms/InliningUtils.h"
-
-#include "llvm/ADT/DenseSet.h"
-#include "llvm/ADT/SmallSet.h"
-#include "llvm/ADT/TypeSwitch.h"
 
 using namespace mlir;
 using namespace xilinx::AIE;
@@ -68,13 +67,13 @@ struct AIEDialectFoldInterface : DialectFoldInterface {
   }
 };
 
-} // end anonymous namespace
+}  // end anonymous namespace
 
 namespace xilinx::AIE {
 
 LogicalResult myVerifyOffsetSizeAndStrideOp(OffsetSizeAndStrideOpInterface op) {
   std::array<unsigned, 3> maxRanks = op.getArrayAttrMaxRanks();
-  if (!(op.getMixedOffsets().size() == 1 && maxRanks[0] == 1) && // NOLINT
+  if (!(op.getMixedOffsets().size() == 1 && maxRanks[0] == 1) &&  // NOLINT
       op.getMixedOffsets().size() != op.getMixedSizes().size())
     return op->emitError(
                "expected mixed offsets rank to match mixed sizes rank (")
@@ -111,10 +110,8 @@ static VirtualizedNPUTargetModel NPUmodel3col(3);
 static VirtualizedNPUTargetModel NPUmodel4col(4);
 
 const AIETargetModel &getTargetModel(Operation *op) {
-  if (auto t = dyn_cast<AIETarget>(op))
-    return t.getTargetModel();
-  if (auto t = op->getParentOfType<AIETarget>())
-    return t.getTargetModel();
+  if (auto t = dyn_cast<AIETarget>(op)) return t.getTargetModel();
+  if (auto t = op->getParentOfType<AIETarget>()) return t.getTargetModel();
 
   // For backward compatibility, return a basic device model compatible with
   // the VCK190
@@ -123,22 +120,22 @@ const AIETargetModel &getTargetModel(Operation *op) {
 
 const AIETargetModel &getTargetModel(AIEDevice device) {
   switch (device) {
-  case AIEDevice::xcvc1902:
-    return VC1902model;
-  case AIEDevice::xcve2302:
-    return VE2302model;
-  case AIEDevice::xcve2802:
-    return VE2802model;
-  case AIEDevice::npu1:
-    return NPUmodel;
-  case AIEDevice::npu1_1col:
-    return NPUmodel1col;
-  case AIEDevice::npu1_2col:
-    return NPUmodel2col;
-  case AIEDevice::npu1_3col:
-    return NPUmodel3col;
-  case AIEDevice::npu1_4col:
-    return NPUmodel4col;
+    case AIEDevice::xcvc1902:
+      return VC1902model;
+    case AIEDevice::xcve2302:
+      return VE2302model;
+    case AIEDevice::xcve2802:
+      return VE2802model;
+    case AIEDevice::npu1:
+      return NPUmodel;
+    case AIEDevice::npu1_1col:
+      return NPUmodel1col;
+    case AIEDevice::npu1_2col:
+      return NPUmodel2col;
+    case AIEDevice::npu1_3col:
+      return NPUmodel3col;
+    case AIEDevice::npu1_4col:
+      return NPUmodel4col;
   }
   return VC1902model;
 }
@@ -148,8 +145,7 @@ const AIETargetModel &getTargetModel(AIEDevice device) {
 static TileElement getParentTileElement(Operation *op) {
   auto *parent = op->getParentOp();
   while (!llvm::isa_and_nonnull<DeviceOp, ModuleOp>(parent)) {
-    if (auto element = llvm::dyn_cast<TileElement>(parent))
-      return element;
+    if (auto element = llvm::dyn_cast<TileElement>(parent)) return element;
     parent = parent->getParentOp();
   }
   return llvm::dyn_cast<TileElement>(parent);
@@ -167,7 +163,6 @@ struct UsesAreAccessable {
       if (llvm::isa_and_nonnull<DeviceOp, ModuleOp>(user->getParentOp()))
         return success();
       if (auto element = getParentTileElement(user)) {
-
         auto tileID = element.getTileID();
         if (!targetModel.isLegalMemAffinity(tileID.col, tileID.row, thisID.col,
                                             thisID.row))
@@ -216,7 +211,7 @@ struct AIEObjectFifoTypeStorage : TypeStorage {
 
   MemRefType elementType;
 };
-} // namespace detail
+}  // namespace detail
 
 AIEObjectFifoType AIEObjectFifoType::get(MemRefType elementType) {
   // Call into a helper 'get' method in 'TypeBase' to get an uniqued instance
@@ -225,9 +220,8 @@ AIEObjectFifoType AIEObjectFifoType::get(MemRefType elementType) {
   return Base::get(ctx, elementType);
 }
 
-LogicalResult
-AIEObjectFifoType::verify(function_ref<InFlightDiagnostic()> emitError,
-                          MemRefType elementType) {
+LogicalResult AIEObjectFifoType::verify(
+    function_ref<InFlightDiagnostic()> emitError, MemRefType elementType) {
   return success();
 }
 
@@ -257,8 +251,8 @@ struct AIEObjectFifoSubviewTypeStorage : TypeStorage {
   /// Define a construction method for creating a new instance of this storage.
   /// This method takes an instance of a storage allocator, and an instance of a
   /// `KeyTy`.
-  static AIEObjectFifoSubviewTypeStorage *
-  construct(TypeStorageAllocator &allocator, const KeyTy &key) {
+  static AIEObjectFifoSubviewTypeStorage *construct(
+      TypeStorageAllocator &allocator, const KeyTy &key) {
     // Allocate the storage instance and construct it.
     return new (allocator.allocate<AIEObjectFifoSubviewTypeStorage>())
         AIEObjectFifoSubviewTypeStorage(key);
@@ -266,7 +260,7 @@ struct AIEObjectFifoSubviewTypeStorage : TypeStorage {
 
   MemRefType elementType;
 };
-} // namespace detail
+}  // namespace detail
 
 AIEObjectFifoSubviewType AIEObjectFifoSubviewType::get(MemRefType elementType) {
   // Call into a helper 'get' method in 'TypeBase' to get a uniqued instance
@@ -276,9 +270,8 @@ AIEObjectFifoSubviewType AIEObjectFifoSubviewType::get(MemRefType elementType) {
 }
 
 /// This method is used to verify the construction invariants.
-LogicalResult
-AIEObjectFifoSubviewType::verify(function_ref<InFlightDiagnostic()> emitError,
-                                 MemRefType elementType) {
+LogicalResult AIEObjectFifoSubviewType::verify(
+    function_ref<InFlightDiagnostic()> emitError, MemRefType elementType) {
   return success();
 }
 
@@ -302,8 +295,9 @@ static OptionalParseResult aieTypeParser(DialectAsmParser &parser,
 
     // Check that the type is a MemRef type.
     if (!llvm::isa<MemRefType>(elementType)) {
-      parser.emitError(typeLoc, "element type for an objectFifo must be "
-                                "a MemRefType, got: ")
+      parser.emitError(typeLoc,
+                       "element type for an objectFifo must be "
+                       "a MemRefType, got: ")
           << elementType;
       return failure();
     }
@@ -312,27 +306,25 @@ static OptionalParseResult aieTypeParser(DialectAsmParser &parser,
   }
 
   if (name == "objectfifosubview") {
-    if (parser.parseLess())
-      return failure();
+    if (parser.parseLess()) return failure();
 
     // Parse the element type of the struct.
     MemRefType elementType;
     // Parse the current element type.
     SMLoc typeLoc = parser.getCurrentLocation();
-    if (parser.parseType(elementType))
-      return failure();
+    if (parser.parseType(elementType)) return failure();
 
     // Check that the type is a MemRefType.
     if (!llvm::isa<MemRefType>(elementType)) {
-      parser.emitError(typeLoc, "element type for a subview must be "
-                                "a MemRefType, got: ")
+      parser.emitError(typeLoc,
+                       "element type for a subview must be "
+                       "a MemRefType, got: ")
           << elementType;
       return failure();
     }
 
     // Parse: `>`
-    if (parser.parseGreater())
-      return failure();
+    if (parser.parseGreater()) return failure();
 
     return result = AIEObjectFifoSubviewType::get(elementType), success();
   }
@@ -345,7 +337,6 @@ static OptionalParseResult aieTypeParser(DialectAsmParser &parser,
 /// refer to a type defined in this dialect.
 static ParseResult parse(Type &result, StringRef name,
                          DialectAsmParser &parser) {
-
   if (OptionalParseResult parseResult = aieTypeParser(parser, name, result);
       parseResult.has_value())
     return parseResult.value();
@@ -359,8 +350,7 @@ static ParseResult parse(Type &result, StringRef name,
 Type AIEDialect::parseType(DialectAsmParser &parser) const {
   StringRef name;
   Type result;
-  if (parser.parseKeyword(&name) || parse(result, name, parser))
-    return {};
+  if (parser.parseKeyword(&name) || parse(result, name, parser)) return {};
   return result;
 }
 
@@ -393,7 +383,7 @@ void AIEDialect::initialize() {
   addInterfaces<AIEInlinerInterface, AIEDialectFoldInterface>();
 }
 
-} // namespace xilinx::AIE
+}  // namespace xilinx::AIE
 
 // Check that the operation only contains terminators in
 // TerminatorOpTypes.
@@ -449,7 +439,7 @@ LogicalResult HasValidDMAChannels<ConcreteType>::verifyTrait(Operation *op) {
     // check for duplicate DMA channels within the same MemTileDMAOp
     if (auto dmaStart = dyn_cast<DMAStartOp>(bodyOp)) {
       DMAChannel dmaChan = {dmaStart.getChannelDir(),
-                            dmaStart.getChannelIndex()};
+                            static_cast<int>(dmaStart.getChannelIndex())};
       if (usedChannels.count(dmaChan))
         return dmaStart.emitOpError()
                << "duplicate DMA channel "
@@ -468,14 +458,16 @@ LogicalResult HasValidDMAChannels<ConcreteType>::verifyTrait(Operation *op) {
 LogicalResult ObjectFifoCreateOp::verify() {
   if (isa<ArrayAttr>(getElemNumber())) {
     if (size_t numDepths = dyn_cast<ArrayAttr>(getElemNumber()).size();
-        numDepths != getConsumerTiles().size() + 1) // +1 for producer depth
-      return emitOpError("does not have enough depths specified for producer "
-                         "and for each consumer.");
+        numDepths != getConsumerTiles().size() + 1)  // +1 for producer depth
+      return emitOpError(
+          "does not have enough depths specified for producer "
+          "and for each consumer.");
   }
 
   if (getProducerTileOp().isShimTile() && !getDimensionsToStream().empty()) {
-    return emitError("`toStream` data layout transformations are not supported "
-                     "on shim tile producers");
+    return emitError(
+        "`toStream` data layout transformations are not supported "
+        "on shim tile producers");
   }
 
   return success();
@@ -491,8 +483,7 @@ ParseResult parseObjectFifoProducerTile(OpAsmParser &parser,
                                         OpAsmParser::UnresolvedOperand &operand,
                                         BDDimLayoutArrayAttr &dimensions) {
   std::vector<BDDimLayoutAttr> emptyDims = {};
-  if (parser.parseOperand(operand))
-    return failure();
+  if (parser.parseOperand(operand)) return failure();
   if (succeeded(parser.parseOptionalKeyword("toStream"))) {
     if (parser.parseCustomAttributeWithFallback<BDDimLayoutArrayAttr>(
             dimensions)) {
@@ -569,7 +560,7 @@ void printObjectFifoConsumerTiles(OpAsmPrinter &printer, Operation *op,
   }
 }
 
-} // namespace xilinx::AIE
+}  // namespace xilinx::AIE
 
 //===----------------------------------------------------------------------===//
 // ObjectFifoLinkOp
@@ -577,70 +568,73 @@ void printObjectFifoConsumerTiles(OpAsmPrinter &printer, Operation *op,
 
 LogicalResult ObjectFifoLinkOp::verify() {
   if (isJoin() && isDistribute())
-    return emitError("ObjectFifoLinkOp does not support 'join' and "
-                     "'distribute' at the same time");
+    return emitError(
+        "ObjectFifoLinkOp does not support 'join' and "
+        "'distribute' at the same time");
 
   if (auto sharedTile = getOptionalSharedTile(); !sharedTile)
-    return emitError("ObjectFifoLinkOp must have a link point, i.e., a "
-                     "shared tile between objectFifos");
+    return emitError(
+        "ObjectFifoLinkOp must have a link point, i.e., a "
+        "shared tile between objectFifos");
 
   if (isJoin()) {
     ObjectFifoCreateOp fifoOut = getOutputObjectFifos()[0];
     auto elemType =
         llvm::cast<AIEObjectFifoType>(fifoOut.getElemType()).getElementType();
     int64_t outputSize = 1;
-    for (auto dim : elemType.getShape())
-      outputSize *= dim;
+    for (auto dim : elemType.getShape()) outputSize *= dim;
 
     int inputSize = 0;
     for (auto fifoIn : getInputObjectFifos()) {
       auto elemType =
           llvm::cast<AIEObjectFifoType>(fifoIn.getElemType()).getElementType();
       int64_t nextInputSize = 1;
-      for (int64_t dim : elemType.getShape())
-        nextInputSize *= dim;
+      for (int64_t dim : elemType.getShape()) nextInputSize *= dim;
       inputSize += nextInputSize;
     }
     if (inputSize != outputSize)
-      return emitError("Total size of input objFifos in ObjectFifoLinkOp must "
-                       "be equal to size of output objFifo");
+      return emitError(
+          "Total size of input objFifos in ObjectFifoLinkOp must "
+          "be equal to size of output objFifo");
 
   } else if (isDistribute()) {
     ObjectFifoCreateOp fifoIn = getInputObjectFifos()[0];
     if (!fifoIn.getDimensionsToStream().empty()) {
-      return emitOpError("currently does not support objectFifos with "
-                         "dimensionsToStream.");
+      return emitOpError(
+          "currently does not support objectFifos with "
+          "dimensionsToStream.");
     }
     for (auto dims : fifoIn.getDimensionsFromStreamPerConsumer()) {
       if (!dims.empty())
-        return emitOpError("currently does not support objectFifos with "
-                           "dimensionsFromStreamPerConsumer.");
+        return emitOpError(
+            "currently does not support objectFifos with "
+            "dimensionsFromStreamPerConsumer.");
     }
 
     auto elemType =
         llvm::cast<AIEObjectFifoType>(fifoIn.getElemType()).getElementType();
     int64_t inputSize = 1;
-    for (auto dim : elemType.getShape())
-      inputSize *= dim;
+    for (auto dim : elemType.getShape()) inputSize *= dim;
 
     int outputSize = 0;
     for (auto fifoOut : getOutputObjectFifos()) {
       for (auto dims : fifoOut.getDimensionsFromStreamPerConsumer()) {
         if (!dims.empty())
-          return emitOpError("currently does not support objectFifos with "
-                             "dimensionsFromStreamPerConsumer.");
+          return emitOpError(
+              "currently does not support objectFifos with "
+              "dimensionsFromStreamPerConsumer.");
       }
 
       auto elemType =
           llvm::cast<AIEObjectFifoType>(fifoOut.getElemType()).getElementType();
       int64_t nextOutputSize = 1;
-      for (int64_t dim : elemType.getShape())
-        nextOutputSize *= dim;
+      for (int64_t dim : elemType.getShape()) nextOutputSize *= dim;
       outputSize += nextOutputSize;
     }
     if (outputSize != inputSize)
-      return emitError("Total size of output objFifos in ObjectFifoLinkOp must "
-                       "be equal to size of input objFifo");
+      return emitError(
+          "Total size of output objFifos in ObjectFifoLinkOp must "
+          "be equal to size of input objFifo");
   }
 
   return success();
@@ -650,16 +644,14 @@ std::optional<Value> ObjectFifoLinkOp::getOptionalSharedTile() {
   if (isJoin()) {
     auto fifoOut = getOutputObjectFifos()[0];
     for (auto fifoIn : getInputObjectFifos())
-      if (fifoOut.getProducerTile() != fifoIn.getConsumerTiles()[0])
-        return {};
+      if (fifoOut.getProducerTile() != fifoIn.getConsumerTiles()[0]) return {};
     return {fifoOut.getProducerTile()};
   }
 
   if (isDistribute()) {
     auto fifoIn = getInputObjectFifos()[0];
     for (auto fifoOut : getOutputObjectFifos())
-      if (fifoIn.getConsumerTiles()[0] != fifoOut.getProducerTile())
-        return {};
+      if (fifoIn.getConsumerTiles()[0] != fifoOut.getProducerTile()) return {};
     return {fifoIn.getConsumerTiles()[0]};
   }
 
@@ -709,8 +701,7 @@ std::vector<ObjectFifoCreateOp> ObjectFifoLinkOp::getOutputObjectFifos() {
 //===----------------------------------------------------------------------===//
 
 LogicalResult ObjectFifoRegisterExternalBuffersOp::verify() {
-  if (!getTileOp().isShimTile())
-    return emitOpError("tile is not a shim tile");
+  if (!getTileOp().isShimTile()) return emitOpError("tile is not a shim tile");
 
   return success();
 }
@@ -736,8 +727,7 @@ ObjectFifoCreateOp ObjectFifoRegisterExternalBuffersOp::getObjectFifo() {
 //===----------------------------------------------------------------------===//
 
 LogicalResult ObjectFifoAcquireOp::verify() {
-  if (acqNumber() < 1)
-    return emitOpError("must acquire at least one element");
+  if (acqNumber() < 1) return emitOpError("must acquire at least one element");
 
   auto parent = getOperation()->getParentOfType<CoreOp>();
   if (parent == nullptr)
@@ -794,8 +784,7 @@ ObjectFifoCreateOp ObjectFifoAcquireOp::getObjectFifo() {
 //===----------------------------------------------------------------------===//
 
 LogicalResult ObjectFifoReleaseOp::verify() {
-  if (relNumber() < 1)
-    return emitOpError("must release at least one element");
+  if (relNumber() < 1) return emitOpError("must release at least one element");
 
   auto parent = getOperation()->getParentOfType<CoreOp>();
   if (parent == nullptr)
@@ -848,8 +837,9 @@ LogicalResult ObjectFifoSubviewAccessOp::verify() {
 
   if (auto acqOp = getSubview().getDefiningOp<ObjectFifoAcquireOp>();
       getIndex() >= acqOp.acqNumber())
-    return emitOpError("accessed farther than number of acquired elements "
-                       "(index out of bounds).");
+    return emitOpError(
+        "accessed farther than number of acquired elements "
+        "(index out of bounds).");
 
   return success();
 }
@@ -859,8 +849,7 @@ LogicalResult ObjectFifoSubviewAccessOp::verify() {
 //===----------------------------------------------------------------------===//
 
 LogicalResult ObjectFifoRegisterProcessOp::verify() {
-  if (getProcessLength() < 1)
-    return emitOpError("process length must be >= 1");
+  if (getProcessLength() < 1) return emitOpError("process length must be >= 1");
 
   if (getAcquirePattern().size() != getReleasePattern().size()) {
     // acquire pattern size = process length (i.e., release pattern will be
@@ -979,11 +968,9 @@ LogicalResult GetCascadeOp::verify() {
   DataLayout dataLayout = DataLayout::closest(*this);
   auto bits = dataLayout.getTypeSizeInBits(type);
   if (targetModel.getTargetArch() == AIEArch::AIE1) {
-    if (bits != 384)
-      return emitOpError("must be a 384-bit type");
+    if (bits != 384) return emitOpError("must be a 384-bit type");
   } else if (targetModel.getTargetArch() == AIEArch::AIE2) {
-    if (bits != 512)
-      return emitOpError("must be a 512-bit type");
+    if (bits != 512) return emitOpError("must be a 512-bit type");
   } else
     return emitOpError("cascade not supported in ")
            << stringifyAIEArch(targetModel.getTargetArch());
@@ -1023,8 +1010,7 @@ LogicalResult TileOp::verify() {
   bool found = false;
   for (auto *user : users) {
     if (llvm::isa<SwitchboxOp>(*user)) {
-      if (found)
-        return emitOpError("can only have one switchbox");
+      if (found) return emitOpError("can only have one switchbox");
       found = true;
     }
   }
@@ -1111,8 +1097,7 @@ bool isLegalTileConnection(TileOp tile, const AIETargetModel &targetModel,
 LogicalResult ShimSwitchboxOp::verify() {
   Region &body = getConnections();
   DenseSet<Port> destset;
-  if (body.empty())
-    return emitOpError("should have non-empty body");
+  if (body.empty()) return emitOpError("should have non-empty body");
 
   for (auto &ops : body.front()) {
     if (auto connectOp = dyn_cast<ConnectOp>(ops)) {
@@ -1139,8 +1124,7 @@ LogicalResult ShimSwitchboxOp::verify() {
 LogicalResult ShimMuxOp::verify() {
   Region &body = getConnections();
   DenseSet<Port> destset;
-  if (body.empty())
-    return emitOpError("should have non-empty body");
+  if (body.empty()) return emitOpError("should have non-empty body");
 
   for (auto &ops : body.front()) {
     if (auto connectOp = dyn_cast<ConnectOp>(ops)) {
@@ -1191,8 +1175,7 @@ LogicalResult ShimDMAOp::verify() {
   std::vector<DMAChannel> inputChannels;
   std::vector<DMAChannel> outputChannels;
 
-  if (getBody().empty())
-    return emitOpError("should have non-empty body");
+  if (getBody().empty()) return emitOpError("should have non-empty body");
 
   if (!getTileOp().isShimNOCTile())
     return emitOpError("must be in a ShimTile with a NOC connection");
@@ -1205,7 +1188,7 @@ LogicalResult ShimDMAOp::verify() {
     // check for duplicate DMA channels within the same ShimDMAOp
     if (auto dmaStart = dyn_cast<DMAStartOp>(bodyOp)) {
       DMAChannel dmaChan = {dmaStart.getChannelDir(),
-                            dmaStart.getChannelIndex()};
+                            static_cast<int>(dmaStart.getChannelIndex())};
       if (usedChannels.count(dmaChan))
         return dmaStart.emitOpError()
                << "duplicate DMA channel "
@@ -1248,8 +1231,7 @@ LogicalResult PacketRulesOp::verify() {
 
 LogicalResult PacketFlowOp::verify() {
   Region &body = getPorts();
-  if (body.empty())
-    return emitOpError("should have non-empty body");
+  if (body.empty()) return emitOpError("should have non-empty body");
 
   for (auto &ops : body.front()) {
     if (!isa<PacketSourceOp, PacketDestOp, EndOp>(ops))
@@ -1264,8 +1246,7 @@ LogicalResult PacketFlowOp::verify() {
 //===----------------------------------------------------------------------===//
 
 LogicalResult CoreOp::verify() {
-  if (getBody().empty())
-    return emitOpError("should have non-empty body");
+  if (getBody().empty()) return emitOpError("should have non-empty body");
   if (getTileOp().isShimTile())
     return emitOpError("CoreOp cannot be created on shim tile, i.e. row == 0");
   if (getTileOp().isMemTile())
@@ -1291,8 +1272,7 @@ int64_t BufferOp::getAllocationSize() {
 TileOp BufferOp::getTileOp() { return cast<TileOp>(getTile().getDefiningOp()); }
 
 LogicalResult BufferOp::verify() {
-  if (UsesAreAccessable::verifyTrait(*this).failed())
-    return failure();
+  if (UsesAreAccessable::verifyTrait(*this).failed()) return failure();
   return success();
 }
 
@@ -1342,12 +1322,10 @@ static ParseResult parseBufferInitialValue(OpAsmParser &parser, Type &type,
     return parser.emitError(parser.getNameLoc())
            << "type should be static shaped memref, but got " << type;
 
-  if (parser.parseOptionalEqual())
-    return success();
+  if (parser.parseOptionalEqual()) return success();
 
   Type tensorType = mlir::memref::getTensorTypeFromMemRefType(memrefType);
-  if (parser.parseAttribute(initialValue, tensorType))
-    return failure();
+  if (parser.parseAttribute(initialValue, tensorType)) return failure();
   if (!llvm::isa<ElementsAttr>(initialValue))
     return parser.emitError(parser.getNameLoc())
            << "initial value should be an elements attribute";
@@ -1363,8 +1341,7 @@ LogicalResult MemOp::verify() {
   DenseSet<DMAChannel> usedChannels;
   std::vector<DMAChannel> inputChannels;
   std::vector<DMAChannel> outputChannels;
-  if (body.empty())
-    return emitOpError("should have non-empty body");
+  if (body.empty()) return emitOpError("should have non-empty body");
 
   if (HasSomeTerminator<DMAStartOp, NextBDOp, EndOp>::verifyTrait(*this)
           .failed())
@@ -1374,7 +1351,7 @@ LogicalResult MemOp::verify() {
     // check for duplicate DMA channels within the same MemOp
     if (auto dmaStart = dyn_cast<DMAStartOp>(bodyOp)) {
       DMAChannel dmaChan = {dmaStart.getChannelDir(),
-                            dmaStart.getChannelIndex()};
+                            static_cast<int>(dmaStart.getChannelIndex())};
       if (usedChannels.count(dmaChan))
         return dmaStart.emitOpError()
                << "duplicate DMA channel "
@@ -1442,7 +1419,8 @@ LogicalResult MemTileDMAOp::verify() {
     if (auto startOp = dyn_cast<DMAStartOp>(bodyOp)) {
       // check if number of input and output channels is more than available
       // hardware
-      DMAChannel dmaChan = {startOp.getChannelDir(), startOp.getChannelIndex()};
+      DMAChannel dmaChan = {startOp.getChannelDir(),
+                            static_cast<int>(startOp.getChannelIndex())};
       if (dmaChan.direction == DMAChannelDir::S2MM)
         inputChannels.push_back(dmaChan);
       else
@@ -1461,8 +1439,7 @@ LogicalResult MemTileDMAOp::verify() {
         worklist.push_back(firstBD);
         while (!worklist.empty()) {
           Block *block = worklist.pop_back_val();
-          if (block->empty())
-            continue;
+          if (block->empty()) continue;
           auto successors = block->getTerminator()->getSuccessors();
           for (auto *i : successors) {
             if (!reachable.contains(i)) {
@@ -1556,8 +1533,9 @@ LogicalResult DMABDOp::verify() {
         "BDs only support BufferOp or ExternalBufferOp operands.");
 
   if (getLenInBytes() % 4)
-    return emitOpError("transfer length must be multiple of 4 (i.e., represent "
-                       "4 byte aligned address)");
+    return emitOpError(
+        "transfer length must be multiple of 4 (i.e., represent "
+        "4 byte aligned address)");
 
   TileID parentTileId = getParentTileElement(getOperation()).getTileID();
 
@@ -1688,8 +1666,7 @@ LogicalResult SwitchboxOp::verify() {
   DenseSet<Port> destset;
   auto tile = getTileOp();
   const auto &targetModel = getTargetModel(tile);
-  if (body.empty())
-    return emitOpError("should have non-empty body");
+  if (body.empty()) return emitOpError("should have non-empty body");
   for (auto &ops : body.front()) {
     // Would be simpler if this could be templatized.
     auto checkBound = [&ops](StringRef dir, WireBundle bundle, int index,
@@ -1819,8 +1796,7 @@ struct HasSomeParent {
   static LogicalResult verifyTrait(Operation *op) {
     Operation *operation = op->getParentOp();
     while (operation) {
-      if (llvm::isa_and_nonnull<ParentOpTypes...>(operation))
-        return success();
+      if (llvm::isa_and_nonnull<ParentOpTypes...>(operation)) return success();
       operation = operation->getParentOp();
     }
     return failure();
@@ -1857,8 +1833,7 @@ struct UsesOneLockInDMABlock {
     for (auto op : block->getOps<UseLockOp>()) {
       if (auto lock = dyn_cast<LockOp>(op.getLock().getDefiningOp());
           lock.getLockID().has_value()) {
-        if (lockID != -1 && lockID != lock.getLockIDValue())
-          return failure();
+        if (lockID != -1 && lockID != lock.getLockIDValue()) return failure();
         lockID = lock.getLockIDValue();
       }
     }
@@ -1913,8 +1888,7 @@ LogicalResult UseLockOp::verify() {
   // Otherwise, AIE.useLock should be inside MemOp, MemTileDMAOp, or ShimDMAOp,
   if (HasSomeParent<MemOp, MemTileDMAOp, ShimDMAOp>::verifyTrait(*this)
           .succeeded()) {
-    if (!(*this)->getBlock())
-      return (*this)->emitOpError("is not in a block.");
+    if (!(*this)->getBlock()) return (*this)->emitOpError("is not in a block.");
 
     if (targetModel.getTargetArch() == AIEArch::AIE1 &&
         UsesOneLockInDMABlock::verifyTrait(*this).failed())
@@ -1964,20 +1938,20 @@ size_t SwitchboxOp::getNumDestConnections(WireBundle bundle) {
 
 WireBundle getConnectingBundle(WireBundle dir) {
   switch (dir) {
-  case WireBundle::North:
-    return WireBundle::South;
-  case WireBundle::South:
-    return WireBundle::North;
-  case WireBundle::East:
-    return WireBundle::West;
-  case WireBundle::West:
-    return WireBundle::East;
-  default:
-    return dir;
+    case WireBundle::North:
+      return WireBundle::South;
+    case WireBundle::South:
+      return WireBundle::North;
+    case WireBundle::East:
+      return WireBundle::West;
+    case WireBundle::West:
+      return WireBundle::East;
+    default:
+      return dir;
   }
 }
 
-} // namespace xilinx::AIE
+}  // namespace xilinx::AIE
 
 // Include implementations for custom attributes
 #define GET_ATTRDEF_CLASSES

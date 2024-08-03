@@ -12,9 +12,6 @@
 #define MLIR_AIE_DIALECT_H
 
 #include "AIEEnums.h"
-
-#include "AIETargetModel.h"
-
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/ControlFlow/IR/ControlFlow.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -44,20 +41,34 @@ struct HasValidDMAChannels
   static mlir::LogicalResult verifyTrait(mlir::Operation *op);
 };
 
-class TileOp;
-} // namespace xilinx::AIE
+template <typename T>
+bool hasName(T &op) {
+  return bool(op.getOperation()->template getAttrOfType<mlir::StringAttr>(
+      mlir::SymbolTable::getSymbolAttrName()));
+}
+
+template <typename T>
+mlir::StringAttr name(T &op) {
+  if (auto attr = op.getOperation()->template getAttrOfType<mlir::StringAttr>(
+          mlir::SymbolTable::getSymbolAttrName()))
+    return attr;
+  op.emitOpError("does not have '")
+      << mlir::SymbolTable::getSymbolAttrName() << "' attribute specified";
+  llvm::report_fatal_error("couldn't get name");
+}
+}  // namespace xilinx::AIE
 
 namespace xilinx::AIE {
-mlir::LogicalResult
-verifyOffsetSizeAndStrideOp(mlir::OffsetSizeAndStrideOpInterface op);
-} // namespace xilinx::AIE
+mlir::LogicalResult verifyOffsetSizeAndStrideOp(
+    mlir::OffsetSizeAndStrideOpInterface op);
+}  // namespace xilinx::AIE
 
 /// Include the generated interface declarations.
 #include "aie/AIEInterfaces.h.inc"
 
 namespace xilinx::AIE {
-mlir::LogicalResult
-myVerifyOffsetSizeAndStrideOp(mlir::OffsetSizeAndStrideOpInterface op);
+mlir::LogicalResult myVerifyOffsetSizeAndStrideOp(
+    mlir::OffsetSizeAndStrideOpInterface op);
 template <typename ConcreteOp>
 struct MyOffsetSizeAndStrideOpInterfaceTrait
     : public ::mlir::detail::OffsetSizeAndStrideOpInterfaceTrait<ConcreteOp> {
@@ -72,7 +83,7 @@ struct MyOffsetSizeAndStrideOpInterface
   template <typename ConcreteOp>
   struct Trait : public MyOffsetSizeAndStrideOpInterfaceTrait<ConcreteOp> {};
 };
-} // namespace xilinx::AIE
+}  // namespace xilinx::AIE
 
 // Include dialect declarations such as parseAttributes, parseType
 #include "aie/AIEDialect.h.inc"
@@ -81,7 +92,7 @@ namespace xilinx::AIE {
 
 void registerAIETranslations();
 
-} // namespace xilinx::AIE
+}  // namespace xilinx::AIE
 
 ////////////////////////////////////////////////////////////////////////////////
 /////////////////////// Custom Types for the Dialect ///////////////////////////
@@ -96,7 +107,7 @@ struct AIEObjectFifoTypeStorage;
 class AIEObjectFifoType
     : public mlir::Type::TypeBase<AIEObjectFifoType, mlir::Type,
                                   detail::AIEObjectFifoTypeStorage> {
-public:
+ public:
   /// Inherit some necessary constructors from 'TypeBase'.
   using Base::Base;
 
@@ -104,9 +115,9 @@ public:
   static AIEObjectFifoType get(mlir::MemRefType elementType);
 
   /// This method is used to verify the construction invariants.
-  static mlir::LogicalResult
-  verify(llvm::function_ref<mlir::InFlightDiagnostic()> emitError,
-         mlir::MemRefType elementType);
+  static mlir::LogicalResult verify(
+      llvm::function_ref<mlir::InFlightDiagnostic()> emitError,
+      mlir::MemRefType elementType);
 
   static constexpr llvm::StringLiteral name = "objectfifo";
   /// Returns the element type of this ObjectFifoType.
@@ -121,7 +132,7 @@ struct AIEObjectFifoSubviewTypeStorage;
 class AIEObjectFifoSubviewType
     : public mlir::Type::TypeBase<AIEObjectFifoSubviewType, mlir::Type,
                                   detail::AIEObjectFifoSubviewTypeStorage> {
-public:
+ public:
   /// Inherit some necessary constructors from 'TypeBase'.
   using Base::Base;
 
@@ -129,16 +140,16 @@ public:
   static AIEObjectFifoSubviewType get(mlir::MemRefType elementType);
 
   /// This method is used to verify the construction invariants.
-  static mlir::LogicalResult
-  verify(llvm::function_ref<mlir::InFlightDiagnostic()> emitError,
-         mlir::MemRefType elementType);
+  static mlir::LogicalResult verify(
+      llvm::function_ref<mlir::InFlightDiagnostic()> emitError,
+      mlir::MemRefType elementType);
 
   static constexpr llvm::StringLiteral name = "objectfifosubview";
   /// Returns the element type of this SubviewType.
   mlir::MemRefType getElementType();
 };
 
-} // namespace xilinx::AIE
+}  // namespace xilinx::AIE
 
 ////////////////////////////////////////////////////////////////////////////////
 // Custom Attributes ///////////////////////////////////////////////////////////
@@ -155,11 +166,11 @@ namespace xilinx::AIE {
 
 WireBundle getConnectingBundle(WireBundle dir);
 
-#define GENERATE_TO_STRING(TYPE_WITH_INSERTION_OP)                             \
-  friend std::string to_string(const TYPE_WITH_INSERTION_OP &s) {              \
-    std::ostringstream ss;                                                     \
-    ss << s;                                                                   \
-    return ss.str();                                                           \
+#define GENERATE_TO_STRING(TYPE_WITH_INSERTION_OP)                \
+  friend std::string to_string(const TYPE_WITH_INSERTION_OP &s) { \
+    std::ostringstream ss;                                        \
+    ss << s;                                                      \
+    return ss.str();                                              \
   }
 
 typedef struct Port {
@@ -179,27 +190,27 @@ typedef struct Port {
   friend std::ostream &operator<<(std::ostream &os, const Port &port) {
     os << "(";
     switch (port.bundle) {
-    case WireBundle::Core:
-      os << "Core";
-      break;
-    case WireBundle::DMA:
-      os << "DMA";
-      break;
-    case WireBundle::North:
-      os << "N";
-      break;
-    case WireBundle::East:
-      os << "E";
-      break;
-    case WireBundle::South:
-      os << "S";
-      break;
-    case WireBundle::West:
-      os << "W";
-      break;
-    default:
-      os << "X";
-      break;
+      case WireBundle::Core:
+        os << "Core";
+        break;
+      case WireBundle::DMA:
+        os << "DMA";
+        break;
+      case WireBundle::North:
+        os << "N";
+        break;
+      case WireBundle::East:
+        os << "E";
+        break;
+      case WireBundle::South:
+        os << "S";
+        break;
+      case WireBundle::West:
+        os << "W";
+        break;
+      default:
+        os << "X";
+        break;
     }
     os << ": " << std::to_string(port.channel) << ")";
     return os;
@@ -236,10 +247,9 @@ typedef struct DMAChannel {
 const AIETargetModel &getTargetModel(mlir::Operation *op);
 const AIETargetModel &getTargetModel(AIEDevice device);
 
-mlir::ParseResult
-parseObjectFifoProducerTile(mlir::OpAsmParser &parser,
-                            mlir::OpAsmParser::UnresolvedOperand &operand,
-                            BDDimLayoutArrayAttr &dimensions);
+mlir::ParseResult parseObjectFifoProducerTile(
+    mlir::OpAsmParser &parser, mlir::OpAsmParser::UnresolvedOperand &operand,
+    BDDimLayoutArrayAttr &dimensions);
 
 void printObjectFifoProducerTile(mlir::OpAsmPrinter &printer,
                                  mlir::Operation *op, mlir::Value tile,
@@ -256,7 +266,7 @@ void printObjectFifoConsumerTiles(mlir::OpAsmPrinter &printer,
 
 int32_t getBufferBaseAddress(mlir::Operation *bufOp);
 
-} // namespace xilinx::AIE
+}  // namespace xilinx::AIE
 
 // include TableGen generated Op definitions
 #define GET_OP_CLASSES
@@ -270,7 +280,7 @@ void collectTiles(DeviceOp &device,
 void collectBuffers(
     DeviceOp &device,
     llvm::DenseMap<mlir::Operation *, llvm::SmallVector<BufferOp, 4>> &buffers);
-} // namespace xilinx::AIE
+}  // namespace xilinx::AIE
 
 namespace llvm {
 // Functions hash just like pointers.
@@ -295,7 +305,7 @@ struct DenseMapInfo<xilinx::AIE::ObjectFifoAcquireOp> {
     return lhs == rhs;
   }
 };
-} // namespace llvm
+}  // namespace llvm
 
 namespace llvm {
 // Functions hash just like pointers.
@@ -369,7 +379,7 @@ struct DenseMapInfo<xilinx::AIE::Port> {
   }
 };
 
-} // namespace llvm
+}  // namespace llvm
 
 template <>
 struct std::less<xilinx::AIE::Port> {

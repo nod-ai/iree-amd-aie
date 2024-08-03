@@ -4,8 +4,8 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#include "aie/Dialect/AIE/IR/AIEDialect.h"
-#include "aie/Dialect/AIEX/IR/AIEXDialect.h"
+#include "aie/AIEDialect.h"
+#include "aie/AIEXDialect.h"
 #include "aie/Passes.h"
 #include "aievec/AIEVecDialect.h"
 #include "aievec/Passes.h"
