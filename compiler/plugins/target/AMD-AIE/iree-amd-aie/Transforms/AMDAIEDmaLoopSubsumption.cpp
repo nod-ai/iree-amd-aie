@@ -141,8 +141,10 @@ struct SubsumeLoopIntoDMA
     : public OpInterfaceRewritePattern<AMDAIE::DoublyStridedOpInterface> {
   using OpInterfaceRewritePattern::OpInterfaceRewritePattern;
 
-  SubsumeLoopIntoDMA(MLIRContext *context, bool onlyZeroStrideOnOuterDim)
+  SubsumeLoopIntoDMA(MLIRContext *context, AMDAIE::AMDAIEDeviceModel &&model,
+                     bool onlyZeroStrideOnOuterDim)
       : OpInterfaceRewritePattern(context),
+        deviceModel(model),
         onlyZeroStrideOnOuterDim(onlyZeroStrideOnOuterDim) {}
 
   /// Utility to add a loop iteration to a new offsets/sizes/strides access
@@ -517,14 +519,8 @@ struct SubsumeLoopIntoDMA
 
   LogicalResult matchAndRewrite(AMDAIE::DoublyStridedOpInterface op,
                                 PatternRewriter &rewriter) const override {
-    // Get the device model.
-    auto targetAttr = IREE::HAL::ExecutableTargetAttr::lookup(op);
-    std::optional<AMDAIEDevice> device = getConfigAMDAIEDevice(targetAttr);
-    if (!device)
-      return op.emitOpError()
-             << "No AMDAIEDevice found in the target attribute configuration";
-    AMDAIE::AMDAIEDeviceModel deviceModel =
-        AMDAIE::getDeviceModel(device.value());
+    Operation *parentOp = op->getParentOp();
+    if (!parentOp) return rewriter.notifyMatchFailure(op, "Has no parent");
 
     uint8_t sourceMemspaceInt;
     uint8_t targetMemspaceInt;
@@ -534,33 +530,40 @@ struct SubsumeLoopIntoDMA
 
       // Check that the DMA this `amdaie.npu.dma_cpy_nd` operation is operating
       // on, is not being touched within the same scope. Otherwise, the rewrite
-      // is not be valid in general as it would be changing the temporal usage
-      // of the source DMA.
-      Operation *parentOp = op->getParentOp();
-      if (!parentOp) return failure();
+      // is not valid in general as it would be changing the temporal usage of
+      // the source DMA.
+
       Value dma = npuDmaOp.getDma();
       for (Operation *userOp : dma.getUsers()) {
         if (userOp != op.getOperation() && parentOp->isProperAncestor(userOp)) {
-          return failure();
+          return rewriter.notifyMatchFailure(
+              op,
+              "Has users of same DMA in scope, analysis to check validity of "
+              "subsumption unimplemented");
         }
       }
     } else {
-      return failure();
+      return rewriter.notifyMatchFailure(
+          op, "Is not an `amdaie.npu.dma_cpy_nd` operation");
     }
 
     AMDAIE::DmaDimConfig dmaDimConfig(deviceModel, sourceMemspaceInt,
                                       targetMemspaceInt);
 
-    if (isa<scf::ForOp>(op->getParentOp())) {
+    if (isa<scf::ForOp>(parentOp)) {
       return rewriteWithForOpParent(op, rewriter, dmaDimConfig);
-    } else if (isa<scf::ForallOp>(op->getParentOp())) {
+    } else if (isa<scf::ForallOp>(parentOp)) {
       return rewriteWithForallOpParent(op, rewriter, dmaDimConfig);
     } else {
-      return failure();
+      return rewriter.notifyMatchFailure(
+          op, "Has parent operation of currently unsupported type");
     }
   }
 
  private:
+  // The device model to use for the DMA operation.
+  AMDAIE::AMDAIEDeviceModel deviceModel;
+
   // In AIE2(+), a stride with value `0`, indicating a repeat of the subsequent
   // dimensions is only supported on the outer dimension through the use of a
   // buffer descriptor repeat count. To not bake this limitation to deeply into
@@ -585,8 +588,29 @@ class AMDAIEDmaLoopSubsumptionPass
 void AMDAIEDmaLoopSubsumptionPass::runOnOperation() {
   Operation *parentOp = getOperation();
   MLIRContext *context = &getContext();
+
   RewritePatternSet patterns(context);
-  patterns.insert<SubsumeLoopIntoDMA>(context, onlyZeroStrideOnOuterDim);
+
+  {
+    auto targetAttr = IREE::HAL::ExecutableTargetAttr::lookup(parentOp);
+    std::optional<AMDAIEDevice> maybeDevice = getConfigAMDAIEDevice(targetAttr);
+    if (!maybeDevice) {
+      parentOp->emitOpError()
+          << "has no AMDAIEDevice in the target attribute configuration. This "
+             "device-specific information is required to determine when loops "
+             "can be subsumed into DMA operations, and must be attached to a "
+             "containing ModuleOp.";
+      return signalPassFailure();
+    }
+    AMDAIE::AMDAIEDeviceModel deviceModel =
+        AMDAIE::getDeviceModel(maybeDevice.value());
+
+    SubsumeLoopIntoDMA pattern(context, std::move(deviceModel),
+                               onlyZeroStrideOnOuterDim);
+
+    patterns.insert<SubsumeLoopIntoDMA>(std::move(pattern));
+  }
+
   if (failed(applyPatternsAndFoldGreedily(parentOp, std::move(patterns)))) {
     parentOp->emitOpError("failed to subsume some loops into DMA operations");
     return signalPassFailure();

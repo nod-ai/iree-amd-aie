@@ -1,5 +1,5 @@
-// RUN: iree-opt --pass-pipeline="builtin.module(func.func(iree-amdaie-dma-loop-subsumption{only-zero-stride-on-outer-dim=false},canonicalize))" --split-input-file %s | FileCheck %s
-// RUN: iree-opt --pass-pipeline="builtin.module(func.func(iree-amdaie-dma-loop-subsumption{only-zero-stride-on-outer-dim=true},canonicalize))" --split-input-file %s | FileCheck %s --check-prefix=OUTER-ZERO-STRIDE
+// RUN: iree-opt --pass-pipeline="builtin.module(func.func(iree-amdaie-dma-loop-subsumption{only-zero-stride-on-outer-dim=false},canonicalize))" --split-input-file %s --verify-diagnostics | FileCheck %s
+// RUN: iree-opt --pass-pipeline="builtin.module(func.func(iree-amdaie-dma-loop-subsumption{only-zero-stride-on-outer-dim=true},canonicalize))" --split-input-file %s --verify-diagnostics | FileCheck %s --check-prefix=OUTER-ZERO-STRIDE
 
 //===----------------------------------------------------------------------===//
 // Sanity checks for cases where no modification should happen.
@@ -1466,6 +1466,29 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 #executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
 module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
   func.func @forall_outer_zero_stride_with_unit_iteration(%arg0: !amdaie.logicalobjectfifo<memref<1x1x8x16xi32>>, %arg1: !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>) {
+    amdaie.workgroup {
+      %0 = amdaie.circular_dma_cpy_nd(%arg0[] [] [], %arg1[] [] []) : (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32>>, !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>)
+      amdaie.controlcode {
+        scf.forall (%arg2, %arg3) in (2, 1) {
+          %1 = affine.apply #map(%arg2)
+          %2 = amdaie.npu.dma_cpy_nd %0([0, %1] [8, 16] [16, 1], [] [] [])
+          amdaie.npu.dma_wait(%2, S2MM)
+        }
+        amdaie.end
+      }
+    }
+    return
+  }
+}
+
+// -----
+
+
+
+#map = affine_map<(d0) -> (d0 * 16)>
+module {
+// expected-error @+1 {{op has no AMDAIEDevice in the target attribute configuration. This device-specific information is required to determine when loops can be subsumed into DMA operations, and must be attached to a containing ModuleOp.}}
+  func.func @foo(%arg0: !amdaie.logicalobjectfifo<memref<1x1x8x16xi32>>, %arg1: !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>) {
     amdaie.workgroup {
       %0 = amdaie.circular_dma_cpy_nd(%arg0[] [] [], %arg1[] [] []) : (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32>>, !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>)
       amdaie.controlcode {
