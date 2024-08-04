@@ -110,7 +110,6 @@ jobs:
 
       - name: Extract artifact
         run: |
-          sudo apt install -y libasan6
           mkdir iree-install
           tar -xf iree-dist-linux.tar -C iree-install
           bash build_tools/download_peano.sh

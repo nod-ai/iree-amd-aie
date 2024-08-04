@@ -56,12 +56,14 @@ echo '{
 }' > $iree_dir/CMakeUserPresets.json 
 
 cd $iree_dir
+export LSAN_OPTIONS=verbosity=1:log_threads=1
 cmake -S "$iree_dir" -B "$build_dir" \
   -GNinja \
   -DCMAKE_BUILD_TYPE=Release \
   -DCMAKE_INSTALL_PREFIX="$install_dir" \
   -DCMAKE_INSTALL_LIBDIR=lib \
   -DIREE_ENABLE_ASSERTIONS=ON \
+  -DHAVE_STD_REGEX=ON -DRUN_HAVE_STD_REGEX=1 \
   -DIREE_ENABLE_ASAN=ON \
   -DIREE_BUILD_SAMPLES=OFF \
   -DIREE_BUILD_PYTHON_BINDINGS=ON \
