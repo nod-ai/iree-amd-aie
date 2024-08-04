@@ -22,7 +22,7 @@ extern "C" {
 // |out_executable_cache| must be released by the caller (see
 // iree_hal_executable_cache_release).
 iree_status_t iree_hal_xrt_nop_executable_cache_create(
-    xrt::device device, iree_string_view_t identifier,
+    xrt::device *device, iree_string_view_t identifier,
     iree_allocator_t host_allocator,
     iree_hal_executable_cache_t** out_executable_cache);
 

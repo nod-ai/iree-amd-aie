@@ -208,9 +208,9 @@ static iree_status_t iree_hal_xrt_direct_command_buffer_update_buffer(
 
   // No need to Allocate scratch space (in an arena) as the memcpy
   // used below is expected to be synchronized.
-  xrt::bo target_device_buffer = iree_hal_xrt_buffer_handle(
+  xrt::bo* target_device_buffer = iree_hal_xrt_buffer_handle(
       iree_hal_buffer_allocated_buffer(target_ref.buffer));
-  void* target_device_buffer_ptr = target_device_buffer.map();
+  void* target_device_buffer_ptr = target_device_buffer->map();
   uint8_t* dst = (uint8_t*)target_device_buffer_ptr +
                  iree_hal_buffer_byte_offset(target_ref.buffer) +
                  target_ref.offset;
@@ -323,9 +323,12 @@ static iree_status_t iree_hal_xrt_direct_command_buffer_dispatch(
   IREE_RETURN_AND_END_ZONE_IF_ERROR(
       z0, iree_hal_resource_set_insert(command_buffer->resource_set, 1,
                                        &executable));
+
+  xrt::device device = *kernel_params.device;
   xrt::kernel kernel = *kernel_params.kernel;
   xrt::bo instr = *kernel_params.instr;
   uint32_t num_instr = kernel_params.num_instr;
+  instr.sync(XCL_BO_SYNC_BO_TO_DEVICE);
 
   xrt::run run = xrt::run(kernel);
 
@@ -348,6 +351,10 @@ static iree_status_t iree_hal_xrt_direct_command_buffer_dispatch(
   // access.
   iree_host_size_t set_count =
       iree_hal_xrt_pipeline_layout_descriptor_set_count(kernel_params.layout);
+  // TODO(jornt): hack to ensure that the output buffer is synced by syncing all
+  // buffers after the run.
+  xrt::bo arg_buffer;
+  std::vector<xrt::bo> bos;
   for (iree_host_size_t i = 0; i < set_count; ++i) {
     // TODO: cache this information in the kernel info to avoid recomputation.
     iree_host_size_t binding_count =
@@ -358,15 +365,16 @@ static iree_status_t iree_hal_xrt_direct_command_buffer_dispatch(
         iree_hal_xrt_pipeline_layout_base_binding_index(kernel_params.layout,
                                                         i);
     for (iree_host_size_t j = 0; j < binding_count; ++j) {
-      xrt::bo arg_buffer =
-          xrt::bo(*command_buffer->descriptor_sets[i].bindings[j],
-                  command_buffer->descriptor_sets[i].lengths[j],
-                  command_buffer->descriptor_sets[i].offsets[j]);
+      arg_buffer = xrt::bo(*command_buffer->descriptor_sets[i].bindings[j],
+                           command_buffer->descriptor_sets[i].lengths[j],
+                           command_buffer->descriptor_sets[i].offsets[j]);
+      bos.push_back(arg_buffer);
       run.set_arg(arg_index + base_index + j, arg_buffer);
     }
   }
   run.start();
   run.wait();
+  for (xrt::bo& bo : bos) bo.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
 
   IREE_TRACE_ZONE_END(z0);
   return iree_ok_status();
