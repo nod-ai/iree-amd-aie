@@ -55,16 +55,6 @@ iree_tablegen_library(
 
 iree_tablegen_library(
   NAME
-    AIETypesGen
-  TD_FILE
-    AIETypes.td
-  OUTS
-    -gen-typedef-decls -typedefs-dialect=AIE AIETypes.h.inc
-    -gen-typedef-defs -typedefs-dialect=AIE AIETypes.cpp.inc
-)
-
-iree_tablegen_library(
-  NAME
     AIENormalizeAddressSpacesGen
   TD_FILE
     AIENormalizeAddressSpaces.td
@@ -83,7 +73,6 @@ iree_cc_library(
     ::AIEDialectGen
     ::AIEInterfacesGen
     ::AIEOpsGen
-    ::AIETypesGen
     # mlir::DataLayout::closest(mlir::Operation*)
     MLIRDataLayoutInterfaces
     # mlir::OffsetSizeAndStrideOpInterface::getOffsets()

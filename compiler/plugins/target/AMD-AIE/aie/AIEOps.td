@@ -14,7 +14,6 @@
 include "AIE.td"
 include "AIEAttrs.td"
 include "AIEInterfaces.td"
-include "AIETypes.td"
 
 include "mlir/IR/CommonAttrConstraints.td"
 include "mlir/IR/SymbolInterfaces.td"
@@ -686,8 +685,8 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]
     ins SymbolNameAttr:$sym_name,
         Index:$producerTile,
         Variadic<Index>:$consumerTiles,
-        AIE_ObjectFifo_Depth:$elemNumber,
-        TypeAttrOf<AIE_ObjectFifoType>:$elemType,
+        AnyAttrOf<[ConfinedAttr<I32Attr, [IntMinValue<0>]>, ArrayAttr]>:$elemNumber,
+        TypeAttrOf<AnyMemRef>:$elemType,
         BDDimLayoutArrayAttr:$dimensionsToStream,
         BDDimLayoutArrayArrayAttr:$dimensionsFromStreamPerConsumer,
         DefaultValuedAttr<BoolAttr, "false">:$via_DMA,
@@ -772,7 +771,7 @@ def AIE_ObjectFifoAcquireOp: AIE_Op<"objectfifo.acquire", []> {
         ConfinedAttr<I32Attr, [IntMinValue<0>]>:$size
   );
 
-  let results = (outs AIE_ObjectFifoSubviewType:$subview);
+  let results = (outs AnyMemRef:$subview);
 
   let assemblyFormat = [{
     attr-dict $objFifo_name `(` $port `,` $size `)` `:` type($subview)
@@ -799,7 +798,7 @@ def AIE_ObjectFifoReleaseOp: AIE_Op<"objectfifo.release", []> {
 def AIE_ObjectFifoSubviewAccessOp : AIE_Op<"objectfifo.subview.access", []> {
   let summary = "ObjectFifoSubview type accessor method";
   let arguments = (
-    ins AIE_ObjectFifoSubviewType:$subview, 
+    ins AnyMemRef:$subview, 
         ConfinedAttr<I32Attr, [IntMinValue<0>]>:$index
   );
 
