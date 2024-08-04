@@ -154,7 +154,7 @@ static TileElement getParentTileElement(Operation *op) {
 struct UsesAreAccessable {
   static LogicalResult verifyTrait(Operation *op) {
     auto thisElement = cast<TileElement>(op);
-    auto thisID = thisElement.getTileID();
+    auto thisID = thisElement.getTileLoc();
     auto users = op->getResult(0).getUsers();
     const auto &targetModel = getTargetModel(op);
     for (auto *user : users) {
@@ -163,13 +163,13 @@ struct UsesAreAccessable {
       if (llvm::isa_and_nonnull<DeviceOp, ModuleOp>(user->getParentOp()))
         return success();
       if (auto element = getParentTileElement(user)) {
-        auto tileID = element.getTileID();
-        if (!targetModel.isLegalMemAffinity(tileID.col, tileID.row, thisID.col,
+        auto TileLoc = element.getTileLoc();
+        if (!targetModel.isLegalMemAffinity(TileLoc.col, TileLoc.row, thisID.col,
                                             thisID.row))
           return (op->emitOpError("in Column ")
                   << thisID.col << " and Row " << thisID.row
                   << " is accessed from an unreachable tile in Column "
-                  << tileID.col << " and Row " << tileID.row)
+                  << TileLoc.col << " and Row " << TileLoc.row)
                      .attachNote(user->getLoc())
                  << "user";
       } else {
@@ -412,7 +412,7 @@ LogicalResult HasValidBDs<ConcreteType>::verifyTrait(Operation *op) {
   auto element = cast<ConcreteType>(op);
   const auto &targetModel = getTargetModel(op);
   int bdMax =
-      targetModel.getNumBDs(element.getTileID().col, element.getTileID().row);
+      targetModel.getNumBDs(element.getTileLoc().col, element.getTileLoc().row);
 
   int bdNum = 0;
   for (auto &block : element.getBody()) {
@@ -545,18 +545,18 @@ ParseResult parseObjectFifoConsumerTiles(
 void printObjectFifoConsumerTiles(OpAsmPrinter &printer, Operation *op,
                                   OperandRange tiles,
                                   BDDimLayoutArrayArrayAttr dimsPerTileAttr) {
-  size_t tileIdx = 0;
+  size_t TileLocx = 0;
   for (auto tile : tiles) {
     printer << tile;
-    if (dimsPerTileAttr && tileIdx < dimsPerTileAttr.size() &&
-        dimsPerTileAttr[tileIdx] && !dimsPerTileAttr[tileIdx].empty()) {
+    if (dimsPerTileAttr && TileLocx < dimsPerTileAttr.size() &&
+        dimsPerTileAttr[TileLocx] && !dimsPerTileAttr[TileLocx].empty()) {
       printer << " fromStream ";
-      printer.printStrippedAttrOrType(dimsPerTileAttr[tileIdx]);
+      printer.printStrippedAttrOrType(dimsPerTileAttr[TileLocx]);
     }
-    if (tileIdx < tiles.size() - 1) {
+    if (TileLocx < tiles.size() - 1) {
       printer << ", ";
     }
-    tileIdx++;
+    TileLocx++;
   }
 }
 
@@ -1290,7 +1290,7 @@ int32_t xilinx::AIE::getBufferBaseAddress(Operation *bufOp) {
 }
 
 void xilinx::AIE::collectTiles(DeviceOp &device,
-                               DenseMap<TileID, Operation *> &tiles) {
+                               DenseMap<TileLoc, Operation *> &tiles) {
   for (auto tile : device.getOps<TileOp>()) {
     int colIndex = tile.colIndex();
     int rowIndex = tile.rowIndex();
@@ -1537,17 +1537,17 @@ LogicalResult DMABDOp::verify() {
         "transfer length must be multiple of 4 (i.e., represent "
         "4 byte aligned address)");
 
-  TileID parentTileId = getParentTileElement(getOperation()).getTileID();
+  TileLoc parentTileLoc = getParentTileElement(getOperation()).getTileLoc();
 
   if (getOperation()->getParentOfType<MemOp>() &&
-      (getBufferOp().getTileOp().colIndex() != parentTileId.col ||
-       getBufferOp().getTileOp().rowIndex() != parentTileId.row))
+      (getBufferOp().getTileOp().colIndex() != parentTileLoc.col ||
+       getBufferOp().getTileOp().rowIndex() != parentTileLoc.row))
     return emitOpError(
         "Core tile DMAs can only access a buffer in the same tile.");
 
   const AIETargetModel &targetModel = getTargetModel(getOperation());
 
-  uint32_t maxBds = targetModel.getNumBDs(parentTileId.col, parentTileId.row);
+  uint32_t maxBds = targetModel.getNumBDs(parentTileLoc.col, parentTileLoc.row);
   if (std::optional<int32_t> bdId = getBdId();
       bdId.has_value() && static_cast<uint32_t>(*bdId) >= maxBds)
     return emitOpError("bdId attribute exceeds max: ") << maxBds - 1;
@@ -1604,7 +1604,7 @@ LogicalResult DMABDOp::verify() {
     if (dims->size() != paddims->size())
       return emitOpError() << "Mismatch number of dimensions between padding(s)"
                            << " and wrap(s) and stride(s).";
-    if (!targetModel.isMemTile(parentTileId.col, parentTileId.row))
+    if (!targetModel.isMemTile(parentTileLoc.col, parentTileLoc.row))
       return emitOpError() << "Padding is only supported by memtile dma bds.";
     int actuallen = 1;
     for (unsigned i = 0; i < paddims->size(); i++) {
@@ -1626,8 +1626,8 @@ LogicalResult DMABDOp::verify() {
       return emitOpError() << "Inner-most padding-after count must result in"
                            << " padding in 32-bit words.";
   }
-  if (targetModel.isMemTile(parentTileId.col, parentTileId.row) ||
-      targetModel.isCoreTile(parentTileId.col, parentTileId.row)) {
+  if (targetModel.isMemTile(parentTileLoc.col, parentTileLoc.row) ||
+      targetModel.isCoreTile(parentTileLoc.col, parentTileLoc.row)) {
     if (auto baseAddr = getBufferOp().getAddress(); baseAddr.has_value()) {
       int offsetInBytes = *baseAddr + getOffsetInBytes();
       if (offsetInBytes % 4)
@@ -1693,7 +1693,7 @@ LogicalResult SwitchboxOp::verify() {
         return connectOp.emitOpError()
                << "; connecting " << to_string(source) << " to "
                << to_string(dest) << " on "
-               << to_string(this->getTileOp().getTileID())
+               << to_string(this->getTileOp().getTileLoc())
                << " targets same dst as another connect op; existing "
                   "destinations: "
                << llvm::join(llvm::map_range(

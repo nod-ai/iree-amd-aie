@@ -38,8 +38,8 @@ LogicalResult assignBdIds(DeviceOp deviceOp) {
   llvm::append_range(memOps, deviceOp.getOps<MemTileDMAOp>());
   llvm::append_range(memOps, deviceOp.getOps<ShimDMAOp>());
   for (TileElement memOp : memOps) {
-    int col = memOp.getTileID().col;
-    int row = memOp.getTileID().row;
+    int col = memOp.getTileLoc().col;
+    int row = memOp.getTileLoc().row;
 
     // BdIdGenerator gen(col, row, deviceModel);
     ChannelBdIdGenerator gen = deviceModel.isMemTile(col, row)

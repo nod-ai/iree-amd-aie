@@ -77,8 +77,8 @@ iree_cc_library(
     AIEDialectIR
   SRCS
     AIEDialect.cpp
-    AIETargetModel.cpp
   DEPS
+    iree-amd-aie::aie_runtime::iree_aie_runtime_static
     ::AIEAttrsGen
     ::AIEDialectGen
     ::AIEInterfacesGen

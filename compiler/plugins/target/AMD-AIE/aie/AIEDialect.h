@@ -12,6 +12,7 @@
 #define MLIR_AIE_DIALECT_H
 
 #include "AIEEnums.h"
+#include "iree-amd-aie/aie_runtime/iree_aie_runtime.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/ControlFlow/IR/ControlFlow.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -25,22 +26,6 @@
 #include "mlir/IR/Types.h"
 
 namespace xilinx::AIE {
-
-// Check that the given DMA-like op (e.g. MemOp, ShimDMAOp)
-// has valid BDs.
-template <typename ConcreteType>
-struct HasValidBDs : mlir::OpTrait::TraitBase<ConcreteType, HasValidBDs> {
-  static mlir::LogicalResult verifyTrait(mlir::Operation *op);
-};
-
-// Check that the given DMA-like op (e.g. MemOp, ShimDMAOp)
-// has valid channels.
-template <typename ConcreteType>
-struct HasValidDMAChannels
-    : mlir::OpTrait::TraitBase<ConcreteType, HasValidBDs> {
-  static mlir::LogicalResult verifyTrait(mlir::Operation *op);
-};
-
 template <typename T>
 bool hasName(T &op) {
   return bool(op.getOperation()->template getAttrOfType<mlir::StringAttr>(
@@ -56,6 +41,13 @@ mlir::StringAttr name(T &op) {
       << mlir::SymbolTable::getSymbolAttrName() << "' attribute specified";
   llvm::report_fatal_error("couldn't get name");
 }
+
+class TileOp;
+template <typename T>
+inline TileOp getTileOp(T op) {
+  return cast<TileOp>(op.getTile().getDefiningOp());
+}
+
 }  // namespace xilinx::AIE
 
 namespace xilinx::AIE {
@@ -244,9 +236,6 @@ typedef struct DMAChannel {
   }
 } DMAChannel;
 
-const AIETargetModel &getTargetModel(mlir::Operation *op);
-const AIETargetModel &getTargetModel(AIEDevice device);
-
 mlir::ParseResult parseObjectFifoProducerTile(
     mlir::OpAsmParser &parser, mlir::OpAsmParser::UnresolvedOperand &operand,
     BDDimLayoutArrayAttr &dimensions);
@@ -275,7 +264,8 @@ int32_t getBufferBaseAddress(mlir::Operation *bufOp);
 namespace xilinx::AIE {
 
 void collectTiles(DeviceOp &device,
-                  llvm::DenseMap<TileID, mlir::Operation *> &tiles);
+                  llvm::DenseMap<mlir::iree_compiler::AMDAIE::TileLoc,
+                                 mlir::Operation *> &tiles);
 
 void collectBuffers(
     DeviceOp &device,
