@@ -137,6 +137,24 @@ iree_hal_xrt_allocator_query_buffer_compatibility(
   // act safely even on buffer ranges that are not naturally aligned.
   *allocation_size = iree_host_align(*allocation_size, 4);
 
+
+    if (iree_any_bit_set(params->usage,
+                         IREE_HAL_BUFFER_USAGE_MAPPING_SCOPED |
+                             IREE_HAL_BUFFER_USAGE_MAPPING_PERSISTENT)) {
+      if (iree_all_bits_set(params->usage,
+                            IREE_HAL_BUFFER_USAGE_MAPPING_OPTIONAL)) {
+        params->usage &=
+            ~(IREE_HAL_BUFFER_USAGE_MAPPING_SCOPED |
+              IREE_HAL_BUFFER_USAGE_MAPPING_PERSISTENT |
+              IREE_HAL_BUFFER_USAGE_MAPPING_OPTIONAL |
+              IREE_HAL_BUFFER_USAGE_MAPPING_ACCESS_RANDOM |
+              IREE_HAL_BUFFER_USAGE_MAPPING_ACCESS_SEQUENTIAL_WRITE);
+      } else {
+        // Mapping required but cannot be serviced with sparse bindings.
+        compatibility = IREE_HAL_BUFFER_COMPATIBILITY_NONE;
+      }
+    }
+
   return compatibility;
 }
 
