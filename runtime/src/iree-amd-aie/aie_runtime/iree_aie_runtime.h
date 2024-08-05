@@ -316,11 +316,11 @@ bool isNPUDevice(mlir::iree_compiler::AMDAIE::AMDAIEDevice d);
 /// ================== stringification utils =============================
 /// ======================================================================
 
-std::string to_string(const int& value);
-std::string to_string(const uint32_t& value);
-std::string to_string(const uint64_t& value);
-
 #define TO_STRINGS(_)     \
+  _(int)                  \
+  _(uint32_t)             \
+  _(uint64_t)             \
+  _(size_t)               \
   _(AMDAIEDmaProp)        \
   _(AMDAIETileType)       \
   _(AieRC)                \
@@ -408,16 +408,6 @@ static_assert(XAIE_OK == 0);
     if (auto r = API(__VA_ARGS__))                                      \
       llvm::report_fatal_error(llvm::Twine(#API " failed with ") +      \
                                to_string(r));                           \
-  } while (0)
-
-#define TRY_XAIE_API_EMIT_ERROR(OP, API, ...)                           \
-  do {                                                                  \
-    LLVM_DEBUG(llvm::dbgs() << "XAIE API: " << #API << " with args: "); \
-    LLVM_DEBUG(SHOW_ARGS(llvm::dbgs(), __VA_ARGS__));                   \
-    LLVM_DEBUG(llvm::dbgs() << "\n");                                   \
-    LLVM_DEBUG(llvm::dbgs().flush());                                   \
-    if (auto r = API(__VA_ARGS__))                                      \
-      return OP.emitOpError() << #API " failed with " << r;             \
   } while (0)
 
 #define TRY_XAIE_API_LOGICAL_RESULT(API, ...)                           \

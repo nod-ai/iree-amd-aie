@@ -11,8 +11,8 @@
 // independently. If there are existing lock IDs, this pass is idempotent
 // and only assigns lock IDs to locks without an ID.
 
-#include "Passes.h"
 #include "AIEDialect.h"
+#include "Passes.h"
 #include "iree-amd-aie/aie_runtime/iree_aie_runtime.h"
 #include "llvm/ADT/DenseMap.h"
 #include "mlir/Pass/Pass.h"
@@ -55,7 +55,7 @@ struct AMDAIEAssignLockIDsPass : mlir::OperationPass<DeviceOp> {
 
     // Construct data structure storing locks by tile.
     device.walk<WalkOrder::PreOrder>([&](LockOp lockOp) {
-      TileOp tileOp = lockOp.getTileOp();
+      TileOp tileOp = xilinx::AIE::getTileOp(*lockOp);
       if (lockOp.getLockID().has_value()) {
         auto lockID = lockOp.getLockID().value();
         auto iter = tileToLocks.find(tileOp);

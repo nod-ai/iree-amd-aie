@@ -373,10 +373,10 @@ void LogicalObjectFifoFromMemrefOp::build(
   SmallVector<Value> tiles;
   tiles.reserve(tileLocations.size());
   for (auto [column, row] : tileLocations) {
-    auto colIndex = b.create<arith::ConstantIndexOp>(b.getUnknownLoc(), column);
-    auto rowIndex = b.create<arith::ConstantIndexOp>(b.getUnknownLoc(), row);
+    auto getCol = b.create<arith::ConstantIndexOp>(b.getUnknownLoc(), column);
+    auto getRow = b.create<arith::ConstantIndexOp>(b.getUnknownLoc(), row);
     auto tileOp =
-        b.create<AMDAIE::TileOp>(b.getUnknownLoc(), colIndex, rowIndex);
+        b.create<AMDAIE::TileOp>(b.getUnknownLoc(), getCol, getRow);
     tiles.push_back(tileOp.getResult());
   }
   // For deterministic order.

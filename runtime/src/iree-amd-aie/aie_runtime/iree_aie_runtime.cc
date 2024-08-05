@@ -550,6 +550,7 @@ struct AMDAIEDeviceModel getDeviceModel(AMDAIEDevice device) {
 std::string to_string(const int &value) { return std::to_string(value); }
 std::string to_string(const uint32_t &value) { return std::to_string(value); }
 std::string to_string(const uint64_t &value) { return std::to_string(value); }
+std::string to_string(const size_t &value) { return std::to_string(value); }
 
 std::string to_string(const StrmSwPortType &value) {
   switch (value) {

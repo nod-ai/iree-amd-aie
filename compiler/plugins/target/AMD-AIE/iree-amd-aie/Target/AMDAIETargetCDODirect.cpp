@@ -11,8 +11,8 @@
 #include <string>
 
 #include "AMDAIETargets.h"
-#include "aie/Dialect/AIE/IR/AIEDialect.h"
-#include "aie/Dialect/AIE/IR/AIEEnums.h"
+#include "aie/AIEDialect.h"
+#include "aie/AIEEnums.h"
 #include "iree-amd-aie/aie_runtime/iree_aie_configure.h"
 #include "iree-amd-aie/aie_runtime/iree_aie_runtime.h"
 #include "llvm/ADT/STLExtras.h"
@@ -32,7 +32,6 @@ using namespace mlir;
 using xilinx::AIE::AMSelOp;
 using xilinx::AIE::BufferOp;
 using xilinx::AIE::CascadeDir;
-using xilinx::AIE::ConfigureCascadeOp;
 using xilinx::AIE::ConnectOp;
 using xilinx::AIE::CoreOp;
 using xilinx::AIE::DeviceOp;
@@ -40,17 +39,15 @@ using xilinx::AIE::DMABDOp;
 using xilinx::AIE::DMABDPACKETOp;
 using xilinx::AIE::DMAChannelDir;
 using xilinx::AIE::DMAStartOp;
-using xilinx::AIE::Interconnect;
+using xilinx::AIE::LockAction;
 using xilinx::AIE::LockOp;
 using xilinx::AIE::MasterSetOp;
 using xilinx::AIE::MemOp;
 using xilinx::AIE::MemTileDMAOp;
 using xilinx::AIE::PacketRuleOp;
 using xilinx::AIE::PacketRulesOp;
-using xilinx::AIE::ShimDMAOp;
 using xilinx::AIE::ShimMuxOp;
 using xilinx::AIE::SwitchboxOp;
-using xilinx::AIE::TileElement;
 using xilinx::AIE::TileOp;
 using xilinx::AIE::UseLockOp;
 using xilinx::AIE::WireBundle;
@@ -136,13 +133,14 @@ LogicalResult configureLocksAndBd(Block &block, const TileLoc &tileLoc,
       case Lock::Action::Acquire:
       case Lock::Action::AcquireGreaterEqual:
         acqEn = op.getAcqEn();
-        acqLockId = lock.getLockIDValue();
-        acqValue = op.getLockValue();
-        if (op.acquireGE()) acqValue.value() = -acqValue.value();
+        acqLockId = lock.getLockID();
+        acqValue = op.getValue().value_or(1);
+        if (op.getAction() == LockAction::AcquireGreaterEqual)
+          acqValue.value() = -acqValue.value();
         break;
       case Lock::Action::Release:
-        relLockId = lock.getLockIDValue();
-        relValue = op.getLockValue();
+        relLockId = lock.getLockID();
+        relValue = op.getValue().value_or(1);
         break;
     }
   }
@@ -168,7 +166,7 @@ LogicalResult configureLocksAndBd(Block &block, const TileLoc &tileLoc,
            "expected only one dma_bd_packet");
     auto packetOp = *maybePacketOps.begin();
     packetType = packetOp.getPacketType();
-    packetID = packetOp.getPacketID();
+    packetID = packetOp.getPacketId();
   }
 
   BufferOp bufferOp = cast<BufferOp>(bdOp.getBuffer().getDefiningOp());
@@ -197,8 +195,8 @@ LogicalResult configureLocksAndBd(Block &block, const TileLoc &tileLoc,
                                       *bdOp.getNextBdId())}
                                 : std::nullopt,
                             packetType, packetID, *bufferOp.getAddress(),
-                            bdOp.getLenInBytes(), bdOp.getOffsetInBytes(),
-                            bdOp.getBufferElementTypeWidthInBytes(), maybeDims,
+                            getLenInBytes(bdOp), getOffsetInBytes(bdOp),
+                            getBufferElementTypeWidthInBytes(bdOp), maybeDims,
                             maybePadDims))) {
     return failure();
   }
@@ -211,7 +209,7 @@ LogicalResult addAieElfsToCDO(const AMDAIEDeviceModel &deviceModel,
   for (auto tileOp : device.getOps<TileOp>()) {
     TileLoc tileLoc{tileOp.getCol(), tileOp.getRow()};
     if (deviceModel.isShimNOCorPLTile(tileLoc.col, tileLoc.row)) continue;
-    if (auto coreOp = tileOp.getCoreOp()) {
+    if (auto coreOp = getCoreOp(tileOp)) {
       std::string fileName;
       if (auto elfFile = coreOp.getElfFile())
         fileName = *elfFile;
@@ -234,17 +232,18 @@ LogicalResult addInitConfigToCDO(const AMDAIEDeviceModel &deviceModel,
     if (deviceModel.isShimTile(tileOp.getCol(), tileOp.getRow())) {
       continue;
     }
-    if (auto coreOp = tileOp.getCoreOp();
+    if (auto coreOp = getCoreOp(tileOp);
         coreOp && failed(resetUnResetCore(deviceModel, tileLoc))) {
       return failure();
     }
   }
 
   // Set locks with explicit initializers
-  WalkResult r = device.walk<WalkOrder::PreOrder>([&](LockOp lockOp) {
+  WalkResult r;
+  r = device.walk<WalkOrder::PreOrder>([&](LockOp lockOp) {
     if (lockOp.getLockID() && lockOp.getInit()) {
-      TileLoc tileLoc = {lockOp.getTileOp().getCol(),
-                         lockOp.getTileOp().getRow()};
+      TileOp t = xilinx::AIE::getTileOp(*lockOp.getOperation());
+      TileLoc tileLoc = {t.getCol(), t.getRow()};
       Lock lock{tileLoc, static_cast<uint8_t>(*lockOp.getLockID()),
                 static_cast<int8_t>(*lockOp.getInit())};
       if (failed(initializeLock(deviceModel, lock)))
@@ -254,23 +253,23 @@ LogicalResult addInitConfigToCDO(const AMDAIEDeviceModel &deviceModel,
   });
   if (r.wasInterrupted()) return failure();
 
-  auto memOps = llvm::to_vector_of<TileElement>(device.getOps<MemOp>());
+  auto memOps = llvm::to_vector_of<Operation *>(device.getOps<MemOp>());
   llvm::append_range(memOps, device.getOps<MemTileDMAOp>());
-  llvm::append_range(memOps, device.getOps<ShimDMAOp>());
-  for (TileElement memOp : memOps) {
-    TileLoc tileLoc = {memOp.getTileID().col, memOp.getTileID().row};
+  for (Operation *memOp : memOps) {
+    TileOp t = xilinx::AIE::getTileOp(*memOp);
+    TileLoc tileLoc = {t.getCol(), t.getRow()};
     if (deviceModel.isShimNOCorPLTile(tileLoc.col, tileLoc.row)) {
       continue;
     }
 
     // handle DMA ops separately
-    for (Block &block : memOp.getOperation()->getRegion(0)) {
+    for (Block &block : memOp->getRegion(0)) {
       if (block.getOps<DMABDOp>().empty()) continue;
       if (failed(configureLocksAndBd(block, tileLoc, deviceModel)))
         return failure();
     }
 
-    for (Block &block : memOp.getOperation()->getRegion(0)) {
+    for (Block &block : memOp->getRegion(0)) {
       for (auto op : block.getOps<DMAStartOp>()) {
         DMABDOp bd = *op.getDest()->getOps<DMABDOp>().begin();
         int chNum = op.getChannelIndex();
@@ -286,7 +285,8 @@ LogicalResult addInitConfigToCDO(const AMDAIEDeviceModel &deviceModel,
 
   // StreamSwitch (switchbox) configuration
   for (auto switchboxOp : device.getOps<SwitchboxOp>()) {
-    SwitchBox swb = {switchboxOp.colIndex(), switchboxOp.rowIndex()};
+    TileOp t = xilinx::AIE::getTileOp(*switchboxOp.getOperation());
+    SwitchBox swb = {t.getCol(), t.getRow()};
     std::vector<Connect> connects;
     for (auto connectOp : switchboxOp.getOps<ConnectOp>()) {
       connects.emplace_back(Port{toAMDAIEStrmT(connectOp.getSourceBundle()),
@@ -324,9 +324,9 @@ LogicalResult addInitConfigToCDO(const AMDAIEDeviceModel &deviceModel,
                 deviceModel, swb,
                 toAMDAIEStrmT(packetRulesOp.getSourceBundle()),
                 packetRulesOp.getSourceChannel(),
-                AMSel{static_cast<uint8_t>(amselOp.arbiterIndex()),
-                      static_cast<uint8_t>(amselOp.getMselValue())},
-                packetRuleOp.valueInt(), packetRuleOp.maskInt(), slot)))
+                AMSel{static_cast<uint8_t>(amselOp.getArbiterID()),
+                      static_cast<uint8_t>(amselOp.getMsel())},
+                packetRuleOp.getValue(), packetRuleOp.getMask(), slot)))
           return failure();
         slot++;
       }
@@ -334,7 +334,8 @@ LogicalResult addInitConfigToCDO(const AMDAIEDeviceModel &deviceModel,
   }
 
   for (auto muxOp : device.getOps<ShimMuxOp>()) {
-    SwitchBox swb = {muxOp.getTileOp().getCol(), muxOp.getTileOp().getRow()};
+    TileOp t = xilinx::AIE::getTileOp(*muxOp.getOperation());
+    SwitchBox swb = {t.getCol(), t.getRow()};
     std::vector<Connect> connects;
     for (auto connectOp : muxOp.getOps<ConnectOp>()) {
       connects.emplace_back(Port{toAMDAIEStrmT(connectOp.getSourceBundle()),
@@ -348,15 +349,6 @@ LogicalResult addInitConfigToCDO(const AMDAIEDeviceModel &deviceModel,
     }
   }
 
-  // Cascade configuration
-  for (auto configOp : device.getOps<ConfigureCascadeOp>()) {
-    TileOp tile = cast<TileOp>(configOp.getTile().getDefiningOp());
-    TileLoc tileLoc = {tile.getCol(), tile.getCol()};
-    Cascade casc = {tileLoc, toDir(configOp.getInputDir()),
-                    toDir(configOp.getOutputDir())};
-    if (failed(configureCascade(deviceModel, casc))) return failure();
-  }
-
   return success();
 }
 
@@ -365,7 +357,7 @@ LogicalResult addCoreEnableToCDO(const AMDAIEDeviceModel &deviceModel,
   // Start execution of all the cores.
   for (auto tileOp : device.getOps<TileOp>()) {
     TileLoc tileLoc = {tileOp.getCol(), tileOp.getRow()};
-    if (auto coreOp = tileOp.getCoreOp();
+    if (auto coreOp = getCoreOp(tileOp);
         coreOp && failed(coreEnable(deviceModel, tileLoc)))
       return failure();
   }

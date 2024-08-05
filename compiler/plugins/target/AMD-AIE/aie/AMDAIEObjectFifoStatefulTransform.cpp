@@ -26,7 +26,6 @@
 using namespace mlir;
 using namespace mlir::iree_compiler::AMDAIE;
 
-using xilinx::AIE::AIEObjectFifoType;
 using xilinx::AIE::BDDimLayoutArrayArrayAttr;
 using xilinx::AIE::BDDimLayoutArrayAttr;
 using xilinx::AIE::BDDimLayoutAttr;
@@ -37,7 +36,6 @@ using xilinx::AIE::DMABDOp;
 using xilinx::AIE::DMAChannelDirAttr;
 using xilinx::AIE::DMAStartOp;
 using xilinx::AIE::EndOp;
-using xilinx::AIE::ExternalBufferOp;
 using xilinx::AIE::FlowOp;
 using xilinx::AIE::LockAction;
 using xilinx::AIE::LockOp;
@@ -48,7 +46,6 @@ using xilinx::AIE::ObjectFifoAcquireOp;
 using xilinx::AIE::ObjectFifoCreateOp;
 using xilinx::AIE::ObjectFifoLinkOp;
 using xilinx::AIE::ObjectFifoPort;
-using xilinx::AIE::ObjectFifoRegisterExternalBuffersOp;
 using xilinx::AIE::ObjectFifoReleaseOp;
 using xilinx::AIE::ObjectFifoSubviewAccessOp;
 using xilinx::AIE::ShimDMAAllocationOp;
@@ -426,9 +423,8 @@ void createAMDAIETileDMA(
     if (objFifoLinks.contains(linkOp.value()))
       target = objFifoLinks.at(linkOp.value());
 
-  auto fifo = llvm::cast<AIEObjectFifoType>(createOp.getElemType());
-  auto elemType = llvm::cast<MemRefType>(fifo.getElementType());
-  int64_t len = elemType.getNumElements();
+  auto fifo = createOp.getElemType();
+  int64_t len = fifo.getNumElements();
   createDMA<MemOp>(device, builder, createOp, target, channelDir, channelIndex,
                    dims, numBlocks,
                    /*acqNum*/ 1, /*relNum*/ 1, len, /*offset*/ 0,
@@ -446,9 +442,8 @@ void createMemTileDMA(
   size_t numBlocks = objFifoSize(createOp);
   if (numBlocks == 0) return;
 
-  auto fifo = llvm::cast<AIEObjectFifoType>(createOp.getElemType());
-  auto elemType = llvm::cast<MemRefType>(fifo.getElementType());
-  int64_t lenOut = elemType.getNumElements();
+  auto fifo = createOp.getElemType();
+  int64_t lenOut = fifo.getNumElements();
   size_t acqNum = 1;
   size_t relNum = 1;
   // offset based on order of this op in join/distribute list
@@ -464,10 +459,9 @@ void createMemTileDMA(
       relNum = size;
     } else
       for (auto fifoIn : fifos) {
-        auto fifoType = llvm::cast<AIEObjectFifoType>(fifoIn.getElemType());
-        auto fifoElemType = llvm::cast<MemRefType>(fifoType.getElementType());
+        auto fifoType = fifoIn.getElemType();
         if (name(fifoIn) == name(createOp)) break;
-        extraOffset += fifoElemType.getNumElements();
+        extraOffset += fifoType.getNumElements();
       }
   };
 
@@ -486,9 +480,8 @@ void createMemTileDMA(
                      linkOp->getFifoOuts().size());
 
     } else if (target != createOp) {
-      auto targetFifo = llvm::cast<AIEObjectFifoType>(target.getElemType());
-      auto targetElemType = llvm::cast<MemRefType>(targetFifo.getElementType());
-      lenOut = targetElemType.getNumElements();
+      auto targetFifo = target.getElemType();
+      lenOut = targetFifo.getNumElements();
     }
 
     // check if current createOp is of smaller size in link
@@ -566,8 +559,8 @@ void createUseLocks(
   builder.create<UseLockOp>(builder.getUnknownLoc(), lock, lockAction,
                             numLocks);
   std::pair<ObjectFifoCreateOp, int> opPort = {op, static_cast<int>(port)};
-  acc[opPort] = (acc[opPort] + numLocks) %
-                objFifoSize(op);  // update to next objFifo elem
+  // update to next objFifo elem
+  acc[opPort] = (acc[opPort] + numLocks) % objFifoSize(op);
 }
 
 /// Replace (not really - add) ObjectFifoReleaseOp with appropriate UseLockOp.
@@ -629,7 +622,7 @@ void splitFifo(
   };
 
   int consumerIndex = 0;
-  auto datatype = cast<AIEObjectFifoType>(createOp.getElemType());
+  auto datatype = createOp.getElemType();
   MLIRContext *ctx = builder.getContext();
   std::vector<ObjectFifoCreateOp> splitConsumerFifos;
   for (auto consumerTile : createOp.getConsumerTiles()) {
@@ -835,8 +828,7 @@ void createBuffersAndLocks(
 
   if (!objFifoSize(createOp)) return;
 
-  auto fifo = llvm::cast<AIEObjectFifoType>(createOp.getElemType());
-  auto elemType = llvm::cast<MemRefType>(fifo.getElementType());
+  MemRefType fifoType = createOp.getElemType();
 
   // if this objectFifo is linked to another, check if the other's elements
   // have already been created (the elements that are created are those of
@@ -852,14 +844,10 @@ void createBuffersAndLocks(
     // if distribute, fifoIn has bigger size
     if (isDistribute(*linkOp) && name(createOp) != name(fifoIn)) return;
 
-    auto fifoInType = llvm::cast<AIEObjectFifoType>(
-             getInputObjectFifos(*linkOp)[0].getElemType()),
-         fifoOutType = llvm::cast<AIEObjectFifoType>(
-             getOutputObjectFifos(*linkOp)[0].getElemType());
-    auto elemInType = llvm::cast<MemRefType>(fifoInType.getElementType()),
-         elemOutType = llvm::cast<MemRefType>(fifoOutType.getElementType());
-    int64_t inSize = elemInType.getNumElements();
-    if (int64_t outSize = elemOutType.getNumElements(); inSize >= outSize) {
+    auto fifoInType = getInputObjectFifos(*linkOp)[0].getElemType(),
+         fifoOutType = getOutputObjectFifos(*linkOp)[0].getElemType();
+    int64_t inSize = fifoInType.getNumElements();
+    if (int64_t outSize = fifoOutType.getNumElements(); inSize >= outSize) {
       if (name(createOp) != name(fifoIn)) return;
     } else if (getOutputObjectFifos(*linkOp)[0] != createOp)
       return;
@@ -888,10 +876,10 @@ void createBuffersAndLocks(
     // create as many locks as there are external buffers
     for (int ofElemIndex = 0; ofElemIndex < numElem; ofElemIndex++) {
       auto buff = builder.create<BufferOp>(
-          builder.getUnknownLoc(), elemType, creationTile,
+          builder.getUnknownLoc(), fifoType, creationTile,
           builder.getStringAttr(name(createOp).str() + "_buff_" +
                                 std::to_string(ofElemIndex)),
-          /*address*/ nullptr, /*initial_value*/ nullptr,
+          /*address*/ nullptr,
           /*mem_bank*/ nullptr);
       buffers.push_back(buff);
     }
@@ -1138,8 +1126,7 @@ struct AMDAIEObjectFifoStatefulTransformPass : mlir::OperationPass<DeviceOp> {
       auto symName = createOp.getName();
       createOp->setAttr(SymbolTable::getSymbolAttrName(),
                         builder.getStringAttr("__erase_" + symName));
-      auto memrefType = llvm::cast<AIEObjectFifoType>(createOp.getElemType())
-                            .getElementType();
+      auto memrefType = createOp.getElemType();
       builder.create<memref::GlobalOp>(builder.getUnknownLoc(), symName,
                                        builder.getStringAttr("public"),
                                        memrefType, nullptr, false, nullptr);
@@ -1148,8 +1135,7 @@ struct AMDAIEObjectFifoStatefulTransformPass : mlir::OperationPass<DeviceOp> {
     // Remove old ops
     SetVector<Operation *> opsToErase;
     device.walk([&](Operation *op) {
-      if (isa<ObjectFifoCreateOp, ObjectFifoLinkOp,
-              ObjectFifoRegisterExternalBuffersOp, ObjectFifoAcquireOp,
+      if (isa<ObjectFifoCreateOp, ObjectFifoLinkOp, ObjectFifoAcquireOp,
               ObjectFifoSubviewAccessOp, ObjectFifoReleaseOp>(op))
         opsToErase.insert(op);
     });

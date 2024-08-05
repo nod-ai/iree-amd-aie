@@ -4,8 +4,8 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#include "Passes.h"
 #include "AIEDialect.h"
+#include "Passes.h"
 #include "mlir/Conversion/FuncToLLVM/ConvertFuncToLLVM.h"
 #include "mlir/Conversion/FuncToLLVM/ConvertFuncToLLVMPass.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
@@ -35,9 +35,10 @@ struct AMDAIEUseLockToStdLowering : OpConversionPattern<UseLockOp> {
     if (!isa<DeviceOp>(useLock->getParentOp())) {
       // Generate the intrinsic name
       std::string funcName = "llvm.aie2.";
-      if (useLock.acquire() || useLock.acquireGE())
+      if (useLock.getAction() == LockAction::Acquire ||
+          useLock.getAction() == LockAction::AcquireGreaterEqual)
         funcName += "acquire";
-      else if (useLock.release())
+      else if (useLock.getAction() == LockAction::Release)
         funcName += "release";
       // TODO(max): this can be simplified with
       // SymbolTable::lookupNearestSymbolFrom if DeviceOp ceases to be a
@@ -47,10 +48,11 @@ struct AMDAIEUseLockToStdLowering : OpConversionPattern<UseLockOp> {
               funcName);
 
       SmallVector<Value, 2> args;
-      int lockValue = useLock.getLockValue();
+      int lockValue = useLock.getValue().value_or(1);
 
       // AIE2 acquire greater equal is encoded as a negative value.
-      if (useLock.acquireGE()) lockValue = -lockValue;
+      if (useLock.getAction() == LockAction::AcquireGreaterEqual)
+        lockValue = -lockValue;
       args.push_back(rewriter.create<arith::IndexCastOp>(
           useLock.getLoc(), IntegerType::get(rewriter.getContext(), 32),
           useLock.getLock()));
@@ -84,17 +86,12 @@ struct AMDAIEBufferToStandard : OpConversionPattern<BufferOp> {
       ConversionPatternRewriter &rewriter) const override {
     rewriter.setInsertionPointToStart(module.getBody());
     auto t = llvm::cast<MemRefType>(buffer.getType());
-    int col = llvm::cast<TileOp>(buffer.getTile().getDefiningOp()).getCol();
-    int row = llvm::cast<TileOp>(buffer.getTile().getDefiningOp()).getRow();
-    StringRef symName = buffer.name().getValue();
-    mlir::ElementsAttr initValue = buffer.getInitialValueAttr();
+    StringRef symName = name(buffer).getValue();
     // Don't emit initialization for cores that don't "own" the buffer (to
     // prevent duplication in the data section of the elf/object file)
-    if ((tileRow != row && tileRow != -1) || (tileCol != col && tileCol != -1))
-      initValue = nullptr;
     rewriter.create<memref::GlobalOp>(
         rewriter.getUnknownLoc(), symName, rewriter.getStringAttr("public"),
-        buffer.getType(), initValue, /*constant*/ false,
+        buffer.getType(), nullptr, /*constant*/ false,
         /*alignment*/ nullptr);
 
     for (OpOperand &use : make_early_inc_range(buffer.getResult().getUses())) {
@@ -131,8 +128,9 @@ struct AMDAIECoreToStandardFunc : OpConversionPattern<CoreOp> {
   LogicalResult matchAndRewrite(
       CoreOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
-    int col = op.colIndex();
-    int row = op.rowIndex();
+    TileOp t = getTileOp(*op);
+    int col = t.getCol();
+    int row = t.getRow();
 
     // Only pull code for the indicated function
     if ((tileRow != row && tileRow != -1) ||

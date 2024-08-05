@@ -4,8 +4,8 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#include "Passes.h"
 #include "AIEXDialect.h"
+#include "Passes.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
 
@@ -22,7 +22,8 @@ struct AMDAIEXOpRemoval : OpConversionPattern<MyAIEXOp> {
   using OpAdaptor = typename MyAIEXOp::Adaptor;
   ModuleOp &module;
 
-  AMDAIEXOpRemoval(MLIRContext *context, ModuleOp &m, PatternBenefit benefit = 1)
+  AMDAIEXOpRemoval(MLIRContext *context, ModuleOp &m,
+                   PatternBenefit benefit = 1)
       : OpConversionPattern<MyAIEXOp>(context, benefit), module(m) {}
 
   LogicalResult matchAndRewrite(

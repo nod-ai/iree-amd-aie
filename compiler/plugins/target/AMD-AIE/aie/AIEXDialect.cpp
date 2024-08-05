@@ -16,6 +16,7 @@
 
 using namespace mlir;
 using namespace xilinx;
+using namespace xilinx::AIE;
 
 #include "aie/AIEXDialect.cpp.inc"
 
@@ -29,51 +30,19 @@ void AIEXDialect::initialize() {
       >();
 }
 
-} // namespace xilinx::AIEX
+}  // namespace xilinx::AIEX
 
 #define GET_OP_CLASSES
 #include "aie/AIEX.cpp.inc"
 
-LogicalResult AIEX::UseTokenOp::verify() {
-  auto *parentOp = (*this)->getParentOp();
-  if (isa<func::FuncOp>(parentOp) || isa<AIE::CoreOp>(parentOp) ||
-      isa<AIE::MemOp>(parentOp) || isa<AIE::ShimDMAOp>(parentOp))
-    return success();
-  return failure();
-}
-
-LogicalResult AIEX::MulticastOp::verify() {
-  Region &body = getPorts();
-  assert(getOperation()->getNumRegions());
-  assert(!body.empty());
-  for (auto &ops : body.front())
-    if (!isa<MultiDestOp, AIE::EndOp>(ops))
-      return ops.emitOpError("cannot be contained in a Multicast op");
-
-  return success();
-}
-
-LogicalResult AIEX::BroadcastPacketOp::verify() {
-  Region &body = getPorts();
-  assert(getOperation()->getNumRegions());
-  assert(!body.empty());
-  for (auto &ops : body.front())
-    if (!isa<BPIDOp, AIE::EndOp>(ops))
-      return ops.emitOpError("cannot be contained in a BroadcastPacket op");
-
-  return success();
-}
-
 llvm::SmallVector<int64_t, 4>
 AIEX::NpuDmaMemcpyNdOp::getStridesInAddressGranularity() {
-  const auto &targetModel = AIE::getTargetModel(*this);
   MemRefType buffer = getMemref().getType();
   auto elemWidth = buffer.getElementTypeBitWidth();
-  auto addressGranularity = targetModel.getAddressGenGranularity();
-  llvm::SmallVector<int64_t, 4> strides =
-      llvm::map_to_vector(llvm::reverse(getMixedStrides()), [](OpFoldResult s) {
-        return getConstantIntValue(s).value();
-      });
+  auto addressGranularity = getAddressGenGranularity();
+  llvm::SmallVector<int64_t, 4> strides = llvm::map_to_vector(
+      llvm::reverse(getMixedStrides()),
+      [](OpFoldResult s) { return getConstantIntValue(s).value(); });
   if (!strides.empty()) {
     for (int i = 0; i < 4; i++) {
       strides[i] = (strides[i] * elemWidth) / addressGranularity;
@@ -84,14 +53,12 @@ AIEX::NpuDmaMemcpyNdOp::getStridesInAddressGranularity() {
 
 llvm::SmallVector<int64_t, 4>
 AIEX::NpuDmaMemcpyNdOp::getSizesInAddressGranularity() {
-  const auto &targetModel = AIE::getTargetModel(*this);
   MemRefType buffer = getMemref().getType();
   auto elemWidth = buffer.getElementTypeBitWidth();
-  auto addressGranularity = targetModel.getAddressGenGranularity();
-  llvm::SmallVector<int64_t, 4> sizes =
-      llvm::map_to_vector(llvm::reverse(getMixedSizes()), [](OpFoldResult s) {
-        return getConstantIntValue(s).value();
-      });
+  auto addressGranularity = getAddressGenGranularity();
+  llvm::SmallVector<int64_t, 4> sizes = llvm::map_to_vector(
+      llvm::reverse(getMixedSizes()),
+      [](OpFoldResult s) { return getConstantIntValue(s).value(); });
   if (!sizes.empty()) {
     sizes[0] = (sizes[0] * elemWidth) / addressGranularity;
   }
@@ -101,10 +68,9 @@ AIEX::NpuDmaMemcpyNdOp::getSizesInAddressGranularity() {
 /* Calculates the offset value to be written to the
  */
 int64_t AIEX::NpuDmaMemcpyNdOp::getOffsetInBytes() {
-  llvm::SmallVector<int64_t, 4> offsets =
-      llvm::map_to_vector(llvm::reverse(getMixedOffsets()), [](OpFoldResult s) {
-        return getConstantIntValue(s).value();
-      });
+  llvm::SmallVector<int64_t, 4> offsets = llvm::map_to_vector(
+      llvm::reverse(getMixedOffsets()),
+      [](OpFoldResult s) { return getConstantIntValue(s).value(); });
   size_t stride = 1;
   size_t offset = 0;
   MemRefType my_memref = getMemref().getType();
@@ -123,8 +89,8 @@ int64_t AIEX::NpuDmaMemcpyNdOp::getOffsetInBytes() {
 
 LogicalResult AIEX::NpuDmaMemcpyNdOp::verify() {
   MemRefType buffer = getMemref().getType();
-  const auto &targetModel = AIE::getTargetModel(*this);
-  auto addressGranularity = targetModel.getAddressGenGranularity();
+  const auto &targetModel = getDeviceModel(*this);
+  auto addressGranularity = getAddressGenGranularity();
   auto elemWidth = buffer.getElementTypeBitWidth();
 
   if (buffer.getElementTypeBitWidth() > addressGranularity) {
@@ -148,36 +114,29 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verify() {
       }))
     return emitOpError("Only constant offsets currently supported.");
 
-  llvm::SmallVector<int64_t, 4> raw_strides =
-      llvm::map_to_vector(llvm::reverse(getMixedStrides()), [](OpFoldResult s) {
-        return getConstantIntValue(s).value();
-      });
-  llvm::SmallVector<int64_t, 4> raw_sizes =
-      llvm::map_to_vector(llvm::reverse(getMixedSizes()), [](OpFoldResult s) {
-        return getConstantIntValue(s).value();
-      });
+  llvm::SmallVector<int64_t, 4> raw_strides = llvm::map_to_vector(
+      llvm::reverse(getMixedStrides()),
+      [](OpFoldResult s) { return getConstantIntValue(s).value(); });
+  llvm::SmallVector<int64_t, 4> raw_sizes = llvm::map_to_vector(
+      llvm::reverse(getMixedSizes()),
+      [](OpFoldResult s) { return getConstantIntValue(s).value(); });
 
   llvm::SmallVector<int64_t, 4> strides = getStridesInAddressGranularity();
   llvm::SmallVector<int64_t, 4> sizes = getSizesInAddressGranularity();
   int64_t offset = getOffsetInBytes();
 
-  // The experimental HSA target uses this op on AIE1, skip all the AIE2
-  // specific checks
-  if (targetModel.getTargetArch() == AIE::AIEArch::AIE1)
-    return success();
-
   uint32_t wrap_bits = 0;
   uint32_t step_bits = 0;
   uint32_t iter_bits = 6;
   if (targetModel.isShimNOCTile(getX(), getY())) {
-    step_bits = 20; // XAIEMLGBL_NOC_MODULE_DMA_BD0_3_D0_STEPSIZE_WIDTH
-    wrap_bits = 10; // XAIEMLGBL_NOC_MODULE_DMA_BD0_3_D0_WRAP_WIDTH
+    step_bits = 20;  // XAIEMLGBL_NOC_MODULE_DMA_BD0_3_D0_STEPSIZE_WIDTH
+    wrap_bits = 10;  // XAIEMLGBL_NOC_MODULE_DMA_BD0_3_D0_WRAP_WIDTH
   } else if (targetModel.isMemTile(getX(), getY())) {
-    step_bits = 17; // XAIEMLGBL_MEM_TILE_MODULE_DMA_BD0_2_D0_STEPSIZE_WIDTH
-    wrap_bits = 10; // XAIEMLGBL_MEM_TILE_MODULE_DMA_BD0_2_D0_WRAP_WIDTH
+    step_bits = 17;  // XAIEMLGBL_MEM_TILE_MODULE_DMA_BD0_2_D0_STEPSIZE_WIDTH
+    wrap_bits = 10;  // XAIEMLGBL_MEM_TILE_MODULE_DMA_BD0_2_D0_WRAP_WIDTH
   } else if (targetModel.isCoreTile(getX(), getY())) {
-    step_bits = 13; // XAIEMLGBL_MEMORY_MODULE_DMA_BD0_2_D0_STEPSIZE_WIDTH
-    wrap_bits = 8;  // XAIEMLGBL_MEMORY_MODULE_DMA_BD0_3_D0_WRAP_WIDTH
+    step_bits = 13;  // XAIEMLGBL_MEMORY_MODULE_DMA_BD0_2_D0_STEPSIZE_WIDTH
+    wrap_bits = 8;   // XAIEMLGBL_MEMORY_MODULE_DMA_BD0_3_D0_WRAP_WIDTH
   } else {
     return emitOpError("Unsupported tile type at (" + std::to_string(getX()) +
                        ", " + std::to_string(getY()) +
@@ -212,8 +171,7 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verify() {
   for (int i = 0; i < 4; i++) {
     // strides[0] == 1 is ok iff the tranfer size is a multiple of
     // addressGranularity, which is checked below
-    if (i == 0 && raw_strides[i] == 1)
-      continue;
+    if (i == 0 && raw_strides[i] == 1) continue;
     if (raw_strides[i] * elemWidth % addressGranularity != 0) {
       std::stringstream msg;
       msg << "Stride " << i << " is " << raw_strides[i] << " elements * "
@@ -247,20 +205,18 @@ LogicalResult AIEX::NpuDmaWaitOp::verify() {
 }
 
 LogicalResult AIEX::NpuPushQueueOp::verify() {
-  const auto &targetModel = AIE::getTargetModel(*this);
+  const auto &targetModel = getDeviceModel(*this);
   auto numBds = targetModel.getNumBDs(getColumn(), getRow());
-  if (getBdId() > numBds)
-    return emitOpError("BD ID exceeds the maximum ID.");
+  if (getBdId() > numBds) return emitOpError("BD ID exceeds the maximum ID.");
   if (getRepeatCount() > 255)
     return emitOpError("Repeat count exceeds the [0:255] range.");
   return success();
 }
 
 LogicalResult AIEX::NpuWriteBdOp::verify() {
-  const auto &targetModel = AIE::getTargetModel(*this);
+  const auto &targetModel = getDeviceModel(*this);
   auto numBds = targetModel.getNumBDs(getColumn(), getRow());
-  if (getBdId() > numBds)
-    return emitOpError("BD ID exceeds the maximum ID.");
+  if (getBdId() > numBds) return emitOpError("BD ID exceeds the maximum ID.");
   if (getD0Size() > 0x3FF)
     return emitOpError("D0 Size exceeds the [0:1023] range.");
   if (getD0Stride() > 0xFFFFF)
@@ -284,7 +240,6 @@ LogicalResult AIEX::NpuWriteBdOp::verify() {
 
 ParseResult AIEX::RuntimeSequenceOp::parse(OpAsmParser &parser,
                                            OperationState &result) {
-
   StringAttr nameAttr;
   (void)parser.parseOptionalSymbolName(
       nameAttr, mlir::SymbolTable::getSymbolAttrName(), result.attributes);

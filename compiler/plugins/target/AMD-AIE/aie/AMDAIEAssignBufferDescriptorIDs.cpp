@@ -7,8 +7,8 @@
 #include <numeric>
 #include <set>
 
-#include "Passes.h"
 #include "AIEDialect.h"
+#include "Passes.h"
 #include "iree-amd-aie/aie_runtime/Utils/ChannelBdIdGenerator.h"
 #include "iree-amd-aie/aie_runtime/iree_aie_runtime.h"
 #include "mlir/Pass/Pass.h"
@@ -34,15 +34,12 @@ LogicalResult assignBdIds(DeviceOp deviceOp) {
   ChannelBdIdGenerator memTileChannelBdIdGenerator(
       deviceModel.getChannelToValidBdIds(AMDAIETileType::MEMTILE));
 
-  auto memOps = llvm::to_vector_of<TileElement>(deviceOp.getOps<MemOp>());
+  auto memOps = llvm::to_vector_of<Operation *>(deviceOp.getOps<MemOp>());
   llvm::append_range(memOps, deviceOp.getOps<MemTileDMAOp>());
-  llvm::append_range(memOps, deviceOp.getOps<ShimDMAOp>());
-  for (TileElement memOp : memOps) {
-    int col = memOp.getTileLoc().col;
-    int row = memOp.getTileLoc().row;
-
+  for (Operation *memOp : memOps) {
+    TileOp t = getTileOp(*memOp);
     // BdIdGenerator gen(col, row, deviceModel);
-    ChannelBdIdGenerator gen = deviceModel.isMemTile(col, row)
+    ChannelBdIdGenerator gen = deviceModel.isMemTile(t.getCol(), t.getRow())
                                    ? memTileChannelBdIdGenerator
                                    : shimChannelBdIdGenerator;
 
@@ -53,7 +50,7 @@ LogicalResult assignBdIds(DeviceOp deviceOp) {
     DenseMap<Block *, int> blockChannelMap;
     // Associate with each block the channel index specified by the
     // dma_start
-    for (Block &block : memOp.getOperation()->getRegion(0))
+    for (Block &block : memOp->getRegion(0))
       for (auto op : block.getOps<DMAStartOp>()) {
         int chNum = op.getChannelIndex();
         blockChannelMap[&block] = chNum;
@@ -66,7 +63,7 @@ LogicalResult assignBdIds(DeviceOp deviceOp) {
         }
       }
 
-    for (Block &block : memOp.getOperation()->getRegion(0)) {
+    for (Block &block : memOp->getRegion(0)) {
       if (block.getOps<DMABDOp>().empty()) continue;
       assert(blockChannelMap.count(&block));
       DMABDOp bd = (*block.getOps<DMABDOp>().begin());
@@ -77,15 +74,16 @@ LogicalResult assignBdIds(DeviceOp deviceOp) {
         std::optional<uint32_t> bdId =
             gen.getAndAssignBdId(blockChannelMap[&block]);
         if (!bdId)
-          return memOp.emitOpError()
+          return memOp->emitOpError()
                  << "could not find and assign a valid BD id";
         bd.setBdId(bdId.value());
       }
     }
   }
-  for (TileElement memOp : memOps) {
+
+  for (Operation *memOp : memOps) {
     DenseMap<Block *, int> blockBdIdMap;
-    for (Block &block : memOp.getOperation()->getRegion(0)) {
+    for (Block &block : memOp->getRegion(0)) {
       if (block.getOps<DMABDOp>().empty()) continue;
       DMABDOp bd = *block.getOps<DMABDOp>().begin();
       assert(bd.getBdId().has_value() &&
@@ -93,7 +91,7 @@ LogicalResult assignBdIds(DeviceOp deviceOp) {
       blockBdIdMap[&block] = bd.getBdId().value();
     }
 
-    for (Block &block : memOp.getOperation()->getRegion(0)) {
+    for (Block &block : memOp->getRegion(0)) {
       if (block.getOps<DMABDOp>().empty()) continue;
       DMABDOp bd = *block.getOps<DMABDOp>().begin();
       std::optional<int> nextBdId;

@@ -9,8 +9,8 @@
 #include <list>
 #include <set>
 
-#include "Passes.h"
 #include "AIEDialect.h"
+#include "Passes.h"
 #include "iree-amd-aie/aie_runtime/iree_aie_router.h"
 #include "iree-amd-aie/aie_runtime/iree_aie_runtime.h"
 #include "llvm/ADT/DenseMapInfo.h"
@@ -28,7 +28,6 @@ using xilinx::AIE::DeviceOp;
 using xilinx::AIE::DMAChannelDir;
 using xilinx::AIE::EndOp;
 using xilinx::AIE::FlowOp;
-using xilinx::AIE::Interconnect;
 using xilinx::AIE::MasterSetOp;
 using xilinx::AIE::PacketDestOp;
 using xilinx::AIE::PacketFlowOp;
@@ -38,7 +37,6 @@ using xilinx::AIE::PacketSourceOp;
 using xilinx::AIE::ShimMuxOp;
 using xilinx::AIE::SwitchboxOp;
 using xilinx::AIE::TileOp;
-using xilinx::AIE::WireOp;
 
 #define DEBUG_TYPE "amdaie-create-pathfinder-flows"
 #define OVER_CAPACITY_COEFF 0.02
@@ -151,7 +149,8 @@ struct ConvertFlowsToInterconnect : OpConversionPattern<FlowOp> {
       FlowOp flowOp, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
     auto srcTile = llvm::cast<TileOp>(flowOp.getSource().getDefiningOp());
-    TileLoc srcCoords = {srcTile.colIndex(), srcTile.rowIndex()};
+    TileLoc srcCoords = {static_cast<int>(srcTile.getCol()),
+                         static_cast<int>(srcTile.getRow())};
     StrmSwPortType srcBundle = toStrmT(flowOp.getSourceBundle());
     int srcChannel = flowOp.getSourceChannel();
     Port srcPort = {srcBundle, srcChannel};
@@ -229,15 +228,15 @@ LogicalResult runOnPacketFlow(
     const std::map<PathEndPoint, SwitchSettings> &flowSolutions) {
   mlir::DenseMap<TileLoc, TileOp> tiles;
   for (auto tileOp : device.getOps<TileOp>()) {
-    int col = tileOp.colIndex();
-    int row = tileOp.rowIndex();
+    int col = tileOp.getCol();
+    int row = tileOp.getRow();
     tiles[{col, row}] = tileOp;
   }
 
   DenseMap<PhysPort, Attribute> keepPktHeaderAttr;
   SwitchBoxToConnectionFlowIDT switchboxes;
   for (PacketFlowOp pktFlowOp : device.getOps<PacketFlowOp>()) {
-    int flowID = pktFlowOp.IDInt();
+    int flowID = pktFlowOp.getID();
     Port srcPort{StrmSwPortType::SS_PORT_TYPE_MAX, -1};
     TileOp srcTile;
     TileLoc srcCoords{-1, -1};
@@ -246,13 +245,13 @@ LogicalResult runOnPacketFlow(
     for (Operation &Op : b.getOperations()) {
       if (auto pktSource = llvm::dyn_cast<PacketSourceOp>(Op)) {
         srcTile = llvm::cast<TileOp>(pktSource.getTile().getDefiningOp());
-        srcPort = {toStrmT(pktSource.port().bundle), pktSource.port().channel};
-        srcCoords = {srcTile.colIndex(), srcTile.rowIndex()};
+        srcPort = {toStrmT(pktSource.getBundle()),
+                   static_cast<int>(pktSource.getChannel())};
+        srcCoords = {srcTile.getCol(), srcTile.getRow()};
       } else if (auto pktDest = llvm::dyn_cast<PacketDestOp>(Op)) {
         TileOp destTile = llvm::cast<TileOp>(pktDest.getTile().getDefiningOp());
-        Port destPort = {toStrmT(pktDest.port().bundle),
-                         pktDest.port().channel};
-        TileLoc destCoord = {destTile.colIndex(), destTile.rowIndex()};
+        Port destPort = {toStrmT(pktDest.getBundle()), pktDest.getChannel()};
+        TileLoc destCoord = {destTile.getCol(), destTile.getRow()};
         if (pktFlowOp->hasAttr("keep_pkt_header"))
           keepPktHeaderAttr[PhysPort{destCoord, destPort}] =
               StringAttr::get(Op.getContext(), "true");
@@ -478,10 +477,10 @@ void AIEPathfinderPass::runOnOperation() {
   std::set<PathEndPoint> processedFlows;
   // don't be clever and remove these initializations because
   // then you're doing a max against garbage data...
-  int maxCol = 0, maxRow = 0;
+  uint8_t maxCol = 0, maxRow = 0;
   for (TileOp tileOp : device.getOps<TileOp>()) {
-    maxCol = std::max(maxCol, tileOp.colIndex());
-    maxRow = std::max(maxRow, tileOp.rowIndex());
+    maxCol = std::max(maxCol, tileOp.getCol());
+    maxRow = std::max(maxRow, tileOp.getRow());
   }
 
   AMDAIEDeviceModel deviceModel =
@@ -493,8 +492,8 @@ void AIEPathfinderPass::runOnOperation() {
   for (FlowOp flowOp : device.getOps<FlowOp>()) {
     TileOp srcTile = llvm::cast<TileOp>(flowOp.getSource().getDefiningOp());
     TileOp dstTile = llvm::cast<TileOp>(flowOp.getDest().getDefiningOp());
-    TileLoc srcCoords = {srcTile.colIndex(), srcTile.rowIndex()};
-    TileLoc dstCoords = {dstTile.colIndex(), dstTile.rowIndex()};
+    TileLoc srcCoords = {srcTile.getCol(), srcTile.getRow()};
+    TileLoc dstCoords = {dstTile.getCol(), dstTile.getRow()};
     Port srcPort = {toStrmT(flowOp.getSourceBundle()),
                     flowOp.getSourceChannel()};
     Port dstPort = {toStrmT(flowOp.getDestBundle()), flowOp.getDestChannel()};
@@ -510,12 +509,12 @@ void AIEPathfinderPass::runOnOperation() {
     for (Operation &op : b.getOperations()) {
       if (auto pktSource = llvm::dyn_cast<PacketSourceOp>(op)) {
         srcTile = llvm::cast<TileOp>(pktSource.getTile().getDefiningOp());
-        srcPort = {toStrmT(pktSource.port().bundle), pktSource.port().channel};
-        srcCoords = {srcTile.colIndex(), srcTile.rowIndex()};
+        srcPort = {toStrmT(pktSource.getBundle()), pktSource.getChannel()};
+        srcCoords = {srcTile.getCol(), srcTile.getRow()};
       } else if (auto pktDest = llvm::dyn_cast<PacketDestOp>(op)) {
         TileOp dstTile = llvm::cast<TileOp>(pktDest.getTile().getDefiningOp());
-        Port dstPort = {toStrmT(pktDest.port().bundle), pktDest.port().channel};
-        TileLoc dstCoords = {dstTile.colIndex(), dstTile.rowIndex()};
+        Port dstPort = {toStrmT(pktDest.getBundle()), pktDest.getChannel()};
+        TileLoc dstCoords = {dstTile.getCol(), dstTile.getRow()};
         assert(srcPort.bundle != StrmSwPortType::SS_PORT_TYPE_MAX &&
                srcPort.channel != -1 && "expected srcPort to have been set");
         assert(srcCoords.col != -1 && srcCoords.row != -1);
@@ -529,13 +528,12 @@ void AIEPathfinderPass::runOnOperation() {
   for (SwitchboxOp switchboxOp : device.getOps<SwitchboxOp>()) {
     std::vector<std::tuple<StrmSwPortType, int, StrmSwPortType, int>> connects;
     for (ConnectOp connectOp : switchboxOp.getOps<ConnectOp>()) {
-      connects.emplace_back(toStrmT(connectOp.sourcePort().bundle),
-                            connectOp.sourcePort().channel,
-                            toStrmT(connectOp.destPort().bundle),
-                            connectOp.destPort().channel);
+      connects.emplace_back(
+          toStrmT(connectOp.getSourceBundle()), connectOp.getSourceChannel(),
+          toStrmT(connectOp.getDestBundle()), connectOp.getDestChannel());
     }
-    if (!pathfinder.addFixedConnection(switchboxOp.colIndex(),
-                                       switchboxOp.rowIndex(), connects)) {
+    TileOp t = xilinx::AIE::getTileOp(*switchboxOp.getOperation());
+    if (!pathfinder.addFixedConnection(t.getCol(), t.getRow(), connects)) {
       switchboxOp.emitOpError() << "Unable to add fixed connections";
       return signalPassFailure();
     }

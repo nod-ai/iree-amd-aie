@@ -13,8 +13,8 @@
 
 #include <numeric>
 
-#include "aie/Dialect/AIE/IR/AIEDialect.h"
-#include "aie/Dialect/AIEX/IR/AIEXDialect.h"
+#include "aie/AIEDialect.h"
+#include "aie/AIEXDialect.h"
 #include "iree-amd-aie/IR/AMDAIEDialect.h"
 #include "iree-amd-aie/IR/AMDAIEOps.h"
 #include "iree-amd-aie/Transforms/AMDAIEUtils.h"
@@ -128,12 +128,11 @@ AIE::ObjectFifoCreateOp createObjectFifo(IRRewriter &rewriter,
           : MemRefType::get({targetSize}, dstType.getElementType(),
                             MemRefLayoutAttrInterface{},
                             rewriter.getI64IntegerAttr(1));
-  AIE::AIEObjectFifoType dtype = AIE::AIEObjectFifoType::get(memrefType);
   auto depthInBytes = srcType.getElementTypeBitWidth() / 8;
   auto fifo = rewriter.create<AIE::ObjectFifoCreateOp>(
       rewriter.getUnknownLoc(), symName, srcTile, dstTiles,
-      rewriter.getIntegerAttr(rewriter.getI32Type(), depthInBytes), dtype,
-      sourceDims, targetDims);
+      rewriter.getIntegerAttr(rewriter.getI32Type(), depthInBytes),
+      llvm::cast<mlir::Type>(memrefType), sourceDims, targetDims);
   return fifo;
 }
 
@@ -202,11 +201,9 @@ LogicalResult acquireOpToAIE(IRRewriter &rewriter,
     return acquireOp.emitError()
            << "input isn't mapped to an `aie.objectifo` operation";
   }
-  AIE::AIEObjectFifoType ofTy =
-      cast<AIE::AIEObjectFifoType>(objFifo.getElemType());
-  MemRefType elementType = MemRefType::Builder(ofTy.getElementType())
+  MemRefType elementType = MemRefType::Builder(objFifo.getElemType())
                                .setMemorySpace(rewriter.getI64IntegerAttr(1));
-  auto subviewType = AIE::AIEObjectFifoSubviewType::get(elementType);
+  auto subviewType = elementType;
   AIE::ObjectFifoPort port =
       acquireOp.getPort() == LogicalObjectFifoPort::Produce
           ? AIE::ObjectFifoPort::Produce
