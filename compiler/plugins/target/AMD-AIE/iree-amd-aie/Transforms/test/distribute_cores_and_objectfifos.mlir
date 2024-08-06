@@ -678,6 +678,44 @@ module {
 
 // -----
 
+// The following lit test demonstrates the case we get to see in matmul+elementwise.
+// Here we get to see the intermediate L1 buffers for the matmul :-
+//    alloc -> subview -> access (within amdaie.core)
+// We should in that case want to replace the subview with a narrowed alloc itself.
+//
+// CHECK-LABEL: @l1_temporary_buffer_for_matmul_elem
+//       CHECK:   %[[C0:.*]] = arith.constant 0 : i32
+//       CHECK:   %[[ALLOC:.*]] = memref.alloc() : memref<1x1x8x8x4x4xi32, 2 : i32>
+//       CHECK:   scf.forall
+//       CHECK:     %[[FROM_MEMREF:.*]] = amdaie.logicalobjectfifo.from_memref %[[ALLOC]],
+//       CHECK:     amdaie.core
+//       CHECK:         %[[ACCESS:.*]] = amdaie.logicalobjectfifo.access(%[[FROM_MEMREF]], None) :
+//       CHECK:         linalg.fill ins(%[[C0]] : i32) outs(%[[ACCESS]] : memref<1x1x8x8x4x4xi32, 2 : i32>)
+//       CHECK:         amdaie.end
+//       CHECK:   memref.dealloc %[[ALLOC]] :
+func.func @l1_temporary_buffer_for_matmul_elem() {
+    %c0_i32 = arith.constant 0 : i32
+    %c2 = arith.constant 2 : index
+    %alloc_6 = memref.alloc() : memref<2x2x8x8x4x4xi32, 2 : i32>
+    scf.forall (%arg0, %arg1) in (1, 1) {
+        %12 = affine.apply affine_map<(d0) -> (d0 * 64)>(%arg1)
+        %13 = affine.apply affine_map<(d0) -> (d0 * 64)>(%arg0)
+        scf.forall (%arg2, %arg3) in (1, 1) {
+        %subview = memref.subview %alloc_6[%arg2, %arg3, 0, 0, 0, 0] [1, 1, 8, 8, 4, 4] [1, 1, 1, 1, 1, 1] : memref<2x2x8x8x4x4xi32, 2 : i32> to memref<1x1x8x8x4x4xi32, strided<[2048, 1024, 128, 16, 4, 1], offset: ?>, 2 : i32>
+        %26 = arith.addi %arg2, %c2 : index
+        %tile = amdaie.tile(%arg3, %26)
+        %27 = amdaie.core(%tile) {
+            linalg.fill ins(%c0_i32 : i32) outs(%subview : memref<1x1x8x8x4x4xi32, strided<[2048, 1024, 128, 16, 4, 1], offset: ?>, 2 : i32>)
+            amdaie.end
+        }
+        } {mapping = [#gpu.thread<y>, #gpu.thread<x>]}
+    } {mapping = [#gpu.block<y>, #gpu.block<x>]}
+    memref.dealloc %alloc_6 : memref<2x2x8x8x4x4xi32, 2 : i32>
+    return
+}
+
+// -----
+
 // CHECK-LABEL:   @distribute_cores_and_objectfifos
 // CHECK-DAG:       %[[IN_B:.*]] = hal.interface.binding.subspan set(0) binding(1)
 // CHECK-DAG:       %[[IN_A:.*]] = hal.interface.binding.subspan set(0) binding(0)
@@ -946,10 +984,10 @@ module {
 // CHECK-DAG:       %[[ALLOC_0:.*]] = memref.alloc() : memref<1x1x4x8x4x8xi32, 2 : i32>
 // CHECK-DAG:       %[[ALLOC_1:.*]] = memref.alloc() : memref<1x2x32x32xi32, 1 : i32>
 // CHECK-DAG:       %[[ALLOC_4:.*]] = memref.alloc() : memref<2x1x32x32xi32, 1 : i32>
-// CHECK-DAG:       %[[ALLOC_5:.*]] = memref.alloc() : memref<2x2x8x8x4x4xi32, 2 : i32>
 // CHECK-DAG:       %[[TILE_0_1:.*]] = amdaie.tile(%[[C0]], %[[C1]])
 // CHECK-DAG:       %[[FROM_MEMREF_0:.*]] = amdaie.logicalobjectfifo.from_memref %[[ALLOC_1]], {%[[TILE_0_1]]}
 // CHECK-DAG:       %[[FROM_MEMREF_1:.*]] = amdaie.logicalobjectfifo.from_memref %[[ALLOC_1]], {%[[TILE_0_1]]}
+// CHECK-DAG:       %[[ALLOC_5:.*]] = memref.alloc() : memref<1x1x8x8x4x4xi32, 2 : i32>
 // CHECK-DAG:       scf.forall (%{{.+}}, %{{.+}}) in (1, 1)
 // CHECK-DAG:         %[[TILE_0_2:.*]] = amdaie.tile(%[[C0]], %[[C2]])
 // CHECK-DAG:         %[[FROM_MEMREF_2:.*]] = amdaie.logicalobjectfifo.from_memref %[[ALLOC]], {%[[TILE_0_2]]}
@@ -958,8 +996,7 @@ module {
 // CHECK-SAME:        %[[FROM_MEMREF_1]]
 // CHECK-DAG:         %[[DMA_1:.*]] = amdaie.dma_cpy_nd(%[[FROM_MEMREF_2]]
 // CHECK-SAME:        %[[FROM_MEMREF_0]]
-// CHECK-DAG:         %[[SUBVIEW:.*]] = memref.subview %[[ALLOC_5]]
-// CHECK-DAG:         %[[FROM_MEMREF_4:.*]] = amdaie.logicalobjectfifo.from_memref %[[SUBVIEW]], {%[[TILE_0_2]]}
+// CHECK-DAG:         %[[FROM_MEMREF_4:.*]] = amdaie.logicalobjectfifo.from_memref %[[ALLOC_5]], {%[[TILE_0_2]]}
 // CHECK-DAG:         %[[CORE_0:.*]] = amdaie.core(%[[TILE_0_2]])
 // CHECK-DAG:           %[[VAL_0:.+]] = amdaie.logicalobjectfifo.access(%[[FROM_MEMREF_2]], Read)
 // CHECK-DAG:           %[[VAL_1:.+]] = amdaie.logicalobjectfifo.access(%[[FROM_MEMREF_3]], Read)

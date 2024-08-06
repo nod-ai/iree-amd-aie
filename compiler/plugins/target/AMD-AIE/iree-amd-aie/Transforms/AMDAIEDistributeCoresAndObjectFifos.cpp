@@ -95,7 +95,32 @@ LogicalResult distributeLocalMemory(ModuleOp moduleOp) {
         }
       }
     }
-    if (dmaUsers.empty()) return WalkResult::advance();
+    if (dmaUsers.empty()) {
+      // In matmul+elemwise we have the following :-
+      //        %subview = memref.subview %alloc
+      //        amdaie.core {
+      //           linalg.fill (%subview)
+      //        }
+      // Now, this %alloc in L1 DOES NOT have any
+      // amdaie.logicalobjectfifo.from_memref users. The subview itself is being
+      // used as a temporary buffer. We directly just look for
+      // alloc->subview->linalg user within amdaie.core and split the allocOp.
+      bool shouldAdvance = false;
+      for (Operation *userOp : allocOp->getUsers()) {
+        if (auto subviewOp = dyn_cast<memref::SubViewOp>(userOp)) {
+          for (Operation *subviewUserOp : subviewOp->getUsers()) {
+            if (!subviewUserOp->getParentOfType<AMDAIE::CoreOp>()) {
+              shouldAdvance = true;
+              break;
+            }
+          }
+        } else if (!isa<memref::DeallocOp>(userOp)) {
+          shouldAdvance = true;
+          break;
+        }
+      }
+      if (shouldAdvance) return WalkResult::advance();
+    }
     LLVM_DEBUG(llvm::dbgs() << "DMA users: " << dmaUsers.size() << "\n");
 
     SmallVector<Operation *> allocOpUsers;
