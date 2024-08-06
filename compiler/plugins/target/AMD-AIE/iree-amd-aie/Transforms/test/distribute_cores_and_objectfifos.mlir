@@ -698,8 +698,6 @@ func.func @l1_temporary_buffer_for_matmul_elem() {
     %c2 = arith.constant 2 : index
     %alloc_6 = memref.alloc() : memref<2x2x8x8x4x4xi32, 2 : i32>
     scf.forall (%arg0, %arg1) in (1, 1) {
-        %12 = affine.apply affine_map<(d0) -> (d0 * 64)>(%arg1)
-        %13 = affine.apply affine_map<(d0) -> (d0 * 64)>(%arg0)
         scf.forall (%arg2, %arg3) in (1, 1) {
         %subview = memref.subview %alloc_6[%arg2, %arg3, 0, 0, 0, 0] [1, 1, 8, 8, 4, 4] [1, 1, 1, 1, 1, 1] : memref<2x2x8x8x4x4xi32, 2 : i32> to memref<1x1x8x8x4x4xi32, strided<[2048, 1024, 128, 16, 4, 1], offset: ?>, 2 : i32>
         %26 = arith.addi %arg2, %c2 : index
