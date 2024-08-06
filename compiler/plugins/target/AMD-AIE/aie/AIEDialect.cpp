@@ -137,7 +137,6 @@ static ParseResult parse(Type &result, StringRef name,
   return failure();
 }
 
-/// Parse an instance of a type registered to the AIE dialect.
 Type AIEDialect::parseType(DialectAsmParser &parser) const {
   StringRef name;
   Type result;
@@ -145,7 +144,6 @@ Type AIEDialect::parseType(DialectAsmParser &parser) const {
   return result;
 }
 
-/// Print an instance of a type registered to the AIE dialect.
 void AIEDialect::printType(Type type, DialectAsmPrinter &printer) const {
   if (llvm::isa<AIEObjectFifoType>(type)) {
     auto objectFifoType = llvm::cast<AIEObjectFifoType>(type);

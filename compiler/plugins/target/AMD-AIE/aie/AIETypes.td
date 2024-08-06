@@ -24,4 +24,8 @@ def AIE_ObjectFifoSubviewType :
     DialectType<AIE_Dialect, CPred<"llvm::isa<AIEObjectFifoSubviewType>($_self)">,
                 "AIE ObjectFifoSubview type">;
 
+def StrmSwPortType : DialectType<AIE_Dialect,
+    CPred<"true">, "">,
+    BuildableType<"::mlir::iree_compiler::AMDAIE::StrmSwPortType{}">;
+
 #endif // AIE_TYPES

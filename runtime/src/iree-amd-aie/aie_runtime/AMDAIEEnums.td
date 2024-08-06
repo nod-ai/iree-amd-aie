@@ -36,24 +36,4 @@ def DMAChannelDir: I32EnumAttr<"DMAChannelDir",
   let cppNamespace = "mlir::iree_compiler::AMDAIE";
 }
 
-def StrmSwPortType: I32EnumAttr<"StrmSwPortType", "",
-  [
-      I32EnumAttrCase<"CORE", 0>,
-      I32EnumAttrCase<"DMA", 1>,
-      I32EnumAttrCase<"CTRL", 2>,
-      I32EnumAttrCase<"FIFO", 3>,
-      I32EnumAttrCase<"SOUTH", 4>,
-      I32EnumAttrCase<"WEST", 5>,
-      I32EnumAttrCase<"NORTH", 6>,
-      I32EnumAttrCase<"EAST", 7>,
-      I32EnumAttrCase<"TRACE", 8>,
-      I32EnumAttrCase<"UCTRLR", 9>,
-      I32EnumAttrCase<"SS_PORT_TYPE_MAX", 10>,
-      // "illegal" types after max
-      I32EnumAttrCase<"NOC", 11>
-  ]>
-{
-  let cppNamespace = "mlir::iree_compiler::AMDAIE";
-}
-
 #endif // IREE_AIE_RUNTIME_AMDAIEENUMS

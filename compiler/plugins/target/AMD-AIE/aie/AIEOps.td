@@ -13,7 +13,6 @@
 
 include "AIE.td"
 include "AIEAttrs.td"
-include "AIEInterfaces.td"
 include "AIETypes.td"
 include "iree-amd-aie/aie_runtime/AMDAIEEnums.td"
 
@@ -135,9 +134,9 @@ def AIE_CoreOp: AIE_Op<"core", [
 
 def AIE_ConnectOp: AIE_Op<"connect", [ParentOneOf<["SwitchboxOp", "ShimMuxOp"]> ]> {
   let arguments = (
-    ins StrmSwPortType:$source_bundle,
+    ins StrmSwPortTypeAttr:$source_bundle,
         ConfinedAttr<I8Attr, [IntMinValue<0>]>:$source_channel,
-        StrmSwPortType:$dest_bundle,
+        StrmSwPortTypeAttr:$dest_bundle,
         ConfinedAttr<I8Attr, [IntMinValue<0>]>:$dest_channel
   );
   let summary = "A circuit-switched connection inside a switchbox";
@@ -149,10 +148,10 @@ def AIE_ConnectOp: AIE_Op<"connect", [ParentOneOf<["SwitchboxOp", "ShimMuxOp"]> 
 def AIE_FlowOp: AIE_Op<"flow", []> {
   let arguments = (
     ins Index:$source,
-        StrmSwPortType:$source_bundle,
+        StrmSwPortTypeAttr:$source_bundle,
         ConfinedAttr<I8Attr, [IntMinValue<0>]>:$source_channel,
         Index:$dest,
-        StrmSwPortType:$dest_bundle,
+        StrmSwPortTypeAttr:$dest_bundle,
         ConfinedAttr<I8Attr, [IntMinValue<0>]>:$dest_channel
   );
   let summary = "A logical circuit-switched connection between cores";
@@ -189,7 +188,7 @@ def AIE_MasterSetOp: AIE_Op<"masterset", [
     DeclareOpInterfaceMethods<InferTypeOpInterface>
   ]>, Results<(outs Index)> {
   let arguments = (
-    ins StrmSwPortType:$dest_bundle,
+    ins StrmSwPortTypeAttr:$dest_bundle,
         ConfinedAttr<I8Attr, [IntMinValue<0>]>:$dest_channel,
         Variadic<Index>:$amsels
   );
@@ -201,7 +200,7 @@ def AIE_MasterSetOp: AIE_Op<"masterset", [
 
 def AIE_PacketRulesOp: AIE_Op<"packet_rules", [SingleBlockImplicitTerminator<"EndOp">]> {
   let arguments = (
-    ins StrmSwPortType:$source_bundle,
+    ins StrmSwPortTypeAttr:$source_bundle,
         ConfinedAttr<I8Attr, [IntMinValue<0>]>:$source_channel
   );
   let regions = (region AnyRegion:$rules);
@@ -240,7 +239,7 @@ def AIE_PacketFlowOp: AIE_Op<"packet_flow", [SingleBlockImplicitTerminator<"EndO
 def AIE_PacketSourceOp: AIE_Op<"packet_source", [HasParent<"PacketFlowOp">]> {
   let arguments = (
     ins Index:$tile,
-        StrmSwPortType:$bundle,
+        StrmSwPortTypeAttr:$bundle,
         ConfinedAttr<I8Attr, [IntMinValue<0>]>:$channel
   );
   let summary = "A sourceport";
@@ -257,7 +256,7 @@ def AIE_PacketSourceOp: AIE_Op<"packet_source", [HasParent<"PacketFlowOp">]> {
 def AIE_PacketDestOp: AIE_Op<"packet_dest", [HasParent<"PacketFlowOp">]> {
   let arguments = (
     ins Index:$tile,
-        StrmSwPortType:$bundle,
+        StrmSwPortTypeAttr:$bundle,
         ConfinedAttr<I8Attr, [IntMinValue<0>]>:$channel
   );
   let summary = "A destination port";
@@ -592,9 +591,9 @@ def AIE_ObjectFifoSubviewAccessOp : AIE_Op<"objectfifo.subview.access", []> {
   ];
 }
 
-def AIE_ExternalBufferOp: AIE_Op<"external_buffer", [
-    DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>
-  ]>, Results<(outs AnyMemRef)> {
+// mlir-air legacy
+
+def AIE_ExternalBufferOp: AIE_Op<"external_buffer">, Results<(outs AnyMemRef)> {
   let summary = "Declare a buffer in external memory";
   let arguments = (ins OptionalAttr<StrAttr>:$sym_name);
 

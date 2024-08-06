@@ -43,16 +43,6 @@ iree_tablegen_library(
     -gen-dialect-defs AIEDialect.cpp.inc
 )
 
-iree_tablegen_library(
-  NAME
-    AIEInterfacesGen
-  TD_FILE
-    AIEInterfaces.td
-  OUTS
-    -gen-op-interface-decls AIEInterfaces.h.inc
-    -gen-op-interface-defs AIEInterfaces.cpp.inc
-)
-
 list(APPEND IREE_COMPILER_TABLEGEN_INCLUDE_DIRS
   ${IREE_AMD_AIE_RUNTIME_SOURCE_DIR})
 iree_tablegen_library(
@@ -83,7 +73,6 @@ iree_cc_library(
     iree-amd-aie::aie_runtime::iree_aie_runtime_static
     ::AIEAttrsGen
     ::AIEDialectGen
-    ::AIEInterfacesGen
     ::AIEOpsGen
     ::AIETypesGen
     # mlir::DataLayout::closest(mlir::Operation*)

@@ -79,6 +79,13 @@ bool isAieRtCompatStrmSwPortType(
 ::StrmSwPortType checkedAieRtCompatStrmSwPortType(
     mlir::iree_compiler::AMDAIE::StrmSwPortType t, const char *file,
     unsigned int line, const char *function) {
+#ifndef NDEBUG
+  if (!isAieRtCompatStrmSwPortType(t)) {
+    llvm::report_fatal_error(llvm::formatv(
+        "{0}:{1}:{2}: StrmSwPortType  incompatible with aie-rt: {3}", file,
+        line, function, to_string(t)));
+  }
+#endif
   return static_cast<::StrmSwPortType>(t);
 }
 // macro so that line numbers are preserved for where the check fails
@@ -89,8 +96,7 @@ bool isAieRtCompatStrmSwPortType(
 
 namespace mlir::iree_compiler::AMDAIE {
 
-::mlir::iree_compiler::AMDAIE::StrmSwPortType getConnectingBundle(
-    StrmSwPortType dir) {
+StrmSwPortType getConnectingBundle(StrmSwPortType dir) {
   switch (dir) {
     case StrmSwPortType::NORTH:
       return StrmSwPortType::SOUTH;
@@ -432,6 +438,12 @@ uint32_t AMDAIEDeviceModel::getNumDestSwitchBoxConnections(
   const XAie_StrmMod *strmMod =
       devInst.DevProp.DevMod[static_cast<uint8_t>(tileType)].StrmSw;
   return strmMod->MstrConfig[CheckedAieRtCompatStrmSwPortType(bundle)].NumPorts;
+}
+
+uint32_t AMDAIEDeviceModel::getNumDestSwitchboxConnections(
+    int col, int row, StrmSwPortType bundle) const {
+  return getNumDestSwitchboxConnections(static_cast<uint8_t>(col),
+                                        static_cast<uint8_t>(row), bundle);
 }
 
 uint32_t AMDAIEDeviceModel::getColumnShift() const {

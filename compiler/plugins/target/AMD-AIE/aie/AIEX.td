@@ -12,7 +12,6 @@
 #define AIEX_OPS
 
 include "AIEAttrs.td"
-include "AIEInterfaces.td"
 include "iree-amd-aie/aie_runtime/AMDAIEEnums.td"
 
 include "mlir/IR/OpBase.td"
@@ -28,7 +27,6 @@ def AIEX_Dialect : Dialect {
   let cppNamespace = "::xilinx::AIEX";
 }
 
-
 class AIEX_Op<string mnemonic, list<Trait> traits = []> :
     Op<AIEX_Dialect, mnemonic, traits>;
 
@@ -42,9 +40,9 @@ def AIE_RuntimeSequenceOp : AIEX_Op<"runtime_sequence", [NoTerminator, HasParent
     AnyRegion:$body
   );
   let hasCustomAssemblyFormat = 1;
-  let hasVerifier = 1;
 }
 
+def MyOffsetSizeAndStrideOpInterface: OpInterfaceTrait<"::xilinx::AIE::MyOffsetSizeAndStrideOpInterface"> {}
 def AIE_NpuDmaMemcpyNdOp: AIEX_Op<"npu.dma_memcpy_nd", [
     AttrSizedOperandSegments,
     MyOffsetSizeAndStrideOpInterface
@@ -86,8 +84,6 @@ def AIE_NpuDmaMemcpyNdOp: AIEX_Op<"npu.dma_memcpy_nd", [
     unsigned $cppClass::getOffsetSizeAndStrideStartOperandIndex() { return 1; }
     std::array<unsigned, 3> $cppClass::getArrayAttrMaxRanks() { return {4, 4, 4}; }
   }];
-
-  let hasVerifier = 1;
 }
 
 def AIE_NpuDmaWaitOp: AIEX_Op<"npu.dma_wait", []> {
@@ -98,7 +94,6 @@ def AIE_NpuDmaWaitOp: AIEX_Op<"npu.dma_wait", []> {
   let assemblyFormat = [{
     attr-dict
   }];
-  let hasVerifier = 1;
 }
 
 def AIE_NpuWriteRTPOp: AIEX_Op<"npu.rtp_write", []> {
@@ -126,10 +121,6 @@ def AIE_NpuPushQueueOp: AIEX_Op<"npu.push_queue", []> {
   let results = (outs );
   let assemblyFormat = [{
     `(` $column `,` $row `,` $direction `:` $channel `)` attr-dict
-  }];
-  let hasVerifier = 1;
-  let description = [{
-    bd queue push operator
   }];
 }
 
@@ -225,7 +216,6 @@ def AIE_NpuWriteBdOp: AIEX_Op<"npu.writebd", []> {
   );
   let results = (outs );
   let assemblyFormat = [{ attr-dict }];
-  let hasVerifier = 1;
 }
 
 #endif // AIEX_OPS

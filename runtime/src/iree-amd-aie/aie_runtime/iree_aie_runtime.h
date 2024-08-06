@@ -134,19 +134,29 @@ enum class AMDAIEDmaBdProp : uint8_t {
   MAX = sizeof(XAie_DmaBdProp)
 };
 
-static_assert(
-    static_cast<uint8_t>(::mlir::iree_compiler::AMDAIE::StrmSwPortType::CORE) ==
-        ::StrmSwPortType::CORE,
-    "mlir::iree_compiler::AMDAIE::StrmSwPortType is out of sync with "
-    "aie-rt's StrmSwPortType");
-static_assert(
-    static_cast<uint8_t>(
-        ::mlir::iree_compiler::AMDAIE::StrmSwPortType::SS_PORT_TYPE_MAX) ==
-        ::StrmSwPortType::SS_PORT_TYPE_MAX,
-    "mlir::iree_compiler::AMDAIE::StrmSwPortType is out of sync with "
-    "aie-rt's StrmSwPortType");
-inline ::StrmSwPortType strmTtoStrmT(
-    ::mlir::iree_compiler::AMDAIE::StrmSwPortType t) {
+enum class StrmSwPortType : uint8_t {
+  CORE = ::StrmSwPortType::CORE,
+  DMA,
+  CTRL,
+  FIFO,
+  SOUTH,
+  WEST,
+  NORTH,
+  EAST,
+  TRACE,
+  UCTRLR,
+  SS_PORT_TYPE_MAX,
+  // "illegal" types after max
+  NOC,
+};
+static_assert(static_cast<uint8_t>(StrmSwPortType::CORE) == 0,
+              "mlir::iree_compiler::AMDAIE::StrmSwPortType is out of sync with "
+              "aie-rt's StrmSwPortType");
+static_assert(static_cast<uint8_t>(StrmSwPortType::SS_PORT_TYPE_MAX) ==
+                  ::StrmSwPortType::SS_PORT_TYPE_MAX,
+              "mlir::iree_compiler::AMDAIE::StrmSwPortType is out of sync with "
+              "aie-rt's StrmSwPortType");
+inline ::StrmSwPortType strmTtoStrmT(StrmSwPortType t) {
   return static_cast<::StrmSwPortType>(t);
 }
 
@@ -279,26 +289,16 @@ struct AMDAIEDeviceModel {
 
   uint32_t getNumBDs(uint8_t col, uint8_t row) const;
 
-  uint32_t getNumSourceSwitchBoxConnections(
-      uint8_t col, uint8_t row,
-      ::mlir::iree_compiler::AMDAIE::StrmSwPortType bundle) const;
-  uint32_t getNumDestSwitchBoxConnections(
-      uint8_t col, uint8_t row,
-      ::mlir::iree_compiler::AMDAIE::StrmSwPortType bundle) const;
-  bool isLegalTileConnection(
-      uint8_t col, uint8_t row,
-      ::mlir::iree_compiler::AMDAIE::StrmSwPortType srcBundle, uint8_t srcChan,
-      ::mlir::iree_compiler::AMDAIE::StrmSwPortType dstBundle,
-      uint8_t dstChan) const;
+  uint32_t getNumSourceSwitchBoxConnections(uint8_t col, uint8_t row,
+                                            StrmSwPortType bundle) const;
+  uint32_t getNumDestSwitchBoxConnections(uint8_t col, uint8_t row,
+                                          StrmSwPortType bundle) const;
+  bool isLegalTileConnection(uint8_t col, uint8_t row, StrmSwPortType srcBundle,
+                             uint8_t srcChan, StrmSwPortType dstBundle,
+                             uint8_t dstChan) const;
 
   uint32_t getColumnShift() const;
   uint32_t getRowShift() const;
-
-  // mlir-air legacy
-  uint32_t getNumDestSwitchboxConnections(
-      int col, int row,
-      ::mlir::iree_compiler::AMDAIE::StrmSwPortType bundle) const;
-  uint32_t getNumMemTileRows() const { return 1; }
 
   /// Return a map from channels to valid BD ids for the requested tile type.
   /// TODO(jornt): find these ranges in the device model.
@@ -306,11 +306,15 @@ struct AMDAIEDeviceModel {
       AMDAIETileType tileType) const;
 
   AMDAIEDevice device;
+
+  // mlir-air legacy
+  uint32_t getNumDestSwitchboxConnections(int col, int row,
+                                          StrmSwPortType bundle) const;
+  uint32_t getNumMemTileRows() const { return 1; }
 };
 
 struct AMDAIEDeviceModel getDeviceModel(AMDAIEDevice device);
-::mlir::iree_compiler::AMDAIE::StrmSwPortType getConnectingBundle(
-    ::mlir::iree_compiler::AMDAIE::StrmSwPortType dir);
+StrmSwPortType getConnectingBundle(StrmSwPortType dir);
 bool isNPUDevice(mlir::iree_compiler::AMDAIE::AMDAIEDevice d);
 
 /// ============================= BEGIN ==================================

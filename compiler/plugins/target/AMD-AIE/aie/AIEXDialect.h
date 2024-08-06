@@ -13,6 +13,25 @@
 
 #include "AIEDialect.h"
 
+namespace xilinx::AIE {
+mlir::LogicalResult
+myVerifyOffsetSizeAndStrideOp(mlir::OffsetSizeAndStrideOpInterface op);
+template <typename ConcreteOp>
+struct MyOffsetSizeAndStrideOpInterfaceTrait
+    : public ::mlir::detail::OffsetSizeAndStrideOpInterfaceTrait<ConcreteOp> {
+  static ::mlir::LogicalResult verifyTrait(::mlir::Operation *op) {
+    return myVerifyOffsetSizeAndStrideOp(
+        ::mlir::cast<::mlir::OffsetSizeAndStrideOpInterface>(op));
+  }
+};
+
+struct MyOffsetSizeAndStrideOpInterface
+    : ::mlir::OffsetSizeAndStrideOpInterface {
+  template <typename ConcreteOp>
+  struct Trait : public MyOffsetSizeAndStrideOpInterfaceTrait<ConcreteOp> {};
+};
+} // namespace xilinx::AIE
+
 // Include dialect declarations such as parseAttributes, parseType
 #include "aie/AIEXDialect.h.inc"
 

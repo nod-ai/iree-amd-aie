@@ -124,4 +124,12 @@ def BDPadLayoutArrayAttr : ArrayOfAttr<
     /*eltName*/BDPadLayoutAttr.cppClassName
 >;
 
+def StrmSwPortTypeAttr : Attr<CPred<"true">, ""> {
+  let storageType = [{ ::mlir::IntegerAttr }];
+  let returnType = [{ ::mlir::iree_compiler::AMDAIE::StrmSwPortType }];
+  let valueType = I32;
+  let constBuilderCall = "$_builder.getI32IntegerAttr(static_cast<int32_t>($0))";
+  code convertFromStorage = "::mlir::iree_compiler::AMDAIE::StrmSwPortType($_self.getValue().getZExtValue())";
+}
+
 #endif // AIE_ATTRS

@@ -181,6 +181,10 @@ iree_cc_library(
 )
 
 replace_string_in_file(
+  ${IREE_MLIR_AIR_SOURCE_DIR}/include/air/Conversion/PassDetail.h
+  "aie/Dialect/AIEX/IR" "aie")
+
+replace_string_in_file(
   ${IREE_MLIR_AIR_SOURCE_DIR}/lib/Conversion/AIRToAIESchedulingUtils.cpp
   "target_model.getTargetArch()" "AIE::AIEArch::AIE2")
 replace_string_in_file(
