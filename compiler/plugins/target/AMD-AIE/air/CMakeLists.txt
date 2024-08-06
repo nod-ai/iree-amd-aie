@@ -21,6 +21,22 @@ iree_cc_library(
 # AIR Dialect
 ###############################################################################
 
+function(replace_string_in_file _file _match_string _replace_string)
+  if(NOT (EXISTS ${_file}))
+    message(FATAL_ERROR "file ${_file} does not exist")
+  endif()
+  file(READ "${_file}" _file_contents)
+  if(_file_contents STREQUAL "")
+    message(FATAL_ERROR "empty file contents for ${_file}")
+  endif()
+  string(REPLACE "${_match_string}" "${_replace_string}" _file_contents "${_file_contents}")
+  if(_file_contents STREQUAL "")
+    message(FATAL_ERROR "empty replacement contents for ${_file}")
+  endif()
+  file(WRITE "${_file}" "${_file_contents}")
+endfunction()
+
+
 iree_cc_library(
     NAME
         AIRDialectIR
@@ -163,6 +179,43 @@ iree_cc_library(
     MLIRIR
     MLIRTransforms
 )
+
+replace_string_in_file(
+  ${IREE_MLIR_AIR_SOURCE_DIR}/lib/Conversion/AIRToAIESchedulingUtils.cpp
+  "target_model.getTargetArch()" "AIE::AIEArch::AIE2")
+replace_string_in_file(
+  ${IREE_MLIR_AIR_SOURCE_DIR}/lib/Conversion/AIRToAIESchedulingUtils.cpp
+  "AIE::WireBundle::DMA" "mlir::iree_compiler::AMDAIE::StrmSwPortType::DMA")
+
+replace_string_in_file(
+  ${IREE_MLIR_AIR_SOURCE_DIR}/lib/Conversion/AIRToAIEPass.cpp
+  "target_model.getTargetArch()" "AIE::AIEArch::AIE2")
+replace_string_in_file(
+  ${IREE_MLIR_AIR_SOURCE_DIR}/lib/Conversion/AIRToAIEPass.cpp
+  "device.getTargetModel().getTargetArch()" "AIE::AIEArch::AIE2")
+replace_string_in_file(
+  ${IREE_MLIR_AIR_SOURCE_DIR}/lib/Conversion/AIRToAIEPass.cpp
+  "AIE::AIETargetModel" "mlir::iree_compiler::AMDAIE::AMDAIEDeviceModel")
+replace_string_in_file(
+  ${IREE_MLIR_AIR_SOURCE_DIR}/lib/Conversion/AIRToAIEPass.cpp
+  "/*initial_value*/ nullptr," "")
+replace_string_in_file(
+  ${IREE_MLIR_AIR_SOURCE_DIR}/lib/Conversion/AIRToAIEPass.cpp
+  "AIE::TileID" "mlir::iree_compiler::AMDAIE::TileLoc")
+replace_string_in_file(
+  ${IREE_MLIR_AIR_SOURCE_DIR}/lib/Conversion/AIRToAIEPass.cpp
+  "AIE::WireBundle::Trace" "mlir::iree_compiler::AMDAIE::StrmSwPortType::TRACE")
+replace_string_in_file(
+  ${IREE_MLIR_AIR_SOURCE_DIR}/lib/Conversion/AIRToAIEPass.cpp
+  "memtileToSizeMap[t] = m.getTargetModel().getMemTileSize()"
+  "memtileToSizeMap[t] = m.getTargetModel().getMemTileSize(t.getCol(), t.getRow())")
+
+replace_string_in_file(
+  ${IREE_MLIR_AIR_SOURCE_DIR}/lib/Conversion/AIRRtToNpuPass.cpp
+  "&target_model" "target_model")
+replace_string_in_file(
+  ${IREE_MLIR_AIR_SOURCE_DIR}/lib/Conversion/AIRRtToNpuPass.cpp
+  "AIE::WireBundle::Trace" "mlir::iree_compiler::AMDAIE::StrmSwPortType::TRACE")
 
 iree_cc_library(
   NAME

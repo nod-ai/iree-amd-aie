@@ -13,6 +13,7 @@
 
 include "AIEAttrs.td"
 include "AIEInterfaces.td"
+include "iree-amd-aie/aie_runtime/AMDAIEEnums.td"
 
 include "mlir/IR/OpBase.td"
 include "mlir/IR/AttrTypeBase.td"

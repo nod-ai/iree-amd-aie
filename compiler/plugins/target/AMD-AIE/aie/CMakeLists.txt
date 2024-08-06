@@ -25,6 +25,16 @@ iree_tablegen_library(
 
 iree_tablegen_library(
   NAME
+    AIETypesGen
+  TD_FILE
+    AIETypes.td
+  OUTS
+    -gen-typedef-decls AIETypes.h.inc
+    -gen-typedef-defs AIETypes.cpp.inc
+)
+
+iree_tablegen_library(
+  NAME
     AIEDialectGen
   TD_FILE
     AIE.td
@@ -43,6 +53,8 @@ iree_tablegen_library(
     -gen-op-interface-defs AIEInterfaces.cpp.inc
 )
 
+list(APPEND IREE_COMPILER_TABLEGEN_INCLUDE_DIRS
+  ${IREE_AMD_AIE_RUNTIME_SOURCE_DIR})
 iree_tablegen_library(
   NAME
     AIEOpsGen
@@ -73,6 +85,7 @@ iree_cc_library(
     ::AIEDialectGen
     ::AIEInterfacesGen
     ::AIEOpsGen
+    ::AIETypesGen
     # mlir::DataLayout::closest(mlir::Operation*)
     MLIRDataLayoutInterfaces
     # mlir::OffsetSizeAndStrideOpInterface::getOffsets()

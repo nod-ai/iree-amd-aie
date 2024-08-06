@@ -31,7 +31,6 @@
 using namespace mlir;
 using xilinx::AIE::AMSelOp;
 using xilinx::AIE::BufferOp;
-using xilinx::AIE::CascadeDir;
 using xilinx::AIE::ConnectOp;
 using xilinx::AIE::CoreOp;
 using xilinx::AIE::DeviceOp;
@@ -55,50 +54,6 @@ using xilinx::AIE::WireBundle;
 using Path = std::filesystem::path;
 
 namespace {
-
-mlir::iree_compiler::AMDAIE::StrmSwPortType toAMDAIEStrmT(WireBundle w) {
-  using mlir::iree_compiler::AMDAIE::StrmSwPortType;
-  switch (w) {
-    case WireBundle::Core:
-      return StrmSwPortType::CORE;
-    case WireBundle::DMA:
-      return StrmSwPortType::DMA;
-    case WireBundle::FIFO:
-      return StrmSwPortType::FIFO;
-    case WireBundle::South:
-      return StrmSwPortType::SOUTH;
-    case WireBundle::West:
-      return StrmSwPortType::WEST;
-    case WireBundle::North:
-      return StrmSwPortType::NORTH;
-    case WireBundle::East:
-      return StrmSwPortType::EAST;
-    case WireBundle::PLIO:
-      llvm::report_fatal_error("unhandled PLIO");
-    case WireBundle::NOC:
-      return StrmSwPortType::NOC;
-    case WireBundle::Trace:
-      return StrmSwPortType::TRACE;
-    case WireBundle::Ctrl:
-      return StrmSwPortType::CTRL;
-    default:
-      llvm::report_fatal_error("unhandled WireBundle");
-  }
-}
-
-mlir::iree_compiler::AMDAIE::Cascade::Direction toDir(CascadeDir dir) {
-  switch (dir) {
-    case xilinx::AIE::CascadeDir::South:
-      return mlir::iree_compiler::AMDAIE::Cascade::Direction::SOUTH;
-    case xilinx::AIE::CascadeDir::North:
-      return mlir::iree_compiler::AMDAIE::Cascade::Direction::NORTH;
-    case xilinx::AIE::CascadeDir::West:
-      return mlir::iree_compiler::AMDAIE::Cascade::Direction::WEST;
-    case xilinx::AIE::CascadeDir::East:
-      return mlir::iree_compiler::AMDAIE::Cascade::Direction::EAST;
-  }
-  llvm::report_fatal_error("unhandled cascade dir");
-}
 
 mlir::iree_compiler::AMDAIE::Lock::Action toLock(xilinx::AIE::LockAction l) {
   switch (l) {
@@ -289,11 +244,10 @@ LogicalResult addInitConfigToCDO(const AMDAIEDeviceModel &deviceModel,
     SwitchBox swb = {t.getCol(), t.getRow()};
     std::vector<Connect> connects;
     for (auto connectOp : switchboxOp.getOps<ConnectOp>()) {
-      connects.emplace_back(Port{toAMDAIEStrmT(connectOp.getSourceBundle()),
-                                 connectOp.getSourceChannel()},
-                            Port{toAMDAIEStrmT(connectOp.getDestBundle()),
-                                 connectOp.getDestChannel()},
-                            Connect::Interconnect::SWB, swb.col, swb.row);
+      connects.emplace_back(
+          Port{connectOp.getSourceBundle(), connectOp.getSourceChannel()},
+          Port{connectOp.getDestBundle(), connectOp.getDestChannel()},
+          Connect::Interconnect::SWB, swb.col, swb.row);
     }
     if (failed(configureStreamSwitch(deviceModel, swb, connects))) {
       return failure();
@@ -308,7 +262,7 @@ LogicalResult addInitConfigToCDO(const AMDAIEDeviceModel &deviceModel,
                           static_cast<uint8_t>(amsel.getMsel())});
       }
       if (failed(configureSwitchPacketMasters(
-              deviceModel, swb, toAMDAIEStrmT(masterSetOp.getDestBundle()),
+              deviceModel, swb, masterSetOp.getDestBundle(),
               masterSetOp.getDestChannel(), amSels,
               masterSetOp->hasAttr("keep_pkt_header"))))
         return failure();
@@ -321,11 +275,9 @@ LogicalResult addInitConfigToCDO(const AMDAIEDeviceModel &deviceModel,
         AMSelOp amselOp =
             cast<AMSelOp>(packetRuleOp.getAmsel().getDefiningOp());
         if (failed(configureSwitchPacketSlaves(
-                deviceModel, swb,
-                toAMDAIEStrmT(packetRulesOp.getSourceBundle()),
+                deviceModel, swb, packetRulesOp.getSourceBundle(),
                 packetRulesOp.getSourceChannel(),
-                AMSel{static_cast<uint8_t>(amselOp.getArbiterID()),
-                      static_cast<uint8_t>(amselOp.getMsel())},
+                AMSel{amselOp.getArbiterID(), amselOp.getMsel()},
                 packetRuleOp.getValue(), packetRuleOp.getMask(), slot)))
           return failure();
         slot++;
@@ -338,11 +290,10 @@ LogicalResult addInitConfigToCDO(const AMDAIEDeviceModel &deviceModel,
     SwitchBox swb = {t.getCol(), t.getRow()};
     std::vector<Connect> connects;
     for (auto connectOp : muxOp.getOps<ConnectOp>()) {
-      connects.emplace_back(Port{toAMDAIEStrmT(connectOp.getSourceBundle()),
-                                 connectOp.getSourceChannel()},
-                            Port{toAMDAIEStrmT(connectOp.getDestBundle()),
-                                 connectOp.getDestChannel()},
-                            Connect::Interconnect::SHIMMUX, swb.col, swb.row);
+      connects.emplace_back(
+          Port{connectOp.getSourceBundle(), connectOp.getSourceChannel()},
+          Port{connectOp.getDestBundle(), connectOp.getDestChannel()},
+          Connect::Interconnect::SHIMMUX, swb.col, swb.row);
     }
     if (failed(configureStreamSwitch(deviceModel, swb, connects))) {
       return failure();

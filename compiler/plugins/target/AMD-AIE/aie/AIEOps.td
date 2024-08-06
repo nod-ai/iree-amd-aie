@@ -14,6 +14,8 @@
 include "AIE.td"
 include "AIEAttrs.td"
 include "AIEInterfaces.td"
+include "AIETypes.td"
+include "iree-amd-aie/aie_runtime/AMDAIEEnums.td"
 
 include "mlir/IR/CommonAttrConstraints.td"
 include "mlir/IR/SymbolInterfaces.td"
@@ -35,7 +37,11 @@ def AIE_DeviceOp: AIE_Op<"device", [
   let assemblyFormat = [{
     `(` $device `)` regions attr-dict
   }];
-  let hasVerifier = 1;
+
+  // mlir-air legacy
+  let extraClassDeclaration = [{
+    mlir::iree_compiler::AMDAIE::AMDAIEDeviceModel getTargetModel();
+  }];
 }
 
 def AIE_TileOp: AIE_Op<"tile", [
@@ -52,7 +58,17 @@ def AIE_TileOp: AIE_Op<"tile", [
     `(` $col `,` $row `)` attr-dict
   }];
 
-  let hasVerifier = 1;
+  // mlir-air legacy
+  let extraClassDeclaration = [{
+    int colIndex() { return getCol(); }
+    int rowIndex() { return getRow(); }
+    bool isShimTile() { return getRow() == 0; }
+    CoreOp getCoreOp();
+    bool isMemTile();
+    MemOp getMemOp();
+    size_t getNumSourceConnections(mlir::iree_compiler::AMDAIE::StrmSwPortType w);
+    size_t getNumDestConnections(mlir::iree_compiler::AMDAIE::StrmSwPortType w);
+  }];
 }
 
 def AIE_EndOp: AIE_Op<"end", [Terminator]> {
@@ -69,7 +85,6 @@ def AIE_SwitchboxOp: AIE_Op<"switchbox", [
   let summary = "Declare a switch";
   let regions = (region AnyRegion:$connections);
   let assemblyFormat = [{ `(` $tile `)` regions attr-dict }];
-  let hasVerifier = 1;
 }
 
 def AIE_ShimSwitchboxOp: AIE_Op<"shim_switchbox", [
@@ -80,7 +95,6 @@ def AIE_ShimSwitchboxOp: AIE_Op<"shim_switchbox", [
   let summary = "Declare a switch in the PL shim";
   let regions = (region AnyRegion:$connections);
   let assemblyFormat = [{ `(` $col `)` regions attr-dict }];
-  let hasVerifier = 1;
 }
 
 def AIE_ShimMuxOp: AIE_Op<"shim_mux", [
@@ -93,7 +107,6 @@ def AIE_ShimMuxOp: AIE_Op<"shim_mux", [
   let summary = "Declare a switch in the PL shim";
   let regions = (region AnyRegion:$connections);
   let assemblyFormat = [{ `(` $tile `)` regions attr-dict }];
-  let hasVerifier = 1;
 }
 
 def AIE_CoreOp: AIE_Op<"core", [
@@ -108,20 +121,23 @@ def AIE_CoreOp: AIE_Op<"core", [
   let summary = "Declare a core module";
   let regions = (region AnyRegion:$body);
   let assemblyFormat = [{ `(` $tile `)` regions attr-dict }];
-  let hasVerifier = 1;
 
   let builders = [
     OpBuilder<(ins "mlir::Value":$tile), [{
       build($_builder, $_state, $_builder.getIndexType(), tile);
     }]>
   ];
+  // mlir-air legacy
+  let extraClassDeclaration = [{
+    TileOp getTileOp();
+  }];
 }
 
 def AIE_ConnectOp: AIE_Op<"connect", [ParentOneOf<["SwitchboxOp", "ShimMuxOp"]> ]> {
   let arguments = (
-    ins WireBundle:$source_bundle,
+    ins StrmSwPortType:$source_bundle,
         ConfinedAttr<I8Attr, [IntMinValue<0>]>:$source_channel,
-        WireBundle:$dest_bundle,
+        StrmSwPortType:$dest_bundle,
         ConfinedAttr<I8Attr, [IntMinValue<0>]>:$dest_channel
   );
   let summary = "A circuit-switched connection inside a switchbox";
@@ -133,10 +149,10 @@ def AIE_ConnectOp: AIE_Op<"connect", [ParentOneOf<["SwitchboxOp", "ShimMuxOp"]> 
 def AIE_FlowOp: AIE_Op<"flow", []> {
   let arguments = (
     ins Index:$source,
-        WireBundle:$source_bundle,
+        StrmSwPortType:$source_bundle,
         ConfinedAttr<I8Attr, [IntMinValue<0>]>:$source_channel,
         Index:$dest,
-        WireBundle:$dest_bundle,
+        StrmSwPortType:$dest_bundle,
         ConfinedAttr<I8Attr, [IntMinValue<0>]>:$dest_channel
   );
   let summary = "A logical circuit-switched connection between cores";
@@ -173,7 +189,7 @@ def AIE_MasterSetOp: AIE_Op<"masterset", [
     DeclareOpInterfaceMethods<InferTypeOpInterface>
   ]>, Results<(outs Index)> {
   let arguments = (
-    ins WireBundle:$dest_bundle,
+    ins StrmSwPortType:$dest_bundle,
         ConfinedAttr<I8Attr, [IntMinValue<0>]>:$dest_channel,
         Variadic<Index>:$amsels
   );
@@ -185,13 +201,12 @@ def AIE_MasterSetOp: AIE_Op<"masterset", [
 
 def AIE_PacketRulesOp: AIE_Op<"packet_rules", [SingleBlockImplicitTerminator<"EndOp">]> {
   let arguments = (
-    ins WireBundle:$source_bundle,
+    ins StrmSwPortType:$source_bundle,
         ConfinedAttr<I8Attr, [IntMinValue<0>]>:$source_channel
   );
   let regions = (region AnyRegion:$rules);
   let summary = "Packet switched routing rules";
   let assemblyFormat = [{ `(` $source_bundle `:` $source_channel `)` regions attr-dict }];
-  let hasVerifier = 1;
 }
 
 def AIE_PacketRuleOp: AIE_Op<"rule", [HasParent<"PacketRulesOp">]> {
@@ -216,30 +231,43 @@ def AIE_PacketFlowOp: AIE_Op<"packet_flow", [SingleBlockImplicitTerminator<"EndO
   let regions = (region AnyRegion:$ports);
 
   let assemblyFormat = [{ `(` $ID `)` regions attr-dict }];
-  let hasVerifier = 1;
+  // mlir-air legacy
+  let extraClassDeclaration = [{
+    int IDInt() { return getID(); }
+  }];
 }
 
 def AIE_PacketSourceOp: AIE_Op<"packet_source", [HasParent<"PacketFlowOp">]> {
   let arguments = (
     ins Index:$tile,
-        WireBundle:$bundle,
+        StrmSwPortType:$bundle,
         ConfinedAttr<I8Attr, [IntMinValue<0>]>:$channel
   );
   let summary = "A sourceport";
   let assemblyFormat = [{
     `<` $tile `,` $bundle `:` $channel `>` attr-dict
   }];
+
+  // mlir-air legacy
+  let extraClassDeclaration = [{
+    Port port() { return {getBundle(), getChannel()}; }
+  }];
 }
 
 def AIE_PacketDestOp: AIE_Op<"packet_dest", [HasParent<"PacketFlowOp">]> {
   let arguments = (
     ins Index:$tile,
-        WireBundle:$bundle,
+        StrmSwPortType:$bundle,
         ConfinedAttr<I8Attr, [IntMinValue<0>]>:$channel
   );
   let summary = "A destination port";
   let assemblyFormat = [{
     `<` $tile `,` $bundle `:` $channel `>` attr-dict
+  }];
+
+  // mlir-air legacy
+  let extraClassDeclaration = [{
+    Port port() { return {getBundle(), getChannel()}; }
   }];
 }
 
@@ -273,13 +301,11 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", [
         OptionalAttr<I32Attr>:$next_bd_id
   );
 
-  let hasVerifier = 1;
 
   let assemblyFormat = [{
     `(` $buffer `:` type($buffer) (`,` $offset^)? (`,` $len^)? (`,` $dimensions^)? (`,` $pad_dimensions^)? (`,` `pad_value` `=` $pad_value^)? `)` attr-dict
   }];
 
-  let hasVerifier = 1;
   let builders = [
     OpBuilder<(ins "mlir::Value":$buffer, "int":$offset, "int":$len), [{
       $_state.addOperands(buffer);
@@ -336,7 +362,6 @@ def AIE_MemOp: AIE_Op<"mem", [
   let arguments = (ins Index:$tile);
   let regions = (region AnyRegion:$body);
   let assemblyFormat = [{ `(` $tile `)` regions attr-dict }];
-  let hasVerifier = 1;
 }
 
 def AIE_MemTileDMAOp: AIE_Op<"memtile_dma", [
@@ -346,7 +371,6 @@ def AIE_MemTileDMAOp: AIE_Op<"memtile_dma", [
   let arguments = (ins Index:$tile);
   let regions = (region AnyRegion:$body);
   let assemblyFormat = [{ `(` $tile `)` regions attr-dict }];
-  let hasVerifier = 1;
 }
 
 def AIE_NextBDOp: AIE_Op<"next_bd", [
@@ -384,7 +408,13 @@ def AIE_LockOp: AIE_Op<"lock", [
       );
     }]>
   ];
-  let hasVerifier = 1;
+  // mlir-air legacy
+  let extraClassDeclaration = [{
+    int getLockIDValue() {
+      assert(getLockID().has_value() && "Lock has no ID value");
+      return getLockID().value();
+    }
+  }];
 }
 
 def AIE_UseLockOp: AIE_Op<"use_lock", []> {
@@ -401,7 +431,6 @@ def AIE_UseLockOp: AIE_Op<"use_lock", []> {
     `(` $lock `,` $action (`,` $value^)? (`,` $blocking^)? `)` attr-dict
   }];
 
-  let hasVerifier = 1;
   let builders = [
     OpBuilder<(ins "mlir::Value":$lock,
                    "xilinx::AIE::LockAction":$action,
@@ -424,7 +453,10 @@ def AIE_BufferOp: AIE_Op<"buffer", []>, Results<(outs AnyMemRef)> {
   let assemblyFormat = [{
     `(` $tile `)` attr-dict `:` type($buffer)
   }];
-  let hasVerifier = 1;
+  // mlir-air legacy
+  let extraClassDeclaration = [{
+    TileOp getTileOp();
+  }];
 }
 
 def AIE_ShimDMAAllocationOp : AIE_Op<"shim_dma_allocation", [HasParent<"DeviceOp">]> {
@@ -452,7 +484,7 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]
         Index:$producerTile,
         Variadic<Index>:$consumerTiles,
         AnyAttrOf<[ConfinedAttr<I32Attr, [IntMinValue<0>]>, ArrayAttr]>:$elemNumber,
-        TypeAttrOf<AnyMemRef>:$elemType,
+        TypeAttrOf<AIE_ObjectFifoType>:$elemType,
         BDDimLayoutArrayAttr:$dimensionsToStream,
         BDDimLayoutArrayArrayAttr:$dimensionsFromStreamPerConsumer,
         DefaultValuedAttr<BoolAttr, "false">:$via_DMA,
@@ -471,8 +503,6 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]
     `)` attr-dict `:` $elemType
   }];
 
-  let hasVerifier = 1;
-
   let builders = [
     OpBuilder<(ins "mlir::StringAttr":$sym_name, "mlir::Value":$producerTile,
                    "mlir::ValueRange":$consumerTiles, "mlir::Attribute":$elemNumber, "mlir::Type":$elem_type,
@@ -489,6 +519,12 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]
                             odsBuilder.getAttr<BDDimLayoutArrayArrayAttr>(dimensionsFromStreamPerConsumer));
     }]>
   ];
+
+  let extraClassDeclaration = [{
+    mlir::StringAttr name() {
+      return ::xilinx::AIE::name(*this);
+    }
+  }];
 }
 
 def AIE_ObjectFifoLinkOp: AIE_Op<"objectfifo.link", [HasParent<"DeviceOp">]> {
@@ -504,7 +540,6 @@ def AIE_ObjectFifoLinkOp: AIE_Op<"objectfifo.link", [HasParent<"DeviceOp">]> {
     $fifoIns `->` $fifoOuts `(` `)` attr-dict
   }];
 
-  let hasVerifier = 1;
 }
 
 def AIE_ObjectFifoAcquireOp: AIE_Op<"objectfifo.acquire", []> {
@@ -515,13 +550,12 @@ def AIE_ObjectFifoAcquireOp: AIE_Op<"objectfifo.acquire", []> {
         ConfinedAttr<I32Attr, [IntMinValue<0>]>:$size
   );
 
-  let results = (outs AnyMemRef:$subview);
+  let results = (outs AIE_ObjectFifoSubviewType:$subview);
 
   let assemblyFormat = [{
     attr-dict $objFifo_name `(` $port `,` $size `)` `:` type($subview)
   }];
 
-  let hasVerifier = 1;
 }
 
 def AIE_ObjectFifoReleaseOp: AIE_Op<"objectfifo.release", []> {
@@ -536,17 +570,15 @@ def AIE_ObjectFifoReleaseOp: AIE_Op<"objectfifo.release", []> {
     attr-dict $objFifo_name `(` $port `,` $size `)`
   }];
 
-  let hasVerifier = 1;
 }
 
 def AIE_ObjectFifoSubviewAccessOp : AIE_Op<"objectfifo.subview.access", []> {
   let summary = "ObjectFifoSubview type accessor method";
   let arguments = (
-    ins AnyMemRef:$subview, 
+    ins AIE_ObjectFifoSubviewType:$subview,
         ConfinedAttr<I32Attr, [IntMinValue<0>]>:$index
   );
 
-  let hasVerifier = 1;
 
   let results = (outs AnyMemRef:$output);
 
@@ -569,5 +601,22 @@ def AIE_ExternalBufferOp: AIE_Op<"external_buffer", [
   let results = (outs AnyMemRef:$buffer);
   let assemblyFormat = [{ attr-dict `:` type($buffer) }];
 }
+
+def AIE_ShimDMAOp: AIE_Op<"shim_dma", [
+    DeclareOpInterfaceMethods<InferTypeOpInterface>
+  ]>, Results<(outs Index)> {
+  let arguments = (
+    ins Index:$tile
+  );
+  let summary = "Declare a DMA in the PL shim";
+  let regions = (region AnyRegion:$body);
+  let assemblyFormat = [{ `(` $tile `)` regions attr-dict }];
+  let extraClassDeclaration = [{
+    int colIndex();
+    int rowIndex();
+    TileOp getTileOp();
+  }];
+}
+
 
 #endif // AIE_OPS

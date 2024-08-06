@@ -20,35 +20,6 @@ include "mlir/IR/EnumAttr.td"
 // AIE attributes.
 //===----------------------------------------------------------------------===//
 
-def CoreWire:   I32EnumAttrCase<"Core", 0>;
-def DMAWire:    I32EnumAttrCase<"DMA", 1>;
-def FIFOWire:   I32EnumAttrCase<"FIFO", 2>;
-def SouthWire:  I32EnumAttrCase<"South", 3>;
-def WestWire:   I32EnumAttrCase<"West", 4>;
-def NorthWire:  I32EnumAttrCase<"North", 5>;
-def EastWire:   I32EnumAttrCase<"East", 6>;
-def PLIOWire:   I32EnumAttrCase<"PLIO", 7>;
-def NOCWire:    I32EnumAttrCase<"NOC", 8>;
-def TraceWire:  I32EnumAttrCase<"Trace", 9>;
-def ControlWire:  I32EnumAttrCase<"Ctrl", 10>;
-
-def WireBundle: I32EnumAttr<"WireBundle", "Bundle of wires",
-  [
-    CoreWire, DMAWire, FIFOWire, SouthWire, WestWire, NorthWire,
-    EastWire, PLIOWire, NOCWire, TraceWire, ControlWire
-  ]> {
-
-  let cppNamespace = "xilinx::AIE";
-}
-
-def CascadeDir: I32EnumAttr<"CascadeDir", "Directions for cascade",
-  [
-    SouthWire, WestWire, NorthWire, EastWire
-  ]> {
-
-  let cppNamespace = "xilinx::AIE";
-}
-
 def LockAction: I32EnumAttr<"LockAction", "lock acquire/release",
   [
     I32EnumAttrCase<"Acquire", 0>,
@@ -99,15 +70,6 @@ def ObjectFifoPort: I32EnumAttr<"ObjectFifoPort",
     I32EnumAttrCase<"Consume", 1>
   ]
   > {
-  let cppNamespace = "xilinx::AIE";
-}
-
-def DMAChannelDir: I32EnumAttr<"DMAChannelDir",
-  "DMA Channel direction",
-  [
-    I32EnumAttrCase<"S2MM", 0>,
-    I32EnumAttrCase<"MM2S", 1>
-  ]> {
   let cppNamespace = "xilinx::AIE";
 }
 

@@ -12,6 +12,7 @@
 #define MLIR_AIE_DIALECT_H
 
 #include "AIEEnums.h"
+#include "iree-amd-aie/aie_runtime/iree_aie_router.h"
 #include "iree-amd-aie/aie_runtime/iree_aie_runtime.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/ControlFlow/IR/ControlFlow.h"
@@ -53,6 +54,34 @@ struct MyOffsetSizeAndStrideOpInterfaceTrait
   }
 };
 
+namespace detail {
+struct AIEObjectFifoTypeStorage;
+}
+
+class AIEObjectFifoType
+    : public mlir::Type::TypeBase<AIEObjectFifoType, mlir::Type,
+                                  detail::AIEObjectFifoTypeStorage> {
+ public:
+  using Base::Base;
+  static AIEObjectFifoType get(mlir::MemRefType elementType);
+  static constexpr llvm::StringLiteral name = "objectfifo";
+  mlir::MemRefType getElementType();
+};
+
+namespace detail {
+struct AIEObjectFifoSubviewTypeStorage;
+}
+
+class AIEObjectFifoSubviewType
+    : public mlir::Type::TypeBase<AIEObjectFifoSubviewType, mlir::Type,
+                                  detail::AIEObjectFifoSubviewTypeStorage> {
+ public:
+  using Base::Base;
+  static AIEObjectFifoSubviewType get(mlir::MemRefType elementType);
+  static constexpr llvm::StringLiteral name = "objectfifosubview";
+  mlir::MemRefType getElementType();
+};
+
 /// Include the generated interface declarations.
 #include "aie/AIEInterfaces.h.inc"
 
@@ -61,6 +90,12 @@ struct MyOffsetSizeAndStrideOpInterface
   template <typename ConcreteOp>
   struct Trait : public MyOffsetSizeAndStrideOpInterfaceTrait<ConcreteOp> {};
 };
+
+using DMAChannelDir = mlir::iree_compiler::AMDAIE::DMAChannelDir;
+using Port = mlir::iree_compiler::AMDAIE::Port;
+using WireBundle = mlir::iree_compiler::AMDAIE::StrmSwPortType;
+using DMAChannelDirAttr = mlir::iree_compiler::AMDAIE::DMAChannelDirAttr;
+// using DMAChannel = mlir::iree_compiler::AMDAIE::DMAChannel;
 }  // namespace xilinx::AIE
 
 // Include dialect declarations such as parseAttributes, parseType
@@ -192,6 +227,10 @@ CoreOp getCoreOp(TileOp &op) {
   return nullptr;
 }
 
+MemOp TileOp::getMemOp() { return ::xilinx::AIE::getMemOp(*this); }
+
+CoreOp TileOp::getCoreOp() { return ::xilinx::AIE::getCoreOp(*this); }
+
 void collectBuffers(DeviceOp &device,
                     llvm::DenseMap<mlir::Operation *,
                                    llvm::SmallVector<BufferOp, 4>> &buffers) {
@@ -231,41 +270,15 @@ mlir::iree_compiler::AMDAIE::AMDAIEDeviceModel getDeviceModel(
 
 uint32_t getAddressGenGranularity() { return 32; };
 
-typedef struct DMAChannel {
+struct DMAChannel {
   DMAChannelDir direction;
   int channel;
 
   bool operator==(const DMAChannel &rhs) const {
     return std::tie(direction, channel) == std::tie(rhs.direction, rhs.channel);
   }
-} DMAChannel;
+};
 
 }  // namespace xilinx::AIE
-
-namespace llvm {
-template <>
-struct DenseMapInfo<xilinx::AIE::DMAChannel> {
-  using FirstInfo = DenseMapInfo<xilinx::AIE::DMAChannelDir>;
-  using SecondInfo = DenseMapInfo<int>;
-
-  static xilinx::AIE::DMAChannel getEmptyKey() {
-    return {FirstInfo::getEmptyKey(), SecondInfo::getEmptyKey()};
-  }
-
-  static xilinx::AIE::DMAChannel getTombstoneKey() {
-    return {FirstInfo::getTombstoneKey(), SecondInfo::getTombstoneKey()};
-  }
-
-  static unsigned getHashValue(const xilinx::AIE::DMAChannel &d) {
-    return detail::combineHashValue(FirstInfo::getHashValue(d.direction),
-                                    SecondInfo::getHashValue(d.channel));
-  }
-
-  static bool isEqual(const xilinx::AIE::DMAChannel &lhs,
-                      const xilinx::AIE::DMAChannel &rhs) {
-    return lhs == rhs;
-  }
-};
-}  // namespace llvm
 
 #endif

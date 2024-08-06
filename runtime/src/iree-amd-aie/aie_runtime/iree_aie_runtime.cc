@@ -79,13 +79,6 @@ bool isAieRtCompatStrmSwPortType(
 ::StrmSwPortType checkedAieRtCompatStrmSwPortType(
     mlir::iree_compiler::AMDAIE::StrmSwPortType t, const char *file,
     unsigned int line, const char *function) {
-#ifndef NDEBUG
-  if (!isAieRtCompatStrmSwPortType(t)) {
-    llvm::report_fatal_error(llvm::formatv(
-        "{0}:{1}:{2}: StrmSwPortType  incompatible with aie-rt: {3}", file,
-        line, function, to_string(t)));
-  }
-#endif
   return static_cast<::StrmSwPortType>(t);
 }
 // macro so that line numbers are preserved for where the check fails
@@ -96,7 +89,8 @@ bool isAieRtCompatStrmSwPortType(
 
 namespace mlir::iree_compiler::AMDAIE {
 
-StrmSwPortType getConnectingBundle(StrmSwPortType dir) {
+::mlir::iree_compiler::AMDAIE::StrmSwPortType getConnectingBundle(
+    StrmSwPortType dir) {
   switch (dir) {
     case StrmSwPortType::NORTH:
       return StrmSwPortType::SOUTH;

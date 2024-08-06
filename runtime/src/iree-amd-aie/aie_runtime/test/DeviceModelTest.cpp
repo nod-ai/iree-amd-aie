@@ -18,7 +18,7 @@ extern "C" {
 #undef u64
 }
 
-#include "aie/Dialect/AIE/IR/AIEDialect.h"
+#include "aie/AIEDialect.h"
 #include "aie/Dialect/AIE/IR/AIETargetModel.h"
 #include "gtest/gtest-param-test.h"
 #include "gtest/gtest.h"
