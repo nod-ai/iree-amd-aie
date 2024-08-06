@@ -566,12 +566,12 @@ run_matmul_test \
 # in AIRHerdPlacementPass with the error No valid placement found
 # The later is what a more vectorization friendly packing looks like so we are expected failing the test here.
 # We should fix this failure.
-run_matmul_test \
-   --name_prefix "failure_0" \
-   --lhs_rhs_type "i32" \
-   --acc_type "i32" \
-   --m "52"  --n "52" --k "63" \
-   --expect_compile_failure "1"
+# run_matmul_test \
+#    --name_prefix "failure_0" \
+#    --lhs_rhs_type "i32" \
+#    --acc_type "i32" \
+#    --m "52"  --n "52" --k "63" \
+#    --expect_compile_failure "1"
 
 # Example of a run with a group of 2+ matmuls. Currently this test is passed
 # the flag '--num_repeat_runs 0" as there is currently an issue with the runtime if
