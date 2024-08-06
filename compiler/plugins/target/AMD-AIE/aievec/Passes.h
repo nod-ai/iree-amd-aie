@@ -29,9 +29,6 @@ void buildCanonicalizeVectorForAIEVec(mlir::OpPassManager &pm);
 
 void buildLowerVectorToAIEVec(mlir::OpPassManager &pm);
 
-/// Create a pass that removes unnecessary Copy operations.
-std::unique_ptr<mlir::Pass> createCopyRemovalPass();
-
 std::unique_ptr<mlir::Pass> createConvertAIEVecToLLVMPass();
 void registerConvertAIEVecToLLVMPass();
 
