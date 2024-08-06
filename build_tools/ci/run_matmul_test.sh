@@ -209,6 +209,11 @@ function run_matmul_test() {
   # intermittently. It is also useful if a test is know to fail at runtime but
   # should still be checked to compile (set num_repeat_runs=0 in this case).
   local num_repeat_runs="1"
+
+  # Run the test 'num_corruption_repeat_runs' times without an NPU reset in 
+  # between. This can be used to check for corruption, i.e. the AIE might be
+  # left in a bad state in between runs. Additionally, this increases the speed
+  # of the repeated test
   local num_corruption_repeat_runs="1"
 
   while [ "$#" -gt 0 ]; do

@@ -324,12 +324,9 @@ static iree_status_t iree_hal_xrt_direct_command_buffer_dispatch(
       z0, iree_hal_resource_set_insert(command_buffer->resource_set, 1,
                                        &executable));
 
-  xrt::device device = *kernel_params.device;
   xrt::kernel kernel = *kernel_params.kernel;
   xrt::bo instr = *kernel_params.instr;
   uint32_t num_instr = kernel_params.num_instr;
-  instr.sync(XCL_BO_SYNC_BO_TO_DEVICE);
-
   xrt::run run = xrt::run(kernel);
 
   // set opcode for transaction binary execution

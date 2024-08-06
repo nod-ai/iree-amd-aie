@@ -99,7 +99,7 @@ static iree_status_t iree_amd_aie_hal_xrt_native_executable_flatbuffer_verify(
 }
 
 iree_status_t iree_hal_xrt_native_executable_create(
-    xrt::device *device, const iree_hal_executable_params_t* executable_params,
+    xrt::device* device, const iree_hal_executable_params_t* executable_params,
     iree_allocator_t host_allocator, iree_hal_executable_t** out_executable) {
   IREE_ASSERT_ARGUMENT(executable_params);
   IREE_ASSERT_ARGUMENT(out_executable);
@@ -202,8 +202,7 @@ iree_status_t iree_hal_xrt_native_executable_create(
       // the second argument to the kernel and we can use group id 1.
       int group_id = 1;
       instr = std::make_unique<xrt::bo>(*device, num_instr * sizeof(uint32_t),
-                                        XCL_BO_FLAGS_CACHEABLE,
-                                        group_id);
+                                        XCL_BO_FLAGS_CACHEABLE, group_id);
     } catch (...) {
       iree_hal_executable_destroy((iree_hal_executable_t*)executable);
       IREE_TRACE_ZONE_END(z0);
@@ -220,7 +219,6 @@ iree_status_t iree_hal_xrt_native_executable_create(
     iree_hal_xrt_kernel_params_t* params =
         &executable->entry_points[entry_ordinal];
     params->xclbin = xclbin.release();
-    params->device = device;
     params->kernel = kernel.release();
     params->instr = instr.release();
     params->num_instr = num_instr;
@@ -271,6 +269,10 @@ static void iree_hal_xrt_native_executable_destroy(
     try {
       delete executable->entry_points[i].kernel;
       delete executable->entry_points[i].instr;
+      // TODO(jornt): deleting the xclbin here will result in a corrupted size
+      // error in XRT. It looks like the xclbin needs to stay alive while the
+      // device is alive if it has been registered.
+      // delete executable->entry_points[i].xclbin;
     } catch (...) {
       (void)iree_status_from_code(IREE_STATUS_DATA_LOSS);
     }
