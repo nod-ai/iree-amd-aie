@@ -818,12 +818,19 @@ bf16_i8_shapes_small=(
 )
 
 bf16_i8_shapes_medium=(
+  '512x512x512'
   '1024x1024x1024'
   '1536x2048x1536'
 )
 
 bf16_ukernel_shapes_small=(
+  '64x64x64'
   '256x256x256'
+)
+
+bf16_ukernel_shapes_medium=(
+  '128x512x512'
+  '512x4096x2048'
 )
 
 run_matmul_test_on_shapes ${bf16_i8_shapes_small[@]} \
@@ -866,7 +873,16 @@ run_matmul_test_on_shapes ${bf16_ukernel_shapes_small[@]} \
     --lhs_rhs_type "bf16" \
     --acc_type "f32" \
     --num_repeat_runs "2" \
-    --use_ukernel "1"
+    --use_ukernel "2"
+
+run_matmul_test_on_shapes ${bf16_ukernel_shapes_medium[@]} \
+    --name_prefix "medium" \
+    --lower_to_aie_pipeline "objectFifo" \
+    --tile_pipeline "pack-peel" \
+    --lhs_rhs_type "bf16" \
+    --acc_type "f32" \
+    --num_repeat_runs "2" \
+    --use_ukernel "2"
 
 ###################################################################
 # Chess tests
