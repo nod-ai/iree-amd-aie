@@ -7,18 +7,18 @@ aie.device(npu1_4col) {
   %tile_1_1 = aie.tile(1, 1)
   %tile_2_1 = aie.tile(2, 1)
   %tile_0_2 = aie.tile(0, 2)
-  %lock_1_1 = aie.lock(%tile_1_1, 1) {init = 1 : i32}
-  %lock_1_1_0 = aie.lock(%tile_1_1, 0) {init = 0 : i32}
-  %lock_0_1 = aie.lock(%tile_0_1, 1) {init = 1 : i32}
-  %lock_0_1_1 = aie.lock(%tile_0_1, 0) {init = 0 : i32}
-  %lock_2_1 = aie.lock(%tile_2_1, 1) {init = 1 : i32}
-  %lock_2_1_2 = aie.lock(%tile_2_1, 0) {init = 0 : i32}
-  %lock_0_2 = aie.lock(%tile_0_2, 5) {init = 1 : i32}
-  %lock_0_2_3 = aie.lock(%tile_0_2, 4) {init = 0 : i32}
-  %lock_0_2_4 = aie.lock(%tile_0_2, 3) {init = 1 : i32}
-  %lock_0_2_5 = aie.lock(%tile_0_2, 2) {init = 0 : i32}
-  %lock_0_2_6 = aie.lock(%tile_0_2, 1) {init = 1 : i32}
-  %lock_0_2_7 = aie.lock(%tile_0_2, 0) {init = 0 : i32}
+  %lock_1_1 = aie.lock(%tile_1_1, 1) {init = 1 : i8}
+  %lock_1_1_0 = aie.lock(%tile_1_1, 0) {init = 0 : i8}
+  %lock_0_1 = aie.lock(%tile_0_1, 1) {init = 1 : i8}
+  %lock_0_1_1 = aie.lock(%tile_0_1, 0) {init = 0 : i8}
+  %lock_2_1 = aie.lock(%tile_2_1, 1) {init = 1 : i8}
+  %lock_2_1_2 = aie.lock(%tile_2_1, 0) {init = 0 : i8}
+  %lock_0_2 = aie.lock(%tile_0_2, 5) {init = 1 : i8}
+  %lock_0_2_3 = aie.lock(%tile_0_2, 4) {init = 0 : i8}
+  %lock_0_2_4 = aie.lock(%tile_0_2, 3) {init = 1 : i8}
+  %lock_0_2_5 = aie.lock(%tile_0_2, 2) {init = 0 : i8}
+  %lock_0_2_6 = aie.lock(%tile_0_2, 1) {init = 1 : i8}
+  %lock_0_2_7 = aie.lock(%tile_0_2, 0) {init = 0 : i8}
   %buf5 = aie.buffer(%tile_0_1) {address = 0 : i32, mem_bank = 0 : i32, sym_name = "buf5"} : memref<16x8xi32> 
   %buf4 = aie.buffer(%tile_1_1) {address = 0 : i32, mem_bank = 0 : i32, sym_name = "buf4"} : memref<8x16xi32> 
   %buf3 = aie.buffer(%tile_2_1) {address = 0 : i32, mem_bank = 0 : i32, sym_name = "buf3"} : memref<16x16xi32> 
@@ -50,49 +50,49 @@ aie.device(npu1_4col) {
     aie.next_bd ^bb6
   }
   %switchbox_0_0 = aie.switchbox(%tile_0_0) {
-    aie.connect<South : 3, North : 0>
-    aie.connect<South : 7, East : 0>
-    aie.connect<East : 0, South : 2>
+    aie.connect<SOUTH : 3, NORTH : 0>
+    aie.connect<SOUTH : 7, EAST : 0>
+    aie.connect<EAST : 0, SOUTH : 2>
   }
   %shim_mux_0_0 = aie.shim_mux(%tile_0_0) {
-    aie.connect<DMA : 0, North : 3>
-    aie.connect<DMA : 1, North : 7>
-    aie.connect<North : 2, DMA : 0>
+    aie.connect<DMA : 0, NORTH : 3>
+    aie.connect<DMA : 1, NORTH : 7>
+    aie.connect<NORTH : 2, DMA : 0>
   }
   %switchbox_0_1 = aie.switchbox(%tile_0_1) {
-    aie.connect<South : 0, DMA : 0>
-    aie.connect<DMA : 0, North : 0>
+    aie.connect<SOUTH : 0, DMA : 0>
+    aie.connect<DMA : 0, NORTH : 0>
   }
   %tile_1_0 = aie.tile(1, 0)
   %switchbox_1_0 = aie.switchbox(%tile_1_0) {
-    aie.connect<West : 0, North : 0>
-    aie.connect<East : 0, West : 0>
+    aie.connect<WEST : 0, NORTH : 0>
+    aie.connect<EAST : 0, WEST : 0>
   }
   %switchbox_1_1 = aie.switchbox(%tile_1_1) {
-    aie.connect<South : 0, DMA : 0>
-    aie.connect<DMA : 0, North : 0>
+    aie.connect<SOUTH : 0, DMA : 0>
+    aie.connect<DMA : 0, NORTH : 0>
   }
   %tile_2_0 = aie.tile(2, 0)
   %switchbox_2_0 = aie.switchbox(%tile_2_0) {
-    aie.connect<North : 0, West : 0>
+    aie.connect<NORTH : 0, WEST : 0>
   }
   %switchbox_2_1 = aie.switchbox(%tile_2_1) {
-    aie.connect<DMA : 0, South : 0>
-    aie.connect<North : 0, DMA : 0>
+    aie.connect<DMA : 0, SOUTH : 0>
+    aie.connect<NORTH : 0, DMA : 0>
   }
   %switchbox_0_2 = aie.switchbox(%tile_0_2) {
-    aie.connect<South : 0, DMA : 0>
-    aie.connect<East : 0, DMA : 1>
-    aie.connect<DMA : 0, East : 0>
+    aie.connect<SOUTH : 0, DMA : 0>
+    aie.connect<EAST : 0, DMA : 1>
+    aie.connect<DMA : 0, EAST : 0>
   }
   %tile_1_2 = aie.tile(1, 2)
   %switchbox_1_2 = aie.switchbox(%tile_1_2) {
-    aie.connect<South : 0, West : 0>
-    aie.connect<West : 0, East : 0>
+    aie.connect<SOUTH : 0, WEST : 0>
+    aie.connect<WEST : 0, EAST : 0>
   }
   %tile_2_2 = aie.tile(2, 2)
   %switchbox_2_2 = aie.switchbox(%tile_2_2) {
-    aie.connect<West : 0, South : 0>
+    aie.connect<WEST : 0, SOUTH : 0>
   }
   %memtile_dma_2_1 = aie.memtile_dma(%tile_2_1) {
     %0 = aie.dma_start(S2MM, 0, ^bb1, ^bb3, repeat_count = 1)

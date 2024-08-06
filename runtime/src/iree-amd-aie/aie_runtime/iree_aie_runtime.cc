@@ -440,9 +440,10 @@ uint32_t AMDAIEDeviceModel::getNumDestSwitchBoxConnections(
   return strmMod->MstrConfig[CheckedAieRtCompatStrmSwPortType(bundle)].NumPorts;
 }
 
+// the difference between this fn and the one it calls is SwitchBox vs Switchbox
 uint32_t AMDAIEDeviceModel::getNumDestSwitchboxConnections(
     int col, int row, StrmSwPortType bundle) const {
-  return getNumDestSwitchboxConnections(static_cast<uint8_t>(col),
+  return getNumDestSwitchBoxConnections(static_cast<uint8_t>(col),
                                         static_cast<uint8_t>(row), bundle);
 }
 
@@ -556,7 +557,6 @@ struct AMDAIEDeviceModel getDeviceModel(AMDAIEDevice device) {
 std::string to_string(const int &value) { return std::to_string(value); }
 std::string to_string(const uint32_t &value) { return std::to_string(value); }
 std::string to_string(const uint64_t &value) { return std::to_string(value); }
-std::string to_string(const size_t &value) { return std::to_string(value); }
 
 std::string to_string(const StrmSwPortType &value) {
   switch (value) {

@@ -5,9 +5,9 @@
 // CHECK:           %[[TILE_2_1:.*]] = aie.tile(2, 1)
 // CHECK:           %[[IN:.*]] = aie.buffer(%[[TILE_2_1]]) {address = 8192 : i32, sym_name = "in"} : memref<16xi32>
 // CHECK:           %[[OUT:.*]] = aie.buffer(%[[TILE_2_1]]) {address = 1824 : i32, sym_name = "out"} : memref<16xi32>
-// CHECK:           %[[LOCK_2_1:.*]] = aie.lock(%[[TILE_2_1]], 0) {init = 1 : i32}
+// CHECK:           %[[LOCK_2_1:.*]] = aie.lock(%[[TILE_2_1]], 0) {init = 1 : i8}
 // CHECK:           %[[LOCK_2_1_0:.*]] = aie.lock(%[[TILE_2_1]], 1)
-// CHECK:           %[[LOCK_2_1_1:.*]] = aie.lock(%[[TILE_2_1]], 2) {init = 1 : i32}
+// CHECK:           %[[LOCK_2_1_1:.*]] = aie.lock(%[[TILE_2_1]], 2) {init = 1 : i8}
 // CHECK:           %[[LOCK_2_1_2:.*]] = aie.lock(%[[TILE_2_1]], 3)
 // CHECK:           %[[MEMTILE_DMA_2_1:.*]] = aie.memtile_dma(%[[TILE_2_1]]) {
 // CHECK:             %[[VAL_0:.*]] = aie.dma_start(S2MM, 0, ^bb4, ^bb1)
@@ -47,9 +47,9 @@ module @aie_module  {
     %t01 = aie.tile(2, 1)
     %buf01_0 = aie.buffer(%t01) { address = 8192 : i32, sym_name = "in" } : memref<16xi32>
     %buf01_1 = aie.buffer(%t01) { address = 1824 : i32, sym_name = "out" } : memref<16xi32>
-    %l01_0 = aie.lock(%t01, 0) { init = 1 : i32 }
+    %l01_0 = aie.lock(%t01, 0) { init = 1 : i8 }
     %l01_1 = aie.lock(%t01, 1)
-    %l01_2 = aie.lock(%t01, 2) { init = 1 : i32 }
+    %l01_2 = aie.lock(%t01, 2) { init = 1 : i8 }
     %l01_3 = aie.lock(%t01, 3)
     %m01 = aie.memtile_dma(%t01) {
         %srcDma = aie.dma_start(S2MM, 0, ^bd0, ^dma0)

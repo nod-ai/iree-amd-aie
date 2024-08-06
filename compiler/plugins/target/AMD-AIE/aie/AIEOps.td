@@ -1,12 +1,8 @@
-//===- AIE.td ----------------------------------------------*- tablegen -*-===//
+// Copyright 2024 The IREE Authors
 //
-// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+// Licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-// (c) Copyright 2019 Xilinx Inc.
-//
-//===----------------------------------------------------------------------===//
 
 #ifndef AIE_OPS
 #define AIE_OPS
@@ -21,6 +17,7 @@ include "mlir/IR/SymbolInterfaces.td"
 include "mlir/Interfaces/CallInterfaces.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
+include "mlir/IR/OpAsmInterface.td"
 
 class AIE_Op<string mnemonic, list<Trait> traits = []> :
     Op<AIE_Dialect, mnemonic, traits>;
@@ -31,7 +28,7 @@ def AIE_DeviceOp: AIE_Op<"device", [
     SymbolTable, SingleBlock, NoTerminator, IsolatedFromAbove
   ]> {
   let summary = "Define an AIE design targetting a complete device";
-  let arguments = (ins AIEDevice:$device);
+  let arguments = (ins AMDAIEDeviceAttr:$device);
   let regions = (region AnyRegion:$body_region);
   let assemblyFormat = [{
     `(` $device `)` regions attr-dict
@@ -45,6 +42,7 @@ def AIE_DeviceOp: AIE_Op<"device", [
 
 def AIE_TileOp: AIE_Op<"tile", [
     Pure,
+    DeclareOpInterfaceMethods<OpAsmOpInterface>,
     DeclareOpInterfaceMethods<InferTypeOpInterface>
   ]>, Results<(outs Index:$result)> {
   let arguments = (
@@ -67,6 +65,8 @@ def AIE_TileOp: AIE_Op<"tile", [
     MemOp getMemOp();
     size_t getNumSourceConnections(mlir::iree_compiler::AMDAIE::StrmSwPortType w);
     size_t getNumDestConnections(mlir::iree_compiler::AMDAIE::StrmSwPortType w);
+    void getAsmResultNames(
+        llvm::function_ref<void(mlir::Value, llvm::StringRef)> setNameFn);
   }];
 }
 
@@ -76,6 +76,7 @@ def AIE_EndOp: AIE_Op<"end", [Terminator]> {
 }
 
 def AIE_SwitchboxOp: AIE_Op<"switchbox", [
+    DeclareOpInterfaceMethods<OpAsmOpInterface>,
     SingleBlockImplicitTerminator<"EndOp">,
     DeclareOpInterfaceMethods<InferTypeOpInterface>
   ]>, Results<(outs Index:$result)> {
@@ -84,6 +85,11 @@ def AIE_SwitchboxOp: AIE_Op<"switchbox", [
   let summary = "Declare a switch";
   let regions = (region AnyRegion:$connections);
   let assemblyFormat = [{ `(` $tile `)` regions attr-dict }];
+  // mlir-air legacy
+  let extraClassDeclaration = [{
+    void getAsmResultNames(
+        llvm::function_ref<void(mlir::Value, llvm::StringRef)> setNameFn);
+  }];
 }
 
 def AIE_ShimSwitchboxOp: AIE_Op<"shim_switchbox", [
@@ -97,6 +103,7 @@ def AIE_ShimSwitchboxOp: AIE_Op<"shim_switchbox", [
 }
 
 def AIE_ShimMuxOp: AIE_Op<"shim_mux", [
+    DeclareOpInterfaceMethods<OpAsmOpInterface>,
     SingleBlockImplicitTerminator<"EndOp">,
     DeclareOpInterfaceMethods<InferTypeOpInterface>
   ]>, Results<(outs Index)> {
@@ -106,9 +113,14 @@ def AIE_ShimMuxOp: AIE_Op<"shim_mux", [
   let summary = "Declare a switch in the PL shim";
   let regions = (region AnyRegion:$connections);
   let assemblyFormat = [{ `(` $tile `)` regions attr-dict }];
+  let extraClassDeclaration = [{
+    void getAsmResultNames(
+        llvm::function_ref<void(mlir::Value, llvm::StringRef)> setNameFn);
+  }];
 }
 
 def AIE_CoreOp: AIE_Op<"core", [
+    DeclareOpInterfaceMethods<OpAsmOpInterface>,
     DeclareOpInterfaceMethods<InferTypeOpInterface>
   ]>, Results<(outs Index)> {
   let arguments = (
@@ -129,6 +141,8 @@ def AIE_CoreOp: AIE_Op<"core", [
   // mlir-air legacy
   let extraClassDeclaration = [{
     TileOp getTileOp();
+    void getAsmResultNames(
+        llvm::function_ref<void(mlir::Value, llvm::StringRef)> setNameFn);
   }];
 }
 
@@ -283,6 +297,7 @@ def AIE_DMABDPACKETOp: AIE_Op<"dma_bd_packet", []> {
 }
 
 def AIE_DMABDOp: AIE_Op<"dma_bd", [
+    DeclareOpInterfaceMethods<OpAsmOpInterface>,
     ParentOneOf<["MemOp", "MemTileDMAOp"]>,
   ]> {
   let summary = "Declare a dma buffer descriptor op";
@@ -355,21 +370,33 @@ def AIE_DMAStartOp: AIE_Op<"dma_start", [
 // MemOps are not actually Callable, but we want to inline code into them, so we have to
 // implement CallableOpInterface
 def AIE_MemOp: AIE_Op<"mem", [
+    DeclareOpInterfaceMethods<OpAsmOpInterface>,
     DeclareOpInterfaceMethods<InferTypeOpInterface>
   ]>, Results<(outs Index)> {
   let summary = "Declare a memory op";
   let arguments = (ins Index:$tile);
   let regions = (region AnyRegion:$body);
   let assemblyFormat = [{ `(` $tile `)` regions attr-dict }];
+  // mlir-air legacy
+  let extraClassDeclaration = [{
+    void getAsmResultNames(
+        llvm::function_ref<void(mlir::Value, llvm::StringRef)> setNameFn);
+  }];
 }
 
 def AIE_MemTileDMAOp: AIE_Op<"memtile_dma", [
+    DeclareOpInterfaceMethods<OpAsmOpInterface>,
     DeclareOpInterfaceMethods<InferTypeOpInterface>
   ]>, Results<(outs Index)> {
   let summary = "Declare a memtile_dma op";
   let arguments = (ins Index:$tile);
   let regions = (region AnyRegion:$body);
   let assemblyFormat = [{ `(` $tile `)` regions attr-dict }];
+  // mlir-air legacy
+  let extraClassDeclaration = [{
+    void getAsmResultNames(
+        llvm::function_ref<void(mlir::Value, llvm::StringRef)> setNameFn);
+  }];
 }
 
 def AIE_NextBDOp: AIE_Op<"next_bd", [
@@ -384,14 +411,15 @@ def AIE_NextBDOp: AIE_Op<"next_bd", [
 }
 
 def AIE_LockOp: AIE_Op<"lock", [
+    DeclareOpInterfaceMethods<OpAsmOpInterface>,
     Pure, DeclareOpInterfaceMethods<InferTypeOpInterface>
   ]>, Results<(outs Index)> {
   let summary = "Declare a physical lock";
   let arguments = (
     ins Index:$tile,
-      OptionalAttr<ConfinedAttr<I8Attr, [IntMinValue<0>]>>:$lockID,
-      OptionalAttr<I8Attr>:$init,
-      OptionalAttr<StrAttr>:$sym_name
+        OptionalAttr<ConfinedAttr<I8Attr, [IntMinValue<0>]>>:$lockID,
+        OptionalAttr<I8Attr>:$init,
+        OptionalAttr<StrAttr>:$sym_name
   );
 
   let assemblyFormat = [{ `(` $tile (`,` $lockID^ )? `)` attr-dict }];
@@ -413,6 +441,8 @@ def AIE_LockOp: AIE_Op<"lock", [
       assert(getLockID().has_value() && "Lock has no ID value");
       return getLockID().value();
     }
+    void getAsmResultNames(
+        llvm::function_ref<void(mlir::Value, llvm::StringRef)> setNameFn);
   }];
 }
 
@@ -439,7 +469,9 @@ def AIE_UseLockOp: AIE_Op<"use_lock", []> {
   ];
 }
 
-def AIE_BufferOp: AIE_Op<"buffer", []>, Results<(outs AnyMemRef)> {
+def AIE_BufferOp: AIE_Op<"buffer", [
+    DeclareOpInterfaceMethods<OpAsmOpInterface>,
+]>, Results<(outs AnyMemRef)> {
   let summary = "Declare a buffer";
   let arguments = (
     ins Index:$tile,
@@ -455,6 +487,8 @@ def AIE_BufferOp: AIE_Op<"buffer", []>, Results<(outs AnyMemRef)> {
   // mlir-air legacy
   let extraClassDeclaration = [{
     TileOp getTileOp();
+    void getAsmResultNames(
+        llvm::function_ref<void(mlir::Value, llvm::StringRef)> setNameFn);
   }];
 }
 
@@ -463,8 +497,8 @@ def AIE_ShimDMAAllocationOp : AIE_Op<"shim_dma_allocation", [HasParent<"DeviceOp
   let arguments = (
     ins FlatSymbolRefAttr:$sym_name,
         DMAChannelDir:$channel_dir,
-        I8Attr:$channel_index,
-        I8Attr:$col,
+        I64Attr:$channel_index,
+        I64Attr:$col,
         // If this is set we are using the PLIO in this ShimTile
         DefaultValuedAttr<BoolAttr, "false">:$plio
   );
@@ -538,7 +572,6 @@ def AIE_ObjectFifoLinkOp: AIE_Op<"objectfifo.link", [HasParent<"DeviceOp">]> {
   let assemblyFormat = [{
     $fifoIns `->` $fifoOuts `(` `)` attr-dict
   }];
-
 }
 
 def AIE_ObjectFifoAcquireOp: AIE_Op<"objectfifo.acquire", []> {
@@ -617,5 +650,19 @@ def AIE_ShimDMAOp: AIE_Op<"shim_dma", [
   }];
 }
 
+// legacy tests
+
+def AIE_ObjectFifoRegisterExternalBuffersOp: AIE_Op<"objectfifo.register_external_buffers"> {
+  let summary = "Registers external buffers to given object fifo shim tile(s) to use in the associated shim DMA(s)";
+  let arguments = (
+    ins FlatSymbolRefAttr:$objFifo_name,
+        Index:$tile,
+        Variadic<AnyMemRef>:$externalBuffers
+  );
+
+  let assemblyFormat = [{
+    attr-dict $objFifo_name `(` $tile `,` `{` $externalBuffers `}` `)` `:` `(` type($externalBuffers) `)`
+  }];
+}
 
 #endif // AIE_OPS

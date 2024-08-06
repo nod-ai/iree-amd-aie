@@ -1,12 +1,8 @@
-//===- AIEDialect.h ---------------------------------------------*- C++ -*-===//
+// Copyright 2024 The IREE Authors
 //
-// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+// Licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-// (c) Copyright 2019 Xilinx Inc.
-//
-//===----------------------------------------------------------------------===//
 
 #ifndef MLIR_AIE_DIALECT_H
 #define MLIR_AIE_DIALECT_H
@@ -75,10 +71,21 @@ using DMAChannelDir = mlir::iree_compiler::AMDAIE::DMAChannelDir;
 using Port = mlir::iree_compiler::AMDAIE::Port;
 using WireBundle = mlir::iree_compiler::AMDAIE::StrmSwPortType;
 using DMAChannelDirAttr = mlir::iree_compiler::AMDAIE::DMAChannelDirAttr;
-// using DMAChannel = mlir::iree_compiler::AMDAIE::DMAChannel;
+using AIEArch = mlir::iree_compiler::AMDAIE::AIEArch;
+using AIEDevice = mlir::iree_compiler::AMDAIE::AMDAIEDevice;
+using AIEDeviceAttr = mlir::iree_compiler::AMDAIE::AMDAIEDeviceAttr;
+
+inline std::optional<mlir::iree_compiler::AMDAIE::AMDAIEDevice>
+symbolizeAIEDevice(uint32_t d) {
+  return mlir::iree_compiler::AMDAIE::symbolizeAMDAIEDevice(d);
+}
+
+inline std::optional<mlir::iree_compiler::AMDAIE::AMDAIEDevice>
+symbolizeAIEDevice(llvm::StringRef d) {
+  return mlir::iree_compiler::AMDAIE::symbolizeAMDAIEDevice(d);
+}
 }  // namespace xilinx::AIE
 
-// Include dialect declarations such as parseAttributes, parseType
 #include "aie/AIEDialect.h.inc"
 
 #define GET_ATTRDEF_CLASSES
@@ -279,6 +286,60 @@ inline size_t TileOp::getNumSourceConnections(
 inline bool TileOp::isMemTile() {
   auto deviceModel = getDeviceModel(this->getOperation());
   return deviceModel.isMemTile(this->getCol(), this->getRow());
+}
+
+template <typename T>
+inline void getAsmResultNames(
+    T op, llvm::function_ref<void(mlir::Value, llvm::StringRef)> setNameFn) {
+  std::string nameWithoutDialect =
+      op->getOperationName().str().substr(op->getOperationName().find('.') + 1);
+  auto t = llvm::cast<TileOp>(op->getTile().getDefiningOp());
+  setNameFn(op->getResult(), nameWithoutDialect + "_" +
+                                 std::to_string(t.getCol()) + "_" +
+                                 std::to_string(t.getRow()));
+}
+
+inline void SwitchboxOp::getAsmResultNames(
+    llvm::function_ref<void(mlir::Value, llvm::StringRef)> setNameFn) {
+  return xilinx::AIE::getAsmResultNames(this, setNameFn);
+}
+
+inline void ShimMuxOp::getAsmResultNames(
+    llvm::function_ref<void(mlir::Value, llvm::StringRef)> setNameFn) {
+  return xilinx::AIE::getAsmResultNames(this, setNameFn);
+}
+
+inline void MemOp::getAsmResultNames(
+    llvm::function_ref<void(mlir::Value, llvm::StringRef)> setNameFn) {
+  return xilinx::AIE::getAsmResultNames(this, setNameFn);
+}
+
+inline void CoreOp::getAsmResultNames(
+    llvm::function_ref<void(mlir::Value, llvm::StringRef)> setNameFn) {
+  return xilinx::AIE::getAsmResultNames(this, setNameFn);
+}
+
+inline void MemTileDMAOp::getAsmResultNames(
+    llvm::function_ref<void(mlir::Value, llvm::StringRef)> setNameFn) {
+  return xilinx::AIE::getAsmResultNames(this, setNameFn);
+}
+
+inline void BufferOp::getAsmResultNames(
+    llvm::function_ref<void(mlir::Value, llvm::StringRef)> setNameFn) {
+  return xilinx::AIE::getAsmResultNames(this, setNameFn);
+}
+
+inline void LockOp::getAsmResultNames(
+    llvm::function_ref<void(mlir::Value, llvm::StringRef)> setNameFn) {
+  return xilinx::AIE::getAsmResultNames(this, setNameFn);
+}
+
+inline void TileOp::getAsmResultNames(
+    llvm::function_ref<void(mlir::Value, llvm::StringRef)> setNameFn) {
+  std::string nameWithoutDialect =
+      getOperationName().str().substr(getOperationName().find('.') + 1);
+  setNameFn(getResult(), nameWithoutDialect + "_" + std::to_string(getCol()) +
+                             "_" + std::to_string(getRow()));
 }
 
 inline mlir::iree_compiler::AMDAIE::AMDAIEDeviceModel

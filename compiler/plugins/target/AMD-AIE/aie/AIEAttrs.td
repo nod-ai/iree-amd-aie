@@ -1,12 +1,8 @@
-//===- AIEAttrs.td -----------------------------------------*- tablegen -*-===//
+// Copyright 2024 The IREE Authors
 //
-// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+// Licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-// (c) Copyright 2019 Xilinx Inc.
-//
-//===----------------------------------------------------------------------===//
 
 #ifndef AIE_ATTRS
 #define AIE_ATTRS
@@ -15,10 +11,6 @@ include "AIE.td"
 
 include "mlir/IR/AttrTypeBase.td"
 include "mlir/IR/EnumAttr.td"
-
-//===----------------------------------------------------------------------===//
-// AIE attributes.
-//===----------------------------------------------------------------------===//
 
 def LockAction: I32EnumAttr<"LockAction", "lock acquire/release",
   [
@@ -39,30 +31,6 @@ def LockBlocking: I32EnumAttr<"LockBlocking", "lock operation is blocking",
   let cppNamespace = "xilinx::AIE";
 }
 
-def AIEArch: I32EnumAttr<"AIEArch", "AIE Architecture",
-  [
-    I32EnumAttrCase<"AIE1", 1>,
-    I32EnumAttrCase<"AIE2", 2>
-  ]> {
-
-  let cppNamespace = "xilinx::AIE";
-}
-
-def AIEDevice: I32EnumAttr<"AIEDevice", "AIE Device",
-  [
-    I32EnumAttrCase<"xcvc1902", 1>,
-    I32EnumAttrCase<"xcve2302", 2>,
-    I32EnumAttrCase<"xcve2802", 3>,
-    I32EnumAttrCase<"npu1", 4>,
-    I32EnumAttrCase<"npu1_1col", 5>,
-    I32EnumAttrCase<"npu1_2col", 6>,
-    I32EnumAttrCase<"npu1_3col", 7>,
-    I32EnumAttrCase<"npu1_4col", 8>
-  ]> {
-
-  let cppNamespace = "xilinx::AIE";
-}
-
 def ObjectFifoPort: I32EnumAttr<"ObjectFifoPort",
   "Ports of an object FIFO",
   [
@@ -75,11 +43,6 @@ def ObjectFifoPort: I32EnumAttr<"ObjectFifoPort",
 
 def BDDimLayoutAttr : AttrDef<AIE_Dialect, "BDDimLayout", []> {
   let mnemonic = "bd_dim_layout";
-  let summary = [{
-    Tuple encoding the stride and size of one dimension in an AIE2 n-dimensional
-    buffer descriptor;
-  }];
-
   let parameters = (ins
     "uint16_t" : $size,
     "uint32_t" : $stride
@@ -104,11 +67,6 @@ def BDDimLayoutArrayArrayAttr : ArrayOfAttr<
 
 def BDPadLayoutAttr : AttrDef<AIE_Dialect, "BDPadLayout", []> {
   let mnemonic = "bd_pad_layout";
-  let summary = [{
-    Tuple encoding number of zeros before and after on that dimension in an AIE2 
-    n-dimensional buffer descriptor;
-  }];
-
   let parameters = (ins
     "uint16_t" : $const_pad_before,
     "uint16_t" : $const_pad_after
@@ -123,13 +81,5 @@ def BDPadLayoutArrayAttr : ArrayOfAttr<
     /*attrMnemonic*/"bd_pad_layout_array",
     /*eltName*/BDPadLayoutAttr.cppClassName
 >;
-
-def StrmSwPortTypeAttr : Attr<CPred<"true">, ""> {
-  let storageType = [{ ::mlir::IntegerAttr }];
-  let returnType = [{ ::mlir::iree_compiler::AMDAIE::StrmSwPortType }];
-  let valueType = I32;
-  let constBuilderCall = "$_builder.getI32IntegerAttr(static_cast<int32_t>($0))";
-  code convertFromStorage = "::mlir::iree_compiler::AMDAIE::StrmSwPortType($_self.getValue().getZExtValue())";
-}
 
 #endif // AIE_ATTRS

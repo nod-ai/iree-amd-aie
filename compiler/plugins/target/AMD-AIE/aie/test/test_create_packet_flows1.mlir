@@ -4,11 +4,11 @@
 // CHECK:           %[[TILE_1_1:.*]] = aie.tile(1, 1)
 // CHECK:           %[[SWITCHBOX_1_1:.*]] = aie.switchbox(%[[TILE_1_1]]) {
 // CHECK:             %[[VAL_0:.*]] = aie.amsel<0> (0)
-// CHECK:             %[[VAL_1:.*]] = aie.masterset(Core : 0, %[[VAL_0]])
-// CHECK:             aie.packet_rules(West : 0) {
+// CHECK:             %[[VAL_1:.*]] = aie.masterset(CORE : 0, %[[VAL_0]])
+// CHECK:             aie.packet_rules(WEST : 0) {
 // CHECK:               aie.rule(31, 0, %[[VAL_0]])
 // CHECK:             }
-// CHECK:             aie.packet_rules(West : 1) {
+// CHECK:             aie.packet_rules(WEST : 1) {
 // CHECK:               aie.rule(31, 1, %[[VAL_0]])
 // CHECK:             }
 // CHECK:           }
@@ -19,13 +19,13 @@ module @test_create_packet_flows1 {
   %t11 = aie.tile(1, 1)
 
   aie.packet_flow(0x0) {
-    aie.packet_source<%t11, West : 0>
-    aie.packet_dest<%t11, Core : 0>
+    aie.packet_source<%t11, WEST : 0>
+    aie.packet_dest<%t11, CORE : 0>
   }
 
   aie.packet_flow(0x1) {
-    aie.packet_source<%t11, West : 1>
-    aie.packet_dest<%t11, Core : 0>
+    aie.packet_source<%t11, WEST : 1>
+    aie.packet_dest<%t11, CORE : 0>
   }
  }
 }

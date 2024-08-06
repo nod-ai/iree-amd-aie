@@ -183,20 +183,22 @@ iree_cc_library(
 replace_string_in_file(
   ${IREE_MLIR_AIR_SOURCE_DIR}/include/air/Conversion/PassDetail.h
   "aie/Dialect/AIEX/IR" "aie")
-
 replace_string_in_file(
-  ${IREE_MLIR_AIR_SOURCE_DIR}/lib/Conversion/AIRToAIESchedulingUtils.cpp
-  "target_model.getTargetArch()" "AIE::AIEArch::AIE2")
+  ${IREE_MLIR_AIR_SOURCE_DIR}/include/air/Conversion/AIRToAIESchedulingUtils.h
+  "aie/Dialect/AIE/IR" "aie")
+replace_string_in_file(
+  ${IREE_MLIR_AIR_SOURCE_DIR}/lib/Conversion/AIRToAIEPass.cpp
+  "aie/Dialect/AIE/IR" "aie")
+replace_string_in_file(
+  ${IREE_MLIR_AIR_SOURCE_DIR}/lib/Conversion/AIRLoweringPass.cpp
+  "aie/Dialect/AIE/IR" "aie")
+replace_string_in_file(
+  ${IREE_MLIR_AIR_SOURCE_DIR}/lib/Conversion/AIRRtToNpuPass.cpp
+  "aie/Dialect/AIEX/IR" "aie")
+
 replace_string_in_file(
   ${IREE_MLIR_AIR_SOURCE_DIR}/lib/Conversion/AIRToAIESchedulingUtils.cpp
   "AIE::WireBundle::DMA" "mlir::iree_compiler::AMDAIE::StrmSwPortType::DMA")
-
-replace_string_in_file(
-  ${IREE_MLIR_AIR_SOURCE_DIR}/lib/Conversion/AIRToAIEPass.cpp
-  "target_model.getTargetArch()" "AIE::AIEArch::AIE2")
-replace_string_in_file(
-  ${IREE_MLIR_AIR_SOURCE_DIR}/lib/Conversion/AIRToAIEPass.cpp
-  "device.getTargetModel().getTargetArch()" "AIE::AIEArch::AIE2")
 replace_string_in_file(
   ${IREE_MLIR_AIR_SOURCE_DIR}/lib/Conversion/AIRToAIEPass.cpp
   "AIE::AIETargetModel" "mlir::iree_compiler::AMDAIE::AMDAIEDeviceModel")

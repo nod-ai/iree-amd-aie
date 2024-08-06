@@ -164,8 +164,8 @@ class LockAnalysis {
 };
 
 class DMAChannelAnalysis {
-  DenseMap<Value, int> producerChannelsPerTile;
-  DenseMap<Value, int> consumerChannelsPerTile;
+  DenseMap<Value, uint8_t> producerChannelsPerTile;
+  DenseMap<Value, uint8_t> consumerChannelsPerTile;
 
  public:
   DMAChannelAnalysis(DeviceOp &device) {

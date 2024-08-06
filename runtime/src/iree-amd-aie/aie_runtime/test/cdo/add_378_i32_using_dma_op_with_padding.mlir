@@ -5,8 +5,8 @@ module {
     %tile_0_1 = aie.tile(0, 1)
     %objFifo_in0_cons_buff_0 = aie.buffer(%tile_0_1) {address = 0 : i32, sym_name = "objFifo_in0_cons_buff_0"} : memref<16xi32>
     %objFifo_in0_cons_buff_1 = aie.buffer(%tile_0_1) {address = 64 : i32, sym_name = "objFifo_in0_cons_buff_1"} : memref<16xi32>
-    %objFifo_in0_cons_prod_lock = aie.lock(%tile_0_1, 0) {init = 2 : i32, sym_name = "objFifo_in0_cons_prod_lock"}
-    %objFifo_in0_cons_cons_lock = aie.lock(%tile_0_1, 1) {init = 0 : i32, sym_name = "objFifo_in0_cons_cons_lock"}
+    %objFifo_in0_cons_prod_lock = aie.lock(%tile_0_1, 0) {init = 2 : i8, sym_name = "objFifo_in0_cons_prod_lock"}
+    %objFifo_in0_cons_cons_lock = aie.lock(%tile_0_1, 1) {init = 0 : i8, sym_name = "objFifo_in0_cons_cons_lock"}
     %memtile_dma_0_1 = aie.memtile_dma(%tile_0_1) {
       %0 = aie.dma_start(S2MM, 0, ^bb1, ^bb3, repeat_count = 1)
     ^bb1:  // pred: ^bb0

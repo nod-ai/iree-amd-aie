@@ -1,20 +1,13 @@
-//===- AIEDialect.cpp -------------------------------------------*- C++ -*-===//
+// Copyright 2024 The IREE Authors
 //
-// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+// Licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-// (c) Copyright 2019 Xilinx Inc.
-//
-//===----------------------------------------------------------------------===//
 
 #include "AIEDialect.h"
 
 #include "llvm/ADT/DenseSet.h"
-#include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/TypeSwitch.h"
-#include "mlir/Dialect/Func/IR/FuncOps.h"
-#include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/IR/DialectImplementation.h"
 #include "mlir/IR/OpDefinition.h"
 #include "mlir/Interfaces/FoldInterfaces.h"
@@ -23,8 +16,6 @@
 using namespace mlir;
 using namespace xilinx::AIE;
 
-// Add TableGen'erated dialect definitions (including constructor)
-// We implement the initialize() function further below
 #include "aie/AIEDialect.cpp.inc"
 
 namespace xilinx::AIE {
@@ -159,6 +150,20 @@ void AIEDialect::printType(Type type, DialectAsmPrinter &printer) const {
   }
 }
 
+// without this, canonicalize/cse/etc will lift eg constants out of core ops
+// causing eg lower-to-aie to fail to converge
+struct AIEDialectFoldInterface : DialectFoldInterface {
+  using DialectFoldInterface::DialectFoldInterface;
+
+  /// Registered hook to check if the given region, which is attached to an
+  /// operation that is *not* isolated from above, should be used when
+  /// materializing constants.
+  bool shouldMaterializeInto(Region *region) const final override {
+    // If this is an AIE::CoreOp region, then insert into it.
+    return isa<CoreOp>(region->getParentOp());
+  }
+};
+
 void AIEDialect::initialize() {
   addTypes<AIEObjectFifoType, AIEObjectFifoSubviewType>();
   addAttributes<
@@ -169,11 +174,11 @@ void AIEDialect::initialize() {
 #define GET_OP_LIST
 #include "aie/AIEOps.cpp.inc"
       >();
+  addInterfaces<AIEDialectFoldInterface>();
 }
 }  // namespace xilinx::AIE
 
 #include "aie/AIEEnums.cpp.inc"
-#include "aie/AIEInterfaces.cpp.inc"
 
 #define GET_OP_CLASSES
 #include "aie/AIEOps.cpp.inc"

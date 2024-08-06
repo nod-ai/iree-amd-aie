@@ -100,7 +100,7 @@ struct AMDAIEAssignLockIDsPass : mlir::OperationPass<DeviceOp> {
                                            << " locks available in this tile.";
           return signalPassFailure();
         }
-        lockOp.setLockIDAttr(rewriter.getI32IntegerAttr(nextID));
+        lockOp.setLockIDAttr(rewriter.getI8IntegerAttr(nextID));
         ++nextID;
       }
     }

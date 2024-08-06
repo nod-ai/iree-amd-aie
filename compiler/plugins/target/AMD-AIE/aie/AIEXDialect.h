@@ -1,12 +1,8 @@
-//===- AIEDialect.h ---------------------------------------------*- C++ -*-===//
+// Copyright 2024 The IREE Authors
 //
-// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+// Licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-// (c) Copyright 2019 Xilinx Inc.
-//
-//===----------------------------------------------------------------------===//
 
 #ifndef MLIR_AIEX_DIALECT_H
 #define MLIR_AIEX_DIALECT_H
@@ -14,8 +10,8 @@
 #include "AIEDialect.h"
 
 namespace xilinx::AIE {
-mlir::LogicalResult
-myVerifyOffsetSizeAndStrideOp(mlir::OffsetSizeAndStrideOpInterface op);
+mlir::LogicalResult myVerifyOffsetSizeAndStrideOp(
+    mlir::OffsetSizeAndStrideOpInterface op);
 template <typename ConcreteOp>
 struct MyOffsetSizeAndStrideOpInterfaceTrait
     : public ::mlir::detail::OffsetSizeAndStrideOpInterfaceTrait<ConcreteOp> {
@@ -30,12 +26,10 @@ struct MyOffsetSizeAndStrideOpInterface
   template <typename ConcreteOp>
   struct Trait : public MyOffsetSizeAndStrideOpInterfaceTrait<ConcreteOp> {};
 };
-} // namespace xilinx::AIE
+}  // namespace xilinx::AIE
 
-// Include dialect declarations such as parseAttributes, parseType
 #include "aie/AIEXDialect.h.inc"
 
-// include TableGen generated Op definitions
 #define GET_OP_CLASSES
 #include "aie/AIEX.h.inc"
 

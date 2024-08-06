@@ -671,12 +671,12 @@ LogicalResult assignLocalAieTiles(ModuleOp moduleOp) {
         tiles.reserve(tileLocations.size());
         rewriter.setInsertionPoint(logicalObjectFifo);
         for (auto [column, row] : tileLocations) {
-          auto getCol = rewriter.create<arith::ConstantIndexOp>(
+          auto colIndex = rewriter.create<arith::ConstantIndexOp>(
               rewriter.getUnknownLoc(), column);
-          auto getRow = rewriter.create<arith::ConstantIndexOp>(
+          auto rowIndex = rewriter.create<arith::ConstantIndexOp>(
               rewriter.getUnknownLoc(), row);
           auto tileOp = rewriter.create<AMDAIE::TileOp>(
-              rewriter.getUnknownLoc(), getCol, getRow);
+              rewriter.getUnknownLoc(), colIndex, rowIndex);
           tiles.push_back(tileOp.getResult());
         }
         // Sort for deterministic output IR.

@@ -9,8 +9,8 @@
 // CHECK:           %[[LOOP_OF_BUFF_1:.*]] = aie.buffer(%[[TILE_1_2]]) {sym_name = "loop_of_buff_1"} : memref<16xi32>
 // CHECK:           %[[LOOP_OF_BUFF_2:.*]] = aie.buffer(%[[TILE_1_2]]) {sym_name = "loop_of_buff_2"} : memref<16xi32>
 // CHECK:           %[[LOOP_OF_BUFF_3:.*]] = aie.buffer(%[[TILE_1_2]]) {sym_name = "loop_of_buff_3"} : memref<16xi32>
-// CHECK:           %[[LOOP_OF_PROD_LOCK:.*]] = aie.lock(%[[TILE_1_2]], 0) {init = 4 : i32, sym_name = "loop_of_prod_lock"}
-// CHECK:           %[[LOOP_OF_CONS_LOCK:.*]] = aie.lock(%[[TILE_1_2]], 1) {init = 0 : i32, sym_name = "loop_of_cons_lock"}
+// CHECK:           %[[LOOP_OF_PROD_LOCK:.*]] = aie.lock(%[[TILE_1_2]], 0) {init = 4 : i8, sym_name = "loop_of_prod_lock"}
+// CHECK:           %[[LOOP_OF_CONS_LOCK:.*]] = aie.lock(%[[TILE_1_2]], 1) {init = 0 : i8, sym_name = "loop_of_cons_lock"}
 // CHECK:           func.func @some_work(%[[ARG0:.*]]: memref<16xi32>, %[[ARG1:.*]]: index) {
 // CHECK:             return
 // CHECK:           }

@@ -70,9 +70,9 @@ static_assert(static_cast<uint8_t>(DMAChannelDir::MM2S) ==
 
 struct SwitchDMAConnection {
   DMAChannelDir direction;
-  int channel;
+  uint8_t channel;
 
-  SwitchDMAConnection(DMAChannelDir direction, int channel)
+  SwitchDMAConnection(DMAChannelDir direction, uint8_t channel)
       : direction(direction), channel(channel) {}
 
   bool operator==(const SwitchDMAConnection& rhs) const {
@@ -134,21 +134,10 @@ enum class AMDAIEDmaBdProp : uint8_t {
   MAX = sizeof(XAie_DmaBdProp)
 };
 
-enum class StrmSwPortType : uint8_t {
-  CORE = ::StrmSwPortType::CORE,
-  DMA,
-  CTRL,
-  FIFO,
-  SOUTH,
-  WEST,
-  NORTH,
-  EAST,
-  TRACE,
-  UCTRLR,
-  SS_PORT_TYPE_MAX,
-  // "illegal" types after max
-  NOC,
-};
+static_assert(static_cast<uint8_t>(StrmSwPortType::CORE) ==
+                  ::StrmSwPortType::CORE,
+              "mlir::iree_compiler::AMDAIE::StrmSwPortType is out of sync with "
+              "aie-rt's StrmSwPortType");
 static_assert(static_cast<uint8_t>(StrmSwPortType::CORE) == 0,
               "mlir::iree_compiler::AMDAIE::StrmSwPortType is out of sync with "
               "aie-rt's StrmSwPortType");
@@ -198,6 +187,9 @@ static_assert(static_cast<uint8_t>(XAie_TxnOpcode::XAIE_IO_CUSTOM_OP_NEXT) ==
 inline ::XAie_TxnOpcode txnToTxn(XAie_TxnOpcode t) {
   return static_cast<::XAie_TxnOpcode>(t);
 }
+
+// mlir-air legacy
+enum class AIEArch : uint8_t { AIE1 = 1, AIE2 = 2 };
 
 /*
  * This struct is meant to be a thin wrapper around aie-rt, which provides
@@ -311,6 +303,7 @@ struct AMDAIEDeviceModel {
   uint32_t getNumDestSwitchboxConnections(int col, int row,
                                           StrmSwPortType bundle) const;
   uint32_t getNumMemTileRows() const { return 1; }
+  AIEArch getTargetArch() const { return AIEArch::AIE2; }
 };
 
 struct AMDAIEDeviceModel getDeviceModel(AMDAIEDevice device);
@@ -325,7 +318,6 @@ bool isNPUDevice(mlir::iree_compiler::AMDAIE::AMDAIEDevice d);
   _(int)                  \
   _(uint32_t)             \
   _(uint64_t)             \
-  _(size_t)               \
   _(AMDAIEDmaProp)        \
   _(AMDAIETileType)       \
   _(AieRC)                \

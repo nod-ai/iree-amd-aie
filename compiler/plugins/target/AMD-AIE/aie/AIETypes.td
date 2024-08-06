@@ -1,18 +1,14 @@
-//===- AIETypes.td -----------------------------------------*- tablegen -*-===//
+// Copyright 2024 The IREE Authors
 //
-// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+// Licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-// (c) Copyright 2019 Xilinx Inc.
-//
-//===----------------------------------------------------------------------===//
 
 #ifndef AIE_TYPES
 #define AIE_TYPES
 
-include "aie/Dialect/AIE/IR/AIE.td"
-include "aie/Dialect/AIE/IR/AIEAttrs.td"
+include "AIE.td"
+include "AIEAttrs.td"
 
 include "mlir/IR/AttrTypeBase.td"
 
@@ -23,9 +19,5 @@ def AIE_ObjectFifoType :
 def AIE_ObjectFifoSubviewType :
     DialectType<AIE_Dialect, CPred<"llvm::isa<AIEObjectFifoSubviewType>($_self)">,
                 "AIE ObjectFifoSubview type">;
-
-def StrmSwPortType : DialectType<AIE_Dialect,
-    CPred<"true">, "">,
-    BuildableType<"::mlir::iree_compiler::AMDAIE::StrmSwPortType{}">;
 
 #endif // AIE_TYPES

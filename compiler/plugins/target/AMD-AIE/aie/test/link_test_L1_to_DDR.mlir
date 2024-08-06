@@ -9,16 +9,16 @@
 // CHECK:           %[[TILE_2_0:.*]] = aie.tile(2, 0)
 // CHECK:           %[[TILE_2_1:.*]] = aie.tile(2, 1)
 // CHECK:           %[[TILE_2_2:.*]] = aie.tile(2, 2)
-// CHECK:           %[[FROM_MEMTILE_CONS_PROD_LOCK:.*]] = aie.lock(%[[TILE_2_0]], 0) {init = 0 : i32, sym_name = "from_memTile_cons_prod_lock"}
-// CHECK:           %[[FROM_MEMTILE_CONS_CONS_LOCK:.*]] = aie.lock(%[[TILE_2_0]], 1) {init = 0 : i32, sym_name = "from_memTile_cons_cons_lock"}
+// CHECK:           %[[FROM_MEMTILE_CONS_PROD_LOCK:.*]] = aie.lock(%[[TILE_2_0]], 0) {init = 0 : i8, sym_name = "from_memTile_cons_prod_lock"}
+// CHECK:           %[[FROM_MEMTILE_CONS_CONS_LOCK:.*]] = aie.lock(%[[TILE_2_0]], 1) {init = 0 : i8, sym_name = "from_memTile_cons_cons_lock"}
 // CHECK:           %[[FROM_MEMTILE_BUFF_0:.*]] = aie.buffer(%[[TILE_2_1]]) {sym_name = "from_memTile_buff_0"} : memref<48xi32>
 // CHECK:           %[[FROM_MEMTILE_BUFF_1:.*]] = aie.buffer(%[[TILE_2_1]]) {sym_name = "from_memTile_buff_1"} : memref<48xi32>
-// CHECK:           %[[FROM_MEMTILE_PROD_LOCK:.*]] = aie.lock(%[[TILE_2_1]], 0) {init = 2 : i32, sym_name = "from_memTile_prod_lock"}
-// CHECK:           %[[FROM_MEMTILE_CONS_LOCK:.*]] = aie.lock(%[[TILE_2_1]], 1) {init = 0 : i32, sym_name = "from_memTile_cons_lock"}
+// CHECK:           %[[FROM_MEMTILE_PROD_LOCK:.*]] = aie.lock(%[[TILE_2_1]], 0) {init = 2 : i8, sym_name = "from_memTile_prod_lock"}
+// CHECK:           %[[FROM_MEMTILE_CONS_LOCK:.*]] = aie.lock(%[[TILE_2_1]], 1) {init = 0 : i8, sym_name = "from_memTile_cons_lock"}
 // CHECK:           %[[TO_MEMTILE_BUFF_0:.*]] = aie.buffer(%[[TILE_2_2]]) {sym_name = "to_memTile_buff_0"} : memref<16xi32>
 // CHECK:           %[[TO_MEMTILE_BUFF_1:.*]] = aie.buffer(%[[TILE_2_2]]) {sym_name = "to_memTile_buff_1"} : memref<16xi32>
-// CHECK:           %[[TO_MEMTILE_PROD_LOCK:.*]] = aie.lock(%[[TILE_2_2]], 0) {init = 2 : i32, sym_name = "to_memTile_prod_lock"}
-// CHECK:           %[[TO_MEMTILE_CONS_LOCK:.*]] = aie.lock(%[[TILE_2_2]], 1) {init = 0 : i32, sym_name = "to_memTile_cons_lock"}
+// CHECK:           %[[TO_MEMTILE_PROD_LOCK:.*]] = aie.lock(%[[TILE_2_2]], 0) {init = 2 : i8, sym_name = "to_memTile_prod_lock"}
+// CHECK:           %[[TO_MEMTILE_CONS_LOCK:.*]] = aie.lock(%[[TILE_2_2]], 1) {init = 0 : i8, sym_name = "to_memTile_cons_lock"}
 // CHECK:           aie.flow(%[[TILE_2_2]], DMA : 0, %[[TILE_2_1]], DMA : 0)
 // CHECK:           aie.flow(%[[TILE_2_1]], DMA : 0, %[[TILE_2_0]], DMA : 0)
 // CHECK:           %[[EXT_BUFF_IN:.*]] = aie.external_buffer {sym_name = "ext_buff_in"} : memref<48xi32>
