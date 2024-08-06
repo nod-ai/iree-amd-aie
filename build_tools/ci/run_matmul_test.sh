@@ -873,7 +873,7 @@ run_matmul_test_on_shapes ${bf16_ukernel_shapes_small[@]} \
     --lhs_rhs_type "bf16" \
     --acc_type "f32" \
     --num_repeat_runs "2" \
-    --use_ukernel "2"
+    --use_ukernel "1"
 
 run_matmul_test_on_shapes ${bf16_ukernel_shapes_medium[@]} \
     --name_prefix "medium" \
@@ -882,7 +882,7 @@ run_matmul_test_on_shapes ${bf16_ukernel_shapes_medium[@]} \
     --lhs_rhs_type "bf16" \
     --acc_type "f32" \
     --num_repeat_runs "2" \
-    --use_ukernel "2"
+    --use_ukernel "1"
 
 ###################################################################
 # Chess tests
