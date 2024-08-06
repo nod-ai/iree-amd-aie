@@ -35,22 +35,9 @@ void AMDAIEFlattenLogicalObjectFifoPass::runOnOperation() {
   IRRewriter rewriter(context);
 
   moduleOp->walk([&](AMDAIE::LogicalObjectFifoFromMemrefOp op) {
+    // Get linearized size and new type.
     MemRefType oldType = op.getMemrefType();
-    // If there is memref.cast and generates `offset: ?`, we need to use the
-    // type from memref source.
-    // TODO (vivian): check again after proper fix in
-    // DistributeCoresAndObjectFifosPass.
-    auto castOp = dyn_cast<memref::CastOp>(op.getMemref().getDefiningOp());
-    if (castOp) {
-      oldType = cast<MemRefType>(castOp.getSource().getType());
-    }
-
-    // Get linearized size and new type accordingly.
-    SmallVector<int64_t> shape = llvm::to_vector(oldType.getShape());
-    int64_t linearizedSize = 1;
-    for (auto s : shape) {
-      linearizedSize *= s;
-    }
+    uint64_t linearizedSize = oldType.getNumElements();
     MemRefType newType =
         MemRefType::get(linearizedSize, oldType.getElementType(),
                         MemRefLayoutAttrInterface{}, oldType.getMemorySpace());
@@ -73,16 +60,13 @@ void AMDAIEFlattenLogicalObjectFifoPass::runOnOperation() {
             rewriter.getUnknownLoc(), newLogicalObjectFifo.getOutput(),
             accessOp.getAccessType());
 
-        llvm::ArrayRef<int64_t> sizes = oldType.getShape();
         auto [strides, baseOffset] = getStridesAndOffset(oldType);
         auto reinterpretOp = rewriter.create<memref::ReinterpretCastOp>(
             rewriter.getUnknownLoc(), oldType, newAccessOp.getOutput(),
-            baseOffset, sizes, strides);
+            baseOffset, oldType.getShape(), strides);
         rewriter.replaceAllUsesWith(accessOp, reinterpretOp);
       }
     }
-
-    return WalkResult::advance();
   });
 
   // Erase old access operations.
