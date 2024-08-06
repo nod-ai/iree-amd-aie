@@ -470,7 +470,7 @@ void addConvDecomposePassPipeline(OpPassManager &funcPassManager,
   // Pad the linalg operation
   {
     AMDAIEPadOptions padOptions;
-    padOptions.paddingLevel = 1;
+    padOptions.paddingLevel = 0;
     funcPassManager.addPass(createAMDAIEPadPass(padOptions));
   }
 
@@ -478,7 +478,7 @@ void addConvDecomposePassPipeline(OpPassManager &funcPassManager,
   {
     AMDAIEBufferizeToAllocationOptions bufferizeOptions;
     bufferizeOptions.memorySpace = 2;
-    bufferizeOptions.bufferizeOperand = BufferizeOperand::Output;
+    bufferizeOptions.bufferizeOperand = BufferizeOperand::InputOutput;
     funcPassManager.addPass(
         createAMDAIEBufferizeToAllocationPass(bufferizeOptions));
   }
@@ -493,22 +493,6 @@ void addConvDecomposePassPipeline(OpPassManager &funcPassManager,
   funcPassManager.addPass(createAMDAIECleanupPass());
   funcPassManager.addPass(createCanonicalizerPass());
   funcPassManager.addPass(createCSEPass());
-
-  // Pad the linalg operation
-  {
-    AMDAIEPadOptions padOptions;
-    padOptions.paddingLevel = 2;
-    funcPassManager.addPass(createAMDAIEPadPass(padOptions));
-  }
-
-  // Promote the inputs to local memory
-  {
-    AMDAIEBufferizeToAllocationOptions bufferizeOptions;
-    bufferizeOptions.memorySpace = 2;
-    bufferizeOptions.bufferizeOperand = BufferizeOperand::Input;
-    funcPassManager.addPass(
-        createAMDAIEBufferizeToAllocationPass(bufferizeOptions));
-  }
 
   // Decompose Conv2d ops to Conv1d ops
   funcPassManager.addPass(createDecomposeConvolutionToLowerDimOpsPass());
