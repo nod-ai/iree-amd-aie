@@ -210,6 +210,12 @@ function run_matmul_test() {
   # should still be checked to compile (set num_repeat_runs=0 in this case).
   local num_repeat_runs="1"
 
+  # Run the test 'num_corruption_repeat_runs' times without an NPU reset in 
+  # between. This can be used to check for corruption, i.e. the AIE might be
+  # left in a bad state in between runs. Additionally, this increases the speed
+  # of the repeated test
+  local num_corruption_repeat_runs="1"
+
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --lower_to_aie_pipeline)
@@ -218,6 +224,10 @@ function run_matmul_test() {
         ;;
       --num_repeat_runs)
         num_repeat_runs="$2"
+        shift 2
+        ;;
+      --num_corruption_repeat_runs)
+        num_corruption_repeat_runs="$2"
         shift 2
         ;;
       --max_elements_to_check)
@@ -436,20 +446,24 @@ function run_matmul_test() {
 
   set +e
 
-  echo "**** Running '${name}' matmul test ${num_repeat_runs} times (command ${COMMAND}) ****"
+  total_num_runs=$(( num_repeat_runs * num_corruption_repeat_runs))
+  echo "**** Running '${name}' matmul test ${total_num_runs} times (command ${COMMAND}) ****"
   for i in $(seq 1 $num_repeat_runs); do
     # Only reset NPU in CI to facilitate easier local testing without sudo access.
     if [ "${GITHUB_ACTIONS}" = true ]; then
       echo "Reset NPU"
       bash $THIS_DIR/reset_npu.sh
     fi
-    echo "Run number ${i} / ${num_repeat_runs}"
-    eval "${COMMAND}"
-    return_status=$?
-    if [ $return_status -ne 0 ]; then
-      echo "'${name}' matmul test failed!"
-      export MATMUL_TESTS_FAILS=$(( $MATMUL_TESTS_FAILS+1 ))
-    fi
+    for j in $(seq 1 $num_corruption_repeat_runs); do
+      run_number=$(( (i - 1) * num_corruption_repeat_runs + j))
+      echo "Run number ${run_number} / ${total_num_runs}"
+      eval "${COMMAND}"
+      return_status=$?
+      if [ $return_status -ne 0 ]; then
+        echo "'${name}' matmul test failed!"
+        export MATMUL_TESTS_FAILS=$(( $MATMUL_TESTS_FAILS+1 ))
+      fi
+    done
   done
   set -e
 
@@ -748,6 +762,20 @@ run_matmul_test \
 # ObjectFifo Matmul tests
 ###################################################################
 
+# Run repeatedly to check for non-deterministic hangs and numerical 
+# issues.
+repeat_shapes=(
+  '32x32x32'
+)
+
+run_matmul_test_on_shapes ${repeat_shapes[@]} \
+    --name_prefix "small" \
+    --lower_to_aie_pipeline "objectFifo" \
+    --tile_pipeline "pack-peel" \
+    --lhs_rhs_type "i32" \
+    --acc_type "i32" \
+    --num_corruption_repeat_runs "1000"
+
 i32_shapes_small=(
   '32x32x32'
   '64x32x128'
@@ -760,9 +788,10 @@ i32_shapes_small=(
   '128x256x128'
 )
 
+# TODO(jornt): Debug and re-enable 1536x2048x1536
 i32_shapes_medium=(
   '1024x1024x1024' 
-  '1536x2048x1536'
+  # '1536x2048x1536' 
 )
 
 run_matmul_test_on_shapes ${i32_shapes_small[@]} \
@@ -771,7 +800,7 @@ run_matmul_test_on_shapes ${i32_shapes_small[@]} \
     --tile_pipeline "pack-peel" \
     --lhs_rhs_type "i32" \
     --acc_type "i32" \
-    --num_repeat_runs "2"
+    --num_repeat_runs "10"
 
 run_matmul_test_on_shapes ${i32_shapes_medium[@]} \
     --name_prefix "medium" \

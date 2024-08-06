@@ -18,7 +18,7 @@ typedef struct iree_hal_xrt_nop_executable_cache_t {
   // at offset 0.
   iree_hal_resource_t resource;
 
-  xrt::device device;
+  xrt::device *device;
 
   iree_allocator_t host_allocator;
 } iree_hal_xrt_nop_executable_cache_t;
@@ -36,7 +36,7 @@ iree_hal_xrt_nop_executable_cache_cast(
 }
 
 iree_status_t iree_hal_xrt_nop_executable_cache_create(
-    xrt::device device, iree_string_view_t identifier,
+    xrt::device *device, iree_string_view_t identifier,
     iree_allocator_t host_allocator,
     iree_hal_executable_cache_t** out_executable_cache) {
   IREE_ASSERT_ARGUMENT(out_executable_cache);
