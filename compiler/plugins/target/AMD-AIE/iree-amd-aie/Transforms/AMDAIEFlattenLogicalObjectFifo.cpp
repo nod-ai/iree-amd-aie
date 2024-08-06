@@ -30,51 +30,60 @@ class AMDAIEFlattenLogicalObjectFifoPass
 };
 
 void AMDAIEFlattenLogicalObjectFifoPass::runOnOperation() {
-    MLIRContext *context = &getContext();
+  MLIRContext *context = &getContext();
   ModuleOp moduleOp = getOperation();
   IRRewriter rewriter(context);
 
-  SmallVector<AMDAIE::LogicalObjectFifoFromMemrefOp> logicalObjectFifos;
   moduleOp->walk([&](AMDAIE::LogicalObjectFifoFromMemrefOp op) {
-    logicalObjectFifos.push_back(op);
-    return WalkResult::advance();
-  });
-
-  for (AMDAIE::LogicalObjectFifoFromMemrefOp op : logicalObjectFifos) {
-    rewriter.setInsertionPoint(op);
     MemRefType oldType = op.getMemrefType();
+    // If there is memref.cast and generates `offset: ?`, we need to use the
+    // type from memref source.
+    // TODO (vivian): check again after proper fix in
+    // DistributeCoresAndObjectFifosPass.
+    auto castOp = dyn_cast<memref::CastOp>(op.getMemref().getDefiningOp());
+    if (castOp) {
+      oldType = cast<MemRefType>(castOp.getSource().getType());
+    }
+
+    // Get linearized size and new type accordingly.
     SmallVector<int64_t> shape = llvm::to_vector(oldType.getShape());
     int64_t linearizedSize = 1;
     for (auto s : shape) {
       linearizedSize *= s;
     }
+    MemRefType newType =
+        MemRefType::get(linearizedSize, oldType.getElementType(),
+                        MemRefLayoutAttrInterface{}, oldType.getMemorySpace());
 
-    MemRefType newType = MemRefType::get(
-            linearizedSize, oldType.getElementType(),
-            MemRefLayoutAttrInterface{}, oldType.getMemorySpace());
-
+    rewriter.setInsertionPoint(op);
     auto newLogicalObjectFifo =
-      rewriter.create<AMDAIE::LogicalObjectFifoFromMemrefOp>(
-        rewriter.getUnknownLoc(), LogicalObjectFifoType::get(newType),
-        op.getMemref(), op.getTiles());
-
+        rewriter.create<AMDAIE::LogicalObjectFifoFromMemrefOp>(
+            rewriter.getUnknownLoc(), LogicalObjectFifoType::get(newType),
+            op.getMemref(), op.getTiles());
     rewriter.replaceOp(op, newLogicalObjectFifo);
 
+    // Replace the access op and insert `memref.reinterpret_cast` to get to the
+    // original local shape as the objectfifo has a single type, while the DMA
+    // operations converted into objectfifos can have a different source and
+    // target type.
     for (Operation *user : newLogicalObjectFifo->getUsers()) {
       if (auto accessOp = dyn_cast<AMDAIE::LogicalObjectFifoAccessOp>(user)) {
         rewriter.setInsertionPoint(accessOp);
         auto newAccessOp = rewriter.create<AMDAIE::LogicalObjectFifoAccessOp>(
-              rewriter.getUnknownLoc(), newLogicalObjectFifo.getOutput(),
-              accessOp.getAccessType());
+            rewriter.getUnknownLoc(), newLogicalObjectFifo.getOutput(),
+            accessOp.getAccessType());
+
         llvm::ArrayRef<int64_t> sizes = oldType.getShape();
         auto [strides, baseOffset] = getStridesAndOffset(oldType);
         auto reinterpretOp = rewriter.create<memref::ReinterpretCastOp>(
-            rewriter.getUnknownLoc(), oldType, newAccessOp.getOutput(), baseOffset,
-            sizes, strides);
+            rewriter.getUnknownLoc(), oldType, newAccessOp.getOutput(),
+            baseOffset, sizes, strides);
         rewriter.replaceAllUsesWith(accessOp, reinterpretOp);
       }
     }
-  }
+
+    return WalkResult::advance();
+  });
 
   // Erase old access operations.
   moduleOp->walk([&](AMDAIE::LogicalObjectFifoAccessOp accessOp) {
