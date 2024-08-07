@@ -67,7 +67,6 @@ struct AMDAIEXToStandardPass : mlir::OperationPass<mlir::ModuleOp> {
     removepatterns.add<AMDAIEXOpRemoval<NpuDmaMemcpyNdOp>>(m.getContext(), m);
     removepatterns.add<AMDAIEXOpRemoval<NpuDmaWaitOp>>(m.getContext(), m);
     removepatterns.add<AMDAIEXOpRemoval<NpuPushQueueOp>>(m.getContext(), m);
-    removepatterns.add<AMDAIEXOpRemoval<NpuWriteRTPOp>>(m.getContext(), m);
     removepatterns.add<AMDAIEXOpRemoval<NpuWrite32Op>>(m.getContext(), m);
     removepatterns.add<AMDAIEXOpRemoval<NpuSyncOp>>(m.getContext(), m);
     removepatterns.add<AMDAIEXOpRemoval<NpuWriteBdOp>>(m.getContext(), m);

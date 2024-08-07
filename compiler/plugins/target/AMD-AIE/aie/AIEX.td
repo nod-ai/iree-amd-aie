@@ -26,8 +26,7 @@ def AIEX_Dialect : Dialect {
 class AIEX_Op<string mnemonic, list<Trait> traits = []> :
     Op<AIEX_Dialect, mnemonic, traits>;
 
-
-def AIE_RuntimeSequenceOp : AIEX_Op<"runtime_sequence", [NoTerminator, HasParent<"AIE::DeviceOp">]> {
+def AIE_RuntimeSequenceOp : AIEX_Op<"runtime_sequence", [NoTerminator]> {
   let summary = "Program the configuration co-processor of the AI Engine array";
   let arguments = (
     ins OptionalAttr<SymbolNameAttr>:$sym_name
@@ -82,7 +81,7 @@ def AIE_NpuDmaMemcpyNdOp: AIEX_Op<"npu.dma_memcpy_nd", [
   }];
 }
 
-def AIE_NpuDmaWaitOp: AIEX_Op<"npu.dma_wait", []> {
+def AIE_NpuDmaWaitOp: AIEX_Op<"npu.dma_wait"> {
   let summary = "Blocking operation to wait for a DMA to complete execution.";
   let arguments = (
     ins FlatSymbolRefAttr:$symbol
@@ -92,18 +91,7 @@ def AIE_NpuDmaWaitOp: AIEX_Op<"npu.dma_wait", []> {
   }];
 }
 
-def AIE_NpuWriteRTPOp: AIEX_Op<"npu.rtp_write", []> {
-  let summary = "rtp write operator";
-  let arguments = (
-    ins FlatSymbolRefAttr:$buffer,
-        UI32Attr:$index,
-        I32Attr:$value
-  );
-  let results = (outs );
-  let assemblyFormat = [{ `(` $buffer `,` $index `,` $value `)` attr-dict }];
-}
-
-def AIE_NpuPushQueueOp: AIEX_Op<"npu.push_queue", []> {
+def AIE_NpuPushQueueOp: AIEX_Op<"npu.push_queue"> {
   let summary = "bd queue push operator";
   let arguments = (
     ins I32Attr:$column,
@@ -120,7 +108,7 @@ def AIE_NpuPushQueueOp: AIEX_Op<"npu.push_queue", []> {
   }];
 }
 
-def AIE_NpuWrite32Op: AIEX_Op<"npu.write32", []> {
+def AIE_NpuWrite32Op: AIEX_Op<"npu.write32"> {
   let summary = "write32 operator";
   let arguments = (
     ins UI32Attr:$address,
@@ -135,7 +123,7 @@ def AIE_NpuWrite32Op: AIEX_Op<"npu.write32", []> {
   }];
 }
 
-def AIE_NpuBlockWriteOp: AIEX_Op<"npu.blockwrite", []> {
+def AIE_NpuBlockWriteOp: AIEX_Op<"npu.blockwrite"> {
   let summary = "blockwrite operator";
   let arguments = (
     ins UI32Attr:$address,
@@ -151,7 +139,7 @@ def AIE_NpuBlockWriteOp: AIEX_Op<"npu.blockwrite", []> {
 }
 
 // OP_SYNC
-def AIE_NpuSyncOp: AIEX_Op<"npu.sync", []> {
+def AIE_NpuSyncOp: AIEX_Op<"npu.sync"> {
   let summary = "sync operator";
   let arguments = (
     ins I32Attr:$column,
@@ -167,7 +155,7 @@ def AIE_NpuSyncOp: AIEX_Op<"npu.sync", []> {
   }];
 }
 
-def AIE_NpuAddressPatchOp: AIEX_Op<"npu.address_patch", []> {
+def AIE_NpuAddressPatchOp: AIEX_Op<"npu.address_patch"> {
   let summary = "address patch operator";
   let arguments = (
     ins UI32Attr:$addr,
@@ -181,7 +169,7 @@ def AIE_NpuAddressPatchOp: AIEX_Op<"npu.address_patch", []> {
 }
 
 // NPU Bd Write operation
-def AIE_NpuWriteBdOp: AIEX_Op<"npu.writebd", []> {
+def AIE_NpuWriteBdOp: AIEX_Op<"npu.writebd"> {
   let summary = "dma operator";
   let arguments = (
     ins I32Attr:$column,

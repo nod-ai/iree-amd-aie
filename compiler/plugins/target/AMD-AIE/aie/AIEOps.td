@@ -22,7 +22,6 @@ include "mlir/IR/OpAsmInterface.td"
 class AIE_Op<string mnemonic, list<Trait> traits = []> :
     Op<AIE_Dialect, mnemonic, traits>;
 
-
 def AIE_DeviceOp: AIE_Op<"device", [
     HasParent<"mlir::ModuleOp">,
     SymbolTable, SingleBlock, NoTerminator, IsolatedFromAbove
@@ -146,7 +145,7 @@ def AIE_CoreOp: AIE_Op<"core", [
   }];
 }
 
-def AIE_ConnectOp: AIE_Op<"connect", [ParentOneOf<["SwitchboxOp", "ShimMuxOp"]> ]> {
+def AIE_ConnectOp: AIE_Op<"connect"> {
   let arguments = (
     ins StrmSwPortTypeAttr:$source_bundle,
         ConfinedAttr<I8Attr, [IntMinValue<0>]>:$source_channel,
@@ -159,7 +158,7 @@ def AIE_ConnectOp: AIE_Op<"connect", [ParentOneOf<["SwitchboxOp", "ShimMuxOp"]> 
   }];
 }
 
-def AIE_FlowOp: AIE_Op<"flow", []> {
+def AIE_FlowOp: AIE_Op<"flow"> {
   let arguments = (
     ins Index:$source,
         StrmSwPortTypeAttr:$source_bundle,
@@ -222,7 +221,7 @@ def AIE_PacketRulesOp: AIE_Op<"packet_rules", [SingleBlockImplicitTerminator<"En
   let assemblyFormat = [{ `(` $source_bundle `:` $source_channel `)` regions attr-dict }];
 }
 
-def AIE_PacketRuleOp: AIE_Op<"rule", [HasParent<"PacketRulesOp">]> {
+def AIE_PacketRuleOp: AIE_Op<"rule"> {
   let arguments = (
     ins I8Attr:$mask,
         I8Attr:$value,
@@ -250,7 +249,7 @@ def AIE_PacketFlowOp: AIE_Op<"packet_flow", [SingleBlockImplicitTerminator<"EndO
   }];
 }
 
-def AIE_PacketSourceOp: AIE_Op<"packet_source", [HasParent<"PacketFlowOp">]> {
+def AIE_PacketSourceOp: AIE_Op<"packet_source"> {
   let arguments = (
     ins Index:$tile,
         StrmSwPortTypeAttr:$bundle,
@@ -267,7 +266,7 @@ def AIE_PacketSourceOp: AIE_Op<"packet_source", [HasParent<"PacketFlowOp">]> {
   }];
 }
 
-def AIE_PacketDestOp: AIE_Op<"packet_dest", [HasParent<"PacketFlowOp">]> {
+def AIE_PacketDestOp: AIE_Op<"packet_dest"> {
   let arguments = (
     ins Index:$tile,
         StrmSwPortTypeAttr:$bundle,
@@ -284,7 +283,7 @@ def AIE_PacketDestOp: AIE_Op<"packet_dest", [HasParent<"PacketFlowOp">]> {
   }];
 }
 
-def AIE_DMABDPACKETOp: AIE_Op<"dma_bd_packet", []> {
+def AIE_DMABDPACKETOp: AIE_Op<"dma_bd_packet"> {
   let summary = "Enable packet headers for a dma block descriptor";
   let arguments = (
     ins I32Attr:$packet_type,
@@ -298,13 +297,12 @@ def AIE_DMABDPACKETOp: AIE_Op<"dma_bd_packet", []> {
 
 def AIE_DMABDOp: AIE_Op<"dma_bd", [
     DeclareOpInterfaceMethods<OpAsmOpInterface>,
-    ParentOneOf<["MemOp", "MemTileDMAOp"]>,
   ]> {
   let summary = "Declare a dma buffer descriptor op";
   let arguments = (
     ins AnyMemRef:$buffer,
         // in multiples of element width (not bytes)
-        DefaultValuedOptionalAttr<I32Attr, "0">:$offset,
+        DefaultValuedOptionalAttr<I32Attr, "-1">:$offset,
         // in multiples of element width (not bytes)
         OptionalAttr<I32Attr>:$len,
         OptionalAttr<BDDimLayoutArrayAttr>:$dimensions,
@@ -349,7 +347,6 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", [
 }
 
 def AIE_DMAStartOp: AIE_Op<"dma_start", [
-    ParentOneOf<["MemOp", "MemTileDMAOp", "mlir::func::FuncOp"]>,
     Terminator,
     DeclareOpInterfaceMethods<InferTypeOpInterface>
   ]>, Results<(outs I1:$valid)> {
@@ -399,9 +396,7 @@ def AIE_MemTileDMAOp: AIE_Op<"memtile_dma", [
   }];
 }
 
-def AIE_NextBDOp: AIE_Op<"next_bd", [
-    Terminator, ParentOneOf<["MemOp", "MemTileDMAOp", "mlir::func::FuncOp"]>
-  ]> {
+def AIE_NextBDOp: AIE_Op<"next_bd", [Terminator]> {
   let summary = "The next buffer descriptor";
   let successors = (successor AnySuccessor:$dest);
 
@@ -446,7 +441,7 @@ def AIE_LockOp: AIE_Op<"lock", [
   }];
 }
 
-def AIE_UseLockOp: AIE_Op<"use_lock", []> {
+def AIE_UseLockOp: AIE_Op<"use_lock"> {
   let summary = "acquire/release lock op";
   let arguments = (
     ins Index:$lock,
@@ -492,7 +487,7 @@ def AIE_BufferOp: AIE_Op<"buffer", [
   }];
 }
 
-def AIE_ShimDMAAllocationOp : AIE_Op<"shim_dma_allocation", [HasParent<"DeviceOp">]> {
+def AIE_ShimDMAAllocationOp : AIE_Op<"shim_dma_allocation"> {
   let summary = "Runtime allocation information for a single shim DMA";
   let arguments = (
     ins FlatSymbolRefAttr:$sym_name,
@@ -510,7 +505,7 @@ def AIE_ShimDMAAllocationOp : AIE_Op<"shim_dma_allocation", [HasParent<"DeviceOp
   }];
 }
 
-def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]> {
+def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [Symbol]> {
   let summary = "Create a circular buffer or channel between two tiles";
   let arguments = (
     ins SymbolNameAttr:$sym_name,
@@ -560,7 +555,7 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]
   }];
 }
 
-def AIE_ObjectFifoLinkOp: AIE_Op<"objectfifo.link", [HasParent<"DeviceOp">]> {
+def AIE_ObjectFifoLinkOp: AIE_Op<"objectfifo.link"> {
   let summary = "Links two objectFifos through an intermediary tile's DMA";
   let arguments = (
     ins SymbolRefArrayAttr:$fifoIns,
@@ -574,7 +569,7 @@ def AIE_ObjectFifoLinkOp: AIE_Op<"objectfifo.link", [HasParent<"DeviceOp">]> {
   }];
 }
 
-def AIE_ObjectFifoAcquireOp: AIE_Op<"objectfifo.acquire", []> {
+def AIE_ObjectFifoAcquireOp: AIE_Op<"objectfifo.acquire"> {
   let summary = "Acquire operation to lock and return objects of an ObjectFifo";
   let arguments = (
     ins ObjectFifoPort:$port,
@@ -590,7 +585,7 @@ def AIE_ObjectFifoAcquireOp: AIE_Op<"objectfifo.acquire", []> {
 
 }
 
-def AIE_ObjectFifoReleaseOp: AIE_Op<"objectfifo.release", []> {
+def AIE_ObjectFifoReleaseOp: AIE_Op<"objectfifo.release"> {
   let summary = "Release operation for object locks in an ObjectFifo";
   let arguments = (
     ins ObjectFifoPort:$port,
@@ -604,7 +599,7 @@ def AIE_ObjectFifoReleaseOp: AIE_Op<"objectfifo.release", []> {
 
 }
 
-def AIE_ObjectFifoSubviewAccessOp : AIE_Op<"objectfifo.subview.access", []> {
+def AIE_ObjectFifoSubviewAccessOp : AIE_Op<"objectfifo.subview.access"> {
   let summary = "ObjectFifoSubview type accessor method";
   let arguments = (
     ins AIE_ObjectFifoSubviewType:$subview,

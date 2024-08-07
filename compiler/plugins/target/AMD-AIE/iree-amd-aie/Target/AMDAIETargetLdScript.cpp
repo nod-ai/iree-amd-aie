@@ -101,7 +101,7 @@ SECTIONS
   } > data
 )THESCRIPT";
       auto doBuffer = [&](std::optional<TileLoc> tile, int offset,
-                          std::string dir) {
+                          const std::string& dir) {
         if (tile) {
           if (tiles.count({tile->col, tile->row}))
             for (auto buf : buffers[tiles[{tile->col, tile->row}]])
@@ -139,8 +139,8 @@ SECTIONS
       output << "  .bss.DMb.4 : { *(.bss.DMb.4) } > data\n";
       output << "}\n";
       if (auto coreOp = getCoreOp(tile)) {
-        output << "PROVIDE(main = core_" << tile.getCol() << "_"
-               << tile.getRow() << ");\n";
+        output << "PROVIDE(main = core_" << std::to_string(tile.getCol()) << "_"
+               << std::to_string(tile.getRow()) << ");\n";
       }
     }
   return success();

@@ -211,12 +211,10 @@ cd <workspace root (containing iree-build)>
 export IREE_ROOT=$PWD
 cd iree-amd-aie/experimental/delegate
 export IREE_INSTALL_DIR=$IREE_ROOT/iree-build/
-export MLIR_AIE_INSTALL_DIR=$IREE_ROOT/iree-amd-aie/third_party/mlir-aie/install
 export PEANO_INSTALL_DIR=$IREE_ROOT/install
 export VITIS_INSTALL_PATH=/proj/xbuilds/2023.2_released/installs/lin64/Vitis/2023.2
 
 ../../build_tools/ci/run_matmul_test.sh  results_dir_tmp  $IREE_INSTALL_DIR  \
-    $MLIR_AIE_INSTALL_DIR   $PEANO_INSTALL_DIR  /opt/xilinx/xrt \
     $VITIS_INSTALL_PATH 0
 ```
 

@@ -14,11 +14,6 @@ iree_cc_binary(
     iree_target_amd-aie_Target_AIETargets
 )
 
-target_include_directories(
-  iree-amd-aie_aie_runtime_test_cdo_aie_cdo_gen_test
-  PRIVATE "${IREE_MLIR_AIE_SOURCE_DIR}/include"
-)
-
 file(GLOB _mlir_files *.mlir)
 
 iree_lit_test_suite(

@@ -6,7 +6,6 @@
 
 #include "AMDAIETargets.h"
 #include "aie/AIEDialect.h"
-#include "aie/Passes.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/IR/Module.h"
 
@@ -15,8 +14,6 @@ using namespace xilinx;
 using namespace xilinx::AIE;
 
 std::string utohexstr(uint32_t u) { return "0x" + llvm::utohexstr(u); }
-
-namespace {}  // namespace
 
 namespace mlir::iree_compiler::AMDAIE {
 
@@ -115,8 +112,8 @@ LogicalResult AIETranslateToBCF(ModuleOp module, raw_ostream &output,
                 "the core can't see\n";
       // chess's libc expects a _main not a main (despite what me_basic.c looks
       // like...)
-      output << "_resolve _main core_" << tile.getCol() << "_" << tile.getRow()
-             << "\n";
+      output << "_resolve _main core_" << std::to_string(tile.getCol()) << "_"
+             << std::to_string(tile.getRow()) << "\n";
     }
 
   return success();
