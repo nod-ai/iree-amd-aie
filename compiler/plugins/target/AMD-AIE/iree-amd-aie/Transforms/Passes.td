@@ -150,6 +150,12 @@ def AMDAIEDmaToCircularDma :
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEDmaToCircularDmaPass()";
 }
 
+def AMDAIEFlattenLogicalObjectFifo :
+  Pass<"iree-amdaie-flatten-logicalobjectfifo", "ModuleOp"> {
+  let summary = "Flatten the logical objectFifos.";
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEFlattenLogicalObjectFifoPass()";
+}
+
 def AMDAIEFuseConsumerIntoLoop :
     InterfacePass<"iree-amdaie-fuse-consumer-into-loop", "mlir::FunctionOpInterface"> {
   let summary = "Fuse the consumer operation into the innermost last scf loop.";

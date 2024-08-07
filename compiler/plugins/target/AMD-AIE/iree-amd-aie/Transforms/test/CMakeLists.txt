@@ -26,6 +26,7 @@ iree_lit_test_suite(
     "distribute_cores_and_objectfifos.mlir"
     "dma_loop_subsumption.mlir"
     "dma_to_circular_dma.mlir"
+    "flatten_logical_objectfifo.mlir"
     "fuse_consumer_into_loop_scf_for.mlir"
     "fuse_consumer_into_loop_scf_forall.mlir"
     "fuse_fill_into_forall.mlir"

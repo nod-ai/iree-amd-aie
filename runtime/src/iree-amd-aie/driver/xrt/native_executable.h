@@ -21,6 +21,7 @@ extern "C" {
 
 // Object and launch parameters for a compute kernel.
 typedef struct iree_hal_xrt_kernel_params_t {
+  xrt::xclbin *xclbin;
   // The kernel code object.
   xrt::kernel* kernel;
   // Instruction buffer argument to the kernel.
@@ -36,7 +37,7 @@ typedef struct iree_hal_xrt_kernel_params_t {
 // |out_executable| must be released by the caller (see
 // iree_hal_executable_release).
 iree_status_t iree_hal_xrt_native_executable_create(
-    xrt::device device, const iree_hal_executable_params_t* executable_params,
+    xrt::device *device, const iree_hal_executable_params_t* executable_params,
     iree_allocator_t host_allocator, iree_hal_executable_t** out_executable);
 
 // Returns the kernel launch parameters for the given |entry_point|.
