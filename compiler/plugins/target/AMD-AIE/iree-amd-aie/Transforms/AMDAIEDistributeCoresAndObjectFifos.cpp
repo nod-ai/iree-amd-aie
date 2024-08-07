@@ -566,10 +566,11 @@ LogicalResult insertLogicalObjectFifoAccess(ModuleOp moduleOp) {
         // We want to insert amdaie.logicalobjectfifo.access ops right before
         // the first usage. But for vectorized ops this would mean they'd get
         // inserted within the vectorized scf.for ops. We therefore would want
-        // to traverse to the outermost scf.for op whose immediate parent is
-        // amdaie.core op.
+        // to traverse to the outermost scf.for op in that case. Currently we
+        // bubble up this traversal till that operation whose parent is not a
+        // scf.for op. TODO: Generalize this later.
         Operation *opToInsertRewriterPoint = op;
-        while (!isa<AMDAIE::CoreOp>(opToInsertRewriterPoint->getParentOp())) {
+        while (isa<scf::ForOp>(opToInsertRewriterPoint->getParentOp())) {
           opToInsertRewriterPoint = opToInsertRewriterPoint->getParentOp();
         }
         for (auto &&[idx, operand] : llvm::enumerate(op->getOpOperands())) {
