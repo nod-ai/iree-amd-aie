@@ -31,17 +31,6 @@ iree_lit_test(
     "hostonly"
 )
 
-#iree_cc_test(
-#  NAME
-#    DeviceModelTestCppTest
-#  SRCS
-#    DeviceModelTest.cpp
-#  DEPS
-#    gtest
-#    iree::target::amd-aie::aie::AIEDialectIR
-#    iree-amd-aie::aie_runtime::iree_aie_runtime_static
-#)
-
 iree_cc_test(
   NAME
     test_0335_aie_dma_tile_dma_packet_switch_mode
