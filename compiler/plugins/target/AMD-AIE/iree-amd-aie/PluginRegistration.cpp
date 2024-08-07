@@ -13,7 +13,6 @@
 #include "air/Passes.h"
 #include "iree-amd-aie/IR/AMDAIEDialect.h"
 #include "iree-amd-aie/Target/AIETarget.h"
-#include "iree-amd-aie/Target/AIETargetDirect.h"
 #include "iree-amd-aie/Transforms/Passes.h"
 #include "iree/compiler/Dialect/HAL/Target/TargetRegistry.h"
 #include "iree/compiler/PluginAPI/Client.h"
@@ -39,6 +38,8 @@ struct AMDAIESession
     AMDAIE::registerAIRConversionPasses();
     AMDAIE::registerAIRTransformPasses();
     aievec::registerConvertAIEVecToLLVMPass();
+    aievec::registerCanonicalizeVectorForAIEVecPass();
+    aievec::registerLowerVectorToAIEVecPass();
   }
 
   void onRegisterDialects(DialectRegistry &registry) override {

@@ -12,6 +12,7 @@
 //===----------------------------------------------------------------------===//
 
 #include <algorithm>
+#include <memory>
 
 #include "AIEVecUtils.h"
 #include "Passes.h"
@@ -19,12 +20,14 @@
 #include "mlir/Conversion/AffineToStandard/AffineToStandard.h"
 #include "mlir/Dialect/Affine/Analysis/LoopAnalysis.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/Utils/ReshapeOpsUtils.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/DialectConversion.h"
+#include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
 #define DEBUG_TYPE "aievec-canonicalization"
 
@@ -33,9 +36,7 @@ using namespace arith;
 using namespace vector;
 using namespace mlir::iree_compiler::aievec;
 
-//============================================================================//
-//================== Common AIE canonicalization analysis ====================//
-//============================================================================//
+namespace mlir::iree_compiler::aievec {
 
 static bool isGemmBTransposedContractionOp(vector::ContractionOp op) {
   if (op.getKind() != vector::CombiningKind::ADD) return false;
@@ -83,10 +84,6 @@ static bool isGemmBTransposedContractionOp(vector::ContractionOp op) {
          innerRhsMap == mmBidxMap.shiftDims(numOuterMostDims) &&
          innerAccMap == mmCidxMap.shiftDims(numOuterMostDims);
 }
-
-//============================================================================//
-//============ Common AIE canonicalization conversion patterns ===============//
-//============================================================================//
 
 // This pattern converts a `vector.transfer_read` with an unaligned access
 // into an aligned `vector.transfer_read` twice as long, followed by a
@@ -223,6 +220,47 @@ struct ConvertSplatTransferReadToBroadcastPattern
   }
 };
 
+// This pattern swaps a UnaryOpA followed by UnaryOpB. This pattern can be used
+// to improve pattern matching for mixed-type arithmetic ops, by getting sign
+// extension ops closer to the single-type arithmetic operations.
+template <class UnaryOpA, class UnaryOpB>
+struct SwapUnaryOpsPattern : public OpRewritePattern<UnaryOpB> {
+  using OpRewritePattern<UnaryOpB>::OpRewritePattern;
+  // This function takes the chain of operations A->B, and returns the new type
+  // between B and A after the swap.
+  using InferTypeB2AFnTy = std::function<Type(UnaryOpA aOp, UnaryOpB bOp)>;
+  InferTypeB2AFnTy inferTypeB2A = nullptr;
+
+  SwapUnaryOpsPattern(MLIRContext *context, InferTypeB2AFnTy inferType)
+      : OpRewritePattern<UnaryOpB>(context), inferTypeB2A(inferType) {}
+
+  LogicalResult matchAndRewrite(UnaryOpB bOp,
+                                PatternRewriter &rewriter) const override {
+    static_assert(
+        UnaryOpA::template hasTrait<OpTrait::OneOperand>(),
+        "SwapUnaryOps can only be instantiated for single-operand ops");
+    static_assert(
+        UnaryOpB::template hasTrait<OpTrait::OneOperand>(),
+        "SwapUnaryOps can only be instantiated for single-operand ops");
+    UnaryOpA aOp = bOp.getOperand().template getDefiningOp<UnaryOpA>();
+    if (!aOp)
+      return rewriter.notifyMatchFailure(bOp, UnaryOpB::getOperationName() +
+                                                  " not preceeded by " +
+                                                  UnaryOpA::getOperationName());
+
+    Type newA2BTy = inferTypeB2A(aOp, bOp);
+
+    auto newA =
+        rewriter.create<UnaryOpB>(bOp->getLoc(), SmallVector<Type>({newA2BTy}),
+                                  aOp->getOperands(), bOp->getAttrs());
+    auto newB = rewriter.create<UnaryOpA>(
+        bOp->getLoc(), SmallVector<Type>({bOp.getResult().getType()}),
+        newA->getResults(), aOp->getAttrs());
+    rewriter.replaceOp(bOp, newB.getResult());
+    return success();
+  }
+};
+
 static SmallVector<Value> collapseInnerMostDimIndices(PatternRewriter &b,
                                                       Location loc, int numDims,
                                                       ValueRange indices,
@@ -269,7 +307,7 @@ static Value collapseInnerMostShapeDims(PatternRewriter &b, Location loc,
       .getResult();
 }
 
-// This pattern flatten multidimensional `vector.transfer_read` operations
+// This pattern flattens multidimensional `vector.transfer_read` operations
 // replacing them with a `memref.collapse_shape`, a 1D `vector.transfer_read`,
 // and a `vector.shape_cast`.
 struct FlattenMultDimTransferReadPattern
@@ -475,30 +513,7 @@ struct ExtractTransposeFromContractionOp
   }
 };
 
-//============================================================================//
-//============ AIE2 canonicalization conversion patterns ===============//
-//============================================================================//
-
-//============================================================================//
-//================ Common AIE canonicalization configuration =================//
-//============================================================================//
-static void configureCommonAIECanonicalizeLegalizations(
-    ConversionTarget &target) {
-  target.addLegalDialect<arith::ArithDialect, affine::AffineDialect,
-                         memref::MemRefDialect, vector::VectorDialect>();
-}
-
-static void populateCommonAIECanonicalizeConversionPatterns(
-    RewritePatternSet &patterns) {
-  patterns.add<ConvertSplatTransferReadToBroadcastPattern>(
-      patterns.getContext());
-}
-
-//============================================================================//
-//============== AIE2-specific canonicalization configuration ===============//
-//============================================================================//
-
-static void configureAIE2CanonicalizeLegalizations(ConversionTarget &target) {
+static void configureCanonicalizeLegalizations(ConversionTarget &target) {
   target.addDynamicallyLegalOp<vector::TransferReadOp>(
       [](vector::TransferReadOp op) {
         return !op.getPermutationMap().isConstant() &&
@@ -506,6 +521,7 @@ static void configureAIE2CanonicalizeLegalizations(ConversionTarget &target) {
                        .value_or(0) == 0 &&
                op.getVector().getType().getRank() < 2;
       });
+
   target.addDynamicallyLegalOp<vector::TransferWriteOp>(
       [](vector::TransferWriteOp op) {
         return cast<VectorType>(op.getVector().getType()).getRank() < 2;
@@ -516,29 +532,32 @@ static void configureAIE2CanonicalizeLegalizations(ConversionTarget &target) {
       });
 }
 
-static void populateAIE2CanonicalizeConversionPatterns(
+static void populateCanonicalizeConversionPatterns(
     RewritePatternSet &patterns) {
-  patterns.add<SplitUnalignedTransferReadPattern>(patterns.getContext(), 1024,
-                                                  256);
+  auto context = patterns.getContext();
+
+  patterns.add<SplitUnalignedTransferReadPattern>(context, 1024, 256);
+
   patterns
       .add<ExtractTransposeFromContractionOp, FlattenMultDimTransferReadPattern,
-           FlattenMultDimTransferWritePattern>(patterns.getContext());
+           FlattenMultDimTransferWritePattern>(context);
+
+  patterns.add<ConvertSplatTransferReadToBroadcastPattern>(context);
+
+  patterns.add<SwapUnaryOpsPattern<arith::ExtSIOp, vector::BroadcastOp>>(
+      context, [](arith::ExtSIOp extOp, vector::BroadcastOp bcastOp) -> Type {
+        Type extInElemTy = extOp.getIn().getType();
+        auto extInVecTy = dyn_cast<VectorType>(extInElemTy);
+        if (extInVecTy) extInElemTy = extInVecTy.getElementType();
+        return VectorType::get(bcastOp.getResultVectorType().getShape(),
+                               extInElemTy);
+      });
 }
 
-//============================================================================//
-//=================== Common AIE Canonicalization Passes =====================//
-//============================================================================//
-
 // This pass converts standard vector ops into a subset of `Vector` ops more
-// amenable to being converted to `AIEVec`. So far, this process consists of
-// two steps:
-//    1) Replace splat transfer reads with contiguous transfer reads followed
-//       by `extract` + `broadcast` operations.
-//    2) Split unaligned transfer reads into a wider aligned transfer read
-//       followed by a `vector.extract_strided_slice` operation.
+// amenable to being converted to `AIEVec`.
 struct CanonicalizeVectorForAIEVecPass
     : public PassWrapper<CanonicalizeVectorForAIEVecPass, OperationPass<>> {
-  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(CanonicalizeVectorForAIEVecPass)
   StringRef getArgument() const final {
     return "canonicalize-vector-for-aievec";
   }
@@ -556,31 +575,56 @@ struct CanonicalizeVectorForAIEVecPass
     auto op = getOperation();
     MLIRContext *context = &getContext();
     RewritePatternSet patterns(context);
+    populateCanonicalizeConversionPatterns(patterns);
+    (void)applyPatternsAndFoldGreedily(op, std::move(patterns));
+  }
+};
+
+struct DetectNonCanonicalOpsPass
+    : public PassWrapper<DetectNonCanonicalOpsPass, OperationPass<>> {
+  StringRef getArgument() const final {
+    return "detect-non-canonical-ops-for-aievec";
+  }
+
+  StringRef getDescription() const final {
+    return "Detect non-canonical vector operations for AIEVec conversion. "
+           "This pass will fail if vector dialect ops are not in "
+           "a form that can be easily lowered to the AIEVec dialect.";
+  }
+
+  void getDependentDialects(DialectRegistry &registry) const override {
+    registry.insert<arith::ArithDialect, memref::MemRefDialect,
+                    vector::VectorDialect, affine::AffineDialect>();
+  }
+
+  void runOnOperation() override {
+    auto op = getOperation();
+    MLIRContext *context = &getContext();
+    RewritePatternSet patterns(context);
     ConversionTarget target(*context);
-
-    populateCommonAIECanonicalizeConversionPatterns(patterns);
-    configureCommonAIECanonicalizeLegalizations(target);
-    populateAIE2CanonicalizeConversionPatterns(patterns);
-    configureAIE2CanonicalizeLegalizations(target);
-
+    configureCanonicalizeLegalizations(target);
     if (failed(applyPartialConversion(op, target, std::move(patterns)))) {
       signalPassFailure();
     }
   }
 };
 
-static std::unique_ptr<::mlir::Pass> createCanonicalizeVectorForAIEVecPass() {
-  return std::make_unique<CanonicalizeVectorForAIEVecPass>();
-}
-
-//============================================================================//
-//=============== Main Vector2Vector Pipeline Configuration ==================//
-//============================================================================//
-
-void mlir::iree_compiler::aievec::buildCanonicalizeVectorForAIEVec(
-    OpPassManager &pm) {
+void buildCanonicalizeVectorForAIEVec(OpPassManager &pm) {
   // Add `Vector` code canonicalization passes
   // TODO: Add passes to unroll vector with unsupported types
   // TODO: Add passes to split vectors that won't fit in registers
   pm.addPass(createCanonicalizeVectorForAIEVecPass());
+  pm.addPass(std::make_unique<DetectNonCanonicalOpsPass>());
 }
+
+std::unique_ptr<::mlir::Pass> createCanonicalizeVectorForAIEVecPass() {
+  return std::make_unique<CanonicalizeVectorForAIEVecPass>();
+}
+
+void registerCanonicalizeVectorForAIEVecPass() {
+  ::mlir::registerPass([]() -> std::unique_ptr<mlir::Pass> {
+    return createCanonicalizeVectorForAIEVecPass();
+  });
+}
+
+}  // namespace mlir::iree_compiler::aievec
