@@ -881,12 +881,12 @@ module {
 // CHECK-DAG:         %[[DMA_2:.*]] = amdaie.dma_cpy_nd(%[[FROM_MEMREF_2]]
 // CHECK-SAME:        %[[FROM_MEMREF_5]]
 // CHECK-DAG:         %[[CORE_0:.*]] = amdaie.core(%[[TILE_0_2]])
-// CHECK-DAG:           %[[VAL_0:.+]] = amdaie.logicalobjectfifo.access(%[[FROM_MEMREF_3]], Read)
-// CHECK-DAG:           %[[VAL_1:.+]] = amdaie.logicalobjectfifo.access(%[[FROM_MEMREF_4]], Read)
-// CHECK-DAG:           %[[VAL_2:.+]] = amdaie.logicalobjectfifo.access(%[[FROM_MEMREF_5]], Write)
 // CHECK-DAG:           amdaie.logicalobjectfifo.consume(%[[DMA_0]])
 // CHECK-DAG:           amdaie.logicalobjectfifo.consume(%[[DMA_1]])
 // CHECK-DAG:           amdaie.logicalobjectfifo.produce(%[[DMA_2]])
+// CHECK-DAG:           %[[VAL_0:.+]] = amdaie.logicalobjectfifo.access(%[[FROM_MEMREF_3]], Read)
+// CHECK-DAG:           %[[VAL_1:.+]] = amdaie.logicalobjectfifo.access(%[[FROM_MEMREF_4]], Read)
+// CHECK-DAG:           %[[VAL_2:.+]] = amdaie.logicalobjectfifo.access(%[[FROM_MEMREF_5]], Write)
 // CHECK-DAG:           scf.for %[[ARG2:.*]] = %[[C0]] to %[[C16]] step %[[C1]] {
 // CHECK-DAG:             scf.for %[[ARG3:.*]] = %[[C0]] to %[[C16]] step %[[C1]] {
 // CHECK-DAG:               scf.for %[[ARG4:.*]] = %[[C0]] to %[[C8]] step %[[C1]] {

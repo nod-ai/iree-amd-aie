@@ -563,11 +563,20 @@ LogicalResult insertLogicalObjectFifoAccess(ModuleOp moduleOp) {
     WalkResult res = coreOp->walk([&](Operation *op) {
       if (isa<linalg::LinalgOp, vector::TransferReadOp, vector::TransferWriteOp,
               memref::ExtractStridedMetadataOp>(op)) {
+        // We want to insert amdaie.logicalobjectfifo.access ops right before
+        // the first usage. But for vectorized ops this would mean they'd get
+        // inserted within the vectorized scf.for ops. We therefore would want
+        // to traverse to the outermost scf.for op whose immediate parent is
+        // amdaie.core op.
+        Operation *opToInsertRewriterPoint = op;
+        while (!isa<AMDAIE::CoreOp>(opToInsertRewriterPoint->getParentOp())) {
+          opToInsertRewriterPoint = opToInsertRewriterPoint->getParentOp();
+        }
         for (auto &&[idx, operand] : llvm::enumerate(op->getOpOperands())) {
           if (memrefToLogicalObjectFifoAccess.contains(operand.get())) {
             op->setOperand(idx, memrefToLogicalObjectFifoAccess[operand.get()]);
           } else if (memrefToLogicalObjectFifo.contains(operand.get())) {
-            rewriter.setInsertionPoint(op);
+            rewriter.setInsertionPoint(opToInsertRewriterPoint);
             std::tuple<AMDAIE::LogicalObjectFifoFromMemrefOp,
                        AMDAIE::MemoryAccess>
                 value = memrefToLogicalObjectFifo[operand.get()];
@@ -584,7 +593,7 @@ LogicalResult insertLogicalObjectFifoAccess(ModuleOp moduleOp) {
                 rewriter.create<AMDAIE::LogicalObjectFifoFromMemrefOp>(
                     rewriter.getUnknownLoc(), LogicalObjectFifoType::get(type),
                     memref);
-            rewriter.setInsertionPoint(op);
+            rewriter.setInsertionPoint(opToInsertRewriterPoint);
 
             AMDAIE::LogicalObjectFifoAccessOp accessOp;
             if (memrefToLogicalObjectFifo.contains(memref)) {
