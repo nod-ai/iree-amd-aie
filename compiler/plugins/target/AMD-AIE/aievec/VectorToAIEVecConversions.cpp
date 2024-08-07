@@ -13,14 +13,12 @@
 //===----------------------------------------------------------------------===//
 
 #include <optional>
-#include <tuple>
 
 #include "AIEVecOps.h"
 #include "AIEVecUtils.h"
 #include "Passes.h"
 #include "Utils.h"
 #include "llvm/ADT/SmallSet.h"
-#include "llvm/ADT/TypeSwitch.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/EmitC/IR/EmitC.h"
 #include "mlir/Dialect/Math/IR/Math.h"
@@ -1082,18 +1080,26 @@ struct LowerVectorToAIEVec : PassWrapper<LowerVectorToAIEVec, OperationPass<>> {
   }
 };
 
-static std::unique_ptr<Pass> createLowerVectorToAIEVec() {
-  return std::make_unique<LowerVectorToAIEVec>();
-}
-
 //============================================================================//
 //=============== Main Vector2AIEVec Pipeline Configuration ==================//
 //============================================================================//
 
-void mlir::iree_compiler::aievec::buildLowerVectorToAIEVec(OpPassManager &pm) {
+namespace mlir::iree_compiler::aievec {
+static std::unique_ptr<Pass> createLowerVectorToAIEVec() {
+  return std::make_unique<LowerVectorToAIEVec>();
+}
+
+void registerLowerVectorToAIEVecPass() {
+  ::mlir::registerPass([]() -> std::unique_ptr<mlir::Pass> {
+    return createLowerVectorToAIEVec();
+  });
+}
+
+void buildLowerVectorToAIEVec(mlir::OpPassManager &pm) {
   // Add lowering from `Vector` to `AIEVec`
   pm.addPass(createLowerVectorToAIEVec());
   pm.addPass(createCanonicalizerPass());
   pm.addPass(createCSEPass());
   pm.addPass(createCanonicalizerPass());
 }
+}  // namespace mlir::iree_compiler::aievec
