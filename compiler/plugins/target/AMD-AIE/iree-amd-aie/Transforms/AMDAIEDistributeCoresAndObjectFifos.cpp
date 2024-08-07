@@ -95,7 +95,6 @@ LogicalResult distributeLocalMemory(ModuleOp moduleOp) {
         }
       }
     }
-    if (dmaUsers.empty()) return WalkResult::advance();
     LLVM_DEBUG(llvm::dbgs() << "DMA users: " << dmaUsers.size() << "\n");
 
     SmallVector<Operation *> allocOpUsers;
