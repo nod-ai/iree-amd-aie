@@ -4,7 +4,7 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#include "aie/Dialect/AIE/IR/AIEDialect.h"
+#include "aie/AIEDialect.h"
 #include "iree-amd-aie/IR/AMDAIEOps.h"
 #include "iree-amd-aie/Transforms/AMDAIEDmaUtils.h"
 #include "iree-amd-aie/Transforms/Passes.h"
@@ -30,14 +30,6 @@ namespace {
 //===----------------------------------------------------------------------===//
 // Utilities
 //===----------------------------------------------------------------------===//
-
-/// Comparator for a pair of `amdaie.dma_cpy_nd` on the first tile operation's
-/// column index.
-bool dmaColComparator(
-    std::pair<AMDAIE::DmaCpyNdOp, SmallVector<AMDAIE::TileOp>> &a,
-    std::pair<AMDAIE::DmaCpyNdOp, SmallVector<AMDAIE::TileOp>> &b) {
-  return TileOp::tileColumnComparator(a.second[0], b.second[0]);
-};
 
 /// Utility to use tuple coordinates as key of a `DenseMap`.
 struct LocationMapInfo {
@@ -535,25 +527,26 @@ LogicalResult insertLogicalObjectFifoAccess(ModuleOp moduleOp) {
     DenseMap<Value, std::tuple<AMDAIE::LogicalObjectFifoFromMemrefOp,
                                AMDAIE::MemoryAccess>>
         memrefToLogicalObjectFifo;
-    // First walk to collect consume/produce DMA accesses and map respective
-    // memrefs to logical objectifos.
-    coreOp->walk([&](Operation *op) {
-      // TODO(jornt): can we avoid produce/consume?
-      if (auto consumeOp = dyn_cast<AMDAIE::LogicalObjectFifoConsume>(op)) {
-        Value targetMemref =
-            consumeOp.getDmaCpyNdOp().getTargetObjectFifo().getMemref();
-        memrefToLogicalObjectFifo[targetMemref] =
-            std::make_pair(consumeOp.getDmaCpyNdOp().getTargetObjectFifo(),
-                           AMDAIE::MemoryAccess::Read);
-      } else if (auto produceOp =
-                     dyn_cast<AMDAIE::LogicalObjectFifoProduce>(op)) {
-        Value sourceMemref =
-            produceOp.getDmaCpyNdOp().getSourceObjectFifo().getMemref();
+
+    SmallVector<AMDAIE::DmaCpyNdOp> inputDmaOps =
+        llvm::map_to_vector(coreOp.getInputDmas(), [](Value inputDma) {
+          return cast<AMDAIE::DmaCpyNdOp>(inputDma.getDefiningOp());
+        });
+    for (AMDAIE::DmaCpyNdOp inputDmaOp : inputDmaOps) {
+      Value targetMemref = inputDmaOp.getTargetObjectFifo().getMemref();
+      memrefToLogicalObjectFifo[targetMemref] = std::make_pair(
+          inputDmaOp.getTargetObjectFifo(), AMDAIE::MemoryAccess::Read);
+    }
+    SmallVector<AMDAIE::DmaCpyNdOp> outputDmaOps =
+        llvm::map_to_vector(coreOp.getOutputDmas(), [](Value outputDma) {
+          return cast<AMDAIE::DmaCpyNdOp>(outputDma.getDefiningOp());
+        });
+    for (AMDAIE::DmaCpyNdOp outputDmaOp : outputDmaOps) {
+      Value sourceMemref = outputDmaOp.getSourceObjectFifo().getMemref();
         memrefToLogicalObjectFifo[sourceMemref] =
-            std::make_pair(produceOp.getDmaCpyNdOp().getSourceObjectFifo(),
+            std::make_pair(outputDmaOp.getSourceObjectFifo(),
                            AMDAIE::MemoryAccess::Write);
-      }
-    });
+    }
 
     // We maintain a map from AllocOp to LogicalObjectFifoAccessOp in order to
     // avoid creating a new LogicalObjectFifoAccessOp for the same AllocOp being

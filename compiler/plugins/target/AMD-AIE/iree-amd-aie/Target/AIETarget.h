@@ -9,6 +9,7 @@
 
 #include <string>
 
+#include "aie/AIEDialect.h"
 #include "iree/compiler/Dialect/HAL/Target/TargetBackend.h"
 #include "iree/compiler/Dialect/HAL/Target/TargetDevice.h"
 #include "iree/compiler/Utils/OptionUtils.h"

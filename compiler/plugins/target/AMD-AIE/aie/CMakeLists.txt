@@ -7,16 +7,6 @@
 set(IREE_PACKAGE_ROOT_DIR "${CMAKE_CURRENT_LIST_DIR}")
 set(IREE_PACKAGE_ROOT_PREFIX "iree::target::amd-aie::aie")
 
-list(APPEND IREE_COMPILER_TABLEGEN_INCLUDE_DIRS
-    "${IREE_MLIR_AIE_SOURCE_DIR}/include")
-
-iree_cc_library(
-  NAME
-    defs
-  INCLUDES
-    "${IREE_MLIR_AIE_SOURCE_DIR}/include"
-)
-
 ###############################################################################
 # AIE Dialect
 ###############################################################################
@@ -25,74 +15,64 @@ iree_tablegen_library(
   NAME
     AIEAttrsGen
   TD_FILE
-    "${IREE_MLIR_AIE_SOURCE_DIR}/include/aie/Dialect/AIE/IR/AIEAttrs.td"
+    AIEAttrs.td
   OUTS
-    -gen-attrdef-decls Dialect/AIE/IR/AIEAttrs.h.inc
-    -gen-attrdef-defs Dialect/AIE/IR/AIEAttrs.cpp.inc
-    -gen-enum-decls Dialect/AIE/IR/AIEEnums.h.inc
-    -gen-enum-defs Dialect/AIE/IR/AIEEnums.cpp.inc
-)
-
-iree_tablegen_library(
-  NAME
-    AIEDialectGen
-  TD_FILE
-    "${IREE_MLIR_AIE_SOURCE_DIR}/include/aie/Dialect/AIE/IR/AIE.td"
-  OUTS
-    -gen-dialect-decls Dialect/AIE/IR/AIEDialect.h.inc
-    -gen-dialect-defs Dialect/AIE/IR/AIEDialect.cpp.inc
-)
-
-iree_tablegen_library(
-  NAME
-    AIEInterfacesGen
-  TD_FILE
-    "${IREE_MLIR_AIE_SOURCE_DIR}/include/aie/Dialect/AIE/IR/AIEInterfaces.td"
-  OUTS
-    -gen-op-interface-decls Dialect/AIE/IR/AIEInterfaces.h.inc
-    -gen-op-interface-defs Dialect/AIE/IR/AIEInterfaces.cpp.inc
-)
-
-iree_tablegen_library(
-  NAME
-    AIEOpsGen
-  TD_FILE
-    "${IREE_MLIR_AIE_SOURCE_DIR}/include/aie/Dialect/AIE/IR/AIEOps.td"
-  OUTS
-    -gen-op-decls Dialect/AIE/IR/AIEOps.h.inc
-    -gen-op-defs Dialect/AIE/IR/AIEOps.cpp.inc
+    -gen-attrdef-decls AIEAttrs.h.inc
+    -gen-attrdef-defs AIEAttrs.cpp.inc
+    -gen-enum-decls AIEEnums.h.inc
+    -gen-enum-defs AIEEnums.cpp.inc
 )
 
 iree_tablegen_library(
   NAME
     AIETypesGen
   TD_FILE
-    "${IREE_MLIR_AIE_SOURCE_DIR}/include/aie/Dialect/AIE/IR/AIETypes.td"
+    AIETypes.td
   OUTS
-    -gen-typedef-decls -typedefs-dialect=AIE Dialect/AIE/IR/AIETypes.h.inc
-    -gen-typedef-defs -typedefs-dialect=AIE Dialect/AIE/IR/AIETypes.cpp.inc
+    -gen-typedef-decls AIETypes.h.inc
+    -gen-typedef-defs AIETypes.cpp.inc
+)
+
+iree_tablegen_library(
+  NAME
+    AIEDialectGen
+  TD_FILE
+    AIE.td
+  OUTS
+    -gen-dialect-decls AIEDialect.h.inc
+    -gen-dialect-defs AIEDialect.cpp.inc
+)
+
+list(APPEND IREE_COMPILER_TABLEGEN_INCLUDE_DIRS
+  ${IREE_AMD_AIE_RUNTIME_SOURCE_DIR})
+iree_tablegen_library(
+  NAME
+    AIEOpsGen
+  TD_FILE
+    AIEOps.td
+  OUTS
+    -gen-op-decls AIEOps.h.inc
+    -gen-op-defs AIEOps.cpp.inc
 )
 
 iree_tablegen_library(
   NAME
     AIENormalizeAddressSpacesGen
   TD_FILE
-    "${IREE_MLIR_AIE_SOURCE_DIR}/include/aie/Dialect/AIE/Transforms/AIENormalizeAddressSpaces.td"
+    AIENormalizeAddressSpaces.td
   OUTS
-    -gen-rewriters Dialect/AIE/Transforms/AIENormalizeAddressSpaces.inc
+    -gen-rewriters AIENormalizeAddressSpaces.inc
 )
 
 iree_cc_library(
   NAME
     AIEDialectIR
   SRCS
-    ${IREE_MLIR_AIE_SOURCE_DIR}/lib/Dialect/AIE/IR/AIEDialect.cpp
-    ${IREE_MLIR_AIE_SOURCE_DIR}/lib/Dialect/AIE/IR/AIETargetModel.cpp
+    AIEDialect.cpp
   DEPS
-    ::defs
+    iree-amd-aie::aie_runtime::iree_aie_runtime_static
     ::AIEAttrsGen
     ::AIEDialectGen
-    ::AIEInterfacesGen
     ::AIEOpsGen
     ::AIETypesGen
     # mlir::DataLayout::closest(mlir::Operation*)
@@ -117,29 +97,28 @@ iree_tablegen_library(
   NAME
     AIEXDialectGen
   TD_FILE
-    "${IREE_MLIR_AIE_SOURCE_DIR}/include/aie/Dialect/AIEX/IR/AIEX.td"
+    AIEX.td
   OUTS
-    -gen-dialect-decls -dialect=aiex Dialect/AIEX/IR/AIEXDialect.h.inc
-    -gen-dialect-defs -dialect=aiex Dialect/AIEX/IR/AIEXDialect.cpp.inc
+    -gen-dialect-decls -dialect=aiex AIEXDialect.h.inc
+    -gen-dialect-defs -dialect=aiex AIEXDialect.cpp.inc
 )
 
 iree_tablegen_library(
   NAME
     AIEXOpsGen
   TD_FILE
-    "${IREE_MLIR_AIE_SOURCE_DIR}/include/aie/Dialect/AIEX/IR/AIEX.td"
+    AIEX.td
   OUTS
-    -gen-op-decls Dialect/AIEX/IR/AIEX.h.inc
-    -gen-op-defs Dialect/AIEX/IR/AIEX.cpp.inc
+    -gen-op-decls AIEX.h.inc
+    -gen-op-defs AIEX.cpp.inc
 )
 
 iree_cc_library(
   NAME
     AIEXDialectIR
   SRCS
-    ${IREE_MLIR_AIE_SOURCE_DIR}/lib/Dialect/AIEX/IR/AIEXDialect.cpp
+    AIEXDialect.cpp
   DEPS
-    ::defs
     ::AIEDialectIR
     ::AIEXOpsGen
     ::AIEXDialectGen
@@ -165,7 +144,6 @@ iree_cc_library(
     AMDAIEObjectFifoStatefulTransform.cpp
     AMDAIEXToStandard.cpp
   DEPS
-    ::defs
     iree-amd-aie::aie_runtime::iree_aie_runtime_static
     ::AIEDialectIR
     ::AIEXDialectIR

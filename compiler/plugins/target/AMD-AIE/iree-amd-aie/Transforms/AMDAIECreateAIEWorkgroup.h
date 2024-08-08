@@ -168,7 +168,7 @@ class CoreContext {
     if (!existingCoreOp) {
       coreMap[coordinate] = coreOp;
     } else {
-      mergeCoreOps(coreOp, existingCoreOp);
+      coreMap[coordinate] = mergeCoreOps(coreOp, existingCoreOp);
     }
   }
 
@@ -179,9 +179,8 @@ class CoreContext {
   }
 
  private:
-  /// Merge the 'source' core operations in the end of the 'dest' core
-  /// operation.
-  void mergeCoreOps(AMDAIE::CoreOp source, AMDAIE::CoreOp dest);
+  /// Merge the 'source' and 'dest' core operations into a new one.
+  AMDAIE::CoreOp mergeCoreOps(AMDAIE::CoreOp source, AMDAIE::CoreOp dest);
 
   /// The rewriter to be used.
   IRRewriterAndMapper &rewriter;

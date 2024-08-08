@@ -4,8 +4,8 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+#include "AIEXDialect.h"
 #include "Passes.h"
-#include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
 
@@ -22,7 +22,8 @@ struct AMDAIEXOpRemoval : OpConversionPattern<MyAIEXOp> {
   using OpAdaptor = typename MyAIEXOp::Adaptor;
   ModuleOp &module;
 
-  AMDAIEXOpRemoval(MLIRContext *context, ModuleOp &m, PatternBenefit benefit = 1)
+  AMDAIEXOpRemoval(MLIRContext *context, ModuleOp &m,
+                   PatternBenefit benefit = 1)
       : OpConversionPattern<MyAIEXOp>(context, benefit), module(m) {}
 
   LogicalResult matchAndRewrite(
@@ -66,7 +67,6 @@ struct AMDAIEXToStandardPass : mlir::OperationPass<mlir::ModuleOp> {
     removepatterns.add<AMDAIEXOpRemoval<NpuDmaMemcpyNdOp>>(m.getContext(), m);
     removepatterns.add<AMDAIEXOpRemoval<NpuDmaWaitOp>>(m.getContext(), m);
     removepatterns.add<AMDAIEXOpRemoval<NpuPushQueueOp>>(m.getContext(), m);
-    removepatterns.add<AMDAIEXOpRemoval<NpuWriteRTPOp>>(m.getContext(), m);
     removepatterns.add<AMDAIEXOpRemoval<NpuWrite32Op>>(m.getContext(), m);
     removepatterns.add<AMDAIEXOpRemoval<NpuSyncOp>>(m.getContext(), m);
     removepatterns.add<AMDAIEXOpRemoval<NpuWriteBdOp>>(m.getContext(), m);

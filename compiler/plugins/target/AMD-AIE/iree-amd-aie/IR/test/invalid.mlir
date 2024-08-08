@@ -6,7 +6,7 @@ func.func @core_invalid_terminator() {
   %tile = amdaie.tile(%c0, %c0)
   // expected-note @+2 {{in custom textual format, the absence of terminator implies 'amdaie.end'}}
   // expected-error @+1 {{'amdaie.core' op expects regions to end with 'amdaie.end', found 'arith.constant'}}
-  %core = amdaie.core(%tile) {
+  %core = amdaie.core(%tile, in : [], out : []) {
     %c1 = arith.constant 0 : index
   }
   return

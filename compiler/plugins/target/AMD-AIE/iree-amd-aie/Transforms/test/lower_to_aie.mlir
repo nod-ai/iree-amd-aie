@@ -192,7 +192,7 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
       %obj2 = amdaie.logicalobjectfifo.from_memref %alloc_2, {%tile_0_2} : memref<4x8x4x8xi32, 2> -> !amdaie.logicalobjectfifo<memref<4x8x4x8xi32, 2>>
       %dma0 = amdaie.circular_dma_cpy_nd(%obj1[] [] [], %obj2[] [] []) : (!amdaie.logicalobjectfifo<memref<32x32xi32, 1>>, !amdaie.logicalobjectfifo<memref<4x8x4x8xi32, 2>>)
       %dma1 = amdaie.circular_dma_cpy_nd(%obj0[] [] [], %obj1[] [] []) : (!amdaie.logicalobjectfifo<memref<32x64xi32>>, !amdaie.logicalobjectfifo<memref<32x32xi32, 1>>)
-      %core_0_0 = amdaie.core(%tile_0_2) {
+      %core_0_0 = amdaie.core(%tile_0_2, in : [], out : [%dma0]) {
         %0 = amdaie.logicalobjectfifo.acquire(%dma0, Produce) {size = 1 : i32} -> !amdaie.logicalobjectfifo<memref<32x32xi32, 1>>
         %1 = amdaie.logicalobjectfifo.access(%0, Write) : !amdaie.logicalobjectfifo<memref<32x32xi32, 1>> -> memref<32x32xi32, 1>
         linalg.fill ins(%c0_i32 : i32) outs(%1 : memref<32x32xi32, 1>)
@@ -258,7 +258,7 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
       %obj4 = amdaie.logicalobjectfifo.from_memref %alloc_4, {%tile_0_2} : memref<4x8x4x8xf32, 1> -> !amdaie.logicalobjectfifo<memref<4x8x4x8xf32, 1>>
       %dma0 = amdaie.circular_dma_cpy_nd(%obj1[] [] [], %obj2[] [] []) : (!amdaie.logicalobjectfifo<memref<32x32xi32, 2>>, !amdaie.logicalobjectfifo<memref<4x8x4x8xi32, 1>>)
       %dma1 = amdaie.circular_dma_cpy_nd(%obj3[] [] [], %obj4[] [] []) : (!amdaie.logicalobjectfifo<memref<32x32xf32, 2>>, !amdaie.logicalobjectfifo<memref<4x8x4x8xf32, 1>>)
-      %core_0_0 = amdaie.core(%tile_0_2) {
+      %core_0_0 = amdaie.core(%tile_0_2, in : [], out : [%dma0, %dma1]) {
         %0 = amdaie.logicalobjectfifo.acquire(%dma0, Produce) {size = 1 : i32} -> !amdaie.logicalobjectfifo<memref<32x32xi32, 2>>
         %1 = amdaie.logicalobjectfifo.access(%0, Write) : !amdaie.logicalobjectfifo<memref<32x32xi32, 2>> -> memref<32x32xi32, 2>
         %2 = amdaie.logicalobjectfifo.acquire(%dma1, Produce) {size = 1 : i32} -> !amdaie.logicalobjectfifo<memref<32x32xf32, 2>>
@@ -323,11 +323,11 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
       %obj2 = amdaie.logicalobjectfifo.from_memref %alloc_2, {%tile_0_2, %tile_1_2} : memref<4x8x4x8xi32, 2> -> !amdaie.logicalobjectfifo<memref<4x8x4x8xi32, 2>>
       %dma0 = amdaie.circular_dma_cpy_nd(%obj1[] [] [], %obj0[] [] []) : (!amdaie.logicalobjectfifo<memref<32x32xi32, 1>>, !amdaie.logicalobjectfifo<memref<32x64xi32>>)
       %dma1 = amdaie.circular_dma_cpy_nd(%obj2[] [] [], %obj1[] [] []) : (!amdaie.logicalobjectfifo<memref<4x8x4x8xi32, 2>>, !amdaie.logicalobjectfifo<memref<32x32xi32, 1>>)
-      %core_0_2 = amdaie.core(%tile_0_2) {
+      %core_0_2 = amdaie.core(%tile_0_2, in : [%dma1], out : []) {
         %0 = amdaie.logicalobjectfifo.acquire(%dma1, Consume) {size = 1 : i32} -> !amdaie.logicalobjectfifo<memref<32x32xi32, 1>>
         amdaie.end
       }
-      %core_1_2 = amdaie.core(%tile_1_2) {
+      %core_1_2 = amdaie.core(%tile_1_2, in : [%dma1], out : []) {
         %0 = amdaie.logicalobjectfifo.acquire(%dma1, Consume) {size = 1 : i32} -> !amdaie.logicalobjectfifo<memref<32x32xi32, 1>>
         amdaie.end
       }
@@ -372,7 +372,7 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
       %obj2 = amdaie.logicalobjectfifo.from_memref %alloc_2, {%tile_0_2} : memref<4x8x4x8xi32, 2> -> !amdaie.logicalobjectfifo<memref<4x8x4x8xi32, 2>>
       %dma0 = amdaie.circular_dma_cpy_nd(%obj1[] [] [], %obj2[] [] []) : (!amdaie.logicalobjectfifo<memref<32x32xi32, 1>>, !amdaie.logicalobjectfifo<memref<4x8x4x8xi32, 2>>)
       %dma1 = amdaie.circular_dma_cpy_nd(%obj0[] [] [], %obj1[] [] []) : (!amdaie.logicalobjectfifo<memref<32x64xi32>>, !amdaie.logicalobjectfifo<memref<32x32xi32, 1>>)
-      %core_0_0 = amdaie.core(%tile_0_2) {
+      %core_0_0 = amdaie.core(%tile_0_2, in : [], out : [%dma0]) {
         amdaie.logicalobjectfifo.release(%dma0, Produce) {size = 1 : i32}
         amdaie.end
       }
@@ -875,7 +875,7 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
       %dma0 = amdaie.circular_dma_cpy_nd(%obj1[] [] [], %obj0[] [] []) : (!amdaie.logicalobjectfifo<memref<32x32xi32, 1>>, !amdaie.logicalobjectfifo<memref<32x64xi32>>)
       %dma1 = amdaie.circular_dma_cpy_nd(%obj2[] [] [], %obj1[] [] []) : (!amdaie.logicalobjectfifo<memref<4x8x4x8xi32, 2>>, !amdaie.logicalobjectfifo<memref<32x32xi32, 1>>)
       amdaie.logicalobjectfifo.link[%dma0] -> [%dma1] ()
-      %core_0_2 = amdaie.core(%tile_0_2) {
+      %core_0_2 = amdaie.core(%tile_0_2, in : [%dma1], out : []) {
         %1 = amdaie.logicalobjectfifo.acquire(%dma1, Consume) {size = 1 : i32} -> !amdaie.logicalobjectfifo<memref<4x8x4x8xi32, 2>>
         %2 = amdaie.logicalobjectfifo.access(%1, Read) : !amdaie.logicalobjectfifo<memref<4x8x4x8xi32, 2>> -> memref<4x8x4x8xi32, 2>
         scf.for %arg2 = %c0 to %c8 step %c1  {
@@ -884,7 +884,7 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
         amdaie.logicalobjectfifo.release(%dma1, Consume) {size = 1 : i32}
         amdaie.end
       }
-      %core_1_2 = amdaie.core(%tile_1_2) {
+      %core_1_2 = amdaie.core(%tile_1_2, in : [%dma1], out : []) {
         %1 = amdaie.logicalobjectfifo.acquire(%dma1, Consume) {size = 1 : i32} -> !amdaie.logicalobjectfifo<memref<4x8x4x8xi32, 2>>
         %2 = amdaie.logicalobjectfifo.access(%1, Read) : !amdaie.logicalobjectfifo<memref<4x8x4x8xi32, 2>> -> memref<4x8x4x8xi32, 2>
         scf.for %arg2 = %c0 to %c8 step %c1  {

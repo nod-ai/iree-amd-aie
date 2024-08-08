@@ -4,7 +4,7 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#include "aie/Dialect/AIE/IR/AIEDialect.h"
+#include "AIEDialect.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
@@ -27,7 +27,7 @@ Type memRefToDefaultAddressSpace(Type t) {
   return t;
 }
 
-#include "aie/Dialect/AIE/Transforms/AIENormalizeAddressSpaces.inc"
+#include "aie/AIENormalizeAddressSpaces.inc"
 
 }  // namespace
 

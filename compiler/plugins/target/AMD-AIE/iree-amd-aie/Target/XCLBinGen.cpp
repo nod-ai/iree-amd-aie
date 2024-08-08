@@ -14,7 +14,6 @@
 #include <unordered_map>
 
 #include "AMDAIETargets.h"
-#include "aie/Targets/AIETargets.h"
 #include "aievec/Passes.h"
 #include "iree-amd-aie/Transforms/Passes.h"
 #include "iree/compiler/Utils/ToolUtils.h"
@@ -142,21 +141,17 @@ static FailureOr<Path> findAMDAIETool(std::string toolName,
   Path toolBinExe = "";
   if (!amdAIEInstallDir.empty()) {
     toolBinExe = amdAIEInstallDir / toolName;
-    if (llvm::sys::fs::exists(toolBinExe.native()))
-      return toolBinExe;
+    if (llvm::sys::fs::exists(toolBinExe.native())) return toolBinExe;
 
     toolBinExe = amdAIEInstallDir / "bin" / toolName;
-    if (llvm::sys::fs::exists(toolBinExe.native()))
-      return toolBinExe;
+    if (llvm::sys::fs::exists(toolBinExe.native())) return toolBinExe;
 
     toolBinExe = amdAIEInstallDir / "tools" / toolName;
-    if (llvm::sys::fs::exists(toolBinExe.native()))
-      return toolBinExe;
+    if (llvm::sys::fs::exists(toolBinExe.native())) return toolBinExe;
   }
 
   toolBinExe = mlir::iree_compiler::findTool(toolName);
-  if (llvm::sys::fs::exists(toolBinExe.native()))
-    return toolBinExe;
+  if (llvm::sys::fs::exists(toolBinExe.native())) return toolBinExe;
 
   llvm::errs() << "Could not find " << toolName
                << ". Check your --iree-amd-aie-install-dir flag";
@@ -321,7 +316,8 @@ static std::optional<std::string> runTool(
                          stats.TotalTime)
                          .count();
     std::string exitStatusStr = result == 0 ? "Succeeded" : "Failed";
-    llvm::outs() << "\n" << exitStatusStr << " in totalTime " << totalTime
+    llvm::outs() << "\n"
+                 << exitStatusStr << " in totalTime " << totalTime
                  << " [s]. Exit code=" << result << "\n";
     llvm::outs() << outputFromFile << "\n";
   }
@@ -468,9 +464,9 @@ static LogicalResult generateCoreElfFiles(
   std::string errorMessage;
 
   for (auto tileOp : tileOps) {
-    int col = tileOp.colIndex();
-    int row = tileOp.rowIndex();
-    auto coreOp = tileOp.getCoreOp();
+    int col = tileOp.getCol();
+    int row = tileOp.getRow();
+    auto coreOp = getCoreOp(tileOp);
     if (!coreOp) continue;
 
     std::string elfFileName;

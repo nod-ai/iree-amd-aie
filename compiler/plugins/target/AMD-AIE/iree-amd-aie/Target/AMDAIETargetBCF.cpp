@@ -5,8 +5,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 #include "AMDAIETargets.h"
-#include "aie/Dialect/AIE/IR/AIEDialect.h"
-#include "aie/Passes.h"
+#include "aie/AIEDialect.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/IR/Module.h"
 
@@ -17,6 +16,7 @@ using namespace xilinx::AIE;
 std::string utohexstr(uint32_t u) { return "0x" + llvm::utohexstr(u); }
 
 namespace mlir::iree_compiler::AMDAIE {
+
 LogicalResult AIETranslateToBCF(ModuleOp module, raw_ostream &output,
                                 int tileCol, int tileRow) {
   DenseMap<TileLoc, Operation *> tiles;
@@ -27,7 +27,7 @@ LogicalResult AIETranslateToBCF(ModuleOp module, raw_ostream &output,
   DeviceOp deviceOp = *(module.getOps<DeviceOp>().begin());
 
   collectTiles(deviceOp, tiles);
-  ::collectBuffers(deviceOp, buffers);
+  collectBuffers(deviceOp, buffers);
 
   // _entry_point _main_init
   // _symbol      _main _after _main_init
@@ -43,8 +43,8 @@ LogicalResult AIETranslateToBCF(ModuleOp module, raw_ostream &output,
   AMDAIEDeviceModel deviceModel =
       getDeviceModel(static_cast<AMDAIEDevice>(deviceOp.getDevice()));
   for (auto tile : deviceOp.getOps<TileOp>())
-    if (tile.colIndex() == tileCol && tile.rowIndex() == tileRow) {
-      TileLoc srcCoord = {tile.colIndex(), tile.rowIndex()};
+    if (tile.getCol() == tileCol && tile.getRow() == tileRow) {
+      TileLoc srcCoord = {tile.getCol(), tile.getRow()};
 
       std::string corefunc = std::string("core_") +
                              std::to_string(tile.getCol()) + "_" +
@@ -57,7 +57,7 @@ LogicalResult AIETranslateToBCF(ModuleOp module, raw_ostream &output,
              << " // Don't put data in code memory\n";
 
       int stacksize = 0;
-      if (auto core = tile.getCoreOp()) stacksize = core.getStackSize();
+      if (auto core = getCoreOp(tile)) stacksize = core.getStackSize();
       output << "_stack DM_stack "
              << utohexstr(deviceModel.getMemInternalBaseAddress()) << " "
              << utohexstr(stacksize) << " // stack for core\n";
@@ -78,21 +78,15 @@ LogicalResult AIETranslateToBCF(ModuleOp module, raw_ostream &output,
           // remaining buffer)
           if (tiles.count(TileLoc(*tile))) {
             for (auto buf : buffers[tiles[TileLoc(*tile)]]) {
-              std::string bufName(buf.name().getValue());
-              int bufferBaseAddr = getBufferBaseAddress(buf);
-              int numBytes = buf.getAllocationSize();
-              if (buf.getInitialValue() && srcCoord == tile) {
-                output << "_overlay " << bufName << " "
-                       << utohexstr(offset + bufferBaseAddr) << " // "
-                       << numBytes << " bytes\n";
-              } else {
-                output << "_symbol " << bufName << " "
-                       << utohexstr(offset + bufferBaseAddr) << " " << numBytes
-                       << '\n';
-                output << "_extern " << bufName << "\n";
-                output << "_reserved DMb " << utohexstr(offset + bufferBaseAddr)
-                       << " " << numBytes << '\n';
-              }
+              std::string bufName(name(buf).getValue());
+              int bufferBaseAddr = buf.getAddress().value();
+              int numBytes = getAllocationSize(buf);
+              output << "_symbol " << bufName << " "
+                     << utohexstr(offset + bufferBaseAddr) << " " << numBytes
+                     << '\n';
+              output << "_extern " << bufName << "\n";
+              output << "_reserved DMb " << utohexstr(offset + bufferBaseAddr)
+                     << " " << numBytes << '\n';
               output << "\n";
             }
           }
@@ -118,8 +112,8 @@ LogicalResult AIETranslateToBCF(ModuleOp module, raw_ostream &output,
                 "the core can't see\n";
       // chess's libc expects a _main not a main (despite what me_basic.c looks
       // like...)
-      output << "_resolve _main core_" << tile.getCol() << "_" << tile.getRow()
-             << "\n";
+      output << "_resolve _main core_" << std::to_string(tile.getCol()) << "_"
+             << std::to_string(tile.getRow()) << "\n";
     }
 
   return success();

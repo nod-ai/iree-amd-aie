@@ -4,8 +4,8 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+#include "AIEDialect.h"
 #include "Passes.h"
-#include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "iree-amd-aie/aie_runtime/iree_aie_runtime.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Pass/Pass.h"
@@ -46,19 +46,19 @@ struct AMDAIELocalizeLocksPass : mlir::OperationPass<DeviceOp> {
     for (auto coreOp : deviceOp.getOps<CoreOp>()) {
       // Collect the locks used in this core.
       auto thisTile = dyn_cast<TileOp>(coreOp.getTile().getDefiningOp());
-      int col = thisTile.colIndex();
-      int row = thisTile.rowIndex();
+      int col = thisTile.getCol();
+      int row = thisTile.getRow();
 
       // Find the neighboring tiles
       SmallVector<TileOp, 4> accessibleTiles;
       for (auto tile : deviceOp.getOps<TileOp>())
-        if (int dstRow = tile.rowIndex();
-            deviceModel.hasLegalMemAffinity(col, row, tile.colIndex(), dstRow))
+        if (int dstRow = tile.getRow();
+            deviceModel.hasLegalMemAffinity(col, row, tile.getCol(), dstRow))
           accessibleTiles.push_back(tile);
 
       for (auto tile : accessibleTiles) {
-        int dstCol = tile.colIndex();
-        int dstRow = tile.rowIndex();
+        int dstCol = tile.getCol();
+        int dstRow = tile.getRow();
         int cardinalMemOffset = 0;
         int numLocks = deviceModel.getNumLocks(dstCol, dstRow);
         for (auto user : tile.getResult().getUsers())
@@ -74,7 +74,7 @@ struct AMDAIELocalizeLocksPass : mlir::OperationPass<DeviceOp> {
             else
               llvm_unreachable("Found illegal lock user!");
 
-            int localLockIndex = cardinalMemOffset + lock.getLockIDValue();
+            int localLockIndex = cardinalMemOffset + lock.getLockID().value();
 
             OpBuilder builder =
                 OpBuilder::atBlockBegin(&coreOp.getBody().front());

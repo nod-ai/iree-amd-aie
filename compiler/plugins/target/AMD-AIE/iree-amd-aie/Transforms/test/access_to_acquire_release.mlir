@@ -12,9 +12,8 @@ func.func @read_access(%arg0: !amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 2>>
   %c0 = arith.constant 0 : index
   %tile = amdaie.tile(%c0, %c0)
   %2 = amdaie.circular_dma_cpy_nd(%arg0[] [] [], %arg1[] [] []) : (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 2>>, !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>)
-  %core = amdaie.core(%tile) {
+  %core = amdaie.core(%tile, in : [%2], out : []) {
     %3 = amdaie.logicalobjectfifo.access(%arg0, Read) : !amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 2>> -> memref<1x1x8x16xi32, 2>
-    amdaie.logicalobjectfifo.consume(%2)
     linalg.fill ins(%c0_i32 : i32) outs(%3 : memref<1x1x8x16xi32, 2>)
     amdaie.end
   }
@@ -35,10 +34,9 @@ func.func @write_access(%arg0: !amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 2>
   %c0_i32 = arith.constant 0 : i32
   %tile = amdaie.tile(%c0, %c0)
   %2 = amdaie.circular_dma_cpy_nd(%arg1[] [] [], %arg0[] [] []) : (!amdaie.logicalobjectfifo<memref<8x16xi32, 1>>, !amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 2>>)
-  %core = amdaie.core(%tile) {
+  %core = amdaie.core(%tile, in : [], out : [%2]) {
     %3 = amdaie.logicalobjectfifo.access(%arg0, Write) : !amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 2>> -> memref<1x1x8x16xi32, 2>
     linalg.fill ins(%c0_i32 : i32) outs(%3 : memref<1x1x8x16xi32, 2>)
-    amdaie.logicalobjectfifo.produce(%2)
     amdaie.end
   }
   return
@@ -55,7 +53,7 @@ func.func @none_access(%arg0: !amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 2>>
   %c0_i32 = arith.constant 0 : i32
   %c0 = arith.constant 0 : index
   %tile = amdaie.tile(%c0, %c0)
-  %core = amdaie.core(%tile) {
+  %core = amdaie.core(%tile, in : [], out : []) {
     %3 = amdaie.logicalobjectfifo.access(%arg0, None) : !amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 2>> -> memref<1x1x8x16xi32, 2>
     linalg.fill ins(%c0_i32 : i32) outs(%3 : memref<1x1x8x16xi32, 2>)
     amdaie.end
@@ -74,7 +72,7 @@ func.func @any_access(%arg0: !amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 2>>)
   %c0_i32 = arith.constant 0 : i32
   %c0 = arith.constant 0 : index
   %tile = amdaie.tile(%c0, %c0)
-  %core = amdaie.core(%tile) {
+  %core = amdaie.core(%tile, in : [], out : []) {
     %3 = amdaie.logicalobjectfifo.access(%arg0, Any) : !amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 2>> -> memref<1x1x8x16xi32, 2>
     linalg.fill ins(%c0_i32 : i32) outs(%3 : memref<1x1x8x16xi32, 2>)
     amdaie.end
@@ -102,13 +100,11 @@ func.func @read_and_write(%arg0: !amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 
   %tile = amdaie.tile(%c0, %c0)
   %2 = amdaie.circular_dma_cpy_nd(%arg0[] [] [], %arg1[] [] []) : (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 2>>, !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>)
   %3 = amdaie.circular_dma_cpy_nd(%arg3[] [] [], %arg2[] [] []) : (!amdaie.logicalobjectfifo<memref<8x16xi32, 1>>, !amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 2>>)
-  %core = amdaie.core(%tile) {
+  %core = amdaie.core(%tile, in : [%2], out : [%3]) {
     %4 = amdaie.logicalobjectfifo.access(%arg0, Read) : !amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 2>> -> memref<1x1x8x16xi32, 2>
     %5 = amdaie.logicalobjectfifo.access(%arg2, Write) : !amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 2>> -> memref<1x1x8x16xi32, 2>
-    amdaie.logicalobjectfifo.consume(%2)
     linalg.fill ins(%c0_i32 : i32) outs(%4 : memref<1x1x8x16xi32, 2>)
     linalg.fill ins(%c0_i32 : i32) outs(%5 : memref<1x1x8x16xi32, 2>)
-    amdaie.logicalobjectfifo.produce(%3)
     amdaie.end
   }
   return
@@ -146,21 +142,17 @@ func.func @read_write_multiple_blocks(%arg0: !amdaie.logicalobjectfifo<memref<1x
   %tile = amdaie.tile(%c0, %c0)
   %2 = amdaie.circular_dma_cpy_nd(%arg0[] [] [], %arg1[] [] []) : (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 2>>, !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>)
   %3 = amdaie.circular_dma_cpy_nd(%arg3[] [] [], %arg2[] [] []) : (!amdaie.logicalobjectfifo<memref<8x16xi32, 1>>, !amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 2>>)
-  %core = amdaie.core(%tile) {
+  %core = amdaie.core(%tile, in : [%2], out : [%3]) {
     %4 = amdaie.logicalobjectfifo.access(%arg0, Read) : !amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 2>> -> memref<1x1x8x16xi32, 2>
-    amdaie.logicalobjectfifo.consume(%2)
     linalg.fill ins(%c0_i32 : i32) outs(%4 : memref<1x1x8x16xi32, 2>)
     scf.for %arg = %c0 to %c8 step %c1  {
       %5 = amdaie.logicalobjectfifo.access(%arg0, Read) : !amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 2>> -> memref<1x1x8x16xi32, 2>
-      amdaie.logicalobjectfifo.consume(%2)
       linalg.fill ins(%c0_i32 : i32) outs(%5 : memref<1x1x8x16xi32, 2>)
     }
     %6 = amdaie.logicalobjectfifo.access(%arg0, Read) : !amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 2>> -> memref<1x1x8x16xi32, 2>
     %7 = amdaie.logicalobjectfifo.access(%arg2, Write) : !amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 2>> -> memref<1x1x8x16xi32, 2>
-    amdaie.logicalobjectfifo.consume(%2)    
     linalg.fill ins(%c0_i32 : i32) outs(%6 : memref<1x1x8x16xi32, 2>)
     linalg.fill ins(%c0_i32 : i32) outs(%7 : memref<1x1x8x16xi32, 2>)
-    amdaie.logicalobjectfifo.produce(%3)
     amdaie.end
   }
   return
@@ -187,11 +179,9 @@ func.func @multiple_reads_deterministic_order(%arg0: !amdaie.logicalobjectfifo<m
   %tile = amdaie.tile(%c0, %c0)
   %2 = amdaie.circular_dma_cpy_nd(%arg0[] [] [], %arg1[] [] []) : (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 2>>, !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>)
   %3 = amdaie.circular_dma_cpy_nd(%arg2[] [] [], %arg3[] [] []) : (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 2>>, !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>)
-  %core = amdaie.core(%tile) {
+  %core = amdaie.core(%tile, in : [%2, %3], out : []) {
     %4 = amdaie.logicalobjectfifo.access(%arg0, Read) : !amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 2>> -> memref<1x1x8x16xi32, 2>
     %5 = amdaie.logicalobjectfifo.access(%arg2, Read) : !amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 2>> -> memref<1x1x8x16xi32, 2>
-    amdaie.logicalobjectfifo.consume(%2)
-    amdaie.logicalobjectfifo.consume(%3)
     linalg.fill ins(%c0_i32 : i32) outs(%4 : memref<1x1x8x16xi32, 2>)
     linalg.fill ins(%c0_i32 : i32) outs(%5 : memref<1x1x8x16xi32, 2>)
     amdaie.end
@@ -220,13 +210,11 @@ func.func @multiple_writes_deterministic_order(%arg0: !amdaie.logicalobjectfifo<
   %tile = amdaie.tile(%c0, %c0)
   %2 = amdaie.circular_dma_cpy_nd(%arg1[] [] [], %arg0[] [] []) : (!amdaie.logicalobjectfifo<memref<8x16xi32, 1>>, !amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 2>>)
   %3 = amdaie.circular_dma_cpy_nd(%arg3[] [] [], %arg2[] [] []) : (!amdaie.logicalobjectfifo<memref<8x16xi32, 1>>, !amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 2>>)
-  %core = amdaie.core(%tile) {
+  %core = amdaie.core(%tile, in : [], out : [%2, %3]) {
     %4 = amdaie.logicalobjectfifo.access(%arg0, Write) : !amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 2>> -> memref<1x1x8x16xi32, 2>
     %5 = amdaie.logicalobjectfifo.access(%arg2, Write) : !amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 2>> -> memref<1x1x8x16xi32, 2>
     linalg.fill ins(%c0_i32 : i32) outs(%4 : memref<1x1x8x16xi32, 2>)
     linalg.fill ins(%c0_i32 : i32) outs(%5 : memref<1x1x8x16xi32, 2>)
-    amdaie.logicalobjectfifo.produce(%2)
-    amdaie.logicalobjectfifo.produce(%3)
     amdaie.end
   }
   return

@@ -71,45 +71,43 @@ LogicalResult insertCoreOps(mlir::ModuleOp moduleOp) {
     }
     Value threadX = attrMapping[gpu::threadX(forallOp->getContext())];
     Value threadY = attrMapping[gpu::threadY(forallOp->getContext())];
+
+    // Find input and output DMAs that need to be added to the core.
+    SmallVector<Value> inputDmas;
+    SmallVector<Value> outputDmas;
+    WalkResult dmaRes = forallOp->walk([&](AMDAIE::DmaCpyNdOp dmaOp) {
+      uint8_t sourceMemspace =
+          dmaOp.getSourceObjectFifo().getMemorySpaceAsUInt();
+      uint8_t targetMemspace =
+          dmaOp.getTargetObjectFifo().getMemorySpaceAsUInt();
+      if (sourceMemspace == 2 && targetMemspace == 2) {
+        dmaOp->emitOpError()
+            << "dma op with both source and target on L1 is not supported";
+        return WalkResult::interrupt();
+      } else if (sourceMemspace == 2) {
+        outputDmas.push_back(dmaOp);
+      } else if (targetMemspace == 2) {
+        inputDmas.push_back(dmaOp);
+      }
+      return WalkResult::advance();
+    });
+    if (dmaRes.wasInterrupted()) return WalkResult::interrupt();
+
     // Create CoreOp at the end of the innermost forall
     rewriter.setInsertionPoint(forallOp.getBody()->getTerminator());
-    auto coreOp = rewriter.create<AMDAIE::CoreOp>(rewriter.getUnknownLoc(),
-                                                  threadX, threadY);
+    auto coreOp = rewriter.create<AMDAIE::CoreOp>(
+        rewriter.getUnknownLoc(), threadX, threadY, inputDmas, outputDmas);
     Region &region = coreOp.getRegion();
     Block *newBlock = rewriter.createBlock(&region);
     rewriter.setInsertionPointToStart(newBlock);
     auto endOp = rewriter.create<AMDAIE::EndOp>(rewriter.getUnknownLoc());
 
     // Walk all operations in the workgroup and fill in the CoreOp with
-    // computational ops (linalg) and synchronization ops to synchronize
-    // with the workgroup DMA ops.
+    // computational ops.
     WalkResult forallRes = forallOp->walk([&](Operation *op) {
       // Skip operations already inside core ops
       if (op->getParentOfType<AMDAIE::CoreOp>()) return WalkResult::advance();
-      if (auto dmaOp = dyn_cast<AMDAIE::DmaCpyNdOp>(op)) {
-        auto sourceMemspace = dmaOp.getSourceObjectFifo().getMemorySpace();
-        auto targetMemspace = dmaOp.getTargetObjectFifo().getMemorySpace();
-        if (sourceMemspace &&
-            dyn_cast<IntegerAttr>(sourceMemspace).getInt() == 2 &&
-            targetMemspace &&
-            dyn_cast<IntegerAttr>(targetMemspace).getInt() == 2) {
-          dmaOp->emitOpError()
-              << "dma op with both source and target on L1 is not supported";
-          return WalkResult::interrupt();
-        } else if (sourceMemspace &&
-                   dyn_cast<IntegerAttr>(sourceMemspace).getInt() == 2) {
-          // From L1, so insert a logical objectFifo produce op
-          rewriter.setInsertionPoint(endOp);
-          rewriter.create<AMDAIE::LogicalObjectFifoProduce>(
-              rewriter.getUnknownLoc(), SmallVector<Type, 1>{}, dmaOp);
-        } else if (targetMemspace &&
-                   dyn_cast<IntegerAttr>(targetMemspace).getInt() == 2) {
-          // To L1, so insert a logical objectFifo consume op
-          rewriter.setInsertionPoint(endOp);
-          rewriter.create<AMDAIE::LogicalObjectFifoConsume>(
-              rewriter.getUnknownLoc(), SmallVector<Type, 1>{}, dmaOp);
-        }
-      } else if (auto linalgOp = dyn_cast<linalg::LinalgOp>(op)) {
+      if (auto linalgOp = dyn_cast<linalg::LinalgOp>(op)) {
         rewriter.setInsertionPoint(endOp);
         rewriter.moveOpBefore(linalgOp, endOp);
       } else if (isa<vector::ContractionOp>(op)) {

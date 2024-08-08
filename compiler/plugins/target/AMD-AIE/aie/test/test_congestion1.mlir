@@ -7,50 +7,50 @@
 // CHECK:    %[[T04:.*]] = aie.tile(0, 4)
 // CHECK:    %[[T05:.*]] = aie.tile(0, 5)
 // CHECK:    %{{.*}} = aie.switchbox(%[[T01]]) {
-// CHECK:      aie.connect<North : 0, DMA : 0>
-// CHECK:      aie.connect<North : 1, DMA : 1>
-// CHECK:      aie.connect<North : 2, DMA : 2>
-// CHECK:      aie.connect<North : 3, DMA : 3>
-// CHECK:      aie.connect<DMA : 0, South : 0>
+// CHECK:      aie.connect<NORTH : 0, DMA : 0>
+// CHECK:      aie.connect<NORTH : 1, DMA : 1>
+// CHECK:      aie.connect<NORTH : 2, DMA : 2>
+// CHECK:      aie.connect<NORTH : 3, DMA : 3>
+// CHECK:      aie.connect<DMA : 0, SOUTH : 0>
 // CHECK:      %0 = aie.amsel<0> (0)
 // CHECK:      %1 = aie.masterset(DMA : 4, %0)
-// CHECK:      aie.packet_rules(South : 0) {
+// CHECK:      aie.packet_rules(SOUTH : 0) {
 // CHECK:        aie.rule(31, 0, %0)
 // CHECK:      }
 // CHECK:    }
 // CHECK:    %{{.*}} = aie.switchbox(%[[T02]]) {
-// CHECK:      aie.connect<DMA : 0, South : 0>
-// CHECK:      aie.connect<North : 0, South : 1>
-// CHECK:      aie.connect<North : 1, South : 2>
-// CHECK:      aie.connect<North : 2, South : 3>
+// CHECK:      aie.connect<DMA : 0, SOUTH : 0>
+// CHECK:      aie.connect<NORTH : 0, SOUTH : 1>
+// CHECK:      aie.connect<NORTH : 1, SOUTH : 2>
+// CHECK:      aie.connect<NORTH : 2, SOUTH : 3>
 // CHECK:    }
 // CHECK:    %{{.*}} = aie.switchbox(%[[T03]]) {
-// CHECK:      aie.connect<DMA : 0, South : 0>
-// CHECK:      aie.connect<North : 0, South : 1>
-// CHECK:      aie.connect<North : 1, South : 2>
+// CHECK:      aie.connect<DMA : 0, SOUTH : 0>
+// CHECK:      aie.connect<NORTH : 0, SOUTH : 1>
+// CHECK:      aie.connect<NORTH : 1, SOUTH : 2>
 // CHECK:    }
 // CHECK:    %{{.*}} = aie.switchbox(%[[T04]]) {
-// CHECK:      aie.connect<DMA : 0, South : 0>
-// CHECK:      aie.connect<North : 0, South : 1>
+// CHECK:      aie.connect<DMA : 0, SOUTH : 0>
+// CHECK:      aie.connect<NORTH : 0, SOUTH : 1>
 // CHECK:    }
 // CHECK:    %{{.*}} = aie.switchbox(%[[T05]]) {
-// CHECK:      aie.connect<DMA : 0, South : 0>
+// CHECK:      aie.connect<DMA : 0, SOUTH : 0>
 // CHECK:      %0 = aie.amsel<0> (0)
-// CHECK:      %1 = aie.masterset(East : 0, %0)
+// CHECK:      %1 = aie.masterset(EAST : 0, %0)
 // CHECK:      aie.packet_rules(DMA : 1) {
 // CHECK:        aie.rule(31, 0, %0)
 // CHECK:      }
 // CHECK:    }
 // CHECK:    %{{.*}} = aie.switchbox(%[[T00]]) {
-// CHECK:      aie.connect<North : 0, South : 2>
+// CHECK:      aie.connect<NORTH : 0, SOUTH : 2>
 // CHECK:      %0 = aie.amsel<0> (0)
-// CHECK:      %1 = aie.masterset(North : 0, %0)
-// CHECK:      aie.packet_rules(East : 0) {
+// CHECK:      %1 = aie.masterset(NORTH : 0, %0)
+// CHECK:      aie.packet_rules(EAST : 0) {
 // CHECK:        aie.rule(31, 0, %0)
 // CHECK:      }
 // CHECK:    }
 // CHECK:    %{{.*}} = aie.shim_mux(%[[T00]]) {
-// CHECK:      aie.connect<North : 2, DMA : 0>
+// CHECK:      aie.connect<NORTH : 2, DMA : 0>
 // CHECK:    }
 module {
  aie.device(npu1_2col) {

@@ -20,7 +20,8 @@ struct Port {
   StrmSwPortType bundle;
   int channel;
 
-  Port() = delete;
+  // mlir-air legacy
+  Port() : bundle(), channel() {}
   Port(StrmSwPortType b, int c) : bundle(b), channel(c) {}
   typedef std::tuple<StrmSwPortType, int> TupleType;
   Port(TupleType t) : Port(std::get<0>(t), std::get<1>(t)) {}

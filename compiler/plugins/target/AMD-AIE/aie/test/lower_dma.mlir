@@ -38,8 +38,8 @@ module @example0 {
  func.func private @llvm.aie2.put.ms(i32, i32) -> ()
  func.func private @llvm.aie2.mcd.write.vec(vector<16xi32>, i32) -> ()
 
-  // Odd  AIE rows: DMem on the East
-  // Even AIE rows: DMem on the West
+  // Odd  AIE rows: DMem on the EAST
+  // Even AIE rows: DMem on the WEST
 
   // (2, 4) (3, 4) (4, 4) (5, 4)
   // (2, 3) (3, 3) (4, 3) (5, 3)
@@ -79,11 +79,11 @@ module @example0 {
   }
 
   %s33 = aie.switchbox(%t33) {
-    aie.connect<DMA: 0, North: 0>
+    aie.connect<DMA: 0, NORTH: 0>
   }
 
   %s23 = aie.switchbox(%t23) {
-    aie.connect<South: 0, DMA: 0>
+    aie.connect<SOUTH: 0, DMA: 0>
   }
 
   %c33 = aie.core(%t33) {

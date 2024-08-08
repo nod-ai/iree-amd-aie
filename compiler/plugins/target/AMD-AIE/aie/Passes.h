@@ -7,7 +7,7 @@
 #ifndef AMDAIE_PASSES_H_
 #define AMDAIE_PASSES_H_
 
-#include "aie/Dialect/AIE/IR/AIEDialect.h"
+#include "AIEDialect.h"
 #include "mlir/Pass/Pass.h"
 
 namespace mlir::iree_compiler::AMDAIE {
