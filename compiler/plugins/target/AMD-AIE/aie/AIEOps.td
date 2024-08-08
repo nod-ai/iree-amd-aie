@@ -301,7 +301,7 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", [
   let arguments = (
     ins AnyMemRef:$buffer,
         // in multiples of element width (not bytes)
-        DefaultValuedOptionalAttr<I32Attr, "-1">:$offset,
+        DefaultValuedOptionalAttr<I32Attr, "0">:$offset,
         // in multiples of element width (not bytes)
         OptionalAttr<I32Attr>:$len,
         OptionalAttr<BDDimLayoutArrayAttr>:$dimensions,
@@ -314,7 +314,7 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", [
 
 
   let assemblyFormat = [{
-    `(` $buffer `:` type($buffer) (`,` $offset^)? (`,` $len^)? (`,` $dimensions^)? (`,` $pad_dimensions^)? (`,` `pad_value` `=` $pad_value^)? `)` attr-dict
+    `(` $buffer `:` type($buffer) `)` attr-dict
   }];
 
   let builders = [

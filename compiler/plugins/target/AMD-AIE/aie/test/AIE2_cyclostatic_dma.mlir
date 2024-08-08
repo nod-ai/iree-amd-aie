@@ -61,12 +61,12 @@
 // CHECK:             %[[VAL_4:.*]] = aie.dma_start(MM2S, 0, ^bb1, ^bb3)
 // CHECK:           ^bb1:
 // CHECK:             aie.use_lock(%[[FIFO_CONS_LOCK]], AcquireGreaterEqual, 1)
-// CHECK:             aie.dma_bd(%[[FIFO_BUFF_0]] : memref<i32>, 0, 1)
+// CHECK:             aie.dma_bd(%[[FIFO_BUFF_0]] : memref<i32>) {len = 1 : i32}
 // CHECK:             aie.use_lock(%[[FIFO_PROD_LOCK]], Release, 1)
 // CHECK:             aie.next_bd ^bb2
 // CHECK:           ^bb2:
 // CHECK:             aie.use_lock(%[[FIFO_CONS_LOCK]], AcquireGreaterEqual, 1)
-// CHECK:             aie.dma_bd(%[[FIFO_BUFF_1]] : memref<i32>, 0, 1)
+// CHECK:             aie.dma_bd(%[[FIFO_BUFF_1]] : memref<i32>) {len = 1 : i32}
 // CHECK:             aie.use_lock(%[[FIFO_PROD_LOCK]], Release, 1)
 // CHECK:             aie.next_bd ^bb1
 // CHECK:           ^bb3:
@@ -76,17 +76,17 @@
 // CHECK:             %[[VAL_5:.*]] = aie.dma_start(S2MM, 0, ^bb1, ^bb4)
 // CHECK:           ^bb1:
 // CHECK:             aie.use_lock(%[[FIFO_CONS_PROD_LOCK]], AcquireGreaterEqual, 1)
-// CHECK:             aie.dma_bd(%[[FIFO_CONS_BUFF_0]] : memref<i32>, 0, 1)
+// CHECK:             aie.dma_bd(%[[FIFO_CONS_BUFF_0]] : memref<i32>) {len = 1 : i32}
 // CHECK:             aie.use_lock(%[[FIFO_CONS_CONS_LOCK]], Release, 1)
 // CHECK:             aie.next_bd ^bb2
 // CHECK:           ^bb2:
 // CHECK:             aie.use_lock(%[[FIFO_CONS_PROD_LOCK]], AcquireGreaterEqual, 1)
-// CHECK:             aie.dma_bd(%[[FIFO_CONS_BUFF_1]] : memref<i32>, 0, 1)
+// CHECK:             aie.dma_bd(%[[FIFO_CONS_BUFF_1]] : memref<i32>) {len = 1 : i32}
 // CHECK:             aie.use_lock(%[[FIFO_CONS_CONS_LOCK]], Release, 1)
 // CHECK:             aie.next_bd ^bb3
 // CHECK:           ^bb3:
 // CHECK:             aie.use_lock(%[[FIFO_CONS_PROD_LOCK]], AcquireGreaterEqual, 1)
-// CHECK:             aie.dma_bd(%[[FIFO_CONS_BUFF_2]] : memref<i32>, 0, 1)
+// CHECK:             aie.dma_bd(%[[FIFO_CONS_BUFF_2]] : memref<i32>) {len = 1 : i32}
 // CHECK:             aie.use_lock(%[[FIFO_CONS_CONS_LOCK]], Release, 1)
 // CHECK:             aie.next_bd ^bb1
 // CHECK:           ^bb4:
