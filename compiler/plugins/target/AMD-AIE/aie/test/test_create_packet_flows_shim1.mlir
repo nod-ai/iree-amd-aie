@@ -3,12 +3,12 @@
 // CHECK-LABEL: module @aie_module {
 // CHECK:   %[[VAL_0:.*]] = aie.tile(7, 0)
 // CHECK:   %[[VAL_1:.*]] = aie.shim_mux(%[[VAL_0:.*]])  {
-// CHECK:     aie.connect<DMA : 0, North : 3>
+// CHECK:     aie.connect<DMA : 0, NORTH : 3>
 // CHECK:   }
 // CHECK:   %[[VAL_2:.*]] = aie.switchbox(%[[VAL_0:.*]]) {
 // CHECK:     %[[VAL_3:.*]] = aie.amsel<0> (0)
-// CHECK:     %[[VAL_4:.*]] = aie.masterset(North : 0, %[[VAL_3:.*]])
-// CHECK:     aie.packet_rules(South : 3) {
+// CHECK:     %[[VAL_4:.*]] = aie.masterset(NORTH : 0, %[[VAL_3:.*]])
+// CHECK:     aie.packet_rules(SOUTH : 3) {
 // CHECK:       aie.rule(31, 3, %[[VAL_3:.*]])
 // CHECK:     }
 // CHECK:   }
@@ -16,7 +16,7 @@
 // CHECK:   %[[VAL_6:.*]] = aie.switchbox(%[[VAL_5:.*]]) {
 // CHECK:     %[[VAL_7:.*]] = aie.amsel<0> (0)
 // CHECK:     %[[VAL_8:.*]] = aie.masterset(DMA : 0, %[[VAL_7:.*]])
-// CHECK:     aie.packet_rules(South : 0) {
+// CHECK:     aie.packet_rules(SOUTH : 0) {
 // CHECK:       aie.rule(31, 3, %[[VAL_7:.*]])
 // CHECK:     }
 // CHECK:   }

@@ -4,7 +4,7 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#include "aie/Dialect/AIE/IR/AIEDialect.h"
+#include "aie/AIEDialect.h"
 #include "iree-amd-aie/IR/AMDAIEOps.h"
 #include "iree-amd-aie/Transforms/AMDAIEDmaUtils.h"
 #include "iree-amd-aie/Transforms/Passes.h"
@@ -30,14 +30,6 @@ namespace {
 //===----------------------------------------------------------------------===//
 // Utilities
 //===----------------------------------------------------------------------===//
-
-/// Comparator for a pair of `amdaie.dma_cpy_nd` on the first tile operation's
-/// column index.
-bool dmaColComparator(
-    std::pair<AMDAIE::DmaCpyNdOp, SmallVector<AMDAIE::TileOp>> &a,
-    std::pair<AMDAIE::DmaCpyNdOp, SmallVector<AMDAIE::TileOp>> &b) {
-  return TileOp::tileColumnComparator(a.second[0], b.second[0]);
-};
 
 /// Utility to use tuple coordinates as key of a `DenseMap`.
 struct LocationMapInfo {

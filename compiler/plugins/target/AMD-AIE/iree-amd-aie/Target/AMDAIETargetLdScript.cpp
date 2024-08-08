@@ -5,7 +5,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 #include "AMDAIETargets.h"
-#include "aie/Dialect/AIE/IR/AIEDialect.h"
+#include "aie/AIEDialect.h"
 
 using namespace mlir;
 using namespace xilinx;
@@ -15,9 +15,9 @@ using namespace xilinx::AIE;
 // with the given offset. The offset is different depending on where the buffers
 // are accessed from.
 static void writeLDScriptMap(raw_ostream &output, BufferOp buf, int offset) {
-  std::string bufName(buf.name().getValue());
-  int bufferBaseAddr = getBufferBaseAddress(buf);
-  int numBytes = buf.getAllocationSize();
+  std::string bufName(name(buf).getValue());
+  int bufferBaseAddr = buf.getAddress().value();
+  int numBytes = getAllocationSize(buf);
   output << ". = 0x" << llvm::utohexstr(offset + bufferBaseAddr) << ";\n";
   output << bufName << " = .;\n";
   output << ". += 0x" << llvm::utohexstr(numBytes) << ";\n";
@@ -65,15 +65,15 @@ LogicalResult mlir::iree_compiler::AMDAIE::AIETranslateToLdScript(
   AMDAIEDeviceModel deviceModel =
       getDeviceModel(static_cast<AMDAIEDevice>(deviceOp.getDevice()));
   for (auto tile : deviceOp.getOps<TileOp>())
-    if (tile.colIndex() == tileCol && tile.rowIndex() == tileRow) {
-      TileLoc srcCoord = {tile.colIndex(), tile.rowIndex()};
+    if (tile.getCol() == tileCol && tile.getRow() == tileRow) {
+      TileLoc srcCoord = {tile.getCol(), tile.getRow()};
 
       // Figure out how much memory we have left for random allocations
-      auto core = tile.getCoreOp();
+      auto core = getCoreOp(tile);
       int max = core.getStackSize();
       for (auto buf : buffers[tiles[srcCoord]]) {
-        int bufferBaseAddr = getBufferBaseAddress(buf);
-        int numBytes = buf.getAllocationSize();
+        int bufferBaseAddr = buf.getAddress().value();
+        int numBytes = getAllocationSize(buf);
         max = std::max(max, bufferBaseAddr + numBytes);
       }
       int origin = deviceModel.getMemInternalBaseAddress() + max;
@@ -101,7 +101,7 @@ SECTIONS
   } > data
 )THESCRIPT";
       auto doBuffer = [&](std::optional<TileLoc> tile, int offset,
-                          std::string dir) {
+                          const std::string& dir) {
         if (tile) {
           if (tiles.count({tile->col, tile->row}))
             for (auto buf : buffers[tiles[{tile->col, tile->row}]])
@@ -120,7 +120,7 @@ SECTIONS
              << ";\n";
       output << "_sp_start_value_DM_stack = .;\n";
 
-      if (auto core = tile.getCoreOp())
+      if (auto core = getCoreOp(tile))
         output << ". += 0x" << llvm::utohexstr(core.getStackSize())
                << "; /* stack */\n";
       else
@@ -138,9 +138,9 @@ SECTIONS
       output << "  .bss : { *(.bss) } > data\n";
       output << "  .bss.DMb.4 : { *(.bss.DMb.4) } > data\n";
       output << "}\n";
-      if (auto coreOp = tile.getCoreOp()) {
-        output << "PROVIDE(main = core_" << tile.getCol() << "_"
-               << tile.getRow() << ");\n";
+      if (auto coreOp = getCoreOp(tile)) {
+        output << "PROVIDE(main = core_" << std::to_string(tile.getCol()) << "_"
+               << std::to_string(tile.getRow()) << ");\n";
       }
     }
   return success();

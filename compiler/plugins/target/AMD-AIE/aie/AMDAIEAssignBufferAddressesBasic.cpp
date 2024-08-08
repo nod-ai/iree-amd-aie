@@ -4,8 +4,8 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+#include "AIEDialect.h"
 #include "Passes.h"
-#include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "iree-amd-aie/aie_runtime/iree_aie_runtime.h"
 #include "llvm/ADT/Twine.h"
 #include "mlir/IR/Attributes.h"
@@ -41,13 +41,13 @@ struct AMDAIEAssignBufferAddressesPassBasic : mlir::OperationPass<DeviceOp> {
     DeviceOp device = getOperation();
     int counter = 0;
     device.walk<WalkOrder::PreOrder>([&](BufferOp buffer) {
-      if (!buffer.hasName())
+      if (!hasName(buffer))
         buffer.setSymName("_anonymous" + std::to_string(counter++));
     });
 
     DenseMap<TileOp, SetVector<BufferOp>> tileToBuffers;
     device.walk<WalkOrder::PreOrder>([&](BufferOp buffer) {
-      tileToBuffers[buffer.getTileOp()].insert(buffer);
+      tileToBuffers[getTileOp(*buffer)].insert(buffer);
     });
 
     AMDAIEDeviceModel deviceModel = mlir::iree_compiler::AMDAIE::getDeviceModel(
@@ -55,11 +55,11 @@ struct AMDAIEAssignBufferAddressesPassBasic : mlir::OperationPass<DeviceOp> {
     for (auto [tile, buffers] : tileToBuffers) {
       // Leave room at the bottom of the address range for stack
       int64_t address = 0;
-      if (auto core = tile.getCoreOp()) address += core.getStackSize();
+      if (auto core = getCoreOp(tile)) address += core.getStackSize();
 
       for (auto buffer : buffers) {
         buffer.setAddress(address);
-        address += buffer.getAllocationSize();
+        address += getAllocationSize(buffer);
       }
 
       int maxDataMemorySize;

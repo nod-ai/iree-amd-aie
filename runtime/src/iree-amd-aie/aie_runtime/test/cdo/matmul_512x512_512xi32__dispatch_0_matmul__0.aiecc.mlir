@@ -26,142 +26,142 @@ aie.device(npu1_4col) {
   %tile_1_5 = aie.tile(1, 5)
   %tile_2_5 = aie.tile(2, 5)
   %tile_3_5 = aie.tile(3, 5)
-  %lock_3_1 = aie.lock(%tile_3_1, 9) {init = 4 : i32}
-  %lock_3_1_0 = aie.lock(%tile_3_1, 8) {init = 0 : i32}
-  %lock_3_1_1 = aie.lock(%tile_3_1, 7) {init = 1 : i32}
-  %lock_3_1_2 = aie.lock(%tile_3_1, 6) {init = 0 : i32}
-  %lock_3_1_3 = aie.lock(%tile_3_1, 5) {init = 1 : i32}
-  %lock_3_1_4 = aie.lock(%tile_3_1, 4) {init = 0 : i32}
-  %lock_3_1_5 = aie.lock(%tile_3_1, 3) {init = 1 : i32}
-  %lock_3_1_6 = aie.lock(%tile_3_1, 2) {init = 0 : i32}
-  %lock_3_1_7 = aie.lock(%tile_3_1, 1) {init = 1 : i32}
-  %lock_3_1_8 = aie.lock(%tile_3_1, 0) {init = 0 : i32}
-  %lock_2_1 = aie.lock(%tile_2_1, 9) {init = 4 : i32}
-  %lock_2_1_9 = aie.lock(%tile_2_1, 8) {init = 0 : i32}
-  %lock_2_1_10 = aie.lock(%tile_2_1, 7) {init = 1 : i32}
-  %lock_2_1_11 = aie.lock(%tile_2_1, 6) {init = 0 : i32}
-  %lock_2_1_12 = aie.lock(%tile_2_1, 5) {init = 1 : i32}
-  %lock_2_1_13 = aie.lock(%tile_2_1, 4) {init = 0 : i32}
-  %lock_2_1_14 = aie.lock(%tile_2_1, 3) {init = 1 : i32}
-  %lock_2_1_15 = aie.lock(%tile_2_1, 2) {init = 0 : i32}
-  %lock_2_1_16 = aie.lock(%tile_2_1, 1) {init = 1 : i32}
-  %lock_2_1_17 = aie.lock(%tile_2_1, 0) {init = 0 : i32}
-  %lock_1_1 = aie.lock(%tile_1_1, 9) {init = 4 : i32}
-  %lock_1_1_18 = aie.lock(%tile_1_1, 8) {init = 0 : i32}
-  %lock_1_1_19 = aie.lock(%tile_1_1, 7) {init = 1 : i32}
-  %lock_1_1_20 = aie.lock(%tile_1_1, 6) {init = 0 : i32}
-  %lock_1_1_21 = aie.lock(%tile_1_1, 5) {init = 1 : i32}
-  %lock_1_1_22 = aie.lock(%tile_1_1, 4) {init = 0 : i32}
-  %lock_1_1_23 = aie.lock(%tile_1_1, 3) {init = 1 : i32}
-  %lock_1_1_24 = aie.lock(%tile_1_1, 2) {init = 0 : i32}
-  %lock_1_1_25 = aie.lock(%tile_1_1, 1) {init = 1 : i32}
-  %lock_1_1_26 = aie.lock(%tile_1_1, 0) {init = 0 : i32}
-  %lock_0_1 = aie.lock(%tile_0_1, 9) {init = 4 : i32}
-  %lock_0_1_27 = aie.lock(%tile_0_1, 8) {init = 0 : i32}
-  %lock_0_1_28 = aie.lock(%tile_0_1, 7) {init = 1 : i32}
-  %lock_0_1_29 = aie.lock(%tile_0_1, 6) {init = 0 : i32}
-  %lock_0_1_30 = aie.lock(%tile_0_1, 5) {init = 1 : i32}
-  %lock_0_1_31 = aie.lock(%tile_0_1, 4) {init = 0 : i32}
-  %lock_0_1_32 = aie.lock(%tile_0_1, 3) {init = 1 : i32}
-  %lock_0_1_33 = aie.lock(%tile_0_1, 2) {init = 0 : i32}
-  %lock_0_1_34 = aie.lock(%tile_0_1, 1) {init = 1 : i32}
-  %lock_0_1_35 = aie.lock(%tile_0_1, 0) {init = 0 : i32}
-  %lock_0_2 = aie.lock(%tile_0_2, 5) {init = 2 : i32}
-  %lock_0_2_36 = aie.lock(%tile_0_2, 4) {init = 0 : i32}
-  %lock_0_2_37 = aie.lock(%tile_0_2, 3) {init = 2 : i32}
-  %lock_0_2_38 = aie.lock(%tile_0_2, 2) {init = 0 : i32}
-  %lock_0_2_39 = aie.lock(%tile_0_2, 1) {init = 1 : i32}
-  %lock_0_2_40 = aie.lock(%tile_0_2, 0) {init = 0 : i32}
-  %lock_1_2 = aie.lock(%tile_1_2, 5) {init = 2 : i32}
-  %lock_1_2_41 = aie.lock(%tile_1_2, 4) {init = 0 : i32}
-  %lock_1_2_42 = aie.lock(%tile_1_2, 3) {init = 2 : i32}
-  %lock_1_2_43 = aie.lock(%tile_1_2, 2) {init = 0 : i32}
-  %lock_1_2_44 = aie.lock(%tile_1_2, 1) {init = 1 : i32}
-  %lock_1_2_45 = aie.lock(%tile_1_2, 0) {init = 0 : i32}
-  %lock_2_2 = aie.lock(%tile_2_2, 5) {init = 2 : i32}
-  %lock_2_2_46 = aie.lock(%tile_2_2, 4) {init = 0 : i32}
-  %lock_2_2_47 = aie.lock(%tile_2_2, 3) {init = 2 : i32}
-  %lock_2_2_48 = aie.lock(%tile_2_2, 2) {init = 0 : i32}
-  %lock_2_2_49 = aie.lock(%tile_2_2, 1) {init = 1 : i32}
-  %lock_2_2_50 = aie.lock(%tile_2_2, 0) {init = 0 : i32}
-  %lock_3_2 = aie.lock(%tile_3_2, 5) {init = 2 : i32}
-  %lock_3_2_51 = aie.lock(%tile_3_2, 4) {init = 0 : i32}
-  %lock_3_2_52 = aie.lock(%tile_3_2, 3) {init = 2 : i32}
-  %lock_3_2_53 = aie.lock(%tile_3_2, 2) {init = 0 : i32}
-  %lock_3_2_54 = aie.lock(%tile_3_2, 1) {init = 1 : i32}
-  %lock_3_2_55 = aie.lock(%tile_3_2, 0) {init = 0 : i32}
-  %lock_0_3 = aie.lock(%tile_0_3, 5) {init = 2 : i32}
-  %lock_0_3_56 = aie.lock(%tile_0_3, 4) {init = 0 : i32}
-  %lock_0_3_57 = aie.lock(%tile_0_3, 3) {init = 2 : i32}
-  %lock_0_3_58 = aie.lock(%tile_0_3, 2) {init = 0 : i32}
-  %lock_0_3_59 = aie.lock(%tile_0_3, 1) {init = 1 : i32}
-  %lock_0_3_60 = aie.lock(%tile_0_3, 0) {init = 0 : i32}
-  %lock_1_3 = aie.lock(%tile_1_3, 5) {init = 2 : i32}
-  %lock_1_3_61 = aie.lock(%tile_1_3, 4) {init = 0 : i32}
-  %lock_1_3_62 = aie.lock(%tile_1_3, 3) {init = 2 : i32}
-  %lock_1_3_63 = aie.lock(%tile_1_3, 2) {init = 0 : i32}
-  %lock_1_3_64 = aie.lock(%tile_1_3, 1) {init = 1 : i32}
-  %lock_1_3_65 = aie.lock(%tile_1_3, 0) {init = 0 : i32}
-  %lock_2_3 = aie.lock(%tile_2_3, 5) {init = 2 : i32}
-  %lock_2_3_66 = aie.lock(%tile_2_3, 4) {init = 0 : i32}
-  %lock_2_3_67 = aie.lock(%tile_2_3, 3) {init = 2 : i32}
-  %lock_2_3_68 = aie.lock(%tile_2_3, 2) {init = 0 : i32}
-  %lock_2_3_69 = aie.lock(%tile_2_3, 1) {init = 1 : i32}
-  %lock_2_3_70 = aie.lock(%tile_2_3, 0) {init = 0 : i32}
-  %lock_3_3 = aie.lock(%tile_3_3, 5) {init = 2 : i32}
-  %lock_3_3_71 = aie.lock(%tile_3_3, 4) {init = 0 : i32}
-  %lock_3_3_72 = aie.lock(%tile_3_3, 3) {init = 2 : i32}
-  %lock_3_3_73 = aie.lock(%tile_3_3, 2) {init = 0 : i32}
-  %lock_3_3_74 = aie.lock(%tile_3_3, 1) {init = 1 : i32}
-  %lock_3_3_75 = aie.lock(%tile_3_3, 0) {init = 0 : i32}
-  %lock_0_4 = aie.lock(%tile_0_4, 5) {init = 2 : i32}
-  %lock_0_4_76 = aie.lock(%tile_0_4, 4) {init = 0 : i32}
-  %lock_0_4_77 = aie.lock(%tile_0_4, 3) {init = 2 : i32}
-  %lock_0_4_78 = aie.lock(%tile_0_4, 2) {init = 0 : i32}
-  %lock_0_4_79 = aie.lock(%tile_0_4, 1) {init = 1 : i32}
-  %lock_0_4_80 = aie.lock(%tile_0_4, 0) {init = 0 : i32}
-  %lock_1_4 = aie.lock(%tile_1_4, 5) {init = 2 : i32}
-  %lock_1_4_81 = aie.lock(%tile_1_4, 4) {init = 0 : i32}
-  %lock_1_4_82 = aie.lock(%tile_1_4, 3) {init = 2 : i32}
-  %lock_1_4_83 = aie.lock(%tile_1_4, 2) {init = 0 : i32}
-  %lock_1_4_84 = aie.lock(%tile_1_4, 1) {init = 1 : i32}
-  %lock_1_4_85 = aie.lock(%tile_1_4, 0) {init = 0 : i32}
-  %lock_2_4 = aie.lock(%tile_2_4, 5) {init = 2 : i32}
-  %lock_2_4_86 = aie.lock(%tile_2_4, 4) {init = 0 : i32}
-  %lock_2_4_87 = aie.lock(%tile_2_4, 3) {init = 2 : i32}
-  %lock_2_4_88 = aie.lock(%tile_2_4, 2) {init = 0 : i32}
-  %lock_2_4_89 = aie.lock(%tile_2_4, 1) {init = 1 : i32}
-  %lock_2_4_90 = aie.lock(%tile_2_4, 0) {init = 0 : i32}
-  %lock_3_4 = aie.lock(%tile_3_4, 5) {init = 2 : i32}
-  %lock_3_4_91 = aie.lock(%tile_3_4, 4) {init = 0 : i32}
-  %lock_3_4_92 = aie.lock(%tile_3_4, 3) {init = 2 : i32}
-  %lock_3_4_93 = aie.lock(%tile_3_4, 2) {init = 0 : i32}
-  %lock_3_4_94 = aie.lock(%tile_3_4, 1) {init = 1 : i32}
-  %lock_3_4_95 = aie.lock(%tile_3_4, 0) {init = 0 : i32}
-  %lock_0_5 = aie.lock(%tile_0_5, 5) {init = 2 : i32}
-  %lock_0_5_96 = aie.lock(%tile_0_5, 4) {init = 0 : i32}
-  %lock_0_5_97 = aie.lock(%tile_0_5, 3) {init = 2 : i32}
-  %lock_0_5_98 = aie.lock(%tile_0_5, 2) {init = 0 : i32}
-  %lock_0_5_99 = aie.lock(%tile_0_5, 1) {init = 1 : i32}
-  %lock_0_5_100 = aie.lock(%tile_0_5, 0) {init = 0 : i32}
-  %lock_1_5 = aie.lock(%tile_1_5, 5) {init = 2 : i32}
-  %lock_1_5_101 = aie.lock(%tile_1_5, 4) {init = 0 : i32}
-  %lock_1_5_102 = aie.lock(%tile_1_5, 3) {init = 2 : i32}
-  %lock_1_5_103 = aie.lock(%tile_1_5, 2) {init = 0 : i32}
-  %lock_1_5_104 = aie.lock(%tile_1_5, 1) {init = 1 : i32}
-  %lock_1_5_105 = aie.lock(%tile_1_5, 0) {init = 0 : i32}
-  %lock_2_5 = aie.lock(%tile_2_5, 5) {init = 2 : i32}
-  %lock_2_5_106 = aie.lock(%tile_2_5, 4) {init = 0 : i32}
-  %lock_2_5_107 = aie.lock(%tile_2_5, 3) {init = 2 : i32}
-  %lock_2_5_108 = aie.lock(%tile_2_5, 2) {init = 0 : i32}
-  %lock_2_5_109 = aie.lock(%tile_2_5, 1) {init = 1 : i32}
-  %lock_2_5_110 = aie.lock(%tile_2_5, 0) {init = 0 : i32}
-  %lock_3_5 = aie.lock(%tile_3_5, 5) {init = 2 : i32}
-  %lock_3_5_111 = aie.lock(%tile_3_5, 4) {init = 0 : i32}
-  %lock_3_5_112 = aie.lock(%tile_3_5, 3) {init = 2 : i32}
-  %lock_3_5_113 = aie.lock(%tile_3_5, 2) {init = 0 : i32}
-  %lock_3_5_114 = aie.lock(%tile_3_5, 1) {init = 1 : i32}
-  %lock_3_5_115 = aie.lock(%tile_3_5, 0) {init = 0 : i32}
+  %lock_3_1 = aie.lock(%tile_3_1, 9) {init = 4 : i8}
+  %lock_3_1_0 = aie.lock(%tile_3_1, 8) {init = 0 : i8}
+  %lock_3_1_1 = aie.lock(%tile_3_1, 7) {init = 1 : i8}
+  %lock_3_1_2 = aie.lock(%tile_3_1, 6) {init = 0 : i8}
+  %lock_3_1_3 = aie.lock(%tile_3_1, 5) {init = 1 : i8}
+  %lock_3_1_4 = aie.lock(%tile_3_1, 4) {init = 0 : i8}
+  %lock_3_1_5 = aie.lock(%tile_3_1, 3) {init = 1 : i8}
+  %lock_3_1_6 = aie.lock(%tile_3_1, 2) {init = 0 : i8}
+  %lock_3_1_7 = aie.lock(%tile_3_1, 1) {init = 1 : i8}
+  %lock_3_1_8 = aie.lock(%tile_3_1, 0) {init = 0 : i8}
+  %lock_2_1 = aie.lock(%tile_2_1, 9) {init = 4 : i8}
+  %lock_2_1_9 = aie.lock(%tile_2_1, 8) {init = 0 : i8}
+  %lock_2_1_10 = aie.lock(%tile_2_1, 7) {init = 1 : i8}
+  %lock_2_1_11 = aie.lock(%tile_2_1, 6) {init = 0 : i8}
+  %lock_2_1_12 = aie.lock(%tile_2_1, 5) {init = 1 : i8}
+  %lock_2_1_13 = aie.lock(%tile_2_1, 4) {init = 0 : i8}
+  %lock_2_1_14 = aie.lock(%tile_2_1, 3) {init = 1 : i8}
+  %lock_2_1_15 = aie.lock(%tile_2_1, 2) {init = 0 : i8}
+  %lock_2_1_16 = aie.lock(%tile_2_1, 1) {init = 1 : i8}
+  %lock_2_1_17 = aie.lock(%tile_2_1, 0) {init = 0 : i8}
+  %lock_1_1 = aie.lock(%tile_1_1, 9) {init = 4 : i8}
+  %lock_1_1_18 = aie.lock(%tile_1_1, 8) {init = 0 : i8}
+  %lock_1_1_19 = aie.lock(%tile_1_1, 7) {init = 1 : i8}
+  %lock_1_1_20 = aie.lock(%tile_1_1, 6) {init = 0 : i8}
+  %lock_1_1_21 = aie.lock(%tile_1_1, 5) {init = 1 : i8}
+  %lock_1_1_22 = aie.lock(%tile_1_1, 4) {init = 0 : i8}
+  %lock_1_1_23 = aie.lock(%tile_1_1, 3) {init = 1 : i8}
+  %lock_1_1_24 = aie.lock(%tile_1_1, 2) {init = 0 : i8}
+  %lock_1_1_25 = aie.lock(%tile_1_1, 1) {init = 1 : i8}
+  %lock_1_1_26 = aie.lock(%tile_1_1, 0) {init = 0 : i8}
+  %lock_0_1 = aie.lock(%tile_0_1, 9) {init = 4 : i8}
+  %lock_0_1_27 = aie.lock(%tile_0_1, 8) {init = 0 : i8}
+  %lock_0_1_28 = aie.lock(%tile_0_1, 7) {init = 1 : i8}
+  %lock_0_1_29 = aie.lock(%tile_0_1, 6) {init = 0 : i8}
+  %lock_0_1_30 = aie.lock(%tile_0_1, 5) {init = 1 : i8}
+  %lock_0_1_31 = aie.lock(%tile_0_1, 4) {init = 0 : i8}
+  %lock_0_1_32 = aie.lock(%tile_0_1, 3) {init = 1 : i8}
+  %lock_0_1_33 = aie.lock(%tile_0_1, 2) {init = 0 : i8}
+  %lock_0_1_34 = aie.lock(%tile_0_1, 1) {init = 1 : i8}
+  %lock_0_1_35 = aie.lock(%tile_0_1, 0) {init = 0 : i8}
+  %lock_0_2 = aie.lock(%tile_0_2, 5) {init = 2 : i8}
+  %lock_0_2_36 = aie.lock(%tile_0_2, 4) {init = 0 : i8}
+  %lock_0_2_37 = aie.lock(%tile_0_2, 3) {init = 2 : i8}
+  %lock_0_2_38 = aie.lock(%tile_0_2, 2) {init = 0 : i8}
+  %lock_0_2_39 = aie.lock(%tile_0_2, 1) {init = 1 : i8}
+  %lock_0_2_40 = aie.lock(%tile_0_2, 0) {init = 0 : i8}
+  %lock_1_2 = aie.lock(%tile_1_2, 5) {init = 2 : i8}
+  %lock_1_2_41 = aie.lock(%tile_1_2, 4) {init = 0 : i8}
+  %lock_1_2_42 = aie.lock(%tile_1_2, 3) {init = 2 : i8}
+  %lock_1_2_43 = aie.lock(%tile_1_2, 2) {init = 0 : i8}
+  %lock_1_2_44 = aie.lock(%tile_1_2, 1) {init = 1 : i8}
+  %lock_1_2_45 = aie.lock(%tile_1_2, 0) {init = 0 : i8}
+  %lock_2_2 = aie.lock(%tile_2_2, 5) {init = 2 : i8}
+  %lock_2_2_46 = aie.lock(%tile_2_2, 4) {init = 0 : i8}
+  %lock_2_2_47 = aie.lock(%tile_2_2, 3) {init = 2 : i8}
+  %lock_2_2_48 = aie.lock(%tile_2_2, 2) {init = 0 : i8}
+  %lock_2_2_49 = aie.lock(%tile_2_2, 1) {init = 1 : i8}
+  %lock_2_2_50 = aie.lock(%tile_2_2, 0) {init = 0 : i8}
+  %lock_3_2 = aie.lock(%tile_3_2, 5) {init = 2 : i8}
+  %lock_3_2_51 = aie.lock(%tile_3_2, 4) {init = 0 : i8}
+  %lock_3_2_52 = aie.lock(%tile_3_2, 3) {init = 2 : i8}
+  %lock_3_2_53 = aie.lock(%tile_3_2, 2) {init = 0 : i8}
+  %lock_3_2_54 = aie.lock(%tile_3_2, 1) {init = 1 : i8}
+  %lock_3_2_55 = aie.lock(%tile_3_2, 0) {init = 0 : i8}
+  %lock_0_3 = aie.lock(%tile_0_3, 5) {init = 2 : i8}
+  %lock_0_3_56 = aie.lock(%tile_0_3, 4) {init = 0 : i8}
+  %lock_0_3_57 = aie.lock(%tile_0_3, 3) {init = 2 : i8}
+  %lock_0_3_58 = aie.lock(%tile_0_3, 2) {init = 0 : i8}
+  %lock_0_3_59 = aie.lock(%tile_0_3, 1) {init = 1 : i8}
+  %lock_0_3_60 = aie.lock(%tile_0_3, 0) {init = 0 : i8}
+  %lock_1_3 = aie.lock(%tile_1_3, 5) {init = 2 : i8}
+  %lock_1_3_61 = aie.lock(%tile_1_3, 4) {init = 0 : i8}
+  %lock_1_3_62 = aie.lock(%tile_1_3, 3) {init = 2 : i8}
+  %lock_1_3_63 = aie.lock(%tile_1_3, 2) {init = 0 : i8}
+  %lock_1_3_64 = aie.lock(%tile_1_3, 1) {init = 1 : i8}
+  %lock_1_3_65 = aie.lock(%tile_1_3, 0) {init = 0 : i8}
+  %lock_2_3 = aie.lock(%tile_2_3, 5) {init = 2 : i8}
+  %lock_2_3_66 = aie.lock(%tile_2_3, 4) {init = 0 : i8}
+  %lock_2_3_67 = aie.lock(%tile_2_3, 3) {init = 2 : i8}
+  %lock_2_3_68 = aie.lock(%tile_2_3, 2) {init = 0 : i8}
+  %lock_2_3_69 = aie.lock(%tile_2_3, 1) {init = 1 : i8}
+  %lock_2_3_70 = aie.lock(%tile_2_3, 0) {init = 0 : i8}
+  %lock_3_3 = aie.lock(%tile_3_3, 5) {init = 2 : i8}
+  %lock_3_3_71 = aie.lock(%tile_3_3, 4) {init = 0 : i8}
+  %lock_3_3_72 = aie.lock(%tile_3_3, 3) {init = 2 : i8}
+  %lock_3_3_73 = aie.lock(%tile_3_3, 2) {init = 0 : i8}
+  %lock_3_3_74 = aie.lock(%tile_3_3, 1) {init = 1 : i8}
+  %lock_3_3_75 = aie.lock(%tile_3_3, 0) {init = 0 : i8}
+  %lock_0_4 = aie.lock(%tile_0_4, 5) {init = 2 : i8}
+  %lock_0_4_76 = aie.lock(%tile_0_4, 4) {init = 0 : i8}
+  %lock_0_4_77 = aie.lock(%tile_0_4, 3) {init = 2 : i8}
+  %lock_0_4_78 = aie.lock(%tile_0_4, 2) {init = 0 : i8}
+  %lock_0_4_79 = aie.lock(%tile_0_4, 1) {init = 1 : i8}
+  %lock_0_4_80 = aie.lock(%tile_0_4, 0) {init = 0 : i8}
+  %lock_1_4 = aie.lock(%tile_1_4, 5) {init = 2 : i8}
+  %lock_1_4_81 = aie.lock(%tile_1_4, 4) {init = 0 : i8}
+  %lock_1_4_82 = aie.lock(%tile_1_4, 3) {init = 2 : i8}
+  %lock_1_4_83 = aie.lock(%tile_1_4, 2) {init = 0 : i8}
+  %lock_1_4_84 = aie.lock(%tile_1_4, 1) {init = 1 : i8}
+  %lock_1_4_85 = aie.lock(%tile_1_4, 0) {init = 0 : i8}
+  %lock_2_4 = aie.lock(%tile_2_4, 5) {init = 2 : i8}
+  %lock_2_4_86 = aie.lock(%tile_2_4, 4) {init = 0 : i8}
+  %lock_2_4_87 = aie.lock(%tile_2_4, 3) {init = 2 : i8}
+  %lock_2_4_88 = aie.lock(%tile_2_4, 2) {init = 0 : i8}
+  %lock_2_4_89 = aie.lock(%tile_2_4, 1) {init = 1 : i8}
+  %lock_2_4_90 = aie.lock(%tile_2_4, 0) {init = 0 : i8}
+  %lock_3_4 = aie.lock(%tile_3_4, 5) {init = 2 : i8}
+  %lock_3_4_91 = aie.lock(%tile_3_4, 4) {init = 0 : i8}
+  %lock_3_4_92 = aie.lock(%tile_3_4, 3) {init = 2 : i8}
+  %lock_3_4_93 = aie.lock(%tile_3_4, 2) {init = 0 : i8}
+  %lock_3_4_94 = aie.lock(%tile_3_4, 1) {init = 1 : i8}
+  %lock_3_4_95 = aie.lock(%tile_3_4, 0) {init = 0 : i8}
+  %lock_0_5 = aie.lock(%tile_0_5, 5) {init = 2 : i8}
+  %lock_0_5_96 = aie.lock(%tile_0_5, 4) {init = 0 : i8}
+  %lock_0_5_97 = aie.lock(%tile_0_5, 3) {init = 2 : i8}
+  %lock_0_5_98 = aie.lock(%tile_0_5, 2) {init = 0 : i8}
+  %lock_0_5_99 = aie.lock(%tile_0_5, 1) {init = 1 : i8}
+  %lock_0_5_100 = aie.lock(%tile_0_5, 0) {init = 0 : i8}
+  %lock_1_5 = aie.lock(%tile_1_5, 5) {init = 2 : i8}
+  %lock_1_5_101 = aie.lock(%tile_1_5, 4) {init = 0 : i8}
+  %lock_1_5_102 = aie.lock(%tile_1_5, 3) {init = 2 : i8}
+  %lock_1_5_103 = aie.lock(%tile_1_5, 2) {init = 0 : i8}
+  %lock_1_5_104 = aie.lock(%tile_1_5, 1) {init = 1 : i8}
+  %lock_1_5_105 = aie.lock(%tile_1_5, 0) {init = 0 : i8}
+  %lock_2_5 = aie.lock(%tile_2_5, 5) {init = 2 : i8}
+  %lock_2_5_106 = aie.lock(%tile_2_5, 4) {init = 0 : i8}
+  %lock_2_5_107 = aie.lock(%tile_2_5, 3) {init = 2 : i8}
+  %lock_2_5_108 = aie.lock(%tile_2_5, 2) {init = 0 : i8}
+  %lock_2_5_109 = aie.lock(%tile_2_5, 1) {init = 1 : i8}
+  %lock_2_5_110 = aie.lock(%tile_2_5, 0) {init = 0 : i8}
+  %lock_3_5 = aie.lock(%tile_3_5, 5) {init = 2 : i8}
+  %lock_3_5_111 = aie.lock(%tile_3_5, 4) {init = 0 : i8}
+  %lock_3_5_112 = aie.lock(%tile_3_5, 3) {init = 2 : i8}
+  %lock_3_5_113 = aie.lock(%tile_3_5, 2) {init = 0 : i8}
+  %lock_3_5_114 = aie.lock(%tile_3_5, 1) {init = 1 : i8}
+  %lock_3_5_115 = aie.lock(%tile_3_5, 0) {init = 0 : i8}
   %buf99 = aie.buffer(%tile_0_1) {address = 0 : i32, mem_bank = 0 : i32, sym_name = "buf99"} : memref<32x256xi32>
   %buf98 = aie.buffer(%tile_1_1) {address = 0 : i32, mem_bank = 0 : i32, sym_name = "buf98"} : memref<32x256xi32>
   %buf97 = aie.buffer(%tile_2_1) {address = 0 : i32, mem_bank = 0 : i32, sym_name = "buf97"} : memref<32x256xi32>
@@ -807,238 +807,238 @@ aie.device(npu1_4col) {
     aie.next_bd ^bb8
   }
   %switchbox_0_0 = aie.switchbox(%tile_0_0) {
-    aie.connect<South : 3, North : 0>
-    aie.connect<South : 7, East : 0>
-    aie.connect<East : 0, North : 1>
-    aie.connect<North : 0, South : 2>
-    aie.connect<East : 1, South : 3>
+    aie.connect<SOUTH : 3, NORTH : 0>
+    aie.connect<SOUTH : 7, EAST : 0>
+    aie.connect<EAST : 0, NORTH : 1>
+    aie.connect<NORTH : 0, SOUTH : 2>
+    aie.connect<EAST : 1, SOUTH : 3>
   }
   %shim_mux_0_0 = aie.shim_mux(%tile_0_0) {
-    aie.connect<DMA : 0, North : 3>
-    aie.connect<DMA : 1, North : 7>
-    aie.connect<North : 2, DMA : 0>
-    aie.connect<North : 3, DMA : 1>
+    aie.connect<DMA : 0, NORTH : 3>
+    aie.connect<DMA : 1, NORTH : 7>
+    aie.connect<NORTH : 2, DMA : 0>
+    aie.connect<NORTH : 3, DMA : 1>
   }
   %switchbox_0_1 = aie.switchbox(%tile_0_1) {
-    aie.connect<South : 0, DMA : 0>
-    aie.connect<South : 1, DMA : 1>
-    aie.connect<DMA : 0, South : 0>
-    aie.connect<DMA : 1, North : 0>
-    aie.connect<DMA : 2, North : 1>
-    aie.connect<North : 0, DMA : 2>
-    aie.connect<North : 1, DMA : 3>
-    aie.connect<North : 2, DMA : 4>
-    aie.connect<North : 3, DMA : 5>
+    aie.connect<SOUTH : 0, DMA : 0>
+    aie.connect<SOUTH : 1, DMA : 1>
+    aie.connect<DMA : 0, SOUTH : 0>
+    aie.connect<DMA : 1, NORTH : 0>
+    aie.connect<DMA : 2, NORTH : 1>
+    aie.connect<NORTH : 0, DMA : 2>
+    aie.connect<NORTH : 1, DMA : 3>
+    aie.connect<NORTH : 2, DMA : 4>
+    aie.connect<NORTH : 3, DMA : 5>
   }
   %switchbox_1_0 = aie.switchbox(%tile_1_0) {
-    aie.connect<West : 0, North : 0>
-    aie.connect<South : 3, East : 0>
-    aie.connect<South : 7, East : 1>
-    aie.connect<East : 0, West : 0>
-    aie.connect<East : 1, North : 1>
-    aie.connect<North : 0, West : 1>
-    aie.connect<East : 2, South : 2>
-    aie.connect<East : 3, South : 3>
+    aie.connect<WEST : 0, NORTH : 0>
+    aie.connect<SOUTH : 3, EAST : 0>
+    aie.connect<SOUTH : 7, EAST : 1>
+    aie.connect<EAST : 0, WEST : 0>
+    aie.connect<EAST : 1, NORTH : 1>
+    aie.connect<NORTH : 0, WEST : 1>
+    aie.connect<EAST : 2, SOUTH : 2>
+    aie.connect<EAST : 3, SOUTH : 3>
   }
   %switchbox_1_1 = aie.switchbox(%tile_1_1) {
-    aie.connect<South : 0, DMA : 0>
-    aie.connect<South : 1, DMA : 1>
-    aie.connect<DMA : 0, South : 0>
-    aie.connect<DMA : 1, North : 0>
-    aie.connect<DMA : 2, North : 1>
-    aie.connect<North : 0, DMA : 2>
-    aie.connect<North : 1, DMA : 3>
-    aie.connect<North : 2, DMA : 4>
-    aie.connect<North : 3, DMA : 5>
+    aie.connect<SOUTH : 0, DMA : 0>
+    aie.connect<SOUTH : 1, DMA : 1>
+    aie.connect<DMA : 0, SOUTH : 0>
+    aie.connect<DMA : 1, NORTH : 0>
+    aie.connect<DMA : 2, NORTH : 1>
+    aie.connect<NORTH : 0, DMA : 2>
+    aie.connect<NORTH : 1, DMA : 3>
+    aie.connect<NORTH : 2, DMA : 4>
+    aie.connect<NORTH : 3, DMA : 5>
   }
   %shim_mux_1_0 = aie.shim_mux(%tile_1_0) {
-    aie.connect<DMA : 0, North : 3>
-    aie.connect<DMA : 1, North : 7>
-    aie.connect<North : 2, DMA : 0>
-    aie.connect<North : 3, DMA : 1>
+    aie.connect<DMA : 0, NORTH : 3>
+    aie.connect<DMA : 1, NORTH : 7>
+    aie.connect<NORTH : 2, DMA : 0>
+    aie.connect<NORTH : 3, DMA : 1>
   }
   %switchbox_2_0 = aie.switchbox(%tile_2_0) {
-    aie.connect<West : 0, North : 0>
-    aie.connect<West : 1, East : 0>
-    aie.connect<South : 3, West : 0>
-    aie.connect<South : 7, West : 1>
-    aie.connect<East : 0, North : 1>
-    aie.connect<North : 0, West : 2>
-    aie.connect<East : 1, West : 3>
+    aie.connect<WEST : 0, NORTH : 0>
+    aie.connect<WEST : 1, EAST : 0>
+    aie.connect<SOUTH : 3, WEST : 0>
+    aie.connect<SOUTH : 7, WEST : 1>
+    aie.connect<EAST : 0, NORTH : 1>
+    aie.connect<NORTH : 0, WEST : 2>
+    aie.connect<EAST : 1, WEST : 3>
   }
   %switchbox_2_1 = aie.switchbox(%tile_2_1) {
-    aie.connect<South : 0, DMA : 0>
-    aie.connect<South : 1, DMA : 1>
-    aie.connect<DMA : 0, South : 0>
-    aie.connect<DMA : 1, North : 0>
-    aie.connect<DMA : 2, North : 1>
-    aie.connect<North : 0, DMA : 2>
-    aie.connect<North : 1, DMA : 3>
-    aie.connect<North : 2, DMA : 4>
-    aie.connect<North : 3, DMA : 5>
+    aie.connect<SOUTH : 0, DMA : 0>
+    aie.connect<SOUTH : 1, DMA : 1>
+    aie.connect<DMA : 0, SOUTH : 0>
+    aie.connect<DMA : 1, NORTH : 0>
+    aie.connect<DMA : 2, NORTH : 1>
+    aie.connect<NORTH : 0, DMA : 2>
+    aie.connect<NORTH : 1, DMA : 3>
+    aie.connect<NORTH : 2, DMA : 4>
+    aie.connect<NORTH : 3, DMA : 5>
   }
   %switchbox_3_0 = aie.switchbox(%tile_3_0) {
-    aie.connect<West : 0, North : 0>
-    aie.connect<South : 3, West : 0>
-    aie.connect<South : 7, North : 1>
-    aie.connect<North : 0, West : 1>
+    aie.connect<WEST : 0, NORTH : 0>
+    aie.connect<SOUTH : 3, WEST : 0>
+    aie.connect<SOUTH : 7, NORTH : 1>
+    aie.connect<NORTH : 0, WEST : 1>
   }
   %switchbox_3_1 = aie.switchbox(%tile_3_1) {
-    aie.connect<South : 0, DMA : 0>
-    aie.connect<South : 1, DMA : 1>
-    aie.connect<DMA : 0, South : 0>
-    aie.connect<DMA : 1, North : 0>
-    aie.connect<DMA : 2, North : 1>
-    aie.connect<North : 0, DMA : 2>
-    aie.connect<North : 1, DMA : 3>
-    aie.connect<North : 2, DMA : 4>
-    aie.connect<North : 3, DMA : 5>
+    aie.connect<SOUTH : 0, DMA : 0>
+    aie.connect<SOUTH : 1, DMA : 1>
+    aie.connect<DMA : 0, SOUTH : 0>
+    aie.connect<DMA : 1, NORTH : 0>
+    aie.connect<DMA : 2, NORTH : 1>
+    aie.connect<NORTH : 0, DMA : 2>
+    aie.connect<NORTH : 1, DMA : 3>
+    aie.connect<NORTH : 2, DMA : 4>
+    aie.connect<NORTH : 3, DMA : 5>
   }
   %shim_mux_2_0 = aie.shim_mux(%tile_2_0) {
-    aie.connect<DMA : 0, North : 3>
-    aie.connect<DMA : 1, North : 7>
+    aie.connect<DMA : 0, NORTH : 3>
+    aie.connect<DMA : 1, NORTH : 7>
   }
   %shim_mux_3_0 = aie.shim_mux(%tile_3_0) {
-    aie.connect<DMA : 0, North : 3>
-    aie.connect<DMA : 1, North : 7>
+    aie.connect<DMA : 0, NORTH : 3>
+    aie.connect<DMA : 1, NORTH : 7>
   }
   %switchbox_0_2 = aie.switchbox(%tile_0_2) {
-    aie.connect<South : 0, DMA : 0>
-    aie.connect<South : 0, North : 0>
-    aie.connect<South : 1, DMA : 1>
-    aie.connect<South : 1, East : 0>
-    aie.connect<DMA : 0, South : 0>
-    aie.connect<North : 0, South : 1>
-    aie.connect<North : 1, South : 2>
-    aie.connect<North : 2, South : 3>
+    aie.connect<SOUTH : 0, DMA : 0>
+    aie.connect<SOUTH : 0, NORTH : 0>
+    aie.connect<SOUTH : 1, DMA : 1>
+    aie.connect<SOUTH : 1, EAST : 0>
+    aie.connect<DMA : 0, SOUTH : 0>
+    aie.connect<NORTH : 0, SOUTH : 1>
+    aie.connect<NORTH : 1, SOUTH : 2>
+    aie.connect<NORTH : 2, SOUTH : 3>
   }
   %switchbox_0_3 = aie.switchbox(%tile_0_3) {
-    aie.connect<South : 0, DMA : 0>
-    aie.connect<South : 0, North : 0>
-    aie.connect<East : 0, DMA : 1>
-    aie.connect<DMA : 0, South : 0>
-    aie.connect<North : 0, South : 1>
-    aie.connect<North : 1, South : 2>
+    aie.connect<SOUTH : 0, DMA : 0>
+    aie.connect<SOUTH : 0, NORTH : 0>
+    aie.connect<EAST : 0, DMA : 1>
+    aie.connect<DMA : 0, SOUTH : 0>
+    aie.connect<NORTH : 0, SOUTH : 1>
+    aie.connect<NORTH : 1, SOUTH : 2>
   }
   %switchbox_0_4 = aie.switchbox(%tile_0_4) {
-    aie.connect<South : 0, DMA : 0>
-    aie.connect<South : 0, North : 0>
-    aie.connect<East : 0, DMA : 1>
-    aie.connect<East : 1, North : 1>
-    aie.connect<DMA : 0, South : 0>
-    aie.connect<North : 0, South : 1>
+    aie.connect<SOUTH : 0, DMA : 0>
+    aie.connect<SOUTH : 0, NORTH : 0>
+    aie.connect<EAST : 0, DMA : 1>
+    aie.connect<EAST : 1, NORTH : 1>
+    aie.connect<DMA : 0, SOUTH : 0>
+    aie.connect<NORTH : 0, SOUTH : 1>
   }
   %switchbox_0_5 = aie.switchbox(%tile_0_5) {
-    aie.connect<South : 0, DMA : 0>
-    aie.connect<South : 1, DMA : 1>
-    aie.connect<DMA : 0, South : 0>
+    aie.connect<SOUTH : 0, DMA : 0>
+    aie.connect<SOUTH : 1, DMA : 1>
+    aie.connect<DMA : 0, SOUTH : 0>
   }
   %switchbox_1_2 = aie.switchbox(%tile_1_2) {
-    aie.connect<South : 0, DMA : 0>
-    aie.connect<South : 0, North : 0>
-    aie.connect<West : 0, DMA : 1>
-    aie.connect<West : 0, East : 0>
-    aie.connect<South : 1, North : 1>
-    aie.connect<DMA : 0, South : 0>
-    aie.connect<North : 0, South : 1>
-    aie.connect<North : 1, South : 2>
-    aie.connect<North : 2, South : 3>
+    aie.connect<SOUTH : 0, DMA : 0>
+    aie.connect<SOUTH : 0, NORTH : 0>
+    aie.connect<WEST : 0, DMA : 1>
+    aie.connect<WEST : 0, EAST : 0>
+    aie.connect<SOUTH : 1, NORTH : 1>
+    aie.connect<DMA : 0, SOUTH : 0>
+    aie.connect<NORTH : 0, SOUTH : 1>
+    aie.connect<NORTH : 1, SOUTH : 2>
+    aie.connect<NORTH : 2, SOUTH : 3>
   }
   %switchbox_1_3 = aie.switchbox(%tile_1_3) {
-    aie.connect<South : 0, DMA : 0>
-    aie.connect<South : 0, North : 0>
-    aie.connect<South : 1, DMA : 1>
-    aie.connect<South : 1, West : 0>
-    aie.connect<South : 1, East : 0>
-    aie.connect<DMA : 0, South : 0>
-    aie.connect<North : 0, South : 1>
-    aie.connect<North : 1, South : 2>
+    aie.connect<SOUTH : 0, DMA : 0>
+    aie.connect<SOUTH : 0, NORTH : 0>
+    aie.connect<SOUTH : 1, DMA : 1>
+    aie.connect<SOUTH : 1, WEST : 0>
+    aie.connect<SOUTH : 1, EAST : 0>
+    aie.connect<DMA : 0, SOUTH : 0>
+    aie.connect<NORTH : 0, SOUTH : 1>
+    aie.connect<NORTH : 1, SOUTH : 2>
   }
   %switchbox_1_4 = aie.switchbox(%tile_1_4) {
-    aie.connect<South : 0, DMA : 0>
-    aie.connect<South : 0, North : 0>
-    aie.connect<East : 0, DMA : 1>
-    aie.connect<East : 0, West : 0>
-    aie.connect<East : 1, West : 1>
-    aie.connect<East : 1, North : 1>
-    aie.connect<DMA : 0, South : 0>
-    aie.connect<North : 0, South : 1>
+    aie.connect<SOUTH : 0, DMA : 0>
+    aie.connect<SOUTH : 0, NORTH : 0>
+    aie.connect<EAST : 0, DMA : 1>
+    aie.connect<EAST : 0, WEST : 0>
+    aie.connect<EAST : 1, WEST : 1>
+    aie.connect<EAST : 1, NORTH : 1>
+    aie.connect<DMA : 0, SOUTH : 0>
+    aie.connect<NORTH : 0, SOUTH : 1>
   }
   %switchbox_1_5 = aie.switchbox(%tile_1_5) {
-    aie.connect<South : 0, DMA : 0>
-    aie.connect<South : 1, DMA : 1>
-    aie.connect<DMA : 0, South : 0>
+    aie.connect<SOUTH : 0, DMA : 0>
+    aie.connect<SOUTH : 1, DMA : 1>
+    aie.connect<DMA : 0, SOUTH : 0>
   }
   %switchbox_2_2 = aie.switchbox(%tile_2_2) {
-    aie.connect<South : 0, DMA : 0>
-    aie.connect<South : 0, North : 0>
-    aie.connect<West : 0, DMA : 1>
-    aie.connect<West : 0, East : 0>
-    aie.connect<South : 1, North : 1>
-    aie.connect<DMA : 0, South : 0>
-    aie.connect<North : 0, South : 1>
-    aie.connect<North : 1, South : 2>
-    aie.connect<North : 2, South : 3>
+    aie.connect<SOUTH : 0, DMA : 0>
+    aie.connect<SOUTH : 0, NORTH : 0>
+    aie.connect<WEST : 0, DMA : 1>
+    aie.connect<WEST : 0, EAST : 0>
+    aie.connect<SOUTH : 1, NORTH : 1>
+    aie.connect<DMA : 0, SOUTH : 0>
+    aie.connect<NORTH : 0, SOUTH : 1>
+    aie.connect<NORTH : 1, SOUTH : 2>
+    aie.connect<NORTH : 2, SOUTH : 3>
   }
   %switchbox_2_3 = aie.switchbox(%tile_2_3) {
-    aie.connect<South : 0, DMA : 0>
-    aie.connect<South : 0, North : 0>
-    aie.connect<West : 0, DMA : 1>
-    aie.connect<West : 0, East : 0>
-    aie.connect<South : 1, North : 1>
-    aie.connect<South : 1, East : 1>
-    aie.connect<DMA : 0, South : 0>
-    aie.connect<North : 0, South : 1>
-    aie.connect<North : 1, South : 2>
+    aie.connect<SOUTH : 0, DMA : 0>
+    aie.connect<SOUTH : 0, NORTH : 0>
+    aie.connect<WEST : 0, DMA : 1>
+    aie.connect<WEST : 0, EAST : 0>
+    aie.connect<SOUTH : 1, NORTH : 1>
+    aie.connect<SOUTH : 1, EAST : 1>
+    aie.connect<DMA : 0, SOUTH : 0>
+    aie.connect<NORTH : 0, SOUTH : 1>
+    aie.connect<NORTH : 1, SOUTH : 2>
   }
   %switchbox_2_4 = aie.switchbox(%tile_2_4) {
-    aie.connect<South : 0, DMA : 0>
-    aie.connect<South : 0, North : 0>
-    aie.connect<South : 1, DMA : 1>
-    aie.connect<South : 1, West : 0>
-    aie.connect<East : 0, West : 1>
-    aie.connect<DMA : 0, South : 0>
-    aie.connect<North : 0, South : 1>
+    aie.connect<SOUTH : 0, DMA : 0>
+    aie.connect<SOUTH : 0, NORTH : 0>
+    aie.connect<SOUTH : 1, DMA : 1>
+    aie.connect<SOUTH : 1, WEST : 0>
+    aie.connect<EAST : 0, WEST : 1>
+    aie.connect<DMA : 0, SOUTH : 0>
+    aie.connect<NORTH : 0, SOUTH : 1>
   }
   %switchbox_2_5 = aie.switchbox(%tile_2_5) {
-    aie.connect<South : 0, DMA : 0>
-    aie.connect<East : 0, DMA : 1>
-    aie.connect<DMA : 0, South : 0>
+    aie.connect<SOUTH : 0, DMA : 0>
+    aie.connect<EAST : 0, DMA : 1>
+    aie.connect<DMA : 0, SOUTH : 0>
   }
   %switchbox_3_2 = aie.switchbox(%tile_3_2) {
-    aie.connect<South : 0, DMA : 0>
-    aie.connect<South : 0, North : 0>
-    aie.connect<West : 0, DMA : 1>
-    aie.connect<South : 1, North : 1>
-    aie.connect<DMA : 0, South : 0>
-    aie.connect<North : 0, South : 1>
-    aie.connect<North : 1, South : 2>
-    aie.connect<North : 2, South : 3>
+    aie.connect<SOUTH : 0, DMA : 0>
+    aie.connect<SOUTH : 0, NORTH : 0>
+    aie.connect<WEST : 0, DMA : 1>
+    aie.connect<SOUTH : 1, NORTH : 1>
+    aie.connect<DMA : 0, SOUTH : 0>
+    aie.connect<NORTH : 0, SOUTH : 1>
+    aie.connect<NORTH : 1, SOUTH : 2>
+    aie.connect<NORTH : 2, SOUTH : 3>
   }
   %switchbox_3_3 = aie.switchbox(%tile_3_3) {
-    aie.connect<South : 0, DMA : 0>
-    aie.connect<South : 0, North : 0>
-    aie.connect<West : 0, DMA : 1>
-    aie.connect<West : 1, North : 1>
-    aie.connect<South : 1, North : 2>
-    aie.connect<DMA : 0, South : 0>
-    aie.connect<North : 0, South : 1>
-    aie.connect<North : 1, South : 2>
+    aie.connect<SOUTH : 0, DMA : 0>
+    aie.connect<SOUTH : 0, NORTH : 0>
+    aie.connect<WEST : 0, DMA : 1>
+    aie.connect<WEST : 1, NORTH : 1>
+    aie.connect<SOUTH : 1, NORTH : 2>
+    aie.connect<DMA : 0, SOUTH : 0>
+    aie.connect<NORTH : 0, SOUTH : 1>
+    aie.connect<NORTH : 1, SOUTH : 2>
   }
   %switchbox_3_4 = aie.switchbox(%tile_3_4) {
-    aie.connect<South : 0, DMA : 0>
-    aie.connect<South : 0, North : 0>
-    aie.connect<South : 1, DMA : 1>
-    aie.connect<South : 2, West : 0>
-    aie.connect<South : 2, North : 1>
-    aie.connect<DMA : 0, South : 0>
-    aie.connect<North : 0, South : 1>
+    aie.connect<SOUTH : 0, DMA : 0>
+    aie.connect<SOUTH : 0, NORTH : 0>
+    aie.connect<SOUTH : 1, DMA : 1>
+    aie.connect<SOUTH : 2, WEST : 0>
+    aie.connect<SOUTH : 2, NORTH : 1>
+    aie.connect<DMA : 0, SOUTH : 0>
+    aie.connect<NORTH : 0, SOUTH : 1>
   }
   %switchbox_3_5 = aie.switchbox(%tile_3_5) {
-    aie.connect<South : 0, DMA : 0>
-    aie.connect<South : 1, DMA : 1>
-    aie.connect<South : 1, West : 0>
-    aie.connect<DMA : 0, South : 0>
+    aie.connect<SOUTH : 0, DMA : 0>
+    aie.connect<SOUTH : 1, DMA : 1>
+    aie.connect<SOUTH : 1, WEST : 0>
+    aie.connect<DMA : 0, SOUTH : 0>
   }
   %memtile_dma_0_1 = aie.memtile_dma(%tile_0_1) {
     %0 = aie.dma_start(S2MM, 0, ^bb1, ^bb20, repeat_count = 1)

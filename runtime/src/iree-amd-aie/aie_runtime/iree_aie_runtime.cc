@@ -440,6 +440,13 @@ uint32_t AMDAIEDeviceModel::getNumDestSwitchBoxConnections(
   return strmMod->MstrConfig[CheckedAieRtCompatStrmSwPortType(bundle)].NumPorts;
 }
 
+// the difference between this fn and the one it calls is SwitchBox vs Switchbox
+uint32_t AMDAIEDeviceModel::getNumDestSwitchboxConnections(
+    int col, int row, StrmSwPortType bundle) const {
+  return getNumDestSwitchBoxConnections(static_cast<uint8_t>(col),
+                                        static_cast<uint8_t>(row), bundle);
+}
+
 uint32_t AMDAIEDeviceModel::getColumnShift() const {
   return configPtr.ColShift;
 }

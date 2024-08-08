@@ -13,8 +13,8 @@
 
 #include <numeric>
 
-#include "aie/Dialect/AIE/IR/AIEDialect.h"
-#include "aie/Dialect/AIEX/IR/AIEXDialect.h"
+#include "aie/AIEDialect.h"
+#include "aie/AIEXDialect.h"
 #include "iree-amd-aie/IR/AMDAIEDialect.h"
 #include "iree-amd-aie/IR/AMDAIEOps.h"
 #include "iree-amd-aie/Transforms/AMDAIEUtils.h"
