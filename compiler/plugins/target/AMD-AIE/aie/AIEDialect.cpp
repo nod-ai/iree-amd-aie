@@ -264,14 +264,12 @@ TileOp getTileOp(mlir::Operation &op) {
   return llvm::cast<TileOp>(t.getDefiningOp());
 }
 
-TileOp CoreOp::getTileOp() { return ::xilinx::AIE::getTileOp(*getOperation()); }
+TileOp CoreOp::getTileOp() { return xilinx::AIE::getTileOp(*getOperation()); }
 
-TileOp BufferOp::getTileOp() {
-  return ::xilinx::AIE::getTileOp(*getOperation());
-}
+TileOp BufferOp::getTileOp() { return xilinx::AIE::getTileOp(*getOperation()); }
 
 TileOp ShimDMAOp::getTileOp() {
-  return ::xilinx::AIE::getTileOp(*getOperation());
+  return xilinx::AIE::getTileOp(*getOperation());
 }
 
 int32_t getBufferElementTypeWidthInBytes(DMABDOp &op) {
@@ -304,9 +302,9 @@ CoreOp getCoreOp(TileOp &op) {
   return nullptr;
 }
 
-MemOp TileOp::getMemOp() { return ::xilinx::AIE::getMemOp(*this); }
+MemOp TileOp::getMemOp() { return xilinx::AIE::getMemOp(*this); }
 
-CoreOp TileOp::getCoreOp() { return ::xilinx::AIE::getCoreOp(*this); }
+CoreOp TileOp::getCoreOp() { return xilinx::AIE::getCoreOp(*this); }
 
 void collectBuffers(DeviceOp &device,
                     llvm::DenseMap<mlir::Operation *,

@@ -60,8 +60,6 @@ AIEX::NpuDmaMemcpyNdOp::getSizesInAddressGranularity() {
   return sizes;
 }
 
-/* Calculates the offset value to be written to the
- */
 int64_t AIEX::NpuDmaMemcpyNdOp::getOffsetInBytes() {
   llvm::SmallVector<int64_t, 4> offsets = llvm::map_to_vector(
       llvm::reverse(getMixedOffsets()),
@@ -108,7 +106,6 @@ ParseResult AIEX::RuntimeSequenceOp::parse(OpAsmParser &parser,
     return argParseResult;
   }
 
-  // Body
   auto *body = result.addRegion();
   ParseResult bodyParseResult = parser.parseRegion(*body, entryArgs, false);
   if (bodyParseResult) {

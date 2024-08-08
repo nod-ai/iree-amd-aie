@@ -86,7 +86,6 @@ std::optional<mlir::iree_compiler::AMDAIE::AMDAIEDevice> symbolizeAIEDevice(
 #define GET_ATTRDEF_CLASSES
 #include "aie/AIEAttrs.h.inc"
 
-// include TableGen generated Op definitions
 #define GET_OP_CLASSES
 #include "aie/AIEOps.h.inc"
 

@@ -233,7 +233,6 @@ def AIE_PacketRuleOp: AIE_Op<"rule"> {
   }];
 }
 
-
 def AIE_PacketFlowOp: AIE_Op<"packet_flow", [SingleBlockImplicitTerminator<"EndOp">]> {
   let summary = "Packet switched flow";
   let arguments = (
@@ -613,7 +612,6 @@ def AIE_ObjectFifoSubviewAccessOp : AIE_Op<"objectfifo.subview.access"> {
     $subview `[` $index `]` attr-dict `:` type($subview) `->` type($output)
   }];
 
-  // Allow building an AIE_ObjectFifoSubviewAccessOp with just a subview value and an index.
   let builders = [
     OpBuilder<(ins "mlir::Value":$subview, "size_t":$index)>
   ];
@@ -645,7 +643,7 @@ def AIE_ShimDMAOp: AIE_Op<"shim_dma", [
   }];
 }
 
-// legacy tests
+// legacy to support tests
 
 def AIE_ObjectFifoRegisterExternalBuffersOp: AIE_Op<"objectfifo.register_external_buffers"> {
   let summary = "Registers external buffers to given object fifo shim tile(s) to use in the associated shim DMA(s)";
