@@ -363,16 +363,6 @@ LogicalResult coreToAIE(IRRewriter &rewriter, AMDAIE::CoreOp coreOp,
             .Case<AMDAIE::LogicalObjectFifoAcquire>([&](auto acquireOp) {
               return acquireOpToAIE(rewriter, acquireOp, mapper, toBeErased);
             })
-            .Case<AMDAIE::LogicalObjectFifoConsume>([&](auto consumeOp) {
-              // TODO(jornt): get rid of LogicalObjectFifoConsume before this
-              rewriter.eraseOp(consumeOp);
-              return success();
-            })
-            .Case<AMDAIE::LogicalObjectFifoProduce>([&](auto produceOp) {
-              // TODO(jornt): get rid of LogicalObjectFifoProduce before this
-              rewriter.eraseOp(produceOp);
-              return success();
-            })
             .Case<AMDAIE::LogicalObjectFifoRelease>([&](auto releaseOp) {
               return coreReleaseOpToAIE(rewriter, releaseOp, mapper,
                                         toBeErased);
