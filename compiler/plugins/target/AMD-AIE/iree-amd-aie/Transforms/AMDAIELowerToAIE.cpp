@@ -137,9 +137,9 @@ AIE::ObjectFifoCreateOp createObjectFifo(IRRewriter &rewriter,
   return fifo;
 }
 
-/// Convert `amdaie.logicalobjectfifo.access` to `aie.objectfifo.subview.access`
-/// + `memref.reinterpret_cast` to bridge the gap between the objectFifo type
-/// and the type assumed by computational operations.
+/// Convert `amdaie.logicalobjectfifo.access` to
+/// `aie.objectfifo.subview.access`, and refactor the memory space for
+/// `memref.reinterpret_cast` ops.
 LogicalResult accessOpToAIE(IRRewriter &rewriter,
                             AMDAIE::LogicalObjectFifoAccessOp accessOp,
                             IRMapping &mapper,
@@ -158,7 +158,15 @@ LogicalResult accessOpToAIE(IRRewriter &rewriter,
            << "access doesn't operate on an input that has been mapped to an "
               "`aie.objectfifo.acquire` + subview operation";
   }
-  auto type = cast<MemRefType>(accessOp.getOutput().getType());
+
+  memref::ReinterpretCastOp oldReinterpretOp;
+  for (Operation *user : accessOp->getUsers()) {
+    if (isa<memref::ReinterpretCastOp>(user)) {
+      oldReinterpretOp = cast<memref::ReinterpretCastOp>(user);
+    }
+  }
+
+  auto type = cast<MemRefType>(oldReinterpretOp.getResult().getType());
   // TODO(jornt): for now, memory space 1 is used for objectFifos. Refactor
   // `aie.objectfifo` to support different memory spaces to avoid hardcoding.
   MemRefType newType =
@@ -168,20 +176,17 @@ LogicalResult accessOpToAIE(IRRewriter &rewriter,
   auto reinterpretOp = rewriter.create<memref::ReinterpretCastOp>(
       rewriter.getUnknownLoc(), newType, subviewOp.getOutput(), baseOffset,
       sizes, strides);
-  mapper.map(accessOp.getOperation(), reinterpretOp.getOperation());
-  mapper.map(accessOp.getResult(), reinterpretOp.getResult());
+
+  mapper.map(oldReinterpretOp.getOperation(), reinterpretOp.getOperation());
+  mapper.map(oldReinterpretOp.getResult(), reinterpretOp.getResult());
   toBeErased.push_back(accessOp);
+  toBeErased.push_back(oldReinterpretOp);
   return success();
 }
 
 /// Convert `amdaie.logicalobjectfifo.acquire` to `aie.objectfifo.acquire`.
-/// There are some additional operations being added as well to bridge the gap
-/// to AIE:
-///   - Insert `aie.objectfifo.subview.access` operations to access the
-///   underlying memref
-///   - Insert `memref.reinterpret_cast` to get to the original local shape as
-///   the `aie.objectfifo` has a single type, while the DMA operations converted
-///   into objectfifos can have a different source and target type.
+/// Also insert `aie.objectfifo.subview.access` operations to access the
+/// underlying memref and bridge the gap to AIE.
 LogicalResult acquireOpToAIE(IRRewriter &rewriter,
                              AMDAIE::LogicalObjectFifoAcquire acquireOp,
                              IRMapping &mapper,
