@@ -527,25 +527,26 @@ LogicalResult insertLogicalObjectFifoAccess(ModuleOp moduleOp) {
     DenseMap<Value, std::tuple<AMDAIE::LogicalObjectFifoFromMemrefOp,
                                AMDAIE::MemoryAccess>>
         memrefToLogicalObjectFifo;
-    // First walk to collect consume/produce DMA accesses and map respective
-    // memrefs to logical objectifos.
-    coreOp->walk([&](Operation *op) {
-      // TODO(jornt): can we avoid produce/consume?
-      if (auto consumeOp = dyn_cast<AMDAIE::LogicalObjectFifoConsume>(op)) {
-        Value targetMemref =
-            consumeOp.getDmaCpyNdOp().getTargetObjectFifo().getMemref();
-        memrefToLogicalObjectFifo[targetMemref] =
-            std::make_pair(consumeOp.getDmaCpyNdOp().getTargetObjectFifo(),
-                           AMDAIE::MemoryAccess::Read);
-      } else if (auto produceOp =
-                     dyn_cast<AMDAIE::LogicalObjectFifoProduce>(op)) {
-        Value sourceMemref =
-            produceOp.getDmaCpyNdOp().getSourceObjectFifo().getMemref();
+
+    SmallVector<AMDAIE::DmaCpyNdOp> inputDmaOps =
+        llvm::map_to_vector(coreOp.getInputDmas(), [](Value inputDma) {
+          return cast<AMDAIE::DmaCpyNdOp>(inputDma.getDefiningOp());
+        });
+    for (AMDAIE::DmaCpyNdOp inputDmaOp : inputDmaOps) {
+      Value targetMemref = inputDmaOp.getTargetObjectFifo().getMemref();
+      memrefToLogicalObjectFifo[targetMemref] = std::make_pair(
+          inputDmaOp.getTargetObjectFifo(), AMDAIE::MemoryAccess::Read);
+    }
+    SmallVector<AMDAIE::DmaCpyNdOp> outputDmaOps =
+        llvm::map_to_vector(coreOp.getOutputDmas(), [](Value outputDma) {
+          return cast<AMDAIE::DmaCpyNdOp>(outputDma.getDefiningOp());
+        });
+    for (AMDAIE::DmaCpyNdOp outputDmaOp : outputDmaOps) {
+      Value sourceMemref = outputDmaOp.getSourceObjectFifo().getMemref();
         memrefToLogicalObjectFifo[sourceMemref] =
-            std::make_pair(produceOp.getDmaCpyNdOp().getSourceObjectFifo(),
+            std::make_pair(outputDmaOp.getSourceObjectFifo(),
                            AMDAIE::MemoryAccess::Write);
-      }
-    });
+    }
 
     // We maintain a map from AllocOp to LogicalObjectFifoAccessOp in order to
     // avoid creating a new LogicalObjectFifoAccessOp for the same AllocOp being

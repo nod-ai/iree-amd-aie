@@ -40,18 +40,18 @@ func.func @circular_dma_cpy_nd(%arg0: !amdaie.logicalobjectfifo<memref<1x1x8x16x
 // CHECK:       amdaie.workgroup
 // CHECK:         %[[TILE_0:.+]] = amdaie.tile
 // CHECK:         %[[TILE_1:.+]] = amdaie.tile
-// CHECK:         %{{.+}} = amdaie.core(%[[TILE_0]])
-// CHECK:         %{{.+}} = amdaie.core(%[[TILE_1]])
+// CHECK:         %{{.+}} = amdaie.core(%[[TILE_0]], in : [], out : [])
+// CHECK:         %{{.+}} = amdaie.core(%[[TILE_1]], in : [], out : [])
 // CHECK:         amdaie.controlcode
 func.func @core() {
   %c0 = arith.constant 0 : index
   %c1 = arith.constant 1 : index
   %tile_0_0 = amdaie.tile(%c0, %c0)
   %tile_0_1 = amdaie.tile(%c0, %c1)
-  %core_0_0 = amdaie.core(%tile_0_0) {
+  %core_0_0 = amdaie.core(%tile_0_0, in : [], out : []) {
     amdaie.end
   }
-  %core_0_1 = amdaie.core(%tile_0_1) {
+  %core_0_1 = amdaie.core(%tile_0_1, in : [], out : []) {
     amdaie.end
   }
   return
@@ -195,9 +195,9 @@ func.func @for() {
 // CHECK-DAG:     %[[C8:.+]] = arith.constant 8 : index
 // CHECK-DAG:     %[[TILE_0:.+]] = amdaie.tile(%[[C0]], %[[C0]])
 // CHECK-DAG:     %[[TILE_1:.+]] = amdaie.tile(%[[C0]], %[[C1]])
-// CHECK-DAG:     %{{.+}} = amdaie.core(%[[TILE_0]])
+// CHECK-DAG:     %{{.+}} = amdaie.core(%[[TILE_0]], in : [], out : [])
 // CHECK:           scf.for %{{.*}} = %[[C0]] to %[[C8]] step %[[C1]]
-// CHECK-DAG:     %{{.+}} = amdaie.core(%[[TILE_1]])
+// CHECK-DAG:     %{{.+}} = amdaie.core(%[[TILE_1]], in : [], out : [])
 // CHECK:           scf.for %{{.*}} = %[[C0]] to %[[C8]] step %[[C1]]
 // CHECK:         amdaie.controlcode
 // CHECK-DAG:       %[[C0_1:.+]] = arith.constant 0 : index
@@ -211,10 +211,10 @@ func.func @for_cores() {
   scf.for %arg2 = %c0 to %c8 step %c1  {
     %tile_0_0 = amdaie.tile(%c0, %c0)
     %tile_0_1 = amdaie.tile(%c0, %c1)
-    %core_0_0 = amdaie.core(%tile_0_0) {
+    %core_0_0 = amdaie.core(%tile_0_0, in : [], out : []) {
       amdaie.end
     }
-    %core_0_1 = amdaie.core(%tile_0_1) {
+    %core_0_1 = amdaie.core(%tile_0_1, in : [], out : []) {
       amdaie.end
     }
   }
@@ -281,9 +281,9 @@ func.func @forall() {
 // CHECK:       amdaie.workgroup
 // CHECK:         %[[TILE_0:.+]] = amdaie.tile
 // CHECK:         %[[TILE_1:.+]] = amdaie.tile
-// CHECK:         %{{.+}} = amdaie.core(%[[TILE_0]])
+// CHECK:         %{{.+}} = amdaie.core(%[[TILE_0]], in : [], out : [])
 // CHECK:           scf.forall (%{{.*}}, %{{.*}}) in (1, 2)
-// CHECK:         %{{.+}} = amdaie.core(%[[TILE_1]])
+// CHECK:         %{{.+}} = amdaie.core(%[[TILE_1]], in : [], out : [])
 // CHECK:           scf.forall (%{{.*}}, %{{.*}}) in (1, 2)
 // CHECK:         amdaie.controlcode
 // CHECK:           scf.forall (%{{.*}}, %{{.*}}) in (1, 2)
@@ -293,10 +293,10 @@ func.func @forall_cores() {
   scf.forall (%arg2, %arg3) in (1, 2) {
     %tile_0_0 = amdaie.tile(%c0, %c0)
     %tile_0_1 = amdaie.tile(%c0, %c1)
-    %core_0_0 = amdaie.core(%tile_0_0) {
+    %core_0_0 = amdaie.core(%tile_0_0, in : [], out : []) {
       amdaie.end
     }
-    %core_0_1 = amdaie.core(%tile_0_1) {
+    %core_0_1 = amdaie.core(%tile_0_1, in : [], out : []) {
       amdaie.end
     }
   }
@@ -351,11 +351,11 @@ func.func @forall_dmas(%arg0: memref<1x1x8x16xi32>, %arg1: memref<8x16xi32, 1>) 
 // CHECK-SAME:    %[[FROMMEMREF0]][] [] []
 // CHECK-SAME:    %[[FROMMEMREF1]][0, 0, 0, 0] [1, 1, 8, 16] [128, 16, 16, 1]
 // CHECK-SAME:    (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32>>, !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>)
-// CHECK-DAG:     %{{.+}} = amdaie.core(%[[TILE_0]])
-// CHECK:           amdaie.logicalobjectfifo.consume(%[[DMA]])
+// CHECK-DAG:     %{{.+}} = amdaie.core(%[[TILE_0]], in : [], out : [])
+// CHECK:           amdaie.logicalobjectfifo.access(%[[FROMMEMREF0]], Read)
 // CHECK:           scf.for %{{.*}} = %[[C0]] to %[[C8]] step %[[C1]]
-// CHECK-DAG:     %{{.+}} = amdaie.core(%[[TILE_1]])
-// CHECK:           amdaie.logicalobjectfifo.consume(%[[DMA]])
+// CHECK-DAG:     %{{.+}} = amdaie.core(%[[TILE_1]], in : [], out : [])
+// CHECK:           amdaie.logicalobjectfifo.access(%[[FROMMEMREF0]], Read)
 // CHECK:           scf.for %{{.*}} = %[[C0]] to %[[C8]] step %[[C1]]
 // CHECK:         amdaie.controlcode
 // CHECK-DAG:       %[[C0_1:.+]] = arith.constant 0 : index
@@ -375,19 +375,19 @@ func.func @merge_cores(%arg0: memref<1x1x8x16xi32>, %arg1: memref<8x16xi32, 1>) 
   %0 = amdaie.logicalobjectfifo.from_memref %arg0, {} : memref<1x1x8x16xi32> -> !amdaie.logicalobjectfifo<memref<1x1x8x16xi32>>
   %1 = amdaie.logicalobjectfifo.from_memref %arg1, {} : memref<8x16xi32, 1> -> !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>
   %2 = amdaie.dma_cpy_nd(%0[] [] [], %1[0, 0, 0, 0] [1, 1, 8, 16] [128, 16, 16, 1]) : (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32>>, !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>)
-  %core_0_0_0 = amdaie.core(%tile_0_0) {
-    amdaie.logicalobjectfifo.consume(%2)
+  %core_0_0_0 = amdaie.core(%tile_0_0, in : [], out : []) {
+    amdaie.logicalobjectfifo.access(%0, Read) : !amdaie.logicalobjectfifo<memref<1x1x8x16xi32>> -> memref<1x1x8x16xi32>
     amdaie.end
   }
-  %core_0_1_0 = amdaie.core(%tile_0_1) {
-    amdaie.logicalobjectfifo.consume(%2)
+  %core_0_1_0 = amdaie.core(%tile_0_1, in : [], out : []) {
+    amdaie.logicalobjectfifo.access(%0, Read) : !amdaie.logicalobjectfifo<memref<1x1x8x16xi32>> -> memref<1x1x8x16xi32>
     amdaie.end
   }
   scf.for %arg2 = %c0 to %c8 step %c1  {
-    %core_0_0_1 = amdaie.core(%tile_0_0) {
+    %core_0_0_1 = amdaie.core(%tile_0_0, in : [], out : []) {
       amdaie.end
     }
-    %core_0_1_1 = amdaie.core(%tile_0_1) {
+    %core_0_1_1 = amdaie.core(%tile_0_1, in : [], out : []) {
       amdaie.end
     }
   }
@@ -427,15 +427,15 @@ func.func @merge_cores(%arg0: memref<1x1x8x16xi32>, %arg1: memref<8x16xi32, 1>) 
 // CHECK-SAME:    %[[FROMMEMREF4]][] [] []
 // CHECK-SAME:    %[[FROMMEMREF5]][0, 0, 0, 0] [1, 1, 32, 16] [128, 16, 8, 1]
 // CHECK-SAME:    (!amdaie.logicalobjectfifo<memref<1x1x32x16xi32>>, !amdaie.logicalobjectfifo<memref<32x16xi32, 1>>)
-// CHECK-DAG:     %{{.+}} = amdaie.core(%[[TILE_0]])
-// CHECK:           amdaie.logicalobjectfifo.consume(%[[DMA0]])
+// CHECK-DAG:     %{{.+}} = amdaie.core(%[[TILE_0]], in : [], out : [])
+// CHECK:           amdaie.logicalobjectfifo.access(%[[FROMMEMREF0]], Read)
 // CHECK:           scf.for %{{.*}} = %[[C0]] to %[[C8]] step %[[C1]]
-// CHECK:             amdaie.logicalobjectfifo.consume(%[[DMA1]])
+// CHECK:           amdaie.logicalobjectfifo.access(%[[FROMMEMREF2]], Read)
 // CHECK:             linalg.fill
-// CHECK-DAG:     %{{.+}} = amdaie.core(%[[TILE_1]])
-// CHECK:           amdaie.logicalobjectfifo.consume(%[[DMA0]])
+// CHECK-DAG:     %{{.+}} = amdaie.core(%[[TILE_1]], in : [], out : [])
+// CHECK:           amdaie.logicalobjectfifo.access(%[[FROMMEMREF0]], Read)
 // CHECK:           scf.for %{{.*}} = %[[C0]] to %[[C8]] step %[[C1]]
-// CHECK:             amdaie.logicalobjectfifo.consume(%[[DMA2]])
+// CHECK:           amdaie.logicalobjectfifo.access(%[[FROMMEMREF4]], Read)
 // CHECK:             linalg.fill
 // CHECK:         amdaie.controlcode
 // CHECK-DAG:       %[[C0_1:.+]] = arith.constant 0 : index
@@ -468,24 +468,24 @@ func.func @complex_example(%arg0: memref<1x1x8x16xi32>, %arg1: memref<8x16xi32, 
   %4 = amdaie.logicalobjectfifo.from_memref %arg4, {} : memref<1x1x32x16xi32> -> !amdaie.logicalobjectfifo<memref<1x1x32x16xi32>>
   %5 = amdaie.logicalobjectfifo.from_memref %arg5, {} : memref<32x16xi32, 1> -> !amdaie.logicalobjectfifo<memref<32x16xi32, 1>>
   %dma_0 = amdaie.dma_cpy_nd(%0[] [] [], %1[0, 0, 0, 0] [1, 1, 8, 16] [128, 16, 16, 1]) : (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32>>, !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>)
-  %core_0_0_0 = amdaie.core(%tile_0_0) {
-    amdaie.logicalobjectfifo.consume(%dma_0)
+  %core_0_0_0 = amdaie.core(%tile_0_0, in : [], out : []) {
+    amdaie.logicalobjectfifo.access(%0, Read) : !amdaie.logicalobjectfifo<memref<1x1x8x16xi32>> -> memref<1x1x8x16xi32>
     amdaie.end
   }
-  %core_0_1_0 = amdaie.core(%tile_0_1) {
-    amdaie.logicalobjectfifo.consume(%dma_0)
+  %core_0_1_0 = amdaie.core(%tile_0_1, in : [], out : []) {
+    amdaie.logicalobjectfifo.access(%0, Read) : !amdaie.logicalobjectfifo<memref<1x1x8x16xi32>> -> memref<1x1x8x16xi32>
     amdaie.end
   }
   scf.for %iv0 = %c0 to %c8 step %c1  {
     %dma_1 = amdaie.dma_cpy_nd(%2[] [] [], %3[0, 0, 0, 0] [1, 1, 16, 16] [128, 16, 8, 1]) : (!amdaie.logicalobjectfifo<memref<1x1x16x16xi32>>, !amdaie.logicalobjectfifo<memref<16x16xi32, 1>>)
     %dma_2 = amdaie.dma_cpy_nd(%4[] [] [], %5[0, 0, 0, 0] [1, 1, 32, 16] [128, 16, 8, 1]) : (!amdaie.logicalobjectfifo<memref<1x1x32x16xi32>>, !amdaie.logicalobjectfifo<memref<32x16xi32, 1>>)
-    %core_0_0_1 = amdaie.core(%tile_0_0) {
-      amdaie.logicalobjectfifo.consume(%dma_1)
+    %core_0_0_1 = amdaie.core(%tile_0_0, in : [], out : []) {
+      amdaie.logicalobjectfifo.access(%2, Read) : !amdaie.logicalobjectfifo<memref<1x1x16x16xi32>> -> memref<1x1x16x16xi32>
       linalg.fill ins(%c0_i32 : i32) outs(%arg2 : memref<1x1x16x16xi32>)
       amdaie.end
     }
-    %core_0_1_1 = amdaie.core(%tile_0_1) {
-      amdaie.logicalobjectfifo.consume(%dma_2)
+    %core_0_1_1 = amdaie.core(%tile_0_1, in : [], out : []) {
+      amdaie.logicalobjectfifo.access(%4, Read) : !amdaie.logicalobjectfifo<memref<1x1x32x16xi32>> -> memref<1x1x32x16xi32>
       linalg.fill ins(%c0_i32 : i32) outs(%arg4 : memref<1x1x32x16xi32>)
       amdaie.end
     }

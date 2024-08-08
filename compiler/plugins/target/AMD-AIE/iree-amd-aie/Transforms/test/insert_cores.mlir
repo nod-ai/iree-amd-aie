@@ -22,10 +22,8 @@ func.func @insert_cores_with_non_normalized_forall() {
 // CHECK:           %[[C2:.*]] = arith.constant 2 : index
 // CHECK:           %[[ADD:.*]] = arith.addi %[[ARG2]], %[[C2]] : index
 // CHECK:           %[[TILE0:.*]] = amdaie.tile(%[[ARG3]], %[[ADD]])
-// CHECK:           %[[CORE0:.*]] = amdaie.core(%[[TILE0]]) {
+// CHECK:           %[[CORE0:.*]] = amdaie.core(%[[TILE0]], in : [%[[DMA_CPY2]], %[[DMA_CPY3]]], out : []) {
 // CHECK:             linalg.fill
-// CHECK:             amdaie.logicalobjectfifo.consume(%[[DMA_CPY2]])
-// CHECK:             amdaie.logicalobjectfifo.consume(%[[DMA_CPY3]])
 // CHECK:             linalg.generic
 // CHECK:             amdaie.end
 // CHECK:           }
@@ -40,12 +38,9 @@ func.func @insert_cores_with_non_normalized_forall() {
 // CHECK:           %[[C2:.*]] = arith.constant 2 : index
 // CHECK:           %[[ADD:.*]] = arith.addi %[[ARG2]], %[[C2]] : index
 // CHECK:           %[[TILE1:.*]] = amdaie.tile(%[[ARG3]], %[[ADD]])
-// CHECK:           %[[CORE1:.*]] = amdaie.core(%[[TILE1]]) {
+// CHECK:           %[[CORE1:.*]] = amdaie.core(%[[TILE1]], in : [%[[DMA_CPY2]], %[[DMA_CPY3]]], out : [%[[DMA_CPY4]]]) {
 // CHECK:             linalg.fill ins(%c0_i32 : i32) outs(%alloc_1 : memref<4x8x4x8xi32, 2>)
-// CHECK:             amdaie.logicalobjectfifo.consume(%[[DMA_CPY2]])
-// CHECK:             amdaie.logicalobjectfifo.consume(%[[DMA_CPY3]])
 // CHECK:             linalg.generic
-// CHECK:             amdaie.logicalobjectfifo.produce(%[[DMA_CPY4]])
 // CHECK:             amdaie.end
 // CHECK:           }
 // CHECK:         } {mapping = [#gpu.thread<y>, #gpu.thread<x>]}
@@ -142,9 +137,7 @@ module {
 // CHECK:           %[[C2:.*]] = arith.constant 2 : index
 // CHECK:           %[[ADD:.*]] = arith.addi %[[ARG2]], %[[C2]] : index
 // CHECK:           %[[TILE0:.*]] = amdaie.tile(%[[ARG3]], %[[ADD]])
-// CHECK:           amdaie.core(%[[TILE0]]) {
-// CHECK:             amdaie.logicalobjectfifo.consume(%[[DMA_CPY0]])
-// CHECK:             amdaie.logicalobjectfifo.consume(%[[DMA_CPY1]])
+// CHECK:           amdaie.core(%[[TILE0]], in : [%[[DMA_CPY0]], %[[DMA_CPY1]]], out : []) {
 // CHECK:             linalg.fill
 // CHECK:             scf.for
 // CHECK:               scf.for
@@ -226,9 +219,7 @@ module {
 // CHECK:           %[[C2:.*]] = arith.constant 2 : index
 // CHECK:           %[[ADD:.*]] = arith.addi %[[ARG2]], %[[C2]] : index
 // CHECK:           %[[TILE0:.*]] = amdaie.tile(%[[ARG3]], %[[ADD]])
-// CHECK:           amdaie.core(%[[TILE0]]) {
-// CHECK:             amdaie.logicalobjectfifo.consume(%[[DMA_CPY0]])
-// CHECK:             amdaie.logicalobjectfifo.consume(%[[DMA_CPY1]])
+// CHECK:           amdaie.core(%[[TILE0]], in : [%[[DMA_CPY0]], %[[DMA_CPY1]]], out : []) {
 // CHECK:             linalg.fill
 // CHECK:             memref.extract_strided_metadata
 // CHECK:             memref.extract_strided_metadata
