@@ -682,9 +682,9 @@ func.func @l1_temporary_buffer_for_matmul_elem() {
 // -----
 
 // CHECK-LABEL:   @distribute_cores_and_objectfifos
-// CHECK-DAG:       %[[IN_B:.*]] = hal.interface.binding.subspan set(0) binding(1)
-// CHECK-DAG:       %[[IN_A:.*]] = hal.interface.binding.subspan set(0) binding(0)
-// CHECK-DAG:       %[[OUTPUT:.*]] = hal.interface.binding.subspan set(0) binding(2)
+// CHECK-DAG:       %[[IN_B:.*]] = hal.interface.binding.subspan layout(#pipeline_layout) set(0) binding(1)
+// CHECK-DAG:       %[[IN_A:.*]] = hal.interface.binding.subspan layout(#pipeline_layout) set(0) binding(0)
+// CHECK-DAG:       %[[OUTPUT:.*]] = hal.interface.binding.subspan layout(#pipeline_layout) set(0) binding(2)
 // CHECK-DAG:       %[[ALLOC:.*]] = memref.alloc() : memref<4x8x8x8xi32, 2>
 // CHECK-DAG:       %[[ALLOC_0:.*]] = memref.alloc() : memref<8x8x4x8xi32, 2>
 // CHECK-DAG:       %[[ALLOC_1:.*]] = memref.alloc() : memref<4x8x4x8xi32, 2>
@@ -738,6 +738,13 @@ func.func @l1_temporary_buffer_for_matmul_elem() {
 // CHECK-DAG:           %[[VAL_0:.+]] = amdaie.logicalobjectfifo.access(%[[FROM_MEMREF_7]], Read)
 // CHECK-DAG:           %[[VAL_1:.+]] = amdaie.logicalobjectfifo.access(%[[FROM_MEMREF_8]], Read)
 // CHECK-DAG:           %[[VAL_2:.+]] = amdaie.logicalobjectfifo.access(%[[FROM_MEMREF_5]], Write)
+#pipeline_layout = #hal.pipeline.layout<push_constants = 0, sets = [
+  #hal.descriptor_set.layout<0, bindings = [
+    #hal.descriptor_set.binding<0, storage_buffer>,
+    #hal.descriptor_set.binding<1, storage_buffer>,
+    #hal.descriptor_set.binding<2, storage_buffer>
+  ]>
+]>
 #map = affine_map<(d0) -> (d0 * 32)>
 #map1 = affine_map<(d0, d1, d2, d3, d4, d5) -> (d2, d0, d3, d5)>
 #map2 = affine_map<(d0, d1, d2, d3, d4, d5) -> (d1, d2, d5, d4)>
@@ -755,11 +762,11 @@ module {
     %c64 = arith.constant 64 : index
     %c960 = arith.constant 960 : index
     %c0 = arith.constant 0 : index
-    %0 = hal.interface.binding.subspan set(0) binding(1) type(storage_buffer) alignment(64) offset(%c0) flags(ReadOnly) : memref<1024x64xi32>
+    %0 = hal.interface.binding.subspan layout(#pipeline_layout) set(0) binding(1) alignment(64) offset(%c0) flags(ReadOnly) : memref<1024x64xi32>
     memref.assume_alignment %0, 64 : memref<1024x64xi32>
-    %1 = hal.interface.binding.subspan set(0) binding(0) type(storage_buffer) alignment(64) offset(%c0) flags(ReadOnly) : memref<32x1024xi32>
+    %1 = hal.interface.binding.subspan layout(#pipeline_layout) set(0) binding(0) alignment(64) offset(%c0) flags(ReadOnly) : memref<32x1024xi32>
     memref.assume_alignment %1, 64 : memref<32x1024xi32>
-    %2 = hal.interface.binding.subspan set(0) binding(2) type(storage_buffer) alignment(64) offset(%c0) : memref<32x64xi32>
+    %2 = hal.interface.binding.subspan layout(#pipeline_layout) set(0) binding(2) alignment(64) offset(%c0) : memref<32x64xi32>
     memref.assume_alignment %2, 64 : memref<32x64xi32>
     %alloc = memref.alloc() : memref<4x8x8x8xi32, 2>
     %alloc_0 = memref.alloc() : memref<8x8x4x8xi32, 2>
