@@ -88,6 +88,7 @@ iree_cc_library(
     "AMDAIEPeelForLoop.cpp"
     "AMDAIEPropagateDataLayout.cpp"
     "AMDAIESinkIntoCore.cpp"
+    "AMDAIESplitBuffers.cpp"
     "AMDAIETile.cpp"
     "AMDAIETileAndFuse.cpp"
     "AMDAIEUtils.cpp"

@@ -470,6 +470,12 @@ def AMDAIESinkIntoCore :
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIESinkIntoCorePass()";
 }
 
+def AMDAIESplitBuffers :
+  Pass<"iree-amdaie-split-buffers", "ModuleOp"> {
+  let summary = "Split buffers.";
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIESplitBuffersPass()";
+}
+
 def AMDAIETile :
     InterfacePass<"iree-amdaie-tile", "mlir::FunctionOpInterface"> {
   let summary = "Pass to tile TilingInterface operations.";
