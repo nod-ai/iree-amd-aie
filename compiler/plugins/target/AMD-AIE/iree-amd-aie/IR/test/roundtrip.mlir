@@ -16,12 +16,12 @@ func.func @bd_id() {
 // CHECK-LABEL: func.func @core
 // CHECK: %[[C0:.*]] = arith.constant 0 : index
 // CHECK: %[[TILE_0:.*]] = amdaie.tile(%[[C0]], %[[C0]])
-// CHECK: %[[CORE_0:.*]] = amdaie.core(%[[TILE_0]])
+// CHECK: %[[CORE_0:.*]] = amdaie.core(%[[TILE_0]], in : [], out : [])
 // CHECK: amdaie.end
 func.func @core() {
   %c0 = arith.constant 0 : index
   %tile = amdaie.tile(%c0, %c0)
-  %core = amdaie.core(%tile) {
+  %core = amdaie.core(%tile, in : [], out : []) {
     amdaie.end
   }
   return
@@ -150,17 +150,6 @@ func.func @logicalobjectfifo_acquire(%arg0: !amdaie.logicalobjectfifo<memref<1x1
 
 // -----
 
-// CHECK-LABEL: func.func @logicalobjectfifo_consume
-// CHECK: amdaie.dma_cpy_nd
-// CHECK: amdaie.logicalobjectfifo.consume
-func.func @logicalobjectfifo_consume(%arg0: !amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, %arg1: !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>) {
-  %0 = amdaie.dma_cpy_nd(%arg0[0, 0, 0, 0] [1, 1, 8, 16] [128, 128, 16, 1], %arg1[0, 0, 0, 0] [1, 1, 8, 16] [128, 16, 16, 1]) : (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>)
-  amdaie.logicalobjectfifo.consume(%0)
-  return
-}
-
-// -----
-
 // CHECK-LABEL: func.func @logicalobjectfifo_link
 // CHECK:       %[[DMA0:.+]] = amdaie.circular_dma_cpy_nd
 // CHECK:       %[[DMA1:.+]] = amdaie.circular_dma_cpy_nd
@@ -171,17 +160,6 @@ func.func @logicalobjectfifo_link(%arg0: !amdaie.logicalobjectfifo<memref<32x102
   %0 = amdaie.circular_dma_cpy_nd(%arg1[] [] [], %arg0[] [] []) : (!amdaie.logicalobjectfifo<memref<32x64xi32, 1>>, !amdaie.logicalobjectfifo<memref<32x1024xi32>>)
   %1 = amdaie.circular_dma_cpy_nd(%arg2[] [] [], %arg1[] [] []) : (!amdaie.logicalobjectfifo<memref<8x8x4x8xi32, 2>>, !amdaie.logicalobjectfifo<memref<32x64xi32, 1>>)
   amdaie.logicalobjectfifo.link[%0] -> [%1] ()
-  return
-}
-
-// -----
-
-// CHECK-LABEL: func.func @logicalobjectfifo_produce
-// CHECK: amdaie.dma_cpy_nd
-// CHECK: amdaie.logicalobjectfifo.produce
-func.func @logicalobjectfifo_produce(%arg0: !amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, %arg1: !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>) {
-  %0 = amdaie.dma_cpy_nd(%arg0[0, 0, 0, 0] [1, 1, 8, 16] [128, 128, 16, 1], %arg1[0, 0, 0, 0] [1, 1, 8, 16] [128, 16, 16, 1]) : (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>)
-  amdaie.logicalobjectfifo.produce(%0)
   return
 }
 
@@ -300,11 +278,11 @@ func.func @workgroup() {
   %c1 = arith.constant 1 : index
   amdaie.workgroup {
     %tile_0_0 = amdaie.tile(%c0, %c0)
-    %core_0 = amdaie.core(%tile_0_0) {
+    %core_0 = amdaie.core(%tile_0_0, in : [], out : []) {
       amdaie.end
     }
     %tile_0_1 = amdaie.tile(%c0, %c1)
-    %core_1 = amdaie.core(%tile_0_1) {
+    %core_1 = amdaie.core(%tile_0_1, in : [], out : []) {
       amdaie.end
     }
     amdaie.controlcode {

@@ -47,7 +47,7 @@ def AMDAIE_ControlCodeOp : AMDAIE_Op<"controlcode", [HasParent<"WorkgroupOp">,
   let hasVerifier = 1;
 }
 
-def AMDAIE_CoreOp: AMDAIE_Op<"core", [SingleBlock]>, Results<(outs Index)> {
+def AMDAIE_CoreOp: AMDAIE_Op<"core", [SingleBlock, AttrSizedOperandSegments]>, Results<(outs Index)> {
   let summary = "The AIE core operator";
   let description = [{
     This operation represents an AIE core op, containing a sequence of operations
@@ -62,15 +62,20 @@ def AMDAIE_CoreOp: AMDAIE_Op<"core", [SingleBlock]>, Results<(outs Index)> {
 
   let arguments = (
     ins Index:$tile,
-    OptionalAttr<StrAttr>:$link_with
+        Variadic<Index>:$input_dmas,
+        Variadic<Index>:$output_dmas,
+        OptionalAttr<StrAttr>:$link_with
   );
 
   let regions = (region SizedRegion<1>:$region);
   
-  let assemblyFormat = [{ `(` $tile `)` regions attr-dict }];
+  let assemblyFormat = [{ `(` $tile `,` `in` `:` `[` $input_dmas `]` `,` `out` `:` `[` $output_dmas `]` `)` regions attr-dict }];
   
   let builders = [
     OpBuilder<(ins "mlir::Value":$coreCol, "mlir::Value":$coreRow)>,
+    OpBuilder<(ins "mlir::Value":$coreCol, "mlir::Value":$coreRow,
+      "ValueRange":$input_dmas, "ValueRange":$output_dmas)>,
+    OpBuilder<(ins "TileOp":$tile, "ValueRange":$input_dmas, "ValueRange":$output_dmas)>
   ];
 
   let extraClassDeclaration = [{
@@ -438,7 +443,7 @@ def AMDAIE_LogicalObjectFifoAccessOp : AMDAIE_Op<"logicalobjectfifo.access"> {
       %alloc = memref.alloc() : memref<8x16xi32, 2>
       %0 = amdaie.logicalobjectfifo.from_memref %alloc, {%tile} : memref<8x16xi32, 2>
         -> !amdaie.logicalobjectfifo<memref<8x16xi32, 2>>
-      %core = amdaie.core(%tile) {
+      %core = amdaie.core(%tile, in : [], out : []) {
         %1 = amdaie.logicalobjectfifo.access(%0, Read) : 
           !amdaie.logicalobjectfifo<memref<8x16xi32, 2>> ->  memref<8x16xi32, 2>
     ```
@@ -509,47 +514,6 @@ def AMDAIE_LogicalObjectFifoAcquire:
   let builders = [
     OpBuilder<(ins "mlir::TypeRange":$resultTypes, "mlir::Value":$dma, "LogicalObjectFifoPort":$port)>,
   ];
-}
-
-def AMDAIE_LogicalObjectFifoConsume: AMDAIE_Op<"logicalobjectfifo.consume", []> {
-  let summary = "Consume a DMA logical objectFifo result.";
-  let description = [{
-    Consumes the result of a DMA operation. This is a blocking operation,
-    waiting for the DMA to produce data. Typically, this operation will reside
-    inside a `CoreOp` to synchronize with external DMA operations producing data
-    into the respective core's local memory.
-
-    Example:
-    ```mlir
-    %2 = amdaie.dma_cpy_nd(
-      %1[%c0, %c0, %c0, %c0] [%c1, %c1, %c8, %c16] [%c128, %c128, %c16, %c1],
-      %0[%c0, %c0, %c0, %c0] [%c1, %c1, %c8, %c16] [%c128, %c16, %c16, %c1])
-      : (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>,
-      !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>)
-    %3 = amdaie.logicalobjectfifo.consume(%2)
-    ```
-  }];
-
-  let arguments = (
-    ins Index:$dma
-  );
-
-  let assemblyFormat = [{
-    `(` $dma `)`  attr-dict
-  }];
-
-  let extraClassDeclaration = [{
-    DmaCpyNdOp getDmaCpyNdOp() {
-      return dyn_cast<DmaCpyNdOp>(getDma().getDefiningOp());
-    }
-    Value getLogicalObjectfifo() {
-      return dyn_cast<DmaCpyNdOp>(getDma().getDefiningOp()).getTarget();
-    }
-    // Return the port of this operation.
-    LogicalObjectFifoPort getPort() {
-      return LogicalObjectFifoPort::Consume;
-    }
-  }];
 }
 
 def AMDAIE_LogicalObjectFifoFromMemrefOp
@@ -651,48 +615,6 @@ def AMDAIE_LogicalObjectFifoLink
 
   let assemblyFormat = [{
     `[` ($ins^)? `]` `->` `[` ($outs^)? `]` `(` `)` attr-dict
-  }];
-}
-
-def AMDAIE_LogicalObjectFifoProduce: AMDAIE_Op<"logicalobjectfifo.produce", []> {
-  let summary = "Produce a DMA logicalobjectfifo input.";
-  let description = [{
-    Produces the input of a DMA operation. This is a release-type operation,
-    where the DMA will be waiting for the data to be produced. Typically, this
-    operation will reside inside a `CoreOp` to synchronize with external DMA
-    operations waiting for data from the respective core's local memory to be
-    released.
-
-    Example:
-    ```mlir
-    %2 = amdaie.dma_cpy_nd(
-      %1[%c0, %c0, %c0, %c0] [%c1, %c1, %c8, %c16] [%c128, %c128, %c16, %c1],
-      %0[%c0, %c0, %c0, %c0] [%c1, %c1, %c8, %c16] [%c128, %c16, %c16, %c1])
-      : (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>,
-      !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>)
-    %3 = amdaie.logicalobjectfifo.produce(%2)
-    ```
-  }];
-
-  let arguments = (
-    ins Index:$dma
-  );
-  
-  let assemblyFormat = [{
-    `(` $dma `)`  attr-dict
-  }];
-  
-  let extraClassDeclaration = [{
-    DmaCpyNdOp getDmaCpyNdOp() {
-      return dyn_cast<DmaCpyNdOp>(getDma().getDefiningOp());
-    }
-    Value getLogicalObjectfifo() {
-      return dyn_cast<DmaCpyNdOp>(getDma().getDefiningOp()).getSource();
-    }
-    // Return the port of this operation.
-    LogicalObjectFifoPort getPort() {
-      return LogicalObjectFifoPort::Produce;
-    }
   }];
 }
 

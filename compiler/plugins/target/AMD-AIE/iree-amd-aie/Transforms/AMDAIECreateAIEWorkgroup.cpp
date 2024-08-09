@@ -18,16 +18,35 @@
 
 namespace mlir::iree_compiler::AMDAIE {
 
-/// Merge the 'source' core operations in the end of the 'dest' core operation.
-void CoreContext::mergeCoreOps(AMDAIE::CoreOp source, AMDAIE::CoreOp dest) {
+/// Merge the 'source' and 'dest' core operations into a new `amdaie.core`
+/// operation and combine the input and output DMAs.
+AMDAIE::CoreOp CoreContext::mergeCoreOps(AMDAIE::CoreOp source,
+                                         AMDAIE::CoreOp dest) {
   OpBuilder::InsertionGuard guard(rewriter);
-  Block::iterator insertIt = dest.getBody()->getTerminator()->getIterator();
-  Block::iterator sourceBegin = source.getBody()->begin();
-  Block::iterator sourceEnd = source.getBody()->getTerminator()->getIterator();
-  dest.getBody()->getOperations().splice(
-      insertIt, source.getBody()->getOperations(), sourceBegin, sourceEnd);
-  rewriter.moveOpBefore(dest, source);
-  rewriter.replaceOp(source, dest);
+  AMDAIE::TileOp tile = dest.getTileOp();
+  SmallVector<Value> sourceInputDmas = source.getInputDmas();
+  SmallVector<Value> destInputDmas = dest.getInputDmas();
+  llvm::SmallSetVector<Value, 4> inputDmas(destInputDmas.begin(),
+                                           destInputDmas.end());
+  inputDmas.insert(sourceInputDmas.begin(), sourceInputDmas.end());
+  SmallVector<Value> sourceOutputDmas = source.getOutputDmas();
+  SmallVector<Value> destOutputDmas = dest.getOutputDmas();
+  llvm::SmallSetVector<Value, 4> outputDmas(destOutputDmas.begin(),
+                                            destOutputDmas.end());
+  outputDmas.insert(sourceOutputDmas.begin(), sourceOutputDmas.end());
+  rewriter.setInsertionPoint(source);
+  auto newCoreOp = rewriter.create<AMDAIE::CoreOp>(rewriter.getUnknownLoc(),
+                                                   tile, inputDmas.takeVector(),
+                                                   outputDmas.takeVector());
+  Region &region = newCoreOp.getRegion();
+  Block *newBlock = rewriter.createBlock(&region);
+  rewriter.setInsertionPointToStart(newBlock);
+  rewriter.eraseOp(dest.getBody()->getTerminator());
+  rewriter.mergeBlocks(dest.getBody(), newBlock);
+  rewriter.mergeBlocks(source.getBody(), newBlock);
+  rewriter.eraseOp(dest);
+  rewriter.eraseOp(source);
+  return newCoreOp;
 }
 
 /// Clone CoreOp and add to or merge with coreContext.

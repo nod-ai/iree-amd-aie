@@ -1,5 +1,5 @@
-// RUN: iree-opt --pass-pipeline="builtin.module(func.func(iree-amdaie-canonicalize-doubly-strided-op,canonicalize))" %s | FileCheck %s
-// RUN: iree-opt --pass-pipeline="builtin.module(func.func(iree-amdaie-canonicalize-doubly-strided-op{fold-single-dims=true},canonicalize))" %s | FileCheck %s --check-prefix=FOLD-SINGLE-DIMS
+// RUN: iree-opt --pass-pipeline="builtin.module(func.func(iree-amdaie-canonicalize-doubly-strided-op,canonicalize))" -allow-unregistered-dialect %s | FileCheck %s
+// RUN: iree-opt --pass-pipeline="builtin.module(func.func(iree-amdaie-canonicalize-doubly-strided-op{fold-single-dims=true},canonicalize))" -allow-unregistered-dialect %s | FileCheck %s --check-prefix=FOLD-SINGLE-DIMS
 
 // Verify that source and target of `amdaie.circular_dma_cpy_nd` is still correct after canonicalization.
 //
@@ -18,7 +18,7 @@
 // FOLD-SINGLE-DIMS:        amdaie.circular_dma_cpy_nd(%[[ARG0]][] [] [], %[[ARG1]][] [] [])
 func.func @circular_dma_cpy_nd_source_target(%arg0: !amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, %arg1: !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>) {
   %0 = amdaie.circular_dma_cpy_nd(%arg0[0, 0, 0, 0] [1, 1, 8, 16] [128, 128, 16, 1], %arg1[0, 0, 0, 0] [1, 4, 2, 8] [64, 16, 8, 1]) : (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>)
-  amdaie.logicalobjectfifo.consume(%0)
+  "iree.keep"(%0) : (index) -> ()
   return
 }
 
@@ -33,7 +33,7 @@ func.func @circular_dma_cpy_nd_source_target(%arg0: !amdaie.logicalobjectfifo<me
 // FOLD-SINGLE-DIMS:  amdaie.circular_dma_cpy_nd(%{{.+}}[] [] [], %{{.+}}[] [] [])
 func.func @circular_dma_cpy_nd_linear_implicit(%arg0: !amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, %arg1: !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>) {
   %0 = amdaie.circular_dma_cpy_nd(%arg0[0, 0, 0, 0] [1, 1, 8, 16] [128, 128, 16, 1], %arg1[0, 0, 0, 0] [1, 4, 2, 8] [64, 16, 8, 1]) : (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>)
-  amdaie.logicalobjectfifo.consume(%0)
+  "iree.keep"(%0) : (index) -> ()
   return
 }
 
@@ -57,7 +57,7 @@ func.func @circular_dma_cpy_nd_linear_implicit(%arg0: !amdaie.logicalobjectfifo<
 func.func @circular_dma_cpy_nd_linear(%arg0: !amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, %arg1: !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>) {
   %c16 = arith.constant 16 : index
   %0 = amdaie.circular_dma_cpy_nd(%arg0[0, 0, 0, 0] [1, 2, 8, 8] [256, 128, %c16, 1], %arg1[0, 0, 0, 0] [64, 16, 8, %c16] [128, %c16, %c16, 1]) : (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>)
-  amdaie.logicalobjectfifo.consume(%0)
+  "iree.keep"(%0) : (index) -> ()
   return
 }
 
@@ -68,7 +68,7 @@ func.func @circular_dma_cpy_nd_linear(%arg0: !amdaie.logicalobjectfifo<memref<1x
 // FOLD-SINGLE-DIMS:  amdaie.circular_dma_cpy_nd(%{{.+}}[0, 0, 0, 0] [2, 2, 8, 8] [256, 64, 16, 1], %{{.+}}[0, 0, 0, 0] [2, 2, 8, 16] [128, 16, 8, 1])
 func.func @circular_dma_cpy_nd_no_linear(%arg0: !amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, %arg1: !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>) {
   %0 = amdaie.circular_dma_cpy_nd(%arg0[0, 0, 0, 0] [2, 2, 8, 8] [256, 64, 16, 1], %arg1[0, 0, 0, 0] [2, 2, 8, 16] [128, 16, 8, 1]) : (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>)
-  amdaie.logicalobjectfifo.consume(%0)
+  "iree.keep"(%0) : (index) -> ()
   return
 }
 
@@ -90,7 +90,7 @@ func.func @circular_dma_cpy_nd_no_linear(%arg0: !amdaie.logicalobjectfifo<memref
 // FOLD-SINGLE-DIMS:      amdaie.circular_dma_cpy_nd(%{{.+}}[] [] [], %{{.+}}[%[[C0]], %[[C0]], %[[C0]]] [%[[C2]], %[[C8]], %[[C8]]] [%[[C8]], %[[C16]], %[[C1]]])
 func.func @circular_dma_cpy_nd_unit(%arg0: !amdaie.logicalobjectfifo<memref<1x1x2x2x4x8xi32, 1>>, %arg1: !amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>) {
   %0 = amdaie.circular_dma_cpy_nd(%arg0[0, 0, 0, 0, 0, 0] [1, 1, 2, 2, 4, 8] [128, 128, 64, 32, 8, 1], %arg1[0, 0, 0, 0, 0, 0] [1, 1, 2, 2, 4, 8] [128, 128, 8, 64, 16, 1]) : (!amdaie.logicalobjectfifo<memref<1x1x2x2x4x8xi32, 1>>, !amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>)
-  amdaie.logicalobjectfifo.consume(%0)
+  "iree.keep"(%0) : (index) -> ()
   return
 }
 
@@ -104,7 +104,7 @@ func.func @circular_dma_cpy_nd_unit(%arg0: !amdaie.logicalobjectfifo<memref<1x1x
 // FOLD-SINGLE-DIMS:  amdaie.circular_dma_cpy_nd(%{{.+}}[] [] [], %{{.+}}[] [] [])
 func.func @circular_dma_cpy_nd_unit_between_linear(%arg0: !amdaie.logicalobjectfifo<memref<1x1x2x2x4x8xi32, 1>>, %arg1: !amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>) {
   %0 = amdaie.circular_dma_cpy_nd(%arg0[0, 0, 0, 0, 0, 0] [1, 2, 2, 4, 1, 8] [128, 64, 32, 8, 8, 1], %arg1[0, 0, 0, 0, 0, 0] [2, 2, 1, 4, 8, 1] [64, 32, 32, 8, 1, 1]) : (!amdaie.logicalobjectfifo<memref<1x1x2x2x4x8xi32, 1>>, !amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>)
-  amdaie.logicalobjectfifo.consume(%0)
+  "iree.keep"(%0) : (index) -> ()
   return
 }
 
@@ -115,7 +115,7 @@ func.func @circular_dma_cpy_nd_unit_between_linear(%arg0: !amdaie.logicalobjectf
 // FOLD-SINGLE-DIMS:  amdaie.circular_dma_cpy_nd(%{{.+}}[1, 1, 1, 1] [1, 1, 8, 16] [128, 128, 16, 1], %{{.+}}[1, 1, 1, 1] [1, 4, 2, 8] [64, 16, 8, 1])
 func.func @circular_dma_cpy_nd_non_zero_offset(%arg0: !amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, %arg1: !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>) {
   %0 = amdaie.circular_dma_cpy_nd(%arg0[1, 1, 1, 1] [1, 1, 8, 16] [128, 128, 16, 1], %arg1[1, 1, 1, 1] [1, 4, 2, 8] [64, 16, 8, 1]) : (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>)
-  amdaie.logicalobjectfifo.consume(%0)
+  "iree.keep"(%0) : (index) -> ()
   return
 }
 
@@ -132,7 +132,7 @@ func.func @circular_dma_cpy_nd_non_zero_offset(%arg0: !amdaie.logicalobjectfifo<
 // FOLD-SINGLE-DIMS:      amdaie.circular_dma_cpy_nd(%{{.+}}[%[[C1]]] [%[[C128]]] [%[[C1]]], %{{.+}}[%[[C1]]] [%[[C64]]] [%[[C1]]])
 func.func @circular_dma_cpy_nd_partial_non_zero_offset(%arg0: !amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, %arg1: !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>) {
   %0 = amdaie.circular_dma_cpy_nd(%arg0[0, 0, 0, 1] [1, 1, 8, 16] [128, 128, 16, 1], %arg1[0, 0, 0, 1] [1, 4, 2, 8] [64, 16, 8, 1]) : (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>)
-  amdaie.logicalobjectfifo.consume(%0)
+  "iree.keep"(%0) : (index) -> ()
   return
 }
 
@@ -155,7 +155,7 @@ func.func @circular_dma_cpy_nd_partial_non_zero_offset(%arg0: !amdaie.logicalobj
 // FOLD-SINGLE-DIMS:        amdaie.dma_cpy_nd(%[[ARG0]][] [] [], %[[ARG1]][] [] [])
 func.func @dma_cpy_nd_source_target(%arg0: !amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, %arg1: !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>) {
   %0 = amdaie.dma_cpy_nd(%arg0[0, 0, 0, 0] [1, 1, 8, 16] [128, 128, 16, 1], %arg1[0, 0, 0, 0] [1, 4, 2, 8] [64, 16, 8, 1]) : (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>)
-  amdaie.logicalobjectfifo.consume(%0)
+  "iree.keep"(%0) : (index) -> ()
   return
 }
 
@@ -170,7 +170,7 @@ func.func @dma_cpy_nd_source_target(%arg0: !amdaie.logicalobjectfifo<memref<1x1x
 // FOLD-SINGLE-DIMS:  amdaie.dma_cpy_nd(%{{.+}}[] [] [], %{{.+}}[] [] [])
 func.func @dma_cpy_nd_linear_implicit(%arg0: !amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, %arg1: !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>) {
   %0 = amdaie.dma_cpy_nd(%arg0[0, 0, 0, 0] [1, 1, 8, 16] [128, 128, 16, 1], %arg1[0, 0, 0, 0] [1, 4, 2, 8] [64, 16, 8, 1]) : (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>)
-  amdaie.logicalobjectfifo.consume(%0)
+  "iree.keep"(%0) : (index) -> ()
   return
 }
 
@@ -194,7 +194,7 @@ func.func @dma_cpy_nd_linear_implicit(%arg0: !amdaie.logicalobjectfifo<memref<1x
 func.func @dma_cpy_nd_linear(%arg0: !amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, %arg1: !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>) {
   %c16 = arith.constant 16 : index
   %0 = amdaie.dma_cpy_nd(%arg0[0, 0, 0, 0] [1, 2, 8, 8] [256, 128, %c16, 1], %arg1[0, 0, 0, 0] [64, 16, 8, %c16] [128, %c16, %c16, 1]) : (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>)
-  amdaie.logicalobjectfifo.consume(%0)
+  "iree.keep"(%0) : (index) -> ()
   return
 }
 
@@ -205,7 +205,7 @@ func.func @dma_cpy_nd_linear(%arg0: !amdaie.logicalobjectfifo<memref<1x1x8x16xi3
 // FOLD-SINGLE-DIMS:  amdaie.dma_cpy_nd(%{{.+}}[0, 0, 0, 0] [2, 2, 8, 8] [256, 64, 16, 1], %{{.+}}[0, 0, 0, 0] [2, 2, 8, 16] [128, 16, 8, 1])
 func.func @dma_cpy_nd_no_linear(%arg0: !amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, %arg1: !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>) {
   %0 = amdaie.dma_cpy_nd(%arg0[0, 0, 0, 0] [2, 2, 8, 8] [256, 64, 16, 1], %arg1[0, 0, 0, 0] [2, 2, 8, 16] [128, 16, 8, 1]) : (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>)
-  amdaie.logicalobjectfifo.consume(%0)
+  "iree.keep"(%0) : (index) -> ()
   return
 }
 
@@ -227,7 +227,7 @@ func.func @dma_cpy_nd_no_linear(%arg0: !amdaie.logicalobjectfifo<memref<1x1x8x16
 // FOLD-SINGLE-DIMS:      amdaie.dma_cpy_nd(%{{.+}}[] [] [], %{{.+}}[%[[C0]], %[[C0]], %[[C0]]] [%[[C2]], %[[C8]], %[[C8]]] [%[[C8]], %[[C16]], %[[C1]]])
 func.func @dma_cpy_nd_unit(%arg0: !amdaie.logicalobjectfifo<memref<1x1x2x2x4x8xi32, 1>>, %arg1: !amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>) {
   %0 = amdaie.dma_cpy_nd(%arg0[0, 0, 0, 0, 0, 0] [1, 1, 2, 2, 4, 8] [128, 128, 64, 32, 8, 1], %arg1[0, 0, 0, 0, 0, 0] [1, 1, 2, 2, 4, 8] [128, 128, 8, 64, 16, 1]) : (!amdaie.logicalobjectfifo<memref<1x1x2x2x4x8xi32, 1>>, !amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>)
-  amdaie.logicalobjectfifo.consume(%0)
+  "iree.keep"(%0) : (index) -> ()
   return
 }
 
@@ -241,7 +241,7 @@ func.func @dma_cpy_nd_unit(%arg0: !amdaie.logicalobjectfifo<memref<1x1x2x2x4x8xi
 // FOLD-SINGLE-DIMS:  amdaie.dma_cpy_nd(%{{.+}}[] [] [], %{{.+}}[] [] [])
 func.func @dma_cpy_nd_unit_between_linear(%arg0: !amdaie.logicalobjectfifo<memref<1x1x2x2x4x8xi32, 1>>, %arg1: !amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>) {
   %0 = amdaie.dma_cpy_nd(%arg0[0, 0, 0, 0, 0, 0] [2, 2, 1, 1, 4, 8] [64, 32, 32, 32, 8, 1], %arg1[0, 0, 0, 0, 0, 0] [2, 1, 2, 1, 4, 8] [64, 64, 32, 32, 8, 1]) : (!amdaie.logicalobjectfifo<memref<1x1x2x2x4x8xi32, 1>>, !amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>)
-  amdaie.logicalobjectfifo.consume(%0)
+  "iree.keep"(%0) : (index) -> ()
   return
 }
 
@@ -252,7 +252,7 @@ func.func @dma_cpy_nd_unit_between_linear(%arg0: !amdaie.logicalobjectfifo<memre
 // FOLD-SINGLE-DIMS:  amdaie.dma_cpy_nd(%{{.+}}[1, 1, 1, 1] [1, 1, 8, 16] [128, 128, 16, 1], %{{.+}}[1, 1, 1, 1] [1, 4, 2, 8] [64, 16, 8, 1])
 func.func @dma_cpy_nd_non_zero_offset(%arg0: !amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, %arg1: !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>) {
   %0 = amdaie.dma_cpy_nd(%arg0[1, 1, 1, 1] [1, 1, 8, 16] [128, 128, 16, 1], %arg1[1, 1, 1, 1] [1, 4, 2, 8] [64, 16, 8, 1]) : (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>)
-  amdaie.logicalobjectfifo.consume(%0)
+  "iree.keep"(%0) : (index) -> ()
   return
 }
 
@@ -269,7 +269,7 @@ func.func @dma_cpy_nd_non_zero_offset(%arg0: !amdaie.logicalobjectfifo<memref<1x
 // FOLD-SINGLE-DIMS:      amdaie.dma_cpy_nd(%{{.+}}[%[[C1]]] [%[[C128]]] [%[[C1]]], %{{.+}}[%[[C1]]] [%[[C64]]] [%[[C1]]])
 func.func @dma_cpy_nd_partial_non_zero_offset(%arg0: !amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, %arg1: !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>) {
   %0 = amdaie.dma_cpy_nd(%arg0[0, 0, 0, 1] [1, 1, 8, 16] [128, 128, 16, 1], %arg1[0, 0, 0, 1] [1, 4, 2, 8] [64, 16, 8, 1]) : (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>)
-  amdaie.logicalobjectfifo.consume(%0)
+  "iree.keep"(%0) : (index) -> ()
   return
 }
 
