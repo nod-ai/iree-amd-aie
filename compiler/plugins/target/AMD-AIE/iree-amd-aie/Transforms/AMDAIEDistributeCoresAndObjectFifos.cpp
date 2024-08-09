@@ -836,70 +836,6 @@ LogicalResult assignAieTilesAndDistributeLogicalObjectFifos(ModuleOp moduleOp) {
   return success();
 }
 
-/// Allocate different memories for logical objectFifos on the same shared
-/// memory tile to ensure different buffers will be used for them.
-LogicalResult distributeSharedMemory(ModuleOp moduleOp) {
-  IRRewriter rewriter(moduleOp.getContext());
-
-  // Map from local objectfifos found to the tiles where they are used
-  DenseMap<SmallVector<std::pair<int64_t, int64_t>>, Value, LocationMapInfo>
-      locationsToMemref;
-
-  moduleOp->walk([&](AMDAIE::LogicalObjectFifoFromMemrefOp logicalObjectFifo) {
-    Attribute memSpace = logicalObjectFifo.getMemorySpace();
-    if (!memSpace || dyn_cast<IntegerAttr>(memSpace).getInt() != 1)
-      return WalkResult::advance();
-
-    SmallVector<AMDAIE::TileOp> tiles =
-        llvm::map_to_vector(logicalObjectFifo.getTiles(), [](Value tile) {
-          return dyn_cast<AMDAIE::TileOp>(tile.getDefiningOp());
-        });
-    llvm::sort(tiles.begin(), tiles.end(),
-               AMDAIE::TileOp::tileValueColumnAndRowComparator);
-
-    SmallVector<AMDAIE::TileOp> targetTiles;
-    (void)getUserTiles<CopyOpOperateOn::Target>(logicalObjectFifo, targetTiles);
-    llvm::sort(targetTiles.begin(), targetTiles.end(),
-               AMDAIE::TileOp::tileValueColumnAndRowComparator);
-    tiles.insert(tiles.end(), std::make_move_iterator(targetTiles.begin()),
-                 std::make_move_iterator(targetTiles.end()));
-
-    SmallVector<AMDAIE::TileOp> sourceTiles;
-    (void)getUserTiles<CopyOpOperateOn::Source>(logicalObjectFifo, sourceTiles);
-    llvm::sort(sourceTiles.begin(), sourceTiles.end(),
-               AMDAIE::TileOp::tileValueColumnAndRowComparator);
-    tiles.insert(tiles.end(), std::make_move_iterator(sourceTiles.begin()),
-                 std::make_move_iterator(sourceTiles.end()));
-    LLVM_DEBUG(llvm::dbgs() << "Op: " << logicalObjectFifo
-                            << ", number of tiles: " << tiles.size() << "\n");
-
-    SmallVector<std::pair<int64_t, int64_t>> locations =
-        llvm::map_to_vector(tiles, [](AMDAIE::TileOp tile) {
-          return std::make_pair(
-              (int64_t)getConstantIntValue(tile.getCol()).value(),
-              (int64_t)getConstantIntValue(tile.getRow()).value());
-        });
-    if (!locationsToMemref.contains(locations)) {
-      auto allocOp = dyn_cast<memref::AllocOp>(
-          logicalObjectFifo.getMemref().getDefiningOp());
-      rewriter.setInsertionPoint(allocOp);
-      auto newAllocOp =
-          dyn_cast<memref::AllocOp>(rewriter.clone(*allocOp.getOperation()));
-      auto newDeallocOp = rewriter.create<memref::DeallocOp>(
-          rewriter.getUnknownLoc(), newAllocOp);
-      newDeallocOp->moveBefore(&newAllocOp->getBlock()->back());
-      locationsToMemref[locations] = newAllocOp.getResult();
-    }
-    rewriter.setInsertionPoint(logicalObjectFifo);
-    rewriter.replaceOpWithNewOp<AMDAIE::LogicalObjectFifoFromMemrefOp>(
-        logicalObjectFifo,
-        cast<LogicalObjectFifoType>(logicalObjectFifo.getOutput().getType()),
-        locationsToMemref[locations], logicalObjectFifo.getTiles());
-    return WalkResult::advance();
-  });
-  return success();
-}
-
 class AMDAIEDistributeCoresAndObjectFifosPass
     : public impl::AMDAIEDistributeCoresAndObjectFifosBase<
           AMDAIEDistributeCoresAndObjectFifosPass> {
@@ -998,13 +934,6 @@ void AMDAIEDistributeCoresAndObjectFifosPass::runOnOperation() {
   LLVM_DEBUG(llvm::dbgs()
              << "Module after assignAieTilesAndDistributeLogicalObjectFifos: \n"
              << moduleOp << "\n");
-
-  // Allocate different memories for logical objectFifos on the same shared
-  // memory tile to ensure different buffers will be used for them.
-  if (failed(distributeSharedMemory(moduleOp))) {
-    moduleOp.emitOpError() << "distribution of shared memory failed";
-    return signalPassFailure();
-  }
 }
 
 }  // namespace

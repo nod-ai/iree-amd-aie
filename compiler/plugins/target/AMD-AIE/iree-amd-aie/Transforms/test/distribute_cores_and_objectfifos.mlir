@@ -74,7 +74,6 @@ module {
 // CHECK-DAG:   %[[C1:.*]] = arith.constant 1 : index
 // CHECK-DAG:   %[[C2:.*]] = arith.constant 2 : index
 // CHECK-DAG:   %[[ALLOC_0:.*]] = memref.alloc() : memref<32x1024xi32, 1>
-// CHECK-DAG:   %[[ALLOC_1:.*]] = memref.alloc() : memref<32x1024xi32, 1>
 // CHECK-DAG:   %[[ALLOC_2:.*]] = memref.alloc() : memref<32x64xi32, 2>
 // CHECK:       scf.forall (%[[ARG0:.*]], %[[ARG1:.*]]) in (1, 1) {
 // CHECK-DAG:     %[[TILE_0_2:.*]] = amdaie.tile(%[[C0]], %[[C2]])
@@ -346,7 +345,6 @@ module {
 // CHECK-DAG:   %[[C2:.*]] = arith.constant 2 : index
 // CHECK-DAG:   %[[C3:.*]] = arith.constant 3 : index
 // CHECK-DAG:   %[[ALLOC_0:.*]] = memref.alloc() : memref<32x1024xi32, 1>
-// CHECK-DAG:   %[[ALLOC_1:.*]] = memref.alloc() : memref<32x1024xi32, 1>
 // CHECK-DAG:   %[[ALLOC_2:.*]] = memref.alloc() : memref<32x64xi32, 2>
 // CHECK:       scf.forall (%[[ARG0:.*]], %[[ARG1:.*]]) in (1, 1) {
 // CHECK-DAG:     %[[TILE_0_2:.*]] = amdaie.tile(%[[C0]], %[[C2]])
@@ -408,8 +406,7 @@ module {
 // CHECK-DAG:   %[[C3:.+]] = arith.constant 3 : index
 // CHECK-DAG:   %[[ALLOC_0:.+]] = memref.alloc() : memref<32x1024xi32>
 // CHECK-DAG:   %[[ALLOC_1:.+]] = memref.alloc() : memref<32x64xi32, 1>
-// CHECK-DAG:   %[[ALLOC_2:.+]] = memref.alloc() : memref<32x64xi32, 1>
-// CHECK-DAG:   %[[ALLOC_3:.+]] = memref.alloc() : memref<32x64xi32, 2>
+// CHECK-DAG:   %[[ALLOC_2:.+]] = memref.alloc() : memref<32x64xi32, 2>
 // CHECK:       scf.forall (%[[ARG0:.+]], %[[ARG1:.+]]) in (1, 1) {
 // CHECK-DAG:     %[[TILE_0_2:.+]] = amdaie.tile(%[[C0]], %[[C2]])
 // CHECK-DAG:     %[[TILE_0_3:.+]] = amdaie.tile(%[[C0]], %[[C3]])
@@ -420,9 +417,9 @@ module {
 // CHECK-DAG:     %[[TILE_1_1:.+]] = amdaie.tile(%[[C1]], %[[C1]])
 // CHECK-DAG:     %[[FROM_MEMREF_0:.+]] = amdaie.logicalobjectfifo.from_memref %[[ALLOC_0]], {%[[TILE_0_0]]}
 // CHECK-DAG:     %[[FROM_MEMREF_1:.+]] = amdaie.logicalobjectfifo.from_memref %[[ALLOC_1]], {%[[TILE_1_1]]}
-// CHECK-DAG:     %[[FROM_MEMREF_2:.+]] = amdaie.logicalobjectfifo.from_memref %[[ALLOC_2]], {%[[TILE_0_1]]}
-// CHECK-DAG:     %[[FROM_MEMREF_3:.+]] = amdaie.logicalobjectfifo.from_memref %[[ALLOC_3]], {%[[TILE_1_2]], %[[TILE_1_3]]}
-// CHECK-DAG:     %[[FROM_MEMREF_4:.+]] = amdaie.logicalobjectfifo.from_memref %[[ALLOC_3]], {%[[TILE_0_2]], %[[TILE_0_3]]}
+// CHECK-DAG:     %[[FROM_MEMREF_2:.+]] = amdaie.logicalobjectfifo.from_memref %[[ALLOC_1]], {%[[TILE_0_1]]}
+// CHECK-DAG:     %[[FROM_MEMREF_3:.+]] = amdaie.logicalobjectfifo.from_memref %[[ALLOC_2]], {%[[TILE_1_2]], %[[TILE_1_3]]}
+// CHECK-DAG:     %[[FROM_MEMREF_4:.+]] = amdaie.logicalobjectfifo.from_memref %[[ALLOC_2]], {%[[TILE_0_2]], %[[TILE_0_3]]}
 // CHECK-DAG:     %[[DMA_0:.*]] = amdaie.dma_cpy_nd(%[[FROM_MEMREF_2]]
 // CHECK-SAME:    %[[FROM_MEMREF_0]]
 // CHECK-DAG:     %[[DMA_1:.*]] = amdaie.dma_cpy_nd(%[[FROM_MEMREF_4]]
@@ -693,9 +690,7 @@ func.func @l1_temporary_buffer_for_matmul_elem() {
 // CHECK-DAG:       %[[ALLOC_1:.*]] = memref.alloc() : memref<4x8x4x8xi32, 2>
 // CHECK-DAG:       %[[ALLOC_2:.*]] = memref.alloc() : memref<32x64xi32, 1>
 // CHECK-DAG:       %[[ALLOC_3:.*]] = memref.alloc() : memref<64x32xi32, 1>
-// CHECK-DAG:       %[[ALLOC_4:.*]] = memref.alloc() : memref<64x32xi32, 1>
-// CHECK-DAG:       %[[ALLOC_5:.*]] = memref.alloc() : memref<32x32xi32, 1>
-// CHECK-DAG:       %[[ALLOC_6:.*]] = memref.alloc() : memref<32x32xi32, 1>
+// CHECK-DAG:       %[[ALLOC_4:.*]] = memref.alloc() : memref<32x32xi32, 1>
 // CHECK-DAG:       scf.forall (%{{.+}}, %{{.+}}) in (1, 1)
 // CHECK-DAG:         %[[TILE_1_2:.*]] = amdaie.tile(%c1, %c2)
 // CHECK-DAG:         %[[TILE_0_2:.*]] = amdaie.tile(%c0, %c2)
@@ -704,9 +699,9 @@ func.func @l1_temporary_buffer_for_matmul_elem() {
 // CHECK-DAG:         %[[TILE_0_0:.*]] = amdaie.tile(%c0, %c0)
 // CHECK-DAG:         %[[FROM_MEMREF_0:.*]] = amdaie.logicalobjectfifo.from_memref %[[ALLOC_2]], {%[[TILE_0_1]]}
 // CHECK-DAG:         %[[FROM_MEMREF_1:.*]] = amdaie.logicalobjectfifo.from_memref %[[ALLOC_3]], {%[[TILE_1_1]]}
-// CHECK-DAG:         %[[FROM_MEMREF_2:.*]] = amdaie.logicalobjectfifo.from_memref %[[ALLOC_4]], {%[[TILE_0_1]]}
-// CHECK-DAG:         %[[FROM_MEMREF_3:.*]] = amdaie.logicalobjectfifo.from_memref %[[ALLOC_5]], {%[[TILE_1_1]]}
-// CHECK-DAG:         %[[FROM_MEMREF_4:.*]] = amdaie.logicalobjectfifo.from_memref %[[ALLOC_6]], {%[[TILE_0_1]]}
+// CHECK-DAG:         %[[FROM_MEMREF_2:.*]] = amdaie.logicalobjectfifo.from_memref %[[ALLOC_3]], {%[[TILE_0_1]]}
+// CHECK-DAG:         %[[FROM_MEMREF_3:.*]] = amdaie.logicalobjectfifo.from_memref %[[ALLOC_4]], {%[[TILE_1_1]]}
+// CHECK-DAG:         %[[FROM_MEMREF_4:.*]] = amdaie.logicalobjectfifo.from_memref %[[ALLOC_4]], {%[[TILE_0_1]]}
 // CHECK-DAG:         %[[FROM_MEMREF_5:.*]] = amdaie.logicalobjectfifo.from_memref %[[ALLOC_1]], {%[[TILE_1_2]]}
 // CHECK-DAG:         %[[FROM_MEMREF_6:.*]] = amdaie.logicalobjectfifo.from_memref %[[ALLOC_1]], {%[[TILE_0_2]]}
 // CHECK-DAG:         %[[FROM_MEMREF_7:.*]] = amdaie.logicalobjectfifo.from_memref %[[ALLOC_0]], {%[[TILE_0_2]], %[[TILE_1_2]]}
@@ -825,16 +820,18 @@ module {
 // CHECK-DAG:       %[[ALLOC:.*]] = memref.alloc() : memref<1x1x16x8x8x4xbf16, 2 : i32>
 // CHECK-DAG:       %[[ALLOC_1:.*]] = memref.alloc() : memref<1x1x8x16x4x8xbf16, 2 : i32>
 // CHECK-DAG:       %[[ALLOC_2:.*]] = memref.alloc() : memref<1x2x64x64xbf16, 1 : i32>
-// CHECK-DAG:       %[[ALLOC_3:.*]] = memref.alloc() : memref<2x2x16x16x4x4xf32, 2 : i32>
+// CHECK-DAG:       %[[ALLOC_3:.*]] = memref.alloc() : memref<2x1x64x64xbf16, 1 : i32>
+// CHECK-DAG:       %[[ALLOC_4:.*]] = memref.alloc() : memref<2x2x16x16x4x4xf32, 2 : i32>
+// CHECK-DAG:       %[[ALLOC_5:.*]] = memref.alloc() : memref<2x2x64x64xf32, 1 : i32>
 // CHECK-DAG:       %[[TILE_0_1:.*]] = amdaie.tile(%[[C0]], %[[C1]])
 // CHECK-DAG:       %[[FROM_MEMREF_0:.*]] = amdaie.logicalobjectfifo.from_memref %[[ALLOC_2]], {%[[TILE_0_1]]}
-// CHECK-DAG:       %[[FROM_MEMREF_1:.*]] = amdaie.logicalobjectfifo.from_memref %[[ALLOC_2]], {%[[TILE_0_1]]}
-// CHECK-DAG:       %[[FROM_MEMREF_2:.*]] = amdaie.logicalobjectfifo.from_memref %[[ALLOC_2]], {%[[TILE_0_1]]}
+// CHECK-DAG:       %[[FROM_MEMREF_1:.*]] = amdaie.logicalobjectfifo.from_memref %[[ALLOC_3]], {%[[TILE_0_1]]}
+// CHECK-DAG:       %[[FROM_MEMREF_2:.*]] = amdaie.logicalobjectfifo.from_memref %[[ALLOC_5]], {%[[TILE_0_1]]}
 // CHECK-DAG:       scf.forall (%{{.+}}, %{{.+}}) in (1, 1)
 // CHECK-DAG:         %[[TILE_0_2:.*]] = amdaie.tile(%[[C0]], %[[C2]])
 // CHECK-DAG:         %[[FROM_MEMREF_3:.*]] = amdaie.logicalobjectfifo.from_memref %[[ALLOC]], {%[[TILE_0_2]]}
 // CHECK-DAG:         %[[FROM_MEMREF_4:.*]] = amdaie.logicalobjectfifo.from_memref %[[ALLOC_1]], {%[[TILE_0_2]]}
-// CHECK-DAG:         %[[FROM_MEMREF_5:.*]] = amdaie.logicalobjectfifo.from_memref %[[ALLOC_3]], {%[[TILE_0_2]]}
+// CHECK-DAG:         %[[FROM_MEMREF_5:.*]] = amdaie.logicalobjectfifo.from_memref %[[ALLOC_4]], {%[[TILE_0_2]]}
 // CHECK-DAG:         %[[DMA_0:.*]] = amdaie.dma_cpy_nd(%[[FROM_MEMREF_4]]
 // CHECK-SAME:        %[[FROM_MEMREF_1]]
 // CHECK-DAG:         %[[DMA_1:.*]] = amdaie.dma_cpy_nd(%[[FROM_MEMREF_3]]
@@ -936,11 +933,11 @@ module {
 // CHECK-DAG:       %[[ALLOC:.*]] = memref.alloc() : memref<1x1x8x4x8x4xi32, 2 : i32>
 // CHECK-DAG:       %[[ALLOC_0:.*]] = memref.alloc() : memref<1x1x4x8x4x8xi32, 2 : i32>
 // CHECK-DAG:       %[[ALLOC_1:.*]] = memref.alloc() : memref<1x2x32x32xi32, 1 : i32>
-// CHECK-DAG:       %[[ALLOC_4:.*]] = memref.alloc() : memref<2x1x32x32xi32, 1 : i32>
+// CHECK-DAG:       %[[ALLOC_2:.*]] = memref.alloc() : memref<2x1x32x32xi32, 1 : i32>
 // CHECK-DAG:       %[[TILE_0_1:.*]] = amdaie.tile(%[[C0]], %[[C1]])
 // CHECK-DAG:       %[[FROM_MEMREF_0:.*]] = amdaie.logicalobjectfifo.from_memref %[[ALLOC_1]], {%[[TILE_0_1]]}
-// CHECK-DAG:       %[[FROM_MEMREF_1:.*]] = amdaie.logicalobjectfifo.from_memref %[[ALLOC_1]], {%[[TILE_0_1]]}
-// CHECK-DAG:       %[[ALLOC_5:.*]] = memref.alloc() : memref<1x1x8x8x4x4xi32, 2 : i32>
+// CHECK-DAG:       %[[FROM_MEMREF_1:.*]] = amdaie.logicalobjectfifo.from_memref %[[ALLOC_2]], {%[[TILE_0_1]]}
+// CHECK-DAG:       %[[ALLOC_3:.*]] = memref.alloc() : memref<1x1x8x8x4x4xi32, 2 : i32>
 // CHECK-DAG:       scf.forall (%{{.+}}, %{{.+}}) in (1, 1)
 // CHECK-DAG:         %[[TILE_0_2:.*]] = amdaie.tile(%[[C0]], %[[C2]])
 // CHECK-DAG:         %[[FROM_MEMREF_2:.*]] = amdaie.logicalobjectfifo.from_memref %[[ALLOC]], {%[[TILE_0_2]]}
@@ -949,7 +946,7 @@ module {
 // CHECK-SAME:        %[[FROM_MEMREF_1]]
 // CHECK-DAG:         %[[DMA_1:.*]] = amdaie.dma_cpy_nd(%[[FROM_MEMREF_2]]
 // CHECK-SAME:        %[[FROM_MEMREF_0]]
-// CHECK-DAG:         %[[FROM_MEMREF_4:.*]] = amdaie.logicalobjectfifo.from_memref %[[ALLOC_5]], {%[[TILE_0_2]]}
+// CHECK-DAG:         %[[FROM_MEMREF_4:.*]] = amdaie.logicalobjectfifo.from_memref %[[ALLOC_3]], {%[[TILE_0_2]]}
 // CHECK-DAG:         %[[CORE_0:.*]] = amdaie.core(%[[TILE_0_2]], in : [%[[DMA_0]], %[[DMA_1]]], out : [])
 // CHECK-DAG:           %[[VAL_0:.+]] = amdaie.logicalobjectfifo.access(%[[FROM_MEMREF_2]], Read)
 // CHECK-DAG:           %[[VAL_1:.+]] = amdaie.logicalobjectfifo.access(%[[FROM_MEMREF_3]], Read)
