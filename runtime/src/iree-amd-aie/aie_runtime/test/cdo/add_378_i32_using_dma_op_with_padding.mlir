@@ -11,12 +11,12 @@ module {
       %0 = aie.dma_start(S2MM, 0, ^bb1, ^bb3, repeat_count = 1)
     ^bb1:  // pred: ^bb0
       aie.use_lock(%objFifo_in0_cons_cons_lock, AcquireGreaterEqual, 1)
-      aie.dma_bd(%objFifo_in0_cons_buff_0 : memref<16xi32>, 0, 16, [<size = 13, stride = 1>], [<const_pad_before = 2, const_pad_after = 1>]) {bd_id = 0 : i32, next_bd_id = 1 : i32}
+      aie.dma_bd(%objFifo_in0_cons_buff_0 : memref<16xi32>) {bd_id = 0 : i32, dimensions = #aie<bd_dim_layout_array[<size = 13, stride = 1>]>, len = 16 : i32, next_bd_id = 1 : i32, pad_dimensions = #aie<bd_pad_layout_array[<const_pad_before = 2, const_pad_after = 1>]>}
       aie.use_lock(%objFifo_in0_cons_prod_lock, Release, 1)
       aie.next_bd ^bb2
     ^bb2:  // pred: ^bb1
       aie.use_lock(%objFifo_in0_cons_cons_lock, AcquireGreaterEqual, 1)
-      aie.dma_bd(%objFifo_in0_cons_buff_1 : memref<16xi32>, 0, 16, [<size = 13, stride = 1>], [<const_pad_before = 2, const_pad_after = 1>]) {bd_id = 1 : i32}
+      aie.dma_bd(%objFifo_in0_cons_buff_1 : memref<16xi32>) {bd_id = 1 : i32, dimensions = #aie<bd_dim_layout_array[<size = 13, stride = 1>]>, len = 16 : i32, pad_dimensions = #aie<bd_pad_layout_array[<const_pad_before = 2, const_pad_after = 1>]>}
       aie.use_lock(%objFifo_in0_cons_prod_lock, Release, 1)
       aie.next_bd ^bb3
     ^bb3:  // 2 preds: ^bb0, ^bb2

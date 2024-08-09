@@ -45,24 +45,24 @@
 // CHECK:             %[[VAL_0:.*]] = aie.dma_start(S2MM, 0, ^bb1, ^bb3)
 // CHECK:           ^bb1:
 // CHECK:             aie.use_lock(%[[LINK1_CONS_PROD_LOCK]], AcquireGreaterEqual, 1)
-// CHECK:             aie.dma_bd(%[[LINK1_CONS_BUFF_0]] : memref<48xi32>, 0, 48)
+// CHECK:             aie.dma_bd(%[[LINK1_CONS_BUFF_0]] : memref<48xi32>) {len = 48 : i32}
 // CHECK:             aie.use_lock(%[[LINK1_CONS_CONS_LOCK]], Release, 1)
 // CHECK:             aie.next_bd ^bb2
 // CHECK:           ^bb2:
 // CHECK:             aie.use_lock(%[[LINK1_CONS_PROD_LOCK]], AcquireGreaterEqual, 1)
-// CHECK:             aie.dma_bd(%[[LINK1_CONS_BUFF_1]] : memref<48xi32>, 0, 48)
+// CHECK:             aie.dma_bd(%[[LINK1_CONS_BUFF_1]] : memref<48xi32>) {len = 48 : i32}
 // CHECK:             aie.use_lock(%[[LINK1_CONS_CONS_LOCK]], Release, 1)
 // CHECK:             aie.next_bd ^bb1
 // CHECK:           ^bb3:
 // CHECK:             %[[VAL_1:.*]] = aie.dma_start(MM2S, 0, ^bb4, ^bb6)
 // CHECK:           ^bb4:
 // CHECK:             aie.use_lock(%[[LINK1_CONS_CONS_LOCK]], AcquireGreaterEqual, 1)
-// CHECK:             aie.dma_bd(%[[LINK1_CONS_BUFF_0]] : memref<48xi32>, 0, 48)
+// CHECK:             aie.dma_bd(%[[LINK1_CONS_BUFF_0]] : memref<48xi32>) {len = 48 : i32}
 // CHECK:             aie.use_lock(%[[LINK1_CONS_PROD_LOCK]], Release, 1)
 // CHECK:             aie.next_bd ^bb5
 // CHECK:           ^bb5:
 // CHECK:             aie.use_lock(%[[LINK1_CONS_CONS_LOCK]], AcquireGreaterEqual, 1)
-// CHECK:             aie.dma_bd(%[[LINK1_CONS_BUFF_1]] : memref<48xi32>, 0, 48)
+// CHECK:             aie.dma_bd(%[[LINK1_CONS_BUFF_1]] : memref<48xi32>) {len = 48 : i32}
 // CHECK:             aie.use_lock(%[[LINK1_CONS_PROD_LOCK]], Release, 1)
 // CHECK:             aie.next_bd ^bb4
 // CHECK:           ^bb6:
@@ -72,24 +72,24 @@
 // CHECK:             %[[VAL_2:.*]] = aie.dma_start(S2MM, 0, ^bb1, ^bb3)
 // CHECK:           ^bb1:
 // CHECK:             aie.use_lock(%[[LINK2_0_CONS_PROD_LOCK]], AcquireGreaterEqual, 1)
-// CHECK:             aie.dma_bd(%[[LINK2_0_CONS_BUFF_0]] : memref<16xi32>, 0, 16)
+// CHECK:             aie.dma_bd(%[[LINK2_0_CONS_BUFF_0]] : memref<16xi32>) {len = 16 : i32}
 // CHECK:             aie.use_lock(%[[LINK2_0_CONS_CONS_LOCK]], Release, 1)
 // CHECK:             aie.next_bd ^bb2
 // CHECK:           ^bb2:
 // CHECK:             aie.use_lock(%[[LINK2_0_CONS_PROD_LOCK]], AcquireGreaterEqual, 1)
-// CHECK:             aie.dma_bd(%[[LINK2_0_CONS_BUFF_1]] : memref<16xi32>, 0, 16)
+// CHECK:             aie.dma_bd(%[[LINK2_0_CONS_BUFF_1]] : memref<16xi32>) {len = 16 : i32}
 // CHECK:             aie.use_lock(%[[LINK2_0_CONS_CONS_LOCK]], Release, 1)
 // CHECK:             aie.next_bd ^bb1
 // CHECK:           ^bb3:
 // CHECK:             %[[VAL_3:.*]] = aie.dma_start(MM2S, 0, ^bb4, ^bb6)
 // CHECK:           ^bb4:
 // CHECK:             aie.use_lock(%[[SKIP_CONNECTION_CONS_LOCK]], AcquireGreaterEqual, 1)
-// CHECK:             aie.dma_bd(%[[SKIP_CONNECTION_BUFF_0]] : memref<16xi32>, 0, 16)
+// CHECK:             aie.dma_bd(%[[SKIP_CONNECTION_BUFF_0]] : memref<16xi32>) {len = 16 : i32}
 // CHECK:             aie.use_lock(%[[SKIP_CONNECTION_PROD_LOCK]], Release, 1)
 // CHECK:             aie.next_bd ^bb5
 // CHECK:           ^bb5:
 // CHECK:             aie.use_lock(%[[SKIP_CONNECTION_CONS_LOCK]], AcquireGreaterEqual, 1)
-// CHECK:             aie.dma_bd(%[[SKIP_CONNECTION_BUFF_1]] : memref<16xi32>, 0, 16)
+// CHECK:             aie.dma_bd(%[[SKIP_CONNECTION_BUFF_1]] : memref<16xi32>) {len = 16 : i32}
 // CHECK:             aie.use_lock(%[[SKIP_CONNECTION_PROD_LOCK]], Release, 1)
 // CHECK:             aie.next_bd ^bb4
 // CHECK:           ^bb6:
@@ -99,29 +99,29 @@
 // CHECK:             %[[VAL_4:.*]] = aie.dma_start(S2MM, 0, ^bb1, ^bb4)
 // CHECK:           ^bb1:
 // CHECK:             aie.use_lock(%[[LINK2_1_CONS_PROD_LOCK]], AcquireGreaterEqual, 1)
-// CHECK:             aie.dma_bd(%[[LINK2_1_CONS_BUFF_0]] : memref<16xi32>, 0, 16)
+// CHECK:             aie.dma_bd(%[[LINK2_1_CONS_BUFF_0]] : memref<16xi32>) {len = 16 : i32}
 // CHECK:             aie.use_lock(%[[LINK2_1_CONS_CONS_LOCK]], Release, 1)
 // CHECK:             aie.next_bd ^bb2
 // CHECK:           ^bb2:
 // CHECK:             aie.use_lock(%[[LINK2_1_CONS_PROD_LOCK]], AcquireGreaterEqual, 1)
-// CHECK:             aie.dma_bd(%[[LINK2_1_CONS_BUFF_1]] : memref<16xi32>, 0, 16)
+// CHECK:             aie.dma_bd(%[[LINK2_1_CONS_BUFF_1]] : memref<16xi32>) {len = 16 : i32}
 // CHECK:             aie.use_lock(%[[LINK2_1_CONS_CONS_LOCK]], Release, 1)
 // CHECK:             aie.next_bd ^bb3
 // CHECK:           ^bb3:
 // CHECK:             aie.use_lock(%[[LINK2_1_CONS_PROD_LOCK]], AcquireGreaterEqual, 1)
-// CHECK:             aie.dma_bd(%[[LINK2_1_CONS_BUFF_2]] : memref<16xi32>, 0, 16)
+// CHECK:             aie.dma_bd(%[[LINK2_1_CONS_BUFF_2]] : memref<16xi32>) {len = 16 : i32}
 // CHECK:             aie.use_lock(%[[LINK2_1_CONS_CONS_LOCK]], Release, 1)
 // CHECK:             aie.next_bd ^bb1
 // CHECK:           ^bb4:
 // CHECK:             %[[VAL_5:.*]] = aie.dma_start(S2MM, 1, ^bb5, ^bb7)
 // CHECK:           ^bb5:
 // CHECK:             aie.use_lock(%[[SKIP_CONNECTION_CONS_PROD_LOCK]], AcquireGreaterEqual, 1)
-// CHECK:             aie.dma_bd(%[[SKIP_CONNECTION_CONS_BUFF_0]] : memref<16xi32>, 0, 16)
+// CHECK:             aie.dma_bd(%[[SKIP_CONNECTION_CONS_BUFF_0]] : memref<16xi32>) {len = 16 : i32}
 // CHECK:             aie.use_lock(%[[SKIP_CONNECTION_CONS_CONS_LOCK]], Release, 1)
 // CHECK:             aie.next_bd ^bb6
 // CHECK:           ^bb6:
 // CHECK:             aie.use_lock(%[[SKIP_CONNECTION_CONS_PROD_LOCK]], AcquireGreaterEqual, 1)
-// CHECK:             aie.dma_bd(%[[SKIP_CONNECTION_CONS_BUFF_1]] : memref<16xi32>, 0, 16)
+// CHECK:             aie.dma_bd(%[[SKIP_CONNECTION_CONS_BUFF_1]] : memref<16xi32>) {len = 16 : i32}
 // CHECK:             aie.use_lock(%[[SKIP_CONNECTION_CONS_CONS_LOCK]], Release, 1)
 // CHECK:             aie.next_bd ^bb5
 // CHECK:           ^bb7:

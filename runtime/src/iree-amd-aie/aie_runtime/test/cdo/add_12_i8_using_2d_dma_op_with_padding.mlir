@@ -10,7 +10,7 @@ module {
       %0 = aie.dma_start(S2MM, 0, ^bb1, ^bb2, repeat_count = 1)
     ^bb1:  // 2 preds: ^bb0, ^bb1
       aie.use_lock(%objFifo_in0_cons_cons_lock, AcquireGreaterEqual, 1)
-      aie.dma_bd(%objFifo_in0_cons_buff_0 : memref<64x64xi8>, 0, 4096, [<size = 61, stride = 56>, <size = 56, stride = 1>], [<const_pad_before = 2, const_pad_after = 1>, <const_pad_before = 4, const_pad_after = 4>]) {bd_id = 0 : i32, next_bd_id = 0 : i32}
+      aie.dma_bd(%objFifo_in0_cons_buff_0 : memref<64x64xi8>) {bd_id = 0 : i32, dimensions = #aie<bd_dim_layout_array[<size = 61, stride = 56>, <size = 56, stride = 1>]>, pad_dimensions = #aie<bd_pad_layout_array[<const_pad_before = 2, const_pad_after = 1>, <const_pad_before = 4, const_pad_after = 4>]>, len = 4096 : i32, next_bd_id = 0 : i32}
       aie.use_lock(%objFifo_in0_cons_prod_lock, Release, 1)
       aie.next_bd ^bb1
     ^bb2:  // pred: ^bb0
