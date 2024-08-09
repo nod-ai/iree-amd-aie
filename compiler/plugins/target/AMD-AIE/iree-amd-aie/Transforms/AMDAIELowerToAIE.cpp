@@ -163,7 +163,11 @@ LogicalResult accessOpToAIE(IRRewriter &rewriter,
   for (Operation *user : accessOp->getUsers()) {
     if (isa<memref::ReinterpretCastOp>(user)) {
       oldReinterpretOp = cast<memref::ReinterpretCastOp>(user);
+      break;
     }
+  }
+  if (!oldReinterpretOp) {
+    return accessOp.emitError() << "reinterpret-cast op has not been generated";
   }
 
   auto type = cast<MemRefType>(oldReinterpretOp.getResult().getType());
