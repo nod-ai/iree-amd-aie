@@ -100,6 +100,8 @@ def generate_aie_vmfb(
     module.
     """
 
+    additional_flags = config.additional_aie_compilation_flags.split()
+
     compilation_flags = [
         config.iree_compile_exe,
         test_file,
@@ -114,14 +116,22 @@ def generate_aie_vmfb(
         "--iree-scheduling-optimize-bindings=false",
         f"--mlir-disable-threading",
         "--mlir-elide-resource-strings-if-larger=10",
-        "-o",
-        config.output_dir / f"{name}_aie.vmfb",
     ]
+
     if config.verbose:
         compilation_flags += ["--iree-amd-aie-show-invoked-commands"]
 
     if use_ukernel:
         compilation_flags += ["--iree-amdaie-enable-ukernels=all"]
+
+    for additional_flag in additional_flags:
+        if additional_flag not in compilation_flags:
+            compilation_flags += [additional_flag]
+
+    compilation_flags += [
+        "-o",
+        config.output_dir / f"{name}_aie.vmfb",
+    ]
 
     start = time.monotonic_ns()
     shell_out(compilation_flags, config.output_dir, config.verbose)
@@ -220,6 +230,7 @@ class TestConfig:
         return_on_fail,
         reset_npu_between_runs,
         do_not_run_aie,
+        additional_aie_compilation_flags,
     ):
         self.output_dir = output_dir
         self.iree_install_dir = iree_install_dir
@@ -233,6 +244,7 @@ class TestConfig:
         self.verbose = verbose
         self.reset_npu_between_runs = reset_npu_between_runs
         self.do_not_run_aie = do_not_run_aie
+        self.additional_aie_compilation_flags = additional_aie_compilation_flags
 
         # Try get the xrt and (linux) kernel versions.
         self.linux_kernel = "undetermined"
@@ -655,6 +667,7 @@ def all_tests(
     reset_npu_between_runs,
     do_not_run_aie,
     test_set,
+    additional_aie_compilation_flags,
 ):
     """
     There are a few ways to add tests to this script:
@@ -695,6 +708,7 @@ def all_tests(
         return_on_fail,
         reset_npu_between_runs,
         do_not_run_aie,
+        additional_aie_compilation_flags,
     )
     if verbose:
         print(config)
@@ -808,6 +822,17 @@ if __name__ == "__main__":
         default="All",
     )
 
+    parser.add_argument(
+        "--additional_aie_compilation_flags",
+        type=str,
+        help=(
+            "Additional flags to pass to the AIE compiler, for all tests. "
+            "Example, do print the IR between passes during compilation you might have: "
+            ' --additional_aie_compilation_flags="--mlir-print-ir-before-all --mlir-print-ir-module-scope --aie2xclbin-print-ir-before-all --aie2xclbin-print-ir-module-scope"'
+        ),
+        default="",
+    )
+
     args = parser.parse_args()
 
     test_set_list = args.test_set.split(",")
@@ -822,4 +847,5 @@ if __name__ == "__main__":
         args.reset_npu_between_runs,
         args.do_not_run_aie,
         test_set_list,
+        args.additional_aie_compilation_flags,
     )
