@@ -134,7 +134,7 @@ LogicalResult insertCoreOps(mlir::ModuleOp moduleOp) {
       // loop nest inside the amdaie.core op here. Currently look for a
       // subset of ops which we know should be in the core.
       // TODO(newling) improve this design.
-      auto insertInCore =
+      bool insertInCore =
           isa<linalg::LinalgOp>(op) || isa<vector::ContractionOp>(op) ||
           isa<memref::ExtractStridedMetadataOp>(op) || isa<func::CallOp>(op);
       if (insertInCore) {

@@ -282,7 +282,7 @@ module {
 
 // -----
 
-// This is the starting IR currently generated for tiling a convd op.
+// This is the starting IR currently generated for tiling a conv2d op.
 
 // CHECK-LABEL:   @conv_2d_nhwc_hwcf_dispatch_0_conv_2d_nhwc_hwcf_2x12x12x64x3x3x32_i32
 // CHECK:         scf.forall
