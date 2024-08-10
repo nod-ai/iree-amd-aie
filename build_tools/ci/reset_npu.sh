@@ -7,13 +7,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 set -e
 
-NUMBER=$(lspci -D | grep "\[AMD\] Device 1502" | cut -d ' ' -f1)
-
-if [ x"$NUMBER" != x"" ]; then
-  sudo modprobe -r amdxdna
-  sudo modprobe drm_shmem_helper
-  sudo modprobe amdxdna dyndbg==pflm
-else
-  echo "couldn't find npu"
-fi
+sudo modprobe -r amdxdna
+sudo modprobe drm_shmem_helper
+sudo modprobe amdxdna dyndbg==pflm timeout_in_sec=10
 

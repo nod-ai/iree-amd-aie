@@ -32,6 +32,7 @@ extern uint64_t XAIE1_NPI_BASEADDR;
 extern uint64_t XAIE1_PARTITION_BASE_ADDR;
 
 // Gen ML
+
 extern uint8_t XAIEML_AIE_TILE_NUM_ROWS;
 extern uint8_t XAIEML_AIE_TILE_ROW_START;
 extern uint8_t XAIEML_COL_SHIFT;
@@ -76,10 +77,32 @@ extern uint64_t XAIE2IPU_BASE_ADDR;
 extern uint64_t XAIE2IPU_NPI_BASEADDR;
 extern uint64_t XAIE2IPU_PARTITION_BASE_ADDR;
 
+// TODO(max): these are hardcoded in the router - should be moved to the device
+// model
 extern int XAIE2IPU_MEM_TILE_LOCK_ID_INCR;
 extern uint64_t XAIE2IPU_ADDR_ARRAY_OFF;
 
-extern int XAIEIPU_MEM_TILE_LOCK_ID_INCR;
-extern uint64_t XAIEIPU_ADDR_ARRAY_OFF;
+// Gen Strix B0
+
+extern uint8_t XAIE_STRIXB0_AIE_TILE_NUM_ROWS;
+extern uint8_t XAIE_STRIXB0_AIE_TILE_ROW_START;
+extern uint8_t XAIE_STRIXB0_COL_SHIFT;
+extern uint8_t XAIE_STRIXB0_MEM_TILE_DMA_NUM_CH;
+extern uint8_t XAIE_STRIXB0_MEM_TILE_NUM_LOCKS;
+extern uint8_t XAIE_STRIXB0_MEM_TILE_NUM_ROWS;
+extern uint8_t XAIE_STRIXB0_MEM_TILE_ROW_START;
+extern uint8_t XAIE_STRIXB0_NUM_COLS;
+extern uint8_t XAIE_STRIXB0_NUM_NOC_INTR_OFFSET;
+extern uint8_t XAIE_STRIXB0_NUM_ROWS;
+extern uint8_t XAIE_STRIXB0_ROW_SHIFT;
+extern uint8_t XAIE_STRIXB0_SHIM_DMA_NUM_CH;
+extern uint8_t XAIE_STRIXB0_SHIM_NUM_LOCKS;
+extern uint8_t XAIE_STRIXB0_SHIM_NUM_ROWS;
+extern uint8_t XAIE_STRIXB0_SHIM_ROW;
+extern uint8_t XAIE_STRIXB0_TILE_DMA_NUM_CH;
+extern uint8_t XAIE_STRIXB0_TILE_NUM_LOCKS;
+extern uint64_t XAIE_STRIXB0_BASE_ADDR;
+extern uint64_t XAIE_STRIXB0_NPI_BASEADDR;
+extern uint64_t XAIE_STRIXB0_PARTITION_BASE_ADDR;
 
 #endif

@@ -33,7 +33,8 @@ extern "C" {
 #undef u64
 
 enum byte_ordering { Little_Endian, Big_Endian };
-void startCDOFileStream(const char* cdoFileName);
+
+void startCDOFileStream(const char *cdoFileName);
 void endCurrentCDOFileStream();
 void FileHeader();
 void EnAXIdebug();
@@ -43,23 +44,28 @@ void insertNoOpCommand(unsigned int numPadBytes);
 }
 
 namespace mlir::iree_compiler::AMDAIE {
-
 struct TileLoc {
   int col, row;
 
   TileLoc(int col, int row) : col(col), row(row) {}
+
   TileLoc() = delete;
   // for std::transform
-  TileLoc& operator=(const TileLoc& t) = default;
+  TileLoc &operator=(const TileLoc &t) = default;
+
   TileLoc(XAie_LocType loc) : col(loc.Col), row(loc.Row) {}
+
   operator XAie_LocType() const { return XAie_TileLoc(col, row); }
 
   // for getting free DenseMapInfo (see below)
   using TupleType = std::tuple<int, int>;
+
   TileLoc(TupleType t) : TileLoc(std::get<0>(t), std::get<1>(t)) {}
+
   operator TupleType() const { return {col, row}; }
   TUPLE_LIKE_STRUCT_RELATIONAL_OPS(TileLoc)
 };
+
 ASSERT_STANDARD_LAYOUT(TileLoc);
 
 static_assert(static_cast<uint8_t>(DMAChannelDir::MM2S) ==
@@ -75,10 +81,11 @@ struct SwitchDMAConnection {
   SwitchDMAConnection(DMAChannelDir direction, uint8_t channel)
       : direction(direction), channel(channel) {}
 
-  bool operator==(const SwitchDMAConnection& rhs) const {
+  bool operator==(const SwitchDMAConnection &rhs) const {
     return std::tie(direction, channel) == std::tie(rhs.direction, rhs.channel);
   }
 };
+
 ASSERT_STANDARD_LAYOUT(SwitchDMAConnection);
 
 enum class AMDAIETileType : uint8_t {
@@ -145,6 +152,7 @@ static_assert(static_cast<uint8_t>(StrmSwPortType::SS_PORT_TYPE_MAX) ==
                   ::StrmSwPortType::SS_PORT_TYPE_MAX,
               "mlir::iree_compiler::AMDAIE::StrmSwPortType is out of sync with "
               "aie-rt's StrmSwPortType");
+
 inline ::StrmSwPortType strmTtoStrmT(StrmSwPortType t) {
   return static_cast<::StrmSwPortType>(t);
 }
@@ -166,6 +174,7 @@ enum class XAie_TxnOpcode : uint8_t {
   XAIE_IO_CUSTOM_OP_NEXT,
   XAIE_IO_CUSTOM_OP_MAX = ::XAie_TxnOpcode::XAIE_IO_CUSTOM_OP_MAX,
 };
+
 static_assert(static_cast<uint8_t>(XAie_TxnOpcode::XAIE_IO_WRITE) == 0,
               "mlir::iree_compiler::AMDAIE::XAie_TxnOpcode is out of sync with "
               "aie-rt's XAie_TxnOpcode");
@@ -217,7 +226,8 @@ struct AMDAIEDeviceModel {
                              uint8_t devNColumns, uint8_t devNRows,
                              uint8_t memTileRowStart, uint8_t nMemTileRows,
                              uint8_t nShimTileRows, int partitionNumCols,
-                             int partitionStartCol, bool aieSim, bool xaieDebug,
+                             int partitionStartCol, uint64_t partBaseAddr,
+                             uint64_t npiAddr, bool aieSim, bool xaieDebug,
                              AMDAIEDevice device);
 
   int rows() const;
@@ -234,21 +244,21 @@ struct AMDAIEDeviceModel {
   /// Retrieve a DMA property for the specified tile type.
   template <typename T>
   T getDmaProp(AMDAIETileType tileType, AMDAIEDmaProp dmaProp) const {
-    const uint8_t* dmaMod = reinterpret_cast<const uint8_t*>(
+    const uint8_t *dmaMod = reinterpret_cast<const uint8_t *>(
         devInst.DevProp.DevMod[static_cast<uint8_t>(tileType)].DmaMod);
-    return *((const T*)(dmaMod + static_cast<uint8_t>(dmaProp)));
+    return *((const T *)(dmaMod + static_cast<uint8_t>(dmaProp)));
   }
 
   /// Retrieve a DMA BD property for the specified tile type and BD id.
   template <typename T>
   T getDmaBdProp(AMDAIETileType tileType, uint8_t bd_id,
                  AMDAIEDmaBdProp dmaBdProp) const {
-    const XAie_DmaMod* dmaMod =
+    const XAie_DmaMod *dmaMod =
         devInst.DevProp.DevMod[static_cast<uint8_t>(tileType)].DmaMod;
     assert(bd_id < dmaMod->NumBds && "BD id should be smaller than max");
-    const uint8_t* dmaBdMod =
-        reinterpret_cast<const uint8_t*>(&dmaMod->BdProp[bd_id]);
-    return *((const T*)(dmaBdMod + static_cast<uint8_t>(dmaBdProp)));
+    const uint8_t *dmaBdMod =
+        reinterpret_cast<const uint8_t *>(&dmaMod->BdProp[bd_id]);
+    return *((const T *)(dmaBdMod + static_cast<uint8_t>(dmaBdProp)));
   }
 
   uint32_t getNumLocks(uint8_t col, uint8_t row) const;
@@ -365,8 +375,8 @@ BOTH_OSTREAM_OPS_FORALL_TYPES(OSTREAM_OP_DECL, BOTH_OSTREAM_OP)
 
 // https://stackoverflow.com/a/32230306
 template <typename H1>
-llvm::raw_ostream& showArgs(llvm::raw_ostream& out, const char* label,
-                            H1&& value) {
+llvm::raw_ostream &showArgs(llvm::raw_ostream &out, const char *label,
+                            H1 &&value) {
   if constexpr (std::is_pointer_v<H1> ||
                 std::is_pointer_v<std::remove_reference_t<H1>>) {
     return out << label << "=ptr";
@@ -376,9 +386,9 @@ llvm::raw_ostream& showArgs(llvm::raw_ostream& out, const char* label,
 }
 
 template <typename H1, typename... T>
-llvm::raw_ostream& showArgs(llvm::raw_ostream& out, const char* label,
-                            H1&& value, T&&... rest) {
-  const char* pcomma = strchr(label, ',');
+llvm::raw_ostream &showArgs(llvm::raw_ostream &out, const char *label,
+                            H1 &&value, T &&...rest) {
+  const char *pcomma = strchr(label, ',');
   if constexpr (std::is_pointer_v<H1> ||
                 std::is_pointer_v<std::remove_reference_t<H1>>) {
     return showArgs(out.write(label, pcomma - label) << "=ptr,", pcomma + 1,
@@ -418,11 +428,9 @@ static_assert(XAIE_OK == 0);
       return failure();                                                 \
     }                                                                   \
   } while (0)
-
 }  // namespace mlir::iree_compiler::AMDAIE
 
 namespace llvm {
-
 template <typename TupleT>
 struct TupleStructDenseMapInfo : DenseMapInfo<TupleT> {};
 
@@ -435,7 +443,7 @@ struct DenseMapInfo<mlir::iree_compiler::AMDAIE::TileLoc>
 template <>
 struct std::hash<mlir::iree_compiler::AMDAIE::TileLoc> {
   std::size_t operator()(
-      const mlir::iree_compiler::AMDAIE::TileLoc& s) const noexcept {
+      const mlir::iree_compiler::AMDAIE::TileLoc &s) const noexcept {
     std::size_t h1 = std::hash<int>{}(s.col);
     std::size_t h2 = std::hash<int>{}(s.row);
     return h1 ^ (h2 << 1);
