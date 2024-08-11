@@ -18,8 +18,9 @@
 #include "iree-amd-aie/IR/AMDAIEOps.h"
 #include "iree-amd-aie/Transforms/AMDAIEOpUtils.h"
 #include "iree-amd-aie/Transforms/Passes.h"
-#include "iree-amd-aie/Transforms/Transforms.h"
 #include "iree/compiler/Codegen/TransformStrategies/GPU/Common.h"
+#include "mlir/Dialect/Linalg/IR/LinalgInterfaces.h"
+#include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
 
 #define DEBUG_TYPE "iree-amdaie-insert-cores"
@@ -50,6 +51,7 @@ LogicalResult insertCoreOps(mlir::ModuleOp moduleOp) {
     // Currently, innermost `scf.forall` operations are expected to have thread
     // mapping and are therefore selected for insertion of cores. Advance if no
     // thread mapping.
+    if (!forallOp.getMapping().has_value()) return WalkResult::advance();
     SmallVector<Attribute> mapping =
         llvm::to_vector(forallOp.getMapping()->getValue());
     if (!isa<mlir::gpu::GPUThreadMappingAttr>(*mapping.begin()))
@@ -107,20 +109,10 @@ LogicalResult insertCoreOps(mlir::ModuleOp moduleOp) {
     WalkResult forallRes = forallOp->walk([&](Operation *op) {
       // Skip operations already inside core ops
       if (op->getParentOfType<AMDAIE::CoreOp>()) return WalkResult::advance();
-      if (auto linalgOp = dyn_cast<linalg::LinalgOp>(op)) {
-        rewriter.setInsertionPoint(endOp);
-        rewriter.moveOpBefore(linalgOp, endOp);
-      } else if (isa<vector::ContractionOp>(op)) {
-        // Because vector.contract op is surrounded by vectorized loop nest, we
-        // need to traverse to the outermost loop to move the entire vectorized
-        // computation within amdaie.core op.
-        Operation *currOp = op;
-        while (currOp->getParentOp() != forallOp) {
-          currOp = currOp->getParentOp();
-        }
-        rewriter.setInsertionPoint(endOp);
-        rewriter.moveOpBefore(currOp, endOp);
-      } else if (auto callOp = dyn_cast<func::CallOp>(op)) {
+
+      if (op == forallOp) return WalkResult::advance();
+
+      if (auto callOp = dyn_cast<func::CallOp>(op)) {
         // Fetch name of the ukernel function to look up its declaration in the
         // Symbol table.
         StringRef fnName = callOp.getCallee();
@@ -136,14 +128,29 @@ LogicalResult insertCoreOps(mlir::ModuleOp moduleOp) {
         //               As of now this hasn't turned up yet, so will table this
         //               for now.
         coreOp.setLinkWith(fnDecl->getAttrOfType<StringAttr>("link_with"));
-        rewriter.setInsertionPoint(endOp);
-        rewriter.moveOpBefore(op, endOp);
-      } else if (isa<memref::ExtractStridedMetadataOp>(op)) {
-        rewriter.setInsertionPoint(endOp);
-        rewriter.moveOpBefore(op, endOp);
       }
+
+      // Some ops are surrrounded by scf.for loop nests. Place the entire
+      // loop nest inside the amdaie.core op here. Currently look for a
+      // subset of ops which we know should be in the core.
+      // TODO(newling) improve this design.
+      bool insertInCore =
+          isa<linalg::LinalgOp>(op) || isa<vector::ContractionOp>(op) ||
+          isa<memref::ExtractStridedMetadataOp>(op) || isa<func::CallOp>(op);
+      if (insertInCore) {
+        // Most distant ancestor of 'op' that's a strict descendant of
+        // 'forallOp'.
+        Operation *ancestor = op;
+        while (ancestor->getParentOp() != forallOp) {
+          ancestor = ancestor->getParentOp();
+        }
+        rewriter.setInsertionPoint(endOp);
+        rewriter.moveOpBefore(ancestor, endOp);
+      }
+
       return WalkResult::advance();
     });
+
     if (forallRes.wasInterrupted()) return WalkResult::interrupt();
     return WalkResult::advance();
   });
