@@ -195,6 +195,14 @@ jobs:
             /opt/xilinx/xrt \
             /opt/Xilinx/Vitis/2024.1
 
+      - name: Microkernel vs direct codegen -- performance and correctness
+        run: |
+          source .venv/bin/activate
+          # See comment above about XRT memory
+          sudo prlimit -lunlimited --pid $$
+          bash build_tools/ci/run_matmul_test.sh test_matmuls iree-install
+          bash build_tools/ci/matmul_ukernel_vs_codegen_benchmark/run_test.sh test1 iree-install
+
       - name: Printing IR from aie2xclbin
         run: |
           source .venv/bin/activate
