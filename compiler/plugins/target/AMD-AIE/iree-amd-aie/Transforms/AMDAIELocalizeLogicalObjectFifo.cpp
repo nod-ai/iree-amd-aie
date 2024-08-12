@@ -29,7 +29,7 @@ namespace mlir::iree_compiler::AMDAIE {
 namespace {
 
 template <class... T>
-scf::ForallOp getThreadMappedForallAncestor(Operation *op) {
+scf::ForallOp getMappedForallAncestor(Operation *op) {
   auto forall = op->getParentOfType<scf::ForallOp>();
   while (forall) {
     bool isMapped = [&forall]() {
@@ -49,12 +49,12 @@ scf::ForallOp getThreadMappedForallAncestor(Operation *op) {
 }
 
 scf::ForallOp getThreadMappedForallAncestor(Operation *op) {
-  return getThreadMappedForallAncestor<mlir::gpu::GPUThreadMappingAttr>(op);
+  return getMappedForallAncestor<mlir::gpu::GPUThreadMappingAttr>(op);
 }
 
 scf::ForallOp getThreadOrBlockMappedForallAncestor(Operation *op) {
-  return getThreadMappedForallAncestor<mlir::gpu::GPUThreadMappingAttr,
-                                       mlir::gpu::GPUBlockMappingAttr>(op);
+  return getMappedForallAncestor<mlir::gpu::GPUThreadMappingAttr,
+                                 mlir::gpu::GPUBlockMappingAttr>(op);
 }
 
 class AMDAIELocalizeLogicalObjectfifoPass
