@@ -14,8 +14,10 @@
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/SCF/Transforms/Transforms.h"
+#include "mlir/Dialect/Utils/StaticValueUtils.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
 #include "mlir/IR/Iterators.h"
+#include "mlir/IR/Matchers.h"
 #include "mlir/IR/Verifier.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
@@ -59,7 +61,7 @@ struct LocationMapInfo {
 // AMDAIEDistributeCoresAndObjectFifosPass
 //===----------------------------------------------------------------------===//
 
-/// Try to detect subview(s) that look like they are 'distributring' or
+/// Try to detect subview(s) that look like they are 'distributing' or
 /// 'privatizing'. That is, subview(s) that take an L1 memref spanning all
 /// L1 memories of the AIE array, and slice it along tile specific dimensions.
 /// If one or more identical subviews are found, return the MemRefType type of
@@ -71,41 +73,36 @@ MemRefType getDistributedType(memref::AllocOp alloc) {
       auto offsets = subview.getOffsets();
 
       // This subview op is contained inside nested scf.for ops. We count how
-      // how many of these loop ops there are, partitioning in 2 sets:
-      // (1  scf.for ops annotated with amdaie.unroll, with the subview op
-      //     slicing one of the dimensions, and
-      // (2) scf.for ops which are are not in set (1).
-      int nUnrollLoops{0};
-      int nOtherLoops{0};
-
+      // how many of these loop ops are annotated with amdaie.unroll, and are
+      // sliced on their induction variable. For distributed L2 memory, we
+      // expect this to be exactly 2, and we expect no slicing in other
+      // dimensions. It is possible to handle other edge cases, but this is left
+      // for future work.
+      uint32_t nNonConstants =
+          std::count_if(offsets.begin(), offsets.end(), [](Value v) -> bool {
+            return !mlir::matchPattern(v, mlir::m_Constant());
+          });
+      if (nNonConstants != 2) return {};
+      uint32_t nDistributionLoops{0};
       scf::ForOp currentOp = subview->getParentOfType<scf::ForOp>();
       while (currentOp) {
-        Value inductionVariable = currentOp.getInductionVar();
-        bool isSlice =
-            std::count(offsets.begin(), offsets.end(), inductionVariable) == 1;
-        bool hasUnrollAttr = currentOp->hasAttr(kAMDAIELoopUnroll);
-        bool isUnrollLoop = isSlice && hasUnrollAttr;
-        nUnrollLoops += isUnrollLoop;
-        nOtherLoops += !isUnrollLoop;
+        Value iv = currentOp.getInductionVar();
+        auto sliceCount = std::count(offsets.begin(), offsets.end(), iv);
+        if (sliceCount > 1) return {};
+        if (sliceCount == 1) {
+          if (!currentOp->hasAttr(kAMDAIELoopUnroll)) return {};
+          ++nDistributionLoops;
+        }
         currentOp = currentOp->getParentOfType<scf::ForOp>();
       }
-
-      // We expect distributing subviews to be contained in 2 amdaie.unroll
-      // scf.for loops (one for each spatial dimension on the AIE array), and no
-      // other scf.for loops. We also expect that all distributing subviews (if
-      // there are multiple) have the same result type.
-      if (nUnrollLoops == 2 && nOtherLoops == 0) {
-        auto nextType = cast<MemRefType>(subview.getResult().getType());
-        if (!type) {
-          type = nextType;
-        } else if (type != nextType) {
-          // This is the case where there are 2+ subview ops which look like
-          // they should be distributing, but they have different result types.
-          // Bail.
-          return {};
-        }
-      } else {
-        // Does not look like a distributing subview.
+      if (nDistributionLoops != 2) return {};
+      auto nextType = cast<MemRefType>(subview.getResult().getType());
+      if (!type) {
+        type = nextType;
+      } else if (type != nextType) {
+        // This is the case where there are 2+ subview ops which look like
+        // they should be distributing, but they have different result types.
+        // Bail.
         return {};
       }
     }
