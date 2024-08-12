@@ -497,46 +497,6 @@ void createMemTileDMA(
                           extraOffset, buffersPerFifo, locksPerFifo);
 }
 
-/// Unroll for-loops that contain objectFifo operations.
-LogicalResult unrollForLoops(DeviceOp &device,
-                             const std::set<TileOp> &objectFifoTiles) {
-  for (auto coreOp : device.getOps<CoreOp>()) {
-    if (!objectFifoTiles.count(cast<TileOp>(coreOp.getTile().getDefiningOp())))
-      continue;
-
-    WalkResult res = coreOp.walk([&](scf::ForOp forLoop) {
-      // look for operations on objectFifos
-      // when multiple fifos in same loop, must use the smallest
-      // common multiplier as the unroll factor
-      bool found = false;
-      std::set<int> objFifoSizes;
-      Block *body = forLoop.getBody();
-      for (auto acqOp : body->getOps<ObjectFifoAcquireOp>()) {
-        if (acqOp.getOperation()->getParentOp() == forLoop) {
-          found = true;
-          ObjectFifoCreateOp op = getObjectFifo(acqOp);
-          objFifoSizes.insert(objFifoSize(op));
-        }
-      }
-      // also counts original loop body
-      int unrollFactor = std::accumulate(
-          objFifoSizes.begin(), objFifoSizes.end(), 1, std::lcm<int, int>);
-      if (found && failed(mlir::loopUnrollByFactor(forLoop, unrollFactor))) {
-        forLoop.emitOpError()
-            << "could not be unrolled with unrollFactor: " << unrollFactor
-            << "\n";
-        return WalkResult::interrupt();
-      }
-
-      return WalkResult::advance();
-    });
-
-    if (res.wasInterrupted()) return failure();
-  }
-
-  return success();
-}
-
 /// Create a UseLockOp based on input parameters. `acc` is an accumulator map
 /// that tracks the indices of the next locks to acquire (or release). Uses op
 /// to find index of acc for next lockID and updates acc.
@@ -804,19 +764,12 @@ void replaceObjectAcquireOp(
 void createBuffersAndLocks(
     OpBuilder builder, DeviceOp device, ObjectFifoCreateOp createOp,
     std::vector<ObjectFifoCreateOp> &splitBecauseLink,
-    std::set<TileOp> &objectFifoTiles, LockAnalysis &lockAnalysis,
+    LockAnalysis &lockAnalysis,
     DenseMap<ObjectFifoLinkOp, ObjectFifoCreateOp> &objFifoLinks,
     DenseMap<ObjectFifoCreateOp, std::vector<BufferOp>> &buffersPerFifo,
     DenseMap<ObjectFifoCreateOp, std::vector<LockOp>> &locksPerFifo) {
-  // add all tiles that contain an objectFifo to objectFifoTiles for later
-  // loop unrolling pass
   TileOp producerTileOp =
       cast<TileOp>(createOp.getProducerTile().getDefiningOp());
-  objectFifoTiles.insert(producerTileOp);
-  for (auto consumerTile : createOp.getConsumerTiles()) {
-    auto consumerTileOp = cast<TileOp>(consumerTile.getDefiningOp());
-    objectFifoTiles.insert(consumerTileOp);
-  }
 
   // if split, the necessary size for producer fifo might change
   SharedMemoryDirection shareDirection = NONE;
@@ -1044,8 +997,6 @@ struct AMDAIEObjectFifoStatefulTransformPass : mlir::OperationPass<DeviceOp> {
     LockAnalysis lockAnalysis(device);
     DMAChannelAnalysis dmaAnalysis(device);
     OpBuilder builder = OpBuilder::atBlockEnd(device.getBody());
-    // track cores to check for loops during unrolling
-    std::set<TileOp> objectFifoTiles;
     // maps each objFifo to its corresponding buffer
     DenseMap<ObjectFifoCreateOp, std::vector<BufferOp>> buffersPerFifo;
     // maps each objFifo to its corresponding locks
@@ -1072,16 +1023,14 @@ struct AMDAIEObjectFifoStatefulTransformPass : mlir::OperationPass<DeviceOp> {
 
     for (ObjectFifoCreateOp createOp : device.getOps<ObjectFifoCreateOp>())
       createBuffersAndLocks(builder, device, createOp, splitBecauseLink,
-                            objectFifoTiles, lockAnalysis, objFifoLinks,
-                            buffersPerFifo, locksPerFifo);
+                            lockAnalysis, objFifoLinks, buffersPerFifo,
+                            locksPerFifo);
 
     // Only the objectFifos we split above require DMA communication; the others
     // rely on shared memory and share the same buffers.
     for (auto &[producer, consumers] : splitFifos)
       createFlowsAndTileDMAs(builder, device, producer, consumers, dmaAnalysis,
                              locksPerFifo, objFifoLinks, buffersPerFifo);
-
-    if (failed(unrollForLoops(device, objectFifoTiles))) signalPassFailure();
 
     // Replace ops
     for (auto coreOp : device.getOps<CoreOp>()) {

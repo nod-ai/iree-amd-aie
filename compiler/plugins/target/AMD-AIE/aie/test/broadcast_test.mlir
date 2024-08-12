@@ -44,10 +44,10 @@
 // CHECK:             return
 // CHECK:           }
 // CHECK:           %[[CORE_1_3:.*]] = aie.core(%[[TILE_1_3]]) {
-// CHECK:             %[[C0:.*]] = arith.constant 0 : index
-// CHECK:             %[[C1:.*]] = arith.constant 1 : index
-// CHECK:             %[[C12:.*]] = arith.constant 12 : index
-// CHECK:             %[[C2:.*]] = arith.constant 2 : index
+// CHECK-DAG:         %[[C0:.*]] = arith.constant 0 : index
+// CHECK-DAG:         %[[C1:.*]] = arith.constant 1 : index
+// CHECK-DAG:         %[[C2:.*]] = arith.constant 2 : index
+// CHECK-DAG:         %[[C12:.*]] = arith.constant 12 : index
 // CHECK:             scf.for %[[ARG0:.*]] = %[[C0]] to %[[C12]] step %[[C2]] {
 // CHECK:               aie.use_lock(%[[BROADCAST_OF_PROD_LOCK]], AcquireGreaterEqual, 1)
 // CHECK:               func.call @some_work(%[[BROADCAST_OF_BUFF_0]]) : (memref<16xi32>) -> ()
@@ -59,10 +59,10 @@
 // CHECK:             aie.end
 // CHECK:           }
 // CHECK:           %[[CORE_1_2:.*]] = aie.core(%[[TILE_1_2]]) {
-// CHECK:             %[[C0:.*]] = arith.constant 0 : index
-// CHECK:             %[[C1:.*]] = arith.constant 1 : index
-// CHECK:             %[[C12:.*]] = arith.constant 12 : index
-// CHECK:             %[[C2:.*]] = arith.constant 2 : index
+// CHECK-DAG:         %[[C0:.*]] = arith.constant 0 : index
+// CHECK-DAG:         %[[C1:.*]] = arith.constant 1 : index
+// CHECK-DAG:         %[[C2:.*]] = arith.constant 2 : index
+// CHECK-DAG:         %[[C12:.*]] = arith.constant 12 : index
 // CHECK:             scf.for %[[ARG0:.*]] = %[[C0]] to %[[C12]] step %[[C2]] {
 // CHECK:               aie.use_lock(%[[BROADCAST_OF_0_CONS_CONS_LOCK]], AcquireGreaterEqual, 1)
 // CHECK:               func.call @some_work(%[[BROADCAST_OF_0_CONS_BUFF_0]]) : (memref<16xi32>) -> ()
@@ -74,10 +74,10 @@
 // CHECK:             aie.end
 // CHECK:           }
 // CHECK:           %[[CORE_1_4:.*]] = aie.core(%[[TILE_1_4]]) {
-// CHECK:             %[[C0:.*]] = arith.constant 0 : index
-// CHECK:             %[[C1:.*]] = arith.constant 1 : index
-// CHECK:             %[[C12:.*]] = arith.constant 12 : index
-// CHECK:             %[[C3:.*]] = arith.constant 3 : index
+// CHECK-DAG:         %[[C0:.*]] = arith.constant 0 : index
+// CHECK-DAG:         %[[C1:.*]] = arith.constant 1 : index
+// CHECK-DAG:         %[[C3:.*]] = arith.constant 3 : index
+// CHECK-DAG:         %[[C12:.*]] = arith.constant 12 : index
 // CHECK:             scf.for %[[ARG0:.*]] = %[[C0]] to %[[C12]] step %[[C3]] {
 // CHECK:               aie.use_lock(%[[BROADCAST_OF_1_CONS_CONS_LOCK]], AcquireGreaterEqual, 2)
 // CHECK:               func.call @some_work(%[[BROADCAST_OF_1_CONS_BUFF_0]]) : (memref<16xi32>) -> ()
@@ -95,10 +95,10 @@
 // CHECK:             aie.end
 // CHECK:           }
 // CHECK:           %[[CORE_3_2:.*]] = aie.core(%[[TILE_3_2]]) {
-// CHECK:             %[[C0:.*]] = arith.constant 0 : index
-// CHECK:             %[[C1:.*]] = arith.constant 1 : index
-// CHECK:             %[[C12:.*]] = arith.constant 12 : index
-// CHECK:             %[[C4:.*]] = arith.constant 4 : index
+// CHECK-DAG:         %[[C0:.*]] = arith.constant 0 : index
+// CHECK-DAG:         %[[C1:.*]] = arith.constant 1 : index
+// CHECK-DAG:         %[[C4:.*]] = arith.constant 4 : index
+// CHECK-DAG:         %[[C12:.*]] = arith.constant 12 : index
 // CHECK:             scf.for %[[ARG0:.*]] = %[[C0]] to %[[C12]] step %[[C4]] {
 // CHECK:               aie.use_lock(%[[BROADCAST_OF_2_CONS_CONS_LOCK]], AcquireGreaterEqual, 3)
 // CHECK:               func.call @some_work(%[[BROADCAST_OF_2_CONS_BUFF_0]]) : (memref<16xi32>) -> ()
@@ -124,10 +124,10 @@
 // CHECK:             aie.end
 // CHECK:           }
 // CHECK:           %[[CORE_3_3:.*]] = aie.core(%[[TILE_3_3]]) {
-// CHECK:             %[[C0:.*]] = arith.constant 0 : index
-// CHECK:             %[[C1:.*]] = arith.constant 1 : index
-// CHECK:             %[[C12:.*]] = arith.constant 12 : index
-// CHECK:             %[[C3:.*]] = arith.constant 3 : index
+// CHECK-DAG:         %[[C0:.*]] = arith.constant 0 : index
+// CHECK-DAG:         %[[C1:.*]] = arith.constant 1 : index
+// CHECK-DAG:         %[[C3:.*]] = arith.constant 3 : index
+// CHECK-DAG:         %[[C12:.*]] = arith.constant 12 : index
 // CHECK:             scf.for %[[ARG0:.*]] = %[[C0]] to %[[C12]] step %[[C3]] {
 // CHECK:               aie.use_lock(%[[BROADCAST_OF_3_CONS_CONS_LOCK]], AcquireGreaterEqual, 2)
 // CHECK:               func.call @some_work(%[[BROADCAST_OF_3_CONS_BUFF_0]]) : (memref<16xi32>) -> ()
@@ -240,7 +240,6 @@
 // CHECK:             aie.end
 // CHECK:           }
 // CHECK:         }
-
 module @broadcast {
  aie.device(npu1_4col) {
     %tile12 = aie.tile(1, 2)
@@ -255,11 +254,16 @@ module @broadcast {
     %core13 = aie.core(%tile13) {
         %c0 = arith.constant 0 : index
         %c1 = arith.constant 1 : index
+        %c2 = arith.constant 2 : index
         %height = arith.constant 12 : index
-        scf.for %indexInHeight = %c0 to %height step %c1 {
+        scf.for %indexInHeight = %c0 to %height step %c2 {
             %subview = aie.objectfifo.acquire @broadcast_of (Produce, 1) : !aie.objectfifosubview<memref<16xi32>>
             %elem0 = aie.objectfifo.subview.access %subview[0] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
             func.call @some_work(%elem0) : (memref<16xi32>) -> ()
+            aie.objectfifo.release @broadcast_of (Produce, 1)
+            %subview1 = aie.objectfifo.acquire @broadcast_of (Produce, 1) : !aie.objectfifosubview<memref<16xi32>>
+            %elem1 = aie.objectfifo.subview.access %subview1[0] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
+            func.call @some_work(%elem1) : (memref<16xi32>) -> ()
             aie.objectfifo.release @broadcast_of (Produce, 1)
         }
         aie.end
@@ -267,11 +271,16 @@ module @broadcast {
     %core12 = aie.core(%tile12) {
         %c0 = arith.constant 0 : index
         %c1 = arith.constant 1 : index
+        %c2 = arith.constant 2 : index
         %height = arith.constant 12 : index
-        scf.for %indexInHeight = %c0 to %height step %c1 {
+        scf.for %indexInHeight = %c0 to %height step %c2 {
             %subview = aie.objectfifo.acquire @broadcast_of (Consume, 1) : !aie.objectfifosubview<memref<16xi32>>
             %elem0 = aie.objectfifo.subview.access %subview[0] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
             func.call @some_work(%elem0) : (memref<16xi32>) -> ()
+            aie.objectfifo.release @broadcast_of (Consume, 1)
+            %subview1 = aie.objectfifo.acquire @broadcast_of (Consume, 1) : !aie.objectfifosubview<memref<16xi32>>
+            %elem1 = aie.objectfifo.subview.access %subview1[0] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
+            func.call @some_work(%elem1) : (memref<16xi32>) -> ()
             aie.objectfifo.release @broadcast_of (Consume, 1)
         }
         aie.end
@@ -279,13 +288,26 @@ module @broadcast {
     %core14 = aie.core(%tile14) {
         %c0 = arith.constant 0 : index
         %c1 = arith.constant 1 : index
+        %c3 = arith.constant 3 : index
         %height = arith.constant 12 : index
-        scf.for %indexInHeight = %c0 to %height step %c1 {
+        scf.for %indexInHeight = %c0 to %height step %c3 {
             %subview = aie.objectfifo.acquire @broadcast_of (Consume, 2) : !aie.objectfifosubview<memref<16xi32>>
             %elem0 = aie.objectfifo.subview.access %subview[0] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
             %elem1 = aie.objectfifo.subview.access %subview[1] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
             func.call @some_work(%elem0) : (memref<16xi32>) -> ()
             func.call @some_work(%elem1) : (memref<16xi32>) -> ()
+            aie.objectfifo.release @broadcast_of (Consume, 2)
+            %subview1 = aie.objectfifo.acquire @broadcast_of (Consume, 2) : !aie.objectfifosubview<memref<16xi32>>
+            %elem2 = aie.objectfifo.subview.access %subview1[0] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
+            %elem3 = aie.objectfifo.subview.access %subview1[1] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
+            func.call @some_work(%elem2) : (memref<16xi32>) -> ()
+            func.call @some_work(%elem3) : (memref<16xi32>) -> ()
+            aie.objectfifo.release @broadcast_of (Consume, 2)
+            %subview2 = aie.objectfifo.acquire @broadcast_of (Consume, 2) : !aie.objectfifosubview<memref<16xi32>>
+            %elem4 = aie.objectfifo.subview.access %subview2[0] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
+            %elem5 = aie.objectfifo.subview.access %subview2[1] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
+            func.call @some_work(%elem4) : (memref<16xi32>) -> ()
+            func.call @some_work(%elem5) : (memref<16xi32>) -> ()
             aie.objectfifo.release @broadcast_of (Consume, 2)
         }
         aie.end
@@ -293,8 +315,9 @@ module @broadcast {
     %core32 = aie.core(%tile32) {
         %c0 = arith.constant 0 : index
         %c1 = arith.constant 1 : index
+        %c4 = arith.constant 4 : index
         %height = arith.constant 12 : index
-        scf.for %indexInHeight = %c0 to %height step %c1 {
+        scf.for %indexInHeight = %c0 to %height step %c4 {
             %subview = aie.objectfifo.acquire @broadcast_of (Consume, 3) : !aie.objectfifosubview<memref<16xi32>>
             %elem0 = aie.objectfifo.subview.access %subview[0] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
             %elem1 = aie.objectfifo.subview.access %subview[1] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
@@ -303,19 +326,60 @@ module @broadcast {
             func.call @some_work(%elem1) : (memref<16xi32>) -> ()
             func.call @some_work(%elem2) : (memref<16xi32>) -> ()
             aie.objectfifo.release @broadcast_of (Consume, 1)
+            %subview1 = aie.objectfifo.acquire @broadcast_of (Consume, 3) : !aie.objectfifosubview<memref<16xi32>>
+            %elem3 = aie.objectfifo.subview.access %subview1[0] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
+            %elem4 = aie.objectfifo.subview.access %subview1[1] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
+            %elem5 = aie.objectfifo.subview.access %subview1[2] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
+            func.call @some_work(%elem3) : (memref<16xi32>) -> ()
+            func.call @some_work(%elem4) : (memref<16xi32>) -> ()
+            func.call @some_work(%elem5) : (memref<16xi32>) -> ()
+            aie.objectfifo.release @broadcast_of (Consume, 1)
+
+            %subview2 = aie.objectfifo.acquire @broadcast_of (Consume, 3) : !aie.objectfifosubview<memref<16xi32>>
+            %elem6 = aie.objectfifo.subview.access %subview2[0] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
+            %elem7 = aie.objectfifo.subview.access %subview2[1] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
+            %elem8 = aie.objectfifo.subview.access %subview2[2] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
+            func.call @some_work(%elem6) : (memref<16xi32>) -> ()
+            func.call @some_work(%elem7) : (memref<16xi32>) -> ()
+            func.call @some_work(%elem8) : (memref<16xi32>) -> ()
+            aie.objectfifo.release @broadcast_of (Consume, 1)
+
+            %subview3 = aie.objectfifo.acquire @broadcast_of (Consume, 3) : !aie.objectfifosubview<memref<16xi32>>
+            %elem9 = aie.objectfifo.subview.access %subview3[0] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
+            %elem10 = aie.objectfifo.subview.access %subview3[1] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
+            %elem11 = aie.objectfifo.subview.access %subview3[2] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
+            func.call @some_work(%elem9) : (memref<16xi32>) -> ()
+            func.call @some_work(%elem10) : (memref<16xi32>) -> ()
+            func.call @some_work(%elem11) : (memref<16xi32>) -> ()
+            aie.objectfifo.release @broadcast_of (Consume, 1)
         }
         aie.end
     }
     %core33 = aie.core(%tile33) {
         %c0 = arith.constant 0 : index
         %c1 = arith.constant 1 : index
+        %c3 = arith.constant 3 : index
         %height = arith.constant 12 : index
-        scf.for %indexInHeight = %c0 to %height step %c1 {
+        scf.for %indexInHeight = %c0 to %height step %c3 {
             %subview = aie.objectfifo.acquire @broadcast_of (Consume, 2) : !aie.objectfifosubview<memref<16xi32>>
             %elem0 = aie.objectfifo.subview.access %subview[0] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
             %elem1 = aie.objectfifo.subview.access %subview[1] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
             func.call @some_work(%elem0) : (memref<16xi32>) -> ()
             func.call @some_work(%elem1) : (memref<16xi32>) -> ()
+            aie.objectfifo.release @broadcast_of (Consume, 1)
+
+            %subview1 = aie.objectfifo.acquire @broadcast_of (Consume, 2) : !aie.objectfifosubview<memref<16xi32>>
+            %elem2 = aie.objectfifo.subview.access %subview1[0] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
+            %elem3 = aie.objectfifo.subview.access %subview1[1] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
+            func.call @some_work(%elem2) : (memref<16xi32>) -> ()
+            func.call @some_work(%elem3) : (memref<16xi32>) -> ()
+            aie.objectfifo.release @broadcast_of (Consume, 1)
+
+            %subview2 = aie.objectfifo.acquire @broadcast_of (Consume, 2) : !aie.objectfifosubview<memref<16xi32>>
+            %elem4 = aie.objectfifo.subview.access %subview2[0] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
+            %elem5 = aie.objectfifo.subview.access %subview2[1] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
+            func.call @some_work(%elem4) : (memref<16xi32>) -> ()
+            func.call @some_work(%elem5) : (memref<16xi32>) -> ()
             aie.objectfifo.release @broadcast_of (Consume, 1)
         }
         aie.end

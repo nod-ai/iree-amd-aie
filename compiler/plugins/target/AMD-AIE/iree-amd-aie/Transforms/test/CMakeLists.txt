@@ -20,6 +20,7 @@ iree_lit_test_suite(
     "combine_strided_ops.mlir"
     "controlcode_loop_unrolling.mlir"
     "convert_core_forall_to_for.mlir"
+    "core_loop_unroll.mlir"
     "create_aie_workgroup.mlir"
     "create_logical_objectfifo_link.mlir"
     "create_reference_to_allocation.mlir"

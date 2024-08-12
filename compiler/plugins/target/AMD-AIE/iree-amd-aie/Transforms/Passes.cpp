@@ -611,8 +611,10 @@ void addAMDAIEObjectFifoLoweringPasses(OpPassManager &passManager) {
   passManager.addPass(createAMDAIECanonicalizeDoublyStridedOpPass());
   passManager.addPass(createCanonicalizerPass());
 
-  passManager.addPass(createAMDAIELowerToAIEPass());
   passManager.addPass(createAMDAIEConvertCoreForallToForPass());
+  passManager.addPass(createCanonicalizerPass());
+  passManager.addPass(createAMDAIECoreLoopUnrollPass());
+  passManager.addPass(createAMDAIELowerToAIEPass());
   passManager.addPass(createCanonicalizerPass());
 
   passManager.addPass(createConvertLinalgToLoopsPass());

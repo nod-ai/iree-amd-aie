@@ -117,6 +117,13 @@ def AMDAIEConvertCoreForallToFor :
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEConvertCoreForallToForPass()";
 }
 
+def AMDAIECoreLoopUnroll :
+    Pass<"iree-amdaie-core-loop-unroll", ""> {
+  let summary = "Within core ops, unroll `scf.for` with synchronization ops based on "
+                "objectFifo buffer depths.";
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIECoreLoopUnrollPass()";
+}
+
 def AMDAIECreateAIEWorkgroup :
   Pass<"iree-amdaie-create-aie-workgroup", "func::FuncOp"> {
   let summary = "Creates a single AIE workgroup.";

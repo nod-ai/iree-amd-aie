@@ -12,12 +12,11 @@
 // CHECK:           %[[FIFO0_PROD_LOCK:.*]] = aie.lock(%[[TILE_1_2]], 0) {init = 4 : i8, sym_name = "fifo0_prod_lock"}
 // CHECK:           %[[FIFO0_CONS_LOCK:.*]] = aie.lock(%[[TILE_1_2]], 1) {init = 0 : i8, sym_name = "fifo0_cons_lock"}
 // CHECK:           %[[CORE_1_2:.*]] = aie.core(%[[TILE_1_2]]) {
-// CHECK:             %[[C11_I32:.*]] = arith.constant 11 : i32
-// CHECK:             %[[C0:.*]] = arith.constant 0 : index
-// CHECK:             %[[C1:.*]] = arith.constant 1 : index
-// CHECK:             %[[C9:.*]] = arith.constant 9 : index
-// CHECK:             %[[C8:.*]] = arith.constant 8 : index
-// CHECK:             %[[C4:.*]] = arith.constant 4 : index
+// CHECK-DAG:         %[[C11_I32:.*]] = arith.constant 11 : i32
+// CHECK-DAG:         %[[C0:.*]] = arith.constant 0 : index
+// CHECK-DAG:         %[[C1:.*]] = arith.constant 1 : index
+// CHECK-DAG:         %[[C8:.*]] = arith.constant 8 : index
+// CHECK-DAG:         %[[C4:.*]] = arith.constant 4 : index
 // CHECK:             scf.for %[[ARG0:.*]] = %[[C0]] to %[[C8]] step %[[C4]] {
 // CHECK:               aie.use_lock(%[[FIFO0_PROD_LOCK]], AcquireGreaterEqual, 1)
 // CHECK:               memref.store %[[C11_I32]], %[[FIFO0_BUFF_0]]{{\[}}%[[C0]]] : memref<16xi32>
@@ -38,14 +37,13 @@
 // CHECK:             aie.end
 // CHECK:           }
 // CHECK:           %[[CORE_2_2:.*]] = aie.core(%[[TILE_2_2]]) {
-// CHECK:             %[[C0:.*]] = arith.constant 0 : index
-// CHECK:             %[[C1:.*]] = arith.constant 1 : index
-// CHECK:             %[[C9:.*]] = arith.constant 9 : index
-// CHECK:             aie.use_lock(%[[FIFO0_CONS_LOCK]], AcquireGreaterEqual, 1)
-// CHECK:             %[[VAL_0:.*]] = memref.load %[[FIFO0_BUFF_0]]{{\[}}%[[C0]]] : memref<16xi32>
-// CHECK:             aie.use_lock(%[[FIFO0_PROD_LOCK]], Release, 1)
-// CHECK:             %[[C8:.*]] = arith.constant 8 : index
-// CHECK:             %[[C4:.*]] = arith.constant 4 : index
+// CHECK-DAG:         %[[C0:.*]] = arith.constant 0 : index
+// CHECK-DAG:         %[[C1:.*]] = arith.constant 1 : index
+// CHECK-DAG:         aie.use_lock(%[[FIFO0_CONS_LOCK]], AcquireGreaterEqual, 1)
+// CHECK-DAG:         %[[VAL_0:.*]] = memref.load %[[FIFO0_BUFF_0]]{{\[}}%[[C0]]] : memref<16xi32>
+// CHECK-DAG:         aie.use_lock(%[[FIFO0_PROD_LOCK]], Release, 1)
+// CHECK-DAG:         %[[C8:.*]] = arith.constant 8 : index
+// CHECK-DAG:         %[[C4:.*]] = arith.constant 4 : index
 // CHECK:             scf.for %[[ARG0:.*]] = %[[C0]] to %[[C8]] step %[[C4]] {
 // CHECK:               aie.use_lock(%[[FIFO0_CONS_LOCK]], AcquireGreaterEqual, 3)
 // CHECK:               %[[VAL_1:.*]] = memref.load %[[FIFO0_BUFF_1]]{{\[}}%[[C0]]] : memref<16xi32>
@@ -89,24 +87,42 @@ module @cyclostatic {
             %v11 = arith.constant 11 : i32
             %c0 = arith.constant 0 : index
             %c1 = arith.constant 1 : index
-            %c9 = arith.constant 9 : index
-            scf.for %indexInHeight = %c0 to %c9 step %c1 {
+            %c4 = arith.constant 4 : index
+            %c8 = arith.constant 8 : index
+            scf.for %indexInHeight = %c0 to %c8 step %c4 {
                 %subview1 = aie.objectfifo.acquire @fifo0 (Produce, 1) : !aie.objectfifosubview<memref<16xi32>>
                 %subview1_obj = aie.objectfifo.subview.access %subview1[0] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
                 memref.store %v11, %subview1_obj[%c0] : memref<16xi32>
                 aie.objectfifo.release @fifo0 (Produce, 1)
+                %subview2 = aie.objectfifo.acquire @fifo0 (Produce, 1) : !aie.objectfifosubview<memref<16xi32>>
+                %subview2_obj = aie.objectfifo.subview.access %subview2[0] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
+                memref.store %v11, %subview2_obj[%c0] : memref<16xi32>
+                aie.objectfifo.release @fifo0 (Produce, 1)
+                %subview3 = aie.objectfifo.acquire @fifo0 (Produce, 1) : !aie.objectfifosubview<memref<16xi32>>
+                %subview3_obj = aie.objectfifo.subview.access %subview3[0] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
+                memref.store %v11, %subview3_obj[%c0] : memref<16xi32>
+                aie.objectfifo.release @fifo0 (Produce, 1)
+                %subview4 = aie.objectfifo.acquire @fifo0 (Produce, 1) : !aie.objectfifosubview<memref<16xi32>>
+                %subview4_obj = aie.objectfifo.subview.access %subview4[0] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
+                memref.store %v11, %subview4_obj[%c0] : memref<16xi32>
+                aie.objectfifo.release @fifo0 (Produce, 1)
             }
+            %subview5 = aie.objectfifo.acquire @fifo0 (Produce, 1) : !aie.objectfifosubview<memref<16xi32>>
+            %subview5_obj = aie.objectfifo.subview.access %subview5[0] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
+            memref.store %v11, %subview5_obj[%c0] : memref<16xi32>
+            aie.objectfifo.release @fifo0 (Produce, 1)
             aie.end
         }
         %core23 = aie.core(%tile23) {
             %c0 = arith.constant 0 : index
             %c1 = arith.constant 1 : index
-            %c9 = arith.constant 9 : index
+            %c4 = arith.constant 4 : index
+            %c8 = arith.constant 8 : index
             %subview0 = aie.objectfifo.acquire @fifo0 (Consume, 1) : !aie.objectfifosubview<memref<16xi32>>
             %subview0_obj = aie.objectfifo.subview.access %subview0[0] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
             %v0 = memref.load %subview0_obj[%c0] : memref<16xi32>
             aie.objectfifo.release @fifo0 (Consume, 1)
-            scf.for %indexInHeight = %c0 to %c9 step %c1 {
+            scf.for %indexInHeight = %c0 to %c8 step %c4 {
                 %subview1 = aie.objectfifo.acquire @fifo0 (Consume, 3) : !aie.objectfifosubview<memref<16xi32>>
                 %subview1_obj = aie.objectfifo.subview.access %subview1[0] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
                 %subview1_obj1 = aie.objectfifo.subview.access %subview1[1] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
@@ -115,12 +131,44 @@ module @cyclostatic {
                 %v2 = memref.load %subview1_obj1[%c0] : memref<16xi32>
                 %v3 = memref.load %subview1_obj2[%c0] : memref<16xi32>
                 aie.objectfifo.release @fifo0 (Consume, 1)
+                %subview2 = aie.objectfifo.acquire @fifo0 (Consume, 3) : !aie.objectfifosubview<memref<16xi32>>
+                %subview2_obj = aie.objectfifo.subview.access %subview2[0] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
+                %subview2_obj1 = aie.objectfifo.subview.access %subview2[1] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
+                %subview2_obj2 = aie.objectfifo.subview.access %subview2[2] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
+                %v4 = memref.load %subview2_obj[%c0] : memref<16xi32>
+                %v5 = memref.load %subview2_obj1[%c0] : memref<16xi32>
+                %v6 = memref.load %subview2_obj2[%c0] : memref<16xi32>
+                aie.objectfifo.release @fifo0 (Consume, 1)
+                %subview3 = aie.objectfifo.acquire @fifo0 (Consume, 3) : !aie.objectfifosubview<memref<16xi32>>
+                %subview3_obj = aie.objectfifo.subview.access %subview3[0] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
+                %subview3_obj1 = aie.objectfifo.subview.access %subview3[1] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
+                %subview3_obj2 = aie.objectfifo.subview.access %subview3[2] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
+                %v7 = memref.load %subview3_obj[%c0] : memref<16xi32>
+                %v8 = memref.load %subview3_obj1[%c0] : memref<16xi32>
+                %v9 = memref.load %subview3_obj2[%c0] : memref<16xi32>
+                aie.objectfifo.release @fifo0 (Consume, 1)
+                %subview4 = aie.objectfifo.acquire @fifo0 (Consume, 3) : !aie.objectfifosubview<memref<16xi32>>
+                %subview4_obj = aie.objectfifo.subview.access %subview4[0] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
+                %subview4_obj1 = aie.objectfifo.subview.access %subview4[1] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
+                %subview4_obj2 = aie.objectfifo.subview.access %subview4[2] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
+                %v10 = memref.load %subview4_obj[%c0] : memref<16xi32>
+                %v11 = memref.load %subview4_obj1[%c0] : memref<16xi32>
+                %v12 = memref.load %subview4_obj2[%c0] : memref<16xi32>
+                aie.objectfifo.release @fifo0 (Consume, 1)
             }
-            %subview2 = aie.objectfifo.acquire @fifo0 (Consume, 2) : !aie.objectfifosubview<memref<16xi32>>
-            %subview2_obj = aie.objectfifo.subview.access %subview2[0] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
-            %subview2_obj1 = aie.objectfifo.subview.access %subview2[1] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
-            %v4 = memref.load %subview2_obj[%c0] : memref<16xi32>
-            %v5 = memref.load %subview2_obj1[%c0] : memref<16xi32>
+            %subview5 = aie.objectfifo.acquire @fifo0 (Consume, 3) : !aie.objectfifosubview<memref<16xi32>>
+            %subview5_obj = aie.objectfifo.subview.access %subview5[0] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
+            %subview5_obj1 = aie.objectfifo.subview.access %subview5[1] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
+            %subview5_obj2 = aie.objectfifo.subview.access %subview5[2] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
+            %v13 = memref.load %subview5_obj[%c0] : memref<16xi32>
+            %v14 = memref.load %subview5_obj1[%c0] : memref<16xi32>
+            %v15 = memref.load %subview5_obj2[%c0] : memref<16xi32>
+            aie.objectfifo.release @fifo0 (Consume, 1)
+            %subview6 = aie.objectfifo.acquire @fifo0 (Consume, 2) : !aie.objectfifosubview<memref<16xi32>>
+            %subview6_obj = aie.objectfifo.subview.access %subview6[0] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
+            %subview6_obj1 = aie.objectfifo.subview.access %subview6[1] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
+            %v16 = memref.load %subview6_obj[%c0] : memref<16xi32>
+            %v17 = memref.load %subview6_obj1[%c0] : memref<16xi32>
             aie.objectfifo.release @fifo0 (Consume, 2)
             aie.end
         }

@@ -54,6 +54,7 @@ iree_cc_library(
     "AMDAIECombineStridedOps.cpp"
     "AMDAIEControlCodeLoopUnroll.cpp"
     "AMDAIEConvertCoreForallToFor.cpp"
+    "AMDAIECoreLoopUnroll.cpp"
     "AMDAIECreateAIEWorkgroup.cpp"
     "AMDAIECreateLogicalObjectFifoLink.cpp"
     "AMDAIECreateReferenceToAllocation.cpp"

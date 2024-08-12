@@ -106,6 +106,10 @@ std::unique_ptr<Pass> createAMDAIECleanupPass();
 /// are compatible.
 std::unique_ptr<Pass> createAMDAIECombineStridedOpsPass();
 
+/// Create a pass to unroll `scf.for` with synchronization ops based on
+/// objectFifo buffer depths.
+std::unique_ptr<Pass> createAMDAIECoreLoopUnrollPass();
+
 /// Create a pass decomposing iree_linalg_ext.pack and unpack ops to AIR
 /// dialect.
 std::unique_ptr<Pass> createAMDAIEDecomposeLinalgExtPackUnPackToAIRPass();
