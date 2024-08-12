@@ -34,7 +34,8 @@ namespace {
 scf::ForallOp getParentForallWithParallelMapping(Operation *op) {
   scf::ForallOp forallOp = op->getParentOfType<scf::ForallOp>();
   if (!forallOp) return scf::ForallOp();
-  if (isa<mlir::gpu::GPUThreadMappingAttr>(
+  if (forallOp.getMapping().has_value() &&
+      isa<mlir::gpu::GPUThreadMappingAttr>(
           *forallOp.getMapping()->getValue().begin())) {
     return forallOp;
   }
