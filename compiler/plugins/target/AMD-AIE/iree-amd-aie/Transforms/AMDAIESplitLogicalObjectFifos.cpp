@@ -7,25 +7,20 @@
 #include "iree-amd-aie/Transforms/AMDAIEDmaUtils.h"
 #include "iree-amd-aie/Transforms/Passes.h"
 #include "iree-amd-aie/Transforms/Transforms.h"
-#include "iree/compiler/Codegen/TransformStrategies/GPU/Common.h"
-#include "mlir/Dialect/Linalg/IR/Linalg.h"
-#include "mlir/Dialect/SCF/Transforms/Transforms.h"
-#include "mlir/Dialect/Vector/IR/VectorOps.h"
 #include "mlir/IR/Iterators.h"
 #include "mlir/Pass/Pass.h"
-#include "mlir/Transforms/GreedyPatternRewriteDriver.h"
-#include "mlir/Transforms/LoopInvariantCodeMotionUtils.h"
 
-#define DEBUG_TYPE "iree-amdaie-split-buffers"
+#define DEBUG_TYPE "iree-amdaie-split-logical-objectfifos"
 
 namespace mlir::iree_compiler::AMDAIE {
 
 namespace {
 
-class AMDAIESplitBuffersPass
-    : public impl::AMDAIESplitBuffersBase<AMDAIESplitBuffersPass> {
+class AMDAIESplitLogicalObjectFifosPass
+    : public impl::AMDAIESplitLogicalObjectFifosBase<
+          AMDAIESplitLogicalObjectFifosPass> {
  public:
-  using AMDAIESplitBuffersBase::AMDAIESplitBuffersBase;
+  using AMDAIESplitLogicalObjectFifosBase::AMDAIESplitLogicalObjectFifosBase;
 
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<AMDAIEDialect>();
@@ -33,9 +28,10 @@ class AMDAIESplitBuffersPass
   void runOnOperation() override;
 };
 
-void AMDAIESplitBuffersPass::runOnOperation() {
+void AMDAIESplitLogicalObjectFifosPass::runOnOperation() {
   ModuleOp moduleOp = getOperation();
-  IRRewriter rewriter(moduleOp.getContext());
+  MLIRContext *context = &getContext();
+  IRRewriter rewriter(context);
 
   SmallVector<AMDAIE::DmaCpyNdOp> l2ToL1DmaOps;
   // We are currently walking through CoreOps gathering 3rd Input DmaOp (if
@@ -60,7 +56,7 @@ void AMDAIESplitBuffersPass::runOnOperation() {
         l2ToL1DmaOp.getTargetObjectFifo();
     Value targetAllocOp = targetObjectFifo.getMemref();
 
-    // Now we'll create a narrowed L2 buffer.
+    // Now we'll create a narrowed linearized L2 buffer.
     rewriter.setInsertionPoint(sourceAllocOp);
     auto oldSourceMemRefType = cast<MemRefType>(sourceAllocOp.getType());
     auto targetMemRefType = cast<MemRefType>(targetAllocOp.getType());
@@ -93,11 +89,25 @@ void AMDAIESplitBuffersPass::runOnOperation() {
         rewriter.getUnknownLoc(), LogicalObjectFifoType::get(type),
         newAllocOp.getResult(), sourceObjectFifo.getTiles());
 
-    // Create new L3 -> L2 Dma Op.
+    // Create new L3 -> L2 Dma Op. Since the narrowed L2 buffer is linearized,
+    // we need to form offset/size/stride corresponding to the linearized
+    // buffer.
+    SmallVector<OpFoldResult, 4> staticOffsets(
+        4, getAsIndexOpFoldResult(context, 0));
+    SmallVector<OpFoldResult, 4> staticSizes(
+        4, getAsIndexOpFoldResult(context, 1));
+    SmallVector<OpFoldResult, 4> staticStrides(
+        4, getAsIndexOpFoldResult(context, 0));
+    OpFoldResult linearizedShape =
+        getAsIndexOpFoldResult(context, newAllocType.getNumElements());
+    staticSizes[staticSizes.size() - 1] = linearizedShape;
+    staticStrides[staticStrides.size() - 1] =
+        getAsIndexOpFoldResult(context, 1);
+    staticStrides[staticStrides.size() - 2] = linearizedShape;
     rewriter.setInsertionPoint(l3ToL2DmaOp);
     rewriter.create<AMDAIE::DmaCpyNdOp>(
-        l3ToL2DmaOp.getLoc(), source, l3ToL2DmaOp.getTargetMixedOffsets(),
-        l3ToL2DmaOp.getTargetMixedSizes(), l3ToL2DmaOp.getTargetMixedStrides(),
+        l3ToL2DmaOp.getLoc(), source, llvm::ArrayRef(staticOffsets),
+        llvm::ArrayRef(staticSizes), llvm::ArrayRef(staticStrides),
         l3ToL2DmaOp.getSource(), l3ToL2DmaOp.getSourceMixedOffsets(),
         l3ToL2DmaOp.getSourceMixedSizes(), l3ToL2DmaOp.getSourceMixedStrides());
 
@@ -107,8 +117,8 @@ void AMDAIESplitBuffersPass::runOnOperation() {
         l2ToL1DmaOp.getLoc(), l2ToL1DmaOp.getTarget(),
         l2ToL1DmaOp.getTargetMixedOffsets(), l2ToL1DmaOp.getTargetMixedSizes(),
         l2ToL1DmaOp.getTargetMixedStrides(), source,
-        l2ToL1DmaOp.getSourceMixedOffsets(), l2ToL1DmaOp.getSourceMixedSizes(),
-        l2ToL1DmaOp.getSourceMixedStrides());
+        llvm::ArrayRef(staticOffsets), llvm::ArrayRef(staticSizes),
+        llvm::ArrayRef(staticStrides));
     rewriter.replaceOp(l2ToL1DmaOp, newL2ToL1DmaOp);
     // We have to discard non-zero offsets as subview has been replaced by a
     // dedicated allocated memref.
@@ -138,8 +148,8 @@ void AMDAIESplitBuffersPass::runOnOperation() {
 
 }  // namespace
 
-std::unique_ptr<Pass> createAMDAIESplitBuffersPass() {
-  return std::make_unique<AMDAIESplitBuffersPass>();
+std::unique_ptr<Pass> createAMDAIESplitLogicalObjectFifosPass() {
+  return std::make_unique<AMDAIESplitLogicalObjectFifosPass>();
 }
 
 }  // namespace mlir::iree_compiler::AMDAIE
