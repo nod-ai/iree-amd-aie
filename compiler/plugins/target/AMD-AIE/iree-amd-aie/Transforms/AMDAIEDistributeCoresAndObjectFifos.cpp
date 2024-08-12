@@ -4,16 +4,19 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#include "aie/AIEDialect.h"
 #include "iree-amd-aie/IR/AMDAIEOps.h"
 #include "iree-amd-aie/Transforms/AMDAIEDmaUtils.h"
 #include "iree-amd-aie/Transforms/Passes.h"
 #include "iree-amd-aie/Transforms/Transforms.h"
-#include "iree/compiler/Codegen/TransformStrategies/GPU/Common.h"
-#include "mlir/Dialect/Linalg/IR/Linalg.h"
+#include "llvm/ADT/TypeSwitch.h"
+#include "llvm/Support/Debug.h"
+#include "mlir/Dialect/GPU/IR/GPUDialect.h"
+#include "mlir/Dialect/MemRef/IR/MemRef.h"
+#include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/SCF/Transforms/Transforms.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
 #include "mlir/IR/Iterators.h"
+#include "mlir/IR/Verifier.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "mlir/Transforms/LoopInvariantCodeMotionUtils.h"
@@ -56,175 +59,235 @@ struct LocationMapInfo {
 // AMDAIEDistributeCoresAndObjectFifosPass
 //===----------------------------------------------------------------------===//
 
+/// Try to detect subview(s) that look like they are 'distributring' or
+/// 'privatizing'. That is, subview(s) that take an L1 memref spanning all
+/// L1 memories of the AIE array, and slice it along tile specific dimensions.
+/// If one or more identical subviews are found, return the MemRefType type of
+/// the subview(s). Otherwise, return an empty MemRefType.
+MemRefType getDistributedType(memref::AllocOp alloc) {
+  MemRefType type{};
+  for (Operation *allocUser : alloc->getUsers()) {
+    if (auto subview = dyn_cast<memref::SubViewOp>(allocUser)) {
+      auto offsets = subview.getOffsets();
+
+      // This subview op is contained inside nested scf.for ops. We count how
+      // how many of these loop ops there are, partitioning in 2 sets:
+      // (1  scf.for ops annotated with amdaie.unroll, with the subview op
+      //     slicing one of the dimensions, and
+      // (2) scf.for ops which are are not in set (1).
+      int nUnrollLoops{0};
+      int nOtherLoops{0};
+
+      scf::ForOp currentOp = subview->getParentOfType<scf::ForOp>();
+      while (currentOp) {
+        Value inductionVariable = currentOp.getInductionVar();
+        bool isSlice =
+            std::count(offsets.begin(), offsets.end(), inductionVariable) == 1;
+        bool hasUnrollAttr = currentOp->hasAttr(kAMDAIELoopUnroll);
+        bool isUnrollLoop = isSlice && hasUnrollAttr;
+        nUnrollLoops += isUnrollLoop;
+        nOtherLoops += !isUnrollLoop;
+        currentOp = currentOp->getParentOfType<scf::ForOp>();
+      }
+
+      // We expect distributing subviews to be contained in 2 amdaie.unroll
+      // scf.for loops (one for each spatial dimension on the AIE array), and no
+      // other scf.for loops. We also expect that all distributing subviews (if
+      // there are multiple) have the same result type.
+      if (nUnrollLoops == 2 && nOtherLoops == 0) {
+        auto nextType = cast<MemRefType>(subview.getResult().getType());
+        if (!type) {
+          type = nextType;
+        } else if (type != nextType) {
+          // This is the case where there are 2+ subview ops which look like
+          // they should be distributing, but they have different result types.
+          // Bail.
+          return {};
+        }
+      } else {
+        // Does not look like a distributing subview.
+        return {};
+      }
+    }
+  }
+  return type;
+}
+
 /// Distribute local memory accesses through subviews by allocating a single
 /// smaller memory. This is needed because cores can't operate on one larger L1
 /// memory.
 LogicalResult distributeLocalMemory(ModuleOp moduleOp) {
   IRRewriter rewriter(moduleOp.getContext());
   SmallVector<Operation *> toBeErased;
-  // Map from alloc operations to a new alloc operations to be used.
-  DenseMap<memref::AllocOp, memref::AllocOp> memrefToNew;
 
-  moduleOp->walk([&](memref::AllocOp allocOp) {
+  moduleOp->walk([&](memref::AllocOp oldAlloc) {
+    Attribute maybeMemorySpace =
+        cast<MemRefType>(oldAlloc.getResult().getType()).getMemorySpace();
+    if (!maybeMemorySpace) return WalkResult::advance();
+    auto memorySpace = cast<IntegerAttr>(maybeMemorySpace);
+
     // Only consider local memory (L1).
-    Attribute memSpace =
-        cast<MemRefType>(allocOp.getResult().getType()).getMemorySpace();
-    if (!memSpace || dyn_cast<IntegerAttr>(memSpace).getInt() != 2)
+    if (memorySpace.getInt() != 2) return WalkResult::advance();
+
+    // Don't try and distribute memory if the alloc is inside a scf.for op.
+    if (auto scfForOp = oldAlloc->getParentOfType<scf::ForOp>())
       return WalkResult::advance();
 
-    LLVM_DEBUG(llvm::dbgs()
-               << "DistributeLocalMemory for: " << allocOp << "\n");
+    auto memRefType = getDistributedType(oldAlloc);
 
-    SmallVector<AMDAIE::DmaCpyNdOp> dmaUsers;
-    for (Operation *userOp : allocOp->getUsers()) {
-      if (auto logicalObjectFifo =
-              dyn_cast<AMDAIE::LogicalObjectFifoFromMemrefOp>(userOp)) {
-        for (Operation *objFifoUserOp : logicalObjectFifo->getUsers()) {
-          if (auto dmaOp = dyn_cast<AMDAIE::DmaCpyNdOp>(objFifoUserOp);
-              dmaOp.getSourceObjectFifo() == logicalObjectFifo) {
-            dmaUsers.push_back(dmaOp);
-          }
-        }
-      }
+    // Failed to find a memref.subview that looks like it is distributing.
+    // This doesn't mean that we can't distribute (for example there might be
+    // no subviews at all), but this requires further work.
+    if (!memRefType) return WalkResult::advance();
+
+    auto newShape = memRefType.getShape();
+    auto elementType = memRefType.getElementType();
+
+    rewriter.setInsertionPoint(oldAlloc);
+    MemRefType newAllocType = MemRefType::get(
+        newShape, elementType, MemRefLayoutAttrInterface{}, memorySpace);
+    auto newAlloc = rewriter.create<memref::AllocOp>(rewriter.getUnknownLoc(),
+                                                     newAllocType);
+    auto newDeallocOp =
+        rewriter.create<memref::DeallocOp>(rewriter.getUnknownLoc(), newAlloc);
+
+    newDeallocOp->moveBefore(&newAlloc->getBlock()->back());
+
+    // Replace uses of the old alloc with the new alloc.
+    for (Operation *userOp : oldAlloc->getUsers()) {
+      auto switchResult =
+          llvm::TypeSwitch<Operation *, LogicalResult>(userOp)
+              .Case<memref::SubViewOp>([&](memref::SubViewOp subviewOp) {
+                rewriter.replaceAllUsesWith(subviewOp, newAlloc);
+                toBeErased.push_back(subviewOp);
+                return success();
+              })
+              .Case<vector::TransferReadOp>(
+                  [&](vector::TransferReadOp transferReadOp) {
+                    rewriter.setInsertionPoint(transferReadOp);
+                    // Since in this function we're basically changing the L1
+                    // sizes of the Alloc, for dimensions with size as 1 we need
+                    // to set the indices as 0. We need to do this at this step
+                    // because there would be loop dependencies on the same and
+                    // when we unroll those loops later in this pass we would
+                    // have incorrect offset values being formed for those
+                    // dimension.
+                    SmallVector<Value> newIndices = transferReadOp.getIndices();
+                    Value c0 = rewriter.create<arith::ConstantIndexOp>(
+                        transferReadOp.getLoc(), 0);
+                    for (unsigned i = 0, n = newShape.size(); i < n; i++) {
+                      if (newShape[i] == 1) newIndices[i] = c0;
+                    }
+
+                    auto newTransferReadOp =
+                        rewriter.create<vector::TransferReadOp>(
+                            transferReadOp.getLoc(), transferReadOp.getType(),
+                            newAlloc, newIndices,
+                            transferReadOp.getPermutationMapAttr(),
+                            transferReadOp.getPadding(),
+                            transferReadOp.getMask(),
+                            transferReadOp.getInBoundsAttr());
+                    rewriter.replaceAllUsesWith(transferReadOp,
+                                                newTransferReadOp.getResult());
+                    toBeErased.push_back(transferReadOp);
+                    return success();
+                  })
+              .Case<vector::TransferWriteOp>(
+                  [&](vector::TransferWriteOp transferWriteOp) {
+                    rewriter.setInsertionPoint(transferWriteOp);
+                    // Since in this function we're basically changing the L1
+                    // sizes of the Alloc, for dimensions with size as 1 we need
+                    // to set the indices as 0. We need to do this at this step
+                    // because there would be loop dependencies on the same and
+                    // when we unroll those loops later in this pass we would
+                    // have incorrect offset values being formed for those
+                    // dimension.
+                    SmallVector<Value> newIndices =
+                        transferWriteOp.getIndices();
+                    Value c0 = rewriter.create<arith::ConstantIndexOp>(
+                        transferWriteOp.getLoc(), 0);
+
+                    for (unsigned i = 0, n = newShape.size(); i < n; i++) {
+                      if (newShape[i] == 1) newIndices[i] = c0;
+                    }
+
+                    rewriter.create<vector::TransferWriteOp>(
+                        transferWriteOp.getLoc(), transferWriteOp.getVector(),
+                        newAlloc, newIndices,
+                        transferWriteOp.getPermutationMapAttr(),
+                        transferWriteOp.getMask(),
+                        transferWriteOp.getInBoundsAttr());
+                    toBeErased.push_back(transferWriteOp);
+                    return success();
+                  })
+              .Case<memref::ExtractStridedMetadataOp>(
+                  [&](memref::ExtractStridedMetadataOp
+                          extractStridedMetadataOp) {
+                    rewriter.setInsertionPoint(extractStridedMetadataOp);
+                    auto newextractStridedMetadataOp =
+                        rewriter.create<memref::ExtractStridedMetadataOp>(
+                            extractStridedMetadataOp.getLoc(), newAlloc);
+                    rewriter.replaceAllUsesWith(
+                        extractStridedMetadataOp.getResults(),
+                        newextractStridedMetadataOp.getResults());
+                    toBeErased.push_back(extractStridedMetadataOp);
+                    return success();
+                  })
+              .Case<memref::DeallocOp>([&](memref::DeallocOp deallocOp) {
+                toBeErased.push_back(userOp);
+                return success();
+              })
+              .Case<AMDAIE::LogicalObjectFifoFromMemrefOp>(
+                  [&rewriter, &newAlloc](
+                      AMDAIE::LogicalObjectFifoFromMemrefOp logicalObjectFifo) {
+                    auto type = llvm::cast<MemRefType>(newAlloc.getType());
+                    for (Operation *objFifoUserOp :
+                         logicalObjectFifo->getUsers()) {
+                      if (auto dmaOp =
+                              dyn_cast<AMDAIE::DmaCpyNdOp>(objFifoUserOp);
+                          dmaOp.getSourceObjectFifo() == logicalObjectFifo) {
+                        SmallVector<Value> empty;
+                        rewriter.setInsertionPoint(dmaOp.getSourceObjectFifo());
+                        auto source =
+                            rewriter
+                                .create<AMDAIE::LogicalObjectFifoFromMemrefOp>(
+                                    rewriter.getUnknownLoc(),
+                                    LogicalObjectFifoType::get(type),
+                                    newAlloc.getResult());
+                        rewriter.replaceOp(dmaOp.getSourceObjectFifo(), source);
+                        rewriter.setInsertionPoint(dmaOp);
+                        auto newDmaOp = rewriter.create<AMDAIE::DmaCpyNdOp>(
+                            dmaOp.getLoc(), dmaOp.getTarget(),
+                            dmaOp.getTargetMixedOffsets(),
+                            dmaOp.getTargetMixedSizes(),
+                            dmaOp.getTargetMixedStrides(), source,
+                            dmaOp.getSourceMixedOffsets(),
+                            dmaOp.getSourceMixedSizes(),
+                            dmaOp.getSourceMixedStrides());
+                        rewriter.replaceOp(dmaOp, newDmaOp);
+                        // We have to discard non-zero offsets as subview has
+                        // been replaced by a dedicated allocated memref.
+                        SmallVector<int64_t> allocShape(type.getShape());
+                        (void)discardAllNonZeroOffsets<CopyOpOperateOn::Source>(
+                            rewriter,
+                            cast<AMDAIE::DoublyStridedOpInterface>(
+                                newDmaOp.getOperation()),
+                            allocShape);
+                      }
+                    }
+                    return success();
+                  })
+              .Default([&](Operation *userOp) {
+                userOp->emitOpError(
+                    "needs to have logic implemented for handling in "
+                    "distributeLocalMemory");
+                return failure();
+              });
+
+      if (failed(switchResult)) return WalkResult::interrupt();
     }
-    LLVM_DEBUG(llvm::dbgs() << "DMA users: " << dmaUsers.size() << "\n");
+    toBeErased.push_back(oldAlloc);
 
-    SmallVector<Operation *> allocOpUsers;
-    for (Operation *userOp : allocOp->getUsers()) {
-      if (isa<memref::SubViewOp, vector::TransferReadOp,
-              vector::TransferWriteOp, memref::ExtractStridedMetadataOp>(
-              userOp)) {
-        allocOpUsers.push_back(userOp);
-      }
-      auto subviewOp = dyn_cast<memref::SubViewOp>(userOp);
-      if (!subviewOp) continue;
-
-      if (!memrefToNew.contains(allocOp)) {
-        LLVM_DEBUG(llvm::dbgs() << "Create new allocate\n");
-        rewriter.setInsertionPoint(allocOp);
-        auto memRefType = cast<MemRefType>(subviewOp.getResult().getType());
-        MemRefType allocType = MemRefType::get(
-            memRefType.getShape(), memRefType.getElementType(),
-            MemRefLayoutAttrInterface{}, memRefType.getMemorySpace());
-        auto newAllocOp = rewriter.create<memref::AllocOp>(
-            rewriter.getUnknownLoc(), allocType);
-        auto newDeallocOp = rewriter.create<memref::DeallocOp>(
-            rewriter.getUnknownLoc(), newAllocOp);
-        newDeallocOp->moveBefore(&newAllocOp->getBlock()->back());
-        memrefToNew[allocOp] = newAllocOp;
-      }
-    }
-
-    if (!memrefToNew.contains(allocOp)) return WalkResult::advance();
-
-    // Traverse the following users of the AllocOp and create a new user using
-    // new AllocOp instead and replace the old user with the new user where
-    // applicable:-
-    // 1. vector.transfer_read.
-    // 2. vector.transfer_write.
-    // 3. memref.extract_strided_metadata.
-    // 4. memref.subview - only for this op we would replace its uses with a new
-    //                     AllocOp and not replace the current AllocOp's use
-    //                     within.
-    memref::AllocOp newAlloc = memrefToNew[allocOp];
-    ArrayRef<int64_t> newAllocShape = newAlloc.getType().getShape();
-    for (Operation *userOp : allocOpUsers) {
-      if (auto subviewOp = dyn_cast<memref::SubViewOp>(userOp)) {
-        rewriter.replaceAllUsesWith(subviewOp, newAlloc);
-        toBeErased.push_back(subviewOp);
-      } else if (auto transferReadOp =
-                     dyn_cast<vector::TransferReadOp>(userOp)) {
-        rewriter.setInsertionPoint(transferReadOp);
-        // Since in this function we're basically changing the L1 sizes of the
-        // Alloc, for dimensions with size as 1 we need to set the indices as 0.
-        // We need to do this at this step because there would be loop
-        // dependencies on the same and when we unroll those loops later in this
-        // pass we would have incorrect offset values being formed for those
-        // dimension.
-        SmallVector<Value> newIndices = transferReadOp.getIndices();
-        Value c0 =
-            rewriter.create<arith::ConstantIndexOp>(transferReadOp.getLoc(), 0);
-        for (unsigned i = 0, n = newAllocShape.size(); i < n; i++) {
-          if (newAllocShape[i] == 1) newIndices[i] = c0;
-        }
-        auto newTransferReadOp = rewriter.create<vector::TransferReadOp>(
-            transferReadOp.getLoc(), transferReadOp.getType(), newAlloc,
-            newIndices, transferReadOp.getPermutationMapAttr(),
-            transferReadOp.getPadding(), transferReadOp.getMask(),
-            transferReadOp.getInBoundsAttr());
-        rewriter.replaceAllUsesWith(transferReadOp,
-                                    newTransferReadOp.getResult());
-        toBeErased.push_back(transferReadOp);
-      } else if (auto transferWriteOp =
-                     dyn_cast<vector::TransferWriteOp>(userOp)) {
-        rewriter.setInsertionPoint(transferWriteOp);
-        // Since in this function we're basically changing the L1 sizes of the
-        // Alloc, for dimensions with size as 1 we need to set the indices as 0.
-        // We need to do this at this step because there would be loop
-        // dependencies on the same and when we unroll those loops later in this
-        // pass we would have incorrect offset values being formed for those
-        // dimension.
-        SmallVector<Value> newIndices = transferWriteOp.getIndices();
-        Value c0 = rewriter.create<arith::ConstantIndexOp>(
-            transferWriteOp.getLoc(), 0);
-        for (unsigned i = 0, n = newAllocShape.size(); i < n; i++) {
-          if (newAllocShape[i] == 1) newIndices[i] = c0;
-        }
-        rewriter.create<vector::TransferWriteOp>(
-            transferWriteOp.getLoc(), transferWriteOp.getVector(), newAlloc,
-            newIndices, transferWriteOp.getPermutationMapAttr(),
-            transferWriteOp.getMask(), transferWriteOp.getInBoundsAttr());
-        toBeErased.push_back(transferWriteOp);
-      } else if (auto extractStridedMetadataOp =
-                     dyn_cast<memref::ExtractStridedMetadataOp>(userOp)) {
-        rewriter.setInsertionPoint(extractStridedMetadataOp);
-        auto newextractStridedMetadataOp =
-            rewriter.create<memref::ExtractStridedMetadataOp>(
-                extractStridedMetadataOp.getLoc(), newAlloc);
-        rewriter.replaceAllUsesWith(extractStridedMetadataOp.getResults(),
-                                    newextractStridedMetadataOp.getResults());
-        toBeErased.push_back(extractStridedMetadataOp);
-      }
-    }
-
-    // Update the alloc's DMA users.
-    LLVM_DEBUG(llvm::dbgs()
-               << "Update allocate DMA users: " << dmaUsers.size() << "\n");
-    auto type = cast<MemRefType>(newAlloc.getType());
-    for (AMDAIE::DmaCpyNdOp dmaOp : dmaUsers) {
-      SmallVector<Value> empty;
-      rewriter.setInsertionPoint(dmaOp.getSourceObjectFifo());
-      auto source = rewriter.create<AMDAIE::LogicalObjectFifoFromMemrefOp>(
-          rewriter.getUnknownLoc(), LogicalObjectFifoType::get(type),
-          newAlloc.getResult());
-      rewriter.replaceOp(dmaOp.getSourceObjectFifo(), source);
-      rewriter.setInsertionPoint(dmaOp);
-      auto newDmaOp = rewriter.create<AMDAIE::DmaCpyNdOp>(
-          dmaOp.getLoc(), dmaOp.getTarget(), dmaOp.getTargetMixedOffsets(),
-          dmaOp.getTargetMixedSizes(), dmaOp.getTargetMixedStrides(), source,
-          dmaOp.getSourceMixedOffsets(), dmaOp.getSourceMixedSizes(),
-          dmaOp.getSourceMixedStrides());
-      rewriter.replaceOp(dmaOp, newDmaOp);
-      // We have to discard non-zero offsets as subview has been replaced by a
-      // dedicated allocated memref.
-      SmallVector<int64_t> allocShape(type.getShape());
-      (void)discardAllNonZeroOffsets<CopyOpOperateOn::Source>(
-          rewriter,
-          cast<AMDAIE::DoublyStridedOpInterface>(newDmaOp.getOperation()),
-          allocShape);
-    }
-
-    // Insert dealloc
-    memref::DeallocOp deallocOp;
-    for (Operation *userOp : allocOp->getUsers()) {
-      if (auto deallocUser = dyn_cast<memref::DeallocOp>(userOp)) {
-        deallocOp = deallocUser;
-      }
-    }
-    if (deallocOp) {
-      toBeErased.push_back(deallocOp);
-    }
-    toBeErased.push_back(allocOp);
     return WalkResult::advance();
   });
 
@@ -232,6 +295,7 @@ LogicalResult distributeLocalMemory(ModuleOp moduleOp) {
     op->dropAllUses();
     rewriter.eraseOp(op);
   }
+
   return success();
 }
 
@@ -240,8 +304,11 @@ LogicalResult distributeLocalMemory(ModuleOp moduleOp) {
 LogicalResult localForallToFor(ModuleOp moduleOp) {
   IRRewriter rewriter(moduleOp.getContext());
   WalkResult res = moduleOp->walk([&](scf::ForallOp forallOp) {
-    SmallVector<Attribute> mapping =
-        llvm::to_vector(forallOp.getMapping()->getValue());
+    auto maybeMapping = forallOp.getMapping();
+    if (!maybeMapping) return WalkResult::advance();
+    SmallVector<Attribute> mapping = llvm::to_vector(maybeMapping->getValue());
+    if (mapping.empty()) return WalkResult::advance();
+
     // We index on thread mapping for core and dma unrolling and buffer
     // distribution.
     if (!isa<mlir::gpu::GPUThreadMappingAttr>(*mapping.begin()))
@@ -543,9 +610,8 @@ LogicalResult insertLogicalObjectFifoAccess(ModuleOp moduleOp) {
         });
     for (AMDAIE::DmaCpyNdOp outputDmaOp : outputDmaOps) {
       Value sourceMemref = outputDmaOp.getSourceObjectFifo().getMemref();
-        memrefToLogicalObjectFifo[sourceMemref] =
-            std::make_pair(outputDmaOp.getSourceObjectFifo(),
-                           AMDAIE::MemoryAccess::Write);
+      memrefToLogicalObjectFifo[sourceMemref] = std::make_pair(
+          outputDmaOp.getSourceObjectFifo(), AMDAIE::MemoryAccess::Write);
     }
 
     // We maintain a map from AllocOp to LogicalObjectFifoAccessOp in order to
@@ -553,58 +619,68 @@ LogicalResult insertLogicalObjectFifoAccess(ModuleOp moduleOp) {
     // used in a different op.
     DenseMap<Value, AMDAIE::LogicalObjectFifoAccessOp>
         memrefToLogicalObjectFifoAccess;
+
     WalkResult res = coreOp->walk([&](Operation *op) {
-      if (isa<linalg::LinalgOp, vector::TransferReadOp, vector::TransferWriteOp,
-              memref::ExtractStridedMetadataOp>(op)) {
-        // We want to insert amdaie.logicalobjectfifo.access ops right before
-        // the first usage. But for vectorized ops this would mean they'd get
-        // inserted within the vectorized scf.for ops. We therefore would want
-        // to traverse to the outermost scf.for op in that case. Currently we
-        // bubble up this traversal till that operation whose parent is not a
-        // scf.for op. TODO: Generalize this later.
-        Operation *opToInsertRewriterPoint = op;
-        while (isa<scf::ForOp>(opToInsertRewriterPoint->getParentOp())) {
-          opToInsertRewriterPoint = opToInsertRewriterPoint->getParentOp();
+      bool hasAllocOperand = [op]() {
+        for (auto operand : op->getOperands()) {
+          auto definingOp = operand.getDefiningOp();
+          if (definingOp && isa<memref::AllocOp>(definingOp)) {
+            return true;
+          }
         }
-        for (auto &&[idx, operand] : llvm::enumerate(op->getOpOperands())) {
-          if (memrefToLogicalObjectFifoAccess.contains(operand.get())) {
-            op->setOperand(idx, memrefToLogicalObjectFifoAccess[operand.get()]);
-          } else if (memrefToLogicalObjectFifo.contains(operand.get())) {
-            rewriter.setInsertionPoint(opToInsertRewriterPoint);
+        return false;
+      }();
+
+      if (!hasAllocOperand) {
+        return WalkResult::advance();
+      }
+      // We want to insert amdaie.logicalobjectfifo.access ops right before
+      // the first usage. But for vectorized ops this would mean they'd get
+      // inserted within the vectorized scf.for ops. We therefore would want
+      // to traverse to the outermost scf.for op in that case. Currently we
+      // bubble up this traversal till that operation whose parent is not a
+      // scf.for op. TODO: Generalize this later.
+      Operation *opToInsertRewriterPoint = op;
+      while (isa<scf::ForOp>(opToInsertRewriterPoint->getParentOp())) {
+        opToInsertRewriterPoint = opToInsertRewriterPoint->getParentOp();
+      }
+      for (auto &&[idx, operand] : llvm::enumerate(op->getOpOperands())) {
+        if (memrefToLogicalObjectFifoAccess.contains(operand.get())) {
+          op->setOperand(idx, memrefToLogicalObjectFifoAccess[operand.get()]);
+        } else if (memrefToLogicalObjectFifo.contains(operand.get())) {
+          rewriter.setInsertionPoint(opToInsertRewriterPoint);
+          std::tuple<AMDAIE::LogicalObjectFifoFromMemrefOp,
+                     AMDAIE::MemoryAccess>
+              value = memrefToLogicalObjectFifo[operand.get()];
+          auto accessOp = rewriter.create<AMDAIE::LogicalObjectFifoAccessOp>(
+              rewriter.getUnknownLoc(), std::get<0>(value), std::get<1>(value));
+          memrefToLogicalObjectFifoAccess[operand.get()] = accessOp;
+          op->setOperand(idx, accessOp);
+        } else if (auto type =
+                       llvm::dyn_cast<MemRefType>(operand.get().getType())) {
+          Value memref = operand.get();
+          rewriter.setInsertionPoint(coreOp);
+          auto logicalObjectFifo =
+              rewriter.create<AMDAIE::LogicalObjectFifoFromMemrefOp>(
+                  rewriter.getUnknownLoc(), LogicalObjectFifoType::get(type),
+                  memref);
+          rewriter.setInsertionPoint(opToInsertRewriterPoint);
+
+          AMDAIE::LogicalObjectFifoAccessOp accessOp;
+          if (memrefToLogicalObjectFifo.contains(memref)) {
             std::tuple<AMDAIE::LogicalObjectFifoFromMemrefOp,
                        AMDAIE::MemoryAccess>
-                value = memrefToLogicalObjectFifo[operand.get()];
-            auto accessOp = rewriter.create<AMDAIE::LogicalObjectFifoAccessOp>(
+                value = memrefToLogicalObjectFifo[memref];
+            accessOp = rewriter.create<AMDAIE::LogicalObjectFifoAccessOp>(
                 rewriter.getUnknownLoc(), std::get<0>(value),
                 std::get<1>(value));
-            memrefToLogicalObjectFifoAccess[operand.get()] = accessOp;
-            op->setOperand(idx, accessOp);
-          } else if (auto type =
-                         llvm::dyn_cast<MemRefType>(operand.get().getType())) {
-            Value memref = operand.get();
-            rewriter.setInsertionPoint(coreOp);
-            auto logicalObjectFifo =
-                rewriter.create<AMDAIE::LogicalObjectFifoFromMemrefOp>(
-                    rewriter.getUnknownLoc(), LogicalObjectFifoType::get(type),
-                    memref);
-            rewriter.setInsertionPoint(opToInsertRewriterPoint);
-
-            AMDAIE::LogicalObjectFifoAccessOp accessOp;
-            if (memrefToLogicalObjectFifo.contains(memref)) {
-              std::tuple<AMDAIE::LogicalObjectFifoFromMemrefOp,
-                         AMDAIE::MemoryAccess>
-                  value = memrefToLogicalObjectFifo[memref];
-              accessOp = rewriter.create<AMDAIE::LogicalObjectFifoAccessOp>(
-                  rewriter.getUnknownLoc(), std::get<0>(value),
-                  std::get<1>(value));
-            } else {
-              accessOp = rewriter.create<AMDAIE::LogicalObjectFifoAccessOp>(
-                  rewriter.getUnknownLoc(), logicalObjectFifo,
-                  AMDAIE::MemoryAccess::None);
-            }
-            memrefToLogicalObjectFifoAccess[memref] = accessOp;
-            op->setOperand(idx, accessOp);
+          } else {
+            accessOp = rewriter.create<AMDAIE::LogicalObjectFifoAccessOp>(
+                rewriter.getUnknownLoc(), logicalObjectFifo,
+                AMDAIE::MemoryAccess::None);
           }
+          memrefToLogicalObjectFifoAccess[memref] = accessOp;
+          op->setOperand(idx, accessOp);
         }
       }
       return WalkResult::advance();
@@ -878,6 +954,10 @@ void AMDAIEDistributeCoresAndObjectFifosPass::runOnOperation() {
   LLVM_DEBUG(llvm::dbgs() << "Module after distributeLocalMemory: \n"
                           << moduleOp << "\n");
 
+  if (failed(verify(moduleOp, true))) {
+    return signalPassFailure();
+  }
+
   // Unroll local parallel loops and try hoisting dma operations if
   // possible.
   RewritePatternSet unrollLocalLoopsPatterns(context);
@@ -888,16 +968,24 @@ void AMDAIEDistributeCoresAndObjectFifosPass::runOnOperation() {
         << "loop unrolling of loops selected for parallel execution failed";
     return signalPassFailure();
   }
+
+  if (failed(verify(moduleOp, true))) {
+    return signalPassFailure();
+  }
   LLVM_DEBUG(llvm::dbgs() << "Module after AMDAIEUnrollLocalLoops: \n"
                           << moduleOp << "\n");
 
   // Insert `amdaie.logicalobjectfifo.access` operations which retrieve the
-  // memrefs from logical objectfifos and update the computational operations to
-  // operate on these local memrefs. These access operations will be used to
-  // assign local AIE tiles to local logical objectFifos later.
+  // memrefs from logical objectfifos and update the computational operations
+  // to operate on these local memrefs. These access operations will be used
+  // to assign local AIE tiles to local logical objectFifos later.
   if (failed(insertLogicalObjectFifoAccess(moduleOp))) {
     moduleOp.emitOpError()
-        << "insertion of `amdaie.logicalobjectfif.access` operations failed";
+        << "insertion of `amdaie.logicalobjectfifo.access` operations failed";
+    return signalPassFailure();
+  }
+
+  if (failed(verify(moduleOp, true))) {
     return signalPassFailure();
   }
   LLVM_DEBUG(llvm::dbgs() << "Module after insertLogicalObjectFifoAccess: \n"
@@ -908,6 +996,11 @@ void AMDAIEDistributeCoresAndObjectFifosPass::runOnOperation() {
     moduleOp.emitOpError() << "local tile assignment failed";
     return signalPassFailure();
   }
+
+  if (failed(verify(moduleOp, true))) {
+    return signalPassFailure();
+  }
+
   LLVM_DEBUG(llvm::dbgs() << "Module after assignLocalAieTiles: \n"
                           << moduleOp << "\n");
 
@@ -921,6 +1014,10 @@ void AMDAIEDistributeCoresAndObjectFifosPass::runOnOperation() {
         << "collection of tile candidates for logical objectFifos failed";
     return signalPassFailure();
   }
+
+  if (failed(verify(moduleOp, true))) {
+    return signalPassFailure();
+  }
   LLVM_DEBUG(llvm::dbgs() << "Module after FillAieTiles: \n"
                           << moduleOp << "\n");
 
@@ -929,6 +1026,10 @@ void AMDAIEDistributeCoresAndObjectFifosPass::runOnOperation() {
   if (failed(assignAieTilesAndDistributeLogicalObjectFifos(moduleOp))) {
     moduleOp.emitOpError()
         << "tile assignment and logical objectFifo distribution failed";
+    return signalPassFailure();
+  }
+
+  if (failed(verify(moduleOp, true))) {
     return signalPassFailure();
   }
   LLVM_DEBUG(llvm::dbgs()
