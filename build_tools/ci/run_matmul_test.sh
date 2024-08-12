@@ -788,10 +788,9 @@ i32_shapes_small=(
   '128x256x128'
 )
 
-# TODO(jornt): Debug and re-enable 1536x2048x1536
 i32_shapes_medium=(
   '1024x1024x1024' 
-  # '1536x2048x1536' 
+  '1536x2048x1536'
 )
 
 run_matmul_test_on_shapes ${i32_shapes_small[@]} \
@@ -821,6 +820,7 @@ bf16_i8_shapes_medium=(
   '512x512x512'
   '1024x1024x1024'
   '1536x2048x1536'
+  '4096x2048x4096'
 )
 
 bf16_ukernel_shapes_small=(
