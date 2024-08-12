@@ -47,15 +47,22 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 // CHECK-SAME:  %{{.+}}: memref<1024x64xi32>
 // CHECK-SAME:  %{{.+}}: memref<32x64xi32>
 // CHECK-NOT:   memref.assume_alignment
+#pipeline_layout = #hal.pipeline.layout<push_constants = 0, sets = [
+  #hal.descriptor_set.layout<0, bindings = [
+    #hal.descriptor_set.binding<0, storage_buffer>,
+    #hal.descriptor_set.binding<1, storage_buffer>,
+    #hal.descriptor_set.binding<2, storage_buffer>
+  ]>
+]>
 #executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
 module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
   func.func @hal_bindings() {
     %c0 = arith.constant 0 : index
-    %0 = hal.interface.binding.subspan set(0) binding(1) type(storage_buffer) alignment(64) offset(%c0) flags(ReadOnly) : memref<1024x64xi32>
+    %0 = hal.interface.binding.subspan layout(#pipeline_layout) set(0) binding(1) alignment(64) offset(%c0) flags(ReadOnly) : memref<1024x64xi32>
     memref.assume_alignment %0, 64 : memref<1024x64xi32>
-    %1 = hal.interface.binding.subspan set(0) binding(0) type(storage_buffer) alignment(64) offset(%c0) flags(ReadOnly) : memref<32x1024xi32>
+    %1 = hal.interface.binding.subspan layout(#pipeline_layout) set(0) binding(0) alignment(64) offset(%c0) flags(ReadOnly) : memref<32x1024xi32>
     memref.assume_alignment %1, 64 : memref<32x1024xi32>
-    %2 = hal.interface.binding.subspan set(0) binding(2) type(storage_buffer) alignment(64) offset(%c0) : memref<32x64xi32>
+    %2 = hal.interface.binding.subspan layout(#pipeline_layout) set(0) binding(2) alignment(64) offset(%c0) : memref<32x64xi32>
     memref.assume_alignment %2, 64 : memref<32x64xi32>
     return
   }
@@ -392,6 +399,11 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 
 // -----
 
+#pipeline_layout = #hal.pipeline.layout<push_constants = 0, sets = [
+  #hal.descriptor_set.layout<0, bindings = [
+    #hal.descriptor_set.binding<2, storage_buffer>
+  ]>
+]>
 #executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
 module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
   func.func @invalid_npu_dma_cpy_nd() {
@@ -401,7 +413,7 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
       %c2 = arith.constant 2 : index
       %c32 = arith.constant 32 : index
       %c64 = arith.constant 64 : index
-      %2 = hal.interface.binding.subspan set(0) binding(2) type(storage_buffer) alignment(64) offset(%c0) : memref<32x64xi32>
+      %2 = hal.interface.binding.subspan layout(#pipeline_layout) set(0) binding(2) alignment(64) offset(%c0) : memref<32x64xi32>
       memref.assume_alignment %2, 64 : memref<32x64xi32>
       %tile_0_0 = amdaie.tile(%c0, %c0)
       %tile_0_1 = amdaie.tile(%c0, %c1)
@@ -430,6 +442,11 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 
 // -----
 
+#pipeline_layout = #hal.pipeline.layout<push_constants = 0, sets = [
+  #hal.descriptor_set.layout<0, bindings = [
+    #hal.descriptor_set.binding<2, storage_buffer>
+  ]>
+]>
 #executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
 module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
   func.func @npu_dma_cpy_nd_invalid_addressing() {
@@ -439,7 +456,7 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
       %c2 = arith.constant 2 : index
       %c32 = arith.constant 32 : index
       %c64 = arith.constant 64 : index
-      %2 = hal.interface.binding.subspan set(0) binding(2) type(storage_buffer) alignment(64) offset(%c0) : memref<32x64xi32>
+      %2 = hal.interface.binding.subspan layout(#pipeline_layout) set(0) binding(2) alignment(64) offset(%c0) : memref<32x64xi32>
       memref.assume_alignment %2, 64 : memref<32x64xi32>
       %tile_0_0 = amdaie.tile(%c0, %c0)
       %tile_0_1 = amdaie.tile(%c0, %c1)
@@ -469,6 +486,11 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 
 // -----
 
+#pipeline_layout = #hal.pipeline.layout<push_constants = 0, sets = [
+  #hal.descriptor_set.layout<0, bindings = [
+    #hal.descriptor_set.binding<2, storage_buffer>
+  ]>
+]>
 #executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
 module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
   func.func @npu_dma_cpy_nd_with_invalid_repeat() {
@@ -476,7 +498,7 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
       %c0 = arith.constant 0 : index
       %c1 = arith.constant 1 : index
       %c2 = arith.constant 2 : index
-      %2 = hal.interface.binding.subspan set(0) binding(2) type(storage_buffer) alignment(64) offset(%c0) : memref<32x64xi32>
+      %2 = hal.interface.binding.subspan layout(#pipeline_layout) set(0) binding(2) alignment(64) offset(%c0) : memref<32x64xi32>
       memref.assume_alignment %2, 64 : memref<32x64xi32>
       %tile_0_0 = amdaie.tile(%c0, %c0)
       %tile_0_1 = amdaie.tile(%c0, %c1)
@@ -505,6 +527,11 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 
 // -----
 
+#pipeline_layout = #hal.pipeline.layout<push_constants = 0, sets = [
+  #hal.descriptor_set.layout<0, bindings = [
+    #hal.descriptor_set.binding<2, storage_buffer>
+  ]>
+]>
 #executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
 module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
   func.func @npu_dma_cpy_nd_with_multiple_repeat() {
@@ -512,7 +539,7 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
       %c0 = arith.constant 0 : index
       %c1 = arith.constant 1 : index
       %c2 = arith.constant 2 : index
-      %2 = hal.interface.binding.subspan set(0) binding(2) type(storage_buffer) alignment(64) offset(%c0) : memref<32x64xi32>
+      %2 = hal.interface.binding.subspan layout(#pipeline_layout) set(0) binding(2) alignment(64) offset(%c0) : memref<32x64xi32>
       memref.assume_alignment %2, 64 : memref<32x64xi32>
       %tile_0_0 = amdaie.tile(%c0, %c0)
       %tile_0_1 = amdaie.tile(%c0, %c1)
@@ -544,6 +571,11 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 // CHECK:       aie.device
 // CHECK:       aiex.runtime_sequence @npu_dma_cpy_nd_with_repeat(%[[ARG0:.+]]: memref<32x64xi32>
 // CHECK:       aiex.npu.dma_memcpy_nd(0, 0, %[[ARG0]][0, 0, 0, 32][2, 1, 1, 32][0, 0, 0, 1])
+#pipeline_layout = #hal.pipeline.layout<push_constants = 0, sets = [
+  #hal.descriptor_set.layout<0, bindings = [
+    #hal.descriptor_set.binding<2, storage_buffer>
+  ]>
+]>
 #executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
 module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
   func.func @npu_dma_cpy_nd_with_repeat() {
@@ -551,7 +583,7 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
       %c0 = arith.constant 0 : index
       %c1 = arith.constant 1 : index
       %c2 = arith.constant 2 : index
-      %2 = hal.interface.binding.subspan set(0) binding(2) type(storage_buffer) alignment(64) offset(%c0) : memref<32x64xi32>
+      %2 = hal.interface.binding.subspan layout(#pipeline_layout) set(0) binding(2) alignment(64) offset(%c0) : memref<32x64xi32>
       memref.assume_alignment %2, 64 : memref<32x64xi32>
       %tile_0_0 = amdaie.tile(%c0, %c0)
       %tile_0_1 = amdaie.tile(%c0, %c1)
@@ -581,6 +613,11 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 // CHECK:       aie.device
 // CHECK:       aiex.runtime_sequence @npu_dma_cpy_nd_with_repeat_already_on_outer_dim(%[[ARG0:.+]]: memref<32x64xi32>
 // CHECK:       aiex.npu.dma_memcpy_nd(0, 0, %[[ARG0]][0, 0, 0, 32][2, 1, 2, 32][2, 0, 16, 1])
+#pipeline_layout = #hal.pipeline.layout<push_constants = 0, sets = [
+  #hal.descriptor_set.layout<0, bindings = [
+    #hal.descriptor_set.binding<2, storage_buffer>
+  ]>
+]>
 #executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
 module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
   func.func @npu_dma_cpy_nd_with_repeat_already_on_outer_dim() {
@@ -588,7 +625,7 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
       %c0 = arith.constant 0 : index
       %c1 = arith.constant 1 : index
       %c2 = arith.constant 2 : index
-      %2 = hal.interface.binding.subspan set(0) binding(2) type(storage_buffer) alignment(64) offset(%c0) : memref<32x64xi32>
+      %2 = hal.interface.binding.subspan layout(#pipeline_layout) set(0) binding(2) alignment(64) offset(%c0) : memref<32x64xi32>
       memref.assume_alignment %2, 64 : memref<32x64xi32>
       %tile_0_0 = amdaie.tile(%c0, %c0)
       %tile_0_1 = amdaie.tile(%c0, %c1)
@@ -646,6 +683,11 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 // CHECK-SAME:            issue_token = true
 // CHECK-SAME:            metadata = @[[OBJ2]]
 // CHECK-NEXT:    aiex.npu.dma_wait {symbol = @[[OBJ2]]}
+#pipeline_layout = #hal.pipeline.layout<push_constants = 0, sets = [
+  #hal.descriptor_set.layout<0, bindings = [
+    #hal.descriptor_set.binding<2, storage_buffer>
+  ]>
+]>
 #executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
 module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
   func.func @controlcode() {
@@ -657,7 +699,7 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
       %c64 = arith.constant 64 : index
       %c1024 = arith.constant 1024 : index
       %c2048 = arith.constant 2048 : index
-      %2 = hal.interface.binding.subspan set(0) binding(2) type(storage_buffer) alignment(64) offset(%c0) : memref<32x64xi32>
+      %2 = hal.interface.binding.subspan layout(#pipeline_layout) set(0) binding(2) alignment(64) offset(%c0) : memref<32x64xi32>
       memref.assume_alignment %2, 64 : memref<32x64xi32>
       %tile_0_0 = amdaie.tile(%c0, %c0)
       %tile_0_1 = amdaie.tile(%c0, %c1)
@@ -715,6 +757,13 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 // CHECK-SAME:          %[[LHS]][0, 0, 0, 0][1, 1, 1, 1024][0, 0, 0, 1]
 // CHECK-SAME:          metadata = @[[OBJ0]]
 // CHECK-SAME:          memref<32x32xbf16>
+#pipeline_layout = #hal.pipeline.layout<push_constants = 0, sets = [
+  #hal.descriptor_set.layout<0, bindings = [
+    #hal.descriptor_set.binding<0, storage_buffer>,
+    #hal.descriptor_set.binding<1, storage_buffer>,
+    #hal.descriptor_set.binding<2, storage_buffer>
+  ]>
+]>
 #executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
 module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
   func.func @bf16_f32_lit_test() {
@@ -733,17 +782,17 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
       %0 = amdaie.logicalobjectfifo.from_memref %alloc, {%tile} : memref<2x2x16x16xf32, 1 : i32> -> !amdaie.logicalobjectfifo<memref<2x2x16x16xf32, 1 : i32>>
       %1 = amdaie.logicalobjectfifo.from_memref %alloc_0, {%tile} : memref<1x2x32x16xbf16, 1 : i32> -> !amdaie.logicalobjectfifo<memref<1x2x32x16xbf16, 1 : i32>>
       %2 = amdaie.logicalobjectfifo.from_memref %alloc_0, {%tile} : memref<1x2x32x16xbf16, 1 : i32> -> !amdaie.logicalobjectfifo<memref<2x1x16x32xbf16, 1 : i32>>
-      %3 = hal.interface.binding.subspan set(0) binding(0) type(storage_buffer) alignment(64) offset(%c0) flags(ReadOnly) : memref<32x32xbf16>
+      %3 = hal.interface.binding.subspan layout(#pipeline_layout) set(0) binding(0) alignment(64) offset(%c0) flags(ReadOnly) : memref<32x32xbf16>
       %tile_1 = amdaie.tile(%c0, %c0)
       %bd_id = amdaie.bd_id(%tile_1, 2)
       %bd_id_2 = amdaie.bd_id(%tile_1, 1)
       %bd_id_3 = amdaie.bd_id(%tile_1, 0)
       %4 = amdaie.logicalobjectfifo.from_memref %3, {%tile_1} : memref<32x32xbf16> -> !amdaie.logicalobjectfifo<memref<32x32xbf16>>
       memref.assume_alignment %3, 64 : memref<32x32xbf16>
-      %5 = hal.interface.binding.subspan set(0) binding(1) type(storage_buffer) alignment(64) offset(%c0) flags(ReadOnly) : memref<32x32xbf16>
+      %5 = hal.interface.binding.subspan layout(#pipeline_layout) set(0) binding(1) alignment(64) offset(%c0) flags(ReadOnly) : memref<32x32xbf16>
       %6 = amdaie.logicalobjectfifo.from_memref %5, {%tile_1} : memref<32x32xbf16> -> !amdaie.logicalobjectfifo<memref<32x32xbf16>>
       memref.assume_alignment %5, 64 : memref<32x32xbf16>
-      %7 = hal.interface.binding.subspan set(0) binding(2) type(storage_buffer) alignment(64) offset(%c0) : memref<32x32xf32>
+      %7 = hal.interface.binding.subspan layout(#pipeline_layout) set(0) binding(2) alignment(64) offset(%c0) : memref<32x32xf32>
       %8 = amdaie.logicalobjectfifo.from_memref %7, {%tile_1} : memref<32x32xf32> -> !amdaie.logicalobjectfifo<memref<1024xf32>>
       %9 = amdaie.circular_dma_cpy_nd(%2[] [] [], %4[] [] []) : (!amdaie.logicalobjectfifo<memref<2x1x16x32xbf16, 1 : i32>>, !amdaie.logicalobjectfifo<memref<32x32xbf16>>)
       %10 = amdaie.circular_dma_cpy_nd(%1[] [] [], %6[] [] []) : (!amdaie.logicalobjectfifo<memref<1x2x32x16xbf16, 1 : i32>>, !amdaie.logicalobjectfifo<memref<32x32xbf16>>)
@@ -766,6 +815,11 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 
 // Test to demonstrate invalid implicit L3 memref type that has rank greater than that
 // expected for static offsets/sizes/strides.
+#pipeline_layout = #hal.pipeline.layout<push_constants = 0, sets = [
+  #hal.descriptor_set.layout<0, bindings = [
+    #hal.descriptor_set.binding<2, storage_buffer>
+  ]>
+]>
 #executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
 module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
   func.func @controlcode_invalid_implicit_l3_memref() {
@@ -775,7 +829,7 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
       %c2 = arith.constant 2 : index
       %c32 = arith.constant 32 : index
       %c64 = arith.constant 64 : index
-      %2 = hal.interface.binding.subspan set(0) binding(2) type(storage_buffer) alignment(64) offset(%c0) : memref<32x16x64x128x32xi32>
+      %2 = hal.interface.binding.subspan layout(#pipeline_layout) set(0) binding(2) alignment(64) offset(%c0) : memref<32x16x64x128x32xi32>
       memref.assume_alignment %2, 64 : memref<32x16x64x128x32xi32>
       %tile_0_0 = amdaie.tile(%c0, %c0)
       %tile_0_1 = amdaie.tile(%c0, %c1)
@@ -852,6 +906,11 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 // CHECK-SAME:    @[[OBJ0]]
 // CHECK-NEXT:    aiex.npu.dma_wait
 // CHECK-SAME:    @[[OBJ0]]
+#pipeline_layout = #hal.pipeline.layout<push_constants = 0, sets = [
+  #hal.descriptor_set.layout<0, bindings = [
+    #hal.descriptor_set.binding<2, storage_buffer>
+  ]>
+]>
 #executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
 module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
   func.func @large_example() {
@@ -868,7 +927,7 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
       %tile_0_2 = amdaie.tile(%c0, %c2)
       %tile_1_2 = amdaie.tile(%c1, %c2)
       %bd_id_0 = amdaie.bd_id(%tile_0_0, 0)
-      %0 = hal.interface.binding.subspan set(0) binding(2) type(storage_buffer) alignment(64) offset(%c0) : memref<32x64xi32>
+      %0 = hal.interface.binding.subspan layout(#pipeline_layout) set(0) binding(2) alignment(64) offset(%c0) : memref<32x64xi32>
       memref.assume_alignment %0, 64 : memref<32x64xi32>
       %alloc_1 = memref.alloc() : memref<32x32xi32, 1>
       %alloc_2 = memref.alloc() : memref<4x8x4x8xi32, 2>

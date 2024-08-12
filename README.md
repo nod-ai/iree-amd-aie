@@ -134,7 +134,8 @@ packages. Here are the requirements for various operating systems:
 apt install \
   libboost-dev libboost-filesystem-dev libboost-program-options-dev \
   libboost-system-dev \
-  pkg-config libdrm-dev opencl-headers ocl-icd-opencl-dev libssl-dev \
+  pkg-config libdrm-dev opencl-headers ocl-icd-opencl-dev ocl-icd-dev \
+  libssl-dev \
   rapidjson-dev \
   protobuf-compiler \
   libprotobuf-dev \
