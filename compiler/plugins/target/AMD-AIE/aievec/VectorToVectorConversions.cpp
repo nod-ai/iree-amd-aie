@@ -23,6 +23,7 @@
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/Utils/ReshapeOpsUtils.h"
+#include "mlir/Dialect/Vector/Transforms/LoweringPatterns.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassManager.h"
@@ -527,27 +528,42 @@ static void configureCanonicalizeLegalizations(ConversionTarget &target) {
       });
 }
 
-static void populateCanonicalizeConversionPatterns(
-    RewritePatternSet &patterns) {
-  auto context = patterns.getContext();
+struct ConvertLeadingUnitDimInsertToReshapePattern
+    : public OpRewritePattern<vector::InsertOp> {
+  using OpRewritePattern<vector::InsertOp>::OpRewritePattern;
 
-  patterns.add<SplitUnalignedTransferReadPattern>(context, 1024, 256);
+  LogicalResult matchAndRewrite(vector::InsertOp insOp,
+                                PatternRewriter &rewriter) const override {
+    auto insSrcTy = dyn_cast<VectorType>(insOp.getSourceType());
+    if (!insSrcTy) return failure();
 
-  patterns
-      .add<ExtractTransposeFromContractionOp, FlattenMultDimTransferReadPattern,
-           FlattenMultDimTransferWritePattern>(context);
+    auto srcShape = insSrcTy.getShape();
+    auto dstShape = insOp.getDestVectorType().getShape();
 
-  patterns.add<ConvertSplatTransferReadToBroadcastPattern>(context);
+    unsigned long numLeadUnitDimDst = 0;
+    while (numLeadUnitDimDst < dstShape.size() &&
+           dstShape[numLeadUnitDimDst] == 1)
+      numLeadUnitDimDst++;
 
-  patterns.add<SwapUnaryOpsPattern<arith::ExtSIOp, vector::BroadcastOp>>(
-      context, [](arith::ExtSIOp extOp, vector::BroadcastOp bcastOp) -> Type {
-        Type extInElemTy = extOp.getIn().getType();
-        auto extInVecTy = dyn_cast<VectorType>(extInElemTy);
-        if (extInVecTy) extInElemTy = extInVecTy.getElementType();
-        return VectorType::get(bcastOp.getResultVectorType().getShape(),
-                               extInElemTy);
-      });
-}
+    if (!numLeadUnitDimDst) return failure();
+
+    unsigned long numLeadUnitDimSrc = 0;
+    while (numLeadUnitDimSrc < srcShape.size() &&
+           srcShape[numLeadUnitDimSrc] == 1)
+      numLeadUnitDimSrc++;
+
+    ArrayRef<int64_t> nonLeadUnitDimDstShape(
+        dstShape.begin() + numLeadUnitDimDst, dstShape.end());
+    ArrayRef<int64_t> nonLeadUnitDimSrcShape(
+        srcShape.begin() + numLeadUnitDimSrc, srcShape.end());
+
+    if (nonLeadUnitDimSrcShape != nonLeadUnitDimDstShape) return failure();
+
+    rewriter.replaceOpWithNewOp<vector::ShapeCastOp>(
+        insOp, insOp.getDestVectorType(), insOp.getSource());
+    return success();
+  }
+};
 
 // This pass converts standard vector ops into a subset of `Vector` ops more
 // amenable to being converted to `AIEVec`.
@@ -570,7 +586,27 @@ struct CanonicalizeVectorForAIEVecPass
     auto op = getOperation();
     MLIRContext *context = &getContext();
     RewritePatternSet patterns(context);
-    populateCanonicalizeConversionPatterns(patterns);
+
+    patterns.add<SplitUnalignedTransferReadPattern>(context, 1024, 256);
+
+    patterns.add<ExtractTransposeFromContractionOp,
+                 FlattenMultDimTransferReadPattern,
+                 FlattenMultDimTransferWritePattern,
+                 ConvertLeadingUnitDimInsertToReshapePattern>(context);
+
+    patterns.add<ConvertSplatTransferReadToBroadcastPattern>(context);
+
+    patterns.add<SwapUnaryOpsPattern<arith::ExtSIOp, vector::BroadcastOp>>(
+        context, [](arith::ExtSIOp extOp, vector::BroadcastOp bcastOp) -> Type {
+          Type extInElemTy = extOp.getIn().getType();
+          auto extInVecTy = dyn_cast<VectorType>(extInElemTy);
+          if (extInVecTy) extInElemTy = extInVecTy.getElementType();
+          return VectorType::get(bcastOp.getResultVectorType().getShape(),
+                                 extInElemTy);
+        });
+
+    populateVectorBroadcastLoweringPatterns(patterns);
+
     (void)applyPatternsAndFoldGreedily(op, std::move(patterns));
   }
 };
