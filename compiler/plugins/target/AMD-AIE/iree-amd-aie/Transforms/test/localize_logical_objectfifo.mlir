@@ -17,16 +17,17 @@
 module {
   func.func @localize_logical_objectfifo() {
     %alloc = memref.alloc() : memref<32x1024xi32>
-    %alloc_1 = memref.alloc() : memref<32x64xi32, 1>
-    %1 = amdaie.logicalobjectfifo.from_memref %alloc, {} : memref<32x1024xi32> -> !amdaie.logicalobjectfifo<memref<32x1024xi32>>
-    %3 = amdaie.logicalobjectfifo.from_memref %alloc_1, {} : memref<32x64xi32, 1> -> !amdaie.logicalobjectfifo<memref<32x64xi32, 1>>
+    %alloc_0 = memref.alloc() : memref<32x64xi32, 1>
+    %0 = amdaie.logicalobjectfifo.from_memref %alloc, {} : memref<32x1024xi32> -> !amdaie.logicalobjectfifo<memref<32x1024xi32>>
+    %1 = amdaie.logicalobjectfifo.from_memref %alloc_0, {} : memref<32x64xi32, 1> -> !amdaie.logicalobjectfifo<memref<32x64xi32, 1>>
     scf.forall (%arg0, %arg1) in (2, 2) {
       scf.forall (%arg2, %arg3) in (1, 1) {
-        %11 = amdaie.dma_cpy_nd(%3[] [] [], %1[] [] []) : (!amdaie.logicalobjectfifo<memref<32x64xi32, 1>>, !amdaie.logicalobjectfifo<memref<32x1024xi32>>)
+        %2 = amdaie.dma_cpy_nd(%1[] [] [], %0[] [] []) : (!amdaie.logicalobjectfifo<memref<32x64xi32, 1>>, !amdaie.logicalobjectfifo<memref<32x1024xi32>>)
       } {mapping = [#gpu.thread<y>, #gpu.thread<x>]}
     } {mapping = [#gpu.block<y>, #gpu.block<x>]}
-    memref.dealloc %alloc_1 : memref<32x64xi32, 1>
+    memref.dealloc %alloc_0 : memref<32x64xi32, 1>
     memref.dealloc %alloc : memref<32x1024xi32>
     return
   }
 }
+
