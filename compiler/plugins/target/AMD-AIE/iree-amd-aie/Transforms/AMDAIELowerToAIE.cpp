@@ -460,8 +460,13 @@ LogicalResult circularDmaToAIE(IRRewriter &rewriter,
                                int &dmaId) {
   LLVM_DEBUG(llvm::dbgs() << "Convert [AMDAIE::CircularDmaCpyNdOp]\n");
   rewriter.setInsertionPointToEnd(deviceBlock);
+  if (!dmaOp.getSource()) return dmaOp.emitOpError() << "expected a source";
+  auto sourceLogicalObjFifo = dyn_cast<AMDAIE::LogicalObjFifoOpInterface>(
+      dmaOp.getSource().getDefiningOp());
+  if (!sourceLogicalObjFifo)
+    return dmaOp.emitOpError() << "expected a logical objectFifo source";
   SmallVector<Value> newSourceTiles =
-      llvm::map_to_vector(dmaOp.getSourceObjectFifo().getTiles(),
+      llvm::map_to_vector(sourceLogicalObjFifo.getTiles(),
                           [&](Value tile) { return mapper.lookup(tile); });
   if (newSourceTiles.size() != 1) {
     return dmaOp.emitError()
@@ -469,8 +474,14 @@ LogicalResult circularDmaToAIE(IRRewriter &rewriter,
               "`ObjectFifoCreateOp` only handles a single source tile for now.";
   }
   Value newSourceTile = newSourceTiles[0];
+
+  if (!dmaOp.getTarget()) return dmaOp.emitOpError() << "expected a source";
+  auto targetLogicalObjFifo = dyn_cast<AMDAIE::LogicalObjFifoOpInterface>(
+      dmaOp.getTarget().getDefiningOp());
+  if (!targetLogicalObjFifo)
+    return dmaOp.emitOpError() << "expected a logical objectFifo source";
   SmallVector<Value> newTargetTiles =
-      llvm::map_to_vector(dmaOp.getTargetObjectFifo().getTiles(),
+      llvm::map_to_vector(targetLogicalObjFifo.getTiles(),
                           [&](Value tile) { return mapper.lookup(tile); });
 
   auto symName = "obj" + std::to_string(dmaId++);
@@ -563,7 +574,13 @@ LogicalResult npuDmaCpyNdOpToAIE(IRRewriter &rewriter,
                                  IRMapping &mapper, IRMapping &bindingsMapper) {
   rewriter.setInsertionPoint(dmaOp);
   // Convert bidirectional `amdaie.npu.dma_cpy_nd` op into two halves.
-  if (dmaOp.getSourceMemorySpaceAsUInt() == 0) {
+  if (dmaOp.getSource()) {
+    auto sourceLogicalObjFifo = dyn_cast<AMDAIE::LogicalObjectFifoFromMemrefOp>(
+        dmaOp.getSource().getDefiningOp());
+    if (!sourceLogicalObjFifo) {
+      return dmaOp.emitOpError() << "expected source to be an "
+                                    "`amdaie.logicalobjectfifo.from_memref`";
+    }
     if (!dmaOp.hasSourceAddressing()) {
       return dmaOp.emitOpError()
              << "expected source addressing for DMA with source on L3";
@@ -590,8 +607,7 @@ LogicalResult npuDmaCpyNdOpToAIE(IRRewriter &rewriter,
     }
 
     AMDAIE::CircularDmaCpyNdOp dmaCpyNd = dmaOp.getDmaCpyNdOp();
-    Value memref =
-        bindingsMapper.lookup(dmaCpyNd.getSourceObjectFifo().getMemref());
+    Value memref = bindingsMapper.lookup(sourceLogicalObjFifo.getMemref());
     auto objFifo = dyn_cast<xilinx::AIE::ObjectFifoCreateOp>(
         mapper.lookup(dmaCpyNd.getOperation()));
     if (!objFifo) {
@@ -604,7 +620,13 @@ LogicalResult npuDmaCpyNdOpToAIE(IRRewriter &rewriter,
         empty, empty, staticOffsets, staticSizes, staticStrides,
         objFifo.getName(), bdIdOp.getValue(), issueToken);
   }
-  if (dmaOp.getTargetMemorySpaceAsUInt() == 0) {
+  if (dmaOp.getTarget()) {
+    auto targetLogicalObjFifo = dyn_cast<AMDAIE::LogicalObjectFifoFromMemrefOp>(
+        dmaOp.getTarget().getDefiningOp());
+    if (!targetLogicalObjFifo) {
+      return dmaOp.emitOpError() << "expected target to be an "
+                                    "`amdaie.logicalobjectfifo.from_memref`";
+    }
     if (!dmaOp.hasTargetAddressing()) {
       return dmaOp.emitOpError()
              << "expected target addressing for DMA with target on L3";
@@ -631,8 +653,7 @@ LogicalResult npuDmaCpyNdOpToAIE(IRRewriter &rewriter,
     }
 
     AMDAIE::CircularDmaCpyNdOp dmaCpyNd = dmaOp.getDmaCpyNdOp();
-    Value memref =
-        bindingsMapper.lookup(dmaCpyNd.getTargetObjectFifo().getMemref());
+    Value memref = bindingsMapper.lookup(targetLogicalObjFifo.getMemref());
     auto objFifo = dyn_cast<xilinx::AIE::ObjectFifoCreateOp>(
         mapper.lookup(dmaCpyNd.getOperation()));
     if (!objFifo) {
@@ -786,7 +807,7 @@ LogicalResult tileToAIE(IRRewriter &rewriter, AMDAIE::TileOp tileOp,
 LogicalResult workgroupToAIE(IRRewriter &rewriter,
                              AMDAIE::WorkgroupOp workgroupOp,
                              xilinx::AIE::DeviceOp deviceOp,
-                             xilinx::AIEX::RuntimeSequenceOp ipuFuncOp,
+                             xilinx::AIEX::RuntimeSequenceOp npuFuncOp,
                              IRMapping &mapper, IRMapping &bindingsMapper) {
   OpBuilder::InsertionGuard guard(rewriter);
   Block *deviceBlock = &deviceOp.getRegion().front();
@@ -810,7 +831,7 @@ LogicalResult workgroupToAIE(IRRewriter &rewriter,
           return WalkResult::advance();
         })
         .Case<AMDAIE::ControlCodeOp>([&](auto controlCodeOp) {
-          if (failed(controlCodeToAie(rewriter, controlCodeOp, ipuFuncOp,
+          if (failed(controlCodeToAie(rewriter, controlCodeOp, npuFuncOp,
                                       mapper, bindingsMapper))) {
             controlCodeOp.emitError("could not convert to AIEDialect ops");
             return WalkResult::interrupt();
@@ -897,13 +918,13 @@ LogicalResult lowerToAIE(ModuleOp moduleOp) {
       return a.getBinding().getZExtValue() < b.getBinding().getZExtValue();
     });
     rewriter.setInsertionPoint(deviceBlock, deviceBlock->begin());
-    auto ipuFuncOp = rewriter.create<xilinx::AIEX::RuntimeSequenceOp>(
+    auto npuFuncOp = rewriter.create<xilinx::AIEX::RuntimeSequenceOp>(
         rewriter.getUnknownLoc(), rewriter.getStringAttr(funcOp.getSymName()));
-    ipuFuncOp.getBody().push_back(new Block);
+    npuFuncOp.getBody().push_back(new Block);
     for (int i = 0, e = subspanOps.size(); i < e; i++) {
       auto a = subspanOps[i].getResult();
-      ipuFuncOp.getBody().addArgument(a.getType(), a.getLoc());
-      bindingsMapper.map(a, ipuFuncOp.getBody().getArgument(i));
+      npuFuncOp.getBody().addArgument(a.getType(), a.getLoc());
+      bindingsMapper.map(a, npuFuncOp.getBody().getArgument(i));
     }
 
     // Walk the AIE regions ops and convert ops into pure AIEDialect ops.
@@ -913,7 +934,7 @@ LogicalResult lowerToAIE(ModuleOp moduleOp) {
       if (isa<func::FuncOp, func::ReturnOp>(op)) {
         return WalkResult::advance();
       } else if (auto workgroupOp = dyn_cast<AMDAIE::WorkgroupOp>(op)) {
-        if (failed(workgroupToAIE(rewriter, workgroupOp, deviceOp, ipuFuncOp,
+        if (failed(workgroupToAIE(rewriter, workgroupOp, deviceOp, npuFuncOp,
                                   mapper, bindingsMapper))) {
           return WalkResult::interrupt();
         }
@@ -928,7 +949,7 @@ LogicalResult lowerToAIE(ModuleOp moduleOp) {
     if (res.wasInterrupted()) return WalkResult::interrupt();
 
     // Move NPU instruction function to the end of the device block.
-    rewriter.moveOpBefore(ipuFuncOp, deviceBlock, deviceBlock->end());
+    rewriter.moveOpBefore(npuFuncOp, deviceBlock, deviceBlock->end());
     // After walking the FuncOp, it has been converted into a DeviceOp and can
     // safely be erased.
     eraseOp(rewriter, mapper, funcOp);

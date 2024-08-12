@@ -18,6 +18,7 @@ include "iree-amd-aie/IR/AMDAIEAttrs.td"
 include "iree-amd-aie/aie_runtime/AMDAIEEnums.td"
 include "iree-amd-aie/IR/AMDAIEDialect.td"
 include "iree-amd-aie/IR/AMDAIEDmaOpInterface.td"
+include "iree-amd-aie/IR/AMDAIELogicalObjFifoOpInterface.td"
 include "iree-amd-aie/IR/AMDAIETypes.td"
 
 //===----------------------------------------------------------------------===//
@@ -208,8 +209,8 @@ def AMDAIE_BdIdOp: AMDAIE_Op<"bd_id", [
 // IREE AMDAIE Npu Ops
 //===----------------------------------------------------------------------===//
 
-def AMDAIE_NpuDmaCpyNdOp: AMDAIE_Op<"npu.dma_cpy_nd",
-    [AttrSizedOperandSegments, DoublyStridedOpInterface]>,
+def AMDAIE_NpuDmaCpyNdOp: AMDAIE_Op<"npu.dma_cpy_nd", [
+      AttrSizedOperandSegments, DoublyStridedOpInterface]>,
     Results<(outs Index)> {
   let summary = "The Npu uController's dma operator";
   let description = [{
@@ -239,58 +240,50 @@ def AMDAIE_NpuDmaCpyNdOp: AMDAIE_Op<"npu.dma_cpy_nd",
 
   let arguments = (
     ins Index:$dma,
+        Optional<AnyAMDAIELogicalObjectFifoType>:$target,
         Variadic<Index>:$target_offsets,
         Variadic<Index>:$target_sizes,
         Variadic<Index>:$target_strides,
         DenseI64ArrayAttr:$target_static_offsets,
         DenseI64ArrayAttr:$target_static_sizes,
         DenseI64ArrayAttr:$target_static_strides,
+        Optional<Index>:$target_bd_id,
+        Optional<AnyAMDAIELogicalObjectFifoType>:$source,
         Variadic<Index>:$source_offsets,
         Variadic<Index>:$source_sizes,
         Variadic<Index>:$source_strides,
         DenseI64ArrayAttr:$source_static_offsets,
         DenseI64ArrayAttr:$source_static_sizes,
         DenseI64ArrayAttr:$source_static_strides,
-        Optional<Index>:$target_bd_id,
         Optional<Index>:$source_bd_id
   );
 
-  let assemblyFormat = [{
-    $dma
-    `(`
-    custom<DynamicIndexList>($target_offsets, $target_static_offsets)
-    custom<DynamicIndexList>($target_sizes, $target_static_sizes)
-    custom<DynamicIndexList>($target_strides, $target_static_strides)
-    (`bd_id` `=` $target_bd_id^)?
-    `,`
-    custom<DynamicIndexList>($source_offsets, $source_static_offsets)
-    custom<DynamicIndexList>($source_sizes, $source_static_sizes)
-    custom<DynamicIndexList>($source_strides, $source_static_strides)
-    (`bd_id` `=` $source_bd_id^)?
-    `)`
-    attr-dict
-  }];
+  // Use a custom assembly format because of weird spaces being inserted around 
+  // the optional `target` by the default assembly format generator.
+  let hasCustomAssemblyFormat = 1;
 
   let builders = [
     // Build a NpuDmaCpyNdOp with mixed static and dynamic entries.
-    OpBuilder<(ins "Value":$dma, "ArrayRef<OpFoldResult>":$target_offsets,
+    OpBuilder<(ins "Value":$dma, "::mlir::Value":$target,
+      "ArrayRef<OpFoldResult>":$target_offsets,
       "ArrayRef<OpFoldResult>":$target_sizes,
-      "ArrayRef<OpFoldResult>":$target_strides,
-      "ArrayRef<OpFoldResult>":$source_offsets,
+      "ArrayRef<OpFoldResult>":$target_strides, "::mlir::Value":$target_bd_id,
+      "::mlir::Value":$source, "ArrayRef<OpFoldResult>":$source_offsets,
       "ArrayRef<OpFoldResult>":$source_sizes,
-      "ArrayRef<OpFoldResult>":$source_strides, "::mlir::Value":$target_bd_id, 
-      "::mlir::Value":$source_bd_id)>,
+      "ArrayRef<OpFoldResult>":$source_strides, "::mlir::Value":$source_bd_id)>,
     // Build a NpuDmaCpyNdOp with static entries.
-    OpBuilder<(ins "Value":$dma, "ArrayRef<int64_t>":$target_offsets,
-      "ArrayRef<int64_t>":$target_sizes, "ArrayRef<int64_t>":$target_strides,
-      "ArrayRef<int64_t>":$source_offsets, "ArrayRef<int64_t>":$source_sizes,
-      "ArrayRef<int64_t>":$source_strides, "::mlir::Value":$target_bd_id, 
+    OpBuilder<(ins "Value":$dma, "::mlir::Value":$target,
+      "ArrayRef<int64_t>":$target_offsets, "ArrayRef<int64_t>":$target_sizes,
+      "ArrayRef<int64_t>":$target_strides, "::mlir::Value":$target_bd_id,
+      "::mlir::Value":$source, "ArrayRef<int64_t>":$source_offsets, 
+      "ArrayRef<int64_t>":$source_sizes, "ArrayRef<int64_t>":$source_strides,
       "::mlir::Value":$source_bd_id)>,
     // Build a NpuDmaCpyNdOp with dynamic entries.
-    OpBuilder<(ins "Value":$dma, "ValueRange":$target_offsets,
-      "ValueRange":$target_sizes, "ValueRange":$target_strides,
-      "ValueRange":$source_offsets, "ValueRange":$source_sizes,
-      "ValueRange":$source_strides, "::mlir::Value":$target_bd_id, 
+    OpBuilder<(ins "Value":$dma, "::mlir::Value":$target,
+      "ValueRange":$target_offsets, "ValueRange":$target_sizes,
+      "ValueRange":$target_strides, "::mlir::Value":$target_bd_id,
+      "::mlir::Value":$source, "ValueRange":$source_offsets,
+      "ValueRange":$source_sizes, "ValueRange":$source_strides, 
       "::mlir::Value":$source_bd_id)>
   ];
 
@@ -523,7 +516,8 @@ def AMDAIE_LogicalObjectFifoAcquire:
 }
 
 def AMDAIE_LogicalObjectFifoFromMemrefOp
-    : AMDAIE_Op<"logicalobjectfifo.from_memref", [Pure]> {
+    : AMDAIE_Op<"logicalobjectfifo.from_memref", 
+    [LogicalObjFifoOpInterface, Pure]> {
   let summary = "Create a logical objectFifo from a memref";
   let description = [{
     Creates a logical objectFifo which encapsulates a memref. The logical objectFifo
@@ -629,6 +623,46 @@ def AMDAIE_LogicalObjectFifoLink
   let assemblyFormat = [{
     `[` ($ins^)? `]` `->` `[` ($outs^)? `]` `(` `)` attr-dict
   }];
+}
+
+def AMDAIE_LogicalObjectFifoPlaceholderOp: 
+    AMDAIE_Op<"logicalobjectfifo.placeholder", [
+      LogicalObjFifoOpInterface, Pure]> {
+  let summary = "A placeholder for a logical objectFifo.";
+  let description = [{
+    Represents a placeholder for a logical objectFifo. The actual logical
+    objectFifo can then be provided later. This is useful for creating static
+    connections (`amdaie.circular_dma_cpy_nd`) that can be reused for different
+    logical objectFifos.
+
+    Example:
+    ```mlir
+    %0 = hal.interface.binding.subspan layout(#pipeline_layout) set(0) 
+      binding(0) alignment(64) offset(%c0) flags(ReadOnly) : memref<1024xi32>
+    %alloc = memref.alloc() : memref<1024xi32, 1 : i32>
+    %obj0 = amdaie.logicalobjectfifo.from_memref %alloc, {%tile_0_1}
+      : memref<1024xi32, 1> -> !amdaie.logicalobjectfifo<memref<1024xi32, 1 : i32>>
+    %ph = amdaie.logicalobjectfifo.placeholder{} 
+      : !amdaie.logicalobjectfifo<memref<2048xi32>>
+    %connection = amdaie.circular_dma_cpy_nd(%obj0[] [] [], %ph[] [] [])
+      : (!amdaie.logicalobjectfifo<memref<1024xi32, 1 : i32>>,
+      !amdaie.logicalobjectfifo<memref<1024xi32>>)
+    amdaie.controlcode {
+      %obj1 = amdaie.logicalobjectfifo.from_memref %0, {%tile_0_0}
+        : memref<1024xi32> -> !amdaie.logicalobjectfifo<memref<1024xi32>>
+      %npu_dma = amdaie.npu.dma_cpy_nd %connection([] [] [], 
+        %obj0[%c0, %c32] [%c32, %c32] [%c32, %c1]) 
+        : source_type = !amdaie.logicalobjectfifo<memref<1024xi32>>
+      amdaie.end
+    }
+    ```
+  }];
+
+  let arguments = (ins Variadic<Index>:$tiles);
+
+  let results = (outs AnyAMDAIELogicalObjectFifoType:$output);
+
+  let assemblyFormat = [{ `{` $tiles `}` attr-dict `:` type($output)}];
 }
 
 def AMDAIE_LogicalObjectFifoRelease: 

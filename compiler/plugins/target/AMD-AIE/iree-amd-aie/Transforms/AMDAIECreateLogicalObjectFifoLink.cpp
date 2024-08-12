@@ -88,15 +88,15 @@ LogicalResult createLogicalObjectFifoLink(
       auto sourceLogicalObjectFifo =
           dyn_cast<AMDAIE::LogicalObjectFifoFromMemrefOp>(
               stridedOp.getSource().getDefiningOp());
-      if (!sourceLogicalObjectFifo) {
-        stridedOp->emitError(
-            "does not have a `LogicalObjectFifoFromMemrefOp` as source");
-        return failure();
-      }
       if (!lastUserOp || lastUserOp->isBeforeInBlock(stridedOp)) {
         lastUserOp = stridedOp;
       }
-      if (logicalObjectFifo == sourceLogicalObjectFifo) {
+      // The `sourceLogicalObjectFifo` could be either a
+      // `LogicalObjectFifoFromMemrefOp` or `LogicalObjectFifoPlaceholderOp`,
+      // but currently the linking only works with
+      // `LogicalObjectFifoFromMemrefOp` on L2.
+      if (sourceLogicalObjectFifo &&
+          logicalObjectFifo == sourceLogicalObjectFifo) {
         if (std::optional<int64_t> offset =
                 stridedOp.getSourceStaticBaseOffset()) {
           outs.push_back(std::make_pair(stridedOp, offset.value()));
