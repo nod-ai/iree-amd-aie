@@ -4,8 +4,8 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#include "iree-amd-aie/IR/AMDAIETypes.h"
 #include "iree-amd-aie/IR/AMDAIEDialect.h"
+#include "iree-amd-aie/IR/AMDAIETypes.h"
 #include "llvm/ADT/TypeSwitch.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -30,12 +30,13 @@ void AMDAIEDialect::initializeAMDAIETypes() {
 
 LogicalResult LogicalObjectFifoType::verify(
     llvm::function_ref<mlir::InFlightDiagnostic()> emitError,
-    mlir::MemRefType elementType) {
+    mlir::MemRefType elementType, unsigned depth) {
   if (llvm::any_of(elementType.getShape(), [](auto dimSize) {
         return ShapedType::isDynamic(dimSize);
       })) {
     return emitError() << "should encapsulate static memref";
   }
+  if (depth < 1 || depth > 4) return emitError() << "depth should be in [1, 4]";
   return success();
 }
 

@@ -46,6 +46,7 @@ iree_cc_library(
     "AMDAIEAccessToAcquireRelease.cpp"
     "AMDAIEAddLoweringStrategy.cpp"
     "AMDAIEAIRDmaToAMDAIEDma.cpp"
+    "AMDAIEAssignLogicalObjectFifoDepth.cpp"
     "AMDAIEAssignNpuDmaBdIds.cpp"
     "AMDAIEBufferizeToAllocation.cpp"
     "AMDAIECanonicalizeDma.cpp"

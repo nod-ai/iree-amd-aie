@@ -422,10 +422,10 @@ class AMDAIEUnrollLocalLoops : public OpRewritePattern<scf::ForOp> {
         if (auto dmaOp = dyn_cast<AMDAIE::DmaCpyNdOp>(*it)) {
           AMDAIE::LogicalObjectFifoFromMemrefOp source =
               dmaOp.getSourceObjectFifo();
-          uint64_t sourceMemSpaceInt = source.getMemorySpaceAsUInt();
+          uint8_t sourceMemSpaceInt = source.getMemorySpaceAsUInt();
           AMDAIE::LogicalObjectFifoFromMemrefOp target =
               dmaOp.getTargetObjectFifo();
-          uint64_t targetMemSpaceInt = target.getMemorySpaceAsUInt();
+          uint8_t targetMemSpaceInt = target.getMemorySpaceAsUInt();
           if (targetMemSpaceInt > sourceMemSpaceInt) {
             rewriter.setInsertionPoint(target);
             auto cloneOp = dyn_cast<AMDAIE::LogicalObjectFifoFromMemrefOp>(

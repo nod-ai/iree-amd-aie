@@ -56,6 +56,11 @@ std::unique_ptr<Pass> createAMDAIEAccessToAcquireReleasePass();
 /// logical objectFifos.
 std::unique_ptr<Pass> createAMDAIEAIRDmaAMDAIEDmaPass();
 
+/// Create a pass to assign a buffer depth to
+/// `amdaie.logicalobjectfifo.from_memref` ops.
+std::unique_ptr<Pass> createAMDAIEAssignLogicalObjectFifoDepthPass(
+    AMDAIEAssignLogicalObjectFifoDepthOptions options = {});
+
 /// Create a pass to assign BD ids to `amdaie.npu.dma_cpy_nd` operations.
 std::unique_ptr<Pass> createAMDAIEAssignNpuDmaBdIdsPass();
 

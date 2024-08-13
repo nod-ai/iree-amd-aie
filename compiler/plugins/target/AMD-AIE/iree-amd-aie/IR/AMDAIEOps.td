@@ -555,6 +555,11 @@ def AMDAIE_LogicalObjectFifoFromMemrefOp
   ];
 
   let extraClassDeclaration = [{
+    // Return the buffer depth (1 == single buffer, 2 == double buffer).
+    unsigned getDepth() {
+      return cast<LogicalObjectFifoType>(getOutput().getType()).getDepth();
+    }
+
     // Return the memory space as an attribute.
     Attribute getMemorySpace() {
       return getMemrefType().getMemorySpace();
@@ -563,7 +568,7 @@ def AMDAIE_LogicalObjectFifoFromMemrefOp
     // Helper method to return the memory space as an integer. If no memory
     // space attribute, this indicates a global memory space and we return 0.
     // Else cast the memory space attribute to an integer. 
-    uint64_t getMemorySpaceAsUInt() {
+    uint8_t getMemorySpaceAsUInt() {
       Attribute memSpace = getMemorySpace();
       return memSpace ? cast<IntegerAttr>(memSpace).getInt() : 0;
     }

@@ -741,7 +741,7 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 // CHECK:         aie.objectfifo @[[OBJ0:.*]](%[[TILE_0_0]], {%[[TILE_0_1]]}, 2 : i32) : !aie.objectfifo<memref<1024xbf16, 1>>
 // CHECK:         aie.objectfifo @[[OBJ1:.*]](%[[TILE_0_0]], {%[[TILE_0_1]]}, 2 : i32) : !aie.objectfifo<memref<1024xbf16, 1>>
 // CHECK:         aie.objectfifo @[[OBJ2:.*]](%[[TILE_0_1]]
-// CHECK-SAME:         %[[TILE_0_0]]}, 4 : i32) : !aie.objectfifo<memref<1024xf32, 1>>
+// CHECK-SAME:         %[[TILE_0_0]]}, 2 : i32) : !aie.objectfifo<memref<1024xf32, 1>>
 // CHECK:         aiex.runtime_sequence @bf16_f32_lit_test
 // CHECK-SAME:         (%[[LHS:.*]]: memref<32x32xbf16>, %[[RHS:.*]]: memref<32x32xbf16>, %[[OUT:.*]]: memref<32x32xf32>) {
 // CHECK:           aiex.npu.dma_memcpy_nd
@@ -779,9 +779,9 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
       %alloc = memref.alloc() : memref<2x2x16x16xf32, 1 : i32>
       %alloc_0 = memref.alloc() : memref<1x2x32x16xbf16, 1 : i32>
       %tile = amdaie.tile(%c0, %c1)
-      %0 = amdaie.logicalobjectfifo.from_memref %alloc, {%tile} : memref<2x2x16x16xf32, 1 : i32> -> !amdaie.logicalobjectfifo<memref<2x2x16x16xf32, 1 : i32>>
-      %1 = amdaie.logicalobjectfifo.from_memref %alloc_0, {%tile} : memref<1x2x32x16xbf16, 1 : i32> -> !amdaie.logicalobjectfifo<memref<1x2x32x16xbf16, 1 : i32>>
-      %2 = amdaie.logicalobjectfifo.from_memref %alloc_0, {%tile} : memref<1x2x32x16xbf16, 1 : i32> -> !amdaie.logicalobjectfifo<memref<2x1x16x32xbf16, 1 : i32>>
+      %0 = amdaie.logicalobjectfifo.from_memref %alloc, {%tile} : memref<2x2x16x16xf32, 1 : i32> -> !amdaie.logicalobjectfifo<memref<2x2x16x16xf32, 1 : i32>, 2>
+      %1 = amdaie.logicalobjectfifo.from_memref %alloc_0, {%tile} : memref<1x2x32x16xbf16, 1 : i32> -> !amdaie.logicalobjectfifo<memref<1x2x32x16xbf16, 1 : i32>, 2>
+      %2 = amdaie.logicalobjectfifo.from_memref %alloc_0, {%tile} : memref<1x2x32x16xbf16, 1 : i32> -> !amdaie.logicalobjectfifo<memref<2x1x16x32xbf16, 1 : i32>, 2>
       %3 = hal.interface.binding.subspan layout(#pipeline_layout) set(0) binding(0) alignment(64) offset(%c0) flags(ReadOnly) : memref<32x32xbf16>
       %tile_1 = amdaie.tile(%c0, %c0)
       %bd_id = amdaie.bd_id(%tile_1, 2)
@@ -794,9 +794,9 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
       memref.assume_alignment %5, 64 : memref<32x32xbf16>
       %7 = hal.interface.binding.subspan layout(#pipeline_layout) set(0) binding(2) alignment(64) offset(%c0) : memref<32x32xf32>
       %8 = amdaie.logicalobjectfifo.from_memref %7, {%tile_1} : memref<32x32xf32> -> !amdaie.logicalobjectfifo<memref<1024xf32>>
-      %9 = amdaie.circular_dma_cpy_nd(%2[] [] [], %4[] [] []) : (!amdaie.logicalobjectfifo<memref<2x1x16x32xbf16, 1 : i32>>, !amdaie.logicalobjectfifo<memref<32x32xbf16>>)
-      %10 = amdaie.circular_dma_cpy_nd(%1[] [] [], %6[] [] []) : (!amdaie.logicalobjectfifo<memref<1x2x32x16xbf16, 1 : i32>>, !amdaie.logicalobjectfifo<memref<32x32xbf16>>)
-      %11 = amdaie.circular_dma_cpy_nd(%8[] [] [], %0[%c0, %c0, %c0, %c0] [%c2, %c16, %c2, %c16] [%c512, %c16, %c256, %c1]) : (!amdaie.logicalobjectfifo<memref<1024xf32>>, !amdaie.logicalobjectfifo<memref<2x2x16x16xf32, 1 : i32>>)
+      %9 = amdaie.circular_dma_cpy_nd(%2[] [] [], %4[] [] []) : (!amdaie.logicalobjectfifo<memref<2x1x16x32xbf16, 1 : i32>, 2>, !amdaie.logicalobjectfifo<memref<32x32xbf16>>)
+      %10 = amdaie.circular_dma_cpy_nd(%1[] [] [], %6[] [] []) : (!amdaie.logicalobjectfifo<memref<1x2x32x16xbf16, 1 : i32>, 2>, !amdaie.logicalobjectfifo<memref<32x32xbf16>>)
+      %11 = amdaie.circular_dma_cpy_nd(%8[] [] [], %0[%c0, %c0, %c0, %c0] [%c2, %c16, %c2, %c16] [%c512, %c16, %c256, %c1]) : (!amdaie.logicalobjectfifo<memref<1024xf32>>, !amdaie.logicalobjectfifo<memref<2x2x16x16xf32, 1 : i32>, 2>)
       amdaie.controlcode {
         %12 = amdaie.npu.dma_cpy_nd %11([%c0] [%c1024] [%c1] bd_id = %bd_id_3, [] [] [])
         %13 = amdaie.npu.dma_cpy_nd %10([] [] [], [%c0, %c1, %c2] [%c2, %c32, %c16] [%c16, %c32, %c1] bd_id = %bd_id_2)
