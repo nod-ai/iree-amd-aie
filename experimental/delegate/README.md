@@ -86,7 +86,7 @@ automatically casts the f32 inputs to bf16.  This demo also has its own PDL,
 
 ### Setting up the shell
 
-First, log in to a Ryzen AI machine (aka IPU, Phoenix), then do the following:
+First, log in to a Ryzen AI machine (aka NPU, Phoenix), then do the following:
 
 #### Linux (bash)
 

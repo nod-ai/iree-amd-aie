@@ -108,34 +108,34 @@ LogicalResult WorkgroupBuilder::buildForDmaCpyNdOp(
   SmallVector<OpFoldResult> circularDmaSourceSizes;
   SmallVector<OpFoldResult> circularDmaSourceStrides;
 
-  SmallVector<OpFoldResult> ipuDmaTargetOffsets = dmaOp.getTargetMixedOffsets();
-  SmallVector<OpFoldResult> ipuDmaTargetSizes = dmaOp.getTargetMixedSizes();
-  SmallVector<OpFoldResult> ipuDmaTargetStrides = dmaOp.getTargetMixedStrides();
-  SmallVector<OpFoldResult> ipuDmaSourceOffsets = dmaOp.getSourceMixedOffsets();
-  SmallVector<OpFoldResult> ipuDmaSourceSizes = dmaOp.getSourceMixedSizes();
-  SmallVector<OpFoldResult> ipuDmaSourceStrides = dmaOp.getSourceMixedStrides();
+  SmallVector<OpFoldResult> npuDmaTargetOffsets = dmaOp.getTargetMixedOffsets();
+  SmallVector<OpFoldResult> npuDmaTargetSizes = dmaOp.getTargetMixedSizes();
+  SmallVector<OpFoldResult> npuDmaTargetStrides = dmaOp.getTargetMixedStrides();
+  SmallVector<OpFoldResult> npuDmaSourceOffsets = dmaOp.getSourceMixedOffsets();
+  SmallVector<OpFoldResult> npuDmaSourceSizes = dmaOp.getSourceMixedSizes();
+  SmallVector<OpFoldResult> npuDmaSourceStrides = dmaOp.getSourceMixedStrides();
   if (!sourceMemSpace) {
     // Check if the source of DmaCpyNd op is from L3 - then source addressing
     // will be controlled by the uController and target addressing will stay in
     // the circular DMA to be part of the AIE configuration.
-    circularDmaTargetOffsets = ipuDmaTargetOffsets;
-    circularDmaTargetSizes = ipuDmaTargetSizes;
-    circularDmaTargetStrides = ipuDmaTargetStrides;
+    circularDmaTargetOffsets = npuDmaTargetOffsets;
+    circularDmaTargetSizes = npuDmaTargetSizes;
+    circularDmaTargetStrides = npuDmaTargetStrides;
 
-    ipuDmaTargetOffsets = empty;
-    ipuDmaTargetSizes = empty;
-    ipuDmaTargetStrides = empty;
+    npuDmaTargetOffsets = empty;
+    npuDmaTargetSizes = empty;
+    npuDmaTargetStrides = empty;
   } else if (!targetMemSpace) {
     // Check if the target of DmaCpyNd op is from L3 - then target addressing
     // will be controlled by the uController and source addressing will stay in
     // the circular DMA to be part of the AIE configuration.
-    circularDmaSourceOffsets = ipuDmaSourceOffsets;
-    circularDmaSourceSizes = ipuDmaSourceSizes;
-    circularDmaSourceStrides = ipuDmaSourceStrides;
+    circularDmaSourceOffsets = npuDmaSourceOffsets;
+    circularDmaSourceSizes = npuDmaSourceSizes;
+    circularDmaSourceStrides = npuDmaSourceStrides;
 
-    ipuDmaSourceOffsets = empty;
-    ipuDmaSourceSizes = empty;
-    ipuDmaSourceStrides = empty;
+    npuDmaSourceOffsets = empty;
+    npuDmaSourceSizes = empty;
+    npuDmaSourceStrides = empty;
   }
   auto newDmaOp = rewriter.createAndMap<AMDAIE::CircularDmaCpyNdOp>(
       rewriter.getUnknownLoc(), dmaOp, dmaOp.getTarget(),
@@ -145,14 +145,14 @@ LogicalResult WorkgroupBuilder::buildForDmaCpyNdOp(
 
   IRRewriter::InsertPoint dmaInsertionPoint = rewriter.saveInsertionPoint();
   controlCodeRewriter.setInsertionPoint(controlCode, controlCodeEnd);
-  auto ipuDmaCpy = controlCodeRewriter.createAndLookup<AMDAIE::NpuDmaCpyNdOp>(
-      loc, newDmaOp.getResult(), ipuDmaTargetOffsets, ipuDmaTargetSizes,
-      ipuDmaTargetStrides, ipuDmaSourceOffsets, ipuDmaSourceSizes,
-      ipuDmaSourceStrides, nullptr, nullptr);
+  auto npuDmaCpy = controlCodeRewriter.createAndLookup<AMDAIE::NpuDmaCpyNdOp>(
+      loc, newDmaOp.getResult(), npuDmaTargetOffsets, npuDmaTargetSizes,
+      npuDmaTargetStrides, npuDmaSourceOffsets, npuDmaSourceSizes,
+      npuDmaSourceStrides, nullptr, nullptr);
   DMAChannelDir direction =
       !sourceMemSpace ? DMAChannelDir::MM2S : DMAChannelDir::S2MM;
   controlCodeRewriter.createAndLookup<AMDAIE::NpuDmaWaitOp>(
-      rewriter.getUnknownLoc(), SmallVector<Type, 1>{}, ipuDmaCpy.getResult(),
+      rewriter.getUnknownLoc(), SmallVector<Type, 1>{}, npuDmaCpy.getResult(),
       direction);
   rewriter.restoreInsertionPoint(dmaInsertionPoint);
   LLVM_DEBUG(llvm::dbgs() << "workgroupBuild [amdaie.dma_cpy_nd] End\n");
@@ -397,7 +397,7 @@ class AMDAIECreateAIEWorkgroupPass
   }
 
   AMDAIECreateAIEWorkgroupPass() = default;
-  AMDAIECreateAIEWorkgroupPass(const AMDAIECreateAIEWorkgroupPass &pass){};
+  AMDAIECreateAIEWorkgroupPass(const AMDAIECreateAIEWorkgroupPass &pass) {};
   void runOnOperation() override;
 };
 
