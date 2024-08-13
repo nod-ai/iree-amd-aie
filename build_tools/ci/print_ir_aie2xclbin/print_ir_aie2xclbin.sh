@@ -39,7 +39,7 @@ if [ "$#" -eq 2 ]; then
   echo "Assuming that this is the 'CI case' as 2 parameters were provided."
   PEANO=/opt/llvm-aie
   XRT=/opt/xilinx/xrt
-  VITIS=/opt/Xilinx/Vitis/2024.1
+  VITIS=/opt/Xilinx/Vitis/2024.2
 fi
 
 echo "chess-clang: $(find $VITIS -name chess-clang)"

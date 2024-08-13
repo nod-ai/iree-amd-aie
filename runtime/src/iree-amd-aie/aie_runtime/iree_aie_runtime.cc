@@ -183,15 +183,14 @@ int AMDAIEDeviceModel::rows() const {
   if (device == AMDAIEDevice::xcvc1902 || device == AMDAIEDevice::xcve2802)
     return MLIRAIELegacy::rows(*this);
   assert(isNPUDevice(device) && "expected NPU device");
-  return configPtr.NumRows;
+  return devInst.NumRows;
 }
 
 int AMDAIEDeviceModel::columns() const {
   if (device == AMDAIEDevice::xcvc1902 || device == AMDAIEDevice::xcve2802)
     return MLIRAIELegacy::columns(*this);
   assert(isNPUDevice(device) && "expected NPU device");
-
-  return configPtr.NumCols;
+  return devInst.NumCols;
 }
 
 // TODO(max): these are buried somewhere in aie-rt...
@@ -205,18 +204,10 @@ uint32_t AMDAIEDeviceModel::getMemNorthBaseAddress() const {
 uint32_t AMDAIEDeviceModel::getMemEastBaseAddress() const { return 0x00070000; }
 
 AMDAIETileType AMDAIEDeviceModel::getTileType(uint8_t col, uint8_t row) const {
-  if (devInst.DevProp.DevGen == XAIE_DEV_GEN_AIE)
-    return static_cast<AMDAIETileType>(_XAie_GetTTypefromLoc(
-        const_cast<XAie_DevInst *>(&devInst), XAie_TileLoc(col, row)));
-  else if (devInst.DevProp.DevGen == XAIE_DEV_GEN_AIEML)
-    return static_cast<AMDAIETileType>(_XAieMl_GetTTypefromLoc(
-        const_cast<XAie_DevInst *>(&devInst), XAie_TileLoc(col, row)));
-  else if (devInst.DevProp.DevGen == XAIE_DEV_GEN_AIE2IPU)
-    return static_cast<AMDAIETileType>(_XAie2Ipu_GetTTypefromLoc(
-        const_cast<XAie_DevInst *>(&devInst), XAie_TileLoc(col, row)));
-  else
-    llvm::report_fatal_error(llvm::Twine("unknown AIE DevGen: ") +
-                             std::to_string((int)devInst.DevProp.DevGen));
+  uint8_t tt = devInst.DevOps->GetTTypefromLoc(
+      const_cast<XAie_DevInst *>(&devInst), XAie_TileLoc(col, row));
+  assert(tt < XAIEGBL_TILE_TYPE_MAX && "expected valid tile type");
+  return static_cast<AMDAIETileType>(tt);
 }
 
 bool AMDAIEDeviceModel::isCoreTile(uint8_t col, uint8_t row) const {
