@@ -61,16 +61,16 @@ struct LocationMapInfo {
 // AMDAIEDistributeCoresAndObjectFifosPass
 //===----------------------------------------------------------------------===//
 
-/// Try to detect subview(s) that look like they are 'distributing' or
+/// Try to detect subview(s) that look like they are 'distributing' aka
 /// 'privatizing'. That is, subview(s) that take an L1 memref spanning all
 /// L1 memories of the AIE array, and slice it along tile specific dimensions.
-/// If one or more identical subviews are found, return the MemRefType type of
+/// If one or more identical subviews are found, return the MemRefType of
 /// the subview(s). Otherwise, return an empty MemRefType.
 MemRefType getDistributedType(memref::AllocOp alloc) {
   MemRefType type{};
   for (Operation *allocUser : alloc->getUsers()) {
     if (auto subview = dyn_cast<memref::SubViewOp>(allocUser)) {
-      auto offsets = subview.getOffsets();
+      Operation::operand_range offsets = subview.getOffsets();
 
       // This subview op is contained inside nested scf.for ops. We count how
       // how many of these loop ops are annotated with amdaie.unroll, and are
@@ -78,12 +78,12 @@ MemRefType getDistributedType(memref::AllocOp alloc) {
       // expect this to be exactly 2, and we expect no slicing in other
       // dimensions. It is possible to handle other edge cases, but this is left
       // for future work.
-      uint32_t nNonConstants =
+      uint32_t nbNonConstants =
           std::count_if(offsets.begin(), offsets.end(), [](Value v) -> bool {
             return !mlir::matchPattern(v, mlir::m_Constant());
           });
-      if (nNonConstants != 2) return {};
-      uint32_t nDistributionLoops{0};
+      if (nbNonConstants != 2) return {};
+      uint32_t nbDistributionLoops{0};
       scf::ForOp currentOp = subview->getParentOfType<scf::ForOp>();
       while (currentOp) {
         Value iv = currentOp.getInductionVar();
@@ -91,11 +91,11 @@ MemRefType getDistributedType(memref::AllocOp alloc) {
         if (sliceCount > 1) return {};
         if (sliceCount == 1) {
           if (!currentOp->hasAttr(kAMDAIELoopUnroll)) return {};
-          ++nDistributionLoops;
+          ++nbDistributionLoops;
         }
         currentOp = currentOp->getParentOfType<scf::ForOp>();
       }
-      if (nDistributionLoops != 2) return {};
+      if (nbDistributionLoops != 2) return {};
       auto nextType = cast<MemRefType>(subview.getResult().getType());
       if (!type) {
         type = nextType;
@@ -130,7 +130,7 @@ LogicalResult distributeLocalMemory(ModuleOp moduleOp) {
     if (auto scfForOp = oldAlloc->getParentOfType<scf::ForOp>())
       return WalkResult::advance();
 
-    auto memRefType = getDistributedType(oldAlloc);
+    MemRefType memRefType = getDistributedType(oldAlloc);
 
     // Failed to find a memref.subview that looks like it is distributing.
     // This doesn't mean that we can't distribute (for example there might be
@@ -168,7 +168,7 @@ LogicalResult distributeLocalMemory(ModuleOp moduleOp) {
                     // because there would be loop dependencies on the same and
                     // when we unroll those loops later in this pass we would
                     // have incorrect offset values being formed for those
-                    // dimension.
+                    // dimensions.
                     SmallVector<Value> newIndices = transferReadOp.getIndices();
                     Value c0 = rewriter.create<arith::ConstantIndexOp>(
                         transferReadOp.getLoc(), 0);
@@ -198,7 +198,7 @@ LogicalResult distributeLocalMemory(ModuleOp moduleOp) {
                     // because there would be loop dependencies on the same and
                     // when we unroll those loops later in this pass we would
                     // have incorrect offset values being formed for those
-                    // dimension.
+                    // dimensions.
                     SmallVector<Value> newIndices =
                         transferWriteOp.getIndices();
                     Value c0 = rewriter.create<arith::ConstantIndexOp>(
