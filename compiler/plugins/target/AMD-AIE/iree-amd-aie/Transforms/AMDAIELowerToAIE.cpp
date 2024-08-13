@@ -11,6 +11,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include <memory>
 #include <numeric>
 
 #include "aie/AIEDialect.h"
@@ -19,9 +20,11 @@
 #include "iree-amd-aie/IR/AMDAIEOps.h"
 #include "iree-amd-aie/Transforms/AMDAIEUtils.h"
 #include "iree-amd-aie/Transforms/Passes.h"
+#include "iree/compiler/Dialect/HAL/IR/HALDialect.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/IR/IRMapping.h"
 #include "mlir/IR/Iterators.h"
+#include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
 #define DEBUG_TYPE "iree-amdaie-lower-to-aie"
@@ -856,6 +859,11 @@ LogicalResult lowerToAIE(ModuleOp moduleOp) {
 
   auto funcRes = moduleOp.walk([&](func::FuncOp funcOp) {
     if (funcOp.isPrivate()) {
+      // All Ukernel related function declarations will be within aie.device, so
+      // delete the ones outside from the SymbolTable.
+      if (!funcOp->getParentOfType<AIE::DeviceOp>()) {
+        SymbolTable(moduleOp).erase(funcOp);
+      }
       return WalkResult::advance();
     }
     // Insert AIE DeviceOp
@@ -919,69 +927,6 @@ LogicalResult lowerToAIE(ModuleOp moduleOp) {
   return success();
 }
 
-/// Utility to erase all HAL bindings and dependent operations.
-LogicalResult eraseHALBindings(ModuleOp moduleOp) {
-  IRRewriter rewriter(moduleOp.getContext());
-  SmallVector<Operation *> opsToBeErased;
-  moduleOp.walk([&](IREE::HAL::InterfaceBindingSubspanOp subspanOp) {
-    opsToBeErased.push_back(subspanOp.getOperation());
-    SmallVector<Operation *> userQueue(subspanOp->getUsers().begin(),
-                                       subspanOp->getUsers().end());
-    while (!userQueue.empty()) {
-      Operation *current = userQueue.pop_back_val();
-      opsToBeErased.push_back(current);
-      userQueue.insert(userQueue.end(), current->getUsers().begin(),
-                       current->getUsers().end());
-    }
-  });
-
-  for (Operation *op : llvm::reverse(opsToBeErased)) rewriter.eraseOp(op);
-  return success();
-}
-
-/// Utility to move dependencies outside an operation into that operation. This
-/// is for example needed for `aie.core` operations as MLIR-AIE expects all
-/// dependencies, like constants, inside those core operations.
-template <typename OpTy>
-class MoveAllDependenciesIntoOp : public OpRewritePattern<OpTy> {
-  using OpRewritePattern<OpTy>::OpRewritePattern;
-
-  LogicalResult matchAndRewrite(OpTy parentOp,
-                                PatternRewriter &rewriter) const override {
-    bool addedDependency = false;
-    parentOp->walk([&](Operation *op) {
-      // Skip operations of type 'OpTy'.
-      if (isa<OpTy>(op)) {
-        return WalkResult::advance();
-      }
-      // Check all operands and whether their defining operations are located
-      // outside the parentOp.
-      for (Value operand : op->getOperands()) {
-        if (!operand || !operand.getDefiningOp()) {
-          continue;
-        }
-        Operation *dependencyOp = operand.getDefiningOp();
-        if (isa_and_nonnull<xilinx::AIE::AIEDialect, xilinx::AIEX::AIEXDialect>(
-                op->getDialect())) {
-          // Skip AIE dialect operations.
-          continue;
-        } else if (!dependencyOp->getParentOfType<OpTy>()) {
-          // Clone the dependency operation into the parent operation's block
-          // and replace all uses.
-          rewriter.setInsertionPointToStart(&parentOp->getRegion(0).front());
-          Operation *newOp = rewriter.clone(*dependencyOp);
-          dependencyOp->replaceUsesWithIf(newOp, [&](OpOperand &use) {
-            return use.getOwner()->getParentOfType<OpTy>() == parentOp;
-          });
-          addedDependency = true;
-        }
-      }
-      return WalkResult::advance();
-    });
-    return success(addedDependency);
-  }
-};
-
 class AMDAIELowerToAIEPass
     : public impl::AMDAIELowerToAIEBase<AMDAIELowerToAIEPass> {
  public:
@@ -1002,37 +947,131 @@ void AMDAIELowerToAIEPass::runOnOperation() {
     return signalPassFailure();
   }
   LLVM_DEBUG(llvm::dbgs() << "Module after lowerToAIE: " << getOperation());
-
-  // Clean up the HAL bindings and it's uses as they are not needed anymore.
-  if (failed(eraseHALBindings(getOperation()))) {
-    return signalPassFailure();
-  }
-
-  // Move all dependencies, like for example constants, that are residing
-  // outside core operations into those core operations. This is required by
-  // the AIE dialect.
-  MLIRContext *context = &getContext();
-  RewritePatternSet patterns(context);
-  patterns.insert<MoveAllDependenciesIntoOp<xilinx::AIE::CoreOp>>(context);
-  if (failed(
-          applyPatternsAndFoldGreedily(getOperation(), std::move(patterns)))) {
-    return signalPassFailure();
-  }
-
-  // All Ukernel related function declarations will be within aie.device, so
-  // delete the ones outside from the SymbolTable.
-  SymbolTable symbolTable(getOperation());
-  getOperation()->walk([&](func::FuncOp funcOp) {
-    if (funcOp.isPrivate() && !funcOp->getParentOfType<AIE::DeviceOp>()) {
-      symbolTable.erase(funcOp);
-    }
-  });
 }
 
 }  // namespace
 
 std::unique_ptr<Pass> createAMDAIELowerToAIEPass() {
   return std::make_unique<AMDAIELowerToAIEPass>();
+}
+
+struct AMDAIEToAIEEraseHalBindingsPass
+    : public PassWrapper<AMDAIEToAIEEraseHalBindingsPass,
+                         OperationPass<ModuleOp>> {
+  StringRef getArgument() const final {
+    return "amdaie-to-aie-erase-hal-bindings";
+  }
+  StringRef getDescription() const final { return "TODO"; }
+  void getDependentDialects(DialectRegistry &registry) const override {
+    registry.insert<IREE::HAL::HALDialect>();
+  }
+
+  void runOnOperation() override {
+    // Clean up the HAL bindings and it's uses as they are not needed anymore.
+    if (failed(eraseHALBindings(getOperation()))) {
+      return signalPassFailure();
+    }
+  }
+
+ private:
+  /// Utility to erase all HAL bindings and dependent operations.
+  LogicalResult eraseHALBindings(ModuleOp moduleOp) {
+    IRRewriter rewriter(moduleOp.getContext());
+    SmallVector<Operation *> opsToBeErased;
+    moduleOp.walk([&](IREE::HAL::InterfaceBindingSubspanOp subspanOp) {
+      opsToBeErased.push_back(subspanOp.getOperation());
+      SmallVector<Operation *> userQueue(subspanOp->getUsers().begin(),
+                                         subspanOp->getUsers().end());
+      while (!userQueue.empty()) {
+        Operation *current = userQueue.pop_back_val();
+        opsToBeErased.push_back(current);
+        userQueue.insert(userQueue.end(), current->getUsers().begin(),
+                         current->getUsers().end());
+      }
+    });
+
+    for (Operation *op : llvm::reverse(opsToBeErased)) rewriter.eraseOp(op);
+    return success();
+  }
+};
+
+struct AMDAIEToAIESinkDependencies
+    : public PassWrapper<AMDAIEToAIESinkDependencies, OperationPass<>> {
+  StringRef getArgument() const final {
+    return "amdaie-to-aie-sink-dependencies";
+  }
+  StringRef getDescription() const final { return "TODO"; }
+
+  void getDependentDialects(DialectRegistry &registry) const override {
+    registry.insert<AMDAIEDialect, xilinx::AIE::AIEDialect,
+                    xilinx::AIEX::AIEXDialect>();
+  }
+
+  void runOnOperation() override {
+    // Move all dependencies, like for example constants, that are residing
+    // outside core operations into those core operations. This is required by
+    // the AIE dialect.
+    MLIRContext *context = &getContext();
+    RewritePatternSet patterns(context);
+    patterns.insert<MoveAllDependenciesIntoOp<xilinx::AIE::CoreOp>>(context);
+    if (failed(applyPatternsAndFoldGreedily(getOperation(),
+                                            std::move(patterns)))) {
+      return signalPassFailure();
+    }
+  }
+
+ private:
+  /// Utility to move dependencies outside an operation into that operation.
+  /// This is for example needed for `aie.core` operations as MLIR-AIE expects
+  /// all dependencies, like constants, inside those core operations.
+  template <typename OpTy>
+  class MoveAllDependenciesIntoOp : public OpRewritePattern<OpTy> {
+    using OpRewritePattern<OpTy>::OpRewritePattern;
+
+    LogicalResult matchAndRewrite(OpTy parentOp,
+                                  PatternRewriter &rewriter) const override {
+      bool addedDependency = false;
+      parentOp->walk([&](Operation *op) {
+        // Skip operations of type 'OpTy'.
+        if (isa<OpTy>(op)) {
+          return WalkResult::advance();
+        }
+        // Check all operands and whether their defining operations are located
+        // outside the parentOp.
+        for (Value operand : op->getOperands()) {
+          if (!operand || !operand.getDefiningOp()) {
+            continue;
+          }
+          Operation *dependencyOp = operand.getDefiningOp();
+          if (isa_and_nonnull<xilinx::AIE::AIEDialect,
+                              xilinx::AIEX::AIEXDialect>(op->getDialect())) {
+            // Skip AIE dialect operations.
+            continue;
+          } else if (!dependencyOp->getParentOfType<OpTy>()) {
+            // Clone the dependency operation into the parent operation's block
+            // and replace all uses.
+            rewriter.setInsertionPointToStart(&parentOp->getRegion(0).front());
+            Operation *newOp = rewriter.clone(*dependencyOp);
+            dependencyOp->replaceUsesWithIf(newOp, [&](OpOperand &use) {
+              return use.getOwner()->getParentOfType<OpTy>() == parentOp;
+            });
+            addedDependency = true;
+          }
+        }
+        return WalkResult::advance();
+      });
+      return success(addedDependency);
+    }
+  };
+};
+
+void addAMDAIEToAIEPasses(OpPassManager &passManager) {
+  passManager.addPass(createAMDAIELowerToAIEPass());
+  passManager.addPass(std::make_unique<AMDAIEToAIESinkDependencies>());
+  passManager.addPass(std::make_unique<AMDAIEToAIEEraseHalBindingsPass>());
+
+  // TODO: finish with a pass that checks that there are no
+  // objectfifo things left.
 }
 
 }  // namespace mlir::iree_compiler::AMDAIE

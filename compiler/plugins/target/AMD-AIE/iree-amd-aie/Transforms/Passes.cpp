@@ -563,6 +563,7 @@ void buildAMDAIETransformPassPipeline(OpPassManager &variantPassManager) {
   });
 }
 
+
 void addAMDAIEObjectFifoLoweringPasses(OpPassManager &passManager) {
   passManager.addPass(createEraseHALDescriptorTypeFromMemRefPass());
   passManager.addPass(memref::createFoldMemRefAliasOpsPass());
@@ -614,7 +615,8 @@ void addAMDAIEObjectFifoLoweringPasses(OpPassManager &passManager) {
   passManager.addPass(createAMDAIEConvertCoreForallToForPass());
   passManager.addPass(createCanonicalizerPass());
   passManager.addPass(createAMDAIECoreLoopUnrollPass());
-  passManager.addPass(createAMDAIELowerToAIEPass());
+
+  addAMDAIEToAIEPasses(passManager);
 
   passManager.addPass(createCanonicalizerPass());
 
@@ -622,14 +624,10 @@ void addAMDAIEObjectFifoLoweringPasses(OpPassManager &passManager) {
   devicePM.addPass(createAMDAIEObjectFifoStatefulTransformPass());
 
   passManager.addPass(createCanonicalizerPass());
-
   passManager.addPass(createConvertLinalgToLoopsPass());
-
 
   // Now lower using the AIE passes from MLIR-AIE.
   addMLIRAIELoweringPasses(passManager);
-
-
 }
 
 // TODO (Erwei): The "packPeel" temporary argument should be removed once
