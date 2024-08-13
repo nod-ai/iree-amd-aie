@@ -681,7 +681,8 @@ func.func @l1_temporary_buffer_for_matmul_elem() {
 
 // -----
 
-// We check that the case where an L2 distributed is handled correctly.
+// A case where an L2 memory is not distributable. Note: this form arises with a 
+// pad-based tiling strategy. 
 // CHECK-LABEL: @not_distributable
 // CHECK: memref.alloc() : memref<2x2x100xbf16, 2>
 // CHECK: memref.subview

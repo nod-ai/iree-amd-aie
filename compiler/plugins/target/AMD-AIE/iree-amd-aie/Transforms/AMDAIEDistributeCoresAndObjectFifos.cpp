@@ -619,8 +619,8 @@ LogicalResult insertLogicalObjectFifoAccess(ModuleOp moduleOp) {
 
     WalkResult res = coreOp->walk([&](Operation *op) {
       bool hasAllocOperand = [op]() {
-        for (auto operand : op->getOperands()) {
-          auto definingOp = operand.getDefiningOp();
+        for (Value operand : op->getOperands()) {
+          Operation *definingOp = operand.getDefiningOp();
           if (definingOp && isa<memref::AllocOp>(definingOp)) {
             return true;
           }
