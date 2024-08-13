@@ -7,8 +7,8 @@
 #ifndef IREE_COMPILER_AMDAIE_DIALECT_AMDAIETYPES
 #define IREE_COMPILER_AMDAIE_DIALECT_AMDAIETYPES
 
-include "mlir/IR/AttrTypeBase.td"
 include "iree-amd-aie/IR/AMDAIEDialect.td"
+include "mlir/IR/AttrTypeBase.td"
 
 class AMDAIEDialect_Type<string name, string typeMnemonic, list<Trait> traits = []>
     : TypeDef<AMDAIE_Dialect, name, traits> {
@@ -30,16 +30,20 @@ def AMDAIE_LogicalObjectFifoType :
     ```
   }];
 
-  let parameters = (ins "MemRefType":$element_type);
+  let parameters = (ins "MemRefType":$element_type,
+                        DefaultValuedParameter<"unsigned", "1">:$depth);
   let genVerifyDecl = 1;
 
-  let assemblyFormat = "`<` $element_type `>`";
+  let assemblyFormat = "`<` $element_type (`,` $depth^)? `>`";
   
   let builders = [
     TypeBuilderWithInferredContext<(ins "MemRefType":$elementType), [{
-      return $_get(elementType.getContext(), elementType);
+      return $_get(elementType.getContext(), elementType, 1);
+    }]>,
+    TypeBuilderWithInferredContext<(ins "MemRefType":$elementType, "unsigned":$depth), [{
+      return $_get(elementType.getContext(), elementType, depth);
     }]>
-  ];  
+  ];
 }
 
 def AnyAMDAIELogicalObjectFifoType : AnyTypeOf<[AMDAIE_LogicalObjectFifoType]>;

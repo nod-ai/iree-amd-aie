@@ -23,6 +23,21 @@ def AMDAIEAIRDmaToAMDAIEDma :
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEAIRDmaAMDAIEDmaPass()";
 }
 
+def AMDAIEAssignLogicalObjectFifoDepth :
+    Pass<"iree-amdaie-assign-logical-objectfifo-depth", ""> {
+  let summary = "Assign a buffer depth of the logical objectfifos.";
+  let constructor = 
+    "mlir::iree_compiler::AMDAIE::createAMDAIEAssignLogicalObjectFifoDepthPass()";
+  let options = [
+    Option<"l3BufferDepth", "l3-buffer-depth", "int64_t", /*default=*/"1",
+      "Set the L3 buffer depth to be used.">,
+    Option<"l2BufferDepth", "l2-buffer-depth", "int64_t", /*default=*/"2",
+      "Set the L2 buffer depth to be used.">,
+    Option<"l1BufferDepth", "l1-buffer-depth", "int64_t", /*default=*/"2",
+      "Set the L1 buffer depth to be used.">,
+  ];
+}
+
 def AMDAIEAssignNpuDmaBdIds :
     Pass<"iree-amdaie-assign-npu-dma-bd-ids", ""> {
   let summary = "Assign BD ids to `amdaie.npu.dma_cpy_nd` operations.";

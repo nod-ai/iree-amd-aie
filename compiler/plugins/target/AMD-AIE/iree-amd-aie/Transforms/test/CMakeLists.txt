@@ -11,6 +11,7 @@ iree_lit_test_suite(
     "access_to_acquire_release.mlir"
     "aie_link_executables.mlir"
     "air_dma_to_amdaie_dma.mlir"
+    "assign_logical_objectfifo_depth.mlir"
     "assign_npu_dma_bd_ids.mlir"
     "bridge_to_air.mlir"
     "bufferize_to_allocation.mlir"

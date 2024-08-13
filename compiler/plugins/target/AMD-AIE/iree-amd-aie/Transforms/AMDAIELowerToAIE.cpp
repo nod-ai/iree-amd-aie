@@ -79,10 +79,27 @@ AIE::BDDimLayoutArrayAttr convertSizeStrideToBDDimLayoutArrayAttr(
 
 /// Utility to create an `aie.objectfifo` operation from
 /// `amdaie.circular_dma_cpy_nd`.
-AIE::ObjectFifoCreateOp createObjectFifo(IRRewriter &rewriter,
-                                         AMDAIE::CircularDmaCpyNdOp dmaOp,
-                                         Value srcTile, ValueRange dstTiles,
-                                         StringAttr &symName) {
+FailureOr<AIE::ObjectFifoCreateOp> createObjectFifo(
+    IRRewriter &rewriter, AMDAIE::CircularDmaCpyNdOp dmaOp, Value srcTile,
+    ValueRange dstTiles, StringAttr &symName) {
+  uint8_t sourceMemSpace = dmaOp.getSourceObjectFifo().getMemorySpaceAsUInt();
+  uint8_t targetMemSpace = dmaOp.getTargetObjectFifo().getMemorySpaceAsUInt();
+  unsigned depth;
+  unsigned sourceDepth = dmaOp.getSourceObjectFifo().getDepth();
+  unsigned targetDepth = dmaOp.getTargetObjectFifo().getDepth();
+  if (sourceMemSpace == 0 && targetMemSpace == 0) {
+    return dmaOp.emitOpError()
+           << "both source and target on main memory not supported";
+  } else if (sourceMemSpace == 0) {
+    depth = targetDepth;
+  } else if (targetMemSpace == 0) {
+    depth = sourceDepth;
+  } else {
+    if (sourceDepth != targetDepth)
+      return dmaOp.emitOpError() << "unsupported sourceDepth != targetDepth";
+    depth = sourceDepth;
+  }
+
   // Convert source and target sizes and strides to `BDDimLayoutArrayAttr`s,
   // which the `aie.objectfifo` works with.
   AIE::BDDimLayoutArrayAttr sourceDims =
@@ -129,11 +146,10 @@ AIE::ObjectFifoCreateOp createObjectFifo(IRRewriter &rewriter,
                             MemRefLayoutAttrInterface{},
                             rewriter.getI64IntegerAttr(1));
   AIE::AIEObjectFifoType dtype = AIE::AIEObjectFifoType::get(memrefType);
-  auto depthInBytes = srcType.getElementTypeBitWidth() / 8;
   auto fifo = rewriter.create<AIE::ObjectFifoCreateOp>(
       rewriter.getUnknownLoc(), symName, srcTile, dstTiles,
-      rewriter.getIntegerAttr(rewriter.getI32Type(), depthInBytes), dtype,
-      sourceDims, targetDims);
+      rewriter.getIntegerAttr(rewriter.getI32Type(), depth), dtype, sourceDims,
+      targetDims);
   return fifo;
 }
 
@@ -440,9 +456,10 @@ LogicalResult circularDmaToAIE(IRRewriter &rewriter,
 
   auto symName = "obj" + std::to_string(dmaId++);
   auto symAttr = rewriter.getStringAttr(symName);
-  AIE::ObjectFifoCreateOp objFifo =
+  FailureOr<AIE::ObjectFifoCreateOp> objFifo =
       createObjectFifo(rewriter, dmaOp, newSourceTile, newTargetTiles, symAttr);
-  mapper.map(dmaOp.getOperation(), objFifo.getOperation());
+  if (failed(objFifo)) return failure();
+  mapper.map(dmaOp.getOperation(), objFifo.value().getOperation());
   return success();
 }
 
