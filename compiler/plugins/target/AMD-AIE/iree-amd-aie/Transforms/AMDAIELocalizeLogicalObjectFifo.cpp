@@ -19,7 +19,7 @@
 #include "iree-amd-aie/IR/AMDAIEDialect.h"
 #include "iree-amd-aie/IR/AMDAIEOps.h"
 #include "iree-amd-aie/Transforms/Passes.h"
-#include "iree/compiler/Codegen/TransformStrategies/GPU/Common.h"
+#include "mlir/Dialect/GPU/IR/GPUDialect.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 
 #define DEBUG_TYPE "iree-amdaie-localize-logicalobjectfifo"
@@ -28,17 +28,33 @@ namespace mlir::iree_compiler::AMDAIE {
 
 namespace {
 
-// Recursively find and return a parent scf.forall op chosen for parallel
-// distribution across cores. For now, this looks for thread mapping, but this
-// will probably be changed to include block mapping as well in the future.
-scf::ForallOp getParentForallWithParallelMapping(Operation *op) {
-  scf::ForallOp forallOp = op->getParentOfType<scf::ForallOp>();
-  if (!forallOp) return scf::ForallOp();
-  if (isa<mlir::gpu::GPUThreadMappingAttr>(
-          *forallOp.getMapping()->getValue().begin())) {
-    return forallOp;
+template <class... T>
+scf::ForallOp getMappedForallAncestor(Operation *op) {
+  auto forall = op->getParentOfType<scf::ForallOp>();
+  while (forall) {
+    bool isMapped = [&forall]() {
+      auto maybeMapping = forall.getMapping();
+      auto hasMapping = maybeMapping.has_value();
+      if (!hasMapping) return false;
+      auto mapping = maybeMapping->getValue();
+      if (mapping.size() == 0) return false;
+      auto mappingAttr0 = *mapping.begin();
+      if (isa<T...>(mappingAttr0)) return true;
+      return false;
+    }();
+    if (isMapped) return forall;
+    forall = forall->getParentOfType<scf::ForallOp>();
   }
-  return getParentForallWithParallelMapping(forallOp);
+  return scf::ForallOp();
+}
+
+scf::ForallOp getThreadMappedForallAncestor(Operation *op) {
+  return getMappedForallAncestor<mlir::gpu::GPUThreadMappingAttr>(op);
+}
+
+scf::ForallOp getThreadOrBlockMappedForallAncestor(Operation *op) {
+  return getMappedForallAncestor<mlir::gpu::GPUThreadMappingAttr,
+                                 mlir::gpu::GPUBlockMappingAttr>(op);
 }
 
 class AMDAIELocalizeLogicalObjectfifoPass
@@ -62,9 +78,9 @@ void AMDAIELocalizeLogicalObjectfifoPass::runOnOperation() {
 
   SmallVector<AMDAIE::LogicalObjectFifoFromMemrefOp> logicalObjectFifos;
   moduleOp->walk([&](AMDAIE::LogicalObjectFifoFromMemrefOp op) {
-    // The op is already within the parallel mapped forall, so doesn't need
+    // The op is already within the thread mapped forall, so doesn't need
     // any change.
-    if (getParentForallWithParallelMapping(op)) {
+    if (getThreadMappedForallAncestor(op)) {
       return WalkResult::advance();
     }
     logicalObjectFifos.push_back(op);
@@ -72,11 +88,11 @@ void AMDAIELocalizeLogicalObjectfifoPass::runOnOperation() {
   });
 
   for (AMDAIE::LogicalObjectFifoFromMemrefOp op : logicalObjectFifos) {
-    // Get all parallel scf.forall operations containing users of this logical
-    // objectFifo.
+    // Get all thread mapped scf.forall operations containing users of this
+    // logical objectFifo.
     llvm::SmallSetVector<scf::ForallOp, 4> localUsers;
     for (Operation *userOp : op->getUsers()) {
-      if (scf::ForallOp forallOp = getParentForallWithParallelMapping(userOp)) {
+      if (scf::ForallOp forallOp = getThreadMappedForallAncestor(userOp)) {
         localUsers.insert(forallOp);
       }
     }
@@ -90,7 +106,7 @@ void AMDAIELocalizeLogicalObjectfifoPass::runOnOperation() {
       auto clone = rewriter.clone(*(op.getOperation()));
       op->replaceUsesWithIf(clone, [&](OpOperand &use) {
         scf::ForallOp localParentForall =
-            getParentForallWithParallelMapping(use.getOwner());
+            getThreadMappedForallAncestor(use.getOwner());
         return localParentForall && localParentForall == forallOp;
       });
     }
