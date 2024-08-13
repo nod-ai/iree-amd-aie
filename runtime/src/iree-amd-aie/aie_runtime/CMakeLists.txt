@@ -500,7 +500,11 @@ endif()
 # iree-aie-runtime-static
 # ##############################################################################
 
-iree_add_all_subdirs()
+add_subdirectory(Utils)
+
+if (IREE_BUILD_TESTS)
+  add_subdirectory(test)
+endif()
 
 iree_tablegen_library(
   NAME
