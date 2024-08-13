@@ -35,7 +35,7 @@ class AMDAIEAssignLogicalObjectFifoDepthPass
 void AMDAIEAssignLogicalObjectFifoDepthPass::runOnOperation() {
   Operation *parentOp = getOperation();
   IRRewriter rewriter(parentOp->getContext());
-  // Only assign buffer depth for L2 and L1, not for L3 (main memory).
+  // Assign buffer depths based on provided options.
   WalkResult res = parentOp->walk(
       [&](AMDAIE::LogicalObjectFifoFromMemrefOp logicalObjectFifo) {
         uint8_t memSpace = logicalObjectFifo.getMemorySpaceAsUInt();
