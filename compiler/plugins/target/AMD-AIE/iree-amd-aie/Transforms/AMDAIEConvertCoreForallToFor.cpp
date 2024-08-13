@@ -13,7 +13,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "aie/AIEDialect.h"
+#include "iree-amd-aie/IR/AMDAIEOps.h"
 #include "iree-amd-aie/Transforms/Passes.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/SCF/Transforms/Transforms.h"
@@ -28,7 +28,7 @@ namespace {
 /// Converts `scf.forall` into nested `scf.for` and then coalesce the `scf.for`
 /// loops.
 LogicalResult coreForallToFor(RewriterBase &rewriter,
-                              xilinx::AIE::CoreOp coreOp) {
+                              AMDAIE::CoreOp coreOp) {
   WalkResult res = coreOp->walk([&](scf::ForallOp forallOp) {
     SmallVector<Operation *> forOpResults;
     if (failed(scf::forallToForLoop(rewriter, forallOp, &forOpResults))) {
@@ -68,7 +68,7 @@ void AMDAIEConvertCoreForallToForPass::runOnOperation() {
   Operation *parentOp = getOperation();
   IRRewriter rewriter(parentOp->getContext());
 
-  parentOp->walk([&](xilinx::AIE::CoreOp coreOp) {
+  parentOp->walk([&](AMDAIE::CoreOp coreOp) {
     if (failed(coreForallToFor(rewriter, coreOp))) {
       return signalPassFailure();
     }

@@ -39,17 +39,16 @@
 // CHECK:           }
 // CHECK:           aie.shim_dma_allocation @inA(MM2S, 0, 2)
 // CHECK:           %[[CORE_0_2:.*]] = aie.core(%[[TILE_0_2]]) {
-// CHECK:             %[[C0:.*]] = arith.constant 0 : index
-// CHECK:             %[[C1:.*]] = arith.constant 1 : index
-// CHECK:             %[[C4:.*]] = arith.constant 4 : index
-// CHECK:             %[[C4294967295:.*]] = arith.constant 4294967295 : index
+// CHECK-DAG:         %[[C0:.*]] = arith.constant 0 : index
+// CHECK-DAG:         %[[C1:.*]] = arith.constant 1 : index
+// CHECK-DAG:         %[[C2:.*]] = arith.constant 2 : index
+// CHECK-DAG:         %[[C4:.*]] = arith.constant 4 : index
+// CHECK-DAG:         %[[C4294967295:.*]] = arith.constant 4294967295 : index
 // CHECK:             scf.for %[[ARG0:.*]] = %[[C0]] to %[[C4294967295]] step %[[C1]] {
-// CHECK:               %[[C2:.*]] = arith.constant 2 : index
 // CHECK:               scf.for %[[ARG1:.*]] = %[[C0]] to %[[C4]] step %[[C2]] {
 // CHECK:                 aie.use_lock(%[[OUTC_PROD_LOCK]], AcquireGreaterEqual, 1)
 // CHECK:                 func.call @zero_scalar_i16(%[[OUTC_BUFF_0]]) : (memref<16x16xi16>) -> ()
-// CHECK:                 %[[C2_0:.*]] = arith.constant 2 : index
-// CHECK:                 scf.for %[[ARG2:.*]] = %[[C0]] to %[[C4]] step %[[C2_0]] {
+// CHECK:                 scf.for %[[ARG2:.*]] = %[[C0]] to %[[C4]] step %[[C2]] {
 // CHECK:                   aie.use_lock(%[[INA_CONS_CONS_LOCK]], AcquireGreaterEqual, 1)
 // CHECK:                   aie.use_lock(%[[INB_CONS_CONS_LOCK]], AcquireGreaterEqual, 1)
 // CHECK:                   func.call @matmul_scalar_i16_i16(%[[INA_CONS_BUFF_0]], %[[INB_CONS_BUFF_0]], %[[OUTC_BUFF_0]]) : (memref<16x8xi16>, memref<8x16xi16>, memref<16x16xi16>) -> ()
@@ -64,8 +63,7 @@
 // CHECK:                 aie.use_lock(%[[OUTC_CONS_LOCK]], Release, 1)
 // CHECK:                 aie.use_lock(%[[OUTC_PROD_LOCK]], AcquireGreaterEqual, 1)
 // CHECK:                 func.call @zero_scalar_i16(%[[OUTC_BUFF_1]]) : (memref<16x16xi16>) -> ()
-// CHECK:                 %[[C2_1:.*]] = arith.constant 2 : index
-// CHECK:                 scf.for %[[ARG2:.*]] = %[[C0]] to %[[C4]] step %[[C2_1]] {
+// CHECK:                 scf.for %[[ARG2:.*]] = %[[C0]] to %[[C4]] step %[[C2]] {
 // CHECK:                   aie.use_lock(%[[INA_CONS_CONS_LOCK]], AcquireGreaterEqual, 1)
 // CHECK:                   aie.use_lock(%[[INB_CONS_CONS_LOCK]], AcquireGreaterEqual, 1)
 // CHECK:                   func.call @matmul_scalar_i16_i16(%[[INA_CONS_BUFF_0]], %[[INB_CONS_BUFF_0]], %[[OUTC_BUFF_1]]) : (memref<16x8xi16>, memref<8x16xi16>, memref<16x16xi16>) -> ()
@@ -137,19 +135,47 @@ module @matmul {
     aie.core(%t02) {
       %c0 = arith.constant 0 : index
       %c1 = arith.constant 1 : index
+      %c2 = arith.constant 2 : index
       %c4 = arith.constant 4 : index
       %intmax = arith.constant 0xFFFFFFFF : index
       scf.for %reps = %c0 to %intmax step %c1 {
-        scf.for %arg2 = %c0 to %c4 step %c1 {
-          %subview2 = aie.objectfifo.acquire @outC (Produce, 1) : !aie.objectfifosubview<memref<16x16xi16>>
-          %elem2 = aie.objectfifo.subview.access %subview2[0] : !aie.objectfifosubview<memref<16x16xi16>> -> memref<16x16xi16>
-          func.call @zero_scalar_i16(%elem2) : (memref<16x16xi16>) -> ()
-          scf.for %arg3 = %c0 to %c4 step %c1 {
+        scf.for %arg2 = %c0 to %c4 step %c2 {
+          %subview4 = aie.objectfifo.acquire @outC (Produce, 1) : !aie.objectfifosubview<memref<16x16xi16>>
+          %elem4 = aie.objectfifo.subview.access %subview4[0] : !aie.objectfifosubview<memref<16x16xi16>> -> memref<16x16xi16>
+          func.call @zero_scalar_i16(%elem4) : (memref<16x16xi16>) -> ()
+          scf.for %arg3 = %c0 to %c4 step %c2 {
             %subview0 = aie.objectfifo.acquire @inA (Consume, 1) : !aie.objectfifosubview<memref<16x8xi16>>
             %elem0 = aie.objectfifo.subview.access %subview0[0] : !aie.objectfifosubview<memref<16x8xi16>> -> memref<16x8xi16>
             %subview1 = aie.objectfifo.acquire @inB (Consume, 1) : !aie.objectfifosubview<memref<8x16xi16>>
             %elem1 = aie.objectfifo.subview.access %subview1[0] : !aie.objectfifosubview<memref<8x16xi16>> -> memref<8x16xi16>
-            func.call @matmul_scalar_i16_i16(%elem0, %elem1, %elem2) : (memref<16x8xi16>, memref<8x16xi16>, memref<16x16xi16>) -> ()
+            func.call @matmul_scalar_i16_i16(%elem0, %elem1, %elem4) : (memref<16x8xi16>, memref<8x16xi16>, memref<16x16xi16>) -> ()
+            aie.objectfifo.release @inA (Consume, 1)
+            aie.objectfifo.release @inB (Consume, 1)
+            %subview2 = aie.objectfifo.acquire @inA (Consume, 1) : !aie.objectfifosubview<memref<16x8xi16>>
+            %elem2 = aie.objectfifo.subview.access %subview2[0] : !aie.objectfifosubview<memref<16x8xi16>> -> memref<16x8xi16>
+            %subview3 = aie.objectfifo.acquire @inB (Consume, 1) : !aie.objectfifosubview<memref<8x16xi16>>
+            %elem3 = aie.objectfifo.subview.access %subview3[0] : !aie.objectfifosubview<memref<8x16xi16>> -> memref<8x16xi16>
+            func.call @matmul_scalar_i16_i16(%elem2, %elem3, %elem4) : (memref<16x8xi16>, memref<8x16xi16>, memref<16x16xi16>) -> ()
+            aie.objectfifo.release @inA (Consume, 1)
+            aie.objectfifo.release @inB (Consume, 1)
+          }
+          aie.objectfifo.release @outC (Produce, 1)
+          %subview5 = aie.objectfifo.acquire @outC (Produce, 1) : !aie.objectfifosubview<memref<16x16xi16>>
+          %elem5 = aie.objectfifo.subview.access %subview5[0] : !aie.objectfifosubview<memref<16x16xi16>> -> memref<16x16xi16>
+          func.call @zero_scalar_i16(%elem5) : (memref<16x16xi16>) -> ()
+          scf.for %arg3 = %c0 to %c4 step %c2 {
+            %subview0 = aie.objectfifo.acquire @inA (Consume, 1) : !aie.objectfifosubview<memref<16x8xi16>>
+            %elem0 = aie.objectfifo.subview.access %subview0[0] : !aie.objectfifosubview<memref<16x8xi16>> -> memref<16x8xi16>
+            %subview1 = aie.objectfifo.acquire @inB (Consume, 1) : !aie.objectfifosubview<memref<8x16xi16>>
+            %elem1 = aie.objectfifo.subview.access %subview1[0] : !aie.objectfifosubview<memref<8x16xi16>> -> memref<8x16xi16>
+            func.call @matmul_scalar_i16_i16(%elem0, %elem1, %elem5) : (memref<16x8xi16>, memref<8x16xi16>, memref<16x16xi16>) -> ()
+            aie.objectfifo.release @inA (Consume, 1)
+            aie.objectfifo.release @inB (Consume, 1)
+            %subview2 = aie.objectfifo.acquire @inA (Consume, 1) : !aie.objectfifosubview<memref<16x8xi16>>
+            %elem2 = aie.objectfifo.subview.access %subview2[0] : !aie.objectfifosubview<memref<16x8xi16>> -> memref<16x8xi16>
+            %subview3 = aie.objectfifo.acquire @inB (Consume, 1) : !aie.objectfifosubview<memref<8x16xi16>>
+            %elem3 = aie.objectfifo.subview.access %subview3[0] : !aie.objectfifosubview<memref<8x16xi16>> -> memref<8x16xi16>
+            func.call @matmul_scalar_i16_i16(%elem2, %elem3, %elem5) : (memref<16x8xi16>, memref<8x16xi16>, memref<16x16xi16>) -> ()
             aie.objectfifo.release @inA (Consume, 1)
             aie.objectfifo.release @inB (Consume, 1)
           }

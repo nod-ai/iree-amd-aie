@@ -19,10 +19,10 @@
 // CHECK:             return
 // CHECK:           }
 // CHECK:           %[[CORE_1_2:.*]] = aie.core(%[[TILE_1_2]]) {
-// CHECK:             %[[C0:.*]] = arith.constant 0 : index
-// CHECK:             %[[C1:.*]] = arith.constant 1 : index
-// CHECK:             %[[C12:.*]] = arith.constant 12 : index
-// CHECK:             %[[C2:.*]] = arith.constant 2 : index
+// CHECK-DAG:         %[[C0:.*]] = arith.constant 0 : index
+// CHECK-DAG:         %[[C1:.*]] = arith.constant 1 : index
+// CHECK-DAG:         %[[C2:.*]] = arith.constant 2 : index
+// CHECK-DAG:         %[[C12:.*]] = arith.constant 12 : index
 // CHECK:             scf.for %[[ARG0:.*]] = %[[C0]] to %[[C12]] step %[[C2]] {
 // CHECK:               aie.use_lock(%[[OBJFIFO_PROD_LOCK]], AcquireGreaterEqual, 1)
 // CHECK:               func.call @some_work(%[[OBJFIFO_BUFF_0]]) : (memref<16xi32>) -> ()
@@ -34,10 +34,10 @@
 // CHECK:             aie.end
 // CHECK:           }
 // CHECK:           %[[CORE_3_3:.*]] = aie.core(%[[TILE_3_3]]) {
-// CHECK:             %[[C0:.*]] = arith.constant 0 : index
-// CHECK:             %[[C1:.*]] = arith.constant 1 : index
-// CHECK:             %[[C12:.*]] = arith.constant 12 : index
-// CHECK:             %[[C2:.*]] = arith.constant 2 : index
+// CHECK-DAG:         %[[C0:.*]] = arith.constant 0 : index
+// CHECK-DAG:         %[[C1:.*]] = arith.constant 1 : index
+// CHECK-DAG:         %[[C2:.*]] = arith.constant 2 : index
+// CHECK-DAG:         %[[C12:.*]] = arith.constant 12 : index
 // CHECK:             scf.for %[[ARG0:.*]] = %[[C0]] to %[[C12]] step %[[C2]] {
 // CHECK:               aie.use_lock(%[[OBJFIFO_CONS_CONS_LOCK]], AcquireGreaterEqual, 1)
 // CHECK:               func.call @some_work(%[[OBJFIFO_CONS_BUFF_0]]) : (memref<16xi32>) -> ()
@@ -91,11 +91,16 @@ module @non_adjacency {
         %core12 = aie.core(%tile12) {
             %c0 = arith.constant 0 : index
             %c1 = arith.constant 1 : index
+            %c2 = arith.constant 2 : index
             %height = arith.constant 12 : index
-            scf.for %indexInHeight = %c0 to %height step %c1 {
+            scf.for %indexInHeight = %c0 to %height step %c2 {
                 %subview = aie.objectfifo.acquire @objfifo (Produce, 1) : !aie.objectfifosubview<memref<16xi32>>
                 %elem0 = aie.objectfifo.subview.access %subview[0] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
                 func.call @some_work(%elem0) : (memref<16xi32>) -> ()
+                aie.objectfifo.release @objfifo (Produce, 1)
+                %subview1 = aie.objectfifo.acquire @objfifo (Produce, 1) : !aie.objectfifosubview<memref<16xi32>>
+                %elem1 = aie.objectfifo.subview.access %subview1[0] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
+                func.call @some_work(%elem1) : (memref<16xi32>) -> ()
                 aie.objectfifo.release @objfifo (Produce, 1)
             }
             aie.end
@@ -103,11 +108,16 @@ module @non_adjacency {
         %core33 = aie.core(%tile33) {
             %c0 = arith.constant 0 : index
             %c1 = arith.constant 1 : index
+            %c2 = arith.constant 2 : index
             %height = arith.constant 12 : index
-            scf.for %indexInHeight = %c0 to %height step %c1 {
+            scf.for %indexInHeight = %c0 to %height step %c2 {
                 %subview = aie.objectfifo.acquire @objfifo (Consume, 1) : !aie.objectfifosubview<memref<16xi32>>
                 %elem0 = aie.objectfifo.subview.access %subview[0] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
                 func.call @some_work(%elem0) : (memref<16xi32>) -> ()
+                aie.objectfifo.release @objfifo (Consume, 1)
+                %subview1 = aie.objectfifo.acquire @objfifo (Consume, 1) : !aie.objectfifosubview<memref<16xi32>>
+                %elem1 = aie.objectfifo.subview.access %subview1[0] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
+                func.call @some_work(%elem1) : (memref<16xi32>) -> ()
                 aie.objectfifo.release @objfifo (Consume, 1)
             }
             aie.end

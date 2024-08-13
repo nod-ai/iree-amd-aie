@@ -53,17 +53,17 @@
 // CHECK:           aie.flow(%[[TILE_0_1]], DMA : 1, %[[TILE_1_2]], DMA : 1)
 // CHECK:           aie.flow(%[[TILE_1_2]], DMA : 0, %[[TILE_0_1]], DMA : 0)
 // CHECK:           %[[CORE_1_2:.*]] = aie.core(%[[TILE_1_2]]) {
-// CHECK:             %[[C8:.*]] = arith.constant 8 : index
-// CHECK:             %[[C1:.*]] = arith.constant 1 : index
-// CHECK:             %[[C4:.*]] = arith.constant 4 : index
-// CHECK:             %[[C0:.*]] = arith.constant 0 : index
-// CHECK:             %[[C64:.*]] = arith.constant 64 : index
-// CHECK:             %[[C960:.*]] = arith.constant 960 : index
-// CHECK:             aie.use_lock(%[[IN8_PROD_LOCK]], AcquireGreaterEqual, 1)
-// CHECK:             %[[REINTERPRET_CAST:.*]] = memref.reinterpret_cast %[[IN8_BUFF_0]] to offset: [0], sizes: [4, 8, 4, 8], strides: [256, 32, 8, 1] : memref<32x32xi32, 1> to memref<4x8x4x8xi32, 1>
-// CHECK:             aie.use_lock(%[[IN2_1_CONS_PROD_LOCK]], Release, 1)
-// CHECK:             aie.use_lock(%[[IN7_CONS_PROD_LOCK]], Release, 1)
-// CHECK:             %[[C128:.*]] = arith.constant 128 : index
+// CHECK-DAG:         %[[C8:.*]] = arith.constant 8 : index
+// CHECK-DAG:         %[[C1:.*]] = arith.constant 1 : index
+// CHECK-DAG:         %[[C4:.*]] = arith.constant 4 : index
+// CHECK-DAG:         %[[C0:.*]] = arith.constant 0 : index
+// CHECK-DAG:         %[[C64:.*]] = arith.constant 64 : index
+// CHECK-DAG:         %[[C960:.*]] = arith.constant 960 : index
+// CHECK-DAG:         aie.use_lock(%[[IN8_PROD_LOCK]], AcquireGreaterEqual, 1)
+// CHECK-DAG:         %[[REINTERPRET_CAST:.*]] = memref.reinterpret_cast %[[IN8_BUFF_0]] to offset: [0], sizes: [4, 8, 4, 8], strides: [256, 32, 8, 1] : memref<32x32xi32, 1> to memref<4x8x4x8xi32, 1>
+// CHECK-DAG:         aie.use_lock(%[[IN2_1_CONS_PROD_LOCK]], Release, 1)
+// CHECK-DAG:         aie.use_lock(%[[IN7_CONS_PROD_LOCK]], Release, 1)
+// CHECK-DAG:         %[[C128:.*]] = arith.constant 128 : index
 // CHECK:             scf.for %[[ARG0:.*]] = %[[C64]] to %[[C960]] step %[[C128]] {
 // CHECK:               aie.use_lock(%[[IN2_1_CONS_CONS_LOCK]], AcquireGreaterEqual, 1)
 // CHECK:               %[[REINTERPRET_CAST_0:.*]] = memref.reinterpret_cast %[[IN2_1_CONS_BUFF_0]] to offset: [0], sizes: [8, 8, 4, 8], strides: [256, 32, 8, 1] : memref<32x64xi32, 1> to memref<8x8x4x8xi32, 1>
@@ -264,13 +264,14 @@ aie.device(npu1_4col) {
     %c4 = arith.constant 4 : index
     %c0 = arith.constant 0 : index
     %c64 = arith.constant 64 : index
+    %c128 = arith.constant 128 : index
     %c960 = arith.constant 960 : index
     %0 = aie.objectfifo.acquire @in8(Produce, 1) : !aie.objectfifosubview<memref<32x32xi32, 1>>
     %1 = aie.objectfifo.subview.access %0[0] : !aie.objectfifosubview<memref<32x32xi32, 1>> -> memref<32x32xi32, 1>
     %reinterpret_cast = memref.reinterpret_cast %1 to offset: [0], sizes: [4, 8, 4, 8], strides: [256, 32, 8, 1] : memref<32x32xi32, 1> to memref<4x8x4x8xi32, 1>
     aie.objectfifo.release @in2(Consume, 1)
     aie.objectfifo.release @in7(Consume, 1)
-    scf.for %arg0 = %c64 to %c960 step %c64 {
+    scf.for %arg0 = %c64 to %c960 step %c128 {
       %10 = aie.objectfifo.acquire @in2(Consume, 1) : !aie.objectfifosubview<memref<32x64xi32, 1>>
       %11 = aie.objectfifo.subview.access %10[0] : !aie.objectfifosubview<memref<32x64xi32, 1>> -> memref<32x64xi32, 1>
       %reinterpret_cast_4 = memref.reinterpret_cast %11 to offset: [0], sizes: [8, 8, 4, 8], strides: [256, 32, 8, 1] : memref<32x64xi32, 1> to memref<8x8x4x8xi32, 1>
@@ -289,6 +290,32 @@ aie.device(npu1_4col) {
                   %17 = arith.muli %14, %15 : i32
                   %18 = arith.addi %16, %17 : i32
                   memref.store %18, %reinterpret_cast[%arg2, %arg1, %arg4, %arg5] : memref<4x8x4x8xi32, 1>
+                }
+              }
+            }
+          }
+        }
+      }
+      aie.objectfifo.release @in2(Consume, 1)
+      aie.objectfifo.release @in7(Consume, 1)
+      %19 = aie.objectfifo.acquire @in2(Consume, 1) : !aie.objectfifosubview<memref<32x64xi32, 1>>
+      %20 = aie.objectfifo.subview.access %19[0] : !aie.objectfifosubview<memref<32x64xi32, 1>> -> memref<32x64xi32, 1>
+      %reinterpret_cast_6 = memref.reinterpret_cast %20 to offset: [0], sizes: [8, 8, 4, 8], strides: [256, 32, 8, 1] : memref<32x64xi32, 1> to memref<8x8x4x8xi32, 1>
+      %21 = aie.objectfifo.acquire @in7(Consume, 1) : !aie.objectfifosubview<memref<64x32xi32, 1>>
+      %22 = aie.objectfifo.subview.access %21[0] : !aie.objectfifosubview<memref<64x32xi32, 1>> -> memref<64x32xi32, 1>
+      %reinterpret_cast_7 = memref.reinterpret_cast %22 to offset: [0], sizes: [4, 8, 8, 8], strides: [512, 64, 8, 1] : memref<64x32xi32, 1> to memref<4x8x8x8xi32, 1>
+      scf.for %arg1 = %c0 to %c8 step %c1 {
+        scf.for %arg2 = %c0 to %c4 step %c1 {
+          scf.for %arg3 = %c0 to %c8 step %c1 {
+            scf.for %arg4 = %c0 to %c4 step %c1 {
+              scf.for %arg5 = %c0 to %c8 step %c1 {
+                scf.for %arg6 = %c0 to %c8 step %c1 {
+                  %23 = memref.load %reinterpret_cast_6[%arg3, %arg1, %arg4, %arg6] : memref<8x8x4x8xi32, 1>
+                  %24 = memref.load %reinterpret_cast_7[%arg2, %arg3, %arg6, %arg5] : memref<4x8x8x8xi32, 1>
+                  %25 = memref.load %reinterpret_cast[%arg2, %arg1, %arg4, %arg5] : memref<4x8x4x8xi32, 1>
+                  %26 = arith.muli %23, %24 : i32
+                  %27 = arith.addi %25, %26 : i32
+                  memref.store %27, %reinterpret_cast[%arg2, %arg1, %arg4, %arg5] : memref<4x8x4x8xi32, 1>
                 }
               }
             }

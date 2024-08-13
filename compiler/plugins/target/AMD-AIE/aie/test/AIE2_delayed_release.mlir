@@ -17,7 +17,6 @@
 // CHECK:             %[[C0:.*]] = arith.constant 0 : index
 // CHECK:             %[[C1:.*]] = arith.constant 1 : index
 // CHECK:             %[[C4:.*]] = arith.constant 4 : index
-// CHECK:             %[[C4_0:.*]] = arith.constant 4 : index
 // CHECK:             aie.use_lock(%[[FIFO_PROD_LOCK]], AcquireGreaterEqual, 1)
 // CHECK:             memref.store %[[C99_I32]], %[[FIFO_BUFF_0]][] : memref<i32>
 // CHECK:             aie.use_lock(%[[FIFO_CONS_LOCK]], Release, 1)
@@ -64,14 +63,30 @@ module @AIE2_delayed_release {
             %i0 = arith.constant 0 : index
             %i1 = arith.constant 1 : index
             %i4 = arith.constant 4 : index
-            scf.for %it = %i0 to %i4 step %i1 {
-                // Produce one 1 element (acquire producer lock) ...
-                %subview = aie.objectfifo.acquire @fifo (Produce, 1) : !aie.objectfifosubview<memref<i32>>
-                %subview_obj = aie.objectfifo.subview.access %subview[0] : !aie.objectfifosubview<memref<i32>> -> memref<i32>
-                memref.store %c99, %subview_obj[] : memref<i32>
-                aie.objectfifo.release @fifo (Produce, 1)
-                // ... done producing (release consumer lock)
-            }
+            // Produce one 1 element (acquire producer lock) ...
+            %subview0 = aie.objectfifo.acquire @fifo (Produce, 1) : !aie.objectfifosubview<memref<i32>>
+            %subview_obj0 = aie.objectfifo.subview.access %subview0[0] : !aie.objectfifosubview<memref<i32>> -> memref<i32>
+            memref.store %c99, %subview_obj0[] : memref<i32>
+            aie.objectfifo.release @fifo (Produce, 1)
+            // ... done producing (release consumer lock)
+            // Produce one 1 element (acquire producer lock) ...
+            %subview1 = aie.objectfifo.acquire @fifo (Produce, 1) : !aie.objectfifosubview<memref<i32>>
+            %subview_obj1 = aie.objectfifo.subview.access %subview1[0] : !aie.objectfifosubview<memref<i32>> -> memref<i32>
+            memref.store %c99, %subview_obj1[] : memref<i32>
+            aie.objectfifo.release @fifo (Produce, 1)
+            // ... done producing (release consumer lock)
+            // Produce one 1 element (acquire producer lock) ...
+            %subview2 = aie.objectfifo.acquire @fifo (Produce, 1) : !aie.objectfifosubview<memref<i32>>
+            %subview_obj2 = aie.objectfifo.subview.access %subview2[0] : !aie.objectfifosubview<memref<i32>> -> memref<i32>
+            memref.store %c99, %subview_obj2[] : memref<i32>
+            aie.objectfifo.release @fifo (Produce, 1)
+            // ... done producing (release consumer lock)
+            // Produce one 1 element (acquire producer lock) ...
+            %subview3 = aie.objectfifo.acquire @fifo (Produce, 1) : !aie.objectfifosubview<memref<i32>>
+            %subview_obj3 = aie.objectfifo.subview.access %subview3[0] : !aie.objectfifosubview<memref<i32>> -> memref<i32>
+            memref.store %c99, %subview_obj3[] : memref<i32>
+            aie.objectfifo.release @fifo (Produce, 1)
+            // ... done producing (release consumer lock)
             aie.end
         }
         // Consumer -- consumes {2, 1, 3, 1}; releases {0, 0, 0, 2}
