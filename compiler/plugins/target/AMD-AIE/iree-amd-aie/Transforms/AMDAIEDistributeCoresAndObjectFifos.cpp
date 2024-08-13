@@ -87,7 +87,7 @@ MemRefType getDistributedType(memref::AllocOp alloc) {
       scf::ForOp currentOp = subview->getParentOfType<scf::ForOp>();
       while (currentOp) {
         Value iv = currentOp.getInductionVar();
-        auto sliceCount = std::count(offsets.begin(), offsets.end(), iv);
+        uint64_t sliceCount = std::count(offsets.begin(), offsets.end(), iv);
         if (sliceCount > 1) return {};
         if (sliceCount == 1) {
           if (!currentOp->hasAttr(kAMDAIELoopUnroll)) return {};
@@ -137,8 +137,8 @@ LogicalResult distributeLocalMemory(ModuleOp moduleOp) {
     // no subviews at all), but this requires further work.
     if (!memRefType) return WalkResult::advance();
 
-    auto newShape = memRefType.getShape();
-    auto elementType = memRefType.getElementType();
+    ArrayRef<int64_t> newShape = memRefType.getShape();
+    Type elementType = memRefType.getElementType();
 
     rewriter.setInsertionPoint(oldAlloc);
     MemRefType newAllocType = MemRefType::get(
@@ -152,7 +152,7 @@ LogicalResult distributeLocalMemory(ModuleOp moduleOp) {
 
     // Replace uses of the old alloc with the new alloc.
     for (Operation *userOp : oldAlloc->getUsers()) {
-      auto switchResult =
+      LogicalResult switchResult =
           llvm::TypeSwitch<Operation *, LogicalResult>(userOp)
               .Case<memref::SubViewOp>([&](memref::SubViewOp subviewOp) {
                 rewriter.replaceAllUsesWith(subviewOp, newAlloc);
@@ -288,7 +288,7 @@ LogicalResult distributeLocalMemory(ModuleOp moduleOp) {
     return WalkResult::advance();
   });
 
-  for (auto *op : toBeErased) {
+  for (Operation *op : toBeErased) {
     op->dropAllUses();
     rewriter.eraseOp(op);
   }
@@ -471,7 +471,7 @@ class AMDAIEUnrollLocalLoops : public OpRewritePattern<scf::ForOp> {
         rewriter.create<arith::ConstantIndexOp>(rewriter.getUnknownLoc(), 1));
 
     // Iterate through the loop and create body
-    for (auto i = lbInt + stepInt; i < ubInt; i += stepInt) {
+    for (int64_t i = lbInt + stepInt; i < ubInt; i += stepInt) {
       IRMapping operandMap;
       Value ivUnroll =
           builder.create<arith::ConstantIndexOp>(builder.getUnknownLoc(), i);
