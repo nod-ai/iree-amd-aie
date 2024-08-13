@@ -19,7 +19,6 @@
 #include "iree-amd-aie/IR/AMDAIEAttrs.h"
 #include "iree-amd-aie/IR/AMDAIEDialect.h"
 #include "iree-amd-aie/Transforms/Passes.h"
-#include "iree-dialects/Dialect/LinalgTransform/Passes.h"
 #include "iree/compiler/Codegen/Dialect/Codegen/IR/IREECodegenDialect.h"
 #include "iree/compiler/Dialect/HAL/Target/TargetRegistry.h"
 #include "iree/compiler/Dialect/LinalgExt/IR/LinalgExtDialect.h"
@@ -42,7 +41,6 @@
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Support/FileUtilities.h"
 #include "mlir/Target/LLVMIR/Dialect/All.h"
-#include "mlir/Target/LLVMIR/Export.h"
 #include "runtime/plugins/AMD-AIE/iree-amd-aie/schemas/xrt_executable_def_builder.h"
 
 #define DEBUG_TYPE "aie-target"
@@ -65,7 +63,9 @@ static llvm::cl::opt<AMDAIEDevice> clAMDAIETargetDevice(
         clEnumValN(AMDAIEDevice::npu1_3col, "npu1_3col",
                    "Phoenix NPU with three columns"),
         clEnumValN(AMDAIEDevice::npu1_4col, "npu1_4col",
-                   "Phoenix NPU with four columns")),
+                   "Phoenix NPU with four columns"),
+        clEnumValN(AMDAIEDevice::npu4, "npu4",
+                   "Strix B0 NPU with 8 columns and 6 rows")),
     llvm::cl::init(AMDAIEDevice::npu1_4col));
 
 static llvm::cl::opt<std::string> clEnableAMDAIEUkernels(
@@ -211,7 +211,7 @@ class AIETargetBackend final : public IREE::HAL::TargetBackend {
 
   void buildTranslationPassPipeline(IREE::HAL::ExecutableTargetAttr,
                                     OpPassManager &passManager) override {
-    buildAMDAIETransformPassPipeline(passManager);
+    buildAMDAIETransformPassPipeline(passManager, clAMDAIETargetDevice);
   }
 
   void buildLinkingPassPipeline(OpPassManager &passManager) override {

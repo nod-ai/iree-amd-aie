@@ -244,6 +244,8 @@ int main(int argc, char** argv) {
       XAIE2IPU_ROW_SHIFT, XAIE2IPU_NUM_COLS, XAIE2IPU_NUM_ROWS,
       XAIE2IPU_MEM_TILE_ROW_START, XAIE2IPU_MEM_TILE_NUM_ROWS,
       XAIE2IPU_SHIM_NUM_ROWS, partitionNumCols, partitionStartCol,
+      /*partBaseAddr*/ XAIE2IPU_PARTITION_BASE_ADDR,
+      /*npiAddr*/ XAIE2IPU_NPI_BASEADDR,
       /*aieSim*/ false, /*xaieDebug*/ false,
       mlir::iree_compiler::AMDAIE::AMDAIEDevice::npu1_4col);
   XAie_LocType tile00 = {.Row = 0, .Col = col};

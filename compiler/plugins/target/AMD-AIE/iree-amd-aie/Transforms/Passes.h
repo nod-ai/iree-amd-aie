@@ -8,6 +8,7 @@
 #define IREE_AMD_AIE_TRANSFORMS_PASSES_H_
 
 #include "iree-amd-aie/Transforms/PassDetail.h"
+#include "iree-amd-aie/aie_runtime/AMDAIEEnums.h"
 #include "iree/compiler/Codegen/Common/TileSizeSelection.h"
 #include "mlir/Pass/Pass.h"
 
@@ -18,7 +19,7 @@ void addAMDAIEObjectFifoLoweringPasses(OpPassManager &passManager);
 
 /// Add passes to lower from MLIR-AIR through AIE. This is
 /// currently the default passes used for lowering after IREEs tiling.
-void addMLIRAIRLoweringPasses(OpPassManager &passManager);
+void addMLIRAIRLoweringPasses(OpPassManager &passManager, AMDAIEDevice device);
 
 /// Add lowering passes from MLIR-AIE. This is
 /// currently the default passes used for lowering from AIE dialect.
@@ -27,7 +28,7 @@ void addMLIRAIELoweringPasses(OpPassManager &passManager);
 /// Populates passes needed to lower linalg/arith/math ops to LLVM dialect via
 /// the structured ops path. The pass manager `pm` here operate on the module
 /// within the IREE::HAL::ExecutableOp.
-void buildAMDAIETransformPassPipeline(OpPassManager &pm);
+void buildAMDAIETransformPassPipeline(OpPassManager &pm, AMDAIEDevice device);
 
 void buildAMDAIELowerObjectFIFO(OpPassManager &variantPassManager);
 

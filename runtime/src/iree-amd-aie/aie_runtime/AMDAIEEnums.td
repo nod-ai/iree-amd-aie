@@ -20,7 +20,8 @@ def AMDAIEDeviceAttr: I32EnumAttr<"AMDAIEDevice",
     I32EnumAttrCase<"npu1_1col", 5>,
     I32EnumAttrCase<"npu1_2col", 6>,
     I32EnumAttrCase<"npu1_3col", 7>,
-    I32EnumAttrCase<"npu1_4col", 8>
+    I32EnumAttrCase<"npu1_4col", 8>,
+    I32EnumAttrCase<"npu4", 9>
   ]>
 {
   let cppNamespace = "mlir::iree_compiler::AMDAIE";
