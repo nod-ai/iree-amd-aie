@@ -513,9 +513,7 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [Symbol]> {
         AnyAttrOf<[ConfinedAttr<I32Attr, [IntMinValue<0>]>, ArrayAttr]>:$elemNumber,
         TypeAttrOf<AIE_ObjectFifoType>:$elemType,
         BDDimLayoutArrayAttr:$dimensionsToStream,
-        BDDimLayoutArrayArrayAttr:$dimensionsFromStreamPerConsumer,
-        DefaultValuedAttr<BoolAttr, "false">:$via_DMA,
-        DefaultValuedAttr<BoolAttr, "false">:$plio
+        BDDimLayoutArrayArrayAttr:$dimensionsFromStreamPerConsumer
   );
 
   let assemblyFormat = [{

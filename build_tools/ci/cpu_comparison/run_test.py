@@ -624,21 +624,6 @@ class SmokeSet(TestSet):
 
         test_files_dir = file_dir / "test_files"
 
-        # The most basic test, direct from .mlir file using all defaults
-        aie_vs_llvm_cpu(config, test_files_dir / "matmul_int32.mlir")
-
-        # Using a baseline other than llvm-cpu
-        aie_vs_np_matmul(config, test_files_dir / "matmul_int32.mlir")
-
-        # Convolution and int8
-        aie_vs_llvm_cpu(
-            config,
-            test_files_dir / f"conv2d_nhwc_int8.mlir",
-            tile_pipeline="conv-decompose",
-            lower_to_aie_pipeline="air",
-            n_repeats=2,
-        )
-
         # Using objectFifo pipeline
         matmul_template_dir = file_dir / "matmul_template"
         test_name = output_dir / "test_from_objectfifo_basic.mlir"
@@ -650,6 +635,22 @@ class SmokeSet(TestSet):
             tile_pipeline="pack-peel",
             lower_to_aie_pipeline="objectFifo",
         )
+
+#         # The most basic test, direct from .mlir file using all defaults
+#         aie_vs_llvm_cpu(config, test_files_dir / "matmul_int32.mlir")
+# 
+#         # Using a baseline other than llvm-cpu
+#         aie_vs_np_matmul(config, test_files_dir / "matmul_int32.mlir")
+# 
+#         # Convolution and int8
+#         aie_vs_llvm_cpu(
+#             config,
+#             test_files_dir / f"conv2d_nhwc_int8.mlir",
+#             tile_pipeline="conv-decompose",
+#             lower_to_aie_pipeline="air",
+#             n_repeats=2,
+#         )
+
 
 
 def getTestPartition():

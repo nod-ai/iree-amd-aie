@@ -781,13 +781,15 @@ void addMLIRAIRLoweringPasses(OpPassManager &passManager) {
 
   // Now lower using the AIE passes from MLIR-AIE.
   addMLIRAIELoweringPasses(passManager);
+
+  OpPassManager &devicePM = passManager.nest<xilinx::AIE::DeviceOp>();
+  devicePM.addPass(createAMDAIEObjectFifoStatefulTransformPass());
 }
 
 void addMLIRAIELoweringPasses(OpPassManager &passManager) {
   passManager.addPass(createLowerAffinePass());
   OpPassManager &devicePM = passManager.nest<xilinx::AIE::DeviceOp>();
   devicePM.addPass(createAMDAIEAssignLockIDsPass());
-  devicePM.addPass(createAMDAIEObjectFifoStatefulTransformPass());
   devicePM.addPass(createAMDAIEAssignBufferDescriptorIDsPass());
   devicePM.addPass(createAMDAIEAssignBufferAddressesBasicPass());
   devicePM.addPass(createAMDAIEPathfinderPass());

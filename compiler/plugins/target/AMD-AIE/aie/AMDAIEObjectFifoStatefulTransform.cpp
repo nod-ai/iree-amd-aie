@@ -4,9 +4,6 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#include <numeric>
-#include <set>
-
 #include "AIEDialect.h"
 #include "Passes.h"
 #include "iree-amd-aie/aie_runtime/iree_aie_runtime.h"
@@ -16,8 +13,8 @@
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/SCF/Utils/Utils.h"
-#include "mlir/Dialect/Utils/StaticValueUtils.h"
 #include "mlir/IR/Attributes.h"
+#include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
 
@@ -29,7 +26,6 @@ using namespace mlir::iree_compiler::AMDAIE;
 using xilinx::AIE::AIEObjectFifoType;
 using xilinx::AIE::BDDimLayoutArrayArrayAttr;
 using xilinx::AIE::BDDimLayoutArrayAttr;
-using xilinx::AIE::BDDimLayoutAttr;
 using xilinx::AIE::BufferOp;
 using xilinx::AIE::CoreOp;
 using xilinx::AIE::DeviceOp;
@@ -54,7 +50,8 @@ using xilinx::AIE::UseLockOp;
 using xilinx::AIE::WireBundle;
 
 namespace {
-std::vector<ObjectFifoCreateOp> getInputObjectFifos(ObjectFifoLinkOp &op) {
+
+std::vector<ObjectFifoCreateOp> getInputObjectFifos(ObjectFifoLinkOp op) {
   std::vector<ObjectFifoCreateOp> inputObjFifos;
   Operation *parent = op.getOperation();
   while ((parent = parent->getParentOp())) {
@@ -63,14 +60,14 @@ std::vector<ObjectFifoCreateOp> getInputObjectFifos(ObjectFifoLinkOp &op) {
         auto name = dyn_cast<FlatSymbolRefAttr>(sym);
         if (auto *st = SymbolTable::lookupSymbolIn(parent, name);
             isa_and_nonnull<ObjectFifoCreateOp>(st))
-          inputObjFifos.push_back(dyn_cast<ObjectFifoCreateOp>(st));
+          inputObjFifos.push_back(cast<ObjectFifoCreateOp>(st));
       }
     }
   }
   return inputObjFifos;
 }
 
-std::vector<ObjectFifoCreateOp> getOutputObjectFifos(ObjectFifoLinkOp &op) {
+std::vector<ObjectFifoCreateOp> getOutputObjectFifos(ObjectFifoLinkOp op) {
   std::vector<ObjectFifoCreateOp> outputObjFifos;
   Operation *parent = op.getOperation();
   while ((parent = parent->getParentOp())) {
@@ -79,7 +76,7 @@ std::vector<ObjectFifoCreateOp> getOutputObjectFifos(ObjectFifoLinkOp &op) {
         auto name = dyn_cast<FlatSymbolRefAttr>(sym);
         if (auto *st = SymbolTable::lookupSymbolIn(parent, name);
             isa_and_nonnull<ObjectFifoCreateOp>(st))
-          outputObjFifos.push_back(dyn_cast<ObjectFifoCreateOp>(st));
+          outputObjFifos.push_back(cast<ObjectFifoCreateOp>(st));
       }
     }
   }
@@ -87,12 +84,15 @@ std::vector<ObjectFifoCreateOp> getOutputObjectFifos(ObjectFifoLinkOp &op) {
 }
 
 int objFifoSize(ObjectFifoCreateOp op, int index = 0) {
-  if (llvm::isa<mlir::ArrayAttr>(op.getElemNumber()))
-    return llvm::dyn_cast<mlir::IntegerAttr>(
-               llvm::dyn_cast<mlir::ArrayAttr>(op.getElemNumber())[index])
-        .getInt();
-  else
-    return llvm::dyn_cast<mlir::IntegerAttr>(op.getElemNumber()).getInt();
+  auto elemNumber = op.getElemNumber();
+  auto intAttr = [&]() -> mlir::IntegerAttr {
+    if (auto arrAttr = llvm::dyn_cast<mlir::ArrayAttr>(elemNumber))
+      return llvm::dyn_cast<mlir::IntegerAttr>(arrAttr[index]);
+    else
+      return llvm::dyn_cast<mlir::IntegerAttr>(elemNumber);
+  }();
+  assert(intAttr && "expected integer attribute");
+  return intAttr.getInt();
 }
 
 template <typename T>
@@ -138,26 +138,31 @@ std::optional<Value> getOptionalSharedTile(ObjectFifoLinkOp op) {
 }  // namespace
 
 class LockAnalysis {
-  DenseMap<std::pair<Value, int>, int> locksPerTile;
+ private:
+  DenseSet<std::pair<Value, int>> locks;
+  AMDAIEDeviceModel deviceModel;
+
+  void insert(LockOp l) {
+    auto id = l.getLockID().value();
+    auto tile = l.getTile();
+    locks.insert(std::pair<Value, int>(tile, id));
+  }
 
  public:
-  LockAnalysis(DeviceOp &device) {
-    for (auto lockOp : device.getOps<LockOp>())
-      locksPerTile[{lockOp.getTile(), lockOp.getLockID().value()}] = 1;
+  LockAnalysis(DeviceOp device)
+      : deviceModel(
+            getDeviceModel(static_cast<AMDAIEDevice>(device.getDevice()))) {
+    for (auto l : device.getOps<LockOp>()) insert(l);
   }
 
   /// Given a tile, returns next usable lockID for that tile.
-  int getLockID(TileOp &tileOp) {
-    DeviceOp device = tileOp->getParentOfType<DeviceOp>();
-    AMDAIEDeviceModel deviceModel =
-        getDeviceModel(static_cast<AMDAIEDevice>(device.getDevice()));
-    for (int i = 0;
-         i < deviceModel.getNumLocks(tileOp.getCol(), tileOp.getRow()); i++) {
+  int getLockID(TileOp tileOp) {
+    auto maxLocks = deviceModel.getNumLocks(tileOp.getCol(), tileOp.getRow());
+    for (int i = 0; i < maxLocks; i++) {
       std::pair<Value, int> lockId = {tileOp, i};
-      if (int usageCnt = locksPerTile[lockId]; usageCnt == 0) {
-        locksPerTile[lockId] = 1;
-        return i;
-      }
+      if (locks.contains(lockId)) continue;
+      locks.insert(lockId);
+      return i;
     }
     return -1;
   }
@@ -176,9 +181,11 @@ class DMAChannelAnalysis {
       auto tile = memOp.getTile();
       for (auto &bl : r.getBlocks()) {
         for (auto op : bl.getOps<DMAStartOp>()) {
-          static_cast<DMAChannelDir>(op.getChannelDir()) == DMAChannelDir::MM2S
-              ? getProducerDMAChannel(tile)
-              : getConsumerDMAChannel(tile);
+          if (op.getChannelDir() == DMAChannelDir::MM2S) {
+            ++producerChannelsPerTile[tile];
+          } else {
+            ++consumerChannelsPerTile[tile];
+          }
         }
       }
     }
@@ -291,14 +298,15 @@ bool requiresDMAs(ObjectFifoCreateOp createOp,
 /// return 0.
 int findObjectFifoSize(DeviceOp &device, Value tile,
                        ObjectFifoCreateOp objFifo) {
-  if (objFifoSize(objFifo) == 0) return 0;
+  auto ofSize = objFifoSize(objFifo);
+  if (ofSize == 0) return 0;
 
   AMDAIEDeviceModel deviceModel =
       getDeviceModel(static_cast<AMDAIEDevice>(device.getDevice()));
+
   // if memTile, size is equal to objFifo size
   TileOp tileOp = tile.getDefiningOp<TileOp>();
-  if (deviceModel.isMemTile(tileOp.getCol(), tileOp.getRow()))
-    return objFifoSize(objFifo);
+  if (deviceModel.isMemTile(tileOp.getCol(), tileOp.getRow())) return ofSize;
 
   int maxAcquire = 0;
   for (auto coreOp : make_filter_range(
@@ -309,13 +317,13 @@ int findObjectFifoSize(DeviceOp &device, Value tile,
         maxAcquire = acqOp.getSize();
     });
 
-  if (maxAcquire == 1 && objFifoSize(objFifo) == 1) return 1;
+  if (maxAcquire == 1 && ofSize == 1) return 1;
 
   // +1 because objectFifo size is always 1 bigger than maxAcquire to allow
   // for prefetching: simplest case scenario is at least a ping-pong buffer
   if (maxAcquire > 0) return maxAcquire + 1;
 
-  return objFifoSize(objFifo);
+  return ofSize;
 }
 
 /// Translate ObjectFifoCreateOp to corresponding DMABD, UseLocks, and NextBDs.
@@ -491,7 +499,6 @@ void createMemTileDMA(
     // check if current createOp is of smaller size in link
     if (target != createOp) numBlocks = objFifoSize(target);
   }
-
   createDMA<MemTileDMAOp>(device, builder, createOp, target, channelDir,
                           channelIndex, dims, numBlocks, acqNum, relNum, lenOut,
                           extraOffset, buffersPerFifo, locksPerFifo);
@@ -783,7 +790,7 @@ void createBuffersAndLocks(
     createOp.setElemNumberAttr(elemNumberAttr);
   }
 
-  if (!objFifoSize(createOp)) return;
+  if (objFifoSize(createOp) == 0) return;
 
   auto fifo = llvm::cast<AIEObjectFifoType>(createOp.getElemType());
   auto elemType = llvm::cast<MemRefType>(fifo.getElementType());
