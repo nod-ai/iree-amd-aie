@@ -108,7 +108,7 @@ fi
 
 # Parameter 5) <vitis-install-dir>
 if [ -z "${5-}" ]; then
-  VITIS=/opt/Xilinx/Vitis/2024.1
+  VITIS=/opt/Xilinx/Vitis/2024.2
 else
   VITIS=`realpath "$5"`
 fi
