@@ -195,6 +195,12 @@ replace_string_in_file(
 replace_string_in_file(
   ${IREE_MLIR_AIR_SOURCE_DIR}/lib/Conversion/AIRRtToNpuPass.cpp
   "aie/Dialect/AIEX/IR" "aie")
+replace_string_in_file(
+  ${IREE_MLIR_AIR_SOURCE_DIR}/lib/Conversion/AIRRtToNpuPass.cpp
+  "4UL" "static_cast<size_t>(4)")
+replace_string_in_file(
+  ${IREE_MLIR_AIR_SOURCE_DIR}/lib/Conversion/AIRRtToNpuPass.cpp
+  "8UL" "static_cast<size_t>(8)")
 
 replace_string_in_file(
   ${IREE_MLIR_AIR_SOURCE_DIR}/lib/Conversion/AIRToAIESchedulingUtils.cpp

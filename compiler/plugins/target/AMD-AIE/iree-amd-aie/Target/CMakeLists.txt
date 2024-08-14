@@ -6,12 +6,6 @@
 
 iree_add_all_subdirs()
 
-if(MSVC)
-  set(UUID "Rpcrt4.lib")
-else()
-  find_library (UUID uuid REQUIRED)
-endif()
-
 iree_cc_library(
   NAME
     AIETargets
@@ -21,7 +15,6 @@ iree_cc_library(
     "AMDAIETargetLdScript.cpp"
     "XCLBinGen.cpp"
   DEPS
-    ${UUID}
     iree-amd-aie::aie_runtime::iree_aie_runtime_static
     iree::target::amd-aie::Transforms
 )
