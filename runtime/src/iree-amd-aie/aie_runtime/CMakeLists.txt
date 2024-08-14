@@ -368,10 +368,12 @@ set_target_properties(
   xaiengine
   PROPERTIES COMPILE_OPTIONS "${_aie_runtime_compile_options}")
 target_compile_definitions(xaiengine PRIVATE ${XAIE_DEBUG} __AIECDO__)
-set(xaiengine_c_warning_ignores
-    -Wno-unused-but-set-variable
-    -Wno-incompatible-pointer-types)
-target_compile_options(xaiengine PRIVATE ${xaiengine_c_warning_ignores})
+if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
+  set(xaiengine_c_warning_ignores
+      -Wno-unused-but-set-variable
+      -Wno-incompatible-pointer-types)
+  target_compile_options(xaiengine PRIVATE ${xaiengine_c_warning_ignores})
+endif()
 # For <elf.h>
 target_include_directories(xaiengine PRIVATE SYSTEM ${_bootgen_source_dir})
 target_link_libraries(xaiengine PRIVATE cdo_driver)

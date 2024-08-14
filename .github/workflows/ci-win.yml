@@ -1,0 +1,102 @@
+name: CI Windows
+
+on:
+  workflow_call:
+  workflow_dispatch:
+  pull_request:
+  merge_group:
+  push:
+    branches:
+      - main
+
+concurrency:
+  # A PR number if a pull request and otherwise the commit hash. This cancels
+  # queued and in-progress runs for the same PR (presubmit) or commit
+  # (postsubmit).
+  group: ci-build-test-cpp-windows-${{ github.event.number || github.sha }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    # force bash for windows
+    shell: bash
+
+jobs:
+  build_test_windows:
+    name: Build and Test (Windows, ASSERTIONS)
+    runs-on: windows-2019
+    strategy:
+      fail-fast: true
+    env:
+      CACHE_DIR: ${{ github.workspace }}/.container-cache
+    steps:
+      - name: "Checking out repository"
+        uses: actions/checkout@8f4b7f84864484a7bf31766abe9204da3cbe65b3 # v3.5.0
+        with:
+          submodules: recursive
+
+      - name: Setup Cpp
+        uses: aminya/setup-cpp@v1
+        with:
+          compiler: msvc
+          vcvarsall: true
+          cmake: true
+          ninja: true
+          cppcheck: false
+          clangtidy: false
+          clangformat: false
+
+      - name: Install boost
+        uses: MarkusJx/install-boost@v2.4.5
+        id: install-boost
+        with:
+          boost_install_dir: ${{ github.workspace }}
+          boost_version: 1.78.0
+          platform_version: 2019
+          toolset: msvc
+
+      - name: Sync source deps
+        run: |
+          python ./sync_deps.py
+
+      - name: Enable cache
+        uses: actions/cache/restore@v3
+        with:
+          path: "${{ github.workspace }}/.ccache"
+          key: windows-build-test-cpp-asserts-v1-${{ github.sha }}
+          restore-keys: |
+            windows-build-test-cpp-
+
+      - name: Build packages
+        run: |
+          export cache_dir="${{ github.workspace }}/.ccache"
+          # switch to linux paths instead of windows paths
+          # also make into abs path
+          export BOOST_ROOT="/$(echo "${{ steps.install-boost.outputs.BOOST_ROOT }}" | sed -e 's/\\/\//g' -e 's/://')"
+          bash build_tools/ci/build_test_cpp_windows.sh
+
+      - name: Create artifacts
+        if: ${{ !cancelled() }}
+        run: |
+          # TODO: https://github.com/openxla/iree/issues/16230
+          # We should not be packaging clang and llvm-link in the default dist
+          # installs.
+          rm -f iree-install/bin/clang*
+          rm -f iree-install/bin/llvm-link*
+          tar cf iree-dist.tar -C iree-install . -C ../iree-build tools/testing/e2e/iree-e2e-matmul-test
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: windows_x86_64_release_packages
+          path: |
+            iree-dist-win64.tar
+          if-no-files-found: warn
+
+      - name: Save cache
+        uses: actions/cache/save@v3
+        if: ${{ !cancelled() }}
+        with:
+          path: ${{ env.CACHE_DIR }}
+          key: windows-build-test-cpp-asserts-v1-${{ github.sha }}
