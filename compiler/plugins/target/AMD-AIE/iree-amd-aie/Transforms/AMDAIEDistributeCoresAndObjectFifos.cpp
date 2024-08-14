@@ -421,10 +421,8 @@ class AMDAIEUnrollLocalLoops : public OpRewritePattern<scf::ForOp> {
         return WalkResult::advance();
       }
 
-      uint64_t sourceMemspace =
-          dmaOp.getSourceObjectFifo().getMemorySpaceAsUInt();
-      uint64_t targetMemspace =
-          dmaOp.getTargetObjectFifo().getMemorySpaceAsUInt();
+      uint8_t sourceMemspace = dmaOp.getSourceMemorySpaceAsUInt();
+      uint8_t targetMemspace = dmaOp.getTargetMemorySpaceAsUInt();
       if (std::is_same<Iterator, ForwardIterator>::value &&
           !dependencies.contains(dmaOp.getSourceObjectFifo()) &&
           sourceMemspace < targetMemspace) {
@@ -484,18 +482,18 @@ class AMDAIEUnrollLocalLoops : public OpRewritePattern<scf::ForOp> {
       for (auto it = loopBodyBlock->begin(); it != std::next(srcBlockEnd);
            it++) {
         if (auto dmaOp = dyn_cast<AMDAIE::DmaCpyNdOp>(*it)) {
-          AMDAIE::LogicalObjectFifoFromMemrefOp source =
-              dmaOp.getSourceObjectFifo();
-          uint8_t sourceMemSpaceInt = source.getMemorySpaceAsUInt();
-          AMDAIE::LogicalObjectFifoFromMemrefOp target =
-              dmaOp.getTargetObjectFifo();
-          uint8_t targetMemSpaceInt = target.getMemorySpaceAsUInt();
+          uint8_t sourceMemSpaceInt = dmaOp.getSourceMemorySpaceAsUInt();
+          uint8_t targetMemSpaceInt = dmaOp.getTargetMemorySpaceAsUInt();
           if (targetMemSpaceInt > sourceMemSpaceInt) {
+            AMDAIE::LogicalObjectFifoFromMemrefOp target =
+                dmaOp.getTargetObjectFifo();
             rewriter.setInsertionPoint(target);
             auto cloneOp = dyn_cast<AMDAIE::LogicalObjectFifoFromMemrefOp>(
                 rewriter.clone(*dmaOp.getTarget().getDefiningOp()));
             operandMap.map(target.getOutput(), cloneOp.getOutput());
           } else if (sourceMemSpaceInt > targetMemSpaceInt) {
+            AMDAIE::LogicalObjectFifoFromMemrefOp source =
+                dmaOp.getSourceObjectFifo();
             rewriter.setInsertionPoint(source);
             auto cloneOp = dyn_cast<AMDAIE::LogicalObjectFifoFromMemrefOp>(
                 rewriter.clone(*dmaOp.getSource().getDefiningOp()));
@@ -919,7 +917,7 @@ class AMDAIEDistributeCoresAndObjectFifosPass
 
   AMDAIEDistributeCoresAndObjectFifosPass() = default;
   AMDAIEDistributeCoresAndObjectFifosPass(
-      const AMDAIEDistributeCoresAndObjectFifosPass &pass){};
+      const AMDAIEDistributeCoresAndObjectFifosPass &pass) {};
   void runOnOperation() override;
 };
 

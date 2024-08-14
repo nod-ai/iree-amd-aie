@@ -44,6 +44,20 @@ def AMDAIE_LogicalObjectFifoType :
       return $_get(elementType.getContext(), elementType, depth);
     }]>
   ];
+
+  let extraClassDeclaration = [{
+    Attribute getMemorySpace() {
+      return getElementType().getMemorySpace();
+    }
+
+    /// Helper method to return the memory space as an integer. If no memory 
+    /// space attribute exists, this indicates a global memory space and we 
+    /// return 0. Else we cast the memory space attribute to an integer. 
+    uint8_t getMemorySpaceAsUInt() {
+      Attribute memSpace = getMemorySpace();
+      return memSpace ? llvm::cast<IntegerAttr>(memSpace).getInt() : 0;
+    }
+  }];
 }
 
 def AnyAMDAIELogicalObjectFifoType : AnyTypeOf<[AMDAIE_LogicalObjectFifoType]>;

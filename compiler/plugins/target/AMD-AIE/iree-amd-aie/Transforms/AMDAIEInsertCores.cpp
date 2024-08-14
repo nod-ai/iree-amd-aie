@@ -78,10 +78,8 @@ LogicalResult insertCoreOps(mlir::ModuleOp moduleOp) {
     SmallVector<Value> inputDmas;
     SmallVector<Value> outputDmas;
     WalkResult dmaRes = forallOp->walk([&](AMDAIE::DmaCpyNdOp dmaOp) {
-      uint8_t sourceMemspace =
-          dmaOp.getSourceObjectFifo().getMemorySpaceAsUInt();
-      uint8_t targetMemspace =
-          dmaOp.getTargetObjectFifo().getMemorySpaceAsUInt();
+      uint8_t sourceMemspace = dmaOp.getSourceMemorySpaceAsUInt();
+      uint8_t targetMemspace = dmaOp.getTargetMemorySpaceAsUInt();
       if (sourceMemspace == 2 && targetMemspace == 2) {
         dmaOp->emitOpError()
             << "dma op with both source and target on L1 is not supported";
@@ -166,7 +164,7 @@ class AMDAIEInsertCoresPass
   }
 
   AMDAIEInsertCoresPass() = default;
-  AMDAIEInsertCoresPass(const AMDAIEInsertCoresPass &pass){};
+  AMDAIEInsertCoresPass(const AMDAIEInsertCoresPass &pass) {};
   void runOnOperation() override;
 };
 

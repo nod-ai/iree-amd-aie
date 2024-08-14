@@ -362,6 +362,51 @@ def DoublyStridedCopyOpInterface : OpInterface<"DoublyStridedCopyOpInterface",
     specifies source and target indirectly via a referenced DMA operation.
   }];
   let cppNamespace = "mlir::iree_compiler::AMDAIE";
+
+  let methods = [
+    InterfaceMethod<
+      /*desc=*/"Return the source memory space attribute.",
+      /*retTy=*/"::mlir::Attribute",
+      /*methodName=*/"getSourceMemorySpace",
+      /*args=*/(ins),
+      /*methodBody=*/"",
+      /*defaultImplementation=*/[{
+        return $_op.getSourceMemorySpace();
+      }]
+    >,
+    InterfaceMethod<
+      /*desc=*/"Return the source memory space as an integer (0 for global "
+               "memory).",
+      /*retTy=*/"uint8_t",
+      /*methodName=*/"getSourceMemorySpaceAsUInt",
+      /*args=*/(ins),
+      /*methodBody=*/"",
+      /*defaultImplementation=*/[{
+        return $_op.getSourceMemorySpaceAsUInt();
+      }]
+    >,
+    InterfaceMethod<
+      /*desc=*/"Return the target memory space attribute.",
+      /*retTy=*/"::mlir::Attribute",
+      /*methodName=*/"getTargetMemorySpace",
+      /*args=*/(ins),
+      /*methodBody=*/"",
+      /*defaultImplementation=*/[{
+        return $_op.getTargetMemorySpace();
+      }]
+    >,
+    InterfaceMethod<
+      /*desc=*/"Return the target memory space as an integer (0 for global "
+               "memory).",
+      /*retTy=*/"uint8_t",
+      /*methodName=*/"getTargetMemorySpaceAsUInt",
+      /*args=*/(ins),
+      /*methodBody=*/"",
+      /*defaultImplementation=*/[{
+        return $_op.getTargetMemorySpaceAsUInt();
+      }]
+    >,
+  ];
 }
 
 #endif // IREE_AMDAIE_DIALECT_DMAOPINTERFACE

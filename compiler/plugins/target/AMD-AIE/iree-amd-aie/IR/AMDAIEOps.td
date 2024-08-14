@@ -322,7 +322,8 @@ def AMDAIE_NpuDmaCpyNdOp: AMDAIE_Op<"npu.dma_cpy_nd",
 
     // Return the source memory space as an attribute.
     Attribute getSourceMemorySpace() {
-      return getSourceMemrefType().getMemorySpace();
+      return cast<LogicalObjectFifoType>(getDmaCpyNdOp().getSourceType())
+        .getMemorySpace();
     }
 
     // Helper method to return the source memory space as an integer. If no 
@@ -342,7 +343,8 @@ def AMDAIE_NpuDmaCpyNdOp: AMDAIE_Op<"npu.dma_cpy_nd",
 
     // Return the target memory space as an attribute.
     Attribute getTargetMemorySpace() {
-      return getTargetMemrefType().getMemorySpace();
+      return cast<LogicalObjectFifoType>(getDmaCpyNdOp().getTargetType())
+        .getMemorySpace();
     }
 
     // Helper method to return the target memory space as an integer. If no
@@ -562,7 +564,8 @@ def AMDAIE_LogicalObjectFifoFromMemrefOp
 
     // Return the memory space as an attribute.
     Attribute getMemorySpace() {
-      return getMemrefType().getMemorySpace();
+      return cast<LogicalObjectFifoType>(getOutput().getType())
+        .getMemorySpace();
     }
 
     // Helper method to return the memory space as an integer. If no memory
@@ -575,7 +578,8 @@ def AMDAIE_LogicalObjectFifoFromMemrefOp
 
     // Return the source memref type.
     MemRefType getMemrefType() { 
-      return cast<LogicalObjectFifoType>(getOutput().getType()).getElementType();
+      return cast<LogicalObjectFifoType>(getOutput().getType())
+        .getElementType();
     }
   }];
 
@@ -744,6 +748,31 @@ class AMDAIE_DmaCpyNdBaseOp<string mnemonic, list<Trait> traits = []> :
     Type getTargetType() { return getTarget().getType(); }
     LogicalObjectFifoFromMemrefOp getSourceObjectFifo();
     LogicalObjectFifoFromMemrefOp getTargetObjectFifo();
+
+    Attribute getSourceMemorySpace() {
+      return cast<LogicalObjectFifoType>(getSourceType()).getMemorySpace();
+    }
+
+    /// Helper method to return the source memory space as an integer. If no 
+    /// memory space attribute exists, this indicates a global memory space and
+    /// we return 0. Else we cast the memory space attribute to an integer. 
+    uint8_t getSourceMemorySpaceAsUInt() {
+      Attribute memSpace = getSourceMemorySpace();
+      return memSpace ? cast<IntegerAttr>(memSpace).getInt() : 0;
+    }
+
+    Attribute getTargetMemorySpace() {
+      return cast<LogicalObjectFifoType>(getTargetType()).getMemorySpace();
+    }
+
+    /// Helper method to return the target memory space as an integer. If no
+    /// memory space attribute exists, this indicates a global memory space and
+    /// we return 0. Else we cast the memory space attribute to an integer.
+    uint8_t getTargetMemorySpaceAsUInt() {
+      Attribute memSpace = getTargetMemorySpace();
+      return memSpace ? cast<IntegerAttr>(memSpace).getInt() : 0;
+    }
+    
     // A utility to create a new doubly strided operation from this one with a
     // new set of source and target offsets, sizes and strides.
     DoublyStridedOpInterface createDoublyStridedOp(
