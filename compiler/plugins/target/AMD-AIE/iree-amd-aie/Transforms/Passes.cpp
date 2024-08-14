@@ -521,7 +521,8 @@ void addConvDecomposePassPipeline(OpPassManager &funcPassManager,
   addAMDAIEBufferizePasses(funcPassManager);
 }
 
-void buildAMDAIETransformPassPipeline(OpPassManager &variantPassManager) {
+void buildAMDAIETransformPassPipeline(OpPassManager &variantPassManager,
+                                      AMDAIEDevice device) {
   OpPassManager &modulePassManager = variantPassManager.nest<ModuleOp>();
   {
     FunctionLikeNest funcPassManager(modulePassManager);
@@ -547,7 +548,7 @@ void buildAMDAIETransformPassPipeline(OpPassManager &variantPassManager) {
   if (clUseLowerToAIEPipeline == LowerToAIEPassPipeline::ObjectFifo) {
     addAMDAIEObjectFifoLoweringPasses(modulePassManager);
   } else if (clUseLowerToAIEPipeline == LowerToAIEPassPipeline::AIR) {
-    addMLIRAIRLoweringPasses(modulePassManager);
+    addMLIRAIRLoweringPasses(modulePassManager, device);
   } else {
     assert(
         false &&
@@ -626,7 +627,7 @@ void addAMDAIEObjectFifoLoweringPasses(OpPassManager &passManager) {
 // TODO (Erwei): The "packPeel" temporary argument should be removed once
 // pack-peel and pack-pad share the same pass pipeline. See TODOs inlined below
 // for details.
-void addMLIRAIRLoweringPasses(OpPassManager &passManager) {
+void addMLIRAIRLoweringPasses(OpPassManager &passManager, AMDAIEDevice device) {
   // Add passes for preparing for lowering to MLIR-AIR
   passManager.addPass(createEraseHALDescriptorTypeFromMemRefPass());
   passManager.addPass(memref::createFoldMemRefAliasOpsPass());
@@ -737,7 +738,7 @@ void addMLIRAIRLoweringPasses(OpPassManager &passManager) {
     xilinx::air::AIRToAIEOptions options;
     options.clRowOffset = 2;
     options.clColOffset = 0;
-    options.clDevice = "npu1_4col";
+    options.clDevice = stringifyEnum(device);
     options.clEmitWhileLoop = true;
     passManager.addPass(xilinx::air::createAIRToAIEPass(options));
   }

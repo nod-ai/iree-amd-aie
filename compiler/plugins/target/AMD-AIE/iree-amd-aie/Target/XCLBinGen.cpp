@@ -59,6 +59,31 @@ using Path = std::filesystem::path;
 
 namespace {
 
+FailureOr<std::string> getNPUVersion() {
+  std::string errorMessage;
+  auto maybeVbnv =
+      openInputFile("/sys/bus/pci/devices/0000:c5:00.1/vbnv", &errorMessage);
+  if (!maybeVbnv) {
+    llvm::errs() << "couldn't read pci info for npu because: " << errorMessage;
+    return failure();
+  }
+
+  std::string vbnv = std::string{maybeVbnv->getBuffer()};
+  std::regex rgx("RyzenAI-(.*)");
+  std::smatch matches;
+  if (std::regex_search(vbnv, matches, rgx)) return {matches[1]};
+  llvm::errs() << "couldn't find npu version in " << vbnv;
+  return failure();
+}
+
+FailureOr<std::string> getTargetDir() {
+  std::string npuVersion = *getNPUVersion();
+  if (npuVersion == "npu1") return std::string{"target_aie_ml"};
+  if (npuVersion == "npu4") return std::string{"target_aie2p"};
+  llvm::errs() << "unsupported NPUVersion: " << npuVersion;
+  return failure();
+}
+
 // Apply the pass manager specific options of the XCLBinGenConfig to the pass
 // manager. These control when (if ever) and what IR gets printed between
 // passes, and whether the pass manager uses multi-theading.
@@ -122,7 +147,7 @@ FailureOr<Path> findVitis(std::optional<Path> &vitisDir) {
   }
 
   Path chessccPath =
-      aieToolsPath / "tps" / "lnx64" / "target_aie_ml" / "bin" / "LNa64bin";
+      aieToolsPath / "tps" / "lnx64" / *getTargetDir() / "bin" / "LNa64bin";
 
   if (!std::filesystem::exists(chessccPath / "chess-clang")) {
     llvm::errs() << "ERROR: couldn't find chess-clang\n";
@@ -161,14 +186,28 @@ static FailureOr<Path> findAMDAIETool(std::string toolName,
 std::pair<std::string, std::vector<std::string>> makeChessArgs(Path &vitisDir,
                                                                Path &tempDir,
                                                                bool verbose) {
+  std::string npuVersion = *getNPUVersion();
+  std::string archVersion;
+  std::string modelDir;
+  if (npuVersion == "npu1") {
+    archVersion = "20";
+    modelDir = "aie_ml";
+  } else if (npuVersion == "npu4") {
+    archVersion = "21";
+    modelDir = "aie2p";
+  } else {
+    llvm::errs() << "unsupported NPU version: " << npuVersion;
+    llvm::report_fatal_error("unsupported NPU version");
+  }
+
   Path aieToolsDir = vitisDir / "aietools";
   std::vector<std::string> flags{
       // -j <threads> : parallel compilation (function + file level)
-      "-j4",
+      "-j1",
       // -p <name> : processor
       "-pme",
       // -P <dir> : processor model directory
-      "-P" + (aieToolsDir / "data" / "aie_ml" / "lib").string(),
+      "-P" + (aieToolsDir / "data" / modelDir / "lib").string(),
       // -f : use LLVM frontend (chess-clang)
       "-f",
       // -C <cfg> : configuration (for chess-clang)
@@ -178,7 +217,7 @@ std::pair<std::string, std::vector<std::string>> makeChessArgs(Path &vitisDir,
       // for adf headers
       "-D__AIENGINE__",
       // for aie_api headers
-      "-D__AIE_ARCH__=20", "-D__AIEARCH__=20",
+      "-D__AIE_ARCH__=" + archVersion, "-D__AIEARCH__=" + archVersion,
       // for aie_api headers
       "-I" + (aieToolsDir / "include").string()};
   // disassemble output
@@ -189,7 +228,7 @@ std::pair<std::string, std::vector<std::string>> makeChessArgs(Path &vitisDir,
 std::vector<std::string> makeChessEnv(Path &vitisDir) {
   Path aieToolsPath = vitisDir / "aietools";
   Path chessccPath =
-      aieToolsPath / "tps" / "lnx64" / "target_aie_ml" / "bin" / "LNa64bin";
+      aieToolsPath / "tps" / "lnx64" / *getTargetDir() / "bin" / "LNa64bin";
   Path path(::getenv("PATH"));
   Path lnx64o = aieToolsPath / "lib" / "lnx64.o";
   Path dotLib = aieToolsPath / "lnx64" / "tools" / "dot" / "lib";
@@ -731,9 +770,7 @@ static LogicalResult generateXCLBin(
           "pre_post_fingerprint": "12345",
           "partition": {
             "column_width": 4,
-            "start_columns": [
-              1
-            ]
+            "start_columns": [1]
           },
           "PDIs": [
             {

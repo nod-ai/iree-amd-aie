@@ -14,9 +14,6 @@
 
 extern "C" {
 #include "xaiengine.h"
-#include "xaiengine/xaie_device_aie.h"
-#include "xaiengine/xaie_device_aie2ipu.h"
-#include "xaiengine/xaie_device_aieml.h"
 #undef s8
 #undef u8
 #undef u16
@@ -88,14 +85,13 @@ bool isAieRtCompatStrmSwPortType(
 #endif
   return static_cast<::StrmSwPortType>(t);
 }
+
 // macro so that line numbers are preserved for where the check fails
 #define CheckedAieRtCompatStrmSwPortType(t) \
   checkedAieRtCompatStrmSwPortType(t, __FILE__, __LINE__, __PRETTY_FUNCTION__)
-
 }  // namespace
 
 namespace mlir::iree_compiler::AMDAIE {
-
 StrmSwPortType getConnectingBundle(StrmSwPortType dir) {
   switch (dir) {
     case StrmSwPortType::NORTH:
@@ -111,19 +107,18 @@ StrmSwPortType getConnectingBundle(StrmSwPortType dir) {
   }
 }
 
-bool isNPUDevice(mlir::iree_compiler::AMDAIE::AMDAIEDevice d) {
-  return d == mlir::iree_compiler::AMDAIE::AMDAIEDevice::npu1 ||
-         d == mlir::iree_compiler::AMDAIE::AMDAIEDevice::npu1_1col ||
-         d == mlir::iree_compiler::AMDAIE::AMDAIEDevice::npu1_2col ||
-         d == mlir::iree_compiler::AMDAIE::AMDAIEDevice::npu1_3col ||
-         d == mlir::iree_compiler::AMDAIE::AMDAIEDevice::npu1_4col;
+bool isNPUDevice(AMDAIEDevice d) {
+  return d == AMDAIEDevice::npu1 || d == AMDAIEDevice::npu1_1col ||
+         d == AMDAIEDevice::npu1_2col || d == AMDAIEDevice::npu1_3col ||
+         d == AMDAIEDevice::npu1_4col || d == AMDAIEDevice::npu4;
 }
 
 AMDAIEDeviceModel::AMDAIEDeviceModel(
     uint8_t aieGen, uint64_t baseAddr, uint8_t colShift, uint8_t rowShift,
     uint8_t devNColumns, uint8_t devNRows, uint8_t memTileRowStart,
     uint8_t nMemTileRows, uint8_t nShimTileRows, int partitionNumCols,
-    int partitionStartCol, bool aieSim, bool xaieDebug, AMDAIEDevice device)
+    int partitionStartCol, uint64_t partBaseAddr, uint64_t npiAddr, bool aieSim,
+    bool xaieDebug, AMDAIEDevice device)
     : configPtr{.AieGen = aieGen,
                 .BaseAddr = baseAddr,
                 .ColShift = colShift,
@@ -142,16 +137,6 @@ AMDAIEDeviceModel::AMDAIEDeviceModel(
                 .PartProp = {}},
       devInst{},
       device(device) {
-  uint64_t partBaseAddr;
-  if (aieGen == XAIE_DEV_GEN_AIE)
-    partBaseAddr = XAIE1_PARTITION_BASE_ADDR;
-  else if (aieGen == XAIE_DEV_GEN_AIEML)
-    partBaseAddr = XAIEML_PARTITION_BASE_ADDR;
-  else if (aieGen == XAIE_DEV_GEN_AIE2IPU)
-    partBaseAddr = XAIE2IPU_PARTITION_BASE_ADDR;
-  else
-    llvm::report_fatal_error(llvm::Twine("unknown AIE DevGen: ") +
-                             std::to_string((int)aieGen));
   TRY_XAIE_API_FATAL_ERROR(XAie_SetupPartitionConfig, &devInst, partBaseAddr,
                            partitionStartCol, partitionNumCols);
   TRY_XAIE_API_FATAL_ERROR(XAie_CfgInitialize, &devInst, &configPtr);
@@ -163,16 +148,6 @@ AMDAIEDeviceModel::AMDAIEDeviceModel(
   else
     TRY_XAIE_API_FATAL_ERROR(XAie_SetIOBackend, &devInst, XAIE_IO_BACKEND_CDO);
 
-  uint64_t npiAddr;
-  if (aieGen == XAIE_DEV_GEN_AIE)
-    npiAddr = XAIE1_NPI_BASEADDR;
-  else if (aieGen == XAIE_DEV_GEN_AIEML)
-    npiAddr = XAIEML_NPI_BASEADDR;
-  else if (aieGen == XAIE_DEV_GEN_AIE2IPU)
-    npiAddr = XAIE2IPU_NPI_BASEADDR;
-  else
-    llvm::report_fatal_error(llvm::Twine("unknown AIE DevGen: ") +
-                             std::to_string((int)aieGen));
   TRY_XAIE_API_FATAL_ERROR(XAie_UpdateNpiAddr, &devInst, npiAddr);
 
   // TODO(max): this prevents some (most?) elfs from returning values?
@@ -197,10 +172,13 @@ int AMDAIEDeviceModel::columns() const {
 uint32_t AMDAIEDeviceModel::getMemSouthBaseAddress() const {
   return 0x00040000;
 }
+
 uint32_t AMDAIEDeviceModel::getMemWestBaseAddress() const { return 0x00050000; }
+
 uint32_t AMDAIEDeviceModel::getMemNorthBaseAddress() const {
   return 0x00060000;
 }
+
 uint32_t AMDAIEDeviceModel::getMemEastBaseAddress() const { return 0x00070000; }
 
 AMDAIETileType AMDAIEDeviceModel::getTileType(uint8_t col, uint8_t row) const {
@@ -441,6 +419,7 @@ uint32_t AMDAIEDeviceModel::getNumDestSwitchboxConnections(
 uint32_t AMDAIEDeviceModel::getColumnShift() const {
   return configPtr.ColShift;
 }
+
 uint32_t AMDAIEDeviceModel::getRowShift() const { return configPtr.RowShift; }
 
 DenseMap<uint32_t, SmallVector<uint32_t>>
@@ -479,7 +458,10 @@ struct AMDAIEDeviceModel getDeviceModel(AMDAIEDevice device) {
                                // mlir-aie disagrees with aie-rt here
                                /*nShimTileRows*/ 0,
                                /*partitionNumCols*/ 50,
-                               /*partitionStartCol*/ 0, /*aieSim*/ false,
+                               /*partitionStartCol*/ 0,
+                               /*partBaseAddr*/ XAIE1_PARTITION_BASE_ADDR,
+                               /*npiAddr*/ XAIE1_NPI_BASEADDR,
+                               /*aieSim*/ false,
                                /*xaieDebug*/ false, device);
     case AMDAIEDevice::xcve2302:
       return AMDAIEDeviceModel(XAIE_DEV_GEN_AIEML, XAIEML_BASE_ADDR,
@@ -489,6 +471,8 @@ struct AMDAIEDeviceModel getDeviceModel(AMDAIEDevice device) {
                                /*nShimTileRows*/ 1,
                                /*partitionNumCols*/ 17,
                                /*partitionStartCol*/ 0,
+                               /*partBaseAddr*/ XAIEML_PARTITION_BASE_ADDR,
+                               /*npiAddr*/ XAIEML_NPI_BASEADDR,
                                /*aieSim*/ false,
                                /*xaieDebug*/ false, device);
     case AMDAIEDevice::xcve2802:
@@ -499,6 +483,8 @@ struct AMDAIEDeviceModel getDeviceModel(AMDAIEDevice device) {
                                XAIEML_MEM_TILE_NUM_ROWS, XAIEML_SHIM_NUM_ROWS,
                                /*partitionNumCols*/ 38,
                                /*partitionStartCol*/ 0,
+                               /*partBaseAddr*/ XAIEML_PARTITION_BASE_ADDR,
+                               /*npiAddr*/ XAIEML_NPI_BASEADDR,
                                /*aieSim*/ false, /*xaieDebug*/ false, device);
     case AMDAIEDevice::npu1:
     case AMDAIEDevice::npu1_1col:
@@ -535,6 +521,19 @@ struct AMDAIEDeviceModel getDeviceModel(AMDAIEDevice device) {
           XAIE2IPU_ROW_SHIFT, XAIE2IPU_NUM_COLS, XAIE2IPU_NUM_ROWS,
           XAIE2IPU_MEM_TILE_ROW_START, XAIE2IPU_MEM_TILE_NUM_ROWS,
           XAIE2IPU_SHIM_NUM_ROWS, partitionNumCols, partitionStartCol,
+          /*partBaseAddr*/ XAIE2IPU_PARTITION_BASE_ADDR,
+          /*npiAddr*/ XAIE2IPU_NPI_BASEADDR,
+          /*aieSim*/ false, /*xaieDebug*/ false, device);
+    case AMDAIEDevice::npu4:
+      return AMDAIEDeviceModel(
+          XAIE_DEV_GEN_AIE2P_STRIX_B0, XAIE_STRIXB0_BASE_ADDR,
+          XAIE_STRIXB0_COL_SHIFT, XAIE_STRIXB0_ROW_SHIFT, XAIE_STRIXB0_NUM_COLS,
+          XAIE_STRIXB0_NUM_ROWS, XAIE_STRIXB0_MEM_TILE_ROW_START,
+          XAIE_STRIXB0_MEM_TILE_NUM_ROWS, XAIE_STRIXB0_SHIM_NUM_ROWS,
+          /*partitionNumCols*/ 8,
+          /*partitionStartCol*/ 0,
+          /*partBaseAddr*/ XAIE_STRIXB0_PARTITION_BASE_ADDR,
+          /*npiAddr*/ XAIE_STRIXB0_NPI_BASEADDR,
           /*aieSim*/ false, /*xaieDebug*/ false, device);
   }
 
@@ -689,5 +688,4 @@ STRINGIFY_5TUPLE_STRUCT(XAie_BlockWrite32Hdr, OpHdr, Col, Row, RegOff, Size)
 STRINGIFY_2TUPLE_STRUCT(XAie_CustomOpHdr, OpHdr, Size)
 
 BOTH_OSTREAM_OPS_FORALL_TYPES(OSTREAM_OP_DEFN, BOTH_OSTREAM_OP)
-
 }  // namespace mlir::iree_compiler::AMDAIE

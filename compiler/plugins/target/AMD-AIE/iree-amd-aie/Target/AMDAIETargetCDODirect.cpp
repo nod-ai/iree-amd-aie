@@ -349,8 +349,7 @@ LogicalResult AIETranslateToCDODirect(ModuleOp m, llvm::StringRef workDirPath,
   assert(llvm::range_size(devOps) == 1 &&
          "only exactly 1 device op supported.");
   DeviceOp device = *devOps.begin();
-  AMDAIEDeviceModel deviceModel =
-      AMDAIE::getDeviceModel(static_cast<AMDAIEDevice>(device.getDevice()));
+  AMDAIEDeviceModel deviceModel = getDeviceModel(device.getDevice());
   byte_ordering endianness =
       bigEndian ? byte_ordering::Big_Endian : byte_ordering::Little_Endian;
   DEBUG_WITH_TYPE("aie-cdo-driver-debug", cdoDebug = true);
