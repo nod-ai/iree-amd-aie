@@ -573,7 +573,7 @@ module {
 
 // -----
 
-// Ensure subviews on local memrefs inside cores are handled correctly by discarding the consuming DMAs' non-zero offsets. 
+// Ensure subviews on local memrefs inside cores are handled correctly by discarding the consuming DMAs' non-zero offsets.
 // CHECK-LABEL: @local_subview_output
 // CHECK-DAG:   %[[C0:.+]] = arith.constant 0 : index
 // CHECK-DAG:   %[[C1:.+]] = arith.constant 1 : index
@@ -678,6 +678,32 @@ func.func @l1_temporary_buffer_for_matmul_elem() {
     memref.dealloc %alloc_6 : memref<2x2x8x8x4x4xi32, 2 : i32>
     return
 }
+
+// -----
+
+// A case where an L1 memory is not distributable. Note: this form arises with a 
+// pad-based tiling strategy. 
+// CHECK-LABEL: @not_distributable
+// CHECK: memref.alloc() : memref<2x2x100xbf16, 2>
+// CHECK: memref.subview
+// CHECK-SAME: to memref<1x1x10xbf16, strided<[200, 100, 1], offset: ?>, 2>
+// CHECK-NOT: memref.subview
+// CHECK: return
+func.func @not_distributable() {
+  %cst = arith.constant 0.000000e+00 : bf16
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
+  %c4 = arith.constant 4 : index
+  %alloc = memref.alloc() : memref<2x2x100xbf16, 2>
+  scf.forall (%arg0, %arg1) in (2, 2) {
+    scf.for %arg2 = %c0 to %c4 step %c1 {
+      %subview = memref.subview %alloc[%arg0, %arg1, %arg2] [1, 1, 10] [1, 1, 1] : memref<2x2x100xbf16, 2> to memref<1x1x10xbf16, strided<[200, 100, 1], offset: ?>, 2>
+      linalg.fill ins(%cst : bf16) outs(%subview : memref<1x1x10xbf16, strided<[200, 100, 1], offset: ?>, 2>)
+    }
+  } {mapping = [#gpu.thread<y>, #gpu.thread<x>]}
+  return
+}
+
 
 // -----
 
