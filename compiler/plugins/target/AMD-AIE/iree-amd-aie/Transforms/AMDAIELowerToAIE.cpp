@@ -82,11 +82,15 @@ AIE::BDDimLayoutArrayAttr convertSizeStrideToBDDimLayoutArrayAttr(
 FailureOr<AIE::ObjectFifoCreateOp> createObjectFifo(
     IRRewriter &rewriter, AMDAIE::CircularDmaCpyNdOp dmaOp, Value srcTile,
     ValueRange dstTiles, StringAttr &symName) {
-  uint8_t sourceMemSpace = dmaOp.getSourceObjectFifo().getMemorySpaceAsUInt();
-  uint8_t targetMemSpace = dmaOp.getTargetObjectFifo().getMemorySpaceAsUInt();
+  auto sourceType =
+      cast<AMDAIE::LogicalObjectFifoType>(dmaOp.getSource().getType());
+  auto targetType =
+      cast<AMDAIE::LogicalObjectFifoType>(dmaOp.getTarget().getType());
+  uint8_t sourceMemSpace = sourceType.getMemorySpaceAsUInt();
+  uint8_t targetMemSpace = targetType.getMemorySpaceAsUInt();
   unsigned depth;
-  unsigned sourceDepth = dmaOp.getSourceObjectFifo().getDepth();
-  unsigned targetDepth = dmaOp.getTargetObjectFifo().getDepth();
+  unsigned sourceDepth = sourceType.getDepth();
+  unsigned targetDepth = targetType.getDepth();
   if (sourceMemSpace == 0 && targetMemSpace == 0) {
     return dmaOp.emitOpError()
            << "both source and target on main memory not supported";
@@ -992,7 +996,7 @@ class AMDAIELowerToAIEPass
   }
 
   AMDAIELowerToAIEPass() = default;
-  AMDAIELowerToAIEPass(const AMDAIELowerToAIEPass &pass){};
+  AMDAIELowerToAIEPass(const AMDAIELowerToAIEPass &pass) {};
   void runOnOperation() override;
 };
 
