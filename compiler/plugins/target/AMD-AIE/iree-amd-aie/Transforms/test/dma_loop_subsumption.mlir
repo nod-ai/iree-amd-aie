@@ -5,6 +5,48 @@
 // Sanity checks for cases where no modification should happen.
 //===----------------------------------------------------------------------===//
 
+// Ensure no modification in case of an operand within the same scope.
+// CHECK-LABEL: @operand_in_same_scope
+// CHECK-DAG:   %[[C0:.+]] = arith.constant 0 : index
+// CHECK-DAG:   %[[C1:.+]] = arith.constant 1 : index
+// CHECK-DAG:   %[[C2:.+]] = arith.constant 2 : index
+// CHECK-DAG:   %[[C3:.+]] = arith.constant 3 : index
+// CHECK-DAG:   %[[C6:.+]] = arith.constant 6 : index
+// CHECK-DAG:   %[[C16:.+]] = arith.constant 16 : index
+// CHECK:       %[[CIRC_DMA_1:.+]] = amdaie.circular_dma_cpy_nd
+// CHECK:       %[[CIRC_DMA_2:.+]] = amdaie.circular_dma_cpy_nd
+// CHECK:       amdaie.controlcode
+// CHECK:         amdaie.npu.dma_cpy_nd %[[CIRC_DMA_2]]([%[[C0]], %[[C1]]] [%[[C3]], %[[C16]]] [%[[C2]], %[[C1]]], [] [] [])
+// CHECK:         scf.for %[[ARG2:.+]] = %[[C1]] to %[[C6]] step %[[C2]]
+// CHECK:           %[[BD_ID:.+]] = amdaie.bd_id
+// CHECK:           amdaie.npu.dma_cpy_nd %[[CIRC_DMA_1]]([%[[ARG2]]] [16] [1] bd_id = %[[BD_ID]], [] [] [])
+// CHECK-NOT:       amdaie.npu.dma_cpy_nd
+#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
+module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
+  func.func @operand_in_same_scope(%arg0: !amdaie.logicalobjectfifo<memref<1x1x8x16xi32>>, %arg1: !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>) {
+    %c0 = arith.constant 0 : index
+    %c1 = arith.constant 1 : index
+    %c2 = arith.constant 2 : index
+    %c6 = arith.constant 6 : index
+    %tile = amdaie.tile(%c0, %c0)
+    amdaie.workgroup {
+      %0 = amdaie.circular_dma_cpy_nd(%arg0[] [] [], %arg1[] [] []) : (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32>>, !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>)
+      %1 = amdaie.circular_dma_cpy_nd(%arg0[] [] [], %arg1[] [] []) : (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32>>, !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>)
+      amdaie.controlcode {
+        scf.for %arg2 = %c1 to %c6 step %c2 {
+          %bd_id = amdaie.bd_id(%tile, 0)
+          %2 = amdaie.npu.dma_cpy_nd %0([%arg2] [16] [1] bd_id = %bd_id, [] [] [])
+          %3 = amdaie.npu.dma_cpy_nd %1([%arg2] [16] [1], [] [] [])
+        }
+        amdaie.end
+      }
+    }
+    return
+  }
+}
+
+// -----
+
 // Ensure no modification in case of a invalid affine expressions.
 // CHECK:       #[[$MAP0:.+]] = affine_map<(d0) -> ((d0 * 16) floordiv 5)>
 // CHECK:       #[[$MAP1:.+]] = affine_map<(d0) -> (d0 floordiv 16 + 3)>
