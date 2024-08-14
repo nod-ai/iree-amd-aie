@@ -245,6 +245,20 @@ struct SubsumeLoopIntoDMA
     auto loopOp = dyn_cast<LoopLikeOpInterface>(op->getParentOp());
     if (!loopOp) return failure();
 
+    // Check that the operands are not located within the scope as the
+    // parentOp.
+    if (llvm::any_of(op->getOperands(), [&](Value operand) {
+          return !allInductionValues.contains(operand) &&
+                 operand.getDefiningOp() &&
+                 loopOp->isProperAncestor(operand.getDefiningOp());
+        })) {
+      return rewriter.notifyMatchFailure(
+          op,
+          "Has operands within the same scope, so the parent loop  op can't be "
+          "subsumed as this transformation would move this op outside that "
+          "parent op.");
+    }
+
     // Initialize new access pattern offsets/sizes/strides with current values.
     SmallVector<OpFoldResult> newSourceOffsets = op.getSourceMixedOffsets();
     SmallVector<OpFoldResult> newSourceSizes = op.getSourceMixedSizes();
@@ -521,6 +535,8 @@ struct SubsumeLoopIntoDMA
                                 PatternRewriter &rewriter) const override {
     Operation *parentOp = op->getParentOp();
     if (!parentOp) return rewriter.notifyMatchFailure(op, "Has no parent");
+    if (!isa<LoopLikeOpInterface>(parentOp))
+      return rewriter.notifyMatchFailure(op, "Parent is not a loop-like op");
 
     uint8_t sourceMemspaceInt;
     uint8_t targetMemspaceInt;
@@ -528,11 +544,10 @@ struct SubsumeLoopIntoDMA
       sourceMemspaceInt = npuDmaOp.getSourceMemorySpaceAsUInt();
       targetMemspaceInt = npuDmaOp.getTargetMemorySpaceAsUInt();
 
-      // Check that the DMA this `amdaie.npu.dma_cpy_nd` operation is operating
-      // on, is not being touched within the same scope. Otherwise, the rewrite
-      // is not valid in general as it would be changing the temporal usage of
-      // the source DMA.
-
+      // Check that the DMA this `amdaie.npu.dma_cpy_nd` operation is
+      // operating on, is not being touched within the same scope. Otherwise,
+      // the rewrite is not valid in general as it would be changing the
+      // temporal usage of the source DMA.
       Value dma = npuDmaOp.getDma();
       for (Operation *userOp : dma.getUsers()) {
         if (userOp != op.getOperation() && parentOp->isProperAncestor(userOp)) {
@@ -579,7 +594,7 @@ class AMDAIEDmaLoopSubsumptionPass
   }
 
   AMDAIEDmaLoopSubsumptionPass() = default;
-  AMDAIEDmaLoopSubsumptionPass(const AMDAIEDmaLoopSubsumptionPass &pass){};
+  AMDAIEDmaLoopSubsumptionPass(const AMDAIEDmaLoopSubsumptionPass &pass) {};
   AMDAIEDmaLoopSubsumptionPass(const AMDAIEDmaLoopSubsumptionOptions &options)
       : AMDAIEDmaLoopSubsumptionBase(options) {}
   void runOnOperation() override;
