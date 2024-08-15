@@ -35,7 +35,7 @@ iree_cc_test(
   NAME
     test_0335_aie_dma_tile_dma_packet_switch_mode
   SRCS
-    test_0335_aie_dma_tile_dma_packet_switch_mode.cc
+        test_packet_switch_mode.cc
   DEPS
     iree-amd-aie::aie_runtime::iree_aie_runtime_static
 )
@@ -44,7 +44,7 @@ iree_lit_test(
   NAME
     test_0335_aie_dma_tile_dma_packet_switch_mode_lit_test
   TEST_FILE
-    test_0335_aie_dma_tile_dma_packet_switch_mode.cc
+        test_packet_switch_mode.cc
   TOOLS
     ::test_0335_aie_dma_tile_dma_packet_switch_mode
     FileCheck
@@ -56,7 +56,7 @@ iree_cc_test(
   NAME
     test_1114_aie_stream_switch_packet_switch_control_packets
   SRCS
-    test_1114_aie_stream_switch_packet_switch_control_packets.cc
+        test_control_packets.cc
   DEPS
     iree-amd-aie::aie_runtime::iree_aie_runtime_static
 )
@@ -65,7 +65,7 @@ iree_lit_test(
   NAME
     test_1114_aie_stream_switch_packet_switch_control_packets_lit_test
   TEST_FILE
-    test_1114_aie_stream_switch_packet_switch_control_packets.cc
+        test_control_packets.cc
   TOOLS
     ::test_1114_aie_stream_switch_packet_switch_control_packets
     FileCheck

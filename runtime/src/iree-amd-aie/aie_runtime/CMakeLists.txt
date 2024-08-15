@@ -110,6 +110,8 @@ target_include_directories(bootgen-lib PUBLIC ${_bootgen_source_dir}
 target_compile_definitions(bootgen-lib PUBLIC OPENSSL_USE_APPLINK)
 target_link_libraries(bootgen-lib PUBLIC OpenSSL::SSL OpenSSL::applink)
 
+replace_string_in_file("${_bootgen_source_dir}/main.cpp"
+                       "#include \"openssl/ms/applink.c\"" "//#include \"openssl/ms/applink.c\"")
 iree_cc_binary(
   NAME
     amdaie_bootgen
