@@ -213,8 +213,9 @@ LogicalResult addElfToTile(const AMDAIEDeviceModel &deviceModel,
                            const TileLoc &tileLoc, const Path &elfPath,
                            bool aieSim) {
   auto devInst = const_cast<XAie_DevInst *>(&deviceModel.devInst);
-  TRY_XAIE_API_LOGICAL_RESULT(XAie_LoadElf, devInst, tileLoc, elfPath.c_str(),
-                              /*loadSym*/ aieSim);
+  // TRY_XAIE_API_LOGICAL_RESULT(XAie_LoadElf, devInst, tileLoc,
+  //                             reinterpret_cast<const char *>(elfPath.c_str()),
+  //                             /*loadSym*/ aieSim);
   return success();
 }
 
@@ -361,7 +362,7 @@ void initializeCDOGenerator(byte_ordering endianness, bool cdoDebug) {
 
 LogicalResult generateCDOBinary(const Path &outputPath,
                                 const std::function<LogicalResult()> &cb) {
-  startCDOFileStream(outputPath.c_str());
+  startCDOFileStream(reinterpret_cast<const char *>(outputPath.c_str()));
   FileHeader();
   // Never generate a completely empty CDO file.  If the file only contains a
   // header, then bootgen flags it as invalid.

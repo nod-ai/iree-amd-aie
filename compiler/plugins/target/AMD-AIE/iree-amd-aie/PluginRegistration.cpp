@@ -9,8 +9,8 @@
 #include "aie/Passes.h"
 #include "aievec/AIEVecDialect.h"
 #include "aievec/Passes.h"
-#include "air/Dialect/AIR/AIRDialect.h"
-#include "air/Passes.h"
+// #include "air/Dialect/AIR/AIRDialect.h"
+// #include "air/Passes.h"
 #include "iree-amd-aie/IR/AMDAIEDialect.h"
 #include "iree-amd-aie/Target/AIETarget.h"
 #include "iree-amd-aie/Transforms/Passes.h"
@@ -35,8 +35,8 @@ struct AMDAIESession
     AMDAIE::registerAMDAIERoutePathfinderFlows();
     AMDAIE::registerAMDAIEDmaToNpu();
     AMDAIE::registerAMDAIEXToStandardPass();
-    AMDAIE::registerAIRConversionPasses();
-    AMDAIE::registerAIRTransformPasses();
+    // AMDAIE::registerAIRConversionPasses();
+    // AMDAIE::registerAIRTransformPasses();
     aievec::registerConvertAIEVecToLLVMPass();
     aievec::registerCanonicalizeVectorForAIEVecPass();
     aievec::registerLowerVectorToAIEVecPass();
@@ -44,8 +44,9 @@ struct AMDAIESession
 
   void onRegisterDialects(DialectRegistry &registry) override {
     registry.insert<AMDAIE::AMDAIEDialect, xilinx::AIE::AIEDialect,
-                    aievec::AIEVecDialect, xilinx::AIEX::AIEXDialect,
-                    xilinx::air::airDialect>();
+                    aievec::AIEVecDialect, xilinx::AIEX::AIEXDialect
+                    // ,xilinx::air::airDialect
+    >();
   }
 
   void populateHALTargetDevices(IREE::HAL::TargetDeviceList &targets) override {

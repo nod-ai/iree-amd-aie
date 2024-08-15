@@ -17,11 +17,11 @@ def AMDAIEAccessToAcquireRelease :
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEAccessToAcquireReleasePass()";
 }
 
-def AMDAIEAIRDmaToAMDAIEDma :
-  Pass<"iree-amdaie-air-dma-to-amdaie-dma", ""> {
-  let summary = "Convert AIR DMA ops into AMDAIE DMA ops operating on logical objectFifos";
-  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEAIRDmaAMDAIEDmaPass()";
-}
+// def AMDAIEAIRDmaToAMDAIEDma :
+//   Pass<"iree-amdaie-air-dma-to-amdaie-dma", ""> {
+//   let summary = "Convert AIR DMA ops into AMDAIE DMA ops operating on logical objectFifos";
+//   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEAIRDmaAMDAIEDmaPass()";
+// }
 
 def AMDAIEAssignLogicalObjectFifoDepth :
     Pass<"iree-amdaie-assign-logical-objectfifo-depth", ""> {
@@ -44,10 +44,10 @@ def AMDAIEAssignNpuDmaBdIds :
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEAssignNpuDmaBdIdsPass()";
 }
 
-def AMDAIEBridgeToAIR : Pass<"iree-amdaie-bridge-to-air", ""> {
-  let summary = "Perform transformations that allow hooking into AIR/AIE lowering";
-  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEBridgeToAIRPass()";
-}
+// def AMDAIEBridgeToAIR : Pass<"iree-amdaie-bridge-to-air", ""> {
+//   let summary = "Perform transformations that allow hooking into AIR/AIE lowering";
+//   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEBridgeToAIRPass()";
+// }
 
 def AMDAIEBufferizeToAllocation :
     InterfacePass<"iree-amdaie-bufferize-to-allocation", "mlir::FunctionOpInterface"> {
@@ -76,11 +76,11 @@ def AMDAIEBufferizeToAllocation :
   ];
 }
 
-def AMDAIECanonicalizeDma :
-  Pass<"iree-amdaie-canonicalize-dma", ""> {
-  let summary = "Apply caonicaliztions to air.dma_memcpy_nd op's";
-  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIECanonicalizeDmaPass()";
-}
+// def AMDAIECanonicalizeDma :
+//   Pass<"iree-amdaie-canonicalize-dma", ""> {
+//   let summary = "Apply caonicaliztions to air.dma_memcpy_nd op's";
+//   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIECanonicalizeDmaPass()";
+// }
 
 def AMDAIECanonicalizeDoublyStridedOp :
     Pass<"iree-amdaie-canonicalize-doubly-strided-op", ""> {
@@ -142,11 +142,11 @@ def AMDAIECreateReferenceToAllocation :
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIECreateReferenceToAllocationPass()";
 }
 
-def AMDAIEDecomposeLinalgExtPackUnPackToAIR :
-    Pass<"iree-amdaie-decompose-pack-unpack-to-air", ""> {
-  let summary = "Decompose LinalgExt pack/unpack ops into patterns compatible to AIR.";
-  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEDecomposeLinalgExtPackUnPackToAIRPass()";
-}
+// def AMDAIEDecomposeLinalgExtPackUnPackToAIR :
+//     Pass<"iree-amdaie-decompose-pack-unpack-to-air", ""> {
+//   let summary = "Decompose LinalgExt pack/unpack ops into patterns compatible to AIR.";
+//   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEDecomposeLinalgExtPackUnPackToAIRPass()";
+// }
 
 def AMDAIEDistributeCoresAndObjectFifos :
   Pass<"iree-amdaie-distribute-cores-and-objectfifos", "ModuleOp"> {

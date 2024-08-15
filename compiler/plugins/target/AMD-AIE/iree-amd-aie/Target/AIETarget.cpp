@@ -14,8 +14,8 @@
 #include "aievec/AIEVecDialect.h"
 #include "aievec/Passes.h"
 #include "aievec/XLLVMDialect.h"
-#include "air/Dialect/AIR/AIRDialect.h"
-#include "air/Dialect/AIRRt/AIRRtDialect.h"
+// #include "air/Dialect/AIR/AIRDialect.h"
+// #include "air/Dialect/AIRRt/AIRRtDialect.h"
 #include "iree-amd-aie/IR/AMDAIEAttrs.h"
 #include "iree-amd-aie/IR/AMDAIEDialect.h"
 #include "iree-amd-aie/Transforms/Passes.h"
@@ -191,7 +191,7 @@ class AIETargetBackend final : public IREE::HAL::TargetBackend {
         mlir::iree_compiler::IREE::Codegen::IREECodegenDialect,
         IREE::LinalgExt::IREELinalgExtDialect, transform::TransformDialect,
         xilinx::AIE::AIEDialect, xilinx::AIEX::AIEXDialect,
-        xilinx::air::airDialect, xilinx::airrt::AIRRtDialect,
+        // xilinx::air::airDialect, xilinx::airrt::AIRRtDialect,
         aievec::xllvm::XLLVMDialect, aievec::AIEVecDialect, emitc::EmitCDialect,
         LLVM::LLVMDialect, func::FuncDialect, cf::ControlFlowDialect,
         DLTIDialect, arith::ArithDialect, memref::MemRefDialect,

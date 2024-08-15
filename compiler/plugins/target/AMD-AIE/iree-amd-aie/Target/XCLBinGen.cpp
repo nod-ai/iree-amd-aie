@@ -9,6 +9,7 @@
 #include <filesystem>
 #include <fstream>
 #include <functional>
+#include <random>
 #include <regex>
 #include <sstream>
 #include <unordered_map>
@@ -33,9 +34,7 @@
 #define DEBUG_TYPE "amdaie-xclbingen"
 
 #ifdef _WIN32
-#include "windows.h"
 // For UUID stuff
-#include "rpcdce.h"
 #else
 #include <uuid/uuid.h>
 #endif
@@ -166,17 +165,17 @@ static FailureOr<Path> findAMDAIETool(std::string toolName,
   Path toolBinExe = "";
   if (!amdAIEInstallDir.empty()) {
     toolBinExe = amdAIEInstallDir / toolName;
-    if (llvm::sys::fs::exists(toolBinExe.native())) return toolBinExe;
+    if (llvm::sys::fs::exists(toolBinExe.string())) return toolBinExe;
 
     toolBinExe = amdAIEInstallDir / "bin" / toolName;
-    if (llvm::sys::fs::exists(toolBinExe.native())) return toolBinExe;
+    if (llvm::sys::fs::exists(toolBinExe.string())) return toolBinExe;
 
     toolBinExe = amdAIEInstallDir / "tools" / toolName;
-    if (llvm::sys::fs::exists(toolBinExe.native())) return toolBinExe;
+    if (llvm::sys::fs::exists(toolBinExe.string())) return toolBinExe;
   }
 
   toolBinExe = mlir::iree_compiler::findTool(toolName);
-  if (llvm::sys::fs::exists(toolBinExe.native())) return toolBinExe;
+  if (llvm::sys::fs::exists(toolBinExe.string())) return toolBinExe;
 
   llvm::errs() << "Could not find " << toolName
                << ". Check your --iree-amd-aie-install-dir flag";
@@ -222,7 +221,7 @@ std::pair<std::string, std::vector<std::string>> makeChessArgs(Path &vitisDir,
       "-I" + (aieToolsDir / "include").string()};
   // disassemble output
   if (verbose) flags.emplace_back("-d");
-  return {aieToolsDir / "bin" / "unwrapped" / "lnx64.o" / "xchesscc", flags};
+  return {(aieToolsDir / "bin" / "unwrapped" / "lnx64.o" / "xchesscc").string(), flags};
 }
 
 std::vector<std::string> makeChessEnv(Path &vitisDir) {
@@ -259,19 +258,44 @@ std::optional<std::string> dumpStrToDisk(const std::string &payload,
   return {};
 }
 
+namespace uuid {
+static std::random_device              rd;
+static std::mt19937                    gen(rd());
+static std::uniform_int_distribution<> dis(0, 15);
+static std::uniform_int_distribution<> dis2(8, 11);
+
+std::string generate_uuid_v4() {
+  std::stringstream ss;
+  int i;
+  ss << std::hex;
+  for (i = 0; i < 8; i++) {
+    ss << dis(gen);
+  }
+  ss << "-";
+  for (i = 0; i < 4; i++) {
+    ss << dis(gen);
+  }
+  ss << "-4";
+  for (i = 0; i < 3; i++) {
+    ss << dis(gen);
+  }
+  ss << "-";
+  ss << dis2(gen);
+  for (i = 0; i < 3; i++) {
+    ss << dis(gen);
+  }
+  ss << "-";
+  for (i = 0; i < 12; i++) {
+    ss << dis(gen);
+  };
+  return ss.str();
+}
+}
+
 static std::string getUUIDString() {
   std::string val;
 #ifdef _WIN32
-  UUID *uuid;
-  RPC_STATUS status;
-  status = UuidCreate(uuid);
-  if (status != RPC_S_OK) errs() << "Failed to create UUID\n";
-  RPC_CSTR *uuidstring;
-  status = UuidToStringA(uuid, uuidstring);
-  if (status != RPC_S_OK) errs() << "Failed to convert UUID to string\n";
-  val = std::string((char *)uuidstring);
-  status = RpcStringFreeA(uuidstring);
-  if (status != RPC_S_OK) errs() << "Failed to free UUID string\n";
+  val = uuid::generate_uuid_v4();
 #else
   uuid_t binuuid;
   uuid_generate_random(binuuid);
@@ -440,7 +464,7 @@ static LogicalResult assembleFileUsingPeano(
   args.emplace_back("-o");
   args.emplace_back(outputFile);
   if (verbose) args.emplace_back("-v");
-  if (!runTool(peanoDir / "bin" / "clang", args, verbose)) {
+  if (!runTool((peanoDir / "bin" / "clang").string(), args, verbose)) {
     llvm::errs() << "Failed to assemble " << outputFile << ".o with peano";
     return failure();
   }
@@ -457,9 +481,9 @@ static FailureOr<Path> assembleStringUsing(
     Path &outputDir, const std::vector<std::string> &extraArgs, Path &workDir,
     Path &toolDir, bool verbose = false) {
   Path inputFile = workDir / inputFileName;
-  if (auto maybeErr = dumpStrToDisk(inputFileStr, inputFile);
+  if (auto maybeErr = dumpStrToDisk(inputFileStr, inputFile.string());
       maybeErr.has_value()) {
-    llvm::errs() << "Failed to dump to disk " << inputFile
+    llvm::errs() << "Failed to dump to disk " << inputFile.string()
                  << " because: " << maybeErr;
     return failure();
   }
@@ -470,7 +494,7 @@ static FailureOr<Path> assembleStringUsing(
   } else {
     outputFile = outputFileName;
   }
-  if (failed(assembler(inputFile, outputFile, extraArgs, workDir, toolDir,
+  if (failed(assembler(inputFile.string(), outputFile.string(), extraArgs, workDir, toolDir,
                        verbose))) {
     llvm::errs() << "Failed to assemble " << outputFileName << ".o";
     return failure();
@@ -587,9 +611,9 @@ static LogicalResult generateCoreElfFiles(
         chessArgs.emplace_back(mmObjectFilePath->string());
       }
       chessArgs.emplace_back("+l");
-      chessArgs.emplace_back(bcfPath);
+      chessArgs.emplace_back(bcfPath.string());
       chessArgs.emplace_back("-o");
-      chessArgs.emplace_back(elfFile);
+      chessArgs.emplace_back(elfFile.string());
       std::vector<std::string> env = makeChessEnv(*vitisDir);
       if (!runTool(xChessCCExe, chessArgs, verbose, env)) {
         llvm::errs() << "Failed to link with xbridge";
@@ -624,11 +648,11 @@ static LogicalResult generateCoreElfFiles(
       flags.emplace_back("-Wl,--gc-sections");
       flags.emplace_back("-Wl,-T," + ldscriptPath.string());
       flags.emplace_back("-o");
-      flags.emplace_back(elfFile);
+      flags.emplace_back(elfFile.string());
       if (verbose) flags.emplace_back("-v");
       // we run clang (ie cc) so that libc, libm, crt0/1 paths are injected
       // automatically into the ld.lld invocation
-      if (!runTool(peanoDir / "bin" / "clang", flags, verbose)) {
+      if (!runTool((peanoDir / "bin" / "clang").string(), flags, verbose)) {
         llvm::errs() << "failed to link elf file for core(" << col << "," << row
                      << ")";
         return failure();
@@ -749,7 +773,7 @@ static LogicalResult generateXCLBin(
           ]
       }
     })";
-    if (auto maybeErr = dumpStrToDisk(memTopologyData, memTopologyJsonFile);
+    if (auto maybeErr = dumpStrToDisk(memTopologyData, memTopologyJsonFile.string());
         maybeErr.has_value()) {
       llvm::errs() << "failed to dump to disk mem_topology.json because: "
                    << *maybeErr;
@@ -796,7 +820,7 @@ static LogicalResult generateXCLBin(
       }
     )";
     if (auto maybeErr =
-            dumpStrToDisk(aiePartitionJsonData, aiePartitionJsonFile);
+            dumpStrToDisk(aiePartitionJsonData, aiePartitionJsonFile.string());
         maybeErr.has_value()) {
       llvm::errs() << "failed to dump to disk aie_partition.json because: "
                    << *maybeErr;
@@ -815,7 +839,7 @@ static LogicalResult generateXCLBin(
 
     auto kernelStr =
         llvm::formatv("{0:2}", json::Value(std::move(kernelsData)));
-    if (auto maybeErr = dumpStrToDisk(kernelStr, kernelsJsonFile);
+    if (auto maybeErr = dumpStrToDisk(kernelStr, kernelsJsonFile.string());
         maybeErr.has_value()) {
       llvm::errs() << "failed to dump to disk kernels.json because: "
                    << *maybeErr;
@@ -839,9 +863,9 @@ static LogicalResult generateXCLBin(
                        << "  {\n"
                        << "    name=aie_image, id=0x1c000000\n"
                        << "    { type=cdo\n"
-                       << "      file=" << tempDir << "/aie_cdo_elfs.bin\n"
-                       << "      file=" << tempDir << "/aie_cdo_init.bin\n"
-                       << "      file=" << tempDir << "/aie_cdo_enable.bin\n"
+                       << "      file=" << tempDir.string() << "/aie_cdo_elfs.bin\n"
+                       << "      file=" << tempDir.string() << "/aie_cdo_init.bin\n"
+                       << "      file=" << tempDir.string() << "/aie_cdo_enable.bin\n"
                        << "    }\n"
                        << "  }\n"
                        << "}";
@@ -851,15 +875,15 @@ static LogicalResult generateXCLBin(
   // Execute the bootgen command.
   {
     std::vector<std::string> flags{"-arch",  "versal",
-                                   "-image", designBifFile,
-                                   "-o",     tempDir / "design.pdi",
+                                   "-image", designBifFile.string(),
+                                   "-o",     (tempDir / "design.pdi").string(),
                                    "-w"};
 
     FailureOr<Path> bootgenBin =
         findAMDAIETool("amdaie_bootgen", amdAIEInstallDir);
 
     if (!succeeded(bootgenBin) ||
-        !runTool(bootgenBin.value(), flags, verbose)) {
+        !runTool(bootgenBin.value().string(), flags, verbose)) {
       llvm::errs() << "failed to execute bootgen";
       return failure();
     }
@@ -881,7 +905,7 @@ static LogicalResult generateXCLBin(
                                           "--force", "--input", *inputXclbin};
 
       if (!succeeded(xclbinutilBin) ||
-          !runTool(xclbinutilBin.value(), inputFlags, verbose)) {
+          !runTool(xclbinutilBin.value().string(), inputFlags, verbose)) {
         llvm::errs() << "failed to execute xclbinutil";
         return failure();
       }
@@ -918,7 +942,7 @@ static LogicalResult generateXCLBin(
       // rewrite aie partion json file
       if (auto maybeErr =
               dumpStrToDisk(formatv("{0:2}", *aieInputPartitionOutValue),
-                            aiePartitionJsonFile);
+                            aiePartitionJsonFile.string());
           maybeErr.has_value()) {
         llvm::errs()
             << "failed to dump to disk aie_input_partition.json because: "
@@ -930,11 +954,11 @@ static LogicalResult generateXCLBin(
       flags.insert(flags.end(), {"--add-replace-section", memArg});
     }
     flags.insert(flags.end(),
-                 {"--add-kernel", kernelsJsonFile, "--add-replace-section",
+                 {"--add-kernel", kernelsJsonFile.string(), "--add-replace-section",
                   partArg, "--force", "--output", std::string(Output)});
 
     if (!succeeded(xclbinutilBin) ||
-        !runTool(xclbinutilBin.value(), flags, verbose)) {
+        !runTool(xclbinutilBin.value().string(), flags, verbose)) {
       llvm::errs() << "failed to execute xclbinutil";
       return failure();
     }
@@ -1065,7 +1089,7 @@ static LogicalResult generateUnifiedObject(
     if (failed(chessIntrinsicsObjFile)) return failure();
   } else {
     Path LLVMIRFile = tempDir / "input.ll";
-    if (auto maybeErr = dumpStrToDisk(inputLLStr, LLVMIRFile);
+    if (auto maybeErr = dumpStrToDisk(inputLLStr, LLVMIRFile.string());
         maybeErr.has_value()) {
       llvm::errs() << "Failed to dump to disk input.ll"
                    << " because: " << maybeErr;
@@ -1076,20 +1100,20 @@ static LogicalResult generateUnifiedObject(
 
     Path OptLLVMIRFile = tempDir / "input.opt.ll";
     std::vector<std::string> args{
-        "-O2", "--inline-threshold=10", "-S", std::string(LLVMIRFile),
+        "-O2", "--inline-threshold=10", "-S", LLVMIRFile.string(),
         // missing from libc
-        "--disable-builtin=memset", "-o", std::string(OptLLVMIRFile)};
+        "--disable-builtin=memset", "-o", OptLLVMIRFile.string()};
     std::vector<std::string> peanoArgs = makePeanoOptArgs();
     args.reserve(args.size() + peanoArgs.size());
     args.insert(args.end(), peanoArgs.begin(), peanoArgs.end());
-    if (!runTool(peanoOptBin, args, verbose)) {
+    if (!runTool(peanoOptBin.string(), args, verbose)) {
       llvm::errs() << "Failed to optimize ll with peano";
       return failure();
     }
 
     if (!runTool(
-            peanoLLCBin,
-            {std::string(OptLLVMIRFile), "-O2",
+            peanoLLCBin.string(),
+            {OptLLVMIRFile.string(), "-O2",
              "--march=" + StringRef(targetArch).lower(), "--function-sections",
              "--filetype=obj", "-o", std::string(outputFile)},
             verbose)) {
@@ -1140,13 +1164,13 @@ LogicalResult aie2xclbin(
   output->keep();
 
   Path unifiedObj = Path(tempDir) / "input.o";
-  if (failed(generateUnifiedObject(ctx, moduleOp, unifiedObj, printIRBeforeAll,
+  if (failed(generateUnifiedObject(ctx, moduleOp, unifiedObj.string(), printIRBeforeAll,
                                    printIRAfterAll, printIRModuleScope, timing,
                                    useChess, verbose, tempDir, vitisDir,
                                    targetArch, peanoDir)))
     return moduleOp.emitOpError("Failed to generate unified object");
 
-  if (failed(generateCoreElfFiles(moduleOp, unifiedObj, tempDir, useChess,
+  if (failed(generateCoreElfFiles(moduleOp, unifiedObj.string(), tempDir, useChess,
                                   vitisDir, targetArch, verbose, peanoDir,
                                   ukernel)))
     return moduleOp.emitOpError("Failed to generate core ELF file(s)");

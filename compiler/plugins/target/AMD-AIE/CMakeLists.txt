@@ -15,4 +15,4 @@ iree_setup_c_src_root(
 add_subdirectory(iree-amd-aie)
 add_subdirectory(aie)
 add_subdirectory(aievec)
-add_subdirectory(air)
+#add_subdirectory(air)

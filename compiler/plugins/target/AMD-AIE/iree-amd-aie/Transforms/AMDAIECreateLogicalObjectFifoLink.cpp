@@ -117,8 +117,8 @@ LogicalResult createLogicalObjectFifoLink(
 
   // Sort the inputs and outputs on offset as the link operation uses this order
   // to generate correct data buffer sizes.
-  auto comparator = [](std::pair<DoublyStridedOpInterface, int64_t> a,
-                       std::pair<DoublyStridedOpInterface, int64_t> b) -> bool {
+  auto comparator = [](std::pair<DoublyStridedCopyOpInterface, int64_t> a,
+                       std::pair<DoublyStridedCopyOpInterface, int64_t> b) -> bool {
     return a.second < b.second;
   };
 
@@ -136,12 +136,12 @@ LogicalResult createLogicalObjectFifoLink(
     return failure();
   }
 
-  SmallVector<Value> inResults = llvm::map_to_vector(
-      ins, [](std::pair<DoublyStridedOpInterface, int64_t> elem) {
+  SmallVector<Value> inResults = llvm::map_to_vector<8>(
+      ins, [](std::pair<DoublyStridedCopyOpInterface, int64_t> elem) -> Value {
         return cast<Value>(elem.first->getResult(0));
       });
   SmallVector<Value> outResults = llvm::map_to_vector(
-      outs, [](std::pair<DoublyStridedOpInterface, int64_t> elem) {
+      outs, [](std::pair<DoublyStridedCopyOpInterface, int64_t> elem) -> Value {
         return cast<Value>(elem.first->getResult(0));
       });
 

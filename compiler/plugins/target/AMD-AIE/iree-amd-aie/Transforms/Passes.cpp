@@ -8,8 +8,8 @@
 
 #include "aie/Passes.h"
 #include "aievec/Passes.h"
-#include "air/Conversion/Passes.h"
-#include "air/Transform/Passes.h"
+// #include "air/Conversion/Passes.h"
+// #include "air/Transform/Passes.h"
 #include "iree-amd-aie/IR/AMDAIEAttrs.h"
 #include "iree-dialects/Dialect/LinalgTransform/Passes.h"
 #include "iree/compiler/Codegen/Common/Passes.h"
@@ -546,9 +546,9 @@ void buildAMDAIETransformPassPipeline(OpPassManager &variantPassManager,
   }
   modulePassManager.addPass(createLowerUKernelOpsToCallsPass());
   if (clUseLowerToAIEPipeline == LowerToAIEPassPipeline::ObjectFifo) {
-    addAMDAIEObjectFifoLoweringPasses(modulePassManager);
+    // addAMDAIEObjectFifoLoweringPasses(modulePassManager);
   } else if (clUseLowerToAIEPipeline == LowerToAIEPassPipeline::AIR) {
-    addMLIRAIRLoweringPasses(modulePassManager, device);
+    // addMLIRAIRLoweringPasses(modulePassManager, device);
   } else {
     assert(
         false &&
@@ -564,225 +564,225 @@ void buildAMDAIETransformPassPipeline(OpPassManager &variantPassManager,
   });
 }
 
-void addAMDAIEObjectFifoLoweringPasses(OpPassManager &passManager) {
-  passManager.addPass(createEraseHALDescriptorTypeFromMemRefPass());
-  passManager.addPass(memref::createFoldMemRefAliasOpsPass());
-  passManager.addPass(createAMDAIEPackToDmaPass());
-  passManager.addPass(xilinx::air::createCopyToDmaPass());
-
-  passManager.addPass(createAMDAIEAIRDmaAMDAIEDmaPass());
-  passManager.addPass(createAMDAIENormalizeLoopBoundsPass());
-  passManager.addPass(createAMDAIEInsertCoresPass());
-  passManager.addPass(createAMDAIELocalizeLogicalObjectFifoPass());
-  passManager.addPass(createCSEPass());
-
-  passManager.addPass(createAMDAIEDistributeCoresAndObjectFifosPass());
-  passManager.addPass(createCSEPass());
-  passManager.addPass(createCanonicalizerPass());
-
-  passManager.addPass(createAMDAIEDmaToCircularDmaPass());
-  passManager.addNestedPass<func::FuncOp>(createAMDAIECreateAIEWorkgroupPass());
-  passManager.addPass(createCSEPass());
-
-  passManager.addPass(createAMDAIECanonicalizeDoublyStridedOpPass());
-  passManager.addPass(createAMDAIEFlattenLogicalObjectFifoPass());
-  passManager.addPass(createAMDAIEAssignLogicalObjectFifoDepthPass());
-  passManager.addPass(createAMDAIEAccessToAcquireReleasePass());
-  passManager.addPass(createAMDAIENoneAccessToTemporaryBufferPass());
-  passManager.addPass(createCSEPass());
-  passManager.addPass(createCanonicalizerPass());
-
-  passManager.addPass(createAMDAIEDmaLoopSubsumptionPass());
-  passManager.addPass(createCSEPass());
-  passManager.addPass(createCanonicalizerPass());
-
-  passManager.addPass(createAMDAIECombineStridedOpsPass());
-  passManager.addPass(createCSEPass());
-  passManager.addPass(createCanonicalizerPass());
-
-  passManager.addPass(createAMDAIEAssignNpuDmaBdIdsPass());
-  passManager.addPass(createCSEPass());
-  passManager.addPass(createCanonicalizerPass());
-
-  passManager.addPass(createAMDAIEControlCodeLoopUnrollPass());
-  passManager.addPass(createCSEPass());
-  passManager.addPass(createCanonicalizerPass());
-
-  passManager.addPass(createAMDAIECreateLogicalObjectFifoLinkPass());
-  passManager.addPass(createAMDAIECanonicalizeDoublyStridedOpPass());
-  passManager.addPass(createCanonicalizerPass());
-
-  passManager.addPass(createAMDAIEConvertCoreForallToForPass());
-  passManager.addPass(createCanonicalizerPass());
-  passManager.addPass(createAMDAIECoreLoopUnrollPass());
-  passManager.addPass(createAMDAIELowerToAIEPass());
-  passManager.addPass(createCanonicalizerPass());
-
-  passManager.addPass(createConvertLinalgToLoopsPass());
-
-  // Now lower using the AIE passes from MLIR-AIE.
-  addMLIRAIELoweringPasses(passManager);
-}
+// void addAMDAIEObjectFifoLoweringPasses(OpPassManager &passManager) {
+//   passManager.addPass(createEraseHALDescriptorTypeFromMemRefPass());
+//   passManager.addPass(memref::createFoldMemRefAliasOpsPass());
+//   passManager.addPass(createAMDAIEPackToDmaPass());
+//   passManager.addPass(xilinx::air::createCopyToDmaPass());
+//
+//   passManager.addPass(createAMDAIEAIRDmaAMDAIEDmaPass());
+//   passManager.addPass(createAMDAIENormalizeLoopBoundsPass());
+//   passManager.addPass(createAMDAIEInsertCoresPass());
+//   passManager.addPass(createAMDAIELocalizeLogicalObjectFifoPass());
+//   passManager.addPass(createCSEPass());
+//
+//   passManager.addPass(createAMDAIEDistributeCoresAndObjectFifosPass());
+//   passManager.addPass(createCSEPass());
+//   passManager.addPass(createCanonicalizerPass());
+//
+//   passManager.addPass(createAMDAIEDmaToCircularDmaPass());
+//   passManager.addNestedPass<func::FuncOp>(createAMDAIECreateAIEWorkgroupPass());
+//   passManager.addPass(createCSEPass());
+//
+//   passManager.addPass(createAMDAIECanonicalizeDoublyStridedOpPass());
+//   passManager.addPass(createAMDAIEFlattenLogicalObjectFifoPass());
+//   passManager.addPass(createAMDAIEAssignLogicalObjectFifoDepthPass());
+//   passManager.addPass(createAMDAIEAccessToAcquireReleasePass());
+//   passManager.addPass(createAMDAIENoneAccessToTemporaryBufferPass());
+//   passManager.addPass(createCSEPass());
+//   passManager.addPass(createCanonicalizerPass());
+//
+//   passManager.addPass(createAMDAIEDmaLoopSubsumptionPass());
+//   passManager.addPass(createCSEPass());
+//   passManager.addPass(createCanonicalizerPass());
+//
+//   passManager.addPass(createAMDAIECombineStridedOpsPass());
+//   passManager.addPass(createCSEPass());
+//   passManager.addPass(createCanonicalizerPass());
+//
+//   passManager.addPass(createAMDAIEAssignNpuDmaBdIdsPass());
+//   passManager.addPass(createCSEPass());
+//   passManager.addPass(createCanonicalizerPass());
+//
+//   passManager.addPass(createAMDAIEControlCodeLoopUnrollPass());
+//   passManager.addPass(createCSEPass());
+//   passManager.addPass(createCanonicalizerPass());
+//
+//   passManager.addPass(createAMDAIECreateLogicalObjectFifoLinkPass());
+//   passManager.addPass(createAMDAIECanonicalizeDoublyStridedOpPass());
+//   passManager.addPass(createCanonicalizerPass());
+//
+//   passManager.addPass(createAMDAIEConvertCoreForallToForPass());
+//   passManager.addPass(createCanonicalizerPass());
+//   passManager.addPass(createAMDAIECoreLoopUnrollPass());
+//   passManager.addPass(createAMDAIELowerToAIEPass());
+//   passManager.addPass(createCanonicalizerPass());
+//
+//   passManager.addPass(createConvertLinalgToLoopsPass());
+//
+//   // Now lower using the AIE passes from MLIR-AIE.
+//   addMLIRAIELoweringPasses(passManager);
+// }
 
 // TODO (Erwei): The "packPeel" temporary argument should be removed once
 // pack-peel and pack-pad share the same pass pipeline. See TODOs inlined below
 // for details.
-void addMLIRAIRLoweringPasses(OpPassManager &passManager, AMDAIEDevice device) {
-  // Add passes for preparing for lowering to MLIR-AIR
-  passManager.addPass(createEraseHALDescriptorTypeFromMemRefPass());
-  passManager.addPass(memref::createFoldMemRefAliasOpsPass());
-  passManager.addPass(createAMDAIEBridgeToAIRPass());
-  // TODO (Erwei): Figure out a way to work with AMDAIEPackToDmaPass.
-  if (clUseTilePipeline == TilePassPipeline::PackPeelPipeline)
-    passManager.addPass(createAMDAIEDecomposeLinalgExtPackUnPackToAIRPass());
-  else
-    passManager.addPass(createAMDAIEPackToDmaPass());
-
-  // TODO(newling) adding createCanonicalizerPass introduces a dma copy lowering
-  // failure. Understand and fix.
-  passManager.addPass(createCSEPass());
-  {
-    xilinx::air::ParallelToHerdOptions options;
-    options.clAssignDepth = 1;
-    passManager.addPass(xilinx::air::createParallelToHerdPass(options));
-  }
-  {
-    xilinx::air::ParallelToLaunchOptions options;
-    options.clHasSegment = true;
-    passManager.addPass(xilinx::air::createParallelToLaunchPass(options));
-  }
-  passManager.addPass(createCanonicalizerPass());
-  passManager.addPass(createCSEPass());
-  passManager.addPass(createAMDAIECanonicalizeDmaPass());
-  passManager.addPass(xilinx::air::createCopyToDmaPass());
-  passManager.addPass(createCanonicalizerPass());
-  passManager.addPass(createCSEPass());
-
-  passManager.addPass(xilinx::air::createAIRDependencyPass());
-  if (!(clUseTilePipeline == TilePassPipeline::PackPeelPipeline &&
-        clMatmulElementwiseFusion)) {
-    passManager.addPass(xilinx::air::createAIRDependencyScheduleOptPass());
-    passManager.addPass(xilinx::air::createAIRSpecializeDmaBroadcast());
-  }
-  passManager.addPass(xilinx::air::createDmaToChannelPass());
-  passManager.addPass(createCanonicalizerPass());
-  passManager.addPass(createCSEPass());
-  passManager.addPass(xilinx::air::createAIRDependencyCanonicalizePass());
-  passManager.addPass(createCanonicalizerPass());
-  passManager.addPass(createCSEPass());
-  // TODO (Erwei): This pass currently doesn't support pack-peel pipeline. This
-  // pass needs to work in order to get multiple AIE columns to work.
-  if (clUseTilePipeline != TilePassPipeline::PackPeelPipeline)
-    passManager.addNestedPass<func::FuncOp>(
-        xilinx::air::createAIRSplitL2MemrefForBufferConstraintPass());
-  passManager.addPass(xilinx::air::createAIRIsolateAsyncDmaLoopNests());
-  passManager.addPass(createCanonicalizerPass());
-  passManager.addPass(createCSEPass());
-  {
-    xilinx::air::AIRFuseChannelsOptions options;
-    std::vector<std::string> mode;
-    if (clUseTilePipeline == TilePassPipeline::PackPeelPipeline &&
-        clMatmulElementwiseFusion) {
-      mode.push_back("L1");
-    }
-    options.clAggressiveMode = ArrayRef(mode);
-    passManager.addPass(xilinx::air::createAIRFuseChannels(options));
-  }
-  passManager.addPass(createCanonicalizerPass());
-  passManager.addPass(createCSEPass());
-  passManager.addNestedPass<func::FuncOp>(
-      xilinx::air::createAIRSegmentLoopFusion());
-
-  passManager.addPass(
-      xilinx::air::createAIRLabelScfForLoopForPingPongPattern());
-  {
-    xilinx::air::AIRPingPongTransformationPatternOptions options;
-    options.clKeepMemrefDealloc = true;
-    passManager.addPass(
-        xilinx::air::createAIRPingPongTransformationPattern(options));
-  }
-  passManager.addPass(createCanonicalizerPass());
-  passManager.addPass(createCSEPass());
-
-  passManager.addPass(
-      xilinx::air::createAIRSpecializeChannelWrapAndStridePattern());
-  passManager.addPass(createCanonicalizerPass());
-  passManager.addPass(createCSEPass());
-
-  {
-    xilinx::air::AIRCollapseHerdPassOptions options;
-    options.clMaxColSize = 4;
-    passManager.addNestedPass<func::FuncOp>(
-        xilinx::air::createAIRCollapseHerdPass(options));
-  }
-  passManager.addPass(createCanonicalizerPass());
-  passManager.addPass(createCSEPass());
-
-  {
-    xilinx::air::AIRHerdPlacementPassOptions options;
-    options.clNumRows = 4;
-    options.clNumCols = 4;
-    options.clAnchorPointRow = 2;
-    options.clAnchorPointCol = 0;
-    passManager.addPass(xilinx::air::createAIRHerdPlacementPass(options));
-  }
-  passManager.addPass(createCanonicalizerPass());
-  passManager.addPass(createCSEPass());
-
-  passManager.addNestedPass<func::FuncOp>(
-      xilinx::air::createAIRRenumberDmaIdPass());
-  passManager.addNestedPass<func::FuncOp>(
-      mlir::createConvertLinalgToLoopsPass());
-
-  {
-    xilinx::air::AIRToAIEOptions options;
-    options.clRowOffset = 2;
-    options.clColOffset = 0;
-    options.clDevice = stringifyEnum(device);
-    options.clEmitWhileLoop = true;
-    passManager.addPass(xilinx::air::createAIRToAIEPass(options));
-  }
-  passManager.addPass(createCanonicalizerPass());
-  passManager.addPass(xilinx::air::createAIRLoweringPass());
-  {
-    xilinx::air::AffineLoopOptPassOptions options;
-    // tile_sizes contains a list of N tiling factors for the N innermost loop
-    // nests lowered from the outer scf.forall. The N innermost loops were tiled
-    // with given factors, and subsequently unrolled in
-    // AIRUnrollOuterPerfectlyNestedLoopsPass, to enforce SHIM DMA BD count
-    // within the hardware limit.
-    std::vector<unsigned> tile_sizes;
-    if (clUseTilePipeline == TilePassPipeline::PackPeelPipeline) {
-      tile_sizes = {2, 2};
-    } else if (clUseTilePipeline == TilePassPipeline::PadPackPipeline) {
-      tile_sizes = {4, 4};
-    } else
-      tile_sizes = {};
-    options.clTileSizes = ArrayRef(tile_sizes);
-    passManager.addNestedPass<func::FuncOp>(
-        xilinx::air::createAffineLoopOptPass(options));
-  }
-  passManager.addPass(createCanonicalizerPass());
-  {
-    // AIRUnrollOuterPerfectlyNestedLoopsPass unrolls the remaining outer loop
-    // nests that were left untiled by the previous AffineLoopOptPass,
-    // generating NPU sequence representing the SHIM DMA BDs.
-    xilinx::air::AIRUnrollOuterPerfectlyNestedLoopsPassOptions options;
-    if (clUseTilePipeline == TilePassPipeline::ConvDecomposePipeline)
-      options.clDepth = 4;
-    else
-      options.clDepth = 2;
-    passManager.addNestedPass<func::FuncOp>(
-        xilinx::air::createAIRUnrollOuterPerfectlyNestedLoopsPass(options));
-  }
-  passManager.addPass(mlir::affine::createAffineExpandIndexOpsPass());
-  passManager.addPass(createAMDAIELowerFuncArgsPass());
-  passManager.addPass(xilinx::airrt::createAIRRtToNpuPass());
-  passManager.addPass(createCanonicalizerPass());
-
-  // Now lower using the AIE passes from MLIR-AIE.
-  addMLIRAIELoweringPasses(passManager);
-}
+// void addMLIRAIRLoweringPasses(OpPassManager &passManager, AMDAIEDevice device) {
+//   // Add passes for preparing for lowering to MLIR-AIR
+//   passManager.addPass(createEraseHALDescriptorTypeFromMemRefPass());
+//   passManager.addPass(memref::createFoldMemRefAliasOpsPass());
+//   passManager.addPass(createAMDAIEBridgeToAIRPass());
+//   // TODO (Erwei): Figure out a way to work with AMDAIEPackToDmaPass.
+//   if (clUseTilePipeline == TilePassPipeline::PackPeelPipeline)
+//     passManager.addPass(createAMDAIEDecomposeLinalgExtPackUnPackToAIRPass());
+//   else
+//     passManager.addPass(createAMDAIEPackToDmaPass());
+//
+//   // TODO(newling) adding createCanonicalizerPass introduces a dma copy lowering
+//   // failure. Understand and fix.
+//   passManager.addPass(createCSEPass());
+//   {
+//     xilinx::air::ParallelToHerdOptions options;
+//     options.clAssignDepth = 1;
+//     passManager.addPass(xilinx::air::createParallelToHerdPass(options));
+//   }
+//   {
+//     xilinx::air::ParallelToLaunchOptions options;
+//     options.clHasSegment = true;
+//     passManager.addPass(xilinx::air::createParallelToLaunchPass(options));
+//   }
+//   passManager.addPass(createCanonicalizerPass());
+//   passManager.addPass(createCSEPass());
+//   passManager.addPass(createAMDAIECanonicalizeDmaPass());
+//   passManager.addPass(xilinx::air::createCopyToDmaPass());
+//   passManager.addPass(createCanonicalizerPass());
+//   passManager.addPass(createCSEPass());
+//
+//   passManager.addPass(xilinx::air::createAIRDependencyPass());
+//   if (!(clUseTilePipeline == TilePassPipeline::PackPeelPipeline &&
+//         clMatmulElementwiseFusion)) {
+//     passManager.addPass(xilinx::air::createAIRDependencyScheduleOptPass());
+//     passManager.addPass(xilinx::air::createAIRSpecializeDmaBroadcast());
+//   }
+//   passManager.addPass(xilinx::air::createDmaToChannelPass());
+//   passManager.addPass(createCanonicalizerPass());
+//   passManager.addPass(createCSEPass());
+//   passManager.addPass(xilinx::air::createAIRDependencyCanonicalizePass());
+//   passManager.addPass(createCanonicalizerPass());
+//   passManager.addPass(createCSEPass());
+//   // TODO (Erwei): This pass currently doesn't support pack-peel pipeline. This
+//   // pass needs to work in order to get multiple AIE columns to work.
+//   if (clUseTilePipeline != TilePassPipeline::PackPeelPipeline)
+//     passManager.addNestedPass<func::FuncOp>(
+//         xilinx::air::createAIRSplitL2MemrefForBufferConstraintPass());
+//   passManager.addPass(xilinx::air::createAIRIsolateAsyncDmaLoopNests());
+//   passManager.addPass(createCanonicalizerPass());
+//   passManager.addPass(createCSEPass());
+//   {
+//     xilinx::air::AIRFuseChannelsOptions options;
+//     std::vector<std::string> mode;
+//     if (clUseTilePipeline == TilePassPipeline::PackPeelPipeline &&
+//         clMatmulElementwiseFusion) {
+//       mode.push_back("L1");
+//     }
+//     options.clAggressiveMode = ArrayRef(mode);
+//     passManager.addPass(xilinx::air::createAIRFuseChannels(options));
+//   }
+//   passManager.addPass(createCanonicalizerPass());
+//   passManager.addPass(createCSEPass());
+//   passManager.addNestedPass<func::FuncOp>(
+//       xilinx::air::createAIRSegmentLoopFusion());
+//
+//   passManager.addPass(
+//       xilinx::air::createAIRLabelScfForLoopForPingPongPattern());
+//   {
+//     xilinx::air::AIRPingPongTransformationPatternOptions options;
+//     options.clKeepMemrefDealloc = true;
+//     passManager.addPass(
+//         xilinx::air::createAIRPingPongTransformationPattern(options));
+//   }
+//   passManager.addPass(createCanonicalizerPass());
+//   passManager.addPass(createCSEPass());
+//
+//   passManager.addPass(
+//       xilinx::air::createAIRSpecializeChannelWrapAndStridePattern());
+//   passManager.addPass(createCanonicalizerPass());
+//   passManager.addPass(createCSEPass());
+//
+//   {
+//     xilinx::air::AIRCollapseHerdPassOptions options;
+//     options.clMaxColSize = 4;
+//     passManager.addNestedPass<func::FuncOp>(
+//         xilinx::air::createAIRCollapseHerdPass(options));
+//   }
+//   passManager.addPass(createCanonicalizerPass());
+//   passManager.addPass(createCSEPass());
+//
+//   {
+//     xilinx::air::AIRHerdPlacementPassOptions options;
+//     options.clNumRows = 4;
+//     options.clNumCols = 4;
+//     options.clAnchorPointRow = 2;
+//     options.clAnchorPointCol = 0;
+//     passManager.addPass(xilinx::air::createAIRHerdPlacementPass(options));
+//   }
+//   passManager.addPass(createCanonicalizerPass());
+//   passManager.addPass(createCSEPass());
+//
+//   passManager.addNestedPass<func::FuncOp>(
+//       xilinx::air::createAIRRenumberDmaIdPass());
+//   passManager.addNestedPass<func::FuncOp>(
+//       mlir::createConvertLinalgToLoopsPass());
+//
+//   {
+//     xilinx::air::AIRToAIEOptions options;
+//     options.clRowOffset = 2;
+//     options.clColOffset = 0;
+//     options.clDevice = stringifyEnum(device);
+//     options.clEmitWhileLoop = true;
+//     passManager.addPass(xilinx::air::createAIRToAIEPass(options));
+//   }
+//   passManager.addPass(createCanonicalizerPass());
+//   passManager.addPass(xilinx::air::createAIRLoweringPass());
+//   {
+//     xilinx::air::AffineLoopOptPassOptions options;
+//     // tile_sizes contains a list of N tiling factors for the N innermost loop
+//     // nests lowered from the outer scf.forall. The N innermost loops were tiled
+//     // with given factors, and subsequently unrolled in
+//     // AIRUnrollOuterPerfectlyNestedLoopsPass, to enforce SHIM DMA BD count
+//     // within the hardware limit.
+//     std::vector<unsigned> tile_sizes;
+//     if (clUseTilePipeline == TilePassPipeline::PackPeelPipeline) {
+//       tile_sizes = {2, 2};
+//     } else if (clUseTilePipeline == TilePassPipeline::PadPackPipeline) {
+//       tile_sizes = {4, 4};
+//     } else
+//       tile_sizes = {};
+//     options.clTileSizes = ArrayRef(tile_sizes);
+//     passManager.addNestedPass<func::FuncOp>(
+//         xilinx::air::createAffineLoopOptPass(options));
+//   }
+//   passManager.addPass(createCanonicalizerPass());
+//   {
+//     // AIRUnrollOuterPerfectlyNestedLoopsPass unrolls the remaining outer loop
+//     // nests that were left untiled by the previous AffineLoopOptPass,
+//     // generating NPU sequence representing the SHIM DMA BDs.
+//     xilinx::air::AIRUnrollOuterPerfectlyNestedLoopsPassOptions options;
+//     if (clUseTilePipeline == TilePassPipeline::ConvDecomposePipeline)
+//       options.clDepth = 4;
+//     else
+//       options.clDepth = 2;
+//     passManager.addNestedPass<func::FuncOp>(
+//         xilinx::air::createAIRUnrollOuterPerfectlyNestedLoopsPass(options));
+//   }
+//   passManager.addPass(mlir::affine::createAffineExpandIndexOpsPass());
+//   passManager.addPass(createAMDAIELowerFuncArgsPass());
+//   passManager.addPass(xilinx::airrt::createAIRRtToNpuPass());
+//   passManager.addPass(createCanonicalizerPass());
+//
+//   // Now lower using the AIE passes from MLIR-AIE.
+//   addMLIRAIELoweringPasses(passManager);
+// }
 
 void addMLIRAIELoweringPasses(OpPassManager &passManager) {
   passManager.addPass(createLowerAffinePass());

@@ -45,11 +45,11 @@ iree_cc_library(
   SRCS
     "AMDAIEAccessToAcquireRelease.cpp"
     "AMDAIEAddLoweringStrategy.cpp"
-    "AMDAIEAIRDmaToAMDAIEDma.cpp"
+#    "AMDAIEAIRDmaToAMDAIEDma.cpp"
     "AMDAIEAssignLogicalObjectFifoDepth.cpp"
     "AMDAIEAssignNpuDmaBdIds.cpp"
     "AMDAIEBufferizeToAllocation.cpp"
-    "AMDAIECanonicalizeDma.cpp"
+#    "AMDAIECanonicalizeDma.cpp"
     "AMDAIECanonicalizeDoublyStridedOp.cpp"
     "AMDAIECombineStridedOps.cpp"
     "AMDAIEControlCodeLoopUnroll.cpp"
@@ -88,8 +88,8 @@ iree_cc_library(
     "AMDAIETileAndFuse.cpp"
     "AMDAIEUtils.cpp"
     "AMDAIEVectorization.cpp"
-    "BridgeToAIRPass.cpp"
-    "DecomposeLinalgExtPackUnPackToAIR.cpp"
+#    "BridgeToAIRPass.cpp"
+#    "DecomposeLinalgExtPackUnPackToAIR.cpp"
     "Cleanup.cpp"
     "KernelDispatch.cpp"
     "Passes.cpp"
@@ -110,8 +110,8 @@ iree_cc_library(
     iree::target::amd-aie::aie::AIEPasses
     iree::target::amd-aie::aie::AIEXDialectIR
     iree::target::amd-aie::aievec::AIEVecConvertToLLVM
-    iree::target::amd-aie::air::AIRConversionPasses
-    iree::target::amd-aie::air::AIRTransformPasses
+#    iree::target::amd-aie::air::AIRConversionPasses
+#    iree::target::amd-aie::air::AIRTransformPasses
     IREELinalgTransformDialectPasses
     MLIRFuncAllExtensions
     MLIRFuncDialect

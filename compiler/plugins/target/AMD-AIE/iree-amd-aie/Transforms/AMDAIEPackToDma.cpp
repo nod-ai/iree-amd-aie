@@ -4,7 +4,7 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#include "air/Dialect/AIR/AIRDialect.h"
+// #include "air/Dialect/AIR/AIRDialect.h"
 #include "iree-amd-aie/Transforms/Passes.h"
 #include "iree/compiler/Dialect/LinalgExt/IR/LinalgExtDialect.h"
 #include "iree/compiler/Dialect/LinalgExt/IR/LinalgExtOps.h"
@@ -273,15 +273,15 @@ LogicalResult rewriteAsDma(IRRewriter &rewriter, Operation *op, Value input,
   }
   // Async Tokens are added to the op in later passes.
   SmallVector<Value, 2> asyncTokens;
-  rewriter.replaceOpWithNewOp<xilinx::air::DmaMemcpyNdOp>(
-      op, SmallVector<Type, 1>{}, asyncTokens, dstOp->getResult(0),
-      getValueOrCreateConstantIndexOp(rewriter, loc, dstOffsets),
-      getValueOrCreateConstantIndexOp(rewriter, loc, dstShape),
-      getValueOrCreateConstantIndexOp(rewriter, loc, dstBaseStrides),
-      sourceOp->getResult(0),
-      getValueOrCreateConstantIndexOp(rewriter, loc, srcOffsets),
-      getValueOrCreateConstantIndexOp(rewriter, loc, srcShape),
-      getValueOrCreateConstantIndexOp(rewriter, loc, srcBaseStrides));
+  // rewriter.replaceOpWithNewOp<xilinx::air::DmaMemcpyNdOp>(
+  //     op, SmallVector<Type, 1>{}, asyncTokens, dstOp->getResult(0),
+  //     getValueOrCreateConstantIndexOp(rewriter, loc, dstOffsets),
+  //     getValueOrCreateConstantIndexOp(rewriter, loc, dstShape),
+  //     getValueOrCreateConstantIndexOp(rewriter, loc, dstBaseStrides),
+  //     sourceOp->getResult(0),
+  //     getValueOrCreateConstantIndexOp(rewriter, loc, srcOffsets),
+  //     getValueOrCreateConstantIndexOp(rewriter, loc, srcShape),
+  //     getValueOrCreateConstantIndexOp(rewriter, loc, srcBaseStrides));
   return success();
 }
 
@@ -300,8 +300,9 @@ class AMDAIEPackToDmaPass
  public:
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<tensor::TensorDialect, linalg::LinalgDialect,
-                    IREE::LinalgExt::IREELinalgExtDialect,
-                    xilinx::air::airDialect>();
+                    IREE::LinalgExt::IREELinalgExtDialect
+                    // ,xilinx::air::airDialect
+    >();
   }
 
   AMDAIEPackToDmaPass() = default;

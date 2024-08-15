@@ -565,7 +565,7 @@ iree_cc_library(
 
 # this one is private because this lib should wrap/encapsulate aie-rt
 target_link_libraries(iree-amd-aie_aie_runtime_iree_aie_runtime_static
-                      PRIVATE xaiengine)
+                      PUBLIC xaiengine)
 # this one is public because it's safe and it's easier than forcing
 # consumers (like tests) to link individually
 target_link_libraries(iree-amd-aie_aie_runtime_iree_aie_runtime_static

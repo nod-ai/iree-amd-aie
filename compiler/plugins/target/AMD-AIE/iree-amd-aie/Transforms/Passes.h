@@ -15,11 +15,11 @@
 namespace mlir::iree_compiler::AMDAIE {
 
 /// Add passes to lower to AIE objectFifos.
-void addAMDAIEObjectFifoLoweringPasses(OpPassManager &passManager);
+// void addAMDAIEObjectFifoLoweringPasses(OpPassManager &passManager);
 
 /// Add passes to lower from MLIR-AIR through AIE. This is
 /// currently the default passes used for lowering after IREEs tiling.
-void addMLIRAIRLoweringPasses(OpPassManager &passManager, AMDAIEDevice device);
+// void addMLIRAIRLoweringPasses(OpPassManager &passManager, AMDAIEDevice device);
 
 /// Add lowering passes from MLIR-AIE. This is
 /// currently the default passes used for lowering from AIE dialect.
@@ -55,7 +55,7 @@ std::unique_ptr<Pass> createAMDAIEAccessToAcquireReleasePass();
 
 /// Create a pass to convert AIR DMA ops into AMDAIE DMA ops operating on
 /// logical objectFifos.
-std::unique_ptr<Pass> createAMDAIEAIRDmaAMDAIEDmaPass();
+// std::unique_ptr<Pass> createAMDAIEAIRDmaAMDAIEDmaPass();
 
 /// Create a pass to assign a buffer depth to
 /// `amdaie.logicalobjectfifo.from_memref` ops.
@@ -67,7 +67,7 @@ std::unique_ptr<Pass> createAMDAIEAssignNpuDmaBdIdsPass();
 
 /// Create a pass to do some rewrites that help bridging the path to AIR/AIE
 /// lowering.
-std::unique_ptr<Pass> createAMDAIEBridgeToAIRPass();
+// std::unique_ptr<Pass> createAMDAIEBridgeToAIRPass();
 
 /// Pass to bufferize the targeted operation and materialize the result in a
 /// new allocation.
@@ -75,7 +75,7 @@ std::unique_ptr<Pass> createAMDAIEBufferizeToAllocationPass(
     AMDAIEBufferizeToAllocationOptions options = {});
 
 /// Create pass to apply canonicalization to air.dma_memcpy_nd op's.
-std::unique_ptr<Pass> createAMDAIECanonicalizeDmaPass();
+// std::unique_ptr<Pass> createAMDAIECanonicalizeDmaPass();
 
 /// Create pass to canonicalize doubly strided operations.
 std::unique_ptr<Pass> createAMDAIECanonicalizeDoublyStridedOpPass(
@@ -113,7 +113,7 @@ std::unique_ptr<Pass> createAMDAIECoreLoopUnrollPass();
 
 /// Create a pass decomposing iree_linalg_ext.pack and unpack ops to AIR
 /// dialect.
-std::unique_ptr<Pass> createAMDAIEDecomposeLinalgExtPackUnPackToAIRPass();
+// std::unique_ptr<Pass> createAMDAIEDecomposeLinalgExtPackUnPackToAIRPass();
 
 /// Create pass to unroll the scf.forall operations around `amdaie.core`
 /// operations and distribute the logical objectFifos.

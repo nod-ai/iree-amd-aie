@@ -86,6 +86,10 @@ bool isAieRtCompatStrmSwPortType(
   return static_cast<::StrmSwPortType>(t);
 }
 
+#ifdef _WIN32
+#define __PRETTY_FUNCTION__ __FUNCSIG__
+#endif
+
 // macro so that line numbers are preserved for where the check fails
 #define CheckedAieRtCompatStrmSwPortType(t) \
   checkedAieRtCompatStrmSwPortType(t, __FILE__, __LINE__, __PRETTY_FUNCTION__)
@@ -119,22 +123,22 @@ AMDAIEDeviceModel::AMDAIEDeviceModel(
     uint8_t nMemTileRows, uint8_t nShimTileRows, int partitionNumCols,
     int partitionStartCol, uint64_t partBaseAddr, uint64_t npiAddr, bool aieSim,
     bool xaieDebug, AMDAIEDevice device)
-    : configPtr{.AieGen = aieGen,
-                .BaseAddr = baseAddr,
-                .ColShift = colShift,
-                .RowShift = rowShift,
-                .NumRows = devNRows,
-                .NumCols = devNColumns,
-                .ShimRowNum = 0,
-                .MemTileRowStart = memTileRowStart,
-                .MemTileNumRows = nMemTileRows,
+    : configPtr{/*AieGen*/aieGen,
+                /*BaseAddr*/baseAddr,
+                /*ColShift*/colShift,
+                /*RowShift*/rowShift,
+                /*NumRows*/devNRows,
+                /*NumCols*/devNColumns,
+                /*ShimRowNum*/0,
+                /*MemTileRowStart*/memTileRowStart,
+                /*MemTileNumRows*/nMemTileRows,
                 // TODO(max): use XAIE*_AIE_TILE_ROW_START here
                 // instead of this (once we eliminate legacy devices)
-                .AieTileRowStart =
+                /*AieTileRowStart*/
                     static_cast<uint8_t>(memTileRowStart + nMemTileRows),
-                .AieTileNumRows = static_cast<uint8_t>(devNRows - nMemTileRows -
+                /*AieTileNumRows*/static_cast<uint8_t>(devNRows - nMemTileRows -
                                                        nShimTileRows),
-                .PartProp = {}},
+                /*PartProp*/{}},
       devInst{},
       device(device) {
   TRY_XAIE_API_FATAL_ERROR(XAie_SetupPartitionConfig, &devInst, partBaseAddr,
