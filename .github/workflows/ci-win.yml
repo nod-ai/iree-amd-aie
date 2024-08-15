@@ -64,7 +64,7 @@ jobs:
         run: |
           python ./sync_deps.py
           sed -i "s/Development.Module/Development/g" /D/a/iree-amd-aie/iree/CMakeLists.txt
-          sed -i "s/${_object_lib} PRIVATE/${_object_lib} INTERFACE/g" /D/a/iree-amd-aie/iree/compiler/src/iree/compiler/API/CMakeLists.txt
+          #sed -i "s/${_object_lib} PRIVATE/${_object_lib} INTERFACE/g" /D/a/iree-amd-aie/iree/compiler/src/iree/compiler/API/CMakeLists.txt
 
       - name: Enable cache
         uses: actions/cache/restore@v3
