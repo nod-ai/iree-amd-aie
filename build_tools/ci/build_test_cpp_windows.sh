@@ -53,8 +53,8 @@ echo '{
 
 cd $iree_dir
 
-pip download -q mlir -f https://makslevental.github.io/wheels
-unzip -q mlir*whl
+#pip download -q mlir -f https://makslevental.github.io/wheels
+#unzip -q mlir*whl
 pip install "numpy<2" pyyaml "pybind11[global]==2.10.4" nanobind
 
 cmake -S "$iree_dir" -B "$build_dir" \
@@ -78,15 +78,8 @@ cmake -S "$iree_dir" -B "$build_dir" \
   -DCMAKE_OBJECT_PATH_MAX=4096 \
   -DBoost_INCLUDE_DIR=${BOOST_ROOT}/include\
   -DBoost_LIBRARY_DIRS=${BOOST_ROOT}/lib \
-  -DIREE_ERROR_ON_MISSING_SUBMODULES=OFF \
-  -DIREE_BUILD_BUNDLED_LLVM=OFF \
-  -DCMAKE_PREFIX_PATH=$PWD/mlir \
   -DPython3_EXECUTABLE=$(which python) \
   -DHAVE_STD_REGEX=ON \
-  -DIREE_EMBED_ENABLE_WINDOWS_DLL_DECLSPEC=1 \
-  -DIREE_EMBED_BUILDING_LIBRARY=1 \
-  -DMLIR_CAPI_ENABLE_WINDOWS_DLL_DECLSPEC=1 \
-  -DMLIR_CAPI_BUILDING_LIBRARY=1 \
   -DCMAKE_CXX_FLAGS="-DIREE_EMBED_ENABLE_WINDOWS_DLL_DECLSPEC=1 -DIREE_EMBED_BUILDING_LIBRARY=1 -DMLIR_CAPI_ENABLE_WINDOWS_DLL_DECLSPEC=1 -DMLIR_CAPI_BUILDING_LIBRARY=1 /EHsc" \
   -DCMAKE_C_FLAGS="-DIREE_EMBED_ENABLE_WINDOWS_DLL_DECLSPEC=1 -DIREE_EMBED_BUILDING_LIBRARY=1 -DMLIR_CAPI_ENABLE_WINDOWS_DLL_DECLSPEC=1 -DMLIR_CAPI_BUILDING_LIBRARY=1 /EHsc" \
   -DPYBIND11_FINDPYTHON=ON
