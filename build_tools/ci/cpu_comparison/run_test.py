@@ -162,7 +162,7 @@ def generate_aie_output(config, aie_vmfb, input_args, function_name, name):
     if function_name:
         run_args += [f"--function={function_name}"]
     if config.reset_npu_between_runs:
-        shell_out(config.reset_npu_script)
+        shell_out(config.reset_npu_script, verbose=config.verbose)
 
     start = time.monotonic_ns()
     shell_out(run_args, config.output_dir, config.verbose)
@@ -302,17 +302,20 @@ class TestConfig:
         if xrt_hash:
             self.xrt_hash = xrt_hash[0]
 
-        # no clue why but peano clang dumps -v to stderr
-        _, clang_v_output = shell_out([peano_dir / "bin" / "clang", "-v"])
-        peano_commit_hash = re.findall(
-            r"clang version \d+\.\d+\.\d+ \(https://github.com/Xilinx/llvm-aie (\w+)\)",
-            clang_v_output,
-            re.MULTILINE,
-        )
-        if peano_commit_hash:
-            self.peano_commit_hash = peano_commit_hash[0]
-        else:
-            self.peano_commit_hash = "undetermined"
+        # Try and get the peano commit hash. This is a bit of a hack.
+        self.peano_commit_hash = "undetermined"
+        peano_clang_path = peano_dir / "bin" / "clang"
+        if peano_clang_path.exists():
+            _, clang_v_output = shell_out(
+                [peano_clang_path, "-v"], verbose=self.verbose
+            )
+            peano_commit_hash = re.findall(
+                r"clang version \d+\.\d+\.\d+ \(https://github.com/Xilinx/llvm-aie (\w+)\)",
+                clang_v_output,
+                re.MULTILINE,
+            )
+            if peano_commit_hash:
+                self.peano_commit_hash = peano_commit_hash[0]
 
         # Populated at runtime
         self.failures = []
