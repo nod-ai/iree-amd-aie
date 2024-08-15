@@ -302,19 +302,20 @@ class TestConfig:
         if xrt_hash:
             self.xrt_hash = xrt_hash[0]
 
-        # no clue why but peano clang dumps -v to stderr
-        _, clang_v_output = shell_out(
-            [peano_dir / "bin" / "clang", "-v"], verbose=self.verbose
-        )
-        peano_commit_hash = re.findall(
-            r"clang version \d+\.\d+\.\d+ \(https://github.com/Xilinx/llvm-aie (\w+)\)",
-            clang_v_output,
-            re.MULTILINE,
-        )
-        if peano_commit_hash:
-            self.peano_commit_hash = peano_commit_hash[0]
-        else:
-            self.peano_commit_hash = "undetermined"
+        # Try and get the peano commit hash. This is a bit of a hack.
+        self.peano_commit_hash = "undetermined"
+        peano_clang_path = peano_dir / "bin" / "clang"
+        if peano_clang_path.exists():
+            _, clang_v_output = shell_out(
+                [peano_clang_path, "-v"], verbose=self.verbose
+            )
+            peano_commit_hash = re.findall(
+                r"clang version \d+\.\d+\.\d+ \(https://github.com/Xilinx/llvm-aie (\w+)\)",
+                clang_v_output,
+                re.MULTILINE,
+            )
+            if peano_commit_hash:
+                self.peano_commit_hash = peano_commit_hash[0]
 
         # Populated at runtime
         self.failures = []
