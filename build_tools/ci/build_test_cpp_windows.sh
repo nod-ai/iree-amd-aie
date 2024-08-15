@@ -1,6 +1,6 @@
 #!/bin/bash
 
-set -eu -o errtrace
+set -eux -o errtrace
 
 this_dir="$(cd $(dirname $0) && pwd)"
 repo_root="$(cd $this_dir/../.. && pwd)"
@@ -32,10 +32,9 @@ export CMAKE_CXX_COMPILER_LAUNCHER=ccache
 # Clear ccache stats.
 ccache -z
 
-## Build XRT.
-#XRT_BUILD_DIR=$repo_root/xrt-build
-#XRT_INSTALL_DIR=$repo_root/xrt-install
-#$this_dir/build_xrt.sh $XRT_BUILD_DIR $XRT_INSTALL_DIR
+XRT_BUILD_DIR=$repo_root/xrt-build
+XRT_INSTALL_DIR=$repo_root/xrt-install
+$this_dir/build_xrt_win.sh $XRT_BUILD_DIR $XRT_INSTALL_DIR
 
 echo "Building IREE"
 echo "============="
@@ -49,13 +48,9 @@ echo '{
     "include": [
         "build_tools/cmake/presets/all.json"
     ]
-}' > $iree_dir/CMakeUserPresets.json 
+}' > $iree_dir/CMakeUserPresets.json
 
 cd $iree_dir
-
-#pip download -q mlir -f https://makslevental.github.io/wheels
-#unzip -q mlir*whl
-pip install "numpy<2" pyyaml "pybind11[global]==2.10.4" nanobind
 
 cmake -S "$iree_dir" -B "$build_dir" \
   -GNinja \
@@ -73,20 +68,10 @@ cmake -S "$iree_dir" -B "$build_dir" \
   -DIREE_TARGET_BACKEND_LLVM_CPU=ON \
   -DIREE_INPUT_TOSA=OFF \
   -DIREE_INPUT_STABLEHLO=OFF \
-  -DIREE_INPUT_TORCH=OFF \
-  -DIREE_CMAKE_PLUGIN_PATHS=../iree-amd-aie \
   -DCMAKE_OBJECT_PATH_MAX=4096 \
-  -DBoost_INCLUDE_DIR=${BOOST_ROOT}/include\
-  -DBoost_LIBRARY_DIRS=${BOOST_ROOT}/lib \
-  -DPython3_EXECUTABLE=$(which python) \
-  -DHAVE_STD_REGEX=ON \
-  -DCMAKE_CXX_FLAGS="-DIREE_EMBED_ENABLE_WINDOWS_DLL_DECLSPEC=1 -DIREE_EMBED_BUILDING_LIBRARY=1 -DMLIR_CAPI_ENABLE_WINDOWS_DLL_DECLSPEC=1 -DMLIR_CAPI_BUILDING_LIBRARY=1 /EHsc" \
-  -DCMAKE_C_FLAGS="-DIREE_EMBED_ENABLE_WINDOWS_DLL_DECLSPEC=1 -DIREE_EMBED_BUILDING_LIBRARY=1 -DMLIR_CAPI_ENABLE_WINDOWS_DLL_DECLSPEC=1 -DMLIR_CAPI_BUILDING_LIBRARY=1 /EHsc" \
-  -DPYBIND11_FINDPYTHON=ON
-
-# Unknown CMake command "python_add_library" -> -DPYBIND11_FINDPYTHON=ON
-#  -DIREE_EXTERNAL_HAL_DRIVERS=xrt \
-#  -DXRT_DIR=$XRT_INSTALL_DIR/opt/xilinx/xrt/share/cmake/XRT
+  -DIREE_CMAKE_PLUGIN_PATHS=../iree-amd-aie \
+  -DIREE_EXTERNAL_HAL_DRIVERS=xrt \
+  -DXRT_DIR="$XRT_INSTALL_DIR/opt/xilinx/xrt/share/cmake/XRT"
 
 echo "Building all"
 echo "------------"

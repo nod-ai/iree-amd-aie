@@ -85,6 +85,11 @@ jobs:
         run: |
           python ./sync_deps.py
 
+      - name: Windows deps
+        if: ${{ matrix.os == 'windows' }}
+        run: |
+          pip install "numpy<2" pyyaml "pybind11[global]==2.10.4" nanobind
+
       - name: Enable cache
         uses: actions/cache/restore@v3
         with:

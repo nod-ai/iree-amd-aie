@@ -33,6 +33,7 @@
 
 #define DEBUG_TYPE "amdaie-xclbingen"
 
+// https://stackoverflow.com/a/60198074
 namespace uuid {
 static std::random_device rd;
 static std::mt19937 gen(rd());
