@@ -69,14 +69,14 @@ jobs:
       - name: Enable cache
         uses: actions/cache/restore@v3
         with:
-          path: "${{ github.workspace }}/.ccache"
+          path: ${{ env.CACHE_DIR }}
           key: windows-build-test-cpp-asserts-v1-${{ github.sha }}
           restore-keys: |
             windows-build-test-cpp-
 
       - name: Build packages
         run: |
-          export cache_dir="${{ github.workspace }}/.ccache"
+          export cache_dir="${{ env.CACHE_DIR }}"
           # switch to linux paths instead of windows paths
           # also make into abs path
           export BOOST_ROOT="/$(echo "${{ steps.install-boost.outputs.BOOST_ROOT }}" | sed -e 's/\\/\//g' -e 's/://')"
