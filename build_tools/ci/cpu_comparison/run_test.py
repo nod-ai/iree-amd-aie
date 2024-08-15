@@ -162,7 +162,7 @@ def generate_aie_output(config, aie_vmfb, input_args, function_name, name):
     if function_name:
         run_args += [f"--function={function_name}"]
     if config.reset_npu_between_runs:
-        shell_out(config.reset_npu_script)
+        shell_out(config.reset_npu_script, verbose=config.verbose)
 
     start = time.monotonic_ns()
     shell_out(run_args, config.output_dir, config.verbose)
@@ -303,7 +303,9 @@ class TestConfig:
             self.xrt_hash = xrt_hash[0]
 
         # no clue why but peano clang dumps -v to stderr
-        _, clang_v_output = shell_out([peano_dir / "bin" / "clang", "-v"])
+        _, clang_v_output = shell_out(
+            [peano_dir / "bin" / "clang", "-v"], verbose=self.verbose
+        )
         peano_commit_hash = re.findall(
             r"clang version \d+\.\d+\.\d+ \(https://github.com/Xilinx/llvm-aie (\w+)\)",
             clang_v_output,
