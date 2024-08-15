@@ -24,7 +24,7 @@ mkdir -p "${cache_dir}/pip"
 python="$(which python)"
 echo "Using python: $python"
 
-export CCACHE_DIR="${cache_dir}"
+export CCACHE_DIR="${cache_dir}/ccache"
 export CCACHE_MAXSIZE="2000M"
 export CMAKE_C_COMPILER_LAUNCHER=ccache
 export CMAKE_CXX_COMPILER_LAUNCHER=ccache
