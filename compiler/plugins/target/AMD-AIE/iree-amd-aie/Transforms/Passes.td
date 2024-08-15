@@ -213,6 +213,11 @@ def AMDAIEHoistForLoopAffineApply : Pass<"iree-amdaie-hoist-for-affine-apply"> {
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEHoistForLoopAffineApplyPass()";
 }
 
+def AMDAIEHoistLogicalObjFifo : Pass<"iree-amdaie-hoist-logical-objectfifo"> {
+  let summary = "Hoist logical objectFifo operations to the scope of its operands.";
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEHoistLogicalObjFifoPass()";
+}
+
 def AMDAIEInsertCores :
   Pass<"iree-amdaie-insert-cores", "ModuleOp"> {
   let summary = "Insert `amdaie.core` operations inside the innermost "
