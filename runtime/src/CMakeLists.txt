@@ -4,8 +4,6 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-set(IREE_XRT_SOURCE_DIR "${IREE_AMD_AIE_SOURCE_DIR}/third_party/XRT/src")
-
 iree_setup_c_src_root(
   DEFAULT_EXPORT_SET Runtime
   DEFAULT_INSTALL_COMPONENT IREEDevLibraries-Runtime

@@ -407,15 +407,21 @@ if(IREE_AMD_AIE_ENABLE_XRT_DRIVER)
   # XRT will build in its entirety when we do `ninja install` for IREE.
 
   # obv we have python but XRT uses this var to look for an ancient version of pybind (and fail)
-  replace_string_in_file(${IREE_XRT_SOURCE_DIR}/python/pybind11/CMakeLists.txt "if (HAS_PYTHON)" "if (FALSE)")
+  replace_string_in_file(${IREE_XRT_SOURCE_DIR}/python/pybind11/CMakeLists.txt
+                         "if (HAS_PYTHON)" "if (FALSE)")
 
   # remove ssl dep
-  replace_string_in_file(${IREE_XRT_SOURCE_DIR}/runtime_src/tools/xclbinutil/XclBinUtilMain.cxx "bValidateSignature == true" "false")
+  replace_string_in_file(${IREE_XRT_SOURCE_DIR}/runtime_src/tools/xclbinutil/XclBinUtilMain.cxx
+                         "bValidateSignature == true" "false")
 
   set(_xclbinutil_source_dir ${IREE_XRT_SOURCE_DIR}/runtime_src/tools/xclbinutil)
 
   # transformcdo target
-  add_subdirectory(${_xclbinutil_source_dir}/aie-pdi-transform aie-pdi-transform)
+  if(NOT WIN32)
+    replace_string_in_file(${IREE_XRT_SOURCE_DIR}/runtime_src/tools/xclbinutil/aie-pdi-transform/src/CMakeLists.txt
+                           "-Wextra" "")
+    add_subdirectory(${_xclbinutil_source_dir}/aie-pdi-transform aie-pdi-transform)
+  endif()
 
   # otherwise the various stois that read these will explode...
   # XRT/src/runtime_src/tools/xclbinutil/XclBinClass.cxx#L55

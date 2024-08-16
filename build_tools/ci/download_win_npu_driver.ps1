@@ -2,7 +2,7 @@ $session = New-Object Microsoft.PowerShell.Commands.WebRequestSession
 $session.UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36"
 $session.Cookies.Add((New-Object System.Net.Cookie("MRHSession", "29388b7d5a9f2f6c400f4fd2defd02bb", "/", "account.amd.com")))
 $session.Cookies.Add((New-Object System.Net.Cookie("fonce_current_session", "1", "/", "account.amd.com")))
-$session.Cookies.Add((New-Object System.Net.Cookie("fonce_current_day", "1,2024-08-15", "/", "account.amd.com")))
+$session.Cookies.Add((New-Object System.Net.Cookie("fonce_current_day", "1,2024-08-16", "/", "account.amd.com")))
 Invoke-WebRequest -UseBasicParsing -Uri "https://account.amd.com/en/forms/downloads/ryzen-ai-software-platform-xef.html" `
 -Method "POST" `
 -WebSession $session `

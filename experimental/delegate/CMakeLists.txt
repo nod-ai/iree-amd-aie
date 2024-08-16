@@ -22,16 +22,14 @@ if(IREE_HAL_EXECUTABLE_PLUGIN_SYSTEM_LIBRARY)
 
 iree_add_all_subdirs()
 
-find_package(XRT)
-
 add_library(mlp_bf16_aie_delegate SHARED
   mlp_aie_bf16_plugin.cpp
 )
+include_directories(${IREE_XRT_SOURCE_DIR}/runtime_src/core/include)
+include_directories(${IREE_XRT_SOURCE_DIR}/runtime_src/core/common/gsl/include)
+include_directories(${IREE_XRT_SOURCE_DIR}/runtime_src)
 target_include_directories(mlp_bf16_aie_delegate
-  PRIVATE
-    ${IREE_SOURCE_DIR}/runtime/src/
-    ${XRT_INCLUDE_DIRS}
-)
+                           PRIVATE ${IREE_SOURCE_DIR}/runtime/src)
 
 # NOTE: this is only required because we want this sample to run on all
 # platforms without needing to change the library name (libfoo.so/foo.dll).
@@ -45,7 +43,7 @@ set_target_properties(mlp_bf16_aie_delegate
 target_link_libraries(
   mlp_bf16_aie_delegate
   PRIVATE
-  XRT::xrt_coreutil
+  xrt_coreutil
   Boost::boost
 )
 set_property(TARGET mlp_bf16_aie_delegate PROPERTY CXX_STANDARD 20)
