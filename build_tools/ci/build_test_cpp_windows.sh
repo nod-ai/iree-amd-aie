@@ -34,7 +34,7 @@ ccache -z
 
 XRT_BUILD_DIR=$repo_root/xrt-build
 XRT_INSTALL_DIR=$repo_root/xrt-install
-$this_dir/build_xrt_win.sh $XRT_BUILD_DIR $XRT_INSTALL_DIR
+bash $this_dir/build_xrt.sh $XRT_BUILD_DIR $XRT_INSTALL_DIR
 
 echo "Building IREE"
 echo "============="
@@ -71,7 +71,7 @@ cmake -S "$iree_dir" -B "$build_dir" \
   -DCMAKE_OBJECT_PATH_MAX=4096 \
   -DIREE_CMAKE_PLUGIN_PATHS=../iree-amd-aie \
   -DIREE_EXTERNAL_HAL_DRIVERS=xrt \
-  -DXRT_DIR="$XRT_INSTALL_DIR/opt/xilinx/xrt/share/cmake/XRT"
+  -DXRT_DIR=$XRT_INSTALL_DIR/opt/xilinx/xrt/share/cmake/XRT
 
 echo "Building all"
 echo "------------"

@@ -89,6 +89,11 @@ jobs:
         if: ${{ matrix.os == 'windows' }}
         run: |
           pip install "numpy<2" pyyaml "pybind11[global]==2.10.4" nanobind
+          pushd third_party/XRT
+          sed -i "s/\/Qspectre//g" src/CMake/nativeWin.cmake
+          git submodule update --recursive --init
+          python ./src/runtime_src/tools/scripts/xrtdeps-win19.py --icd --opencl
+          popd
 
       - name: Enable cache
         uses: actions/cache/restore@v3
