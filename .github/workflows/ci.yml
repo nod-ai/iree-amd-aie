@@ -109,6 +109,7 @@ jobs:
           # also make into abs path
           if [ x"${{ matrix.OS }}" == x"windows" ]; then
             export BOOST_ROOT="/$(echo "${{ steps.install-boost.outputs.BOOST_ROOT }}" | sed -e 's/\\/\//g' -e 's/://')"
+            export KHRONOS=/c/Xilinx/xrt/ext
           fi
           bash "build_tools/ci/build_test_cpp_${{ matrix.os }}.sh"
 
