@@ -55,7 +55,7 @@ def find_executable(install_dir: Path, executable_name):
     )
 
 
-def shell_out(cmd: list, workdir=None, verbose=False):
+def shell_out(cmd: list, workdir=None, verbose=False, raiseOnError=True):
     if workdir is None:
         workdir = Path.cwd()
     if not isinstance(cmd, list):
@@ -78,7 +78,11 @@ def shell_out(cmd: list, workdir=None, verbose=False):
         if stderr_decode:
             print("Standard error from script:")
             print(stderr_decode)
-    if handle.returncode != 0:
+    if not raiseOnError and handle.returncode != 0:
+        print(
+            f"Error executing script, error code was {handle.returncode}. Not raising an error."
+        )
+    if raiseOnError and handle.returncode != 0:
         raise RuntimeError(
             f"Error executing script, error code was {handle.returncode}"
         )
@@ -302,12 +306,13 @@ class TestConfig:
         if xrt_hash:
             self.xrt_hash = xrt_hash[0]
 
-        # Try and get the peano commit hash. This is a bit of a hack.
+        # Try and get the peano commit hash. This is a bit of a hack, if it fails
+        # peano_commit_has is left as "undetermined".
         self.peano_commit_hash = "undetermined"
         peano_clang_path = peano_dir / "bin" / "clang"
         if peano_clang_path.exists():
             _, clang_v_output = shell_out(
-                [peano_clang_path, "-v"], verbose=self.verbose
+                [peano_clang_path, "-v"], verbose=self.verbose, raiseOnError=False
             )
             peano_commit_hash = re.findall(
                 r"clang version \d+\.\d+\.\d+ \(https://github.com/Xilinx/llvm-aie (\w+)\)",
