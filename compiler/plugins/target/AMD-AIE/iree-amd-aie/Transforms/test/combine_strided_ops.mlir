@@ -211,14 +211,8 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 // -----
 
 // CHECK-LABEL: @combine_source_same_dims
-// CHECK-DAG:   %[[C0:.+]] = arith.constant 0 : index
-// CHECK-DAG:   %[[C1:.+]] = arith.constant 1 : index
-// CHECK-DAG:   %[[C2:.+]] = arith.constant 2 : index
-// CHECK-DAG:   %[[C8:.+]] = arith.constant 8 : index
-// CHECK-DAG:   %[[C16:.+]] = arith.constant 16 : index
-// CHECK-DAG:   %[[C32:.+]] = arith.constant 32 : index
 // CHECK:       %[[CIRC_DMA:.+]] = amdaie.circular_dma_cpy_nd
-// CHECK:       amdaie.npu.dma_cpy_nd %[[CIRC_DMA]]([] [] [], [%[[C0]], %[[C0]], %[[C0]], %[[C0]]] [%[[C2]], %[[C16]], %[[C8]], %[[C16]]] [%[[C32]], %[[C32]], %[[C8]], %[[C1]]])
+// CHECK:       amdaie.npu.dma_cpy_nd %[[CIRC_DMA]]([] [] [], [0, 0, 0, 0] [2, 16, 8, 16] [32, 32, 8, 1])
 // CHECK-NOT:   amdaie.npu.dma_cpy_nd
 #executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
 module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
@@ -238,14 +232,8 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 // -----
 
 // CHECK-LABEL: @combine_source_values
-// CHECK-DAG:   %[[C0:.+]] = arith.constant 0 : index
-// CHECK-DAG:   %[[C1:.+]] = arith.constant 1 : index
-// CHECK-DAG:   %[[C2:.+]] = arith.constant 2 : index
-// CHECK-DAG:   %[[C8:.+]] = arith.constant 8 : index
-// CHECK-DAG:   %[[C16:.+]] = arith.constant 16 : index
-// CHECK-DAG:   %[[C32:.+]] = arith.constant 32 : index
 // CHECK:       %[[CIRC_DMA:.+]] = amdaie.circular_dma_cpy_nd
-// CHECK:       amdaie.npu.dma_cpy_nd %[[CIRC_DMA]]([] [] [], [%[[C0]], %[[C0]], %[[C0]], %[[C0]]] [%[[C2]], %[[C16]], %[[C8]], %[[C16]]] [%[[C32]], %[[C32]], %[[C8]], %[[C1]]])
+// CHECK:       amdaie.npu.dma_cpy_nd %[[CIRC_DMA]]([] [] [], [0, 0, 0, 0] [2, 16, 8, 16] [32, 32, 8, 1])
 // CHECK-NOT:   amdaie.npu.dma_cpy_nd
 #executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
 module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
@@ -270,15 +258,8 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 // -----
 
 // CHECK-LABEL: @combine_source_diff_dims
-// CHECK-DAG:   %[[C0:.+]] = arith.constant 0 : index
-// CHECK-DAG:   %[[C1:.+]] = arith.constant 1 : index
-// CHECK-DAG:   %[[C3:.+]] = arith.constant 3 : index
-// CHECK-DAG:   %[[C8:.+]] = arith.constant 8 : index
-// CHECK-DAG:   %[[C16:.+]] = arith.constant 16 : index
-// CHECK-DAG:   %[[C32:.+]] = arith.constant 32 : index
-// CHECK-DAG:   %[[C64:.+]] = arith.constant 64 : index
 // CHECK:       %[[CIRC_DMA:.+]] = amdaie.circular_dma_cpy_nd
-// CHECK:       amdaie.npu.dma_cpy_nd %[[CIRC_DMA]]([] [] [], [%[[C0]], %[[C0]], %[[C0]], %[[C0]]] [%[[C3]], %[[C16]], %[[C8]], %[[C16]]] [%[[C64]], %[[C32]], %[[C8]], %[[C1]]])
+// CHECK:       amdaie.npu.dma_cpy_nd %[[CIRC_DMA]]([] [] [], [0, 0, 0, 0] [3, 16, 8, 16] [64, 32, 8, 1])
 // CHECK-NOT:   amdaie.npu.dma_cpy_nd
 #executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
 module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
@@ -298,16 +279,12 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 // -----
 
 // CHECK-LABEL: @combine_source_induction_var
-// CHECK-DAG:   %[[C0:.+]] = arith.constant 0 : index
 // CHECK-DAG:   %[[C1:.+]] = arith.constant 1 : index
 // CHECK-DAG:   %[[C2:.+]] = arith.constant 2 : index
 // CHECK-DAG:   %[[C6:.+]] = arith.constant 6 : index
-// CHECK-DAG:   %[[C8:.+]] = arith.constant 8 : index
-// CHECK-DAG:   %[[C16:.+]] = arith.constant 16 : index
-// CHECK-DAG:   %[[C32:.+]] = arith.constant 32 : index
 // CHECK:       %[[CIRC_DMA:.+]] = amdaie.circular_dma_cpy_nd
 // CHECK:       scf.for %[[ARG2:.+]] = %[[C1]] to %[[C6]] step %[[C2]]
-// CHECK:         %[[NPU_DMA:.+]] = amdaie.npu.dma_cpy_nd %[[CIRC_DMA]]([] [] [], [%[[C0]], %[[C0]], %[[ARG2]], %[[C0]]] [%[[C2]], %[[C16]], %[[C8]], %[[C16]]] [%[[C32]], %[[C32]], %[[C8]], %[[C1]]])
+// CHECK:         %[[NPU_DMA:.+]] = amdaie.npu.dma_cpy_nd %[[CIRC_DMA]]([] [] [], [0, 0, %[[ARG2]], 0] [2, 16, 8, 16] [32, 32, 8, 1])
 // CHECK-NOT:     amdaie.npu.dma_cpy_nd
 // CHECK:         amdaie.npu.dma_wait(%[[NPU_DMA]], MM2S)
 // CHECK-NOT:     amdaie.npu.dma_wait
@@ -336,14 +313,8 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 // -----
 
 // CHECK-LABEL: @combine_target_same_dims
-// CHECK-DAG:   %[[C0:.+]] = arith.constant 0 : index
-// CHECK-DAG:   %[[C1:.+]] = arith.constant 1 : index
-// CHECK-DAG:   %[[C2:.+]] = arith.constant 2 : index
-// CHECK-DAG:   %[[C8:.+]] = arith.constant 8 : index
-// CHECK-DAG:   %[[C16:.+]] = arith.constant 16 : index
-// CHECK-DAG:   %[[C32:.+]] = arith.constant 32 : index
 // CHECK:       %[[CIRC_DMA:.+]] = amdaie.circular_dma_cpy_nd
-// CHECK:       amdaie.npu.dma_cpy_nd %[[CIRC_DMA]]([%[[C0]], %[[C0]], %[[C0]], %[[C32]]] [%[[C2]], %[[C16]], %[[C8]], %[[C16]]] [%[[C32]], %[[C32]], %[[C8]], %[[C1]]], [] [] [])
+// CHECK:       amdaie.npu.dma_cpy_nd %[[CIRC_DMA]]([0, 0, 0, 32] [2, 16, 8, 16] [32, 32, 8, 1], [] [] [])
 // CHECK-NOT:   amdaie.npu.dma_cpy_nd
 #executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
 module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
@@ -363,15 +334,8 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 // -----
 
 // CHECK-LABEL: @combine_target_diff_dims
-// CHECK-DAG:   %[[C0:.+]] = arith.constant 0 : index
-// CHECK-DAG:   %[[C1:.+]] = arith.constant 1 : index
-// CHECK-DAG:   %[[C3:.+]] = arith.constant 3 : index
-// CHECK-DAG:   %[[C8:.+]] = arith.constant 8 : index
-// CHECK-DAG:   %[[C16:.+]] = arith.constant 16 : index
-// CHECK-DAG:   %[[C32:.+]] = arith.constant 32 : index
-// CHECK-DAG:   %[[C64:.+]] = arith.constant 64 : index
 // CHECK:       %[[CIRC_DMA:.+]] = amdaie.circular_dma_cpy_nd
-// CHECK:       amdaie.npu.dma_cpy_nd %[[CIRC_DMA]]([%[[C0]], %[[C0]], %[[C0]], %[[C32]]] [%[[C3]], %[[C16]], %[[C8]], %[[C16]]] [%[[C64]], %[[C32]], %[[C8]], %[[C1]]], [] [] [])
+// CHECK:       amdaie.npu.dma_cpy_nd %[[CIRC_DMA]]([0, 0, 0, 32] [3, 16, 8, 16] [64, 32, 8, 1], [] [] [])
 // CHECK-NOT:   amdaie.npu.dma_cpy_nd
 #executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
 module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
@@ -391,14 +355,8 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 // -----
 
 // CHECK-LABEL: @combine_target_values
-// CHECK-DAG:   %[[C0:.+]] = arith.constant 0 : index
-// CHECK-DAG:   %[[C1:.+]] = arith.constant 1 : index
-// CHECK-DAG:   %[[C2:.+]] = arith.constant 2 : index
-// CHECK-DAG:   %[[C8:.+]] = arith.constant 8 : index
-// CHECK-DAG:   %[[C16:.+]] = arith.constant 16 : index
-// CHECK-DAG:   %[[C32:.+]] = arith.constant 32 : index
 // CHECK:       %[[CIRC_DMA:.+]] = amdaie.circular_dma_cpy_nd
-// CHECK:       amdaie.npu.dma_cpy_nd %[[CIRC_DMA]]([%[[C0]], %[[C0]], %[[C0]], %[[C32]]] [%[[C2]], %[[C16]], %[[C8]], %[[C16]]] [%[[C32]], %[[C32]], %[[C8]], %[[C1]]], [] [] [])
+// CHECK:       amdaie.npu.dma_cpy_nd %[[CIRC_DMA]]([0, 0, 0, 32] [2, 16, 8, 16] [32, 32, 8, 1], [] [] [])
 // CHECK-NOT:   amdaie.npu.dma_cpy_nd
 #executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
 module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
@@ -426,14 +384,10 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 // CHECK-LABEL: @combine_target_induction_var
 // CHECK-DAG:   %[[C0:.+]] = arith.constant 0 : index
 // CHECK-DAG:   %[[C1:.+]] = arith.constant 1 : index
-// CHECK-DAG:   %[[C2:.+]] = arith.constant 2 : index
 // CHECK-DAG:   %[[C6:.+]] = arith.constant 6 : index
-// CHECK-DAG:   %[[C8:.+]] = arith.constant 8 : index
-// CHECK-DAG:   %[[C16:.+]] = arith.constant 16 : index
-// CHECK-DAG:   %[[C32:.+]] = arith.constant 32 : index
 // CHECK:       %[[CIRC_DMA:.+]] = amdaie.circular_dma_cpy_nd
 // CHECK:       scf.for %[[ARG2:.+]] = %[[C0]] to %[[C6]] step %[[C1]]
-// CHECK:         %[[NPU_DMA:.+]] = amdaie.npu.dma_cpy_nd %[[CIRC_DMA]]([%[[C0]], %[[ARG2]], %[[C0]], %[[C32]]] [%[[C2]], %[[C16]], %[[C8]], %[[C16]]] [%[[C32]], %[[C32]], %[[C8]], %[[C1]]], [] [] [])
+// CHECK:         %[[NPU_DMA:.+]] = amdaie.npu.dma_cpy_nd %[[CIRC_DMA]]([0, %[[ARG2]], 0, 32] [2, 16, 8, 16] [32, 32, 8, 1], [] [] [])
 // CHECK-NOT:     amdaie.npu.dma_cpy_nd
 // CHECK:         amdaie.npu.dma_wait(%[[NPU_DMA]], S2MM)
 // CHECK-NOT:     amdaie.npu.dma_cpy_nd
@@ -516,13 +470,8 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 // -----
 
 // CHECK-LABEL: @three_dma_ops_same_dims
-// CHECK-DAG:   %[[C0:.+]] = arith.constant 0 : index
-// CHECK-DAG:   %[[C1:.+]] = arith.constant 1 : index
-// CHECK-DAG:   %[[C3:.+]] = arith.constant 3 : index
-// CHECK-DAG:   %[[C16:.+]] = arith.constant 16 : index
-// CHECK-DAG:   %[[C32:.+]] = arith.constant 32 : index
 // CHECK:       %[[CIRC_DMA:.+]] = amdaie.circular_dma_cpy_nd
-// CHECK:       amdaie.npu.dma_cpy_nd %[[CIRC_DMA]]([] [] [], [%[[C0]], %[[C0]]] [%[[C3]], %[[C16]]] [%[[C32]], %[[C1]]])
+// CHECK:       amdaie.npu.dma_cpy_nd %[[CIRC_DMA]]([] [] [], [0, 0] [3, 16] [32, 1])
 // CHECK-NOT:   amdaie.npu.dma_cpy_nd
 #executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
 module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
@@ -543,13 +492,8 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 // -----
 
 // CHECK-LABEL: @three_dma_ops_diff_dims
-// CHECK-DAG:   %[[C0:.+]] = arith.constant 0 : index
-// CHECK-DAG:   %[[C1:.+]] = arith.constant 1 : index
-// CHECK-DAG:   %[[C4:.+]] = arith.constant 4 : index
-// CHECK-DAG:   %[[C16:.+]] = arith.constant 16 : index
-// CHECK-DAG:   %[[C32:.+]] = arith.constant 32 : index
 // CHECK:       %[[CIRC_DMA:.+]] = amdaie.circular_dma_cpy_nd
-// CHECK:       amdaie.npu.dma_cpy_nd %[[CIRC_DMA]]([] [] [], [%[[C0]], %[[C0]]] [%[[C4]], %[[C16]]] [%[[C32]], %[[C1]]])
+// CHECK:       amdaie.npu.dma_cpy_nd %[[CIRC_DMA]]([] [] [], [0, 0] [4, 16] [32, 1])
 // CHECK-NOT:   amdaie.npu.dma_cpy_nd
 #executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
 module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
