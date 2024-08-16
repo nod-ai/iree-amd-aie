@@ -16,8 +16,8 @@ mkdir -p "${build_dir}"
 mkdir -p "${install_dir}"
 
 export XRT_BUILD_DIR="$build_dir"
-export XRT_INSTALL_DIR=/opt/xilinx
-export DESTDIR=/opt/xilinx
+export XRT_INSTALL_DIR=/c/opt/xilinx
+export DESTDIR=/c/opt/xilinx
 
 pushd $src_dir
 
