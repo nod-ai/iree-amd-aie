@@ -5,6 +5,8 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 include(FetchContent)
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/build_tools/cmake")
+include(iree_aie_utils)
 
 set(IREE_AMD_AIE_SOURCE_DIR "${CMAKE_CURRENT_LIST_DIR}")
 set(IREE_MLIR_AIR_SOURCE_DIR "${IREE_AMD_AIE_SOURCE_DIR}/third_party/mlir-air/mlir")
@@ -12,7 +14,6 @@ set(IREE_MLIR_AIR_SOURCE_DIR "${IREE_AMD_AIE_SOURCE_DIR}/third_party/mlir-air/ml
 set(IREE_AMD_AIE_ENABLE_XRT_DRIVER OFF)
 if("xrt" IN_LIST IREE_EXTERNAL_HAL_DRIVERS)
   message(STATUS "Enabling XRT build because it is an enabled HAL driver")
-  set(IREE_XRT_SOURCE_DIR "${IREE_AMD_AIE_SOURCE_DIR}/third_party/XRT/src")
   set(IREE_AMD_AIE_ENABLE_XRT_DRIVER ON)
 endif()
 
@@ -20,11 +21,9 @@ if(IREE_AMD_AIE_ENABLE_XRT_DRIVER)
   set(Boost_USE_STATIC_LIBS ON CACHE BOOL "" FORCE)
   find_package(Threads REQUIRED)
   find_package(Boost REQUIRED COMPONENTS filesystem program_options system)
+  include(iree_aie_xrt)
+  include(iree_aie_bootgen)
   message(STATUS "Boost include directories:" ${Boost_INCLUDE_DIRS})
-
-  if(NOT WIN32)
-    find_package(RapidJSON REQUIRED)
-  endif()
 endif()
 
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/runtime/src AMD-AIE)

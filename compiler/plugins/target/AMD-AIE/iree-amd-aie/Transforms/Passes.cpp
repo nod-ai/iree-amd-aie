@@ -6,6 +6,9 @@
 
 #include "iree-amd-aie/Transforms/Passes.h"
 
+#include <filesystem>
+#include <iomanip>
+
 #include "aie/Passes.h"
 #include "aievec/Passes.h"
 #include "air/Conversion/Passes.h"
@@ -68,7 +71,7 @@ static llvm::cl::opt<int32_t> clNumCores(
 
 static llvm::cl::opt<std::string> clPathToUkernels(
     "iree-amdaie-path-to-ukernels",
-    llvm::cl::desc("Path to microkernels' directory"));
+    llvm::cl::desc("Path to microkernels' directory"), llvm::cl::init(""));
 
 static llvm::cl::opt<bool> clEnableVectorizationPasses(
     "iree-amdaie-enable-vectorization-passes",
@@ -305,7 +308,11 @@ void addPackPeelBasedPassPipeline(OpPassManager &funcPassManager,
   // Lower to UKernels.
   {
     AMDAIELowerToUKernelsOptions options;
-    options.pathToUkernels = clPathToUkernels;
+    std::filesystem::path pathToUkernels = clPathToUkernels.getValue();
+    // quote for windows paths like `C:/Program Files`
+    std::stringstream ss;
+    ss << pathToUkernels.make_preferred();
+    ss >> std::quoted(options.pathToUkernels);
     funcPassManager.addPass(createAMDAIELowerToUKernelsPass(options));
   }
 
@@ -412,7 +419,11 @@ void addPadPackBasedPassPipeline(OpPassManager &funcPassManager,
   // Lower to UKernels
   {
     AMDAIELowerToUKernelsOptions options;
-    options.pathToUkernels = clPathToUkernels;
+    std::filesystem::path pathToUkernels = clPathToUkernels.getValue();
+    // quote for windows paths like `C:/Program Files`
+    std::stringstream ss;
+    ss << pathToUkernels.make_preferred();
+    ss >> std::quoted(options.pathToUkernels);
     funcPassManager.addPass(createAMDAIELowerToUKernelsPass(options));
   }
   // Vectorization passes
