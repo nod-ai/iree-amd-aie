@@ -33,7 +33,7 @@
 
 #define DEBUG_TYPE "amdaie-xclbingen"
 
-extern int iree_aie_bootgen(int argc, const char *argv[]);
+extern int iree_aie_bootgen_main(int argc, const char *argv[]);
 
 // https://stackoverflow.com/a/60198074
 namespace uuid {
@@ -862,12 +862,19 @@ static LogicalResult generateXCLBin(
 
   // Execute the bootgen command.
   {
-    const char *flags[] = {"", "-arch",  "versal",
-                           "-image", designBifFile.string().c_str(),
-                           "-o",     (tempDir / "design.pdi").string().c_str(),
+    std::string designBifFileStr = designBifFile.string();
+    std::string designPdiStr = (tempDir / "design.pdi").string();
+    // first element is empty because iree_aie_bootgen_main is _the_ main
+    const char *flags[] = {"",
+                           "-arch",
+                           "versal",
+                           "-image",
+                           designBifFileStr.c_str(),
+                           "-o",
+                           designPdiStr.c_str(),
                            "-w"};
 
-    if (iree_aie_bootgen(7 + 1, flags)) {
+    if (iree_aie_bootgen_main(1 + 7, flags)) {
       llvm::errs() << "failed to execute bootgen";
       return failure();
     }

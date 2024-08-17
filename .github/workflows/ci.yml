@@ -52,7 +52,7 @@ jobs:
         run: |
           dnf install -y almalinux-release-devel
           yum remove -y openssl-devel zlib-devel boost boost-all || true
-          yum install -y openssl-static  zlib-static
+          yum install -y openssl-static 
           yum install -y protobuf-devel protobuf-compiler
           yum install -y boost-static
 

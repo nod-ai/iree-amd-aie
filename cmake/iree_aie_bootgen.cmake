@@ -15,7 +15,7 @@ replace_string_in_file(${_BOOTGEN_SOURCE_DIR}/cdo-alloc.c "#include <malloc.h>" 
 replace_string_in_file("${_BOOTGEN_SOURCE_DIR}/main.cpp"
                        "#include \"openssl/ms/applink.c\"" "//#include \"openssl/ms/applink.c\"")
 replace_string_in_file("${_BOOTGEN_SOURCE_DIR}/main.cpp"
-                       "int main" "int iree_aie_bootgen")
+                       "int main" "int iree_aie_bootgen_main")
 replace_string_in_file("${_BOOTGEN_SOURCE_DIR}/main.cpp"
                        "DisplayBanner();" "//DisplayBanner();")
 
@@ -45,7 +45,7 @@ elseif(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
       -Wno-deprecated-copy -Wno-non-virtual-dtor -Wno-overloaded-virtual
       -Wno-register -Wno-reorder -Wno-suggest-override)
 endif()
-target_compile_options(iree-aie-bootgen PUBLIC
+target_compile_options(iree-aie-bootgen PRIVATE
                        $<$<COMPILE_LANGUAGE:C>:${_bootgen_c_warning_ignores}>
                        $<$<COMPILE_LANGUAGE:CXX>:${_bootgen_c_warning_ignores};${_bootgen_cxx_warning_ignores}>)
 
@@ -63,7 +63,7 @@ endif()
 set(OPENSSL_USE_STATIC_LIBS TRUE CACHE BOOL "" FORCE)
 find_package(OpenSSL)
 if(NOT DEFINED OPENSSL_FOUND OR NOT ${OPENSSL_FOUND})
-  list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}")
+  list(APPEND CMAKE_MODULE_PATH ".")
   find_package(OpenSSL)
   if(NOT DEFINED USE_IREE_AMD_AIE_FIND_OPENSSL
      OR NOT ${USE_IREE_AMD_AIE_FIND_OPENSSL})
@@ -78,9 +78,8 @@ message(STATUS "OpenSSL include directories:" ${OPENSSL_INCLUDE_DIR})
 target_include_directories(iree-aie-bootgen PUBLIC
                            ${_BOOTGEN_SOURCE_DIR}
                            ${OPENSSL_INCLUDE_DIR})
-target_compile_definitions(iree-aie-bootgen PUBLIC OPENSSL_USE_APPLINK)
-target_link_libraries(iree-aie-bootgen PUBLIC OpenSSL::SSL OpenSSL::applink)
-target_compile_options(iree-aie-bootgen PRIVATE -fexceptions)
+target_compile_definitions(iree-aie-bootgen PRIVATE OPENSSL_USE_APPLINK)
+target_link_libraries(iree-aie-bootgen PRIVATE OpenSSL::SSL OpenSSL::applink)
 
 iree_install_targets(
   TARGETS iree-aie-bootgen
