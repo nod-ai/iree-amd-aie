@@ -866,7 +866,7 @@ static LogicalResult generateXCLBin(
                                    "-w"};
 
     FailureOr<Path> bootgenBin =
-        findAMDAIETool("amdaie_bootgen", amdAIEInstallDir);
+        findAMDAIETool("iree_aie_bootgen", amdAIEInstallDir);
 
     if (!succeeded(bootgenBin) ||
         !runTool(bootgenBin.value().string(), flags, verbose)) {

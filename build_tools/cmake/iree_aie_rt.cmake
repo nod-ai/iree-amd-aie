@@ -10,6 +10,7 @@ include(${CMAKE_CURRENT_LIST_DIR}/iree_aie_utils.cmake)
 # cdo-drver
 # ##############################################################################
 
+set(_BOOTGEN_SOURCE_DIR ${IREE_AMD_AIE_SOURCE_DIR}/third_party/bootgen)
 replace_string_in_file(${_BOOTGEN_SOURCE_DIR}/cdo-driver/cdo_driver.c "\"(Write64)" "\"cdo-driver: (Write64)")
 replace_string_in_file(${_BOOTGEN_SOURCE_DIR}/cdo-driver/cdo_driver.c "\"(MaskWrite64)" "\"cdo-driver: (MaskWrite64)")
 replace_string_in_file(${_BOOTGEN_SOURCE_DIR}/cdo-driver/cdo_driver.c "\"(NOP Command)" "\"cdo-driver: (NOP Command)")
