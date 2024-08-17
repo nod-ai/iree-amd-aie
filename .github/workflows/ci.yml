@@ -92,7 +92,7 @@ jobs:
           pushd third_party/XRT
           sed -i "s/\/Qspectre//g" src/CMake/nativeWin.cmake
           git submodule update --recursive --init
-          python ./src/runtime_src/tools/scripts/xrtdeps-win19.py --icd --opencl
+          # python ./src/runtime_src/tools/scripts/xrtdeps-win19.py --icd --opencl
           popd
 
       - name: Enable cache
@@ -109,7 +109,7 @@ jobs:
           # also make into abs path
           if [ x"${{ matrix.OS }}" == x"windows" ]; then
             export BOOST_ROOT="/$(echo "${{ steps.install-boost.outputs.BOOST_ROOT }}" | sed -e 's/\\/\//g' -e 's/://')"
-            export KHRONOS=/c/Xilinx/xrt/ext
+            # export KHRONOS=/c/Xilinx/xrt/ext
           fi
           bash "build_tools/ci/build_test_cpp_${{ matrix.os }}.sh"
 

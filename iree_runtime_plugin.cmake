@@ -4,6 +4,10 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+# for BUILD_LOCAL_INTERFACE for xrt_coreutil
+# (see runtime/src/iree-amd-aie/driver/xrt/CMakeLists.txt)
+cmake_minimum_required(VERSION 3.26)
+
 include(FetchContent)
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/build_tools/cmake")
 include(iree_aie_utils)

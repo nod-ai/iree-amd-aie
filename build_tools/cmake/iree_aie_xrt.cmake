@@ -145,6 +145,11 @@ set_target_properties(iree_aie_xclbinutil
 # xrt_coreutil
 # ##############################################################################
 
+# send xrt_coreutil to trash so it doesn't get installed
+set(XRT_INSTALL_LIB_DIR "$ENV{TMP}")
+set(XRT_INSTALL_BIN_DIR "$ENV{TMP}")
+set(XRT_NAMELINK_SKIP EXCLUDE_FROM_ALL)
+set(XRT_NAMELINK_ONLY EXCLUDE_FROM_ALL)
 # remove unsupported -Wextra flag on windows
 set(GSL_TEST OFF CACHE BOOL "")
 add_subdirectory(${IREE_XRT_SOURCE_DIR}/runtime_src/core/common iree-aie-xrt-coreutil)
@@ -168,9 +173,3 @@ foreach(_core_lib IN LISTS _core_libs)
   target_compile_definitions(${_core_lib} PRIVATE -DBOOST_BIND_GLOBAL_PLACEHOLDERS)
   target_link_libraries(${_core_lib} PRIVATE Boost::boost)
 endforeach()
-
-iree_install_targets(
-  TARGETS xrt_coreutil
-  COMPONENT IREEBundledLibraries
-  EXPORT_SET Runtime
-)

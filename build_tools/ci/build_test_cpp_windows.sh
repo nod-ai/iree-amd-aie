@@ -25,7 +25,7 @@ python="$(which python)"
 echo "Using python: $python"
 
 export CCACHE_DIR="${cache_dir}/ccache"
-export CCACHE_MAXSIZE="2000M"
+export CCACHE_MAXSIZE="700M"
 export CMAKE_C_COMPILER_LAUNCHER=ccache
 export CMAKE_CXX_COMPILER_LAUNCHER=ccache
 
@@ -47,7 +47,6 @@ echo '{
 }' > $iree_dir/CMakeUserPresets.json
 
 cd $iree_dir
-
 cmake -S "$iree_dir" -B "$build_dir" \
   -GNinja \
   -DCMAKE_BUILD_TYPE=Release \
