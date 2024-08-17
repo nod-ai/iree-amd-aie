@@ -862,7 +862,7 @@ static LogicalResult generateXCLBin(
 
   // Execute the bootgen command.
   {
-    const char *flags[] = {"-arch",  "versal",
+    const char *flags[] = {"", "-arch",  "versal",
                            "-image", designBifFile.string().c_str(),
                            "-o",     (tempDir / "design.pdi").string().c_str(),
                            "-w"};
