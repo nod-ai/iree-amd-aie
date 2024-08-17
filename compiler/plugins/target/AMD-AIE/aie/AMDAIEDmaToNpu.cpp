@@ -528,7 +528,10 @@ struct AMDAIEDmaToNpuPass : mlir::OperationPass<DeviceOp> {
     // lowerable for reasons such as memref's with dynamic offsets.
     auto symName = dyn_cast_or_null<StringAttr>(device->getAttr("sym_name"));
     SmallVector<RuntimeSequenceOp> seqOps;
+
+    uint32_t nRuntimSeqOps = 0;
     device->walk([&](RuntimeSequenceOp seqOp) {
+       ++nRuntimSeqOps;
       // if the deviceOp has a symbol name attached to it we look for the
       // sequence op that partically matches that symbol, if not we collect all
       // sequenceOps.
@@ -536,6 +539,12 @@ struct AMDAIEDmaToNpuPass : mlir::OperationPass<DeviceOp> {
           symName.str().find(seqOp.getSymName()->str()) != std::string::npos)
         seqOps.push_back(seqOp);
     });
+
+    if (nRuntimSeqOps != 1){
+      device->emitError("Expected exactly one entry point function but found ")
+          << nRuntimSeqOps;
+      return signalPassFailure();
+    }
     // If exactly one entry point function is found we can delete it. For any
     // other result we do not make any change.
     if (seqOps.size() == 1) seqOps[0].erase();
