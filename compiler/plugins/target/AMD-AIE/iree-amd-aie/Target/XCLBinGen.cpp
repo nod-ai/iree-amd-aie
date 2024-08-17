@@ -879,7 +879,7 @@ static LogicalResult generateXCLBin(
   std::string memArg = "MEM_TOPOLOGY:JSON:" + memTopologyJsonFile.string();
   std::string partArg = "AIE_PARTITION:JSON:" + aiePartitionJsonFile.string();
   FailureOr<Path> xclbinutilBin =
-      findAMDAIETool("amdaie_xclbinutil", amdAIEInstallDir);
+      findAMDAIETool("iree_aie_xclbinutil", amdAIEInstallDir);
 
   {
     if (inputXclbin) {
