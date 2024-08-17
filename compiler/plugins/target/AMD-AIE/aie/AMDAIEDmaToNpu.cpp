@@ -540,7 +540,7 @@ struct AMDAIEDmaToNpuPass : mlir::OperationPass<DeviceOp> {
         seqOps.push_back(seqOp);
     });
 
-    if (nRuntimSeqOps != 1){
+    if (nRuntimSeqOps > 1){
       device->emitError("Expected exactly one entry point function but found ")
           << nRuntimSeqOps;
       return signalPassFailure();
