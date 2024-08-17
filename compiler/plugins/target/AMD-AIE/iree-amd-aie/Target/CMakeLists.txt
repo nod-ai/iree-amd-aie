@@ -17,12 +17,12 @@ iree_cc_library(
   DEPS
     iree-amd-aie::aie_runtime::iree_aie_runtime_static
     iree::target::amd-aie::Transforms
+    iree-aie-bootgen
 )
 
 if(IREE_AMD_AIE_ENABLE_XRT_DRIVER)
   add_dependencies(iree_target_amd-aie_Target_AIETargets
-                   iree_aie_xclbinutil
-                   iree_aie_bootgen)
+                   iree_aie_xclbinutil)
 endif()
 
 iree_cc_library(

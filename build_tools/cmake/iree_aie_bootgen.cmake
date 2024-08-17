@@ -12,16 +12,18 @@ set(_BOOTGEN_SOURCE_DIR ${IREE_AMD_AIE_SOURCE_DIR}/third_party/bootgen)
 # https://stackoverflow.com/a/56463133 If you want to use malloc, then include stdlib.h
 replace_string_in_file(${_BOOTGEN_SOURCE_DIR}/cdo-npi.c "#include <malloc.h>" "#include <stdlib.h>")
 replace_string_in_file(${_BOOTGEN_SOURCE_DIR}/cdo-alloc.c "#include <malloc.h>" "#include <stdlib.h>")
+replace_string_in_file("${_BOOTGEN_SOURCE_DIR}/main.cpp"
+                       "#include \"openssl/ms/applink.c\"" "//#include \"openssl/ms/applink.c\"")
+replace_string_in_file("${_BOOTGEN_SOURCE_DIR}/main.cpp"
+                       "int main" "int iree_aie_bootgen")
+replace_string_in_file("${_BOOTGEN_SOURCE_DIR}/main.cpp"
+                       "DisplayBanner();" "//DisplayBanner();")
 
-file(GLOB _bootgen_sources "${_BOOTGEN_SOURCE_DIR}/*.c"
-     "${_BOOTGEN_SOURCE_DIR}/*.cpp")
-# build exe separately
-list(REMOVE_ITEM _bootgen_sources "${_BOOTGEN_SOURCE_DIR}/main.cpp")
-
-add_library(bootgen-lib STATIC ${_bootgen_sources})
+file(GLOB _bootgen_sources "${_BOOTGEN_SOURCE_DIR}/*.c" "${_BOOTGEN_SOURCE_DIR}/*.cpp")
+add_library(iree-aie-bootgen STATIC ${_bootgen_sources})
 
 if(CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
-  target_compile_definitions(bootgen-lib PUBLIC YY_NO_UNISTD_H)
+  target_compile_definitions(iree-aie-bootgen PUBLIC YY_NO_UNISTD_H)
 elseif(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
   set(_bootgen_c_warning_ignores
       -Wno-cast-qual
@@ -43,7 +45,7 @@ elseif(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
       -Wno-deprecated-copy -Wno-non-virtual-dtor -Wno-overloaded-virtual
       -Wno-register -Wno-reorder -Wno-suggest-override)
 endif()
-target_compile_options(bootgen-lib PUBLIC
+target_compile_options(iree-aie-bootgen PUBLIC
                        $<$<COMPILE_LANGUAGE:C>:${_bootgen_c_warning_ignores}>
                        $<$<COMPILE_LANGUAGE:CXX>:${_bootgen_c_warning_ignores};${_bootgen_cxx_warning_ignores}>)
 
@@ -73,22 +75,15 @@ if(NOT DEFINED OPENSSL_FOUND OR NOT ${OPENSSL_FOUND})
 endif()
 message(STATUS "OpenSSL include directories:" ${OPENSSL_INCLUDE_DIR})
 
-target_include_directories(bootgen-lib PUBLIC ${_BOOTGEN_SOURCE_DIR}
-                                              ${OPENSSL_INCLUDE_DIR})
-target_compile_definitions(bootgen-lib PUBLIC OPENSSL_USE_APPLINK)
-target_link_libraries(bootgen-lib PUBLIC OpenSSL::SSL OpenSSL::applink)
+target_include_directories(iree-aie-bootgen PUBLIC
+                           ${_BOOTGEN_SOURCE_DIR}
+                           ${OPENSSL_INCLUDE_DIR})
+target_compile_definitions(iree-aie-bootgen PUBLIC OPENSSL_USE_APPLINK)
+target_link_libraries(iree-aie-bootgen PUBLIC OpenSSL::SSL OpenSSL::applink)
+target_compile_options(iree-aie-bootgen PRIVATE -fexceptions)
 
-replace_string_in_file("${_BOOTGEN_SOURCE_DIR}/main.cpp"
-                       "#include \"openssl/ms/applink.c\"" "//#include \"openssl/ms/applink.c\"")
-
-add_executable(iree_aie_bootgen "${_BOOTGEN_SOURCE_DIR}/main.cpp")
-target_compile_options(iree_aie_bootgen PRIVATE -fexceptions)
 iree_install_targets(
-  TARGETS iree_aie_bootgen
+  TARGETS iree-aie-bootgen
   COMPONENT IREETools-Runtime
   EXPORT_SET Runtime
 )
-
-target_link_libraries(iree_aie_bootgen PRIVATE bootgen-lib)
-set_target_properties(iree_aie_bootgen
-                      PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/tools")

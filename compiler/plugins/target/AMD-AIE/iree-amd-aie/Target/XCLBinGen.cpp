@@ -33,6 +33,8 @@
 
 #define DEBUG_TYPE "amdaie-xclbingen"
 
+extern int iree_aie_bootgen(int argc, const char *argv[]);
+
 // https://stackoverflow.com/a/60198074
 namespace uuid {
 static std::random_device rd;
@@ -860,16 +862,12 @@ static LogicalResult generateXCLBin(
 
   // Execute the bootgen command.
   {
-    std::vector<std::string> flags{"-arch",  "versal",
-                                   "-image", designBifFile.string(),
-                                   "-o",     (tempDir / "design.pdi").string(),
-                                   "-w"};
+    const char *flags[] = {"-arch",  "versal",
+                           "-image", designBifFile.string().c_str(),
+                           "-o",     (tempDir / "design.pdi").string().c_str(),
+                           "-w"};
 
-    FailureOr<Path> bootgenBin =
-        findAMDAIETool("iree_aie_bootgen", amdAIEInstallDir);
-
-    if (!succeeded(bootgenBin) ||
-        !runTool(bootgenBin.value().string(), flags, verbose)) {
+    if (iree_aie_bootgen(7 + 1, flags)) {
       llvm::errs() << "failed to execute bootgen";
       return failure();
     }
