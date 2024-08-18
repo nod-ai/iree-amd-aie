@@ -93,5 +93,3 @@ iree_lit_test(
   LABELS
     "hostonly"
 )
-
-add_subdirectory(cdo)
