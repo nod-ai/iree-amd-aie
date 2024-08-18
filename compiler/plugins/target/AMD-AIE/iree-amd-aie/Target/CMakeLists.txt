@@ -18,8 +18,9 @@ iree_cc_library(
     iree-amd-aie::aie_runtime::iree_aie_runtime_static
     iree::target::amd-aie::Transforms
     iree-aie-bootgen
-    iree-aie-xclbinutil
 )
+
+add_dependencies(iree_target_amd-aie_Target_AIETargets iree-aie-xclbinutil)
 
 iree_cc_library(
   NAME

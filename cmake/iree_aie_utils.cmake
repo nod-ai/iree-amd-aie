@@ -5,11 +5,23 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 # https://stackoverflow.com/a/49216539/9045206
+# TODO(max): https://cmake.org/cmake/help/latest/command/target_compile_options.html#arguments
+# these add private flags; implement both private and public/interface
 function(remove_flag_from_target _target _flag)
   get_target_property(_target_cxx_flags ${_target} COMPILE_OPTIONS)
   if(_target_cxx_flags)
     list(REMOVE_ITEM _target_cxx_flags ${_flag})
     set_target_properties(${_target} PROPERTIES COMPILE_OPTIONS "${_target_cxx_flags}")
+  endif()
+endfunction()
+
+function(add_flags_to_target _target _flags)
+  get_target_property(_target_cxx_flags ${_target} COMPILE_OPTIONS)
+  if(_target_cxx_flags)
+    list(APPEND _target_cxx_flags ${_flags})
+    set_target_properties(${_target} PROPERTIES COMPILE_OPTIONS "${_target_cxx_flags}")
+  else()
+    set_target_properties(${_target} PROPERTIES COMPILE_OPTIONS "${_flags}")
   endif()
 endfunction()
 

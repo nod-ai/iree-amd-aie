@@ -21,15 +21,6 @@ Preparing repository:
 git submodule update --init
 ```
 
-Building the runtime driver (see below) for the amd-aie backend/plugin for IREE (this repo) requires Boost:
-
-```
-# Debian/Ubuntu
-sudo apt-get install libboost-all-dev
-# Alma/CentOS/RHEL
-yum install -y boost-static
-```
-
 ## Building (along with IREE)
 
 ### Just show me the CMake
@@ -132,15 +123,10 @@ packages. Here are the requirements for various operating systems:
 
 ```
 apt install \
-  libboost-dev libboost-filesystem-dev libboost-program-options-dev \
-  libboost-system-dev \
-  pkg-config libdrm-dev opencl-headers ocl-icd-opencl-dev ocl-icd-dev \
-  libssl-dev \
   rapidjson-dev \
   protobuf-compiler \
   libprotobuf-dev \
   python3-pybind11 \
-  uuid-dev \
   libcurl4-openssl-dev \
   libudev-dev \
   systemtap-sdt-dev \
@@ -154,21 +140,14 @@ base manylinux (AlmaLinux 8) image.
 
 ```
 yum install \
-  boost-devel \
-  boost-filesystem \
-  boost-program-options \
-  boost-static \
   libcurl-devel \
   libdrm-devel \
   libudev-devel \
   libuuid-devel \
   ncurses-devel \
-  ocl-icd-devel \
-  openssl-devel \
   pkgconfig \
   protobuf-compiler \
   protobuf-devel \
   rapidjson-devel \
   systemtap-sdt-devel
-
 ```

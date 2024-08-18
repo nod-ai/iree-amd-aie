@@ -34,7 +34,6 @@
 #define DEBUG_TYPE "amdaie-xclbingen"
 
 extern int iree_aie_bootgen_main(int argc, const char *argv[]);
-extern int iree_aie_xclbinutil_main(int argc, char **argv);
 
 // https://stackoverflow.com/a/60198074
 namespace uuid {
@@ -863,17 +862,17 @@ static LogicalResult generateXCLBin(
 
   // Execute the bootgen command.
   {
-    std::vector<std::string> inputFlags = {"",
-                                           "-arch",
-                                           "versal",
-                                           "-image",
-                                           designBifFile.string(),
-                                           "-o",
-                                           (tempDir / "design.pdi").string(),
-                                           "-w"};
+    std::vector<std::string> flags = {"",
+                                      "-arch",
+                                      "versal",
+                                      "-image",
+                                      designBifFile.string(),
+                                      "-o",
+                                      (tempDir / "design.pdi").string(),
+                                      "-w"};
     std::vector<char *> cstrings;
-    cstrings.reserve(inputFlags.size());
-    for (const auto &inputFlag : inputFlags) {
+    cstrings.reserve(flags.size());
+    for (const auto &inputFlag : flags) {
       cstrings.push_back(const_cast<char *>(inputFlag.c_str()));
     }
     if (iree_aie_bootgen_main(cstrings.size(),
@@ -886,21 +885,20 @@ static LogicalResult generateXCLBin(
   // Execute the xclbinutil command.
   std::string memArg = "MEM_TOPOLOGY:JSON:" + memTopologyJsonFile.string();
   std::string partArg = "AIE_PARTITION:JSON:" + aiePartitionJsonFile.string();
+  FailureOr<Path> xclbinutilBin =
+      findAMDAIETool("iree-aie-xclbinutil", amdAIEInstallDir);
+
   {
     if (inputXclbin) {
       // Create aie_partition.json.
       Path aieInputPartitionJsonFile = tempDir / "aie_input_partition.json";
       std::string inputPartArg =
           "AIE_PARTITION:JSON:" + aieInputPartitionJsonFile.string();
-      std::vector<std::string> inputFlags{"",           "--dump-section",
-                                          inputPartArg, "--force",
-                                          "--input",    *inputXclbin};
-      std::vector<char *> cstrings;
-      cstrings.reserve(inputFlags.size());
-      for (const auto &inputFlag : inputFlags) {
-        cstrings.push_back(const_cast<char *>(inputFlag.c_str()));
-      }
-      if (iree_aie_xclbinutil_main(cstrings.size(), &cstrings[0])) {
+      std::vector<std::string> inputFlags{"--dump-section", inputPartArg,
+                                          "--force", "--input", *inputXclbin};
+
+      if (!succeeded(xclbinutilBin) ||
+          !runTool(xclbinutilBin.value().string(), inputFlags, verbose)) {
         llvm::errs() << "failed to execute xclbinutil";
         return failure();
       }
@@ -952,12 +950,8 @@ static LogicalResult generateXCLBin(
                                "--add-replace-section", partArg, "--force",
                                "--output", std::string(Output)});
 
-    std::vector<char *> cstrings;
-    cstrings.reserve(flags.size());
-    for (const auto &inputFlag : flags) {
-      cstrings.push_back(const_cast<char *>(inputFlag.c_str()));
-    }
-    if (iree_aie_xclbinutil_main(cstrings.size(), &cstrings[0])) {
+    if (!succeeded(xclbinutilBin) ||
+        !runTool(xclbinutilBin.value().string(), flags, verbose)) {
       llvm::errs() << "failed to execute xclbinutil";
       return failure();
     }

@@ -14,13 +14,16 @@ include(FetchContent)
 find_package(Threads REQUIRED)
 set(Boost_USE_STATIC_LIBS ON)
 set(BOOST_ENABLE_CMAKE ON)
+set(BOOST_TYPE_INDEX_FORCE_NO_RTTI_COMPATIBILITY ON)
 set(FETCHCONTENT_QUIET FALSE) # Needed to print downloading progress
 FetchContent_Declare(
   Boost
   URL https://github.com/boostorg/boost/releases/download/boost-1.81.0/boost-1.81.0.7z
   USES_TERMINAL_DOWNLOAD TRUE
   GIT_PROGRESS TRUE
-  DOWNLOAD_NO_EXTRACT FALSE)
+  DOWNLOAD_NO_EXTRACT FALSE
+  # prevents configure from rerunning all the time
+  URL_HASH MD5=84bc7c861606dc66bcfbeb660fcddfd2)
 FetchContent_MakeAvailable(Boost)
 set(IREE_AIE_BOOST_LIBS
     any
@@ -91,9 +94,6 @@ replace_string_in_file(${IREE_XRT_SOURCE_DIR}/runtime_src/core/common/query.h
 # xclbinutil
 # ##############################################################################
 
-replace_string_in_file("${_xclbinutil_source_dir}/xclbinutil.cxx"
-                       "int main" "int iree_aie_xclbinutil_main")
-
 set(_noop_xclbin_sig_cxx "
 #include \"XclBinSignature.h\"
 void signXclBinImage(const std::string& _fileOnDisk,
@@ -121,8 +121,8 @@ file(
   "${_xclbinutil_source_dir}/ElfUtilities.cxx"
   "${_xclbinutil_source_dir}/FormattedOutput.cxx"
   "${_xclbinutil_source_dir}/ParameterSectionData.cxx"
-  "${_xclbinutil_source_dir}/Section.cxx"
   # Note: Due to linking dependency issue, this entry needs to be before the other sections
+  "${_xclbinutil_source_dir}/Section.cxx"
   "${_xclbinutil_source_dir}/Section*.cxx"
   "${_xclbinutil_source_dir}/Resources*.cxx"
   "${_xclbinutil_source_dir}/XclBinClass.cxx"
@@ -132,21 +132,21 @@ file(
   "${_xclbinutil_source_dir}/XclBinUtilMain.cxx"
 )
 
-add_library(iree-aie-xclbinutil STATIC ${_xclbinutil_srcs})
+# Unlike bootgen, xclbinutil cannot be built separately as a static archive (I wish!)
+# because the linker will DCE static initializers in SectionMemTopology.cxx
+# and then --add-replace-section:MEM_TOPOLOGY won't work...
+# XRT/src/runtime_src/tools/xclbinutil/SectionMemTopology.cxx#L26-L41
+add_executable(iree-aie-xclbinutil ${_xclbinutil_srcs})
 set(_xrt_compile_options "")
 if(WIN32)
   list(APPEND _xrt_compile_options /EHsc /GR)
 else()
   list(APPEND _xrt_compile_options -fexceptions -frtti)
 endif()
-target_compile_options(iree-aie-xclbinutil PRIVATE ${_xrt_compile_options})
 
 set(THREADS_PREFER_PTHREAD_FLAG ON)
 set(_xclbin_libs $<BUILD_LOCAL_INTERFACE:${IREE_AIE_BOOST_LIBS}> Threads::Threads)
-set(_xclbinutil_compile_definitions
-    -DBOOST_BIND_GLOBAL_PLACEHOLDERS
-    # prevents collision with bootgen's Section class
-    -DSection=XCLBinUtilSection)
+set(_xclbinutil_compile_definitions -DBOOST_BIND_GLOBAL_PLACEHOLDERS)
 
 if(NOT WIN32)
   list(APPEND _xclbinutil_compile_definitions -DENABLE_JSON_SCHEMA_VALIDATION)
@@ -161,14 +161,13 @@ target_include_directories(iree-aie-xclbinutil
                            PRIVATE ${XRT_BINARY_DIR}/gen
                                    ${IREE_XRT_SOURCE_DIR}/runtime_src/core/include
                                    ${_xclbinutil_source_dir})
-# for some reason windows doesn't respect the standard output path without this
+target_compile_options(iree-aie-xclbinutil PRIVATE ${_xrt_compile_options})
 set_target_properties(iree-aie-xclbinutil
-                      PROPERTIES LIBRARY_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/lib"
-                                 RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/lib")
+                      PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/tools")
 iree_install_targets(
   TARGETS iree-aie-xclbinutil
-  COMPONENT IREEBundledLibraries
-  EXPORT_SET Compiler
+  COMPONENT IREETools-Runtime
+  EXPORT_SET Runtime
 )
 
 # ##############################################################################
