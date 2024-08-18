@@ -45,41 +45,22 @@ elseif(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
       -Wno-deprecated-copy -Wno-non-virtual-dtor -Wno-overloaded-virtual
       -Wno-register -Wno-reorder -Wno-suggest-override)
 endif()
+
 target_compile_options(iree-aie-bootgen PRIVATE
                        $<$<COMPILE_LANGUAGE:C>:${_bootgen_c_warning_ignores}>
                        $<$<COMPILE_LANGUAGE:CXX>:${_bootgen_c_warning_ignores};${_bootgen_cxx_warning_ignores}>)
 
-if(NOT ${CMAKE_SIZEOF_VOID_P} EQUAL 8)
-  message(
-    FATAL_ERROR
-      "Building on 32bit platforms/toolchains is not supported; if you are seeing this on windows, "
-      "it's possible you have opened the win32 developer shell rather than the x64 developer shell."
-  )
-endif()
-
-# We use our own, slightly modified, FindOpenSSL because of issues in CMake's
-# distribution of the same for versions prior to 3.29.
-# https://gitlab.kitware.com/cmake/cmake/-/issues/25702
-set(OPENSSL_USE_STATIC_LIBS TRUE CACHE BOOL "" FORCE)
-find_package(OpenSSL)
-if(NOT DEFINED OPENSSL_FOUND OR NOT ${OPENSSL_FOUND})
-  list(APPEND CMAKE_MODULE_PATH ".")
-  find_package(OpenSSL)
-  if(NOT DEFINED USE_IREE_AMD_AIE_FIND_OPENSSL
-     OR NOT ${USE_IREE_AMD_AIE_FIND_OPENSSL})
-    message(FATAL_ERROR "Didn't pickup/use adjacent FindOpenSSL.cmake")
-  endif()
-  if(NOT DEFINED OPENSSL_FOUND OR NOT ${OPENSSL_FOUND})
-    message(FATAL_ERROR "OpenSSL not found")
-  endif()
-endif()
-message(STATUS "OpenSSL include directories:" ${OPENSSL_INCLUDE_DIR})
-
-target_include_directories(iree-aie-bootgen PUBLIC
-                           ${_BOOTGEN_SOURCE_DIR}
-                           ${OPENSSL_INCLUDE_DIR})
-target_compile_definitions(iree-aie-bootgen PRIVATE OPENSSL_USE_APPLINK)
-target_link_libraries(iree-aie-bootgen PRIVATE OpenSSL::SSL OpenSSL::applink)
+set(OPENSSL_USE_STATIC_LIBS ON)
+set(BUILD_OPENSSL ON)
+# openssl-cmake doesn't have 1.1.1b but this one works
+set(OPENSSL_BUILD_VERSION 1.1.1k)
+# no zlib
+set(OPENSSL_MODULES no-comp)
+add_subdirectory(${IREE_AMD_AIE_SOURCE_DIR}/third_party/openssl openssl)
+target_include_directories(iree-aie-bootgen PRIVATE ${_BOOTGEN_SOURCE_DIR})
+target_link_libraries(iree-aie-bootgen PRIVATE
+                                       $<BUILD_LOCAL_INTERFACE:ssl>
+                                       $<BUILD_LOCAL_INTERFACE:crypto>)
 
 iree_install_targets(
   TARGETS iree-aie-bootgen
