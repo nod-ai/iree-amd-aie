@@ -42,8 +42,6 @@ iree_cc_library(
     "nop_executable_cache.cc"
     "pipeline_layout.h"
     "pipeline_layout.cc"
-  INCLUDES
-    ${IREE_XRT_SOURCE_DIR}/runtime_src/core/include
   DEPS
     iree::base
     iree::base::core_headers
@@ -58,10 +56,5 @@ iree_cc_library(
     # (effectively only available for link time symbol resolution)
     # note this requires CMake >= 3.26
     $<BUILD_LOCAL_INTERFACE:xrt_coreutil>
-  COPTS
-   # currenly this is needed, it can be removed after this issue is resolved
-   # https://github.com/Xilinx/XRT/issues/7810
-   -frtti
-   -fexceptions
   PUBLIC
 )

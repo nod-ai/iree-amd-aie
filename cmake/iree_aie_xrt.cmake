@@ -128,16 +128,18 @@ file(
   "${_xclbinutil_source_dir}/XclBinClass.cxx"
   "${_xclbinutil_source_dir}/XclBinSignature.cxx"
   "${_xclbinutil_source_dir}/XclBinUtilities.cxx"
-  # Unlike bootgen, xclbinutil cannot be built separately as a static archive (I wish!)
-  # because the linker will DCE static initializers in SectionMemTopology.cxx
-  # and then --add-replace-section:MEM_TOPOLOGY won't work...
-  # XRT/src/runtime_src/tools/xclbinutil/SectionMemTopology.cxx#L26-L41
   "${_xclbinutil_source_dir}/xclbinutil.cxx"
   "${_xclbinutil_source_dir}/XclBinUtilMain.cxx"
 )
 
 add_library(iree-aie-xclbinutil STATIC ${_xclbinutil_srcs})
-target_compile_options(iree-aie-xclbinutil PRIVATE -fexceptions -frtti)
+set(_xrt_compile_options "")
+if(WIN32)
+  list(APPEND _xrt_compile_options /EHsc /GR)
+else()
+  list(APPEND _xrt_compile_options -fexceptions -frtti)
+endif()
+target_compile_options(iree-aie-xclbinutil PRIVATE ${_xrt_compile_options})
 
 set(THREADS_PREFER_PTHREAD_FLAG ON)
 set(_xclbin_libs $<BUILD_LOCAL_INTERFACE:${IREE_AIE_BOOST_LIBS}> Threads::Threads)
@@ -146,9 +148,7 @@ set(_xclbinutil_compile_definitions
     # prevents collision with bootgen's Section class
     -DSection=XCLBinUtilSection)
 
-if(WIN32)
-  list(APPEND _xclbinutil_compile_definitions -D"/EHsc")
-else()
+if(NOT WIN32)
   list(APPEND _xclbinutil_compile_definitions -DENABLE_JSON_SCHEMA_VALIDATION)
   list(APPEND _xclbin_libs $<BUILD_LOCAL_INTERFACE:transformcdo>)
 endif()
@@ -200,6 +200,7 @@ foreach(_core_lib IN LISTS _core_libs)
                              ${Boost_INCLUDE_DIRS})
   target_include_directories(${_core_lib} SYSTEM PUBLIC
                              ${IREE_XRT_SOURCE_DIR}/runtime_src/core/common/elf)
-  target_compile_definitions(${_core_lib} PRIVATE -DBOOST_BIND_GLOBAL_PLACEHOLDERS)
+  target_compile_definitions(${_core_lib} PUBLIC -DBOOST_BIND_GLOBAL_PLACEHOLDERS)
+  target_compile_options(${_core_lib} PUBLIC ${_xrt_compile_options})
   target_link_libraries(${_core_lib} PUBLIC $<BUILD_LOCAL_INTERFACE:${IREE_AIE_BOOST_LIBS}>)
 endforeach()
