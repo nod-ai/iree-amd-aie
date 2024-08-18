@@ -22,7 +22,7 @@ FetchContent_Declare(
   GIT_PROGRESS TRUE
   DOWNLOAD_NO_EXTRACT FALSE)
 FetchContent_MakeAvailable(Boost)
-set(_boost_libs
+set(IREE_AIE_BOOST_LIBS
     any
     algorithm
     asio
@@ -36,7 +36,7 @@ set(_boost_libs
     tokenizer
     tuple
     uuid)
-list(TRANSFORM _boost_libs PREPEND Boost::)
+list(TRANSFORM IREE_AIE_BOOST_LIBS PREPEND Boost::)
 
 set(IREE_XRT_SOURCE_DIR "${IREE_AMD_AIE_SOURCE_DIR}/third_party/XRT/src")
 
@@ -140,7 +140,7 @@ add_library(iree-aie-xclbinutil STATIC ${_xclbinutil_srcs})
 target_compile_options(iree-aie-xclbinutil PRIVATE -fexceptions -frtti)
 
 set(THREADS_PREFER_PTHREAD_FLAG ON)
-set(_xclbin_libs $<BUILD_LOCAL_INTERFACE:${_boost_libs}> Threads::Threads)
+set(_xclbin_libs $<BUILD_LOCAL_INTERFACE:${IREE_AIE_BOOST_LIBS}> Threads::Threads)
 set(_xclbinutil_compile_definitions
     -DBOOST_BIND_GLOBAL_PLACEHOLDERS
     # prevents collision with bootgen's Section class
@@ -201,5 +201,5 @@ foreach(_core_lib IN LISTS _core_libs)
   target_include_directories(${_core_lib} SYSTEM PUBLIC
                              ${IREE_XRT_SOURCE_DIR}/runtime_src/core/common/elf)
   target_compile_definitions(${_core_lib} PRIVATE -DBOOST_BIND_GLOBAL_PLACEHOLDERS)
-  target_link_libraries(${_core_lib} PRIVATE $<BUILD_LOCAL_INTERFACE:${_boost_libs}>)
+  target_link_libraries(${_core_lib} PUBLIC $<BUILD_LOCAL_INTERFACE:${IREE_AIE_BOOST_LIBS}>)
 endforeach()
