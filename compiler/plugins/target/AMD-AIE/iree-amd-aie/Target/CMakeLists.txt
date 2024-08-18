@@ -18,8 +18,14 @@ iree_cc_library(
     iree-amd-aie::aie_runtime::iree_aie_runtime_static
     iree::target::amd-aie::Transforms
     iree-aie-bootgen
-    iree-aie-xclbinutil
 )
+
+if(IREE_AMD_AIE_ENABLE_XRT_DRIVER)
+  # on windows for some reason `DEPS` above doesn't trigger a build
+  # and also doesn't point to the .dll (points to .lib instead)
+  target_link_libraries(iree_target_amd-aie_Target_AIETargets PRIVATE iree-aie-xclbinutil)
+#  add_dependencies(iree_target_amd-aie_Target_AIETargets iree-aie-xclbinutil)
+endif()
 
 iree_cc_library(
   NAME

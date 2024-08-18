@@ -10,10 +10,14 @@ if(TARGET iree-aie-xclbinutil)
   return()
 endif()
 
-# error: relocation R_X86_64_PC32 cannot be used against symbol
-# 'vtable for boost::filesystem::filesystem_error'; recompile with -fPIC
-# shared libs are compiled with -fPIC
-set(Boost_USE_STATIC_LIBS OFF CACHE BOOL "" FORCE)
+if(WIN32)
+  set(STATIC_OR_SHARED ON)
+else()
+  # R_X86_64_PC32 relocation at offset 0x684 against symbol
+  #`boost::system::detail::cat_holder<void>::system_category_instance' can not be used; recompile with -fPIC
+  set(STATIC_OR_SHARED OFF)
+endif()
+set(Boost_USE_STATIC_LIBS ${SHARED_OR_STATIC} CACHE BOOL "" FORCE)
 find_package(Threads REQUIRED)
 find_package(Boost REQUIRED COMPONENTS filesystem program_options system)
 message(STATUS "Boost include directories:" ${Boost_INCLUDE_DIRS})
@@ -119,9 +123,14 @@ file(
   "${_xclbinutil_source_dir}/XclBinUtilMain.cxx"
 )
 
-# R_X86_64_PC32 relocation at offset 0x684 against symbol
-#`boost::system::detail::cat_holder<void>::system_category_instance' can not be used; recompile with -fPIC
-add_library(iree-aie-xclbinutil SHARED ${_xclbinutil_srcs})
+if(WIN32)
+  set(STATIC_OR_SHARED STATIC)
+else()
+  # R_X86_64_PC32 relocation at offset 0x684 against symbol
+  #`boost::system::detail::cat_holder<void>::system_category_instance' can not be used; recompile with -fPIC
+  set(STATIC_OR_SHARED SHARED)
+endif()
+add_library(iree-aie-xclbinutil ${STATIC_OR_SHARED} ${_xclbinutil_srcs})
 target_compile_options(iree-aie-xclbinutil PRIVATE -fexceptions -frtti)
 
 set(THREADS_PREFER_PTHREAD_FLAG ON)
@@ -130,14 +139,16 @@ set(_xclbin_libs
     Boost::program_options
     Boost::system
     Threads::Threads)
-# prevents collision with bootgen's Section class
-set(_xclbinutil_compile_definitions -DBOOST_BIND_GLOBAL_PLACEHOLDERS -DSection=XCLBinUtilSection)
+set(_xclbinutil_compile_definitions
+    -DBOOST_BIND_GLOBAL_PLACEHOLDERS
+    # prevents collision with bootgen's Section class
+    -DSection=XCLBinUtilSection)
 
 if(WIN32)
   list(APPEND _xclbinutil_compile_definitions -D"/EHsc")
   # Uncomment if you get LINK : fatal error LNK1104: cannot open file
   # 'libboost_filesystem-vc142-mt-gd-x64-1_74.lib'
-  # target_compile_definitions(xclbinutil-lib PUBLIC BOOST_ALL_DYN_LINK
+  # target_compile_definitions(iree-aie-xclbinutil PUBLIC BOOST_ALL_DYN_LINK)
 else()
   list(APPEND _xclbinutil_compile_definitions -DENABLE_JSON_SCHEMA_VALIDATION)
   list(APPEND _xclbin_libs $<BUILD_LOCAL_INTERFACE:transformcdo>)
@@ -154,7 +165,8 @@ target_include_directories(iree-aie-xclbinutil
                                    ${_xclbinutil_source_dir})
 # for some reason windows doesn't respect the standard output path without this
 set_target_properties(iree-aie-xclbinutil
-                      PROPERTIES LIBRARY_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/lib")
+                      PROPERTIES LIBRARY_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/lib"
+                                 RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/lib")
 iree_install_targets(
   TARGETS iree-aie-xclbinutil
   COMPONENT IREEBundledLibraries
@@ -191,5 +203,8 @@ foreach(_core_lib IN LISTS _core_libs)
   target_include_directories(${_core_lib} SYSTEM PUBLIC
                              ${IREE_XRT_SOURCE_DIR}/runtime_src/core/common/elf)
   target_compile_definitions(${_core_lib} PRIVATE -DBOOST_BIND_GLOBAL_PLACEHOLDERS)
-  target_link_libraries(${_core_lib} PRIVATE Boost::boost)
+  target_link_libraries(${_core_lib} PRIVATE
+                                     Boost::filesystem
+                                     Boost::program_options
+                                     Boost::system)
 endforeach()
