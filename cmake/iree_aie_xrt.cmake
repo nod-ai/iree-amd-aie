@@ -6,6 +6,18 @@
 
 include(${CMAKE_CURRENT_LIST_DIR}/iree_aie_utils.cmake)
 
+if(TARGET iree-aie-xclbinutil)
+  return()
+endif()
+
+# error: relocation R_X86_64_PC32 cannot be used against symbol
+# 'vtable for boost::filesystem::filesystem_error'; recompile with -fPIC
+# shared libs are compiled with -fPIC
+set(Boost_USE_STATIC_LIBS OFF CACHE BOOL "" FORCE)
+find_package(Threads REQUIRED)
+find_package(Boost REQUIRED COMPONENTS filesystem program_options system)
+message(STATUS "Boost include directories:" ${Boost_INCLUDE_DIRS})
+
 set(IREE_XRT_SOURCE_DIR "${IREE_AMD_AIE_SOURCE_DIR}/third_party/XRT/src")
 
 if(NOT WIN32)
@@ -62,6 +74,9 @@ replace_string_in_file(${IREE_XRT_SOURCE_DIR}/runtime_src/core/common/query.h
 # xclbinutil
 # ##############################################################################
 
+replace_string_in_file("${_xclbinutil_source_dir}/xclbinutil.cxx"
+                       "int main" "int iree_aie_xclbinutil_main")
+
 set(_noop_xclbin_sig_cxx "
 #include \"XclBinSignature.h\"
 void signXclBinImage(const std::string& _fileOnDisk,
@@ -77,6 +92,7 @@ void dumpSignatureFile(const std::string& _fileOnDisk,
 void getXclBinPKCSStats(const std::string& _xclBinFile,
                         XclBinPKCSImageStats& _xclBinPKCSImageStats) {}")
 file(WRITE "${_xclbinutil_source_dir}/XclBinSignature.cxx" "${_noop_xclbin_sig_cxx}")
+
 file(
   GLOB
   _xclbinutil_srcs
@@ -103,13 +119,10 @@ file(
   "${_xclbinutil_source_dir}/XclBinUtilMain.cxx"
 )
 
-add_executable(iree_aie_xclbinutil ${_xclbinutil_srcs})
-target_compile_options(iree_aie_xclbinutil PRIVATE -fexceptions -frtti)
-iree_install_targets(
-  TARGETS iree_aie_xclbinutil
-  COMPONENT IREETools-Runtime
-  EXPORT_SET Runtime
-)
+# R_X86_64_PC32 relocation at offset 0x684 against symbol
+#`boost::system::detail::cat_holder<void>::system_category_instance' can not be used; recompile with -fPIC
+add_library(iree-aie-xclbinutil SHARED ${_xclbinutil_srcs})
+target_compile_options(iree-aie-xclbinutil PRIVATE -fexceptions -frtti)
 
 set(THREADS_PREFER_PTHREAD_FLAG ON)
 set(_xclbin_libs
@@ -117,7 +130,8 @@ set(_xclbin_libs
     Boost::program_options
     Boost::system
     Threads::Threads)
-set(_xclbinutil_compile_definitions -DBOOST_BIND_GLOBAL_PLACEHOLDERS)
+# prevents collision with bootgen's Section class
+set(_xclbinutil_compile_definitions -DBOOST_BIND_GLOBAL_PLACEHOLDERS -DSection=XCLBinUtilSection)
 
 if(WIN32)
   list(APPEND _xclbinutil_compile_definitions -D"/EHsc")
@@ -126,20 +140,26 @@ if(WIN32)
   # target_compile_definitions(xclbinutil-lib PUBLIC BOOST_ALL_DYN_LINK
 else()
   list(APPEND _xclbinutil_compile_definitions -DENABLE_JSON_SCHEMA_VALIDATION)
-  list(APPEND _xclbin_libs transformcdo)
+  list(APPEND _xclbin_libs $<BUILD_LOCAL_INTERFACE:transformcdo>)
 endif()
 
-target_compile_definitions(iree_aie_xclbinutil
+target_compile_definitions(iree-aie-xclbinutil
                            PRIVATE ${_xclbinutil_compile_definitions})
-target_link_libraries(iree_aie_xclbinutil
+target_link_libraries(iree-aie-xclbinutil
                       PRIVATE ${_xclbin_libs})
-target_include_directories(iree_aie_xclbinutil
+target_include_directories(iree-aie-xclbinutil
                            PRIVATE ${XRT_BINARY_DIR}/gen
                                    ${Boost_INCLUDE_DIRS}
                                    ${IREE_XRT_SOURCE_DIR}/runtime_src/core/include
                                    ${_xclbinutil_source_dir})
-set_target_properties(iree_aie_xclbinutil
-                      PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/tools")
+# for some reason windows doesn't respect the standard output path without this
+set_target_properties(iree-aie-xclbinutil
+                      PROPERTIES LIBRARY_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/lib")
+iree_install_targets(
+  TARGETS iree-aie-xclbinutil
+  COMPONENT IREEBundledLibraries
+  EXPORT_SET Compiler
+)
 
 # ##############################################################################
 # xrt_coreutil

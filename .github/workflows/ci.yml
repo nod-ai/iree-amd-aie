@@ -51,10 +51,8 @@ jobs:
         if: ${{ matrix.runs-on == 'nod-ai-shared-cpubuilder-manylinux-x86_64' }}
         run: |
           dnf install -y almalinux-release-devel
-          yum remove -y openssl-devel zlib-devel boost boost-all || true
-          yum install -y openssl-static 
+          yum remove -y openssl-devel zlib-devel || true
           yum install -y protobuf-devel protobuf-compiler
-          yum install -y boost-static
 
       - name: Setup Cpp
         uses: aminya/setup-cpp@v1
@@ -75,6 +73,7 @@ jobs:
           boost_version: 1.78.0
           platform_version: 2019
           toolset: msvc
+          link: shared
 
       - uses: actions/setup-python@v4
         if: ${{ matrix.os == 'windows' }}

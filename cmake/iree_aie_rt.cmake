@@ -6,6 +6,10 @@
 
 include(${CMAKE_CURRENT_LIST_DIR}/iree_aie_utils.cmake)
 
+if(TARGET cdo_driver OR TARGET cdo_driver)
+  return()
+endif()
+
 # ##############################################################################
 # cdo-drver
 # ##############################################################################

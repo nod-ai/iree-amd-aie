@@ -18,12 +18,8 @@ iree_cc_library(
     iree-amd-aie::aie_runtime::iree_aie_runtime_static
     iree::target::amd-aie::Transforms
     iree-aie-bootgen
+    iree-aie-xclbinutil
 )
-
-if(IREE_AMD_AIE_ENABLE_XRT_DRIVER)
-  add_dependencies(iree_target_amd-aie_Target_AIETargets
-                   iree_aie_xclbinutil)
-endif()
 
 iree_cc_library(
   NAME

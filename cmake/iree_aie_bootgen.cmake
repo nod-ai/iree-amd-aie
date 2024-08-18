@@ -6,6 +6,10 @@
 
 include(${CMAKE_CURRENT_LIST_DIR}/iree_aie_utils.cmake)
 
+if(TARGET iree-aie-bootgen)
+  return()
+endif()
+
 set(_BOOTGEN_SOURCE_DIR ${IREE_AMD_AIE_SOURCE_DIR}/third_party/bootgen)
 
 # malloc.h is deprecated and should not be used
@@ -50,12 +54,16 @@ target_compile_options(iree-aie-bootgen PRIVATE
                        $<$<COMPILE_LANGUAGE:C>:${_bootgen_c_warning_ignores}>
                        $<$<COMPILE_LANGUAGE:CXX>:${_bootgen_c_warning_ignores};${_bootgen_cxx_warning_ignores}>)
 
-set(OPENSSL_USE_STATIC_LIBS ON)
-set(BUILD_OPENSSL ON)
-# openssl-cmake doesn't have 1.1.1b but this one works
-set(OPENSSL_BUILD_VERSION 1.1.1k)
-# no zlib
-set(OPENSSL_MODULES no-comp)
+set(OPENSSL_USE_STATIC_LIBS TRUE CACHE BOOL "" FORCE)
+if(WIN32)
+  set(SYSTEM_OPENSSL ON)
+else()
+  set(BUILD_OPENSSL ON)
+  # openssl-cmake doesn't have 1.1.1b but this one works
+  set(OPENSSL_BUILD_VERSION 1.1.1k)
+  # no zlib
+  set(OPENSSL_MODULES no-comp)
+endif()
 add_subdirectory(${IREE_AMD_AIE_SOURCE_DIR}/third_party/openssl openssl)
 target_include_directories(iree-aie-bootgen PRIVATE ${_BOOTGEN_SOURCE_DIR})
 target_link_libraries(iree-aie-bootgen PRIVATE
@@ -64,6 +72,6 @@ target_link_libraries(iree-aie-bootgen PRIVATE
 
 iree_install_targets(
   TARGETS iree-aie-bootgen
-  COMPONENT IREETools-Runtime
+  COMPONENT IREEBundledLibraries
   EXPORT_SET Runtime
 )

@@ -22,12 +22,7 @@ if("xrt" IN_LIST IREE_EXTERNAL_HAL_DRIVERS)
 endif()
 
 if(IREE_AMD_AIE_ENABLE_XRT_DRIVER)
-  set(Boost_USE_STATIC_LIBS ON CACHE BOOL "" FORCE)
-  find_package(Threads REQUIRED)
-  find_package(Boost REQUIRED COMPONENTS filesystem program_options system)
   include(iree_aie_xrt)
-  include(iree_aie_bootgen)
-  message(STATUS "Boost include directories:" ${Boost_INCLUDE_DIRS})
 endif()
 
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/runtime/src AMD-AIE)
