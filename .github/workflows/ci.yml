@@ -64,17 +64,6 @@ jobs:
           ninja: true
           ccache: true
 
-      - name: Install boost
-        if: ${{ matrix.os == 'windows' }}
-        uses: MarkusJx/install-boost@v2.4.5
-        id: install-boost
-        with:
-          boost_install_dir: ${{ github.workspace }}
-          boost_version: 1.78.0
-          platform_version: 2019
-          toolset: msvc
-          link: shared
-
       - uses: actions/setup-python@v4
         if: ${{ matrix.os == 'windows' }}
         with:
@@ -103,11 +92,6 @@ jobs:
       - name: Build packages
         run: |
           export cache_dir="${{ env.CACHE_DIR }}"
-          # switch to linux paths instead of windows paths
-          # also make into abs path
-          if [ x"${{ matrix.OS }}" == x"windows" ]; then
-            export BOOST_ROOT="/$(echo "${{ steps.install-boost.outputs.BOOST_ROOT }}" | sed -e 's/\\/\//g' -e 's/://')"
-          fi
           bash "build_tools/ci/build_test_cpp_${{ matrix.os }}.sh"
 
       - name: Create artifacts

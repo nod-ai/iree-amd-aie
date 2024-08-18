@@ -5,8 +5,6 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/cmake")
-find_package(Boost REQUIRED)
-include_directories(${Boost_INCLUDE_DIRS})
 
 set(IREE_AMD_AIE_SOURCE_DIR "${CMAKE_CURRENT_LIST_DIR}")
 set(IREE_AMD_AIE_RUNTIME_SOURCE_DIR ${CMAKE_CURRENT_LIST_DIR}/runtime/src)

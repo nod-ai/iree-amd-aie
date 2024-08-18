@@ -87,6 +87,7 @@ else()
   set(OPENSSL_BUILD_VERSION 1.1.1k)
   # no zlib
   set(OPENSSL_MODULES no-comp)
+  set(OPENSSL_ENABLE_TESTS OFF)
   add_subdirectory(${IREE_AMD_AIE_SOURCE_DIR}/third_party/openssl openssl)
   list(APPEND _openssl_libs $<BUILD_LOCAL_INTERFACE:ssl> $<BUILD_LOCAL_INTERFACE:crypto>)
 endif()

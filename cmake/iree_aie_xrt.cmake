@@ -4,32 +4,45 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-include(${CMAKE_CURRENT_LIST_DIR}/iree_aie_utils.cmake)
-
 if(TARGET iree-aie-xclbinutil)
   return()
 endif()
 
-if(WIN32)
-  set(STATIC_OR_SHARED ON)
-else()
-  # R_X86_64_PC32 relocation at offset 0x684 against symbol
-  #`boost::system::detail::cat_holder<void>::system_category_instance' can not be used; recompile with -fPIC
-  set(STATIC_OR_SHARED OFF)
-endif()
-set(Boost_USE_STATIC_LIBS ${SHARED_OR_STATIC} CACHE BOOL "" FORCE)
+include(${CMAKE_CURRENT_LIST_DIR}/iree_aie_utils.cmake)
+
+include(FetchContent)
 find_package(Threads REQUIRED)
-find_package(Boost REQUIRED COMPONENTS filesystem program_options system)
-message(STATUS "Boost include directories:" ${Boost_INCLUDE_DIRS})
+set(Boost_USE_STATIC_LIBS ON)
+set(BOOST_ENABLE_CMAKE ON)
+set(FETCHCONTENT_QUIET FALSE) # Needed to print downloading progress
+FetchContent_Declare(
+  Boost
+  URL https://github.com/boostorg/boost/releases/download/boost-1.81.0/boost-1.81.0.7z
+  USES_TERMINAL_DOWNLOAD TRUE
+  GIT_PROGRESS TRUE
+  DOWNLOAD_NO_EXTRACT FALSE)
+FetchContent_MakeAvailable(Boost)
+set(_boost_libs
+    any
+    algorithm
+    asio
+    exception
+    format
+    functional
+    lexical_cast
+    process
+    program_options
+    property_tree
+    tokenizer
+    tuple
+    uuid)
+list(TRANSFORM _boost_libs PREPEND Boost::)
 
 set(IREE_XRT_SOURCE_DIR "${IREE_AMD_AIE_SOURCE_DIR}/third_party/XRT/src")
 
 if(NOT WIN32)
   find_package(RapidJSON REQUIRED)
 endif()
-
-# Note: we do not simply add the subdirectory and use the imported target because
-# XRT will build in its entirety when we do `ninja install` for IREE.
 
 # obv we have python but XRT uses this var to look for an ancient version of pybind (and fail)
 replace_string_in_file(${IREE_XRT_SOURCE_DIR}/python/pybind11/CMakeLists.txt
@@ -123,22 +136,11 @@ file(
   "${_xclbinutil_source_dir}/XclBinUtilMain.cxx"
 )
 
-if(WIN32)
-  set(STATIC_OR_SHARED STATIC)
-else()
-  # R_X86_64_PC32 relocation at offset 0x684 against symbol
-  #`boost::system::detail::cat_holder<void>::system_category_instance' can not be used; recompile with -fPIC
-  set(STATIC_OR_SHARED SHARED)
-endif()
-add_library(iree-aie-xclbinutil ${STATIC_OR_SHARED} ${_xclbinutil_srcs})
+add_library(iree-aie-xclbinutil STATIC ${_xclbinutil_srcs})
 target_compile_options(iree-aie-xclbinutil PRIVATE -fexceptions -frtti)
 
 set(THREADS_PREFER_PTHREAD_FLAG ON)
-set(_xclbin_libs
-    Boost::filesystem
-    Boost::program_options
-    Boost::system
-    Threads::Threads)
+set(_xclbin_libs $<BUILD_LOCAL_INTERFACE:${_boost_libs}> Threads::Threads)
 set(_xclbinutil_compile_definitions
     -DBOOST_BIND_GLOBAL_PLACEHOLDERS
     # prevents collision with bootgen's Section class
@@ -146,9 +148,6 @@ set(_xclbinutil_compile_definitions
 
 if(WIN32)
   list(APPEND _xclbinutil_compile_definitions -D"/EHsc")
-  # Uncomment if you get LINK : fatal error LNK1104: cannot open file
-  # 'libboost_filesystem-vc142-mt-gd-x64-1_74.lib'
-  # target_compile_definitions(iree-aie-xclbinutil PUBLIC BOOST_ALL_DYN_LINK)
 else()
   list(APPEND _xclbinutil_compile_definitions -DENABLE_JSON_SCHEMA_VALIDATION)
   list(APPEND _xclbin_libs $<BUILD_LOCAL_INTERFACE:transformcdo>)
@@ -160,7 +159,6 @@ target_link_libraries(iree-aie-xclbinutil
                       PRIVATE ${_xclbin_libs})
 target_include_directories(iree-aie-xclbinutil
                            PRIVATE ${XRT_BINARY_DIR}/gen
-                                   ${Boost_INCLUDE_DIRS}
                                    ${IREE_XRT_SOURCE_DIR}/runtime_src/core/include
                                    ${_xclbinutil_source_dir})
 # for some reason windows doesn't respect the standard output path without this
@@ -203,8 +201,5 @@ foreach(_core_lib IN LISTS _core_libs)
   target_include_directories(${_core_lib} SYSTEM PUBLIC
                              ${IREE_XRT_SOURCE_DIR}/runtime_src/core/common/elf)
   target_compile_definitions(${_core_lib} PRIVATE -DBOOST_BIND_GLOBAL_PLACEHOLDERS)
-  target_link_libraries(${_core_lib} PRIVATE
-                                     Boost::filesystem
-                                     Boost::program_options
-                                     Boost::system)
+  target_link_libraries(${_core_lib} PRIVATE $<BUILD_LOCAL_INTERFACE:${_boost_libs}>)
 endforeach()
