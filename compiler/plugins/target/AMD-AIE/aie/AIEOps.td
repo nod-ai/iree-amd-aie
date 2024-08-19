@@ -312,6 +312,7 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", [
         OptionalAttr<I32Attr>:$next_bd_id
   );
 
+  let hasVerifier = 1;
 
   let assemblyFormat = [{
     `(` $buffer `:` type($buffer) `)` attr-dict

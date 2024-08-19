@@ -1,6 +1,6 @@
 #!/bin/bash
 
-set -eux -o errtrace
+set -eu -o errtrace
 
 this_dir="$(cd $(dirname $0) && pwd)"
 repo_root="$(cd $this_dir/../.. && pwd)"

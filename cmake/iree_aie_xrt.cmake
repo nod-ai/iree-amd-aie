@@ -47,10 +47,6 @@ list(TRANSFORM IREE_AIE_BOOST_LIBS PREPEND Boost::)
 
 set(IREE_XRT_SOURCE_DIR "${IREE_AMD_AIE_SOURCE_DIR}/third_party/XRT/src")
 
-# obv we have python but XRT uses this var to look for an ancient version of pybind (and fail)
-replace_string_in_file(${IREE_XRT_SOURCE_DIR}/python/pybind11/CMakeLists.txt
-                       "if (HAS_PYTHON)" "if (FALSE)")
-
 # ##############################################################################
 # xclbinutil
 # ##############################################################################

@@ -20,7 +20,9 @@ iree_cc_library(
     iree-aie-bootgen
 )
 
-add_dependencies(iree_target_amd-aie_Target_AIETargets iree-aie-xclbinutil)
+if(IREE_AMD_AIE_ENABLE_XRT_DRIVER)
+  add_dependencies(iree_target_amd-aie_Target_AIETargets iree-aie-xclbinutil)
+endif()
 
 iree_cc_library(
   NAME

@@ -1,7 +1,5 @@
 // RUN: iree-opt --verify-diagnostics --split-input-file %s
 
-// XFAIL: *
-
 module {
   aie.device(xcve2802) {
     %t1 = aie.tile(1, 1)

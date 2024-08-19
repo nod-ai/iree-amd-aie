@@ -30,7 +30,7 @@ cmake -B $WHERE_YOU_WOULD_LIKE_TO_BUILD -S $IREE_REPO_SRC_DIR \
 -DIREE_CMAKE_PLUGIN_PATHS=$IREE_AMD_AIE_REPO_SRC_DIR -DIREE_BUILD_PYTHON_BINDINGS=ON \
 -DIREE_INPUT_STABLEHLO=OFF -DIREE_INPUT_TORCH=OFF -DIREE_INPUT_TOSA=OFF \
 -DIREE_HAL_DRIVER_DEFAULTS=OFF -DIREE_TARGET_BACKEND_DEFAULTS=OFF -DIREE_TARGET_BACKEND_LLVM_CPU=ON \
--DIREE_BUILD_TESTS=ON -DIREE_EXTERNAL_HAL_DRIVERS=xrt -DXRT_DIR=$XRT_INSTALL_DIR/share/cmake/XRT \
+-DIREE_BUILD_TESTS=ON -DIREE_EXTERNAL_HAL_DRIVERS=xrt \
 -DCMAKE_INSTALL_PREFIX=$WHERE_YOU_WOULD_LIKE_TO_INSTALL
 ```
 
@@ -88,38 +88,18 @@ ctest -R amd-aie
 
 ## Runtime driver setup
 
-To enable the runtime driver. You need to make sure XRT cmake package is discoverable by cmake.
-One option is to add it to your PATH.
-Note that with a standard setup, XRT is installed in `/opt/xilinx/xrt`. 
-
-Now from within the iree-amd-aie root directory. Then,
+To enable the runtime driver, you need to also enable the XRT HAL:
 
 ```
 cd ../iree-build
 cmake . -DIREE_CMAKE_PLUGIN_PATHS=../iree-amd-aie \
-  -DIREE_EXTERNAL_HAL_DRIVERS=xrt \
-  -DXRT_DIR=/opt/xilinx/xrt/share/cmake/XRT
+  -DIREE_EXTERNAL_HAL_DRIVERS=xrt
 ninja
 ```
 
-### Building XRT
-
-For the CI, we prefer to build against the pinned XRT. Note that XRT has
-submodules so recursively submodule initialization is required.
-
-You can build using the same script the CI does:
-
-```
-./build_tools/ci/build_xrt.sh ../xrt-build ../xrt-install
-```
-
-Then instead of using the default system install location for `-DXRT_DIR=`
-above, prepend the `../xrt-install/` prefix for the one you just built.
-
 ### Ubuntu Dependencies
 
-Presently XRT is a monolithic build that unconditionally requires a number of
-packages. Here are the requirements for various operating systems:
+XRT requires a number of packages. Here are the requirements for various operating systems:
 
 ```
 apt install \

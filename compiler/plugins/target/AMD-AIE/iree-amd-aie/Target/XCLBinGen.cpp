@@ -862,6 +862,8 @@ static LogicalResult generateXCLBin(
 
   // Execute the bootgen command.
   {
+    // first element is empty string because iree_aie_bootgen_main
+    // is the main of bootgen.exe (and argv[0] is typically the name of the exe)
     std::vector<std::string> flags = {"",
                                       "-arch",
                                       "versal",

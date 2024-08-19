@@ -212,7 +212,8 @@ void printObjectFifoProducerTile(mlir::OpAsmPrinter &printer,
   }
 }
 
-mlir::ParseResult parseObjectFifoConsumerTiles(
+// actually used in objectfifo parse
+[[maybe_unused]] mlir::ParseResult parseObjectFifoConsumerTiles(
     mlir::OpAsmParser &parser,
     llvm::SmallVectorImpl<mlir::OpAsmParser::UnresolvedOperand> &tiles,
     BDDimLayoutArrayArrayAttr &dimensions) {
@@ -241,9 +242,10 @@ mlir::ParseResult parseObjectFifoConsumerTiles(
   return mlir::success();
 }
 
-void printObjectFifoConsumerTiles(mlir::OpAsmPrinter &printer,
-                                  mlir::Operation *op, mlir::OperandRange tiles,
-                                  BDDimLayoutArrayArrayAttr dimsPerTileAttr) {
+// actually used in objectfifo print
+[[maybe_unused]] void printObjectFifoConsumerTiles(
+    mlir::OpAsmPrinter &printer, mlir::Operation *op, mlir::OperandRange tiles,
+    BDDimLayoutArrayArrayAttr dimsPerTileAttr) {
   size_t tileIdx = 0;
   for (auto tile : tiles) {
     printer << tile;
@@ -261,7 +263,14 @@ void printObjectFifoConsumerTiles(mlir::OpAsmPrinter &printer,
 
 TileOp getTileOp(mlir::Operation &op) {
   mlir::Value t = *op.getOperands().begin();
-  return llvm::cast<TileOp>(t.getDefiningOp());
+  Operation *definingOp = t.getDefiningOp();
+  if (!llvm::isa<TileOp>(definingOp)) {
+    llvm::errs() << "Parent op's first operand's defining op isn't a TileOp: "
+                 << definingOp;
+    llvm::report_fatal_error(
+        "Parent op's first operand's defining op isn't a TileOp");
+  }
+  return llvm::cast<TileOp>(definingOp);
 }
 
 TileOp CoreOp::getTileOp() { return xilinx::AIE::getTileOp(*getOperation()); }
@@ -410,4 +419,159 @@ mlir::iree_compiler::AMDAIE::AMDAIEDeviceModel DeviceOp::getTargetModel() {
 }
 
 uint32_t getAddressGenGranularity() { return 32; };
+
+LogicalResult DMABDOp::verify() {
+  // Skip verification of the BDOp outside of mem operations.
+  // BDOps may appear elsewhere and subsequent lowerings will place them in the
+  // correct mem ops.
+  Operation *p = (*this)->getParentOp();
+  if (!llvm::isa<MemOp, MemTileDMAOp, ShimDMAOp>(*p)) {
+    return success();
+  }
+
+  if (!isa<BufferOp, ExternalBufferOp>(getBuffer().getDefiningOp())) {
+    return emitOpError(
+        "BDs only support BufferOp or ExternalBufferOp operands.");
+  }
+
+  if (getLenInBytes(*this) % 4) {
+    return emitOpError(
+        "transfer length must be multiple of 4 (i.e., represent "
+        "4 byte aligned address)");
+  }
+
+  TileOp parentTileOp = getTileOp(*p);
+
+  BufferOp buffer = cast<BufferOp>(getBuffer().getDefiningOp());
+  if (getOperation()->getParentOfType<MemOp>() &&
+      (getTileOp(*buffer.getOperation()).getCol() != parentTileOp.getCol() ||
+       getTileOp(*buffer.getOperation()).getRow() != parentTileOp.getRow())) {
+    return emitOpError(
+        "Core tile DMAs can only access a buffer in the same tile.");
+  }
+
+  mlir::iree_compiler::AMDAIE::AMDAIEDeviceModel deviceModel =
+      getDeviceModel(this->getOperation());
+
+  uint32_t maxBds =
+      deviceModel.getNumBDs(parentTileOp.getCol(), parentTileOp.getRow());
+  if (std::optional<int32_t> bdId = getBdId();
+      bdId.has_value() && static_cast<uint32_t>(*bdId) >= maxBds) {
+    return emitOpError("bdId attribute exceeds max: ") << maxBds - 1;
+  }
+  if (std::optional<int32_t> nextBdId = getNextBdId();
+      nextBdId.has_value() && static_cast<uint32_t>(*nextBdId) >= maxBds) {
+    return emitOpError("nextBdId attribute exceeds max: ") << maxBds - 1;
+  }
+
+  if (auto dims = getDimensions(); dims.has_value()) {
+    size_t maxNDims = 3;
+    if (isa_and_nonnull<MemTileDMAOp>(getOperation()->getParentOp())) {
+      maxNDims = 4;
+    }
+    if (dims->size() > maxNDims) {
+      return emitOpError() << "Cannot give more than "
+                           << std::to_string(maxNDims)
+                           << " dimensions for step sizes and wraps in this "
+                              " tile (got "
+                           << std::to_string(dims->size()) << " dimensions).";
+    }
+
+    MemRefType bufferType = buffer.getType();
+    int64_t maxIdx = 0;
+    for (BDDimLayoutAttr dim : *dims) {
+      maxIdx += dim.getStride() * (dim.getSize() - 1);
+      if (0 == dim.getStride()) {
+        return emitOpError()
+               << "Invalid step size; must be a positive integer.";
+      }
+      if (dim.getStride() > bufferType.getNumElements()) {
+        return emitOpError()
+               << "Step size " << std::to_string(dim.getStride()) << " "
+               << "exceeds memref size "
+               << std::to_string(bufferType.getNumElements());
+      }
+      if (dim.getSize() >= (1UL << 9) + 1) {
+        return emitOpError() << "Size may not exceed 1023.";
+      }
+      if (dim.getStride() >= (1UL << 19)) {
+        return emitOpError() << "Stride may not exceed " << (1 << 20);
+      }
+    }
+
+    if (bufferType.getNumElements() <= maxIdx) {
+      return emitOpError() << "Specified stride(s) and size(s) result in out "
+                              "of bounds access in buffer, for index "
+                           << std::to_string(maxIdx) << " in memref of length "
+                           << std::to_string(bufferType.getNumElements());
+    }
+
+    // Since streams read 32b words, there's no way to read eg 16b with stride
+    // of 2 (ie lower halfs of each 32b). So force it to be 1 (and then in
+    // CDODirect scale the size by 4/getBufferElementTypeWidthInBytes).
+    if (getBufferElementTypeWidthInBytes(*this) < 4 &&
+        dims->back().getStride() != 1) {
+      return emitOpError(
+          "For <32b width datatypes, inner-most dim stride must be 1");
+    }
+  }
+
+  if (auto paddims = getPadDimensions(); paddims.has_value()) {
+    auto dims = getDimensions();
+    if (!dims.has_value()) {
+      return emitOpError() << "Padding requires n-d data layouts expressed as"
+                           << " wrap(s) and stride(s).";
+    }
+    if (dims->size() != paddims->size()) {
+      return emitOpError() << "Mismatch number of dimensions between padding(s)"
+                           << " and wrap(s) and stride(s).";
+    }
+    if (!deviceModel.isMemTile(parentTileOp.getCol(), parentTileOp.getRow())) {
+      return emitOpError() << "Padding is only supported by memtile dma bds.";
+    }
+    int actuallen = 1;
+    for (unsigned i = 0; i < paddims->size(); i++) {
+      auto dim = (*dims)[i];
+      auto paddim = (*paddims)[i];
+      actuallen *= paddim.getConstPadBefore() + paddim.getConstPadAfter() +
+                   dim.getSize();
+      if (actuallen > getLen()) {
+        return emitOpError() << "Data exceeds len after padding.";
+      }
+    }
+
+    if ((paddims->back().getConstPadBefore() *
+         getBufferElementTypeWidthInBytes(*this)) %
+        4) {
+      return emitOpError() << "Inner-most padding-before count must result in"
+                           << " padding in 32-bit words.";
+    }
+    if ((paddims->back().getConstPadAfter() *
+         getBufferElementTypeWidthInBytes(*this)) %
+        4) {
+      return emitOpError() << "Inner-most padding-after count must result in"
+                           << " padding in 32-bit words.";
+    }
+  }
+
+  if (deviceModel.isMemTile(parentTileOp.getCol(), parentTileOp.getRow()) ||
+      deviceModel.isCoreTile(parentTileOp.getCol(), parentTileOp.getRow())) {
+    if (auto baseAddr = buffer.getAddress(); baseAddr.has_value()) {
+      int offsetInBytes = *baseAddr + getOffsetInBytes(*this);
+      if (offsetInBytes % 4) {
+        return emitOpError(
+                   "bd address must be 4 byte (32b) aligned; got "
+                   "base+offset: ")
+               << offsetInBytes << " (bytes)";
+      }
+    }
+  }
+
+  if (!getLen() && !getBuffer().getType().hasStaticShape()) {
+    return emitOpError() << "buffer with dynamic shape requires static length.";
+  }
+
+  return success();
+}
+
 }  // namespace xilinx::AIE
