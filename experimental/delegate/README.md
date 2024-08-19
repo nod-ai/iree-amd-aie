@@ -5,7 +5,7 @@
 ### Purpose
 
 As an early demonstration of the ability to combine executable code for
-heterogenious devices, here we partition a simple model such that most of the
+heterogeneous devices, here we partition a simple model such that most of the
 model compiles for running on CPU, except for the model's matmul, which uses
 a pre-built AIE kernel.
 

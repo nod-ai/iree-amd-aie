@@ -248,11 +248,11 @@ int main(int argc, char** argv) {
       /*npiAddr*/ XAIE2IPU_NPI_BASEADDR,
       /*aieSim*/ false, /*xaieDebug*/ false,
       mlir::iree_compiler::AMDAIE::AMDAIEDevice::npu1_4col);
-  XAie_LocType tile00 = {.Row = 0, .Col = col};
-  XAie_LocType tile01 = {.Row = 1, .Col = col};
-  XAie_LocType tile02 = {.Row = 2, .Col = col};
-  XAie_Lock lock01 = {.LockId = 0, .LockVal = 1};
-  XAie_Lock lock10 = {.LockId = 1, .LockVal = 0};
+  XAie_LocType tile00 = {/*Row*/ 0, /*Col*/ col};
+  XAie_LocType tile01 = {/*Row*/ 1, /*Col*/ col};
+  XAie_LocType tile02 = {/*Row*/ 2, /*Col*/ col};
+  XAie_Lock lock01 = {/*LockId*/ 0, /*LockVal*/ 1};
+  XAie_Lock lock10 = {/*LockId*/ 1, /*LockVal*/ 0};
 
   EnAXIdebug();
   setEndianness(Little_Endian);
@@ -269,7 +269,7 @@ int main(int argc, char** argv) {
 
   XAie_DmaDesc dmaDesc;
   XAie_DmaDescInit(&deviceModel.devInst, &dmaDesc, tile02);
-  lock10 = XAie_Lock{.LockId = 1, .LockVal = -1};
+  lock10 = XAie_Lock{/*LockId*/ 1, /*LockVal*/ -1};
   dmaDesc.DmaMod->SetLock(&dmaDesc, lock10, lock01, /*AcqEn*/ 1,
                           /*RelEn*/ 0);
   // address 1024 is the beginning of the core's stack

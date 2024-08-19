@@ -14,6 +14,7 @@
 #include "iree-dialects/Dialect/LinalgTransform/Passes.h"
 #include "iree/compiler/Codegen/Common/Passes.h"
 #include "iree/compiler/Utils/PassUtils.h"
+#include "iree/compiler/Utils/ToolUtils.h"
 #include "mlir/Conversion/AffineToStandard/AffineToStandard.h"
 #include "mlir/Conversion/ArithToLLVM/ArithToLLVM.h"
 #include "mlir/Conversion/ControlFlowToLLVM/ControlFlowToLLVM.h"
@@ -68,7 +69,7 @@ static llvm::cl::opt<int32_t> clNumCores(
 
 static llvm::cl::opt<std::string> clPathToUkernels(
     "iree-amdaie-path-to-ukernels",
-    llvm::cl::desc("Path to microkernels' directory"));
+    llvm::cl::desc("Path to microkernels' directory"), llvm::cl::init(""));
 
 static llvm::cl::opt<bool> clEnableVectorizationPasses(
     "iree-amdaie-enable-vectorization-passes",
@@ -305,7 +306,8 @@ void addPackPeelBasedPassPipeline(OpPassManager &funcPassManager,
   // Lower to UKernels.
   {
     AMDAIELowerToUKernelsOptions options;
-    options.pathToUkernels = clPathToUkernels;
+    // windows
+    options.pathToUkernels = escapeCommandLineComponent(clPathToUkernels);
     funcPassManager.addPass(createAMDAIELowerToUKernelsPass(options));
   }
 
@@ -412,7 +414,8 @@ void addPadPackBasedPassPipeline(OpPassManager &funcPassManager,
   // Lower to UKernels
   {
     AMDAIELowerToUKernelsOptions options;
-    options.pathToUkernels = clPathToUkernels;
+    // windows
+    options.pathToUkernels = escapeCommandLineComponent(clPathToUkernels);
     funcPassManager.addPass(createAMDAIELowerToUKernelsPass(options));
   }
   // Vectorization passes

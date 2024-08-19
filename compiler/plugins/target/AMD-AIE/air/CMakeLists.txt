@@ -21,22 +21,6 @@ iree_cc_library(
 # AIR Dialect
 ###############################################################################
 
-function(replace_string_in_file _file _match_string _replace_string)
-  if(NOT (EXISTS ${_file}))
-    message(FATAL_ERROR "file ${_file} does not exist")
-  endif()
-  file(READ "${_file}" _file_contents)
-  if(_file_contents STREQUAL "")
-    message(FATAL_ERROR "empty file contents for ${_file}")
-  endif()
-  string(REPLACE "${_match_string}" "${_replace_string}" _file_contents "${_file_contents}")
-  if(_file_contents STREQUAL "")
-    message(FATAL_ERROR "empty replacement contents for ${_file}")
-  endif()
-  file(WRITE "${_file}" "${_file_contents}")
-endfunction()
-
-
 iree_cc_library(
     NAME
         AIRDialectIR
@@ -195,6 +179,12 @@ replace_string_in_file(
 replace_string_in_file(
   ${IREE_MLIR_AIR_SOURCE_DIR}/lib/Conversion/AIRRtToNpuPass.cpp
   "aie/Dialect/AIEX/IR" "aie")
+replace_string_in_file(
+  ${IREE_MLIR_AIR_SOURCE_DIR}/lib/Conversion/AIRRtToNpuPass.cpp
+  "4UL" "static_cast<size_t>(4)")
+replace_string_in_file(
+  ${IREE_MLIR_AIR_SOURCE_DIR}/lib/Conversion/AIRRtToNpuPass.cpp
+  "8UL" "static_cast<size_t>(8)")
 
 replace_string_in_file(
   ${IREE_MLIR_AIR_SOURCE_DIR}/lib/Conversion/AIRToAIESchedulingUtils.cpp
@@ -329,8 +319,6 @@ iree_cc_library(
     AIRPasses
   HDRS
     "${IREE_MLIR_AIR_SOURCE_DIR}/include/air/Transform/Passes.h"
-  SRCS
-    "Passes.cpp"
   DEPS
     ::AIRConversionPasses
     ::AIRTransformPasses

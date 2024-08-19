@@ -356,7 +356,6 @@ if(WIN32 AND NOT CYGWIN)
     endif ()
     message(STATUS "searching for MSVC libs in ${_OPENSSL_PATH_SUFFIXES_DEBUG}")
     message(STATUS "searching for MSVC libs in ${_OPENSSL_PATH_SUFFIXES_RELEASE}")
-    message(FATAL_ERROR)
 
     find_library(LIB_EAY_DEBUG
       NAMES

@@ -42,8 +42,6 @@ iree_cc_library(
     "nop_executable_cache.cc"
     "pipeline_layout.h"
     "pipeline_layout.cc"
-  INCLUDES
-    "${XRT_INCLUDE_DIRS}"
   DEPS
     iree::base
     iree::base::core_headers
@@ -54,12 +52,12 @@ iree_cc_library(
     iree::hal::utils::file_transfer
     iree::hal
     iree-amd-aie::schemas::xrt_executable_def_c_fbs
-    XRT::xrt_coreutil
-    Boost::boost
+    # hide the target from all exports so it doesn't need to be installed
+    # (effectively only available for link time symbol resolution)
+    # note this requires CMake >= 3.26
+    $<BUILD_LOCAL_INTERFACE:xrt_coreutil>
   COPTS
-  # currenly this is needed, it can be removed after this issue is resolved
-  # https://github.com/Xilinx/XRT/issues/7810
-   -frtti
-   -fexceptions
+    $<$<PLATFORM_ID:Linux>:-fexceptions -frtti>
+    $<$<PLATFORM_ID:Windows>:/EHsc /GR>
   PUBLIC
 )

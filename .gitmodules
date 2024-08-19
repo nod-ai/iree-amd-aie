@@ -14,3 +14,6 @@
 	path = third_party/bootgen
 	url = https://github.com/Xilinx/bootgen.git
 	shallow = true
+[submodule "third_party/openssl"]
+	path = third_party/openssl
+	url = https://github.com/viaduck/openssl-cmake.git

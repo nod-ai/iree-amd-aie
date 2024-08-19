@@ -44,8 +44,6 @@ clang-format on
 
  */
 
-#include <unistd.h>
-
 #include <cstdio>
 
 #include "interpreter_op_impl.h"
@@ -90,11 +88,20 @@ int main(int argc, char **argv) {
   AieRC RC = XAIE_OK;
 
   // setup aie-rt
-  XAie_SetupConfig(ConfigPtr, XAIE_DEV_GEN_AIEML, XAIE2IPU_BASE_ADDR,
-                   XAIE2IPU_COL_SHIFT, XAIE2IPU_ROW_SHIFT, XAIE2IPU_NUM_COLS,
-                   XAIE2IPU_NUM_ROWS, XAIE2IPU_SHIM_ROW,
-                   XAIE2IPU_MEM_TILE_ROW_START, XAIE2IPU_MEM_TILE_NUM_ROWS,
-                   XAIE2IPU_AIE_TILE_ROW_START, XAIE2IPU_AIE_TILE_NUM_ROWS);
+  XAie_Config ConfigPtr = {
+      /*AieGen*/ XAIE_DEV_GEN_AIEML,
+      /*BaseAddr*/ XAIE2IPU_BASE_ADDR,
+      /*ColShift*/ XAIE2IPU_COL_SHIFT,
+      /*RowShift*/ XAIE2IPU_ROW_SHIFT,
+      /*NumRows*/ XAIE2IPU_NUM_ROWS,
+      /*NumCols*/ XAIE2IPU_NUM_COLS,
+      /*ShimRowNum*/ XAIE2IPU_SHIM_ROW,
+      /*MemTileRowStart*/ XAIE2IPU_MEM_TILE_ROW_START,
+      /*MemTileNumRows*/ XAIE2IPU_MEM_TILE_NUM_ROWS,
+      /*AieTileRowStart*/ XAIE2IPU_AIE_TILE_ROW_START,
+      /*AieTileNumRows*/ XAIE2IPU_AIE_TILE_NUM_ROWS,
+      /*PartProp*/ {0},
+  };
 
   XAie_InstDeclare(DevInst, &ConfigPtr);
   RC = XAie_CfgInitialize(&DevInst, &ConfigPtr);
@@ -227,7 +234,6 @@ int main(int argc, char **argv) {
 
   while (TimeOut &&
          XAie_DmaWaitForDone(&DevInst, Loc, MM2S_CHNUM, DMA_MM2S, 1000)) {
-    sleep(1);
     TimeOut--;
   }
 

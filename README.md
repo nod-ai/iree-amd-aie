@@ -21,15 +21,6 @@ Preparing repository:
 git submodule update --init
 ```
 
-Building the runtime driver (see below) for the amd-aie backend/plugin for IREE (this repo) requires Boost:
-
-```
-# Debian/Ubuntu
-sudo apt-get install libboost-all-dev
-# Alma/CentOS/RHEL
-yum install -y boost-static
-```
-
 ## Building (along with IREE)
 
 ### Just show me the CMake
@@ -39,7 +30,7 @@ cmake -B $WHERE_YOU_WOULD_LIKE_TO_BUILD -S $IREE_REPO_SRC_DIR \
 -DIREE_CMAKE_PLUGIN_PATHS=$IREE_AMD_AIE_REPO_SRC_DIR -DIREE_BUILD_PYTHON_BINDINGS=ON \
 -DIREE_INPUT_STABLEHLO=OFF -DIREE_INPUT_TORCH=OFF -DIREE_INPUT_TOSA=OFF \
 -DIREE_HAL_DRIVER_DEFAULTS=OFF -DIREE_TARGET_BACKEND_DEFAULTS=OFF -DIREE_TARGET_BACKEND_LLVM_CPU=ON \
--DIREE_BUILD_TESTS=ON -DIREE_EXTERNAL_HAL_DRIVERS=xrt -DXRT_DIR=$XRT_INSTALL_DIR/share/cmake/XRT \
+-DIREE_BUILD_TESTS=ON -DIREE_EXTERNAL_HAL_DRIVERS=xrt \
 -DCMAKE_INSTALL_PREFIX=$WHERE_YOU_WOULD_LIKE_TO_INSTALL
 ```
 
@@ -97,54 +88,30 @@ ctest -R amd-aie
 
 ## Runtime driver setup
 
-To enable the runtime driver. You need to make sure XRT cmake package is discoverable by cmake.
-One option is to add it to your PATH.
-Note that with a standard setup, XRT is installed in `/opt/xilinx/xrt`. 
-
-Now from within the iree-amd-aie root directory. Then,
+To enable the runtime driver, you need to also enable the XRT HAL:
 
 ```
 cd ../iree-build
 cmake . -DIREE_CMAKE_PLUGIN_PATHS=../iree-amd-aie \
-  -DIREE_EXTERNAL_HAL_DRIVERS=xrt \
-  -DXRT_DIR=/opt/xilinx/xrt/share/cmake/XRT
+  -DIREE_EXTERNAL_HAL_DRIVERS=xrt
 ninja
 ```
 
-### Building XRT
-
-For the CI, we prefer to build against the pinned XRT. Note that XRT has
-submodules so recursively submodule initialization is required.
-
-You can build using the same script the CI does:
-
-```
-./build_tools/ci/build_xrt.sh ../xrt-build ../xrt-install
-```
-
-Then instead of using the default system install location for `-DXRT_DIR=`
-above, prepend the `../xrt-install/` prefix for the one you just built.
-
 ### Ubuntu Dependencies
 
-Presently XRT is a monolithic build that unconditionally requires a number of
-packages. Here are the requirements for various operating systems:
+XRT requires a number of packages. Here are the requirements for various operating systems:
 
 ```
 apt install \
-  libboost-dev libboost-filesystem-dev libboost-program-options-dev \
-  libboost-system-dev \
-  pkg-config libdrm-dev opencl-headers ocl-icd-opencl-dev ocl-icd-dev \
-  libssl-dev \
-  rapidjson-dev \
-  protobuf-compiler \
-  libprotobuf-dev \
-  python3-pybind11 \
-  uuid-dev \
   libcurl4-openssl-dev \
+  libdrm-dev \
+  libelf-dev \
+  libprotobuf-dev \
   libudev-dev \
-  systemtap-sdt-dev \
-  libelf-dev
+  pkg-config \
+  protobuf-compiler \
+  python3-pybind11 \
+  systemtap-sdt-dev
 ```
 
 ### RH Based Deps
@@ -154,21 +121,13 @@ base manylinux (AlmaLinux 8) image.
 
 ```
 yum install \
-  boost-devel \
-  boost-filesystem \
-  boost-program-options \
-  boost-static \
   libcurl-devel \
   libdrm-devel \
   libudev-devel \
   libuuid-devel \
   ncurses-devel \
-  ocl-icd-devel \
-  openssl-devel \
   pkgconfig \
   protobuf-compiler \
   protobuf-devel \
-  rapidjson-devel \
   systemtap-sdt-devel
-
 ```

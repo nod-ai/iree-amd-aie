@@ -13,46 +13,76 @@ concurrency:
   # A PR number if a pull request and otherwise the commit hash. This cancels
   # queued and in-progress runs for the same PR (presubmit) or commit
   # (postsubmit).
-  group: ci-build-test-cpp-linux-${{ github.event.number || github.sha }}
+  group: ci-build-test-${{ github.event.number || github.sha }}
   cancel-in-progress: true
 
+defaults:
+  run:
+    # force bash for windows
+    shell: bash
+
 jobs:
-  build_test_linux:
-    name: Build and Test (Linux, ASSERTIONS)
-    runs-on: nod-ai-shared-cpubuilder-manylinux-x86_64
+  build_and_ctest:
+    name: Build and Test (${{ matrix.os }}, ASSERTIONS)
+    runs-on: ${{ matrix.runs-on }}
     strategy:
-      fail-fast: true
+      fail-fast: false
+      matrix:
+        include:
+          - os: linux
+            runs-on: nod-ai-shared-cpubuilder-manylinux-x86_64
+          - os: windows
+            runs-on: windows-2019
     env:
       CACHE_DIR: ${{ github.workspace }}/.container-cache
     steps:
       - name: Configure local git mirrors
+        if: ${{ matrix.runs-on == 'nod-ai-shared-cpubuilder-manylinux-x86_64' }}
         run: |
           /gitmirror/scripts/trigger_update_mirrors.sh
           /gitmirror/scripts/git_config.sh
+
       - name: "Checking out repository"
         uses: actions/checkout@8f4b7f84864484a7bf31766abe9204da3cbe65b3 # v3.5.0
         with:
           submodules: recursive
 
       - name: Install static libs
+        if: ${{ matrix.runs-on == 'nod-ai-shared-cpubuilder-manylinux-x86_64' }}
         run: |
           dnf install -y almalinux-release-devel
-          yum remove -y openssl-devel zlib-devel boost boost-all || true
-          yum install -y openssl-static  zlib-static
+          yum remove -y openssl-devel zlib-devel || true
           yum install -y protobuf-devel protobuf-compiler
-          yum install -y boost-static
+
+      - name: Setup Cpp
+        uses: aminya/setup-cpp@v1
+        if: ${{ matrix.os == 'windows' }}
+        with:
+          compiler: msvc
+          vcvarsall: true
+          cmake: true
+          ninja: true
+          ccache: true
+
+      - uses: actions/setup-python@v4
+        if: ${{ matrix.os == 'windows' }}
+        with:
+          python-version: '3.11'
 
       - name: Sync source deps
         run: |
           python ./sync_deps.py
 
+      - name: Python deps
+        run: |
+          pip install "numpy<2" pyyaml "pybind11[global]==2.10.3" nanobind
+
       - name: Enable cache
         uses: actions/cache/restore@v3
         with:
           path: ${{ env.CACHE_DIR }}
-          key: linux-build-test-cpp-asserts-manylinux-v2-${{ github.sha }}
-          restore-keys: |
-            linux-build-test-cpp-
+          key: "${{ matrix.os }}-build-test-cpp-asserts-v1-${{ github.sha }}"
+          restore-keys: "${{ matrix.os }}-build-test-cpp-"
 
       - name: Build packages
         run: |
@@ -62,20 +92,16 @@ jobs:
       - name: Create artifacts
         if: ${{ !cancelled() }}
         run: |
-          # TODO: https://github.com/openxla/iree/issues/16230
-          # We should not be packaging clang and llvm-link in the default dist
-          # installs.
           rm -f iree-install/bin/clang*
           rm -f iree-install/bin/llvm-link*
-          tar cf iree-dist.tar -C iree-install . -C ../iree-build tools/testing/e2e/iree-e2e-matmul-test
+          tar cf iree-${{ matrix.os }}-dist.tar -C iree-install . -C ../iree-build tools/testing/e2e/iree-e2e-matmul-test
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         if: ${{ !cancelled() }}
         with:
-          name: linux_x86_64_release_packages
-          path: |
-            iree-dist.tar
+          name: "${{ matrix.os }}_x86_64_release_packages"
+          path: "iree-${{ matrix.os }}-dist.tar"
           if-no-files-found: warn
 
       - name: Save cache
@@ -83,11 +109,11 @@ jobs:
         if: ${{ !cancelled() }}
         with:
           path: ${{ env.CACHE_DIR }}
-          key: linux-build-test-cpp-asserts-manylinux-v2-${{ github.sha }}
+          key: "${{ matrix.os }}-build-test-cpp-asserts-v1-${{ github.sha }}"
 
   test_linux:
     runs-on: amd7940hs
-    needs: build_test_linux
+    needs: build_and_ctest
     strategy:
       fail-fast: true
     env:
@@ -106,7 +132,7 @@ jobs:
       - name: Extract artifact
         run: |
           mkdir iree-install
-          tar -xf iree-dist.tar -C iree-install
+          tar -xf iree-linux-dist.tar -C iree-install
           bash build_tools/download_peano.sh
 
       - name: Create venv and install dependencies
@@ -114,7 +140,6 @@ jobs:
           python3 -m venv .venv
           source .venv/bin/activate
           pip install -r tests/matmul/requirements.txt
-
 
       - name: E2E correctness matmul test
         run: |

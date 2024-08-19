@@ -6,12 +6,6 @@
 
 iree_add_all_subdirs()
 
-if(MSVC)
-  set(UUID "Rpcrt4.lib")
-else()
-  find_library (UUID uuid REQUIRED)
-endif()
-
 iree_cc_library(
   NAME
     AIETargets
@@ -21,15 +15,13 @@ iree_cc_library(
     "AMDAIETargetLdScript.cpp"
     "XCLBinGen.cpp"
   DEPS
-    ${UUID}
     iree-amd-aie::aie_runtime::iree_aie_runtime_static
     iree::target::amd-aie::Transforms
+    iree-aie-bootgen
 )
 
 if(IREE_AMD_AIE_ENABLE_XRT_DRIVER)
-  add_dependencies(iree_target_amd-aie_Target_AIETargets
-          iree-amd-aie_aie_runtime_amdaie_xclbinutil
-          iree-amd-aie_aie_runtime_amdaie_bootgen)
+  add_dependencies(iree_target_amd-aie_Target_AIETargets iree-aie-xclbinutil)
 endif()
 
 iree_cc_library(

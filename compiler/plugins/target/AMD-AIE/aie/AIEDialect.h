@@ -98,12 +98,12 @@ void printObjectFifoProducerTile(mlir::OpAsmPrinter &printer,
                                  mlir::Operation *op, mlir::Value operand,
                                  BDDimLayoutArrayAttr dimensions);
 
-mlir::ParseResult parseObjectFifoConsumerTiles(
+[[maybe_unused]] mlir::ParseResult parseObjectFifoConsumerTiles(
     mlir::OpAsmParser &parser,
     llvm::SmallVectorImpl<mlir::OpAsmParser::UnresolvedOperand> &tiles,
     BDDimLayoutArrayArrayAttr &dimensions);
 
-void printObjectFifoConsumerTiles(mlir::OpAsmPrinter &printer,
+[[maybe_unused]] void printObjectFifoConsumerTiles(mlir::OpAsmPrinter &printer,
                                   mlir::Operation *op, mlir::OperandRange tiles,
                                   BDDimLayoutArrayArrayAttr dimsPerTileAttr);
 

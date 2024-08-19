@@ -24,9 +24,13 @@ mkdir -p "${cache_dir}/pip"
 python="$(which python)"
 echo "Using python: $python"
 
-export CMAKE_TOOLCHAIN_FILE="$this_dir/linux_default_toolchain.cmake"
-export CC=clang
-export CXX=clang++
+# https://stackoverflow.com/a/8597411/9045206
+# note: on windows (git-bash) result is "msys"
+if [[ "$OSTYPE" == "linux-gnu"* ]]; then
+  export CMAKE_TOOLCHAIN_FILE="$this_dir/linux_default_toolchain.cmake"
+  export CC=clang
+  export CXX=clang++
+fi
 export CCACHE_DIR="${cache_dir}/ccache"
 export CCACHE_MAXSIZE="700M"
 export CMAKE_C_COMPILER_LAUNCHER=ccache
@@ -34,11 +38,6 @@ export CMAKE_CXX_COMPILER_LAUNCHER=ccache
 
 # Clear ccache stats.
 ccache -z
-
-# Build XRT.
-XRT_BUILD_DIR=$repo_root/xrt-build
-XRT_INSTALL_DIR=$repo_root/xrt-install
-$this_dir/build_xrt.sh $XRT_BUILD_DIR $XRT_INSTALL_DIR
 
 echo "Building IREE"
 echo "============="
@@ -62,7 +61,7 @@ cmake -S "$iree_dir" -B "$build_dir" \
   -DCMAKE_INSTALL_LIBDIR=lib \
   -DIREE_ENABLE_ASSERTIONS=ON \
   -DIREE_BUILD_SAMPLES=OFF \
-  -DIREE_BUILD_PYTHON_BINDINGS=OFF \
+  -DIREE_BUILD_PYTHON_BINDINGS=ON \
   -DIREE_BUILD_BINDINGS_TFLITE=OFF \
   -DIREE_HAL_DRIVER_DEFAULTS=OFF \
   -DIREE_HAL_DRIVER_LOCAL_SYNC=ON \
@@ -71,9 +70,10 @@ cmake -S "$iree_dir" -B "$build_dir" \
   -DIREE_TARGET_BACKEND_LLVM_CPU=ON \
   -DIREE_INPUT_TOSA=OFF \
   -DIREE_INPUT_STABLEHLO=OFF \
+  -DIREE_INPUT_TORCH=OFF \
+  -DCMAKE_OBJECT_PATH_MAX=4096 \
   -DIREE_CMAKE_PLUGIN_PATHS=../iree-amd-aie \
-  -DIREE_EXTERNAL_HAL_DRIVERS=xrt \
-  -DXRT_DIR=$XRT_INSTALL_DIR/opt/xilinx/xrt/share/cmake/XRT
+  -DIREE_EXTERNAL_HAL_DRIVERS=xrt
 
 echo "Building all"
 echo "------------"
