@@ -4,6 +4,7 @@
 
 import argparse
 import os
+import platform
 import re
 import subprocess
 import time
@@ -46,6 +47,10 @@ def find_executable(install_dir: Path, executable_name):
         install_dir / "bin",
         install_dir / "tools",
     ]
+
+    if platform.system() == "Windows":
+        executable_name += ".exe"
+
     for directory in search_dirs:
         executable_path = directory / executable_name
         if executable_path.is_file():
