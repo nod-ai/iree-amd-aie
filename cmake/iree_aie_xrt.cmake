@@ -10,6 +10,10 @@ endif()
 
 include(${CMAKE_CURRENT_LIST_DIR}/iree_aie_utils.cmake)
 
+# ##############################################################################
+# boost
+# ##############################################################################
+
 include(FetchContent)
 find_package(Threads REQUIRED)
 set(Boost_USE_STATIC_LIBS ON)
@@ -43,13 +47,13 @@ list(TRANSFORM IREE_AIE_BOOST_LIBS PREPEND Boost::)
 
 set(IREE_XRT_SOURCE_DIR "${IREE_AMD_AIE_SOURCE_DIR}/third_party/XRT/src")
 
-if(NOT WIN32)
-  find_package(RapidJSON REQUIRED)
-endif()
-
 # obv we have python but XRT uses this var to look for an ancient version of pybind (and fail)
 replace_string_in_file(${IREE_XRT_SOURCE_DIR}/python/pybind11/CMakeLists.txt
                        "if (HAS_PYTHON)" "if (FALSE)")
+
+# ##############################################################################
+# xclbinutil
+# ##############################################################################
 
 # remove ssl dep
 replace_string_in_file(${IREE_XRT_SOURCE_DIR}/runtime_src/tools/xclbinutil/XclBinUtilMain.cxx
@@ -90,10 +94,6 @@ configure_file(${IREE_XRT_SOURCE_DIR}/CMake/config/version.h.in
 replace_string_in_file(${IREE_XRT_SOURCE_DIR}/runtime_src/core/common/query.h
                        "#include <stdexcept>" "#include <any>")
 
-# ##############################################################################
-# xclbinutil
-# ##############################################################################
-
 set(_noop_xclbin_sig_cxx "
 #include \"XclBinSignature.h\"
 void signXclBinImage(const std::string& _fileOnDisk,
@@ -116,7 +116,6 @@ file(
   "${_xclbinutil_source_dir}/DTC*.cxx"
   "${_xclbinutil_source_dir}/FDT*.cxx"
   "${_xclbinutil_source_dir}/CBOR.cxx"
-  "${_xclbinutil_source_dir}/RapidJsonUtilities.cxx"
   "${_xclbinutil_source_dir}/KernelUtilities.cxx"
   "${_xclbinutil_source_dir}/ElfUtilities.cxx"
   "${_xclbinutil_source_dir}/FormattedOutput.cxx"
@@ -131,6 +130,8 @@ file(
   "${_xclbinutil_source_dir}/xclbinutil.cxx"
   "${_xclbinutil_source_dir}/XclBinUtilMain.cxx"
 )
+# connects to rapidjson...
+list(REMOVE_ITEM _xclbinutil_srcs "${_xclbinutil_source_dir}/SectionSmartNic.cxx")
 
 # Unlike bootgen, xclbinutil cannot be built separately as a static archive (I wish!)
 # because the linker will DCE static initializers in SectionMemTopology.cxx

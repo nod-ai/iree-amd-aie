@@ -123,14 +123,15 @@ packages. Here are the requirements for various operating systems:
 
 ```
 apt install \
-  rapidjson-dev \
-  protobuf-compiler \
-  libprotobuf-dev \
-  python3-pybind11 \
   libcurl4-openssl-dev \
+  libdrm-dev \
+  libelf-dev \
+  libprotobuf-dev \
   libudev-dev \
-  systemtap-sdt-dev \
-  libelf-dev
+  pkg-config \
+  protobuf-compiler \
+  python3-pybind11 \
+  systemtap-sdt-dev
 ```
 
 ### RH Based Deps
@@ -148,6 +149,5 @@ yum install \
   pkgconfig \
   protobuf-compiler \
   protobuf-devel \
-  rapidjson-devel \
   systemtap-sdt-devel
 ```
