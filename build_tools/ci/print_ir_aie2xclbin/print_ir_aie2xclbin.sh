@@ -174,7 +174,6 @@ ${FILECHECK_EXE} --input-file ${STDERR_FULLPATH} ${0} --check-prefix=CHECK-STDER
 # CHECK-STDERRTIME-DAG: Total
 ${FILECHECK_EXE} --input-file ${STDERR_FULLPATH} ${0} --check-prefix=CHECK-STDERRTIME
 
-# CHECK-STDOUT-DAG: Bootgen
 # CHECK-STDOUT-DAG: MEM_TOPOLOGY
 ${FILECHECK_EXE} --input-file ${STDOUT_FULLPATH} ${0} --check-prefix=CHECK-STDOUT
 

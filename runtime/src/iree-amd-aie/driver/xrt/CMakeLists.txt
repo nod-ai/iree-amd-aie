@@ -58,11 +58,3 @@ iree_cc_library(
     $<BUILD_LOCAL_INTERFACE:xrt_coreutil>
   PUBLIC
 )
-
-set(_xrt_compile_options CACHE STRING "")
-if(WIN32)
-    list(APPEND _xrt_compile_options /EHsc /GR)
-else()
-    list(APPEND _xrt_compile_options -fexceptions -frtti)
-endif()
-target_compile_options(iree-amd-aie_driver_xrt_xrt PUBLIC ${_xrt_compile_options})
