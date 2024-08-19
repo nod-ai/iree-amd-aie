@@ -377,7 +377,11 @@ def AMDAIE_NpuDmaCpyNdOp: AMDAIE_Op<"npu.dma_cpy_nd",
         ::llvm::SmallVector<::mlir::OpFoldResult>& newSourceOffsets,
         ::llvm::SmallVector<::mlir::OpFoldResult>& newSourceSizes,
         ::llvm::SmallVector<::mlir::OpFoldResult>& newSourceStrides);
+
   }];
+
+  let hasCanonicalizer = 1;
+
 }
 
 def AMDAIE_NpuDmaWaitOp: AMDAIE_Op<"npu.dma_wait", []> {
@@ -784,6 +788,7 @@ class AMDAIE_DmaCpyNdBaseOp<string mnemonic, list<Trait> traits = []> :
         ::llvm::SmallVector<::mlir::OpFoldResult>& newSourceSizes,
         ::llvm::SmallVector<::mlir::OpFoldResult>& newSourceStrides);
   }];
+
 }
 
 def AMDAIE_DmaCpyNdOp: AMDAIE_DmaCpyNdBaseOp<"dma_cpy_nd", []> {
@@ -809,6 +814,7 @@ def AMDAIE_DmaCpyNdOp: AMDAIE_DmaCpyNdBaseOp<"dma_cpy_nd", []> {
   }];
 
   let hasVerifier = 0;
+  let hasCanonicalizer = 1;
 }
 
 def AMDAIE_CircularDmaCpyNdOp: AMDAIE_DmaCpyNdBaseOp<"circular_dma_cpy_nd", [Pure]> {
@@ -833,6 +839,7 @@ def AMDAIE_CircularDmaCpyNdOp: AMDAIE_DmaCpyNdBaseOp<"circular_dma_cpy_nd", [Pur
   }];
 
   let hasVerifier = 0;
+  let hasCanonicalizer = 1;
 }
 
 def AMDAIE_ReferenceToOp: AMDAIE_Op<"reference_to", [SameOperandsAndResultType]> {
