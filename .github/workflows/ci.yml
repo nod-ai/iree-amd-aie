@@ -9,6 +9,12 @@ on:
     branches:
       - main
 
+  schedule:
+      # At minute 0 past every 2nd hour. (see https://crontab.guru)
+      # this job is to keep the ccache cache warm
+      # specifically for the free windows runner
+    - cron: '0 */2 * * *'
+
 concurrency:
   # A PR number if a pull request and otherwise the commit hash. This cancels
   # queued and in-progress runs for the same PR (presubmit) or commit
@@ -112,6 +118,7 @@ jobs:
           key: "${{ matrix.os }}-build-test-cpp-asserts-v1-${{ github.sha }}"
 
   test_linux:
+    name: E2E Test linux
     runs-on: amd7940hs
     needs: build_and_ctest
     strategy:
