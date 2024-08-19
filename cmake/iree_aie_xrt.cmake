@@ -200,6 +200,6 @@ foreach(_core_lib IN LISTS _core_libs)
   target_include_directories(${_core_lib} SYSTEM PUBLIC
                              ${IREE_XRT_SOURCE_DIR}/runtime_src/core/common/elf)
   target_compile_definitions(${_core_lib} PUBLIC -DBOOST_BIND_GLOBAL_PLACEHOLDERS)
-  target_compile_options(${_core_lib} PUBLIC ${_xrt_compile_options})
+  target_compile_options(${_core_lib} PRIVATE ${_xrt_compile_options})
   target_link_libraries(${_core_lib} PUBLIC $<BUILD_LOCAL_INTERFACE:${IREE_AIE_BOOST_LIBS}>)
 endforeach()

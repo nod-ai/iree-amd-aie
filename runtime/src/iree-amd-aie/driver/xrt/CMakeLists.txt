@@ -56,5 +56,8 @@ iree_cc_library(
     # (effectively only available for link time symbol resolution)
     # note this requires CMake >= 3.26
     $<BUILD_LOCAL_INTERFACE:xrt_coreutil>
+  COPTS
+    $<$<PLATFORM_ID:Linux>:-fexceptions -frtti>
+    $<$<PLATFORM_ID:Windows>:/EHsc /GR>
   PUBLIC
 )
