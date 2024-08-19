@@ -73,14 +73,9 @@ jobs:
         run: |
           python ./sync_deps.py
 
-      - name: Windows deps
-        if: ${{ matrix.os == 'windows' }}
+      - name: Python deps
         run: |
-          pip install "numpy<2" pyyaml "pybind11[global]==2.10.4" nanobind
-          pushd third_party/XRT
-          sed -i "s/\/Qspectre//g" src/CMake/nativeWin.cmake
-          git submodule update --recursive --init
-          popd
+          pip install "numpy<2" pyyaml "pybind11[global]==2.10.3" nanobind
 
       - name: Enable cache
         uses: actions/cache/restore@v3
@@ -92,7 +87,7 @@ jobs:
       - name: Build packages
         run: |
           export cache_dir="${{ env.CACHE_DIR }}"
-          bash "build_tools/ci/build_test_cpp_${{ matrix.os }}.sh"
+          bash "build_tools/ci/build_test_cpp.sh"
 
       - name: Create artifacts
         if: ${{ !cancelled() }}
