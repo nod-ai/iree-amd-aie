@@ -55,15 +55,15 @@ replace_string_in_file(${IREE_XRT_SOURCE_DIR}/python/pybind11/CMakeLists.txt
 # xclbinutil
 # ##############################################################################
 
-# remove ssl dep
-replace_string_in_file(${IREE_XRT_SOURCE_DIR}/runtime_src/tools/xclbinutil/XclBinUtilMain.cxx
-                       "bValidateSignature == true" "false")
-
 set(_xclbinutil_source_dir ${IREE_XRT_SOURCE_DIR}/runtime_src/tools/xclbinutil)
+
+# remove ssl dep
+replace_string_in_file(${_xclbinutil_source_dir}/XclBinUtilMain.cxx
+                       "bValidateSignature == true" "false")
 
 # transformcdo target
 if(NOT WIN32)
-  replace_string_in_file(${IREE_XRT_SOURCE_DIR}/runtime_src/tools/xclbinutil/aie-pdi-transform/src/CMakeLists.txt
+  replace_string_in_file(${_xclbinutil_source_dir}/aie-pdi-transform/src/CMakeLists.txt
                          "-Wextra" "")
   add_subdirectory(${_xclbinutil_source_dir}/aie-pdi-transform aie-pdi-transform)
 endif()
@@ -120,7 +120,7 @@ file(
   "${_xclbinutil_source_dir}/ElfUtilities.cxx"
   "${_xclbinutil_source_dir}/FormattedOutput.cxx"
   "${_xclbinutil_source_dir}/ParameterSectionData.cxx"
-  # Note: Due to linking dependency issue, this entry needs to be before the other sections
+  # Note: Due to linking dependency issue, this entry needs to be before the other Section*s
   "${_xclbinutil_source_dir}/Section.cxx"
   "${_xclbinutil_source_dir}/Section*.cxx"
   "${_xclbinutil_source_dir}/Resources*.cxx"
@@ -137,32 +137,26 @@ list(REMOVE_ITEM _xclbinutil_srcs "${_xclbinutil_source_dir}/SectionSmartNic.cxx
 # because the linker will DCE static initializers in SectionMemTopology.cxx
 # and then --add-replace-section:MEM_TOPOLOGY won't work...
 # XRT/src/runtime_src/tools/xclbinutil/SectionMemTopology.cxx#L26-L41
+# TODO(max): and for whatever reason -WL,--whole-archive doesn't work
 add_executable(iree-aie-xclbinutil ${_xclbinutil_srcs})
-set(_xrt_compile_options "")
-if(WIN32)
-  list(APPEND _xrt_compile_options /EHsc /GR)
-else()
-  list(APPEND _xrt_compile_options -fexceptions -frtti)
-endif()
-
-set(THREADS_PREFER_PTHREAD_FLAG ON)
-set(_xclbin_libs $<BUILD_LOCAL_INTERFACE:${IREE_AIE_BOOST_LIBS}> Threads::Threads)
-set(_xclbinutil_compile_definitions -DBOOST_BIND_GLOBAL_PLACEHOLDERS)
-
-if(NOT WIN32)
-  list(APPEND _xclbinutil_compile_definitions -DENABLE_JSON_SCHEMA_VALIDATION)
-  list(APPEND _xclbin_libs $<BUILD_LOCAL_INTERFACE:transformcdo>)
-endif()
 
 target_compile_definitions(iree-aie-xclbinutil
-                           PRIVATE ${_xclbinutil_compile_definitions})
+                           PRIVATE
+                           -DBOOST_BIND_GLOBAL_PLACEHOLDERS)
+set(THREADS_PREFER_PTHREAD_FLAG ON)
 target_link_libraries(iree-aie-xclbinutil
-                      PRIVATE ${_xclbin_libs})
+                      PRIVATE
+                      Threads::Threads
+                      $<BUILD_LOCAL_INTERFACE:${IREE_AIE_BOOST_LIBS}>
+                      $<$<PLATFORM_ID:Linux>:$<BUILD_LOCAL_INTERFACE:transformcdo>>)
 target_include_directories(iree-aie-xclbinutil
                            PRIVATE ${XRT_BINARY_DIR}/gen
                                    ${IREE_XRT_SOURCE_DIR}/runtime_src/core/include
                                    ${_xclbinutil_source_dir})
-target_compile_options(iree-aie-xclbinutil PRIVATE ${_xrt_compile_options})
+target_compile_options(iree-aie-xclbinutil
+                       PRIVATE
+                       $<$<PLATFORM_ID:Linux>:-fexceptions -frtti>
+                       $<$<PLATFORM_ID:Windows>:/EHsc /GR>)
 set_target_properties(iree-aie-xclbinutil
                       PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/tools")
 iree_install_targets(
@@ -196,11 +190,13 @@ foreach(_core_lib IN LISTS _core_libs)
   target_include_directories(${_core_lib} PUBLIC
                              ${IREE_XRT_SOURCE_DIR}/runtime_src/core/include
                              ${IREE_XRT_SOURCE_DIR}/runtime_src/core/common/gsl/include
-                             ${IREE_XRT_SOURCE_DIR}/runtime_src
-                             ${Boost_INCLUDE_DIRS})
+                             ${IREE_XRT_SOURCE_DIR}/runtime_src)
   target_include_directories(${_core_lib} SYSTEM PUBLIC
                              ${IREE_XRT_SOURCE_DIR}/runtime_src/core/common/elf)
   target_compile_definitions(${_core_lib} PUBLIC -DBOOST_BIND_GLOBAL_PLACEHOLDERS)
-  target_compile_options(${_core_lib} PRIVATE ${_xrt_compile_options})
+  target_compile_options(${_core_lib}
+                         PRIVATE
+                         $<$<PLATFORM_ID:Linux>:-fexceptions -frtti>
+                         $<$<PLATFORM_ID:Windows>:/EHsc /GR>)
   target_link_libraries(${_core_lib} PUBLIC $<BUILD_LOCAL_INTERFACE:${IREE_AIE_BOOST_LIBS}>)
 endforeach()
