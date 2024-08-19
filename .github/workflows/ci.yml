@@ -119,10 +119,16 @@ jobs:
 
   test_linux:
     name: E2E Test linux
-    runs-on: amd7940hs
     needs: build_and_ctest
+    runs-on: ${{ matrix.runs-on }}
     strategy:
-      fail-fast: true
+      fail-fast: false
+      matrix:
+        include:
+          - os: linux
+            runs-on: amd7940hs
+          - os: windows
+            runs-on: mlevental-win11-pro
     env:
       XILINXD_LICENSE_FILE: /home/svcnod/Xilinx.lic
     steps:
@@ -134,12 +140,12 @@ jobs:
       - name: Download artifacts
         uses: actions/download-artifact@v4
         with:
-          name: linux_x86_64_release_packages
+          name: "${{ matrix.os }}_x86_64_release_packages"
 
       - name: Extract artifact
         run: |
           mkdir iree-install
-          tar -xf iree-linux-dist.tar -C iree-install
+          tar -xf iree-${{ matrix.os }}-dist.tar -C iree-install
           bash build_tools/download_peano.sh
 
       - name: Create venv and install dependencies
