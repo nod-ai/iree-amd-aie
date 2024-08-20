@@ -87,7 +87,8 @@ jobs:
         uses: actions/cache/restore@v3
         with:
           path: ${{ env.CACHE_DIR }}
-          key: "${{ matrix.os }}-build-test-cpp-asserts-v1-${{ github.sha }}"
+          # without this you'll get collisions ("Failed to save: Unable to reserve cache with key ..., another job may be creating this cache.")
+          key: "${{ matrix.os }}-build-test-cpp-asserts-v1-${{ github.sha }}-${{ github.event.repository.updated_at }}"
           restore-keys: "${{ matrix.os }}-build-test-cpp-"
 
       - name: Build packages
