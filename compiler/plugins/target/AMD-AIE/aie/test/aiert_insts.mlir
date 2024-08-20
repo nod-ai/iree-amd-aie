@@ -5,7 +5,7 @@
 // CHECK:           memref.global "public" @of_fromMem : memref<32xi32>
 // CHECK:           aie.shim_dma_allocation @of_fromMem(MM2S, 0, 0)
 // CHECK:           aie.shim_dma_allocation @of_toMem(S2MM, 0, 0)
-// CHECK:         } {npu_instructions = dense_resource<npu_instructions> : tensor<64xui32>}
+// CHECK:         } {npu_instructions = dense_resource<npu_instructions> : tensor<64xui32>, runtime_sequence_name = "sequence"}
 
 // CHECK:         {-#
 // CHECK:           dialect_resources: {

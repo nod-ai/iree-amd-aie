@@ -34,7 +34,6 @@ createAMDAIEPathfinderPass();
 std::unique_ptr<OperationPass<ModuleOp>> createAMDAIECoreToStandardPass();
 std::unique_ptr<OperationPass<xilinx::AIE::DeviceOp>>
 createAMDAIEDmaToNpuPass();
-std::unique_ptr<OperationPass<ModuleOp>> createAMDAIEXToStandardPass();
 
 void registerAMDAIEAssignBufferAddressesBasic();
 void registerAMDAIEAssignBufferDescriptorIDs();
@@ -44,9 +43,8 @@ void registerAMDAIELocalizeLocks();
 void registerAMDAIENormalizeAddressSpaces();
 void registerAMDAIEObjectFifoStatefulTransform();
 void registerAMDAIERoutePathfinderFlows();
-
 void registerAMDAIEDmaToNpu();
-void registerAMDAIEXToStandardPass();
+
 }  // namespace mlir::iree_compiler::AMDAIE
 
 #endif  // AMDAIE_PASSES_H_

@@ -17,16 +17,16 @@
 namespace mlir::iree_compiler::AMDAIE {
 std::vector<uint32_t> AIETranslateToNPU(mlir::ModuleOp);
 
-mlir::LogicalResult AIETranslateToLdScript(mlir::ModuleOp module,
+mlir::LogicalResult AIETranslateToLdScript(xilinx::AIE::DeviceOp,
                                            llvm::raw_ostream &output,
                                            int tileCol, int tileRow);
 
-mlir::LogicalResult AIETranslateToBCF(mlir::ModuleOp module,
+mlir::LogicalResult AIETranslateToBCF(xilinx::AIE::DeviceOp,
                                       llvm::raw_ostream &output, int tileCol,
                                       int tileRow);
 
 mlir::LogicalResult AIETranslateToCDODirect(
-    mlir::ModuleOp m, llvm::StringRef workDirPath, bool bigEndian = false,
+    xilinx::AIE::DeviceOp, llvm::StringRef workDirPath, bool bigEndian = false,
     bool emitUnified = false, bool cdoDebug = false, bool aieSim = false,
     bool enableCores = true);
 }  // namespace mlir::iree_compiler::AMDAIE

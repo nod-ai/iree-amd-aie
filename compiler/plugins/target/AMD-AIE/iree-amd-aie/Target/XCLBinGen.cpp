@@ -18,6 +18,8 @@
 #include "aievec/Passes.h"
 #include "iree-amd-aie/Transforms/Passes.h"
 #include "iree/compiler/Utils/ToolUtils.h"
+#include "llvm/ADT/SmallString.h"
+#include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/JSON.h"
@@ -26,6 +28,7 @@
 #include "llvm/Support/Program.h"
 #include "llvm/Support/ToolOutputFile.h"
 #include "mlir/IR/AsmState.h"
+#include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Support/FileUtilities.h"
@@ -356,12 +359,12 @@ static std::optional<std::string> runTool(
                  << "\n";
     return {};
   }
-  auto outputFromFile = maybeOutputFromFile.value();
+  const std::string &outputFromFile = maybeOutputFromFile.value();
 
   if (verbose) {
-    auto totalTime = std::chrono::duration_cast<std::chrono::duration<float>>(
-                         stats.TotalTime)
-                         .count();
+    float totalTime = std::chrono::duration_cast<std::chrono::duration<float>>(
+                          stats.TotalTime)
+                          .count();
     std::string exitStatusStr = result == 0 ? "Succeeded" : "Failed";
     llvm::outs() << "\n"
                  << exitStatusStr << " in totalTime " << totalTime
@@ -432,7 +435,7 @@ static LogicalResult assembleFileUsingPeano(
   args.emplace_back("--target=aie2-none-unknown-elf");
   std::vector<std::string> peanoArgs = makePeanoOptArgs();
   args.reserve(args.size() + peanoArgs.size());
-  for (const auto &item : peanoArgs) {
+  for (const std::string &item : peanoArgs) {
     args.emplace_back("-mllvm");
     args.emplace_back(item);
   }
@@ -498,19 +501,13 @@ static_assert(std::is_same_v<decltype(assembleStringUsingChess),
 
 // Generate the elf files for the core
 static LogicalResult generateCoreElfFiles(
-    ModuleOp moduleOp, const std::string &objFile, Path tempDir, bool useChess,
-    std::optional<Path> vitisDir, const std::string &targetArch, bool verbose,
-    Path peanoDir, const std::optional<std::string> &ukernel) {
-  auto deviceOps = moduleOp.getOps<AIE::DeviceOp>();
-  if (!llvm::hasSingleElement(deviceOps))
-    return moduleOp.emitOpError("expected a single device op");
-
-  AIE::DeviceOp deviceOp = *deviceOps.begin();
+    AIE::DeviceOp deviceOp, const std::string &objFile, Path tempDir,
+    bool useChess, std::optional<Path> vitisDir, const std::string &targetArch,
+    bool verbose, Path peanoDir, const std::optional<std::string> &ukernel) {
   auto tileOps = deviceOp.getOps<AIE::TileOp>();
-
   std::string errorMessage;
 
-  for (auto tileOp : tileOps) {
+  for (AIE::TileOp tileOp : tileOps) {
     int col = tileOp.getCol();
     int row = tileOp.getRow();
     auto coreOp = AIE::getCoreOp(tileOp);
@@ -580,7 +577,7 @@ static LogicalResult generateCoreElfFiles(
         }
 
         if (failed(mlir::iree_compiler::AMDAIE::AIETranslateToBCF(
-                moduleOp, bcfOutput->os(), col, row))) {
+                deviceOp, bcfOutput->os(), col, row))) {
           llvm::errs() << "Failed to generate BCF";
           return failure();
         }
@@ -614,7 +611,7 @@ static LogicalResult generateCoreElfFiles(
           return failure();
         }
         if (failed(mlir::iree_compiler::AMDAIE::AIETranslateToLdScript(
-                moduleOp, ldscriptOutput->os(), col, row))) {
+                deviceOp, ldscriptOutput->os(), col, row))) {
           llvm::errs() << "failed to generate ld script for core (" << col
                        << "," << row << ")";
           return failure();
@@ -646,24 +643,28 @@ static LogicalResult generateCoreElfFiles(
   return success();
 }
 
-static LogicalResult generateCDO(MLIRContext *context, ModuleOp moduleOp,
+static LogicalResult generateCDO(MLIRContext *context, AIE::DeviceOp deviceOp,
                                  bool printIRBeforeAll, bool printIRAfterAll,
                                  bool printIRModuleScope, bool timing,
                                  const Path &tempDir) {
-  ModuleOp copy = moduleOp.clone();
+
+  auto copy = cast<ModuleOp>(deviceOp.getParentOp()->clone());
+  deviceOp = *copy.getOps<AIE::DeviceOp>().begin();
+
   std::string errorMessage;
-  PassManager passManager(context, ModuleOp::getOperationName());
+  PassManager passManager(context, AIE::DeviceOp::getOperationName());
   applyConfigToPassManager(passManager, printIRBeforeAll, printIRAfterAll,
                            printIRModuleScope, timing);
-  passManager.addNestedPass<AIE::DeviceOp>(
+  passManager.addPass(
       mlir::iree_compiler::AMDAIE::createAMDAIEPathfinderPass());
-  if (failed(passManager.run(copy))) {
+
+  if (failed(passManager.run(deviceOp))) {
     llvm::errs() << "failed to run passes to prepare for XCLBin generation";
     return failure();
   }
 
   if (failed(mlir::iree_compiler::AMDAIE::AIETranslateToCDODirect(
-          copy, tempDir.string()))) {
+          deviceOp, tempDir.string()))) {
     llvm::errs() << "failed to emit CDO";
     return failure();
   }
@@ -1029,17 +1030,22 @@ struct RemoveAlignment2FromLLVMLoadPass
 }  // namespace
 
 static LogicalResult generateUnifiedObject(
-    MLIRContext *context, ModuleOp moduleOp, const std::string &outputFile,
+    MLIRContext *context, AIE::DeviceOp deviceOp, const std::string &outputFile,
     bool printIRBeforeAll, bool printIRAfterAll, bool printIRModuleScope,
     bool timing, bool useChess, bool verbose, Path tempDir,
     std::optional<Path> vitisDir, const std::string &targetArch,
     Path peanoDir) {
-  PassManager pm(context, moduleOp.getOperationName());
+  assert(deviceOp->getParentOp() && isa<ModuleOp>(deviceOp->getParentOp()) &&
+         "DeviceOp must be in a module parent");
+
+  ModuleOp moduleOpCopy = cast<ModuleOp>(deviceOp->getParentOp()).clone();
+
+  PassManager pm(context, moduleOpCopy.getOperationName());
   applyConfigToPassManager(pm, printIRBeforeAll, printIRAfterAll,
                            printIRModuleScope, timing);
 
   pm.addPass(mlir::iree_compiler::AMDAIE::createAMDAIECoreToStandardPass());
-  pm.addPass(mlir::iree_compiler::AMDAIE::createAMDAIEXToStandardPass());
+
   // Convert specific vector dialect ops (like vector.contract) to the AIEVec
   // dialect
   mlir::iree_compiler::aievec::buildConvertVectorToAIEVec(pm);
@@ -1052,14 +1058,15 @@ static LogicalResult generateUnifiedObject(
     llvm::outs() << "\n";
   }
 
-  ModuleOp copy = moduleOp.clone();
-  if (failed(pm.run(copy)))
-    return moduleOp.emitOpError("Failed to lower to LLVM");
+  if (failed(pm.run(moduleOpCopy)))
+    return deviceOp.emitOpError("Failed to lower to LLVM");
 
   llvm::LLVMContext llvmContext;
-  auto llvmModule = translateModuleToLLVMIR(copy, llvmContext);
-  if (!llvmModule)
-    return moduleOp.emitOpError("Failed to translate module to LLVMIR");
+  auto llvmModule = translateModuleToLLVMIR(moduleOpCopy, llvmContext);
+  if (!llvmModule) {
+    return deviceOp.emitOpError("Failed to translate module to LLVMIR");
+  }
+
   std::string inputLLStr;
   {
     llvm::raw_string_ostream rso(inputLLStr);
@@ -1081,7 +1088,9 @@ static LogicalResult generateUnifiedObject(
         /*workDir=*/tempDir,
         /*vitisDir=*/*maybeVitisDir,
         /*verbose=*/verbose);
-    if (failed(chessIntrinsicsObjFile)) return failure();
+    if (failed(chessIntrinsicsObjFile)) {
+      return failure();
+    }
   } else {
     Path LLVMIRFile = tempDir / "input.ll";
     if (auto maybeErr = dumpStrToDisk(inputLLStr, LLVMIRFile.string());
@@ -1116,12 +1125,37 @@ static LogicalResult generateUnifiedObject(
       return failure();
     }
   }
-  copy->erase();
+
+  moduleOpCopy->erase();
   return success();
 }
 
+FailureOr<ArrayRef<uint32_t>> getNpuInstructions(AIE::DeviceOp deviceOp) {
+  MLIRContext *ctx = deviceOp.getContext();
+  mlir::Attribute maybeNpuInstructions = deviceOp->getAttr("npu_instructions");
+  if (!maybeNpuInstructions) {
+    return emitError(UnknownLoc::get(ctx),
+                     "Expected npu_instructions attribute on aie.device");
+  }
+  auto npuInstructions =
+      dyn_cast<DenseUI32ResourceElementsAttr>(maybeNpuInstructions);
+  if (!npuInstructions) {
+    return emitError(
+        UnknownLoc::get(ctx),
+        "Failed to cast npu_instructions to DenseUI32ResourceElementsAttr");
+  }
+  std::optional<ArrayRef<uint32_t>> maybeArrayRef =
+      npuInstructions.tryGetAsArrayRef();
+  if (!maybeArrayRef.has_value()) {
+    return emitError(
+        UnknownLoc::get(ctx),
+        "Failed getting values for npu_instructions in tryGetAsArrayRef");
+  }
+  return maybeArrayRef.value();
+}
+
 LogicalResult aie2xclbin(
-    MLIRContext *ctx, ModuleOp moduleOp, const std::string &outputNPU,
+    MLIRContext *ctx, AIE::DeviceOp deviceOp, const std::string &outputNPU,
     const std::string &outputXCLBin, bool printIRBeforeAll,
     bool printIRAfterAll, bool printIRModuleScope, bool timing,
     const std::string &tempDir, bool useChess, bool verbose,
@@ -1131,22 +1165,19 @@ LogicalResult aie2xclbin(
     const std::string &amdAIEInstallDir,
     const std::optional<std::string> &InputXCLBin,
     const std::optional<std::string> &ukernel) {
-  PassManager pm(ctx, mlir::ModuleOp::getOperationName());
+  PassManager pm(ctx, AIE::DeviceOp::getOperationName());
   applyConfigToPassManager(pm, printIRBeforeAll, printIRAfterAll,
                            printIRModuleScope, timing);
-  // generateNPUInstructions
-  pm.addNestedPass<AIE::DeviceOp>(
-      mlir::iree_compiler::AMDAIE::createAMDAIEDmaToNpuPass());
-  if (failed(pm.run(moduleOp)))
-    return moduleOp.emitOpError(": NPU Instruction pipeline failed");
+  if (failed(pm.run(deviceOp)))
+    return deviceOp.emitOpError(": NPU Instruction pipeline failed");
 
-  std::optional<ArrayRef<uint32_t>> npuInstructions =
-      cast<DenseUI32ResourceElementsAttr>(
-          (*moduleOp.getOps<xilinx::AIE::DeviceOp>().begin())
-              ->getAttr("npu_instructions"))
-          .tryGetAsArrayRef();
-  if (!npuInstructions)
-    return moduleOp.emitOpError(": No NPU instructions in device op");
+  FailureOr<ArrayRef<uint32_t>> maybeNpuInstructions =
+      getNpuInstructions(deviceOp);
+  if (failed(maybeNpuInstructions)) {
+    assert(false && "Failed to get NPU instructions");
+    return failure();
+  }
+  ArrayRef<uint32_t> npuInstructions = maybeNpuInstructions.value();
 
   std::string errorMessage;
   auto output = openOutputFile(outputNPU, &errorMessage);
@@ -1155,29 +1186,29 @@ LogicalResult aie2xclbin(
                  << errorMessage;
     return failure();
   }
-  for (auto w : *npuInstructions) output->os() << llvm::format("%08X\n", w);
+  for (uint32_t w : npuInstructions) output->os() << llvm::format("%08X\n", w);
   output->keep();
 
   Path unifiedObj = Path(tempDir) / "input.o";
   if (failed(generateUnifiedObject(
-          ctx, moduleOp, unifiedObj.string(), printIRBeforeAll, printIRAfterAll,
+          ctx, deviceOp, unifiedObj.string(), printIRBeforeAll, printIRAfterAll,
           printIRModuleScope, timing, useChess, verbose, tempDir, vitisDir,
           targetArch, peanoDir)))
-    return moduleOp.emitOpError("Failed to generate unified object");
+    return deviceOp.emitOpError("Failed to generate unified object");
 
-  if (failed(generateCoreElfFiles(moduleOp, unifiedObj.string(), tempDir,
+  if (failed(generateCoreElfFiles(deviceOp, unifiedObj.string(), tempDir,
                                   useChess, vitisDir, targetArch, verbose,
                                   peanoDir, ukernel)))
-    return moduleOp.emitOpError("Failed to generate core ELF file(s)");
+    return deviceOp.emitOpError("Failed to generate core ELF file(s)");
 
-  if (failed(generateCDO(ctx, moduleOp, printIRBeforeAll, printIRAfterAll,
+  if (failed(generateCDO(ctx, deviceOp, printIRBeforeAll, printIRAfterAll,
                          printIRModuleScope, timing, tempDir)))
-    return moduleOp.emitOpError("Failed to generate CDO");
+    return deviceOp.emitOpError("Failed to generate CDO");
 
   if (failed(generateXCLBin(outputXCLBin, tempDir, xclBinKernelID,
                             xclBinKernelName, xclBinInstanceName,
                             amdAIEInstallDir, verbose, InputXCLBin)))
-    return moduleOp.emitOpError("Failed to generate XCLBin");
+    return deviceOp.emitOpError("Failed to generate XCLBin");
 
   return success();
 }

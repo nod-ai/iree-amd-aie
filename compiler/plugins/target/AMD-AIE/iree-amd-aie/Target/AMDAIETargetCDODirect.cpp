@@ -5,7 +5,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 #include <cassert>
-#include <cstdint>  // uint
+#include <cstdint>
 #include <filesystem>
 #include <optional>
 #include <string>
@@ -17,12 +17,9 @@
 #include "iree-amd-aie/aie_runtime/iree_aie_runtime.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
-#include "llvm/ADT/Twine.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "mlir/IR/Block.h"
-#include "mlir/IR/BuiltinOps.h"
-#include "mlir/IR/BuiltinTypeInterfaces.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
 
@@ -341,14 +338,11 @@ LogicalResult generateCDOBinariesSeparately(
   return success();
 }
 
-LogicalResult AIETranslateToCDODirect(ModuleOp m, llvm::StringRef workDirPath,
+LogicalResult AIETranslateToCDODirect(xilinx::AIE::DeviceOp device,
+                                      llvm::StringRef workDirPath,
                                       bool bigEndian, bool emitUnified,
                                       bool cdoDebug, bool aieSim,
                                       bool enableCores) {
-  auto devOps = m.getOps<DeviceOp>();
-  assert(llvm::range_size(devOps) == 1 &&
-         "only exactly 1 device op supported.");
-  DeviceOp device = *devOps.begin();
   AMDAIEDeviceModel deviceModel = getDeviceModel(device.getDevice());
   byte_ordering endianness =
       bigEndian ? byte_ordering::Big_Endian : byte_ordering::Little_Endian;

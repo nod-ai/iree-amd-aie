@@ -621,8 +621,6 @@ void addAMDAIEObjectFifoLoweringPasses(OpPassManager &passManager) {
   passManager.addPass(createAMDAIELowerToAIEPass());
   passManager.addPass(createCanonicalizerPass());
 
-  passManager.addPass(createConvertLinalgToLoopsPass());
-
   // Now lower using the AIE passes from MLIR-AIE.
   addMLIRAIELoweringPasses(passManager);
 }
@@ -788,18 +786,28 @@ void addMLIRAIRLoweringPasses(OpPassManager &passManager, AMDAIEDevice device) {
 }
 
 void addMLIRAIELoweringPasses(OpPassManager &passManager) {
+  {
+    OpPassManager &devicePM = passManager.nest<xilinx::AIE::DeviceOp>();
+    devicePM.addPass(createAMDAIEObjectFifoStatefulTransformPass());
+    devicePM.addPass(createCanonicalizerPass());
+    devicePM.addPass(createAMDAIEDmaToNpuPass());
+    devicePM.addPass(createAMDAIEAssignLockIDsPass());
+    devicePM.addPass(createAMDAIEAssignBufferDescriptorIDsPass());
+    devicePM.addPass(createAMDAIEAssignBufferAddressesBasicPass());
+    devicePM.addPass(createAMDAIEPathfinderPass());
+  }
+
+  passManager.addPass(createCanonicalizerPass());
+  passManager.addPass(createConvertLinalgToLoopsPass());
   passManager.addPass(createLowerAffinePass());
-  OpPassManager &devicePM = passManager.nest<xilinx::AIE::DeviceOp>();
-  devicePM.addPass(createAMDAIEAssignLockIDsPass());
-  devicePM.addPass(createAMDAIEObjectFifoStatefulTransformPass());
-  devicePM.addPass(createAMDAIEAssignBufferDescriptorIDsPass());
-  devicePM.addPass(createAMDAIEAssignBufferAddressesBasicPass());
-  devicePM.addPass(createAMDAIEPathfinderPass());
   passManager.addPass(createConvertSCFToCFPass());
-  passManager.addNestedPass<xilinx::AIE::DeviceOp>(
-      createAMDAIELocalizeLocksPass());
-  passManager.addNestedPass<xilinx::AIE::DeviceOp>(
-      createAMDAIENormalizeAddressSpacesPass());
+
+  {
+    OpPassManager &devicePM = passManager.nest<xilinx::AIE::DeviceOp>();
+    devicePM.addPass(createAMDAIELocalizeLocksPass());
+    devicePM.addPass(createAMDAIENormalizeAddressSpacesPass());
+    devicePM.addPass(createCanonicalizerPass());
+  }
 }
 
 // NOTE: this runs on the top-level program module containing all hal.executable

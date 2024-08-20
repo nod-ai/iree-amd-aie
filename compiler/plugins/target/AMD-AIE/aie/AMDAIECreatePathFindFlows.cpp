@@ -6,15 +6,12 @@
 
 #include <algorithm>
 #include <cassert>
-#include <list>
 #include <set>
 
 #include "AIEDialect.h"
 #include "Passes.h"
 #include "iree-amd-aie/aie_runtime/iree_aie_router.h"
 #include "iree-amd-aie/aie_runtime/iree_aie_runtime.h"
-#include "llvm/ADT/DenseMapInfo.h"
-#include "llvm/Support/raw_os_ostream.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
 
