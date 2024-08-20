@@ -261,10 +261,16 @@ class TestConfig:
         self.xrt_hash = "undetermined"
         self.xrt_release = "undetermined"
         self.peano_commit_hash = "undetermined"
-        xrt_bin_dir = xrt_dir / "bin"
-        xrt_smi_exe = xrt_bin_dir / "xrt-smi"
+        xrt_bin_dir = xrt_dir
+        if platform.system() != "Windows":
+            xrt_bin_dir /= "bin"
+        xrt_smi_exe = xrt_bin_dir / (
+            "xrt-smi" + ".exe" if platform.system() == "Windows" else ""
+        )
         if not xrt_smi_exe.exists():
-            xrt_smi_exe = xrt_bin_dir / "xbutil"
+            xrt_smi_exe = xrt_bin_dir / (
+                "xbutil" + ".exe" if platform.system() == "Windows" else ""
+            )
         if not xrt_smi_exe.exists():
             raise RuntimeError(f"Neither xrt-smi nor xbutil found in {xrt_bin_dir}")
 
@@ -665,7 +671,7 @@ class SmokeSet(TestSet):
         )
 
 
-def getTestPartition():
+def get_test_partition():
     return [ConvolutionSet(), MatmulSet(), SmokeSet()]
 
 
@@ -730,9 +736,10 @@ def all_tests(
     verify_determinism()
 
     # Verify a very basic script runs before running the more complex tests
-    shell_out(["pwd"], verbose=config.verbose)
+    if platform.system() != "Windows":
+        shell_out(["pwd"], verbose=config.verbose)
 
-    partition = getTestPartition()
+    partition = get_test_partition()
     partition_names = [p.name for p in partition]
     map_to_partition = {p.name: p for p in partition}
     if "All" in test_set:
@@ -773,54 +780,48 @@ if __name__ == "__main__":
     parser.add_argument("iree_install_dir", type=abs_path)
     parser.add_argument("peano_install_dir", type=abs_path)
     parser.add_argument("xrt_dir", type=abs_path)
-    parser.add_argument("vitis_dir", type=abs_path)
+    parser.add_argument("--vitis-dir", type=abs_path)
 
     # TODO(newling) make bool options boolean, not integer (tried but had issues)
     parser.add_argument(
-        "--return_on_fail",
+        "--return-on-fail",
         nargs="?",
         default=1,
         type=int,
-        help=(
-            "If 0, then the script will continue running even if a test fails, "
-            "enumerating all failures. Otherwise the script will exit on the first failure."
+        help=dedent(
+            """
+            If 0, then the script will continue running even if a test fails,
+            enumerating all failures. Otherwise the script will exit on the first failure.
+            """
         ),
     )
 
-    parser.add_argument(
-        "--verbose",
-        nargs="?",
-        default=1,
-        type=int,
-        help="If 0, then print statements are suppressed, otherwise they are printed.",
-    )
+    parser.add_argument("--verbose", action="store_true")
 
     parser.add_argument(
-        "--reset_npu_between_runs",
-        nargs="?",
-        default=1,
-        type=int,
+        "--reset-npu-between-runs",
+        action="store_true",
         help=(
-            "If 0 then the NPU is not reset between runs, otherwise it is reset. "
+            "If passed then the NPU is not reset between runs, otherwise it is reset. "
             "Resetting between runs can in theory help avoid certain types of "
             "errors in parts of the stack which these tests are not designed to catch."
         ),
     )
 
     parser.add_argument(
-        "--do_not_run_aie",
-        nargs="?",
-        default=0,
-        type=int,
-        help=(
-            "If 1, then the AIE backend will not be run. This is useful for "
-            "ensuring that everything up to the AIE run and numerical comparison "
-            "is working correctly, for example if you are not on a device with "
-            "working AIE HW and runtime."
+        "--do-not-run-aie",
+        action="store_true",
+        help=dedent(
+            """
+            If passed, then the AIE backend will not be run. This is useful for
+            ensuring that everything up to the AIE run and numerical comparison
+            is working correctly, for example if you are not on a device with
+            working AIE HW and runtime."
+            """
         ),
     )
 
-    partition = getTestPartition()
+    partition = get_test_partition()
     partition_names = [p.name for p in partition]
     partition_names_and_all = partition_names + ["All"]
     help_string = (
@@ -829,19 +830,22 @@ if __name__ == "__main__":
     )
 
     parser.add_argument(
-        "--test_set",
+        "--test-set",
         type=str,
         help=help_string,
         default="All",
     )
 
     parser.add_argument(
-        "--additional_aie_compilation_flags",
+        "--additional-aie-compilation-flags",
         type=str,
-        help=(
-            "Additional flags to pass to the AIE compiler, for all tests. "
-            "Example, do print the IR between passes during compilation you might have: "
-            ' --additional_aie_compilation_flags="--mlir-print-ir-before-all --mlir-print-ir-module-scope --aie2xclbin-print-ir-before-all --aie2xclbin-print-ir-module-scope"'
+        help=dedent(
+            """
+            Additional flags to pass to the AIE compiler, for all tests.
+            Example, do print the IR between passes during compilation you might have:
+            --additional_aie_compilation_flags="--mlir-print-ir-before-all --mlir-print-ir-module-scope
+            --aie2xclbin-print-ir-before-all --aie2xclbin-print-ir-module-scope"'
+            """
         ),
         default="",
     )

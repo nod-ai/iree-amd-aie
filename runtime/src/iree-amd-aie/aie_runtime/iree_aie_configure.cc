@@ -213,6 +213,16 @@ LogicalResult addElfToTile(const AMDAIEDeviceModel &deviceModel,
                            const TileLoc &tileLoc, const Path &elfPath,
                            bool aieSim) {
   auto devInst = const_cast<XAie_DevInst *>(&deviceModel.devInst);
+  // this isn't the case elsewhere but for whatever reason
+  // fopen (what XAie_LoadElf ultimately calls) braeks for >=256
+#ifdef _WIN32
+  if (elfPath.string().size() >= 256) {
+    llvm::errs() << "Windows paths must be less than 256 chars for elf loading "
+                    "to work (seriously):"
+                 << elfPath.string() << "\n";
+    return failure();
+  }
+#endif
   TRY_XAIE_API_LOGICAL_RESULT(XAie_LoadElf, devInst, tileLoc,
                               elfPath.string().c_str(),
                               /*loadSym*/ aieSim);
