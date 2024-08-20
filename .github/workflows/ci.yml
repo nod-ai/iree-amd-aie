@@ -116,7 +116,7 @@ jobs:
         if: ${{ !cancelled() }}
         with:
           path: ${{ env.CACHE_DIR }}
-          key: "${{ matrix.os }}-build-test-cpp-asserts-v1-${{ github.sha }}"
+          key: "${{ matrix.os }}-build-test-cpp-asserts-v1-${{ github.sha }}-${{ github.event.repository.updated_at }}"
 
   test_linux:
     name: E2E Test linux
