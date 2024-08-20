@@ -42,6 +42,13 @@ jobs:
     env:
       CACHE_DIR: ${{ github.workspace }}/.container-cache
     steps:
+      - name: Set unified TZ
+        uses: szenius/set-timezone@v2.0
+        with:
+          timezoneLinux: "Asia/Singapore"
+          timezoneMacos: "Asia/Singapore"
+          timezoneWindows: "Singapore Standard Time"
+          
       - name: Configure local git mirrors
         if: ${{ matrix.runs-on == 'nod-ai-shared-cpubuilder-manylinux-x86_64' }}
         run: |
