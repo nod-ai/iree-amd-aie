@@ -19,7 +19,6 @@
 #include "iree-amd-aie/IR/AMDAIEOps.h"
 #include "iree-amd-aie/Transforms/AMDAIEUtils.h"
 #include "iree-amd-aie/Transforms/Passes.h"
-#include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/IR/IRMapping.h"
 #include "mlir/IR/Iterators.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
@@ -60,7 +59,6 @@ void eraseOp(IRRewriter &rewriter, IRMapping &mapper, Operation *op) {
 //===----------------------------------------------------------------------===//
 
 namespace {
-
 
 /// Utility to convert vectors of `size` and `stride` into an
 /// `AIE::BDDimLayoutArrayAttr`.
@@ -265,17 +263,6 @@ LogicalResult acquireOpToAIE(IRRewriter &rewriter,
   return success();
 }
 
-LogicalResult coreLinalgOpToAIE(IRRewriter &rewriter, linalg::LinalgOp linalgOp,
-                                IRMapping &mapper,
-                                SmallVector<Operation *> &toBeErased) {
-  LLVM_DEBUG(llvm::dbgs() << "Convert [linalg.LinalgOp]\n");
-  OpBuilder::InsertionGuard guard(rewriter);
-  rewriter.setInsertionPoint(linalgOp);
-  rewriter.clone(*(linalgOp.getOperation()), mapper);
-  eraseOp(rewriter, mapper, linalgOp);
-  return success();
-}
-
 LogicalResult coreMemrefExtractStridedMetadataToAIE(
     IRRewriter &rewriter,
     memref::ExtractStridedMetadataOp extractStridedMetadataOp,
@@ -408,9 +395,6 @@ LogicalResult coreToAIE(IRRewriter &rewriter, AMDAIE::CoreOp coreOp,
             .Case<AMDAIE::LogicalObjectFifoRelease>([&](auto releaseOp) {
               return coreReleaseOpToAIE(rewriter, releaseOp, mapper,
                                         toBeErased);
-            })
-            .Case<linalg::LinalgOp>([&](auto linalgOp) {
-              return coreLinalgOpToAIE(rewriter, linalgOp, mapper, toBeErased);
             })
             .Case<memref::ExtractStridedMetadataOp>(
                 [&](auto extractStridedMetadataOp) {
@@ -1008,7 +992,7 @@ class AMDAIELowerToAIEPass
   }
 
   AMDAIELowerToAIEPass() = default;
-  AMDAIELowerToAIEPass(const AMDAIELowerToAIEPass &pass) {};
+  AMDAIELowerToAIEPass(const AMDAIELowerToAIEPass &pass){};
   void runOnOperation() override;
 };
 
