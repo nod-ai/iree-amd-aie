@@ -27,7 +27,8 @@ FetchContent_Declare(
   GIT_PROGRESS TRUE
   DOWNLOAD_NO_EXTRACT FALSE
   # prevents configure from rerunning all the time
-  URL_HASH MD5=84bc7c861606dc66bcfbeb660fcddfd2)
+  DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+  URL_HASH MD5=84BC7C861606DC66BCFBEB660FCDDFD2)
 FetchContent_MakeAvailable(Boost)
 set(IREE_AIE_BOOST_LIBS
     any

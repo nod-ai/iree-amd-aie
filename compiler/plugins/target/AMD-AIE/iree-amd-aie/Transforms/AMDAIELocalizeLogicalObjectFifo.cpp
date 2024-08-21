@@ -52,11 +52,6 @@ scf::ForallOp getThreadMappedForallAncestor(Operation *op) {
   return getMappedForallAncestor<mlir::gpu::GPUThreadMappingAttr>(op);
 }
 
-scf::ForallOp getThreadOrBlockMappedForallAncestor(Operation *op) {
-  return getMappedForallAncestor<mlir::gpu::GPUThreadMappingAttr,
-                                 mlir::gpu::GPUBlockMappingAttr>(op);
-}
-
 class AMDAIELocalizeLogicalObjectfifoPass
     : public impl::AMDAIELocalizeLogicalObjectfifoBase<
           AMDAIELocalizeLogicalObjectfifoPass> {

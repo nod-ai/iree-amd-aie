@@ -26,9 +26,10 @@ replace_string_in_file("${_BOOTGEN_SOURCE_DIR}/main.cpp"
 file(GLOB _bootgen_sources "${_BOOTGEN_SOURCE_DIR}/*.c" "${_BOOTGEN_SOURCE_DIR}/*.cpp")
 add_library(iree-aie-bootgen STATIC ${_bootgen_sources})
 
-if(CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
+if(WIN32)
   target_compile_definitions(iree-aie-bootgen PUBLIC YY_NO_UNISTD_H)
-elseif(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
+endif()
+if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
   set(_bootgen_c_warning_ignores
       -Wno-cast-qual
       -Wno-covered-switch-default

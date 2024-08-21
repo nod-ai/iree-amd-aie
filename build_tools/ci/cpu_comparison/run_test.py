@@ -60,7 +60,7 @@ def find_executable(install_dir: Path, executable_name):
     )
 
 
-def shell_out(cmd: list, workdir=None, verbose: int = 0, raise_on_error=True):
+def shell_out(cmd: list, workdir=None, verbose: int = 0, raise_on_error=True, env=None):
     if workdir is None:
         workdir = Path.cwd()
     if not isinstance(cmd, list):
@@ -68,7 +68,11 @@ def shell_out(cmd: list, workdir=None, verbose: int = 0, raise_on_error=True):
     for i, c in enumerate(cmd):
         if isinstance(c, Path):
             cmd[i] = str(c)
-    env = os.environ
+    if env is None:
+        env = {}
+
+    env = {**env, **os.environ}
+
     if verbose:
         _cmd = " ".join(cmd)
         if verbose > 1:
@@ -228,20 +232,20 @@ class TestConfig:
     """
 
     def __init__(
-        self,
-        output_dir,
-        iree_install_dir,
-        peano_dir,
-        xrt_dir,
-        vitis_dir,
-        file_dir,
-        iree_compile_exe,
-        iree_run_exe,
-        verbose,
-        return_on_fail,
-        reset_npu_between_runs,
-        do_not_run_aie,
-        additional_aie_compilation_flags,
+            self,
+            output_dir,
+            iree_install_dir,
+            peano_dir,
+            xrt_dir,
+            vitis_dir,
+            file_dir,
+            iree_compile_exe,
+            iree_run_exe,
+            verbose,
+            return_on_fail,
+            reset_npu_between_runs,
+            do_not_run_aie,
+            additional_aie_compilation_flags,
     ):
         self.output_dir = output_dir
         self.iree_install_dir = iree_install_dir
@@ -263,24 +267,30 @@ class TestConfig:
         self.xrt_hash = "undetermined"
         self.xrt_release = "undetermined"
         self.peano_commit_hash = "undetermined"
-        xrt_bin_dir = xrt_dir
-        if platform.system() != "Windows":
-            xrt_bin_dir /= "bin"
-        xrt_smi_exe = xrt_bin_dir / (
-            "xrt-smi" + ".exe" if platform.system() == "Windows" else ""
-        )
-        if not xrt_smi_exe.exists():
-            xrt_smi_exe = xrt_bin_dir / (
-                "xbutil" + ".exe" if platform.system() == "Windows" else ""
-            )
-        if not xrt_smi_exe.exists():
-            raise RuntimeError(f"Neither xrt-smi nor xbutil found in {xrt_bin_dir}")
 
         self.reset_npu_script = file_dir.parent / "reset_npu.sh"
         if reset_npu_between_runs and not self.reset_npu_script.exists():
             raise RuntimeError(
                 f"The file {self.reset_npu_script} does not exist, and reset_npu_script=True"
             )
+
+        # Populated at runtime
+        self.failures = []
+
+        if not isinstance(self.verbose, bool) and not isinstance(self.verbose, int):
+            raise ValueError(
+                f"verbose must be a boolean or integer, not {type(verbose)}"
+            )
+
+        if not get_component_log:
+            return
+
+        xrt_bin_dir = xrt_dir / "bin"
+        xrt_smi_exe = xrt_bin_dir / "xrt-smi"
+        if not xrt_smi_exe.exists():
+            xrt_smi_exe = xrt_bin_dir / "xbutil"
+        if not xrt_smi_exe.exists():
+            raise RuntimeError(f"Neither xrt-smi nor xbutil found in {xrt_bin_dir}")
 
         # Get the string output of the xrt-smi 'examine' command. Expect the
         # string to look something like:
@@ -330,7 +340,6 @@ class TestConfig:
 
         # Try and get the peano commit hash. This is a bit of a hack, if it fails
         # peano_commit_has is left as "undetermined".
-        self.peano_commit_hash = "undetermined"
         peano_clang_path = peano_dir / "bin" / "clang"
         if peano_clang_path.exists():
             _, clang_v_output = shell_out(
@@ -343,14 +352,6 @@ class TestConfig:
             )
             if peano_commit_hash:
                 self.peano_commit_hash = peano_commit_hash[0]
-
-        # Populated at runtime
-        self.failures = []
-
-        if not isinstance(self.verbose, bool) and not isinstance(self.verbose, int):
-            raise ValueError(
-                f"verbose must be a boolean or integer, not {type(verbose)}"
-            )
 
     def __str__(self):
         return dedent(
@@ -771,8 +772,6 @@ def all_tests(
         partition = map_to_partition[test]
         partition.run(config)
 
-    # for p in partition:
-
     if config.failures:
         # Convert the list of failed tests into a map: test name to the
         # number of failures (config.failures list may contain duplicates)
@@ -814,7 +813,7 @@ if __name__ == "__main__":
         ),
     )
 
-    parser.add_argument('-v', '--verbose', action='count', default=0)
+    parser.add_argument("-v", "--verbose", action="count", default=0)
 
     parser.add_argument(
         "--reset-npu-between-runs",
