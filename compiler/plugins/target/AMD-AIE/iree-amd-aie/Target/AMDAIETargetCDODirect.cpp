@@ -168,8 +168,8 @@ LogicalResult addAieElfsToCDO(const AMDAIEDeviceModel &deviceModel,
       else
         fileName = "core_" + std::to_string(tileLoc.col) + "_" +
                    std::to_string(tileLoc.row) + ".elf";
-      if (failed(addElfToTile(deviceModel, tileLoc, workDirPath / fileName,
-                              aieSim))) {
+      Path elfPath = workDirPath / fileName;
+      if (failed(addElfToTile(deviceModel, tileLoc, elfPath, aieSim))) {
         return failure();
       }
     }

@@ -92,7 +92,6 @@ iree_status_t iree_hal_xrt_driver_create_internal(
                             "No XRT devices found");
   }
   // Get handle to xrt device
-  std::cerr << xrt::system::enumerate_devices() << "\n";
   try {
     global_device = xrt::device(0);
   } catch (std::runtime_error& e) {
@@ -100,7 +99,7 @@ iree_status_t iree_hal_xrt_driver_create_internal(
                             e.what());
   }
   driver->device = &global_device;
-  *out_driver = (iree_hal_driver_t*)driver;
+  *out_driver = reinterpret_cast<iree_hal_driver_t*>(driver);
   return iree_ok_status();
 }
 

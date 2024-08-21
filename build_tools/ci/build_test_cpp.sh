@@ -32,6 +32,9 @@ if [[ "$OSTYPE" == "linux-gnu"* ]]; then
   export CMAKE_TOOLCHAIN_FILE="$this_dir/linux_default_toolchain.cmake"
   export CC=clang
   export CXX=clang++
+else
+  export CC=clang-cl.exe
+  export CXX=clang-cl.exe
 fi
 export CCACHE_DIR="${cache_dir}/ccache"
 export CCACHE_MAXSIZE="700M"
@@ -61,6 +64,13 @@ cmake -S "$iree_dir" -B "$build_dir" \
   -DCMAKE_BUILD_TYPE=Release \
   -DCMAKE_INSTALL_PREFIX="$install_dir" \
   -DCMAKE_INSTALL_LIBDIR=lib \
+  -DCMAKE_EXE_LINKER_FLAGS_INIT="-fuse-ld=lld" \
+  -DCMAKE_SHARED_LINKER_FLAGS_INIT="-fuse-ld=lld" \
+  -DCMAKE_MODULE_LINKER_FLAGS_INIT="-fuse-ld=lld" \
+  -DCMAKE_C_COMPILER="${CC}" \
+  -DCMAKE_CXX_COMPILER="${CXX}" \
+  -DLLVM_TARGET_ARCH=X86 \
+  -DLLVM_TARGETS_TO_BUILD=X86 \
   -DIREE_ENABLE_ASSERTIONS=ON \
   -DIREE_BUILD_SAMPLES=OFF \
   -DIREE_BUILD_PYTHON_BINDINGS=ON \

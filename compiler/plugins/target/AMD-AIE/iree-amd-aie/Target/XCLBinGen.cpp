@@ -429,12 +429,7 @@ static LogicalResult assembleFileUsingChess(
   args.emplace_back("-o");
   args.emplace_back(outputFile);
   std::vector<std::string> env = makeChessEnv(vitisDir);
-  if (failed(runTool(xChessCCExe, args, verbose, env))) {
-    llvm::errs() << "Failed to assemble " << inputFile << " with chess";
-    return failure();
-  }
-
-  return success();
+  return runTool(xChessCCExe, args, verbose, env);
 }
 
 std::vector<std::string> makePeanoOptArgs() {
@@ -532,7 +527,7 @@ static_assert(std::is_same_v<decltype(assembleStringUsingChess),
 
 // Generate the elf files for the core
 static LogicalResult generateCoreElfFiles(
-    AIE::DeviceOp deviceOp, const std::string &objFile, Path tempDir,
+    AIE::DeviceOp deviceOp, const std::string &objFile, Path &tempDir,
     bool useChess, std::optional<Path> vitisDir, const std::string &targetArch,
     bool verbose, Path peanoDir, const std::optional<std::string> &ukernel) {
   auto tileOps = deviceOp.getOps<AIE::TileOp>();
@@ -659,8 +654,13 @@ static LogicalResult generateCoreElfFiles(
     flags.emplace_back("-Wl,-T," + ldscriptPath.string());
 
 #ifdef _WIN32
-    // disable crt
+    // for some reason on windows libc/m and crt are deposited into an
+    // unconventional place (lib)
+    // https://github.com/Xilinx/llvm-aie/pull/155#issuecomment-2298247620
+    // disable using crt by default ie remove automatic of un-path-qualified
+    // crt0.o crt1.o
     flags.emplace_back("-nostartfiles");
+    // put them back by hand where they are in the wheel/distro
     flags.emplace_back((peanoDir / "lib" / "crt0.o").string());
     flags.emplace_back((peanoDir / "lib" / "crt1.o").string());
     flags.emplace_back("-Wl,-L" + (peanoDir / "lib").string());
@@ -671,18 +671,20 @@ static LogicalResult generateCoreElfFiles(
     if (verbose) flags.emplace_back("-v");
     // we run clang (ie cc) so that libc, libm, crt0/1 paths are injected
     // automatically into the ld.lld invocation
-    return runTool((peanoDir / "bin" / "clang").string(), flags, verbose);
+    if (failed(
+            runTool((peanoDir / "bin" / "clang").string(), flags, verbose))) {
+      return failure();
+    }
   }
+  return success();
 }
 
 static LogicalResult generateCDO(MLIRContext *context, AIE::DeviceOp deviceOp,
                                  bool printIRBeforeAll, bool printIRAfterAll,
                                  bool printIRModuleScope, bool timing,
-                                 const Path &tempDir) {
-
+                                 Path &tempDir) {
   auto copy = cast<ModuleOp>(deviceOp.getParentOp()->clone());
   deviceOp = *copy.getOps<AIE::DeviceOp>().begin();
-
   std::string errorMessage;
   PassManager passManager(context, AIE::DeviceOp::getOperationName());
   applyConfigToPassManager(passManager, printIRBeforeAll, printIRAfterAll,
@@ -761,10 +763,10 @@ static json::Object makeKernelJSON(const std::string &name,
 }
 
 static LogicalResult generateXCLBin(
-    const std::string &Output, const Path &tempDir,
-    const std::string &xclBinKernelID, const std::string &xclBinKernelName,
-    const std::string &xclBinInstanceName, const Path &amdAIEInstallDir,
-    bool verbose, const std::optional<std::string> &inputXclbin) {
+    const std::string &Output, Path &tempDir, const std::string &xclBinKernelID,
+    const std::string &xclBinKernelName, const std::string &xclBinInstanceName,
+    const Path &amdAIEInstallDir, bool verbose,
+    const std::optional<std::string> &inputXclbin) {
   std::string errorMessage;
   // Create mem_topology.json.
   Path memTopologyJsonFile = tempDir / "mem_topology.json";
@@ -923,9 +925,11 @@ static LogicalResult generateXCLBin(
   FailureOr<Path> xclbinutilBin =
       findAMDAIETool("iree-aie-xclbinutil", amdAIEInstallDir);
 
-  if (failed(xclbinutilBin)) return xclbinutilBin;
+  if (failed(xclbinutilBin)) return failure();
 
-  if (inputXclbin) {
+  if (!inputXclbin) {
+    flags.insert(flags.end(), {"--add-replace-section", memArg});
+  } else {
     // Create aie_partition.json.
     Path aieInputPartitionJsonFile = tempDir / "aie_input_partition.json";
     std::string inputPartArg =
@@ -977,8 +981,6 @@ static LogicalResult generateXCLBin(
       return failure();
     }
     flags.insert(flags.end(), {"--input", *inputXclbin});
-  } else {
-    flags.insert(flags.end(), {"--add-replace-section", memArg});
   }
   flags.insert(flags.end(), {"--add-kernel", kernelsJsonFile.string(),
                              "--add-replace-section", partArg, "--force",
@@ -1057,9 +1059,9 @@ struct RemoveAlignment2FromLLVMLoadPass
 static LogicalResult generateUnifiedObject(
     MLIRContext *context, AIE::DeviceOp deviceOp, const std::string &outputFile,
     bool printIRBeforeAll, bool printIRAfterAll, bool printIRModuleScope,
-    bool timing, bool useChess, bool verbose, Path tempDir,
+    bool timing, bool useChess, bool verbose, Path &tempDir,
     std::optional<Path> vitisDir, const std::string &targetArch,
-    Path peanoDir) {
+    Path &peanoDir) {
   assert(deviceOp->getParentOp() && isa<ModuleOp>(deviceOp->getParentOp()) &&
          "DeviceOp must be in a module parent");
 
@@ -1107,7 +1109,7 @@ static LogicalResult generateUnifiedObject(
     std::string inputLLChessHackedStr = chesshack(inputLLStr);
     FailureOr<Path> maybeVitisDir = findVitis(vitisDir);
     if (failed(maybeVitisDir)) return failure();
-    FailureOr<std::string> chessIntrinsicsObjFile = assembleStringUsingChess(
+    FailureOr<Path> chessIntrinsicsObjFile = assembleStringUsingChess(
         /*inputFileStr=*/inputLLChessHackedStr,
         /*inputFileName=*/"input.chesshacked.ll",
         /*outputFileName=*/outputFile,
@@ -1219,29 +1221,36 @@ LogicalResult aie2xclbin(
   for (uint32_t w : npuInstructions) output->os() << llvm::format("%08X\n", w);
   output->keep();
 
-  Path unifiedObj = Path(tempDir) / "input.o";
+  Path tempDirPath{tempDir};
+  tempDirPath.make_preferred();
+  Path peanoDirPath{peanoDir};
+  peanoDirPath.make_preferred();
+  std::optional<Path> vitisDirPath{vitisDir};
+  if (vitisDirPath) vitisDirPath->make_preferred();
+
+  Path unifiedObj = tempDirPath / "input.o";
   if (failed(generateUnifiedObject(
           ctx, deviceOp, unifiedObj.string(), printIRBeforeAll, printIRAfterAll,
-          printIRModuleScope, timing, useChess, verbose, tempDir, vitisDir,
-          targetArch, peanoDir))) {
+          printIRModuleScope, timing, useChess, verbose, tempDirPath,
+          vitisDirPath, targetArch, peanoDirPath))) {
     llvm::errs() << "Failed to generate unified object\n";
     return failure();
   }
 
-  if (failed(generateCoreElfFiles(deviceOp, unifiedObj.string(), tempDir,
-                                  useChess, vitisDir, targetArch, verbose,
+  if (failed(generateCoreElfFiles(deviceOp, unifiedObj.string(), tempDirPath,
+                                  useChess, vitisDirPath, targetArch, verbose,
                                   peanoDir, ukernel))) {
     llvm::errs() << "Failed to generate core ELF file(s)\n";
     return failure();
   }
 
   if (failed(generateCDO(ctx, deviceOp, printIRBeforeAll, printIRAfterAll,
-                         printIRModuleScope, timing, tempDir))) {
+                         printIRModuleScope, timing, tempDirPath))) {
     llvm::errs() << "Failed to generate CDO\n";
     return failure();
   }
 
-  if (failed(generateXCLBin(outputXCLBin, tempDir, xclBinKernelID,
+  if (failed(generateXCLBin(outputXCLBin, tempDirPath, xclBinKernelID,
                             xclBinKernelName, xclBinInstanceName,
                             amdAIEInstallDir, verbose, InputXCLBin))) {
     llvm::errs() << "Failed to generate XCLBin\n";
