@@ -178,7 +178,6 @@ iree_status_t iree_hal_xrt_native_executable_create(
     std::vector<char> xclbinVector(
         xclbin_fb, xclbin_fb + flatbuffers_string_len(xclbin_fb));
     std::unique_ptr<xrt::xclbin> xclbin;
-    std::cerr << "XILINX_XRT: " << getenv("XILINX_XRT") << "\n";
     try {
       xclbin = std::make_unique<xrt::xclbin>(xclbinVector);
     } catch (std::runtime_error& e) {
@@ -189,8 +188,8 @@ iree_status_t iree_hal_xrt_native_executable_create(
     try {
       xrt::hw_context context(*device, xclbin->get_uuid());
     } catch (std::runtime_error& e) {
-      return iree_make_status(IREE_STATUS_INTERNAL, "xrt::hw_context context: %s",
-                              e.what());
+      return iree_make_status(IREE_STATUS_INTERNAL,
+                              "xrt::hw_context context: %s", e.what());
     }
     xrt::hw_context context(*device, xclbin->get_uuid());
     uint32_t asm_instr_index =
@@ -209,7 +208,8 @@ iree_status_t iree_hal_xrt_native_executable_create(
       // the second argument to the kernel and we can use group id 1.
       int group_id = 1;
       instr = std::make_unique<xrt::bo>(*device, num_instr * sizeof(uint32_t),
-                                        XCL_BO_FLAGS_CACHEABLE, kernel->group_id(group_id));
+                                        XCL_BO_FLAGS_CACHEABLE,
+                                        kernel->group_id(group_id));
     } catch (...) {
       iree_hal_executable_destroy((iree_hal_executable_t*)executable);
       IREE_TRACE_ZONE_END(z0);
