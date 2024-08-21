@@ -60,7 +60,7 @@ def find_executable(install_dir: Path, executable_name):
     )
 
 
-def shell_out(cmd: list, workdir=None, verbose=False, raiseOnError=True):
+def shell_out(cmd: list, workdir=None, verbose: int = 0, raise_on_error=True):
     if workdir is None:
         workdir = Path.cwd()
     if not isinstance(cmd, list):
@@ -70,7 +70,9 @@ def shell_out(cmd: list, workdir=None, verbose=False, raiseOnError=True):
             cmd[i] = str(c)
     env = os.environ
     if verbose:
-        _cmd = " ".join([f"{k}={v}" for k, v in env.items()]) + " " + " ".join(cmd)
+        _cmd = " ".join(cmd)
+        if verbose > 1:
+            _cmd = " ".join([f"{k}={v}" for k, v in env.items()]) + " " + _cmd
         print(f"Running the following command:\n{_cmd}")
 
     handle = subprocess.run(cmd, capture_output=True, cwd=workdir, env=env)
@@ -83,11 +85,11 @@ def shell_out(cmd: list, workdir=None, verbose=False, raiseOnError=True):
         if stderr_decode:
             print("Standard error from script:")
             print(stderr_decode)
-    if not raiseOnError and handle.returncode != 0:
+    if not raise_on_error and handle.returncode != 0:
         print(
             f"Error executing script, error code was {handle.returncode}. Not raising an error."
         )
-    if raiseOnError and handle.returncode != 0:
+    if raise_on_error and handle.returncode != 0:
         raise RuntimeError(
             f"Error executing script, error code was {handle.returncode}"
         )
@@ -332,7 +334,7 @@ class TestConfig:
         peano_clang_path = peano_dir / "bin" / "clang"
         if peano_clang_path.exists():
             _, clang_v_output = shell_out(
-                [peano_clang_path, "-v"], verbose=self.verbose, raiseOnError=False
+                [peano_clang_path, "-v"], verbose=self.verbose, raise_on_error=False
             )
             peano_commit_hash = re.findall(
                 r"clang version \d+\.\d+\.\d+ \(https://github.com/Xilinx/llvm-aie (\w+)\)",
@@ -812,7 +814,7 @@ if __name__ == "__main__":
         ),
     )
 
-    parser.add_argument("--verbose", action="store_true")
+    parser.add_argument('-v', '--verbose', action='count', default=0)
 
     parser.add_argument(
         "--reset-npu-between-runs",

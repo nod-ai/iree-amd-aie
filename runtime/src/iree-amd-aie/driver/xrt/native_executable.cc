@@ -178,6 +178,7 @@ iree_status_t iree_hal_xrt_native_executable_create(
     std::vector<char> xclbinVector(
         xclbin_fb, xclbin_fb + flatbuffers_string_len(xclbin_fb));
     std::unique_ptr<xrt::xclbin> xclbin;
+    std::cerr << "XILINX_XRT: " << getenv("XILINX_XRT") << "\n";
     try {
       xclbin = std::make_unique<xrt::xclbin>(xclbinVector);
     } catch (std::runtime_error& e) {
@@ -185,6 +186,12 @@ iree_status_t iree_hal_xrt_native_executable_create(
                               e.what());
     }
     device->register_xclbin(*xclbin);
+    try {
+      xrt::hw_context context(*device, xclbin->get_uuid());
+    } catch (std::runtime_error& e) {
+      return iree_make_status(IREE_STATUS_INTERNAL, "xrt::hw_context context: %s",
+                              e.what());
+    }
     xrt::hw_context context(*device, xclbin->get_uuid());
     uint32_t asm_instr_index =
         flatbuffers_uint32_vec_at(asm_instr_indices_vec, entry_ordinal);
@@ -202,7 +209,7 @@ iree_status_t iree_hal_xrt_native_executable_create(
       // the second argument to the kernel and we can use group id 1.
       int group_id = 1;
       instr = std::make_unique<xrt::bo>(*device, num_instr * sizeof(uint32_t),
-                                        XCL_BO_FLAGS_CACHEABLE, group_id);
+                                        XCL_BO_FLAGS_CACHEABLE, kernel->group_id(group_id));
     } catch (...) {
       iree_hal_executable_destroy((iree_hal_executable_t*)executable);
       IREE_TRACE_ZONE_END(z0);
@@ -267,8 +274,8 @@ static void iree_hal_xrt_native_executable_destroy(
 
   for (iree_host_size_t i = 0; i < executable->entry_point_count; ++i) {
     try {
-      delete executable->entry_points[i].kernel;
-      delete executable->entry_points[i].instr;
+      // delete executable->entry_points[i].kernel;
+      // delete executable->entry_points[i].instr;
       // TODO(jornt): deleting the xclbin here will result in a corrupted size
       // error in XRT. It looks like the xclbin needs to stay alive while the
       // device is alive if it has been registered.
