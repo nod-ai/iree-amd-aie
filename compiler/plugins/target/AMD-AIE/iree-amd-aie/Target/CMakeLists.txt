@@ -21,7 +21,7 @@ iree_cc_library(
 )
 
 if(IREE_AMD_AIE_ENABLE_XRT_DRIVER)
-  add_dependencies(iree_target_amd-aie_Target_AIETargets iree_aie_xrt_iree-aie-xclbinutil)
+  add_dependencies(iree_target_amd-aie_Target_AIETargets iree-aie-xclbinutil)
 endif()
 
 iree_cc_library(

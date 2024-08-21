@@ -4,7 +4,7 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-if(TARGET iree_aie_xrt_iree-aie-xclbinutil)
+if(TARGET iree-aie-xclbinutil)
   return()
 endif()
 
@@ -56,6 +56,14 @@ set(_xclbinutil_source_dir ${IREE_XRT_SOURCE_DIR}/runtime_src/tools/xclbinutil)
 # remove ssl dep
 replace_string_in_file(${_xclbinutil_source_dir}/XclBinUtilMain.cxx
                        "bValidateSignature == true" "false")
+# returning string& to an iterator...............
+replace_string_in_file(${_xclbinutil_source_dir}/SectionAIEResourcesBin.h
+                       "static const std::string& getSubSectionName" "static std::string getSubSectionName")
+set(_const_str "
+const std::string&
+SectionAIEResourcesBin::getSubSectionName")
+replace_string_in_file(${_xclbinutil_source_dir}/SectionAIEResourcesBin.cxx
+                       "${_const_str}" "std::string SectionAIEResourcesBin::getSubSectionName")
 
 # transformcdo target
 if(NOT WIN32)
@@ -134,42 +142,43 @@ list(REMOVE_ITEM _xclbinutil_srcs "${_xclbinutil_source_dir}/SectionSmartNic.cxx
 # and then --add-replace-section:MEM_TOPOLOGY won't work...
 # XRT/src/runtime_src/tools/xclbinutil/SectionMemTopology.cxx#L26-L41
 # TODO(max): and for whatever reason -WL,--whole-archive doesn't work
-set(IREE_PACKAGE_ROOT_DIR "${CMAKE_CURRENT_LIST_DIR}")
-set(IREE_PACKAGE_ROOT_PREFIX "iree::aie::xrt")
-iree_cc_binary(
-  NAME
-    # if you rename this be sure to update the if(...) return up top
-    # otherwise this script will be entered twice and you'll get a confusing error like
-    # "can't do add_executable; target already exists"
-    iree-aie-xclbinutil
-  SRCS
-    ${_xclbinutil_srcs}
-  COPTS
-    $<$<PLATFORM_ID:Linux>:-fexceptions -frtti>
-    $<$<PLATFORM_ID:Windows>:/EHsc /GR>
-  DEFINES
-    BOOST_BIND_GLOBAL_PLACEHOLDERS
-  INSTALL_COMPONENT
-    IREETools-Runtime
-  PUBLIC
-)
+add_executable(iree-aie-xclbinutil ${_xclbinutil_srcs})
 
+target_compile_definitions(iree-aie-xclbinutil
+                           PRIVATE
+                           -DBOOST_BIND_GLOBAL_PLACEHOLDERS)
 set(THREADS_PREFER_PTHREAD_FLAG ON)
-target_link_libraries(iree_aie_xrt_iree-aie-xclbinutil
+target_link_libraries(iree-aie-xclbinutil
                       PRIVATE
                       Threads::Threads
                       $<BUILD_LOCAL_INTERFACE:${IREE_AIE_BOOST_LIBS}>
                       $<$<PLATFORM_ID:Linux>:$<BUILD_LOCAL_INTERFACE:transformcdo>>)
-target_include_directories(iree_aie_xrt_iree-aie-xclbinutil
+target_include_directories(iree-aie-xclbinutil
                            PRIVATE ${XRT_BINARY_DIR}/gen
                                    ${IREE_XRT_SOURCE_DIR}/runtime_src/core/include
                                    ${_xclbinutil_source_dir})
-set_target_properties(iree_aie_xrt_iree-aie-xclbinutil
+target_compile_options(iree-aie-xclbinutil
+                       PRIVATE
+                       $<$<PLATFORM_ID:Linux>:-fexceptions -frtti>
+                       $<$<PLATFORM_ID:Windows>:/EHsc /GR>)
+set_target_properties(iree-aie-xclbinutil
                       PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/tools")
+
+# iree_install_targets has EXCLUDE_FROM_ALL
+install(
+  TARGETS iree-aie-xclbinutil
+  EXPORT IREEExported-Runtime
+  COMPONENT IREETools-Runtime
+  RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+)
+
 
 # ##############################################################################
 # xrt_coreutil
 # ##############################################################################
+set(XRT_AIE_BUILD "yes")
+set(XRT_ENABLE_AIE "yes")
+add_definitions(-DXRT_ENABLE_AIE -DXRT_AIE_BUILD)
 
 # send xrt_coreutil to trash so it doesn't get installed
 set(XRT_INSTALL_LIB_DIR "$ENV{TMP}")

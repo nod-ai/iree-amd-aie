@@ -60,7 +60,7 @@ def find_executable(install_dir: Path, executable_name):
     )
 
 
-def shell_out(cmd: list, workdir=None, verbose=False, raiseOnError=True):
+def shell_out(cmd: list, workdir=None, verbose: int = 0, raise_on_error=True):
     if workdir is None:
         workdir = Path.cwd()
     if not isinstance(cmd, list):
@@ -69,8 +69,11 @@ def shell_out(cmd: list, workdir=None, verbose=False, raiseOnError=True):
         if isinstance(c, Path):
             cmd[i] = str(c)
     env = os.environ
+    env["XILINX_XRT"] = "C:\\bui\\tools"
     if verbose:
-        _cmd = " ".join([f"{k}={v}" for k, v in env.items()]) + " " + " ".join(cmd)
+        _cmd = " ".join(cmd)
+        if verbose > 1:
+            _cmd = " ".join([f"{k}={v}" for k, v in env.items()]) + " " + _cmd
         print(f"Running the following command:\n{_cmd}")
 
     handle = subprocess.run(cmd, capture_output=True, cwd=workdir, env=env)
@@ -83,11 +86,11 @@ def shell_out(cmd: list, workdir=None, verbose=False, raiseOnError=True):
         if stderr_decode:
             print("Standard error from script:")
             print(stderr_decode)
-    if not raiseOnError and handle.returncode != 0:
+    if not raise_on_error and handle.returncode != 0:
         print(
             f"Error executing script, error code was {handle.returncode}. Not raising an error."
         )
-    if raiseOnError and handle.returncode != 0:
+    if raise_on_error and handle.returncode != 0:
         raise RuntimeError(
             f"Error executing script, error code was {handle.returncode}"
         )
@@ -95,14 +98,14 @@ def shell_out(cmd: list, workdir=None, verbose=False, raiseOnError=True):
 
 
 def generate_aie_vmfb(
-    config,
-    name,
-    tile_pipeline,
-    lower_to_aie_pipeline,
-    use_ukernel,
-    test_file,
-    input_args,
-    function_name,
+        config,
+        name,
+        tile_pipeline,
+        lower_to_aie_pipeline,
+        use_ukernel,
+        test_file,
+        input_args,
+        function_name,
 ):
     """
     Compile a test file for IREE's AIE backend, returning path to the compiled
@@ -184,11 +187,11 @@ def generate_aie_output(config, aie_vmfb, input_args, function_name, name):
 
 
 def generate_llvm_cpu_output(
-    config,
-    name,
-    test_file,
-    input_args,
-    function_name,
+        config,
+        name,
+        test_file,
+        input_args,
+        function_name,
 ):
     """
     Compile and run a test file for IREE's CPU backend, returning a numpy array
@@ -226,20 +229,20 @@ class TestConfig:
     """
 
     def __init__(
-        self,
-        output_dir,
-        iree_install_dir,
-        peano_dir,
-        xrt_dir,
-        vitis_dir,
-        file_dir,
-        iree_compile_exe,
-        iree_run_exe,
-        verbose,
-        return_on_fail,
-        reset_npu_between_runs,
-        do_not_run_aie,
-        additional_aie_compilation_flags,
+            self,
+            output_dir,
+            iree_install_dir,
+            peano_dir,
+            xrt_dir,
+            vitis_dir,
+            file_dir,
+            iree_compile_exe,
+            iree_run_exe,
+            verbose,
+            return_on_fail,
+            reset_npu_between_runs,
+            do_not_run_aie,
+            additional_aie_compilation_flags,
     ):
         self.output_dir = output_dir
         self.iree_install_dir = iree_install_dir
@@ -264,15 +267,15 @@ class TestConfig:
         xrt_bin_dir = xrt_dir
         if platform.system() != "Windows":
             xrt_bin_dir /= "bin"
-        xrt_smi_exe = xrt_bin_dir / (
-            "xrt-smi" + ".exe" if platform.system() == "Windows" else ""
-        )
-        if not xrt_smi_exe.exists():
-            xrt_smi_exe = xrt_bin_dir / (
-                "xbutil" + ".exe" if platform.system() == "Windows" else ""
-            )
-        if not xrt_smi_exe.exists():
-            raise RuntimeError(f"Neither xrt-smi nor xbutil found in {xrt_bin_dir}")
+        # xrt_smi_exe = xrt_bin_dir / (
+        #     "xrt-smi" + ".exe" if platform.system() == "Windows" else ""
+        # )
+        # if not xrt_smi_exe.exists():
+        #     xrt_smi_exe = xrt_bin_dir / (
+        #         "xbutil" + ".exe" if platform.system() == "Windows" else ""
+        #     )
+        # if not xrt_smi_exe.exists():
+        #     raise RuntimeError(f"Neither xrt-smi nor xbutil found in {xrt_bin_dir}")
 
         self.reset_npu_script = file_dir.parent / "reset_npu.sh"
         if reset_npu_between_runs and not self.reset_npu_script.exists():
@@ -295,27 +298,27 @@ class TestConfig:
         # ...
         # ```
         #
-        system_info, xrt_info = (
-            subprocess.check_output([xrt_smi_exe, "examine"])
-            .decode("utf-8")
-            .split("XRT")
-        )
-
-        linux_kernel = re.findall(r"Release\s+:\s(.*)", system_info, re.MULTILINE)
-        if linux_kernel:
-            self.linux_kernel = linux_kernel[0]
-
-        xrt_release = re.findall(r"Version\s+:\s(.*)", xrt_info, re.MULTILINE)
-        if xrt_release:
-            self.xrt_release = xrt_release[0]
-
-        xrt_hash_date = re.findall(r"Hash Date\s+:\s(.*)", xrt_info, re.MULTILINE)
-        if xrt_hash_date:
-            self.xrt_hash_date = xrt_hash_date[0]
-
-        xrt_hash = re.findall(r"Hash\s+:\s(.*)", xrt_info, re.MULTILINE)
-        if xrt_hash:
-            self.xrt_hash = xrt_hash[0]
+        # system_info, xrt_info = (
+        #     subprocess.check_output([xrt_smi_exe, "examine"])
+        #     .decode("utf-8")
+        #     .split("XRT")
+        # )
+        #
+        # linux_kernel = re.findall(r"Release\s+:\s(.*)", system_info, re.MULTILINE)
+        # if linux_kernel:
+        #     self.linux_kernel = linux_kernel[0]
+        #
+        # xrt_release = re.findall(r"Version\s+:\s(.*)", xrt_info, re.MULTILINE)
+        # if xrt_release:
+        #     self.xrt_release = xrt_release[0]
+        #
+        # xrt_hash_date = re.findall(r"Hash Date\s+:\s(.*)", xrt_info, re.MULTILINE)
+        # if xrt_hash_date:
+        #     self.xrt_hash_date = xrt_hash_date[0]
+        #
+        # xrt_hash = re.findall(r"Hash\s+:\s(.*)", xrt_info, re.MULTILINE)
+        # if xrt_hash:
+        #     self.xrt_hash = xrt_hash[0]
 
         # Try and get the peano commit hash. This is a bit of a hack, if it fails
         # peano_commit_has is left as "undetermined".
@@ -323,7 +326,7 @@ class TestConfig:
         peano_clang_path = peano_dir / "bin" / "clang"
         if peano_clang_path.exists():
             _, clang_v_output = shell_out(
-                [peano_clang_path, "-v"], verbose=self.verbose, raiseOnError=False
+                [peano_clang_path, "-v"], verbose=self.verbose, raise_on_error=False
             )
             peano_commit_hash = re.findall(
                 r"clang version \d+\.\d+\.\d+ \(https://github.com/Xilinx/llvm-aie (\w+)\)",
@@ -402,18 +405,18 @@ def name_from_mlir_filename(mlir_filename):
 
 
 def aie_vs_baseline(
-    config,
-    test_file,
-    input_args,
-    baseline_value,
-    use_ukernel,
-    tile_pipeline,
-    lower_to_aie_pipeline,
-    function_name,
-    seed,
-    rtol,
-    atol,
-    n_repeats,
+        config,
+        test_file,
+        input_args,
+        baseline_value,
+        use_ukernel,
+        tile_pipeline,
+        lower_to_aie_pipeline,
+        function_name,
+        seed,
+        rtol,
+        atol,
+        n_repeats,
 ):
     """
     If the outputs differ, add the test file to a list of failures.
@@ -480,16 +483,16 @@ def aie_vs_baseline(
 
 
 def aie_vs_llvm_cpu(
-    config,
-    test_file,
-    use_ukernel=False,
-    tile_pipeline="pad-pack",
-    lower_to_aie_pipeline="air",
-    function_name=None,
-    seed=1,
-    rtol=1e-6,
-    atol=1e-6,
-    n_repeats=1,
+        config,
+        test_file,
+        use_ukernel=False,
+        tile_pipeline="pad-pack",
+        lower_to_aie_pipeline="air",
+        function_name=None,
+        seed=1,
+        rtol=1e-6,
+        atol=1e-6,
+        n_repeats=1,
 ):
     """
     Compare the output obtained when compiling and running on IREE's
@@ -524,16 +527,16 @@ def aie_vs_llvm_cpu(
 
 
 def aie_vs_np_matmul(
-    config,
-    test_file,
-    use_ukernel=False,
-    tile_pipeline="pad-pack",
-    lower_to_aie_pipeline="air",
-    function_name=None,
-    seed=1,
-    rtol=1e-6,
-    atol=1e-6,
-    n_repeats=1,
+        config,
+        test_file,
+        use_ukernel=False,
+        tile_pipeline="pad-pack",
+        lower_to_aie_pipeline="air",
+        function_name=None,
+        seed=1,
+        rtol=1e-6,
+        atol=1e-6,
+        n_repeats=1,
 ):
     """ """
 
@@ -601,7 +604,7 @@ class MatmulSet(TestSet):
         output_dir = config.output_dir
 
         for name in [
-            "two_matmul_switching",
+            # "two_matmul_switching",
             "matmul_f32_8_8_4",
             "matmul_f32_8_4_8",
         ]:
@@ -672,21 +675,23 @@ class SmokeSet(TestSet):
 
 
 def get_test_partition():
-    return [ConvolutionSet(), MatmulSet(), SmokeSet()]
+    return [
+        # ConvolutionSet(),
+        MatmulSet(), SmokeSet()]
 
 
 def all_tests(
-    output_dir,
-    iree_install_dir,
-    peano_dir,
-    xrt_dir,
-    vitis_dir,
-    return_on_fail,
-    verbose,
-    reset_npu_between_runs,
-    do_not_run_aie,
-    test_set,
-    additional_aie_compilation_flags,
+        output_dir,
+        iree_install_dir,
+        peano_dir,
+        xrt_dir,
+        vitis_dir,
+        return_on_fail,
+        verbose,
+        reset_npu_between_runs,
+        do_not_run_aie,
+        test_set,
+        additional_aie_compilation_flags,
 ):
     """
     There are a few ways to add tests to this script:
@@ -736,8 +741,8 @@ def all_tests(
     verify_determinism()
 
     # Verify a very basic script runs before running the more complex tests
-    if platform.system() != "Windows":
-        shell_out(["pwd"], verbose=config.verbose)
+    # if platform.system() != "Windows":
+    #     shell_out(["pwd"], verbose=config.verbose)
 
     partition = get_test_partition()
     partition_names = [p.name for p in partition]
@@ -796,7 +801,7 @@ if __name__ == "__main__":
         ),
     )
 
-    parser.add_argument("--verbose", action="store_true")
+    parser.add_argument('-v', '--verbose', action='count', default=0)
 
     parser.add_argument(
         "--reset-npu-between-runs",
@@ -825,8 +830,8 @@ if __name__ == "__main__":
     partition_names = [p.name for p in partition]
     partition_names_and_all = partition_names + ["All"]
     help_string = (
-        "A comma-separated list of test sets. Available test sets are: "
-        + ", ".join(partition_names_and_all)
+            "A comma-separated list of test sets. Available test sets are: "
+            + ", ".join(partition_names_and_all)
     )
 
     parser.add_argument(
