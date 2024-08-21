@@ -77,26 +77,3 @@ module  {
   } {sym_name = "explicit_sym_name_0"}
 }
 
-// -----
-
-// CHECK-LABEL:   aie.device(npu1_4col) {
-// CHECK:           memref.global "public" @toMem : memref<16xi32>
-// CHECK:           func.func @pretend_microkernel
-// CHECK:           aiex.runtime_sequence  @explicit_sym_name
-// CHECK:           aie.shim_dma_allocation @toMem(MM2S, 1, 1)
-
-module  {
-  aie.device(npu1_4col) {
-    memref.global "public" @toMem : memref<16xi32>
-    func.func @pretend_microkernel(%arg0: memref<16xi32>, %arg1: memref<16xi32>) {
-      return
-    }
-
-    aiex.runtime_sequence @explicit_sym_name(%arg0: memref<16xi32>, %arg1: memref<16xi32>) {
-      aiex.npu.dma_memcpy_nd(0, 0, %arg0[0, 0, 0, 0][1, 1, 16, 16][0, 0, 64, 1]) { metadata = @toMem, id = 1 : i64 } : memref<16xi32>
-      aiex.npu.dma_wait {symbol = @toMem}
-    }
-    aie.shim_dma_allocation @toMem (MM2S, 1, 1)
-  } {sym_name = "wrong_sym_name"}
-}
-

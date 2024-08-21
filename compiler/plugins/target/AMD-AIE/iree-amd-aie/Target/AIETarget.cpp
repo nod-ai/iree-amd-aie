@@ -16,7 +16,6 @@
 #include "aievec/XLLVMDialect.h"
 #include "air/Dialect/AIR/AIRDialect.h"
 #include "air/Dialect/AIRRt/AIRRtDialect.h"
-#include "iree-amd-aie/IR/AMDAIEAttrs.h"
 #include "iree-amd-aie/IR/AMDAIEDialect.h"
 #include "iree-amd-aie/Transforms/Passes.h"
 #include "iree/compiler/Codegen/Dialect/Codegen/IR/IREECodegenDialect.h"
@@ -27,9 +26,12 @@
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/Path.h"
 #include "llvm/Support/SourceMgr.h"
-#include "llvm/Support/ToolOutputFile.h"
+#include "mlir/Conversion/ArithToLLVM/ArithToLLVM.h"
+#include "mlir/Conversion/ControlFlowToLLVM/ControlFlowToLLVM.h"
 #include "mlir/Conversion/FuncToLLVM/ConvertFuncToLLVM.h"
-#include "mlir/Conversion/Passes.h"
+#include "mlir/Conversion/IndexToLLVM/IndexToLLVM.h"
+#include "mlir/Conversion/MathToLLVM/MathToLLVM.h"
+#include "mlir/Conversion/MemRefToLLVM/MemRefToLLVM.h"
 #include "mlir/Dialect/DLTI/DLTI.h"
 #include "mlir/Dialect/EmitC/IR/EmitC.h"
 #include "mlir/Dialect/Func/Extensions/AllExtensions.h"
@@ -75,42 +77,27 @@ static llvm::cl::opt<std::string> clEnableAMDAIEUkernels(
                    "unprefixed microkernels to enable, e.g. `matmul`."),
     llvm::cl::init("none"));
 
-// Utility to find aie.device Op corresponding to the export Op.
-// For example, we have
-// hal.executable.variant {
-//   hal.executable.export symbol1
-//   hal.executable.export symbol2
-//   module {
-//     aie.device {
-//       ...
-//       aiex.runtime_sequence symbol1
-//     }
-//     aie.device {
-//       ...
-//       aiex.runtime_sequence symbol2
-//     }
-//   }
-// }
-// Hence we need to find the aiex.runtime_sequence that coresponds to the export
-// op symbol and return its parent aie.device Op. This is what we will pass to
-// the `aie2xclbin` tool for artifact generation per entry point.
-static xilinx::AIE::DeviceOp getDeviceOpFromEntryPoint(ModuleOp moduleOp,
-                                                       StringRef exportOpName) {
+static xilinx::AIE::DeviceOp getDeviceOpWithName(ModuleOp moduleOp,
+                                                 StringRef targetName) {
   xilinx::AIE::DeviceOp deviceOp;
 
-  moduleOp.walk([&](xilinx::AIEX::RuntimeSequenceOp sequenceOp) {
-    if (sequenceOp.getSymName() == exportOpName) {
-      deviceOp =
-          dyn_cast_or_null<xilinx::AIE::DeviceOp>(sequenceOp->getParentOp());
-      return WalkResult::interrupt();
-    }
-    return WalkResult::advance();
+  uint32_t nDeviceOpsVisited = 0;
+  moduleOp.walk([&](xilinx::AIE::DeviceOp d) {
+    ++nDeviceOpsVisited;
+    // This attribute should've been set in the dma-to-npu pass.
+    auto maybeName = d->getAttrOfType<StringAttr>("runtime_sequence_name");
+    if (!maybeName) return WalkResult::advance();
+    auto name = maybeName.getValue();
+    if (name != targetName) return WalkResult::advance();
+    deviceOp = d;
+    return WalkResult::interrupt();
   });
-  if (!deviceOp) {
-    moduleOp.emitError()
-        << "failed to find aie.device containing func.func with symbol "
-        << exportOpName;
-  }
+
+  if (!deviceOp)
+    moduleOp.emitError() << "visited " << nDeviceOpsVisited
+                         << " aie.device ops, and failed to find one with name "
+                         << targetName;
+
   return deviceOp;
 }
 
@@ -291,7 +278,7 @@ LogicalResult AIETargetBackend::serializeExecutable(
     }
 
     StringRef exportOpName = exportOp.getSymName();
-    deviceOps.push_back(getDeviceOpFromEntryPoint(moduleOp, exportOpName));
+    deviceOps.push_back(getDeviceOpWithName(moduleOp, exportOpName));
 
     // The xclbin kernel name, appended with instance name suffix (`:MLIRAIEV1`,
     // 10 chars) is required by the xclbinutil to have a length smaller or equal
@@ -334,21 +321,8 @@ LogicalResult AIETargetBackend::serializeExecutable(
     uint64_t ordinal = entryPointOrdinals.at(entryPointNames[i]);
 
     entryPointNamesFb[ordinal] = entryPointNames[i];
-
-    SmallString<128> inputMlirPath(workDir);
-    llvm::sys::path::append(inputMlirPath,
-                            entryPointNamesFb[ordinal] + ".aiecc.mlir");
-
     std::string errorMessage;
-    {
-      auto inputMlirOut = openOutputFile(inputMlirPath, &errorMessage);
-      if (!inputMlirOut) {
-        return moduleOp.emitOpError()
-               << "Failed to write MLIR: " << errorMessage;
-      }
-      deviceOps[i].print(inputMlirOut->os(), OpPrintingFlags().useLocalScope());
-      inputMlirOut->keep();
-    }
+
     // we add the entry point to the working directory for xclbin artifacts if
     // there are multiple entry points so that we dont overwrite the xclbinutil
     // generated artifacts e.g kernels.json, for different entry points which
@@ -375,11 +349,22 @@ LogicalResult AIETargetBackend::serializeExecutable(
     ParserConfig pcfg(variantOp->getContext());
     llvm::SourceMgr srcMgr;
 
-    OwningOpRef<ModuleOp> owningModuleOp =
-        parseSourceFile<ModuleOp>(inputMlirPath, srcMgr, pcfg);
+    // Move DeviceOp into its own ModuleOp, if there are multiple DeviceOps.
+    // Required as core-to-standard pass will move all ops in DeviceOps into
+    // the parent ModuleOp, so if they're not separated, core code between
+    // DeviceOps gets incorrectly concatenated. There's probably a simpler
+    // workaround, to be reviewed as we continue to remove layers of crust.
+    if (deviceOps.size() > 1) {
+      OpBuilder opBuilder(deviceOps[i].getContext());
+      auto moduleWithOneDevice =
+          opBuilder.create<ModuleOp>(deviceOps[i].getLoc());
+      opBuilder.setInsertionPointToStart(moduleWithOneDevice.getBody());
+      Operation *repl = opBuilder.clone(*deviceOps[i].getOperation());
+      deviceOps[i] = cast<xilinx::AIE::DeviceOp>(repl);
+    }
 
     if (failed(aie2xclbin(
-            /*ctx=*/variantOp->getContext(), /*moduleOp=*/*owningModuleOp,
+            /*ctx=*/variantOp->getContext(), deviceOps[i],
             /*outputNPU=*/npuInstPath.str().str(),
             /*outputXCLBin=*/xclbinPath.str().str(),
             /*printIRBeforeAll=*/options.aie2xclbinPrintIrBeforeAll,

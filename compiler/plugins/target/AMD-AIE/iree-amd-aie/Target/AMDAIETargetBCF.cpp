@@ -7,7 +7,6 @@
 #include "AMDAIETargets.h"
 #include "aie/AIEDialect.h"
 #include "llvm/ADT/StringExtras.h"
-#include "llvm/IR/Module.h"
 
 using namespace mlir;
 using namespace xilinx;
@@ -17,14 +16,10 @@ std::string utohexstr(uint32_t u) { return "0x" + llvm::utohexstr(u); }
 
 namespace mlir::iree_compiler::AMDAIE {
 
-LogicalResult AIETranslateToBCF(ModuleOp module, raw_ostream &output,
+LogicalResult AIETranslateToBCF(DeviceOp deviceOp, raw_ostream &output,
                                 int tileCol, int tileRow) {
   DenseMap<TileLoc, Operation *> tiles;
   DenseMap<Operation *, SmallVector<BufferOp, 4>> buffers;
-
-  if (module.getOps<DeviceOp>().empty())
-    module.emitOpError("expected aie.device operation at toplevel");
-  DeviceOp deviceOp = *(module.getOps<DeviceOp>().begin());
 
   collectTiles(deviceOp, tiles);
   collectBuffers(deviceOp, buffers);

@@ -13,11 +13,6 @@ func.func @conv_2d_nhwc_hwcf(%arg0: tensor<2x14x14x32xi32>, %arg1: tensor<3x3x32
 //       CHECK:    aie.shim_dma_allocation
 //       CHECK:    aie.shim_dma_allocation
 //       CHECK:    aie.shim_dma_allocation
-//       CHECK:    aiex.runtime_sequence @conv_2d_nhwc_hwcf_dispatch_0_conv_2d_nhwc_hwcf_2x12x12x64x3x3x32_i32(%arg0: memref<2x14x14x32xi32>, %arg1: memref<3x3x32x64xi32>, %arg2: memref<2x12x12x64xi32>)
-//       CHECK:      aiex.npu.dma_memcpy_nd
-//       CHECK:      aiex.npu.dma_memcpy_nd
-//       CHECK:      aiex.npu.dma_memcpy_nd
-//       CHECK:      aiex.npu.sync
 
 // -----
 
@@ -34,8 +29,3 @@ func.func @conv_2d_nhwc_hwcf_q(%arg0: tensor<2x14x14x32xi8>, %arg1: tensor<3x3x3
 //       CHECK:    aie.shim_dma_allocation
 //       CHECK:    aie.shim_dma_allocation
 //       CHECK:    aie.shim_dma_allocation
-//       CHECK:    aiex.runtime_sequence @conv_2d_nhwc_hwcf_q_dispatch_0_conv_2d_nhwc_hwcf_q_2x12x12x64x3x3x32_i8xi8xi32xi32xi32(%arg0: memref<3136xi32>, %arg1: memref<4608xi32>, %arg2: memref<2x12x12x64xi32>)
-//       CHECK:      aiex.npu.dma_memcpy_nd
-//       CHECK:      aiex.npu.dma_memcpy_nd
-//       CHECK:      aiex.npu.dma_memcpy_nd
-//       CHECK:      aiex.npu.sync

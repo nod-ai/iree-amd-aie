@@ -10,10 +10,7 @@
 #include "aie/AIEDialect.h"
 #include "aie/AIEXDialect.h"
 #include "iree-amd-aie/Target/AMDAIETargets.h"
-#include "iree-amd-aie/Target/XCLBinGen.h"
 #include "llvm/Support/Debug.h"
-#include "llvm/Support/FileSystem.h"
-#include "llvm/Support/Path.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
 #include "mlir/Parser/Parser.h"
 
@@ -43,11 +40,19 @@ int main(int argc, char **argv) {
   mlir::ParserConfig parserConfig(&context);
   auto moduleOp = llvm::cast<ModuleOp>(
       mlir::parseSourceFile(mlirAbsPath, parserConfig).release());
+
+  auto deviceOps = moduleOp.getOps<xilinx::AIE::DeviceOp>();
+  auto nDeviceOps = std::distance(deviceOps.begin(), deviceOps.end());
+  if (nDeviceOps != 1){
+    std::cerr << "Error: Expected exactly one xilinx.aie.device op\n";
+    return 1;
+  }
+  auto  deviceOp = *deviceOps.begin();
   llvm::DebugFlag = true;
   const char *debugTypes[3] = {"aie-generate-cdo", "iree-aie-runtime",
                                "iree-aie-cdo-emitter"};
   llvm::setCurrentDebugTypes(debugTypes, 3);
-  auto status = AIETranslateToCDODirect(moduleOp, workDir, false, false, false);
+  auto status = AIETranslateToCDODirect(deviceOp, workDir, false, false, false);
   std::vector<std::string> diagnostics;
   ScopedDiagnosticHandler handler(moduleOp.getContext(), [&](Diagnostic &d) {
     llvm::raw_string_ostream(diagnostics.emplace_back())
@@ -59,7 +64,7 @@ int main(int argc, char **argv) {
 
   llvm::DebugFlag = false;
   llvm::setCurrentDebugType("aie-cdo-driver-debug");
-  status = AIETranslateToCDODirect(moduleOp, workDir, false, false, true);
+  status = AIETranslateToCDODirect(deviceOp, workDir, false, false, true);
   if (failed(status))
     for (const auto &diagnostic : diagnostics) std::cerr << diagnostic << "\n";
 }

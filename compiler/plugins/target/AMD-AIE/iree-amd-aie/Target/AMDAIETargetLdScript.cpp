@@ -50,14 +50,10 @@ static void writeLDScriptMap(raw_ostream &output, BufferOp buf, int offset) {
 //   .bss : { *(.bss) } > data
 // }
 LogicalResult mlir::iree_compiler::AMDAIE::AIETranslateToLdScript(
-    ModuleOp module, raw_ostream &output, int tileCol, int tileRow) {
+    DeviceOp deviceOp, raw_ostream &output, int tileCol, int tileRow) {
   DenseMap<TileLoc, Operation *> tiles;
   DenseMap<Operation *, SmallVector<BufferOp, 4>> buffers;
 
-  if (module.getOps<DeviceOp>().empty()) {
-    module.emitOpError("expected AIE.device operation at toplevel");
-  }
-  DeviceOp deviceOp = *(module.getOps<DeviceOp>().begin());
 
   collectTiles(deviceOp, tiles);
   ::collectBuffers(deviceOp, buffers);

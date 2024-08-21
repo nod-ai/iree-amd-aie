@@ -142,7 +142,6 @@ iree_cc_library(
     AMDAIELocalizeLocks.cpp
     AMDAIENormalizeAddressSpaces.cpp
     AMDAIEObjectFifoStatefulTransform.cpp
-    AMDAIEXToStandard.cpp
   DEPS
     iree-amd-aie::aie_runtime::iree_aie_runtime_static
     ::AIEDialectIR

@@ -34,7 +34,6 @@ struct AMDAIESession
     AMDAIE::registerAMDAIEObjectFifoStatefulTransform();
     AMDAIE::registerAMDAIERoutePathfinderFlows();
     AMDAIE::registerAMDAIEDmaToNpu();
-    AMDAIE::registerAMDAIEXToStandardPass();
     AMDAIE::registerAIRConversionPasses();
     AMDAIE::registerAIRTransformPasses();
     aievec::registerConvertAIEVecToLLVMPass();
