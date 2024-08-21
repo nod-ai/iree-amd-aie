@@ -139,8 +139,7 @@ install(
   TARGETS iree-aie-xclbinutil
   EXPORT IREEExported-Runtime
   COMPONENT IREETools-Runtime
-  RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
-)
+  RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 
 
 # ##############################################################################
@@ -169,8 +168,8 @@ set(_core_libs
     core_common_library_objects
     core_common_api_library_objects
     core_common_xdp_profile_objects
-    xrt_coreutil
-)
+    xrt_coreutil)
+
 foreach(_core_lib IN LISTS _core_libs)
   target_include_directories(${_core_lib} PUBLIC
                              ${IREE_XRT_SOURCE_DIR}/runtime_src/core/include
@@ -185,3 +184,10 @@ foreach(_core_lib IN LISTS _core_libs)
                          $<$<PLATFORM_ID:Windows>:/EHsc /GR>)
   target_link_libraries(${_core_lib} PUBLIC $<BUILD_LOCAL_INTERFACE:${IREE_AIE_BOOST_LIBS}>)
 endforeach()
+if (WIN32)
+  install(
+    TARGETS xrt_coreutil
+    EXPORT IREEExported-Runtime
+    COMPONENT IREETools-Runtime
+    LIBRARY DESTINATION ${CMAKE_INSTALL_BINDIR})
+endif()
