@@ -53,18 +53,6 @@ set(IREE_XRT_SOURCE_DIR "${IREE_AMD_AIE_SOURCE_DIR}/third_party/XRT/src")
 
 set(_xclbinutil_source_dir ${IREE_XRT_SOURCE_DIR}/runtime_src/tools/xclbinutil)
 
-# remove ssl dep
-replace_string_in_file(${_xclbinutil_source_dir}/XclBinUtilMain.cxx
-                       "bValidateSignature == true" "false")
-# returning string& to an iterator...............
-replace_string_in_file(${_xclbinutil_source_dir}/SectionAIEResourcesBin.h
-                       "static const std::string& getSubSectionName" "static std::string getSubSectionName")
-set(_const_str "
-const std::string&
-SectionAIEResourcesBin::getSubSectionName")
-replace_string_in_file(${_xclbinutil_source_dir}/SectionAIEResourcesBin.cxx
-                       "${_const_str}" "std::string SectionAIEResourcesBin::getSubSectionName")
-
 # transformcdo target
 if(NOT WIN32)
   replace_string_in_file(${_xclbinutil_source_dir}/aie-pdi-transform/src/CMakeLists.txt
@@ -74,7 +62,7 @@ endif()
 
 # otherwise the various stois that read these will explode...
 # XRT/src/runtime_src/tools/xclbinutil/XclBinClass.cxx#L55
-file(READ ${IREE_XRT_SOURCE_DIR}/CMakeLists.txt _xrt_cmake_file_contents)
+file(READ ${IREE_XRT_SOURCE_DIR}/CMake/settings.cmake _xrt_cmake_file_contents)
 string(REGEX MATCH "XRT_VERSION_MAJOR ([0-9]+)" XRT_VERSION_MAJOR ${_xrt_cmake_file_contents})
 # note CMAKE_MATCH_0 is the whole match...
 set(XRT_VERSION_MAJOR ${CMAKE_MATCH_1})
@@ -95,24 +83,6 @@ configure_file(${IREE_XRT_SOURCE_DIR}/CMake/config/version.h.in
                ${IREE_XRT_SOURCE_DIR}/runtime_src/core/common/gen/version.h)
 configure_file(${IREE_XRT_SOURCE_DIR}/CMake/config/version.h.in
                ${IREE_XRT_SOURCE_DIR}/runtime_src/core/common/api/version.h)
-replace_string_in_file(${IREE_XRT_SOURCE_DIR}/runtime_src/core/common/query.h
-                       "#include <stdexcept>" "#include <any>")
-
-set(_noop_xclbin_sig_cxx "
-#include \"XclBinSignature.h\"
-void signXclBinImage(const std::string& _fileOnDisk,
-                     const std::string& _sPrivateKey,
-                     const std::string& _sCertificate,
-                     const std::string& _sDigestAlgorithm,
-                     bool _bEnableDebugOutput) {}
-void verifyXclBinImage(const std::string& _fileOnDisk,
-                       const std::string& _sCertificate,
-                       bool _bEnableDebugOutput) {}
-void dumpSignatureFile(const std::string& _fileOnDisk,
-                       const std::string& _signatureFile) {}
-void getXclBinPKCSStats(const std::string& _xclBinFile,
-                        XclBinPKCSImageStats& _xclBinPKCSImageStats) {}")
-file(WRITE "${_xclbinutil_source_dir}/XclBinSignature.cxx" "${_noop_xclbin_sig_cxx}")
 
 file(
   GLOB
@@ -176,8 +146,12 @@ install(
 # ##############################################################################
 # xrt_coreutil
 # ##############################################################################
+
+message(STATUS "building XRT core libs")
+
 set(XRT_AIE_BUILD "yes")
 set(XRT_ENABLE_AIE "yes")
+set(XRT_NATIVE_BUILD "yes")
 add_definitions(-DXRT_ENABLE_AIE -DXRT_AIE_BUILD)
 
 # send xrt_coreutil to trash so it doesn't get installed
