@@ -116,3 +116,7 @@ fi
 
 # Show ccache stats.
 ccache --show-stats
+
+rm -f "$install_dir"/bin/clang*
+rm -f "$install_dir"/bin/llvm-link*
+cp "$build_dir"/tools/testing/e2e/iree-e2e-matmul-test "$install_dir"/bin

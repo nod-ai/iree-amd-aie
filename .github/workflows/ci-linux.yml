@@ -70,9 +70,6 @@ jobs:
       - name: Create artifacts
         if: ${{ !cancelled() }}
         run: |
-          rm -f iree-install/bin/clang*
-          rm -f iree-install/bin/llvm-link*
-          cp ../iree-build/tools/testing/e2e/iree-e2e-matmul-test iree-install/bin
           tar cf iree-dist-linux.tar -C iree-install .
 
       - name: Upload artifacts
