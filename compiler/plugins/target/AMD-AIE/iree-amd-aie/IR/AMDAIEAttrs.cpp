@@ -59,7 +59,6 @@ void AMDAIEDialect::initializeAMDAIEAttrs() {
   addAttributes<
 #define GET_ATTRDEF_LIST
 #include "iree-amd-aie/IR/AMDAIEAttrs.cpp.inc"  // IWYU pragma: keeep
-
       >();
 }
 
