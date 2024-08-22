@@ -654,20 +654,6 @@ static LogicalResult generateCoreElfFiles(
     flags.emplace_back("--target=" + targetLower + "-none-unknown-elf");
     flags.emplace_back("-Wl,--gc-sections");
     flags.emplace_back("-Wl,-T," + ldscriptPath.string());
-
-#ifdef _WIN32
-    // for some reason on windows libc/m and crt are deposited into an
-    // unconventional place (lib)
-    // https://github.com/Xilinx/llvm-aie/pull/155#issuecomment-2298247620
-    // disable using crt by default ie remove automatic of un-path-qualified
-    // crt0.o crt1.o
-    flags.emplace_back("-nostartfiles");
-    // put them back by hand where they are in the wheel/distro
-    flags.emplace_back((peanoDir / "lib" / "crt0.o").string());
-    flags.emplace_back((peanoDir / "lib" / "crt1.o").string());
-    flags.emplace_back("-Wl,-L" + (peanoDir / "lib").string());
-#endif
-
     flags.emplace_back("-o");
     flags.emplace_back(elfFile.string());
     if (verbose) flags.emplace_back("-v");
