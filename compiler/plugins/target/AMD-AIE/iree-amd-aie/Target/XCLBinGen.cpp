@@ -12,6 +12,8 @@
 #include <fstream>
 #include <regex>
 #include <sstream>
+// ReSharper disable once CppUnusedIncludeDirective
+#include <fstream>
 #include <unordered_map>
 
 #include "AMDAIETargets.h"
@@ -335,16 +337,16 @@ LogicalResult runTool(
     }
   }
 
+  SmallVector<std::optional<StringRef>> redirects;
+#ifdef _WIN32
+  redirects = {{}, {}, {}};
+  std::optional<ArrayRef<StringRef>> envSmallVec = std::nullopt;
+#else
   std::string temporaryPathStr =
       std::string(temporaryPath.begin(), temporaryPath.size());
   StringRef temporaryPathRef(temporaryPathStr);
   llvm::SmallVector<llvm::StringRef> envSmallVec;
   if (env) envSmallVec.append(env->begin(), env->end());
-
-  SmallVector<std::optional<StringRef>> redirects;
-#ifdef _WIN32
-  redirects = {{}, {}, {}};
-#else
   auto tp = std::optional<StringRef>(temporaryPathRef);
   redirects = {tp, tp, tp};
 #endif
@@ -353,7 +355,7 @@ LogicalResult runTool(
   std::string errMsg;
   sys::ProcessStatistics stats;
   std::optional<sys::ProcessStatistics> optStats(stats);
-  int result = sys::ExecuteAndWait(program, pArgs, std::nullopt,
+  int result = sys::ExecuteAndWait(program, pArgs, envSmallVec,
                                    /* redirects */ redirects,
                                    /*SecondsToWait*/ 10, /*MemoryLimit*/ 0,
                                    &errMsg, &executionFailed, &optStats);

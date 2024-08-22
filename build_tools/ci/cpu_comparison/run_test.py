@@ -232,20 +232,20 @@ class TestConfig:
     """
 
     def __init__(
-            self,
-            output_dir,
-            iree_install_dir,
-            peano_dir,
-            xrt_dir,
-            vitis_dir,
-            file_dir,
-            iree_compile_exe,
-            iree_run_exe,
-            verbose,
-            return_on_fail,
-            reset_npu_between_runs,
-            do_not_run_aie,
-            additional_aie_compilation_flags,
+        self,
+        output_dir,
+        iree_install_dir,
+        peano_dir,
+        xrt_dir,
+        vitis_dir,
+        file_dir,
+        iree_compile_exe,
+        iree_run_exe,
+        verbose,
+        return_on_fail,
+        reset_npu_between_runs,
+        do_not_run_aie,
+        additional_aie_compilation_flags,
     ):
         self.output_dir = output_dir
         self.iree_install_dir = iree_install_dir
