@@ -878,14 +878,14 @@ if [ -d "$VITIS" ]; then
       --num_repeat_runs "2" \
       --use_ukernel "1"
 
-run_matmul_test_on_shapes ${bf16_ukernel_shapes_medium[@]} \
-    --name_prefix "medium" \
-    --lower_to_aie_pipeline "objectFifo" \
-    --tile_pipeline "pack-peel" \
-    --lhs_rhs_type "bf16" \
-    --acc_type "f32" \
-    --num_repeat_runs "2" \
-    --use_ukernel "1"
+  run_matmul_test_on_shapes ${bf16_ukernel_shapes_medium[@]} \
+      --name_prefix "medium" \
+      --lower_to_aie_pipeline "objectFifo" \
+      --tile_pipeline "pack-peel" \
+      --lhs_rhs_type "bf16" \
+      --acc_type "f32" \
+      --num_repeat_runs "2" \
+      --use_ukernel "1"
 fi
 
 ###################################################################
@@ -894,26 +894,26 @@ fi
 
 if [ -d "$VITIS" ]; then
 
-run_matmul_test \
-    --name_prefix "chess_i32_matmul" \
-    --lhs_rhs_type "i32" \
-    --acc_type "i32" \
-    --m "32" \
-    --n "32" \
-    --k "32" \
-    --use_chess "1" \
-    --num_repeat_runs "10"
+  run_matmul_test \
+      --name_prefix "chess_i32_matmul" \
+      --lhs_rhs_type "i32" \
+      --acc_type "i32" \
+      --m "32" \
+      --n "32" \
+      --k "32" \
+      --use_chess "1" \
+      --num_repeat_runs "10"
 
-run_matmul_test \
-    --name_prefix "chess_bf16_ukernel" \
-    --lhs_rhs_type "bf16" \
-    --acc_type "f32" \
-    --m "64" \
-    --n "64" \
-    --k "64" \
-    --use_chess "1" \
-    --num_repeat_runs "10" \
-    --use_ukernel "1"
+  run_matmul_test \
+      --name_prefix "chess_bf16_ukernel" \
+      --lhs_rhs_type "bf16" \
+      --acc_type "f32" \
+      --m "64" \
+      --n "64" \
+      --k "64" \
+      --use_chess "1" \
+      --num_repeat_runs "10" \
+      --use_ukernel "1"
 
 fi
 
