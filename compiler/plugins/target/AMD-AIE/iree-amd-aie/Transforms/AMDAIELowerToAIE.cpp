@@ -19,7 +19,6 @@
 #include "iree-amd-aie/IR/AMDAIEOps.h"
 #include "iree-amd-aie/Transforms/AMDAIEUtils.h"
 #include "iree-amd-aie/Transforms/Passes.h"
-#include "iree-amd-aie/Transforms/Transforms.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/IR/IRMapping.h"
 #include "mlir/IR/Iterators.h"
@@ -48,6 +47,19 @@ void remapOperands(Operation *op, IRMapping &mapper) {
 //===----------------------------------------------------------------------===//
 
 namespace {
+
+// It is dangerous to erase ops with `rewriter` without erasing them from
+// `mapper` too, as addresses of Operations/Values can be reused, resulting in
+// unexpected key-value pairs in `mapper`. Use this utility if `mapper` might be
+// used after `op` is erased.
+void eraseOp(IRRewriter &rewriter, IRMapping &mapper, Operation *op) {
+  for (Value result : op->getResults()) {
+    mapper.erase(result);
+  }
+  mapper.erase(op);
+  op->dropAllUses();
+  rewriter.eraseOp(op);
+}
 
 /// Utility to convert vectors of `size` and `stride` into an
 /// `AIE::BDDimLayoutArrayAttr`.
@@ -259,7 +271,7 @@ LogicalResult coreLinalgOpToAIE(IRRewriter &rewriter, linalg::LinalgOp linalgOp,
   OpBuilder::InsertionGuard guard(rewriter);
   rewriter.setInsertionPoint(linalgOp);
   rewriter.clone(*(linalgOp.getOperation()), mapper);
-  rewriter.eraseOp(linalgOp);
+  eraseOp(rewriter, mapper, linalgOp);
   return success();
 }
 
@@ -422,8 +434,7 @@ LogicalResult coreToAIE(IRRewriter &rewriter, AMDAIE::CoreOp coreOp,
     return failure();
   }
   for (auto *op : toBeErased) {
-    op->dropAllUses();
-    rewriter.eraseOp(op);
+    eraseOp(rewriter, mapper, op);
   }
 
   mapper.map(coreOp.getResult(), aieCoreOp.getResult());
@@ -687,7 +698,7 @@ LogicalResult controlCodeToAie(IRRewriter &rewriter,
                                          bindingsMapper);
                 })
                 .Case<AMDAIE::EndOp>([&](auto endOp) {
-                  rewriter.eraseOp(endOp);
+                  eraseOp(rewriter, mapper, endOp);
                   return success();
                 })
                 .Default([&](Operation *op) {
@@ -701,8 +712,7 @@ LogicalResult controlCodeToAie(IRRewriter &rewriter,
       });
   if (res.wasInterrupted()) return failure();
   for (auto *op : toBeErased) {
-    op->dropAllUses();
-    rewriter.eraseOp(op);
+    eraseOp(rewriter, mapper, op);
   }
   return success();
 }
@@ -917,7 +927,8 @@ LogicalResult lowerToAIE(ModuleOp moduleOp) {
     rewriter.moveOpBefore(ipuFuncOp, deviceBlock, deviceBlock->end());
     // After walking the FuncOp, it has been converted into a DeviceOp and can
     // safely be erased.
-    rewriter.eraseOp(funcOp);
+    eraseOp(rewriter, mapper, funcOp);
+
     return WalkResult::advance();
   });
   if (funcRes.wasInterrupted()) return failure();
