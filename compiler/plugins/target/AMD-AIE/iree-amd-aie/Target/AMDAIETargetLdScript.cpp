@@ -23,43 +23,15 @@ static void writeLDScriptMap(raw_ostream &output, BufferOp buf, int offset) {
   output << ". += 0x" << llvm::utohexstr(numBytes) << ";\n";
 }
 
-///// ld.script format:
-//
-// MEMORY
-// {
-//    program (RX) : ORIGIN = 0, LENGTH = 0x0020000
-//    data (!RX) : ORIGIN = 0x20000, LENGTH = 0x0020000
-// }
-// ENTRY(_main_init)
-// INPUT(something.o)
-// SECTIONS
-// {
-//   . = 0x0;
-//   .text : {
-//      // the __start symbol from crt0.o has to come at address zero.
-//      *crt0.o(.text)
-//      . = 0x200;
-//      *(.text)
-//   } > program
-//   .data : { *(.data) } > data
-//   . = 0x20000;
-//   _sp_start_value_DM_stack = .;
-//   . = 0x24000;
-//   a = .;
-//   . += 1024;
-//   .bss : { *(.bss) } > data
-// }
 LogicalResult mlir::iree_compiler::AMDAIE::AIETranslateToLdScript(
     DeviceOp deviceOp, raw_ostream &output, int tileCol, int tileRow) {
   DenseMap<TileLoc, Operation *> tiles;
   DenseMap<Operation *, SmallVector<BufferOp, 4>> buffers;
 
-
   collectTiles(deviceOp, tiles);
   ::collectBuffers(deviceOp, buffers);
 
-  AMDAIEDeviceModel deviceModel =
-      getDeviceModel(static_cast<AMDAIEDevice>(deviceOp.getDevice()));
+  AMDAIEDeviceModel deviceModel = getDeviceModel(deviceOp.getDevice());
   for (auto tile : deviceOp.getOps<TileOp>())
     if (tile.getCol() == tileCol && tile.getRow() == tileRow) {
       TileLoc srcCoord = {tile.getCol(), tile.getRow()};
@@ -95,9 +67,21 @@ SECTIONS
      *(.data*);
      *(.rodata*)
   } > data
+  .comment : {
+     *(.comment*)
+  }
+  .symtab : {
+     *(.symtab)
+  }
+  .shstrtab : {
+     *(.shstrtab)
+  }
+  .strtab : {
+     *(.strtab)
+  }
 )THESCRIPT";
       auto doBuffer = [&](std::optional<TileLoc> tile, int offset,
-                          const std::string& dir) {
+                          const std::string &dir) {
         if (tile) {
           if (tiles.count({tile->col, tile->row}))
             for (auto buf : buffers[tiles[{tile->col, tile->row}]])
@@ -132,7 +116,6 @@ SECTIONS
                deviceModel.getMemEastBaseAddress(), std::string("east"));
 
       output << "  .bss : { *(.bss) } > data\n";
-      output << "  .bss.DMb.4 : { *(.bss.DMb.4) } > data\n";
       output << "}\n";
       if (auto coreOp = getCoreOp(tile)) {
         output << "PROVIDE(main = core_" << std::to_string(tile.getCol()) << "_"
