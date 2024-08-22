@@ -86,8 +86,6 @@ jobs:
       - name: Create artifacts
         if: ${{ !cancelled() }}
         run: |
-          rm -f iree-install/bin/clang*
-          rm -f iree-install/bin/llvm-link*
           tar cf iree-dist-windows.tar -C iree-install .
 
       - name: Upload artifacts
