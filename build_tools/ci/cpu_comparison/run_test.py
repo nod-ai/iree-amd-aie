@@ -63,6 +63,8 @@ def find_executable(install_dir: Path, executable_name):
 def shell_out(cmd: list, workdir=None, verbose: int = 0, raise_on_error=True, env=None):
     if workdir is None:
         workdir = Path.cwd()
+    workdir = Path(workdir)
+    os.chdir(workdir)
     if not isinstance(cmd, list):
         cmd = [cmd]
     for i, c in enumerate(cmd):
@@ -79,9 +81,16 @@ def shell_out(cmd: list, workdir=None, verbose: int = 0, raise_on_error=True, en
             _cmd = " ".join([f"{k}={v}" for k, v in env.items()]) + " " + _cmd
         print(f"Running the following command:\n{_cmd}")
 
-    handle = subprocess.run(cmd, capture_output=True, cwd=workdir, env=env)
-    stderr_decode = handle.stderr.decode("utf-8").strip()
-    stdout_decode = handle.stdout.decode("utf-8").strip()
+    handle = subprocess.Popen(
+        cmd,
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        env=env,
+    )
+    stdout, stderr = handle.communicate()
+    stderr_decode = stderr.decode("utf-8").strip()
+    stdout_decode = stdout.decode("utf-8").strip()
     if verbose:
         if stdout_decode:
             print("Standard output from script:")
@@ -282,7 +291,7 @@ class TestConfig:
                 f"verbose must be a boolean or integer, not {type(verbose)}"
             )
 
-        if not get_component_log:
+        if not xrt_dir:
             return
 
         xrt_bin_dir = xrt_dir / "bin"
@@ -796,7 +805,7 @@ if __name__ == "__main__":
     parser.add_argument("output_dir", type=abs_path)
     parser.add_argument("iree_install_dir", type=abs_path)
     parser.add_argument("peano_install_dir", type=abs_path)
-    parser.add_argument("xrt_dir", type=abs_path)
+    parser.add_argument("--xrt-dir", type=abs_path)
     parser.add_argument("--vitis-dir", type=abs_path)
 
     # TODO(newling) make bool options boolean, not integer (tried but had issues)
