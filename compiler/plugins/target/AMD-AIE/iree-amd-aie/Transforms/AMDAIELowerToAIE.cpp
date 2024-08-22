@@ -42,16 +42,10 @@ void remapOperands(Operation *op, IRMapping &mapper) {
   }
 }
 
-//===----------------------------------------------------------------------===//
-// Convert amdaie.core operation to aie.core
-//===----------------------------------------------------------------------===//
-
-namespace {
-
-// It is dangerous to erase ops with `rewriter` without erasing them from
-// `mapper` too, as addresses of Operations/Values can be reused, resulting in
-// unexpected key-value pairs in `mapper`. Use this utility if `mapper` might be
-// used after `op` is erased.
+/// It is dangerous to erase ops with `rewriter` without erasing them from
+/// `mapper` too, as addresses of Operations/Values can be reused, resulting in
+/// unexpected key-value pairs in `mapper`. Use this utility if `mapper` might
+/// be used after `op` is erased.
 void eraseOp(IRRewriter &rewriter, IRMapping &mapper, Operation *op) {
   for (Value result : op->getResults()) {
     mapper.erase(result);
@@ -60,6 +54,13 @@ void eraseOp(IRRewriter &rewriter, IRMapping &mapper, Operation *op) {
   op->dropAllUses();
   rewriter.eraseOp(op);
 }
+
+//===----------------------------------------------------------------------===//
+// Convert amdaie.core operation to aie.core
+//===----------------------------------------------------------------------===//
+
+namespace {
+
 
 /// Utility to convert vectors of `size` and `stride` into an
 /// `AIE::BDDimLayoutArrayAttr`.
