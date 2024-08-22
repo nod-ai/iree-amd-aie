@@ -103,7 +103,6 @@ else
   exit 1
 fi
 
-
 THIS="$(cd $(dirname $0) && pwd)"
 SOURCE_MLIR_FILE="${THIS}/linalg_matmul_f32.mlir"
 
