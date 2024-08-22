@@ -15,9 +15,6 @@
 #include "iree_aie_router.h"
 #include "iree_aie_runtime.h"
 #include "llvm/ADT/StringExtras.h"
-#ifdef _WIN32
-#include "llvm/Support/Windows/WindowsSupport.h"
-#endif
 
 #define DEBUG_TYPE "iree-aie-cdo-emitter"
 
@@ -213,8 +210,7 @@ LogicalResult pushToBdQueueAndEnable(const AMDAIEDeviceModel &deviceModel,
 }
 
 LogicalResult addElfToTile(const AMDAIEDeviceModel &deviceModel,
-                           const TileLoc &tileLoc, Path &elfPath,
-                           bool aieSim) {
+                           const TileLoc &tileLoc, Path &elfPath, bool aieSim) {
   auto devInst = const_cast<XAie_DevInst *>(&deviceModel.devInst);
   if (!std::filesystem::exists(elfPath)) {
     llvm::errs() << "elf doesn't exist: " << elfPath.string() << "\n";

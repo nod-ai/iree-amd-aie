@@ -373,7 +373,7 @@ LogicalResult runTool(
   std::optional<sys::ProcessStatistics> optStats(stats);
   int result = sys::ExecuteAndWait(program, pArgs, envSmallVec,
                                    /* redirects */ redirects,
-                                   /*SecondsToWait*/ 10, /*MemoryLimit*/ 0,
+                                   /*SecondsToWait*/ 0, /*MemoryLimit*/ 0,
                                    &errMsg, &executionFailed, &optStats);
 
 #ifndef _WIN32
