@@ -185,10 +185,9 @@ foreach(_core_lib IN LISTS _core_libs)
                          $<$<PLATFORM_ID:Windows>:/EHsc /GR>)
   target_link_libraries(${_core_lib} PUBLIC $<BUILD_LOCAL_INTERFACE:${IREE_AIE_BOOST_LIBS}>)
 endforeach()
-if (WIN32)
-  install(
-    TARGETS xrt_coreutil
-    EXPORT IREEExported-Runtime
-    COMPONENT IREETools-Runtime
-    LIBRARY DESTINATION ${CMAKE_INSTALL_BINDIR})
-endif()
+
+install(
+  TARGETS xrt_coreutil
+  EXPORT IREEExported-Runtime
+  COMPONENT IREETools-Runtime
+  LIBRARY DESTINATION ${CMAKE_INSTALL_BINDIR})
