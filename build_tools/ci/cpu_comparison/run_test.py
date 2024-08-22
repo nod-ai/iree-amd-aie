@@ -63,6 +63,8 @@ def find_executable(install_dir: Path, executable_name):
 def shell_out(cmd: list, workdir=None, verbose: int = 0, raise_on_error=True, env=None):
     if workdir is None:
         workdir = Path.cwd()
+    workdir = Path(workdir)
+    os.chdir(workdir)
     if not isinstance(cmd, list):
         cmd = [cmd]
     for i, c in enumerate(cmd):
@@ -79,9 +81,16 @@ def shell_out(cmd: list, workdir=None, verbose: int = 0, raise_on_error=True, en
             _cmd = " ".join([f"{k}={v}" for k, v in env.items()]) + " " + _cmd
         print(f"Running the following command:\n{_cmd}")
 
-    handle = subprocess.run(cmd, capture_output=True, cwd=workdir, env=env)
-    stderr_decode = handle.stderr.decode("utf-8").strip()
-    stdout_decode = handle.stdout.decode("utf-8").strip()
+    handle = subprocess.Popen(
+        cmd,
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        env=env,
+    )
+    stdout, stderr = handle.communicate()
+    stderr_decode = stderr.decode("utf-8").strip()
+    stdout_decode = stdout.decode("utf-8").strip()
     if verbose:
         if stdout_decode:
             print("Standard output from script:")
@@ -180,12 +189,7 @@ def generate_aie_output(config, aie_vmfb, input_args, function_name, name):
         shell_out(config.reset_npu_script, verbose=config.verbose)
 
     start = time.monotonic_ns()
-    shell_out(
-        run_args,
-        config.output_dir,
-        config.verbose,
-        env={"XILINX_XRT": str(config.xrt_dir)},
-    )
+    shell_out(run_args, config.output_dir, config.verbose)
     run_time = time.monotonic_ns() - start
 
     if config.verbose:
@@ -250,7 +254,6 @@ class TestConfig:
         return_on_fail,
         reset_npu_between_runs,
         do_not_run_aie,
-        get_component_log,
         additional_aie_compilation_flags,
     ):
         self.output_dir = output_dir
@@ -288,7 +291,7 @@ class TestConfig:
                 f"verbose must be a boolean or integer, not {type(verbose)}"
             )
 
-        if not get_component_log:
+        if not xrt_dir:
             return
 
         xrt_bin_dir = xrt_dir / "bin"
@@ -694,7 +697,6 @@ def all_tests(
     verbose,
     reset_npu_between_runs,
     do_not_run_aie,
-    get_component_log,
     test_set,
     additional_aie_compilation_flags,
 ):
@@ -737,7 +739,6 @@ def all_tests(
         return_on_fail,
         reset_npu_between_runs,
         do_not_run_aie,
-        get_component_log,
         additional_aie_compilation_flags,
     )
     if verbose:
@@ -788,7 +789,7 @@ if __name__ == "__main__":
     parser.add_argument("output_dir", type=abs_path)
     parser.add_argument("iree_install_dir", type=abs_path)
     parser.add_argument("peano_install_dir", type=abs_path)
-    parser.add_argument("xrt_dir", type=abs_path)
+    parser.add_argument("--xrt-dir", type=abs_path)
     parser.add_argument("--vitis-dir", type=abs_path)
 
     # TODO(newling) make bool options boolean, not integer (tried but had issues)
@@ -828,12 +829,6 @@ if __name__ == "__main__":
             working AIE HW and runtime."
             """
         ),
-    )
-
-    parser.add_argument(
-        "--get-component-log",
-        action="store_true",
-        help="Print environment information (such as info about XRT and the kernel",
     )
 
     partition = get_test_partition()
@@ -878,7 +873,6 @@ if __name__ == "__main__":
         args.verbose,
         args.reset_npu_between_runs,
         args.do_not_run_aie,
-        args.get_component_log,
         test_set_list,
         args.additional_aie_compilation_flags,
     )

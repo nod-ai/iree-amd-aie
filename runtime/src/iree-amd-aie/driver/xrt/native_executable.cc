@@ -184,14 +184,19 @@ iree_status_t iree_hal_xrt_native_executable_create(
       return iree_make_status(IREE_STATUS_INTERNAL, "XCLBIN load error: %s",
                               e.what());
     }
-    device->register_xclbin(*xclbin);
     try {
-      xrt::hw_context context(*device, xclbin->get_uuid());
+      device->register_xclbin(*xclbin);
+    } catch (std::runtime_error& e) {
+      return iree_make_status(IREE_STATUS_INTERNAL, "XCLBIN register error: %s",
+                              e.what());
+    }
+    xrt::hw_context context;
+    try {
+      context = {*device, xclbin->get_uuid()};
     } catch (std::runtime_error& e) {
       return iree_make_status(IREE_STATUS_INTERNAL,
                               "xrt::hw_context context: %s", e.what());
     }
-    xrt::hw_context context(*device, xclbin->get_uuid());
     uint32_t asm_instr_index =
         flatbuffers_uint32_vec_at(asm_instr_indices_vec, entry_ordinal);
     iree_amd_aie_hal_xrt_AsmInstDef_table_t asminst_def =

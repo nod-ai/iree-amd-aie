@@ -55,12 +55,6 @@ static iree_hal_xrt_driver_t* iree_hal_xrt_driver_cast(
   return (iree_hal_xrt_driver_t*)base_value;
 }
 
-static const iree_hal_xrt_driver_t* iree_hal_xrt_driver_const_cast(
-    const iree_hal_driver_t* base_value) {
-  IREE_HAL_ASSERT_TYPE(base_value, &iree_hal_xrt_driver_vtable);
-  return (const iree_hal_xrt_driver_t*)base_value;
-}
-
 static iree_status_t iree_hal_xrt_device_check_params(
     const iree_hal_xrt_device_params_t* params) {
   if (params->arena_block_size < 4096) {
@@ -86,7 +80,14 @@ iree_status_t iree_hal_xrt_driver_create_internal(
       (char*)driver + iree_sizeof_struct(*driver));
   driver->device_params = *device_params;
 
-  int device_count = xrt::system::enumerate_devices();
+  int device_count;
+  try {
+    device_count = xrt::system::enumerate_devices();
+  } catch (std::runtime_error& e) {
+    return iree_make_status(IREE_STATUS_INTERNAL,
+                            "xrt::system::enumerate_devices failed: %s",
+                            e.what());
+  }
   if (IREE_UNLIKELY(device_count == 0)) {
     return iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
                             "No XRT devices found");
@@ -94,11 +95,11 @@ iree_status_t iree_hal_xrt_driver_create_internal(
   // Get handle to xrt device
   try {
     global_device = xrt::device(0);
+    driver->device = &global_device;
   } catch (std::runtime_error& e) {
     return iree_make_status(IREE_STATUS_INTERNAL, "xrt::device(0) failed: %s",
                             e.what());
   }
-  driver->device = &global_device;
   *out_driver = reinterpret_cast<iree_hal_driver_t*>(driver);
   return iree_ok_status();
 }

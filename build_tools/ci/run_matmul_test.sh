@@ -65,11 +65,18 @@ fi
 IREE_COMPILE_EXE=""
 TEST_RUNNER=""
 for dir in "${IREE_INSTALL_DIR}" "${IREE_INSTALL_DIR}/bin" "${IREE_INSTALL_DIR}/tools"; do
+  echo "Looking in $dir"
   if [ -f "${dir}/iree-compile" ]; then
     IREE_COMPILE_EXE="${dir}/iree-compile"
   fi
-  if [ -f "${dir}/testing/e2e/iree-e2e-matmul-test" ]; then
-    TEST_RUNNER="${dir}/testing/e2e/iree-e2e-matmul-test"
+  if [ -f "${dir}/iree-compile.exe" ]; then
+    IREE_COMPILE_EXE="${dir}/iree-compile.exe"
+  fi
+  if [ -f "${dir}/iree-e2e-matmul-test" ]; then
+    TEST_RUNNER="${dir}/iree-e2e-matmul-test"
+  fi
+  if [ -f "${dir}/iree-e2e-matmul-test.exe" ]; then
+    TEST_RUNNER="${dir}/iree-e2e-matmul-test.exe"
   fi
 done
 
@@ -101,9 +108,8 @@ if [ -z "${4-}" ]; then
 else
   XRT_DIR=`realpath "$4"`
 fi
-if [ ! -d "${XRT_DIR}" ]; then
-  echo "No directory '${XRT_DIR}' (argument 4) found."
-  exit 1
+if [ -d "$XRT_DIR" ]; then
+  source $XRT_DIR/setup.sh
 fi
 
 # Parameter 5) <vitis-install-dir>
@@ -111,10 +117,6 @@ if [ -z "${5-}" ]; then
   VITIS=/opt/Xilinx/Vitis/2024.2
 else
   VITIS=`realpath "$5"`
-fi
-if [ ! -d "${VITIS}" ]; then
-  echo "No directory '${VITIS}' (argument 5) found."
-  exit 1
 fi
 
 THIS_DIR="$(cd $(dirname $0) && pwd)"
@@ -127,7 +129,7 @@ if [ ! -f "${GENERATOR}" ]; then
   exit 1
 fi
 
-IREE_PYTHON3_EXECUTABLE="${IREE_PYTHON3_EXECUTABLE:-python3}"
+IREE_PYTHON3_EXECUTABLE="${IREE_PYTHON3_EXECUTABLE:-python}"
 if [ -z "$IREE_PYTHON3_EXECUTABLE" ]; then
   echo "IREE_PYTHON3_EXECUTABLE is not set."
   exit 1
@@ -137,7 +139,6 @@ fi
 
 GITHUB_ACTIONS="${GITHUB_ACTIONS:-false}"
 
-source $XRT_DIR/setup.sh
 # Circumvent xclbin security (no longer needed as of April 2024 XDNA driver)
 export XRT_HACK_UNSECURE_LOADING_XCLBIN=1
 
@@ -398,7 +399,6 @@ function run_matmul_test() {
                       --iree-amd-aie-show-invoked-commands"
 
   if [ $use_ukernel -ne 0 ]; then
-
     compilation_flags="${compilation_flags} \
                         --iree-amdaie-enable-ukernels=all"
   fi
@@ -527,12 +527,14 @@ run_matmul_test \
     --use_ukernel "0" \
     --num_repeat_runs "2"
 
-run_matmul_test \
-    --name_prefix "ukern" \
-    --lhs_rhs_type "bf16" \
-    --acc_type "f32" \
-    --m "256"  --k "256" --n "256" \
-    --use_ukernel "1"
+if [ -d "$VITIS" ]; then
+  run_matmul_test \
+      --name_prefix "ukern" \
+      --lhs_rhs_type "bf16" \
+      --acc_type "f32" \
+      --m "256"  --k "256" --n "256" \
+      --use_ukernel "1"
+fi
 
 # Disabled until the following issue is resolved:
 # https://github.com/Xilinx/llvm-aie/issues/102
@@ -866,14 +868,15 @@ run_matmul_test_on_shapes ${bf16_i8_shapes_medium[@]} \
     --acc_type "i32" \
     --num_repeat_runs "2"
 
-run_matmul_test_on_shapes ${bf16_ukernel_shapes_small[@]} \
-    --name_prefix "small" \
-    --lower_to_aie_pipeline "objectFifo" \
-    --tile_pipeline "pack-peel" \
-    --lhs_rhs_type "bf16" \
-    --acc_type "f32" \
-    --num_repeat_runs "2" \
-    --use_ukernel "1"
+if [ -d "$VITIS" ]; then
+  run_matmul_test_on_shapes ${bf16_ukernel_shapes_small[@]} \
+      --name_prefix "small" \
+      --lower_to_aie_pipeline "objectFifo" \
+      --tile_pipeline "pack-peel" \
+      --lhs_rhs_type "bf16" \
+      --acc_type "f32" \
+      --num_repeat_runs "2" \
+      --use_ukernel "1"
 
 run_matmul_test_on_shapes ${bf16_ukernel_shapes_medium[@]} \
     --name_prefix "medium" \
@@ -883,10 +886,13 @@ run_matmul_test_on_shapes ${bf16_ukernel_shapes_medium[@]} \
     --acc_type "f32" \
     --num_repeat_runs "2" \
     --use_ukernel "1"
+fi
 
 ###################################################################
 # Chess tests
 ###################################################################
+
+if [ -d "$VITIS" ]; then
 
 run_matmul_test \
     --name_prefix "chess_i32_matmul" \
@@ -908,6 +914,8 @@ run_matmul_test \
     --use_chess "1" \
     --num_repeat_runs "10" \
     --use_ukernel "1"
+
+fi
 
 if [ $MATMUL_TESTS_FAILS -ne 0 ]; then
   echo "$MATMUL_TESTS_FAILS matmul tests failed! Scroll up and look for the 🦄 and 🐞..."

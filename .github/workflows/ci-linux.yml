@@ -72,7 +72,8 @@ jobs:
         run: |
           rm -f iree-install/bin/clang*
           rm -f iree-install/bin/llvm-link*
-          tar cf iree-dist-linux.tar -C iree-install . -C ../iree-build tools/testing/e2e/iree-e2e-matmul-test
+          cp ../iree-build/tools/testing/e2e/iree-e2e-matmul-test iree-install/bin
+          tar cf iree-dist-linux.tar -C iree-install .
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
@@ -150,26 +151,53 @@ jobs:
           # on the guthub CI machine.
           sudo prlimit -lunlimited --pid $$
 
+          source /opt/xilinx/xrt/setup.sh
+          bash build_tools/ci/run_matmul_test.sh \
+            test_matmuls \
+            iree-install \
+            $PWD/llvm-aie \
+            /opt/xilinx/xrt \
+            /opt/Xilinx/Vitis/2024.2
+
+
+      - name : Smoke E2E comparison flag test
+        run: |
+          source .venv/bin/activate
+          source /opt/xilinx/xrt/setup.sh
+          python3 build_tools/ci/cpu_comparison/run_test.py \
+            test_aie_vs_cpu \
+            iree-install \
+            $PWD/llvm-aie \
+            --xrt-dir /opt/xilinx/xrt \
+            --reset_npu_between_runs=0 \
+            --test_set='Smoke' \
+            --do_not_run_aie=1
+
+          # Assert that output.log is empty (because verbose=0)
+          if [ -s output.log ]; then
+            echo "output.log is not empty:"
+            cat output.log
+            exit 1
+          else
+            echo "output.log is empty"
+          fi
+
       - name : E2E comparison of AIE to llvm-cpu
         run: |
           source .venv/bin/activate
-          # install requirements
-          # TODO(newling) make requirements.txt file
-          pip install numpy
           source /opt/xilinx/xrt/setup.sh
           python3 build_tools/ci/cpu_comparison/run_test.py \
             test_aie_vs_cpu \
             $PWD/iree-install \
             $PWD/llvm-aie \
-            /opt/xilinx/xrt/lib \
+            --xrt-dir /opt/xilinx/xrt \
             --reset-npu-between-runs -v
 
       - name: Printing IR from aie2xclbin
         run: |
           source .venv/bin/activate
+          source /opt/xilinx/xrt/setup.sh
           bash build_tools/ci/print_ir_aie2xclbin/print_ir_aie2xclbin.sh \
             iree-install \
             print_ir_aie2xclbin_results \
-            $PWD/llvm-aie \
-            /opt/xilinx/xrt \
-            /opt/Xilinx/Vitis/2024.2
+            $PWD/llvm-aie
