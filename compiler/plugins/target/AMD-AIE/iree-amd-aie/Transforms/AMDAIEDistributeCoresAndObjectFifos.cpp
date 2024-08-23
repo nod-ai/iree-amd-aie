@@ -238,45 +238,57 @@ LogicalResult distributeLocalMemory(ModuleOp moduleOp) {
                   [&rewriter, &newAlloc, &toBeErased](
                       AMDAIE::LogicalObjectFifoFromMemrefOp logicalObjectFifo) {
                     auto type = llvm::cast<MemRefType>(newAlloc.getType());
+
+                    // Collect all DmaCpyNdOps which have 'logicalObjectFifo' as
+                    // a source. Currently not handling the case of multiple.
+                    SmallVector<AMDAIE::DmaCpyNdOp> dmaOps;
                     for (Operation *objFifoUserOp :
                          logicalObjectFifo->getUsers()) {
                       if (auto dmaOp =
                               dyn_cast<AMDAIE::DmaCpyNdOp>(objFifoUserOp);
                           dmaOp.getSourceObjectFifo() == logicalObjectFifo) {
-                        SmallVector<Value> empty;
-                        rewriter.setInsertionPoint(dmaOp.getSourceObjectFifo());
-                        auto source =
-                            rewriter
-                                .create<AMDAIE::LogicalObjectFifoFromMemrefOp>(
-                                    rewriter.getUnknownLoc(),
-                                    LogicalObjectFifoType::get(type),
-                                    newAlloc.getResult());
-                        rewriter.replaceAllUsesWith(dmaOp.getSourceObjectFifo(),
-                                                    source);
-                        toBeErased.push_back(dmaOp.getSourceObjectFifo());
-                        rewriter.setInsertionPoint(dmaOp);
-                        auto newDmaOp = rewriter.create<AMDAIE::DmaCpyNdOp>(
-                            dmaOp.getLoc(), dmaOp.getTarget(),
-                            dmaOp.getTargetMixedOffsets(),
-                            dmaOp.getTargetMixedSizes(),
-                            dmaOp.getTargetMixedStrides(), source,
-                            dmaOp.getSourceMixedOffsets(),
-                            dmaOp.getSourceMixedSizes(),
-                            dmaOp.getSourceMixedStrides());
-                        rewriter.replaceAllUsesWith(dmaOp, newDmaOp);
-                        // TODO: maybe this should be left to a DCE somewhere,
-                        // instead of manually erasing unused ops
-                        toBeErased.push_back(dmaOp);
-                        // We have to discard non-zero offsets as subview has
-                        // been replaced by a dedicated allocated memref.
-                        SmallVector<int64_t> allocShape(type.getShape());
-                        (void)discardAllNonZeroOffsets<CopyOpOperateOn::Source>(
-                            rewriter,
-                            cast<AMDAIE::DoublyStridedOpInterface>(
-                                newDmaOp.getOperation()),
-                            allocShape);
+                        dmaOps.push_back(dmaOp);
                       }
                     }
+                    if (dmaOps.size() == 0) return success();
+                    if (dmaOps.size() > 1) {
+                      logicalObjectFifo->emitOpError(
+                          "Case of multiple DMA ops not handled yet (easy "
+                          "extension to logic here)");
+                      return failure();
+                    }
+                    AMDAIE::DmaCpyNdOp dmaOp = dmaOps[0];
+
+                    SmallVector<Value> empty;
+                    rewriter.setInsertionPoint(logicalObjectFifo);
+                    auto source =
+                        rewriter.create<AMDAIE::LogicalObjectFifoFromMemrefOp>(
+                            rewriter.getUnknownLoc(),
+                            LogicalObjectFifoType::get(type),
+                            newAlloc.getResult());
+                    rewriter.replaceAllUsesWith(logicalObjectFifo, source);
+                    toBeErased.push_back(logicalObjectFifo);
+                    rewriter.setInsertionPoint(dmaOp);
+                    auto newDmaOp = rewriter.create<AMDAIE::DmaCpyNdOp>(
+                        dmaOp.getLoc(), dmaOp.getTarget(),
+                        dmaOp.getTargetMixedOffsets(),
+                        dmaOp.getTargetMixedSizes(),
+                        dmaOp.getTargetMixedStrides(), source,
+                        dmaOp.getSourceMixedOffsets(),
+                        dmaOp.getSourceMixedSizes(),
+                        dmaOp.getSourceMixedStrides());
+                    rewriter.replaceAllUsesWith(dmaOp, newDmaOp);
+                    // TODO: maybe this should be left to a DCE somewhere,
+                    // instead of manually erasing unused ops?
+                    toBeErased.push_back(dmaOp);
+                    // We have to discard non-zero offsets as subview has
+                    // been replaced by a dedicated allocated memref.
+                    SmallVector<int64_t> allocShape(type.getShape());
+                    (void)discardAllNonZeroOffsets<CopyOpOperateOn::Source>(
+                        rewriter,
+                        cast<AMDAIE::DoublyStridedOpInterface>(
+                            newDmaOp.getOperation()),
+                        allocShape);
                     return success();
                   })
               .Default([&](Operation *userOp) {
