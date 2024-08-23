@@ -95,9 +95,7 @@ fi
 if [ -z "${3-}" ]; then
   PEANO=/opt/llvm-aie
 else
-  if [ -d "$PEANO" ]; then
-    PEANO=`realpath "$3"`
-  fi
+  PEANO=`realpath "$3"`
 fi
 if [ ! -d "${PEANO}" ]; then
   echo "No directory '${PEANO}' (argument 3) found."
@@ -108,9 +106,7 @@ fi
 if [ -z "${4-}" ]; then
   XRT_DIR=/opt/xilinx/xrt
 else
-  if [ -d "$XRT_DIR" ]; then
-    XRT_DIR=`realpath "$4"`
-  fi
+  XRT_DIR=`realpath "$4"`
 fi
 if [ -d "$XRT_DIR" ]; then
   source $XRT_DIR/setup.sh
@@ -120,9 +116,7 @@ fi
 if [ -z "${5-}" ]; then
   VITIS=/opt/Xilinx/Vitis/2024.2
 else
-  if [ -d "$VITIS" ]; then
-    VITIS=`realpath "$5"`
-  fi
+  VITIS=`realpath "$5"`
 fi
 
 THIS_DIR="$(cd $(dirname $0) && pwd)"
