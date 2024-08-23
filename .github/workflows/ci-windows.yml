@@ -34,6 +34,8 @@ jobs:
       fail-fast: true
     env:
       CACHE_DIR: ${{ github.workspace }}/.container-cache
+    outputs:
+      job-id: ${{ steps.get-job-id.outputs.job_id }}
     steps:
       - name: Set unified TZ
         uses: szenius/set-timezone@v2.0
@@ -104,3 +106,23 @@ jobs:
         with:
           path: ${{ env.CACHE_DIR }}
           key: windows-build-test-cpp-asserts-v1-${{ github.sha }}-${{ github.event.repository.updated_at }}
+
+      - name: Get Job ID from GH API
+        id: get-job-id
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          choco install gh
+          jobs=$(gh api repos/${{ github.repository }}/actions/runs/${{ github.run_id}}/attempts/${{ github.run_attempt }}/jobs)
+          job_id=$(echo $jobs | jq -r '.jobs[] | select(.runner_name=="${{ runner.name }}") | .id')
+          echo "job_id=$job_id" >> $GITHUB_OUTPUT
+
+  call-download-check-logs-build-and-test:
+    needs: [build_and_ctest]
+    # don't forget to change the branch you're updating the action
+    uses: nod-ai/iree-amd-aie/.github/workflows/download-check-logs.yml@makslevental/download-show-logs
+    secrets: inherit # pass all secrets
+    with:
+      workflow: ${{ github.workflow }}
+      run-id: ${{ github.run_id }}
+      job-id: ${{ needs.build_and_ctest.outputs.job-id }}

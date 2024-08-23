@@ -1,0 +1,69 @@
+name: Download/check GHA logs
+
+on:
+  workflow_dispatch:
+    inputs:
+      workflow:
+        description: 'workflow (name)'
+        type: string
+        required: false
+        default: 'workflow'
+      run-id:
+        description: 'run-id of GHA job'
+        type: string
+        required: false
+        default: ''
+      job-id:
+        description: 'run-id of GHA job'
+        type: string
+        required: false
+        default: ''
+  workflow_call:
+    inputs:
+      workflow:
+        description: 'workflow (name)'
+        type: string
+        required: false
+        default: 'workflow'
+      run-id:
+        description: 'run-id of GHA job'
+        type: string
+        required: false
+        default: ''
+      job-id:
+        description: 'run-id of GHA job'
+        type: string
+        required: false
+        default: ''
+
+jobs:
+  do:
+    name: "${{ inputs.workflow }}/${{ inputs.run-id}} log"
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checking out repository
+        uses: actions/checkout@v4.1.7
+        with:
+          submodules: false
+          sparse-checkout: build_tools/ci/download_github_logs.sh
+          sparse-checkout-cone-mode: false
+
+      - name: Download logs
+        run: |
+          if [ x"${{ inputs.run-id }}" != x"" ]; then
+            gh run view ${{ inputs.run-id }} --log > log.txt
+          fi
+          
+          if [ x"${{ inputs.job-id }}" != x"" ]; then
+            gh run view -j ${{ inputs.job-id }} --log  > log.txt
+          fi
+
+      - name: Check logs for 'fail'
+        run: |
+          grep —ignore-case fail log.txt
+
+      - name: Check logs for 'error'
+        run: |
+          grep —ignore-case error log.txt
