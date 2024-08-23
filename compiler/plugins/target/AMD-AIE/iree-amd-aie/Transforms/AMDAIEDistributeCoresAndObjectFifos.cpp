@@ -235,7 +235,7 @@ LogicalResult distributeLocalMemory(ModuleOp moduleOp) {
                 return success();
               })
               .Case<AMDAIE::LogicalObjectFifoFromMemrefOp>(
-                  [&rewriter, &newAlloc](
+                  [&rewriter, &newAlloc, &toBeErased](
                       AMDAIE::LogicalObjectFifoFromMemrefOp logicalObjectFifo) {
                     auto type = llvm::cast<MemRefType>(newAlloc.getType());
                     for (Operation *objFifoUserOp :
@@ -251,7 +251,9 @@ LogicalResult distributeLocalMemory(ModuleOp moduleOp) {
                                     rewriter.getUnknownLoc(),
                                     LogicalObjectFifoType::get(type),
                                     newAlloc.getResult());
-                        rewriter.replaceOp(dmaOp.getSourceObjectFifo(), source);
+                        rewriter.replaceAllUsesWith(dmaOp.getSourceObjectFifo(),
+                                                    source);
+                        toBeErased.push_back(dmaOp.getSourceObjectFifo());
                         rewriter.setInsertionPoint(dmaOp);
                         auto newDmaOp = rewriter.create<AMDAIE::DmaCpyNdOp>(
                             dmaOp.getLoc(), dmaOp.getTarget(),
@@ -261,7 +263,10 @@ LogicalResult distributeLocalMemory(ModuleOp moduleOp) {
                             dmaOp.getSourceMixedOffsets(),
                             dmaOp.getSourceMixedSizes(),
                             dmaOp.getSourceMixedStrides());
-                        rewriter.replaceOp(dmaOp, newDmaOp);
+                        rewriter.replaceAllUsesWith(dmaOp, newDmaOp);
+                        // TODO: maybe this should be left to a DCE somewhere,
+                        // instead of manually erasing unused ops
+                        toBeErased.push_back(dmaOp);
                         // We have to discard non-zero offsets as subview has
                         // been replaced by a dedicated allocated memref.
                         SmallVector<int64_t> allocShape(type.getShape());
