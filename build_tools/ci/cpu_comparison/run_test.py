@@ -521,6 +521,7 @@ def aie_vs_llvm_cpu(
         return
 
     name = name_from_mlir_filename(test_file)
+    print(f"Running {name} test")
 
     input_args = generate_inputs(test_file, config.output_dir, seed)
 
@@ -653,9 +654,10 @@ class MatmulSet(TestSet):
         generate_matmul_test(
             test_name, template_name, 1024, 1024, 512, "bf16", "f32"
         )
-        aie_vs_llvm_cpu(
-            config, test_name, tile_pipeline="pack-peel", use_ukernel=True
-        )
+        if config.vitis_dir:
+            aie_vs_llvm_cpu(
+                config, test_name, tile_pipeline="pack-peel", use_ukernel=True
+            )
         aie_vs_llvm_cpu(
             config, test_name, tile_pipeline="pack-peel", use_ukernel=False
         )
