@@ -51,11 +51,7 @@ jobs:
           sparse-checkout-cone-mode: false
 
       - name: Download logs
-        run: |
-          if [ x"${{ inputs.run-id }}" != x"" ]; then
-            gh run view ${{ inputs.run-id }} --log > log.txt
-          fi
-          
+        run: |          
           if [ x"${{ inputs.job-id }}" != x"" ]; then
             gh run view -j ${{ inputs.job-id }} --log  > log.txt
           fi
