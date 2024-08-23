@@ -91,12 +91,12 @@ jobs:
 
   test_linux:
     name: E2E Test linux
-    runs-on: amd7940hs
+    runs-on: nod-nuc-linux-2
     needs: build_and_ctest
     strategy:
       fail-fast: true
     env:
-      XILINXD_LICENSE_FILE: /home/svcnod/Xilinx.lic
+      XILINXD_LICENSE_FILE: /opt/xilinx/Xilinx.lic
     steps:
       - name: "Checking out repository" # for test scripts
         uses: actions/checkout@8f4b7f84864484a7bf31766abe9204da3cbe65b3 # v3.5.0

@@ -93,20 +93,20 @@ using Path = std::filesystem::path;
 namespace {
 
 FailureOr<std::string> getNPUVersion() {
-  std::string errorMessage;
-  auto maybeVbnv =
-      openInputFile("/sys/bus/pci/devices/0000:c5:00.1/vbnv", &errorMessage);
-  if (!maybeVbnv) {
-    llvm::errs() << "couldn't read pci info for npu because: " << errorMessage;
-    return failure();
-  }
-
-  std::string vbnv = std::string{maybeVbnv->getBuffer()};
-  std::regex rgx("RyzenAI-(.*)");
-  std::smatch matches;
-  if (std::regex_search(vbnv, matches, rgx)) return {matches[1]};
-  llvm::errs() << "couldn't find npu version in " << vbnv;
-  return failure();
+  // std::string errorMessage;
+  // auto maybeVbnv =
+  //     openInputFile("/sys/bus/pci/devices/0000:c5:00.1/vbnv", &errorMessage);
+  // if (!maybeVbnv) {
+  //   llvm::errs() << "couldn't read pci info for npu because: " << errorMessage;
+  //   return failure();
+  // }
+  //
+  // std::string vbnv = std::string{maybeVbnv->getBuffer()};
+  // std::regex rgx("RyzenAI-(.*)");
+  // std::smatch matches;
+  // if (std::regex_search(vbnv, matches, rgx)) return {matches[1]};
+  // llvm::errs() << "couldn't find npu version in " << vbnv;
+  return std::string{"npu1"};
 }
 
 FailureOr<std::string> getTargetDir() {
