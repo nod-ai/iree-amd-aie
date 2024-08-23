@@ -363,6 +363,24 @@ LogicalResult AIETargetBackend::serializeExecutable(
       deviceOps[i] = cast<xilinx::AIE::DeviceOp>(repl);
     }
 
+    // TODO(max): this should be an enum
+    // TODO(max): this needs to be pulled from PCIE
+    std::string npuVersion;
+    switch (clAMDAIETargetDevice) {
+      case AMDAIEDevice::npu1:
+      case AMDAIEDevice::npu1_1col:
+      case AMDAIEDevice::npu1_2col:
+      case AMDAIEDevice::npu1_3col:
+      case AMDAIEDevice::npu1_4col:
+        npuVersion = "npu1";
+        break;
+      case AMDAIEDevice::npu4:
+        npuVersion = "npu4";
+        break;
+      default:
+        llvm::report_fatal_error("unhandled NPU partitioning.\n");
+    }
+
     if (failed(aie2xclbin(
             /*ctx=*/variantOp->getContext(), deviceOps[i],
             /*outputNPU=*/npuInstPath.str().str(),
@@ -377,7 +395,9 @@ LogicalResult AIETargetBackend::serializeExecutable(
             /*vitisDir=*/options.vitisInstallDir.empty()
                 ? std::nullopt
                 : std::optional<std::string>{options.vitisInstallDir},
+            // TODO(max): not right for strix
             /*targetArch=*/"AIE2",
+            /*npuVersion=*/npuVersion,
             /*peanoDir=*/options.peanoInstallDir,
             /*xclBinKernelID=*/ordinalHex.str(),
             /*xclBinKernelName=*/entryPointNamesFb[ordinal],

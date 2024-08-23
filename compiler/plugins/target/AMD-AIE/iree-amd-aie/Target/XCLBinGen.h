@@ -17,8 +17,8 @@ mlir::LogicalResult aie2xclbin(
     bool printIRAfterAll, bool printIRModuleScope, bool timing,
     const std::string &tempDir, bool useChess, bool verbose,
     const std::optional<std::string> &vitisDir, const std::string &targetArch,
-    const std::string &peanoDir, const std::string &xclBinKernelID,
-    const std::string &xclBinKernelName, const std::string &xclBinInstanceName,
-    const std::string &amdAIEInstallDir,
+    const std::string &npuVersion, const std::string &peanoDir,
+    const std::string &xclBinKernelID, const std::string &xclBinKernelName,
+    const std::string &xclBinInstanceName, const std::string &amdAIEInstallDir,
     const std::optional<std::string> &InputXCLBin,
     const std::optional<std::string> &ukernel);
