@@ -306,6 +306,15 @@ class TestConfig:
         if xrt_hash:
             self.xrt_hash = xrt_hash[0]
 
+        xdna_datetime = re.findall(
+            # eg 2.18.0_20240606
+            r"amdxdna\s+:\s\d\.\d+\.\d+_(\d+)",
+            xrt_info,
+            flags=re.MULTILINE | re.IGNORECASE,
+        )
+        if xdna_datetime:
+            self.xdna_datetime = int(xdna_datetime[0])
+
         # Try and get the peano commit hash. This is a bit of a hack, if it fails
         # peano_commit_has is left as "undetermined".
         self.peano_commit_hash = "undetermined"
@@ -589,37 +598,44 @@ class MatmulSet(TestSet):
         test_files_dir = config.file_dir / "test_files"
         output_dir = config.output_dir
 
-        for name in [
-            "two_matmul_switching",
-            "matmul_f32_8_8_4",
-            "matmul_f32_8_4_8",
-        ]:
-            aie_vs_llvm_cpu(config, test_files_dir / f"{name}.mlir")
-
-        aie_vs_llvm_cpu(
-            config,
-            test_files_dir / "three_matmuls.mlir",
-            function_name="three_$mm$",
-        )
-
-        # Test(s) of the form matmul(A,B) where A:MxK, B:KxN
-        test_name = output_dir / "test_from_template.mlir"
-        template_name = matmul_template_dir / "matmul_MxK_KxN.mlir"
-        generate_matmul_test(test_name, template_name, 32, 32, 64, "bf16", "f32")
-        aie_vs_llvm_cpu(config, test_name)
-
-        # Test(s) of the form matmul(A,B) + C where A:MxK, B:KxN, C:N
-        test_name = output_dir / "test_from_template_bias_N.mlir"
-        template_name = matmul_template_dir / "matmul_bias_MxK_KxN_N.mlir"
-        generate_matmul_test(test_name, template_name, 1024, 1024, 512, "bf16", "f32")
-        aie_vs_llvm_cpu(config, test_name, tile_pipeline="pack-peel", use_ukernel=True)
-        aie_vs_llvm_cpu(config, test_name, tile_pipeline="pack-peel", use_ukernel=False)
-
         # Test(s) of the form matmul(A,B) + C where A:MxK, B:KxN, C:MxN
         test_name = output_dir / "test_from_template_full_bias.mlir"
         template_name = matmul_template_dir / "matmul_bias_MxK_KxN_MxN.mlir"
         generate_matmul_test(test_name, template_name, 128, 128, 256, "i32", "i32")
         aie_vs_llvm_cpu(config, test_name, tile_pipeline="pack-peel", rtol=0, atol=0)
+
+        if config.xdna_datetime and config.xdna_datetime < 20240819:
+            for name in [
+                "two_matmul_switching",
+                "matmul_f32_8_8_4",
+                "matmul_f32_8_4_8",
+            ]:
+                aie_vs_llvm_cpu(config, test_files_dir / f"{name}.mlir")
+
+            aie_vs_llvm_cpu(
+                config,
+                test_files_dir / "three_matmuls.mlir",
+                function_name="three_$mm$",
+            )
+
+            # Test(s) of the form matmul(A,B) where A:MxK, B:KxN
+            test_name = output_dir / "test_from_template.mlir"
+            template_name = matmul_template_dir / "matmul_MxK_KxN.mlir"
+            generate_matmul_test(test_name, template_name, 32, 32, 64, "bf16", "f32")
+            aie_vs_llvm_cpu(config, test_name)
+
+            # Test(s) of the form matmul(A,B) + C where A:MxK, B:KxN, C:N
+            test_name = output_dir / "test_from_template_bias_N.mlir"
+            template_name = matmul_template_dir / "matmul_bias_MxK_KxN_N.mlir"
+            generate_matmul_test(
+                test_name, template_name, 1024, 1024, 512, "bf16", "f32"
+            )
+            aie_vs_llvm_cpu(
+                config, test_name, tile_pipeline="pack-peel", use_ukernel=True
+            )
+            aie_vs_llvm_cpu(
+                config, test_name, tile_pipeline="pack-peel", use_ukernel=False
+            )
 
 
 class SmokeSet(TestSet):

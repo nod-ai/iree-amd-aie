@@ -91,10 +91,12 @@ jobs:
 
   test_linux:
     name: E2E Test linux
-    runs-on: nod-nuc-linux-2
     needs: build_and_ctest
     strategy:
-      fail-fast: true
+      fail-fast: false
+      matrix:
+        runs-on: [linux-phoenix-20240606, linux-phoenix-20240819]
+    runs-on: ${{ matrix.runs-on }}
     env:
       XILINXD_LICENSE_FILE: /opt/xilinx/Xilinx.lic
     steps:
