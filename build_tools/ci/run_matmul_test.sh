@@ -144,6 +144,7 @@ export XRT_HACK_UNSECURE_LOADING_XCLBIN=1
 
 cd ${OUTPUT_DIR}
 
+export MATMUL_TESTS_RUN=0
 export MATMUL_TESTS_FAILS=0
 
 ###############################################################################
@@ -353,6 +354,8 @@ function run_matmul_test() {
     exit 1
   fi
 
+  export MATMUL_TESTS_RUN=$(( $MATMUL_TESTS_RUN+1 ))
+
   # Re-enable exit on failure:
   set -e
 
@@ -403,13 +406,13 @@ function run_matmul_test() {
                         --iree-amdaie-enable-ukernels=all"
   fi
 
+  set +e
+
   echo "**** Generating matmul .vmfb file for ${name} ****"
   ${IREE_COMPILE_EXE} "${matmul_ir}" \
     ${compilation_flags} -o "${matmul_vmfb}"
 
-
   compileResult=$?
-
 
   # Handle cases other than when compilation is expected to, and does, succeed:
   if [ $expect_compile_failure -ne 0 ]; then
@@ -418,21 +421,29 @@ function run_matmul_test() {
       return 0
     else
       echo "Expected compilation failure, got compilation success."
-      exit 1
+      export MATMUL_TESTS_FAILS=$(( $MATMUL_TESTS_FAILS+1 ))
+      return
     fi
   else
     if [ $compileResult -ne 0 ]; then
       echo "Expected compilation success, got compilation failure."
-      exit 1
+      export MATMUL_TESTS_FAILS=$(( $MATMUL_TESTS_FAILS+1 ))
+      return
     fi
   fi
 
   # Renable exit on failure:
-  set -e
   echo "**** Generating calls .vmfb file for ${name} ****"
   ${IREE_COMPILE_EXE} "${calls_ir}" \
       --iree-hal-target-backends=${target_backend} \
       -o "${calls_vmfb}"
+
+  return_status=$?
+  if [ $return_status -ne 0 ]; then
+    echo "'${name}' matmul compile failed!"
+    export MATMUL_TESTS_FAILS=$(( $MATMUL_TESTS_FAILS+1 ))
+    return
+  fi
 
   compiled_time=$(date +%s%3N)
 
@@ -443,8 +454,6 @@ function run_matmul_test() {
       --module=${calls_vmfb} \
       --device=${device} \
       --max_elements_to_check=${max_elements_to_check}"
-
-  set +e
 
   total_num_runs=$(( num_repeat_runs * num_corruption_repeat_runs))
   echo "**** Running '${name}' matmul test ${total_num_runs} times (command ${COMMAND}) ****"
@@ -917,6 +926,9 @@ if [ -d "$VITIS" ]; then
 
 fi
 
+echo "\n\n"
+
+echo "$MATMUL_TESTS_RUN matmul tests run!"
 if [ $MATMUL_TESTS_FAILS -ne 0 ]; then
   echo "$MATMUL_TESTS_FAILS matmul tests failed! Scroll up and look for the 🦄 and 🐞..."
   exit 1
