@@ -266,6 +266,7 @@ class TestConfig:
         self.iree_run_exe = iree_run_exe
         self.return_on_fail = return_on_fail
         self.verbose = verbose
+        self.xdna_datetime = None
         self.reset_npu_between_runs = reset_npu_between_runs
         self.do_not_run_aie = do_not_run_aie
         self.additional_aie_compilation_flags = additional_aie_compilation_flags

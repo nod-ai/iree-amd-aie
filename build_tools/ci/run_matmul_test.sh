@@ -812,6 +812,13 @@ run_matmul_test_on_shapes ${i32_shapes_small[@]} \
     --acc_type "i32" \
     --num_repeat_runs "10"
 
+i32_shapes_medium=(
+  '1024x1024x1024'
+)
+if [ "$OSTYPE" != "msys" ]; then
+  i32_shapes_medium+=('1536x2048x1536')
+fi
+
 run_matmul_test_on_shapes ${i32_shapes_medium[@]} \
     --name_prefix "medium" \
     --lower_to_aie_pipeline "objectFifo" \
