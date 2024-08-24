@@ -288,9 +288,6 @@ bool hasEnding(std::string const &fullString, std::string const &ending) {
   return false;
 }
 
-// Returns either:
-//  -- the output of running the tool, if run without failure, or
-//  -- an empty optional, if the tool fails to run.
 LogicalResult runTool(
     const std::string &program_, const std::vector<std::string> &args,
     bool verbose, std::optional<std::vector<std::string>> env = std::nullopt) {
@@ -339,6 +336,7 @@ LogicalResult runTool(
   SmallVector<std::optional<StringRef>> redirects;
 #ifdef _WIN32
   redirects = {{}, {}, {}};
+  // Explicit type but this never actually constructs an ArrayRef
   std::optional<ArrayRef<StringRef>> envSmallVec = std::nullopt;
 #else
   std::string temporaryPathStr =

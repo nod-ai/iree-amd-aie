@@ -126,8 +126,8 @@ static void iree_hal_xrt_driver_destroy(iree_hal_driver_t* base_driver) {
   iree_allocator_free(host_allocator, driver);
 
   IREE_TRACE_ZONE_END(z0);
-  return;
 }
+
 static iree_status_t iree_hal_xrt_driver_dump_device_info(
     iree_hal_driver_t* base_driver, iree_hal_device_id_t device_id,
     iree_string_builder_t* builder) {

@@ -124,7 +124,7 @@ LogicalResult generateCDOBinary(const std::filesystem::path &outputPath,
 /// CDO.
 LogicalResult addElfToTile(const AMDAIEDeviceModel &deviceModel,
                            const TileLoc &tileLoc,
-                           std::filesystem::path &elfPath, bool aieSim);
+                           const std::filesystem::path &elfPath, bool aieSim);
 
 /// Turn off and turn it back on again...
 LogicalResult resetUnResetCore(const AMDAIEDeviceModel &deviceModel,
