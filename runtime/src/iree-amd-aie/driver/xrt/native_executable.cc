@@ -180,20 +180,20 @@ iree_status_t iree_hal_xrt_native_executable_create(
     std::unique_ptr<xrt::xclbin> xclbin;
     try {
       xclbin = std::make_unique<xrt::xclbin>(xclbinVector);
-    } catch (std::exception& e) {
+    } catch (std::runtime_error& e) {
       return iree_make_status(IREE_STATUS_INTERNAL, "XCLBIN load error: %s",
                               e.what());
     }
     try {
       device->register_xclbin(*xclbin);
-    } catch (std::exception& e) {
+    } catch (std::runtime_error& e) {
       return iree_make_status(IREE_STATUS_INTERNAL, "XCLBIN register error: %s",
                               e.what());
     }
     xrt::hw_context context;
     try {
       context = {*device, xclbin->get_uuid()};
-    } catch (std::exception& e) {
+    } catch (std::runtime_error& e) {
       return iree_make_status(IREE_STATUS_INTERNAL,
                               "xrt::hw_context context: %s", e.what());
     }
@@ -279,10 +279,8 @@ static void iree_hal_xrt_native_executable_destroy(
 
   for (iree_host_size_t i = 0; i < executable->entry_point_count; ++i) {
     try {
-#ifndef _WIN32
-      delete executable->entry_points[i].kernel;
-      delete executable->entry_points[i].instr;
-#endif
+      // delete executable->entry_points[i].kernel;
+      // delete executable->entry_points[i].instr;
       // TODO(jornt): deleting the xclbin here will result in a corrupted size
       // error in XRT. It looks like the xclbin needs to stay alive while the
       // device is alive if it has been registered.

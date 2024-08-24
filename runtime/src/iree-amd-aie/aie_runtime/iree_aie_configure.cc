@@ -210,8 +210,7 @@ LogicalResult pushToBdQueueAndEnable(const AMDAIEDeviceModel &deviceModel,
 }
 
 LogicalResult addElfToTile(const AMDAIEDeviceModel &deviceModel,
-                           const TileLoc &tileLoc, const Path &elfPath,
-                           bool aieSim) {
+                           const TileLoc &tileLoc, Path &elfPath, bool aieSim) {
   auto devInst = const_cast<XAie_DevInst *>(&deviceModel.devInst);
   if (!std::filesystem::exists(elfPath)) {
     llvm::errs() << "elf doesn't exist: " << elfPath.string() << "\n";

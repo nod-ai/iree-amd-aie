@@ -628,7 +628,7 @@ class MatmulSet(TestSet):
         generate_matmul_test(test_name, template_name, 128, 128, 256, "i32", "i32")
         aie_vs_llvm_cpu(config, test_name, tile_pipeline="pack-peel", rtol=0, atol=0)
 
-        if config.xdna_datetime and config.xdna_datetime < 20240819:
+        if config.xdna_datetime and config.xdna_datetime < 20240801:
             for name in [
                 "two_matmul_switching",
                 "matmul_f32_8_8_4",

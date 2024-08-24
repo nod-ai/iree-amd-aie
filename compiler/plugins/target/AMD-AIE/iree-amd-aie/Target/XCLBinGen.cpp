@@ -1203,8 +1203,8 @@ LogicalResult aie2xclbin(
   Path unifiedObj = tempDirPath / "input.o";
   if (failed(generateUnifiedObject(
           ctx, deviceOp, unifiedObj.string(), printIRBeforeAll, printIRAfterAll,
-          printIRModuleScope, timing, useChess, verbose, tempDirPath,
-          vitisDirPath, targetArch, peanoDirPath, npuVersion))) {
+          printIRModuleScope, timing, useChess, verbose, tempDirPath, vitisDirPath,
+          targetArch, peanoDirPath, npuVersion))) {
     llvm::errs() << "Failed to generate unified object\n";
     return failure();
   }
