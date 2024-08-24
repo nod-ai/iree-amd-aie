@@ -180,20 +180,20 @@ iree_status_t iree_hal_xrt_native_executable_create(
     std::unique_ptr<xrt::xclbin> xclbin;
     try {
       xclbin = std::make_unique<xrt::xclbin>(xclbinVector);
-    } catch (std::runtime_error& e) {
+    } catch (std::exception& e) {
       return iree_make_status(IREE_STATUS_INTERNAL, "XCLBIN load error: %s",
                               e.what());
     }
     try {
       device->register_xclbin(*xclbin);
-    } catch (std::runtime_error& e) {
+    } catch (std::exception& e) {
       return iree_make_status(IREE_STATUS_INTERNAL, "XCLBIN register error: %s",
                               e.what());
     }
     xrt::hw_context context;
     try {
       context = {*device, xclbin->get_uuid()};
-    } catch (std::runtime_error& e) {
+    } catch (std::exception& e) {
       return iree_make_status(IREE_STATUS_INTERNAL,
                               "xrt::hw_context context: %s", e.what());
     }
