@@ -58,13 +58,6 @@ void iree_hal_xrt_device_params_initialize(
   out_params->arena_block_size = 32 * 1024;
 }
 
-const iree_hal_xrt_device_params_t* iree_hal_xrt_device_params(
-    const iree_hal_device_t* base_device) {
-  const iree_hal_xrt_device_t* device =
-      iree_hal_xrt_device_const_cast(base_device);
-  return &device->params;
-}
-
 static iree_status_t iree_hal_xrt_device_create_internal(
     iree_string_view_t identifier, xrt::device *xrt_device,
     const iree_hal_xrt_device_params_t* params, iree_allocator_t host_allocator,
