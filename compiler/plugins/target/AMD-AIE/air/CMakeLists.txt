@@ -164,6 +164,7 @@ iree_cc_library(
     MLIRTransforms
 )
 
+include(iree_aie_utils)
 replace_string_in_file(
   ${IREE_MLIR_AIR_SOURCE_DIR}/include/air/Conversion/PassDetail.h
   "aie/Dialect/AIEX/IR" "aie")
