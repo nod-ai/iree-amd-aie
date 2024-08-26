@@ -54,7 +54,7 @@ module attributes { transform.with_named_sequence } {
     transform.yield
   }
 
-  transform.named_sequence @full_pipeline(%variant_op: !any {transform.consumed}) {
+  transform.named_sequence @full_pipeline(%variant_op: !any {transform.readonly}) {
     %ops = transform.structured.match ops{["linalg.fill", "linalg.conv_2d_nchw_fchw"]}
           in %variant_op : (!any) -> !any
     %fill, %conv = transform.split_handle %ops : (!any) -> (!any, !any)
