@@ -1,0 +1,93 @@
+name: CI MacOS
+
+on:
+  workflow_call:
+  workflow_dispatch:
+  pull_request:
+  merge_group:
+  push:
+    branches:
+      - main
+
+concurrency:
+  # A PR number if a pull request and otherwise the commit hash. This cancels
+  # queued and in-progress runs for the same PR (presubmit) or commit
+  # (postsubmit).
+  group: ci-build-test-cpp-macos-${{ github.event.number || github.sha }}
+  cancel-in-progress: true
+
+jobs:
+  build_and_ctest:
+    name: Build and Test (${{ matrix.runs-on }}, ASSERTIONS)
+    runs-on: ${{ matrix.runs-on }}
+    strategy:
+      fail-fast: false
+      matrix:
+        runs-on: [macos-12, macos-14]
+    env:
+      CACHE_DIR: ${{ github.workspace }}/.container-cache
+    steps:
+      - name: Set unified TZ
+        uses: szenius/set-timezone@v2.0
+        with:
+          # this is an arbitrary choice
+          timezoneLinux: "Asia/Singapore"
+          timezoneMacos: "Asia/Singapore"
+          timezoneWindows: "Singapore Standard Time"
+
+      - name: "Checking out repository"
+        uses: actions/checkout@8f4b7f84864484a7bf31766abe9204da3cbe65b3 # v3.5.0
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install deps
+        run: |
+          brew install ccache ninja
+
+      - name: Sync source deps
+        run: |
+          python ./sync_deps.py
+
+      - name: Python deps
+        run: |
+          pip install "numpy<2" pyyaml "pybind11[global]==2.10.3" nanobind
+
+      - name: Enable cache
+        uses: actions/cache/restore@v3
+        with:
+          path: ${{ env.CACHE_DIR }}
+          # without datetime stamps you'll get collisions for the cache warming runs
+          # ("Failed to save: Unable to reserve cache with key ..., another job may be creating this cache.")
+          key: ${{ matrix.runs-on }}-build-test-cpp-asserts-v1-${{ github.sha }}-${{ github.event.repository.updated_at }}
+          restore-keys: ${{ matrix.runs-on }}-build-test-cpp-
+
+      - name: Build packages
+        run: |
+          export cache_dir="${{ env.CACHE_DIR }}"
+          bash build_tools/ci/build_test_cpp.sh
+
+      - name: Create artifacts
+        if: ${{ !cancelled() }}
+        run: |
+          rm -f iree-install/bin/clang*
+          rm -f iree-install/bin/llvm-link*
+          tar cf iree-dist-${{ matrix.runs-on }}.tar -C iree-install . -C ../iree-build tools/testing/e2e/iree-e2e-matmul-test
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: ${{ matrix.runs-on }}_release_packages
+          path: iree-dist-${{ matrix.runs-on }}.tar
+          if-no-files-found: warn
+
+      - name: Save cache
+        uses: actions/cache/save@v3
+        if: ${{ !cancelled() }}
+        with:
+          path: ${{ env.CACHE_DIR }}
+          key: ${{ matrix.runs-on }}-build-test-cpp-asserts-v1-${{ github.sha }}-${{ github.event.repository.updated_at }}

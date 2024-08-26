@@ -64,12 +64,12 @@ LogicalResult configureDMABD(
   if (deviceModel.isShimNOCTile(tileLoc.col, tileLoc.row)) {
     // TODO(max): revisit these values
     // write them out like this so they show up with names in debug prints
-    size_t smid = 0;
-    size_t burstLen = 16;  // (10):BLEN=16 (256Byte) (corresponds to
-                           // 0x800000000 from target)
-    size_t qOs = 0;
-    size_t cache = 0;
-    size_t secure = 0;
+    uint8_t smid = 0;
+    uint8_t burstLen = 16;  // (10):BLEN=16 (256Byte) (corresponds to
+                            // 0x800000000 from target)
+    uint8_t qOs = 0;
+    uint8_t cache = 0;
+    uint8_t secure = 0;
     TRY_XAIE_API_LOGICAL_RESULT(XAie_DmaSetAxi, &dmaDesc, smid, burstLen, qOs,
                                 cache, secure);
   }
@@ -347,8 +347,8 @@ LogicalResult coreEnable(const AMDAIEDeviceModel &deviceModel,
   return success();
 }
 
-void dmaUpdateBdAddr(const AMDAIEDeviceModel &deviceModel, int col, int row,
-                     size_t addr, size_t bdId) {
+void dmaUpdateBdAddr(const AMDAIEDeviceModel &deviceModel, uint8_t col,
+                     uint8_t row, uint8_t addr, uint8_t bdId) {
   auto tileLoc = XAie_TileLoc(col, row);
   auto devInst = const_cast<XAie_DevInst *>(&deviceModel.devInst);
   TRY_XAIE_API_FATAL_ERROR(XAie_DmaUpdateBdAddr, devInst, tileLoc, addr, bdId);

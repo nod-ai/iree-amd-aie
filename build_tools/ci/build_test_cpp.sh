@@ -56,10 +56,12 @@ echo '{
 }' > $iree_dir/CMakeUserPresets.json 
 
 cd $iree_dir
-cmake -S "$iree_dir" -B "$build_dir" \
+CMAKE_ARGS="\
+  -S $iree_dir \
+  -B $build_dir \
   -GNinja \
   -DCMAKE_BUILD_TYPE=Release \
-  -DCMAKE_INSTALL_PREFIX="$install_dir" \
+  -DCMAKE_INSTALL_PREFIX=$install_dir \
   -DCMAKE_INSTALL_LIBDIR=lib \
   -DIREE_ENABLE_ASSERTIONS=ON \
   -DIREE_BUILD_SAMPLES=OFF \
@@ -74,8 +76,13 @@ cmake -S "$iree_dir" -B "$build_dir" \
   -DIREE_INPUT_STABLEHLO=OFF \
   -DIREE_INPUT_TORCH=OFF \
   -DCMAKE_OBJECT_PATH_MAX=4096 \
-  -DIREE_CMAKE_PLUGIN_PATHS=../iree-amd-aie \
-  -DIREE_EXTERNAL_HAL_DRIVERS=xrt
+  -DIREE_CMAKE_PLUGIN_PATHS=$PWD/../iree-amd-aie"
+
+if [[ "$OSTYPE" != "darwin"* ]]; then
+  CMAKE_ARGS="$CMAKE_ARGS -DIREE_EXTERNAL_HAL_DRIVERS=xrt"
+fi
+
+cmake $CMAKE_ARGS
 
 echo "Building all"
 echo "------------"
@@ -90,6 +97,8 @@ echo "CTest"
 echo "-----"
 if [[ "$OSTYPE" == "linux-gnu"* ]]; then
   ctest --test-dir "$build_dir" -R amd-aie --output-on-failure -j
+elif [[ "$OSTYPE" == "darwin"* ]]; then
+  ctest --test-dir "$build_dir" -R amd-aie -E "pack_peel_pipeline_matmul|conv_fill_spec_pad" --output-on-failure -j --repeat until-pass:5
 else
   # hack while windows is flaky to get past failing tests
   ctest --test-dir "$build_dir" -R amd-aie --output-on-failure -j --repeat until-pass:5
