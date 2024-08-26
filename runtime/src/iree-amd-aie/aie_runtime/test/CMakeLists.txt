@@ -39,6 +39,7 @@ iree_cc_test(
   COPTS    
     $<$<PLATFORM_ID:Linux>:-Wno-format>
     $<$<PLATFORM_ID:Darwin>:-Wno-format>
+    $<$<PLATFORM_ID:Windows>:/wd4777>
   DEPS
     iree-amd-aie::aie_runtime::iree_aie_runtime_static
 )
@@ -63,6 +64,7 @@ iree_cc_test(
   COPTS
     $<$<PLATFORM_ID:Linux>:-Wno-format>
     $<$<PLATFORM_ID:Darwin>:-Wno-format>
+    $<$<PLATFORM_ID:Windows>:/wd4777>
   DEPS
     iree-amd-aie::aie_runtime::iree_aie_runtime_static
 )
@@ -86,7 +88,8 @@ iree_cc_test(
     test_transaction.cc
   COPTS
     $<$<PLATFORM_ID:Linux>:-Wno-format>
-    $<$<PLATFORM_ID:Darwin>:-Wno-format> 
+    $<$<PLATFORM_ID:Darwin>:-Wno-format>
+    $<$<PLATFORM_ID:Windows>:/wd4777>
   DEPS
     iree-amd-aie::aie_runtime::iree_aie_runtime_static
 )
