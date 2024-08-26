@@ -1,4 +1,4 @@
-// RUN: iree-opt --split-input-file --pass-pipeline="builtin.module(func.func(iree-amdaie-create-reference-to-allocation, iree-hoist-statically-bound-allocations))" %s | FileCheck %s
+// RUN: iree-opt --split-input-file --pass-pipeline="builtin.module(func.func(iree-amdaie-create-reference-to-allocation, iree-codegen-hoist-statically-bound-allocations))" %s | FileCheck %s
 
 // CHECK-LABEL: func.func @single_alloc
 // CHECK:  %[[ALLOC:.+]] = memref.alloc() : memref<8x16xi32, 2 : i32>
