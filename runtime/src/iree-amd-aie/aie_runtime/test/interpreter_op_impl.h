@@ -51,7 +51,7 @@ inline void SubmitSerializedTransaction(XAie_DevInst &DevInst,
         u32 size = (bw_header->Size - sizeof(*bw_header)) / 4;
         for (uint32_t ii = 0; ii < size; ii++) {
           uint64_t addr = bw_header->RegOff + DevInst.BaseAddr + ii * 4U;
-          printf("   0x%llx, 0x%x\n", addr, payload[ii]);
+          printf("   0x%lx, 0x%x\n", addr, payload[ii]);
         }
         ptr += bw_header->Size;
         break;
@@ -91,8 +91,8 @@ inline void SubmitSerializedTransaction(XAie_DevInst &DevInst,
       case AMDAIE::XAie_TxnOpcode::XAIE_IO_CUSTOM_OP_DDR_PATCH: {
         XAie_CustomOpHdr *hdr = (XAie_CustomOpHdr *)ptr;
         patch_op_t *op = (patch_op_t *)(ptr + sizeof(*hdr));
-        printf("CustomOp PatchBD argidx %llu\n", op->argidx);
-        printf("CustomOp PatchBD regaddr %llx\n",
+        printf("CustomOp PatchBD argidx %lu\n", op->argidx);
+        printf("CustomOp PatchBD regaddr %lx\n",
                op->regaddr + DevInst.BaseAddr);
         ptr += hdr->Size;
         break;
