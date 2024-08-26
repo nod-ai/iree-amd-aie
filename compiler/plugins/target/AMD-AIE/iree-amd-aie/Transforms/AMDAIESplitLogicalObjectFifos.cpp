@@ -47,12 +47,12 @@ void AMDAIESplitLogicalObjectFifosPass::runOnOperation() {
   if (l2ToL1DmaOps.size() == 0) return;
 
   SmallVector<Value> baseSourceOffsets = l2ToL1DmaOps[0].getSourceOffsets();
-  DenseSet<unsigned> splitDimensions;
+  DenseSet<unsigned> splitDimensionsSet;
   for (unsigned i = 1, n = l2ToL1DmaOps.size(); i < n; i++) {
     SmallVector<Value> sourceOffsets = l2ToL1DmaOps[i].getSourceOffsets();
     for (unsigned j = 0, m = baseSourceOffsets.size(); j < m; j++) {
       if (baseSourceOffsets[j] != sourceOffsets[j]) {
-        splitDimensions.insert(j);
+        splitDimensionsSet.insert(j);
       }
     }
   }
@@ -100,7 +100,25 @@ void AMDAIESplitLogicalObjectFifosPass::runOnOperation() {
         cast<MemRefType>(
             l3ToL2DmaOp.getTargetObjectFifo().getMemref().getType())
             .getShape());
-    for (unsigned dim : splitDimensions) {
+    llvm::outs() << "FOR " << l2ToL1DmaOp << "\n";
+    llvm::outs().flush();
+    // SmallVector<int64_t> splitDimensionConstants;
+    DenseMap<int64_t, int64_t> dimToOffsetMapForL3AsSource;
+    for (unsigned dim : splitDimensionsSet) {
+      // llvm::outs()<<"\tdim :
+      // "<<dim<<"\n\t\t"<<staticL2AsSourceOffsets[dim]<<"\n";
+      // llvm::outs().flush();
+      std::optional<int64_t> constantOffset =
+          getConstantIntValue(staticL2AsSourceOffsets[dim]);
+      if (!constantOffset) {
+        l2ToL1DmaOp->emitOpError("found a non-constant value for offset");
+        return signalPassFailure();
+      }
+      dimToOffsetMapForL3AsSource.insert(
+          {dim + 2,
+           constantOffset.value() *
+               (getConstantIntValue(staticL2AsTargetSizes[dim + 2]).value())});
+      // splitDimensions.push_back(dim);
       staticL2AsSourceOffsets[dim] = zeroVal;
       staticL2AsSourceSizes[dim] = oneVal;
       staticL2AsTargetOffsets[dim] = zeroVal;
@@ -128,13 +146,26 @@ void AMDAIESplitLogicalObjectFifosPass::runOnOperation() {
         rewriter.getUnknownLoc(), LogicalObjectFifoType::get(type),
         newAllocOp.getResult(), sourceObjectFifo.getTiles());
 
+    SmallVector<OpFoldResult, 4> staticL3AsSourceOffsets =
+        l3ToL2DmaOp.getSourceMixedOffsets();
+    for (auto [dim, offsetToAdd] : dimToOffsetMapForL3AsSource) {
+      llvm::outs() << "Dim = " << dim << ", offsetToAdd = " << offsetToAdd
+                   << "\n";
+      llvm::outs().flush();
+      auto applyOp = cast<affine::AffineApplyOp>(
+          cast<Value>(staticL3AsSourceOffsets[dim]).getDefiningOp());
+      AffineMap affineMap = applyOp.getAffineMap();
+      llvm::outs() << "AffineMap = " << affineMap << "\n";
+      llvm::outs().flush();
+    }
     // Create new L3 -> L2 Dma Op.
     rewriter.setInsertionPoint(l3ToL2DmaOp);
     rewriter.create<AMDAIE::DmaCpyNdOp>(
         l3ToL2DmaOp.getLoc(), source, llvm::ArrayRef(staticL2AsTargetOffsets),
         llvm::ArrayRef(staticL2AsTargetSizes),
         llvm::ArrayRef(staticL2AsTargetStrides), l3ToL2DmaOp.getSource(),
-        l3ToL2DmaOp.getSourceMixedOffsets(), l3ToL2DmaOp.getSourceMixedSizes(),
+        l3ToL2DmaOp.getSourceMixedOffsets(),
+        llvm::ArrayRef(staticL2AsTargetSizes),
         l3ToL2DmaOp.getSourceMixedStrides());
 
     // Create new L2 -> L1 Input DmaOp.
