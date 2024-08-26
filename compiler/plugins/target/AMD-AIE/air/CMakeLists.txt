@@ -21,19 +21,6 @@ iree_cc_library(
 # AIR Dialect
 ###############################################################################
 
-iree_cc_library(
-    NAME
-        AIRDialectIR
-    SRCS
-      ${IREE_MLIR_AIR_SOURCE_DIR}/lib/Dialect/AIR/IR/AIRDialect.cpp
-    DEPS
-      ::defs
-      ::AIRDialectGen
-      ::AIRInterfaceGen
-      ::AIRTransformOpsGen
-      MLIRIR
-)
-
 iree_tablegen_library(
   NAME
     AIRDialectGen
@@ -60,19 +47,14 @@ iree_tablegen_library(
     -gen-op-interface-defs Dialect/AIR/AIROpInterfaces.cpp.inc
 )
 
-iree_cc_library(
+
+iree_tablegen_library(
   NAME
-    AIRTransformOps
-  SRCS
-    ${IREE_MLIR_AIR_SOURCE_DIR}/lib/Dialect/AIR/TransformOps/AIRTransformOps.cpp
-  DEPS
-    ::defs
-    ::AIRDialectIR
-    ::AIRTransformOpsGen
-    ::AIRTransformPasses
-    iree::target::amd-aie::aie::AIEDialectIR
-    MLIRIR
-    MLIRLinalgTransformOps
+    AIRConversionPassesIncGen
+  TD_FILE
+    "${IREE_MLIR_AIR_SOURCE_DIR}/include/air/Conversion/Passes.td"
+  OUTS
+    -gen-pass-decls Conversion/Passes.h.inc
 )
 
 iree_tablegen_library(
@@ -83,6 +65,36 @@ iree_tablegen_library(
   OUTS
     -gen-op-decls Dialect/AIR/AIRTransformOps.h.inc
     -gen-op-defs Dialect/AIR/AIRTransformOps.cpp.inc
+)
+
+iree_cc_library(
+  NAME
+    AIRTransformOps
+  SRCS
+    ${IREE_MLIR_AIR_SOURCE_DIR}/lib/Dialect/AIR/TransformOps/AIRTransformOps.cpp
+  DEPS
+    ::defs
+    ::AIRDialectIR
+    ::AIRTransformOpsGen
+    ::AIRTransformPasses
+    ::AIRConversionPassesIncGen
+    iree::target::amd-aie::aie::AIEDialectIR
+    MLIRIR
+    MLIRLinalgTransformOps
+)
+
+iree_cc_library(
+  NAME
+    AIRDialectIR
+  SRCS
+    ${IREE_MLIR_AIR_SOURCE_DIR}/lib/Dialect/AIR/IR/AIRDialect.cpp
+  DEPS
+    ::defs
+    ::AIRDialectGen
+    ::AIRInterfaceGen
+    ::AIRTransformOpsGen
+    ::AIRConversionPassesIncGen
+    MLIRIR
 )
 
 ###############################################################################
@@ -120,15 +132,6 @@ iree_tablegen_library(
 ###############################################################################
 # AIR Conversion Passes
 ###############################################################################
-
-iree_tablegen_library(
-  NAME
-    AIRConversionPassesIncGen
-  TD_FILE
-    "${IREE_MLIR_AIR_SOURCE_DIR}/include/air/Conversion/Passes.td"
-  OUTS
-    -gen-pass-decls Conversion/Passes.h.inc
-)
 
 iree_cc_library(
   NAME
