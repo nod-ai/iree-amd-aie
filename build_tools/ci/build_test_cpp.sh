@@ -32,7 +32,7 @@ if [[ "$OSTYPE" == "linux-gnu"* ]]; then
   export CMAKE_TOOLCHAIN_FILE="$this_dir/linux_default_toolchain.cmake"
   export CC=clang
   export CXX=clang++
-else
+elif [[ "$OSTYPE" == "msys"* ]]; then
   export CC=clang-cl.exe
   export CXX=clang-cl.exe
 fi
@@ -109,7 +109,7 @@ if [[ "$OSTYPE" == "linux-gnu"* ]]; then
   ctest --test-dir "$build_dir" -R amd-aie --output-on-failure -j
 elif [[ "$OSTYPE" == "darwin"* ]]; then
   ctest --test-dir "$build_dir" -R amd-aie -E "pack_peel_pipeline_matmul|conv_fill_spec_pad" --output-on-failure -j --repeat until-pass:5
-else
+elif [[ "$OSTYPE" == "msys"* ]]; then
   # hack while windows is flaky to get past failing tests
   ctest --test-dir "$build_dir" -R amd-aie --output-on-failure -j --repeat until-pass:5
 fi

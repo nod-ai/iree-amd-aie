@@ -291,15 +291,9 @@ bool hasEnding(std::string const &fullString, std::string const &ending) {
 LogicalResult runTool(
     const std::string &program_, const std::vector<std::string> &args,
     bool verbose, std::optional<std::vector<std::string>> env = std::nullopt) {
-  std::string program;
+  std::string program = program_;
 #if defined(_WIN32)
-  if (hasEnding(program_, ".exe")) {
-    program = program_;
-  } else {
-    program = program_ + ".exe";
-  }
-#else
-  program = program_;
+  if (!hasEnding(program_, ".exe")) program = program_ + ".exe";
 #endif  // _WIN32
   if (verbose) {
     llvm::outs() << "\nRun: ";
@@ -1203,8 +1197,8 @@ LogicalResult aie2xclbin(
   Path unifiedObj = tempDirPath / "input.o";
   if (failed(generateUnifiedObject(
           ctx, deviceOp, unifiedObj.string(), printIRBeforeAll, printIRAfterAll,
-          printIRModuleScope, timing, useChess, verbose, tempDirPath, vitisDirPath,
-          targetArch, peanoDirPath, npuVersion))) {
+          printIRModuleScope, timing, useChess, verbose, tempDirPath,
+          vitisDirPath, targetArch, peanoDirPath, npuVersion))) {
     llvm::errs() << "Failed to generate unified object\n";
     return failure();
   }

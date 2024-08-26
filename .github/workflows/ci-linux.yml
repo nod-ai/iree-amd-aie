@@ -189,6 +189,7 @@ jobs:
             $PWD/iree-install \
             $PWD/llvm-aie \
             --xrt-dir /opt/xilinx/xrt \
+            --vitis-dir /opt/Xilinx/Vitis/2024.2 \
             --reset-npu-between-runs -v
 
       - name: Printing IR from aie2xclbin
