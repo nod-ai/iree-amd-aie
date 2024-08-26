@@ -36,8 +36,8 @@ iree_cc_test(
     test_0335_aie_dma_tile_dma_packet_switch_mode
   SRCS
     test_packet_switch_mode.cc
-  COPTS
-    -Wno-format
+  COPTS    
+    $<$<PLATFORM_ID:Linux>:-Wno-format>
   DEPS
     iree-amd-aie::aie_runtime::iree_aie_runtime_static
 )
@@ -60,7 +60,7 @@ iree_cc_test(
   SRCS
     test_control_packets.cc
   COPTS
-    -Wno-format
+    $<$<PLATFORM_ID:Linux>:-Wno-format>
   DEPS
     iree-amd-aie::aie_runtime::iree_aie_runtime_static
 )
@@ -83,7 +83,7 @@ iree_cc_test(
   SRCS
     test_transaction.cc
   COPTS
-    -Wno-format
+    $<$<PLATFORM_ID:Linux>:-Wno-format>
   DEPS
     iree-amd-aie::aie_runtime::iree_aie_runtime_static
 )
