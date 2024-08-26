@@ -220,8 +220,8 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 // -----
 
 // CHECK:       aie.device
-// CHECK-DAG:   func.func private @ukernel_A(memref<i32, 1>, index) attributes {llvm.bareptr = true}
-// CHECK-DAG:   func.func private @ukernel_B(memref<i32, 1>, index, memref<f32, 1>, index) attributes {llvm.bareptr = true}
+// CHECK-DAG:   func.func private @ukernel_A(memref<i32, 2>, index) attributes {llvm.bareptr = true}
+// CHECK-DAG:   func.func private @ukernel_B(memref<i32, 2>, index, memref<f32, 2>, index) attributes {llvm.bareptr = true}
 // CHECK-DAG:   %[[TILE_0_2:.+]] = aie.tile(0, 2)
 // CHECK:       aie.core(%[[TILE_0_2]])
 // CHECK-DAG:     %[[C0:.*]] = arith.constant 0 : index
@@ -233,11 +233,11 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 // CHECK-SAME:    Produce
 // CHECK:         %[[ACCESS0:.+]] = aie.objectfifo.subview.access %[[ACQUIRE0]]
 // CHECK:         %[[REINTERPRET0:.+]] = memref.reinterpret_cast %[[ACCESS0]]
-// CHECK:         linalg.fill ins(%{{.+}} : i32) outs(%[[REINTERPRET]] : memref<32x32xi32, 1>)
+// CHECK:         linalg.fill ins(%{{.+}} : i32) outs(%[[REINTERPRET]] : memref<32x32xi32, 2>)
 // CHECK:         %[[BASE_BUFFER:.*]], %{{.+}}, %{{.+}}:2, %{{.+}}:2 = memref.extract_strided_metadata %[[REINTERPRET]] :
 // CHECK:         %[[BASE_BUFFER0:.*]], %{{.+}}, %{{.+}}:2, %{{.+}}:2 = memref.extract_strided_metadata %[[REINTERPRET0]] :
-// CHECK:         func.call @ukernel_A(%[[BASE_BUFFER]], %[[C0]]) : (memref<i32, 1>, index) -> ()
-// CHECK:         func.call @ukernel_B(%[[BASE_BUFFER]], %[[C0]], %[[BASE_BUFFER0]], %[[C0]]) : (memref<i32, 1>, index, memref<f32, 1>, index) -> ()
+// CHECK:         func.call @ukernel_A(%[[BASE_BUFFER]], %[[C0]]) : (memref<i32, 2>, index) -> ()
+// CHECK:         func.call @ukernel_B(%[[BASE_BUFFER]], %[[C0]], %[[BASE_BUFFER0]], %[[C0]]) : (memref<i32, 2>, index, memref<f32, 2>, index) -> ()
 // CHECK:         aie.end
 // CHECK:       } {link_with = "/path/to/ukernel.o"}
 // CHECK:       aiex.runtime_sequence @lower_to_aie_ukernel
@@ -738,10 +738,10 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 // CHECK:       aie.device(npu1_4col) {
 // CHECK:         %[[TILE_0_0:.*]] = aie.tile(0, 0)
 // CHECK:         %[[TILE_0_1:.*]] = aie.tile(0, 1)
-// CHECK:         aie.objectfifo @[[OBJ0:.*]](%[[TILE_0_0]], {%[[TILE_0_1]]}, 2 : i32) : !aie.objectfifo<memref<1024xbf16, 1>>
-// CHECK:         aie.objectfifo @[[OBJ1:.*]](%[[TILE_0_0]], {%[[TILE_0_1]]}, 2 : i32) : !aie.objectfifo<memref<1024xbf16, 1>>
+// CHECK:         aie.objectfifo @[[OBJ0:.*]](%[[TILE_0_0]], {%[[TILE_0_1]]}, 2 : i32) : !aie.objectfifo<memref<1024xbf16, 1 : i32>>
+// CHECK:         aie.objectfifo @[[OBJ1:.*]](%[[TILE_0_0]], {%[[TILE_0_1]]}, 2 : i32) : !aie.objectfifo<memref<1024xbf16, 1 : i32>>
 // CHECK:         aie.objectfifo @[[OBJ2:.*]](%[[TILE_0_1]]
-// CHECK-SAME:         %[[TILE_0_0]]}, 2 : i32) : !aie.objectfifo<memref<1024xf32, 1>>
+// CHECK-SAME:         %[[TILE_0_0]]}, 2 : i32) : !aie.objectfifo<memref<1024xf32>>
 // CHECK:         aiex.runtime_sequence @bf16_f32_lit_test
 // CHECK-SAME:         (%[[LHS:.*]]: memref<32x32xbf16>, %[[RHS:.*]]: memref<32x32xbf16>, %[[OUT:.*]]: memref<32x32xf32>) {
 // CHECK:           aiex.npu.dma_memcpy_nd
