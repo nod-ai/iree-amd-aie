@@ -75,7 +75,7 @@ jobs:
         run: |
           rm -f iree-install/bin/clang*
           rm -f iree-install/bin/llvm-link*
-          tar cf iree-dist-${{ matrix.runs-on }}.tar -C iree-install . -C ../iree-build tools/testing/e2e/iree-e2e-matmul-test.exe
+          tar cf iree-dist-${{ matrix.runs-on }}.tar -C iree-install . -C ../iree-build tools/testing/e2e/iree-e2e-matmul-test
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
