@@ -39,8 +39,10 @@ void AMDAIESplitLogicalObjectFifosPass::runOnOperation() {
   // TODO: We will generalize this later.
   moduleOp.walk([&](AMDAIE::CoreOp coreOp) {
     SmallVector<Value> inputDmas = coreOp.getInputDmas();
-    if (inputDmas.size() < 3) return WalkResult::skip();
-    l2ToL1DmaOps.push_back(inputDmas[2].getDefiningOp<AMDAIE::DmaCpyNdOp>());
+    if (inputDmas.size() != 3) return WalkResult::skip();
+    auto dmaCpyNdOp = inputDmas[2].getDefiningOp<AMDAIE::DmaCpyNdOp>();
+    assert(dmaCpyNdOp && "expected an amdaie.dma_cpy_nd op");
+    l2ToL1DmaOps.push_back(dmaCpyNdOp);
     return WalkResult::advance();
   });
 
@@ -113,6 +115,8 @@ void AMDAIESplitLogicalObjectFifosPass::runOnOperation() {
     //    multiplying L2 as source's offset at split dimension with L2 as
     //    target's size at split dimension + 2. We are maintaining this to later
     //    update the extraction offset of L3 -> L2.
+    //    split dimension + 2 is basically the dimension of L3's source offset
+    //    that we need to modify.
     // 2. Update L2 as source/target offset => 0.
     // 3. Update L2 as source/target size => 1.
     // 4. Compute the shape of L2 buffer after split.
@@ -194,13 +198,6 @@ void AMDAIESplitLogicalObjectFifosPass::runOnOperation() {
         llvm::ArrayRef(staticL2AsSourceSizes),
         llvm::ArrayRef(staticL2AsSourceStrides));
     rewriter.replaceOp(l2ToL1DmaOp, newL2ToL1DmaOp);
-    // We have to discard non-zero offsets as subview has been replaced by a
-    // dedicated allocated memref.
-    SmallVector<int64_t> allocShape(type.getShape());
-    (void)discardAllNonZeroOffsets<CopyOpOperateOn::Source>(
-        rewriter,
-        cast<AMDAIE::DoublyStridedOpInterface>(newL2ToL1DmaOp.getOperation()),
-        allocShape);
 
     // Remove old dealloc.
     memref::DeallocOp oldDeallocOp;
@@ -210,7 +207,7 @@ void AMDAIESplitLogicalObjectFifosPass::runOnOperation() {
       }
     }
     if (oldDeallocOp) {
-      rewriter.eraseOp(oldDeallocOp);
+      toBeErased.insert(oldDeallocOp);
     }
   }
 
