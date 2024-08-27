@@ -614,6 +614,7 @@ static LogicalResult generateCoreElfFiles(
       }
       flags.emplace_back("--target=" + targetLower + "-none-unknown-elf");
       flags.emplace_back("-Wl,--gc-sections");
+      flags.emplace_back("-Wl,--orphan-handling=error");
       flags.emplace_back("-Wl,-T," + ldscriptPath.string());
       flags.emplace_back("-o");
       flags.emplace_back(elfFile.string());
