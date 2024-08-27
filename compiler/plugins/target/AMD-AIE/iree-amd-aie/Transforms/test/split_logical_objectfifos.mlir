@@ -196,6 +196,8 @@ module {
 //   CHECK-DAG:   %[[L3_ALLOC:.*]] = memref.alloc() : memref<128x128xi32>
 //   CHECK-DAG:   %[[L2_ALLOC_0:.*]] = memref.alloc() : memref<1x1x32x32xi32, 1 : i32>
 //   CHECK-DAG:   %[[L2_ALLOC_1:.*]] = memref.alloc() : memref<1x1x32x32xi32, 1 : i32>
+//   CHECK-DAG:   %[[L2_ALLOC_2:.*]] = memref.alloc() : memref<1x1x32x32xi32, 1 : i32>
+//   CHECK-DAG:   %[[L2_ALLOC_3:.*]] = memref.alloc() : memref<1x1x32x32xi32, 1 : i32>
 //   CHECK-NOT:   memref.alloc() : memref<1x1x32x32xi32, 1 : i32>
 //   CHECK-NOT:   memref.alloc() : memref<1x1x32x32xi32, 1 : i32>
 //   CHECK-DAG:   %[[L1_ALLOC:.*]] = memref.alloc() : memref<1x1x8x8x4x4xi32, 2 : i32>
@@ -206,6 +208,10 @@ module {
 //       CHECK:   %[[L2_OBJECTFIFO_0:.*]] = amdaie.logicalobjectfifo.from_memref %[[L2_ALLOC_0]], {%[[TILE_0]]} :
 //  CHECK-SAME:         memref<1x1x32x32xi32, 1 : i32> -> !amdaie.logicalobjectfifo<memref<1x1x32x32xi32, 1 : i32>>
 //       CHECK:   %[[L2_OBJECTFIFO_1:.*]] = amdaie.logicalobjectfifo.from_memref %[[L2_ALLOC_1]], {%[[TILE_0]]} :
+//  CHECK-SAME:         memref<1x1x32x32xi32, 1 : i32> -> !amdaie.logicalobjectfifo<memref<1x1x32x32xi32, 1 : i32>>
+//       CHECK:   %[[L2_OBJECTFIFO_2:.*]] = amdaie.logicalobjectfifo.from_memref %[[L2_ALLOC_2]], {%[[TILE_0]]} :
+//  CHECK-SAME:         memref<1x1x32x32xi32, 1 : i32> -> !amdaie.logicalobjectfifo<memref<1x1x32x32xi32, 1 : i32>>
+//       CHECK:   %[[L2_OBJECTFIFO_3:.*]] = amdaie.logicalobjectfifo.from_memref %[[L2_ALLOC_3]], {%[[TILE_0]]} :
 //  CHECK-SAME:         memref<1x1x32x32xi32, 1 : i32> -> !amdaie.logicalobjectfifo<memref<1x1x32x32xi32, 1 : i32>>
 //       CHECK:   %[[L3_OBJECTFIFO:.*]] = amdaie.logicalobjectfifo.from_memref %[[L3_ALLOC]], {%[[TILE_0]]} :
 //  CHECK-SAME:         memref<128x128xi32> -> !amdaie.logicalobjectfifo<memref<128x128xi32>>
@@ -219,6 +225,12 @@ module {
 //  CHECK-SAME:                                         %[[L3_OBJECTFIFO]][0, 0, %[[IV0_0:.*]], %[[IV1_0:.*]]] [1, 1, 32, 32] [4096, 32, 128, 1]
 //       CHECK:       %[[DMA_CPY_ND_L3_TO_L2_1:.*]] = amdaie.dma_cpy_nd(
 //  CHECK-SAME:                                         %[[L2_OBJECTFIFO_1]][0, 0, 0, 0] [1, 1, 32, 32] [2048, 1024, 32, 1]
+//  CHECK-SAME:                                         %[[L3_OBJECTFIFO]][0, 0, %[[IV0_0:.*]], %[[IV1_32:.*]]] [1, 1, 32, 32] [4096, 32, 128, 1]
+//       CHECK:       %[[DMA_CPY_ND_L3_TO_L2_2:.*]] = amdaie.dma_cpy_nd(
+//  CHECK-SAME:                                         %[[L2_OBJECTFIFO_2]][0, 0, 0, 0] [1, 1, 32, 32] [2048, 1024, 32, 1]
+//  CHECK-SAME:                                         %[[L3_OBJECTFIFO]][0, 0, %[[IV0_32:.*]], %[[IV1_0:.*]]] [1, 1, 32, 32] [4096, 32, 128, 1]
+//       CHECK:       %[[DMA_CPY_ND_L3_TO_L2_3:.*]] = amdaie.dma_cpy_nd(
+//  CHECK-SAME:                                         %[[L2_OBJECTFIFO_3]][0, 0, 0, 0] [1, 1, 32, 32] [2048, 1024, 32, 1]
 //  CHECK-SAME:                                         %[[L3_OBJECTFIFO]][0, 0, %[[IV0_32:.*]], %[[IV1_32:.*]]] [1, 1, 32, 32] [4096, 32, 128, 1]
 //       CHECK:       amdaie.logicalobjectfifo.from_memref
 //       CHECK:       amdaie.logicalobjectfifo.from_memref
@@ -240,16 +252,34 @@ module {
 //       CHECK:         linalg.fill
 //       CHECK:         amdaie.end
 //       CHECK:       }
-//       CHECK:       %[[L1_OBJECTFIFO_1:.*]] = amdaie.logicalobjectfifo.from_memref %[[L1_ALLOC]], {%[[TILE_3]]}
+//       CHECK:       %[[L1_OBJECTFIFO_1:.*]] = amdaie.logicalobjectfifo.from_memref %[[L1_ALLOC]], {%[[TILE_0]]}
 //       CHECK:       %[[DMA_CPY_ND_L2_TO_L1_1:.*]] = amdaie.dma_cpy_nd(
 //  CHECK-SAME:                                          %[[L1_OBJECTFIFO_1]][0, 0, 0, 0, 0, 0] [1, 1, 8, 8, 4, 4] [1024, 1024, 128, 16, 4, 1] 
 //  CHECK-SAME:                                          %[[L2_OBJECTFIFO_1]][0, 0, 0, 0, 0, 0] [1, 1, 8, 8, 4, 4] [2048, 1024, 4, 128, 32, 1]
-//       CHECK:       amdaie.core(%[[TILE_3]], in : [%{{.*}}, %{{.*}}, %[[DMA_CPY_ND_L2_TO_L1_1]]], out :
+//       CHECK:       amdaie.core(%[[TILE_0]], in : [%{{.*}}, %{{.*}}, %[[DMA_CPY_ND_L2_TO_L1_1]]], out :
+//       CHECK:         linalg.generic
+//       CHECK:         amdaie.end
+//       CHECK:       }
+//       CHECK:       %[[L1_OBJECTFIFO_2:.*]] = amdaie.logicalobjectfifo.from_memref %[[L1_ALLOC]], {%[[TILE_2]]}
+//       CHECK:       %[[DMA_CPY_ND_L2_TO_L1_2:.*]] = amdaie.dma_cpy_nd(
+//  CHECK-SAME:                                          %[[L1_OBJECTFIFO_2]][0, 0, 0, 0, 0, 0] [1, 1, 8, 8, 4, 4] [1024, 1024, 128, 16, 4, 1] 
+//  CHECK-SAME:                                          %[[L2_OBJECTFIFO_2]][0, 0, 0, 0, 0, 0] [1, 1, 8, 8, 4, 4] [2048, 1024, 4, 128, 32, 1]
+//       CHECK:       amdaie.core(%[[TILE_2]], in : [%{{.*}}, %{{.*}}, %[[DMA_CPY_ND_L2_TO_L1_2]]], out :
+//       CHECK:         linalg.generic
+//       CHECK:         amdaie.end
+//       CHECK:       }
+//       CHECK:       %[[L1_OBJECTFIFO_3:.*]] = amdaie.logicalobjectfifo.from_memref %[[L1_ALLOC]], {%[[TILE_3]]}
+//       CHECK:       %[[DMA_CPY_ND_L2_TO_L1_3:.*]] = amdaie.dma_cpy_nd(
+//  CHECK-SAME:                                          %[[L1_OBJECTFIFO_3]][0, 0, 0, 0, 0, 0] [1, 1, 8, 8, 4, 4] [1024, 1024, 128, 16, 4, 1] 
+//  CHECK-SAME:                                          %[[L2_OBJECTFIFO_3]][0, 0, 0, 0, 0, 0] [1, 1, 8, 8, 4, 4] [2048, 1024, 4, 128, 32, 1]
+//       CHECK:       amdaie.core(%[[TILE_3]], in : [%{{.*}}, %{{.*}}, %[[DMA_CPY_ND_L2_TO_L1_3]]], out :
 //       CHECK:         linalg.generic
 //       CHECK:         amdaie.end
 //       CHECK:       }
 //   CHECK-DAG:   memref.dealloc %[[L2_ALLOC_0]] : memref<1x1x32x32xi32, 1 : i32>
 //   CHECK-DAG:   memref.dealloc %[[L2_ALLOC_1]] : memref<1x1x32x32xi32, 1 : i32>
+//   CHECK-DAG:   memref.dealloc %[[L2_ALLOC_2]] : memref<1x1x32x32xi32, 1 : i32>
+//   CHECK-DAG:   memref.dealloc %[[L2_ALLOC_3]] : memref<1x1x32x32xi32, 1 : i32>
 //   CHECK-NOT:   memref.dealloc %{{.*}} : memref<1x1x32x32xi32, 1 : i32>
 //   CHECK-NOT:   memref.dealloc %{{.*}} : memref<1x1x32x32xi32, 1 : i32>
 #map = affine_map<(d0) -> (d0 * 64)>
@@ -286,54 +316,96 @@ module {
       %8 = amdaie.dma_cpy_nd(%arg1[0, 0, 0, 0, 0, 0] [1, 1, 8, 4, 8, 4] [1024, 1024, 128, 32, 4, 1], %6[0, 1, 0, 0, 0, 0] [1, 1, 8, 4, 8, 4] [2048, 1024, 4, 256, 32, 1]) : (!amdaie.logicalobjectfifo<memref<1x1x8x4x8x4xi32, 2 : i32>>, !amdaie.logicalobjectfifo<memref<1x2x32x32xi32, 1 : i32>>)
       %9 = amdaie.dma_cpy_nd(%arg3[1, 1, 0, 0] [1, 1, 32, 32] [2048, 1024, 32, 1], %arg2[0, 0, 0, 0] [8, 4, 8, 4] [16, 4, 128, 1]) : (!amdaie.logicalobjectfifo<memref<2x2x32x32xi32, 1 : i32>>, !amdaie.logicalobjectfifo<memref<1x1x8x8x4x4xi32, 2 : i32>>)
       %10 = amdaie.core(%tile_7, in : [%7], out : []) {
-        %11 = amdaie.logicalobjectfifo.access(%arg0, Read) : !amdaie.logicalobjectfifo<memref<1x1x4x8x4x8xi32, 2 : i32>> -> memref<1x1x4x8x4x8xi32, 2 : i32>
-        linalg.fill ins(%c0_i32 : i32) outs(%11 : memref<1x1x4x8x4x8xi32, 2 : i32>)
+        %24 = amdaie.logicalobjectfifo.access(%arg0, Read) : !amdaie.logicalobjectfifo<memref<1x1x4x8x4x8xi32, 2 : i32>> -> memref<1x1x4x8x4x8xi32, 2 : i32>
+        linalg.fill ins(%c0_i32 : i32) outs(%24 : memref<1x1x4x8x4x8xi32, 2 : i32>)
         amdaie.end
       }
       %11 = amdaie.logicalobjectfifo.from_memref %alloc_3, {%tile_4} : memref<1x1x8x8x4x4xi32, 2 : i32> -> !amdaie.logicalobjectfifo<memref<1x1x8x8x4x4xi32, 2 : i32>>
       %12 = amdaie.dma_cpy_nd(%11[0, 0, 0, 0, 0, 0] [1, 1, 8, 8, 4, 4] [1024, 1024, 128, 16, 4, 1], %0[0, 0, 0, 0, 0, 0] [1, 1, 8, 8, 4, 4] [2048, 1024, 4, 128, 32, 1]) : (!amdaie.logicalobjectfifo<memref<1x1x8x8x4x4xi32, 2 : i32>>, !amdaie.logicalobjectfifo<memref<2x2x32x32xi32, 1 : i32>>)
       %13 = amdaie.core(%tile_4, in : [%7, %8, %12], out : [%9]) {
-        %18 = amdaie.logicalobjectfifo.access(%arg0, Read) : !amdaie.logicalobjectfifo<memref<1x1x4x8x4x8xi32, 2 : i32>> -> memref<1x1x4x8x4x8xi32, 2 : i32>
-        %19 = amdaie.logicalobjectfifo.access(%arg1, Read) : !amdaie.logicalobjectfifo<memref<1x1x8x4x8x4xi32, 2 : i32>> -> memref<1x1x8x4x8x4xi32, 2 : i32>
-        %20 = amdaie.logicalobjectfifo.access(%arg2, None) : !amdaie.logicalobjectfifo<memref<1x1x8x8x4x4xi32, 2 : i32>> -> memref<1x1x8x8x4x4xi32, 2 : i32>
-        linalg.generic {indexing_maps = [#map1, #map2, #map3], iterator_types = ["parallel", "parallel", "reduction", "parallel", "parallel", "reduction", "parallel", "parallel", "reduction"]} ins(%18, %19 : memref<1x1x4x8x4x8xi32, 2 : i32>, memref<1x1x8x4x8x4xi32, 2 : i32>) outs(%20 : memref<1x1x8x8x4x4xi32, 2 : i32>) {
+        %24 = amdaie.logicalobjectfifo.access(%arg0, Read) : !amdaie.logicalobjectfifo<memref<1x1x4x8x4x8xi32, 2 : i32>> -> memref<1x1x4x8x4x8xi32, 2 : i32>
+        %25 = amdaie.logicalobjectfifo.access(%arg1, Read) : !amdaie.logicalobjectfifo<memref<1x1x8x4x8x4xi32, 2 : i32>> -> memref<1x1x8x4x8x4xi32, 2 : i32>
+        %26 = amdaie.logicalobjectfifo.access(%arg2, None) : !amdaie.logicalobjectfifo<memref<1x1x8x8x4x4xi32, 2 : i32>> -> memref<1x1x8x8x4x4xi32, 2 : i32>
+        linalg.generic {indexing_maps = [#map1, #map2, #map3], iterator_types = ["parallel", "parallel", "reduction", "parallel", "parallel", "reduction", "parallel", "parallel", "reduction"]} ins(%24, %25 : memref<1x1x4x8x4x8xi32, 2 : i32>, memref<1x1x8x4x8x4xi32, 2 : i32>) outs(%26 : memref<1x1x8x8x4x4xi32, 2 : i32>) {
         ^bb0(%in: i32, %in_8: i32, %out: i32):
-          %23 = arith.muli %in, %in_8 : i32
-          %24 = arith.addi %out, %23 : i32
-          linalg.yield %24 : i32
+          %29 = arith.muli %in, %in_8 : i32
+          %30 = arith.addi %out, %29 : i32
+          linalg.yield %30 : i32
         }
-        %21 = amdaie.logicalobjectfifo.access(%arg2, Read) : !amdaie.logicalobjectfifo<memref<1x1x8x8x4x4xi32, 2 : i32>> -> memref<1x1x8x8x4x4xi32, 2 : i32>
-        %22 = amdaie.logicalobjectfifo.access(%arg2, Write) : !amdaie.logicalobjectfifo<memref<1x1x8x8x4x4xi32, 2 : i32>> -> memref<1x1x8x8x4x4xi32, 2 : i32>
-        linalg.generic {indexing_maps = [#map4, #map4, #map4], iterator_types = ["parallel", "parallel", "parallel", "parallel", "parallel", "parallel"]} ins(%20, %21 : memref<1x1x8x8x4x4xi32, 2 : i32>, memref<1x1x8x8x4x4xi32, 2 : i32>) outs(%22 : memref<1x1x8x8x4x4xi32, 2 : i32>) {
+        %27 = amdaie.logicalobjectfifo.access(%arg2, Read) : !amdaie.logicalobjectfifo<memref<1x1x8x8x4x4xi32, 2 : i32>> -> memref<1x1x8x8x4x4xi32, 2 : i32>
+        %28 = amdaie.logicalobjectfifo.access(%arg2, Write) : !amdaie.logicalobjectfifo<memref<1x1x8x8x4x4xi32, 2 : i32>> -> memref<1x1x8x8x4x4xi32, 2 : i32>
+        linalg.generic {indexing_maps = [#map4, #map4, #map4], iterator_types = ["parallel", "parallel", "parallel", "parallel", "parallel", "parallel"]} ins(%26, %27 : memref<1x1x8x8x4x4xi32, 2 : i32>, memref<1x1x8x8x4x4xi32, 2 : i32>) outs(%28 : memref<1x1x8x8x4x4xi32, 2 : i32>) {
         ^bb0(%in: i32, %in_8: i32, %out: i32):
-          %23 = arith.addi %in, %in_8 : i32
-          linalg.yield %23 : i32
+          %29 = arith.addi %in, %in_8 : i32
+          linalg.yield %29 : i32
         }
         amdaie.end
       }
       %14 = amdaie.core(%tile_5, in : [%7], out : []) {
-        %15 = amdaie.logicalobjectfifo.access(%arg0, Read) : !amdaie.logicalobjectfifo<memref<1x1x4x8x4x8xi32, 2 : i32>> -> memref<1x1x4x8x4x8xi32, 2 : i32>
-        linalg.fill ins(%c0_i32 : i32) outs(%15 : memref<1x1x4x8x4x8xi32, 2 : i32>)
+        %24 = amdaie.logicalobjectfifo.access(%arg0, Read) : !amdaie.logicalobjectfifo<memref<1x1x4x8x4x8xi32, 2 : i32>> -> memref<1x1x4x8x4x8xi32, 2 : i32>
+        linalg.fill ins(%c0_i32 : i32) outs(%24 : memref<1x1x4x8x4x8xi32, 2 : i32>)
         amdaie.end
       }
-      %15 = amdaie.logicalobjectfifo.from_memref %alloc_3, {%tile_6} : memref<1x1x8x8x4x4xi32, 2 : i32> -> !amdaie.logicalobjectfifo<memref<1x1x8x8x4x4xi32, 2 : i32>>
-      %16 = amdaie.dma_cpy_nd(%15[0, 0, 0, 0, 0, 0] [1, 1, 8, 8, 4, 4] [1024, 1024, 128, 16, 4, 1], %0[1, 1, 0, 0, 0, 0] [1, 1, 8, 8, 4, 4] [2048, 1024, 4, 128, 32, 1]) : (!amdaie.logicalobjectfifo<memref<1x1x8x8x4x4xi32, 2 : i32>>, !amdaie.logicalobjectfifo<memref<2x2x32x32xi32, 1 : i32>>)
-      %17 = amdaie.core(%tile_6, in : [%7, %8, %16], out : [%9]) {
-        %18 = amdaie.logicalobjectfifo.access(%arg0, Read) : !amdaie.logicalobjectfifo<memref<1x1x4x8x4x8xi32, 2 : i32>> -> memref<1x1x4x8x4x8xi32, 2 : i32>
-        %19 = amdaie.logicalobjectfifo.access(%arg1, Read) : !amdaie.logicalobjectfifo<memref<1x1x8x4x8x4xi32, 2 : i32>> -> memref<1x1x8x4x8x4xi32, 2 : i32>
-        %20 = amdaie.logicalobjectfifo.access(%arg2, None) : !amdaie.logicalobjectfifo<memref<1x1x8x8x4x4xi32, 2 : i32>> -> memref<1x1x8x8x4x4xi32, 2 : i32>
-        linalg.generic {indexing_maps = [#map1, #map2, #map3], iterator_types = ["parallel", "parallel", "reduction", "parallel", "parallel", "reduction", "parallel", "parallel", "reduction"]} ins(%18, %19 : memref<1x1x4x8x4x8xi32, 2 : i32>, memref<1x1x8x4x8x4xi32, 2 : i32>) outs(%20 : memref<1x1x8x8x4x4xi32, 2 : i32>) {
+      %15 = amdaie.logicalobjectfifo.from_memref %alloc_3, {%tile} : memref<1x1x8x8x4x4xi32, 2 : i32> -> !amdaie.logicalobjectfifo<memref<1x1x8x8x4x4xi32, 2 : i32>>
+      %16 = amdaie.dma_cpy_nd(%15[0, 0, 0, 0, 0, 0] [1, 1, 8, 8, 4, 4] [1024, 1024, 128, 16, 4, 1], %0[0, 1, 0, 0, 0, 0] [1, 1, 8, 8, 4, 4] [2048, 1024, 4, 128, 32, 1]) : (!amdaie.logicalobjectfifo<memref<1x1x8x8x4x4xi32, 2 : i32>>, !amdaie.logicalobjectfifo<memref<2x2x32x32xi32, 1 : i32>>)
+      %17 = amdaie.core(%tile, in : [%7, %8, %16], out : [%9]) {
+        %24 = amdaie.logicalobjectfifo.access(%arg0, Read) : !amdaie.logicalobjectfifo<memref<1x1x4x8x4x8xi32, 2 : i32>> -> memref<1x1x4x8x4x8xi32, 2 : i32>
+        %25 = amdaie.logicalobjectfifo.access(%arg1, Read) : !amdaie.logicalobjectfifo<memref<1x1x8x4x8x4xi32, 2 : i32>> -> memref<1x1x8x4x8x4xi32, 2 : i32>
+        %26 = amdaie.logicalobjectfifo.access(%arg2, None) : !amdaie.logicalobjectfifo<memref<1x1x8x8x4x4xi32, 2 : i32>> -> memref<1x1x8x8x4x4xi32, 2 : i32>
+        linalg.generic {indexing_maps = [#map1, #map2, #map3], iterator_types = ["parallel", "parallel", "reduction", "parallel", "parallel", "reduction", "parallel", "parallel", "reduction"]} ins(%24, %25 : memref<1x1x4x8x4x8xi32, 2 : i32>, memref<1x1x8x4x8x4xi32, 2 : i32>) outs(%26 : memref<1x1x8x8x4x4xi32, 2 : i32>) {
         ^bb0(%in: i32, %in_8: i32, %out: i32):
-          %23 = arith.muli %in, %in_8 : i32
-          %24 = arith.addi %out, %23 : i32
-          linalg.yield %24 : i32
+          %29 = arith.muli %in, %in_8 : i32
+          %30 = arith.addi %out, %29 : i32
+          linalg.yield %30 : i32
         }
-        %21 = amdaie.logicalobjectfifo.access(%arg2, Read) : !amdaie.logicalobjectfifo<memref<1x1x8x8x4x4xi32, 2 : i32>> -> memref<1x1x8x8x4x4xi32, 2 : i32>
-        %22 = amdaie.logicalobjectfifo.access(%arg2, Write) : !amdaie.logicalobjectfifo<memref<1x1x8x8x4x4xi32, 2 : i32>> -> memref<1x1x8x8x4x4xi32, 2 : i32>
-        linalg.generic {indexing_maps = [#map4, #map4, #map4], iterator_types = ["parallel", "parallel", "parallel", "parallel", "parallel", "parallel"]} ins(%20, %21 : memref<1x1x8x8x4x4xi32, 2 : i32>, memref<1x1x8x8x4x4xi32, 2 : i32>) outs(%22 : memref<1x1x8x8x4x4xi32, 2 : i32>) {
+        %27 = amdaie.logicalobjectfifo.access(%arg2, Read) : !amdaie.logicalobjectfifo<memref<1x1x8x8x4x4xi32, 2 : i32>> -> memref<1x1x8x8x4x4xi32, 2 : i32>
+        %28 = amdaie.logicalobjectfifo.access(%arg2, Write) : !amdaie.logicalobjectfifo<memref<1x1x8x8x4x4xi32, 2 : i32>> -> memref<1x1x8x8x4x4xi32, 2 : i32>
+        linalg.generic {indexing_maps = [#map4, #map4, #map4], iterator_types = ["parallel", "parallel", "parallel", "parallel", "parallel", "parallel"]} ins(%26, %27 : memref<1x1x8x8x4x4xi32, 2 : i32>, memref<1x1x8x8x4x4xi32, 2 : i32>) outs(%28 : memref<1x1x8x8x4x4xi32, 2 : i32>) {
         ^bb0(%in: i32, %in_8: i32, %out: i32):
-          %23 = arith.addi %in, %in_8 : i32
-          linalg.yield %23 : i32
+          %29 = arith.addi %in, %in_8 : i32
+          linalg.yield %29 : i32
+        }
+        amdaie.end
+      }
+      %18 = amdaie.logicalobjectfifo.from_memref %alloc_3, {%tile_5} : memref<1x1x8x8x4x4xi32, 2 : i32> -> !amdaie.logicalobjectfifo<memref<1x1x8x8x4x4xi32, 2 : i32>>
+      %19 = amdaie.dma_cpy_nd(%18[0, 0, 0, 0, 0, 0] [1, 1, 8, 8, 4, 4] [1024, 1024, 128, 16, 4, 1], %0[1, 0, 0, 0, 0, 0] [1, 1, 8, 8, 4, 4] [2048, 1024, 4, 128, 32, 1]) : (!amdaie.logicalobjectfifo<memref<1x1x8x8x4x4xi32, 2 : i32>>, !amdaie.logicalobjectfifo<memref<2x2x32x32xi32, 1 : i32>>)
+      %20 = amdaie.core(%tile_5, in : [%7, %8, %19], out : [%9]) {
+        %24 = amdaie.logicalobjectfifo.access(%arg0, Read) : !amdaie.logicalobjectfifo<memref<1x1x4x8x4x8xi32, 2 : i32>> -> memref<1x1x4x8x4x8xi32, 2 : i32>
+        %25 = amdaie.logicalobjectfifo.access(%arg1, Read) : !amdaie.logicalobjectfifo<memref<1x1x8x4x8x4xi32, 2 : i32>> -> memref<1x1x8x4x8x4xi32, 2 : i32>
+        %26 = amdaie.logicalobjectfifo.access(%arg2, None) : !amdaie.logicalobjectfifo<memref<1x1x8x8x4x4xi32, 2 : i32>> -> memref<1x1x8x8x4x4xi32, 2 : i32>
+        linalg.generic {indexing_maps = [#map1, #map2, #map3], iterator_types = ["parallel", "parallel", "reduction", "parallel", "parallel", "reduction", "parallel", "parallel", "reduction"]} ins(%24, %25 : memref<1x1x4x8x4x8xi32, 2 : i32>, memref<1x1x8x4x8x4xi32, 2 : i32>) outs(%26 : memref<1x1x8x8x4x4xi32, 2 : i32>) {
+        ^bb0(%in: i32, %in_8: i32, %out: i32):
+          %29 = arith.muli %in, %in_8 : i32
+          %30 = arith.addi %out, %29 : i32
+          linalg.yield %30 : i32
+        }
+        %27 = amdaie.logicalobjectfifo.access(%arg2, Read) : !amdaie.logicalobjectfifo<memref<1x1x8x8x4x4xi32, 2 : i32>> -> memref<1x1x8x8x4x4xi32, 2 : i32>
+        %28 = amdaie.logicalobjectfifo.access(%arg2, Write) : !amdaie.logicalobjectfifo<memref<1x1x8x8x4x4xi32, 2 : i32>> -> memref<1x1x8x8x4x4xi32, 2 : i32>
+        linalg.generic {indexing_maps = [#map4, #map4, #map4], iterator_types = ["parallel", "parallel", "parallel", "parallel", "parallel", "parallel"]} ins(%26, %27 : memref<1x1x8x8x4x4xi32, 2 : i32>, memref<1x1x8x8x4x4xi32, 2 : i32>) outs(%28 : memref<1x1x8x8x4x4xi32, 2 : i32>) {
+        ^bb0(%in: i32, %in_8: i32, %out: i32):
+          %29 = arith.addi %in, %in_8 : i32
+          linalg.yield %29 : i32
+        }
+        amdaie.end
+      }
+      %21 = amdaie.logicalobjectfifo.from_memref %alloc_3, {%tile_6} : memref<1x1x8x8x4x4xi32, 2 : i32> -> !amdaie.logicalobjectfifo<memref<1x1x8x8x4x4xi32, 2 : i32>>
+      %22 = amdaie.dma_cpy_nd(%21[0, 0, 0, 0, 0, 0] [1, 1, 8, 8, 4, 4] [1024, 1024, 128, 16, 4, 1], %0[1, 1, 0, 0, 0, 0] [1, 1, 8, 8, 4, 4] [2048, 1024, 4, 128, 32, 1]) : (!amdaie.logicalobjectfifo<memref<1x1x8x8x4x4xi32, 2 : i32>>, !amdaie.logicalobjectfifo<memref<2x2x32x32xi32, 1 : i32>>)
+      %23 = amdaie.core(%tile_6, in : [%7, %8, %22], out : [%9]) {
+        %24 = amdaie.logicalobjectfifo.access(%arg0, Read) : !amdaie.logicalobjectfifo<memref<1x1x4x8x4x8xi32, 2 : i32>> -> memref<1x1x4x8x4x8xi32, 2 : i32>
+        %25 = amdaie.logicalobjectfifo.access(%arg1, Read) : !amdaie.logicalobjectfifo<memref<1x1x8x4x8x4xi32, 2 : i32>> -> memref<1x1x8x4x8x4xi32, 2 : i32>
+        %26 = amdaie.logicalobjectfifo.access(%arg2, None) : !amdaie.logicalobjectfifo<memref<1x1x8x8x4x4xi32, 2 : i32>> -> memref<1x1x8x8x4x4xi32, 2 : i32>
+        linalg.generic {indexing_maps = [#map1, #map2, #map3], iterator_types = ["parallel", "parallel", "reduction", "parallel", "parallel", "reduction", "parallel", "parallel", "reduction"]} ins(%24, %25 : memref<1x1x4x8x4x8xi32, 2 : i32>, memref<1x1x8x4x8x4xi32, 2 : i32>) outs(%26 : memref<1x1x8x8x4x4xi32, 2 : i32>) {
+        ^bb0(%in: i32, %in_8: i32, %out: i32):
+          %29 = arith.muli %in, %in_8 : i32
+          %30 = arith.addi %out, %29 : i32
+          linalg.yield %30 : i32
+        }
+        %27 = amdaie.logicalobjectfifo.access(%arg2, Read) : !amdaie.logicalobjectfifo<memref<1x1x8x8x4x4xi32, 2 : i32>> -> memref<1x1x8x8x4x4xi32, 2 : i32>
+        %28 = amdaie.logicalobjectfifo.access(%arg2, Write) : !amdaie.logicalobjectfifo<memref<1x1x8x8x4x4xi32, 2 : i32>> -> memref<1x1x8x8x4x4xi32, 2 : i32>
+        linalg.generic {indexing_maps = [#map4, #map4, #map4], iterator_types = ["parallel", "parallel", "parallel", "parallel", "parallel", "parallel"]} ins(%26, %27 : memref<1x1x8x8x4x4xi32, 2 : i32>, memref<1x1x8x8x4x4xi32, 2 : i32>) outs(%28 : memref<1x1x8x8x4x4xi32, 2 : i32>) {
+        ^bb0(%in: i32, %in_8: i32, %out: i32):
+          %29 = arith.addi %in, %in_8 : i32
+          linalg.yield %29 : i32
         }
         amdaie.end
       }
