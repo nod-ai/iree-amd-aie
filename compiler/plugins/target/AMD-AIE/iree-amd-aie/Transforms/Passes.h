@@ -140,6 +140,10 @@ std::unique_ptr<Pass> createAMDAIEFuseFillIntoForallPass();
 /// Hoist an affine.apply op on a scf.for op's induction variable.
 std::unique_ptr<Pass> createAMDAIEHoistForLoopAffineApplyPass();
 
+/// Create a pass to hoist logical objectFifo operations to the scope of its
+/// operands.
+std::unique_ptr<Pass> createAMDAIEHoistLogicalObjFifoPass();
+
 /// Create a pass to transform linalg.generics into a form which benefits later
 /// vectorization passes (to vector and aievec dialects).
 std::unique_ptr<Pass> createAMDAIEInsertLoopsForVectorizationPass();

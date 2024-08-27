@@ -67,6 +67,7 @@ iree_cc_library(
     "AMDAIEFuseFillIntoForall.cpp"
     "AMDAIEFusePackIntoLoop.cpp"
     "AMDAIEHoistForAffineApply.cpp"
+    "AMDAIEHoistLogicalObjFifo.cpp"
     "AMDAIEInsertCores.cpp"
     "AMDAIEInsertLoopsForVectorization.cpp"
     "AMDAIELinkExecutables.cpp" 
