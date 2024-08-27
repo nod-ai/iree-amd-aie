@@ -19,7 +19,6 @@
 #include "iree-amd-aie/IR/AMDAIEOps.h"
 #include "iree-amd-aie/Transforms/AMDAIEUtils.h"
 #include "iree-amd-aie/Transforms/Passes.h"
-#include "iree-amd-aie/Transforms/Transforms.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/IR/IRMapping.h"
 #include "mlir/IR/Iterators.h"
@@ -43,11 +42,25 @@ void remapOperands(Operation *op, IRMapping &mapper) {
   }
 }
 
+/// It is dangerous to erase ops with `rewriter` without erasing them from
+/// `mapper` too, as addresses of Operations/Values can be reused, resulting in
+/// unexpected key-value pairs in `mapper`. Use this utility if `mapper` might
+/// be used after `op` is erased.
+void eraseOp(IRRewriter &rewriter, IRMapping &mapper, Operation *op) {
+  for (Value result : op->getResults()) {
+    mapper.erase(result);
+  }
+  mapper.erase(op);
+  op->dropAllUses();
+  rewriter.eraseOp(op);
+}
+
 //===----------------------------------------------------------------------===//
 // Convert amdaie.core operation to aie.core
 //===----------------------------------------------------------------------===//
 
 namespace {
+
 
 /// Utility to convert vectors of `size` and `stride` into an
 /// `AIE::BDDimLayoutArrayAttr`.
@@ -139,16 +152,14 @@ FailureOr<AIE::ObjectFifoCreateOp> createObjectFifo(
                                        1, std::multiplies<>());
   int64_t targetSize = std::accumulate(targetShape.begin(), targetShape.end(),
                                        1, std::multiplies<>());
-  // TODO(jornt) for now, memory space 1 is used for objectfifos. Maybe refactor
-  // `aie.objectfifo` in the future to support different memory spaces.
   MemRefType memrefType =
       sourceSize < targetSize
           ? MemRefType::get({sourceSize}, srcType.getElementType(),
                             MemRefLayoutAttrInterface{},
-                            rewriter.getI64IntegerAttr(1))
+                            srcType.getMemorySpace())
           : MemRefType::get({targetSize}, dstType.getElementType(),
                             MemRefLayoutAttrInterface{},
-                            rewriter.getI64IntegerAttr(1));
+                            dstType.getMemorySpace());
   AIE::AIEObjectFifoType dtype = AIE::AIEObjectFifoType::get(memrefType);
   auto fifo = rewriter.create<AIE::ObjectFifoCreateOp>(
       rewriter.getUnknownLoc(), symName, srcTile, dstTiles,
@@ -191,10 +202,9 @@ LogicalResult accessOpToAIE(IRRewriter &rewriter,
   }
 
   auto type = cast<MemRefType>(oldReinterpretOp.getResult().getType());
-  // TODO(jornt): for now, memory space 1 is used for objectFifos. Refactor
-  // `aie.objectfifo` to support different memory spaces to avoid hardcoding.
-  MemRefType newType =
-      MemRefType::Builder(type).setMemorySpace(rewriter.getI64IntegerAttr(1));
+
+  MemRefType newType = MemRefType::Builder(type);
+
   llvm::ArrayRef<int64_t> sizes = newType.getShape();
   auto [strides, baseOffset] = getStridesAndOffset(newType);
   auto reinterpretOp = rewriter.create<memref::ReinterpretCastOp>(
@@ -216,6 +226,7 @@ LogicalResult acquireOpToAIE(IRRewriter &rewriter,
                              IRMapping &mapper,
                              SmallVector<Operation *> &toBeErased) {
   LLVM_DEBUG(llvm::dbgs() << "Convert [AMDAIE::LogicalObjectFifoAcquire]\n");
+
   OpBuilder::InsertionGuard guard(rewriter);
   rewriter.setInsertionPoint(acquireOp);
   auto dmaOp =
@@ -231,10 +242,13 @@ LogicalResult acquireOpToAIE(IRRewriter &rewriter,
     return acquireOp.emitError()
            << "input isn't mapped to an `aie.objectifo` operation";
   }
-  AIE::AIEObjectFifoType ofTy =
-      cast<AIE::AIEObjectFifoType>(objFifo.getElemType());
-  MemRefType elementType = MemRefType::Builder(ofTy.getElementType())
-                               .setMemorySpace(rewriter.getI64IntegerAttr(1));
+
+  auto acquireOpType = dyn_cast<LogicalObjectFifoType>(acquireOp.getType());
+  assert(acquireOpType &&
+         "Expected LogicalObjectFifoAcquire to have type "
+         "LogicalObjectFifoType");
+  MemRefType elementType = acquireOpType.getElementType();
+
   auto subviewType = AIE::AIEObjectFifoSubviewType::get(elementType);
   AIE::ObjectFifoPort port =
       acquireOp.getPort() == LogicalObjectFifoPort::Produce
@@ -242,9 +256,11 @@ LogicalResult acquireOpToAIE(IRRewriter &rewriter,
           : AIE::ObjectFifoPort::Consume;
   auto objFifoAquireOp = rewriter.create<AIE::ObjectFifoAcquireOp>(
       rewriter.getUnknownLoc(), subviewType, port, objFifo.getName(), 1);
+
   auto subviewOp = rewriter.create<AIE::ObjectFifoSubviewAccessOp>(
       rewriter.getUnknownLoc(), elementType, objFifoAquireOp.getSubview(),
       rewriter.getIntegerAttr(rewriter.getI32Type(), 0));
+
   // Map acquire op to new acquire + subview op.
   mapper.map(acquireOp.getOperation(), subviewOp.getOperation());
   mapper.map(acquireOp.getResult(), subviewOp.getOutput());
@@ -259,7 +275,7 @@ LogicalResult coreLinalgOpToAIE(IRRewriter &rewriter, linalg::LinalgOp linalgOp,
   OpBuilder::InsertionGuard guard(rewriter);
   rewriter.setInsertionPoint(linalgOp);
   rewriter.clone(*(linalgOp.getOperation()), mapper);
-  rewriter.eraseOp(linalgOp);
+  eraseOp(rewriter, mapper, linalgOp);
   return success();
 }
 
@@ -422,8 +438,7 @@ LogicalResult coreToAIE(IRRewriter &rewriter, AMDAIE::CoreOp coreOp,
     return failure();
   }
   for (auto *op : toBeErased) {
-    op->dropAllUses();
-    rewriter.eraseOp(op);
+    eraseOp(rewriter, mapper, op);
   }
 
   mapper.map(coreOp.getResult(), aieCoreOp.getResult());
@@ -687,7 +702,7 @@ LogicalResult controlCodeToAie(IRRewriter &rewriter,
                                          bindingsMapper);
                 })
                 .Case<AMDAIE::EndOp>([&](auto endOp) {
-                  rewriter.eraseOp(endOp);
+                  eraseOp(rewriter, mapper, endOp);
                   return success();
                 })
                 .Default([&](Operation *op) {
@@ -701,8 +716,7 @@ LogicalResult controlCodeToAie(IRRewriter &rewriter,
       });
   if (res.wasInterrupted()) return failure();
   for (auto *op : toBeErased) {
-    op->dropAllUses();
-    rewriter.eraseOp(op);
+    eraseOp(rewriter, mapper, op);
   }
   return success();
 }
@@ -917,7 +931,8 @@ LogicalResult lowerToAIE(ModuleOp moduleOp) {
     rewriter.moveOpBefore(ipuFuncOp, deviceBlock, deviceBlock->end());
     // After walking the FuncOp, it has been converted into a DeviceOp and can
     // safely be erased.
-    rewriter.eraseOp(funcOp);
+    eraseOp(rewriter, mapper, funcOp);
+
     return WalkResult::advance();
   });
   if (funcRes.wasInterrupted()) return failure();
@@ -996,7 +1011,7 @@ class AMDAIELowerToAIEPass
   }
 
   AMDAIELowerToAIEPass() = default;
-  AMDAIELowerToAIEPass(const AMDAIELowerToAIEPass &pass) {};
+  AMDAIELowerToAIEPass(const AMDAIELowerToAIEPass &pass){};
   void runOnOperation() override;
 };
 

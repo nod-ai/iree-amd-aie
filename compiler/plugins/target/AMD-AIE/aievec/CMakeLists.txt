@@ -66,6 +66,7 @@ iree_cc_library(
     ::AIEVecOpsGen
     ::AIEVecDialectGen
     ::AIEVecAttrsGen
+    ::AIEVecXLLVMOpsGen
     MLIRIR
 )
 

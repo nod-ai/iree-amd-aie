@@ -43,7 +43,6 @@ struct AMDAIEOptions {
   // Print MLIR timing summary for the MLIR passes in aie2xclbin.
   bool aie2xclbinTiming{false};
 
- public:
   void bindOptions(OptionsBinder &binder) {
     static llvm::cl::OptionCategory category("AMD AIE Options");
     binder.opt<std::string>(
