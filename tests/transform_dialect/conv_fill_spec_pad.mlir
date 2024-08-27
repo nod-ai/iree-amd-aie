@@ -183,11 +183,11 @@ module attributes { transform.with_named_sequence } {
 
     transform.include @cleanup failures(propagate) (%variant_op) : (!any) -> ()
 
-    // %conv_pre_contract =
-    //    transform.structured.match ops{["linalg.conv_1d_ncw_fcw"]}
-    //            in %fused_for_all : (!any) -> !any
+    %conv_pre_contract =
+       transform.structured.match ops{["linalg.conv_1d_ncw_fcw"]}
+               in %fused_for_all : (!any) -> !any
 
-    // transform.structured.vectorize %conv_pre_contract : !any
+    transform.structured.vectorize %conv_pre_contract : !any
 
     %func_op = transform.structured.match ops{["func.func"]} in %variant_op : (!transform.any_op) -> !transform.any_op
     transform.iree.eliminate_empty_tensors %func_op : (!any) -> ()
@@ -214,4 +214,5 @@ module attributes { transform.with_named_sequence } {
 // CHECK:        scf.for
 // CHECK:        scf.for
 // CHECK-NOT:    scf.for
+// CHECK:        vector.contract
 // CHECK:        return
