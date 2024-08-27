@@ -34,6 +34,7 @@ iree_lit_test_suite(
     "fuse_fill_into_forall.mlir"
     "fuse_pack_into_loop.mlir"
     "hoist_for_affine_apply.mlir"
+    "hoist_logical_obj_fifo.mlir"
     "insert_cores.mlir"
     "insert_loops_for_vectorization.mlir"
     "localize_logical_objectfifo.mlir"

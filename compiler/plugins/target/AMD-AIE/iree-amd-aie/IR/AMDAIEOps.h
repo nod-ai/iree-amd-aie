@@ -7,16 +7,16 @@
 #ifndef IREE_COMPILER_AMDAIE_OPS_H_
 #define IREE_COMPILER_AMDAIE_OPS_H_
 
+#include "iree-amd-aie/IR/AMDAIEAttrs.h"
+#include "iree-amd-aie/IR/AMDAIEDmaOpInterface.h"
+#include "iree-amd-aie/IR/AMDAIELogicalObjFifoOpInterface.h"
+#include "iree-amd-aie/IR/AMDAIETypes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/Interfaces/CopyOpInterface.h"
 #include "mlir/Interfaces/ViewLikeInterface.h"
-
-#include "iree-amd-aie/IR/AMDAIEAttrs.h"
-#include "iree-amd-aie/IR/AMDAIEDmaOpInterface.h"
-#include "iree-amd-aie/IR/AMDAIETypes.h"
 
 // clang-format off
 #include "iree-amd-aie/IR/AMDAIEAttrs.h"

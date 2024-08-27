@@ -420,18 +420,19 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
       %tile_0_2 = amdaie.tile(%c0, %c2)
       %alloc_1 = memref.alloc() : memref<32x32xi32, 1>
       %alloc_2 = memref.alloc() : memref<4x8x4x8xi32, 2>
-      %obj0 = amdaie.logicalobjectfifo.from_memref %2, {%tile_0_0} : memref<32x64xi32> -> !amdaie.logicalobjectfifo<memref<2048xi32>>
+      %placeholder = amdaie.logicalobjectfifo.placeholder{%tile_0_0} : !amdaie.logicalobjectfifo<memref<2048xi32>>
       %obj1 = amdaie.logicalobjectfifo.from_memref %alloc_1, {%tile_0_1} : memref<32x32xi32, 1> -> !amdaie.logicalobjectfifo<memref<1024xi32, 1>>
       %obj2 = amdaie.logicalobjectfifo.from_memref %alloc_2, {%tile_0_2} : memref<4x8x4x8xi32, 2> -> !amdaie.logicalobjectfifo<memref<1024xi32, 2>>
       %dma0 = amdaie.circular_dma_cpy_nd(%obj1[] [] [], %obj2[] [] []) : (!amdaie.logicalobjectfifo<memref<1024xi32, 1>>, !amdaie.logicalobjectfifo<memref<1024xi32, 2>>)
-      %dma_target_l3 = amdaie.circular_dma_cpy_nd(%obj0[] [] [], %obj1[] [] []) : (!amdaie.logicalobjectfifo<memref<2048xi32>>, !amdaie.logicalobjectfifo<memref<1024xi32, 1>>)
+      %dma_target_l3 = amdaie.circular_dma_cpy_nd(%placeholder[] [] [], %obj1[] [] []) : (!amdaie.logicalobjectfifo<memref<2048xi32>>, !amdaie.logicalobjectfifo<memref<1024xi32, 1>>)
       amdaie.logicalobjectfifo.link[%dma0] -> [%dma_target_l3] ()
       memref.dealloc %alloc_2 : memref<4x8x4x8xi32, 2>
       memref.dealloc %alloc_1 : memref<32x32xi32, 1>
       // expected-error @+1 {{could not convert to AIEDialect ops}}
       amdaie.controlcode {
+        %obj0 = amdaie.logicalobjectfifo.from_memref %2, {%tile_0_0} : memref<32x64xi32> -> !amdaie.logicalobjectfifo<memref<2048xi32>>
         // expected-error @+1 {{op expected to have a target BD ID op}}
-        %npu_dma_0 = amdaie.npu.dma_cpy_nd %dma_target_l3([%c0, %c32] [%c32, %c32] [%c64, %c1], [] [] [])
+        %npu_dma_0 = amdaie.npu.dma_cpy_nd %dma_target_l3(%obj0[%c0, %c32] [%c32, %c32] [%c64, %c1], [] [] []) : target_type = !amdaie.logicalobjectfifo<memref<2048xi32>>
         amdaie.npu.dma_wait(%npu_dma_0, S2MM)
         amdaie.end
       }
@@ -464,18 +465,19 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
       %bd_id_0 = amdaie.bd_id(%tile_0_0, 0)
       %alloc_1 = memref.alloc() : memref<32x32xi32, 1>
       %alloc_2 = memref.alloc() : memref<4x8x4x8xi32, 2>
-      %obj0 = amdaie.logicalobjectfifo.from_memref %2, {%tile_0_0} : memref<32x64xi32> -> !amdaie.logicalobjectfifo<memref<2048xi32>>
+      %placeholder = amdaie.logicalobjectfifo.placeholder{%tile_0_0} : !amdaie.logicalobjectfifo<memref<2048xi32>>
       %obj1 = amdaie.logicalobjectfifo.from_memref %alloc_1, {%tile_0_1} : memref<32x32xi32, 1> -> !amdaie.logicalobjectfifo<memref<1024xi32, 1>>
       %obj2 = amdaie.logicalobjectfifo.from_memref %alloc_2, {%tile_0_2} : memref<4x8x4x8xi32, 2> -> !amdaie.logicalobjectfifo<memref<1024xi32, 2>>
       %dma0 = amdaie.circular_dma_cpy_nd(%obj1[] [] [], %obj2[] [] []) : (!amdaie.logicalobjectfifo<memref<1024xi32, 1>>, !amdaie.logicalobjectfifo<memref<1024xi32, 2>>)
-      %dma_target_l3 = amdaie.circular_dma_cpy_nd(%obj0[] [] [], %obj1[] [] []) : (!amdaie.logicalobjectfifo<memref<2048xi32>>, !amdaie.logicalobjectfifo<memref<1024xi32, 1>>)
+      %dma_target_l3 = amdaie.circular_dma_cpy_nd(%placeholder[] [] [], %obj1[] [] []) : (!amdaie.logicalobjectfifo<memref<2048xi32>>, !amdaie.logicalobjectfifo<memref<1024xi32, 1>>)
       amdaie.logicalobjectfifo.link[%dma0] -> [%dma_target_l3] ()
       memref.dealloc %alloc_2 : memref<4x8x4x8xi32, 2>
       memref.dealloc %alloc_1 : memref<32x32xi32, 1>
       // expected-error @+1 {{could not convert to AIEDialect ops}}
       amdaie.controlcode {
+        %obj0 = amdaie.logicalobjectfifo.from_memref %2, {%tile_0_0} : memref<32x64xi32> -> !amdaie.logicalobjectfifo<memref<2048xi32>>
         // expected-error @+1 {{op expected target addressing for DMA with target on L3}}
-        %npu_dma_0 = amdaie.npu.dma_cpy_nd %dma_target_l3([] [] [] bd_id = %bd_id_0, [] [] [])
+        %npu_dma_0 = amdaie.npu.dma_cpy_nd %dma_target_l3(%obj0[] [] [] bd_id = %bd_id_0, [] [] []) : target_type = !amdaie.logicalobjectfifo<memref<2048xi32>>
         amdaie.npu.dma_wait(%npu_dma_0, S2MM)
         amdaie.end
       }
@@ -506,18 +508,19 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
       %bd_id_0 = amdaie.bd_id(%tile_0_0, 0)
       %alloc_1 = memref.alloc() : memref<32x32xi32, 1>
       %alloc_2 = memref.alloc() : memref<4x8x4x8xi32, 2>
-      %obj0 = amdaie.logicalobjectfifo.from_memref %2, {%tile_0_0} : memref<32x64xi32> -> !amdaie.logicalobjectfifo<memref<2048xi32>>
+      %placeholder = amdaie.logicalobjectfifo.placeholder{%tile_0_0} : !amdaie.logicalobjectfifo<memref<2048xi32>>
       %obj1 = amdaie.logicalobjectfifo.from_memref %alloc_1, {%tile_0_1} : memref<32x32xi32, 1> -> !amdaie.logicalobjectfifo<memref<1024xi32, 1>>
       %obj2 = amdaie.logicalobjectfifo.from_memref %alloc_2, {%tile_0_2} : memref<4x8x4x8xi32, 2> -> !amdaie.logicalobjectfifo<memref<1024xi32, 2>>
       %dma0 = amdaie.circular_dma_cpy_nd(%obj1[] [] [], %obj2[] [] []) : (!amdaie.logicalobjectfifo<memref<1024xi32, 1>>, !amdaie.logicalobjectfifo<memref<1024xi32, 2>>)
-      %dma_target_l3 = amdaie.circular_dma_cpy_nd(%obj0[] [] [], %obj1[] [] []) : (!amdaie.logicalobjectfifo<memref<2048xi32>>, !amdaie.logicalobjectfifo<memref<1024xi32, 1>>)
+      %dma_target_l3 = amdaie.circular_dma_cpy_nd(%placeholder[] [] [], %obj1[] [] []) : (!amdaie.logicalobjectfifo<memref<2048xi32>>, !amdaie.logicalobjectfifo<memref<1024xi32, 1>>)
       amdaie.logicalobjectfifo.link[%dma0] -> [%dma_target_l3] ()
       memref.dealloc %alloc_2 : memref<4x8x4x8xi32, 2>
       memref.dealloc %alloc_1 : memref<32x32xi32, 1>
       // expected-error @+1 {{could not convert to AIEDialect ops}}
       amdaie.controlcode {
+        %obj0 = amdaie.logicalobjectfifo.from_memref %2, {%tile_0_0} : memref<32x64xi32> -> !amdaie.logicalobjectfifo<memref<2048xi32>>
         // expected-error @+1 {{could not canonicalize for AIE}}
-        %npu_dma_0 = amdaie.npu.dma_cpy_nd %dma_target_l3([0, 0, 0, 32] [1, 32, 2, 32] [0, 64, 0, 1] bd_id = %bd_id_0, [] [] [])
+        %npu_dma_0 = amdaie.npu.dma_cpy_nd %dma_target_l3(%obj0[0, 0, 0, 32] [1, 32, 2, 32] [0, 64, 0, 1] bd_id = %bd_id_0, [] [] []) : target_type = !amdaie.logicalobjectfifo<memref<2048xi32>>
         amdaie.end
       }
     }
@@ -547,18 +550,19 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
       %bd_id_0 = amdaie.bd_id(%tile_0_0, 0)
       %alloc_1 = memref.alloc() : memref<32x32xi32, 1>
       %alloc_2 = memref.alloc() : memref<4x8x4x8xi32, 2>
-      %obj0 = amdaie.logicalobjectfifo.from_memref %2, {%tile_0_0} : memref<32x64xi32> -> !amdaie.logicalobjectfifo<memref<2048xi32>>
+      %placeholder = amdaie.logicalobjectfifo.placeholder{%tile_0_0} : !amdaie.logicalobjectfifo<memref<2048xi32>>
       %obj1 = amdaie.logicalobjectfifo.from_memref %alloc_1, {%tile_0_1} : memref<32x32xi32, 1> -> !amdaie.logicalobjectfifo<memref<1024xi32, 1>>
       %obj2 = amdaie.logicalobjectfifo.from_memref %alloc_2, {%tile_0_2} : memref<4x8x4x8xi32, 2> -> !amdaie.logicalobjectfifo<memref<1024xi32, 2>>
       %dma0 = amdaie.circular_dma_cpy_nd(%obj1[] [] [], %obj2[] [] []) : (!amdaie.logicalobjectfifo<memref<1024xi32, 1>>, !amdaie.logicalobjectfifo<memref<1024xi32, 2>>)
-      %dma_target_l3 = amdaie.circular_dma_cpy_nd(%obj0[] [] [], %obj1[] [] []) : (!amdaie.logicalobjectfifo<memref<2048xi32>>, !amdaie.logicalobjectfifo<memref<1024xi32, 1>>)
+      %dma_target_l3 = amdaie.circular_dma_cpy_nd(%placeholder[] [] [], %obj1[] [] []) : (!amdaie.logicalobjectfifo<memref<2048xi32>>, !amdaie.logicalobjectfifo<memref<1024xi32, 1>>)
       amdaie.logicalobjectfifo.link[%dma0] -> [%dma_target_l3] ()
       memref.dealloc %alloc_2 : memref<4x8x4x8xi32, 2>
       memref.dealloc %alloc_1 : memref<32x32xi32, 1>
       // expected-error @+1 {{could not convert to AIEDialect ops}}
       amdaie.controlcode {
+        %obj0 = amdaie.logicalobjectfifo.from_memref %2, {%tile_0_0} : memref<32x64xi32> -> !amdaie.logicalobjectfifo<memref<2048xi32>>
         // expected-error @+1 {{could not canonicalize for AIE}}
-        %npu_dma_0 = amdaie.npu.dma_cpy_nd %dma_target_l3([0, 0, 0, 32] [2, 8, 2, 32] [0, 0, 64, 1] bd_id = %bd_id_0, [] [] [])
+        %npu_dma_0 = amdaie.npu.dma_cpy_nd %dma_target_l3(%obj0[0, 0, 0, 32] [2, 8, 2, 32] [0, 0, 64, 1] bd_id = %bd_id_0, [] [] []) : target_type = !amdaie.logicalobjectfifo<memref<2048xi32>>
         amdaie.end
       }
     }
@@ -591,16 +595,17 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
       %bd_id_0 = amdaie.bd_id(%tile_0_0, 0)
       %alloc_1 = memref.alloc() : memref<32x32xi32, 1>
       %alloc_2 = memref.alloc() : memref<4x8x4x8xi32, 2>
-      %obj0 = amdaie.logicalobjectfifo.from_memref %2, {%tile_0_0} : memref<32x64xi32> -> !amdaie.logicalobjectfifo<memref<2048xi32>>
+      %placeholder = amdaie.logicalobjectfifo.placeholder{%tile_0_0} : !amdaie.logicalobjectfifo<memref<2048xi32>>
       %obj1 = amdaie.logicalobjectfifo.from_memref %alloc_1, {%tile_0_1} : memref<32x32xi32, 1> -> !amdaie.logicalobjectfifo<memref<1024xi32, 1>>
       %obj2 = amdaie.logicalobjectfifo.from_memref %alloc_2, {%tile_0_2} : memref<4x8x4x8xi32, 2> -> !amdaie.logicalobjectfifo<memref<1024xi32, 2>>
       %dma0 = amdaie.circular_dma_cpy_nd(%obj1[] [] [], %obj2[] [] []) : (!amdaie.logicalobjectfifo<memref<1024xi32, 1>>, !amdaie.logicalobjectfifo<memref<1024xi32, 2>>)
-      %dma_target_l3 = amdaie.circular_dma_cpy_nd(%obj0[] [] [], %obj1[] [] []) : (!amdaie.logicalobjectfifo<memref<2048xi32>>, !amdaie.logicalobjectfifo<memref<1024xi32, 1>>)
+      %dma_target_l3 = amdaie.circular_dma_cpy_nd(%placeholder[] [] [], %obj1[] [] []) : (!amdaie.logicalobjectfifo<memref<2048xi32>>, !amdaie.logicalobjectfifo<memref<1024xi32, 1>>)
       amdaie.logicalobjectfifo.link[%dma0] -> [%dma_target_l3] ()
       memref.dealloc %alloc_2 : memref<4x8x4x8xi32, 2>
       memref.dealloc %alloc_1 : memref<32x32xi32, 1>
       amdaie.controlcode {
-        %npu_dma_0 = amdaie.npu.dma_cpy_nd %dma_target_l3([0, 0, 32] [1, 2, 32] [0, 0, 1] bd_id = %bd_id_0, [] [] [])
+        %obj0 = amdaie.logicalobjectfifo.from_memref %2, {%tile_0_0} : memref<32x64xi32> -> !amdaie.logicalobjectfifo<memref<2048xi32>>
+        %npu_dma_0 = amdaie.npu.dma_cpy_nd %dma_target_l3(%obj0[0, 0, 32] [1, 2, 32] [0, 0, 1] bd_id = %bd_id_0, [] [] []) : target_type = !amdaie.logicalobjectfifo<memref<2048xi32>>
         amdaie.end
       }
     }
@@ -633,16 +638,17 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
       %bd_id_0 = amdaie.bd_id(%tile_0_0, 0)
       %alloc_1 = memref.alloc() : memref<32x32xi32, 1>
       %alloc_2 = memref.alloc() : memref<4x8x4x8xi32, 2>
-      %obj0 = amdaie.logicalobjectfifo.from_memref %2, {%tile_0_0} : memref<32x64xi32> -> !amdaie.logicalobjectfifo<memref<2048xi32>>
+      %placeholder = amdaie.logicalobjectfifo.placeholder{%tile_0_0} : !amdaie.logicalobjectfifo<memref<2048xi32>>
       %obj1 = amdaie.logicalobjectfifo.from_memref %alloc_1, {%tile_0_1} : memref<32x32xi32, 1> -> !amdaie.logicalobjectfifo<memref<1024xi32, 1>>
       %obj2 = amdaie.logicalobjectfifo.from_memref %alloc_2, {%tile_0_2} : memref<4x8x4x8xi32, 2> -> !amdaie.logicalobjectfifo<memref<1024xi32, 2>>
       %dma0 = amdaie.circular_dma_cpy_nd(%obj1[] [] [], %obj2[] [] []) : (!amdaie.logicalobjectfifo<memref<1024xi32, 1>>, !amdaie.logicalobjectfifo<memref<1024xi32, 2>>)
-      %dma_target_l3 = amdaie.circular_dma_cpy_nd(%obj0[] [] [], %obj1[] [] []) : (!amdaie.logicalobjectfifo<memref<2048xi32>>, !amdaie.logicalobjectfifo<memref<1024xi32, 1>>)
+      %dma_target_l3 = amdaie.circular_dma_cpy_nd(%placeholder[] [] [], %obj1[] [] []) : (!amdaie.logicalobjectfifo<memref<2048xi32>>, !amdaie.logicalobjectfifo<memref<1024xi32, 1>>)
       amdaie.logicalobjectfifo.link[%dma0] -> [%dma_target_l3] ()
       memref.dealloc %alloc_2 : memref<4x8x4x8xi32, 2>
       memref.dealloc %alloc_1 : memref<32x32xi32, 1>
       amdaie.controlcode {
-        %npu_dma_0 = amdaie.npu.dma_cpy_nd %dma_target_l3([0, 0, 0, 32] [2, 1, 2, 32] [2, 0, 16, 1] bd_id = %bd_id_0, [] [] [])
+        %obj0 = amdaie.logicalobjectfifo.from_memref %2, {%tile_0_0} : memref<32x64xi32> -> !amdaie.logicalobjectfifo<memref<2048xi32>>
+        %npu_dma_0 = amdaie.npu.dma_cpy_nd %dma_target_l3(%obj0[0, 0, 0, 32] [2, 1, 2, 32] [2, 0, 16, 1] bd_id = %bd_id_0, [] [] []) : target_type = !amdaie.logicalobjectfifo<memref<2048xi32>>
         amdaie.end
       }
     }
@@ -707,24 +713,25 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
       %bd_id_0 = amdaie.bd_id(%tile_0_0, 0)
       %alloc_1 = memref.alloc() : memref<32x32xi32, 1>
       %alloc_2 = memref.alloc() : memref<4x8x4x8xi32, 2>
-      %obj0 = amdaie.logicalobjectfifo.from_memref %2, {%tile_0_0} : memref<32x64xi32> -> !amdaie.logicalobjectfifo<memref<2048xi32>>
+      %placeholder = amdaie.logicalobjectfifo.placeholder{%tile_0_0} : !amdaie.logicalobjectfifo<memref<2048xi32>>
       %obj1 = amdaie.logicalobjectfifo.from_memref %alloc_1, {%tile_0_1} : memref<32x32xi32, 1> -> !amdaie.logicalobjectfifo<memref<1024xi32, 1>>
       %obj2 = amdaie.logicalobjectfifo.from_memref %alloc_2, {%tile_0_2} : memref<4x8x4x8xi32, 2> -> !amdaie.logicalobjectfifo<memref<1024xi32, 2>>
       %dma0 = amdaie.circular_dma_cpy_nd(%obj1[] [] [], %obj2[] [] []) : (!amdaie.logicalobjectfifo<memref<1024xi32, 1>>, !amdaie.logicalobjectfifo<memref<1024xi32, 2>>)
-      %dma_target_l3 = amdaie.circular_dma_cpy_nd(%obj0[] [] [], %obj1[] [] []) : (!amdaie.logicalobjectfifo<memref<2048xi32>>, !amdaie.logicalobjectfifo<memref<1024xi32, 1>>)
-      %dma_source_l3 = amdaie.circular_dma_cpy_nd(%obj1[] [] [], %obj0[] [] []) : (!amdaie.logicalobjectfifo<memref<1024xi32, 1>>, !amdaie.logicalobjectfifo<memref<2048xi32>>)
-      %dma1 = amdaie.circular_dma_cpy_nd(%obj0[] [] [], %obj1[] [] []) : (!amdaie.logicalobjectfifo<memref<2048xi32>>, !amdaie.logicalobjectfifo<memref<1024xi32, 1>>)
+      %dma_target_l3 = amdaie.circular_dma_cpy_nd(%placeholder[] [] [], %obj1[] [] []) : (!amdaie.logicalobjectfifo<memref<2048xi32>>, !amdaie.logicalobjectfifo<memref<1024xi32, 1>>)
+      %dma_source_l3 = amdaie.circular_dma_cpy_nd(%obj1[] [] [], %placeholder[] [] []) : (!amdaie.logicalobjectfifo<memref<1024xi32, 1>>, !amdaie.logicalobjectfifo<memref<2048xi32>>)
+      %dma1 = amdaie.circular_dma_cpy_nd(%placeholder[] [] [], %obj1[] [] []) : (!amdaie.logicalobjectfifo<memref<2048xi32>>, !amdaie.logicalobjectfifo<memref<1024xi32, 1>>)
       amdaie.logicalobjectfifo.link[%dma0] -> [%dma_target_l3] ()
       memref.dealloc %alloc_2 : memref<4x8x4x8xi32, 2>
       memref.dealloc %alloc_1 : memref<32x32xi32, 1>
       amdaie.controlcode {
-        %npu_dma_0 = amdaie.npu.dma_cpy_nd %dma_target_l3([%c0, %c32] [%c32, %c32] [%c64, %c1] bd_id = %bd_id_0, [] [] [])
+        %obj0 = amdaie.logicalobjectfifo.from_memref %2, {%tile_0_0} : memref<32x64xi32> -> !amdaie.logicalobjectfifo<memref<2048xi32>>
+        %npu_dma_0 = amdaie.npu.dma_cpy_nd %dma_target_l3(%obj0[%c0, %c32] [%c32, %c32] [%c64, %c1] bd_id = %bd_id_0, [] [] []) : target_type = !amdaie.logicalobjectfifo<memref<2048xi32>>
         amdaie.npu.dma_wait(%npu_dma_0, S2MM)
-        %npu_dma_1 = amdaie.npu.dma_cpy_nd %dma_target_l3([%c0] [%c1024] [%c1] bd_id = %bd_id_0, [] [] [])
+        %npu_dma_1 = amdaie.npu.dma_cpy_nd %dma_target_l3(%obj0[%c0] [%c1024] [%c1] bd_id = %bd_id_0, [] [] []) : target_type = !amdaie.logicalobjectfifo<memref<2048xi32>>
         amdaie.npu.dma_wait(%npu_dma_1, S2MM)
-        %npu_dma_2 = amdaie.npu.dma_cpy_nd %dma_source_l3([] [] [], [%c0, %c32] [%c32, %c32] [%c64, %c1] bd_id = %bd_id_0)
+        %npu_dma_2 = amdaie.npu.dma_cpy_nd %dma_source_l3([] [] [], %obj0[%c0, %c32] [%c32, %c32] [%c64, %c1] bd_id = %bd_id_0) : source_type = !amdaie.logicalobjectfifo<memref<2048xi32>>
         amdaie.npu.dma_wait(%npu_dma_2, MM2S)
-        %npu_dma_3 = amdaie.npu.dma_cpy_nd %dma_source_l3([] [] [], [%c0] [%c2048] [%c1] bd_id = %bd_id_0)
+        %npu_dma_3 = amdaie.npu.dma_cpy_nd %dma_source_l3([] [] [], %obj0[%c0] [%c2048] [%c1] bd_id = %bd_id_0) : source_type = !amdaie.logicalobjectfifo<memref<2048xi32>>
         amdaie.npu.dma_wait(%npu_dma_3, MM2S)
         amdaie.end
       }
@@ -736,12 +743,13 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 // -----
 
 // CHECK:       aie.device(npu1_4col) {
-// CHECK:         %[[TILE_0_0:.*]] = aie.tile(0, 0)
-// CHECK:         %[[TILE_0_1:.*]] = aie.tile(0, 1)
+// CHECK-DAG:     %[[TILE_0_0:.*]] = aie.tile(0, 0)
+// CHECK-DAG:     %[[TILE_0_1:.*]] = aie.tile(0, 1)
+// CHECK-DAG:     %[[TILE_1_0:.*]] = aie.tile(1, 0)
 // CHECK:         aie.objectfifo @[[OBJ0:.*]](%[[TILE_0_0]], {%[[TILE_0_1]]}, 2 : i32) : !aie.objectfifo<memref<1024xbf16, 1 : i32>>
-// CHECK:         aie.objectfifo @[[OBJ1:.*]](%[[TILE_0_0]], {%[[TILE_0_1]]}, 2 : i32) : !aie.objectfifo<memref<1024xbf16, 1 : i32>>
-// CHECK:         aie.objectfifo @[[OBJ2:.*]](%[[TILE_0_1]]
-// CHECK-SAME:         %[[TILE_0_0]]}, 2 : i32) : !aie.objectfifo<memref<1024xf32>>
+// CHECK:         aie.objectfifo @[[OBJ1:.*]](%[[TILE_1_0]], {%[[TILE_0_1]]}, 2 : i32) : !aie.objectfifo<memref<1024xbf16, 1 : i32>>
+// CHECK:         aie.objectfifo @[[OBJ2:.*]](%[[TILE_0_1]] 
+// CHECK-SAME:    {%[[TILE_1_0]]}, 2 : i32) : !aie.objectfifo<memref<1024xf32>>
 // CHECK:         aiex.runtime_sequence @bf16_f32_lit_test
 // CHECK-SAME:         (%[[LHS:.*]]: memref<32x32xbf16>, %[[RHS:.*]]: memref<32x32xbf16>, %[[OUT:.*]]: memref<32x32xf32>) {
 // CHECK:           aiex.npu.dma_memcpy_nd
@@ -784,23 +792,27 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
       %2 = amdaie.logicalobjectfifo.from_memref %alloc_0, {%tile} : memref<1x2x32x16xbf16, 1 : i32> -> !amdaie.logicalobjectfifo<memref<2x1x16x32xbf16, 1 : i32>, 2>
       %3 = hal.interface.binding.subspan layout(#pipeline_layout) set(0) binding(0) alignment(64) offset(%c0) flags(ReadOnly) : memref<32x32xbf16>
       %tile_1 = amdaie.tile(%c0, %c0)
+      %tile_2 = amdaie.tile(%c1, %c0)
       %bd_id = amdaie.bd_id(%tile_1, 2)
       %bd_id_2 = amdaie.bd_id(%tile_1, 1)
       %bd_id_3 = amdaie.bd_id(%tile_1, 0)
-      %4 = amdaie.logicalobjectfifo.from_memref %3, {%tile_1} : memref<32x32xbf16> -> !amdaie.logicalobjectfifo<memref<32x32xbf16>>
+      %placeholder0 = amdaie.logicalobjectfifo.placeholder{%tile_1} : !amdaie.logicalobjectfifo<memref<32x32xbf16>>
       memref.assume_alignment %3, 64 : memref<32x32xbf16>
       %5 = hal.interface.binding.subspan layout(#pipeline_layout) set(0) binding(1) alignment(64) offset(%c0) flags(ReadOnly) : memref<32x32xbf16>
-      %6 = amdaie.logicalobjectfifo.from_memref %5, {%tile_1} : memref<32x32xbf16> -> !amdaie.logicalobjectfifo<memref<32x32xbf16>>
+      %placeholder1 = amdaie.logicalobjectfifo.placeholder{%tile_2} : !amdaie.logicalobjectfifo<memref<32x32xbf16>>
       memref.assume_alignment %5, 64 : memref<32x32xbf16>
       %7 = hal.interface.binding.subspan layout(#pipeline_layout) set(0) binding(2) alignment(64) offset(%c0) : memref<32x32xf32>
-      %8 = amdaie.logicalobjectfifo.from_memref %7, {%tile_1} : memref<32x32xf32> -> !amdaie.logicalobjectfifo<memref<1024xf32>>
-      %9 = amdaie.circular_dma_cpy_nd(%2[] [] [], %4[] [] []) : (!amdaie.logicalobjectfifo<memref<2x1x16x32xbf16, 1 : i32>, 2>, !amdaie.logicalobjectfifo<memref<32x32xbf16>>)
-      %10 = amdaie.circular_dma_cpy_nd(%1[] [] [], %6[] [] []) : (!amdaie.logicalobjectfifo<memref<1x2x32x16xbf16, 1 : i32>, 2>, !amdaie.logicalobjectfifo<memref<32x32xbf16>>)
-      %11 = amdaie.circular_dma_cpy_nd(%8[] [] [], %0[%c0, %c0, %c0, %c0] [%c2, %c16, %c2, %c16] [%c512, %c16, %c256, %c1]) : (!amdaie.logicalobjectfifo<memref<1024xf32>>, !amdaie.logicalobjectfifo<memref<2x2x16x16xf32, 1 : i32>, 2>)
+      %placeholder2 = amdaie.logicalobjectfifo.placeholder{%tile_2} : !amdaie.logicalobjectfifo<memref<1024xf32>>
+      %9 = amdaie.circular_dma_cpy_nd(%2[] [] [], %placeholder0[] [] []) : (!amdaie.logicalobjectfifo<memref<2x1x16x32xbf16, 1 : i32>, 2>, !amdaie.logicalobjectfifo<memref<32x32xbf16>>)
+      %10 = amdaie.circular_dma_cpy_nd(%1[] [] [], %placeholder1[] [] []) : (!amdaie.logicalobjectfifo<memref<1x2x32x16xbf16, 1 : i32>, 2>, !amdaie.logicalobjectfifo<memref<32x32xbf16>>)
+      %11 = amdaie.circular_dma_cpy_nd(%placeholder2[] [] [], %0[%c0, %c0, %c0, %c0] [%c2, %c16, %c2, %c16] [%c512, %c16, %c256, %c1]) : (!amdaie.logicalobjectfifo<memref<1024xf32>>, !amdaie.logicalobjectfifo<memref<2x2x16x16xf32, 1 : i32>, 2>)
       amdaie.controlcode {
-        %12 = amdaie.npu.dma_cpy_nd %11([%c0] [%c1024] [%c1] bd_id = %bd_id_3, [] [] [])
-        %13 = amdaie.npu.dma_cpy_nd %10([] [] [], [%c0, %c1, %c2] [%c2, %c32, %c16] [%c16, %c32, %c1] bd_id = %bd_id_2)
-        %14 = amdaie.npu.dma_cpy_nd %9([] [] [], [%c0] [%c1024] [%c1] bd_id = %bd_id)
+        %obj0 = amdaie.logicalobjectfifo.from_memref %3, {%tile_1} : memref<32x32xbf16> -> !amdaie.logicalobjectfifo<memref<32x32xbf16>>
+        %obj1 = amdaie.logicalobjectfifo.from_memref %5, {%tile_1} : memref<32x32xbf16> -> !amdaie.logicalobjectfifo<memref<32x32xbf16>>
+        %obj2 = amdaie.logicalobjectfifo.from_memref %7, {%tile_1} : memref<32x32xf32> -> !amdaie.logicalobjectfifo<memref<1024xf32>>
+        %12 = amdaie.npu.dma_cpy_nd %11(%obj2[%c0] [%c1024] [%c1] bd_id = %bd_id_3, [] [] []) : target_type = !amdaie.logicalobjectfifo<memref<1024xf32>>
+        %13 = amdaie.npu.dma_cpy_nd %10([] [] [], %obj1[%c0, %c1, %c2] [%c2, %c32, %c16] [%c16, %c32, %c1] bd_id = %bd_id_2) : source_type = !amdaie.logicalobjectfifo<memref<32x32xbf16>>
+        %14 = amdaie.npu.dma_cpy_nd %9([] [] [], %obj0[%c0] [%c1024] [%c1] bd_id = %bd_id) : source_type = !amdaie.logicalobjectfifo<memref<32x32xbf16>>
         amdaie.npu.dma_wait(%12, S2MM)
         amdaie.npu.dma_wait(%13, MM2S)
         amdaie.npu.dma_wait(%14, MM2S)
@@ -837,18 +849,19 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
       %bd_id_0 = amdaie.bd_id(%tile_0_0, 0)
       %alloc_1 = memref.alloc() : memref<32x32xi32, 1>
       %alloc_2 = memref.alloc() : memref<4x8x4x8xi32, 2>
-      %obj0 = amdaie.logicalobjectfifo.from_memref %2, {%tile_0_0} : memref<32x16x64x128x32xi32> -> !amdaie.logicalobjectfifo<memref<32x16x64x128x32xi32>>
+      %placeholder = amdaie.logicalobjectfifo.placeholder{%tile_0_0} : !amdaie.logicalobjectfifo<memref<32x16x64x128x32xi32>>
       %obj1 = amdaie.logicalobjectfifo.from_memref %alloc_1, {%tile_0_1} : memref<32x32xi32, 1> -> !amdaie.logicalobjectfifo<memref<1024xi32, 1>>
       %obj2 = amdaie.logicalobjectfifo.from_memref %alloc_2, {%tile_0_2} : memref<4x8x4x8xi32, 2> -> !amdaie.logicalobjectfifo<memref<1024xi32, 2>>
       %dma0 = amdaie.circular_dma_cpy_nd(%obj1[] [] [], %obj2[] [] []) : (!amdaie.logicalobjectfifo<memref<1024xi32, 1>>, !amdaie.logicalobjectfifo<memref<1024xi32, 2>>)
-      %dma_target_l3 = amdaie.circular_dma_cpy_nd(%obj0[] [] [], %obj1[] [] []) : (!amdaie.logicalobjectfifo<memref<32x16x64x128x32xi32>>, !amdaie.logicalobjectfifo<memref<1024xi32, 1>>)
+      %dma_target_l3 = amdaie.circular_dma_cpy_nd(%placeholder[] [] [], %obj1[] [] []) : (!amdaie.logicalobjectfifo<memref<32x16x64x128x32xi32>>, !amdaie.logicalobjectfifo<memref<1024xi32, 1>>)
       amdaie.logicalobjectfifo.link[%dma0] -> [%dma_target_l3] ()
       memref.dealloc %alloc_2 : memref<4x8x4x8xi32, 2>
       memref.dealloc %alloc_1 : memref<32x32xi32, 1>
       // expected-error @+1 {{could not convert to AIEDialect ops}}
       amdaie.controlcode {
+        %obj0 = amdaie.logicalobjectfifo.from_memref %2, {%tile_0_0} : memref<32x16x64x128x32xi32> -> !amdaie.logicalobjectfifo<memref<32x16x64x128x32xi32>>
         // expected-error @+1 {{op expected target addressing for DMA with target on L3}}
-        %npu_dma_1 = amdaie.npu.dma_cpy_nd %dma_target_l3([] [] [] bd_id = %bd_id_0, [] [] [])
+        %npu_dma_1 = amdaie.npu.dma_cpy_nd %dma_target_l3(%obj0[] [] [] bd_id = %bd_id_0, [] [] []) : target_type = !amdaie.logicalobjectfifo<memref<32x16x64x128x32xi32>>
         amdaie.npu.dma_wait(%npu_dma_1, S2MM)
         amdaie.end
       }
@@ -931,10 +944,10 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
       memref.assume_alignment %0, 64 : memref<32x64xi32>
       %alloc_1 = memref.alloc() : memref<32x32xi32, 1>
       %alloc_2 = memref.alloc() : memref<4x8x4x8xi32, 2>
-      %obj0 = amdaie.logicalobjectfifo.from_memref %0, {%tile_0_0} : memref<32x64xi32> -> !amdaie.logicalobjectfifo<memref<2048xi32>>
+      %placeholder = amdaie.logicalobjectfifo.placeholder{%tile_0_0} : !amdaie.logicalobjectfifo<memref<2048xi32>>
       %obj1 = amdaie.logicalobjectfifo.from_memref %alloc_1, {%tile_0_1} : memref<32x32xi32, 1> -> !amdaie.logicalobjectfifo<memref<1024xi32, 1>>
       %obj2 = amdaie.logicalobjectfifo.from_memref %alloc_2, {%tile_0_2, %tile_1_2} : memref<4x8x4x8xi32, 2> -> !amdaie.logicalobjectfifo<memref<1024xi32, 2>>
-      %dma0 = amdaie.circular_dma_cpy_nd(%obj1[] [] [], %obj0[] [] []) : (!amdaie.logicalobjectfifo<memref<1024xi32, 1>>, !amdaie.logicalobjectfifo<memref<2048xi32>>)
+      %dma0 = amdaie.circular_dma_cpy_nd(%obj1[] [] [], %placeholder[] [] []) : (!amdaie.logicalobjectfifo<memref<1024xi32, 1>>, !amdaie.logicalobjectfifo<memref<2048xi32>>)
       %dma1 = amdaie.circular_dma_cpy_nd(%obj2[] [] [], %obj1[] [] []) : (!amdaie.logicalobjectfifo<memref<1024xi32, 2>>, !amdaie.logicalobjectfifo<memref<1024xi32, 1>>)
       amdaie.logicalobjectfifo.link[%dma0] -> [%dma1] ()
       %core_0_2 = amdaie.core(%tile_0_2, in : [%dma1], out : []) {
@@ -960,7 +973,8 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
       memref.dealloc %alloc_2 : memref<4x8x4x8xi32, 2>
       memref.dealloc %alloc_1 : memref<32x32xi32, 1>
       amdaie.controlcode {
-        %npu_dma = amdaie.npu.dma_cpy_nd %dma0([] [] [], [%c0, %c32] [%c32, %c32] [%c64, %c1] bd_id = %bd_id_0)
+        %obj0 = amdaie.logicalobjectfifo.from_memref %0, {%tile_0_0} : memref<32x64xi32> -> !amdaie.logicalobjectfifo<memref<2048xi32>>
+        %npu_dma = amdaie.npu.dma_cpy_nd %dma0([] [] [], %obj0[%c0, %c32] [%c32, %c32] [%c64, %c1] bd_id = %bd_id_0) : source_type = !amdaie.logicalobjectfifo<memref<2048xi32>>
         amdaie.npu.dma_wait(%npu_dma, MM2S)
         amdaie.end
       }

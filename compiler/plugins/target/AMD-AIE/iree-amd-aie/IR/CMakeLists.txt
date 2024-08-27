@@ -14,6 +14,7 @@ iree_cc_library(
   HDRS
     "AMDAIEAttrs.h"
     "AMDAIEDialect.h"
+    "AMDAIELogicalObjFifoOpInterface.h"
     "AMDAIEOps.h"
     "AMDAIETypes.h"
   TEXTUAL_HDRS
@@ -29,15 +30,19 @@ iree_cc_library(
     "AMDAIEOps.h.inc"
     "AMDAIEDmaOpInterface.cpp.inc"
     "AMDAIEDmaOpInterface.h.inc"
+    "AMDAIELogicalObjFifoOpInterface.h.inc"
+    "AMDAIELogicalObjFifoOpInterface.cpp.inc"
   SRCS
     "AMDAIEAttrs.cpp"
     "AMDAIEDmaOpInterface.cpp"
     "AMDAIEDialect.cpp"
+    "AMDAIELogicalObjFifoOpInterface.cpp"
     "AMDAIEOps.cpp"
     "AMDAIETypes.cpp"
   DEPS
     ::AMDAIEDialectGen
     ::AMDAIEDmaOpInterfaceGen
+    ::AMDAIELogicalObjFifoOpInterface
     ::AMDAIEOpsGen
     ::AMDAIETypesGen
     ::AMDAIEAttrsGen
@@ -103,4 +108,14 @@ iree_tablegen_library(
   OUTS
     --gen-op-interface-decls AMDAIEDmaOpInterface.h.inc
     --gen-op-interface-defs AMDAIEDmaOpInterface.cpp.inc
+)
+
+iree_tablegen_library(
+  NAME
+    AMDAIELogicalObjFifoOpInterface
+  TD_FILE
+    "AMDAIELogicalObjFifoOpInterface.td"
+  OUTS
+    --gen-op-interface-decls AMDAIELogicalObjFifoOpInterface.h.inc
+    --gen-op-interface-defs AMDAIELogicalObjFifoOpInterface.cpp.inc
 )

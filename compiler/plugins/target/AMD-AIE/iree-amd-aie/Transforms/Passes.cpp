@@ -587,6 +587,7 @@ void addAMDAIEObjectFifoLoweringPasses(OpPassManager &passManager) {
   passManager.addNestedPass<func::FuncOp>(createAMDAIECreateAIEWorkgroupPass());
   passManager.addPass(createCSEPass());
 
+  passManager.addPass(createAMDAIEHoistLogicalObjFifoPass());
   passManager.addPass(createAMDAIECanonicalizeDoublyStridedOpPass());
   passManager.addPass(createAMDAIEFlattenLogicalObjectFifoPass());
   passManager.addPass(createAMDAIEAssignLogicalObjectFifoDepthPass());
