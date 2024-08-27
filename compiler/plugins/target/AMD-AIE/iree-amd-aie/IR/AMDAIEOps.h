@@ -9,6 +9,7 @@
 
 #include "iree-amd-aie/IR/AMDAIEAttrs.h"
 #include "iree-amd-aie/IR/AMDAIEDmaOpInterface.h"
+#include "iree-amd-aie/IR/AMDAIELogicalObjFifoOpInterface.h"
 #include "iree-amd-aie/IR/AMDAIETypes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"

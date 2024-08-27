@@ -64,9 +64,14 @@ LogicalResult assignNpuDmaBdIds(AMDAIE::WorkgroupOp workgroupOp) {
   AMDAIE::ControlCodeOp controlCodeOp = workgroupOp.getControlCode();
   WalkResult res = controlCodeOp->walk([&](Operation *op) {
     if (auto npuDmaOp = dyn_cast<AMDAIE::NpuDmaCpyNdOp>(op)) {
-      AMDAIE::CircularDmaCpyNdOp inputDma = npuDmaOp.getDmaCpyNdOp();
-      if (npuDmaOp.getSourceMemorySpaceAsUInt() == 0) {
-        SmallVector<Value> tiles = inputDma.getSourceObjectFifo().getTiles();
+      if (npuDmaOp.getSource()) {
+        auto logicalObjFifo = dyn_cast<AMDAIE::LogicalObjFifoOpInterface>(
+            npuDmaOp.getSource().getDefiningOp());
+        if (!logicalObjFifo) {
+          npuDmaOp.emitOpError() << "expected a source logical objectFifo";
+          return WalkResult::interrupt();
+        }
+        SmallVector<Value> tiles = logicalObjFifo.getTiles();
         AMDAIE::TileOp tileOp;
         if (failed(getGeneratorTileOp(npuDmaOp, tiles, tileOp)))
           return WalkResult::interrupt();
@@ -83,13 +88,22 @@ LogicalResult assignNpuDmaBdIds(AMDAIE::WorkgroupOp workgroupOp) {
                                                       tileOp, bdId.value());
         rewriter.setInsertionPoint(npuDmaOp);
         npuDmaOp = rewriter.replaceOpWithNewOp<AMDAIE::NpuDmaCpyNdOp>(
-            npuDmaOp, npuDmaOp.getDma(), npuDmaOp.getTargetMixedOffsets(),
-            npuDmaOp.getTargetMixedSizes(), npuDmaOp.getTargetMixedStrides(),
-            npuDmaOp.getSourceMixedOffsets(), npuDmaOp.getSourceMixedSizes(),
-            npuDmaOp.getSourceMixedStrides(), npuDmaOp.getTargetBdId(), bdIdOp);
+            npuDmaOp, npuDmaOp.getDma(), npuDmaOp.getTarget(),
+            npuDmaOp.getTargetMixedOffsets(), npuDmaOp.getTargetMixedSizes(),
+            npuDmaOp.getTargetMixedStrides(), npuDmaOp.getTargetBdId(),
+            npuDmaOp.getSource(), npuDmaOp.getSourceMixedOffsets(),
+            npuDmaOp.getSourceMixedSizes(), npuDmaOp.getSourceMixedStrides(),
+            bdIdOp);
       }
-      if (npuDmaOp.getTargetMemorySpaceAsUInt() == 0) {
-        SmallVector<Value> tiles = inputDma.getTargetObjectFifo().getTiles();
+      if (npuDmaOp.getTarget()) {
+        auto logicalObjFifo = dyn_cast<AMDAIE::LogicalObjectFifoFromMemrefOp>(
+            npuDmaOp.getTarget().getDefiningOp());
+        if (!logicalObjFifo) {
+          npuDmaOp.emitOpError()
+              << "expected a target `amdaie.logicalobjectfifo.from_memref`";
+          return WalkResult::interrupt();
+        }
+        SmallVector<Value> tiles = logicalObjFifo.getTiles();
         AMDAIE::TileOp tileOp;
         if (failed(getGeneratorTileOp(npuDmaOp, tiles, tileOp)))
           return WalkResult::interrupt();
@@ -106,10 +120,11 @@ LogicalResult assignNpuDmaBdIds(AMDAIE::WorkgroupOp workgroupOp) {
                                                       tileOp, bdId.value());
         rewriter.setInsertionPoint(npuDmaOp);
         (void)rewriter.replaceOpWithNewOp<AMDAIE::NpuDmaCpyNdOp>(
-            npuDmaOp, npuDmaOp.getDma(), npuDmaOp.getTargetMixedOffsets(),
-            npuDmaOp.getTargetMixedSizes(), npuDmaOp.getTargetMixedStrides(),
+            npuDmaOp, npuDmaOp.getDma(), npuDmaOp.getTarget(),
+            npuDmaOp.getTargetMixedOffsets(), npuDmaOp.getTargetMixedSizes(),
+            npuDmaOp.getTargetMixedStrides(), bdIdOp, npuDmaOp.getSource(),
             npuDmaOp.getSourceMixedOffsets(), npuDmaOp.getSourceMixedSizes(),
-            npuDmaOp.getSourceMixedStrides(), bdIdOp, npuDmaOp.getSourceBdId());
+            npuDmaOp.getSourceMixedStrides(), npuDmaOp.getSourceBdId());
       }
       return WalkResult::advance();
     } else if (auto npuWaitOp = dyn_cast<AMDAIE::NpuDmaWaitOp>(op)) {
@@ -154,7 +169,7 @@ class AMDAIEAssignNpuDmaBdIdsPass
   }
 
   AMDAIEAssignNpuDmaBdIdsPass() = default;
-  AMDAIEAssignNpuDmaBdIdsPass(const AMDAIEAssignNpuDmaBdIdsPass &pass){};
+  AMDAIEAssignNpuDmaBdIdsPass(const AMDAIEAssignNpuDmaBdIdsPass &pass) {};
   void runOnOperation() override;
 };
 
