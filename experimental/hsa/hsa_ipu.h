@@ -1,3 +1,9 @@
+// Copyright 2024 The IREE Authors
+//
+// Licensed under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+#pragma once
 
 #include <fcntl.h>
 #include <sys/ioctl.h>
@@ -15,8 +21,6 @@
 #include "amdxdna_accel.h"
 
 // want to mmap the file
-#include <sys/io.h>
-#include <sys/mman.h>
 
 #define MAX_NUM_INSTRUCTIONS 1024  // Maximum number of dpu or pdi instructions.
 
@@ -43,9 +47,9 @@ void ring_doorbell(uint64_t doorbell) {
 
 int get_driver_version(int fd, __u32 *major, __u32 *minor) {
   int ret;
-  struct amdxdna_drm_query_aie_version version;
+  amdxdna_drm_query_aie_version version;
 
-  struct amdxdna_drm_get_info info_params = {
+  amdxdna_drm_get_info info_params = {
       .param = DRM_AMDXDNA_QUERY_AIE_VERSION,
       .buffer_size = sizeof(version),
       .buffer = (__u64)&version,
@@ -63,7 +67,7 @@ int get_driver_version(int fd, __u32 *major, __u32 *minor) {
 /*
         Allocates a heap on the device by creating a BO of type dev heap
 */
-static int alloc_heap(int fd, __u32 size, __u32 *handle) {
+int alloc_heap(int fd, __u32 size, __u32 *handle) {
   int ret;
   void *heap_buf = NULL;
   const size_t alignment = 64 * 1024 * 1024;
@@ -80,7 +84,7 @@ static int alloc_heap(int fd, __u32 size, __u32 *handle) {
     return -1;
   }
 
-  struct amdxdna_drm_create_bo create_bo_params = {
+  amdxdna_drm_create_bo create_bo_params = {
       .type = AMDXDNA_BO_DEV_HEAP,
       .size = size,
   };
@@ -90,8 +94,7 @@ static int alloc_heap(int fd, __u32 size, __u32 *handle) {
     *handle = create_bo_params.handle;
   }
 
-  struct amdxdna_drm_get_bo_info get_bo_info = {.handle =
-                                                    create_bo_params.handle};
+  amdxdna_drm_get_bo_info get_bo_info = {.handle = create_bo_params.handle};
   ret = ioctl(fd, DRM_IOCTL_AMDXDNA_GET_BO_INFO, &get_bo_info);
   if (ret != 0) {
     perror("Failed to get BO info");
@@ -111,9 +114,9 @@ static int alloc_heap(int fd, __u32 size, __u32 *handle) {
 /*
         Creates a dev bo which is carved out of the heap bo.
 */
-static int create_dev_bo(int fd, uint64_t *vaddr, uint64_t *sram_vaddr,
-                         __u32 *handle, __u64 size_in_bytes) {
-  struct amdxdna_drm_create_bo create_bo = {
+int create_dev_bo(int fd, uint64_t *vaddr, uint64_t *sram_vaddr, __u32 *handle,
+                  __u64 size_in_bytes) {
+  amdxdna_drm_create_bo create_bo = {
       .type = AMDXDNA_BO_DEV,
       .size = size_in_bytes,
   };
@@ -123,7 +126,7 @@ static int create_dev_bo(int fd, uint64_t *vaddr, uint64_t *sram_vaddr,
     return -1;
   }
 
-  struct amdxdna_drm_get_bo_info get_bo_info = {.handle = create_bo.handle};
+  amdxdna_drm_get_bo_info get_bo_info = {.handle = create_bo.handle};
   ret = ioctl(fd, DRM_IOCTL_AMDXDNA_GET_BO_INFO, &get_bo_info);
   if (ret != 0) {
     perror("Failed to get BO info");
@@ -139,8 +142,8 @@ static int create_dev_bo(int fd, uint64_t *vaddr, uint64_t *sram_vaddr,
 /*
         Creates a shmem bo
 */
-static int create_shmem_bo(int fd, uint64_t *vaddr, uint64_t *sram_vaddr,
-                           __u32 *handle, __u64 size_in_bytes) {
+int create_shmem_bo(int fd, uint64_t *vaddr, uint64_t *sram_vaddr,
+                    __u32 *handle, __u64 size_in_bytes) {
   const size_t alignment = 64 * 1024 * 1024;
   void *shmem_create = NULL;
   int ret = posix_memalign(&shmem_create, alignment, size_in_bytes);
@@ -153,16 +156,16 @@ static int create_shmem_bo(int fd, uint64_t *vaddr, uint64_t *sram_vaddr,
 
   printf("Shmem BO @:                     %p\n", shmem_create);
 
-  struct amdxdna_drm_create_bo create_bo = {.type = AMDXDNA_BO_SHMEM,
-                                            .vaddr = (__u64)shmem_create,
-                                            .size = size_in_bytes};
+  amdxdna_drm_create_bo create_bo = {.type = AMDXDNA_BO_SHMEM,
+                                     .vaddr = (__u64)shmem_create,
+                                     .size = size_in_bytes};
   ret = ioctl(fd, DRM_IOCTL_AMDXDNA_CREATE_BO, &create_bo);
   if (ret != 0) {
     perror("Failed to create BO");
     return -1;
   }
 
-  struct amdxdna_drm_get_bo_info get_bo_info = {.handle = create_bo.handle};
+  amdxdna_drm_get_bo_info get_bo_info = {.handle = create_bo.handle};
   ret = ioctl(fd, DRM_IOCTL_AMDXDNA_GET_BO_INFO, &get_bo_info);
   if (ret != 0) {
     perror("Failed to get BO info");
@@ -178,10 +181,8 @@ static int create_shmem_bo(int fd, uint64_t *vaddr, uint64_t *sram_vaddr,
 /*
   Wrapper around synch bo ioctl.
 */
-static int sync_bo(int fd, __u32 handle) {
-  struct amdxdna_drm_sync_bo sync_params = {
-      .handle = handle,
-  };
+int sync_bo(int fd, __u32 handle) {
+  amdxdna_drm_sync_bo sync_params = {.handle = handle};
   int ret = ioctl(fd, DRM_IOCTL_AMDXDNA_SYNC_BO, &sync_params);
   if (ret != 0) {
     printf("Synch bo ioctl failed for handle %d\n", handle);
@@ -193,8 +194,8 @@ static int sync_bo(int fd, __u32 handle) {
   Create a BO_DEV and populate it with a PDI
 */
 
-static int load_pdi(int fd, uint64_t *vaddr, uint64_t *sram_addr, __u32 *handle,
-                    const char *path) {
+int load_pdi(int fd, uint64_t *vaddr, uint64_t *sram_addr, __u32 *handle,
+             const char *path) {
   FILE *file = fopen(path, "r");
   if (file == NULL) {
     perror("Failed to open instructions file.");
@@ -233,8 +234,8 @@ static int load_pdi(int fd, uint64_t *vaddr, uint64_t *sram_addr, __u32 *handle,
   Create a BO DEV and populate it with instructions whose virtual address is
   passed to the driver via an HSA packet.
 */
-static int load_instructions(int fd, uint64_t *vaddr, uint64_t *sram_addr,
-                             __u32 *handle, const char *path, __u32 *num_inst) {
+int load_instructions(int fd, uint64_t *vaddr, uint64_t *sram_addr,
+                      __u32 *handle, const char *path, __u32 *num_inst) {
   // read dpu instructions into an array
   FILE *file = fopen(path, "r");
   if (file == NULL) {

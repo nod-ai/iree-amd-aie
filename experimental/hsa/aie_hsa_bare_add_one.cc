@@ -1,39 +1,12 @@
-
-/*
-
-RUN: (add_one_test %S) | FileCheck %s
-CHECK: /dev/accel/accel0 open
-CHECK: Driver version 1.1
-CHECK: Heap buffer @:                  0x7f313c000000
-CHECK: Loading pdi
-CHECK: Pdi file size: 3552
-CHECK: Loading dpu inst
-CHECK: Loading dpu inst
-CHECK: DPU 0 instructions @:             0x7f313c008000
-CHECK: DPU 1 instructions @:             0x7f313c010000
-CHECK: PDI file @:                     0x7f313c000000
-CHECK: PDI handle @:                     2
-CHECK: Input @:             0x7f313c018000
-CHECK: Output @:             0x7f313c020000
-CHECK: Input @:             0x7f313c028000
-CHECK: Output @:             0x7f313c030000
-CHECK: Size of param_config_cu: 0x8
-CHECK: Synch bo ioctl failed for handle 11
-CHECK: Synch bo ioctl failed for handle 9
-CHECK: Synch bo ioctl failed for handle 10
-CHECK: Checking run 0:
-CHECK: Checking run 1:
-CHECK: PASS!
-CHECK: Closing
-CHECK: Done
-
- */
+// Copyright 2024 The IREE Authors
+//
+// Licensed under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 #include <cstdint>
 #include <cstdlib>
-#include <ctime>
 #include <fstream>
-#include <iostream>
 
 #include "amdxdna_accel.h"
 #include "hsa_ipu.h"
@@ -174,8 +147,6 @@ int main(int argc, char **argv) {
   uint32_t input_0_handle;
   ret = create_dev_bo(drv_fd, &input_0, &input_0_sram_vaddr, &input_0_handle,
                       DATA_BUFFER_SIZE);
-  // ret = create_shmem_bo(drv_fd, &input_0, &input_0_sram_vaddr,
-  // &input_0_handle, DATA_BUFFER_SIZE);
   printf("Input @:             %p\n", (void *)input_0);
   if (ret < 0) {
     printf("Error %i creating data 0\n", ret);
@@ -190,8 +161,6 @@ int main(int argc, char **argv) {
   uint32_t output_0_handle;
   ret = create_dev_bo(drv_fd, &output_0, &output_0_sram_vaddr, &output_0_handle,
                       DATA_BUFFER_SIZE);
-  // ret = create_shmem_bo(drv_fd, &output_0, &output_0_sram_vaddr,
-  // &output_0_handle, DATA_BUFFER_SIZE);
   printf("Output @:             %p\n", (void *)output_0);
   if (ret < 0) {
     printf("Error %i creating data 1\n", ret);
@@ -206,8 +175,6 @@ int main(int argc, char **argv) {
   uint32_t input_1_handle;
   ret = create_dev_bo(drv_fd, &input_1, &input_1_sram_vaddr, &input_1_handle,
                       DATA_BUFFER_SIZE);
-  // ret = create_shmem_bo(drv_fd, &input_1, &input_1_sram_vaddr,
-  // &input_1_handle, DATA_BUFFER_SIZE);
   printf("Input @:             %p\n", (void *)input_1);
   if (ret < 0) {
     printf("Error %i creating data 0\n", ret);
@@ -222,8 +189,6 @@ int main(int argc, char **argv) {
   uint32_t output_1_handle;
   ret = create_dev_bo(drv_fd, &output_1, &output_1_sram_vaddr, &output_1_handle,
                       DATA_BUFFER_SIZE);
-  // ret = create_shmem_bo(drv_fd, &output_1, &output_1_sram_vaddr,
-  // &output_1_handle, DATA_BUFFER_SIZE);
   printf("Output @:             %p\n", (void *)output_1);
   if (ret < 0) {
     printf("Error %i creating data 1\n", ret);
@@ -261,7 +226,7 @@ int main(int argc, char **argv) {
   // 2. Allocate the queue buffer as a user-mode queue
 
   // Allocating a structure to store QOS information
-  struct amdxdna_qos_info *qos =
+  amdxdna_qos_info *qos =
       (struct amdxdna_qos_info *)malloc(sizeof(struct amdxdna_qos_info));
   qos->gops = 0;
   qos->fps = 0;
@@ -271,7 +236,7 @@ int main(int argc, char **argv) {
   qos->priority = 0;
 
   // This is the structure that we pass
-  struct amdxdna_drm_create_hwctx create_hw_ctx = {
+  amdxdna_drm_create_hwctx create_hw_ctx = {
       .ext = 0,
       .ext_flags = 0,
       .qos_p = (uint64_t)qos,
@@ -289,25 +254,26 @@ int main(int argc, char **argv) {
   }
 
   // Creating a structure to configure the CU
-  struct amdxdna_cu_config cu_config = {
+  amdxdna_cu_config cu_config = {
       .cu_bo = pdi_handle,
       .cu_func = 0,
   };
 
   // Creating a structure to configure the hardware context
-  struct amdxdna_hwctx_param_config_cu param_config_cu;
+  amdxdna_hwctx_param_config_cu param_config_cu;
   param_config_cu.num_cus = 1;
   param_config_cu.cu_configs[0] = cu_config;
 
   printf("Size of param_config_cu: 0x%lx\n", sizeof(param_config_cu));
 
   // Configuring the hardware context with the PDI
-  struct amdxdna_drm_config_hwctx config_hw_ctx = {
+  amdxdna_drm_config_hwctx config_hw_ctx = {
       .handle = create_hw_ctx.handle,
       .param_type = DRM_AMDXDNA_HWCTX_CONFIG_CU,
-      .param_val =
-          (uint64_t)&param_config_cu,  // Pass in the pointer to the param value
-      .param_val_size = 0x10,          // Size of param config CU is 16B
+      // Pass in the pointer to the param value
+      .param_val = (uint64_t)&param_config_cu,
+      // Size of param config CU is 16B
+      .param_val_size = 0x10,
   };
   ret = ioctl(drv_fd, DRM_IOCTL_AMDXDNA_CONFIG_HWCTX, &config_hw_ctx);
   if (ret != 0) {
@@ -317,7 +283,7 @@ int main(int argc, char **argv) {
 
   /////////////////////////////////////////////////////////////////////////////////
   // Step 2: Configuring the CMD BOs with the different instruction sequences
-  struct amdxdna_drm_create_bo create_cmd_bo_0 = {
+  amdxdna_drm_create_bo create_cmd_bo_0 = {
       .type = AMDXDNA_BO_CMD,
       .size = PACKET_SIZE,
   };
@@ -327,8 +293,8 @@ int main(int argc, char **argv) {
     return -1;
   }
 
-  struct amdxdna_drm_get_bo_info cmd_bo_0_get_bo_info = {
-      .handle = create_cmd_bo_0.handle};
+  amdxdna_drm_get_bo_info cmd_bo_0_get_bo_info = {.handle =
+                                                      create_cmd_bo_0.handle};
   ret = ioctl(drv_fd, DRM_IOCTL_AMDXDNA_GET_BO_INFO, &cmd_bo_0_get_bo_info);
   if (ret != 0) {
     perror("Failed to get cmd BO 0 info");
@@ -336,7 +302,7 @@ int main(int argc, char **argv) {
   }
 
   // Writing the first packet to the queue
-  struct amdxdna_cmd *cmd_0 = (struct amdxdna_cmd *)mmap(
+  amdxdna_cmd *cmd_0 = (struct amdxdna_cmd *)mmap(
       0, PACKET_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED, drv_fd,
       cmd_bo_0_get_bo_info.map_offset);
   cmd_0->state = 1;  // ERT_CMD_STATE_NEW;
@@ -355,7 +321,7 @@ int main(int argc, char **argv) {
   cmd_0->data[9] = (output_0 >> 32) & 0xFFFFFFFF;  // Output high
 
   // Writing to the second packet of the queue
-  struct amdxdna_drm_create_bo create_cmd_bo_1 = {
+  amdxdna_drm_create_bo create_cmd_bo_1 = {
       .type = AMDXDNA_BO_CMD,
       .size = PACKET_SIZE,
   };
@@ -365,15 +331,15 @@ int main(int argc, char **argv) {
     return -1;
   }
 
-  struct amdxdna_drm_get_bo_info cmd_bo_1_get_bo_info = {
-      .handle = create_cmd_bo_1.handle};
+  amdxdna_drm_get_bo_info cmd_bo_1_get_bo_info = {.handle =
+                                                      create_cmd_bo_1.handle};
   ret = ioctl(drv_fd, DRM_IOCTL_AMDXDNA_GET_BO_INFO, &cmd_bo_1_get_bo_info);
   if (ret != 0) {
     perror("Failed to get cmd BO 0 info");
     return -2;
   }
 
-  struct amdxdna_cmd *cmd_1 = (struct amdxdna_cmd *)mmap(
+  amdxdna_cmd *cmd_1 = (struct amdxdna_cmd *)mmap(
       0, PACKET_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED, drv_fd,
       cmd_bo_1_get_bo_info.map_offset);
   cmd_1->state = 1;  // ERT_CMD_STATE_NEW;
@@ -396,13 +362,13 @@ int main(int argc, char **argv) {
   // the command chain that points to the instruction sequences just created
 
   // Allocate a command chain
-  void *bo_cmd_chain_buf = NULL;
+  void *bo_cmd_chain_buf = nullptr;
   cmd_bo_ret = posix_memalign(&bo_cmd_chain_buf, 4096, 4096);
-  if (cmd_bo_ret != 0 || bo_cmd_chain_buf == NULL) {
+  if (cmd_bo_ret != 0 || bo_cmd_chain_buf == nullptr) {
     printf("[ERROR] Failed to allocate cmd_bo buffer of size %d\n", 4096);
   }
 
-  struct amdxdna_drm_create_bo create_cmd_chain_bo = {
+  amdxdna_drm_create_bo create_cmd_chain_bo = {
       .type = AMDXDNA_BO_CMD,
       .size = 4096,
   };
@@ -412,7 +378,7 @@ int main(int argc, char **argv) {
     return -1;
   }
 
-  struct amdxdna_drm_get_bo_info cmd_chain_bo_get_bo_info = {
+  amdxdna_drm_get_bo_info cmd_chain_bo_get_bo_info = {
       .handle = create_cmd_chain_bo.handle};
   ret = ioctl(drv_fd, DRM_IOCTL_AMDXDNA_GET_BO_INFO, &cmd_chain_bo_get_bo_info);
   if (ret != 0) {
@@ -420,12 +386,12 @@ int main(int argc, char **argv) {
     return -2;
   }
 
-  struct amdxdna_cmd *cmd_chain =
+  amdxdna_cmd *cmd_chain =
       (struct amdxdna_cmd *)mmap(0, 4096, PROT_READ | PROT_WRITE, MAP_SHARED,
                                  drv_fd, cmd_chain_bo_get_bo_info.map_offset);
 
   // Writing information to the command buffer
-  struct amdxdna_cmd_chain *cmd_chain_payload =
+  amdxdna_cmd_chain *cmd_chain_payload =
       (struct amdxdna_cmd_chain *)(cmd_chain->data);
   cmd_chain->state = 1;  // ERT_CMD_STATE_NEW;
   cmd_chain->extra_cu_masks = 0;
@@ -445,7 +411,7 @@ int main(int argc, char **argv) {
   // Perform a submit cmd
   uint32_t bo_args[6] = {dpu_0_handle,    dpu_1_handle,   input_0_handle,
                          output_0_handle, input_1_handle, output_1_handle};
-  struct amdxdna_drm_exec_cmd exec_cmd_0 = {
+  amdxdna_drm_exec_cmd exec_cmd_0 = {
       .ext = 0,
       .ext_flags = 0,
       .hwctx = create_hw_ctx.handle,
@@ -464,7 +430,7 @@ int main(int argc, char **argv) {
   /////////////////////////////////////////////////////////////////////////////////
   // Step 4: Wait for the output
   // Use the wait IOCTL to wait for our submission to complete
-  struct amdxdna_drm_wait_cmd wait_cmd = {
+  amdxdna_drm_wait_cmd wait_cmd = {
       .hwctx = create_hw_ctx.handle,
       .timeout = 50,  // 50ms timeout
       .seq = exec_cmd_0.seq,
@@ -490,8 +456,6 @@ int main(int argc, char **argv) {
   for (int i = 0; i < DATA_BUFFER_SIZE / sizeof(uint32_t); i++) {
     uint32_t src = *((uint32_t *)input_0 + i);
     uint32_t dst = *((uint32_t *)output_0 + i);
-    // printf("src: 0x%x\n", src);
-    // printf("dst: 0x%x\n", dst);
     if (src + 1 != dst) {
       printf("[ERROR] %d: %d + 1 != %d\n", i, src, dst);
       errors++;
@@ -502,8 +466,6 @@ int main(int argc, char **argv) {
   for (int i = 0; i < DATA_BUFFER_SIZE / sizeof(uint32_t); i++) {
     uint32_t src = *((uint32_t *)input_1 + i);
     uint32_t dst = *((uint32_t *)output_1 + i);
-    // printf("src: 0x%x\n", src);
-    // printf("dst: 0x%x\n", dst);
     if (src + 1 != dst) {
       printf("[ERROR] %d: %d + 1 != %d\n", i, src, dst);
       errors++;

@@ -5,3 +5,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 add_subdirectory(delegate)
+find_package(hsa-runtime64 QUIET)
+if(${hsa-runtime64_FOUND})
+  add_subdirectory(hsa)
+endif()
