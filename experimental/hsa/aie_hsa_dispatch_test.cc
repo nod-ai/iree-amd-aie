@@ -305,5 +305,5 @@ int main(int argc, char **argv) {
 
   r = hsa_shut_down();
   assert(r == HSA_STATUS_SUCCESS);
-  std::cout << "PASS";
+  std::cout << "PASS\n";
 }

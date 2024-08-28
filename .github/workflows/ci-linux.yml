@@ -219,3 +219,6 @@ jobs:
           cmake .. -DCMAKE_BUILD_TYPE=Debug -GNinja
           ninja aie_hsa_dispatch_test
           ./aie_hsa_dispatch_test $PWD/..
+          
+          ninja aie_hsa_bare_add_one
+          ./aie_hsa_bare_add_one $PWD/..
