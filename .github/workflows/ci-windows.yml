@@ -10,9 +10,9 @@ on:
       - main
 
   schedule:
-      # At minute 0 past every 4nd hour. (see https://crontab.guru)
+      # At minute 0 past every 12th hour. (see https://crontab.guru)
       # this job is to keep the ccache cache warm
-    - cron: '0 */4 * * *'
+    - cron: '0 */12 * * *'
 
 concurrency:
   # A PR number if a pull request and otherwise the commit hash. This cancels
