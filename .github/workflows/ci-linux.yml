@@ -9,12 +9,23 @@ on:
     branches:
       - main
 
+  schedule:
+    # At minute 0 past every 6th hour. (see https://crontab.guru)
+    # this job is to keep the ccache cache warm
+    - cron: '0 */6 * * *'
+
 concurrency:
   # A PR number if a pull request and otherwise the commit hash. This cancels
   # queued and in-progress runs for the same PR (presubmit) or commit
   # (postsubmit).
   group: ci-build-test-cpp-linux-${{ github.event.number || github.sha }}
   cancel-in-progress: true
+
+permissions:
+  contents: read
+  # required to delete cache
+  # https://docs.github.com/en/rest/actions/cache?apiVersion=2022-11-28#delete-github-actions-caches-for-a-repository-using-a-cache-key
+  actions: write
 
 jobs:
   build_and_ctest:
@@ -24,6 +35,7 @@ jobs:
       fail-fast: true
     env:
       CACHE_DIR: ${{ github.workspace }}/.container-cache
+      CACHE_KEY: linux-build-test-cpp-asserts-manylinux-v2-${{ github.event.number || github.ref_name }}
     steps:
       - name: Set unified TZ
         uses: szenius/set-timezone@v2.0
@@ -42,11 +54,16 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Install static libs
+      - name: Install deps
         run: |
-          dnf install -y almalinux-release-devel
           yum remove -y openssl-devel zlib-devel || true
-          yum install -y protobuf-devel protobuf-compiler
+          
+          dnf install -y almalinux-release-devel
+          type -p yum-config-manager >/dev/null || yum -y install yum-utils
+          yum-config-manager -y --add-repo https://cli.github.com/packages/rpm/gh-cli.repo
+          
+          yum install -y protobuf-devel protobuf-compiler gh
+
       - name: Sync source deps
         run: |
           python ./sync_deps.py
@@ -59,7 +76,7 @@ jobs:
         uses: actions/cache/restore@v3
         with:
           path: ${{ env.CACHE_DIR }}
-          key: linux-build-test-cpp-asserts-manylinux-v2-${{ github.sha }}
+          key:  ${{ env.CACHE_KEY }}
           restore-keys: linux-build-test-cpp-
 
       - name: Build packages
@@ -80,12 +97,22 @@ jobs:
           path: iree-dist-linux.tar
           if-no-files-found: warn
 
+      - name: Overwrite cache
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        env:
+          # required to run gh with privileges
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh extension install actions/gh-actions-cache
+          gh actions-cache delete ${{ env.CACHE_KEY }} --confirm -R ${{ github.repository }}
+
       - name: Save cache
         uses: actions/cache/save@v3
         if: ${{ !cancelled() }}
         with:
           path: ${{ env.CACHE_DIR }}
-          key: linux-build-test-cpp-asserts-manylinux-v2-${{ github.sha }}
+          key: ${{ env.CACHE_KEY }}
 
   test_linux:
     name: E2E Test linux

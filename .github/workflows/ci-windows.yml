@@ -10,14 +10,9 @@ on:
       - main
 
   schedule:
-      # At minute 0 past every 12th hour. (see https://crontab.guru)
-      # this job is to keep the ccache cache warm
-    - cron: '0 */12 * * *'
+    - cron: '0 */6 * * *'
 
 concurrency:
-  # A PR number if a pull request and otherwise the commit hash. This cancels
-  # queued and in-progress runs for the same PR (presubmit) or commit
-  # (postsubmit).
   group: ci-build-test-cpp-windows-${{ github.event.number || github.sha }}
   cancel-in-progress: true
 
@@ -25,6 +20,10 @@ defaults:
   run:
     # force bash for windows
     shell: bash
+
+permissions:
+  contents: read
+  actions: write
 
 jobs:
   build_and_ctest:
@@ -34,6 +33,7 @@ jobs:
       fail-fast: true
     env:
       CACHE_DIR: ${{ github.workspace }}/.container-cache
+      CACHE_KEY: windows-build-test-cpp-asserts-v1-${{ github.event.number || github.ref_name }}
     steps:
       - name: Set unified TZ
         uses: szenius/set-timezone@v2.0
@@ -73,9 +73,7 @@ jobs:
         uses: actions/cache/restore@v3
         with:
           path: ${{ env.CACHE_DIR }}
-          # without datetime stamps you'll get collisions for the cache warming runs
-          # ("Failed to save: Unable to reserve cache with key ..., another job may be creating this cache.")
-          key: windows-build-test-cpp-asserts-v1-${{ github.sha }}-${{ github.event.repository.updated_at }}
+          key: ${{ env.CACHE_KEY }}
           restore-keys: windows-build-test-cpp-
 
       - name: Build packages
@@ -96,12 +94,21 @@ jobs:
           path: iree-dist-windows.tar
           if-no-files-found: warn
 
+      - name: Overwrite cache
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh extension install actions/gh-actions-cache
+          gh actions-cache delete ${{ env.CACHE_KEY }} --confirm -R ${{ github.repository }}
+
       - name: Save cache
         uses: actions/cache/save@v3
         if: ${{ !cancelled() }}
         with:
           path: ${{ env.CACHE_DIR }}
-          key: windows-build-test-cpp-asserts-v1-${{ github.sha }}-${{ github.event.repository.updated_at }}
+          key: ${{ env.CACHE_KEY }}
 
   test_windows:
     name: E2E Test windows
