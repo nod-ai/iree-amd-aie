@@ -11,7 +11,6 @@
 #include "Passes.h"
 #include "iree-amd-aie/aie_runtime/iree_aie_runtime.h"
 #include "llvm/ADT/STLExtras.h"
-#include "mlir/Analysis/TopologicalSortUtils.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
@@ -113,28 +112,11 @@ bool isJoin(ObjectFifoLinkOp op) { return op.getFifoIns().size() > 1; }
 bool isDistribute(ObjectFifoLinkOp op) { return op.getFifoOuts().size() > 1; }
 
 std::optional<Value> getOptionalSharedTile(ObjectFifoLinkOp op) {
-  if (isJoin(op)) {
-    auto fifoOut = getOutputObjectFifos(op)[0];
-    for (auto fifoIn : getInputObjectFifos(op))
-      if (fifoOut.getProducerTile() != fifoIn.getConsumerTiles()[0]) return {};
-    return {fifoOut.getProducerTile()};
-  }
-
-  if (isDistribute(op)) {
-    auto fifoIn = getInputObjectFifos(op)[0];
-    for (auto fifoOut : getOutputObjectFifos(op))
-      if (fifoIn.getConsumerTiles()[0] != fifoOut.getProducerTile()) return {};
-    return {fifoIn.getConsumerTiles()[0]};
-  }
-
-  auto fifoIn = getInputObjectFifos(op);
-  if (auto fifoOut = getOutputObjectFifos(op);
-      !fifoIn.empty() && !fifoOut.empty())
-    for (auto consumerIn : fifoIn[0].getConsumerTiles())
-      if (consumerIn == fifoOut[0].getProducerTile())
-        return {fifoOut[0].getProducerTile()};
-  return {};
+  std::vector<ObjectFifoCreateOp> fifoOuts = getOutputObjectFifos(op);
+  assert(fifoOuts.size() > 0);
+  return fifoOuts[0].getProducerTile();
 }
+
 }  // namespace
 
 class LockAnalysis {
@@ -168,21 +150,7 @@ class DMAChannelAnalysis {
   DenseMap<Value, uint8_t> consumerChannelsPerTile;
 
  public:
-  DMAChannelAnalysis(DeviceOp &device) {
-    // go over the channels used for each tile and update the producer/consumer
-    // channel maps
-    for (auto memOp : device.getOps<MemOp>()) {
-      Region &r = memOp.getBody();
-      auto tile = memOp.getTile();
-      for (auto &bl : r.getBlocks()) {
-        for (auto op : bl.getOps<DMAStartOp>()) {
-          static_cast<DMAChannelDir>(op.getChannelDir()) == DMAChannelDir::MM2S
-              ? getProducerDMAChannel(tile)
-              : getConsumerDMAChannel(tile);
-        }
-      }
-    }
-  }
+  DMAChannelAnalysis() {}
 
   /// Given an AIE tile, returns its next usable producer channel.
   SwitchDMAConnection getProducerDMAChannel(Value tile) {
@@ -536,12 +504,6 @@ void replaceReleaseOp(
     DenseMap<std::pair<ObjectFifoCreateOp, int>,
              std::vector<ObjectFifoReleaseOp>> &releaseOps) {
   ObjectFifoCreateOp op = getObjectFifo(releaseOp);
-  auto core = releaseOp->getParentOfType<CoreOp>();
-  if (auto linkOp = getOptionalLinkOp(op))
-    if (core.getTile() == *getOptionalSharedTile(*linkOp))
-      llvm::report_fatal_error(
-          "currently cannot access objectFifo used in "
-          "ObjectFifoLinkOp");
 
   auto port = releaseOp.getPort();
   std::pair<ObjectFifoCreateOp, int> opPort = {op, static_cast<int>(port)};
@@ -653,12 +615,7 @@ void replaceObjectAcquireOp(
     const DenseMap<ObjectFifoCreateOp, std::vector<BufferOp>> &buffersPerFifo,
     DenseMap<ObjectFifoAcquireOp, std::vector<BufferOp>> &subviews) {
   ObjectFifoCreateOp op = getObjectFifo(acquireOp);
-  auto core = acquireOp->getParentOfType<CoreOp>();
   auto linkOp = getOptionalLinkOp(op);
-  if (linkOp && core.getTile() == *getOptionalSharedTile(*linkOp))
-    llvm::report_fatal_error(
-        "currently cannot access objectFifo used in "
-        "ObjectFifoLinkOp");
 
   // index of next element to acquire for this objectFifo
   // useful for keeping track of which
@@ -995,7 +952,7 @@ struct AMDAIEObjectFifoStatefulTransformPass : mlir::OperationPass<DeviceOp> {
   void runOnOperation() override {
     DeviceOp device = getOperation();
     LockAnalysis lockAnalysis(device);
-    DMAChannelAnalysis dmaAnalysis(device);
+    DMAChannelAnalysis dmaAnalysis;
     OpBuilder builder = OpBuilder::atBlockEnd(device.getBody());
     // maps each objFifo to its corresponding buffer
     DenseMap<ObjectFifoCreateOp, std::vector<BufferOp>> buffersPerFifo;
@@ -1092,16 +1049,14 @@ struct AMDAIEObjectFifoStatefulTransformPass : mlir::OperationPass<DeviceOp> {
     }
 
     // Remove old ops
-    SetVector<Operation *> opsToErase;
+    IRRewriter rewriter(&getContext());
     device.walk([&](Operation *op) {
       if (isa<ObjectFifoCreateOp, ObjectFifoLinkOp, ObjectFifoAcquireOp,
-              ObjectFifoSubviewAccessOp, ObjectFifoReleaseOp>(op))
-        opsToErase.insert(op);
+              ObjectFifoSubviewAccessOp, ObjectFifoReleaseOp>(op)) {
+        op->dropAllUses();
+        rewriter.eraseOp(op);
+      }
     });
-    topologicalSort(opsToErase);
-    IRRewriter rewriter(&getContext());
-    for (auto it = opsToErase.rbegin(); it != opsToErase.rend(); ++it)
-      (*it)->erase();
   }
 };
 
