@@ -6,7 +6,7 @@
 // CHECK-DAG:   %[[C0:.+]] = arith.constant 0 : index
 // CHECK-DAG:   %[[C1:.+]] = arith.constant 1 : index
 // CHECK-DAG:   %[[C4:.+]] = arith.constant 4 : index
-// CHECK:       amdaie.core
+// CHECK-DAG:   amdaie.core
 // CHECK:         scf.for %{{.+}} = %[[C0]] to %[[C4]] step %[[C1]] {
 // CHECK:           amdaie.logicalobjectfifo.acquire
 // CHECK:           amdaie.logicalobjectfifo.access
@@ -54,7 +54,7 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 // CHECK-DAG:   %[[C0:.+]] = arith.constant 0 : index
 // CHECK-DAG:   %[[C4:.+]] = arith.constant 4 : index
 // CHECK-DAG:   %[[C8:.+]] = arith.constant 8 : index
-// CHECK:       amdaie.core
+// CHECK-DAG:   amdaie.core
 // CHECK:         scf.for %{{.+}} = %[[C0]] to %[[C8]] step %[[C4]] {
 // CHECK:           amdaie.logicalobjectfifo.acquire
 // CHECK:           amdaie.logicalobjectfifo.access
@@ -111,7 +111,7 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 // CHECK-DAG:   %[[C8:.+]] = arith.constant 8 : index
 // CHECK-DAG:   %[[C17:.+]] = arith.constant 17 : index
 // CHECK-DAG:   %[[C21:.+]] = arith.constant 21 : index
-// CHECK:       amdaie.core
+// CHECK-DAG:   amdaie.core
 // CHECK:         scf.for %[[ARG0:.+]] = %[[C1]] to %[[C17]] step %[[C8]] {
 // CHECK:           amdaie.logicalobjectfifo.acquire
 // CHECK:           amdaie.logicalobjectfifo.access

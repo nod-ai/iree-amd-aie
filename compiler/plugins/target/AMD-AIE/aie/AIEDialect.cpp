@@ -148,13 +148,16 @@ void AIEDialect::printType(Type type, DialectAsmPrinter &printer) const {
 
 /// without this, canonicalize/cse/etc will lift eg constants out of core ops
 /// causing eg lower-to-aie to fail to converge
+///
+/// There's no way to do this is tablegen, so unfortunately it must be hidden
+/// away here
 struct AIEDialectFoldInterface : DialectFoldInterface {
   using DialectFoldInterface::DialectFoldInterface;
 
   /// Registered hook to check if the given region, which is attached to an
   /// operation that is *not* isolated from above, should be used when
   /// materializing constants.
-  bool shouldMaterializeInto(Region *region) const final override {
+  bool shouldMaterializeInto(Region *region) const final {
     // If this is an AIE::CoreOp region, then insert into it.
     return isa<CoreOp>(region->getParentOp());
   }
