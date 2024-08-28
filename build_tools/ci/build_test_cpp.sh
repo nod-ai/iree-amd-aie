@@ -77,7 +77,7 @@ CMAKE_ARGS="\
   -DIREE_INPUT_STABLEHLO=OFF \
   -DIREE_INPUT_TORCH=OFF \
   -DCMAKE_OBJECT_PATH_MAX=4096 \
-  -DIREE_CMAKE_PLUGIN_PATHS=$PWD/../iree-amd-aie"
+  -DIREE_CMAKE_PLUGIN_PATHS=$repo_root"
 
 if [[ "$OSTYPE" != "darwin"* ]]; then
   cmake $CMAKE_ARGS \
