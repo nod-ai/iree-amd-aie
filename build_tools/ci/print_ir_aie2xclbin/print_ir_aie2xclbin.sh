@@ -9,25 +9,17 @@
 set -euo pipefail
 
 # Check for the number of provided arguments
-if [ "$#" -ne 3 ] && [ "$#" -ne 5 ]; then
+if [ "$#" -ne 3 ]; then
     echo -e "Illegal number of parameters: $#." \
             "\n For 2 parameters:" \
             "\n     1) <iree-compile-dir>" \
             "\n     2) <output-dir>" \
             "\n     3) <peano-install-dir>" \
-            "\n For 5 parameters:" \
-            "\n     1) <iree-compile-dir>" \
-            "\n     2) <output-dir>" \
-            "\n     3) <peano-install-dir>" \
-            "\n     4) <xrt-dir>" \
-            "\n     5) <vitis-install-dir>" \
             "\n Example (dependent on environment variables):" \
             "\n     ./print_ir_aie2xclbin.sh " \
             "\$IREE_BUILD_DIR/tools " \
             "results_dir_tmp "\
             "\$PEANO_INSTALL_DIR "\
-            "/opt/xilinx/xrt "\
-            "\$VITIS_INSTALL_PATH"
     exit 1
 fi
 
@@ -39,17 +31,6 @@ mkdir -p ${OUTPUT}
 if [ "$#" -eq 3 ]; then
   echo "Assuming that this is the 'CI case' as 3 parameters were provided."
   PEANO="$3"
-  XRT=/opt/xilinx/xrt
-  VITIS=/opt/Xilinx/Vitis/2024.2
-fi
-
-echo "chess-clang: $(find $VITIS -name chess-clang)"
-echo "xchesscc: $(find $VITIS -name xchesscc)"
-
-# The local set-paths-manually case:
-if [ "$#" -eq 5 ]; then
-  XRT="$4"
-  VITIS="$5"
 fi
 
 IREE_INSTALL_DIR="$1"
@@ -83,15 +64,6 @@ else
   exit 1
 fi
 
-if [ -d "${XRT}" ]; then
-  XRT=`realpath "${XRT}"`
-  source $XRT/setup.sh
-fi
-
-if [ -d "${VITIS}" ]; then
-  VITIS=${VITIS}
-fi
-
 # There might be a FileCheck program in the IREE_INSTALL_DIR. Check.
 # Do not fail if it is not there, we can also check if it already on PATH.
 if [ -x "${IREE_INSTALL_DIR}/bin/FileCheck" ]; then
@@ -113,7 +85,6 @@ ${SOURCE_MLIR_FILE} \
 --iree-hal-target-backends=amd-aie \
 --iree-amd-aie-peano-install-dir=${PEANO} \
 --iree-amd-aie-install-dir=${IREE_INSTALL_DIR} \
---iree-amd-aie-vitis-install-dir=${VITIS} \
 --iree-hal-dump-executable-files-to=${OUTPUT} \
 --aie2xclbin-print-ir-after-all \
 --aie2xclbin-print-ir-before-all \
@@ -178,7 +149,6 @@ ${SOURCE_MLIR_FILE} \
 --iree-hal-target-backends=amd-aie \
 --iree-amd-aie-peano-install-dir=${PEANO} \
 --iree-amd-aie-install-dir=${IREE_INSTALL_DIR} \
---iree-amd-aie-vitis-install-dir=${VITIS} \
 --iree-hal-dump-executable-intermediates-to=${OUTPUT} \
 --iree-hal-dump-executable-files-to=${OUTPUT} \
 --mlir-disable-threading \
@@ -201,7 +171,6 @@ ${SOURCE_MLIR_FILE} \
 --iree-hal-target-backends=amd-aie \
 --iree-amd-aie-peano-install-dir=${PEANO} \
 --iree-amd-aie-install-dir=${IREE_INSTALL_DIR} \
---iree-amd-aie-vitis-install-dir=${VITIS} \
 --iree-hal-dump-executable-intermediates-to=${OUTPUT} \
 --iree-hal-dump-executable-files-to=${OUTPUT} \
 --mlir-disable-threading \
