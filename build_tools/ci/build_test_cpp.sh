@@ -116,7 +116,8 @@ elif [[ "$OSTYPE" == "msys"* ]]; then
 fi
 
 # Show ccache stats.
-ccache --show-stats
+ccache --show-stats -v
+grep -r -B15 'Result: .*_miss' $CCACHE_DEBUGDIR
 
 rm -f "$install_dir"/bin/clang*
 rm -f "$install_dir"/bin/llvm-link*

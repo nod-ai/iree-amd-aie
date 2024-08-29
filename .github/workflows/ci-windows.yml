@@ -33,7 +33,7 @@ jobs:
       fail-fast: true
     env:
       CACHE_DIR: ${{ github.workspace }}/.container-cache
-      CACHE_KEY: windows-build-test-cpp-asserts-v1-${{ github.event.number || github.ref_name }}
+      CACHE_KEY: windows-build-test-cpp-asserts-v1-${{ github.event.number || format('{0}-{1}', github.ref_name, github.run_number) }}
     steps:
       - name: Set unified TZ
         uses: szenius/set-timezone@v2.0
@@ -76,6 +76,15 @@ jobs:
           key: ${{ env.CACHE_KEY }}
           restore-keys: windows-build-test-cpp-
 
+      - name: Configure ccache debug logs
+        run: |
+          # https://interrupt.memfault.com/blog/ccache-debugging
+          echo CCACHE_DEBUG=1 >> $GITHUB_ENV
+          echo CCACHE_DEBUGLEVEL=2 >> $GITHUB_ENV
+          echo CCACHE_DEBUGDIR="/ccache-debug" >> $GITHUB_ENV
+          echo CCACHE_SLOPPINESS=include_file_ctime,include_file_mtime,time_macros >> $GITHUB_ENV
+          echo CCACHE_COMPILERCHECK=content >> $GITHUB_ENV
+
       - name: Build packages
         run: |
           export cache_dir="${{ env.CACHE_DIR }}"
@@ -85,6 +94,19 @@ jobs:
         if: ${{ !cancelled() }}
         run: |
           tar cf iree-dist-windows.tar -C iree-install .
+
+      - name: Tar ccache logs
+        if: ${{ !cancelled() }}
+        run: |
+          tar cf windows-ccache-logs.tar $CCACHE_DEBUGDIR
+
+      - name: Upload ccache logs
+        uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: ccache_logs
+          path: windows-ccache-logs.tar
+          if-no-files-found: warn
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
