@@ -18,20 +18,6 @@
 
 static const char kPackingConfigAttrName[] = "packing_config";
 
-namespace mlir::iree_compiler {
-
-/// Returns an `ArrayAttr` where each element is an `IntegerAttr` of 64-bit
-/// integer type whose values is obtained from `values`.
-static ArrayAttr getIndexArrayAttr(MLIRContext *context,
-                                   ArrayRef<int64_t> values) {
-  return ArrayAttr::get(
-      context, llvm::map_to_vector(values, [&](int64_t value) -> Attribute {
-        return IntegerAttr::get(IndexType::get(context), APInt(64, value));
-      }));
-}
-
-}  // namespace mlir::iree_compiler
-
 namespace mlir::iree_compiler::AMDAIE {
 
 //===----------------------------------------------------------------------===//
@@ -83,11 +69,6 @@ namespace mlir::iree_compiler {
 //===----------------------------------------------------------------------===//
 // Helpers for forming `amdaie.packing_config_level` attribute.
 // ===----------------------------------------------------------------------===//
-
-static AMDAIE::PermLevelAttr getPermLevelAttr(
-    MLIRContext *context, ArrayRef<int64_t> permLevelVal) {
-  return AMDAIE::PermLevelAttr::get(context, permLevelVal);
-}
 
 static AMDAIE::PermLevelsAttr getPermLevelsAttr(
     MLIRContext *context, ArrayRef<SmallVector<int64_t>> permLevelsVal) {

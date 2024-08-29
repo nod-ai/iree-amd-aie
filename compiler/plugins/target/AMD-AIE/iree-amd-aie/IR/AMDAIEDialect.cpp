@@ -8,8 +8,9 @@
 
 #include "iree-amd-aie/IR/AMDAIEAttrs.h"
 #include "iree-amd-aie/IR/AMDAIEDialect.cpp.inc"
-#include "iree-amd-aie/IR/AMDAIETypes.h"
-#include "mlir/IR/DialectImplementation.h"
+#include "iree-amd-aie/IR/AMDAIEOps.h"
+#include "mlir/Interfaces/FoldInterfaces.h"
+#include "mlir/Transforms/InliningUtils.h"
 
 namespace mlir::iree_compiler::AMDAIE {
 
@@ -24,11 +25,29 @@ struct AMDAIEDialectOpAsmInterface : public OpAsmDialectInterface {
   }
 };
 
+/// without this, canonicalize/cse/etc will lift eg constants out of core ops
+/// at every opportunity, causing problems when lowering to AIE.
+///
+/// There's no way to do this is tablegen, so unfortunately it must be hidden
+/// away here
+struct AMDAIEDialectFoldInterface : DialectFoldInterface {
+  using DialectFoldInterface::DialectFoldInterface;
+
+  /// Registered hook to check if the given region, which is attached to an
+  /// operation that is *not* isolated from above, should be used when
+  /// materializing constants.
+  bool shouldMaterializeInto(Region *region) const final {
+    // If this is an AMDAIE::CoreOp region, then insert into it.
+    return isa<AMDAIE::CoreOp>(region->getParentOp());
+  }
+};
+
 void AMDAIEDialect::initialize() {
   initializeAMDAIEAttrs();
   initializeAMDAIEOps();
   initializeAMDAIETypes();
   addInterfaces<AMDAIEDialectOpAsmInterface>();
+  addInterfaces<AMDAIEDialectFoldInterface>();
 }
 
 }  // namespace mlir::iree_compiler::AMDAIE

@@ -4,6 +4,7 @@
 
 import argparse
 import os
+import platform
 import re
 import subprocess
 import time
@@ -46,6 +47,10 @@ def find_executable(install_dir: Path, executable_name):
         install_dir / "bin",
         install_dir / "tools",
     ]
+
+    if platform.system() == "Windows":
+        executable_name += ".exe"
+
     for directory in search_dirs:
         executable_path = directory / executable_name
         if executable_path.is_file():
@@ -55,22 +60,37 @@ def find_executable(install_dir: Path, executable_name):
     )
 
 
-def shell_out(cmd: list, workdir=None, verbose=False, raiseOnError=True):
+def shell_out(cmd: list, workdir=None, verbose: int = 0, raise_on_error=True, env=None):
     if workdir is None:
         workdir = Path.cwd()
+    workdir = Path(workdir)
+    os.chdir(workdir)
     if not isinstance(cmd, list):
         cmd = [cmd]
     for i, c in enumerate(cmd):
         if isinstance(c, Path):
             cmd[i] = str(c)
-    env = os.environ
+    if env is None:
+        env = {}
+
+    env = {**env, **os.environ}
+
     if verbose:
-        _cmd = " ".join([f"{k}={v}" for k, v in env.items()]) + " " + " ".join(cmd)
+        _cmd = " ".join(cmd)
+        if verbose > 1:
+            _cmd = " ".join([f"{k}={v}" for k, v in env.items()]) + " " + _cmd
         print(f"Running the following command:\n{_cmd}")
 
-    handle = subprocess.run(cmd, capture_output=True, cwd=workdir, env=env)
-    stderr_decode = handle.stderr.decode("utf-8").strip()
-    stdout_decode = handle.stdout.decode("utf-8").strip()
+    handle = subprocess.Popen(
+        cmd,
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        env=env,
+    )
+    stdout, stderr = handle.communicate()
+    stderr_decode = stderr.decode("utf-8").strip()
+    stdout_decode = stdout.decode("utf-8").strip()
     if verbose:
         if stdout_decode:
             print("Standard output from script:")
@@ -78,11 +98,11 @@ def shell_out(cmd: list, workdir=None, verbose=False, raiseOnError=True):
         if stderr_decode:
             print("Standard error from script:")
             print(stderr_decode)
-    if not raiseOnError and handle.returncode != 0:
+    if not raise_on_error and handle.returncode != 0:
         print(
             f"Error executing script, error code was {handle.returncode}. Not raising an error."
         )
-    if raiseOnError and handle.returncode != 0:
+    if raise_on_error and handle.returncode != 0:
         raise RuntimeError(
             f"Error executing script, error code was {handle.returncode}"
         )
@@ -246,6 +266,7 @@ class TestConfig:
         self.iree_run_exe = iree_run_exe
         self.return_on_fail = return_on_fail
         self.verbose = verbose
+        self.xdna_datetime = None
         self.reset_npu_between_runs = reset_npu_between_runs
         self.do_not_run_aie = do_not_run_aie
         self.additional_aie_compilation_flags = additional_aie_compilation_flags
@@ -256,18 +277,30 @@ class TestConfig:
         self.xrt_hash = "undetermined"
         self.xrt_release = "undetermined"
         self.peano_commit_hash = "undetermined"
-        xrt_bin_dir = xrt_dir / "bin"
-        xrt_smi_exe = xrt_bin_dir / "xrt-smi"
-        if not xrt_smi_exe.exists():
-            xrt_smi_exe = xrt_bin_dir / "xbutil"
-        if not xrt_smi_exe.exists():
-            raise RuntimeError(f"Neither xrt-smi nor xbutil found in {xrt_bin_dir}")
 
         self.reset_npu_script = file_dir.parent / "reset_npu.sh"
         if reset_npu_between_runs and not self.reset_npu_script.exists():
             raise RuntimeError(
                 f"The file {self.reset_npu_script} does not exist, and reset_npu_script=True"
             )
+
+        # Populated at runtime
+        self.failures = []
+
+        if not isinstance(self.verbose, bool) and not isinstance(self.verbose, int):
+            raise ValueError(
+                f"verbose must be a boolean or integer, not {type(verbose)}"
+            )
+
+        if not xrt_dir:
+            return
+
+        xrt_bin_dir = xrt_dir / "bin"
+        xrt_smi_exe = xrt_bin_dir / "xrt-smi"
+        if not xrt_smi_exe.exists():
+            xrt_smi_exe = xrt_bin_dir / "xbutil"
+        if not xrt_smi_exe.exists():
+            raise RuntimeError(f"Neither xrt-smi nor xbutil found in {xrt_bin_dir}")
 
         # Get the string output of the xrt-smi 'examine' command. Expect the
         # string to look something like:
@@ -317,11 +350,10 @@ class TestConfig:
 
         # Try and get the peano commit hash. This is a bit of a hack, if it fails
         # peano_commit_has is left as "undetermined".
-        self.peano_commit_hash = "undetermined"
         peano_clang_path = peano_dir / "bin" / "clang"
         if peano_clang_path.exists():
             _, clang_v_output = shell_out(
-                [peano_clang_path, "-v"], verbose=self.verbose, raiseOnError=False
+                [peano_clang_path, "-v"], verbose=self.verbose, raise_on_error=False
             )
             peano_commit_hash = re.findall(
                 r"clang version \d+\.\d+\.\d+ \(https://github.com/Xilinx/llvm-aie (\w+)\)",
@@ -330,14 +362,6 @@ class TestConfig:
             )
             if peano_commit_hash:
                 self.peano_commit_hash = peano_commit_hash[0]
-
-        # Populated at runtime
-        self.failures = []
-
-        if not isinstance(self.verbose, bool) and not isinstance(self.verbose, int):
-            raise ValueError(
-                f"verbose must be a boolean or integer, not {type(verbose)}"
-            )
 
     def __str__(self):
         return dedent(
@@ -498,6 +522,7 @@ def aie_vs_llvm_cpu(
         return
 
     name = name_from_mlir_filename(test_file)
+    print(f"Running {name} test")
 
     input_args = generate_inputs(test_file, config.output_dir, seed)
 
@@ -604,7 +629,7 @@ class MatmulSet(TestSet):
         generate_matmul_test(test_name, template_name, 128, 128, 256, "i32", "i32")
         aie_vs_llvm_cpu(config, test_name, tile_pipeline="pack-peel", rtol=0, atol=0)
 
-        if config.xdna_datetime and config.xdna_datetime < 20240819:
+        if config.xdna_datetime and config.xdna_datetime < 20240801:
             for name in [
                 "two_matmul_switching",
                 "matmul_f32_8_8_4",
@@ -630,9 +655,10 @@ class MatmulSet(TestSet):
         generate_matmul_test(
             test_name, template_name, 1024, 1024, 512, "bf16", "f32"
         )
-        aie_vs_llvm_cpu(
-            config, test_name, tile_pipeline="pack-peel", use_ukernel=True
-        )
+        if config.vitis_dir:
+            aie_vs_llvm_cpu(
+                config, test_name, tile_pipeline="pack-peel", use_ukernel=True
+            )
         aie_vs_llvm_cpu(
             config, test_name, tile_pipeline="pack-peel", use_ukernel=False
         )
@@ -676,7 +702,7 @@ class SmokeSet(TestSet):
         )
 
 
-def getTestPartition():
+def get_test_partition():
     return [ConvolutionSet(), MatmulSet(), SmokeSet()]
 
 
@@ -741,9 +767,10 @@ def all_tests(
     verify_determinism()
 
     # Verify a very basic script runs before running the more complex tests
-    shell_out(["pwd"], verbose=config.verbose)
+    if platform.system() != "Windows":
+        shell_out(["pwd"], verbose=config.verbose)
 
-    partition = getTestPartition()
+    partition = get_test_partition()
     partition_names = [p.name for p in partition]
     map_to_partition = {p.name: p for p in partition}
     if "All" in test_set:
@@ -756,8 +783,6 @@ def all_tests(
             raise ValueError(f"Test set '{test}' not found in available test sets.")
         partition = map_to_partition[test]
         partition.run(config)
-
-    # for p in partition:
 
     if config.failures:
         # Convert the list of failed tests into a map: test name to the
@@ -783,55 +808,49 @@ if __name__ == "__main__":
     parser.add_argument("output_dir", type=abs_path)
     parser.add_argument("iree_install_dir", type=abs_path)
     parser.add_argument("peano_install_dir", type=abs_path)
-    parser.add_argument("xrt_dir", type=abs_path)
-    parser.add_argument("vitis_dir", type=abs_path)
+    parser.add_argument("--xrt-dir", type=abs_path)
+    parser.add_argument("--vitis-dir", type=abs_path)
 
     # TODO(newling) make bool options boolean, not integer (tried but had issues)
     parser.add_argument(
-        "--return_on_fail",
+        "--return-on-fail",
         nargs="?",
         default=1,
         type=int,
-        help=(
-            "If 0, then the script will continue running even if a test fails, "
-            "enumerating all failures. Otherwise the script will exit on the first failure."
+        help=dedent(
+            """
+            If 0, then the script will continue running even if a test fails,
+            enumerating all failures. Otherwise the script will exit on the first failure.
+            """
         ),
     )
 
-    parser.add_argument(
-        "--verbose",
-        nargs="?",
-        default=1,
-        type=int,
-        help="If 0, then print statements are suppressed, otherwise they are printed.",
-    )
+    parser.add_argument("-v", "--verbose", action="count", default=0)
 
     parser.add_argument(
-        "--reset_npu_between_runs",
-        nargs="?",
-        default=1,
-        type=int,
+        "--reset-npu-between-runs",
+        action="store_true",
         help=(
-            "If 0 then the NPU is not reset between runs, otherwise it is reset. "
+            "If passed then the NPU is not reset between runs, otherwise it is reset. "
             "Resetting between runs can in theory help avoid certain types of "
             "errors in parts of the stack which these tests are not designed to catch."
         ),
     )
 
     parser.add_argument(
-        "--do_not_run_aie",
-        nargs="?",
-        default=0,
-        type=int,
-        help=(
-            "If 1, then the AIE backend will not be run. This is useful for "
-            "ensuring that everything up to the AIE run and numerical comparison "
-            "is working correctly, for example if you are not on a device with "
-            "working AIE HW and runtime."
+        "--do-not-run-aie",
+        action="store_true",
+        help=dedent(
+            """
+            If passed, then the AIE backend will not be run. This is useful for
+            ensuring that everything up to the AIE run and numerical comparison
+            is working correctly, for example if you are not on a device with
+            working AIE HW and runtime."
+            """
         ),
     )
 
-    partition = getTestPartition()
+    partition = get_test_partition()
     partition_names = [p.name for p in partition]
     partition_names_and_all = partition_names + ["All"]
     help_string = (
@@ -840,19 +859,22 @@ if __name__ == "__main__":
     )
 
     parser.add_argument(
-        "--test_set",
+        "--test-set",
         type=str,
         help=help_string,
         default="All",
     )
 
     parser.add_argument(
-        "--additional_aie_compilation_flags",
+        "--additional-aie-compilation-flags",
         type=str,
-        help=(
-            "Additional flags to pass to the AIE compiler, for all tests. "
-            "Example, do print the IR between passes during compilation you might have: "
-            ' --additional_aie_compilation_flags="--mlir-print-ir-before-all --mlir-print-ir-module-scope --aie2xclbin-print-ir-before-all --aie2xclbin-print-ir-module-scope"'
+        help=dedent(
+            """
+            Additional flags to pass to the AIE compiler, for all tests.
+            Example, do print the IR between passes during compilation you might have:
+            --additional_aie_compilation_flags="--mlir-print-ir-before-all --mlir-print-ir-module-scope
+            --aie2xclbin-print-ir-before-all --aie2xclbin-print-ir-module-scope"'
+            """
         ),
         default="",
     )
