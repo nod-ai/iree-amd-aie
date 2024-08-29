@@ -1164,13 +1164,13 @@ LogicalResult aie2xclbin(
     const std::string &xclBinInstanceName, const std::string &amdAIEInstallDir,
     const std::optional<std::string> &InputXCLBin,
     const std::optional<std::string> &ukernel) {
-  PassManager pm(ctx, AIE::DeviceOp::getOperationName());
-  applyConfigToPassManager(pm, printIRBeforeAll, printIRAfterAll,
-                           printIRModuleScope, timing);
-  if (failed(pm.run(deviceOp))) {
-    llvm::errs() << ": NPU Instruction pipeline failed";
-    return failure();
-  }
+//   PassManager pm2(ctx, AIE::DeviceOp::getOperationName());
+//   applyConfigToPassManager(pm2, printIRBeforeAll, printIRAfterAll,
+//                            printIRModuleScope, timing);
+//   if (failed(pm2.run(deviceOp))) {
+//     llvm::errs() << ": NPU Instruction pipeline failed";
+//     return failure();
+//   }
 
   FailureOr<ArrayRef<uint32_t>> maybeNpuInstructions =
       getNpuInstructions(deviceOp);
@@ -1218,6 +1218,8 @@ LogicalResult aie2xclbin(
     llvm::errs() << "Failed to generate CDO\n";
     return failure();
   }
+
+
 
   if (failed(generateXCLBin(outputXCLBin, tempDirPath, xclBinKernelID,
                             xclBinKernelName, xclBinInstanceName,
