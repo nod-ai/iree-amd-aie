@@ -64,7 +64,7 @@ fi
 # Search for iree-compile and iree-e2e-matmul-test in the user provided directory.
 IREE_COMPILE_EXE=""
 TEST_RUNNER=""
-for dir in "${IREE_INSTALL_DIR}" "${IREE_INSTALL_DIR}/bin" "${IREE_INSTALL_DIR}/tools"; do
+for dir in "${IREE_INSTALL_DIR}" "${IREE_INSTALL_DIR}/bin" "${IREE_INSTALL_DIR}/tools" "${IREE_INSTALL_DIR}/tools/testing/e2e"; do
   echo "Looking in $dir"
   if [ -f "${dir}/iree-compile" ]; then
     IREE_COMPILE_EXE="${dir}/iree-compile"
