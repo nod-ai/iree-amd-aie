@@ -269,8 +269,8 @@ LogicalResult splitLogicalObjectFifos(
           rewriter, staticL3AsSourceOffsets[nonSplitdim], offsetToAdd, context);
       if (failed(newOffset)) {
         // TODO: Ideally we should be able to handle even +, -, *, /, etc.
-        //       But handle this later (if at all!) as such cases aren't
-        //       going to arise.
+        //       But handle this later (if at all!) as such cases might not
+        //       arise.
         l3ToL2DmaOp->emitRemark()
             << "Unhandled expression for source offset at dim " << nonSplitdim;
         return failure();
