@@ -26,5 +26,16 @@ if(IREE_AMD_AIE_ENABLE_XRT_DRIVER)
   include(iree_aie_bootgen)
 endif()
 
+set(IREE_AMD_AIE_ENABLE_HSA_DRIVER OFF)
+if("hsa" IN_LIST IREE_EXTERNAL_HAL_DRIVERS)
+  message(STATUS "Enabling HSA build because it is an enabled HAL driver")
+  set(IREE_AMD_AIE_ENABLE_HSA_DRIVER ON)
+endif()
+
+if(IREE_AMD_AIE_ENABLE_HSA_DRIVER)
+  find_package(hsa-runtime64 CONFIG REQUIRED
+               NAMES hsa-runtime64 hsa_runtime64)
+endif()
+
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/runtime/src AMD-AIE)
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/experimental AMD-AIE-experimental)
