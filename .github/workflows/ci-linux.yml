@@ -93,7 +93,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        runs-on: [linux-phoenix-20240819]
+        runs-on: [linux-phoenix]
     runs-on: ${{ matrix.runs-on }}
     env:
       XILINXD_LICENSE_FILE: /opt/xilinx/Xilinx.lic

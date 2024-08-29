@@ -279,8 +279,11 @@ static void iree_hal_xrt_native_executable_destroy(
 
   for (iree_host_size_t i = 0; i < executable->entry_point_count; ++i) {
     try {
-      // delete executable->entry_points[i].kernel;
-      // delete executable->entry_points[i].instr;
+#ifndef _WIN32
+      // causes segmentation fault on windows
+      delete executable->entry_points[i].kernel;
+      delete executable->entry_points[i].instr;
+#endif
       // TODO(jornt): deleting the xclbin here will result in a corrupted size
       // error in XRT. It looks like the xclbin needs to stay alive while the
       // device is alive if it has been registered.

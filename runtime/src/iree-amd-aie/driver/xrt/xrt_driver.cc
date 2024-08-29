@@ -85,7 +85,7 @@ iree_status_t iree_hal_xrt_driver_create_internal(
       return iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
                               "No XRT devices found");
     }
-  } catch (std::runtime_error& e) {
+  } catch (std::exception& e) {
     return iree_make_status(IREE_STATUS_INTERNAL,
                             "xrt::system::enumerate_devices failed: %s",
                             e.what());
@@ -94,7 +94,7 @@ iree_status_t iree_hal_xrt_driver_create_internal(
   try {
     global_device = xrt::device(0);
     driver->device = &global_device;
-  } catch (std::runtime_error& e) {
+  } catch (std::exception& e) {
     return iree_make_status(IREE_STATUS_INTERNAL, "xrt::device(0) failed: %s",
                             e.what());
   }

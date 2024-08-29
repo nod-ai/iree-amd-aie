@@ -639,7 +639,10 @@ static LogicalResult generateCoreElfFiles(
     if (verbose) flags.emplace_back("-v");
     // we run clang (ie cc) so that libc, libm, crt0/1 paths are injected
     // automatically into the ld.lld invocation
-    return runTool((peanoDir / "bin" / "clang").string(), flags, verbose);
+    if (failed(
+            runTool((peanoDir / "bin" / "clang").string(), flags, verbose))) {
+      return failure();
+    }
   }
   return success();
 }
