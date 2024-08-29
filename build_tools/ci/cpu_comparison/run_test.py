@@ -522,7 +522,8 @@ def aie_vs_llvm_cpu(
         return
 
     name = name_from_mlir_filename(test_file)
-    print(f"Running {name} test")
+    if config.verbose:
+        print(f"Running {name} test")
 
     input_args = generate_inputs(test_file, config.output_dir, seed)
 
