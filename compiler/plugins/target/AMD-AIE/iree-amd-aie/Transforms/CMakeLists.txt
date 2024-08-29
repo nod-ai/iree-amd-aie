@@ -74,6 +74,7 @@ iree_cc_library(
     "AMDAIEInsertLoopsForVectorization.cpp"
     "AMDAIELinkExecutables.cpp"
     "AMDAIELocalizeLogicalObjectFifo.cpp"
+    "AMDAIELogicalObjFifoSplittingUtils.cpp"
     "AMDAIELowerExecutableTarget.cpp"
     "AMDAIELowerFuncArgs.cpp"
     "AMDAIELowerToAIE.cpp"
