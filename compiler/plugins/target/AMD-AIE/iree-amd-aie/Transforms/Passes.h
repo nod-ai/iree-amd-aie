@@ -224,7 +224,7 @@ std::unique_ptr<Pass> createAMDAIEPeelForLoopPass(
 /// Create a pass to sink all dependencies into `amdaie.core` operations.
 std::unique_ptr<Pass> createAMDAIESinkIntoCorePass();
 
-/// Create a pass to split buffers.
+/// Create a pass to split logicalobjectfifos for connection reuse.
 std::unique_ptr<Pass> createAMDAIESplitLogicalObjFifosForConnectionReusePass();
 
 /// Create pass to tile TilingInterface operations.

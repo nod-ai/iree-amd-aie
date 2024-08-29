@@ -12,7 +12,9 @@
 namespace mlir::iree_compiler::AMDAIE {
 
 /// Utility to split logicalobjectfifos given a bunch of L2->L1 DmaCpyNd ops.
-LogicalResult splitLogicalObjectFifos(IRRewriter &rewriter, SmallVector<AMDAIE::DmaCpyNdOp> l2ToL1DmaOps, MLIRContext* context);
+LogicalResult splitLogicalObjectFifos(
+    IRRewriter &rewriter, SmallVector<AMDAIE::DmaCpyNdOp> &l2ToL1DmaOps,
+    MLIRContext *context);
 
 }  // namespace mlir::iree_compiler::AMDAIE
 

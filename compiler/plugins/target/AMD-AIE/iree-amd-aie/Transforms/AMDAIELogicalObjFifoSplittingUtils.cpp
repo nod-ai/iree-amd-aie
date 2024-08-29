@@ -16,7 +16,115 @@
 
 namespace mlir::iree_compiler::AMDAIE {
 
-LogicalResult splitLogicalObjectFifos(IRRewriter &rewriter, SmallVector<AMDAIE::DmaCpyNdOp> l2ToL1DmaOps, MLIRContext* context) {
+/// Utility to verify that the split dimensions for L2 are contiguous.
+static LogicalResult verifySplitDimensionConstraint(
+    SmallVector<unsigned> &splitDimsSetForL2) {
+  unsigned dim = 0;
+  for (unsigned splitDim : splitDimsSetForL2) {
+    if (splitDim != dim) return failure();
+    ++dim;
+  }
+  return success();
+}
+
+/*
+  For L3 -> L2 DmaCpyNd :-
+  From offset (0,0) we are extracting one 4x4 memref.
+                  _______
+                |. . . .|
+                |. . . .|
+                |. . . .|
+                |. . . .|
+                ---------
+
+  After split we will extract four 2x2 memrefs.
+  So, the corresponding offsets will be :-
+  1. Offset (0,0) - extract 2x2 memref
+        ___
+      |. .|. .
+      |. .|. .
+      -----
+        . . . .
+        . . . .
+  2. Offset (0,2) - extract 2x2 memref
+            ___
+        . .|. .|
+        . .|. .|
+          -----
+        . . . .
+        . . . .
+  3. Offset (2,0) - extract 2x2 memref
+        . . . .
+        . . . .
+        ___
+      |. .|. .
+      |. .|. .
+      -----
+  4. Offset (2,2) - extract 2x2 memref
+        . . . .
+        . . . .
+            ___
+        . .|. .|
+        . .|. .|
+          -----
+
+  The following utility helps perform the computation of offsets for L3 source.
+*/
+static FailureOr<OpFoldResult> updateL3SourceOffset(IRRewriter &rewriter,
+                                                    OpFoldResult oldL3Offset,
+                                                    int64_t offsetToAdd,
+                                                    MLIRContext *context) {
+  OpFoldResult newL3AsSourceOffset;
+  if (auto l3SourceOffsetAttr = dyn_cast<Attribute>(oldL3Offset)) {
+    int64_t l3SourceOffsetIntVal =
+        cast<IntegerAttr>(l3SourceOffsetAttr).getInt();
+    int64_t newOffset = l3SourceOffsetIntVal + offsetToAdd;
+    newL3AsSourceOffset = rewriter.getIndexAttr(newOffset);
+  } else {
+    auto l3SourceOffsetVal = cast<Value>(oldL3Offset);
+    if (auto blockArg = dyn_cast<BlockArgument>(l3SourceOffsetVal)) {
+      Operation *ownerOfBlockArg = blockArg.getOwner()->getParentOp();
+      OpBuilder::InsertionGuard guard(rewriter);
+      rewriter.setInsertionPointToStart(blockArg.getOwner());
+      AffineExpr affineExpr = rewriter.getAffineDimExpr(0);
+      AffineExpr newAffineExpr = affineExpr + offsetToAdd;
+      auto newAffineMap = AffineMap::get(/*dimCount=*/1, /*symbolCount=*/0,
+                                         {newAffineExpr}, context);
+      newL3AsSourceOffset =
+          rewriter
+              .create<affine::AffineApplyOp>(ownerOfBlockArg->getLoc(),
+                                             newAffineMap, l3SourceOffsetVal)
+              .getResult();
+    } else {
+      Operation *defOpOfL3SourceOffset = l3SourceOffsetVal.getDefiningOp();
+      Location loc = defOpOfL3SourceOffset->getLoc();
+      OpBuilder::InsertionGuard guard(rewriter);
+      rewriter.setInsertionPoint(defOpOfL3SourceOffset);
+      if (auto applyOp =
+              dyn_cast<affine::AffineApplyOp>(defOpOfL3SourceOffset)) {
+        AffineExpr affineExpr = applyOp.getAffineMap().getResult(0);
+        AffineExpr newAffineExpr = affineExpr + offsetToAdd;
+        auto newAffineMap = AffineMap::get(
+            /*dimCount=*/1, /*symbolCount=*/0, {newAffineExpr}, context);
+        newL3AsSourceOffset =
+            rewriter
+                .create<affine::AffineApplyOp>(loc, newAffineMap,
+                                               applyOp.getMapOperands())
+                .getResult();
+      } else if (auto constantOffset = getConstantIntValue(l3SourceOffsetVal)) {
+        int64_t newOffset = *constantOffset + offsetToAdd;
+        newL3AsSourceOffset = rewriter.getIndexAttr(newOffset);
+      } else {
+        return failure();
+      }
+    }
+  }
+  return newL3AsSourceOffset;
+}
+
+LogicalResult splitLogicalObjectFifos(
+    IRRewriter &rewriter, SmallVector<AMDAIE::DmaCpyNdOp> &l2ToL1DmaOps,
+    MLIRContext *context) {
   if (l2ToL1DmaOps.size() == 0) return success();
 
   SmallVector<OpFoldResult> baseSourceOffsets =
@@ -34,7 +142,8 @@ LogicalResult splitLogicalObjectFifos(IRRewriter &rewriter, SmallVector<AMDAIE::
   // We will now capture those dimensions where L2 memory was split. The way we
   // do this is by checking all L2->L1 DmaOps' source offset and marking those
   // dimensions which are not equal to at least one of the source offsets.
-  DenseSet<unsigned> splitDimensionsSetForL2AsSource;
+  DenseSet<unsigned> splitDimsSetForL2;
+  SmallVector<unsigned> splitDimsForL2;
   for (unsigned i = 1, n = l2ToL1DmaOps.size(); i < n; i++) {
     if (l2ToL1DmaOps[i].getSourceObjectFifo() != sourceObjectFifo) {
       l2ToL1DmaOps[i]->emitRemark() << "has different source objectfifo";
@@ -44,11 +153,22 @@ LogicalResult splitLogicalObjectFifos(IRRewriter &rewriter, SmallVector<AMDAIE::
     SmallVector<OpFoldResult> sourceOffsets =
         l2ToL1DmaOps[i].getSourceMixedOffsets();
     for (unsigned j = 0, m = baseSourceOffsets.size(); j < m; j++) {
-      if (baseSourceOffsets[j] != sourceOffsets[j]) {
-        splitDimensionsSetForL2AsSource.insert(j);
+      if (baseSourceOffsets[j] != sourceOffsets[j] &&
+          !splitDimsSetForL2.contains(j)) {
+        splitDimsForL2.push_back(j);
+        splitDimsSetForL2.insert(j);
       }
     }
   }
+  std::sort(splitDimsForL2.begin(), splitDimsForL2.end());
+
+  if (failed(verifySplitDimensionConstraint(splitDimsForL2))) {
+    l2ToL1DmaOps[0]->emitRemark()
+        << "cannot split L2 logicalobjectfifo because of non-contiguous split "
+           "dimensions inferred";
+    return failure();
+  }
+
   // Fetch the L3 -> L2 Dma Op corresponding to the L2 buffer as target.
   AMDAIE::DmaCpyNdOp l3ToL2DmaOp;
   DenseSet<Operation *> toBeErased;
@@ -63,81 +183,45 @@ LogicalResult splitLogicalObjectFifos(IRRewriter &rewriter, SmallVector<AMDAIE::
   toBeErased.insert(sourceAllocOp);
   toBeErased.insert(sourceObjectFifo);
 
-  SmallVector<int64_t> splitDimensionsSetForL3AsSource;
-  SmallVector<OpFoldResult> l3SourceOffsets =
-      l3ToL2DmaOp.getSourceMixedOffsets();
-  for (int i = 0, n = l3SourceOffsets.size(); i < n; i++) {
-    std::optional<int64_t> constantOffset =
-        getConstantIntValue(l3SourceOffsets[i]);
-    if (!constantOffset || constantOffset.value() != 0) {
-      splitDimensionsSetForL3AsSource.push_back(i);
-    }
-  }
-
+  SmallVector<OpFoldResult, 4> staticL2AsTargetOffsets =
+      l3ToL2DmaOp.getTargetMixedOffsets();
+  SmallVector<OpFoldResult, 4> staticL2AsTargetSizes =
+      l3ToL2DmaOp.getTargetMixedSizes();
+  SmallVector<OpFoldResult, 4> staticL2AsTargetStrides =
+      l3ToL2DmaOp.getTargetMixedStrides();
+  SmallVector<int64_t, 4> l2ShapeAsTarget = llvm::to_vector(
+      cast<MemRefType>(l3ToL2DmaOp.getTargetObjectFifo().getMemref().getType())
+          .getShape());
   OpFoldResult zeroVal = getAsIndexOpFoldResult(context, 0);
   OpFoldResult oneVal = getAsIndexOpFoldResult(context, 1);
+  // Update split dimensions' offset/size for L2 as target . We can afford to do
+  // this here because it's going to be the same for all L3->L2 splits. Here we
+  // are setting offset = 0 and size = 1.
+  for (unsigned dim : splitDimsForL2) {
+    staticL2AsTargetOffsets[dim] = zeroVal;
+    staticL2AsTargetSizes[dim] = oneVal;
+    l2ShapeAsTarget[dim] = 1;
+  }
+  SmallVector<unsigned> nonSplitDimsForL2;
+  for (unsigned dim = 0, n = staticL2AsTargetSizes.size(); dim < n; dim++) {
+    if (splitDimsSetForL2.contains(dim)) continue;
+    nonSplitDimsForL2.push_back(dim);
+  }
+
   // Traverse each L2->L1 DmaCpyNd op and split them.
   for (AMDAIE::DmaCpyNdOp l2ToL1DmaOp : l2ToL1DmaOps) {
-    LogicalObjectFifoFromMemrefOp targetObjectFifo =
-        l2ToL1DmaOp.getTargetObjectFifo();
-    Value targetAllocOp = targetObjectFifo.getMemref();
-
     SmallVector<OpFoldResult, 6> staticL2AsSourceOffsets =
         l2ToL1DmaOp.getSourceMixedOffsets();
     SmallVector<OpFoldResult, 6> staticL2AsSourceSizes =
         l2ToL1DmaOp.getSourceMixedSizes();
     SmallVector<OpFoldResult, 6> staticL2AsSourceStrides =
         l2ToL1DmaOp.getSourceMixedStrides();
-    SmallVector<OpFoldResult, 4> staticL2AsTargetOffsets =
-        l3ToL2DmaOp.getTargetMixedOffsets();
-    SmallVector<OpFoldResult, 4> staticL2AsTargetSizes =
-        l3ToL2DmaOp.getTargetMixedSizes();
-    SmallVector<OpFoldResult, 4> staticL2AsTargetStrides =
-        l3ToL2DmaOp.getTargetMixedStrides();
-    SmallVector<int64_t, 4> l2ShapeAsTarget = llvm::to_vector(
-        cast<MemRefType>(
-            l3ToL2DmaOp.getTargetObjectFifo().getMemref().getType())
-            .getShape());
-    // We traverse through the split dimensions we captured earlier and for each
-    // such dimension we perform the following updates :-
-    // 1. Maintain a map: DIM -> CONST_OFFSET_TO_ADD. `CONST_OFFSET_TO_ADD` is
-    //    the constant we get by multiplying L2 as source's offset at split
-    //    dimension with L2 as target's size at split dimension for L3. We are
-    //    maintaining this to later update the extraction offset of L3 -> L2.
-    // 2. Update L2 as source/target offset => 0.
-    // 3. Update L2 as source/target size => 1.
-    // 4. Compute the shape of L2 buffer after split.
-    DenseMap<int64_t, int64_t> dimToOffsetMapForL3AsSource;
-    int64_t l3DimIndex = 0;
-    for (unsigned dim : splitDimensionsSetForL2AsSource) {
-      std::optional<int64_t> constantOffset =
-          getConstantIntValue(staticL2AsSourceOffsets[dim]);
-      if (!constantOffset) {
-        l2ToL1DmaOp->emitRemark()
-            << "found a non-constant value for source offset at dim " << dim;
-        return failure();
-      }
-      std::optional<int64_t> constantSize = getConstantIntValue(
-          staticL2AsTargetSizes[splitDimensionsSetForL3AsSource[l3DimIndex]]);
-      if (!constantSize) {
-        l3ToL2DmaOp->emitRemark()
-            << "found a non-constant value for target size at dim "
-            << splitDimensionsSetForL3AsSource[l3DimIndex];
-        return failure();
-      }
-      dimToOffsetMapForL3AsSource.insert(
-          {splitDimensionsSetForL3AsSource[l3DimIndex],
-           constantOffset.value() * constantSize.value()});
-      staticL2AsSourceOffsets[dim] = zeroVal;
-      staticL2AsSourceSizes[dim] = oneVal;
-      staticL2AsTargetOffsets[dim] = zeroVal;
-      staticL2AsTargetSizes[dim] = oneVal;
-      l2ShapeAsTarget[dim] = 1;
-      l3DimIndex++;
-    }
 
     // Now we'll create a narrowed linearized L2 buffer.
     rewriter.setInsertionPoint(sourceAllocOp);
+    LogicalObjectFifoFromMemrefOp targetObjectFifo =
+        l2ToL1DmaOp.getTargetObjectFifo();
+    Value targetAllocOp = targetObjectFifo.getMemref();
     auto oldSourceMemRefType = cast<MemRefType>(sourceAllocOp.getType());
     auto targetMemRefType = cast<MemRefType>(targetAllocOp.getType());
     MemRefType newAllocType = MemRefType::get(
@@ -148,7 +232,6 @@ LogicalResult splitLogicalObjectFifos(IRRewriter &rewriter, SmallVector<AMDAIE::
     auto newDeallocOp = rewriter.create<memref::DeallocOp>(
         rewriter.getUnknownLoc(), newAllocOp);
     newDeallocOp->moveBefore(&newAllocOp->getBlock()->back());
-
     auto type = cast<MemRefType>(newAllocOp.getType());
     // Create new logicalobjectfifo.from_memref for the newly created L2 buffer.
     rewriter.setInsertionPoint(l2ToL1DmaOp.getSourceObjectFifo());
@@ -156,105 +239,43 @@ LogicalResult splitLogicalObjectFifos(IRRewriter &rewriter, SmallVector<AMDAIE::
         rewriter.getUnknownLoc(), LogicalObjectFifoType::get(type),
         newAllocOp.getResult(), sourceObjectFifo.getTiles());
 
+    // --------------------------------------------
+    // ---------- L3 -> L2 splitting --------------
+    // --------------------------------------------
+    // Update L3 source offsets for non-split dimensions. Refer doc comment of
+    // `updateL3SourceOffset` for the computation rationale involved.
     SmallVector<OpFoldResult, 4> staticL3AsSourceOffsets =
         l3ToL2DmaOp.getSourceMixedOffsets();
-    /*
-      For L3 -> L2 DmaCpyNd :-
-      From offset (0,0) we are extracting one 4x4 memref.
-                     _______
-                    |. . . .|
-                    |. . . .|
-                    |. . . .|
-                    |. . . .|
-                    ---------
-
-      After split we will extract four 2x2 memrefs.
-      So, the corresponding offsets will be :-
-      1. Offset (0,0) - extract 2x2 memref
-           ___
-          |. .|. .
-          |. .|. .
-          -----
-           . . . .
-           . . . .
-      2. Offset (0,2) - extract 2x2 memref
-               ___
-           . .|. .|
-           . .|. .|
-              -----
-           . . . .
-           . . . .
-      3. Offset (2,0) - extract 2x2 memref
-           . . . .
-           . . . .
-           ___
-          |. .|. .
-          |. .|. .
-          -----
-      4. Offset (2,2) - extract 2x2 memref
-           . . . .
-           . . . .
-               ___
-           . .|. .|
-           . .|. .|
-              -----
-
-      The following logic performs this computation of offsets for L3 source.
-    */
-    for (auto [dim, offsetToAdd] : dimToOffsetMapForL3AsSource) {
-      OpFoldResult newL3AsSourceOffset;
-      if (auto l3SourceOffsetAttr =
-              dyn_cast<Attribute>(staticL3AsSourceOffsets[dim])) {
-        int64_t l3SourceOffsetIntVal =
-            cast<IntegerAttr>(l3SourceOffsetAttr).getInt();
-        int64_t newOffset = l3SourceOffsetIntVal + offsetToAdd;
-        newL3AsSourceOffset = rewriter.getIndexAttr(newOffset);
-      } else {
-        auto l3SourceOffsetVal = cast<Value>(staticL3AsSourceOffsets[dim]);
-        if (auto blockArg = dyn_cast<BlockArgument>(l3SourceOffsetVal)) {
-          Operation *ownerOfBlockArg = blockArg.getOwner()->getParentOp();
-          OpBuilder::InsertionGuard guard(rewriter);
-          rewriter.setInsertionPointToStart(blockArg.getOwner());
-          AffineExpr affineExpr = rewriter.getAffineDimExpr(0);
-          AffineExpr newAffineExpr = affineExpr + offsetToAdd;
-          auto newAffineMap = AffineMap::get(/*dimCount=*/1, /*symbolCount=*/0,
-                                             {newAffineExpr}, context);
-          newL3AsSourceOffset = rewriter
-                                    .create<affine::AffineApplyOp>(
-                                        ownerOfBlockArg->getLoc(), newAffineMap,
-                                        l3SourceOffsetVal)
-                                    .getResult();
-        } else {
-          Operation *defOpOfL3SourceOffset = l3SourceOffsetVal.getDefiningOp();
-          Location loc = defOpOfL3SourceOffset->getLoc();
-          OpBuilder::InsertionGuard guard(rewriter);
-          rewriter.setInsertionPoint(defOpOfL3SourceOffset);
-          if (auto applyOp =
-                  dyn_cast<affine::AffineApplyOp>(defOpOfL3SourceOffset)) {
-            AffineExpr affineExpr = applyOp.getAffineMap().getResult(0);
-            AffineExpr newAffineExpr = affineExpr + offsetToAdd;
-            auto newAffineMap = AffineMap::get(
-                /*dimCount=*/1, /*symbolCount=*/0, {newAffineExpr}, context);
-            newL3AsSourceOffset =
-                rewriter
-                    .create<affine::AffineApplyOp>(loc, newAffineMap,
-                                                   applyOp.getMapOperands())
-                    .getResult();
-          } else if (auto constantOffset =
-                         getConstantIntValue(l3SourceOffsetVal)) {
-            int64_t newOffset = *constantOffset + offsetToAdd;
-            newL3AsSourceOffset = rewriter.getIndexAttr(newOffset);
-          } else {
-            // TODO: Ideally we should be able to handle even +, -, *, /, etc.
-            //       But handle this later (if at all!) as such cases aren't
-            //       going to arise.
-            l3ToL2DmaOp->emitRemark()
-                << "Unhandled expression for source offset at dim " << dim;
-            return failure();
-          }
-        }
+    for (auto &&[splitDim, nonSplitdim] :
+         llvm::zip_equal(splitDimsForL2, nonSplitDimsForL2)) {
+      std::optional<int64_t> constantOffset =
+          getConstantIntValue(staticL2AsSourceOffsets[splitDim]);
+      if (!constantOffset) {
+        l2ToL1DmaOp->emitRemark()
+            << "found a non-constant value for source offset at dim "
+            << splitDim;
+        return failure();
       }
-      staticL3AsSourceOffsets[dim] = newL3AsSourceOffset;
+      std::optional<int64_t> constantSize =
+          getConstantIntValue(staticL2AsTargetSizes[nonSplitdim]);
+      if (!constantSize) {
+        l3ToL2DmaOp->emitRemark()
+            << "found a non-constant value for target size at dim "
+            << nonSplitdim;
+        return failure();
+      }
+      int64_t offsetToAdd = constantOffset.value() * constantSize.value();
+      FailureOr<OpFoldResult> newOffset = updateL3SourceOffset(
+          rewriter, staticL3AsSourceOffsets[nonSplitdim], offsetToAdd, context);
+      if (failed(newOffset)) {
+        // TODO: Ideally we should be able to handle even +, -, *, /, etc.
+        //       But handle this later (if at all!) as such cases aren't
+        //       going to arise.
+        l3ToL2DmaOp->emitRemark()
+            << "Unhandled expression for source offset at dim " << nonSplitdim;
+        return failure();
+      }
+      staticL3AsSourceOffsets[nonSplitdim] = *newOffset;
     }
     // Create new L3 -> L2 Dma Op.
     rewriter.setInsertionPoint(l3ToL2DmaOp);
@@ -265,6 +286,17 @@ LogicalResult splitLogicalObjectFifos(IRRewriter &rewriter, SmallVector<AMDAIE::
         llvm::ArrayRef(staticL3AsSourceOffsets),
         llvm::ArrayRef(staticL2AsTargetSizes),
         l3ToL2DmaOp.getSourceMixedStrides());
+
+    // --------------------------------------------
+    // ---------- L2 -> L1 splitting --------------
+    // --------------------------------------------
+    // Update split dimensions' offset/size for L2 as target . Here we are
+    // setting offset = 0 and size = 1.
+    DenseMap<int64_t, int64_t> nonSplitDimToOffsetMapForL3AsSource;
+    for (unsigned dim : splitDimsForL2) {
+      staticL2AsSourceOffsets[dim] = zeroVal;
+      staticL2AsSourceSizes[dim] = oneVal;
+    }
 
     // Create new L2 -> L1 Input DmaOp.
     rewriter.setInsertionPoint(l2ToL1DmaOp);
