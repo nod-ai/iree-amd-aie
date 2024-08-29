@@ -290,7 +290,7 @@ def AMDAIELowerExecutableTarget :
   let options = [
     Option<"usePassPipeline", "use-pass-pipeline",
       "mlir::iree_compiler::AMDAIE::TilePassPipeline",
-      /*default=*/"mlir::iree_compiler::AMDAIE::TilePassPipeline::PadPackPipeline",
+      /*default=*/"mlir::iree_compiler::AMDAIE::TilePassPipeline::PackPeelPipeline",
       "Pass pipeline to use while lowering to AIR dialect",
       [{::llvm::cl::values(
         clEnumValN(mlir::iree_compiler::AMDAIE::TilePassPipeline::PackPeelPipeline, "pack-peel",
@@ -310,7 +310,7 @@ def AMDAIELoweringStrategy :
   let options = [
     Option<"usePassPipeline", "use-pass-pipeline",
       "mlir::iree_compiler::AMDAIE::TilePassPipeline",
-      /*default=*/"mlir::iree_compiler::AMDAIE::TilePassPipeline::PadPackPipeline",
+      /*default=*/"mlir::iree_compiler::AMDAIE::TilePassPipeline::PackPeelPipeline",
       "Pass pipeline to use while lowering to AIR dialect",
       [{::llvm::cl::values(
         clEnumValN(mlir::iree_compiler::AMDAIE::TilePassPipeline::PackPeelPipeline, "pack-peel",
@@ -320,8 +320,6 @@ def AMDAIELoweringStrategy :
         clEnumValN(mlir::iree_compiler::AMDAIE::TilePassPipeline::ConvDecomposePipeline, "conv-decompose",
                    "Use the conv-decompose based lowering strategy for convolution interface ops.")
       )}]>,
-    Option<"numCores", "num-cores", "int32_t", /*default=*/"1",
-      "Choose the number of cores to use">,
     Option<"useLowerToAIEPipeline", "use-lower-to-aie-pipeline",
       "mlir::iree_compiler::AMDAIE::LowerToAIEPassPipeline",
       /*default=*/"mlir::iree_compiler::AMDAIE::LowerToAIEPassPipeline::AIR",

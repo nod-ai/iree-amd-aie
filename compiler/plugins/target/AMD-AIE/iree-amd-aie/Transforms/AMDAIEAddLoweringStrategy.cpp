@@ -64,13 +64,10 @@ void AMDAIELoweringStrategyPass::runOnOperation() {
     }
   }
 
-  // To simplify development, the number of cores can be passed as a flag during
-  // compilation. In the future these parameters could be read from file.
-  struct AIEConfig cfg = {numCores};
   for (auto funcOp : moduleOp.getOps<FunctionOpInterface>()) {
     // Set the strategy with default heuristics.
     if (failed(initAIELaunchConfig(funcOp, usePassPipeline,
-                                   useLowerToAIEPipeline, cfg))) {
+                                   useLowerToAIEPipeline))) {
       funcOp.emitOpError("failed to have a lowering configuration set for it.");
       return signalPassFailure();
     }

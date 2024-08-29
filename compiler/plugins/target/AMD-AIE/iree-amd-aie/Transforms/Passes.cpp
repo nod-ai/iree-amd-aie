@@ -52,7 +52,7 @@ static llvm::cl::opt<LowerToAIEPassPipeline> clUseLowerToAIEPipeline(
                      clEnumValN(LowerToAIEPassPipeline::ObjectFifo,
                                 "objectFifo",
                                 "Use the IREE lowering to objectFifos")),
-    llvm::cl::init(LowerToAIEPassPipeline::AIR));
+    llvm::cl::init(LowerToAIEPassPipeline::ObjectFifo));
 
 /// Command line option for selecting the lowering pipeline to use tiling
 /// computations and packing data.
@@ -69,11 +69,7 @@ static llvm::cl::opt<TilePassPipeline> clUseTilePipeline(
         clEnumValN(TilePassPipeline::ConvDecomposePipeline, "conv-decompose",
                    "Use the conv-decompose based lowering strategy for "
                    "convolution interface ops")),
-    llvm::cl::init(TilePassPipeline::PadPackPipeline));
-
-static llvm::cl::opt<int32_t> clNumCores(
-    "iree-amdaie-num-cores",
-    llvm::cl::desc("Choose the number of cores to use"), llvm::cl::init(1));
+    llvm::cl::init(TilePassPipeline::PackPeelPipeline));
 
 static llvm::cl::opt<std::string> clPathToUkernels(
     "iree-amdaie-path-to-ukernels",
@@ -553,7 +549,6 @@ void buildAMDAIETransformPassPipeline(OpPassManager &variantPassManager,
     AMDAIELoweringStrategyOptions options;
     options.usePassPipeline = clUseTilePipeline;
     options.useLowerToAIEPipeline = clUseLowerToAIEPipeline;
-    options.numCores = clNumCores;
     modulePassManager.addPass(createAMDAIELoweringStrategyPass(options));
   }
   modulePassManager.addPass(createLowerExecutableUsingTransformDialectPass());
