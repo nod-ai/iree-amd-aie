@@ -130,8 +130,8 @@ target_include_directories(iree-aie-xclbinutil
                                    ${_xclbinutil_source_dir})
 target_compile_options(iree-aie-xclbinutil
                        PRIVATE
-                       $<$<PLATFORM_ID:Linux>:-fexceptions -frtti>
-                       $<$<PLATFORM_ID:Windows>:/EHsc /GR>)
+                       $<$<PLATFORM_ID:Linux>:-fexceptions -frtti -w>
+                       $<$<PLATFORM_ID:Windows>:/EHsc /GR /w>)
 set_target_properties(iree-aie-xclbinutil
                       PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/tools")
 
@@ -181,8 +181,8 @@ foreach(_core_lib IN LISTS _core_libs)
   target_compile_definitions(${_core_lib} PUBLIC -DBOOST_BIND_GLOBAL_PLACEHOLDERS)
   target_compile_options(${_core_lib}
                          PRIVATE
-                         $<$<PLATFORM_ID:Linux>:-fexceptions -frtti>
-                         $<$<PLATFORM_ID:Windows>:/EHsc /GR>)
+                         $<$<PLATFORM_ID:Linux>:-fexceptions -frtti -w>
+                         $<$<PLATFORM_ID:Windows>:/EHsc /GR /w>)
   target_link_libraries(${_core_lib} PUBLIC $<BUILD_LOCAL_INTERFACE:${IREE_AIE_BOOST_LIBS}>)
 endforeach()
 

@@ -30,25 +30,8 @@ if(WIN32)
   target_compile_definitions(iree-aie-bootgen PUBLIC YY_NO_UNISTD_H)
 endif()
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
-  set(_bootgen_c_warning_ignores
-      -Wno-cast-qual
-      -Wno-covered-switch-default
-      -Wno-date-time
-      -Wno-deprecated-declarations
-      -Wno-deprecated-register
-      -Wno-dynamic-class-memaccess
-      -Wno-format
-      -Wno-implicit-fallthrough
-      -Wno-incompatible-function-pointer-types
-      -Wno-incompatible-pointer-types-discards-qualifiers
-      -Wno-misleading-indentation
-      -Wno-pointer-bool-conversion
-      -Wno-sign-compare
-      -Wno-tautological-overlap-compare
-      -Wno-unused)
-  set(_bootgen_cxx_warning_ignores
-      -Wno-deprecated-copy -Wno-non-virtual-dtor -Wno-overloaded-virtual
-      -Wno-register -Wno-reorder -Wno-suggest-override)
+  set(_bootgen_c_warning_ignores -w)
+  set(_bootgen_cxx_warning_ignores -w -Wno-register)
 endif()
 
 target_compile_options(iree-aie-bootgen PRIVATE
