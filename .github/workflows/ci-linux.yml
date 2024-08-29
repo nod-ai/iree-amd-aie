@@ -79,7 +79,13 @@ jobs:
           bash build_tools/build_llvm.sh
           rm -rf llvm-build
           export llvm_install_dir=$PWD/llvm-install
+          export IREE_EXTERNAL_HAL_DRIVERS="hsa;xrt"
           bash build_tools/build_test_cpp.sh
+
+      - name: Copy cts tests
+        run: |
+          mkdir -p iree-install/device_tests
+          cp iree-build/runtime/plugins/AMD-AIE/iree-amd-aie/driver/hsa/cts/*test iree-install/device_tests
 
       - name: Create artifacts
         if: ${{ !cancelled() }}
@@ -193,3 +199,8 @@ jobs:
             $PWD/llvm-aie \
             /opt/xilinx/xrt \
             /opt/Xilinx/Vitis/2024.2
+
+      - name : HSA CTS tests
+        run: |
+          pushd iree-install/device_tests
+          for test in $(ls *test); do ./$test; done

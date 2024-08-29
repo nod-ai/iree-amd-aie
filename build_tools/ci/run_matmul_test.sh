@@ -459,7 +459,7 @@ function run_matmul_test() {
   echo "**** Running '${name}' matmul test ${total_num_runs} times (command ${COMMAND}) ****"
   for i in $(seq 1 $num_repeat_runs); do
     # Only reset NPU in CI to facilitate easier local testing without sudo access.
-    if [[ "$OSTYPE" == "linux-gnu"* ]] && [ "${GITHUB_ACTIONS}" = true ]; then
+    if [[ "$OSTYPE" == "linux"* ]] && [ "${GITHUB_ACTIONS}" = true ]; then
       echo "Reset NPU"
       bash $THIS_DIR/reset_npu.sh
     fi

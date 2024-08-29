@@ -29,3 +29,8 @@
   url = https://github.com/iree-org/iree.git
   shallow = true
   ignore = dirty
+[submodule "third_party/ROCR-Runtime"]
+  path = third_party/ROCR-Runtime
+  url = https://github.com/nod-ai/ROCR-Runtime.git
+  shallow = true
+  branch = iree-aie

@@ -31,7 +31,7 @@ mkdir -p "${cache_dir}/pip"
 python="$(which python)"
 echo "Using python: $python"
 
-if [[ "$OSTYPE" == "linux-gnu"* ]]; then
+if [[ "$OSTYPE" == "linux"* ]]; then
   export CMAKE_TOOLCHAIN_FILE="$this_dir/linux_default_toolchain.cmake"
   export CC=clang
   export CXX=clang++
@@ -91,7 +91,7 @@ if [ -d "${llvm_install_dir}" ]; then
     -DLLVM_DIR=$llvm_install_dir/lib/cmake/llvm"
 fi
 
-if [[ "$OSTYPE" == "linux-gnu"* ]]; then
+if [[ "$OSTYPE" == "linux"* ]]; then
   cmake $CMAKE_ARGS \
     -DCMAKE_EXE_LINKER_FLAGS_INIT="-fuse-ld=lld" \
     -DCMAKE_SHARED_LINKER_FLAGS_INIT="-fuse-ld=lld" \
@@ -100,7 +100,7 @@ if [[ "$OSTYPE" == "linux-gnu"* ]]; then
     -DCMAKE_CXX_COMPILER="${CXX}" \
     -DLLVM_TARGET_ARCH=X86 \
     -DLLVM_TARGETS_TO_BUILD=X86 \
-    -DIREE_EXTERNAL_HAL_DRIVERS=xrt \
+    -DIREE_EXTERNAL_HAL_DRIVERS=${IREE_EXTERNAL_HAL_DRIVERS:-xrt} \
     -S $iree_dir -B $build_dir
 elif [[ "$OSTYPE" == "darwin"* ]]; then
   cmake $CMAKE_ARGS \
@@ -120,8 +120,8 @@ cmake --build "$build_dir" --target iree-install-dist
 
 echo "CTest"
 echo "-----"
-if [[ "$OSTYPE" == "linux-gnu"* ]]; then
-  ctest --test-dir "$build_dir" -R amd-aie --output-on-failure -j
+if [[ "$OSTYPE" == "linux"* ]]; then
+  ctest --test-dir "$build_dir" -R amd-aie -E "iree-amd-aie/driver/hsa" --output-on-failure -j
 elif [[ "$OSTYPE" == "darwin"* ]]; then
   ctest --test-dir "$build_dir" -R amd-aie -E "matmul_pack_peel_air_e2e|matmul_elementwise_pack_peel_air_e2e|conv_fill_spec_pad" --output-on-failure -j --repeat until-pass:5
 fi

@@ -21,5 +21,7 @@ if(IREE_AMD_AIE_ENABLE_XRT_DRIVER)
 endif()
 include(iree_aie_bootgen)
 
+set(IREE_TARGET_BACKEND_AMD_AIE ON CACHE BOOL "")
+
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/compiler/plugins/target/AMD-AIE target/AMD-AIE)
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/compiler/plugins/preprocessing/XDNA-OPLIB preprocessing/XDNA-OPLIB)
