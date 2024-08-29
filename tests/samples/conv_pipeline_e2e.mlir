@@ -24,7 +24,7 @@ func.func @conv_2d_nhwc_hwcf_q(%arg0: tensor<2x14x14x32xi8>, %arg1: tensor<3x3x3
   return %2 : tensor<2x12x12x64xi32>
 }
 
-// CHECK-LABEL: hal.executable.export public @conv_2d_nhwc_hwcf_q_dispatch_0_conv_2d_nhwc_hwcf_q_2x12x12x64x3x3x32_i8xi8xi32xi32xi32
+// CHECK-LABEL: hal.executable.export public @conv_2d_nhwc_hwcf_q_dispatch_0_conv_2d_nhwc_hwcf_2x12x12x64x3x3x32_i8xi8xi32
 //       CHECK:    aie.device(npu1_4col)
 //       CHECK:    aie.shim_dma_allocation
 //       CHECK:    aie.shim_dma_allocation
