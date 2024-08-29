@@ -13,7 +13,7 @@
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
-#define DEBUG_TYPE "iree-amdaie-pack-to-dma"
+#define DEBUG_TYPE "iree-amdaie-canonicalize-dma"
 
 namespace mlir::iree_compiler::AMDAIE {
 
