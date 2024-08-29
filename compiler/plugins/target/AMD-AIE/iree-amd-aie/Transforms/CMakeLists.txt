@@ -89,7 +89,7 @@ iree_cc_library(
     "AMDAIEPeelForLoop.cpp"
     "AMDAIEPropagateDataLayout.cpp"
     "AMDAIESinkIntoCore.cpp"
-    "AMDAIESplitLogicalObjectFifos.cpp"
+    "AMDAIESplitLogicalObjFifosForConnectionReuse.cpp"
     "AMDAIETile.cpp"
     "AMDAIETileAndFuse.cpp"
     "AMDAIEUtils.cpp"

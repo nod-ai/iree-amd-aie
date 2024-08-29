@@ -9,7 +9,7 @@
 #include "mlir/IR/Iterators.h"
 #include "mlir/Pass/Pass.h"
 
-#define DEBUG_TYPE "iree-amdaie-split-logical-objectfifos"
+#define DEBUG_TYPE "iree-amdaie-split-logical-objectfifos-for-connection-reuse"
 
 namespace mlir::iree_compiler::AMDAIE {
 
@@ -33,11 +33,12 @@ static SmallVector<AMDAIE::DmaCpyNdOp> fetchDmaCpyNdOpsToSplit(
   return l2ToL1DmaOps;
 }
 
-class AMDAIESplitLogicalObjectFifosPass
-    : public impl::AMDAIESplitLogicalObjectFifosBase<
-          AMDAIESplitLogicalObjectFifosPass> {
+class AMDAIESplitLogicalObjFifosForConnectionReusePass
+    : public impl::AMDAIESplitLogicalObjFifosForConnectionReuseBase<
+          AMDAIESplitLogicalObjFifosForConnectionReusePass> {
  public:
-  using AMDAIESplitLogicalObjectFifosBase::AMDAIESplitLogicalObjectFifosBase;
+  using AMDAIESplitLogicalObjFifosForConnectionReuseBase::
+      AMDAIESplitLogicalObjFifosForConnectionReuseBase;
 
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<AMDAIEDialect>();
@@ -45,7 +46,7 @@ class AMDAIESplitLogicalObjectFifosPass
   void runOnOperation() override;
 };
 
-void AMDAIESplitLogicalObjectFifosPass::runOnOperation() {
+void AMDAIESplitLogicalObjFifosForConnectionReusePass::runOnOperation() {
   ModuleOp moduleOp = getOperation();
   MLIRContext *context = &getContext();
   IRRewriter rewriter(context);
@@ -60,8 +61,8 @@ void AMDAIESplitLogicalObjectFifosPass::runOnOperation() {
 
 }  // namespace
 
-std::unique_ptr<Pass> createAMDAIESplitLogicalObjectFifosPass() {
-  return std::make_unique<AMDAIESplitLogicalObjectFifosPass>();
+std::unique_ptr<Pass> createAMDAIESplitLogicalObjFifosForConnectionReusePass() {
+  return std::make_unique<AMDAIESplitLogicalObjFifosForConnectionReusePass>();
 }
 
 }  // namespace mlir::iree_compiler::AMDAIE

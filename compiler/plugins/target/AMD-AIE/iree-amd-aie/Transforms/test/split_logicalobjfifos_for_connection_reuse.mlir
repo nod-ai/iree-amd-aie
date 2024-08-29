@@ -1,4 +1,4 @@
-// RUN: iree-opt --pass-pipeline="builtin.module(iree-amdaie-split-logical-objectfifos,cse)" --split-input-file --verify-diagnostics %s | FileCheck %s
+// RUN: iree-opt --pass-pipeline="builtin.module(iree-amdaie-split-logical-objectfifos-for-connection-reuse,cse)" --split-input-file --verify-diagnostics %s | FileCheck %s
 
 // Glossary:
 // candidate core op : they are those amdaie.core ops which have at least three input dma ops.
@@ -429,8 +429,6 @@ module {
 //   CHECK-DAG:   %[[C1:.*]] = arith.constant 1 : index
 //   CHECK-DAG:   %[[C2:.*]] = arith.constant 2 : index
 //   CHECK-DAG:   %[[C3:.*]] = arith.constant 3 : index
-//   CHECK-DAG:   %[[C34:.*]] = arith.constant 34 : index
-//   CHECK-DAG:   %[[C35:.*]] = arith.constant 35 : index
 //   CHECK-DAG:   %[[L3_ALLOC:.*]] = memref.alloc() : memref<128x128xi32>
 //   CHECK-DAG:   %[[L2_ALLOC_0:.*]] = memref.alloc() : memref<1x1x32x32xi32, 1 : i32>
 //   CHECK-DAG:   %[[L2_ALLOC_1:.*]] = memref.alloc() : memref<1x1x32x32xi32, 1 : i32>
@@ -456,16 +454,16 @@ module {
 //       CHECK:   scf.forall (%[[IV0:.*]], %[[IV1:.*]]) in (2, 2)
 //       CHECK:       %[[DMA_CPY_ND_L3_TO_L2_0:.*]] = amdaie.dma_cpy_nd(
 //  CHECK-SAME:                                         %[[L2_OBJECTFIFO_0]][0, 0, 0, 0] [1, 1, 32, 32] [2048, 1024, 32, 1]
-//  CHECK-SAME:                                         %[[L3_OBJECTFIFO]][0, 0, %[[C3]], %[[C2]]] [1, 1, 32, 32] [4096, 32, 128, 1]
+//  CHECK-SAME:                                         %[[L3_OBJECTFIFO]][0, 0, 3, 2] [1, 1, 32, 32] [4096, 32, 128, 1]
 //       CHECK:       %[[DMA_CPY_ND_L3_TO_L2_1:.*]] = amdaie.dma_cpy_nd(
 //  CHECK-SAME:                                         %[[L2_OBJECTFIFO_1]][0, 0, 0, 0] [1, 1, 32, 32] [2048, 1024, 32, 1]
-//  CHECK-SAME:                                         %[[L3_OBJECTFIFO]][0, 0, %[[C3]], %[[C34]]] [1, 1, 32, 32] [4096, 32, 128, 1]
+//  CHECK-SAME:                                         %[[L3_OBJECTFIFO]][0, 0, 3, 34] [1, 1, 32, 32] [4096, 32, 128, 1]
 //       CHECK:       %[[DMA_CPY_ND_L3_TO_L2_2:.*]] = amdaie.dma_cpy_nd(
 //  CHECK-SAME:                                         %[[L2_OBJECTFIFO_2]][0, 0, 0, 0] [1, 1, 32, 32] [2048, 1024, 32, 1]
-//  CHECK-SAME:                                         %[[L3_OBJECTFIFO]][0, 0, %[[C35]], %[[C2]]] [1, 1, 32, 32] [4096, 32, 128, 1]
+//  CHECK-SAME:                                         %[[L3_OBJECTFIFO]][0, 0, 35, 2] [1, 1, 32, 32] [4096, 32, 128, 1]
 //       CHECK:       %[[DMA_CPY_ND_L3_TO_L2_3:.*]] = amdaie.dma_cpy_nd(
 //  CHECK-SAME:                                         %[[L2_OBJECTFIFO_3]][0, 0, 0, 0] [1, 1, 32, 32] [2048, 1024, 32, 1]
-//  CHECK-SAME:                                         %[[L3_OBJECTFIFO]][0, 0, %[[C35]], %[[C34]]] [1, 1, 32, 32] [4096, 32, 128, 1]
+//  CHECK-SAME:                                         %[[L3_OBJECTFIFO]][0, 0, 35, 34] [1, 1, 32, 32] [4096, 32, 128, 1]
 //       CHECK:       amdaie.logicalobjectfifo.from_memref
 //       CHECK:       amdaie.logicalobjectfifo.from_memref
 //       CHECK:       amdaie.dma_cpy_nd
@@ -785,8 +783,7 @@ module {
 //   CHECK-DAG: #map = affine_map<(d0) -> (d0 + 32)>
 //   CHECK-DAG: #map1 = affine_map<(d0) -> (d0)>
 //       CHECK: @block_argument_of_funcOp_offset
-//  CHECK-SAME:   %[[ARG0:.*]]: index,
-//  CHECK-SAME:   %[[ARG1:.*]]: index,
+//  CHECK-SAME:   %[[ARG0:.*]]: index, %[[ARG1:.*]]: index,
 //   CHECK-DAG:   %[[IV1_32:.*]] = affine.apply #map(%[[ARG1]])
 //   CHECK-DAG:   %[[IV0_32:.*]] = affine.apply #map(%[[ARG0]])
 //   CHECK-DAG:   %[[IV1_0:.*]] = affine.apply #map1(%[[ARG1]])
