@@ -1,19 +1,19 @@
-// Copyright (c) 2024 Advanced Micro Devices, Inc. All Rights Reserved.
 // Copyright 2023 The IREE Authors
 //
 // Licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#include "iree-amd-aie/driver/hsa/pending_queue_actions.h"
+#include "experimental/hsa/pending_queue_actions.h"
 
 #include <stdbool.h>
 #include <stddef.h>
 
-#include "iree-amd-aie/driver/hsa/dynamic_symbols.h"
-#include "iree-amd-aie/driver/hsa/event_semaphore.h"
-#include "iree-amd-aie/driver/hsa/hsa_device.h"
-#include "iree-amd-aie/driver/hsa/status_util.h"
+#include "experimental/hsa/dynamic_symbols.h"
+#include "experimental/hsa/event_semaphore.h"
+#include "experimental/hsa/graph_command_buffer.h"
+#include "experimental/hsa/hsa_device.h"
+#include "experimental/hsa/status_util.h"
 #include "iree/base/api.h"
 #include "iree/base/internal/arena.h"
 #include "iree/base/internal/atomic_slist.h"
@@ -24,23 +24,23 @@
 #include "iree/hal/utils/deferred_command_buffer.h"
 #include "iree/hal/utils/resource_set.h"
 
-// The maximal number of hsa_signal_t objects a command buffer can wait.
-#define IREE_HAL_HSA_MAX_WAIT_EVENT_COUNT 32
+// The maximal number of hipEvent_t objects a command buffer can wait.
+#define IREE_HAL_HIP_MAX_WAIT_EVENT_COUNT 32
 
 //===----------------------------------------------------------------------===//
 // Queue action
 //===----------------------------------------------------------------------===//
 
 typedef enum iree_hal_hsa_queue_action_kind_e {
-  IREE_HAL_HSA_QUEUE_ACTION_TYPE_EXECUTION,
+  IREE_HAL_HIP_QUEUE_ACTION_TYPE_EXECUTION,
   // TODO: Add support for queue alloca and dealloca.
 } iree_hal_hsa_queue_action_kind_t;
 
 typedef enum iree_hal_hsa_queue_action_state_e {
   // The current action is active as waiting for or under execution.
-  IREE_HAL_HSA_QUEUE_ACTION_STATE_ALIVE,
+  IREE_HAL_HIP_QUEUE_ACTION_STATE_ALIVE,
   // The current action is done execution and waiting for destruction.
-  IREE_HAL_HSA_QUEUE_ACTION_STATE_ZOMBIE,
+  IREE_HAL_HIP_QUEUE_ACTION_STATE_ZOMBIE,
 } iree_hal_hsa_queue_action_state_t;
 
 // A pending queue action.
@@ -76,12 +76,14 @@ typedef struct iree_hal_hsa_queue_action_t {
     } command_buffers;
   } payload;
 
-  // The device from which to allocate HSA stream-based command buffers for
+  // The device from which to allocate HIP stream-based command buffers for
   // applying deferred command buffers.
   iree_hal_device_t* device;
 
   // The stream to launch main GPU workload.
-  hsa_queue_t* hsa_queue;
+  hipStream_t dispatch_hip_stream;
+  // The stream to launch HIP host function callbacks.
+  hipStream_t callback_hip_stream;
 
   // Resource set to retain all associated resources by the payload.
   iree_hal_resource_set_t* resource_set;
@@ -92,8 +94,8 @@ typedef struct iree_hal_hsa_queue_action_t {
   iree_hal_semaphore_list_t signal_semaphore_list;
 
   // Scratch fields for analyzing whether actions are ready to issue.
-  hsa_signal_t signals[IREE_HAL_HSA_MAX_WAIT_EVENT_COUNT];
-  iree_host_size_t signal_count;
+  hipEvent_t events[IREE_HAL_HIP_MAX_WAIT_EVENT_COUNT];
+  iree_host_size_t event_count;
   // Whether the current action is still not ready for releasing to the GPU.
   bool is_pending;
 } iree_hal_hsa_queue_action_t;
@@ -190,11 +192,11 @@ IREE_TYPED_ATOMIC_SLIST_WRAPPER(iree_hal_hsa_ready_action,
 // earlier can overwrite ones appearing later without checking; but not the
 // reverse order.
 typedef enum iree_hal_hsa_worker_state_e {
-  IREE_HAL_HSA_WORKER_STATE_IDLE_WAITING = 0,      // Worker to main thread
-  IREE_HAL_HSA_WORKER_STATE_WORKLOAD_PENDING = 1,  // Main to worker thread
-  IREE_HAL_HSA_WORKER_STATE_EXIT_REQUESTED = -1,   // Main to worker thread
-  IREE_HAL_HSA_WORKER_STATE_EXIT_COMMITTED = -2,   // Worker to main thread
-  IREE_HAL_HSA_WORKER_STATE_EXIT_ERROR = -3,       // Worker to main thread
+  IREE_HAL_HIP_WORKER_STATE_IDLE_WAITING = 0,      // Worker to main thread
+  IREE_HAL_HIP_WORKER_STATE_WORKLOAD_PENDING = 1,  // Main to worker thread
+  IREE_HAL_HIP_WORKER_STATE_EXIT_REQUESTED = -1,   // Main to worker thread
+  IREE_HAL_HIP_WORKER_STATE_EXIT_COMMITTED = -2,   // Worker to main thread
+  IREE_HAL_HIP_WORKER_STATE_EXIT_ERROR = -3,       // Worker to main thread
 } iree_hal_hsa_worker_state_t;
 
 // The data structure needed by a ready-list processing worker thread to issue
@@ -220,7 +222,10 @@ typedef struct iree_hal_hsa_working_area_t {
   // The number of actions that have been issued to the GPU but not yet fully
   // completed both execution and cleanup. We don't need this field to be atomic
   // given it is modified only from the worker thread.
-  int32_t pending_action_count;
+  iree_slim_mutex_t pending_work_items_count_mutex;
+  iree_notification_t pending_work_items_count_notification;
+  int32_t pending_action_count IREE_GUARDED_BY(pending_work_items_count_mutex);
+
   iree_allocator_t host_allocator;  // const
 } iree_hal_hsa_working_area_t;
 
@@ -231,10 +236,13 @@ static void iree_hal_hsa_working_area_initialize(
   iree_notification_initialize(&working_area->exit_notification);
   iree_hal_hsa_ready_action_slist_initialize(&working_area->ready_worklist);
   iree_atomic_store_int32(&working_area->worker_state,
-                          IREE_HAL_HSA_WORKER_STATE_IDLE_WAITING,
+                          IREE_HAL_HIP_WORKER_STATE_IDLE_WAITING,
                           iree_memory_order_release);
   iree_atomic_store_int32(&working_area->error_code, IREE_STATUS_OK,
                           iree_memory_order_release);
+  iree_slim_mutex_initialize(&working_area->pending_work_items_count_mutex);
+  iree_notification_initialize(
+      &working_area->pending_work_items_count_notification);
   working_area->pending_action_count = 0;
   working_area->host_allocator = host_allocator;
 }
@@ -244,6 +252,9 @@ static void iree_hal_hsa_working_area_deinitialize(
   iree_hal_hsa_ready_action_slist_deinitialize(&working_area->ready_worklist);
   iree_notification_deinitialize(&working_area->exit_notification);
   iree_notification_deinitialize(&working_area->state_notification);
+  iree_slim_mutex_deinitialize(&working_area->pending_work_items_count_mutex);
+  iree_notification_deinitialize(
+      &working_area->pending_work_items_count_notification);
 }
 
 // The main function for the ready-list processing worker thread.
@@ -264,7 +275,7 @@ struct iree_hal_hsa_pending_queue_actions_t {
   // The block pool to allocate resource sets from.
   iree_arena_block_pool_t* block_pool;
 
-  // The symbols used to create and destroy hsa_signal_t objects.
+  // The symbols used to create and destroy hipEvent_t objects.
   const iree_hal_hsa_dynamic_symbols_t* symbols;
 
   // Non-recursive mutex guarding access to the action list.
@@ -346,12 +357,12 @@ void iree_hal_hsa_pending_queue_actions_destroy(
   // Request the worker to exit.
   iree_hal_hsa_worker_state_t prev_state =
       (iree_hal_hsa_worker_state_t)iree_atomic_exchange_int32(
-          &working_area->worker_state, IREE_HAL_HSA_WORKER_STATE_EXIT_REQUESTED,
+          &working_area->worker_state, IREE_HAL_HIP_WORKER_STATE_EXIT_REQUESTED,
           iree_memory_order_acq_rel);
   iree_notification_post(&working_area->state_notification, IREE_ALL_WAITERS);
 
   // Check potential exit states from the worker.
-  if (prev_state != IREE_HAL_HSA_WORKER_STATE_EXIT_ERROR) {
+  if (prev_state != IREE_HAL_HIP_WORKER_STATE_EXIT_ERROR) {
     // Wait until the worker acknowledged exiting.
     iree_notification_await(
         &working_area->exit_notification,
@@ -429,13 +440,15 @@ static void iree_hal_hsa_free_semaphore_list(
 }
 
 iree_status_t iree_hal_hsa_pending_queue_actions_enqueue_execution(
-    iree_hal_device_t* device, hsa_queue_t* dispatch_queue,
-    iree_hal_hsa_pending_queue_actions_t* actions,
+    iree_hal_device_t* device, hipStream_t dispatch_stream,
+    hipStream_t callback_stream, iree_hal_hsa_pending_queue_actions_t* actions,
     iree_hal_hsa_pending_action_cleanup_callback_t cleanup_callback,
+    void* callback_user_data,
     const iree_hal_semaphore_list_t wait_semaphore_list,
     const iree_hal_semaphore_list_t signal_semaphore_list,
     iree_host_size_t command_buffer_count,
-    iree_hal_command_buffer_t* const* command_buffers) {
+    iree_hal_command_buffer_t* const* command_buffers,
+    iree_hal_buffer_binding_table_t const* binding_tables) {
   IREE_ASSERT_ARGUMENT(actions);
   IREE_ASSERT_ARGUMENT(command_buffer_count == 0 || command_buffers);
   IREE_TRACE_ZONE_BEGIN(z0);
@@ -446,15 +459,16 @@ iree_status_t iree_hal_hsa_pending_queue_actions_enqueue_execution(
                                 (void**)&action));
 
   action->owning_actions = actions;
-  action->state = IREE_HAL_HSA_QUEUE_ACTION_STATE_ALIVE;
+  action->state = IREE_HAL_HIP_QUEUE_ACTION_STATE_ALIVE;
   action->cleanup_callback = cleanup_callback;
-  action->kind = IREE_HAL_HSA_QUEUE_ACTION_TYPE_EXECUTION;
+  action->callback_user_data = callback_user_data;
+  action->kind = IREE_HAL_HIP_QUEUE_ACTION_TYPE_EXECUTION;
   action->device = device;
-
-  action->hsa_queue = dispatch_queue;
+  action->dispatch_hip_stream = dispatch_stream;
+  action->callback_hip_stream = callback_stream;
 
   // Initialize scratch fields.
-  action->signal_count = 0;
+  action->event_count = 0;
   action->is_pending = true;
 
   // Retain all command buffers and semaphores.
@@ -527,22 +541,22 @@ iree_status_t iree_hal_hsa_pending_queue_actions_enqueue_execution(
 // Releases resources after action completion on the GPU and advances timeline
 // and pending actions queue.
 //
-// This is the HSA host function callback to hsa_amd_signal_async_handler(),
-// invoked by a HSA driver thread. Note that code in this function MUST NOT
-// invoke any GPU API under the hood to avoid potential deadlock.
-static bool iree_hal_hsa_execution_device_signal_host_callback(
-    hsa_signal_value_t IREE_ATTRIBUTE_UNUSED value, void* user_data) {
+// This is the HIP host function callback to hipLaunchHostFunc(), invoked by a
+// HIP driver thread. Note that code in this function MUST NOT invoke any GPU
+// API under the hood to avoid potential deadlock.
+static void iree_hal_hsa_execution_device_signal_host_callback(
+    void* user_data) {
   IREE_TRACE_ZONE_BEGIN(z0);
   iree_hal_hsa_queue_action_t* action = (iree_hal_hsa_queue_action_t*)user_data;
-  IREE_ASSERT_EQ(action->kind, IREE_HAL_HSA_QUEUE_ACTION_TYPE_EXECUTION);
-  IREE_ASSERT_EQ(action->state, IREE_HAL_HSA_QUEUE_ACTION_STATE_ALIVE);
+  IREE_ASSERT_EQ(action->kind, IREE_HAL_HIP_QUEUE_ACTION_TYPE_EXECUTION);
+  IREE_ASSERT_EQ(action->state, IREE_HAL_HIP_QUEUE_ACTION_STATE_ALIVE);
   iree_hal_hsa_pending_queue_actions_t* actions = action->owning_actions;
 
   // Flip the action state to zombie and enqueue it again so that we can let
   // the worker thread clean it up. Note that this is necessary because cleanup
   // may involve GPU API calls like buffer releasing or unregistering, so we can
   // not inline it here.
-  action->state = IREE_HAL_HSA_QUEUE_ACTION_STATE_ZOMBIE;
+  action->state = IREE_HAL_HIP_QUEUE_ACTION_STATE_ZOMBIE;
   iree_slim_mutex_lock(&actions->action_mutex);
   iree_hal_hsa_queue_action_list_push_back(&actions->action_list, action);
   iree_slim_mutex_unlock(&actions->action_mutex);
@@ -550,10 +564,10 @@ static bool iree_hal_hsa_execution_device_signal_host_callback(
   // Notify the worker thread again that we have the cleanup action enqueued.
   // Only overwrite the idle waiting state, which has lower priority.
   iree_hal_hsa_worker_state_t prev_state =
-      IREE_HAL_HSA_WORKER_STATE_IDLE_WAITING;
+      IREE_HAL_HIP_WORKER_STATE_IDLE_WAITING;
   iree_atomic_compare_exchange_strong_int32(
       &actions->working_area.worker_state, /*expected=*/&prev_state,
-      /*desired=*/IREE_HAL_HSA_WORKER_STATE_WORKLOAD_PENDING,
+      /*desired=*/IREE_HAL_HIP_WORKER_STATE_WORKLOAD_PENDING,
       /*order_succ=*/iree_memory_order_acq_rel,
       /*order_fail=*/iree_memory_order_acquire);
   iree_notification_post(&actions->working_area.state_notification,
@@ -565,14 +579,12 @@ static bool iree_hal_hsa_execution_device_signal_host_callback(
       iree_hal_semaphore_list_signal(action->signal_semaphore_list));
 
   IREE_TRACE_ZONE_END(z0);
-
-  return false;
 }
 
 // Issues the given kernel dispatch |action| to the GPU.
 static iree_status_t iree_hal_hsa_pending_queue_actions_issue_execution(
     iree_hal_hsa_queue_action_t* action) {
-  IREE_ASSERT_EQ(action->kind, IREE_HAL_HSA_QUEUE_ACTION_TYPE_EXECUTION);
+  IREE_ASSERT_EQ(action->kind, IREE_HAL_HIP_QUEUE_ACTION_TYPE_EXECUTION);
   IREE_ASSERT_EQ(action->is_pending, false);
   const iree_hal_hsa_dynamic_symbols_t* symbols =
       action->owning_actions->symbols;
@@ -581,84 +593,77 @@ static iree_status_t iree_hal_hsa_pending_queue_actions_issue_execution(
   // No need to lock given that this action is already detched from the pending
   // actions list; so only this thread is seeing it now.
 
-  // First wait all the device hsa_signal_t in the dispatch stream.
-  for (iree_host_size_t i = 0; i < action->signal_count; ++i) {
-    symbols->hsa_signal_wait_scacquire(action->signals[i],
-                                       HSA_SIGNAL_CONDITION_EQ, 0, UINT64_MAX,
-                                       HSA_WAIT_STATE_BLOCKED);
+  // First wait all the device hipEvent_t in the dispatch stream.
+  for (iree_host_size_t i = 0; i < action->event_count; ++i) {
+    IREE_HIP_RETURN_AND_END_ZONE_IF_ERROR(
+        z0, symbols,
+        hipStreamWaitEvent(action->dispatch_hip_stream, action->events[i],
+                           /*flags=*/0),
+        "hipStreamWaitEvent");
   }
 
-  // Then launch all command buffers to the dispatch queue.
+  // Then launch all command buffers to the dispatch stream.
   for (iree_host_size_t i = 0; i < action->payload.command_buffers.count; ++i) {
     iree_hal_command_buffer_t* command_buffer =
         action->payload.command_buffers.ptr[i];
-    iree_hal_command_buffer_t* queue_command_buffer = NULL;
-    iree_hal_command_buffer_mode_t mode =
-        IREE_HAL_COMMAND_BUFFER_MODE_ONE_SHOT |
-        IREE_HAL_COMMAND_BUFFER_MODE_ALLOW_INLINE_EXECUTION |
-        IREE_HAL_COMMAND_BUFFER_MODE_UNVALIDATED;
-    IREE_RETURN_AND_END_ZONE_IF_ERROR(
-        z0, iree_hal_hsa_device_create_queue_command_buffer(
-                action->device, mode, IREE_HAL_COMMAND_CATEGORY_ANY,
-                /*binding_capacity=*/0, &queue_command_buffer));
-    IREE_RETURN_AND_END_ZONE_IF_ERROR(
-        z0, iree_hal_resource_set_insert(action->resource_set, 1,
-                                         &queue_command_buffer));
-    IREE_RETURN_AND_END_ZONE_IF_ERROR(
-        z0, iree_hal_deferred_command_buffer_apply(
-                command_buffer, queue_command_buffer,
-                iree_hal_buffer_binding_table_empty()));
+    if (iree_hal_hsa_graph_command_buffer_isa(command_buffer)) {
+      hipGraphExec_t exec = iree_hal_hsa_graph_command_buffer_handle(
+          action->payload.command_buffers.ptr[i]);
+      IREE_HIP_RETURN_AND_END_ZONE_IF_ERROR(
+          z0, symbols, hipGraphLaunch(exec, action->dispatch_hip_stream),
+          "hipGraphLaunch");
+    } else {
+      iree_hal_command_buffer_t* stream_command_buffer = NULL;
+      iree_hal_command_buffer_mode_t mode =
+          IREE_HAL_COMMAND_BUFFER_MODE_ONE_SHOT |
+          IREE_HAL_COMMAND_BUFFER_MODE_ALLOW_INLINE_EXECUTION |
+          IREE_HAL_COMMAND_BUFFER_MODE_UNVALIDATED;
+      IREE_RETURN_AND_END_ZONE_IF_ERROR(
+          z0, iree_hal_hsa_device_create_stream_command_buffer(
+                  action->device, mode, IREE_HAL_COMMAND_CATEGORY_ANY,
+                  /*binding_capacity=*/0, &stream_command_buffer));
+      IREE_RETURN_AND_END_ZONE_IF_ERROR(
+          z0, iree_hal_resource_set_insert(action->resource_set, 1,
+                                           &stream_command_buffer));
+      IREE_RETURN_AND_END_ZONE_IF_ERROR(
+          z0, iree_hal_deferred_command_buffer_apply(
+                  command_buffer, stream_command_buffer,
+                  iree_hal_buffer_binding_table_empty()));
+    }
   }
 
-  // Increase the pending action counter. We decrease it once it fully
-  // completes and gets cleaned up.
-  ++action->owning_actions->working_area.pending_action_count;
-
-  // Last record hsa_signal_t signals in the dispatch queue.
-  hsa_signal_t completion_signal;
+  // Last record hipEvent_t signals in the dispatch stream.
   for (iree_host_size_t i = 0; i < action->signal_semaphore_list.count; ++i) {
-    // Grab a hsa_signal_t for this semaphore value signaling.
-    hsa_signal_t signal;
+    // Grab a hipEvent_t for this semaphore value signaling.
+    hipEvent_t event = NULL;
     IREE_RETURN_AND_END_ZONE_IF_ERROR(
         z0, iree_hal_hsa_event_semaphore_acquire_timepoint_device_signal(
                 action->signal_semaphore_list.semaphores[i],
-                action->signal_semaphore_list.payload_values[i], &signal));
-    symbols->hsa_signal_store_relaxed(signal, 1);
+                action->signal_semaphore_list.payload_values[i], &event));
 
-    uint64_t write_index =
-        symbols->hsa_queue_add_write_index_relaxed(action->hsa_queue, 1);
-
-    size_t queue_mask = action->hsa_queue->size - 1;
-
-    struct hsa_barrier_and_packet_s* barrier_packet =
-        (hsa_barrier_and_packet_t*)(action->hsa_queue->base_address) +
-        (write_index & queue_mask);
-
-    memset((void*)barrier_packet, 0, sizeof(hsa_barrier_and_packet_t));
-
-    uint16_t packet_header = 0;
-    packet_header |= HSA_PACKET_TYPE_BARRIER_AND << HSA_PACKET_HEADER_TYPE;
-    packet_header |= HSA_FENCE_SCOPE_AGENT
-                     << HSA_PACKET_HEADER_ACQUIRE_FENCE_SCOPE;
-    packet_header |= HSA_FENCE_SCOPE_AGENT
-                     << HSA_PACKET_HEADER_RELEASE_FENCE_SCOPE;
-    packet_header |= 1 << HSA_PACKET_HEADER_BARRIER;
-    barrier_packet->completion_signal = signal;
-
-    __atomic_store_n(&barrier_packet->header, packet_header, __ATOMIC_RELEASE);
-
-    symbols->hsa_signal_store_screlease(action->hsa_queue->doorbell_signal,
-                                        write_index);
-
-    completion_signal = signal;
+    // Record the event signaling in the dispatch stream.
+    IREE_HIP_RETURN_AND_END_ZONE_IF_ERROR(
+        z0, symbols, hipEventRecord(event, action->dispatch_hip_stream),
+        "hipEventRecord");
+    // Let the callback stream to wait on the hipEvent_t.
+    IREE_HIP_RETURN_AND_END_ZONE_IF_ERROR(
+        z0, symbols,
+        hipStreamWaitEvent(action->callback_hip_stream, event, /*flags=*/0),
+        "hipStreamWaitEvent");
   }
 
-  IREE_HSA_RETURN_AND_END_ZONE_IF_ERROR(
+  // Increase the pending action counter. We decrease it once it fully
+  // compeletes and gets cleaned up.
+  ++action->owning_actions->working_area.pending_action_count;
+
+  // Now launch a host function on the callback stream to advance the semaphore
+  // timeline.
+  IREE_HIP_RETURN_AND_END_ZONE_IF_ERROR(
       z0, symbols,
-      hsa_amd_signal_async_handler(
-          completion_signal, HSA_SIGNAL_CONDITION_EQ, 0,
-          iree_hal_hsa_execution_device_signal_host_callback, action),
-      "hsa_amd_signal_async_handler");
+      hipLaunchHostFunc(action->callback_hip_stream,
+                        iree_hal_hsa_execution_device_signal_host_callback,
+                        action),
+      "hipLaunchHostFunc");
 
   IREE_TRACE_ZONE_END(z0);
   return iree_ok_status();
@@ -722,13 +727,13 @@ iree_status_t iree_hal_hsa_pending_queue_actions_issue(
     iree_hal_semaphore_t** semaphores = action->wait_semaphore_list.semaphores;
     uint64_t* values = action->wait_semaphore_list.payload_values;
 
-    action->signal_count = 0;
+    action->event_count = 0;
     action->is_pending = false;
 
     // Cleanup actions are immediately ready to release. Otherwise, look at all
     // wait semaphores to make sure that they are either already ready or we can
     // wait on a device event.
-    if (action->state == IREE_HAL_HSA_QUEUE_ACTION_STATE_ALIVE) {
+    if (action->state == IREE_HAL_HIP_QUEUE_ACTION_STATE_ALIVE) {
       for (iree_host_size_t i = 0; i < semaphore_count; ++i) {
         // If this semaphore has already signaled past the desired value, we can
         // just ignore it.
@@ -737,21 +742,26 @@ iree_status_t iree_hal_hsa_pending_queue_actions_issue(
         if (IREE_UNLIKELY(!iree_status_is_ok(status))) break;
         if (value >= values[i]) continue;
 
-        // Try to acquire a hsa_signal_t from a device wait timepoint. If so, we
-        // can use that hsa_signal_t to wait on the device. Otherwise, this
-        // action is still not ready.
-        hsa_signal_t signal;
+        // Try to acquire a hipEvent_t from a device wait timepoint. If so, we
+        // can use that hipEvent_t to wait on the device. Otherwise, this action
+        // is still not ready.
+        hipEvent_t event = NULL;
         status = iree_hal_hsa_event_semaphore_acquire_timepoint_device_wait(
-            semaphores[i], values[i], &signal);
+            semaphores[i], values[i], &event);
         if (IREE_UNLIKELY(!iree_status_is_ok(status))) break;
-
-        if (IREE_UNLIKELY(action->signal_count >=
-                          IREE_HAL_HSA_MAX_WAIT_EVENT_COUNT)) {
-          status = iree_make_status(IREE_STATUS_RESOURCE_EXHAUSTED,
-                                    "exceeded max wait hsa_signal_t limit");
+        if (!event) {
+          // Clear the scratch fields.
+          action->event_count = 0;
+          action->is_pending = true;
           break;
         }
-        action->signals[action->signal_count++] = signal;
+        if (IREE_UNLIKELY(action->event_count >=
+                          IREE_HAL_HIP_MAX_WAIT_EVENT_COUNT)) {
+          status = iree_make_status(IREE_STATUS_RESOURCE_EXHAUSTED,
+                                    "exceeded max wait hipEvent_t limit");
+          break;
+        }
+        action->events[action->event_count++] = event;
       }
     }
 
@@ -769,7 +779,7 @@ iree_status_t iree_hal_hsa_pending_queue_actions_issue(
   if (IREE_UNLIKELY(!iree_status_is_ok(status))) {
     // Some error happened during processing the current action. Clear the
     // scratch fields and put it back to the pending list so we don't leak.
-    action->signal_count = 0;
+    action->event_count = 0;
     action->is_pending = true;
     iree_hal_hsa_queue_action_list_push_back(&pending_list, action);
   }
@@ -811,17 +821,17 @@ iree_status_t iree_hal_hsa_pending_queue_actions_issue(
   // waiting; we cannot overwrite exit related states. so we need to perform
   // atomic compare and exchange here.
   iree_hal_hsa_worker_state_t prev_state =
-      IREE_HAL_HSA_WORKER_STATE_IDLE_WAITING;
+      IREE_HAL_HIP_WORKER_STATE_IDLE_WAITING;
   iree_atomic_compare_exchange_strong_int32(
       &actions->working_area.worker_state, /*expected=*/&prev_state,
-      /*desired=*/IREE_HAL_HSA_WORKER_STATE_WORKLOAD_PENDING,
+      /*desired=*/IREE_HAL_HIP_WORKER_STATE_WORKLOAD_PENDING,
       /*order_succ=*/iree_memory_order_acq_rel,
       /*order_fail=*/iree_memory_order_acquire);
   iree_notification_post(&actions->working_area.state_notification,
                          IREE_ALL_WAITERS);
 
   // Handle potential error cases from the worker thread.
-  if (prev_state == IREE_HAL_HSA_WORKER_STATE_EXIT_ERROR) {
+  if (prev_state == IREE_HAL_HIP_WORKER_STATE_EXIT_ERROR) {
     iree_status_code_t code = iree_atomic_load_int32(
         &actions->working_area.error_code, iree_memory_order_acquire);
     status = iree_status_from_code(code);
@@ -841,15 +851,15 @@ static bool iree_hal_hsa_worker_has_incoming_request(
       &working_area->worker_state, iree_memory_order_acquire);
   // These are the only two possible states that set from the main thread to
   // the worker thread.
-  return value == IREE_HAL_HSA_WORKER_STATE_WORKLOAD_PENDING ||
-         value == IREE_HAL_HSA_WORKER_STATE_EXIT_REQUESTED;
+  return value == IREE_HAL_HIP_WORKER_STATE_WORKLOAD_PENDING ||
+         value == IREE_HAL_HIP_WORKER_STATE_EXIT_REQUESTED;
 }
 
 static bool iree_hal_hsa_worker_committed_exiting(
     iree_hal_hsa_working_area_t* working_area) {
   return iree_atomic_load_int32(&working_area->worker_state,
                                 iree_memory_order_acquire) ==
-         IREE_HAL_HSA_WORKER_STATE_EXIT_COMMITTED;
+         IREE_HAL_HIP_WORKER_STATE_EXIT_COMMITTED;
 }
 
 // Processes all ready actions in the given |worklist|.
@@ -871,11 +881,11 @@ static iree_status_t iree_hal_hsa_worker_process_ready_list(
       action->next = NULL;
 
       switch (action->state) {
-        case IREE_HAL_HSA_QUEUE_ACTION_STATE_ALIVE:
+        case IREE_HAL_HIP_QUEUE_ACTION_STATE_ALIVE:
           status = iree_hal_hsa_pending_queue_actions_issue_execution(action);
-          if (iree_status_is_ok(status)) action->signal_count = 0;
+          if (iree_status_is_ok(status)) action->event_count = 0;
           break;
-        case IREE_HAL_HSA_QUEUE_ACTION_STATE_ZOMBIE:
+        case IREE_HAL_HIP_QUEUE_ACTION_STATE_ZOMBIE:
           status = iree_hal_hsa_pending_queue_actions_issue_cleanup(action);
           break;
       }
@@ -910,17 +920,17 @@ static int iree_hal_hsa_worker_execute(
     // thread. Also we don't want to overwrite other exit states. So we need to
     // perform atomic compare and exchange here.
     iree_hal_hsa_worker_state_t prev_state =
-        IREE_HAL_HSA_WORKER_STATE_WORKLOAD_PENDING;
+        IREE_HAL_HIP_WORKER_STATE_WORKLOAD_PENDING;
     iree_atomic_compare_exchange_strong_int32(
         &working_area->worker_state, /*expected=*/&prev_state,
-        /*desired=*/IREE_HAL_HSA_WORKER_STATE_IDLE_WAITING,
+        /*desired=*/IREE_HAL_HIP_WORKER_STATE_IDLE_WAITING,
         /*order_succ=*/iree_memory_order_acq_rel,
         /*order_fail=*/iree_memory_order_acquire);
 
     // Check if we received request to stop processing and exit this thread.
     bool should_exit = iree_atomic_load_int32(&working_area->worker_state,
                                               iree_memory_order_acquire) ==
-                       IREE_HAL_HSA_WORKER_STATE_EXIT_REQUESTED;
+                       IREE_HAL_HIP_WORKER_STATE_EXIT_REQUESTED;
 
     // Process the ready list. We also want this even requested to exit.
     iree_status_t status = iree_hal_hsa_worker_process_ready_list(
@@ -932,7 +942,7 @@ static int iree_hal_hsa_worker_execute(
                               iree_memory_order_release);
       // This state has the highest priority so just overwrite.
       iree_atomic_store_int32(&working_area->worker_state,
-                              IREE_HAL_HSA_WORKER_STATE_EXIT_ERROR,
+                              IREE_HAL_HIP_WORKER_STATE_EXIT_ERROR,
                               iree_memory_order_release);
       iree_notification_post(&working_area->exit_notification,
                              IREE_ALL_WAITERS);
@@ -944,7 +954,7 @@ static int iree_hal_hsa_worker_execute(
       // that is only lower than error exit. And we just checked error exit in
       // the above. So also just overwrite.
       iree_atomic_store_int32(&working_area->worker_state,
-                              IREE_HAL_HSA_WORKER_STATE_EXIT_COMMITTED,
+                              IREE_HAL_HIP_WORKER_STATE_EXIT_COMMITTED,
                               iree_memory_order_release);
       iree_notification_post(&working_area->exit_notification,
                              IREE_ALL_WAITERS);

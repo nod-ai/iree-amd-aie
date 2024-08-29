@@ -1,15 +1,14 @@
-// Copyright (c) 2024 Advanced Micro Devices, Inc. All Rights Reserved.
 // Copyright 2023 The IREE Authors
 //
 // Licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#ifndef IREE_EXPERIMENTAL_HSA_DEVICE_H_
-#define IREE_EXPERIMENTAL_HSA_DEVICE_H_
+#ifndef IREE_EXPERIMENTAL_HIP_DEVICE_H_
+#define IREE_EXPERIMENTAL_HIP_DEVICE_H_
 
-#include "iree-amd-aie/driver/hsa/api.h"
-#include "iree-amd-aie/driver/hsa/dynamic_symbols.h"
+#include "experimental/hsa/api.h"
+#include "experimental/hsa/dynamic_symbols.h"
 #include "iree/base/api.h"
 #include "iree/hal/api.h"
 
@@ -24,19 +23,26 @@ iree_status_t iree_hal_hsa_device_create(
     const iree_hal_hsa_dynamic_symbols_t* symbols, hsa_agent_t agent,
     iree_allocator_t host_allocator, iree_hal_device_t** out_device);
 
-// Creates a HSA queue-backed command buffer using resources from the
+// Creates a HIP stream-backed command buffer using resources from the
 // given |base_device|.
-iree_status_t iree_hal_hsa_device_create_queue_command_buffer(
+iree_status_t iree_hal_hsa_device_create_stream_command_buffer(
     iree_hal_device_t* base_device, iree_hal_command_buffer_mode_t mode,
     iree_hal_command_category_t command_categories,
     iree_host_size_t binding_capacity,
     iree_hal_command_buffer_t** out_command_buffer);
 
-// Returns the dynamic symbol table from the |device| if it is a HSA device
+// Returns the HIP context bound to the given |device| if it is a HIP device
+// and otherwise returns NULL.
+//
+// WARNING: this API is unsafe and unstable. HAL devices may have any number of
+// contexts and the context may be in use on other threads.
+hipCtx_t iree_hal_hsa_device_context(iree_hal_device_t* device);
+
+// Returns the dynamic symbol table from the |device| if it is a HIP device
 // and otherwise returns NULL.
 //
 // WARNING: the symbols are only valid for as long as the device is. Hosting
-// libraries and applications should prefer to either link against HSA
+// libraries and applications should prefer to either link against HIP
 // themselves or maintain their own dynamic linking support: the IREE runtime
 // only provides the symbols required by the HAL driver and not the entirety of
 // the API.
@@ -47,4 +53,4 @@ const iree_hal_hsa_dynamic_symbols_t* iree_hal_hsa_device_dynamic_symbols(
 }  // extern "C"
 #endif  // __cplusplus
 
-#endif  // IREE_EXPERIMENTAL_HSA_DEVICE_H_
+#endif  // IREE_EXPERIMENTAL_HIP_DEVICE_H_

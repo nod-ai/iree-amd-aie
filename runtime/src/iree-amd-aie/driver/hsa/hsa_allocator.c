@@ -1,39 +1,57 @@
-// Copyright (c) 2024 Advanced Micro Devices, Inc. All Rights Reserved.
 // Copyright 2023 The IREE Authors
 //
 // Licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#include "iree-amd-aie/driver/hsa/hsa_allocator.h"
+#include "experimental/hsa/hsa_allocator.h"
 
 #include <stddef.h>
 
-#include "iree-amd-aie/driver/hsa/dynamic_symbols.h"
-#include "iree-amd-aie/driver/hsa/hsa_buffer.h"
-#include "iree-amd-aie/driver/hsa/status_util.h"
+#include "experimental/hsa/dynamic_symbols.h"
+#include "experimental/hsa/hsa_buffer.h"
+#include "experimental/hsa/hsa_helpers.hpp"
+#include "experimental/hsa/status_util.h"
 #include "iree/base/api.h"
 #include "iree/base/tracing.h"
+
+#if IREE_TRACING_FEATURES & IREE_TRACING_FEATURE_ALLOCATION_TRACKING
+static const char* IREE_HAL_HIP_ALLOCATOR_ID = "HIP unpooled";
+#endif  // IREE_TRACING_FEATURE_ALLOCATION_TRACKING
 
 typedef struct iree_hal_hsa_allocator_t {
   // Abstract resource used for injecting reference counting and vtable;
   // must be at offset 0.
   iree_hal_resource_t resource;
 
+  // The device that this allocator allocates memory from.
+  hipDevice_t device;
+
   hsa_agent_t hsa_agent;
 
-  hsa_agent_t cpu_agent;
-  hsa_amd_memory_pool_t cpu_pool;
+  hsa_device_type_t agent_type;
+
+  // The HIP stream that allocations should be used in.
+  hipStream_t stream;
+
+  // NOTE: optional depending on device support.
+  iree_hal_hsa_memory_pools_t* pools;
 
   // One memory pool and region for now
-  hsa_amd_memory_pool_t buffers_pool;
-  hsa_region_t kernel_argument_pool;
+  hsa_amd_memory_pool_t fine_grained_pool;
+
+  // TODO(muhaawad): We should use a single pool for kern args for both
+  // the AIE and the GPU
+  hsa_region_t gpu_kernel_argument_region;
+
+  hsa_amd_memory_pool_t aie_kernel_argument_pool;
+  hsa_amd_memory_pool_t coarse_grained_pool;
 
   const iree_hal_hsa_dynamic_symbols_t* symbols;
 
   iree_allocator_t host_allocator;
 
-  // Whether the GPU and CPU can concurrently access HSA managed data in a
+  // Whether the GPU and CPU can concurrently access HIP managed data in a
   // coherent way. We would need to explicitly perform flushing and invalidation
   // between GPU and CPU if not.
   bool supports_concurrent_managed_access;
@@ -49,8 +67,8 @@ static iree_hal_hsa_allocator_t* iree_hal_hsa_allocator_cast(
   return (iree_hal_hsa_allocator_t*)base_value;
 }
 
-static hsa_status_t get_kernarg_memory_region(hsa_region_t region,
-                                              void* allocator_untyped) {
+hsa_status_t get_kernarg_memory_region(hsa_region_t region,
+                                       void* allocator_untyped) {
   iree_hal_hsa_allocator_t* allocator =
       (iree_hal_hsa_allocator_t*)(allocator_untyped);
 
@@ -65,7 +83,8 @@ static hsa_status_t get_kernarg_memory_region(hsa_region_t region,
   allocator->symbols->hsa_region_get_info(region, HSA_REGION_INFO_GLOBAL_FLAGS,
                                           &flags);
   if (flags & HSA_REGION_GLOBAL_FLAG_KERNARG) {
-    hsa_region_t* ret = (hsa_region_t*)(&(allocator->kernel_argument_pool));
+    hsa_region_t* ret =
+        (hsa_region_t*)(&(allocator->gpu_kernel_argument_region));
     *ret = region;
     return HSA_STATUS_INFO_BREAK;
   }
@@ -73,8 +92,8 @@ static hsa_status_t get_kernarg_memory_region(hsa_region_t region,
   return HSA_STATUS_SUCCESS;
 }
 
-static hsa_status_t get_fine_grained_memory_pool(hsa_amd_memory_pool_t pool,
-                                                 void* allocator_untyped) {
+hsa_status_t populate_allocator_memory_pool(hsa_amd_memory_pool_t pool,
+                                            void* allocator_untyped) {
   iree_hal_hsa_allocator_t* allocator =
       (iree_hal_hsa_allocator_t*)(allocator_untyped);
 
@@ -98,63 +117,27 @@ static hsa_status_t get_fine_grained_memory_pool(hsa_amd_memory_pool_t pool,
   bool is_fine_grained =
       (flags & (HSA_AMD_MEMORY_POOL_GLOBAL_FLAG_FINE_GRAINED |
                 HSA_AMD_MEMORY_POOL_GLOBAL_FLAG_EXTENDED_SCOPE_FINE_GRAINED));
-  bool is_kernel_arg_region =
-      (flags & HSA_AMD_MEMORY_POOL_GLOBAL_FLAG_KERNARG_INIT);
 
-  if (is_fine_grained && !is_kernel_arg_region) {
-    allocator->buffers_pool = pool;
-    return HSA_STATUS_INFO_BREAK;
-  }
-  return HSA_STATUS_SUCCESS;
-}
+  bool is_kernel_arg_pool =
+      (flags & HSA_AMD_MEMORY_POOL_GLOBAL_FLAG_KERNARG_INIT) &&
+      (flags & HSA_AMD_MEMORY_POOL_GLOBAL_FLAG_COARSE_GRAINED);
 
-static hsa_status_t iterate_find_cpu_agent_callback(hsa_agent_t agent,
-                                                    void* base_allocator) {
-  iree_hal_hsa_allocator_t* allocator =
-      iree_hal_hsa_allocator_cast(base_allocator);
+  bool is_coarse_grained =
+      (flags & HSA_AMD_MEMORY_POOL_GLOBAL_FLAG_COARSE_GRAINED &&
+       !(flags & HSA_AMD_MEMORY_POOL_GLOBAL_FLAG_KERNARG_INIT));
 
-  hsa_device_type_t type;
-  hsa_status_t status = allocator->symbols->hsa_agent_get_info(
-      agent, HSA_AGENT_INFO_DEVICE, &type);
-  if (status != HSA_STATUS_SUCCESS) {
-    return status;
-  }
-  if (type == HSA_DEVICE_TYPE_CPU) {
-    allocator->cpu_agent = agent;
-  }
-  return HSA_STATUS_SUCCESS;
-}
-
-static hsa_status_t iterate_find_cpu_agent_pool_callback(
-    hsa_amd_memory_pool_t pool, void* base_allocator) {
-  iree_hal_hsa_allocator_t* allocator =
-      (iree_hal_hsa_allocator_t*)(base_allocator);
-
-  hsa_amd_segment_t segment;
-  hsa_status_t status = allocator->symbols->hsa_amd_memory_pool_get_info(
-      pool, HSA_AMD_MEMORY_POOL_INFO_SEGMENT, &segment);
-  if (status != HSA_STATUS_SUCCESS) {
-    return status;
-  }
-  if (segment != HSA_AMD_SEGMENT_GLOBAL) {
-    return HSA_STATUS_SUCCESS;
+  if (is_kernel_arg_pool) {
+    if (allocator->agent_type == HSA_DEVICE_TYPE_AIE) {
+      allocator->aie_kernel_argument_pool = pool;
+    }
   }
 
-  uint32_t flags;
-  status = allocator->symbols->hsa_amd_memory_pool_get_info(
-      pool, HSA_AMD_MEMORY_POOL_INFO_GLOBAL_FLAGS, &flags);
-  if (status != HSA_STATUS_SUCCESS) {
-    return status;
+  if (is_coarse_grained) {
+    allocator->coarse_grained_pool = pool;
   }
 
-  bool is_fine_grained =
-      (flags & (HSA_AMD_MEMORY_POOL_GLOBAL_FLAG_FINE_GRAINED |
-                HSA_AMD_MEMORY_POOL_GLOBAL_FLAG_EXTENDED_SCOPE_FINE_GRAINED));
-  bool is_kernel_arg_region =
-      (flags & HSA_AMD_MEMORY_POOL_GLOBAL_FLAG_KERNARG_INIT);
-
-  if (is_fine_grained && !is_kernel_arg_region) {
-    allocator->cpu_pool = pool;
+  if (is_fine_grained) {
+    allocator->fine_grained_pool = pool;
     return HSA_STATUS_INFO_BREAK;
   }
   return HSA_STATUS_SUCCESS;
@@ -162,7 +145,10 @@ static hsa_status_t iterate_find_cpu_agent_pool_callback(
 
 iree_status_t iree_hal_hsa_allocator_create(
     const iree_hal_hsa_dynamic_symbols_t* hsa_symbols, hsa_agent_t agent,
-    iree_allocator_t host_allocator, iree_hal_allocator_t** out_allocator) {
+    hsa_device_type_t agent_type,
+    // hipStream_t stream,
+    iree_hal_hsa_memory_pools_t* pools, iree_allocator_t host_allocator,
+    iree_hal_allocator_t** out_allocator) {
   IREE_ASSERT_ARGUMENT(hsa_symbols);
   IREE_ASSERT_ARGUMENT(out_allocator);
   IREE_TRACE_ZONE_BEGIN(z0);
@@ -174,6 +160,13 @@ iree_status_t iree_hal_hsa_allocator_create(
   // page-locked memory. The compiler tries to avoid this for high-traffic
   // buffers except for readback staging buffers.
   int supports_concurrent_managed_access = 1;
+  // IREE_RETURN_AND_END_ZONE_IF_ERROR(
+  //     z0, IREE_HIP_RESULT_TO_STATUS(
+  //             hsa_symbols,
+  //             hipDeviceGetAttribute(&supports_concurrent_managed_access,
+  //                                   hipDeviceAttributeConcurrentManagedAccess,
+  //                                   device),
+  //             "hipDeviceGetAttribute"));
 
   IREE_TRACE_ZONE_APPEND_TEXT(
       z0, supports_concurrent_managed_access
@@ -188,21 +181,20 @@ iree_status_t iree_hal_hsa_allocator_create(
   iree_hal_resource_initialize(&iree_hal_hsa_allocator_vtable,
                                &allocator->resource);
   allocator->hsa_agent = agent;
+  // allocator->stream = stream;
+  allocator->pools = pools;
   allocator->symbols = hsa_symbols;
   allocator->host_allocator = host_allocator;
   allocator->supports_concurrent_managed_access =
       supports_concurrent_managed_access != 0;
+  allocator->agent_type = agent_type;
 
+  // kernel arg
+  // TODO(muhaawad): check if we have the buffers we need.
   hsa_symbols->hsa_agent_iterate_regions(agent, get_kernarg_memory_region,
                                          allocator);
   hsa_symbols->hsa_amd_agent_iterate_memory_pools(
-      agent, get_fine_grained_memory_pool, allocator);
-
-  hsa_symbols->hsa_iterate_agents(&iterate_find_cpu_agent_callback,
-                                  (void*)allocator);
-  hsa_symbols->hsa_amd_agent_iterate_memory_pools(
-      allocator->cpu_agent, &iterate_find_cpu_agent_pool_callback,
-      (void*)allocator);
+      agent, populate_allocator_memory_pool, allocator);
 
   *out_allocator = (iree_hal_allocator_t*)allocator;
 
@@ -240,6 +232,10 @@ static void iree_hal_hsa_allocator_query_statistics(
     iree_hal_hsa_allocator_t* allocator =
         iree_hal_hsa_allocator_cast(base_allocator);
     memcpy(out_statistics, &allocator->statistics, sizeof(*out_statistics));
+    if (allocator->pools) {
+      iree_hal_hsa_memory_pools_merge_statistics(allocator->pools,
+                                                 out_statistics);
+    }
   });
 }
 
@@ -333,7 +329,7 @@ iree_hal_hsa_allocator_query_buffer_compatibility(
   iree_hal_buffer_compatibility_t compatibility =
       IREE_HAL_BUFFER_COMPATIBILITY_ALLOCATABLE;
 
-  // Buffers are importable in HSA under most cases, though performance may
+  // Buffers are importable in HIP under most cases, though performance may
   // vary wildly. We don't fully verify that the buffer parameters are
   // self-consistent and just look at whether we can get a device pointer.
   if (iree_all_bits_set(params->type, IREE_HAL_MEMORY_TYPE_DEVICE_VISIBLE)) {
@@ -382,34 +378,35 @@ iree_hal_hsa_allocator_query_buffer_compatibility(
 
 static void iree_hal_hsa_buffer_free(
     const iree_hal_hsa_dynamic_symbols_t* hsa_symbols,
-    iree_hal_hsa_buffer_type_t buffer_type, hsa_device_pointer_t device_ptr,
+    iree_hal_hsa_buffer_type_t buffer_type, hipDeviceptr_t device_ptr,
     void* host_ptr) {
   IREE_TRACE_ZONE_BEGIN(z0);
   switch (buffer_type) {
-    case IREE_HAL_HSA_BUFFER_TYPE_DEVICE: {
-      IREE_TRACE_ZONE_APPEND_TEXT(z0, "hsa_amd_memory_pool_free");
-      IREE_HSA_IGNORE_ERROR(hsa_symbols, hsa_amd_memory_pool_free(device_ptr));
+    case IREE_HAL_HIP_BUFFER_TYPE_DEVICE: {
+      IREE_TRACE_ZONE_APPEND_TEXT(z0, "hipFree");
+      IREE_HIP_IGNORE_ERROR(hsa_symbols, hipFree(device_ptr));
       break;
     }
-    case IREE_HAL_HSA_BUFFER_TYPE_HOST: {
-      IREE_TRACE_ZONE_APPEND_TEXT(z0, "hsa_amd_memory_pool_free");
-      IREE_HSA_IGNORE_ERROR(hsa_symbols, hsa_amd_memory_pool_free(device_ptr));
+    case IREE_HAL_HIP_BUFFER_TYPE_HOST: {
+      IREE_TRACE_ZONE_APPEND_TEXT(z0, "hipHostFree");
+      IREE_HIP_IGNORE_ERROR(hsa_symbols, hipHostFree(host_ptr));
       break;
     }
-    case IREE_HAL_HSA_BUFFER_TYPE_HOST_REGISTERED: {
-      IREE_TRACE_ZONE_APPEND_TEXT(z0, "host unregister");
+    case IREE_HAL_HIP_BUFFER_TYPE_HOST_REGISTERED: {
+      IREE_TRACE_ZONE_APPEND_TEXT(z0, "hipHostUnregister");
+      IREE_HIP_IGNORE_ERROR(hsa_symbols, hipHostUnregister(host_ptr));
       break;
     }
-    case IREE_HAL_HSA_BUFFER_TYPE_ASYNC: {
+    case IREE_HAL_HIP_BUFFER_TYPE_ASYNC: {
       IREE_TRACE_ZONE_APPEND_TEXT(z0, "(ignored; async)");
       break;
     }
-    case IREE_HAL_HSA_BUFFER_TYPE_EXTERNAL: {
+    case IREE_HAL_HIP_BUFFER_TYPE_EXTERNAL: {
       IREE_TRACE_ZONE_APPEND_TEXT(z0, "(ignored; external)");
       break;
     }
-    case IREE_HAL_HSA_BUFFER_TYPE_KERNEL_ARG: {
-      IREE_HSA_IGNORE_ERROR(hsa_symbols, hsa_memory_free(device_ptr));
+    case IREE_HAL_HIP_BUFFER_TYPE_KERNEL_ARG: {
+      IREE_TRACE_ZONE_APPEND_TEXT(z0, "(ignored; external)");
       break;
     }
   }
@@ -430,6 +427,42 @@ static iree_status_t iree_hal_hsa_allocator_allocate_buffer(
       iree_hal_hsa_allocator_query_buffer_compatibility(
           base_allocator, &compat_params, &allocation_size);
 
+  iree_status_t status = iree_ok_status();
+
+  // just a hack for now to allocate hsa kernel arguments
+  if (compat_params.usage == IREE_HAL_BUFFER_USAGE_TRANSFER_SOURCE) {
+    void* device_ptr;
+    if (allocator->agent_type == HSA_DEVICE_TYPE_AIE) {
+      status = IREE_HSA_RESULT_TO_STATUS(
+          allocator->symbols,
+          hsa_amd_memory_pool_allocate(allocator->aie_kernel_argument_pool,
+                                       allocation_size,
+                                       /*flags=*/0, &device_ptr));
+    } else if (allocator->agent_type == HSA_DEVICE_TYPE_GPU) {
+      status = IREE_HSA_RESULT_TO_STATUS(
+          allocator->symbols,
+          hsa_memory_allocate(allocator->gpu_kernel_argument_region,
+                              allocation_size, &device_ptr));
+    } else {
+      return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                              "Unknown agent type.");
+    }
+
+    if (!iree_status_is_ok(status)) {
+      return status;
+    }
+    iree_hal_buffer_t* buffer = NULL;
+    iree_status_t arg_status = iree_hal_hsa_buffer_wrap(
+        base_allocator, compat_params.type, compat_params.access,
+        compat_params.usage, allocation_size,
+        /*byte_offset=*/0,
+        /*byte_length=*/allocation_size, IREE_HAL_HIP_BUFFER_TYPE_KERNEL_ARG,
+        device_ptr, NULL, iree_hal_buffer_release_callback_null(),
+        iree_hal_allocator_host_allocator(base_allocator), &buffer);
+
+    *out_buffer = buffer;
+    return arg_status;
+  }
   if (!iree_all_bits_set(compatibility,
                          IREE_HAL_BUFFER_COMPATIBILITY_ALLOCATABLE)) {
 #if IREE_STATUS_MODE
@@ -453,60 +486,78 @@ static iree_status_t iree_hal_hsa_allocator_allocate_buffer(
 #endif  // IREE_STATUS_MODE
   }
 
-  iree_status_t status = iree_ok_status();
-  iree_hal_hsa_buffer_type_t buffer_type = IREE_HAL_HSA_BUFFER_TYPE_DEVICE;
+  iree_hal_hsa_buffer_type_t buffer_type = IREE_HAL_HIP_BUFFER_TYPE_DEVICE;
   void* host_ptr = NULL;
-  hsa_device_pointer_t device_ptr = NULL;
+  hipDeviceptr_t device_ptr = NULL;
   IREE_TRACE_ZONE_BEGIN_NAMED(z0, "iree_hal_hsa_buffer_allocate");
   IREE_TRACE_ZONE_APPEND_VALUE_I64(z0, allocation_size);
-
-  // TODO(muhaawad): Not sure if this is the right way to do kernel arguments
-  // allocations
-  if (iree_all_bits_set(compat_params.usage,
-                        IREE_HAL_BUFFER_USAGE_DISPATCH_STORAGE |
-                            IREE_HAL_BUFFER_USAGE_TRANSFER) &&
-      iree_all_bits_set(
-          compat_params.access,
-          IREE_HAL_MEMORY_ACCESS_READ | IREE_HAL_MEMORY_ACCESS_WRITE) &&
-      iree_all_bits_set(compat_params.type,
-                        IREE_HAL_MEMORY_TYPE_HOST_LOCAL |
-                            IREE_HAL_MEMORY_TYPE_DEVICE_VISIBLE)) {
-    // Kernel arguments
-    IREE_HSA_RETURN_IF_ERROR(
-        allocator->symbols,
-        hsa_memory_allocate(allocator->kernel_argument_pool, allocation_size,
-                            &host_ptr),
-        "hsa_memory_allocate");
-    buffer_type = IREE_HAL_HSA_BUFFER_TYPE_KERNEL_ARG;
-    device_ptr = host_ptr;
-  } else if (iree_all_bits_set(compat_params.type,
-                               IREE_HAL_MEMORY_TYPE_DEVICE_LOCAL)) {
+  if (iree_all_bits_set(compat_params.type,
+                        IREE_HAL_MEMORY_TYPE_DEVICE_LOCAL)) {
     // Device local case.
-    buffer_type = IREE_HAL_HSA_BUFFER_TYPE_DEVICE;
     if (iree_all_bits_set(compat_params.type,
                           IREE_HAL_MEMORY_TYPE_HOST_VISIBLE)) {
-      status = IREE_HSA_RESULT_TO_STATUS(
-          allocator->symbols,
-          hsa_amd_memory_pool_allocate(allocator->buffers_pool, allocation_size,
-                                       /*flags=*/0, &device_ptr));
+      // Device local and host visible.
+      buffer_type = IREE_HAL_HIP_BUFFER_TYPE_DEVICE;
+      switch (allocator->agent_type) {
+        case HSA_DEVICE_TYPE_GPU: {
+          status = IREE_HIP_RESULT_TO_STATUS(
+              allocator->symbols, hipMallocManaged(&device_ptr, allocation_size,
+                                                   hipMemAttachGlobal));
+          if (iree_status_is_ok(status) &&
+              allocator->supports_concurrent_managed_access) {
+            // Prefetch the buffer on the GPU device.
+            status = IREE_HIP_RESULT_TO_STATUS(
+                allocator->symbols,
+                hipMemPrefetchAsync(device_ptr, allocation_size,
+                                    allocator->device, allocator->stream));
+          }
+          break;
+        }
+        case HSA_DEVICE_TYPE_AIE: {
+          // TODO (jmosalv/muhaawad) This assumes a lot of things:
+          // It should be fine grained, but AIE does not yet support this on Phx
+          // It should also go through a different mechanism to properly support
+          // SVM. This is a hack right now.
+          status = IREE_HSA_RESULT_TO_STATUS(
+              allocator->symbols,
+              hsa_amd_memory_pool_allocate(allocator->coarse_grained_pool,
+                                           allocation_size,
+                                           /*flags=*/0, &device_ptr));
+          break;
+        }
+        default:
+          status = iree_make_status(IREE_STATUS_UNIMPLEMENTED,
+                                    "Device not implemented for HSA");
+          break;
+      }
       host_ptr = (void*)device_ptr;
-
     } else {
       // Device only.
-      buffer_type = IREE_HAL_HSA_BUFFER_TYPE_DEVICE;
+      buffer_type = IREE_HAL_HIP_BUFFER_TYPE_DEVICE;
 
       status = IREE_HSA_RESULT_TO_STATUS(
           allocator->symbols,
-          hsa_amd_memory_pool_allocate(allocator->buffers_pool, allocation_size,
+          hsa_amd_memory_pool_allocate(allocator->coarse_grained_pool,
+                                       allocation_size,
                                        /*flags=*/0, &device_ptr));
+      // Not sure if we need
+      // hsa_amd_agents_allow_access
     }
   } else {
-    buffer_type = IREE_HAL_HSA_BUFFER_TYPE_HOST;
-    status = IREE_HSA_RESULT_TO_STATUS(
-        allocator->symbols,
-        hsa_amd_memory_pool_allocate(allocator->buffers_pool, allocation_size,
-                                     /*flags=*/0, &host_ptr));
-    device_ptr = host_ptr;
+    // Host local case.
+    buffer_type = IREE_HAL_HIP_BUFFER_TYPE_HOST;
+    unsigned int flags = hipHostMallocMapped;
+    if (!iree_all_bits_set(compat_params.type,
+                           IREE_HAL_MEMORY_TYPE_HOST_CACHED)) {
+      flags |= hipHostMallocWriteCombined;
+    }
+    status = IREE_HIP_RESULT_TO_STATUS(
+        allocator->symbols, hipHostMalloc(&host_ptr, allocation_size, flags));
+    if (iree_status_is_ok(status)) {
+      status = IREE_HIP_RESULT_TO_STATUS(
+          allocator->symbols,
+          hipHostGetDevicePointer(&device_ptr, host_ptr, /*flags=*/0));
+    }
   }
   IREE_TRACE_ZONE_END(z0);
 
@@ -522,7 +573,7 @@ static iree_status_t iree_hal_hsa_allocator_allocate_buffer(
   }
 
   if (iree_status_is_ok(status)) {
-    IREE_TRACE_ALLOC_NAMED(IREE_HAL_HSA_ALLOCATOR_ID,
+    IREE_TRACE_ALLOC_NAMED(IREE_HAL_HIP_ALLOCATOR_ID,
                            (void*)iree_hal_hsa_buffer_device_pointer(buffer),
                            allocation_size);
     IREE_STATISTICS(iree_hal_allocator_statistics_record_alloc(
@@ -553,10 +604,10 @@ static void iree_hal_hsa_allocator_deallocate_buffer(
                            iree_hal_hsa_buffer_host_pointer(base_buffer));
 
   switch (buffer_type) {
-    case IREE_HAL_HSA_BUFFER_TYPE_DEVICE:
-    case IREE_HAL_HSA_BUFFER_TYPE_HOST: {
+    case IREE_HAL_HIP_BUFFER_TYPE_DEVICE:
+    case IREE_HAL_HIP_BUFFER_TYPE_HOST: {
       IREE_TRACE_FREE_NAMED(
-          IREE_HAL_HSA_ALLOCATOR_ID,
+          IREE_HAL_HIP_ALLOCATOR_ID,
           (void*)iree_hal_hsa_buffer_device_pointer(base_buffer));
       IREE_STATISTICS(iree_hal_allocator_statistics_record_free(
           &allocator->statistics, iree_hal_buffer_memory_type(base_buffer),
@@ -579,6 +630,7 @@ static iree_status_t iree_hal_hsa_allocator_import_buffer(
     iree_hal_buffer_t** IREE_RESTRICT out_buffer) {
   iree_hal_hsa_allocator_t* allocator =
       iree_hal_hsa_allocator_cast(base_allocator);
+
   // Coerce options into those required by the current device.
   iree_hal_buffer_params_t compat_params = *params;
   iree_device_size_t allocation_size = external_buffer->size;
@@ -609,25 +661,38 @@ static iree_status_t iree_hal_hsa_allocator_import_buffer(
   }
 
   iree_status_t status = iree_ok_status();
-  iree_hal_hsa_buffer_type_t buffer_type = IREE_HAL_HSA_BUFFER_TYPE_DEVICE;
+  iree_hal_hsa_buffer_type_t buffer_type = IREE_HAL_HIP_BUFFER_TYPE_DEVICE;
   void* host_ptr = NULL;
-  hsa_device_pointer_t device_ptr = NULL;
+  hipDeviceptr_t device_ptr = NULL;
 
   switch (external_buffer->type) {
     case IREE_HAL_EXTERNAL_BUFFER_TYPE_HOST_ALLOCATION: {
-      uint32_t flags = 0;
-      int num_agents = 1;
-      status = IREE_HSA_RESULT_TO_STATUS(
+      if (iree_all_bits_set(compat_params.type,
+                            IREE_HAL_MEMORY_TYPE_DEVICE_LOCAL)) {
+        return iree_make_status(
+            IREE_STATUS_INVALID_ARGUMENT,
+            "unable to register host allocations as device-local memory");
+      }
+      buffer_type = IREE_HAL_HIP_BUFFER_TYPE_HOST_REGISTERED;
+      host_ptr = external_buffer->handle.host_allocation.ptr;
+      uint32_t register_flags = hipHostRegisterMapped;
+      status = IREE_HIP_RESULT_TO_STATUS(
           allocator->symbols,
-          hsa_amd_memory_lock_to_pool(host_ptr, external_buffer->size,
-                                      &allocator->cpu_agent, num_agents,
-                                      allocator->cpu_pool, flags, device_ptr),
-          "hsa_amd_memory_lock_to_pool");
-
+          hipHostRegister(host_ptr, external_buffer->size, register_flags),
+          "hipHostRegister");
+      if (iree_status_is_ok(status)) {
+        status = IREE_HIP_RESULT_TO_STATUS(
+            allocator->symbols,
+            hipHostGetDevicePointer(&device_ptr, host_ptr, 0),
+            "hipHostGetDevicePointer");
+      }
       break;
     }
     case IREE_HAL_EXTERNAL_BUFFER_TYPE_DEVICE_ALLOCATION: {
-      return iree_make_status(IREE_STATUS_UNIMPLEMENTED, "not yet implemented");
+      buffer_type = IREE_HAL_HIP_BUFFER_TYPE_EXTERNAL;
+      device_ptr =
+          (hipDeviceptr_t)external_buffer->handle.device_allocation.ptr;
+      break;
     }
     case IREE_HAL_EXTERNAL_BUFFER_TYPE_OPAQUE_FD:
     case IREE_HAL_EXTERNAL_BUFFER_TYPE_OPAQUE_WIN32:
@@ -673,7 +738,7 @@ static iree_status_t iree_hal_hsa_allocator_export_buffer(
   switch (requested_type) {
     case IREE_HAL_EXTERNAL_BUFFER_TYPE_DEVICE_ALLOCATION:
       switch (buffer_type) {
-        case IREE_HAL_HSA_BUFFER_TYPE_EXTERNAL:
+        case IREE_HAL_HIP_BUFFER_TYPE_EXTERNAL:
           out_external_buffer->flags = requested_flags;
           out_external_buffer->type = requested_type;
           out_external_buffer->handle.device_allocation.ptr =
@@ -683,7 +748,7 @@ static iree_status_t iree_hal_hsa_allocator_export_buffer(
 
         default:
           return iree_make_status(IREE_STATUS_UNAVAILABLE,
-                                  "HSA buffer type is not supported for "
+                                  "HIP buffer type is not supported for "
                                   "export as an external device allocation");
       }
 

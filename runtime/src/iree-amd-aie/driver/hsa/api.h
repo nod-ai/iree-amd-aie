@@ -1,4 +1,3 @@
-// Copyright (c) 2024 Advanced Micro Devices, Inc. All Rights Reserved.
 // Copyright 2023 The IREE Authors
 //
 // Licensed under the Apache License v2.0 with LLVM Exceptions.
@@ -7,8 +6,8 @@
 
 // See iree/base/api.h for documentation on the API conventions used.
 
-#ifndef IREE_EXPERIMENTAL_HSA_API_H_
-#define IREE_EXPERIMENTAL_HSA_API_H_
+#ifndef IREE_EXPERIMENTAL_HIP_API_H_
+#define IREE_EXPERIMENTAL_HIP_API_H_
 
 #include "iree/base/api.h"
 #include "iree/hal/api.h"
@@ -21,6 +20,15 @@ extern "C" {
 // iree_hal_hsa_device_t
 //===----------------------------------------------------------------------===//
 
+// How command buffers are recorded and executed.
+typedef enum iree_hal_hsa_command_buffer_mode_e {
+  // Command buffers are recorded into HIP graphs.
+  IREE_HAL_HIP_COMMAND_BUFFER_MODE_GRAPH = 0,
+  // Command buffers are directly issued against a HIP stream.
+  IREE_HAL_HIP_COMMAND_BUFFER_MODE_STREAM = 1,
+} iree_hal_hsa_command_buffer_mode_t;
+
+// Parameters defining a hipMemPool_t.
 typedef struct iree_hal_hsa_memory_pool_params_t {
   // Minimum number of bytes to keep in the pool when trimming with
   // iree_hal_device_trim.
@@ -31,6 +39,7 @@ typedef struct iree_hal_hsa_memory_pool_params_t {
   uint64_t release_threshold;
 } iree_hal_hsa_memory_pool_params_t;
 
+// Parameters for each hipMemPool_t used for queue-ordered allocations.
 typedef struct iree_hal_hsa_memory_pooling_params_t {
   // Used exclusively for DEVICE_LOCAL allocations.
   iree_hal_hsa_memory_pool_params_t device_local;
@@ -53,11 +62,14 @@ typedef struct iree_hal_hsa_device_params_t {
   iree_host_size_t arena_block_size;
 
   // The host and device event pool capacity.
-  // The HSA driver implements semaphore with host and device events. This
+  // The HIP driver implements semaphore with host and device events. This
   // parameter controls the size of those pools. Larger values would make
   // creating semaphore values quicker, though with increased memory
   // consumption.
   iree_host_size_t event_pool_capacity;
+
+  // Specifies how command buffers are recorded and executed.
+  iree_hal_hsa_command_buffer_mode_t command_buffer_mode;
 
   // Enables tracing of command buffers when IREE tracing is enabled.
   // May take advantage of additional extensions for more accurate timing or
@@ -67,9 +79,13 @@ typedef struct iree_hal_hsa_device_params_t {
   // submissions and introduce false barriers between dispatches. Use this to
   // identify slow dispatches and refine from there; be wary of whole-program
   // tracing with this enabled.
-  bool queue_tracing;
+  bool stream_tracing;
 
-  // Parameters for each memory pool used for queue-ordered allocations.
+  // Whether to use async allocations even if reported as available by the
+  // device. Defaults to true when the device supports it.
+  bool async_allocations;
+
+  // Parameters for each hipMemPool_t used for queue-ordered allocations.
   iree_hal_hsa_memory_pooling_params_t memory_pools;
 } iree_hal_hsa_device_params_t;
 
@@ -81,9 +97,9 @@ IREE_API_EXPORT void iree_hal_hsa_device_params_initialize(
 // iree_hal_hsa_driver_t
 //===----------------------------------------------------------------------===//
 
-// HSA HAL driver creation options.
+// HIP HAL driver creation options.
 typedef struct iree_hal_hsa_driver_options_t {
-  // The index of the default HSA device to use within the list of available
+  // The index of the default HIP device to use within the list of available
   // devices.
   int default_device_index;
 } iree_hal_hsa_driver_options_t;
@@ -92,7 +108,7 @@ typedef struct iree_hal_hsa_driver_options_t {
 IREE_API_EXPORT void iree_hal_hsa_driver_options_initialize(
     iree_hal_hsa_driver_options_t* out_options);
 
-// Creates a HSA HAL driver with the given |options|, from which HSA devices
+// Creates a HIP HAL driver with the given |options|, from which HIP devices
 // can be enumerated and created with specific parameters.
 //
 // |out_driver| must be released by the caller (see iree_hal_driver_release).
@@ -105,4 +121,4 @@ IREE_API_EXPORT iree_status_t iree_hal_hsa_driver_create(
 }  // extern "C"
 #endif  // __cplusplus
 
-#endif  // IREE_EXPERIMENTAL_HSA_API_H_
+#endif  // IREE_EXPERIMENTAL_HIP_API_H_

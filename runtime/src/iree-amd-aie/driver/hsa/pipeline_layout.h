@@ -1,12 +1,11 @@
-// Copyright (c) 2024 Advanced Micro Devices, Inc. All Rights Reserved.
 // Copyright 2023 The IREE Authors
 //
 // Licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#ifndef IREE_EXPERIMENTAL_HSA_PIPELINE_LAYOUT_H_
-#define IREE_EXPERIMENTAL_HSA_PIPELINE_LAYOUT_H_
+#ifndef IREE_EXPERIMENTAL_HIP_PIPELINE_LAYOUT_H_
+#define IREE_EXPERIMENTAL_HIP_PIPELINE_LAYOUT_H_
 
 #include "iree/base/api.h"
 #include "iree/hal/api.h"
@@ -15,18 +14,18 @@
 extern "C" {
 #endif  // __cplusplus
 
-// The max number of bindings per descriptor set allowed in the HSA HAL
+// The max number of bindings per descriptor set allowed in the HIP HAL
 // implementation.
-#define IREE_HAL_HSA_MAX_DESCRIPTOR_SET_BINDING_COUNT 16
+#define IREE_HAL_HIP_MAX_DESCRIPTOR_SET_BINDING_COUNT 16
 
-// The max number of descriptor sets allowed in the HSA HAL implementation.
+// The max number of descriptor sets allowed in the HIP HAL implementation.
 //
 // This depends on the general descriptor set planning in IREE and should adjust
 // with it.
-#define IREE_HAL_HSA_MAX_DESCRIPTOR_SET_COUNT 4
+#define IREE_HAL_HIP_MAX_DESCRIPTOR_SET_COUNT 4
 
-// The max number of push constants supported by the HSA HAL implementation.
-#define IREE_HAL_HSA_MAX_PUSH_CONSTANT_COUNT 64
+// The max number of push constants supported by the HIP HAL implementation.
+#define IREE_HAL_HIP_MAX_PUSH_CONSTANT_COUNT 64
 
 //===----------------------------------------------------------------------===//
 // iree_hal_hsa_descriptor_set_layout_t
@@ -35,7 +34,7 @@ extern "C" {
 // Creates a descriptor set layout with the given |bindings|.
 //
 // Bindings in a descriptor set map to a list of consecutive kernel arguments in
-// HSA kernels.
+// HIP kernels.
 iree_status_t iree_hal_hsa_descriptor_set_layout_create(
     iree_hal_descriptor_set_layout_flags_t flags,
     iree_host_size_t binding_count,
@@ -54,7 +53,7 @@ iree_host_size_t iree_hal_hsa_descriptor_set_layout_binding_count(
 // Creates the pipeline layout with the given |set_layouts| and
 // |push_constant_count|.
 //
-// Bindings in the pipeline map to kernel arguments in HSA kernels, followed by
+// Bindings in the pipeline map to kernel arguments in HIP kernels, followed by
 // the kernel argument for the push constant data.
 iree_status_t iree_hal_hsa_pipeline_layout_create(
     iree_host_size_t set_layout_count,
@@ -90,4 +89,4 @@ iree_hal_hsa_dispatch_layout_t iree_hal_hsa_pipeline_layout_dispatch_layout(
 }  // extern "C"
 #endif  // __cplusplus
 
-#endif  // IREE_EXPERIMENTAL_HSA_PIPELINE_LAYOUT_H_
+#endif  // IREE_EXPERIMENTAL_HIP_PIPELINE_LAYOUT_H_

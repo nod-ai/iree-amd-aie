@@ -1,19 +1,17 @@
-
-// Copyright (c) 2024 Advanced Micro Devices, Inc. All Rights Reserved.
 // Copyright 2024 The IREE Authors
 //
 // Licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#include "iree-amd-aie/driver/hsa/event_pool.h"
+#include "experimental/hsa/event_pool.h"
 
 #include <stdbool.h>
 #include <stddef.h>
 #include <string.h>
 
-#include "iree-amd-aie/driver/hsa/dynamic_symbols.h"
-#include "iree-amd-aie/driver/hsa/status_util.h"
+#include "experimental/hsa/dynamic_symbols.h"
+#include "experimental/hsa/status_util.h"
 #include "iree/base/api.h"
 #include "iree/base/internal/atomics.h"
 #include "iree/base/internal/synchronization.h"
@@ -32,19 +30,18 @@ struct iree_hal_hsa_event_t {
 
   // The allocator used to create the event.
   iree_allocator_t host_allocator;
-  // The symbols used to create and destroy signals objects.
+  // The symbols used to create and destroy hipEvent_t objects.
   const iree_hal_hsa_dynamic_symbols_t* symbols;
 
   // The event pool that owns this event. This cannot be NULL. We retain it to
   // make sure the event outlive the pool.
   iree_hal_hsa_event_pool_t* pool;
-
-  hsa_signal_t signal;
+  // The underlying hipEvent_t object.
+  hipEvent_t hip_event;
 };
 
-
-hsa_signal_t iree_hal_hsa_signal_handle(const iree_hal_hsa_event_t* event) {
-  return event->signal;
+hipEvent_t iree_hal_hsa_event_handle(const iree_hal_hsa_event_t* event) {
+  return event->hip_event;
 }
 
 static inline void iree_hal_hsa_event_destroy(iree_hal_hsa_event_t* event) {
@@ -53,7 +50,7 @@ static inline void iree_hal_hsa_event_destroy(iree_hal_hsa_event_t* event) {
   IREE_TRACE_ZONE_BEGIN(z0);
 
   IREE_ASSERT_REF_COUNT_ZERO(&event->ref_count);
-  IREE_HSA_IGNORE_ERROR(symbols, hsa_signal_destroy(event->signal));
+  IREE_HIP_IGNORE_ERROR(symbols, hipEventDestroy(event->hip_event));
   iree_allocator_free(host_allocator, event);
 
   IREE_TRACE_ZONE_END(z0);
@@ -77,16 +74,12 @@ static inline iree_status_t iree_hal_hsa_event_create(
   event->host_allocator = host_allocator;
   event->symbols = symbols;
   event->pool = pool;
+  event->hip_event = NULL;
 
-  hsa_signal_value_t signal_value = 1;
-  uint32_t num_consumers = 0;
-  const hsa_agent_t* consumers = NULL;
-
-  iree_status_t status = IREE_HSA_RESULT_TO_STATUS(
+  iree_status_t status = IREE_HIP_RESULT_TO_STATUS(
       symbols,
-      hsa_signal_create(signal_value, num_consumers, consumers, &event->signal),
-      "hsa_signal_create");
-
+      hipEventCreateWithFlags(&event->hip_event, hipEventDisableTiming),
+      "hipEventCreateWithFlags");
   if (iree_status_is_ok(status)) {
     *out_event = event;
   } else {
@@ -126,7 +119,7 @@ struct iree_hal_hsa_event_pool_t {
 
   // The allocator used to create the event pool.
   iree_allocator_t host_allocator;
-  // The symbols used to create and destroy signals objects.
+  // The symbols used to create and destroy hipEvent_t objects.
   const iree_hal_hsa_dynamic_symbols_t* symbols;
 
   // Guards event related fields in the pool. We don't expect a performant

@@ -1,5 +1,3 @@
-# Copyright (c) 2024 Advanced Micro Devices, Inc. All Rights Reserved.
-#
 # Copyright 2023 The IREE Authors
 #
 # Licensed under the Apache License v2.0 with LLVM Exceptions.
@@ -16,7 +14,7 @@ iree_cc_library(
   DEPS
     iree::base
     iree::base::core_headers
-    iree-amd-aie::driver::hsa
+    iree::experimental::hsa
     iree::hal
   DEFINES
     "IREE_HAVE_HAL_HSA_DRIVER_MODULE=1"

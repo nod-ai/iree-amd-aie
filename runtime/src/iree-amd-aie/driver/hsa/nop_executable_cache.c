@@ -1,17 +1,16 @@
-// Copyright (c) 2024 Advanced Micro Devices, Inc. All Rights Reserved.
 // Copyright 2023 The IREE Authors
 //
 // Licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#include "iree-amd-aie/driver/hsa/nop_executable_cache.h"
+#include "experimental/hsa/nop_executable_cache.h"
 
 #include <stdbool.h>
 #include <stddef.h>
 
-#include "iree-amd-aie/driver/hsa/hsa_allocator.h"
-#include "iree-amd-aie/driver/hsa/native_executable.h"
+#include "experimental/hsa/hsa_allocator.h"
+#include "experimental/hsa/native_executable.h"
 #include "iree/base/api.h"
 #include "iree/base/tracing.h"
 
@@ -26,7 +25,13 @@ typedef struct iree_hal_hsa_nop_executable_cache_t {
 
   const iree_hal_hsa_dynamic_symbols_t* symbols;
 
+  hipDevice_t device;
+
   hsa_agent_t agent;
+
+  hsa_device_type_t agent_type;
+
+  hsa_queue_t* dispatch_queue;
 
 } iree_hal_hsa_nop_executable_cache_t;
 
@@ -42,8 +47,9 @@ iree_hal_hsa_nop_executable_cache_cast(
 
 iree_status_t iree_hal_hsa_nop_executable_cache_create(
     iree_string_view_t identifier,
-    const iree_hal_hsa_dynamic_symbols_t* symbols,
-    hsa_agent_t agent, iree_allocator_t host_allocator,
+    const iree_hal_hsa_dynamic_symbols_t* symbols, hipDevice_t device,
+    hsa_agent_t agent, hsa_device_type_t agent_type,
+    hsa_queue_t* dispatch_queue, iree_allocator_t host_allocator,
     iree_hal_allocator_t* device_allocator,
     iree_hal_executable_cache_t** out_executable_cache) {
   IREE_ASSERT_ARGUMENT(symbols);
@@ -61,7 +67,10 @@ iree_status_t iree_hal_hsa_nop_executable_cache_create(
   executable_cache->host_allocator = host_allocator;
   executable_cache->device_allocator = device_allocator;
   executable_cache->symbols = symbols;
+  executable_cache->device = device;
   executable_cache->agent = agent;
+  executable_cache->agent_type = agent_type;
+  executable_cache->dispatch_queue = dispatch_queue;
 
   *out_executable_cache = (iree_hal_executable_cache_t*)executable_cache;
 
@@ -96,9 +105,10 @@ static iree_status_t iree_hal_hsa_nop_executable_cache_prepare_executable(
   iree_hal_hsa_nop_executable_cache_t* executable_cache =
       iree_hal_hsa_nop_executable_cache_cast(base_executable_cache);
   return iree_hal_hsa_native_executable_create(
-      executable_cache->symbols, executable_cache->agent, executable_params,
-      executable_cache->host_allocator, executable_cache->device_allocator,
-      out_executable);
+      executable_cache->symbols, executable_cache->agent,
+      executable_cache->agent_type, executable_cache->dispatch_queue,
+      executable_params, executable_cache->host_allocator,
+      executable_cache->device_allocator, out_executable);
 }
 
 static const iree_hal_executable_cache_vtable_t

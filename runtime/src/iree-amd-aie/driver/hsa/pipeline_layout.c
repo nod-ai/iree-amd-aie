@@ -1,11 +1,10 @@
-// Copyright (c) 2024 Advanced Micro Devices, Inc. All Rights Reserved.
 // Copyright 2023 The IREE Authors
 //
 // Licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#include "iree-amd-aie/driver/hsa/pipeline_layout.h"
+#include "experimental/hsa/pipeline_layout.h"
 
 #include <stddef.h>
 
@@ -151,12 +150,12 @@ iree_status_t iree_hal_hsa_pipeline_layout_create(
   IREE_TRACE_ZONE_BEGIN(z0);
 
   *out_pipeline_layout = NULL;
-  if (push_constant_count > IREE_HAL_HSA_MAX_PUSH_CONSTANT_COUNT) {
+  if (push_constant_count > IREE_HAL_HIP_MAX_PUSH_CONSTANT_COUNT) {
     IREE_TRACE_ZONE_END(z0);
     return iree_make_status(
         IREE_STATUS_INVALID_ARGUMENT,
         "push constant count %" PRIhsz " over the limit of %d",
-        push_constant_count, IREE_HAL_HSA_MAX_PUSH_CONSTANT_COUNT);
+        push_constant_count, IREE_HAL_HIP_MAX_PUSH_CONSTANT_COUNT);
   }
 
   // Currently the pipeline layout doesn't do anything.

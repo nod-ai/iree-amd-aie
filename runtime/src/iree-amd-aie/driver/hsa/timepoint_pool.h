@@ -1,14 +1,13 @@
-// Copyright (c) 2024 Advanced Micro Devices, Inc. All Rights Reserved.
 // Copyright 2024 The IREE Authors
 //
 // Licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#ifndef IREE_EXPERIMENTAL_HSA_TIMEPOINT_POOL_H_
-#define IREE_EXPERIMENTAL_HSA_TIMEPOINT_POOL_H_
+#ifndef IREE_EXPERIMENTAL_HIP_TIMEPOINT_POOL_H_
+#define IREE_EXPERIMENTAL_HIP_TIMEPOINT_POOL_H_
 
-#include "iree-amd-aie/driver/hsa/event_pool.h"
+#include "experimental/hsa/event_pool.h"
 #include "iree/base/api.h"
 #include "iree/base/internal/event_pool.h"
 #include "iree/hal/utils/semaphore_base.h"
@@ -27,13 +26,13 @@ typedef struct iree_hal_hsa_timepoint_pool_t iree_hal_hsa_timepoint_pool_t;
 // An enum to identify the timepoint kind in iree_hal_hsa_timepoint_t objects.
 typedef enum iree_hal_hsa_timepoint_kind_e {
   // None; for uninitialized timepoint objects.
-  IREE_HAL_HSA_TIMEPOINT_KIND_NONE = 0,
+  IREE_HAL_HIP_TIMEPOINT_KIND_NONE = 0,
   // A timepoint waited by the host.
-  IREE_HAL_HSA_TIMEPOINT_KIND_HOST_WAIT,
+  IREE_HAL_HIP_TIMEPOINT_KIND_HOST_WAIT,
   // A timepoint signaled by the device.
-  IREE_HAL_HSA_TIMEPOINT_KIND_DEVICE_SIGNAL,
+  IREE_HAL_HIP_TIMEPOINT_KIND_DEVICE_SIGNAL,
   // A timepoint waited by the device.
-  IREE_HAL_HSA_TIMEPOINT_KIND_DEVICE_WAIT,
+  IREE_HAL_HIP_TIMEPOINT_KIND_DEVICE_WAIT,
 } iree_hal_hsa_timepoint_kind_t;
 
 // An object that wraps a host iree_event_t or device iree_hal_hsa_event_t to
@@ -117,4 +116,4 @@ void iree_hal_hsa_timepoint_pool_release(
 }  // extern "C"
 #endif  // __cplusplus
 
-#endif  // IREE_EXPERIMENTAL_HSA_TIMEPOINT_POOL_H_
+#endif  // IREE_EXPERIMENTAL_HIP_TIMEPOINT_POOL_H_

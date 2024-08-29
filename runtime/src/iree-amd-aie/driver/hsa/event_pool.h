@@ -1,14 +1,13 @@
-// Copyright (c) 2024 Advanced Micro Devices, Inc. All Rights Reserved.
 // Copyright 2024 The IREE Authors
 //
 // Licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#ifndef IREE_EXPERIMENTAL_HSA_EVENT_POOL_H_
-#define IREE_EXPERIMENTAL_HSA_EVENT_POOL_H_
+#ifndef IREE_EXPERIMENTAL_HIP_EVENT_POOL_H_
+#define IREE_EXPERIMENTAL_HIP_EVENT_POOL_H_
 
-#include "iree-amd-aie/driver/hsa/dynamic_symbols.h"
+#include "experimental/hsa/dynamic_symbols.h"
 #include "iree/base/api.h"
 
 #ifdef __cplusplus
@@ -19,7 +18,7 @@ extern "C" {
 // iree_hal_hsa_event_t
 //===----------------------------------------------------------------------===//
 
-// An struct that wraps a signals object with a reference count for lifetime
+// An struct that wraps a hipEvent_t object with a reference count for lifetime
 // management.
 //
 // iree_hal_hsa_event_t objects cannot be directly created; they should be
@@ -28,8 +27,8 @@ extern "C" {
 // Thread-safe; multiple threads may retain and release the same event.
 typedef struct iree_hal_hsa_event_t iree_hal_hsa_event_t;
 
-// Returns the underlying hsa_signal_tt handle behind |event|.
-hsa_signal_t iree_hal_hsa_signal_handle(const iree_hal_hsa_event_t* event);
+// Returns the underlying hipEvent_t handle behind |event|.
+hipEvent_t iree_hal_hsa_event_handle(const iree_hal_hsa_event_t* event);
 
 // Retains the given |event| by increasing its reference count.
 void iree_hal_hsa_event_retain(iree_hal_hsa_event_t* event);
@@ -68,7 +67,7 @@ void iree_hal_hsa_event_pool_release(iree_hal_hsa_event_pool_t* event_pool);
 // Acquires one or more events from the event pool.
 //
 // Each returned event have an initial reference count of 1. The returned
-// signal objects may retain captured states of some queues from previous
+// hipEvent_t objects may retain captured states of some queues from previous
 // uses; callers should record again to overwrite.
 iree_status_t iree_hal_hsa_event_pool_acquire(
     iree_hal_hsa_event_pool_t* event_pool, iree_host_size_t event_count,
@@ -78,4 +77,4 @@ iree_status_t iree_hal_hsa_event_pool_acquire(
 }  // extern "C"
 #endif  // __cplusplus
 
-#endif  // IREE_EXPERIMENTAL_HSA_EVENT_POOL_H_
+#endif  // IREE_EXPERIMENTAL_HIP_EVENT_POOL_H_

@@ -1,19 +1,18 @@
-// Copyright (c) 2024 Advanced Micro Devices, Inc. All Rights Reserved.
 // Copyright 2024 The IREE Authors
 //
 // Licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#include "iree-amd-aie/driver/hsa/timepoint_pool.h"
+#include "experimental/hsa/timepoint_pool.h"
 
 #include <stdbool.h>
 #include <stddef.h>
 #include <string.h>
 
-#include "iree-amd-aie/driver/hsa/dynamic_symbols.h"
-#include "iree-amd-aie/driver/hsa/event_pool.h"
-#include "iree-amd-aie/driver/hsa/status_util.h"
+#include "experimental/hsa/dynamic_symbols.h"
+#include "experimental/hsa/event_pool.h"
+#include "experimental/hsa/status_util.h"
 #include "iree/base/api.h"
 #include "iree/base/internal/atomics.h"
 #include "iree/base/internal/event_pool.h"
@@ -61,7 +60,7 @@ static void iree_hal_hsa_timepoint_free(iree_hal_hsa_timepoint_t* timepoint) {
   iree_allocator_t host_allocator = timepoint->host_allocator;
   IREE_TRACE_ZONE_BEGIN(z0);
 
-  IREE_ASSERT(timepoint->kind == IREE_HAL_HSA_TIMEPOINT_KIND_NONE);
+  IREE_ASSERT(timepoint->kind == IREE_HAL_HIP_TIMEPOINT_KIND_NONE);
   iree_allocator_free(host_allocator, timepoint);
 
   IREE_TRACE_ZONE_END(z0);
@@ -229,7 +228,7 @@ iree_status_t iree_hal_hsa_timepoint_pool_acquire_host_wait(
       z0, iree_hal_hsa_timepoint_pool_acquire_internal(
               timepoint_pool, timepoint_count, out_timepoints));
   for (iree_host_size_t i = 0; i < timepoint_count; ++i) {
-    out_timepoints[i]->kind = IREE_HAL_HSA_TIMEPOINT_KIND_HOST_WAIT;
+    out_timepoints[i]->kind = IREE_HAL_HIP_TIMEPOINT_KIND_HOST_WAIT;
     out_timepoints[i]->timepoint.host_wait = host_events[i];
   }
 
@@ -255,7 +254,7 @@ iree_status_t iree_hal_hsa_timepoint_pool_acquire_device_signal(
       z0, iree_hal_hsa_timepoint_pool_acquire_internal(
               timepoint_pool, timepoint_count, out_timepoints));
   for (iree_host_size_t i = 0; i < timepoint_count; ++i) {
-    out_timepoints[i]->kind = IREE_HAL_HSA_TIMEPOINT_KIND_DEVICE_SIGNAL;
+    out_timepoints[i]->kind = IREE_HAL_HIP_TIMEPOINT_KIND_DEVICE_SIGNAL;
     out_timepoints[i]->timepoint.device_signal = device_events[i];
   }
 
@@ -281,7 +280,7 @@ iree_status_t iree_hal_hsa_timepoint_pool_acquire_device_wait(
       z0, iree_hal_hsa_timepoint_pool_acquire_internal(
               timepoint_pool, timepoint_count, out_timepoints));
   for (iree_host_size_t i = 0; i < timepoint_count; ++i) {
-    out_timepoints[i]->kind = IREE_HAL_HSA_TIMEPOINT_KIND_DEVICE_WAIT;
+    out_timepoints[i]->kind = IREE_HAL_HIP_TIMEPOINT_KIND_DEVICE_WAIT;
     out_timepoints[i]->timepoint.device_wait = device_events[i];
   }
 
@@ -303,14 +302,14 @@ void iree_hal_hsa_timepoint_pool_release(
   // TODO: Release in batch to avoid lock overhead from separate calls.
   for (iree_host_size_t i = 0; i < timepoint_count; ++i) {
     switch (timepoints[i]->kind) {
-      case IREE_HAL_HSA_TIMEPOINT_KIND_HOST_WAIT:
+      case IREE_HAL_HIP_TIMEPOINT_KIND_HOST_WAIT:
         iree_event_pool_release(timepoint_pool->host_event_pool, 1,
                                 &timepoints[i]->timepoint.host_wait);
         break;
-      case IREE_HAL_HSA_TIMEPOINT_KIND_DEVICE_SIGNAL:
+      case IREE_HAL_HIP_TIMEPOINT_KIND_DEVICE_SIGNAL:
         iree_hal_hsa_event_release(timepoints[i]->timepoint.device_signal);
         break;
-      case IREE_HAL_HSA_TIMEPOINT_KIND_DEVICE_WAIT:
+      case IREE_HAL_HIP_TIMEPOINT_KIND_DEVICE_WAIT:
         iree_hal_hsa_event_release(timepoints[i]->timepoint.device_wait);
         break;
       default:

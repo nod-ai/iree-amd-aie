@@ -1,11 +1,10 @@
-// Copyright (c) 2024 Advanced Micro Devices, Inc. All Rights Reserved.
 // Copyright 2024 The IREE Authors
 //
 // Licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#include "iree-amd-aie/driver/hsa/hsa_buffer.h"
+#include "experimental/hsa/hsa_buffer.h"
 
 #include <stddef.h>
 #include <stdint.h>
@@ -18,7 +17,7 @@ typedef struct iree_hal_hsa_buffer_t {
   iree_hal_buffer_t base;
   iree_hal_hsa_buffer_type_t type;
   void* host_ptr;
-  hsa_device_pointer_t device_ptr;
+  void* device_ptr;
   iree_hal_buffer_release_callback_t release_callback;
 } iree_hal_hsa_buffer_t;
 
@@ -41,7 +40,7 @@ iree_status_t iree_hal_hsa_buffer_wrap(
     iree_hal_memory_access_t allowed_access,
     iree_hal_buffer_usage_t allowed_usage, iree_device_size_t allocation_size,
     iree_device_size_t byte_offset, iree_device_size_t byte_length,
-    iree_hal_hsa_buffer_type_t buffer_type, hsa_device_pointer_t device_ptr,
+    iree_hal_hsa_buffer_type_t buffer_type, hipDeviceptr_t device_ptr,
     void* host_ptr, iree_hal_buffer_release_callback_t release_callback,
     iree_allocator_t host_allocator, iree_hal_buffer_t** out_buffer) {
   IREE_ASSERT_ARGUMENT(out_buffer);

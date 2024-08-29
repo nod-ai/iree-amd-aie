@@ -1,14 +1,13 @@
-// Copyright (c) 2024 Advanced Micro Devices, Inc. All Rights Reserved.
 // Copyright 2023 The IREE Authors
 //
 // Licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#ifndef IREE_EXPERIMENTAL_HSA_DYNAMIC_SYMBOLS_H_
-#define IREE_EXPERIMENTAL_HSA_DYNAMIC_SYMBOLS_H_
+#ifndef IREE_EXPERIMENTAL_HIP_DYNAMIC_SYMBOLS_H_
+#define IREE_EXPERIMENTAL_HIP_DYNAMIC_SYMBOLS_H_
 
-#include "iree-amd-aie/driver/hsa/hsa_headers.h"
+#include "experimental/hsa/hsa_headers.h"
 #include "iree/base/api.h"
 #include "iree/base/internal/dynamic_library.h"
 
@@ -16,29 +15,39 @@
 extern "C" {
 #endif  // __cplusplus
 
-// iree_dynamic_library_t allows dynamically loading a subset of HSA driver API.
+// iree_dynamic_library_t allows dynamically loading a subset of HIP driver API.
 // We load all the symbols in `dynamic_symbol_tables.h` and fail if any of the
 // symbol is not available. The functions signatures are matching the
-// declarations in the HSA headers.
+// declarations in `hip_runtime_api.h`.
 
 //===----------------------------------------------------------------------===//
-// HSA dynamic symbols
+// HIP dynamic symbols
 //===----------------------------------------------------------------------===//
 
-// HSA driver API dynamic symbols.
+// HIP driver API dynamic symbols.
 typedef struct iree_hal_hsa_dynamic_symbols_t {
   // The dynamic library handle.
   iree_dynamic_library_t* dylib;
 
-  // Concrete HSA symbols defined by including the `dynamic_symbol_tables.h`.
+  // Concrete HIP symbols defined by including the `dynamic_symbol_tables.h`.
+#define IREE_HAL_HIP_REQUIRED_PFN_DECL(hipSymbolName, ...) \
+  hipError_t (*hipSymbolName)(__VA_ARGS__);
+
 #define IREE_HAL_HSA_REQUIRED_PFN_DECL(hsaSymbolName, ...) \
   hsa_status_t (*hsaSymbolName)(__VA_ARGS__);
 
-#include "iree-amd-aie/driver/hsa/dynamic_symbol_tables.h"  // IWYU pragma: export
+#define IREE_HAL_HIP_REQUIRED_PFN_STR_DECL(hipSymbolName, ...) \
+  const char* (*hipSymbolName)(__VA_ARGS__);
+#define IREE_HAL_HIP_OPTIONAL_PFN_DECL(hipSymbolName, ...) \
+  hipError_t (*hipSymbolName)(__VA_ARGS__);
+#include "experimental/hsa/dynamic_symbol_tables.h"  // IWYU pragma: export
+#undef IREE_HAL_HIP_REQUIRED_PFN_DECL
 #undef IREE_HAL_HSA_REQUIRED_PFN_DECL
+#undef IREE_HAL_HIP_REQUIRED_PFN_STR_DECL
+#undef IREE_HAL_HIP_OPTIONAL_PFN_DECL
 } iree_hal_hsa_dynamic_symbols_t;
 
-// Initializes |out_syms| in-place with dynamically loaded HSA symbols.
+// Initializes |out_syms| in-place with dynamically loaded HIP symbols.
 // iree_hal_hsa_dynamic_symbols_deinitialize must be used to release the
 // library resources.
 iree_status_t iree_hal_hsa_dynamic_symbols_initialize(
@@ -54,4 +63,4 @@ void iree_hal_hsa_dynamic_symbols_deinitialize(
 }  // extern "C"
 #endif  // __cplusplus
 
-#endif  // IREE_EXPERIMENTAL_HSA_DYNAMIC_SYMBOLS_H_
+#endif  // IREE_EXPERIMENTAL_HIP_DYNAMIC_SYMBOLS_H_

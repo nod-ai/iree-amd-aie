@@ -1,23 +1,41 @@
-// Copyright (c) 2024 Advanced Micro Devices, Inc. All Rights Reserved.
 // Copyright 2023 The IREE Authors
 //
 // Licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#include "iree-amd-aie/driver/hsa/registration/driver_module.h"
+#include "experimental/hsa/registration/driver_module.h"
 
 #include <inttypes.h>
 #include <stddef.h>
 
-#include "iree-amd-aie/driver/hsa/api.h"
+#include "experimental/hsa/api.h"
+#include "experimental/hsa/hsa_helpers.hpp"
 #include "iree/base/api.h"
 #include "iree/base/internal/flags.h"
 #include "iree/base/status.h"
+#include "iree/base/tracing.h"
+
+IREE_FLAG(bool, hsa_use_streams, true,
+          "Use HIP streams (instead of graphs) for executing command buffers.");
+
+IREE_FLAG(
+    bool, hsa_async_allocations, true,
+    "Enables HIP asynchronous stream-ordered allocations when supported.");
+
+IREE_FLAG(
+    bool, hsa_tracing, true,
+    "Enables tracing of stream events when Tracy instrumentation is enabled.\n"
+    "Severely impacts benchmark timings and should only be used when\n"
+    "analyzing dispatch timings.");
+
+IREE_FLAG(int32_t, hsa_default_index, 0,
+          "Specifies the index of the default HIP device to use");
 
 static iree_status_t iree_hal_hsa_driver_factory_enumerate(
     void* self, iree_host_size_t* out_driver_info_count,
     const iree_hal_driver_info_t** out_driver_infos) {
+  HSA_LOG("");
   IREE_ASSERT_ARGUMENT(out_driver_info_count);
   IREE_ASSERT_ARGUMENT(out_driver_infos);
   IREE_TRACE_ZONE_BEGIN(z0);
@@ -37,6 +55,7 @@ static iree_status_t iree_hal_hsa_driver_factory_try_create(
     void* self, iree_string_view_t driver_name, iree_allocator_t host_allocator,
     iree_hal_driver_t** out_driver) {
   IREE_ASSERT_ARGUMENT(out_driver);
+  HSA_LOG("");
 
   if (!iree_string_view_equal(driver_name, IREE_SV("hsa"))) {
     return iree_make_status(IREE_STATUS_UNAVAILABLE,
@@ -51,8 +70,14 @@ static iree_status_t iree_hal_hsa_driver_factory_try_create(
 
   iree_hal_hsa_device_params_t device_params;
   iree_hal_hsa_device_params_initialize(&device_params);
+  // printf("FLAG_hsa_use_streams: %i\n", (int)FLAG_hsa_use_streams);
+  if (FLAG_hsa_use_streams) {
+    device_params.command_buffer_mode = IREE_HAL_HIP_COMMAND_BUFFER_MODE_STREAM;
+  }
+  device_params.stream_tracing = FLAG_hsa_tracing;
+  device_params.async_allocations = FLAG_hsa_async_allocations;
 
-  driver_options.default_device_index = 0;
+  driver_options.default_device_index = FLAG_hsa_default_index;
 
   iree_status_t status = iree_hal_hsa_driver_create(
       driver_name, &driver_options, &device_params, host_allocator, out_driver);
@@ -64,6 +89,8 @@ static iree_status_t iree_hal_hsa_driver_factory_try_create(
 
 IREE_API_EXPORT iree_status_t
 iree_hal_hsa_driver_module_register(iree_hal_driver_registry_t* registry) {
+  HSA_LOG("Registering HSA Driver Module");
+
   static const iree_hal_driver_factory_t factory = {
       .self = NULL,
       .enumerate = iree_hal_hsa_driver_factory_enumerate,

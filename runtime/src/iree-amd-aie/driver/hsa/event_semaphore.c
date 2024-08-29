@@ -1,15 +1,14 @@
-// Copyright (c) 2024 Advanced Micro Devices, Inc. All Rights Reserved.
 // Copyright 2024 The IREE Authors
 //
 // Licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#include "iree-amd-aie/driver/hsa/event_semaphore.h"
+#include "experimental/hsa/event_semaphore.h"
 
-#include "iree-amd-aie/driver/hsa/dynamic_symbols.h"
-#include "iree-amd-aie/driver/hsa/status_util.h"
-#include "iree-amd-aie/driver/hsa/timepoint_pool.h"
+#include "experimental/hsa/dynamic_symbols.h"
+#include "experimental/hsa/status_util.h"
+#include "experimental/hsa/timepoint_pool.h"
 #include "iree/base/internal/synchronization.h"
 #include "iree/base/internal/wait_handle.h"
 #include "iree/hal/utils/semaphore_base.h"
@@ -21,7 +20,7 @@ typedef struct iree_hal_hsa_semaphore_t {
 
   // The allocator used to create this semaphore.
   iree_allocator_t host_allocator;
-  // The symbols used to issue HSA API calls.
+  // The symbols used to issue HIP API calls.
   const iree_hal_hsa_dynamic_symbols_t* symbols;
 
   // The timepoint pool to acquire timepoint objects.
@@ -244,7 +243,7 @@ static bool iree_hal_hsa_semaphore_acquire_event_host_wait(
   for (iree_hal_semaphore_timepoint_t* tp = semaphore->base.timepoint_list.head;
        tp != NULL; tp = tp->next) {
     iree_hal_hsa_timepoint_t* signal_timepoint = (iree_hal_hsa_timepoint_t*)tp;
-    if (signal_timepoint->kind == IREE_HAL_HSA_TIMEPOINT_KIND_DEVICE_SIGNAL &&
+    if (signal_timepoint->kind == IREE_HAL_HIP_TIMEPOINT_KIND_DEVICE_SIGNAL &&
         signal_timepoint->base.minimum_value >= min_value) {
       *out_event = signal_timepoint->timepoint.device_signal;
       iree_hal_hsa_event_retain(*out_event);
@@ -287,16 +286,16 @@ static iree_status_t iree_hal_hsa_semaphore_wait(
 
   iree_time_t deadline_ns = iree_timeout_as_deadline_ns(timeout);
 
-  // Slow path: try to see if we can have a device signal to wait on. This
+  // Slow path: try to see if we can have a device hipEvent_t to wait on. This
   // should happen outside of the lock given that acquiring has its own internal
   // locks. This is faster than waiting on a host timepoint.
   iree_hal_hsa_event_t* wait_event = NULL;
   if (iree_hal_hsa_semaphore_acquire_event_host_wait(semaphore, value,
                                                      &wait_event)) {
-    semaphore->symbols->hsa_signal_wait_scacquire(
-        iree_hal_hsa_signal_handle(wait_event), HSA_SIGNAL_CONDITION_EQ, 0,
-        UINT64_MAX, HSA_WAIT_STATE_BLOCKED);
-
+    IREE_HIP_RETURN_AND_END_ZONE_IF_ERROR(
+        z0, semaphore->symbols,
+        hipEventSynchronize(iree_hal_hsa_event_handle(wait_event)),
+        "hipEventSynchronize");
     iree_hal_hsa_event_release(wait_event);
     IREE_TRACE_ZONE_END(z0);
     return iree_ok_status();
@@ -418,15 +417,15 @@ iree_status_t iree_hal_hsa_semaphore_multi_wait(
 // Handles device signal timepoints on the host when the |semaphore| timeline
 // advances past the given |value|.
 //
-// Note that this callback is invoked by the a host thread after the HSA host
-// function callback function is triggered in the HSA driver.
+// Note that this callback is invoked by the a host thread after the HIP host
+// function callback function is triggered in the HIP driver.
 static iree_status_t iree_hal_hsa_semaphore_timepoint_device_signal_callback(
     void* user_data, iree_hal_semaphore_t* semaphore, uint64_t value,
     iree_status_code_t status_code) {
   IREE_TRACE_ZONE_BEGIN(z0);
   iree_hal_hsa_timepoint_t* timepoint = (iree_hal_hsa_timepoint_t*)user_data;
   // Just release the timepoint back to the pool. This will decrease the
-  // reference count of the underlying HSA event internally.
+  // reference count of the underlying HIP event internally.
   iree_hal_hsa_timepoint_pool_release(timepoint->pool, 1, &timepoint);
   IREE_TRACE_ZONE_END(z0);
   return iree_ok_status();
@@ -436,7 +435,7 @@ static iree_status_t iree_hal_hsa_semaphore_timepoint_device_signal_callback(
 // device.
 iree_status_t iree_hal_hsa_event_semaphore_acquire_timepoint_device_signal(
     iree_hal_semaphore_t* base_semaphore, uint64_t to_value,
-    hsa_signal_t* out_signal) {
+    hipEvent_t* out_event) {
   iree_hal_hsa_semaphore_t* semaphore =
       iree_hal_hsa_semaphore_cast(base_semaphore);
   iree_hal_hsa_timepoint_t* signal_timepoint = NULL;
@@ -464,7 +463,7 @@ iree_status_t iree_hal_hsa_event_semaphore_acquire_timepoint_device_signal(
   for (iree_hal_semaphore_timepoint_t* tp = semaphore->base.timepoint_list.head;
        tp != NULL; tp = tp->next) {
     iree_hal_hsa_timepoint_t* wait_timepoint = (iree_hal_hsa_timepoint_t*)tp;
-    if (wait_timepoint->kind == IREE_HAL_HSA_TIMEPOINT_KIND_DEVICE_WAIT &&
+    if (wait_timepoint->kind == IREE_HAL_HIP_TIMEPOINT_KIND_DEVICE_WAIT &&
         wait_timepoint->timepoint.device_wait == NULL &&
         wait_timepoint->base.minimum_value <= to_value) {
       iree_hal_hsa_event_retain(event);
@@ -473,8 +472,7 @@ iree_status_t iree_hal_hsa_event_semaphore_acquire_timepoint_device_signal(
   }
   iree_slim_mutex_unlock(&semaphore->base.timepoint_mutex);
 
-  // *out_event = iree_hal_hsa_event_handle(event);
-  *out_signal = iree_hal_hsa_signal_handle(event);
+  *out_event = iree_hal_hsa_event_handle(event);
   IREE_TRACE_ZONE_END(z0);
   return iree_ok_status();
 }
@@ -489,7 +487,7 @@ static iree_status_t iree_hal_hsa_semaphore_timepoint_device_wait_callback(
   IREE_TRACE_ZONE_BEGIN(z0);
   iree_hal_hsa_timepoint_t* timepoint = (iree_hal_hsa_timepoint_t*)user_data;
   // Just release the timepoint back to the pool. This will decrease the
-  // reference count of the underlying HSA event internally.
+  // reference count of the underlying HIP event internally.
   iree_hal_hsa_timepoint_pool_release(timepoint->pool, 1, &timepoint);
   IREE_TRACE_ZONE_END(z0);
   return iree_ok_status();
@@ -499,7 +497,7 @@ static iree_status_t iree_hal_hsa_semaphore_timepoint_device_wait_callback(
 // |min_value| on the device.
 iree_status_t iree_hal_hsa_event_semaphore_acquire_timepoint_device_wait(
     iree_hal_semaphore_t* base_semaphore, uint64_t min_value,
-    hsa_signal_t* out_signal) {
+    hipEvent_t* out_event) {
   iree_hal_hsa_semaphore_t* semaphore =
       iree_hal_hsa_semaphore_cast(base_semaphore);
   iree_hal_hsa_timepoint_t* wait_timepoint = NULL;
@@ -529,9 +527,7 @@ iree_status_t iree_hal_hsa_event_semaphore_acquire_timepoint_device_wait(
     wait_timepoint->timepoint.device_wait = wait_event;
   }
 
-  *out_signal =
-      iree_hal_hsa_signal_handle(wait_timepoint->timepoint.device_wait);
-
+  *out_event = iree_hal_hsa_event_handle(wait_timepoint->timepoint.device_wait);
   IREE_TRACE_ZONE_END(z0);
   return iree_ok_status();
 }
