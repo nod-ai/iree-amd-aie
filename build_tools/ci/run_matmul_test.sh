@@ -551,6 +551,10 @@ if [ -d "$VITIS" ]; then
       --use_ukernel "1"
 fi
 
+# Example of a run with a group of 2+ matmuls. Currently this test is passed
+# the flag '--num_repeat_runs 0" as there is currently an issue with the runtime if
+# multiple matmuls are run in the same test. TODO(newling/nmeshram): Document
+# this issue.
 run_matmul_test \
     --name_prefix "multiple_matmuls" \
     --lower_to_aie_pipeline "air" \
