@@ -175,15 +175,15 @@ jobs:
             $PWD/llvm-aie \
             --xrt-dir /opt/xilinx/xrt \
             --test-set='Smoke' \
-            --do-not-run-aie
+            --do-not-run-aie > test_aie_vs_cpu/smoke_output.log 2>&1
 
           # Assert that output.log is empty (because verbose=0)
-          if [ -s output.log ]; then
-            echo "output.log is not empty:"
-            cat output.log
+          if [ -s test_aie_vs_cpu/smoke_output.log ]; then
+            echo "smoke_output.log is not empty:"
+            cat test_aie_vs_cpu/smoke_output.log
             exit 1
           else
-            echo "output.log is empty"
+            echo "smoke_output.log is empty"
           fi
 
       - name : E2E comparison of AIE to llvm-cpu
