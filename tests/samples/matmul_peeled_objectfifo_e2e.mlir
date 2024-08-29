@@ -21,7 +21,7 @@
 // CHECK-DAG:   aie.mem(%[[TILE_1_2]])
 // CHECK-DAG:   aie.mem(%[[TILE_1_3]])
 // CHECK-DAG:   aie.shim_dma_allocation {{.*}}(S2MM, 0, 0)
-// CHECK:       {npu_instructions = 
+// CHECK:       {npu_instructions =
 // CHECK-SAME:   runtime_sequence_name = "matmul_i32_dispatch_0_matmul_128x128x256_i32"
 func.func @matmul_i32(%lhs: tensor<128x256xi32>, %rhs: tensor<256x128xi32>) -> tensor<128x128xi32>
 {

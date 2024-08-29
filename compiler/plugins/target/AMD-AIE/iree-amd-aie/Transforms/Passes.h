@@ -77,6 +77,9 @@ std::unique_ptr<Pass> createAMDAIEBufferizeToAllocationPass(
 /// Create pass to apply canonicalization to air.dma_memcpy_nd op's.
 std::unique_ptr<Pass> createAMDAIECanonicalizeDmaPass();
 
+/// Create pass to canonicalize `amdaie.npu.dma_cpy_nd` operations.
+std::unique_ptr<Pass> createAMDAIECanonicalizeNpuDmaCpyNdPass();
+
 /// Create pass to canonicalize doubly strided operations.
 std::unique_ptr<Pass> createAMDAIECanonicalizeDoublyStridedOpPass(
     AMDAIECanonicalizeDoublyStridedOpOptions options = {});
@@ -176,6 +179,7 @@ std::unique_ptr<OperationPass<ModuleOp>> createAMDAIELoweringStrategyPass(
 std::unique_ptr<Pass> createAMDAIELowerFuncArgsPass();
 
 /// Create pass to lower from the AMDAIE dialect to the AIE/AIEX dialects.
+void addAMDAIEToAIEPasses(OpPassManager &);
 std::unique_ptr<Pass> createAMDAIELowerToAIEPass();
 
 /// Create pass to lower a sequence of operation(s) to a iree_codegen.ukernel.*
@@ -210,6 +214,9 @@ std::unique_ptr<Pass> createAMDAIEPadPass(AMDAIEPadOptions options = {});
 /// Create a pass to peel the first iteration out of the scf.for loop.
 std::unique_ptr<Pass> createAMDAIEPeelForLoopPass(
     AMDAIEPeelForLoopOptions options = {});
+
+/// Create a pass to sink all dependencies into `amdaie.core` operations.
+std::unique_ptr<Pass> createAMDAIESinkIntoCorePass();
 
 /// Create pass to tile TilingInterface operations.
 std::unique_ptr<Pass> createAMDAIETilePass(AMDAIETileOptions options = {});
