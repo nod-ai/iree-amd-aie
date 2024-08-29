@@ -126,28 +126,31 @@ struct AMDAIECoreToStandardFunc : OpConversionPattern<CoreOp> {
         tileRow(tileRow) {}
 
   LogicalResult matchAndRewrite(
-      CoreOp op, OpAdaptor adaptor,
+      CoreOp coreOp, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
-    TileOp t = getTileOp(*op);
+    TileOp t = getTileOp(*coreOp);
     int col = t.getCol();
     int row = t.getRow();
 
     // Only pull code for the indicated function
     if ((tileRow != row && tileRow != -1) ||
         (tileCol != col && tileCol != -1)) {
-      rewriter.eraseOp(op);
+      rewriter.eraseOp(coreOp);
       return success();
     }
 
     // The parent should be an AIE.device op.
-    rewriter.setInsertionPointAfter(op->getParentOp());
+    rewriter.setInsertionPointAfter(coreOp->getParentOp());
 
     std::string coreName("core_" + std::to_string(col) + "_" +
                          std::to_string(row));
     auto coreFunc = rewriter.create<func::FuncOp>(
         rewriter.getUnknownLoc(), coreName,
         FunctionType::get(rewriter.getContext(), {}, {}));
-    rewriter.cloneRegionBefore(op.getBody(), coreFunc.getBody(),
+
+
+
+    rewriter.cloneRegionBefore(coreOp.getBody(), coreFunc.getBody(),
                                coreFunc.getBody().begin(), mapper);
 
     // Rewrite the AIE.end() op
@@ -160,7 +163,7 @@ struct AMDAIECoreToStandardFunc : OpConversionPattern<CoreOp> {
       }
     });
 
-    rewriter.eraseOp(op);
+    rewriter.eraseOp(coreOp);
     return success();
   }
 };
@@ -211,12 +214,15 @@ struct AMDAIECoreToStandardPass : mlir::OperationPass<ModuleOp> {
 
   void runOnOperation() override {
     ModuleOp m = getOperation();
-    OpBuilder builder = OpBuilder::atBlockEnd(m.getBody());
+
 
     if (m.getOps<DeviceOp>().empty()) {
       m.emitOpError("expected AIE.device operation at toplevel");
       return signalPassFailure();
     }
+
+    OpBuilder builder = OpBuilder::atBlockEnd(m.getBody());
+
 
     // Ensure that we don't have an incorrect target triple.  This may override
     // some bogus target triple in the original mlir.
@@ -251,6 +257,28 @@ struct AMDAIECoreToStandardPass : mlir::OperationPass<ModuleOp> {
     if (failed(applyPartialConversion(m, target, std::move(patterns))))
       return signalPassFailure();
 
+    // Assert that cores are isolated
+    {
+      SmallVector<CoreOp> coreOps;
+      m->walk([&](CoreOp coreOp) { coreOps.push_back(coreOp); });
+      for (CoreOp coreOp : coreOps) {
+        auto walkResult = coreOp->walk([&](Operation *childOp) {
+          if (childOp == coreOp) return WalkResult::advance();
+          for (Value operand : childOp->getOperands()) {
+            if (Operation *operandOp = operand.getDefiningOp()) {
+              if (!coreOp->isAncestor(operandOp)) {
+                operandOp->emitOpError(
+                    "is not in the core in which it is used. Cores must be "
+                    "`isolated` before this point.");
+                return WalkResult::interrupt();
+              }
+            }
+          }
+          return WalkResult::advance();
+        });
+        if (walkResult.wasInterrupted()) return signalPassFailure();
+      }
+    }
     RewritePatternSet outlinePatterns(&getContext());
     outlinePatterns.add<AMDAIECoreToStandardFunc>(m.getContext(), mapper,
                                                   tileCol, tileRow);
