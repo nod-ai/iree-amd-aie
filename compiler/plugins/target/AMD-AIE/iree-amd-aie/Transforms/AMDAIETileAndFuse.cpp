@@ -6,6 +6,7 @@
 
 #include "iree-amd-aie/Transforms/Passes.h"
 #include "iree/compiler/Codegen/Utils/Utils.h"
+#include "llvm/ADT/StringExtras.h"
 #include "mlir/Dialect/GPU/IR/GPUDialect.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Linalg/IR/LinalgInterfaces.h"
@@ -16,15 +17,127 @@
 #include "mlir/Dialect/SCF/Transforms/TileUsingInterface.h"
 #include "mlir/Dialect/SCF/Transforms/Transforms.h"
 #include "mlir/Dialect/Utils/StaticValueUtils.h"
+#include "mlir/Dialect/Utils/StructuredOpsUtils.h"
 #include "mlir/IR/Iterators.h"
 #include "mlir/IR/PatternMatch.h"
 
 #define DEBUG_TYPE "iree-amdaie-tile-and-fuse"
 
-
 namespace mlir::iree_compiler::AMDAIE {
 
 namespace {
+
+enum class GPUGroupType { Block, Thread };
+
+/// Assign GPU dialect thread/block mapping attributes to tiled dimensions.
+/// The returned vector's size is the number of non-zero values in
+/// `tileSizesVal`. Failure is returned if it is not possible to assign
+/// mapping attributes to the dimensions.
+FailureOr<SmallVector<Attribute>> getGPUMappingAttributes(
+    ArrayRef<int64_t> tileSizesVal, GPUGroupType groupType,
+    TilingInterface op) {
+  MLIRContext *context = op.getContext();
+
+  // There is one induction variables in the scf.forall for each of the
+  // non-zero tile sizes. Recall that a '0' tile size corresponds to 'do
+  // not tile'.
+  uint32_t nbIndVars = std::count_if(tileSizesVal.begin(), tileSizesVal.end(),
+                                     [](int64_t t) { return t != 0; });
+
+  uint32_t nbIndVarsAboveOne =
+      std::count_if(tileSizesVal.begin(), tileSizesVal.end(),
+                    [](int64_t t) { return t > 1; });
+
+  // The mlir::gpu::MappingId enum supports 13 dimensions, see:
+  // https://github.com/llvm/llvm-project/blob/main
+  //   /mlir/include/mlir/Dialect/GPU/IR/GPUDeviceMappingAttr.td
+  if (nbIndVars > mlir::gpu::getMaxEnumValForMappingId()) {
+    return op->emitOpError("has too many dimensions to tile, ")
+           << "there are only " << mlir::gpu::getMaxEnumValForMappingId()
+           << " dimensions available in the mlir::gpu dialect, but "
+           << nbIndVars << " are required here..";
+  }
+
+  // Currently we expect only 2 tiled dimensions to be >1 when mapping
+  // to thread dimensions. This is to target the 2-D AIE array.
+  //
+  // TODO(newling) if there are 3+ dimensions, we probably need to collapse
+  // them into just 2. I'm leaving this as a follow-up task. Basically, instead
+  // of
+  //   ```(i,j,k) in (2,3,5)```
+  // we want
+  //   ```(i,l) in (2,15)```
+  // with then
+  //   j=l/5 and k=l%5.
+  //
+  // Once the above is implemented, we can safely remove the following check:
+  if (nbIndVarsAboveOne > 2 && groupType == GPUGroupType::Thread) {
+    auto tileSizesStr = std::to_string(tileSizesVal[0]);
+    for (unsigned i = 1; i < tileSizesVal.size(); ++i) {
+      tileSizesStr += ", " + std::to_string(tileSizesVal[i]);
+    }
+    return op->emitOpError("has requested tile sizes [")
+           << tileSizesStr
+           << "]. Currently we only support tiling thread dimensions "
+           << "with at most 2 dimensions having a tile size greater than 1, "
+           << "there are " << nbIndVarsAboveOne << " here.";
+  }
+
+  auto getMappingAttributeForDimension = [&](uint32_t i) -> Attribute {
+    auto id = static_cast<gpu::MappingId>(i);
+    if (groupType == GPUGroupType::Block)
+      return gpu::GPUBlockMappingAttr::get(context, id);
+    else if (groupType == GPUGroupType::Thread)
+      return gpu::GPUThreadMappingAttr::get(context, id);
+    else {
+      assert(false && "Unhandled group type, must be thread or block.");
+    }
+  };
+
+  // Map an integer to an Attribute as follows:
+  // 0 -> DimY
+  // 1 -> DimX
+  // 2 -> DimZ
+  // 3 -> LinearDim0
+  // 4 -> LinearDim1
+  // etc.
+  //
+  // Note that 0 and 1 are effectively swapped, because for AIE we want to
+  // map the first dimension to AIE array columns (or something like that).
+  auto getAttribute = [&](uint32_t i) -> Attribute {
+    if (i == 0)
+      return getMappingAttributeForDimension(1);
+    else if (i == 1)
+      return getMappingAttributeForDimension(0);
+    else
+      return getMappingAttributeForDimension(i);
+  };
+
+  // We give priority to tiling dimensions of size > 1, so that they
+  // preferentially get DimY and DimX.
+  SmallVector<Attribute> mapping(tileSizesVal.size(), {});
+  uint32_t nAttributes = 0;
+  for (uint32_t i = 0; i < tileSizesVal.size(); ++i) {
+    if (tileSizesVal[i] > 1) {
+      mapping[i] = getAttribute(nAttributes);
+      ++nAttributes;
+    }
+  }
+  for (uint32_t i = 0; i < tileSizesVal.size(); ++i) {
+    if (!mapping[i] && tileSizesVal[i] > 0) {
+      mapping[i] = getAttribute(nAttributes);
+      ++nAttributes;
+    }
+  }
+
+  // Squeeze out the empty attributes (corresponding to '0's in tileSizesVal).
+  SmallVector<Attribute> finalMapping;
+  finalMapping.reserve(nbIndVars);
+  for (Attribute attr : mapping) {
+    if (attr) finalMapping.push_back(attr);
+  }
+  return finalMapping;
+}
 
 /// Utility function to check if any of the reduction dimension is being tiled.
 static bool isTilingReductionDimension(TilingInterface consumerOp,
@@ -157,27 +270,20 @@ void AMDAIETileAndFusePass::runOnOperation() {
 
   SmallVector<OpFoldResult> tileSizes =
       getAsIndexOpFoldResult(context, tileSizesVal);
+
   auto options = scf::SCFTilingOptions().setTileSizes(tileSizes);
 
   // When tiling using scf.for we do not need to set any mapping.
   if (!useSCFFor) {
     options.setLoopType(scf::SCFTilingOptions::LoopType::ForallOp);
-    // Here we assume there are always two levels of parallel (scf.forall)
-    // loops, and the first level of tiling is always using scf.forall and
-    // mapped to blocks. Currently we are not using mapping attributes for
-    // Conv2d ops, because there could be four parallel tiling dimensions.
-    // TODO (vivian): create AIE specific mapping attributes.
-    if (!isa<linalg::ConvolutionOpInterface>(consumerOp.getOperation())) {
-      if (tilingLevel == 0) {
-        options.setMapping(
-            {gpu::GPUBlockMappingAttr::get(context, gpu::MappingId::DimY),
-             gpu::GPUBlockMappingAttr::get(context, gpu::MappingId::DimX)});
-      } else {
-        options.setMapping(
-            {gpu::GPUThreadMappingAttr::get(context, gpu::MappingId::DimY),
-             gpu::GPUThreadMappingAttr::get(context, gpu::MappingId::DimX)});
-      }
+    auto maybeMapping = getGPUMappingAttributes(
+        tileSizesVal,
+        tilingLevel == 0 ? GPUGroupType::Block : GPUGroupType::Thread,
+        consumerOp);
+    if (failed(maybeMapping)) {
+      return signalPassFailure();
     }
+    options.setMapping(maybeMapping.value());
   }
 
   IRRewriter rewriter(context);
@@ -205,8 +311,7 @@ void AMDAIETileAndFusePass::runOnOperation() {
                   // Fuse all Linalg ops (can be generalized later)
                   .Default([&](Operation *op) {
                     return op->getDialect() ==
-                           rewriter.getContext()
-                               ->getLoadedDialect<linalg::LinalgDialect>();
+                           context->getLoadedDialect<linalg::LinalgDialect>();
                   });
           return {fusableOp, false};
         });

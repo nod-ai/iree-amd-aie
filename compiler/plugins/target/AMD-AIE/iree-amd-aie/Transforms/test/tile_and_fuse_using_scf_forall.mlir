@@ -1,5 +1,5 @@
-// RUN: iree-opt --pass-pipeline='builtin.module(func.func(iree-amdaie-tile-and-fuse{tiling-level=0}))' --split-input-file %s | FileCheck %s --check-prefix=TILE-LEVEL-0
-// RUN: iree-opt --pass-pipeline='builtin.module(func.func(iree-amdaie-tile-and-fuse{tiling-level=1}))' --split-input-file %s | FileCheck %s --check-prefix=TILE-LEVEL-1
+// RUN: iree-opt --pass-pipeline='builtin.module(func.func(iree-amdaie-tile-and-fuse{tiling-level=0}))' --split-input-file %s                        | FileCheck %s --check-prefix=TILE-LEVEL-0
+// RUN: iree-opt --pass-pipeline='builtin.module(func.func(iree-amdaie-tile-and-fuse{tiling-level=1}))' --split-input-file --verify-diagnostics %s   | FileCheck %s --check-prefix=TILE-LEVEL-1
 // RUN: iree-opt --pass-pipeline='builtin.module(func.func(iree-amdaie-tile-and-fuse{tiling-level=0 tile-elementwise=false}))' --split-input-file %s | FileCheck %s --check-prefix=TILE-MATMUL-ONLY
 
 func.func @matmul_static(%arg0: tensor<8x16xi32>, %arg1 : tensor<16x8xi32>) -> tensor<8x8xi32> {
@@ -32,7 +32,25 @@ func.func @conv_2d_nhwc_hwcf(%arg0: tensor<2x14x14x32xbf16>, %arg1: tensor<3x3x3
 // TILE-LEVEL-0-SAME:   {
 //      TILE-LEVEL-0:       linalg.fill
 //      TILE-LEVEL-0:       linalg.conv_2d_nhwc_hwcf
-//      TILE-LEVEL-0:   }
+//      TILE-LEVEL-0:   }  {mapping = [#gpu.block<y>, #gpu.block<x>, #gpu.block<z>]}
+
+//      TILE-LEVEL-1: @conv_2d_nhwc_hwcf
+//      TILE-LEVEL-1:   scf.forall
+// TILE-LEVEL-1-SAME:   {
+//      TILE-LEVEL-1:       linalg.fill
+//      TILE-LEVEL-1:       linalg.conv_2d_nhwc_hwcf
+//      TILE-LEVEL-1:   }  {mapping = [#gpu.thread<z>, #gpu.thread<linear_dim_0>, #gpu.thread<y>, #gpu.thread<x>]}
+
+// -----
+
+func.func @conv_2d_nhwc_hwcf_unsupported_tiling(%arg0: tensor<2x14x14x32xbf16>, %arg1: tensor<3x3x32x64xbf16>) -> tensor<2x12x12x64xf32> {
+  %cst = arith.constant 0.000000e+00 : f32
+  %0 = tensor.empty() : tensor<2x12x12x64xf32>
+  %1 = linalg.fill ins(%cst : f32) outs(%0 : tensor<2x12x12x64xf32>) -> tensor<2x12x12x64xf32>
+  // expected-error @+1 {{'linalg.conv_2d_nhwc_hwcf' op has requested tile sizes [1, 4, 4, 4, 0, 0, 0]. Currently we only support tiling thread dimensions with at most 2 dimensions having a tile size greater than 1, there are 3 here.}}
+  %2 = linalg.conv_2d_nhwc_hwcf {dilations = dense<1> : vector<2xi64>, lowering_config = #iree_codegen.lowering_config<tile_sizes = [[0, 4, 4, 4, 0, 0, 0], [1, 4, 4, 4, 0, 0, 0], [0, 0, 0, 0, 1, 1, 8]]>, strides = dense<1> : vector<2xi64>} ins(%arg0, %arg1 : tensor<2x14x14x32xbf16>, tensor<3x3x32x64xbf16>) outs(%1 : tensor<2x12x12x64xf32>) -> tensor<2x12x12x64xf32>
+  return %2 : tensor<2x12x12x64xf32>
+}
 
 // -----
 
