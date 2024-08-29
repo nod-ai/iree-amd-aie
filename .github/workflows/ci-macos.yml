@@ -16,10 +16,6 @@ concurrency:
   group: ci-build-test-cpp-macos-${{ github.event.number || github.sha }}
   cancel-in-progress: true
 
-permissions:
-  contents: read
-  actions: write
-
 jobs:
   build_and_ctest:
     name: Build and Test (${{ matrix.runs-on }}, ASSERTIONS)
@@ -70,12 +66,10 @@ jobs:
 
       - name: Configure ccache debug logs
         run: |
-          # https://interrupt.memfault.com/blog/ccache-debugging
           echo CCACHE_DEBUG=1 >> $GITHUB_ENV
           echo CCACHE_DEBUGLEVEL=2 >> $GITHUB_ENV
-          echo CCACHE_DEBUGDIR="/ccache-debug" >> $GITHUB_ENV
+          echo CCACHE_DEBUGDIR="$HOME/ccache-debug" >> $GITHUB_ENV
           echo CCACHE_SLOPPINESS=include_file_ctime,include_file_mtime,time_macros >> $GITHUB_ENV
-          echo CCACHE_COMPILERCHECK=content >> $GITHUB_ENV
 
       - name: Build packages
         run: |
@@ -90,6 +84,7 @@ jobs:
       - name: Tar ccache logs
         if: ${{ !cancelled() }}
         run: |
+          ccache --show-stats -v
           tar cf macos-ccache-logs.tar $CCACHE_DEBUGDIR
 
       - name: Upload ccache logs
@@ -108,18 +103,9 @@ jobs:
           path: iree-dist-${{ matrix.runs-on }}.tar
           if-no-files-found: warn
 
-      - name: Overwrite cache
-        if: ${{ !cancelled() }}
-        continue-on-error: true
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh extension install actions/gh-actions-cache
-          gh actions-cache delete ${{ env.CACHE_KEY }} --confirm -R ${{ github.repository }}
-
       - name: Save cache
         uses: actions/cache/save@v3
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && github.event_name != 'pull_request' }}
         with:
           path: ${{ env.CACHE_DIR }}
           key: ${{ env.CACHE_KEY }}

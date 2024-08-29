@@ -115,10 +115,6 @@ elif [[ "$OSTYPE" == "msys"* ]]; then
   ctest --test-dir "$build_dir" -R amd-aie --output-on-failure -j --repeat until-pass:5
 fi
 
-# Show ccache stats.
-ccache --show-stats -v
-grep -r -B15 'Result: .*_miss' $CCACHE_DEBUGDIR
-
 rm -f "$install_dir"/bin/clang*
 rm -f "$install_dir"/bin/llvm-link*
 cp "$build_dir"/tools/testing/e2e/iree-e2e-matmul-test "$install_dir"/bin

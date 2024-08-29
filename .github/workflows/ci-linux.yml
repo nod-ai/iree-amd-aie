@@ -21,12 +21,6 @@ concurrency:
   group: ci-build-test-cpp-linux-${{ github.event.number || github.sha }}
   cancel-in-progress: true
 
-permissions:
-  contents: read
-  # required to delete cache
-  # https://docs.github.com/en/rest/actions/cache?apiVersion=2022-11-28#delete-github-actions-caches-for-a-repository-using-a-cache-key
-  actions: write
-
 jobs:
   build_and_ctest:
     name: Build and Test (linux, ASSERTIONS)
@@ -58,12 +52,7 @@ jobs:
       - name: Install deps
         run: |
           yum remove -y openssl-devel zlib-devel || true
-          
-          dnf install -y almalinux-release-devel
-          type -p yum-config-manager >/dev/null || yum -y install yum-utils
-          yum-config-manager -y --add-repo https://cli.github.com/packages/rpm/gh-cli.repo
-          
-          yum install -y protobuf-devel protobuf-compiler gh
+          yum install -y protobuf-devel protobuf-compiler
 
       - name: Sync source deps
         run: |
@@ -85,7 +74,7 @@ jobs:
           # https://interrupt.memfault.com/blog/ccache-debugging
           echo CCACHE_DEBUG=1 >> $GITHUB_ENV
           echo CCACHE_DEBUGLEVEL=2 >> $GITHUB_ENV
-          echo CCACHE_DEBUGDIR="/ccache-debug" >> $GITHUB_ENV
+          echo CCACHE_DEBUGDIR="$HOME/ccache-debug" >> $GITHUB_ENV
           echo CCACHE_SLOPPINESS=include_file_ctime,include_file_mtime,time_macros >> $GITHUB_ENV
           echo CCACHE_COMPILERCHECK=content >> $GITHUB_ENV
 
@@ -102,6 +91,7 @@ jobs:
       - name: Tar ccache logs
         if: ${{ !cancelled() }}
         run: |
+          ccache --show-stats -v
           tar cf linux-ccache-logs.tar $CCACHE_DEBUGDIR
 
       - name: Upload ccache logs
@@ -120,19 +110,9 @@ jobs:
           path: iree-dist-linux.tar
           if-no-files-found: warn
 
-      - name: Overwrite cache
-        if: ${{ !cancelled() }}
-        continue-on-error: true
-        env:
-          # required to run gh with privileges
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh extension install actions/gh-actions-cache
-          gh actions-cache delete ${{ env.CACHE_KEY }} --confirm -R ${{ github.repository }}
-
       - name: Save cache
         uses: actions/cache/save@v3
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && github.event_name != 'pull_request' }}
         with:
           path: ${{ env.CACHE_DIR }}
           key: ${{ env.CACHE_KEY }}
