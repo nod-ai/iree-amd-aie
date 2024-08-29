@@ -292,7 +292,6 @@ LogicalResult splitLogicalObjectFifos(
     // --------------------------------------------
     // Update split dimensions' offset/size for L2 as target . Here we are
     // setting offset = 0 and size = 1.
-    DenseMap<int64_t, int64_t> nonSplitDimToOffsetMapForL3AsSource;
     for (unsigned dim : splitDimsForL2) {
       staticL2AsSourceOffsets[dim] = zeroVal;
       staticL2AsSourceSizes[dim] = oneVal;
