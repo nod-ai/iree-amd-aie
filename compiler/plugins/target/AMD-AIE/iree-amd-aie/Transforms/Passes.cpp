@@ -8,12 +8,20 @@
 
 #include "aie/Passes.h"
 #include "aievec/Passes.h"
-#include "air/Conversion/Passes.h"
-#include "air/Transform/Passes.h"
+#include "air/Conversion/AIRLoweringPass.h"
+#include "air/Conversion/AIRRtToNpuPass.h"
+#include "air/Conversion/AIRToAIEPass.h"
+#include "air/Conversion/ConvertToAIRPass.h"
+#include "air/Transform/AIRDependency.h"
+#include "air/Transform/AIRDependencyCanonicalize.h"
+#include "air/Transform/AIRDependencyScheduleOpt.h"
+#include "air/Transform/AIRDmaToChannel.h"
+#include "air/Transform/AIRHerdPlacementPass.h"
+#include "air/Transform/AIRMiscPasses.h"
+#include "air/Transform/AffineLoopOptPass.h"
 #include "iree-amd-aie/IR/AMDAIEAttrs.h"
 #include "iree-dialects/Dialect/LinalgTransform/Passes.h"
 #include "iree/compiler/Codegen/Common/Passes.h"
-#include "iree/compiler/Utils/PassUtils.h"
 #include "iree/compiler/Utils/ToolUtils.h"
 #include "mlir/Conversion/AffineToStandard/AffineToStandard.h"
 #include "mlir/Conversion/ArithToLLVM/ArithToLLVM.h"
@@ -135,6 +143,15 @@ static void addAMDAIEBufferizePasses(OpPassManager &pm) {
       aieComprehensiveBufferizeAllocationFn;
   BufferizationOptions::MemCpyFn memCpyFn = aieComprehensiveBufferizeCopyFn;
   addIREEComprehensiveBufferizePasses(pm, allocationFn, memCpyFn);
+}
+
+void addAMDAIEToAIEPasses(OpPassManager &passManager) {
+  passManager.addPass(createAMDAIECanonicalizeNpuDmaCpyNdPass());
+  passManager.addPass(createCanonicalizerPass());
+  passManager.addPass(createAMDAIESinkIntoCorePass());
+  passManager.addPass(createCanonicalizerPass());
+  passManager.addPass(createAMDAIELowerToAIEPass());
+  passManager.addPass(createCanonicalizerPass());
 }
 
 void addPackPeelBasedPassPipeline(OpPassManager &funcPassManager,
@@ -619,7 +636,9 @@ void addAMDAIEObjectFifoLoweringPasses(OpPassManager &passManager) {
   passManager.addPass(createAMDAIEConvertCoreForallToForPass());
   passManager.addPass(createCanonicalizerPass());
   passManager.addPass(createAMDAIECoreLoopUnrollPass());
-  passManager.addPass(createAMDAIELowerToAIEPass());
+
+  addAMDAIEToAIEPasses(passManager);
+
   passManager.addPass(createCanonicalizerPass());
 
   // Now lower using the AIE passes from MLIR-AIE.
@@ -634,6 +653,7 @@ void addMLIRAIRLoweringPasses(OpPassManager &passManager, AMDAIEDevice device) {
   passManager.addPass(createEraseHALDescriptorTypeFromMemRefPass());
   passManager.addPass(memref::createFoldMemRefAliasOpsPass());
   passManager.addPass(createAMDAIEBridgeToAIRPass());
+
   // TODO (Erwei): Figure out a way to work with AMDAIEPackToDmaPass.
   if (clUseTilePipeline == TilePassPipeline::PackPeelPipeline)
     passManager.addPass(createAMDAIEDecomposeLinalgExtPackUnPackToAIRPass());
