@@ -31,10 +31,6 @@ iree_status_t iree_hal_xrt_device_create(
     xrt::device* device, iree_allocator_t host_allocator,
     iree_hal_device_t** out_device);
 
-// Returns the parameters used for creating the device.
-const iree_hal_xrt_device_params_t* iree_hal_xrt_device_params(
-    const iree_hal_device_t* device);
-
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus

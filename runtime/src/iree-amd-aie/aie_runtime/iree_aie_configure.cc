@@ -213,6 +213,10 @@ LogicalResult addElfToTile(const AMDAIEDeviceModel &deviceModel,
                            const TileLoc &tileLoc, const Path &elfPath,
                            bool aieSim) {
   auto devInst = const_cast<XAie_DevInst *>(&deviceModel.devInst);
+  if (!std::filesystem::exists(elfPath)) {
+    llvm::errs() << "elf doesn't exist: " << elfPath.string() << "\n";
+    return failure();
+  }
   TRY_XAIE_API_LOGICAL_RESULT(XAie_LoadElf, devInst, tileLoc,
                               elfPath.string().c_str(),
                               /*loadSym*/ aieSim);

@@ -9,11 +9,12 @@
 set -euo pipefail
 
 # Check for the number of provided arguments
-if [ "$#" -ne 2 ] && [ "$#" -ne 5 ]; then
+if [ "$#" -ne 3 ] && [ "$#" -ne 5 ]; then
     echo -e "Illegal number of parameters: $#." \
             "\n For 2 parameters:" \
             "\n     1) <iree-compile-dir>" \
             "\n     2) <output-dir>" \
+            "\n     3) <peano-install-dir>" \
             "\n For 5 parameters:" \
             "\n     1) <iree-compile-dir>" \
             "\n     2) <output-dir>" \
@@ -35,9 +36,9 @@ OUTPUT=`realpath "${2}"`
 mkdir -p ${OUTPUT}
 
 # The CI case:
-if [ "$#" -eq 2 ]; then
-  echo "Assuming that this is the 'CI case' as 2 parameters were provided."
-  PEANO=/opt/llvm-aie
+if [ "$#" -eq 3 ]; then
+  echo "Assuming that this is the 'CI case' as 3 parameters were provided."
+  PEANO="$3"
   XRT=/opt/xilinx/xrt
   VITIS=/opt/Xilinx/Vitis/2024.2
 fi
@@ -47,7 +48,6 @@ echo "xchesscc: $(find $VITIS -name xchesscc)"
 
 # The local set-paths-manually case:
 if [ "$#" -eq 5 ]; then
-  PEANO="$3"
   XRT="$4"
   VITIS="$5"
 fi
@@ -85,16 +85,11 @@ fi
 
 if [ -d "${XRT}" ]; then
   XRT=`realpath "${XRT}"`
-else
-  echo "XRT does not exist: ${XRT}"
-  exit 1
+  source $XRT/setup.sh
 fi
 
 if [ -d "${VITIS}" ]; then
   VITIS=${VITIS}
-else
-  echo "VITIS does not exist: ${VITIS}"
-  exit 1
 fi
 
 # There might be a FileCheck program in the IREE_INSTALL_DIR. Check.
@@ -107,8 +102,6 @@ else
   echo "FileCheck does not exist or isn't executable in ${IREE_INSTALL_DIR}/bin or on PATH."
   exit 1
 fi
-
-source $XRT/setup.sh
 
 THIS="$(cd $(dirname $0) && pwd)"
 SOURCE_MLIR_FILE="${THIS}/linalg_matmul_f32.mlir"

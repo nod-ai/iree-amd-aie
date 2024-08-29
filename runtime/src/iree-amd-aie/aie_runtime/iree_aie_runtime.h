@@ -414,7 +414,7 @@ static_assert(XAIE_OK == 0);
     LLVM_DEBUG(llvm::dbgs().flush());                                   \
     if (auto r = API(__VA_ARGS__))                                      \
       llvm::report_fatal_error(llvm::Twine(#API " failed with ") +      \
-                               to_string(r));                           \
+                               to_string(r) + "\n");                    \
   } while (0)
 
 #define TRY_XAIE_API_LOGICAL_RESULT(API, ...)                           \
@@ -424,7 +424,7 @@ static_assert(XAIE_OK == 0);
     LLVM_DEBUG(llvm::dbgs() << "\n");                                   \
     LLVM_DEBUG(llvm::dbgs().flush());                                   \
     if (auto r = API(__VA_ARGS__)) {                                    \
-      llvm::errs() << #API " failed with " << r;                        \
+      llvm::errs() << #API " failed with " << r << "\n";                \
       return failure();                                                 \
     }                                                                   \
   } while (0)

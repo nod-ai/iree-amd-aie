@@ -41,7 +41,7 @@ typedef struct iree_hal_xrt_driver_t {
   // Parameters used to control device behavior.
   iree_hal_xrt_device_params_t device_params;
 
-  xrt::device *device;
+  xrt::device* device;
 
 } iree_hal_xrt_driver_t;
 
@@ -53,12 +53,6 @@ static iree_hal_xrt_driver_t* iree_hal_xrt_driver_cast(
     iree_hal_driver_t* base_value) {
   IREE_HAL_ASSERT_TYPE(base_value, &iree_hal_xrt_driver_vtable);
   return (iree_hal_xrt_driver_t*)base_value;
-}
-
-static const iree_hal_xrt_driver_t* iree_hal_xrt_driver_const_cast(
-    const iree_hal_driver_t* base_value) {
-  IREE_HAL_ASSERT_TYPE(base_value, &iree_hal_xrt_driver_vtable);
-  return (const iree_hal_xrt_driver_t*)base_value;
 }
 
 static iree_status_t iree_hal_xrt_device_check_params(
@@ -86,15 +80,25 @@ iree_status_t iree_hal_xrt_driver_create_internal(
       (char*)driver + iree_sizeof_struct(*driver));
   driver->device_params = *device_params;
 
-  int device_count = xrt::system::enumerate_devices();
-  if (IREE_UNLIKELY(device_count == 0)) {
-    return iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
-                            "No XRT devices found");
+  try {
+    if (IREE_UNLIKELY(xrt::system::enumerate_devices() == 0)) {
+      return iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
+                              "No XRT devices found");
+    }
+  } catch (std::exception& e) {
+    return iree_make_status(IREE_STATUS_INTERNAL,
+                            "xrt::system::enumerate_devices failed: %s",
+                            e.what());
   }
   // Get handle to xrt device
-  global_device = xrt::device(0);
-  driver->device = &global_device;
-  *out_driver = (iree_hal_driver_t*)driver;
+  try {
+    global_device = xrt::device(0);
+    driver->device = &global_device;
+  } catch (std::exception& e) {
+    return iree_make_status(IREE_STATUS_INTERNAL, "xrt::device(0) failed: %s",
+                            e.what());
+  }
+  *out_driver = reinterpret_cast<iree_hal_driver_t*>(driver);
   return iree_ok_status();
 }
 
@@ -122,13 +126,13 @@ static void iree_hal_xrt_driver_destroy(iree_hal_driver_t* base_driver) {
   iree_allocator_free(host_allocator, driver);
 
   IREE_TRACE_ZONE_END(z0);
-  return;
 }
+
 static iree_status_t iree_hal_xrt_driver_dump_device_info(
     iree_hal_driver_t* base_driver, iree_hal_device_id_t device_id,
     iree_string_builder_t* builder) {
   iree_hal_xrt_driver_t* driver = iree_hal_xrt_driver_cast(base_driver);
-  xrt::device *device = driver->device;
+  xrt::device* device = driver->device;
   IREE_RETURN_IF_ERROR(
       iree_string_builder_append_cstring(builder, "\n- Platform:"));
 
@@ -147,7 +151,7 @@ static iree_status_t iree_hal_xrt_driver_dump_device_info(
 // |out_device_info| must point to valid memory and additional data will be
 // appended to |buffer_ptr| and the new pointer is returned.
 static iree_status_t iree_hal_xrt_populate_device_info(
-    xrt::device *device, uint8_t* buffer_ptr, uint8_t** out_buffer_ptr,
+    xrt::device* device, uint8_t* buffer_ptr, uint8_t** out_buffer_ptr,
     iree_hal_device_info_t* out_device_info) {
   *out_buffer_ptr = buffer_ptr;
 
@@ -183,7 +187,7 @@ static iree_status_t iree_hal_xrt_driver_query_available_devices(
     iree_host_size_t* out_device_info_count,
     iree_hal_device_info_t** out_device_infos) {
   iree_hal_xrt_driver_t* driver = iree_hal_xrt_driver_cast(base_driver);
-  xrt::device *device = driver->device;
+  xrt::device* device = driver->device;
   // Allocate the return infos and populate with the devices.
   iree_hal_device_info_t* device_infos = NULL;
   iree_host_size_t single_info_size =

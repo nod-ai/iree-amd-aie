@@ -102,7 +102,7 @@ BOTH_OSTREAM_OPS_FORALL_CDO_TYPES(OSTREAM_OP_DECL, BOTH_OSTREAM_OP)
 void initializeCDOGenerator(byte_ordering endianness, bool cdoDebug);
 
 /// Generates one of the aie_cdo*.bins. Takes a callback that makes the actual
-/// calls to aie-rt but envelopes it with a prolog and an epilogue of calls to
+/// calls to aie-rt but envelops it with a prolog and an epilogue of calls to
 /// cdo-driver that:
 ///
 /// 1. Starts the "cdo filestream" (literally just fopens a file)
@@ -113,13 +113,13 @@ void initializeCDOGenerator(byte_ordering endianness, bool cdoDebug);
 ///    CDO, checksum, etc.
 /// 5. Finishes the CDO(fcloses the file)
 ///
-/// Note, all of the cdo APIs are simple and available at
+/// Note, all the cdo APIs are simple and available at
 /// iree-amd-aie/third_party/bootgen/cdo-driver/cdo_driver.c
 LogicalResult generateCDOBinary(const std::filesystem::path &outputPath,
                                 const std::function<LogicalResult()> &cb);
 
 /// "Loads" an elf which will be loaded to the program memory of a tile. Loads
-/// is in quotes because where/how the elf is actaully loaded is determined by
+/// is in quotes because where/how the elf is actually loaded is determined by
 /// the aie-rt backend; the CDO backend copies the elf byte by byte into the
 /// CDO.
 LogicalResult addElfToTile(const AMDAIEDeviceModel &deviceModel,
@@ -131,7 +131,7 @@ LogicalResult resetUnResetCore(const AMDAIEDeviceModel &deviceModel,
                                const TileLoc &tileLoc);
 
 /// Sets/programs locks with explicit initializers; note initialize here is a
-/// misnomer because "unintialized" locks actually have their counters
+/// misnomer because "uninitialized" locks actually have their counters
 /// initialized to zero anyway by the hardware.
 LogicalResult initializeLock(const AMDAIEDeviceModel &deviceModel,
                              const Lock &lock);
