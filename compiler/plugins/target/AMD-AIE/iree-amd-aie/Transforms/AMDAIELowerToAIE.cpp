@@ -11,6 +11,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include <memory>
 #include <numeric>
 
 #include "aie/AIEDialect.h"
@@ -19,10 +20,12 @@
 #include "iree-amd-aie/IR/AMDAIEOps.h"
 #include "iree-amd-aie/Transforms/AMDAIEUtils.h"
 #include "iree-amd-aie/Transforms/Passes.h"
-#include "mlir/Dialect/Linalg/IR/Linalg.h"
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/Support/Debug.h"
+#include "mlir/Dialect/Utils/StaticValueUtils.h"
 #include "mlir/IR/IRMapping.h"
 #include "mlir/IR/Iterators.h"
-#include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+#include "mlir/Pass/PassManager.h"
 
 #define DEBUG_TYPE "iree-amdaie-lower-to-aie"
 
@@ -58,9 +61,6 @@ void eraseOp(IRRewriter &rewriter, IRMapping &mapper, Operation *op) {
 //===----------------------------------------------------------------------===//
 // Convert amdaie.core operation to aie.core
 //===----------------------------------------------------------------------===//
-
-namespace {
-
 
 /// Utility to convert vectors of `size` and `stride` into an
 /// `AIE::BDDimLayoutArrayAttr`.
@@ -190,22 +190,22 @@ LogicalResult accessOpToAIE(IRRewriter &rewriter,
               "`aie.objectfifo.acquire` + subview operation";
   }
 
-  memref::ReinterpretCastOp oldReinterpretOp;
+  SmallVector<memref::ReinterpretCastOp> oldReinterpretOps;
   for (Operation *user : accessOp->getUsers()) {
     if (isa<memref::ReinterpretCastOp>(user)) {
-      oldReinterpretOp = cast<memref::ReinterpretCastOp>(user);
-      break;
+      oldReinterpretOps.push_back(cast<memref::ReinterpretCastOp>(user));
     }
   }
-  if (!oldReinterpretOp) {
+  if (oldReinterpretOps.empty()) {
     return accessOp.emitError() << "reinterpret-cast op has not been generated";
   }
+  assert(oldReinterpretOps.size() == 1 &&
+         "expected a single reinterpret-cast op");
+  auto oldReinterpretOp = oldReinterpretOps[0];
 
   auto type = cast<MemRefType>(oldReinterpretOp.getResult().getType());
-
   MemRefType newType = MemRefType::Builder(type);
-
-  llvm::ArrayRef<int64_t> sizes = newType.getShape();
+  ArrayRef<int64_t> sizes = newType.getShape();
   auto [strides, baseOffset] = getStridesAndOffset(newType);
   auto reinterpretOp = rewriter.create<memref::ReinterpretCastOp>(
       rewriter.getUnknownLoc(), newType, subviewOp.getOutput(), baseOffset,
@@ -259,23 +259,12 @@ LogicalResult acquireOpToAIE(IRRewriter &rewriter,
 
   auto subviewOp = rewriter.create<AIE::ObjectFifoSubviewAccessOp>(
       rewriter.getUnknownLoc(), elementType, objFifoAquireOp.getSubview(),
-      rewriter.getIntegerAttr(rewriter.getI32Type(), 0));
+      /* index = */ rewriter.getIntegerAttr(rewriter.getI32Type(), 0));
 
   // Map acquire op to new acquire + subview op.
   mapper.map(acquireOp.getOperation(), subviewOp.getOperation());
   mapper.map(acquireOp.getResult(), subviewOp.getOutput());
   toBeErased.push_back(acquireOp);
-  return success();
-}
-
-LogicalResult coreLinalgOpToAIE(IRRewriter &rewriter, linalg::LinalgOp linalgOp,
-                                IRMapping &mapper,
-                                SmallVector<Operation *> &toBeErased) {
-  LLVM_DEBUG(llvm::dbgs() << "Convert [linalg.LinalgOp]\n");
-  OpBuilder::InsertionGuard guard(rewriter);
-  rewriter.setInsertionPoint(linalgOp);
-  rewriter.clone(*(linalgOp.getOperation()), mapper);
-  eraseOp(rewriter, mapper, linalgOp);
   return success();
 }
 
@@ -387,7 +376,7 @@ LogicalResult coreToAIE(IRRewriter &rewriter, AMDAIE::CoreOp coreOp,
   auto aieCoreOp =
       rewriter.create<AIE::CoreOp>(rewriter.getUnknownLoc(), tileOp);
   Region &aieCoreRegion = aieCoreOp.getBody();
-  auto aieCoreBlock = rewriter.createBlock(&aieCoreRegion);
+  Block *aieCoreBlock = rewriter.createBlock(&aieCoreRegion);
   auto insertIt = aieCoreBlock->begin();
   auto coreBlockBegin = coreBlock->begin();
   auto coreBlockEnd = coreBlock->getTerminator()->getIterator();
@@ -399,7 +388,7 @@ LogicalResult coreToAIE(IRRewriter &rewriter, AMDAIE::CoreOp coreOp,
   rewriter.create<AIE::EndOp>(rewriter.getUnknownLoc());
 
   SmallVector<Operation *> toBeErased;
-  auto walkResult = aieCoreOp.walk([&](Operation *op) {
+  WalkResult walkResult = aieCoreOp.walk([&](Operation *op) {
     rewriter.setInsertionPoint(op);
     if (TypeSwitch<Operation *, LogicalResult>(op)
             .Case<AMDAIE::LogicalObjectFifoAccessOp>([&](auto accessOp) {
@@ -411,9 +400,6 @@ LogicalResult coreToAIE(IRRewriter &rewriter, AMDAIE::CoreOp coreOp,
             .Case<AMDAIE::LogicalObjectFifoRelease>([&](auto releaseOp) {
               return coreReleaseOpToAIE(rewriter, releaseOp, mapper,
                                         toBeErased);
-            })
-            .Case<linalg::LinalgOp>([&](auto linalgOp) {
-              return coreLinalgOpToAIE(rewriter, linalgOp, mapper, toBeErased);
             })
             .Case<memref::ExtractStridedMetadataOp>(
                 [&](auto extractStridedMetadataOp) {
@@ -437,9 +423,7 @@ LogicalResult coreToAIE(IRRewriter &rewriter, AMDAIE::CoreOp coreOp,
     coreOp.emitError("could not convert to AIEDialect ops");
     return failure();
   }
-  for (auto *op : toBeErased) {
-    eraseOp(rewriter, mapper, op);
-  }
+  for (Operation *op : toBeErased) eraseOp(rewriter, mapper, op);
 
   mapper.map(coreOp.getResult(), aieCoreOp.getResult());
   mapper.map(coreOp.getOperation(), aieCoreOp.getOperation());
@@ -460,11 +444,13 @@ LogicalResult circularDmaToAIE(IRRewriter &rewriter,
                                int &dmaId) {
   LLVM_DEBUG(llvm::dbgs() << "Convert [AMDAIE::CircularDmaCpyNdOp]\n");
   rewriter.setInsertionPointToEnd(deviceBlock);
+
   if (!dmaOp.getSource()) return dmaOp.emitOpError() << "expected a source";
   auto sourceLogicalObjFifo = dyn_cast<AMDAIE::LogicalObjFifoOpInterface>(
       dmaOp.getSource().getDefiningOp());
   if (!sourceLogicalObjFifo)
     return dmaOp.emitOpError() << "expected a logical objectFifo source";
+
   SmallVector<Value> newSourceTiles =
       llvm::map_to_vector(sourceLogicalObjFifo.getTiles(),
                           [&](Value tile) { return mapper.lookup(tile); });
@@ -480,12 +466,13 @@ LogicalResult circularDmaToAIE(IRRewriter &rewriter,
       dmaOp.getTarget().getDefiningOp());
   if (!targetLogicalObjFifo)
     return dmaOp.emitOpError() << "expected a logical objectFifo source";
+
   SmallVector<Value> newTargetTiles =
       llvm::map_to_vector(targetLogicalObjFifo.getTiles(),
                           [&](Value tile) { return mapper.lookup(tile); });
 
   auto symName = "obj" + std::to_string(dmaId++);
-  auto symAttr = rewriter.getStringAttr(symName);
+  StringAttr symAttr = rewriter.getStringAttr(symName);
   FailureOr<AIE::ObjectFifoCreateOp> objFifo =
       createObjectFifo(rewriter, dmaOp, newSourceTile, newTargetTiles, symAttr);
   if (failed(objFifo)) return failure();
@@ -497,175 +484,94 @@ LogicalResult circularDmaToAIE(IRRewriter &rewriter,
 // Convert amdaie.controlcode operation to NPU instruction func
 //===----------------------------------------------------------------------===//
 
-namespace {
-
-/// Utility to get the static offsets, sizes and strides for
-/// `AIEX::NpuDmaMemcpyNdOp` with explicit addressing.
-LogicalResult getStaticDimsForExplicitAddressing(
-    Operation *op, const SmallVector<OpFoldResult> &offsets,
-    const SmallVector<OpFoldResult> &sizes,
-    const SmallVector<OpFoldResult> &strides,
-    SmallVectorImpl<int64_t> &staticOffsets,
-    SmallVectorImpl<int64_t> &staticSizes,
-    SmallVectorImpl<int64_t> &staticStrides) {
-  if (offsets.size() > staticOffsets.size()) {
-    return op->emitError() << "size of `offsets` should be smaller or equal to "
-                              "size of `staticOffsets`";
-  }
-  if (sizes.size() > staticSizes.size()) {
-    return op->emitError() << "size of `sizes` should be smaller or equal to "
-                              "size of `staticSizes`";
-  }
-  if (strides.size() > staticStrides.size()) {
-    return op->emitError() << "size of `strides` should be smaller or equal to "
-                              "size of `staticStrides`";
-  }
-  if (getConstantIntValue(strides[strides.size() - 1]).value() != 1) {
-    return op->emitError() << "invalid last stride, should be 1";
-  }
-  for (int i = 0; i < offsets.size(); ++i)
-    staticOffsets[staticOffsets.size() - offsets.size() + i] =
-        getConstantIntValue(offsets[i]).value();
-  for (int i = 0; i < sizes.size(); ++i)
-    staticSizes[staticSizes.size() - sizes.size() + i] =
-        getConstantIntValue(sizes[i]).value();
-  for (int i = 0; i < strides.size(); ++i)
-    staticStrides[staticStrides.size() - strides.size() + i] =
-        getConstantIntValue(strides[i]).value();
-  return success();
-}
-
-/// Utility to move 'repeat dimension' with stride 0 and size > 1 to outermost
-/// dimension as only that one can support a stride with value 0 in AIE2(+)
-/// hardware. But first check that such a dimension is actually the first 'real
-/// dimension' in the access pattern.
-LogicalResult canonicalizeNpuStridedPatternForAIE(
-    SmallVectorImpl<int64_t> &offsets, SmallVectorImpl<int64_t> &sizes,
-    SmallVectorImpl<int64_t> &strides) {
-  bool foundNonUnitDim{false};
-  for (size_t i = 0; i < offsets.size(); i++) {
-    if (strides[i] == 0 && sizes[i] == 1) {
-      continue;
-    } else if (strides[i] == 0) {
-      assert(sizes[i] > 0 && "size should be positive");
-      if (foundNonUnitDim) return failure();
-      foundNonUnitDim = true;
-    } else {
-      foundNonUnitDim = true;
-    }
-  }
-  // Either dim 0 is a 'repeat dimension' or if the repeat is on a different
-  // dimension, it guaranteed to be preceded by unit dimensions based on the
-  // former check.
-  for (size_t i = 1; i < offsets.size(); i++) {
-    if (strides[i] == 0 && sizes[i] > 1) {
-      strides[0] = 0;
-      sizes[0] = sizes[i];
-      sizes[i] = 1;
-    }
-  }
-  return success();
-}
-
 /// Convert the `amdaie.npu.dma_cpy_nd` operation to `aiex.npu.dma_memcpy_nd`.
 LogicalResult npuDmaCpyNdOpToAIE(IRRewriter &rewriter,
                                  AMDAIE::NpuDmaCpyNdOp dmaOp,
                                  SmallVector<Operation *> &toBeErased,
                                  IRMapping &mapper, IRMapping &bindingsMapper) {
-  rewriter.setInsertionPoint(dmaOp);
+  AMDAIE::CircularDmaCpyNdOp dmaCpyNd = dmaOp.getDmaCpyNdOp();
+
+  SmallVector<Value> offsets, sizes, strides;
+  ArrayRef<int64_t> staticOffsets, staticSizes, staticStrides;
+  AMDAIE::BdIdOp bdIdOp;
+  LogicalObjectFifoFromMemrefOp logicalObjFifo;
+
   // Convert bidirectional `amdaie.npu.dma_cpy_nd` op into two halves.
   if (dmaOp.getSource()) {
-    auto sourceLogicalObjFifo = dyn_cast<AMDAIE::LogicalObjectFifoFromMemrefOp>(
+    offsets = dmaOp.getSourceOffsets();
+    sizes = dmaOp.getSourceSizes();
+    strides = dmaOp.getSourceStrides();
+    staticOffsets = dmaOp.getSourceStaticOffsets();
+    staticSizes = dmaOp.getSourceStaticSizes();
+    staticStrides = dmaOp.getSourceStaticStrides();
+    bdIdOp = dmaOp.getSourceBdIdOp();
+    if (!bdIdOp) {
+      return dmaOp.emitOpError()
+             << "must have a source BD ID op to lower to the AIE dialect.";
+    }
+    logicalObjFifo = dyn_cast<AMDAIE::LogicalObjectFifoFromMemrefOp>(
         dmaOp.getSource().getDefiningOp());
-    if (!sourceLogicalObjFifo) {
+    if (!logicalObjFifo) {
       return dmaOp.emitOpError() << "expected source to be an "
                                     "`amdaie.logicalobjectfifo.from_memref`";
     }
-    if (!dmaOp.hasSourceAddressing()) {
-      return dmaOp.emitOpError()
-             << "expected source addressing for DMA with source on L3";
-    }
-    AMDAIE::BdIdOp bdIdOp = dmaOp.getSourceBdIdOp();
-    if (!bdIdOp)
-      return dmaOp.emitOpError() << "expected to have a source BD ID op";
-
-    // DmaOp either has explicit source addressing OR the defining op of its
-    // source has its source on L3.
-    SmallVector<Value> empty;
-    SmallVector<int64_t, 4> staticOffsets(4, 0);
-    SmallVector<int64_t, 4> staticSizes(4, 1);
-    SmallVector<int64_t, 4> staticStrides(4, 0);
-    if (failed(getStaticDimsForExplicitAddressing(
-            dmaOp, dmaOp.getSourceMixedOffsets(), dmaOp.getSourceMixedSizes(),
-            dmaOp.getSourceMixedStrides(), staticOffsets, staticSizes,
-            staticStrides))) {
-      return failure();
-    }
-    if (failed(canonicalizeNpuStridedPatternForAIE(staticOffsets, staticSizes,
-                                                   staticStrides))) {
-      return dmaOp.emitError() << "could not canonicalize for AIE";
-    }
-
-    AMDAIE::CircularDmaCpyNdOp dmaCpyNd = dmaOp.getDmaCpyNdOp();
-    Value memref = bindingsMapper.lookup(sourceLogicalObjFifo.getMemref());
-    auto objFifo = dyn_cast<xilinx::AIE::ObjectFifoCreateOp>(
-        mapper.lookup(dmaCpyNd.getOperation()));
-    if (!objFifo) {
-      return dmaOp.emitError()
-             << "input isn't mapped to an `aie.objectifo` operation";
-    }
-    bool issueToken = dmaOp.hasDmaWaitOpUser();
-    rewriter.create<AIEX::NpuDmaMemcpyNdOp>(
-        rewriter.getUnknownLoc(), SmallVector<Type, 1>{}, 0, 0, memref, empty,
-        empty, empty, staticOffsets, staticSizes, staticStrides,
-        objFifo.getName(), bdIdOp.getValue(), issueToken);
   }
-  if (dmaOp.getTarget()) {
-    auto targetLogicalObjFifo = dyn_cast<AMDAIE::LogicalObjectFifoFromMemrefOp>(
+
+  else if (dmaOp.getTarget()) {
+    offsets = dmaOp.getTargetOffsets();
+    sizes = dmaOp.getTargetSizes();
+    strides = dmaOp.getTargetStrides();
+    staticOffsets = dmaOp.getTargetStaticOffsets();
+    staticSizes = dmaOp.getTargetStaticSizes();
+    staticStrides = dmaOp.getTargetStaticStrides();
+    bdIdOp = dmaOp.getTargetBdIdOp();
+    if (!bdIdOp) {
+      return dmaOp.emitOpError()
+             << "must have a target BD ID op to lower to the AIE dialect.";
+    }
+    logicalObjFifo = dyn_cast<AMDAIE::LogicalObjectFifoFromMemrefOp>(
         dmaOp.getTarget().getDefiningOp());
-    if (!targetLogicalObjFifo) {
+    if (!logicalObjFifo) {
       return dmaOp.emitOpError() << "expected target to be an "
                                     "`amdaie.logicalobjectfifo.from_memref`";
     }
-    if (!dmaOp.hasTargetAddressing()) {
-      return dmaOp.emitOpError()
-             << "expected target addressing for DMA with target on L3";
-    }
-    AMDAIE::BdIdOp bdIdOp = dmaOp.getTargetBdIdOp();
-    if (!bdIdOp)
-      return dmaOp.emitOpError() << "expected to have a target BD ID op";
-
-    // DmaOp either has explicit target addressing OR the defining op of its
-    // source has its target on L3.
-    SmallVector<Value> empty;
-    SmallVector<int64_t, 4> staticOffsets(4, 0);
-    SmallVector<int64_t, 4> staticSizes(4, 1);
-    SmallVector<int64_t, 4> staticStrides(4, 0);
-    if (failed(getStaticDimsForExplicitAddressing(
-            dmaOp, dmaOp.getTargetMixedOffsets(), dmaOp.getTargetMixedSizes(),
-            dmaOp.getTargetMixedStrides(), staticOffsets, staticSizes,
-            staticStrides))) {
-      return failure();
-    }
-    if (failed(canonicalizeNpuStridedPatternForAIE(staticOffsets, staticSizes,
-                                                   staticStrides))) {
-      return dmaOp.emitError() << "could not canonicalize for AIE";
-    }
-
-    AMDAIE::CircularDmaCpyNdOp dmaCpyNd = dmaOp.getDmaCpyNdOp();
-    Value memref = bindingsMapper.lookup(targetLogicalObjFifo.getMemref());
-    auto objFifo = dyn_cast<xilinx::AIE::ObjectFifoCreateOp>(
-        mapper.lookup(dmaCpyNd.getOperation()));
-    if (!objFifo) {
-      return dmaOp.emitError()
-             << "input isn't mapped to an `aie.objectifo` operation";
-    }
-    bool issueToken = dmaOp.hasDmaWaitOpUser();
-    rewriter.create<AIEX::NpuDmaMemcpyNdOp>(
-        rewriter.getUnknownLoc(), SmallVector<Type, 1>{}, 0, 0, memref, empty,
-        empty, empty, staticOffsets, staticSizes, staticStrides,
-        objFifo.getName(), bdIdOp.getValue(), issueToken);
   }
+
+  else {
+    return dmaOp.emitOpError()
+           << "has neither source not target memory space as L3.";
+  }
+
+  Value memref = bindingsMapper.lookup(logicalObjFifo.getMemref());
+
+  auto objFifo =
+      dyn_cast<AIE::ObjectFifoCreateOp>(mapper.lookup(dmaCpyNd.getOperation()));
+
+  uint32_t bdId = bdIdOp.getValue();
+
+  if (!objFifo) {
+    return dmaOp.emitError()
+           << "input isn't mapped to an `aie.objectifo` operation";
+  }
+
+  if (!offsets.empty() || !sizes.empty() || !strides.empty()) {
+    // Not doing now as better to just eliminate use of aiex dialect
+    // altogether.
+    return dmaOp.emitError()
+           << "Expect all source offsets, sizes, and strides to be static at "
+              "this point. Dynamic values can be supported, just need to "
+              "cast from 'index' to 64-bit signless integer for "
+              "aiex.npu.dma_memcpy_nd.";
+  }
+
+  bool issueToken = dmaOp.hasDmaWaitOpUser();
+
+  rewriter.setInsertionPoint(dmaOp);
+  rewriter.create<AIEX::NpuDmaMemcpyNdOp>(
+      dmaOp.getLoc(), SmallVector<Type, 1>{}, 0, 0, memref, offsets, sizes,
+      strides, staticOffsets, staticSizes, staticStrides, objFifo.getName(),
+      bdId, issueToken);
+
   toBeErased.push_back(dmaOp);
   return success();
 }
@@ -690,8 +596,8 @@ LogicalResult npuDmaWaitToAIE(IRRewriter &rewriter, AMDAIE::NpuDmaWaitOp waitOp,
 
 /// Insert the control code operations into the NPU instruction function.
 LogicalResult controlCodeToAie(IRRewriter &rewriter,
-                               AMDAIE::ControlCodeOp &controlCodeOp,
-                               xilinx::AIEX::RuntimeSequenceOp &funcOp,
+                               AMDAIE::ControlCodeOp controlCodeOp,
+                               xilinx::AIEX::RuntimeSequenceOp funcOp,
                                IRMapping &mapper, IRMapping &bindingsMapper) {
   LLVM_DEBUG(llvm::dbgs() << "Convert [AMDAIE::ControlCodeOp]\n");
   Block *funcBlock = &funcOp.getBody().front();
@@ -736,13 +642,9 @@ LogicalResult controlCodeToAie(IRRewriter &rewriter,
         return WalkResult::advance();
       });
   if (res.wasInterrupted()) return failure();
-  for (auto *op : toBeErased) {
-    eraseOp(rewriter, mapper, op);
-  }
+  for (Operation *op : toBeErased) eraseOp(rewriter, mapper, op);
   return success();
 }
-
-}  // namespace
 
 //===----------------------------------------------------------------------===//
 // Convert amdaie.logicalobjectfifo.link operation to `aie.objectfifo.link`
@@ -898,16 +800,19 @@ LogicalResult lowerToAIE(ModuleOp moduleOp) {
     if (funcOp.isPrivate()) {
       return WalkResult::advance();
     }
-    // Insert AIE DeviceOp
+
+    // Create aie.device.
     rewriter.setInsertionPoint(moduleBlock, moduleBlock->begin());
     auto deviceOp = rewriter.create<xilinx::AIE::DeviceOp>(
         rewriter.getUnknownLoc(),
         xilinx::AIE::AIEDeviceAttr::get(rewriter.getContext(), aieDevice));
-    deviceOp.getRegion().emplaceBlock();
-    Block *deviceBlock = &deviceOp.getRegion().front();
+    Block *deviceBlock = &deviceOp.getRegion().emplaceBlock();
 
-    // Create the signature of the NPU instruction sequence function. The HAL
-    // interface bindings are used to order the function parameters correctly.
+    // The amdaie.controlcode operation has no operands, but the
+    // aiex.runtime_sequence that it lowers to, does. Create the signature
+    // of the aiex.runtime_sequence operation that replaces the
+    // amdaie.controlcode. The HAL interface bindings are used to
+    // order the function parameters correctly.
     IRMapping bindingsMapper;
     SmallVector<IREE::HAL::InterfaceBindingSubspanOp> subspanOps;
     funcOp->walk([&](IREE::HAL::InterfaceBindingSubspanOp subspanOp) {
@@ -918,13 +823,16 @@ LogicalResult lowerToAIE(ModuleOp moduleOp) {
       return a.getBinding().getZExtValue() < b.getBinding().getZExtValue();
     });
     rewriter.setInsertionPoint(deviceBlock, deviceBlock->begin());
+
+    // Create aiex.runtime_sequence inside aie.device
     auto npuFuncOp = rewriter.create<xilinx::AIEX::RuntimeSequenceOp>(
         rewriter.getUnknownLoc(), rewriter.getStringAttr(funcOp.getSymName()));
-    npuFuncOp.getBody().push_back(new Block);
-    for (int i = 0, e = subspanOps.size(); i < e; i++) {
-      auto a = subspanOps[i].getResult();
-      npuFuncOp.getBody().addArgument(a.getType(), a.getLoc());
-      bindingsMapper.map(a, npuFuncOp.getBody().getArgument(i));
+    Region &body = npuFuncOp.getBody();
+    body.emplaceBlock();
+
+    for (auto &&a : llvm::enumerate(subspanOps)) {
+      body.addArgument(a.value().getType(), a.value().getLoc());
+      bindingsMapper.map(a.value(), body.getArgument(a.index()));
     }
 
     // Walk the AIE regions ops and convert ops into pure AIEDialect ops.
@@ -953,16 +861,19 @@ LogicalResult lowerToAIE(ModuleOp moduleOp) {
     // After walking the FuncOp, it has been converted into a DeviceOp and can
     // safely be erased.
     eraseOp(rewriter, mapper, funcOp);
-
     return WalkResult::advance();
   });
   if (funcRes.wasInterrupted()) return failure();
-  return success();
-}
 
-/// Utility to erase all HAL bindings and dependent operations.
-LogicalResult eraseHALBindings(ModuleOp moduleOp) {
-  IRRewriter rewriter(moduleOp.getContext());
+  // All Ukernel related function declarations will be within aie.device, so
+  // delete the ones outside from the SymbolTable.
+  SymbolTable symbolTable(moduleOp);
+  moduleOp->walk([&](func::FuncOp funcOp) {
+    if (funcOp.isPrivate() && !funcOp->getParentOfType<AIE::DeviceOp>()) {
+      symbolTable.erase(funcOp);
+    }
+  });
+
   SmallVector<Operation *> opsToBeErased;
   moduleOp.walk([&](IREE::HAL::InterfaceBindingSubspanOp subspanOp) {
     opsToBeErased.push_back(subspanOp.getOperation());
@@ -980,49 +891,6 @@ LogicalResult eraseHALBindings(ModuleOp moduleOp) {
   return success();
 }
 
-/// Utility to move dependencies outside an operation into that operation. This
-/// is for example needed for `aie.core` operations as MLIR-AIE expects all
-/// dependencies, like constants, inside those core operations.
-template <typename OpTy>
-class MoveAllDependenciesIntoOp : public OpRewritePattern<OpTy> {
-  using OpRewritePattern<OpTy>::OpRewritePattern;
-
-  LogicalResult matchAndRewrite(OpTy parentOp,
-                                PatternRewriter &rewriter) const override {
-    bool addedDependency = false;
-    parentOp->walk([&](Operation *op) {
-      // Skip operations of type 'OpTy'.
-      if (isa<OpTy>(op)) {
-        return WalkResult::advance();
-      }
-      // Check all operands and whether their defining operations are located
-      // outside the parentOp.
-      for (Value operand : op->getOperands()) {
-        if (!operand || !operand.getDefiningOp()) {
-          continue;
-        }
-        Operation *dependencyOp = operand.getDefiningOp();
-        if (isa_and_nonnull<xilinx::AIE::AIEDialect, xilinx::AIEX::AIEXDialect>(
-                op->getDialect())) {
-          // Skip AIE dialect operations.
-          continue;
-        } else if (!dependencyOp->getParentOfType<OpTy>()) {
-          // Clone the dependency operation into the parent operation's block
-          // and replace all uses.
-          rewriter.setInsertionPointToStart(&parentOp->getRegion(0).front());
-          Operation *newOp = rewriter.clone(*dependencyOp);
-          dependencyOp->replaceUsesWithIf(newOp, [&](OpOperand &use) {
-            return use.getOwner()->getParentOfType<OpTy>() == parentOp;
-          });
-          addedDependency = true;
-        }
-      }
-      return WalkResult::advance();
-    });
-    return success(addedDependency);
-  }
-};
-
 class AMDAIELowerToAIEPass
     : public impl::AMDAIELowerToAIEBase<AMDAIELowerToAIEPass> {
  public:
@@ -1031,46 +899,12 @@ class AMDAIELowerToAIEPass
                     xilinx::AIEX::AIEXDialect>();
   }
 
-  AMDAIELowerToAIEPass() = default;
-  AMDAIELowerToAIEPass(const AMDAIELowerToAIEPass &pass){};
-  void runOnOperation() override;
+  void runOnOperation() override {
+    // Main function call to convert all operations into AIE dialect
+    // operations inside an AIE device.
+    if (failed(lowerToAIE(getOperation()))) return signalPassFailure();
+  }
 };
-
-void AMDAIELowerToAIEPass::runOnOperation() {
-  // Main function call to convert all operations into AIE dialect operations
-  // inside an AIE device.
-  if (failed(lowerToAIE(getOperation()))) {
-    return signalPassFailure();
-  }
-  LLVM_DEBUG(llvm::dbgs() << "Module after lowerToAIE: " << getOperation());
-
-  // Clean up the HAL bindings and it's uses as they are not needed anymore.
-  if (failed(eraseHALBindings(getOperation()))) {
-    return signalPassFailure();
-  }
-
-  // Move all dependencies, like for example constants, that are residing
-  // outside core operations into those core operations. This is required by
-  // the AIE dialect.
-  MLIRContext *context = &getContext();
-  RewritePatternSet patterns(context);
-  patterns.insert<MoveAllDependenciesIntoOp<xilinx::AIE::CoreOp>>(context);
-  if (failed(
-          applyPatternsAndFoldGreedily(getOperation(), std::move(patterns)))) {
-    return signalPassFailure();
-  }
-
-  // All Ukernel related function declarations will be within aie.device, so
-  // delete the ones outside from the SymbolTable.
-  SymbolTable symbolTable(getOperation());
-  getOperation()->walk([&](func::FuncOp funcOp) {
-    if (funcOp.isPrivate() && !funcOp->getParentOfType<AIE::DeviceOp>()) {
-      symbolTable.erase(funcOp);
-    }
-  });
-}
-
-}  // namespace
 
 std::unique_ptr<Pass> createAMDAIELowerToAIEPass() {
   return std::make_unique<AMDAIELowerToAIEPass>();

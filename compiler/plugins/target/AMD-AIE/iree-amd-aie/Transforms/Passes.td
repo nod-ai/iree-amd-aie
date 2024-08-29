@@ -26,7 +26,7 @@ def AMDAIEAIRDmaToAMDAIEDma :
 def AMDAIEAssignLogicalObjectFifoDepth :
     Pass<"iree-amdaie-assign-logical-objectfifo-depth", ""> {
   let summary = "Assign a buffer depth of the logical objectfifos.";
-  let constructor = 
+  let constructor =
     "mlir::iree_compiler::AMDAIE::createAMDAIEAssignLogicalObjectFifoDepthPass()";
   let options = [
     Option<"l3BufferDepth", "l3-buffer-depth", "int64_t", /*default=*/"1",
@@ -89,6 +89,24 @@ def AMDAIECanonicalizeDoublyStridedOp :
   let options = [
     Option<"foldSingleDims", "fold-single-dims", "bool", /*default=*/"false",
       "Whether to fold single strided dimensions and make then implicit.">
+  ];
+}
+
+
+def AMDAIECanonicalizeNpuDmaCpyNd :
+  Pass<"iree-amdaie-canonicalize-npu-dma-cpy-nd", "ModuleOp"> {
+  let summary = "Canonicalize npu.dma_cpy_nd operations.";
+let description = [{
+  Canonicalize the offsets/sizes/strides of npu.dma_cpy_nd operations on the L3
+  side of the data movement, to make them more representative of the DMA in hardware.
+  This pass ensures the offsets/sizes/strides are of size `nbDimensions`, and that no
+  dimensions with size>1 have stride=0 except for dimension zero (outer dimension).
+  This is a HW constraint.
+}];
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIECanonicalizeNpuDmaCpyNdPass()";
+  let options = [
+    Option<"nbDimensions", "nb-dimensions", "uint64_t", /*default=*/"4",
+      "The number of dimensions the canonicalized offsets/sizes/strides must have.">
   ];
 }
 
@@ -429,6 +447,20 @@ def AMDAIEPropagateDataLayout :
   let summary = "Pass to propagate pack/unpack ops using upstream patterns.";
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEPropagateDataLayoutPass()";
 }
+
+def AMDAIESinkIntoCore :
+  Pass<"iree-amdaie-sink-into-core", "ModuleOp"> {
+  let summary = "Clone constants and other ops into amdaie.cores";
+  let description = [{
+   The amdaie.core operation should be isolated from above for code generation.
+   This pass finds operations outside of cores, whose values are used inside of
+   cores, and creates clones of them inside of cores. Operations in the amdaie
+   dialect are not sunk into cores, as they are assumed to be data movement
+   related ops which should be kept outside of cores.
+  }];
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIESinkIntoCorePass()";
+}
+
 
 def AMDAIETile :
     InterfacePass<"iree-amdaie-tile", "mlir::FunctionOpInterface"> {
