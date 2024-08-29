@@ -55,7 +55,7 @@ jobs:
         run: |
           dnf install -y almalinux-release-devel epel-release
           yum remove -y openssl-devel zlib-devel || true
-          yum install -y protobuf-devel protobuf-compiler tmate
+          yum install -y protobuf-devel protobuf-compiler libnuma-devel tmate
 
       - name: Python deps
         run: |
@@ -67,6 +67,12 @@ jobs:
           path: ${{ env.CACHE_DIR }}
           key:  ${{ env.CACHE_KEY }}
           restore-keys: linux-build-test-cpp-
+
+      - name: Build ROCT/ROCR
+        run: |
+          export cache_dir="${{ env.CACHE_DIR }}"
+          bash build_tools/ci/build_roct_rocr.sh
+          echo "hsa-runtime64_ROOT=$PWD/rocr-install" >> $GITHUB_ENV
 
       - name: Build packages
         run: |
