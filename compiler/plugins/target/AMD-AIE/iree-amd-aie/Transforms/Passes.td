@@ -322,7 +322,7 @@ def AMDAIELoweringStrategy :
       )}]>,
     Option<"useLowerToAIEPipeline", "use-lower-to-aie-pipeline",
       "mlir::iree_compiler::AMDAIE::LowerToAIEPassPipeline",
-      /*default=*/"mlir::iree_compiler::AMDAIE::LowerToAIEPassPipeline::AIR",
+      /*default=*/"mlir::iree_compiler::AMDAIE::LowerToAIEPassPipeline::ObjectFifo",
       "Lowering pass pipeline to use",
       [{::llvm::cl::values(
         clEnumValN(mlir::iree_compiler::AMDAIE::LowerToAIEPassPipeline::ObjectFifo, "objectFifo",
