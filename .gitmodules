@@ -1,7 +1,8 @@
 [submodule "third_party/XRT"]
 	path = third_party/XRT
-	url = https://github.com/Xilinx/XRT.git
+	url = https://github.com/nod-ai/XRT.git
 	shallow = true
+	branch = iree-amd-aie-patches
 [submodule "third_party/mlir-air"]
 	path = third_party/mlir-air
 	url = https://github.com/nod-ai/mlir-air.git

@@ -180,12 +180,23 @@ iree_status_t iree_hal_xrt_native_executable_create(
     std::unique_ptr<xrt::xclbin> xclbin;
     try {
       xclbin = std::make_unique<xrt::xclbin>(xclbinVector);
-    } catch (std::runtime_error& e) {
+    } catch (std::exception& e) {
       return iree_make_status(IREE_STATUS_INTERNAL, "XCLBIN load error: %s",
                               e.what());
     }
-    device->register_xclbin(*xclbin);
-    xrt::hw_context context(*device, xclbin->get_uuid());
+    try {
+      device->register_xclbin(*xclbin);
+    } catch (std::exception& e) {
+      return iree_make_status(IREE_STATUS_INTERNAL, "XCLBIN register error: %s",
+                              e.what());
+    }
+    xrt::hw_context context;
+    try {
+      context = {*device, xclbin->get_uuid()};
+    } catch (std::exception& e) {
+      return iree_make_status(IREE_STATUS_INTERNAL,
+                              "xrt::hw_context context: %s", e.what());
+    }
     uint32_t asm_instr_index =
         flatbuffers_uint32_vec_at(asm_instr_indices_vec, entry_ordinal);
     iree_amd_aie_hal_xrt_AsmInstDef_table_t asminst_def =
@@ -202,7 +213,8 @@ iree_status_t iree_hal_xrt_native_executable_create(
       // the second argument to the kernel and we can use group id 1.
       int group_id = 1;
       instr = std::make_unique<xrt::bo>(*device, num_instr * sizeof(uint32_t),
-                                        XCL_BO_FLAGS_CACHEABLE, group_id);
+                                        XCL_BO_FLAGS_CACHEABLE,
+                                        kernel->group_id(group_id));
     } catch (...) {
       iree_hal_executable_destroy((iree_hal_executable_t*)executable);
       IREE_TRACE_ZONE_END(z0);
@@ -267,8 +279,11 @@ static void iree_hal_xrt_native_executable_destroy(
 
   for (iree_host_size_t i = 0; i < executable->entry_point_count; ++i) {
     try {
+#ifndef _WIN32
+      // causes segmentation fault on windows
       delete executable->entry_points[i].kernel;
       delete executable->entry_points[i].instr;
+#endif
       // TODO(jornt): deleting the xclbin here will result in a corrupted size
       // error in XRT. It looks like the xclbin needs to stay alive while the
       // device is alive if it has been registered.

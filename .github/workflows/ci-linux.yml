@@ -70,9 +70,7 @@ jobs:
       - name: Create artifacts
         if: ${{ !cancelled() }}
         run: |
-          rm -f iree-install/bin/clang*
-          rm -f iree-install/bin/llvm-link*
-          tar cf iree-dist-linux.tar -C iree-install . -C ../iree-build tools/testing/e2e/iree-e2e-matmul-test
+          tar cf iree-dist-linux.tar -C iree-install .
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
@@ -95,7 +93,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        runs-on: [linux-phoenix-20240606, linux-phoenix-20240819]
+        runs-on: [linux-phoenix]
     runs-on: ${{ matrix.runs-on }}
     env:
       XILINXD_LICENSE_FILE: /opt/xilinx/Xilinx.lic
@@ -152,6 +150,7 @@ jobs:
           # on the guthub CI machine.
           sudo prlimit -lunlimited --pid $$
 
+          source /opt/xilinx/xrt/setup.sh
           bash build_tools/ci/run_matmul_test.sh \
             test_matmuls \
             iree-install \
@@ -163,20 +162,14 @@ jobs:
       - name : Smoke E2E comparison flag test
         run: |
           source .venv/bin/activate
-          # install requirements
-          # TODO(newling) make requirements.txt file
-          pip install numpy
           source /opt/xilinx/xrt/setup.sh
           python3 build_tools/ci/cpu_comparison/run_test.py \
             test_aie_vs_cpu \
             iree-install \
             $PWD/llvm-aie \
-            /opt/xilinx/xrt \
-            /opt/Xilinx/Vitis/2024.2 \
-            --reset_npu_between_runs=0 \
-            --test_set='Smoke' \
-            --do_not_run_aie=1 \
-            --verbose=0
+            --xrt-dir /opt/xilinx/xrt \
+            --test-set='Smoke' \
+            --do-not-run-aie
 
           # Assert that output.log is empty (because verbose=0)
           if [ -s output.log ]; then
@@ -190,23 +183,20 @@ jobs:
       - name : E2E comparison of AIE to llvm-cpu
         run: |
           source .venv/bin/activate
-          # install requirements
-          # TODO(newling) make requirements.txt file
-          pip install numpy
           source /opt/xilinx/xrt/setup.sh
           python3 build_tools/ci/cpu_comparison/run_test.py \
             test_aie_vs_cpu \
-            iree-install \
+            $PWD/iree-install \
             $PWD/llvm-aie \
-            /opt/xilinx/xrt \
-            /opt/Xilinx/Vitis/2024.2
+            --xrt-dir /opt/xilinx/xrt \
+            --vitis-dir /opt/Xilinx/Vitis/2024.2 \
+            --reset-npu-between-runs -v
 
       - name: Printing IR from aie2xclbin
         run: |
           source .venv/bin/activate
+          source /opt/xilinx/xrt/setup.sh
           bash build_tools/ci/print_ir_aie2xclbin/print_ir_aie2xclbin.sh \
             iree-install \
             print_ir_aie2xclbin_results \
-            $PWD/llvm-aie \
-            /opt/xilinx/xrt \
-            /opt/Xilinx/Vitis/2024.2
+            $PWD/llvm-aie

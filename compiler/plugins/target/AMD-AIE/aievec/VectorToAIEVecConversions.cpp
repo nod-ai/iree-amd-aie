@@ -840,14 +840,6 @@ static void configureAIEVecCommonLegalizations(ConversionTarget &target) {
       [](arith::SubFOp op) { return !isa<VectorType>(op.getType()); });
 }
 
-static void configureAIEVecV1Legalizations(ConversionTarget &target) {
-  target.addDynamicallyLegalOp<arith::MulIOp>(
-      [](arith::MulIOp op) { return !isa<VectorType>(op.getType()); });
-  target.addDynamicallyLegalOp<arith::MulFOp>(
-      [](arith::MulFOp op) { return !isa<VectorType>(op.getType()); });
-  target.addLegalDialect<memref::MemRefDialect>();
-}
-
 static void configureAIEVecV2Legalizations(ConversionTarget &target) {
   target.addLegalOp<UnrealizedConversionCastOp>();
   target.addLegalOp<vector::ShapeCastOp>();

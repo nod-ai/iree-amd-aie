@@ -27,7 +27,8 @@ FetchContent_Declare(
   GIT_PROGRESS TRUE
   DOWNLOAD_NO_EXTRACT FALSE
   # prevents configure from rerunning all the time
-  URL_HASH MD5=84bc7c861606dc66bcfbeb660fcddfd2)
+  DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+  URL_HASH MD5=84BC7C861606DC66BCFBEB660FCDDFD2)
 FetchContent_MakeAvailable(Boost)
 set(IREE_AIE_BOOST_LIBS
     any
@@ -53,10 +54,6 @@ set(IREE_XRT_SOURCE_DIR "${IREE_AMD_AIE_SOURCE_DIR}/third_party/XRT/src")
 
 set(_xclbinutil_source_dir ${IREE_XRT_SOURCE_DIR}/runtime_src/tools/xclbinutil)
 
-# remove ssl dep
-replace_string_in_file(${_xclbinutil_source_dir}/XclBinUtilMain.cxx
-                       "bValidateSignature == true" "false")
-
 # transformcdo target
 if(NOT WIN32)
   replace_string_in_file(${_xclbinutil_source_dir}/aie-pdi-transform/src/CMakeLists.txt
@@ -66,7 +63,7 @@ endif()
 
 # otherwise the various stois that read these will explode...
 # XRT/src/runtime_src/tools/xclbinutil/XclBinClass.cxx#L55
-file(READ ${IREE_XRT_SOURCE_DIR}/CMakeLists.txt _xrt_cmake_file_contents)
+file(READ ${IREE_XRT_SOURCE_DIR}/CMake/settings.cmake _xrt_cmake_file_contents)
 string(REGEX MATCH "XRT_VERSION_MAJOR ([0-9]+)" XRT_VERSION_MAJOR ${_xrt_cmake_file_contents})
 # note CMAKE_MATCH_0 is the whole match...
 set(XRT_VERSION_MAJOR ${CMAKE_MATCH_1})
@@ -87,24 +84,6 @@ configure_file(${IREE_XRT_SOURCE_DIR}/CMake/config/version.h.in
                ${IREE_XRT_SOURCE_DIR}/runtime_src/core/common/gen/version.h)
 configure_file(${IREE_XRT_SOURCE_DIR}/CMake/config/version.h.in
                ${IREE_XRT_SOURCE_DIR}/runtime_src/core/common/api/version.h)
-replace_string_in_file(${IREE_XRT_SOURCE_DIR}/runtime_src/core/common/query.h
-                       "#include <stdexcept>" "#include <any>")
-
-set(_noop_xclbin_sig_cxx "
-#include \"XclBinSignature.h\"
-void signXclBinImage(const std::string& _fileOnDisk,
-                     const std::string& _sPrivateKey,
-                     const std::string& _sCertificate,
-                     const std::string& _sDigestAlgorithm,
-                     bool _bEnableDebugOutput) {}
-void verifyXclBinImage(const std::string& _fileOnDisk,
-                       const std::string& _sCertificate,
-                       bool _bEnableDebugOutput) {}
-void dumpSignatureFile(const std::string& _fileOnDisk,
-                       const std::string& _signatureFile) {}
-void getXclBinPKCSStats(const std::string& _xclBinFile,
-                        XclBinPKCSImageStats& _xclBinPKCSImageStats) {}")
-file(WRITE "${_xclbinutil_source_dir}/XclBinSignature.cxx" "${_noop_xclbin_sig_cxx}")
 
 file(
   GLOB
@@ -151,19 +130,29 @@ target_include_directories(iree-aie-xclbinutil
                                    ${_xclbinutil_source_dir})
 target_compile_options(iree-aie-xclbinutil
                        PRIVATE
-                       $<$<PLATFORM_ID:Linux>:-fexceptions -frtti>
-                       $<$<PLATFORM_ID:Windows>:/EHsc /GR>)
+                       $<$<PLATFORM_ID:Linux>:-fexceptions -frtti -w>
+                       $<$<PLATFORM_ID:Windows>:/EHsc /GR /w>)
 set_target_properties(iree-aie-xclbinutil
                       PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/tools")
-iree_install_targets(
+
+# iree_install_targets has EXCLUDE_FROM_ALL
+install(
   TARGETS iree-aie-xclbinutil
+  EXPORT IREEExported-Runtime
   COMPONENT IREETools-Runtime
-  EXPORT_SET Runtime
-)
+  RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+
 
 # ##############################################################################
 # xrt_coreutil
 # ##############################################################################
+
+message(STATUS "building XRT core libs")
+
+set(XRT_AIE_BUILD "yes")
+set(XRT_ENABLE_AIE "yes")
+set(XRT_NATIVE_BUILD "yes")
+add_definitions(-DXRT_ENABLE_AIE -DXRT_AIE_BUILD)
 
 # send xrt_coreutil to trash so it doesn't get installed
 set(XRT_INSTALL_LIB_DIR "$ENV{TMP}")
@@ -180,8 +169,8 @@ set(_core_libs
     core_common_library_objects
     core_common_api_library_objects
     core_common_xdp_profile_objects
-    xrt_coreutil
-)
+    xrt_coreutil)
+
 foreach(_core_lib IN LISTS _core_libs)
   target_include_directories(${_core_lib} PUBLIC
                              ${IREE_XRT_SOURCE_DIR}/runtime_src/core/include
@@ -192,7 +181,13 @@ foreach(_core_lib IN LISTS _core_libs)
   target_compile_definitions(${_core_lib} PUBLIC -DBOOST_BIND_GLOBAL_PLACEHOLDERS)
   target_compile_options(${_core_lib}
                          PRIVATE
-                         $<$<PLATFORM_ID:Linux>:-fexceptions -frtti>
-                         $<$<PLATFORM_ID:Windows>:/EHsc /GR>)
+                         $<$<PLATFORM_ID:Linux>:-fexceptions -frtti -w>
+                         $<$<PLATFORM_ID:Windows>:/EHsc /GR /w>)
   target_link_libraries(${_core_lib} PUBLIC $<BUILD_LOCAL_INTERFACE:${IREE_AIE_BOOST_LIBS}>)
 endforeach()
+
+install(
+  TARGETS xrt_coreutil
+  EXPORT IREEExported-Runtime
+  COMPONENT IREETools-Runtime
+  LIBRARY DESTINATION ${CMAKE_INSTALL_BINDIR})
