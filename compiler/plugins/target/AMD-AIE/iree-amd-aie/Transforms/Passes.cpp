@@ -830,8 +830,6 @@ void addMLIRAIELoweringPasses(OpPassManager &passManager) {
     devicePM.addPass(createCanonicalizerPass());
   }
 
-  // passManager.addPass(mlir::iree_compiler::AMDAIE::createAMDAIECoreToStandardPass());
-
 }
 
 // NOTE: this runs on the top-level program module containing all hal.executable
