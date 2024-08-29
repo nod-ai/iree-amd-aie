@@ -100,6 +100,7 @@ void AMDAIEVectorizationPass::runOnOperation() {
   RewritePatternSet vectorizationPatterns(funcOp.getContext());
 
   vector::populateVectorReductionToContractPatterns(vectorizationPatterns);
+  vector::populateSinkVectorOpsPatterns(vectorizationPatterns);
 
   // Including this pattern prevents broadcasting in vector.transfer_read ops
   vector::populateVectorTransferPermutationMapLoweringPatterns(
