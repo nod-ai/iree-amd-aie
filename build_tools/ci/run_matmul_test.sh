@@ -759,6 +759,18 @@ if [ -d "$VITIS" ]; then
       --num_repeat_runs "10" \
       --use_ukernel "1"
 
+  run_matmul_test \
+      --name_prefix "chess_i32_matmul_multi_core" \
+      --lower_to_aie_pipeline "objectFifo" \
+      --tile_pipeline "pack-peel" \
+      --lhs_rhs_type "i32" \
+      --acc_type "i32" \
+      --m "32" \
+      --n "32" \
+      --k "32" \
+      --use_chess "1" \
+      --num_repeat_runs "10"
+
 fi
 
 echo "\n\n"
