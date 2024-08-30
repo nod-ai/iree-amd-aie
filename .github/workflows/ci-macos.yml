@@ -70,6 +70,7 @@ jobs:
           echo CCACHE_DEBUGLEVEL=2 >> $GITHUB_ENV
           echo CCACHE_DEBUGDIR="$HOME/ccache-debug" >> $GITHUB_ENV
           echo CCACHE_SLOPPINESS=include_file_ctime,include_file_mtime,time_macros >> $GITHUB_ENV
+          clang --version
 
       - name: Build packages
         run: |
