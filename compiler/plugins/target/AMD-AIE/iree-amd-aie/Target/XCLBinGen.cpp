@@ -648,29 +648,14 @@ static LogicalResult generateCoreElfFiles(
 }
 
 static LogicalResult generateCDO(MLIRContext *context, AIE::DeviceOp deviceOp,
-                                 bool printIRBeforeAll, bool printIRAfterAll,
-                                 bool printIRModuleScope, bool timing,
                                  const Path &tempDir) {
   auto copy = cast<ModuleOp>(deviceOp.getParentOp()->clone());
   deviceOp = *copy.getOps<AIE::DeviceOp>().begin();
-  std::string errorMessage;
-  PassManager passManager(context, AIE::DeviceOp::getOperationName());
-  applyConfigToPassManager(passManager, printIRBeforeAll, printIRAfterAll,
-                           printIRModuleScope, timing);
-  passManager.addPass(
-      mlir::iree_compiler::AMDAIE::createAMDAIEPathfinderPass());
-
-  if (failed(passManager.run(deviceOp))) {
-    llvm::errs() << "failed to run passes to prepare for XCLBin generation";
-    return failure();
-  }
-
   if (failed(mlir::iree_compiler::AMDAIE::AIETranslateToCDODirect(
           deviceOp, tempDir.string()))) {
     llvm::errs() << "failed to emit CDO";
     return failure();
   }
-
   copy->erase();
   return success();
 }
@@ -1164,13 +1149,6 @@ LogicalResult aie2xclbin(
     const std::string &xclBinInstanceName, const std::string &amdAIEInstallDir,
     const std::optional<std::string> &InputXCLBin,
     const std::optional<std::string> &ukernel) {
-  PassManager pm(ctx, AIE::DeviceOp::getOperationName());
-  applyConfigToPassManager(pm, printIRBeforeAll, printIRAfterAll,
-                           printIRModuleScope, timing);
-  if (failed(pm.run(deviceOp))) {
-    llvm::errs() << ": NPU Instruction pipeline failed";
-    return failure();
-  }
 
   FailureOr<ArrayRef<uint32_t>> maybeNpuInstructions =
       getNpuInstructions(deviceOp);
@@ -1213,8 +1191,7 @@ LogicalResult aie2xclbin(
     return failure();
   }
 
-  if (failed(generateCDO(ctx, deviceOp, printIRBeforeAll, printIRAfterAll,
-                         printIRModuleScope, timing, tempDirPath))) {
+  if (failed(generateCDO(ctx, deviceOp, tempDirPath))) {
     llvm::errs() << "Failed to generate CDO\n";
     return failure();
   }

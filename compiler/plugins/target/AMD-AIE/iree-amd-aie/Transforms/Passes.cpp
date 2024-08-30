@@ -824,6 +824,7 @@ void addMLIRAIELoweringPasses(OpPassManager &passManager) {
     devicePM.addPass(createAMDAIENormalizeAddressSpacesPass());
     devicePM.addPass(createCanonicalizerPass());
   }
+
 }
 
 // NOTE: this runs on the top-level program module containing all hal.executable
