@@ -72,37 +72,16 @@ jobs:
           key: ${{ env.CACHE_KEY }}
           restore-keys: windows-build-test-cpp-
 
-      - name: Configure ccache debug logs
-        run: |
-          echo CCACHE_DEBUG=1 >> $GITHUB_ENV
-          echo CCACHE_DEBUGLEVEL=2 >> $GITHUB_ENV
-          echo CCACHE_DEBUGDIR="/c/ccache-debug" >> $GITHUB_ENV
-          echo CCACHE_SLOPPINESS=include_file_ctime,include_file_mtime,time_macros >> $GITHUB_ENV
-          echo CCACHE_COMPILERCHECK=content >> $GITHUB_ENV
-
       - name: Build packages
         run: |
           export cache_dir="${{ env.CACHE_DIR }}"
+          export CCACHE_COMPILERCHECK="string:$(clang-cl.exe --version)"
           bash build_tools/ci/build_test_cpp.sh
 
       - name: Create artifacts
         if: ${{ !cancelled() }}
         run: |
           tar cf iree-dist-windows.tar -C iree-install .
-
-      - name: Tar ccache logs
-        if: ${{ !cancelled() }}
-        run: |
-          ccache --show-stats -v
-          tar cf windows-ccache-logs.tar $CCACHE_DEBUGDIR
-
-      - name: Upload ccache logs
-        uses: actions/upload-artifact@v4
-        if: ${{ !cancelled() }}
-        with:
-          name: ccache_logs
-          path: windows-ccache-logs.tar
-          if-no-files-found: warn
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4

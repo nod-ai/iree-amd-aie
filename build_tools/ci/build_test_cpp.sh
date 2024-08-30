@@ -36,10 +36,12 @@ elif [[ "$OSTYPE" == "msys"* ]]; then
   export CC=clang-cl.exe
   export CXX=clang-cl.exe
 fi
+
 export CCACHE_DIR="${cache_dir}/ccache"
 export CCACHE_MAXSIZE="700M"
 export CMAKE_C_COMPILER_LAUNCHER=ccache
 export CMAKE_CXX_COMPILER_LAUNCHER=ccache
+export CCACHE_SLOPPINESS=include_file_ctime,include_file_mtime,time_macros
 
 # Clear ccache stats.
 ccache -z
@@ -64,6 +66,7 @@ CMAKE_ARGS="\
   -DCMAKE_BUILD_TYPE=Release \
   -DCMAKE_INSTALL_PREFIX=$install_dir \
   -DCMAKE_INSTALL_LIBDIR=lib \
+  -DIREE_ERROR_ON_MISSING_SUBMODULES=OFF \
   -DIREE_ENABLE_ASSERTIONS=ON \
   -DIREE_BUILD_SAMPLES=OFF \
   -DIREE_BUILD_PYTHON_BINDINGS=ON \

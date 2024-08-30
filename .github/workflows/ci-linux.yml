@@ -69,38 +69,16 @@ jobs:
           key:  ${{ env.CACHE_KEY }}
           restore-keys: linux-build-test-cpp-
 
-      - name: Configure ccache debug logs
-        run: |
-          # https://interrupt.memfault.com/blog/ccache-debugging
-          echo CCACHE_DEBUG=1 >> $GITHUB_ENV
-          echo CCACHE_DEBUGLEVEL=2 >> $GITHUB_ENV
-          echo CCACHE_DEBUGDIR="$HOME/ccache-debug" >> $GITHUB_ENV
-          echo CCACHE_SLOPPINESS=include_file_ctime,include_file_mtime,time_macros >> $GITHUB_ENV
-          echo CCACHE_COMPILERCHECK=content >> $GITHUB_ENV
-
       - name: Build packages
         run: |
           export cache_dir="${{ env.CACHE_DIR }}"
+          export CCACHE_COMPILERCHECK="string:$(clang --version)"
           bash build_tools/ci/build_test_cpp.sh
 
       - name: Create artifacts
         if: ${{ !cancelled() }}
         run: |
           tar cf iree-dist-linux.tar -C iree-install .
-
-      - name: Tar ccache logs
-        if: ${{ !cancelled() }}
-        run: |
-          ccache --show-stats -v
-          tar cf linux-ccache-logs.tar $CCACHE_DEBUGDIR
-
-      - name: Upload ccache logs
-        uses: actions/upload-artifact@v4
-        if: ${{ !cancelled() }}
-        with:
-          name: ccache_logs
-          path: linux-ccache-logs.tar
-          if-no-files-found: warn
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
