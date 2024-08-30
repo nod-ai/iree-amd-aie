@@ -303,11 +303,13 @@ struct DmaDimConfig {
 };
 
 /// Utility to move the synchronization users (`amdaie.npu.dma_wait`) directly
-/// after the DMA operation it's synchronizing on. This utility can be used for
-/// cleanup after DMA transformations to avoid deadlocks and/or ensure SSA
-/// dominance.
-LogicalResult moveNpuSyncUsersAfterDma(RewriterBase &rewriter,
-                                       Operation *parentOp);
+/// after its ancestor in the same block as the DMA operation it's synchronizing
+/// on. This utility can be used for cleanup after DMA transformations to avoid
+/// deadlocks and/or ensure SSA dominance. The idea is to ensure correct
+/// synchronization by not influencing whatever is happening in between the
+/// async DMA operation and its synchronization op.
+LogicalResult moveNpuDmaSyncUsersAfterAncestorInSameBlock(
+    RewriterBase &rewriter, Operation *parentOp);
 
 }  // namespace mlir::iree_compiler::AMDAIE
 

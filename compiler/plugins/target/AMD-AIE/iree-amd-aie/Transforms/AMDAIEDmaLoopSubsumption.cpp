@@ -104,7 +104,6 @@ struct RetrieveScaleAndBias
   }
 };
 
-
 struct SubsumeLoopIntoDMA
     : public OpInterfaceRewritePattern<AMDAIE::DoublyStridedOpInterface> {
   using OpInterfaceRewritePattern::OpInterfaceRewritePattern;
@@ -596,7 +595,7 @@ void AMDAIEDmaLoopSubsumptionPass::runOnOperation() {
   }
 
   IRRewriter rewriter(parentOp->getContext());
-  if (failed(moveNpuSyncUsersAfterDma(rewriter, parentOp))) {
+  if (failed(moveNpuDmaSyncUsersAfterAncestorInSameBlock(rewriter, parentOp))) {
     parentOp->emitOpError(
         "failed to move DMA users to correct scope after loop subsumption");
     return signalPassFailure();

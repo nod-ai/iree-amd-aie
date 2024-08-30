@@ -326,8 +326,8 @@ LogicalResult foldUnitDims(const SmallVector<OpFoldResult> &offsets,
   return success(foldableUnitDimsFound);
 }
 
-LogicalResult moveNpuSyncUsersAfterDma(RewriterBase &rewriter,
-                                       Operation *parentOp) {
+LogicalResult moveNpuDmaSyncUsersAfterAncestorInSameBlock(
+    RewriterBase &rewriter, Operation *parentOp) {
   WalkResult res = parentOp->walk([&](AMDAIE::NpuDmaWaitOp npuDmaWaitOp) {
     Operation *dmaOp = npuDmaWaitOp.getDma().getDefiningOp();
     Operation *ancestorInSameBlock =

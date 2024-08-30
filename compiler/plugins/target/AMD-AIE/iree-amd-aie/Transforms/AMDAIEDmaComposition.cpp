@@ -12,11 +12,11 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "iree-amd-aie/aie_runtime/iree_aie_runtime.h"
 #include "iree-amd-aie/Transforms/AMDAIEDmaUtils.h"
 #include "iree-amd-aie/Transforms/AMDAIEUtils.h"
 #include "iree-amd-aie/Transforms/Passes.h"
 #include "iree-amd-aie/Transforms/Transforms.h"
+#include "iree-amd-aie/aie_runtime/iree_aie_runtime.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
 #define DEBUG_TYPE "iree-amdaie-dma-composition"
@@ -62,7 +62,7 @@ void AMDAIEDmaCompositionPass::runOnOperation() {
   }
 
   IRRewriter rewriter(parentOp->getContext());
-  if (failed(moveNpuSyncUsersAfterDma(rewriter, parentOp))) {
+  if (failed(moveNpuDmaSyncUsersAfterAncestorInSameBlock(rewriter, parentOp))) {
     parentOp->emitOpError() << "failed to move DMA users to correct scope "
                                "after strided op composition";
     return signalPassFailure();
