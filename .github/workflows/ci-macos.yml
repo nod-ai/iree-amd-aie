@@ -9,10 +9,10 @@ on:
     branches:
       - main
 
+  schedule:
+    - cron: '0 */6 * * *'
+
 concurrency:
-  # A PR number if a pull request and otherwise the commit hash. This cancels
-  # queued and in-progress runs for the same PR (presubmit) or commit
-  # (postsubmit).
   group: ci-build-test-cpp-macos-${{ github.event.number || github.sha }}
   cancel-in-progress: true
 
@@ -26,6 +26,7 @@ jobs:
         runs-on: [macos-12, macos-14]
     env:
       CACHE_DIR: ${{ github.workspace }}/.container-cache
+      CACHE_KEY: ${{ matrix.runs-on }}-build-test-cpp-asserts-v1-${{ github.event.number || format('{0}-{1}', github.ref_name, github.run_number) }}
     steps:
       - name: Set unified TZ
         uses: szenius/set-timezone@v2.0
@@ -60,22 +61,19 @@ jobs:
         uses: actions/cache/restore@v3
         with:
           path: ${{ env.CACHE_DIR }}
-          # without datetime stamps you'll get collisions for the cache warming runs
-          # ("Failed to save: Unable to reserve cache with key ..., another job may be creating this cache.")
-          key: ${{ matrix.runs-on }}-build-test-cpp-asserts-v1-${{ github.sha }}-${{ github.event.repository.updated_at }}
+          key: ${{ env.CACHE_KEY }}
           restore-keys: ${{ matrix.runs-on }}-build-test-cpp-
 
       - name: Build packages
         run: |
           export cache_dir="${{ env.CACHE_DIR }}"
+          export CCACHE_COMPILERCHECK="string:$(clang --version)"
           bash build_tools/ci/build_test_cpp.sh
 
       - name: Create artifacts
         if: ${{ !cancelled() }}
         run: |
-          rm -f iree-install/bin/clang*
-          rm -f iree-install/bin/llvm-link*
-          tar cf iree-dist-${{ matrix.runs-on }}.tar -C iree-install . -C ../iree-build tools/testing/e2e/iree-e2e-matmul-test
+          tar cf iree-dist-${{ matrix.runs-on }}.tar -C iree-install .
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
@@ -87,7 +85,7 @@ jobs:
 
       - name: Save cache
         uses: actions/cache/save@v3
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && github.event_name != 'pull_request' }}
         with:
           path: ${{ env.CACHE_DIR }}
-          key: ${{ matrix.runs-on }}-build-test-cpp-asserts-v1-${{ github.sha }}-${{ github.event.repository.updated_at }}
+          key: ${{ env.CACHE_KEY }}

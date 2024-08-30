@@ -312,8 +312,7 @@ static SmallVector<int64_t> setInnerPermB(bool isMatmulTransposeB) {
 
 static LogicalResult setRootConfigForPackPeelPipeline(
     mlir::FunctionOpInterface entryPointFn, linalg::LinalgOp linalgOp,
-    LowerToAIEPassPipeline useLowerToAIEPipeline, AIEConfig cfg,
-    bool isMatmulTransposeB) {
+    LowerToAIEPassPipeline useLowerToAIEPipeline, bool isMatmulTransposeB) {
   bool isObjectFifo =
       useLowerToAIEPipeline == LowerToAIEPassPipeline::ObjectFifo;
   auto maybePackPeelTiling =
@@ -389,7 +388,7 @@ static LogicalResult setRootConfigForPackPeelPipeline(
 
 static LogicalResult setRootConfigForPadPackPipeline(
     mlir::FunctionOpInterface entryPointFn, linalg::LinalgOp linalgOp,
-    AIEConfig cfg, bool isMatmulTransposeB) {
+    bool isMatmulTransposeB) {
   auto maybePadPackTiling = ParameterSetting::create(
       linalgOp, /*isPackPeel=*/false, /*isObjectFifo=*/false);
   if (failed(maybePadPackTiling)) return failure();
@@ -445,8 +444,7 @@ static LogicalResult setRootConfigForPadPackPipeline(
 //===----------------------------------------------------------------------===//
 
 static LogicalResult setRootConfigForConvDecomposePipeline(
-    mlir::FunctionOpInterface entryPointFn, linalg::LinalgOp linalgOp,
-    AIEConfig cfg) {
+    mlir::FunctionOpInterface entryPointFn, linalg::LinalgOp linalgOp) {
   FailureOr<std::array<uint32_t, 3>> maybeInstructionSize =
       getMatmulInstructionSize(linalgOp);
   int64_t OW = 4;
@@ -606,13 +604,13 @@ static bool isMatmulTransposeB(linalg::GenericOp genericOp) {
 /// transposition.
 static LogicalResult setTransposeLikeOpRootConfig(
     mlir::FunctionOpInterface entryPointFn, linalg::LinalgOp linalgOp,
-    TilePassPipeline passPipeline, LowerToAIEPassPipeline useLowerToAIEPipeline,
-    AIEConfig cfg) {
+    TilePassPipeline passPipeline,
+    LowerToAIEPassPipeline useLowerToAIEPipeline) {
   if (passPipeline == TilePassPipeline::PackPeelPipeline)
     return setRootConfigForPackPeelPipeline(entryPointFn, linalgOp,
-                                            useLowerToAIEPipeline, cfg, true);
+                                            useLowerToAIEPipeline, true);
   else if (passPipeline == TilePassPipeline::PadPackPipeline)
-    return setRootConfigForPadPackPipeline(entryPointFn, linalgOp, cfg, true);
+    return setRootConfigForPadPackPipeline(entryPointFn, linalgOp, true);
   return linalgOp.emitError(
       "Unhandled pass pipeline in setTransposeLikeOpRootConfig.");
 }
@@ -621,17 +619,16 @@ static LogicalResult setTransposeLikeOpRootConfig(
 // Root Configurations
 //===----------------------------------------------------------------------===//
 
-static LogicalResult setRootConfig(mlir::FunctionOpInterface entryPointFn,
-                                   linalg::GenericOp genericOp,
-                                   TilePassPipeline passPipeline,
-                                   LowerToAIEPassPipeline useLowerToAIEPipeline,
-                                   AIEConfig cfg) {
+static LogicalResult setRootConfig(
+    mlir::FunctionOpInterface entryPointFn, linalg::GenericOp genericOp,
+    TilePassPipeline passPipeline,
+    LowerToAIEPassPipeline useLowerToAIEPipeline) {
   assert(!getLoweringConfig<IREE::Codegen::LoweringConfigAttr>(genericOp) &&
          "expected lowering_config is not set");
 
   if (isMatmulTransposeB(genericOp) &&
       succeeded(setTransposeLikeOpRootConfig(
-          entryPointFn, genericOp, passPipeline, useLowerToAIEPipeline, cfg))) {
+          entryPointFn, genericOp, passPipeline, useLowerToAIEPipeline))) {
     return success();
   }
 
@@ -640,18 +637,16 @@ static LogicalResult setRootConfig(mlir::FunctionOpInterface entryPointFn,
 
 /// Sets the lowering configuration for dispatch region with root op that
 /// implements the contraction operation interface.
-static LogicalResult setRootConfig(mlir::FunctionOpInterface entryPointFn,
-                                   linalg::ContractionOpInterface contractionOp,
-                                   TilePassPipeline passPipeline,
-                                   LowerToAIEPassPipeline useLowerToAIEPipeline,
-                                   AIEConfig cfg) {
+static LogicalResult setRootConfig(
+    mlir::FunctionOpInterface entryPointFn,
+    linalg::ContractionOpInterface contractionOp, TilePassPipeline passPipeline,
+    LowerToAIEPassPipeline useLowerToAIEPipeline) {
   assert(!getLoweringConfig<IREE::Codegen::LoweringConfigAttr>(contractionOp) &&
          "expected lowering_config is not set");
   auto linalgOp = cast<linalg::LinalgOp>(contractionOp.getOperation());
   if (isa<linalg::MatmulTransposeBOp>(linalgOp)) {
-    if (succeeded(setTransposeLikeOpRootConfig(entryPointFn, linalgOp,
-                                               passPipeline,
-                                               useLowerToAIEPipeline, cfg))) {
+    if (succeeded(setTransposeLikeOpRootConfig(
+            entryPointFn, linalgOp, passPipeline, useLowerToAIEPipeline))) {
       return success();
     }
     return failure();
@@ -672,31 +667,30 @@ static LogicalResult setRootConfig(mlir::FunctionOpInterface entryPointFn,
   // approach which will have different tile sizes and pass pipelines
   if (passPipeline == TilePassPipeline::PackPeelPipeline)
     return setRootConfigForPackPeelPipeline(entryPointFn, linalgOp,
-                                            useLowerToAIEPipeline, cfg, false);
+                                            useLowerToAIEPipeline, false);
   if (passPipeline == TilePassPipeline::PadPackPipeline)
-    return setRootConfigForPadPackPipeline(entryPointFn, linalgOp, cfg, false);
+    return setRootConfigForPadPackPipeline(entryPointFn, linalgOp, false);
   return linalgOp.emitError("Unhandled pass pipeline in setRootConfig.");
 }
 
 static LogicalResult setConvRootConfig(mlir::FunctionOpInterface entryPointFn,
                                        linalg::ConvolutionOpInterface convOp,
-                                       TilePassPipeline passPipeline,
-                                       AIEConfig cfg) {
+                                       TilePassPipeline passPipeline) {
   assert(!getLoweringConfig<IREE::Codegen::LoweringConfigAttr>(convOp) &&
          "expected lowering_config is not set");
   auto linalgOp = cast<linalg::LinalgOp>(convOp.getOperation());
 
   // Current tiling strategy is based on llvm-cpu ConvTileAndDecomposeExpert.
   if (passPipeline == TilePassPipeline::ConvDecomposePipeline)
-    return setRootConfigForConvDecomposePipeline(entryPointFn, linalgOp, cfg);
+    return setRootConfigForConvDecomposePipeline(entryPointFn, linalgOp);
   return linalgOp.emitError("Unhandled pass pipeline in setConvRootConfig.");
 }
 
 /// Redirects to methods that set the configuration based on operation type.
 static LogicalResult setRootConfigImpl(
     mlir::FunctionOpInterface entryPointFn, Operation *op,
-    TilePassPipeline passPipeline, LowerToAIEPassPipeline useLowerToAIEPipeline,
-    AIEConfig cfg) {
+    TilePassPipeline passPipeline,
+    LowerToAIEPassPipeline useLowerToAIEPipeline) {
   auto setRootConfigFn = [&](Operation *op) -> LogicalResult {
     return TypeSwitch<Operation *, LogicalResult>(op)
         // TODO (nmeshram): This is very limited for now, plan is to
@@ -706,15 +700,15 @@ static LogicalResult setRootConfigImpl(
         .Case<linalg::Conv2DNhwcHwcfOp, linalg::Conv2DNchwFchwOp,
               linalg::Conv2DNhwcHwcfQOp, linalg::DepthwiseConv2DNhwcHwcOp>(
             [&](auto op) {
-              return setConvRootConfig(entryPointFn, op, passPipeline, cfg);
+              return setConvRootConfig(entryPointFn, op, passPipeline);
             })
         .Case<linalg::GenericOp>([&](auto op) {
           return setRootConfig(entryPointFn, op, passPipeline,
-                               useLowerToAIEPipeline, cfg);
+                               useLowerToAIEPipeline);
         })
         .Case<linalg::ContractionOpInterface>([&](auto op) {
           return setRootConfig(entryPointFn, op, passPipeline,
-                               useLowerToAIEPipeline, cfg);
+                               useLowerToAIEPipeline);
         })
         .Default([&](Operation *op) { return success(); });
   };
@@ -724,8 +718,8 @@ static LogicalResult setRootConfigImpl(
 /// Sets the translation information to use for a dispatch region.
 static LogicalResult setTranslationInfoAndRootConfig(
     mlir::FunctionOpInterface entryPointFn, ArrayRef<Operation *> computeOps,
-    TilePassPipeline passPipeline, LowerToAIEPassPipeline useLowerToAIEPipeline,
-    AIEConfig cfg) {
+    TilePassPipeline passPipeline,
+    LowerToAIEPassPipeline useLowerToAIEPipeline) {
   // Make sure that lowering_config is not preset on any compute ops.
   for (auto computeOp : computeOps) {
     if (getLoweringConfig<IREE::Codegen::LoweringConfigAttr>(computeOp))
@@ -741,7 +735,7 @@ static LogicalResult setTranslationInfoAndRootConfig(
     return entryPointFn.emitError("Case with no root ops not yet supported.");
 
   if (failed(setRootConfigImpl(entryPointFn, rootOperation, passPipeline,
-                               useLowerToAIEPipeline, cfg)))
+                               useLowerToAIEPipeline)))
     return failure();
   return success();
 }
@@ -750,10 +744,9 @@ static LogicalResult setTranslationInfoAndRootConfig(
 // Entry Point
 //===----------------------------------------------------------------------===//
 
-LogicalResult initAIELaunchConfig(FunctionOpInterface funcOp,
-                                  TilePassPipeline passPipeline,
-                                  LowerToAIEPassPipeline useLowerToAIEPipeline,
-                                  AIEConfig cfg) {
+LogicalResult initAIELaunchConfig(
+    FunctionOpInterface funcOp, TilePassPipeline passPipeline,
+    LowerToAIEPassPipeline useLowerToAIEPipeline) {
   if (getTranslationInfo(funcOp)) return success();
 
   // TODO (nmeshram): Need a default pipeline for control flow cases.
@@ -762,7 +755,7 @@ LogicalResult initAIELaunchConfig(FunctionOpInterface funcOp,
 
   SmallVector<Operation *> computeOps = getComputeOps(funcOp);
   if (failed(setTranslationInfoAndRootConfig(funcOp, computeOps, passPipeline,
-                                             useLowerToAIEPipeline, cfg)))
+                                             useLowerToAIEPipeline)))
     return failure();
 
   // The root configuration setting introduces `tensor.dim` operations.

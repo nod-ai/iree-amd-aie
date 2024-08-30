@@ -79,7 +79,7 @@ func.func @link_multiple_inputs_with_overlapping_access(%arg0: memref<32x1024xi3
   %2 = amdaie.logicalobjectfifo.from_memref %arg2, {} : memref<8x8x4x8xi32, 2> -> !amdaie.logicalobjectfifo<memref<8x8x4x8xi32, 2>>
   %3 = amdaie.circular_dma_cpy_nd(%1[0] [1024] [1], %0[] [] []) : (!amdaie.logicalobjectfifo<memref<3x32x64xi32, 1>>, !amdaie.logicalobjectfifo<memref<32x1024xi32>>)
   %4 = amdaie.circular_dma_cpy_nd(%1[1, 0] [1, 1024] [2048, 1], %0[] [] []) : (!amdaie.logicalobjectfifo<memref<3x32x64xi32, 1>>, !amdaie.logicalobjectfifo<memref<32x1024xi32>>)
-  // expected-error @+1 {{access pattern of strided operation overlaps with next one}}
+  // expected-error @+1 {{op has access pattern of which isn't contiguous with next one}}
   %5 = amdaie.circular_dma_cpy_nd(%1[1, 0] [1, 1025] [1024, 1], %0[] [] []) : (!amdaie.logicalobjectfifo<memref<3x32x64xi32, 1>>, !amdaie.logicalobjectfifo<memref<32x1024xi32>>)
   %6 = amdaie.circular_dma_cpy_nd(%2[] [] [], %1[] [] []) : (!amdaie.logicalobjectfifo<memref<8x8x4x8xi32, 2>>, !amdaie.logicalobjectfifo<memref<3x32x64xi32, 1>>)
   return
@@ -151,7 +151,7 @@ func.func @link_multiple_outputs_with_overlapping_access(%arg0: memref<32x1024xi
   %3 = amdaie.circular_dma_cpy_nd(%1[] [] [], %0[] [] []) : (!amdaie.logicalobjectfifo<memref<3x32x64xi32, 1>>, !amdaie.logicalobjectfifo<memref<32x1024xi32>>)
   %4 = amdaie.circular_dma_cpy_nd(%2[] [] [], %1[1, 0] [1, 1024] [2048, 1]) : (!amdaie.logicalobjectfifo<memref<8x8x4x8xi32, 2>>, !amdaie.logicalobjectfifo<memref<3x32x64xi32, 1>>)
   %5 = amdaie.circular_dma_cpy_nd(%2[] [] [], %1[1, 0] [1, 1024] [1024, 1]) : (!amdaie.logicalobjectfifo<memref<8x8x4x8xi32, 2>>, !amdaie.logicalobjectfifo<memref<3x32x64xi32, 1>>)
-  // expected-error @+1 {{access pattern of strided operation overlaps with next one}}
+  // expected-error @+1 {{op has access pattern of which isn't contiguous with next one}}
   %6 = amdaie.circular_dma_cpy_nd(%2[] [] [], %1[0, 0] [32, 32] [64, 1]) : (!amdaie.logicalobjectfifo<memref<8x8x4x8xi32, 2>>, !amdaie.logicalobjectfifo<memref<3x32x64xi32, 1>>)
   return
 }
@@ -243,7 +243,7 @@ func.func @ensure_no_removal_of_offsets(%arg0: memref<32x1024xi32>, %arg1: memre
 
 func.func @link_different_blocks(%arg0: memref<32x1024xi32>, %arg1: memref<32x64xi32, 1>, %arg2: memref<8x8x4x8xi32, 2>) {
   %0 = amdaie.logicalobjectfifo.from_memref %arg0, {} :memref<32x1024xi32> -> !amdaie.logicalobjectfifo<memref<32x1024xi32>>
-  // expected-error @+2 {{does have copy-like users not residing in the same block}}
+  // expected-error @+2 {{has copy-like users not residing in the same block}}
   // expected-error @+1 {{couldn't create a link operation}}
   %1 = amdaie.logicalobjectfifo.from_memref %arg1, {} : memref<32x64xi32, 1> -> !amdaie.logicalobjectfifo<memref<32x64xi32, 1>>
   %2 = amdaie.logicalobjectfifo.from_memref %arg2, {} : memref<8x8x4x8xi32, 2> -> !amdaie.logicalobjectfifo<memref<8x8x4x8xi32, 2>>

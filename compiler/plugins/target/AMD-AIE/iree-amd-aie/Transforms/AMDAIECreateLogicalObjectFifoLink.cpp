@@ -32,9 +32,9 @@ namespace mlir::iree_compiler::AMDAIE {
 /// these two access patterns overlap by both accessing elements in range [32,
 /// 63].
 template <CopyOpOperateOn OperateOn>
-LogicalResult checkForNoOverlappingAccessPatterns(
-    const SmallVector<std::pair<DoublyStridedCopyOpInterface, int64_t>>
-        &stridedOps) {
+LogicalResult checkForContiguousAccessPatterns(
+    ArrayRef<std::pair<DoublyStridedCopyOpInterface, int64_t>> stridedOps) {
+
   for (auto &&[i, stridedOpAndOffset] : llvm::enumerate(stridedOps)) {
     DoublyStridedCopyOpInterface stridedOp = stridedOpAndOffset.first;
     std::optional<int64_t> extent;
@@ -45,14 +45,26 @@ LogicalResult checkForNoOverlappingAccessPatterns(
     }
     if (!extent) {
       return stridedOp.emitOpError()
-             << "non-constant access extent is not supported";
+             << "has a non-constant access extent, which is not supported";
     }
     int64_t offset = stridedOpAndOffset.second;
-    if (i < (stridedOps.size() - 1) &&
-        (offset + extent.value()) > stridedOps[i + 1].second) {
-      return stridedOp.emitOpError()
-             << "access pattern of strided operation overlaps with next one, "
-                "which is not supported for now";
+    if (i < (stridedOps.size() - 1)) {
+      if (offset + extent.value() != stridedOps[i + 1].second) {
+        // TODO(newling) my understanding from the code is that the link
+        // operation effectively replaces the cumulative offset of each
+        // circular_dma_cpy_nd with the differential offset with
+        // the previous circular_dma_cpy_nd in the 'link' list.
+        //
+        // This however is hardcoded to a zero offset (later in the pass where
+        // discardAllNonZeroOffsets is called, offsets are set to zero). This
+        // effectively is constraining the link operation to only work with
+        // contiguous access patterns.
+        //
+        // Is this a bug?
+        return stridedOp.emitOpError()
+               << "has access pattern of which isn't contiguous with next one "
+                  "-- not currently supported.";
+      }
     }
   }
   return success();
@@ -81,9 +93,8 @@ LogicalResult createLogicalObjectFifoLink(
   for (Operation *userOp : logicalObjectFifo->getUsers()) {
     if (auto stridedOp = dyn_cast<DoublyStridedCopyOpInterface>(userOp)) {
       if (lastUserOp && stridedOp->getBlock() != lastUserOp->getBlock()) {
-        logicalObjectFifo->emitError(
-            "does have copy-like users not residing in the same block");
-        return failure();
+        return logicalObjectFifo->emitOpError(
+            "has copy-like users not residing in the same block");
       }
       auto sourceLogicalObjectFifo =
           dyn_cast<AMDAIE::LogicalObjectFifoFromMemrefOp>(
@@ -130,11 +141,11 @@ LogicalResult createLogicalObjectFifoLink(
   // Check that access patterns are not overlapping between consumers
   // respectively producers.
   if (failed(
-          checkForNoOverlappingAccessPatterns<CopyOpOperateOn::Target>(ins))) {
+          checkForContiguousAccessPatterns<CopyOpOperateOn::Target>(ins))) {
     return failure();
   }
   if (failed(
-          checkForNoOverlappingAccessPatterns<CopyOpOperateOn::Source>(outs))) {
+          checkForContiguousAccessPatterns<CopyOpOperateOn::Source>(outs))) {
     return failure();
   }
 
