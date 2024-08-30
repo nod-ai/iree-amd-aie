@@ -603,45 +603,46 @@ static LogicalResult generateCoreElfFiles(
       chessArgs.emplace_back("-o");
       chessArgs.emplace_back(elfFile.string());
       std::vector<std::string> env = makeChessEnv(*vitisDir, npuVersion);
-      return runTool(xChessCCExe, chessArgs, verbose, env);
-    }
+      if (failed(runTool(xChessCCExe, chessArgs, verbose, env))) {
+        return deviceOp.emitOpError() << "failed to generate elf for core: ("
+                                      << col << ", " << row << ")";
+      }
+    } else {
+      Path ldscriptPath = tempDir / (elfFileName + ".ld");
+      {
+        auto ldscriptOutput =
+            openOutputFile(ldscriptPath.string(), &errorMessage);
+        if (!ldscriptOutput) {
+          llvm::errs() << "Failed to open ldscript file because: "
+                       << errorMessage;
+          return failure();
+        }
+        if (failed(mlir::iree_compiler::AMDAIE::AIETranslateToLdScript(
+                deviceOp, ldscriptOutput->os(), col, row))) {
+          return failure();
+        }
+        ldscriptOutput->keep();
+      }
 
-    Path ldscriptPath = tempDir / (elfFileName + ".ld");
-    {
-      auto ldscriptOutput =
-          openOutputFile(ldscriptPath.string(), &errorMessage);
-      if (!ldscriptOutput) {
-        llvm::errs() << "Failed to open ldscript file because: "
-                     << errorMessage;
+      std::string targetLower = StringRef(targetArch).lower();
+      std::vector<std::string> flags;
+      flags.emplace_back(objFile);
+      if (ukernel && (ukernel == "mm" || ukernel == "all")) {
+        flags.emplace_back(mmObjectFilePath->string());
+      }
+      flags.emplace_back("--target=" + targetLower + "-none-unknown-elf");
+      flags.emplace_back("-Wl,--gc-sections");
+      flags.emplace_back("-Wl,--orphan-handling=error");
+      flags.emplace_back("-Wl,-T," + ldscriptPath.string());
+      flags.emplace_back("-o");
+      flags.emplace_back(elfFile.string());
+      if (verbose) flags.emplace_back("-v");
+      // we run clang (ie cc) so that libc, libm, crt0/1 paths are injected
+      // automatically into the ld.lld invocation
+      if (failed(
+              runTool((peanoDir / "bin" / "clang").string(), flags, verbose))) {
         return failure();
       }
-      if (failed(mlir::iree_compiler::AMDAIE::AIETranslateToLdScript(
-              deviceOp, ldscriptOutput->os(), col, row))) {
-        llvm::errs() << "failed to generate ld script for core (" << col << ","
-                     << row << ")\n";
-        return failure();
-      }
-      ldscriptOutput->keep();
-    }
-
-    std::string targetLower = StringRef(targetArch).lower();
-    std::vector<std::string> flags;
-    flags.emplace_back(objFile);
-    if (ukernel && (ukernel == "mm" || ukernel == "all")) {
-      flags.emplace_back(mmObjectFilePath->string());
-    }
-    flags.emplace_back("--target=" + targetLower + "-none-unknown-elf");
-    flags.emplace_back("-Wl,--gc-sections");
-    flags.emplace_back("-Wl,--orphan-handling=error");
-    flags.emplace_back("-Wl,-T," + ldscriptPath.string());
-    flags.emplace_back("-o");
-    flags.emplace_back(elfFile.string());
-    if (verbose) flags.emplace_back("-v");
-    // we run clang (ie cc) so that libc, libm, crt0/1 paths are injected
-    // automatically into the ld.lld invocation
-    if (failed(
-            runTool((peanoDir / "bin" / "clang").string(), flags, verbose))) {
-      return failure();
     }
   }
   return success();
@@ -1149,7 +1150,6 @@ LogicalResult aie2xclbin(
     const std::string &xclBinInstanceName, const std::string &amdAIEInstallDir,
     const std::optional<std::string> &InputXCLBin,
     const std::optional<std::string> &ukernel) {
-
   FailureOr<ArrayRef<uint32_t>> maybeNpuInstructions =
       getNpuInstructions(deviceOp);
   if (failed(maybeNpuInstructions)) {
