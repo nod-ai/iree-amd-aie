@@ -9,6 +9,11 @@ on:
     branches:
       - main
 
+  schedule:
+    # At minute 0 past every 6th hour. (see https://crontab.guru)
+    # this job is to keep the ccache cache warm
+    - cron: '0 */6 * * *'
+
 concurrency:
   # A PR number if a pull request and otherwise the commit hash. This cancels
   # queued and in-progress runs for the same PR (presubmit) or commit
@@ -24,6 +29,8 @@ jobs:
       fail-fast: true
     env:
       CACHE_DIR: ${{ github.workspace }}/.container-cache
+      # either the PR number or `branch-N` where N always increments
+      CACHE_KEY: linux-build-test-cpp-asserts-manylinux-v2-${{ github.event.number || format('{0}-{1}', github.ref_name, github.run_number) }}
     steps:
       - name: Set unified TZ
         uses: szenius/set-timezone@v2.0
@@ -42,11 +49,11 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Install static libs
+      - name: Install deps
         run: |
-          dnf install -y almalinux-release-devel
           yum remove -y openssl-devel zlib-devel || true
           yum install -y protobuf-devel protobuf-compiler
+
       - name: Sync source deps
         run: |
           python ./sync_deps.py
@@ -59,8 +66,17 @@ jobs:
         uses: actions/cache/restore@v3
         with:
           path: ${{ env.CACHE_DIR }}
-          key: linux-build-test-cpp-asserts-manylinux-v2-${{ github.sha }}
+          key:  ${{ env.CACHE_KEY }}
           restore-keys: linux-build-test-cpp-
+
+      - name: Configure ccache debug logs
+        run: |
+          # https://interrupt.memfault.com/blog/ccache-debugging
+          echo CCACHE_DEBUG=1 >> $GITHUB_ENV
+          echo CCACHE_DEBUGLEVEL=2 >> $GITHUB_ENV
+          echo CCACHE_DEBUGDIR="$HOME/ccache-debug" >> $GITHUB_ENV
+          echo CCACHE_SLOPPINESS=include_file_ctime,include_file_mtime,time_macros >> $GITHUB_ENV
+          echo CCACHE_COMPILERCHECK=content >> $GITHUB_ENV
 
       - name: Build packages
         run: |
@@ -72,6 +88,20 @@ jobs:
         run: |
           tar cf iree-dist-linux.tar -C iree-install .
 
+      - name: Tar ccache logs
+        if: ${{ !cancelled() }}
+        run: |
+          ccache --show-stats -v
+          tar cf linux-ccache-logs.tar $CCACHE_DEBUGDIR
+
+      - name: Upload ccache logs
+        uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: ccache_logs
+          path: linux-ccache-logs.tar
+          if-no-files-found: warn
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         if: ${{ !cancelled() }}
@@ -82,10 +112,10 @@ jobs:
 
       - name: Save cache
         uses: actions/cache/save@v3
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && github.event_name != 'pull_request' }}
         with:
           path: ${{ env.CACHE_DIR }}
-          key: linux-build-test-cpp-asserts-manylinux-v2-${{ github.sha }}
+          key: ${{ env.CACHE_KEY }}
 
   test_linux:
     name: E2E Test linux
