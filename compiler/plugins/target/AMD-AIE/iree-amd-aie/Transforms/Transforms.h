@@ -8,6 +8,7 @@
 #define IREE_AMD_AIE_TRANSFORMS_AMDAIETRANSFORMS_H_
 
 #include "iree-amd-aie/IR/AMDAIEOps.h"
+#include "iree-amd-aie/aie_runtime/iree_aie_runtime.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 
@@ -37,6 +38,14 @@ LogicalResult normalizeLoopBounds(RewriterBase &rewriter, scf::ForOp forOp);
 /// and step == 1.
 LogicalResult normalizeLoopBounds(RewriterBase &rewriter,
                                   scf::ForallOp forallOp);
+
+/// Populate patterns that subsume loops iterations into DMA access patterns.
+void populateDmaLoopSubsumptionPattern(RewritePatternSet &patterns,
+                                       AMDAIE::AMDAIEDeviceModel &&deviceModel,
+                                       bool onlyZeroStrideOnOuterDim);
+
+/// Populate patterns that combine strided ops in the same block.
+void populateStridedOpCombinationPattern(RewritePatternSet &patterns);
 
 }  // namespace mlir::iree_compiler::AMDAIE
 

@@ -60,6 +60,7 @@ iree_cc_library(
     "AMDAIECreateLogicalObjectFifoLink.cpp"
     "AMDAIECreateReferenceToAllocation.cpp"
     "AMDAIEDistributeCoresAndObjectFifos.cpp"
+    "AMDAIEDmaComposition.cpp"
     "AMDAIEDmaLoopSubsumption.cpp"
     "AMDAIEDmaToCircularDma.cpp"
     "AMDAIEDmaUtils.cpp"

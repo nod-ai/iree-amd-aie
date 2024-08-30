@@ -122,6 +122,12 @@ std::unique_ptr<Pass> createAMDAIEDecomposeLinalgExtPackUnPackToAIRPass();
 /// operations and distribute the logical objectFifos.
 std::unique_ptr<Pass> createAMDAIEDistributeCoresAndObjectFifosPass();
 
+/// Create a pass to compose more complex DMA operations, e.g. by combining DMA
+/// operations and/or subsuming loop iterations into the strided access
+/// patterns.
+std::unique_ptr<Pass> createAMDAIEDmaCompositionPass(
+    AMDAIEDmaCompositionOptions options = {});
+
 /// Create a pass to subsume loop iterations into DMA operations' access
 /// patterns.
 std::unique_ptr<Pass> createAMDAIEDmaLoopSubsumptionPass(

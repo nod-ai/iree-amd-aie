@@ -173,6 +173,17 @@ def AMDAIEDistributeCoresAndObjectFifos :
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEDistributeCoresAndObjectFifosPass()";
 }
 
+def AMDAIEDmaComposition :
+  Pass<"iree-amdaie-dma-composition"> {
+  let summary = "Compose DMA operations by DMA combination and loop subsumption.";
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEDmaCompositionPass()";
+  let options = [
+    Option<"onlyZeroStrideOnOuterDim", "only-zero-stride-on-outer-dim", "bool", /*default=*/"true",
+      "Whether a stride of zero indicating a repeat is only supported on the "
+      "outer dimension. This is the case of AIE2(+).">
+  ];
+}
+
 def AMDAIEDmaLoopSubsumption :
   Pass<"iree-amdaie-dma-loop-subsumption"> {
   let summary = "Subsume loop iterations into DMA operations' access patterns.";
@@ -458,7 +469,6 @@ def AMDAIESinkIntoCore :
   }];
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIESinkIntoCorePass()";
 }
-
 
 def AMDAIETile :
     InterfacePass<"iree-amdaie-tile", "mlir::FunctionOpInterface"> {

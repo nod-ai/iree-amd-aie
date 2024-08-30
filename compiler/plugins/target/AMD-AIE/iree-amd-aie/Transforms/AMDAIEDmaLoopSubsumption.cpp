@@ -25,6 +25,7 @@
 #include "iree-amd-aie/Transforms/AMDAIEDmaUtils.h"
 #include "iree-amd-aie/Transforms/AMDAIEUtils.h"
 #include "iree-amd-aie/Transforms/Passes.h"
+#include "iree-amd-aie/Transforms/Transforms.h"
 #include "iree-amd-aie/aie_runtime/iree_aie_runtime.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
@@ -48,15 +49,6 @@ int64_t calculateNbIterations(int64_t lowerBound, int64_t upperBound,
 }
 
 namespace {
-
-/// Return an ancestor of 'op' in 'block', or nullptr if no such ancestor.
-Operation *getAncestorInBlock(Operation *op, Block *block) {
-  if (!op || !block) return nullptr;
-  auto parent = op;
-  while (parent && (parent->getBlock() != block))
-    parent = parent->getParentOp();
-  return parent;
-}
 
 /// Utility affine expression visitor to retrieve the scale and optional bias
 /// from the expression.
@@ -111,31 +103,6 @@ struct RetrieveScaleAndBias
     }
   }
 };
-
-/// Utility to clean up the DMA users after loop subsumption + hoisting. This
-/// will hoist `amdaie.npu.dma_cpy_nd`'s users like `npu.dma_wait` as well.
-LogicalResult moveUsersToHoistedDMAScope(Operation *parentOp) {
-  IRRewriter rewriter(parentOp->getContext());
-  // Move `amdaie.npu.dma_wait` operation after the parent op in the same block
-  // as the input `amdaie.npu.dma_cpy_nd` operation. This parent op will
-  // typically be a loop out of which the DMA operation has been hoisted. Moving
-  // the wait operation after this loop is important to avoid a deadlock with
-  // whatever operations are still remaining inside the loop's scope.
-  WalkResult res = parentOp->walk([&](AMDAIE::NpuDmaWaitOp npuDmaWaitOp) {
-    Operation *dmaOp = npuDmaWaitOp.getDma().getDefiningOp();
-    Operation *ancestorInSameBlock =
-        getAncestorInBlock(npuDmaWaitOp, dmaOp->getBlock());
-    if (!ancestorInSameBlock) {
-      npuDmaWaitOp->emitOpError(
-          "doesn't have an ancestor in the same scope as the source DMA op");
-      return WalkResult::interrupt();
-    }
-    rewriter.moveOpAfter(npuDmaWaitOp, ancestorInSameBlock);
-    return WalkResult::advance();
-  });
-  if (res.wasInterrupted()) return failure();
-  return success();
-}
 
 struct SubsumeLoopIntoDMA
     : public OpInterfaceRewritePattern<AMDAIE::DoublyStridedOpInterface> {
@@ -594,7 +561,7 @@ class AMDAIEDmaLoopSubsumptionPass
   }
 
   AMDAIEDmaLoopSubsumptionPass() = default;
-  AMDAIEDmaLoopSubsumptionPass(const AMDAIEDmaLoopSubsumptionPass &pass) {};
+  AMDAIEDmaLoopSubsumptionPass(const AMDAIEDmaLoopSubsumptionPass &pass){};
   AMDAIEDmaLoopSubsumptionPass(const AMDAIEDmaLoopSubsumptionOptions &options)
       : AMDAIEDmaLoopSubsumptionBase(options) {}
   void runOnOperation() override;
@@ -605,7 +572,6 @@ void AMDAIEDmaLoopSubsumptionPass::runOnOperation() {
   MLIRContext *context = &getContext();
 
   RewritePatternSet patterns(context);
-
   {
     auto targetAttr = IREE::HAL::ExecutableTargetAttr::lookup(parentOp);
     std::optional<AMDAIEDevice> maybeDevice = getConfigAMDAIEDevice(targetAttr);
@@ -619,11 +585,8 @@ void AMDAIEDmaLoopSubsumptionPass::runOnOperation() {
     }
     AMDAIE::AMDAIEDeviceModel deviceModel =
         AMDAIE::getDeviceModel(maybeDevice.value());
-
-    SubsumeLoopIntoDMA pattern(context, std::move(deviceModel),
-                               onlyZeroStrideOnOuterDim);
-
-    patterns.insert<SubsumeLoopIntoDMA>(std::move(pattern));
+    populateDmaLoopSubsumptionPattern(patterns, std::move(deviceModel),
+                                      onlyZeroStrideOnOuterDim);
   }
 
   if (failed(applyPatternsAndFoldGreedily(parentOp, std::move(patterns)))) {
@@ -631,7 +594,8 @@ void AMDAIEDmaLoopSubsumptionPass::runOnOperation() {
     return signalPassFailure();
   }
 
-  if (failed(moveUsersToHoistedDMAScope(parentOp))) {
+  IRRewriter rewriter(parentOp->getContext());
+  if (failed(moveNpuDmaSyncUsersAfterAncestorInSameBlock(rewriter, parentOp))) {
     parentOp->emitOpError(
         "failed to move DMA users to correct scope after loop subsumption");
     return signalPassFailure();
@@ -639,6 +603,14 @@ void AMDAIEDmaLoopSubsumptionPass::runOnOperation() {
 }
 
 }  // namespace
+
+void populateDmaLoopSubsumptionPattern(RewritePatternSet &patterns,
+                                       AMDAIE::AMDAIEDeviceModel &&deviceModel,
+                                       bool onlyZeroStrideOnOuterDim) {
+  SubsumeLoopIntoDMA pattern(patterns.getContext(), std::move(deviceModel),
+                             onlyZeroStrideOnOuterDim);
+  patterns.insert<SubsumeLoopIntoDMA>(std::move(pattern));
+}
 
 std::unique_ptr<Pass> createAMDAIEDmaLoopSubsumptionPass(
     AMDAIEDmaLoopSubsumptionOptions options) {
