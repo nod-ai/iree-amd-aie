@@ -8,12 +8,12 @@ iree_lit_test_suite(
   NAME
     lit
   SRCS
-    "conv_pipeline_e2e.mlir"
-    "matmul_peeled_objectfifo.mlir"
-    "matmul_peeled_objectfifo_e2e.mlir"
-    "pack_peel_pipeline_matmul.mlir"
-    "pack_peel_pipeline_matmul_elementwise.mlir"
-    "pad_pack_pipeline_e2e.mlir"
+    "conv2d_nhwc_air_e2e.mlir"
+    "matmul_elementwise_pack_peel_air_e2e.mlir"
+    "matmul_pack_peel_air_e2e.mlir"
+    "matmul_pack_peel_objectfifo.mlir"
+    "matmul_pack_peel_objectfifo_e2e.mlir"
+    "matmul_pad_pack_air_e2e.mlir"
     "xdna_oplib_plugin.mlir"
   TOOLS
     ${IREE_LLD_TARGET}

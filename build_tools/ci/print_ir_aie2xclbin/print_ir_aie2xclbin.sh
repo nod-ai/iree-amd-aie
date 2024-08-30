@@ -93,7 +93,6 @@ ${SOURCE_MLIR_FILE} \
 --mlir-print-ir-after-all \
 --mlir-print-ir-module-scope \
 --mlir-disable-threading \
---iree-amdaie-tile-pipeline=pad-pack \
 -o ${OUTPUT}/test_artefact.vmfb \
 --iree-amd-aie-show-invoked-commands"
 
@@ -147,6 +146,7 @@ IREE_COMPILE_COMMAND="${IREE_COMPILE_EXE} \
 ${SOURCE_MLIR_FILE} \
 --compile-mode=hal-executable \
 --iree-hal-target-backends=amd-aie \
+--iree-amdaie-lower-to-aie-pipeline=air \
 --iree-amd-aie-peano-install-dir=${PEANO} \
 --iree-amd-aie-install-dir=${IREE_INSTALL_DIR} \
 --iree-hal-dump-executable-intermediates-to=${OUTPUT} \
@@ -169,6 +169,7 @@ IREE_COMPILE_COMMAND="${IREE_COMPILE_EXE} \
 ${SOURCE_MLIR_FILE} \
 --compile-mode=hal-executable \
 --iree-hal-target-backends=amd-aie \
+--iree-amdaie-lower-to-aie-pipeline=air \
 --iree-amd-aie-peano-install-dir=${PEANO} \
 --iree-amd-aie-install-dir=${IREE_INSTALL_DIR} \
 --iree-hal-dump-executable-intermediates-to=${OUTPUT} \

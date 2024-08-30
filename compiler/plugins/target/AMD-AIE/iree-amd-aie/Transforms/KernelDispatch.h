@@ -35,16 +35,9 @@ enum class PeelingType { First, Last, FirstLast };
 /// Enum for operands to be bufferized to allocation.
 enum class BufferizeOperand { InputOutput, Input, Output, DefOp };
 
-/// Struct specifying the number of cores to use. This will be replaced
-/// by a more versatile handling in the future.
-struct AIEConfig {
-  int32_t num_cores;
-};
-
 LogicalResult initAIELaunchConfig(FunctionOpInterface funcOp,
                                   TilePassPipeline usePassPipeline,
-                                  LowerToAIEPassPipeline useLowerToAIEPipeline,
-                                  AIEConfig cfg);
+                                  LowerToAIEPassPipeline useLowerToAIEPipeline);
 
 }  // namespace mlir::iree_compiler::AMDAIE
 
