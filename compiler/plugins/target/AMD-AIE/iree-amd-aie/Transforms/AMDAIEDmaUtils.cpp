@@ -12,6 +12,15 @@
 
 namespace mlir::iree_compiler::AMDAIE {
 
+/// Return an ancestor of 'op' in 'block', or nullptr if no such ancestor.
+Operation *getAncestorInBlock(Operation *op, Block *block) {
+  if (!op || !block) return nullptr;
+  auto parent = op;
+  while (parent && (parent->getBlock() != block))
+    parent = parent->getParentOp();
+  return parent;
+}
+
 /// Utility to retrieve a constant index from an OpFoldResult.
 int64_t getConstantIndexOrAssert(OpFoldResult dim) {
   std::optional<int64_t> size = getConstantIntValue(dim);
@@ -315,6 +324,24 @@ LogicalResult foldUnitDims(const SmallVector<OpFoldResult> &offsets,
     newSizes.push_back(sizes[i]);
   }
   return success(foldableUnitDimsFound);
+}
+
+LogicalResult moveNpuSyncUsersAfterDma(RewriterBase &rewriter,
+                                       Operation *parentOp) {
+  WalkResult res = parentOp->walk([&](AMDAIE::NpuDmaWaitOp npuDmaWaitOp) {
+    Operation *dmaOp = npuDmaWaitOp.getDma().getDefiningOp();
+    Operation *ancestorInSameBlock =
+        getAncestorInBlock(npuDmaWaitOp, dmaOp->getBlock());
+    if (!ancestorInSameBlock) {
+      npuDmaWaitOp->emitOpError(
+          "doesn't have an ancestor in the same scope as the source DMA op");
+      return WalkResult::interrupt();
+    }
+    rewriter.moveOpAfter(npuDmaWaitOp, ancestorInSameBlock);
+    return WalkResult::advance();
+  });
+  if (res.wasInterrupted()) return failure();
+  return success();
 }
 
 }  // namespace mlir::iree_compiler::AMDAIE

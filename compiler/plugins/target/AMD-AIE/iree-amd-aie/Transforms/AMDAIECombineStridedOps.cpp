@@ -15,6 +15,7 @@
 #include "iree-amd-aie/Transforms/AMDAIEDmaUtils.h"
 #include "iree-amd-aie/Transforms/AMDAIEUtils.h"
 #include "iree-amd-aie/Transforms/Passes.h"
+#include "iree-amd-aie/Transforms/Transforms.h"
 #include "llvm/ADT/STLExtras.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
@@ -159,7 +160,7 @@ void AMDAIECombineStridedOpsPass::runOnOperation() {
   Operation *parentOp = getOperation();
   MLIRContext *context = &getContext();
   RewritePatternSet patterns(context);
-  patterns.insert<CombineStridedOps>(context);
+  populateStridedOpCombinationPattern(patterns);
   if (failed(applyPatternsAndFoldGreedily(parentOp, std::move(patterns)))) {
     parentOp->emitOpError("failed to combine strided operations");
     return signalPassFailure();
@@ -167,6 +168,10 @@ void AMDAIECombineStridedOpsPass::runOnOperation() {
 }
 
 }  // namespace
+
+void populateStridedOpCombinationPattern(RewritePatternSet &patterns) {
+  patterns.insert<CombineStridedOps>(patterns.getContext());
+}
 
 std::unique_ptr<Pass> createAMDAIECombineStridedOpsPass() {
   return std::make_unique<AMDAIECombineStridedOpsPass>();
