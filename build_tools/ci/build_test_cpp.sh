@@ -112,7 +112,7 @@ echo "-----"
 if [[ "$OSTYPE" == "linux-gnu"* ]]; then
   ctest --test-dir "$build_dir" -R amd-aie --output-on-failure -j
 elif [[ "$OSTYPE" == "darwin"* ]]; then
-  ctest --test-dir "$build_dir" -R amd-aie -E "pack_peel_pipeline_matmul|conv_fill_spec_pad" --output-on-failure -j --repeat until-pass:5
+  ctest --test-dir "$build_dir" -R amd-aie -E "matmul_pack_peel_air_e2e|matmul_elementwise_pack_peel_air_e2e|conv_fill_spec_pad" --output-on-failure -j --repeat until-pass:5
 elif [[ "$OSTYPE" == "msys"* ]]; then
   # hack while windows is flaky to get past failing tests
   ctest --test-dir "$build_dir" -R amd-aie --output-on-failure -j --repeat until-pass:5
