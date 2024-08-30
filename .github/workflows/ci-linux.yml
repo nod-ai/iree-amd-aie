@@ -71,7 +71,6 @@ jobs:
 
       - name: Configure ccache debug logs
         run: |
-          df -h
           # https://interrupt.memfault.com/blog/ccache-debugging
           echo CCACHE_DEBUG=1 >> $GITHUB_ENV
           echo CCACHE_DEBUGLEVEL=2 >> $GITHUB_ENV
