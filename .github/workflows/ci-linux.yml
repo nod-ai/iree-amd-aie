@@ -72,6 +72,7 @@ jobs:
       - name: Build packages
         run: |
           export cache_dir="${{ env.CACHE_DIR }}"
+          export CCACHE_COMPILERCHECK="string:$(clang --version)"
           bash build_tools/ci/build_test_cpp.sh
 
       - name: Create artifacts

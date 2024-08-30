@@ -32,15 +32,9 @@ if [[ "$OSTYPE" == "linux-gnu"* ]]; then
   export CMAKE_TOOLCHAIN_FILE="$this_dir/linux_default_toolchain.cmake"
   export CC=clang
   export CXX=clang++
-  CC_VERSION=$($CC --version)
-elif [[ "$OSTYPE" == "darwin"* ]]; then
-  # i don't know why but mac doesn't like it when you export CC/CXX
-  # so just call clang directly
-  CC_VERSION=$(clang --version)
 elif [[ "$OSTYPE" == "msys"* ]]; then
   export CC=clang-cl.exe
   export CXX=clang-cl.exe
-  CC_VERSION=$($CC --version)
 fi
 
 export CCACHE_DIR="${cache_dir}/ccache"
@@ -48,8 +42,6 @@ export CCACHE_MAXSIZE="700M"
 export CMAKE_C_COMPILER_LAUNCHER=ccache
 export CMAKE_CXX_COMPILER_LAUNCHER=ccache
 export CCACHE_SLOPPINESS=include_file_ctime,include_file_mtime,time_macros
-export CCACHE_COMPILERCHECK="string:$CC_VERSION"
-echo $CCACHE_COMPILERCHECK
 
 # Clear ccache stats.
 ccache -z
@@ -74,6 +66,7 @@ CMAKE_ARGS="\
   -DCMAKE_BUILD_TYPE=Release \
   -DCMAKE_INSTALL_PREFIX=$install_dir \
   -DCMAKE_INSTALL_LIBDIR=lib \
+  -DIREE_ERROR_ON_MISSING_SUBMODULES=OFF \
   -DIREE_ENABLE_ASSERTIONS=ON \
   -DIREE_BUILD_SAMPLES=OFF \
   -DIREE_BUILD_PYTHON_BINDINGS=ON \
