@@ -18,3 +18,8 @@
 [submodule "third_party/openssl"]
 	path = third_party/openssl
 	url = https://github.com/viaduck/openssl-cmake.git
+	shallow = true
+[submodule "third_party/iree"]
+	path = third_party/iree
+	url = https://github.com/iree-org/iree.git
+	shallow = true

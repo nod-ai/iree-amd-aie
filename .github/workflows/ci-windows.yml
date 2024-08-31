@@ -65,10 +65,6 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Sync source deps
-        run: |
-          python ./sync_deps.py
-
       - name: Python deps
         run: |
           pip install "numpy<2" pyyaml "pybind11[global]==2.10.3" nanobind

@@ -50,10 +50,6 @@ jobs:
           yum remove -y openssl-devel zlib-devel || true
           yum install -y protobuf-devel protobuf-compiler tmate
 
-      - name: Sync source deps
-        run: |
-          python ./sync_deps.py
-
       - name: Python deps
         run: |
           pip install "numpy<2" pyyaml "pybind11[global]==2.10.3" nanobind
