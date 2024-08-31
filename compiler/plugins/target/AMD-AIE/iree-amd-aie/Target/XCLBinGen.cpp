@@ -561,9 +561,7 @@ static LogicalResult generateCoreElfFiles(
               /*inputFileName=*/"mm.cc",
               /*outputFileName=*/"mm.o",
               /*outputDir=*/cwd,
-              /*extraArgs*/
-              std::vector<std::string>{"-I",
-                                       *maybeVitisDir / "aietools" / "include"},
+              /*extraArgs*/std::vector<std::string>{},
               /*workDir=*/tempDir,
               /*peanoDir=*/peanoDir,
               /*npuVersion*/ npuVersion, verbose);
