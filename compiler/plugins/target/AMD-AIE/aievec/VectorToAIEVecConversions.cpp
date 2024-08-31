@@ -1077,12 +1077,12 @@ struct LowerVectorToAIEVec : PassWrapper<LowerVectorToAIEVec, OperationPass<>> {
 //============================================================================//
 
 namespace mlir::iree_compiler::aievec {
-static std::unique_ptr<Pass> createLowerVectorToAIEVec() {
+std::unique_ptr<Pass> createLowerVectorToAIEVec() {
   return std::make_unique<LowerVectorToAIEVec>();
 }
 
 void registerLowerVectorToAIEVecPass() {
-  ::mlir::registerPass([]() -> std::unique_ptr<mlir::Pass> {
+  mlir::registerPass([]() -> std::unique_ptr<mlir::Pass> {
     return createLowerVectorToAIEVec();
   });
 }

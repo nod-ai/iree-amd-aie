@@ -48,9 +48,10 @@ void buildLowerVectorToAIEVec(mlir::OpPassManager &pm);
 
 /**
  * A pass containing patterns for lowering operations in the vector dialect to
- * the AIEVec dialect. The pass is currently named `test-lower-vector-to-aievec`.
+ * the AIEVec dialect. The pass is currently named
+ * `test-lower-vector-to-aievec`.
  */
-static std::unique_ptr<mlir::Pass> createLowerVectorToAIEVec();
+std::unique_ptr<mlir::Pass> createLowerVectorToAIEVec();
 
 /**
  * Expose the pass `test-lower-vector-to-aievec` to the command line.
@@ -67,8 +68,13 @@ void buildConvertVectorToAIEVec(mlir::OpPassManager &);
 /**
  * Lower from the vector dialect to the AIEVec dialect. The pass is called
  * `convert-aievec-to-llvm`.
- * */
+ */
 std::unique_ptr<mlir::Pass> createConvertAIEVecToLLVMPass();
+
+/**
+ * Register all pipelines for the AIE Vector dialect.
+ */
+void registerAIEVecPipelines();
 
 /**
  * Expose the pass `convert-aievec-to-llvm` to the command line.

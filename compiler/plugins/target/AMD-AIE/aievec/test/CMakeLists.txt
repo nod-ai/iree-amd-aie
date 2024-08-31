@@ -13,3 +13,5 @@ iree_lit_test_suite(
   LABELS
     "hostonly"
 )
+
+iree_add_all_subdirs()

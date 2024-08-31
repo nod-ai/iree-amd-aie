@@ -86,4 +86,4 @@ iree_cc_library(
     ::AIEVecXLLVMOpsGen
 )
 
-add_subdirectory(test)
+iree_add_all_subdirs()

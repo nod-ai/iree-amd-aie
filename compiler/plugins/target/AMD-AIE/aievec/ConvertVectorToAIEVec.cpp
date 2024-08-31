@@ -114,3 +114,12 @@ void mlir::iree_compiler::aievec::buildConvertVectorToAIEVec(
   pm.addPass(createLoopInvariantCodeMotionPass());
   pm.addPass(createCanonicalizerPass());
 }
+
+void mlir::iree_compiler::aievec::registerAIEVecPipelines() {
+  PassPipelineRegistration<>(
+      "convert-vector-to-aievec",
+      "This pass pipeline takes standard \"Vector\" code and converts it to "
+      "\"AIEVec\" code targeting the selected Xilinx AIE vector "
+      "architecture.",
+      buildConvertVectorToAIEVec);
+}
