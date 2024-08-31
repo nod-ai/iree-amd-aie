@@ -10,10 +10,11 @@ iree_cc_library(
   NAME
     AIETargets
   SRCS
-    "AMDAIETargetBCF.cpp"
-    "AMDAIETargetCDODirect.cpp"
-    "AMDAIETargetLdScript.cpp"
-    "XCLBinGen.cpp"
+    AMDAIETargetBCF.cpp
+    AMDAIETargetCDODirect.cpp
+    AMDAIETargetLdScript.cpp
+    PeanoDriver.cpp
+    XCLBinGen.cpp
   DEPS
     iree-amd-aie::aie_runtime::iree_aie_runtime_static
     iree::target::amd-aie::Transforms
@@ -28,9 +29,9 @@ iree_cc_library(
   NAME
     Target
   HDRS
-    "AIETarget.h"
+    AIETarget.h
   SRCS
-    "AIETarget.cpp"
+    AIETarget.cpp
   DEPS
     ::AIETargets
     iree-amd-aie::schemas::xrt_executable_def_c_fbs

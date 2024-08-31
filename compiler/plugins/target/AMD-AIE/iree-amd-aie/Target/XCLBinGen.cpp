@@ -11,6 +11,7 @@
 #include <random>
 #include <regex>
 #include <sstream>
+
 // ReSharper disable once CppUnusedIncludeDirective
 #include <fstream>
 #include <unordered_map>
@@ -22,6 +23,7 @@
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Debug.h"
+#include "llvm/Support/Errc.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/JSON.h"
 #include "llvm/Support/MemoryBuffer.h"
@@ -30,7 +32,6 @@
 #include "llvm/Support/ToolOutputFile.h"
 #include "mlir/IR/AsmState.h"
 #include "mlir/IR/BuiltinOps.h"
-#include "mlir/IR/MLIRContext.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Support/FileUtilities.h"
 #include "mlir/Target/LLVMIR/Export.h"
@@ -88,15 +89,18 @@ static const std::string _MM_CC{
 using namespace std::placeholders;
 using namespace llvm;
 using namespace mlir;
-using namespace xilinx;
 using Path = std::filesystem::path;
+
+using xilinx::AIE::DeviceOp;
+using xilinx::AIE::getCoreOp;
+using xilinx::AIE::TileOp;
 
 namespace {
 
 FailureOr<std::string> getTargetDir(const std::string &npuVersion) {
   if (npuVersion == "npu1") return std::string{"target_aie_ml"};
   if (npuVersion == "npu4") return std::string{"target_aie2p"};
-  llvm::errs() << "unsupported NPUVersion: " << npuVersion;
+  llvm::errs() << "unsupported NPUVersion: " << npuVersion << "\n";
   return failure();
 }
 
@@ -152,7 +156,8 @@ FailureOr<Path> findVitis(std::optional<Path> &vitisDir,
       return failure();
     }
     if (!std::filesystem::exists(licenseFile)) {
-      llvm::errs() << "ERROR: license file" << licenseFile << " does not exist";
+      llvm::errs() << "ERROR: license file" << licenseFile << " does not exist"
+                   << "\n";
       return failure();
     }
   }
@@ -178,7 +183,7 @@ FailureOr<Path> findVitis(std::optional<Path> &vitisDir,
   return *vitisDir;
 }
 
-static FailureOr<Path> findAMDAIETool(std::string toolName,
+static FailureOr<Path> findAMDAIETool(const std::string &toolName,
                                       const Path &amdAIEInstallDir) {
 #if defined(_WIN32)
   toolName += ".exe";
@@ -203,7 +208,7 @@ static FailureOr<Path> findAMDAIETool(std::string toolName,
   return failure();
 }
 
-std::pair<std::string, std::vector<std::string>> makeChessArgs(
+std::pair<std::string, std::vector<std::string>> makeChessCCArgs(
     Path &vitisDir, Path &tempDir, const std::string &npuVersion,
     bool verbose) {
   std::string archVersion;
@@ -215,7 +220,7 @@ std::pair<std::string, std::vector<std::string>> makeChessArgs(
     archVersion = "21";
     modelDir = "aie2p";
   } else {
-    llvm::errs() << "unsupported NPU version: " << npuVersion;
+    llvm::errs() << "unsupported NPU version: " << npuVersion << "\n";
     llvm::report_fatal_error("unsupported NPU version");
   }
 
@@ -399,7 +404,7 @@ static LogicalResult assembleFileUsingChess(
     const std::vector<std::string> &extraArgs, Path &tempDir, Path &vitisDir,
     const std::string &npuVersion, bool verbose) {
   auto [xChessCCExe, args] =
-      makeChessArgs(vitisDir, tempDir, npuVersion, verbose);
+      makeChessCCArgs(vitisDir, tempDir, npuVersion, verbose);
   args.reserve(args.size() + std::distance(extraArgs.begin(), extraArgs.end()));
   args.insert(args.end(), extraArgs.begin(), extraArgs.end());
   args.emplace_back("-c");
@@ -451,9 +456,6 @@ static LogicalResult assembleFileUsingPeano(
   // Pass -fno-threadsafe-statics to prevent dependence on lock acquire/release
   // handling for static local variables.
   args.emplace_back("-fno-threadsafe-statics");
-  // Don't pull in system headers from /usr/include or /usr/local/include.
-  // All of the basic headers that we need come from the compiler.
-  args.emplace_back("-nostdsysteminc");
   args.emplace_back("-c");
   args.emplace_back(inputFile);
   args.emplace_back("-o");
@@ -475,7 +477,7 @@ static FailureOr<Path> assembleStringUsing(
   if (auto maybeErr = dumpStrToDisk(inputFileStr, inputFile.string());
       maybeErr.has_value()) {
     llvm::errs() << "Failed to dump to disk " << inputFile.string()
-                 << " because: " << maybeErr;
+                 << " because: " << maybeErr << "\n";
     return failure();
   }
 
@@ -487,7 +489,8 @@ static FailureOr<Path> assembleStringUsing(
   }
   if (failed(assembler(inputFile.string(), outputFile.string(), extraArgs,
                        workDir, toolDir, npuVersion, verbose))) {
-    llvm::errs() << "Failed to assemble " << outputFileName << ".o";
+    llvm::errs() << "Failed to assemble " << outputFileName << ".o"
+                 << "\n";
     return failure();
   }
   return outputFile;
@@ -505,17 +508,17 @@ static_assert(std::is_same_v<decltype(assembleStringUsingChess),
 
 // Generate the elf files for the core
 static LogicalResult generateCoreElfFiles(
-    AIE::DeviceOp deviceOp, const std::string &objFile, Path &tempDir,
-    bool useChess, std::optional<Path> vitisDir, const std::string &targetArch,
-    bool verbose, Path peanoDir, const std::string &npuVersion,
+    DeviceOp deviceOp, const std::string &objFile, Path &tempDir, bool useChess,
+    std::optional<Path> vitisDir, const std::string &targetArch, bool verbose,
+    Path peanoDir, const std::string &npuVersion,
     const std::optional<std::string> &ukernel) {
-  auto tileOps = deviceOp.getOps<AIE::TileOp>();
+  auto tileOps = deviceOp.getOps<TileOp>();
   std::string errorMessage;
 
-  for (AIE::TileOp tileOp : tileOps) {
+  for (TileOp tileOp : tileOps) {
     int col = tileOp.getCol();
     int row = tileOp.getRow();
-    auto coreOp = AIE::getCoreOp(tileOp);
+    auto coreOp = getCoreOp(tileOp);
     if (!coreOp) continue;
 
     std::string elfFileName;
@@ -532,22 +535,39 @@ static LogicalResult generateCoreElfFiles(
     Path cwd = std::filesystem::current_path();
     FailureOr<Path> mmObjectFilePath;
     if (ukernel && (ukernel == "mm" || ukernel == "all")) {
-      FailureOr<Path> maybeVitisDir = findVitis(vitisDir, npuVersion);
-      if (failed(maybeVitisDir)) {
-        llvm::errs() << "compiling ukernels currently requires chess (even if "
-                        "you're using peano)";
-        return failure();
-      }
       if (!std::filesystem::exists(cwd / "mm.o")) {
-        mmObjectFilePath = assembleStringUsingChess(
-            /*inputFileStr=*/_MM_CC,
-            /*inputFileName=*/"mm.cc",
-            /*outputFileName=*/"mm.o",
-            /*outputDir=*/cwd,
-            /*extraArgs*/ std::vector<std::string>{},
-            /*workDir=*/tempDir,
-            /*vitisDir=*/*maybeVitisDir,
-            /*npuVersion*/ npuVersion, verbose);
+        FailureOr<Path> maybeVitisDir = findVitis(vitisDir, npuVersion);
+        if (failed(maybeVitisDir)) {
+          llvm::errs()
+              << "compiling ukernels currently requires chess (even if "
+                 "you're using peano) for aie_api headers\n";
+          return failure();
+        }
+        if (useChess) {
+          if (verbose) llvm::outs() << "using chess for ukernel codegen\n";
+          mmObjectFilePath = assembleStringUsingChess(
+              /*inputFileStr=*/_MM_CC,
+              /*inputFileName=*/"mm.cc",
+              /*outputFileName=*/"mm.o",
+              /*outputDir=*/cwd,
+              /*extraArgs*/ std::vector<std::string>{},
+              /*workDir=*/tempDir,
+              /*vitisDir=*/*maybeVitisDir,
+              /*npuVersion*/ npuVersion, verbose);
+        } else {
+          if (verbose) llvm::outs() << "using peano for ukernel codegen\n";
+          mmObjectFilePath = assembleStringUsingPeano(
+              /*inputFileStr=*/_MM_CC,
+              /*inputFileName=*/"mm.cc",
+              /*outputFileName=*/"mm.o",
+              /*outputDir=*/cwd,
+              /*extraArgs*/
+              std::vector<std::string>{"-I",
+                                       *maybeVitisDir / "aietools" / "include"},
+              /*workDir=*/tempDir,
+              /*peanoDir=*/peanoDir,
+              /*npuVersion*/ npuVersion, verbose);
+        }
         if (failed(mmObjectFilePath)) return failure();
       } else {
         mmObjectFilePath = cwd / "mm.o";
@@ -579,20 +599,21 @@ static LogicalResult generateCoreElfFiles(
       {
         auto bcfOutput = openOutputFile(bcfPath.string(), &errorMessage);
         if (!bcfOutput) {
-          llvm::errs() << "failed to open bcf file because: " << errorMessage;
+          llvm::errs() << "failed to open bcf file because: " << errorMessage
+                       << "\n";
           return failure();
         }
 
         if (failed(mlir::iree_compiler::AMDAIE::AIETranslateToBCF(
                 deviceOp, bcfOutput->os(), col, row))) {
-          llvm::errs() << "Failed to generate BCF";
+          llvm::errs() << "Failed to generate BCF\n";
           return failure();
         }
         bcfOutput->keep();
       }
 
       auto [xChessCCExe, chessArgs] =
-          makeChessArgs(*vitisDir, tempDir, npuVersion, verbose);
+          makeChessCCArgs(*vitisDir, tempDir, npuVersion, verbose);
       chessArgs.emplace_back(objFile);
       chessArgs.emplace_back(chessIntrinsicsObjFile->string());
       if (ukernel && (ukernel == "mm" || ukernel == "all")) {
@@ -614,7 +635,7 @@ static LogicalResult generateCoreElfFiles(
             openOutputFile(ldscriptPath.string(), &errorMessage);
         if (!ldscriptOutput) {
           llvm::errs() << "Failed to open ldscript file because: "
-                       << errorMessage;
+                       << errorMessage << "\n";
           return failure();
         }
         if (failed(mlir::iree_compiler::AMDAIE::AIETranslateToLdScript(
@@ -637,8 +658,8 @@ static LogicalResult generateCoreElfFiles(
       flags.emplace_back("-o");
       flags.emplace_back(elfFile.string());
       if (verbose) flags.emplace_back("-v");
-      // we run clang (ie cc) so that libc, libm, crt0/1 paths are injected
-      // automatically into the ld.lld invocation
+      // we run clang but really this is a linker call where libc, libm,
+      // crt0/1 paths are injected automatically into the ld.lld invocation
       if (failed(
               runTool((peanoDir / "bin" / "clang").string(), flags, verbose))) {
         return failure();
@@ -648,13 +669,13 @@ static LogicalResult generateCoreElfFiles(
   return success();
 }
 
-static LogicalResult generateCDO(MLIRContext *context, AIE::DeviceOp deviceOp,
+static LogicalResult generateCDO(MLIRContext *context, DeviceOp deviceOp,
                                  const Path &tempDir) {
   auto copy = cast<ModuleOp>(deviceOp.getParentOp()->clone());
-  deviceOp = *copy.getOps<AIE::DeviceOp>().begin();
+  deviceOp = *copy.getOps<DeviceOp>().begin();
   if (failed(mlir::iree_compiler::AMDAIE::AIETranslateToCDODirect(
           deviceOp, tempDir.string()))) {
-    llvm::errs() << "failed to emit CDO";
+    llvm::errs() << "failed to emit CDO\n";
     return failure();
   }
   copy->erase();
@@ -750,7 +771,7 @@ static LogicalResult generateXCLBin(
             dumpStrToDisk(memTopologyData, memTopologyJsonFile.string());
         maybeErr.has_value()) {
       llvm::errs() << "failed to dump to disk mem_topology.json because: "
-                   << *maybeErr;
+                   << *maybeErr << "\n";
       return failure();
     }
   }
@@ -797,7 +818,7 @@ static LogicalResult generateXCLBin(
             dumpStrToDisk(aiePartitionJsonData, aiePartitionJsonFile.string());
         maybeErr.has_value()) {
       llvm::errs() << "failed to dump to disk aie_partition.json because: "
-                   << *maybeErr;
+                   << *maybeErr << "\n";
       return failure();
     }
   }
@@ -816,7 +837,7 @@ static LogicalResult generateXCLBin(
     if (auto maybeErr = dumpStrToDisk(kernelStr, kernelsJsonFile.string());
         maybeErr.has_value()) {
       llvm::errs() << "failed to dump to disk kernels.json because: "
-                   << *maybeErr;
+                   << *maybeErr << "\n";
       return failure();
     }
   }
@@ -825,7 +846,8 @@ static LogicalResult generateXCLBin(
   {
     auto designBifOut = openOutputFile(designBifFile.string(), &errorMessage);
     if (!designBifOut) {
-      llvm::errs() << "failed to open design.bif because: " << errorMessage;
+      llvm::errs() << "failed to open design.bif because: " << errorMessage
+                   << "\n";
       return failure();
     }
 
@@ -868,7 +890,7 @@ static LogicalResult generateXCLBin(
     }
     if (iree_aie_bootgen_main(cstrings.size(),
                               const_cast<const char **>(&cstrings[0]))) {
-      llvm::errs() << "failed to execute bootgen";
+      llvm::errs() << "failed to execute bootgen\n";
       return failure();
     }
   }
@@ -892,14 +914,14 @@ static LogicalResult generateXCLBin(
                                         "--force", "--input", *inputXclbin};
 
     if (failed(runTool(xclbinutilBin.value().string(), inputFlags, verbose))) {
-      llvm::errs() << "failed to execute xclbinutil";
+      llvm::errs() << "failed to execute xclbinutil\n";
       return failure();
     }
     auto aieInputPartitionOut =
         openInputFile(aieInputPartitionJsonFile.string(), &errorMessage);
     if (!aieInputPartitionOut) {
       llvm::errs() << "failed to open aie_input_partition.json because: "
-                   << errorMessage;
+                   << errorMessage << "\n";
       return failure();
     }
     Expected<json::Value> aieInputPartitionOutValue =
@@ -913,7 +935,7 @@ static LogicalResult generateXCLBin(
     if (!aiePartitionOut) {
       llvm::errs() << "failed to open aie aie_input_partition.json for "
                       "output because: "
-                   << errorMessage;
+                   << errorMessage << "\n";
       return failure();
     }
     llvm::Expected<llvm::json::Value> aiePartitionOutValue =
@@ -931,7 +953,7 @@ static LogicalResult generateXCLBin(
         maybeErr.has_value()) {
       llvm::errs()
           << "failed to dump to disk aie_input_partition.json because: "
-          << errorMessage;
+          << errorMessage << "\n";
       return failure();
     }
     flags.insert(flags.end(), {"--input", *inputXclbin});
@@ -1011,7 +1033,7 @@ struct RemoveAlignment2FromLLVMLoadPass
 }  // namespace
 
 static LogicalResult generateUnifiedObject(
-    MLIRContext *context, AIE::DeviceOp deviceOp, const std::string &outputFile,
+    MLIRContext *context, DeviceOp deviceOp, const std::string &outputFile,
     bool printIRBeforeAll, bool printIRAfterAll, bool printIRModuleScope,
     bool timing, bool useChess, bool verbose, Path &tempDir,
     std::optional<Path> vitisDir, const std::string &targetArch, Path &peanoDir,
@@ -1021,7 +1043,7 @@ static LogicalResult generateUnifiedObject(
 
   ModuleOp moduleOpCopy = cast<ModuleOp>(deviceOp->getParentOp()).clone();
 
-  PassManager pm(context, moduleOpCopy.getOperationName());
+  PassManager pm(context, mlir::ModuleOp::getOperationName());
   applyConfigToPassManager(pm, printIRBeforeAll, printIRAfterAll,
                            printIRModuleScope, timing);
 
@@ -1040,14 +1062,14 @@ static LogicalResult generateUnifiedObject(
   }
 
   if (failed(pm.run(moduleOpCopy))) {
-    llvm::errs() << "Failed to lower to LLVM";
+    llvm::errs() << "Failed to lower to LLVM\n";
     return failure();
   }
 
   llvm::LLVMContext llvmContext;
   auto llvmModule = translateModuleToLLVMIR(moduleOpCopy, llvmContext);
   if (!llvmModule) {
-    llvm::errs() << "Failed to translate module to LLVMIR";
+    llvm::errs() << "Failed to translate module to LLVMIR\n";
     return failure();
   }
 
@@ -1081,7 +1103,7 @@ static LogicalResult generateUnifiedObject(
     if (auto maybeErr = dumpStrToDisk(inputLLStr, LLVMIRFile.string());
         maybeErr.has_value()) {
       llvm::errs() << "Failed to dump to disk input.ll"
-                   << " because: " << maybeErr;
+                   << " because: " << maybeErr << "\n";
       return failure();
     }
     Path peanoOptBin = peanoDir / "bin" / "opt";
@@ -1096,7 +1118,7 @@ static LogicalResult generateUnifiedObject(
     args.reserve(args.size() + peanoArgs.size());
     args.insert(args.end(), peanoArgs.begin(), peanoArgs.end());
     if (failed(runTool(peanoOptBin.string(), args, verbose))) {
-      llvm::errs() << "Failed to optimize ll with peano";
+      llvm::errs() << "Failed to optimize ll with peano\n";
       return failure();
     }
 
@@ -1115,7 +1137,7 @@ static LogicalResult generateUnifiedObject(
   return success();
 }
 
-FailureOr<ArrayRef<uint32_t>> getNpuInstructions(AIE::DeviceOp deviceOp) {
+FailureOr<ArrayRef<uint32_t>> getNpuInstructions(DeviceOp deviceOp) {
   MLIRContext *ctx = deviceOp.getContext();
   mlir::Attribute maybeNpuInstructions = deviceOp->getAttr("npu_instructions");
   if (!maybeNpuInstructions) {
@@ -1140,7 +1162,7 @@ FailureOr<ArrayRef<uint32_t>> getNpuInstructions(AIE::DeviceOp deviceOp) {
 }
 
 LogicalResult aie2xclbin(
-    MLIRContext *ctx, AIE::DeviceOp deviceOp, const std::string &outputNPU,
+    MLIRContext *ctx, DeviceOp deviceOp, const std::string &outputNPU,
     const std::string &outputXCLBin, bool printIRBeforeAll,
     bool printIRAfterAll, bool printIRModuleScope, bool timing,
     const std::string &tempDir, bool useChess, bool verbose,
@@ -1153,7 +1175,7 @@ LogicalResult aie2xclbin(
   FailureOr<ArrayRef<uint32_t>> maybeNpuInstructions =
       getNpuInstructions(deviceOp);
   if (failed(maybeNpuInstructions)) {
-    assert(false && "Failed to get NPU instructions");
+    llvm::errs() << "Failed to get NPU instructions";
     return failure();
   }
   ArrayRef<uint32_t> npuInstructions = maybeNpuInstructions.value();
