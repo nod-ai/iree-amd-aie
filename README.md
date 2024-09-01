@@ -22,7 +22,7 @@ changed for different paths.
 Preparing repository:
 
 ```
-git submodule update --init
+git submodule update --init --recursive
 ```
 
 ## Building (along with IREE)
@@ -40,14 +40,7 @@ cmake -B $WHERE_YOU_WOULD_LIKE_TO_BUILD -S $IREE_REPO_SRC_DIR \
 
 ### Instructions
 
-To pin IREE and its submodules (LLVM, etc) to commits which are compatible
-with this plugin, run
-
-```
-python3 sync_deps.py
-```
-
-from within the iree-amd-aie root directory. Then the bare minimum CMake configure command is
+The bare minimum CMake configure command is
 
 ```
 cd ../iree-build
