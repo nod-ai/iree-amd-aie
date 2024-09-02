@@ -14,24 +14,46 @@ interfacing the AMD AIE accelerator to IREE.
 
 ## Developer Setup
 
-These instructions assume that you have an appropriate IREE checkout side by side
-with this repository have an IREE build setup in an `iree-build` directory that
-is also a sibling. This is not a requirement, but instructions will need to be
-changed for different paths.
+**Strong recommendation**: check the CI scripts @ [.github/workflows](.github/workflows) - they do a fresh/clean 
+checkout and build and are exercised on every commit *and* are written such that they're simple enough to be read 
+by even a non-CI expert.
 
-Preparing repository:
+### Getting the repository:
+
+Either 
 
 ```
-git submodule update --init --recursive
+# ssh
+git clone --recursive git@github.com:nod-ai/iree-amd-aie.git
+# https
+git clone --recursive https://github.com/nod-ai/iree-amd-aie.git
 ```
+
+or if you want a faster checkout
+
+```
+git \
+  -c submodule."third_party/torch-mlir".update=none \
+  -c submodule."third_party/stablehlo".update=none \
+  -c submodule."src/runtime_src/core/common/aiebu".update=none \
+  clone \
+  --recursive \
+  --depth 1 \
+  --shallow-submodules \
+  https://github.com/nod-ai/iree-amd-aie.git
+```
+
+which has the effect of not cloning entire repo histories *and* skipping nested submodules that we currently do not need.
 
 ## Building (along with IREE)
 
 ### Just show me the CMake
 
+From the checkout of the repo:
+
 ```
-cmake -B $WHERE_YOU_WOULD_LIKE_TO_BUILD -S $IREE_REPO_SRC_DIR \
--DIREE_CMAKE_PLUGIN_PATHS=$IREE_AMD_AIE_REPO_SRC_DIR -DIREE_BUILD_PYTHON_BINDINGS=ON \
+cmake -B $WHERE_YOU_WOULD_LIKE_TO_BUILD -S third_party/iree \
+-DIREE_CMAKE_PLUGIN_PATHS=$PWD -DIREE_BUILD_PYTHON_BINDINGS=ON \
 -DIREE_INPUT_STABLEHLO=OFF -DIREE_INPUT_TORCH=OFF -DIREE_INPUT_TOSA=OFF \
 -DIREE_HAL_DRIVER_DEFAULTS=OFF -DIREE_TARGET_BACKEND_DEFAULTS=OFF -DIREE_TARGET_BACKEND_LLVM_CPU=ON \
 -DIREE_BUILD_TESTS=ON -DIREE_EXTERNAL_HAL_DRIVERS=xrt \
@@ -43,9 +65,12 @@ cmake -B $WHERE_YOU_WOULD_LIKE_TO_BUILD -S $IREE_REPO_SRC_DIR \
 The bare minimum CMake configure command is
 
 ```
-cd ../iree-build
-cmake -DIREE_BUILD_PYTHON_BINDINGS=ON -DIREE_CMAKE_PLUGIN_PATHS=$PWD/../iree-amd-aie .
-ninja
+cmake \
+    -B $WHERE_YOU_WOULD_LIKE_TO_BUILD \
+    -S $IREE_REPO_SRC_DIR \
+    -DIREE_CMAKE_PLUGIN_PATHS=$IREE_AMD_AIE_REPO_SRC_DIR \
+    -DIREE_BUILD_PYTHON_BINDINGS=ON
+cmake --build $WHERE_YOU_WOULD_LIKE_TO_BUILD
 ```
 
 to build IREE with amd-aie plugin. Very likely, you will want to use `ccache` and `lld` (or some other modern linker like [mold](https://github.com/rui314/mold))
@@ -88,10 +113,13 @@ ctest -R amd-aie
 To enable the runtime driver, you need to also enable the XRT HAL:
 
 ```
-cd ../iree-build
-cmake . -DIREE_CMAKE_PLUGIN_PATHS=../iree-amd-aie \
-  -DIREE_EXTERNAL_HAL_DRIVERS=xrt
-ninja
+cmake \
+    -B $WHERE_YOU_WOULD_LIKE_TO_BUILD \
+    -S $IREE_REPO_SRC_DIR \
+    -DIREE_CMAKE_PLUGIN_PATHS=$IREE_AMD_AIE_REPO_SRC_DIR \
+    -DIREE_BUILD_PYTHON_BINDINGS=ON \
+    -DIREE_EXTERNAL_HAL_DRIVERS=xrt
+cmake --build $WHERE_YOU_WOULD_LIKE_TO_BUILD
 ```
 
 ### Ubuntu Dependencies
