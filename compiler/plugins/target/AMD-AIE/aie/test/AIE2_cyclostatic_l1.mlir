@@ -9,8 +9,8 @@
 // CHECK:           %[[FIFO_BUFF_1:.*]] = aie.buffer(%[[TILE_2_2]]) {sym_name = "fifo_buff_1"} : memref<i32>
 // CHECK:           %[[FIFO_BUFF_2:.*]] = aie.buffer(%[[TILE_2_2]]) {sym_name = "fifo_buff_2"} : memref<i32>
 // CHECK:           %[[FIFO_BUFF_3:.*]] = aie.buffer(%[[TILE_2_2]]) {sym_name = "fifo_buff_3"} : memref<i32>
-// CHECK:           %[[FIFO_PROD_LOCK:.*]] = aie.lock(%[[TILE_2_2]], 0) {init = 4 : i8, sym_name = "fifo_prod_lock"}
-// CHECK:           %[[FIFO_CONS_LOCK:.*]] = aie.lock(%[[TILE_2_2]], 1) {init = 0 : i8, sym_name = "fifo_cons_lock"}
+// CHECK:           %[[FIFO_PROD_LOCK:.*]] = aie.lock(%[[TILE_2_2]]) {init = 4 : i8, sym_name = "fifo_prod_lock"}
+// CHECK:           %[[FIFO_CONS_LOCK:.*]] = aie.lock(%[[TILE_2_2]]) {init = 0 : i8, sym_name = "fifo_cons_lock"}
 // CHECK:           %[[BUF23:.*]] = aie.buffer(%[[TILE_2_3]]) {sym_name = "buf23"} : memref<4xi32>
 // CHECK:           %[[CORE_2_2:.*]] = aie.core(%[[TILE_2_2]]) {
 // CHECK:             %[[C55_I32:.*]] = arith.constant 55 : i32
