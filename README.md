@@ -15,7 +15,7 @@ interfacing the AMD AIE accelerator to IREE.
 ## Developer Setup
 
 **Strong recommendation**: check the CI scripts @ [.github/workflows](.github/workflows) - they do a fresh/clean 
-checkout and build and are exercised on every commit *and* are written such that they're simple enough to be read 
+checkout and build and are exercised on every commit and are written such that they're simple enough to be read 
 by a non-CI expert.
 
 ### Getting the repository:
