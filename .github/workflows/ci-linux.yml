@@ -9,11 +9,6 @@ on:
     branches:
       - main
 
-  schedule:
-    # At minute 0 past every 6th hour. (see https://crontab.guru)
-    # this job is to keep the ccache cache warm
-    - cron: '0 */6 * * *'
-
 concurrency:
   # A PR number if a pull request and otherwise the commit hash. This cancels
   # queued and in-progress runs for the same PR (presubmit) or commit
@@ -30,7 +25,7 @@ jobs:
     env:
       CACHE_DIR: ${{ github.workspace }}/.container-cache
       # either the PR number or `branch-N` where N always increments
-      CACHE_KEY: linux-build-test-cpp-asserts-manylinux-v2-${{ github.event.number || format('{0}-{1}', github.ref_name, github.run_number) }}
+      CACHE_KEY: linux-build-test-cpp-asserts-manylinux-v2-${{ format('{0}-{1}', github.ref_name, github.run_number) }}
     steps:
       - name: Set unified TZ
         uses: szenius/set-timezone@v2.0
@@ -51,8 +46,9 @@ jobs:
 
       - name: Install deps
         run: |
+          dnf install -y almalinux-release-devel epel-release
           yum remove -y openssl-devel zlib-devel || true
-          yum install -y protobuf-devel protobuf-compiler
+          yum install -y protobuf-devel protobuf-compiler tmate
 
       - name: Sync source deps
         run: |
@@ -78,7 +74,7 @@ jobs:
       - name: Create artifacts
         if: ${{ !cancelled() }}
         run: |
-          tar cf iree-dist-linux.tar -C iree-install .
+          tar cf iree-dist-linux.tar iree-install
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
@@ -90,7 +86,7 @@ jobs:
 
       - name: Save cache
         uses: actions/cache/save@v3
-        if: ${{ !cancelled() && github.event_name != 'pull_request' }}
+        if: ${{ !cancelled() && github.event_name == 'push' && github.ref_name == 'main' }}
         with:
           path: ${{ env.CACHE_DIR }}
           key: ${{ env.CACHE_KEY }}
@@ -118,8 +114,7 @@ jobs:
 
       - name: Extract artifact
         run: |
-          mkdir iree-install
-          tar -xf iree-dist-linux.tar -C iree-install
+          tar -xvf iree-dist-linux.tar
           bash build_tools/download_peano.sh
 
       - name: Create venv and install dependencies

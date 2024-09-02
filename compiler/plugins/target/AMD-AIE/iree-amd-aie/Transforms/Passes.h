@@ -122,6 +122,12 @@ std::unique_ptr<Pass> createAMDAIEDecomposeLinalgExtPackUnPackToAIRPass();
 /// operations and distribute the logical objectFifos.
 std::unique_ptr<Pass> createAMDAIEDistributeCoresAndObjectFifosPass();
 
+/// Create a pass to compose more complex DMA operations, e.g. by combining DMA
+/// operations and/or subsuming loop iterations into the strided access
+/// patterns.
+std::unique_ptr<Pass> createAMDAIEDmaCompositionPass(
+    AMDAIEDmaCompositionOptions options = {});
+
 /// Create a pass to subsume loop iterations into DMA operations' access
 /// patterns.
 std::unique_ptr<Pass> createAMDAIEDmaLoopSubsumptionPass(
@@ -217,6 +223,9 @@ std::unique_ptr<Pass> createAMDAIEPeelForLoopPass(
 
 /// Create a pass to sink all dependencies into `amdaie.core` operations.
 std::unique_ptr<Pass> createAMDAIESinkIntoCorePass();
+
+/// Create a pass to split logicalobjectfifos for connection reuse.
+std::unique_ptr<Pass> createAMDAIESplitLogicalObjFifosForConnectionReusePass();
 
 /// Create pass to tile TilingInterface operations.
 std::unique_ptr<Pass> createAMDAIETilePass(AMDAIETileOptions options = {});

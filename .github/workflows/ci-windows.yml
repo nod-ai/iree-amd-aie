@@ -3,14 +3,22 @@ name: CI Windows
 on:
   workflow_call:
   workflow_dispatch:
+    inputs:
+      force_debug_with_tmate:
+        type: boolean
+        description: 'Run the build with tmate session'
+        required: false
+        default: false
+      debug_with_tmate:
+        type: boolean
+        description: 'Run the build with a tmate session ONLY in case of failure'
+        required: false
+        default: false
   pull_request:
   merge_group:
   push:
     branches:
       - main
-
-  schedule:
-    - cron: '0 */6 * * *'
 
 concurrency:
   group: ci-build-test-cpp-windows-${{ github.event.number || github.sha }}
@@ -29,7 +37,7 @@ jobs:
       fail-fast: true
     env:
       CACHE_DIR: ${{ github.workspace }}/.container-cache
-      CACHE_KEY: windows-build-test-cpp-asserts-v1-${{ github.event.number || format('{0}-{1}', github.ref_name, github.run_number) }}
+      CACHE_KEY: windows-build-test-cpp-asserts-v1-${{ format('{0}-{1}', github.ref_name, github.run_number) }}
     steps:
       - name: Set unified TZ
         uses: szenius/set-timezone@v2.0
@@ -81,7 +89,7 @@ jobs:
       - name: Create artifacts
         if: ${{ !cancelled() }}
         run: |
-          tar cf iree-dist-windows.tar -C iree-install .
+          tar cf iree-dist-windows.tar iree-install
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
@@ -93,10 +101,16 @@ jobs:
 
       - name: Save cache
         uses: actions/cache/save@v3
-        if: ${{ !cancelled() && github.event_name != 'pull_request' }}
+        if: ${{ !cancelled() && github.event_name == 'push' && github.ref_name == 'main' }}
         with:
           path: ${{ env.CACHE_DIR }}
           key: ${{ env.CACHE_KEY }}
+
+      - name: Start tmate session
+        if: ${{ (failure() && inputs.debug_with_tmate) || inputs.force_debug_with_tmate }}
+        uses: mxschmitt/action-tmate@v3.18
+        with:
+          limit-access-to-actor: true
 
   test_windows:
     name: E2E Test windows
@@ -117,8 +131,7 @@ jobs:
 
       - name: Extract artifact
         run: |
-          mkdir iree-install
-          tar -xf iree-dist-windows.tar -C iree-install
+          tar -xf iree-dist-windows.tar
           bash build_tools/download_peano.sh
 
       - name: Create venv and install dependencies
