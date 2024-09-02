@@ -230,6 +230,9 @@ std::unique_ptr<Pass> createAMDAIEPeelForLoopPass(
 /// Create a pass to sink all dependencies into `amdaie.core` operations.
 std::unique_ptr<Pass> createAMDAIESinkIntoCorePass();
 
+/// Create a pass to combine logicalobjectfifos for connection reuse.
+std::unique_ptr<Pass> createAMDAIECombineLogicalObjFifosForConnectionReusePass();
+
 /// Create a pass to split logicalobjectfifos for connection reuse.
 std::unique_ptr<Pass> createAMDAIESplitLogicalObjFifosForConnectionReusePass();
 
