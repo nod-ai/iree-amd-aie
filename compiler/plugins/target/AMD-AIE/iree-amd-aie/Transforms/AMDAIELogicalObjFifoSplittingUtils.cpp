@@ -128,13 +128,13 @@ static FailureOr<OpFoldResult> updateL3SourceOffset(IRRewriter &rewriter,
 // L3.
 // 4. Now traverse each L2->L1 Dma op and perform the following :-
 //    a) Create a new L2 AllocOp based on the updated size (step 3 above) and
-//    create
-//       a logicalobjectfifo using the same.
+//       create a logicalobjectfifo using the same.
 //    b) Split L3->L2 Dma op.
 //    c) SPlit L2->L1 Dma op.
 LogicalResult splitLogicalObjectFifos(
     IRRewriter &rewriter, SmallVector<AMDAIE::DmaCpyNdOp> &l2ToL1DmaOps,
     MLIRContext *context) {
+  OpBuilder::InsertionGuard guard(rewriter);
   if (l2ToL1DmaOps.size() == 0) return success();
 
   SmallVector<OpFoldResult> baseSourceOffsets =
@@ -144,10 +144,9 @@ LogicalResult splitLogicalObjectFifos(
   auto sourceAllocOp =
       sourceObjectFifo.getMemref().getDefiningOp<memref::AllocOp>();
   if (!sourceAllocOp) {
-    sourceObjectFifo->emitOpError()
-        << "expected alloc op as the defining op of source "
-           "logicalobjectfifo.from_memref";
-    return failure();
+    return sourceObjectFifo->emitRemark()
+           << "expected alloc op as the defining op of source "
+              "logicalobjectfifo.from_memref";
   }
   // We will now capture those dimensions where L2 memory was split. The way we
   // do this is by checking all L2->L1 DmaOps' source offset and marking those
@@ -218,8 +217,6 @@ LogicalResult splitLogicalObjectFifos(
       l3ToL2DmaOp.getTargetMixedOffsets();
   SmallVector<OpFoldResult, 4> staticL2AsTargetSizes =
       l3ToL2DmaOp.getTargetMixedSizes();
-  SmallVector<OpFoldResult, 4> staticL2AsTargetStrides =
-      l3ToL2DmaOp.getTargetMixedStrides();
   SmallVector<int64_t, 4> l2ShapeAsTarget = llvm::to_vector(
       cast<MemRefType>(l3ToL2DmaOp.getTargetObjectFifo().getMemref().getType())
           .getShape());
@@ -250,8 +247,6 @@ LogicalResult splitLogicalObjectFifos(
         l2ToL1DmaOp.getSourceMixedOffsets();
     SmallVector<OpFoldResult, 6> staticL2AsSourceSizes =
         l2ToL1DmaOp.getSourceMixedSizes();
-    SmallVector<OpFoldResult, 6> staticL2AsSourceStrides =
-        l2ToL1DmaOp.getSourceMixedStrides();
 
     // Now we'll create a new L2 buffer based on the new shape inferred earlier
     // via `l2ShapeAsTarget`.
@@ -319,7 +314,7 @@ LogicalResult splitLogicalObjectFifos(
     rewriter.create<AMDAIE::DmaCpyNdOp>(
         l3ToL2DmaOp.getLoc(), source, llvm::ArrayRef(staticL2AsTargetOffsets),
         llvm::ArrayRef(staticL2AsTargetSizes),
-        llvm::ArrayRef(staticL2AsTargetStrides), l3ToL2DmaOp.getSource(),
+        l3ToL2DmaOp.getTargetMixedStrides(), l3ToL2DmaOp.getSource(),
         llvm::ArrayRef(staticL3AsSourceOffsets),
         llvm::ArrayRef(staticL3AsSourceSizes),
         l3ToL2DmaOp.getSourceMixedStrides());
@@ -342,19 +337,16 @@ LogicalResult splitLogicalObjectFifos(
         l2ToL1DmaOp.getTargetMixedStrides(), source,
         llvm::ArrayRef(staticL2AsSourceOffsets),
         llvm::ArrayRef(staticL2AsSourceSizes),
-        llvm::ArrayRef(staticL2AsSourceStrides));
+        l2ToL1DmaOp.getSourceMixedStrides());
     rewriter.replaceOp(l2ToL1DmaOp, newL2ToL1DmaOp);
 
     // Remove old dealloc.
     memref::DeallocOp oldDeallocOp;
     for (Operation *userOp : sourceAllocOp->getUsers()) {
-      if (auto deallocUser = dyn_cast<memref::DeallocOp>(userOp)) {
+      if (auto deallocUser = dyn_cast<memref::DeallocOp>(userOp))
         oldDeallocOp = deallocUser;
-      }
     }
-    if (oldDeallocOp) {
-      toBeErased.insert(oldDeallocOp);
-    }
+    if (oldDeallocOp) toBeErased.insert(oldDeallocOp);
   }
 
   for (Operation *op : toBeErased) {
