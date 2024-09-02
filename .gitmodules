@@ -23,3 +23,11 @@
 	path = third_party/iree
 	url = https://github.com/iree-org/iree.git
 	shallow = true
+[submodule "third_party/stablehlo"]
+	path = third_party/stablehlo
+	url = https://github.com/iree-org/stablehlo.git
+        update = none
+[submodule "third_party/torch-mlir"]
+	path = third_party/torch-mlir
+	url = https://github.com/iree-org/torch-mlir.git
+        update = none
