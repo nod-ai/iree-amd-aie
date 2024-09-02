@@ -52,6 +52,7 @@ which has the effect of not cloning entire repo histories and skipping nested su
 From the checkout of the repo:
 
 ```
+cd iree-amd-aie
 cmake -B $WHERE_YOU_WOULD_LIKE_TO_BUILD -S third_party/iree \
 -DIREE_CMAKE_PLUGIN_PATHS=$PWD -DIREE_BUILD_PYTHON_BINDINGS=ON \
 -DIREE_INPUT_STABLEHLO=OFF -DIREE_INPUT_TORCH=OFF -DIREE_INPUT_TOSA=OFF \
