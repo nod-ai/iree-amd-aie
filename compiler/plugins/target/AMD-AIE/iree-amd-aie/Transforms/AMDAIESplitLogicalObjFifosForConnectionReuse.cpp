@@ -6,6 +6,7 @@
 #include "iree-amd-aie/IR/AMDAIEOps.h"
 #include "iree-amd-aie/Transforms/AMDAIELogicalObjFifoSplittingUtils.h"
 #include "iree-amd-aie/Transforms/Passes.h"
+#include "llvm/Support/Debug.h"
 #include "mlir/IR/Iterators.h"
 #include "mlir/Pass/Pass.h"
 
@@ -54,7 +55,18 @@ void AMDAIESplitLogicalObjFifosForConnectionReusePass::runOnOperation() {
   SmallVector<AMDAIE::DmaCpyNdOp> l2ToL1DmaOps =
       fetchDmaCpyNdOpsToSplit(moduleOp);
 
-  if (failed(splitLogicalObjectFifos(rewriter, l2ToL1DmaOps, context))) {
+  SplittingLogicalObjectFifoData splittingLogicalObjectFifoData;
+  splittingLogicalObjectFifoData.l2ToL1DmaOps = l2ToL1DmaOps;
+  if (failed(checkWhetherSplitIsPossible(splittingLogicalObjectFifoData))) {
+    LLVM_DEBUG(llvm::dbgs()
+               << "Cannot perform splitting of logicalobjectfifos");
+    return;
+  }
+
+  if (failed(splitLogicalObjectFifos(rewriter, splittingLogicalObjectFifoData,
+                                     context))) {
+    LLVM_DEBUG(llvm::dbgs()
+               << "Failed to perform splitting of logicalobjectfifos");
     return signalPassFailure();
   }
 }

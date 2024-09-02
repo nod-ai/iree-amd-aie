@@ -9,12 +9,15 @@
 #include <numeric>
 
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/Support/Debug.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Iterators.h"
 #include "mlir/IR/Operation.h"
+
+#define DEBUG_TYPE "iree-amdaie-logicalobjfifo-splitting-utils"
 
 namespace mlir::iree_compiler::AMDAIE {
 
@@ -121,21 +124,15 @@ static FailureOr<OpFoldResult> updateL3SourceOffset(IRRewriter &rewriter,
   return newL3AsSourceOffset;
 }
 
-// Given a vector of L2->L1 Dma ops, split them via the following process :-
-// 1. Infer splitting dimension of L2 as a function of all L2->L1 Dma ops.
-// 2. Fetch and ensure a unique L3->L2 Dma op.
-// 3. For the split dimension inferred set offset = 0 and size as 1 for L2 and
-// L3.
-// 4. Now traverse each L2->L1 Dma op and perform the following :-
-//    a) Create a new L2 AllocOp based on the updated size (step 3 above) and
-//       create a logicalobjectfifo using the same.
-//    b) Split L3->L2 Dma op.
-//    c) SPlit L2->L1 Dma op.
-LogicalResult splitLogicalObjectFifos(
-    IRRewriter &rewriter, SmallVector<AMDAIE::DmaCpyNdOp> &l2ToL1DmaOps,
-    MLIRContext *context) {
-  OpBuilder::InsertionGuard guard(rewriter);
-  if (l2ToL1DmaOps.size() == 0) return success();
+/// Utility to check whether splitting of logicalobjectfifos can be performed.
+/// If yes, it populates the struct `SplittingLogicalObjectFifoData` with the
+/// data required to perform the actual splitting.
+LogicalResult checkWhetherSplitIsPossible(
+    SplittingLogicalObjectFifoData &splittingLogicalObjectFifoData) {
+  SmallVector<AMDAIE::DmaCpyNdOp> l2ToL1DmaOps =
+      splittingLogicalObjectFifoData.l2ToL1DmaOps;
+
+  if (l2ToL1DmaOps.size() == 0) return failure();
 
   SmallVector<OpFoldResult> baseSourceOffsets =
       l2ToL1DmaOps[0].getSourceMixedOffsets();
@@ -144,10 +141,11 @@ LogicalResult splitLogicalObjectFifos(
   auto sourceAllocOp =
       sourceObjectFifo.getMemref().getDefiningOp<memref::AllocOp>();
   if (!sourceAllocOp) {
-    return sourceObjectFifo->emitRemark()
-           << "expected alloc op as the defining op of source "
-              "logicalobjectfifo.from_memref";
+    LLVM_DEBUG(llvm::dbgs() << "expected alloc op as the defining op of "
+                            << sourceObjectFifo << "\n");
+    return failure();
   }
+
   // We will now capture those dimensions where L2 memory was split. The way we
   // do this is by checking all L2->L1 DmaOps' source offset and marking those
   // dimensions which are not equal to at least one of the source offsets.
@@ -155,8 +153,9 @@ LogicalResult splitLogicalObjectFifos(
   SmallVector<size_t> splitDimsForL2;
   for (unsigned i = 1, n = l2ToL1DmaOps.size(); i < n; i++) {
     if (l2ToL1DmaOps[i].getSourceObjectFifo() != sourceObjectFifo) {
-      l2ToL1DmaOps[i]->emitRemark() << "has different source objectfifo";
-      sourceObjectFifo->emitRemark() << "is the expected source objectfifo";
+      LLVM_DEBUG(llvm::dbgs()
+                 << l2ToL1DmaOps[i] << " does not have " << sourceObjectFifo
+                 << " as the source objectfifo\n");
       return failure();
     }
     SmallVector<OpFoldResult> sourceOffsets =
@@ -172,29 +171,28 @@ LogicalResult splitLogicalObjectFifos(
   std::sort(splitDimsForL2.begin(), splitDimsForL2.end());
 
   if (failed(checkIsRangeFromZero(splitDimsForL2))) {
-    l2ToL1DmaOps[0]->emitRemark()
-        << "cannot split L2 logicalobjectfifo because of non-contiguous split "
-           "dimensions inferred";
+    LLVM_DEBUG(llvm::dbgs() << "cannot split L2 logicalobjectfifo because of "
+                               "non-contiguous split dimensions inferred\n");
     return failure();
   }
 
   // Fetch the L3 -> L2 Dma Op corresponding to the L2 buffer as target.
   SmallVector<AMDAIE::DmaCpyNdOp> l3ToL2DmaOps;
   AMDAIE::DmaCpyNdOp l3ToL2DmaOp;
-  DenseSet<Operation *> toBeErased;
   for (Operation *objFifoUserOp : sourceObjectFifo->getUsers()) {
     if (auto dmaOp = dyn_cast<AMDAIE::DmaCpyNdOp>(objFifoUserOp);
         dmaOp.getTargetObjectFifo() == sourceObjectFifo) {
       l3ToL2DmaOps.push_back(dmaOp);
-      break;
     }
   }
   if (l3ToL2DmaOps.size() == 0) {
-    sourceObjectFifo->emitRemark() << "no corresponding L3->L2 dma op found";
+    LLVM_DEBUG(llvm::dbgs() << "no corresponding L3->L2 dma op found for "
+                            << sourceObjectFifo << "\n");
     return failure();
   }
   if (l3ToL2DmaOps.size() > 1) {
-    sourceObjectFifo->emitRemark() << "found more than one L3->L2 dma ops";
+    LLVM_DEBUG(llvm::dbgs() << "found more than one L3->L2 dma ops for "
+                            << sourceObjectFifo << "\n");
     return failure();
   }
   l3ToL2DmaOp = l3ToL2DmaOps[0];
@@ -204,11 +202,75 @@ LogicalResult splitLogicalObjectFifos(
        l3ToL2DmaOp.getSourceMixedSizes().size()) ||
       (l3ToL2DmaOp.getTargetMixedStrides().size() !=
        l3ToL2DmaOp.getSourceMixedStrides().size())) {
-    l3ToL2DmaOp->emitRemark() << "dimensionality of source and target's "
-                                 "offset/size/stride should be same";
+    LLVM_DEBUG(llvm::dbgs() << "dimensionality of source and target's "
+                               "offset/size/stride found different for "
+                            << l3ToL2DmaOp << "\n");
     return failure();
   }
 
+  SmallVector<OpFoldResult, 4> staticL2AsTargetSizes =
+      l3ToL2DmaOp.getTargetMixedSizes();
+  SmallVector<size_t> nonSplitDimsForL2(staticL2AsTargetSizes.size() -
+                                        splitDimsForL2.size());
+  std::iota(nonSplitDimsForL2.begin(), nonSplitDimsForL2.end(),
+            splitDimsForL2.size());
+
+  for (AMDAIE::DmaCpyNdOp l2ToL1DmaOp : l2ToL1DmaOps) {
+    SmallVector<OpFoldResult, 6> staticL2AsSourceOffsets =
+        l2ToL1DmaOp.getSourceMixedOffsets();
+    for (auto &&[splitDim, nonSplitdim] :
+         llvm::zip_equal(splitDimsForL2, nonSplitDimsForL2)) {
+      std::optional<int64_t> constantVal =
+          getConstantIntValue(staticL2AsSourceOffsets[splitDim]);
+      if (!constantVal) {
+        LLVM_DEBUG(llvm::dbgs()
+                   << "found a non-constant value for source offset at dim "
+                   << splitDim << " for " << l2ToL1DmaOp << "\n");
+        return failure();
+      }
+      constantVal = getConstantIntValue(staticL2AsTargetSizes[nonSplitdim]);
+      if (!constantVal) {
+        LLVM_DEBUG(llvm::dbgs()
+                   << "found a non-constant value for target size at dim "
+                   << nonSplitdim << " for " << l3ToL2DmaOp << "\n");
+        return failure();
+      }
+    }
+  }
+  splittingLogicalObjectFifoData.splitDimsForL2 = splitDimsForL2;
+  splittingLogicalObjectFifoData.nonSplitDimsForL2 = nonSplitDimsForL2;
+  splittingLogicalObjectFifoData.l3ToL2DmaOp = l3ToL2DmaOp;
+  return success();
+}
+
+// Given a `SplittingLogicalObjectFifoData` perform L2->L1 Dma ops' splitting :-
+// 1. For the split dimension inferred set offset = 0 and size as 1 for L2 and
+//    L3.
+// 2. Now traverse each L2->L1 Dma op and perform the following :-
+//    a) Create a new L2 AllocOp based on the updated size (step 3 above) and
+//       create a logicalobjectfifo using the same.
+//    b) Split L3->L2 Dma op.
+//    c) SPlit L2->L1 Dma op.
+// 3. Delete old L2->L1, L3->L2 and corresponding AllocOps.
+LogicalResult splitLogicalObjectFifos(
+    IRRewriter &rewriter,
+    const SplittingLogicalObjectFifoData &splittingLogicalObjectFifoData,
+    MLIRContext *context) {
+  OpBuilder::InsertionGuard guard(rewriter);
+  SmallVector<AMDAIE::DmaCpyNdOp> l2ToL1DmaOps =
+      splittingLogicalObjectFifoData.l2ToL1DmaOps;
+  SmallVector<size_t> splitDimsForL2 =
+      splittingLogicalObjectFifoData.splitDimsForL2;
+  SmallVector<size_t> nonSplitDimsForL2 =
+      splittingLogicalObjectFifoData.nonSplitDimsForL2;
+  AMDAIE::DmaCpyNdOp l3ToL2DmaOp = splittingLogicalObjectFifoData.l3ToL2DmaOp;
+
+  LogicalObjectFifoFromMemrefOp sourceObjectFifo =
+      l2ToL1DmaOps[0].getSourceObjectFifo();
+  auto sourceAllocOp =
+      sourceObjectFifo.getMemref().getDefiningOp<memref::AllocOp>();
+
+  DenseSet<Operation *> toBeErased;
   toBeErased.insert(l3ToL2DmaOp);
   toBeErased.insert(sourceAllocOp);
   toBeErased.insert(sourceObjectFifo);
@@ -236,10 +298,6 @@ LogicalResult splitLogicalObjectFifos(
     staticL3AsSourceSizes[dim] = oneVal;
     l2ShapeAsTarget[dim] = 1;
   }
-  SmallVector<size_t> nonSplitDimsForL2(staticL2AsTargetSizes.size() -
-                                        splitDimsForL2.size());
-  std::iota(nonSplitDimsForL2.begin(), nonSplitDimsForL2.end(),
-            splitDimsForL2.size());
 
   // Traverse each L2->L1 DmaCpyNd op and split them.
   for (AMDAIE::DmaCpyNdOp l2ToL1DmaOp : l2ToL1DmaOps) {
@@ -283,18 +341,16 @@ LogicalResult splitLogicalObjectFifos(
       std::optional<int64_t> constantOffset =
           getConstantIntValue(staticL2AsSourceOffsets[splitDim]);
       if (!constantOffset) {
-        l2ToL1DmaOp->emitRemark()
-            << "found a non-constant value for source offset at dim "
-            << splitDim;
-        return failure();
+        return l2ToL1DmaOp->emitOpError()
+               << "found a non-constant value for source offset at dim "
+               << splitDim;
       }
       std::optional<int64_t> constantSize =
           getConstantIntValue(staticL2AsTargetSizes[nonSplitdim]);
       if (!constantSize) {
-        l3ToL2DmaOp->emitRemark()
-            << "found a non-constant value for target size at dim "
-            << nonSplitdim;
-        return failure();
+        return l3ToL2DmaOp->emitOpError()
+               << "found a non-constant value for target size at dim "
+               << nonSplitdim;
       }
       int64_t offsetToAdd = constantOffset.value() * constantSize.value();
       FailureOr<OpFoldResult> newOffset = updateL3SourceOffset(
@@ -303,9 +359,9 @@ LogicalResult splitLogicalObjectFifos(
         // TODO: Ideally we should be able to handle even +, -, *, /, etc.
         //       But handle this later (if at all!) as such cases might not
         //       arise.
-        l3ToL2DmaOp->emitRemark()
-            << "Unhandled expression for source offset at dim " << nonSplitdim;
-        return failure();
+        return l3ToL2DmaOp->emitOpError()
+               << "Unhandled expression for source offset at dim "
+               << nonSplitdim;
       }
       staticL3AsSourceOffsets[nonSplitdim] = *newOffset;
     }

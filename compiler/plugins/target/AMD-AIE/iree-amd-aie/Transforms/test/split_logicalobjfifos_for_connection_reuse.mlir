@@ -1047,6 +1047,10 @@ module {
 
 // -----
 
+// Since the L2->L1 DmaOps have different logicalobjectfifo source, splitting won't take place.
+
+// CHECK-LABEL: @different_logical_objectfifo
+//   CHECK-NOT:     memref<1x1x32x32xi32, 1 : i32>
 #map = affine_map<(d0) -> (d0 * 64)>
 #map1 = affine_map<(d0, d1, d2, d3, d4, d5, d6, d7, d8) -> (d0, d2, d5, d3, d6, d8)>
 #map2 = affine_map<(d0, d1, d2, d3, d4, d5, d6, d7, d8) -> (d2, d1, d4, d5, d8, d7)>
@@ -1065,7 +1069,6 @@ module {
     %alloc_3 = memref.alloc() : memref<1x1x8x8x4x4xi32, 2 : i32>
     %tile = amdaie.tile(%c1, %c3)
     %tile_4 = amdaie.tile(%c0, %c2)
-    // expected-remark @below {{is the expected source objectfifo}}
     %0 = amdaie.logicalobjectfifo.from_memref %alloc_1, {%tile} : memref<2x2x32x32xi32, 1 : i32> -> !amdaie.logicalobjectfifo<memref<2x2x32x32xi32, 1 : i32>>
     %00 = amdaie.logicalobjectfifo.from_memref %alloc_1, {%tile} : memref<2x2x32x32xi32, 1 : i32> -> !amdaie.logicalobjectfifo<memref<2x2x32x32xi32, 1 : i32>>
     %1 = amdaie.logicalobjectfifo.from_memref %alloc_2, {%tile} : memref<128x128xi32> -> !amdaie.logicalobjectfifo<memref<128x128xi32>>
@@ -1101,7 +1104,6 @@ module {
         amdaie.end
       }
       %13 = amdaie.logicalobjectfifo.from_memref %alloc_3, {%tile_4} : memref<1x1x8x8x4x4xi32, 2 : i32> -> !amdaie.logicalobjectfifo<memref<1x1x8x8x4x4xi32, 2 : i32>>
-      // expected-remark @below {{has different source objectfifo}}
       %14 = amdaie.dma_cpy_nd(%13[0, 0, 0, 0, 0, 0] [1, 1, 8, 8, 4, 4] [1024, 1024, 128, 16, 4, 1], %00[1, 1, 0, 0, 0, 0] [1, 1, 8, 8, 4, 4] [2048, 1024, 4, 128, 32, 1]) : (!amdaie.logicalobjectfifo<memref<1x1x8x8x4x4xi32, 2 : i32>>, !amdaie.logicalobjectfifo<memref<2x2x32x32xi32, 1 : i32>>)
       %15 = amdaie.core(%tile_4, in : [%7, %8, %14], out : [%11]) {
         %16 = amdaie.logicalobjectfifo.access(%arg0, Read) : !amdaie.logicalobjectfifo<memref<1x1x4x8x4x8xi32, 2 : i32>> -> memref<1x1x4x8x4x8xi32, 2 : i32>
@@ -1134,6 +1136,11 @@ module {
 
 // -----
 
+// We want to compute L3's source offset by computing : L2 source offset * L2 target size at dim.
+// But since in this test L2 source offset is not a constant, the above computation cannot take place.
+
+// CHECK-LABEL: @non_constant_source_l2_offset
+//   CHECK-NOT:     memref<1x1x32x32xi32, 1 : i32>
 #map = affine_map<(d0) -> (d0 * 64)>
 #map1 = affine_map<(d0, d1, d2, d3, d4, d5, d6, d7, d8) -> (d0, d2, d5, d3, d6, d8)>
 #map2 = affine_map<(d0, d1, d2, d3, d4, d5, d6, d7, d8) -> (d2, d1, d4, d5, d8, d7)>
@@ -1186,7 +1193,6 @@ module {
         amdaie.end
       }
       %13 = amdaie.logicalobjectfifo.from_memref %alloc_3, {%tile_4} : memref<1x1x8x8x4x4xi32, 2 : i32> -> !amdaie.logicalobjectfifo<memref<1x1x8x8x4x4xi32, 2 : i32>>
-      // expected-remark @below {{found a non-constant value for source offset at dim 1}}
       %14 = amdaie.dma_cpy_nd(%13[0, 0, 0, 0, 0, 0] [1, 1, 8, 8, 4, 4] [1024, 1024, 128, 16, 4, 1], %0[1, %cst_offset, 0, 0, 0, 0] [1, 1, 8, 8, 4, 4] [2048, 1024, 4, 128, 32, 1]) : (!amdaie.logicalobjectfifo<memref<1x1x8x8x4x4xi32, 2 : i32>>, !amdaie.logicalobjectfifo<memref<2x2x32x32xi32, 1 : i32>>)
       %15 = amdaie.core(%tile_4, in : [%7, %8, %14], out : [%11]) {
         %16 = amdaie.logicalobjectfifo.access(%arg0, Read) : !amdaie.logicalobjectfifo<memref<1x1x4x8x4x8xi32, 2 : i32>> -> memref<1x1x4x8x4x8xi32, 2 : i32>
@@ -1219,6 +1225,11 @@ module {
 
 // -----
 
+// We want to compute L3's source offset by computing : L2 source offset * L2 target size at dim.
+// But since in this test L2 target size is not a constant, the above computation cannot take place.
+
+// CHECK-LABEL: @non_constant_target_l2_size
+//   CHECK-NOT:     memref<1x1x32x32xi32, 1 : i32>
 #map = affine_map<(d0) -> (d0 * 64)>
 #map1 = affine_map<(d0, d1, d2, d3, d4, d5, d6, d7, d8) -> (d0, d2, d5, d3, d6, d8)>
 #map2 = affine_map<(d0, d1, d2, d3, d4, d5, d6, d7, d8) -> (d2, d1, d4, d5, d8, d7)>
@@ -1242,7 +1253,6 @@ module {
     scf.forall (%arg4, %arg5) in (2, 2) {
       %2 = affine.apply #map(%arg5)
       %3 = affine.apply #map(%arg4)
-      // expected-remark @below {{found a non-constant value for target size at dim 2}}
       %4 = amdaie.dma_cpy_nd(%0[0, 0, 0, 0] [2, 2, %cst_offset, 32] [2048, 1024, 32, 1], %1[0, 0, %3, %2] [2, 2, 32, 32] [4096, 32, 128, 1]) : (!amdaie.logicalobjectfifo<memref<2x2x32x32xi32, 1 : i32>>, !amdaie.logicalobjectfifo<memref<128x128xi32>>)
       %tile_5 = amdaie.tile(%c1, %c3)
       %5 = amdaie.logicalobjectfifo.from_memref %alloc, {%tile} : memref<2x1x32x32xi32, 1 : i32> -> !amdaie.logicalobjectfifo<memref<2x1x32x32xi32, 1 : i32>>
@@ -1327,7 +1337,7 @@ module {
     %0 = amdaie.logicalobjectfifo.from_memref %alloc_1, {%tile} : memref<2x2x32x32xi32, 1 : i32> -> !amdaie.logicalobjectfifo<memref<2x2x32x32xi32, 1 : i32>>
     %1 = amdaie.logicalobjectfifo.from_memref %alloc_2, {%tile} : memref<128x128xi32> -> !amdaie.logicalobjectfifo<memref<128x128xi32>>
     scf.forall (%arg4, %arg5) in (2, 2) {
-      // expected-remark @below {{Unhandled expression for source offset at dim 2}}
+      // expected-error @below {{Unhandled expression for source offset at dim 2}}
       %4 = amdaie.dma_cpy_nd(%0[0, 0, 0, 0] [2, 2, 32, 32] [2048, 1024, 32, 1], %1[0, 0, %3, %2] [2, 2, 32, 32] [4096, 32, 128, 1]) : (!amdaie.logicalobjectfifo<memref<2x2x32x32xi32, 1 : i32>>, !amdaie.logicalobjectfifo<memref<128x128xi32>>)
       %tile_5 = amdaie.tile(%c1, %c3)
       %5 = amdaie.logicalobjectfifo.from_memref %alloc, {%tile} : memref<2x1x32x32xi32, 1 : i32> -> !amdaie.logicalobjectfifo<memref<2x1x32x32xi32, 1 : i32>>
