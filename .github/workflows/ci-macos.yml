@@ -45,9 +45,19 @@ jobs:
           timezoneWindows: "Singapore Standard Time"
 
       - name: "Checking out repository"
-        uses: actions/checkout@8f4b7f84864484a7bf31766abe9204da3cbe65b3 # v3.5.0
-        with:
-          submodules: recursive
+        env:
+          BRANCH_NAME: ${{ github.head_ref || github.ref_name }}
+          REPO_ADDRESS: ${{ github.server_url }}/${{ github.repository }}
+        run: |
+          git \
+            -c submodule."third_party/torch-mlir".update=none \
+            -c submodule."third_party/stablehlo".update=none \
+            -c submodule."src/runtime_src/core/common/aiebu".update=none \
+            clone \
+            --recursive \
+            --shallow-submodules \
+            --depth 1 \
+            -b $BRANCH_NAME $REPO_ADDRESS .
 
       - uses: actions/setup-python@v4
         with:
@@ -56,10 +66,6 @@ jobs:
       - name: Install deps
         run: |
           brew install ccache ninja
-
-      - name: Sync source deps
-        run: |
-          python ./sync_deps.py
 
       - name: Python deps
         run: |

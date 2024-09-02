@@ -4,7 +4,7 @@ set -eux -o errtrace
 
 this_dir="$(cd $(dirname $0) && pwd)"
 repo_root="$(cd $this_dir/../.. && pwd)"
-iree_dir="$(cd $repo_root/../iree && pwd)"
+iree_dir="$(cd $repo_root/third_party/iree && pwd)"
 build_dir="$repo_root/iree-build"
 install_dir="$repo_root/iree-install"
 mkdir -p "$build_dir"
