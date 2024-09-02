@@ -60,6 +60,7 @@ iree_lit_test_suite(
     "peel_for_loop.mlir"
     "propagate_data_layout.mlir"
     "sink_into_core.mlir"
+    "split_logicalobjfifos_for_connection_reuse.mlir"
     "tile_and_fuse_using_scf_for.mlir"
     "tile_and_fuse_using_scf_forall.mlir"
     "tile_copy_using_scf_for.mlir"

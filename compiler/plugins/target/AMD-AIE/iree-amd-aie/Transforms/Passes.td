@@ -470,6 +470,12 @@ def AMDAIESinkIntoCore :
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIESinkIntoCorePass()";
 }
 
+def AMDAIESplitLogicalObjFifosForConnectionReuse :
+  Pass<"iree-amdaie-split-logical-objectfifos-for-connection-reuse", "ModuleOp"> {
+  let summary = "Pass to split L2 buffers to share inputs of Matmul and Elementwise operations.";
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIESplitLogicalObjFifosForConnectionReusePass()";
+}
+
 def AMDAIETile :
     InterfacePass<"iree-amdaie-tile", "mlir::FunctionOpInterface"> {
   let summary = "Pass to tile TilingInterface operations.";
