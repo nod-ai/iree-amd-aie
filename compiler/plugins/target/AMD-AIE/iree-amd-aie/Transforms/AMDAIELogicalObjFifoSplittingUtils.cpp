@@ -124,10 +124,19 @@ static FailureOr<OpFoldResult> updateL3SourceOffset(IRRewriter &rewriter,
   return newL3AsSourceOffset;
 }
 
+/// A struct utility to encapsulate all the data required to perform splitting
+/// of logicalobjectfifos.
+struct SplittingLogicalObjectFifoData {
+  SmallVector<AMDAIE::DmaCpyNdOp> l2ToL1DmaOps;
+  SmallVector<size_t> splitDimsForL2;
+  SmallVector<size_t> nonSplitDimsForL2;
+  AMDAIE::DmaCpyNdOp l3ToL2DmaOp;
+};
+
 /// Utility to check whether splitting of logicalobjectfifos can be performed.
-/// If yes, it populates the struct `SplittingLogicalObjectFifoData` with the
-/// data required to perform the actual splitting.
-LogicalResult checkWhetherSplitIsPossible(
+/// If possible, it populates the struct `SplittingLogicalObjectFifoData` with
+/// the data required to perform the actual splitting.
+static LogicalResult checkWhetherSplitIsPossible(
     SplittingLogicalObjectFifoData &splittingLogicalObjectFifoData) {
   SmallVector<AMDAIE::DmaCpyNdOp> l2ToL1DmaOps =
       splittingLogicalObjectFifoData.l2ToL1DmaOps;
@@ -243,22 +252,27 @@ LogicalResult checkWhetherSplitIsPossible(
   return success();
 }
 
-// Given a `SplittingLogicalObjectFifoData` perform L2->L1 Dma ops' splitting :-
-// 1. For the split dimension inferred set offset = 0 and size as 1 for L2 and
+// Given a vector of L2->L1 Dma ops' perform the splitting :-
+// 1. Check if the splitting can be performed or not. If not possible, bail out.
+// 2. For the split dimension inferred set offset = 0 and size as 1 for L2 and
 //    L3.
-// 2. Now traverse each L2->L1 Dma op and perform the following :-
+// 3. Now traverse each L2->L1 Dma op and perform the following :-
 //    a) Create a new L2 AllocOp based on the updated size (step 3 above) and
 //       create a logicalobjectfifo using the same.
 //    b) Split L3->L2 Dma op.
 //    c) SPlit L2->L1 Dma op.
-// 3. Delete old L2->L1, L3->L2 and corresponding AllocOps.
+// 4. Delete old L2->L1, L3->L2 and corresponding AllocOps.
 LogicalResult splitLogicalObjectFifos(
-    IRRewriter &rewriter,
-    const SplittingLogicalObjectFifoData &splittingLogicalObjectFifoData,
+    IRRewriter &rewriter, SmallVector<AMDAIE::DmaCpyNdOp> &l2ToL1DmaOps,
     MLIRContext *context) {
+  SplittingLogicalObjectFifoData splittingLogicalObjectFifoData;
+  splittingLogicalObjectFifoData.l2ToL1DmaOps = l2ToL1DmaOps;
+  if (failed(checkWhetherSplitIsPossible(splittingLogicalObjectFifoData))) {
+    LLVM_DEBUG(llvm::dbgs()
+               << "Cannot perform splitting of logicalobjectfifos");
+    return success();
+  }
   OpBuilder::InsertionGuard guard(rewriter);
-  SmallVector<AMDAIE::DmaCpyNdOp> l2ToL1DmaOps =
-      splittingLogicalObjectFifoData.l2ToL1DmaOps;
   SmallVector<size_t> splitDimsForL2 =
       splittingLogicalObjectFifoData.splitDimsForL2;
   SmallVector<size_t> nonSplitDimsForL2 =
