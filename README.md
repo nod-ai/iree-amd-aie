@@ -43,7 +43,7 @@ git \
   https://github.com/nod-ai/iree-amd-aie.git
 ```
 
-which has the effect of not cloning entire repo histories *and* skipping nested submodules that we currently do not need.
+which has the effect of not cloning entire repo histories and skipping nested submodules that we currently do not need.
 
 ## Building (along with IREE)
 
