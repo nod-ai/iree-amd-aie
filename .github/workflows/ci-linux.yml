@@ -45,6 +45,7 @@ jobs:
           BRANCH_NAME: ${{ github.head_ref || github.ref_name }}
           REPO_ADDRESS: ${{ github.server_url }}/${{ github.repository }}
         run: |
+          # TODO : investigate warning: --depth is ignored in local clones; use file:// instead
           git \
             -c submodule."third_party/torch-mlir".update=none \
             -c submodule."third_party/stablehlo".update=none \
