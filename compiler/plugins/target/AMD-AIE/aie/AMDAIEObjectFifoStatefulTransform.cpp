@@ -4,9 +4,6 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#include <numeric>
-#include <set>
-
 #include "AIEDialect.h"
 #include "Passes.h"
 #include "iree-amd-aie/aie_runtime/iree_aie_runtime.h"
@@ -15,7 +12,6 @@
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/SCF/Utils/Utils.h"
-#include "mlir/Dialect/Utils/StaticValueUtils.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
@@ -28,7 +24,6 @@ using namespace mlir::iree_compiler::AMDAIE;
 using xilinx::AIE::AIEObjectFifoType;
 using xilinx::AIE::BDDimLayoutArrayArrayAttr;
 using xilinx::AIE::BDDimLayoutArrayAttr;
-using xilinx::AIE::BDDimLayoutAttr;
 using xilinx::AIE::BufferOp;
 using xilinx::AIE::CoreOp;
 using xilinx::AIE::DeviceOp;
@@ -118,32 +113,6 @@ std::optional<Value> getOptionalSharedTile(ObjectFifoLinkOp op) {
 }
 
 }  // namespace
-
-class LockAnalysis {
-  DenseMap<std::pair<Value, int>, int> locksPerTile;
-
- public:
-  LockAnalysis(DeviceOp &device) {
-    for (auto lockOp : device.getOps<LockOp>())
-      locksPerTile[{lockOp.getTile(), lockOp.getLockID().value()}] = 1;
-  }
-
-  /// Given a tile, returns next usable lockID for that tile.
-  int getLockID(TileOp &tileOp) {
-    DeviceOp device = tileOp->getParentOfType<DeviceOp>();
-    AMDAIEDeviceModel deviceModel =
-        getDeviceModel(static_cast<AMDAIEDevice>(device.getDevice()));
-    for (int i = 0;
-         i < deviceModel.getNumLocks(tileOp.getCol(), tileOp.getRow()); i++) {
-      std::pair<Value, int> lockId = {tileOp, i};
-      if (int usageCnt = locksPerTile[lockId]; usageCnt == 0) {
-        locksPerTile[lockId] = 1;
-        return i;
-      }
-    }
-    return -1;
-  }
-};
 
 class DMAChannelAnalysis {
   DenseMap<Value, uint8_t> producerChannelsPerTile;
@@ -721,7 +690,6 @@ void replaceObjectAcquireOp(
 void createBuffersAndLocks(
     OpBuilder builder, DeviceOp device, ObjectFifoCreateOp createOp,
     std::vector<ObjectFifoCreateOp> &splitBecauseLink,
-    LockAnalysis &lockAnalysis,
     DenseMap<ObjectFifoLinkOp, ObjectFifoCreateOp> &objFifoLinks,
     DenseMap<ObjectFifoCreateOp, std::vector<BufferOp>> &buffersPerFifo,
     DenseMap<ObjectFifoCreateOp, std::vector<LockOp>> &locksPerFifo) {
@@ -817,31 +785,17 @@ void createBuffersAndLocks(
     numElem = 0;
 
   // create corresponding aie2 locks
-  int prodLockID = lockAnalysis.getLockID(creationTile);
-  if (prodLockID < 0) {
-    creationTile->emitOpError("No more locks to allocate!");
-    assert(prodLockID >= 0);
-  }
-  auto prodLock = builder.create<LockOp>(builder.getUnknownLoc(), creationTile,
-                                         prodLockID, numElem);
-  prodLock.getOperation()->setAttr(
-      SymbolTable::getSymbolAttrName(),
+  LockOp prodLock = builder.create<LockOp>(
+      builder.getUnknownLoc(), creationTile, IntegerAttr{},
+      builder.getI8IntegerAttr(numElem),
       builder.getStringAttr(name(createOp).str() + "_prod_lock"));
-  std::vector<LockOp> locks{prodLock};
 
-  int consLockID = lockAnalysis.getLockID(creationTile);
-  if (consLockID < 0) {
-    creationTile->emitOpError("No more locks to allocate!");
-    assert(consLockID >= 0);
-  }
-  auto consLock = builder.create<LockOp>(builder.getUnknownLoc(), creationTile,
-                                         consLockID, 0);
-  consLock.getOperation()->setAttr(
-      SymbolTable::getSymbolAttrName(),
+  LockOp consLock = builder.create<LockOp>(
+      builder.getUnknownLoc(), creationTile, IntegerAttr{},
+      builder.getI8IntegerAttr(0),
       builder.getStringAttr(name(createOp).str() + "_cons_lock"));
-  locks.push_back(consLock);
 
-  locksPerFifo[createOp] = locks;
+  locksPerFifo[createOp] = std::vector<LockOp>{prodLock, consLock};
 }
 
 /// Translate ObjectFifoCreateOp ops into routing primitives (Flows) and DMA
@@ -951,7 +905,6 @@ struct AMDAIEObjectFifoStatefulTransformPass : mlir::OperationPass<DeviceOp> {
 
   void runOnOperation() override {
     DeviceOp device = getOperation();
-    LockAnalysis lockAnalysis(device);
     DMAChannelAnalysis dmaAnalysis;
     OpBuilder builder = OpBuilder::atBlockEnd(device.getBody());
     // maps each objFifo to its corresponding buffer
@@ -980,8 +933,7 @@ struct AMDAIEObjectFifoStatefulTransformPass : mlir::OperationPass<DeviceOp> {
 
     for (ObjectFifoCreateOp createOp : device.getOps<ObjectFifoCreateOp>())
       createBuffersAndLocks(builder, device, createOp, splitBecauseLink,
-                            lockAnalysis, objFifoLinks, buffersPerFifo,
-                            locksPerFifo);
+                            objFifoLinks, buffersPerFifo, locksPerFifo);
 
     // Only the objectFifos we split above require DMA communication; the others
     // rely on shared memory and share the same buffers.
