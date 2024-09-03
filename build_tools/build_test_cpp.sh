@@ -103,6 +103,8 @@ if [[ "$OSTYPE" != "darwin"* ]]; then
     -S $iree_dir -B $build_dir
 else
   cmake $CMAKE_ARGS \
+    -DLLVM_TARGET_ARCH="X86;ARM" \
+    -DLLVM_TARGETS_TO_BUILD="X86;ARM" \
     -S $iree_dir -B $build_dir
 fi
 

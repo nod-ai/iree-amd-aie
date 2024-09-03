@@ -77,6 +77,7 @@ jobs:
           export cache_dir="${{ env.CACHE_DIR }}"
           export CCACHE_COMPILERCHECK="string:$(clang --version)"
           bash build_tools/build_llvm.sh
+          export llvm_install_dir=$PWD/llvm-install
           bash build_tools/build_test_cpp.sh
 
       - name: Create artifacts
@@ -91,7 +92,7 @@ jobs:
         if: ${{ !cancelled() }}
         with:
           name: linux_x86_64_llvm_packages
-          path: llvm-dist-linux.tar
+          path: llvm-dist-*.tar
           if-no-files-found: warn
 
       - name: Upload artifacts
