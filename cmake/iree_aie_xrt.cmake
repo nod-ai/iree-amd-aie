@@ -15,7 +15,7 @@ include(${CMAKE_CURRENT_LIST_DIR}/iree_aie_utils.cmake)
 # ##############################################################################
 
 if(NOT DEFINED CMAKE_SIZEOF_VOID_P OR NOT DEFINED ${CMAKE_SIZEOF_VOID_P})
-  message(FATAL_ERROR "CMAKE_SIZEOF_VOID_P not defined")
+  enable_language(C CXX)
 endif()
 
 include(FetchContent)
