@@ -84,6 +84,7 @@ module @non_adjacency {
     aie.device(npu1_4col) {
         %tile12 = aie.tile(1, 2)
         %tile33 = aie.tile(3, 3)
+        aie.flow(%tile12, DMA : 0, %tile33, DMA : 0) {symbol = @objfifo}
         aie.objectfifo @objfifo (%tile12, {%tile33}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
         func.func @some_work(%lineOut : memref<16xi32>) -> () {
             return

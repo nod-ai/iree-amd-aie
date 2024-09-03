@@ -13,6 +13,7 @@ iree_cc_library(
     Utils
   HDRS
     "ChannelBdIdGenerator.h"
+    "ChannelGenerator.h"
   SRCS
     "ChannelBdIdGenerator.cpp"
   DEPS

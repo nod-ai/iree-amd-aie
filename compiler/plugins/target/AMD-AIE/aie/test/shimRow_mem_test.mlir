@@ -54,6 +54,7 @@ module @shimRow_mem {
     aie.device(npu1_4col) {
         %tile32 = aie.tile(3, 2)
         %tile30 = aie.tile(3, 0)
+        aie.flow(%tile30, DMA : 0, %tile32, DMA : 0) {symbol = @objfifo}
         aie.objectfifo @objfifo (%tile30, {%tile32}, 3 : i32) : !aie.objectfifo<memref<16xi32>>
         %ext_buffer_in  = aie.external_buffer {sym_name = "ext_buffer_in"}: memref<64xi32>
         aie.objectfifo.register_external_buffers @objfifo (%tile30, {%ext_buffer_in}) : (memref<64xi32>)

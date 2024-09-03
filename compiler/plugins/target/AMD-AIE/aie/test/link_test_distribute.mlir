@@ -144,6 +144,10 @@ module @link_distribute {
         %tile22 = aie.tile(2, 2)
         %tile23 = aie.tile(2, 3)
         %tile33 = aie.tile(3, 3)
+        aie.flow(%tile20, DMA : 0, %tile21, DMA : 0) {symbol = @link1}
+        aie.flow(%tile21, DMA : 0, %tile22, DMA : 0) {symbol = @link2}
+        aie.flow(%tile21, DMA : 1, %tile23, DMA : 0) {symbol = @link3}
+        aie.flow(%tile21, DMA : 2, %tile33, DMA : 0) {symbol = @link4}
         aie.objectfifo @link1 (%tile20, {%tile21}, 2 : i32) : !aie.objectfifo<memref<48xi32>>
         aie.objectfifo @link2 (%tile21, {%tile22}, 2 : i32) : !aie.objectfifo<memref<4x4xi32>>
         aie.objectfifo @link3 (%tile21, {%tile23}, 2 : i32) : !aie.objectfifo<memref<20xi32>>

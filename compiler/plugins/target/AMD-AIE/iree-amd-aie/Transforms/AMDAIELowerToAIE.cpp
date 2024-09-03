@@ -93,9 +93,10 @@ AIE::BDDimLayoutArrayAttr convertSizeStrideToBDDimLayoutArrayAttr(
 /// Utility to create an `aie.objectfifo` operation from
 /// `amdaie.circular_dma_cpy_nd`.
 FailureOr<AIE::ObjectFifoCreateOp> createObjectFifo(
-    IRRewriter &rewriter, AMDAIE::ConnectionOp connectionOp,
+    IRRewriter &rewriter, AMDAIE::ConnectionOp connectionOp, IRMapping &mapper,
     AMDAIE::NpuCircularDmaCpyNdOp dmaOp, Value srcTile, ValueRange dstTiles,
     StringAttr &symName) {
+  OpBuilder::InsertionGuard guard(rewriter);
   auto sourceType =
       cast<AMDAIE::LogicalObjectFifoType>(connectionOp.getSource().getType());
   auto targetType =
@@ -117,6 +118,27 @@ FailureOr<AIE::ObjectFifoCreateOp> createObjectFifo(
       return connectionOp.emitOpError()
              << "unsupported sourceDepth != targetDepth";
     depth = sourceDepth;
+  }
+
+  SmallVector<AMDAIE::ChannelOp> producerChannels;
+  SmallVector<AMDAIE::ChannelOp> consumerChannels;
+  for (Value producerChannel : connectionOp.getSourceChannels()) {
+    auto channelOp =
+        dyn_cast<AMDAIE::ChannelOp>(producerChannel.getDefiningOp());
+    if (!channelOp) {
+      return connectionOp.emitOpError()
+             << "found non-`amdaie.channel` source channel";
+    }
+    producerChannels.push_back(channelOp);
+  }
+  for (Value consumerChannel : connectionOp.getTargetChannels()) {
+    auto channelOp =
+        dyn_cast<AMDAIE::ChannelOp>(consumerChannel.getDefiningOp());
+    if (!channelOp) {
+      return connectionOp.emitOpError()
+             << "found non-`amdaie.channel` source channel";
+    }
+    consumerChannels.push_back(channelOp);
   }
 
   // Convert source and target sizes and strides to `BDDimLayoutArrayAttr`s,
@@ -167,6 +189,20 @@ FailureOr<AIE::ObjectFifoCreateOp> createObjectFifo(
       rewriter.getUnknownLoc(), symName, srcTile, dstTiles,
       rewriter.getIntegerAttr(rewriter.getI32Type(), depth), dtype, sourceDims,
       targetDims);
+
+  // Insert flow ops
+  rewriter.setInsertionPoint(fifo);
+  for (AMDAIE::ChannelOp producerChannel : producerChannels) {
+    for (AMDAIE::ChannelOp consumerChannel : consumerChannels) {
+      Value aieProducerTile = mapper.lookup(producerChannel.getTile());
+      Value aieConsumerTile = mapper.lookup(consumerChannel.getTile());
+      rewriter.create<AIE::FlowOp>(
+          rewriter.getUnknownLoc(), aieProducerTile, AIE::WireBundle::DMA,
+          producerChannel.getValue(), aieConsumerTile, AIE::WireBundle::DMA,
+          consumerChannel.getValue(), FlatSymbolRefAttr::get(fifo->getContext(), fifo.getName()));
+    }
+  }
+
   return fifo;
 }
 
@@ -231,8 +267,8 @@ LogicalResult acquireOpToAIE(IRRewriter &rewriter,
 
   OpBuilder::InsertionGuard guard(rewriter);
   rewriter.setInsertionPoint(acquireOp);
-  auto connectionOp =
-      dyn_cast_if_present<AMDAIE::ConnectionOp>(acquireOp.getDma().getDefiningOp());
+  auto connectionOp = dyn_cast_if_present<AMDAIE::ConnectionOp>(
+      acquireOp.getDma().getDefiningOp());
   if (!connectionOp) {
     return connectionOp.emitError()
            << "acquire doesn't operate on a `amdaie.connection`";
@@ -480,7 +516,7 @@ LogicalResult flowToAIE(IRRewriter &rewriter, AMDAIE::ConnectionOp connectionOp,
   auto symName = "obj" + std::to_string(dmaId++);
   StringAttr symAttr = rewriter.getStringAttr(symName);
   FailureOr<AIE::ObjectFifoCreateOp> objFifo =
-      createObjectFifo(rewriter, connectionOp, npuDmaUserOp.value(),
+      createObjectFifo(rewriter, connectionOp, mapper, npuDmaUserOp.value(),
                        newSourceTile, newTargetTiles, symAttr);
   if (failed(objFifo)) return failure();
   mapper.map(connectionOp.getOperation(), objFifo.value().getOperation());

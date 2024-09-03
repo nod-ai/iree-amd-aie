@@ -165,12 +165,22 @@ def AIE_FlowOp: AIE_Op<"flow"> {
         ConfinedAttr<I8Attr, [IntMinValue<0>]>:$source_channel,
         Index:$dest,
         StrmSwPortTypeAttr:$dest_bundle,
-        ConfinedAttr<I8Attr, [IntMinValue<0>]>:$dest_channel
+        ConfinedAttr<I8Attr, [IntMinValue<0>]>:$dest_channel,
+        OptionalAttr<FlatSymbolRefAttr>:$symbol
   );
   let summary = "A logical circuit-switched connection between cores";
   let assemblyFormat = [{
     `(` $source `,` $source_bundle `:` $source_channel `,` $dest `,` $dest_bundle `:` $dest_channel `)` attr-dict
   }];
+  let builders = [
+    OpBuilder<(
+      ins "::mlir::Value":$source, 
+          "::mlir::iree_compiler::AMDAIE::StrmSwPortType":$source_bundle,
+          "uint8_t":$source_channel,
+          "::mlir::Value":$dest,
+          "::mlir::iree_compiler::AMDAIE::StrmSwPortType":$dest_bundle,
+          "uint8_t":$dest_channel)>
+  ];
 }
 
 def AIE_AMSelOp: AIE_Op<"amsel", [

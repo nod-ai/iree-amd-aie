@@ -175,6 +175,9 @@ module @link_AIE2 {
         %tile01 = aie.tile(2, 1)
         %tile02 = aie.tile(2, 2)
         %tile03 = aie.tile(2, 3)
+        aie.flow(%tile00, DMA : 0, %tile01, DMA : 0) {symbol = @mem_in}
+        aie.flow(%tile00, DMA : 0, %tile02, DMA : 0) {symbol = @mem_in}
+        aie.flow(%tile01, DMA : 0, %tile03, DMA : 0) {symbol = @mem_out}
         aie.objectfifo @mem_in (%tile00, {%tile02, %tile01}, [2,2,7]) : !aie.objectfifo<memref<3000xi32>>
         aie.objectfifo @mem_out (%tile01, {%tile03}, 7 : i32) : !aie.objectfifo<memref<3000xi32>>
         aie.objectfifo.link [@mem_in] -> [@mem_out] ()

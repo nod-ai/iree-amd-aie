@@ -59,6 +59,8 @@ module @shim_AIE2 {
    aie.device(xcve2302) {
       %tile22 = aie.tile(2, 2)
       %tile20 = aie.tile(2, 0)
+      aie.flow(%tile20, DMA : 0, %tile22, DMA : 0) {symbol = @of_in}
+      aie.flow(%tile22, DMA : 0, %tile20, DMA : 0) {symbol = @of_out}
       aie.objectfifo @of_in (%tile20, {%tile22}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
       aie.objectfifo @of_out (%tile22, {%tile20}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
       %ext_buffer_in  = aie.external_buffer {sym_name = "ext_buffer_in"}: memref<64xi32>

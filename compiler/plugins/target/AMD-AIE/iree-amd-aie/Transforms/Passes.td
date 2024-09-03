@@ -23,6 +23,12 @@ def AMDAIEAIRDmaToAMDAIEDma :
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEAIRDmaAMDAIEDmaPass()";
 }
 
+def AMDAIEAssignChannels :
+    Pass<"iree-amdaie-assign-channels", ""> {
+  let summary = "Assign channels to `amdaie.connection` ops.";
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEAssignChannelsPass()";
+}
+
 def AMDAIEAssignLogicalObjectFifoDepth :
     Pass<"iree-amdaie-assign-logical-objectfifo-depth", ""> {
   let summary = "Assign a buffer depth of the logical objectfifos.";
