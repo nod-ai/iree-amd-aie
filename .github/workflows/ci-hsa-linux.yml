@@ -1,4 +1,4 @@
-name: CI Linux
+name: CI Linux HSA
 
 on:
   workflow_call:
@@ -10,15 +10,95 @@ on:
       - main
 
 concurrency:
-  # A PR number if a pull request and otherwise the commit hash. This cancels
-  # queued and in-progress runs for the same PR (presubmit) or commit
-  # (postsubmit).
-  group: ci-build-test-cpp-linux-${{ github.event.number || github.sha }}
+  group: ci-build-test-cpp-linux-hsa-${{ github.event.number || github.sha }}
   cancel-in-progress: true
 
 jobs:
+  build_hsa:
+    name: Build HSA (linux)
+    runs-on: nod-ai-shared-cpubuilder-manylinux-x86_64
+    steps:
+      - name: Configure local git mirrors
+        run: |
+          /gitmirror/scripts/trigger_update_mirrors.sh
+          /gitmirror/scripts/git_config.sh
+
+      - name: "Checking out repository"
+        env:
+          BRANCH_NAME: ${{ github.ref }}
+          REPO_ADDRESS: ${{ github.server_url }}/${{ github.repository }}
+        run: |
+          git init
+          git remote add origin $REPO_ADDRESS
+          git -c protocol.version=2 fetch --depth 1 origin $BRANCH_NAME
+          git reset --hard FETCH_HEAD
+          git -c submodule."third_party/torch-mlir".update=none -c submodule."third_party/stablehlo".update=none -c submodule."src/runtime_src/core/common/aiebu".update=none submodule update --init --recursive --depth 1 --single-branch -j 10
+
+      - name: Install deps
+        run: |
+          dnf install -y almalinux-release-devel
+          yum install -y elfutils-libelf-devel p7zip p7zip-plugins \
+                         sudo ncurses-compat-libs openssh vim-common
+
+      - name: Build and install libnuma
+        working-directory: ${{ github.workspace }}/third_party/ROCR-Runtime
+        run: |
+          curl --silent -L \
+            https://github.com/numactl/numactl/releases/download/v2.0.18/numactl-2.0.18.tar.gz \
+            -o numactl-2.0.18.tar.gz
+          tar -xf numactl-2.0.18.tar.gz
+          pushd numactl-2.0.18
+          ./configure
+          # i have no idea why this is necessary
+          # but without it you get something about "can't cd into dir"
+          sed -i '7563s/`cd "$dir" && pwd`/$dir/g' libtool
+          make install
+          popd
+
+      - name: Hack ROCR
+        working-directory: ${{ github.workspace }}/third_party/ROCR-Runtime
+        run: |
+          sed -i 's/amdgcn-amd-amdhsa/amdgcn-amd-amdhsa -nogpulib/g' runtime/hsa-runtime/core/runtime/blit_shaders/CMakeLists.txt
+          sed -i 's/amdgcn-amd-amdhsa/amdgcn-amd-amdhsa -nogpulib/g' runtime/hsa-runtime/core/runtime/trap_handler/CMakeLists.txt
+          sed -i 's/amdgcn-amd-amdhsa/amdgcn-amd-amdhsa -nogpulib/g' runtime/hsa-runtime/image/blit_src/CMakeLists.txt
+
+      - name: Get compatible Clang
+        working-directory: ${{ github.workspace }}/third_party/ROCR-Runtime
+        run: |
+          pip download mlir==20.0.0.2024090301+amdgpu.b6597f52 -f https://makslevental.github.io/wheels
+          unzip -q mlir-*.whl
+
+      - name: Build ROCR distro
+        working-directory: ${{ github.workspace }}/third_party/ROCR-Runtime
+        run: |
+          rocr_dir="$PWD"
+          build_rocr_dir="$PWD/rocr-build"
+          mkdir -p "$build_rocr_dir"
+          build_rocr_dir="$(cd $build_rocr_dir && pwd)"
+          rocr_install_dir="$PWD/rocr-install"
+          
+          cmake -GNinja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX="$rocr_install_dir" \
+            -DClang_DIR=$PWD/mlir/lib/cmake/clang \
+            -DLLVM_DIR=$PWD/mlir/lib/cmake/mlir \
+            -DIMAGE_SUPPORT=OFF \
+            -S "$rocr_dir" -B "$build_rocr_dir"
+          
+          cmake --build "$build_rocr_dir" --target install
+          tar -cf rocr-${GITHUB_SHA::8}.tar rocr-install
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: linux_hsa_x86_64_release_packages
+          path: ${{ github.workspace }}/third_party/ROCR-Runtime/rocr-*.tar
+          if-no-files-found: error
+
   build_and_ctest:
-    name: Build and Test (linux, ASSERTIONS)
+    name: Build and Test with HSA (linux, ASSERTIONS)
+    needs: [build_hsa]
     runs-on: nod-ai-shared-cpubuilder-manylinux-x86_64
     strategy:
       fail-fast: true
@@ -50,7 +130,7 @@ jobs:
           git -c protocol.version=2 fetch --depth 1 origin $BRANCH_NAME
           git reset --hard FETCH_HEAD
           git -c submodule."third_party/torch-mlir".update=none -c submodule."third_party/stablehlo".update=none -c submodule."src/runtime_src/core/common/aiebu".update=none submodule update --init --recursive --depth 1 --single-branch -j 10
-          
+
       - name: Install deps
         run: |
           dnf install -y almalinux-release-devel epel-release
@@ -59,11 +139,7 @@ jobs:
 
       - name: Python deps
         run: |
-          pip install "numpy<2" pyyaml "pybind11[global]==2.10.3" nanobind pytest
-
-      - name: Run Pytest
-        run: |
-          pytest build_tools/ci
+          pip install "numpy<2" pyyaml "pybind11[global]==2.10.3" nanobind
 
       - name: Enable cache
         uses: actions/cache/restore@v3
@@ -72,35 +148,33 @@ jobs:
           key:  ${{ env.CACHE_KEY }}
           restore-keys: linux-build-test-cpp-
 
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: linux_hsa_x86_64_release_packages
+
+      - name: Extract artifact
+        run: |
+          tar -xvf rocr-*.tar
+          echo "hsa-runtime64_ROOT=$PWD/rocr-install" >> $GITHUB_ENV
+          echo IREE_EXTERNAL_HAL_DRIVER=hsa >> $GITHUB_ENV
+
       - name: Build packages
         run: |
           export cache_dir="${{ env.CACHE_DIR }}"
           export CCACHE_COMPILERCHECK="string:$(clang --version)"
-          bash build_tools/build_llvm.sh
-          rm -rf llvm-build
-          export llvm_install_dir=$PWD/llvm-install
-          bash build_tools/build_test_cpp.sh
+          bash build_tools/ci/build_test_cpp.sh
 
       - name: Create artifacts
         if: ${{ !cancelled() }}
         run: |
-          pushd third_party/iree/third_party/llvm-project && llvm_sha_short=$(git rev-parse --short HEAD) && popd
-          tar cf llvm-dist-linux-$llvm_sha_short.tar llvm-install
           tar cf iree-dist-linux.tar iree-install
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         if: ${{ !cancelled() }}
         with:
-          name: linux_x86_64_llvm_packages
-          path: llvm-dist-*.tar
-          if-no-files-found: warn
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        if: ${{ !cancelled() }}
-        with:
-          name: linux_x86_64_iree_packages
+          name: linux_x86_64_release_packages
           path: iree-dist-linux.tar
           if-no-files-found: warn
 
@@ -111,9 +185,8 @@ jobs:
           path: ${{ env.CACHE_DIR }}
           key: ${{ env.CACHE_KEY }}
 
-
   test_linux:
-    name: E2E Test linux
+    name: E2E Test linux with HSA
     needs: build_and_ctest
     strategy:
       fail-fast: false
@@ -131,17 +204,10 @@ jobs:
       - name: Download artifacts
         uses: actions/download-artifact@v4
         with:
-          name: linux_x86_64_iree_packages
-
-      - name: Download artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: linux_x86_64_llvm_packages
+          name: linux_x86_64_release_packages
 
       - name: Extract artifact
         run: |
-          tar -xvf llvm-dist-linux-*.tar
-          echo "PATH=$PWD/llvm-install/bin:$PATH" >> $GITHUB_ENV
           tar -xvf iree-dist-linux.tar
           bash build_tools/download_peano.sh
 
@@ -189,37 +255,33 @@ jobs:
             /opt/xilinx/xrt \
             /opt/Xilinx/Vitis/2024.2
 
+
       - name : Smoke E2E comparison flag test
         run: |
           source .venv/bin/activate
           source /opt/xilinx/xrt/setup.sh
-          python3 build_tools/ci/cpu_comparison/run.py \
+          python3 build_tools/ci/cpu_comparison/run_test.py \
             test_aie_vs_cpu \
             iree-install \
             $PWD/llvm-aie \
             --xrt-dir /opt/xilinx/xrt \
             --test-set='Smoke' \
-            --do-not-run-aie > smoke_output.log 2>&1
+            --do-not-run-aie
 
-          # Assert that smoke_output.log is empty (because verbose=0)
-          # First assert that smoke_output.log exists:
-          if [ ! -f smoke_output.log ]; then
-            echo "smoke_output.log does not exist."
-            exit 1
-          fi
-          if [ -s smoke_output.log ]; then
-            echo "smoke_output.log is not empty:"
-            cat smoke_output.log
+          # Assert that output.log is empty (because verbose=0)
+          if [ -s output.log ]; then
+            echo "output.log is not empty:"
+            cat output.log
             exit 1
           else
-            echo "smoke_output.log is empty"
+            echo "output.log is empty"
           fi
 
       - name : E2E comparison of AIE to llvm-cpu
         run: |
           source .venv/bin/activate
           source /opt/xilinx/xrt/setup.sh
-          python3 build_tools/ci/cpu_comparison/run.py \
+          python3 build_tools/ci/cpu_comparison/run_test.py \
             test_aie_vs_cpu \
             $PWD/iree-install \
             $PWD/llvm-aie \
