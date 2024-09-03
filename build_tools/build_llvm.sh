@@ -29,7 +29,7 @@ echo "Using python: $python"
 # well only if you have apparently the right version of git-bash installed
 # https://stackoverflow.com/a/72164385
 if [[ "$OSTYPE" == "linux-gnu"* ]]; then
-  export CMAKE_TOOLCHAIN_FILE="$this_dir/linux_default_toolchain.cmake"
+  export CMAKE_TOOLCHAIN_FILE="$this_dir/ci/linux_default_toolchain.cmake"
   export CC=clang
   export CXX=clang++
 elif [[ "$OSTYPE" == "msys"* ]]; then
