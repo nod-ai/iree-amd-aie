@@ -49,7 +49,7 @@ jobs:
           
       - name: "Checking out repository"
         env:
-          BRANCH_NAME: ${{ github.head_ref || github.ref_name }}
+          BRANCH_NAME: ${{ github.ref }}
           REPO_ADDRESS: ${{ github.server_url }}/${{ github.repository }}
         run: |
           git \
