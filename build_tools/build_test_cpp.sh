@@ -10,6 +10,7 @@ install_dir="$repo_root/iree-install"
 mkdir -p "$build_dir"
 build_dir="$(cd $build_dir && pwd)"
 cache_dir="${cache_dir:-}"
+llvm_install_dir="${llvm_install_dir:-}"
 
 # Setup cache dir.
 if [ -z "${cache_dir}" ]; then
@@ -81,6 +82,13 @@ CMAKE_ARGS="\
   -DIREE_INPUT_TORCH=OFF \
   -DCMAKE_OBJECT_PATH_MAX=4096 \
   -DIREE_CMAKE_PLUGIN_PATHS=$repo_root"
+
+
+if [ -d "${llvm_install_dir}" ]; then
+  CMAKE_ARGS="$CMAKE_ARGS \
+    -DIREE_BUILD_BUNDLED_LLVM=OFF \
+    -DCMAKE_PREFIX_PATH=$llvm_install_dir"
+fi
 
 if [[ "$OSTYPE" != "darwin"* ]]; then
   cmake $CMAKE_ARGS \

@@ -76,12 +76,23 @@ jobs:
         run: |
           export cache_dir="${{ env.CACHE_DIR }}"
           export CCACHE_COMPILERCHECK="string:$(clang --version)"
-          bash build_tools/ci/build_test_cpp.sh
+          bash build_tools/build_llvm.sh
+          bash build_tools/build_test_cpp.sh
 
       - name: Create artifacts
         if: ${{ !cancelled() }}
         run: |
           tar cf iree-dist-linux.tar iree-install
+          pushd third_party/iree/third_party/llvm-project && llvm_sha_short=$(git rev-parse --short HEAD) && popd
+          tar cf llvm-dist-linux-$llvm_sha_short.tar llvm-install
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: linux_x86_64_llvm_packages
+          path: llvm-dist-linux.tar
+          if-no-files-found: warn
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
