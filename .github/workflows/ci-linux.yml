@@ -45,16 +45,17 @@ jobs:
           BRANCH_NAME: ${{ github.ref }}
           REPO_ADDRESS: ${{ github.server_url }}/${{ github.repository }}
         run: |
-          # TODO : investigate warning: --depth is ignored in local clones; use file:// instead
+          git init
+          git remote add origin $REPO_ADDRESS
           git \
+            -c protocol.version=2 \
             -c submodule."third_party/torch-mlir".update=none \
             -c submodule."third_party/stablehlo".update=none \
             -c submodule."src/runtime_src/core/common/aiebu".update=none \
-            clone \
             --recursive \
             --shallow-submodules \
             --depth 1 \
-            -b $BRANCH_NAME $REPO_ADDRESS .
+            fetch origin $BRANCH_NAME
           
       - name: Install deps
         run: |
