@@ -262,14 +262,8 @@ DoublyStridedOpInterface DmaCpyNdOp::createDoublyStridedOp(
     SmallVector<OpFoldResult> &newSourceStrides) {
   Location loc = (*this)->getLoc();
   auto newOp = rewriter.create<AMDAIE::DmaCpyNdOp>(
-      loc, getTarget(),
-      getValueOrCreateConstantIndexOp(rewriter, loc, newTargetOffsets),
-      getValueOrCreateConstantIndexOp(rewriter, loc, newTargetSizes),
-      getValueOrCreateConstantIndexOp(rewriter, loc, newTargetStrides),
-      getSource(),
-      getValueOrCreateConstantIndexOp(rewriter, loc, newSourceOffsets),
-      getValueOrCreateConstantIndexOp(rewriter, loc, newSourceSizes),
-      getValueOrCreateConstantIndexOp(rewriter, loc, newSourceStrides));
+      loc, getTarget(), newTargetOffsets, newTargetSizes, newTargetStrides,
+      getSource(), newSourceOffsets, newSourceSizes, newSourceStrides);
   return cast<DoublyStridedOpInterface>(newOp.getOperation());
 }
 
@@ -395,14 +389,8 @@ DoublyStridedOpInterface CircularDmaCpyNdOp::createDoublyStridedOp(
     SmallVector<OpFoldResult> &newSourceStrides) {
   Location loc = (*this)->getLoc();
   auto newOp = rewriter.create<AMDAIE::CircularDmaCpyNdOp>(
-      loc, getTarget(),
-      getValueOrCreateConstantIndexOp(rewriter, loc, newTargetOffsets),
-      getValueOrCreateConstantIndexOp(rewriter, loc, newTargetSizes),
-      getValueOrCreateConstantIndexOp(rewriter, loc, newTargetStrides),
-      getSource(),
-      getValueOrCreateConstantIndexOp(rewriter, loc, newSourceOffsets),
-      getValueOrCreateConstantIndexOp(rewriter, loc, newSourceSizes),
-      getValueOrCreateConstantIndexOp(rewriter, loc, newSourceStrides));
+      loc, getTarget(), newTargetOffsets, newTargetSizes, newTargetStrides,
+      getSource(), newSourceOffsets, newSourceSizes, newSourceStrides);
   return cast<DoublyStridedOpInterface>(newOp.getOperation());
 }
 
@@ -835,15 +823,9 @@ DoublyStridedOpInterface NpuDmaCpyNdOp::createDoublyStridedOp(
     ::llvm::SmallVector<OpFoldResult> &newSourceStrides) {
   Location loc = (*this)->getLoc();
   auto newOp = rewriter.create<AMDAIE::NpuDmaCpyNdOp>(
-      loc, getDma(), getTarget(),
-      getValueOrCreateConstantIndexOp(rewriter, loc, newTargetOffsets),
-      getValueOrCreateConstantIndexOp(rewriter, loc, newTargetSizes),
-      getValueOrCreateConstantIndexOp(rewriter, loc, newTargetStrides),
-      getTargetBdId(), getSource(),
-      getValueOrCreateConstantIndexOp(rewriter, loc, newSourceOffsets),
-      getValueOrCreateConstantIndexOp(rewriter, loc, newSourceSizes),
-      getValueOrCreateConstantIndexOp(rewriter, loc, newSourceStrides),
-      getSourceBdId());
+      loc, getDma(), getTarget(), newTargetOffsets, newTargetSizes,
+      newTargetStrides, getTargetBdId(), getSource(), newSourceOffsets,
+      newSourceSizes, newSourceStrides, getSourceBdId());
   return cast<DoublyStridedOpInterface>(newOp.getOperation());
 }
 

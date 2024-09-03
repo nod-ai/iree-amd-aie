@@ -50,12 +50,12 @@ LogicalResult foldDmaOpLinearDims(RewriterBase &rewriter,
 LogicalResult foldDmaOpSingleDims(RewriterBase &rewriter,
                                   AMDAIE::DoublyStridedOpInterface op) {
   OpBuilder::InsertionGuard guard(rewriter);
-  SmallVector<OpFoldResult> sourceOffsets = op.getSourceOffsets();
-  SmallVector<OpFoldResult> sourceSizes = op.getSourceSizes();
-  SmallVector<OpFoldResult> sourceStrides = op.getSourceStrides();
-  SmallVector<OpFoldResult> targetOffsets = op.getTargetOffsets();
-  SmallVector<OpFoldResult> targetSizes = op.getTargetSizes();
-  SmallVector<OpFoldResult> targetStrides = op.getTargetStrides();
+  SmallVector<OpFoldResult> sourceOffsets = op.getSourceMixedOffsets();
+  SmallVector<OpFoldResult> sourceSizes = op.getSourceMixedSizes();
+  SmallVector<OpFoldResult> sourceStrides = op.getSourceMixedStrides();
+  SmallVector<OpFoldResult> targetOffsets = op.getTargetMixedOffsets();
+  SmallVector<OpFoldResult> targetSizes = op.getTargetMixedSizes();
+  SmallVector<OpFoldResult> targetStrides = op.getTargetMixedStrides();
   LogicalResult sourceRes =
       foldSingleDim(sourceOffsets, sourceSizes, sourceStrides);
   LogicalResult targetRes =
@@ -145,7 +145,8 @@ void AMDAIECanonicalizeDoublyStridedOpPass::runOnOperation() {
 
 }  // namespace
 
-std::unique_ptr<Pass> createAMDAIECanonicalizeDoublyStridedOpPass(AMDAIECanonicalizeDoublyStridedOpOptions options) {
+std::unique_ptr<Pass> createAMDAIECanonicalizeDoublyStridedOpPass(
+    AMDAIECanonicalizeDoublyStridedOpOptions options) {
   return std::make_unique<AMDAIECanonicalizeDoublyStridedOpPass>(options);
 }
 
