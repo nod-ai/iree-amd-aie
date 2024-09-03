@@ -14,10 +14,6 @@ include(${CMAKE_CURRENT_LIST_DIR}/iree_aie_utils.cmake)
 # boost
 # ##############################################################################
 
-if(NOT DEFINED CMAKE_SIZEOF_VOID_P OR NOT DEFINED ${CMAKE_SIZEOF_VOID_P})
-  enable_language(C CXX)
-endif()
-
 include(FetchContent)
 find_package(Threads REQUIRED)
 set(Boost_USE_STATIC_LIBS ON)
