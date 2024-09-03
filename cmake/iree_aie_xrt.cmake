@@ -56,8 +56,6 @@ set(_xclbinutil_source_dir ${IREE_XRT_SOURCE_DIR}/runtime_src/tools/xclbinutil)
 
 # transformcdo target
 if(NOT WIN32)
-  replace_string_in_file(${_xclbinutil_source_dir}/aie-pdi-transform/src/CMakeLists.txt
-                         "-Wextra" "")
   add_subdirectory(${_xclbinutil_source_dir}/aie-pdi-transform aie-pdi-transform)
 endif()
 

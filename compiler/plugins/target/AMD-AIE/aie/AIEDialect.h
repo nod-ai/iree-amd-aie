@@ -74,6 +74,8 @@ using DMAChannelDirAttr = mlir::iree_compiler::AMDAIE::DMAChannelDirAttr;
 using AIEArch = mlir::iree_compiler::AMDAIE::AIEArch;
 using AIEDevice = mlir::iree_compiler::AMDAIE::AMDAIEDevice;
 using AIEDeviceAttr = mlir::iree_compiler::AMDAIE::AMDAIEDeviceAttr;
+using AIETargetModel = mlir::iree_compiler::AMDAIE::AMDAIEDeviceModel;
+using TileID = mlir::iree_compiler::AMDAIE::TileLoc;
 
 std::optional<mlir::iree_compiler::AMDAIE::AMDAIEDevice> symbolizeAIEDevice(
     uint32_t d);

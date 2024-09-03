@@ -83,9 +83,9 @@ jobs:
       - name: Create artifacts
         if: ${{ !cancelled() }}
         run: |
-          tar cf iree-dist-linux.tar iree-install
           pushd third_party/iree/third_party/llvm-project && llvm_sha_short=$(git rev-parse --short HEAD) && popd
           tar cf llvm-dist-linux-$llvm_sha_short.tar llvm-install
+          tar cf iree-dist-linux.tar iree-install
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4

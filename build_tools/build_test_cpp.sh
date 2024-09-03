@@ -87,7 +87,10 @@ CMAKE_ARGS="\
 if [ -d "${llvm_install_dir}" ]; then
   CMAKE_ARGS="$CMAKE_ARGS \
     -DIREE_BUILD_BUNDLED_LLVM=OFF \
-    -DCMAKE_PREFIX_PATH=$llvm_install_dir"
+    -DClang_DIR=$llvm_install_dir/lib/cmake/clang \
+    -DLLD_DIR=$llvm_install_dir/lib/cmake/lld \
+    -DMLIR_DIR=$llvm_install_dir/lib/cmake/mlir \
+    -DLLVM_DIR=$llvm_install_dir/lib/cmake/llvm"
 fi
 
 if [[ "$OSTYPE" != "darwin"* ]]; then

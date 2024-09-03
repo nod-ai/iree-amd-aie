@@ -80,8 +80,8 @@ if [[ "$OSTYPE" != "darwin"* ]]; then
     -S "$llvm_dir" -B "$build_dir"
 else
   cmake $CMAKE_ARGS \
-    -DLLVM_TARGET_ARCH="X86;ARM" \
-    -DLLVM_TARGETS_TO_BUILD="X86;ARM" \
+    -DLLVM_TARGET_ARCH="X86;AArch64" \
+    -DLLVM_TARGETS_TO_BUILD="X86;AArch64" \
     -S "$llvm_dir" -B "$build_dir"
 fi
 
