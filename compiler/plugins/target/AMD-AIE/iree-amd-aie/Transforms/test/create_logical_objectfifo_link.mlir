@@ -1,4 +1,4 @@
-// RUN: iree-opt --split-input-file --pass-pipeline="builtin.module(func.func(iree-amdaie-create-logical-objectfifo-link, cse))" --verify-diagnostics %s | FileCheck %s
+// RUN: iree-opt --split-input-file --pass-pipeline="builtin.module(func.func(iree-amdaie-create-logical-objectfifo-link,cse,canonicalize))" --verify-diagnostics %s | FileCheck %s
 
 // CHECK-LABEL: func.func @link
 // CHECK:       %[[DMA0:.+]] = amdaie.circular_dma_cpy_nd
