@@ -3,7 +3,7 @@
 set -eux -o errtrace
 
 this_dir="$(cd $(dirname $0) && pwd)"
-repo_root="$(cd $this_dir/../.. && pwd)"
+repo_root="$(cd $this_dir/.. && pwd)"
 llvm_dir="$(cd $repo_root/third_party/iree/third_party/llvm-project/llvm && pwd)"
 build_dir="$repo_root/llvm-build"
 install_dir="$repo_root/llvm-install"
