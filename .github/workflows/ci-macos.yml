@@ -60,7 +60,7 @@ jobs:
             -c submodule."third_party/torch-mlir".update=none \
             -c submodule."third_party/stablehlo".update=none \
             -c submodule."src/runtime_src/core/common/aiebu".update=none \
-          git submodule update --init --recursive --depth 1 --single-branch -j 10
+            submodule update --init --recursive --depth 1 --single-branch -j 10
 
       - uses: actions/setup-python@v4
         with:
