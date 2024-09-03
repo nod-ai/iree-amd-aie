@@ -289,19 +289,17 @@ LogicalResult foldLinearDims(MLIRContext *ctx,
 LogicalResult foldSingleDim(SmallVector<OpFoldResult> &offsets,
                             SmallVector<OpFoldResult> &sizes,
                             SmallVector<OpFoldResult> &strides) {
-  if (offsets.size() == 0) {
-    return failure();
-  }
-  if (offsets.size() == 1 && getConstantIntValue(offsets[0]) &&
-      getConstantIntValue(offsets[0]).value() == 0 &&
-      getConstantIntValue(strides[0]) &&
-      getConstantIntValue(strides[0]).value() == 1) {
-    offsets.clear();
-    sizes.clear();
-    strides.clear();
-    return success();
-  }
-  return failure();
+  assert(offsets.size() == sizes.size() && offsets.size() == strides.size() &&
+         "expected same number of source offsets and sizes");
+
+  if (offsets.size() != 1) return failure();
+  if (!isConstantIntValue(offsets[0], 0)) return failure();
+  if (!isConstantIntValue(strides[0], 1)) return failure();
+
+  offsets.clear();
+  sizes.clear();
+  strides.clear();
+  return success();
 }
 
 /// Fold unit dimensions within a strided access pattern.

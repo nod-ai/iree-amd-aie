@@ -631,8 +631,6 @@ void addAMDAIEObjectFifoLoweringPasses(OpPassManager &passManager) {
 
   addAMDAIEToAIEPasses(passManager);
 
-  passManager.addPass(createCanonicalizerPass());
-
   // Now lower using the AIE passes from MLIR-AIE.
   addMLIRAIELoweringPasses(passManager);
 }
