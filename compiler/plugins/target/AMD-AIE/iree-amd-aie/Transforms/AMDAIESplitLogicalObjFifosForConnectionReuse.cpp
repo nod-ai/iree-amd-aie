@@ -16,24 +16,6 @@ namespace mlir::iree_compiler::AMDAIE {
 
 namespace {
 
-/// Utility to help fetch those input DmaCpyNd Ops which needs to be split.
-static SmallVector<AMDAIE::DmaCpyNdOp> fetchDmaCpyNdOpsToSplit(
-    ModuleOp moduleOp) {
-  SmallVector<AMDAIE::DmaCpyNdOp> l2ToL1DmaOps;
-  // We are currently walking through CoreOps gathering 3rd Input DmaOp (if
-  // applicable) from them.
-  // TODO(avarma): We will generalize this later.
-  moduleOp.walk([&](AMDAIE::CoreOp coreOp) {
-    SmallVector<Value> inputDmas = coreOp.getInputDmas();
-    if (inputDmas.size() != 3) return WalkResult::skip();
-    auto dmaCpyNdOp = inputDmas[2].getDefiningOp<AMDAIE::DmaCpyNdOp>();
-    assert(dmaCpyNdOp && "expected an amdaie.dma_cpy_nd op");
-    l2ToL1DmaOps.push_back(dmaCpyNdOp);
-    return WalkResult::advance();
-  });
-  return l2ToL1DmaOps;
-}
-
 class AMDAIESplitLogicalObjFifosForConnectionReusePass
     : public impl::AMDAIESplitLogicalObjFifosForConnectionReuseBase<
           AMDAIESplitLogicalObjFifosForConnectionReusePass> {
@@ -53,7 +35,7 @@ void AMDAIESplitLogicalObjFifosForConnectionReusePass::runOnOperation() {
   IRRewriter rewriter(context);
 
   SmallVector<AMDAIE::DmaCpyNdOp> l2ToL1DmaOps =
-      fetchDmaCpyNdOpsToSplit(moduleOp);
+      fetchDmaCpyNdOpsToSplitOrCombine(moduleOp);
 
   if (failed(splitLogicalObjectFifos(rewriter, l2ToL1DmaOps, context))) {
     LLVM_DEBUG(llvm::dbgs()

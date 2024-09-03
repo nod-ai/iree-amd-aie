@@ -11,10 +11,17 @@
 
 namespace mlir::iree_compiler::AMDAIE {
 
-/// Utility to split logicalobjectfifos given a struct
-/// `SplittingLogicalObjectFifoData` which contains all the required data to
-/// perform the splitting.
+/// Utility to help fetch those input DmaCpyNd Ops which needs to be split.
+SmallVector<AMDAIE::DmaCpyNdOp> fetchDmaCpyNdOpsToSplitOrCombine(
+    ModuleOp moduleOp);
+
+/// Utility to split logicalobjectfifos given a vector of L2->L1 dma ops.
 LogicalResult splitLogicalObjectFifos(
+    IRRewriter &rewriter, SmallVector<AMDAIE::DmaCpyNdOp> &l2ToL1DmaOps,
+    MLIRContext *context);
+
+/// Utility to combine logicalobjectfifos given a vector of L2->L1 dma ops.
+LogicalResult combineLogicalObjectFifos(
     IRRewriter &rewriter, SmallVector<AMDAIE::DmaCpyNdOp> &l2ToL1DmaOps,
     MLIRContext *context);
 
