@@ -28,6 +28,8 @@ iree_lit_test_suite(
     "disable_vectorization.mlir"
     "distribute_cores_and_objectfifos.mlir"
     "dma_composition.mlir"
+    "dma_cse.mlir"
+    "dma_loop_subsumption_circular.mlir"
     "dma_loop_subsumption.mlir"
     "dma_to_circular_dma.mlir"
     "flatten_logical_objectfifo.mlir"

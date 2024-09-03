@@ -184,6 +184,12 @@ def AMDAIEDmaComposition :
   ];
 }
 
+def AMDAIEDmaCSE :
+  Pass<"iree-amdaie-dma-cse"> {
+  let summary = "Common sub-expression elimination for AMDAIE DMA ops.";
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEDmaCSEPass()";
+}
+
 def AMDAIEDmaLoopSubsumption :
   Pass<"iree-amdaie-dma-loop-subsumption"> {
   let summary = "Subsume loop iterations into DMA operations' access patterns.";

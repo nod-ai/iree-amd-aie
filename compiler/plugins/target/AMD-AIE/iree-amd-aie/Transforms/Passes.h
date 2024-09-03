@@ -128,6 +128,9 @@ std::unique_ptr<Pass> createAMDAIEDistributeCoresAndObjectFifosPass();
 std::unique_ptr<Pass> createAMDAIEDmaCompositionPass(
     AMDAIEDmaCompositionOptions options = {});
 
+/// Create a pass for common sub-expression elimination for AMDAIE DMA ops.
+std::unique_ptr<Pass> createAMDAIEDmaCSEPass();
+
 /// Create a pass to subsume loop iterations into DMA operations' access
 /// patterns.
 std::unique_ptr<Pass> createAMDAIEDmaLoopSubsumptionPass(

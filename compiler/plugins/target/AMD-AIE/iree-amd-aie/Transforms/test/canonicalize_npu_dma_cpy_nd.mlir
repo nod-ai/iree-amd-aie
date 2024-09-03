@@ -6,7 +6,7 @@ module {
      %arg1: !amdaie.logicalobjectfifo<memref<2048xi32>>,
      %arg2: !amdaie.logicalobjectfifo<memref<1024xi32, 1>>) {
     amdaie.workgroup {
-      %0 = amdaie.circular_dma_cpy_nd(%arg1[] [] [], %arg2[] [] []) : (!amdaie.logicalobjectfifo<memref<2048xi32>>, !amdaie.logicalobjectfifo<memref<1024xi32, 1>>)
+      %0 = amdaie.connection(%arg1, %arg2) : (!amdaie.logicalobjectfifo<memref<2048xi32>>, !amdaie.logicalobjectfifo<memref<1024xi32, 1>>)
       amdaie.controlcode {
          // expected-error @+1 {{'amdaie.npu.dma_cpy_nd' op might have stride=0 in dimension 2, and size>1 in dimension 1. As 1 < 2, this cannot be supported -- the zero stride cannot be moved to the outer-most (slowest) dimension, as required by current AIE architecture.}}
         %1 = amdaie.npu.dma_cpy_nd %0([0, 0, 0, 32] [1, 32, 2, 32] [128, 64, 0, 1] bd_id = %arg0, [] [] [])
@@ -25,7 +25,7 @@ module {
      %arg1: !amdaie.logicalobjectfifo<memref<2048xi32>>,
      %arg2: !amdaie.logicalobjectfifo<memref<1024xi32, 1>>) {
     amdaie.workgroup {
-      %0 = amdaie.circular_dma_cpy_nd(%arg1[] [] [], %arg2[] [] []) : (!amdaie.logicalobjectfifo<memref<2048xi32>>, !amdaie.logicalobjectfifo<memref<1024xi32, 1>>)
+      %0 = amdaie.connection(%arg1, %arg2) : (!amdaie.logicalobjectfifo<memref<2048xi32>>, !amdaie.logicalobjectfifo<memref<1024xi32, 1>>)
       amdaie.controlcode {
          // expected-error @+1 {{'amdaie.npu.dma_cpy_nd' op might have stride=0 in dimension 1, and size>1 in dimension 0. As 0 < 1, this cannot be supported -- the zero stride cannot be moved to the outer-most (slowest) dimension, as required by current AIE architecture.}}
         %1 = amdaie.npu.dma_cpy_nd %0([0, 0, 0, 32] [2, 8, 2, 32] [0, 0, 64, 1] bd_id = %arg0, [] [] [])
@@ -44,7 +44,7 @@ module {
      %arg1: !amdaie.logicalobjectfifo<memref<2048xi32>>,
      %arg2: !amdaie.logicalobjectfifo<memref<1024xi32, 1>>) {
     amdaie.workgroup {
-      %0 = amdaie.circular_dma_cpy_nd(%arg1[] [] [], %arg2[] [] []) : (!amdaie.logicalobjectfifo<memref<2048xi32>>, !amdaie.logicalobjectfifo<memref<1024xi32, 1>>)
+      %0 = amdaie.connection(%arg1, %arg2) : (!amdaie.logicalobjectfifo<memref<2048xi32>>, !amdaie.logicalobjectfifo<memref<1024xi32, 1>>)
       amdaie.controlcode {
         // expected-error @+1 {{'amdaie.npu.dma_cpy_nd' op has target in L3, but does not have target addressing. Target addressing is required to canonicalize}}
         %1 = amdaie.npu.dma_cpy_nd %0([] [] [] bd_id = %arg0, [] [] [])
@@ -64,7 +64,7 @@ module {
      %arg1: !amdaie.logicalobjectfifo<memref<2048xi32>>,
      %arg2: !amdaie.logicalobjectfifo<memref<1024xi32, 1>>) {
     amdaie.workgroup {
-      %0 = amdaie.circular_dma_cpy_nd(%arg1[] [] [], %arg2[] [] []) : (!amdaie.logicalobjectfifo<memref<2048xi32>>, !amdaie.logicalobjectfifo<memref<1024xi32, 1>>)
+      %0 = amdaie.connection(%arg1, %arg2) : (!amdaie.logicalobjectfifo<memref<2048xi32>>, !amdaie.logicalobjectfifo<memref<1024xi32, 1>>)
       // CHECK: controlcode
       amdaie.controlcode {
         // CHECK: amdaie.npu.dma_cpy_nd
@@ -86,7 +86,7 @@ module {
      %arg1: !amdaie.logicalobjectfifo<memref<2048xi32>>,
      %arg2: !amdaie.logicalobjectfifo<memref<1024xi32, 1>>) {
     amdaie.workgroup {
-      %0 = amdaie.circular_dma_cpy_nd(%arg2[] [] [], %arg1[] [] []) : (
+      %0 = amdaie.connection(%arg2, %arg1) : (
       !amdaie.logicalobjectfifo<memref<1024xi32, 1>>,
       !amdaie.logicalobjectfifo<memref<2048xi32>>)
       // CHECK: controlcode
@@ -110,7 +110,7 @@ module {
      %arg1: !amdaie.logicalobjectfifo<memref<2048xi32>>,
      %arg2: !amdaie.logicalobjectfifo<memref<1024xi32, 1>>) {
     amdaie.workgroup {
-      %0 = amdaie.circular_dma_cpy_nd(%arg2[] [] [], %arg1[] [] []) : (
+      %0 = amdaie.connection(%arg2, %arg1) : (
       !amdaie.logicalobjectfifo<memref<1024xi32, 1>>,
       !amdaie.logicalobjectfifo<memref<2048xi32>>)
       // CHECK: controlcode

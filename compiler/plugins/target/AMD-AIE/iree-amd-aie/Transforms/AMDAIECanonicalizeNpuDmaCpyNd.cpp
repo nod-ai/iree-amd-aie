@@ -103,7 +103,7 @@ class AMDAIECanonicalizeNpuDmaCpyNdPass
 
       // Replace the npu.dma_cpy_nd with the canonicalized version.
       dmaOp = rewriter.replaceOpWithNewOp<AMDAIE::NpuDmaCpyNdOp>(
-          dmaOp, dmaOp.getDma(), dmaOp.getTarget(), tgtOffsets, tgtSizes,
+          dmaOp, dmaOp.getConnection(), dmaOp.getTarget(), tgtOffsets, tgtSizes,
           tgtStrides, dmaOp.getTargetBdId(), dmaOp.getSource(), srcOffsets,
           srcSizes, srcStrides, dmaOp.getSourceBdId());
 

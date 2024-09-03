@@ -68,14 +68,23 @@ LogicalResult workgroupBuildForCoreOp(
 
 /// CircularDmaCpyNd operations are just cloned and mapped as they run
 /// indefinitely and only need to be programmed once.
-LogicalResult workgroupBuildForCircularDmaCpyNdOp(
-    IRRewriterAndMapper &rewriter, AMDAIE::CircularDmaCpyNdOp dmaOp,
-    Block *target, Block *controlCode, CoreContext &coreContext,
-    Block::iterator targetBegin, Block::iterator controlCodeBegin,
-    Block::iterator controlCodeEnd) {
+LogicalResult WorkgroupBuilder::buildForCircularDmaCpyNdOp(
+    AMDAIE::CircularDmaCpyNdOp dmaOp, Block *target, Block *controlCode,
+    CoreContext &coreContext, Block::iterator targetBegin,
+    Block::iterator controlCodeBegin, Block::iterator controlCodeEnd) {
   LLVM_DEBUG(
       llvm::dbgs() << "workgroupBuild [amdaie.circular_dma_cpy_nd] Start\n");
-  rewriter.cloneAndMap(*dmaOp.getOperation());
+  OpBuilder::InsertionGuard workgroupGuard(rewriter);
+  OpBuilder::InsertionGuard controlCodeGuard(controlCodeRewriter);
+  SmallVector<OpFoldResult> empty;
+  auto connectionOp = rewriter.createAndMap<AMDAIE::ConnectionOp>(
+      rewriter.getUnknownLoc(), dmaOp, dmaOp.getTarget(), dmaOp.getSource());
+  controlCodeRewriter.setInsertionPoint(controlCode, controlCodeEnd);
+  controlCodeRewriter.createAndLookup<AMDAIE::NpuCircularDmaCpyNdOp>(
+      rewriter.getUnknownLoc(), connectionOp.getResult(),
+      dmaOp.getTargetMixedOffsets(), dmaOp.getTargetMixedSizes(),
+      dmaOp.getTargetMixedStrides(), dmaOp.getSourceMixedOffsets(),
+      dmaOp.getSourceMixedSizes(), dmaOp.getSourceMixedStrides());
   LLVM_DEBUG(
       llvm::dbgs() << "workgroupBuild [amdaie.circular_dma_cpy_nd] End\n");
   return success();
@@ -166,16 +175,18 @@ LogicalResult WorkgroupBuilder::buildForDmaCpyNdOp(
     npuDmaSourceSizes = empty;
     npuDmaSourceStrides = empty;
   }
-  auto newDmaOp = rewriter.createAndMap<AMDAIE::CircularDmaCpyNdOp>(
-      rewriter.getUnknownLoc(), dmaOp, circularDmaTarget,
-      circularDmaTargetOffsets, circularDmaTargetSizes,
-      circularDmaTargetStrides, circularDmaSource, circularDmaSourceOffsets,
-      circularDmaSourceSizes, circularDmaSourceStrides);
+  auto connectionOp = rewriter.createAndMap<AMDAIE::ConnectionOp>(
+      rewriter.getUnknownLoc(), dmaOp, circularDmaTarget, circularDmaSource);
 
   IRRewriter::InsertPoint dmaInsertionPoint = rewriter.saveInsertionPoint();
   controlCodeRewriter.setInsertionPoint(controlCode, controlCodeEnd);
+  controlCodeRewriter.createAndLookup<AMDAIE::NpuCircularDmaCpyNdOp>(
+      rewriter.getUnknownLoc(), connectionOp.getResult(),
+      circularDmaTargetOffsets, circularDmaTargetSizes,
+      circularDmaTargetStrides, circularDmaSourceOffsets,
+      circularDmaSourceSizes, circularDmaSourceStrides);
   auto npuDmaCpy = controlCodeRewriter.createAndLookup<AMDAIE::NpuDmaCpyNdOp>(
-      loc, newDmaOp.getResult(), npuDmaTarget, npuDmaTargetOffsets,
+      loc, connectionOp.getResult(), npuDmaTarget, npuDmaTargetOffsets,
       npuDmaTargetSizes, npuDmaTargetStrides, /*target_bd_id=*/nullptr,
       npuDmaSource, npuDmaSourceOffsets, npuDmaSourceSizes, npuDmaSourceStrides,
       /*source_bd_id=*/nullptr);
@@ -295,9 +306,9 @@ LogicalResult WorkgroupBuilder::build(Operation *op, Block *target,
                                        controlCodeBegin, controlCodeEnd);
       })
       .Case<AMDAIE::CircularDmaCpyNdOp>([&](auto dmaOp) {
-        return workgroupBuildForCircularDmaCpyNdOp(
-            rewriter, dmaOp, target, controlCode, coreContext, targetBegin,
-            controlCodeBegin, controlCodeEnd);
+        return buildForCircularDmaCpyNdOp(dmaOp, target, controlCode,
+                                          coreContext, targetBegin,
+                                          controlCodeBegin, controlCodeEnd);
       })
       .Case<AMDAIE::DmaCpyNdOp>([&](auto dmaOp) {
         return buildForDmaCpyNdOp(dmaOp, target, controlCode, coreContext,

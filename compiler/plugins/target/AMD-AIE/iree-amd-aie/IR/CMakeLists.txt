@@ -17,6 +17,7 @@ iree_cc_library(
     "AMDAIELogicalObjFifoOpInterface.h"
     "AMDAIEOps.h"
     "AMDAIETypes.h"
+    "AMDAIETraits.h"
   TEXTUAL_HDRS
     "AMDAIEAttrs.cpp.inc"
     "AMDAIEAttrs.h.inc"

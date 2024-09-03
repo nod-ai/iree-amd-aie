@@ -62,7 +62,7 @@ struct CombineStridedOps
       // Find next NPU DMA op.
       Block::iterator begin = std::next(npuDmaOp->getIterator());
       block->walk(begin, block->end(), [&](AMDAIE::NpuDmaCpyNdOp other) {
-        if (npuDmaOp.getDma() != other.getDma()) return WalkResult::advance();
+        if (npuDmaOp.getConnection() != other.getConnection()) return WalkResult::advance();
         Block *otherBlock = other->getBlock();
         if (!otherBlock) return WalkResult::advance();
         if (otherBlock != block) return WalkResult::interrupt();

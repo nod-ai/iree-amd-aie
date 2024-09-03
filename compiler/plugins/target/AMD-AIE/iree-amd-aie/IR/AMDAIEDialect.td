@@ -34,4 +34,14 @@ def AMDAIE_Dialect : Dialect {
   let useDefaultAttributePrinterParser = 1;
 }
 
+//===----------------------------------------------------------------------===//
+// AMDAIE op traits
+//===----------------------------------------------------------------------===//
+
+// Trait to indicate that an operation is a circular DMA, meaning that the DMA
+// will be synchronized so that it will keep running its configuration
+// indefinitely.
+def AMDAIE_CircularDmaOp 
+  : NativeOpTrait<"iree_compiler::AMDAIE::CircularDmaOp">;
+
 #endif // IREE_AMD_AIE_DIALECT_IREEAMDAIE_DIALECT

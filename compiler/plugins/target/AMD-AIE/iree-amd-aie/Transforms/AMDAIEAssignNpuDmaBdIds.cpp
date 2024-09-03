@@ -89,7 +89,7 @@ LogicalResult assignNpuDmaBdIds(AMDAIE::WorkgroupOp workgroupOp) {
                                                       tileOp, bdId.value());
         rewriter.setInsertionPoint(npuDmaOp);
         npuDmaOp = rewriter.replaceOpWithNewOp<AMDAIE::NpuDmaCpyNdOp>(
-            npuDmaOp, npuDmaOp.getDma(), npuDmaOp.getTarget(),
+            npuDmaOp, npuDmaOp.getConnection(), npuDmaOp.getTarget(),
             npuDmaOp.getTargetMixedOffsets(), npuDmaOp.getTargetMixedSizes(),
             npuDmaOp.getTargetMixedStrides(), npuDmaOp.getTargetBdId(),
             npuDmaOp.getSource(), npuDmaOp.getSourceMixedOffsets(),
@@ -122,7 +122,7 @@ LogicalResult assignNpuDmaBdIds(AMDAIE::WorkgroupOp workgroupOp) {
                                                       tileOp, bdId.value());
         rewriter.setInsertionPoint(npuDmaOp);
         (void)rewriter.replaceOpWithNewOp<AMDAIE::NpuDmaCpyNdOp>(
-            npuDmaOp, npuDmaOp.getDma(), npuDmaOp.getTarget(),
+            npuDmaOp, npuDmaOp.getConnection(), npuDmaOp.getTarget(),
             npuDmaOp.getTargetMixedOffsets(), npuDmaOp.getTargetMixedSizes(),
             npuDmaOp.getTargetMixedStrides(), bdIdOp, npuDmaOp.getSource(),
             npuDmaOp.getSourceMixedOffsets(), npuDmaOp.getSourceMixedSizes(),
