@@ -17,6 +17,11 @@
 #include "mlir/IR/Iterators.h"
 #include "mlir/IR/Operation.h"
 
+///////////////////////////////////////////////////
+#include "iree-amd-aie/Transforms/AMDAIEDmaUtils.h"
+#include "iree-amd-aie/Transforms/AMDAIEUtils.h"
+///////////////////////////////////////////////////
+
 #define DEBUG_TYPE "iree-amdaie-logicalobjfifo-splitting-utils"
 
 namespace mlir::iree_compiler::AMDAIE {
@@ -142,6 +147,44 @@ static FailureOr<OpFoldResult> updateL3SourceOffset(IRRewriter &rewriter,
   return newL3AsSourceOffset;
 }
 
+/// Given a L2->L1 DmaCpyNd op, find the unique L3->L2 DmaCpyNd op.
+static FailureOr<AMDAIE::DmaCpyNdOp> fetchL3ToL2DmaCpyNdOp(
+    AMDAIE::DmaCpyNdOp l2ToL1DmaOp) {
+  LogicalObjectFifoFromMemrefOp sourceObjectFifo =
+      l2ToL1DmaOp.getSourceObjectFifo();
+  SmallVector<AMDAIE::DmaCpyNdOp> l3ToL2DmaOps;
+  AMDAIE::DmaCpyNdOp l3ToL2DmaOp;
+  for (Operation *objFifoUserOp : sourceObjectFifo->getUsers()) {
+    if (auto dmaOp = dyn_cast<AMDAIE::DmaCpyNdOp>(objFifoUserOp);
+        dmaOp.getTargetObjectFifo() == sourceObjectFifo) {
+      l3ToL2DmaOps.push_back(dmaOp);
+    }
+  }
+  if (l3ToL2DmaOps.size() == 0) {
+    LLVM_DEBUG(llvm::dbgs() << "no corresponding L3->L2 dma op found for "
+                            << sourceObjectFifo << "\n");
+    return failure();
+  }
+  if (l3ToL2DmaOps.size() > 1) {
+    LLVM_DEBUG(llvm::dbgs() << "found more than one L3->L2 dma ops for "
+                            << sourceObjectFifo << "\n");
+    return failure();
+  }
+  l3ToL2DmaOp = l3ToL2DmaOps[0];
+  if ((l3ToL2DmaOp.getTargetMixedOffsets().size() !=
+       l3ToL2DmaOp.getSourceMixedOffsets().size()) ||
+      (l3ToL2DmaOp.getTargetMixedSizes().size() !=
+       l3ToL2DmaOp.getSourceMixedSizes().size()) ||
+      (l3ToL2DmaOp.getTargetMixedStrides().size() !=
+       l3ToL2DmaOp.getSourceMixedStrides().size())) {
+    LLVM_DEBUG(llvm::dbgs() << "dimensionality of source and target's "
+                               "offset/size/stride found different for "
+                            << l3ToL2DmaOp << "\n");
+    return failure();
+  }
+  return l3ToL2DmaOp;
+}
+
 /// A struct utility to encapsulate all the data required to perform splitting
 /// of logicalobjectfifos.
 struct SplittingLogicalObjectFifoData {
@@ -204,36 +247,10 @@ static LogicalResult checkWhetherSplitIsPossible(
   }
 
   // Fetch the L3 -> L2 Dma Op corresponding to the L2 buffer as target.
-  SmallVector<AMDAIE::DmaCpyNdOp> l3ToL2DmaOps;
-  AMDAIE::DmaCpyNdOp l3ToL2DmaOp;
-  for (Operation *objFifoUserOp : sourceObjectFifo->getUsers()) {
-    if (auto dmaOp = dyn_cast<AMDAIE::DmaCpyNdOp>(objFifoUserOp);
-        dmaOp.getTargetObjectFifo() == sourceObjectFifo) {
-      l3ToL2DmaOps.push_back(dmaOp);
-    }
-  }
-  if (l3ToL2DmaOps.size() == 0) {
-    LLVM_DEBUG(llvm::dbgs() << "no corresponding L3->L2 dma op found for "
-                            << sourceObjectFifo << "\n");
-    return failure();
-  }
-  if (l3ToL2DmaOps.size() > 1) {
-    LLVM_DEBUG(llvm::dbgs() << "found more than one L3->L2 dma ops for "
-                            << sourceObjectFifo << "\n");
-    return failure();
-  }
-  l3ToL2DmaOp = l3ToL2DmaOps[0];
-  if ((l3ToL2DmaOp.getTargetMixedOffsets().size() !=
-       l3ToL2DmaOp.getSourceMixedOffsets().size()) ||
-      (l3ToL2DmaOp.getTargetMixedSizes().size() !=
-       l3ToL2DmaOp.getSourceMixedSizes().size()) ||
-      (l3ToL2DmaOp.getTargetMixedStrides().size() !=
-       l3ToL2DmaOp.getSourceMixedStrides().size())) {
-    LLVM_DEBUG(llvm::dbgs() << "dimensionality of source and target's "
-                               "offset/size/stride found different for "
-                            << l3ToL2DmaOp << "\n");
-    return failure();
-  }
+  FailureOr<AMDAIE::DmaCpyNdOp> maybeL3ToL2DmaOp =
+      fetchL3ToL2DmaCpyNdOp(l2ToL1DmaOps[0]);
+  if (failed(maybeL3ToL2DmaOp)) return failure();
+  AMDAIE::DmaCpyNdOp l3ToL2DmaOp = maybeL3ToL2DmaOp.value();
 
   SmallVector<OpFoldResult, 4> staticL2AsTargetSizes =
       l3ToL2DmaOp.getTargetMixedSizes();
@@ -445,9 +462,150 @@ LogicalResult splitLogicalObjectFifos(
   return success();
 }
 
+static LogicalResult _TODOcombineAccessPatterns(
+    RewriterBase &rewriter, const SmallVector<OpFoldResult> &offsetsA,
+    const SmallVector<OpFoldResult> &sizesA,
+    const SmallVector<OpFoldResult> &stridesA,
+    const SmallVector<OpFoldResult> &offsetsB,
+    const SmallVector<OpFoldResult> &sizesB,
+    const SmallVector<OpFoldResult> &stridesB,
+    SmallVector<OpFoldResult> &newOffsets, SmallVector<OpFoldResult> &newSizes,
+    SmallVector<OpFoldResult> &newStrides) {
+  // TODO: Move these checks later in a separate func.
+  assert(offsetsA.size() == offsetsB.size() &&
+         "expected same number of source offsets and target offsets");
+  assert(offsetsA.size() == sizesA.size() &&
+         "expected same number of source offsets and sizes");
+  assert(offsetsA.size() == stridesA.size() &&
+         "expected same number of source offsets and strides");
+  assert(offsetsB.size() == sizesB.size() &&
+         "expected same number of target offsets and sizes");
+  assert(offsetsB.size() == stridesB.size() &&
+         "expected same number of target offsets and strides");
+
+  if (offsetsA.empty() && offsetsB.empty()) return success();
+
+  for (auto iter : llvm::enumerate(llvm::zip(offsetsA, offsetsB))) {
+    const OpFoldResult &offsetA = std::get<0>(iter.value());
+    const OpFoldResult &offsetB = std::get<1>(iter.value());
+    if (offsetA != offsetB) {
+      // Need to check the difference in bias here.
+    }
+  }
+  newSizes[1] = rewriter.getI64IntegerAttr(2);
+  return success();
+}
+
 LogicalResult combineLogicalObjectFifos(
     IRRewriter &rewriter, SmallVector<AMDAIE::DmaCpyNdOp> &l2ToL1DmaOps,
     MLIRContext *context) {
+  if (l2ToL1DmaOps.size() == 0) return success();
+
+  // Fetch the L3 -> L2 Dma Op corresponding to the first L2 buffer as target.
+  SmallVector<AMDAIE::DmaCpyNdOp> l3ToL2DmaOps;
+  FailureOr<AMDAIE::DmaCpyNdOp> maybeL3ToL2DmaOp =
+      fetchL3ToL2DmaCpyNdOp(l2ToL1DmaOps[0]);
+  if (failed(maybeL3ToL2DmaOp)) return failure();
+  l3ToL2DmaOps.push_back(maybeL3ToL2DmaOp.value());
+
+  // Check that all L3 buffer associated with the different L3->L2 Dma ops are
+  // same.
+  for (unsigned i = 1, n = l2ToL1DmaOps.size(); i < n; i++) {
+    maybeL3ToL2DmaOp = fetchL3ToL2DmaCpyNdOp(l2ToL1DmaOps[i]);
+    if (failed(maybeL3ToL2DmaOp)) return failure();
+    l3ToL2DmaOps.push_back(maybeL3ToL2DmaOp.value());
+    if (l3ToL2DmaOps[0].getSourceObjectFifo() !=
+        l3ToL2DmaOps[i].getSourceObjectFifo()) {
+      LLVM_DEBUG(llvm::dbgs()
+                 << "Found different L3 objectFifo for " << l3ToL2DmaOps[0]
+                 << " and " << l3ToL2DmaOps[i] << "\n");
+      return failure();
+    }
+  }
+
+  // For now pick the first two L3->L2 Dma op and try to combine them. Later
+  // we'll implement the selector.
+  auto op = l3ToL2DmaOps[0];
+  auto nextStridedOp = l3ToL2DmaOps[1];
+  {
+    /// The maximum number of addressing dimensions on the source side of the
+    /// DMA.
+    int64_t sourceMaxNbDims{0};
+    // /// The maximum number of addressing dimensions on the target side of the
+    // DMA.
+    int64_t targetMaxNbDims{0};
+    OpBuilder::InsertionGuard guard(rewriter);
+    // rewriter.setInsertionPoint(op);
+    SmallVector<OpFoldResult> sourceOffsetsA = op.getSourceMixedOffsets();
+    SmallVector<OpFoldResult> sourceSizesA = op.getSourceMixedSizes();
+    SmallVector<OpFoldResult> sourceStridesA = op.getSourceMixedStrides();
+    SmallVector<OpFoldResult> sourceOffsetsB =
+        nextStridedOp.getSourceMixedOffsets();
+    SmallVector<OpFoldResult> sourceSizesB =
+        nextStridedOp.getSourceMixedSizes();
+    SmallVector<OpFoldResult> sourceStridesB =
+        nextStridedOp.getSourceMixedStrides();
+    bool areSourcesCombinable = true;
+    // bool areSourcesCombinable = areAccessPatternsCombinable(
+    //     sourceOffsetsA, sourceSizesA, sourceStridesA, sourceOffsetsB,
+    //     sourceSizesB, sourceStridesB, sourceMaxNbDims+1);
+
+    SmallVector<OpFoldResult> targetOffsetsA = op.getTargetMixedOffsets();
+    SmallVector<OpFoldResult> targetSizesA = op.getTargetMixedSizes();
+    SmallVector<OpFoldResult> targetStridesA = op.getTargetMixedStrides();
+    SmallVector<OpFoldResult> targetOffsetsB =
+        nextStridedOp.getTargetMixedOffsets();
+    SmallVector<OpFoldResult> targetSizesB =
+        nextStridedOp.getTargetMixedSizes();
+    SmallVector<OpFoldResult> targetStridesB =
+        nextStridedOp.getTargetMixedStrides();
+    bool areTargetsCombinable = true;
+    // bool areTargetsCombinable = areAccessPatternsCombinable(
+    //     targetOffsetsA, targetSizesA, targetStridesA, targetOffsetsB,
+    //     targetSizesB, targetStridesB, targetMaxNbDims+1);
+
+    // llvm::outs()<<"Checking compatibility\n";
+    // llvm::outs().flush();
+    if (areSourcesCombinable && areTargetsCombinable) {
+      // llvm::outs()<<"Compatible\n";
+      // llvm::outs().flush();
+      SmallVector<OpFoldResult> newSourceOffsets = sourceOffsetsA;
+      SmallVector<OpFoldResult> newSourceSizes = sourceSizesA;
+      SmallVector<OpFoldResult> newSourceStrides = sourceStridesA;
+      if (failed(_TODOcombineAccessPatterns(
+              rewriter, sourceOffsetsA, sourceSizesA, sourceStridesA,
+              sourceOffsetsB, sourceSizesB, sourceStridesB, newSourceOffsets,
+              newSourceSizes, newSourceStrides))) {
+        return failure();
+      }
+      llvm::outs() << "Combined sources\n";
+      llvm::outs().flush();
+
+      SmallVector<OpFoldResult> newTargetOffsets = targetOffsetsA;
+      SmallVector<OpFoldResult> newTargetSizes = targetSizesA;
+      SmallVector<OpFoldResult> newTargetStrides = targetStridesA;
+      if (failed(_TODOcombineAccessPatterns(
+              rewriter, targetOffsetsA, targetSizesA, targetStridesA,
+              targetOffsetsB, targetSizesB, targetStridesB, newTargetOffsets,
+              newTargetSizes, newTargetStrides))) {
+        return failure();
+      }
+      llvm::outs() << "Combined target\n";
+      llvm::outs().flush();
+
+      rewriter.setInsertionPoint(op);
+      auto newDoublyStridedOp = nextStridedOp.createDoublyStridedOp(
+          rewriter, newTargetOffsets, newTargetSizes, newTargetStrides,
+          newSourceOffsets, newSourceSizes, newSourceStrides);
+      rewriter.replaceOp(nextStridedOp, newDoublyStridedOp.getOperation());
+
+      // for (Operation *userOp : userOpsToBeErased) rewriter.eraseOp(userOp);
+      rewriter.eraseOp(op);
+      return success();
+    }
+    llvm::outs() << "NOT Compatible\n";
+    llvm::outs().flush();
+  }
   return success();
 }
 

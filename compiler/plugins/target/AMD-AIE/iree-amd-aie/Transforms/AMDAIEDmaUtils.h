@@ -194,9 +194,9 @@ struct DmaDimConfig {
   AMDAIE::AMDAIETileType sourceTileType;
   AMDAIE::AMDAIETileType targetTileType;
   /// The maximum number of addressing dimensions on the source side of the DMA.
-  uint8_t sourceMaxNbDims{0};
+  int64_t sourceMaxNbDims{0};
   /// The maximum number of addressing dimensions on the target side of the DMA.
-  uint8_t targetMaxNbDims{0};
+  int64_t targetMaxNbDims{0};
 
   DmaDimConfig(const AMDAIE::AMDAIEDeviceModel &deviceModel,
                uint8_t sourceMemspaceInt, uint8_t targetMemspaceInt)
