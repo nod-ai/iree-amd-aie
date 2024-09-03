@@ -91,11 +91,10 @@ if [[ "$OSTYPE" != "darwin"* ]]; then
     -DCMAKE_CXX_COMPILER="${CXX}" \
     -DLLVM_TARGET_ARCH=X86 \
     -DLLVM_TARGETS_TO_BUILD=X86 \
-    -DIREE_EXTERNAL_HAL_DRIVERS=hsa \
+    -DIREE_EXTERNAL_HAL_DRIVERS=${IREE_EXTERNAL_HAL_DRIVER:-xrt} \
     -S $iree_dir -B $build_dir
 else
-  cmake $CMAKE_ARGS \
-    -S $iree_dir -B $build_dir
+  cmake $CMAKE_ARGS -S $iree_dir -B $build_dir
 fi
 
 echo "Building all"
