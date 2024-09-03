@@ -9,8 +9,8 @@
 // CHECK:           %[[FIFO0_BUFF_1:.*]] = aie.buffer(%[[TILE_1_2]]) {sym_name = "fifo0_buff_1"} : memref<16xi32>
 // CHECK:           %[[FIFO0_BUFF_2:.*]] = aie.buffer(%[[TILE_1_2]]) {sym_name = "fifo0_buff_2"} : memref<16xi32>
 // CHECK:           %[[FIFO0_BUFF_3:.*]] = aie.buffer(%[[TILE_1_2]]) {sym_name = "fifo0_buff_3"} : memref<16xi32>
-// CHECK:           %[[FIFO0_PROD_LOCK:.*]] = aie.lock(%[[TILE_1_2]], 0) {init = 4 : i8, sym_name = "fifo0_prod_lock"}
-// CHECK:           %[[FIFO0_CONS_LOCK:.*]] = aie.lock(%[[TILE_1_2]], 1) {init = 0 : i8, sym_name = "fifo0_cons_lock"}
+// CHECK:           %[[FIFO0_PROD_LOCK:.*]] = aie.lock(%[[TILE_1_2]]) {init = 4 : i8, sym_name = "fifo0_prod_lock"}
+// CHECK:           %[[FIFO0_CONS_LOCK:.*]] = aie.lock(%[[TILE_1_2]]) {init = 0 : i8, sym_name = "fifo0_cons_lock"}
 // CHECK:           %[[CORE_1_2:.*]] = aie.core(%[[TILE_1_2]]) {
 // CHECK-DAG:         %[[C11_I32:.*]] = arith.constant 11 : i32
 // CHECK-DAG:         %[[C0:.*]] = arith.constant 0 : index
