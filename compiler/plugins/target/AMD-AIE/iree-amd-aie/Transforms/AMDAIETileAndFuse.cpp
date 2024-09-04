@@ -289,7 +289,7 @@ void AMDAIETileAndFusePass::runOnOperation() {
     // So for now we're keeping the block group dimension here, but should
     // be able to compile without any block group dimensions TODO(newling)
     auto groupType =
-        tilingLevel == 1 ? GPUGroupType::Block : GPUGroupType::Thread;
+        tilingLevel == 0 ? GPUGroupType::Block : GPUGroupType::Thread;
 
     auto maybeMapping =
         getGPUMappingAttributes(tileSizesVal, groupType, consumerOp);
