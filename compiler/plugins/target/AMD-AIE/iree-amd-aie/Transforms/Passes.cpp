@@ -644,6 +644,23 @@ void addMLIRAIRLoweringPasses(OpPassManager &passManager, AMDAIEDevice device) {
   passManager.addPass(memref::createFoldMemRefAliasOpsPass());
   passManager.addPass(createAMDAIEBridgeToAIRPass());
 
+  // Running canonicalization for all pipelines here results in failures.
+  // Example
+  // ```
+  // 'memref.cast' op is an unsupported operation. This pass currently only
+  // supports AllocOp and SubViewOp as inputs.
+  // ```
+  // It is currently required for the convolution pipeline though, to remove the
+  // extra (size-1) thread- and group- dimensions.
+  //
+  // TODO(newling) there are better solutions like:
+  // 1) make canonicalization work for scf.forall
+  // 2) pass to collapse rank-4 scf.foralls to rank-2 scf.foralls.
+  // 3) resolve above 'unsupproted operation' error.
+  if (clUseTilePipeline == TilePassPipeline::ConvDecomposePipeline) {
+    passManager.addPass(createCanonicalizerPass());
+  }
+
   // TODO (Erwei): Figure out a way to work with AMDAIEPackToDmaPass.
   if (clUseTilePipeline == TilePassPipeline::PackPeelPipeline)
     passManager.addPass(createAMDAIEDecomposeLinalgExtPackUnPackToAIRPass());
