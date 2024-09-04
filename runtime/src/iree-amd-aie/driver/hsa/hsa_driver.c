@@ -24,7 +24,7 @@
 #define IREE_HAL_HSA_DEVICE_NOT_FOUND IREE_HAL_HSA_MAX_DEVICES
 
 // Utility macros to convert between hsa_agent_t ID and iree_hal_device_id_t.
-#define IREE_DEVICE_ID_TO_HSADEVICE(device_id) (int)((device_id) - 1)
+#define IREE_DEVICE_ID_TO_HSADEVICE(device_id) (int)((device_id)-1)
 
 typedef struct iree_hal_hsa_driver_t {
   // Abstract resource used for injecting reference counting and vtable;
@@ -46,6 +46,9 @@ typedef struct iree_hal_hsa_driver_t {
 
   // Number of GPU agents
   int num_gpu_agents;
+
+  // Number of AIE agents
+  int num_aie_agents;
 
   // IREE device ID to hsa_agent_t
   hsa_agent_t agents[IREE_HAL_HSA_MAX_DEVICES];
@@ -77,6 +80,26 @@ IREE_API_EXPORT void iree_hal_hsa_driver_options_initialize(
   out_options->default_device_index = 0;
 }
 
+// HSA Callback methods:
+hsa_status_t iterate_count_aie_agents_callback(hsa_agent_t agent,
+                                               void* base_driver) {
+  iree_hal_hsa_callback_package_t* package =
+      (iree_hal_hsa_callback_package_t*)(base_driver);
+  iree_hal_hsa_driver_t* driver = package->driver;
+  int* count_ptr = (int*)package->return_value;
+  hsa_device_type_t type;
+  hsa_status_t status =
+      (&(driver->hsa_symbols))
+          ->hsa_agent_get_info(agent, HSA_AGENT_INFO_DEVICE, &type);
+  if (status != HSA_STATUS_SUCCESS) {
+    return status;
+  }
+  if (type == HSA_DEVICE_TYPE_AIE) {
+    *count_ptr = *count_ptr + 1;
+  }
+  return HSA_STATUS_SUCCESS;
+}
+
 hsa_status_t iterate_count_gpu_agents_callback(hsa_agent_t agent,
                                                void* base_driver) {
   iree_hal_hsa_callback_package_t* package =
@@ -92,6 +115,30 @@ hsa_status_t iterate_count_gpu_agents_callback(hsa_agent_t agent,
   }
   if (type == HSA_DEVICE_TYPE_GPU) {
     *count_ptr = *count_ptr + 1;
+  }
+  return HSA_STATUS_SUCCESS;
+}
+
+hsa_status_t iterate_populate_aie_agents_callback(hsa_agent_t agent,
+                                                  void* base_driver) {
+  iree_hal_hsa_callback_package_t* package =
+      (iree_hal_hsa_callback_package_t*)(base_driver);
+  iree_hal_hsa_driver_t* driver = package->driver;
+  size_t* index_ptr = package->index;
+  hsa_agent_t* agents_ptr = (hsa_agent_t*)package->return_value;
+
+  hsa_device_type_t type;
+  hsa_status_t status =
+      (&(driver->hsa_symbols))
+          ->hsa_agent_get_info(agent, HSA_AGENT_INFO_DEVICE, &type);
+  if (status != HSA_STATUS_SUCCESS) {
+    return status;
+  }
+
+  if (type == HSA_DEVICE_TYPE_AIE) {
+    size_t current_index = *index_ptr;
+    agents_ptr[current_index] = agent;
+    *index_ptr = current_index + 1;
   }
   return HSA_STATUS_SUCCESS;
 }
@@ -161,6 +208,10 @@ static iree_status_t iree_hal_hsa_driver_create_internal(
 
   memcpy(&driver->device_params, device_params, sizeof(driver->device_params));
 
+  // Ensure HSA is initialized before querying it.
+  IREE_RETURN_IF_ERROR(iree_hal_hsa_init(driver));
+
+  driver->num_aie_agents = 0;
   driver->num_gpu_agents = 0;
 
   // Populate HSA agents
@@ -174,6 +225,14 @@ static iree_status_t iree_hal_hsa_driver_create_internal(
                          &symbols_and_device_count),
       "hsa_iterate_agents");
 
+  symbols_and_device_count.return_value = &driver->num_aie_agents;
+
+  IREE_HSA_RETURN_AND_END_ZONE_IF_ERROR(
+      z0, &driver->hsa_symbols,
+      hsa_iterate_agents(&iterate_count_aie_agents_callback,
+                         &symbols_and_device_count),
+      "hsa_iterate_agents");
+
   size_t agent_index = 0;
   iree_hal_hsa_callback_package_t symbols_and_agents = {
       .driver = driver, .index = &agent_index, .return_value = driver->agents};
@@ -181,6 +240,12 @@ static iree_status_t iree_hal_hsa_driver_create_internal(
   IREE_HSA_RETURN_AND_END_ZONE_IF_ERROR(
       z0, &driver->hsa_symbols,
       hsa_iterate_agents(&iterate_populate_gpu_agents_callback,
+                         &symbols_and_agents),
+      "hsa_iterate_agents");
+
+  IREE_HSA_RETURN_AND_END_ZONE_IF_ERROR(
+      z0, &driver->hsa_symbols,
+      hsa_iterate_agents(&iterate_populate_aie_agents_callback,
                          &symbols_and_agents),
       "hsa_iterate_agents");
 
@@ -317,7 +382,7 @@ static iree_status_t iree_hal_hsa_driver_query_available_devices(
   // Ensure HSA is initialized before querying it.
   IREE_RETURN_AND_END_ZONE_IF_ERROR(z0, iree_hal_hsa_init(driver));
 
-  int device_count = driver->num_gpu_agents;
+  int device_count = driver->num_gpu_agents + driver->num_aie_agents;
 
   // Allocate the return infos and populate with the devices.
   iree_hal_device_info_t* device_infos = NULL;
@@ -438,7 +503,7 @@ static iree_status_t iree_hal_hsa_driver_create_device_by_uuid(
   iree_status_t status;
   // HSA doesn't have an API to do this so we need to scan all devices to
   // find the one with the matching UUID.
-  int device_count = driver->num_gpu_agents;
+  int device_count = driver->num_gpu_agents + driver->num_aie_agents;
 
   // Iterate over device info searching for the agent with the right UUID
   bool found_device = false;
@@ -461,8 +526,8 @@ static iree_status_t iree_hal_hsa_driver_create_device_by_uuid(
     if (memcmp(device_uuid, query_uuid_stripped, sizeof(query_uuid_stripped)) ==
         0) {
       found_device = true;
-      break;
       device = driver->agents[i];
+      break;
     }
   }
   if (!found_device) {
@@ -502,7 +567,7 @@ static iree_status_t iree_hal_hsa_driver_create_device_by_index(
   IREE_RETURN_IF_ERROR(iree_hal_hsa_init(driver));
 
   // Query the number of available HSA devices.
-  int device_count = driver->num_gpu_agents;
+  int device_count = driver->num_gpu_agents + driver->num_aie_agents;
   if (device_index >= device_count) {
     return iree_make_status(IREE_STATUS_NOT_FOUND,
                             "device %d not found (of %d enumerated)",
@@ -529,13 +594,16 @@ static iree_status_t iree_hal_hsa_driver_create_device_by_path(
   IREE_ASSERT_ARGUMENT(base_driver);
   IREE_ASSERT_ARGUMENT(out_device);
 
+  iree_hal_hsa_driver_t* driver = iree_hal_hsa_driver_cast(base_driver);
+
   if (iree_string_view_is_empty(device_path)) {
     return iree_hal_hsa_driver_create_device_by_id(
         base_driver, IREE_HAL_DEVICE_ID_DEFAULT, param_count, params,
         host_allocator, out_device);
   }
 
-  bool found = iree_string_view_consume_prefix(&device_path, IREE_SV("GPU-"));
+  bool found = iree_string_view_consume_prefix(&device_path, IREE_SV("GPU-")) ||
+               iree_string_view_consume_prefix(&device_path, IREE_SV("AIE-"));
 
   if (found) {
     char device_uuid[16];
@@ -552,10 +620,17 @@ static iree_status_t iree_hal_hsa_driver_create_device_by_path(
 
   // Try to parse as a device index or device type
   int device_index = -1;
-
+  // Agents are stored GPU first, and then AIEs
+  // So we grab the first one for each type
   if (iree_string_view_consume_prefix(&device_path, IREE_SV("GPU")) ||
       iree_string_view_consume_prefix(&device_path, IREE_SV("gpu"))) {
     device_index = 0;
+  } else if (iree_string_view_consume_prefix(&device_path, IREE_SV("AIE")) ||
+             iree_string_view_consume_prefix(&device_path, IREE_SV("aie"))) {
+    if (driver->num_aie_agents > 0) {
+      // skip the GPUs
+      device_index = driver->num_gpu_agents;
+    }
   }
 
   if (device_index != -1 ||

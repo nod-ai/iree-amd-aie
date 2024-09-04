@@ -33,6 +33,10 @@ typedef struct iree_hal_hsa_kernel_info_t {
   uint32_t kernarg_segment_size;
   uint32_t kernarg_segment_align;
 
+  // FOR AIE
+  uint32_t instr_object;
+  uint64_t num_instr;
+
   IREE_TRACE(iree_string_view_t function_name;)
   IREE_TRACE(iree_string_view_t source_filename;)
   IREE_TRACE(uint32_t source_line;)
@@ -53,7 +57,7 @@ iree_status_t iree_hal_hsa_native_executable_entry_point_kernel_info(
     iree_hal_hsa_kernel_info_t* out_info);
 
 #ifdef __cplusplus
-}  // extern "C"
+}       // extern "C"
 #endif  // __cplusplus
 
 #endif  // IREE_EXPERIMENTAL_HSA_NATIVE_EXECUTABLE_H_

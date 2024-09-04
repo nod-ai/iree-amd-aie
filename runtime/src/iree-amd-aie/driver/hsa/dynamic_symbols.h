@@ -28,13 +28,14 @@ extern "C" {
 // HSA driver API dynamic symbols.
 typedef struct iree_hal_hsa_dynamic_symbols_t {
   // The dynamic library handle.
-  iree_dynamic_library_t* dylib;
+  iree_dynamic_library_t *dylib;
 
   // Concrete HSA symbols defined by including the `dynamic_symbol_tables.h`.
 #define IREE_HAL_HSA_REQUIRED_PFN_DECL(hsaSymbolName, ...) \
   hsa_status_t (*hsaSymbolName)(__VA_ARGS__);
 
-#include "iree-amd-aie/driver/hsa/dynamic_symbol_tables.h"  // IWYU pragma: export
+#include "dynamic_symbol_tables.h"  // IWYU pragma: export
+
 #undef IREE_HAL_HSA_REQUIRED_PFN_DECL
 } iree_hal_hsa_dynamic_symbols_t;
 
@@ -42,16 +43,16 @@ typedef struct iree_hal_hsa_dynamic_symbols_t {
 // iree_hal_hsa_dynamic_symbols_deinitialize must be used to release the
 // library resources.
 iree_status_t iree_hal_hsa_dynamic_symbols_initialize(
-    iree_allocator_t host_allocator, iree_hal_hsa_dynamic_symbols_t* out_syms);
+    iree_allocator_t host_allocator, iree_hal_hsa_dynamic_symbols_t *out_syms);
 
 // Deinitializes |syms| by unloading the backing library. All function pointers
 // will be invalidated. They _may_ still work if there are other reasons the
 // library remains loaded so be careful.
 void iree_hal_hsa_dynamic_symbols_deinitialize(
-    iree_hal_hsa_dynamic_symbols_t* syms);
+    iree_hal_hsa_dynamic_symbols_t *syms);
 
 #ifdef __cplusplus
-}  // extern "C"
+}       // extern "C"
 #endif  // __cplusplus
 
 #endif  // IREE_EXPERIMENTAL_HSA_DYNAMIC_SYMBOLS_H_

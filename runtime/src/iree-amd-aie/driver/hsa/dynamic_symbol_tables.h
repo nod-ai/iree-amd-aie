@@ -9,8 +9,6 @@
 // HSA symbols
 //===----------------------------------------------------------------------===//
 
-#include <stdint.h>
-
 IREE_HAL_HSA_REQUIRED_PFN_DECL(hsa_init)
 IREE_HAL_HSA_REQUIRED_PFN_DECL(hsa_shut_down)
 IREE_HAL_HSA_REQUIRED_PFN_DECL(hsa_agent_get_info, hsa_agent_t,
@@ -86,6 +84,7 @@ IREE_HAL_HSA_REQUIRED_PFN_DECL(hsa_amd_signal_async_handler, hsa_signal_t,
                                hsa_signal_condition_t, hsa_signal_value_t,
                                hsa_amd_signal_handler, void *)
 IREE_HAL_HSA_REQUIRED_PFN_DECL(hsa_memory_copy, void *, const void *, size_t)
+IREE_HAL_HSA_REQUIRED_PFN_DECL(hsa_amd_get_handle_from_vaddr, void *, uint32_t *);
 IREE_HAL_HSA_REQUIRED_PFN_DECL(hsa_amd_memory_lock_to_pool, void *, size_t,
                                hsa_agent_t *, int, hsa_amd_memory_pool_t,
                                uint32_t, void **)

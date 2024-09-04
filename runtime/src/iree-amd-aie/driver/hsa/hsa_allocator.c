@@ -21,15 +21,23 @@ typedef struct iree_hal_hsa_allocator_t {
   iree_hal_resource_t resource;
 
   hsa_agent_t hsa_agent;
-
   hsa_agent_t cpu_agent;
+  hsa_device_type_t agent_type;
   hsa_amd_memory_pool_t cpu_pool;
 
   // One memory pool and region for now
   hsa_amd_memory_pool_t buffers_pool;
   hsa_region_t kernel_argument_pool;
 
+  hsa_amd_memory_pool_t aie_kernel_argument_pool;
+  hsa_amd_memory_pool_t coarse_grained_pool;
+
   const iree_hal_hsa_dynamic_symbols_t* symbols;
+
+  hsa_amd_memory_pool_t fine_grained_pool;
+  // TODO(muhaawad): We should use a single pool for kern args for both
+  // the AIE and the GPU
+  hsa_region_t gpu_kernel_argument_region;
 
   iree_allocator_t host_allocator;
 
@@ -98,6 +106,17 @@ static hsa_status_t get_fine_grained_memory_pool(hsa_amd_memory_pool_t pool,
   bool is_fine_grained =
       (flags & (HSA_AMD_MEMORY_POOL_GLOBAL_FLAG_FINE_GRAINED |
                 HSA_AMD_MEMORY_POOL_GLOBAL_FLAG_EXTENDED_SCOPE_FINE_GRAINED));
+
+  bool is_kernel_arg_pool =
+      (flags & HSA_AMD_MEMORY_POOL_GLOBAL_FLAG_KERNARG_INIT) &&
+      (flags & HSA_AMD_MEMORY_POOL_GLOBAL_FLAG_COARSE_GRAINED);
+
+  if (is_kernel_arg_pool) {
+    if (allocator->agent_type == HSA_DEVICE_TYPE_AIE) {
+      allocator->aie_kernel_argument_pool = pool;
+    }
+  }
+
   bool is_kernel_arg_region =
       (flags & HSA_AMD_MEMORY_POOL_GLOBAL_FLAG_KERNARG_INIT);
 
@@ -430,6 +449,42 @@ static iree_status_t iree_hal_hsa_allocator_allocate_buffer(
       iree_hal_hsa_allocator_query_buffer_compatibility(
           base_allocator, &compat_params, &allocation_size);
 
+  iree_status_t status = iree_ok_status();
+
+  // just a hack for now to allocate hsa kernel arguments
+  if (compat_params.usage == IREE_HAL_BUFFER_USAGE_TRANSFER_SOURCE) {
+    void* device_ptr;
+    if (allocator->agent_type == HSA_DEVICE_TYPE_AIE) {
+      status = IREE_HSA_RESULT_TO_STATUS(
+          allocator->symbols,
+          hsa_amd_memory_pool_allocate(allocator->aie_kernel_argument_pool,
+                                       allocation_size,
+                                       /*flags=*/0, &device_ptr));
+    } else if (allocator->agent_type == HSA_DEVICE_TYPE_GPU) {
+      status = IREE_HSA_RESULT_TO_STATUS(
+          allocator->symbols,
+          hsa_memory_allocate(allocator->gpu_kernel_argument_region,
+                              allocation_size, &device_ptr));
+    } else {
+      return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                              "Unknown agent type.");
+    }
+
+    if (!iree_status_is_ok(status)) {
+      return status;
+    }
+    iree_hal_buffer_t* buffer = NULL;
+    iree_status_t arg_status = iree_hal_hsa_buffer_wrap(
+        base_allocator, compat_params.type, compat_params.access,
+        compat_params.usage, allocation_size,
+        /*byte_offset=*/0,
+        /*byte_length=*/allocation_size, IREE_HAL_HSA_BUFFER_TYPE_KERNEL_ARG,
+        device_ptr, NULL, iree_hal_buffer_release_callback_null(),
+        iree_hal_allocator_host_allocator(base_allocator), &buffer);
+
+    *out_buffer = buffer;
+    return arg_status;
+  }
   if (!iree_all_bits_set(compatibility,
                          IREE_HAL_BUFFER_COMPATIBILITY_ALLOCATABLE)) {
 #if IREE_STATUS_MODE
@@ -453,7 +508,7 @@ static iree_status_t iree_hal_hsa_allocator_allocate_buffer(
 #endif  // IREE_STATUS_MODE
   }
 
-  iree_status_t status = iree_ok_status();
+  status = iree_ok_status();
   iree_hal_hsa_buffer_type_t buffer_type = IREE_HAL_HSA_BUFFER_TYPE_DEVICE;
   void* host_ptr = NULL;
   hsa_device_pointer_t device_ptr = NULL;
