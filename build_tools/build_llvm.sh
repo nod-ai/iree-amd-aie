@@ -68,13 +68,19 @@ CMAKE_ARGS="\
   -DMLIR_ENABLE_BINDINGS_PYTHON=ON \
   -DLLVM_ENABLE_PROJECTS=mlir;clang;lld"
 
-
 if [[ "$OSTYPE" == "msys"* ]]; then
-  CMAKE_ARGS="$CMAKE_ARGS \
-    -DCMAKE_C_FLAGS=-DMLIR_CAPI_ENABLE_WINDOWS_DLL_DECLSPEC=1;-DMLIR_CAPI_BUILDING_LIBRARY=1"
-fi
-
-if [[ "$OSTYPE" != "darwin"* ]]; then
+  cmake $CMAKE_ARGS \
+    -DCMAKE_EXE_LINKER_FLAGS_INIT="-fuse-ld=lld" \
+    -DCMAKE_SHARED_LINKER_FLAGS_INIT="-fuse-ld=lld" \
+    -DCMAKE_MODULE_LINKER_FLAGS_INIT="-fuse-ld=lld" \
+    -DCMAKE_C_FLAGS="-DMLIR_CAPI_ENABLE_WINDOWS_DLL_DECLSPEC=1 -DMLIR_CAPI_BUILDING_LIBRARY=1" \
+    -DLLVM_ENABLE_EH=ON \
+    -DCMAKE_C_COMPILER="${CC}" \
+    -DCMAKE_CXX_COMPILER="${CXX}" \
+    -DLLVM_TARGET_ARCH=X86 \
+    -DLLVM_TARGETS_TO_BUILD=X86 \
+    -S "$llvm_dir" -B "$build_dir"
+elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
   cmake $CMAKE_ARGS \
     -DCMAKE_EXE_LINKER_FLAGS_INIT="-fuse-ld=lld" \
     -DCMAKE_SHARED_LINKER_FLAGS_INIT="-fuse-ld=lld" \
