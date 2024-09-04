@@ -8,6 +8,7 @@
 
 #include <numeric>
 
+#include "iree-amd-aie/Transforms/AMDAIEDmaUtils.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/Support/Debug.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
@@ -25,6 +26,39 @@
 #define DEBUG_TYPE "iree-amdaie-logicalobjfifo-splitting-utils"
 
 namespace mlir::iree_compiler::AMDAIE {
+
+/// Utility to create a new logical objectfifo based on shape defined by
+/// `newSizesOpFoldResultArr`.
+static AMDAIE::LogicalObjectFifoFromMemrefOp createNewLogicalObjectFifo(
+    IRRewriter &rewriter,
+    AMDAIE::LogicalObjectFifoFromMemrefOp &oldLogicalObjectFifo,
+    SmallVector<OpFoldResult> &newSizesOpFoldResultArr) {
+  OpBuilder::InsertionGuard guard(rewriter);
+  SmallVector<int64_t> newSizes;
+  for (OpFoldResult sizeVal : newSizesOpFoldResultArr) {
+    newSizes.push_back(getConstantIndexOrAssert(sizeVal));
+  }
+  Value oldAllocOp = oldLogicalObjectFifo.getMemref();
+  auto oldMemRefType = cast<MemRefType>(oldAllocOp.getType());
+  MemRefType newAllocType = MemRefType::get(
+      newSizes, oldMemRefType.getElementType(), MemRefLayoutAttrInterface{},
+      oldMemRefType.getMemorySpace());
+  assert(oldAllocOp.getDefiningOp() && "expected a defining op for the value");
+  rewriter.setInsertionPoint(oldAllocOp.getDefiningOp());
+  auto newAllocOp =
+      rewriter.create<memref::AllocOp>(rewriter.getUnknownLoc(), newAllocType);
+  auto newDeallocOp =
+      rewriter.create<memref::DeallocOp>(rewriter.getUnknownLoc(), newAllocOp);
+  newDeallocOp->moveBefore(&newAllocOp->getBlock()->back());
+  auto type = cast<MemRefType>(newAllocOp.getType());
+  // Create new logical objectfifo.
+  rewriter.setInsertionPoint(oldLogicalObjectFifo);
+  auto newLogicalObjectFifo =
+      rewriter.create<AMDAIE::LogicalObjectFifoFromMemrefOp>(
+          rewriter.getUnknownLoc(), LogicalObjectFifoType::get(type),
+          newAllocOp.getResult(), oldLogicalObjectFifo.getTiles());
+  return newLogicalObjectFifo;
+}
 
 /// Utility to help fetch those input DmaCpyNd Ops which needs to be split.
 SmallVector<AMDAIE::DmaCpyNdOp> fetchDmaCpyNdOpsToSplitOrCombine(
@@ -324,16 +358,13 @@ LogicalResult splitLogicalObjectFifos(
   toBeErased.insert(sourceAllocOp);
   toBeErased.insert(sourceObjectFifo);
 
-  SmallVector<OpFoldResult, 4> staticL2AsTargetOffsets =
+  SmallVector<OpFoldResult> staticL2AsTargetOffsets =
       l3ToL2DmaOp.getTargetMixedOffsets();
-  SmallVector<OpFoldResult, 4> staticL2AsTargetSizes =
+  SmallVector<OpFoldResult> staticL2AsTargetSizes =
       l3ToL2DmaOp.getTargetMixedSizes();
-  SmallVector<int64_t, 4> l2ShapeAsTarget = llvm::to_vector(
-      cast<MemRefType>(l3ToL2DmaOp.getTargetObjectFifo().getMemref().getType())
-          .getShape());
-  SmallVector<OpFoldResult, 4> staticL3AsSourceOffsets =
+  SmallVector<OpFoldResult> staticL3AsSourceOffsets =
       l3ToL2DmaOp.getSourceMixedOffsets();
-  SmallVector<OpFoldResult, 4> staticL3AsSourceSizes =
+  SmallVector<OpFoldResult> staticL3AsSourceSizes =
       l3ToL2DmaOp.getSourceMixedSizes();
   OpFoldResult zeroVal = getAsIndexOpFoldResult(context, 0);
   OpFoldResult oneVal = getAsIndexOpFoldResult(context, 1);
@@ -345,45 +376,28 @@ LogicalResult splitLogicalObjectFifos(
     staticL2AsTargetSizes[dim] = oneVal;
     staticL3AsSourceOffsets[dim] = zeroVal;
     staticL3AsSourceSizes[dim] = oneVal;
-    l2ShapeAsTarget[dim] = 1;
   }
 
   // Traverse each L2->L1 DmaCpyNd op and split them.
   for (AMDAIE::DmaCpyNdOp l2ToL1DmaOp : l2ToL1DmaOps) {
-    SmallVector<OpFoldResult, 6> staticL2AsSourceOffsets =
+    SmallVector<OpFoldResult> staticL2AsSourceOffsets =
         l2ToL1DmaOp.getSourceMixedOffsets();
-    SmallVector<OpFoldResult, 6> staticL2AsSourceSizes =
+    SmallVector<OpFoldResult> staticL2AsSourceSizes =
         l2ToL1DmaOp.getSourceMixedSizes();
 
     // Now we'll create a new L2 buffer based on the new shape inferred earlier
-    // via `l2ShapeAsTarget`.
-    rewriter.setInsertionPoint(sourceAllocOp);
-    LogicalObjectFifoFromMemrefOp targetObjectFifo =
-        l2ToL1DmaOp.getTargetObjectFifo();
-    Value targetAllocOp = targetObjectFifo.getMemref();
-    auto oldSourceMemRefType = cast<MemRefType>(sourceAllocOp.getType());
-    auto targetMemRefType = cast<MemRefType>(targetAllocOp.getType());
-    MemRefType newAllocType = MemRefType::get(
-        l2ShapeAsTarget, targetMemRefType.getElementType(),
-        MemRefLayoutAttrInterface{}, oldSourceMemRefType.getMemorySpace());
-    auto newAllocOp = rewriter.create<memref::AllocOp>(rewriter.getUnknownLoc(),
-                                                       newAllocType);
-    auto newDeallocOp = rewriter.create<memref::DeallocOp>(
-        rewriter.getUnknownLoc(), newAllocOp);
-    newDeallocOp->moveBefore(&newAllocOp->getBlock()->back());
-    auto type = cast<MemRefType>(newAllocOp.getType());
-    // Create new logicalobjectfifo.from_memref for the newly created L2 buffer.
-    rewriter.setInsertionPoint(l2ToL1DmaOp.getSourceObjectFifo());
-    auto source = rewriter.create<AMDAIE::LogicalObjectFifoFromMemrefOp>(
-        rewriter.getUnknownLoc(), LogicalObjectFifoType::get(type),
-        newAllocOp.getResult(), sourceObjectFifo.getTiles());
+    // via `staticL2AsTargetSizes`.
+    LogicalObjectFifoFromMemrefOp oldL2ObjectFifo =
+        l2ToL1DmaOp.getSourceObjectFifo();
+    AMDAIE::LogicalObjectFifoFromMemrefOp source = createNewLogicalObjectFifo(
+        rewriter, oldL2ObjectFifo, staticL2AsTargetSizes);
 
     // --------------------------------------------
     // ---------- L3 -> L2 splitting --------------
     // --------------------------------------------
     // Update L3 source offsets for non-split dimensions. Refer doc comment of
     // `updateL3SourceOffset` for the computation rationale involved.
-    SmallVector<OpFoldResult, 4> staticL3AsSourceOffsets =
+    SmallVector<OpFoldResult> staticL3AsSourceOffsets =
         l3ToL2DmaOp.getSourceMixedOffsets();
     for (auto &&[splitDim, nonSplitdim] :
          llvm::zip_equal(splitDimsForL2, nonSplitDimsForL2)) {
@@ -523,17 +537,30 @@ LogicalResult combineLogicalObjectFifos(
     }
   }
 
+  if (l2ToL1DmaOps.size() != l3ToL2DmaOps.size()) {
+    LLVM_DEBUG(
+        llvm::dbgs()
+        << "expected 1:1 correspondence between L3->L2 and L2->L1 Dma ops\n");
+    return failure();
+  }
+
   // For now pick the first two L3->L2 Dma op and try to combine them. Later
   // we'll implement the selector.
+  ////////////////////////////////////////////////
+  ////////////// PICK logic TODO /////////////////
+  ////////////////////////////////////////////////
   auto op = l3ToL2DmaOps[0];
   auto nextStridedOp = l3ToL2DmaOps[1];
+  ////////////////////////////////////////////////
+  /////// COMBINE the picked L3->L2 pair /////////
+  ////////////////////////////////////////////////
   {
     /// The maximum number of addressing dimensions on the source side of the
     /// DMA.
-    int64_t sourceMaxNbDims{0};
+    // int64_t sourceMaxNbDims{0};
     // /// The maximum number of addressing dimensions on the target side of the
     // DMA.
-    int64_t targetMaxNbDims{0};
+    // int64_t targetMaxNbDims{0};
     OpBuilder::InsertionGuard guard(rewriter);
     // rewriter.setInsertionPoint(op);
     SmallVector<OpFoldResult> sourceOffsetsA = op.getSourceMixedOffsets();
@@ -546,9 +573,6 @@ LogicalResult combineLogicalObjectFifos(
     SmallVector<OpFoldResult> sourceStridesB =
         nextStridedOp.getSourceMixedStrides();
     bool areSourcesCombinable = true;
-    // bool areSourcesCombinable = areAccessPatternsCombinable(
-    //     sourceOffsetsA, sourceSizesA, sourceStridesA, sourceOffsetsB,
-    //     sourceSizesB, sourceStridesB, sourceMaxNbDims+1);
 
     SmallVector<OpFoldResult> targetOffsetsA = op.getTargetMixedOffsets();
     SmallVector<OpFoldResult> targetSizesA = op.getTargetMixedSizes();
@@ -560,15 +584,8 @@ LogicalResult combineLogicalObjectFifos(
     SmallVector<OpFoldResult> targetStridesB =
         nextStridedOp.getTargetMixedStrides();
     bool areTargetsCombinable = true;
-    // bool areTargetsCombinable = areAccessPatternsCombinable(
-    //     targetOffsetsA, targetSizesA, targetStridesA, targetOffsetsB,
-    //     targetSizesB, targetStridesB, targetMaxNbDims+1);
 
-    // llvm::outs()<<"Checking compatibility\n";
-    // llvm::outs().flush();
     if (areSourcesCombinable && areTargetsCombinable) {
-      // llvm::outs()<<"Compatible\n";
-      // llvm::outs().flush();
       SmallVector<OpFoldResult> newSourceOffsets = sourceOffsetsA;
       SmallVector<OpFoldResult> newSourceSizes = sourceSizesA;
       SmallVector<OpFoldResult> newSourceStrides = sourceStridesA;
@@ -592,20 +609,31 @@ LogicalResult combineLogicalObjectFifos(
       }
       llvm::outs() << "Combined target\n";
       llvm::outs().flush();
+      // Now we need to create a new L2 buffer based on `newTargetSizes`.
+
+      LogicalObjectFifoFromMemrefOp oldL2ObjectFifo = op.getTargetObjectFifo();
+      AMDAIE::LogicalObjectFifoFromMemrefOp newL2ObjectFifo =
+          createNewLogicalObjectFifo(rewriter, oldL2ObjectFifo, newTargetSizes);
 
       rewriter.setInsertionPoint(op);
-      auto newDoublyStridedOp = nextStridedOp.createDoublyStridedOp(
-          rewriter, newTargetOffsets, newTargetSizes, newTargetStrides,
-          newSourceOffsets, newSourceSizes, newSourceStrides);
-      rewriter.replaceOp(nextStridedOp, newDoublyStridedOp.getOperation());
-
-      // for (Operation *userOp : userOpsToBeErased) rewriter.eraseOp(userOp);
+      auto combinedL3ToL2DmaOp = rewriter.create<AMDAIE::DmaCpyNdOp>(
+          op.getLoc(), newL2ObjectFifo, llvm::ArrayRef(newTargetOffsets),
+          llvm::ArrayRef(newTargetSizes), llvm::ArrayRef(newTargetStrides),
+          op.getSource(), llvm::ArrayRef(newSourceOffsets),
+          llvm::ArrayRef(newSourceSizes), llvm::ArrayRef(newSourceStrides));
+      // Replace the uses of 2nd L3->L2 Dma with the new combined L3->L2 Dma and
+      // erase the 1st L3->L2 Dma.
+      rewriter.replaceOp(nextStridedOp, combinedL3ToL2DmaOp);
       rewriter.eraseOp(op);
-      return success();
+      // return success();
     }
-    llvm::outs() << "NOT Compatible\n";
-    llvm::outs().flush();
+    // llvm::outs() << "NOT Compatible\n";
+    // llvm::outs().flush();
   }
+  /////////////////////////////////////////////////////////
+  //// PICK the CoreOps associated with the 1:1 L2->L1 ////
+  /////////////////////////////////////////////////////////
+  {}
   return success();
 }
 

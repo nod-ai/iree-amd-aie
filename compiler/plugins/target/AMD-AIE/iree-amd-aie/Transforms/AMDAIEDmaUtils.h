@@ -18,6 +18,9 @@
 
 namespace mlir::iree_compiler::AMDAIE {
 
+/// Utility to retrieve a constant index from an OpFoldResult.
+int64_t getConstantIndexOrAssert(OpFoldResult dim);
+
 // Constant specifying the number of inter-iteration dimension for DMA
 // operations.
 //
