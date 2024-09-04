@@ -133,8 +133,15 @@ jobs:
         with:
           name: linux_x86_64_release_packages
 
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: linux_x86_64_llvm_packages
+
       - name: Extract artifact
         run: |
+          tar -xvf llvm-dist-linux-*.tar
+          echo "PATH=$PWD/llvm-install/bin:$PATH" >> $GITHUB_ENV
           tar -xvf iree-dist-linux.tar
           bash build_tools/download_peano.sh
 
@@ -181,7 +188,6 @@ jobs:
             $PWD/llvm-aie \
             /opt/xilinx/xrt \
             /opt/Xilinx/Vitis/2024.2
-
 
       - name : Smoke E2E comparison flag test
         run: |

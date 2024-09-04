@@ -145,12 +145,14 @@ jobs:
       - name: Download artifacts
         uses: actions/download-artifact@v4
         with:
-          name: windows_x86_64_release_packages
+          name: windows_x86_64_llvm_packages
 
       - name: Extract artifact
         run: |
-          tar -xf iree-dist-windows.tar
-          bash build_tools/download_peano.sh
+          tar -xvf llvm-dist-windows-*.tar
+          echo "PATH=$PWD/llvm-install/bin:$PATH" >> $GITHUB_ENV
+          tar -xvf iree-dist-windows.tar
+          bash build_tools/download_peano.sh 
 
       - name: Create venv and install dependencies
         run: |

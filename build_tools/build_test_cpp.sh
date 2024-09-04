@@ -93,6 +93,11 @@ if [ -d "${llvm_install_dir}" ]; then
     -DLLVM_DIR=$llvm_install_dir/lib/cmake/llvm"
 fi
 
+if [[ "$OSTYPE" == "msys"* ]]; then
+  CMAKE_ARGS="$CMAKE_ARGS \
+    -DCMAKE_C_FLAGS=-DIREE_EMBED_ENABLE_WINDOWS_DLL_DECLSPEC=1;-DIREE_EMBED_BUILDING_LIBRARY=1"
+fi
+
 if [[ "$OSTYPE" != "darwin"* ]]; then
   cmake $CMAKE_ARGS \
     -DCMAKE_EXE_LINKER_FLAGS_INIT="-fuse-ld=lld" \
