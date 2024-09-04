@@ -87,6 +87,7 @@ jobs:
           export cache_dir="${{ env.CACHE_DIR }}"
           export CCACHE_COMPILERCHECK="string:$(clang-cl.exe --version)"
           bash build_tools/build_llvm.sh
+          rm -rf llvm-build
           export llvm_install_dir=$PWD/llvm-install
           # TODO(max): send IREE a fix for this
           # target_compile_definitions may only set INTERFACE properties on IMPORTED
