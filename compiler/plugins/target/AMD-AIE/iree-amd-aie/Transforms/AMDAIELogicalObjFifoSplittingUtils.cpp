@@ -510,6 +510,19 @@ static LogicalResult _TODOcombineAccessPatterns(
   return success();
 }
 
+/// Utility to fetch a unique CoreOp associated with a L2->L1 Dma op.
+static CoreOp fetchUniqueCoreOp(DmaCpyNdOp &l2ToL1DmaOp) {
+  SmallVector<CoreOp> coreOps;
+  for (Operation *userOp : l2ToL1DmaOp->getUsers()) {
+    if (auto coreOp = dyn_cast<CoreOp>(userOp)) {
+      coreOps.push_back(coreOp);
+    }
+  }
+  assert(coreOps.size() == 1 &&
+         "L2->L1 Dma op expected to have a unique Core op");
+  return coreOps[0];
+}
+
 LogicalResult combineLogicalObjectFifos(
     IRRewriter &rewriter, SmallVector<AMDAIE::DmaCpyNdOp> &l2ToL1DmaOps,
     MLIRContext *context) {
@@ -610,11 +623,11 @@ LogicalResult combineLogicalObjectFifos(
       llvm::outs() << "Combined target\n";
       llvm::outs().flush();
       // Now we need to create a new L2 buffer based on `newTargetSizes`.
-
       LogicalObjectFifoFromMemrefOp oldL2ObjectFifo = op.getTargetObjectFifo();
       AMDAIE::LogicalObjectFifoFromMemrefOp newL2ObjectFifo =
           createNewLogicalObjectFifo(rewriter, oldL2ObjectFifo, newTargetSizes);
 
+      // Create combined L3->L2 Dma.
       rewriter.setInsertionPoint(op);
       auto combinedL3ToL2DmaOp = rewriter.create<AMDAIE::DmaCpyNdOp>(
           op.getLoc(), newL2ObjectFifo, llvm::ArrayRef(newTargetOffsets),
@@ -625,15 +638,83 @@ LogicalResult combineLogicalObjectFifos(
       // erase the 1st L3->L2 Dma.
       rewriter.replaceOp(nextStridedOp, combinedL3ToL2DmaOp);
       rewriter.eraseOp(op);
-      // return success();
+
+      // We now have need to create two L2->L1 ops since the size has changed.
+      // But for this we first need to find the new offset for L2 as source.
+      // TODO: For now I'm hardcoding the offsets but later it'd just depend on
+      //       split/non-split dimensions.
+      // Offset = 0,0
+      auto firstL2ToL1DmaOp = l2ToL1DmaOps[0];
+      rewriter.setInsertionPoint(firstL2ToL1DmaOp);
+      LogicalObjectFifoFromMemrefOp reuseL1LogicalObjectFifoOp =
+          firstL2ToL1DmaOp.getTargetObjectFifo();
+      SmallVector<OpFoldResult> newL2AsSourceOffsets =
+          firstL2ToL1DmaOp.getSourceMixedOffsets();
+      auto newFirstL2ToL1DmaOp = rewriter.create<AMDAIE::DmaCpyNdOp>(
+          firstL2ToL1DmaOp.getLoc(), reuseL1LogicalObjectFifoOp,
+          firstL2ToL1DmaOp.getTargetMixedOffsets(),
+          firstL2ToL1DmaOp.getTargetMixedSizes(),
+          firstL2ToL1DmaOp.getTargetMixedStrides(), newL2ObjectFifo,
+          llvm::ArrayRef(newL2AsSourceOffsets),
+          firstL2ToL1DmaOp.getSourceMixedSizes(),
+          firstL2ToL1DmaOp.getSourceMixedStrides());
+      rewriter.replaceOp(firstL2ToL1DmaOp, newFirstL2ToL1DmaOp);
+      // Offset = 0, 1. NOTE here we'd use the same L1 logical objectFifo as the
+      // first L2->L1 Dma.
+      auto secondL2ToL1DmaOp = l2ToL1DmaOps[1];
+      rewriter.setInsertionPoint(secondL2ToL1DmaOp);
+      newL2AsSourceOffsets = secondL2ToL1DmaOp.getSourceMixedOffsets();
+      newL2AsSourceOffsets[1] = rewriter.getIndexAttr(1);
+      auto newSecondL2ToL1DmaOp = rewriter.create<AMDAIE::DmaCpyNdOp>(
+          secondL2ToL1DmaOp.getLoc(), reuseL1LogicalObjectFifoOp,
+          secondL2ToL1DmaOp.getTargetMixedOffsets(),
+          secondL2ToL1DmaOp.getTargetMixedSizes(),
+          secondL2ToL1DmaOp.getTargetMixedStrides(), newL2ObjectFifo,
+          llvm::ArrayRef(newL2AsSourceOffsets),
+          secondL2ToL1DmaOp.getSourceMixedSizes(),
+          secondL2ToL1DmaOp.getSourceMixedStrides());
+      rewriter.replaceOp(secondL2ToL1DmaOp, newSecondL2ToL1DmaOp);
+
+      /////////////////////////////////////////////////////////
+      //// PICK the CoreOps associated with the 1:1 L2->L1 ////
+      /////////////////////////////////////////////////////////
+      // For the first Core op we'll insert Read at the end. It doesn't matter
+      // for now so we're gonna insert it right before amdaie.end op.
+      CoreOp firstCoreOp = fetchUniqueCoreOp(newFirstL2ToL1DmaOp);
+      firstCoreOp.walk([&](AMDAIE::EndOp endOp) {
+        OpBuilder::InsertionGuard guard(rewriter);
+        // Hardcoding to `AMDAIE::MemoryAccess::Read`.
+        rewriter.setInsertionPoint(endOp);
+        rewriter.create<AMDAIE::LogicalObjectFifoAccessOp>(
+            rewriter.getUnknownLoc(), reuseL1LogicalObjectFifoOp.getOutput(),
+            AMDAIE::MemoryAccess::Read);
+      });
+      // For the seconf Core op we'll insert Read right before the first read
+      // from the corresponding L1 logicalobjectFifo.
+      CoreOp secondCoreOp = fetchUniqueCoreOp(newSecondL2ToL1DmaOp);
+      secondCoreOp.walk([&](AMDAIE::LogicalObjectFifoAccessOp accessOp) {
+        if (accessOp.getInput() == l2ToL1DmaOps[1].getTargetObjectFifo()) {
+          OpBuilder::InsertionGuard guard(rewriter);
+          // Hardcoding to `AMDAIE::MemoryAccess::Read`.
+          rewriter.setInsertionPoint(accessOp);
+          rewriter.create<AMDAIE::LogicalObjectFifoAccessOp>(
+              rewriter.getUnknownLoc(), reuseL1LogicalObjectFifoOp.getOutput(),
+              AMDAIE::MemoryAccess::Read);
+          // Need to insert the second one because THIS is what will actually be
+          // used.
+          auto secondAccessOp =
+              rewriter.create<AMDAIE::LogicalObjectFifoAccessOp>(
+                  rewriter.getUnknownLoc(),
+                  reuseL1LogicalObjectFifoOp.getOutput(),
+                  AMDAIE::MemoryAccess::Read);
+          rewriter.replaceOp(accessOp, secondAccessOp);
+        }
+      });
     }
     // llvm::outs() << "NOT Compatible\n";
     // llvm::outs().flush();
   }
-  /////////////////////////////////////////////////////////
-  //// PICK the CoreOps associated with the 1:1 L2->L1 ////
-  /////////////////////////////////////////////////////////
-  {}
+
   return success();
 }
 
