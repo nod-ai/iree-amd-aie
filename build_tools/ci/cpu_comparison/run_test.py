@@ -663,6 +663,13 @@ class MatmulSet(TestSet):
             config, test_name, tile_pipeline="pack-peel", lower_to_aie_pipeline="air", use_ukernel=False
         )
 
+        # Test(s) of the form batch_matmul(A,B) where A:BxMxK, B:BxKxN
+        test_name = output_dir / "test_from_template_bmm.mlir"
+        template_name = matmul_template_dir / "batch_matmul_BxMxK_BxKxN.mlir"
+        for (lhs_type, acc_type) in zip(["i32", "bf16"], ["i32", "f32"]):
+            generate_matmul_test(test_name, template_name, 128, 128, 256, lhs_type, acc_type, b=1)
+            aie_vs_llvm_cpu(config, test_name, tile_pipeline="pack-peel", lower_to_aie_pipeline="objectFifo")
+
 
 class SmokeSet(TestSet):
     def __init__(self):
