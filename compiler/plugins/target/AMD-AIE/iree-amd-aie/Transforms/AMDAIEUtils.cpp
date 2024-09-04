@@ -243,8 +243,9 @@ static BlockArgument checkOptionalExtOps(Value val) {
   BlockArgument blockArg;
   if (!(blockArg = dyn_cast<BlockArgument>(val))) {
     auto defOp = val.getDefiningOp();
-    if (!dyn_cast<arith::ExtFOp>(defOp) && !dyn_cast<arith::ExtSIOp>(defOp) &&
-        !dyn_cast<arith::ExtUIOp>(defOp)) {
+    if (!dyn_cast_if_present<arith::ExtFOp>(defOp) &&
+        !dyn_cast_if_present<arith::ExtSIOp>(defOp) &&
+        !dyn_cast_if_present<arith::ExtUIOp>(defOp)) {
       return nullptr;
     }
     blockArg = dyn_cast<BlockArgument>(defOp->getOperand(0));
@@ -255,11 +256,11 @@ static BlockArgument checkOptionalExtOps(Value val) {
 /// Utility to match block body for matmul.
 static bool bodyMatcherForMatmul(Value yieldVal, Block *body) {
   Operation *addOp = yieldVal.getDefiningOp();
-  if (!isa_and_nonnull<arith::AddIOp, arith::AddFOp>(addOp)) {
+  if (!isa_and_present<arith::AddIOp, arith::AddFOp>(addOp)) {
     return false;
   }
   Operation *mulOp = addOp->getOperand(1).getDefiningOp();
-  if (!isa_and_nonnull<arith::MulIOp, arith::MulFOp>(mulOp)) {
+  if (!isa_and_present<arith::MulIOp, arith::MulFOp>(mulOp)) {
     return false;
   }
 
@@ -306,7 +307,7 @@ bool isMatmulInDefChain(Value operand) {
     return false;
   }
 
-  if (auto defLinalgOp = dyn_cast_or_null<linalg::LinalgOp>(defOp)) {
+  if (auto defLinalgOp = dyn_cast_if_present<linalg::LinalgOp>(defOp)) {
     if (isMatmul(defLinalgOp)) {
       return true;
     }

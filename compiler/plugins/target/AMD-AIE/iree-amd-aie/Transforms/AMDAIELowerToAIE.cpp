@@ -182,7 +182,7 @@ LogicalResult accessOpToAIE(IRRewriter &rewriter,
     return accessOp.emitError()
            << "this access operation's input has not been mapped";
   }
-  auto subviewOp = dyn_cast<AIE::ObjectFifoSubviewAccessOp>(
+  auto subviewOp = dyn_cast_if_present<AIE::ObjectFifoSubviewAccessOp>(
       mapper.lookup(accessOp.getInput()).getDefiningOp());
   if (!subviewOp) {
     return accessOp.emitError()
@@ -229,8 +229,8 @@ LogicalResult acquireOpToAIE(IRRewriter &rewriter,
 
   OpBuilder::InsertionGuard guard(rewriter);
   rewriter.setInsertionPoint(acquireOp);
-  auto dmaOp =
-      dyn_cast<AMDAIE::CircularDmaCpyNdOp>(acquireOp.getDma().getDefiningOp());
+  auto dmaOp = dyn_cast_if_present<AMDAIE::CircularDmaCpyNdOp>(
+      acquireOp.getDma().getDefiningOp());
   if (!dmaOp) {
     return dmaOp.emitError()
            << "acquire doesn't operate on a `amdaie.circular_dma_cpy_nd`";
@@ -306,7 +306,7 @@ LogicalResult coreFuncCallOpToAIE(IRRewriter &rewriter, func::CallOp oldCallOp,
   // Symbol table.
   auto moduleOp = oldCallOp->getParentOfType<ModuleOp>();
   StringRef fnName = oldCallOp.getCallee();
-  auto fnDecl = dyn_cast_or_null<func::FuncOp>(
+  auto fnDecl = dyn_cast_if_present<func::FuncOp>(
       SymbolTable::lookupSymbolIn(moduleOp, fnName));
   assert(fnDecl && "expected function declaration");
   // Check the mapper to see if we've already created a new function declaration
@@ -446,8 +446,9 @@ LogicalResult circularDmaToAIE(IRRewriter &rewriter,
   rewriter.setInsertionPointToEnd(deviceBlock);
 
   if (!dmaOp.getSource()) return dmaOp.emitOpError() << "expected a source";
-  auto sourceLogicalObjFifo = dyn_cast<AMDAIE::LogicalObjFifoOpInterface>(
-      dmaOp.getSource().getDefiningOp());
+  auto sourceLogicalObjFifo =
+      dyn_cast_if_present<AMDAIE::LogicalObjFifoOpInterface>(
+          dmaOp.getSource().getDefiningOp());
   if (!sourceLogicalObjFifo)
     return dmaOp.emitOpError() << "expected a logical objectFifo source";
 
@@ -462,8 +463,9 @@ LogicalResult circularDmaToAIE(IRRewriter &rewriter,
   Value newSourceTile = newSourceTiles[0];
 
   if (!dmaOp.getTarget()) return dmaOp.emitOpError() << "expected a source";
-  auto targetLogicalObjFifo = dyn_cast<AMDAIE::LogicalObjFifoOpInterface>(
-      dmaOp.getTarget().getDefiningOp());
+  auto targetLogicalObjFifo =
+      dyn_cast_if_present<AMDAIE::LogicalObjFifoOpInterface>(
+          dmaOp.getTarget().getDefiningOp());
   if (!targetLogicalObjFifo)
     return dmaOp.emitOpError() << "expected a logical objectFifo source";
 
@@ -509,7 +511,7 @@ LogicalResult npuDmaCpyNdOpToAIE(IRRewriter &rewriter,
       return dmaOp.emitOpError()
              << "must have a source BD ID op to lower to the AIE dialect.";
     }
-    logicalObjFifo = dyn_cast<AMDAIE::LogicalObjectFifoFromMemrefOp>(
+    logicalObjFifo = dyn_cast_if_present<AMDAIE::LogicalObjectFifoFromMemrefOp>(
         dmaOp.getSource().getDefiningOp());
     if (!logicalObjFifo) {
       return dmaOp.emitOpError() << "expected source to be an "
@@ -529,7 +531,7 @@ LogicalResult npuDmaCpyNdOpToAIE(IRRewriter &rewriter,
       return dmaOp.emitOpError()
              << "must have a target BD ID op to lower to the AIE dialect.";
     }
-    logicalObjFifo = dyn_cast<AMDAIE::LogicalObjectFifoFromMemrefOp>(
+    logicalObjFifo = dyn_cast_if_present<AMDAIE::LogicalObjectFifoFromMemrefOp>(
         dmaOp.getTarget().getDefiningOp());
     if (!logicalObjFifo) {
       return dmaOp.emitOpError() << "expected target to be an "
@@ -762,7 +764,7 @@ LogicalResult workgroupToAIE(IRRewriter &rewriter,
         })
         .Default([&](Operation *op) {
           rewriter.setInsertionPointToEnd(deviceBlock);
-          if (!isa_and_nonnull<AMDAIEDialect>(op->getDialect())) {
+          if (!isa_and_present<AMDAIEDialect>(op->getDialect())) {
             rewriter.clone(*op, mapper);
           }
           return WalkResult::advance();
@@ -848,7 +850,7 @@ LogicalResult lowerToAIE(ModuleOp moduleOp) {
         }
         return WalkResult::skip();
       } else {
-        if (!isa_and_nonnull<AMDAIEDialect>(op->getDialect())) {
+        if (!isa_and_present<AMDAIEDialect>(op->getDialect())) {
           rewriter.clone(*op, mapper);
         }
       }

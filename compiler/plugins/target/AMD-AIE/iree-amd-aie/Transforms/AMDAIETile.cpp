@@ -64,7 +64,8 @@ void AMDAIETilePass::runOnOperation() {
 
   auto lhsOp = linalgOp->getOperand(0).getDefiningOp();
   auto rhsOp = linalgOp->getOperand(1).getDefiningOp();
-  if (!isa<linalg::CopyOp>(lhsOp) || !isa<linalg::CopyOp>(rhsOp)) {
+  if (!isa_and_present<linalg::CopyOp>(lhsOp) ||
+      !isa_and_present<linalg::CopyOp>(rhsOp)) {
     LLVM_DEBUG(llvm::dbgs()
                << "----- skip, producer is not linalg.copy -----\n");
     return;

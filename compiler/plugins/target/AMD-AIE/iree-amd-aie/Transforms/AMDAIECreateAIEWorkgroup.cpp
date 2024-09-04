@@ -119,8 +119,9 @@ LogicalResult WorkgroupBuilder::buildForDmaCpyNdOp(
     // Check if the source of DmaCpyNd op is from L3 - then source addressing
     // will be controlled by the uController and target addressing will stay in
     // the circular DMA to be part of the AIE configuration.
-    auto logicalObjFifo = dyn_cast<AMDAIE::LogicalObjectFifoFromMemrefOp>(
-        dmaOp.getSource().getDefiningOp());
+    auto logicalObjFifo =
+        dyn_cast_if_present<AMDAIE::LogicalObjectFifoFromMemrefOp>(
+            dmaOp.getSource().getDefiningOp());
     if (!logicalObjFifo) {
       return dmaOp.emitOpError()
              << "`amdaie.logicalobjectfifo.from_memref` expected as source";
@@ -143,8 +144,9 @@ LogicalResult WorkgroupBuilder::buildForDmaCpyNdOp(
     // Check if the target of DmaCpyNd op is from L3 - then target addressing
     // will be controlled by the uController and source addressing will stay in
     // the circular DMA to be part of the AIE configuration.
-    auto logicalObjFifo = dyn_cast<AMDAIE::LogicalObjectFifoFromMemrefOp>(
-        dmaOp.getTarget().getDefiningOp());
+    auto logicalObjFifo =
+        dyn_cast_if_present<AMDAIE::LogicalObjectFifoFromMemrefOp>(
+            dmaOp.getTarget().getDefiningOp());
     if (!logicalObjFifo) {
       return dmaOp.emitOpError()
              << "`amdaie.logicalobjectfifo.from_memref` expected as source";
@@ -425,7 +427,7 @@ class AMDAIECreateAIEWorkgroupPass
   }
 
   AMDAIECreateAIEWorkgroupPass() = default;
-  AMDAIECreateAIEWorkgroupPass(const AMDAIECreateAIEWorkgroupPass &pass) {};
+  AMDAIECreateAIEWorkgroupPass(const AMDAIECreateAIEWorkgroupPass &pass){};
   void runOnOperation() override;
 };
 

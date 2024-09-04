@@ -53,7 +53,7 @@ LogicalResult assignNpuDmaBdIds(AMDAIE::WorkgroupOp workgroupOp) {
       return npuDmaOp.emitOpError()
              << "no channel BD ID generator found for tile: " << tile;
     }
-    tileOp = dyn_cast<AMDAIE::TileOp>(tile.getDefiningOp());
+    tileOp = dyn_cast_if_present<AMDAIE::TileOp>(tile.getDefiningOp());
     if (!tileOp) return npuDmaOp.emitOpError() << "no tile op found";
     return success();
   };
@@ -65,8 +65,9 @@ LogicalResult assignNpuDmaBdIds(AMDAIE::WorkgroupOp workgroupOp) {
   WalkResult res = controlCodeOp->walk([&](Operation *op) {
     if (auto npuDmaOp = dyn_cast<AMDAIE::NpuDmaCpyNdOp>(op)) {
       if (npuDmaOp.getSource()) {
-        auto logicalObjFifo = dyn_cast<AMDAIE::LogicalObjFifoOpInterface>(
-            npuDmaOp.getSource().getDefiningOp());
+        auto logicalObjFifo =
+            dyn_cast_if_present<AMDAIE::LogicalObjFifoOpInterface>(
+                npuDmaOp.getSource().getDefiningOp());
         if (!logicalObjFifo) {
           npuDmaOp.emitOpError() << "expected a source logical objectFifo";
           return WalkResult::interrupt();
@@ -96,8 +97,9 @@ LogicalResult assignNpuDmaBdIds(AMDAIE::WorkgroupOp workgroupOp) {
             bdIdOp);
       }
       if (npuDmaOp.getTarget()) {
-        auto logicalObjFifo = dyn_cast<AMDAIE::LogicalObjectFifoFromMemrefOp>(
-            npuDmaOp.getTarget().getDefiningOp());
+        auto logicalObjFifo =
+            dyn_cast_if_present<AMDAIE::LogicalObjectFifoFromMemrefOp>(
+                npuDmaOp.getTarget().getDefiningOp());
         if (!logicalObjFifo) {
           npuDmaOp.emitOpError()
               << "expected a target `amdaie.logicalobjectfifo.from_memref`";
@@ -132,14 +134,17 @@ LogicalResult assignNpuDmaBdIds(AMDAIE::WorkgroupOp workgroupOp) {
       AMDAIE::NpuDmaCpyNdOp npuDmaOp = npuWaitOp.getDmaOp();
       AMDAIE::BdIdOp bdIdOp;
       if (npuDmaOp.getSourceBdId()) {
-        bdIdOp = cast<AMDAIE::BdIdOp>(npuDmaOp.getSourceBdId().getDefiningOp());
+        bdIdOp = dyn_cast_if_present<AMDAIE::BdIdOp>(
+            npuDmaOp.getSourceBdId().getDefiningOp());
       } else if (npuDmaOp.getTargetBdId()) {
-        bdIdOp = cast<AMDAIE::BdIdOp>(npuDmaOp.getTargetBdId().getDefiningOp());
+        bdIdOp = dyn_cast_if_present<AMDAIE::BdIdOp>(
+            npuDmaOp.getTargetBdId().getDefiningOp());
       } else {
         return WalkResult::advance();
       }
       if (!bdIdOp) return WalkResult::advance();
-      auto tileOp = dyn_cast<AMDAIE::TileOp>(bdIdOp.getTile().getDefiningOp());
+      auto tileOp =
+          dyn_cast_if_present<AMDAIE::TileOp>(bdIdOp.getTile().getDefiningOp());
       if (!tileOp) {
         bdIdOp.emitOpError() << "doesn't operate on a `amdaie.tile` operation";
         return WalkResult::interrupt();
@@ -169,7 +174,7 @@ class AMDAIEAssignNpuDmaBdIdsPass
   }
 
   AMDAIEAssignNpuDmaBdIdsPass() = default;
-  AMDAIEAssignNpuDmaBdIdsPass(const AMDAIEAssignNpuDmaBdIdsPass &pass) {};
+  AMDAIEAssignNpuDmaBdIdsPass(const AMDAIEAssignNpuDmaBdIdsPass &pass){};
   void runOnOperation() override;
 };
 

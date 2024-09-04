@@ -97,7 +97,7 @@ LogicalResult createLogicalObjectFifoLink(
             "has copy-like users not residing in the same block");
       }
       auto sourceLogicalObjectFifo =
-          dyn_cast<AMDAIE::LogicalObjectFifoFromMemrefOp>(
+          dyn_cast_if_present<AMDAIE::LogicalObjectFifoFromMemrefOp>(
               stridedOp.getSource().getDefiningOp());
       if (!lastUserOp || lastUserOp->isBeforeInBlock(stridedOp)) {
         lastUserOp = stridedOp;
@@ -169,16 +169,18 @@ LogicalResult createLogicalObjectFifoLink(
 LogicalResult discardLinkNonZeroOffsets(RewriterBase &rewriter,
                                         AMDAIE::LogicalObjectFifoLink linkOp) {
   for (Value input : linkOp.getIns()) {
-    if (auto stridedOp = dyn_cast<AMDAIE::DoublyStridedCopyOpInterface>(
-            input.getDefiningOp())) {
+    if (auto stridedOp =
+            dyn_cast_if_present<AMDAIE::DoublyStridedCopyOpInterface>(
+                input.getDefiningOp())) {
       SmallVector<int64_t> shape;
       (void)discardAllNonZeroOffsets<CopyOpOperateOn::Target>(rewriter,
                                                               stridedOp, shape);
     }
   }
   for (Value output : linkOp.getOuts()) {
-    if (auto stridedOp = dyn_cast<AMDAIE::DoublyStridedCopyOpInterface>(
-            output.getDefiningOp())) {
+    if (auto stridedOp =
+            dyn_cast_if_present<AMDAIE::DoublyStridedCopyOpInterface>(
+                output.getDefiningOp())) {
       SmallVector<int64_t> shape;
       (void)discardAllNonZeroOffsets<CopyOpOperateOn::Source>(rewriter,
                                                               stridedOp, shape);

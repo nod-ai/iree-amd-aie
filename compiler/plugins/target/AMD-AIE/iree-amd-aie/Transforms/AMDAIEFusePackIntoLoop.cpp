@@ -24,10 +24,10 @@ namespace {
 static FailureOr<tensor::ExtractSliceOp> getTensorExtractSliceDefiningOp(
     Value operand) {
   while (Operation *defOp = operand.getDefiningOp()) {
-    auto sliceOp = dyn_cast_or_null<tensor::ExtractSliceOp>(defOp);
+    auto sliceOp = dyn_cast_if_present<tensor::ExtractSliceOp>(defOp);
     if (sliceOp) {
       // The producer of sliceOp should be a pack op.
-      if (isa_and_nonnull<tensor::PackOp>(
+      if (isa_and_present<tensor::PackOp>(
               sliceOp.getSource().getDefiningOp())) {
         return sliceOp;
       }
@@ -35,7 +35,7 @@ static FailureOr<tensor::ExtractSliceOp> getTensorExtractSliceDefiningOp(
         auto blkArg = dyn_cast<BlockArgument>(sliceOp.getSource());
         for (Value blkOperand :
              blkArg.getOwner()->getParentOp()->getOperands()) {
-          if (isa_and_nonnull<tensor::PackOp>(blkOperand.getDefiningOp())) {
+          if (isa_and_present<tensor::PackOp>(blkOperand.getDefiningOp())) {
             return sliceOp;
           }
         }

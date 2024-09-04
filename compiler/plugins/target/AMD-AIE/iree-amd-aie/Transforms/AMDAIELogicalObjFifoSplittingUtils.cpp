@@ -104,8 +104,8 @@ static FailureOr<OpFoldResult> updateL3SourceOffset(IRRewriter &rewriter,
       Operation *defOpOfL3SourceOffset = l3SourceOffsetVal.getDefiningOp();
       Location loc = defOpOfL3SourceOffset->getLoc();
       rewriter.setInsertionPoint(defOpOfL3SourceOffset);
-      if (auto applyOp =
-              dyn_cast<affine::AffineApplyOp>(defOpOfL3SourceOffset)) {
+      if (auto applyOp = dyn_cast_if_present<affine::AffineApplyOp>(
+              defOpOfL3SourceOffset)) {
         AffineExpr affineExpr = applyOp.getAffineMap().getResult(0);
         AffineMap newAffineMap = createAffineMap(affineExpr, offsetToAdd);
         newL3AsSourceOffset =
@@ -423,7 +423,7 @@ LogicalResult splitLogicalObjectFifos(
     op->dropAllUses();
     rewriter.eraseOp(op);
   }
-  
+
   return success();
 }
 
