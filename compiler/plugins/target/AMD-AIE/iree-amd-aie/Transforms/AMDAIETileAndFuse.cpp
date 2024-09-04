@@ -276,10 +276,23 @@ void AMDAIETileAndFusePass::runOnOperation() {
   // When tiling using scf.for we do not need to set any mapping.
   if (!useSCFFor) {
     options.setLoopType(scf::SCFTilingOptions::LoopType::ForallOp);
-    auto maybeMapping = getGPUMappingAttributes(
-        tileSizesVal,
-        tilingLevel == 0 ? GPUGroupType::Block : GPUGroupType::Thread,
-        consumerOp);
+
+    // Currently only thread groups are used in lowering, blocks get unrolled
+    // temporally. In theory we should be able to just not add any block group
+    // dimensions to the outer scf.forall operation, but currently this results
+    // in compilation failure. What happens is
+    // 1) without any block group dimensions, the scf.forall operation can be
+    //    be canonicalized away if the tile sizes are all 1 (small matmul, for
+    //    example). Leaving only the inner thread scf.forall. 
+    // 2) certain passes expect an outer scf.forall operation, so if it is
+    //    canonicalized away, the pass fails.
+    // So for now we're keeping the block group dimension here, but should
+    // be able to compile without any block group dimensions TODO(newling)
+    auto groupType =
+        tilingLevel == 1 ? GPUGroupType::Block : GPUGroupType::Thread;
+
+    auto maybeMapping =
+        getGPUMappingAttributes(tileSizesVal, groupType, consumerOp);
     if (failed(maybeMapping)) {
       return signalPassFailure();
     }
