@@ -26,7 +26,6 @@ using detail::findLargestFactor;
 
 namespace {
 
-
 FailureOr<std::array<uint32_t, 3>> getMatmulInstructionSize(
     linalg::LinalgOp op) {
   auto getElementType = [](Value v) {
@@ -496,8 +495,8 @@ static LogicalResult setRootConfigForConvDecomposePipeline(
     const uint16_t OH_1 = 1;
 
     auto operandType = getElementType(linalgOp->getOperand(0));
-    auto maybeMacNumElements =
-        getAIEMacNumElements(operandType, getElementType(linalgOp->getResult(0)));
+    auto maybeMacNumElements = getAIEMacNumElements(
+        operandType, getElementType(linalgOp->getResult(0)));
     uint16_t OC_0 = 16;
     if (!failed(maybeMacNumElements)) {
       OC_0 = maybeMacNumElements.value();
@@ -535,11 +534,11 @@ static LogicalResult setRootConfigForConvDecomposePipeline(
 /// TODO(avarma): This currently is skipping checking for ext* ops.
 static bool bodyMatcherForMatmulTranspose(Value yieldVal, Block *body) {
   Operation *addOp = yieldVal.getDefiningOp();
-  if (!isa_and_nonnull<arith::AddIOp, arith::AddFOp>(addOp)) {
+  if (!isa_and_present<arith::AddIOp, arith::AddFOp>(addOp)) {
     return false;
   }
   Operation *mulOp = addOp->getOperand(1).getDefiningOp();
-  if (!isa_and_nonnull<arith::MulIOp, arith::MulFOp>(mulOp)) {
+  if (!isa_and_present<arith::MulIOp, arith::MulFOp>(mulOp)) {
     return false;
   }
   auto lhsBlockArg = dyn_cast<BlockArgument>(mulOp->getOperand(0));

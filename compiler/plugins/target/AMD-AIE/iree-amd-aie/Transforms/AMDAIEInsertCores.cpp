@@ -114,7 +114,7 @@ LogicalResult insertCoreOps(mlir::ModuleOp moduleOp) {
         // Fetch name of the ukernel function to look up its declaration in the
         // Symbol table.
         StringRef fnName = callOp.getCallee();
-        auto fnDecl = dyn_cast_or_null<func::FuncOp>(
+        auto fnDecl = dyn_cast_if_present<func::FuncOp>(
             SymbolTable::lookupSymbolIn(moduleOp, fnName));
         assert(fnDecl && "expected function declaration");
         assert(fnDecl->hasAttr("link_with") &&

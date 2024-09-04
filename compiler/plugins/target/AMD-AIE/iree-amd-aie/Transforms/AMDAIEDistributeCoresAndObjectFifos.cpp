@@ -505,15 +505,17 @@ class AMDAIEUnrollLocalLoops : public OpRewritePattern<scf::ForOp> {
             AMDAIE::LogicalObjectFifoFromMemrefOp target =
                 dmaOp.getTargetObjectFifo();
             rewriter.setInsertionPoint(target);
-            auto cloneOp = dyn_cast<AMDAIE::LogicalObjectFifoFromMemrefOp>(
-                rewriter.clone(*dmaOp.getTarget().getDefiningOp()));
+            auto cloneOp =
+                dyn_cast_if_present<AMDAIE::LogicalObjectFifoFromMemrefOp>(
+                    rewriter.clone(*dmaOp.getTarget().getDefiningOp()));
             operandMap.map(target.getOutput(), cloneOp.getOutput());
           } else if (sourceMemSpaceInt > targetMemSpaceInt) {
             AMDAIE::LogicalObjectFifoFromMemrefOp source =
                 dmaOp.getSourceObjectFifo();
             rewriter.setInsertionPoint(source);
-            auto cloneOp = dyn_cast<AMDAIE::LogicalObjectFifoFromMemrefOp>(
-                rewriter.clone(*dmaOp.getSource().getDefiningOp()));
+            auto cloneOp =
+                dyn_cast_if_present<AMDAIE::LogicalObjectFifoFromMemrefOp>(
+                    rewriter.clone(*dmaOp.getSource().getDefiningOp()));
             operandMap.map(source.getOutput(), cloneOp.getOutput());
           }
         }
@@ -585,8 +587,10 @@ LogicalResult getUserTiles(
 
       // Only fill in tiles when all sources have tiles.
       if (tileIndices.empty()) return failure();
-      for (Value index : tileIndices)
-        tileSet.insert(dyn_cast<AMDAIE::TileOp>(index.getDefiningOp()));
+      for (Value index : tileIndices) {
+        tileSet.insert(
+            dyn_cast_if_present<AMDAIE::TileOp>(index.getDefiningOp()));
+      }
     }
   }
   tiles = tileSet.takeVector();
@@ -635,10 +639,8 @@ LogicalResult insertLogicalObjectFifoAccess(ModuleOp moduleOp) {
     WalkResult res = coreOp->walk([&](Operation *op) {
       bool hasAllocOperand = [op]() {
         for (Value operand : op->getOperands()) {
-          Operation *definingOp = operand.getDefiningOp();
-          if (definingOp && isa<memref::AllocOp>(definingOp)) {
+          if (isa_and_present<memref::AllocOp>(operand.getDefiningOp()))
             return true;
-          }
         }
         return false;
       }();
@@ -904,9 +906,10 @@ LogicalResult assignAieTilesAndDistributeLogicalObjectFifos(ModuleOp moduleOp) {
     if (memSpace && dyn_cast<IntegerAttr>(memSpace).getInt() != 1)
       return WalkResult::advance();
 
-    SmallVector<AMDAIE::TileOp> tiles = llvm::map_to_vector(
-        logicalObjectFifo.getTiles(),
-        [](Value tile) { return dyn_cast<TileOp>(tile.getDefiningOp()); });
+    SmallVector<AMDAIE::TileOp> tiles =
+        llvm::map_to_vector(logicalObjectFifo.getTiles(), [](Value tile) {
+          return dyn_cast_if_present<TileOp>(tile.getDefiningOp());
+        });
     llvm::sort(tiles.begin(), tiles.end(),
                AMDAIE::TileOp::tileColumnComparator);
 
@@ -934,7 +937,7 @@ class AMDAIEDistributeCoresAndObjectFifosPass
 
   AMDAIEDistributeCoresAndObjectFifosPass() = default;
   AMDAIEDistributeCoresAndObjectFifosPass(
-      const AMDAIEDistributeCoresAndObjectFifosPass &pass) {};
+      const AMDAIEDistributeCoresAndObjectFifosPass &pass){};
   void runOnOperation() override;
 };
 

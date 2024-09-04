@@ -117,7 +117,7 @@ void AMDAIETileAndFusePass::runOnOperation() {
     // indicate whether we want to tile the elementwise op. If flag
     // `tileElementwise == false`, and the linalg op is an elementwise op, it
     // will advance to find the next target op for tiling.
-    auto linalgOp = dyn_cast_or_null<linalg::LinalgOp>(op.getOperation());
+    auto linalgOp = dyn_cast_if_present<linalg::LinalgOp>(op.getOperation());
     if (linalgOp && isElementwise(linalgOp) && !tileElementwise)
       return WalkResult::advance();
 

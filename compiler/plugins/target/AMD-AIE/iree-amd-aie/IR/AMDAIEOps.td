@@ -303,7 +303,7 @@ def AMDAIE_NpuDmaCpyNdOp: AMDAIE_Op<"npu.dma_cpy_nd", [
     }
     // Return the input circular dma copy operation.
     CircularDmaCpyNdOp getDmaCpyNdOp() {
-      return dyn_cast<CircularDmaCpyNdOp>(getDma().getDefiningOp());
+      return dyn_cast_if_present<CircularDmaCpyNdOp>(getDma().getDefiningOp());
     }
 
     // Return the source memref type. This is retrieved using information from
@@ -350,14 +350,14 @@ def AMDAIE_NpuDmaCpyNdOp: AMDAIE_Op<"npu.dma_cpy_nd", [
 
     BdIdOp getSourceBdIdOp() {
       Value bdIdValue = getSourceBdId();
-      if (!bdIdValue || !bdIdValue.getDefiningOp()) return nullptr;
-      return dyn_cast<BdIdOp>(bdIdValue.getDefiningOp());
+      if (!bdIdValue) return nullptr;
+      return dyn_cast_if_present<BdIdOp>(bdIdValue.getDefiningOp());
     }
 
     BdIdOp getTargetBdIdOp() {
       Value bdIdValue = getTargetBdId();
-      if (!bdIdValue || !bdIdValue.getDefiningOp()) return nullptr;
-      return dyn_cast<BdIdOp>(bdIdValue.getDefiningOp());
+      if (!bdIdValue) return nullptr;
+      return dyn_cast_if_present<BdIdOp>(bdIdValue.getDefiningOp());
     }
 
     // A utility to create a new doubly strided operation from this one with a
@@ -417,7 +417,7 @@ def AMDAIE_NpuDmaWaitOp: AMDAIE_Op<"npu.dma_wait", []> {
   let extraClassDeclaration = [{
     // Return the Npu DMA operation argument.
     NpuDmaCpyNdOp getDmaOp() { 
-      return dyn_cast<NpuDmaCpyNdOp>(getDma().getDefiningOp());
+      return dyn_cast_if_present<NpuDmaCpyNdOp>(getDma().getDefiningOp());
     }
   }];
 }

@@ -83,7 +83,7 @@ LogicalResult CoreOp::verify() {
 }
 
 TileOp CoreOp::getTileOp() {
-  return dyn_cast<TileOp>(getTile().getDefiningOp());
+  return dyn_cast_if_present<TileOp>(getTile().getDefiningOp());
 }
 
 //===----------------------------------------------------------------------===//
@@ -268,11 +268,13 @@ DoublyStridedOpInterface DmaCpyNdOp::createDoublyStridedOp(
 }
 
 LogicalObjectFifoFromMemrefOp DmaCpyNdOp::getSourceObjectFifo() {
-  return dyn_cast<LogicalObjectFifoFromMemrefOp>(getSource().getDefiningOp());
+  return dyn_cast_if_present<LogicalObjectFifoFromMemrefOp>(
+      getSource().getDefiningOp());
 };
 
 LogicalObjectFifoFromMemrefOp DmaCpyNdOp::getTargetObjectFifo() {
-  return dyn_cast<LogicalObjectFifoFromMemrefOp>(getTarget().getDefiningOp());
+  return dyn_cast_if_present<LogicalObjectFifoFromMemrefOp>(
+      getTarget().getDefiningOp());
 };
 
 void DmaCpyNdOp::getCanonicalizationPatterns(RewritePatternSet &results,
@@ -395,11 +397,13 @@ DoublyStridedOpInterface CircularDmaCpyNdOp::createDoublyStridedOp(
 }
 
 LogicalObjectFifoFromMemrefOp CircularDmaCpyNdOp::getSourceObjectFifo() {
-  return dyn_cast<LogicalObjectFifoFromMemrefOp>(getSource().getDefiningOp());
+  return dyn_cast_if_present<LogicalObjectFifoFromMemrefOp>(
+      getSource().getDefiningOp());
 };
 
 LogicalObjectFifoFromMemrefOp CircularDmaCpyNdOp::getTargetObjectFifo() {
-  return dyn_cast<LogicalObjectFifoFromMemrefOp>(getTarget().getDefiningOp());
+  return dyn_cast_if_present<LogicalObjectFifoFromMemrefOp>(
+      getTarget().getDefiningOp());
 };
 
 void CircularDmaCpyNdOp::getCanonicalizationPatterns(RewritePatternSet &results,
@@ -422,7 +426,8 @@ void LogicalObjectFifoAccessOp::build(OpBuilder &b,
 
 LogicalObjectFifoFromMemrefOp
 LogicalObjectFifoAccessOp::getLogicalObjectFifo() {
-  return dyn_cast<LogicalObjectFifoFromMemrefOp>(getInput().getDefiningOp());
+  return dyn_cast_if_present<LogicalObjectFifoFromMemrefOp>(
+      getInput().getDefiningOp());
 };
 
 //===----------------------------------------------------------------------===//
@@ -490,7 +495,7 @@ LogicalResult LogicalObjectFifoFromMemrefOp::canonicalize(
 LogicalResult LogicalObjectFifoFromMemrefOp::verify() {
   // Check whether the tile arguments are all of type AMDAIE::TileOp
   if (llvm::all_of(getTiles(), [](Value result) {
-        return isa<TileOp>(result.getDefiningOp());
+        return isa_and_present<TileOp>(result.getDefiningOp());
       })) {
     return success();
   }
@@ -878,8 +883,8 @@ bool TileOp::tileColumnComparator(AMDAIE::TileOp &a, AMDAIE::TileOp &b) {
 }
 
 bool TileOp::tileValueColumnAndRowComparator(Value a, Value b) {
-  TileOp tileA = dyn_cast<AMDAIE::TileOp>(a.getDefiningOp());
-  TileOp tileB = dyn_cast<AMDAIE::TileOp>(b.getDefiningOp());
+  TileOp tileA = cast<AMDAIE::TileOp>(a.getDefiningOp());
+  TileOp tileB = cast<AMDAIE::TileOp>(b.getDefiningOp());
   int64_t colA = getConstantIntValue(tileA.getCol()).value();
   int64_t rowA = getConstantIntValue(tileA.getRow()).value();
   int64_t colB = getConstantIntValue(tileB.getCol()).value();

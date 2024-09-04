@@ -25,7 +25,7 @@ LogicalResult coreLoopUnroll(RewriterBase &rewriter, AMDAIE::CoreOp coreOp) {
     llvm::SmallDenseSet<unsigned> depths;
     for (auto acqOp :
          forOp.getBody()->getOps<AMDAIE::LogicalObjectFifoAcquire>()) {
-      auto stridedOp = dyn_cast<DoublyStridedCopyOpInterface>(
+      auto stridedOp = dyn_cast_if_present<DoublyStridedCopyOpInterface>(
           acqOp.getDma().getDefiningOp());
       if (!stridedOp) {
         acqOp.emitOpError()
@@ -35,9 +35,9 @@ LogicalResult coreLoopUnroll(RewriterBase &rewriter, AMDAIE::CoreOp coreOp) {
       }
       auto logicalObjFifo =
           acqOp.getPort() == LogicalObjectFifoPort::Consume
-              ? dyn_cast<AMDAIE::LogicalObjectFifoFromMemrefOp>(
+              ? dyn_cast_if_present<AMDAIE::LogicalObjectFifoFromMemrefOp>(
                     stridedOp.getTarget().getDefiningOp())
-              : dyn_cast<AMDAIE::LogicalObjectFifoFromMemrefOp>(
+              : dyn_cast_if_present<AMDAIE::LogicalObjectFifoFromMemrefOp>(
                     stridedOp.getSource().getDefiningOp());
       depths.insert(
           cast<LogicalObjectFifoType>(logicalObjFifo.getType()).getDepth());

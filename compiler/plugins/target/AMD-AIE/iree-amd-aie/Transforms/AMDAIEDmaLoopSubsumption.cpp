@@ -153,8 +153,8 @@ struct SubsumeLoopIntoDMA
         // If the offset value is determined by an affine expression, retrieve
         // the affine expression's stride scale and calculate the actual
         // offset stride.
-        if (offsetValue.getDefiningOp() &&
-            isa<affine::AffineApplyOp>(offsetValue.getDefiningOp())) {
+        if (isa_and_present<affine::AffineApplyOp>(
+                offsetValue.getDefiningOp())) {
           auto applyOp =
               cast<affine::AffineApplyOp>(offsetValue.getDefiningOp());
           // Retrieve the scale and optional bias from the affine map using an
