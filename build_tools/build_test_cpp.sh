@@ -25,17 +25,10 @@ mkdir -p "${cache_dir}/pip"
 python="$(which python)"
 echo "Using python: $python"
 
-# https://stackoverflow.com/a/8597411/9045206
-# note: on windows (git-bash) result is "msys"
-# well only if you have apparently the right version of git-bash installed
-# https://stackoverflow.com/a/72164385
 if [[ "$OSTYPE" == "linux-gnu"* ]]; then
   export CMAKE_TOOLCHAIN_FILE="$this_dir/linux_default_toolchain.cmake"
   export CC=clang
   export CXX=clang++
-elif [[ "$OSTYPE" == "msys"* ]]; then
-  export CC=clang-cl.exe
-  export CXX=clang-cl.exe
 fi
 
 export CCACHE_DIR="${cache_dir}/ccache"
@@ -92,20 +85,7 @@ if [ -d "${llvm_install_dir}" ]; then
     -DLLVM_DIR=$llvm_install_dir/lib/cmake/llvm"
 fi
 
-if [[ "$OSTYPE" == "msys"* ]]; then
-  cmake $CMAKE_ARGS \
-    -DCMAKE_EXE_LINKER_FLAGS_INIT="-fuse-ld=lld" \
-    -DCMAKE_SHARED_LINKER_FLAGS_INIT="-fuse-ld=lld" \
-    -DCMAKE_MODULE_LINKER_FLAGS_INIT="-fuse-ld=lld" \
-    -DCMAKE_C_FLAGS="-DIREE_EMBED_ENABLE_WINDOWS_DLL_DECLSPEC=1 -DIREE_EMBED_BUILDING_LIBRARY=1" \
-    -DCMAKE_CXX_FLAGS="-DIREE_EMBED_ENABLE_WINDOWS_DLL_DECLSPEC=1 -DIREE_EMBED_BUILDING_LIBRARY=1" \
-    -DCMAKE_C_COMPILER="${CC}" \
-    -DCMAKE_CXX_COMPILER="${CXX}" \
-    -DLLVM_TARGET_ARCH=X86 \
-    -DLLVM_TARGETS_TO_BUILD=X86 \
-    -DIREE_EXTERNAL_HAL_DRIVERS=xrt \
-    -S $iree_dir -B $build_dir
-elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
+if [[ "$OSTYPE" == "linux-gnu"* ]]; then
   cmake $CMAKE_ARGS \
     -DCMAKE_EXE_LINKER_FLAGS_INIT="-fuse-ld=lld" \
     -DCMAKE_SHARED_LINKER_FLAGS_INIT="-fuse-ld=lld" \
@@ -116,7 +96,7 @@ elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
     -DLLVM_TARGETS_TO_BUILD=X86 \
     -DIREE_EXTERNAL_HAL_DRIVERS=xrt \
     -S $iree_dir -B $build_dir
-else
+elif [[ "$OSTYPE" == "darwin"* ]]; then
   cmake $CMAKE_ARGS \
     -DLLVM_TARGET_ARCH="X86;ARM" \
     -DLLVM_TARGETS_TO_BUILD="X86;ARM" \
@@ -138,9 +118,6 @@ if [[ "$OSTYPE" == "linux-gnu"* ]]; then
   ctest --test-dir "$build_dir" -R amd-aie --output-on-failure -j
 elif [[ "$OSTYPE" == "darwin"* ]]; then
   ctest --test-dir "$build_dir" -R amd-aie -E "matmul_pack_peel_air_e2e|matmul_elementwise_pack_peel_air_e2e|conv_fill_spec_pad" --output-on-failure -j --repeat until-pass:5
-elif [[ "$OSTYPE" == "msys"* ]]; then
-  # hack while windows is flaky to get past failing tests
-  ctest --test-dir "$build_dir" -R amd-aie --output-on-failure -j --repeat until-pass:5
 fi
 
 rm -f "$install_dir"/bin/clang*

@@ -107,7 +107,7 @@ jobs:
         uses: actions/upload-artifact@v4
         if: ${{ !cancelled() }}
         with:
-          name: ${{ matrix.runs-on }}_release_packages
+          name: ${{ matrix.runs-on }}_iree_packages
           path: iree-dist-${{ matrix.runs-on }}.tar
           if-no-files-found: warn
 

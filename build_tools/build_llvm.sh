@@ -32,9 +32,6 @@ if [[ "$OSTYPE" == "linux-gnu"* ]]; then
   export CMAKE_TOOLCHAIN_FILE="$this_dir/linux_default_toolchain.cmake"
   export CC=clang
   export CXX=clang++
-elif [[ "$OSTYPE" == "msys"* ]]; then
-  export CC=clang-cl.exe
-  export CXX=clang-cl.exe
 fi
 
 export CCACHE_DIR="${cache_dir}/ccache"
@@ -68,19 +65,7 @@ CMAKE_ARGS="\
   -DMLIR_ENABLE_BINDINGS_PYTHON=ON \
   -DLLVM_ENABLE_PROJECTS=mlir;clang;lld"
 
-if [[ "$OSTYPE" == "msys"* ]]; then
-  cmake $CMAKE_ARGS \
-    -DCMAKE_EXE_LINKER_FLAGS_INIT="-fuse-ld=lld" \
-    -DCMAKE_SHARED_LINKER_FLAGS_INIT="-fuse-ld=lld" \
-    -DCMAKE_MODULE_LINKER_FLAGS_INIT="-fuse-ld=lld" \
-    -DCMAKE_C_FLAGS="-DMLIR_CAPI_ENABLE_WINDOWS_DLL_DECLSPEC=1 -DMLIR_CAPI_BUILDING_LIBRARY=1" \
-    -DLLVM_ENABLE_EH=ON \
-    -DCMAKE_C_COMPILER="${CC}" \
-    -DCMAKE_CXX_COMPILER="${CXX}" \
-    -DLLVM_TARGET_ARCH=X86 \
-    -DLLVM_TARGETS_TO_BUILD=X86 \
-    -S "$llvm_dir" -B "$build_dir"
-elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
+if [[ "$OSTYPE" == "linux-gnu"* ]]; then
   cmake $CMAKE_ARGS \
     -DCMAKE_EXE_LINKER_FLAGS_INIT="-fuse-ld=lld" \
     -DCMAKE_SHARED_LINKER_FLAGS_INIT="-fuse-ld=lld" \
@@ -90,7 +75,7 @@ elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
     -DLLVM_TARGET_ARCH=X86 \
     -DLLVM_TARGETS_TO_BUILD=X86 \
     -S "$llvm_dir" -B "$build_dir"
-else
+elif [[ "$OSTYPE" == "darwin"* ]]; then
   cmake $CMAKE_ARGS \
     -DLLVM_TARGET_ARCH="X86;AArch64" \
     -DLLVM_TARGETS_TO_BUILD="X86;AArch64" \
