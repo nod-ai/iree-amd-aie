@@ -1,0 +1,5 @@
+
+Checks: >
+        -clang-analyzer-deadcode*,
+        -clang-analyzer-cplusplus*,
+        -clang-analyzer-core*

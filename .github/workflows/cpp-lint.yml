@@ -1,0 +1,29 @@
+name: CPP Lint
+
+on:
+  pull_request:
+
+permissions:
+  pull-requests: write
+
+jobs:
+  cpp-linter:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: cpp-linter/cpp-linter-action@main
+        id: linter
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          files-changed-only: true
+          style: 'file'  # Use .clang-format config file
+          # only 'update' a single comment in a pull request's thread.
+          thread-comments: ${{ github.event_name == 'pull_request' && 'update' }}
+
+      - name: Fail fast?!
+        if: steps.linter.outputs.checks-failed != 0
+        run: |
+          echo "some linter checks failed: ${{ steps.linter.outputs.checks-failed }}"
+          exit 1
