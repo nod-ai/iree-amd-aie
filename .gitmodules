@@ -1,31 +1,31 @@
 [submodule "third_party/XRT"]
-	path = third_party/XRT
-	url = https://github.com/nod-ai/XRT.git
-	shallow = true
-  branch = iree-amd-aie-patches
-  ignore=dirty
+       path = third_party/XRT
+       url = https://github.com/nod-ai/XRT.git
+       shallow = true
+       branch = iree-amd-aie-patches
+       ignore=dirty
 [submodule "third_party/mlir-air"]
-	path = third_party/mlir-air
-  url = https://github.com/nod-ai/mlir-air.git
-  shallow = true
-  ignore=dirty
+       path = third_party/mlir-air
+       url = https://github.com/nod-ai/mlir-air.git
+       shallow = true
+       ignore=dirty
 [submodule "third_party/aie-rt"]
-	path = third_party/aie-rt
-  url = https://github.com/Xilinx/aie-rt.git
-  shallow = true
-  ignore=dirty
+       path = third_party/aie-rt
+       url = https://github.com/Xilinx/aie-rt.git
+       shallow = true
+       ignore=dirty
 [submodule "third_party/bootgen"]
-	path = third_party/bootgen
-	url = https://github.com/Xilinx/bootgen.git
-  shallow = true
-  ignore=dirty
+       path = third_party/bootgen
+       url = https://github.com/Xilinx/bootgen.git
+       shallow = true
+       ignore=dirty
 [submodule "third_party/openssl"]
-	path = third_party/openssl
-	url = https://github.com/viaduck/openssl-cmake.git
-  shallow = true
-  ignore=dirty
+       path = third_party/openssl
+       url = https://github.com/viaduck/openssl-cmake.git
+       shallow = true
+       ignore=dirty
 [submodule "third_party/iree"]
-	path = third_party/iree
-	url = https://github.com/iree-org/iree.git
-  shallow = true
-  ignore=dirty
+       path = third_party/iree
+       url = https://github.com/iree-org/iree.git
+       shallow = true
+       ignore=dirty
