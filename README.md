@@ -38,7 +38,6 @@ git \
   -c submodule."src/runtime_src/core/common/aiebu".update=none \
   clone \
   --recursive \
-  --depth 1 \
   --shallow-submodules \
   https://github.com/nod-ai/iree-amd-aie.git
 ```
