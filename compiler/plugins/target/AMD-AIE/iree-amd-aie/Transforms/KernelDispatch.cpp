@@ -147,13 +147,17 @@ FailureOr<ParameterSetting> ParameterSetting::create(linalg::LinalgOp linalgOp,
                                                      bool isObjectFifo) {
   auto initType =
       llvm::cast<ShapedType>(linalgOp.getDpsInitOperand(0)->get().getType());
-  auto initShape = initType.getShape();
+  ArrayRef<int64_t> initShape = initType.getShape();
 
   auto lhsType =
       llvm::cast<ShapedType>(linalgOp.getDpsInputOperand(0)->get().getType());
-  auto lhsShape = lhsType.getShape();
+  ArrayRef<int64_t> lhsShape = lhsType.getShape();
 
   // Shape of the full matmul operation.
+  if (isa<linalg::BatchMatmulOp>(linalgOp)) {
+    initShape = initShape.drop_front();
+    lhsShape = lhsShape.drop_front();
+  }
   const uint64_t M = initShape[0];
   const uint64_t N = initShape[1];
   const uint64_t K = lhsShape[1];
@@ -324,6 +328,11 @@ static LogicalResult setRootConfigForPackPeelPipeline(
   // ------------------------------------------------------
   MLIRContext *context = entryPointFn.getContext();
 
+  SmallVector<int64_t> packedSizesL0 = packPeelTiling.getPackSizeL0();
+  if (isa<linalg::BatchMatmulOp>(linalgOp)) {
+    packedSizesL0.insert(packedSizesL0.begin(), 0);
+  }
+
   // For matmul, transpose B matrix from [K N n k] to [K N k n]
   // For matmul_transpose_b, we don't have to transpose the B matrix,
   // since it is already [N K n k]
@@ -333,19 +342,27 @@ static LogicalResult setRootConfigForPackPeelPipeline(
   SmallVector<bool> unpackEmpty = {false};
   SmallVector<int64_t> innerPermB = setInnerPermB(isMatmulTransposeB);
   SmallVector<SmallVector<int64_t>> innerPerm = {innerPermB};
-  SmallVector<SmallVector<int64_t>> outerPerm = {{0, 1}};
-  auto packingConfigLevel1Attr = getPackingConfigPackingLevelAttr(
-      context, packPeelTiling.getPackSizeL0(), transposePackIndices,
-      unpackEmpty, innerPerm, outerPerm);
+  SmallVector<int64_t> outerPermVec = {0, 1};
+  if (isa<linalg::BatchMatmulOp>(linalgOp)) {
+    outerPermVec.push_back(2);
+  }
+  SmallVector<SmallVector<int64_t>> outerPerm = {outerPermVec};
+  auto packingConfigLevel0Attr = getPackingConfigPackingLevelAttr(
+      context, packedSizesL0, transposePackIndices, unpackEmpty, innerPerm,
+      outerPerm);
 
   // Pack level => 2.
   // packed size for [M, N, K, m, n, k]
-  SmallVector<int64_t> packedSizes = {0,
-                                      0,
-                                      0,
-                                      packPeelTiling.getM1Pack(),
-                                      packPeelTiling.getN1Pack(),
-                                      packPeelTiling.getK1Pack()};
+  SmallVector<int64_t> packedSizesL1 = {0,
+                                        0,
+                                        0,
+                                        packPeelTiling.getM1Pack(),
+                                        packPeelTiling.getN1Pack(),
+                                        packPeelTiling.getK1Pack()};
+
+  if (isa<linalg::BatchMatmulOp>(linalgOp)) {
+    packedSizesL1.insert(packedSizesL1.begin(), 0);
+  }
 
   // Transpose A matrix from [M K m k m0 k0] to [M K k m m0 k0]
   // Transpose C matrix from [M N m n m0 n0] to [M N n m m0 n0]
@@ -356,13 +373,17 @@ static LogicalResult setRootConfigForPackPeelPipeline(
   // Only the third pack operation has a corresponding unpack operation
   unpackEmpty = {false, false, true};
   innerPerm = {{0, 1}, innerPermB, {0, 1}};
-  outerPerm = {{0, 1, 3, 2}, {0, 1, 3, 2}, {0, 1, 3, 2}};
-  auto packingConfigLevel2Attr = getPackingConfigPackingLevelAttr(
-      context, packedSizes, transposePackIndices, unpackEmpty, innerPerm,
+  if (isa<linalg::BatchMatmulOp>(linalgOp)) {
+    outerPerm = {{0, 1, 2, 4, 3}, {0, 1, 2, 4, 3}, {0, 1, 2, 4, 3}};
+  } else {
+    outerPerm = {{0, 1, 3, 2}, {0, 1, 3, 2}, {0, 1, 3, 2}};
+  }
+  auto packingConfigLevel1Attr = getPackingConfigPackingLevelAttr(
+      context, packedSizesL1, transposePackIndices, unpackEmpty, innerPerm,
       outerPerm);
 
   SmallVector<PackingConfigPackingLevelAttr> packingConfigLevelsVal = {
-      packingConfigLevel1Attr, packingConfigLevel2Attr};
+      packingConfigLevel0Attr, packingConfigLevel1Attr};
   auto packingConfigLevels =
       PackingConfigPackingLevelsAttr::get(context, packingConfigLevelsVal);
   auto config = PackingConfigAttr::get(context, packingConfigLevels);
@@ -375,6 +396,13 @@ static LogicalResult setRootConfigForPackPeelPipeline(
                                          packPeelTiling.getN0()};
   SmallVector<int64_t> tileSizeLevel1 = {0, 0, packPeelTiling.getK0()};
   SmallVector<int64_t> tileSizeLevel2 = {1, 1, 0, 0, 0, 0};
+
+  if (isa<linalg::BatchMatmulOp>(linalgOp)) {
+    tileSizeLevel0.insert(tileSizeLevel0.begin(), 1);
+    tileSizeLevel1.insert(tileSizeLevel1.begin(), 0);
+    tileSizeLevel2.insert(tileSizeLevel2.begin(), 0);
+  }
+
   TileSizesListType tileSizes = {tileSizeLevel0, tileSizeLevel1,
                                  tileSizeLevel2};
   if (failed(setOpConfigAndEntryPointFnTranslation(

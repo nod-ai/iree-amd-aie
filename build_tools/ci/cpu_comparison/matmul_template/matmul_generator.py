@@ -3,7 +3,7 @@ import re
 import os
 
 
-def generate_matmul_test(output_fn, input_fn, m, n, k, lhs_rhs_type, acc_type):
+def generate_matmul_test(output_fn, input_fn, m, n, k, lhs_rhs_type, acc_type, b=0):
     """
     Generate mlir file (output_fn) from the template file (input_fn).
     """
@@ -15,6 +15,7 @@ def generate_matmul_test(output_fn, input_fn, m, n, k, lhs_rhs_type, acc_type):
     replace["TYPE1"] = lhs_rhs_type
     replace["TYPE2"] = acc_type
 
+    replace["B"] = b    # This is only used for batch matmul
     accl_is_int = acc_type[0] == "i"
     replace["ZERO"] = 0 if accl_is_int else 0.0
     replace["ADD"] = "arith.addi" if accl_is_int else "arith.addf"
@@ -32,10 +33,10 @@ def generate_matmul_test(output_fn, input_fn, m, n, k, lhs_rhs_type, acc_type):
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 8:
-        print(f"Number of arguments received: {len(sys.argv)}, expected 8.")
+    if len(sys.argv) not in [8, 9]:
+        print(f"Number of arguments received: {len(sys.argv)}, expected 8 or 9.")
         print(
-            "Usage: python3 matmul_generator.py <output_fn> <input_fn> <m> <n> <k> <lhs_rhs_type> <acc_type>"
+            "Usage: python3 matmul_generator.py <output_fn> <input_fn> <m> <n> <k> <lhs_rhs_type> <acc_type> (optional)<b>"
         )
         sys.exit(1)
 
