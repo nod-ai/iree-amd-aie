@@ -14,6 +14,11 @@ on:
         description: 'Run the build with a tmate session ONLY in case of failure'
         required: false
         default: false
+      force_ccache:
+        type: boolean
+        description: 'Force save ccache'
+        required: false
+        default: false
   pull_request:
   merge_group:
   push:
@@ -85,9 +90,12 @@ jobs:
         run: |
           $env:cache_dir = "${{ env.CACHE_DIR }}"
           $env:CCACHE_COMPILERCHECK = "string:$(clang-cl.exe --version)"
-          powershell build_tools/build_llvm.ps1
-          Remove-Item -Path "$pwd/llvm-build" -Force
-          powershell build_tools/build_test_cpp.ps1
+          .\build_tools\build_llvm.ps1
+          ls
+          # Remove-Item -Path "$pwd\llvm-build" -Force
+          $env:llvm_install_dir = "$pwd\llvm-install"
+          echo $env:llvm_install_dir
+          .\build_tools.\build_test_cpp.ps1
 
       - name: Create artifacts
         if: ${{ !cancelled() }}
@@ -116,7 +124,7 @@ jobs:
 
       - name: Save cache
         uses: actions/cache/save@v3
-        if: ${{ !cancelled() && github.event_name == 'push' && github.ref_name == 'main' }}
+        if: ${{ !cancelled() && (inputs.force_ccache || github.event_name == 'push' && github.ref_name == 'main') }}
         with:
           path: ${{ env.CACHE_DIR }}
           key: ${{ env.CACHE_KEY }}
