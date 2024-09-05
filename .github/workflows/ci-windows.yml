@@ -86,7 +86,7 @@ jobs:
           $env:cache_dir = "${{ env.CACHE_DIR }}"
           $env:CCACHE_COMPILERCHECK = "string:$(clang-cl.exe --version)"
           powershell build_tools/build_llvm.ps1
-          Remove-Item llvm-build -Force
+          Remove-Item -Path llvm-build -Force
           powershell build_tools/build_test_cpp.ps1
 
       - name: Create artifacts
