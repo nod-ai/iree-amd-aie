@@ -12,6 +12,7 @@ $repo_root = Resolve-Path -Path "$this_dir/.."
 $llvm_dir = Resolve-Path -Path "$repo_root/third_party/iree/third_party/llvm-project/llvm"
 echo "llvm_dir $llvm_dir"
 $build_dir = "$repo_root/llvm-build"
+echo "build_dir $build_dir"
 $install_dir = "$repo_root/llvm-install"
 
 if (-not (Test-Path "$build_dir"))
