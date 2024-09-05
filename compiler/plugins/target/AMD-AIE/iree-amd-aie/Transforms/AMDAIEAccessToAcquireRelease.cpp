@@ -27,8 +27,8 @@ LogicalResult readAccessToAcquireRelease(Operation *parentOp) {
 
   // Map from DMA source/target logical objectFifos to those respective DMA
   // operations.
-  DenseMap<Value, AMDAIE::CircularDmaCpyNdOp> logicalObjectFifoToDma;
-  parentOp->walk([&](AMDAIE::CircularDmaCpyNdOp dmaOp) {
+  DenseMap<Value, AMDAIE::ConnectionOp> logicalObjectFifoToDma;
+  parentOp->walk([&](AMDAIE::ConnectionOp dmaOp) {
     logicalObjectFifoToDma[dmaOp.getSource()] = dmaOp;
     logicalObjectFifoToDma[dmaOp.getTarget()] = dmaOp;
   });
@@ -103,8 +103,8 @@ LogicalResult writeAccessToAcquireRelease(Operation *parentOp) {
 
   // Map from DMA source/target logical objectFifos to those respective DMA
   // operations.
-  DenseMap<Value, AMDAIE::CircularDmaCpyNdOp> logicalObjectFifoToDma;
-  parentOp->walk([&](AMDAIE::CircularDmaCpyNdOp dmaOp) {
+  DenseMap<Value, AMDAIE::ConnectionOp> logicalObjectFifoToDma;
+  parentOp->walk([&](AMDAIE::ConnectionOp dmaOp) {
     logicalObjectFifoToDma[dmaOp.getSource()] = dmaOp;
     logicalObjectFifoToDma[dmaOp.getTarget()] = dmaOp;
   });
@@ -214,7 +214,7 @@ class AMDAIEAccessToAcquireReleasePass
 
   AMDAIEAccessToAcquireReleasePass() = default;
   AMDAIEAccessToAcquireReleasePass(
-      const AMDAIEAccessToAcquireReleasePass &pass){};
+      const AMDAIEAccessToAcquireReleasePass &pass) {};
   void runOnOperation() override;
 };
 

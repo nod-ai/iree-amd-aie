@@ -36,6 +36,8 @@
 
 namespace mlir::iree_compiler::AMDAIE {
 
+using mlir::OpTrait::iree_compiler::AMDAIE::CircularDmaOp;
+
 /// Utility to calculate the number of iterations of a loop with provided bounds
 /// and step: `ceilDiv(upperBound - lowerBound, step)`.
 int64_t calculateNbIterations(int64_t lowerBound, int64_t upperBound,
@@ -224,6 +226,23 @@ struct SubsumeLoopIntoDMA
           "Has operands within the same scope, so the parent loop  op can't be "
           "subsumed as this transformation would move this op outside that "
           "parent op.");
+    }
+
+    // Handle ops with trait `CircularDmaOp`. If circular DMA ops don't have a
+    // loop dependency, they can be hoisted outside the loop without any
+    // changes as in principal they run indefinitely until the resource operated
+    // on is dedicated to another operation. Therefore, care should be taken to
+    // ensure that the resource being operated on is not touched within the same
+    // scope.
+    // TODO(jornt): find a way to annotate the DMA resource(s) being
+    // operated on so that this touch checking logic can be implemented in
+    // general for different ops.
+    if (op->hasTrait<CircularDmaOp>() &&
+        !hasLoopDependency(op, allInductionValues)) {
+      rewriter.setInsertionPoint(loopOp);
+      Operation *cloneOp = rewriter.clone(*op.getOperation());
+      rewriter.replaceOp(op, cloneOp);
+      return success();
     }
 
     // Initialize new access pattern offsets/sizes/strides with current values.
@@ -505,6 +524,15 @@ struct SubsumeLoopIntoDMA
     if (!isa<LoopLikeOpInterface>(parentOp))
       return rewriter.notifyMatchFailure(op, "Parent is not a loop-like op");
 
+    auto hasUsersInSameScope = [&](Value result) -> bool {
+      for (Operation *userOp : result.getUsers()) {
+        if (userOp != op.getOperation() && parentOp->isProperAncestor(userOp)) {
+          return true;
+        }
+      }
+      return false;
+    };
+
     uint8_t sourceMemspaceInt;
     uint8_t targetMemspaceInt;
     if (auto npuDmaOp = dyn_cast<AMDAIE::NpuDmaCpyNdOp>(op.getOperation())) {
@@ -515,18 +543,35 @@ struct SubsumeLoopIntoDMA
       // operating on, is not being touched within the same scope. Otherwise,
       // the rewrite is not valid in general as it would be changing the
       // temporal usage of the source DMA.
-      Value dma = npuDmaOp.getDma();
-      for (Operation *userOp : dma.getUsers()) {
-        if (userOp != op.getOperation() && parentOp->isProperAncestor(userOp)) {
-          return rewriter.notifyMatchFailure(
-              op,
-              "Has users of same DMA in scope, analysis to check validity of "
-              "subsumption unimplemented");
-        }
+      Value dma = npuDmaOp.getConnection();
+      if (hasUsersInSameScope(dma)) {
+        return rewriter.notifyMatchFailure(
+            op,
+            "Has users of same DMA in scope, analysis to check validity of "
+            "subsumption unimplemented");
+      }
+    } else if (auto npuCircularDmaOp =
+                   dyn_cast<AMDAIE::NpuCircularDmaCpyNdOp>(op.getOperation())) {
+      // TODO(jornt): Consolidate with `NpuDmaCpyNdOp`.
+      sourceMemspaceInt = npuCircularDmaOp.getSourceMemorySpaceAsUInt();
+      targetMemspaceInt = npuCircularDmaOp.getTargetMemorySpaceAsUInt();
+
+      // Check that the DMA this `amdaie.npu.dma_cpy_nd` operation is
+      // operating on, is not being touched within the same scope. Otherwise,
+      // the rewrite is not valid in general as it would be changing the
+      // temporal usage of the source DMA.
+      Value dma = npuCircularDmaOp.getConnection();
+      if (hasUsersInSameScope(dma)) {
+        return rewriter.notifyMatchFailure(
+            op,
+            "Has users of same DMA in scope, analysis to check validity of "
+            "subsumption unimplemented");
       }
     } else {
       return rewriter.notifyMatchFailure(
-          op, "Is not an `amdaie.npu.dma_cpy_nd` operation");
+          op,
+          "Is not an `amdaie.npu.dma_cpy_nd` or "
+          "`amdaie.npu.circular_dma_cpy_nd` operation");
     }
 
     AMDAIE::DmaDimConfig dmaDimConfig(deviceModel, sourceMemspaceInt,
@@ -543,6 +588,19 @@ struct SubsumeLoopIntoDMA
   }
 
  private:
+  static bool hasLoopDependency(AMDAIE::DoublyStridedOpInterface op,
+                                const DenseSet<Value> &inductionValues) {
+    auto dependsOnInductionValue = [&](ArrayRef<Value> values) {
+      return llvm::any_of(values,
+                          [&](Value v) { return inductionValues.contains(v); });
+    };
+    SmallVector<Value> dynamicSourceOffsets = op.getSourceOffsets();
+    SmallVector<Value> dynamicTargetOffsets = op.getTargetOffsets();
+    if (dependsOnInductionValue(dynamicSourceOffsets)) return true;
+    if (dependsOnInductionValue(dynamicTargetOffsets)) return true;
+    return false;
+  }
+
   // The device model to use for the DMA operation.
   AMDAIE::AMDAIEDeviceModel deviceModel;
 

@@ -216,9 +216,9 @@ def AMDAIE_NpuDmaCpyNdOp: AMDAIE_Op<"npu.dma_cpy_nd", [
   let description = [{
     The Npu DMA operation represents a strided copy operation with an unlimited
     number of dimensions, executed by the Npu uController. This operation refers
-    to a `CircularDmaCpyNdOp`, which will contain the necessary information
-    about the source and target logical objectFifos of the operation and which
-    will instantiate the DMA connection.
+    to a `ConnectionOp`, which will contain the necessary information about the 
+    source and target logical objectFifos of the operation and which will
+    instantiate the DMA connection.
 
     The representation supports a partially-static representation of both the
     source and target `offsets`, `sizes` and `strides`. A special sentinel value
@@ -227,19 +227,19 @@ def AMDAIE_NpuDmaCpyNdOp: AMDAIE_Op<"npu.dma_cpy_nd", [
     Example:
 
     ```mlir
-    %2 = amdaie.circular_dma_cpy_nd(%1[] [] [], %0[] [] [])
+    %2 = amdaie.connection(%1, %0) 
       : (!amdaie.logicalobjectfifo<memref<32x64xi32, 1>>,
       !amdaie.logicalobjectfifo<memref<32x1024xi32>>)
     ...
     amdaie.controlcode {
-      %3 = amdaie.npu.dma_cpy_nd %2([] [] [], [%c0, %c0] [%c32, %c64] [%c1024, %c1])
+      %3 = amdaie.npu.dma_cpy_nd %2([] [] [], [0, 0] [32, 64] [1024, 1])
       ...
     }
     ```
   }];
 
   let arguments = (
-    ins Index:$dma,
+    ins Index:$connection,
         Optional<AnyAMDAIELogicalObjectFifoType>:$target,
         Variadic<Index>:$target_offsets,
         Variadic<Index>:$target_sizes,
@@ -301,21 +301,21 @@ def AMDAIE_NpuDmaCpyNdOp: AMDAIE_Op<"npu.dma_cpy_nd", [
       return !getTargetMixedOffsets().empty() || !getTargetMixedSizes().empty()
         || !getTargetMixedStrides().empty();
     }
-    // Return the input circular dma copy operation.
-    CircularDmaCpyNdOp getDmaCpyNdOp() {
-      return dyn_cast_if_present<CircularDmaCpyNdOp>(getDma().getDefiningOp());
+    // Return the input `amdaie.connection` operation.
+    ConnectionOp getConnectionOp() {
+      return dyn_cast_if_present<ConnectionOp>(getConnection().getDefiningOp());
     }
 
     // Return the source memref type. This is retrieved using information from
     // the input DMA operation.
     MemRefType getSourceMemrefType() { 
-      return cast<LogicalObjectFifoType>(getDmaCpyNdOp().getSourceType())
+      return cast<LogicalObjectFifoType>(getConnectionOp().getSourceType())
           .getElementType();
     }
 
     // Return the source memory space as an attribute.
     Attribute getSourceMemorySpace() {
-      return cast<LogicalObjectFifoType>(getDmaCpyNdOp().getSourceType())
+      return cast<LogicalObjectFifoType>(getConnectionOp().getSourceType())
         .getMemorySpace();
     }
 
@@ -330,13 +330,13 @@ def AMDAIE_NpuDmaCpyNdOp: AMDAIE_Op<"npu.dma_cpy_nd", [
     // Return the target memref type. This is retrieved using information from
     // the input DMA operation.
     MemRefType getTargetMemrefType() { 
-      return cast<LogicalObjectFifoType>(getDmaCpyNdOp().getTargetType())
+      return cast<LogicalObjectFifoType>(getConnectionOp().getTargetType())
           .getElementType();
     }
 
     // Return the target memory space as an attribute.
     Attribute getTargetMemorySpace() {
-      return cast<LogicalObjectFifoType>(getDmaCpyNdOp().getTargetType())
+      return cast<LogicalObjectFifoType>(getConnectionOp().getTargetType())
         .getMemorySpace();
     }
 
@@ -374,7 +374,160 @@ def AMDAIE_NpuDmaCpyNdOp: AMDAIE_Op<"npu.dma_cpy_nd", [
   }];
 
   let hasCanonicalizer = 1;
+}
 
+def AMDAIE_NpuCircularDmaCpyNdOp: AMDAIE_Op<"npu.circular_dma_cpy_nd", [
+      AMDAIE_CircularDmaOp, AttrSizedOperandSegments, DoublyStridedOpInterface]>,
+    Results<(outs Index)> {
+  let summary = "The Npu uController's circular dma operator";
+  let description = [{
+    The Npu circular DMA operation represents a strided copy operation with an
+    unlimited number of dimensions that will go on indefinitely. This operation
+    will configure a connection to perform that copy operation. This operation 
+    refers to a `ConnectionOp` for this connection, which will contain the 
+    necessary information about the source and target logical objectFifos.
+
+    The representation supports a partially-static representation of both the
+    source and target `offsets`, `sizes` and `strides`. A special sentinel value
+    ShapedType::kDynamic encodes that the corresponding entry has a dynamic value.
+
+    Example:
+
+    ```mlir
+    %2 = amdaie.connection(%1, %0) : (!amdaie.logicalobjectfifo<memref<32x64xi32, 1>>,
+      !amdaie.logicalobjectfifo<memref<32x1024xi32>>)
+    ...
+    amdaie.controlcode {
+      %3 = amdaie.npu.circular_dma_cpy_nd %2([0, 0] [32, 64] [1024, 1], [] [] [])
+      ...
+    }
+    ```
+  }];
+
+  let arguments = (
+    ins Index:$connection,
+        Variadic<Index>:$target_offsets,
+        Variadic<Index>:$target_sizes,
+        Variadic<Index>:$target_strides,
+        DenseI64ArrayAttr:$target_static_offsets,
+        DenseI64ArrayAttr:$target_static_sizes,
+        DenseI64ArrayAttr:$target_static_strides,
+        Variadic<Index>:$source_offsets,
+        Variadic<Index>:$source_sizes,
+        Variadic<Index>:$source_strides,
+        DenseI64ArrayAttr:$source_static_offsets,
+        DenseI64ArrayAttr:$source_static_sizes,
+        DenseI64ArrayAttr:$source_static_strides
+  );
+
+  let assemblyFormat = [{
+    $connection
+    `(`
+    custom<DynamicIndexList>($target_offsets, $target_static_offsets)
+    custom<DynamicIndexList>($target_sizes, $target_static_sizes)
+    custom<DynamicIndexList>($target_strides, $target_static_strides)
+    `,`
+    custom<DynamicIndexList>($source_offsets, $source_static_offsets)
+    custom<DynamicIndexList>($source_sizes, $source_static_sizes)
+    custom<DynamicIndexList>($source_strides, $source_static_strides)
+    `)`
+    attr-dict
+  }];
+
+  let builders = [
+    // Build a NpuCircularDmaCpyNdOp with mixed static and dynamic entries.
+    OpBuilder<(ins "Value":$connection, "ArrayRef<OpFoldResult>":$target_offsets,
+      "ArrayRef<OpFoldResult>":$target_sizes,
+      "ArrayRef<OpFoldResult>":$target_strides,
+      "ArrayRef<OpFoldResult>":$source_offsets,
+      "ArrayRef<OpFoldResult>":$source_sizes,
+      "ArrayRef<OpFoldResult>":$source_strides)>,
+    // Build a NpuCircularDmaCpyNdOp with static entries.
+    OpBuilder<(ins "Value":$connection, "ArrayRef<int64_t>":$target_offsets,
+      "ArrayRef<int64_t>":$target_sizes, "ArrayRef<int64_t>":$target_strides,
+      "ArrayRef<int64_t>":$source_offsets, "ArrayRef<int64_t>":$source_sizes,
+      "ArrayRef<int64_t>":$source_strides)>,
+    // Build a NpuCircularDmaCpyNdOp with dynamic entries.
+    OpBuilder<(ins "Value":$connection, "ValueRange":$target_offsets,
+      "ValueRange":$target_sizes, "ValueRange":$target_strides,
+      "ValueRange":$source_offsets, "ValueRange":$source_sizes, 
+      "ValueRange":$source_strides)>
+  ];
+
+  let extraClassDeclaration = [{
+    // Check whether this operation has addressing on the source side.
+    bool hasSourceAddressing() {
+      return !getSourceMixedOffsets().empty() || !getSourceMixedSizes().empty() 
+        || !getSourceMixedStrides().empty();
+    }
+    
+    // Check whether this operation has addressing on the target side.
+    bool hasTargetAddressing() { 
+      return !getTargetMixedOffsets().empty() || !getTargetMixedSizes().empty()
+        || !getTargetMixedStrides().empty();
+    }
+    
+    // Return the input circular dma copy operation.
+    ConnectionOp getConnectionOp() {
+      return dyn_cast<ConnectionOp>(getConnection().getDefiningOp());
+    }
+
+    // Return the source memref type. This is retrieved using information from
+    // the input DMA operation.
+    MemRefType getSourceMemrefType() { 
+      return cast<LogicalObjectFifoType>(getConnectionOp().getSourceType())
+          .getElementType();
+    }
+
+    // Return the source memory space as an attribute.
+    Attribute getSourceMemorySpace() {
+      return cast<LogicalObjectFifoType>(getConnectionOp().getSourceType())
+        .getMemorySpace();
+    }
+
+    // Helper method to return the source memory space as an integer. If no 
+    // memory space attribute, this indicates a global memory space and we
+    // return 0. Else cast the memory space attribute to an integer. 
+    uint8_t getSourceMemorySpaceAsUInt() {
+      Attribute memSpace = getSourceMemorySpace();
+      return memSpace ? cast<IntegerAttr>(memSpace).getInt() : 0;
+    }
+
+    // Return the target memref type. This is retrieved using information from
+    // the input DMA operation.
+    MemRefType getTargetMemrefType() { 
+      return cast<LogicalObjectFifoType>(getConnectionOp().getTargetType())
+          .getElementType();
+    }
+
+    // Return the target memory space as an attribute.
+    Attribute getTargetMemorySpace() {
+      return cast<LogicalObjectFifoType>(getConnectionOp().getTargetType())
+        .getMemorySpace();
+    }
+
+    // Helper method to return the target memory space as an integer. If no
+    // memory space attribute, this indicates a global memory space and we
+    // return 0. Else cast the memory space attribute to an integer. 
+    uint8_t getTargetMemorySpaceAsUInt() {
+      Attribute memSpace = getTargetMemorySpace();
+      return memSpace ? cast<IntegerAttr>(memSpace).getInt() : 0;
+    }
+
+    // A utility to create a new doubly strided operation from this one with a
+    // new set of source and target offsets, sizes and strides.
+    DoublyStridedOpInterface createDoublyStridedOp(
+        ::mlir::RewriterBase& rewriter,
+        ::llvm::SmallVector<::mlir::OpFoldResult>& newTargetOffsets,
+        ::llvm::SmallVector<::mlir::OpFoldResult>& newTargetSizes,
+        ::llvm::SmallVector<::mlir::OpFoldResult>& newTargetStrides,
+        ::llvm::SmallVector<::mlir::OpFoldResult>& newSourceOffsets,
+        ::llvm::SmallVector<::mlir::OpFoldResult>& newSourceSizes,
+        ::llvm::SmallVector<::mlir::OpFoldResult>& newSourceStrides);
+
+  }];
+
+  let hasCanonicalizer = 1;
 }
 
 def AMDAIE_NpuDmaWaitOp: AMDAIE_Op<"npu.dma_wait", []> {
@@ -425,6 +578,45 @@ def AMDAIE_NpuDmaWaitOp: AMDAIE_Op<"npu.dma_wait", []> {
 //===----------------------------------------------------------------------===//
 // IREE AMDAIE LogicalObjectFifo Ops
 //===----------------------------------------------------------------------===//
+
+def AMDAIE_ConnectionOp: AMDAIE_Op<"connection", [Pure, CopyOpInterface]> {
+  let summary = "A connection between two logical objectFifos.";
+  let description = [{
+    Represents a connection between logical objectFifos. This connection can be
+    referenced by DMA operations to program a DMA configuration onto this
+    connections. Additionally, this connection can be referenced by access
+    operations to represent a read from or write to the connection.
+
+    ```mlir
+    %0 = amdaie.logicalobjectfifo.from_memref %alloc, {} : memref<32x1024xi32>
+        -> !amdaie.logicalobjectfifo<memref<32x1024xi32>>
+    %1 = amdaie.logicalobjectfifo.from_memref %alloc1, {} : memref<32x64xi32, 1>
+        -> !amdaie.logicalobjectfifo<memref<32x64xi32, 1>>
+    %2 = amdaie.connection(%1, %0) : (!amdaie.logicalobjectfifo<memref<32x64xi32, 1>>,
+      !amdaie.logicalobjectfifo<memref<32x1024xi32>>)
+    ```
+  }];
+
+  let arguments = (
+    ins AnyAMDAIELogicalObjectFifoType:$target,
+        AnyAMDAIELogicalObjectFifoType:$source
+        
+  );
+  let results = (outs Index:$result);
+
+  let assemblyFormat = [{ 
+    `(` $target `,` $source `)`  attr-dict `:` `(` type($target) `,` type($source) `)`
+  }];
+
+  let extraClassDeclaration = [{
+    Value getSourceMemref() { return getSource(); }
+    Value getTargetMemref() { return getTarget(); }
+    Type getSourceType() { return getSource().getType(); }
+    Type getTargetType() { return getTarget().getType(); }
+    FailureOr<NpuCircularDmaCpyNdOp> getNpuCircularDmaCpyNdUser();
+  }];
+}
+
 
 def AMDAIE_LogicalObjectFifoAccessOp : AMDAIE_Op<"logicalobjectfifo.access"> {
   let summary = "Operation to access the encapsulated memref from a logical"

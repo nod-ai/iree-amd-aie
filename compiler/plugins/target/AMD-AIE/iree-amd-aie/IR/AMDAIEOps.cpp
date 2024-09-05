@@ -414,6 +414,25 @@ void CircularDmaCpyNdOp::getCanonicalizationPatterns(RewritePatternSet &results,
 }
 
 //===----------------------------------------------------------------------===//
+// AMDAIE_ConnectionOp
+//===----------------------------------------------------------------------===//
+
+FailureOr<AMDAIE::NpuCircularDmaCpyNdOp>
+ConnectionOp::getNpuCircularDmaCpyNdUser() {
+  SmallVector<AMDAIE::NpuCircularDmaCpyNdOp, 1> npuDmaUsers;
+  for (Operation *userOp : getOperation()->getUsers()) {
+    if (auto userNpuDmaOp = dyn_cast<AMDAIE::NpuCircularDmaCpyNdOp>(userOp))
+      npuDmaUsers.push_back(userNpuDmaOp);
+  }
+  if (npuDmaUsers.size() != 1) {
+    return emitOpError() << "only a single `amdaie.npu.circular_dma_cpy_nd` "
+                            "user supported currently, but got: "
+                         << npuDmaUsers.size();
+  }
+  return npuDmaUsers[0];
+}
+
+//===----------------------------------------------------------------------===//
 // AMDAIE_LogicalObjectFifoAccessOp
 //===----------------------------------------------------------------------===//
 
@@ -617,7 +636,7 @@ void NpuDmaCpyNdOp::build(OpBuilder &b, OperationState &result, Value dma,
 
 void NpuDmaCpyNdOp::print(OpAsmPrinter &p) {
   Operation *op = getOperation();
-  p << " " << getDma() << "(";
+  p << " " << getConnection() << "(";
   if (getTarget()) p << getTarget();
   printDynamicIndexList(p, op, getTargetOffsets(), getTargetStaticOffsets());
   p << " ";
@@ -828,7 +847,7 @@ DoublyStridedOpInterface NpuDmaCpyNdOp::createDoublyStridedOp(
     ::llvm::SmallVector<OpFoldResult> &newSourceStrides) {
   Location loc = (*this)->getLoc();
   auto newOp = rewriter.create<AMDAIE::NpuDmaCpyNdOp>(
-      loc, getDma(), getTarget(), newTargetOffsets, newTargetSizes,
+      loc, getConnection(), getTarget(), newTargetOffsets, newTargetSizes,
       newTargetStrides, getTargetBdId(), getSource(), newSourceOffsets,
       newSourceSizes, newSourceStrides, getSourceBdId());
   return cast<DoublyStridedOpInterface>(newOp.getOperation());
@@ -849,7 +868,7 @@ struct NpuDmaCpyNdOpReplacementBuilder {
                       ArrayRef<OpFoldResult> srcMixedSizes,
                       ArrayRef<OpFoldResult> srcMixedStrides) {
     rewriter.replaceOpWithNewOp<NpuDmaCpyNdOp>(
-        dmaOp, dmaOp.getDma(), dmaOp.getTarget(), tgtMixedOffsets,
+        dmaOp, dmaOp.getConnection(), dmaOp.getTarget(), tgtMixedOffsets,
         tgtMixedSizes, tgtMixedStrides, dmaOp.getTargetBdId(),
         dmaOp.getSource(), srcMixedOffsets, srcMixedSizes, srcMixedStrides,
         dmaOp.getSourceBdId());
@@ -862,6 +881,150 @@ void NpuDmaCpyNdOp::getCanonicalizationPatterns(RewritePatternSet &results,
   results
       .add<DoublyStridedFolder<NpuDmaCpyNdOp, NpuDmaCpyNdOpReplacementBuilder>>(
           context);
+}
+
+//===----------------------------------------------------------------------===//
+// AMDAIE_NpuCircularDmaCpyNdOp
+//===----------------------------------------------------------------------===//
+
+// Build a NpuCircularDmaCpyNdOp with mixed static and dynamic entries.
+void NpuCircularDmaCpyNdOp::build(
+    OpBuilder &b, OperationState &result, Value connection,
+    ArrayRef<OpFoldResult> targetOffsets, ArrayRef<OpFoldResult> targetSizes,
+    ArrayRef<OpFoldResult> targetStrides, ArrayRef<OpFoldResult> sourceOffsets,
+    ArrayRef<OpFoldResult> sourceSizes, ArrayRef<OpFoldResult> sourceStrides) {
+  SmallVector<int64_t> staticTargetOffsets, staticTargetSizes,
+      staticTargetStrides;
+  SmallVector<int64_t> staticSourceOffsets, staticSourceSizes,
+      staticSourceStrides;
+  SmallVector<Value> dynamicTargetOffsets, dynamicTargetSizes,
+      dynamicTargetStrides;
+  SmallVector<Value> dynamicSourceOffsets, dynamicSourceSizes,
+      dynamicSourceStrides;
+  dispatchIndexOpFoldResults(targetOffsets, dynamicTargetOffsets,
+                             staticTargetOffsets);
+  dispatchIndexOpFoldResults(targetSizes, dynamicTargetSizes,
+                             staticTargetSizes);
+  dispatchIndexOpFoldResults(targetStrides, dynamicTargetStrides,
+                             staticTargetStrides);
+  dispatchIndexOpFoldResults(sourceOffsets, dynamicSourceOffsets,
+                             staticSourceOffsets);
+  dispatchIndexOpFoldResults(sourceSizes, dynamicSourceSizes,
+                             staticSourceSizes);
+  dispatchIndexOpFoldResults(sourceStrides, dynamicSourceStrides,
+                             staticSourceStrides);
+  build(b, result, b.getIndexType(), connection, dynamicTargetOffsets,
+        dynamicTargetSizes, dynamicTargetStrides, staticTargetOffsets,
+        staticTargetSizes, staticTargetStrides, dynamicSourceOffsets,
+        dynamicSourceSizes, dynamicSourceStrides, staticSourceOffsets,
+        staticSourceSizes, staticSourceStrides);
+}
+
+// Build a NpuCircularDmaCpyNdOp with static entries.
+void NpuCircularDmaCpyNdOp::build(
+    OpBuilder &b, OperationState &result, Value connection,
+    ArrayRef<int64_t> targetOffsets, ArrayRef<int64_t> targetSizes,
+    ArrayRef<int64_t> targetStrides, ArrayRef<int64_t> sourceOffsets,
+    ArrayRef<int64_t> sourceSizes, ArrayRef<int64_t> sourceStrides) {
+  SmallVector<OpFoldResult> targetOffsetValues = llvm::to_vector<4>(
+      llvm::map_range(targetOffsets, [&](int64_t v) -> OpFoldResult {
+        return b.getI64IntegerAttr(v);
+      }));
+  SmallVector<OpFoldResult> targetSizeValues = llvm::to_vector<4>(
+      llvm::map_range(targetSizes, [&](int64_t v) -> OpFoldResult {
+        return b.getI64IntegerAttr(v);
+      }));
+  SmallVector<OpFoldResult> targetStrideValues = llvm::to_vector<4>(
+      llvm::map_range(targetStrides, [&](int64_t v) -> OpFoldResult {
+        return b.getI64IntegerAttr(v);
+      }));
+  SmallVector<OpFoldResult> sourceOffsetValues = llvm::to_vector<4>(
+      llvm::map_range(sourceOffsets, [&](int64_t v) -> OpFoldResult {
+        return b.getI64IntegerAttr(v);
+      }));
+  SmallVector<OpFoldResult> sourceSizeValues = llvm::to_vector<4>(
+      llvm::map_range(sourceSizes, [&](int64_t v) -> OpFoldResult {
+        return b.getI64IntegerAttr(v);
+      }));
+  SmallVector<OpFoldResult> sourceStrideValues = llvm::to_vector<4>(
+      llvm::map_range(sourceStrides, [&](int64_t v) -> OpFoldResult {
+        return b.getI64IntegerAttr(v);
+      }));
+  build(b, result, connection, targetOffsetValues, targetSizeValues,
+        targetStrideValues, sourceOffsetValues, sourceSizeValues,
+        sourceStrideValues);
+}
+
+// Build a NpuDmaCpyNdOp with dynamic entries.
+void NpuCircularDmaCpyNdOp::build(OpBuilder &b, OperationState &result,
+                                  Value connection, ValueRange targetOffsets,
+                                  ValueRange targetSizes,
+                                  ValueRange targetStrides,
+                                  ValueRange sourceOffsets,
+                                  ValueRange sourceSizes,
+                                  ValueRange sourceStrides) {
+  SmallVector<OpFoldResult> targetOffsetValues =
+      llvm::to_vector<4>(llvm::map_range(
+          targetOffsets, [](Value v) -> OpFoldResult { return v; }));
+  SmallVector<OpFoldResult> targetSizeValues = llvm::to_vector<4>(
+      llvm::map_range(targetSizes, [](Value v) -> OpFoldResult { return v; }));
+  SmallVector<OpFoldResult> targetStrideValues =
+      llvm::to_vector<4>(llvm::map_range(
+          targetStrides, [](Value v) -> OpFoldResult { return v; }));
+  SmallVector<OpFoldResult> sourceOffsetValues =
+      llvm::to_vector<4>(llvm::map_range(
+          sourceOffsets, [](Value v) -> OpFoldResult { return v; }));
+  SmallVector<OpFoldResult> sourceSizeValues = llvm::to_vector<4>(
+      llvm::map_range(sourceSizes, [](Value v) -> OpFoldResult { return v; }));
+  SmallVector<OpFoldResult> sourceStrideValues =
+      llvm::to_vector<4>(llvm::map_range(
+          sourceStrides, [](Value v) -> OpFoldResult { return v; }));
+  build(b, result, connection, targetOffsetValues, targetSizeValues,
+        targetStrideValues, sourceOffsetValues, sourceSizeValues,
+        sourceStrideValues);
+}
+
+DoublyStridedOpInterface NpuCircularDmaCpyNdOp::createDoublyStridedOp(
+    ::mlir::RewriterBase &rewriter,
+    ::llvm::SmallVector<OpFoldResult> &newTargetOffsets,
+    ::llvm::SmallVector<OpFoldResult> &newTargetSizes,
+    ::llvm::SmallVector<OpFoldResult> &newTargetStrides,
+    ::llvm::SmallVector<OpFoldResult> &newSourceOffsets,
+    ::llvm::SmallVector<OpFoldResult> &newSourceSizes,
+    ::llvm::SmallVector<OpFoldResult> &newSourceStrides) {
+  Location loc = (*this)->getLoc();
+  auto newOp = rewriter.create<AMDAIE::NpuCircularDmaCpyNdOp>(
+      loc, getConnection(),
+      getValueOrCreateConstantIndexOp(rewriter, loc, newTargetOffsets),
+      getValueOrCreateConstantIndexOp(rewriter, loc, newTargetSizes),
+      getValueOrCreateConstantIndexOp(rewriter, loc, newTargetStrides),
+      getValueOrCreateConstantIndexOp(rewriter, loc, newSourceOffsets),
+      getValueOrCreateConstantIndexOp(rewriter, loc, newSourceSizes),
+      getValueOrCreateConstantIndexOp(rewriter, loc, newSourceStrides));
+  return cast<DoublyStridedOpInterface>(newOp.getOperation());
+}
+
+namespace {
+struct NpuCircularDmaCpyNdOpReplacementBuilder {
+  static void replace(NpuCircularDmaCpyNdOp dmaOp, PatternRewriter &rewriter,
+                      ArrayRef<OpFoldResult> tgtMixedOffsets,
+                      ArrayRef<OpFoldResult> tgtMixedSizes,
+                      ArrayRef<OpFoldResult> tgtMixedStrides,
+                      ArrayRef<OpFoldResult> srcMixedOffsets,
+                      ArrayRef<OpFoldResult> srcMixedSizes,
+                      ArrayRef<OpFoldResult> srcMixedStrides) {
+    rewriter.replaceOpWithNewOp<NpuCircularDmaCpyNdOp>(
+        dmaOp, dmaOp.getConnection(), tgtMixedOffsets, tgtMixedSizes,
+        tgtMixedStrides, srcMixedOffsets, srcMixedSizes, srcMixedStrides);
+  }
+};
+}  // namespace
+
+void NpuCircularDmaCpyNdOp::getCanonicalizationPatterns(
+    RewritePatternSet &results, MLIRContext *context) {
+  results.add<DoublyStridedFolder<NpuCircularDmaCpyNdOp,
+                                  NpuCircularDmaCpyNdOpReplacementBuilder>>(
+      context);
 }
 
 //===----------------------------------------------------------------------===//

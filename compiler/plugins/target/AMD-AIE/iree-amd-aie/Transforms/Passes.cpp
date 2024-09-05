@@ -599,6 +599,7 @@ void addAMDAIEObjectFifoLoweringPasses(OpPassManager &passManager) {
   passManager.addPass(createAMDAIEDmaToCircularDmaPass());
   passManager.addNestedPass<func::FuncOp>(createAMDAIECreateAIEWorkgroupPass());
   passManager.addPass(createCSEPass());
+  passManager.addPass(createAMDAIEDmaCSEPass());
 
   passManager.addPass(createAMDAIEHoistLogicalObjFifoPass());
   passManager.addPass(createAMDAIECanonicalizeDoublyStridedOpPass());
@@ -612,6 +613,7 @@ void addAMDAIEObjectFifoLoweringPasses(OpPassManager &passManager) {
   passManager.addPass(createAMDAIEDmaCompositionPass());
   passManager.addPass(createCSEPass());
   passManager.addPass(createCanonicalizerPass());
+  passManager.addPass(createAMDAIEDmaCSEPass());
 
   passManager.addPass(createAMDAIEAssignNpuDmaBdIdsPass());
   passManager.addPass(createCSEPass());
@@ -620,6 +622,7 @@ void addAMDAIEObjectFifoLoweringPasses(OpPassManager &passManager) {
   passManager.addPass(createAMDAIEControlCodeLoopUnrollPass());
   passManager.addPass(createCSEPass());
   passManager.addPass(createCanonicalizerPass());
+  passManager.addPass(createAMDAIEDmaCSEPass());
 
   passManager.addPass(createAMDAIECreateLogicalObjectFifoLinkPass());
   passManager.addPass(createAMDAIECanonicalizeDoublyStridedOpPass());
