@@ -11,18 +11,18 @@ if (-not (Test-Path "$build_dir"))
 {
     New-Item -Path $build_dir -ItemType Directory | Out-Null
 }
-$build_dir = Resolve-Path -Path $build_dir
-$cache_dir = $env:cache_dir
-$llvm_install_dir = $env:llvm_install_dir
+$build_dir = Resolve-Path -Path "$build_dir"
+$cache_dir = "$env:cache_dir"
+$llvm_install_dir = "$env:llvm_install_dir"
 
 if (-not $cache_dir)
 {
     $cache_dir = "$repo_root/.build-cache"
     if (-not (Test-Path "$cache_dir"))
     {
-        New-Item -Path $cache_dir -ItemType Directory | Out-Null
+        New-Item -Path "$cache_dir" -ItemType Directory | Out-Null
     }
-    $cache_dir = Resolve-Path -Path $cache_dir
+    $cache_dir = Resolve-Path -Path "$cache_dir"
 }
 echo "Caching to $cache_dir"
 
@@ -80,8 +80,9 @@ $CMAKE_ARGS = @(
     "-DIREE_EXTERNAL_HAL_DRIVERS=xrt"
 )
 
-if (Test-Path "$llvm_install_dir")
+if ($llvm_install_dir -and (Test-Path "$llvm_install_dir"))
 {
+    echo "using existing llvm install @ $llvm_install_dir"
     # TODO(max): send IREE a fix for this
     # target_compile_definitions may only set INTERFACE properties on IMPORTED
     $cmake_file = Resolve-Path -Path "$iree_dir/compiler/src/iree/compiler/API/CMakeLists.txt"
@@ -102,6 +103,7 @@ if (Test-Path "$llvm_install_dir")
 }
 else
 {
+    echo "building bundled llvm"
     $CMAKE_ARGS += @("-DIREE_BUILD_PYTHON_BINDINGS=ON")
 }
 
