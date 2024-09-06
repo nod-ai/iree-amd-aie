@@ -45,7 +45,7 @@ iree_status_t iree_hal_xrt_buffer_wrap(
 
   iree_allocator_t host_allocator =
       iree_hal_allocator_host_allocator(allocator);
-  iree_hal_xrt_buffer_t* buffer = NULL;
+  iree_hal_xrt_buffer_t* buffer = nullptr;
   IREE_RETURN_AND_END_ZONE_IF_ERROR(
       z0,
       iree_allocator_malloc(host_allocator, sizeof(*buffer), (void**)&buffer));
@@ -123,7 +123,7 @@ static iree_status_t iree_hal_xrt_buffer_map_range(
                                      IREE_HAL_BUFFER_USAGE_MAPPING_SCOPED));
 
   void* host_ptr = buffer->buffer->map();
-  IREE_ASSERT(host_ptr != NULL);  // Should be guaranteed by previous checks.
+  IREE_ASSERT(host_ptr != nullptr);  // Should be guaranteed by previous checks.
   uint8_t* data_ptr = (uint8_t*)host_ptr + local_byte_offset;
   iree_status_t status = iree_hal_xrt_buffer_invalidate_range(
       base_buffer, local_byte_offset, local_byte_length);

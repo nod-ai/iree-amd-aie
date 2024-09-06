@@ -20,7 +20,6 @@ extern "C" {
 // iree_hal_xrt_device_params_t
 //===----------------------------------------------------------------------===//
 
-
 // Parameters configuring an iree_hal_xrt_device_t.
 // Must be initialized with iree_hal_xrt_device_params_initialize prior to
 // use.
@@ -49,7 +48,7 @@ IREE_API_EXPORT iree_status_t iree_hal_xrt_driver_create(
     iree_allocator_t host_allocator, iree_hal_driver_t** out_driver);
 
 #ifdef __cplusplus
-}  // extern "C"
+}       // extern "C"
 #endif  // __cplusplus
 
 #endif  // IREE_EXPERIMENTAL_XRT_API_H_

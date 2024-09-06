@@ -7,9 +7,17 @@
 #include "iree-amd-aie/driver/xrt/direct_command_buffer.h"
 
 #include "iree-amd-aie/driver/xrt/native_executable.h"
-#include "iree-amd-aie/driver/xrt/pipeline_layout.h"
 #include "iree-amd-aie/driver/xrt/xrt_buffer.h"
 #include "iree/hal/utils/resource_set.h"
+
+// The max number of bindings per descriptor set allowed in the XRT HAL
+// implementation.
+#define IREE_HAL_XRT_MAX_DESCRIPTOR_SET_BINDING_COUNT 16
+
+// The max number of descriptor sets allowed in the XRT HAL implementation.
+// This depends on the general descriptor set planning in IREE and should adjust
+// with it.
+#define IREE_HAL_XRT_MAX_DESCRIPTOR_SET_COUNT 4
 
 typedef struct iree_hal_xrt_direct_command_buffer_t {
   iree_hal_command_buffer_t base;
@@ -50,7 +58,7 @@ iree_status_t iree_hal_xrt_direct_command_buffer_create(
     iree_hal_command_buffer_t** out_command_buffer) {
   IREE_ASSERT_ARGUMENT(device_allocator);
   IREE_ASSERT_ARGUMENT(out_command_buffer);
-  *out_command_buffer = NULL;
+  *out_command_buffer = nullptr;
   if (binding_capacity > 0) {
     // TODO(#10144): support indirect command buffers with binding tables.
     return iree_make_status(IREE_STATUS_UNIMPLEMENTED,
@@ -59,7 +67,7 @@ iree_status_t iree_hal_xrt_direct_command_buffer_create(
 
   IREE_TRACE_ZONE_BEGIN(z0);
 
-  iree_hal_xrt_direct_command_buffer_t* command_buffer = NULL;
+  iree_hal_xrt_direct_command_buffer_t* command_buffer = nullptr;
   IREE_RETURN_AND_END_ZONE_IF_ERROR(
       z0,
       iree_allocator_malloc(host_allocator,
@@ -253,17 +261,8 @@ static iree_status_t iree_hal_xrt_direct_command_buffer_collective(
                           "collectives not yet supported");
 }
 
-static iree_status_t iree_hal_xrt_direct_command_buffer_push_constants(
-    iree_hal_command_buffer_t* base_command_buffer,
-    iree_hal_pipeline_layout_t* pipeline_layout, iree_host_size_t offset,
-    const void* values, iree_host_size_t values_length) {
-  return iree_make_status(IREE_STATUS_UNIMPLEMENTED,
-                          "push constants not yet supported");
-}
-
 static iree_status_t iree_hal_xrt_direct_command_buffer_push_descriptor_set(
-    iree_hal_command_buffer_t* base_command_buffer,
-    iree_hal_pipeline_layout_t* pipeline_layout, uint32_t set,
+    iree_hal_command_buffer_t* base_command_buffer, uint32_t set,
     iree_host_size_t binding_count, const iree_hal_buffer_ref_t* bindings) {
   if (binding_count > IREE_HAL_XRT_MAX_DESCRIPTOR_SET_BINDING_COUNT) {
     return iree_make_status(
@@ -294,11 +293,11 @@ static iree_status_t iree_hal_xrt_direct_command_buffer_push_descriptor_set(
         z0, iree_hal_resource_set_insert(command_buffer->resource_set, 1,
                                          &binding->buffer));
     std::unique_ptr<xrt::bo> sub_buffer;
-    current_bindings[binding->ordinal] = iree_hal_xrt_buffer_handle(
+    current_bindings[i] = iree_hal_xrt_buffer_handle(
         iree_hal_buffer_allocated_buffer(binding->buffer));
-    current_offsets[binding->ordinal] =
+    current_offsets[i] =
         iree_hal_buffer_byte_offset(binding->buffer) + binding->offset;
-    current_lengths[binding->ordinal] = binding->length;
+    current_lengths[i] = binding->length;
   }
 
   IREE_TRACE_ZONE_END(z0);
@@ -308,8 +307,8 @@ static iree_status_t iree_hal_xrt_direct_command_buffer_push_descriptor_set(
 static iree_status_t iree_hal_xrt_direct_command_buffer_dispatch(
     iree_hal_command_buffer_t* base_command_buffer,
     iree_hal_executable_t* executable, int32_t entry_point,
-    uint32_t workgroup_x, uint32_t workgroup_y, uint32_t workgroup_z,
-    iree_hal_dispatch_flags_t flags) {
+    const uint32_t workgroup_count[3], iree_const_byte_span_t constants,
+    iree_hal_buffer_ref_list_t bindings, iree_hal_dispatch_flags_t flags) {
   iree_hal_xrt_direct_command_buffer_t* command_buffer =
       iree_hal_xrt_direct_command_buffer_cast(base_command_buffer);
   IREE_TRACE_ZONE_BEGIN(z0);
@@ -346,28 +345,20 @@ static iree_status_t iree_hal_xrt_direct_command_buffer_dispatch(
 
   // Copy descriptors from all sets to the end of the current segment for later
   // access.
-  iree_host_size_t set_count =
-      iree_hal_xrt_pipeline_layout_descriptor_set_count(kernel_params.layout);
   // TODO(jornt): hack to ensure that the output buffer is synced by syncing all
   // buffers after the run.
   xrt::bo arg_buffer;
   std::vector<xrt::bo> bos;
-  for (iree_host_size_t i = 0; i < set_count; ++i) {
-    // TODO: cache this information in the kernel info to avoid recomputation.
-    iree_host_size_t binding_count =
-        iree_hal_xrt_descriptor_set_layout_binding_count(
-            iree_hal_xrt_pipeline_layout_descriptor_set_layout(
-                kernel_params.layout, i));
-    iree_host_size_t base_index =
-        iree_hal_xrt_pipeline_layout_base_binding_index(kernel_params.layout,
-                                                        i);
-    for (iree_host_size_t j = 0; j < binding_count; ++j) {
-      arg_buffer = xrt::bo(*command_buffer->descriptor_sets[i].bindings[j],
-                           command_buffer->descriptor_sets[i].lengths[j],
-                           command_buffer->descriptor_sets[i].offsets[j]);
-      bos.push_back(arg_buffer);
-      run.set_arg(arg_index + base_index + j, arg_buffer);
-    }
+  // TODO(max): do we need multiple descriptor sets ever for AIE?
+  uint32_t set = 0;
+  iree_hal_xrt_direct_command_buffer_push_descriptor_set(
+      base_command_buffer, set, bindings.count, bindings.values);
+  for (iree_host_size_t j = 0; j < bindings.count; ++j) {
+    arg_buffer = xrt::bo(*command_buffer->descriptor_sets[set].bindings[j],
+                         command_buffer->descriptor_sets[set].lengths[j],
+                         command_buffer->descriptor_sets[set].offsets[j]);
+    bos.push_back(arg_buffer);
+    run.set_arg(arg_index + j, arg_buffer);
   }
   run.start();
   run.wait();
@@ -380,7 +371,8 @@ static iree_status_t iree_hal_xrt_direct_command_buffer_dispatch(
 static iree_status_t iree_hal_xrt_direct_command_buffer_dispatch_indirect(
     iree_hal_command_buffer_t* base_command_buffer,
     iree_hal_executable_t* executable, int32_t entry_point,
-    iree_hal_buffer_ref_t workgroups_ref, iree_hal_dispatch_flags_t flags) {
+    iree_hal_buffer_ref_t workgroups_ref, iree_const_byte_span_t constants,
+    iree_hal_buffer_ref_list_t bindings, iree_hal_dispatch_flags_t flags) {
   return iree_make_status(IREE_STATUS_UNIMPLEMENTED,
                           "need xrt implementation of dispatch indirect");
 }
@@ -405,11 +397,8 @@ const iree_hal_command_buffer_vtable_t
         /*.fill_buffer = */ iree_hal_xrt_direct_command_buffer_fill_buffer,
         /*.update_buffer = */ iree_hal_xrt_direct_command_buffer_update_buffer,
         /*.copy_buffer = */ iree_hal_xrt_direct_command_buffer_copy_buffer,
-        /*.collective = */ iree_hal_xrt_direct_command_buffer_collective,
-        /*.push_constants = */
-        iree_hal_xrt_direct_command_buffer_push_constants,
-        /*.push_descriptor_set = */
-        iree_hal_xrt_direct_command_buffer_push_descriptor_set,
+        /*.collective = */
+        iree_hal_xrt_direct_command_buffer_collective,
         /*.dispatch = */ iree_hal_xrt_direct_command_buffer_dispatch,
         /*.dispatch_indirect = */
         iree_hal_xrt_direct_command_buffer_dispatch_indirect,

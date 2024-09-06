@@ -13,7 +13,6 @@
 // XRT includes
 #include "experimental/xrt_system.h"
 #include "xrt.h"
-#include "xrt/xrt_bo.h"
 #include "xrt/xrt_device.h"
 #include "xrt/xrt_kernel.h"
 
@@ -68,7 +67,7 @@ iree_status_t iree_hal_xrt_driver_create_internal(
     iree_string_view_t identifier,
     const iree_hal_xrt_device_params_t* device_params,
     iree_allocator_t host_allocator, iree_hal_driver_t** out_driver) {
-  iree_hal_xrt_driver_t* driver = NULL;
+  iree_hal_xrt_driver_t* driver = nullptr;
   iree_host_size_t total_size = iree_sizeof_struct(*driver) + identifier.size;
   IREE_RETURN_IF_ERROR(
       iree_allocator_malloc(host_allocator, total_size, (void**)&driver));
@@ -189,7 +188,7 @@ static iree_status_t iree_hal_xrt_driver_query_available_devices(
   iree_hal_xrt_driver_t* driver = iree_hal_xrt_driver_cast(base_driver);
   xrt::device* device = driver->device;
   // Allocate the return infos and populate with the devices.
-  iree_hal_device_info_t* device_infos = NULL;
+  iree_hal_device_info_t* device_infos = nullptr;
   iree_host_size_t single_info_size =
       sizeof(iree_hal_device_info_t) + (IREE_HAL_XRT_MAX_DEVICE_PATH_LENGTH +
                                         IREE_HAL_XRT_MAX_DEVICE_NAME_LENGTH) *
