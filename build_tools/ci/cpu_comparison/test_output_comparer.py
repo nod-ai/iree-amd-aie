@@ -13,11 +13,6 @@ def stripWhitespace(s):
     s = "\n".join(lines)
     return s
 
-
-def test_basic_function():
-    assert 1 + 1 == 2
-
-
 def test_compare_0():
     """ """
 
