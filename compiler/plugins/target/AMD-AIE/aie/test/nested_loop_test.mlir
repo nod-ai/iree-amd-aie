@@ -255,6 +255,10 @@ aie.device(npu1_4col) {
   %tile_0_1 = aie.tile(0, 1)
   %tile_1_2 = aie.tile(1, 2)
   %tile_0_2 = aie.tile(0, 2)
+  aie.flow(%tile_0_1, DMA : 0, %tile_1_2, DMA : 0) {symbol = @in2}
+  aie.flow(%tile_0_1, DMA : 0, %tile_0_2, DMA : 0) {symbol = @in2}
+  aie.flow(%tile_0_1, DMA : 1, %tile_1_2, DMA : 1) {symbol = @in7}
+  aie.flow(%tile_1_2, DMA : 0, %tile_0_1, DMA : 0) {symbol = @in8}
   aie.objectfifo @in2(%tile_0_1, {%tile_0_2, %tile_1_2}, 4 : i32) : !aie.objectfifo<memref<32x64xi32, 1>>
   aie.objectfifo @in7(%tile_0_1, {%tile_1_2}, 4 : i32) : !aie.objectfifo<memref<64x32xi32, 1>>
   aie.objectfifo @in8(%tile_1_2, {%tile_0_1}, 4 : i32) : !aie.objectfifo<memref<32x32xi32, 1>>

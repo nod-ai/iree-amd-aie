@@ -72,6 +72,8 @@ module @link_AIE1 {
         %tile20 = aie.tile(2, 0)
         %tile12 = aie.tile(1, 2)
         %tile22 = aie.tile(2, 2)
+        aie.flow(%tile20, DMA : 0, %tile12, DMA : 0) {symbol = @of1}
+        aie.flow(%tile12, DMA : 0, %tile22, DMA : 0) {symbol = @of2}
         aie.objectfifo @of1 (%tile20, {%tile12}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
         aie.objectfifo @of2 (%tile12, {%tile22}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
         aie.objectfifo.link [@of1] -> [@of2] ()

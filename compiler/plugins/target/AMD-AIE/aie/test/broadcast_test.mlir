@@ -247,6 +247,10 @@ module @broadcast {
     %tile14 = aie.tile(1, 4)
     %tile32 = aie.tile(3, 2)
     %tile33 = aie.tile(3, 3)
+    aie.flow(%tile13, DMA : 0, %tile33, DMA : 0) {symbol = @broadcast_of}
+    aie.flow(%tile13, DMA : 0, %tile32, DMA : 0) {symbol = @broadcast_of}
+    aie.flow(%tile13, DMA : 0, %tile14, DMA : 0) {symbol = @broadcast_of}
+    aie.flow(%tile13, DMA : 0, %tile12, DMA : 0) {symbol = @broadcast_of}
     aie.objectfifo @broadcast_of (%tile13, {%tile12, %tile14, %tile32, %tile33}, [2, 2, 3, 4, 3]) : !aie.objectfifo<memref<16xi32>>
     func.func @some_work(%lineOut : memref<16xi32>) -> () {
         return

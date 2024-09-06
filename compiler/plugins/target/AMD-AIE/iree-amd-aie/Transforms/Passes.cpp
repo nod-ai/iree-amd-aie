@@ -632,6 +632,10 @@ void addAMDAIEObjectFifoLoweringPasses(OpPassManager &passManager) {
   passManager.addPass(createCanonicalizerPass());
   passManager.addPass(createAMDAIECoreLoopUnrollPass());
 
+  passManager.addPass(createAMDAIEAssignChannelsPass());
+  passManager.addPass(createCSEPass());
+  passManager.addPass(createCanonicalizerPass());
+
   addAMDAIEToAIEPasses(passManager);
 
   // Now lower using the AIE passes from MLIR-AIE.

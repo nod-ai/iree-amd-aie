@@ -56,14 +56,16 @@
 // CHECK:         }
 
 module @elementGenerationAIE2 {
- aie.device(xcve2302) {
+  aie.device(xcve2302) {
     %tile12 = aie.tile(1, 2)
     %tile13 = aie.tile(1, 3)
     %tile33 = aie.tile(3, 3)
+    aie.flow(%tile12, DMA : 0, %tile33, DMA : 0) {symbol = @of1}
+    aie.flow(%tile12, DMA : 1, %tile13, DMA : 0) {symbol = @of0}
     // In the shared memory case, the number of elements does not change.
     aie.objectfifo @of0 (%tile12, {%tile13}, 4 : i32) : !aie.objectfifo<memref<16xi32>>
     // In the non-adjacent memory case, the number of elements depends on the max amount acquired by
     // the processes running on each core (here nothing is specified so it cannot be derived).
     aie.objectfifo @of1 (%tile12, {%tile33}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
- }
+  }
 }

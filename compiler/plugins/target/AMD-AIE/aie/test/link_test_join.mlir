@@ -173,20 +173,25 @@
 // CHECK:         }
 
 module @link_join {
-    aie.device(xcve2302) {
-        %tile20 = aie.tile(2, 0)
-        %tile21 = aie.tile(2, 1)
-        %tile12 = aie.tile(1, 2)
-        %tile22 = aie.tile(2, 2)
-        %tile23 = aie.tile(2, 3)
-        %tile33 = aie.tile(3, 3)
-        aie.objectfifo @link1 (%tile12, {%tile21}, 2 : i32) : !aie.objectfifo<memref<128xi8>>
-        aie.objectfifo @link2 (%tile22, {%tile21}, 2 : i32) : !aie.objectfifo<memref<128xi8>>
-        aie.objectfifo @link3 (%tile23, {%tile21}, 2 : i32) : !aie.objectfifo<memref<128xi8>>
-        aie.objectfifo @link4 (%tile33, {%tile21}, 2 : i32) : !aie.objectfifo<memref<128xi8>>
-        aie.objectfifo @link5 (%tile21, {%tile20}, 2 : i32) : !aie.objectfifo<memref<512xi8>>
-        %ext_buffer_in  = aie.external_buffer {sym_name = "ext_buffer_in"}: memref<512xi8>
-        aie.objectfifo.register_external_buffers @link5 (%tile20, {%ext_buffer_in}) : (memref<512xi8>)
-        aie.objectfifo.link [@link1, @link2, @link3, @link4] -> [@link5] ()
-    }
+  aie.device(xcve2302) {
+    %tile20 = aie.tile(2, 0)
+    %tile21 = aie.tile(2, 1)
+    %tile12 = aie.tile(1, 2)
+    %tile22 = aie.tile(2, 2)
+    %tile23 = aie.tile(2, 3)
+    %tile33 = aie.tile(3, 3)
+    aie.flow(%tile12, DMA : 0, %tile21, DMA : 0) {symbol = @link1}
+    aie.flow(%tile22, DMA : 0, %tile21, DMA : 1) {symbol = @link2}
+    aie.flow(%tile23, DMA : 0, %tile21, DMA : 2) {symbol = @link3}
+    aie.flow(%tile33, DMA : 0, %tile21, DMA : 3) {symbol = @link4}
+    aie.flow(%tile21, DMA : 0, %tile20, DMA : 0) {symbol = @link5}
+    aie.objectfifo @link1 (%tile12, {%tile21}, 2 : i32) : !aie.objectfifo<memref<128xi8>>
+    aie.objectfifo @link2 (%tile22, {%tile21}, 2 : i32) : !aie.objectfifo<memref<128xi8>>
+    aie.objectfifo @link3 (%tile23, {%tile21}, 2 : i32) : !aie.objectfifo<memref<128xi8>>
+    aie.objectfifo @link4 (%tile33, {%tile21}, 2 : i32) : !aie.objectfifo<memref<128xi8>>
+    aie.objectfifo @link5 (%tile21, {%tile20}, 2 : i32) : !aie.objectfifo<memref<512xi8>>
+    %ext_buffer_in  = aie.external_buffer {sym_name = "ext_buffer_in"}: memref<512xi8>
+    aie.objectfifo.register_external_buffers @link5 (%tile20, {%ext_buffer_in}) : (memref<512xi8>)
+    aie.objectfifo.link [@link1, @link2, @link3, @link4] -> [@link5] ()
+  }
 }

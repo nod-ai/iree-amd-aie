@@ -127,6 +127,9 @@ module @matmul {
   aie.device(xcve2302) {
     %t00 = aie.tile(2, 0)
     %t02 = aie.tile(2, 2)
+    aie.flow(%t00, DMA : 0, %t02, DMA : 0) {symbol = @inA}
+    aie.flow(%t00, DMA : 1, %t02, DMA : 1) {symbol = @inB}
+    aie.flow(%t02, DMA : 0, %t00, DMA : 0) {symbol = @outC}
     aie.objectfifo @inA  (%t00, { %t02 }, 2 : i32) : !aie.objectfifo<memref<16x8xi16>>
     aie.objectfifo @inB  (%t00, { %t02 }, 2 : i32) : !aie.objectfifo<memref<8x16xi16>>
     aie.objectfifo @outC (%t02, { %t00 }, 2 : i32) : !aie.objectfifo<memref<16x16xi16>>

@@ -51,6 +51,7 @@ module @memTile {
    aie.device(xcve2302) {
       %tile11 = aie.tile(2, 1)
       %tile12 = aie.tile(2, 2)
+      aie.flow(%tile11, DMA : 0, %tile12, DMA : 0) {symbol = @of}
       aie.objectfifo @of (%tile11, {%tile12}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
    }
 }

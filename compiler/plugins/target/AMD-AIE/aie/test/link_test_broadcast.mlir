@@ -135,6 +135,10 @@ module @link_broadcast {
         %tile21 = aie.tile(2, 1)
         %tile22 = aie.tile(2, 2)
         %tile33 = aie.tile(3, 3)
+        aie.flow(%tile20, DMA : 0, %tile21, DMA : 0) {symbol = @link1}
+        aie.flow(%tile21, DMA : 0, %tile33, DMA : 0) {symbol = @link2}
+        aie.flow(%tile21, DMA : 0, %tile22, DMA : 0) {symbol = @link2}
+        aie.flow(%tile22, DMA : 0, %tile33, DMA : 1) {symbol = @skip_connection}
         aie.objectfifo @link1 (%tile20, {%tile21}, 2 : i32) : !aie.objectfifo<memref<48xi32>>
         aie.objectfifo @link2 (%tile21, {%tile22, %tile33}, [2, 2, 3]) : !aie.objectfifo<memref<16xi32>>
         aie.objectfifo @skip_connection (%tile22, {%tile33}, 2 : i32) : !aie.objectfifo<memref<16xi32>>

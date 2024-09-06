@@ -57,6 +57,9 @@ std::unique_ptr<Pass> createAMDAIEAccessToAcquireReleasePass();
 /// logical objectFifos.
 std::unique_ptr<Pass> createAMDAIEAIRDmaAMDAIEDmaPass();
 
+/// Create a pass to assign channels to connections.
+std::unique_ptr<Pass> createAMDAIEAssignChannelsPass();
+
 /// Create a pass to assign a buffer depth to
 /// `amdaie.logicalobjectfifo.from_memref` ops.
 std::unique_ptr<Pass> createAMDAIEAssignLogicalObjectFifoDepthPass(

@@ -106,6 +106,10 @@ module @alloc {
         %tile20 = aie.tile(2, 0)
         %tile22 = aie.tile(2, 2)
         %tile23 = aie.tile(2, 3)
+        aie.flow(%tile20, DMA : 0, %tile22, DMA : 0) {symbol = @of_in_0}
+        aie.flow(%tile22, DMA : 0, %tile20, DMA : 0) {symbol = @of_out_0}
+        aie.flow(%tile20, DMA : 1, %tile23, DMA : 0) {symbol = @of_in_1}
+        aie.flow(%tile23, DMA : 0, %tile20, DMA : 1) {symbol = @of_out_1}
         aie.objectfifo @of_in_0 (%tile20, {%tile22}, 2 : i32) : !aie.objectfifo<memref<64xi16>>
         aie.objectfifo @of_out_0 (%tile22, {%tile20}, 2 : i32) : !aie.objectfifo<memref<64xi16>>
         aie.objectfifo @of_in_1 (%tile20, {%tile23}, 2 : i32) : !aie.objectfifo<memref<64xi16>>
