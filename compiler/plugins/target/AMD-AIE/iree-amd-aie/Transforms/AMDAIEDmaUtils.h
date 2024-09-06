@@ -12,6 +12,8 @@
 #include "iree-amd-aie/IR/AMDAIEOps.h"
 #include "iree-amd-aie/aie_runtime/iree_aie_runtime.h"
 #include "llvm/ADT/SmallVector.h"
+#include "mlir/Dialect/Affine/IR/AffineOps.h"
+#include "mlir/IR/AffineExprVisitor.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/PatternMatch.h"
@@ -20,6 +22,60 @@ namespace mlir::iree_compiler::AMDAIE {
 
 /// Utility to retrieve a constant index from an OpFoldResult.
 int64_t getConstantIndexOrAssert(OpFoldResult dim);
+
+/// Utility affine expression visitor to retrieve the scale and optional bias
+/// from the expression.
+struct RetrieveScaleAndBias
+    : public AffineExprVisitor<RetrieveScaleAndBias, LogicalResult> {
+  std::optional<int64_t> scale;
+  std::optional<int64_t> bias;
+  LogicalResult visitAffineBinaryOpExpr(AffineBinaryOpExpr /*expr*/) {
+    return failure();
+  }
+  LogicalResult visitConstantExpr(AffineConstantExpr /*expr*/) {
+    return failure();
+  }
+  LogicalResult visitDimExpr(AffineDimExpr /*expr*/) { return failure(); }
+  LogicalResult visitSymbolExpr(AffineSymbolExpr /*expr*/) { return failure(); }
+  LogicalResult visitMulExpr(AffineBinaryOpExpr expr) {
+    if (auto rhsSize = dyn_cast<AffineConstantExpr>(expr.getRHS());
+        isa<AffineDimExpr>(expr.getLHS())) {
+      scale = rhsSize.getValue();
+    } else if (auto lhsSize = dyn_cast<AffineConstantExpr>(expr.getLHS());
+               isa<AffineDimExpr>(expr.getRHS())) {
+      scale = lhsSize.getValue();
+    }
+    return success();
+  }
+  LogicalResult visitAddExpr(AffineBinaryOpExpr expr) {
+    if (bias) return failure();
+    if (auto rhsSize = dyn_cast<AffineConstantExpr>(expr.getRHS())) {
+      bias = rhsSize.getValue();
+      if (bias.value() < 0) return failure();
+      if (isa<AffineBinaryOpExpr>(expr.getLHS())) {
+        return visit(expr.getLHS());
+      } else if (isa<AffineDimExpr>(expr.getLHS())) {
+        scale = 1;
+        return success();
+      } else {
+        return failure();
+      }
+    } else if (auto lhsSize = dyn_cast<AffineConstantExpr>(expr.getLHS())) {
+      bias = lhsSize.getValue();
+      if (bias.value() < 0) return failure();
+      if (isa<AffineBinaryOpExpr>(expr.getRHS())) {
+        return visit(expr.getRHS());
+      } else if (isa<AffineDimExpr>(expr.getRHS())) {
+        scale = 1;
+        return success();
+      } else {
+        return failure();
+      }
+    } else {
+      return failure();
+    }
+  }
+};
 
 // Constant specifying the number of inter-iteration dimension for DMA
 // operations.
