@@ -2,19 +2,18 @@
 // RUN: iree-opt --amdaie-objectFifo-stateful-transform %s | FileCheck %s
 
 // CHECK-LABEL:   aie.device(npu1_4col) {
-// CHECK:           memref.global "public" @objfifo_cons : memref<16xi32>
 // CHECK:           memref.global "public" @objfifo : memref<16xi32>
-// CHECK:           %[[TILE_1_2:.*]] = aie.tile(1, 2)
-// CHECK:           %[[TILE_3_3:.*]] = aie.tile(3, 3)
-// CHECK:           %[[OBJFIFO_CONS_BUFF_0:.*]] = aie.buffer(%[[TILE_3_3]]) {sym_name = "objfifo_cons_buff_0"} : memref<16xi32>
-// CHECK:           %[[OBJFIFO_CONS_BUFF_1:.*]] = aie.buffer(%[[TILE_3_3]]) {sym_name = "objfifo_cons_buff_1"} : memref<16xi32>
-// CHECK:           %[[OBJFIFO_CONS_PROD_LOCK:.*]] = aie.lock(%[[TILE_3_3]]) {init = 2 : i8, sym_name = "objfifo_cons_prod_lock"}
-// CHECK:           %[[OBJFIFO_CONS_CONS_LOCK:.*]] = aie.lock(%[[TILE_3_3]]) {init = 0 : i8, sym_name = "objfifo_cons_cons_lock"}
-// CHECK:           %[[OBJFIFO_BUFF_0:.*]] = aie.buffer(%[[TILE_1_2]]) {sym_name = "objfifo_buff_0"} : memref<16xi32>
-// CHECK:           %[[OBJFIFO_BUFF_1:.*]] = aie.buffer(%[[TILE_1_2]]) {sym_name = "objfifo_buff_1"} : memref<16xi32>
-// CHECK:           %[[OBJFIFO_PROD_LOCK:.*]] = aie.lock(%[[TILE_1_2]]) {init = 2 : i8, sym_name = "objfifo_prod_lock"}
-// CHECK:           %[[OBJFIFO_CONS_LOCK:.*]] = aie.lock(%[[TILE_1_2]]) {init = 0 : i8, sym_name = "objfifo_cons_lock"}
-// CHECK:           aie.flow(%[[TILE_1_2]], DMA : 0, %[[TILE_3_3]], DMA : 0)
+// CHECK-DAG:       %[[TILE_1_2:.*]] = aie.tile(1, 2)
+// CHECK-DAG:       %[[TILE_3_3:.*]] = aie.tile(3, 3)
+// CHECK-DAG:       %[[OBJFIFO_CONS_BUFF_0:.*]] = aie.buffer(%[[TILE_3_3]]) {sym_name = "objfifo_cons_buff_0_0"} : memref<16xi32>
+// CHECK-DAG:       %[[OBJFIFO_CONS_BUFF_1:.*]] = aie.buffer(%[[TILE_3_3]]) {sym_name = "objfifo_cons_buff_0_1"} : memref<16xi32>
+// CHECK-DAG:       %[[OBJFIFO_CONS_PROD_LOCK:.*]] = aie.lock(%[[TILE_3_3]]) {init = 2 : i8, sym_name = "objfifo_cons_prod_lock_0"}
+// CHECK-DAG:       %[[OBJFIFO_CONS_CONS_LOCK:.*]] = aie.lock(%[[TILE_3_3]]) {init = 0 : i8, sym_name = "objfifo_cons_cons_lock_0"}
+// CHECK-DAG:       %[[OBJFIFO_BUFF_0:.*]] = aie.buffer(%[[TILE_1_2]]) {sym_name = "objfifo_prod_buff_0_0"} : memref<16xi32>
+// CHECK-DAG:       %[[OBJFIFO_BUFF_1:.*]] = aie.buffer(%[[TILE_1_2]]) {sym_name = "objfifo_prod_buff_0_1"} : memref<16xi32>
+// CHECK-DAG:       %[[OBJFIFO_PROD_LOCK:.*]] = aie.lock(%[[TILE_1_2]]) {init = 2 : i8, sym_name = "objfifo_prod_prod_lock_0"}
+// CHECK-DAG:       %[[OBJFIFO_CONS_LOCK:.*]] = aie.lock(%[[TILE_1_2]]) {init = 0 : i8, sym_name = "objfifo_prod_cons_lock_0"}
+// CHECK-DAG:       aie.flow(%[[TILE_1_2]], DMA : 0, %[[TILE_3_3]], DMA : 0)
 // CHECK:           func.func @some_work(%[[ARG0:.*]]: memref<16xi32>) {
 // CHECK:             return
 // CHECK:           }
@@ -79,7 +78,6 @@
 // CHECK:             aie.end
 // CHECK:           }
 // CHECK:         }
-
 module @non_adjacency {
     aie.device(npu1_4col) {
         %tile12 = aie.tile(1, 2)

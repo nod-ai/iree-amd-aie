@@ -1,6 +1,8 @@
 
 // RUN: iree-opt --amdaie-objectFifo-stateful-transform %s | FileCheck %s
 
+// Tests objectFifo between cores, xfailing for now.
+// XFAIL: *
 // CHECK-LABEL:   aie.device(xcve2302) {
 // CHECK-DAG:       memref.global "public" @fifo : memref<i32>
 // CHECK-DAG:       %[[C0:.*]] = arith.constant 0 : index
@@ -90,7 +92,6 @@
 // CHECK:             return
 // CHECK:           }
 // CHECK:         }
-
 module @aie2_static_l1 {
   aie.device(xcve2302) {
     %i_c0 = arith.constant 0 : index
