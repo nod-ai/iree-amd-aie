@@ -164,6 +164,8 @@ module @aie2_cyclostatic_l2 {
         %memtile = aie.tile(2, 1) // mem tile
         %tile83 = aie.tile(8, 3)  // consumer tile
         %buf83  = aie.buffer(%tile83) {sym_name = "buf83"} : memref<1xi32>
+        aie.flow(%tile22, DMA : 0, %memtile, DMA : 0) {symbol = @fifo0}
+        aie.flow(%memtile, DMA : 0, %tile83, DMA : 0) {symbol = @fifo1}
         // ObjectFifo that can hold 4 memref<1xi32>s, populated by tile22 and
         // consumed by tile23
         aie.objectfifo @fifo0 (%tile22, {%memtile}, 4 : i32) : !aie.objectfifo<memref<1xi32>>

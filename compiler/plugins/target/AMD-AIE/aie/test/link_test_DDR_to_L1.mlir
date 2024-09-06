@@ -72,6 +72,8 @@ module @link_DDR_L1 {
         %tile20 = aie.tile(2, 0)
         %tile21 = aie.tile(2, 1)
         %tile22 = aie.tile(2, 2)
+        aie.flow(%tile20, DMA : 0, %tile21, DMA : 0) {symbol = @to_memTile}
+        aie.flow(%tile21, DMA : 0, %tile22, DMA : 0) {symbol = @from_memTile}
         aie.objectfifo @to_memTile (%tile20, {%tile21}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
         aie.objectfifo @from_memTile (%tile21, {%tile22}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
         aie.objectfifo.link [@to_memTile] -> [@from_memTile] ()

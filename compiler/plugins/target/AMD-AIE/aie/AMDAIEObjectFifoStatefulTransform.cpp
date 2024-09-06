@@ -8,6 +8,7 @@
 #include "Passes.h"
 #include "iree-amd-aie/aie_runtime/iree_aie_runtime.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SetVector.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
@@ -113,24 +114,6 @@ std::optional<Value> getOptionalSharedTile(ObjectFifoLinkOp op) {
 }
 
 }  // namespace
-
-class DMAChannelAnalysis {
-  DenseMap<Value, uint8_t> producerChannelsPerTile;
-  DenseMap<Value, uint8_t> consumerChannelsPerTile;
-
- public:
-  DMAChannelAnalysis() {}
-
-  /// Given an AIE tile, returns its next usable producer channel.
-  SwitchDMAConnection getProducerDMAChannel(Value tile) {
-    return {DMAChannelDir::MM2S, producerChannelsPerTile[tile]++};
-  }
-
-  /// Given an AIE tile, returns its next usable consumer channel.
-  SwitchDMAConnection getConsumerDMAChannel(Value tile) {
-    return {DMAChannelDir::S2MM, consumerChannelsPerTile[tile]++};
-  }
-};
 
 enum SharedMemoryDirection { LHS = -1, RHS = 1, NONE = 0 };
 
@@ -800,55 +783,78 @@ void createBuffersAndLocks(
 
 /// Translate ObjectFifoCreateOp ops into routing primitives (Flows) and DMA
 /// primitives (DMABD, DMAStart, Buffer, UseLock).
-void createFlowsAndTileDMAs(
+LogicalResult createFlowsAndTileDMAs(
     OpBuilder builder, DeviceOp device, ObjectFifoCreateOp producer,
-    const std::vector<ObjectFifoCreateOp> &consumers,
-    DMAChannelAnalysis &dmaAnalysis,
+    std::vector<ObjectFifoCreateOp> &consumers,
     const DenseMap<ObjectFifoCreateOp, std::vector<LockOp>> &locksPerFifo,
     const DenseMap<ObjectFifoLinkOp, ObjectFifoCreateOp> &objFifoLinks,
-    const DenseMap<ObjectFifoCreateOp, std::vector<BufferOp>> &buffersPerFifo) {
+    const DenseMap<ObjectFifoCreateOp, std::vector<BufferOp>> &buffersPerFifo,
+    const DenseMap<StringRef, SmallVector<FlowOp>> &symbolToFlowOps) {
   AMDAIEDeviceModel deviceModel =
       getDeviceModel(static_cast<AMDAIEDevice>(device.getDevice()));
   auto createDMA = [&deviceModel, &device, &builder, &locksPerFifo,
                     &objFifoLinks, &buffersPerFifo](
                        ObjectFifoCreateOp op, DMAChannelDir channelDir,
-                       int channelIndex, BDDimLayoutArrayAttr dims) {
+                       uint8_t channelIndex, BDDimLayoutArrayAttr dims) {
     TileOp producerOp = cast<TileOp>(op.getProducerTile().getDefiningOp());
-    if (deviceModel.isShimTile(producerOp.getCol(), producerOp.getRow()))
+    if (deviceModel.isShimTile(producerOp.getCol(), producerOp.getRow())) {
       return;
-    else if (deviceModel.isMemTile(producerOp.getCol(), producerOp.getRow()))
+    } else if (deviceModel.isMemTile(producerOp.getCol(),
+                                     producerOp.getRow())) {
       createMemTileDMA(device, builder, op, channelDir, channelIndex, dims,
                        objFifoLinks, buffersPerFifo, locksPerFifo);
-    else
+    } else {
       createAMDAIETileDMA(device, builder, op, channelDir, channelIndex, dims,
                           objFifoLinks, buffersPerFifo, locksPerFifo);
+    }
   };
-  // create producer tile DMA
 
+  // Collect producer and consumer DMA channels
+  if (!symbolToFlowOps.contains(producer.getSymName())) {
+    return producer.emitOpError()
+           << "symbol name not found in symbol to flow ops map";
+  }
+  SmallVector<FlowOp> flowOps = symbolToFlowOps.at(producer.getSymName());
+  SmallVector<uint8_t> producerChannelsVec = llvm::map_to_vector(
+      flowOps, [](FlowOp flowOp) { return flowOp.getSourceChannel(); });
+  llvm::SmallSetVector<uint8_t, 1> producerChannels(producerChannelsVec.begin(),
+                                                    producerChannelsVec.end());
+  if (producerChannels.size() != 1)
+    return producer.emitOpError() << "expected a single producer channel";
+  DenseMap<Value, uint8_t> consumerChannelsMap;
+  for (FlowOp flowOp : flowOps)
+    consumerChannelsMap[flowOp.getDest()] = flowOp.getDestChannel();
+  if (consumerChannelsMap.size() != consumers.size()) {
+    return producer.emitOpError() << "expected same number of consumers as the "
+                                     "number of consumer objectfifos provided";
+  }
+
+  // create producer tile DMA
   TileOp producerProducerTileOp =
       cast<TileOp>(producer.getProducerTile().getDefiningOp());
-  SwitchDMAConnection producerChan =
-      dmaAnalysis.getProducerDMAChannel(producer.getProducerTile());
-  createDMA(producer, static_cast<DMAChannelDir>(producerChan.direction),
-            producerChan.channel, producer.getDimensionsToStreamAttr());
+  createDMA(producer, DMAChannelDir::MM2S, producerChannels[0],
+            producer.getDimensionsToStreamAttr());
   // generate objectFifo allocation info
   OpBuilder::InsertionGuard g(builder);
   builder.setInsertionPoint(&device.getBody()->back());
   if (deviceModel.isShimTile(producerProducerTileOp.getCol(),
-                             producerProducerTileOp.getRow()))
+                             producerProducerTileOp.getRow())) {
     builder.create<ShimDMAAllocationOp>(
-        builder.getUnknownLoc(), producer.getName(),
-        static_cast<xilinx::AIE::DMAChannelDir>(producerChan.direction),
-        producerChan.channel, producerProducerTileOp.getCol());
+        builder.getUnknownLoc(), producer.getName(), DMAChannelDir::MM2S,
+        producerChannels[0], producerProducerTileOp.getCol());
+  }
 
-  for (auto consumer : consumers) {
+  for (ObjectFifoCreateOp consumer : consumers) {
+    if (!consumerChannelsMap.contains(consumer.getProducerTile())) {
+      return consumer.emitOpError()
+             << "did not find producer tile in consumerChannelsMap";
+    }
+    uint8_t consumerChannel = consumerChannelsMap[consumer.getProducerTile()];
+
     // create consumer tile DMA
-    SwitchDMAConnection consumerChan =
-        dmaAnalysis.getConsumerDMAChannel(consumer.getProducerTile());
     BDDimLayoutArrayAttr consumerDims =
         consumer.getDimensionsFromStreamPerConsumer()[0];
-    createDMA(consumer, static_cast<DMAChannelDir>(consumerChan.direction),
-              consumerChan.channel, consumerDims);
+    createDMA(consumer, DMAChannelDir::S2MM, consumerChannel, consumerDims);
     // generate objectFifo allocation info
     OpBuilder::InsertionGuard gg(builder);
     builder.setInsertionPoint(&device.getBody()->back());
@@ -856,22 +862,13 @@ void createFlowsAndTileDMAs(
     TileOp consumerProducerTileOp =
         cast<TileOp>(consumer.getProducerTile().getDefiningOp());
     if (deviceModel.isShimTile(consumerProducerTileOp.getCol(),
-                               consumerProducerTileOp.getRow()))
+                               consumerProducerTileOp.getRow())) {
       builder.create<ShimDMAAllocationOp>(
-          builder.getUnknownLoc(), producer.getName(),
-          static_cast<xilinx::AIE::DMAChannelDir>(consumerChan.direction),
-          consumerChan.channel, consumerProducerTileOp.getCol());
-
-    // create flow
-    {
-      OpBuilder::InsertionGuard ggg(builder);
-      builder.setInsertionPointAfter(producer);
-      builder.create<FlowOp>(builder.getUnknownLoc(),
-                             producer.getProducerTile(), WireBundle::DMA,
-                             producerChan.channel, consumer.getProducerTile(),
-                             WireBundle::DMA, consumerChan.channel);
+          builder.getUnknownLoc(), producer.getName(), DMAChannelDir::S2MM,
+          consumerChannel, consumerProducerTileOp.getCol());
     }
   }
+  return success();
 }
 
 namespace mlir::iree_compiler::AMDAIE {
@@ -905,7 +902,6 @@ struct AMDAIEObjectFifoStatefulTransformPass : mlir::OperationPass<DeviceOp> {
 
   void runOnOperation() override {
     DeviceOp device = getOperation();
-    DMAChannelAnalysis dmaAnalysis;
     OpBuilder builder = OpBuilder::atBlockEnd(device.getBody());
     // maps each objFifo to its corresponding buffer
     DenseMap<ObjectFifoCreateOp, std::vector<BufferOp>> buffersPerFifo;
@@ -926,20 +922,32 @@ struct AMDAIEObjectFifoStatefulTransformPass : mlir::OperationPass<DeviceOp> {
         llvm::to_vector(device.getOps<ObjectFifoCreateOp>());
     for (ObjectFifoCreateOp createOp : createFifoOps) {
       if (auto _shareDirection = NONE;
-          !requiresDMAs(createOp, _shareDirection, splitBecauseLink))
+          !requiresDMAs(createOp, _shareDirection, splitBecauseLink)) {
         continue;
+      }
       splitFifo(device, createOp, builder, splitFifos);
     }
 
-    for (ObjectFifoCreateOp createOp : device.getOps<ObjectFifoCreateOp>())
+    for (ObjectFifoCreateOp createOp : device.getOps<ObjectFifoCreateOp>()) {
       createBuffersAndLocks(builder, device, createOp, splitBecauseLink,
                             objFifoLinks, buffersPerFifo, locksPerFifo);
+    }
+
+    DenseMap<StringRef, SmallVector<FlowOp>> symbolToFlowOps;
+    device.walk([&](FlowOp op) {
+      std::optional<StringRef> symbolAttr = op.getSymbol();
+      if (symbolAttr) symbolToFlowOps[symbolAttr.value()].push_back(op);
+    });
 
     // Only the objectFifos we split above require DMA communication; the others
     // rely on shared memory and share the same buffers.
-    for (auto &[producer, consumers] : splitFifos)
-      createFlowsAndTileDMAs(builder, device, producer, consumers, dmaAnalysis,
-                             locksPerFifo, objFifoLinks, buffersPerFifo);
+    for (auto &[producer, consumers] : splitFifos) {
+      if (failed(createFlowsAndTileDMAs(builder, device, producer, consumers,
+                                        locksPerFifo, objFifoLinks,
+                                        buffersPerFifo, symbolToFlowOps))) {
+        return signalPassFailure();
+      }
+    }
 
     // Replace ops
     for (auto coreOp : device.getOps<CoreOp>()) {

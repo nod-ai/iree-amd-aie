@@ -33,6 +33,15 @@ void BdIdOp::getAsmResultNames(function_ref<void(Value, StringRef)> setNameFn) {
 }
 
 //===----------------------------------------------------------------------===//
+// AMDAIE_ChannelOp
+//===----------------------------------------------------------------------===//
+
+void ChannelOp::getAsmResultNames(
+    function_ref<void(Value, StringRef)> setNameFn) {
+  setNameFn(getResult(), "channel");
+}
+
+//===----------------------------------------------------------------------===//
 // AMDAIE_ControlCodeOp
 //===----------------------------------------------------------------------===//
 
@@ -416,6 +425,11 @@ void CircularDmaCpyNdOp::getCanonicalizationPatterns(RewritePatternSet &results,
 //===----------------------------------------------------------------------===//
 // AMDAIE_ConnectionOp
 //===----------------------------------------------------------------------===//
+
+void ConnectionOp::build(mlir::OpBuilder &b, mlir::OperationState &result,
+                         Value target, Value source) {
+  build(b, result, target, {}, source, {});
+}
 
 FailureOr<AMDAIE::NpuCircularDmaCpyNdOp>
 ConnectionOp::getNpuCircularDmaCpyNdUser() {

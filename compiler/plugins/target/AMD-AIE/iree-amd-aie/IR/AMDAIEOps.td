@@ -205,6 +205,35 @@ def AMDAIE_BdIdOp: AMDAIE_Op<"bd_id", [
   let assemblyFormat = [{ `(` $tile `,` $value `)` attr-dict }];
 }
 
+def AMDAIE_ChannelOp: AMDAIE_Op<"channel", [
+    Pure,
+    DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>
+  ]>, Results<(outs Index)> {
+  let summary = "Represents a physical input or output channel/port on an AIE "
+                "tile.";
+  let description = [{
+    This operation represents a channel (or DMA port) on an AIE tile. The
+    operation is fully specified through a tile and channel ID value,
+    designating the exact physical DMA channel/port to be used. This op helps
+    with guaranteeing/verifying correct reuse of the same channel across
+    different DMA operations, for example for packet routing.
+
+    Example:
+
+    ```mlir
+    %tile = amdaie.tile(%c0, %c0)
+    %channel = amdaie.channel(%tile, 0)
+    ```
+  }];
+
+  let arguments = (
+    ins Index:$tile,
+        ConfinedAttr<I8Attr, [IntMinValue<0>]>:$value
+  );
+
+  let assemblyFormat = [{ `(` $tile `,` $value `)` attr-dict }];
+}
+
 //===----------------------------------------------------------------------===//
 // IREE AMDAIE Npu Ops
 //===----------------------------------------------------------------------===//
@@ -579,7 +608,8 @@ def AMDAIE_NpuDmaWaitOp: AMDAIE_Op<"npu.dma_wait", []> {
 // IREE AMDAIE LogicalObjectFifo Ops
 //===----------------------------------------------------------------------===//
 
-def AMDAIE_ConnectionOp: AMDAIE_Op<"connection", [Pure, CopyOpInterface]> {
+def AMDAIE_ConnectionOp: AMDAIE_Op<"connection",
+    [Pure, CopyOpInterface, AttrSizedOperandSegments]> {
   let summary = "A connection between two logical objectFifos.";
   let description = [{
     Represents a connection between logical objectFifos. This connection can be
@@ -599,14 +629,28 @@ def AMDAIE_ConnectionOp: AMDAIE_Op<"connection", [Pure, CopyOpInterface]> {
 
   let arguments = (
     ins AnyAMDAIELogicalObjectFifoType:$target,
-        AnyAMDAIELogicalObjectFifoType:$source
+        Variadic<Index>:$target_channels,
+        AnyAMDAIELogicalObjectFifoType:$source,
+        Variadic<Index>:$source_channels
         
   );
   let results = (outs Index:$result);
 
   let assemblyFormat = [{ 
-    `(` $target `,` $source `)`  attr-dict `:` `(` type($target) `,` type($source) `)`
+    `(`
+    $target
+    ( ` ` `{` $target_channels^  `}` )? 
+    `,`
+    $source 
+    ( ` ` `{` $source_channels^  `}` )?
+    `)`  
+    attr-dict
+    `:` `(` type($target) `,` type($source) `)`
   }];
+
+  let builders = [
+    OpBuilder<(ins "Value":$target, "::mlir::Value":$source)>
+  ];
 
   let extraClassDeclaration = [{
     Value getSourceMemref() { return getSource(); }

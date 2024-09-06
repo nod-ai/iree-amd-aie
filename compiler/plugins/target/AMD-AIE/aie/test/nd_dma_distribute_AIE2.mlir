@@ -107,6 +107,9 @@ module @ndDMAObjFifoAIE2 {
     %tile11 = aie.tile(2, 1)
     %tile22 = aie.tile(3, 2)
     %tile23 = aie.tile(3, 3)
+    aie.flow(%tile10, DMA : 0, %tile11, DMA : 0) {symbol = @of0}
+    aie.flow(%tile11, DMA : 0, %tile22, DMA : 0) {symbol = @of1}
+    aie.flow(%tile11, DMA : 1, %tile23, DMA : 0) {symbol = @of2}
     aie.objectfifo @of0 (%tile10, {%tile11},
                          2 : i32) : !aie.objectfifo<memref<256xi32>>
     aie.objectfifo @of1 (%tile11 toStream [<size = 4, stride = 64>,

@@ -577,4 +577,17 @@ LogicalResult DMABDOp::verify() {
   return success();
 }
 
+//===----------------------------------------------------------------------===//
+// AIE_FlowOp
+//===----------------------------------------------------------------------===//
+
+void FlowOp::build(OpBuilder &b, OperationState &result, Value source,
+                   mlir::iree_compiler::AMDAIE::StrmSwPortType source_bundle,
+                   uint8_t source_channel, Value dest,
+                   mlir::iree_compiler::AMDAIE::StrmSwPortType dest_bundle,
+                   uint8_t dest_channel) {
+  build(b, result, source, source_bundle, source_channel, dest, dest_bundle,
+        dest_channel, nullptr);
+}
+
 }  // namespace xilinx::AIE
