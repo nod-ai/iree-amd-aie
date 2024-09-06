@@ -494,8 +494,9 @@ def aie_vs_baseline(
             name,
         )
 
-        same_result = compare(baseline_value, aie_output, rtol, atol)
-        if not same_result:
+        summary_string = compare(baseline_value, aie_output, rtol, atol)
+        if summary_string:
+            print(summary_string)
             config.failures.append(test_file)
             if config.return_on_fail:
                 raise RuntimeError("Test failed, exiting.")
