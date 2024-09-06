@@ -59,7 +59,11 @@ jobs:
 
       - name: Python deps
         run: |
-          pip install "numpy<2" pyyaml "pybind11[global]==2.10.3" nanobind
+          pip install "numpy<2" pyyaml "pybind11[global]==2.10.3" nanobind pytest
+
+      - name: Run Pytest
+        run: |
+          pytest build_tools/ci
 
       - name: Enable cache
         uses: actions/cache/restore@v3
@@ -93,6 +97,7 @@ jobs:
         with:
           path: ${{ env.CACHE_DIR }}
           key: ${{ env.CACHE_KEY }}
+
 
   test_linux:
     name: E2E Test linux
@@ -169,7 +174,7 @@ jobs:
         run: |
           source .venv/bin/activate
           source /opt/xilinx/xrt/setup.sh
-          python3 build_tools/ci/cpu_comparison/run_test.py \
+          python3 build_tools/ci/cpu_comparison/run.py \
             test_aie_vs_cpu \
             iree-install \
             $PWD/llvm-aie \
@@ -195,7 +200,7 @@ jobs:
         run: |
           source .venv/bin/activate
           source /opt/xilinx/xrt/setup.sh
-          python3 build_tools/ci/cpu_comparison/run_test.py \
+          python3 build_tools/ci/cpu_comparison/run.py \
             test_aie_vs_cpu \
             $PWD/iree-install \
             $PWD/llvm-aie \
