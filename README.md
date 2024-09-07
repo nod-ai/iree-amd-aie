@@ -102,7 +102,7 @@ Finally, if you're "bringing your own LLVM", i.e., you have a prebuilt/compiled 
 
 Note, in this case you will need to supply `-DLLVM_EXTERNAL_LIT=$SOMEWHERE` (e.g., `pip install lit; SOMEWHERE=$(which lit)`).
 Note, also, getting the right/matching build of LLVM, that works with IREE is tough (besides the commit hash, there are various flags to set).
-To enable adventurous users to avail themselves of `-DIREE_BUILD_BUNDLED_LLVM=OFF` we cache/store/save the LLVM distribution for *every successful CI run*.
+To enable adventurous users to avail themselves of `-DIREE_BUILD_BUNDLED_LLVM=OFF` we cache/store/save the LLVM distribution for every successful CI run.
 These can then be downloaded by checking the artifacts section of any recent CI run's [Summary page](https://github.com/nod-ai/iree-amd-aie/actions/runs/10713474448):
 
 <p align="center">
