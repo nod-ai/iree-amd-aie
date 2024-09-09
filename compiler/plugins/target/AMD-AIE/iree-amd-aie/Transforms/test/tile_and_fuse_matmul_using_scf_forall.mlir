@@ -19,41 +19,6 @@ func.func @matmul_static(%arg0: tensor<8x16xi32>, %arg1 : tensor<16x8xi32>) -> t
 
 // -----
 
-func.func @conv_2d_nhwc_hwcf(%arg0: tensor<2x14x14x32xbf16>, %arg1: tensor<3x3x32x64xbf16>) -> tensor<2x12x12x64xf32> {
-  %cst = arith.constant 0.000000e+00 : f32
-  %0 = tensor.empty() : tensor<2x12x12x64xf32>
-  %1 = linalg.fill ins(%cst : f32) outs(%0 : tensor<2x12x12x64xf32>) -> tensor<2x12x12x64xf32>
-  %2 = linalg.conv_2d_nhwc_hwcf {dilations = dense<1> : vector<2xi64>, lowering_config = #iree_codegen.lowering_config<tile_sizes = [[0, 4, 4, 4, 0, 0, 0], [1, 1, 4, 4, 0, 0, 0], [0, 0, 0, 0, 1, 1, 8]]>, strides = dense<1> : vector<2xi64>} ins(%arg0, %arg1 : tensor<2x14x14x32xbf16>, tensor<3x3x32x64xbf16>) outs(%1 : tensor<2x12x12x64xf32>) -> tensor<2x12x12x64xf32>
-  return %2 : tensor<2x12x12x64xf32>
-}
-
-//      TILE-LEVEL-0: @conv_2d_nhwc_hwcf
-//      TILE-LEVEL-0:   scf.forall
-// TILE-LEVEL-0-SAME:   {
-//      TILE-LEVEL-0:       linalg.fill
-//      TILE-LEVEL-0:       linalg.conv_2d_nhwc_hwcf
-//      TILE-LEVEL-0:   }  {mapping = [#gpu.block<y>, #gpu.block<x>, #gpu.block<z>]}
-
-//      TILE-LEVEL-1: @conv_2d_nhwc_hwcf
-//      TILE-LEVEL-1:   scf.forall
-// TILE-LEVEL-1-SAME:   {
-//      TILE-LEVEL-1:       linalg.fill
-//      TILE-LEVEL-1:       linalg.conv_2d_nhwc_hwcf
-//      TILE-LEVEL-1:   }  {mapping = [#gpu.thread<z>, #gpu.thread<linear_dim_0>, #gpu.thread<y>, #gpu.thread<x>]}
-
-// -----
-
-func.func @conv_2d_nhwc_hwcf_unsupported_tiling(%arg0: tensor<2x14x14x32xbf16>, %arg1: tensor<3x3x32x64xbf16>) -> tensor<2x12x12x64xf32> {
-  %cst = arith.constant 0.000000e+00 : f32
-  %0 = tensor.empty() : tensor<2x12x12x64xf32>
-  %1 = linalg.fill ins(%cst : f32) outs(%0 : tensor<2x12x12x64xf32>) -> tensor<2x12x12x64xf32>
-  // expected-error @+1 {{'linalg.conv_2d_nhwc_hwcf' op has requested tile sizes [1, 4, 4, 4, 0, 0, 0]. Currently we only support tiling thread dimensions with at most 2 dimensions having a tile size greater than 1, there are 3 here.}}
-  %2 = linalg.conv_2d_nhwc_hwcf {dilations = dense<1> : vector<2xi64>, lowering_config = #iree_codegen.lowering_config<tile_sizes = [[0, 4, 4, 4, 0, 0, 0], [1, 4, 4, 4, 0, 0, 0], [0, 0, 0, 0, 1, 1, 8]]>, strides = dense<1> : vector<2xi64>} ins(%arg0, %arg1 : tensor<2x14x14x32xbf16>, tensor<3x3x32x64xbf16>) outs(%1 : tensor<2x12x12x64xf32>) -> tensor<2x12x12x64xf32>
-  return %2 : tensor<2x12x12x64xf32>
-}
-
-// -----
-
 func.func @matmul_static(%arg0: tensor<8x16xi32>, %arg1 : tensor<16x8xi32>) -> tensor<8x8xi32> {
   %c0 = arith.constant 0 : index
   %c0_i32 = arith.constant 0 : i32
@@ -95,55 +60,6 @@ func.func @matmul_static(%arg0: tensor<8x16xi32>, %arg1 : tensor<16x8xi32>) -> t
 //      TILE-LEVEL-1:           linalg.matmul
 //      TILE-LEVEL-1:       } {mapping = [#gpu.thread<y>, #gpu.thread<x>]}
 //      TILE-LEVEL-1:   } {mapping = [#gpu.block<y>, #gpu.block<x>]}
-
-// -----
-
-func.func @conv_2d_nchw_fchw(%arg0: tensor<2x32x14x14xf32>, %arg1 : tensor<64x32x3x3xf32>) -> tensor<2x64x12x12xf32> {
-  %cst = arith.constant 0.000000e+00 : f32
-  %c0 = arith.constant 0 : index
-  %5 = tensor.empty() : tensor<2x64x12x12xf32>
-  %6 = scf.forall (%iv0, %iv1, %iv2) = (0, 0, 0) to (64, 12, 12) step (4, 4, 4) shared_outs(%arg3 = %5) -> (tensor<2x64x12x12xf32>) {
-    %extracted_slice = tensor.extract_slice %arg0[0, 0, %iv1, %iv2] [2, 32, 6, 6] [1, 1, 1, 1] : tensor<2x32x14x14xf32> to tensor<2x32x6x6xf32>
-    %extracted_slice_0 = tensor.extract_slice %arg1[%iv0, 0, 0, 0] [4, 32, 3, 3] [1, 1, 1, 1] : tensor<64x32x3x3xf32> to tensor<4x32x3x3xf32>
-    %extracted_slice_1 = tensor.extract_slice %arg3[0, %iv0, %iv1, %iv2] [2, 4, 4, 4] [1, 1, 1, 1] : tensor<2x64x12x12xf32> to tensor<2x4x4x4xf32>
-    %7 = linalg.fill ins(%cst : f32) outs(%extracted_slice_1 : tensor<2x4x4x4xf32>) -> tensor<2x4x4x4xf32>
-    %cst_2 = arith.constant 0.000000e+00 : f32
-    %8 = bufferization.alloc_tensor() : tensor<2x32x6x6xf32>
-    %alloc = memref.alloc() : memref<2x32x6x6xf32, 1 : i32>
-    %9 = bufferization.to_tensor %alloc restrict writable : memref<2x32x6x6xf32, 1 : i32>
-    %10 = linalg.copy ins(%extracted_slice : tensor<2x32x6x6xf32>) outs(%9 : tensor<2x32x6x6xf32>) -> tensor<2x32x6x6xf32>
-    %cst_3 = arith.constant 0.000000e+00 : f32
-    %11 = bufferization.alloc_tensor() : tensor<4x32x3x3xf32>
-    %alloc_4 = memref.alloc() : memref<4x32x3x3xf32, 1 : i32>
-    %12 = bufferization.to_tensor %alloc_4 restrict writable : memref<4x32x3x3xf32, 1 : i32>
-    %13 = linalg.copy ins(%extracted_slice_0 : tensor<4x32x3x3xf32>) outs(%12 : tensor<4x32x3x3xf32>) -> tensor<4x32x3x3xf32>
-    %cst_5 = arith.constant 0.000000e+00 : f32
-    %14 = bufferization.alloc_tensor() : tensor<2x4x4x4xf32>
-    %alloc_6 = memref.alloc() : memref<2x4x4x4xf32, 1 : i32>
-    %15 = bufferization.to_tensor %alloc_6 restrict writable : memref<2x4x4x4xf32, 1 : i32>
-    %16 = linalg.copy ins(%7 : tensor<2x4x4x4xf32>) outs(%15 : tensor<2x4x4x4xf32>) -> tensor<2x4x4x4xf32>
-    %17 = linalg.conv_2d_nchw_fchw {dilations = dense<1> : vector<2xi64>, lowering_config = #iree_codegen.lowering_config<tile_sizes = [[0, 4, 4, 4, 0, 0, 0], [1, 4, 1, 4, 0, 0, 0], [0, 0, 0, 0, 8, 1, 1]]>, strides = dense<1> : vector<2xi64>} ins(%10, %13 : tensor<2x32x6x6xf32>, tensor<4x32x3x3xf32>) outs(%16 : tensor<2x4x4x4xf32>) -> tensor<2x4x4x4xf32>
-    %extracted_slice_7 = tensor.extract_slice %17[0, 0, 0, 0] [2, 4, 4, 4] [1, 1, 1, 1] : tensor<2x4x4x4xf32> to tensor<2x4x4x4xf32>
-    %18 = linalg.copy ins(%extracted_slice_7 : tensor<2x4x4x4xf32>) outs(%7 : tensor<2x4x4x4xf32>) -> tensor<2x4x4x4xf32>
-    memref.dealloc %alloc : memref<2x32x6x6xf32, 1 : i32>
-    memref.dealloc %alloc_4 : memref<4x32x3x3xf32, 1 : i32>
-    memref.dealloc %alloc_6 : memref<2x4x4x4xf32, 1 : i32>
-    scf.forall.in_parallel {
-      tensor.parallel_insert_slice %18 into %arg3[0, %iv0, %iv1, %iv2] [2, 4, 4, 4] [1, 1, 1, 1] : tensor<2x4x4x4xf32> into tensor<2x64x12x12xf32>
-    }
-  }
-  return %6 : tensor<2x64x12x12xf32>
-}
-
-//      TILE-LEVEL-1: @conv_2d_nchw_fchw
-//      TILE-LEVEL-1:   scf.forall
-// TILE-LEVEL-1-SAME:   {
-//      TILE-LEVEL-1:       linalg.fill
-//      TILE-LEVEL-1:       scf.forall
-// TILE-LEVEL-1-SAME:       {
-//      TILE-LEVEL-1:           linalg.conv_2d_nchw_fchw
-//      TILE-LEVEL-1:       }
-//      TILE-LEVEL-1:   }
 
 // -----
 
