@@ -136,7 +136,8 @@ apt install \
   pkg-config \
   protobuf-compiler \
   python3-pybind11 \
-  systemtap-sdt-dev
+  systemtap-sdt-dev \
+  uuid-dev
 ```
 
 ### RH Based Deps
@@ -154,5 +155,6 @@ yum install \
   pkgconfig \
   protobuf-compiler \
   protobuf-devel \
-  systemtap-sdt-devel
+  systemtap-sdt-devel \
+  uuid-devel
 ```

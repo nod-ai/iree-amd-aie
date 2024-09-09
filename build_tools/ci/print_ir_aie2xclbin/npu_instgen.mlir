@@ -1,7 +1,7 @@
 module attributes {hal.device.targets = [#hal.device.target<"xrt", [#hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_arch = "chip-tbd", ukernels = "none"}>]>]} {
   hal.executable private @dummy1 {
     hal.executable.variant public @amdaie_xclbin_fb target(<"amd-aie", "amdaie-xclbin-fb", {target_arch = "chip-tbd", ukernels = "none"}>) {
-      hal.executable.export public @dummy2 ordinal(0) layout(#hal.pipeline.layout<push_constants = 0, sets = [<0, bindings = [<0, storage_buffer, ReadOnly>]>]>) attributes {hal.interface.bindings = [#hal.interface.binding<0, 0>]} {
+      hal.executable.export public @dummy2 ordinal(0) layout(#hal.pipeline.layout<bindings = [<storage_buffer, ReadOnly>]>) {
       ^bb0(%arg0: !hal.device):
         %x, %y, %z = flow.dispatch.workgroup_count_from_slice
         hal.return %x, %y, %z : index, index, index
