@@ -2,27 +2,25 @@
 // RUN: iree-opt --amdaie-objectFifo-stateful-transform %s | FileCheck %s
 
 // CHECK-LABEL:   aie.device(xcve2302) {
-// CHECK:           memref.global "public" @from_memTile_cons : memref<16xi32>
 // CHECK:           memref.global "public" @from_memTile : memref<16xi32>
-// CHECK:           memref.global "public" @to_memTile_cons : memref<16xi32>
 // CHECK:           memref.global "public" @to_memTile : memref<16xi32>
-// CHECK:           %[[TILE_2_0:.*]] = aie.tile(2, 0)
-// CHECK:           %[[TILE_2_1:.*]] = aie.tile(2, 1)
-// CHECK:           %[[TILE_2_2:.*]] = aie.tile(2, 2)
-// CHECK:           %[[FROM_MEMTILE_CONS_BUFF_0:.*]] = aie.buffer(%[[TILE_2_2]]) {sym_name = "from_memTile_cons_buff_0"} : memref<16xi32>
-// CHECK:           %[[FROM_MEMTILE_CONS_BUFF_1:.*]] = aie.buffer(%[[TILE_2_2]]) {sym_name = "from_memTile_cons_buff_1"} : memref<16xi32>
-// CHECK:           %[[FROM_MEMTILE_CONS_PROD_LOCK:.*]] = aie.lock(%[[TILE_2_2]]) {init = 2 : i8, sym_name = "from_memTile_cons_prod_lock"}
-// CHECK:           %[[FROM_MEMTILE_CONS_CONS_LOCK:.*]] = aie.lock(%[[TILE_2_2]]) {init = 0 : i8, sym_name = "from_memTile_cons_cons_lock"}
-// CHECK:           %[[TO_MEMTILE_CONS_BUFF_0:.*]] = aie.buffer(%[[TILE_2_1]]) {sym_name = "to_memTile_cons_buff_0"} : memref<16xi32>
-// CHECK:           %[[TO_MEMTILE_CONS_BUFF_1:.*]] = aie.buffer(%[[TILE_2_1]]) {sym_name = "to_memTile_cons_buff_1"} : memref<16xi32>
-// CHECK:           %[[TO_MEMTILE_CONS_PROD_LOCK:.*]] = aie.lock(%[[TILE_2_1]]) {init = 2 : i8, sym_name = "to_memTile_cons_prod_lock"}
-// CHECK:           %[[TO_MEMTILE_CONS_CONS_LOCK:.*]] = aie.lock(%[[TILE_2_1]]) {init = 0 : i8, sym_name = "to_memTile_cons_cons_lock"}
-// CHECK:           %[[TO_MEMTILE_PROD_LOCK:.*]] = aie.lock(%[[TILE_2_0]]) {init = 0 : i8, sym_name = "to_memTile_prod_lock"}
-// CHECK:           %[[TO_MEMTILE_CONS_LOCK:.*]] = aie.lock(%[[TILE_2_0]]) {init = 0 : i8, sym_name = "to_memTile_cons_lock"}
-// CHECK:           aie.flow(%[[TILE_2_0]], DMA : 0, %[[TILE_2_1]], DMA : 0)
-// CHECK:           aie.flow(%[[TILE_2_1]], DMA : 0, %[[TILE_2_2]], DMA : 0)
-// CHECK:           %[[EXT_BUFF_IN:.*]] = aie.external_buffer {sym_name = "ext_buff_in"} : memref<16xi32>
-// CHECK:           aie.shim_dma_allocation @to_memTile(MM2S, 0, 2)
+// CHECK-DAG:       %[[TILE_2_0:.*]] = aie.tile(2, 0)
+// CHECK-DAG:       %[[TILE_2_1:.*]] = aie.tile(2, 1)
+// CHECK-DAG:       %[[TILE_2_2:.*]] = aie.tile(2, 2)
+// CHECK-DAG:       %[[FROM_MEMTILE_CONS_BUFF_0:.*]] = aie.buffer(%[[TILE_2_2]]) {sym_name = "from_memTile_cons_buff_0_0"} : memref<16xi32>
+// CHECK-DAG:       %[[FROM_MEMTILE_CONS_BUFF_1:.*]] = aie.buffer(%[[TILE_2_2]]) {sym_name = "from_memTile_cons_buff_0_1"} : memref<16xi32>
+// CHECK-DAG:       %[[FROM_MEMTILE_CONS_PROD_LOCK:.*]] = aie.lock(%[[TILE_2_2]]) {init = 2 : i8, sym_name = "from_memTile_cons_prod_lock_0"}
+// CHECK-DAG:       %[[FROM_MEMTILE_CONS_CONS_LOCK:.*]] = aie.lock(%[[TILE_2_2]]) {init = 0 : i8, sym_name = "from_memTile_cons_cons_lock_0"}
+// CHECK-DAG:       %[[TO_MEMTILE_CONS_BUFF_0:.*]] = aie.buffer(%[[TILE_2_1]]) {sym_name = "to_memTile_link_buff_0_0"} : memref<16xi32>
+// CHECK-DAG:       %[[TO_MEMTILE_CONS_BUFF_1:.*]] = aie.buffer(%[[TILE_2_1]]) {sym_name = "to_memTile_link_buff_0_1"} : memref<16xi32>
+// CHECK-DAG:       %[[TO_MEMTILE_CONS_PROD_LOCK:.*]] = aie.lock(%[[TILE_2_1]]) {init = 2 : i8, sym_name = "to_memTile_link_prod_lock_0"}
+// CHECK-DAG:       %[[TO_MEMTILE_CONS_CONS_LOCK:.*]] = aie.lock(%[[TILE_2_1]]) {init = 0 : i8, sym_name = "to_memTile_link_cons_lock_0"}
+// CHECK-DAG:       %[[TO_MEMTILE_PROD_LOCK:.*]] = aie.lock(%[[TILE_2_0]]) {init = 0 : i8, sym_name = "to_memTile_prod_prod_lock_0"}
+// CHECK-DAG:       %[[TO_MEMTILE_CONS_LOCK:.*]] = aie.lock(%[[TILE_2_0]]) {init = 0 : i8, sym_name = "to_memTile_prod_cons_lock_0"}
+// CHECK-DAG:       aie.flow(%[[TILE_2_0]], DMA : 0, %[[TILE_2_1]], DMA : 0)
+// CHECK-DAG:       aie.flow(%[[TILE_2_1]], DMA : 0, %[[TILE_2_2]], DMA : 0)
+// CHECK-DAG:       %[[EXT_BUFF_IN:.*]] = aie.external_buffer {sym_name = "ext_buff_in"} : memref<16xi32>
+// CHECK-DAG:       aie.shim_dma_allocation @to_memTile(MM2S, 0, 2)
 // CHECK:           %[[MEMTILE_DMA_2_1:.*]] = aie.memtile_dma(%[[TILE_2_1]]) {
 // CHECK:             %[[VAL_0:.*]] = aie.dma_start(S2MM, 0, ^bb1, ^bb3)
 // CHECK:           ^bb1:
@@ -66,7 +64,6 @@
 // CHECK:             aie.end
 // CHECK:           }
 // CHECK:         }
-
 module @link_DDR_L1 {
     aie.device(xcve2302) {
         %tile20 = aie.tile(2, 0)

@@ -2,35 +2,32 @@
 // RUN: iree-opt --amdaie-objectFifo-stateful-transform %s | FileCheck %s
 
 // CHECK-LABEL:   aie.device(xcve2302) {
-// CHECK:           memref.global "public" @of2_cons : memref<128xi32>
 // CHECK:           memref.global "public" @of2 : memref<128xi32>
-// CHECK:           memref.global "public" @of1_cons : memref<128xi32>
 // CHECK:           memref.global "public" @of1 : memref<128xi32>
-// CHECK:           memref.global "public" @of0_cons : memref<256xi32>
 // CHECK:           memref.global "public" @of0 : memref<256xi32>
-// CHECK:           %[[TILE_1_0:.*]] = aie.tile(2, 0)
-// CHECK:           %[[TILE_1_1:.*]] = aie.tile(2, 1)
-// CHECK:           %[[TILE_2_2:.*]] = aie.tile(3, 2)
-// CHECK:           %[[TILE_2_3:.*]] = aie.tile(3, 3)
-// CHECK:           %[[OF2_CONS_BUFF_0:.*]] = aie.buffer(%[[TILE_2_3]]) {sym_name = "of2_cons_buff_0"} : memref<128xi32>
-// CHECK:           %[[OF2_CONS_BUFF_1:.*]] = aie.buffer(%[[TILE_2_3]]) {sym_name = "of2_cons_buff_1"} : memref<128xi32>
-// CHECK:           %[[OF2_CONS_PROD_LOCK:.*]] = aie.lock(%[[TILE_2_3]]) {init = 2 : i8, sym_name = "of2_cons_prod_lock"}
-// CHECK:           %[[OF2_CONS_CONS_LOCK:.*]] = aie.lock(%[[TILE_2_3]]) {init = 0 : i8, sym_name = "of2_cons_cons_lock"}
-// CHECK:           %[[OF1_CONS_BUFF_0:.*]] = aie.buffer(%[[TILE_2_2]]) {sym_name = "of1_cons_buff_0"} : memref<128xi32>
-// CHECK:           %[[OF1_CONS_BUFF_1:.*]] = aie.buffer(%[[TILE_2_2]]) {sym_name = "of1_cons_buff_1"} : memref<128xi32>
-// CHECK:           %[[OF1_CONS_PROD_LOCK:.*]] = aie.lock(%[[TILE_2_2]]) {init = 2 : i8, sym_name = "of1_cons_prod_lock"}
-// CHECK:           %[[OF1_CONS_CONS_LOCK:.*]] = aie.lock(%[[TILE_2_2]]) {init = 0 : i8, sym_name = "of1_cons_cons_lock"}
-// CHECK:           %[[OF0_CONS_BUFF_0:.*]] = aie.buffer(%[[TILE_1_1]]) {sym_name = "of0_cons_buff_0"} : memref<256xi32>
-// CHECK:           %[[OF0_CONS_BUFF_1:.*]] = aie.buffer(%[[TILE_1_1]]) {sym_name = "of0_cons_buff_1"} : memref<256xi32>
-// CHECK:           %[[OF0_CONS_PROD_LOCK:.*]] = aie.lock(%[[TILE_1_1]]) {init = 4 : i8, sym_name = "of0_cons_prod_lock"}
-// CHECK:           %[[OF0_CONS_CONS_LOCK:.*]] = aie.lock(%[[TILE_1_1]]) {init = 0 : i8, sym_name = "of0_cons_cons_lock"}
-// CHECK:           %[[OF0_PROD_LOCK:.*]] = aie.lock(%[[TILE_1_0]]) {init = 0 : i8, sym_name = "of0_prod_lock"}
-// CHECK:           %[[OF0_CONS_LOCK:.*]] = aie.lock(%[[TILE_1_0]]) {init = 0 : i8, sym_name = "of0_cons_lock"}
-// CHECK:           aie.flow(%[[TILE_1_0]], DMA : 0, %[[TILE_1_1]], DMA : 0)
-// CHECK:           aie.flow(%[[TILE_1_1]], DMA : 0, %[[TILE_2_2]], DMA : 0)
-// CHECK:           aie.flow(%[[TILE_1_1]], DMA : 1, %[[TILE_2_3]], DMA : 0)
-// CHECK:           aie.shim_dma_allocation @of0(MM2S, 0, 2)
-// CHECK:           %[[MEMTILE_DMA_1_1:.*]] = aie.memtile_dma(%[[TILE_1_1]]) {
+// CHECK-DAG:       %[[TILE_2_0:.*]] = aie.tile(2, 0)
+// CHECK-DAG:       %[[TILE_2_1:.*]] = aie.tile(2, 1)
+// CHECK-DAG:       %[[TILE_3_2:.*]] = aie.tile(3, 2)
+// CHECK-DAG:       %[[TILE_3_3:.*]] = aie.tile(3, 3)
+// CHECK-DAG:       %[[OF2_CONS_BUFF_0:.*]] = aie.buffer(%[[TILE_3_3]]) {sym_name = "of2_cons_buff_1_0"} : memref<128xi32>
+// CHECK-DAG:       %[[OF2_CONS_BUFF_1:.*]] = aie.buffer(%[[TILE_3_3]]) {sym_name = "of2_cons_buff_1_1"} : memref<128xi32>
+// CHECK-DAG:       %[[OF2_CONS_PROD_LOCK:.*]] = aie.lock(%[[TILE_3_3]]) {init = 2 : i8, sym_name = "of2_cons_prod_lock_1"}
+// CHECK-DAG:       %[[OF2_CONS_CONS_LOCK:.*]] = aie.lock(%[[TILE_3_3]]) {init = 0 : i8, sym_name = "of2_cons_cons_lock_1"}
+// CHECK-DAG:       %[[OF1_CONS_BUFF_0:.*]] = aie.buffer(%[[TILE_3_2]]) {sym_name = "of1_cons_buff_0_0"} : memref<128xi32>
+// CHECK-DAG:       %[[OF1_CONS_BUFF_1:.*]] = aie.buffer(%[[TILE_3_2]]) {sym_name = "of1_cons_buff_0_1"} : memref<128xi32>
+// CHECK-DAG:       %[[OF1_CONS_PROD_LOCK:.*]] = aie.lock(%[[TILE_3_2]]) {init = 2 : i8, sym_name = "of1_cons_prod_lock_0"}
+// CHECK-DAG:       %[[OF1_CONS_CONS_LOCK:.*]] = aie.lock(%[[TILE_3_2]]) {init = 0 : i8, sym_name = "of1_cons_cons_lock_0"}
+// CHECK-DAG:       %[[OF0_CONS_BUFF_0:.*]] = aie.buffer(%[[TILE_2_1]]) {sym_name = "of0_link_buff_0_0"} : memref<256xi32>
+// CHECK-DAG:       %[[OF0_CONS_BUFF_1:.*]] = aie.buffer(%[[TILE_2_1]]) {sym_name = "of0_link_buff_0_1"} : memref<256xi32>
+// CHECK-DAG:       %[[OF0_CONS_PROD_LOCK:.*]] = aie.lock(%[[TILE_2_1]]) {init = 4 : i8, sym_name = "of0_link_prod_lock_0"}
+// CHECK-DAG:       %[[OF0_CONS_CONS_LOCK:.*]] = aie.lock(%[[TILE_2_1]]) {init = 0 : i8, sym_name = "of0_link_cons_lock_0"}
+// CHECK-DAG:       %[[OF0_PROD_LOCK:.*]] = aie.lock(%[[TILE_2_0]]) {init = 0 : i8, sym_name = "of0_prod_prod_lock_0"}
+// CHECK-DAG:       %[[OF0_CONS_LOCK:.*]] = aie.lock(%[[TILE_2_0]]) {init = 0 : i8, sym_name = "of0_prod_cons_lock_0"}
+// CHECK-DAG:       aie.flow(%[[TILE_2_0]], DMA : 0, %[[TILE_2_1]], DMA : 0)
+// CHECK-DAG:       aie.flow(%[[TILE_2_1]], DMA : 0, %[[TILE_3_2]], DMA : 0)
+// CHECK-DAG:       aie.flow(%[[TILE_2_1]], DMA : 1, %[[TILE_3_3]], DMA : 0)
+// CHECK-DAG        aie.shim_dma_allocation @of0(MM2S, 0, 2)
+// CHECK:           %[[MEMTILE_DMA_1_1:.*]] = aie.memtile_dma(%[[TILE_2_1]]) {
 // CHECK:             %[[VAL_0:.*]] = aie.dma_start(S2MM, 0, ^bb1, ^bb3)
 // CHECK:           ^bb1:
 // CHECK:             aie.use_lock(%[[OF0_CONS_PROD_LOCK]], AcquireGreaterEqual, 2)
@@ -69,7 +66,7 @@
 // CHECK:           ^bb9:
 // CHECK:             aie.end
 // CHECK:           }
-// CHECK:           %[[MEM_2_2:.*]] = aie.mem(%[[TILE_2_2]]) {
+// CHECK:           %[[MEM_2_2:.*]] = aie.mem(%[[TILE_3_2]]) {
 // CHECK:             %[[VAL_3:.*]] = aie.dma_start(S2MM, 0, ^bb1, ^bb3)
 // CHECK:           ^bb1:
 // CHECK:             aie.use_lock(%[[OF1_CONS_PROD_LOCK]], AcquireGreaterEqual, 1)
@@ -84,7 +81,7 @@
 // CHECK:           ^bb3:
 // CHECK:             aie.end
 // CHECK:           }
-// CHECK:           %[[MEM_2_3:.*]] = aie.mem(%[[TILE_2_3]]) {
+// CHECK:           %[[MEM_2_3:.*]] = aie.mem(%[[TILE_3_3]]) {
 // CHECK:             %[[VAL_4:.*]] = aie.dma_start(S2MM, 0, ^bb1, ^bb3)
 // CHECK:           ^bb1:
 // CHECK:             aie.use_lock(%[[OF2_CONS_PROD_LOCK]], AcquireGreaterEqual, 1)
@@ -100,7 +97,6 @@
 // CHECK:             aie.end
 // CHECK:           }
 // CHECK:         }
-
 module @ndDMAObjFifoAIE2 {
  aie.device(xcve2302) {
     %tile10 = aie.tile(2, 0)
