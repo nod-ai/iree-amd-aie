@@ -226,6 +226,14 @@ class WorkgroupBuilder {
                                            Block::iterator controlCodeBegin,
                                            Block::iterator controlCodeEnd);
 
+  /// Build function that handles `amdaie.core` by cloning it and adding it to
+  /// or merging it wtith the CoreContext.
+  LogicalResult buildForCoreOp(AMDAIE::CoreOp coreOp, Block *target,
+                               Block *controlCode, CoreContext &coreContext,
+                               Block::iterator targetBegin,
+                               Block::iterator controlCodeBegin,
+                               Block::iterator controlCodeEnd);
+
   /// Build function that handles `amdaie.dma_cpy_nd` by converting it into a
   /// workgroup DMA with potentially corresponding control code.
   LogicalResult buildForDmaCpyNdOp(AMDAIE::DmaCpyNdOp dmaOp, Block *target,
