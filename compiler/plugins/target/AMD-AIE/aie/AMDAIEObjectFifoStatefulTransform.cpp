@@ -77,8 +77,8 @@ struct ObjectFifoResources {
       : producerOffset(producerOffset), consumersOffset(consumersOffset) {}
 };
 
-std::vector<ObjectFifoCreateOp> getInputObjectFifos(ObjectFifoLinkOp &op) {
-  std::vector<ObjectFifoCreateOp> inputObjFifos;
+SmallVector<ObjectFifoCreateOp> getInputObjectFifos(ObjectFifoLinkOp &op) {
+  SmallVector<ObjectFifoCreateOp> inputObjFifos;
   Operation *parent = op.getOperation();
   while ((parent = parent->getParentOp())) {
     if (parent->hasTrait<OpTrait::SymbolTable>()) {
@@ -93,8 +93,8 @@ std::vector<ObjectFifoCreateOp> getInputObjectFifos(ObjectFifoLinkOp &op) {
   return inputObjFifos;
 }
 
-std::vector<ObjectFifoCreateOp> getOutputObjectFifos(ObjectFifoLinkOp &op) {
-  std::vector<ObjectFifoCreateOp> outputObjFifos;
+SmallVector<ObjectFifoCreateOp> getOutputObjectFifos(ObjectFifoLinkOp &op) {
+  SmallVector<ObjectFifoCreateOp> outputObjFifos;
   Operation *parent = op.getOperation();
   while ((parent = parent->getParentOp())) {
     if (parent->hasTrait<OpTrait::SymbolTable>()) {
@@ -202,8 +202,8 @@ void createDMA(DeviceOp &device, OpBuilder &builder, TileOp tileOp,
     OpBuilder::InsertionGuard gg(builder);
     builder.setInsertionPointToStart(dmaBlock);
     builder.create<DMAStartOp>(builder.getUnknownLoc(), channelDir,
-                               channelIndex,
-                               /*repeatCount*/ 0, bdBlock, &endBlock);
+                               channelIndex, /*repeatCount*/ 0, bdBlock,
+                               &endBlock);
   }
   if (lastDmaBlock) lastDmaBlock->getTerminator()->setSuccessor(dmaBlock, 1);
 
@@ -329,8 +329,8 @@ SmallVector<BufferOp> createBuffers(OpBuilder &builder,
                                     const std::string &prefix, size_t index) {
   SmallVector<BufferOp> buffers;
   if (deviceModel.isShimTile(tile.getCol(), tile.getRow())) return buffers;
-  auto fifoType = llvm::cast<AIEObjectFifoType>(createOp.getElemType());
-  auto elemType = llvm::cast<MemRefType>(fifoType.getElementType());
+  auto fifoType = cast<AIEObjectFifoType>(createOp.getElemType());
+  auto elemType = cast<MemRefType>(fifoType.getElementType());
   for (int ofElemIndex = 0; ofElemIndex < numBuffers; ofElemIndex++) {
     auto buff = builder.create<BufferOp>(
         builder.getUnknownLoc(), elemType, tile,
@@ -434,45 +434,45 @@ LogicalResult createBuffersAndLocks(
   AMDAIEDeviceModel deviceModel =
       getDeviceModel(static_cast<AMDAIEDevice>(device.getDevice()));
 
-  std::vector<ObjectFifoCreateOp> inputs = getInputObjectFifos(linkOp);
-  std::vector<ObjectFifoCreateOp> outputs = getOutputObjectFifos(linkOp);
-  assert(inputs.size() > 0);
-  assert(outputs.size() > 0);
+  SmallVector<ObjectFifoCreateOp> inputs = getInputObjectFifos(linkOp);
+  SmallVector<ObjectFifoCreateOp> outputs = getOutputObjectFifos(linkOp);
+  assert(inputs.size() > 0 && "there should be inputs in the link op");
+  assert(outputs.size() > 0 && "there should be outputs in the link op");
   uint32_t inputsOffset{0};
   for (ObjectFifoCreateOp input : inputs) {
     resourceMap[input] = ObjectFifoResources(0, inputsOffset);
-    auto fifoType = llvm::cast<AIEObjectFifoType>(input.getElemType());
-    auto fifoElemType = llvm::cast<MemRefType>(fifoType.getElementType());
+    auto fifoType = cast<AIEObjectFifoType>(input.getElemType());
+    auto fifoElemType = cast<MemRefType>(fifoType.getElementType());
     inputsOffset += fifoElemType.getNumElements();
   }
   uint32_t outputsOffset{0};
   for (ObjectFifoCreateOp output : outputs) {
     resourceMap[output] = ObjectFifoResources(outputsOffset, 0);
-    auto fifoType = llvm::cast<AIEObjectFifoType>(output.getElemType());
-    auto fifoElemType = llvm::cast<MemRefType>(fifoType.getElementType());
+    auto fifoType = cast<AIEObjectFifoType>(output.getElemType());
+    auto fifoElemType = cast<MemRefType>(fifoType.getElementType());
     outputsOffset += fifoElemType.getNumElements();
   }
 
   ObjectFifoCreateOp linkCreateOp;
-  std::vector<ObjectFifoCreateOp> linkOtherOps;
+  SmallVector<ObjectFifoCreateOp> linkOtherOps;
   TileOp linkTileOp;
   if (isJoin(linkOp)) {
-    assert(outputs.size() == 1);
+    assert(outputs.size() == 1 && "single output expected");
     linkCreateOp = outputs[0];
     linkOtherOps = inputs;
     linkTileOp = dyn_cast_if_present<TileOp>(
         linkCreateOp.getProducerTile().getDefiningOp());
   } else if (isDistribute(linkOp)) {
-    assert(inputs.size() == 1);
+    assert(inputs.size() == 1 && "single input expected");
     linkCreateOp = inputs[0];
     linkOtherOps = outputs;
     linkTileOp = dyn_cast_if_present<TileOp>(
         linkCreateOp.getConsumerTiles()[0].getDefiningOp());
   } else if (isOneToOne(linkOp)) {
-    auto inFifoType = llvm::cast<AIEObjectFifoType>(inputs[0].getElemType());
-    auto inFifoElemType = llvm::cast<MemRefType>(inFifoType.getElementType());
-    auto outFifoType = llvm::cast<AIEObjectFifoType>(outputs[0].getElemType());
-    auto outFifoElemType = llvm::cast<MemRefType>(outFifoType.getElementType());
+    auto inFifoType = cast<AIEObjectFifoType>(inputs[0].getElemType());
+    auto inFifoElemType = cast<MemRefType>(inFifoType.getElementType());
+    auto outFifoType = cast<AIEObjectFifoType>(outputs[0].getElemType());
+    auto outFifoElemType = cast<MemRefType>(outFifoType.getElementType());
     if (inFifoElemType.getNumElements() >= outFifoElemType.getNumElements()) {
       linkCreateOp = inputs[0];
       linkOtherOps = outputs;
@@ -516,7 +516,7 @@ LogicalResult createBuffersAndLocks(
           ObjectFifoEndpointResource(
               linkBuffers, LockResources(linkLockPair, inputLockAcqRel));
     }
-    // Swap locks for outpust to synchronize link inputs and outputs.
+    // Swap locks for outputs to synchronize link inputs and outputs.
     std::swap(linkLockPair.first, linkLockPair.second);
     uint8_t outputAcqRelValue = linkDepth / depth / outputs.size();
     std::pair<uint8_t, uint8_t> outputLockAcqRel =
@@ -618,14 +618,16 @@ LogicalResult createTileDMAs(
                                      "number of objectFifo consumers";
   }
 
-  auto fifo = llvm::cast<AIEObjectFifoType>(createOp.getElemType());
-  auto elemType = llvm::cast<MemRefType>(fifo.getElementType());
+  auto fifo = cast<AIEObjectFifoType>(createOp.getElemType());
+  auto elemType = cast<MemRefType>(fifo.getElementType());
   size_t size = elemType.getNumElements();
 
   // create producer tile DMA
   builder.setInsertionPoint(&device.getBody()->back());
   TileOp producerTileOp =
-      cast<TileOp>(createOp.getProducerTile().getDefiningOp());
+      dyn_cast_if_present<TileOp>(createOp.getProducerTile().getDefiningOp());
+  if (!producerTileOp)
+    return createOp.emitOpError() << "expected a producer TileOp";
   const ObjectFifoResources &opResource = resourceMap[createOp];
   const ObjectFifoEndpointResource &producerEndpointResource =
       opResource.producerResource;
@@ -635,10 +637,17 @@ LogicalResult createTileDMAs(
             producerOffset, producerEndpointResource);
 
   assert(opResource.consumerResources.size() ==
-         createOp.getConsumerTiles().size());
+             createOp.getConsumerTiles().size() &&
+         "same number of consumer resources expected as the number of consumer "
+         "tiles on the objectFifo");
   for (auto &&[idx, consumerTile] :
        llvm::enumerate(createOp.getConsumerTiles())) {
-    TileOp consumerTileOp = cast<TileOp>(consumerTile.getDefiningOp());
+    TileOp consumerTileOp =
+        dyn_cast_if_present<TileOp>(consumerTile.getDefiningOp());
+    if (!consumerTileOp) {
+      return createOp.emitOpError()
+             << "expected a consumer TileOp, but got: " << consumerTile;
+    }
     if (!consumerChannelsMap.contains(consumerTile)) {
       return createOp.emitOpError()
              << "did not find consumer tile (" << consumerTile
@@ -721,7 +730,13 @@ struct AMDAIEObjectFifoStatefulTransformPass : mlir::OperationPass<DeviceOp> {
 
     // Replace ops
     for (auto coreOp : device.getOps<CoreOp>()) {
-      TileOp tileOp = cast<TileOp>(coreOp.getTile().getDefiningOp());
+      TileOp tileOp =
+          dyn_cast_if_present<TileOp>(coreOp.getTile().getDefiningOp());
+      if (!tileOp) {
+        coreOp.emitOpError()
+            << "expected a TileOp, but got: " << coreOp.getTile();
+        return signalPassFailure();
+      }
       WalkResult res = coreOp.walk([&](ObjectFifoReleaseOp releaseOp) {
         if (failed(replaceReleaseOp(builder, releaseOp, tileOp, resourceMap))) {
           return WalkResult::interrupt();
@@ -749,8 +764,8 @@ struct AMDAIEObjectFifoStatefulTransformPass : mlir::OperationPass<DeviceOp> {
       auto symName = createOp.getName();
       createOp->setAttr(SymbolTable::getSymbolAttrName(),
                         builder.getStringAttr("__erase_" + symName));
-      auto memrefType = llvm::cast<AIEObjectFifoType>(createOp.getElemType())
-                            .getElementType();
+      auto memrefType =
+          cast<AIEObjectFifoType>(createOp.getElemType()).getElementType();
       builder.create<memref::GlobalOp>(builder.getUnknownLoc(), symName,
                                        builder.getStringAttr("public"),
                                        memrefType, nullptr, false, nullptr);
