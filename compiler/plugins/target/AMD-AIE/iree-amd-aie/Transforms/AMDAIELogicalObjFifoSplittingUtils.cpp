@@ -27,7 +27,7 @@ namespace mlir::iree_compiler::AMDAIE {
 static AMDAIE::LogicalObjectFifoFromMemrefOp createNewLogicalObjectFifo(
     IRRewriter &rewriter,
     AMDAIE::LogicalObjectFifoFromMemrefOp &oldLogicalObjectFifo,
-    SmallVector<OpFoldResult> &newSizesOpFoldResultArr) {
+    SmallVectorImpl<OpFoldResult> &newSizesOpFoldResultArr) {
   OpBuilder::InsertionGuard guard(rewriter);
   SmallVector<int64_t> newSizes;
   for (OpFoldResult sizeVal : newSizesOpFoldResultArr) {
@@ -57,12 +57,12 @@ static AMDAIE::LogicalObjectFifoFromMemrefOp createNewLogicalObjectFifo(
 
 /// Utility to help fetch those input DmaCpyNd Ops which needs to be split.
 SmallVector<AMDAIE::DmaCpyNdOp> fetchDmaCpyNdOpsToSplitOrCombine(
-    ModuleOp moduleOp) {
+    Operation *op) {
   SmallVector<AMDAIE::DmaCpyNdOp> l2ToL1DmaOps;
   // We are currently walking through CoreOps gathering 3rd Input DmaOp (if
   // applicable) from them.
   // TODO(avarma): We will generalize this later.
-  moduleOp.walk([&](AMDAIE::CoreOp coreOp) {
+  op->walk([&](AMDAIE::CoreOp coreOp) {
     SmallVector<Value> inputDmas = coreOp.getInputDmas();
     if (inputDmas.size() != 3) return WalkResult::skip();
     auto dmaCpyNdOp = inputDmas[2].getDefiningOp<AMDAIE::DmaCpyNdOp>();
@@ -200,17 +200,6 @@ static FailureOr<AMDAIE::DmaCpyNdOp> fetchL3ToL2DmaCpyNdOp(
     return failure();
   }
   l3ToL2DmaOp = l3ToL2DmaOps[0];
-  if ((l3ToL2DmaOp.getTargetMixedOffsets().size() !=
-       l3ToL2DmaOp.getSourceMixedOffsets().size()) ||
-      (l3ToL2DmaOp.getTargetMixedSizes().size() !=
-       l3ToL2DmaOp.getSourceMixedSizes().size()) ||
-      (l3ToL2DmaOp.getTargetMixedStrides().size() !=
-       l3ToL2DmaOp.getSourceMixedStrides().size())) {
-    LLVM_DEBUG(llvm::dbgs() << "dimensionality of source and target's "
-                               "offset/size/stride found different for "
-                            << l3ToL2DmaOp << "\n");
-    return failure();
-  }
   return l3ToL2DmaOp;
 }
 
@@ -280,6 +269,17 @@ static LogicalResult checkWhetherSplitIsPossible(
       fetchL3ToL2DmaCpyNdOp(l2ToL1DmaOps[0]);
   if (failed(maybeL3ToL2DmaOp)) return failure();
   AMDAIE::DmaCpyNdOp l3ToL2DmaOp = maybeL3ToL2DmaOp.value();
+  if ((l3ToL2DmaOp.getTargetMixedOffsets().size() !=
+       l3ToL2DmaOp.getSourceMixedOffsets().size()) ||
+      (l3ToL2DmaOp.getTargetMixedSizes().size() !=
+       l3ToL2DmaOp.getSourceMixedSizes().size()) ||
+      (l3ToL2DmaOp.getTargetMixedStrides().size() !=
+       l3ToL2DmaOp.getSourceMixedStrides().size())) {
+    LLVM_DEBUG(llvm::dbgs() << "dimensionality of source and target's "
+                               "offset/size/stride found different for "
+                            << l3ToL2DmaOp << "\n");
+    return failure();
+  }
 
   SmallVector<OpFoldResult, 4> staticL2AsTargetSizes =
       l3ToL2DmaOp.getTargetMixedSizes();
@@ -353,13 +353,13 @@ LogicalResult splitLogicalObjectFifos(
   toBeErased.insert(sourceAllocOp);
   toBeErased.insert(sourceObjectFifo);
 
-  SmallVector<OpFoldResult> staticL2AsTargetOffsets =
+  SmallVector<OpFoldResult, 4> staticL2AsTargetOffsets =
       l3ToL2DmaOp.getTargetMixedOffsets();
-  SmallVector<OpFoldResult> staticL2AsTargetSizes =
+  SmallVector<OpFoldResult, 4> staticL2AsTargetSizes =
       l3ToL2DmaOp.getTargetMixedSizes();
-  SmallVector<OpFoldResult> staticL3AsSourceOffsets =
+  SmallVector<OpFoldResult, 4> staticL3AsSourceOffsets =
       l3ToL2DmaOp.getSourceMixedOffsets();
-  SmallVector<OpFoldResult> staticL3AsSourceSizes =
+  SmallVector<OpFoldResult, 4> staticL3AsSourceSizes =
       l3ToL2DmaOp.getSourceMixedSizes();
   OpFoldResult zeroVal = getAsIndexOpFoldResult(context, 0);
   OpFoldResult oneVal = getAsIndexOpFoldResult(context, 1);
@@ -375,9 +375,9 @@ LogicalResult splitLogicalObjectFifos(
 
   // Traverse each L2->L1 DmaCpyNd op and split them.
   for (AMDAIE::DmaCpyNdOp l2ToL1DmaOp : l2ToL1DmaOps) {
-    SmallVector<OpFoldResult> staticL2AsSourceOffsets =
+    SmallVector<OpFoldResult, 6> staticL2AsSourceOffsets =
         l2ToL1DmaOp.getSourceMixedOffsets();
-    SmallVector<OpFoldResult> staticL2AsSourceSizes =
+    SmallVector<OpFoldResult, 6> staticL2AsSourceSizes =
         l2ToL1DmaOp.getSourceMixedSizes();
 
     // Now we'll create a new L2 buffer based on the new shape inferred earlier
