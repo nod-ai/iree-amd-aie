@@ -50,9 +50,9 @@ AMDAIE::CoreOp CoreContext::mergeCoreOps(AMDAIE::CoreOp source,
 }
 
 /// Clone CoreOp and add to or merge with coreContext.
-LogicalResult workgroupBuildForCoreOp(
-    IRRewriterAndMapper &rewriter, AMDAIE::CoreOp coreOp, Block *target,
-    Block *controlCode, CoreContext &coreContext, Block::iterator targetBegin,
+LogicalResult WorkgroupBuilder::buildForCoreOp(
+    AMDAIE::CoreOp coreOp, Block *target, Block *controlCode,
+    CoreContext &coreContext, Block::iterator targetBegin,
     Block::iterator controlCodeBegin, Block::iterator controlCodeEnd) {
   LLVM_DEBUG(llvm::dbgs() << "workgroupBuild [amdaie.core] Start\n");
   OpBuilder::InsertionGuard guard(rewriter);
@@ -301,9 +301,8 @@ LogicalResult WorkgroupBuilder::build(Operation *op, Block *target,
   OpBuilder::InsertionGuard guard(rewriter);
   return TypeSwitch<Operation *, LogicalResult>(op)
       .Case<AMDAIE::CoreOp>([&](auto coreOp) {
-        return workgroupBuildForCoreOp(rewriter, coreOp, target, controlCode,
-                                       coreContext, targetBegin,
-                                       controlCodeBegin, controlCodeEnd);
+        return buildForCoreOp(coreOp, target, controlCode, coreContext,
+                              targetBegin, controlCodeBegin, controlCodeEnd);
       })
       .Case<AMDAIE::CircularDmaCpyNdOp>([&](auto dmaOp) {
         return buildForCircularDmaCpyNdOp(dmaOp, target, controlCode,
