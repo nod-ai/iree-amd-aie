@@ -370,6 +370,9 @@ struct DmaDimConfig {
 LogicalResult moveNpuDmaSyncUsersAfterAncestorInSameBlock(
     RewriterBase &rewriter, Operation *parentOp);
 
+/// Utility to fetch a unique CoreOp associated with a L2->L1 Dma op.
+std::optional<CoreOp> fetchUniqueCoreOp(DmaCpyNdOp &l2ToL1DmaOp);
+
 }  // namespace mlir::iree_compiler::AMDAIE
 
 #endif

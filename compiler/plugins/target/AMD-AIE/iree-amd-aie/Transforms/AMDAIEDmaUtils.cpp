@@ -342,4 +342,17 @@ LogicalResult moveNpuDmaSyncUsersAfterAncestorInSameBlock(
   return success();
 }
 
+/// Utility to fetch a unique CoreOp associated with a L2->L1 Dma op.
+std::optional<CoreOp> fetchUniqueCoreOp(DmaCpyNdOp &l2ToL1DmaOp) {
+  SmallVector<CoreOp> coreOps;
+  for (Operation *userOp : l2ToL1DmaOp->getUsers()) {
+    if (auto coreOp = dyn_cast<CoreOp>(userOp)) {
+      coreOps.push_back(coreOp);
+    }
+  }
+  assert(coreOps.size() == 1 &&
+         "L2->L1 Dma op expected to have a unique Core op");
+  return coreOps[0];
+}
+
 }  // namespace mlir::iree_compiler::AMDAIE

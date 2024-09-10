@@ -496,13 +496,13 @@ static LogicalResult combineL3ToL2AccessPatterns(
     const SmallVector<OpFoldResult> &sizesB,
     const SmallVector<OpFoldResult> &stridesB,
     SmallVector<OpFoldResult> &newOffsets, SmallVector<OpFoldResult> &newSizes,
-    SmallVector<OpFoldResult> &newStrides, SmallVector<int64_t> &splitDims,
-    SmallVector<int64_t> &nonSplitDims) {
+    SmallVector<OpFoldResult> &newStrides, SmallVector<int64_t> &combiningDims,
+    SmallVector<int64_t> &nonCombiningDims) {
   if (offsetsA.empty() && offsetsB.empty()) return success();
 
   int64_t newSize = 1;
   for (auto iter : llvm::enumerate(llvm::zip(offsetsA, offsetsB))) {
-    if (iter.index() < splitDims.size()) continue;
+    if (iter.index() < combiningDims.size()) continue;
     const OpFoldResult &offsetA = std::get<0>(iter.value());
     const OpFoldResult &offsetB = std::get<1>(iter.value());
     if (offsetA != offsetB) {
@@ -511,18 +511,18 @@ static LogicalResult combineL3ToL2AccessPatterns(
       int64_t biasB = fetchOffsetBias(offsetB);
       std::optional<int64_t> sizeA = getConstantIntValue(sizesA[iter.index()]);
       assert(sizeA && "expected a constant integer value for size");
-      assert((sizeA == biasB - biasA) &&
-             "L3->L2 pair cannot be combined because offset is not contiguous");
+      if (sizeA != biasB - biasA) return failure();
       newSize++;
     }
   }
-  newSizes[splitDims.size() - 1] = rewriter.getI64IntegerAttr(newSize);
+  newSizes[combiningDims.size() - 1] = rewriter.getI64IntegerAttr(newSize);
   return success();
 }
 
 static FailureOr<LogicalObjectFifoFromMemrefOp> combineL3ToL2Pair(
     IRRewriter &rewriter, DmaCpyNdOp dmaOpA, DmaCpyNdOp dmaOpB,
-    SmallVector<int64_t> &splitDims, SmallVector<int64_t> &nonSplitDims) {
+    SmallVector<int64_t> &combiningDims,
+    SmallVector<int64_t> &nonCombiningDims) {
   OpBuilder::InsertionGuard guard(rewriter);
   SmallVector<OpFoldResult> sourceOffsetsA = dmaOpA.getSourceMixedOffsets();
   SmallVector<OpFoldResult> sourceSizesA = dmaOpA.getSourceMixedSizes();
@@ -544,7 +544,9 @@ static FailureOr<LogicalObjectFifoFromMemrefOp> combineL3ToL2Pair(
   if (failed(combineL3ToL2AccessPatterns(
           rewriter, sourceOffsetsA, sourceSizesA, sourceStridesA,
           sourceOffsetsB, sourceSizesB, sourceStridesB, newSourceOffsets,
-          newSourceSizes, newSourceStrides, splitDims, nonSplitDims))) {
+          newSourceSizes, newSourceStrides, combiningDims, nonCombiningDims))) {
+    dmaOpA->emitOpError()
+        << "L3->L2 pair cannot be combined because offset is not contiguous";
     return failure();
   }
 
@@ -570,20 +572,15 @@ static FailureOr<LogicalObjectFifoFromMemrefOp> combineL3ToL2Pair(
   return newL2ObjectFifo;
 }
 
-/// Utility to fetch a unique CoreOp associated with a L2->L1 Dma op.
-static CoreOp fetchUniqueCoreOp(DmaCpyNdOp &l2ToL1DmaOp) {
-  SmallVector<CoreOp> coreOps;
-  for (Operation *userOp : l2ToL1DmaOp->getUsers()) {
-    if (auto coreOp = dyn_cast<CoreOp>(userOp)) {
-      coreOps.push_back(coreOp);
-    }
-  }
-  assert(coreOps.size() == 1 &&
-         "L2->L1 Dma op expected to have a unique Core op");
-  return coreOps[0];
-}
-
-static bool compareL3ToL2DmaPair(DmaCpyNdOp &a, DmaCpyNdOp &b) {
+/// Utility comparator function that compares two DmaCpyNd ops `a` and `b`.
+/// Returns true if `a`'s offset is "less" than `b`'s. The following explains
+/// the notion of one offset being "less" than the other :-
+///     Offset A : N-dimension array.
+///     Offset B : N-dimension array.
+///     Then, A < B if :-
+///             A[i] < B[i] for `i` in [0, N-1]
+///     AND     A[0..i-1] == B[0..i-1]
+static bool compareL3ToL2DmaPairOffsets(DmaCpyNdOp &a, DmaCpyNdOp &b) {
   SmallVector<OpFoldResult> sourceOffsetsA = a.getSourceMixedOffsets();
   SmallVector<OpFoldResult> sourceSizesA = a.getSourceMixedSizes();
   SmallVector<OpFoldResult> sourceOffsetsB = b.getSourceMixedOffsets();
@@ -640,8 +637,9 @@ static bool compareL3ToL2DmaPair(DmaCpyNdOp &a, DmaCpyNdOp &b) {
   return false;
 }
 
-static LogicalResult checkIfSameDimensionalityAccessPatterns(
+static bool areAccessPatternsCompatibleForCombining(
     AMDAIE::DmaCpyNdOp &l3ToL2DmaOpA, AMDAIE::DmaCpyNdOp &l3ToL2DmaOpB) {
+  // Sources' access pattern check.
   SmallVector<OpFoldResult> sourceOffsetsA =
       l3ToL2DmaOpA.getSourceMixedOffsets();
   SmallVector<OpFoldResult> sourceSizesA = l3ToL2DmaOpA.getSourceMixedSizes();
@@ -657,8 +655,84 @@ static LogicalResult checkIfSameDimensionalityAccessPatterns(
       sourceStridesA.size() != sourceStridesB.size() ||
       sourceOffsetsA.size() != sourceSizesA.size() ||
       sourceOffsetsA.size() != sourceStridesB.size()) {
-    return failure();
+    return false;
   }
+  // Targets' access pattern check.
+  SmallVector<OpFoldResult> targetOffsetsA =
+      l3ToL2DmaOpA.getTargetMixedOffsets();
+  SmallVector<OpFoldResult> targetSizesA = l3ToL2DmaOpA.getTargetMixedSizes();
+  SmallVector<OpFoldResult> targetStridesA =
+      l3ToL2DmaOpA.getTargetMixedStrides();
+  SmallVector<OpFoldResult> targetOffsetsB =
+      l3ToL2DmaOpB.getTargetMixedOffsets();
+  SmallVector<OpFoldResult> targetSizesB = l3ToL2DmaOpB.getTargetMixedSizes();
+  SmallVector<OpFoldResult> targetStridesB =
+      l3ToL2DmaOpB.getTargetMixedStrides();
+  if (targetOffsetsA.size() != targetOffsetsB.size() ||
+      targetSizesA.size() != targetSizesB.size() ||
+      targetStridesA.size() != targetStridesB.size() ||
+      targetOffsetsA.size() != targetSizesA.size() ||
+      targetOffsetsA.size() != targetStridesB.size()) {
+    return false;
+  }
+  // Checking if targets' access pattern values are same.
+  auto isSameValue = [](SmallVector<OpFoldResult> &accessPatternA,
+                        SmallVector<OpFoldResult> &accessPatternB) -> bool {
+    for (auto [a, b] : llvm::zip_equal(accessPatternA, accessPatternB)) {
+      if (a != b) return false;
+    }
+    return true;
+  };
+  if (isSameValue(targetOffsetsA, targetOffsetsB) &&
+      isSameValue(targetSizesA, targetSizesB) &&
+      isSameValue(targetStridesA, targetStridesB)) {
+    return true;
+  }
+
+  return false;
+}
+
+static LogicalResult fetchCombiningDimensions(
+    SmallVector<AMDAIE::DmaCpyNdOp> &l3ToL2DmaOps,
+    SmallVector<int64_t> &combiningDims,
+    SmallVector<int64_t> &nonCombiningDims) {
+  // Fetch combining/non-combining dimensions. Currently we look for a
+  // continuous sequence of 0 offset dims with size as 1 to infer them as
+  // combining dimensions.
+  int64_t maxCombiningDimIndex = 0;
+  for (unsigned i = 0, n = l3ToL2DmaOps.size(); i < n; i++) {
+    SmallVector<OpFoldResult> sourceOffsets =
+        l3ToL2DmaOps[i].getSourceMixedOffsets();
+    SmallVector<OpFoldResult> sourceSizes =
+        l3ToL2DmaOps[i].getSourceMixedSizes();
+    unsigned j = 0, m = sourceOffsets.size();
+    // Traverse through the i-th L3->L2 Dma op's source offset/size to find a
+    // continuous sequence of 0 offset dims with size as 1.
+    while (j < m) {
+      std::optional<int64_t> constantOffset =
+          getConstantIntValue(sourceOffsets[j]);
+      if (!constantOffset || constantOffset.value() != 0) {
+        break;
+      }
+      std::optional<int64_t> constantSize = getConstantIntValue(sourceSizes[j]);
+      if (!constantSize || constantSize.value() != 1) {
+        break;
+      }
+      j++;
+    }
+    if (i == 0) {
+      maxCombiningDimIndex = j;
+    } else if (maxCombiningDimIndex != j) {
+      LLVM_DEBUG(llvm::dbgs()
+                 << "incompatible combining dimensions across L3->L2\n");
+      return failure();
+    }
+  }
+  combiningDims.assign(maxCombiningDimIndex, 0);
+  std::iota(combiningDims.begin(), combiningDims.end(), 0);
+  nonCombiningDims.assign(maxCombiningDimIndex, 0);
+  std::iota(nonCombiningDims.begin(), nonCombiningDims.end(),
+            combiningDims.size());
   return success();
 }
 
@@ -691,10 +765,11 @@ LogicalResult combineLogicalObjectFifos(
                  << " and " << l3ToL2DmaOps[i] << "\n");
       return failure();
     }
-    if (failed(checkIfSameDimensionalityAccessPatterns(l3ToL2DmaOps[0],
-                                                       l3ToL2DmaOps[i]))) {
-      LLVM_DEBUG(llvm::dbgs()
-                 << "Found different dimensionality of access patterns\n");
+    if (!areAccessPatternsCompatibleForCombining(l3ToL2DmaOps[0],
+                                                 l3ToL2DmaOps[i])) {
+      LLVM_DEBUG(
+          llvm::dbgs()
+          << "access patterns failed compatibility checks for combining\n");
       return failure();
     }
   }
@@ -706,43 +781,11 @@ LogicalResult combineLogicalObjectFifos(
     return failure();
   }
 
-  // Fetch split/non-split dimensions. Currently we look for a continuous
-  // sequence of 0 offset dims with size as 1 to infer them as split dimensions.
-  DenseSet<size_t> splitDimsSetForL2;
-  SmallVector<size_t> splitDimsForL2;
-  size_t maxSplitDimIndex = 0;
-  for (unsigned i = 0, n = l3ToL2DmaOps.size(); i < n; i++) {
-    SmallVector<OpFoldResult> sourceOffsets =
-        l3ToL2DmaOps[i].getSourceMixedOffsets();
-    SmallVector<OpFoldResult> sourceSizes =
-        l3ToL2DmaOps[i].getSourceMixedSizes();
-    unsigned j = 0, m = sourceOffsets.size();
-    // Traverse through the i-th L3->L2 Dma op's source offset/size to find a
-    // continuous sequence of 0 offset dims with size as 1.
-    while (j < m) {
-      std::optional<int64_t> constantOffset =
-          getConstantIntValue(sourceOffsets[j]);
-      if (!constantOffset || constantOffset.value() != 0) {
-        break;
-      }
-      std::optional<int64_t> constantSize = getConstantIntValue(sourceSizes[j]);
-      if (!constantSize || constantSize.value() != 1) {
-        break;
-      }
-      j++;
-    }
-    if (i == 0) {
-      maxSplitDimIndex = j;
-    } else if (maxSplitDimIndex != j) {
-      LLVM_DEBUG(llvm::dbgs()
-                 << "incompatible split dimensions across L3->L2\n");
-      return failure();
-    }
+  SmallVector<int64_t> combiningDims, nonCombiningDims;
+  if (failed(fetchCombiningDimensions(l3ToL2DmaOps, combiningDims,
+                                      nonCombiningDims))) {
+    return failure();
   }
-  SmallVector<int64_t> splitDims(maxSplitDimIndex);
-  std::iota(splitDims.begin(), splitDims.end(), 0);
-  SmallVector<int64_t> nonSplitDims(maxSplitDimIndex);
-  std::iota(nonSplitDims.begin(), nonSplitDims.end(), splitDims.size());
 
   // At this point it's nice to perhaps just sort the L3->L2 Dma ops based on
   // the "overlapping" offsets. And we'll sort the corresponding L2->L1 Dma ops
@@ -751,7 +794,8 @@ LogicalResult combineLogicalObjectFifos(
     DmaCpyNdOp currL3ToL2DmaOp = l3ToL2DmaOps[i];
     DmaCpyNdOp currL2ToL1DmaOp = l2ToL1DmaOps[i];
     int64_t j = i - 1;
-    while (j >= 0 && compareL3ToL2DmaPair(currL3ToL2DmaOp, l3ToL2DmaOps[j])) {
+    while (j >= 0 &&
+           compareL3ToL2DmaPairOffsets(currL3ToL2DmaOp, l3ToL2DmaOps[j])) {
       l3ToL2DmaOps[j + 1] = l3ToL2DmaOps[j];
       l2ToL1DmaOps[j + 1] = l2ToL1DmaOps[j];
       j--;
@@ -783,11 +827,30 @@ LogicalResult combineLogicalObjectFifos(
     rewriter.replaceOp(l2ToL1DmaOp, newL2ToL1DmaOp);
     return newL2ToL1DmaOp;
   };
+  // Till this point, we've created a L3->L2 DmaCpyNd chain that is sorted based
+  // on increasing offsets. Refer to `compareL3ToL2DmaPairOffsets`'s doc comment
+  // for the same. Now, we'll be picking up pairs of such DmaCpyNd ops from the
+  // chain, eg: pair[0,1], then pair[2,3], etc. For each such pair[i, i+1] we
+  // will make an attempt to combine the logical objectFifos as per the
+  // following algorithm :-
+  //  a. Combine i-th and i+1-th L3->L2 DmaCpyNd ops.
+  //  b. Since step a  would create a new L2 buffer (with combined shape), we
+  //  will
+  //     need to update the corresponding two L2->L1 Dma ops by indeed creating
+  //     new ones. NOTE: Both of these new L2->L1 Dma ops will be reusing the
+  //     same L1 buffers as well.
+  //  c. Now pick the unique core ops corresponding to i-th and i+1-th L2->L1
+  //  Dma
+  //     ops and do the following :-
+  //      1. For i-th CoreOp insert an AccessOp from the same L1 buffer towards
+  //      the end.
+  //      2. For i+1-th CoreOp insert an AccessOp from the same L1 buffer right
+  //      before the corresponding AccessOp within the same CoreOp.
   for (unsigned i = 0, n = l3ToL2DmaOps.size(); i < n; i += 2) {
     // Step 1. Combine the picked L3->L2 DmaCpyNd pair.
     FailureOr<LogicalObjectFifoFromMemrefOp> maybeNewL2ObjectFifo =
         combineL3ToL2Pair(rewriter, l3ToL2DmaOps[i], l3ToL2DmaOps[i + 1],
-                          splitDims, nonSplitDims);
+                          combiningDims, nonCombiningDims);
     if (failed(maybeNewL2ObjectFifo)) return failure();
     LogicalObjectFifoFromMemrefOp newL2ObjectFifo =
         maybeNewL2ObjectFifo.value();
@@ -796,7 +859,7 @@ LogicalResult combineLogicalObjectFifos(
     // changed. But for this we first need to find the new offset for L2 as
     // source.
     // TODO: For now I'm hardcoding the offsets but later it'd just depend
-    // on split/non-split dimensions.
+    // on combining/non-combining dimensions.
     // Offset = 0,0
     LogicalObjectFifoFromMemrefOp reuseL1LogicalObjectFifoOp =
         l2ToL1DmaOps[i].getTargetObjectFifo();
@@ -816,7 +879,10 @@ LogicalResult combineLogicalObjectFifos(
     // Step 3. PICK the CoreOps associated with the 1:1 L2->L1.
     // For the first Core op we'll insert Read at the end. It doesn't matter
     // for now so we're gonna insert it right before amdaie.end op.
-    CoreOp firstCoreOp = fetchUniqueCoreOp(newFirstL2ToL1DmaOp);
+    std::optional<CoreOp> maybeFirstCoreOp =
+        fetchUniqueCoreOp(newFirstL2ToL1DmaOp);
+    if (!maybeFirstCoreOp) return failure();
+    CoreOp firstCoreOp = maybeFirstCoreOp.value();
     firstCoreOp.walk([&](AMDAIE::EndOp endOp) {
       OpBuilder::InsertionGuard guard(rewriter);
       // Hardcoding to `AMDAIE::MemoryAccess::Read`.
@@ -827,22 +893,24 @@ LogicalResult combineLogicalObjectFifos(
     });
     // For the second Core op we'll insert `Read` right before the first read
     // from the corresponding L1 logicalobjectFifo.
-    CoreOp secondCoreOp = fetchUniqueCoreOp(newSecondL2ToL1DmaOp);
+    std::optional<CoreOp> maybeSecondCoreOp =
+        fetchUniqueCoreOp(newSecondL2ToL1DmaOp);
+    if (!maybeSecondCoreOp) return failure();
+    CoreOp secondCoreOp = maybeSecondCoreOp.value();
     secondCoreOp.walk([&](AMDAIE::LogicalObjectFifoAccessOp accessOp) {
       if (accessOp.getInput() == l2ToL1DmaOps[i + 1].getTargetObjectFifo()) {
         OpBuilder::InsertionGuard guard(rewriter);
-        // Hardcoding to `AMDAIE::MemoryAccess::Read`.
         rewriter.setInsertionPoint(accessOp);
         rewriter.create<AMDAIE::LogicalObjectFifoAccessOp>(
             rewriter.getUnknownLoc(), reuseL1LogicalObjectFifoOp.getOutput(),
-            AMDAIE::MemoryAccess::Read);
+            accessOp.getAccessType());
         // Need to insert the second one because THIS is what will actually
         // be used.
         auto secondAccessOp =
             rewriter.create<AMDAIE::LogicalObjectFifoAccessOp>(
                 rewriter.getUnknownLoc(),
                 reuseL1LogicalObjectFifoOp.getOutput(),
-                AMDAIE::MemoryAccess::Read);
+                accessOp.getAccessType());
         rewriter.replaceOp(accessOp, secondAccessOp);
       }
     });
