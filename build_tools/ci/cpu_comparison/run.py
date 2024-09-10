@@ -267,6 +267,7 @@ class TestConfig:
         self.return_on_fail = return_on_fail
         self.verbose = verbose
         self.xdna_datetime = None
+        self.xdna_hash = None
         self.reset_npu_between_runs = reset_npu_between_runs
         self.do_not_run_aie = do_not_run_aie
         self.additional_aie_compilation_flags = additional_aie_compilation_flags
@@ -275,6 +276,7 @@ class TestConfig:
         self.linux_kernel = "undetermined"
         self.xrt_hash_date = "undetermined"
         self.xrt_hash = "undetermined"
+        self.xdna_hash = "undetermined"
         self.xrt_release = "undetermined"
         self.peano_commit_hash = "undetermined"
 
@@ -339,14 +341,15 @@ class TestConfig:
         if xrt_hash:
             self.xrt_hash = xrt_hash[0]
 
-        xdna_datetime = re.findall(
+        xdna_datetime_hash = re.findall(
             # eg 2.18.0_20240606
-            r"amdxdna\s+:\s\d\.\d+\.\d+_(\d+)",
+            r"amdxdna\s+:\s\d\.\d+\.\d+_(\d+),\s(\w+)",
             xrt_info,
             flags=re.MULTILINE | re.IGNORECASE,
         )
-        if xdna_datetime:
-            self.xdna_datetime = int(xdna_datetime[0])
+        if xdna_datetime_hash:
+            self.xdna_datetime = int(xdna_datetime_hash[0][0])
+            self.xdna_hash = xdna_datetime_hash[0][1]
 
         # Try and get the peano commit hash. This is a bit of a hack, if it fails
         # peano_commit_has is left as "undetermined".
@@ -385,6 +388,8 @@ class TestConfig:
         xrt_hash_date:        {self.xrt_hash_date}
         xrt_hash:             {self.xrt_hash}
         xrt_release:          {self.xrt_release}
+        xdna_hash_date:       {self.xdna_datetime}
+        xdna_hash:            {self.xdna_hash}
         -+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-
 
         Some information on the above settings / versions

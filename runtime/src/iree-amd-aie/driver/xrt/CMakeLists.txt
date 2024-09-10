@@ -40,8 +40,6 @@ iree_cc_library(
     "nop_semaphore.cc"
     "nop_executable_cache.h"
     "nop_executable_cache.cc"
-    "pipeline_layout.h"
-    "pipeline_layout.cc"
   DEPS
     iree::base
     iree::base::core_headers

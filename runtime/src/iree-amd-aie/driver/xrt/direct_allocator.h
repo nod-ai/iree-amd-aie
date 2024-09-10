@@ -21,7 +21,7 @@ iree_status_t iree_hal_xrt_allocator_create(
     iree_allocator_t host_allocator, iree_hal_allocator_t** out_allocator);
 
 #ifdef __cplusplus
-}  // extern "C"
+}       // extern "C"
 #endif  // __cplusplus
 
 #endif  // IREE_AMD_AIE_DRIVER_XRT_DIRECT_ALLOCATOR_H_

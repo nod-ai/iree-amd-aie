@@ -28,7 +28,7 @@ typedef struct iree_hal_xrt_allocator_t {
   // The device that this allocator is attached to.
   iree_hal_device_t* base_device;
 
-  xrt::device *device;
+  xrt::device* device;
 
   iree_allocator_t host_allocator;
 
@@ -46,13 +46,13 @@ static iree_hal_xrt_allocator_t* iree_hal_xrt_allocator_cast(
 }
 
 iree_status_t iree_hal_xrt_allocator_create(
-    iree_hal_device_t* base_device, xrt::device *device,
+    iree_hal_device_t* base_device, xrt::device* device,
     iree_allocator_t host_allocator, iree_hal_allocator_t** out_allocator) {
   IREE_ASSERT_ARGUMENT(base_device);
   IREE_ASSERT_ARGUMENT(out_allocator);
   IREE_TRACE_ZONE_BEGIN(z0);
 
-  iree_hal_xrt_allocator_t* allocator = NULL;
+  iree_hal_xrt_allocator_t* allocator = nullptr;
   IREE_RETURN_AND_END_ZONE_IF_ERROR(
       z0, iree_allocator_malloc(host_allocator, sizeof(*allocator),
                                 (void**)&allocator));
@@ -184,7 +184,7 @@ static iree_status_t iree_hal_xrt_allocator_allocate_buffer(
                               "unable to allocate buffer");
   }
 
-  iree_hal_buffer_t* buffer = NULL;
+  iree_hal_buffer_t* buffer = nullptr;
   if (iree_status_is_ok(status)) {
     status = iree_hal_xrt_buffer_wrap(
         xrt_buffer.release(), base_allocator, compat_params.type,

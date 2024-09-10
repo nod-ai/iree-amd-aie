@@ -6,7 +6,7 @@
 
 #include "iree-amd-aie/driver/xrt/nop_semaphore.h"
 
-#include <stddef.h>
+#include <cstddef>
 
 #include "iree/base/api.h"
 #include "iree/hal/utils/semaphore_base.h"
@@ -33,7 +33,7 @@ iree_status_t iree_hal_xrt_semaphore_create(
   IREE_ASSERT_ARGUMENT(out_semaphore);
   IREE_TRACE_ZONE_BEGIN(z0);
 
-  iree_hal_xrt_semaphore_t* semaphore = NULL;
+  iree_hal_xrt_semaphore_t* semaphore = nullptr;
   iree_status_t status = iree_allocator_malloc(
       host_allocator, sizeof(*semaphore), (void**)&semaphore);
   if (iree_status_is_ok(status)) {

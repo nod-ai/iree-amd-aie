@@ -21,7 +21,7 @@ iree_status_t iree_hal_xrt_semaphore_create(
     iree_hal_semaphore_t** out_semaphore);
 
 #ifdef __cplusplus
-}  // extern "C"
+}       // extern "C"
 #endif  // __cplusplus
 
-#endif  // IREE_HAL_DRIVERS_XRT_NOP_SEMAPHORE_H_
+#endif  // IREE_AMD_AIE_DRIVER_XRT_NOP_SEMAPHORE_H_

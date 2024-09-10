@@ -6,7 +6,7 @@
 
 #include "iree-amd-aie/driver/xrt/native_executable.h"
 
-#include <stddef.h>
+#include <cstddef>
 
 #include "iree-amd-aie/schemas/xrt_executable_def_reader.h"
 #include "iree-amd-aie/schemas/xrt_executable_def_verifier.h"
@@ -105,8 +105,8 @@ iree_status_t iree_hal_xrt_native_executable_create(
   IREE_ASSERT_ARGUMENT(out_executable);
   IREE_TRACE_ZONE_BEGIN(z0);
 
-  *out_executable = NULL;
-  iree_hal_xrt_native_executable_t* executable = NULL;
+  *out_executable = nullptr;
+  iree_hal_xrt_native_executable_t* executable = nullptr;
 
   IREE_RETURN_AND_END_ZONE_IF_ERROR(
       z0, iree_amd_aie_hal_xrt_native_executable_flatbuffer_verify(
@@ -234,8 +234,6 @@ iree_status_t iree_hal_xrt_native_executable_create(
     params->kernel = kernel.release();
     params->instr = instr.release();
     params->num_instr = num_instr;
-    params->layout = executable_params->pipeline_layouts[entry_ordinal];
-    iree_hal_pipeline_layout_retain(params->layout);
 
     // Stash the entry point name in the string table for use when tracing.
     IREE_TRACE({
@@ -291,7 +289,6 @@ static void iree_hal_xrt_native_executable_destroy(
     } catch (...) {
       (void)iree_status_from_code(IREE_STATUS_DATA_LOSS);
     }
-    iree_hal_pipeline_layout_release(executable->entry_points[i].layout);
   }
   iree_allocator_free(host_allocator, executable);
 
