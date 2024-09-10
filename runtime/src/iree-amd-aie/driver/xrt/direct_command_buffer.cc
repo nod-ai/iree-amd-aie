@@ -361,7 +361,13 @@ static iree_status_t iree_hal_xrt_direct_command_buffer_dispatch(
     run.set_arg(arg_index + j, arg_buffer);
   }
   run.start();
-  run.wait();
+  try {
+    run.wait2();
+  } catch (...) {
+    IREE_TRACE_ZONE_END(z0);
+    return iree_make_status(IREE_STATUS_UNKNOWN,
+                            "failed to wait for xrt kernel run to finish");
+  }
   for (xrt::bo& bo : bos) bo.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
 
   IREE_TRACE_ZONE_END(z0);
