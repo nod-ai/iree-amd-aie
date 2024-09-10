@@ -29,10 +29,9 @@ static AMDAIE::LogicalObjectFifoFromMemrefOp createNewLogicalObjectFifo(
     AMDAIE::LogicalObjectFifoFromMemrefOp &oldLogicalObjectFifo,
     SmallVectorImpl<OpFoldResult> &newSizesOpFoldResultArr) {
   OpBuilder::InsertionGuard guard(rewriter);
-  SmallVector<int64_t> newSizes;
-  for (OpFoldResult sizeVal : newSizesOpFoldResultArr) {
-    newSizes.push_back(getConstantIndexOrAssert(sizeVal));
-  }
+  SmallVector<int64_t> newSizes = llvm::map_to_vector(
+      newSizesOpFoldResultArr,
+      [](OpFoldResult sizeVal) { return getConstantIndexOrAssert(sizeVal); });
   Value oldAllocOp = oldLogicalObjectFifo.getMemref();
   auto oldMemRefType = cast<MemRefType>(oldAllocOp.getType());
   MemRefType newAllocType = MemRefType::get(
