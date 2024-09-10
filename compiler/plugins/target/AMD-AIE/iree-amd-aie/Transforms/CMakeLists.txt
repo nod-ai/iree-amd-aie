@@ -53,6 +53,7 @@ iree_cc_library(
     "AMDAIECanonicalizeDma.cpp"
     "AMDAIECanonicalizeNpuDmaCpyNd.cpp"
     "AMDAIECanonicalizeDoublyStridedOp.cpp"
+    "AMDAIECombineLogicalObjFifosForConnectionReuse.cpp"
     "AMDAIECombineStridedOps.cpp"
     "AMDAIEControlCodeLoopUnroll.cpp"
     "AMDAIEConvertCoreForallToFor.cpp"

@@ -87,6 +87,10 @@ std::unique_ptr<Pass> createAMDAIECanonicalizeNpuDmaCpyNdPass();
 std::unique_ptr<Pass> createAMDAIECanonicalizeDoublyStridedOpPass(
     AMDAIECanonicalizeDoublyStridedOpOptions options = {});
 
+/// Create a pass to combine logicalobjectfifos for connection reuse.
+std::unique_ptr<Pass>
+createAMDAIECombineLogicalObjFifosForConnectionReusePass();
+
 /// Pass to unroll the loops within the control code regions.
 std::unique_ptr<Pass> createAMDAIEControlCodeLoopUnrollPass();
 

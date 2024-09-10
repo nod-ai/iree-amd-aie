@@ -19,6 +19,11 @@ LogicalResult splitLogicalObjectFifos(
     IRRewriter &rewriter, SmallVector<AMDAIE::DmaCpyNdOp> &l2ToL1DmaOps,
     MLIRContext *context);
 
+/// Utility to combine logicalobjectfifos given a vector of L2->L1 dma ops.
+LogicalResult combineLogicalObjectFifos(
+    IRRewriter &rewriter, SmallVector<AMDAIE::DmaCpyNdOp> &l2ToL1DmaOps,
+    MLIRContext *context);
+
 }  // namespace mlir::iree_compiler::AMDAIE
 
 #endif
