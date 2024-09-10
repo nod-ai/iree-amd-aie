@@ -768,7 +768,7 @@ LogicalResult combineLogicalObjectFifos(
 
   // Currently we have 4 cores so there are two pairs of DmaCpyNds to combine.
   // TODO(avarma): Revisit this later when we want to target more no. of cores.
-  if (l3ToL2DmaOps.size() % 2 == 0) {
+  if (l3ToL2DmaOps.size() % 2 != 0) {
     LLVM_DEBUG(llvm::dbgs()
                << "found uneven L3->L2 ops for combining\n");
     return failure();
