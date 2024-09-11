@@ -191,20 +191,11 @@ replace_string_in_file(
   "8UL" "static_cast<size_t>(8)")
 
 replace_string_in_file(
-  ${IREE_MLIR_AIR_SOURCE_DIR}/lib/Conversion/AIRToAIESchedulingUtils.cpp
-  "AIE::WireBundle::DMA" "mlir::iree_compiler::AMDAIE::StrmSwPortType::DMA")
-replace_string_in_file(
-  ${IREE_MLIR_AIR_SOURCE_DIR}/lib/Conversion/AIRToAIEPass.cpp
-  "AIE::AIETargetModel" "mlir::iree_compiler::AMDAIE::AMDAIEDeviceModel")
-replace_string_in_file(
   ${IREE_MLIR_AIR_SOURCE_DIR}/lib/Conversion/AIRToAIEPass.cpp
   "/*initial_value*/ nullptr," "")
 replace_string_in_file(
   ${IREE_MLIR_AIR_SOURCE_DIR}/lib/Conversion/AIRToAIEPass.cpp
-  "AIE::TileID" "mlir::iree_compiler::AMDAIE::TileLoc")
-replace_string_in_file(
-  ${IREE_MLIR_AIR_SOURCE_DIR}/lib/Conversion/AIRToAIEPass.cpp
-  "AIE::WireBundle::Trace" "mlir::iree_compiler::AMDAIE::StrmSwPortType::TRACE")
+  "::Trace" "::TRACE")
 replace_string_in_file(
   ${IREE_MLIR_AIR_SOURCE_DIR}/lib/Conversion/AIRToAIEPass.cpp
   "memtileToSizeMap[t] = m.getTargetModel().getMemTileSize()"
@@ -215,7 +206,7 @@ replace_string_in_file(
   "&target_model" "target_model")
 replace_string_in_file(
   ${IREE_MLIR_AIR_SOURCE_DIR}/lib/Conversion/AIRRtToNpuPass.cpp
-  "AIE::WireBundle::Trace" "mlir::iree_compiler::AMDAIE::StrmSwPortType::TRACE")
+  "::Trace" "::TRACE")
 
 iree_cc_library(
   NAME

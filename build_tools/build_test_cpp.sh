@@ -1,15 +1,22 @@
 #!/bin/bash
+#
+# Copyright 2024 The IREE Authors
+#
+# Licensed under the Apache License v2.0 with LLVM Exceptions.
+# See https://llvm.org/LICENSE.txt for license information.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 set -eux -o errtrace
 
 this_dir="$(cd $(dirname $0) && pwd)"
-repo_root="$(cd $this_dir/../.. && pwd)"
+repo_root="$(cd $this_dir/.. && pwd)"
 iree_dir="$(cd $repo_root/third_party/iree && pwd)"
 build_dir="$repo_root/iree-build"
 install_dir="$repo_root/iree-install"
 mkdir -p "$build_dir"
 build_dir="$(cd $build_dir && pwd)"
 cache_dir="${cache_dir:-}"
+llvm_install_dir="${llvm_install_dir:-}"
 
 # Setup cache dir.
 if [ -z "${cache_dir}" ]; then
@@ -24,17 +31,10 @@ mkdir -p "${cache_dir}/pip"
 python="$(which python)"
 echo "Using python: $python"
 
-# https://stackoverflow.com/a/8597411/9045206
-# note: on windows (git-bash) result is "msys"
-# well only if you have apparently the right version of git-bash installed
-# https://stackoverflow.com/a/72164385
 if [[ "$OSTYPE" == "linux-gnu"* ]]; then
   export CMAKE_TOOLCHAIN_FILE="$this_dir/linux_default_toolchain.cmake"
   export CC=clang
   export CXX=clang++
-elif [[ "$OSTYPE" == "msys"* ]]; then
-  export CC=clang-cl.exe
-  export CXX=clang-cl.exe
 fi
 
 export CCACHE_DIR="${cache_dir}/ccache"
@@ -82,7 +82,16 @@ CMAKE_ARGS="\
   -DCMAKE_OBJECT_PATH_MAX=4096 \
   -DIREE_CMAKE_PLUGIN_PATHS=$repo_root"
 
-if [[ "$OSTYPE" != "darwin"* ]]; then
+if [ -d "${llvm_install_dir}" ]; then
+  CMAKE_ARGS="$CMAKE_ARGS \
+    -DIREE_BUILD_BUNDLED_LLVM=OFF \
+    -DClang_DIR=$llvm_install_dir/lib/cmake/clang \
+    -DLLD_DIR=$llvm_install_dir/lib/cmake/lld \
+    -DMLIR_DIR=$llvm_install_dir/lib/cmake/mlir \
+    -DLLVM_DIR=$llvm_install_dir/lib/cmake/llvm"
+fi
+
+if [[ "$OSTYPE" == "linux-gnu"* ]]; then
   cmake $CMAKE_ARGS \
     -DCMAKE_EXE_LINKER_FLAGS_INIT="-fuse-ld=lld" \
     -DCMAKE_SHARED_LINKER_FLAGS_INIT="-fuse-ld=lld" \
@@ -93,8 +102,10 @@ if [[ "$OSTYPE" != "darwin"* ]]; then
     -DLLVM_TARGETS_TO_BUILD=X86 \
     -DIREE_EXTERNAL_HAL_DRIVERS=xrt \
     -S $iree_dir -B $build_dir
-else
+elif [[ "$OSTYPE" == "darwin"* ]]; then
   cmake $CMAKE_ARGS \
+    -DLLVM_TARGET_ARCH="X86;ARM" \
+    -DLLVM_TARGETS_TO_BUILD="X86;ARM" \
     -S $iree_dir -B $build_dir
 fi
 
@@ -113,9 +124,6 @@ if [[ "$OSTYPE" == "linux-gnu"* ]]; then
   ctest --test-dir "$build_dir" -R amd-aie --output-on-failure -j
 elif [[ "$OSTYPE" == "darwin"* ]]; then
   ctest --test-dir "$build_dir" -R amd-aie -E "matmul_pack_peel_air_e2e|matmul_elementwise_pack_peel_air_e2e|conv_fill_spec_pad" --output-on-failure -j --repeat until-pass:5
-elif [[ "$OSTYPE" == "msys"* ]]; then
-  # hack while windows is flaky to get past failing tests
-  ctest --test-dir "$build_dir" -R amd-aie --output-on-failure -j --repeat until-pass:5
 fi
 
 rm -f "$install_dir"/bin/clang*

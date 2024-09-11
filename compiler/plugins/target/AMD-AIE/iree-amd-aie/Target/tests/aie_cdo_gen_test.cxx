@@ -43,15 +43,17 @@ int main(int argc, char **argv) {
 
   auto deviceOps = moduleOp.getOps<xilinx::AIE::DeviceOp>();
   auto nDeviceOps = std::distance(deviceOps.begin(), deviceOps.end());
-  if (nDeviceOps != 1){
+  if (nDeviceOps != 1) {
     std::cerr << "Error: Expected exactly one xilinx.aie.device op\n";
     return 1;
   }
-  auto  deviceOp = *deviceOps.begin();
+  auto deviceOp = *deviceOps.begin();
   llvm::DebugFlag = true;
   const char *debugTypes[3] = {"aie-generate-cdo", "iree-aie-runtime",
                                "iree-aie-cdo-emitter"};
+#ifndef NDEBUG
   llvm::setCurrentDebugTypes(debugTypes, 3);
+#endif
   auto status = AIETranslateToCDODirect(deviceOp, workDir, false, false, false);
   std::vector<std::string> diagnostics;
   ScopedDiagnosticHandler handler(moduleOp.getContext(), [&](Diagnostic &d) {
@@ -63,7 +65,9 @@ int main(int argc, char **argv) {
     for (const auto &diagnostic : diagnostics) std::cerr << diagnostic << "\n";
 
   llvm::DebugFlag = false;
+#ifndef NDEBUG
   llvm::setCurrentDebugType("aie-cdo-driver-debug");
+#endif
   status = AIETranslateToCDODirect(deviceOp, workDir, false, false, true);
   if (failed(status))
     for (const auto &diagnostic : diagnostics) std::cerr << diagnostic << "\n";

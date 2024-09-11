@@ -24,6 +24,11 @@ concurrency:
   group: ci-build-test-cpp-macos-${{ github.event.number || github.sha }}
   cancel-in-progress: true
 
+defaults:
+  run:
+    # force bash instead of zsh
+    shell: bash
+
 jobs:
   build_and_ctest:
     name: Build and Test (${{ matrix.runs-on }}, ASSERTIONS)
@@ -78,18 +83,31 @@ jobs:
         run: |
           export cache_dir="${{ env.CACHE_DIR }}"
           export CCACHE_COMPILERCHECK="string:$(clang --version)"
-          bash build_tools/ci/build_test_cpp.sh
+          bash build_tools/build_llvm.sh
+          rm -rf llvm-build
+          export llvm_install_dir=$PWD/llvm-install
+          bash build_tools/build_test_cpp.sh
 
       - name: Create artifacts
         if: ${{ !cancelled() }}
         run: |
+          pushd third_party/iree/third_party/llvm-project && llvm_sha_short=$(git rev-parse --short HEAD) && popd
+          tar cf llvm-dist-${{ matrix.runs-on }}-$llvm_sha_short.tar llvm-install
           tar cf iree-dist-${{ matrix.runs-on }}.tar iree-install
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         if: ${{ !cancelled() }}
         with:
-          name: ${{ matrix.runs-on }}_release_packages
+          name: ${{ matrix.runs-on }}_llvm_packages
+          path: llvm-dist-*.tar
+          if-no-files-found: warn
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: ${{ matrix.runs-on }}_iree_packages
           path: iree-dist-${{ matrix.runs-on }}.tar
           if-no-files-found: warn
 

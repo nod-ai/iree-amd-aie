@@ -14,6 +14,11 @@ on:
         description: 'Run the build with a tmate session ONLY in case of failure'
         required: false
         default: false
+      force_ccache:
+        type: boolean
+        description: 'Force save ccache'
+        required: false
+        default: false
   pull_request:
   merge_group:
   push:
@@ -24,11 +29,6 @@ concurrency:
   group: ci-build-test-cpp-windows-${{ github.event.number || github.sha }}
   cancel-in-progress: true
 
-defaults:
-  run:
-    # force bash for windows
-    shell: bash
-
 jobs:
   build_and_ctest:
     name: Build and Test (windows, ASSERTIONS)
@@ -38,6 +38,9 @@ jobs:
     env:
       CACHE_DIR: ${{ github.workspace }}/.container-cache
       CACHE_KEY: windows-build-test-cpp-asserts-v1-${{ format('{0}-{1}', github.ref_name, github.run_number) }}
+    defaults:
+      run:
+        shell: powershell
     steps:
       - name: Set unified TZ
         uses: szenius/set-timezone@v2.0
@@ -51,6 +54,7 @@ jobs:
         env:
           BRANCH_NAME: ${{ github.ref }}
           REPO_ADDRESS: ${{ github.server_url }}/${{ github.repository }}
+        shell: bash
         run: |
           git init
           git remote add origin $REPO_ADDRESS
@@ -84,26 +88,43 @@ jobs:
 
       - name: Build packages
         run: |
-          export cache_dir="${{ env.CACHE_DIR }}"
-          export CCACHE_COMPILERCHECK="string:$(clang-cl.exe --version)"
-          bash build_tools/ci/build_test_cpp.sh
+          $env:cache_dir = "${{ env.CACHE_DIR }}"
+          $env:CCACHE_COMPILERCHECK = "string:$(clang-cl.exe --version)"
+          .\build_tools\build_llvm.ps1
+          ls
+          # Remove-Item -Path "$pwd\llvm-build" -Force
+          $env:llvm_install_dir = "$pwd\llvm-install"
+          echo $env:llvm_install_dir
+          .\build_tools.\build_test_cpp.ps1
 
       - name: Create artifacts
         if: ${{ !cancelled() }}
         run: |
+          pushd third_party/iree/third_party/llvm-project 
+          $llvm_sha_short = "$(git rev-parse --short HEAD)"
+          popd
+          tar cf llvm-dist-windows-$llvm_sha_short.tar llvm-install
           tar cf iree-dist-windows.tar iree-install
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         if: ${{ !cancelled() }}
         with:
-          name: windows_x86_64_release_packages
+          name: windows_x86_64_llvm_packages
+          path: llvm-dist-*.tar
+          if-no-files-found: warn
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: windows_x86_64_iree_packages
           path: iree-dist-windows.tar
           if-no-files-found: warn
 
       - name: Save cache
         uses: actions/cache/save@v3
-        if: ${{ !cancelled() && github.event_name == 'push' && github.ref_name == 'main' }}
+        if: ${{ !cancelled() && (inputs.force_ccache || github.event_name == 'push' && github.ref_name == 'main') }}
         with:
           path: ${{ env.CACHE_DIR }}
           key: ${{ env.CACHE_KEY }}
@@ -118,6 +139,9 @@ jobs:
     name: E2E Test windows
     runs-on: windows-phoenix
     needs: build_and_ctest
+    defaults:
+      run:
+        shell: bash
     strategy:
       fail-fast: true
     steps:
@@ -129,12 +153,19 @@ jobs:
       - name: Download artifacts
         uses: actions/download-artifact@v4
         with:
-          name: windows_x86_64_release_packages
+          name: windows_x86_64_iree_packages
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: windows_x86_64_llvm_packages
 
       - name: Extract artifact
         run: |
-          tar -xf iree-dist-windows.tar
-          bash build_tools/download_peano.sh
+          tar -xvf llvm-dist-windows-*.tar
+          echo "PATH=$PWD/llvm-install/bin:$PATH" >> $GITHUB_ENV
+          tar -xvf iree-dist-windows.tar
+          bash build_tools/download_peano.sh 
 
       - name: Create venv and install dependencies
         run: |
