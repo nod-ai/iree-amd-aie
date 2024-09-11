@@ -60,8 +60,6 @@ iree_cc_library(
     "nop_executable_cache.h"
     "pending_queue_actions.c"
     "pending_queue_actions.h"
-    "pipeline_layout.c"
-    "pipeline_layout.h"
     "queue_command_buffer.c"
     "queue_command_buffer.h"
     "timepoint_pool.c"
@@ -86,7 +84,7 @@ iree_cc_library(
     iree::hal::utils::memory_file
     iree::hal::utils::resource_set
     iree::hal::utils::semaphore_base
-    iree::schemas::rocm_executable_def_c_fbs
+    iree-amd-aie::schemas::hsa_executable_def_c_fbs
   PUBLIC
 )
 

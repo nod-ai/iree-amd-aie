@@ -42,9 +42,8 @@ iree_hal_hsa_nop_executable_cache_cast(
 
 iree_status_t iree_hal_hsa_nop_executable_cache_create(
     iree_string_view_t identifier,
-    const iree_hal_hsa_dynamic_symbols_t* symbols,
-    hsa_agent_t agent, iree_allocator_t host_allocator,
-    iree_hal_allocator_t* device_allocator,
+    const iree_hal_hsa_dynamic_symbols_t* symbols, hsa_agent_t agent,
+    iree_allocator_t host_allocator, iree_hal_allocator_t* device_allocator,
     iree_hal_executable_cache_t** out_executable_cache) {
   IREE_ASSERT_ARGUMENT(symbols);
   IREE_ASSERT_ARGUMENT(out_executable_cache);

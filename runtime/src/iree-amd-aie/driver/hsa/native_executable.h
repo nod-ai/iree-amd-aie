@@ -21,13 +21,9 @@ extern "C" {
 #endif  // __cplusplus
 
 typedef struct iree_hal_hsa_kernel_info_t {
-  iree_hal_pipeline_layout_t* layout;
-
   uint64_t kernel_object;
-
   uint32_t block_size[3];
   uint32_t shared_memory_size;
-
   uint32_t private_segment_size;
   uint32_t group_segment_size;
   uint32_t kernarg_segment_size;

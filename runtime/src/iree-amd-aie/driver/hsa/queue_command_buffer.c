@@ -9,10 +9,17 @@
 
 #include "iree-amd-aie/driver/hsa/hsa_buffer.h"
 #include "iree-amd-aie/driver/hsa/native_executable.h"
-#include "iree-amd-aie/driver/hsa/pipeline_layout.h"
 #include "iree-amd-aie/driver/hsa/status_util.h"
-// #include "iree-amd-aie/driver/hsa/tracing.h"
 #include "iree/hal/utils/resource_set.h"
+
+// The max number of bindings per descriptor set allowed in the HSA HAL
+// implementation.
+#define IREE_HAL_HSA_MAX_DESCRIPTOR_SET_BINDING_COUNT 16
+
+// The max number of descriptor sets allowed in the HSA HAL implementation.
+// This depends on the general descriptor set planning in IREE and should adjust
+// with it.
+#define IREE_HAL_HSA_MAX_DESCRIPTOR_SET_COUNT 4
 
 typedef struct iree_hal_hsa_queue_command_buffer_t {
   iree_hal_command_buffer_t base;
@@ -32,8 +39,6 @@ typedef struct iree_hal_hsa_queue_command_buffer_t {
   // Used for when we need HSA to be able to reference memory as it performs
   // asynchronous operations.
   iree_arena_allocator_t arena;
-
-  int32_t push_constants[IREE_HAL_HSA_MAX_PUSH_CONSTANT_COUNT];
 
   // The current bound descriptor sets.
   struct {
@@ -335,24 +340,6 @@ static iree_status_t iree_hal_hsa_queue_command_buffer_collective(
                           "collectives not yet supported");
 }
 
-static iree_status_t iree_hal_hsa_queue_command_buffer_push_constants(
-    iree_hal_command_buffer_t* base_command_buffer,
-    iree_hal_pipeline_layout_t* pipeline_layout, iree_host_size_t offset,
-    const void* values, iree_host_size_t values_length) {
-  iree_hal_hsa_queue_command_buffer_t* command_buffer =
-      iree_hal_hsa_queue_command_buffer_cast(base_command_buffer);
-  IREE_TRACE_ZONE_BEGIN(z0);
-
-  iree_host_size_t constant_base_index = offset / sizeof(int32_t);
-  for (iree_host_size_t i = 0; i < values_length / sizeof(int32_t); i++) {
-    command_buffer->push_constants[i + constant_base_index] =
-        ((uint32_t*)values)[i];
-  }
-
-  IREE_TRACE_ZONE_END(z0);
-  return iree_ok_status();
-}
-
 static iree_status_t iree_hal_hsa_queue_command_buffer_push_descriptor_set(
     iree_hal_command_buffer_t* base_command_buffer,
     iree_hal_pipeline_layout_t* pipeline_layout, uint32_t set,
@@ -394,8 +381,8 @@ static iree_status_t iree_hal_hsa_queue_command_buffer_push_descriptor_set(
 static iree_status_t iree_hal_hsa_queue_command_buffer_dispatch(
     iree_hal_command_buffer_t* base_command_buffer,
     iree_hal_executable_t* executable, int32_t entry_point,
-    uint32_t workgroup_x, uint32_t workgroup_y, uint32_t workgroup_z,
-    iree_hal_dispatch_flags_t flags) {
+    const uint32_t workgroup_count[3], iree_const_byte_span_t constants,
+    iree_hal_buffer_ref_list_t bindings, iree_hal_dispatch_flags_t flags) {
   iree_hal_hsa_queue_command_buffer_t* command_buffer =
       iree_hal_hsa_queue_command_buffer_cast(base_command_buffer);
   IREE_TRACE_ZONE_BEGIN(z0);
@@ -554,7 +541,8 @@ static iree_status_t iree_hal_hsa_queue_command_buffer_dispatch(
 static iree_status_t iree_hal_hsa_queue_command_buffer_dispatch_indirect(
     iree_hal_command_buffer_t* base_command_buffer,
     iree_hal_executable_t* executable, int32_t entry_point,
-    iree_hal_buffer_ref_t workgroups_ref, iree_hal_dispatch_flags_t flags) {
+    iree_hal_buffer_ref_t workgroups_ref, iree_const_byte_span_t constants,
+    iree_hal_buffer_ref_list_t bindings, iree_hal_dispatch_flags_t flags) {
   return iree_make_status(IREE_STATUS_UNIMPLEMENTED,
                           "need HSA implementation of dispatch indirect");
 }
@@ -577,9 +565,6 @@ static const iree_hal_command_buffer_vtable_t
         .update_buffer = iree_hal_hsa_queue_command_buffer_update_buffer,
         .copy_buffer = iree_hal_hsa_queue_command_buffer_copy_buffer,
         .collective = iree_hal_hsa_queue_command_buffer_collective,
-        .push_constants = iree_hal_hsa_queue_command_buffer_push_constants,
-        .push_descriptor_set =
-            iree_hal_hsa_queue_command_buffer_push_descriptor_set,
         .dispatch = iree_hal_hsa_queue_command_buffer_dispatch,
         .dispatch_indirect =
             iree_hal_hsa_queue_command_buffer_dispatch_indirect,

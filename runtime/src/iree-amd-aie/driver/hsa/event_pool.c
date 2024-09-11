@@ -42,7 +42,6 @@ struct iree_hal_hsa_event_t {
   hsa_signal_t signal;
 };
 
-
 hsa_signal_t iree_hal_hsa_signal_handle(const iree_hal_hsa_event_t* event) {
   return event->signal;
 }
