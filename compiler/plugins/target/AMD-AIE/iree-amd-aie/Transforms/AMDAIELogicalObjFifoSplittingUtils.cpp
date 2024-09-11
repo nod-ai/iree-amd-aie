@@ -855,6 +855,10 @@ LogicalResult combineLogicalObjectFifos(
     LogicalObjectFifoFromMemrefOp newL2ObjectFifo =
         maybeNewL2ObjectFifo.value();
 
+    LogicalObjectFifoFromMemrefOp oldFirstL1ObjFifoOp =
+        l2ToL1DmaOps[i].getTargetObjectFifo();
+    LogicalObjectFifoFromMemrefOp oldSecondL1ObjFifoOp =
+        l2ToL1DmaOps[i + 1].getTargetObjectFifo();
     // Step 2. Form the reusable L1 buffer by assigning the cumulative tiles of
     // the intended core ops.
     LogicalObjectFifoFromMemrefOp reuseL1LogicalObjectFifoOp =
@@ -892,12 +896,11 @@ LogicalResult combineLogicalObjectFifos(
     llvm::sort(tiles.begin(), tiles.end(),
                AMDAIE::TileOp::tileValueColumnAndRowComparator);
     rewriter.setInsertionPoint(reuseL1LogicalObjectFifoOp);
-    reuseL1LogicalObjectFifoOp =
-        rewriter.replaceOpWithNewOp<LogicalObjectFifoFromMemrefOp>(
-            reuseL1LogicalObjectFifoOp,
-            cast<LogicalObjectFifoType>(
-                reuseL1LogicalObjectFifoOp.getOutput().getType()),
-            reuseL1LogicalObjectFifoOp.getMemref(), tiles);
+    reuseL1LogicalObjectFifoOp = rewriter.create<LogicalObjectFifoFromMemrefOp>(
+        reuseL1LogicalObjectFifoOp.getLoc(),
+        cast<LogicalObjectFifoType>(
+            reuseL1LogicalObjectFifoOp.getOutput().getType()),
+        reuseL1LogicalObjectFifoOp.getMemref(), tiles);
 
     // Step 3. We now have need to create two L2->L1 ops since the size has
     // changed. But for this we first need to find the new offset for L2 as
@@ -907,9 +910,8 @@ LogicalResult combineLogicalObjectFifos(
     // Offset = 0,0
     SmallVector<OpFoldResult> newL2AsSourceOffsets =
         l2ToL1DmaOps[i].getSourceMixedOffsets();
-    DmaCpyNdOp newFirstL2ToL1DmaOp = createL2ToL1ForReuse(
-        rewriter, l2ToL1DmaOps[i], reuseL1LogicalObjectFifoOp, newL2ObjectFifo,
-        newL2AsSourceOffsets);
+    createL2ToL1ForReuse(rewriter, l2ToL1DmaOps[i], reuseL1LogicalObjectFifoOp,
+                         newL2ObjectFifo, newL2AsSourceOffsets);
     // Offset = 0, 1. NOTE here we'd use the same L1 logical objectFifo as
     // the first L2->L1 Dma.
     newL2AsSourceOffsets = l2ToL1DmaOps[i + 1].getSourceMixedOffsets();
@@ -922,7 +924,7 @@ LogicalResult combineLogicalObjectFifos(
     // For the first Core op we'll insert Read at the end. It doesn't matter
     // for now so we're gonna insert it right before amdaie.end op.
     firstCoreOp.walk([&](AMDAIE::LogicalObjectFifoAccessOp accessOp) {
-      if (accessOp.getInput() == newFirstL2ToL1DmaOp.getTargetObjectFifo()) {
+      if (accessOp.getInput() == oldFirstL1ObjFifoOp) {
         OpBuilder::InsertionGuard guard(rewriter);
         rewriter.setInsertionPointAfter(accessOp);
         rewriter.create<AMDAIE::LogicalObjectFifoAccessOp>(
@@ -933,7 +935,7 @@ LogicalResult combineLogicalObjectFifos(
     // For the second Core op we'll insert `Read` right before the first read
     // from the corresponding L1 logicalobjectFifo.
     secondCoreOp.walk([&](AMDAIE::LogicalObjectFifoAccessOp accessOp) {
-      if (accessOp.getInput() == l2ToL1DmaOps[i + 1].getTargetObjectFifo()) {
+      if (accessOp.getInput() == oldSecondL1ObjFifoOp) {
         OpBuilder::InsertionGuard guard(rewriter);
         rewriter.setInsertionPoint(accessOp);
         rewriter.create<AMDAIE::LogicalObjectFifoAccessOp>(
