@@ -7,9 +7,8 @@
 
 #include "iree-amd-aie/driver/hsa/timepoint_pool.h"
 
-#include <stdbool.h>
-#include <stddef.h>
-#include <string.h>
+#include <cstddef>
+#include <cstring>
 
 #include "iree-amd-aie/driver/hsa/dynamic_symbols.h"
 #include "iree-amd-aie/driver/hsa/event_pool.h"
@@ -30,10 +29,10 @@ static iree_status_t iree_hal_hsa_timepoint_allocate(
     iree_hal_hsa_timepoint_t** out_timepoint) {
   IREE_ASSERT_ARGUMENT(pool);
   IREE_ASSERT_ARGUMENT(out_timepoint);
-  *out_timepoint = NULL;
+  *out_timepoint = nullptr;
   IREE_TRACE_ZONE_BEGIN(z0);
 
-  iree_hal_hsa_timepoint_t* timepoint = NULL;
+  iree_hal_hsa_timepoint_t* timepoint = nullptr;
   IREE_RETURN_AND_END_ZONE_IF_ERROR(
       z0, iree_allocator_malloc(host_allocator, sizeof(*timepoint),
                                 (void**)&timepoint));
@@ -108,10 +107,10 @@ iree_status_t iree_hal_hsa_timepoint_pool_allocate(
   IREE_ASSERT_ARGUMENT(host_event_pool);
   IREE_ASSERT_ARGUMENT(device_event_pool);
   IREE_ASSERT_ARGUMENT(out_timepoint_pool);
-  *out_timepoint_pool = NULL;
+  *out_timepoint_pool = nullptr;
   IREE_TRACE_ZONE_BEGIN(z0);
 
-  iree_hal_hsa_timepoint_pool_t* timepoint_pool = NULL;
+  iree_hal_hsa_timepoint_pool_t* timepoint_pool = nullptr;
   iree_host_size_t total_size =
       sizeof(*timepoint_pool) +
       available_capacity * sizeof(*timepoint_pool->available_list);
@@ -219,8 +218,8 @@ iree_status_t iree_hal_hsa_timepoint_pool_acquire_host_wait(
 
   // Acquire host events to wrap up. This should happen before acquiring the
   // timepoints to avoid nested locks.
-  iree_event_t* host_events = iree_alloca(
-      timepoint_count * sizeof((*out_timepoints)->timepoint.host_wait));
+  iree_event_t* host_events = static_cast<iree_event_t*>(iree_alloca(
+      timepoint_count * sizeof((*out_timepoints)->timepoint.host_wait)));
   IREE_RETURN_AND_END_ZONE_IF_ERROR(
       z0, iree_event_pool_acquire(timepoint_pool->host_event_pool,
                                   timepoint_count, host_events));
@@ -245,8 +244,9 @@ iree_status_t iree_hal_hsa_timepoint_pool_acquire_device_signal(
 
   // Acquire device events to wrap up. This should happen before acquiring the
   // timepoints to avoid nested locks.
-  iree_hal_hsa_event_t** device_events = iree_alloca(
-      timepoint_count * sizeof((*out_timepoints)->timepoint.device_signal));
+  iree_hal_hsa_event_t** device_events = static_cast<iree_hal_hsa_event_t**>(
+      iree_alloca(timepoint_count *
+                  sizeof((*out_timepoints)->timepoint.device_signal)));
   IREE_RETURN_AND_END_ZONE_IF_ERROR(
       z0, iree_hal_hsa_event_pool_acquire(timepoint_pool->device_event_pool,
                                           timepoint_count, device_events));
@@ -271,8 +271,9 @@ iree_status_t iree_hal_hsa_timepoint_pool_acquire_device_wait(
 
   // Acquire device events to wrap up. This should happen before acquiring the
   // timepoints to avoid nested locks.
-  iree_hal_hsa_event_t** device_events = iree_alloca(
-      timepoint_count * sizeof((*out_timepoints)->timepoint.device_wait));
+  iree_hal_hsa_event_t** device_events =
+      static_cast<iree_hal_hsa_event_t**>(iree_alloca(
+          timepoint_count * sizeof((*out_timepoints)->timepoint.device_wait)));
   IREE_RETURN_AND_END_ZONE_IF_ERROR(
       z0, iree_hal_hsa_event_pool_acquire(timepoint_pool->device_event_pool,
                                           timepoint_count, device_events));

@@ -7,8 +7,7 @@
 
 #include "iree-amd-aie/driver/hsa/pending_queue_actions.h"
 
-#include <stdbool.h>
-#include <stddef.h>
+#include <cstddef>
 
 #include "iree-amd-aie/driver/hsa/dynamic_symbols.h"
 #include "iree-amd-aie/driver/hsa/event_semaphore.h"
@@ -63,7 +62,7 @@ typedef struct iree_hal_hsa_queue_action_t {
   // destruction.
   iree_hal_hsa_queue_action_state_t state;
   // The callback to run after completing this action and before freeing
-  // all resources. Can be NULL.
+  // all resources. Can be nullptr.
   iree_hal_hsa_pending_action_cleanup_callback_t cleanup_callback;
   // User data to pass into the callback.
   void* callback_user_data;
@@ -110,7 +109,7 @@ typedef struct iree_hal_hsa_queue_action_list_t {
 // Returns true if the action list is empty.
 static inline bool iree_hal_hsa_queue_action_list_is_empty(
     const iree_hal_hsa_queue_action_list_t* list) {
-  return list->head == NULL;
+  return list->head == nullptr;
 }
 
 // Pushes |action| on to the end of the given action |list|.
@@ -122,7 +121,7 @@ static void iree_hal_hsa_queue_action_list_push_back(
   } else {
     list->head = action;
   }
-  action->next = NULL;
+  action->next = nullptr;
   action->prev = list->tail;
   list->tail = action;
 }
@@ -135,13 +134,13 @@ static void iree_hal_hsa_queue_action_list_erase(
   iree_hal_hsa_queue_action_t* prev = action->prev;
   if (prev) {
     prev->next = next;
-    action->prev = NULL;
+    action->prev = nullptr;
   } else {
     list->head = next;
   }
   if (next) {
     next->prev = prev;
-    action->next = NULL;
+    action->next = nullptr;
   } else {
     list->tail = prev;
   }
@@ -154,14 +153,14 @@ static void iree_hal_hsa_queue_action_list_take_all(
   IREE_ASSERT_NE(available_list, ready_list);
   ready_list->head = available_list->head;
   ready_list->tail = available_list->tail;
-  available_list->head = NULL;
-  available_list->tail = NULL;
+  available_list->head = nullptr;
+  available_list->tail = nullptr;
 }
 
 // Frees all actions in the given |list|.
 static void iree_hal_hsa_queue_action_list_free_actions(
     iree_allocator_t host_allocator, iree_hal_hsa_queue_action_list_t* list) {
-  for (iree_hal_hsa_queue_action_t* action = list->head; action != NULL;) {
+  for (iree_hal_hsa_queue_action_t* action = list->head; action != nullptr;) {
     iree_hal_hsa_queue_action_t* next_action = action->next;
     iree_allocator_free(host_allocator, action);
     action = next_action;
@@ -280,8 +279,10 @@ struct iree_hal_hsa_pending_queue_actions_t {
   iree_hal_hsa_working_area_t working_area;
 };
 
-static const iree_hal_resource_vtable_t
+namespace {
+extern const iree_hal_resource_vtable_t
     iree_hal_hsa_pending_queue_actions_vtable;
+}
 
 iree_status_t iree_hal_hsa_pending_queue_actions_create(
     const iree_hal_hsa_dynamic_symbols_t* symbols,
@@ -292,7 +293,7 @@ iree_status_t iree_hal_hsa_pending_queue_actions_create(
   IREE_ASSERT_ARGUMENT(out_actions);
   IREE_TRACE_ZONE_BEGIN(z0);
 
-  iree_hal_hsa_pending_queue_actions_t* actions = NULL;
+  iree_hal_hsa_pending_queue_actions_t* actions = nullptr;
   IREE_RETURN_AND_END_ZONE_IF_ERROR(
       z0, iree_allocator_malloc(host_allocator, sizeof(*actions),
                                 (void**)&actions));
@@ -371,10 +372,11 @@ void iree_hal_hsa_pending_queue_actions_destroy(
   IREE_TRACE_ZONE_END(z0);
 }
 
-static const iree_hal_resource_vtable_t
-    iree_hal_hsa_pending_queue_actions_vtable = {
-        .destroy = iree_hal_hsa_pending_queue_actions_destroy,
+namespace {
+const iree_hal_resource_vtable_t iree_hal_hsa_pending_queue_actions_vtable = {
+    .destroy = iree_hal_hsa_pending_queue_actions_destroy,
 };
+}
 
 // Copies of the given |in_list| to |out_list| to retain the command buffer
 // list.
@@ -382,7 +384,7 @@ static iree_status_t iree_hal_hsa_copy_command_buffer_list(
     iree_host_size_t command_buffer_count,
     iree_hal_command_buffer_t* const* in_list, iree_allocator_t host_allocator,
     iree_hal_command_buffer_t*** out_list) {
-  *out_list = NULL;
+  *out_list = nullptr;
   if (!command_buffer_count) return iree_ok_status();
 
   iree_host_size_t total_size = command_buffer_count * sizeof(*in_list);
@@ -440,7 +442,7 @@ iree_status_t iree_hal_hsa_pending_queue_actions_enqueue_execution(
   IREE_ASSERT_ARGUMENT(command_buffer_count == 0 || command_buffers);
   IREE_TRACE_ZONE_BEGIN(z0);
 
-  iree_hal_hsa_queue_action_t* action = NULL;
+  iree_hal_hsa_queue_action_t* action = nullptr;
   IREE_RETURN_AND_END_ZONE_IF_ERROR(
       z0, iree_allocator_malloc(actions->host_allocator, sizeof(*action),
                                 (void**)&action));
@@ -458,7 +460,7 @@ iree_status_t iree_hal_hsa_pending_queue_actions_enqueue_execution(
   action->is_pending = true;
 
   // Retain all command buffers and semaphores.
-  iree_hal_resource_set_t* resource_set = NULL;
+  iree_hal_resource_set_t* resource_set = nullptr;
   iree_status_t status =
       iree_hal_resource_set_allocate(actions->block_pool, &resource_set);
   if (IREE_LIKELY(iree_status_is_ok(status))) {
@@ -552,7 +554,9 @@ static bool iree_hal_hsa_execution_device_signal_host_callback(
   iree_hal_hsa_worker_state_t prev_state =
       IREE_HAL_HSA_WORKER_STATE_IDLE_WAITING;
   iree_atomic_compare_exchange_strong_int32(
-      &actions->working_area.worker_state, /*expected=*/&prev_state,
+      &actions->working_area.worker_state,
+      // TODO(max): shouldn't these by int64 since they're ptrs?
+      /*expected=*/reinterpret_cast<int32_t*>(&prev_state),
       /*desired=*/IREE_HAL_HSA_WORKER_STATE_WORKLOAD_PENDING,
       /*order_succ=*/iree_memory_order_acq_rel,
       /*order_fail=*/iree_memory_order_acquire);
@@ -592,7 +596,7 @@ static iree_status_t iree_hal_hsa_pending_queue_actions_issue_execution(
   for (iree_host_size_t i = 0; i < action->payload.command_buffers.count; ++i) {
     iree_hal_command_buffer_t* command_buffer =
         action->payload.command_buffers.ptr[i];
-    iree_hal_command_buffer_t* queue_command_buffer = NULL;
+    iree_hal_command_buffer_t* queue_command_buffer = nullptr;
     iree_hal_command_buffer_mode_t mode =
         IREE_HAL_COMMAND_BUFFER_MODE_ONE_SHOT |
         IREE_HAL_COMMAND_BUFFER_MODE_ALLOW_INLINE_EXECUTION |
@@ -700,8 +704,8 @@ iree_status_t iree_hal_hsa_pending_queue_actions_issue(
     iree_hal_hsa_pending_queue_actions_t* actions) {
   IREE_TRACE_ZONE_BEGIN(z0);
 
-  iree_hal_hsa_queue_action_list_t pending_list = {NULL, NULL};
-  iree_hal_hsa_queue_action_list_t ready_list = {NULL, NULL};
+  iree_hal_hsa_queue_action_list_t pending_list = {nullptr, nullptr};
+  iree_hal_hsa_queue_action_list_t ready_list = {nullptr, nullptr};
 
   iree_slim_mutex_lock(&actions->action_mutex);
 
@@ -716,7 +720,7 @@ iree_status_t iree_hal_hsa_pending_queue_actions_issue(
   iree_hal_hsa_queue_action_t* action = actions->action_list.head;
   while (action) {
     iree_hal_hsa_queue_action_t* next_action = action->next;
-    action->next = NULL;
+    action->next = nullptr;
 
     iree_host_size_t semaphore_count = action->wait_semaphore_list.count;
     iree_hal_semaphore_t** semaphores = action->wait_semaphore_list.semaphores;
@@ -779,13 +783,13 @@ iree_status_t iree_hal_hsa_pending_queue_actions_issue(
 
   iree_slim_mutex_unlock(&actions->action_mutex);
 
-  if (ready_list.head == NULL) {
+  if (ready_list.head == nullptr) {
     // Nothing ready yet. Just return.
     IREE_TRACE_ZONE_END(z0);
     return status;
   }
 
-  iree_hal_hsa_atomic_slist_entry_t* entry = NULL;
+  iree_hal_hsa_atomic_slist_entry_t* entry = nullptr;
   // TODO: avoid host allocator malloc; use some pool for the allocation.
   if (iree_status_is_ok(status)) {
     status = iree_allocator_malloc(actions->host_allocator, sizeof(*entry),
@@ -813,7 +817,8 @@ iree_status_t iree_hal_hsa_pending_queue_actions_issue(
   iree_hal_hsa_worker_state_t prev_state =
       IREE_HAL_HSA_WORKER_STATE_IDLE_WAITING;
   iree_atomic_compare_exchange_strong_int32(
-      &actions->working_area.worker_state, /*expected=*/&prev_state,
+      &actions->working_area.worker_state,
+      /*expected=*/reinterpret_cast<int32_t*>(&prev_state),
       /*desired=*/IREE_HAL_HSA_WORKER_STATE_WORKLOAD_PENDING,
       /*order_succ=*/iree_memory_order_acq_rel,
       /*order_fail=*/iree_memory_order_acquire);
@@ -822,8 +827,9 @@ iree_status_t iree_hal_hsa_pending_queue_actions_issue(
 
   // Handle potential error cases from the worker thread.
   if (prev_state == IREE_HAL_HSA_WORKER_STATE_EXIT_ERROR) {
-    iree_status_code_t code = iree_atomic_load_int32(
-        &actions->working_area.error_code, iree_memory_order_acquire);
+    iree_status_code_t code =
+        static_cast<iree_status_code_t>(iree_atomic_load_int32(
+            &actions->working_area.error_code, iree_memory_order_acquire));
     status = iree_status_from_code(code);
   }
 
@@ -837,8 +843,9 @@ iree_status_t iree_hal_hsa_pending_queue_actions_issue(
 
 static bool iree_hal_hsa_worker_has_incoming_request(
     iree_hal_hsa_working_area_t* working_area) {
-  iree_hal_hsa_worker_state_t value = iree_atomic_load_int32(
-      &working_area->worker_state, iree_memory_order_acquire);
+  iree_hal_hsa_worker_state_t value =
+      static_cast<iree_hal_hsa_worker_state_t>(iree_atomic_load_int32(
+          &working_area->worker_state, iree_memory_order_acquire));
   // These are the only two possible states that set from the main thread to
   // the worker thread.
   return value == IREE_HAL_HSA_WORKER_STATE_WORKLOAD_PENDING ||
@@ -868,7 +875,7 @@ static iree_status_t iree_hal_hsa_worker_process_ready_list(
     iree_hal_hsa_queue_action_t* action = entry->ready_list_head;
     while (action) {
       iree_hal_hsa_queue_action_t* next_action = action->next;
-      action->next = NULL;
+      action->next = nullptr;
 
       switch (action->state) {
         case IREE_HAL_HSA_QUEUE_ACTION_STATE_ALIVE:
@@ -912,7 +919,8 @@ static int iree_hal_hsa_worker_execute(
     iree_hal_hsa_worker_state_t prev_state =
         IREE_HAL_HSA_WORKER_STATE_WORKLOAD_PENDING;
     iree_atomic_compare_exchange_strong_int32(
-        &working_area->worker_state, /*expected=*/&prev_state,
+        &working_area->worker_state,
+        /*expected=*/reinterpret_cast<int32_t*>(&prev_state),
         /*desired=*/IREE_HAL_HSA_WORKER_STATE_IDLE_WAITING,
         /*order_succ=*/iree_memory_order_acq_rel,
         /*order_fail=*/iree_memory_order_acquire);

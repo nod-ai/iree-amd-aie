@@ -8,16 +8,13 @@
 
 #include "iree-amd-aie/driver/hsa/event_pool.h"
 
-#include <stdbool.h>
-#include <stddef.h>
-#include <string.h>
+#include <cstring>
 
 #include "iree-amd-aie/driver/hsa/dynamic_symbols.h"
 #include "iree-amd-aie/driver/hsa/status_util.h"
 #include "iree/base/api.h"
 #include "iree/base/internal/atomics.h"
 #include "iree/base/internal/synchronization.h"
-#include "iree/hal/api.h"
 
 //===----------------------------------------------------------------------===//
 // iree_hal_hsa_event_t
@@ -35,8 +32,8 @@ struct iree_hal_hsa_event_t {
   // The symbols used to create and destroy signals objects.
   const iree_hal_hsa_dynamic_symbols_t* symbols;
 
-  // The event pool that owns this event. This cannot be NULL. We retain it to
-  // make sure the event outlive the pool.
+  // The event pool that owns this event. This cannot be nullptr. We retain it
+  // to make sure the event outlive the pool.
   iree_hal_hsa_event_pool_t* pool;
 
   hsa_signal_t signal;
@@ -65,10 +62,10 @@ static inline iree_status_t iree_hal_hsa_event_create(
   IREE_ASSERT_ARGUMENT(symbols);
   IREE_ASSERT_ARGUMENT(pool);
   IREE_ASSERT_ARGUMENT(out_event);
-  *out_event = NULL;
+  *out_event = nullptr;
   IREE_TRACE_ZONE_BEGIN(z0);
 
-  iree_hal_hsa_event_t* event = NULL;
+  iree_hal_hsa_event_t* event = nullptr;
   IREE_RETURN_AND_END_ZONE_IF_ERROR(
       z0,
       iree_allocator_malloc(host_allocator, sizeof(*event), (void**)&event));
@@ -79,7 +76,7 @@ static inline iree_status_t iree_hal_hsa_event_create(
 
   hsa_signal_value_t signal_value = 1;
   uint32_t num_consumers = 0;
-  const hsa_agent_t* consumers = NULL;
+  const hsa_agent_t* consumers = nullptr;
 
   iree_status_t status = IREE_HSA_RESULT_TO_STATUS(
       symbols,
@@ -153,10 +150,10 @@ iree_status_t iree_hal_hsa_event_pool_allocate(
     iree_hal_hsa_event_pool_t** out_event_pool) {
   IREE_ASSERT_ARGUMENT(symbols);
   IREE_ASSERT_ARGUMENT(out_event_pool);
-  *out_event_pool = NULL;
+  *out_event_pool = nullptr;
   IREE_TRACE_ZONE_BEGIN(z0);
 
-  iree_hal_hsa_event_pool_t* event_pool = NULL;
+  iree_hal_hsa_event_pool_t* event_pool = nullptr;
   iree_host_size_t total_size =
       sizeof(*event_pool) +
       available_capacity * sizeof(*event_pool->available_list);

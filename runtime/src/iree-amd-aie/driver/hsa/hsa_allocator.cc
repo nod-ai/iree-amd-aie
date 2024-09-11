@@ -7,8 +7,6 @@
 
 #include "iree-amd-aie/driver/hsa/hsa_allocator.h"
 
-#include <stddef.h>
-
 #include "iree-amd-aie/driver/hsa/dynamic_symbols.h"
 #include "iree-amd-aie/driver/hsa/hsa_buffer.h"
 #include "iree-amd-aie/driver/hsa/status_util.h"
@@ -41,7 +39,9 @@ typedef struct iree_hal_hsa_allocator_t {
   IREE_STATISTICS(iree_hal_allocator_statistics_t statistics;)
 } iree_hal_hsa_allocator_t;
 
-static const iree_hal_allocator_vtable_t iree_hal_hsa_allocator_vtable;
+namespace {
+extern const iree_hal_allocator_vtable_t iree_hal_hsa_allocator_vtable;
+}
 
 static iree_hal_hsa_allocator_t* iree_hal_hsa_allocator_cast(
     iree_hal_allocator_t* base_value) {
@@ -111,7 +111,7 @@ static hsa_status_t get_fine_grained_memory_pool(hsa_amd_memory_pool_t pool,
 static hsa_status_t iterate_find_cpu_agent_callback(hsa_agent_t agent,
                                                     void* base_allocator) {
   iree_hal_hsa_allocator_t* allocator =
-      iree_hal_hsa_allocator_cast(base_allocator);
+      iree_hal_hsa_allocator_cast((iree_hal_allocator_t*)base_allocator);
 
   hsa_device_type_t type;
   hsa_status_t status = allocator->symbols->hsa_agent_get_info(
@@ -181,7 +181,7 @@ iree_status_t iree_hal_hsa_allocator_create(
               : "no CONCURRENT_MANAGED_ACCESS (expect slow accesses on "
                 "device-local + host-visible memory)");
 
-  iree_hal_hsa_allocator_t* allocator = NULL;
+  iree_hal_hsa_allocator_t* allocator = nullptr;
   IREE_RETURN_AND_END_ZONE_IF_ERROR(
       z0, iree_allocator_malloc(host_allocator, sizeof(*allocator),
                                 (void**)&allocator));
@@ -455,8 +455,8 @@ static iree_status_t iree_hal_hsa_allocator_allocate_buffer(
 
   iree_status_t status = iree_ok_status();
   iree_hal_hsa_buffer_type_t buffer_type = IREE_HAL_HSA_BUFFER_TYPE_DEVICE;
-  void* host_ptr = NULL;
-  hsa_device_pointer_t device_ptr = NULL;
+  void* host_ptr = nullptr;
+  hsa_device_pointer_t device_ptr = nullptr;
   IREE_TRACE_ZONE_BEGIN_NAMED(z0, "iree_hal_hsa_buffer_allocate");
   IREE_TRACE_ZONE_APPEND_VALUE_I64(z0, allocation_size);
 
@@ -510,7 +510,7 @@ static iree_status_t iree_hal_hsa_allocator_allocate_buffer(
   }
   IREE_TRACE_ZONE_END(z0);
 
-  iree_hal_buffer_t* buffer = NULL;
+  iree_hal_buffer_t* buffer = nullptr;
   if (iree_status_is_ok(status)) {
     status = iree_hal_hsa_buffer_wrap(
         base_allocator, compat_params.type, compat_params.access,
@@ -610,8 +610,8 @@ static iree_status_t iree_hal_hsa_allocator_import_buffer(
 
   iree_status_t status = iree_ok_status();
   iree_hal_hsa_buffer_type_t buffer_type = IREE_HAL_HSA_BUFFER_TYPE_DEVICE;
-  void* host_ptr = NULL;
-  hsa_device_pointer_t device_ptr = NULL;
+  void* host_ptr = nullptr;
+  hsa_device_pointer_t device_ptr = nullptr;
 
   switch (external_buffer->type) {
     case IREE_HAL_EXTERNAL_BUFFER_TYPE_HOST_ALLOCATION: {
@@ -621,7 +621,7 @@ static iree_status_t iree_hal_hsa_allocator_import_buffer(
           allocator->symbols,
           hsa_amd_memory_lock_to_pool(host_ptr, external_buffer->size,
                                       &allocator->cpu_agent, num_agents,
-                                      allocator->cpu_pool, flags, device_ptr),
+                                      allocator->cpu_pool, flags, &device_ptr),
           "hsa_amd_memory_lock_to_pool");
 
       break;
@@ -638,7 +638,7 @@ static iree_status_t iree_hal_hsa_allocator_import_buffer(
                               "external buffer type not supported");
   }
 
-  iree_hal_buffer_t* buffer = NULL;
+  iree_hal_buffer_t* buffer = nullptr;
   if (iree_status_is_ok(status)) {
     status = iree_hal_hsa_buffer_wrap(
         base_allocator, compat_params.type, compat_params.access,
@@ -693,7 +693,8 @@ static iree_status_t iree_hal_hsa_allocator_export_buffer(
   }
 }
 
-static const iree_hal_allocator_vtable_t iree_hal_hsa_allocator_vtable = {
+namespace {
+const iree_hal_allocator_vtable_t iree_hal_hsa_allocator_vtable = {
     .destroy = iree_hal_hsa_allocator_destroy,
     .host_allocator = iree_hal_hsa_allocator_host_allocator,
     .trim = iree_hal_hsa_allocator_trim,
@@ -706,3 +707,4 @@ static const iree_hal_allocator_vtable_t iree_hal_hsa_allocator_vtable = {
     .import_buffer = iree_hal_hsa_allocator_import_buffer,
     .export_buffer = iree_hal_hsa_allocator_export_buffer,
 };
+}

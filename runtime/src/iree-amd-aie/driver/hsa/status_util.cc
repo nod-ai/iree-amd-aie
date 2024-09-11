@@ -7,8 +7,6 @@
 
 #include "iree-amd-aie/driver/hsa/status_util.h"
 
-#include <stddef.h>
-
 #include "iree-amd-aie/driver/hsa/dynamic_symbols.h"
 #include "iree/base/status.h"
 
@@ -178,7 +176,7 @@ iree_status_t iree_hal_hsa_result_to_status(
 
   const char* error_name = hsa_status_to_string(result);
 
-  const char* error_string = NULL;
+  const char* error_string = nullptr;
   hsa_status_t status_string_result =
       syms->hsa_status_string(result, &error_string);
   if (status_string_result != HSA_STATUS_SUCCESS) {

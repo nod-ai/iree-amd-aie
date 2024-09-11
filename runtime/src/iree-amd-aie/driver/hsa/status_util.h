@@ -8,7 +8,7 @@
 #ifndef IREE_EXPERIMENTAL_HSA_STATUS_UTIL_H_
 #define IREE_EXPERIMENTAL_HSA_STATUS_UTIL_H_
 
-#include <stdint.h>
+#include <cstdint>
 
 #include "iree-amd-aie/driver/hsa/dynamic_symbols.h"
 #include "iree/base/api.h"

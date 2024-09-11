@@ -7,7 +7,10 @@
 
 #include "iree-amd-aie/driver/hsa/native_executable.h"
 
-#include <stddef.h>
+#include <cstddef>
+#include <fstream>
+#include <iostream>
+#include <vector>
 
 #include "iree-amd-aie/driver/hsa/dynamic_symbols.h"
 #include "iree-amd-aie/driver/hsa/status_util.h"
@@ -38,7 +41,9 @@ typedef struct iree_hal_hsa_native_executable_t {
 } iree_hal_hsa_native_executable_t;
 // + Additional inline allocation for holding entry point information.
 
-static const iree_hal_executable_vtable_t iree_hal_hsa_native_executable_vtable;
+namespace {
+extern const iree_hal_executable_vtable_t iree_hal_hsa_native_executable_vtable;
+}
 
 static iree_hal_hsa_native_executable_t* iree_hal_hsa_native_executable_cast(
     iree_hal_executable_t* base_value) {
@@ -161,8 +166,8 @@ iree_status_t iree_hal_hsa_native_executable_create(
   IREE_ASSERT_ARGUMENT(out_executable);
   IREE_TRACE_ZONE_BEGIN(z0);
 
-  *out_executable = NULL;
-  iree_hal_hsa_native_executable_t* executable = NULL;
+  *out_executable = nullptr;
+  iree_hal_hsa_native_executable_t* executable = nullptr;
 
   IREE_RETURN_AND_END_ZONE_IF_ERROR(
       z0, iree_hal_hsa_native_executable_flatbuffer_verify(
@@ -233,19 +238,20 @@ iree_status_t iree_hal_hsa_native_executable_create(
   status = IREE_HSA_RESULT_TO_STATUS(
       symbols, hsa_executable_create_alt(
                    HSA_PROFILE_FULL, HSA_DEFAULT_FLOAT_ROUNDING_MODE_DEFAULT,
-                   NULL, &hsa_executable));
+                   nullptr, &hsa_executable));
   if (!iree_status_is_ok(status)) {
     return status;
   }
   status = IREE_HSA_RESULT_TO_STATUS(
-      symbols, hsa_executable_load_agent_code_object(
-                   hsa_executable, agent, code_object_reader, NULL, NULL));
+      symbols,
+      hsa_executable_load_agent_code_object(
+          hsa_executable, agent, code_object_reader, nullptr, nullptr));
   if (!iree_status_is_ok(status)) {
     return status;
   }
 
   status = IREE_HSA_RESULT_TO_STATUS(
-      symbols, hsa_executable_freeze(hsa_executable, NULL));
+      symbols, hsa_executable_freeze(hsa_executable, nullptr));
   if (!iree_status_is_ok(status)) {
     return status;
   }
@@ -263,7 +269,7 @@ iree_status_t iree_hal_hsa_native_executable_create(
       iree_string_view_t name_view = iree_make_cstring_view(entry_name);
       iree_string_view_t suffix_view = iree_make_cstring_view(".kd");
       iree_host_size_t total_length = name_view.size + suffix_view.size;
-      char* kd_entry_name = NULL;
+      char* kd_entry_name = nullptr;
       IREE_RETURN_AND_END_ZONE_IF_ERROR(
           z0, iree_allocator_malloc(host_allocator, total_length + 1,
                                     (void**)&kd_entry_name));
@@ -421,7 +427,8 @@ iree_status_t iree_hal_hsa_native_executable_entry_point_kernel_info(
   return iree_ok_status();
 }
 
-static const iree_hal_executable_vtable_t
-    iree_hal_hsa_native_executable_vtable = {
-        .destroy = iree_hal_hsa_native_executable_destroy,
+namespace {
+const iree_hal_executable_vtable_t iree_hal_hsa_native_executable_vtable = {
+    .destroy = iree_hal_hsa_native_executable_destroy,
 };
+}

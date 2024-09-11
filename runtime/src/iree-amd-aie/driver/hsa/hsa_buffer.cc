@@ -7,22 +7,23 @@
 
 #include "iree-amd-aie/driver/hsa/hsa_buffer.h"
 
-#include <stddef.h>
-#include <stdint.h>
-#include <string.h>
+#include <cstdint>
+#include <cstring>
 
 #include "iree/base/api.h"
 #include "iree/base/tracing.h"
 
-typedef struct iree_hal_hsa_buffer_t {
+using iree_hal_hsa_buffer_t = struct iree_hal_hsa_buffer_t {
   iree_hal_buffer_t base;
   iree_hal_hsa_buffer_type_t type;
   void* host_ptr;
   hsa_device_pointer_t device_ptr;
   iree_hal_buffer_release_callback_t release_callback;
-} iree_hal_hsa_buffer_t;
+};
 
-static const iree_hal_buffer_vtable_t iree_hal_hsa_buffer_vtable;
+namespace {
+extern const iree_hal_buffer_vtable_t iree_hal_hsa_buffer_vtable;
+}
 
 static iree_hal_hsa_buffer_t* iree_hal_hsa_buffer_cast(
     iree_hal_buffer_t* base_value) {
@@ -54,7 +55,7 @@ iree_status_t iree_hal_hsa_buffer_wrap(
 
   IREE_TRACE_ZONE_BEGIN(z0);
 
-  iree_hal_hsa_buffer_t* buffer = NULL;
+  iree_hal_hsa_buffer_t* buffer = nullptr;
   iree_status_t status =
       iree_allocator_malloc(host_allocator, sizeof(*buffer), (void**)&buffer);
   if (iree_status_is_ok(status)) {
@@ -157,12 +158,8 @@ void* iree_hal_hsa_buffer_host_pointer(const iree_hal_buffer_t* base_buffer) {
   return buffer->host_ptr;
 }
 
-void iree_hal_hsa_buffer_drop_release_callback(iree_hal_buffer_t* base_buffer) {
-  iree_hal_hsa_buffer_t* buffer = iree_hal_hsa_buffer_cast(base_buffer);
-  buffer->release_callback = iree_hal_buffer_release_callback_null();
-}
-
-static const iree_hal_buffer_vtable_t iree_hal_hsa_buffer_vtable = {
+namespace {
+const iree_hal_buffer_vtable_t iree_hal_hsa_buffer_vtable = {
     .recycle = iree_hal_buffer_recycle,
     .destroy = iree_hal_hsa_buffer_destroy,
     .map_range = iree_hal_hsa_buffer_map_range,
@@ -170,3 +167,4 @@ static const iree_hal_buffer_vtable_t iree_hal_hsa_buffer_vtable = {
     .invalidate_range = iree_hal_hsa_buffer_invalidate_range,
     .flush_range = iree_hal_hsa_buffer_flush_range,
 };
+}

@@ -9,7 +9,7 @@
 // HSA symbols
 //===----------------------------------------------------------------------===//
 
-#include <stdint.h>
+#include <cstdint>
 
 IREE_HAL_HSA_REQUIRED_PFN_DECL(hsa_init)
 IREE_HAL_HSA_REQUIRED_PFN_DECL(hsa_shut_down)

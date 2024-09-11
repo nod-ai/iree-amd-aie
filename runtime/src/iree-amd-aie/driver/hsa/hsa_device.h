@@ -33,7 +33,7 @@ iree_status_t iree_hal_hsa_device_create_queue_command_buffer(
     iree_hal_command_buffer_t** out_command_buffer);
 
 // Returns the dynamic symbol table from the |device| if it is a HSA device
-// and otherwise returns NULL.
+// and otherwise returns nullptr.
 //
 // WARNING: the symbols are only valid for as long as the device is. Hosting
 // libraries and applications should prefer to either link against HSA

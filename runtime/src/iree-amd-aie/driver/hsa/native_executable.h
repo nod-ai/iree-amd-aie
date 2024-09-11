@@ -8,7 +8,7 @@
 #ifndef IREE_EXPERIMENTAL_HSA_NATIVE_EXECUTABLE_H_
 #define IREE_EXPERIMENTAL_HSA_NATIVE_EXECUTABLE_H_
 
-#include <stdint.h>
+#include <cstdint>
 
 #include "iree-amd-aie/driver/hsa/dynamic_symbols.h"
 #include "iree-amd-aie/driver/hsa/hsa_headers.h"

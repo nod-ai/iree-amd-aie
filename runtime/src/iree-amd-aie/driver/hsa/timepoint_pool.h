@@ -58,7 +58,7 @@ typedef struct iree_hal_hsa_timepoint_t {
   union {
     iree_event_t host_wait;
     iree_hal_hsa_event_t* device_signal;
-    // The device event to wait. NULL means no device event available to wait
+    // The device event to wait. nullptr means no device event available to wait
     // for this timepoint at the moment.
     iree_hal_hsa_event_t* device_wait;
   } timepoint;

@@ -7,15 +7,14 @@
 
 #include "iree-amd-aie/driver/hsa/hsa_device.h"
 
-#include <stddef.h>
-#include <stdint.h>
-#include <string.h>
+#include <cstddef>
+#include <cstdint>
+#include <cstring>
 
 #include "iree-amd-aie/driver/hsa/dynamic_symbols.h"
 #include "iree-amd-aie/driver/hsa/event_pool.h"
 #include "iree-amd-aie/driver/hsa/event_semaphore.h"
 #include "iree-amd-aie/driver/hsa/hsa_allocator.h"
-#include "iree-amd-aie/driver/hsa/hsa_buffer.h"
 #include "iree-amd-aie/driver/hsa/nop_executable_cache.h"
 #include "iree-amd-aie/driver/hsa/pending_queue_actions.h"
 #include "iree-amd-aie/driver/hsa/queue_command_buffer.h"
@@ -77,16 +76,13 @@ typedef struct iree_hal_hsa_device_t {
   iree_hal_allocator_t* device_allocator;
 } iree_hal_hsa_device_t;
 
-static const iree_hal_device_vtable_t iree_hal_hsa_device_vtable;
+namespace {
+extern const iree_hal_device_vtable_t iree_hal_hsa_device_vtable;
+}
 
 static iree_hal_hsa_device_t* iree_hal_hsa_device_cast(
     iree_hal_device_t* base_value) {
   IREE_HAL_ASSERT_TYPE(base_value, &iree_hal_hsa_device_vtable);
-  return (iree_hal_hsa_device_t*)base_value;
-}
-
-static iree_hal_hsa_device_t* iree_hal_hsa_device_cast_unsafe(
-    iree_hal_device_t* base_value) {
   return (iree_hal_hsa_device_t*)base_value;
 }
 
@@ -117,7 +113,7 @@ static iree_status_t iree_hal_hsa_device_create_internal(
     const iree_hal_hsa_device_params_t* params, hsa_agent_t agent,
     hsa_queue_t* dispatch_queue, const iree_hal_hsa_dynamic_symbols_t* symbols,
     iree_allocator_t host_allocator, iree_hal_device_t** out_device) {
-  iree_hal_hsa_device_t* device = NULL;
+  iree_hal_hsa_device_t* device = nullptr;
   iree_host_size_t total_size = iree_sizeof_struct(*device) + identifier.size;
   IREE_RETURN_IF_ERROR(
       iree_allocator_malloc(host_allocator, total_size, (void**)&device));
@@ -168,8 +164,8 @@ iree_status_t iree_hal_hsa_device_create(
 
   size_t num_queue_packets = 1024;
   hsa_queue_type_t queue_type = HSA_QUEUE_TYPE_MULTI;
-  void* callback = NULL;
-  void* data = NULL;
+  void (*callback)(hsa_status_t, hsa_queue_t*, void*) = nullptr;
+  void* data = nullptr;
   uint32_t private_segment_size = 0;
   uint32_t group_segment_size = 0;
   hsa_queue_t* dispatch_queue;
@@ -185,20 +181,20 @@ iree_status_t iree_hal_hsa_device_create(
                                                agent, dispatch_queue, symbols,
                                                host_allocator, out_device);
 
-  iree_event_pool_t* host_event_pool = NULL;
+  iree_event_pool_t* host_event_pool = nullptr;
   if (iree_status_is_ok(status)) {
     status = iree_event_pool_allocate(params->event_pool_capacity,
                                       host_allocator, &host_event_pool);
   }
 
-  iree_hal_hsa_event_pool_t* device_event_pool = NULL;
+  iree_hal_hsa_event_pool_t* device_event_pool = nullptr;
   if (iree_status_is_ok(status)) {
     status =
         iree_hal_hsa_event_pool_allocate(symbols, params->event_pool_capacity,
                                          host_allocator, &device_event_pool);
   }
 
-  iree_hal_hsa_timepoint_pool_t* timepoint_pool = NULL;
+  iree_hal_hsa_timepoint_pool_t* timepoint_pool = nullptr;
   if (iree_status_is_ok(status)) {
     status = iree_hal_hsa_timepoint_pool_allocate(
         host_event_pool, device_event_pool, params->event_pool_capacity,
@@ -221,12 +217,6 @@ iree_status_t iree_hal_hsa_device_create(
 
   IREE_TRACE_ZONE_END(z0);
   return status;
-}
-
-const iree_hal_hsa_dynamic_symbols_t* iree_hal_hsa_device_dynamic_symbols(
-    iree_hal_device_t* base_device) {
-  iree_hal_hsa_device_t* device = iree_hal_hsa_device_cast_unsafe(base_device);
-  return device->hsa_symbols;
 }
 
 static void iree_hal_hsa_device_destroy(iree_hal_device_t* base_device) {
@@ -547,7 +537,8 @@ static iree_status_t iree_hal_hsa_device_profiling_end(
   return iree_ok_status();
 }
 
-static const iree_hal_device_vtable_t iree_hal_hsa_device_vtable = {
+namespace {
+const iree_hal_device_vtable_t iree_hal_hsa_device_vtable = {
     .destroy = iree_hal_hsa_device_destroy,
     .id = iree_hal_hsa_device_id,
     .host_allocator = iree_hal_hsa_device_host_allocator,
@@ -575,3 +566,4 @@ static const iree_hal_device_vtable_t iree_hal_hsa_device_vtable = {
     .profiling_flush = iree_hal_hsa_device_profiling_flush,
     .profiling_end = iree_hal_hsa_device_profiling_end,
 };
+}

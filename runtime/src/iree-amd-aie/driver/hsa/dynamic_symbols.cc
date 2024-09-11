@@ -7,12 +7,10 @@
 
 #include "iree-amd-aie/driver/hsa/dynamic_symbols.h"
 
-#include <string.h>
+#include <cstring>
 
-#include "iree-amd-aie/driver/hsa/status_util.h"
 #include "iree/base/api.h"
 #include "iree/base/internal/dynamic_library.h"
-#include "iree/base/target_platform.h"
 
 //===----------------------------------------------------------------------===//
 // HSA dynamic symbols
@@ -36,7 +34,7 @@ static iree_status_t iree_hal_hsa_dynamic_symbols_resolve_all(
         syms->dylib, name, (void**)&syms->hsa_symbol_name)); \
   }
 
-#include "iree-amd-aie/driver/hsa/dynamic_symbol_tables.h"  // IWYU pragma: keep
+#include "dynamic_symbol_tables.h"  // IWYU pragma: keep
 #undef IREE_HAL_HSA_REQUIRED_PFN_DECL
   return iree_ok_status();
 }

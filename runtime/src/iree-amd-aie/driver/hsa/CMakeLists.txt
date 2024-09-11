@@ -25,9 +25,9 @@ iree_cc_library(
   TEXTUAL_HDRS
     "dynamic_symbol_tables.h"
   SRCS
-    "dynamic_symbols.c"
+    "dynamic_symbols.cc"
     "hsa_headers.h"
-    "status_util.c"
+    "status_util.cc"
   DEPS
     hsa-runtime64::hsa-runtime64
     iree::base
@@ -43,26 +43,26 @@ iree_cc_library(
     "api.h"
   SRCS
     "api.h"
-    "event_pool.c"
+    "event_pool.cc"
     "event_pool.h"
-    "event_semaphore.c"
+    "event_semaphore.cc"
     "event_semaphore.h"
-    "hsa_allocator.c"
+    "hsa_allocator.cc"
     "hsa_allocator.h"
-    "hsa_buffer.c"
+    "hsa_buffer.cc"
     "hsa_buffer.h"
-    "hsa_device.c"
+    "hsa_device.cc"
     "hsa_device.h"
-    "hsa_driver.c"
-    "native_executable.c"
+    "hsa_driver.cc"
+    "native_executable.cc"
     "native_executable.h"
-    "nop_executable_cache.c"
+    "nop_executable_cache.cc"
     "nop_executable_cache.h"
-    "pending_queue_actions.c"
+    "pending_queue_actions.cc"
     "pending_queue_actions.h"
-    "queue_command_buffer.c"
+    "queue_command_buffer.cc"
     "queue_command_buffer.h"
-    "timepoint_pool.c"
+    "timepoint_pool.cc"
     "timepoint_pool.h"
   DEPS
     hsa-runtime64::hsa-runtime64

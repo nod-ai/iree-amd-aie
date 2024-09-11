@@ -5,8 +5,8 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#include <stdint.h>
-#include <string.h>
+#include <cstdint>
+#include <cstring>
 
 #include "iree-amd-aie/driver/hsa/api.h"
 #include "iree-amd-aie/driver/hsa/dynamic_symbols.h"
@@ -51,9 +51,6 @@ typedef struct iree_hal_hsa_driver_t {
   hsa_agent_t agents[IREE_HAL_HSA_MAX_DEVICES];
 } iree_hal_hsa_driver_t;
 
-typedef struct iree_hal_hsa_device_info_t {
-} iree_hal_hsa_device_info_t;
-
 // A struct encapsulating common variables we need while communicating with HSA
 // callbacks
 typedef struct iree_hal_hsa_callback_package_t {
@@ -62,7 +59,9 @@ typedef struct iree_hal_hsa_callback_package_t {
   void* return_value;
 } iree_hal_hsa_callback_package_t;
 
-static const iree_hal_driver_vtable_t iree_hal_hsa_driver_vtable;
+namespace {
+extern const iree_hal_driver_vtable_t iree_hal_hsa_driver_vtable;
+}
 
 static iree_hal_hsa_driver_t* iree_hal_hsa_driver_cast(
     iree_hal_driver_t* base_value) {
@@ -142,7 +141,7 @@ static iree_status_t iree_hal_hsa_driver_create_internal(
     iree_string_view_t identifier, const iree_hal_hsa_driver_options_t* options,
     const iree_hal_hsa_device_params_t* device_params,
     iree_allocator_t host_allocator, iree_hal_driver_t** out_driver) {
-  iree_hal_hsa_driver_t* driver = NULL;
+  iree_hal_hsa_driver_t* driver = nullptr;
   iree_host_size_t total_size = iree_sizeof_struct(*driver) + identifier.size;
   IREE_RETURN_IF_ERROR(
       iree_allocator_malloc(host_allocator, total_size, (void**)&driver));
@@ -244,7 +243,9 @@ static iree_status_t get_hsa_agent_uuid(iree_hal_hsa_dynamic_symbols_t* syms,
                                         char* out_device_uuid) {
   // `HSA_AMD_AGENT_INFO_UUID` is part of the `hsa_amd_agent_info_t`
   // However, hsa_agent_get_info expects a hsa_agent_info_t.
-  hsa_agent_info_t uuid_info = (int)HSA_AMD_AGENT_INFO_UUID;
+  // TODO(max): this should be updated to use hsa_amd_agent_info_s
+  hsa_agent_info_t uuid_info =
+      static_cast<hsa_agent_info_t>(HSA_AMD_AGENT_INFO_UUID);
   IREE_HSA_RETURN_IF_ERROR(
       syms, hsa_agent_get_info(agent, uuid_info, out_device_uuid),
       "hsa_agent_get_info");
@@ -320,7 +321,7 @@ static iree_status_t iree_hal_hsa_driver_query_available_devices(
   int device_count = driver->num_gpu_agents;
 
   // Allocate the return infos and populate with the devices.
-  iree_hal_device_info_t* device_infos = NULL;
+  iree_hal_device_info_t* device_infos = nullptr;
   iree_host_size_t total_size =
       device_count * (sizeof(iree_hal_device_info_t) +
                       IREE_HAL_HSA_MAX_DEVICE_NAME_LENGTH * sizeof(char));
@@ -365,7 +366,7 @@ static iree_status_t iree_hal_hsa_driver_select_default_device(
     iree_hal_driver_t* base_driver, iree_hal_hsa_dynamic_symbols_t* syms,
     int default_device_index, iree_allocator_t host_allocator,
     hsa_agent_t* out_device) {
-  iree_hal_device_info_t* device_infos = NULL;
+  iree_hal_device_info_t* device_infos = nullptr;
   iree_host_size_t device_count = 0;
   IREE_RETURN_IF_ERROR(iree_hal_hsa_driver_query_available_devices(
       base_driver, host_allocator, &device_count, &device_infos));
@@ -568,13 +569,15 @@ static iree_status_t iree_hal_hsa_driver_create_device_by_path(
   return iree_make_status(IREE_STATUS_UNIMPLEMENTED, "unsupported device path");
 }
 
-static const iree_hal_driver_vtable_t iree_hal_hsa_driver_vtable = {
+namespace {
+const iree_hal_driver_vtable_t iree_hal_hsa_driver_vtable = {
     .destroy = iree_hal_hsa_driver_destroy,
     .query_available_devices = iree_hal_hsa_driver_query_available_devices,
     .dump_device_info = iree_hal_hsa_driver_dump_device_info,
     .create_device_by_id = iree_hal_hsa_driver_create_device_by_id,
     .create_device_by_path = iree_hal_hsa_driver_create_device_by_path,
 };
+}
 
 #undef IREE_HAL_HSA_MAX_DEVICE_NAME_LENGTH
 #undef IREE_HAL_HSA_MAX_DEVICES

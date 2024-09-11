@@ -7,10 +7,6 @@
 
 #include "iree-amd-aie/driver/hsa/nop_executable_cache.h"
 
-#include <stdbool.h>
-#include <stddef.h>
-
-#include "iree-amd-aie/driver/hsa/hsa_allocator.h"
 #include "iree-amd-aie/driver/hsa/native_executable.h"
 #include "iree/base/api.h"
 #include "iree/base/tracing.h"
@@ -30,8 +26,10 @@ typedef struct iree_hal_hsa_nop_executable_cache_t {
 
 } iree_hal_hsa_nop_executable_cache_t;
 
-static const iree_hal_executable_cache_vtable_t
+namespace {
+extern const iree_hal_executable_cache_vtable_t
     iree_hal_hsa_nop_executable_cache_vtable;
+}
 
 static iree_hal_hsa_nop_executable_cache_t*
 iree_hal_hsa_nop_executable_cache_cast(
@@ -49,8 +47,8 @@ iree_status_t iree_hal_hsa_nop_executable_cache_create(
   IREE_ASSERT_ARGUMENT(out_executable_cache);
   IREE_TRACE_ZONE_BEGIN(z0);
 
-  *out_executable_cache = NULL;
-  iree_hal_hsa_nop_executable_cache_t* executable_cache = NULL;
+  *out_executable_cache = nullptr;
+  iree_hal_hsa_nop_executable_cache_t* executable_cache = nullptr;
   IREE_RETURN_AND_END_ZONE_IF_ERROR(
       z0, iree_allocator_malloc(host_allocator, sizeof(*executable_cache),
                                 (void**)&executable_cache));
@@ -100,7 +98,8 @@ static iree_status_t iree_hal_hsa_nop_executable_cache_prepare_executable(
       out_executable);
 }
 
-static const iree_hal_executable_cache_vtable_t
+namespace {
+const iree_hal_executable_cache_vtable_t
     iree_hal_hsa_nop_executable_cache_vtable = {
         .destroy = iree_hal_hsa_nop_executable_cache_destroy,
         .can_prepare_format =
@@ -108,3 +107,4 @@ static const iree_hal_executable_cache_vtable_t
         .prepare_executable =
             iree_hal_hsa_nop_executable_cache_prepare_executable,
 };
+}

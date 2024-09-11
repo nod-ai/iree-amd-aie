@@ -47,8 +47,10 @@ typedef struct iree_hal_hsa_queue_command_buffer_t {
   } descriptor_sets[IREE_HAL_HSA_MAX_DESCRIPTOR_SET_COUNT];
 } iree_hal_hsa_queue_command_buffer_t;
 
-static const iree_hal_command_buffer_vtable_t
+namespace {
+extern const iree_hal_command_buffer_vtable_t
     iree_hal_hsa_queue_command_buffer_vtable;
+}
 
 static iree_hal_hsa_queue_command_buffer_t*
 iree_hal_hsa_queue_command_buffer_cast(iree_hal_command_buffer_t* base_value) {
@@ -68,7 +70,7 @@ iree_status_t iree_hal_hsa_queue_command_buffer_create(
   IREE_ASSERT_ARGUMENT(device);
   IREE_ASSERT_ARGUMENT(hsa_symbols);
   IREE_ASSERT_ARGUMENT(out_command_buffer);
-  *out_command_buffer = NULL;
+  *out_command_buffer = nullptr;
 
   if (binding_capacity > 0) {
     return iree_make_status(IREE_STATUS_UNIMPLEMENTED,
@@ -77,7 +79,7 @@ iree_status_t iree_hal_hsa_queue_command_buffer_create(
 
   IREE_TRACE_ZONE_BEGIN(z0);
 
-  iree_hal_hsa_queue_command_buffer_t* command_buffer = NULL;
+  iree_hal_hsa_queue_command_buffer_t* command_buffer = nullptr;
   IREE_RETURN_AND_END_ZONE_IF_ERROR(
       z0, iree_allocator_malloc(host_allocator, sizeof(*command_buffer),
                                 (void**)&command_buffer));
@@ -280,7 +282,7 @@ static iree_status_t iree_hal_hsa_queue_command_buffer_update_buffer(
   // operation and get the wrong data.
   const uint8_t* src = (const uint8_t*)source_buffer + source_offset;
   if (command_buffer->arena.block_pool) {
-    uint8_t* storage = NULL;
+    uint8_t* storage = nullptr;
     IREE_RETURN_AND_END_ZONE_IF_ERROR(
         z0, iree_arena_allocate(&command_buffer->arena, target_ref.length,
                                 (void**)&storage));
@@ -360,7 +362,7 @@ static iree_status_t iree_hal_hsa_queue_command_buffer_push_descriptor_set(
       command_buffer->descriptor_sets[set].bindings;
   for (iree_host_size_t i = 0; i < binding_count; i++) {
     const iree_hal_buffer_ref_t* binding = &bindings[i];
-    hsa_device_pointer_t device_ptr = NULL;
+    hsa_device_pointer_t device_ptr = nullptr;
     if (binding->buffer) {
       IREE_RETURN_AND_END_ZONE_IF_ERROR(
           z0, iree_hal_resource_set_insert(command_buffer->resource_set, 1,
@@ -424,7 +426,7 @@ static iree_status_t iree_hal_hsa_queue_command_buffer_dispatch(
   };
 
   iree_device_size_t kern_arg_allocation_size = total_size;
-  iree_hal_buffer_t* kern_arg_allocation_buffer = NULL;
+  iree_hal_buffer_t* kern_arg_allocation_buffer = nullptr;
   iree_status_t result = iree_hal_allocator_allocate_buffer(
       command_buffer->device_allocator, buffer_params, kern_arg_allocation_size,
       &kern_arg_allocation_buffer);
@@ -483,7 +485,7 @@ static iree_status_t iree_hal_hsa_queue_command_buffer_dispatch(
 
   hsa_signal_value_t signal_value = 1;
   uint32_t num_consumers = 0;
-  const hsa_agent_t* consumers = NULL;
+  const hsa_agent_t* consumers = nullptr;
   iree_status_t status = IREE_HSA_RESULT_TO_STATUS(
       command_buffer->hsa_symbols,
       hsa_signal_create(signal_value, num_consumers, consumers,
@@ -547,7 +549,8 @@ static iree_status_t iree_hal_hsa_queue_command_buffer_dispatch_indirect(
                           "need HSA implementation of dispatch indirect");
 }
 
-static const iree_hal_command_buffer_vtable_t
+namespace {
+const iree_hal_command_buffer_vtable_t
     iree_hal_hsa_queue_command_buffer_vtable = {
         .destroy = iree_hal_hsa_queue_command_buffer_destroy,
         .begin = iree_hal_hsa_queue_command_buffer_begin,
@@ -569,3 +572,4 @@ static const iree_hal_command_buffer_vtable_t
         .dispatch_indirect =
             iree_hal_hsa_queue_command_buffer_dispatch_indirect,
 };
+}

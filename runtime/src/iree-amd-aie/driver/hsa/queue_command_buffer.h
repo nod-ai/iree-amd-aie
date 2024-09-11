@@ -10,7 +10,6 @@
 
 #include "iree-amd-aie/driver/hsa/dynamic_symbols.h"
 #include "iree-amd-aie/driver/hsa/hsa_headers.h"
-// #include "iree-amd-aie/driver/hsa/tracing.h"
 #include "iree/base/internal/arena.h"
 #include "iree/hal/api.h"
 
@@ -21,14 +20,14 @@ extern "C" {
 // Creates command buffer that immediately issues commands against the given
 // HSA |stream|. Access to |stream| must be synchronized by the user.
 //
-// If |block_pool| is non-NULL then the stream command buffer will retain copies
-// of input data until reset. If NULL then the caller must ensure the lifetime
-// of input data outlives the command buffer.
+// If |block_pool| is non-nullptr then the stream command buffer will retain
+// copies of input data until reset. If nullptr then the caller must ensure the
+// lifetime of input data outlives the command buffer.
 //
 // This command buffer is used to replay deferred command buffers. When
 // replaying the scratch data required for things like buffer updates is
 // retained by the source deferred command buffer and as such the |block_pool|
-// and can be NULL to avoid a double copy.
+// and can be nullptr to avoid a double copy.
 iree_status_t iree_hal_hsa_queue_command_buffer_create(
     iree_hal_device_t* device,
     const iree_hal_hsa_dynamic_symbols_t* hsa_symbols,
