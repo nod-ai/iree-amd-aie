@@ -932,6 +932,7 @@ LogicalResult combineLogicalObjectFifos(
             accessOp.getAccessType());
       }
     });
+    rewriter.replaceOp(oldFirstL1ObjFifoOp, reuseL1LogicalObjectFifoOp);
     // For the second Core op we'll insert `Read` right before the first read
     // from the corresponding L1 logicalobjectFifo.
     secondCoreOp.walk([&](AMDAIE::LogicalObjectFifoAccessOp accessOp) {
