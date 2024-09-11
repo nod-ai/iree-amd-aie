@@ -24,5 +24,6 @@ iree_cc_library(
     MLIRIR
     MLIRParser
     MLIRSupport
+    iree-amd-aie::aie_runtime::iree_aie_runtime_static
   PUBLIC
 )

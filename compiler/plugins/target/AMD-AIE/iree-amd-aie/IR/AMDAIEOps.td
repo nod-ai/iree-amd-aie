@@ -229,6 +229,40 @@ def AMDAIE_LockOp: AMDAIE_Op<"lock", [
   let assemblyFormat = [{ `(` $tile `(` $value `)` (`,` $init_value^)? `)` attr-dict }];
 }
 
+def AMDAIE_UseLockOp: AMDAIE_Op<"use_lock"> {
+  let summary = "Represents the use of a semaphore lock with a specified "
+                "action (acquire/release).";
+  let description = [{
+    This operation represents the use of a semaphore lock with a specified lock 
+    `action` and `value`. The lock action could for example be `Acquire`, 
+    `AcquireGreaterOrEqual` or `Release`. The specified `value` argument 
+    determines the value to be used in the lock action, for example:
+    - `Acquire(1)`: Acquire the lock if its value is equal to 1, then subtract 1
+      from it.
+    - `AcquireGreaterOrEqual(1)`: Acquire the lock if its value is greater or 
+      equal to 1, then subtract 1 from it.
+    - `Release(1)`: Add 1 to the value of this lock.
+    
+
+    Example:
+
+    ```mlir
+    %lock = amdaie.lock(%tile, %c0)
+    %0 = amdaie.use_lock(%lock, 0)
+    ```
+  }];
+
+  let arguments = (
+    ins Index:$lock,
+        AMDAIE_LockAction:$action,
+        I8Attr:$value
+  );
+
+  let assemblyFormat = [{ 
+    `(` $lock `,` $action `(` $value `)` `)` attr-dict
+  }];
+}
+
 //===----------------------------------------------------------------------===//
 // IREE AMDAIE DMA Utility Ops
 //===----------------------------------------------------------------------===//
@@ -293,6 +327,10 @@ def AMDAIE_ChannelOp: AMDAIE_Op<"channel", [
     ins Index:$tile,
         ConfinedAttr<I8Attr, [IntMinValue<0>]>:$value
   );
+
+  let extraClassDeclaration = [{
+    TileOp getTileOp();
+  }];
 
   let assemblyFormat = [{ `(` $tile `,` $value `)` attr-dict }];
 }
@@ -876,7 +914,7 @@ def AMDAIE_LogicalObjectFifoFromBuffersOp
       return cast<LogicalObjectFifoType>(getOutput().getType())
         .getElementType();
     }
-
+  
     // Return the encapsulated buffers on the requested tile.
     llvm::SmallVector<BufferOp> getBuffersOnTile(TileOp tileOp);
 

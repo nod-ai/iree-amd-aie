@@ -50,6 +50,12 @@ void ChannelOp::getAsmResultNames(
   setNameFn(getResult(), "channel");
 }
 
+TileOp ChannelOp::getTileOp() {
+  auto res = dyn_cast_if_present<TileOp>(getTile().getDefiningOp());
+  assert(res && "`amdaie.channel` expects an `amdaie.tile` as tile operand");
+  return res;
+}
+
 //===----------------------------------------------------------------------===//
 // AMDAIE_ControlCodeOp
 //===----------------------------------------------------------------------===//
@@ -101,7 +107,9 @@ LogicalResult CoreOp::verify() {
 }
 
 TileOp CoreOp::getTileOp() {
-  return dyn_cast_if_present<TileOp>(getTile().getDefiningOp());
+  auto res = dyn_cast_if_present<TileOp>(getTile().getDefiningOp());
+  assert(res && "`amdaie.core` expects an `amdaie.tile` as tile operand");
+  return res;
 }
 
 //===----------------------------------------------------------------------===//
