@@ -834,18 +834,18 @@ LogicalResult combineLogicalObjectFifos(
   // will make an attempt to combine the logical objectFifos as per the
   // following algorithm :-
   //  a. Combine i-th and i+1-th L3->L2 DmaCpyNd ops.
-  //  b. Since step a  would create a new L2 buffer (with combined shape), we
-  //  will
-  //     need to update the corresponding two L2->L1 Dma ops by indeed creating
-  //     new ones. NOTE: Both of these new L2->L1 Dma ops will be reusing the
-  //     same L1 buffers as well.
-  //  c. Now pick the unique core ops corresponding to i-th and i+1-th L2->L1
-  //  Dma
-  //     ops and do the following :-
+  //  b. Form reusable L1 buffer by assigning the cumulative tiles of the
+  //     intended core ops.
+  //  c. Since step a  would create a new L2 buffer (with combined shape), we
+  //     will need to update the corresponding two L2->L1 Dma ops by indeed
+  //     creating new ones. NOTE: Both of these new L2->L1 Dma ops will be
+  //     reusing the same L1 buffers as well.
+  //  d. Now pick the unique core ops corresponding to i-th and i+1-th L2->L1
+  //     Dma ops and do the following :-
   //      1. For i-th CoreOp insert an AccessOp from the same L1 buffer towards
-  //      the end.
+  //         the end.
   //      2. For i+1-th CoreOp insert an AccessOp from the same L1 buffer right
-  //      before the corresponding AccessOp within the same CoreOp.
+  //         before the corresponding AccessOp within the same CoreOp.
   for (unsigned i = 0, n = l3ToL2DmaOps.size(); i < n; i += 2) {
     // Step 1. Combine the picked L3->L2 DmaCpyNd pair.
     FailureOr<LogicalObjectFifoFromMemrefOp> maybeNewL2ObjectFifo =
@@ -855,14 +855,56 @@ LogicalResult combineLogicalObjectFifos(
     LogicalObjectFifoFromMemrefOp newL2ObjectFifo =
         maybeNewL2ObjectFifo.value();
 
-    // Step 2. We now have need to create two L2->L1 ops since the size has
+    // Step 2. Form the reusable L1 buffer by assigning the cumulative tiles of
+    // the intended core ops.
+    LogicalObjectFifoFromMemrefOp reuseL1LogicalObjectFifoOp =
+        l2ToL1DmaOps[i].getTargetObjectFifo();
+    SmallVector<Value> tiles;
+    auto addNewTileFrom = [&](CoreOp coreOp) -> LogicalResult {
+      OpBuilder::InsertionGuard guard(rewriter);
+      TileOp tileOp = coreOp.getTileOp();
+      std::optional<int64_t> column = getConstantIntValue(tileOp.getCol());
+      std::optional<int64_t> row = getConstantIntValue(tileOp.getRow());
+      if (!column || !row) {
+        return coreOp.emitOpError() << "has non-constant tile location";
+      }
+      rewriter.setInsertionPoint(reuseL1LogicalObjectFifoOp);
+      auto colIndex = rewriter.create<arith::ConstantIndexOp>(
+          rewriter.getUnknownLoc(), *column);
+      auto rowIndex = rewriter.create<arith::ConstantIndexOp>(
+          rewriter.getUnknownLoc(), *row);
+      tileOp =
+          rewriter.create<TileOp>(rewriter.getUnknownLoc(), colIndex, rowIndex);
+      tiles.push_back(tileOp.getResult());
+      return success();
+    };
+    std::optional<CoreOp> maybeFirstCoreOp = fetchUniqueCoreOp(l2ToL1DmaOps[i]);
+    if (!maybeFirstCoreOp) return failure();
+    CoreOp firstCoreOp = maybeFirstCoreOp.value();
+    std::optional<CoreOp> maybeSecondCoreOp =
+        fetchUniqueCoreOp(l2ToL1DmaOps[i + 1]);
+    if (!maybeSecondCoreOp) return failure();
+    CoreOp secondCoreOp = maybeSecondCoreOp.value();
+    if (failed(addNewTileFrom(firstCoreOp)) ||
+        failed(addNewTileFrom(secondCoreOp))) {
+      return failure();
+    }
+    llvm::sort(tiles.begin(), tiles.end(),
+               AMDAIE::TileOp::tileValueColumnAndRowComparator);
+    rewriter.setInsertionPoint(reuseL1LogicalObjectFifoOp);
+    reuseL1LogicalObjectFifoOp =
+        rewriter.replaceOpWithNewOp<LogicalObjectFifoFromMemrefOp>(
+            reuseL1LogicalObjectFifoOp,
+            cast<LogicalObjectFifoType>(
+                reuseL1LogicalObjectFifoOp.getOutput().getType()),
+            reuseL1LogicalObjectFifoOp.getMemref(), tiles);
+
+    // Step 3. We now have need to create two L2->L1 ops since the size has
     // changed. But for this we first need to find the new offset for L2 as
     // source.
     // TODO: For now I'm hardcoding the offsets but later it'd just depend
     // on combining/non-combining dimensions.
     // Offset = 0,0
-    LogicalObjectFifoFromMemrefOp reuseL1LogicalObjectFifoOp =
-        l2ToL1DmaOps[i].getTargetObjectFifo();
     SmallVector<OpFoldResult> newL2AsSourceOffsets =
         l2ToL1DmaOps[i].getSourceMixedOffsets();
     DmaCpyNdOp newFirstL2ToL1DmaOp = createL2ToL1ForReuse(
@@ -872,31 +914,24 @@ LogicalResult combineLogicalObjectFifos(
     // the first L2->L1 Dma.
     newL2AsSourceOffsets = l2ToL1DmaOps[i + 1].getSourceMixedOffsets();
     newL2AsSourceOffsets[1] = rewriter.getIndexAttr(1);
-    DmaCpyNdOp newSecondL2ToL1DmaOp = createL2ToL1ForReuse(
-        rewriter, l2ToL1DmaOps[i + 1], reuseL1LogicalObjectFifoOp,
-        newL2ObjectFifo, newL2AsSourceOffsets);
+    createL2ToL1ForReuse(rewriter, l2ToL1DmaOps[i + 1],
+                         reuseL1LogicalObjectFifoOp, newL2ObjectFifo,
+                         newL2AsSourceOffsets);
 
-    // Step 3. PICK the CoreOps associated with the 1:1 L2->L1.
+    // Step 4. Pick the CoreOps associated with the 1:1 L2->L1.
     // For the first Core op we'll insert Read at the end. It doesn't matter
     // for now so we're gonna insert it right before amdaie.end op.
-    std::optional<CoreOp> maybeFirstCoreOp =
-        fetchUniqueCoreOp(newFirstL2ToL1DmaOp);
-    if (!maybeFirstCoreOp) return failure();
-    CoreOp firstCoreOp = maybeFirstCoreOp.value();
-    firstCoreOp.walk([&](AMDAIE::EndOp endOp) {
-      OpBuilder::InsertionGuard guard(rewriter);
-      // Hardcoding to `AMDAIE::MemoryAccess::Read`.
-      rewriter.setInsertionPoint(endOp);
-      rewriter.create<AMDAIE::LogicalObjectFifoAccessOp>(
-          rewriter.getUnknownLoc(), reuseL1LogicalObjectFifoOp.getOutput(),
-          AMDAIE::MemoryAccess::Read);
+    firstCoreOp.walk([&](AMDAIE::LogicalObjectFifoAccessOp accessOp) {
+      if (accessOp.getInput() == newFirstL2ToL1DmaOp.getTargetObjectFifo()) {
+        OpBuilder::InsertionGuard guard(rewriter);
+        rewriter.setInsertionPointAfter(accessOp);
+        rewriter.create<AMDAIE::LogicalObjectFifoAccessOp>(
+            rewriter.getUnknownLoc(), reuseL1LogicalObjectFifoOp.getOutput(),
+            accessOp.getAccessType());
+      }
     });
     // For the second Core op we'll insert `Read` right before the first read
     // from the corresponding L1 logicalobjectFifo.
-    std::optional<CoreOp> maybeSecondCoreOp =
-        fetchUniqueCoreOp(newSecondL2ToL1DmaOp);
-    if (!maybeSecondCoreOp) return failure();
-    CoreOp secondCoreOp = maybeSecondCoreOp.value();
     secondCoreOp.walk([&](AMDAIE::LogicalObjectFifoAccessOp accessOp) {
       if (accessOp.getInput() == l2ToL1DmaOps[i + 1].getTargetObjectFifo()) {
         OpBuilder::InsertionGuard guard(rewriter);
