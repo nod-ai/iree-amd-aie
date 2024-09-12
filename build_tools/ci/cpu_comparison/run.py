@@ -686,6 +686,7 @@ class MatmulSet(TestSet):
         # Test(s) of the form batch_matmul(A,B) where A:BxMxK, B:BxKxN
         template_name = matmul_template_dir / "batch_matmul_BxMxK_BxKxN.mlir"
         for lhs_type, acc_type in zip(["i32", "bf16"], ["i32", "f32"]):
+            # Batch size = 1
             test_name = (
                 output_dir / f"test_from_template_bmm_1_{lhs_type}_{acc_type}.mlir"
             )
@@ -698,12 +699,19 @@ class MatmulSet(TestSet):
                 tile_pipeline="pack-peel",
                 lower_to_aie_pipeline="objectFifo",
             )
-
-            # TODO (vivian): The below tests are batch matmul with batch size equals 2, and have different
-            # numerics compared to CPU results. Comment these out until we have a fix.
-            # test_name = output_dir / f"test_from_template_bmm_2_{lhs_type}_{acc_type}.mlir"
-            # generate_matmul_test(test_name, template_name, 64, 64, 64, lhs_type, acc_type, b=2)
-            # aie_vs_llvm_cpu(config, test_name, tile_pipeline="pack-peel", lower_to_aie_pipeline="objectFifo")
+            # Batch size = 2
+            test_name = (
+                output_dir / f"test_from_template_bmm_2_{lhs_type}_{acc_type}.mlir"
+            )
+            generate_matmul_test(
+                test_name, template_name, 64, 64, 64, lhs_type, acc_type, b=2
+            )
+            aie_vs_llvm_cpu(
+                config,
+                test_name,
+                tile_pipeline="pack-peel",
+                lower_to_aie_pipeline="objectFifo",
+            )
 
 
 class SmokeSet(TestSet):
