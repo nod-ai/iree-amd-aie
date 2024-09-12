@@ -135,6 +135,4 @@ pushd $build_dir
 & bash -l -c "ctest -R amd-aie --output-on-failure -j --repeat until-pass:5"
 popd
 
-Remove-Item -Path "$install_dir/bin/clang*" -Force
-Remove-Item -Path "$install_dir/bin/llvm-link*" -Force
 Copy-Item -Path "$build_dir/tools/testing/e2e/iree-e2e-matmul-test.exe" -Destination "$install_dir/bin" -Force

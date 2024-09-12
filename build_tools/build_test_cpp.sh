@@ -126,6 +126,4 @@ elif [[ "$OSTYPE" == "darwin"* ]]; then
   ctest --test-dir "$build_dir" -R amd-aie -E "matmul_pack_peel_air_e2e|matmul_elementwise_pack_peel_air_e2e|conv_fill_spec_pad" --output-on-failure -j --repeat until-pass:5
 fi
 
-rm -f "$install_dir"/bin/clang*
-rm -f "$install_dir"/bin/llvm-link*
 cp "$build_dir"/tools/testing/e2e/iree-e2e-matmul-test "$install_dir"/bin

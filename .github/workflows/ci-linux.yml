@@ -133,15 +133,8 @@ jobs:
         with:
           name: linux_x86_64_iree_packages
 
-      - name: Download artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: linux_x86_64_llvm_packages
-
       - name: Extract artifact
         run: |
-          tar -xvf llvm-dist-linux-*.tar
-          echo "PATH=$PWD/llvm-install/bin:$PATH" >> $GITHUB_ENV
           tar -xvf iree-dist-linux.tar
           bash build_tools/download_peano.sh
 
