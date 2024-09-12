@@ -905,7 +905,6 @@ def AMDAIE_LogicalObjectFifoPlaceholderOp:
     uint8_t getDepth() {
       return cast<LogicalObjectFifoType>(getOutput().getType()).getDepth();
     }
-
   }];
 }
 
