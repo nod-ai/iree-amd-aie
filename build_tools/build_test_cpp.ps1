@@ -137,8 +137,9 @@ popd
 
 if ($llvm_install_dir -and (Test-Path "$llvm_install_dir"))
 {
-    Copy-Item -Path "$llvm_install_dir/bin/clang*" -Destination "$install_dir/bin" -Force
-    Copy-Item -Path "$llvm_install_dir/bin/llvm-link*" -Destination "$install_dir/bin" -Force
+    Copy-Item -Path "$llvm_install_dir/bin/lld.exe" -Destination "$install_dir/bin" -Force
+    Copy-Item -Path "$llvm_install_dir/bin/FileCheck.exe" -Destination "$install_dir/bin" -Force
+    Copy-Item -Path "$llvm_install_dir/bin/not.exe" -Destination "$install_dir/bin" -Force
 }
 
 Copy-Item -Path "$build_dir/tools/testing/e2e/iree-e2e-matmul-test.exe" -Destination "$install_dir/bin" -Force

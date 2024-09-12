@@ -127,8 +127,8 @@ elif [[ "$OSTYPE" == "darwin"* ]]; then
 fi
 
 if [ -d "$llvm_install_dir" ]; then
-  cp "$llvm_install_dir"/bin/clang "$install_dir"/bin
-  cp -L "$llvm_install_dir"/bin/clang "$install_dir"/bin
-  cp "$llvm_install_dir"/bin/llvm-link* "$install_dir"/bin
+  cp "$llvm_install_dir"/bin/lld "$install_dir"/bin
+  cp "$llvm_install_dir"/bin/FileCheck "$install_dir"/bin
+  cp "$llvm_install_dir"/bin/not "$install_dir"/bin
 fi
-cp "$build_dir"/tools/testing/e2e/iree-e2e-matmul-test
+cp "$build_dir"/tools/testing/e2e/iree-e2e-matmul-test "$install_dir"/bin
