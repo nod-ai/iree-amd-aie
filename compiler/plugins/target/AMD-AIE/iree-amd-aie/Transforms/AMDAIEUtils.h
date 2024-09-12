@@ -24,6 +24,9 @@ std::optional<AMDAIEDevice> getConfigAMDAIEDevice(
 /// attr in the AST.
 std::optional<AMDAIEDevice> getConfigAMDAIEDevice(Operation *op);
 
+/// Utility to retrieve a constant index from an OpFoldResult.
+int64_t getConstantIndexOrAssert(OpFoldResult ofr);
+
 // This function is based on the following table pulled from the
 // AIEVec_MatMulOp documentation in
 // mlir-aie/include/aie/Dialect/AIEVec/IR/AIEVecOps.td

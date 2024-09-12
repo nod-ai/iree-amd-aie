@@ -9,6 +9,7 @@
 #include <numeric>
 
 #include "iree-amd-aie/Transforms/AMDAIEDmaUtils.h"
+#include "iree-amd-aie/Transforms/AMDAIEUtils.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/Support/Debug.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"

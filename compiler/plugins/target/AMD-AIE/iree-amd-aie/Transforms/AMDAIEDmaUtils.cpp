@@ -8,6 +8,7 @@
 
 #include <cstdlib>
 
+#include "iree-amd-aie/Transforms/AMDAIEUtils.h"
 #include "mlir/Dialect/Utils/StaticValueUtils.h"
 
 namespace mlir::iree_compiler::AMDAIE {
@@ -19,13 +20,6 @@ Operation *getAncestorInBlock(Operation *op, Block *block) {
   while (parent && (parent->getBlock() != block))
     parent = parent->getParentOp();
   return parent;
-}
-
-/// Utility to retrieve a constant index from an OpFoldResult.
-int64_t getConstantIndexOrAssert(OpFoldResult dim) {
-  std::optional<int64_t> size = getConstantIntValue(dim);
-  assert(size.has_value() && "expect constant index");
-  return size.value();
 }
 
 bool areAccessPatternsCombinable(const SmallVector<OpFoldResult> &offsetsA,
