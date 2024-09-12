@@ -144,9 +144,8 @@ jobs:
           source .venv/bin/activate
           pip install -r tests/matmul/requirements.txt
 
-      - name: E2E correctness matmul test
+      name: Unlimit locked memory for XRT
         run: |
-          source .venv/bin/activate
           # Without this additional line an error like
           #
           # [XRT] ERROR: Failed to allocate host memory buffer (mmap(len=10616832, prot=3, flags=8193, offset=4294967296)
@@ -174,6 +173,21 @@ jobs:
           # on the guthub CI machine.
           sudo prlimit -lunlimited --pid $$
 
+      - name : E2E comparison of AIE to llvm-cpu
+        run: |
+          source .venv/bin/activate
+          source /opt/xilinx/xrt/setup.sh
+          python3 build_tools/ci/cpu_comparison/run.py \
+            test_aie_vs_cpu \
+            $PWD/iree-install \
+            $PWD/llvm-aie \
+            --xrt-dir /opt/xilinx/xrt \
+            --vitis-dir /opt/Xilinx/Vitis/2024.2 \
+            --reset-npu-between-runs -v
+
+      - name: E2E correctness matmul test
+        run: |
+          source .venv/bin/activate
           source /opt/xilinx/xrt/setup.sh
           bash build_tools/ci/run_matmul_test.sh \
             test_matmuls \
@@ -181,6 +195,15 @@ jobs:
             $PWD/llvm-aie \
             /opt/xilinx/xrt \
             /opt/Xilinx/Vitis/2024.2
+
+      - name: Printing IR from aie2xclbin
+        run: |
+          source .venv/bin/activate
+          source /opt/xilinx/xrt/setup.sh
+          bash build_tools/ci/print_ir_aie2xclbin/print_ir_aie2xclbin.sh \
+            iree-install \
+            print_ir_aie2xclbin_results \
+            $PWD/llvm-aie
 
       - name : Smoke E2E comparison flag test
         run: |
@@ -207,24 +230,3 @@ jobs:
           else
             echo "smoke_output.log is empty"
           fi
-
-      - name : E2E comparison of AIE to llvm-cpu
-        run: |
-          source .venv/bin/activate
-          source /opt/xilinx/xrt/setup.sh
-          python3 build_tools/ci/cpu_comparison/run.py \
-            test_aie_vs_cpu \
-            $PWD/iree-install \
-            $PWD/llvm-aie \
-            --xrt-dir /opt/xilinx/xrt \
-            --vitis-dir /opt/Xilinx/Vitis/2024.2 \
-            --reset-npu-between-runs -v
-
-      - name: Printing IR from aie2xclbin
-        run: |
-          source .venv/bin/activate
-          source /opt/xilinx/xrt/setup.sh
-          bash build_tools/ci/print_ir_aie2xclbin/print_ir_aie2xclbin.sh \
-            iree-install \
-            print_ir_aie2xclbin_results \
-            $PWD/llvm-aie
