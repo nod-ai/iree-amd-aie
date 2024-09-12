@@ -20,9 +20,6 @@
 
 namespace mlir::iree_compiler::AMDAIE {
 
-/// Utility to retrieve a constant index from an OpFoldResult.
-int64_t getConstantIndexOrAssert(OpFoldResult dim);
-
 /// Utility affine expression visitor to retrieve the scale and optional bias
 /// from the expression.
 struct RetrieveScaleAndBias

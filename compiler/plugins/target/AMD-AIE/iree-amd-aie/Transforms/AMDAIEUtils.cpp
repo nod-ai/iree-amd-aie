@@ -28,6 +28,13 @@ std::optional<AMDAIEDevice> getConfigAMDAIEDevice(Operation *op) {
   return getConfigAMDAIEDevice(targetAttr);
 }
 
+/// Utility to retrieve a constant index from an OpFoldResult.
+int64_t getConstantIndexOrAssert(OpFoldResult ofr) {
+  std::optional<int64_t> res = getConstantIntValue(ofr);
+  assert(res.has_value() && "expect constant index");
+  return res.value();
+}
+
 namespace {
 
 /// Generate a DenseMap key we can use for the element types (alternatives
