@@ -330,7 +330,19 @@ SmallVector<BufferOp> createBuffers(OpBuilder &builder,
   SmallVector<BufferOp> buffers;
   if (deviceModel.isShimTile(tile.getCol(), tile.getRow())) return buffers;
   auto fifoType = cast<AIEObjectFifoType>(createOp.getElemType());
-  auto elemType = cast<MemRefType>(fifoType.getElementType());
+  auto oldElemType = cast<MemRefType>(fifoType.getElementType());
+  auto shape = oldElemType.getShape();
+  auto elType = oldElemType.getElementType();
+  int memSpace;
+  if (tile.getRow() == 0)
+    memSpace = 0;
+  else if (tile.getRow() == 1)
+    memSpace = 1;
+  else
+    memSpace = 2;
+  Attribute memSpaceAttr = builder.getI32IntegerAttr(memSpace);
+  auto elemType = MemRefType::get(shape, elType, AffineMap{}, memSpaceAttr);
+
   for (int ofElemIndex = 0; ofElemIndex < numBuffers; ofElemIndex++) {
     auto buff = builder.create<BufferOp>(
         builder.getUnknownLoc(), elemType, tile,
