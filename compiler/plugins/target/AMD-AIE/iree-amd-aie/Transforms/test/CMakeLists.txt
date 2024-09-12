@@ -16,7 +16,6 @@ iree_lit_test_suite(
     "assign_npu_dma_bd_ids.mlir"
     "bridge_to_air.mlir"
     "bufferize_to_allocation.mlir"
-    "canonicalize_dma.mlir"
     "canonicalize_doubly_strided_op.mlir"
     "canonicalize_npu_dma_cpy_nd.mlir"
     "combine_strided_ops.mlir"

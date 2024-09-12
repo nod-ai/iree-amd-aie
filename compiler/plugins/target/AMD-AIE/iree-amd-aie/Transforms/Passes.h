@@ -77,9 +77,6 @@ std::unique_ptr<Pass> createAMDAIEBridgeToAIRPass();
 std::unique_ptr<Pass> createAMDAIEBufferizeToAllocationPass(
     AMDAIEBufferizeToAllocationOptions options = {});
 
-/// Create pass to apply canonicalization to air.dma_memcpy_nd op's.
-std::unique_ptr<Pass> createAMDAIECanonicalizeDmaPass();
-
 /// Create pass to canonicalize `amdaie.npu.dma_cpy_nd` operations.
 std::unique_ptr<Pass> createAMDAIECanonicalizeNpuDmaCpyNdPass();
 
