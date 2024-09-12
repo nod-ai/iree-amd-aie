@@ -13,37 +13,11 @@
 #include "iree/base/api.h"
 #include "iree/base/tracing.h"
 
-typedef struct iree_hal_hsa_allocator_t {
-  // Abstract resource used for injecting reference counting and vtable;
-  // must be at offset 0.
-  iree_hal_resource_t resource;
-
-  hsa_agent_t hsa_agent;
-
-  hsa_agent_t cpu_agent;
-  hsa_amd_memory_pool_t cpu_pool;
-
-  // One memory pool and region for now
-  hsa_amd_memory_pool_t buffers_pool;
-  hsa_region_t kernel_argument_pool;
-
-  const iree_hal_hsa_dynamic_symbols_t* symbols;
-
-  iree_allocator_t host_allocator;
-
-  // Whether the GPU and CPU can concurrently access HSA managed data in a
-  // coherent way. We would need to explicitly perform flushing and invalidation
-  // between GPU and CPU if not.
-  bool supports_concurrent_managed_access;
-
-  IREE_STATISTICS(iree_hal_allocator_statistics_t statistics;)
-} iree_hal_hsa_allocator_t;
-
 namespace {
 extern const iree_hal_allocator_vtable_t iree_hal_hsa_allocator_vtable;
 }
 
-static iree_hal_hsa_allocator_t* iree_hal_hsa_allocator_cast(
+iree_hal_hsa_allocator_t* iree_hal_hsa_allocator_cast(
     iree_hal_allocator_t* base_value) {
   IREE_HAL_ASSERT_TYPE(base_value, &iree_hal_hsa_allocator_vtable);
   return (iree_hal_hsa_allocator_t*)base_value;
@@ -160,6 +134,51 @@ static hsa_status_t iterate_find_cpu_agent_pool_callback(
   return HSA_STATUS_SUCCESS;
 }
 
+hsa_status_t get_coarse_global_mem_pool(hsa_amd_memory_pool_t pool, void* data,
+                                        bool kernarg) {
+  hsa_amd_segment_t segment_type;
+  auto ret = hsa_amd_memory_pool_get_info(
+      pool, HSA_AMD_MEMORY_POOL_INFO_SEGMENT, &segment_type);
+  if (ret != HSA_STATUS_SUCCESS) {
+    return ret;
+  }
+
+  if (segment_type == HSA_AMD_SEGMENT_GLOBAL) {
+    hsa_amd_memory_pool_global_flag_t global_pool_flags;
+    ret = hsa_amd_memory_pool_get_info(
+        pool, HSA_AMD_MEMORY_POOL_INFO_GLOBAL_FLAGS, &global_pool_flags);
+    if (ret != HSA_STATUS_SUCCESS) {
+      return ret;
+    }
+
+    if (kernarg) {
+      if ((global_pool_flags &
+           HSA_AMD_MEMORY_POOL_GLOBAL_FLAG_COARSE_GRAINED) &&
+          (global_pool_flags & HSA_REGION_GLOBAL_FLAG_KERNARG)) {
+        *static_cast<hsa_amd_memory_pool_t*>(data) = pool;
+      }
+    } else {
+      if ((global_pool_flags &
+           HSA_AMD_MEMORY_POOL_GLOBAL_FLAG_COARSE_GRAINED) &&
+          !(global_pool_flags & HSA_REGION_GLOBAL_FLAG_KERNARG)) {
+        *static_cast<hsa_amd_memory_pool_t*>(data) = pool;
+      }
+    }
+  }
+
+  return HSA_STATUS_SUCCESS;
+}
+
+hsa_status_t get_coarse_global_dev_mem_pool(hsa_amd_memory_pool_t pool,
+                                            void* data) {
+  return get_coarse_global_mem_pool(pool, data, false);
+}
+
+hsa_status_t get_coarse_global_kernarg_mem_pool(hsa_amd_memory_pool_t pool,
+                                                void* data) {
+  return get_coarse_global_mem_pool(pool, data, true);
+}
+
 iree_status_t iree_hal_hsa_allocator_create(
     const iree_hal_hsa_dynamic_symbols_t* hsa_symbols, hsa_agent_t agent,
     iree_allocator_t host_allocator, iree_hal_allocator_t** out_allocator) {
@@ -193,16 +212,30 @@ iree_status_t iree_hal_hsa_allocator_create(
   allocator->supports_concurrent_managed_access =
       supports_concurrent_managed_access != 0;
 
-  hsa_symbols->hsa_agent_iterate_regions(agent, get_kernarg_memory_region,
-                                         allocator);
-  hsa_symbols->hsa_amd_agent_iterate_memory_pools(
-      agent, get_fine_grained_memory_pool, allocator);
+  //  hsa_symbols->hsa_agent_iterate_regions(agent, get_kernarg_memory_region,
+  //                                         allocator);
+  //  hsa_symbols->hsa_amd_agent_iterate_memory_pools(
+  //      agent, get_fine_grained_memory_pool, allocator);
+  //
+  //  hsa_symbols->hsa_iterate_agents(&iterate_find_cpu_agent_callback,
+  //                                  (void*)allocator);
+  //  hsa_symbols->hsa_amd_agent_iterate_memory_pools(
+  //      allocator->cpu_agent, &iterate_find_cpu_agent_pool_callback,
+  //      (void*)allocator);
 
-  hsa_symbols->hsa_iterate_agents(&iterate_find_cpu_agent_callback,
-                                  (void*)allocator);
-  hsa_symbols->hsa_amd_agent_iterate_memory_pools(
-      allocator->cpu_agent, &iterate_find_cpu_agent_pool_callback,
-      (void*)allocator);
+  // Find a pool for DEV BOs. This is a global system memory pool that is
+  // mapped to the device. Will be used for PDIs and DPU instructions.
+  hsa_status_t r = hsa_symbols->hsa_amd_agent_iterate_memory_pools(
+      agent, get_coarse_global_dev_mem_pool, &allocator->cpu_pool);
+  assert(r == HSA_STATUS_SUCCESS);
+
+  // Find a pool that supports kernel args. This is just normal system memory.
+  // It will be used for commands and input data.
+  r = hsa_symbols->hsa_amd_agent_iterate_memory_pools(
+      agent, get_coarse_global_kernarg_mem_pool,
+      &allocator->kernel_argument_pool);
+  assert(r == HSA_STATUS_SUCCESS);
+  assert(allocator->kernel_argument_pool.handle);
 
   *out_allocator = (iree_hal_allocator_t*)allocator;
 

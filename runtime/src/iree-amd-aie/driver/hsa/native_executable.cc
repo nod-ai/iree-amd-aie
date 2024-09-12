@@ -10,9 +10,9 @@
 #include <cstddef>
 #include <fstream>
 #include <iostream>
-#include <vector>
 
 #include "iree-amd-aie/driver/hsa/dynamic_symbols.h"
+#include "iree-amd-aie/driver/hsa/hsa_allocator.h"
 #include "iree-amd-aie/driver/hsa/status_util.h"
 #include "iree/base/api.h"
 
@@ -177,26 +177,33 @@ iree_status_t iree_hal_hsa_native_executable_create(
       iree_amd_aie_hal_hsa_ExecutableDef_as_root(
           executable_params->executable_data.data);
 
+  flatbuffers_uint32_vec_t pdi_indices_vec =
+      iree_amd_aie_hal_hsa_ExecutableDef_pdi_indices_get(executable_def);
+
+  flatbuffers_uint32_vec_t asm_instr_indices_vec =
+      iree_amd_aie_hal_hsa_ExecutableDef_asm_instr_indices_get(executable_def);
+
   flatbuffers_string_vec_t entry_points_vec =
       iree_amd_aie_hal_hsa_ExecutableDef_entry_points_get(executable_def);
-  iree_amd_aie_hal_hsa_BlockSizeDef_vec_t block_sizes_vec =
-      iree_amd_aie_hal_hsa_ExecutableDef_block_sizes_get(executable_def);
-  flatbuffers_uint32_vec_t shared_memory_sizes_vec =
-      iree_amd_aie_hal_hsa_ExecutableDef_shared_memory_sizes_get(
-          executable_def);
-  flatbuffers_string_t hsaco_image =
-      iree_amd_aie_hal_hsa_ExecutableDef_hsaco_image_get(executable_def);
+
+  iree_amd_aie_hal_hsa_PdiDef_vec_t pdis_vec =
+      iree_amd_aie_hal_hsa_ExecutableDef_pdis_get(executable_def);
+
+  iree_amd_aie_hal_hsa_AsmInstDef_vec_t asm_instrs_vec =
+      iree_amd_aie_hal_hsa_ExecutableDef_asm_instrs_get(executable_def);
+
   iree_host_size_t entry_point_count =
       flatbuffers_string_vec_len(entry_points_vec);
-
   // Calculate the total number of characters across all entry point names. This
   // is only required when tracing so that we can store copies of the names as
   // the flatbuffer storing the strings may be released while the executable is
   // still live.
   iree_host_size_t total_entry_point_name_chars = 0;
   IREE_TRACE({
-    for (iree_host_size_t i = 0; i < entry_point_count; i++) {
-      const char* entry_name = flatbuffers_string_vec_at(entry_points_vec, i);
+    for (iree_host_size_t entry_ordinal = 0; entry_ordinal < entry_point_count;
+         entry_ordinal++) {
+      const char* entry_name =
+          flatbuffers_string_vec_at(entry_points_vec, entry_ordinal);
       total_entry_point_name_chars += flatbuffers_string_len(entry_name);
     }
   });
@@ -221,147 +228,63 @@ iree_status_t iree_hal_hsa_native_executable_create(
   executable->symbols = symbols;
   executable->entry_point_count = entry_point_count;
 
-  iree_status_t status = iree_ok_status();
+  for (iree_host_size_t entry_ordinal = 0; entry_ordinal < entry_point_count;
+       entry_ordinal++) {
+    const char* entry_name =
+        flatbuffers_string_vec_at(entry_points_vec, entry_ordinal);
+    uint32_t pdi_index =
+        flatbuffers_uint32_vec_at(pdi_indices_vec, entry_ordinal);
+    iree_amd_aie_hal_hsa_PdiDef_table_t pdi_def =
+        iree_amd_aie_hal_hsa_PdiDef_vec_at(pdis_vec, pdi_index);
+    flatbuffers_string_t pdi_fb = iree_amd_aie_hal_hsa_PdiDef_pdi_get(pdi_def);
+    uint32_t num_pdi_chars = flatbuffers_string_len(pdi_fb);
 
-  hsa_code_object_reader_t code_object_reader;
+    uint32_t asm_instr_index =
+        flatbuffers_uint32_vec_at(asm_instr_indices_vec, entry_ordinal);
+    iree_amd_aie_hal_hsa_AsmInstDef_table_t asminst_def =
+        iree_amd_aie_hal_hsa_AsmInstDef_vec_at(asm_instrs_vec, asm_instr_index);
+    flatbuffers_uint32_vec_t asm_inst =
+        iree_amd_aie_hal_hsa_AsmInstDef_asm_inst_get(asminst_def);
+    uint32_t num_instr = flatbuffers_uint32_vec_len(asm_inst);
 
-  size_t hsaco_image_size = flatbuffers_string_len(hsaco_image);
-  status = IREE_HSA_RESULT_TO_STATUS(
-      symbols, hsa_code_object_reader_create_from_memory(
-                   hsaco_image, hsaco_image_size, &code_object_reader));
+    iree_hal_hsa_allocator_t* allocator =
+        iree_hal_hsa_allocator_cast(device_allocator);
 
-  if (!iree_status_is_ok(status)) {
-    return status;
-  }
+    uint32_t* dpu_inst_buf(nullptr);
+    uint64_t* pdi_buf(nullptr);
+    // Load the DPU and PDI files into a global pool that doesn't support kernel
+    // args (DEV BO).
+    auto r =
+        hsa_amd_memory_pool_allocate(allocator->cpu_pool, num_instr, 0,
+                                     reinterpret_cast<void**>(&dpu_inst_buf));
+    assert(r == HSA_STATUS_SUCCESS);
+    std::memcpy(dpu_inst_buf, asm_inst, num_instr * sizeof(uint32_t));
+    uint32_t dpu_handle = 0;
+    r = hsa_amd_get_handle_from_vaddr(dpu_inst_buf, &dpu_handle);
+    assert(r == HSA_STATUS_SUCCESS);
+    assert(dpu_handle != 0);
 
-  hsa_executable_t hsa_executable;
-  status = IREE_HSA_RESULT_TO_STATUS(
-      symbols, hsa_executable_create_alt(
-                   HSA_PROFILE_FULL, HSA_DEFAULT_FLOAT_ROUNDING_MODE_DEFAULT,
-                   nullptr, &hsa_executable));
-  if (!iree_status_is_ok(status)) {
-    return status;
-  }
-  status = IREE_HSA_RESULT_TO_STATUS(
-      symbols,
-      hsa_executable_load_agent_code_object(
-          hsa_executable, agent, code_object_reader, nullptr, nullptr));
-  if (!iree_status_is_ok(status)) {
-    return status;
-  }
+    r = hsa_amd_memory_pool_allocate(allocator->cpu_pool, num_pdi_chars, 0,
+                                     reinterpret_cast<void**>(&pdi_buf));
+    assert(r == HSA_STATUS_SUCCESS);
+    std::memcpy(pdi_buf, pdi_fb, num_pdi_chars * sizeof(char));
+    uint32_t pdi_handle = 0;
+    r = hsa_amd_get_handle_from_vaddr(pdi_buf, &pdi_handle);
+    assert(r == HSA_STATUS_SUCCESS);
+    assert(pdi_handle != 0);
 
-  status = IREE_HSA_RESULT_TO_STATUS(
-      symbols, hsa_executable_freeze(hsa_executable, nullptr));
-  if (!iree_status_is_ok(status)) {
-    return status;
-  }
-
-  for (iree_host_size_t i = 0; i < entry_point_count; i++) {
-    const char* entry_name = flatbuffers_string_vec_at(entry_points_vec, i);
-
-    hsa_executable_symbol_t symbol;
-    status = IREE_HSA_RESULT_TO_STATUS(
-        symbols,
-        hsa_executable_get_symbol_by_name(hsa_executable, entry_name, &agent,
-                                          &symbol),
-        "hsa_executable_get_symbol_by_name");
-    if (!iree_status_is_ok(status)) {
-      iree_string_view_t name_view = iree_make_cstring_view(entry_name);
-      iree_string_view_t suffix_view = iree_make_cstring_view(".kd");
-      iree_host_size_t total_length = name_view.size + suffix_view.size;
-      char* kd_entry_name = nullptr;
-      IREE_RETURN_AND_END_ZONE_IF_ERROR(
-          z0, iree_allocator_malloc(host_allocator, total_length + 1,
-                                    (void**)&kd_entry_name));
-
-      iree_string_view_t result_view;
-      iree_host_size_t copied_length = iree_string_view_append_to_buffer(
-          name_view, &result_view, kd_entry_name);
-      iree_string_view_append_to_buffer(suffix_view, &result_view,
-                                        kd_entry_name + copied_length);
-
-      kd_entry_name[total_length] = '\0';
-
-      status = IREE_HSA_RESULT_TO_STATUS(
-          symbols, hsa_executable_get_symbol_by_name(
-                       hsa_executable, kd_entry_name, &agent, &symbol));
-      if (!iree_status_is_ok(status)) break;
-    }
-
-    uint64_t kernel_object;
-    status = IREE_HSA_RESULT_TO_STATUS(
-        symbols,
-        hsa_executable_symbol_get_info(
-            symbol, HSA_EXECUTABLE_SYMBOL_INFO_KERNEL_OBJECT, &kernel_object));
-
-    uint32_t private_segment_size;
-    status = IREE_HSA_RESULT_TO_STATUS(
-        symbols,
-        hsa_executable_symbol_get_info(
-            symbol, HSA_EXECUTABLE_SYMBOL_INFO_KERNEL_PRIVATE_SEGMENT_SIZE,
-            &private_segment_size));
-    if (!iree_status_is_ok(status)) break;
-
-    uint32_t group_segment_size;
-    status = IREE_HSA_RESULT_TO_STATUS(
-        symbols,
-        hsa_executable_symbol_get_info(
-            symbol, HSA_EXECUTABLE_SYMBOL_INFO_KERNEL_GROUP_SEGMENT_SIZE,
-            &group_segment_size));
-    if (!iree_status_is_ok(status)) break;
-
-    uint32_t kernarg_segment_size;
-    status = IREE_HSA_RESULT_TO_STATUS(
-        symbols,
-        hsa_executable_symbol_get_info(
-            symbol, HSA_EXECUTABLE_SYMBOL_INFO_KERNEL_KERNARG_SEGMENT_SIZE,
-            &kernarg_segment_size));
-    if (!iree_status_is_ok(status)) break;
-
-    uint32_t kernarg_segment_align;
-    status = IREE_HSA_RESULT_TO_STATUS(
-        symbols,
-        hsa_executable_symbol_get_info(
-            symbol, HSA_EXECUTABLE_SYMBOL_INFO_KERNEL_KERNARG_SEGMENT_ALIGNMENT,
-            &kernarg_segment_align));
-    if (!iree_status_is_ok(status)) break;
-
-    unsigned int max_shared_memory;
-    iree_hal_hsa_callback_package_t lds_query_package = {
-        .symbols = symbols, .return_value = &max_shared_memory};
-    status = IREE_HSA_RESULT_TO_STATUS(
-        symbols, hsa_amd_agent_iterate_memory_pools(
-                     agent, get_lds_size_callback, &lds_query_package));
-
-    if (shared_memory_sizes_vec[i] > max_shared_memory) {
-      status = iree_make_status(
-          IREE_STATUS_INVALID_ARGUMENT,
-          "function '%s' requested shared memory size of %u bytes larger "
-          "than allowed size of %u bytes",
-          entry_name, shared_memory_sizes_vec[i], max_shared_memory);
-    }
-    if (!iree_status_is_ok(status)) break;
-
-    // Package required parameters for kernel launches for each entry point.
-    iree_hal_hsa_kernel_info_t* kernel_info = &executable->entry_points[i];
-    kernel_info->layout = executable_params->pipeline_layouts[i];
-    iree_hal_pipeline_layout_retain(kernel_info->layout);
-    kernel_info->kernel_object = kernel_object;
-    kernel_info->block_size[0] = block_sizes_vec[i].x;
-    kernel_info->block_size[1] = block_sizes_vec[i].y;
-    kernel_info->block_size[2] = block_sizes_vec[i].z;
-    kernel_info->shared_memory_size = shared_memory_sizes_vec[i];
-
-    kernel_info->private_segment_size = private_segment_size;
-    kernel_info->group_segment_size = group_segment_size;
-    kernel_info->kernarg_segment_size = kernarg_segment_size;
-    kernel_info->kernarg_segment_align = kernarg_segment_align;
+    iree_hal_hsa_kernel_info_t* params =
+        &executable->entry_points[entry_ordinal];
+    params->pdi_buf = pdi_buf;
+    params->dpu_inst_buf = dpu_inst_buf;
+    params->pdi_handle = pdi_handle;
+    params->dpu_handle = dpu_handle;
 
     // Stash the entry point name in the string table for use when tracing.
     IREE_TRACE({
       iree_host_size_t entry_name_length = flatbuffers_string_len(entry_name);
       memcpy(string_table_buffer, entry_name, entry_name_length);
-      kernel_info->function_name =
+      params->kernel_name =
           iree_make_string_view(string_table_buffer, entry_name_length);
       string_table_buffer += entry_name_length;
     });
@@ -373,17 +296,20 @@ iree_status_t iree_hal_hsa_native_executable_create(
             iree_amd_aie_hal_hsa_ExecutableDef_source_locations_get(
                 executable_def);
         iree_amd_aie_hal_hsa_FileLineLocDef_table_t source_loc =
-            iree_amd_aie_hal_hsa_FileLineLocDef_vec_at(source_locs_vec, i);
+            iree_amd_aie_hal_hsa_FileLineLocDef_vec_at(source_locs_vec,
+                                                       entry_ordinal);
         flatbuffers_string_t filename =
             iree_amd_aie_hal_hsa_FileLineLocDef_filename_get(source_loc);
         uint32_t line =
             iree_amd_aie_hal_hsa_FileLineLocDef_line_get(source_loc);
-        kernel_info->source_filename =
+        params->source_filename =
             iree_make_string_view(filename, flatbuffers_string_len(filename));
-        kernel_info->source_line = line;
+        params->source_line = line;
       }
     });
   }
+
+  iree_status_t status = iree_ok_status();
 
   if (iree_status_is_ok(status)) {
     *out_executable = (iree_hal_executable_t*)executable;
@@ -402,9 +328,6 @@ static void iree_hal_hsa_native_executable_destroy(
   iree_allocator_t host_allocator = executable->host_allocator;
   IREE_TRACE_ZONE_BEGIN(z0);
 
-  for (iree_host_size_t i = 0; i < executable->entry_point_count; ++i) {
-    iree_hal_pipeline_layout_release(executable->entry_points[i].layout);
-  }
   IREE_HSA_IGNORE_ERROR(executable->symbols,
                         hsa_executable_destroy(executable->executable));
   iree_allocator_free(host_allocator, executable);

@@ -56,7 +56,7 @@ iree_status_t iree_hal_hsa_pending_queue_actions_issue(
     iree_hal_hsa_pending_queue_actions_t* actions);
 
 #ifdef __cplusplus
-}  // extern "C"
+}       // extern "C"
 #endif  // __cplusplus
 
 #endif  // IREE_EXPERIMENTAL_HSA_PENDING_QUEUE_ACTIONS_H_

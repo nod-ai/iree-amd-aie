@@ -7,6 +7,7 @@
 
 #include <cstdint>
 #include <cstring>
+#include <vector>
 
 #include "iree-amd-aie/driver/hsa/api.h"
 #include "iree-amd-aie/driver/hsa/dynamic_symbols.h"
@@ -46,6 +47,9 @@ typedef struct iree_hal_hsa_driver_t {
 
   // Number of GPU agents
   int num_gpu_agents;
+
+  // Number of AIE agents
+  int num_aie_agents;
 
   // IREE device ID to hsa_agent_t
   hsa_agent_t agents[IREE_HAL_HSA_MAX_DEVICES];
@@ -119,6 +123,49 @@ hsa_status_t iterate_populate_gpu_agents_callback(hsa_agent_t agent,
   return HSA_STATUS_SUCCESS;
 }
 
+hsa_status_t iterate_count_aie_agents_callback(hsa_agent_t agent,
+                                               void* base_driver) {
+  iree_hal_hsa_callback_package_t* package =
+      (iree_hal_hsa_callback_package_t*)(base_driver);
+  iree_hal_hsa_driver_t* driver = package->driver;
+  int* count_ptr = (int*)package->return_value;
+  hsa_device_type_t type;
+  hsa_status_t status =
+      (&(driver->hsa_symbols))
+          ->hsa_agent_get_info(agent, HSA_AGENT_INFO_DEVICE, &type);
+  if (status != HSA_STATUS_SUCCESS) {
+    return status;
+  }
+  if (type == HSA_DEVICE_TYPE_AIE) {
+    *count_ptr = *count_ptr + 1;
+  }
+  return HSA_STATUS_SUCCESS;
+}
+
+hsa_status_t iterate_populate_aie_agents_callback(hsa_agent_t agent,
+                                                  void* base_driver) {
+  iree_hal_hsa_callback_package_t* package =
+      (iree_hal_hsa_callback_package_t*)(base_driver);
+  iree_hal_hsa_driver_t* driver = package->driver;
+  size_t* index_ptr = package->index;
+  hsa_agent_t* agents_ptr = (hsa_agent_t*)package->return_value;
+
+  hsa_device_type_t type;
+  hsa_status_t status =
+      (&(driver->hsa_symbols))
+          ->hsa_agent_get_info(agent, HSA_AGENT_INFO_DEVICE, &type);
+  if (status != HSA_STATUS_SUCCESS) {
+    return status;
+  }
+
+  if (type == HSA_DEVICE_TYPE_AIE) {
+    size_t current_index = *index_ptr;
+    agents_ptr[current_index] = agent;
+    *index_ptr = current_index + 1;
+  }
+  return HSA_STATUS_SUCCESS;
+}
+
 // Initializes the HSA system.
 iree_status_t iree_hal_hsa_init(iree_hal_hsa_driver_t* driver) {
   IREE_TRACE_ZONE_BEGIN(z0);
@@ -160,16 +207,16 @@ static iree_status_t iree_hal_hsa_driver_create_internal(
 
   memcpy(&driver->device_params, device_params, sizeof(driver->device_params));
 
-  driver->num_gpu_agents = 0;
+  driver->num_aie_agents = 0;
 
   // Populate HSA agents
   // Query the number of available HSA devices.
   iree_hal_hsa_callback_package_t symbols_and_device_count = {
-      .driver = driver, .return_value = &driver->num_gpu_agents};
+      .driver = driver, .return_value = &driver->num_aie_agents};
 
   IREE_HSA_RETURN_AND_END_ZONE_IF_ERROR(
       z0, &driver->hsa_symbols,
-      hsa_iterate_agents(&iterate_count_gpu_agents_callback,
+      hsa_iterate_agents(&iterate_count_aie_agents_callback,
                          &symbols_and_device_count),
       "hsa_iterate_agents");
 
@@ -179,7 +226,7 @@ static iree_status_t iree_hal_hsa_driver_create_internal(
 
   IREE_HSA_RETURN_AND_END_ZONE_IF_ERROR(
       z0, &driver->hsa_symbols,
-      hsa_iterate_agents(&iterate_populate_gpu_agents_callback,
+      hsa_iterate_agents(&iterate_populate_aie_agents_callback,
                          &symbols_and_agents),
       "hsa_iterate_agents");
 

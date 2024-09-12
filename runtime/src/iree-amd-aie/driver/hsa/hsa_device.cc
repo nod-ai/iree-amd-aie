@@ -162,8 +162,8 @@ iree_status_t iree_hal_hsa_device_create(
 
   iree_status_t status = iree_hal_hsa_device_check_params(params);
 
-  size_t num_queue_packets = 1024;
-  hsa_queue_type_t queue_type = HSA_QUEUE_TYPE_MULTI;
+  size_t num_queue_packets = 64;
+  hsa_queue_type_t queue_type = HSA_QUEUE_TYPE_SINGLE;
   void (*callback)(hsa_status_t, hsa_queue_t*, void*) = nullptr;
   void* data = nullptr;
   uint32_t private_segment_size = 0;
@@ -181,36 +181,39 @@ iree_status_t iree_hal_hsa_device_create(
                                                agent, dispatch_queue, symbols,
                                                host_allocator, out_device);
 
-  iree_event_pool_t* host_event_pool = nullptr;
-  if (iree_status_is_ok(status)) {
-    status = iree_event_pool_allocate(params->event_pool_capacity,
-                                      host_allocator, &host_event_pool);
-  }
-
-  iree_hal_hsa_event_pool_t* device_event_pool = nullptr;
-  if (iree_status_is_ok(status)) {
-    status =
-        iree_hal_hsa_event_pool_allocate(symbols, params->event_pool_capacity,
-                                         host_allocator, &device_event_pool);
-  }
-
-  iree_hal_hsa_timepoint_pool_t* timepoint_pool = nullptr;
-  if (iree_status_is_ok(status)) {
-    status = iree_hal_hsa_timepoint_pool_allocate(
-        host_event_pool, device_event_pool, params->event_pool_capacity,
-        host_allocator, &timepoint_pool);
-  }
-
+  //  iree_event_pool_t* host_event_pool = nullptr;
+  //  if (iree_status_is_ok(status)) {
+  //    status = iree_event_pool_allocate(params->event_pool_capacity,
+  //                                      host_allocator, &host_event_pool);
+  //  }
+  //
+  //  iree_hal_hsa_event_pool_t* device_event_pool = nullptr;
+  //  if (iree_status_is_ok(status)) {
+  //    status =
+  //        iree_hal_hsa_event_pool_allocate(symbols,
+  //        params->event_pool_capacity,
+  //                                         host_allocator,
+  //                                         &device_event_pool);
+  //  }
+  //
+  //  iree_hal_hsa_timepoint_pool_t* timepoint_pool = nullptr;
+  //  if (iree_status_is_ok(status)) {
+  //    status = iree_hal_hsa_timepoint_pool_allocate(
+  //        host_event_pool, device_event_pool, params->event_pool_capacity,
+  //        host_allocator, &timepoint_pool);
+  //  }
+  //
   if (iree_status_is_ok(status)) {
     iree_hal_hsa_device_t* hsa_device = iree_hal_hsa_device_cast(*out_device);
-    hsa_device->host_event_pool = host_event_pool;
-    hsa_device->device_event_pool = device_event_pool;
-    hsa_device->timepoint_pool = timepoint_pool;
+    //    hsa_device->host_event_pool = host_event_pool;
+    //    hsa_device->device_event_pool = device_event_pool;
+    //    hsa_device->timepoint_pool = timepoint_pool;
   } else {
     // Release resources we have accquired after HAL device creation.
-    if (timepoint_pool) iree_hal_hsa_timepoint_pool_free(timepoint_pool);
-    if (device_event_pool) iree_hal_hsa_event_pool_release(device_event_pool);
-    if (host_event_pool) iree_event_pool_free(host_event_pool);
+    //    if (timepoint_pool) iree_hal_hsa_timepoint_pool_free(timepoint_pool);
+    //    if (device_event_pool)
+    //    iree_hal_hsa_event_pool_release(device_event_pool); if
+    //    (host_event_pool) iree_event_pool_free(host_event_pool);
     // Release other resources via the HAL device.
     iree_hal_device_release(*out_device);
   }

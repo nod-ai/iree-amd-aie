@@ -7,6 +7,7 @@
 
 #include "iree-amd-aie/driver/hsa/queue_command_buffer.h"
 
+#include "hsa_allocator.h"
 #include "iree-amd-aie/driver/hsa/hsa_buffer.h"
 #include "iree-amd-aie/driver/hsa/native_executable.h"
 #include "iree-amd-aie/driver/hsa/status_util.h"
@@ -343,8 +344,7 @@ static iree_status_t iree_hal_hsa_queue_command_buffer_collective(
 }
 
 static iree_status_t iree_hal_hsa_queue_command_buffer_push_descriptor_set(
-    iree_hal_command_buffer_t* base_command_buffer,
-    iree_hal_pipeline_layout_t* pipeline_layout, uint32_t set,
+    iree_hal_command_buffer_t* base_command_buffer, uint32_t set,
     iree_host_size_t binding_count, const iree_hal_buffer_ref_t* bindings) {
   if (binding_count > IREE_HAL_HSA_MAX_DESCRIPTOR_SET_BINDING_COUNT) {
     return iree_make_status(
@@ -373,7 +373,7 @@ static iree_status_t iree_hal_hsa_queue_command_buffer_push_descriptor_set(
       iree_device_size_t offset = iree_hal_buffer_byte_offset(binding->buffer);
       device_ptr = (uint8_t*)device_buffer + offset + binding->offset;
     }
-    current_bindings[binding->ordinal] = device_ptr;
+    current_bindings[i] = device_ptr;
   }
 
   IREE_TRACE_ZONE_END(z0);
@@ -399,77 +399,98 @@ static iree_status_t iree_hal_hsa_queue_command_buffer_dispatch(
   IREE_RETURN_AND_END_ZONE_IF_ERROR(
       z0, iree_hal_resource_set_insert(command_buffer->resource_set, 1,
                                        &executable));
+  // TODO(max): this doesn't go here, should go in pending_actions maybe?
+  // like shouldn't be done right at dispatch time
+  // Configure the queue's hardware context.
+  hsa_amd_aie_ert_hw_ctx_cu_config_t cu_config{
+      .cu_config_bo = kernel_info.pdi_handle, .cu_func = 0};
+  hsa_amd_aie_ert_hw_ctx_config_cu_param_t config_cu_args{
+      .num_cus = 1, .cu_configs = &cu_config};
+  hsa_status_t r = hsa_amd_queue_hw_ctx_config(
+      command_buffer->hsa_queue, HSA_AMD_QUEUE_AIE_ERT_HW_CXT_CONFIG_CU,
+      &config_cu_args);
+  assert(r == HSA_STATUS_SUCCESS);
 
-  iree_hal_hsa_dispatch_layout_t dispatch_layout =
-      iree_hal_hsa_pipeline_layout_dispatch_layout(kernel_info.layout);
+  // TODO(max): do we need multiple descriptor sets ever for AIE?
+  uint32_t set = 0;
+  iree_hal_hsa_queue_command_buffer_push_descriptor_set(
+      base_command_buffer, set, bindings.count, bindings.values);
 
-  // The total number of descriptors across all descriptor sets.
-  iree_host_size_t descriptor_count = dispatch_layout.total_binding_count;
-  // The total number of push constants.
-  iree_host_size_t push_constant_count = dispatch_layout.push_constant_count;
-  // We append push constants to the end of descriptors to form a linear chain
-  // of kernel arguments.
-  iree_host_size_t kernel_params_count = descriptor_count + push_constant_count;
-  iree_host_size_t kernel_params_length = kernel_params_count * sizeof(void*);
+  // // The total number of descriptors across all descriptor sets.
+  // iree_host_size_t descriptor_count = bindings.count;
+  // // The total number of push constants.
+  // // iree_host_size_t push_constant_count =
+  // dispatch_layout.push_constant_count;
+  // // We append push constants to the end of descriptors to form a linear
+  // chain
+  // // of kernel arguments.
+  // iree_host_size_t kernel_params_count = descriptor_count;
+  // iree_host_size_t kernel_params_length = kernel_params_count *
+  // sizeof(void*);
+  //
+  // // Each kernel_params[i] is itself a pointer to the corresponding
+  // // element at the *second* inline allocation at the end of the current
+  // // segment.
+  // iree_host_size_t total_size = kernel_params_length * 2;
+  //
+  // iree_hal_buffer_params_t buffer_params = {
+  //     .usage = IREE_HAL_BUFFER_USAGE_DISPATCH_STORAGE |
+  //              IREE_HAL_BUFFER_USAGE_TRANSFER,
+  //     .access = IREE_HAL_MEMORY_ACCESS_READ | IREE_HAL_MEMORY_ACCESS_WRITE,
+  //     .type =
+  //         IREE_HAL_MEMORY_TYPE_HOST_LOCAL |
+  //         IREE_HAL_MEMORY_TYPE_DEVICE_VISIBLE,
+  // };
+  //
+  // iree_device_size_t kern_arg_allocation_size = total_size;
+  // iree_hal_buffer_t* kern_arg_allocation_buffer = nullptr;
+  // iree_status_t result = iree_hal_allocator_allocate_buffer(
+  //     command_buffer->device_allocator, buffer_params,
+  //     kern_arg_allocation_size, &kern_arg_allocation_buffer);
+  // if (!iree_status_is_ok(result)) {
+  //   return result;
+  // }
+  // uint8_t* storage_base =
+  //     (uint8_t*)iree_hal_hsa_buffer_host_pointer(kern_arg_allocation_buffer);
+  //
+  // void** params_ptr = (void**)storage_base;
+  //
+  // // Set up kernel arguments to point to the payload slots.
+  // hsa_device_pointer_t* payload_ptr =
+  //     (hsa_device_pointer_t*)((uint8_t*)params_ptr + kernel_params_length);
+  // for (size_t i = 0; i < kernel_params_count; i++) {
+  //   params_ptr[i] = &payload_ptr[i];
+  // }
 
-  // Each kernel_params[i] is itself a pointer to the corresponding
-  // element at the *second* inline allocation at the end of the current
-  // segment.
-  iree_host_size_t total_size = kernel_params_length * 2;
-
-  iree_hal_buffer_params_t buffer_params = {
-      .usage = IREE_HAL_BUFFER_USAGE_DISPATCH_STORAGE |
-               IREE_HAL_BUFFER_USAGE_TRANSFER,
-      .access = IREE_HAL_MEMORY_ACCESS_READ | IREE_HAL_MEMORY_ACCESS_WRITE,
-      .type =
-          IREE_HAL_MEMORY_TYPE_HOST_LOCAL | IREE_HAL_MEMORY_TYPE_DEVICE_VISIBLE,
-  };
-
-  iree_device_size_t kern_arg_allocation_size = total_size;
-  iree_hal_buffer_t* kern_arg_allocation_buffer = nullptr;
-  iree_status_t result = iree_hal_allocator_allocate_buffer(
-      command_buffer->device_allocator, buffer_params, kern_arg_allocation_size,
-      &kern_arg_allocation_buffer);
-  if (!iree_status_is_ok(result)) {
-    return result;
-  }
-  uint8_t* storage_base =
-      (uint8_t*)iree_hal_hsa_buffer_host_pointer(kern_arg_allocation_buffer);
-
-  void** params_ptr = (void**)storage_base;
-
-  // Set up kernel arguments to point to the payload slots.
-  hsa_device_pointer_t* payload_ptr =
-      (hsa_device_pointer_t*)((uint8_t*)params_ptr + kernel_params_length);
-  for (size_t i = 0; i < kernel_params_count; i++) {
-    params_ptr[i] = &payload_ptr[i];
-  }
-
-  // Copy descriptors from all sets to the end of the current segment for later
-  // access.
-  iree_host_size_t set_count = dispatch_layout.set_layout_count;
-  for (iree_host_size_t i = 0; i < set_count; ++i) {
-    // TODO: cache this information in the kernel info to avoid recomputation.
-    iree_host_size_t binding_count =
-        iree_hal_hsa_descriptor_set_layout_binding_count(
-            iree_hal_hsa_pipeline_layout_descriptor_set_layout(
-                kernel_info.layout, i));
-    iree_host_size_t index =
-        iree_hal_hsa_pipeline_layout_base_binding_index(kernel_info.layout, i);
-    memcpy(payload_ptr + index, command_buffer->descriptor_sets[i].bindings,
-           binding_count * sizeof(hsa_device_pointer_t));
-  }
-
-  // Append the push constants to the kernel arguments.
-  iree_host_size_t base_index = dispatch_layout.push_constant_base_index;
-  // As commented in the above, what each kernel parameter points to is a
-  // hsa_device_pointer_t, which as the size of a pointer on the target machine.
-  // we are just storing a 32-bit value for the push constant here instead. So
-  // we must process one element each type, for 64-bit machines.
-  for (iree_host_size_t i = 0; i < push_constant_count; i++) {
-    *((uint32_t*)params_ptr[base_index + i]) =
-        command_buffer->push_constants[i];
-  }
+  // // Copy descriptors from all sets to the end of the current segment for
+  // later
+  // // access.
+  // iree_host_size_t set_count = dispatch_layout.set_layout_count;
+  // for (iree_host_size_t i = 0; i < set_count; ++i) {
+  //   // TODO: cache this information in the kernel info to avoid
+  //   recomputation. iree_host_size_t binding_count =
+  //       iree_hal_hsa_descriptor_set_layout_binding_count(
+  //           iree_hal_hsa_pipeline_layout_descriptor_set_layout(
+  //               kernel_info.layout, i));
+  //   iree_host_size_t index =
+  //       iree_hal_hsa_pipeline_layout_base_binding_index(kernel_info.layout,
+  //       i);
+  //   memcpy(payload_ptr + index, command_buffer->descriptor_sets[i].bindings,
+  //          binding_count * sizeof(hsa_device_pointer_t));
+  // }
+  //
+  // // Append the push constants to the kernel arguments.
+  // iree_host_size_t base_index = dispatch_layout.push_constant_base_index;
+  // // As commented in the above, what each kernel parameter points to is a
+  // // hsa_device_pointer_t, which as the size of a pointer on the target
+  // machine.
+  // // we are just storing a 32-bit value for the push constant here instead.
+  // So
+  // // we must process one element each type, for 64-bit machines.
+  // for (iree_host_size_t i = 0; i < push_constant_count; i++) {
+  //   *((uint32_t*)params_ptr[base_index + i]) =
+  //       command_buffer->push_constants[i];
+  // }
 
   // Make room for the packet
   uint64_t write_index =
@@ -479,45 +500,56 @@ static iree_status_t iree_hal_hsa_queue_command_buffer_dispatch(
   // Create the packet
   size_t queue_mask = command_buffer->hsa_queue->size - 1;
 
-  hsa_kernel_dispatch_packet_t* packet =
-      (hsa_kernel_dispatch_packet_t*)(command_buffer->hsa_queue->base_address) +
+  hsa_amd_aie_ert_packet_t* packet =
+      (hsa_amd_aie_ert_packet_t*)(command_buffer->hsa_queue->base_address) +
       (write_index & queue_mask);
 
-  hsa_signal_value_t signal_value = 1;
-  uint32_t num_consumers = 0;
-  const hsa_agent_t* consumers = nullptr;
-  iree_status_t status = IREE_HSA_RESULT_TO_STATUS(
-      command_buffer->hsa_symbols,
-      hsa_signal_create(signal_value, num_consumers, consumers,
-                        &packet->completion_signal),
-      "hsa_signal_create");
-  if (status != IREE_STATUS_OK) {
-    return status;
-  }
+  // hsa_signal_value_t signal_value = 1;
+  // uint32_t num_consumers = 0;
+  // const hsa_agent_t* consumers = nullptr;
+  // iree_status_t status = IREE_HSA_RESULT_TO_STATUS(
+  //     command_buffer->hsa_symbols,
+  //     hsa_signal_create(signal_value, num_consumers, consumers,
+  //                       &packet->completion_signal),
+  //     "hsa_signal_create");
+  // if (!iree_status_is_ok(status)) {
+  //   return status;
+  // }
 
-  uint16_t packet_dimensions = 3;
-  packet->setup |= packet_dimensions
-                   << HSA_KERNEL_DISPATCH_PACKET_SETUP_DIMENSIONS;
+  packet->state = HSA_AMD_AIE_ERT_STATE_NEW;
+  // # of arguments to put in command
+  packet->count = 0xA;
+  packet->opcode = HSA_AMD_AIE_ERT_START_CU;
+  packet->header.AmdFormat = HSA_AMD_PACKET_TYPE_AIE_ERT;
 
-  packet->grid_size_x = kernel_info.block_size[0] * workgroup_x;
-  packet->grid_size_y = kernel_info.block_size[1] * workgroup_y;
-  packet->grid_size_z = kernel_info.block_size[2] * workgroup_z;
+  uint16_t header = HSA_PACKET_TYPE_VENDOR_SPECIFIC << HSA_PACKET_HEADER_TYPE;
 
-  packet->workgroup_size_x = kernel_info.block_size[0];
-  packet->workgroup_size_y = kernel_info.block_size[1];
-  packet->workgroup_size_z = kernel_info.block_size[2];
+  __atomic_store_n(&packet->header.header, header, __ATOMIC_RELEASE);
 
-  packet->kernarg_address = *params_ptr;
-  packet->kernel_object = kernel_info.kernel_object;
-  packet->private_segment_size = kernel_info.private_segment_size;
-  packet->group_segment_size = kernel_info.group_segment_size;
+  // Creating the payload for the packet
+  hsa_amd_aie_ert_start_kernel_data_t* cmd_payload = nullptr;
+  uint32_t cmd_handle;
+  r = hsa_amd_get_handle_from_vaddr(packet, &cmd_handle);
+  assert(r == HSA_STATUS_SUCCESS);
+  iree_hal_hsa_allocator_t* allocator =
+      iree_hal_hsa_allocator_cast(command_buffer->device_allocator);
+  r = command_buffer->hsa_symbols->hsa_memory_allocate(
+      allocator->kernel_argument_pool, 64,
+      reinterpret_cast<void**>(&cmd_payload));
 
-  uint16_t header = 0;
-  header |= HSA_FENCE_SCOPE_SYSTEM << HSA_PACKET_HEADER_ACQUIRE_FENCE_SCOPE;
-  header |= HSA_FENCE_SCOPE_SYSTEM << HSA_PACKET_HEADER_RELEASE_FENCE_SCOPE;
-  header |= HSA_PACKET_TYPE_KERNEL_DISPATCH << HSA_PACKET_HEADER_TYPE;
+  assert(r == HSA_STATUS_SUCCESS);
+  cmd_payload->cu_mask = 0x1;  // Selecting the PDI to use with this command
+  cmd_payload->data[0] = 0x3;  // Transaction opcode
+  cmd_payload->data[1] = 0x0;
+  cmd_payload->data[2] = kernel_info.dpu_handle;
+  cmd_payload->data[3] = 0x0;
+  cmd_payload->data[4] = 0x44;  // Size of DPU instruction
+  cmd_payload->data[5] = input_handle;
+  cmd_payload->data[6] = 0;
+  cmd_payload->data[7] = output_handle;
+  cmd_payload->data[8] = 0;
+  packet->payload_data = reinterpret_cast<uint64_t>(cmd_payload);
 
-  __atomic_store_n(&packet->header, header, __ATOMIC_RELEASE);
   // TODO(muhaawad): We don't need a completion signal here anymore
   // since we have fences that make sure everything is completed.
   // We might still add completion signals and use within the semaphores
@@ -525,19 +557,8 @@ static iree_status_t iree_hal_hsa_queue_command_buffer_dispatch(
   command_buffer->hsa_symbols->hsa_signal_store_screlease(
       command_buffer->hsa_queue->doorbell_signal, write_index);
 
-  command_buffer->hsa_symbols->hsa_signal_wait_acquire(
-      packet->completion_signal, HSA_SIGNAL_CONDITION_LT, 1, UINT64_MAX,
-      HSA_WAIT_STATE_BLOCKED);
-
-  status =
-      IREE_HSA_RESULT_TO_STATUS(command_buffer->hsa_symbols,
-                                hsa_signal_destroy(packet->completion_signal));
-  if (status != IREE_STATUS_OK) {
-    return status;
-  }
-
   IREE_TRACE_ZONE_END(z0);
-  return status;
+  return iree_ok_status();
 }
 
 static iree_status_t iree_hal_hsa_queue_command_buffer_dispatch_indirect(

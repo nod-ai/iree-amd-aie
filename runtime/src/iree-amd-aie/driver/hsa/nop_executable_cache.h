@@ -27,7 +27,7 @@ iree_status_t iree_hal_hsa_nop_executable_cache_create(
     iree_hal_executable_cache_t** out_executable_cache);
 
 #ifdef __cplusplus
-}  // extern "C"
+}       // extern "C"
 #endif  // __cplusplus
 
 #endif  // IREE_EXPERIMENTAL_HSA_NOP_EXECUTABLE_CACHE_H_
