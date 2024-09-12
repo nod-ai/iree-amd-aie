@@ -792,7 +792,7 @@ def AMDAIE_LogicalObjectFifoFromMemrefOp
 
   let extraClassDeclaration = [{
     // Return the buffer depth (1 == single buffer, 2 == double buffer).
-    unsigned getDepth() {
+    uint8_t getDepth() {
       return cast<LogicalObjectFifoType>(getOutput().getType()).getDepth();
     }
 
@@ -899,6 +899,13 @@ def AMDAIE_LogicalObjectFifoPlaceholderOp:
   let results = (outs AnyAMDAIELogicalObjectFifoType:$output);
 
   let assemblyFormat = [{ `{` $tiles `}` attr-dict `:` type($output)}];
+
+  let extraClassDeclaration = [{
+    // Return the buffer depth (E.g. 1 == single buffer, 2 == double buffer).
+    uint8_t getDepth() {
+      return cast<LogicalObjectFifoType>(getOutput().getType()).getDepth();
+    }
+  }];
 }
 
 def AMDAIE_LogicalObjectFifoRelease: 

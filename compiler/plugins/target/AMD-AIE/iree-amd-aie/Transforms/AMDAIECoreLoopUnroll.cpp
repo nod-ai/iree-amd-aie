@@ -22,22 +22,22 @@ namespace mlir::iree_compiler::AMDAIE {
 /// the acquired objFifos.
 LogicalResult coreLoopUnroll(RewriterBase &rewriter, AMDAIE::CoreOp coreOp) {
   WalkResult res = coreOp.walk([&](scf::ForOp forOp) {
-    llvm::SmallDenseSet<unsigned> depths;
+    llvm::SmallDenseSet<uint8_t> depths;
     for (auto acqOp :
          forOp.getBody()->getOps<AMDAIE::LogicalObjectFifoAcquire>()) {
-      auto copyOp = dyn_cast_if_present<CopyOpInterface>(acqOp.getDma().getDefiningOp());
+      auto copyOp =
+          dyn_cast_if_present<CopyOpInterface>(acqOp.getDma().getDefiningOp());
       if (!copyOp) {
         acqOp.emitOpError() << "should operate on a copy-like operation";
         return WalkResult::interrupt();
       }
       auto logicalObjFifo =
           acqOp.getPort() == LogicalObjectFifoPort::Consume
-              ? dyn_cast_if_present<AMDAIE::LogicalObjectFifoFromMemrefOp>(
+              ? dyn_cast_if_present<AMDAIE::LogicalObjFifoOpInterface>(
                     copyOp.getTarget().getDefiningOp())
-              : dyn_cast_if_present<AMDAIE::LogicalObjectFifoFromMemrefOp>(
+              : dyn_cast_if_present<AMDAIE::LogicalObjFifoOpInterface>(
                     copyOp.getSource().getDefiningOp());
-      depths.insert(
-          cast<LogicalObjectFifoType>(logicalObjFifo.getType()).getDepth());
+      depths.insert(logicalObjFifo.getDepth());
     }
     int unrollFactor =
         std::accumulate(depths.begin(), depths.end(), 1, std::lcm<int, int>);
