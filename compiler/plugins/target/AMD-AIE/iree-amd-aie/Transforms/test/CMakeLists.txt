@@ -65,7 +65,8 @@ iree_lit_test_suite(
     "sink_into_core.mlir"
     "split_logicalobjfifos_for_connection_reuse.mlir"
     "tile_and_fuse_using_scf_for.mlir"
-    "tile_and_fuse_using_scf_forall.mlir"
+    "tile_and_fuse_matmul_using_scf_forall.mlir"
+    "tile_and_fuse_convolution_using_scf_forall.mlir"
     "tile_copy_using_scf_for.mlir"
     "vectorization.mlir"
   TOOLS

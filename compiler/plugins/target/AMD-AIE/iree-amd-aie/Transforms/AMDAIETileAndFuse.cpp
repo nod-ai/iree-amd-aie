@@ -30,57 +30,59 @@ namespace {
 enum class GPUGroupType { Block, Thread };
 
 /// Assign GPU dialect thread/block mapping attributes to tiled dimensions.
-/// The returned vector's size is the number of non-zero values in
-/// `tileSizesVal`. Failure is returned if it is not possible to assign
-/// mapping attributes to the dimensions.
+///
+/// \param groupType The type of group that the attributes will have.
+///
+/// \param nbTiles The number of tiles in each dimension of the tiled operation
+///                [(ub - lb) / step].
+///
+/// \param tilingInterfaceOp The TilingInterface operation that is being tiled.
+///                          Required only to emit useful errors.
 FailureOr<SmallVector<Attribute>> getGPUMappingAttributes(
-    ArrayRef<int64_t> tileSizesVal, GPUGroupType groupType,
-    TilingInterface op) {
-  MLIRContext *context = op.getContext();
+    ArrayRef<int64_t> nbTiles, GPUGroupType groupType,
+    TilingInterface tilingInterfaceOp) {
+  MLIRContext *context = tilingInterfaceOp.getContext();
 
-  // There is one induction variables in the scf.forall for each of the
-  // non-zero tile sizes. Recall that a '0' tile size corresponds to 'do
-  // not tile'.
-  uint32_t nbIndVars = std::count_if(tileSizesVal.begin(), tileSizesVal.end(),
-                                     [](int64_t t) { return t != 0; });
-
-  uint32_t nbIndVarsAboveOne =
-      std::count_if(tileSizesVal.begin(), tileSizesVal.end(),
-                    [](int64_t t) { return t > 1; });
+  const uint64_t nbDims = nbTiles.size();
+  const uint32_t nbLoopCountsAboveOne = std::count_if(
+      nbTiles.begin(), nbTiles.end(), [](int64_t t) { return t != 1; });
 
   // The mlir::gpu::MappingId enum supports 13 dimensions, see:
   // https://github.com/llvm/llvm-project/blob/main
   //   /mlir/include/mlir/Dialect/GPU/IR/GPUDeviceMappingAttr.td
-  if (nbIndVars > mlir::gpu::getMaxEnumValForMappingId()) {
-    return op->emitOpError("has too many dimensions to tile, ")
-           << "there are only " << mlir::gpu::getMaxEnumValForMappingId()
-           << " dimensions available in the mlir::gpu dialect, but "
-           << nbIndVars << " are required here..";
+  if (nbDims > mlir::gpu::getMaxEnumValForMappingId()) {
+    return tilingInterfaceOp->emitOpError()
+           << "has too many dimensions to tile, there are only "
+           << mlir::gpu::getMaxEnumValForMappingId()
+           << " dimensions available in the mlir::gpu dialect, but " << nbDims
+           << " are required here.";
   }
 
-  // Currently we expect only 2 tiled dimensions to be >1 when mapping
-  // to thread dimensions. This is to target the 2-D AIE array.
+  // A maximum of 2 dimensions can have 'loop count > 1' in the thread
+  // dimensions. This is to target the 2-D AIE array.
   //
-  // TODO(newling) if there are 3+ dimensions, we probably need to collapse
-  // them into just 2. I'm leaving this as a follow-up task. Basically, instead
-  // of
+  // TODO(newling) if there are 3+ dimensions, they should probably be collapsed
+  // into 2. I'm leaving this as a follow-up task. Basically, instead of
+  //
   //   ```(i,j,k) in (2,3,5)```
-  // we want
+  //
+  // it should be
   //   ```(i,l) in (2,15)```
+  //
   // with then
   //   j=l/5 and k=l%5.
   //
   // Once the above is implemented, we can safely remove the following check:
-  if (nbIndVarsAboveOne > 2 && groupType == GPUGroupType::Thread) {
-    auto tileSizesStr = std::to_string(tileSizesVal[0]);
-    for (unsigned i = 1; i < tileSizesVal.size(); ++i) {
-      tileSizesStr += ", " + std::to_string(tileSizesVal[i]);
+  if (nbLoopCountsAboveOne > 2 && groupType == GPUGroupType::Thread) {
+    auto tileSizesStr = std::to_string(nbTiles[0]);
+    for (unsigned i = 1; i < nbDims; ++i) {
+      tileSizesStr += ", " + std::to_string(nbTiles[i]);
     }
-    return op->emitOpError("has requested tile sizes [")
-           << tileSizesStr
+    return tilingInterfaceOp->emitOpError()
+           << "has requested tiling with loop counts [" << tileSizesStr
            << "]. Currently we only support tiling thread dimensions "
-           << "with at most 2 dimensions having a tile size greater than 1, "
-           << "there are " << nbIndVarsAboveOne << " here.";
+           << "with at most 2 dimensions with loop counts greater than 1, "
+           << "there are " << nbLoopCountsAboveOne << " here.";
   }
 
   auto getMappingAttributeForDimension = [&](uint32_t i) -> Attribute {
@@ -113,29 +115,32 @@ FailureOr<SmallVector<Attribute>> getGPUMappingAttributes(
       return getMappingAttributeForDimension(i);
   };
 
-  // We give priority to tiling dimensions of size > 1, so that they
+  // We give priority to tiling with loop count > 1, so that they
   // preferentially get DimY and DimX.
-  SmallVector<Attribute> mapping(tileSizesVal.size(), {});
+  SmallVector<Attribute> mapping(nbDims, {});
   uint32_t nAttributes = 0;
-  for (uint32_t i = 0; i < tileSizesVal.size(); ++i) {
-    if (tileSizesVal[i] > 1) {
+  for (uint32_t i = 0; i < nbDims; ++i) {
+    if (nbTiles[i] != 1) {
       mapping[i] = getAttribute(nAttributes);
       ++nAttributes;
     }
   }
-  for (uint32_t i = 0; i < tileSizesVal.size(); ++i) {
-    if (!mapping[i] && tileSizesVal[i] > 0) {
+  for (uint32_t i = 0; i < nbDims; ++i) {
+    if (!mapping[i] && nbTiles[i] > 0) {
       mapping[i] = getAttribute(nAttributes);
       ++nAttributes;
     }
   }
 
-  // Squeeze out the empty attributes (corresponding to '0's in tileSizesVal).
+  // Squeeze out the empty attributes (corresponding to '0's in nbTiles).
   SmallVector<Attribute> finalMapping;
-  finalMapping.reserve(nbIndVars);
+  finalMapping.reserve(nbDims);
   for (Attribute attr : mapping) {
     if (attr) finalMapping.push_back(attr);
   }
+
+  assert(finalMapping.size() == nbTiles.size() &&
+         "There should be one mapping attribute per tiled dimension.");
   return finalMapping;
 }
 
@@ -178,9 +183,10 @@ static bool consumerToSkip(TilingInterface op) {
   return false;
 }
 
-LogicalResult applyTileAndFuse(RewriterBase &rewriter, TilingInterface rootOp,
-                               DominanceInfo &dominanceInfo,
-                               scf::SCFTileAndFuseOptions &tileAndFuseOptions) {
+FailureOr<scf::SCFTileAndFuseResult> applyTileAndFuse(
+    RewriterBase &rewriter, TilingInterface rootOp,
+    DominanceInfo &dominanceInfo,
+    scf::SCFTileAndFuseOptions &tileAndFuseOptions) {
   FailureOr<scf::SCFTileAndFuseResult> tileAndFuseResult =
       scf::tileConsumerAndFuseProducersUsingSCF(rewriter, rootOp,
                                                 tileAndFuseOptions);
@@ -194,7 +200,7 @@ LogicalResult applyTileAndFuse(RewriterBase &rewriter, TilingInterface rootOp,
     });
   }
 
-  return success();
+  return tileAndFuseResult;
 }
 
 /// This pass starts with the last TilingInterface operation, tiles the op and
@@ -214,6 +220,56 @@ class AMDAIETileAndFusePass
 
   void runOnOperation() override;
 };
+
+/// Set the tiling attribute on `loopForAll`, based on the number of loop
+/// iterations in each dimension.
+static LogicalResult setGpuAttributeOnForall(
+    GPUGroupType groupType, scf::ForallOp loopForAll,
+    TilingInterface tilingInterfaceOp) {
+  MLIRContext *context = tilingInterfaceOp.getContext();
+
+  std::optional<SmallVector<OpFoldResult>> maybeUbs =
+      loopForAll.getLoopUpperBounds();
+  std::optional<SmallVector<OpFoldResult>> maybeLbs =
+      loopForAll.getLoopLowerBounds();
+  std::optional<SmallVector<OpFoldResult>> maybeSteps =
+      loopForAll.getLoopSteps();
+
+  if (!maybeUbs || !maybeLbs || !maybeSteps) {
+    return tilingInterfaceOp->emitOpError(
+        "after tiling does not have constant loop upper bounds / "
+        "lower bounds / steps.");
+  }
+
+  const SmallVector<OpFoldResult> &ubs = maybeUbs.value();
+  const SmallVector<OpFoldResult> &lbs = maybeLbs.value();
+  const SmallVector<OpFoldResult> &steps = maybeSteps.value();
+
+  SmallVector<int64_t> nbIters;
+  for (uint32_t i = 0; i < ubs.size(); ++i) {
+    // Try and determine a static loop count in dimension i.
+    // Try and get constant values for ubs[i], lbs[i], steps[i]:
+    auto maybeUb = getConstantIntValue(ubs[i]);
+    auto maybeLb = getConstantIntValue(lbs[i]);
+    auto maybeStep = getConstantIntValue(steps[i]);
+    if (maybeUb && maybeLb && maybeStep) {
+      int64_t ub = maybeUb.value();
+      int64_t lb = maybeLb.value();
+      int64_t step = maybeStep.value();
+      int64_t cnt = (ub - lb) / step;
+      nbIters.push_back(cnt);
+    } else {
+      nbIters.push_back(ShapedType::kDynamic);
+    }
+  }
+
+  auto maybeMapping =
+      getGPUMappingAttributes(nbIters, groupType, tilingInterfaceOp);
+  if (failed(maybeMapping)) return failure();
+  ArrayAttr mappingArrayAttr = ArrayAttr::get(context, maybeMapping.value());
+  loopForAll.setMappingAttr(mappingArrayAttr);
+  return success();
+}
 
 void AMDAIETileAndFusePass::runOnOperation() {
   MLIRContext *context = &getContext();
@@ -273,30 +329,8 @@ void AMDAIETileAndFusePass::runOnOperation() {
 
   auto options = scf::SCFTilingOptions().setTileSizes(tileSizes);
 
-  // When tiling using scf.for we do not need to set any mapping.
   if (!useSCFFor) {
     options.setLoopType(scf::SCFTilingOptions::LoopType::ForallOp);
-
-    // Currently only thread groups are used in lowering, blocks get unrolled
-    // temporally. In theory we should be able to just not add any block group
-    // dimensions to the outer scf.forall operation, but currently this results
-    // in compilation failure. What happens is
-    // 1) without any block group dimensions, the scf.forall operation can be
-    //    be canonicalized away if the tile sizes are all 1 (small matmul, for
-    //    example). Leaving only the inner thread scf.forall. 
-    // 2) certain passes expect an outer scf.forall operation, so if it is
-    //    canonicalized away, the pass fails.
-    // So for now we're keeping the block group dimension here, but should
-    // be able to compile without any block group dimensions TODO(newling)
-    auto groupType =
-        tilingLevel == 0 ? GPUGroupType::Block : GPUGroupType::Thread;
-
-    auto maybeMapping =
-        getGPUMappingAttributes(tileSizesVal, groupType, consumerOp);
-    if (failed(maybeMapping)) {
-      return signalPassFailure();
-    }
-    options.setMapping(maybeMapping.value());
   }
 
   IRRewriter rewriter(context);
@@ -329,10 +363,44 @@ void AMDAIETileAndFusePass::runOnOperation() {
           return {fusableOp, false};
         });
   }
-  if (failed(applyTileAndFuse(rewriter, consumerOp, dominanceInfo,
-                              tileAndFuseOptions))) {
-    LLVM_DEBUG(llvm::dbgs() << "----- tile and fuse failed -----\n");
-    return signalPassFailure();
+
+  FailureOr<scf::SCFTileAndFuseResult> tileAndFuseResult =
+      applyTileAndFuse(rewriter, consumerOp, dominanceInfo, tileAndFuseOptions);
+
+  if (failed(tileAndFuseResult)) return signalPassFailure();
+
+  // When tiling using scf.for we do not need to set any mapping.
+  if (!useSCFFor) {
+    // Currently only thread groups are used in lowering, blocks get unrolled
+    // temporally. In theory we should be able to just not add any block group
+    // dimensions to the outer scf.forall operation, but currently this results
+    // in compilation failure. What happens is
+    // 1) without any block group dimensions, the scf.forall operation can be
+    //    be canonicalized away if the tile sizes are all 1 (small matmul, for
+    //    example). Leaving only the inner thread scf.forall.
+    // 2) certain passes expect an outer scf.forall operation, so if it is
+    //    canonicalized away, the pass fails.
+    // So for now we're keeping the block group dimension here, but should
+    // be able to compile without any block group dimensions TODO(newling)
+
+    SmallVector<LoopLikeOpInterface> loops = tileAndFuseResult.value().loops;
+    if (loops.size() != 1) {
+      consumerOp.emitOpError() << "expected exactly one scf.forall operation "
+                                  "after tiling, but there are "
+                               << loops.size() << '.';
+      signalPassFailure();
+    }
+    LoopLikeOpInterface loop = loops[0];
+    scf::ForallOp loopForAll = dyn_cast<scf::ForallOp>(loop.getOperation());
+    if (!loopForAll) {
+      loopForAll->emitOpError("expected to be an scf.forall operation.");
+      signalPassFailure();
+    }
+    auto groupType =
+        tilingLevel == 0 ? GPUGroupType::Block : GPUGroupType::Thread;
+    if (failed(setGpuAttributeOnForall(groupType, loopForAll, consumerOp))) {
+      return signalPassFailure();
+    }
   }
 }
 
