@@ -31,8 +31,13 @@ enum class GPUGroupType { Block, Thread };
 
 /// Assign GPU dialect thread/block mapping attributes to tiled dimensions.
 ///
+/// \param groupType The type of group that the attributes will have.
+///
 /// \param nbTiles The number of tiles in each dimension of the tiled operation
 ///                [(ub - lb) / step].
+///
+/// \param tilingInterfaceOp The TilingInterface operation that is being tiled.
+///                          Required only to emit useful errors.
 FailureOr<SmallVector<Attribute>> getGPUMappingAttributes(
     ArrayRef<int64_t> nbTiles, GPUGroupType groupType,
     TilingInterface tilingInterfaceOp) {
@@ -46,21 +51,24 @@ FailureOr<SmallVector<Attribute>> getGPUMappingAttributes(
   // https://github.com/llvm/llvm-project/blob/main
   //   /mlir/include/mlir/Dialect/GPU/IR/GPUDeviceMappingAttr.td
   if (nbDims > mlir::gpu::getMaxEnumValForMappingId()) {
-    return tilingInterfaceOp->emitOpError("has too many dimensions to tile, ")
-           << "there are only " << mlir::gpu::getMaxEnumValForMappingId()
+    return tilingInterfaceOp->emitOpError()
+           << "has too many dimensions to tile, there are only "
+           << mlir::gpu::getMaxEnumValForMappingId()
            << " dimensions available in the mlir::gpu dialect, but " << nbDims
            << " are required here.";
   }
 
-  // We expect maximum 2 dimensions to have loop count > 1 in to thread
+  // A maximum of 2 dimensions can have 'loop count > 1' in the thread
   // dimensions. This is to target the 2-D AIE array.
   //
-  // TODO(newling) if there are 3+ dimensions, we probably need to collapse
-  // them into 2. I'm leaving this as a follow-up task. Basically, instead
-  // of
+  // TODO(newling) if there are 3+ dimensions, they should probably be collapsed
+  // into 2. I'm leaving this as a follow-up task. Basically, instead of
+  //
   //   ```(i,j,k) in (2,3,5)```
-  // we want
+  //
+  // it should be
   //   ```(i,l) in (2,15)```
+  //
   // with then
   //   j=l/5 and k=l%5.
   //
@@ -70,9 +78,8 @@ FailureOr<SmallVector<Attribute>> getGPUMappingAttributes(
     for (unsigned i = 1; i < nbDims; ++i) {
       tileSizesStr += ", " + std::to_string(nbTiles[i]);
     }
-    return tilingInterfaceOp->emitOpError(
-               "has requested tiling with loop counts [")
-           << tileSizesStr
+    return tilingInterfaceOp->emitOpError()
+           << "has requested tiling with loop counts [" << tileSizesStr
            << "]. Currently we only support tiling thread dimensions "
            << "with at most 2 dimensions with loop counts greater than 1, "
            << "there are " << nbLoopCountsAboveOne << " here.";
@@ -132,7 +139,8 @@ FailureOr<SmallVector<Attribute>> getGPUMappingAttributes(
     if (attr) finalMapping.push_back(attr);
   }
 
-  assert(finalMapping.size() == nbTiles.size());
+  assert(finalMapping.size() == nbTiles.size() &&
+         "There should be one mapping attribute per tiled dimension.");
   return finalMapping;
 }
 
@@ -213,21 +221,12 @@ class AMDAIETileAndFusePass
   void runOnOperation() override;
 };
 
+/// Set the tiling attribute on `loopForAll`, based on the number of loop
+/// iterations in each dimension.
 static LogicalResult setGpuAttributeOnForall(
-    GPUGroupType groupType, scf::SCFTileAndFuseResult scfTileAndFuseResult,
-    TilingInterface consumerOp) {
-  MLIRContext *context = consumerOp.getContext();
-
-  SmallVector<LoopLikeOpInterface> loops = scfTileAndFuseResult.loops;
-  if (loops.size() != 1) {
-    return consumerOp.emitOpError("expected exactly one scf.forall operation ")
-           << "after tiling, but there are " << loops.size() << '.';
-  }
-  LoopLikeOpInterface loop = scfTileAndFuseResult.loops[0];
-  scf::ForallOp loopForAll = dyn_cast<scf::ForallOp>(loop.getOperation());
-  if (!loopForAll) {
-    return loopForAll->emitOpError("expected to be an scf.forall operation.");
-  }
+    GPUGroupType groupType, scf::ForallOp loopForAll,
+    TilingInterface tilingInterfaceOp) {
+  MLIRContext *context = tilingInterfaceOp.getContext();
 
   std::optional<SmallVector<OpFoldResult>> maybeUbs =
       loopForAll.getLoopUpperBounds();
@@ -237,7 +236,7 @@ static LogicalResult setGpuAttributeOnForall(
       loopForAll.getLoopSteps();
 
   if (!maybeUbs || !maybeLbs || !maybeSteps) {
-    return consumerOp->emitOpError(
+    return tilingInterfaceOp->emitOpError(
         "after tiling does not have constant loop upper bounds / "
         "lower bounds / steps.");
   }
@@ -264,7 +263,8 @@ static LogicalResult setGpuAttributeOnForall(
     }
   }
 
-  auto maybeMapping = getGPUMappingAttributes(nbIters, groupType, consumerOp);
+  auto maybeMapping =
+      getGPUMappingAttributes(nbIters, groupType, tilingInterfaceOp);
   if (failed(maybeMapping)) return failure();
   ArrayAttr mappingArrayAttr = ArrayAttr::get(context, maybeMapping.value());
   loopForAll.setMappingAttr(mappingArrayAttr);
@@ -382,10 +382,23 @@ void AMDAIETileAndFusePass::runOnOperation() {
     //    canonicalized away, the pass fails.
     // So for now we're keeping the block group dimension here, but should
     // be able to compile without any block group dimensions TODO(newling)
+
+    SmallVector<LoopLikeOpInterface> loops = tileAndFuseResult.value().loops;
+    if (loops.size() != 1) {
+      consumerOp.emitOpError() << "expected exactly one scf.forall operation "
+                                  "after tiling, but there are "
+                               << loops.size() << '.';
+      signalPassFailure();
+    }
+    LoopLikeOpInterface loop = loops[0];
+    scf::ForallOp loopForAll = dyn_cast<scf::ForallOp>(loop.getOperation());
+    if (!loopForAll) {
+      loopForAll->emitOpError("expected to be an scf.forall operation.");
+      signalPassFailure();
+    }
     auto groupType =
         tilingLevel == 0 ? GPUGroupType::Block : GPUGroupType::Thread;
-    if (failed(setGpuAttributeOnForall(groupType, tileAndFuseResult.value(),
-                                       consumerOp))) {
+    if (failed(setGpuAttributeOnForall(groupType, loopForAll, consumerOp))) {
       return signalPassFailure();
     }
   }
