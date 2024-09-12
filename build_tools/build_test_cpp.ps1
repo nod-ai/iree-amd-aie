@@ -135,4 +135,10 @@ pushd $build_dir
 & bash -l -c "ctest -R amd-aie --output-on-failure -j --repeat until-pass:5"
 popd
 
+if ($llvm_install_dir -and (Test-Path "$llvm_install_dir"))
+{
+    Copy-Item -Path "$llvm_install_dir/bin/clang*" -Destination "$install_dir/bin" -Force
+    Copy-Item -Path "$llvm_install_dir/bin/llvm-link*" -Destination "$install_dir/bin" -Force
+}
+
 Copy-Item -Path "$build_dir/tools/testing/e2e/iree-e2e-matmul-test.exe" -Destination "$install_dir/bin" -Force
