@@ -670,11 +670,7 @@ void addMLIRAIRLoweringPasses(OpPassManager &passManager, AMDAIEDevice device) {
     passManager.addPass(createCanonicalizerPass());
   }
 
-  // TODO (Erwei): Figure out a way to work with AMDAIEPackToDmaPass.
-  if (clUseTilePipeline == TilePassPipeline::PackPeelPipeline)
-    passManager.addPass(createAMDAIEDecomposeLinalgExtPackUnPackToAIRPass());
-  else
-    passManager.addPass(createAMDAIEPackToDmaPass());
+  passManager.addPass(createAMDAIEDecomposeLinalgExtPackUnPackToAIRPass());
 
   // TODO(newling) adding createCanonicalizerPass introduces a dma copy lowering
   // failure. Understand and fix.
@@ -691,7 +687,6 @@ void addMLIRAIRLoweringPasses(OpPassManager &passManager, AMDAIEDevice device) {
   }
   passManager.addPass(createCanonicalizerPass());
   passManager.addPass(createCSEPass());
-  passManager.addPass(createAMDAIECanonicalizeDmaPass());
   passManager.addPass(xilinx::air::createCopyToDmaPass());
   passManager.addPass(createCanonicalizerPass());
   passManager.addPass(createCSEPass());

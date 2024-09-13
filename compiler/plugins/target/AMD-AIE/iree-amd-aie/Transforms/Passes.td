@@ -82,12 +82,6 @@ def AMDAIEBufferizeToAllocation :
   ];
 }
 
-def AMDAIECanonicalizeDma :
-  Pass<"iree-amdaie-canonicalize-dma", ""> {
-  let summary = "Apply caonicaliztions to air.dma_memcpy_nd op's";
-  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIECanonicalizeDmaPass()";
-}
-
 def AMDAIECanonicalizeDoublyStridedOp :
     Pass<"iree-amdaie-canonicalize-doubly-strided-op", ""> {
   let summary = "Canonicalize doubly strided DMA operations.";
@@ -97,7 +91,6 @@ def AMDAIECanonicalizeDoublyStridedOp :
       "Whether to fold single strided dimensions and make then implicit.">
   ];
 }
-
 
 def AMDAIECanonicalizeNpuDmaCpyNd :
   Pass<"iree-amdaie-canonicalize-npu-dma-cpy-nd", "ModuleOp"> {
