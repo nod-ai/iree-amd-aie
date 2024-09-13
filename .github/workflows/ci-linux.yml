@@ -144,9 +144,21 @@ jobs:
           source .venv/bin/activate
           pip install -r tests/matmul/requirements.txt
 
-      - name: E2E correctness matmul test
+
+      - name : E2E comparison of AIE to llvm-cpu
         run: |
           source .venv/bin/activate
+          source /opt/xilinx/xrt/setup.sh
+          python3 build_tools/ci/cpu_comparison/run.py \
+            test_aie_vs_cpu \
+            $PWD/iree-install \
+            $PWD/llvm-aie \
+            --xrt-dir /opt/xilinx/xrt \
+            --vitis-dir /opt/Xilinx/Vitis/2024.2 \
+            --reset-npu-between-runs -v
+
+      - name: E2E correctness matmul test
+        run: |
           # Without this additional line an error like
           #
           # [XRT] ERROR: Failed to allocate host memory buffer (mmap(len=10616832, prot=3, flags=8193, offset=4294967296)
@@ -154,7 +166,7 @@ jobs:
           # iree-amd-aie/runtime/src/iree-amd-aie/driver/xrt/direct_allocator.cc:179: RESOURCE_EXHAUSTED; could not allocate
           # memory for buffer; while invoking C++ function matmul_test.generate_random_matrix; while calling import;
           #
-          # might be observed when too much memory is allocated. For example this
+          # might be observed when too much memory is allocated. This
           # error was seen when running a bf16->f32 matmul with m=n=k=2304.
           #
           # This line was suggested at https://github.com/Xilinx/mlir-air/issues/566
@@ -171,9 +183,9 @@ jobs:
           # ```
           # sudo visudo -f /etc/sudoers.d/github
           # ```
-          # on the guthub CI machine.
+          # on the github CI machine.
           sudo prlimit -lunlimited --pid $$
-
+          source .venv/bin/activate
           source /opt/xilinx/xrt/setup.sh
           bash build_tools/ci/run_matmul_test.sh \
             test_matmuls \
@@ -181,6 +193,15 @@ jobs:
             $PWD/llvm-aie \
             /opt/xilinx/xrt \
             /opt/Xilinx/Vitis/2024.2
+
+      - name: Printing IR from aie2xclbin
+        run: |
+          source .venv/bin/activate
+          source /opt/xilinx/xrt/setup.sh
+          bash build_tools/ci/print_ir_aie2xclbin/print_ir_aie2xclbin.sh \
+            iree-install \
+            print_ir_aie2xclbin_results \
+            $PWD/llvm-aie
 
       - name : Smoke E2E comparison flag test
         run: |
@@ -207,24 +228,3 @@ jobs:
           else
             echo "smoke_output.log is empty"
           fi
-
-      - name : E2E comparison of AIE to llvm-cpu
-        run: |
-          source .venv/bin/activate
-          source /opt/xilinx/xrt/setup.sh
-          python3 build_tools/ci/cpu_comparison/run.py \
-            test_aie_vs_cpu \
-            $PWD/iree-install \
-            $PWD/llvm-aie \
-            --xrt-dir /opt/xilinx/xrt \
-            --vitis-dir /opt/Xilinx/Vitis/2024.2 \
-            --reset-npu-between-runs -v
-
-      - name: Printing IR from aie2xclbin
-        run: |
-          source .venv/bin/activate
-          source /opt/xilinx/xrt/setup.sh
-          bash build_tools/ci/print_ir_aie2xclbin/print_ir_aie2xclbin.sh \
-            iree-install \
-            print_ir_aie2xclbin_results \
-            $PWD/llvm-aie
