@@ -47,6 +47,7 @@ export CMAKE_CXX_COMPILER_LAUNCHER=ccache
 export CCACHE_SLOPPINESS=include_file_ctime,include_file_mtime,time_macros
 
 # Clear ccache stats.
+ccache -p
 ccache -z
 
 # https://discourse.cmake.org/t/yet-another-command-line-spaces-in-arguments-problem-is-this-really-2022/5829
@@ -118,3 +119,5 @@ echo "Installing"
 echo "----------"
 echo "Install to: $install_dir"
 cmake --build "$build_dir" --target install
+
+ccache -s
