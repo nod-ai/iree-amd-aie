@@ -144,8 +144,9 @@ jobs:
           source .venv/bin/activate
           pip install -r tests/matmul/requirements.txt
 
-      name: Unlimit locked memory for XRT
+      - name: Unlimit locked memory for XRT
         run: |
+          sudo prlimit -lunlimited --pid $$
           # Without this additional line an error like
           #
           # [XRT] ERROR: Failed to allocate host memory buffer (mmap(len=10616832, prot=3, flags=8193, offset=4294967296)
@@ -171,7 +172,6 @@ jobs:
           # sudo visudo -f /etc/sudoers.d/github
           # ```
           # on the guthub CI machine.
-          sudo prlimit -lunlimited --pid $$
 
       - name : E2E comparison of AIE to llvm-cpu
         run: |
