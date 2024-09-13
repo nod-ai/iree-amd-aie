@@ -47,6 +47,7 @@ export CMAKE_CXX_COMPILER_LAUNCHER=ccache
 export CCACHE_SLOPPINESS=include_file_ctime,include_file_mtime,time_macros
 
 # Clear ccache stats.
+ccache --version
 ccache -p
 ccache -z
 
@@ -120,4 +121,4 @@ echo "----------"
 echo "Install to: $install_dir"
 cmake --build "$build_dir" --target install
 
-ccache -s
+ccache -sv
