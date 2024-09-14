@@ -147,8 +147,6 @@ void addAMDAIEToAIEPasses(OpPassManager &passManager) {
   passManager.addPass(createAMDAIESinkIntoCorePass());
   passManager.addPass(createCanonicalizerPass());
   passManager.addPass(createAMDAIELowerToAIEPass());
-  // passManager.addPass(createAMDAIERemoveMemorySpacePass());
-  //passManager.addNestedPass<func::FuncOp>(
   passManager.addPass(createAMDAIERemoveMemorySpacePass());
   passManager.addPass(createCanonicalizerPass());
 }
