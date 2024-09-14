@@ -456,6 +456,31 @@ def AMDAIEPropagateDataLayout :
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEPropagateDataLayoutPass()";
 }
 
+def AMDAIERemoveMemorySpace : Pass<"iree-amdaie-remove-memoryspace"> {
+  let summary = "Remove memory space annotation from all types.";
+  let description = [{
+    Remove memory space annotation from all types.
+
+    For example, replace
+      ` %alloc = memref.alloc() : memref<1x1x8x4x8x4xbf16, 2 : i32> `
+    with
+      ` %alloc = memref.alloc() : memref<1x1x8x4x8x4xbf16> `
+
+    and
+      `  aie.objectfifo @obj0(%tile_0_0, {%tile_0_1}, 2 : i32) : !aie.objectfifo<memref<2048xbf16, 1 : i32>> `
+    with
+      `  aie.objectfifo @obj0(%tile_0_0, {%tile_0_1}, 2 : i32) : !aie.objectfifo<memref<2048xbf16>> `
+
+    etc.
+
+    The memory space annotation is not required or even supported after lowering
+    from the AMDAIE dialect to the AIE dialect. The memory space annotations
+    are introduced during the tiling of linalg operations, and so this pass
+    should be run somewhere between tiling and lowering to the aie dialect.
+  }];
+  let constructor =  "mlir::iree_compiler::AMDAIE::createAMDAIERemoveMemorySpacePass()";
+}
+
 def AMDAIESinkIntoCore :
   Pass<"iree-amdaie-sink-into-core", "ModuleOp"> {
   let summary = "Clone constants and other ops into amdaie.cores";
