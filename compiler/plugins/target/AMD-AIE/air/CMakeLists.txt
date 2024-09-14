@@ -178,6 +178,9 @@ replace_string_in_file(
   ${IREE_MLIR_AIR_SOURCE_DIR}/lib/Conversion/AIRToAIEPass.cpp
   "aie/Dialect/AIE/IR" "aie")
 replace_string_in_file(
+  ${IREE_MLIR_AIR_SOURCE_DIR}/lib/Conversion/AIRToAIEPass.cpp
+  "aie/Dialect/AIEX/IR" "aie")
+replace_string_in_file(
   ${IREE_MLIR_AIR_SOURCE_DIR}/lib/Conversion/AIRLoweringPass.cpp
   "aie/Dialect/AIE/IR" "aie")
 replace_string_in_file(
