@@ -114,3 +114,5 @@ echo "Installing"
 echo "----------"
 echo "Install to: $install_dir"
 cmake --build $build_dir --target install
+
+Copy-Item -Path "$llvm_dir/utils/lit" -Destination "$install_dir/bin" -Force -Recurse

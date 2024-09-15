@@ -37,10 +37,10 @@ extern "C" {
                                                   __FILE__, __LINE__))
 
 iree_status_t iree_hal_hsa_result_to_status(
-    const iree_hal_hsa_dynamic_symbols_t* syms, hsa_status_t result,
+    const iree_hal_hsa_dynamic_symbols_t* syms, hsa::hsa_status_t result,
     const char* file, uint32_t line);
 
-const char* hsa_status_to_string(hsa_status_t status);
+const char* hsa_status_to_string(hsa::hsa_status_t status);
 
 #ifdef __cplusplus
 }  // extern "C"

@@ -12,7 +12,14 @@
 #error "32-bit not supported on HSA backend"
 #endif  // defined(IREE_PTR_SIZE_32)
 
-#include <hsa.h>
-#include <hsa_ext_amd.h>
+namespace hsa {
+#ifdef IREE_AIE_HSA_RUNTIME_DIRECT_LINK
+#include "hsa/hsa.h"
+#include "hsa/hsa_ext_amd.h"
+#else
+#include "hsa.h"
+#include "hsa_ext_amd.h"
+#endif
+}  // namespace hsa
 
 #endif  // IREE_EXPERIMENTAL_HSA_HSA_HEADERS_H_

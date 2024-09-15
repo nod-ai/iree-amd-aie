@@ -23,14 +23,14 @@ iree_hal_cts_test_suite(
     iree-amd-aie::driver::hsa::registration
   INCLUDED_TESTS
     "allocator"
-#    "buffer_mapping"
+    "buffer_mapping"
 #    "command_buffer"
 #    "command_buffer_copy_buffer"
 #    "command_buffer_dispatch"
 #    "command_buffer_dispatch_constants"
 #    "command_buffer_fill_buffer"
 #    "command_buffer_update_buffer"
-#    "driver"
+    "driver"
 #    "event"
 #    "executable_cache"
 #    "file"

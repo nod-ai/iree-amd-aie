@@ -7,6 +7,10 @@
 #ifndef IREE_EXPERIMENTAL_HSA_DYNAMIC_SYMBOLS_H_
 #define IREE_EXPERIMENTAL_HSA_DYNAMIC_SYMBOLS_H_
 
+// TODO(max): iree/base/* are missing stuff like size_t
+#include <stddef.h>  // NOLINT(*-deprecated-headers)
+#include <stdint.h>  // NOLINT(*-deprecated-headers)
+
 #include "iree-amd-aie/driver/hsa/hsa_headers.h"
 #include "iree/base/api.h"
 #include "iree/base/internal/dynamic_library.h"
@@ -17,13 +21,18 @@ extern "C" {
 #endif
 
 struct iree_hal_hsa_dynamic_symbols_t {
+#ifndef IREE_AIE_HSA_RUNTIME_DIRECT_LINK
   iree_dynamic_library_t *dylib;
+#endif
 
 #define IREE_HAL_HSA_REQUIRED_PFN_DECL(hsaSymbolName, ...) \
-  hsa_status_t (*hsaSymbolName)(__VA_ARGS__);
-
+  hsa::hsa_status_t (*hsaSymbolName)(__VA_ARGS__);
+#define IREE_HAL_HSA_REQUIRED_PFN_DECL_RET(ret, hsaSymbolName, ...) \
+  ret (*hsaSymbolName)(__VA_ARGS__);
 #include "dynamic_symbol_tables.h"
+
 #undef IREE_HAL_HSA_REQUIRED_PFN_DECL
+#undef IREE_HAL_HSA_REQUIRED_PFN_DECL_RET
 };
 
 iree_status_t iree_hal_hsa_dynamic_symbols_initialize(

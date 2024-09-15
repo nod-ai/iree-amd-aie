@@ -96,6 +96,7 @@ if ($llvm_install_dir -and (Test-Path "$llvm_install_dir"))
         | Out-File -encoding ASCII $cmake_file
     $CMAKE_ARGS += @(
         "-DIREE_BUILD_BUNDLED_LLVM=OFF"
+        "-DLLVM_EXTERNAL_LIT=$llvm_install_dir/bin/lit/lit.py"
         "-DClang_DIR=$llvm_install_dir/lib/cmake/clang"
         "-DLLD_DIR=$llvm_install_dir/lib/cmake/lld"
         "-DMLIR_DIR=$llvm_install_dir/lib/cmake/mlir"

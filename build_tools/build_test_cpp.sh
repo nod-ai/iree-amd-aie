@@ -61,53 +61,75 @@ echo '{
 }' > $iree_dir/CMakeUserPresets.json 
 
 cd $iree_dir
-CMAKE_ARGS="\
-  -GNinja \
-  -DCMAKE_BUILD_TYPE=Release \
-  -DCMAKE_INSTALL_PREFIX=$install_dir \
-  -DCMAKE_INSTALL_LIBDIR=lib \
-  -DIREE_ERROR_ON_MISSING_SUBMODULES=OFF \
-  -DIREE_ENABLE_ASSERTIONS=ON \
-  -DIREE_BUILD_SAMPLES=OFF \
-  -DIREE_BUILD_PYTHON_BINDINGS=ON \
-  -DIREE_BUILD_BINDINGS_TFLITE=OFF \
-  -DIREE_HAL_DRIVER_DEFAULTS=OFF \
-  -DIREE_HAL_DRIVER_LOCAL_SYNC=ON \
-  -DIREE_HAL_DRIVER_LOCAL_TASK=ON \
-  -DIREE_TARGET_BACKEND_DEFAULTS=OFF \
-  -DIREE_TARGET_BACKEND_LLVM_CPU=ON \
-  -DIREE_INPUT_TOSA=OFF \
-  -DIREE_INPUT_STABLEHLO=OFF \
-  -DIREE_INPUT_TORCH=OFF \
-  -DCMAKE_OBJECT_PATH_MAX=4096 \
-  -DIREE_CMAKE_PLUGIN_PATHS=$repo_root"
+CMAKE_ARGS=(
+  -GNinja
+  -DCMAKE_BUILD_TYPE=Release
+  -DCMAKE_INSTALL_PREFIX="$install_dir"
+  -DCMAKE_INSTALL_LIBDIR=lib
+  -DIREE_ERROR_ON_MISSING_SUBMODULES=OFF
+  -DIREE_ENABLE_ASSERTIONS=ON
+  -DIREE_BUILD_SAMPLES=OFF
+  -DIREE_BUILD_PYTHON_BINDINGS=ON
+  -DIREE_BUILD_BINDINGS_TFLITE=OFF
+  -DIREE_HAL_DRIVER_DEFAULTS=OFF
+  -DIREE_HAL_DRIVER_LOCAL_SYNC=ON
+  -DIREE_HAL_DRIVER_LOCAL_TASK=ON
+  -DIREE_TARGET_BACKEND_DEFAULTS=OFF
+  -DIREE_TARGET_BACKEND_LLVM_CPU=ON
+  -DIREE_INPUT_TOSA=OFF
+  -DIREE_INPUT_STABLEHLO=OFF
+  -DIREE_INPUT_TORCH=OFF
+  -DCMAKE_OBJECT_PATH_MAX=4096
+  -DIREE_CMAKE_PLUGIN_PATHS="$repo_root"
+)
 
-if [ -d "${llvm_install_dir}" ]; then
-  CMAKE_ARGS="$CMAKE_ARGS \
-    -DIREE_BUILD_BUNDLED_LLVM=OFF \
-    -DClang_DIR=$llvm_install_dir/lib/cmake/clang \
-    -DLLD_DIR=$llvm_install_dir/lib/cmake/lld \
-    -DMLIR_DIR=$llvm_install_dir/lib/cmake/mlir \
-    -DLLVM_DIR=$llvm_install_dir/lib/cmake/llvm"
+if [ -d "$llvm_install_dir" ]; then
+  CMAKE_ARGS+=(
+    -DIREE_BUILD_BUNDLED_LLVM=OFF
+    -DLLVM_EXTERNAL_LIT="$llvm_install_dir/bin/lit/lit.py"
+    -DClang_DIR="$llvm_install_dir/lib/cmake/clang"
+    -DLLD_DIR="$llvm_install_dir/lib/cmake/lld"
+    -DMLIR_DIR="$llvm_install_dir/lib/cmake/mlir"
+    -DLLVM_DIR="$llvm_install_dir/lib/cmake/llvm"
+  )
+fi
+
+IREE_AIE_HSA_RUNTIME_DIRECT_LINK=${IREE_AIE_HSA_RUNTIME_DIRECT_LINK:-OFF}
+if [ "$IREE_AIE_HSA_RUNTIME_DIRECT_LINK" == "ON" ] && [ -d "$hsa_runtime64_DIR" ] && [ -d "$hsakmt_DIR" ]; then
+  CMAKE_ARGS+=(
+    -Dhsa-runtime64_DIR="$hsa_runtime64_DIR"
+    -Dhsakmt_DIR="$hsakmt_DIR"
+  )
 fi
 
 if [[ "$OSTYPE" == "linux"* ]]; then
-  cmake $CMAKE_ARGS \
-    -DCMAKE_EXE_LINKER_FLAGS_INIT="-fuse-ld=lld" \
-    -DCMAKE_SHARED_LINKER_FLAGS_INIT="-fuse-ld=lld" \
-    -DCMAKE_MODULE_LINKER_FLAGS_INIT="-fuse-ld=lld" \
-    -DCMAKE_C_COMPILER="${CC}" \
-    -DCMAKE_CXX_COMPILER="${CXX}" \
-    -DLLVM_TARGET_ARCH=X86 \
-    -DLLVM_TARGETS_TO_BUILD=X86 \
-    -DIREE_EXTERNAL_HAL_DRIVERS=${IREE_EXTERNAL_HAL_DRIVERS:-xrt} \
-    -S $iree_dir -B $build_dir
+  CMAKE_ARGS+=(
+    -DCMAKE_EXE_LINKER_FLAGS_INIT="-fuse-ld=lld"
+    -DCMAKE_SHARED_LINKER_FLAGS_INIT="-fuse-ld=lld"
+    -DCMAKE_MODULE_LINKER_FLAGS_INIT="-fuse-ld=lld"
+    -DCMAKE_C_COMPILER="${CC}"
+    -DCMAKE_CXX_COMPILER="${CXX}"
+    -DLLVM_TARGET_ARCH=X86
+    -DLLVM_TARGETS_TO_BUILD=X86
+    -DIREE_AIE_HSA_RUNTIME_DIRECT_LINK=${IREE_AIE_HSA_RUNTIME_DIRECT_LINK:-OFF}
+    -DIREE_EXTERNAL_HAL_DRIVERS=${IREE_EXTERNAL_HAL_DRIVERS:-xrt}
+    -S
+    "$iree_dir"
+    -B
+    "$build_dir"
+  )
 elif [[ "$OSTYPE" == "darwin"* ]]; then
-  cmake $CMAKE_ARGS \
-    -DLLVM_TARGET_ARCH="X86;ARM" \
-    -DLLVM_TARGETS_TO_BUILD="X86;ARM" \
-    -S $iree_dir -B $build_dir
+  CMAKE_ARGS+=(
+    -DLLVM_TARGET_ARCH="X86;ARM"
+    -DLLVM_TARGETS_TO_BUILD="X86;ARM"
+    -S
+    "$iree_dir"
+    -B
+    "$build_dir"
+  )
 fi
+
+cmake "${CMAKE_ARGS[@]}"
 
 echo "Building all"
 echo "------------"

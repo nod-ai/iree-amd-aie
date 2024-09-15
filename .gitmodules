@@ -34,3 +34,4 @@
   url = https://github.com/nod-ai/ROCR-Runtime.git
   shallow = true
   branch = iree-aie
+  ignore = dirty

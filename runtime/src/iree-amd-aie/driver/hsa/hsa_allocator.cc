@@ -18,7 +18,7 @@ extern const iree_hal_allocator_vtable_t iree_hal_hsa_allocator_vtable;
 
 struct hsa_amd_agent_iterate_memory_pools_package_t {
   const iree_hal_hsa_dynamic_symbols_t* hsa_symbols;
-  hsa_amd_memory_pool_t* pool;
+  hsa::hsa_amd_memory_pool_t* pool;
 };
 
 iree_hal_hsa_allocator_t* iree_hal_hsa_allocator_cast(
@@ -27,58 +27,58 @@ iree_hal_hsa_allocator_t* iree_hal_hsa_allocator_cast(
   return (iree_hal_hsa_allocator_t*)base_value;
 }
 
-hsa_status_t get_coarse_global_mem_pool(
-    hsa_amd_memory_pool_t pool,
+hsa::hsa_status_t get_coarse_global_mem_pool(
+    hsa::hsa_amd_memory_pool_t pool,
     hsa_amd_agent_iterate_memory_pools_package_t* package, bool kernarg) {
-  hsa_amd_segment_t segment_type;
-  hsa_status_t ret = package->hsa_symbols->hsa_amd_memory_pool_get_info(
-      pool, HSA_AMD_MEMORY_POOL_INFO_SEGMENT, &segment_type);
-  if (ret != HSA_STATUS_SUCCESS) {
+  hsa::hsa_amd_segment_t segment_type;
+  hsa::hsa_status_t ret = package->hsa_symbols->hsa_amd_memory_pool_get_info(
+      pool, hsa::HSA_AMD_MEMORY_POOL_INFO_SEGMENT, &segment_type);
+  if (ret != hsa::HSA_STATUS_SUCCESS) {
     return ret;
   }
 
-  if (segment_type == HSA_AMD_SEGMENT_GLOBAL) {
-    hsa_amd_memory_pool_global_flag_t global_pool_flags;
+  if (segment_type == hsa::HSA_AMD_SEGMENT_GLOBAL) {
+    hsa::hsa_amd_memory_pool_global_flag_t global_pool_flags;
     ret = package->hsa_symbols->hsa_amd_memory_pool_get_info(
-        pool, HSA_AMD_MEMORY_POOL_INFO_GLOBAL_FLAGS, &global_pool_flags);
-    if (ret != HSA_STATUS_SUCCESS) {
+        pool, hsa::HSA_AMD_MEMORY_POOL_INFO_GLOBAL_FLAGS, &global_pool_flags);
+    if (ret != hsa::HSA_STATUS_SUCCESS) {
       return ret;
     }
 
     if (kernarg) {
       if ((global_pool_flags &
-           HSA_AMD_MEMORY_POOL_GLOBAL_FLAG_COARSE_GRAINED) &&
-          (global_pool_flags & HSA_REGION_GLOBAL_FLAG_KERNARG)) {
+           hsa::HSA_AMD_MEMORY_POOL_GLOBAL_FLAG_COARSE_GRAINED) &&
+          (global_pool_flags & hsa::HSA_REGION_GLOBAL_FLAG_KERNARG)) {
         *package->pool = pool;
       }
     } else {
       if ((global_pool_flags &
-           HSA_AMD_MEMORY_POOL_GLOBAL_FLAG_COARSE_GRAINED) &&
-          !(global_pool_flags & HSA_REGION_GLOBAL_FLAG_KERNARG)) {
+           hsa::HSA_AMD_MEMORY_POOL_GLOBAL_FLAG_COARSE_GRAINED) &&
+          !(global_pool_flags & hsa::HSA_REGION_GLOBAL_FLAG_KERNARG)) {
         *package->pool = pool;
       }
     }
   }
 
-  return HSA_STATUS_SUCCESS;
+  return hsa::HSA_STATUS_SUCCESS;
 }
 
-hsa_status_t get_coarse_global_dev_mem_pool(hsa_amd_memory_pool_t pool,
-                                            void* package) {
+hsa::hsa_status_t get_coarse_global_dev_mem_pool(
+    hsa::hsa_amd_memory_pool_t pool, void* package) {
   return get_coarse_global_mem_pool(
       pool, static_cast<hsa_amd_agent_iterate_memory_pools_package_t*>(package),
       false);
 }
 
-hsa_status_t get_coarse_global_kernarg_mem_pool(hsa_amd_memory_pool_t pool,
-                                                void* package) {
+hsa::hsa_status_t get_coarse_global_kernarg_mem_pool(
+    hsa::hsa_amd_memory_pool_t pool, void* package) {
   return get_coarse_global_mem_pool(
       pool, static_cast<hsa_amd_agent_iterate_memory_pools_package_t*>(package),
       true);
 }
 
 iree_status_t iree_hal_hsa_allocator_create(
-    const iree_hal_hsa_dynamic_symbols_t* hsa_symbols, hsa_agent_t agent,
+    const iree_hal_hsa_dynamic_symbols_t* hsa_symbols, hsa::hsa_agent_t agent,
     iree_allocator_t host_allocator, iree_hal_allocator_t** out_allocator) {
   IREE_ASSERT_ARGUMENT(hsa_symbols);
   IREE_ASSERT_ARGUMENT(out_allocator);

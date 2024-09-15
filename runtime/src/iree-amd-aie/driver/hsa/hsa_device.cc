@@ -33,7 +33,7 @@ static iree_hal_hsa_device_t* iree_hal_hsa_device_cast(
 iree_status_t iree_hal_hsa_device_create(
     iree_hal_driver_t* driver, iree_string_view_t identifier,
     const iree_hal_hsa_device_params_t* params,
-    const iree_hal_hsa_dynamic_symbols_t* symbols, hsa_agent_t agent,
+    const iree_hal_hsa_dynamic_symbols_t* symbols, hsa::hsa_agent_t agent,
     iree_allocator_t host_allocator, iree_hal_device_t** out_device) {
   IREE_ASSERT_ARGUMENT(driver);
   IREE_ASSERT_ARGUMENT(params);
@@ -42,12 +42,12 @@ iree_status_t iree_hal_hsa_device_create(
   IREE_TRACE_ZONE_BEGIN(z0);
 
   size_t num_queue_packets = 64;
-  hsa_queue_type_t queue_type = HSA_QUEUE_TYPE_SINGLE;
-  void (*callback)(hsa_status_t, hsa_queue_t*, void*) = nullptr;
+  hsa::hsa_queue_type_t queue_type = hsa::HSA_QUEUE_TYPE_SINGLE;
+  void (*callback)(hsa::hsa_status_t, hsa::hsa_queue_t*, void*) = nullptr;
   void* data = nullptr;
   uint32_t private_segment_size = 0;
   uint32_t group_segment_size = 0;
-  hsa_queue_t* dispatch_queue;
+  hsa::hsa_queue_t* dispatch_queue;
 
   IREE_HSA_RETURN_IF_ERROR(
       symbols,
@@ -91,6 +91,12 @@ iree_status_t iree_hal_hsa_device_create(
   return status;
 }
 
+static iree_string_view_t iree_hal_hsa_device_id(
+    iree_hal_device_t* base_device) {
+  iree_hal_hsa_device_t* device = iree_hal_hsa_device_cast(base_device);
+  return device->identifier;
+}
+
 static iree_hal_allocator_t* iree_hal_hsa_device_allocator(
     iree_hal_device_t* base_device) {
   iree_hal_hsa_device_t* device = iree_hal_hsa_device_cast(base_device);
@@ -119,7 +125,7 @@ static void iree_hal_hsa_device_destroy(iree_hal_device_t* base_device) {
 namespace {
 const iree_hal_device_vtable_t iree_hal_hsa_device_vtable = {
     /*destroy=*/iree_hal_hsa_device_destroy,
-    /*id=*/nullptr,
+    /*id=*/iree_hal_hsa_device_id,
     /*host_allocator=*/iree_hal_hsa_device_host_allocator,
     /*device_allocator=*/iree_hal_hsa_device_allocator,
 };
