@@ -131,6 +131,6 @@ module @link_broadcast {
     aie.objectfifo @link1 (%tile20, {%tile21}, 2 : i32) : !aie.objectfifo<memref<48xi32>>
     aie.objectfifo @link2 (%tile21, {%tile22, %tile33}, [2]) : !aie.objectfifo<memref<16xi32>>
     aie.objectfifo @skip_connection (%tile22, {%tile33}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
-    aie.objectfifo.link [@link1] -> [@link2] ()
+    aie.objectfifo.link [@link1] -> [@link2] ([] [])
   }
 }

@@ -118,6 +118,6 @@ module @ndDMAObjFifoAIE2 {
                                            <size = 8, stride = 8>,
                                            <size = 4, stride = 1>],
                         {%tile23}, 2 : i32) : !aie.objectfifo<memref<128xi32>>
-   aie.objectfifo.link [ @of0 ] -> [ @of1, @of2 ] ()
+   aie.objectfifo.link [ @of0 ] -> [ @of1, @of2 ] ([] [])
  }
 }
