@@ -579,7 +579,7 @@ def AIE_ObjectFifoLinkOp: AIE_Op<"objectfifo.link"> {
   let hasCustomAssemblyFormat = 1;
 
   let assemblyFormat = [{
-    $fifoIns `->` $fifoOuts `(` `)` attr-dict
+    $fifoIns `->` $fifoOuts `(` $src_offsets $dst_offsets `)` attr-dict
   }];
 }
 
