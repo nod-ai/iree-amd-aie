@@ -8,9 +8,10 @@
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/DialectConversion.h"
 
-using namespace mlir;
+#define DEBUG_TYPE "iree-amdaie-remove-memory-space"
 
 namespace mlir::iree_compiler::AMDAIE {
+
 namespace {
 
 /// Scrub the type clean of any memory space attribute/field. If there is no
@@ -98,7 +99,9 @@ class AMDAIERemoveMemorySpacePass
 
   void runOnOperation() override {
     MemspaceTypeConverter converter;
-    ConversionTarget target(getContext());
+
+    MLIRContext &context = getContext();
+    ConversionTarget target(context);
 
     // Operations are legal if they don't contain any illegal type.
     target.markUnknownOpDynamicallyLegal([](Operation *op) {
@@ -119,10 +122,8 @@ class AMDAIERemoveMemorySpacePass
       return true;
     });
 
-    auto *ctx = &getContext();
-
-    RewritePatternSet patterns(&getContext());
-    patterns.insert<GenericTypeConvert>(ctx, converter);
+    RewritePatternSet patterns(&context);
+    patterns.insert<GenericTypeConvert>(&context, converter);
     populateAnyFunctionOpInterfaceTypeConversionPattern(patterns, converter);
 
     if (failed(
