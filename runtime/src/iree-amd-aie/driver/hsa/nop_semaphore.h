@@ -1,11 +1,13 @@
-// Copyright 2024 The IREE Authors
+// Copyright 2021 The IREE Authors
 //
 // Licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#ifndef IREE_AMD_AIE_DRIVER_HSA_REGISTRATION_DRIVER_MODULE_H_
-#define IREE_AMD_AIE_DRIVER_HSA_REGISTRATION_DRIVER_MODULE_H_
+#ifndef IREE_AMD_AIE_DRIVER_HSA_NOP_SEMAPHORE_H_
+#define IREE_AMD_AIE_DRIVER_HSA_NOP_SEMAPHORE_H_
+
+#include <cstdint>
 
 #include "iree/base/api.h"
 #include "iree/hal/api.h"
@@ -14,11 +16,12 @@
 extern "C" {
 #endif  // __cplusplus
 
-IREE_API_EXPORT iree_status_t
-iree_hal_hsa_driver_module_register(iree_hal_driver_registry_t* registry);
+iree_status_t iree_hal_hsa_semaphore_create(
+    iree_allocator_t host_allocator, uint64_t initial_value,
+    iree_hal_semaphore_t** out_semaphore);
 
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus
 
-#endif  // IREE_AMD_AIE_DRIVER_HSA_REGISTRATION_DRIVER_MODULE_H_
+#endif  // IREE_AMD_AIE_DRIVER_HSA_NOP_SEMAPHORE_H_

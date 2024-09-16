@@ -4,8 +4,8 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#ifndef IREE_EXPERIMENTAL_HSA_DYNAMIC_SYMBOLS_H_
-#define IREE_EXPERIMENTAL_HSA_DYNAMIC_SYMBOLS_H_
+#ifndef IREE_AMD_AIE_DRIVER_HSA_DYNAMIC_SYMBOLS_H_
+#define IREE_AMD_AIE_DRIVER_HSA_DYNAMIC_SYMBOLS_H_
 
 // TODO(max): iree/base/* are missing stuff like size_t
 #include <stddef.h>  // NOLINT(*-deprecated-headers)

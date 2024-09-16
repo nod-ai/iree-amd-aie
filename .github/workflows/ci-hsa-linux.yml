@@ -333,7 +333,44 @@ jobs:
         run: |
           tar -xvf iree-dist-linux.tar
 
+      - name: Create venv and install dependencies
+        run: |
+          python3 -m venv .venv
+          source .venv/bin/activate
+          pip install -r tests/matmul/requirements.txt
+
       - name : HSA CTS tests
         run: |
           pushd iree-install/device_tests
           for test in $(ls *test); do ./$test; done
+
+      - name : E2E comparison of AIE to llvm-cpu
+        run: |
+          source .venv/bin/activate
+          source /opt/xilinx/xrt/setup.sh
+          python3 build_tools/ci/cpu_comparison/run.py \
+            test_aie_vs_cpu \
+            $PWD/iree-install \
+            $PWD/llvm-aie \
+            --target-backend amd-aie-hsa \
+            --vitis-dir /opt/Xilinx/Vitis/2024.2 \
+            --reset-npu-between-runs -v
+
+      - name: E2E correctness matmul test
+        run: |
+          source .venv/bin/activate
+          export TARGET_BACKEND=amd-aie-hsa
+          bash build_tools/ci/run_matmul_test.sh \
+            test_matmuls \
+            iree-install \
+            $PWD/llvm-aie \
+            /opt/Xilinx/Vitis/2024.2
+
+      - name: Printing IR from aie2xclbin
+        run: |
+          source .venv/bin/activate
+          export TARGET_BACKEND=amd-aie-hsa
+          bash build_tools/ci/print_ir_aie2xclbin/print_ir_aie2xclbin.sh \
+            iree-install \
+            print_ir_aie2xclbin_results \
+            $PWD/llvm-aie

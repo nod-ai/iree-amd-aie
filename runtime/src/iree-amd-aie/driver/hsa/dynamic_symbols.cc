@@ -24,17 +24,17 @@ static const char* iree_hal_hsa_dylib_names[] = {
 
 static iree_status_t iree_hal_hsa_dynamic_symbols_resolve_all(
     iree_hal_hsa_dynamic_symbols_t* syms) {
-#ifndef IREE_AIE_HSA_RUNTIME_DIRECT_LINK
+#ifdef IREE_AIE_HSA_RUNTIME_DIRECT_LINK
+#define IREE_HAL_HSA_REQUIRED_PFN_DECL(hsa_symbol_name, ...) \
+  {                                                          \
+    syms->hsa_symbol_name = hsa::hsa_symbol_name;            \
+  }
+#else
 #define IREE_HAL_HSA_REQUIRED_PFN_DECL(hsa_symbol_name, ...) \
   {                                                          \
     static const char* name = #hsa_symbol_name;              \
     IREE_RETURN_IF_ERROR(iree_dynamic_library_lookup_symbol( \
         syms->dylib, name, (void**)&syms->hsa_symbol_name)); \
-  }
-#else
-#define IREE_HAL_HSA_REQUIRED_PFN_DECL(hsa_symbol_name, ...) \
-  {                                                          \
-    syms->hsa_symbol_name = hsa::hsa_symbol_name;            \
   }
 #endif
 

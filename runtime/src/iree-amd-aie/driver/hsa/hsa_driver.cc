@@ -151,7 +151,7 @@ static void iree_hal_hsa_driver_destroy(iree_hal_driver_t* base_driver) {
   // (4104): HSA_STATUS_ERROR_OUT_OF_RESOURCES: The runtime failed to allocate
   // the necessary resources. This error may also occur when the core runtime
   // library needs to spawn threads or create internal OS-specific events.
-  //  driver->hsa_symbols.hsa_shut_down();
+  driver->hsa_symbols.hsa_shut_down();
   //  iree_hal_hsa_dynamic_symbols_deinitialize(&driver->hsa_symbols);
 
   iree_allocator_free(host_allocator, driver);
@@ -250,8 +250,6 @@ static iree_status_t iree_hal_hsa_driver_query_available_devices(
   iree_hal_hsa_driver_t* driver = iree_hal_hsa_driver_cast(base_driver);
   IREE_TRACE_ZONE_BEGIN(z0);
 
-  IREE_RETURN_AND_END_ZONE_IF_ERROR(z0, iree_hal_hsa_init(driver));
-
   int device_count = driver->num_aie_agents;
   iree_hal_device_info_t* device_infos = nullptr;
   iree_host_size_t total_size =
@@ -330,8 +328,6 @@ static iree_status_t iree_hal_hsa_driver_create_device_by_id(
   iree_hal_hsa_driver_t* driver = iree_hal_hsa_driver_cast(base_driver);
   IREE_TRACE_ZONE_BEGIN(z0);
 
-  IREE_RETURN_AND_END_ZONE_IF_ERROR(z0, iree_hal_hsa_init(driver));
-
   hsa::hsa_agent_t agent;
   if (device_id == IREE_HAL_DEVICE_ID_DEFAULT) {
     IREE_RETURN_AND_END_ZONE_IF_ERROR(
@@ -343,7 +339,7 @@ static iree_status_t iree_hal_hsa_driver_create_device_by_id(
                                         IREE_DEVICE_ID_TO_HSADEVICE(device_id));
   }
 
-  iree_string_view_t device_name = iree_make_cstring_view("aie");
+  iree_string_view_t device_name = iree_make_cstring_view("amd-aie-hsa");
   iree_status_t status = iree_hal_hsa_device_create(
       base_driver, device_name, &driver->device_params, &driver->hsa_symbols,
       agent, host_allocator, out_device);

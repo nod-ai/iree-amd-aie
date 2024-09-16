@@ -7,9 +7,11 @@
 #include "iree-amd-aie/driver/hsa/hsa_device.h"
 
 #include "iree-amd-aie/driver/hsa/api.h"
+#include "iree-amd-aie/driver/hsa/command_buffer.h"
 #include "iree-amd-aie/driver/hsa/hsa_allocator.h"
 #include "iree-amd-aie/driver/hsa/hsa_headers.h"
 #include "iree-amd-aie/driver/hsa/nop_executable_cache.h"
+#include "iree-amd-aie/driver/hsa/nop_semaphore.h"
 #include "iree-amd-aie/driver/hsa/status_util.h"
 #include "iree/base/api.h"
 #include "iree/base/tracing.h"
@@ -23,6 +25,7 @@ extern const iree_hal_device_vtable_t iree_hal_hsa_device_vtable;
 IREE_API_EXPORT void iree_hal_hsa_device_params_initialize(
     iree_hal_hsa_device_params_t* out_params) {
   memset(out_params, 0, sizeof(*out_params));
+  out_params->arena_block_size = 32 * 1024;
 }
 
 static iree_hal_hsa_device_t* iree_hal_hsa_device_cast(
@@ -63,22 +66,25 @@ iree_status_t iree_hal_hsa_device_create(
   IREE_RETURN_IF_ERROR(
       iree_allocator_malloc(host_allocator, total_size, (void**)&device));
 
-  iree_hal_resource_initialize(&iree_hal_hsa_device_vtable, &device->resource);
-  iree_string_view_append_to_buffer(
-      identifier, &device->identifier,
-      (char*)device + iree_sizeof_struct(*device));
-  device->driver = driver;
-  iree_hal_driver_retain(device->driver);
-  device->hsa_symbols = symbols;
-  device->params = *params;
-  device->hsa_agent = agent;
-  device->hsa_dispatch_queue = dispatch_queue;
-  device->host_allocator = host_allocator;
-
   iree_status_t status = iree_hal_hsa_allocator_create(
       symbols, agent, host_allocator, &device->device_allocator);
 
   if (iree_status_is_ok(status)) {
+    iree_hal_resource_initialize(&iree_hal_hsa_device_vtable,
+                                 &device->resource);
+    iree_string_view_append_to_buffer(
+        identifier, &device->identifier,
+        (char*)device + iree_sizeof_struct(*device));
+    iree_arena_block_pool_initialize(params->arena_block_size, host_allocator,
+                                     &device->block_pool);
+    device->driver = driver;
+    iree_hal_driver_retain(device->driver);
+    device->hsa_symbols = symbols;
+    device->params = *params;
+    device->hsa_agent = agent;
+    device->hsa_dispatch_queue = dispatch_queue;
+    device->host_allocator = host_allocator;
+
     *out_device = (iree_hal_device_t*)device;
   } else {
     iree_hal_device_release((iree_hal_device_t*)device);
@@ -116,9 +122,9 @@ static void iree_hal_hsa_device_destroy(iree_hal_device_t* base_device) {
   IREE_TRACE_ZONE_BEGIN(z0);
 
   iree_hal_allocator_release(device->device_allocator);
-  iree_hal_driver_release(device->driver);
   iree_allocator_free(host_allocator, device);
   device->hsa_symbols->hsa_queue_destroy(device->hsa_dispatch_queue);
+  iree_hal_driver_release(device->driver);
 
   IREE_TRACE_ZONE_END(z0);
 }
@@ -132,31 +138,135 @@ static iree_status_t iree_hal_hsa_device_create_executable_cache(
       device->host_allocator, device->device_allocator, out_executable_cache);
 }
 
+static iree_status_t iree_hal_hsa_device_create_command_buffer(
+    iree_hal_device_t* base_device, iree_hal_command_buffer_mode_t mode,
+    iree_hal_command_category_t command_categories,
+    iree_hal_queue_affinity_t queue_affinity, iree_host_size_t binding_capacity,
+    iree_hal_command_buffer_t** out_command_buffer) {
+  iree_hal_hsa_device_t* device = iree_hal_hsa_device_cast(base_device);
+  return iree_hal_deferred_command_buffer_create(
+      iree_hal_device_allocator(base_device), mode, command_categories,
+      binding_capacity, &device->block_pool,
+      iree_hal_device_host_allocator(base_device), out_command_buffer);
+}
+
+static iree_status_t iree_hal_hsa_device_create_semaphore(
+    iree_hal_device_t* base_device, uint64_t initial_value,
+    iree_hal_semaphore_flags_t flags, iree_hal_semaphore_t** out_semaphore) {
+  iree_hal_hsa_device_t* device = iree_hal_hsa_device_cast(base_device);
+  return iree_hal_hsa_semaphore_create(device->host_allocator, initial_value,
+                                       out_semaphore);
+}
+
+static iree_status_t iree_hal_hsa_device_queue_execute(
+    iree_hal_device_t* base_device, iree_hal_queue_affinity_t queue_affinity,
+    const iree_hal_semaphore_list_t wait_semaphore_list,
+    const iree_hal_semaphore_list_t signal_semaphore_list,
+    iree_host_size_t command_buffer_count,
+    iree_hal_command_buffer_t* const* command_buffers,
+    iree_hal_buffer_binding_table_t const* binding_tables) {
+  IREE_TRACE_ZONE_BEGIN(z0);
+  iree_hal_hsa_device_t* device = iree_hal_hsa_device_cast(base_device);
+  for (iree_host_size_t i = 0; i < command_buffer_count; i++) {
+    iree_hal_command_buffer_t* hsa_command_buffer = nullptr;
+    iree_hal_command_buffer_mode_t mode =
+        IREE_HAL_COMMAND_BUFFER_MODE_ONE_SHOT |
+        IREE_HAL_COMMAND_BUFFER_MODE_ALLOW_INLINE_EXECUTION |
+        IREE_HAL_COMMAND_BUFFER_MODE_UNVALIDATED;
+    IREE_RETURN_AND_END_ZONE_IF_ERROR(
+        z0, iree_hal_hsa_command_buffer_create(
+                base_device, device->hsa_symbols, mode,
+                IREE_HAL_COMMAND_CATEGORY_ANY,
+                /*binding_capacity=*/0, device->hsa_dispatch_queue,
+                &device->block_pool, device->host_allocator,
+                device->device_allocator, &hsa_command_buffer));
+    IREE_RETURN_AND_END_ZONE_IF_ERROR(
+        z0, iree_hal_deferred_command_buffer_apply(
+                command_buffers[i], hsa_command_buffer,
+                iree_hal_buffer_binding_table_empty()));
+  }
+  // Do we need to block here like vulkan HAL? Check if we run into some
+  // correctness issue in the future.
+  IREE_TRACE_ZONE_END(z0);
+  return iree_ok_status();
+}
+
+static iree_status_t iree_hal_hsa_device_wait_semaphores(
+    iree_hal_device_t* base_device, iree_hal_wait_mode_t wait_mode,
+    const iree_hal_semaphore_list_t semaphore_list, iree_timeout_t timeout) {
+  return iree_make_status(IREE_STATUS_UNIMPLEMENTED,
+                          "Unimplemented semaphore wait");
+}
+
+static void iree_hal_hsa_replace_device_allocator(
+    iree_hal_device_t* base_device, iree_hal_allocator_t* new_allocator) {
+  iree_hal_hsa_device_t* device = iree_hal_hsa_device_cast(base_device);
+  iree_hal_allocator_retain(new_allocator);
+  iree_hal_allocator_release(device->device_allocator);
+  device->device_allocator = new_allocator;
+}
+
+static iree_status_t iree_hal_hsa_device_query_i64(
+    iree_hal_device_t* base_device, iree_string_view_t category,
+    iree_string_view_t key, int64_t* out_value) {
+  iree_hal_hsa_device_t* device = iree_hal_hsa_device_cast(base_device);
+  *out_value = 0;
+
+  if (iree_string_view_equal(category, IREE_SV("hal.device.id"))) {
+    *out_value =
+        iree_string_view_match_pattern(device->identifier, key) ? 1 : 0;
+    return iree_ok_status();
+  }
+
+  if (iree_string_view_equal(category, IREE_SV("hal.executable.format"))) {
+    *out_value = iree_string_view_equal(key, IREE_SV("amdaie-hsa-fb")) ? 1 : 0;
+    return iree_ok_status();
+  }
+  return iree_make_status(IREE_STATUS_UNIMPLEMENTED, "unsupported query");
+}
+
+static iree_status_t iree_hal_hsa_device_queue_alloca(
+    iree_hal_device_t* base_device, iree_hal_queue_affinity_t queue_affinity,
+    const iree_hal_semaphore_list_t wait_semaphore_list,
+    const iree_hal_semaphore_list_t signal_semaphore_list,
+    iree_hal_allocator_pool_t pool, iree_hal_buffer_params_t params,
+    iree_device_size_t allocation_size,
+    iree_hal_buffer_t** IREE_RESTRICT out_buffer) {
+  // TODO: queue-ordered allocations.
+  IREE_RETURN_IF_ERROR(iree_hal_semaphore_list_wait(wait_semaphore_list,
+                                                    iree_infinite_timeout()));
+  IREE_RETURN_IF_ERROR(
+      iree_hal_allocator_allocate_buffer(iree_hal_device_allocator(base_device),
+                                         params, allocation_size, out_buffer));
+  IREE_RETURN_IF_ERROR(iree_hal_semaphore_list_signal(signal_semaphore_list));
+  return iree_ok_status();
+}
+
 namespace {
 const iree_hal_device_vtable_t iree_hal_hsa_device_vtable = {
     /*destroy=*/iree_hal_hsa_device_destroy,
     /*id=*/iree_hal_hsa_device_id,
     /*host_allocator=*/iree_hal_hsa_device_host_allocator,
     /*device_allocator=*/iree_hal_hsa_device_allocator,
-    /*replace_device_allocator=*/nullptr,
+    /*replace_device_allocator=*/iree_hal_hsa_replace_device_allocator,
     /*replace_channel_provider=*/nullptr,
     /*trim=*/nullptr,
-    /*query_i64=*/nullptr,
+    /*query_i64=*/iree_hal_hsa_device_query_i64,
     /*create_channel=*/nullptr,
-    /*create_command_buffer=*/nullptr,
+    /*create_command_buffer=*/iree_hal_hsa_device_create_command_buffer,
     /*create_event=*/nullptr,
     /*create_executable_cache=*/iree_hal_hsa_device_create_executable_cache,
     /*import_file=*/nullptr,
-    /*create_semaphore=*/nullptr,
+    /*create_semaphore=*/iree_hal_hsa_device_create_semaphore,
     /*query_semaphore_compatibility*/
     nullptr,
-    /*queue_alloca=*/nullptr,
+    /*queue_alloca=*/iree_hal_hsa_device_queue_alloca,
     /*queue_dealloca=*/nullptr,
     /*queue_read=*/nullptr,
     /*queue_write=*/nullptr,
-    /*queue_execute=*/nullptr,
+    /*queue_execute=*/iree_hal_hsa_device_queue_execute,
     /*queue_flush=*/nullptr,
-    /*wait_semaphores=*/nullptr,
+    /*wait_semaphores=*/iree_hal_hsa_device_wait_semaphores,
     /*profiling_begin=*/nullptr,
     /*profiling_flush=*/nullptr,
     /*profiling_end=*/nullptr,

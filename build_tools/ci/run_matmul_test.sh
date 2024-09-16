@@ -18,30 +18,28 @@
 #      `iree-e2e-matmul-test` to include support for the runtime HAL
 #      driver/device you wish to test.
 #   2. Update the paths in this script or specify them via environment variables
-#   3. Run: `./run_matmul_tests.sh <output_dir_path> <iree_install_path> [<peano_install_path>] [<xrt_path>] [<vitis_path>] [do_signing]`
+#   3. Run: `./run_matmul_tests.sh <output_dir_path> <iree_install_path> [<peano_install_path>] [<vitis_path>] [do_signing]`
 #      The directories above in square brackets are optional, the first 2 directories are required.
 
 set -euo pipefail
 
-if [ "$#" -lt 2 ] || [ "$#" -gt 5 ]; then
+if [ "$#" -lt 2 ] || [ "$#" -gt 4 ]; then
 
    # The expected parameters are
    #    1) <output-dir>            (required)
    #    2) <iree-install-dir>      (required)
-   #    4) <peano-install-dir>     (optional)
-   #    5) <xrt-dir>               (optional)
-   #    6) <vitis-install-dir>     (optional)
+   #    3) <peano-install-dir>     (optional)
+   #    4) <vitis-install-dir>     (optional)
     echo -e "Illegal number of parameters: $#, expected 2-5 parameters." \
             "\n The parameters are as follows:" \
             "\n     1) <output-dir>               (required)" \
             "\n     2) <iree-install-dir>         (required)" \
             "\n     3) <peano-install-dir>        (optional)" \
-            "\n     4) <xrt-dir>                  (optional)" \
-            "\n     5) <vitis-install-dir>        (optional)" \
+            "\n     4) <vitis-install-dir>        (optional)" \
             "\n Example, dependent on environment variables:" \
             "\n     ./run_matmul_test.sh  " \
             "results_dir_tmp  \$IREE_INSTALL_DIR " \
-            "\$PEANO_INSTALL_DIR  /opt/xilinx/xrt  \$VITIS_INSTALL_PATH"
+            "\$PEANO_INSTALL_DIR  \$VITIS_INSTALL_PATH"
     exit 1
 fi
 
@@ -102,22 +100,15 @@ if [ ! -d "${PEANO}" ]; then
   exit 1
 fi
 
-# Parameter 4) <xrt-dir>
+# Parameter 4) <vitis-install-dir>
 if [ -z "${4-}" ]; then
-  XRT_DIR=/opt/xilinx/xrt
-else
-  XRT_DIR=`realpath "$4"`
-fi
-if [ -d "$XRT_DIR" ]; then
-  source $XRT_DIR/setup.sh
-fi
-
-# Parameter 5) <vitis-install-dir>
-if [ -z "${5-}" ]; then
   VITIS=/opt/Xilinx/Vitis/2024.2
 else
-  VITIS=`realpath "$5"`
+  VITIS=`realpath "$4"`
 fi
+
+TARGET_BACKEND=${TARGET_BACKEND:-amd-aie-xrt}
+echo "using target backend $TARGET_BACKEND"
 
 THIS_DIR="$(cd $(dirname $0) && pwd)"
 ROOT_DIR="$(cd $THIS_DIR/../.. && pwd)"
@@ -138,9 +129,6 @@ else
 fi
 
 GITHUB_ACTIONS="${GITHUB_ACTIONS:-false}"
-
-# Circumvent xclbin security (no longer needed as of April 2024 XDNA driver)
-export XRT_HACK_UNSECURE_LOADING_XCLBIN=1
 
 cd ${OUTPUT_DIR}
 
@@ -172,11 +160,11 @@ function run_matmul_test() {
   # extended with m,n,k if they are unique.
   local name_prefix="noprefix"
 
-  local target_backend="amd-aie-xrt"
+  local target_backend=$TARGET_BACKEND
 
   local target_device="npu1_4col"
 
-  local device="amd-aie-xrt"
+  local device=$TARGET_BACKEND
 
   local peano_install_path="${PEANO}"
 
@@ -517,9 +505,9 @@ run_matmul_test \
     --name_prefix "test1" \
     --lhs_rhs_type "bf16" \
     --acc_type "f32" \
-    --target_backend "amd-aie-xrt" \
+    --target_backend $TARGET_BACKEND \
     --target_device "npu1_4col" \
-    --device "amd-aie-xrt" \
+    --device $TARGET_BACKEND \
     --peano_install_path "${PEANO}" \
     --amd_aie_install_path "${IREE_INSTALL_DIR}" \
     --vitis_path  "${VITIS}" \

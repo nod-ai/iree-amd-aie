@@ -4,8 +4,8 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#ifndef IREE_EXPERIMENTAL_HSA_ALLOCATOR_H_
-#define IREE_EXPERIMENTAL_HSA_ALLOCATOR_H_
+#ifndef IREE_AMD_AIE_DRIVER_HSA_ALLOCATOR_H_
+#define IREE_AMD_AIE_DRIVER_HSA_ALLOCATOR_H_
 
 #include "iree-amd-aie/driver/hsa/dynamic_symbols.h"
 #include "iree/base/api.h"
@@ -40,4 +40,4 @@ iree_hal_hsa_allocator_t* iree_hal_hsa_allocator_cast(
 }  // extern "C"
 #endif  // __cplusplus
 
-#endif  // IREE_EXPERIMENTAL_HSA_ALLOCATOR_H_
+#endif  // IREE_AMD_AIE_DRIVER_HSA_ALLOCATOR_H_

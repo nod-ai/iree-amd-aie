@@ -4,8 +4,8 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#ifndef IREE_EXPERIMENTAL_HSA_NOP_EXECUTABLE_CACHE_H_
-#define IREE_EXPERIMENTAL_HSA_NOP_EXECUTABLE_CACHE_H_
+#ifndef IREE_AMD_AIE_DRIVER_HSA_NOP_EXECUTABLE_CACHE_H_
+#define IREE_AMD_AIE_DRIVER_HSA_NOP_EXECUTABLE_CACHE_H_
 
 #include "iree-amd-aie/driver/hsa/dynamic_symbols.h"
 #include "iree-amd-aie/driver/hsa/hsa_headers.h"
@@ -26,4 +26,4 @@ iree_status_t iree_hal_hsa_nop_executable_cache_create(
 }  // extern "C"
 #endif  // __cplusplus
 
-#endif  // IREE_EXPERIMENTAL_HSA_NOP_EXECUTABLE_CACHE_H_
+#endif  // IREE_AMD_AIE_DRIVER_HSA_NOP_EXECUTABLE_CACHE_H_

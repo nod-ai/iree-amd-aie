@@ -7,13 +7,12 @@
 # because we're an "external" plugin, these need to be initialized/set by us
 # whereas for in-tree plugins they're set in iree/runtime/src/iree/hal/cts/CMakeLists.txt#L28
 set(IREE_EXECUTABLE_CTS_TESTS
-#  "command_buffer_dispatch"
-#  "command_buffer_dispatch_constants"
   "executable_cache"
 )
 
-if(NOT EXISTS $ENV{PEANO_INSTALL_DIR})
-  message(FATAL_ERROR "PEANO_INSTALL_DIR=$ENV{PEANO_INSTALL_DIR} does not exist.")
+set(PEANO_INSTALL_DIR "" CACHE PATH "")
+if(NOT EXISTS ${PEANO_INSTALL_DIR})
+  message(FATAL_ERROR "PEANO_INSTALL_DIR=${PEANO_INSTALL_DIR} does not exist.")
 endif()
 
 iree_bytecode_module(
@@ -22,12 +21,13 @@ iree_bytecode_module(
   MODULE_FILE_NAME
     amd-aie-hsa_executable_cache_test.bin
   SRC
-    "${CMAKE_CURRENT_LIST_DIR}/testdata/executable_cache_test.mlir"
+    "${CMAKE_CURRENT_LIST_DIR}/executable_cache_test.mlir"
   FLAGS
     --compile-mode=hal-executable
+    --iree-hal-dump-executable-files-to=${CMAKE_CURRENT_BINARY_DIR}
     --iree-hal-target-backends=amd-aie-hsa
     --iree-amdaie-lower-to-aie-pipeline=air
-    --iree-amd-aie-peano-install-dir=$ENV{PEANO_INSTALL_DIR}
+    --iree-amd-aie-peano-install-dir=${PEANO_INSTALL_DIR}
   PUBLIC
   TESTONLY
 )
@@ -66,7 +66,7 @@ iree_hal_cts_test_suite(
   INCLUDED_TESTS
     "allocator"
     "buffer_mapping"
-#    "command_buffer"
+    "command_buffer"
 #    "command_buffer_copy_buffer"
 #    "command_buffer_dispatch"
 #    "command_buffer_dispatch_constants"
@@ -79,3 +79,19 @@ iree_hal_cts_test_suite(
 #    "semaphore"
 #    "semaphore_submission"
 )
+
+iree_cc_test(
+  NAME
+    amd_aie_hsa_command_buffer_dispatch_test
+  SRCS
+    amd_aie_hsa_command_buffer_dispatch_test.cc
+  DEPS
+    ::amd-aie-hsa_executables_c
+    iree-amd-aie::driver::hsa::registration
+    iree::base
+    iree::hal
+    iree::hal::cts::cts_test_base
+    iree::testing::gtest_main
+)
+
+target_include_directories(iree-amd-aie_driver_hsa_cts_amd_aie_hsa_command_buffer_dispatch_test PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")

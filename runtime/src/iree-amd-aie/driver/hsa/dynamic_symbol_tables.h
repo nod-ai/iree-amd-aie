@@ -102,3 +102,6 @@ IREE_HAL_HSA_REQUIRED_PFN_DECL(hsa_status_string, hsa::hsa_status_t,
                                const char **)
 IREE_HAL_HSA_REQUIRED_PFN_DECL(hsa_amd_get_handle_from_vaddr, void *,
                                uint32_t *)
+IREE_HAL_HSA_REQUIRED_PFN_DECL(hsa_amd_queue_hw_ctx_config,
+                               const hsa::hsa_queue_t *,
+                               hsa::hsa_amd_queue_hw_ctx_config_param_t, void *)

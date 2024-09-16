@@ -875,7 +875,9 @@ static LogicalResult generateXCLBin(
     }
   }
 
-  if (failed(generatePDI(tempDir / "design.pdi", tempDir))) return failure();
+  if (failed(generatePDI((tempDir / "design.pdi").string(), tempDir))) {
+    return failure();
+  }
 
   std::vector<std::string> flags;
   // Execute the xclbinutil command.

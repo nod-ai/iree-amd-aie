@@ -194,7 +194,6 @@ jobs:
             test_matmuls \
             iree-install \
             $PWD/llvm-aie \
-            /opt/xilinx/xrt \
             /opt/Xilinx/Vitis/2024.2
 
       - name : HSA CTS tests

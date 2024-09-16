@@ -81,7 +81,14 @@ CMAKE_ARGS=(
   -DIREE_INPUT_TORCH=OFF
   -DCMAKE_OBJECT_PATH_MAX=4096
   -DIREE_CMAKE_PLUGIN_PATHS="$repo_root"
+  # iree/runtime/src/iree/hal/cts/cts_test_base.h:173:24: error: unused variable 'device_buffer' [-Werror,-Wunused-variable]
+  -DIREE_ENABLE_WERROR_FLAG=OFF
 )
+
+PEANO_INSTALL_DIR=${PEANO_INSTALL_DIR:-""}
+if [ "$PEANO_INSTALL_DIR" != "" ] && [ -d "$PEANO_INSTALL_DIR" ]; then
+  CMAKE_ARGS+=(-DPEANO_INSTALL_DIR="$PEANO_INSTALL_DIR")
+fi
 
 if [ -d "$llvm_install_dir" ]; then
   CMAKE_ARGS+=(

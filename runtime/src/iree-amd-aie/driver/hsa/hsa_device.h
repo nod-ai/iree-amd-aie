@@ -4,8 +4,8 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#ifndef IREE_EXPERIMENTAL_HSA_DEVICE_H_
-#define IREE_EXPERIMENTAL_HSA_DEVICE_H_
+#ifndef IREE_AMD_AIE_DRIVER_HSA_DEVICE_H_
+#define IREE_AMD_AIE_DRIVER_HSA_DEVICE_H_
 
 #include "iree-amd-aie/driver/hsa/api.h"
 #include "iree-amd-aie/driver/hsa/dynamic_symbols.h"
@@ -43,4 +43,4 @@ iree_status_t iree_hal_hsa_device_create(
 }  // extern "C"
 #endif  // __cplusplus
 
-#endif  // IREE_EXPERIMENTAL_HSA_DEVICE_H_
+#endif  // IREE_AMD_AIE_DRIVER_HSA_DEVICE_H_

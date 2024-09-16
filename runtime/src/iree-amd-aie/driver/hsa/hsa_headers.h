@@ -5,8 +5,8 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#ifndef IREE_EXPERIMENTAL_HSA_HSA_HEADERS_H_
-#define IREE_EXPERIMENTAL_HSA_HSA_HEADERS_H_
+#ifndef IREE_AMD_AIE_DRIVER_HSA_HSA_HEADERS_H_
+#define IREE_AMD_AIE_DRIVER_HSA_HSA_HEADERS_H_
 
 #if defined(IREE_PTR_SIZE_32)
 #error "32-bit not supported on HSA backend"
@@ -22,4 +22,4 @@ namespace hsa {
 #endif
 }  // namespace hsa
 
-#endif  // IREE_EXPERIMENTAL_HSA_HSA_HEADERS_H_
+#endif  // IREE_AMD_AIE_DRIVER_HSA_HSA_HEADERS_H_

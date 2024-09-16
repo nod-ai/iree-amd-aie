@@ -46,6 +46,8 @@ iree_cc_library(
     api.h
   SRCS
     api.h
+    command_buffer.cc
+    command_buffer.h
     hsa_buffer.cc
     hsa_buffer.h
     hsa_allocator.cc
@@ -57,6 +59,8 @@ iree_cc_library(
     native_executable.h
     nop_executable_cache.cc
     nop_executable_cache.h
+    nop_semaphore.cc
+    nop_semaphore.h
   DEPS
     ::dynamic_symbols
     iree-amd-aie::schemas::hsa_executable_def_c_fbs

@@ -20,7 +20,6 @@ struct iree_hal_hsa_native_executable_t {
   iree_hal_resource_t resource;
   iree_allocator_t host_allocator;
   const iree_hal_hsa_dynamic_symbols_t* symbols;
-  hsa::hsa_executable_t executable;
   iree_host_size_t entry_point_count;
   iree_hal_hsa_kernel_info_t entry_points[];
 };
@@ -176,7 +175,6 @@ iree_status_t iree_hal_hsa_native_executable_create(
         iree_amd_aie_hal_hsa_PdiDef_vec_at(pdis_vec, pdi_index);
     flatbuffers_string_t pdi_fb = iree_amd_aie_hal_hsa_PdiDef_pdi_get(pdi_def);
     uint32_t num_pdi_chars = flatbuffers_string_len(pdi_fb);
-
     uint32_t asm_instr_index =
         flatbuffers_uint32_vec_at(asm_instr_indices_vec, entry_ordinal);
     iree_amd_aie_hal_hsa_AsmInstDef_table_t asminst_def =
@@ -189,13 +187,13 @@ iree_status_t iree_hal_hsa_native_executable_create(
         iree_hal_hsa_allocator_cast(device_allocator);
 
     uint32_t* dpu_inst_buf(nullptr);
-    uint64_t* pdi_buf(nullptr);
+    char* pdi_buf(nullptr);
     // Load the DPU and PDI files into a global pool that doesn't support kernel
     // args (DEV BO).
     IREE_HSA_RETURN_AND_END_ZONE_IF_ERROR(
         z0, symbols,
-        hsa_amd_memory_pool_allocate(allocator->global_dev_mem_pool, num_instr,
-                                     0,
+        hsa_amd_memory_pool_allocate(allocator->global_dev_mem_pool,
+                                     num_instr * sizeof(uint32_t), 0,
                                      reinterpret_cast<void**>(&dpu_inst_buf)),
         "hsa_amd_memory_pool_allocate");
     std::memcpy(dpu_inst_buf, asm_inst, num_instr * sizeof(uint32_t));
@@ -224,6 +222,7 @@ iree_status_t iree_hal_hsa_native_executable_create(
     params->dpu_inst_buf = dpu_inst_buf;
     params->pdi_handle = pdi_handle;
     params->dpu_handle = dpu_handle;
+    params->num_instr = num_instr;
 
     (void)entry_name;
     IREE_TRACE({
@@ -273,8 +272,16 @@ static void iree_hal_hsa_native_executable_destroy(
   iree_allocator_t host_allocator = executable->host_allocator;
   IREE_TRACE_ZONE_BEGIN(z0);
 
-  IREE_HSA_IGNORE_ERROR(executable->symbols,
-                        hsa_executable_destroy(executable->executable));
+  for (iree_host_size_t entry_ordinal = 0;
+       entry_ordinal < executable->entry_point_count; entry_ordinal++) {
+    iree_hal_hsa_kernel_info_t* params =
+        &executable->entry_points[entry_ordinal];
+    IREE_HSA_IGNORE_ERROR(executable->symbols,
+                          hsa_amd_memory_pool_free(params->pdi_buf));
+    IREE_HSA_IGNORE_ERROR(executable->symbols,
+                          hsa_amd_memory_pool_free(params->dpu_inst_buf));
+  }
+
   iree_allocator_free(host_allocator, executable);
 
   IREE_TRACE_ZONE_END(z0);

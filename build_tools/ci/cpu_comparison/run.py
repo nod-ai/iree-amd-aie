@@ -130,7 +130,7 @@ def generate_aie_vmfb(
     compilation_flags = [
         config.iree_compile_exe,
         test_file,
-        "--iree-hal-target-backends=amd-aie-xrt",
+        f"--iree-hal-target-backends={config.target_backend}",
         f"--iree-amdaie-tile-pipeline={tile_pipeline}",
         f"--iree-amdaie-lower-to-aie-pipeline={lower_to_aie_pipeline}",
         "--iree-amdaie-matmul-elementwise-fusion",
@@ -181,7 +181,7 @@ def generate_aie_output(config, aie_vmfb, input_args, function_name, name):
         config.iree_run_exe,
         f"--module={aie_vmfb}",
         *input_args,
-        "--device=xrt",
+        f"--device={config.target_backend}",
         f"--output=@{aie_npy}",
     ]
     if function_name:
@@ -251,6 +251,7 @@ class TestConfig:
         file_dir,
         iree_compile_exe,
         iree_run_exe,
+        target_backend,
         verbose,
         return_on_fail,
         reset_npu_between_runs,
@@ -265,6 +266,7 @@ class TestConfig:
         self.file_dir = file_dir
         self.iree_compile_exe = iree_compile_exe
         self.iree_run_exe = iree_run_exe
+        self.target_backend = target_backend
         self.return_on_fail = return_on_fail
         self.verbose = verbose
         self.xdna_datetime = None
@@ -811,6 +813,7 @@ def all_tests(
     peano_dir,
     xrt_dir,
     vitis_dir,
+    target_backend,
     return_on_fail,
     verbose,
     reset_npu_between_runs,
@@ -853,6 +856,7 @@ def all_tests(
         file_dir,
         iree_compile_exe,
         iree_run_exe,
+        target_backend,
         verbose,
         return_on_fail,
         reset_npu_between_runs,
@@ -912,6 +916,13 @@ if __name__ == "__main__":
     parser.add_argument("peano_install_dir", type=abs_path)
     parser.add_argument("--xrt-dir", type=abs_path)
     parser.add_argument("--vitis-dir", type=abs_path)
+    parser.add_argument(
+        "--target-backend",
+        default="amd-aie-xrt",
+        const="amd-aie-xrt",
+        nargs="?",
+        choices=["ame-aie-xrt", "amd-aie-hsa"],
+    )
 
     # TODO(newling) make bool options boolean, not integer (tried but had issues)
     parser.add_argument(
@@ -1003,6 +1014,7 @@ if __name__ == "__main__":
         args.peano_install_dir,
         args.xrt_dir,
         args.vitis_dir,
+        args.target_backend,
         args.return_on_fail,
         args.verbose,
         args.reset_npu_between_runs,
