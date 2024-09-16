@@ -17,3 +17,13 @@ iree_lit_test_suite(
     FileCheck
     iree-opt
 )
+
+iree_cc_test(
+  NAME
+    AMDAIEDmaOpInterfaceTest
+  SRCS
+    "AMDAIEDmaOpInterfaceTest.cpp"
+  DEPS
+    gtest
+    iree::target::amd-aie::IR::AMDAIEDialect
+)

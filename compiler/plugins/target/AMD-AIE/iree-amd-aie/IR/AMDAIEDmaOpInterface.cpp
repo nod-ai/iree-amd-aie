@@ -4,6 +4,8 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+#include <numeric>
+
 #include "iree-amd-aie/IR/AMDAIEDmaOpInterface.h"
 
 #include "iree-amd-aie/IR/AMDAIEAttrs.h"
@@ -76,6 +78,23 @@ std::optional<int64_t> getStaticExtent(DoublyStridedOpInterface op) {
   return getAccessRangeExtent(staticSizes.value(), staticStrides.value());
 }
 
+template <CopyOpOperateOn OperateOn>
+std::optional<int64_t> getStaticSize(DoublyStridedOpInterface op) {
+  SmallVector<OpFoldResult> sizes;
+  if constexpr (OperateOn == CopyOpOperateOn::Source) {
+    sizes = op.getSourceMixedSizes();
+  } else if constexpr (OperateOn == CopyOpOperateOn::Target) {
+    sizes = op.getTargetMixedSizes();
+  } else {
+    assert(false && "Function can only operate on Source or Target");
+  }
+  if (sizes.size() == 0) return 0;
+  std::optional<SmallVector<int64_t>> staticSizes = getConstantIntValues(sizes);
+  if (!staticSizes) return std::nullopt;
+  return std::accumulate(staticSizes->begin(), staticSizes->end(), 1,
+                         std::multiplies<>());
+}
+
 /// Return the static base offset on the source side if it can be computed.
 /// Otherwise, returns nullopt.
 std::optional<int64_t> getSourceStaticBaseOffset(DoublyStridedOpInterface op) {
@@ -88,6 +107,10 @@ std::optional<int64_t> getSourceStaticExtent(DoublyStridedOpInterface op) {
   return getStaticExtent<CopyOpOperateOn::Source>(op);
 }
 
+std::optional<int64_t> getSourceStaticSize(DoublyStridedOpInterface op) {
+  return getStaticSize<CopyOpOperateOn::Source>(op);
+}
+
 /// Return the static base offset on the target side if it can be computed.
 /// Otherwise, returns nullopt.
 std::optional<int64_t> getTargetStaticBaseOffset(DoublyStridedOpInterface op) {
@@ -98,6 +121,10 @@ std::optional<int64_t> getTargetStaticBaseOffset(DoublyStridedOpInterface op) {
 /// Otherwise, returns nullopt.
 std::optional<int64_t> getTargetStaticExtent(DoublyStridedOpInterface op) {
   return getStaticExtent<CopyOpOperateOn::Target>(op);
+}
+
+std::optional<int64_t> getTargetStaticSize(DoublyStridedOpInterface op) {
+  return getStaticSize<CopyOpOperateOn::Target>(op);
 }
 
 LogicalResult verifyStaticOrDynamicEntryInvariant(Operation *op, StringRef name,
