@@ -46,14 +46,30 @@ struct AMDAIESession
   }
 
   void populateHALTargetDevices(IREE::HAL::TargetDeviceList &targets) override {
-    // #hal.device.target<"xrt", ...
-    // #hal.executable.target<"amd-aie", ...
-    targets.add("xrt", [=]() { return AMDAIE::createTarget(options); });
+    // #hal.device.target<"amd-aie-xrt", ...
+    targets.add("amd-aie-xrt", [=]() {
+      options.backend = AMDAIE::AMDAIEOptions::Backend::XRT;
+      return AMDAIE::createTarget(options);
+    });
+    // #hal.device.target<"amd-aie-hsa", ...
+    targets.add("amd-aie-hsa", [=]() {
+      options.backend = AMDAIE::AMDAIEOptions::Backend::HSA;
+      return AMDAIE::createTarget(options);
+    });
   }
 
   void populateHALTargetBackends(
       IREE::HAL::TargetBackendList &targets) override {
-    targets.add("amd-aie", [=]() { return AMDAIE::createBackend(options); });
+    // #hal.executable.target<"amd-aie-xrt", ...
+    targets.add("amd-aie-xrt", [=]() {
+      options.backend = AMDAIE::AMDAIEOptions::Backend::XRT;
+      return AMDAIE::createBackend(options);
+    });
+    // #hal.executable.target<"amd-aie-hsa", ...
+    targets.add("amd-aie-hsa", [=]() {
+      options.backend = AMDAIE::AMDAIEOptions::Backend::HSA;
+      return AMDAIE::createBackend(options);
+    });
   }
 };
 

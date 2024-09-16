@@ -216,7 +216,7 @@ static iree_status_t iree_hal_xrt_driver_create_device_by_id(
     iree_allocator_t host_allocator, iree_hal_device_t** out_device) {
   IREE_TRACE_ZONE_BEGIN(z0);
   iree_hal_xrt_driver_t* driver = iree_hal_xrt_driver_cast(base_driver);
-  iree_string_view_t device_name = iree_make_cstring_view("xrt");
+  iree_string_view_t device_name = iree_make_cstring_view("amd-aie-xrt");
 
   iree_status_t status =
       iree_hal_xrt_device_create(device_name, &driver->device_params,
@@ -233,7 +233,7 @@ static iree_status_t iree_hal_xrt_driver_create_device_by_path(
     iree_hal_device_t** out_device) {
   IREE_TRACE_ZONE_BEGIN(z0);
   iree_hal_xrt_driver_t* driver = iree_hal_xrt_driver_cast(base_driver);
-  iree_string_view_t device_name = iree_make_cstring_view("xrt");
+  iree_string_view_t device_name = iree_make_cstring_view("amd-aie-xrt");
 
   iree_status_t status =
       iree_hal_xrt_device_create(device_name, &driver->device_params,

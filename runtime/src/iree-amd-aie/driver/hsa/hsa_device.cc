@@ -9,6 +9,7 @@
 #include "iree-amd-aie/driver/hsa/api.h"
 #include "iree-amd-aie/driver/hsa/hsa_allocator.h"
 #include "iree-amd-aie/driver/hsa/hsa_headers.h"
+#include "iree-amd-aie/driver/hsa/nop_executable_cache.h"
 #include "iree-amd-aie/driver/hsa/status_util.h"
 #include "iree/base/api.h"
 #include "iree/base/tracing.h"
@@ -122,11 +123,42 @@ static void iree_hal_hsa_device_destroy(iree_hal_device_t* base_device) {
   IREE_TRACE_ZONE_END(z0);
 }
 
+static iree_status_t iree_hal_hsa_device_create_executable_cache(
+    iree_hal_device_t* base_device, iree_string_view_t identifier,
+    iree_loop_t loop, iree_hal_executable_cache_t** out_executable_cache) {
+  iree_hal_hsa_device_t* device = iree_hal_hsa_device_cast(base_device);
+  return iree_hal_hsa_nop_executable_cache_create(
+      identifier, device->hsa_symbols, device->hsa_agent,
+      device->host_allocator, device->device_allocator, out_executable_cache);
+}
+
 namespace {
 const iree_hal_device_vtable_t iree_hal_hsa_device_vtable = {
     /*destroy=*/iree_hal_hsa_device_destroy,
     /*id=*/iree_hal_hsa_device_id,
     /*host_allocator=*/iree_hal_hsa_device_host_allocator,
     /*device_allocator=*/iree_hal_hsa_device_allocator,
+    /*replace_device_allocator=*/nullptr,
+    /*replace_channel_provider=*/nullptr,
+    /*trim=*/nullptr,
+    /*query_i64=*/nullptr,
+    /*create_channel=*/nullptr,
+    /*create_command_buffer=*/nullptr,
+    /*create_event=*/nullptr,
+    /*create_executable_cache=*/iree_hal_hsa_device_create_executable_cache,
+    /*import_file=*/nullptr,
+    /*create_semaphore=*/nullptr,
+    /*query_semaphore_compatibility*/
+    nullptr,
+    /*queue_alloca=*/nullptr,
+    /*queue_dealloca=*/nullptr,
+    /*queue_read=*/nullptr,
+    /*queue_write=*/nullptr,
+    /*queue_execute=*/nullptr,
+    /*queue_flush=*/nullptr,
+    /*wait_semaphores=*/nullptr,
+    /*profiling_begin=*/nullptr,
+    /*profiling_flush=*/nullptr,
+    /*profiling_end=*/nullptr,
 };
 }  // namespace

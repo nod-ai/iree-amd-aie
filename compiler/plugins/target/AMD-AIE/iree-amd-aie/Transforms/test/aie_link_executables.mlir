@@ -1,8 +1,8 @@
 // RUN: iree-opt --split-input-file --iree-amdaie-link-executables %s | FileCheck %s
 
-#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_arch = "chip-tbd", ukernels = "none"}>
+#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie-xrt", "amdaie-xclbin-fb", {target_arch = "chip-tbd", ukernels = "none"}>
 #pipeline_layout = #hal.pipeline.layout<bindings = [<storage_buffer, ReadOnly>, <storage_buffer, ReadOnly>, <storage_buffer>]>
-#device_target_amd_aie = #hal.device.target<"amd-aie", [#executable_target_amdaie_xclbin_fb]>
+#device_target_amd_aie = #hal.device.target<"amd-aie-xrt", [#executable_target_amdaie_xclbin_fb]>
 module attributes {hal.device.targets = [#device_target_amd_aie]} {
   hal.executable private @two_mm_dispatch_0 {
     hal.executable.variant public @amdaie_xclbin_fb target(#executable_target_amdaie_xclbin_fb) {

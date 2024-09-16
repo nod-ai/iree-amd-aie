@@ -716,6 +716,60 @@ static json::Object makeKernelJSON(const std::string &name,
       {"instances", json::Array{json::Object{{"name", instance}}}}};
 }
 
+static LogicalResult generatePDI(const std::string &Output,
+                                 const Path &tempDir) {
+  std::string errorMessage;
+  // Create design.bif.
+  Path designBifFile = tempDir / "design.bif";
+  {
+    auto designBifOut = openOutputFile(designBifFile.string(), &errorMessage);
+    if (!designBifOut) {
+      llvm::errs() << "failed to open design.bif because: " << errorMessage;
+      return failure();
+    }
+
+    designBifOut->os() << "all:\n"
+                       << "{\n"
+                       << "  id_code = 0x14ca8093\n"
+                       << "  extended_id_code = 0x01\n"
+                       << "  image\n"
+                       << "  {\n"
+                       << "    name=aie_image, id=0x1c000000\n"
+                       << "    { type=cdo\n"
+                       << "      file=" << tempDir.string()
+                       << "/aie_cdo_elfs.bin\n"
+                       << "      file=" << tempDir.string()
+                       << "/aie_cdo_init.bin\n"
+                       << "      file=" << tempDir.string()
+                       << "/aie_cdo_enable.bin\n"
+                       << "    }\n"
+                       << "  }\n"
+                       << "}";
+    designBifOut->keep();
+  }
+
+  // Execute the bootgen command.
+  {
+    // first element is empty string because iree_aie_bootgen_main
+    // is the main of bootgen.exe (and argv[0] is typically the name of the exe)
+    std::vector<std::string> flags = {
+        "",   "-arch", "versal", "-image", designBifFile.string(),
+        "-o", Output,  "-w"};
+    std::vector<char *> cstrings;
+    cstrings.reserve(flags.size());
+    for (const auto &inputFlag : flags) {
+      cstrings.push_back(const_cast<char *>(inputFlag.c_str()));
+    }
+    if (iree_aie_bootgen_main(cstrings.size(),
+                              const_cast<const char **>(&cstrings[0]))) {
+      llvm::errs() << "failed to execute bootgen";
+      return failure();
+    }
+  }
+
+  return success();
+}
+
 static LogicalResult generateXCLBin(
     const std::string &Output, const Path &tempDir,
     const std::string &xclBinKernelID, const std::string &xclBinKernelName,
@@ -820,58 +874,9 @@ static LogicalResult generateXCLBin(
       return failure();
     }
   }
-  // Create design.bif.
-  Path designBifFile = tempDir / "design.bif";
-  {
-    auto designBifOut = openOutputFile(designBifFile.string(), &errorMessage);
-    if (!designBifOut) {
-      llvm::errs() << "failed to open design.bif because: " << errorMessage;
-      return failure();
-    }
 
-    designBifOut->os() << "all:\n"
-                       << "{\n"
-                       << "  id_code = 0x14ca8093\n"
-                       << "  extended_id_code = 0x01\n"
-                       << "  image\n"
-                       << "  {\n"
-                       << "    name=aie_image, id=0x1c000000\n"
-                       << "    { type=cdo\n"
-                       << "      file=" << tempDir.string()
-                       << "/aie_cdo_elfs.bin\n"
-                       << "      file=" << tempDir.string()
-                       << "/aie_cdo_init.bin\n"
-                       << "      file=" << tempDir.string()
-                       << "/aie_cdo_enable.bin\n"
-                       << "    }\n"
-                       << "  }\n"
-                       << "}";
-    designBifOut->keep();
-  }
+  if (failed(generatePDI(tempDir / "design.pdi", tempDir))) return failure();
 
-  // Execute the bootgen command.
-  {
-    // first element is empty string because iree_aie_bootgen_main
-    // is the main of bootgen.exe (and argv[0] is typically the name of the exe)
-    std::vector<std::string> flags = {"",
-                                      "-arch",
-                                      "versal",
-                                      "-image",
-                                      designBifFile.string(),
-                                      "-o",
-                                      (tempDir / "design.pdi").string(),
-                                      "-w"};
-    std::vector<char *> cstrings;
-    cstrings.reserve(flags.size());
-    for (const auto &inputFlag : flags) {
-      cstrings.push_back(const_cast<char *>(inputFlag.c_str()));
-    }
-    if (iree_aie_bootgen_main(cstrings.size(),
-                              const_cast<const char **>(&cstrings[0]))) {
-      llvm::errs() << "failed to execute bootgen";
-      return failure();
-    }
-  }
   std::vector<std::string> flags;
   // Execute the xclbinutil command.
   std::string memArg = "MEM_TOPOLOGY:JSON:" + memTopologyJsonFile.string();
@@ -1158,11 +1163,12 @@ LogicalResult emitNpuInstructions(AIE::DeviceOp deviceOp,
 
 LogicalResult aie2xclbin(
     MLIRContext *ctx, AIE::DeviceOp deviceOp, const std::string &outputNPU,
-    const std::string &outputXCLBin, bool printIRBeforeAll,
+    const std::string &artifactPath, bool printIRBeforeAll,
     bool printIRAfterAll, bool printIRModuleScope, bool timing,
     const std::string &tempDir, bool useChess, bool verbose,
     const std::optional<std::string> &vitisDir, const std::string &targetArch,
     const std::string &npuVersion, const std::string &peanoDir,
+    const mlir::iree_compiler::AMDAIE::AMDAIEOptions::Backend backend,
     const std::string &xclBinKernelID, const std::string &xclBinKernelName,
     const std::string &xclBinInstanceName, const std::string &amdAIEInstallDir,
     const std::optional<std::string> &InputXCLBin,
@@ -1197,10 +1203,16 @@ LogicalResult aie2xclbin(
     return failure();
   }
 
-  if (failed(generateXCLBin(outputXCLBin, tempDirPath, xclBinKernelID,
+  if (backend == mlir::iree_compiler::AMDAIE::AMDAIEOptions::Backend::XRT &&
+      failed(generateXCLBin(artifactPath, tempDirPath, xclBinKernelID,
                             xclBinKernelName, xclBinInstanceName,
                             amdAIEInstallDir, verbose, InputXCLBin))) {
     llvm::errs() << "Failed to generate XCLBin\n";
+    return failure();
+  } else if (backend ==
+                 mlir::iree_compiler::AMDAIE::AMDAIEOptions::Backend::HSA &&
+             failed(generatePDI(artifactPath, tempDirPath))) {
+    llvm::errs() << "Failed to generate PDI\n";
     return failure();
   }
 

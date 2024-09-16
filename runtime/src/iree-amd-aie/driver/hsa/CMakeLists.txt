@@ -9,12 +9,17 @@ iree_add_all_subdirs()
 
 iree_register_external_hal_driver(
   NAME
-    hsa
+    amd-aie-hsa
   DRIVER_TARGET
     iree-amd-aie::driver::hsa::registration
   REGISTER_FN
     iree_hal_hsa_driver_module_register
 )
+
+include(iree_aie_utils)
+replace_string_in_file(
+  "${ROCR_RUNTIME_ROOT}/runtime/hsa-runtime/core/inc/amd_gpu_agent.h"
+  "static const" "const")
 
 iree_cc_library(
   NAME
@@ -48,6 +53,10 @@ iree_cc_library(
     hsa_driver.cc
     hsa_device.cc
     hsa_device.h
+    native_executable.cc
+    native_executable.h
+    nop_executable_cache.cc
+    nop_executable_cache.h
   DEPS
     ::dynamic_symbols
     iree-amd-aie::schemas::hsa_executable_def_c_fbs
@@ -79,7 +88,7 @@ if(IREE_AIE_HSA_RUNTIME_DIRECT_LINK)
   target_compile_definitions(iree-amd-aie_driver_hsa_dynamic_symbols PUBLIC IREE_AIE_HSA_RUNTIME_DIRECT_LINK)
 else()
   if(NOT DEFINED HSA_API_HEADERS_ROOT)
-    set(HSA_API_HEADERS_ROOT "${IREE_AMD_AIE_SOURCE_DIR}/third_party/ROCR-Runtime/runtime/hsa-runtime/inc")
+    set(HSA_API_HEADERS_ROOT "${ROCR_RUNTIME_ROOT}/runtime/hsa-runtime/inc")
   endif()
   target_include_directories(iree-amd-aie_driver_hsa_dynamic_symbols PUBLIC "${HSA_API_HEADERS_ROOT}")
 endif()

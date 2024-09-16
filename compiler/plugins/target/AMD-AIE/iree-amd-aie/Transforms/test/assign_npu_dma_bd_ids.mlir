@@ -22,7 +22,7 @@ module {
 // CHECK:           %[[NPU_DMA:.+]] = amdaie.npu.dma_cpy_nd %[[CIRC_DMA]]([] [] [], %[[FROM_MEMREF]][0, 0, 0] [1, 8, 16] [128, 16, 1] bd_id = %[[BD_ID_0]])
 // CHECK:           amdaie.npu.dma_wait(%[[NPU_DMA]], MM2S)
 #map = affine_map<(d0) -> (d0 * 16)>
-#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
+#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie-xrt", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
 module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
   func.func @single_dma_cpy_nd_on_source(%arg0: memref<8x16xi32>, %arg1: memref<1x1x8x16xi32, 1>) {
     %c0 = arith.constant 0 : index
@@ -57,7 +57,7 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 // CHECK:           %[[NPU_DMA:.+]] = amdaie.npu.dma_cpy_nd %[[CIRC_DMA]](%[[FROM_MEMREF]][0, 0, 0] [1, 8, 16] [128, 16, 1] bd_id = %[[BD_ID_0]], [] [] [])
 // CHECK:           amdaie.npu.dma_wait(%[[NPU_DMA]], S2MM)
 #map = affine_map<(d0) -> (d0 * 16)>
-#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
+#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie-xrt", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
 module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
   func.func @single_dma_cpy_nd_on_target(%arg0: memref<8x16xi32>, %arg1: memref<1x1x8x16xi32, 1>) {
     %c0 = arith.constant 0 : index
@@ -106,7 +106,7 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 // CHECK:           amdaie.npu.dma_wait(%[[NPU_DMA_1]], MM2S)
 // CHECK:           amdaie.npu.dma_wait(%[[NPU_DMA_2]], MM2S)
 #map = affine_map<(d0) -> (d0 * 16)>
-#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
+#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie-xrt", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
 module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
   func.func @multiple_dma_cpy_on_diff_tiles(%arg0: memref<8x16xi32>, %arg1: memref<8x16xi32>, %arg2: memref<8x16xi32>, %arg3: memref<1x1x8x16xi32, 1>) {
     %c0 = arith.constant 0 : index
@@ -158,7 +158,7 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 // CHECK:           %[[NPU_DMA_2:.+]] = amdaie.npu.dma_cpy_nd %[[CIRC_DMA]]([] [] [], %[[FROM_MEMREF_0]][0] [128] [1] bd_id = %[[BD_ID_0]])
 // CHECK:           amdaie.npu.dma_wait(%[[NPU_DMA_2]], MM2S)
 #map = affine_map<(d0) -> (d0 * 16)>
-#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
+#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie-xrt", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
 module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
   func.func @multiple_dma_cpy_with_bd_id_reuse(%arg0: memref<8x16xi32>, %arg1: memref<1x1x8x16xi32, 1>) {
     %c0 = arith.constant 0 : index
@@ -203,7 +203,7 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 // CHECK:           amdaie.npu.dma_wait(%[[NPU_DMA_1]], MM2S)
 // CHECK:           amdaie.npu.dma_wait(%[[NPU_DMA_2]], MM2S)
 #map = affine_map<(d0) -> (d0 * 16)>
-#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
+#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie-xrt", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
 module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
   func.func @multiple_dma_cpy_with_diff_bd_id(%arg0: memref<8x16xi32>, %arg1: memref<1x1x8x16xi32, 1>) {
     %c0 = arith.constant 0 : index
@@ -267,7 +267,7 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 // CHECK:           }
 // CHECK:           amdaie.npu.dma_wait(%[[NPU_DMA_0]], MM2S)
 #map = affine_map<(d0) -> (d0 * 16)>
-#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
+#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie-xrt", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
 module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
   func.func @nested_loops(%arg0: memref<8x16xi32>, %arg1: memref<8x16xi32>, %arg2: memref<8x16xi32>, %arg3: memref<1x1x8x16xi32, 1>) {
     %c0 = arith.constant 0 : index

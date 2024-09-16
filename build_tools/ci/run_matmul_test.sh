@@ -172,11 +172,11 @@ function run_matmul_test() {
   # extended with m,n,k if they are unique.
   local name_prefix="noprefix"
 
-  local target_backend="amd-aie"
+  local target_backend="amd-aie-xrt"
 
   local target_device="npu1_4col"
 
-  local device="xrt"
+  local device="amd-aie-xrt"
 
   local peano_install_path="${PEANO}"
 
@@ -517,9 +517,9 @@ run_matmul_test \
     --name_prefix "test1" \
     --lhs_rhs_type "bf16" \
     --acc_type "f32" \
-    --target_backend "amd-aie" \
+    --target_backend "amd-aie-xrt" \
     --target_device "npu1_4col" \
-    --device "xrt" \
+    --device "amd-aie-xrt" \
     --peano_install_path "${PEANO}" \
     --amd_aie_install_path "${IREE_INSTALL_DIR}" \
     --vitis_path  "${VITIS}" \

@@ -19,6 +19,6 @@ iree_cc_library(
     iree-amd-aie::driver::hsa
     iree::hal
   DEFINES
-    "IREE_HAVE_HAL_HSA_DRIVER_MODULE=1"
+    "IREE_HAVE_HAL_AMD_AIE_HSA_DRIVER_MODULE=1"
   PUBLIC
 )

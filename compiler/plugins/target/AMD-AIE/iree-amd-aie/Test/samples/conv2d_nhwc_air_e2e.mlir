@@ -1,4 +1,4 @@
-// RUN: iree-compile --iree-hal-target-backends=amd-aie --compile-to=executable-sources %s | iree-opt --pass-pipeline="builtin.module(hal.executable(hal.executable.variant(iree-hal-translate-target-executable-variants{target=amd-aie})))" --iree-amdaie-tile-pipeline=conv-decompose --iree-amdaie-lower-to-aie-pipeline=air --split-input-file | FileCheck %s
+// RUN: iree-compile --iree-hal-target-backends=amd-aie-xrt --compile-to=executable-sources %s | iree-opt --pass-pipeline="builtin.module(hal.executable(hal.executable.variant(iree-hal-translate-target-executable-variants{target=amd-aie})))" --iree-amdaie-tile-pipeline=conv-decompose --iree-amdaie-lower-to-aie-pipeline=air --split-input-file | FileCheck %s
 
 func.func @conv_2d_nhwc_hwcf(%arg0: tensor<2x14x14x32xi32>, %arg1: tensor<3x3x32x64xi32>) -> tensor<2x12x12x64xi32> {
   %cst = arith.constant 0 : i32

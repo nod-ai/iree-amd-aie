@@ -21,8 +21,8 @@ static iree_status_t iree_hal_hsa_driver_factory_enumerate(
   IREE_TRACE_ZONE_BEGIN(z0);
 
   static const iree_hal_driver_info_t driver_infos[1] = {{
-      .driver_name = IREE_SVL("hsa"),
-      .full_name = IREE_SVL("HSA HAL driver (via dylib)"),
+      .driver_name = IREE_SVL("amd-aie-hsa"),
+      .full_name = IREE_SVL("HSA HAL driver (for AIE)"),
   }};
   *out_driver_info_count = IREE_ARRAYSIZE(driver_infos);
   *out_driver_infos = driver_infos;
@@ -36,7 +36,7 @@ static iree_status_t iree_hal_hsa_driver_factory_try_create(
     iree_hal_driver_t** out_driver) {
   IREE_ASSERT_ARGUMENT(out_driver);
 
-  if (!iree_string_view_equal(driver_name, IREE_SV("hsa"))) {
+  if (!iree_string_view_equal(driver_name, IREE_SV("amd-aie-hsa"))) {
     return iree_make_status(IREE_STATUS_UNAVAILABLE,
                             "no driver '%.*s' is provided by this factory",
                             (int)driver_name.size, driver_name.data);

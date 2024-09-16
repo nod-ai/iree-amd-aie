@@ -13,7 +13,7 @@ iree_add_all_subdirs()
 
 iree_register_external_hal_driver(
   NAME
-    xrt
+    amd-aie-xrt
   DRIVER_TARGET
     iree-amd-aie::driver::xrt::registration
   REGISTER_FN

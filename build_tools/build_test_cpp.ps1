@@ -83,7 +83,7 @@ $CMAKE_ARGS = @(
     "-DIREE_TARGET_BACKEND_DEFAULTS=OFF"
     "-DIREE_TARGET_BACKEND_LLVM_CPU=ON"
     "-DIREE_CMAKE_PLUGIN_PATHS=$repo_root"
-    "-DIREE_EXTERNAL_HAL_DRIVERS=xrt"
+    "-DIREE_EXTERNAL_HAL_DRIVERS=amd-aie-xrt"
 )
 
 if ($llvm_install_dir -and (Test-Path "$llvm_install_dir"))

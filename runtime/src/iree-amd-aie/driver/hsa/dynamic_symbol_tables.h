@@ -18,38 +18,30 @@ IREE_HAL_HSA_REQUIRED_PFN_DECL(hsa_queue_create, hsa::hsa_agent_t, uint32_t,
                                void *, uint32_t, uint32_t, hsa::hsa_queue_t **)
 IREE_HAL_HSA_REQUIRED_PFN_DECL(hsa_queue_destroy, hsa::hsa_queue_t *)
 IREE_HAL_HSA_REQUIRED_PFN_DECL_RET(hsa::hsa_signal_value_t,
-                                          hsa_signal_wait_scacquire,
-                                          hsa::hsa_signal_t,
-                                          hsa::hsa_signal_condition_t,
-                                          hsa::hsa_signal_value_t, uint64_t,
-                                          hsa::hsa_wait_state_t)
-IREE_HAL_HSA_REQUIRED_PFN_DECL_RET(uint64_t,
-                                          hsa_queue_load_write_index_relaxed,
-                                          const hsa::hsa_queue_t *)
+                                   hsa_signal_wait_scacquire, hsa::hsa_signal_t,
+                                   hsa::hsa_signal_condition_t,
+                                   hsa::hsa_signal_value_t, uint64_t,
+                                   hsa::hsa_wait_state_t)
+IREE_HAL_HSA_REQUIRED_PFN_DECL_RET(uint64_t, hsa_queue_load_write_index_relaxed,
+                                   const hsa::hsa_queue_t *)
 IREE_HAL_HSA_REQUIRED_PFN_DECL(hsa_signal_create, hsa::hsa_signal_value_t,
                                uint32_t, const hsa::hsa_agent_t *,
                                hsa::hsa_signal_t *)
-IREE_HAL_HSA_REQUIRED_PFN_DECL_RET(void,
-                                          hsa_queue_store_write_index_release,
-                                          const hsa::hsa_queue_t *, uint64_t)
-IREE_HAL_HSA_REQUIRED_PFN_DECL_RET(uint64_t,
-                                          hsa_queue_add_write_index_relaxed,
-                                          const hsa::hsa_queue_t *, uint64_t)
+IREE_HAL_HSA_REQUIRED_PFN_DECL_RET(void, hsa_queue_store_write_index_release,
+                                   const hsa::hsa_queue_t *, uint64_t)
+IREE_HAL_HSA_REQUIRED_PFN_DECL_RET(uint64_t, hsa_queue_add_write_index_relaxed,
+                                   const hsa::hsa_queue_t *, uint64_t)
 IREE_HAL_HSA_REQUIRED_PFN_DECL_RET(void, hsa_signal_store_screlease,
-                                          hsa::hsa_signal_t,
-                                          hsa::hsa_signal_value_t)
+                                   hsa::hsa_signal_t, hsa::hsa_signal_value_t)
 IREE_HAL_HSA_REQUIRED_PFN_DECL_RET(void, hsa_signal_store_relaxed,
-                                          hsa::hsa_signal_t,
-                                          hsa::hsa_signal_value_t)
+                                   hsa::hsa_signal_t, hsa::hsa_signal_value_t)
 IREE_HAL_HSA_REQUIRED_PFN_DECL_RET(void, hsa_signal_add_screlease,
-                                          hsa::hsa_signal_t,
-                                          hsa::hsa_signal_value_t)
+                                   hsa::hsa_signal_t, hsa::hsa_signal_value_t)
 IREE_HAL_HSA_REQUIRED_PFN_DECL_RET(hsa::hsa_signal_value_t,
-                                          hsa_signal_wait_acquire,
-                                          hsa::hsa_signal_t,
-                                          hsa::hsa_signal_condition_t,
-                                          hsa::hsa_signal_value_t, uint64_t,
-                                          hsa::hsa_wait_state_t)
+                                   hsa_signal_wait_acquire, hsa::hsa_signal_t,
+                                   hsa::hsa_signal_condition_t,
+                                   hsa::hsa_signal_value_t, uint64_t,
+                                   hsa::hsa_wait_state_t)
 IREE_HAL_HSA_REQUIRED_PFN_DECL(hsa_signal_destroy, hsa::hsa_signal_t)
 IREE_HAL_HSA_REQUIRED_PFN_DECL(hsa_executable_get_symbol_by_name,
                                hsa::hsa_executable_t, const char *,
@@ -108,3 +100,5 @@ IREE_HAL_HSA_REQUIRED_PFN_DECL(hsa_amd_memory_lock_to_pool, void *, size_t,
 IREE_HAL_HSA_REQUIRED_PFN_DECL(hsa_amd_memory_fill, void *, uint32_t, size_t);
 IREE_HAL_HSA_REQUIRED_PFN_DECL(hsa_status_string, hsa::hsa_status_t,
                                const char **)
+IREE_HAL_HSA_REQUIRED_PFN_DECL(hsa_amd_get_handle_from_vaddr, void *,
+                               uint32_t *)

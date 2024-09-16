@@ -17,6 +17,6 @@ iree_cc_library(
     iree::hal
     iree-amd-aie::driver::xrt
   DEFINES
-    "IREE_HAVE_HAL_XRT_DRIVER_MODULE=1"
+    "IREE_HAVE_HAL_AMD_AIE_XRT_DRIVER_MODULE=1"
   PUBLIC
 )

@@ -1,4 +1,4 @@
-// RUN: iree-compile --iree-hal-target-backends=amd-aie --compile-to=executable-sources %s | iree-opt --pass-pipeline="builtin.module(hal.executable(hal.executable.variant(iree-hal-translate-target-executable-variants{target=amd-aie})))" --iree-amdaie-lower-to-aie-pipeline=air --iree-amdaie-tile-pipeline=pack-peel --iree-amdaie-matmul-elementwise-fusion --split-input-file | FileCheck %s
+// RUN: iree-compile --iree-hal-target-backends=amd-aie-xrt --compile-to=executable-sources %s | iree-opt --pass-pipeline="builtin.module(hal.executable(hal.executable.variant(iree-hal-translate-target-executable-variants{target=amd-aie})))" --iree-amdaie-lower-to-aie-pipeline=air --iree-amdaie-tile-pipeline=pack-peel --iree-amdaie-matmul-elementwise-fusion --split-input-file | FileCheck %s
 
 func.func @matmul_elementwise_i32(%lhs: tensor<1024x512xi32>, %rhs: tensor<512x1024xi32>, %ele: tensor<1024x1024xi32>) -> tensor<1024x1024xi32>
 {

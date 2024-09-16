@@ -130,7 +130,7 @@ def generate_aie_vmfb(
     compilation_flags = [
         config.iree_compile_exe,
         test_file,
-        "--iree-hal-target-backends=amd-aie",
+        "--iree-hal-target-backends=amd-aie-xrt",
         f"--iree-amdaie-tile-pipeline={tile_pipeline}",
         f"--iree-amdaie-lower-to-aie-pipeline={lower_to_aie_pipeline}",
         "--iree-amdaie-matmul-elementwise-fusion",

@@ -148,6 +148,7 @@ jobs:
           sed -i 's/amdgcn-amd-amdhsa/amdgcn-amd-amdhsa -nogpulib/g' runtime/hsa-runtime/core/runtime/blit_shaders/CMakeLists.txt
           sed -i 's/amdgcn-amd-amdhsa/amdgcn-amd-amdhsa -nogpulib/g' runtime/hsa-runtime/core/runtime/trap_handler/CMakeLists.txt
           sed -i 's/amdgcn-amd-amdhsa/amdgcn-amd-amdhsa -nogpulib/g' runtime/hsa-runtime/image/blit_src/CMakeLists.txt
+          sed -i 's/static const/const/g' runtime/hsa-runtime/core/inc/amd_gpu_agent.h
 
       - name: Download LLVM artifacts
         uses: actions/download-artifact@v4
@@ -257,6 +258,8 @@ jobs:
         run: |
           tar xf llvm-dist-*.tar
           echo "llvm_install_dir=$PWD/llvm-install" >> $GITHUB_ENV
+          bash build_tools/download_peano.sh
+          echo "PEANO_INSTALL_DIR=$PWD/llvm-aie" >> $GITHUB_ENV
 
       - name: Download HSA artifacts
         if: ${{ matrix.IREE_AIE_HSA_RUNTIME_DIRECT_LINK }}
@@ -275,7 +278,7 @@ jobs:
         run: |
           export cache_dir="${{ env.CACHE_DIR }}"
           export CCACHE_COMPILERCHECK="string:$(clang --version)"
-          export IREE_EXTERNAL_HAL_DRIVERS=hsa
+          export IREE_EXTERNAL_HAL_DRIVERS=amd-aie-hsa
           export IREE_AIE_HSA_RUNTIME_DIRECT_LINK=${{ matrix.IREE_AIE_HSA_RUNTIME_DIRECT_LINK && 'ON' || 'OFF' }}
           export hsa_runtime64_DIR="$hsa_runtime64_DIR"
           export hsakmt_DIR="$hsakmt_DIR"
