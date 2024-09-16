@@ -133,7 +133,8 @@ class AMDAIERemoveMemorySpacePass
     // At this point in the pass, all Values have been scrubbed of memory space
     // from their types. We do a final pass of ops which have attributes (not
     // operands) that have memory spaces. The ObjectFifoCreateOp is an
-    // example of such an op, which as an ObjectFifoType attribute.
+    // example of such an op, it has an ObjectFifoType attribute. I'm not
+    // sure if there's a more 'sustainable' way of doing this.
     getOperation()->walk([&](xilinx::AIE::ObjectFifoCreateOp op) {
       op.setElemType(getMemorySpaceScrubbedType(op.getElemType()));
     });
