@@ -4,7 +4,8 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#include "air/Dialect/AIR/AIRDialect.h"
+#include "iree-amd-aie/IR/AMDAIEDialect.h"
+#include "iree-amd-aie/IR/AMDAIEOps.h"
 #include "iree-amd-aie/Transforms/Passes.h"
 #include "iree/compiler/Dialect/LinalgExt/IR/LinalgExtDialect.h"
 #include "iree/compiler/Dialect/LinalgExt/IR/LinalgExtOps.h"
@@ -163,7 +164,7 @@ LogicalResult setDmaInputs(Operation *&operandOp,
           return ShapedType::isDynamic(size);
         })) {
       return allocOp->emitOpError(
-          "with dynamic shape is not supported by air dma op.");
+          "with dynamic shape is not supported by dma op.");
     }
     sizes = getAsIndexOpFoldResult(ctx, sizesI64);
     // Alloc Op has no offsets.
@@ -199,7 +200,7 @@ LogicalResult setDmaInputs(Operation *&operandOp,
           return ShapedType::isDynamic(size);
         })) {
       return subviewOp->emitOpError(
-          "has dynamic shape that is not supported by the target air dma op.");
+          "has dynamic shape that is not supported by the target dma op.");
     }
     sizes = getAsIndexOpFoldResult(ctx, sizesI64);
     return success();
@@ -243,14 +244,14 @@ LogicalResult rewriteAsDma(IRRewriter &rewriter, Operation *op, Value input,
                    [](int64_t size) { return ShapedType::isDynamic(size); })) {
     op->emitError("has a non-static shape: not yet supported by this pass.");
   }
-  Location loc = op->getLoc();
+
   OpBuilder::InsertionGuard g(rewriter);
   rewriter.setInsertionPoint(op);
 
   Operation *sourceOp = input.getDefiningOp();
   Operation *dstOp = output.getDefiningOp();
 
-  // prepare source DMA inputs.
+  // Prepare source DMA inputs.
   SmallVector<OpFoldResult> srcOffsets;
   SmallVector<OpFoldResult> srcBaseStrides;
   SmallVector<OpFoldResult> srcShape;
@@ -264,24 +265,32 @@ LogicalResult rewriteAsDma(IRRewriter &rewriter, Operation *op, Value input,
     return failure();
   }
 
-  // prepare destination DMA inputs.
+  // Prepare destination DMA inputs.
   SmallVector<OpFoldResult> dstOffsets;
   SmallVector<OpFoldResult> dstBaseStrides;
   SmallVector<OpFoldResult> dstShape;
   if (!succeeded(setDmaInputs(dstOp, dstOffsets, dstShape, dstBaseStrides))) {
     return failure();
   }
-  // Async Tokens are added to the op in later passes.
-  SmallVector<Value, 2> asyncTokens;
-  rewriter.replaceOpWithNewOp<xilinx::air::DmaMemcpyNdOp>(
-      op, SmallVector<Type, 1>{}, asyncTokens, dstOp->getResult(0),
-      getValueOrCreateConstantIndexOp(rewriter, loc, dstOffsets),
-      getValueOrCreateConstantIndexOp(rewriter, loc, dstShape),
-      getValueOrCreateConstantIndexOp(rewriter, loc, dstBaseStrides),
-      sourceOp->getResult(0),
-      getValueOrCreateConstantIndexOp(rewriter, loc, srcOffsets),
-      getValueOrCreateConstantIndexOp(rewriter, loc, srcShape),
-      getValueOrCreateConstantIndexOp(rewriter, loc, srcBaseStrides));
+
+  // Create logical objectFifos from source and destination memrefs.
+  Value srcVal = sourceOp->getResult(0);
+  Value dstVal = dstOp->getResult(0);
+  auto srcType = cast<MemRefType>(srcVal.getType());
+  auto dstType = cast<MemRefType>(dstVal.getType());
+
+  rewriter.setInsertionPointAfter(srcVal.getDefiningOp());
+  auto src = rewriter.create<AMDAIE::LogicalObjectFifoFromMemrefOp>(
+      rewriter.getUnknownLoc(), LogicalObjectFifoType::get(srcType), srcVal);
+  rewriter.setInsertionPointAfter(dstVal.getDefiningOp());
+  auto dst = rewriter.create<AMDAIE::LogicalObjectFifoFromMemrefOp>(
+      rewriter.getUnknownLoc(), LogicalObjectFifoType::get(dstType), dstVal);
+
+  rewriter.setInsertionPoint(op);
+  rewriter.create<AMDAIE::DmaCpyNdOp>(op->getLoc(), dst, dstOffsets, dstShape,
+                                      dstBaseStrides, src, srcOffsets, srcShape,
+                                      srcBaseStrides);
+  rewriter.eraseOp(op);
   return success();
 }
 
@@ -300,8 +309,7 @@ class AMDAIEPackToDmaPass
  public:
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<tensor::TensorDialect, linalg::LinalgDialect,
-                    IREE::LinalgExt::IREELinalgExtDialect,
-                    xilinx::air::airDialect>();
+                    IREE::LinalgExt::IREELinalgExtDialect, AMDAIEDialect>();
   }
 
   AMDAIEPackToDmaPass() = default;

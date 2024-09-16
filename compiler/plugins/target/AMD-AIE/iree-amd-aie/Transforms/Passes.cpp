@@ -583,9 +583,7 @@ void addAMDAIEObjectFifoLoweringPasses(OpPassManager &passManager) {
   passManager.addPass(createEraseHALDescriptorTypeFromMemRefPass());
   passManager.addPass(memref::createFoldMemRefAliasOpsPass());
   passManager.addPass(createAMDAIEPackToDmaPass());
-  passManager.addPass(xilinx::air::createCopyToDmaPass());
 
-  passManager.addPass(createAMDAIEAIRDmaAMDAIEDmaPass());
   passManager.addPass(createAMDAIENormalizeLoopBoundsPass());
   passManager.addPass(createAMDAIEInsertCoresPass());
   passManager.addPass(createAMDAIELocalizeLogicalObjectFifoPass());

@@ -17,12 +17,6 @@ def AMDAIEAccessToAcquireRelease :
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEAccessToAcquireReleasePass()";
 }
 
-def AMDAIEAIRDmaToAMDAIEDma :
-  Pass<"iree-amdaie-air-dma-to-amdaie-dma", ""> {
-  let summary = "Convert AIR DMA ops into AMDAIE DMA ops operating on logical objectFifos";
-  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEAIRDmaAMDAIEDmaPass()";
-}
-
 def AMDAIEAssignChannels :
     Pass<"iree-amdaie-assign-channels", ""> {
   let summary = "Assign channels to `amdaie.connection` ops.";
@@ -420,7 +414,7 @@ def AMDAIEPackAndTranspose :
 
 def AMDAIEPackToDma :
   Pass<"iree-amdaie-pack-to-dma", ""> {
-  let summary = "Convert pack/unpack ops air.dma_memcpy_nd op's";
+  let summary = "Convert pack/unpack ops to AMDAIE DMA ops operating on logical objectFifos.";
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEPackToDmaPass()";
 }
 
