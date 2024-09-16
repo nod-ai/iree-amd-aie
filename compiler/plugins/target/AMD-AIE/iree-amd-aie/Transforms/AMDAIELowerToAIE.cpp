@@ -612,8 +612,8 @@ LogicalResult npuDmaCpyNdOpToAIE(IRRewriter &rewriter,
   rewriter.setInsertionPoint(dmaOp);
   rewriter.create<AIEX::NpuDmaMemcpyNdOp>(
       dmaOp.getLoc(), SmallVector<Type, 1>{}, 0, 0, memref, offsets, sizes,
-      strides, staticOffsets, staticSizes, staticStrides, objFifo.getName(),
-      bdId, issueToken);
+      strides, staticOffsets, staticSizes, staticStrides, nullptr,
+      objFifo.getName(), bdId, issueToken);
 
   toBeErased.push_back(dmaOp);
   return success();
@@ -728,9 +728,10 @@ LogicalResult linkToAIE(IRRewriter &rewriter,
     outSyms.push_back(
         SymbolRefAttr::get(rewriter.getContext(), objFifo.getSymName()));
   }
-  rewriter.create<AIE::ObjectFifoLinkOp>(rewriter.getUnknownLoc(),
-                                         rewriter.getArrayAttr(inSyms),
-                                         rewriter.getArrayAttr(outSyms));
+  rewriter.create<AIE::ObjectFifoLinkOp>(
+      rewriter.getUnknownLoc(), rewriter.getArrayAttr(inSyms),
+      rewriter.getArrayAttr(outSyms), rewriter.getArrayAttr({}),
+      rewriter.getArrayAttr({}));
   return success();
 }
 

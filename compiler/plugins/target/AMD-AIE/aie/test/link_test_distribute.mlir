@@ -150,6 +150,6 @@ module @link_distribute {
     aie.objectfifo @link4 (%tile21, {%tile33}, 2 : i32) : !aie.objectfifo<memref<12xi32>>
     %ext_buffer_in  = aie.external_buffer {sym_name = "ext_buffer_in"}: memref<48xi32>
     aie.objectfifo.register_external_buffers @link1 (%tile20, {%ext_buffer_in}) : (memref<48xi32>)
-    aie.objectfifo.link [@link1] -> [@link2, @link3, @link4] ()
+    aie.objectfifo.link [@link1] -> [@link2, @link3, @link4] ([] [])
   }
 }

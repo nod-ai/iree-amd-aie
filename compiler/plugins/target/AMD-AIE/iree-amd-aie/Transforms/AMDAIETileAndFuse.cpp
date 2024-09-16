@@ -393,7 +393,8 @@ void AMDAIETileAndFusePass::runOnOperation() {
     LoopLikeOpInterface loop = loops[0];
     scf::ForallOp loopForAll = dyn_cast<scf::ForallOp>(loop.getOperation());
     if (!loopForAll) {
-      loopForAll->emitOpError("expected to be an scf.forall operation.");
+      loop.getOperation()->emitOpError(
+          "expected to be an scf.forall operation.");
       signalPassFailure();
     }
     auto groupType =

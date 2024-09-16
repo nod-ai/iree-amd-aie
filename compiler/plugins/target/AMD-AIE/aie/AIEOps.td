@@ -59,6 +59,7 @@ def AIE_TileOp: AIE_Op<"tile", [
     int colIndex() { return getCol(); }
     int rowIndex() { return getRow(); }
     bool isShimTile() { return getRow() == 0; }
+    bool isShimNOCorPLTile() { return isShimTile(); };
     CoreOp getCoreOp();
     bool isMemTile();
     MemOp getMemOp();
@@ -247,7 +248,8 @@ def AIE_PacketFlowOp: AIE_Op<"packet_flow", [SingleBlockImplicitTerminator<"EndO
   let summary = "Packet switched flow";
   let arguments = (
     ins I8Attr:$ID,
-        OptionalAttr<BoolAttr>:$keep_pkt_header
+        OptionalAttr<BoolAttr>:$keep_pkt_header,
+        OptionalAttr<BoolAttr>:$priority_route
   );
   let regions = (region AnyRegion:$ports);
 
@@ -569,13 +571,15 @@ def AIE_ObjectFifoLinkOp: AIE_Op<"objectfifo.link"> {
   let summary = "Links two objectFifos through an intermediary tile's DMA";
   let arguments = (
     ins SymbolRefArrayAttr:$fifoIns,
-        SymbolRefArrayAttr:$fifoOuts
+        SymbolRefArrayAttr:$fifoOuts,
+        I64ArrayAttr:$src_offsets,
+        I64ArrayAttr:$dst_offsets
   );
 
   let hasCustomAssemblyFormat = 1;
 
   let assemblyFormat = [{
-    $fifoIns `->` $fifoOuts `(` `)` attr-dict
+    $fifoIns `->` $fifoOuts `(` $src_offsets $dst_offsets `)` attr-dict
   }];
 }
 
