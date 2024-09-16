@@ -50,9 +50,13 @@ iree_cc_library(
     iree-amd-aie::aie_runtime::AMDAIEEnums
     iree::target::amd-aie::Utils::Utils
     LLVMSupport
+    MLIRArithUtils
+    MLIRCopyOpInterface
+    MLIRDialectUtils
     MLIRIR
     MLIRParser
     MLIRSupport
+    MLIRViewLikeInterface
   PUBLIC
 )
 

@@ -53,10 +53,6 @@ void buildAMDAIELinkingPassPipeline(OpPassManager &passManager);
 /// semaphore operations.
 std::unique_ptr<Pass> createAMDAIEAccessToAcquireReleasePass();
 
-/// Create a pass to convert AIR DMA ops into AMDAIE DMA ops operating on
-/// logical objectFifos.
-std::unique_ptr<Pass> createAMDAIEAIRDmaAMDAIEDmaPass();
-
 /// Create a pass to assign channels to connections.
 std::unique_ptr<Pass> createAMDAIEAssignChannelsPass();
 
@@ -214,7 +210,8 @@ std::unique_ptr<Pass> createAMDAIENormalizeLoopBoundsPass();
 std::unique_ptr<Pass> createAMDAIEPackAndTransposePass(
     AMDAIEPackAndTransposeOptions options = {});
 
-/// Create pass to lower pack/unpack ops to air.DmaMemcpyNd ops.
+/// Create pass to lower pack/unpack ops to AMDAIE DMA ops operating on 
+/// logical objectFifos.
 std::unique_ptr<Pass> createAMDAIEPackToDmaPass();
 
 /// Create a pass to pad MatmulOp.

@@ -185,6 +185,20 @@ def DoublyStridedOpInterface : OpInterface<"DoublyStridedOpInterface"> {
       }]
     >,
     InterfaceMethod<
+      /*desc=*/[{
+        Return the static size of the access on the target side if it can be
+        computed. Otherwise, returns nullopt.
+      }],
+      /*retTy=*/"std::optional<int64_t>",
+      /*methodName=*/"getTargetStaticSize",
+      /*args=*/(ins),
+      /*methodBody=*/"",
+      /*defaultImplementation=*/[{
+        return detail::getTargetStaticSize(
+          ::mlir::cast<DoublyStridedOpInterface>($_op.getOperation()));
+      }]
+    >,
+    InterfaceMethod<
       /*desc=*/"Return the dynamic source offsets.",
       /*retTy=*/"::mlir::OperandRange",
       /*methodName=*/"getSourceOffsets",
@@ -318,6 +332,20 @@ def DoublyStridedOpInterface : OpInterface<"DoublyStridedOpInterface"> {
       /*methodBody=*/"",
       /*defaultImplementation=*/[{
         return detail::getSourceStaticExtent(
+          ::mlir::cast<DoublyStridedOpInterface>($_op.getOperation()));
+      }]
+    >,
+    InterfaceMethod<
+      /*desc=*/[{
+        Return the static size of the access on the source side if it can be
+        computed. Otherwise, returns nullopt.
+      }],
+      /*retTy=*/"std::optional<int64_t>",
+      /*methodName=*/"getSourceStaticSize",
+      /*args=*/(ins),
+      /*methodBody=*/"",
+      /*defaultImplementation=*/[{
+        return detail::getSourceStaticSize(
           ::mlir::cast<DoublyStridedOpInterface>($_op.getOperation()));
       }]
     >,

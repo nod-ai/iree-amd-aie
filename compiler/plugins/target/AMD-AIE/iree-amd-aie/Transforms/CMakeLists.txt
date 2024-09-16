@@ -45,7 +45,6 @@ iree_cc_library(
   SRCS
     "AMDAIEAccessToAcquireRelease.cpp"
     "AMDAIEAddLoweringStrategy.cpp"
-    "AMDAIEAIRDmaToAMDAIEDma.cpp"
     "AMDAIEAssignChannels.cpp"
     "AMDAIEAssignLogicalObjectFifoDepth.cpp"
     "AMDAIEAssignNpuDmaBdIds.cpp"
