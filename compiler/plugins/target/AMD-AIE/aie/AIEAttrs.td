@@ -85,7 +85,7 @@ def BDPadLayoutArrayAttr : ArrayOfAttr<
 def PacketInfoAttr : AttrDef<AIE_Dialect, "PacketInfo", []> {
   let mnemonic = "packet_info";
   let summary = [{
-    Tuple encoding the type and header of a packet;
+    Tuple encoding the type and header of a packet; see https://github.com/Xilinx/aie-rt/blob/1ad203de0b7f282b1c0659fd2ae3f218652c7274/driver/src/global/xaiegbl.h#L459-L463
   }];
 
   let parameters = (ins
