@@ -401,6 +401,12 @@ def AMDAIENormalizeLoopBounds :
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIENormalizeLoopBoundsPass()";
 }
 
+def AMDAIEObjFifoBufferization :
+    Pass<"iree-amdaie-objfifo-bufferization", ""> {
+  let summary = "Bufferize logical objectFifos.";
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEObjFifoBufferizationPass()";
+}
+
 def AMDAIEPackAndTranspose :
     InterfacePass<"iree-amdaie-pack-and-transpose", "mlir::FunctionOpInterface"> {
   let summary = "Pass to pack and transpose the linalg operations.";

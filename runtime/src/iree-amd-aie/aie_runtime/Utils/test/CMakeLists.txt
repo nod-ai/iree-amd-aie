@@ -15,3 +15,13 @@ iree_cc_test(
     gtest
     iree-amd-aie::aie_runtime::Utils::Utils
 )
+
+iree_cc_test(
+  NAME
+    LockIdGeneratorTest
+  SRCS
+    "LockIdGeneratorTest.cpp"
+  DEPS
+    gtest
+    iree-amd-aie::aie_runtime::Utils::Utils
+)

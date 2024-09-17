@@ -8,6 +8,25 @@
 #define IREE_COMPILER_AMDAIE_LOGICALOBJFIFOOPINTERFACE_H_
 
 #include "mlir/IR/OpImplementation.h"
+#include "mlir/Interfaces/CopyOpInterface.h"
+
+namespace mlir::iree_compiler::AMDAIE {
+
+class LogicalObjFifoOpInterface;
+
+namespace detail {
+
+/// Return the consumer copy-like operations of the logical objFifo.
+SmallVector<mlir::CopyOpInterface> getCopyLikeConsumers(
+    LogicalObjFifoOpInterface op);
+
+/// Return the producer copy-like operations of the logical objFifo.
+SmallVector<mlir::CopyOpInterface> getCopyLikeProducers(
+    LogicalObjFifoOpInterface op);
+
+}  // namespace detail
+
+}  // namespace mlir::iree_compiler::AMDAIE
 
 // clang-format off
 #include "iree-amd-aie/IR/AMDAIELogicalObjFifoOpInterface.h.inc"

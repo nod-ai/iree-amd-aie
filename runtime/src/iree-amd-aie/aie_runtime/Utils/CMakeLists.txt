@@ -14,9 +14,12 @@ iree_cc_library(
   HDRS
     "ChannelBdIdGenerator.h"
     "ChannelGenerator.h"
+    "LockIdGenerator.h"
   SRCS
     "ChannelBdIdGenerator.cpp"
+    "LockIdGenerator.cpp"
   DEPS
+    iree-amd-aie::aie_runtime::iree_aie_runtime_static
     LLVMSupport
     MLIRIR
     MLIRParser
