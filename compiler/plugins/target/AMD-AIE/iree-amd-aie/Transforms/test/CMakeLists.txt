@@ -52,6 +52,7 @@ iree_lit_test_suite(
     "map_forall_to_cores.mlir"
     "none_access_to_temporary_buffer.mlir"
     "normalize_loop_bounds.mlir"
+    "obj_fifo_bufferization.mlir"
     "pack_and_transpose_level1.mlir"
     "pack_and_transpose_level2.mlir"
     "pack_to_air.mlir"

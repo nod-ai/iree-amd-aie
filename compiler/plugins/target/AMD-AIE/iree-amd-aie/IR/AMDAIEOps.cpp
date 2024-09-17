@@ -33,6 +33,15 @@ void BdIdOp::getAsmResultNames(function_ref<void(Value, StringRef)> setNameFn) {
 }
 
 //===----------------------------------------------------------------------===//
+// AMDAIE_BufferOp
+//===----------------------------------------------------------------------===//
+
+void BufferOp::getAsmResultNames(
+    function_ref<void(Value, StringRef)> setNameFn) {
+  setNameFn(getResult(), "buffer");
+}
+
+//===----------------------------------------------------------------------===//
 // AMDAIE_ChannelOp
 //===----------------------------------------------------------------------===//
 
@@ -447,6 +456,14 @@ ConnectionOp::getNpuCircularDmaCpyNdUser() {
 }
 
 //===----------------------------------------------------------------------===//
+// AMDAIE_LockOp
+//===----------------------------------------------------------------------===//
+
+void LockOp::getAsmResultNames(function_ref<void(Value, StringRef)> setNameFn) {
+  setNameFn(getResult(), "lock");
+}
+
+//===----------------------------------------------------------------------===//
 // AMDAIE_LogicalObjectFifoAccessOp
 //===----------------------------------------------------------------------===//
 
@@ -471,6 +488,67 @@ void LogicalObjectFifoAcquire::build(OpBuilder &b, mlir::OperationState &result,
                                      mlir::TypeRange resultTypes, Value dma,
                                      LogicalObjectFifoPort port) {
   build(b, result, resultTypes, dma, port, b.getI32IntegerAttr(1));
+}
+
+//===----------------------------------------------------------------------===//
+// AMDAIE_LogicalObjectFifoFromBuffersOp
+//===----------------------------------------------------------------------===//
+
+SmallVector<AMDAIE::BufferOp> LogicalObjectFifoFromBuffersOp::getBuffersOnTile(
+    TileOp tileOp) {
+  SmallVector<AMDAIE::BufferOp> buffers;
+  for (Value res : getBuffers()) {
+    if (auto bufferOp =
+            dyn_cast_if_present<AMDAIE::BufferOp>(res.getDefiningOp());
+        bufferOp.getTile() == tileOp.getResult()) {
+      buffers.push_back(bufferOp);
+    }
+  }
+  return buffers;
+}
+
+SmallVector<AMDAIE::LockOp>
+LogicalObjectFifoFromBuffersOp::getConsumerLocksOnTile(AMDAIE::TileOp tileOp) {
+  SmallVector<AMDAIE::LockOp> locks;
+  for (Value lockRes : getConsumerLocks()) {
+    if (auto lockOp =
+            dyn_cast_if_present<AMDAIE::LockOp>(lockRes.getDefiningOp());
+        lockOp.getTile() == tileOp.getResult()) {
+      locks.push_back(lockOp);
+    }
+  }
+  return locks;
+}
+
+SmallVector<AMDAIE::LockOp>
+LogicalObjectFifoFromBuffersOp::getProducerLocksOnTile(AMDAIE::TileOp tileOp) {
+  SmallVector<AMDAIE::LockOp> locks;
+  for (Value lockRes : getProducerLocks()) {
+    if (auto lockOp =
+            dyn_cast_if_present<AMDAIE::LockOp>(lockRes.getDefiningOp());
+        lockOp.getTile() == tileOp.getResult()) {
+      locks.push_back(lockOp);
+    }
+  }
+  return locks;
+}
+
+SmallVector<Value> LogicalObjectFifoFromBuffersOp::getTiles() {
+  llvm::SmallVector<mlir::Value> tiles;
+  for (Value result : getBuffers()) {
+    Value tile = cast<AMDAIE::BufferOp>(result.getDefiningOp()).getTile();
+    tiles.push_back(tile);
+  }
+  return tiles;
+}
+
+LogicalResult LogicalObjectFifoFromBuffersOp::verify() {
+  if (llvm::any_of(getBuffers(), [](Value result) {
+        return !isa_and_present<AMDAIE::BufferOp>(result.getDefiningOp());
+      })) {
+    return failure();
+  }
+  return success();
 }
 
 //===----------------------------------------------------------------------===//

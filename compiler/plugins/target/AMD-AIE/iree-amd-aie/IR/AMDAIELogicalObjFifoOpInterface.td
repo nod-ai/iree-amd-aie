@@ -22,6 +22,32 @@ def LogicalObjFifoOpInterface : OpInterface<"LogicalObjFifoOpInterface"> {
 
   let methods = [
     InterfaceMethod<
+      /*desc=*/[{
+        Return the consumer copy-like operations of the logical objFifo.
+      }],
+      /*retTy=*/"::llvm::SmallVector<::mlir::CopyOpInterface>",
+      /*methodName=*/"getCopyLikeConsumers",
+      /*args=*/(ins),
+      /*methodBody=*/"",
+      /*defaultImplementation=*/[{
+        return detail::getCopyLikeConsumers(
+          ::mlir::cast<LogicalObjFifoOpInterface>($_op.getOperation()));
+      }]
+    >,
+    InterfaceMethod<
+      /*desc=*/[{
+        Return the producer copy-like operations of the logical objFifo.
+      }],
+      /*retTy=*/"::llvm::SmallVector<::mlir::CopyOpInterface>",
+      /*methodName=*/"getCopyLikeProducers",
+      /*args=*/(ins),
+      /*methodBody=*/"",
+      /*defaultImplementation=*/[{
+        return detail::getCopyLikeProducers(
+          ::mlir::cast<LogicalObjFifoOpInterface>($_op.getOperation()));
+      }]
+    >,
+    InterfaceMethod<
       /*desc=*/"Return the buffer depth of the logical objectFifo. (E.g. 1 == "
                "single buffer, 2 == double buffer)",
       /*retTy=*/"uint8_t",
@@ -33,8 +59,38 @@ def LogicalObjFifoOpInterface : OpInterface<"LogicalObjFifoOpInterface"> {
       }]
     >,
     InterfaceMethod<
+      /*desc=*/"Return the memory space attribute.",
+      /*retTy=*/"mlir::Attribute",
+      /*methodName=*/"getMemorySpace",
+      /*args=*/(ins),
+      /*methodBody=*/"",
+      /*defaultImplementation=*/[{
+        return $_op.getMemorySpace();
+      }]
+    >,
+    InterfaceMethod<
+      /*desc=*/"Return the memory space attribute as an integer.",
+      /*retTy=*/"uint8_t",
+      /*methodName=*/"getMemorySpaceAsUInt",
+      /*args=*/(ins),
+      /*methodBody=*/"",
+      /*defaultImplementation=*/[{
+        return $_op.getMemorySpaceAsUInt();
+      }]
+    >,
+    InterfaceMethod<
+      /*desc=*/"Return the memref type.",
+      /*retTy=*/"mlir::MemRefType",
+      /*methodName=*/"getMemrefType",
+      /*args=*/(ins),
+      /*methodBody=*/"",
+      /*defaultImplementation=*/[{
+        return $_op.getMemrefType();
+      }]
+    >,
+    InterfaceMethod<
       /*desc=*/"Return the assigned tiles.",
-      /*retTy=*/"::mlir::ValueRange",
+      /*retTy=*/"::llvm::SmallVector<mlir::Value>",
       /*methodName=*/"getTiles",
       /*args=*/(ins),
       /*methodBody=*/"",

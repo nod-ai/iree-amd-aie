@@ -206,6 +206,9 @@ std::unique_ptr<Pass> createAMDAIENoneAccessToTemporaryBufferPass();
 /// Normalize the loop bounds of `scf.for` and `scf.forall`.
 std::unique_ptr<Pass> createAMDAIENormalizeLoopBoundsPass();
 
+/// Create a pass to bufferize logical objectFifos.
+std::unique_ptr<Pass> createAMDAIEObjFifoBufferizationPass();
+
 /// Create a pass to pack and transpose the linalg op.
 std::unique_ptr<Pass> createAMDAIEPackAndTransposePass(
     AMDAIEPackAndTransposeOptions options = {});

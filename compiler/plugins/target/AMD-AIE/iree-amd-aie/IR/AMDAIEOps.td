@@ -167,6 +167,69 @@ def AMDAIE_WorkgroupOp : AMDAIE_Op<"workgroup",
 }
 
 //===----------------------------------------------------------------------===//
+// IREE AMDAIE Buffer And Lock Ops
+//===----------------------------------------------------------------------===//
+
+def AMDAIE_BufferOp: AMDAIE_Op<"buffer", [
+    DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>
+  ]>, Results<(outs AnyMemRef)> {
+  let summary = "Represents a buffer on an AIE tile.";
+  let description = [{
+    This operation represents a buffer on an AIE tile. The buffer can have an
+    optional address, indicating the location of the buffer on the tile.
+    
+    Example:
+
+    ```mlir
+    %tile = amdaie.tile(%c0, %c0)
+    %buffer = amdaie.buffer(%tile, 1024)
+    ```
+  }];
+
+  let arguments = (
+    ins Index:$tile,
+        OptionalAttr<UI32Attr>:$address
+  );
+
+  let results = (outs AnyMemRef:$buffer);
+
+  let assemblyFormat = [{ 
+    `(` $tile (`,` $address^)? `)` attr-dict `:` type($buffer)
+  }];
+}
+
+def AMDAIE_LockOp: AMDAIE_Op<"lock", [
+    Pure,
+    DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>
+  ]>, Results<(outs Index)> {
+  let summary = "Represents a physical lock on an AIE tile.";
+  let description = [{
+    This operation represents a lock on an AIE tile. The operation is fully 
+    specified through a tile and lock ID value, designating the exact physical 
+    lock to be used. This op helps with guaranteeing/verifying correct reuse of
+    the same lock. The op accepts an optional initialization value.
+
+    Example:
+
+    ```mlir
+    %tile = amdaie.tile(%c0, %c1)
+    %lock = amdaie.lock(%tile(0), 2)
+    ```
+
+    This creates a lock on tile (0, 0) with ID 0 that should be initialized to 
+    2.
+  }];
+
+  let arguments = (
+    ins Index:$tile,
+        ConfinedAttr<I8Attr, [IntMinValue<0>]>:$value,
+        OptionalAttr<I8Attr>:$init_value
+  );
+
+  let assemblyFormat = [{ `(` $tile `(` $value `)` (`,` $init_value^)? `)` attr-dict }];
+}
+
+//===----------------------------------------------------------------------===//
 // IREE AMDAIE DMA Utility Ops
 //===----------------------------------------------------------------------===//
 
@@ -751,6 +814,83 @@ def AMDAIE_LogicalObjectFifoAcquire:
   ];
 }
 
+def AMDAIE_LogicalObjectFifoFromBuffersOp
+    : AMDAIE_Op<"logicalobjectfifo.from_buffers", 
+    [LogicalObjFifoOpInterface, Pure, AttrSizedOperandSegments]> {
+  let summary = "Create a logical objectFifo from a set of buffers";
+  let description = [{
+    Creates a logical objectFifo which encapsulates a set of memref `buffers`.
+    The logical objectFifo adds synchronization capability around the buffers
+    through a set of `producerLocks` and `consumerLocks`.
+
+    Usage:
+    ```mlir
+      %tile = amdaie.tile(%c0, %c1)
+      %buffer = amdaie.buffer(%tile) : memref<1024xi32, 1>
+      %buffer_1 = amdaie.buffer(%tile) : memref<1024xi32, 1>
+      %lock = amdaie.lock(%tile(0), 2)
+      %lock_1 = amdaie.lock(%tile(1), 0)
+      %0 = amdaie.logicalobjectfifo.from_buffers({%buffer, %buffer_1}, {%lock}, {%lock_1})
+      : memref<1024xi32, 1 : i32>, memref<1024xi32, 1 : i32> 
+      -> !amdaie.logicalobjectfifo<memref<1024xi32, 1 : i32>, 2>
+    ```
+  }];
+
+  let arguments = (
+    ins Variadic<AnyMemRef>:$buffers,
+        Variadic<Index>:$producerLocks,
+        Variadic<Index>:$consumerLocks
+  ); 
+
+  let results = (outs AnyAMDAIELogicalObjectFifoType:$output);
+
+  let assemblyFormat = [{
+    `(` `{` $buffers `}` `,` `{` $producerLocks `}` `,` `{` $consumerLocks `}` `)` 
+    attr-dict `:` type($buffers) `->` type($output)
+  }];
+
+  let extraClassDeclaration = [{
+    ::llvm::SmallVector<::mlir::Value> getTiles();
+
+    // Return the buffer depth (1 == single buffer, 2 == double buffer).
+    unsigned getDepth() {
+      return cast<LogicalObjectFifoType>(getOutput().getType()).getDepth();
+    }
+
+    // Return the memory space as an attribute.
+    Attribute getMemorySpace() {
+      return cast<LogicalObjectFifoType>(getOutput().getType())
+        .getMemorySpace();
+    }
+
+    // Helper method to return the memory space as an integer. If no memory
+    // space attribute, this indicates a global memory space and we return 0.
+    // Else cast the memory space attribute to an integer. 
+    uint8_t getMemorySpaceAsUInt() {
+      Attribute memSpace = getMemorySpace();
+      return memSpace ? cast<IntegerAttr>(memSpace).getInt() : 0;
+    }
+
+    // Return the source memref type.
+    MemRefType getMemrefType() { 
+      return cast<LogicalObjectFifoType>(getOutput().getType())
+        .getElementType();
+    }
+
+    // Return the encapsulated buffers on the requested tile.
+    llvm::SmallVector<BufferOp> getBuffersOnTile(TileOp tileOp);
+
+    // Return the locks on the consumer side (read) on the requested tile.
+    llvm::SmallVector<LockOp> getConsumerLocksOnTile(TileOp tileOp);
+
+    // Return the locks on the producer side (write) on the requested tile.
+    llvm::SmallVector<LockOp> getProducerLocksOnTile(TileOp tileOp);
+  }];
+
+  let hasVerifier = 1;
+  let cppNamespace = "mlir::iree_compiler::AMDAIE";
+}
+
 def AMDAIE_LogicalObjectFifoFromMemrefOp
     : AMDAIE_Op<"logicalobjectfifo.from_memref", 
     [LogicalObjFifoOpInterface, Pure]> {
@@ -904,6 +1044,26 @@ def AMDAIE_LogicalObjectFifoPlaceholderOp:
     // Return the buffer depth (E.g. 1 == single buffer, 2 == double buffer).
     uint8_t getDepth() {
       return cast<LogicalObjectFifoType>(getOutput().getType()).getDepth();
+    }
+
+    // Return the memory space as an attribute.
+    Attribute getMemorySpace() {
+      return cast<LogicalObjectFifoType>(getOutput().getType())
+        .getMemorySpace();
+    }
+
+    // Helper method to return the memory space as an integer. If no memory
+    // space attribute, this indicates a global memory space and we return 0.
+    // Else cast the memory space attribute to an integer. 
+    uint8_t getMemorySpaceAsUInt() {
+      Attribute memSpace = getMemorySpace();
+      return memSpace ? cast<IntegerAttr>(memSpace).getInt() : 0;
+    }
+
+    // Return the source memref type.
+    MemRefType getMemrefType() { 
+      return cast<LogicalObjectFifoType>(getOutput().getType())
+        .getElementType();
     }
   }];
 }
