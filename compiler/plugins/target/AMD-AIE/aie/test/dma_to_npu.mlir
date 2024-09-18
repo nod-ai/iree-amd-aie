@@ -77,3 +77,19 @@ module  {
   } {sym_name = "explicit_sym_name_0"}
 }
 
+// -----
+
+// Issue packet header from shim dma bd
+// CHECK: memref.global "public" @toMem : memref<16xi32>
+// CHECK: aie.shim_dma_allocation @toMem(S2MM, 0, 0)
+// CHECK: npu_instructions = dense_resource<npu_instructions> : tensor<34xui32>, runtime_sequence_name = "packet_enable"
+// CHECK: npu_instructions:
+module {
+  aie.device(npu1_4col) {
+    memref.global "public" @toMem : memref<16xi32>
+    aiex.runtime_sequence @packet_enable(%arg0: memref<16xi32>) {
+      aiex.npu.dma_memcpy_nd (0, 0, %arg0[0, 0, 0, 0][1, 1, 16, 16][0, 0, 64, 1], packet = <pkt_id = 2, pkt_type = 3>) { metadata = @toMem, id = 1 : i64 } : memref<16xi32>
+    }
+    aie.shim_dma_allocation @toMem (S2MM, 0, 0)
+  }
+}
