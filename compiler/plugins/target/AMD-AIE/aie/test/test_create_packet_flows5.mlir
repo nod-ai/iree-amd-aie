@@ -16,22 +16,22 @@
 
 // many-to-one, 3 streams
 module @test_create_packet_flows5 {
- aie.device(xcvc1902) {
-  %t11 = aie.tile(1, 1)
+  aie.device(xcvc1902) {
+    %t11 = aie.tile(1, 1)
 
-  aie.packet_flow(0x0) {
-    aie.packet_source<%t11, WEST : 0>
-    aie.packet_dest<%t11, CORE : 0>
-  }
+    aie.packet_flow(0x0) {
+      aie.packet_source<%t11, WEST : 0>
+      aie.packet_dest<%t11, CORE : 0>
+    }
 
-  aie.packet_flow(0x1) {
-    aie.packet_source<%t11, WEST : 0>
-    aie.packet_dest<%t11, CORE : 0>
-  }
+    aie.packet_flow(0x1) {
+      aie.packet_source<%t11, WEST : 0>
+      aie.packet_dest<%t11, CORE : 0>
+    }
 
-  aie.packet_flow(0x2) {
-    aie.packet_source<%t11, WEST : 1>
-    aie.packet_dest<%t11, CORE : 0>
+    aie.packet_flow(0x2) {
+      aie.packet_source<%t11, WEST : 1>
+      aie.packet_dest<%t11, CORE : 0>
+    }
   }
- }
 }

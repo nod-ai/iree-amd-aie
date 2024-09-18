@@ -485,12 +485,26 @@ struct SubsumeLoopIntoDMA
       sourceMemspaceInt = npuDmaOp.getSourceMemorySpaceAsUInt();
       targetMemspaceInt = npuDmaOp.getTargetMemorySpaceAsUInt();
 
-      // Check that the DMA this `amdaie.npu.dma_cpy_nd` operation is
+      // Check that the connection this `amdaie.npu.dma_cpy_nd` operation is
       // operating on, is not being touched within the same scope. Otherwise,
       // the rewrite is not valid in general as it would be changing the
-      // temporal usage of the source DMA.
-      Value dma = npuDmaOp.getConnection();
-      if (hasUsersInSameScope(dma)) {
+      // temporal usage of the source connection.
+      AMDAIE::ConnectionOp connectionOp = npuDmaOp.getConnectionOp();
+      if (!connectionOp) {
+        return rewriter.notifyMatchFailure(
+            op, "should operate on an `amdaie.connection` op");
+      }
+      std::optional<AMDAIE::ConnectionType> connectionType =
+          connectionOp.getConnectionType();
+      if (connectionType &&
+          connectionType.value() == AMDAIE::ConnectionType::Packet) {
+        return rewriter.notifyMatchFailure(
+            op,
+            "operating on a packet connection, which can potentially still be "
+            "merged with other connections, so abort loop subsumption as it "
+            "could potentially lead to deadlocks");
+      }
+      if (hasUsersInSameScope(connectionOp.getResult())) {
         return rewriter.notifyMatchFailure(
             op,
             "Has users of same DMA in scope, analysis to check validity of "
@@ -502,12 +516,16 @@ struct SubsumeLoopIntoDMA
       sourceMemspaceInt = npuCircularDmaOp.getSourceMemorySpaceAsUInt();
       targetMemspaceInt = npuCircularDmaOp.getTargetMemorySpaceAsUInt();
 
-      // Check that the DMA this `amdaie.npu.dma_cpy_nd` operation is
+      // Check that the connection this `amdaie.npu.dma_cpy_nd` operation is
       // operating on, is not being touched within the same scope. Otherwise,
       // the rewrite is not valid in general as it would be changing the
-      // temporal usage of the source DMA.
-      Value dma = npuCircularDmaOp.getConnection();
-      if (hasUsersInSameScope(dma)) {
+      // temporal usage of the source connection.
+      AMDAIE::ConnectionOp connectionOp = npuCircularDmaOp.getConnectionOp();
+      if (!connectionOp) {
+        return rewriter.notifyMatchFailure(
+            op, "should operate on an `amdaie.connection` op");
+      }
+      if (hasUsersInSameScope(connectionOp.getResult())) {
         return rewriter.notifyMatchFailure(
             op,
             "Has users of same DMA in scope, analysis to check validity of "

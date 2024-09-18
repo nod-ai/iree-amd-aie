@@ -597,9 +597,9 @@ def AMDAIE_NpuCircularDmaCpyNdOp: AMDAIE_Op<"npu.circular_dma_cpy_nd", [
         || !getTargetMixedStrides().empty();
     }
     
-    // Return the input circular dma copy operation.
+    // Return the input connection operation.
     ConnectionOp getConnectionOp() {
-      return dyn_cast<ConnectionOp>(getConnection().getDefiningOp());
+      return dyn_cast_if_present<ConnectionOp>(getConnection().getDefiningOp());
     }
 
     // Return the source memref type. This is retrieved using information from
@@ -732,7 +732,8 @@ def AMDAIE_ConnectionOp: AMDAIE_Op<"connection",
     ins AnyAMDAIELogicalObjectFifoType:$target,
         Variadic<Index>:$target_channels,
         AnyAMDAIELogicalObjectFifoType:$source,
-        Variadic<Index>:$source_channels
+        Variadic<Index>:$source_channels,
+        OptionalAttr<AMDAIE_ConnectionType>:$connection_type
         
   );
   let results = (outs Index:$result);
@@ -744,13 +745,16 @@ def AMDAIE_ConnectionOp: AMDAIE_Op<"connection",
     `,`
     $source 
     ( ` ` `{` $source_channels^  `}` )?
+    ( `,` `connection_type` `=` $connection_type^ )?
     `)`  
     attr-dict
     `:` `(` type($target) `,` type($source) `)`
   }];
 
   let builders = [
-    OpBuilder<(ins "Value":$target, "::mlir::Value":$source)>
+    OpBuilder<(ins "Value":$target, "::mlir::Value":$source)>,
+    OpBuilder<(ins "Value":$target, "::mlir::ValueRange":$target_channels, 
+      "::mlir::Value":$source, "::mlir::ValueRange":$source_channels)>
   ];
 
   let extraClassDeclaration = [{

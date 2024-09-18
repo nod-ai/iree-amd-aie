@@ -48,6 +48,7 @@ iree_cc_library(
     "AMDAIEAddLoweringStrategy.cpp"
     "AMDAIEAcquireReleaseToUseLock.cpp"
     "AMDAIEAssignChannels.cpp"
+    "AMDAIEAssignConnectionTypes.cpp"
     "AMDAIEAssignLogicalObjectFifoDepth.cpp"
     "AMDAIEAssignNpuDmaBdIds.cpp"
     "AMDAIEBufferizeToAllocation.cpp"

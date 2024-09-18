@@ -445,7 +445,13 @@ void CircularDmaCpyNdOp::getCanonicalizationPatterns(RewritePatternSet &results,
 
 void ConnectionOp::build(mlir::OpBuilder &b, mlir::OperationState &result,
                          Value target, Value source) {
-  build(b, result, target, {}, source, {});
+  build(b, result, target, {}, source, {}, nullptr);
+}
+
+void ConnectionOp::build(mlir::OpBuilder &b, mlir::OperationState &result,
+                         Value target, ValueRange targetChannels, Value source,
+                         ValueRange sourceChannels) {
+  build(b, result, target, targetChannels, source, sourceChannels, nullptr);
 }
 
 FailureOr<AMDAIE::NpuCircularDmaCpyNdOp>
