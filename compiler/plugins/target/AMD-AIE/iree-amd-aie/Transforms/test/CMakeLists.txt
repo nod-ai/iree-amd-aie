@@ -64,6 +64,7 @@ iree_lit_test_suite(
     "remove_memory_space.mlir"
     "sink_into_core.mlir"
     "split_logicalobjfifos_for_connection_reuse.mlir"
+    "temporary_alloc_bufferization.mlir"
     "tile_and_fuse_using_scf_for.mlir"
     "tile_and_fuse_matmul_using_scf_forall.mlir"
     "tile_and_fuse_convolution_using_scf_forall.mlir"

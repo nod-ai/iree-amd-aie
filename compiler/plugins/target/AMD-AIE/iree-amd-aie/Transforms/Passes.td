@@ -506,6 +506,12 @@ def AMDAIESplitLogicalObjFifosForConnectionReuse :
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIESplitLogicalObjFifosForConnectionReusePass()";
 }
 
+def AMDAIETemporaryAllocBufferization :
+    Pass<"iree-amdaie-temporary-alloc-bufferization", ""> {
+  let summary = "Bufferizes temporary alloc buffers into `amdaie.buffer` ops.";
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIETemporaryAllocBufferizationPass()";
+}
+
 def AMDAIETile :
     InterfacePass<"iree-amdaie-tile", "mlir::FunctionOpInterface"> {
   let summary = "Pass to tile TilingInterface operations.";
