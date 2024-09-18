@@ -32,24 +32,13 @@ static LogicalResult bufferizeTemporaryAllocInCoreOp(
     IRRewriter &rewriter, WorkgroupOp workgroupOp, CoreOp coreOp,
     SmallVector<Operation *> &toBeErased) {
   // Step 1. Get all buffers within a CoreOp.
-  // TODO(avarma): All temporary buffers, if present, are at the beginning of
-  //               the e2e computation within each coreOp and their
-  //               corresponding dealloc ops mark the end of the e2e
-  //               computation. Therefore we are, in order to ensure reuse of
-  //               the buffer space, considering all memref.allocs before the
-  //               first dealloc op as unique set of temporary buffers. Revisit
-  //               this logic later if needed.
   SmallVector<memref::AllocOp> allocOps;
-  unsigned numOfUniqueAllocOps = 0;
-  bool foundDeallocOp = false;
   coreOp.walk([&](Operation *op) {
     if (auto allocOp = dyn_cast<memref::AllocOp>(op)) {
       allocOps.push_back(allocOp);
       toBeErased.push_back(allocOp);
-      if (!foundDeallocOp) numOfUniqueAllocOps++;
     } else if (auto deallocOp = dyn_cast<memref::DeallocOp>(op)) {
       toBeErased.push_back(deallocOp);
-      foundDeallocOp = true;
     }
   });
   // Bail out early in case of no temporary buffers.
@@ -58,17 +47,12 @@ static LogicalResult bufferizeTemporaryAllocInCoreOp(
   SmallVector<BufferOp> temporaryBuffers;
   unsigned tempBufferIndex = 0;
   for (unsigned i = 0, n = allocOps.size(); i < n; i++) {
-    if (i < numOfUniqueAllocOps) {
-      std::optional<BufferOp> temporaryBuffer = createBufferForTemporaryAllocOp(
-          rewriter, workgroupOp, allocOps[i], coreOp, tempBufferIndex++);
-      if (!temporaryBuffer) {
-        return failure();
-      }
-      temporaryBuffers.push_back(*temporaryBuffer);
+    std::optional<BufferOp> temporaryBuffer = createBufferForTemporaryAllocOp(
+        rewriter, workgroupOp, allocOps[i], coreOp, tempBufferIndex++);
+    if (!temporaryBuffer) {
+      return failure();
     }
-    BufferOp tempBuffer;
-    tempBuffer = temporaryBuffers[i % numOfUniqueAllocOps];
-    allocOps[i].replaceAllUsesWith(tempBuffer.getResult());
+    allocOps[i].replaceAllUsesWith(temporaryBuffer.value().getResult());
   }
   return success();
 }
