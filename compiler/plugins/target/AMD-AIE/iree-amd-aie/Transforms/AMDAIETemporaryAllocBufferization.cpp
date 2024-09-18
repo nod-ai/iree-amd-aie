@@ -46,13 +46,13 @@ static LogicalResult bufferizeTemporaryAllocInCoreOp(
   // Step 2. Traverse unique allocOps and create an aie.buffer for them.
   SmallVector<BufferOp> temporaryBuffers;
   unsigned tempBufferIndex = 0;
-  for (unsigned i = 0, n = allocOps.size(); i < n; i++) {
+  for (memref::AllocOp allocOp : allocOps) {
     std::optional<BufferOp> temporaryBuffer = createBufferForTemporaryAllocOp(
-        rewriter, workgroupOp, allocOps[i], coreOp, tempBufferIndex++);
+        rewriter, workgroupOp, allocOp, coreOp, tempBufferIndex++);
     if (!temporaryBuffer) {
       return failure();
     }
-    allocOps[i].replaceAllUsesWith(temporaryBuffer.value().getResult());
+    allocOp.replaceAllUsesWith(temporaryBuffer.value().getResult());
   }
   return success();
 }
