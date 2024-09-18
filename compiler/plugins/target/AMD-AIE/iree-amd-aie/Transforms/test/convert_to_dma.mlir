@@ -1,4 +1,4 @@
-// RUN: iree-opt --iree-amdaie-pack-to-dma --cse --split-input-file %s | FileCheck %s
+// RUN: iree-opt --iree-amdaie-convert-to-dma --cse --split-input-file %s | FileCheck %s
 
 // CHECK-LABEL: @basic_unitdim_pack
 // CHECK: %[[ALLOC0:.*]] = memref.alloc() : memref<1x1x8x16xi32, 1>
@@ -132,6 +132,7 @@ func.func @permute_unpack() {
 }
 
 // -----
+
 // CHECK-LABEL: @subview_unpack
 // CHECK: %[[ALLOC0:.*]] = memref.alloc() : memref<32x8x64xf32>
 // CHECK: %[[FROMMEMREF0:.*]] = amdaie.logicalobjectfifo.from_memref %[[ALLOC0]], {} : memref<32x8x64xf32> -> !amdaie.logicalobjectfifo<memref<32x8x64xf32>>
@@ -155,5 +156,59 @@ func.func @subview_unpack() {
     iree_linalg_ext.unpack %alloc_3 inner_dims_pos = [1, 2] inner_tiles = [8, 64] into %subview_1 : (memref<1x1x1x8x64xf32, 1> memref<1x8x64xf32, strided<[512, 64, 1], offset: ?>>)
     scf.reduce
   }
+  return
+}
+
+// -----
+
+// CHECK-LABEL: @basic_copy
+// CHECK: %[[SRC:.*]] = memref.alloc() : memref<8x16xi32, 1>
+// CHECK: %[[FROMSRC:.*]] = amdaie.logicalobjectfifo.from_memref %[[SRC]], {} : memref<8x16xi32, 1> -> !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>
+// CHECK: %[[DST:.*]] = memref.alloc() : memref<8x16xi32, 1>
+// CHECK: %[[FROMDST:.*]] = amdaie.logicalobjectfifo.from_memref %[[DST]], {} : memref<8x16xi32, 1> -> !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>
+// CHECK: %[[DMA0:.*]] = amdaie.dma_cpy_nd
+// CHECK-SAME: %[[FROMDST]][0, 0] [8, 16] [16, 1]
+// CHECK-SAME: %[[FROMSRC]][0, 0] [8, 16] [16, 1]
+// CHECK-SAME: (!amdaie.logicalobjectfifo<memref<8x16xi32, 1>>, !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>)
+func.func @basic_copy() {
+  %src = memref.alloc() : memref<8x16xi32, 1>
+  %dst = memref.alloc() : memref<8x16xi32, 1>
+  linalg.copy ins(%src : memref<8x16xi32, 1>) outs(%dst : memref<8x16xi32, 1>)
+  return
+}
+
+// -----
+
+// CHECK-LABEL: @copy_towards_core
+// CHECK: %[[SRC:.*]] = memref.alloc() : memref<8xi32>
+// CHECK: %[[FROMSRC:.*]] = amdaie.logicalobjectfifo.from_memref %[[SRC]], {} : memref<8xi32> -> !amdaie.logicalobjectfifo<memref<8xi32>>
+// CHECK: %[[DST:.*]] = memref.alloc() : memref<8xi32, 1>
+// CHECK: %[[FROMDST:.*]] = amdaie.logicalobjectfifo.from_memref %[[DST]], {} : memref<8xi32, 1> -> !amdaie.logicalobjectfifo<memref<8xi32, 1>>
+// CHECK: %[[DMA0:.*]] = amdaie.dma_cpy_nd
+// CHECK-SAME: %[[FROMDST]][0] [8] [1]
+// CHECK-SAME: %[[FROMSRC]][0] [8] [1]
+// CHECK-SAME: (!amdaie.logicalobjectfifo<memref<8xi32, 1>>, !amdaie.logicalobjectfifo<memref<8xi32>>)
+func.func @copy_towards_core() {
+  %src = memref.alloc() : memref<8xi32>
+  %dst = memref.alloc() : memref<8xi32, 1>
+  linalg.copy ins(%src : memref<8xi32>) outs(%dst : memref<8xi32, 1>)
+  return
+}
+
+// -----
+
+// CHECK-LABEL: @copy_away_from_core
+// CHECK: %[[SRC:.*]] = memref.alloc() : memref<8xi32, 2>
+// CHECK: %[[FROMSRC:.*]] = amdaie.logicalobjectfifo.from_memref %[[SRC]], {} : memref<8xi32, 2> -> !amdaie.logicalobjectfifo<memref<8xi32, 2>>
+// CHECK: %[[DST:.*]] = memref.alloc() : memref<8xi32, 1>
+// CHECK: %[[FROMDST:.*]] = amdaie.logicalobjectfifo.from_memref %[[DST]], {} : memref<8xi32, 1> -> !amdaie.logicalobjectfifo<memref<8xi32, 1>>
+// CHECK: %[[DMA0:.*]] = amdaie.dma_cpy_nd
+// CHECK-SAME: %[[FROMDST]][0] [8] [1]
+// CHECK-SAME: %[[FROMSRC]][0] [8] [1]
+// CHECK-SAME: (!amdaie.logicalobjectfifo<memref<8xi32, 1>>, !amdaie.logicalobjectfifo<memref<8xi32, 2>>)
+func.func @copy_away_from_core() {
+  %src = memref.alloc() : memref<8xi32, 2>
+  %dst = memref.alloc() : memref<8xi32, 1>
+  linalg.copy ins(%src : memref<8xi32, 2>) outs(%dst : memref<8xi32, 1>)
   return
 }
