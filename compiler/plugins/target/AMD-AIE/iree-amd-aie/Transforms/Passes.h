@@ -233,6 +233,9 @@ std::unique_ptr<Pass> createAMDAIESinkIntoCorePass();
 /// Create a pass to split logicalobjectfifos for connection reuse.
 std::unique_ptr<Pass> createAMDAIESplitLogicalObjFifosForConnectionReusePass();
 
+/// Create a pass to bufferize temporary alloc ops.
+std::unique_ptr<Pass> createAMDAIETemporaryAllocBufferizationPass();
+
 /// Create pass to tile TilingInterface operations.
 std::unique_ptr<Pass> createAMDAIETilePass(AMDAIETileOptions options = {});
 
