@@ -140,12 +140,6 @@ def AMDAIECreateAIEWorkgroup :
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIECreateAIEWorkgroupPass()";
 }
 
-def AMDAIECreateLogicalObjectFifoLink :
-  Pass<"iree-amdaie-create-logical-objectfifo-link", ""> {
-  let summary = "Create logical objectFifo link operations, explicitly linking inputs and outputs.";
-  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIECreateLogicalObjectFifoLinkPass()";
-}
-
 def AMDAIECreateReferenceToAllocation :
     InterfacePass<"iree-amdaie-create-reference-to-allocation", "mlir::FunctionOpInterface"> {
   let summary = "Create references to allocations in L1 memory space.";

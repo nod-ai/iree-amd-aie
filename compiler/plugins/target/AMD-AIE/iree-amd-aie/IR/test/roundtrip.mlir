@@ -207,21 +207,6 @@ func.func @logicalobjectfifo_from_buffers() {
 
 // -----
 
-// CHECK-LABEL: func.func @logicalobjectfifo_link
-// CHECK:       %[[DMA0:.+]] = amdaie.circular_dma_cpy_nd
-// CHECK:       %[[DMA1:.+]] = amdaie.circular_dma_cpy_nd
-// CHECK:       amdaie.logicalobjectfifo.link
-// CHECK-SAME:  %[[DMA0]]
-// CHECK-SAME:  %[[DMA1]]
-func.func @logicalobjectfifo_link(%arg0: !amdaie.logicalobjectfifo<memref<32x1024xi32>>, %arg1: !amdaie.logicalobjectfifo<memref<32x64xi32, 1>>, %arg2: !amdaie.logicalobjectfifo<memref<8x8x4x8xi32, 2>>) {
-  %0 = amdaie.circular_dma_cpy_nd(%arg1[] [] [], %arg0[] [] []) : (!amdaie.logicalobjectfifo<memref<32x64xi32, 1>>, !amdaie.logicalobjectfifo<memref<32x1024xi32>>)
-  %1 = amdaie.circular_dma_cpy_nd(%arg2[] [] [], %arg1[] [] []) : (!amdaie.logicalobjectfifo<memref<8x8x4x8xi32, 2>>, !amdaie.logicalobjectfifo<memref<32x64xi32, 1>>)
-  amdaie.logicalobjectfifo.link[%0] -> [%1] ()
-  return
-}
-
-// -----
-
 // CHECK-LABEL: func.func @logicalobjectfifo_placeholder
 // CHECK:       %[[C0:.+]] = arith.constant 0 : index
 // CHECK:       %[[tile_0_0:.+]] = amdaie.tile(%[[C0]], %[[C0]])
