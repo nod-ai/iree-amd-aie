@@ -37,11 +37,9 @@ createAMDAIEDmaToNpuPass();
 
 void registerAMDAIEAssignBufferAddressesBasic();
 void registerAMDAIEAssignBufferDescriptorIDs();
-void registerAMDAIEAssignLockIDs();
 void registerAMDAIECoreToStandard();
 void registerAMDAIELocalizeLocks();
 void registerAMDAIENormalizeAddressSpaces();
-void registerAMDAIEObjectFifoStatefulTransform();
 void registerAMDAIERoutePathfinderFlows();
 void registerAMDAIEDmaToNpu();
 

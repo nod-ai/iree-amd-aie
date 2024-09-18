@@ -142,6 +142,7 @@ static void addAMDAIEBufferizePasses(OpPassManager &pm) {
 }
 
 void addAMDAIEToAIEPasses(OpPassManager &passManager) {
+  passManager.addPass(createAMDAIEAcquireReleaseToUseLockPass());
   passManager.addPass(createAMDAIECanonicalizeNpuDmaCpyNdPass());
   passManager.addPass(createCanonicalizerPass());
   passManager.addPass(createAMDAIESinkIntoCorePass());
@@ -625,17 +626,18 @@ void addAMDAIEObjectFifoLoweringPasses(OpPassManager &passManager) {
   passManager.addPass(createCanonicalizerPass());
   passManager.addPass(createAMDAIEDmaCSEPass());
 
-  passManager.addPass(createAMDAIECreateLogicalObjectFifoLinkPass());
+  // passManager.addPass(createAMDAIECreateLogicalObjectFifoLinkPass());
   passManager.addPass(createAMDAIECanonicalizeDoublyStridedOpPass());
   passManager.addPass(createCanonicalizerPass());
 
   passManager.addPass(createAMDAIEConvertCoreForallToForPass());
   passManager.addPass(createCanonicalizerPass());
-  passManager.addPass(createAMDAIECoreLoopUnrollPass());
 
   passManager.addPass(createAMDAIEAssignChannelsPass());
   passManager.addPass(createCSEPass());
   passManager.addPass(createCanonicalizerPass());
+
+  passManager.addPass(createAMDAIEObjFifoBufferizationPass());
 
   addAMDAIEToAIEPasses(passManager);
 
@@ -819,10 +821,8 @@ void addMLIRAIRLoweringPasses(OpPassManager &passManager, AMDAIEDevice device) {
 void addMLIRAIELoweringPasses(OpPassManager &passManager) {
   {
     OpPassManager &devicePM = passManager.nest<xilinx::AIE::DeviceOp>();
-    devicePM.addPass(createAMDAIEObjectFifoStatefulTransformPass());
     devicePM.addPass(createCanonicalizerPass());
     devicePM.addPass(createAMDAIEDmaToNpuPass());
-    devicePM.addPass(createAMDAIEAssignLockIDsPass());
     devicePM.addPass(createAMDAIEAssignBufferDescriptorIDsPass());
     devicePM.addPass(createAMDAIEAssignBufferAddressesBasicPass());
     devicePM.addPass(createAMDAIEPathfinderPass());
@@ -839,7 +839,6 @@ void addMLIRAIELoweringPasses(OpPassManager &passManager) {
     devicePM.addPass(createAMDAIENormalizeAddressSpacesPass());
     devicePM.addPass(createCanonicalizerPass());
   }
-
 }
 
 // NOTE: this runs on the top-level program module containing all hal.executable

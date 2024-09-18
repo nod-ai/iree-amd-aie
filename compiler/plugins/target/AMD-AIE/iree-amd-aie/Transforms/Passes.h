@@ -53,6 +53,10 @@ void buildAMDAIELinkingPassPipeline(OpPassManager &passManager);
 /// semaphore operations.
 std::unique_ptr<Pass> createAMDAIEAccessToAcquireReleasePass();
 
+/// Create a pass to convert logical objectFifo acquire/release ops to
+/// `amdaie.use_lock`
+std::unique_ptr<Pass> createAMDAIEAcquireReleaseToUseLockPass();
+
 /// Create a pass to assign channels to connections.
 std::unique_ptr<Pass> createAMDAIEAssignChannelsPass();
 
@@ -105,10 +109,6 @@ std::unique_ptr<Pass> createAMDAIECleanupPass();
 /// Create pass to combine strided ops within the same block if access patterns
 /// are compatible.
 std::unique_ptr<Pass> createAMDAIECombineStridedOpsPass();
-
-/// Create a pass to unroll `scf.for` with synchronization ops based on
-/// objectFifo buffer depths.
-std::unique_ptr<Pass> createAMDAIECoreLoopUnrollPass();
 
 /// Create a pass decomposing iree_linalg_ext.pack and unpack ops to AIR
 /// dialect.

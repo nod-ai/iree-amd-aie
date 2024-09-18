@@ -27,11 +27,9 @@ struct AMDAIESession
     AMDAIE::registerAMDAIEPasses();
     AMDAIE::registerAMDAIEAssignBufferAddressesBasic();
     AMDAIE::registerAMDAIEAssignBufferDescriptorIDs();
-    AMDAIE::registerAMDAIEAssignLockIDs();
     AMDAIE::registerAMDAIECoreToStandard();
     AMDAIE::registerAMDAIELocalizeLocks();
     AMDAIE::registerAMDAIENormalizeAddressSpaces();
-    AMDAIE::registerAMDAIEObjectFifoStatefulTransform();
     AMDAIE::registerAMDAIERoutePathfinderFlows();
     AMDAIE::registerAMDAIEDmaToNpu();
     AMDAIE::registerAIRConversionPasses();

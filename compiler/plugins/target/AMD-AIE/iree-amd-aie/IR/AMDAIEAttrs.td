@@ -21,6 +21,17 @@ def AMDAIE_CopyOpOperateOn: I32EnumAttr<"CopyOpOperateOn",
 {
 }
 
+def AMDAIE_LockAction: I32EnumAttr<"LockAction",
+  "The action to be performed on a lock",
+  [
+    I32EnumAttrCase<"Acquire", 0>,
+    I32EnumAttrCase<"AcquireGreaterOrEqual", 1>,
+    I32EnumAttrCase<"Release", 2> 
+  ]
+  > {
+  let cppNamespace = "mlir::iree_compiler::AMDAIE";
+}
+
 def LogicalObjectFifoPort: I32EnumAttr<"LogicalObjectFifoPort",
   "The logical objectfifo ports.",
   [

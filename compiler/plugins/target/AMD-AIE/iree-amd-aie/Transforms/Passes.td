@@ -17,6 +17,12 @@ def AMDAIEAccessToAcquireRelease :
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEAccessToAcquireReleasePass()";
 }
 
+def AMDAIEAcquireReleaseToUseLock :
+    Pass<"iree-amdaie-acquire-release-to-use-lock", ""> {
+  let summary = "Convert acquire/release synchronization stubs to `amdaie.use_lock`";
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEAcquireReleaseToUseLockPass()";
+}
+
 def AMDAIEAssignChannels :
     Pass<"iree-amdaie-assign-channels", ""> {
   let summary = "Assign channels to `amdaie.connection` ops.";
@@ -126,13 +132,6 @@ def AMDAIEConvertCoreForallToFor :
     Pass<"iree-amdaie-convert-core-forall-to-for", ""> {
   let summary = "Converts `scf.forall` to `scf.for` within `aie.core`.";
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEConvertCoreForallToForPass()";
-}
-
-def AMDAIECoreLoopUnroll :
-    Pass<"iree-amdaie-core-loop-unroll", ""> {
-  let summary = "Within core ops, unroll `scf.for` with synchronization ops based on "
-                "objectFifo buffer depths.";
-  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIECoreLoopUnrollPass()";
 }
 
 def AMDAIECreateAIEWorkgroup :

@@ -135,13 +135,11 @@ iree_cc_library(
   SRCS
     AMDAIEAssignBufferAddressesBasic.cpp
     AMDAIEAssignBufferDescriptorIDs.cpp
-    AMDAIEAssignLockIDs.cpp
     AMDAIECoreToStandard.cpp
     AMDAIECreatePathFindFlows.cpp
     AMDAIEDmaToNpu.cpp
     AMDAIELocalizeLocks.cpp
     AMDAIENormalizeAddressSpaces.cpp
-    AMDAIEObjectFifoStatefulTransform.cpp
   DEPS
     iree-amd-aie::aie_runtime::iree_aie_runtime_static
     ::AIEDialectIR

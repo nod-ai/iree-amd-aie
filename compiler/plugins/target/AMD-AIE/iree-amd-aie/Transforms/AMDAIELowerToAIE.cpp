@@ -11,13 +11,17 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "AMDAIELowerToAIE.h"
+
 #include <memory>
 #include <numeric>
 
 #include "aie/AIEDialect.h"
 #include "aie/AIEXDialect.h"
+#include "iree-amd-aie/IR/AMDAIEAttrs.h"
 #include "iree-amd-aie/IR/AMDAIEDialect.h"
 #include "iree-amd-aie/IR/AMDAIEOps.h"
+#include "iree-amd-aie/Transforms/AMDAIEDmaUtils.h"
 #include "iree-amd-aie/Transforms/AMDAIEUtils.h"
 #include "iree-amd-aie/Transforms/Passes.h"
 #include "llvm/ADT/STLExtras.h"
@@ -33,55 +37,38 @@ using namespace xilinx;
 
 namespace mlir::iree_compiler::AMDAIE {
 
-namespace {
-
-/// Utility to remap the provided operation's operands.
-void remapOperands(Operation *op, IRMapping &mapper) {
-  for (int i = 0; i < op->getNumOperands(); ++i) {
-    Value operand = op->getOperand(i);
-    if (mapper.contains(operand)) {
-      op->setOperand(i, mapper.lookup(operand));
-    }
-  }
-}
-
-/// It is dangerous to erase ops with `rewriter` without erasing them from
-/// `mapper` too, as addresses of Operations/Values can be reused, resulting in
-/// unexpected key-value pairs in `mapper`. Use this utility if `mapper` might
-/// be used after `op` is erased.
-void eraseOp(IRRewriter &rewriter, IRMapping &mapper, Operation *op) {
-  for (Value result : op->getResults()) {
-    mapper.erase(result);
-  }
-  mapper.erase(op);
-  op->dropAllUses();
-  rewriter.eraseOp(op);
-}
-
 //===----------------------------------------------------------------------===//
-// Convert amdaie.core operation to aie.core
+// AIEDeviceBuilder utilities
 //===----------------------------------------------------------------------===//
 
-/// Utility to convert vectors of `size` and `stride` into an
-/// `AIE::BDDimLayoutArrayAttr`.
-AIE::BDDimLayoutArrayAttr convertSizeStrideToBDDimLayoutArrayAttr(
-    IRRewriter &rewriter, const SmallVector<OpFoldResult> &sizes,
+AIE::BDDimLayoutArrayAttr
+AIEDeviceBuilder::convertSizeStrideToBDDimLayoutArrayAttr(
+    const SmallVector<OpFoldResult> &sizes,
     const SmallVector<OpFoldResult> &strides) {
   assert(sizes.size() == strides.size() &&
          "expected stride and size vectors of same size");
+  // Fold remaining dimensions, assuming zero offsets as offsets should be taken
+  // care of separately.
+  SmallVector<OpFoldResult> offsets(
+      strides.size(), getAsIndexOpFoldResult(rewriter.getContext(), 0));
+  SmallVector<OpFoldResult> newOffsets;
+  SmallVector<OpFoldResult> newSizes;
+  SmallVector<OpFoldResult> newStrides;
+  foldDims(offsets, sizes, strides, newOffsets, newSizes, newStrides);
+
   SmallVector<AIE::BDDimLayoutAttr, 4> bdDimLayoutAttr;
   // If the access pattern (strides/sizes) have a single dimension, make it
   // implicit with an empty `BDDimLayoutAttr` as this is what the AIE dialect
   // expects.
-  if (strides.size() == 1) {
-    std::optional<int64_t> stride = getConstantIntValue(strides[0]);
+  if (newStrides.size() == 1) {
+    std::optional<int64_t> stride = getConstantIntValue(newStrides[0]);
     if (stride && stride.value() == 1) {
       return AIE::BDDimLayoutArrayAttr::get(rewriter.getContext(),
                                             ArrayRef(bdDimLayoutAttr));
     }
   }
-  bdDimLayoutAttr.reserve(sizes.size());
-  for (auto [size, stride] : llvm::zip(sizes, strides)) {
+  bdDimLayoutAttr.reserve(newSizes.size());
+  for (auto [size, stride] : llvm::zip(newSizes, newStrides)) {
     bdDimLayoutAttr.push_back(AIE::BDDimLayoutAttr::get(
         rewriter.getContext(), getConstantIntValue(size).value(),
         getConstantIntValue(stride).value()));
@@ -90,226 +77,128 @@ AIE::BDDimLayoutArrayAttr convertSizeStrideToBDDimLayoutArrayAttr(
                                         ArrayRef(bdDimLayoutAttr));
 }
 
-/// Utility to create an `aie.objectfifo` operation from
-/// `amdaie.circular_dma_cpy_nd`.
-FailureOr<AIE::ObjectFifoCreateOp> createObjectFifo(
-    IRRewriter &rewriter, AMDAIE::ConnectionOp connectionOp, IRMapping &mapper,
-    AMDAIE::NpuCircularDmaCpyNdOp dmaOp, Value srcTile, ValueRange dstTiles,
-    StringAttr &symName) {
-  OpBuilder::InsertionGuard guard(rewriter);
-  auto sourceType =
-      cast<AMDAIE::LogicalObjectFifoType>(connectionOp.getSource().getType());
-  auto targetType =
-      cast<AMDAIE::LogicalObjectFifoType>(connectionOp.getTarget().getType());
-  uint8_t sourceMemSpace = sourceType.getMemorySpaceAsUInt();
-  uint8_t targetMemSpace = targetType.getMemorySpaceAsUInt();
-  unsigned depth;
-  unsigned sourceDepth = sourceType.getDepth();
-  unsigned targetDepth = targetType.getDepth();
-  if (sourceMemSpace == 0 && targetMemSpace == 0) {
-    return connectionOp.emitOpError()
-           << "both source and target on main memory not supported";
-  } else if (sourceMemSpace == 0) {
-    depth = targetDepth;
-  } else if (targetMemSpace == 0) {
-    depth = sourceDepth;
-  } else {
-    if (sourceDepth != targetDepth)
-      return connectionOp.emitOpError()
-             << "unsupported sourceDepth != targetDepth";
-    depth = sourceDepth;
-  }
+/// Create a new `aie.dma_start` op with a sequence of DMA BD blocks within the
+/// provided `memOp`.
+///
+/// Example of a S2MM DMA start op being created with two DMA blocks performing
+/// a circular double buffering DMA operation:
+///
+///  %memtile_dma_0_1 = aie.memtile_dma(%tile_0_1) {
+///    %0 = aie.dma_start(S2MM, 0, ^bb1, ^bb3)
+///  ^bb1:  // 2 preds: ^bb0, ^bb2
+///    aie.use_lock(%lock_0_1_51, AcquireGreaterEqual, 2)
+///    aie.dma_bd(%buffer_0_1_49 : memref<2048xi32, 1 : i32>) {len = 2048 : i32}
+///    aie.use_lock(%lock_0_1_52, Release, 2)
+///    aie.next_bd ^bb2
+///  ^bb2:  // pred: ^bb1
+///    aie.use_lock(%lock_0_1_51, AcquireGreaterEqual, 2)
+///    aie.dma_bd(%buffer_0_1_50 : memref<2048xi32, 1 : i32>) {len = 2048 : i32}
+///    aie.use_lock(%lock_0_1_52, Release, 2)
+///    aie.next_bd ^bb1
+void AIEDeviceBuilder::createDMA(
+    Operation *memOp, AIE::DMAChannelDir channelDir, int channelIndex,
+    AIE::BDDimLayoutArrayAttr dims, size_t acqNum, size_t relNum, int64_t len,
+    int64_t offset, const SmallVector<AIE::BufferOp> &bufferOps,
+    const std::pair<AIE::LockOp, AIE::LockOp> &locks) {
+  OpBuilder::InsertionGuard g(rewriter);
+  Block &endBlock = memOp->getRegion(0).getBlocks().back();
+  assert(!endBlock.getOps<AIE::EndOp>().empty() &&
+         "expected last block to have aie.end");
+  Block *lastDmaBlock = endBlock.getSinglePredecessor(),
+        *dmaBlock = rewriter.createBlock(&endBlock),
+        *bdBlock = rewriter.createBlock(&endBlock);
 
-  SmallVector<AMDAIE::ChannelOp> producerChannels;
-  SmallVector<AMDAIE::ChannelOp> consumerChannels;
-  for (Value producerChannel : connectionOp.getSourceChannels()) {
-    auto channelOp =
-        dyn_cast<AMDAIE::ChannelOp>(producerChannel.getDefiningOp());
-    if (!channelOp) {
-      return connectionOp.emitOpError()
-             << "found non-`amdaie.channel` source channel";
+  // Create DMA channel.
+  rewriter.setInsertionPointToStart(dmaBlock);
+  rewriter.create<AIE::DMAStartOp>(rewriter.getUnknownLoc(), channelDir,
+                                   channelIndex, /*repeatCount*/ 0, bdBlock,
+                                   &endBlock);
+  if (lastDmaBlock) lastDmaBlock->getTerminator()->setSuccessor(dmaBlock, 1);
+
+  auto createBdBlockOps = [&](AIE::BufferOp buff, Block *succ) {
+    AIE::LockOp acqLock = locks.first, relLock = locks.second;
+    rewriter.create<AIE::UseLockOp>(rewriter.getUnknownLoc(), acqLock,
+                                    AIE::LockAction::AcquireGreaterEqual,
+                                    acqNum);
+    if (!dims.getValue().empty()) {
+      rewriter.create<AIE::DMABDOp>(rewriter.getUnknownLoc(), buff, offset, len,
+                                    dims);
+    } else {
+      rewriter.create<AIE::DMABDOp>(rewriter.getUnknownLoc(), buff, offset,
+                                    len);
     }
-    producerChannels.push_back(channelOp);
-  }
-  for (Value consumerChannel : connectionOp.getTargetChannels()) {
-    auto channelOp =
-        dyn_cast<AMDAIE::ChannelOp>(consumerChannel.getDefiningOp());
-    if (!channelOp) {
-      return connectionOp.emitOpError()
-             << "found non-`amdaie.channel` source channel";
+    rewriter.create<AIE::UseLockOp>(rewriter.getUnknownLoc(), relLock,
+                                    AIE::LockAction::Release, relNum);
+    rewriter.create<AIE::NextBDOp>(rewriter.getUnknownLoc(), succ);
+  };
+
+  // Create Bd blocks.
+  Block *succ = nullptr, *curr = bdBlock;
+  for (size_t blockIndex = 0; blockIndex < bufferOps.size(); ++blockIndex) {
+    if (blockIndex == bufferOps.size() - 1) {
+      succ = bdBlock;
+    } else {
+      succ = rewriter.createBlock(&endBlock);
     }
-    consumerChannels.push_back(channelOp);
+    rewriter.setInsertionPointToStart(curr);
+    createBdBlockOps(bufferOps[blockIndex], succ);
+    curr = succ;
   }
-
-  // Convert source and target sizes and strides to `BDDimLayoutArrayAttr`s,
-  // which the `aie.objectfifo` works with.
-  AIE::BDDimLayoutArrayAttr sourceDims =
-      convertSizeStrideToBDDimLayoutArrayAttr(
-          rewriter, dmaOp.getSourceMixedSizes(), dmaOp.getSourceMixedStrides());
-
-  AIE::BDDimLayoutArrayAttr layoutAttr =
-      convertSizeStrideToBDDimLayoutArrayAttr(
-          rewriter, dmaOp.getTargetMixedSizes(), dmaOp.getTargetMixedStrides());
-  // The aie.objectfifo expects a `BDDimLayoutArrayAttr` for each consumer. A
-  // single one for all consumers will error out.
-  SmallVector<AIE::BDDimLayoutArrayAttr> targetDimsVec(dstTiles.size(),
-                                                       layoutAttr);
-
-  AIE::BDDimLayoutArrayArrayAttr targetDims =
-      AIE::BDDimLayoutArrayArrayAttr::get(rewriter.getContext(),
-                                          ArrayRef(targetDimsVec));
-
-  // For now, set data type based on source and target memory space. Use
-  // L2/MemTile type if either source or target is located on L2. Otherwise, use
-  // the most local type.
-  // TODO(jornt): Not very clear and clean, but this is to mimic how AIE
-  // objectfifos are set up and it is probably better to adjust AIE objectfifos
-  // directly to make this more clean.
-  // TODO(jornt): I think objectfifos should support source type != dest type.
-  MemRefType srcType = cast<LogicalObjectFifoType>(connectionOp.getSourceType())
-                           .getElementType();
-  MemRefType dstType = cast<LogicalObjectFifoType>(connectionOp.getTargetType())
-                           .getElementType();
-  ArrayRef<int64_t> sourceShape = srcType.getShape();
-  ArrayRef<int64_t> targetShape = dstType.getShape();
-  int64_t sourceSize = std::accumulate(sourceShape.begin(), sourceShape.end(),
-                                       1, std::multiplies<>());
-  int64_t targetSize = std::accumulate(targetShape.begin(), targetShape.end(),
-                                       1, std::multiplies<>());
-  MemRefType memrefType =
-      sourceSize < targetSize
-          ? MemRefType::get({sourceSize}, srcType.getElementType(),
-                            MemRefLayoutAttrInterface{},
-                            srcType.getMemorySpace())
-          : MemRefType::get({targetSize}, dstType.getElementType(),
-                            MemRefLayoutAttrInterface{},
-                            dstType.getMemorySpace());
-  AIE::AIEObjectFifoType dtype = AIE::AIEObjectFifoType::get(memrefType);
-  auto fifo = rewriter.create<AIE::ObjectFifoCreateOp>(
-      rewriter.getUnknownLoc(), symName, srcTile, dstTiles,
-      rewriter.getIntegerAttr(rewriter.getI32Type(), depth), dtype, sourceDims,
-      targetDims);
-
-  // Insert flow ops
-  rewriter.setInsertionPoint(fifo);
-  for (AMDAIE::ChannelOp producerChannel : producerChannels) {
-    for (AMDAIE::ChannelOp consumerChannel : consumerChannels) {
-      Value aieProducerTile = mapper.lookup(producerChannel.getTile());
-      Value aieConsumerTile = mapper.lookup(consumerChannel.getTile());
-      rewriter.create<AIE::FlowOp>(
-          rewriter.getUnknownLoc(), aieProducerTile, AIE::WireBundle::DMA,
-          producerChannel.getValue(), aieConsumerTile, AIE::WireBundle::DMA,
-          consumerChannel.getValue(), FlatSymbolRefAttr::get(fifo->getContext(), fifo.getName()));
-    }
-  }
-
-  return fifo;
 }
 
-/// Convert `amdaie.logicalobjectfifo.access` to
-/// `aie.objectfifo.subview.access`, and refactor the memory space for
-/// `memref.reinterpret_cast` ops.
-LogicalResult accessOpToAIE(IRRewriter &rewriter,
-                            AMDAIE::LogicalObjectFifoAccessOp accessOp,
-                            IRMapping &mapper,
-                            SmallVector<Operation *> &toBeErased) {
-  LLVM_DEBUG(llvm::dbgs() << "Convert [AMDAIE::LogicalObjectFifoAccessOp]\n");
-  OpBuilder::InsertionGuard guard(rewriter);
-  rewriter.setInsertionPoint(accessOp);
-  if (!mapper.contains(accessOp.getInput())) {
-    return accessOp.emitError()
-           << "this access operation's input has not been mapped";
-  }
-  auto subviewOp = dyn_cast_if_present<AIE::ObjectFifoSubviewAccessOp>(
-      mapper.lookup(accessOp.getInput()).getDefiningOp());
-  if (!subviewOp) {
-    return accessOp.emitError()
-           << "access doesn't operate on an input that has been mapped to an "
-              "`aie.objectfifo.acquire` + subview operation";
-  }
+AIE::ShimDMAAllocationOp AIEDeviceBuilder::createShimDmaAllocation(
+    Block *deviceBlock, AMDAIE::TileOp tileOp, AIE::DMAChannelDir dmaChannelDir,
+    uint8_t channel, MemRefType memrefType, int &connectionIndex) {
+  OpBuilder::InsertionGuard g(rewriter);
+  auto shimDmaAllocOp = rewriter.create<AIE::ShimDMAAllocationOp>(
+      rewriter.getUnknownLoc(), "shim_" + std::to_string(connectionIndex++),
+      dmaChannelDir, channel, getConstantIndexOrAssert(tileOp.getCol()));
+  rewriter.setInsertionPointToStart(deviceBlock);
+  StringRef symName = shimDmaAllocOp.getSymName();
+  rewriter.create<memref::GlobalOp>(rewriter.getUnknownLoc(), symName,
+                                    rewriter.getStringAttr("public"),
+                                    memrefType, nullptr, false, nullptr);
+  return shimDmaAllocOp;
+}
 
-  SmallVector<memref::ReinterpretCastOp> oldReinterpretOps;
-  for (Operation *user : accessOp->getUsers()) {
-    if (isa<memref::ReinterpretCastOp>(user)) {
-      oldReinterpretOps.push_back(cast<memref::ReinterpretCastOp>(user));
+void AIEDeviceBuilder::eraseOp(Operation *op) {
+  for (Value result : op->getResults()) mapper.erase(result);
+  mapper.erase(op);
+  op->dropAllUses();
+  rewriter.eraseOp(op);
+}
+
+void AIEDeviceBuilder::foldDims(const SmallVector<OpFoldResult> &offsets,
+                                const SmallVector<OpFoldResult> &sizes,
+                                const SmallVector<OpFoldResult> &strides,
+                                SmallVector<OpFoldResult> &newOffsets,
+                                SmallVector<OpFoldResult> &newSizes,
+                                SmallVector<OpFoldResult> &newStrides) {
+  SmallVector<OpFoldResult> tmpOffsets;
+  SmallVector<OpFoldResult> tmpSizes;
+  SmallVector<OpFoldResult> tmpStrides;
+  (void)foldUnitDims(offsets, sizes, strides, tmpOffsets, tmpSizes, tmpStrides);
+  (void)foldLinearDims(rewriter.getContext(), tmpOffsets, tmpSizes, tmpStrides,
+                       newOffsets, newSizes, newStrides);
+  (void)foldSingleDim(newOffsets, newSizes, newStrides);
+}
+
+void AIEDeviceBuilder::remapOperands(Operation *op) {
+  for (int i = 0; i < op->getNumOperands(); ++i) {
+    Value operand = op->getOperand(i);
+    if (mapper.contains(operand)) {
+      op->setOperand(i, mapper.lookup(operand));
     }
   }
-  if (oldReinterpretOps.empty()) {
-    return accessOp.emitError() << "reinterpret-cast op has not been generated";
-  }
-  assert(oldReinterpretOps.size() == 1 &&
-         "expected a single reinterpret-cast op");
-  auto oldReinterpretOp = oldReinterpretOps[0];
-
-  auto type = cast<MemRefType>(oldReinterpretOp.getResult().getType());
-  MemRefType newType = MemRefType::Builder(type);
-  ArrayRef<int64_t> sizes = newType.getShape();
-  auto [strides, baseOffset] = getStridesAndOffset(newType);
-  auto reinterpretOp = rewriter.create<memref::ReinterpretCastOp>(
-      rewriter.getUnknownLoc(), newType, subviewOp.getOutput(), baseOffset,
-      sizes, strides);
-
-  mapper.map(oldReinterpretOp.getOperation(), reinterpretOp.getOperation());
-  mapper.map(oldReinterpretOp.getResult(), reinterpretOp.getResult());
-  toBeErased.push_back(accessOp);
-  toBeErased.push_back(oldReinterpretOp);
-  return success();
 }
 
-/// Convert `amdaie.logicalobjectfifo.acquire` to `aie.objectfifo.acquire`.
-/// Also insert `aie.objectfifo.subview.access` operations to access the
-/// underlying memref and bridge the gap to AIE.
-LogicalResult acquireOpToAIE(IRRewriter &rewriter,
-                             AMDAIE::LogicalObjectFifoAcquire acquireOp,
-                             IRMapping &mapper,
-                             SmallVector<Operation *> &toBeErased) {
-  LLVM_DEBUG(llvm::dbgs() << "Convert [AMDAIE::LogicalObjectFifoAcquire]\n");
+//===----------------------------------------------------------------------===//
+// Convert `amdaie.core` op to `aie.core` op.
+//===----------------------------------------------------------------------===//
 
-  OpBuilder::InsertionGuard guard(rewriter);
-  rewriter.setInsertionPoint(acquireOp);
-  auto connectionOp = dyn_cast_if_present<AMDAIE::ConnectionOp>(
-      acquireOp.getDma().getDefiningOp());
-  if (!connectionOp) {
-    return connectionOp.emitError()
-           << "acquire doesn't operate on a `amdaie.connection`";
-  }
-
-  auto objFifo = dyn_cast<AIE::ObjectFifoCreateOp>(
-      mapper.lookup(connectionOp.getOperation()));
-  if (!objFifo) {
-    return acquireOp.emitError()
-           << "input isn't mapped to an `aie.objectifo` operation";
-  }
-
-  auto acquireOpType = dyn_cast<LogicalObjectFifoType>(acquireOp.getType());
-  assert(acquireOpType &&
-         "Expected LogicalObjectFifoAcquire to have type "
-         "LogicalObjectFifoType");
-  MemRefType elementType = acquireOpType.getElementType();
-
-  auto subviewType = AIE::AIEObjectFifoSubviewType::get(elementType);
-  AIE::ObjectFifoPort port =
-      acquireOp.getPort() == LogicalObjectFifoPort::Produce
-          ? AIE::ObjectFifoPort::Produce
-          : AIE::ObjectFifoPort::Consume;
-  auto objFifoAquireOp = rewriter.create<AIE::ObjectFifoAcquireOp>(
-      rewriter.getUnknownLoc(), subviewType, port, objFifo.getName(), 1);
-
-  auto subviewOp = rewriter.create<AIE::ObjectFifoSubviewAccessOp>(
-      rewriter.getUnknownLoc(), elementType, objFifoAquireOp.getSubview(),
-      /* index = */ rewriter.getIntegerAttr(rewriter.getI32Type(), 0));
-
-  // Map acquire op to new acquire + subview op.
-  mapper.map(acquireOp.getOperation(), subviewOp.getOperation());
-  mapper.map(acquireOp.getResult(), subviewOp.getOutput());
-  toBeErased.push_back(acquireOp);
-  return success();
-}
-
-LogicalResult coreMemrefExtractStridedMetadataToAIE(
-    IRRewriter &rewriter,
+LogicalResult AIEDeviceBuilder::coreMemrefExtractStridedMetadataToAIE(
     memref::ExtractStridedMetadataOp extractStridedMetadataOp,
-    IRMapping &mapper, SmallVector<Operation *> &toBeErased) {
+    SmallVector<Operation *> &toBeErased) {
   LLVM_DEBUG(llvm::dbgs() << "Convert [memref.extract_strided_metadata]\n");
   OpBuilder::InsertionGuard guard(rewriter);
   rewriter.setInsertionPoint(extractStridedMetadataOp);
@@ -325,9 +214,8 @@ LogicalResult coreMemrefExtractStridedMetadataToAIE(
   return success();
 }
 
-LogicalResult coreFuncCallOpToAIE(IRRewriter &rewriter, func::CallOp oldCallOp,
-                                  IRMapping &mapper,
-                                  SmallVector<Operation *> &toBeErased) {
+LogicalResult AIEDeviceBuilder::coreFuncCallOpToAIE(
+    func::CallOp oldCallOp, SmallVector<Operation *> &toBeErased) {
   LLVM_DEBUG(llvm::dbgs() << "Convert [func.call / function declaration]\n");
   // Form new argument(s) and function type for the func.call op.
   SmallVector<Value> newArgs;
@@ -370,34 +258,32 @@ LogicalResult coreFuncCallOpToAIE(IRRewriter &rewriter, func::CallOp oldCallOp,
   return success();
 }
 
-LogicalResult coreReleaseOpToAIE(IRRewriter &rewriter,
-                                 AMDAIE::LogicalObjectFifoRelease releaseOp,
-                                 IRMapping &mapper,
-                                 SmallVector<Operation *> &toBeErased) {
-  LLVM_DEBUG(llvm::dbgs() << "Convert [AMDAIE::LogicalObjectFifoRelease]\n");
+LogicalResult AIEDeviceBuilder::coreUseLockToAIE(
+    AMDAIE::UseLockOp useLockOp, SmallVector<Operation *> &toBeErased) {
+  LLVM_DEBUG(llvm::dbgs() << "Convert [AMDAIE::UseLockOp]\n");
   OpBuilder::InsertionGuard guard(rewriter);
-  rewriter.setInsertionPoint(releaseOp);
-  Operation *dmaOp = releaseOp.getDma().getDefiningOp();
-  auto objFifo = dyn_cast<AIE::ObjectFifoCreateOp>(mapper.lookup(dmaOp));
-  if (!objFifo) {
-    return releaseOp.emitError()
-           << "input isn't mapped to an `aie.objectifo` operation";
+  AIE::LockAction lockAction;
+  if (useLockOp.getAction() == AMDAIE::LockAction::AcquireGreaterOrEqual) {
+    lockAction = AIE::LockAction::AcquireGreaterEqual;
+  } else if (useLockOp.getAction() == AMDAIE::LockAction::Acquire) {
+    lockAction = AIE::LockAction::Acquire;
+  } else if (useLockOp.getAction() == AMDAIE::LockAction::Release) {
+    lockAction = AIE::LockAction::Release;
+  } else {
+    useLockOp.emitOpError() << "unsupported lock action in lowering to AIE: "
+                            << stringifyEnum(useLockOp.getAction());
   }
-  AIE::ObjectFifoPort port =
-      releaseOp.getPort() == LogicalObjectFifoPort::Produce
-          ? AIE::ObjectFifoPort::Produce
-          : AIE::ObjectFifoPort::Consume;
-  std::optional<unsigned> maybeSize = releaseOp.getSize();
-  unsigned size = maybeSize ? maybeSize.value() : 1;
-  rewriter.replaceOpWithNewOp<AIE::ObjectFifoReleaseOp>(
-      releaseOp, port, objFifo.getName(), size);
+  Value aieLock = mapper.lookup(useLockOp.getLock());
+  rewriter.create<AIE::UseLockOp>(useLockOp.getLoc(), aieLock, lockAction,
+                                  useLockOp.getValue());
+  toBeErased.push_back(useLockOp);
   return success();
 }
 
 /// Convert `amdaie.core` into `aie.core`.
-LogicalResult coreToAIE(IRRewriter &rewriter, AMDAIE::CoreOp coreOp,
-                        IRMapping &mapper, AIE::DeviceOp deviceOp,
-                        Block *deviceCoreBlock) {
+LogicalResult AIEDeviceBuilder::coreToAIE(AMDAIE::CoreOp coreOp,
+                                          AIE::DeviceOp deviceOp,
+                                          Block *deviceCoreBlock) {
   LLVM_DEBUG(llvm::dbgs() << "Convert [AMDAIE::CoreOp]\n");
   OpBuilder::InsertionGuard guard(rewriter);
   rewriter.setInsertionPointToEnd(deviceCoreBlock);
@@ -429,27 +315,19 @@ LogicalResult coreToAIE(IRRewriter &rewriter, AMDAIE::CoreOp coreOp,
   WalkResult walkResult = aieCoreOp.walk([&](Operation *op) {
     rewriter.setInsertionPoint(op);
     if (TypeSwitch<Operation *, LogicalResult>(op)
-            .Case<AMDAIE::LogicalObjectFifoAccessOp>([&](auto accessOp) {
-              return accessOpToAIE(rewriter, accessOp, mapper, toBeErased);
-            })
-            .Case<AMDAIE::LogicalObjectFifoAcquire>([&](auto acquireOp) {
-              return acquireOpToAIE(rewriter, acquireOp, mapper, toBeErased);
-            })
-            .Case<AMDAIE::LogicalObjectFifoRelease>([&](auto releaseOp) {
-              return coreReleaseOpToAIE(rewriter, releaseOp, mapper,
-                                        toBeErased);
-            })
             .Case<memref::ExtractStridedMetadataOp>(
                 [&](auto extractStridedMetadataOp) {
                   return coreMemrefExtractStridedMetadataToAIE(
-                      rewriter, extractStridedMetadataOp, mapper, toBeErased);
+                      extractStridedMetadataOp, toBeErased);
                 })
             .Case<func::CallOp>([&](auto oldCallOp) {
-              return coreFuncCallOpToAIE(rewriter, oldCallOp, mapper,
-                                         toBeErased);
+              return coreFuncCallOpToAIE(oldCallOp, toBeErased);
+            })
+            .Case<AMDAIE::UseLockOp>([&](auto useLockOp) {
+              return coreUseLockToAIE(useLockOp, toBeErased);
             })
             .Default([&](Operation *op) {
-              remapOperands(op, mapper);
+              remapOperands(op);
               return success();
             })
             .failed()) {
@@ -461,65 +339,10 @@ LogicalResult coreToAIE(IRRewriter &rewriter, AMDAIE::CoreOp coreOp,
     coreOp.emitError("could not convert to AIEDialect ops");
     return failure();
   }
-  for (Operation *op : toBeErased) eraseOp(rewriter, mapper, op);
+  for (Operation *op : toBeErased) eraseOp(op);
 
   mapper.map(coreOp.getResult(), aieCoreOp.getResult());
   mapper.map(coreOp.getOperation(), aieCoreOp.getOperation());
-  return success();
-}
-
-}  // namespace
-
-//===----------------------------------------------------------------------===//
-// Convert amdaie.circular_dma_cpy_nd operation to aie.objectfifo
-//===----------------------------------------------------------------------===//
-
-/// Convert the `amdaie.connection` operation into bidirectional object
-/// fifos.
-LogicalResult flowToAIE(IRRewriter &rewriter, AMDAIE::ConnectionOp connectionOp,
-                        IRMapping &mapper, Block *deviceBlock, int &dmaId) {
-  LLVM_DEBUG(llvm::dbgs() << "Convert [AMDAIE::CircularDmaCpyNdOp]\n");
-  rewriter.setInsertionPointToEnd(deviceBlock);
-  if (!connectionOp.getSource())
-    return connectionOp.emitOpError() << "expected a source";
-  auto sourceLogicalObjFifo =
-      dyn_cast_if_present<AMDAIE::LogicalObjFifoOpInterface>(
-          connectionOp.getSource().getDefiningOp());
-  if (!sourceLogicalObjFifo)
-    return connectionOp.emitOpError() << "expected a logical objectFifo source";
-  SmallVector<Value> newSourceTiles =
-      llvm::map_to_vector(sourceLogicalObjFifo.getTiles(),
-                          [&](Value tile) { return mapper.lookup(tile); });
-  if (newSourceTiles.size() != 1) {
-    return connectionOp.emitError()
-           << "Can't create an `aie.objectfifo` from this flow operation as "
-              "`ObjectFifoCreateOp` only handles a single source tile for now, "
-              "but got: ";
-  }
-  Value newSourceTile = newSourceTiles[0];
-
-  if (!connectionOp.getTarget())
-    return connectionOp.emitOpError() << "expected a source";
-  auto targetLogicalObjFifo =
-      dyn_cast_if_present<AMDAIE::LogicalObjFifoOpInterface>(
-          connectionOp.getTarget().getDefiningOp());
-  if (!targetLogicalObjFifo)
-    return connectionOp.emitOpError() << "expected a logical objectFifo source";
-  SmallVector<Value> newTargetTiles =
-      llvm::map_to_vector(targetLogicalObjFifo.getTiles(),
-                          [&](Value tile) { return mapper.lookup(tile); });
-
-  FailureOr<AMDAIE::NpuCircularDmaCpyNdOp> npuDmaUserOp =
-      connectionOp.getNpuCircularDmaCpyNdUser();
-  if (failed(npuDmaUserOp)) return failure();
-
-  auto symName = "obj" + std::to_string(dmaId++);
-  StringAttr symAttr = rewriter.getStringAttr(symName);
-  FailureOr<AIE::ObjectFifoCreateOp> objFifo =
-      createObjectFifo(rewriter, connectionOp, mapper, npuDmaUserOp.value(),
-                       newSourceTile, newTargetTiles, symAttr);
-  if (failed(objFifo)) return failure();
-  mapper.map(connectionOp.getOperation(), objFifo.value().getOperation());
   return success();
 }
 
@@ -528,17 +351,16 @@ LogicalResult flowToAIE(IRRewriter &rewriter, AMDAIE::ConnectionOp connectionOp,
 //===----------------------------------------------------------------------===//
 
 /// Convert the `amdaie.npu.dma_cpy_nd` operation to `aiex.npu.dma_memcpy_nd`.
-LogicalResult npuDmaCpyNdOpToAIE(IRRewriter &rewriter,
-                                 AMDAIE::NpuDmaCpyNdOp dmaOp,
-                                 SmallVector<Operation *> &toBeErased,
-                                 IRMapping &mapper, IRMapping &bindingsMapper) {
+LogicalResult AIEDeviceBuilder::npuDmaCpyNdOpToAIE(
+    AMDAIE::NpuDmaCpyNdOp dmaOp, SmallVector<Operation *> &toBeErased) {
+  LLVM_DEBUG(llvm::dbgs() << "Convert [AMDAIE::NpuDmaCpyNdOp]\n");
   AMDAIE::ConnectionOp connectionOp = dmaOp.getConnectionOp();
 
   SmallVector<Value> offsets, sizes, strides;
   ArrayRef<int64_t> staticOffsets, staticSizes, staticStrides;
   AMDAIE::BdIdOp bdIdOp;
   LogicalObjectFifoFromMemrefOp logicalObjFifo;
-
+  SmallVector<Operation *> memOps;
   // Convert bidirectional `amdaie.npu.dma_cpy_nd` op into two halves.
   if (dmaOp.getSource()) {
     offsets = dmaOp.getSourceOffsets();
@@ -558,9 +380,8 @@ LogicalResult npuDmaCpyNdOpToAIE(IRRewriter &rewriter,
       return dmaOp.emitOpError() << "expected source to be an "
                                     "`amdaie.logicalobjectfifo.from_memref`";
     }
-  }
-
-  else if (dmaOp.getTarget()) {
+    memOps = connectionToSourceTargetMemOps[connectionOp].first;
+  } else if (dmaOp.getTarget()) {
     offsets = dmaOp.getTargetOffsets();
     sizes = dmaOp.getTargetSizes();
     strides = dmaOp.getTargetStrides();
@@ -578,23 +399,21 @@ LogicalResult npuDmaCpyNdOpToAIE(IRRewriter &rewriter,
       return dmaOp.emitOpError() << "expected target to be an "
                                     "`amdaie.logicalobjectfifo.from_memref`";
     }
-  }
-
-  else {
+    memOps = connectionToSourceTargetMemOps[connectionOp].second;
+  } else {
     return dmaOp.emitOpError()
            << "has neither source not target memory space as L3.";
   }
 
   Value memref = bindingsMapper.lookup(logicalObjFifo.getMemref());
 
-  auto objFifo = dyn_cast<AIE::ObjectFifoCreateOp>(
-      mapper.lookup(connectionOp.getOperation()));
-
-  uint32_t bdId = bdIdOp.getValue();
-
-  if (!objFifo) {
-    return dmaOp.emitError()
-           << "input isn't mapped to an `aie.objectifo` operation";
+  if (memOps.size() != 1) {
+    return dmaOp.emitOpError() << "only a single connection op source expected";
+  }
+  auto shimDmaAllocOp = dyn_cast<AIE::ShimDMAAllocationOp>(memOps[0]);
+  if (!shimDmaAllocOp) {
+    return dmaOp.emitOpError() << "expected the source of the connection to "
+                                  "be mapped to a `AIE::ShimDMAAllocationOp`";
   }
 
   if (!offsets.empty() || !sizes.empty() || !strides.empty()) {
@@ -607,41 +426,52 @@ LogicalResult npuDmaCpyNdOpToAIE(IRRewriter &rewriter,
               "aiex.npu.dma_memcpy_nd.";
   }
 
+  uint32_t bdId = bdIdOp.getValue();
   bool issueToken = dmaOp.hasDmaWaitOpUser();
 
   rewriter.setInsertionPoint(dmaOp);
   rewriter.create<AIEX::NpuDmaMemcpyNdOp>(
       dmaOp.getLoc(), SmallVector<Type, 1>{}, 0, 0, memref, offsets, sizes,
       strides, staticOffsets, staticSizes, staticStrides, nullptr,
-      objFifo.getName(), bdId, issueToken);
+      shimDmaAllocOp.getSymName(), bdId, issueToken);
 
   toBeErased.push_back(dmaOp);
   return success();
 }
 
 /// Convert the `amdaie.npu.dma_wait` operation to `aiex.npu.dma_wait`.
-LogicalResult npuDmaWaitToAIE(IRRewriter &rewriter, AMDAIE::NpuDmaWaitOp waitOp,
-                              SmallVector<Operation *> &toBeErased,
-                              IRMapping &mapper, IRMapping &bindingsMapper) {
+LogicalResult AIEDeviceBuilder::npuDmaWaitToAIE(
+    AMDAIE::NpuDmaWaitOp waitOp, SmallVector<Operation *> &toBeErased) {
+  LLVM_DEBUG(llvm::dbgs() << "Convert [AMDAIE::NpuDmaWaitOp]\n");
   rewriter.setInsertionPoint(waitOp);
   AMDAIE::ConnectionOp connectionOp = waitOp.getDmaOp().getConnectionOp();
-  auto objFifo = dyn_cast<xilinx::AIE::ObjectFifoCreateOp>(
-      mapper.lookup(connectionOp.getOperation()));
-  if (!objFifo) {
-    return waitOp.emitError()
-           << "input isn't mapped to an `aie.objectifo` operation";
+  if (!connectionToSourceTargetMemOps.contains(connectionOp)) {
+    return connectionOp.emitOpError()
+           << "should be found in the connection to source/target mem ops map";
+  }
+  SmallVector<Operation *> memOps =
+      waitOp.getDirection() == AMDAIE::DMAChannelDir::MM2S
+          ? connectionToSourceTargetMemOps[connectionOp].first
+          : connectionToSourceTargetMemOps[connectionOp].second;
+  if (memOps.size() != 1) {
+    return waitOp.emitOpError()
+           << "only a single connection op source expected";
+  }
+  auto shimDmaAllocOp = dyn_cast<AIE::ShimDMAAllocationOp>(memOps[0]);
+  if (!shimDmaAllocOp) {
+    return waitOp.emitOpError() << "expected the source of the connection to "
+                                   "be mapped to a `AIE::ShimDMAAllocationOp`";
   }
   rewriter.create<AIEX::NpuDmaWaitOp>(rewriter.getUnknownLoc(),
-                                      objFifo.getName());
+                                      shimDmaAllocOp.getSymName());
   toBeErased.push_back(waitOp);
   return success();
 }
 
 /// Insert the control code operations into the NPU instruction function.
-LogicalResult controlCodeToAie(IRRewriter &rewriter,
-                               AMDAIE::ControlCodeOp controlCodeOp,
-                               xilinx::AIEX::RuntimeSequenceOp funcOp,
-                               IRMapping &mapper, IRMapping &bindingsMapper) {
+LogicalResult AIEDeviceBuilder::controlCodeToAIE(
+    AMDAIE::ControlCodeOp controlCodeOp,
+    xilinx::AIEX::RuntimeSequenceOp funcOp) {
   LLVM_DEBUG(llvm::dbgs() << "Convert [AMDAIE::ControlCodeOp]\n");
   Block *funcBlock = &funcOp.getBody().front();
   rewriter.setInsertionPointToEnd(funcBlock);
@@ -667,23 +497,21 @@ LogicalResult controlCodeToAie(IRRewriter &rewriter,
                   // TODO(jornt): This is temporarily handled already by
                   // combining with `ConnectionOp` to create `aie.objectfifo`
                   // until we get rid of those.
-                  eraseOp(rewriter, mapper, dmaOp);
+                  eraseOp(dmaOp);
                   return success();
                 })
                 .Case<AMDAIE::NpuDmaCpyNdOp>([&](auto dmaOp) {
-                  return npuDmaCpyNdOpToAIE(rewriter, dmaOp, toBeErased, mapper,
-                                            bindingsMapper);
+                  return npuDmaCpyNdOpToAIE(dmaOp, toBeErased);
                 })
                 .Case<AMDAIE::NpuDmaWaitOp>([&](auto waitOp) {
-                  return npuDmaWaitToAIE(rewriter, waitOp, toBeErased, mapper,
-                                         bindingsMapper);
+                  return npuDmaWaitToAIE(waitOp, toBeErased);
                 })
                 .Case<AMDAIE::EndOp>([&](auto endOp) {
-                  eraseOp(rewriter, mapper, endOp);
+                  eraseOp(endOp);
                   return success();
                 })
                 .Default([&](Operation *op) {
-                  remapOperands(op, mapper);
+                  remapOperands(op);
                   return success();
                 })
                 .failed()) {
@@ -692,55 +520,339 @@ LogicalResult controlCodeToAie(IRRewriter &rewriter,
         return WalkResult::advance();
       });
   if (res.wasInterrupted()) return failure();
-  for (Operation *op : toBeErased) eraseOp(rewriter, mapper, op);
+  for (Operation *op : toBeErased) eraseOp(op);
   return success();
 }
 
 //===----------------------------------------------------------------------===//
-// Convert amdaie.logicalobjectfifo.link operation to `aie.objectfifo.link`
+// Convert ops in Workgroup to AIE ops
 //===----------------------------------------------------------------------===//
 
-LogicalResult linkToAIE(IRRewriter &rewriter,
-                        AMDAIE::LogicalObjectFifoLink linkOp, IRMapping &mapper,
-                        Block *deviceBlock) {
-  LLVM_DEBUG(llvm::dbgs() << "Convert [AMDAIE::LogicalObjectFifoLink]\n");
+/// Convert `amdaie.buffer` to `aie.buffer`.
+LogicalResult AIEDeviceBuilder::bufferToAIE(AMDAIE::BufferOp bufferOp,
+                                            Block *deviceBlock, int &bufferId) {
+  LLVM_DEBUG(llvm::dbgs() << "Convert [AMDAIE::BufferOp]\n");
   OpBuilder::InsertionGuard guard(rewriter);
   rewriter.setInsertionPointToEnd(deviceBlock);
-  SmallVector<Attribute> inSyms;
-  for (auto in : linkOp.getIns()) {
-    auto objFifo = dyn_cast<xilinx::AIE::ObjectFifoCreateOp>(
-        mapper.lookup(in.getDefiningOp()));
-    if (!objFifo) {
-      return linkOp.emitError()
-             << "input isn't mapped to an `aie.objectifo` operation";
+  auto elemType = cast<MemRefType>(bufferOp.getType());
+  Value tile = mapper.lookup(bufferOp.getTile());
+  auto aieBufferOp = rewriter.create<AIE::BufferOp>(
+      bufferOp.getLoc(), elemType, tile,
+      rewriter.getStringAttr("buff_" + std::to_string(bufferId++)),
+      /*address*/ bufferOp.getAddressAttr(),
+      /*mem_bank*/ nullptr);
+  mapper.map(bufferOp.getResult(), aieBufferOp.getResult());
+  mapper.map(bufferOp.getOperation(), aieBufferOp.getOperation());
+  return success();
+}
+
+/// Convert the `amdaie.connection` operation into `aie.flow` ops and DMA
+/// operations. Depending on the location of the source/target of the
+/// connection, different DMA ops are created:
+/// 1. Source/target on a Shim tile: iterate through producer/consumer channels
+/// and create corresponding `aie.shim_dma_allocation` ops.
+/// 2. Source/target on MemTile: iterate through producer/consumer channels,
+/// lookup the correct `aie.memtile_dma` op and create new DMA BD blocks inside.
+/// 3. Source/target on MemTile: iterate through producer/consumer channels,
+/// lookup the correct `aie.mem` op and create new DMA BD blocks inside.
+LogicalResult AIEDeviceBuilder::connectionToAIE(
+    AMDAIE::ConnectionOp connectionOp, Block *deviceBlock,
+    int &connectionIndex) {
+  LLVM_DEBUG(llvm::dbgs() << "Convert [AMDAIE::ConnectionOp]\n");
+  rewriter.setInsertionPointToEnd(deviceBlock);
+  SmallVector<AMDAIE::ChannelOp> producerChannels;
+  SmallVector<AMDAIE::ChannelOp> consumerChannels;
+  for (Value producerChannel : connectionOp.getSourceChannels()) {
+    auto channelOp =
+        dyn_cast<AMDAIE::ChannelOp>(producerChannel.getDefiningOp());
+    if (!channelOp) {
+      return connectionOp.emitOpError()
+             << "found non-`amdaie.channel` source channel";
     }
-    inSyms.push_back(
-        SymbolRefAttr::get(rewriter.getContext(), objFifo.getSymName()));
+    producerChannels.push_back(channelOp);
   }
-  SmallVector<Attribute> outSyms;
-  for (auto out : linkOp.getOuts()) {
-    auto objFifo = dyn_cast<xilinx::AIE::ObjectFifoCreateOp>(
-        mapper.lookup(out.getDefiningOp()));
-    if (!objFifo) {
-      return linkOp.emitError()
-             << "output isn't mapped to an `aie.objectifo` operation";
+  for (Value consumerChannel : connectionOp.getTargetChannels()) {
+    auto channelOp =
+        dyn_cast<AMDAIE::ChannelOp>(consumerChannel.getDefiningOp());
+    if (!channelOp) {
+      return connectionOp.emitOpError()
+             << "found non-`amdaie.channel` target channel";
     }
-    outSyms.push_back(
-        SymbolRefAttr::get(rewriter.getContext(), objFifo.getSymName()));
+    consumerChannels.push_back(channelOp);
   }
-  rewriter.create<AIE::ObjectFifoLinkOp>(
-      rewriter.getUnknownLoc(), rewriter.getArrayAttr(inSyms),
-      rewriter.getArrayAttr(outSyms), rewriter.getArrayAttr({}),
-      rewriter.getArrayAttr({}));
+  // Insert flow ops.
+  rewriter.setInsertionPointToEnd(deviceBlock);
+  for (AMDAIE::ChannelOp producerChannel : producerChannels) {
+    for (AMDAIE::ChannelOp consumerChannel : consumerChannels) {
+      Value aieProducerTile = mapper.lookup(producerChannel.getTile());
+      Value aieConsumerTile = mapper.lookup(consumerChannel.getTile());
+      rewriter.create<AIE::FlowOp>(
+          rewriter.getUnknownLoc(), aieProducerTile, AIE::WireBundle::DMA,
+          producerChannel.getValue(), aieConsumerTile, AIE::WireBundle::DMA,
+          consumerChannel.getValue());
+    }
+  }
+
+  FailureOr<AMDAIE::NpuCircularDmaCpyNdOp> maybeNpuDmaUserOp =
+      connectionOp.getNpuCircularDmaCpyNdUser();
+  if (failed(maybeNpuDmaUserOp))
+    return connectionOp.emitOpError() << "has no circular NPU DMA op user";
+
+  SmallVector<Operation *> sourceMemOps;
+  Value source = connectionOp.getSource();
+  auto sourceObjFifoLikeOp =
+      dyn_cast_if_present<AMDAIE::LogicalObjFifoOpInterface>(
+          source.getDefiningOp());
+  if (!sourceObjFifoLikeOp) {
+    return connectionOp.emitOpError()
+           << "expected source to be an logical objFifo-like op";
+  }
+  if (sourceObjFifoLikeOp.getMemorySpaceAsUInt() == 0) {
+    for (AMDAIE::ChannelOp channel : producerChannels) {
+      AIE::ShimDMAAllocationOp shimDmaAllocOp = createShimDmaAllocation(
+          deviceBlock, channel.getTileOp(), AIE::DMAChannelDir::MM2S,
+          channel.getValue(), sourceObjFifoLikeOp.getMemrefType(),
+          connectionIndex);
+      sourceMemOps.push_back(shimDmaAllocOp.getOperation());
+    }
+  } else {
+    auto sourceObjFifo =
+        dyn_cast_if_present<AMDAIE::LogicalObjectFifoFromBuffersOp>(
+            source.getDefiningOp());
+    if (!sourceObjFifo) {
+      return connectionOp.emitOpError()
+             << "expected source to be an "
+                "`amdaie.logicalobjectfifo.from_buffers` op";
+    }
+    std::optional<size_t> maybeSize = maybeNpuDmaUserOp->getSourceStaticSize();
+    if (!maybeSize) {
+      return maybeNpuDmaUserOp->emitOpError()
+             << "could not compute a static access size for source";
+    }
+    std::optional<size_t> maybeOffset =
+        maybeNpuDmaUserOp->getSourceStaticBaseOffset();
+    if (!maybeOffset) {
+      return maybeNpuDmaUserOp->emitOpError()
+             << "could not compute a static base offset for source";
+    }
+    AIE::BDDimLayoutArrayAttr dims = convertSizeStrideToBDDimLayoutArrayAttr(
+        maybeNpuDmaUserOp->getSourceMixedSizes(),
+        maybeNpuDmaUserOp->getSourceMixedStrides());
+    SmallVector<CopyOpInterface> objFifoProducers =
+        sourceObjFifo.getCopyLikeProducers();
+    SmallVector<CopyOpInterface> objFifoConsumers =
+        sourceObjFifo.getCopyLikeConsumers();
+    // Default acquire/release value is 1. Will be adjusted depending on number
+    // of producers/consumers.
+    int acqNum{1};
+    if (objFifoConsumers.size() < objFifoProducers.size()) {
+      assert(objFifoProducers.size() % objFifoConsumers.size() == 0);
+      acqNum = objFifoProducers.size() / objFifoConsumers.size();
+    }
+    for (AMDAIE::ChannelOp channel : producerChannels) {
+      Operation *memOp = tileToMemOpMap.at(channel.getTile());
+      AMDAIE::TileOp tileOp = channel.getTileOp();
+      SmallVector<AIE::BufferOp> buffers = llvm::map_to_vector(
+          sourceObjFifo.getBuffersOnTile(tileOp),
+          [&](AMDAIE::BufferOp bufferOp) {
+            return cast<AIE::BufferOp>(mapper.lookup(bufferOp.getOperation()));
+          });
+      SmallVector<AIE::LockOp> producerLocks = llvm::map_to_vector(
+          sourceObjFifo.getProducerLocksOnTile(tileOp),
+          [&](AMDAIE::LockOp lockOp) {
+            return cast<AIE::LockOp>(mapper.lookup(lockOp.getOperation()));
+          });
+      SmallVector<AIE::LockOp> consumerLocks = llvm::map_to_vector(
+          sourceObjFifo.getConsumerLocksOnTile(tileOp),
+          [&](AMDAIE::LockOp lockOp) {
+            return cast<AIE::LockOp>(mapper.lookup(lockOp.getOperation()));
+          });
+      if (producerLocks.size() != 1) {
+        return sourceObjFifo.emitOpError()
+               << "expected a single producer lock for tile: "
+               << channel.getTile() << ", channel: " << channel.getResult();
+      }
+      if (consumerLocks.size() != 1) {
+        return sourceObjFifo.emitOpError()
+               << "expected a single consumer lock for tile: "
+               << channel.getTile() << ", channel: " << channel.getResult();
+      }
+      std::pair<AIE::LockOp, AIE::LockOp> lockPair =
+          std::make_pair(consumerLocks[0], producerLocks[0]);
+      rewriter.moveOpBefore(memOp, deviceBlock, deviceBlock->end());
+      createDMA(memOp, AIE::DMAChannelDir::MM2S, channel.getValue(), dims,
+                acqNum, acqNum, maybeSize.value(), maybeOffset.value(), buffers,
+                lockPair);
+    }
+  }
+
+  SmallVector<Operation *> targetMemOps;
+  Value target = connectionOp.getTarget();
+  auto targetObjFifoLikeOp =
+      dyn_cast_if_present<AMDAIE::LogicalObjFifoOpInterface>(
+          target.getDefiningOp());
+  if (!targetObjFifoLikeOp) {
+    return connectionOp.emitOpError()
+           << "expected target to be an logical objFifo-like op";
+  }
+  if (targetObjFifoLikeOp.getMemorySpaceAsUInt() == 0) {
+    for (AMDAIE::ChannelOp channel : consumerChannels) {
+      AIE::ShimDMAAllocationOp shimDmaAllocOp = createShimDmaAllocation(
+          deviceBlock, channel.getTileOp(), AIE::DMAChannelDir::S2MM,
+          channel.getValue(), targetObjFifoLikeOp.getMemrefType(),
+          connectionIndex);
+      targetMemOps.push_back(shimDmaAllocOp.getOperation());
+    }
+  } else {
+    auto targetObjFifo =
+        dyn_cast_if_present<AMDAIE::LogicalObjectFifoFromBuffersOp>(
+            target.getDefiningOp());
+    if (!targetObjFifo) {
+      return connectionOp.emitOpError()
+             << "expected target to be an "
+                "`amdaie.logicalobjectfifo.from_buffers` op";
+    }
+    std::optional<size_t> maybeSize = maybeNpuDmaUserOp->getTargetStaticSize();
+    if (!maybeSize) {
+      return maybeNpuDmaUserOp->emitOpError()
+             << "could not compute a static access size for source";
+    }
+    std::optional<size_t> maybeOffset =
+        maybeNpuDmaUserOp->getTargetStaticBaseOffset();
+    if (!maybeOffset) {
+      return maybeNpuDmaUserOp->emitOpError()
+             << "could not compute a static base offset for source";
+    }
+    AIE::BDDimLayoutArrayAttr dims = convertSizeStrideToBDDimLayoutArrayAttr(
+        maybeNpuDmaUserOp->getTargetMixedSizes(),
+        maybeNpuDmaUserOp->getTargetMixedStrides());
+    SmallVector<CopyOpInterface> objFifoProducers =
+        targetObjFifo.getCopyLikeProducers();
+    SmallVector<CopyOpInterface> objFifoConsumers =
+        targetObjFifo.getCopyLikeConsumers();
+    // Default acquire/release value is 1. Will be adjusted depending on number
+    // of producers/consumers.
+    int acqNum{1};
+    if (objFifoProducers.size() < objFifoConsumers.size()) {
+      assert(objFifoConsumers.size() % objFifoProducers.size() == 0);
+      acqNum = objFifoConsumers.size() / objFifoProducers.size();
+    }
+    for (AMDAIE::ChannelOp channel : consumerChannels) {
+      Operation *memOp = tileToMemOpMap.at(channel.getTile());
+      AMDAIE::TileOp tileOp = channel.getTileOp();
+      SmallVector<AIE::BufferOp> buffers = llvm::map_to_vector(
+          targetObjFifo.getBuffersOnTile(tileOp),
+          [&](AMDAIE::BufferOp bufferOp) {
+            return cast<AIE::BufferOp>(mapper.lookup(bufferOp.getOperation()));
+          });
+      SmallVector<AIE::LockOp> producerLocks = llvm::map_to_vector(
+          targetObjFifo.getProducerLocksOnTile(tileOp),
+          [&](AMDAIE::LockOp lockOp) {
+            return cast<AIE::LockOp>(mapper.lookup(lockOp.getOperation()));
+          });
+      SmallVector<AIE::LockOp> consumerLocks = llvm::map_to_vector(
+          targetObjFifo.getConsumerLocksOnTile(tileOp),
+          [&](AMDAIE::LockOp lockOp) {
+            return cast<AIE::LockOp>(mapper.lookup(lockOp.getOperation()));
+          });
+      if (producerLocks.size() != 1) {
+        return targetObjFifo.emitOpError()
+               << "expected a single producer lock for tile: "
+               << channel.getTile();
+      }
+      if (consumerLocks.size() != 1) {
+        return targetObjFifo.emitOpError()
+               << "expected a single consumer lock for tile: "
+               << channel.getTile();
+      }
+      std::pair<AIE::LockOp, AIE::LockOp> lockPair =
+          std::make_pair(producerLocks[0], consumerLocks[0]);
+      rewriter.moveOpBefore(memOp, deviceBlock, deviceBlock->end());
+      createDMA(memOp, AIE::DMAChannelDir::S2MM, channel.getValue(), dims,
+                acqNum, acqNum, maybeSize.value(), maybeOffset.value(), buffers,
+                lockPair);
+    }
+  }
+
+  // Keep track of source/target mem ops for this connection for later retrieval
+  // to create NPU ops.
+  connectionToSourceTargetMemOps[connectionOp] =
+      std::make_pair(sourceMemOps, targetMemOps);
+  return success();
+}
+
+LogicalResult AIEDeviceBuilder::lockToAIE(AMDAIE::LockOp lockOp,
+                                          Block *deviceBlock, int &lockIndex) {
+  LLVM_DEBUG(llvm::dbgs() << "Convert [AMDAIE::LockOp]\n");
+  OpBuilder::InsertionGuard guard(rewriter);
+  rewriter.setInsertionPointToEnd(deviceBlock);
+  Value tile = mapper.lookup(lockOp.getTile());
+  auto aieLockOp = rewriter.create<AIE::LockOp>(
+      lockOp.getLoc(), tile, lockOp.getValueAttr(), lockOp.getInitValueAttr(),
+      rewriter.getStringAttr("lock_" + std::to_string(lockIndex++)));
+  mapper.map(lockOp.getResult(), aieLockOp.getResult());
+  mapper.map(lockOp.getOperation(), aieLockOp.getOperation());
+  return success();
+}
+
+template <typename MemOp>
+LogicalResult logicalObjFifoFromBuffersToMemOp(
+    IRRewriter &rewriter, AMDAIE::LogicalObjectFifoFromBuffersOp logicalObjFifo,
+    IRMapping &mapper, Block *deviceBlock,
+    DenseMap<Value, Operation *> &tileToMemOpMap) {
+  LLVM_DEBUG(
+      llvm::dbgs() << "Convert [AMDAIE::LogicalObjectFifoFromBuffersOp]\n");
+  OpBuilder::InsertionGuard guard(rewriter);
+  SmallVector<CopyOpInterface> consumers =
+      logicalObjFifo.getCopyLikeConsumers();
+  SmallVector<CopyOpInterface> producers =
+      logicalObjFifo.getCopyLikeProducers();
+  if (producers.size() > 1 && consumers.size() > 1) {
+    return logicalObjFifo.emitOpError()
+           << "has a multi-producer, multi-consumer DMA "
+              "pattern, which is currently not supported";
+  }
+  // Create a memory op for every unique tile and fill it with DMA ops.
+  for (Value tile : logicalObjFifo.getTiles()) {
+    if (tileToMemOpMap.contains(tile)) continue;
+    Value aieTile = mapper.lookup(tile);
+    rewriter.setInsertionPointToEnd(deviceBlock);
+    auto newMemOp = rewriter.create<MemOp>(rewriter.getUnknownLoc(), aieTile);
+    rewriter.setInsertionPointToStart(&newMemOp.getRegion().emplaceBlock());
+    rewriter.create<AIE::EndOp>(rewriter.getUnknownLoc());
+    // Keep track of the MemOps on different tiles.
+    tileToMemOpMap[tile] = newMemOp.getOperation();
+  }
+  return success();
+}
+
+LogicalResult AIEDeviceBuilder::logicalObjFifoFromBuffersToAIE(
+    AMDAIE::LogicalObjectFifoFromBuffersOp logicalObjFifo, Block *deviceBlock) {
+  LLVM_DEBUG(
+      llvm::dbgs() << "Convert [AMDAIE::LogicalObjectFifoFromBuffersOp]\n");
+  uint8_t memSpaceUInt = logicalObjFifo.getMemorySpaceAsUInt();
+  if (memSpaceUInt == 1) {
+    // L2
+    return logicalObjFifoFromBuffersToMemOp<AIE::MemTileDMAOp>(
+        rewriter, logicalObjFifo, mapper, deviceBlock, tileToMemOpMap);
+  } else if (memSpaceUInt == 2) {
+    // L1
+    return logicalObjFifoFromBuffersToMemOp<AIE::MemOp>(
+        rewriter, logicalObjFifo, mapper, deviceBlock, tileToMemOpMap);
+  } else {
+    return logicalObjFifo.emitOpError()
+           << "has unsupported memory space for lowering to AIE: "
+           << std::to_string(memSpaceUInt);
+  }
   return success();
 }
 
 //===----------------------------------------------------------------------===//
-// Convert amdaie.tile operation to aie.tile
+// Convert `amdaie.tile` operation to `aie.tile`
 //===----------------------------------------------------------------------===//
 
-LogicalResult tileToAIE(IRRewriter &rewriter, AMDAIE::TileOp tileOp,
-                        IRMapping &mapper, Block *deviceBlock) {
+LogicalResult AIEDeviceBuilder::tileToAIE(AMDAIE::TileOp tileOp,
+                                          Block *deviceBlock) {
   LLVM_DEBUG(llvm::dbgs() << "Convert [AMDAIE::TileOp]\n");
   OpBuilder::InsertionGuard guard(rewriter);
   int64_t col = getConstantIntValue(tileOp.getCol()).value();
@@ -757,22 +869,33 @@ LogicalResult tileToAIE(IRRewriter &rewriter, AMDAIE::TileOp tileOp,
 // Convert amdaie.workgroup operation and insert into aie.device
 //===----------------------------------------------------------------------===//
 
-LogicalResult workgroupToAIE(IRRewriter &rewriter,
-                             AMDAIE::WorkgroupOp workgroupOp,
-                             xilinx::AIE::DeviceOp deviceOp,
-                             xilinx::AIEX::RuntimeSequenceOp npuFuncOp,
-                             IRMapping &mapper, IRMapping &bindingsMapper) {
+LogicalResult AIEDeviceBuilder::workgroupToAIE(
+    AMDAIE::WorkgroupOp workgroupOp, xilinx::AIE::DeviceOp deviceOp,
+    xilinx::AIEX::RuntimeSequenceOp npuFuncOp) {
   OpBuilder::InsertionGuard guard(rewriter);
   Block *deviceBlock = &deviceOp.getRegion().front();
   Block *deviceCoreBlock = rewriter.createBlock(&deviceOp.getRegion());
   rewriter.setInsertionPoint(deviceBlock, deviceBlock->begin());
 
   // Walk all operations in the AIE region and convert to AIE ops
-  int dmaId = 0;
+  int bufferId{0};
+  int lockId{0};
+  int connectionIndex{0};
   WalkResult res = workgroupOp.walk<WalkOrder::PreOrder>([&](Operation *op) {
     return TypeSwitch<Operation *, WalkResult>(op)
         .Case<AMDAIE::BdIdOp>([&](auto bdIdOp) {
           // BD ID ops are purely used for retrieving information in other ops
+          // so don't convert to AIE dialect.
+          return WalkResult::advance();
+        })
+        .Case<AMDAIE::BufferOp>([&](auto bufferOp) {
+          if (failed(bufferToAIE(bufferOp, deviceBlock, bufferId))) {
+            return WalkResult::interrupt();
+          }
+          return WalkResult::advance();
+        })
+        .Case<AMDAIE::ChannelOp>([&](auto channelOp) {
+          // Channel ops are purely used for retrieving information in other ops
           // so don't convert to AIE dialect.
           return WalkResult::advance();
         })
@@ -782,43 +905,61 @@ LogicalResult workgroupToAIE(IRRewriter &rewriter,
           return WalkResult::interrupt();
         })
         .Case<AMDAIE::ConnectionOp>([&](auto dmaOp) {
-          if (failed(flowToAIE(rewriter, dmaOp, mapper, deviceBlock, dmaId))) {
+          if (failed(connectionToAIE(dmaOp, deviceBlock, connectionIndex))) {
             return WalkResult::interrupt();
           }
           return WalkResult::advance();
         })
         .Case<AMDAIE::ControlCodeOp>([&](auto controlCodeOp) {
-          if (failed(controlCodeToAie(rewriter, controlCodeOp, npuFuncOp,
-                                      mapper, bindingsMapper))) {
+          if (failed(controlCodeToAIE(controlCodeOp, npuFuncOp))) {
             controlCodeOp.emitError("could not convert to AIEDialect ops");
             return WalkResult::interrupt();
           }
           return WalkResult::skip();
         })
         .Case<AMDAIE::CoreOp>([&](auto coreOp) {
-          if (failed(coreToAIE(rewriter, coreOp, mapper, deviceOp,
-                               deviceCoreBlock))) {
+          if (failed(coreToAIE(coreOp, deviceOp, deviceCoreBlock))) {
             coreOp.emitError("could not convert to AIEDialect ops");
             return WalkResult::interrupt();
           }
           return WalkResult::skip();
         })
-        .Case<AMDAIE::LogicalObjectFifoLink>([&](auto linkOp) {
-          if (failed(linkToAIE(rewriter, linkOp, mapper, deviceBlock))) {
+        .Case<AMDAIE::LockOp>([&](auto lockOp) {
+          if (failed(lockToAIE(lockOp, deviceBlock, lockId))) {
             return WalkResult::interrupt();
           }
           return WalkResult::advance();
         })
-        .Case<AMDAIE::TileOp>([&](auto tileOp) {
-          if (failed(tileToAIE(rewriter, tileOp, mapper, deviceBlock))) {
+        .Case<AMDAIE::LogicalObjectFifoFromBuffersOp>([&](auto logicalObjFifo) {
+          if (failed(logicalObjFifoFromBuffersToAIE(logicalObjFifo,
+                                                    deviceBlock))) {
             return WalkResult::interrupt();
           }
+          return WalkResult::advance();
+        })
+        .Case<AMDAIE::LogicalObjectFifoPlaceholderOp>([&](auto logicalObjFifo) {
+          // Skip placeholder ops as they don't have an equivalent in the
+          // AIE dialect and shim dma allocations are created from
+          // connections directly currently.
+          return WalkResult::advance();
+        })
+        .Case<AMDAIE::TileOp>([&](auto tileOp) {
+          if (failed(tileToAIE(tileOp, deviceBlock))) {
+            return WalkResult::interrupt();
+          }
+          return WalkResult::advance();
+        })
+        .Case<AMDAIE::WorkgroupOp>([&](auto workgroupOp) {
+          // Skip workgroup ops themselves.
           return WalkResult::advance();
         })
         .Default([&](Operation *op) {
           rewriter.setInsertionPointToEnd(deviceBlock);
           if (!isa_and_present<AMDAIEDialect>(op->getDialect())) {
             rewriter.clone(*op, mapper);
+          } else {
+            op->emitOpError() << "is unsupported in lowering to AIE dialect";
+            return WalkResult::interrupt();
           }
           return WalkResult::advance();
         });
@@ -838,8 +979,7 @@ LogicalResult workgroupToAIE(IRRewriter &rewriter,
 /// `AIE::DeviceOp` into the module for every encountered `FuncOp`, and then
 /// traverse the function build the AIE device operation and convert all AMDAIE
 /// dialect operations to AIE dialect operations.
-LogicalResult lowerToAIE(ModuleOp moduleOp) {
-  IRRewriter rewriter(moduleOp.getContext());
+LogicalResult AIEDeviceBuilder::lowerToAIE(ModuleOp moduleOp) {
   Block *moduleBlock = &moduleOp->getRegion(0).front();
 
   // Retrieve the AMDAIEDevice from the executable target attribute.
@@ -868,7 +1008,6 @@ LogicalResult lowerToAIE(ModuleOp moduleOp) {
     // of the aiex.runtime_sequence operation that replaces the
     // amdaie.controlcode. The HAL interface bindings are used to
     // order the function parameters correctly.
-    IRMapping bindingsMapper;
     SmallVector<IREE::HAL::InterfaceBindingSubspanOp> subspanOps;
     funcOp->walk([&](IREE::HAL::InterfaceBindingSubspanOp subspanOp) {
       subspanOps.push_back(subspanOp);
@@ -891,14 +1030,13 @@ LogicalResult lowerToAIE(ModuleOp moduleOp) {
     }
 
     // Walk the AIE regions ops and convert ops into pure AIEDialect ops.
-    IRMapping mapper;
+    // IRMapping mapper;
     rewriter.setInsertionPointToStart(deviceBlock);
     WalkResult res = funcOp.walk<WalkOrder::PreOrder>([&](Operation *op) {
       if (isa<func::FuncOp, func::ReturnOp>(op)) {
         return WalkResult::advance();
       } else if (auto workgroupOp = dyn_cast<AMDAIE::WorkgroupOp>(op)) {
-        if (failed(workgroupToAIE(rewriter, workgroupOp, deviceOp, npuFuncOp,
-                                  mapper, bindingsMapper))) {
+        if (failed(workgroupToAIE(workgroupOp, deviceOp, npuFuncOp))) {
           return WalkResult::interrupt();
         }
         return WalkResult::skip();
@@ -915,7 +1053,7 @@ LogicalResult lowerToAIE(ModuleOp moduleOp) {
     rewriter.moveOpBefore(npuFuncOp, deviceBlock, deviceBlock->end());
     // After walking the FuncOp, it has been converted into a DeviceOp and can
     // safely be erased.
-    eraseOp(rewriter, mapper, funcOp);
+    eraseOp(funcOp);
     return WalkResult::advance();
   });
   if (funcRes.wasInterrupted()) return failure();
@@ -950,14 +1088,16 @@ class AMDAIELowerToAIEPass
     : public impl::AMDAIELowerToAIEBase<AMDAIELowerToAIEPass> {
  public:
   void getDependentDialects(DialectRegistry &registry) const override {
-    registry.insert<AMDAIEDialect, xilinx::AIE::AIEDialect,
-                    xilinx::AIEX::AIEXDialect>();
+    registry.insert<mlir::memref::MemRefDialect, AMDAIEDialect,
+                    xilinx::AIE::AIEDialect, xilinx::AIEX::AIEXDialect>();
   }
 
   void runOnOperation() override {
     // Main function call to convert all operations into AIE dialect
     // operations inside an AIE device.
-    if (failed(lowerToAIE(getOperation()))) return signalPassFailure();
+    ModuleOp moduleOp = getOperation();
+    AIEDeviceBuilder builder(moduleOp.getContext());
+    if (failed(builder.lowerToAIE(moduleOp))) return signalPassFailure();
   }
 };
 
