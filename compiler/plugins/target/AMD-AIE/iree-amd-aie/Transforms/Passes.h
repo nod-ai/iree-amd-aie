@@ -93,10 +93,6 @@ std::unique_ptr<Pass> createAMDAIEConvertCoreForallToForPass();
 /// Pass to create a single AIE workgroup.
 std::unique_ptr<Pass> createAMDAIECreateAIEWorkgroupPass();
 
-/// Pass to create logical objectFifo link operations, explicitly linking inputs
-/// and outputs.
-std::unique_ptr<Pass> createAMDAIECreateLogicalObjectFifoLinkPass();
-
 /// Pass to create references to allocations in L1 memory space.
 std::unique_ptr<Pass> createAMDAIECreateReferenceToAllocationPass();
 

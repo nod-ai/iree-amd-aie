@@ -22,7 +22,6 @@ iree_lit_test_suite(
     "controlcode_loop_unrolling.mlir"
     "convert_core_forall_to_for.mlir"
     "create_aie_workgroup.mlir"
-    "create_logical_objectfifo_link.mlir"
     "create_reference_to_allocation.mlir"
     "disable_vectorization.mlir"
     "distribute_cores_and_objectfifos.mlir"

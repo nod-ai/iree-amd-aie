@@ -1003,42 +1003,6 @@ def AMDAIE_LogicalObjectFifoFromMemrefOp
   let cppNamespace = "mlir::iree_compiler::AMDAIE";
 }
 
-def AMDAIE_LogicalObjectFifoLink
-    : AMDAIE_Op<"logicalobjectfifo.link", [AttrSizedOperandSegments]> {
-  let summary = "Link DMA operations operating on a logical objectFifo.";
-  let description = [{
-    The `amdaie.logicalobjectfifo.link` operation explicitly links the DMA
-    operations operating on a logical objectFifo. This operation mimics the
-    `aie.objectFifo.link` operation and is useful as an intermediary before
-    conversion to the AIE dialect.
-
-    Example:
-    ```mlir
-    %1 = amdaie.logicalobjectfifo.from_memref %alloc, {%tile}
-      : memref<64x32xi32, 1> -> !amdaie.logicalobjectfifo<memref<64x32xi32, 1>>
-    %3 = amdaie.circular_dma_cpy_nd(%1[] [] [], %0[] [] [])
-      : (!amdaie.logicalobjectfifo<memref<32x64xi32, 1>>,
-      !amdaie.logicalobjectfifo<memref<32x1024xi32>>)
-    %4 = amdaie.circular_dma_cpy_nd(%2[] [] [],
-      %1[%c0, %c0, %c0] [%c8, %c32, %c8] [%c8, %c64, %c1])
-      : (!amdaie.logicalobjectfifo<memref<8x8x4x8xi32, 2>>,
-      !amdaie.logicalobjectfifo<memref<32x64xi32, 1>>)
-    amdaie.logicalobjectfifo.link[%3] -> [%4] ()
-    ```
-    Here, two circular DMA operations operating on logical objectFifo `%1` are
-    linked explicitly through the `amdaie.logicalobjectfifo.link` operation.
-  }];
-
-  let arguments = (
-    ins Variadic<Index>:$ins,
-        Variadic<Index>:$outs
-  );
-
-  let assemblyFormat = [{
-    `[` ($ins^)? `]` `->` `[` ($outs^)? `]` `(` `)` attr-dict
-  }];
-}
-
 def AMDAIE_LogicalObjectFifoPlaceholderOp: 
     AMDAIE_Op<"logicalobjectfifo.placeholder", [
       LogicalObjFifoOpInterface, Pure]> {
