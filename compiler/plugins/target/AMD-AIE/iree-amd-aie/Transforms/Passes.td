@@ -415,8 +415,8 @@ def AMDAIEConvertToDma :
   Pass<"iree-amdaie-convert-to-dma", ""> {
   let summary = "Convert linalg ops to AMDAIE DMA ops on logical objectFifos.";
   let description = [{
-   Converts/lowers linalg.copy, linalg_ext.pack, and linalg_ext.unpack ops to
-   dma operations. For example, given allocactions,
+   Converts/lowers linalg.copy, iree_linalg_ext.pack, and iree_linalg_ext.unpack 
+   ops to dma operations. For example, given allocactions,
 
     ```mlir
     %src = memref.alloc() : memref<8x16xi32, 1>
@@ -441,10 +441,9 @@ def AMDAIEConvertToDma :
                            !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>)
     ```
 
-    The current approach taken with linalg.copy operations is to lower them
-    to identity iree.linalg_ext.pack/unpack operations, and then rely on the
-    lowering of iree.linalg_ext.pack/unpack to dma operations to handle the
-    actual lowering to DMAs.
+    The approach for converting linalg.copy operations is to first convert them
+    to identity iree_linalg_ext dialect pack/unpack operations, and then rely on 
+    the lowering of pack/unpack to dma operations to do the heavy lifting.
   }
 
   }];
