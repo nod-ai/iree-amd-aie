@@ -33,12 +33,12 @@ static LogicalResult bufferizeTemporaryAllocInCoreOp(
     SmallVector<Operation *> &toBeErased) {
   // Step 1. Get all buffers within a CoreOp.
   // TODO(avarma): All temporary buffers, if present, are at the beginning of
-  // the
-  //               e2e computation within each coreOp and their corresponding
-  //               dealloc ops mark the end of the e2e computation. Therefore we
-  //               are, in order to ensure reuse of the buffer space,
-  //               considering all memref.allocs before the first dealloc op as
-  //               unique set of temporary buffers.
+  //               the e2e computation within each coreOp and their
+  //               corresponding dealloc ops mark the end of the e2e
+  //               computation. Therefore we are, in order to ensure reuse of
+  //               the buffer space, considering all memref.allocs before the
+  //               first dealloc op as unique set of temporary buffers. Revisit
+  //               this logic later if needed.
   SmallVector<memref::AllocOp> allocOps;
   unsigned numOfUniqueAllocOps = 0;
   bool foundDeallocOp = false;
