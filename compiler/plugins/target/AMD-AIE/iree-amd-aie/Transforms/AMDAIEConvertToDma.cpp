@@ -10,13 +10,14 @@
 #include "iree/compiler/Dialect/LinalgExt/IR/LinalgExtDialect.h"
 #include "iree/compiler/Dialect/LinalgExt/IR/LinalgExtOps.h"
 #include "llvm/Support/FormatVariadic.h"
-#include "mlir/Dialect/Arith/Utils/Utils.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Dialect/Utils/IndexingUtils.h"
 #include "mlir/Pass/Pass.h"
 
-#define DEBUG_TYPE "iree-amdaie-pack-to-dma"
+#define DEBUG_TYPE "iree-amdaie-convert-to-dma"
+
+
 
 namespace mlir::iree_compiler::AMDAIE {
 
@@ -302,24 +303,75 @@ LogicalResult rewriteAsDma(PackOrUnpackOp op, IRRewriter &rewriter) {
   return rewriteAsDma(rewriter, op, input, output, innerTiles);
 }
 
+/// Convert a linalg.copy operation on 2 memrefs to an equivalent pack/unpack
+/// operation. If the linalg.copy operation is to a memory closer to the
+/// core it is converted to a pack operation, otherwise an unpack operation.
+///
+/// Note: we could convert all copies to packs, but it would be potentially
+/// confusing to have packs ops moving data away from cores.
+LogicalResult copyToPack(IRRewriter &rewriter, linalg::CopyOp copyOp) {
+  if (copyOp.getNumOperands() != 2 || copyOp.getNumResults() != 0) {
+    copyOp.emitOpError()
+        << "has " << copyOp.getNumOperands() << " operands and "
+        << copyOp.getNumResults()
+        << " results. It must have 2 operands and 0 results to convert "
+           "to an iree.linalg_ext dialect pack/unpack operation";
+    return failure();
+  }
+  // Setting up the 'identity' pack/unpack:
+  ArrayRef<int64_t> innerDimsPos{};
+  ArrayRef<OpFoldResult> innerTiles{};
+
+  Value src = copyOp.getOperand(0);
+  Value dst = copyOp.getOperand(1);
+
+  // MemRefTypes with no memory space attribute return 0 here, so this is safe.
+  uint32_t srcMemspace = cast<MemRefType>(src.getType()).getMemorySpaceAsInt();
+  uint32_t dstMemspace = cast<MemRefType>(dst.getType()).getMemorySpaceAsInt();
+  const bool towardsCore = srcMemspace <= dstMemspace;
+
+  rewriter.setInsertionPoint(copyOp);
+  if (towardsCore) {
+    rewriter.replaceOpWithNewOp<IREE::LinalgExt::PackOp>(
+        copyOp, src, dst, innerDimsPos, innerTiles);
+  } else {
+    rewriter.replaceOpWithNewOp<IREE::LinalgExt::UnPackOp>(
+        copyOp, src, dst, innerDimsPos, innerTiles);
+  }
+
+  return success();
+}
+
 };  // namespace
 
-class AMDAIEPackToDmaPass
-    : public impl::AMDAIEPackToDmaBase<AMDAIEPackToDmaPass> {
+class AMDAIEConvertToDmaPass
+    : public impl::AMDAIEConvertToDmaBase<AMDAIEConvertToDmaPass> {
  public:
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<tensor::TensorDialect, linalg::LinalgDialect,
                     IREE::LinalgExt::IREELinalgExtDialect, AMDAIEDialect>();
   }
 
-  AMDAIEPackToDmaPass() = default;
-  AMDAIEPackToDmaPass(const AMDAIEPackToDmaPass &pass){};
+  AMDAIEConvertToDmaPass() = default;
+  AMDAIEConvertToDmaPass(const AMDAIEConvertToDmaPass &pass){};
   void runOnOperation() override;
 };
 
-void AMDAIEPackToDmaPass::runOnOperation() {
+void AMDAIEConvertToDmaPass::runOnOperation() {
   MLIRContext *context = &getContext();
   IRRewriter rewriter(context);
+
+  // Convert all linalg.copy to iree_linalg_ext.pack/unpack ops. We then
+  // bootstrap the work done for lowering the pack/unpack op to dmas as the next
+  // step. This is easy to implement, but not the most direct lowering, so
+  // we might want to revisit this.
+  WalkResult convertCopiesWalkResult =
+      getOperation()->walk([&rewriter](linalg::CopyOp copyOp) {
+        if (failed(copyToPack(rewriter, copyOp)))
+          return WalkResult::interrupt();
+        return WalkResult::advance();
+      });
+  if (convertCopiesWalkResult.wasInterrupted()) return signalPassFailure();
 
   auto walkResult = getOperation()->walk(
       [&rewriter](IREE::LinalgExt::PackOp op) -> WalkResult {
@@ -339,7 +391,7 @@ void AMDAIEPackToDmaPass::runOnOperation() {
   if (walkResult.wasInterrupted()) signalPassFailure();
 }
 
-std::unique_ptr<Pass> createAMDAIEPackToDmaPass() {
-  return std::make_unique<AMDAIEPackToDmaPass>();
+std::unique_ptr<Pass> createAMDAIEConvertToDmaPass() {
+  return std::make_unique<AMDAIEConvertToDmaPass>();
 }
 }  // namespace mlir::iree_compiler::AMDAIE

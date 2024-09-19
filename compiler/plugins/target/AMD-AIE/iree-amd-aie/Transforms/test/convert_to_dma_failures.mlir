@@ -1,4 +1,4 @@
-// RUN: iree-opt %s --iree-amdaie-pack-to-dma -verify-diagnostics
+// RUN: iree-opt %s --iree-amdaie-convert-to-dma -verify-diagnostics
 
 #map = affine_map<()[s0] -> (s0 * 8)>
 

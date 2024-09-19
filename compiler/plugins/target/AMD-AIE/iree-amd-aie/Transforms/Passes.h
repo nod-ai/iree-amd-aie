@@ -209,9 +209,9 @@ std::unique_ptr<Pass> createAMDAIEObjFifoBufferizationPass();
 std::unique_ptr<Pass> createAMDAIEPackAndTransposePass(
     AMDAIEPackAndTransposeOptions options = {});
 
-/// Create pass to lower pack/unpack ops to AMDAIE DMA ops operating on 
+/// Create pass to lower copy/pack/unpack ops to AMDAIE DMA ops operating on
 /// logical objectFifos.
-std::unique_ptr<Pass> createAMDAIEPackToDmaPass();
+std::unique_ptr<Pass> createAMDAIEConvertToDmaPass();
 
 /// Create a pass to pad MatmulOp.
 std::unique_ptr<Pass> createAMDAIEPadPass(AMDAIEPadOptions options = {});

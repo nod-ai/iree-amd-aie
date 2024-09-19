@@ -584,7 +584,7 @@ void buildAMDAIETransformPassPipeline(OpPassManager &variantPassManager,
 void addAMDAIEObjectFifoLoweringPasses(OpPassManager &passManager) {
   passManager.addPass(createEraseHALDescriptorTypeFromMemRefPass());
   passManager.addPass(memref::createFoldMemRefAliasOpsPass());
-  passManager.addPass(createAMDAIEPackToDmaPass());
+  passManager.addPass(createAMDAIEConvertToDmaPass());
 
   passManager.addPass(createAMDAIENormalizeLoopBoundsPass());
   passManager.addPass(createAMDAIEInsertCoresPass());

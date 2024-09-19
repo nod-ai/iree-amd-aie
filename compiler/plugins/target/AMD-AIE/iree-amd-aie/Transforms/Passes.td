@@ -411,10 +411,43 @@ def AMDAIEPackAndTranspose :
   ];
 }
 
-def AMDAIEPackToDma :
-  Pass<"iree-amdaie-pack-to-dma", ""> {
-  let summary = "Convert pack/unpack ops to AMDAIE DMA ops operating on logical objectFifos.";
-  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEPackToDmaPass()";
+def AMDAIEConvertToDma :
+  Pass<"iree-amdaie-convert-to-dma", ""> {
+  let summary = "Convert linalg ops to AMDAIE DMA ops on logical objectFifos.";
+  let description = [{
+   Converts/lowers linalg.copy, iree_linalg_ext.pack, and iree_linalg_ext.unpack
+   ops to dma operations. For example, given allocactions,
+
+    ```mlir
+    %src = memref.alloc() : memref<8x16xi32, 1>
+    %dst = memref.alloc() : memref<1x1x8x16xi32, 1>
+    ```
+
+    and a packing copy operation between them,
+    ```mlir
+    iree_linalg_ext.pack %src inner_dims_pos = [0, 1] inner_tiles = [8, 16]
+                    into %dst : (memref<8x16xi32, 1> memref<1x1x8x16xi32, 1>)
+    ```
+
+    the pack gets lowered to,
+    ```mlir
+    %0 = amdaie.logicalobjectfifo.from_memref %dst, {} : memref<1x1x8x16xi32, 1>
+                              -> !amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>
+    %1 = amdaie.logicalobjectfifo.from_memref %src, {} : memref<8x16xi32, 1>
+                                -> !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>
+    %2 = amdaie.dma_cpy_nd(%0[0, 0, 0, 0] [1, 1, 8, 16] [128, 128, 16, 1],
+                           %1[0, 0, 0, 0] [1, 1, 8, 16] [128, 16, 16, 1]) :
+                          (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>,
+                           !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>)
+    ```
+
+    The approach for converting linalg.copy operations is to first convert them
+    to identity iree_linalg_ext dialect pack/unpack operations, and then rely on
+    the lowering of pack/unpack to dma operations to do the heavy lifting.
+  }
+
+  }];
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEConvertToDmaPass()";
 }
 
 def AMDAIEPad :
