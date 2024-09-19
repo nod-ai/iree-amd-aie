@@ -304,10 +304,12 @@ LogicalResult rewriteAsDma(PackOrUnpackOp op, IRRewriter &rewriter) {
 }
 
 /// Convert a linalg.copy operation on 2 memrefs to an equivalent pack/unpack
-/// operation. If the linalg.copy operation is to a memory close closer to the
+/// operation. If the linalg.copy operation is to a memory closer to the
 /// core it is converted to a pack operation, otherwise an unpack operation.
+///
+/// Note: we could convert all copies to packs, but it would be potentially
+/// confusing to have packs ops moving data away from cores. 
 LogicalResult copyToPack(IRRewriter &rewriter, linalg::CopyOp copyOp) {
-  (void)rewriter;
   if (copyOp.getNumOperands() != 2 || copyOp.getNumResults() != 0) {
     copyOp.emitOpError()
         << "has " << copyOp.getNumOperands() << " operands and "
@@ -326,16 +328,6 @@ LogicalResult copyToPack(IRRewriter &rewriter, linalg::CopyOp copyOp) {
   // MemRefTypes with no memory space attribute return 0 here, so this is safe.
   uint32_t srcMemspace = cast<MemRefType>(src.getType()).getMemorySpaceAsInt();
   uint32_t dstMemspace = cast<MemRefType>(dst.getType()).getMemorySpaceAsInt();
-  // Memory space 0 : L3
-  // Memory space 1 : L2
-  // Memory space 2 : L1
-  // So the copy is towards the core if the source memory space is less than
-  // the destination memory space. We'll convert copies towards the core to
-  // packs and all other copies to unpacks, just so that we don't ever have have
-  // pack ops which move data away from the core -- while valid this will be
-  // potentially confusing IR as packs usually go towards the core, and it might
-  // break implicit developer assumptions if packs are used to move data away
-  // from the core.
   const bool towardsCore = srcMemspace <= dstMemspace;
 
   rewriter.setInsertionPoint(copyOp);
