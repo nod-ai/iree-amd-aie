@@ -15,6 +15,7 @@ iree_lit_test_suite(
     "matmul_pack_peel_objectfifo_e2e.mlir"
     "matmul_pad_pack_air_e2e.mlir"
     "xdna_oplib_plugin.mlir"
+    "this_does_not_exist.mlir"
   TOOLS
     ${IREE_LLD_TARGET}
     FileCheck

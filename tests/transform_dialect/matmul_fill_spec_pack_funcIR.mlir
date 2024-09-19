@@ -4,6 +4,8 @@
 // In this strategy, we use pack operations for data movement from L3 to L2, and L2 to L1.
 // In order to keep initialization in L1, the first iteration of scf.for loop is peeled.
 
+
+
 #pipeline_layout = #hal.pipeline.layout<push_constants = 0, sets = [
   #hal.descriptor_set.layout<0, bindings = [
     #hal.descriptor_set.binding<0, storage_buffer>,
@@ -12,6 +14,7 @@
   ]>
 ]>
 func.func @matmul_example() {
+  This line should break iree-opt
   %c0_i32 = arith.constant 0: i32
   %c0 = arith.constant 0 : index
   %arg0_binding = hal.interface.binding.subspan layout(#pipeline_layout) set(0) binding(0) offset(%c0) flags(ReadOnly) : !flow.dispatch.tensor<readonly:tensor<16x256xi8>>
