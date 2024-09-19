@@ -308,7 +308,7 @@ LogicalResult rewriteAsDma(PackOrUnpackOp op, IRRewriter &rewriter) {
 /// core it is converted to a pack operation, otherwise an unpack operation.
 ///
 /// Note: we could convert all copies to packs, but it would be potentially
-/// confusing to have packs ops moving data away from cores. 
+/// confusing to have packs ops moving data away from cores.
 LogicalResult copyToPack(IRRewriter &rewriter, linalg::CopyOp copyOp) {
   if (copyOp.getNumOperands() != 2 || copyOp.getNumResults() != 0) {
     copyOp.emitOpError()
