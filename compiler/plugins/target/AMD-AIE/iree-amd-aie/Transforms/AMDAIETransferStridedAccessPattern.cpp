@@ -30,21 +30,21 @@ static SmallVector<OpFoldResult> copyExcludeDims(
   return results;
 };
 
-/// Two dimensions (i and innermost) from the L3 side dma addressing can be
-/// combined if the following conditions are satisfied:
-/// 1) stride[i] = innermost_stride * innermost_size;
+/// Utility to check if any dimension from the L3 dma addressing can be combined
+/// with the innermost dimension, if so return the position of the dimension.
+/// Two dimensions (i and innermost) can be combined if the following conditions
+/// are satisfied: 1) stride[i] = innermost_stride * innermost_size;
 /// 2) offset[i] = 0.
-static bool isL3AddressingCombinable(SmallVector<OpFoldResult> &dmaOffsets,
-                                     SmallVector<OpFoldResult> &dmaSizes,
-                                     SmallVector<OpFoldResult> &dmaStrides,
-                                     size_t &dimForCombine) {
+static FailureOr<size_t> isL3AddressingCombinable(
+    SmallVector<OpFoldResult> &dmaOffsets, SmallVector<OpFoldResult> &dmaSizes,
+    SmallVector<OpFoldResult> &dmaStrides) {
   // Offsets could be dynamic but sizes and strides should be static.
   std::optional<SmallVector<int64_t>> maybeSizes =
       getConstantIntValues(dmaSizes);
   std::optional<SmallVector<int64_t>> maybeStrides =
       getConstantIntValues(dmaStrides);
   if (!maybeSizes.has_value() || !maybeSizes.has_value()) {
-    return false;
+    return failure();
   }
   SmallVector<int64_t> sizeVals = maybeSizes.value();
   SmallVector<int64_t> strideVals = maybeStrides.value();
@@ -61,16 +61,16 @@ static bool isL3AddressingCombinable(SmallVector<OpFoldResult> &dmaOffsets,
   };
 
   int64_t innerDimTotal = strideVals.back() * sizeVals.back();
-  dimForCombine = getPos(strideVals, innerDimTotal);
-  if (dimForCombine >= (dmaSizes.size() - 1)) return false;
+  size_t dimForCombine = getPos(strideVals, innerDimTotal);
+  if (dimForCombine >= (dmaSizes.size() - 1)) return failure();
 
   std::optional<int64_t> offsetAtPos =
       getConstantIntValue(dmaOffsets[dimForCombine]);
-  if (!offsetAtPos.has_value() || offsetAtPos.value() != 0) return false;
-  return true;
+  if (!offsetAtPos.has_value() || offsetAtPos.value() != 0) return failure();
+  return dimForCombine;
 }
 
-/// Utility to check if L2 addressing is linear. Note here the assumption is
+/// Utility to check if L2 dma addressing is linear. Note here the assumption is
 /// the dma ops are already canonicalized, so that the L2 addressing should be
 /// empty or 1-d vectors.
 static bool isL2AddressingLinear(SmallVector<OpFoldResult> &dmaOffsets,
@@ -109,20 +109,19 @@ static FailureOr<bool> checkConnectionUsers(AMDAIE::ConnectionOp connectionOp) {
         dmaOffsets = dmaOp.getSourceMixedOffsets();
         dmaSizes = dmaOp.getSourceMixedSizes();
         dmaStrides = dmaOp.getSourceMixedStrides();
-      }
-      if (dmaOp.hasTargetAddressing()) {
+      } else {
         dmaOffsets = dmaOp.getTargetMixedOffsets();
         dmaSizes = dmaOp.getTargetMixedSizes();
         dmaStrides = dmaOp.getTargetMixedStrides();
       }
-      size_t dimForCombine = dmaSizes.size();
-      if (!isL3AddressingCombinable(dmaOffsets, dmaSizes, dmaStrides,
-                                    dimForCombine)) {
+
+      if (failed(isL3AddressingCombinable(dmaOffsets, dmaSizes, dmaStrides))) {
         return false;
       }
     }
     // Check if L2 addressing is linear.
     if (auto circularDma = dyn_cast<AMDAIE::NpuCircularDmaCpyNdOp>(user)) {
+      // Circular dma op could have both source and target addressing empty.
       if (circularDma.hasSourceAddressing() &&
           circularDma.hasTargetAddressing()) {
         circularDma.emitOpError()
@@ -133,6 +132,7 @@ static FailureOr<bool> checkConnectionUsers(AMDAIE::ConnectionOp connectionOp) {
       SmallVector<OpFoldResult> circularOffsets;
       SmallVector<OpFoldResult> circularSizes;
       SmallVector<OpFoldResult> circularStrides;
+
       if (circularDma.hasSourceAddressing()) {
         circularOffsets = circularDma.getSourceMixedOffsets();
         circularSizes = circularDma.getSourceMixedSizes();
@@ -152,7 +152,88 @@ static FailureOr<bool> checkConnectionUsers(AMDAIE::ConnectionOp connectionOp) {
   return true;
 }
 
-/// Walk through all users of a connection op and change the dma addressing from
+/// Utility to change the addressing of NpuDmaCpyNdOp and NpuCircularDmaCpyNdOp
+/// in place. If the source of NpuDmaCpyNdOp is in L3, then the source
+/// addressing from NpuDmaCpyNdOp and target addressing from
+/// NpuCircularDmaCpyNdOp need to be changed. The other way around.
+static LogicalResult createNewAddressing(
+    MLIRContext *ctx, SmallVector<OpFoldResult> &dmaOffsets,
+    SmallVector<OpFoldResult> &dmaSizes, SmallVector<OpFoldResult> &dmaStrides,
+    SmallVector<OpFoldResult> &circularDmaOffsets,
+    SmallVector<OpFoldResult> &circularDmaSizes,
+    SmallVector<OpFoldResult> &circularDmaStrides) {
+  IRRewriter rewriter(ctx);
+
+  // Make copies of L3 original sizes and strides which will be needed later
+  // when creating new L2 addressing.
+  SmallVector<OpFoldResult> l3OrigSizes = dmaSizes;
+  SmallVector<OpFoldResult> l3OrigStrides = dmaStrides;
+
+  FailureOr<size_t> isCombinable =
+      isL3AddressingCombinable(dmaOffsets, dmaSizes, dmaStrides);
+  if (failed(isCombinable)) {
+    return emitError(rewriter.getUnknownLoc())
+           << "failed to get dim position for combination";
+  }
+  size_t dimForCombine = isCombinable.value();
+
+  // Generate L3 side new source offsets/sizes/strides.
+  // Example: [[0, 0, 0] [2, 32, 32] [32, 128, 1]] will become
+  // [[0, 0] [32, 64] [128, 1]] after the first and the innermost dims are
+  // combined.
+  DenseSet<size_t> excludeDims = {dimForCombine};
+  dmaOffsets = copyExcludeDims(dmaOffsets, excludeDims);
+  dmaStrides = copyExcludeDims(dmaStrides, excludeDims);
+
+  std::optional<SmallVector<int64_t>> maybeSizes =
+      getConstantIntValues(l3OrigSizes);
+  std::optional<SmallVector<int64_t>> maybeStrides =
+      getConstantIntValues(l3OrigStrides);
+  if (!maybeSizes.has_value() || !maybeSizes.has_value()) {
+    return emitError(rewriter.getUnknownLoc())
+           << "failed to get original source sizes / strides.";
+  }
+  SmallVector<int64_t> sizeVals = maybeSizes.value();
+  SmallVector<int64_t> strideVals = maybeStrides.value();
+
+  int64_t innerDimTotal = strideVals.back() * sizeVals.back();
+  int64_t newInnerSize = sizeVals[dimForCombine] * innerDimTotal;
+
+  size_t lastIndex = l3OrigSizes.size() - 1;
+  excludeDims.insert(lastIndex);
+  dmaSizes = copyExcludeDims(dmaSizes, excludeDims);
+  dmaSizes.push_back(getAsIndexOpFoldResult(ctx, newInnerSize));
+
+  // Generate L2 side new target offsets/sizes/strides.
+  SmallVector<OpFoldResult> newCircularOffsets(l3OrigSizes.size(),
+                                               rewriter.getIndexAttr(0));
+  circularDmaOffsets = newCircularOffsets;
+
+  circularDmaSizes = copyExcludeDims(l3OrigSizes, excludeDims);
+  circularDmaSizes.push_back(
+      getAsIndexOpFoldResult(ctx, sizeVals[dimForCombine]));
+  circularDmaSizes.push_back(getAsIndexOpFoldResult(ctx, innerDimTotal));
+
+  // Function to create new strides for NpuCircularDmaCpyNdOp.
+  auto getNewL2Strides = [&](SmallVector<int64_t> values) {
+    SmallVector<OpFoldResult> res = {getAsIndexOpFoldResult(ctx, 1)};
+    int64_t initial = values.back();
+    // Leave out one dimension for insertion afterwards
+    for (size_t i = values.size() - 2; i > 0; i--) {
+      initial *= values[i];
+      res.push_back(getAsIndexOpFoldResult(ctx, initial));
+    }
+    return llvm::to_vector(llvm::reverse(res));
+  };
+
+  circularDmaStrides = getNewL2Strides(sizeVals);
+  circularDmaStrides.insert(
+      circularDmaStrides.begin() + dimForCombine,
+      getAsIndexOpFoldResult(ctx, strideVals[dimForCombine]));
+  return success();
+}
+
+/// Walk through all users of a connection op and change the dma addressing of
 /// NpuDmaCpyNdOp and NpuCircularDmaCpyNdOp at the same time. A connection op
 /// can have multiple NpuDmaCpyNdOp users (with different offsets) but only one
 /// NpuCircularDmaCpyNdOp user.
@@ -181,18 +262,7 @@ static LogicalResult transferDmaAddressing(MLIRContext *ctx,
   SmallVector<OpFoldResult> tgtCircularStrides =
       circularDma.getTargetMixedStrides();
 
-  // Function to create new dma strides for NpuCircularDmaCpyNdOp.
-  auto getNewL2Strides = [&](SmallVector<int64_t> values) {
-    SmallVector<OpFoldResult> res = {getAsIndexOpFoldResult(ctx, 1)};
-    int64_t initial = values.back();
-    for (size_t i = values.size() - 2; i > 0; i--) {
-      initial *= values[i];
-      res.push_back(getAsIndexOpFoldResult(ctx, initial));
-    }
-    return llvm::to_vector(llvm::reverse(res));
-  };
-
-  // Change all L3 addressing first and L2 addressing at last.
+  // Change the source/target addressing of all users from a connection op.
   for (Operation *user : connectionOp->getUsers()) {
     if (auto dmaOp = dyn_cast<AMDAIE::NpuDmaCpyNdOp>(user)) {
       SmallVector<OpFoldResult> srcOffsets = dmaOp.getSourceMixedOffsets();
@@ -202,126 +272,32 @@ static LogicalResult transferDmaAddressing(MLIRContext *ctx,
       SmallVector<OpFoldResult> tgtSizes = dmaOp.getTargetMixedSizes();
       SmallVector<OpFoldResult> tgtStrides = dmaOp.getTargetMixedStrides();
 
-      // Generate new L3 source addressing, and new L2 target addressing.
+      // Generate new L3 source addressing, and L2 target addressing.
       if (dmaOp.getSourceMemorySpaceAsUInt() == 0) {
         if (circularDma.getTargetMemorySpaceAsUInt() != 1) {
           dmaOp.emitOpError() << "has source in L3, but circular dma doesn't "
                                  "have target in L2.";
           return failure();
         }
-
-        // L3 original sizes and strides are needed to create new L2 addressing.
-        SmallVector<OpFoldResult> l3OrigSizes = srcSizes;
-        SmallVector<OpFoldResult> l3OrigStrides = srcStrides;
-
-        size_t dimForCombine = srcSizes.size();
-        if (!isL3AddressingCombinable(srcOffsets, srcSizes, srcStrides,
-                                      dimForCombine)) {
-          dmaOp.emitOpError() << "failed to get dim position for combination";
+        if (failed(createNewAddressing(ctx, srcOffsets, srcSizes, srcStrides,
+                                       tgtCircularOffsets, tgtCircularSizes,
+                                       tgtCircularStrides))) {
           return failure();
         }
-
-        // Generate L3 side new source offsets/sizes/strides.
-        // Example: [[0, 0, 0] [2, 32, 32] [32, 128, 1]] will become
-        // [[0, 0] [32, 64] [128, 1]] after the first and the innermost dims are
-        // combined.
-        DenseSet<size_t> excludeDims = {dimForCombine};
-        srcOffsets = copyExcludeDims(srcOffsets, excludeDims);
-        srcStrides = copyExcludeDims(srcStrides, excludeDims);
-
-        std::optional<SmallVector<int64_t>> maybeSizes =
-            getConstantIntValues(l3OrigSizes);
-        std::optional<SmallVector<int64_t>> maybeStrides =
-            getConstantIntValues(l3OrigStrides);
-        if (!maybeSizes.has_value() || !maybeSizes.has_value()) {
-          dmaOp.emitOpError()
-              << "failed to get original source sizes / strides.";
-          return failure();
-        }
-        SmallVector<int64_t> sizeVals = maybeSizes.value();
-        SmallVector<int64_t> strideVals = maybeStrides.value();
-
-        int64_t innerDimTotal = strideVals.back() * sizeVals.back();
-        int64_t newInnerSize = sizeVals[dimForCombine] * innerDimTotal;
-
-        size_t lastIndex = l3OrigSizes.size() - 1;
-        excludeDims.insert(lastIndex);
-        srcSizes = copyExcludeDims(srcSizes, excludeDims);
-        srcSizes.push_back(getAsIndexOpFoldResult(ctx, newInnerSize));
-
-        // Generate L2 side new target offsets/sizes/strides.
-        SmallVector<OpFoldResult> newCircularOffsets(l3OrigSizes.size(),
-                                                     rewriter.getIndexAttr(0));
-        tgtCircularOffsets = newCircularOffsets;
-        tgtCircularSizes = copyExcludeDims(l3OrigSizes, excludeDims);
-        tgtCircularSizes.push_back(
-            getAsIndexOpFoldResult(ctx, sizeVals[dimForCombine]));
-        tgtCircularSizes.push_back(getAsIndexOpFoldResult(ctx, innerDimTotal));
-        tgtCircularStrides = getNewL2Strides(sizeVals);
-        tgtCircularStrides.insert(
-            tgtCircularStrides.begin() + dimForCombine,
-            getAsIndexOpFoldResult(ctx, strideVals[dimForCombine]));
       }
 
-      // Generate new L3 target addressing, and new L2 source addressing.
+      // Generate new L3 target addressing, and L2 source addressing.
       if (dmaOp.getTargetMemorySpaceAsUInt() == 0) {
         if (circularDma.getSourceMemorySpaceAsUInt() != 1) {
           dmaOp.emitOpError() << "has target in L3, but circular dma doesn't "
                                  "have source in L2.";
           return failure();
         }
-
-        // L3 original sizes and strides are needed to create new L2 addressing.
-        SmallVector<OpFoldResult> l3OrigSizes = tgtSizes;
-        SmallVector<OpFoldResult> l3OrigStrides = tgtStrides;
-
-        size_t dimForCombine = tgtSizes.size();
-        if (!isL3AddressingCombinable(tgtOffsets, tgtSizes, tgtStrides,
-                                      dimForCombine)) {
-          dmaOp.emitOpError() << "failed to get dim position for combination";
+        if (failed(createNewAddressing(ctx, tgtOffsets, tgtSizes, tgtStrides,
+                                       srcCircularOffsets, srcCircularSizes,
+                                       srcCircularStrides))) {
           return failure();
         }
-
-        // Generate L3 side new source offsets/sizes/strides.
-        // Example: [[0, 0, 0] [2, 32, 32] [32, 128, 1]] will become
-        // [[0, 0] [32, 64] [128, 1]] after the first and the innermost dims are
-        // combined.
-        DenseSet<size_t> excludeDims = {dimForCombine};
-        tgtOffsets = copyExcludeDims(tgtOffsets, excludeDims);
-        tgtStrides = copyExcludeDims(tgtStrides, excludeDims);
-
-        std::optional<SmallVector<int64_t>> maybeSizes =
-            getConstantIntValues(l3OrigSizes);
-        std::optional<SmallVector<int64_t>> maybeStrides =
-            getConstantIntValues(l3OrigStrides);
-        if (!maybeSizes.has_value() || !maybeSizes.has_value()) {
-          dmaOp.emitOpError()
-              << "failed to get original target sizes / strides.";
-          return failure();
-        }
-        SmallVector<int64_t> sizeVals = maybeSizes.value();
-        SmallVector<int64_t> strideVals = maybeStrides.value();
-
-        int64_t innerDimTotal = strideVals.back() * sizeVals.back();
-        int64_t newInnerSize = sizeVals[dimForCombine] * innerDimTotal;
-
-        size_t lastIndex = l3OrigSizes.size() - 1;
-        excludeDims.insert(lastIndex);
-        tgtSizes = copyExcludeDims(tgtSizes, excludeDims);
-        tgtSizes.push_back(getAsIndexOpFoldResult(ctx, newInnerSize));
-
-        // Generate L2 side new target offsets/sizes/strides.
-        SmallVector<OpFoldResult> newCircularOffsets(l3OrigSizes.size(),
-                                                     rewriter.getIndexAttr(0));
-        srcCircularOffsets = newCircularOffsets;
-        srcCircularSizes = copyExcludeDims(l3OrigSizes, excludeDims);
-        srcCircularSizes.push_back(
-            getAsIndexOpFoldResult(ctx, sizeVals[dimForCombine]));
-        srcCircularSizes.push_back(getAsIndexOpFoldResult(ctx, innerDimTotal));
-        srcCircularStrides = getNewL2Strides(sizeVals);
-        srcCircularStrides.insert(
-            srcCircularStrides.begin() + dimForCombine,
-            getAsIndexOpFoldResult(ctx, strideVals[dimForCombine]));
       }
 
       // Replace the npu.dma_cpy_nd with the combined access pattern.
@@ -371,10 +347,12 @@ void AMDAIETransferStridedAccessPatternPass::runOnOperation() {
     if (connectionOps.contains(connectionOp)) {
       return WalkResult::advance();
     }
-    if (failed(checkConnectionUsers(connectionOp))) {
+
+    FailureOr<bool> checkRes = checkConnectionUsers(connectionOp);
+    if (failed(checkRes)) {
       return WalkResult::interrupt();
     }
-    if (checkConnectionUsers(connectionOp) == true) {
+    if (checkRes.value()) {
       connectionOps.insert(connectionOp);
     }
     return WalkResult::advance();
