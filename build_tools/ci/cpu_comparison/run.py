@@ -879,7 +879,10 @@ def all_tests(
     # if no partition is found, raise error.
     for test in test_set:
         if test not in partition_names:
-            raise ValueError(f"Test set '{test}' not found in available test sets.")
+            errorMessage = f"Test set '{test}' not found in available test sets. The available test sets are:"
+            for name in partition_names:
+                errorMessage += f"\n  {name}"
+            raise ValueError(errorMessage)
         partition = map_to_partition[test]
         partition.run(config)
 

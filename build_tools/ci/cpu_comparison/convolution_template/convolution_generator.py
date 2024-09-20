@@ -14,7 +14,7 @@ class conv_2d_nhwc_hwcf:
         return "{}x{}x{}x{}x{}".format(N, OH, OW, OC, output_element_type)
 
 
-class conv_2d_nchw_hwcf:
+class conv_2d_nchw_fchw:
     def get_input_type(self, N, IC, IH, IW, input_element_type):
         return "{}x{}x{}x{}x{}".format(N, IC, IH, IW, input_element_type)
 
@@ -27,7 +27,7 @@ class conv_2d_nchw_hwcf:
 
 class depthwise_conv_2d_nhwc_hwc:
     def get_input_type(self, N, IH, IW, IC, input_element_type):
-        return "{}x{}x{}x{}".format(N, IH, IW, IC, input_element_type)
+        return "{}x{}x{}x{}x{}".format(N, IH, IW, IC, input_element_type)
 
     def get_kernel_type(self, KH, KW, IC, OC, kernel_element_type):
         if IC != OC:
@@ -35,7 +35,7 @@ class depthwise_conv_2d_nhwc_hwc:
         return "{}x{}x{}x{}".format(KH, KW, IC, kernel_element_type)
 
     def get_output_type(self, N, OH, OW, OC, output_element_type):
-        return "{}x{}x{}x{}".format(N, OH, OW, OC, output_element_type)
+        return "{}x{}x{}x{}x{}".format(N, OH, OW, OC, output_element_type)
 
 
 class ConvolutionMlirGenerator:
@@ -58,12 +58,17 @@ class ConvolutionMlirGenerator:
         IW=None,
         KW=None,
     ):
+        """
+        The class constructor creates a string of MLIR containing a function
+        containing a convolution operation.
+
+        Some of the parameters are optional, and can be inferred from the
+        other non-optional parameters.
+        """
 
         helper_map = {
             "conv_2d_nhwc_hwcf": conv_2d_nhwc_hwcf(),
-            "conv_2d_nchw_hwcf": conv_2d_nchw_hwcf(),
-            # Quantized version has same dimension mapping as non-conv version
-            "conv_2d_nhwc_hwcf_q": conv_2d_nhwc_hwcf(),
+            "conv_2d_nchw_fchw": conv_2d_nchw_fchw(),
             "depthwise_conv_2d_nhwc_hwc": depthwise_conv_2d_nhwc_hwc(),
         }
 
@@ -103,6 +108,9 @@ func.func @f_conv(%arg0: ${input_tensor_type},
             raise RuntimeError("Dilations must be a 2-element list")
 
         if conv_type not in helper_map:
+            # TODO(newling) for "conv_2d_nhwc_hwcf_q" the convolution takes 2
+            # additional operands, we'll need to insert another layer into
+            # the template for that (not difficult).
             raise RuntimeError(
                 "Unimplemented: convolution type {} not found in helper_map. Available options are: {}".format(
                     conv_type, helper_map.keys()
@@ -153,6 +161,7 @@ func.func @f_conv(%arg0: ${input_tensor_type},
         replace["KW"] = KW
         replace["input_element_type"] = input_element_type
         replace["output_element_type"] = output_element_type
+        replace["kernel_element_type"] = kernel_element_type
         replace["input_type"] = helper.get_input_type(N, IH, IW, IC, input_element_type)
         replace["kernel_type"] = helper.get_kernel_type(
             KH, KW, IC, OC, kernel_element_type
@@ -177,6 +186,7 @@ func.func @f_conv(%arg0: ${input_tensor_type},
         regex = re.compile("|".join(key_map_escaped))
 
         self.subbed = regex.sub(lambda m: str(replace[m.group(0)[2:-1]]), base_string)
+        print(self.subbed)
 
     def __str__(self):
         return self.subbed

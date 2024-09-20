@@ -3,6 +3,9 @@ import numpy as np
 import os
 from .convolution_generator import ConvolutionMlirGenerator
 
+# Hint for for testing locally:
+#    python -m pytest -s test_convolution_generator.py
+
 
 def stripWhitespace(s):
     """
@@ -60,5 +63,57 @@ func.func @f_conv(%arg0: tensor<1x100x200x10xbf16>,
     assert stripWhitespace(str(foo)) == stripWhitespace(expected)
 
 
-# Hint for for testing locally:
-#    python -m pytest -s test_convolution_generator.py
+def test_depthwise_conv_2d_nhwc_hwc():
+    output = str(
+        ConvolutionMlirGenerator(
+            conv_type="depthwise_conv_2d_nhwc_hwc",
+            IH=9,
+            IC=4,
+            KH=3,
+            dilations=[1, 3],
+            input_element_type="bf16",
+            output_element_type="f32",
+        )
+    )
+
+    to_find = [
+        "input 1x9x9x4xbf16",
+        "input 3x3x4xbf16",
+        "-> tensor<1x7x3x4xf32>",
+        "linalg.depthwise_conv_2d_nhwc_hwc",
+        "dilations = dense<[1,3]> : vector<2xi64>",
+        "ins(%arg0, %arg1 : tensor<1x9x9x4xbf16>, tensor<3x3x4xbf16>)",
+        "outs(%1 : tensor<1x7x3x4xf32>)",
+        "return %2 : tensor<1x7x3x4xf32>",
+    ]
+
+    # Check that each element of 'to_find' appears in output:
+    for s in to_find:
+        assert s in output
+
+
+def test_conv_2d_nchw_fchw():
+    output = str(
+        ConvolutionMlirGenerator(
+            conv_type="conv_2d_nchw_fchw",
+            IH=20,
+            IC=4,
+            OC=8,
+            KH=3,
+            KW=3,
+            strides=[2, 2],
+            input_element_type="i8",
+            output_element_type="i32",
+        )
+    )
+
+    to_find = [
+        "input 1x20x20x4xi8",
+        "input 3x3x4x8xi8",
+        "-> tensor<1x8x9x9xi32>",
+        "linalg.conv_2d_nchw_fchw",
+        "strides = dense<[2,2]> : vector<2xi64>",
+    ]
+
+    for s in to_find:
+        assert s in output
