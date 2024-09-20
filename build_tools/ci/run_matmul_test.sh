@@ -122,7 +122,7 @@ fi
 THIS_DIR="$(cd $(dirname $0) && pwd)"
 ROOT_DIR="$(cd $THIS_DIR/../.. && pwd)"
 
-GENERATOR="${ROOT_DIR}/tests/matmul/generate_e2e_matmul_tests.py"
+GENERATOR="${THIS_DIR}/generate_e2e_matmul_tests.py"
 # Verify that generator exists
 if [ ! -f "${GENERATOR}" ]; then
   echo "Generator script '${GENERATOR}' not found."

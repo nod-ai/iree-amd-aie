@@ -2,21 +2,19 @@
 // This script shows an example lowering matmul through pad based pipeline for AIE device.
 // In this strategy, we use pad operations for data movement from L3 to L2, and L2 to L1.
 
-#pipeline_layout = #hal.pipeline.layout<push_constants = 0, sets = [
-  #hal.descriptor_set.layout<0, bindings = [
-    #hal.descriptor_set.binding<0, storage_buffer>,
-    #hal.descriptor_set.binding<1, storage_buffer>,
-    #hal.descriptor_set.binding<2, storage_buffer>
-  ]>
+#pipeline_layout = #hal.pipeline.layout<bindings= [
+    #hal.pipeline.binding<storage_buffer, ReadOnly>,
+    #hal.pipeline.binding<storage_buffer, ReadOnly>,
+    #hal.pipeline.binding<storage_buffer>
 ]>
 func.func @matmul_i32() {
   %c0_i32 = arith.constant 0: i32
   %c0 = arith.constant 0 : index
-  %arg0_binding = hal.interface.binding.subspan layout(#pipeline_layout) set(0) binding(0) offset(%c0) flags(ReadOnly) : !flow.dispatch.tensor<readonly:tensor<8x16xi32>>
+  %arg0_binding = hal.interface.binding.subspan layout(#pipeline_layout)  binding(0) offset(%c0) flags(ReadOnly) : !flow.dispatch.tensor<readonly:tensor<8x16xi32>>
   %arg0 = flow.dispatch.tensor.load %arg0_binding, offsets = [0, 0], sizes = [8, 16], strides = [1, 1] : !flow.dispatch.tensor<readonly:tensor<8x16xi32>> -> tensor<8x16xi32>
-  %arg1_binding = hal.interface.binding.subspan layout(#pipeline_layout) set(0) binding(1) offset(%c0) flags(ReadOnly) : !flow.dispatch.tensor<readonly:tensor<16x8xi32>>
+  %arg1_binding = hal.interface.binding.subspan layout(#pipeline_layout)  binding(1) offset(%c0) flags(ReadOnly) : !flow.dispatch.tensor<readonly:tensor<16x8xi32>>
   %arg1 = flow.dispatch.tensor.load %arg1_binding, offsets = [0, 0], sizes = [16, 8], strides = [1, 1] : !flow.dispatch.tensor<readonly:tensor<16x8xi32>> -> tensor<16x8xi32>
-  %arg2_binding = hal.interface.binding.subspan layout(#pipeline_layout) set(0) binding(2) offset(%c0) flags(None) : !flow.dispatch.tensor<writeonly:tensor<8x8xi32>>
+  %arg2_binding = hal.interface.binding.subspan layout(#pipeline_layout)  binding(2) offset(%c0) flags(None) : !flow.dispatch.tensor<writeonly:tensor<8x8xi32>>
   %empty = tensor.empty() : tensor<8x8xi32>
   %0 = linalg.fill ins(%c0_i32 : i32) outs(%empty : tensor<8x8xi32>) -> tensor<8x8xi32>
   %1 = linalg.matmul ins(%arg0, %arg1 : tensor<8x16xi32>, tensor<16x8xi32>)
