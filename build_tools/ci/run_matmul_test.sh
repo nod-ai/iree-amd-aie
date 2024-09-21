@@ -182,7 +182,7 @@ function run_matmul_test() {
 
   local amd_aie_install_path="${IREE_INSTALL_DIR}"
 
-  local vitis_path="${VITIS}"
+  local vitis_path=""
 
   local use_chess="false"
 
@@ -540,16 +540,15 @@ run_matmul_test \
 # MLIR-AIR Matmul tests
 ###################################################################
 
-if [ -d "$VITIS" ]; then
-  run_matmul_test \
-      --name_prefix "ukern" \
-      --lower_to_aie_pipeline "air" \
-      --tile_pipeline "pad-pack" \
-      --lhs_rhs_type "bf16" \
-      --acc_type "f32" \
-      --m "256"  --k "256" --n "256" \
-      --use_ukernel "1"
-fi
+run_matmul_test \
+    --name_prefix "ukern" \
+    --lower_to_aie_pipeline "air" \
+    --tile_pipeline "pad-pack" \
+    --lhs_rhs_type "bf16" \
+    --acc_type "f32" \
+    --m "256"  --k "256" --n "256" \
+    --vitis_path  "${VITIS}" \
+    --use_ukernel "1"
 
 # Example of a run with a group of 2+ matmuls. Currently this test is passed
 # the flag '--num_repeat_runs 0" as there is currently an issue with the runtime if
@@ -720,6 +719,7 @@ if [ -d "$VITIS" ]; then
       --lhs_rhs_type "bf16" \
       --acc_type "f32" \
       --num_repeat_runs "2" \
+      --vitis_path  "${VITIS}" \
       --use_ukernel "1"
 
   run_matmul_test_on_shapes ${bf16_ukernel_shapes_medium[@]} \
@@ -729,6 +729,7 @@ if [ -d "$VITIS" ]; then
       --lhs_rhs_type "bf16" \
       --acc_type "f32" \
       --num_repeat_runs "2" \
+      --vitis_path  "${VITIS}" \
       --use_ukernel "1"
 fi
 
@@ -746,6 +747,7 @@ if [ -d "$VITIS" ]; then
       --n "32" \
       --k "32" \
       --use_chess "1" \
+      --vitis_path  "${VITIS}" \
       --num_repeat_runs "10"
 
   run_matmul_test \
@@ -757,6 +759,7 @@ if [ -d "$VITIS" ]; then
       --k "64" \
       --use_chess "1" \
       --num_repeat_runs "10" \
+      --vitis_path  "${VITIS}" \
       --use_ukernel "1"
 
   run_matmul_test \
@@ -769,6 +772,7 @@ if [ -d "$VITIS" ]; then
       --n "32" \
       --k "32" \
       --use_chess "1" \
+      --vitis_path  "${VITIS}" \
       --num_repeat_runs "10"
 
 fi
