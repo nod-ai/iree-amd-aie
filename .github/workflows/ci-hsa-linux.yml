@@ -318,6 +318,8 @@ jobs:
       fail-fast: false
       matrix:
         IREE_AIE_HSA_RUNTIME_DIRECT_LINK: [false, true]
+    env:
+      XILINXD_LICENSE_FILE: /opt/xilinx/Xilinx.lic
     steps:
       - name: "Checking out repository"
         uses: actions/checkout@8f4b7f84864484a7bf31766abe9204da3cbe65b3 # v3.5.0
@@ -338,11 +340,13 @@ jobs:
           python3 -m venv .venv
           source .venv/bin/activate
           pip install -r tests/matmul/requirements.txt
+          bash build_tools/download_peano.sh
 
       - name : HSA CTS tests
         run: |
           pushd iree-install/device_tests
           for test in $(ls *test); do ./$test; done
+          popd
 
       - name : E2E comparison of AIE to llvm-cpu
         run: |
