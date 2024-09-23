@@ -102,12 +102,6 @@ static void iree_hal_hsa_command_buffer_destroy(
   IREE_TRACE_ZONE_END(z0);
 }
 
-bool iree_hal_hsa_command_buffer_isa(
-    iree_hal_command_buffer_t* command_buffer) {
-  return iree_hal_resource_is(&command_buffer->resource,
-                              &iree_hal_hsa_command_buffer_vtable);
-}
-
 static iree_status_t iree_hal_hsa_command_buffer_begin(
     iree_hal_command_buffer_t* base_command_buffer) {
   return iree_ok_status();
@@ -310,6 +304,8 @@ static iree_status_t iree_hal_hsa_command_buffer_collective(
                           "collectives not yet supported");
 }
 
+#define PACKET_SIZE 64
+
 static iree_status_t iree_hal_hsa_command_buffer_dispatch(
     iree_hal_command_buffer_t* base_command_buffer,
     iree_hal_executable_t* executable, int32_t entry_point,
@@ -332,30 +328,18 @@ static iree_status_t iree_hal_hsa_command_buffer_dispatch(
   IREE_RETURN_AND_END_ZONE_IF_ERROR(
       z0, iree_hal_resource_set_insert(command_buffer->resource_set, 1,
                                        &executable));
-  // TODO(max): this doesn't go here, should go in pending_actions maybe?
-  // like shouldn't be done right at dispatch time
-  // Configure the queue's hardware context.
-  hsa::hsa_amd_aie_ert_hw_ctx_cu_config_t cu_config{
-      .cu_config_bo = kernel_info.pdi_handle, .cu_func = 0};
-  hsa::hsa_amd_aie_ert_hw_ctx_config_cu_param_t config_cu_args{
-      .num_cus = 1, .cu_configs = &cu_config};
-  hsa::hsa_status_t r =
-      command_buffer->hsa_symbols->hsa_amd_queue_hw_ctx_config(
-          command_buffer->hsa_queue,
-          hsa::HSA_AMD_QUEUE_AIE_ERT_HW_CXT_CONFIG_CU, &config_cu_args);
-  assert(r == hsa::HSA_STATUS_SUCCESS);
-
-  // Getting a slot in the queue
-  uint64_t wr_idx =
-      command_buffer->hsa_symbols->hsa_queue_add_write_index_relaxed(
-          command_buffer->hsa_queue, 1);
 
   // Creating a packet to store the command
-  hsa::hsa_amd_aie_ert_packet_t* cmd_pkt =
-      static_cast<hsa::hsa_amd_aie_ert_packet_t*>(
-          command_buffer->hsa_queue->base_address);
+  hsa::hsa_amd_aie_ert_packet_t* cmd_pkt = nullptr;
+  hsa::hsa_status_t r =
+      command_buffer->hsa_symbols->hsa_amd_memory_pool_allocate(
+          device_allocator->global_kernarg_mem_pool, PACKET_SIZE, 0,
+          reinterpret_cast<void**>(&cmd_pkt));
+  assert(r == hsa::HSA_STATUS_SUCCESS);
   cmd_pkt->state = hsa::HSA_AMD_AIE_ERT_STATE_NEW;
   // # of arguments to put in command
+  // there's an extra leading word or something like that...
+  cmd_pkt->count = 1 + 5 + (2 * bindings.count);
   cmd_pkt->opcode = hsa::HSA_AMD_AIE_ERT_START_CU;
   cmd_pkt->header.AmdFormat = hsa::HSA_AMD_PACKET_TYPE_AIE_ERT;
   cmd_pkt->header.header = hsa::HSA_PACKET_TYPE_VENDOR_SPECIFIC
@@ -363,9 +347,12 @@ static iree_status_t iree_hal_hsa_command_buffer_dispatch(
 
   // Creating the payload for the packet
   hsa::hsa_amd_aie_ert_start_kernel_data_t* cmd_payload = nullptr;
+  uint32_t cmd_handle;
+  r = command_buffer->hsa_symbols->hsa_amd_get_handle_from_vaddr(
+      reinterpret_cast<void*>(cmd_pkt), &cmd_handle);
   assert(r == hsa::HSA_STATUS_SUCCESS);
   r = command_buffer->hsa_symbols->hsa_amd_memory_pool_allocate(
-      device_allocator->global_kernarg_mem_pool, 64, 0,
+      device_allocator->global_kernarg_mem_pool, PACKET_SIZE, 0,
       reinterpret_cast<void**>(&cmd_payload));
   assert(r == hsa::HSA_STATUS_SUCCESS);
 
@@ -390,9 +377,28 @@ static iree_status_t iree_hal_hsa_command_buffer_dispatch(
     cmd_payload->data[5 + (2 * j) + 1] = 0;
   }
 
-  cmd_pkt->count = 6 + 2 * bindings.count;
   cmd_pkt->payload_data = reinterpret_cast<uint64_t>(cmd_payload);
 
+  // TODO(max): this doesn't go here, should go in pending_actions maybe?
+  // like shouldn't be done right at dispatch time
+  // Configure the queue's hardware context.
+  hsa::hsa_amd_aie_ert_hw_ctx_cu_config_t cu_config{
+      .cu_config_bo = kernel_info.pdi_handle, .cu_func = 0};
+  hsa::hsa_amd_aie_ert_hw_ctx_config_cu_param_t config_cu_args{
+      .num_cus = 1, .cu_configs = &cu_config};
+  r = command_buffer->hsa_symbols->hsa_amd_queue_hw_ctx_config(
+      command_buffer->hsa_queue, hsa::HSA_AMD_QUEUE_AIE_ERT_HW_CXT_CONFIG_CU,
+      &config_cu_args);
+  assert(r == hsa::HSA_STATUS_SUCCESS);
+
+  // Getting a slot in the queue
+  uint64_t wr_idx =
+      command_buffer->hsa_symbols->hsa_queue_add_write_index_relaxed(
+          command_buffer->hsa_queue, 1);
+  uint64_t packet_id = wr_idx % command_buffer->hsa_queue->size;
+
+  reinterpret_cast<hsa::hsa_amd_aie_ert_packet_t*>(
+      command_buffer->hsa_queue->base_address)[packet_id] = *cmd_pkt;
   command_buffer->hsa_symbols->hsa_signal_store_screlease(
       command_buffer->hsa_queue->doorbell_signal, wr_idx);
 

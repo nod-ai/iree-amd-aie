@@ -114,6 +114,7 @@ static iree_status_t iree_hal_hsa_buffer_map_range(
     iree_hal_memory_access_t memory_access,
     iree_device_size_t local_byte_offset, iree_device_size_t local_byte_length,
     iree_hal_buffer_mapping_t* mapping) {
+  IREE_TRACE_ZONE_BEGIN(z0);
   iree_hal_hsa_buffer_t* buffer = iree_hal_hsa_buffer_cast(base_buffer);
 
   IREE_RETURN_IF_ERROR(iree_hal_buffer_validate_memory_type(
@@ -133,6 +134,7 @@ static iree_status_t iree_hal_hsa_buffer_map_range(
 #endif  // NDEBUG
 
   mapping->contents = iree_make_byte_span(data_ptr, local_byte_length);
+  IREE_TRACE_ZONE_END(z0);
   return iree_ok_status();
 }
 

@@ -13,6 +13,7 @@
 #include "iree/hal/cts/cts_test_base.h"
 #include "iree/testing/gtest.h"
 #include "iree/testing/status_matchers.h"
+#include "tools/testing/e2e/test_utils.h"
 
 namespace iree::hal::cts {
 
@@ -25,14 +26,15 @@ iree_status_t register_test_driver(iree_hal_driver_registry_t* registry) {
 const char* get_test_executable_format() { return "amdaie-hsa-fb"; }
 
 iree_const_byte_span_t get_test_executable_data(iree_string_view_t file_name) {
-  const struct iree_file_toc_t* toc = iree_cts_testdata_executables_create();
+  const struct iree_file_toc_t* toc =
+      iree_cts_testdata_executables_aie_hsa_create();
   const auto& file = toc[0];
   return iree_make_const_byte_span(file.data, file.size);
 }
 class CommandBufferDispatchTest
     : public CTSTestBase<::testing::TestWithParam<RecordingType>> {
  protected:
-  void PrepareAbsExecutable() {
+  void PrepareMatmulExecutable() {
     IREE_ASSERT_OK(iree_hal_executable_cache_create(
         device_, iree_make_cstring_view("default"),
         iree_loop_inline(&loop_status_), &executable_cache_));
@@ -61,15 +63,34 @@ class CommandBufferDispatchTest
   iree_hal_executable_t* executable_ = nullptr;
 };
 
+int32_t generate_random_number(iree_hal_element_type_t element_type,
+                               int32_t seed) {
+  int32_t min = 0;
+  int32_t max = 0;
+  iree_test_utils_get_min_max_for_element_type(element_type, &min, &max);
+  uint32_t range = (max - min + 1);
+  return (int32_t)iree_test_utils_pseudorandom_range(
+             reinterpret_cast<uint32_t*>(&seed), range) +
+         min;
+}
+
 TEST_P(CommandBufferDispatchTest, DispatchMatmul) {
-  PrepareAbsExecutable();
+  PrepareMatmulExecutable();
 
   // Create input buffer.
-  constexpr iree_device_size_t M = 32, K = 32, N = 32;
+  constexpr iree_device_size_t WIDTH = 256;
+  constexpr iree_device_size_t M = WIDTH, K = WIDTH, N = WIDTH;
   iree_hal_buffer_t *input_A = nullptr, *input_B = nullptr, *output_C = nullptr;
-  CreateFilledDeviceBuffer<float>(M * K * sizeof(float), 2.0f, &input_A);
-  CreateFilledDeviceBuffer<float>(K * N * sizeof(float), 3.0f, &input_B);
-  CreateFilledDeviceBuffer<float>(M * N * sizeof(float), 0.0f, &output_C);
+  int32_t seed =
+      std::chrono::high_resolution_clock::now().time_since_epoch().count() >>
+      32;
+  int32_t a = generate_random_number(
+      iree_hal_element_types_t::IREE_HAL_ELEMENT_TYPE_FLOAT_32, seed);
+  int32_t b = generate_random_number(
+      iree_hal_element_types_t::IREE_HAL_ELEMENT_TYPE_FLOAT_32, seed + 1);
+  CreateFilledDeviceBuffer<float>(M * K * sizeof(float), a, &input_A);
+  CreateFilledDeviceBuffer<float>(K * N * sizeof(float), b, &input_B);
+  CreateFilledDeviceBuffer<float>(M * N * sizeof(float), 0, &output_C);
 
   iree_hal_buffer_ref_t binding_refs[3];
   iree_hal_buffer_binding_table_t binding_table =
@@ -78,21 +99,21 @@ TEST_P(CommandBufferDispatchTest, DispatchMatmul) {
       /*binding=*/0,
       /*buffer_slot=*/0,
       /*buffer=*/input_A,
-      /*offset=*/0 * sizeof(float),
+      /*offset=*/0,
       /*length=*/M * K * sizeof(float),
   };
   binding_refs[1] = {
       /*binding=*/0,
       /*buffer_slot=*/0,
       /*buffer=*/input_B,
-      /*offset=*/0 * sizeof(float),
+      /*offset=*/0,
       /*length=*/K * N * sizeof(float),
   };
   binding_refs[2] = {
       /*binding=*/0,
       /*buffer_slot=*/0,
       /*buffer=*/output_C,
-      /*offset=*/0 * sizeof(float),
+      /*offset=*/0,
       /*length=*/M * N * sizeof(float),
   };
   iree_hal_buffer_ref_list_t bindings = {
@@ -127,15 +148,24 @@ TEST_P(CommandBufferDispatchTest, DispatchMatmul) {
 
   IREE_ASSERT_OK(SubmitCommandBufferAndWait(command_buffer, binding_table));
 
-  float output_values[M * N] = {0.0f};
+  std::vector<float> output_values;
+  output_values.reserve(M * N);
   IREE_ASSERT_OK(iree_hal_device_transfer_d2h(
       device_, output_C,
-      /*source_offset=*/0, output_values, sizeof(output_values),
+      /*source_offset=*/0, output_values.data(), M * N * sizeof(float),
       IREE_HAL_TRANSFER_BUFFER_FLAG_DEFAULT, iree_infinite_timeout()));
-  float correct_output_values[M * N];
-  std::fill_n(correct_output_values, M * N, 192.0);
-  EXPECT_THAT(output_values,
-              ::testing::ElementsAreArray(correct_output_values));
+  std::vector<float> correct_output_values;
+  correct_output_values.reserve(M * N);
+  std::fill_n(correct_output_values.data(), M * N, (float)WIDTH * (a * b));
+  int n_wrong = 0;
+  for (int i = 0; i < M * N; ++i) {
+    if (output_values[i] != correct_output_values[i]) {
+      std::cout << "wrong @ i:" << i << ", " << output_values[i]
+                << " != " << correct_output_values[i] << "\n";
+      n_wrong += 1;
+    }
+  }
+  EXPECT_EQ(n_wrong, 0);
 
   iree_hal_command_buffer_release(command_buffer);
   iree_hal_buffer_release(output_C);

@@ -219,8 +219,8 @@ iree_status_t iree_hal_hsa_native_executable_create(
     iree_hal_hsa_kernel_info_t* params =
         &executable->entry_points[entry_ordinal];
     params->pdi_buf = pdi_buf;
-    params->dpu_inst_buf = dpu_inst_buf;
     params->pdi_handle = pdi_handle;
+    params->dpu_inst_buf = dpu_inst_buf;
     params->dpu_handle = dpu_handle;
     params->num_instr = num_instr;
 
@@ -228,8 +228,6 @@ iree_status_t iree_hal_hsa_native_executable_create(
     IREE_TRACE({
       iree_host_size_t entry_name_length = flatbuffers_string_len(entry_name);
       memcpy(string_table_buffer, entry_name, entry_name_length);
-      params->kernel_name =
-          iree_make_string_view(string_table_buffer, entry_name_length);
       string_table_buffer += entry_name_length;
     });
 

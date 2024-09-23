@@ -12,6 +12,10 @@
 #include "iree/base/tracing.h"
 #include "status_util.h"
 
+#if IREE_TRACING_FEATURES & IREE_TRACING_FEATURE_ALLOCATION_TRACKING
+static const char* IREE_HAL_AIE_HSA_ALLOCATOR_ID = "AIE-HSA";
+#endif  // IREE_TRACING_FEATURE_ALLOCATION_TRACKING
+
 namespace {
 extern const iree_hal_allocator_vtable_t iree_hal_hsa_allocator_vtable;
 }
@@ -167,35 +171,7 @@ static iree_status_t iree_hal_hsa_allocator_allocate_buffer(
   iree_hal_hsa_allocator_t* allocator =
       iree_hal_hsa_allocator_cast(base_allocator);
 
-  // Coerce options into those required by the current device.
   iree_hal_buffer_params_t compat_params = *params;
-  iree_hal_buffer_compatibility_t compatibility =
-      iree_hal_hsa_allocator_query_buffer_compatibility(
-          base_allocator, &compat_params, &allocation_size);
-
-  if (!iree_all_bits_set(compatibility,
-                         IREE_HAL_BUFFER_COMPATIBILITY_ALLOCATABLE)) {
-#if IREE_STATUS_MODE
-    iree_bitfield_string_temp_t temp0, temp1, temp2;
-    iree_string_view_t memory_type_str =
-        iree_hal_memory_type_format(params->type, &temp0);
-    iree_string_view_t usage_str =
-        iree_hal_buffer_usage_format(params->usage, &temp1);
-    iree_string_view_t compatibility_str =
-        iree_hal_buffer_compatibility_format(compatibility, &temp2);
-    return iree_make_status(
-        IREE_STATUS_INVALID_ARGUMENT,
-        "allocator cannot allocate a buffer with the given parameters; "
-        "memory_type=%.*s, usage=%.*s, compatibility=%.*s",
-        (int)memory_type_str.size, memory_type_str.data, (int)usage_str.size,
-        usage_str.data, (int)compatibility_str.size, compatibility_str.data);
-#else
-    return iree_make_status(
-        IREE_STATUS_INVALID_ARGUMENT,
-        "allocator cannot allocate a buffer with the given parameters");
-#endif  // IREE_STATUS_MODE
-  }
-
   iree_status_t status = iree_ok_status();
   iree_hal_hsa_buffer_type_t buffer_type = IREE_HAL_HSA_BUFFER_TYPE_DEVICE;
   void* host_ptr = nullptr;
@@ -203,22 +179,13 @@ static iree_status_t iree_hal_hsa_allocator_allocate_buffer(
   IREE_TRACE_ZONE_BEGIN_NAMED(z0, "iree_hal_hsa_buffer_allocate");
   IREE_TRACE_ZONE_APPEND_VALUE_I64(z0, allocation_size);
 
-  // TODO(muhaawad): Not sure if this is the right way to do kernel arguments
-  // allocations
-  if (iree_all_bits_set(compat_params.usage,
-                        IREE_HAL_BUFFER_USAGE_DISPATCH_STORAGE |
-                            IREE_HAL_BUFFER_USAGE_TRANSFER) &&
-      // Kernel arguments
-      iree_all_bits_set(
-          compat_params.access,
-          IREE_HAL_MEMORY_ACCESS_READ | IREE_HAL_MEMORY_ACCESS_WRITE) &&
-      iree_all_bits_set(compat_params.type,
-                        IREE_HAL_MEMORY_TYPE_HOST_LOCAL |
-                            IREE_HAL_MEMORY_TYPE_DEVICE_VISIBLE)) {
+  if (iree_all_bits_set(iree_hal_hsa_allocator_query_buffer_compatibility(
+                            base_allocator, &compat_params, &allocation_size),
+                        IREE_HAL_BUFFER_COMPATIBILITY_ALLOCATABLE)) {
     IREE_HSA_RETURN_IF_ERROR(
         allocator->symbols,
-        hsa_amd_memory_pool_allocate(allocator->global_kernarg_mem_pool, 0,
-                                     allocation_size, &host_ptr),
+        hsa_amd_memory_pool_allocate(allocator->global_kernarg_mem_pool,
+                                     allocation_size, 0, &host_ptr),
         "hsa_amd_memory_pool_allocate");
     buffer_type = IREE_HAL_HSA_BUFFER_TYPE_KERNEL_ARG;
     device_ptr = host_ptr;
@@ -244,7 +211,7 @@ static iree_status_t iree_hal_hsa_allocator_allocate_buffer(
   }
 
   if (iree_status_is_ok(status)) {
-    IREE_TRACE_ALLOC_NAMED(IREE_HAL_HSA_ALLOCATOR_ID,
+    IREE_TRACE_ALLOC_NAMED(IREE_HAL_AIE_HSA_ALLOCATOR_ID,
                            (void*)iree_hal_hsa_buffer_device_pointer(buffer),
                            allocation_size);
     *out_buffer = buffer;
@@ -282,7 +249,7 @@ static void iree_hal_hsa_allocator_deallocate_buffer(
     case IREE_HAL_HSA_BUFFER_TYPE_DEVICE:
     case IREE_HAL_HSA_BUFFER_TYPE_HOST: {
       IREE_TRACE_FREE_NAMED(
-          IREE_HAL_HSA_ALLOCATOR_ID,
+          IREE_HAL_AIE_HSA_ALLOCATOR_ID,
           (void*)iree_hal_hsa_buffer_device_pointer(base_buffer));
       break;
     }

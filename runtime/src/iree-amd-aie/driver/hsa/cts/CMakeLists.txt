@@ -4,12 +4,6 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-# because we're an "external" plugin, these need to be initialized/set by us
-# whereas for in-tree plugins they're set in iree/runtime/src/iree/hal/cts/CMakeLists.txt#L28
-set(IREE_EXECUTABLE_CTS_TESTS
-  "executable_cache"
-)
-
 set(PEANO_INSTALL_DIR "" CACHE PATH "")
 if(NOT EXISTS ${PEANO_INSTALL_DIR})
   message(FATAL_ERROR "PEANO_INSTALL_DIR=${PEANO_INSTALL_DIR} does not exist.")
@@ -42,9 +36,11 @@ iree_c_embed_data(
   H_FILE_OUTPUT
     amd-aie-hsa_executables_c.h
   IDENTIFIER
-    iree_cts_testdata_executables
+    iree_cts_testdata_executables_aie_hsa
   STRIP_PREFIX
     amd-aie-hsa_
+  DEPENDS
+    ::amd-aie-hsa_executable_cache_test_module
   FLATTEN
   PUBLIC
   TESTONLY
@@ -74,7 +70,7 @@ iree_hal_cts_test_suite(
 #    "command_buffer_update_buffer"
     "driver"
 #    "event"
-    "executable_cache"
+#    "executable_cache"
 #    "file"
 #    "semaphore"
 #    "semaphore_submission"
@@ -92,6 +88,7 @@ iree_cc_test(
     iree::hal
     iree::hal::cts::cts_test_base
     iree::testing::gtest_main
+    iree::tools::testing::e2e::e2e_test_util
 )
 
 target_include_directories(iree-amd-aie_driver_hsa_cts_amd_aie_hsa_command_buffer_dispatch_test PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")

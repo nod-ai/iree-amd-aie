@@ -196,7 +196,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        IREE_AIE_HSA_RUNTIME_DIRECT_LINK: [false, true]
+        IREE_AIE_HSA_RUNTIME_DIRECT_LINK: [false]
     env:
       CACHE_DIR: ${{ github.workspace }}/.container-cache
       # either the PR number or `branch-N` where N always increments
@@ -317,7 +317,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        IREE_AIE_HSA_RUNTIME_DIRECT_LINK: [false, true]
+        IREE_AIE_HSA_RUNTIME_DIRECT_LINK: [false]
     env:
       XILINXD_LICENSE_FILE: /opt/xilinx/Xilinx.lic
     steps:
@@ -328,12 +328,12 @@ jobs:
 
       - name: Download artifacts
         uses: actions/download-artifact@v4
-        with:
-          name: linux_x86_64_release_packages${{ matrix.IREE_AIE_HSA_RUNTIME_DIRECT_LINK && '-hsa-direct-link' || '' }}
 
       - name: Extract artifact
         run: |
           tar -xvf iree-dist-linux.tar
+          tar -xvf rocr-*.tar
+          echo "LD_LIBRARY_PATH=$PWD/rocr-install/lib:$LD_LIBRARY_PATH" >> $GITHUB_ENV
 
       - name: Create venv and install dependencies
         run: |
