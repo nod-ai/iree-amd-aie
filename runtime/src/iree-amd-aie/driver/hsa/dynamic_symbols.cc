@@ -13,13 +13,19 @@
 #include "iree/base/internal/dynamic_library.h"
 
 #ifndef IREE_AIE_HSA_RUNTIME_DIRECT_LINK
-static const char* iree_hal_hsa_dylib_names[] = {
+constexpr const char* LIBHSA_RUNTIME_PATH_ENV_VAR = "LIBHSA_RUNTIME_PATH";
 #if defined(IREE_PLATFORM_WINDOWS)
-    "libhsa-runtime64.dll",
+constexpr char DEFAULT_LIBHSA_RUNTIME_PATH_VAL[] = "libhsa-runtime64.dll";
 #else
-    "libhsa-runtime64.so",
+constexpr char DEFAULT_LIBHSA_RUNTIME_PATH_VAL[] = "libhsa-runtime64.so";
 #endif  // IREE_PLATFORM_WINDOWS
-};
+
+char* libhsa_runtime_path_env_var_ptr = getenv(LIBHSA_RUNTIME_PATH_ENV_VAR);
+const char* libhsa_runtime_path_val = libhsa_runtime_path_env_var_ptr == nullptr
+                                          ? DEFAULT_LIBHSA_RUNTIME_PATH_VAL
+                                          : libhsa_runtime_path_env_var_ptr;
+
+static const char* iree_hal_hsa_dylib_names[] = {libhsa_runtime_path_val};
 #endif
 
 static iree_status_t iree_hal_hsa_dynamic_symbols_resolve_all(

@@ -172,6 +172,7 @@ jobs:
           cmake -GNinja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_INSTALL_LIBDIR=lib \
+            -DBUILD_SHARED_LIBS=ON \
             -DCMAKE_INSTALL_PREFIX="$rocr_install_dir" \
             -DClang_DIR=$llvm_install_dir/lib/cmake/clang \
             -DLLVM_DIR=$llvm_install_dir/cmake/llvm \
@@ -328,18 +329,20 @@ jobs:
 
       - name: Download artifacts
         uses: actions/download-artifact@v4
+        with:
+          merge-multiple: 'true'
 
       - name: Extract artifact
         run: |
           tar -xvf iree-dist-linux.tar
           tar -xvf rocr-*.tar
-          echo "LD_LIBRARY_PATH=$PWD/rocr-install/lib:$LD_LIBRARY_PATH" >> $GITHUB_ENV
+          echo "LIBHSA_RUNTIME_PATH=$PWD/rocr-install/lib/libhsa-runtime64.so" >> $GITHUB_ENV
 
       - name: Create venv and install dependencies
         run: |
           python3 -m venv .venv
           source .venv/bin/activate
-          pip install -r tests/matmul/requirements.txt
+          pip install -r build_tools/ci/requirements.txt
           bash build_tools/download_peano.sh
 
       - name : HSA CTS tests
