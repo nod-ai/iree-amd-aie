@@ -20,4 +20,6 @@ iree_lit_test_suite(
     FileCheck
     iree-opt
     iree-compile
+  LABELS
+    "hostonly"
 )

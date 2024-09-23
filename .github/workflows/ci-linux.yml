@@ -142,7 +142,7 @@ jobs:
         run: |
           python3 -m venv .venv
           source .venv/bin/activate
-          pip install -r tests/matmul/requirements.txt
+          pip install -r build_tools/ci/requirements.txt
 
 
       - name : E2E comparison of AIE to llvm-cpu

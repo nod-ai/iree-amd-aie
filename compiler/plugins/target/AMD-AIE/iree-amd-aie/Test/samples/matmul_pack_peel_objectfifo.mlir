@@ -1,25 +1,32 @@
-// RUN: iree-opt --pass-pipeline="builtin.module(fold-memref-alias-ops,iree-amdaie-convert-to-dma,iree-amdaie-insert-cores,cse,iree-amdaie-localize-logicalobjectfifo,iree-amdaie-distribute-cores-and-objectfifos,cse,canonicalize,iree-amdaie-dma-to-circular-dma,func.func(iree-amdaie-create-aie-workgroup),cse,iree-amdaie-dma-cse,iree-amdaie-canonicalize-doubly-strided-op,iree-amdaie-flatten-logicalobjectfifo,iree-amdaie-access-to-acquire-release,cse,canonicalize,iree-amdaie-dma-loop-subsumption,cse,canonicalize,iree-amdaie-dma-cse,iree-amdaie-assign-npu-dma-bd-ids,iree-amdaie-controlcode-loop-unroll,cse,canonicalize,iree-amdaie-dma-cse,iree-amdaie-create-logical-objectfifo-link,iree-amdaie-canonicalize-doubly-strided-op,canonicalize,iree-amdaie-canonicalize-npu-dma-cpy-nd,canonicalize,iree-amdaie-sink-into-core,canonicalize,iree-amdaie-lower-to-aie,canonicalize)" --split-input-file %s | FileCheck %s
+// This pipeline is obtained by going into Passes.cpp, and dumping the pass pipeline (at the end of addAMDAIEObjectFifoLoweringPasses) using `passManager.dump()`. This test is included, as it can be useful to have a reference in IR of all the passes that are run. 
 
-// CHECK:       aie.device(npu1_4col)
-// CHECK-DAG:   %[[TILE_0_2:.+]] = aie.tile(0, 2)
-// CHECK-DAG:   %[[TILE_1_2:.+]] = aie.tile(1, 2)
-// CHECK-DAG:   aie.objectfifo @[[OBJ0:.+]](%[[TILE_0_2]]
-// CHECK-DAG:   aie.objectfifo @[[OBJ1:.+]](%[[TILE_1_2]]
+// RUN: iree-opt --pass-pipeline="builtin.module(fold-memref-alias-ops,iree-amdaie-convert-to-dma,iree-amdaie-normalize-loop-bounds,iree-amdaie-insert-cores,iree-amdaie-localize-logicalobjectfifo,cse,iree-amdaie-distribute-cores-and-objectfifos,cse,canonicalize{  max-iterations=10 max-num-rewrites=-1 region-simplify=normal test-convergence=false top-down=true},iree-amdaie-split-logical-objectfifos-for-connection-reuse,cse,canonicalize{  max-iterations=10 max-num-rewrites=-1 region-simplify=normal test-convergence=false top-down=true},iree-amdaie-dma-to-circular-dma,func.func(iree-amdaie-create-aie-workgroup),cse,iree-amdaie-dma-cse,iree-amdaie-hoist-logical-objectfifo,iree-amdaie-canonicalize-doubly-strided-op{fold-single-dims=false},iree-amdaie-flatten-logicalobjectfifo,iree-amdaie-assign-logical-objectfifo-depth{l1-buffer-depth=2 l2-buffer-depth=2 l3-buffer-depth=1},iree-amdaie-access-to-acquire-release,iree-amdaie-none-access-to-temporary-buffer,cse,canonicalize{  max-iterations=10 max-num-rewrites=-1 region-simplify=normal test-convergence=false top-down=true},iree-amdaie-dma-composition{only-zero-stride-on-outer-dim=true},cse,canonicalize{  max-iterations=10 max-num-rewrites=-1 region-simplify=normal test-convergence=false top-down=true},iree-amdaie-dma-cse,iree-amdaie-assign-npu-dma-bd-ids,cse,canonicalize{  max-iterations=10 max-num-rewrites=-1 region-simplify=normal test-convergence=false top-down=true},iree-amdaie-controlcode-loop-unroll,cse,canonicalize{  max-iterations=10 max-num-rewrites=-1 region-simplify=normal test-convergence=false top-down=true},iree-amdaie-dma-cse,iree-amdaie-canonicalize-doubly-strided-op{fold-single-dims=false},canonicalize{  max-iterations=10 max-num-rewrites=-1 region-simplify=normal test-convergence=false top-down=true},iree-amdaie-convert-core-forall-to-for,canonicalize{  max-iterations=10 max-num-rewrites=-1 region-simplify=normal test-convergence=false top-down=true},iree-amdaie-assign-channels,cse,canonicalize{  max-iterations=10 max-num-rewrites=-1 region-simplify=normal test-convergence=false top-down=true},iree-amdaie-objfifo-bufferization,iree-amdaie-acquire-release-to-use-lock,iree-amdaie-canonicalize-npu-dma-cpy-nd{nb-dimensions=4},canonicalize{  max-iterations=10 max-num-rewrites=-1 region-simplify=normal test-convergence=false top-down=true},iree-amdaie-sink-into-core,canonicalize{  max-iterations=10 max-num-rewrites=-1 region-simplify=normal test-convergence=false top-down=true},iree-amdaie-lower-to-aie,iree-amdaie-remove-memoryspace)" --split-input-file %s | FileCheck %s
+
+
+
+// CHECK-LABEL:       aie.device(npu1_4col)
+// Check a subset of the tiles:
+// CHECK-DAG:         %[[TILE_0_2:.+]] = aie.tile(0, 2)
+// CHECK-DAG:         %[[TILE_1_2:.+]] = aie.tile(1, 2)
+// Check a subset of the buffers and locks:
+// CHECK-DAG:          %[[BUFFER_1_2:.+]] = aie.buffer(%[[TILE_1_2]]) {sym_name = "buff_0"} : memref<1024xi32>
+// CHECK-DAG:          %[[BUFFER_1_2_0:.+]] = aie.buffer(%[[TILE_1_2]]) {sym_name = "buff_1"} : memref<1024xi32>
+// CHECK-DAG:          %[[LOCK_1_2:.+]] = aie.lock(%[[TILE_1_2]], 4) {init = 2 : i8, sym_name = "lock_0"}
+// CHECK-DAG:          %[[LOCK_1_2_1:.+]] = aie.lock(%[[TILE_1_2]], 5) {init = 0 : i8, sym_name = "lock_1"}
+// Check a subset of cores:
 // CHECK-DAG:   aie.core(%[[TILE_0_2]])
-// CHECK:         aie.objectfifo.acquire @[[OBJ0]](Produce, 1)
+// CHECK:         aie.use_lock
 // CHECK-DAG:   aie.core(%[[TILE_1_2]])
-// CHECK:         aie.objectfifo.acquire @[[OBJ1]](Produce, 1)
+// CHECK:         aie.use_lock
+// Check a bit of the aiex.runtime_sequence:
 // CHECK:       aiex.runtime_sequence @matmul_i32(%[[ARG0:.+]]: memref<32x1024xi32>, %[[ARG1:.+]]: memref<1024x64xi32>, %[[ARG2:.+]]: memref<32x64xi32>)
-// CHECK-DAG:     aiex.npu.dma_memcpy_nd(0, 0, %[[ARG0]][0, 0, 0, 0][1, 1, 32, 64][0, 0, 1024, 1]
-// CHECK-DAG:     aiex.npu.dma_memcpy_nd(0, 0, %[[ARG1]][0, 0, 0, 0][1, 1, 64, 32][0, 0, 64, 1]
-// CHECK-DAG:     aiex.npu.dma_memcpy_nd(0, 0, %[[ARG2]][0, 0, 0, 0][1, 1, 32, 32][0, 0, 64, 1]
-// CHECK-DAG:     aiex.npu.dma_memcpy_nd(0, 0, %[[ARG2]][0, 0, 0, 32][1, 1, 32, 32][0, 0, 64, 1]
-#pipeline_layout = #hal.pipeline.layout<push_constants = 0, sets = [
-  #hal.descriptor_set.layout<0, bindings = [
-    #hal.descriptor_set.binding<0, storage_buffer>,
-    #hal.descriptor_set.binding<1, storage_buffer>,
-    #hal.descriptor_set.binding<2, storage_buffer>
-  ]>
+// CHECK-DAG:     aiex.npu.dma_memcpy_nd
+// CHECK-DAG:     aiex.npu.dma_wait
+
+#pipeline_layout = #hal.pipeline.layout<bindings= [
+    #hal.pipeline.binding<storage_buffer, ReadOnly>,
+    #hal.pipeline.binding<storage_buffer, ReadOnly>,
+    #hal.pipeline.binding<storage_buffer>
 ]>
 #map = affine_map<(d0) -> (d0 * 32)>
 #map1 = affine_map<(d0) -> (d0 * 64)>
@@ -33,11 +40,11 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
     %c960 = arith.constant 960 : index
     %c0_i32 = arith.constant 0 : i32
     %c0 = arith.constant 0 : index
-    %0 = hal.interface.binding.subspan layout(#pipeline_layout) set(0) binding(1) alignment(64) offset(%c0) flags(ReadOnly) : memref<1024x64xi32>
+    %0 = hal.interface.binding.subspan layout(#pipeline_layout) binding(1) alignment(64) offset(%c0) flags(ReadOnly) : memref<1024x64xi32>
     memref.assume_alignment %0, 64 : memref<1024x64xi32>
-    %1 = hal.interface.binding.subspan layout(#pipeline_layout) set(0) binding(0) alignment(64) offset(%c0) flags(ReadOnly) : memref<32x1024xi32>
+    %1 = hal.interface.binding.subspan layout(#pipeline_layout) binding(0) alignment(64) offset(%c0) flags(ReadOnly) : memref<32x1024xi32>
     memref.assume_alignment %1, 64 : memref<32x1024xi32>
-    %2 = hal.interface.binding.subspan layout(#pipeline_layout) set(0) binding(2) alignment(64) offset(%c0) : memref<32x64xi32>
+    %2 = hal.interface.binding.subspan layout(#pipeline_layout) binding(2) alignment(64) offset(%c0) : memref<32x64xi32>
     memref.assume_alignment %2, 64 : memref<32x64xi32>
     %alloc = memref.alloc() : memref<4x8x8x8xi32, 2>
     %alloc_0 = memref.alloc() : memref<8x8x4x8xi32, 2>
