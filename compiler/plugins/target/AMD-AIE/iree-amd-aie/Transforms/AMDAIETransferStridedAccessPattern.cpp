@@ -265,7 +265,6 @@ static LogicalResult transferDmaAddressing(MLIRContext *ctx,
 
   // Change the source/target addressing of all users from a connection op.
   llvm::SmallVector<Operation *> users(connectionOp->getUsers());
-  assert(users.size() == 3 && "Expect 3 users");
   for (Operation *user : users) {
     if (auto dmaOp = dyn_cast<AMDAIE::NpuDmaCpyNdOp>(user)) {
       OpBuilder::InsertionGuard guard(rewriter);
