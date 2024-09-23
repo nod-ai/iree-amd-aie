@@ -240,6 +240,7 @@ static LogicalResult createNewAddressing(
 static LogicalResult transferDmaAddressing(MLIRContext *ctx,
                                            AMDAIE::ConnectionOp connectionOp) {
   IRRewriter rewriter(ctx);
+  OpBuilder::InsertionGuard guard(rewriter);
 
   FailureOr<AMDAIE::NpuCircularDmaCpyNdOp> maybeNpuDmaUserOp =
       connectionOp.getNpuCircularDmaCpyNdUser();
@@ -263,7 +264,8 @@ static LogicalResult transferDmaAddressing(MLIRContext *ctx,
       circularDma.getTargetMixedStrides();
 
   // Change the source/target addressing of all users from a connection op.
-  for (Operation *user : connectionOp->getUsers()) {
+  llvm::SmallVector<Operation *> users(connectionOp->getUsers());
+  for (Operation *user : users) {
     if (auto dmaOp = dyn_cast<AMDAIE::NpuDmaCpyNdOp>(user)) {
       SmallVector<OpFoldResult> srcOffsets = dmaOp.getSourceMixedOffsets();
       SmallVector<OpFoldResult> srcSizes = dmaOp.getSourceMixedSizes();
