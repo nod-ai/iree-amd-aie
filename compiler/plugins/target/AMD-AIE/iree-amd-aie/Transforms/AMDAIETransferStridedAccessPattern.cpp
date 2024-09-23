@@ -53,11 +53,10 @@ static FailureOr<size_t> isL3AddressingCombinable(
   // innermost dim. If there is no such dim, return the last index of the
   // vector.
   auto getPos = [&](SmallVector<int64_t> values, int64_t target) {
-    size_t i = 0;
-    for (; i < values.size() - 1; i++) {
+    for (size_t i = values.size() - 2; i >= 0; i--) {
       if (values[i] == target) return i;
     }
-    return i;
+    return (values.size() - 1);
   };
 
   int64_t innerDimTotal = strideVals.back() * sizeVals.back();
@@ -78,7 +77,7 @@ static bool isL2AddressingLinear(SmallVector<OpFoldResult> &dmaOffsets,
                                  SmallVector<OpFoldResult> &dmaStrides) {
   assert(dmaOffsets.size() == dmaSizes.size() &&
          dmaOffsets.size() == dmaStrides.size() &&
-         "expected same number of source offsets and sizes");
+         "expected same number of source offsets, sizes and strides");
   if (dmaOffsets.size() == 0) return true;
   if (dmaOffsets.size() != 1) return false;
   if (!isConstantIntValue(dmaOffsets[0], 0)) return false;
@@ -92,24 +91,26 @@ static FailureOr<bool> checkConnectionUsers(AMDAIE::ConnectionOp connectionOp) {
   for (Operation *user : connectionOp->getUsers()) {
     // Check if L3 addressing is combinable.
     if (auto dmaOp = dyn_cast<AMDAIE::NpuDmaCpyNdOp>(user)) {
-      if (dmaOp.hasSourceAddressing() && dmaOp.hasTargetAddressing()) {
-        dmaOp.emitOpError()
-            << "should not have both source and target addressing";
-        return failure();
-      }
-      if (!dmaOp.hasSourceAddressing() && !dmaOp.hasTargetAddressing()) {
-        dmaOp.emitOpError() << "should have either source or target addressing";
-        return failure();
-      }
-
       SmallVector<OpFoldResult> dmaOffsets;
       SmallVector<OpFoldResult> dmaSizes;
       SmallVector<OpFoldResult> dmaStrides;
-      if (dmaOp.hasSourceAddressing()) {
+
+      if (dmaOp.getSourceMemorySpaceAsUInt() == 0) {
+        if (!dmaOp.hasSourceAddressing()) {
+          dmaOp.emitOpError()
+              << "has source in L3, but does not have source addressing";
+          return failure();
+        }
         dmaOffsets = dmaOp.getSourceMixedOffsets();
         dmaSizes = dmaOp.getSourceMixedSizes();
         dmaStrides = dmaOp.getSourceMixedStrides();
-      } else {
+      }
+      if (dmaOp.getTargetMemorySpaceAsUInt() == 0) {
+        if (!dmaOp.hasTargetAddressing()) {
+          dmaOp.emitOpError()
+              << "has target in L3, but does not have target addressing";
+          return failure();
+        }
         dmaOffsets = dmaOp.getTargetMixedOffsets();
         dmaSizes = dmaOp.getTargetMixedSizes();
         dmaStrides = dmaOp.getTargetMixedStrides();
@@ -121,18 +122,11 @@ static FailureOr<bool> checkConnectionUsers(AMDAIE::ConnectionOp connectionOp) {
     }
     // Check if L2 addressing is linear.
     if (auto circularDma = dyn_cast<AMDAIE::NpuCircularDmaCpyNdOp>(user)) {
-      // Circular dma op could have both source and target addressing empty.
-      if (circularDma.hasSourceAddressing() &&
-          circularDma.hasTargetAddressing()) {
-        circularDma.emitOpError()
-            << "should not have both source and target addressing";
-        return failure();
-      }
-
       SmallVector<OpFoldResult> circularOffsets;
       SmallVector<OpFoldResult> circularSizes;
       SmallVector<OpFoldResult> circularStrides;
 
+      // Circular dma op could have both source and target addressing empty.
       if (circularDma.hasSourceAddressing()) {
         circularOffsets = circularDma.getSourceMixedOffsets();
         circularSizes = circularDma.getSourceMixedSizes();
@@ -191,7 +185,7 @@ static LogicalResult createNewAddressing(
       getConstantIntValues(l3OrigStrides);
   if (!maybeSizes.has_value() || !maybeSizes.has_value()) {
     return emitError(rewriter.getUnknownLoc())
-           << "failed to get original source sizes / strides.";
+           << "failed to get static source sizes / strides.";
   }
   SmallVector<int64_t> sizeVals = maybeSizes.value();
   SmallVector<int64_t> strideVals = maybeStrides.value();
@@ -237,8 +231,9 @@ static LogicalResult createNewAddressing(
 /// NpuDmaCpyNdOp and NpuCircularDmaCpyNdOp at the same time. A connection op
 /// can have multiple NpuDmaCpyNdOp users (with different offsets) but only one
 /// NpuCircularDmaCpyNdOp user.
-static LogicalResult transferDmaAddressing(MLIRContext *ctx,
-                                           AMDAIE::ConnectionOp connectionOp) {
+static LogicalResult transferDmaAddressing(
+    MLIRContext *ctx, AMDAIE::ConnectionOp connectionOp,
+    AMDAIE::AMDAIEDeviceModel deviceModel) {
   IRRewriter rewriter(ctx);
   OpBuilder::InsertionGuard guard(rewriter);
 
@@ -276,11 +271,6 @@ static LogicalResult transferDmaAddressing(MLIRContext *ctx,
 
       // Generate new L3 source addressing, and L2 target addressing.
       if (dmaOp.getSourceMemorySpaceAsUInt() == 0) {
-        if (circularDma.getTargetMemorySpaceAsUInt() != 1) {
-          dmaOp.emitOpError() << "has source in L3, but circular dma doesn't "
-                                 "have target in L2.";
-          return failure();
-        }
         if (failed(createNewAddressing(ctx, srcOffsets, srcSizes, srcStrides,
                                        tgtCircularOffsets, tgtCircularSizes,
                                        tgtCircularStrides))) {
@@ -290,11 +280,6 @@ static LogicalResult transferDmaAddressing(MLIRContext *ctx,
 
       // Generate new L3 target addressing, and L2 source addressing.
       if (dmaOp.getTargetMemorySpaceAsUInt() == 0) {
-        if (circularDma.getSourceMemorySpaceAsUInt() != 1) {
-          dmaOp.emitOpError() << "has target in L3, but circular dma doesn't "
-                                 "have source in L2.";
-          return failure();
-        }
         if (failed(createNewAddressing(ctx, tgtOffsets, tgtSizes, tgtStrides,
                                        srcCircularOffsets, srcCircularSizes,
                                        srcCircularStrides))) {
@@ -309,6 +294,41 @@ static LogicalResult transferDmaAddressing(MLIRContext *ctx,
           tgtStrides, dmaOp.getTargetBdId(), dmaOp.getSource(), srcOffsets,
           srcSizes, srcStrides, dmaOp.getSourceBdId());
     }
+  }
+
+  // Check and make sure npu.circular_dma_cpy_nd op's new offsets/sizes/strides
+  // don't exceed the dma requirements.
+  uint8_t srcCircularMemspace = circularDma.getSourceMemorySpaceAsUInt();
+  uint8_t tgtCircularMemspace = circularDma.getTargetMemorySpaceAsUInt();
+  AMDAIE::DmaDimConfig dmaDimConfig(deviceModel, srcCircularMemspace,
+                                    tgtCircularMemspace);
+  if (srcCircularOffsets.size() != srcCircularSizes.size() ||
+      srcCircularOffsets.size() != srcCircularStrides.size()) {
+    emitError(rewriter.getUnknownLoc())
+        << "new npu.circular_dma_cpy_nd op's source offsets, sizes, strides "
+           "should have same number of dimensions";
+    return failure();
+  }
+  if (tgtCircularOffsets.size() != tgtCircularSizes.size() ||
+      tgtCircularOffsets.size() != tgtCircularStrides.size()) {
+    emitError(rewriter.getUnknownLoc())
+        << "new npu.circular_dma_cpy_nd op's target offsets, sizes, strides "
+           "should have same number of dimensions";
+    return failure();
+  }
+  if (srcCircularStrides.size() > dmaDimConfig.sourceMaxNbDims) {
+    emitError(rewriter.getUnknownLoc())
+        << "new npu.circular_dma_cpy_nd op's source addressing has "
+        << srcCircularStrides.size() << " dimensions which exceed the limit "
+        << dmaDimConfig.sourceMaxNbDims;
+    return failure();
+  }
+  if (tgtCircularStrides.size() > dmaDimConfig.targetMaxNbDims) {
+    emitError(rewriter.getUnknownLoc())
+        << "new npu.circular_dma_cpy_nd op's target addressing has "
+        << srcCircularStrides.size() << " dimensions which exceed the limit "
+        << dmaDimConfig.sourceMaxNbDims;
+    return failure();
   }
 
   // Replace the npu.circular_dma_cpy_nd with the new access pattern.
@@ -361,10 +381,22 @@ void AMDAIETransferStridedAccessPatternPass::runOnOperation() {
   });
   if (walkRes.wasInterrupted()) return signalPassFailure();
 
+  auto targetAttr = IREE::HAL::ExecutableTargetAttr::lookup(parentOp);
+  std::optional<AMDAIEDevice> maybeDevice = getConfigAMDAIEDevice(targetAttr);
+  if (!maybeDevice) {
+    parentOp->emitOpError()
+        << "has no AMDAIEDevice in the target attribute configuration. This "
+           "device-specific information is required and must be attached to "
+           "a containing ModuleOp.";
+    return signalPassFailure();
+  }
+  AMDAIE::AMDAIEDeviceModel deviceModel =
+      AMDAIE::getDeviceModel(maybeDevice.value());
+
   // Walk through all users of each connection op and change the dma addressing
   // from NpuDmaCpyNdOp and NpuCircularDmaCpyNdOp at the same time.
   for (AMDAIE::ConnectionOp connectionOp : connectionOps) {
-    if (failed(transferDmaAddressing(ctx, connectionOp))) {
+    if (failed(transferDmaAddressing(ctx, connectionOp, deviceModel))) {
       return signalPassFailure();
     }
   }
