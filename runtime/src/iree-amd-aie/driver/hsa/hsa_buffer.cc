@@ -10,9 +10,10 @@
 #include <cstring>
 
 #include "iree-amd-aie/driver/hsa/dynamic_symbols.h"
+#include "iree-amd-aie/driver/hsa/status_util.h"
+#include "iree-amd-aie/driver/hsa/util.h"
 #include "iree/base/api.h"
 #include "iree/base/tracing.h"
-#include "status_util.h"
 
 using iree_hal_hsa_buffer_t = struct iree_hal_hsa_buffer_t {
   iree_hal_buffer_t base;
@@ -29,13 +30,13 @@ extern const iree_hal_buffer_vtable_t iree_hal_hsa_buffer_vtable;
 static iree_hal_hsa_buffer_t* iree_hal_hsa_buffer_cast(
     iree_hal_buffer_t* base_value) {
   IREE_HAL_ASSERT_TYPE(base_value, &iree_hal_hsa_buffer_vtable);
-  return (iree_hal_hsa_buffer_t*)base_value;
+  return reinterpret_cast<iree_hal_hsa_buffer_t*>(base_value);
 }
 
 static const iree_hal_hsa_buffer_t* iree_hal_hsa_buffer_const_cast(
     const iree_hal_buffer_t* base_value) {
   IREE_HAL_ASSERT_TYPE(base_value, &iree_hal_hsa_buffer_vtable);
-  return (const iree_hal_hsa_buffer_t*)base_value;
+  return reinterpret_cast<const iree_hal_hsa_buffer_t*>(base_value);
 }
 
 iree_status_t iree_hal_hsa_buffer_wrap(
@@ -57,8 +58,8 @@ iree_status_t iree_hal_hsa_buffer_wrap(
   IREE_TRACE_ZONE_BEGIN(z0);
 
   iree_hal_hsa_buffer_t* buffer = nullptr;
-  iree_status_t status =
-      iree_allocator_malloc(host_allocator, sizeof(*buffer), (void**)&buffer);
+  iree_status_t status = iree_allocator_malloc(
+      host_allocator, sizeof(*buffer), reinterpret_cast<void**>(&buffer));
   if (iree_status_is_ok(status)) {
     iree_hal_buffer_initialize(host_allocator, allocator, &buffer->base,
                                allocation_size, byte_offset, byte_length,
@@ -126,7 +127,8 @@ static iree_status_t iree_hal_hsa_buffer_map_range(
           ? IREE_HAL_BUFFER_USAGE_MAPPING_PERSISTENT
           : IREE_HAL_BUFFER_USAGE_MAPPING_SCOPED));
 
-  uint8_t* data_ptr = (uint8_t*)(buffer->host_ptr) + local_byte_offset;
+  uint8_t* data_ptr =
+      reinterpret_cast<uint8_t*>(buffer->host_ptr) + local_byte_offset;
 #ifndef NDEBUG
   if (iree_any_bit_set(memory_access, IREE_HAL_MEMORY_ACCESS_DISCARD)) {
     memset(data_ptr, 0xCD, local_byte_length);
@@ -138,15 +140,10 @@ static iree_status_t iree_hal_hsa_buffer_map_range(
   return iree_ok_status();
 }
 
+// TODO(max): this can map to munmap
 static iree_status_t iree_hal_hsa_buffer_unmap_range(
     iree_hal_buffer_t* base_buffer, iree_device_size_t local_byte_offset,
     iree_device_size_t local_byte_length, iree_hal_buffer_mapping_t* mapping) {
-  return iree_ok_status();
-}
-
-static iree_status_t iree_hal_hsa_buffer_invalidate_range(
-    iree_hal_buffer_t* base_buffer, iree_device_size_t local_byte_offset,
-    iree_device_size_t local_byte_length) {
   return iree_ok_status();
 }
 
@@ -178,11 +175,11 @@ void* iree_hal_hsa_buffer_host_pointer(const iree_hal_buffer_t* base_buffer) {
 
 namespace {
 const iree_hal_buffer_vtable_t iree_hal_hsa_buffer_vtable = {
-    .recycle = iree_hal_buffer_recycle,
-    .destroy = iree_hal_hsa_buffer_destroy,
-    .map_range = iree_hal_hsa_buffer_map_range,
-    .unmap_range = iree_hal_hsa_buffer_unmap_range,
-    .invalidate_range = iree_hal_hsa_buffer_invalidate_range,
-    .flush_range = iree_hal_hsa_buffer_flush_range,
+    /*recycle=*/iree_hal_buffer_recycle,
+    /*destroy=*/iree_hal_hsa_buffer_destroy,
+    /*map_range=*/iree_hal_hsa_buffer_map_range,
+    /*unmap_range=*/iree_hal_hsa_buffer_unmap_range,
+    /*invalidate_range=*/unimplemented,
+    /*flush_range=*/iree_hal_hsa_buffer_flush_range,
 };
 }

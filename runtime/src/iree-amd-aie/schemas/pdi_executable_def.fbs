@@ -7,7 +7,7 @@
 namespace iree.amd.aie.hal.hsa;
 
 // 'HSA Executable'.
-file_identifier "HSAR";
+file_identifier "PDIR";
 file_extension "hsar";
 
 // Source code location denoted by a file name and line within that file.

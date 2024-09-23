@@ -77,7 +77,7 @@ static bool iree_hal_hsa_nop_executable_cache_can_prepare_format(
     iree_hal_executable_caching_mode_t caching_mode,
     iree_string_view_t executable_format) {
   return iree_string_view_equal(executable_format,
-                                iree_make_cstring_view("HSAR"));
+                                iree_make_cstring_view("PDIR"));
 }
 
 static iree_status_t iree_hal_hsa_nop_executable_cache_prepare_executable(

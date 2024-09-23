@@ -56,7 +56,7 @@ iree_hal_cts_test_suite(
   COMPILER_TARGET_BACKEND
     "amd-aie-hsa"
   EXECUTABLE_FORMAT
-    "\"amdaie-hsa-fb\""
+    "\"amdaie-pdi-fb\""
   DEPS
     iree-amd-aie::driver::hsa::registration
   INCLUDED_TESTS

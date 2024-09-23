@@ -33,5 +33,5 @@
   path = third_party/ROCR-Runtime
   url = https://github.com/nod-ai/ROCR-Runtime.git
   shallow = true
-  branch = iree-aie
+  branch = makslevental/numerics-fixes
   ignore = dirty

@@ -8,9 +8,10 @@
 
 #include "iree-amd-aie/driver/hsa/dynamic_symbols.h"
 #include "iree-amd-aie/driver/hsa/hsa_buffer.h"
+#include "iree-amd-aie/driver/hsa/status_util.h"
+#include "iree-amd-aie/driver/hsa/util.h"
 #include "iree/base/api.h"
 #include "iree/base/tracing.h"
-#include "status_util.h"
 
 #if IREE_TRACING_FEATURES & IREE_TRACING_FEATURE_ALLOCATION_TRACKING
 static const char* IREE_HAL_AIE_HSA_ALLOCATOR_ID = "AIE-HSA";
@@ -28,7 +29,7 @@ struct hsa_amd_agent_iterate_memory_pools_package_t {
 iree_hal_hsa_allocator_t* iree_hal_hsa_allocator_cast(
     iree_hal_allocator_t* base_value) {
   IREE_HAL_ASSERT_TYPE(base_value, &iree_hal_hsa_allocator_vtable);
-  return (iree_hal_hsa_allocator_t*)base_value;
+  return reinterpret_cast<iree_hal_hsa_allocator_t*>(base_value);
 }
 
 hsa::hsa_status_t get_coarse_global_mem_pool(
@@ -41,27 +42,33 @@ hsa::hsa_status_t get_coarse_global_mem_pool(
     return ret;
   }
 
-  if (segment_type == hsa::HSA_AMD_SEGMENT_GLOBAL) {
-    hsa::hsa_amd_memory_pool_global_flag_t global_pool_flags;
-    ret = package->hsa_symbols->hsa_amd_memory_pool_get_info(
-        pool, hsa::HSA_AMD_MEMORY_POOL_INFO_GLOBAL_FLAGS, &global_pool_flags);
-    if (ret != hsa::HSA_STATUS_SUCCESS) {
-      return ret;
-    }
+  if (segment_type != hsa::HSA_AMD_SEGMENT_GLOBAL) {
+    return hsa::HSA_STATUS_SUCCESS;
+  }
 
-    if (kernarg) {
-      if ((global_pool_flags &
-           hsa::HSA_AMD_MEMORY_POOL_GLOBAL_FLAG_COARSE_GRAINED) &&
-          (global_pool_flags & hsa::HSA_REGION_GLOBAL_FLAG_KERNARG)) {
-        *package->pool = pool;
-      }
-    } else {
-      if ((global_pool_flags &
-           hsa::HSA_AMD_MEMORY_POOL_GLOBAL_FLAG_COARSE_GRAINED) &&
-          !(global_pool_flags & hsa::HSA_REGION_GLOBAL_FLAG_KERNARG)) {
-        *package->pool = pool;
-      }
-    }
+  hsa::hsa_amd_memory_pool_global_flag_t global_pool_flags;
+  ret = package->hsa_symbols->hsa_amd_memory_pool_get_info(
+      pool, hsa::HSA_AMD_MEMORY_POOL_INFO_GLOBAL_FLAGS, &global_pool_flags);
+  if (ret != hsa::HSA_STATUS_SUCCESS) {
+    return ret;
+  }
+
+  if (!(global_pool_flags &
+        hsa::HSA_AMD_MEMORY_POOL_GLOBAL_FLAG_COARSE_GRAINED)) {
+    return hsa::HSA_STATUS_SUCCESS;
+  }
+
+  bool pool_is_kernarg =
+      global_pool_flags & hsa::HSA_REGION_GLOBAL_FLAG_KERNARG;
+
+  if (kernarg && pool_is_kernarg) {
+    *package->pool = pool;
+    return hsa::HSA_STATUS_SUCCESS;
+  }
+
+  if (!kernarg && !pool_is_kernarg) {
+    *package->pool = pool;
+    return hsa::HSA_STATUS_SUCCESS;
   }
 
   return hsa::HSA_STATUS_SUCCESS;
@@ -91,15 +98,14 @@ iree_status_t iree_hal_hsa_allocator_create(
   iree_hal_hsa_allocator_t* allocator = nullptr;
   IREE_RETURN_AND_END_ZONE_IF_ERROR(
       z0, iree_allocator_malloc(host_allocator, sizeof(*allocator),
-                                (void**)&allocator));
+                                reinterpret_cast<void**>(&allocator)));
   iree_hal_resource_initialize(&iree_hal_hsa_allocator_vtable,
                                &allocator->resource);
-  allocator->aie_agent = agent;
   allocator->symbols = hsa_symbols;
   allocator->host_allocator = host_allocator;
 
   // Find a pool for DEV BOs. This is a global system memory pool that is
-  // mapped to the device. Will be used for PDIs and DPU instructions.
+  // mapped to the device. Will be used for PDIs and IPU instructions.
   auto dev_mem_pool_package = hsa_amd_agent_iterate_memory_pools_package_t{
       hsa_symbols, &allocator->global_dev_mem_pool};
   IREE_HSA_RETURN_AND_END_ZONE_IF_ERROR(
@@ -120,7 +126,7 @@ iree_status_t iree_hal_hsa_allocator_create(
       "hsa_amd_agent_iterate_memory_pools");
   IREE_ASSERT(allocator->global_kernarg_mem_pool.handle);
 
-  *out_allocator = (iree_hal_allocator_t*)allocator;
+  *out_allocator = reinterpret_cast<iree_hal_allocator_t*>(allocator);
 
   IREE_TRACE_ZONE_END(z0);
   return iree_ok_status();
@@ -185,7 +191,7 @@ static iree_status_t iree_hal_hsa_allocator_allocate_buffer(
     IREE_HSA_RETURN_IF_ERROR(
         allocator->symbols,
         hsa_amd_memory_pool_allocate(allocator->global_kernarg_mem_pool,
-                                     allocation_size, 0, &host_ptr),
+                                     allocation_size, /*flags*/ 0, &host_ptr),
         "hsa_amd_memory_pool_allocate");
     buffer_type = IREE_HAL_HSA_BUFFER_TYPE_KERNEL_ARG;
     device_ptr = host_ptr;
@@ -212,7 +218,7 @@ static iree_status_t iree_hal_hsa_allocator_allocate_buffer(
 
   if (iree_status_is_ok(status)) {
     IREE_TRACE_ALLOC_NAMED(IREE_HAL_AIE_HSA_ALLOCATOR_ID,
-                           (void*)iree_hal_hsa_buffer_device_pointer(buffer),
+                           iree_hal_hsa_buffer_device_pointer(buffer),
                            allocation_size);
     *out_buffer = buffer;
   } else {
@@ -228,6 +234,7 @@ static iree_status_t iree_hal_hsa_allocator_allocate_buffer(
 
 static iree_allocator_t iree_hal_hsa_allocator_host_allocator(
     const iree_hal_allocator_t* IREE_RESTRICT base_allocator) {
+  // can't reinterpret_cast here because iree_hal_allocator_t is a typedef?
   auto* allocator = (iree_hal_hsa_allocator_t*)base_allocator;
   return allocator->host_allocator;
 }
@@ -248,9 +255,8 @@ static void iree_hal_hsa_allocator_deallocate_buffer(
   switch (buffer_type) {
     case IREE_HAL_HSA_BUFFER_TYPE_DEVICE:
     case IREE_HAL_HSA_BUFFER_TYPE_HOST: {
-      IREE_TRACE_FREE_NAMED(
-          IREE_HAL_AIE_HSA_ALLOCATOR_ID,
-          (void*)iree_hal_hsa_buffer_device_pointer(base_buffer));
+      IREE_TRACE_FREE_NAMED(IREE_HAL_AIE_HSA_ALLOCATOR_ID,
+                            iree_hal_hsa_buffer_device_pointer(base_buffer));
       break;
     }
     default:
@@ -265,12 +271,12 @@ namespace {
 const iree_hal_allocator_vtable_t iree_hal_hsa_allocator_vtable = {
     /*destroy=*/iree_hal_hsa_allocator_destroy,
     /*host_allocator=*/iree_hal_hsa_allocator_host_allocator,
-    /*trim=*/nullptr,
-    /*query_statistics=*/nullptr,
-    /*query_memory_heaps=*/nullptr,
+    /*trim=*/unimplemented,
+    /*query_statistics=*/unimplemented,
+    /*query_memory_heaps=*/unimplemented,
     /*query_buffer_compatibility=*/
     iree_hal_hsa_allocator_query_buffer_compatibility,
     /*allocate_buffer=*/iree_hal_hsa_allocator_allocate_buffer,
     /*deallocate_buffer=*/iree_hal_hsa_allocator_deallocate_buffer,
-    /*import_buffer=*/nullptr, /*export_buffer=*/nullptr};
+    /*import_buffer=*/unimplemented, /*export_buffer=*/unimplemented};
 }

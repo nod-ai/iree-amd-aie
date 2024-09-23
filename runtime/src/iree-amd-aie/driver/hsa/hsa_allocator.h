@@ -23,8 +23,7 @@ struct iree_hal_hsa_allocator_t {
   // Abstract resource used for injecting reference counting and vtable;
   // must be at offset 0.
   iree_hal_resource_t resource{};
-  hsa::hsa_agent_t aie_agent{};
-  // Memory pool for allocating device-mapped memory. Used for PDI/DPU
+  // Memory pool for allocating device-mapped memory. Used for PDI/IPU
   // instructions.
   hsa::hsa_amd_memory_pool_t global_dev_mem_pool{0};
   // System memory pool. Used for allocating kernel argument data.

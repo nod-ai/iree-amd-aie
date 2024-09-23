@@ -22,7 +22,7 @@ extern const iree_hal_semaphore_vtable_t iree_hal_hsa_semaphore_vtable;
 static iree_hal_hsa_semaphore_t* iree_hal_hsa_semaphore_cast(
     iree_hal_semaphore_t* base_value) {
   IREE_HAL_ASSERT_TYPE(base_value, &iree_hal_hsa_semaphore_vtable);
-  return (iree_hal_hsa_semaphore_t*)base_value;
+  return reinterpret_cast<iree_hal_hsa_semaphore_t*>(base_value);
 }
 
 iree_status_t iree_hal_hsa_semaphore_create(
@@ -33,7 +33,7 @@ iree_status_t iree_hal_hsa_semaphore_create(
 
   iree_hal_hsa_semaphore_t* semaphore = nullptr;
   iree_status_t status = iree_allocator_malloc(
-      host_allocator, sizeof(*semaphore), (void**)&semaphore);
+      host_allocator, sizeof(*semaphore), reinterpret_cast<void**>(&semaphore));
   if (iree_status_is_ok(status)) {
     iree_hal_semaphore_initialize(&iree_hal_hsa_semaphore_vtable,
                                   &semaphore->base);

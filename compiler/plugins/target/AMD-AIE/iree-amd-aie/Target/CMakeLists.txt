@@ -16,7 +16,7 @@ iree_cc_library(
     "XCLBinGen.cpp"
   DEPS
     iree-amd-aie::schemas::xrt_executable_def_c_fbs
-    iree-amd-aie::schemas::hsa_executable_def_c_fbs
+    iree-amd-aie::schemas::pdi_executable_def_c_fbs
     iree-amd-aie::aie_runtime::iree_aie_runtime_static
     iree::target::amd-aie::Transforms
     iree-aie-bootgen

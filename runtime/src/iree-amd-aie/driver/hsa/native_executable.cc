@@ -12,8 +12,8 @@
 #include "iree-amd-aie/driver/hsa/dynamic_symbols.h"
 #include "iree-amd-aie/driver/hsa/hsa_allocator.h"
 #include "iree-amd-aie/driver/hsa/status_util.h"
-#include "iree-amd-aie/schemas/hsa_executable_def_reader.h"
-#include "iree-amd-aie/schemas/hsa_executable_def_verifier.h"
+#include "iree-amd-aie/schemas/pdi_executable_def_reader.h"
+#include "iree-amd-aie/schemas/pdi_executable_def_verifier.h"
 #include "iree/base/api.h"
 
 struct iree_hal_hsa_native_executable_t {
@@ -31,7 +31,7 @@ extern const iree_hal_executable_vtable_t iree_hal_hsa_native_executable_vtable;
 static iree_hal_hsa_native_executable_t* iree_hal_hsa_native_executable_cast(
     iree_hal_executable_t* base_value) {
   IREE_HAL_ASSERT_TYPE(base_value, &iree_hal_hsa_native_executable_vtable);
-  return (iree_hal_hsa_native_executable_t*)base_value;
+  return reinterpret_cast<iree_hal_hsa_native_executable_t*>(base_value);
 }
 
 static iree_status_t iree_hal_hsa_native_executable_flatbuffer_verify(
@@ -90,11 +90,6 @@ static iree_status_t iree_hal_hsa_native_executable_flatbuffer_verify(
   return iree_ok_status();
 }
 
-struct iree_hal_hsa_callback_package_t {
-  const iree_hal_hsa_dynamic_symbols_t* symbols;
-  unsigned int* return_value;
-};
-
 iree_status_t iree_hal_hsa_native_executable_create(
     const iree_hal_hsa_dynamic_symbols_t* symbols, hsa::hsa_agent_t agent,
     const iree_hal_executable_params_t* executable_params,
@@ -151,8 +146,8 @@ iree_status_t iree_hal_hsa_native_executable_create(
       entry_point_count * sizeof(executable->entry_points[0]) +
       total_entry_point_name_chars;
   IREE_RETURN_AND_END_ZONE_IF_ERROR(
-      z0,
-      iree_allocator_malloc(host_allocator, total_size, (void**)&executable));
+      z0, iree_allocator_malloc(host_allocator, total_size,
+                                reinterpret_cast<void**>(&executable)));
   IREE_TRACE(
       char* string_table_buffer =
           (char*)((char*)executable + sizeof(*executable) +
@@ -185,44 +180,37 @@ iree_status_t iree_hal_hsa_native_executable_create(
 
     iree_hal_hsa_allocator_t* allocator =
         iree_hal_hsa_allocator_cast(device_allocator);
-
-    uint32_t* dpu_inst_buf(nullptr);
-    char* pdi_buf(nullptr);
-    // Load the DPU and PDI files into a global pool that doesn't support kernel
+    iree_hal_hsa_kernel_info_t* params =
+        &executable->entry_points[entry_ordinal];
+    params->num_instr = num_instr;
+    // Load the IPU and PDI files into a global pool that doesn't support kernel
     // args (DEV BO).
     IREE_HSA_RETURN_AND_END_ZONE_IF_ERROR(
         z0, symbols,
-        hsa_amd_memory_pool_allocate(allocator->global_dev_mem_pool,
-                                     num_instr * sizeof(uint32_t), 0,
-                                     reinterpret_cast<void**>(&dpu_inst_buf)),
+        hsa_amd_memory_pool_allocate(
+            allocator->global_dev_mem_pool, num_instr * sizeof(uint32_t), 0,
+            reinterpret_cast<void**>(&params->ipu_inst_buf)),
         "hsa_amd_memory_pool_allocate");
-    std::memcpy(dpu_inst_buf, asm_inst, num_instr * sizeof(uint32_t));
-    uint32_t dpu_handle = 0;
+    std::memcpy(params->ipu_inst_buf, asm_inst, num_instr * sizeof(uint32_t));
     IREE_HSA_RETURN_AND_END_ZONE_IF_ERROR(
-        z0, symbols, hsa_amd_get_handle_from_vaddr(dpu_inst_buf, &dpu_handle),
+        z0, symbols,
+        hsa_amd_get_handle_from_vaddr(params->ipu_inst_buf,
+                                      &params->ipu_inst_handle),
         "hsa_amd_agent_iterate_memory_pools");
-    IREE_ASSERT(dpu_handle);
+    IREE_ASSERT(params->ipu_inst_handle);
 
     IREE_HSA_RETURN_AND_END_ZONE_IF_ERROR(
         z0, symbols,
-        hsa_amd_memory_pool_allocate(allocator->global_dev_mem_pool,
-                                     num_pdi_chars, 0,
-                                     reinterpret_cast<void**>(&pdi_buf)),
+        hsa_amd_memory_pool_allocate(
+            allocator->global_dev_mem_pool, num_pdi_chars, 0,
+            reinterpret_cast<void**>(&params->pdi_buf)),
         "hsa_amd_memory_pool_allocate");
-    std::memcpy(pdi_buf, pdi_fb, num_pdi_chars * sizeof(char));
-    uint32_t pdi_handle = 0;
+    std::memcpy(params->pdi_buf, pdi_fb, num_pdi_chars * sizeof(char));
     IREE_HSA_RETURN_AND_END_ZONE_IF_ERROR(
-        z0, symbols, hsa_amd_get_handle_from_vaddr(pdi_buf, &pdi_handle),
+        z0, symbols,
+        hsa_amd_get_handle_from_vaddr(params->pdi_buf, &params->pdi_handle),
         "hsa_amd_agent_iterate_memory_pools");
-    IREE_ASSERT(pdi_handle);
-
-    iree_hal_hsa_kernel_info_t* params =
-        &executable->entry_points[entry_ordinal];
-    params->pdi_buf = pdi_buf;
-    params->pdi_handle = pdi_handle;
-    params->dpu_inst_buf = dpu_inst_buf;
-    params->dpu_handle = dpu_handle;
-    params->num_instr = num_instr;
+    IREE_ASSERT(params->pdi_handle);
 
     (void)entry_name;
     IREE_TRACE({
@@ -254,9 +242,10 @@ iree_status_t iree_hal_hsa_native_executable_create(
   iree_status_t status = iree_ok_status();
 
   if (iree_status_is_ok(status)) {
-    *out_executable = (iree_hal_executable_t*)executable;
+    *out_executable = reinterpret_cast<iree_hal_executable_t*>(executable);
   } else {
-    iree_hal_executable_destroy((iree_hal_executable_t*)executable);
+    iree_hal_executable_destroy(
+        reinterpret_cast<iree_hal_executable_t*>(executable));
   }
 
   IREE_TRACE_ZONE_END(z0);
@@ -277,7 +266,7 @@ static void iree_hal_hsa_native_executable_destroy(
     IREE_HSA_IGNORE_ERROR(executable->symbols,
                           hsa_amd_memory_pool_free(params->pdi_buf));
     IREE_HSA_IGNORE_ERROR(executable->symbols,
-                          hsa_amd_memory_pool_free(params->dpu_inst_buf));
+                          hsa_amd_memory_pool_free(params->ipu_inst_buf));
   }
 
   iree_allocator_free(host_allocator, executable);

@@ -43,7 +43,7 @@
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Support/FileUtilities.h"
 #include "mlir/Target/LLVMIR/Dialect/All.h"
-#include "runtime/plugins/AMD-AIE/iree-amd-aie/schemas/hsa_executable_def_builder.h"
+#include "runtime/plugins/AMD-AIE/iree-amd-aie/schemas/pdi_executable_def_builder.h"
 #include "runtime/plugins/AMD-AIE/iree-amd-aie/schemas/xrt_executable_def_builder.h"
 
 #define DEBUG_TYPE "aie-target"
@@ -183,7 +183,7 @@ class AIETargetBackend final : public IREE::HAL::TargetBackend {
         backend = b.getStringAttr("amd-aie-xrt");
         break;
       case AMDAIEOptions::Backend::HSA:
-        executableFormat = b.getStringAttr("amdaie-hsa-fb");
+        executableFormat = b.getStringAttr("amdaie-pdi-fb");
         backend = b.getStringAttr("amd-aie-hsa");
         break;
       default:

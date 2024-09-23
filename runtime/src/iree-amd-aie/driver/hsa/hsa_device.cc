@@ -6,27 +6,37 @@
 
 #include "iree-amd-aie/driver/hsa/hsa_device.h"
 
-#include "iree-amd-aie/driver/hsa/api.h"
 #include "iree-amd-aie/driver/hsa/command_buffer.h"
 #include "iree-amd-aie/driver/hsa/hsa_allocator.h"
 #include "iree-amd-aie/driver/hsa/hsa_headers.h"
 #include "iree-amd-aie/driver/hsa/nop_executable_cache.h"
 #include "iree-amd-aie/driver/hsa/nop_semaphore.h"
 #include "iree-amd-aie/driver/hsa/status_util.h"
+#include "iree-amd-aie/driver/hsa/util.h"
 #include "iree/base/api.h"
 #include "iree/base/tracing.h"
 #include "iree/hal/api.h"
 #include "iree/hal/utils/deferred_command_buffer.h"
 
+struct iree_hal_hsa_device_t {
+  // Abstract resource used for injecting reference counting and vtable;
+  // must be at offset 0.
+  iree_hal_resource_t resource;
+  iree_string_view_t identifier;
+  iree_hal_driver_t* driver;
+  const iree_hal_hsa_dynamic_symbols_t* hsa_symbols;
+  hsa::hsa_agent_t hsa_agent;
+  hsa::hsa_queue_t* hsa_dispatch_queue;
+  iree_allocator_t host_allocator;
+  iree_hal_allocator_t* device_allocator;
+  iree_arena_block_pool_t block_pool;
+};
+
 namespace {
 extern const iree_hal_device_vtable_t iree_hal_hsa_device_vtable;
 }  // namespace
 
-IREE_API_EXPORT void iree_hal_hsa_device_params_initialize(
-    iree_hal_hsa_device_params_t* out_params) {
-  memset(out_params, 0, sizeof(*out_params));
-  out_params->arena_block_size = 32 * 1024;
-}
+#define ARENA_BLOCK_SIZE (32 * 1024)
 
 static iree_hal_hsa_device_t* iree_hal_hsa_device_cast(
     iree_hal_device_t* base_value) {
@@ -36,35 +46,30 @@ static iree_hal_hsa_device_t* iree_hal_hsa_device_cast(
 
 iree_status_t iree_hal_hsa_device_create(
     iree_hal_driver_t* driver, iree_string_view_t identifier,
-    const iree_hal_hsa_device_params_t* params,
     const iree_hal_hsa_dynamic_symbols_t* symbols, hsa::hsa_agent_t agent,
     iree_allocator_t host_allocator, iree_hal_device_t** out_device) {
   IREE_ASSERT_ARGUMENT(driver);
-  IREE_ASSERT_ARGUMENT(params);
   IREE_ASSERT_ARGUMENT(symbols);
   IREE_ASSERT_ARGUMENT(out_device);
   IREE_TRACE_ZONE_BEGIN(z0);
 
-  size_t num_queue_packets = 64;
-  hsa::hsa_queue_type_t queue_type = hsa::HSA_QUEUE_TYPE_SINGLE;
-  void (*callback)(hsa::hsa_status_t, hsa::hsa_queue_t*, void*) = nullptr;
-  void* data = nullptr;
-  uint32_t private_segment_size = 0;
-  uint32_t group_segment_size = 0;
   hsa::hsa_queue_t* dispatch_queue;
 
+  // 64 queue packets is just a max; we only use a single packet currently
   IREE_HSA_RETURN_IF_ERROR(
       symbols,
-      hsa_queue_create(agent, num_queue_packets, queue_type, callback, data,
-                       private_segment_size, group_segment_size,
+      hsa_queue_create(agent, /*num_queue_packets*/ 64,
+                       /*queue_type*/ hsa::HSA_QUEUE_TYPE_SINGLE,
+                       /*callback*/ nullptr, /*data*/ nullptr,
+                       /*private_segment_size*/ 0, /*group_segment_size*/ 0,
                        &dispatch_queue),
       "hsa_queue_create");
   IREE_ASSERT(dispatch_queue->base_address);
 
   iree_hal_hsa_device_t* device = nullptr;
   iree_host_size_t total_size = iree_sizeof_struct(*device) + identifier.size;
-  IREE_RETURN_IF_ERROR(
-      iree_allocator_malloc(host_allocator, total_size, (void**)&device));
+  IREE_RETURN_IF_ERROR(iree_allocator_malloc(
+      host_allocator, total_size, reinterpret_cast<void**>(&device)));
 
   iree_status_t status = iree_hal_hsa_allocator_create(
       symbols, agent, host_allocator, &device->device_allocator);
@@ -75,12 +80,11 @@ iree_status_t iree_hal_hsa_device_create(
     iree_string_view_append_to_buffer(
         identifier, &device->identifier,
         (char*)device + iree_sizeof_struct(*device));
-    iree_arena_block_pool_initialize(params->arena_block_size, host_allocator,
+    iree_arena_block_pool_initialize(ARENA_BLOCK_SIZE, host_allocator,
                                      &device->block_pool);
     device->driver = driver;
     iree_hal_driver_retain(device->driver);
     device->hsa_symbols = symbols;
-    device->params = *params;
     device->hsa_agent = agent;
     device->hsa_dispatch_queue = dispatch_queue;
     device->host_allocator = host_allocator;
@@ -122,6 +126,7 @@ static void iree_hal_hsa_device_destroy(iree_hal_device_t* base_device) {
   IREE_TRACE_ZONE_BEGIN(z0);
 
   iree_hal_allocator_release(device->device_allocator);
+  iree_arena_block_pool_deinitialize(&device->block_pool);
   iree_allocator_free(host_allocator, device);
   device->hsa_symbols->hsa_queue_destroy(device->hsa_dispatch_queue);
   iree_hal_driver_release(device->driver);
@@ -185,17 +190,8 @@ static iree_status_t iree_hal_hsa_device_queue_execute(
                 command_buffers[i], hsa_command_buffer,
                 iree_hal_buffer_binding_table_empty()));
   }
-  // Do we need to block here like vulkan HAL? Check if we run into some
-  // correctness issue in the future.
   IREE_TRACE_ZONE_END(z0);
   return iree_ok_status();
-}
-
-static iree_status_t iree_hal_hsa_device_wait_semaphores(
-    iree_hal_device_t* base_device, iree_hal_wait_mode_t wait_mode,
-    const iree_hal_semaphore_list_t semaphore_list, iree_timeout_t timeout) {
-  return iree_make_status(IREE_STATUS_UNIMPLEMENTED,
-                          "Unimplemented semaphore wait");
 }
 
 static void iree_hal_hsa_replace_device_allocator(
@@ -219,7 +215,7 @@ static iree_status_t iree_hal_hsa_device_query_i64(
   }
 
   if (iree_string_view_equal(category, IREE_SV("hal.executable.format"))) {
-    *out_value = iree_string_view_equal(key, IREE_SV("amdaie-hsa-fb")) ? 1 : 0;
+    *out_value = iree_string_view_equal(key, IREE_SV("amdaie-pdi-fb")) ? 1 : 0;
     return iree_ok_status();
   }
   return iree_make_status(IREE_STATUS_UNIMPLEMENTED, "unsupported query");
@@ -232,7 +228,6 @@ static iree_status_t iree_hal_hsa_device_queue_alloca(
     iree_hal_allocator_pool_t pool, iree_hal_buffer_params_t params,
     iree_device_size_t allocation_size,
     iree_hal_buffer_t** IREE_RESTRICT out_buffer) {
-  // TODO: queue-ordered allocations.
   IREE_RETURN_IF_ERROR(iree_hal_semaphore_list_wait(wait_semaphore_list,
                                                     iree_infinite_timeout()));
   IREE_RETURN_IF_ERROR(
@@ -242,6 +237,10 @@ static iree_status_t iree_hal_hsa_device_queue_alloca(
   return iree_ok_status();
 }
 
+template <typename... Params>
+iree_hal_semaphore_compatibility_t unimplemented(Params...) {
+  IREE_ASSERT(false && "unimplemented");
+}
 namespace {
 const iree_hal_device_vtable_t iree_hal_hsa_device_vtable = {
     /*destroy=*/iree_hal_hsa_device_destroy,
@@ -249,26 +248,26 @@ const iree_hal_device_vtable_t iree_hal_hsa_device_vtable = {
     /*host_allocator=*/iree_hal_hsa_device_host_allocator,
     /*device_allocator=*/iree_hal_hsa_device_allocator,
     /*replace_device_allocator=*/iree_hal_hsa_replace_device_allocator,
-    /*replace_channel_provider=*/nullptr,
-    /*trim=*/nullptr,
+    /*replace_channel_provider=*/unimplemented,
+    /*trim=*/unimplemented,
     /*query_i64=*/iree_hal_hsa_device_query_i64,
-    /*create_channel=*/nullptr,
+    /*create_channel=*/unimplemented,
     /*create_command_buffer=*/iree_hal_hsa_device_create_command_buffer,
-    /*create_event=*/nullptr,
+    /*create_event=*/unimplemented,
     /*create_executable_cache=*/iree_hal_hsa_device_create_executable_cache,
-    /*import_file=*/nullptr,
+    /*import_file=*/unimplemented,
     /*create_semaphore=*/iree_hal_hsa_device_create_semaphore,
     /*query_semaphore_compatibility*/
-    nullptr,
+    unimplemented,
     /*queue_alloca=*/iree_hal_hsa_device_queue_alloca,
-    /*queue_dealloca=*/nullptr,
-    /*queue_read=*/nullptr,
-    /*queue_write=*/nullptr,
+    /*queue_dealloca=*/unimplemented,
+    /*queue_read=*/unimplemented,
+    /*queue_write=*/unimplemented,
     /*queue_execute=*/iree_hal_hsa_device_queue_execute,
-    /*queue_flush=*/nullptr,
-    /*wait_semaphores=*/iree_hal_hsa_device_wait_semaphores,
-    /*profiling_begin=*/nullptr,
-    /*profiling_flush=*/nullptr,
-    /*profiling_end=*/nullptr,
+    /*queue_flush=*/unimplemented,
+    /*wait_semaphores=*/unimplemented,
+    /*profiling_begin=*/unimplemented,
+    /*profiling_flush=*/unimplemented,
+    /*profiling_end=*/unimplemented,
 };
 }  // namespace

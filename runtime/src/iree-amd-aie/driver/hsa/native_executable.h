@@ -20,9 +20,9 @@ extern "C" {
 #endif  // __cplusplus
 
 struct iree_hal_hsa_kernel_info_t {
-  uint32_t dpu_handle;
+  uint32_t ipu_inst_handle;
   uint32_t pdi_handle;
-  uint32_t* dpu_inst_buf;
+  uint32_t* ipu_inst_buf;
   char* pdi_buf;
   uint32_t num_instr;
   IREE_TRACE(iree_string_view_t function_name;)

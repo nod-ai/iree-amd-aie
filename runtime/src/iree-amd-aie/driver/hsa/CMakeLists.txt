@@ -63,7 +63,7 @@ iree_cc_library(
     nop_semaphore.h
   DEPS
     ::dynamic_symbols
-    iree-amd-aie::schemas::hsa_executable_def_c_fbs
+    iree-amd-aie::schemas::pdi_executable_def_c_fbs
     iree::base
     iree::base::core_headers
     iree::base::internal
