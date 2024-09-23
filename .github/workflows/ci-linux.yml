@@ -57,6 +57,10 @@ jobs:
           yum remove -y openssl-devel zlib-devel || true
           yum install -y protobuf-devel protobuf-compiler tmate
 
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
       - name: Python deps
         run: |
           pip install "numpy<2" pyyaml "pybind11[global]==2.10.3" nanobind pytest
@@ -136,7 +140,10 @@ jobs:
       - name: Extract artifact
         run: |
           tar -xvf iree-dist-linux.tar
+          echo "IREE_INSTALL_DIR=$PWD/iree-install" >> $GITHUB_ENV
+          echo "PYTHONPATH=$PWD/iree-install/python_packages/iree_compiler:$PWD/iree-install/python_packages/iree_runtime" >> $GITHUB_ENV
           bash build_tools/download_peano.sh
+          echo "PEANO_INSTALL_DIR=$PWD/llvm-aie" >> $GITHUB_ENV
 
       - name: Create venv and install dependencies
         run: |
@@ -193,3 +200,9 @@ jobs:
             $PWD/llvm-aie \
             /opt/xilinx/xrt \
             /opt/Xilinx/Vitis/2024.2
+
+      - name: Python tests
+        run: |
+          source .venv/bin/activate
+          source /opt/xilinx/xrt/setup.sh
+          python samples/smol_matmul.py
