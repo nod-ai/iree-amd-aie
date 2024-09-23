@@ -15,11 +15,11 @@ class conv_2d_nhwc_hwcf:
 
 
 class conv_2d_nchw_fchw:
-    def get_input_type(self, N, IC, IH, IW, input_element_type):
+    def get_input_type(self, N, IH, IW, IC, input_element_type):
         return "{}x{}x{}x{}x{}".format(N, IC, IH, IW, input_element_type)
 
     def get_kernel_type(self, KH, KW, IC, OC, kernel_element_type):
-        return "{}x{}x{}x{}x{}".format(KH, KW, IC, OC, kernel_element_type)
+        return "{}x{}x{}x{}x{}".format(OC, IC, KH, KW, kernel_element_type)
 
     def get_output_type(self, N, OH, OW, OC, output_element_type):
         return "{}x{}x{}x{}x{}".format(N, OC, OH, OW, output_element_type)
@@ -108,9 +108,6 @@ func.func @f_conv(%arg0: ${input_tensor_type},
             raise RuntimeError("Dilations must be a 2-element list")
 
         if conv_type not in helper_map:
-            # TODO(newling) for "conv_2d_nhwc_hwcf_q" the convolution takes 2
-            # additional operands, we'll need to insert another layer into
-            # the template for that (not difficult).
             raise RuntimeError(
                 "Unimplemented: convolution type {} not found in helper_map. Available options are: {}".format(
                     conv_type, helper_map.keys()

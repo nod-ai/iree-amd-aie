@@ -96,6 +96,7 @@ def test_conv_2d_nchw_fchw():
     output = str(
         ConvolutionMlirGenerator(
             conv_type="conv_2d_nchw_fchw",
+            N=1,
             IH=20,
             IC=4,
             OC=8,
@@ -108,8 +109,8 @@ def test_conv_2d_nchw_fchw():
     )
 
     to_find = [
-        "input 1x20x20x4xi8",
-        "input 3x3x4x8xi8",
+        "input 1x4x20x20xi8",
+        "input 8x4x3x3xi8",
         "-> tensor<1x8x9x9xi32>",
         "linalg.conv_2d_nchw_fchw",
         "strides = dense<[2,2]> : vector<2xi64>",
