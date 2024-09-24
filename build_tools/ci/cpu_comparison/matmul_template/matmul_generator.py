@@ -30,22 +30,3 @@ def generate_matmul_test(output_fn, input_fn, m, n, k, lhs_rhs_type, acc_type, b
         out_file.write(subbed)
     in_file.close()
     out_file.close()
-
-
-if __name__ == "__main__":
-    if len(sys.argv) not in [8, 9]:
-        print(f"Number of arguments received: {len(sys.argv)}, expected 8 or 9.")
-        print(
-            "Usage: python3 matmul_generator.py <output_fn> <input_fn> <m> <n> <k> <lhs_rhs_type> <acc_type> (optional)<b>"
-        )
-        sys.exit(1)
-
-    generate_matmul_test(
-        sys.argv[1],
-        sys.argv[2],
-        int(sys.argv[3]),
-        int(sys.argv[4]),
-        int(sys.argv[5]),
-        sys.argv[6],
-        sys.argv[7],
-    )
