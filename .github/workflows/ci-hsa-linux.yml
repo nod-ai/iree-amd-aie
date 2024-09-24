@@ -196,8 +196,6 @@ jobs:
     runs-on: nod-ai-shared-cpubuilder-manylinux-x86_64
     strategy:
       fail-fast: false
-      matrix:
-        IREE_AIE_HSA_RUNTIME_DIRECT_LINK: [false]
     env:
       CACHE_DIR: ${{ github.workspace }}/.container-cache
       # either the PR number or `branch-N` where N always increments
@@ -262,25 +260,11 @@ jobs:
           bash build_tools/download_peano.sh
           echo "PEANO_INSTALL_DIR=$PWD/llvm-aie" >> $GITHUB_ENV
 
-      - name: Download HSA artifacts
-        if: ${{ matrix.IREE_AIE_HSA_RUNTIME_DIRECT_LINK }}
-        uses: actions/download-artifact@v4
-        with:
-          name: linux_hsa_x86_64_release_packages
-
-      - name: Extract HSA artifact
-        if: ${{ matrix.IREE_AIE_HSA_RUNTIME_DIRECT_LINK }}
-        run: |
-          tar -xvf rocr-*.tar
-          echo "hsa_runtime64_DIR=$PWD/rocr-install/lib/cmake/hsa-runtime64" >> $GITHUB_ENV
-          echo "hsakmt_DIR=$PWD/rocr-install/lib/cmake/hsakmt" >> $GITHUB_ENV
-
       - name: Build packages
         run: |
           export cache_dir="${{ env.CACHE_DIR }}"
           export CCACHE_COMPILERCHECK="string:$(clang --version)"
           export IREE_EXTERNAL_HAL_DRIVERS=amd-aie-hsa
-          export IREE_AIE_HSA_RUNTIME_DIRECT_LINK=${{ matrix.IREE_AIE_HSA_RUNTIME_DIRECT_LINK && 'ON' || 'OFF' }}
           export hsa_runtime64_DIR="$hsa_runtime64_DIR"
           export hsakmt_DIR="$hsakmt_DIR"
           export llvm_install_dir="$llvm_install_dir"
@@ -300,7 +284,7 @@ jobs:
         uses: actions/upload-artifact@v4
         if: ${{ !cancelled() }}
         with:
-          name: linux_x86_64_release_packages${{ matrix.IREE_AIE_HSA_RUNTIME_DIRECT_LINK && '-hsa-direct-link' || '' }}
+          name: linux_x86_64_release_packages
           path: iree-dist-linux.tar
           if-no-files-found: warn
 
@@ -315,10 +299,6 @@ jobs:
     name: E2E Test linux with HSA
     needs: [build_llvm, build_hsa, build_and_ctest]
     runs-on: linux-phoenix
-    strategy:
-      fail-fast: false
-      matrix:
-        IREE_AIE_HSA_RUNTIME_DIRECT_LINK: [false]
     env:
       XILINXD_LICENSE_FILE: /opt/xilinx/Xilinx.lic
     steps:
@@ -372,12 +352,3 @@ jobs:
             iree-install \
             $PWD/llvm-aie \
             /opt/Xilinx/Vitis/2024.2
-
-      - name: Printing IR from aie2xclbin
-        run: |
-          source .venv/bin/activate
-          export TARGET_BACKEND=amd-aie-hsa
-          bash build_tools/ci/print_ir_aie2xclbin/print_ir_aie2xclbin.sh \
-            iree-install \
-            print_ir_aie2xclbin_results \
-            $PWD/llvm-aie

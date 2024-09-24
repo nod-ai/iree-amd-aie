@@ -4,10 +4,15 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+include(CMakeDependentOption)
+
 set(PEANO_INSTALL_DIR "" CACHE PATH "")
-if(NOT EXISTS ${PEANO_INSTALL_DIR})
-  message(FATAL_ERROR "PEANO_INSTALL_DIR=${PEANO_INSTALL_DIR} does not exist.")
+set(VITIS_DIR "" CACHE PATH "")
+if((NOT PEANO_INSTALL_DIR) AND (NOT VITIS_DIR))
+  message(FATAL_ERROR "either PEANO_INSTALL_DIR or VITIS_DIR must be set")
 endif()
+cmake_dependent_option(USE_CHESS "" "1" "VITIS_DIR" "0")
+set(TARGET_DEVICE "npu1_4col" CACHE STRING "")
 
 iree_bytecode_module(
   NAME
@@ -21,7 +26,11 @@ iree_bytecode_module(
     --iree-hal-dump-executable-files-to=${CMAKE_CURRENT_BINARY_DIR}
     --iree-hal-target-backends=amd-aie-hsa
     --iree-amdaie-lower-to-aie-pipeline=air
+    --iree-amdaie-target-device=${TARGET_DEVICE}
     --iree-amd-aie-peano-install-dir=${PEANO_INSTALL_DIR}
+    --iree-amd-aie-vitis-install-dir=${VITIS_DIR}
+    --iree-amd-aie-enable-chess=$<BOOL:${USE_CHESS}>
+    --iree-amd-aie-show-invoked-commands
   PUBLIC
   TESTONLY
 )

@@ -141,8 +141,7 @@ static void iree_hal_hsa_driver_destroy(iree_hal_driver_t* base_driver) {
   iree_allocator_t host_allocator = driver->host_allocator;
   IREE_TRACE_ZONE_BEGIN(z0);
 
-  driver->hsa_symbols.hsa_shut_down();
-  iree_hal_hsa_dynamic_symbols_deinitialize(&driver->hsa_symbols);
+//  iree_hal_hsa_dynamic_symbols_deinitialize(&driver->hsa_symbols);
   iree_allocator_free(host_allocator, driver);
 
   IREE_TRACE_ZONE_END(z0);

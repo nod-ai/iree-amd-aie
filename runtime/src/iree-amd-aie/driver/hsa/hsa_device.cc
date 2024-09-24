@@ -125,11 +125,12 @@ static void iree_hal_hsa_device_destroy(iree_hal_device_t* base_device) {
   iree_allocator_t host_allocator = iree_hal_device_host_allocator(base_device);
   IREE_TRACE_ZONE_BEGIN(z0);
 
+  device->hsa_symbols->hsa_queue_destroy(device->hsa_dispatch_queue);
   iree_hal_allocator_release(device->device_allocator);
   iree_arena_block_pool_deinitialize(&device->block_pool);
-  iree_allocator_free(host_allocator, device);
-  device->hsa_symbols->hsa_queue_destroy(device->hsa_dispatch_queue);
+  device->hsa_symbols->hsa_shut_down();
   iree_hal_driver_release(device->driver);
+  iree_allocator_free(host_allocator, device);
 
   IREE_TRACE_ZONE_END(z0);
 }
