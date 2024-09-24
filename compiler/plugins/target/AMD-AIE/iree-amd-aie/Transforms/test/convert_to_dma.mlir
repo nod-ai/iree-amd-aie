@@ -1,4 +1,4 @@
-// RUN: iree-opt --iree-amdaie-convert-to-dma --cse --split-input-file %s | FileCheck %s
+// RUN: iree-opt --iree-amdaie-convert-to-dma --split-input-file %s | FileCheck %s
 
 // CHECK-LABEL: @basic_unitdim_pack
 // CHECK: %[[ALLOC0:.*]] = memref.alloc() : memref<1x1x8x16xi32, 1>
@@ -36,20 +36,21 @@ func.func @multidim_pack() {
 
 // -----
 // CHECK-LABEL: @permute_pack
-// CHECK: %[[ALLOC0:.*]] = memref.alloc() : memref<1x1x2x2x4x8xi32, 2>
-// CHECK: %[[FROMMEMREF0:.*]] = amdaie.logicalobjectfifo.from_memref %[[ALLOC0]], {} : memref<1x1x2x2x4x8xi32, 2> -> !amdaie.logicalobjectfifo<memref<1x1x2x2x4x8xi32, 2>>
-// CHECK: %[[ALLOC1:.*]] = memref.alloc() : memref<1x1x8x16xi32, 1>
-// CHECK: %[[FROMMEMREF1:.*]] = amdaie.logicalobjectfifo.from_memref %[[ALLOC1]], {} : memref<1x1x8x16xi32, 1> -> !amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>
+// CHECK: %[[ALLOC_DST:.*]] = memref.alloc() : memref<1x1x2x2x4x8xi32, 2>
+// CHECK: %[[FROMDST:.*]] = amdaie.logicalobjectfifo.from_memref %[[ALLOC_DST]], {} : memref<1x1x2x2x4x8xi32, 2> -> !amdaie.logicalobjectfifo<memref<1x1x2x2x4x8xi32, 2>>
+// CHECK: %[[ALLOC_SRC:.*]] = memref.alloc() : memref<1x1x8x16xi32, 1>
+// CHECK: %[[FROMSRC:.*]] = amdaie.logicalobjectfifo.from_memref %[[ALLOC_SRC]], {} : memref<1x1x8x16xi32, 1> -> !amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>
 // CHECK: %[[DMA0:.*]] = amdaie.dma_cpy_nd
-// CHECK-SAME: %[[FROMMEMREF0]][0, 0, 0, 0, 0, 0] [1, 1, 2, 2, 4, 8] [128, 128, 64, 32, 8, 1]
-// CHECK-SAME: %[[FROMMEMREF1]][0, 0, 0, 0, 0, 0] [1, 1, 2, 2, 4, 8] [128, 128, 8, 64, 16, 1]
+// CHECK-SAME: %[[FROMDST]][0, 0, 0, 0, 0, 0] [1, 1, 2, 2, 4, 8] [128, 128, 64, 32, 8, 1]
+// CHECK-SAME: %[[FROMSRC]][0, 0, 0, 0, 0, 0] [1, 1, 2, 2, 4, 8] [128, 128, 8, 64, 16, 1]
 // CHECK-SAME: (!amdaie.logicalobjectfifo<memref<1x1x2x2x4x8xi32, 2>>, !amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>)
 func.func @permute_pack() {
-  %alloc = memref.alloc() : memref<1x1x2x2x4x8xi32, 2>
-  %alloc_0 = memref.alloc() : memref<1x1x8x16xi32, 1>
-  iree_linalg_ext.pack %alloc_0 outer_dims_perm = [0, 1, 3, 2] inner_dims_pos = [2, 3] inner_tiles = [4, 8] into %alloc : (memref<1x1x8x16xi32, 1> memref<1x1x2x2x4x8xi32, 2>)
+  %dst = memref.alloc() : memref<1x1x2x2x4x8xi32, 2>
+  %src = memref.alloc() : memref<1x1x8x16xi32, 1>
+  iree_linalg_ext.pack %src outer_dims_perm = [0, 1, 3, 2] inner_dims_pos = [2, 3] inner_tiles = [4, 8] into %dst : (memref<1x1x8x16xi32, 1> memref<1x1x2x2x4x8xi32, 2>)
   return
 }
+
 
 
 // -----
@@ -57,7 +58,6 @@ func.func @permute_pack() {
 // CHECK: %[[ALLOC1:.*]] = memref.alloc() : memref<32x8x8xf32>
 // CHECK: %[[FROMMEMREF1:.*]] = amdaie.logicalobjectfifo.from_memref %[[ALLOC1]], {} : memref<32x8x8xf32> -> !amdaie.logicalobjectfifo<memref<32x8x8xf32>>
 // CHECK: scf.parallel (%arg0, %arg1, %arg2) = (%c0, %c0, %c0) to (%c32, %c8, %c64) step (%c1, %c8, %c64)
-// CHECK-NOT: memref.subview
 // CHECK:   %[[ALLOC0:.*]] = memref.alloc() : memref<1x1x1x8x8xf32, 1>
 // CHECK: %[[FROMMEMREF0:.*]] = amdaie.logicalobjectfifo.from_memref %[[ALLOC0]], {} : memref<1x1x1x8x8xf32, 1> -> !amdaie.logicalobjectfifo<memref<1x1x1x8x8xf32, 1>>
 // CHECK: %[[DMA0:.*]] = amdaie.dma_cpy_nd
@@ -212,3 +212,66 @@ func.func @copy_away_from_core() {
   linalg.copy ins(%src : memref<8xi32, 2>) outs(%dst : memref<8xi32, 1>)
   return
 }
+
+// -----
+
+// CHECK-LABEL: @permute_unpack_tricyle_permute_rank_preserving
+// CHECK-DAG: %[[DST:.*]] = amdaie.logicalobjectfifo.from_memref {{.*}} !amdaie.logicalobjectfifo<memref<30x20x10xf32, 1>>
+// CHECK-DAG: %[[SRC:.*]] = amdaie.logicalobjectfifo.from_memref {{.*}} !amdaie.logicalobjectfifo<memref<20x10x30xf32, 2>>
+// CHECK: amdaie.dma_cpy_nd
+// CHECK-SAME: %[[DST]][0, 0, 0] [30, 20, 10] [200, 10, 1]
+// CHECK-SAME: %[[SRC]][0, 0, 0] [30, 20, 10] [1, 300, 30]
+
+// Before this PR this was:
+// %2 = amdaie.dma_cpy_nd(
+//        %0[0, 0, 0] [30, 20, 10] [200, 10, 1],
+//        %1[0, 0, 0] [10, 30, 20] [30, 1, 300]) :
+//    (!amdaie.logicalobjectfifo<memref<30x20x10xf32, 1>>,
+//     !amdaie.logicalobjectfifo<memref<20x10x30xf32, 2>>)
+
+// which is incorrect: we always expect the sizes to be the same
+// (up to shape expansion/collapse) for src and dst, which is not the case for
+// [30, 20, 10] and [10, 30, 20].
+
+func.func @permute_unpack_tricyle_permute_rank_preserving(){
+  %dst = memref.alloc() : memref<30x20x10xf32, 1>
+  %src = memref.alloc() : memref<20x10x30xf32, 2>
+  iree_linalg_ext.unpack %src outer_dims_perm = [1, 2, 0]
+                              inner_dims_pos = []
+                              inner_tiles = []
+                    into %dst : (memref<20x10x30xf32, 2> memref<30x20x10xf32, 1>)
+  return
+}
+
+// -----
+
+// CHECK-LABEL: @permute_pack_tricyle_permute
+// CHECK-DAG: %[[DST:.*]] = amdaie.logicalobjectfifo.from_memref {{.*}} !amdaie.logicalobjectfifo<memref<4x2x6x5x5x5xf32, 2>>
+// CHECK-DAG: %[[SRC:.*]] = amdaie.logicalobjectfifo.from_memref {{.*}} !amdaie.logicalobjectfifo<memref<30x20x10xf32, 1>>
+// CHECK: amdaie.dma_cpy_nd
+// CHECK-SAME: %[[DST]][0, 0, 0, 0, 0, 0] [4, 2, 6, 5, 5, 5] [1500, 750, 125, 25, 5, 1]
+// CHECK-SAME: %[[SRC]][0, 0, 0, 0, 0, 0] [4, 2, 6, 5, 5, 5] [50, 5, 1000, 200, 10, 1]
+func.func @permute_pack_tricyle_permute(){
+  %dst = memref.alloc() : memref<4x2x6x5x5x5xf32, 2>
+  %src = memref.alloc() : memref<30x20x10xf32, 1>
+  iree_linalg_ext.pack %src outer_dims_perm = [1, 2, 0] inner_dims_pos = [0, 1, 2] inner_tiles = [5, 5, 5] into %dst : (memref<30x20x10xf32, 1> memref<4x2x6x5x5x5xf32, 2>)
+  return
+}
+
+// -----
+
+// CHECK-LABEL: @permute_unpack_tricyle_permute
+// CHECK-DAG: %[[DST:.*]] = amdaie.logicalobjectfifo.from_memref {{.*}} !amdaie.logicalobjectfifo<memref<30x20x10xf32, 1>>
+// CHECK-DAG: %[[SRC:.*]] = amdaie.logicalobjectfifo.from_memref {{.*}} !amdaie.logicalobjectfifo<memref<4x2x6x5x5x5xf32, 2>>
+// CHECK: amdaie.dma_cpy_nd
+// CHECK-SAME: %[[DST]][0, 0, 0] [30, 20, 10] [200, 10, 1]
+// CHECK-SAME: %[[SRC]][0, 0, 0, 0, 0, 0] [6, 5, 4, 5, 2, 5] [125, 25, 1500, 5, 750, 1]
+func.func @permute_unpack_tricyle_permute(){
+  %dst = memref.alloc() : memref<30x20x10xf32, 1>
+  %src = memref.alloc() : memref<4x2x6x5x5x5xf32, 2>
+  iree_linalg_ext.unpack %src outer_dims_perm = [1, 2, 0] inner_dims_pos = [0, 1, 2] inner_tiles = [5, 5, 5] into %dst : (memref<4x2x6x5x5x5xf32, 2> memref<30x20x10xf32, 1>)
+  return
+}
+
+
+

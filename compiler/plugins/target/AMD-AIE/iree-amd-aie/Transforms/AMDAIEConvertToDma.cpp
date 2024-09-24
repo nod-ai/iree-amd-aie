@@ -107,11 +107,14 @@ LogicalResult unPackDmaInputs(IREE::LinalgExt::UnPackOp unPackOp,
   SmallVector<OpFoldResult> outerSizes =
       SmallVector<OpFoldResult>(sizes.begin(), sizes.begin() + numOuterDims);
 
-  // Apply permutations to the outer dims if provided.
+  // Apply inverse permutation to the outer dims if permutation provided (if
+  // permutation not provided, it is identity, and therefore so is the inverse).
   if (!permutation.empty()) {
-    applyPermutationToVector(outerStrides, permutation);
-    applyPermutationToVector(outerSizes, permutation);
-    applyPermutationToVector(outerOffsets, permutation);
+    SmallVector<int64_t> inversePermutation =
+        invertPermutationVector(permutation);
+    applyPermutationToVector(outerStrides, inversePermutation);
+    applyPermutationToVector(outerSizes, inversePermutation);
+    applyPermutationToVector(outerOffsets, inversePermutation);
   }
   // Do the unpacking on the Outer dims.
   llvm::SmallDenseMap<int64_t, int64_t> outerDimsIndexMap;
