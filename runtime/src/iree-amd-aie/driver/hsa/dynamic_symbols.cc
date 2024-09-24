@@ -12,7 +12,6 @@
 #include "iree/base/api.h"
 #include "iree/base/internal/dynamic_library.h"
 
-#ifndef IREE_AIE_HSA_RUNTIME_DIRECT_LINK
 constexpr const char* LIBHSA_RUNTIME_PATH_ENV_VAR = "LIBHSA_RUNTIME_PATH";
 #if defined(IREE_PLATFORM_WINDOWS)
 constexpr char DEFAULT_LIBHSA_RUNTIME_PATH_VAL[] = "libhsa-runtime64.dll";
@@ -26,23 +25,15 @@ const char* libhsa_runtime_path_val = libhsa_runtime_path_env_var_ptr == nullptr
                                           : libhsa_runtime_path_env_var_ptr;
 
 static const char* iree_hal_hsa_dylib_names[] = {libhsa_runtime_path_val};
-#endif
 
 static iree_status_t iree_hal_hsa_dynamic_symbols_resolve_all(
     iree_hal_hsa_dynamic_symbols_t* syms) {
-#ifdef IREE_AIE_HSA_RUNTIME_DIRECT_LINK
-#define IREE_HAL_HSA_REQUIRED_PFN_DECL(hsa_symbol_name, ...) \
-  {                                                          \
-    syms->hsa_symbol_name = hsa::hsa_symbol_name;            \
-  }
-#else
 #define IREE_HAL_HSA_REQUIRED_PFN_DECL(hsa_symbol_name, ...) \
   {                                                          \
     static const char* name = #hsa_symbol_name;              \
     IREE_RETURN_IF_ERROR(iree_dynamic_library_lookup_symbol( \
         syms->dylib, name, (void**)&syms->hsa_symbol_name)); \
   }
-#endif
 
 #define IREE_HAL_HSA_REQUIRED_PFN_DECL_RET(_, hsa_symbol_name, ...) \
   IREE_HAL_HSA_REQUIRED_PFN_DECL(hsa_symbol_name, __VA_ARGS__)
@@ -58,7 +49,6 @@ iree_status_t iree_hal_hsa_dynamic_symbols_initialize(
   IREE_TRACE_ZONE_BEGIN(z0);
 
   iree_status_t status = iree_ok_status();
-#ifndef IREE_AIE_HSA_RUNTIME_DIRECT_LINK
   memset(out_syms, 0, sizeof(*out_syms));
   status = iree_dynamic_library_load_from_files(
       IREE_ARRAYSIZE(iree_hal_hsa_dylib_names), iree_hal_hsa_dylib_names,
@@ -71,10 +61,11 @@ iree_status_t iree_hal_hsa_dynamic_symbols_initialize(
         "available;"
         "please ensure installed and in dynamic library search path");
   }
-#endif
+
   if (iree_status_is_ok(status)) {
     status = iree_hal_hsa_dynamic_symbols_resolve_all(out_syms);
   }
+
   if (!iree_status_is_ok(status)) {
     iree_hal_hsa_dynamic_symbols_deinitialize(out_syms);
   }
@@ -87,9 +78,7 @@ void iree_hal_hsa_dynamic_symbols_deinitialize(
     iree_hal_hsa_dynamic_symbols_t* syms) {
   IREE_TRACE_ZONE_BEGIN(z0);
 
-#ifndef IREE_AIE_HSA_RUNTIME_DIRECT_LINK
   iree_dynamic_library_release(syms->dylib);
-#endif
   memset(syms, 0, sizeof(*syms));
 
   IREE_TRACE_ZONE_END(z0);

@@ -101,14 +101,6 @@ if [ -d "$llvm_install_dir" ]; then
   )
 fi
 
-IREE_AIE_HSA_RUNTIME_DIRECT_LINK=${IREE_AIE_HSA_RUNTIME_DIRECT_LINK:-OFF}
-if [ "$IREE_AIE_HSA_RUNTIME_DIRECT_LINK" == "ON" ] && [ -d "$hsa_runtime64_DIR" ] && [ -d "$hsakmt_DIR" ]; then
-  CMAKE_ARGS+=(
-    -Dhsa-runtime64_DIR="$hsa_runtime64_DIR"
-    -Dhsakmt_DIR="$hsakmt_DIR"
-  )
-fi
-
 if [[ "$OSTYPE" == "linux"* ]]; then
   CMAKE_ARGS+=(
     -DCMAKE_EXE_LINKER_FLAGS_INIT="-fuse-ld=lld"
@@ -118,7 +110,6 @@ if [[ "$OSTYPE" == "linux"* ]]; then
     -DCMAKE_CXX_COMPILER="${CXX}"
     -DLLVM_TARGET_ARCH=X86
     -DLLVM_TARGETS_TO_BUILD=X86
-    -DIREE_AIE_HSA_RUNTIME_DIRECT_LINK=${IREE_AIE_HSA_RUNTIME_DIRECT_LINK:-OFF}
     -DIREE_EXTERNAL_HAL_DRIVERS=${IREE_EXTERNAL_HAL_DRIVERS:-amd-aie-xrt}
     -S
     "$iree_dir"

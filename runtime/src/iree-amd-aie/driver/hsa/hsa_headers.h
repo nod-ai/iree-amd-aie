@@ -13,13 +13,8 @@
 #endif  // defined(IREE_PTR_SIZE_32)
 
 namespace hsa {
-#ifdef IREE_AIE_HSA_RUNTIME_DIRECT_LINK
-#include "hsa/hsa.h"
-#include "hsa/hsa_ext_amd.h"
-#else
 #include "hsa.h"
 #include "hsa_ext_amd.h"
-#endif
 }  // namespace hsa
 
 #endif  // IREE_AMD_AIE_DRIVER_HSA_HSA_HEADERS_H_

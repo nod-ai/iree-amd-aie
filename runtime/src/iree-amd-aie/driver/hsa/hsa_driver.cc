@@ -141,7 +141,10 @@ static void iree_hal_hsa_driver_destroy(iree_hal_driver_t* base_driver) {
   iree_allocator_t host_allocator = driver->host_allocator;
   IREE_TRACE_ZONE_BEGIN(z0);
 
-//  iree_hal_hsa_dynamic_symbols_deinitialize(&driver->hsa_symbols);
+  // TODO(max): hsa doesn't free kfd and drm file descriptors at shutdown
+  // so in some configuration (eg during cts_driver_test) you get a HSA_OUT_OF_RESOURCES_ERROR
+  // if you deinit here. Note, the hip HAL also doesn't deinit...
+  // iree_hal_hsa_dynamic_symbols_deinitialize(&driver->hsa_symbols);
   iree_allocator_free(host_allocator, driver);
 
   IREE_TRACE_ZONE_END(z0);
