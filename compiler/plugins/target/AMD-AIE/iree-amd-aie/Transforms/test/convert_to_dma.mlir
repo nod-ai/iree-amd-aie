@@ -81,6 +81,28 @@ func.func @subview_pack() {
 }
 
 // -----
+// CHECK-LABEL: @collapsing_subview_pack
+// CHECK: %[[SRC_LOFI:.*]] = amdaie.logicalobjectfifo.from_memref {{.*}} !amdaie.logicalobjectfifo<memref<12x5x2x10x6x8xf32>>
+// CHECK: %[[DST_LOFI:.*]] = amdaie.logicalobjectfifo.from_memref {{.*}} !amdaie.logicalobjectfifo<memref<2x2x3x3xf32, 1>>
+// CHECK: amdaie.dma_cpy_nd
+// CHECK-SAME: %[[DST_LOFI]][0, 0, 0, 0] [2, 2, 3, 3] [18, 9, 3, 1]
+// CHECK-SAME: %[[SRC_LOFI]][0, 0, 0, 0] [2, 2, 3, 3] [14400, 480, 8, 4800]
+
+func.func @collapsing_subview_pack() {
+  %src = memref.alloc() : memref<12x5x2x10x6x8xf32>
+  %sbv = memref.subview %src[0, 0, 0, 0, 0, 0]
+                            [6, 1, 2, 1, 3, 1]
+                            [1, 1, 1, 1, 1, 1] :
+          memref<12x5x2x10x6x8xf32> to memref<6x2x3xf32, strided<[4800,480,8]>>
+  %dst= memref.alloc() : memref<2x2x3x3xf32, 1>
+  iree_linalg_ext.pack %sbv inner_dims_pos = [0]
+                               inner_tiles = [3]
+           into %dst: (memref<6x2x3xf32, strided<[4800,480,8]>> memref<2x2x3x3xf32, 1>)
+  return
+}
+
+
+// -----
 // CHECK-LABEL: @unitdim_unpack
 // CHECK: %[[ALLOC0:.*]] = memref.alloc() : memref<1x1x8x16xi32, 1>
 // CHECK: %[[FROMMEMREF0:.*]] = amdaie.logicalobjectfifo.from_memref %[[ALLOC0]], {} : memref<1x1x8x16xi32, 1> -> !amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>
