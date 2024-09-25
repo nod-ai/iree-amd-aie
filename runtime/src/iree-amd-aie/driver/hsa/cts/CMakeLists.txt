@@ -72,17 +72,7 @@ iree_hal_cts_test_suite(
     "allocator"
     "buffer_mapping"
     "command_buffer"
-#    "command_buffer_copy_buffer"
-#    "command_buffer_dispatch"
-#    "command_buffer_dispatch_constants"
-#    "command_buffer_fill_buffer"
-#    "command_buffer_update_buffer"
     "driver"
-#    "event"
-#    "executable_cache"
-#    "file"
-#    "semaphore"
-#    "semaphore_submission"
 )
 
 iree_cc_test(

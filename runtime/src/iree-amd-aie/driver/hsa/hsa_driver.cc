@@ -104,8 +104,9 @@ IREE_API_EXPORT iree_status_t iree_hal_hsa_driver_create(
   iree_string_view_append_to_buffer(
       identifier, &driver->identifier,
       reinterpret_cast<char*>(driver) + iree_sizeof_struct(*driver));
-  iree_status_t status = iree_hal_hsa_dynamic_symbols_initialize(
-      host_allocator, &driver->hsa_symbols);
+  IREE_RETURN_AND_END_ZONE_IF_ERROR(
+      z0, iree_hal_hsa_dynamic_symbols_initialize(host_allocator,
+                                                  &driver->hsa_symbols));
 
   IREE_RETURN_AND_END_ZONE_IF_ERROR(z0, iree_hal_hsa_init(driver));
 
@@ -120,18 +121,13 @@ IREE_API_EXPORT iree_status_t iree_hal_hsa_driver_create(
       "hsa_iterate_agents");
 
   if (!driver->num_aie_agents) {
-    status =
-        iree_make_status(IREE_STATUS_NOT_FOUND, "no AIE agents discovered");
+    return iree_make_status(IREE_STATUS_NOT_FOUND, "no AIE agents discovered");
   }
 
-  if (iree_status_is_ok(status)) {
-    *out_driver = reinterpret_cast<iree_hal_driver_t*>(driver);
-  } else {
-    iree_hal_driver_release(reinterpret_cast<iree_hal_driver_t*>(driver));
-  }
+  *out_driver = reinterpret_cast<iree_hal_driver_t*>(driver);
 
   IREE_TRACE_ZONE_END(z0);
-  return status;
+  return iree_ok_status();
 }
 
 static void iree_hal_hsa_driver_destroy(iree_hal_driver_t* base_driver) {
@@ -142,8 +138,9 @@ static void iree_hal_hsa_driver_destroy(iree_hal_driver_t* base_driver) {
   IREE_TRACE_ZONE_BEGIN(z0);
 
   // TODO(max): hsa doesn't free kfd and drm file descriptors at shutdown
-  // so in some configuration (eg during cts_driver_test) you get a HSA_OUT_OF_RESOURCES_ERROR
-  // if you deinit here. Note, the hip HAL also doesn't deinit...
+  // so in some configuration (eg during cts_driver_test) you get a
+  // HSA_OUT_OF_RESOURCES_ERROR if you deinit here. Note, the hip HAL also
+  // doesn't deinit...
   // iree_hal_hsa_dynamic_symbols_deinitialize(&driver->hsa_symbols);
   iree_allocator_free(host_allocator, driver);
 

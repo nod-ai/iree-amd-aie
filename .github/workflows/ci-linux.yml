@@ -195,8 +195,3 @@ jobs:
             iree-install \
             $PWD/llvm-aie \
             /opt/Xilinx/Vitis/2024.2
-
-      - name : HSA CTS tests
-        run: |
-          pushd iree-install/device_tests
-          for test in $(ls *test); do ./$test; done

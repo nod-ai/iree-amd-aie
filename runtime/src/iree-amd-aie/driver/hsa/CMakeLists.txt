@@ -16,6 +16,11 @@ iree_register_external_hal_driver(
     iree_hal_hsa_driver_module_register
 )
 
+include(iree_aie_utils)
+replace_string_in_file(
+  "${ROCR_RUNTIME_ROOT}/runtime/hsa-runtime/core/inc/amd_gpu_agent.h"
+  "static const" "const")
+
 if(NOT DEFINED HSA_API_HEADERS_ROOT)
   set(HSA_API_HEADERS_ROOT "${ROCR_RUNTIME_ROOT}/runtime/hsa-runtime/inc")
 endif()
@@ -46,7 +51,6 @@ iree_cc_library(
   HDRS
     api.h
   SRCS
-    api.h
     command_buffer.cc
     command_buffer.h
     hsa_buffer.cc
