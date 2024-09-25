@@ -35,9 +35,6 @@ using xilinx::AIE::SwitchboxOp;
 using xilinx::AIE::TileOp;
 
 #define DEBUG_TYPE "amdaie-create-pathfinder-flows"
-#define OVER_CAPACITY_COEFF 0.02
-#define USED_CAPACITY_COEFF 0.02
-#define DEMAND_COEFF 1.1
 
 namespace mlir::iree_compiler::AMDAIE {
 
@@ -178,7 +175,7 @@ LogicalResult runOnPacketFlow(
   }
 
   DenseMap<PhysPort, Attribute> keepPktHeaderAttr;
-  SwitchBoxToConnectionFlowIDT switchboxes;
+  TileLocToConnectionFlowIDT switchboxes;
   for (PacketFlowOp pktFlowOp : device.getOps<PacketFlowOp>()) {
     int flowID = pktFlowOp.getID();
     Port srcPort{StrmSwPortType::SS_PORT_TYPE_MAX, -1};
@@ -203,23 +200,26 @@ LogicalResult runOnPacketFlow(
                srcPort.channel != -1 && "expected srcPort to have been set");
         assert(srcCoords.col != -1 && srcCoords.row != -1 &&
                "expected srcCoords to have been set");
-        PathEndPoint srcPoint = {SwitchBox{srcCoords.col, srcCoords.row},
+        PathEndPoint srcPoint = {TileLoc{srcCoords.col, srcCoords.row},
                                  srcPort};
         // TODO(max): when does this happen???
         if (!flowSolutions.count(srcPoint)) continue;
         SwitchSettings settings = flowSolutions.at(srcPoint);
         // add connections for all the Switchboxes in SwitchSettings
         for (const auto &[curr, setting] : settings) {
-          for (const auto &[bundle, channel] : setting.dsts) {
-            TileLoc currTile = {curr.col, curr.row};
+          TileLoc currTile = {curr.col, curr.row};
+          assert(setting.srcs.size() == setting.dsts.size());
+          for (size_t i = 0; i < setting.srcs.size(); i++) {
+            Port src = setting.srcs[i];
+            Port dst = setting.dsts[i];
             // reject false broadcast
-            if (!existsPathToDest(settings, currTile, bundle, channel,
+            if (!existsPathToDest(settings, currTile, dst.bundle, dst.channel,
                                   destCoord, destPort.bundle,
                                   destPort.channel)) {
               continue;
             }
-            Connect connect = {Port{setting.src.bundle, setting.src.channel},
-                               Port{bundle, channel},
+            Connect connect = {Port{src.bundle, src.channel},
+                               Port{dst.bundle, dst.channel},
                                Connect::Interconnect::NOCARE,
                                static_cast<uint8_t>(currTile.col),
                                static_cast<uint8_t>(currTile.row)};
@@ -493,11 +493,11 @@ void AIEPathfinderPass::runOnOperation() {
   // add existing connections so Pathfinder knows which resources are
   // available search all existing SwitchBoxOps for exising connections
   for (SwitchboxOp switchboxOp : device.getOps<SwitchboxOp>()) {
-    std::vector<std::tuple<StrmSwPortType, int, StrmSwPortType, int>> connects;
+    std::vector<std::tuple<Port, Port>> connects;
     for (ConnectOp connectOp : switchboxOp.getOps<ConnectOp>()) {
-      connects.emplace_back(
-          (connectOp.getSourceBundle()), connectOp.getSourceChannel(),
-          (connectOp.getDestBundle()), connectOp.getDestChannel());
+      Port src(connectOp.getSourceBundle(), connectOp.getSourceChannel());
+      Port dst(connectOp.getDestBundle(), connectOp.getDestChannel());
+      connects.emplace_back(src, dst);
     }
     TileOp t = xilinx::AIE::getTileOp(*switchboxOp.getOperation());
     if (!pathfinder.addFixedConnection(t.getCol(), t.getRow(), connects)) {

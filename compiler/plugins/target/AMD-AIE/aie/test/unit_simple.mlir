@@ -6,13 +6,14 @@
 // CHECK:           %[[TILE_1_2:.*]] = aie.tile(1, 2)
 // CHECK:           %[[TILE_0_2:.*]] = aie.tile(0, 2)
 // CHECK:           %[[SWITCHBOX_0_1:.*]] = aie.switchbox(%[[TILE_0_1]]) {
-// CHECK-DAG:         aie.connect<DMA : 0, NORTH : 0>
+// CHECK:             aie.connect<DMA : 0, EAST : 3>
 // CHECK:           }
-// CHECK:           %[[SWITCHBOX_0_2:.*]] = aie.switchbox(%[[TILE_0_2]]) {
-// CHECK-DAG:         aie.connect<SOUTH : 0, EAST : 0>
+// CHECK:           %[[TILE_1_1:.*]] = aie.tile(1, 1)
+// CHECK:           %[[SWITCHBOX_1_1:.*]] = aie.switchbox(%[[TILE_1_1]]) {
+// CHECK:             aie.connect<WEST : 3, NORTH : 1>
 // CHECK:           }
 // CHECK:           %[[SWITCHBOX_1_2:.*]] = aie.switchbox(%[[TILE_1_2]]) {
-// CHECK-DAG:         aie.connect<WEST : 0, CORE : 1>
+// CHECK:             aie.connect<SOUTH : 1, CORE : 1>
 // CHECK:           }
 // CHECK:           aie.packet_flow(16) {
 // CHECK:             aie.packet_source<%[[TILE_0_1]], CORE : 0>

@@ -238,15 +238,15 @@ LogicalResult addInitConfigToCDO(const AMDAIEDeviceModel &deviceModel,
   // StreamSwitch (switchbox) configuration
   for (auto switchboxOp : device.getOps<SwitchboxOp>()) {
     TileOp t = xilinx::AIE::getTileOp(*switchboxOp.getOperation());
-    SwitchBox swb = {t.getCol(), t.getRow()};
+    TileLoc tileLoc = {t.getCol(), t.getRow()};
     std::vector<Connect> connects;
     for (auto connectOp : switchboxOp.getOps<ConnectOp>()) {
       connects.emplace_back(
           Port{connectOp.getSourceBundle(), connectOp.getSourceChannel()},
           Port{connectOp.getDestBundle(), connectOp.getDestChannel()},
-          Connect::Interconnect::SWB, swb.col, swb.row);
+          Connect::Interconnect::SWB, tileLoc.col, tileLoc.row);
     }
-    if (failed(configureStreamSwitch(deviceModel, swb, connects))) {
+    if (failed(configureStreamSwitch(deviceModel, tileLoc, connects))) {
       return failure();
     }
 
@@ -259,7 +259,7 @@ LogicalResult addInitConfigToCDO(const AMDAIEDeviceModel &deviceModel,
                           static_cast<uint8_t>(amsel.getMsel())});
       }
       if (failed(configureSwitchPacketMasters(
-              deviceModel, swb, masterSetOp.getDestBundle(),
+              deviceModel, tileLoc, masterSetOp.getDestBundle(),
               masterSetOp.getDestChannel(), amSels,
               masterSetOp->hasAttr("keep_pkt_header"))))
         return failure();
@@ -272,7 +272,7 @@ LogicalResult addInitConfigToCDO(const AMDAIEDeviceModel &deviceModel,
         AMSelOp amselOp =
             cast<AMSelOp>(packetRuleOp.getAmsel().getDefiningOp());
         if (failed(configureSwitchPacketSlaves(
-                deviceModel, swb, packetRulesOp.getSourceBundle(),
+                deviceModel, tileLoc, packetRulesOp.getSourceBundle(),
                 packetRulesOp.getSourceChannel(),
                 AMSel{amselOp.getArbiterID(), amselOp.getMsel()},
                 packetRuleOp.getValue(), packetRuleOp.getMask(), slot)))
@@ -284,15 +284,15 @@ LogicalResult addInitConfigToCDO(const AMDAIEDeviceModel &deviceModel,
 
   for (auto muxOp : device.getOps<ShimMuxOp>()) {
     TileOp t = xilinx::AIE::getTileOp(*muxOp.getOperation());
-    SwitchBox swb = {t.getCol(), t.getRow()};
+    TileLoc tileLoc = {t.getCol(), t.getRow()};
     std::vector<Connect> connects;
     for (auto connectOp : muxOp.getOps<ConnectOp>()) {
       connects.emplace_back(
           Port{connectOp.getSourceBundle(), connectOp.getSourceChannel()},
           Port{connectOp.getDestBundle(), connectOp.getDestChannel()},
-          Connect::Interconnect::SHIMMUX, swb.col, swb.row);
+          Connect::Interconnect::SHIMMUX, tileLoc.col, tileLoc.row);
     }
-    if (failed(configureStreamSwitch(deviceModel, swb, connects))) {
+    if (failed(configureStreamSwitch(deviceModel, tileLoc, connects))) {
       return failure();
     }
   }

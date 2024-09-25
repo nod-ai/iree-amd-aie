@@ -172,12 +172,12 @@ LogicalResult pushToBdQueueAndEnable(const AMDAIEDeviceModel &deviceModel,
                                      uint8_t bdId, uint32_t repeatCount);
 
 LogicalResult configureStreamSwitch(const AMDAIEDeviceModel &deviceModel,
-                                    const SwitchBox &tileLoc,
+                                    const TileLoc &tileLoc,
                                     const std::vector<Connect> &connects);
 
 /// Configure and enable master ports in switch in packet routing mode.
 LogicalResult configureSwitchPacketMasters(const AMDAIEDeviceModel &deviceModel,
-                                           const SwitchBox &tileLoc,
+                                           const TileLoc &tileLoc,
                                            const StrmSwPortType &destBundle,
                                            uint8_t destChannel,
                                            const std::vector<AMSel> &amSels,
@@ -185,7 +185,7 @@ LogicalResult configureSwitchPacketMasters(const AMDAIEDeviceModel &deviceModel,
 
 /// Configure and enable slave ports in switch in packet routing mode.
 LogicalResult configureSwitchPacketSlaves(const AMDAIEDeviceModel &deviceModel,
-                                          const SwitchBox &tileLoc,
+                                          const TileLoc &tileLoc,
                                           const StrmSwPortType &srcBundle,
                                           uint8_t srcChannel,
                                           const AMSel &amsel, uint8_t packetId,
