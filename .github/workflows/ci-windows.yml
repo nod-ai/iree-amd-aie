@@ -183,12 +183,3 @@ jobs:
             /c/test_aie_vs_cpu \
             $PWD/iree-install \
             $PWD/llvm-aie -v
-
-      - name: Printing IR from aie2xclbin
-        run: |
-          source .venv/Scripts/activate
-          export XILINX_XRT=/c/Xilinx/XRT
-          bash build_tools/ci/print_ir_aie2xclbin/print_ir_aie2xclbin.sh \
-            $PWD/iree-install \
-            /c/print_ir_aie2xclbin_results \
-            $PWD/llvm-aie

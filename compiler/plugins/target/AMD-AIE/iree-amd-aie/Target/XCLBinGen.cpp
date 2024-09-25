@@ -1115,28 +1115,45 @@ static LogicalResult generateUnifiedObject(
   return success();
 }
 
-FailureOr<ArrayRef<uint32_t>> getNpuInstructions(AIE::DeviceOp deviceOp) {
+namespace mlir::iree_compiler::AMDAIE {
+LogicalResult emitNpuInstructions(AIE::DeviceOp deviceOp,
+                                  const std::string &outputNPU) {
   MLIRContext *ctx = deviceOp.getContext();
   mlir::Attribute maybeNpuInstructions = deviceOp->getAttr("npu_instructions");
   if (!maybeNpuInstructions) {
     return emitError(UnknownLoc::get(ctx),
                      "Expected npu_instructions attribute on aie.device");
   }
-  auto npuInstructions =
+
+  DenseUI32ResourceElementsAttr npuInstructions =
       dyn_cast<DenseUI32ResourceElementsAttr>(maybeNpuInstructions);
   if (!npuInstructions) {
     return emitError(
         UnknownLoc::get(ctx),
         "Failed to cast npu_instructions to DenseUI32ResourceElementsAttr");
   }
+
   std::optional<ArrayRef<uint32_t>> maybeArrayRef =
       npuInstructions.tryGetAsArrayRef();
-  if (!maybeArrayRef.has_value()) {
-    return emitError(
-        UnknownLoc::get(ctx),
-        "Failed getting values for npu_instructions in tryGetAsArrayRef");
+  assert(maybeArrayRef &&
+         "Failed getting values for npu_instructions in tryGetAsArrayRef");
+  std::string errorMessage;
+  std::unique_ptr<llvm::ToolOutputFile> output =
+      openOutputFile(outputNPU, &errorMessage);
+  if (!output) {
+    llvm::errs() << "Failed to open npu_instructions.txt for writing because: "
+                 << errorMessage << "\n";
+    return failure();
   }
-  return maybeArrayRef.value();
+  output->keep();
+
+  for (int i = 0; i < maybeArrayRef->size() - 1; ++i) {
+    output->os() << llvm::format("%08X\n", maybeArrayRef->operator[](i));
+  }
+  // don't emit empty line at the end
+  output->os() << llvm::format("%08X", maybeArrayRef->back());
+
+  return success();
 }
 
 LogicalResult aie2xclbin(
@@ -1150,23 +1167,7 @@ LogicalResult aie2xclbin(
     const std::string &xclBinInstanceName, const std::string &amdAIEInstallDir,
     const std::optional<std::string> &InputXCLBin,
     const std::optional<std::string> &ukernel) {
-  FailureOr<ArrayRef<uint32_t>> maybeNpuInstructions =
-      getNpuInstructions(deviceOp);
-  if (failed(maybeNpuInstructions)) {
-    assert(false && "Failed to get NPU instructions");
-    return failure();
-  }
-  ArrayRef<uint32_t> npuInstructions = maybeNpuInstructions.value();
-
-  std::string errorMessage;
-  auto output = openOutputFile(outputNPU, &errorMessage);
-  if (!output) {
-    llvm::errs() << "Failed to open npu_instructions.txt for writing because: "
-                 << errorMessage << "\n";
-    return failure();
-  }
-  for (uint32_t w : npuInstructions) output->os() << llvm::format("%08X\n", w);
-  output->keep();
+  if (failed(emitNpuInstructions(deviceOp, outputNPU))) return failure();
 
   Path tempDirPath{tempDir};
   tempDirPath.make_preferred();
@@ -1205,3 +1206,5 @@ LogicalResult aie2xclbin(
 
   return success();
 }
+
+}  // namespace mlir::iree_compiler::AMDAIE

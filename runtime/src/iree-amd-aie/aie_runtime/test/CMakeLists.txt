@@ -17,6 +17,7 @@ iree_cc_binary(
     "utest.cc"
   DEPS
     iree-amd-aie::aie_runtime::iree_aie_runtime_static
+  TESTONLY
 )
 
 iree_lit_test(
