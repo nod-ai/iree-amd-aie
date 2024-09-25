@@ -48,7 +48,6 @@ iree_cc_library(
     ::AMDAIETypesGen
     ::AMDAIEAttrsGen
     iree-amd-aie::aie_runtime::AMDAIEEnums
-    iree::target::amd-aie::Utils::Utils
     LLVMSupport
     MLIRArithUtils
     MLIRCopyOpInterface

@@ -24,9 +24,6 @@ namespace detail {
 /// Otherwise, returns nullopt.
 std::optional<int64_t> getSourceStaticBaseOffset(DoublyStridedOpInterface op);
 
-/// Return the static access extent on the source side if it can be computed.
-/// Otherwise, returns nullopt.
-std::optional<int64_t> getSourceStaticExtent(DoublyStridedOpInterface op);
 
 /// Return the static size of the access on the source side if it can be
 /// computed. Otherwise, returns nullopt.
@@ -35,10 +32,6 @@ std::optional<int64_t> getSourceStaticSize(DoublyStridedOpInterface op);
 /// Return the static base offset on the target side if it can be computed.
 /// Otherwise, returns nullopt.
 std::optional<int64_t> getTargetStaticBaseOffset(DoublyStridedOpInterface op);
-
-/// Return the static access extent on the target side if it can be computed.
-/// Otherwise, returns nullopt.
-std::optional<int64_t> getTargetStaticExtent(DoublyStridedOpInterface op);
 
 /// Return the static size of the access on the target side if it can be
 /// computed. Otherwise, returns nullopt.
