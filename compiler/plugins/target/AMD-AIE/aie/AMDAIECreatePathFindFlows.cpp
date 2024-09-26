@@ -233,14 +233,32 @@ LogicalResult runOnPacketFlow(
       tiles, [](const llvm::detail::DenseMapPair<TileLoc, Operation *> &p) {
         return p.getFirst();
       });
-  // TODO(max): faster/smoother way to do this?
-  std::vector<TileLoc> tilesVec(tileLocs.begin(), tileLocs.end());
+
+  // Convert switchbox connections into packet flow maps from source/slave
+  // 'port and id's to master/destination 'port and id's and keep track of all
+  // source/slave ports.
+  PacketFlowMapT packetFlows;
+  SmallVector<PhysPortAndID> slavePorts;
+  for (const auto &[tileId, connects] : switchboxes) {
+    for (const auto &[conn, flowID] : connects) {
+      PhysPortAndID sourceFlow = {PhysPort{tileId, conn.src}, flowID};
+      packetFlows[sourceFlow].insert({PhysPort{tileId, conn.dst}, flowID});
+      slavePorts.push_back(sourceFlow);
+    }
+  }
 
   int numMsels = 4;
   int numArbiters = 6;
-  auto [masterSets, slaveGroups, slaveMasks, slaveAMSels] =
-      emitPacketRoutingConfiguration(numMsels, numArbiters, switchboxes,
-                                     tilesVec);
+  auto maybeRoutingConfiguration =
+      emitPacketRoutingConfiguration(numMsels, numArbiters, packetFlows);
+  if (failed(maybeRoutingConfiguration)) {
+    return device.emitOpError()
+           << "could not create a valid routing configuration";
+  }
+  auto [masterSets, slaveAMSels] = maybeRoutingConfiguration.value();
+
+  auto [slaveGroups, slaveMasks] =
+      emitSlaveGroupsAndMasksRoutingConfig(slavePorts, packetFlows);
 
   // Realize the routes in MLIR
   for (auto &[tileLoc, tileOp] : tiles) {
@@ -253,21 +271,27 @@ LogicalResult runOnPacketFlow(
     Block &b = swbox.getConnections().front();
     builder.setInsertionPoint(b.getTerminator());
 
-    std::vector<bool> amselOpNeededVector(32);
+    std::vector<std::vector<bool>> amselOpNeededVector(
+        numArbiters, std::vector<bool>(numMsels, false));
     for (const auto &[physPort, masterSet] : masterSets) {
       if (tileLoc != physPort.tileLoc) continue;
-      for (int value : masterSet) amselOpNeededVector[value] = true;
+      for (auto [arbiter, msel] : masterSet)
+        amselOpNeededVector.at(arbiter).at(msel) = true;
     }
     // Create all the amsel Ops
-    DenseMap<int, AMSelOp> amselOps;
-    for (int i = 0; i < 32; i++) {
-      if (!amselOpNeededVector[i]) continue;
-      int arbiterID = i % numArbiters;
-      int msel = i / numArbiters;
-      auto amsel =
-          builder.create<AMSelOp>(builder.getUnknownLoc(), arbiterID, msel);
-      amselOps[i] = amsel;
+    DenseMap<std::pair<uint8_t, uint8_t>, AMSelOp> amselOps;
+    for (int i = 0; i < numMsels; i++) {
+      for (int a = 0; a < numArbiters; a++) {
+        if (amselOpNeededVector.at(a).at(i)) {
+          int arbiterID = a;
+          int msel = i;
+          auto amsel =
+              builder.create<AMSelOp>(builder.getUnknownLoc(), arbiterID, msel);
+          amselOps[{arbiterID, msel}] = amsel;
+        }
+      }
     }
+
     // Create all the master set Ops
     // First collect the master sets for this tile.
     SmallVector<Port> tileMasters;
@@ -278,15 +302,16 @@ LogicalResult runOnPacketFlow(
     // Sort them so we get a reasonable order
     std::sort(tileMasters.begin(), tileMasters.end());
     for (Port tileMaster : tileMasters) {
-      std::vector<int> msels = masterSets[{tileLoc, tileMaster}];
-      std::vector<Value> amsels;
-      for (int msel : msels) {
-        assert(amselOps.count(msel) == 1 && "expected msel in amselOps");
-        amsels.push_back(amselOps[msel]);
+      std::vector<std::pair<uint8_t, uint8_t>> amsels =
+          masterSets[{tileLoc, tileMaster}];
+      std::vector<Value> amselVals;
+      for (std::pair<uint8_t, uint8_t> amsel : amsels) {
+        assert(amselOps.count(amsel) == 1 && "expected amsel in amselOps");
+        amselVals.push_back(amselOps[amsel]);
       }
       auto msOp = builder.create<MasterSetOp>(
           builder.getUnknownLoc(), builder.getIndexType(), (tileMaster.bundle),
-          tileMaster.channel, amsels);
+          tileMaster.channel, amselVals);
       if (auto pktFlowAttrs = keepPktHeaderAttr[{tileLoc, tileMaster}])
         msOp->setAttr("keep_pkt_header", pktFlowAttrs);
     }

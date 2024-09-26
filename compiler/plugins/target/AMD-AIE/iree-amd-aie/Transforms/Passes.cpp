@@ -42,6 +42,11 @@
 
 namespace mlir::iree_compiler::AMDAIE {
 
+static llvm::cl::opt<bool> clEnablePacketFlow(
+    "iree-amdaie-enable-packet-flow",
+    llvm::cl::desc("Enable packet routing data movement."),
+    llvm::cl::init(false));
+
 /// Command line option for selecting the lowering pipeline to use to generate
 /// AIE DMA configurations, core code and control code.
 static llvm::cl::opt<LowerToAIEPassPipeline> clUseLowerToAIEPipeline(
@@ -609,6 +614,7 @@ void addAMDAIEObjectFifoLoweringPasses(OpPassManager &passManager) {
   passManager.addPass(createAMDAIEAssignLogicalObjectFifoDepthPass());
   passManager.addPass(createAMDAIEAccessToAcquireReleasePass());
   passManager.addPass(createAMDAIENoneAccessToTemporaryBufferPass());
+  passManager.addPass(createAMDAIEAssignConnectionTypesPass({clEnablePacketFlow}));
   passManager.addPass(createCSEPass());
   passManager.addPass(createCanonicalizerPass());
 

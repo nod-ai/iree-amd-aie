@@ -60,6 +60,10 @@ std::unique_ptr<Pass> createAMDAIEAcquireReleaseToUseLockPass();
 /// Create a pass to assign channels to connections.
 std::unique_ptr<Pass> createAMDAIEAssignChannelsPass();
 
+/// Create a pass to assign types to `amdaie.connection` ops.
+std::unique_ptr<Pass> createAMDAIEAssignConnectionTypesPass(
+    AMDAIEAssignConnectionTypesOptions options = {});
+
 /// Create a pass to assign a buffer depth to
 /// `amdaie.logicalobjectfifo.from_memref` ops.
 std::unique_ptr<Pass> createAMDAIEAssignLogicalObjectFifoDepthPass(

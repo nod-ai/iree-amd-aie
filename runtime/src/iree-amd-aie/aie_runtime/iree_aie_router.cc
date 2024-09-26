@@ -8,6 +8,7 @@
 
 #include <tuple>
 
+#include "amsel_generator.h"
 #include "d_ary_heap.h"
 #include "iree_aie_runtime.h"
 #include "llvm/ADT/StringExtras.h"
@@ -757,109 +758,19 @@ bool existsPathToDest(const SwitchSettings &settings, TileLoc currTile,
   return false;
 }
 
-/// Given switchbox configuration data produced by the router, emit
-/// configuration data for packet routing along those same switchboxes.
-std::tuple<MasterSetsT, SlaveGroupsT, SlaveMasksT, SlaveAMSelsT>
-emitPacketRoutingConfiguration(int numMsels, int numArbiters,
-                               const SwitchBoxToConnectionFlowIDT &switchboxes,
-                               const std::vector<TileLoc> &tiles) {
-  std::map<PhysPortAndID, std::set<PhysPort>> packetFlows;
-  std::vector<PhysPortAndID> slavePorts;
-  for (const auto &[tileId, connects] : switchboxes) {
-    for (const auto &[conn, flowID] : connects) {
-      PhysPortAndID sourceFlow = {PhysPort{tileId, conn.src}, flowID};
-      packetFlows[sourceFlow].insert(PhysPort{tileId, conn.dst});
-      slavePorts.push_back(sourceFlow);
-    }
+std::tuple<SlaveGroupsT, SlaveMasksT> emitSlaveGroupsAndMasksRoutingConfig(
+    ArrayRef<PhysPortAndID> slavePorts, const PacketFlowMapT &packetFlows) {
+  // Convert packet flow map into a map from src 'port and id's to destination
+  // ports, so that multiple flows with different packet IDs, but the same
+  // ports, can be merged.
+  DenseMap<PhysPortAndID, llvm::SetVector<PhysPort>> physPortAndIDToPhysPort;
+  for (auto &&[src, dsts] : packetFlows) {
+    SmallVector<PhysPort> physPorts =
+        llvm::map_to_vector(dsts, [](const PhysPortAndID &physPortAndID) {
+          return physPortAndID.physPort;
+        });
+    physPortAndIDToPhysPort[src].insert(physPorts.begin(), physPorts.end());
   }
-
-  std::vector<std::pair<PhysPortAndID, std::set<PhysPort>>> sortedPacketFlows(
-      packetFlows.begin(), packetFlows.end());
-
-  // To get determinsitic behaviour
-  std::sort(
-      sortedPacketFlows.begin(), sortedPacketFlows.end(),
-      [](const auto &lhs, const auto &rhs) { return lhs.first < rhs.first; });
-
-  // A map from Tile and master selectValue to the ports targeted by that
-  // master select.
-  std::map<std::pair<TileLoc, int>, std::set<Port>> masterAMSels;
-  SlaveAMSelsT slaveAMSels;
-  // Count of currently used logical arbiters for each tile.
-  std::map<TileLoc, int> amselValues;
-  // Check all multi-cast flows (same source, same ID). They should be
-  // assigned the same arbiter and msel so that the flow can reach all the
-  // destination ports at the same time For destination ports that appear in
-  // different (multicast) flows, it should have a different <arbiterID, msel>
-  // value pair for each flow
-  for (const auto &[physPortAndID, packetFlowports] : sortedPacketFlows) {
-    // The Source Tile of the flow
-    TileLoc tileLoc = physPortAndID.physPort.tileLoc;
-    if (amselValues.count(tileLoc) == 0) amselValues[tileLoc] = 0;
-
-    // Compute arbiter assignments. Each arbiter has four msels.
-    // Therefore, the number of "logical" arbiters is 6 x 4 = 24
-    // A master port can only be associated with one arbiter
-    // arb0: 6*0,   6*1,   6*2,   6*3
-    // arb1: 6*0+1, 6*1+1, 6*2+1, 6*3+1
-    // arb2: 6*0+2, 6*1+2, 6*2+2, 6*3+2
-    // arb3: 6*0+3, 6*1+3, 6*2+3, 6*3+3
-    // arb4: 6*0+4, 6*1+4, 6*2+4, 6*3+4
-    // arb5: 6*0+5, 6*1+5, 6*2+5, 6*3+5
-
-    int amselValue = amselValues[tileLoc];
-    assert(amselValue < numArbiters && "Could not allocate new arbiter!");
-
-    // Find existing arbiter assignment
-    // If there is an assignment of an arbiter to a master port before, we
-    // assign all the master ports here with the same arbiter but different
-    // msel
-    bool foundMatchedDest = false;
-    for (const auto &map : masterAMSels) {
-      if (map.first.first != tileLoc) continue;
-      amselValue = map.first.second;
-      // check if same destinations
-      std::set<Port> ports(masterAMSels[{tileLoc, amselValue}]);
-      if (ports.size() != packetFlowports.size()) continue;
-      if (std::all_of(packetFlowports.begin(), packetFlowports.end(),
-                      [&ports](const PhysPort &dest) {
-                        return ports.count(dest.port);
-                      })) {
-        foundMatchedDest = true;
-        break;
-      }
-    }
-
-    if (!foundMatchedDest) {
-      bool foundAMSelValue = false;
-      for (int a = 0; a < numArbiters; a++) {
-        for (int i = 0; i < numMsels; i++) {
-          amselValue = a + i * numArbiters;
-          if (masterAMSels.count({tileLoc, amselValue}) == 0) {
-            foundAMSelValue = true;
-            break;
-          }
-        }
-        if (foundAMSelValue) break;
-      }
-
-      for (PhysPort dest : packetFlowports) {
-        masterAMSels[{tileLoc, amselValue}].insert(dest.port);
-      }
-    }
-
-    slaveAMSels[physPortAndID] = amselValue;
-    amselValues[tileLoc] = amselValue % numArbiters;
-  }
-
-  // Compute the master set IDs
-  MasterSetsT mastersets;
-  for (const auto &[physPort, ports] : masterAMSels) {
-    for (Port port : ports) {
-      mastersets[PhysPort{physPort.first, port}].push_back(physPort.second);
-    }
-  }
-
   // Compute mask values
   // Merging as many stream flows as possible
   // The flows must originate from the same source port and have different IDs
@@ -876,8 +787,10 @@ emitPacketRoutingConfiguration(int numMsels, int numArbiters,
       if (Port slavePort2 = slave2.physPort.port; slavePort1 != slavePort2)
         continue;
 
-      auto dests1 = packetFlows[slave1];
-      auto dests2 = packetFlows[slave2];
+      const llvm::SetVector<PhysPort> &dests1 =
+          physPortAndIDToPhysPort.at(slave1);
+      const llvm::SetVector<PhysPort> &dests2 =
+          physPortAndIDToPhysPort.at(slave2);
       if (dests1.size() != dests2.size()) continue;
       if (std::all_of(dests1.begin(), dests1.end(),
                       [&dests2](const PhysPort &dest1) {
@@ -924,12 +837,66 @@ emitPacketRoutingConfiguration(int numMsels, int numArbiters,
     }
     for (PhysPortAndID port : group) slaveMasks[port] = maskValue;
   }
+
   // sort for deterministic IR output
-  for (auto &[_, amsels] : mastersets) std::sort(amsels.begin(), amsels.end());
   for (auto &item : slaveGroups) std::sort(item.begin(), item.end());
   std::sort(slaveGroups.begin(), slaveGroups.end());
+  return std::make_tuple(slaveGroups, slaveMasks);
+}
 
-  return std::make_tuple(mastersets, slaveGroups, slaveMasks, slaveAMSels);
+/// Given switchbox configuration data produced by the router, emit
+/// configuration data for packet routing along those same switchboxes.
+FailureOr<std::tuple<MasterSetsT, SlaveAMSelsT>> emitPacketRoutingConfiguration(
+    int numMsels, int numArbiters, const PacketFlowMapT &packetFlows) {
+  SmallVector<std::pair<PhysPortAndID, llvm::SetVector<PhysPortAndID>>>
+      sortedPacketFlows(packetFlows.begin(), packetFlows.end());
+
+  // To get determinsitic behaviour
+  std::sort(
+      sortedPacketFlows.begin(), sortedPacketFlows.end(),
+      [](const auto &lhs, const auto &rhs) { return lhs.first < rhs.first; });
+
+  AMSelGenerator amselGenerator(numArbiters, numMsels);
+
+  // A map from Tile and master selectValue to the ports targeted by that
+  // master select.
+  std::map<std::pair<TileLoc, std::pair<uint8_t, uint8_t>>, std::set<Port>>
+      masterAMSels;
+  SlaveAMSelsT slaveAMSels;
+  for (const auto &[physPortAndID, packetFlowports] : sortedPacketFlows) {
+    // The Source Tile of the flow
+    TileLoc tileLoc = physPortAndID.physPort.tileLoc;
+    SmallVector<PhysPortAndID> dstPorts(packetFlowports.begin(),
+                                        packetFlowports.end());
+    amselGenerator.addConnection(tileLoc, physPortAndID, dstPorts);
+  }
+  if (failed(amselGenerator.solve())) return failure();
+
+  for (const auto &[physPortAndID, packetFlowports] : sortedPacketFlows) {
+    // The Source Tile of the flow
+    TileLoc tileLoc = physPortAndID.physPort.tileLoc;
+    std::optional<std::pair<uint8_t, uint8_t>> maybeAMSel =
+        amselGenerator.getAMSel(tileLoc, physPortAndID);
+    if (!maybeAMSel) return failure();
+    auto [arbiter, msel] = maybeAMSel.value();
+
+    for (PhysPortAndID dest : packetFlowports) {
+      masterAMSels[{tileLoc, {arbiter, msel}}].insert(dest.physPort.port);
+    }
+    slaveAMSels[physPortAndID] = {arbiter, msel};
+  }
+
+  // Compute the master set IDs
+  MasterSetsT mastersets;
+  for (const auto &[physPort, ports] : masterAMSels) {
+    for (Port port : ports) {
+      mastersets[PhysPort{physPort.first, port}].push_back(physPort.second);
+    }
+  }
+
+  // sort for deterministic IR output
+  for (auto &[_, amsels] : mastersets) std::sort(amsels.begin(), amsels.end());
+  return std::make_tuple(mastersets, slaveAMSels);
 }
 
 /// ============================= BEGIN ==================================
@@ -962,6 +929,8 @@ STRINGIFY_2TUPLE_STRUCT(Port, bundle, channel)
 STRINGIFY_2TUPLE_STRUCT(Connect, src, dst)
 STRINGIFY_2TUPLE_STRUCT(SwitchBox, col, row)
 STRINGIFY_2TUPLE_STRUCT(PathEndPoint, sb, port)
+STRINGIFY_2TUPLE_STRUCT(PhysPort, tileLoc, port)
+STRINGIFY_2TUPLE_STRUCT(PhysPortAndID, physPort, id)
 
 BOTH_OSTREAM_OPS_FORALL_ROUTER_TYPES(OSTREAM_OP_DEFN, BOTH_OSTREAM_OP)
 
