@@ -508,7 +508,8 @@ void buildAMDAIETransformPassPipeline(
     OpPassManager &variantPassManager, AMDAIEDevice device,
     TilePassPipeline useTilePipeline,
     LowerToAIEPassPipeline useLowerToAIEPipeline, bool matmulElementwiseFusion,
-    bool enableVectorizationPasses, const std::string &pathToUkernels) {
+    bool enableVectorizationPasses, const std::string &pathToUkernels,
+    bool enablePacketFlow) {
   OpPassManager &modulePassManager = variantPassManager.nest<ModuleOp>();
   {
     FunctionLikeNest funcPassManager(modulePassManager);
@@ -533,7 +534,7 @@ void buildAMDAIETransformPassPipeline(
   }
   modulePassManager.addPass(createLowerUKernelOpsToCallsPass());
   if (useLowerToAIEPipeline == LowerToAIEPassPipeline::ObjectFifo) {
-    addAMDAIEObjectFifoLoweringPasses(modulePassManager);
+    addAMDAIEObjectFifoLoweringPasses(modulePassManager, enablePacketFlow);
   } else if (useLowerToAIEPipeline == LowerToAIEPassPipeline::AIR) {
     addMLIRAIRLoweringPasses(modulePassManager, device, useTilePipeline,
                              matmulElementwiseFusion);
@@ -552,7 +553,8 @@ void buildAMDAIETransformPassPipeline(
   });
 }
 
-void addAMDAIEObjectFifoLoweringPasses(OpPassManager &passManager) {
+void addAMDAIEObjectFifoLoweringPasses(OpPassManager &passManager,
+                                       bool enablePacketFlow) {
   passManager.addPass(createEraseHALDescriptorTypeFromMemRefPass());
   passManager.addPass(memref::createFoldMemRefAliasOpsPass());
   passManager.addPass(createAMDAIEConvertToDmaPass());
@@ -580,7 +582,8 @@ void addAMDAIEObjectFifoLoweringPasses(OpPassManager &passManager) {
   passManager.addPass(createAMDAIEAssignLogicalObjectFifoDepthPass());
   passManager.addPass(createAMDAIEAccessToAcquireReleasePass());
   passManager.addPass(createAMDAIENoneAccessToTemporaryBufferPass());
-  passManager.addPass(createAMDAIEAssignConnectionTypesPass({clEnablePacketFlow}));
+  passManager.addPass(
+      createAMDAIEAssignConnectionTypesPass({enablePacketFlow}));
   passManager.addPass(createCSEPass());
   passManager.addPass(createCanonicalizerPass());
 

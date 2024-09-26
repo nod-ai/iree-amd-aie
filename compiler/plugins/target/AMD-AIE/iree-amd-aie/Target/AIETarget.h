@@ -52,6 +52,7 @@ struct AMDAIEOptions {
   bool matmulElementwiseFusion{false};
   AMDAIEDevice AMDAIETargetDevice{AMDAIEDevice::npu1_4col};
   std::string enableAMDAIEUkernels{"none"};
+  bool enablePacketFlow{false};
 
   void bindOptions(OptionsBinder &binder) {
     static llvm::cl::OptionCategory category("AMD AIE Options");
@@ -182,6 +183,10 @@ struct AMDAIEOptions {
                        "Phoenix NPU with four columns"),
             clEnumValN(AMDAIEDevice::npu4, "npu4",
                        "Strix B0 NPU with 8 columns and 6 rows")));
+
+    binder.opt<bool>("iree-amdaie-enable-packet-flow", enablePacketFlow,
+                     llvm::cl::cat(category),
+                     llvm::cl::desc("Enable packet routing data movement."));
   }
 };
 
