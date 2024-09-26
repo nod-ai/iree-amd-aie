@@ -14,6 +14,7 @@
 
 #include "iree_aie_runtime.h"
 #include "llvm/ADT/DenseMapInfo.h"
+#include "llvm/ADT/SetVector.h"
 
 namespace mlir::iree_compiler::AMDAIE {
 struct Port {
@@ -26,6 +27,12 @@ struct Port {
   typedef std::tuple<StrmSwPortType, int> TupleType;
   Port(TupleType t) : Port(std::get<0>(t), std::get<1>(t)) {}
   operator TupleType() const { return {bundle, channel}; }
+  friend llvm::hash_code hash_value(const Port &p) {
+    std::size_t h1 =
+        std::hash<mlir::iree_compiler::AMDAIE::StrmSwPortType>{}(p.bundle);
+    std::size_t h2 = std::hash<int>{}(p.channel);
+    return llvm::hash_combine(h1, h2);
+  }
   TUPLE_LIKE_STRUCT_RELATIONAL_OPS(Port)
 };
 ASSERT_STANDARD_LAYOUT(Port);
@@ -134,18 +141,21 @@ struct PhysPortAndID {
 };
 
 // A map from a switchbox output (physical) port to the number of that port.
-using MasterSetsT = std::map<PhysPort, std::vector<int>>;
+using MasterSetsT =
+    std::map<PhysPort, std::vector<std::pair<uint8_t, uint8_t>>>;
 using SlaveGroupsT = std::vector<std::vector<PhysPortAndID>>;
 using SlaveMasksT = std::map<PhysPortAndID, int>;
-using SlaveAMSelsT = std::map<PhysPortAndID, int>;
+using SlaveAMSelsT = std::map<PhysPortAndID, std::pair<uint8_t, uint8_t>>;
 using ConnectionAndFlowIDT = std::pair<Connect, int>;
 using SwitchBoxToConnectionFlowIDT =
     std::map<TileLoc, DenseSet<ConnectionAndFlowIDT>>;
+using PacketFlowMapT = DenseMap<PhysPortAndID, llvm::SetVector<PhysPortAndID>>;
 
-std::tuple<MasterSetsT, SlaveGroupsT, SlaveMasksT, SlaveAMSelsT>
-emitPacketRoutingConfiguration(int numMsels, int numArbiters,
-                               const SwitchBoxToConnectionFlowIDT &switchboxes,
-                               const std::vector<TileLoc> &tiles);
+std::tuple<SlaveGroupsT, SlaveMasksT> emitSlaveGroupsAndMasksRoutingConfig(
+    ArrayRef<PhysPortAndID> slavePorts, const PacketFlowMapT &packetFlows);
+
+FailureOr<std::tuple<MasterSetsT, SlaveAMSelsT>> emitPacketRoutingConfiguration(
+    int numMsels, int numArbiters, const PacketFlowMapT &packetFlows);
 
 /// ============================= BEGIN ==================================
 /// ================== stringification utils =============================
@@ -155,7 +165,9 @@ emitPacketRoutingConfiguration(int numMsels, int numArbiters,
   _(Connect)          \
   _(PathEndPoint)     \
   _(Port)             \
-  _(SwitchSetting)
+  _(SwitchSetting)    \
+  _(PhysPort)         \
+  _(PhysPortAndID)
 
 TO_STRINGS(TO_STRING_DECL)
 #undef TO_STRINGS
@@ -164,7 +176,9 @@ TO_STRINGS(TO_STRING_DECL)
   _(OSTREAM_OP_, mlir::iree_compiler::AMDAIE::Connect)       \
   _(OSTREAM_OP_, mlir::iree_compiler::AMDAIE::PathEndPoint)  \
   _(OSTREAM_OP_, mlir::iree_compiler::AMDAIE::Port)          \
-  _(OSTREAM_OP_, mlir::iree_compiler::AMDAIE::SwitchSetting)
+  _(OSTREAM_OP_, mlir::iree_compiler::AMDAIE::SwitchSetting) \
+  _(OSTREAM_OP_, mlir::iree_compiler::AMDAIE::PhysPort)      \
+  _(OSTREAM_OP_, mlir::iree_compiler::AMDAIE::PhysPortAndID)
 
 BOTH_OSTREAM_OPS_FORALL_ROUTER_TYPES(OSTREAM_OP_DECL, BOTH_OSTREAM_OP)
 
@@ -174,10 +188,7 @@ template <>
 struct std::hash<mlir::iree_compiler::AMDAIE::Port> {
   std::size_t operator()(
       const mlir::iree_compiler::AMDAIE::Port &p) const noexcept {
-    std::size_t h1 =
-        std::hash<mlir::iree_compiler::AMDAIE::StrmSwPortType>{}(p.bundle);
-    std::size_t h2 = std::hash<int>{}(p.channel);
-    return h1 ^ h2 << 1;
+    return static_cast<std::size_t>(hash_value(p));
   }
 };
 

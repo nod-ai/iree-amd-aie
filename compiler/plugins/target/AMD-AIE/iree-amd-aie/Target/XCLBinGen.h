@@ -11,6 +11,7 @@
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Support/LogicalResult.h"
 
+namespace mlir::iree_compiler::AMDAIE {
 mlir::LogicalResult aie2xclbin(
     mlir::MLIRContext *ctx, xilinx::AIE::DeviceOp, const std::string &outputNPU,
     const std::string &outputXCLBin, bool printIRBeforeAll,
@@ -22,3 +23,7 @@ mlir::LogicalResult aie2xclbin(
     const std::string &xclBinInstanceName, const std::string &amdAIEInstallDir,
     const std::optional<std::string> &InputXCLBin,
     const std::optional<std::string> &ukernel);
+
+mlir::LogicalResult emitNpuInstructions(xilinx::AIE::DeviceOp deviceOp,
+                                        const std::string &outputNPU);
+}  // namespace mlir::iree_compiler::AMDAIE

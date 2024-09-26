@@ -15,6 +15,7 @@ import numpy as np
 
 from input_generator import generate_inputs, verify_determinism, load_input
 from matmul_template.matmul_generator import generate_matmul_test
+from convolution_template.convolution_generator import ConvolutionMlirGenerator
 from output_comparer import compare
 
 
@@ -597,6 +598,70 @@ class TestSet:
         raise NotImplementedError("Subclasses must implement this method")
 
 
+class ConvolutionTemplateSet(TestSet):
+    def __init__(self):
+        super().__init__("ConvolutionTemplate")
+
+    def run(self, config):
+
+        testSet = [
+            {
+                "conv_type": "conv_2d_nhwc_hwcf",
+                "N": 2,
+                "IH": 14,
+                "IC": 32,
+                "OC": 64,
+                "KH": 3,
+                "input_element_type": "i32",
+                "output_element_type": "i32",
+            },
+            {
+                "conv_type": "conv_2d_nhwc_hwcf",
+                "N": 2,
+                "IH": 14,
+                "IC": 32,
+                "OC": 64,
+                "KH": 3,
+                "input_element_type": "bf16",
+                "output_element_type": "f32",
+            },
+            {
+                "conv_type": "conv_2d_nhwc_hwcf",
+                "N": 2,
+                "IH": 14,
+                "IC": 32,
+                "OC": 64,
+                "KH": 3,
+                "input_element_type": "i8",
+                "output_element_type": "i32",
+            },
+            {
+                "conv_type": "depthwise_conv_2d_nhwc_hwc",
+                "N": 1,
+                "IH": 14,
+                "IC": 64,
+                "KH": 3,
+                "input_element_type": "i32",
+                "output_element_type": "i32",
+            },
+        ]
+
+        output_dir = config.output_dir
+        test_name = output_dir / "test_from_template.mlir"
+        for testMap in testSet:
+            convGen = ConvolutionMlirGenerator(**testMap)
+            convGen.write_to_file(test_name)
+            n_conv_repeats = 4
+
+            aie_vs_llvm_cpu(
+                config,
+                test_name,
+                tile_pipeline="conv-decompose",
+                lower_to_aie_pipeline="air",
+                n_repeats=n_conv_repeats,
+            )
+
+
 class ConvolutionSet(TestSet):
     def __init__(self):
         super().__init__("Convolution")
@@ -605,13 +670,9 @@ class ConvolutionSet(TestSet):
         test_files_dir = config.file_dir / "test_files"
 
         for name in [
-            "conv2d_nhwc_int32",
-            "conv2d_nhwc_bf16",
             "conv2d_nhwc_q",
-            "depthwise_convolution_i32",
         ]:
-            n_conv_repeats = 4
-
+            n_conv_repeats = 2
             aie_vs_llvm_cpu(
                 config,
                 test_files_dir / f"{name}.mlir",
@@ -722,24 +783,12 @@ class SmokeSet(TestSet):
         file_dir = config.file_dir
         output_dir = config.output_dir
 
-        test_files_dir = file_dir / "test_files"
-
         # The most basic test, direct from .mlir file using all defaults
+        test_files_dir = file_dir / "test_files"
         aie_vs_llvm_cpu(config, test_files_dir / "matmul_int32.mlir")
 
-        # Using a baseline other than llvm-cpu
-        aie_vs_np_matmul(config, test_files_dir / "matmul_int32.mlir")
-
-        # Convolution and int8
-        aie_vs_llvm_cpu(
-            config,
-            test_files_dir / f"conv2d_nhwc_int8.mlir",
-            tile_pipeline="conv-decompose",
-            lower_to_aie_pipeline="air",
-            n_repeats=2,
-        )
-
         # Using objectFifo pipeline
+        test_name = output_dir / "test_from_template.mlir"
         matmul_template_dir = file_dir / "matmul_template"
         test_name = output_dir / "test_from_objectfifo_basic.mlir"
         template_name = matmul_template_dir / "matmul_MxK_KxN.mlir"
@@ -753,7 +802,7 @@ class SmokeSet(TestSet):
 
 
 def get_test_partition():
-    return [ConvolutionSet(), MatmulSet(), SmokeSet()]
+    return [ConvolutionTemplateSet(), ConvolutionSet(), MatmulSet(), SmokeSet()]
 
 
 def all_tests(
@@ -830,7 +879,10 @@ def all_tests(
     # if no partition is found, raise error.
     for test in test_set:
         if test not in partition_names:
-            raise ValueError(f"Test set '{test}' not found in available test sets.")
+            errorMessage = f"Test set '{test}' not found in available test sets. The available test sets are:"
+            for name in partition_names:
+                errorMessage += f"\n  {name}"
+            raise ValueError(errorMessage)
         partition = map_to_partition[test]
         partition.run(config)
 
@@ -882,9 +934,9 @@ if __name__ == "__main__":
         default=0,
         help=dedent(
             """
-            Verbosity level. Currently 
-            0: total silence. 
-            1 (-v) : almost everything. 
+            Verbosity level. Currently
+            0: total silence.
+            1 (-v) : almost everything.
             2 (-vv) : everything.
             """
         ),

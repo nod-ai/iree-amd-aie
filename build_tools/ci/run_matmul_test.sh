@@ -194,6 +194,8 @@ function run_matmul_test() {
 
   local accumulate="false"
 
+  local enable_packet_flow="false";
+
   # The default is to not expect a compilation failure.
   local expect_compile_failure="0"
 
@@ -238,6 +240,10 @@ function run_matmul_test() {
         ;;
       --do_transpose_rhs)
         do_transpose_rhs="$2"
+        shift 2
+        ;;
+      --enable_packet_flow)
+        enable_packet_flow="$2"
         shift 2
         ;;
       --expect_compile_failure)
@@ -397,6 +403,7 @@ function run_matmul_test() {
                       --iree-amd-aie-install-dir=${amd_aie_install_path} \
                       --iree-amd-aie-vitis-install-dir=${vitis_path} \
                       --iree-amd-aie-enable-chess=${use_chess} \
+                      --iree-amdaie-enable-packet-flow=${enable_packet_flow} \
                       --iree-hal-dump-executable-files-to=$PWD \
                       --mlir-elide-resource-strings-if-larger=10 \
                       --iree-amd-aie-show-invoked-commands"
@@ -639,6 +646,15 @@ run_matmul_test_on_shapes ${i32_shapes_small[@]} \
     --lhs_rhs_type "i32" \
     --acc_type "i32" \
     --num_repeat_runs "10"
+
+run_matmul_test_on_shapes ${i32_shapes_small[@]} \
+    --name_prefix "small" \
+    --lower_to_aie_pipeline "objectFifo" \
+    --tile_pipeline "pack-peel" \
+    --lhs_rhs_type "i32" \
+    --acc_type "i32" \
+    --num_corruption_repeat_runs "10" \
+    --enable_packet_flow "true"
 
 i32_shapes_medium=(
   '1024x1024x1024'

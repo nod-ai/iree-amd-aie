@@ -44,11 +44,13 @@ iree_cc_library(
   NAME
     iree_aie_runtime_static
   HDRS
+    amsel_generator.h
     iree_aie_configure.h
     iree_aie_router.h
     iree_aie_runtime.h
     xaie_hwcfg.h
   SRCS
+    amsel_generator.cc
     iree_aie_configure.cc
     iree_aie_router.cc
     iree_aie_runtime.cc

@@ -57,7 +57,8 @@ LogicalResult assignChannels(AMDAIE::WorkgroupOp workgroupOp) {
     }
     rewriter.replaceOpWithNewOp<AMDAIE::ConnectionOp>(
         connectionOp, connectionOp.getTarget(), targetChannels,
-        connectionOp.getSource(), sourceChannels);
+        connectionOp.getSource(), sourceChannels,
+        connectionOp.getConnectionTypeAttr());
   }
   return success();
 }

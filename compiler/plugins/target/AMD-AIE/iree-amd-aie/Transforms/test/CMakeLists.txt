@@ -12,6 +12,7 @@ iree_lit_test_suite(
     "aie_link_executables.mlir"
     "acquire_release_to_use_lock.mlir"
     "assign_channels.mlir"
+    "assign_connection_types.mlir"
     "assign_logical_objectfifo_depth.mlir"
     "assign_npu_dma_bd_ids.mlir"
     "bridge_to_air.mlir"

@@ -193,38 +193,3 @@ jobs:
             $PWD/llvm-aie \
             /opt/xilinx/xrt \
             /opt/Xilinx/Vitis/2024.2
-
-      - name: Printing IR from aie2xclbin
-        run: |
-          source .venv/bin/activate
-          source /opt/xilinx/xrt/setup.sh
-          bash build_tools/ci/print_ir_aie2xclbin/print_ir_aie2xclbin.sh \
-            iree-install \
-            print_ir_aie2xclbin_results \
-            $PWD/llvm-aie
-
-      - name : Smoke E2E comparison flag test
-        run: |
-          source .venv/bin/activate
-          source /opt/xilinx/xrt/setup.sh
-          python3 build_tools/ci/cpu_comparison/run.py \
-            test_aie_vs_cpu \
-            iree-install \
-            $PWD/llvm-aie \
-            --xrt-dir /opt/xilinx/xrt \
-            --test-set='Smoke' \
-            --do-not-run-aie > smoke_output.log 2>&1
-
-          # Assert that smoke_output.log is empty (because verbose=0)
-          # First assert that smoke_output.log exists:
-          if [ ! -f smoke_output.log ]; then
-            echo "smoke_output.log does not exist."
-            exit 1
-          fi
-          if [ -s smoke_output.log ]; then
-            echo "smoke_output.log is not empty:"
-            cat smoke_output.log
-            exit 1
-          else
-            echo "smoke_output.log is empty"
-          fi

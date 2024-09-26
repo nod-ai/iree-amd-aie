@@ -29,6 +29,17 @@ def AMDAIEAssignChannels :
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEAssignChannelsPass()";
 }
 
+def AMDAIEAssignConnectionTypes :
+    Pass<"iree-amdaie-assign-connection-types", ""> {
+  let summary = "Assign connection types to `amdaie.connection` ops.";
+  let constructor =
+    "mlir::iree_compiler::AMDAIE::createAMDAIEAssignConnectionTypesPass()";
+  let options = [
+    Option<"enablePacketFlow", "enable-packet-flow", "bool", /*default=*/"false",
+      "Enable packet routing for connections.">
+  ];
+}
+
 def AMDAIEAssignLogicalObjectFifoDepth :
     Pass<"iree-amdaie-assign-logical-objectfifo-depth", ""> {
   let summary = "Assign a buffer depth of the logical objectfifos.";

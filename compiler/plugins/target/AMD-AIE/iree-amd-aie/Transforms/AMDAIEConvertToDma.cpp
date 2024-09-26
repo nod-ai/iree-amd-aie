@@ -107,11 +107,14 @@ LogicalResult unPackDmaInputs(IREE::LinalgExt::UnPackOp unPackOp,
   SmallVector<OpFoldResult> outerSizes =
       SmallVector<OpFoldResult>(sizes.begin(), sizes.begin() + numOuterDims);
 
-  // Apply permutations to the outer dims if provided.
+  // Apply inverse permutation to the outer dims if permutation provided (if
+  // permutation not provided, it is identity, and therefore so is the inverse).
   if (!permutation.empty()) {
-    applyPermutationToVector(outerStrides, permutation);
-    applyPermutationToVector(outerSizes, permutation);
-    applyPermutationToVector(outerOffsets, permutation);
+    SmallVector<int64_t> inversePermutation =
+        invertPermutationVector(permutation);
+    applyPermutationToVector(outerStrides, inversePermutation);
+    applyPermutationToVector(outerSizes, inversePermutation);
+    applyPermutationToVector(outerOffsets, inversePermutation);
   }
   // Do the unpacking on the Outer dims.
   llvm::SmallDenseMap<int64_t, int64_t> outerDimsIndexMap;
@@ -196,14 +199,32 @@ LogicalResult setDmaInputs(Operation *&operandOp,
     }
     strides = getAsIndexOpFoldResult(ctx, stridesI64);
     operandOp = subviewOp.getSource().getDefiningOp();
-    auto sizesI64 = subviewOp.getType().getShape();
-    if (llvm::any_of(sizesI64, [](int64_t size) {
-          return ShapedType::isDynamic(size);
+    sizes = subviewOp.getMixedSizes();
+    if (llvm::any_of(sizes, [](OpFoldResult fr) {
+          return !getConstantIntValue(fr).has_value();
         })) {
       return subviewOp->emitOpError(
-          "has dynamic shape that is not supported by the target dma op.");
+          " has dynamic shape that is not supported by the target dma op.");
     }
-    sizes = getAsIndexOpFoldResult(ctx, sizesI64);
+
+    assert(offsets.size() == sizes.size() && sizes.size() == strides.size() &&
+           "mismatch in the number of offsets, sizes and strides");
+
+    // Handle the case where some dimensions are dropped in the subview:
+    llvm::SmallBitVector droppedDims = subviewOp.getDroppedDims();
+    uint64_t insertionIndex{0};
+    for (uint64_t extractionIndex = 0; extractionIndex < offsets.size();
+         ++extractionIndex) {
+      if (!droppedDims[extractionIndex]) {
+        offsets[insertionIndex] = offsets[extractionIndex];
+        sizes[insertionIndex] = sizes[extractionIndex];
+        strides[insertionIndex] = strides[extractionIndex];
+        insertionIndex++;
+      }
+    }
+    offsets.resize(insertionIndex);
+    sizes.resize(insertionIndex);
+    strides.resize(insertionIndex);
     return success();
   }
   return operandOp->emitOpError(
