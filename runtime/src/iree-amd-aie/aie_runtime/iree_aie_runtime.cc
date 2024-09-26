@@ -122,25 +122,26 @@ AMDAIEDeviceModel::AMDAIEDeviceModel(
     uint8_t devNColumns, uint8_t devNRows, uint8_t memTileRowStart,
     uint8_t nMemTileRows, uint8_t nShimTileRows, int partitionNumCols,
     int partitionStartCol, uint64_t partBaseAddr, uint64_t npiAddr, bool aieSim,
-    bool xaieDebug, AMDAIEDevice device)
-    : configPtr{/*AieGen*/aieGen,
-                /*BaseAddr*/baseAddr,
-                /*ColShift*/colShift,
-                /*RowShift*/rowShift,
-                /*NumRows*/devNRows,
-                /*NumCols*/devNColumns,
-                /*ShimRowNum*/0,
-                /*MemTileRowStart*/memTileRowStart,
-                /*MemTileNumRows*/nMemTileRows,
+    bool xaieDebug, AMDAIEDevice device, AMDAIEDeviceConfig deviceConfig)
+    : configPtr{/*AieGen*/ aieGen,
+                /*BaseAddr*/ baseAddr,
+                /*ColShift*/ colShift,
+                /*RowShift*/ rowShift,
+                /*NumRows*/ devNRows,
+                /*NumCols*/ devNColumns,
+                /*ShimRowNum*/ 0,
+                /*MemTileRowStart*/ memTileRowStart,
+                /*MemTileNumRows*/ nMemTileRows,
                 // TODO(max): use XAIE*_AIE_TILE_ROW_START here
                 // instead of this (once we eliminate legacy devices)
                 /*AieTileRowStart*/
-                    static_cast<uint8_t>(memTileRowStart + nMemTileRows),
-                /*AieTileNumRows*/static_cast<uint8_t>(devNRows - nMemTileRows -
-                                                       nShimTileRows),
-                /*PartProp*/{}},
+                static_cast<uint8_t>(memTileRowStart + nMemTileRows),
+                /*AieTileNumRows*/
+                static_cast<uint8_t>(devNRows - nMemTileRows - nShimTileRows),
+                /*PartProp*/ {}},
       devInst{},
-      device(device) {
+      deviceConfig(std::move(deviceConfig)),
+      device(std::move(device)) {
   TRY_XAIE_API_FATAL_ERROR(XAie_SetupPartitionConfig, &devInst, partBaseAddr,
                            partitionStartCol, partitionNumCols);
   TRY_XAIE_API_FATAL_ERROR(XAie_CfgInitialize, &devInst, &configPtr);
@@ -426,6 +427,24 @@ uint32_t AMDAIEDeviceModel::getColumnShift() const {
 
 uint32_t AMDAIEDeviceModel::getRowShift() const { return configPtr.RowShift; }
 
+uint8_t AMDAIEDeviceModel::getStreamSwitchArbiterMax(uint8_t col,
+                                                     uint8_t row) const {
+  assert(isCoreTile(col, row) || isMemTile(col, row) || isShimTile(col, row));
+  if (isCoreTile(col, row)) return deviceConfig.streamSwitchCoreArbiterMax;
+  if (isMemTile(col, row)) return deviceConfig.streamSwitchMemTileArbiterMax;
+  if (isShimTile(col, row)) return deviceConfig.streamSwitchShimArbiterMax;
+  return 0;
+}
+
+uint8_t AMDAIEDeviceModel::getStreamSwitchMSelMax(uint8_t col,
+                                                  uint8_t row) const {
+  assert(isCoreTile(col, row) || isMemTile(col, row) || isShimTile(col, row));
+  if (isCoreTile(col, row)) return deviceConfig.streamSwitchCoreMSelMax;
+  if (isMemTile(col, row)) return deviceConfig.streamSwitchMemTileMSelMax;
+  if (isShimTile(col, row)) return deviceConfig.streamSwitchShimMSelMax;
+  return 0;
+}
+
 DenseMap<uint32_t, SmallVector<uint32_t>>
 AMDAIEDeviceModel::getChannelToValidBdIds(AMDAIETileType tileType) const {
   switch (tileType) {
@@ -454,7 +473,14 @@ AMDAIEDeviceModel::getChannelToValidBdIds(AMDAIETileType tileType) const {
 
 struct AMDAIEDeviceModel getDeviceModel(AMDAIEDevice device) {
   switch (device) {
-    case AMDAIEDevice::xcvc1902:
+    case AMDAIEDevice::xcvc1902: {
+      AMDAIEDeviceModel::AMDAIEDeviceConfig deviceConfig;
+      deviceConfig.streamSwitchCoreArbiterMax = XAIE1_SS_ARBITER_MAX;
+      deviceConfig.streamSwitchCoreMSelMax = XAIE1_SS_MSEL_MAX;
+      deviceConfig.streamSwitchMemTileArbiterMax = XAIE1_SS_ARBITER_MAX;
+      deviceConfig.streamSwitchMemTileMSelMax = XAIE1_SS_MSEL_MAX;
+      deviceConfig.streamSwitchShimArbiterMax = XAIE1_SS_ARBITER_MAX;
+      deviceConfig.streamSwitchShimMSelMax = XAIE1_SS_MSEL_MAX;
       return AMDAIEDeviceModel(XAIE_DEV_GEN_AIE, XAIE1_BASE_ADDR,
                                XAIE1_COL_SHIFT, XAIE1_ROW_SHIFT, XAIE1_NUM_COLS,
                                XAIE1_NUM_ROWS, XAIE1_MEM_TILE_ROW_START,
@@ -466,8 +492,18 @@ struct AMDAIEDeviceModel getDeviceModel(AMDAIEDevice device) {
                                /*partBaseAddr*/ XAIE1_PARTITION_BASE_ADDR,
                                /*npiAddr*/ XAIE1_NPI_BASEADDR,
                                /*aieSim*/ false,
-                               /*xaieDebug*/ false, device);
-    case AMDAIEDevice::xcve2302:
+                               /*xaieDebug*/ false,
+                               /*device*/ device,
+                               /*deviceConfig*/ std::move(deviceConfig));
+    }
+    case AMDAIEDevice::xcve2302: {
+      AMDAIEDeviceModel::AMDAIEDeviceConfig deviceConfig;
+      deviceConfig.streamSwitchCoreArbiterMax = XAIEML_SS_ARBITER_MAX;
+      deviceConfig.streamSwitchCoreMSelMax = XAIEML_SS_MSEL_MAX;
+      deviceConfig.streamSwitchMemTileArbiterMax = XAIEML_SS_ARBITER_MAX;
+      deviceConfig.streamSwitchMemTileMSelMax = XAIEML_SS_MSEL_MAX;
+      deviceConfig.streamSwitchShimArbiterMax = XAIEML_SS_ARBITER_MAX;
+      deviceConfig.streamSwitchShimMSelMax = XAIEML_SS_MSEL_MAX;
       return AMDAIEDeviceModel(XAIE_DEV_GEN_AIEML, XAIEML_BASE_ADDR,
                                XAIEML_COL_SHIFT, XAIEML_ROW_SHIFT,
                                /*numCols*/ 17, /*numRows*/ 4,
@@ -478,8 +514,18 @@ struct AMDAIEDeviceModel getDeviceModel(AMDAIEDevice device) {
                                /*partBaseAddr*/ XAIEML_PARTITION_BASE_ADDR,
                                /*npiAddr*/ XAIEML_NPI_BASEADDR,
                                /*aieSim*/ false,
-                               /*xaieDebug*/ false, device);
-    case AMDAIEDevice::xcve2802:
+                               /*xaieDebug*/ false,
+                               /*device*/ device,
+                               /*deviceConfig*/ std::move(deviceConfig));
+    }
+    case AMDAIEDevice::xcve2802: {
+      AMDAIEDeviceModel::AMDAIEDeviceConfig deviceConfig;
+      deviceConfig.streamSwitchCoreArbiterMax = XAIEML_SS_ARBITER_MAX;
+      deviceConfig.streamSwitchCoreMSelMax = XAIEML_SS_MSEL_MAX;
+      deviceConfig.streamSwitchMemTileArbiterMax = XAIEML_SS_ARBITER_MAX;
+      deviceConfig.streamSwitchMemTileMSelMax = XAIEML_SS_MSEL_MAX;
+      deviceConfig.streamSwitchShimArbiterMax = XAIEML_SS_ARBITER_MAX;
+      deviceConfig.streamSwitchShimMSelMax = XAIEML_SS_MSEL_MAX;
       return AMDAIEDeviceModel(XAIE_DEV_GEN_AIEML, XAIEML_BASE_ADDR,
                                XAIEML_COL_SHIFT, XAIEML_ROW_SHIFT,
                                XAIEML_NUM_COLS, XAIEML_NUM_ROWS,
@@ -489,12 +535,23 @@ struct AMDAIEDeviceModel getDeviceModel(AMDAIEDevice device) {
                                /*partitionStartCol*/ 0,
                                /*partBaseAddr*/ XAIEML_PARTITION_BASE_ADDR,
                                /*npiAddr*/ XAIEML_NPI_BASEADDR,
-                               /*aieSim*/ false, /*xaieDebug*/ false, device);
+                               /*aieSim*/ false,
+                               /*xaieDebug*/ false,
+                               /*device*/ device,
+                               /*deviceConfig*/ std::move(deviceConfig));
+    }
     case AMDAIEDevice::npu1:
     case AMDAIEDevice::npu1_1col:
     case AMDAIEDevice::npu1_2col:
     case AMDAIEDevice::npu1_3col:
-    case AMDAIEDevice::npu1_4col:
+    case AMDAIEDevice::npu1_4col: {
+      AMDAIEDeviceModel::AMDAIEDeviceConfig deviceConfig;
+      deviceConfig.streamSwitchCoreArbiterMax = XAIE2IPU_SS_ARBITER_MAX;
+      deviceConfig.streamSwitchCoreMSelMax = XAIE2IPU_SS_MSEL_MAX;
+      deviceConfig.streamSwitchMemTileArbiterMax = XAIE2IPU_SS_ARBITER_MAX;
+      deviceConfig.streamSwitchMemTileMSelMax = XAIE2IPU_SS_MSEL_MAX;
+      deviceConfig.streamSwitchShimArbiterMax = XAIE2IPU_SS_ARBITER_MAX;
+      deviceConfig.streamSwitchShimMSelMax = XAIE2IPU_SS_MSEL_MAX;
       int partitionNumCols, partitionStartCol;
       switch (device) {
         case AMDAIEDevice::npu1:
@@ -527,8 +584,19 @@ struct AMDAIEDeviceModel getDeviceModel(AMDAIEDevice device) {
           XAIE2IPU_SHIM_NUM_ROWS, partitionNumCols, partitionStartCol,
           /*partBaseAddr*/ XAIE2IPU_PARTITION_BASE_ADDR,
           /*npiAddr*/ XAIE2IPU_NPI_BASEADDR,
-          /*aieSim*/ false, /*xaieDebug*/ false, device);
-    case AMDAIEDevice::npu4:
+          /*aieSim*/ false,
+          /*xaieDebug*/ false,
+          /*device*/ device,
+          /*deviceConfig*/ std::move(deviceConfig));
+    }
+    case AMDAIEDevice::npu4: {
+      AMDAIEDeviceModel::AMDAIEDeviceConfig deviceConfig;
+      deviceConfig.streamSwitchCoreArbiterMax = XAIE_STRIXB0_SS_ARBITER_MAX;
+      deviceConfig.streamSwitchCoreMSelMax = XAIE_STRIXB0_SS_MSEL_MAX;
+      deviceConfig.streamSwitchMemTileArbiterMax = XAIE_STRIXB0_SS_ARBITER_MAX;
+      deviceConfig.streamSwitchMemTileMSelMax = XAIE_STRIXB0_SS_MSEL_MAX;
+      deviceConfig.streamSwitchShimArbiterMax = XAIE_STRIXB0_SS_ARBITER_MAX;
+      deviceConfig.streamSwitchShimMSelMax = XAIE_STRIXB0_SS_MSEL_MAX;
       return AMDAIEDeviceModel(
           XAIE_DEV_GEN_AIE2P_STRIX_B0, XAIE_STRIXB0_BASE_ADDR,
           XAIE_STRIXB0_COL_SHIFT, XAIE_STRIXB0_ROW_SHIFT, XAIE_STRIXB0_NUM_COLS,
@@ -538,7 +606,11 @@ struct AMDAIEDeviceModel getDeviceModel(AMDAIEDevice device) {
           /*partitionStartCol*/ 0,
           /*partBaseAddr*/ XAIE_STRIXB0_PARTITION_BASE_ADDR,
           /*npiAddr*/ XAIE_STRIXB0_NPI_BASEADDR,
-          /*aieSim*/ false, /*xaieDebug*/ false, device);
+          /*aieSim*/ false,
+          /*xaieDebug*/ false,
+          /*device*/ device,
+          /*deviceConfig*/ std::move(deviceConfig));
+    }
   }
 
   llvm::report_fatal_error("Unhandled AMDAIEDevice case");

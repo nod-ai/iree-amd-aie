@@ -155,7 +155,7 @@ std::tuple<SlaveGroupsT, SlaveMasksT> emitSlaveGroupsAndMasksRoutingConfig(
     ArrayRef<PhysPortAndID> slavePorts, const PacketFlowMapT &packetFlows);
 
 FailureOr<std::tuple<MasterSetsT, SlaveAMSelsT>> emitPacketRoutingConfiguration(
-    int numMsels, int numArbiters, const PacketFlowMapT &packetFlows);
+    const AMDAIEDeviceModel &deviceModel, const PacketFlowMapT &packetFlows);
 
 /// ============================= BEGIN ==================================
 /// ================== stringification utils =============================

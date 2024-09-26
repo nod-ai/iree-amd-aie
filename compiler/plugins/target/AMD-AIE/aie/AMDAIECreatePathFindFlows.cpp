@@ -168,6 +168,8 @@ struct AIEPathfinderPass
 LogicalResult runOnPacketFlow(
     DeviceOp device, OpBuilder &builder,
     const std::map<PathEndPoint, SwitchSettings> &flowSolutions) {
+  AMDAIEDeviceModel deviceModel =
+      getDeviceModel(static_cast<AMDAIEDevice>(device.getDevice()));
   mlir::DenseMap<TileLoc, TileOp> tiles;
   for (auto tileOp : device.getOps<TileOp>()) {
     int col = tileOp.getCol();
@@ -247,10 +249,8 @@ LogicalResult runOnPacketFlow(
     }
   }
 
-  int numMsels = 4;
-  int numArbiters = 6;
   auto maybeRoutingConfiguration =
-      emitPacketRoutingConfiguration(numMsels, numArbiters, packetFlows);
+      emitPacketRoutingConfiguration(deviceModel, packetFlows);
   if (failed(maybeRoutingConfiguration)) {
     return device.emitOpError()
            << "could not create a valid routing configuration";
@@ -262,6 +262,10 @@ LogicalResult runOnPacketFlow(
 
   // Realize the routes in MLIR
   for (auto &[tileLoc, tileOp] : tiles) {
+    uint8_t numArbiters =
+        1 + deviceModel.getStreamSwitchArbiterMax(tileLoc.col, tileLoc.row);
+    uint8_t numMSels =
+        1 + deviceModel.getStreamSwitchMSelMax(tileLoc.col, tileLoc.row);
     // Create a switchbox for the routes and insert inside it.
     builder.setInsertionPointAfter(tileOp);
     SwitchboxOp swbox =
@@ -272,7 +276,7 @@ LogicalResult runOnPacketFlow(
     builder.setInsertionPoint(b.getTerminator());
 
     std::vector<std::vector<bool>> amselOpNeededVector(
-        numArbiters, std::vector<bool>(numMsels, false));
+        numArbiters, std::vector<bool>(numMSels, false));
     for (const auto &[physPort, masterSet] : masterSets) {
       if (tileLoc != physPort.tileLoc) continue;
       for (auto [arbiter, msel] : masterSet)
@@ -280,7 +284,7 @@ LogicalResult runOnPacketFlow(
     }
     // Create all the amsel Ops
     DenseMap<std::pair<uint8_t, uint8_t>, AMSelOp> amselOps;
-    for (int i = 0; i < numMsels; i++) {
+    for (int i = 0; i < numMSels; i++) {
       for (int a = 0; a < numArbiters; a++) {
         if (amselOpNeededVector.at(a).at(i)) {
           int arbiterID = a;
@@ -355,8 +359,6 @@ LogicalResult runOnPacketFlow(
   //                      2) shimDMA 1 --> North 7
   // From BLI to shimDMA: 1) North   2 --> shimDMA 0
   //                      2) North   3 --> shimDMA 1
-  AMDAIEDeviceModel deviceModel =
-      getDeviceModel(static_cast<AMDAIEDevice>(device.getDevice()));
   for (auto switchbox : make_early_inc_range(device.getOps<SwitchboxOp>())) {
     auto retVal = switchbox->getOperand(0);
     auto tileOp = retVal.getDefiningOp<TileOp>();

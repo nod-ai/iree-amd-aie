@@ -201,12 +201,22 @@ std::optional<std::pair<uint8_t, uint8_t>> TileAMSelGenerator::getAMSel(
   return std::nullopt;
 }
 
-void AMSelGenerator::addConnection(TileLoc tileLoc,
-                                   const PhysPortAndID &srcPort,
-                                   const SmallVector<PhysPortAndID> &dstPorts) {
+void AMSelGenerator::initTileIfNotExists(TileLoc tileLoc, uint8_t numArbiters,
+                                         uint8_t numMSels) {
   if (!tileToAMSelConfig.contains(tileLoc))
     tileToAMSelConfig[tileLoc] = TileAMSelGenerator(numArbiters, numMSels);
+}
+
+LogicalResult AMSelGenerator::addConnection(
+    TileLoc tileLoc, const PhysPortAndID &srcPort,
+    const SmallVector<PhysPortAndID> &dstPorts) {
+  if (!tileToAMSelConfig.contains(tileLoc)) {
+    LLVM_DEBUG(llvm::dbgs()
+               << "Can't add a connection on an unitialized tile: " << tileLoc);
+    return failure();
+  }
   tileToAMSelConfig[tileLoc].addConnection(srcPort, dstPorts);
+  return success();
 }
 
 std::optional<std::pair<uint8_t, uint8_t>> AMSelGenerator::getAMSel(

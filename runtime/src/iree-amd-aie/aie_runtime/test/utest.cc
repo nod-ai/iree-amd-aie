@@ -238,7 +238,14 @@ int main(int argc, char** argv) {
   uint8_t col = 0;
   uint8_t partitionStartCol = 1;
   uint8_t partitionNumCols = 4;
-
+  mlir::iree_compiler::AMDAIE::AMDAIEDeviceModel::AMDAIEDeviceConfig
+      deviceConfig;
+  deviceConfig.streamSwitchCoreArbiterMax = XAIE2IPU_SS_ARBITER_MAX;
+  deviceConfig.streamSwitchCoreMSelMax = XAIE2IPU_SS_MSEL_MAX;
+  deviceConfig.streamSwitchMemTileArbiterMax = XAIE2IPU_SS_ARBITER_MAX;
+  deviceConfig.streamSwitchMemTileMSelMax = XAIE2IPU_SS_MSEL_MAX;
+  deviceConfig.streamSwitchShimArbiterMax = XAIE2IPU_SS_ARBITER_MAX;
+  deviceConfig.streamSwitchShimMSelMax = XAIE2IPU_SS_MSEL_MAX;
   mlir::iree_compiler::AMDAIE::AMDAIEDeviceModel deviceModel(
       XAIE_DEV_GEN_AIE2IPU, XAIE2IPU_BASE_ADDR, XAIE2IPU_COL_SHIFT,
       XAIE2IPU_ROW_SHIFT, XAIE2IPU_NUM_COLS, XAIE2IPU_NUM_ROWS,
@@ -247,7 +254,8 @@ int main(int argc, char** argv) {
       /*partBaseAddr*/ XAIE2IPU_PARTITION_BASE_ADDR,
       /*npiAddr*/ XAIE2IPU_NPI_BASEADDR,
       /*aieSim*/ false, /*xaieDebug*/ false,
-      mlir::iree_compiler::AMDAIE::AMDAIEDevice::npu1_4col);
+      /*device*/ mlir::iree_compiler::AMDAIE::AMDAIEDevice::npu1_4col,
+      /*deviceConfig*/ std::move(deviceConfig));
   XAie_LocType tile00 = {/*Row*/ 0, /*Col*/ col};
   XAie_LocType tile01 = {/*Row*/ 1, /*Col*/ col};
   XAie_LocType tile02 = {/*Row*/ 2, /*Col*/ col};
