@@ -52,9 +52,9 @@ def iree_session(request) -> Session:
 
 
 @pytest.fixture
-def session_module(iree_session, tmpdir) -> ir.Module:
+def session_module(iree_session, tmp_path) -> ir.Module:
     iree_session.set_flags(
-        f"--iree-hal-dump-executable-files-to={tmpdir}",
+        f"--iree-hal-dump-executable-files-to={tmp_path}",
     )
     with ir.Location.unknown(iree_session.context):
         module_op = ir.Module.create()

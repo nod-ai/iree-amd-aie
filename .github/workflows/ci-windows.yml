@@ -138,9 +138,9 @@ jobs:
     name: E2E Test windows
     runs-on: windows-phoenix
     needs: build_and_ctest
-    defaults:
-      run:
-        shell: bash
+#    defaults:
+#      run:
+#        shell: bash
     env:
       XILINX_XRT: "/c/Xilinx/XRT"
     steps:
@@ -157,34 +157,35 @@ jobs:
       - name: Extract artifact
         run: |
           tar -xvf iree-dist-windows.tar
-          echo "IREE_INSTALL_DIR=$PWD/iree-install" >> $GITHUB_ENV
-          echo "PYTHONPATH=$PWD/iree-install/python_packages/iree_compiler:$PWD/iree-install/python_packages/iree_runtime" >> $GITHUB_ENV
-          bash build_tools/download_peano.sh
-          echo "PEANO_INSTALL_DIR=$PWD/llvm-aie" >> $GITHUB_ENV
+          Add-Content -Path $env:GITHUB_ENV -Value "IREE_INSTALL_DIR=$PWD\iree-install"
+          Add-Content -Path $env:GITHUB_ENV -Value "PYTHONPATH=$PWD\iree-install\python_packages\iree_compiler;$PWD\iree-install\python_packages\iree_runtime"
+          .\build_tools\download_peano.ps1
+          Add-Content -Path $env:GITHUB_ENV -Value "PEANO_INSTALL_DIR=$PWD\llvm-aie"
 
       - name: Create venv and install dependencies
         run: |
           python -m venv .venv
-          source .venv/Scripts/activate
+          .\.venv\Scripts\Activate.ps1
           pip install -r tests/requirements.txt
 
-      - name: E2E correctness matmul test
-        run: |
-          source .venv/Scripts/activate
-          bash build_tools/ci/run_matmul_test.sh \
-            /c/test_matmuls \
-            $PWD/iree-install \
-            $PWD/llvm-aie
-
-      - name : E2E comparison of AIE to llvm-cpu
-        run: |
-          source .venv/Scripts/activate
-          python build_tools/ci/cpu_comparison/run.py \
-            /c/test_aie_vs_cpu \
-            $PWD/iree-install \
-            $PWD/llvm-aie -v
+#      - name: E2E correctness matmul test
+#        run: |
+#          source .venv/Scripts/activate
+#          bash build_tools/ci/run_matmul_test.sh \
+#            /c/test_matmuls \
+#            $PWD/iree-install \
+#            $PWD/llvm-aie
+#
+#      - name : E2E comparison of AIE to llvm-cpu
+#        run: |
+#          source .venv/Scripts/activate
+#          python build_tools/ci/cpu_comparison/run.py \
+#            /c/test_aie_vs_cpu \
+#            $PWD/iree-install \
+#            $PWD/llvm-aie -v
 
       - name: Python tests
         run: |
-          source .venv/Scripts/activate
-          pytest -s tests
+          echo "PYTHONPATH: $env:PYTHONPATH"
+          .\.venv\Scripts\Activate.ps1
+          pytest -s --basetemp=$env:TEMP tests

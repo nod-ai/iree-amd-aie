@@ -190,9 +190,10 @@ iree_status_t iree_hal_xrt_native_executable_create(
       return iree_make_status(IREE_STATUS_INTERNAL, "XCLBIN register error: %s",
                               e.what());
     }
-    xrt::hw_context context;
+    std::unique_ptr<xrt::hw_context> context;
     try {
-      context = {*device, xclbin->get_uuid()};
+      context = std::make_unique<xrt::hw_context>(
+          *device, xclbin->get_uuid(), xrt::hw_context::access_mode::exclusive);
     } catch (std::exception& e) {
       return iree_make_status(IREE_STATUS_INTERNAL,
                               "xrt::hw_context context: %s", e.what());
@@ -207,7 +208,7 @@ iree_status_t iree_hal_xrt_native_executable_create(
     std::unique_ptr<xrt::kernel> kernel;
     std::unique_ptr<xrt::bo> instr;
     try {
-      kernel = std::make_unique<xrt::kernel>(context, entry_name);
+      kernel = std::make_unique<xrt::kernel>(*context, entry_name);
       // XCL_BO_FLAGS_CACHEABLE is used to indicate that this is an instruction
       // buffer that resides in instr_memory. This buffer is always passed as
       // the second argument to the kernel and we can use group id 1.
@@ -230,6 +231,7 @@ iree_status_t iree_hal_xrt_native_executable_create(
     instr->sync(XCL_BO_SYNC_BO_TO_DEVICE);
     iree_hal_xrt_kernel_params_t* params =
         &executable->entry_points[entry_ordinal];
+    params->context = context.release();
     params->xclbin = xclbin.release();
     params->kernel = kernel.release();
     params->instr = instr.release();
@@ -277,15 +279,16 @@ static void iree_hal_xrt_native_executable_destroy(
 
   for (iree_host_size_t i = 0; i < executable->entry_point_count; ++i) {
     try {
+      delete executable->entry_points[i].kernel;
 #ifndef _WIN32
       // causes segmentation fault on windows
-      delete executable->entry_points[i].kernel;
       delete executable->entry_points[i].instr;
 #endif
       // TODO(jornt): deleting the xclbin here will result in a corrupted size
       // error in XRT. It looks like the xclbin needs to stay alive while the
       // device is alive if it has been registered.
       // delete executable->entry_points[i].xclbin;
+      // delete executable->entry_points[i].context;
     } catch (...) {
       (void)iree_status_from_code(IREE_STATUS_DATA_LOSS);
     }
