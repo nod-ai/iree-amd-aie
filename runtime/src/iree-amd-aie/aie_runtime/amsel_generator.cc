@@ -157,9 +157,7 @@ LogicalResult TileAMSelGenerator::solve() {
     SmallVector<PhysPortAndID> srcs(group.begin(), group.end());
     SmallVector<SmallVector<PhysPortAndID>> dsts = llvm::map_to_vector(
         srcs, [&](const PhysPortAndID &src) -> SmallVector<PhysPortAndID> {
-          SmallVector<PhysPortAndID> dstPorts = srcToDstPorts.at(src);
-          return dstPorts;
-          // return dstPorts.takeVector();
+          return srcToDstPorts.at(src);
         });
     if (arbiterIndex < numArbiters) {
       MSelGenerator mselGenerator(numMSels);
@@ -198,11 +196,9 @@ LogicalResult TileAMSelGenerator::solve() {
 
 std::optional<std::pair<uint8_t, uint8_t>> TileAMSelGenerator::getAMSel(
     const PhysPortAndID &port) {
-  if (!portsToAMSels.contains(port)) {
-    LLVM_DEBUG(llvm::dbgs() << "Unknown PhysPortAndID: " << port);
-    return std::nullopt;
-  }
-  return portsToAMSels.at(port);
+  if (portsToAMSels.contains(port)) return portsToAMSels.at(port);
+  LLVM_DEBUG(llvm::dbgs() << "Unknown PhysPortAndID: " << port);
+  return std::nullopt;
 }
 
 void AMSelGenerator::addConnection(TileLoc tileLoc,

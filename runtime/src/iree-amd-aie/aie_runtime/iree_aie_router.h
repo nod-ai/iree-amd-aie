@@ -188,10 +188,7 @@ template <>
 struct std::hash<mlir::iree_compiler::AMDAIE::Port> {
   std::size_t operator()(
       const mlir::iree_compiler::AMDAIE::Port &p) const noexcept {
-    std::size_t h1 =
-        std::hash<mlir::iree_compiler::AMDAIE::StrmSwPortType>{}(p.bundle);
-    std::size_t h2 = std::hash<int>{}(p.channel);
-    return static_cast<std::size_t>(llvm::hash_combine(h1, h2));
+    return static_cast<std::size_t>(hash_value(p));
   }
 };
 
