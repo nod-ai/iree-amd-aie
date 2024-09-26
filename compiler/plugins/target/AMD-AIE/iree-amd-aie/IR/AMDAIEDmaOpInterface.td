@@ -165,27 +165,6 @@ def DoublyStridedOpInterface : OpInterface<"DoublyStridedOpInterface"> {
     >,
     InterfaceMethod<
       /*desc=*/[{
-        Return the static access range extent on the target side if it can be
-        computed. Otherwise, returns nullopt.
-
-        The extent is the number of elements in the range of elements being
-        accessed. This is the same as the last relative index (with regard to
-        base offset) being accessed + 1.
-
-        A return value of 0 is the result of empty offsets/strides/sizes and
-        represents a contiguous access of all values operated on.
-      }],
-      /*retTy=*/"std::optional<int64_t>",
-      /*methodName=*/"getTargetStaticExtent",
-      /*args=*/(ins),
-      /*methodBody=*/"",
-      /*defaultImplementation=*/[{
-        return detail::getTargetStaticExtent(
-          ::mlir::cast<DoublyStridedOpInterface>($_op.getOperation()));
-      }]
-    >,
-    InterfaceMethod<
-      /*desc=*/[{
         Return the static size of the access on the target side if it can be
         computed. Otherwise, returns nullopt.
       }],
@@ -311,27 +290,6 @@ def DoublyStridedOpInterface : OpInterface<"DoublyStridedOpInterface"> {
       /*methodBody=*/"",
       /*defaultImplementation=*/[{
         return detail::getSourceStaticBaseOffset(
-          ::mlir::cast<DoublyStridedOpInterface>($_op.getOperation()));
-      }]
-    >,
-    InterfaceMethod<
-      /*desc=*/[{
-        Return the static access range extent on the source side if it can be
-        computed. Otherwise, returns nullopt.
-        
-        The extent is the number of elements in the range of elements being
-        accessed. This is the same as the last relative index (with regard to
-        base offset) being accessed + 1.
-
-        A return value of 0 is the result of empty offsets/strides/sizes and
-        represents a contiguous access of all values operated on.
-      }],
-      /*retTy=*/"std::optional<int64_t>",
-      /*methodName=*/"getSourceStaticExtent",
-      /*args=*/(ins),
-      /*methodBody=*/"",
-      /*defaultImplementation=*/[{
-        return detail::getSourceStaticExtent(
           ::mlir::cast<DoublyStridedOpInterface>($_op.getOperation()));
       }]
     >,
