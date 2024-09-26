@@ -73,7 +73,7 @@ jobs:
 
       - uses: actions/setup-python@v4
         with:
-          python-version: '3.10'
+          python-version: '3.11'
 
       - name: Python deps
         run: |
@@ -91,7 +91,6 @@ jobs:
           $env:cache_dir = "${{ env.CACHE_DIR }}"
           $env:CCACHE_COMPILERCHECK = "string:$(clang-cl.exe --version)"
           .\build_tools\build_llvm.ps1
-          ls
           # Remove-Item -Path "$pwd\llvm-build" -Force
           $env:llvm_install_dir = "$pwd\llvm-install"
           echo $env:llvm_install_dir

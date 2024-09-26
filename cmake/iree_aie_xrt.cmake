@@ -34,7 +34,6 @@ set(IREE_AIE_BOOST_LIBS
     any
     algorithm
     asio
-    exception
     format
     functional
     lexical_cast

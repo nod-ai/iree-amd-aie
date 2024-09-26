@@ -55,10 +55,6 @@ $env:CCACHE_SLOPPINESS = 'include_file_ctime,include_file_mtime,time_macros'
 
 & ccache -z
 
-# on windows python bindings don't for split build because
-# i can't figure out MLIR_CAPI_EXPORTED and MLIR_CAPI_BUILDING_LIBRARY
-# which somehow disables exceptions (blocking bootgen and xrt)
-
 $CMAKE_ARGS = @(
   "-GNinja"
   "-DCMAKE_BUILD_TYPE=Release"
@@ -85,7 +81,7 @@ $CMAKE_ARGS = @(
   "-DLLVM_ENABLE_ZSTD=OFF"
   "-DLLVM_FORCE_ENABLE_STATS=ON"
   "-DLLVM_INSTALL_UTILS=ON"
-  "-DMLIR_ENABLE_BINDINGS_PYTHON=OFF"
+  "-DMLIR_ENABLE_BINDINGS_PYTHON=ON"
   "-DLLVM_ENABLE_PROJECTS=mlir;clang;lld"
   "-DLLVM_TARGET_ARCH=X86"
   "-DLLVM_TARGETS_TO_BUILD=X86"

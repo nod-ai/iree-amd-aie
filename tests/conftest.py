@@ -3,7 +3,7 @@ from contextlib import contextmanager
 
 import numpy as np
 import pytest
-from iree._runtime_libs._runtime import VmModule
+from iree.runtime import VmModule
 
 from iree.compiler import ir
 from iree.compiler._mlir_libs import get_dialect_registry
