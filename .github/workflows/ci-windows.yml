@@ -186,7 +186,7 @@ jobs:
 
       - name: Python tests
         run: |
-          echo "PYTHONPATH: $env:PYTHONPATH"
+          ls $env:XILINX_XRT
           .\.venv\Scripts\Activate.ps1
           mkdir temp
           pytest -s --basetemp=$PWD\temp tests
