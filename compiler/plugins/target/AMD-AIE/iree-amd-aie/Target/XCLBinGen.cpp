@@ -943,30 +943,6 @@ static LogicalResult generateXCLBin(
   return runTool(xclbinutilBin.value().string(), flags, verbose);
 }
 
-static std::string chesshack(const std::string &input) {
-  std::string result(input);
-  static const std::unordered_map<std::string, std::string> substitutions{
-      {"memory\\(none\\)", "readnone"},
-      {"memory\\(read\\)", "readonly"},
-      {"memory\\(write\\)", "writeonly"},
-      {"memory\\(argmem: readwrite\\)", "argmemonly"},
-      {"memory\\(argmem: read\\)", "argmemonly readonly"},
-      {"memory\\(argmem: write\\)", "argmemonly writeonly"},
-      {"memory\\(inaccessiblemem: write\\)", "inaccessiblememonly writeonly"},
-      {"memory\\(inaccessiblemem: readwrite\\)", "inaccessiblememonly"},
-      {"memory\\(inaccessiblemem: read\\)", "inaccessiblememonly readonly"},
-      {"memory(argmem: readwrite, inaccessiblemem: readwrite)",
-       "inaccessiblemem_or_argmemonly"},
-      {"memory(argmem: read, inaccessiblemem: read)",
-       "inaccessiblemem_or_argmemonly readonly"},
-      {"memory(argmem: write, inaccessiblemem: write)",
-       "inaccessiblemem_or_argmemonly writeonly"},
-  };
-  for (const auto &pair : substitutions)
-    result = std::regex_replace(result, std::regex(pair.first), pair.second);
-  return result;
-}
-
 // A pass which removes the alignment attribute from llvm load operations, if
 // the alignment is less than 4 (2 or 1).
 //
@@ -988,8 +964,7 @@ static std::string chesshack(const std::string &input) {
 // also https://jira.xilinx.com/projects/AIECC/issues/AIECC-589
 namespace {
 struct RemoveAlignment2FromLLVMLoadPass
-    : public PassWrapper<RemoveAlignment2FromLLVMLoadPass,
-                         OperationPass<ModuleOp>> {
+    : PassWrapper<RemoveAlignment2FromLLVMLoadPass, OperationPass<ModuleOp>> {
   void runOnOperation() override {
     getOperation().walk([](Operation *op) {
       if (auto loadOp = dyn_cast<LLVM::LoadOp>(op)) {
@@ -1004,7 +979,6 @@ struct RemoveAlignment2FromLLVMLoadPass
     });
   }
 
- public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(
       RemoveAlignment2FromLLVMLoadPass);
 };
@@ -1019,14 +993,10 @@ static LogicalResult generateUnifiedObject(
   assert(deviceOp->getParentOp() && isa<ModuleOp>(deviceOp->getParentOp()) &&
          "DeviceOp must be in a module parent");
 
-  ModuleOp moduleOpCopy = cast<ModuleOp>(deviceOp->getParentOp()).clone();
-
-  PassManager pm(context, moduleOpCopy.getOperationName());
+  PassManager pm(context, ModuleOp::getOperationName());
   applyConfigToPassManager(pm, printIRBeforeAll, printIRAfterAll,
                            printIRModuleScope, timing);
-
   pm.addPass(mlir::iree_compiler::AMDAIE::createAMDAIECoreToStandardPass());
-
   // Convert specific vector dialect ops (like vector.contract) to the AIEVec
   // dialect
   mlir::iree_compiler::aievec::buildConvertVectorToAIEVec(pm);
@@ -1039,13 +1009,15 @@ static LogicalResult generateUnifiedObject(
     llvm::outs() << "\n";
   }
 
+  ModuleOp moduleOpCopy = cast<ModuleOp>(deviceOp->getParentOp()).clone();
   if (failed(pm.run(moduleOpCopy))) {
     llvm::errs() << "Failed to lower to LLVM";
     return failure();
   }
 
   llvm::LLVMContext llvmContext;
-  auto llvmModule = translateModuleToLLVMIR(moduleOpCopy, llvmContext);
+  std::unique_ptr<llvm::Module> llvmModule =
+      translateModuleToLLVMIR(moduleOpCopy, llvmContext);
   if (!llvmModule) {
     llvm::errs() << "Failed to translate module to LLVMIR";
     return failure();
@@ -1059,13 +1031,11 @@ static LogicalResult generateUnifiedObject(
 
   std::string errorMessage;
   if (useChess) {
-    Path inputLLChessHackedFile = tempDir / "input.chesshacked.ll";
-    std::string inputLLChessHackedStr = chesshack(inputLLStr);
     FailureOr<Path> maybeVitisDir = findVitis(vitisDir, npuVersion);
     if (failed(maybeVitisDir)) return failure();
     FailureOr<Path> chessIntrinsicsObjFile = assembleStringUsingChess(
-        /*inputFileStr=*/inputLLChessHackedStr,
-        /*inputFileName=*/"input.chesshacked.ll",
+        /*inputFileStr=*/inputLLStr,
+        /*inputFileName=*/"input.ll",
         /*outputFileName=*/outputFile,
         /*outputDir=*/tempDir,
         /*extraArgs*/ std::vector<std::string>{},
