@@ -142,7 +142,7 @@ jobs:
 #      run:
 #        shell: bash
     env:
-      XILINX_XRT: "/c/Xilinx/XRT"
+      XILINX_XRT: "C:\\Xilinx\\XRT"
     steps:
       - name: "Checking out repository" # for test scripts
         uses: actions/checkout@8f4b7f84864484a7bf31766abe9204da3cbe65b3 # v3.5.0
