@@ -1060,7 +1060,7 @@ static LogicalResult generateUnifiedObject(
   std::string errorMessage;
   if (useChess) {
     Path inputLLChessHackedFile = tempDir / "input.chesshacked.ll";
-    std::string inputLLChessHackedStr = chesshack(inputLLStr);
+    std::string inputLLChessHackedStr = inputLLStr;
     FailureOr<Path> maybeVitisDir = findVitis(vitisDir, npuVersion);
     if (failed(maybeVitisDir)) return failure();
     FailureOr<Path> chessIntrinsicsObjFile = assembleStringUsingChess(
