@@ -166,23 +166,25 @@ jobs:
         run: |
           python -m venv .venv
           .\.venv\Scripts\Activate.ps1
-          pip install -r tests/requirements.txt
+          pip install -r tests\requirements.txt
 
-#      - name: E2E correctness matmul test
-#        run: |
-#          source .venv/Scripts/activate
-#          bash build_tools/ci/run_matmul_test.sh \
-#            /c/test_matmuls \
-#            $PWD/iree-install \
-#            $PWD/llvm-aie
-#
-#      - name : E2E comparison of AIE to llvm-cpu
-#        run: |
-#          source .venv/Scripts/activate
-#          python build_tools/ci/cpu_comparison/run.py \
-#            /c/test_aie_vs_cpu \
-#            $PWD/iree-install \
-#            $PWD/llvm-aie -v
+      - name: E2E correctness matmul test
+        shell: bash
+        run: |
+          source .venv/Scripts/activate
+          bash build_tools/ci/run_matmul_test.sh \
+            /c/test_matmuls \
+            $PWD/iree-install \
+            $PWD/llvm-aie
+
+      - name : E2E comparison of AIE to llvm-cpu
+        shell: bash
+        run: |
+          source .venv/Scripts/activate
+          python build_tools/ci/cpu_comparison/run.py \
+            /c/test_aie_vs_cpu \
+            $PWD/iree-install \
+            $PWD/llvm-aie -v
 
       - name: Python tests
         run: |

@@ -16,22 +16,16 @@
 extern "C" {
 #endif  // __cplusplus
 
-/// P0 TODO(jornt): get rid of the global variable.
-/// Using a global variable is currently the only 'reliable' approach that will
-/// not result in occasional hangs. Creating a unique pointer and releasing it
-/// doesn't work for some reason. Needs further debugging.
-static xrt::device global_device;
-
 // Creates a XRT device by wrapping |device| from the given |driver| with the
 // specific |params|.
 // |out_device| must be released by the caller (see iree_hal_device_release).
 iree_status_t iree_hal_xrt_device_create(
     iree_string_view_t identifier, const iree_hal_xrt_device_params_t* params,
-    xrt::device* device, iree_allocator_t host_allocator,
+    xrt::device device, iree_allocator_t host_allocator,
     iree_hal_device_t** out_device);
 
 #ifdef __cplusplus
-}       // extern "C"
+}  // extern "C"
 #endif  // __cplusplus
 
 #endif  // IREE_AMD_AIE_DRIVER_XRT_XRT_DEVICE_H_

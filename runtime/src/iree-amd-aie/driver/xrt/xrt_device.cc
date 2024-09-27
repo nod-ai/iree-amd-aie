@@ -32,7 +32,7 @@ typedef struct iree_hal_xrt_device_t {
   iree_allocator_t host_allocator;
   iree_hal_allocator_t* device_allocator;
 
-  xrt::device* device;
+  xrt::device device;
 } iree_hal_xrt_device_t;
 
 namespace {
@@ -52,7 +52,7 @@ void iree_hal_xrt_device_params_initialize(
 }
 
 static iree_status_t iree_hal_xrt_device_create_internal(
-    iree_string_view_t identifier, xrt::device* xrt_device,
+    iree_string_view_t identifier, xrt::device xrt_device,
     const iree_hal_xrt_device_params_t* params, iree_allocator_t host_allocator,
     iree_hal_device_t** out_device) {
   iree_hal_xrt_device_t* device = nullptr;
@@ -85,7 +85,7 @@ static iree_status_t iree_hal_xrt_device_create_internal(
 
 iree_status_t iree_hal_xrt_device_create(
     iree_string_view_t identifier, const iree_hal_xrt_device_params_t* params,
-    xrt::device* device, iree_allocator_t host_allocator,
+    xrt::device device, iree_allocator_t host_allocator,
     iree_hal_device_t** out_device) {
   IREE_ASSERT_ARGUMENT(out_device);
   IREE_TRACE_ZONE_BEGIN(z0);
