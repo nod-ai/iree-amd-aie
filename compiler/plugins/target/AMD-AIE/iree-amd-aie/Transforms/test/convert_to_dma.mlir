@@ -359,13 +359,13 @@ func.func @unitdim_unpack_expand() {
 
 // -----
 
-// CHECK-LABEL: multidim_with_expand
+// CHECK-LABEL: multidim_pack_with_expand
 // CHECK: amdaie.dma_cpy_nd
 // dst of dma cpy:
 // CHECK-SAME: [0, 0, 0, 0] [20, 5, 10, 10] [500, 100, 10, 1]
 // src of dma cpy:
 // CHECK-SAME: [0, 0, 0, 0] [20, 5, 10, 10] [500, 10, 50, 1]
-func.func @multidim_with_expand() {
+func.func @multidim_pack_with_expand() {
   %src = memref.alloc() : memref<200x50xi32, 1>
   %dst = memref.alloc() : memref<100x100xi32, 2>
   %dst_e = memref.expand_shape %dst [[0, 1], [2, 3]] output_shape [20, 5, 10, 10]
@@ -378,14 +378,14 @@ func.func @multidim_with_expand() {
 // -----
 
 // This test is included to illustrate that the dma copy is the same without the
-// expand operation (compare to multidim_with_expand above).
-// CHECK-LABEL: multidim_without_expand
+// expand operation (compare to multidim_pack_with_expand above).
+// CHECK-LABEL: multidim_pack_without_expand
 // CHECK: amdaie.dma_cpy_nd
 // dst of dma cpy:
 // CHECK-SAME: [0, 0, 0, 0] [20, 5, 10, 10] [500, 100, 10, 1]
 // src of dma cpy:
 // CHECK-SAME: [0, 0, 0, 0] [20, 5, 10, 10] [500, 10, 50, 1]
-func.func @multidim_without_expand() {
+func.func @multidim_pack_without_expand() {
   %src = memref.alloc() : memref<200x50xi32, 1>
   %dst = memref.alloc() : memref<20x5x10x10xi32, 2>
   iree_linalg_ext.pack %src inner_dims_pos = [0, 1] inner_tiles = [10, 10]
@@ -395,14 +395,14 @@ func.func @multidim_without_expand() {
 
 // -----
 
-// CHECK-LABEL: @subview_then_collapse(%arg0: index)
+// CHECK-LABEL: @pack_subview_then_collapse(%arg0: index)
 // CHECK: %[[ALLOC0:.*]] = memref.alloc() : memref<20x10xf32>
 // CHECK: %[[C10:.*]] = arith.constant 10 : index
 // CHECK: %[[MULI:.*]] = arith.muli %arg0, %[[C10]] : index
 // CHECK: amdaie.dma_cpy_nd
 // CHECK-SAME: [0, 0] [5, 20] [20, 1]
 // CHECK-SAME: [0, %[[MULI]]] [5, 20] [20, 1]
-func.func @subview_then_collapse(%arg0 : index) {
+func.func @pack_subview_then_collapse(%arg0 : index) {
   %src = memref.alloc() : memref<20x10xf32>
   %subview = memref.subview %src[%arg0, 0] [10, 10] [1, 1] :
            memref<20x10xf32> to memref<10x10xf32, strided<[10, 1], offset: ?>>
@@ -416,12 +416,12 @@ func.func @subview_then_collapse(%arg0 : index) {
 
 // -----
 
-// CHECK-LABEL: @subview_then_expand
+// CHECK-LABEL: @pack_subview_then_expand
 // CHECK: amdaie.dma_cpy_nd
 // CHECK-SAME: [0, 0, %arg0, 0, 0] [2, 3, 6, 6, 1] [300, 100, 10, 1, 1]
 // CHECK-SAME: [0, 0, 0, 0, 0] [2, 3, 6, 6, 1] [108, 6, 1, 18, 6]
 module {
-  func.func @subview_then_expand(%arg0: index) {
+  func.func @pack_subview_then_expand(%arg0: index) {
     %alloc = memref.alloc() : memref<10x10x10xf32>
     %subview = memref.subview %alloc[0, %arg0, 0] [6, 6, 6] [1, 1, 1] :
        memref<10x10x10xf32> to memref<6x6x6xf32, strided<[100, 10, 1], offset: ?>>
@@ -437,12 +437,12 @@ module {
 
 // -----
 
-// CHECK-LABEL: @subview_then_subview(%arg0: index, %arg1: index)
+// CHECK-LABEL: @unpack_subview_then_subview(%arg0: index, %arg1: index)
 // CHECK: %[[SUM:.*]] = arith.addi %arg0, %arg1 : index
 // CHECK: amdaie.dma_cpy_nd
 // CHECK-SAME: [0] [100] [1],
 // CHECK-SAME: [%[[SUM]], 5] [10, 10] [20, 1]
-func.func @subview_then_subview(%arg0 : index, %arg1 : index){
+func.func @unpack_subview_then_subview(%arg0 : index, %arg1 : index){
   %src = memref.alloc() : memref<20x20xf32>
   %subview0 = memref.subview %src[%arg0, 2] [15, 15] [1, 1] :
            memref<20x20xf32> to memref<15x15xf32, strided<[20, 1], offset: ?>>
@@ -456,7 +456,7 @@ func.func @subview_then_subview(%arg0 : index, %arg1 : index){
 
 // -----
 
-// CHECK-LABEL: @subview_then_expand_1(%arg0: index)
+// CHECK-LABEL: @unpack_subview_then_expand_1(%arg0: index)
 // CHECK: amdaie.dma_cpy_nd
 // CHECK-SAME: [0, 0] [25, 4] [4, 1]
 // We might want to change the offsets to be
@@ -464,7 +464,7 @@ func.func @subview_then_subview(%arg0 : index, %arg1 : index){
 // in the future, but as the offsets ultimately get collapsed into a single
 // global cumulative offset, this would just be undone.
 // CHECK-SAME: [0, 0, %arg0, 2] [5, 5, 2, 2] [40, 2, 20, 1]
-func.func @subview_then_expand_1(%arg0 : index){
+func.func @unpack_subview_then_expand_1(%arg0 : index){
   %src = memref.alloc() : memref<20x20xf32>
   %subview = memref.subview %src[%arg0, 2] [10, 10] [1, 1] :
            memref<20x20xf32> to memref<10x10xf32, strided<[20, 1], offset: ?>>
