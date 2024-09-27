@@ -188,4 +188,5 @@ jobs:
         run: |
           echo "PYTHONPATH: $env:PYTHONPATH"
           .\.venv\Scripts\Activate.ps1
-          pytest -s --basetemp=$env:TEMP tests
+          mkdir temp
+          pytest -s --basetemp=$PWD\temp tests
