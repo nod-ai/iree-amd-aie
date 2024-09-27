@@ -322,10 +322,16 @@ LogicalResult updateFromCollapseShape(memref::CollapseShapeOp collapseOp,
                                       SmallVector<OpFoldResult> &sizes,
                                       SmallVector<OpFoldResult> &strides) {
   auto reassociationIndices = collapseOp.getReassociationIndices();
-  ArrayRef<int64_t> inputShape = collapseOp.getSrcType().getShape();
+  // ArrayRef<int64_t> inputShape = collapseOp.getSrcType().getShape();
   ArrayRef<int64_t> resultShape = collapseOp.getType().getShape();
   uint64_t resultRank = resultShape.size();
   MLIRContext *ctx = collapseOp.getContext();
+
+
+  SmallVector<int64_t> stridesI64(strides.size());
+  for (uint64_t i = 0; i < strides.size(); ++i) {
+    stridesI64[i] = getConstantIntValue(strides[i]).value();
+  }
 
   // Set strides to inner-most stride in each reassocation group.
   //
@@ -351,18 +357,24 @@ LogicalResult updateFromCollapseShape(memref::CollapseShapeOp collapseOp,
   }
 
   // Offsets - merge reassocation groups by taking linear combinations of the
-  // offsets with local strides. Using the example of the shape of 2x3x5x7
-  // being collapsed to 6x35, if the initial offsets are [a,b,c,d], the 
-  // collapsed offsets are [a*3 + b, c*7 + d].
+  // offsets with relative strides. Using the example of the shape of 2x3x5x7
+  // being collapsed to 6x35, if the initial offsets are [a,b,c,d] and the
+  // initial strides are [105, 35, 7, 1], then the collapsed offsets are
+  // [a*3 + b, c*7 + d].
+  //
+  // As another example, if the shape is 1x5 being collapsed to rank-1 tensor,
+  // and the initial strides are [10, 1] and the offsets are [a, b], then the
+  // collapsed offsets is [10*a + b]. TODO(newling) add this test case. 
   SmallVector<OpFoldResult> collapsedOffsets;
   for (auto reassociation : llvm::enumerate(reassociationIndices)) {
     auto dims = reassociation.value();
 
     // The strides within the group:
-    SmallVector<int64_t> localStrides(dims.size(), 1);
-    for (uint64_t i = 1; i < dims.size(); ++i) {
-      uint64_t dim = dims.size() - i - 1;
-      localStrides[dim] = localStrides[dim + 1] * inputShape[dims[dim + 1]];
+    SmallVector<int64_t> relativeStrides(dims.size(), 1);
+    for (uint64_t dim = 0; dim < dims.size(); ++dim) {
+      assert(stridesI64[dim] % stridesI64.back() == 0 &&
+             "strides must be divisible by the inner-most stride");
+      relativeStrides[dim] = stridesI64[dim] / stridesI64.back();
     }
 
     OpBuilder builder(ctx);
@@ -371,7 +383,7 @@ LogicalResult updateFromCollapseShape(memref::CollapseShapeOp collapseOp,
         builder, collapseOp.getLoc(),
         ArrayRef<OpFoldResult>(offsets.begin() + dims[0],
                                offsets.begin() + dims.back() + 1),
-        localStrides);
+        relativeStrides);
     collapsedOffsets.push_back(combination);
   }
   offsets = collapsedOffsets;
