@@ -1,5 +1,6 @@
 import os
 from contextlib import contextmanager
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -34,28 +35,52 @@ for t in [
     tf.__name__ = t
 
 
+def pytest_addoption(parser):
+    abs_path = lambda x: Path(x).absolute()
+    parser.addoption("--iree-install-dir", type=abs_path, required=True)
+    parser.addoption("--peano-install-dir", type=abs_path, required=True)
+    parser.addoption("--output-dir", type=abs_path)
+    parser.addoption("--vitis-dir", type=abs_path)
+    parser.addoption("--iree-aie-debug", action="store_true")
+
+
 @pytest.fixture
-def iree_session(request) -> Session:
+def iree_session(request, pytestconfig) -> Session:
     s = Session()
     s.context.append_dialect_registry(get_dialect_registry())
     s.context.load_all_available_dialects()
     target_backend = getattr(request, "target_backend", "amd-aie")
-    pipeline = getattr(request, "pipeline", "air")
-    s.set_flags(
+    target_device = getattr(request, "target_device", "npu1_4col")
+    lower_to_aie_pipeline = getattr(request, "lower_to_aie_pipeline", "air")
+    tile_pipeline = getattr(request, "tile_pipeline", "pad-pack")
+    use_chess = getattr(request, "use_chess", False)
+    enable_packet_flow = getattr(request, "enable_packet_flow", False)
+    # TODO(max): normalize iree-amdaie/iree-amd-aie in pass strings
+    flags = [
         f"--iree-hal-target-backends={target_backend}",
-        # TODO(max): normalize iree-amdaie/iree-amd-aie in pass strings
-        f"--iree-amdaie-lower-to-aie-pipeline={pipeline}",
-        f"--iree-amd-aie-peano-install-dir={os.getenv('PEANO_INSTALL_DIR')}",
-        f"--iree-amd-aie-install-dir={os.getenv('IREE_INSTALL_DIR')}",
-    )
+        f"--iree-amdaie-target-device={target_device}",
+        f"--iree-amdaie-lower-to-aie-pipeline={lower_to_aie_pipeline}",
+        f"--iree-amdaie-tile-pipeline={tile_pipeline}",
+        f"--iree-amd-aie-peano-install-dir={pytestconfig.option.peano_install_dir}",
+        f"--iree-amd-aie-install-dir={pytestconfig.option.iree_install_dir}",
+        f"--iree-amd-aie-enable-chess={use_chess}",
+        f"--iree-amdaie-enable-packet-flow={enable_packet_flow}",
+    ]
+    if pytestconfig.option.vitis_dir:
+        flags += [f"--iree-amd-aie-vitis-install-dir={pytestconfig.option.vitis_dir}"]
+    if pytestconfig.option.iree_aie_debug:
+        flags += ["--iree-amd-aie-show-invoked-commands"]
+    if pytestconfig.option.output_dir:
+        flags += [
+            f"--iree-hal-dump-executable-files-to={pytestconfig.option.output_dir}"
+        ]
+
+    s.set_flags(*flags)
     yield s
 
 
 @pytest.fixture
 def session_module(iree_session, tmp_path) -> ir.Module:
-    iree_session.set_flags(
-        f"--iree-hal-dump-executable-files-to={tmp_path}",
-    )
     with ir.Location.unknown(iree_session.context):
         module_op = ir.Module.create()
         with ir.InsertionPoint(module_op.body):

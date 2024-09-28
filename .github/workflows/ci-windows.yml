@@ -191,4 +191,4 @@ jobs:
           ls $env:XILINX_XRT
           .\.venv\Scripts\Activate.ps1
           mkdir temp
-          pytest -s --basetemp=$PWD\temp tests
+          pytest tests -s --basetemp=$PWD\temp --iree-install-dir="$PWD/iree-install" --peano-install-dir="$PWD/llvm-aie"
