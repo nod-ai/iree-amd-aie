@@ -85,8 +85,11 @@ CMAKE_ARGS="\
 san="${san:-}"
 
 if [ "$san" != "" ];then
-  sed -i 's/add_subdirectory(tests EXCLUDE_FROM_ALL)//g' CMakeLists.txt
-  CMAKE_ARGS="$CMAKE_ARGS -DIREE_ENABLE_$san=ON"
+  CMAKE_ARGS="$CMAKE_ARGS -DIREE_ENABLE_$san=ON -DHAVE_STD_REGEX=ON"
+  export ASAN_OPTIONS=detect_leaks=0
+  export MSAN_OPTIONS=halt_on_error=0
+  export TSAN_OPTIONS=halt_on_error=0
+  export UBSAN_OPTIONS=halt_on_error=0
 fi
 
 if [ -d "${llvm_install_dir}" ]; then
@@ -124,6 +127,13 @@ echo "Installing"
 echo "----------"
 echo "Install to: $install_dir"
 cmake --build "$build_dir" --target iree-install-dist
+
+if [ "$san" != "" ];then
+  export ASAN_OPTIONS=detect_leaks=1:verbosity=1:log_threads=1:print_stacktrace=1
+  export MSAN_OPTIONS=halt_on_error=1:verbosity=1:log_threads=1:print_stacktrace=1
+  export TSAN_OPTIONS=halt_on_error=1:verbosity=1:log_threads=1:print_stacktrace=1
+  export UBSAN_OPTIONS=halt_on_error=1:verbosity=1:log_threads=1:print_stacktrace=1
+fi
 
 echo "CTest"
 echo "-----"
