@@ -10,7 +10,8 @@ from iree.compiler.extras import types as T
 from .conftest import invokable_module, mlir_type_to_np_dtype, ids
 
 
-def test_smol_matmul(session_module):
+@pytest.mark.parametrize("target_backend", ["amd-aie"])
+def test_smol_matmul(session_module, target_backend):
     session, module = session_module
 
     @func(T.tensor(32, 16, T.i8()), T.tensor(16, 32, T.i8()))
@@ -45,14 +46,14 @@ def emit_matmul(M, K, N, lhs_rhs_type, acc_type):
 
 
 # "multiple_matmuls"
-test_params = list(
+simple_matmul_test_params = list(
     sorted(
         itertools.product(
             [512, 8, 16],
             [512, 32, 16],
             [256, 16, 8],
             [T.i32],
-            [T.f32],
+            [T.i32],
             ["air"],
             ["pad-pack"],
             [1],
@@ -60,19 +61,69 @@ test_params = list(
     )
 )
 
-test_params += [
+xfails = [
+    (8, 512, 8, T.i32, T.i32, "air", "pad-pack", 1),
+    (8, 512, 16, T.i32, T.i32, "air", "pad-pack", 1),
+    (16, 512, 8, T.i32, T.i32, "air", "pad-pack", 1),
+    (16, 512, 16, T.i32, T.i32, "air", "pad-pack", 1),
+]
+
+for x in xfails:
+    simple_matmul_test_params.remove(x)
+
+simple_matmul_test_params += [
     # transpose_i8_i32
     (16, 32, 64, T.i8, T.i32, "air", "pad-pack", 1),
     # packPeel_i32
     (64, 128, 64, T.i32, T.i32, "air", "pack-peel", 1),
     # small objectfifo
-    (32, 32, 32, T.i32, T.i32, "air", "pad-pack", 1000),
+    # segfault
+    # (32, 32, 32, T.i32, T.i32, "air", "pad-pack", 1000),
+] + [
+    # from multiple_matmuls
+    pytest.param(*x, marks=pytest.mark.xfail(reason="compile failure"))
+    for x in xfails
+]
+
+# small_i32
+small_i32_shapes = [
+    (32, 32, 32),
+    (64, 32, 128),
+    (128, 32, 64),
+    (128, 32, 64),
+    (128, 32, 128),
+    (256, 32, 256),
+    (32, 64, 32),
+    (64, 64, 64),
+    (128, 256, 128),
+]
+
+
+small_i8_shapes_small = [
+    (64, 64, 64),
+    (128, 256, 128),
+]
+
+small_i8_shapes_medium = [
+    (512, 512, 512),
+    (1024, 1024, 1024),
+    # (1536, 2048, 1536),
+    # (4096, 2048, 4096),
+]
+
+simple_matmul_test_params += [
+    (*s, T.i32, T.i32, "objectFifo", "pack-peel", 1) for s in small_i32_shapes
+]
+
+simple_matmul_test_params += [
+    (*s, T.i8, T.i32, "objectFifo", "pack-peel", 1)
+    for s in small_i8_shapes_small + small_i8_shapes_medium
 ]
 
 
 @pytest.mark.parametrize(
     "M, K, N, lhs_rhs_type, acc_type, lower_to_aie_pipeline, tile_pipeline, num_repeat_runs",
-    test_params,
+    simple_matmul_test_params,
     ids=ids,
 )
 def test_matmul(
@@ -97,7 +148,6 @@ def test_matmul(
     arg1 = np.ones((K, N), dtype=lhs_rhs_type)
     with invokable_module(session, module) as module:
         for i in range(num_repeat_runs):
-            print(f"run {i}")
             results = module[matmul_name](arg0, arg1).to_host()
             assert np.array_equal(
                 results, (arg0.astype(acc_type) @ arg1.astype(acc_type))

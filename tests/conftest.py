@@ -45,7 +45,7 @@ def ids(datum):
 def pytest_addoption(parser):
     abs_path = lambda x: Path(x).absolute()
     parser.addoption("--iree-install-dir", type=abs_path, required=True)
-    parser.addoption("--peano-install-dir", type=abs_path, required=True)
+    parser.addoption("--peano-install-dir", type=abs_path)
     parser.addoption("--output-dir", type=abs_path)
     parser.addoption("--vitis-dir", type=abs_path)
     parser.addoption("--iree-aie-debug", action="store_true")
@@ -56,12 +56,14 @@ def iree_session(request, pytestconfig) -> Session:
     s = Session()
     s.context.append_dialect_registry(get_dialect_registry())
     s.context.load_all_available_dialects()
-    target_backend = getattr(request, "target_backend", "amd-aie")
-    target_device = getattr(request, "target_device", "npu1_4col")
-    lower_to_aie_pipeline = getattr(request, "lower_to_aie_pipeline", "air")
-    tile_pipeline = getattr(request, "tile_pipeline", "pad-pack")
-    use_chess = getattr(request, "use_chess", False)
-    enable_packet_flow = getattr(request, "enable_packet_flow", False)
+    target_backend = request.node.callspec.params.get("target_backend", "amd-aie")
+    target_device = request.node.callspec.params.get("target_device", "npu1_4col")
+    lower_to_aie_pipeline = request.node.callspec.params.get(
+        "lower_to_aie_pipeline", "air"
+    )
+    tile_pipeline = request.node.callspec.params.get("tile_pipeline", "pad-pack")
+    use_chess = request.node.callspec.params.get("use_chess", False)
+    enable_packet_flow = request.node.callspec.params.get("enable_packet_flow", False)
     # TODO(max): normalize iree-amdaie/iree-amd-aie in pass strings
     flags = [
         f"--iree-hal-target-backends={target_backend}",

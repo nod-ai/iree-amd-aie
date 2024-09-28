@@ -204,7 +204,7 @@ jobs:
         run: |
           source .venv/bin/activate
           source /opt/xilinx/xrt/setup.sh
-          pytest tests \
+          pytest -v tests \
             --capture=tee-sys \
             --iree-install-dir=$PWD/iree-install \
             --peano-install-dir=$PWD/llvm-aie
