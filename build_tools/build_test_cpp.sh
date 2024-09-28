@@ -82,6 +82,13 @@ CMAKE_ARGS="\
   -DCMAKE_OBJECT_PATH_MAX=4096 \
   -DIREE_CMAKE_PLUGIN_PATHS=$repo_root"
 
+san="${san:-}"
+
+if [ "$san" != "" ];then
+  sed -i 's/add_subdirectory(tests EXCLUDE_FROM_ALL)//g' CMakeLists.txt
+  CMAKE_ARGS="$CMAKE_ARGS -DIREE_ENABLE_$san=ON"
+fi
+
 if [ -d "${llvm_install_dir}" ]; then
   CMAKE_ARGS="$CMAKE_ARGS \
     -DIREE_BUILD_BUNDLED_LLVM=OFF \
