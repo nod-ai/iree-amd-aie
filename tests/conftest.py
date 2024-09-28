@@ -10,6 +10,7 @@ from iree.compiler import ir
 from iree.compiler._mlir_libs import get_dialect_registry
 from iree.compiler.api import Session, Output, Source
 from iree.compiler.extras import types as T
+from ml_dtypes import bfloat16
 from iree.runtime import get_driver, Config, SystemContext
 
 
@@ -33,6 +34,12 @@ for t in [
 ]:
     tf = getattr(T, t)
     tf.__name__ = t
+
+
+def ids(datum):
+    if callable(datum):
+        return datum.__name__
+    return datum
 
 
 def pytest_addoption(parser):
@@ -69,7 +76,10 @@ def iree_session(request, pytestconfig) -> Session:
     if pytestconfig.option.vitis_dir:
         flags += [f"--iree-amd-aie-vitis-install-dir={pytestconfig.option.vitis_dir}"]
     if pytestconfig.option.iree_aie_debug:
-        flags += ["--iree-amd-aie-show-invoked-commands"]
+        flags += [
+            "--iree-amd-aie-show-invoked-commands",
+            "--aie2xclbin-print-ir-after-all",
+        ]
     if pytestconfig.option.output_dir:
         flags += [
             f"--iree-hal-dump-executable-files-to={pytestconfig.option.output_dir}"
@@ -119,6 +129,7 @@ _np_dtype_to_mlir_type_ctor = {
     # so to support passing lists of ints we map to index type
     np.longlong: T.index,
     np.uintp: T.index,
+    bfloat16: T.bf16,
     np.float16: T.f16,
     np.float32: T.f32,
     np.float64: T.f64,

@@ -1,4 +1,4 @@
-import random
+import itertools
 
 import numpy as np
 import pytest
@@ -7,7 +7,7 @@ from iree.compiler.dialects import arith, tensor, linalg
 from iree.compiler.dialects.arith import _is_float_type
 from iree.compiler.dialects.func import func
 from iree.compiler.extras import types as T
-from .conftest import invokable_module, mlir_type_to_np_dtype
+from .conftest import invokable_module, mlir_type_to_np_dtype, ids
 
 
 def test_smol_matmul(session_module):
@@ -44,61 +44,48 @@ def emit_matmul(M, K, N, lhs_rhs_type, acc_type):
     return matmul_name
 
 
-testdata = [
-    (32, 16, 32, T.i8, T.i32),
-    (32, 32, 32, T.i8, T.i32),
-    (64, 32, 64, T.i8, T.i32),
-    (64, 64, 64, T.i8, T.i32),
-    (128, 64, 128, T.i8, T.i32),
-    (128, 128, 128, T.i8, T.i32),
-    (128, 256, 128, T.i8, T.i32),
-    (32, 16, 32, T.f32, T.f32),
-    (32, 32, 32, T.f32, T.f32),
-    (64, 32, 64, T.f32, T.f32),
-    (64, 64, 64, T.f32, T.f32),
-    (128, 128, 128, T.f32, T.f32),
-    (128, 256, 128, T.f32, T.f32),
+# "multiple_matmuls"
+test_params = list(
+    sorted(
+        itertools.product(
+            [512, 8, 16],
+            [512, 32, 16],
+            [256, 16, 8],
+            [T.i32],
+            [T.f32],
+            ["air"],
+            ["pad-pack"],
+            [1],
+        )
+    )
+)
 
-    (32, 16, 32, T.i8, T.i32),
-    (32, 32, 32, T.i8, T.i32),
-    (64, 32, 64, T.i8, T.i32),
-    (64, 64, 64, T.i8, T.i32),
-    (128, 64, 128, T.i8, T.i32),
-    (128, 128, 128, T.i8, T.i32),
-    (128, 256, 128, T.i8, T.i32),
-    (32, 16, 32, T.f32, T.f32),
-    (32, 32, 32, T.f32, T.f32),
-    (64, 32, 64, T.f32, T.f32),
-    (64, 64, 64, T.f32, T.f32),
-    (128, 128, 128, T.f32, T.f32),
-    (128, 256, 128, T.f32, T.f32),
-
-    (32, 16, 32, T.i8, T.i32),
-    (32, 32, 32, T.i8, T.i32),
-    (64, 32, 64, T.i8, T.i32),
-    (64, 64, 64, T.i8, T.i32),
-    (128, 64, 128, T.i8, T.i32),
-    (128, 128, 128, T.i8, T.i32),
-    (128, 256, 128, T.i8, T.i32),
-    (32, 16, 32, T.f32, T.f32),
-    (32, 32, 32, T.f32, T.f32),
-    (64, 32, 64, T.f32, T.f32),
-    (64, 64, 64, T.f32, T.f32),
-    (128, 128, 128, T.f32, T.f32),
-    (128, 256, 128, T.f32, T.f32),
+test_params += [
+    # transpose_i8_i32
+    (16, 32, 64, T.i8, T.i32, "air", "pad-pack", 1),
+    # packPeel_i32
+    (64, 128, 64, T.i32, T.i32, "air", "pack-peel", 1),
+    # small objectfifo
+    (32, 32, 32, T.i32, T.i32, "air", "pad-pack", 1000),
 ]
 
 
-random.shuffle(testdata)
-
-def ids(datum):
-    if callable(datum):
-        return datum.__name__
-    return datum
-
-
-@pytest.mark.parametrize("M, K, N, lhs_rhs_type, acc_type", testdata, ids=ids)
-def test_matmul(session_module, M, K, N, lhs_rhs_type, acc_type):
+@pytest.mark.parametrize(
+    "M, K, N, lhs_rhs_type, acc_type, lower_to_aie_pipeline, tile_pipeline, num_repeat_runs",
+    test_params,
+    ids=ids,
+)
+def test_matmul(
+    session_module,
+    M,
+    K,
+    N,
+    lhs_rhs_type,
+    acc_type,
+    lower_to_aie_pipeline,
+    tile_pipeline,
+    num_repeat_runs,
+):
     session, module = session_module
 
     lhs_rhs_type, acc_type = lhs_rhs_type(), acc_type()
@@ -109,5 +96,9 @@ def test_matmul(session_module, M, K, N, lhs_rhs_type, acc_type):
     arg0 = np.ones((M, K), dtype=lhs_rhs_type)
     arg1 = np.ones((K, N), dtype=lhs_rhs_type)
     with invokable_module(session, module) as module:
-        results = module[matmul_name](arg0, arg1).to_host()
-        assert np.array_equal(results, (arg0.astype(acc_type) @ arg1.astype(acc_type)))
+        for i in range(num_repeat_runs):
+            print(f"run {i}")
+            results = module[matmul_name](arg0, arg1).to_host()
+            assert np.array_equal(
+                results, (arg0.astype(acc_type) @ arg1.astype(acc_type))
+            )

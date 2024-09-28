@@ -138,9 +138,6 @@ jobs:
     name: E2E Test windows
     runs-on: windows-phoenix
     needs: build_and_ctest
-#    defaults:
-#      run:
-#        shell: bash
     env:
       XILINX_XRT: "C:\\Xilinx\\XRT"
     steps:

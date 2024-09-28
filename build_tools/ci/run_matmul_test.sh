@@ -558,37 +558,6 @@ if [ -d "$VITIS" ]; then
       --use_ukernel "1"
 fi
 
-# Example of a run with a group of 2+ matmuls. Currently this test is passed
-# the flag '--num_repeat_runs 0" as there is currently an issue with the runtime if
-# multiple matmuls are run in the same test. TODO(newling/nmeshram): Document
-# this issue.
-run_matmul_test \
-    --name_prefix "multiple_matmuls" \
-    --lower_to_aie_pipeline "air" \
-    --tile_pipeline "pad-pack" \
-    --lhs_rhs_type "i32" \
-    --acc_type "i32" \
-    --m "512,8,16" \
-    --n "512,32,16" \
-    --k "256,16,8" \
-    --num_repeat_runs "0"
-
-run_matmul_test \
-  --name_prefix "transpose_i8_i32" \
-  --lower_to_aie_pipeline "air" \
-  --tile_pipeline "pad-pack" \
-  --lhs_rhs_type "i8" \
-  --acc_type "i32" \
-  --m "16" --n "32" --k "64" \
-  --do_transpose_rhs "1"
-
-run_matmul_test \
-    --name_prefix "packPeel_i32" \
-    --tile_pipeline "pack-peel" \
-    --lhs_rhs_type "i32" \
-    --acc_type "i32" \
-    --m "64"  --n "64" --k "128"
-
 run_matmul_test \
     --name_prefix "packPeel_bf16" \
     --tile_pipeline "pack-peel" \
