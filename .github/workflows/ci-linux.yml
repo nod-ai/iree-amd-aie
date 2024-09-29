@@ -155,13 +155,16 @@ jobs:
         run: |
           source .venv/bin/activate
           source /opt/xilinx/xrt/setup.sh
-          python3 build_tools/ci/cpu_comparison/run.py \
-            test_aie_vs_cpu \
-            $PWD/iree-install \
-            $PWD/llvm-aie \
-            --xrt-dir /opt/xilinx/xrt \
-            --vitis-dir /opt/Xilinx/Vitis/2024.2 \
-            --reset-npu-between-runs -v
+          for i in {1..100}; do
+            echo "run $i"
+            python build_tools/ci/cpu_comparison/run.py \
+              test_aie_vs_cpu \
+              $PWD/iree-install \
+              $PWD/llvm-aie \
+              --xrt-dir /opt/xilinx/xrt \
+              --vitis-dir /opt/Xilinx/Vitis/2024.2 \
+              --reset-npu-between-runs -v
+          done
 
       - name: E2E correctness matmul test
         run: |
@@ -193,18 +196,24 @@ jobs:
           sudo prlimit -lunlimited --pid $$
           source .venv/bin/activate
           source /opt/xilinx/xrt/setup.sh
-          bash build_tools/ci/run_matmul_test.sh \
-            test_matmuls \
-            iree-install \
-            $PWD/llvm-aie \
-            /opt/xilinx/xrt \
-            /opt/Xilinx/Vitis/2024.2
+          for i in {1..100}; do
+            echo "run $i"
+            bash build_tools/ci/run_matmul_test.sh \
+              test_matmuls \
+              iree-install \
+              $PWD/llvm-aie \
+              /opt/xilinx/xrt \
+              /opt/Xilinx/Vitis/2024.2
+          done
 
       - name: Python tests
         run: |
           source .venv/bin/activate
           source /opt/xilinx/xrt/setup.sh
-          pytest -v tests \
-            --capture=tee-sys \
-            --iree-install-dir=$PWD/iree-install \
-            --peano-install-dir=$PWD/llvm-aie
+          for i in {1..100}; do
+            echo "run $i"
+            pytest -v tests \
+              --capture=tee-sys \
+              --iree-install-dir=$PWD/iree-install \
+              --peano-install-dir=$PWD/llvm-aie
+          done

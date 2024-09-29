@@ -169,26 +169,35 @@ jobs:
         shell: bash
         run: |
           source .venv/Scripts/activate
-          bash build_tools/ci/run_matmul_test.sh \
-            /c/test_matmuls \
-            $PWD/iree-install \
-            $PWD/llvm-aie
+          for i in {1..100}; do
+            echo "run $i"
+            bash build_tools/ci/run_matmul_test.sh \
+              /c/test_matmuls \
+              $PWD/iree-install \
+              $PWD/llvm-aie
+          done
 
       - name : E2E comparison of AIE to llvm-cpu
         shell: bash
         run: |
           source .venv/Scripts/activate
-          python build_tools/ci/cpu_comparison/run.py \
-            /c/test_aie_vs_cpu \
-            $PWD/iree-install \
-            $PWD/llvm-aie -v
+          for i in {1..100}; do
+            echo "run $i"
+            python build_tools/ci/cpu_comparison/run.py \
+              /c/test_aie_vs_cpu \
+              $PWD/iree-install \
+              $PWD/llvm-aie -v
+          done
 
       - name: Python tests
         run: |
           ls $env:XILINX_XRT
           .\.venv\Scripts\Activate.ps1
           mkdir temp
-          pytest tests -sv `
-            --basetemp=$PWD\temp `
-            --iree-install-dir="$PWD/iree-install" `
-            --peano-install-dir="$PWD/llvm-aie"
+          for ($i = 1; $i -le 100; $i++) {
+            echo "run $i"
+            pytest tests -sv `
+              --basetemp=$PWD\temp `
+              --iree-install-dir="$PWD/iree-install" `
+              --peano-install-dir="$PWD/llvm-aie"
+          }
