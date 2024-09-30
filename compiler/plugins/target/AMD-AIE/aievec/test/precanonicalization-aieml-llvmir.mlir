@@ -169,6 +169,3 @@ func.func @unsqueeze_leading_transfer_read_dims() -> vector<1x8xi8> {
     %0 = vector.transfer_read %alloc[%c0, %c0, %c0], %c0_i8 {in_bounds = [true, true]} : memref<1x2x8xi8>, vector<1x8xi8>
     return %0 : vector<1x8xi8>
 }
-
-
-
