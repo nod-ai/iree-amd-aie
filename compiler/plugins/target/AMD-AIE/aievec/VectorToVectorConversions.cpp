@@ -16,7 +16,6 @@
 
 #include "AIEVecUtils.h"
 #include "Passes.h"
-#include "Utils.h"
 #include "mlir/Conversion/AffineToStandard/AffineToStandard.h"
 #include "mlir/Dialect/Affine/Analysis/LoopAnalysis.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
@@ -86,69 +85,6 @@ static bool isGemmBTransposedContractionOp(vector::ContractionOp op) {
          innerAccMap == mmCidxMap.shiftDims(numOuterMostDims);
 }
 
-// This pattern converts a `vector.transfer_read` with an unaligned access
-// into an aligned `vector.transfer_read` twice as long, followed by a
-// `vector.extract_strided_slice` selecting the subvector matching the
-// original `vector.transfer_read`.
-struct SplitUnalignedTransferReadPattern
-    : public OpRewritePattern<vector::TransferReadOp> {
-  using OpRewritePattern<vector::TransferReadOp>::OpRewritePattern;
-
-  SplitUnalignedTransferReadPattern(MLIRContext *context, int64_t maxVectorSize,
-                                    int64_t alignment)
-      : OpRewritePattern<vector::TransferReadOp>(context),
-        maxVectorSize(maxVectorSize),
-        vectorAlignment(alignment) {}
-
-  LogicalResult matchAndRewrite(vector::TransferReadOp readOp,
-                                PatternRewriter &rewriter) const override {
-    // Check that it's not a splat transfer read.
-    if (readOp.getPermutationMap().isConstant()) return failure();
-
-    // Check if the transfer is unaligned.
-    auto vType = readOp.getVectorType();
-    int64_t offset =
-        getTransferReadAlignmentOffset(readOp, vType, vectorAlignment)
-            .value_or(0);
-    if (offset == 0) return failure();
-
-    // Verify that we can load a vector 2x as long as the original
-    auto vLen = vType.getShape().back();
-    auto longVecTy = VectorType::get(2 * vLen, vType.getElementType());
-    auto longVecSize = getElementSizeInBits(vType) * 2 * vLen;
-    if (longVecSize > maxVectorSize) return failure();
-
-    // Calculate the aligned indices for the lower and higher parts.
-    // TODO: Add support for cases where the offset is greater than the
-    // TODO: vector length.
-    auto loc = readOp.getLoc();
-    Value oldInnerMostIdx = readOp.getIndices().back();
-    auto offsetCorrectionMap =
-        AffineMap::get(1, 0, getAffineDimExpr(0, readOp.getContext()) - offset);
-    Value newInnerMostIdx = rewriter
-                                .create<affine::AffineApplyOp>(
-                                    readOp.getLoc(), offsetCorrectionMap,
-                                    SmallVector<Value, 1>({oldInnerMostIdx}))
-                                .getResult();
-    SmallVector<Value, 8> alignedIdx;
-    alignedIdx.append(readOp.getIndices().begin(), readOp.getIndices().end());
-    alignedIdx[alignedIdx.size() - 1] = newInnerMostIdx;
-
-    // Create the aligned transfer read for a vector 2x as long that covers the
-    // elements of the unaligned vector.
-    auto newReadOp = rewriter.create<vector::TransferReadOp>(
-        loc, longVecTy, readOp.getSource(), alignedIdx, readOp.getPadding());
-
-    // Create a `vector.extract_strided_slice` to extract the unaligned vector.
-    rewriter.replaceOpWithNewOp<vector::ExtractStridedSliceOp>(
-        readOp, newReadOp.getResult(), offset, vLen, 1);
-
-    return success();
-  }
-
-  int64_t maxVectorSize;
-  int64_t vectorAlignment;
-};
 
 // This pattern converts a `vector.transfer_read` with a splat permutation map
 // into a contiguous `vector.transfer_read` followed by a `vector.extract` to
@@ -513,8 +449,6 @@ static void configureCanonicalizeLegalizations(ConversionTarget &target) {
   target.addDynamicallyLegalOp<vector::TransferReadOp>(
       [](vector::TransferReadOp op) {
         return !op.getPermutationMap().isConstant() &&
-               getTransferReadAlignmentOffset(op, op.getVectorType(), 256)
-                       .value_or(0) == 0 &&
                op.getVector().getType().getRank() < 2;
       });
 
@@ -586,8 +520,6 @@ struct CanonicalizeVectorForAIEVecPass
     auto op = getOperation();
     MLIRContext *context = &getContext();
     RewritePatternSet patterns(context);
-
-    patterns.add<SplitUnalignedTransferReadPattern>(context, 1024, 256);
 
     patterns.add<ExtractTransposeFromContractionOp,
                  FlattenMultDimTransferReadPattern,
