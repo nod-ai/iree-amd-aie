@@ -2,6 +2,7 @@
 
 # Copyright 2024 The IREE Authors
 
+import sys
 import argparse
 import os
 import platform
@@ -97,15 +98,17 @@ def shell_out(cmd: list, workdir=None, verbose: int = 0, raise_on_error=True, en
             print("Standard output from script:")
             print(stdout_decode)
         if stderr_decode:
-            print("Standard error from script:")
-            print(stderr_decode)
+            print("Standard error from script:", file=sys.stderr)
+            print(stderr_decode, file=sys.stderr)
     if not raise_on_error and handle.returncode != 0:
         print(
-            f"Error executing script, error code was {handle.returncode}. Not raising an error."
+            f"Error executing script, error code was {handle.returncode}. Not raising an error.",
+            file=sys.stderr
         )
     if raise_on_error and handle.returncode != 0:
         raise RuntimeError(
-            f"Error executing script, error code was {handle.returncode}"
+            f"Error executing script, error code was {handle.returncode}",
+            file=sys.stderr
         )
     return stdout_decode, stderr_decode
 
