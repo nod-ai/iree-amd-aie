@@ -154,18 +154,3 @@ func.func @noncontiguous_write(%v: vector<4x8xi8>) {
     vector.transfer_write %v, %alloc[%c0, %c0] : vector<4x8xi8>, memref<4x10xi8>
     return
 }
-
-// -----
-
-// CHECK-LABEL: @unsqueeze_leading_transfer_read_dims(
-// CHECK: transfer_read
-// CHECK-SAME: memref<1x2x8xi8>, vector<8xi8>
-// CHECK: vector.shape_cast
-// CHECK-SAME: vector<8xi8> to vector<1x8xi8>
-func.func @unsqueeze_leading_transfer_read_dims() -> vector<1x8xi8> {
-    %alloc = memref.alloc() : memref<1x2x8xi8>
-    %c0 = arith.constant 0 : index
-    %c0_i8 = arith.constant 0 : i8
-    %0 = vector.transfer_read %alloc[%c0, %c0, %c0], %c0_i8 {in_bounds = [true, true]} : memref<1x2x8xi8>, vector<1x8xi8>
-    return %0 : vector<1x8xi8>
-}

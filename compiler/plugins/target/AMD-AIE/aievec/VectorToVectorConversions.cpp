@@ -13,7 +13,6 @@
 
 #include <memory>
 
-#include "AIEVecUtils.h"
 #include "Passes.h"
 #include "llvm/ADT/STLExtras.h"
 #include "mlir/Conversion/AffineToStandard/AffineToStandard.h"
@@ -89,7 +88,6 @@ static bool isGemmBTransposedContractionOp(vector::ContractionOp op) {
          innerRhsMap == mmBidxMap.shiftDims(numOuterMostDims) &&
          innerAccMap == mmCidxMap.shiftDims(numOuterMostDims);
 }
-
 
 // This pattern converts a `vector.transfer_read` with a splat permutation map
 // into a contiguous `vector.transfer_read` followed by a `vector.extract` to
@@ -346,7 +344,6 @@ struct ToMinorIdentityTransferWritePattern
   }
 };
 
-
 /// This pattern rewrites a `vector.transfer_read` with a non minor identity
 /// permutation map, with a minor-identity permutation map, if possible. For
 /// example,
@@ -374,74 +371,33 @@ struct ToMinorIdentityTransferReadPattern
 
   LogicalResult matchAndRewrite(vector::TransferReadOp readOp,
                                 PatternRewriter &rewriter) const override {
+    using namespace mlir::vector;
+
     AffineMap perm = readOp.getPermutationMap();
+
+    // Already in target form:
     if (perm.isMinorIdentity()) return failure();
+
+    // Cannot be converted into a minor identity map:
     FailureOr<SmallVector<int64_t>> maybeDims = getDimsOfNonPermutingMap(perm);
     if (failed(maybeDims)) return failure();
-    auto [newShape, newInBounds] =
-        getUnsqueezedShapeAndInBounds(readOp.getSource().getType().getRank(),
-                                      maybeDims.value(), rewriter, readOp);
+
+    MemRefType sourceType = cast<MemRefType>(readOp.getSource().getType());
+
+    auto [newShape, newInBounds] = getUnsqueezedShapeAndInBounds(
+        sourceType.getRank(), maybeDims.value(), rewriter, readOp);
+
     VectorType newVectorTy =
         VectorType::get(newShape, readOp.getVectorType().getElementType());
-    MemRefType sourceType = cast<MemRefType>(readOp.getSource().getType());
-    if (!mlir::vector::isContiguousSlice(sourceType, newVectorTy))
-      return failure();
-    auto newReadOp = rewriter.create<vector::TransferReadOp>(
+    if (!isContiguousSlice(sourceType, newVectorTy)) return failure();
+
+    auto newReadOp = rewriter.create<TransferReadOp>(
         readOp.getLoc(), newVectorTy, readOp.getSource(), readOp.getIndices());
+
     newReadOp.getProperties().setInBounds(
         rewriter.getBoolArrayAttr(newInBounds));
-    rewriter.replaceOpWithNewOp<vector::ShapeCastOp>(
-        readOp, readOp.getVector().getType(), newReadOp);
-    return success();
-  }
-};
 
-/// A pattern to drop leading unit dimensions from TransferReads. Converts
-/// ```
-/// %0 = vector.transfer_read %alloc[%c0, %c0, %c0], %c0_i8 {in_bounds = [true, true]} : memref<1x2x8xi8>, vector<1x8xi8>
-/// ```
-///
-/// to
-/// ```
-/// %0 = vector.transfer_read %alloc[%c0, %c0, %c0], %c0_i8 {in_bounds = [true]} : memref<1x2x8xi8>, vector<8xi8>
-/// %1 = vector.shape_cast %0 : vector<8xi8> to vector<1x8xi8>
-/// ```
-struct DropMinorIndentityLeadingDimFromTransferReadPattern
-    : public OpRewritePattern<vector::TransferReadOp> {
-  using OpRewritePattern<vector::TransferReadOp>::OpRewritePattern;
-
-  LogicalResult matchAndRewrite(vector::TransferReadOp readOp,
-                                PatternRewriter &rewriter) const override {
-    AffineMap perm = readOp.getPermutationMap();
-    if (!perm.isMinorIdentity()) return failure();
-
-    SmallVector<bool> oldBounds = readOp.getInBoundsValues();
-    VectorType oldVectorType = readOp.getVectorType();
-    ArrayRef<int64_t> oldShape = oldVectorType.getShape();
-
-    SmallVector<bool> newBounds;
-    SmallVector<int64_t> newShape;
-
-    bool leading = true;
-    for (uint64_t i = 0; i < oldShape.size(); ++i) {
-      if (oldShape[i] > 1 || i + 1 == oldShape.size()) leading = false;
-      if (!leading) {
-        newBounds.push_back(oldBounds[i]);
-        newShape.push_back(oldShape[i]);
-      }
-    }
-
-    // Already without leading '1's.
-    if (oldShape.size() == newShape.size()) return failure();
-
-    VectorType newVectorType =
-        VectorType::get(newShape, oldVectorType.getElementType());
-
-    auto newReadOp = rewriter.create<vector::TransferReadOp>(
-        readOp.getLoc(), newVectorType, readOp.getSource(),
-        readOp.getIndices());
-    newReadOp.getProperties().setInBounds(rewriter.getBoolArrayAttr(newBounds));
-    rewriter.replaceOpWithNewOp<vector::ShapeCastOp>(
+    rewriter.replaceOpWithNewOp<ShapeCastOp>(
         readOp, readOp.getVector().getType(), newReadOp);
     return success();
   }
@@ -629,14 +585,11 @@ struct CanonicalizeVectorForAIEVecPass
     auto op = getOperation();
     MLIRContext *context = &getContext();
 
-
     {
       // These must run before 'populateVectorBroadcastLoweringPatterns'
       // so that broadcasts can be matched before conversion to insert.
       RewritePatternSet patterns(context);
       populateBubbleSignExtensionsLate(patterns);
-      patterns.add<DropMinorIndentityLeadingDimFromTransferReadPattern>(
-          context);
       (void)applyPatternsAndFoldGreedily(op, std::move(patterns));
     }
     {
