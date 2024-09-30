@@ -160,15 +160,19 @@ class TileAMSelGenerator {
 /// source port and ID of the connection.
 class AMSelGenerator {
  public:
-  AMSelGenerator() = delete;
-  AMSelGenerator(uint8_t numArbiters, uint8_t numMSels)
-      : numArbiters(numArbiters), numMSels(numMSels) {}
+  AMSelGenerator() = default;
+
+  /// Create a TileAMSelGenerator for the provided tile location with the
+  /// specified number of arbiters and msels. Expected to be called for all
+  /// tiles that will be used for connections.
+  void initTileIfNotExists(TileLoc tileLoc, uint8_t numArbiters,
+                           uint8_t numMSels);
 
   /// Add a connection from the specified source to the specified destinations
   /// on the provided tile location. This does not assign any amsel pairs, but
   /// keeps track of the connections to be solved later.
-  void addConnection(TileLoc tileLoc, const PhysPortAndID &srcPort,
-                     const SmallVector<PhysPortAndID> &dstPorts);
+  LogicalResult addConnection(TileLoc tileLoc, const PhysPortAndID &srcPort,
+                              const SmallVector<PhysPortAndID> &dstPorts);
 
   /// Returns a `(arbiter, msel)` assignment for the provided port if one is
   /// found.
@@ -180,10 +184,6 @@ class AMSelGenerator {
   LogicalResult solve();
 
  private:
-  /// The number of available arbiters per switch.
-  uint8_t numArbiters;
-  /// The number of available master/dest selects per switch.
-  uint8_t numMSels;
   /// Keep track of a separate generator per tile location.
   DenseMap<TileLoc, TileAMSelGenerator> tileToAMSelConfig;
 };

@@ -218,8 +218,22 @@ enum class AIEArch : uint8_t { AIE1 = 1, AIE2 = 2 };
  * here, in order to make reusable for real/actual runtime facilities.
  */
 struct AMDAIEDeviceModel {
+  /// Contains additional device config parameters that can't be retrieved from
+  /// aie-rt for whatever reason. Make sure the parameters can't be retrieved in
+  /// another way before adding new fields to this struct.
+  struct AMDAIEDeviceConfig {
+    /// Currently, the max arbiter/msel is hidden inside aie-rt.
+    uint8_t streamSwitchCoreArbiterMax{0};
+    uint8_t streamSwitchCoreMSelMax{0};
+    uint8_t streamSwitchMemTileArbiterMax{0};
+    uint8_t streamSwitchMemTileMSelMax{0};
+    uint8_t streamSwitchShimArbiterMax{0};
+    uint8_t streamSwitchShimMSelMax{0};
+    AMDAIEDeviceConfig() = default;
+  };
   XAie_Config configPtr;
   XAie_DevInst devInst;
+  AMDAIEDeviceConfig deviceConfig;
 
   explicit AMDAIEDeviceModel(uint8_t aieGen, uint64_t baseAddr,
                              uint8_t colShift, uint8_t rowShift,
@@ -228,7 +242,8 @@ struct AMDAIEDeviceModel {
                              uint8_t nShimTileRows, int partitionNumCols,
                              int partitionStartCol, uint64_t partBaseAddr,
                              uint64_t npiAddr, bool aieSim, bool xaieDebug,
-                             AMDAIEDevice device);
+                             AMDAIEDevice device,
+                             AMDAIEDeviceConfig deviceConfig);
 
   int rows() const;
   int columns() const;
@@ -301,6 +316,9 @@ struct AMDAIEDeviceModel {
 
   uint32_t getColumnShift() const;
   uint32_t getRowShift() const;
+
+  uint8_t getStreamSwitchArbiterMax(uint8_t col, uint8_t row) const;
+  uint8_t getStreamSwitchMSelMax(uint8_t col, uint8_t row) const;
 
   /// Return a map from channels to valid BD ids for the requested tile type.
   /// TODO(jornt): find these ranges in the device model.

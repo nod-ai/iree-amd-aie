@@ -847,7 +847,11 @@ std::tuple<SlaveGroupsT, SlaveMasksT> emitSlaveGroupsAndMasksRoutingConfig(
 /// Given switchbox configuration data produced by the router, emit
 /// configuration data for packet routing along those same switchboxes.
 FailureOr<std::tuple<MasterSetsT, SlaveAMSelsT>> emitPacketRoutingConfiguration(
-    int numMsels, int numArbiters, const PacketFlowMapT &packetFlows) {
+    const AMDAIEDeviceModel &deviceModel, const PacketFlowMapT &packetFlows) {
+  // The generator for finding `(arbiter, msel)` pairs for packet flow
+  // connections.
+  AMSelGenerator amselGenerator;
+
   SmallVector<std::pair<PhysPortAndID, llvm::SetVector<PhysPortAndID>>>
       sortedPacketFlows(packetFlows.begin(), packetFlows.end());
 
@@ -855,8 +859,6 @@ FailureOr<std::tuple<MasterSetsT, SlaveAMSelsT>> emitPacketRoutingConfiguration(
   std::sort(
       sortedPacketFlows.begin(), sortedPacketFlows.end(),
       [](const auto &lhs, const auto &rhs) { return lhs.first < rhs.first; });
-
-  AMSelGenerator amselGenerator(numArbiters, numMsels);
 
   // A map from Tile and master selectValue to the ports targeted by that
   // master select.
@@ -866,9 +868,19 @@ FailureOr<std::tuple<MasterSetsT, SlaveAMSelsT>> emitPacketRoutingConfiguration(
   for (const auto &[physPortAndID, packetFlowports] : sortedPacketFlows) {
     // The Source Tile of the flow
     TileLoc tileLoc = physPortAndID.physPort.tileLoc;
+    // Make sure the generator for the tile is initialized with the correct
+    // number of arbiters and msels.
+    uint8_t numArbiters =
+        1 + deviceModel.getStreamSwitchArbiterMax(tileLoc.col, tileLoc.row);
+    uint8_t numMSels =
+        1 + deviceModel.getStreamSwitchMSelMax(tileLoc.col, tileLoc.row);
+    amselGenerator.initTileIfNotExists(tileLoc, numArbiters, numMSels);
     SmallVector<PhysPortAndID> dstPorts(packetFlowports.begin(),
                                         packetFlowports.end());
-    amselGenerator.addConnection(tileLoc, physPortAndID, dstPorts);
+    if (failed(
+            amselGenerator.addConnection(tileLoc, physPortAndID, dstPorts))) {
+      return failure();
+    }
   }
   if (failed(amselGenerator.solve())) return failure();
 
