@@ -462,6 +462,12 @@ def AMDAIEConvertToDma :
 
   }];
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEConvertToDmaPass()";
+  let options = [
+    Option<"packTransposeOnSource", "pack-transpose-on-source", "bool", /*default=*/"true",
+      "Option to set transposed dma dimensions on source or target side for pack ops">,
+    Option<"unpackTransposeOnSource", "unpack-transpose-on-source", "bool", /*default=*/"true",
+      "Option to set transposed dma dimensions on source or target side for unpack ops">
+  ];
 }
 
 def AMDAIEPad :
