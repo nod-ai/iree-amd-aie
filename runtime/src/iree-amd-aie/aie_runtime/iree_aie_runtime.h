@@ -49,7 +49,7 @@ struct TileLoc {
 
   TileLoc(int col, int row) : col(col), row(row) {}
 
-  TileLoc() = delete;
+  TileLoc() = default;
   // for std::transform
   TileLoc &operator=(const TileLoc &t) = default;
 

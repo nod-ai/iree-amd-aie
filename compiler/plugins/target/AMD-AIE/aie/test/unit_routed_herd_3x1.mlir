@@ -65,106 +65,114 @@
 // CHECK:           %[[TILE_11_3:.*]] = aie.tile(11, 3)
 // CHECK:           %[[TILE_11_4:.*]] = aie.tile(11, 4)
 // CHECK:           %[[TILE_12_1:.*]] = aie.tile(12, 1)
+// CHECK:           %[[SWITCHBOX_12_1:.*]] = aie.switchbox(%[[TILE_12_1]]) {
+// CHECK:           }
 // CHECK:           %[[TILE_12_2:.*]] = aie.tile(12, 2)
+// CHECK:           %[[SWITCHBOX_12_2:.*]] = aie.switchbox(%[[TILE_12_2]]) {
+// CHECK:           }
 // CHECK:           %[[TILE_12_3:.*]] = aie.tile(12, 3)
+// CHECK:           %[[SWITCHBOX_12_3:.*]] = aie.switchbox(%[[TILE_12_3]]) {
+// CHECK:           }
 // CHECK:           %[[TILE_12_4:.*]] = aie.tile(12, 4)
+// CHECK:           %[[SWITCHBOX_12_4:.*]] = aie.switchbox(%[[TILE_12_4]]) {
+// CHECK:           }
 // CHECK:           %[[SWITCHBOX_0_1:.*]] = aie.switchbox(%[[TILE_0_1]]) {
-// CHECK-DAG:         aie.connect<SOUTH : 0, NORTH : 0>
+// CHECK:             aie.connect<SOUTH : 0, NORTH : 0>
 // CHECK:           }
 // CHECK:           %[[SWITCHBOX_0_2:.*]] = aie.switchbox(%[[TILE_0_2]]) {
-// CHECK-DAG:         aie.connect<SOUTH : 0, NORTH : 0>
+// CHECK:             aie.connect<SOUTH : 0, NORTH : 0>
 // CHECK:           }
 // CHECK:           %[[SWITCHBOX_0_3:.*]] = aie.switchbox(%[[TILE_0_3]]) {
-// CHECK-DAG:         aie.connect<SOUTH : 0, DMA : 0>
-// CHECK-DAG:         aie.connect<EAST : 0, DMA : 1>
+// CHECK:             aie.connect<SOUTH : 0, DMA : 0>
+// CHECK:             aie.connect<EAST : 0, DMA : 1>
 // CHECK:           }
 // CHECK:           %[[SWITCHBOX_0_4:.*]] = aie.switchbox(%[[TILE_0_4]]) {
 // CHECK:           }
 // CHECK:           %[[SWITCHBOX_1_1:.*]] = aie.switchbox(%[[TILE_1_1]]) {
-// CHECK-DAG:         aie.connect<SOUTH : 0, NORTH : 0>
+// CHECK:             aie.connect<SOUTH : 0, NORTH : 0>
 // CHECK:           }
 // CHECK:           %[[SWITCHBOX_1_2:.*]] = aie.switchbox(%[[TILE_1_2]]) {
-// CHECK-DAG:         aie.connect<SOUTH : 0, NORTH : 0>
+// CHECK:             aie.connect<SOUTH : 0, NORTH : 0>
 // CHECK:           }
 // CHECK:           %[[SWITCHBOX_1_3:.*]] = aie.switchbox(%[[TILE_1_3]]) {
-// CHECK-DAG:         aie.connect<SOUTH : 0, WEST : 0>
+// CHECK:             aie.connect<SOUTH : 0, WEST : 0>
 // CHECK:           }
 // CHECK:           %[[SWITCHBOX_1_4:.*]] = aie.switchbox(%[[TILE_1_4]]) {
-// CHECK-DAG:         aie.connect<EAST : 0, DMA : 0>
+// CHECK:             aie.connect<EAST : 0, DMA : 0>
 // CHECK:           }
 // CHECK:           %[[SWITCHBOX_2_1:.*]] = aie.switchbox(%[[TILE_2_1]]) {
-// CHECK-DAG:         aie.connect<SOUTH : 0, NORTH : 0>
+// CHECK:             aie.connect<SOUTH : 0, NORTH : 0>
 // CHECK:           }
 // CHECK:           %[[SWITCHBOX_2_2:.*]] = aie.switchbox(%[[TILE_2_2]]) {
-// CHECK-DAG:         aie.connect<SOUTH : 0, NORTH : 0>
+// CHECK:             aie.connect<SOUTH : 0, NORTH : 0>
 // CHECK:           }
 // CHECK:           %[[SWITCHBOX_2_3:.*]] = aie.switchbox(%[[TILE_2_3]]) {
-// CHECK-DAG:         aie.connect<SOUTH : 0, NORTH : 0>
+// CHECK:             aie.connect<SOUTH : 0, NORTH : 0>
 // CHECK:           }
 // CHECK:           %[[SWITCHBOX_2_4:.*]] = aie.switchbox(%[[TILE_2_4]]) {
-// CHECK-DAG:         aie.connect<SOUTH : 0, WEST : 0>
+// CHECK:             aie.connect<SOUTH : 0, WEST : 0>
 // CHECK:           }
 // CHECK:           %[[SWITCHBOX_3_1:.*]] = aie.switchbox(%[[TILE_3_1]]) {
-// CHECK-DAG:         aie.connect<SOUTH : 0, NORTH : 0>
+// CHECK:             aie.connect<SOUTH : 0, NORTH : 0>
 // CHECK:           }
 // CHECK:           %[[SWITCHBOX_3_2:.*]] = aie.switchbox(%[[TILE_3_2]]) {
-// CHECK-DAG:         aie.connect<SOUTH : 0, NORTH : 0>
+// CHECK:             aie.connect<SOUTH : 0, NORTH : 0>
 // CHECK:           }
 // CHECK:           %[[SWITCHBOX_3_3:.*]] = aie.switchbox(%[[TILE_3_3]]) {
-// CHECK-DAG:         aie.connect<SOUTH : 0, DMA : 0>
+// CHECK:             aie.connect<SOUTH : 0, DMA : 0>
 // CHECK:           }
 // CHECK:           %[[SWITCHBOX_3_4:.*]] = aie.switchbox(%[[TILE_3_4]]) {
 // CHECK:           }
 // CHECK:           %[[SWITCHBOX_4_1:.*]] = aie.switchbox(%[[TILE_4_1]]) {
-// CHECK-DAG:         aie.connect<SOUTH : 0, NORTH : 0>
+// CHECK:             aie.connect<SOUTH : 0, NORTH : 0>
 // CHECK:           }
 // CHECK:           %[[SWITCHBOX_4_2:.*]] = aie.switchbox(%[[TILE_4_2]]) {
-// CHECK-DAG:         aie.connect<SOUTH : 0, DMA : 0>
+// CHECK:             aie.connect<SOUTH : 0, DMA : 0>
 // CHECK:           }
 // CHECK:           %[[SWITCHBOX_4_3:.*]] = aie.switchbox(%[[TILE_4_3]]) {
 // CHECK:           }
 // CHECK:           %[[SWITCHBOX_4_4:.*]] = aie.switchbox(%[[TILE_4_4]]) {
 // CHECK:           }
 // CHECK:           %[[SWITCHBOX_5_1:.*]] = aie.switchbox(%[[TILE_5_1]]) {
-// CHECK-DAG:         aie.connect<SOUTH : 0, NORTH : 0>
+// CHECK:             aie.connect<SOUTH : 0, NORTH : 0>
 // CHECK:           }
 // CHECK:           %[[SWITCHBOX_5_2:.*]] = aie.switchbox(%[[TILE_5_2]]) {
-// CHECK-DAG:         aie.connect<SOUTH : 0, NORTH : 0>
+// CHECK:             aie.connect<SOUTH : 0, NORTH : 0>
 // CHECK:           }
 // CHECK:           %[[SWITCHBOX_5_3:.*]] = aie.switchbox(%[[TILE_5_3]]) {
-// CHECK-DAG:         aie.connect<SOUTH : 0, DMA : 0>
+// CHECK:             aie.connect<SOUTH : 0, DMA : 0>
 // CHECK:           }
 // CHECK:           %[[SWITCHBOX_5_4:.*]] = aie.switchbox(%[[TILE_5_4]]) {
 // CHECK:           }
 // CHECK:           %[[SWITCHBOX_6_1:.*]] = aie.switchbox(%[[TILE_6_1]]) {
-// CHECK-DAG:         aie.connect<SOUTH : 0, NORTH : 0>
-// CHECK-DAG:         aie.connect<SOUTH : 1, NORTH : 1>
+// CHECK:             aie.connect<SOUTH : 0, NORTH : 0>
+// CHECK:             aie.connect<SOUTH : 1, NORTH : 1>
 // CHECK:           }
 // CHECK:           %[[SWITCHBOX_6_2:.*]] = aie.switchbox(%[[TILE_6_2]]) {
-// CHECK-DAG:         aie.connect<SOUTH : 0, NORTH : 0>
-// CHECK-DAG:         aie.connect<SOUTH : 1, NORTH : 1>
+// CHECK:             aie.connect<SOUTH : 0, NORTH : 0>
+// CHECK:             aie.connect<SOUTH : 1, NORTH : 1>
 // CHECK:           }
 // CHECK:           %[[SWITCHBOX_6_3:.*]] = aie.switchbox(%[[TILE_6_3]]) {
-// CHECK-DAG:         aie.connect<SOUTH : 0, DMA : 0>
-// CHECK-DAG:         aie.connect<SOUTH : 1, DMA : 1>
+// CHECK:             aie.connect<SOUTH : 0, DMA : 0>
+// CHECK:             aie.connect<SOUTH : 1, DMA : 1>
 // CHECK:           }
 // CHECK:           %[[SWITCHBOX_6_4:.*]] = aie.switchbox(%[[TILE_6_4]]) {
 // CHECK:           }
 // CHECK:           %[[SWITCHBOX_7_1:.*]] = aie.switchbox(%[[TILE_7_1]]) {
-// CHECK-DAG:         aie.connect<SOUTH : 0, NORTH : 0>
-// CHECK-DAG:         aie.connect<SOUTH : 1, NORTH : 1>
+// CHECK:             aie.connect<SOUTH : 0, NORTH : 0>
+// CHECK:             aie.connect<SOUTH : 1, NORTH : 1>
 // CHECK:           }
 // CHECK:           %[[SWITCHBOX_7_2:.*]] = aie.switchbox(%[[TILE_7_2]]) {
-// CHECK-DAG:         aie.connect<SOUTH : 0, NORTH : 0>
-// CHECK-DAG:         aie.connect<SOUTH : 1, NORTH : 1>
+// CHECK:             aie.connect<SOUTH : 0, NORTH : 0>
+// CHECK:             aie.connect<SOUTH : 1, NORTH : 1>
 // CHECK:           }
 // CHECK:           %[[SWITCHBOX_7_3:.*]] = aie.switchbox(%[[TILE_7_3]]) {
-// CHECK-DAG:         aie.connect<SOUTH : 0, NORTH : 0>
-// CHECK-DAG:         aie.connect<SOUTH : 1, NORTH : 1>
+// CHECK:             aie.connect<SOUTH : 0, NORTH : 0>
+// CHECK:             aie.connect<SOUTH : 1, NORTH : 1>
 // CHECK:           }
 // CHECK:           %[[SWITCHBOX_7_4:.*]] = aie.switchbox(%[[TILE_7_4]]) {
-// CHECK-DAG:         aie.connect<SOUTH : 0, DMA : 0>
-// CHECK-DAG:         aie.connect<SOUTH : 1, DMA : 1>
+// CHECK:             aie.connect<SOUTH : 0, DMA : 0>
+// CHECK:             aie.connect<SOUTH : 1, DMA : 1>
 // CHECK:           }
 // CHECK:           %[[SWITCHBOX_8_1:.*]] = aie.switchbox(%[[TILE_8_1]]) {
 // CHECK:           }
@@ -175,193 +183,197 @@
 // CHECK:           %[[SWITCHBOX_8_4:.*]] = aie.switchbox(%[[TILE_8_4]]) {
 // CHECK:           }
 // CHECK:           %[[SWITCHBOX_9_1:.*]] = aie.switchbox(%[[TILE_9_1]]) {
-// CHECK-DAG:         aie.connect<SOUTH : 0, NORTH : 0>
+// CHECK:             aie.connect<SOUTH : 0, NORTH : 0>
 // CHECK:           }
 // CHECK:           %[[SWITCHBOX_9_2:.*]] = aie.switchbox(%[[TILE_9_2]]) {
-// CHECK-DAG:         aie.connect<SOUTH : 0, DMA : 0>
+// CHECK:             aie.connect<SOUTH : 0, DMA : 0>
 // CHECK:           }
 // CHECK:           %[[SWITCHBOX_9_3:.*]] = aie.switchbox(%[[TILE_9_3]]) {
 // CHECK:           }
 // CHECK:           %[[SWITCHBOX_9_4:.*]] = aie.switchbox(%[[TILE_9_4]]) {
 // CHECK:           }
 // CHECK:           %[[SWITCHBOX_10_1:.*]] = aie.switchbox(%[[TILE_10_1]]) {
-// CHECK-DAG:         aie.connect<SOUTH : 0, NORTH : 0>
+// CHECK:             aie.connect<SOUTH : 0, NORTH : 0>
 // CHECK:           }
 // CHECK:           %[[SWITCHBOX_10_2:.*]] = aie.switchbox(%[[TILE_10_2]]) {
-// CHECK-DAG:         aie.connect<SOUTH : 0, DMA : 0>
+// CHECK:             aie.connect<SOUTH : 0, DMA : 0>
 // CHECK:           }
 // CHECK:           %[[SWITCHBOX_10_3:.*]] = aie.switchbox(%[[TILE_10_3]]) {
 // CHECK:           }
 // CHECK:           %[[SWITCHBOX_10_4:.*]] = aie.switchbox(%[[TILE_10_4]]) {
 // CHECK:           }
 // CHECK:           %[[SWITCHBOX_11_1:.*]] = aie.switchbox(%[[TILE_11_1]]) {
-// CHECK-DAG:         aie.connect<SOUTH : 0, NORTH : 0>
-// CHECK-DAG:         aie.connect<SOUTH : 1, NORTH : 1>
+// CHECK:             aie.connect<SOUTH : 0, NORTH : 0>
+// CHECK:             aie.connect<SOUTH : 1, NORTH : 1>
 // CHECK:           }
 // CHECK:           %[[SWITCHBOX_11_2:.*]] = aie.switchbox(%[[TILE_11_2]]) {
-// CHECK-DAG:         aie.connect<SOUTH : 0, NORTH : 0>
-// CHECK-DAG:         aie.connect<SOUTH : 1, NORTH : 1>
+// CHECK:             aie.connect<SOUTH : 0, NORTH : 0>
+// CHECK:             aie.connect<SOUTH : 1, NORTH : 1>
 // CHECK:           }
 // CHECK:           %[[SWITCHBOX_11_3:.*]] = aie.switchbox(%[[TILE_11_3]]) {
-// CHECK-DAG:         aie.connect<SOUTH : 0, DMA : 0>
-// CHECK-DAG:         aie.connect<SOUTH : 1, DMA : 1>
+// CHECK:             aie.connect<SOUTH : 0, DMA : 0>
+// CHECK:             aie.connect<SOUTH : 1, DMA : 1>
 // CHECK:           }
 // CHECK:           %[[SWITCHBOX_11_4:.*]] = aie.switchbox(%[[TILE_11_4]]) {
 // CHECK:           }
 // CHECK:           %[[SWITCHBOX_2_0:.*]] = aie.switchbox(%[[TILE_2_0]]) {
-// CHECK-DAG:         aie.connect<SOUTH : 3, NORTH : 0>
-// CHECK-DAG:         aie.connect<SOUTH : 7, EAST : 0>
-// CHECK-DAG:         aie.connect<EAST : 0, WEST : 0>
-// CHECK-DAG:         aie.connect<EAST : 1, WEST : 1>
+// CHECK:             aie.connect<SOUTH : 3, NORTH : 0>
+// CHECK:             aie.connect<SOUTH : 7, EAST : 2>
+// CHECK:             aie.connect<EAST : 0, WEST : 1>
+// CHECK:             aie.connect<EAST : 2, WEST : 3>
 // CHECK:           }
 // CHECK:           %[[SHIM_MUX_2_0:.*]] = aie.shim_mux(%[[TILE_2_0]]) {
-// CHECK-DAG:         aie.connect<DMA : 0, NORTH : 3>
-// CHECK-DAG:         aie.connect<DMA : 1, NORTH : 7>
+// CHECK:             aie.connect<DMA : 0, NORTH : 3>
+// CHECK:             aie.connect<DMA : 1, NORTH : 7>
 // CHECK:           }
 // CHECK:           %[[SWITCHBOX_3_0:.*]] = aie.switchbox(%[[TILE_3_0]]) {
-// CHECK-DAG:         aie.connect<WEST : 0, EAST : 0>
-// CHECK-DAG:         aie.connect<SOUTH : 3, NORTH : 0>
-// CHECK-DAG:         aie.connect<SOUTH : 7, EAST : 1>
-// CHECK-DAG:         aie.connect<EAST : 0, WEST : 0>
-// CHECK-DAG:         aie.connect<EAST : 1, WEST : 1>
+// CHECK:             aie.connect<WEST : 2, EAST : 2>
+// CHECK:             aie.connect<SOUTH : 3, NORTH : 0>
+// CHECK:             aie.connect<SOUTH : 7, EAST : 3>
+// CHECK:             aie.connect<EAST : 1, WEST : 0>
+// CHECK:             aie.connect<EAST : 3, WEST : 2>
 // CHECK:           }
 // CHECK:           %[[SWITCHBOX_4_0:.*]] = aie.switchbox(%[[TILE_4_0]]) {
-// CHECK-DAG:         aie.connect<WEST : 0, EAST : 0>
-// CHECK-DAG:         aie.connect<WEST : 1, EAST : 1>
-// CHECK-DAG:         aie.connect<EAST : 0, WEST : 0>
-// CHECK-DAG:         aie.connect<EAST : 1, NORTH : 0>
-// CHECK-DAG:         aie.connect<EAST : 2, WEST : 1>
+// CHECK:             aie.connect<WEST : 2, EAST : 3>
+// CHECK:             aie.connect<WEST : 3, EAST : 1>
+// CHECK:             aie.connect<EAST : 2, WEST : 1>
+// CHECK:             aie.connect<EAST : 0, NORTH : 0>
+// CHECK:             aie.connect<EAST : 3, WEST : 3>
 // CHECK:           }
 // CHECK:           %[[SWITCHBOX_5_0:.*]] = aie.switchbox(%[[TILE_5_0]]) {
-// CHECK-DAG:         aie.connect<WEST : 0, EAST : 0>
-// CHECK-DAG:         aie.connect<WEST : 1, EAST : 1>
-// CHECK-DAG:         aie.connect<EAST : 0, WEST : 0>
-// CHECK-DAG:         aie.connect<EAST : 1, WEST : 1>
-// CHECK-DAG:         aie.connect<EAST : 2, WEST : 2>
-// CHECK-DAG:         aie.connect<EAST : 3, NORTH : 0>
+// CHECK:             aie.connect<WEST : 3, EAST : 1>
+// CHECK:             aie.connect<WEST : 1, EAST : 3>
+// CHECK:             aie.connect<EAST : 3, WEST : 2>
+// CHECK:             aie.connect<EAST : 0, WEST : 0>
+// CHECK:             aie.connect<EAST : 1, WEST : 3>
+// CHECK:             aie.connect<EAST : 2, NORTH : 0>
 // CHECK:           }
 // CHECK:           %[[SWITCHBOX_6_0:.*]] = aie.switchbox(%[[TILE_6_0]]) {
-// CHECK-DAG:         aie.connect<WEST : 0, NORTH : 1>
-// CHECK-DAG:         aie.connect<WEST : 1, EAST : 0>
-// CHECK-DAG:         aie.connect<SOUTH : 3, WEST : 0>
-// CHECK-DAG:         aie.connect<SOUTH : 7, WEST : 1>
-// CHECK-DAG:         aie.connect<EAST : 0, WEST : 2>
-// CHECK-DAG:         aie.connect<EAST : 1, WEST : 3>
-// CHECK-DAG:         aie.connect<EAST : 2, NORTH : 0>
+// CHECK:             aie.connect<WEST : 1, NORTH : 1>
+// CHECK:             aie.connect<WEST : 3, EAST : 0>
+// CHECK:             aie.connect<SOUTH : 3, WEST : 3>
+// CHECK:             aie.connect<SOUTH : 7, WEST : 0>
+// CHECK:             aie.connect<EAST : 3, WEST : 1>
+// CHECK:             aie.connect<EAST : 0, WEST : 2>
+// CHECK:             aie.connect<EAST : 1, NORTH : 0>
 // CHECK:           }
 // CHECK:           %[[SHIM_MUX_3_0:.*]] = aie.shim_mux(%[[TILE_3_0]]) {
-// CHECK-DAG:         aie.connect<DMA : 0, NORTH : 3>
-// CHECK-DAG:         aie.connect<DMA : 1, NORTH : 7>
+// CHECK:             aie.connect<DMA : 0, NORTH : 3>
+// CHECK:             aie.connect<DMA : 1, NORTH : 7>
 // CHECK:           }
 // CHECK:           %[[SWITCHBOX_7_0:.*]] = aie.switchbox(%[[TILE_7_0]]) {
-// CHECK-DAG:         aie.connect<WEST : 0, NORTH : 1>
-// CHECK-DAG:         aie.connect<SOUTH : 3, WEST : 0>
-// CHECK-DAG:         aie.connect<SOUTH : 7, WEST : 1>
-// CHECK-DAG:         aie.connect<EAST : 0, WEST : 2>
-// CHECK-DAG:         aie.connect<EAST : 1, NORTH : 0>
+// CHECK:             aie.connect<WEST : 0, NORTH : 1>
+// CHECK:             aie.connect<SOUTH : 3, WEST : 3>
+// CHECK:             aie.connect<SOUTH : 7, WEST : 0>
+// CHECK:             aie.connect<EAST : 2, WEST : 1>
+// CHECK:             aie.connect<EAST : 3, NORTH : 0>
 // CHECK:           }
 // CHECK:           %[[SWITCHBOX_0_0:.*]] = aie.switchbox(%[[TILE_0_0]]) {
-// CHECK-DAG:         aie.connect<EAST : 0, NORTH : 0>
+// CHECK:             aie.connect<EAST : 1, NORTH : 0>
 // CHECK:           }
 // CHECK:           %[[SWITCHBOX_1_0:.*]] = aie.switchbox(%[[TILE_1_0]]) {
-// CHECK-DAG:         aie.connect<EAST : 0, WEST : 0>
-// CHECK-DAG:         aie.connect<EAST : 1, NORTH : 0>
+// CHECK:             aie.connect<EAST : 1, WEST : 1>
+// CHECK:             aie.connect<EAST : 3, NORTH : 0>
 // CHECK:           }
 // CHECK:           %[[SHIM_MUX_6_0:.*]] = aie.shim_mux(%[[TILE_6_0]]) {
-// CHECK-DAG:         aie.connect<DMA : 0, NORTH : 3>
-// CHECK-DAG:         aie.connect<DMA : 1, NORTH : 7>
+// CHECK:             aie.connect<DMA : 0, NORTH : 3>
+// CHECK:             aie.connect<DMA : 1, NORTH : 7>
 // CHECK:           }
 // CHECK:           %[[SHIM_MUX_7_0:.*]] = aie.shim_mux(%[[TILE_7_0]]) {
-// CHECK-DAG:         aie.connect<DMA : 0, NORTH : 3>
-// CHECK-DAG:         aie.connect<DMA : 1, NORTH : 7>
+// CHECK:             aie.connect<DMA : 0, NORTH : 3>
+// CHECK:             aie.connect<DMA : 1, NORTH : 7>
 // CHECK:           }
 // CHECK:           %[[SWITCHBOX_10_0:.*]] = aie.switchbox(%[[TILE_10_0]]) {
-// CHECK-DAG:         aie.connect<SOUTH : 3, NORTH : 0>
-// CHECK-DAG:         aie.connect<EAST : 0, WEST : 0>
-// CHECK-DAG:         aie.connect<EAST : 1, WEST : 1>
-// CHECK-DAG:         aie.connect<EAST : 2, WEST : 2>
+// CHECK:             aie.connect<SOUTH : 3, NORTH : 0>
+// CHECK:             aie.connect<EAST : 1, WEST : 1>
+// CHECK:             aie.connect<EAST : 3, WEST : 2>
+// CHECK:             aie.connect<EAST : 0, WEST : 3>
 // CHECK:           }
 // CHECK:           %[[SHIM_MUX_10_0:.*]] = aie.shim_mux(%[[TILE_10_0]]) {
-// CHECK-DAG:         aie.connect<DMA : 0, NORTH : 3>
+// CHECK:             aie.connect<DMA : 0, NORTH : 3>
 // CHECK:           }
 // CHECK:           %[[SWITCHBOX_11_0:.*]] = aie.switchbox(%[[TILE_11_0]]) {
-// CHECK-DAG:         aie.connect<SOUTH : 3, NORTH : 0>
-// CHECK-DAG:         aie.connect<EAST : 0, WEST : 0>
-// CHECK-DAG:         aie.connect<EAST : 1, WEST : 1>
-// CHECK-DAG:         aie.connect<EAST : 2, WEST : 2>
-// CHECK-DAG:         aie.connect<EAST : 3, NORTH : 1>
+// CHECK:             aie.connect<SOUTH : 3, NORTH : 0>
+// CHECK:             aie.connect<EAST : 3, WEST : 1>
+// CHECK:             aie.connect<EAST : 0, WEST : 3>
+// CHECK:             aie.connect<EAST : 2, WEST : 0>
+// CHECK:             aie.connect<EAST : 1, NORTH : 1>
 // CHECK:           }
 // CHECK:           %[[SHIM_MUX_11_0:.*]] = aie.shim_mux(%[[TILE_11_0]]) {
-// CHECK-DAG:         aie.connect<DMA : 0, NORTH : 3>
+// CHECK:             aie.connect<DMA : 0, NORTH : 3>
 // CHECK:           }
 // CHECK:           %[[SWITCHBOX_8_0:.*]] = aie.switchbox(%[[TILE_8_0]]) {
-// CHECK-DAG:         aie.connect<EAST : 0, WEST : 0>
-// CHECK-DAG:         aie.connect<EAST : 1, WEST : 1>
+// CHECK:             aie.connect<EAST : 1, WEST : 2>
+// CHECK:             aie.connect<EAST : 3, WEST : 3>
 // CHECK:           }
 // CHECK:           %[[SWITCHBOX_9_0:.*]] = aie.switchbox(%[[TILE_9_0]]) {
-// CHECK-DAG:         aie.connect<EAST : 0, WEST : 0>
-// CHECK-DAG:         aie.connect<EAST : 1, NORTH : 0>
-// CHECK-DAG:         aie.connect<EAST : 2, WEST : 1>
+// CHECK:             aie.connect<EAST : 1, WEST : 1>
+// CHECK:             aie.connect<EAST : 2, NORTH : 0>
+// CHECK:             aie.connect<EAST : 3, WEST : 3>
 // CHECK:           }
 // CHECK:           %[[TILE_12_0:.*]] = aie.tile(12, 0)
 // CHECK:           %[[SWITCHBOX_12_0:.*]] = aie.switchbox(%[[TILE_12_0]]) {
-// CHECK-DAG:         aie.connect<EAST : 0, WEST : 0>
-// CHECK-DAG:         aie.connect<EAST : 1, WEST : 1>
-// CHECK-DAG:         aie.connect<EAST : 2, WEST : 2>
-// CHECK-DAG:         aie.connect<EAST : 3, WEST : 3>
+// CHECK:             aie.connect<EAST : 3, WEST : 3>
+// CHECK:             aie.connect<EAST : 0, WEST : 0>
+// CHECK:             aie.connect<EAST : 1, WEST : 2>
+// CHECK:             aie.connect<EAST : 2, WEST : 1>
 // CHECK:           }
 // CHECK:           %[[TILE_13_0:.*]] = aie.tile(13, 0)
 // CHECK:           %[[SWITCHBOX_13_0:.*]] = aie.switchbox(%[[TILE_13_0]]) {
-// CHECK-DAG:         aie.connect<EAST : 0, WEST : 0>
-// CHECK-DAG:         aie.connect<EAST : 1, WEST : 1>
-// CHECK-DAG:         aie.connect<EAST : 2, WEST : 2>
-// CHECK-DAG:         aie.connect<EAST : 3, WEST : 3>
+// CHECK:             aie.connect<EAST : 1, WEST : 3>
+// CHECK:             aie.connect<EAST : 2, WEST : 0>
+// CHECK:             aie.connect<EAST : 0, WEST : 1>
+// CHECK:             aie.connect<EAST : 3, WEST : 2>
 // CHECK:           }
 // CHECK:           %[[TILE_14_0:.*]] = aie.tile(14, 0)
+// CHECK:           %[[SHIM_MUX_14_0:.*]] = aie.shim_mux(%[[TILE_14_0]]) {
+// CHECK:           }
 // CHECK:           %[[SWITCHBOX_14_0:.*]] = aie.switchbox(%[[TILE_14_0]]) {
-// CHECK-DAG:         aie.connect<EAST : 0, WEST : 0>
-// CHECK-DAG:         aie.connect<EAST : 1, WEST : 1>
-// CHECK-DAG:         aie.connect<EAST : 2, WEST : 2>
-// CHECK-DAG:         aie.connect<EAST : 3, WEST : 3>
+// CHECK:             aie.connect<EAST : 2, WEST : 1>
+// CHECK:             aie.connect<EAST : 1, WEST : 2>
+// CHECK:             aie.connect<EAST : 3, WEST : 0>
+// CHECK:             aie.connect<EAST : 0, WEST : 3>
 // CHECK:           }
 // CHECK:           %[[TILE_15_0:.*]] = aie.tile(15, 0)
+// CHECK:           %[[SHIM_MUX_15_0:.*]] = aie.shim_mux(%[[TILE_15_0]]) {
+// CHECK:           }
 // CHECK:           %[[SWITCHBOX_15_0:.*]] = aie.switchbox(%[[TILE_15_0]]) {
-// CHECK-DAG:         aie.connect<EAST : 0, WEST : 0>
-// CHECK-DAG:         aie.connect<EAST : 1, WEST : 1>
-// CHECK-DAG:         aie.connect<EAST : 2, WEST : 2>
-// CHECK-DAG:         aie.connect<EAST : 3, WEST : 3>
+// CHECK:             aie.connect<EAST : 2, WEST : 2>
+// CHECK:             aie.connect<EAST : 0, WEST : 1>
+// CHECK:             aie.connect<EAST : 3, WEST : 3>
+// CHECK:             aie.connect<EAST : 1, WEST : 0>
 // CHECK:           }
 // CHECK:           %[[TILE_16_0:.*]] = aie.tile(16, 0)
 // CHECK:           %[[SWITCHBOX_16_0:.*]] = aie.switchbox(%[[TILE_16_0]]) {
-// CHECK-DAG:         aie.connect<EAST : 0, WEST : 0>
-// CHECK-DAG:         aie.connect<EAST : 1, WEST : 1>
-// CHECK-DAG:         aie.connect<EAST : 2, WEST : 2>
-// CHECK-DAG:         aie.connect<EAST : 3, WEST : 3>
+// CHECK:             aie.connect<EAST : 3, WEST : 2>
+// CHECK:             aie.connect<EAST : 0, WEST : 0>
+// CHECK:             aie.connect<EAST : 2, WEST : 3>
+// CHECK:             aie.connect<EAST : 1, WEST : 1>
 // CHECK:           }
 // CHECK:           %[[TILE_17_0:.*]] = aie.tile(17, 0)
 // CHECK:           %[[SWITCHBOX_17_0:.*]] = aie.switchbox(%[[TILE_17_0]]) {
-// CHECK-DAG:         aie.connect<EAST : 0, WEST : 0>
-// CHECK-DAG:         aie.connect<EAST : 1, WEST : 1>
-// CHECK-DAG:         aie.connect<EAST : 2, WEST : 2>
-// CHECK-DAG:         aie.connect<EAST : 3, WEST : 3>
+// CHECK:             aie.connect<EAST : 3, WEST : 3>
+// CHECK:             aie.connect<EAST : 0, WEST : 0>
+// CHECK:             aie.connect<EAST : 1, WEST : 2>
+// CHECK:             aie.connect<EAST : 2, WEST : 1>
 // CHECK:           }
 // CHECK:           %[[SWITCHBOX_18_0:.*]] = aie.switchbox(%[[TILE_18_0]]) {
-// CHECK-DAG:         aie.connect<SOUTH : 3, WEST : 0>
-// CHECK-DAG:         aie.connect<SOUTH : 7, WEST : 1>
-// CHECK-DAG:         aie.connect<EAST : 0, WEST : 2>
-// CHECK-DAG:         aie.connect<EAST : 1, WEST : 3>
+// CHECK:             aie.connect<SOUTH : 3, WEST : 3>
+// CHECK:             aie.connect<SOUTH : 7, WEST : 0>
+// CHECK:             aie.connect<EAST : 3, WEST : 1>
+// CHECK:             aie.connect<EAST : 2, WEST : 2>
 // CHECK:           }
 // CHECK:           %[[SHIM_MUX_18_0:.*]] = aie.shim_mux(%[[TILE_18_0]]) {
-// CHECK-DAG:         aie.connect<DMA : 0, NORTH : 3>
-// CHECK-DAG:         aie.connect<DMA : 1, NORTH : 7>
+// CHECK:             aie.connect<DMA : 0, NORTH : 3>
+// CHECK:             aie.connect<DMA : 1, NORTH : 7>
 // CHECK:           }
 // CHECK:           %[[SWITCHBOX_19_0:.*]] = aie.switchbox(%[[TILE_19_0]]) {
-// CHECK-DAG:         aie.connect<SOUTH : 3, WEST : 0>
-// CHECK-DAG:         aie.connect<SOUTH : 7, WEST : 1>
+// CHECK:             aie.connect<SOUTH : 3, WEST : 3>
+// CHECK:             aie.connect<SOUTH : 7, WEST : 2>
 // CHECK:           }
 // CHECK:           %[[SHIM_MUX_19_0:.*]] = aie.shim_mux(%[[TILE_19_0]]) {
-// CHECK-DAG:         aie.connect<DMA : 0, NORTH : 3>
-// CHECK-DAG:         aie.connect<DMA : 1, NORTH : 7>
+// CHECK:             aie.connect<DMA : 0, NORTH : 3>
+// CHECK:             aie.connect<DMA : 1, NORTH : 7>
 // CHECK:           }
 // CHECK:         }
 

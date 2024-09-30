@@ -55,42 +55,31 @@ struct Connect {
   TUPLE_LIKE_STRUCT_RELATIONAL_OPS(Connect)
 };
 ASSERT_STANDARD_LAYOUT(Connect);
-
-struct SwitchBox : TileLoc {
-  SwitchBox(TileLoc t) : TileLoc(t) {}
-  SwitchBox(int col, int row) : TileLoc(col, row) {}
-  using TupleType = TileLoc::TupleType;
-  SwitchBox(TupleType t) : TileLoc(t) {}
-  TUPLE_LIKE_STRUCT_RELATIONAL_OPS(SwitchBox)
-};
-ASSERT_STANDARD_LAYOUT(SwitchBox);
-
 /// A SwitchSetting defines the required configurations for an actual
 /// physical/device SwitchBox.
-/// SwitchSetting.src is the incoming signal
+/// SwitchSetting.srcs are the incoming signals
 /// SwitchSetting.dsts is the fanout
 struct SwitchSetting {
-  Port src;
-  std::set<Port> dsts;
-
-  // deleted anyway because Port's is deleted
-  SwitchSetting() = delete;
-  SwitchSetting(Port src) : src(src) {}
-  SwitchSetting(Port src, std::set<Port> dsts)
-      : src(src), dsts(std::move(dsts)) {}
-  bool operator<(const SwitchSetting &rhs) const { return src < rhs.src; }
+  std::vector<Port> srcs;
+  std::vector<Port> dsts;
+  SwitchSetting() = default;
+  SwitchSetting(std::vector<Port> srcs) : srcs(std::move(srcs)) {}
+  SwitchSetting(std::vector<Port> srcs, std::vector<Port> dsts)
+      : srcs(std::move(srcs)), dsts(std::move(dsts)) {}
+  bool operator<(const SwitchSetting &rhs) const { return srcs < rhs.srcs; }
 };
 
-using SwitchSettings = std::map<SwitchBox, SwitchSetting>;
+using SwitchSettings = std::map<TileLoc, SwitchSetting>;
 
 struct PathEndPoint {
-  SwitchBox sb;
+  TileLoc tileLoc;
   Port port;
+  PathEndPoint() = default;
   PathEndPoint(int col, int row, Port port) : PathEndPoint({col, row}, port) {}
-  PathEndPoint(SwitchBox sb, Port port) : sb(sb), port(port) {}
-  using TupleType = std::tuple<SwitchBox, Port>;
+  PathEndPoint(TileLoc tileLoc, Port port) : tileLoc(tileLoc), port(port) {}
+  using TupleType = std::tuple<TileLoc, Port>;
   PathEndPoint(TupleType t) : PathEndPoint(std::get<0>(t), std::get<1>(t)) {}
-  operator TupleType() const { return {sb, port}; }
+  operator TupleType() const { return {tileLoc, port}; }
   TUPLE_LIKE_STRUCT_RELATIONAL_OPS(PathEndPoint)
 };
 ASSERT_STANDARD_LAYOUT(PathEndPoint);
@@ -103,15 +92,14 @@ struct Router {
   void initialize(int maxCol, int maxRow, const AMDAIEDeviceModel &targetModel);
   void addFlow(TileLoc srcCoords, Port srcPort, TileLoc dstCoords, Port dstPort,
                bool isPacketFlow);
-  bool addFixedConnection(
-      int col, int row,
-      const std::vector<std::tuple<StrmSwPortType, int, StrmSwPortType, int>>
-          &connects);
+  bool addFixedConnection(int col, int row,
+                          const std::vector<std::tuple<Port, Port>> &connects);
+  std::map<PathEndPoint, PathEndPoint> dijkstraShortestPaths(PathEndPoint src);
   std::optional<std::map<PathEndPoint, SwitchSettings>> findPaths(
       int maxIterations = 1000);
 };
 
-std::map<SwitchBox, std::vector<Connect>> emitConnections(
+std::map<TileLoc, std::vector<Connect>> emitConnections(
     const std::map<PathEndPoint, SwitchSettings> &flowSolutions,
     const PathEndPoint &srcPoint, const AMDAIEDeviceModel &targetModel);
 
@@ -147,7 +135,7 @@ using SlaveGroupsT = std::vector<std::vector<PhysPortAndID>>;
 using SlaveMasksT = std::map<PhysPortAndID, int>;
 using SlaveAMSelsT = std::map<PhysPortAndID, std::pair<uint8_t, uint8_t>>;
 using ConnectionAndFlowIDT = std::pair<Connect, int>;
-using SwitchBoxToConnectionFlowIDT =
+using TileLocToConnectionFlowIDT =
     std::map<TileLoc, DenseSet<ConnectionAndFlowIDT>>;
 using PacketFlowMapT = DenseMap<PhysPortAndID, llvm::SetVector<PhysPortAndID>>;
 
@@ -203,11 +191,6 @@ struct DenseMapInfo<mlir::iree_compiler::AMDAIE::Connect>
 };
 
 template <>
-struct DenseMapInfo<mlir::iree_compiler::AMDAIE::SwitchBox>
-    : TupleStructDenseMapInfo<
-          mlir::iree_compiler::AMDAIE::SwitchBox::TupleType> {};
-
-template <>
 struct DenseMapInfo<mlir::iree_compiler::AMDAIE::PhysPort>
     : TupleStructDenseMapInfo<
           mlir::iree_compiler::AMDAIE::PhysPort::TupleType> {};
@@ -224,7 +207,8 @@ struct std::hash<mlir::iree_compiler::AMDAIE::PathEndPoint> {
   std::size_t operator()(
       const mlir::iree_compiler::AMDAIE::PathEndPoint &pe) const noexcept {
     std::size_t h1 = std::hash<mlir::iree_compiler::AMDAIE::Port>{}(pe.port);
-    std::size_t h2 = std::hash<mlir::iree_compiler::AMDAIE::TileLoc>{}(pe.sb);
+    std::size_t h2 =
+        std::hash<mlir::iree_compiler::AMDAIE::TileLoc>{}(pe.tileLoc);
     return h1 ^ (h2 << 1);
   }
 };
