@@ -359,8 +359,8 @@ LogicalResult rewriteAsDma(IRRewriter &rewriter, Operation *op, Value input,
 
   if (auto packOp = dyn_cast<IREE::LinalgExt::PackOp>(op) && srcMemspace == 0 &&
                     dstMemspace == 1) {
-    if (!succeeded(packL3ToL2(dyn_cast<IREE::LinalgExt::PackOp>(op), dstOffsets, dstShape,
-                              dstBaseStrides))) {
+    if (!succeeded(packL3ToL2(dyn_cast<IREE::LinalgExt::PackOp>(op), dstOffsets,
+                              dstShape, dstBaseStrides))) {
       return failure();
     }
   } else {

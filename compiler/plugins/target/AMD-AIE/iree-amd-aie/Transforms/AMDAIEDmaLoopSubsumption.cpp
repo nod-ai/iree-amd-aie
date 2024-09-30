@@ -479,6 +479,24 @@ struct SubsumeLoopIntoDMA
       return false;
     };
 
+    auto circularUsersInSameScope =
+        [&](Value result,
+            SmallVector<AMDAIE::DoublyStridedOpInterface> users) -> bool {
+      bool currentUser = false;
+      for (AMDAIE::DoublyStridedOpInterface userOp : llvm::reverse(users)) {
+        if (isa<AMDAIE::NpuCircularDmaCpyNdOp>(userOp) &&
+            userOp != op.getOperation()) {
+          return true;
+        }
+        if (userOp == op.getOperation()) {
+          currentUser = true;
+          continue;
+        }
+        if (currentUser) return true;
+      }
+      return false;
+    };
+
     uint8_t sourceMemspaceInt;
     uint8_t targetMemspaceInt;
     if (auto npuDmaOp = dyn_cast<AMDAIE::NpuDmaCpyNdOp>(op.getOperation())) {
@@ -525,7 +543,17 @@ struct SubsumeLoopIntoDMA
         return rewriter.notifyMatchFailure(
             op, "should operate on an `amdaie.connection` op");
       }
-      if (hasUsersInSameScope(connectionOp.getResult())) {
+      // Walk the parentOp and get users of the connection op in order.
+      Value dma = npuCircularDmaOp.getConnection();
+      SmallVector<AMDAIE::DoublyStridedOpInterface> dmaUsers;
+      parentOp->walk([&](AMDAIE::DoublyStridedOpInterface op) {
+        auto connection = dyn_cast_if_present<AMDAIE::ConnectionOp>(
+            op->getOperand(0).getDefiningOp());
+        if (connection == npuCircularDmaOp.getConnectionOp()) {
+          dmaUsers.push_back(op);
+        }
+      });
+      if (circularUsersInSameScope(dma, dmaUsers)) {
         return rewriter.notifyMatchFailure(
             op,
             "Has users of same DMA in scope, analysis to check validity of "
