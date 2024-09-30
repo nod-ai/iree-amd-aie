@@ -174,7 +174,7 @@ jobs:
             bash build_tools/ci/run_matmul_test.sh \
               /c/test_matmuls \
               $PWD/iree-install \
-              $PWD/llvm-aie
+              $PWD/llvm-aie > /dev/null
           done
 
       - name : E2E comparison of AIE to llvm-cpu
@@ -186,7 +186,7 @@ jobs:
             python build_tools/ci/cpu_comparison/run.py \
               /c/test_aie_vs_cpu \
               $PWD/iree-install \
-              $PWD/llvm-aie -v
+              $PWD/llvm-aie -v > /dev/null
           done
 
       - name: Python tests
