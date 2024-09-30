@@ -251,6 +251,67 @@ LogicalResult processInputs(Operation *op, SmallVector<OpFoldResult> &offsets,
   return success();
 }
 
+LogicalResult packL3ToL2(IREE::LinalgExt::PackOp packOp,
+                         SmallVector<OpFoldResult> &offsets,
+                         SmallVector<OpFoldResult> &sizes,
+                         SmallVector<OpFoldResult> &strides) {
+  MLIRContext *ctx = packOp.getContext();
+
+  llvm::ArrayRef<int64_t> permutation = packOp.getOuterDimsPerm();
+  llvm::ArrayRef<int64_t> innerTiles = packOp.getStaticInnerTiles();
+
+  SmallVector<OpFoldResult> innerSizes;
+  SmallVector<OpFoldResult> innerStrides;
+  SmallVector<OpFoldResult> innerOffsets;
+  auto innerDimsPos = packOp.getInnerDimsPos();
+
+  int numOuterDims = sizes.size() - innerTiles.size();
+  SmallVector<OpFoldResult> outerOffsets = SmallVector<OpFoldResult>(
+      offsets.begin(), offsets.begin() + numOuterDims);
+  SmallVector<OpFoldResult> outerStrides = SmallVector<OpFoldResult>(
+      strides.begin(), strides.begin() + numOuterDims);
+  SmallVector<OpFoldResult> outerSizes =
+      SmallVector<OpFoldResult>(sizes.begin(), sizes.begin() + numOuterDims);
+
+  // Apply inverse permutation to the outer dims if permutation provided (if
+  // permutation not provided, it is identity, and therefore so is the inverse).
+  if (!permutation.empty()) {
+    SmallVector<int64_t> inversePermutation =
+        invertPermutationVector(permutation);
+    applyPermutationToVector(outerStrides, inversePermutation);
+    applyPermutationToVector(outerSizes, inversePermutation);
+    applyPermutationToVector(outerOffsets, inversePermutation);
+  }
+  // Do the unpacking on the Outer dims.
+  llvm::SmallDenseMap<int64_t, int64_t> outerDimsIndexMap;
+  // Intialize the indexing of each outer dim.
+  for (int i = 0; i < numOuterDims; i++) {
+    outerDimsIndexMap[i] = i;
+  }
+  for (int i = 0; i < innerTiles.size(); i++) {
+    // Insert inner dims adjacent to there corresponding outer dims.
+    outerSizes.insert(
+        outerSizes.begin() + outerDimsIndexMap[innerDimsPos[i]] + 1,
+        getAsIndexOpFoldResult(ctx, innerTiles[i]));
+    outerStrides.insert(
+        outerStrides.begin() + outerDimsIndexMap[innerDimsPos[i]] + 1,
+        strides[numOuterDims + i]);
+    outerOffsets.insert(
+        outerOffsets.begin() + outerDimsIndexMap[innerDimsPos[i]] + 1,
+        offsets[numOuterDims + i]);
+    // Update the map as all the dimensions inner to the innerDimsPos[i] are now
+    // shifted by 1.
+    for (int j = innerDimsPos[i] + 1; j < numOuterDims; j++) {
+      outerDimsIndexMap[j]++;
+    }
+  }
+  // Make the outer dims as the final returned dims
+  offsets = outerOffsets;
+  strides = outerStrides;
+  sizes = outerSizes;
+  return success();
+}
+
 /// Rewrite the pack/unpack op 'op' as a DMA operation. The function arguments
 /// 'input', 'output', and 'innerTiles' are the input, output, and inner tile
 /// of 'op'. If 'op' is not a pack/unpack op, or if it determined to not
@@ -283,16 +344,29 @@ LogicalResult rewriteAsDma(IRRewriter &rewriter, Operation *op, Value input,
     return failure();
   }
 
-  if (!succeeded(processInputs(op, srcOffsets, srcShape, srcBaseStrides))) {
-    return failure();
-  }
-
   // Prepare destination DMA inputs.
   SmallVector<OpFoldResult> dstOffsets;
   SmallVector<OpFoldResult> dstBaseStrides;
   SmallVector<OpFoldResult> dstShape;
   if (!succeeded(setDmaInputs(dstOp, dstOffsets, dstShape, dstBaseStrides))) {
     return failure();
+  }
+
+  uint32_t srcMemspace =
+      cast<MemRefType>(input.getType()).getMemorySpaceAsInt();
+  uint32_t dstMemspace =
+      cast<MemRefType>(output.getType()).getMemorySpaceAsInt();
+
+  if (auto packOp = dyn_cast<IREE::LinalgExt::PackOp>(op) && srcMemspace == 0 &&
+                    dstMemspace == 1) {
+    if (!succeeded(packL3ToL2(dyn_cast<IREE::LinalgExt::PackOp>(op), dstOffsets, dstShape,
+                              dstBaseStrides))) {
+      return failure();
+    }
+  } else {
+    if (!succeeded(processInputs(op, srcOffsets, srcShape, srcBaseStrides))) {
+      return failure();
+    }
   }
 
   // Create logical objectFifos from source and destination memrefs.
