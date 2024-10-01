@@ -35,12 +35,9 @@
 
 #define DEBUG_TYPE "aievec-canonicalization"
 
-using namespace mlir;
-using namespace arith;
-using namespace vector;
-using namespace mlir::iree_compiler::aievec;
-
 namespace mlir::iree_compiler::aievec {
+
+using namespace mlir;
 
 static bool isGemmBTransposedContractionOp(vector::ContractionOp op) {
   if (op.getKind() != vector::CombiningKind::ADD) return false;
@@ -178,10 +175,10 @@ VectorType getIntermediateType(Operation *elTypeChanger,
   assert(shapeChanger->getNumResults() == 1 && "require single result");
   Value inValue = elTypeChanger->getOperand(0);
   Value outValue = shapeChanger->getResult(0);
-  auto inType = inValue.getType();
-  auto inShapedType = dyn_cast<ShapedType>(inType);
+  Type inType = inValue.getType();
+  ShapedType inShapedType = dyn_cast<ShapedType>(inType);
   Type elType = inShapedType ? inShapedType.getElementType() : inType;
-  auto outType = dyn_cast<ShapedType>(outValue.getType());
+  ShapedType outType = dyn_cast<ShapedType>(outValue.getType());
   assert(outType && "require ShapedTypes");
   auto newType = VectorType::get(outType.getShape(), elType);
   return newType;
@@ -244,7 +241,7 @@ struct SwapUnaryOpsPattern : public OpRewritePattern<UnaryOpB> {
 /// (d0, d1) -> (d0)            // return {0}
 /// (d0, d1) -> (d1, d0)        // failure
 /// (d0, d1) -> (d0 + d1)       // failure
-FailureOr<SmallVector<int64_t>> getDimsOfNonPermutingMap(AffineMap perm) {
+FailureOr<SmallVector<int64_t>> getDimsOfIdentitySubsampleMap(AffineMap perm) {
   ArrayRef<AffineExpr> results = perm.getResults();
   uint64_t nResults = results.size();
   SmallVector<int64_t> dims;
@@ -309,7 +306,8 @@ struct ToMinorIdentityTransferWritePattern
     // Already in target form:
     if (perm.isMinorIdentity()) return failure();
 
-    FailureOr<SmallVector<int64_t>> maybeDims = getDimsOfNonPermutingMap(perm);
+    FailureOr<SmallVector<int64_t>> maybeDims =
+        getDimsOfIdentitySubsampleMap(perm);
     if (failed(maybeDims)) {
       return rewriter.notifyMatchFailure(
           writeOp, "cannot be expressed with a minor-identity permutation map");
@@ -371,15 +369,14 @@ struct ToMinorIdentityTransferReadPattern
 
   LogicalResult matchAndRewrite(vector::TransferReadOp readOp,
                                 PatternRewriter &rewriter) const override {
-    using namespace mlir::vector;
-
     AffineMap perm = readOp.getPermutationMap();
 
     // Already in target form:
     if (perm.isMinorIdentity()) return failure();
 
     // Cannot be converted into a minor identity map:
-    FailureOr<SmallVector<int64_t>> maybeDims = getDimsOfNonPermutingMap(perm);
+    FailureOr<SmallVector<int64_t>> maybeDims =
+        getDimsOfIdentitySubsampleMap(perm);
     if (failed(maybeDims)) return failure();
 
     MemRefType sourceType = cast<MemRefType>(readOp.getSource().getType());
@@ -389,15 +386,15 @@ struct ToMinorIdentityTransferReadPattern
 
     VectorType newVectorTy =
         VectorType::get(newShape, readOp.getVectorType().getElementType());
-    if (!isContiguousSlice(sourceType, newVectorTy)) return failure();
+    if (!vector::isContiguousSlice(sourceType, newVectorTy)) return failure();
 
-    auto newReadOp = rewriter.create<TransferReadOp>(
+    auto newReadOp = rewriter.create<vector::TransferReadOp>(
         readOp.getLoc(), newVectorTy, readOp.getSource(), readOp.getIndices());
 
     newReadOp.getProperties().setInBounds(
         rewriter.getBoolArrayAttr(newInBounds));
 
-    rewriter.replaceOpWithNewOp<ShapeCastOp>(
+    rewriter.replaceOpWithNewOp<vector::ShapeCastOp>(
         readOp, readOp.getVector().getType(), newReadOp);
     return success();
   }
