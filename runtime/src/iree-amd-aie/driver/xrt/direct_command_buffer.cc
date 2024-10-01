@@ -292,7 +292,6 @@ static iree_status_t iree_hal_xrt_direct_command_buffer_push_descriptor_set(
     IREE_RETURN_AND_END_ZONE_IF_ERROR(
         z0, iree_hal_resource_set_insert(command_buffer->resource_set, 1,
                                          &binding->buffer));
-    std::unique_ptr<xrt::bo> sub_buffer;
     current_bindings[i] = iree_hal_xrt_buffer_handle(
         iree_hal_buffer_allocated_buffer(binding->buffer));
     current_offsets[i] =

@@ -99,7 +99,8 @@ static iree_status_t iree_amd_aie_hal_xrt_native_executable_flatbuffer_verify(
 }
 
 iree_status_t iree_hal_xrt_native_executable_create(
-    xrt::device device, const iree_hal_executable_params_t* executable_params,
+    xrtDeviceHandle device_hdl,
+    const iree_hal_executable_params_t* executable_params,
     iree_allocator_t host_allocator, iree_hal_executable_t** out_executable) {
   IREE_ASSERT_ARGUMENT(executable_params);
   IREE_ASSERT_ARGUMENT(out_executable);
@@ -180,24 +181,27 @@ iree_status_t iree_hal_xrt_native_executable_create(
     // XRT API needs this vector and cant actually read a void*.
     std::vector<char> xclbinVector(
         xclbin_fb, xclbin_fb + flatbuffers_string_len(xclbin_fb));
+    xrt::xclbin xclbin;
     try {
-      params->xclbin = xrt::xclbin(xclbinVector);
+      xclbin = xrt::xclbin(xclbinVector);
     } catch (std::exception& e) {
       return iree_make_status(IREE_STATUS_INTERNAL, "XCLBIN load error: %s",
                               e.what());
     }
 
+    xrt::device device(xrtDeviceToXclDevice(device_hdl));
+    IREE_ASSERT(device, "failed to find device");
+
     try {
-      device.register_xclbin(params->xclbin);
+      device.register_xclbin(xclbin);
     } catch (std::exception& e) {
       return iree_make_status(IREE_STATUS_INTERNAL, "XCLBIN register error: %s",
                               e.what());
     }
 
     try {
-      params->context =
-          xrt::hw_context(device, params->xclbin.get_uuid(),
-                          xrt::hw_context::access_mode::exclusive);
+      params->context = xrt::hw_context(
+          device, xclbin.get_uuid(), xrt::hw_context::access_mode::exclusive);
     } catch (std::exception& e) {
       return iree_make_status(IREE_STATUS_INTERNAL,
                               "xrt::hw_context context: %s", e.what());

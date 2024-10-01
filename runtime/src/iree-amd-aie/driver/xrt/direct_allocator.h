@@ -17,7 +17,7 @@ extern "C" {
 
 // Creates an XRT memory allocator.
 iree_status_t iree_hal_xrt_allocator_create(
-    iree_hal_device_t* base_device, xrt::device device,
+    iree_hal_device_t* base_device, xrtDeviceHandle device_hdl,
     iree_allocator_t host_allocator, iree_hal_allocator_t** out_allocator);
 
 #ifdef __cplusplus

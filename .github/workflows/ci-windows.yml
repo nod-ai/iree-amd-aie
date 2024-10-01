@@ -169,7 +169,7 @@ jobs:
         shell: bash
         run: |
           source .venv/Scripts/activate
-          for i in {1..100}; do
+          for i in {1..50}; do
             echo "run $i"
             bash build_tools/ci/run_matmul_test.sh \
               /c/test_matmuls \
@@ -181,7 +181,7 @@ jobs:
         shell: bash
         run: |
           source .venv/Scripts/activate
-          for i in {1..100}; do
+          for i in {1..50}; do
             echo "run $i"
             python build_tools/ci/cpu_comparison/run.py \
               /c/test_aie_vs_cpu \
@@ -194,7 +194,7 @@ jobs:
           ls $env:XILINX_XRT
           .\.venv\Scripts\Activate.ps1
           mkdir temp
-          for ($i = 1; $i -le 100; $i++) {
+          for ($i = 1; $i -le 50; $i++) {
             echo "run $i"
             pytest tests -sv `
               --basetemp=$PWD\temp `

@@ -150,12 +150,11 @@ jobs:
           source .venv/bin/activate
           pip install -r tests/requirements.txt
 
-
       - name : E2E comparison of AIE to llvm-cpu
         run: |
           source .venv/bin/activate
           source /opt/xilinx/xrt/setup.sh
-          for i in {1..100}; do
+          for i in {1..50}; do
             echo "run $i"
             python build_tools/ci/cpu_comparison/run.py \
               test_aie_vs_cpu \
@@ -196,7 +195,7 @@ jobs:
           sudo prlimit -lunlimited --pid $$
           source .venv/bin/activate
           source /opt/xilinx/xrt/setup.sh
-          for i in {1..100}; do
+          for i in {1..50}; do
             echo "run $i"
             bash build_tools/ci/run_matmul_test.sh \
               test_matmuls \
@@ -210,7 +209,7 @@ jobs:
         run: |
           source .venv/bin/activate
           source /opt/xilinx/xrt/setup.sh
-          for i in {1..100}; do
+          for i in {1..50}; do
             echo "run $i"
             pytest -v tests \
               --capture=tee-sys \

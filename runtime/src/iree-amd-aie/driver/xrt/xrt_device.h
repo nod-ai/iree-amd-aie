@@ -21,8 +21,7 @@ extern "C" {
 // |out_device| must be released by the caller (see iree_hal_device_release).
 iree_status_t iree_hal_xrt_device_create(
     iree_string_view_t identifier, const iree_hal_xrt_device_params_t* params,
-    xrt::device device, iree_allocator_t host_allocator,
-    iree_hal_device_t** out_device);
+    iree_allocator_t host_allocator, iree_hal_device_t** out_device);
 
 #ifdef __cplusplus
 }  // extern "C"

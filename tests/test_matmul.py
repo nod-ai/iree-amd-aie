@@ -11,7 +11,7 @@ from .conftest import invokable_module, mlir_type_to_np_dtype, ids
 
 
 @pytest.mark.parametrize("target_backend", ["amd-aie"])
-def test_smol_matmul(session_module, target_backend):
+def test_smol_matmul(session_module, target_backend, device):
     session, module = session_module
 
     @func(T.tensor(32, 16, T.i8()), T.tensor(16, 32, T.i8()))
@@ -23,7 +23,7 @@ def test_smol_matmul(session_module, target_backend):
 
     arg0 = np.ones((32, 16), dtype=np.int8)
     arg1 = np.ones((16, 32), dtype=np.int8)
-    with invokable_module(session, module) as module:
+    with invokable_module(session, module, device) as module:
         results = module[matmul_i8_i32.__name__](arg0, arg1).to_host()
         assert np.array_equal(results, arg0 @ arg1)
 
@@ -98,7 +98,6 @@ small_i32_shapes = [
     (128, 256, 128),
 ]
 
-
 small_i8_shapes_small = [
     (64, 64, 64),
     (128, 256, 128),
@@ -136,6 +135,7 @@ def test_matmul(
     lower_to_aie_pipeline,
     tile_pipeline,
     num_repeat_runs,
+    device,
 ):
     session, module = session_module
 
@@ -146,8 +146,9 @@ def test_matmul(
     acc_type = mlir_type_to_np_dtype(acc_type)
     arg0 = np.ones((M, K), dtype=lhs_rhs_type)
     arg1 = np.ones((K, N), dtype=lhs_rhs_type)
-    with invokable_module(session, module) as module:
+    with invokable_module(session, module, device) as module:
         for i in range(num_repeat_runs):
+            print(f"{matmul_name} run {i}")
             results = module[matmul_name](arg0, arg1).to_host()
             assert np.array_equal(
                 results, (arg0.astype(acc_type) @ arg1.astype(acc_type))

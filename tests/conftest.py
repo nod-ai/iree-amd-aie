@@ -1,18 +1,16 @@
-import os
 from contextlib import contextmanager
 from pathlib import Path
 
 import numpy as np
 import pytest
-from iree.runtime import VmModule
+from ml_dtypes import bfloat16
 
 from iree.compiler import ir
 from iree.compiler._mlir_libs import get_dialect_registry
 from iree.compiler.api import Session, Output, Source
 from iree.compiler.extras import types as T
-from ml_dtypes import bfloat16
+from iree.runtime import VmModule
 from iree.runtime import get_driver, Config, SystemContext
-
 
 for t in [
     "i8",
@@ -99,8 +97,13 @@ def session_module(iree_session, tmp_path) -> ir.Module:
             yield iree_session, module_op
 
 
+@pytest.fixture(scope="session")
+def device(device="xrt") -> ir.Module:
+    yield get_driver(device).create_default_device()
+
+
 @contextmanager
-def invokable_module(session, module, device="xrt") -> VmModule:
+def invokable_module(session, module, device) -> VmModule:
     source = Source.wrap_buffer(session, str(module).encode())
     inv = session.invocation()
     inv.parse_source(source)
@@ -108,8 +111,7 @@ def invokable_module(session, module, device="xrt") -> VmModule:
     compiled_flatbuffer = Output.open_membuffer()
     inv.output_vm_bytecode(compiled_flatbuffer)
 
-    driver = get_driver(device)
-    config = Config(device=driver.create_default_device())
+    config = Config(device=device)
     ctx = SystemContext(config=config)
     vm_module = VmModule.copy_buffer(ctx.instance, compiled_flatbuffer.map_memory())
     ctx.add_vm_module(vm_module)
