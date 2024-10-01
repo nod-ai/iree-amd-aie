@@ -144,11 +144,10 @@ def test_matmul(
 
     lhs_rhs_type = mlir_type_to_np_dtype(lhs_rhs_type)
     acc_type = mlir_type_to_np_dtype(acc_type)
-    arg0 = np.ones((M, K), dtype=lhs_rhs_type)
-    arg1 = np.ones((K, N), dtype=lhs_rhs_type)
+    arg0 = np.random.randint(-1, 1, (M, K), dtype=lhs_rhs_type)
+    arg1 = np.random.randint(-1, 1, (K, N), dtype=lhs_rhs_type)
     with invokable_module(session, module, device) as module:
         for i in range(num_repeat_runs):
-            print(f"{matmul_name} run {i}")
             results = module[matmul_name](arg0, arg1).to_host()
             assert np.array_equal(
                 results, (arg0.astype(acc_type) @ arg1.astype(acc_type))
