@@ -654,6 +654,7 @@ run_matmul_test_on_shapes ${i32_shapes_small[@]} \
 i32_shapes_medium=(
   '1024x1024x1024'
 )
+# TODO(jornt): re-enable `1536x2048x1536`
 #if [ "$OSTYPE" != "msys" ]; then
 #  i32_shapes_medium+=('1536x2048x1536')
 #fi
