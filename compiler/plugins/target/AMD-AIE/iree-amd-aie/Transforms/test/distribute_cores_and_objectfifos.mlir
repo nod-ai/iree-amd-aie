@@ -680,8 +680,8 @@ func.func @l1_temporary_buffer_for_matmul_elem() {
 
 // -----
 
-// A case where an L1 memory is not distributable. Note: this form arises with a 
-// pad-based tiling strategy. 
+// A case where an L1 memory is not distributable. Note: this form arises with a
+// pad-based tiling strategy.
 // CHECK-LABEL: @not_distributable
 // CHECK: memref.alloc() : memref<2x2x100xbf16, 2>
 // CHECK: memref.subview
@@ -1038,6 +1038,48 @@ module {
     memref.dealloc %alloc_1 : memref<1x2x32x32xi32, 1 : i32>
     memref.dealloc %alloc_0 : memref<1x1x4x8x4x8xi32, 2 : i32>
     memref.dealloc %alloc : memref<1x1x8x4x8x4xi32, 2 : i32>
+    return
+  }
+}
+
+// -----
+
+// Testing fix where linalg.generic has a mix of subview and direct alloc operands.
+// Before fix, this results in 'error: operand #0 does not dominate this use'.
+
+
+// CHECK-LABEL: mixed_alloc_subview_operands
+// CHECK: amdaie.core
+// CHECK-DAG: %[[ACCESS_0:.*]] = amdaie.logicalobjectfifo.access{{.*}} -> memref<1x1x4x1x4xi32, 2 : i32>
+// CHECK-DAG: %[[ACCESS_1:.*]] = amdaie.logicalobjectfifo.access{{.*}} -> memref<4x4xi32, 2 : i32>
+// CHECK-DAG: %[[SUBVIEW:.*]] = memref.subview %[[ACCESS_0]]
+// CHECK: linalg.generic
+// CHECK-SAME: ins(%[[ACCESS_1]] : memref<4x4xi32, 2 : i32>) outs(%[[SUBVIEW:.*]] : memref<4x4xi32, strided<[4, 1]>, 2 : i32>) {
+
+#map = affine_map<(d0, d1) -> (d0, d1)>
+#translation = #iree_codegen.translation_info<Custom>
+module {
+  func.func @mixed_alloc_subview_operands() attributes {translation_info = #translation} {
+    %c2 = arith.constant 2 : index
+    %c0_i32 = arith.constant 0 : i32
+    %alloc = memref.alloc() : memref<4x4xi32, 2 : i32>
+    %alloc_0 = memref.alloc() : memref<1x1x4x1x4xi32, 2 : i32>
+    %alloc_1 = memref.alloc() : memref<1x1x4x4xi32, 1 : i32>
+    %0 = amdaie.logicalobjectfifo.from_memref %alloc_1, {} : memref<1x1x4x4xi32, 1 : i32> -> !amdaie.logicalobjectfifo<memref<1x1x4x4xi32, 1 : i32>>
+    %1 = amdaie.logicalobjectfifo.from_memref %alloc_0, {} : memref<1x1x4x1x4xi32, 2 : i32> -> !amdaie.logicalobjectfifo<memref<1x1x4x1x4xi32, 2 : i32>>
+    scf.forall (%arg0, %arg1, %arg2, %arg3) in (1, 1, 1, 1) {
+      %2 = amdaie.dma_cpy_nd(%0[0, 0, 0, 0] [1, 1, 4, 4] [16, 16, 4, 1], %1[0, 0, 0, 0, 0] [1, 1, 4, 1, 4] [16, 16, 4, 4, 1]) : (!amdaie.logicalobjectfifo<memref<1x1x4x4xi32, 1 : i32>>, !amdaie.logicalobjectfifo<memref<1x1x4x1x4xi32, 2 : i32>>)
+      %tile = amdaie.tile(%arg1, %c2)
+      %3 = amdaie.core(%tile, in : [], out : [%2]) {
+        linalg.fill ins(%c0_i32 : i32) outs(%alloc_0 : memref<1x1x4x1x4xi32, 2 : i32>)
+        %subview = memref.subview %alloc_0[0, 0, 0, 0, 0] [1, 1, 4, 1, 4] [1, 1, 1, 1, 1] : memref<1x1x4x1x4xi32, 2 : i32> to memref<4x4xi32, strided<[4, 1]>, 2 : i32>
+        linalg.generic {indexing_maps = [#map, #map], iterator_types = ["parallel", "parallel"]} ins(%alloc : memref<4x4xi32, 2 : i32>) outs(%subview : memref<4x4xi32, strided<[4, 1]>, 2 : i32>) {
+        ^bb0(%in: i32, %out: i32):
+          linalg.yield %in : i32
+        }
+        amdaie.end
+      }
+    } {mapping = [#gpu.thread<y>, #gpu.thread<x>, #gpu.thread<z>, #gpu.thread<linear_dim_0>]}
     return
   }
 }
