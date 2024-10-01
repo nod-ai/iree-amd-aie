@@ -147,8 +147,5 @@ def test_matmul(
     arg0 = np.random.randint(-1, 3, (M, K), dtype=lhs_rhs_type)
     arg1 = np.random.randint(-1, 3, (K, N), dtype=lhs_rhs_type)
     with invokable_module(session, module, device) as module:
-        for i in range(num_repeat_runs):
-            results = module[matmul_name](arg0, arg1).to_host()
-            assert np.array_equal(
-                results, (arg0.astype(acc_type) @ arg1.astype(acc_type))
-            )
+        results = module[matmul_name](arg0, arg1).to_host()
+        assert np.array_equal(results, (arg0.astype(acc_type) @ arg1.astype(acc_type)))

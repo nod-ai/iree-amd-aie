@@ -142,6 +142,8 @@ def generate_aie_vmfb(
         f"--iree-amd-aie-vitis-install-dir={config.vitis_dir}",
         f"--iree-hal-dump-executable-files-to={config.output_dir}",
         "--iree-scheduling-optimize-bindings=false",
+        "--iree-hal-memoization=false",
+        "--iree-hal-indirect-command-buffers=false",
         f"--mlir-disable-threading",
         "--mlir-elide-resource-strings-if-larger=10",
     ]
