@@ -71,6 +71,8 @@ struct SwitchboxConnect {
   std::vector<std::vector<int>> usedCapacity;
   // how many packet streams are actually using this Channel
   std::vector<std::vector<int>> packetFlowCount;
+  // only sharing the channel with the same packet group id
+  std::vector<std::vector<int>> packetGroupId;
 
   // resize the matrices to the size of srcPorts and dstPorts
   void resize() {
@@ -82,6 +84,7 @@ struct SwitchboxConnect {
     usedCapacity.resize(srcPorts.size(), std::vector<int>(dstPorts.size(), 0));
     packetFlowCount.resize(srcPorts.size(),
                            std::vector<int>(dstPorts.size(), 0));
+    packetGroupId.resize(srcPorts.size(), std::vector<int>(dstPorts.size(), 0));
   }
 
   // update demand at the beginning of each dijkstraShortestPaths iteration
@@ -106,7 +109,7 @@ struct SwitchboxConnect {
 };
 
 struct Flow {
-  bool isPacketFlow;
+  int packetGroupId;
   PathEndPoint src;
   std::vector<PathEndPoint> dsts;
 };
@@ -245,16 +248,43 @@ void Router::initialize(int maxCol, int maxRow,
 void Router::addFlow(TileLoc srcCoords, Port srcPort, TileLoc dstCoords,
                      Port dstPort, bool isPacketFlow) {
   // check if a flow with this source already exists
-  for (auto &[isPkt, src, dsts] : impl->flows) {
+  for (auto &[_, src, dsts] : impl->flows) {
     if (src.tileLoc == srcCoords && src.port == srcPort) {
       dsts.emplace_back(PathEndPoint{dstCoords, dstPort});
       return;
     }
   }
 
+  // Assign a group ID for packet flows
+  // any overlapping in source/destination will lead to the same group ID
+  // channel sharing will happen within the same group ID
+  // for circuit flows, group ID is always -1, and no channel sharing
+  int packetGroupId = -1;
+  if (isPacketFlow) {
+    bool found = false;
+    for (auto &[existingId, src, dsts] : impl->flows) {
+      if (src.tileLoc == srcCoords && src.port == srcPort) {
+        packetGroupId = existingId;
+        found = true;
+        break;
+      }
+      for (auto &dst : dsts) {
+        if (dst.tileLoc == dstCoords && dst.port == dstPort) {
+          packetGroupId = existingId;
+          found = true;
+          break;
+        }
+      }
+      packetGroupId = std::max(packetGroupId, existingId);
+    }
+    if (!found) {
+      packetGroupId++;
+    }
+  }
+
   // If no existing flow was found with this source, create a new flow.
   impl->flows.push_back(
-      Flow{isPacketFlow, PathEndPoint{srcCoords, srcPort},
+      Flow{packetGroupId, PathEndPoint{srcCoords, srcPort},
            std::vector<PathEndPoint>{PathEndPoint{dstCoords, dstPort}}});
 }
 
@@ -394,6 +424,12 @@ std::optional<std::map<PathEndPoint, SwitchSettings>> Router::findPaths(
     }
   }
 
+  // group flows based on packetGroupId
+  std::map<int, std::vector<Flow>> groupedFlows;
+  for (auto &f : impl->flows) {
+    groupedFlows[f.packetGroupId].push_back(f);
+  }
+
   int iterationCount = -1;
   int illegalEdges = 0;
   int totalPathLength = 0;
@@ -423,79 +459,94 @@ std::optional<std::map<PathEndPoint, SwitchSettings>> Router::findPaths(
         for (size_t j = 0; j < sb.dstPorts.size(); j++) {
           sb.usedCapacity[i][j] = 0;
           sb.packetFlowCount[i][j] = 0;
+          sb.packetGroupId[i][j] = -1;
         }
       }
     }
 
-    // for each flow, find the shortest path from source to destination
-    // update used_capacity for the path between them
-    for (const auto &[isPkt, src, dsts] : impl->flows) {
-      // Use dijkstra to find path given current demand from the start
-      // switchbox; find the shortest paths to each other switchbox. Output is
-      // in the predecessor map, which must then be processed to get
-      // individual switchbox settings
-      std::set<PathEndPoint> processed;
-      std::map<PathEndPoint, PathEndPoint> preds = dijkstraShortestPaths(src);
+    for (const auto &[_, flows] : groupedFlows) {
+      for (const auto &[packetGroupId, src, dsts] : flows) {
+        // Use dijkstra to find path given current demand from the start
+        // switchbox; find the shortest paths to each other switchbox. Output is
+        // in the predecessor map, which must then be processed to get
+        // individual switchbox settings
+        std::set<PathEndPoint> processed;
+        std::map<PathEndPoint, PathEndPoint> preds = dijkstraShortestPaths(src);
 
-      // trace the path of the flow backwards via predecessors
-      // increment used_capacity for the associated channels
-      SwitchSettings switchSettings;
-      processed.insert(src);
-      for (auto endPoint : dsts) {
-        if (endPoint == src) {
-          // route to self
-          switchSettings[src.tileLoc].srcs.push_back(src.port);
-          switchSettings[src.tileLoc].dsts.push_back(src.port);
+        // trace the path of the flow backwards via predecessors
+        // increment used_capacity for the associated channels
+        SwitchSettings switchSettings;
+        processed.insert(src);
+        for (auto endPoint : dsts) {
+          if (endPoint == src) {
+            // route to self
+            switchSettings[src.tileLoc].srcs.push_back(src.port);
+            switchSettings[src.tileLoc].dsts.push_back(src.port);
+          }
+          auto curr = endPoint;
+          // trace backwards until a vertex already processed is reached
+          while (!processed.count(curr)) {
+            auto &sb = impl->graph[std::make_pair(preds[curr].tileLoc, curr.tileLoc)];
+            size_t i =
+                std::distance(sb.srcPorts.begin(),
+                              std::find(sb.srcPorts.begin(), sb.srcPorts.end(),
+                                        preds[curr].port));
+            size_t j = std::distance(
+                sb.dstPorts.begin(),
+                std::find(sb.dstPorts.begin(), sb.dstPorts.end(), curr.port));
+            assert(i < sb.srcPorts.size());
+            assert(j < sb.dstPorts.size());
+            if (packetGroupId >= 0 &&
+                (sb.packetGroupId[i][j] == -1 ||
+                 sb.packetGroupId[i][j] == packetGroupId)) {
+              for (size_t k = 0; k < sb.srcPorts.size(); k++) {
+                for (size_t l = 0; l < sb.dstPorts.size(); l++) {
+                  if (k == i || l == j) {
+                    sb.packetGroupId[k][l] = packetGroupId;
+                  }
+                }
+              }
+              sb.packetFlowCount[i][j]++;
+              // maximum packet stream sharing per channel
+              if (sb.packetFlowCount[i][j] >= MAX_PACKET_STREAM_CAPACITY) {
+                sb.packetFlowCount[i][j] = 0;
+                sb.usedCapacity[i][j]++;
+              }
+            } else {
+              sb.usedCapacity[i][j]++;
+            }
+            // if at capacity, bump demand to discourage using this Channel
+            // this means the order matters!
+            sb.bumpDemand(i, j);
+            if (preds[curr].tileLoc == curr.tileLoc) {
+              switchSettings[preds[curr].tileLoc].srcs.push_back(
+                  preds[curr].port);
+              switchSettings[curr.tileLoc].dsts.push_back(curr.port);
+            }
+            processed.insert(curr);
+            curr = preds[curr];
+          }
         }
-        auto curr = endPoint;
-        // trace backwards until a vertex already processed is reached
-        while (!processed.count(curr)) {
-          auto &sb =
-              impl->graph[std::make_pair(preds[curr].tileLoc, curr.tileLoc)];
-          size_t i =
-              std::distance(sb.srcPorts.begin(),
-                            std::find(sb.srcPorts.begin(), sb.srcPorts.end(),
-                                      preds[curr].port));
-          size_t j = std::distance(
-              sb.dstPorts.begin(),
-              std::find(sb.dstPorts.begin(), sb.dstPorts.end(), curr.port));
-          assert(i < sb.srcPorts.size());
-          assert(j < sb.dstPorts.size());
-          if (isPkt) {
-            sb.packetFlowCount[i][j]++;
-            // maximum packet stream per channel
-            if (sb.packetFlowCount[i][j] >= MAX_PACKET_STREAM_CAPACITY) {
+        // add this flow to the proposed solution
+        routingSolution[src] = switchSettings;
+      }
+      for (auto &[_, sb] : impl->graph) {
+        for (size_t i = 0; i < sb.srcPorts.size(); i++) {
+          for (size_t j = 0; j < sb.dstPorts.size(); j++) {
+            // fix used capacity for packet flows
+            if (sb.packetFlowCount[i][j] > 0) {
               sb.packetFlowCount[i][j] = 0;
               sb.usedCapacity[i][j]++;
             }
-          } else {
-            sb.packetFlowCount[i][j] = 0;
-            sb.usedCapacity[i][j]++;
+            sb.bumpDemand(i, j);
           }
-          // if at capacity, bump demand to discourage using this Channel
-          // this means the order matters!
-          sb.bumpDemand(i, j);
-          if (preds[curr].tileLoc == curr.tileLoc) {
-            switchSettings[preds[curr].tileLoc].srcs.push_back(
-                preds[curr].port);
-            switchSettings[curr.tileLoc].dsts.push_back(curr.port);
-          }
-          processed.insert(curr);
-          curr = preds[curr];
         }
       }
-      // add this flow to the proposed solution
-      routingSolution[src] = switchSettings;
     }
 
     for (auto &[_, sb] : impl->graph) {
       for (size_t i = 0; i < sb.srcPorts.size(); i++) {
         for (size_t j = 0; j < sb.dstPorts.size(); j++) {
-          // fix used capacity for packet flows
-          if (sb.packetFlowCount[i][j] > 0) {
-            sb.packetFlowCount[i][j] = 0;
-            sb.usedCapacity[i][j]++;
-          }
           // check that every channel does not exceed max capacity
           if (sb.usedCapacity[i][j] > MAX_CIRCUIT_STREAM_CAPACITY) {
             sb.overCapacity[i][j]++;
