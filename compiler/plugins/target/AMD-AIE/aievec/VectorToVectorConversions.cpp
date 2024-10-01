@@ -11,32 +11,33 @@
 // it compatible with the available vector instructions in AIE architectures
 //===----------------------------------------------------------------------===//
 
-#include <algorithm>
 #include <memory>
 
-#include "AIEVecUtils.h"
 #include "Passes.h"
+#include "llvm/ADT/STLExtras.h"
 #include "mlir/Conversion/AffineToStandard/AffineToStandard.h"
 #include "mlir/Dialect/Affine/Analysis/LoopAnalysis.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/Utils/ReshapeOpsUtils.h"
+#include "mlir/Dialect/Vector/IR/VectorOps.h"
 #include "mlir/Dialect/Vector/Transforms/LoweringPatterns.h"
+#include "mlir/Dialect/Vector/Transforms/VectorRewritePatterns.h"
+#include "mlir/Dialect/Vector/Utils/VectorUtils.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+#include "mlir/Transforms/Passes.h"
 
 #define DEBUG_TYPE "aievec-canonicalization"
 
-using namespace mlir;
-using namespace arith;
-using namespace vector;
-using namespace mlir::iree_compiler::aievec;
-
 namespace mlir::iree_compiler::aievec {
+
+using namespace mlir;
 
 static bool isGemmBTransposedContractionOp(vector::ContractionOp op) {
   if (op.getKind() != vector::CombiningKind::ADD) return false;
@@ -84,7 +85,6 @@ static bool isGemmBTransposedContractionOp(vector::ContractionOp op) {
          innerRhsMap == mmBidxMap.shiftDims(numOuterMostDims) &&
          innerAccMap == mmCidxMap.shiftDims(numOuterMostDims);
 }
-
 
 // This pattern converts a `vector.transfer_read` with a splat permutation map
 // into a contiguous `vector.transfer_read` followed by a `vector.extract` to
@@ -155,6 +155,35 @@ struct ConvertSplatTransferReadToBroadcastPattern
   }
 };
 
+/// Given:
+/// ```
+/// %1 = elTypeChanger %0
+/// %2 = shapeChanger %1
+/// ```
+///
+/// Where 'elTypeChanger' changes the element type, and 'shapeChanger' changes
+/// the shape, suppose we wanted to rewrite this as:
+/// ```
+/// %1 = shapeChanger %0
+/// %2 = elTypeChanger %1
+/// ```
+///
+/// What would the type of %1 be? That is what this function computes.
+VectorType getIntermediateType(Operation *elTypeChanger,
+                               Operation *shapeChanger) {
+  assert(elTypeChanger->getNumOperands() == 1 && "require single operand");
+  assert(shapeChanger->getNumResults() == 1 && "require single result");
+  Value inValue = elTypeChanger->getOperand(0);
+  Value outValue = shapeChanger->getResult(0);
+  Type inType = inValue.getType();
+  ShapedType inShapedType = dyn_cast<ShapedType>(inType);
+  Type elType = inShapedType ? inShapedType.getElementType() : inType;
+  ShapedType outType = dyn_cast<ShapedType>(outValue.getType());
+  assert(outType && "require ShapedTypes");
+  auto newType = VectorType::get(outType.getShape(), elType);
+  return newType;
+}
+
 // This pattern swaps a UnaryOpA followed by UnaryOpB. This pattern can be used
 // to improve pattern matching for mixed-type arithmetic ops, by getting sign
 // extension ops closer to the single-type arithmetic operations.
@@ -168,6 +197,13 @@ struct SwapUnaryOpsPattern : public OpRewritePattern<UnaryOpB> {
 
   SwapUnaryOpsPattern(MLIRContext *context, InferTypeB2AFnTy inferType)
       : OpRewritePattern<UnaryOpB>(context), inferTypeB2A(inferType) {}
+
+  /// Construct with the default InferTypeB2AFnTy function.
+  SwapUnaryOpsPattern(MLIRContext *context)
+      : OpRewritePattern<UnaryOpB>(context),
+        inferTypeB2A([](UnaryOpA aOp, UnaryOpB bOp) -> Type {
+          return getIntermediateType(aOp, bOp);
+        }) {}
 
   LogicalResult matchAndRewrite(UnaryOpB bOp,
                                 PatternRewriter &rewriter) const override {
@@ -196,153 +232,170 @@ struct SwapUnaryOpsPattern : public OpRewritePattern<UnaryOpB> {
   }
 };
 
-static SmallVector<Value> collapseInnerMostDimIndices(PatternRewriter &b,
-                                                      Location loc, int numDims,
-                                                      ValueRange indices,
-                                                      ArrayRef<int64_t> shape,
-                                                      AffineMap layout) {
-  // TODO: Don't assume trivial layout
-  assert(layout.isMinorIdentity() &&
-         "dimension collapse in non-identity layout is not implemented");
-  auto newIdxExpr = b.getAffineDimExpr(numDims - 1);
-  int64_t stride = 1;
-  for (int64_t dim = numDims - 2; dim >= 0; dim--) {
-    stride *= shape[shape.size() - (numDims - dim - 1)];
-    newIdxExpr = newIdxExpr + b.getAffineDimExpr(dim) * stride;
+/// AffineMaps which are 'generalized' minor identities, where the results just
+/// need to be in ascending order. Examples:
+///
+/// (d0, d1, d2) -> (d0, d2)    // return {0,2}
+/// (d0, d1) -> (d0, d1)        // return {0,1}
+/// (d0, d1) -> (d1)            // return {1}
+/// (d0, d1) -> (d0)            // return {0}
+/// (d0, d1) -> (d1, d0)        // failure
+/// (d0, d1) -> (d0 + d1)       // failure
+FailureOr<SmallVector<int64_t>> getDimsOfIdentitySubsampleMap(AffineMap perm) {
+  ArrayRef<AffineExpr> results = perm.getResults();
+  uint64_t nResults = results.size();
+  SmallVector<int64_t> dims;
+  for (uint64_t i = 0; i < nResults; ++i) {
+    if (!isa<AffineDimExpr>(results[i])) return failure();
+    auto nxtDim = cast<AffineDimExpr>(results[i]).getPosition();
+    if (!dims.empty() && (nxtDim <= dims.back())) return failure();
+    dims.push_back(nxtDim);
   }
-  auto newIndexMap = AffineMap::get(numDims, 0, newIdxExpr);
-  Value newInnerMostIdxValue =
-      b.create<affine::AffineApplyOp>(loc, newIndexMap,
-                                      indices.take_back(numDims))
-          .getResult();
-  SmallVector<Value> newIdxRange;
-  for (auto idx : indices.drop_back(numDims)) newIdxRange.push_back(idx);
-  newIdxRange.push_back(newInnerMostIdxValue);
-  return newIdxRange;
+  return dims;
 }
 
-static Value collapseInnerMostShapeDims(PatternRewriter &b, Location loc,
-                                        int numDims, Value val) {
-  auto memRefTy = cast<MemRefType>(val.getType());
-  auto shape = memRefTy.getShape();
-  int64_t newInnerMostDim = std::accumulate(shape.end() - numDims, shape.end(),
-                                            1, std::multiplies<>());
-  SmallVector<int64_t, 4> newShape{shape.begin(), shape.end() - numDims + 1};
-  newShape[shape.size() - numDims] = newInnerMostDim;
-  auto newNumDims = newShape.size();
-  auto ctx = b.getContext();
-  auto newMemRefTy = MemRefType::get(
-      newShape, memRefTy.getElementType(),
-      AffineMap::getMinorIdentityMap(newNumDims, newNumDims, ctx),
-      memRefTy.getMemorySpace());
-  auto reassocIndices =
-      getReassociationIndicesForCollapse(shape, newShape).value();
-  return b
-      .create<memref::CollapseShapeOp>(loc, newMemRefTy, val, reassocIndices)
-      .getResult();
+template <typename TransferOp>
+std::tuple<SmallVector<int64_t>, SmallVector<bool>>
+getUnsqueezedShapeAndInBounds(uint64_t inputRank,
+                              SmallVector<int64_t> oldDimensions,
+                              PatternRewriter &rewriter, TransferOp op) {
+  uint64_t newRank = inputRank - oldDimensions[0];
+  SmallVector<int64_t> newShape(newRank, 1);
+  SmallVector<bool> newInBounds(newRank, true);
+  SmallVector<bool> oldInBounds = op.getInBoundsValues();
+  ArrayRef<int64_t> oldShape = op.getVectorType().getShape();
+  for (auto iter : enumerate(oldDimensions)) {
+    uint64_t oldIndex = iter.index();
+    uint64_t newIndex = iter.value() - oldDimensions[0];
+    assert(oldIndex <= newIndex);
+    newInBounds[newIndex] = oldInBounds[oldIndex];
+    newShape[newIndex] = oldShape[oldIndex];
+  }
+  return {newShape, newInBounds};
 }
 
-// This pattern flattens multidimensional `vector.transfer_read` operations
-// replacing them with a `memref.collapse_shape`, a 1D `vector.transfer_read`,
-// and a `vector.shape_cast`.
-struct FlattenMultDimTransferReadPattern
-    : public OpRewritePattern<vector::TransferReadOp> {
-  using OpRewritePattern<vector::TransferReadOp>::OpRewritePattern;
-
-  LogicalResult matchAndRewrite(vector::TransferReadOp readOp,
-                                PatternRewriter &rewriter) const override {
-    // We can only deal with unmasked transfer ops with an identity permutation
-    // map.
-    if (!readOp.getPermutationMap().isMinorIdentity() || readOp.getMask())
-      return failure();
-    VectorType vectorTy = readOp.getVector().getType();
-    if (vectorTy.getRank() < 2) return failure();
-    // Work only on bufferized reads
-    MemRefType memRefTy = dyn_cast<MemRefType>(readOp.getSource().getType());
-    if (!memRefTy) return failure();
-    auto memRefShape = memRefTy.getShape();
-    auto vecShape = vectorTy.getShape();
-
-    auto newVectorTy =
-        VectorType::get({std::accumulate(vecShape.begin(), vecShape.end(), 1,
-                                         std::multiplies<>())},
-                        vectorTy.getElementType());
-    AffineMap layout = memRefTy.getLayout().getAffineMap();
-    auto newIndices =
-        collapseInnerMostDimIndices(rewriter, readOp.getLoc(), vecShape.size(),
-                                    readOp.getIndices(), memRefShape, layout);
-    auto newSource = collapseInnerMostShapeDims(
-        rewriter, readOp.getLoc(), vecShape.size(), readOp.getSource());
-    auto newVector = rewriter.create<vector::TransferReadOp>(
-        readOp.getLoc(), newVectorTy, newSource, newIndices);
-
-    auto inBoundsArrayAttrOpt = readOp.getInBounds();
-    if (inBoundsArrayAttrOpt) {
-      SmallVector<bool> inBounds =
-          llvm::to_vector(inBoundsArrayAttrOpt.getAsValueRange<BoolAttr>());
-      SmallVector<bool> newInBounds({false});
-      newInBounds[0] = std::all_of(inBounds.begin(), inBounds.end(),
-                                   [](bool v) { return v; });
-      newVector.getProperties().setInBounds(
-          rewriter.getBoolArrayAttr(newInBounds));
-    }
-
-    rewriter.replaceOpWithNewOp<vector::ShapeCastOp>(readOp, vectorTy,
-                                                     newVector);
-
-    return success();
-  }
-};
-
-// This pattern flatten multidimensional `vector.transfer_write` operations
-// replacing them with a `memref.collapse_shape`, a `vector.shape_cast`, and a
-// 1D `vector.transfer_write`,
-struct FlattenMultDimTransferWritePattern
+/// This pattern rewrites a `vector.transfer_write` with a non minor identity
+/// permutation map, with a minor-identity permutation map, if possible. For
+/// example,
+///
+/// ```
+/// #map = affine_map<(d0, d1, d2, d3) -> (d1, d3)>
+/// vector.transfer_write %v1, %alloc[%c0, %c0, %c0, %c0]
+///    {permutation_map = #map} : vector<4x8xi8>, memref<2x4x1x8xi8>
+/// ```
+///
+/// is rewritten as
+/// ```
+/// #map = affine_map<(d0, d1, d2, d3) -> (d1, d2, d3)>
+/// vector.transfer_write %v2, %alloc[%c0, %c0, %c0, %c0]
+///    {permutation_map = #map} : vector<4x1x8xi8>, memref<2x4x1x8xi8>
+/// ```
+///
+/// with the new vector `v2` being a `vector.shape_cast` of `v1`.
+///
+/// This allows other upstream patterns to work on the transfer op, as they
+/// expect minor-identity permutation maps.
+struct ToMinorIdentityTransferWritePattern
     : public OpRewritePattern<vector::TransferWriteOp> {
   using OpRewritePattern<vector::TransferWriteOp>::OpRewritePattern;
 
   LogicalResult matchAndRewrite(vector::TransferWriteOp writeOp,
                                 PatternRewriter &rewriter) const override {
-    // We can only deal with unmasked transfer ops with an identity permutation
-    // map.
-    if (!writeOp.getPermutationMap().isMinorIdentity() || writeOp.getMask())
-      return failure();
-    VectorType vectorTy = cast<VectorType>(writeOp.getVector().getType());
-    if (vectorTy.getRank() < 2) return failure();
-    // Work only on bufferized reads
-    MemRefType memRefTy = dyn_cast<MemRefType>(writeOp.getSource().getType());
-    if (!memRefTy) return failure();
-    auto memRefShape = memRefTy.getShape();
-    auto vecShape = vectorTy.getShape();
+    AffineMap perm = writeOp.getPermutationMap();
 
-    auto newVectorTy =
-        VectorType::get({std::accumulate(vecShape.begin(), vecShape.end(), 1,
-                                         std::multiplies<>())},
-                        vectorTy.getElementType());
-    AffineMap layout = memRefTy.getLayout().getAffineMap();
-    auto newVector = rewriter
-                         .create<vector::ShapeCastOp>(
-                             writeOp.getLoc(), newVectorTy, writeOp.getVector())
-                         .getResult();
-    auto newIndices =
-        collapseInnerMostDimIndices(rewriter, writeOp.getLoc(), vecShape.size(),
-                                    writeOp.getIndices(), memRefShape, layout);
-    auto newSource = collapseInnerMostShapeDims(
-        rewriter, writeOp.getLoc(), vecShape.size(), writeOp.getSource());
+    // Already in target form:
+    if (perm.isMinorIdentity()) return failure();
 
-    auto newOp = rewriter.replaceOpWithNewOp<vector::TransferWriteOp>(
-        writeOp, newVector, newSource, newIndices);
-
-    auto inBoundsArrayAttrOpt = writeOp.getInBounds();
-    if (inBoundsArrayAttrOpt) {
-      SmallVector<bool> inBounds =
-          llvm::to_vector(inBoundsArrayAttrOpt.getAsValueRange<BoolAttr>());
-      SmallVector<bool> newInBounds({false});
-      newInBounds[0] = std::all_of(inBounds.begin(), inBounds.end(),
-                                   [](bool v) { return v; });
-      newOp.getProperties().setInBounds(rewriter.getBoolArrayAttr(newInBounds));
+    FailureOr<SmallVector<int64_t>> maybeDims =
+        getDimsOfIdentitySubsampleMap(perm);
+    if (failed(maybeDims)) {
+      return rewriter.notifyMatchFailure(
+          writeOp, "cannot be expressed with a minor-identity permutation map");
     }
 
+    TypedValue<ShapedType> source = writeOp.getSource();
+
+    auto [newShape, newInBounds] = getUnsqueezedShapeAndInBounds(
+        source.getType().getRank(), maybeDims.value(), rewriter, writeOp);
+
+    VectorType newVectorType =
+        VectorType::get(newShape, writeOp.getVectorType().getElementType());
+
+    Value newVector = rewriter.create<vector::ShapeCastOp>(
+        writeOp.getLoc(), newVectorType, writeOp.getVector());
+
+    MemRefType sourceType = cast<MemRefType>(writeOp.getSource().getType());
+
+    if (!mlir::vector::isContiguousSlice(sourceType, newVectorType))
+      return failure();
+
+    auto newWriteOp = rewriter.replaceOpWithNewOp<vector::TransferWriteOp>(
+        writeOp, newVector, source, writeOp.getIndices());
+
+    newWriteOp.getProperties().setInBounds(
+        rewriter.getBoolArrayAttr(newInBounds));
+
+    assert(newWriteOp.getPermutationMap().isMinorIdentity() &&
+           "Pattern failed to convert to minor identity");
+
+    return success();
+  }
+};
+
+/// This pattern rewrites a `vector.transfer_read` with a non minor identity
+/// permutation map, with a minor-identity permutation map, if possible. For
+/// example,
+///
+/// ```
+/// #map = affine_map<(d0, d1, d2, d3) -> (d1, d3)>
+/// %0 = vector.transfer_read %alloc[%c0, %c0, %c0, %c0], %c0_i8
+///    {in_bounds = [true, true], permutation_map = #map} : memref<2x4x1x8xi8>,
+///    vector<4x8xi8>
+/// ```
+///
+/// is rewritten as
+///
+/// ```
+/// #map = affine_map<(d0, d1, d2, d3) -> (d1, d2, d3)>
+/// %1 = vector.transfer_read %alloc[%c0, %c0, %c0, %c0], %c0_i8
+///   {in_bounds = [true, true, true], permutation_map = #map} :
+///   memref<2x4x1x8xi8>, vector<4x1x8xi8>
+/// %2 = vector.shape_cast %1 : vector<4x1x8xi8> to vector<4x8xi8>
+///   ```
+///
+struct ToMinorIdentityTransferReadPattern
+    : public OpRewritePattern<vector::TransferReadOp> {
+  using OpRewritePattern<vector::TransferReadOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(vector::TransferReadOp readOp,
+                                PatternRewriter &rewriter) const override {
+    AffineMap perm = readOp.getPermutationMap();
+
+    // Already in target form:
+    if (perm.isMinorIdentity()) return failure();
+
+    // Cannot be converted into a minor identity map:
+    FailureOr<SmallVector<int64_t>> maybeDims =
+        getDimsOfIdentitySubsampleMap(perm);
+    if (failed(maybeDims)) return failure();
+
+    MemRefType sourceType = cast<MemRefType>(readOp.getSource().getType());
+
+    auto [newShape, newInBounds] = getUnsqueezedShapeAndInBounds(
+        sourceType.getRank(), maybeDims.value(), rewriter, readOp);
+
+    VectorType newVectorTy =
+        VectorType::get(newShape, readOp.getVectorType().getElementType());
+    if (!vector::isContiguousSlice(sourceType, newVectorTy)) return failure();
+
+    auto newReadOp = rewriter.create<vector::TransferReadOp>(
+        readOp.getLoc(), newVectorTy, readOp.getSource(), readOp.getIndices());
+
+    newReadOp.getProperties().setInBounds(
+        rewriter.getBoolArrayAttr(newInBounds));
+
+    rewriter.replaceOpWithNewOp<vector::ShapeCastOp>(
+        readOp, readOp.getVector().getType(), newReadOp);
     return success();
   }
 };
@@ -393,6 +446,7 @@ struct ExtractTransposeFromContractionOp
     }
 
     int64_t nDim = rhsVecTy.getShape().size();
+
     SmallVector<int64_t> rhsPermutation;
     for (int64_t i = 0; i < nDim - 2; i++) rhsPermutation.push_back(i);
     rhsPermutation.push_back(nDim - 1);
@@ -499,6 +553,14 @@ struct ConvertLeadingUnitDimInsertToReshapePattern
   }
 };
 
+void populateBubbleSignExtensionsLate(RewritePatternSet &patterns) {
+  patterns.add<SwapUnaryOpsPattern<arith::ExtSIOp, vector::BroadcastOp>,
+               SwapUnaryOpsPattern<arith::ExtFOp, vector::BroadcastOp>,
+               SwapUnaryOpsPattern<arith::ExtSIOp, vector::ShapeCastOp>,
+               SwapUnaryOpsPattern<arith::ExtFOp, vector::ShapeCastOp>>(
+      patterns.getContext());
+}
+
 // This pass converts standard vector ops into a subset of `Vector` ops more
 // amenable to being converted to `AIEVec`.
 struct CanonicalizeVectorForAIEVecPass
@@ -519,27 +581,34 @@ struct CanonicalizeVectorForAIEVecPass
   void runOnOperation() override {
     auto op = getOperation();
     MLIRContext *context = &getContext();
-    RewritePatternSet patterns(context);
 
-    patterns.add<ExtractTransposeFromContractionOp,
-                 FlattenMultDimTransferReadPattern,
-                 FlattenMultDimTransferWritePattern,
-                 ConvertLeadingUnitDimInsertToReshapePattern>(context);
+    {
+      // These must run before 'populateVectorBroadcastLoweringPatterns'
+      // so that broadcasts can be matched before conversion to insert.
+      RewritePatternSet patterns(context);
+      populateBubbleSignExtensionsLate(patterns);
+      (void)applyPatternsAndFoldGreedily(op, std::move(patterns));
+    }
+    {
+      RewritePatternSet patterns(context);
+      patterns.add<ExtractTransposeFromContractionOp,
+                   ToMinorIdentityTransferReadPattern,
+                   ToMinorIdentityTransferWritePattern,
+                   ConvertLeadingUnitDimInsertToReshapePattern>(context);
+      patterns.add<ConvertSplatTransferReadToBroadcastPattern>(context);
+      mlir::vector::populateFlattenVectorTransferPatterns(patterns);
+      mlir::vector::populateVectorBroadcastLoweringPatterns(patterns);
+      (void)applyPatternsAndFoldGreedily(op, std::move(patterns));
+    }
 
-    patterns.add<ConvertSplatTransferReadToBroadcastPattern>(context);
-
-    patterns.add<SwapUnaryOpsPattern<arith::ExtSIOp, vector::BroadcastOp>>(
-        context, [](arith::ExtSIOp extOp, vector::BroadcastOp bcastOp) -> Type {
-          Type extInElemTy = extOp.getIn().getType();
-          auto extInVecTy = dyn_cast<VectorType>(extInElemTy);
-          if (extInVecTy) extInElemTy = extInVecTy.getElementType();
-          return VectorType::get(bcastOp.getResultVectorType().getShape(),
-                                 extInElemTy);
-        });
-
-    populateVectorBroadcastLoweringPatterns(patterns);
-
-    (void)applyPatternsAndFoldGreedily(op, std::move(patterns));
+    {
+      // These must run after 'populateFlattenVectorTransferPatterns' because
+      // vector.shape_casts are introduced. Merging into a single pass creates
+      // cycles.
+      RewritePatternSet patterns(context);
+      populateBubbleSignExtensionsLate(patterns);
+      (void)applyPatternsAndFoldGreedily(op, std::move(patterns));
+    }
   }
 };
 
@@ -573,10 +642,9 @@ struct DetectNonCanonicalOpsPass
 };
 
 void buildCanonicalizeVectorForAIEVec(OpPassManager &pm) {
-  // Add `Vector` code canonicalization passes
-  // TODO: Add passes to unroll vector with unsupported types
   // TODO: Add passes to split vectors that won't fit in registers
   pm.addPass(createCanonicalizeVectorForAIEVecPass());
+  pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(std::make_unique<DetectNonCanonicalOpsPass>());
 }
 
