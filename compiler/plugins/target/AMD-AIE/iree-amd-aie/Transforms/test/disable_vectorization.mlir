@@ -12,27 +12,27 @@
 //
 // We first perform the step which is common to all 3 paths: we compile the
 // free function to an 'executable sources' file.
-// RUN: iree-compile --iree-hal-target-backends=amd-aie \
+// RUN: iree-compile --iree-hal-target-backends=amd-aie-xrt \
 // RUN:   --compile-to=executable-sources %s > exe-sources.mlir
 
 // 1) Explicitly disabled:
 // RUN: iree-opt \
 // RUN:   --pass-pipeline="builtin.module(hal.executable(hal.executable.variant(\
-// RUN:   iree-hal-translate-target-executable-variants{target=amd-aie})))" \
+// RUN:   iree-hal-translate-target-executable-variants{target=amd-aie-xrt})))" \
 // RUN:   --iree-amdaie-enable-vectorization-passes=0 exe-sources.mlir \
 // RUN:   | FileCheck %s -check-prefix=CHECK-DISABLED
 
 // 2) Explicitly enabled:
 // RUN: iree-opt \
 // RUN:   --pass-pipeline="builtin.module(hal.executable(hal.executable.variant(\
-// RUN:   iree-hal-translate-target-executable-variants{target=amd-aie})))" \
+// RUN:   iree-hal-translate-target-executable-variants{target=amd-aie-xrt})))" \
 // RUN:   --iree-amdaie-enable-vectorization-passes=1 exe-sources.mlir \
 // RUN:   | FileCheck %s -check-prefix=CHECK-ENABLED
 
 // 3) Default value:
 // RUN: iree-opt \
 // RUN:   --pass-pipeline="builtin.module(hal.executable(hal.executable.variant(\
-// RUN:   iree-hal-translate-target-executable-variants{target=amd-aie})))" \
+// RUN:   iree-hal-translate-target-executable-variants{target=amd-aie-xrt})))" \
 // RUN:   exe-sources.mlir | FileCheck %s -check-prefix=CHECK-DEFAULT
 
 

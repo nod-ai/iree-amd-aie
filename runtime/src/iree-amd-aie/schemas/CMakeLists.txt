@@ -12,3 +12,16 @@ flatbuffer_c_library(
     "--json"
   PUBLIC
 )
+
+flatbuffer_c_library(
+  NAME
+    pdi_executable_def_c_fbs
+  SRCS
+    "pdi_executable_def.fbs"
+  FLATCC_ARGS
+    "--reader"
+    "--builder"
+    "--verifier"
+    "--json"
+  PUBLIC
+)

@@ -13,7 +13,7 @@ iree_add_all_subdirs()
 
 iree_register_external_hal_driver(
   NAME
-    xrt
+    amd-aie-xrt
   DRIVER_TARGET
     iree-amd-aie::driver::xrt::registration
   REGISTER_FN
@@ -47,6 +47,7 @@ iree_cc_library(
     iree::base::internal::flatcc::building
     iree::base::internal::flatcc::parsing
     iree::hal::utils::deferred_command_buffer
+    iree::hal::utils::semaphore_base
     iree::hal::utils::file_transfer
     iree::hal
     iree-amd-aie::schemas::xrt_executable_def_c_fbs

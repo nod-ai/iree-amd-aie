@@ -1,4 +1,4 @@
-// RUN: iree-compile --iree-hal-target-backends=amd-aie --compile-to=executable-sources %s | iree-opt --pass-pipeline="builtin.module(hal.executable(hal.executable.variant(iree-hal-translate-target-executable-variants{target=amd-aie})))" --split-input-file | FileCheck %s --check-prefix=CPP
+// RUN: iree-compile --iree-hal-target-backends=amd-aie-xrt --compile-to=executable-sources %s | iree-opt --pass-pipeline="builtin.module(hal.executable(hal.executable.variant(iree-hal-translate-target-executable-variants{target=amd-aie})))" --split-input-file | FileCheck %s --check-prefix=CPP
 
 // This lit test keeps track of all GEMMs as seen in OPT.
 // The intention is to gradually retire the tests from this file by getting rid of `XFAIL`

@@ -1,0 +1,91 @@
+# Copyright (c) 2024 Advanced Micro Devices, Inc. All Rights Reserved.
+# Copyright 2024 The IREE Authors
+#
+# Licensed under the Apache License v2.0 with LLVM Exceptions.
+# See https://llvm.org/LICENSE.txt for license information.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+iree_add_all_subdirs()
+
+iree_register_external_hal_driver(
+  NAME
+    amd-aie-hsa
+  DRIVER_TARGET
+    iree-amd-aie::driver::hsa::registration
+  REGISTER_FN
+    iree_hal_hsa_driver_module_register
+)
+
+include(iree_aie_utils)
+replace_string_in_file(
+  "${ROCR_RUNTIME_ROOT}/runtime/hsa-runtime/core/inc/amd_gpu_agent.h"
+  "static const" "const")
+
+if(NOT DEFINED HSA_API_HEADERS_ROOT)
+  set(HSA_API_HEADERS_ROOT "${ROCR_RUNTIME_ROOT}/runtime/hsa-runtime/inc")
+endif()
+
+iree_cc_library(
+  NAME
+    dynamic_symbols
+  HDRS
+    dynamic_symbols.h
+    status_util.h
+  TEXTUAL_HDRS
+    dynamic_symbol_tables.h
+  SRCS
+    dynamic_symbols.cc
+    hsa_headers.h
+    status_util.cc
+  INCLUDES
+    "${HSA_API_HEADERS_ROOT}"
+  DEPS
+    iree::base
+    iree::base::core_headers
+    iree::base::internal::dynamic_library
+)
+
+iree_cc_library(
+  NAME
+    hsa
+  HDRS
+    api.h
+  SRCS
+    command_buffer.cc
+    command_buffer.h
+    hsa_buffer.cc
+    hsa_buffer.h
+    hsa_allocator.cc
+    hsa_allocator.h
+    hsa_driver.cc
+    hsa_device.cc
+    hsa_device.h
+    native_executable.cc
+    native_executable.h
+    nop_executable_cache.cc
+    nop_executable_cache.h
+    nop_semaphore.cc
+    nop_semaphore.h
+  DEPS
+    ::dynamic_symbols
+    iree-amd-aie::schemas::pdi_executable_def_c_fbs
+    iree::base
+    iree::base::core_headers
+    iree::base::internal
+    iree::base::internal::arena
+    iree::base::internal::atomic_slist
+    iree::base::internal::dynamic_library
+    iree::base::internal::event_pool
+    iree::base::internal::flatcc::parsing
+    iree::base::internal::synchronization
+    iree::base::internal::threading
+    iree::base::internal::wait_handle
+    iree::hal
+    iree::hal::utils::collective_batch
+    iree::hal::utils::deferred_command_buffer
+    iree::hal::utils::file_transfer
+    iree::hal::utils::memory_file
+    iree::hal::utils::resource_set
+    iree::hal::utils::semaphore_base
+  PUBLIC
+)

@@ -83,7 +83,7 @@ $CMAKE_ARGS = @(
     "-DIREE_TARGET_BACKEND_DEFAULTS=OFF"
     "-DIREE_TARGET_BACKEND_LLVM_CPU=ON"
     "-DIREE_CMAKE_PLUGIN_PATHS=$repo_root"
-    "-DIREE_EXTERNAL_HAL_DRIVERS=xrt"
+    "-DIREE_EXTERNAL_HAL_DRIVERS=amd-aie-xrt"
 )
 
 if ($llvm_install_dir -and (Test-Path "$llvm_install_dir"))
@@ -96,6 +96,7 @@ if ($llvm_install_dir -and (Test-Path "$llvm_install_dir"))
         | Out-File -encoding ASCII $cmake_file
     $CMAKE_ARGS += @(
         "-DIREE_BUILD_BUNDLED_LLVM=OFF"
+        "-DLLVM_EXTERNAL_LIT=$llvm_install_dir/bin/lit/lit.py"
         "-DClang_DIR=$llvm_install_dir/lib/cmake/clang"
         "-DLLD_DIR=$llvm_install_dir/lib/cmake/lld"
         "-DMLIR_DIR=$llvm_install_dir/lib/cmake/mlir"

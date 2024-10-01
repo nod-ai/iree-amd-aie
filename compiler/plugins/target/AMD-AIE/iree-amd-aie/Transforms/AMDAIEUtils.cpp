@@ -15,10 +15,9 @@ namespace mlir::iree_compiler::AMDAIE {
 std::optional<AMDAIEDevice> getConfigAMDAIEDevice(
     IREE::HAL::ExecutableTargetAttr targetAttr) {
   if (!targetAttr) return std::nullopt;
-  auto config = targetAttr.getConfiguration();
-  if (!config) return std::nullopt;
+  DictionaryAttr config = targetAttr.getConfiguration();
+  if (!config || !config.contains("target_device")) return std::nullopt;
   std::optional<StringAttr> attr = config.getAs<StringAttr>("target_device");
-  if (!attr) return std::nullopt;
   return AMDAIE::symbolizeEnum<AMDAIEDevice>(attr.value().getValue());
 }
 

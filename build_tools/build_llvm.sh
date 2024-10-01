@@ -90,8 +90,8 @@ if [[ "$OSTYPE" == "linux"* ]]; then
     -DCMAKE_MODULE_LINKER_FLAGS_INIT="-fuse-ld=lld"
     -DCMAKE_C_COMPILER="${CC}"
     -DCMAKE_CXX_COMPILER="${CXX}"
-    -DLLVM_TARGET_ARCH=X86
-    -DLLVM_TARGETS_TO_BUILD=X86
+    -DLLVM_TARGET_ARCH="X86"
+    -DLLVM_TARGETS_TO_BUILD="X86;AMDGPU"
     -S
     "$llvm_dir"
     -B
@@ -118,3 +118,5 @@ echo "Installing"
 echo "----------"
 echo "Install to: $install_dir"
 cmake --build "$build_dir" --target install
+
+cp -r "$llvm_dir/utils/lit" "$install_dir/bin"

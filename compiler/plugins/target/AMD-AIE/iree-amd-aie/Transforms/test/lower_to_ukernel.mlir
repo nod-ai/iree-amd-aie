@@ -4,7 +4,7 @@
 // config is set to "none".
 func.func @disabled_ukernel(%arg0 : tensor<?x?x?x?xi32>, %arg1 : tensor<?x?x?x?xi32>,
     %arg2 : tensor<?x?x?x?xi32>) -> tensor<?x?x?x?xi32> attributes {
-  hal.executable.target = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_arch = "chip-tbd", ukernels = "none"}>
+  hal.executable.target = #hal.executable.target<"amd-aie-xrt", "amdaie-xclbin-fb", {target_arch = "chip-tbd", ukernels = "none"}>
 } {
   %0 = linalg.generic {indexing_maps = [affine_map<(d0, d1, d2, d3, d4, d5) -> (d2, d0, d3, d5)>,
                                         affine_map<(d0, d1, d2, d3, d4, d5) -> (d1, d2, d5, d4)>,
@@ -30,7 +30,7 @@ func.func @disabled_ukernel(%arg0 : tensor<?x?x?x?xi32>, %arg1 : tensor<?x?x?x?x
 
 func.func @generic_matmul_i32i32i32_pad_pack(%arg0 : tensor<8x16x4x8xi32>, %arg1 : tensor<16x8x8x4xi32>,
     %arg2 : tensor<16x16x4x4xi32>) -> tensor<16x16x4x4xi32> attributes {
-  hal.executable.target = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_arch = "chip-tbd", ukernels = "all"}>
+  hal.executable.target = #hal.executable.target<"amd-aie-xrt", "amdaie-xclbin-fb", {target_arch = "chip-tbd", ukernels = "all"}>
 } {
   %0 = linalg.generic {indexing_maps = [affine_map<(d0, d1, d2, d3, d4, d5) -> (d2, d0, d3, d5)>,
                                         affine_map<(d0, d1, d2, d3, d4, d5) -> (d1, d2, d5, d4)>,
@@ -62,7 +62,7 @@ func.func @generic_matmul_i32i32i32_pad_pack(%arg0 : tensor<8x16x4x8xi32>, %arg1
 
 // -----
 
-#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_arch = "chip-tbd", ukernels = "all"}>
+#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie-xrt", "amdaie-xclbin-fb", {target_arch = "chip-tbd", ukernels = "all"}>
 #map = affine_map<(d0, d1, d2, d3, d4, d5) -> (d2, d0, d3, d5)>
 #map1 = affine_map<(d0, d1, d2, d3, d4, d5) -> (d1, d2, d5, d4)>
 #map2 = affine_map<(d0, d1, d2, d3, d4, d5) -> (d1, d0, d3, d4)>
@@ -98,7 +98,7 @@ module {
 
 // -----
 
-#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_arch = "chip-tbd", ukernels = "all"}>
+#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie-xrt", "amdaie-xclbin-fb", {target_arch = "chip-tbd", ukernels = "all"}>
 #map = affine_map<(d0, d1, d2, d3, d4, d5) -> (d2, d0, d3, d5)>
 #map1 = affine_map<(d0, d1, d2, d3, d4, d5) -> (d1, d2, d5, d4)>
 #map2 = affine_map<(d0, d1, d2, d3, d4, d5) -> (d1, d0, d3, d4)>
@@ -137,7 +137,7 @@ module {
 
 // -----
 
-#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_arch = "chip-tbd", ukernels = "all"}>
+#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie-xrt", "amdaie-xclbin-fb", {target_arch = "chip-tbd", ukernels = "all"}>
 #map = affine_map<(d0, d1, d2, d3, d4, d5) -> (d2, d0, d3, d5)>
 #map1 = affine_map<(d0, d1, d2, d3, d4, d5) -> (d1, d2, d5, d4)>
 #map2 = affine_map<(d0, d1, d2, d3, d4, d5) -> (d1, d0, d3, d4)>
@@ -177,7 +177,7 @@ module {
 // -----
 
 func.func @zero_fill(%arg0 : tensor<16x16x4x4xbf16>) -> tensor<16x16x4x4xbf16> attributes {
-  hal.executable.target = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_arch = "chip-tbd", ukernels = "all"}>
+  hal.executable.target = #hal.executable.target<"amd-aie-xrt", "amdaie-xclbin-fb", {target_arch = "chip-tbd", ukernels = "all"}>
 } {
   %cst = arith.constant 0.0 : bf16
   %fill = linalg.fill ins(%cst : bf16) outs(%arg0 : tensor<16x16x4x4xbf16>) -> tensor<16x16x4x4xbf16>
@@ -195,7 +195,7 @@ func.func @zero_fill(%arg0 : tensor<16x16x4x4xbf16>) -> tensor<16x16x4x4xbf16> a
 // -----
 
 func.func @non_zero_fill(%arg0 : tensor<16x16x4x4xbf16>) -> tensor<16x16x4x4xbf16> attributes {
-  hal.executable.target = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_arch = "chip-tbd", ukernels = "all"}>
+  hal.executable.target = #hal.executable.target<"amd-aie-xrt", "amdaie-xclbin-fb", {target_arch = "chip-tbd", ukernels = "all"}>
 } {
   %cst = arith.constant 7.0 : bf16
   %fill = linalg.fill ins(%cst : bf16) outs(%arg0 : tensor<16x16x4x4xbf16>) -> tensor<16x16x4x4xbf16>
@@ -209,7 +209,7 @@ func.func @non_zero_fill(%arg0 : tensor<16x16x4x4xbf16>) -> tensor<16x16x4x4xbf1
 
 func.func @zero_fill_with_matmul(%arg0 : tensor<8x16x4x8xbf16>, %arg1 : tensor<16x8x8x4xbf16>,
     %arg2 : tensor<16x16x4x4xbf16>) -> tensor<16x16x4x4xbf16> attributes {
-  hal.executable.target = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_arch = "chip-tbd", ukernels = "all"}>
+  hal.executable.target = #hal.executable.target<"amd-aie-xrt", "amdaie-xclbin-fb", {target_arch = "chip-tbd", ukernels = "all"}>
 } {
   %cst = arith.constant 0.0 : bf16
   %fill = linalg.fill ins(%cst : bf16) outs(%arg2 : tensor<16x16x4x4xbf16>) -> tensor<16x16x4x4xbf16>
@@ -253,7 +253,7 @@ func.func @zero_fill_with_matmul(%arg0 : tensor<8x16x4x8xbf16>, %arg1 : tensor<1
 // should not be.
 func.func @zero_fill_matmul_elmwise(%arg0 : tensor<8x16x4x8xbf16>, %arg1 : tensor<16x8x8x4xbf16>,
     %arg2 : tensor<16x16x4x4xbf16>) -> tensor<16x16x4x4xbf16> attributes {
-  hal.executable.target = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb",
+  hal.executable.target = #hal.executable.target<"amd-aie-xrt", "amdaie-xclbin-fb",
   {target_arch = "chip-tbd", ukernels = "all"}>
 } {
   %cst = arith.constant 0.0 : bf16
