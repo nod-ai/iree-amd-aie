@@ -61,9 +61,6 @@ $CMAKE_ARGS = @(
     "-DCMAKE_BUILD_TYPE=Release"
     "-DCMAKE_INSTALL_PREFIX=$install_dir"
     "-DCMAKE_INSTALL_LIBDIR=lib"
-    "-DCMAKE_EXE_LINKER_FLAGS_INIT=-fuse-ld=lld"
-    "-DCMAKE_SHARED_LINKER_FLAGS_INIT=-fuse-ld=lld"
-    "-DCMAKE_MODULE_LINKER_FLAGS_INIT=-fuse-ld=lld"
     "-DCMAKE_C_COMPILER=$env:CC"
     "-DCMAKE_CXX_COMPILER=$env:CXX"
     "-DLLVM_TARGET_ARCH=X86"
@@ -84,6 +81,7 @@ $CMAKE_ARGS = @(
     "-DIREE_TARGET_BACKEND_LLVM_CPU=ON"
     "-DIREE_CMAKE_PLUGIN_PATHS=$repo_root"
     "-DIREE_EXTERNAL_HAL_DRIVERS=xrt"
+    "-DIREE_BUILD_PYTHON_BINDINGS=ON"
 )
 
 if ($llvm_install_dir -and (Test-Path "$llvm_install_dir"))
@@ -92,7 +90,7 @@ if ($llvm_install_dir -and (Test-Path "$llvm_install_dir"))
     # TODO(max): send IREE a fix for this
     # target_compile_definitions may only set INTERFACE properties on IMPORTED
     $cmake_file = Resolve-Path -Path "$iree_dir/compiler/src/iree/compiler/API/CMakeLists.txt"
-    (Get-Content $cmake_file).Replace("`$`{_object_lib} PRIVATE", "`$`{_object_lib} INTERFACE") `
+    (Get-Content $cmake_file).Replace("if(MSVC)", "get_target_property(_imported `$`{_object_lib} IMPORTED)`n  if(MSVC AND NOT `$`{_imported})") `
         | Out-File -encoding ASCII $cmake_file
     $CMAKE_ARGS += @(
         "-DIREE_BUILD_BUNDLED_LLVM=OFF"
@@ -100,17 +98,7 @@ if ($llvm_install_dir -and (Test-Path "$llvm_install_dir"))
         "-DLLD_DIR=$llvm_install_dir/lib/cmake/lld"
         "-DMLIR_DIR=$llvm_install_dir/lib/cmake/mlir"
         "-DLLVM_DIR=$llvm_install_dir/lib/cmake/llvm"
-        # TODO(max)
-        # on windows python bindings don't for split build because
-        # i can't figure out MLIR_CAPI_EXPORTED and MLIR_CAPI_BUILDING_LIBRARY
-        # which somehow disables exceptions
-        "-DIREE_BUILD_PYTHON_BINDINGS=OFF"
     )
-}
-else
-{
-    echo "building bundled llvm"
-    $CMAKE_ARGS += @("-DIREE_BUILD_PYTHON_BINDINGS=ON")
 }
 
 & cmake $CMAKE_ARGS -S $iree_dir -B $build_dir
@@ -122,6 +110,7 @@ echo "------------"
 echo "Installing"
 echo "----------"
 echo "Install to: $install_dir"
+& cmake --build $build_dir --target install
 & cmake --build $build_dir --target iree-install-dist
 
 echo "CTest"
@@ -143,3 +132,4 @@ if ($llvm_install_dir -and (Test-Path "$llvm_install_dir"))
 }
 
 Copy-Item -Path "$build_dir/tools/testing/e2e/iree-e2e-matmul-test.exe" -Destination "$install_dir/bin" -Force
+Copy-Item -Path "$build_dir/tools/xrt_coreutil.dll" -Destination "$install_dir/python_packages/iree_runtime/iree/_runtime_libs" -Force

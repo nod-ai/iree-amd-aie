@@ -9,7 +9,6 @@ clang-format off
 
 RUN: (aie_runtime_utest %S/pi.elf) | FileCheck %s
 
-CHECK: Generating: pi.cdo
 CHECK: (BlockWrite-DMAWriteCmd): Start Address: 0x0000000000200404  Size: 9
 CHECK:     Address: 0x0000000000200404  Data is: 0x00000170
 CHECK:     Address: 0x0000000000200408  Data is: 0x00000000

@@ -53,8 +53,8 @@ class AMDAIELowerExecutableTargetPass
   }
 
   AMDAIELowerExecutableTargetPass() = default;
-  AMDAIELowerExecutableTargetPass(
-      const AMDAIELowerExecutableTargetPass &pass){};
+  AMDAIELowerExecutableTargetPass(const AMDAIELowerExecutableTargetPass &pass) {
+  };
   AMDAIELowerExecutableTargetPass(
       const AMDAIELowerExecutableTargetOptions &options)
       : AMDAIELowerExecutableTargetBase(options) {}
@@ -85,7 +85,7 @@ static TilingConfig getTilingConfigForPipeline(FunctionOpInterface funcOp) {
   auto maybeLoweringConfig = getRootLoweringConfig(funcOp);
   assert(succeeded(maybeLoweringConfig) &&
          "Pipeline requires a lowering config");
-  return TilingConfig(*maybeLoweringConfig);
+  return {*maybeLoweringConfig};
 }
 
 void AMDAIELowerExecutableTargetPass::runOnOperation() {
@@ -108,13 +108,20 @@ void AMDAIELowerExecutableTargetPass::runOnOperation() {
     case IREE::Codegen::DispatchLoweringPassPipeline::Custom: {
       TilingConfig tilingConfig = getTilingConfigForPipeline(funcOp);
       if (usePassPipeline == TilePassPipeline::PackPeelPipeline) {
-        addPackPeelBasedPassPipeline(executableLoweringPipeline, tilingConfig);
+        addPackPeelBasedPassPipeline(executableLoweringPipeline, tilingConfig,
+                                     pathToUkernels, enableVectorizationPasses,
+                                     TilePassPipeline::PackPeelPipeline);
       } else if (usePassPipeline == TilePassPipeline::PadPackPipeline) {
-        addPadPackBasedPassPipeline(executableLoweringPipeline, tilingConfig);
+        addPadPackBasedPassPipeline(executableLoweringPipeline, tilingConfig,
+                                    pathToUkernels, enableVectorizationPasses,
+                                    TilePassPipeline::PadPackPipeline);
       } else if (usePassPipeline == TilePassPipeline::ConvDecomposePipeline) {
-        addConvDecomposePassPipeline(executableLoweringPipeline, tilingConfig);
+        addConvDecomposePassPipeline(executableLoweringPipeline, tilingConfig,
+                                     enableVectorizationPasses,
+                                     TilePassPipeline::ConvDecomposePipeline);
       }
-    } break;
+      break;
+    }
     default:
       funcOp.emitOpError("unhandled pass pipeline value set");
       return signalPassFailure();

@@ -15,11 +15,14 @@
 namespace mlir::iree_compiler::AMDAIE {
 
 /// Add passes to lower to AIE objectFifos.
-void addAMDAIEObjectFifoLoweringPasses(OpPassManager &passManager);
+void addAMDAIEObjectFifoLoweringPasses(OpPassManager &passManager,
+                                       bool enablePacketFlow);
 
 /// Add passes to lower from MLIR-AIR through AIE. This is
 /// currently the default passes used for lowering after IREEs tiling.
-void addMLIRAIRLoweringPasses(OpPassManager &passManager, AMDAIEDevice device);
+void addMLIRAIRLoweringPasses(OpPassManager &passManager, AMDAIEDevice device,
+                              TilePassPipeline useTilePipeline,
+                              bool matmulElementwiseFusion);
 
 /// Add lowering passes from MLIR-AIE. This is
 /// currently the default passes used for lowering from AIE dialect.
@@ -28,23 +31,34 @@ void addMLIRAIELoweringPasses(OpPassManager &passManager);
 /// Populates passes needed to lower linalg/arith/math ops to LLVM dialect via
 /// the structured ops path. The pass manager `pm` here operate on the module
 /// within the IREE::HAL::ExecutableOp.
-void buildAMDAIETransformPassPipeline(OpPassManager &pm, AMDAIEDevice device);
-
-void buildAMDAIELowerObjectFIFO(OpPassManager &variantPassManager);
+void buildAMDAIETransformPassPipeline(
+    OpPassManager &variantPassManager, AMDAIEDevice device,
+    TilePassPipeline useTilePipeline,
+    LowerToAIEPassPipeline useLowerToAIEPipeline, bool matmulElementwiseFusion,
+    bool enableVectorizationPasses, const std::string &pathToUkernels,
+    bool enablePacketFlow);
 
 void addLowerToLLVMPasses(OpPassManager &pm);
 
 /// Populates passes needed to lower the IR via a Pack-Peel based approach.
-void addPackPeelBasedPassPipeline(OpPassManager &passManager,
-                                  TilingConfig &tilingConfig);
+void addPackPeelBasedPassPipeline(OpPassManager &oassManager,
+                                  TilingConfig &tilingConfig,
+                                  const std::string &pathToUkernels,
+                                  bool enableVectorizationPasses,
+                                  TilePassPipeline useTilePipeline);
 
 /// Populates passes needed to lower the IR via a Pad-Pack based approach.
 void addPadPackBasedPassPipeline(OpPassManager &passManager,
-                                 TilingConfig &tilingConfig);
+                                 TilingConfig &tilingConfig,
+                                 const std::string &pathToUkernels,
+                                 bool enableVectorizationPasses,
+                                 TilePassPipeline useTilePipeline);
 
 /// Populates passes needed to lower the IR via a Conv-Decompose based approach.
 void addConvDecomposePassPipeline(OpPassManager &passManager,
-                                  TilingConfig &tilingConfig);
+                                  TilingConfig &tilingConfig,
+                                  bool enableVectorizationPasses,
+                                  TilePassPipeline useTilePipeline);
 
 /// Populates passes needed to link HAL executables across AIE targets.
 void buildAMDAIELinkingPassPipeline(OpPassManager &passManager);

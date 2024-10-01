@@ -17,7 +17,7 @@ typedef struct iree_hal_xrt_nop_executable_cache_t {
   // at offset 0.
   iree_hal_resource_t resource;
 
-  xrt::device* device;
+  xrtDeviceHandle device_hdl;
 
   iree_allocator_t host_allocator;
 } iree_hal_xrt_nop_executable_cache_t;
@@ -35,7 +35,7 @@ iree_hal_xrt_nop_executable_cache_cast(
 }
 
 iree_status_t iree_hal_xrt_nop_executable_cache_create(
-    xrt::device* device, iree_string_view_t identifier,
+    xrtDeviceHandle device_hdl, iree_string_view_t identifier,
     iree_allocator_t host_allocator,
     iree_hal_executable_cache_t** out_executable_cache) {
   IREE_ASSERT_ARGUMENT(out_executable_cache);
@@ -49,7 +49,7 @@ iree_status_t iree_hal_xrt_nop_executable_cache_create(
   iree_hal_resource_initialize(&iree_hal_xrt_nop_executable_cache_vtable,
                                &executable_cache->resource);
   executable_cache->host_allocator = host_allocator;
-  executable_cache->device = device;
+  executable_cache->device_hdl = device_hdl;
 
   *out_executable_cache = (iree_hal_executable_cache_t*)executable_cache;
   IREE_TRACE_ZONE_END(z0);
@@ -82,7 +82,7 @@ static iree_status_t iree_hal_xrt_nop_executable_cache_prepare_executable(
   iree_hal_xrt_nop_executable_cache_t* executable_cache =
       iree_hal_xrt_nop_executable_cache_cast(base_executable_cache);
   return iree_hal_xrt_native_executable_create(
-      executable_cache->device, executable_params,
+      executable_cache->device_hdl, executable_params,
       executable_cache->host_allocator, out_executable);
 }
 

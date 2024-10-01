@@ -2,3 +2,5 @@ PyYAML>=5.4.1
 requests>=2.28.0
 enum_tools==0.6.4
 numpy<2
+pytest==8.2.2
+ml_dtypes==0.5.0

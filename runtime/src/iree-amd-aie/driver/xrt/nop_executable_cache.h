@@ -22,12 +22,12 @@ extern "C" {
 // |out_executable_cache| must be released by the caller (see
 // iree_hal_executable_cache_release).
 iree_status_t iree_hal_xrt_nop_executable_cache_create(
-    xrt::device* device, iree_string_view_t identifier,
+    xrtDeviceHandle device_hdl, iree_string_view_t identifier,
     iree_allocator_t host_allocator,
     iree_hal_executable_cache_t** out_executable_cache);
 
 #ifdef __cplusplus
-}       // extern "C"
+}  // extern "C"
 #endif  // __cplusplus
 
 #endif  // IREE_AMD_AIE_DRIVER_XRT_NOP_EXECUTABLE_CACHE_H_

@@ -313,7 +313,10 @@ def AMDAIELowerExecutableTarget :
                    "Use the pad-pack based lowering strategy for matmul-like ops."),
         clEnumValN(mlir::iree_compiler::AMDAIE::TilePassPipeline::ConvDecomposePipeline, "conv-decompose",
                    "Use the conv-decompose based lowering strategy for convolution interface ops.")
-      )}]>
+      )}]>,
+    Option<"pathToUkernels", "path-to-ukernels", "std::string", /*default=*/"", "Path to microkernels' directory">,
+    Option<"enableVectorizationPasses", "enable-vectorization-passes", "bool", /*default=*/"true",
+            "Enable/disable vectorization.">
   ];
 }
 

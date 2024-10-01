@@ -16,12 +16,10 @@ set(_BOOTGEN_SOURCE_DIR ${IREE_AMD_AIE_SOURCE_DIR}/third_party/bootgen)
 # https://stackoverflow.com/a/56463133 If you want to use malloc, then include stdlib.h
 replace_string_in_file(${_BOOTGEN_SOURCE_DIR}/cdo-npi.c "#include <malloc.h>" "#include <stdlib.h>")
 replace_string_in_file(${_BOOTGEN_SOURCE_DIR}/cdo-alloc.c "#include <malloc.h>" "#include <stdlib.h>")
-replace_string_in_file("${_BOOTGEN_SOURCE_DIR}/main.cpp"
-                       "#include \"openssl/ms/applink.c\"" "//#include \"openssl/ms/applink.c\"")
-replace_string_in_file("${_BOOTGEN_SOURCE_DIR}/main.cpp"
-                       "int main" "int iree_aie_bootgen_main")
-replace_string_in_file("${_BOOTGEN_SOURCE_DIR}/main.cpp"
-                       "DisplayBanner();" "//DisplayBanner();")
+replace_string_in_file("${_BOOTGEN_SOURCE_DIR}/main.cpp" "#include \"openssl/ms/applink.c\"" "")
+replace_string_in_file("${_BOOTGEN_SOURCE_DIR}/main.cpp" "int main" "int iree_aie_bootgen_main")
+replace_string_in_file("${_BOOTGEN_SOURCE_DIR}/main.cpp" "DisplayBanner();" "")
+replace_string_in_file("${_BOOTGEN_SOURCE_DIR}/main.cpp" "LOG_MSG(\"\\n[INFO]   : Bootimage generated successfully\\n\");" "")
 
 file(GLOB _bootgen_sources "${_BOOTGEN_SOURCE_DIR}/*.c" "${_BOOTGEN_SOURCE_DIR}/*.cpp")
 add_library(iree-aie-bootgen STATIC ${_bootgen_sources})

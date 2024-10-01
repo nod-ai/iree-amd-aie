@@ -111,7 +111,6 @@ jobs:
           path: ${{ env.CACHE_DIR }}
           key: ${{ env.CACHE_KEY }}
 
-
   test_linux:
     name: E2E Test linux
     needs: build_and_ctest
@@ -127,7 +126,7 @@ jobs:
         uses: actions/checkout@8f4b7f84864484a7bf31766abe9204da3cbe65b3 # v3.5.0
         with:
           submodules: false # not required for testbench
-
+          
       - name: Download artifacts
         uses: actions/download-artifact@v4
         with:
@@ -136,20 +135,26 @@ jobs:
       - name: Extract artifact
         run: |
           tar -xvf iree-dist-linux.tar
+          echo "IREE_INSTALL_DIR=$PWD/iree-install" >> $GITHUB_ENV
+          echo "PYTHONPATH=$PWD/iree-install/python_packages/iree_compiler:$PWD/iree-install/python_packages/iree_runtime" >> $GITHUB_ENV
           bash build_tools/download_peano.sh
+          echo "PEANO_INSTALL_DIR=$PWD/llvm-aie" >> $GITHUB_ENV
 
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+          
       - name: Create venv and install dependencies
         run: |
-          python3 -m venv .venv
+          python -m venv .venv
           source .venv/bin/activate
-          pip install -r build_tools/ci/requirements.txt
-
+          pip install -r tests/requirements.txt
 
       - name : E2E comparison of AIE to llvm-cpu
         run: |
           source .venv/bin/activate
           source /opt/xilinx/xrt/setup.sh
-          python3 build_tools/ci/cpu_comparison/run.py \
+          python build_tools/ci/cpu_comparison/run.py \
             test_aie_vs_cpu \
             $PWD/iree-install \
             $PWD/llvm-aie \
@@ -193,3 +198,12 @@ jobs:
             $PWD/llvm-aie \
             /opt/xilinx/xrt \
             /opt/Xilinx/Vitis/2024.2
+
+      - name: Python tests
+        run: |
+          source .venv/bin/activate
+          source /opt/xilinx/xrt/setup.sh
+          pytest -v tests \
+            --capture=tee-sys \
+            --iree-install-dir=$PWD/iree-install \
+            --peano-install-dir=$PWD/llvm-aie
