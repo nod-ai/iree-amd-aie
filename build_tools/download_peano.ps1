@@ -6,6 +6,7 @@
 
 $ErrorActionPreference = 'Stop'
 
-$RELEASE = "19.0.0.2024082221+90abe71b"
+$this_dir = Split-Path -Path $MyInvocation.MyCommand.Path -Parent
+$RELEASE = (Get-Content -Path "$this_dir/peano_commit.txt")
 pip download llvm_aie==$RELEASE -f https://github.com/Xilinx/llvm-aie/releases/expanded_assets/nightly
 Expand-Archive (Get-ChildItem -Filter llvm*.whl).FullName -DestinationPath $PWD.Path

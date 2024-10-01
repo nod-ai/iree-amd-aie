@@ -6,6 +6,7 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-RELEASE=19.0.0.2024092601+562ccea2
+this_dir="$(cd $(dirname $0) && pwd)"
+RELEASE=$(cat $this_dir/peano_commit.txt)
 pip download llvm_aie==$RELEASE -f https://github.com/Xilinx/llvm-aie/releases/expanded_assets/nightly
 unzip llvm_aie*whl

@@ -21,8 +21,8 @@ def test_smol_matmul(session_module, target_backend, device):
         v1 = linalg.fill(cst, outs=[v0])
         return linalg.matmul(lhs, rhs, outs=[v1])
 
-    arg0 = np.ones((32, 16), dtype=np.int8)
-    arg1 = np.ones((16, 32), dtype=np.int8)
+    arg0 = np.random.randint(-1, 3, (32, 16), dtype=np.int8)
+    arg1 = np.random.randint(-1, 3, (16, 32), dtype=np.int8)
     with invokable_module(session, module, device) as module:
         results = module[matmul_i8_i32.__name__](arg0, arg1).to_host()
         assert np.array_equal(results, arg0 @ arg1)
@@ -144,8 +144,8 @@ def test_matmul(
 
     lhs_rhs_type = mlir_type_to_np_dtype(lhs_rhs_type)
     acc_type = mlir_type_to_np_dtype(acc_type)
-    arg0 = np.random.randint(-1, 1, (M, K), dtype=lhs_rhs_type)
-    arg1 = np.random.randint(-1, 1, (K, N), dtype=lhs_rhs_type)
+    arg0 = np.random.randint(-1, 3, (M, K), dtype=lhs_rhs_type)
+    arg1 = np.random.randint(-1, 3, (K, N), dtype=lhs_rhs_type)
     with invokable_module(session, module, device) as module:
         for i in range(num_repeat_runs):
             results = module[matmul_name](arg0, arg1).to_host()
