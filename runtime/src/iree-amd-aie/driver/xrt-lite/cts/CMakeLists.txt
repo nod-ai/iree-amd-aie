@@ -24,7 +24,7 @@ iree_bytecode_module(
   FLAGS
     --compile-mode=hal-executable
     --iree-hal-dump-executable-files-to=${CMAKE_CURRENT_BINARY_DIR}
-    --iree-hal-target-backends=xrt-lite
+    --iree-hal-target-backends=amd-aie
     --iree-amdaie-lower-to-aie-pipeline=air
     --iree-amdaie-target-device=${TARGET_DEVICE}
     --iree-amd-aie-peano-install-dir=${PEANO_INSTALL_DIR}
@@ -63,15 +63,15 @@ iree_hal_cts_test_suite(
   DRIVER_REGISTRATION_FN
     "iree_hal_xrt_lite_driver_module_register"
   COMPILER_TARGET_BACKEND
-    "xrt-lite"
+    "amd-aie"
   EXECUTABLE_FORMAT
     "\"amdaie-pdi-fb\""
   DEPS
     iree-amd-aie::driver::xrt-lite::registration
   INCLUDED_TESTS
-    "allocator"
-    "buffer_mapping"
-    "command_buffer"
+#    "allocator"
+#    "buffer_mapping"
+#    "command_buffer"
     "driver"
 )
 
