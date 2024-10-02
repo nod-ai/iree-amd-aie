@@ -131,6 +131,78 @@ class AMDAIEObjFifoBufferizationPass
   void runOnOperation() override;
 };
 
+/// 
+/// Some memref allocations are accessed directly, as a result of the pass 
+///
+/// `iree-amdaie-none-access-to-temporary-buffer`
+///
+/// Thie memref.allocs need to be converted to amdaie.buffer ops
+///
+///
+/// This function detects 'raw' allocations, such as in the IR:
+///
+/// ```
+/// %alloc = memref.alloc() : memref<16xi32, 2 : i32>
+/// ...
+/// amdaie.workgroup {
+///    ...
+///    %tile_10 = amdaie.tile(%c0, %c2)
+///    %16 = amdaie.core(%tile_10, in : [%13, %14], out : [%15]) {
+///    ...
+///    %reinterpret_cast_16 = memref.reinterpret_cast %alloc to offset:
+///     ...
+///    }
+/// }
+/// ```
+///
+/// And rewrites as 
+///
+/// ```
+/// ...
+/// amdaie.workgroup {
+///   ...
+///   %tile_10 = amdaie.tile(%c0, %c2)
+///   %buffer_21 = amdaie.buffer(%tile_20) : memref<16xi32, 2 : i32>
+///   %16 = amdaie.core(%tile_10, in : [%13, %14], out : [%15]) {
+///   ... 
+///   %reinterpret_cast_16 = amdaie.buffer_cast %buffer_21 to offset:
+///   ...
+///   }
+/// }
+/// ```
+///
+LogicalResult bufferizeRawMemrefs(Operation *parentOp) {
+  IRRewriter rewriter(parentOp->getContext());
+  /// We want to create a unique BufferOp for each 
+  /// (AllocOp, TileOp, WorkgroupOp) tuple. 
+  using Key = std::tuple<memref::AllocOp, TileOp, WorkgroupOp>;
+  DenseMap<Key, BufferOp> bufferMap;
+
+  // Find all users of the memref.alloc op inside a amdaie.core op, and replace
+  // its use with an amdaie.buffer op.
+  parentOp->walk([&](memref::AllocOp allocOp) {
+    for (Operation *user : allocOp->getUsers()) {
+      CoreOp parentCoreOp = user->getParentOfType<CoreOp>();
+      if (parentCoreOp) {
+        TileOp tileOp = parentCoreOp.getTileOp();
+        auto workgroupOp = parentCoreOp->getParentOfType<WorkgroupOp>();
+        Key key{allocOp, tileOp, workgroupOp};
+        if (bufferMap.count(key) == 0) {
+          rewriter.setInsertionPointAfter(tileOp);
+          auto bufferOp =
+              rewriter.create<BufferOp>(allocOp.getLoc(), allocOp.getType(),
+                                        tileOp, /* address */ nullptr);
+          bufferMap[key] = bufferOp;
+        }
+        BufferOp bufferOp = bufferMap[key];
+        user->replaceUsesOfWith(allocOp, bufferOp);
+      }
+    }
+  });
+
+  return success();
+}
+
 void AMDAIEObjFifoBufferizationPass::runOnOperation() {
   Operation *parentOp = getOperation();
   SmallVector<AMDAIE::WorkgroupOp> workgroupOps;
@@ -140,6 +212,8 @@ void AMDAIEObjFifoBufferizationPass::runOnOperation() {
   for (AMDAIE::WorkgroupOp workgroupOp : workgroupOps) {
     if (failed(bufferize(workgroupOp))) return signalPassFailure();
   }
+
+  if (failed(bufferizeRawMemrefs(parentOp))) return signalPassFailure();
 }
 
 }  // namespace
