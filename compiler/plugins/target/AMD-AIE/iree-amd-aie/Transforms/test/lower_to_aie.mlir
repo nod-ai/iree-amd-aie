@@ -202,11 +202,12 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
       %lock_3 = amdaie.lock(%tile_0_2(1), 0)
       %0 = amdaie.logicalobjectfifo.from_buffers({%buffer}, {%lock}, {%lock_1}) : memref<4096xi32, 1 : i32> -> !amdaie.logicalobjectfifo<memref<4096xi32, 1 : i32>, 1>
       %1 = amdaie.logicalobjectfifo.from_buffers({%buffer_1}, {%lock_2}, {%lock_3}) : memref<4096xi32, 2 : i32> -> !amdaie.logicalobjectfifo<memref<4096xi32, 2 : i32>, 1>
-      %channel = amdaie.channel(%tile_0_1, 0)
-      %channel_1 = amdaie.channel(%tile_0_2, 0)
-      %2 = amdaie.connection(%1 {%channel_1}, %0 {%channel}) : (!amdaie.logicalobjectfifo<memref<4096xi32, 2 : i32>, 1>, !amdaie.logicalobjectfifo<memref<4096xi32, 1 : i32>, 1>)
+      %channel = amdaie.channel(%tile_0_1, 0, port_type = DMA)
+      %channel_1 = amdaie.channel(%tile_0_2, 0, port_type = DMA)
+      %2 = amdaie.flow({%channel} -> {%channel_1}) {is_packet_flow = false}
+      %3 = amdaie.connection(%1 {%channel_1}, %0 {%channel}, flow = %2) : (!amdaie.logicalobjectfifo<memref<4096xi32, 2 : i32>, 1>, !amdaie.logicalobjectfifo<memref<4096xi32, 1 : i32>, 1>)
       amdaie.controlcode {
-        %3 = amdaie.npu.circular_dma_cpy_nd %2([] [] [], [0, 1024] [32, 32] [64, 1])
+        %4 = amdaie.npu.circular_dma_cpy_nd %3([] [] [], [0, 1024] [32, 32] [64, 1])
         amdaie.end
       }
     }
@@ -281,11 +282,12 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
       %lock_3 = amdaie.lock(%tile_0_2(1), 0)
       %0 = amdaie.logicalobjectfifo.from_buffers({%buffer, %buffer_1}, {%lock}, {%lock_1}) : memref<4096xi32, 1 : i32>, memref<4096xi32, 1 : i32> -> !amdaie.logicalobjectfifo<memref<4096xi32, 1 : i32>, 2>
       %1 = amdaie.logicalobjectfifo.from_buffers({%buffer_2, %buffer_3}, {%lock_2}, {%lock_3}) : memref<4096xi32, 2 : i32>, memref<4096xi32, 2 : i32> -> !amdaie.logicalobjectfifo<memref<4096xi32, 2 : i32>, 2>
-      %channel = amdaie.channel(%tile_0_1, 0)
-      %channel_1 = amdaie.channel(%tile_0_2, 0)
-      %2 = amdaie.connection(%1 {%channel_1}, %0 {%channel}) : (!amdaie.logicalobjectfifo<memref<4096xi32, 2 : i32>, 2>, !amdaie.logicalobjectfifo<memref<4096xi32, 1 : i32>, 2>)
+      %channel = amdaie.channel(%tile_0_1, 0, port_type = DMA)
+      %channel_1 = amdaie.channel(%tile_0_2, 0, port_type = DMA)
+      %2 = amdaie.flow({%channel} -> {%channel_1}) {is_packet_flow = false}
+      %3 = amdaie.connection(%1 {%channel_1}, %0 {%channel}, flow = %2) : (!amdaie.logicalobjectfifo<memref<4096xi32, 2 : i32>, 2>, !amdaie.logicalobjectfifo<memref<4096xi32, 1 : i32>, 2>)
       amdaie.controlcode {
-        %3 = amdaie.npu.circular_dma_cpy_nd %2([0, 0] [32, 32] [128, 1], [0, 1024] [32, 32] [64, 1])
+        %4 = amdaie.npu.circular_dma_cpy_nd %3([0, 0] [32, 32] [128, 1], [0, 1024] [32, 32] [64, 1])
         amdaie.end
       }
     }
@@ -370,17 +372,19 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
       %lock_7 = amdaie.lock(%tile_0_2(1), 0) 
       %0 = amdaie.logicalobjectfifo.from_buffers({%buffer}, {%lock}, {%lock_1}) : memref<4096xi32, 1 : i32> -> !amdaie.logicalobjectfifo<memref<4096xi32, 1 : i32>, 1>
       %1 = amdaie.logicalobjectfifo.from_buffers({%buffer_1}, {%lock_2}, {%lock_3}) : memref<4096xi32, 2 : i32> -> !amdaie.logicalobjectfifo<memref<4096xi32, 2 : i32>, 1>
-      %channel = amdaie.channel(%tile_0_1, 0)
-      %channel_1 = amdaie.channel(%tile_0_2, 0)
-      %2 = amdaie.connection(%1 {%channel_1}, %0 {%channel}) : (!amdaie.logicalobjectfifo<memref<4096xi32, 2 : i32>, 1>, !amdaie.logicalobjectfifo<memref<4096xi32, 1 : i32>, 1>)
-      %3 = amdaie.logicalobjectfifo.from_buffers({%buffer_2}, {%lock_4}, {%lock_5}) : memref<2048xi32, 1 : i32> -> !amdaie.logicalobjectfifo<memref<2048xi32, 1 : i32>, 1>
-      %4 = amdaie.logicalobjectfifo.from_buffers({%buffer_3}, {%lock_6}, {%lock_7}) : memref<2048xi32, 2 : i32> -> !amdaie.logicalobjectfifo<memref<2048xi32, 2 : i32>, 1>
-      %channel_2 = amdaie.channel(%tile_0_1, 1)
-      %channel_3 = amdaie.channel(%tile_0_2, 1)
-      %5 = amdaie.connection(%4 {%channel_3}, %3 {%channel_2}) : (!amdaie.logicalobjectfifo<memref<2048xi32, 2 : i32>, 1>, !amdaie.logicalobjectfifo<memref<2048xi32, 1 : i32>, 1>)
+      %channel = amdaie.channel(%tile_0_1, 0, port_type = DMA)
+      %channel_1 = amdaie.channel(%tile_0_2, 0, port_type = DMA)
+      %2 = amdaie.flow({%channel} -> {%channel_1}) {is_packet_flow = false}
+      %3 = amdaie.connection(%1 {%channel_1}, %0 {%channel}, flow = %2) : (!amdaie.logicalobjectfifo<memref<4096xi32, 2 : i32>, 1>, !amdaie.logicalobjectfifo<memref<4096xi32, 1 : i32>, 1>)
+      %4 = amdaie.logicalobjectfifo.from_buffers({%buffer_2}, {%lock_4}, {%lock_5}) : memref<2048xi32, 1 : i32> -> !amdaie.logicalobjectfifo<memref<2048xi32, 1 : i32>, 1>
+      %5 = amdaie.logicalobjectfifo.from_buffers({%buffer_3}, {%lock_6}, {%lock_7}) : memref<2048xi32, 2 : i32> -> !amdaie.logicalobjectfifo<memref<2048xi32, 2 : i32>, 1>
+      %channel_2 = amdaie.channel(%tile_0_1, 1, port_type = DMA)
+      %channel_3 = amdaie.channel(%tile_0_2, 1, port_type = DMA)
+      %6 = amdaie.flow({%channel_2} -> {%channel_3}) {is_packet_flow = false}
+      %7 = amdaie.connection(%5 {%channel_3}, %4 {%channel_2}, flow = %6) : (!amdaie.logicalobjectfifo<memref<2048xi32, 2 : i32>, 1>, !amdaie.logicalobjectfifo<memref<2048xi32, 1 : i32>, 1>)
       amdaie.controlcode {
-        %6 = amdaie.npu.circular_dma_cpy_nd %2([] [] [], [0, 0] [32, 32] [64, 1])
-        %7 = amdaie.npu.circular_dma_cpy_nd %5([] [] [], [0, 1024] [32, 32] [64, 1])
+        %8 = amdaie.npu.circular_dma_cpy_nd %3([] [] [], [0, 0] [32, 32] [64, 1])
+        %9 = amdaie.npu.circular_dma_cpy_nd %7([] [] [], [0, 1024] [32, 32] [64, 1])
         amdaie.end
       }
     }
@@ -521,17 +525,19 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
       %lock_7 = amdaie.lock(%tile_0_2(1), 0)
       %0 = amdaie.logicalobjectfifo.from_buffers({%buffer, %buffer_1}, {%lock}, {%lock_1}) : memref<4096xi32, 1 : i32>, memref<4096xi32, 1 : i32> -> !amdaie.logicalobjectfifo<memref<4096xi32, 1 : i32>, 2>
       %1 = amdaie.logicalobjectfifo.from_buffers({%buffer_2, %buffer_3}, {%lock_2}, {%lock_3}) : memref<4096xi32, 2 : i32>, memref<4096xi32, 2 : i32> -> !amdaie.logicalobjectfifo<memref<4096xi32, 2 : i32>, 2>
-      %channel = amdaie.channel(%tile_0_1, 0)
-      %channel_1 = amdaie.channel(%tile_0_2, 0)
-      %2 = amdaie.connection(%1 {%channel_1}, %0 {%channel}) : (!amdaie.logicalobjectfifo<memref<4096xi32, 2 : i32>, 2>, !amdaie.logicalobjectfifo<memref<4096xi32, 1 : i32>, 2>)
-      %3 = amdaie.logicalobjectfifo.from_buffers({%buffer_4, %buffer_5, %buffer_6, %buffer_7}, {%lock_4}, {%lock_5}) : memref<2048xi32, 1 : i32>, memref<2048xi32, 1 : i32>, memref<2048xi32, 1 : i32>, memref<2048xi32, 1 : i32> -> !amdaie.logicalobjectfifo<memref<2048xi32, 1 : i32>, 4>
-      %4 = amdaie.logicalobjectfifo.from_buffers({%buffer_8, %buffer_9, %buffer_10, %buffer_11}, {%lock_6}, {%lock_7}) : memref<2048xi32, 2 : i32>, memref<2048xi32, 2 : i32>, memref<2048xi32, 2 : i32>, memref<2048xi32, 2 : i32> -> !amdaie.logicalobjectfifo<memref<2048xi32, 2 : i32>, 4>
-      %channel_2 = amdaie.channel(%tile_0_1, 1)
-      %channel_3 = amdaie.channel(%tile_0_2, 1)
-      %5 = amdaie.connection(%4 {%channel_3}, %3 {%channel_2}) : (!amdaie.logicalobjectfifo<memref<2048xi32, 2 : i32>, 4>, !amdaie.logicalobjectfifo<memref<2048xi32, 1 : i32>, 4>)
+      %channel = amdaie.channel(%tile_0_1, 0, port_type = DMA)
+      %channel_1 = amdaie.channel(%tile_0_2, 0, port_type = DMA)
+      %2 = amdaie.flow({%channel} -> {%channel_1}) {is_packet_flow = false}
+      %3 = amdaie.connection(%1 {%channel_1}, %0 {%channel}, flow = %2) : (!amdaie.logicalobjectfifo<memref<4096xi32, 2 : i32>, 2>, !amdaie.logicalobjectfifo<memref<4096xi32, 1 : i32>, 2>)
+      %4 = amdaie.logicalobjectfifo.from_buffers({%buffer_4, %buffer_5, %buffer_6, %buffer_7}, {%lock_4}, {%lock_5}) : memref<2048xi32, 1 : i32>, memref<2048xi32, 1 : i32>, memref<2048xi32, 1 : i32>, memref<2048xi32, 1 : i32> -> !amdaie.logicalobjectfifo<memref<2048xi32, 1 : i32>, 4>
+      %5 = amdaie.logicalobjectfifo.from_buffers({%buffer_8, %buffer_9, %buffer_10, %buffer_11}, {%lock_6}, {%lock_7}) : memref<2048xi32, 2 : i32>, memref<2048xi32, 2 : i32>, memref<2048xi32, 2 : i32>, memref<2048xi32, 2 : i32> -> !amdaie.logicalobjectfifo<memref<2048xi32, 2 : i32>, 4>
+      %channel_2 = amdaie.channel(%tile_0_1, 1, port_type = DMA)
+      %channel_3 = amdaie.channel(%tile_0_2, 1, port_type = DMA)
+      %6 = amdaie.flow({%channel_2} -> {%channel_3}) {is_packet_flow = false}
+      %7 = amdaie.connection(%5 {%channel_3}, %4 {%channel_2}, flow = %6) : (!amdaie.logicalobjectfifo<memref<2048xi32, 2 : i32>, 4>, !amdaie.logicalobjectfifo<memref<2048xi32, 1 : i32>, 4>)
       amdaie.controlcode {
-        %6 = amdaie.npu.circular_dma_cpy_nd %2([] [] [], [0, 0] [32, 32] [64, 1])
-        %7 = amdaie.npu.circular_dma_cpy_nd %5([] [] [], [0, 1024] [32, 32] [64, 1])
+        %8 = amdaie.npu.circular_dma_cpy_nd %3([] [] [], [0, 0] [32, 32] [64, 1])
+        %9 = amdaie.npu.circular_dma_cpy_nd %7([] [] [], [0, 1024] [32, 32] [64, 1])
         amdaie.end
       }
     }
@@ -602,15 +608,17 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
       %0 = amdaie.logicalobjectfifo.placeholder{%tile_0_0} : !amdaie.logicalobjectfifo<memref<4096xi32>>
       %1 = amdaie.logicalobjectfifo.from_buffers({%buffer}, {%lock}, {%lock_1}) : memref<4096xi32, 1 : i32> -> !amdaie.logicalobjectfifo<memref<4096xi32, 1 : i32>, 1>
       %2 = amdaie.logicalobjectfifo.from_buffers({%buffer_1}, {%lock_2}, {%lock_3}) : memref<4096xi32, 2 : i32> -> !amdaie.logicalobjectfifo<memref<4096xi32, 2 : i32>, 1>
-      %channel = amdaie.channel(%tile_0_0, 0)
-      %channel_1 = amdaie.channel(%tile_0_1, 0)
-      %3 = amdaie.connection(%1 {%channel_1}, %0 {%channel}) : (!amdaie.logicalobjectfifo<memref<4096xi32, 1 : i32>, 1>, !amdaie.logicalobjectfifo<memref<4096xi32>, 1>)
-      %channel_2 = amdaie.channel(%tile_0_1, 0)
-      %channel_3 = amdaie.channel(%tile_0_2, 0)
-      %4 = amdaie.connection(%2 {%channel_3}, %1 {%channel_2}) : (!amdaie.logicalobjectfifo<memref<4096xi32, 2 : i32>, 1>, !amdaie.logicalobjectfifo<memref<4096xi32, 1 : i32>, 1>)
+      %channel = amdaie.channel(%tile_0_0, 0, port_type = DMA)
+      %channel_1 = amdaie.channel(%tile_0_1, 0, port_type = DMA)
+      %3 = amdaie.flow({%channel} -> {%channel_1}) {is_packet_flow = false}
+      %4 = amdaie.connection(%1 {%channel_1}, %0 {%channel}, flow = %3) : (!amdaie.logicalobjectfifo<memref<4096xi32, 1 : i32>, 1>, !amdaie.logicalobjectfifo<memref<4096xi32>, 1>)
+      %channel_2 = amdaie.channel(%tile_0_1, 0, port_type = DMA)
+      %channel_3 = amdaie.channel(%tile_0_2, 0, port_type = DMA)
+      %5 = amdaie.flow({%channel_2} -> {%channel_3}) {is_packet_flow = false}
+      %6 = amdaie.connection(%2 {%channel_3}, %1 {%channel_2}, flow = %5) : (!amdaie.logicalobjectfifo<memref<4096xi32, 2 : i32>, 1>, !amdaie.logicalobjectfifo<memref<4096xi32, 1 : i32>, 1>)
       amdaie.controlcode {
-        %5 = amdaie.npu.circular_dma_cpy_nd %3([0] [1024] [1], [0, 1024] [32, 32] [64, 1])
-        %6 = amdaie.npu.circular_dma_cpy_nd %4([] [] [], [0, 1024] [32, 32] [64, 1])
+        %7 = amdaie.npu.circular_dma_cpy_nd %4([0] [1024] [1], [0, 1024] [32, 32] [64, 1])
+        %8 = amdaie.npu.circular_dma_cpy_nd %6([] [] [], [0, 1024] [32, 32] [64, 1])
         amdaie.end
       }
     }
@@ -640,15 +648,16 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
       %lock_1 = amdaie.lock(%tile_0_1(1), 0)
       %1 = amdaie.logicalobjectfifo.placeholder{%tile_0_0} : !amdaie.logicalobjectfifo<memref<4096xi32>>
       %2 = amdaie.logicalobjectfifo.from_buffers({%buffer}, {%lock}, {%lock_1}) : memref<4096xi32, 1 : i32> -> !amdaie.logicalobjectfifo<memref<4096xi32, 1 : i32>, 1>
-      %channel = amdaie.channel(%tile_0_0, 0)
-      %channel_1 = amdaie.channel(%tile_0_1, 0)
-      %3 = amdaie.connection(%2 {%channel_1}, %1 {%channel}) : (!amdaie.logicalobjectfifo<memref<4096xi32, 1 : i32>, 1>, !amdaie.logicalobjectfifo<memref<4096xi32>, 1>)
+      %channel = amdaie.channel(%tile_0_0, 0, port_type = DMA)
+      %channel_1 = amdaie.channel(%tile_0_1, 0, port_type = DMA)
+      %3 = amdaie.flow({%channel} -> {%channel_1}) {is_packet_flow = false}
+      %4 = amdaie.connection(%2 {%channel_1}, %1 {%channel}, flow = %3) : (!amdaie.logicalobjectfifo<memref<4096xi32, 1 : i32>, 1>, !amdaie.logicalobjectfifo<memref<4096xi32>, 1>)
       // expected-error @+1 {{could not convert to AIEDialect ops}}
       amdaie.controlcode {
-        %4 = amdaie.npu.circular_dma_cpy_nd %3([0] [1024] [1], [] [] [])
-        %5 = amdaie.logicalobjectfifo.from_memref %0, {%tile_0_0} : memref<4096xi32> -> !amdaie.logicalobjectfifo<memref<4096xi32>>
+        %5 = amdaie.npu.circular_dma_cpy_nd %4([0] [1024] [1], [] [] [])
+        %6 = amdaie.logicalobjectfifo.from_memref %0, {%tile_0_0} : memref<4096xi32> -> !amdaie.logicalobjectfifo<memref<4096xi32>>
         // expected-error @+1 {{'amdaie.npu.dma_cpy_nd' op must have a source BD ID op to lower to the AIE dialect}}
-        %6 = amdaie.npu.dma_cpy_nd %3([] [] [], %5[0, 32] [32, 32] [64, 1]) : source_type = !amdaie.logicalobjectfifo<memref<4096xi32>>
+        %7 = amdaie.npu.dma_cpy_nd %4([] [] [], %6[0, 32] [32, 32] [64, 1]) : source_type = !amdaie.logicalobjectfifo<memref<4096xi32>>
         amdaie.end
       }
     }
@@ -679,13 +688,14 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
       %lock_1 = amdaie.lock(%tile_0_1(1), 0)
       %1 = amdaie.logicalobjectfifo.placeholder{%tile_0_0} : !amdaie.logicalobjectfifo<memref<4096xi32>>
       %2 = amdaie.logicalobjectfifo.from_buffers({%buffer}, {%lock}, {%lock_1}) : memref<4096xi32, 1 : i32> -> !amdaie.logicalobjectfifo<memref<4096xi32, 1 : i32>, 1>
-      %channel = amdaie.channel(%tile_0_0, 0)
-      %channel_1 = amdaie.channel(%tile_0_1, 0)
-      %3 = amdaie.connection(%2 {%channel_1}, %1 {%channel}) : (!amdaie.logicalobjectfifo<memref<4096xi32, 1 : i32>, 1>, !amdaie.logicalobjectfifo<memref<4096xi32>, 1>)
+      %channel = amdaie.channel(%tile_0_0, 0, port_type = DMA)
+      %channel_1 = amdaie.channel(%tile_0_1, 0, port_type = DMA)
+      %3 = amdaie.flow({%channel} -> {%channel_1}) {is_packet_flow = false}
+      %4 = amdaie.connection(%2 {%channel_1}, %1 {%channel}, flow = %3) : (!amdaie.logicalobjectfifo<memref<4096xi32, 1 : i32>, 1>, !amdaie.logicalobjectfifo<memref<4096xi32>, 1>)
       amdaie.controlcode {
-        %4 = amdaie.npu.circular_dma_cpy_nd %3([0] [1024] [1], [] [] [])
-        %5 = amdaie.logicalobjectfifo.from_memref %0, {%tile_0_0} : memref<4096xi32> -> !amdaie.logicalobjectfifo<memref<4096xi32>>
-        %6 = amdaie.npu.dma_cpy_nd %3([] [] [], %5[0, 0, 0, 32] [2, 1, 2, 32] [2, 0, 16, 1] bd_id = %bd_id_0) : source_type = !amdaie.logicalobjectfifo<memref<4096xi32>>
+        %5 = amdaie.npu.circular_dma_cpy_nd %4([0] [1024] [1], [] [] [])
+        %6 = amdaie.logicalobjectfifo.from_memref %0, {%tile_0_0} : memref<4096xi32> -> !amdaie.logicalobjectfifo<memref<4096xi32>>
+        %7 = amdaie.npu.dma_cpy_nd %4([] [] [], %6[0, 0, 0, 32] [2, 1, 2, 32] [2, 0, 16, 1] bd_id = %bd_id_0) : source_type = !amdaie.logicalobjectfifo<memref<4096xi32>>
         amdaie.end
       }
     }
@@ -732,28 +742,30 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
       %lock_3 = amdaie.lock(%tile_0_1(1), 0)
       %2 = amdaie.logicalobjectfifo.placeholder{%tile_0_0} : !amdaie.logicalobjectfifo<memref<4096xi32>>
       %3 = amdaie.logicalobjectfifo.from_buffers({%buffer}, {%lock}, {%lock_1}) : memref<4096xi32, 1 : i32> -> !amdaie.logicalobjectfifo<memref<4096xi32, 1 : i32>, 1>
-      %channel = amdaie.channel(%tile_0_0, 0)
-      %channel_1 = amdaie.channel(%tile_0_1, 0)
-      %4 = amdaie.connection(%3 {%channel_1}, %2 {%channel}) : (!amdaie.logicalobjectfifo<memref<4096xi32, 1 : i32>, 1>, !amdaie.logicalobjectfifo<memref<4096xi32>, 1>)
-      %5 = amdaie.logicalobjectfifo.placeholder{%tile_0_1} : !amdaie.logicalobjectfifo<memref<2048xi32>>
-      %6 = amdaie.logicalobjectfifo.from_buffers({%buffer_1}, {%lock_2}, {%lock_3}) : memref<2048xi32, 1 : i32> -> !amdaie.logicalobjectfifo<memref<2048xi32, 1 : i32>, 1>
-      %channel_2 = amdaie.channel(%tile_0_0, 1)
-      %channel_3 = amdaie.channel(%tile_0_1, 1)
-      %7 = amdaie.connection(%5 {%channel_2}, %6 {%channel_3}) : (!amdaie.logicalobjectfifo<memref<2048xi32>, 1>, !amdaie.logicalobjectfifo<memref<2048xi32, 1 : i32>, 1>)
+      %channel = amdaie.channel(%tile_0_0, 0, port_type = DMA)
+      %channel_1 = amdaie.channel(%tile_0_1, 0, port_type = DMA)
+      %4 = amdaie.flow({%channel} -> {%channel_1}) {is_packet_flow = false}
+      %5 = amdaie.connection(%3 {%channel_1}, %2 {%channel}, flow = %4) : (!amdaie.logicalobjectfifo<memref<4096xi32, 1 : i32>, 1>, !amdaie.logicalobjectfifo<memref<4096xi32>, 1>)
+      %6 = amdaie.logicalobjectfifo.placeholder{%tile_0_1} : !amdaie.logicalobjectfifo<memref<2048xi32>>
+      %7 = amdaie.logicalobjectfifo.from_buffers({%buffer_1}, {%lock_2}, {%lock_3}) : memref<2048xi32, 1 : i32> -> !amdaie.logicalobjectfifo<memref<2048xi32, 1 : i32>, 1>
+      %channel_2 = amdaie.channel(%tile_0_0, 1, port_type = DMA)
+      %channel_3 = amdaie.channel(%tile_0_1, 1, port_type = DMA)
+      %8 = amdaie.flow({%channel_2} -> {%channel_3}) {is_packet_flow = false}
+      %9 = amdaie.connection(%6 {%channel_2}, %7 {%channel_3}, flow = %8) : (!amdaie.logicalobjectfifo<memref<2048xi32>, 1>, !amdaie.logicalobjectfifo<memref<2048xi32, 1 : i32>, 1>)
       amdaie.controlcode {
-        %8 = amdaie.npu.circular_dma_cpy_nd %4([0] [4096] [1], [] [] [])
-        %9 = amdaie.npu.circular_dma_cpy_nd %7([] [] [], [0] [2048] [1])
-        %10 = amdaie.logicalobjectfifo.from_memref %0, {%tile_0_0} : memref<4096xi32> -> !amdaie.logicalobjectfifo<memref<4096xi32>>
-        %11 = amdaie.logicalobjectfifo.from_memref %1, {%tile_0_0} : memref<2048xi32> -> !amdaie.logicalobjectfifo<memref<2048xi32>>
-        %12 = amdaie.npu.dma_cpy_nd %4([] [] [], %10[0, 0, 0, 32] [1, 1, 32, 32] [0, 0, 64, 1] bd_id = %bd_id_0) : source_type = !amdaie.logicalobjectfifo<memref<4096xi32>>
-        amdaie.npu.dma_wait(%12, MM2S)
-        %13 = amdaie.npu.dma_cpy_nd %4([] [] [], %10[0, 0, 0, 0] [1, 1, 1, 2048] [0, 0, 0, 1] bd_id = %bd_id_0) : source_type = !amdaie.logicalobjectfifo<memref<4096xi32>>
-        amdaie.npu.dma_wait(%13, MM2S)
+        %10 = amdaie.npu.circular_dma_cpy_nd %5([0] [4096] [1], [] [] [])
+        %11 = amdaie.npu.circular_dma_cpy_nd %9([] [] [], [0] [2048] [1])
+        %12 = amdaie.logicalobjectfifo.from_memref %0, {%tile_0_0} : memref<4096xi32> -> !amdaie.logicalobjectfifo<memref<4096xi32>>
+        %13 = amdaie.logicalobjectfifo.from_memref %1, {%tile_0_0} : memref<2048xi32> -> !amdaie.logicalobjectfifo<memref<2048xi32>>
+        %14 = amdaie.npu.dma_cpy_nd %5([] [] [], %12[0, 0, 0, 32] [1, 1, 32, 32] [0, 0, 64, 1] bd_id = %bd_id_0) : source_type = !amdaie.logicalobjectfifo<memref<4096xi32>>
+        amdaie.npu.dma_wait(%14, MM2S)
+        %15 = amdaie.npu.dma_cpy_nd %5([] [] [], %12[0, 0, 0, 0] [1, 1, 1, 2048] [0, 0, 0, 1] bd_id = %bd_id_0) : source_type = !amdaie.logicalobjectfifo<memref<4096xi32>>
+        amdaie.npu.dma_wait(%15, MM2S)
         scf.forall (%arg0, %arg1) in (2, 1) {
-          %14 = amdaie.npu.dma_cpy_nd %7(%11[0, 0, 0, 32] [1, 1, 32, 32] [0, 0, 64, 1] bd_id = %bd_id_0, [] [] []) : target_type = !amdaie.logicalobjectfifo<memref<2048xi32>>
-          amdaie.npu.dma_wait(%14, S2MM)
-          %15 = amdaie.npu.dma_cpy_nd %7(%11[0, 0, 0, 0] [1, 1, 1, 1024] [0, 0, 0, 1] bd_id = %bd_id_0, [] [] []) : target_type = !amdaie.logicalobjectfifo<memref<2048xi32>>
-          amdaie.npu.dma_wait(%15, S2MM)
+          %16 = amdaie.npu.dma_cpy_nd %9(%13[0, 0, 0, 32] [1, 1, 32, 32] [0, 0, 64, 1] bd_id = %bd_id_0, [] [] []) : target_type = !amdaie.logicalobjectfifo<memref<2048xi32>>
+          amdaie.npu.dma_wait(%16, S2MM)
+          %17 = amdaie.npu.dma_cpy_nd %9(%13[0, 0, 0, 0] [1, 1, 1, 1024] [0, 0, 0, 1] bd_id = %bd_id_0, [] [] []) : target_type = !amdaie.logicalobjectfifo<memref<2048xi32>>
+          amdaie.npu.dma_wait(%17, S2MM)
         }
         amdaie.end
       }
@@ -797,27 +809,29 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
       %lock_3 = amdaie.lock(%tile_0_1(1), 0)
       %2 = amdaie.logicalobjectfifo.placeholder{%tile_0_0} : !amdaie.logicalobjectfifo<memref<4096xbf16>>
       %3 = amdaie.logicalobjectfifo.from_buffers({%buffer}, {%lock}, {%lock_1}) : memref<4096xbf16, 1 : i32> -> !amdaie.logicalobjectfifo<memref<4096xbf16, 1 : i32>, 1>
-      %channel = amdaie.channel(%tile_0_0, 0)
-      %channel_1 = amdaie.channel(%tile_0_1, 0)
-      %4 = amdaie.connection(%3 {%channel_1}, %2 {%channel}) : (!amdaie.logicalobjectfifo<memref<4096xbf16, 1 : i32>, 1>, !amdaie.logicalobjectfifo<memref<4096xbf16>, 1>)
-      %5 = amdaie.logicalobjectfifo.placeholder{%tile_0_1} : !amdaie.logicalobjectfifo<memref<2048xf32>>
-      %6 = amdaie.logicalobjectfifo.from_buffers({%buffer_1}, {%lock_2}, {%lock_3}) : memref<2048xf32, 1 : i32> -> !amdaie.logicalobjectfifo<memref<2048xf32, 1 : i32>, 1>
-      %channel_2 = amdaie.channel(%tile_0_0, 1)
-      %channel_3 = amdaie.channel(%tile_0_1, 1)
-      %7 = amdaie.connection(%5 {%channel_2}, %6 {%channel_3}) : (!amdaie.logicalobjectfifo<memref<2048xf32>, 1>, !amdaie.logicalobjectfifo<memref<2048xf32, 1 : i32>, 1>)
+      %channel = amdaie.channel(%tile_0_0, 0, port_type = DMA)
+      %channel_1 = amdaie.channel(%tile_0_1, 0, port_type = DMA)
+      %4 = amdaie.flow({%channel} -> {%channel_1}) {is_packet_flow = false}
+      %5 = amdaie.connection(%3 {%channel_1}, %2 {%channel}, flow = %4) : (!amdaie.logicalobjectfifo<memref<4096xbf16, 1 : i32>, 1>, !amdaie.logicalobjectfifo<memref<4096xbf16>, 1>)
+      %6 = amdaie.logicalobjectfifo.placeholder{%tile_0_1} : !amdaie.logicalobjectfifo<memref<2048xf32>>
+      %7 = amdaie.logicalobjectfifo.from_buffers({%buffer_1}, {%lock_2}, {%lock_3}) : memref<2048xf32, 1 : i32> -> !amdaie.logicalobjectfifo<memref<2048xf32, 1 : i32>, 1>
+      %channel_2 = amdaie.channel(%tile_0_0, 1, port_type = DMA)
+      %channel_3 = amdaie.channel(%tile_0_1, 1, port_type = DMA)
+      %8 = amdaie.flow({%channel_2} -> {%channel_3}) {is_packet_flow = false}
+      %9 = amdaie.connection(%6 {%channel_2}, %7 {%channel_3}, flow = %8) : (!amdaie.logicalobjectfifo<memref<2048xf32>, 1>, !amdaie.logicalobjectfifo<memref<2048xf32, 1 : i32>, 1>)
       amdaie.controlcode {
-        %8 = amdaie.npu.circular_dma_cpy_nd %4([0] [4096] [1], [] [] [])
-        %9 = amdaie.npu.circular_dma_cpy_nd %7([] [] [], [0] [2048] [1])
-        %10 = amdaie.logicalobjectfifo.from_memref %0, {%tile_0_0} : memref<4096xbf16> -> !amdaie.logicalobjectfifo<memref<4096xbf16>>
-        %11 = amdaie.logicalobjectfifo.from_memref %1, {%tile_0_0} : memref<2048xf32> -> !amdaie.logicalobjectfifo<memref<2048xf32>>
-        %12 = amdaie.npu.dma_cpy_nd %4([] [] [], %10[0, 0, 1, 2] [1, 2, 32, 16] [0, 16, 32, 1] bd_id = %bd_id_0) : source_type = !amdaie.logicalobjectfifo<memref<4096xbf16>>
-        amdaie.npu.dma_wait(%12, MM2S)
-        %13 = amdaie.npu.dma_cpy_nd %4([] [] [], %10[0, 0, 0, 0] [1, 1, 1, 1024] [0, 0, 0, 1] bd_id = %bd_id_0) : source_type = !amdaie.logicalobjectfifo<memref<4096xbf16>>
-        amdaie.npu.dma_wait(%13, MM2S)
-        %14 = amdaie.npu.dma_cpy_nd %7(%11[0, 0, 0, 32] [1, 1, 32, 32] [0, 0, 64, 1] bd_id = %bd_id_0, [] [] []) : target_type = !amdaie.logicalobjectfifo<memref<2048xf32>>
-        amdaie.npu.dma_wait(%14, S2MM)
-        %15 = amdaie.npu.dma_cpy_nd %7(%11[0, 0, 0, 0] [1, 1, 1, 1024] [0, 0, 0, 1] bd_id = %bd_id_0, [] [] []) : target_type = !amdaie.logicalobjectfifo<memref<2048xf32>>
-        amdaie.npu.dma_wait(%15, S2MM)
+        %10 = amdaie.npu.circular_dma_cpy_nd %5([0] [4096] [1], [] [] [])
+        %11 = amdaie.npu.circular_dma_cpy_nd %9([] [] [], [0] [2048] [1])
+        %12 = amdaie.logicalobjectfifo.from_memref %0, {%tile_0_0} : memref<4096xbf16> -> !amdaie.logicalobjectfifo<memref<4096xbf16>>
+        %13 = amdaie.logicalobjectfifo.from_memref %1, {%tile_0_0} : memref<2048xf32> -> !amdaie.logicalobjectfifo<memref<2048xf32>>
+        %14 = amdaie.npu.dma_cpy_nd %5([] [] [], %12[0, 0, 1, 2] [1, 2, 32, 16] [0, 16, 32, 1] bd_id = %bd_id_0) : source_type = !amdaie.logicalobjectfifo<memref<4096xbf16>>
+        amdaie.npu.dma_wait(%14, MM2S)
+        %15 = amdaie.npu.dma_cpy_nd %5([] [] [], %12[0, 0, 0, 0] [1, 1, 1, 1024] [0, 0, 0, 1] bd_id = %bd_id_0) : source_type = !amdaie.logicalobjectfifo<memref<4096xbf16>>
+        amdaie.npu.dma_wait(%15, MM2S)
+        %16 = amdaie.npu.dma_cpy_nd %9(%13[0, 0, 0, 32] [1, 1, 32, 32] [0, 0, 64, 1] bd_id = %bd_id_0, [] [] []) : target_type = !amdaie.logicalobjectfifo<memref<2048xf32>>
+        amdaie.npu.dma_wait(%16, S2MM)
+        %17 = amdaie.npu.dma_cpy_nd %9(%13[0, 0, 0, 0] [1, 1, 1, 1024] [0, 0, 0, 1] bd_id = %bd_id_0, [] [] []) : target_type = !amdaie.logicalobjectfifo<memref<2048xf32>>
+        amdaie.npu.dma_wait(%17, S2MM)
         amdaie.end
       }
     }
@@ -1101,14 +1115,16 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
       %1 = amdaie.logicalobjectfifo.placeholder{%tile} : !amdaie.logicalobjectfifo<memref<4096xi32>>
       %2 = amdaie.logicalobjectfifo.from_buffers({%buffer, %buffer_3}, {%lock}, {%lock_4}) : memref<4096xi32, 1 : i32>, memref<4096xi32, 1 : i32> -> !amdaie.logicalobjectfifo<memref<4096xi32, 1 : i32>, 2>
       %3 = amdaie.logicalobjectfifo.from_buffers({%buffer_5, %buffer_6, %buffer_9, %buffer_10}, {%lock_7, %lock_11}, {%lock_8, %lock_12}) : memref<4096xi32, 2 : i32>, memref<4096xi32, 2 : i32>, memref<4096xi32, 2 : i32>, memref<4096xi32, 2 : i32> -> !amdaie.logicalobjectfifo<memref<4096xi32, 2 : i32>, 2>
-      %channel = amdaie.channel(%tile, 0)
-      %channel_13 = amdaie.channel(%tile_0, 0)
-      %4 = amdaie.connection(%2 {%channel_13}, %1 {%channel}) : (!amdaie.logicalobjectfifo<memref<4096xi32, 1 : i32>, 2>, !amdaie.logicalobjectfifo<memref<4096xi32>>)
-      %channel_14 = amdaie.channel(%tile_0, 1)
-      %channel_15 = amdaie.channel(%tile_1, 0)
-      %channel_16 = amdaie.channel(%tile_2, 0)
-      %5 = amdaie.connection(%3 {%channel_15, %channel_16}, %2 {%channel_14}) : (!amdaie.logicalobjectfifo<memref<4096xi32, 2 : i32>, 2>, !amdaie.logicalobjectfifo<memref<4096xi32, 1 : i32>, 2>)
-      %6 = amdaie.core(%tile_1, in : [%5], out : []) {
+      %channel = amdaie.channel(%tile, 0, port_type = DMA)
+      %channel_13 = amdaie.channel(%tile_0, 0, port_type = DMA)
+      %4 = amdaie.flow({%channel} -> {%channel_13}) {is_packet_flow = false}
+      %5 = amdaie.connection(%2 {%channel_13}, %1 {%channel}, flow = %4) : (!amdaie.logicalobjectfifo<memref<4096xi32, 1 : i32>, 2>, !amdaie.logicalobjectfifo<memref<4096xi32>>)
+      %channel_14 = amdaie.channel(%tile_0, 1, port_type = DMA)
+      %channel_15 = amdaie.channel(%tile_1, 0, port_type = DMA)
+      %channel_16 = amdaie.channel(%tile_2, 0, port_type = DMA)
+      %6 = amdaie.flow({%channel_14} -> {%channel_15, %channel_16}) {is_packet_flow = false}
+      %7 = amdaie.connection(%3 {%channel_15, %channel_16}, %2 {%channel_14}, flow = %6) : (!amdaie.logicalobjectfifo<memref<4096xi32, 2 : i32>, 2>, !amdaie.logicalobjectfifo<memref<4096xi32, 1 : i32>, 2>)
+      %8 = amdaie.core(%tile_1, in : [%7], out : []) {
         amdaie.use_lock(%lock_8, AcquireGreaterOrEqual(1))
         %reinterpret_cast = memref.reinterpret_cast %buffer_5 to offset: [0], sizes: [64, 64], strides: [64, 1] : memref<4096xi32, 2 : i32> to memref<64x64xi32, 2 : i32>
         linalg.fill ins(%c0_i32 : i32) outs(%reinterpret_cast : memref<64x64xi32, 2 : i32>)
@@ -1119,7 +1135,7 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
         amdaie.use_lock(%lock_7, AcquireGreaterOrEqual(1))
         amdaie.end
       }
-      %7 = amdaie.core(%tile_2, in : [%5], out : []) {
+      %9 = amdaie.core(%tile_2, in : [%7], out : []) {
         amdaie.use_lock(%lock_12, AcquireGreaterOrEqual(1))
         %reinterpret_cast = memref.reinterpret_cast %buffer_9 to offset: [0], sizes: [64, 64], strides: [64, 1] : memref<4096xi32, 2 : i32> to memref<64x64xi32, 2 : i32>
         linalg.fill ins(%c0_i32 : i32) outs(%reinterpret_cast : memref<64x64xi32, 2 : i32>)
@@ -1131,11 +1147,11 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
         amdaie.end
       }
       amdaie.controlcode {
-        %8 = amdaie.npu.circular_dma_cpy_nd %4([0, 0] [64, 64] [32, 1], [] [] [])
-        %9 = amdaie.npu.circular_dma_cpy_nd %5([] [] [], [0, 1024] [64, 64] [32, 1])
-        %10 = amdaie.logicalobjectfifo.from_memref %0, {%tile} : memref<4096xi32> -> !amdaie.logicalobjectfifo<memref<4096xi32>>
-        %11 = amdaie.npu.dma_cpy_nd %4([] [] [], %10[0, 0, 0, 32] [1, 1, 32, 32] [0, 0, 64, 1] bd_id = %bd_id) : source_type = !amdaie.logicalobjectfifo<memref<4096xi32>>
-        amdaie.npu.dma_wait(%11, MM2S)
+        %10 = amdaie.npu.circular_dma_cpy_nd %5([0, 0] [64, 64] [32, 1], [] [] [])
+        %11 = amdaie.npu.circular_dma_cpy_nd %7([] [] [], [0, 1024] [64, 64] [32, 1])
+        %12 = amdaie.logicalobjectfifo.from_memref %0, {%tile} : memref<4096xi32> -> !amdaie.logicalobjectfifo<memref<4096xi32>>
+        %13 = amdaie.npu.dma_cpy_nd %5([] [] [], %12[0, 0, 0, 32] [1, 1, 32, 32] [0, 0, 64, 1] bd_id = %bd_id) : source_type = !amdaie.logicalobjectfifo<memref<4096xi32>>
+        amdaie.npu.dma_wait(%13, MM2S)
         amdaie.end
       }
     }

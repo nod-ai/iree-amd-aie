@@ -6,14 +6,14 @@
 // CHECK:       amdaie.workgroup
 // CHECK:         %[[tile_0_0:.+]] = amdaie.tile(%[[C0]], %[[C0]])
 // CHECK:         %[[tile_0_1:.+]] = amdaie.tile(%[[C0]], %[[C1]])
-// CHECK:         %[[CHANNEL_0:.+]] = amdaie.channel(%[[tile_0_0]], 0)
-// CHECK:         %[[CHANNEL_1:.+]] = amdaie.channel(%[[tile_0_1]], 0)
+// CHECK:         %[[CHANNEL_0:.+]] = amdaie.channel(%[[tile_0_0]], 0, port_type = DMA)
+// CHECK:         %[[CHANNEL_1:.+]] = amdaie.channel(%[[tile_0_1]], 0, port_type = DMA)
 // CHECK:         amdaie.connection(%{{.+}} {%[[CHANNEL_1]]}, %{{.+}} {%[[CHANNEL_0]]})
-// CHECK:         %[[CHANNEL_2:.+]] = amdaie.channel(%[[tile_0_0]], 1)
-// CHECK:         %[[CHANNEL_3:.+]] = amdaie.channel(%[[tile_0_1]], 1)
+// CHECK:         %[[CHANNEL_2:.+]] = amdaie.channel(%[[tile_0_0]], 1, port_type = DMA)
+// CHECK:         %[[CHANNEL_3:.+]] = amdaie.channel(%[[tile_0_1]], 1, port_type = DMA)
 // CHECK:         amdaie.connection(%{{.+}} {%[[CHANNEL_3]]}, %{{.+}} {%[[CHANNEL_2]]})
-// CHECK:         %[[CHANNEL_4:.+]] = amdaie.channel(%[[tile_0_0]], 2)
-// CHECK:         %[[CHANNEL_5:.+]] = amdaie.channel(%[[tile_0_1]], 2)
+// CHECK:         %[[CHANNEL_4:.+]] = amdaie.channel(%[[tile_0_0]], 2, port_type = DMA)
+// CHECK:         %[[CHANNEL_5:.+]] = amdaie.channel(%[[tile_0_1]], 2, port_type = DMA)
 // CHECK:         amdaie.connection(%{{.+}} {%[[CHANNEL_5]]}, %{{.+}} {%[[CHANNEL_4]]})
 module {
   func.func @assign_channels(%arg0: memref<1x1x8x16xi32, 1>, %arg1: memref<8x16xi32>) {

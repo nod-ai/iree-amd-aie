@@ -61,6 +61,12 @@ def AMDAIEAssignNpuDmaBdIds :
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEAssignNpuDmaBdIdsPass()";
 }
 
+def AMDAIEAssignPacketIds :
+    Pass<"iree-amdaie-assign-packet-ids", ""> {
+  let summary = "Assign packet ids to `amdaie.flow` operations.";
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEAssignPacketIdsPass()";
+}
+
 def AMDAIEBridgeToAIR : Pass<"iree-amdaie-bridge-to-air", ""> {
   let summary = "Perform transformations that allow hooking into AIR/AIE lowering";
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEBridgeToAIRPass()";
@@ -131,6 +137,12 @@ def AMDAIECombineStridedOps :
     Pass<"iree-amdaie-combine-strided-ops", ""> {
   let summary = "Combine strided ops in same block if access patterns are compatible.";
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIECombineStridedOpsPass()";
+}
+
+def AMDAIEConnectionToFlow :
+    Pass<"iree-amdaie-connection-to-flow", ""> {
+  let summary = "Create flow ops for connections.";
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEConnectionToFlowPass()";
 }
 
 def AMDAIEControlCodeLoopUnroll :

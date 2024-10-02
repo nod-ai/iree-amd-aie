@@ -612,6 +612,8 @@ void addAMDAIEObjectFifoLoweringPasses(OpPassManager &passManager,
   passManager.addPass(createCanonicalizerPass());
 
   passManager.addPass(createAMDAIEObjFifoBufferizationPass());
+  passManager.addPass(createAMDAIEConnectionToFlowPass());
+  passManager.addPass(createAMDAIEAssignPacketIdsPass());
 
   addAMDAIEToAIEPasses(passManager);
 
