@@ -343,13 +343,15 @@ void AMDAIETileAndFusePass::runOnOperation() {
   if (isTilingReductionDimension(consumerOp, tileSizesVal)) {
     tileAndFuseOptions.setFusionControlFn(
         [&](tensor::ExtractSliceOp sliceOp, OpResult originalProducer,
-            bool isDestinationOperand) -> std::tuple<bool, bool> {
-          return {false, false};
+            bool isDestinationOperand)
+            -> std::optional<scf::SCFTileAndFuseOptions::ControlFnResult> {
+          return std::nullopt;
         });
   } else {
     tileAndFuseOptions.setFusionControlFn(
         [&](tensor::ExtractSliceOp sliceOp, OpResult originalProducer,
-            bool isDestinationOperand) -> std::tuple<bool, bool> {
+            bool isDestinationOperand)
+            -> std::optional<scf::SCFTileAndFuseOptions::ControlFnResult> {
           bool fusableOp =
               TypeSwitch<Operation *, bool>(originalProducer.getOwner())
                   // List ops that shouldnt be fused.
@@ -360,7 +362,8 @@ void AMDAIETileAndFusePass::runOnOperation() {
                     return op->getDialect() ==
                            context->getLoadedDialect<linalg::LinalgDialect>();
                   });
-          return {fusableOp, false};
+          if (!fusableOp) return std::nullopt;
+          return scf::SCFTileAndFuseOptions::ControlFnResult{false};
         });
   }
 

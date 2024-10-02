@@ -427,6 +427,10 @@ uint32_t AMDAIEDeviceModel::getColumnShift() const {
 
 uint32_t AMDAIEDeviceModel::getRowShift() const { return configPtr.RowShift; }
 
+uint8_t AMDAIEDeviceModel::getPacketIdMaxIdx() const {
+  return deviceConfig.packetIdMaxIdx;
+}
+
 uint8_t AMDAIEDeviceModel::getStreamSwitchArbiterMax(uint8_t col,
                                                      uint8_t row) const {
   assert(isCoreTile(col, row) || isMemTile(col, row) || isShimTile(col, row));
@@ -475,6 +479,7 @@ struct AMDAIEDeviceModel getDeviceModel(AMDAIEDevice device) {
   switch (device) {
     case AMDAIEDevice::xcvc1902: {
       AMDAIEDeviceModel::AMDAIEDeviceConfig deviceConfig;
+      deviceConfig.packetIdMaxIdx = XAIE1_PACKET_ID_MAX;
       deviceConfig.streamSwitchCoreArbiterMax = XAIE1_SS_ARBITER_MAX;
       deviceConfig.streamSwitchCoreMSelMax = XAIE1_SS_MSEL_MAX;
       deviceConfig.streamSwitchMemTileArbiterMax = XAIE1_SS_ARBITER_MAX;
@@ -498,6 +503,7 @@ struct AMDAIEDeviceModel getDeviceModel(AMDAIEDevice device) {
     }
     case AMDAIEDevice::xcve2302: {
       AMDAIEDeviceModel::AMDAIEDeviceConfig deviceConfig;
+      deviceConfig.packetIdMaxIdx = XAIEML_PACKET_ID_MAX;
       deviceConfig.streamSwitchCoreArbiterMax = XAIEML_SS_ARBITER_MAX;
       deviceConfig.streamSwitchCoreMSelMax = XAIEML_SS_MSEL_MAX;
       deviceConfig.streamSwitchMemTileArbiterMax = XAIEML_SS_ARBITER_MAX;
@@ -520,6 +526,7 @@ struct AMDAIEDeviceModel getDeviceModel(AMDAIEDevice device) {
     }
     case AMDAIEDevice::xcve2802: {
       AMDAIEDeviceModel::AMDAIEDeviceConfig deviceConfig;
+      deviceConfig.packetIdMaxIdx = XAIEML_PACKET_ID_MAX;
       deviceConfig.streamSwitchCoreArbiterMax = XAIEML_SS_ARBITER_MAX;
       deviceConfig.streamSwitchCoreMSelMax = XAIEML_SS_MSEL_MAX;
       deviceConfig.streamSwitchMemTileArbiterMax = XAIEML_SS_ARBITER_MAX;
@@ -546,6 +553,7 @@ struct AMDAIEDeviceModel getDeviceModel(AMDAIEDevice device) {
     case AMDAIEDevice::npu1_3col:
     case AMDAIEDevice::npu1_4col: {
       AMDAIEDeviceModel::AMDAIEDeviceConfig deviceConfig;
+      deviceConfig.packetIdMaxIdx = XAIE2IPU_PACKET_ID_MAX;
       deviceConfig.streamSwitchCoreArbiterMax = XAIE2IPU_SS_ARBITER_MAX;
       deviceConfig.streamSwitchCoreMSelMax = XAIE2IPU_SS_MSEL_MAX;
       deviceConfig.streamSwitchMemTileArbiterMax = XAIE2IPU_SS_ARBITER_MAX;
@@ -591,6 +599,7 @@ struct AMDAIEDeviceModel getDeviceModel(AMDAIEDevice device) {
     }
     case AMDAIEDevice::npu4: {
       AMDAIEDeviceModel::AMDAIEDeviceConfig deviceConfig;
+      deviceConfig.packetIdMaxIdx = XAIE_STRIXB0_PACKET_ID_MAX;
       deviceConfig.streamSwitchCoreArbiterMax = XAIE_STRIXB0_SS_ARBITER_MAX;
       deviceConfig.streamSwitchCoreMSelMax = XAIE_STRIXB0_SS_MSEL_MAX;
       deviceConfig.streamSwitchMemTileArbiterMax = XAIE_STRIXB0_SS_ARBITER_MAX;

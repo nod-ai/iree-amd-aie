@@ -86,6 +86,9 @@ std::unique_ptr<Pass> createAMDAIEAssignLogicalObjectFifoDepthPass(
 /// Create a pass to assign BD ids to `amdaie.npu.dma_cpy_nd` operations.
 std::unique_ptr<Pass> createAMDAIEAssignNpuDmaBdIdsPass();
 
+/// Create a pass to assign packet ids to `amdaie.flow` operations.
+std::unique_ptr<Pass> createAMDAIEAssignPacketIdsPass();
+
 /// Create a pass to do some rewrites that help bridging the path to AIR/AIE
 /// lowering.
 std::unique_ptr<Pass> createAMDAIEBridgeToAIRPass();
@@ -101,6 +104,9 @@ std::unique_ptr<Pass> createAMDAIECanonicalizeNpuDmaCpyNdPass();
 /// Create pass to canonicalize doubly strided operations.
 std::unique_ptr<Pass> createAMDAIECanonicalizeDoublyStridedOpPass(
     AMDAIECanonicalizeDoublyStridedOpOptions options = {});
+
+/// Create pass to create `amdaie.flow` ops for connections.
+std::unique_ptr<Pass> createAMDAIEConnectionToFlowPass();
 
 /// Pass to unroll the loops within the control code regions.
 std::unique_ptr<Pass> createAMDAIEControlCodeLoopUnrollPass();
@@ -229,7 +235,8 @@ std::unique_ptr<Pass> createAMDAIEPackAndTransposePass(
 
 /// Create pass to lower copy/pack/unpack ops to AMDAIE DMA ops operating on
 /// logical objectFifos.
-std::unique_ptr<Pass> createAMDAIEConvertToDmaPass();
+std::unique_ptr<Pass> createAMDAIEConvertToDmaPass(
+    AMDAIEConvertToDmaOptions options = {});
 
 /// Create a pass to pad MatmulOp.
 std::unique_ptr<Pass> createAMDAIEPadPass(AMDAIEPadOptions options = {});

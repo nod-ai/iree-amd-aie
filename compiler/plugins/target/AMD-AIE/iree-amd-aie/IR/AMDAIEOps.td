@@ -91,6 +91,42 @@ def AMDAIE_EndOp: AMDAIE_Op<"end", [Terminator]> {
   let assemblyFormat = [{ attr-dict }];
 }
 
+def AMDAIE_FlowOp: AMDAIE_Op<"flow", [AttrSizedOperandSegments]>, 
+    Results<(outs Index)> {
+  let summary = "The data connection between a set of source and target "
+                "channels.";
+  let description = [{
+    This operation represents a connection between source and target channels. 
+    This is used to describe a logical data routing configuration between 
+    channels, to be solved by the router for actual stream switch 
+    configurations that implements it. The multiple sources and targets can
+    describe different connection patterns:
+    - Single source and multiple targets describes a data broadcasting pattern.
+    - Multiple sources and single target describes a data merge pattern.
+    - Multiple sources and multiple targets is not supported.
+
+    Example:
+
+    ```mlir
+    %channel = amdaie.channel(%tile_0_0, 0, port_type = DMA)
+    %channel_1 = amdaie.channel(%tile_0_1, 0, port_type = DMA)
+    %channel_2 = amdaie.channel(%tile_1_1, 0, port_type = DMA)
+    %0 = amdaie.flow({%channel} -> {%channel_1, %channel_2}) 
+      {is_packet_flow = true, packet_id = 0 : ui8}
+    ```
+  }];
+
+  let arguments = (
+    ins Variadic<Index>:$sources,
+        Variadic<Index>:$targets,
+        BoolAttr:$is_packet_flow,
+        OptionalAttr<UI8Attr>:$packet_id
+  );
+
+  let assemblyFormat = [{ `(` `{` $sources `}` `->` `{` $targets `}` `)` attr-dict }];
+  let hasVerifier = 1;
+}
+
 def AMDAIE_TileOp: AMDAIE_Op<"tile", [
     Pure,
     DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>
@@ -319,20 +355,23 @@ def AMDAIE_ChannelOp: AMDAIE_Op<"channel", [
 
     ```mlir
     %tile = amdaie.tile(%c0, %c0)
-    %channel = amdaie.channel(%tile, 0)
+    %channel = amdaie.channel(%tile, 0, port_type = DMA)
     ```
   }];
 
   let arguments = (
     ins Index:$tile,
-        ConfinedAttr<I8Attr, [IntMinValue<0>]>:$value
+        ConfinedAttr<I8Attr, [IntMinValue<0>]>:$value,
+        StrmSwPortTypeAttr:$port_type
   );
 
   let extraClassDeclaration = [{
     TileOp getTileOp();
   }];
 
-  let assemblyFormat = [{ `(` $tile `,` $value `)` attr-dict }];
+  let assemblyFormat = [{ 
+    `(` $tile `,` $value `,` `port_type` `=` $port_type `)` attr-dict
+  }];
 }
 
 //===----------------------------------------------------------------------===//
@@ -733,7 +772,8 @@ def AMDAIE_ConnectionOp: AMDAIE_Op<"connection",
         Variadic<Index>:$target_channels,
         AnyAMDAIELogicalObjectFifoType:$source,
         Variadic<Index>:$source_channels,
-        OptionalAttr<AMDAIE_ConnectionType>:$connection_type
+        OptionalAttr<AMDAIE_ConnectionTypeAttr>:$connection_type,
+        Optional<Index>:$flow
         
   );
   let results = (outs Index:$result);
@@ -745,8 +785,8 @@ def AMDAIE_ConnectionOp: AMDAIE_Op<"connection",
     `,`
     $source 
     ( ` ` `{` $source_channels^  `}` )?
-    ( `,` `connection_type` `=` $connection_type^ )?
-    `)`  
+    ( `,` `flow` `=` $flow^ )?
+    `)`
     attr-dict
     `:` `(` type($target) `,` type($source) `)`
   }];
@@ -758,6 +798,7 @@ def AMDAIE_ConnectionOp: AMDAIE_Op<"connection",
   ];
 
   let extraClassDeclaration = [{
+    std::optional<FlowOp> getFlowOp();
     Value getSourceMemref() { return getSource(); }
     Value getTargetMemref() { return getTarget(); }
     Type getSourceType() { return getSource().getType(); }
