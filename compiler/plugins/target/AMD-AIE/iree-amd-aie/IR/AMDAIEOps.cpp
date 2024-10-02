@@ -445,13 +445,14 @@ void CircularDmaCpyNdOp::getCanonicalizationPatterns(RewritePatternSet &results,
 
 void ConnectionOp::build(mlir::OpBuilder &b, mlir::OperationState &result,
                          Value target, Value source) {
-  build(b, result, target, {}, source, {}, nullptr);
+  build(b, result, target, {}, source, {}, nullptr, nullptr);
 }
 
 void ConnectionOp::build(mlir::OpBuilder &b, mlir::OperationState &result,
                          Value target, ValueRange targetChannels, Value source,
                          ValueRange sourceChannels) {
-  build(b, result, target, targetChannels, source, sourceChannels, nullptr);
+  build(b, result, target, targetChannels, source, sourceChannels, nullptr,
+        nullptr);
 }
 
 FailureOr<AMDAIE::NpuCircularDmaCpyNdOp>
@@ -467,6 +468,22 @@ ConnectionOp::getNpuCircularDmaCpyNdUser() {
                          << npuDmaUsers.size();
   }
   return npuDmaUsers[0];
+}
+
+std::optional<FlowOp> ConnectionOp::getFlowOp() {
+  return dyn_cast_if_present<AMDAIE::FlowOp>(getFlow().getDefiningOp());
+}
+
+//===----------------------------------------------------------------------===//
+// AMDAIE_FlowOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult FlowOp::verify() {
+  if (getSources().size() > 1 && getTargets().size() > 1) {
+    return emitOpError()
+           << "multiple source and multiple targets is unsupported";
+  }
+  return success();
 }
 
 //===----------------------------------------------------------------------===//
