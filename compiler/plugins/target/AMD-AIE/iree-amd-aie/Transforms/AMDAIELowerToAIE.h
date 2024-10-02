@@ -59,6 +59,7 @@ class AIEDeviceBuilder {
                             int &bufferId);
   LogicalResult connectionToAIE(AMDAIE::ConnectionOp connectionOp,
                                 Block *deviceBlock, int &connectionIndex);
+  LogicalResult flowToAIE(AMDAIE::FlowOp flowOp, Block *deviceBlock);
   LogicalResult lockToAIE(AMDAIE::LockOp lockOp, Block *deviceBlock,
                           int &lockIndex);
   LogicalResult logicalObjFifoFromBuffersToAIE(
@@ -83,12 +84,11 @@ class AIEDeviceBuilder {
                  size_t acqNum, size_t relNum, int64_t len, int64_t offset,
                  const SmallVector<AIE::BufferOp> &bufferOps,
                  const std::pair<AIE::LockOp, AIE::LockOp> &locks,
-                 AIE::PacketFlowOp pktFlowOp);
+                 std::optional<uint8_t> pktId);
 
   /// Utility to create flow ops from connection ops.
   SmallVector<Operation *> createFlowOps(
-      AMDAIE::ConnectionOp connectionOp,
-      ArrayRef<AMDAIE::ChannelOp> producerChannels,
+      AMDAIE::FlowOp flowOp, ArrayRef<AMDAIE::ChannelOp> producerChannels,
       ArrayRef<AMDAIE::ChannelOp> consumerChannels);
 
   /// Utility to create `aie.shim_dma_allocation` ops and corresponding global
@@ -122,9 +122,6 @@ class AIEDeviceBuilder {
   IRMapping mapper;
   /// Dedicated mapper for the HAL bindings.
   IRMapping bindingsMapper;
-  /// Index used to create unique packet flows. Expected to be incremented after
-  /// a new packet flow op is created.
-  int pktFlowIndex{0};
   /// Map from tile values to AIE memory op (`aie.mem` or `aie.memtile_dma`).
   /// This is used to look up and add new DMA patterns to those memory ops.
   DenseMap<Value, Operation *> tileToMemOpMap;

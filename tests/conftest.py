@@ -7,7 +7,7 @@ from ml_dtypes import bfloat16
 
 from iree.compiler import ir
 from iree.compiler._mlir_libs import get_dialect_registry
-from iree.compiler.api import Session, Output, Source
+from iree.compiler.api import Session, Output, Source, _initializeGlobalCL
 from iree.compiler.extras import types as T
 from iree.runtime import VmModule
 from iree.runtime import get_driver, Config, SystemContext
@@ -49,8 +49,16 @@ def pytest_addoption(parser):
     parser.addoption("--iree-aie-debug", action="store_true")
 
 
+@pytest.fixture(scope="session")
+def global_cl_args(request):
+    _initializeGlobalCL(
+        "--iree-hal-memoization=false",
+        "--iree-hal-indirect-command-buffers=false",
+    )
+
+
 @pytest.fixture
-def iree_session(request, pytestconfig) -> Session:
+def iree_session(request, pytestconfig, global_cl_args) -> Session:
     s = Session()
     s.context.append_dialect_registry(get_dialect_registry())
     s.context.load_all_available_dialects()

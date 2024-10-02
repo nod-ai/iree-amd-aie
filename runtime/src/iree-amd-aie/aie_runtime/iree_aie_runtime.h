@@ -222,6 +222,7 @@ struct AMDAIEDeviceModel {
   /// aie-rt for whatever reason. Make sure the parameters can't be retrieved in
   /// another way before adding new fields to this struct.
   struct AMDAIEDeviceConfig {
+    uint8_t packetIdMaxIdx{0};
     /// Currently, the max arbiter/msel is hidden inside aie-rt.
     uint8_t streamSwitchCoreArbiterMax{0};
     uint8_t streamSwitchCoreMSelMax{0};
@@ -316,6 +317,8 @@ struct AMDAIEDeviceModel {
 
   uint32_t getColumnShift() const;
   uint32_t getRowShift() const;
+
+  uint8_t getPacketIdMaxIdx() const;
 
   uint8_t getStreamSwitchArbiterMax(uint8_t col, uint8_t row) const;
   uint8_t getStreamSwitchMSelMax(uint8_t col, uint8_t row) const;

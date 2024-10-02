@@ -405,6 +405,8 @@ function run_matmul_test() {
                       --iree-amd-aie-enable-chess=${use_chess} \
                       --iree-amdaie-enable-packet-flow=${enable_packet_flow} \
                       --iree-hal-dump-executable-files-to=$PWD \
+                      --iree-hal-memoization=false \
+                      --iree-hal-indirect-command-buffers=false \
                       --mlir-elide-resource-strings-if-larger=10 \
                       --iree-amd-aie-show-invoked-commands"
 
@@ -416,6 +418,8 @@ function run_matmul_test() {
   set +e
 
   echo "**** Generating matmul .vmfb file for ${name} ****"
+  ${IREE_COMPILE_EXE} "${matmul_ir}" \
+    ${compilation_flags} --compile-to=vm -o "${matmul_vmfb}.vm"
   ${IREE_COMPILE_EXE} "${matmul_ir}" \
     ${compilation_flags} -o "${matmul_vmfb}"
 

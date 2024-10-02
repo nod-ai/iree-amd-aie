@@ -7,9 +7,9 @@
 // CHECK:         %[[OBJ0:.+]] = amdaie.logicalobjectfifo.from_memref %[[ARG0]]
 // CHECK:         %[[OBJ1:.+]] = amdaie.logicalobjectfifo.from_memref %[[ARG1]]
 // CHECK:         %[[OBJ2:.+]] = amdaie.logicalobjectfifo.from_memref %[[ARG2]]
-// CHECK:         amdaie.connection(%[[OBJ1]], %[[OBJ0]], connection_type = Circuit)
-// CHECK:         amdaie.connection(%[[OBJ0]], %[[OBJ1]], connection_type = Circuit)
-// CHECK:         amdaie.connection(%[[OBJ2]], %[[OBJ1]], connection_type = Circuit)
+// CHECK:         amdaie.connection(%[[OBJ1]], %[[OBJ0]]) {connection_type = #amdaie<connection_type Circuit>}
+// CHECK:         amdaie.connection(%[[OBJ0]], %[[OBJ1]]) {connection_type = #amdaie<connection_type Circuit>}
+// CHECK:         amdaie.connection(%[[OBJ2]], %[[OBJ1]]) {connection_type = #amdaie<connection_type Circuit>}
 
 // PACKET-LABEL: @assign_connection_types
 // PACKET-SAME:  %[[ARG0:.+]]: memref<8x16xi32>, %[[ARG1:.+]]: memref<1x1x8x16xi32, 1>, %[[ARG2:.+]]: memref<1x1x8x16xi32, 2>
@@ -17,9 +17,9 @@
 // PACKET:         %[[OBJ0:.+]] = amdaie.logicalobjectfifo.from_memref %[[ARG0]]
 // PACKET:         %[[OBJ1:.+]] = amdaie.logicalobjectfifo.from_memref %[[ARG1]]
 // PACKET:         %[[OBJ2:.+]] = amdaie.logicalobjectfifo.from_memref %[[ARG2]]
-// PACKET:         amdaie.connection(%[[OBJ1]], %[[OBJ0]], connection_type = Packet)
-// PACKET:         amdaie.connection(%[[OBJ0]], %[[OBJ1]], connection_type = Packet)
-// PACKET:         amdaie.connection(%[[OBJ2]], %[[OBJ1]], connection_type = Packet)
+// PACKET:         amdaie.connection(%[[OBJ1]], %[[OBJ0]]) {connection_type = #amdaie<connection_type Packet>}
+// PACKET:         amdaie.connection(%[[OBJ0]], %[[OBJ1]]) {connection_type = #amdaie<connection_type Packet>}
+// PACKET:         amdaie.connection(%[[OBJ2]], %[[OBJ1]]) {connection_type = #amdaie<connection_type Packet>}
 
 module {
   func.func @assign_connection_types(%arg0: memref<8x16xi32>, %arg1: memref<1x1x8x16xi32, 1>, %arg2: memref<1x1x8x16xi32, 2>) {

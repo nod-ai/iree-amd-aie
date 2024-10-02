@@ -100,7 +100,7 @@ void AIEDeviceBuilder::createDMA(
     AIE::BDDimLayoutArrayAttr dims, size_t acqNum, size_t relNum, int64_t len,
     int64_t offset, const SmallVector<AIE::BufferOp> &bufferOps,
     const std::pair<AIE::LockOp, AIE::LockOp> &locks,
-    AIE::PacketFlowOp pktFlowOp) {
+    std::optional<uint8_t> pktId) {
   OpBuilder::InsertionGuard g(rewriter);
   Block &endBlock = memOp->getRegion(0).getBlocks().back();
   assert(!endBlock.getOps<AIE::EndOp>().empty() &&
@@ -123,10 +123,10 @@ void AIEDeviceBuilder::createDMA(
                                     acqNum);
     // Insert a packet op for MM2S DMAs if part of a packet flow. Only do this
     // for MM2S DMA ports as only those can insert packet headers.
-    if (channelDir == AIE::DMAChannelDir::MM2S && pktFlowOp) {
+    if (channelDir == AIE::DMAChannelDir::MM2S && pktId) {
       rewriter.create<AIE::DMABDPACKETOp>(rewriter.getUnknownLoc(),
                                           /*pkt_type*/ 0,
-                                          /*pkt_id*/ pktFlowOp.getID());
+                                          /*pkt_id*/ pktId.value());
     }
     if (!dims.getValue().empty()) {
       rewriter.create<AIE::DMABDOp>(rewriter.getUnknownLoc(), buff, offset, len,
@@ -155,32 +155,29 @@ void AIEDeviceBuilder::createDMA(
 }
 
 SmallVector<Operation *> AIEDeviceBuilder::createFlowOps(
-    AMDAIE::ConnectionOp connectionOp,
-    ArrayRef<AMDAIE::ChannelOp> producerChannels,
+    AMDAIE::FlowOp flowOp, ArrayRef<AMDAIE::ChannelOp> producerChannels,
     ArrayRef<AMDAIE::ChannelOp> consumerChannels) {
   LLVM_DEBUG(llvm::dbgs() << "-- createFlowOps\n");
   OpBuilder::InsertionGuard g(rewriter);
   SmallVector<Operation *> flowOps;
   for (AMDAIE::ChannelOp producerChannel : producerChannels) {
     Value aieProducerTile = mapper.lookup(producerChannel.getTile());
-    std::optional<AMDAIE::ConnectionType> connectionType =
-        connectionOp.getConnectionType();
-    if (connectionType &&
-        connectionType.value() == AMDAIE::ConnectionType::Packet) {
+    std::optional<uint8_t> pktId = flowOp.getPacketId();
+    if (pktId) {
       OpBuilder::InsertionGuard gg(rewriter);
       AIE::PacketFlowOp pktFlow = rewriter.create<AIE::PacketFlowOp>(
-          rewriter.getUnknownLoc(), pktFlowIndex++, nullptr, nullptr);
+          rewriter.getUnknownLoc(), pktId.value(), nullptr, nullptr);
       Region &r_pktFlow = pktFlow.getPorts();
       Block *b_pktFlow = rewriter.createBlock(&r_pktFlow);
       rewriter.setInsertionPointToStart(b_pktFlow);
       rewriter.create<AIE::PacketSourceOp>(
-          rewriter.getUnknownLoc(), aieProducerTile, AIE::WireBundle::DMA,
-          producerChannel.getValue());
+          rewriter.getUnknownLoc(), aieProducerTile,
+          producerChannel.getPortType(), producerChannel.getValue());
       for (AMDAIE::ChannelOp consumerChannel : consumerChannels) {
         Value aieConsumerTile = mapper.lookup(consumerChannel.getTile());
         rewriter.create<AIE::PacketDestOp>(
-            rewriter.getUnknownLoc(), aieConsumerTile, AIE::WireBundle::DMA,
-            consumerChannel.getValue());
+            rewriter.getUnknownLoc(), aieConsumerTile,
+            consumerChannel.getPortType(), consumerChannel.getValue());
       }
       rewriter.create<AIE::EndOp>(rewriter.getUnknownLoc());
       flowOps.push_back(pktFlow.getOperation());
@@ -436,12 +433,11 @@ LogicalResult AIEDeviceBuilder::npuDmaCpyNdOpToAIE(
     memOps = connectionToSourceTargetMemOps[connectionOp].first;
     // Set the packet info attribute for MM2S DMAs, operating on a packet flow
     // connection.
-    SmallVector<Operation *> flowOps = connectionToFlowOps.at(connectionOp);
-    if (flowOps.size() == 1 && isa<AIE::PacketFlowOp>(flowOps[0])) {
-      auto flowOp = cast<AIE::PacketFlowOp>(flowOps[0]);
-      pktInfoAttr =
-          AIE::PacketInfoAttr::get(rewriter.getContext(),
-                                   /*pkt_type*/ 0, /*pkt_id*/ flowOp.getID());
+    std::optional<AMDAIE::FlowOp> maybeFlowOp = connectionOp.getFlowOp();
+    if (maybeFlowOp && maybeFlowOp->getPacketId()) {
+      pktInfoAttr = AIE::PacketInfoAttr::get(
+          rewriter.getContext(),
+          /*pkt_type*/ 0, /*pkt_id*/ maybeFlowOp->getPacketId().value());
     }
   } else if (dmaOp.getTarget()) {
     offsets = dmaOp.getTargetOffsets();
@@ -642,17 +638,10 @@ LogicalResult AIEDeviceBuilder::connectionToAIE(
     }
     consumerChannels.push_back(channelOp);
   }
-  // Insert flow ops.
-  rewriter.setInsertionPointToEnd(deviceBlock);
-  SmallVector<Operation *> flowOps =
-      createFlowOps(connectionOp, producerChannels, consumerChannels);
-  connectionToFlowOps[connectionOp] = flowOps;
-  // If the connection has been converted into a single packet flow op, retrieve
-  // it for creating the DMA ops down below.
-  AIE::PacketFlowOp pktFlowOp;
-  if (flowOps.size() == 1 && isa<AIE::PacketFlowOp>(flowOps[0])) {
-    pktFlowOp = cast<AIE::PacketFlowOp>(flowOps[0]);
-  }
+
+  std::optional<AMDAIE::FlowOp> maybeFlowOp = connectionOp.getFlowOp();
+  std::optional<uint8_t> packetId =
+      maybeFlowOp ? maybeFlowOp->getPacketId() : std::nullopt;
 
   FailureOr<AMDAIE::NpuCircularDmaCpyNdOp> maybeNpuDmaUserOp =
       connectionOp.getNpuCircularDmaCpyNdUser();
@@ -743,7 +732,7 @@ LogicalResult AIEDeviceBuilder::connectionToAIE(
       rewriter.moveOpBefore(memOp, deviceBlock, deviceBlock->end());
       createDMA(memOp, AIE::DMAChannelDir::MM2S, channel.getValue(), dims,
                 acqNum, acqNum, maybeSize.value(), maybeOffset.value(), buffers,
-                lockPair, pktFlowOp);
+                lockPair, packetId);
     }
   }
 
@@ -831,7 +820,7 @@ LogicalResult AIEDeviceBuilder::connectionToAIE(
       rewriter.moveOpBefore(memOp, deviceBlock, deviceBlock->end());
       createDMA(memOp, AIE::DMAChannelDir::S2MM, channel.getValue(), dims,
                 acqNum, acqNum, maybeSize.value(), maybeOffset.value(), buffers,
-                lockPair, pktFlowOp);
+                lockPair, packetId);
     }
   }
 
@@ -839,6 +828,38 @@ LogicalResult AIEDeviceBuilder::connectionToAIE(
   // to create NPU ops.
   connectionToSourceTargetMemOps[connectionOp] =
       std::make_pair(sourceMemOps, targetMemOps);
+  return success();
+}
+
+/// Convert the `amdaie.flow` ops into `aie.flow` ops.
+LogicalResult AIEDeviceBuilder::flowToAIE(AMDAIE::FlowOp flowOp,
+                                          Block *deviceBlock) {
+  LLVM_DEBUG(llvm::dbgs() << "Convert [AMDAIE::ConnectionOp]\n");
+  rewriter.setInsertionPointToEnd(deviceBlock);
+  SmallVector<AMDAIE::ChannelOp> producerChannels;
+  SmallVector<AMDAIE::ChannelOp> consumerChannels;
+  for (Value producerChannel : flowOp.getSources()) {
+    auto channelOp =
+        dyn_cast_if_present<AMDAIE::ChannelOp>(producerChannel.getDefiningOp());
+    if (!channelOp) {
+      return flowOp.emitOpError()
+             << "found non-`amdaie.channel` source channel";
+    }
+    producerChannels.push_back(channelOp);
+  }
+  for (Value consumerChannel : flowOp.getTargets()) {
+    auto channelOp =
+        dyn_cast_if_present<AMDAIE::ChannelOp>(consumerChannel.getDefiningOp());
+    if (!channelOp) {
+      return flowOp.emitOpError()
+             << "found non-`amdaie.channel` target channel";
+    }
+    consumerChannels.push_back(channelOp);
+  }
+  // Insert flow ops.
+  rewriter.setInsertionPointToEnd(deviceBlock);
+  SmallVector<Operation *> flowOps =
+      createFlowOps(flowOp, producerChannels, consumerChannels);
   return success();
 }
 
@@ -984,6 +1005,12 @@ LogicalResult AIEDeviceBuilder::workgroupToAIE(
             return WalkResult::interrupt();
           }
           return WalkResult::skip();
+        })
+        .Case<AMDAIE::FlowOp>([&](auto flowOp) {
+          if (failed(flowToAIE(flowOp, deviceBlock))) {
+            return WalkResult::interrupt();
+          }
+          return WalkResult::advance();
         })
         .Case<AMDAIE::LockOp>([&](auto lockOp) {
           if (failed(lockToAIE(lockOp, deviceBlock, lockId))) {

@@ -27,8 +27,7 @@ namespace {
 
 /// Converts `scf.forall` into nested `scf.for` and then coalesce the `scf.for`
 /// loops.
-LogicalResult coreForallToFor(RewriterBase &rewriter,
-                              AMDAIE::CoreOp coreOp) {
+LogicalResult coreForallToFor(RewriterBase &rewriter, AMDAIE::CoreOp coreOp) {
   WalkResult res = coreOp->walk([&](scf::ForallOp forallOp) {
     SmallVector<Operation *> forOpResults;
     if (failed(scf::forallToForLoop(rewriter, forallOp, &forOpResults))) {
@@ -55,12 +54,12 @@ class AMDAIEConvertCoreForallToForPass
           AMDAIEConvertCoreForallToForPass> {
  public:
   void getDependentDialects(DialectRegistry &registry) const override {
-    registry.insert<scf::SCFDialect>();
+    registry.insert<scf::SCFDialect, affine::AffineDialect>();
   }
 
   AMDAIEConvertCoreForallToForPass() = default;
   AMDAIEConvertCoreForallToForPass(
-      const AMDAIEConvertCoreForallToForPass &pass){};
+      const AMDAIEConvertCoreForallToForPass &pass) {};
   void runOnOperation() override;
 };
 
