@@ -646,17 +646,14 @@ module {
 
 // The following lit test demonstrates the case we get to see in matmul+elementwise.
 // Here we get to see the intermediate L1 buffers for the matmul :-
-//    alloc -> subview -> access (within amdaie.core)
-// We should in that case want to replace the subview with a narrowed alloc itself.
+// In this case, we we don't generate the access in first place, raw alloc left as is.
 //
 // CHECK-LABEL: @l1_temporary_buffer_for_matmul_elem
 //       CHECK:   %[[C0:.*]] = arith.constant 0 : i32
 //       CHECK:   %[[ALLOC:.*]] = memref.alloc() : memref<1x1x8x8x4x4xi32, 2 : i32>
 //       CHECK:   scf.forall
-//       CHECK:     %[[FROM_MEMREF:.*]] = amdaie.logicalobjectfifo.from_memref %[[ALLOC]],
 //       CHECK:     amdaie.core
-//       CHECK:         %[[ACCESS:.*]] = amdaie.logicalobjectfifo.access(%[[FROM_MEMREF]], None) :
-//       CHECK:         linalg.fill ins(%[[C0]] : i32) outs(%[[ACCESS]] : memref<1x1x8x8x4x4xi32, 2 : i32>)
+//       CHECK:         linalg.fill ins(%[[C0]] : i32) outs(%[[ALLOC]] : memref<1x1x8x8x4x4xi32, 2 : i32>)
 //       CHECK:         amdaie.end
 //       CHECK:   memref.dealloc %[[ALLOC]] :
 func.func @l1_temporary_buffer_for_matmul_elem() {
@@ -976,15 +973,13 @@ module {
 // CHECK-SAME:        %[[FROM_MEMREF_1]]
 // CHECK-DAG:         %[[DMA_1:.*]] = amdaie.dma_cpy_nd(%[[FROM_MEMREF_2]]
 // CHECK-SAME:        %[[FROM_MEMREF_0]]
-// CHECK-DAG:         %[[FROM_MEMREF_4:.*]] = amdaie.logicalobjectfifo.from_memref %[[ALLOC_3]], {%[[TILE_0_2]]}
 // CHECK-DAG:         %[[CORE_0:.*]] = amdaie.core(%[[TILE_0_2]], in : [%[[DMA_0]], %[[DMA_1]]], out : [])
 // CHECK-DAG:           %[[VAL_0:.+]] = amdaie.logicalobjectfifo.access(%[[FROM_MEMREF_2]], Read)
 // CHECK-DAG:           %[[VAL_1:.+]] = amdaie.logicalobjectfifo.access(%[[FROM_MEMREF_3]], Read)
-// CHECK-DAG:           %[[VAL_2:.+]] = amdaie.logicalobjectfifo.access(%[[FROM_MEMREF_4]], None)
 // CHECK-DAG:           linalg.fill
 // CHECK-DAG:           memref.extract_strided_metadata %[[VAL_1]]
 // CHECK-DAG:           memref.extract_strided_metadata %[[VAL_0]]
-// CHECK-DAG:           memref.extract_strided_metadata %[[VAL_2]]
+// CHECK-DAG:           memref.extract_strided_metadata %[[ALLOC_3]]
 // CHECK-DAG:           func.call @matmul_i32_i32
 // CHECK-DAG:           amdaie.end
 // CHECK-DAG:         } {elf_file = "/path/to/ukernel.o"}
@@ -1047,14 +1042,14 @@ module {
 // Testing fix where linalg.generic has a mix of subview and direct alloc operands.
 // Before fix, this results in 'error: operand #0 does not dominate this use'.
 
-
 // CHECK-LABEL: mixed_alloc_subview_operands
-// CHECK: amdaie.core
-// CHECK-DAG: %[[ACCESS_0:.*]] = amdaie.logicalobjectfifo.access{{.*}} -> memref<1x1x4x1x4xi32, 2 : i32>
-// CHECK-DAG: %[[ACCESS_1:.*]] = amdaie.logicalobjectfifo.access{{.*}} -> memref<4x4xi32, 2 : i32>
-// CHECK-DAG: %[[SUBVIEW:.*]] = memref.subview %[[ACCESS_0]]
+// CHECK: %[[ALLOC:.*]] = memref.alloc() : memref<4x4xi32, 2 : i32>
+// CHECK: %[[ALLOC_0:.*]] = memref.alloc() : memref<1x1x4x1x4xi32, 2 : i32>
+// CHECK: %[[OBJFIFO:.*]] = amdaie.logicalobjectfifo.from_memref %[[ALLOC_0]]
+// CHECK: %[[ACCESS:.*]] = amdaie.logicalobjectfifo.access(%[[OBJFIFO]], Write)
+// CHECK: %[[SUBVIEW:.*]] = memref.subview %[[ACCESS]]
 // CHECK: linalg.generic
-// CHECK-SAME: ins(%[[ACCESS_1]] : memref<4x4xi32, 2 : i32>) outs(%[[SUBVIEW:.*]] : memref<4x4xi32, strided<[4, 1]>, 2 : i32>) {
+// CHECK-SAME: ins(%[[ALLOC]] : memref<4x4xi32, 2 : i32>) outs(%[[SUBVIEW]] : memref<4x4xi32, strided<[4, 1]>, 2 : i32>)
 
 #map = affine_map<(d0, d1) -> (d0, d1)>
 #translation = #iree_codegen.translation_info<Custom>

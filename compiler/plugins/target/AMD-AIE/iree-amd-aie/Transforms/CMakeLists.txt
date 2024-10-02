@@ -85,7 +85,6 @@ iree_cc_library(
     "AMDAIELowerToUKernels.cpp"
     "AMDAIELowerWorkgroupCount.cpp"
     "AMDAIEMapForallToCores.cpp"
-    "AMDAIENoneAccessToTemporaryBuffer.cpp"
     "AMDAIENormalizeLoopBounds.cpp"
     "AMDAIEObjFifoBufferization.cpp"
     "AMDAIEPackAndTranspose.cpp"

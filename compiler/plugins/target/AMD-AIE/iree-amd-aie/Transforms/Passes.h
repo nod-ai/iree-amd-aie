@@ -219,10 +219,6 @@ std::unique_ptr<Pass> createAMDAIELowerWorkgroupCountPass();
 std::unique_ptr<Pass> createAMDAIEMapForallToCoresPass(
     AMDAIEMapForallToCoresOptions options = {});
 
-/// Create a pass to insert a temporary buffer and replace the `None` type
-/// logical objectFifo access op usage.
-std::unique_ptr<Pass> createAMDAIENoneAccessToTemporaryBufferPass();
-
 /// Normalize the loop bounds of `scf.for` and `scf.forall`.
 std::unique_ptr<Pass> createAMDAIENormalizeLoopBoundsPass();
 

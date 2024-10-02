@@ -665,30 +665,24 @@ LogicalResult insertLogicalObjectFifoAccess(ModuleOp moduleOp) {
         } else if (auto type =
                        llvm::dyn_cast<MemRefType>(operand.get().getType())) {
           Value memref = operand.get();
-          rewriter.setInsertionPoint(coreOp);
 
-          auto logicalObjectFifo =
-              rewriter.create<AMDAIE::LogicalObjectFifoFromMemrefOp>(
-                  rewriter.getUnknownLoc(), LogicalObjectFifoType::get(type),
-                  memref);
-
-          rewriter.setInsertionPoint(opToInsertRewriterPoint);
-
-          AMDAIE::LogicalObjectFifoAccessOp accessOp;
           if (memrefToLogicalObjectFifo.contains(memref)) {
+            rewriter.setInsertionPoint(opToInsertRewriterPoint);
+
+            AMDAIE::LogicalObjectFifoAccessOp accessOp;
             std::tuple<AMDAIE::LogicalObjectFifoFromMemrefOp,
                        AMDAIE::MemoryAccess>
                 value = memrefToLogicalObjectFifo[memref];
             accessOp = rewriter.create<AMDAIE::LogicalObjectFifoAccessOp>(
                 rewriter.getUnknownLoc(), std::get<0>(value),
                 std::get<1>(value));
+            memrefToLogicalObjectFifoAccess[memref] = accessOp;
+            op->setOperand(idx, accessOp);
           } else {
-            accessOp = rewriter.create<AMDAIE::LogicalObjectFifoAccessOp>(
-                rewriter.getUnknownLoc(), logicalObjectFifo,
-                AMDAIE::MemoryAccess::None);
+            // Why would memrefToLogicalObjectFifo not contain memref? If the
+            // allocation is not connected to any data movement. So we can just
+            // ignore this case.
           }
-          memrefToLogicalObjectFifoAccess[memref] = accessOp;
-          op->setOperand(idx, accessOp);
         }
       }
       return WalkResult::advance();

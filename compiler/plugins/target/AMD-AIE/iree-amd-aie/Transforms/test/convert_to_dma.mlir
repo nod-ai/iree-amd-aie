@@ -48,7 +48,6 @@ func.func @multidim_pack() {
   return
 }
 
-
 // -----
 
 // CHECK-LABEL: @permute_pack
