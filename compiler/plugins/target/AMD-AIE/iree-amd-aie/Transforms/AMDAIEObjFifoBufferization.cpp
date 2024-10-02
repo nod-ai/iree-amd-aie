@@ -131,8 +131,8 @@ class AMDAIEObjFifoBufferizationPass
   void runOnOperation() override;
 };
 
-/// 
-/// Some memref allocations are accessed directly, as a result of the pass 
+///
+/// Some memref allocations are accessed directly, as a result of the pass
 ///
 /// `iree-amdaie-none-access-to-temporary-buffer`
 ///
@@ -155,7 +155,7 @@ class AMDAIEObjFifoBufferizationPass
 /// }
 /// ```
 ///
-/// And rewrites as 
+/// And rewrites as
 ///
 /// ```
 /// ...
@@ -164,7 +164,7 @@ class AMDAIEObjFifoBufferizationPass
 ///   %tile_10 = amdaie.tile(%c0, %c2)
 ///   %buffer_21 = amdaie.buffer(%tile_20) : memref<16xi32, 2 : i32>
 ///   %16 = amdaie.core(%tile_10, in : [%13, %14], out : [%15]) {
-///   ... 
+///   ...
 ///   %reinterpret_cast_16 = amdaie.buffer_cast %buffer_21 to offset:
 ///   ...
 ///   }
@@ -173,8 +173,8 @@ class AMDAIEObjFifoBufferizationPass
 ///
 LogicalResult bufferizeRawMemrefs(Operation *parentOp) {
   IRRewriter rewriter(parentOp->getContext());
-  /// We want to create a unique BufferOp for each 
-  /// (AllocOp, TileOp, WorkgroupOp) tuple. 
+  /// We want to create a unique BufferOp for each
+  /// (AllocOp, TileOp, WorkgroupOp) tuple.
   using Key = std::tuple<memref::AllocOp, TileOp, WorkgroupOp>;
   DenseMap<Key, BufferOp> bufferMap;
 
