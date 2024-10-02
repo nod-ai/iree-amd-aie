@@ -8,6 +8,10 @@ if(IREE_AMD_AIE_ENABLE_XRT_DRIVER)
     add_subdirectory(driver/xrt)
 endif()
 
+if(IREE_AMD_AIE_ENABLE_XRT_LITE_DRIVER)
+    add_subdirectory(driver/xrt-lite)
+endif()
+
 # Flatbuffer schema generation does not require XRT. Moreover the generated
 # flatbuffer header files are used by the compiler to create artefacts
 # (.vmfb file), and so the schema sub-directory is required even when not

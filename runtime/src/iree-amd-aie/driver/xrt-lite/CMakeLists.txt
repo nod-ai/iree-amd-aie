@@ -1,0 +1,34 @@
+# Copyright (c) 2024 Advanced Micro Devices, Inc. All Rights Reserved.
+# Copyright 2024 The IREE Authors
+#
+# Licensed under the Apache License v2.0 with LLVM Exceptions.
+# See https://llvm.org/LICENSE.txt for license information.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+iree_add_all_subdirs()
+
+iree_register_external_hal_driver(
+  NAME
+    xrt-lite
+  DRIVER_TARGET
+    iree-amd-aie::driver::xrt-lite::registration
+  REGISTER_FN
+    iree_hal_xrt_lite_driver_module_register
+)
+
+iree_cc_library(
+  NAME
+    xrt-lite
+  SRCS
+    api.h
+    native_executable.h
+    native_executable.cc
+    driver.cc
+    util.h
+  DEPS
+    iree::base
+    iree::base::core_headers
+    iree::base::internal::flatcc::parsing
+    iree-amd-aie::schemas::pdi_executable_def_c_fbs
+  PUBLIC
+)
