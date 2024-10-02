@@ -428,6 +428,62 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 
 // -----
 
+// Don't subsume if original inter size becomes new intra size and is too large.
+// CHECK:       #[[$MAP:.+]] = affine_map<(d0) -> (d0 * 64)>
+// CHECK-LABEL: @inter_to_intra_exceed_max_source
+// CHECK:       %[[CONNECTION:.+]] = amdaie.connection
+// CHECK:       amdaie.controlcode
+// CHECK:         scf.forall (%[[ARG2:.+]], %[[ARG3:.+]]) in (2, 2)
+// CHECK:           %[[APPLY:.+]] = affine.apply #[[$MAP]](%[[ARG3]])
+// CHECK:           %[[NPU_DMA_0:.+]] = amdaie.npu.dma_cpy_nd %[[CONNECTION]]([] [] [], [0, %[[APPLY]]] [1024, 64] [128, 1])
+#map = affine_map<(d0) -> (d0 * 64)>
+#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
+module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
+  func.func @inter_to_intra_exceed_max_source(%arg0: !amdaie.logicalobjectfifo<memref<2048xi32, 1>>, %arg1: !amdaie.logicalobjectfifo<memref<1024x128xi32>>) {
+    amdaie.workgroup {
+      %0 = amdaie.connection(%arg0, %arg1) : (!amdaie.logicalobjectfifo<memref<2048xi32, 1>>, !amdaie.logicalobjectfifo<memref<1024x128xi32>>)
+      amdaie.controlcode {
+        scf.forall (%arg2, %arg3) in (2, 2) {
+          %1 = affine.apply #map(%arg3)
+          %2 = amdaie.npu.dma_cpy_nd %0([] [] [], [0, %1] [1024, 64] [128, 1])
+        }
+        amdaie.end
+      }
+    }
+    return
+  }
+}
+
+// -----
+
+// Don't subsume if original inter size becomes new intra size and is too large.
+// CHECK:       #[[$MAP:.+]] = affine_map<(d0) -> (d0 * 64)>
+// CHECK-LABEL: @inter_to_intra_exceed_max_target
+// CHECK:       %[[CONNECTION:.+]] = amdaie.connection
+// CHECK:       amdaie.controlcode
+// CHECK:         scf.forall (%[[ARG2:.+]], %[[ARG3:.+]]) in (2, 2)
+// CHECK:           %[[APPLY:.+]] = affine.apply #[[$MAP]](%[[ARG3]])
+// CHECK:           %[[NPU_DMA_0:.+]] = amdaie.npu.dma_cpy_nd %[[CONNECTION]]([0, %[[APPLY]]] [1024, 64] [128, 1], [] [] [])
+#map = affine_map<(d0) -> (d0 * 64)>
+#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
+module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
+  func.func @inter_to_intra_exceed_max_target(%arg0: !amdaie.logicalobjectfifo<memref<2048xi32, 1>>, %arg1: !amdaie.logicalobjectfifo<memref<1024x128xi32>>) {
+    amdaie.workgroup {
+      %0 = amdaie.connection(%arg0, %arg1) : (!amdaie.logicalobjectfifo<memref<2048xi32, 1>>, !amdaie.logicalobjectfifo<memref<1024x128xi32>>)
+      amdaie.controlcode {
+        scf.forall (%arg2, %arg3) in (2, 2) {
+          %1 = affine.apply #map(%arg3)
+          %2 = amdaie.npu.dma_cpy_nd %0([0, %1] [1024, 64] [128, 1], [] [] [])
+        }
+        amdaie.end
+      }
+    }
+    return
+  }
+}
+
+// -----
+
 // Don't subsume if inter size (dim 0 in a four dimensional size array) or intra size 
 // (dim 1, 2, 3 in a four dimensional size array) is too large.
 // CHECK-LABEL: @exceed_max_size_source
