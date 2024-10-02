@@ -54,6 +54,7 @@ iree_cc_library(
     "AMDAIEBufferizeToAllocation.cpp"
     "AMDAIECanonicalizeNpuDmaCpyNd.cpp"
     "AMDAIECanonicalizeDoublyStridedOp.cpp"
+    "AMDAIECombineLogicalObjFifosForConnectionReuse.cpp"
     "AMDAIECombineStridedOps.cpp"
     "AMDAIEConvertToDma.cpp"
     "AMDAIEControlCodeLoopUnroll.cpp"

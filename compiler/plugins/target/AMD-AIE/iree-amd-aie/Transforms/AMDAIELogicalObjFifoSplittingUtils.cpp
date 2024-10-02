@@ -471,4 +471,491 @@ LogicalResult splitLogicalObjectFifos(
   return success();
 }
 
+static int64_t fetchOffsetBias(OpFoldResult offsetOpFoldResult) {
+  std::optional<int64_t> offset = getConstantIntValue(offsetOpFoldResult);
+  if (offset) return offset.value();
+  auto offsetVal = cast<Value>(offsetOpFoldResult);
+  auto affineApplyOp =
+      dyn_cast_if_present<affine::AffineApplyOp>(offsetVal.getDefiningOp());
+  if (!affineApplyOp) return 0;
+  AffineMap affineMap = affineApplyOp.getAffineMap();
+  RetrieveScaleAndBias retriever;
+  assert(!failed(retriever.visit(affineMap.getResult(0))) &&
+         "failed to retrieve scale and bias");
+  int64_t bias = 0;
+  if (retriever.bias) {
+    bias = retriever.bias.value();
+  }
+  return bias;
+}
+
+static LogicalResult combineL3ToL2AccessPatterns(
+    RewriterBase &rewriter, const SmallVector<OpFoldResult> &offsetsA,
+    const SmallVector<OpFoldResult> &sizesA,
+    const SmallVector<OpFoldResult> &stridesA,
+    const SmallVector<OpFoldResult> &offsetsB,
+    const SmallVector<OpFoldResult> &sizesB,
+    const SmallVector<OpFoldResult> &stridesB,
+    SmallVector<OpFoldResult> &newOffsets, SmallVector<OpFoldResult> &newSizes,
+    SmallVector<OpFoldResult> &newStrides, SmallVector<int64_t> &combiningDims,
+    SmallVector<int64_t> &nonCombiningDims) {
+  if (offsetsA.empty() && offsetsB.empty()) return success();
+
+  int64_t newSize = 1;
+  for (auto iter : llvm::enumerate(llvm::zip(offsetsA, offsetsB))) {
+    if (iter.index() < combiningDims.size()) continue;
+    const OpFoldResult &offsetA = std::get<0>(iter.value());
+    const OpFoldResult &offsetB = std::get<1>(iter.value());
+    if (offsetA != offsetB) {
+      // Need to check the difference in bias here.
+      int64_t biasA = fetchOffsetBias(offsetA);
+      int64_t biasB = fetchOffsetBias(offsetB);
+      std::optional<int64_t> sizeA = getConstantIntValue(sizesA[iter.index()]);
+      assert(sizeA && "expected a constant integer value for size");
+      if (sizeA != biasB - biasA) return failure();
+      newSize++;
+    }
+  }
+  newSizes[combiningDims.size() - 1] = rewriter.getI64IntegerAttr(newSize);
+  return success();
+}
+
+static FailureOr<LogicalObjectFifoFromMemrefOp> combineL3ToL2Pair(
+    IRRewriter &rewriter, DmaCpyNdOp dmaOpA, DmaCpyNdOp dmaOpB,
+    SmallVector<int64_t> &combiningDims,
+    SmallVector<int64_t> &nonCombiningDims) {
+  OpBuilder::InsertionGuard guard(rewriter);
+  SmallVector<OpFoldResult> sourceOffsetsA = dmaOpA.getSourceMixedOffsets();
+  SmallVector<OpFoldResult> sourceSizesA = dmaOpA.getSourceMixedSizes();
+  SmallVector<OpFoldResult> sourceStridesA = dmaOpA.getSourceMixedStrides();
+  SmallVector<OpFoldResult> sourceOffsetsB = dmaOpB.getSourceMixedOffsets();
+  SmallVector<OpFoldResult> sourceSizesB = dmaOpB.getSourceMixedSizes();
+  SmallVector<OpFoldResult> sourceStridesB = dmaOpB.getSourceMixedStrides();
+
+  SmallVector<OpFoldResult> targetOffsetsA = dmaOpA.getTargetMixedOffsets();
+  SmallVector<OpFoldResult> targetSizesA = dmaOpA.getTargetMixedSizes();
+  SmallVector<OpFoldResult> targetStridesA = dmaOpA.getTargetMixedStrides();
+  SmallVector<OpFoldResult> targetOffsetsB = dmaOpB.getTargetMixedOffsets();
+  SmallVector<OpFoldResult> targetSizesB = dmaOpB.getTargetMixedSizes();
+  SmallVector<OpFoldResult> targetStridesB = dmaOpB.getTargetMixedStrides();
+
+  SmallVector<OpFoldResult> newSourceOffsets = sourceOffsetsA;
+  SmallVector<OpFoldResult> newSourceSizes = sourceSizesA;
+  SmallVector<OpFoldResult> newSourceStrides = sourceStridesA;
+  if (failed(combineL3ToL2AccessPatterns(
+          rewriter, sourceOffsetsA, sourceSizesA, sourceStridesA,
+          sourceOffsetsB, sourceSizesB, sourceStridesB, newSourceOffsets,
+          newSourceSizes, newSourceStrides, combiningDims, nonCombiningDims))) {
+    dmaOpA->emitOpError()
+        << "L3->L2 pair cannot be combined because offset is not contiguous";
+    return failure();
+  }
+
+  SmallVector<OpFoldResult> newTargetOffsets = targetOffsetsA;
+  SmallVector<OpFoldResult> newTargetSizes = newSourceSizes;
+  SmallVector<OpFoldResult> newTargetStrides = targetStridesA;
+  // Now we need to create a new L2 buffer based on `newTargetSizes`.
+  LogicalObjectFifoFromMemrefOp oldL2ObjectFifo = dmaOpA.getTargetObjectFifo();
+  AMDAIE::LogicalObjectFifoFromMemrefOp newL2ObjectFifo =
+      createNewLogicalObjectFifo(rewriter, oldL2ObjectFifo, newTargetSizes);
+
+  // Create combined L3->L2 Dma.
+  rewriter.setInsertionPoint(dmaOpA);
+  auto combinedL3ToL2DmaOp = rewriter.create<AMDAIE::DmaCpyNdOp>(
+      dmaOpA.getLoc(), newL2ObjectFifo, llvm::ArrayRef(newTargetOffsets),
+      llvm::ArrayRef(newTargetSizes), llvm::ArrayRef(newTargetStrides),
+      dmaOpA.getSource(), llvm::ArrayRef(newSourceOffsets),
+      llvm::ArrayRef(newSourceSizes), llvm::ArrayRef(newSourceStrides));
+  // Replace the uses of 2nd L3->L2 Dma with the new combined L3->L2 Dma
+  // and erase the 1st L3->L2 Dma.
+  rewriter.replaceOp(dmaOpB, combinedL3ToL2DmaOp);
+  rewriter.eraseOp(dmaOpA);
+  return newL2ObjectFifo;
+}
+
+/// Utility comparator function that compares two DmaCpyNd ops `a` and `b`.
+/// Returns true if `a`'s offset is "less" than `b`'s. The following explains
+/// the notion of one offset being "less" than the other :-
+///     Offset A : N-dimension array.
+///     Offset B : N-dimension array.
+///     Then, A < B if :-
+///             A[i] < B[i] for `i` in [0, N-1]
+///     AND     A[0..i-1] == B[0..i-1]
+static bool compareL3ToL2DmaPairOffsets(DmaCpyNdOp &a, DmaCpyNdOp &b) {
+  SmallVector<OpFoldResult> sourceOffsetsA = a.getSourceMixedOffsets();
+  SmallVector<OpFoldResult> sourceSizesA = a.getSourceMixedSizes();
+  SmallVector<OpFoldResult> sourceOffsetsB = b.getSourceMixedOffsets();
+  SmallVector<OpFoldResult> sourceSizesB = b.getSourceMixedSizes();
+  // We'll add assertion checks on the size before invoking this function.
+  for (int64_t i = 0, n = sourceOffsetsA.size(); i < n; i++) {
+    std::optional<int64_t> offsetA = getConstantIntValue(sourceOffsetsA[i]);
+    std::optional<int64_t> offsetB = getConstantIntValue(sourceOffsetsB[i]);
+    if (offsetA && offsetB) {
+      if (offsetA < offsetB) return true;
+      if (offsetA > offsetB) return false;
+      continue;
+    }
+    if (!offsetA && !offsetB) {
+      auto offsetValA = cast<Value>(sourceOffsetsA[i]);
+      auto offsetValB = cast<Value>(sourceOffsetsB[i]);
+      auto affineApplyOpA = dyn_cast_if_present<affine::AffineApplyOp>(
+          offsetValA.getDefiningOp());
+      auto affineApplyOpB = dyn_cast_if_present<affine::AffineApplyOp>(
+          offsetValB.getDefiningOp());
+      // TODO(avarma): This should be handled better. The overall possibility
+      // here already makes this complex enough.
+      assert(affineApplyOpA && "expected affine.apply op");
+      assert(affineApplyOpB && "expected affine.apply op");
+      for (auto &&[valA, valB] :
+           llvm::zip_equal(affineApplyOpA.getMapOperands(),
+                           affineApplyOpB.getMapOperands())) {
+        assert((valA == valB) &&
+               "different base values being operated on between the L3->L2 Dma "
+               "op pair");
+      }
+      AffineMap affineMapA = affineApplyOpA.getAffineMap();
+      AffineMap affineMapB = affineApplyOpB.getAffineMap();
+      RetrieveScaleAndBias retrieverA, retrieverB;
+      assert(!failed(retrieverA.visit(affineMapA.getResult(0))) &&
+             "failed to retrieve scale and bias");
+      assert(!failed(retrieverB.visit(affineMapB.getResult(0))) &&
+             "failed to retrieve scale and bias");
+      int64_t biasA = 0, biasB = 0;
+      if (retrieverA.bias) {
+        biasA = retrieverA.bias.value();
+      }
+      if (retrieverB.bias) {
+        biasB = retrieverB.bias.value();
+      }
+      // TODO(avarma): We should also check the scale value as well.
+      if (biasA < biasB) return true;
+      if (biasA > biasB) return false;
+      continue;
+    }
+    assert(false &&
+           "unexpected combination of offset val amongst L3->L2 Dma pair");
+  }
+  return false;
+}
+
+static bool areAccessPatternsCompatibleForCombining(
+    AMDAIE::DmaCpyNdOp &l3ToL2DmaOpA, AMDAIE::DmaCpyNdOp &l3ToL2DmaOpB) {
+  // Sources' access pattern check.
+  SmallVector<OpFoldResult> sourceOffsetsA =
+      l3ToL2DmaOpA.getSourceMixedOffsets();
+  SmallVector<OpFoldResult> sourceSizesA = l3ToL2DmaOpA.getSourceMixedSizes();
+  SmallVector<OpFoldResult> sourceStridesA =
+      l3ToL2DmaOpA.getSourceMixedStrides();
+  SmallVector<OpFoldResult> sourceOffsetsB =
+      l3ToL2DmaOpB.getSourceMixedOffsets();
+  SmallVector<OpFoldResult> sourceSizesB = l3ToL2DmaOpB.getSourceMixedSizes();
+  SmallVector<OpFoldResult> sourceStridesB =
+      l3ToL2DmaOpB.getSourceMixedStrides();
+  if (sourceOffsetsA.size() != sourceOffsetsB.size() ||
+      sourceSizesA.size() != sourceSizesB.size() ||
+      sourceStridesA.size() != sourceStridesB.size() ||
+      sourceOffsetsA.size() != sourceSizesA.size() ||
+      sourceOffsetsA.size() != sourceStridesB.size()) {
+    return false;
+  }
+  // Targets' access pattern check.
+  SmallVector<OpFoldResult> targetOffsetsA =
+      l3ToL2DmaOpA.getTargetMixedOffsets();
+  SmallVector<OpFoldResult> targetSizesA = l3ToL2DmaOpA.getTargetMixedSizes();
+  SmallVector<OpFoldResult> targetStridesA =
+      l3ToL2DmaOpA.getTargetMixedStrides();
+  SmallVector<OpFoldResult> targetOffsetsB =
+      l3ToL2DmaOpB.getTargetMixedOffsets();
+  SmallVector<OpFoldResult> targetSizesB = l3ToL2DmaOpB.getTargetMixedSizes();
+  SmallVector<OpFoldResult> targetStridesB =
+      l3ToL2DmaOpB.getTargetMixedStrides();
+  if (targetOffsetsA.size() != targetOffsetsB.size() ||
+      targetSizesA.size() != targetSizesB.size() ||
+      targetStridesA.size() != targetStridesB.size() ||
+      targetOffsetsA.size() != targetSizesA.size() ||
+      targetOffsetsA.size() != targetStridesB.size()) {
+    return false;
+  }
+  // Checking if targets' access pattern values are same.
+  auto isSameValue = [](SmallVector<OpFoldResult> &accessPatternA,
+                        SmallVector<OpFoldResult> &accessPatternB) -> bool {
+    for (auto [a, b] : llvm::zip_equal(accessPatternA, accessPatternB)) {
+      if (a != b) return false;
+    }
+    return true;
+  };
+  if (isSameValue(targetOffsetsA, targetOffsetsB) &&
+      isSameValue(targetSizesA, targetSizesB) &&
+      isSameValue(targetStridesA, targetStridesB)) {
+    return true;
+  }
+
+  return false;
+}
+
+static LogicalResult fetchCombiningDimensions(
+    SmallVector<AMDAIE::DmaCpyNdOp> &l3ToL2DmaOps,
+    SmallVector<int64_t> &combiningDims,
+    SmallVector<int64_t> &nonCombiningDims) {
+  // Fetch combining/non-combining dimensions. Currently we look for a
+  // continuous sequence of 0 offset dims with size as 1 to infer them as
+  // combining dimensions.
+  int64_t maxCombiningDimIndex = 0;
+  for (unsigned i = 0, n = l3ToL2DmaOps.size(); i < n; i++) {
+    SmallVector<OpFoldResult> sourceOffsets =
+        l3ToL2DmaOps[i].getSourceMixedOffsets();
+    SmallVector<OpFoldResult> sourceSizes =
+        l3ToL2DmaOps[i].getSourceMixedSizes();
+    unsigned j = 0, m = sourceOffsets.size();
+    // Traverse through the i-th L3->L2 Dma op's source offset/size to find a
+    // continuous sequence of 0 offset dims with size as 1.
+    while (j < m) {
+      std::optional<int64_t> constantOffset =
+          getConstantIntValue(sourceOffsets[j]);
+      if (!constantOffset || constantOffset.value() != 0) {
+        break;
+      }
+      std::optional<int64_t> constantSize = getConstantIntValue(sourceSizes[j]);
+      if (!constantSize || constantSize.value() != 1) {
+        break;
+      }
+      j++;
+    }
+    if (i == 0) {
+      maxCombiningDimIndex = j;
+    } else if (maxCombiningDimIndex != j) {
+      LLVM_DEBUG(llvm::dbgs()
+                 << "incompatible combining dimensions across L3->L2\n");
+      return failure();
+    }
+  }
+  combiningDims.assign(maxCombiningDimIndex, 0);
+  std::iota(combiningDims.begin(), combiningDims.end(), 0);
+  nonCombiningDims.assign(maxCombiningDimIndex, 0);
+  std::iota(nonCombiningDims.begin(), nonCombiningDims.end(),
+            combiningDims.size());
+  return success();
+}
+
+/// Given a vector of L2->L1 Dma Ops, combine the corresponding L3->L2 Dma Ops
+/// and reuse the L2/L1 buffers.
+/// TODO(avarma): Assign combined tiles while forming L2/L1 buffers which we'll
+/// reuse.
+LogicalResult combineLogicalObjectFifos(
+    IRRewriter &rewriter, SmallVector<AMDAIE::DmaCpyNdOp> &l2ToL1DmaOps,
+    MLIRContext *context) {
+  if (l2ToL1DmaOps.size() == 0) return success();
+
+  // Fetch the L3 -> L2 Dma Op corresponding to the first L2 buffer as target.
+  SmallVector<AMDAIE::DmaCpyNdOp> l3ToL2DmaOps;
+  FailureOr<AMDAIE::DmaCpyNdOp> maybeL3ToL2DmaOp =
+      fetchL3ToL2DmaCpyNdOp(l2ToL1DmaOps[0]);
+  if (failed(maybeL3ToL2DmaOp)) return failure();
+  l3ToL2DmaOps.push_back(maybeL3ToL2DmaOp.value());
+
+  // Check that all L3 buffer associated with the different L3->L2 Dma ops are
+  // same.
+  for (unsigned i = 1, n = l2ToL1DmaOps.size(); i < n; i++) {
+    maybeL3ToL2DmaOp = fetchL3ToL2DmaCpyNdOp(l2ToL1DmaOps[i]);
+    if (failed(maybeL3ToL2DmaOp)) return failure();
+    l3ToL2DmaOps.push_back(maybeL3ToL2DmaOp.value());
+    if (l3ToL2DmaOps[0].getSourceObjectFifo() !=
+        l3ToL2DmaOps[i].getSourceObjectFifo()) {
+      LLVM_DEBUG(llvm::dbgs()
+                 << "Found different L3 objectFifo for " << l3ToL2DmaOps[0]
+                 << " and " << l3ToL2DmaOps[i] << "\n");
+      return failure();
+    }
+    if (!areAccessPatternsCompatibleForCombining(l3ToL2DmaOps[0],
+                                                 l3ToL2DmaOps[i])) {
+      LLVM_DEBUG(
+          llvm::dbgs()
+          << "access patterns failed compatibility checks for combining\n");
+      return failure();
+    }
+  }
+
+  if (l2ToL1DmaOps.size() != l3ToL2DmaOps.size()) {
+    LLVM_DEBUG(
+        llvm::dbgs()
+        << "expected 1:1 correspondence between L3->L2 and L2->L1 Dma ops\n");
+    return failure();
+  }
+
+  SmallVector<int64_t> combiningDims, nonCombiningDims;
+  if (failed(fetchCombiningDimensions(l3ToL2DmaOps, combiningDims,
+                                      nonCombiningDims))) {
+    return failure();
+  }
+
+  // At this point it's nice to perhaps just sort the L3->L2 Dma ops based on
+  // the "overlapping" offsets. And we'll sort the corresponding L2->L1 Dma ops
+  // accordingly.
+  for (int64_t i = 1, n = l3ToL2DmaOps.size(); i < n; i++) {
+    DmaCpyNdOp currL3ToL2DmaOp = l3ToL2DmaOps[i];
+    DmaCpyNdOp currL2ToL1DmaOp = l2ToL1DmaOps[i];
+    int64_t j = i - 1;
+    while (j >= 0 &&
+           compareL3ToL2DmaPairOffsets(currL3ToL2DmaOp, l3ToL2DmaOps[j])) {
+      l3ToL2DmaOps[j + 1] = l3ToL2DmaOps[j];
+      l2ToL1DmaOps[j + 1] = l2ToL1DmaOps[j];
+      j--;
+    }
+    l3ToL2DmaOps[j + 1] = currL3ToL2DmaOp;
+    l2ToL1DmaOps[j + 1] = currL2ToL1DmaOp;
+  }
+
+  // Currently we have 4 cores so there are two pairs of DmaCpyNds to combine.
+  // TODO(avarma): Revisit this later when we want to target more no. of cores.
+  if (l3ToL2DmaOps.size() % 2 != 0) {
+    LLVM_DEBUG(llvm::dbgs() << "found uneven L3->L2 ops for combining\n");
+    return failure();
+  }
+
+  auto createL2ToL1ForReuse =
+      [](IRRewriter &rewriter, DmaCpyNdOp &l2ToL1DmaOp,
+         LogicalObjectFifoFromMemrefOp &reuseL1Buffer,
+         LogicalObjectFifoFromMemrefOp &reuseL2Buffer,
+         SmallVector<OpFoldResult> &newL2SourceOffsets) -> DmaCpyNdOp {
+    OpBuilder::InsertionGuard guard(rewriter);
+    rewriter.setInsertionPoint(l2ToL1DmaOp);
+    auto newL2ToL1DmaOp = rewriter.create<AMDAIE::DmaCpyNdOp>(
+        l2ToL1DmaOp.getLoc(), reuseL1Buffer,
+        l2ToL1DmaOp.getTargetMixedOffsets(), l2ToL1DmaOp.getTargetMixedSizes(),
+        l2ToL1DmaOp.getTargetMixedStrides(), reuseL2Buffer,
+        llvm::ArrayRef(newL2SourceOffsets), l2ToL1DmaOp.getSourceMixedSizes(),
+        l2ToL1DmaOp.getSourceMixedStrides());
+    rewriter.replaceOp(l2ToL1DmaOp, newL2ToL1DmaOp);
+    return newL2ToL1DmaOp;
+  };
+  // Till this point, we've created a L3->L2 DmaCpyNd chain that is sorted based
+  // on increasing offsets. Refer to `compareL3ToL2DmaPairOffsets`'s doc comment
+  // for the same. Now, we'll be picking up pairs of such DmaCpyNd ops from the
+  // chain, eg: pair[0,1], then pair[2,3], etc. For each such pair[i, i+1] we
+  // will make an attempt to combine the logical objectFifos as per the
+  // following algorithm :-
+  //  a. Combine i-th and i+1-th L3->L2 DmaCpyNd ops.
+  //  b. Form reusable L1 buffer by assigning the cumulative tiles of the
+  //     intended core ops.
+  //  c. Since step a  would create a new L2 buffer (with combined shape), we
+  //     will need to update the corresponding two L2->L1 Dma ops by indeed
+  //     creating new ones. NOTE: Both of these new L2->L1 Dma ops will be
+  //     reusing the same L1 buffers as well.
+  //  d. Now pick the unique core ops corresponding to i-th and i+1-th L2->L1
+  //     Dma ops and do the following :-
+  //      1. For i-th CoreOp insert an AccessOp from the same L1 buffer towards
+  //         the end.
+  //      2. For i+1-th CoreOp insert an AccessOp from the same L1 buffer right
+  //         before the corresponding AccessOp within the same CoreOp.
+  for (unsigned i = 0, n = l3ToL2DmaOps.size(); i < n; i += 2) {
+    // Step 1. Combine the picked L3->L2 DmaCpyNd pair.
+    FailureOr<LogicalObjectFifoFromMemrefOp> maybeNewL2ObjectFifo =
+        combineL3ToL2Pair(rewriter, l3ToL2DmaOps[i], l3ToL2DmaOps[i + 1],
+                          combiningDims, nonCombiningDims);
+    if (failed(maybeNewL2ObjectFifo)) return failure();
+    LogicalObjectFifoFromMemrefOp newL2ObjectFifo =
+        maybeNewL2ObjectFifo.value();
+
+    LogicalObjectFifoFromMemrefOp oldFirstL1ObjFifoOp =
+        l2ToL1DmaOps[i].getTargetObjectFifo();
+    LogicalObjectFifoFromMemrefOp oldSecondL1ObjFifoOp =
+        l2ToL1DmaOps[i + 1].getTargetObjectFifo();
+    // Step 2. Form the reusable L1 buffer by assigning the cumulative tiles of
+    // the intended core ops.
+    LogicalObjectFifoFromMemrefOp reuseL1LogicalObjectFifoOp =
+        l2ToL1DmaOps[i].getTargetObjectFifo();
+    SmallVector<Value> tiles;
+    auto addNewTileFrom = [&](CoreOp coreOp) -> LogicalResult {
+      OpBuilder::InsertionGuard guard(rewriter);
+      TileOp tileOp = coreOp.getTileOp();
+      std::optional<int64_t> column = getConstantIntValue(tileOp.getCol());
+      std::optional<int64_t> row = getConstantIntValue(tileOp.getRow());
+      if (!column || !row) {
+        return coreOp.emitOpError() << "has non-constant tile location";
+      }
+      rewriter.setInsertionPoint(reuseL1LogicalObjectFifoOp);
+      auto colIndex = rewriter.create<arith::ConstantIndexOp>(
+          rewriter.getUnknownLoc(), *column);
+      auto rowIndex = rewriter.create<arith::ConstantIndexOp>(
+          rewriter.getUnknownLoc(), *row);
+      tileOp =
+          rewriter.create<TileOp>(rewriter.getUnknownLoc(), colIndex, rowIndex);
+      tiles.push_back(tileOp.getResult());
+      return success();
+    };
+    std::optional<CoreOp> maybeFirstCoreOp = fetchUniqueCoreOp(l2ToL1DmaOps[i]);
+    if (!maybeFirstCoreOp) return failure();
+    CoreOp firstCoreOp = maybeFirstCoreOp.value();
+    std::optional<CoreOp> maybeSecondCoreOp =
+        fetchUniqueCoreOp(l2ToL1DmaOps[i + 1]);
+    if (!maybeSecondCoreOp) return failure();
+    CoreOp secondCoreOp = maybeSecondCoreOp.value();
+    if (failed(addNewTileFrom(firstCoreOp)) ||
+        failed(addNewTileFrom(secondCoreOp))) {
+      return failure();
+    }
+    llvm::sort(tiles.begin(), tiles.end(),
+               AMDAIE::TileOp::tileValueColumnAndRowComparator);
+    rewriter.setInsertionPoint(reuseL1LogicalObjectFifoOp);
+    reuseL1LogicalObjectFifoOp = rewriter.create<LogicalObjectFifoFromMemrefOp>(
+        reuseL1LogicalObjectFifoOp.getLoc(),
+        cast<LogicalObjectFifoType>(
+            reuseL1LogicalObjectFifoOp.getOutput().getType()),
+        reuseL1LogicalObjectFifoOp.getMemref(), tiles);
+
+    // Step 3. We now have need to create two L2->L1 ops since the size has
+    // changed. But for this we first need to find the new offset for L2 as
+    // source.
+    // TODO: For now I'm hardcoding the offsets but later it'd just depend
+    // on combining/non-combining dimensions.
+    // Offset = 0,0
+    SmallVector<OpFoldResult> newL2AsSourceOffsets =
+        l2ToL1DmaOps[i].getSourceMixedOffsets();
+    createL2ToL1ForReuse(rewriter, l2ToL1DmaOps[i], reuseL1LogicalObjectFifoOp,
+                         newL2ObjectFifo, newL2AsSourceOffsets);
+    // Offset = 0, 1. NOTE here we'd use the same L1 logical objectFifo as
+    // the first L2->L1 Dma.
+    newL2AsSourceOffsets = l2ToL1DmaOps[i + 1].getSourceMixedOffsets();
+    newL2AsSourceOffsets[1] = rewriter.getIndexAttr(1);
+    createL2ToL1ForReuse(rewriter, l2ToL1DmaOps[i + 1],
+                         reuseL1LogicalObjectFifoOp, newL2ObjectFifo,
+                         newL2AsSourceOffsets);
+
+    // Step 4. Pick the CoreOps associated with the 1:1 L2->L1.
+    // For the first Core op we'll insert Read at the end. It doesn't matter
+    // for now so we're gonna insert it right before amdaie.end op.
+    firstCoreOp.walk([&](AMDAIE::LogicalObjectFifoAccessOp accessOp) {
+      if (accessOp.getInput() == oldFirstL1ObjFifoOp) {
+        OpBuilder::InsertionGuard guard(rewriter);
+        rewriter.setInsertionPointAfter(accessOp);
+        rewriter.create<AMDAIE::LogicalObjectFifoAccessOp>(
+            rewriter.getUnknownLoc(), reuseL1LogicalObjectFifoOp.getOutput(),
+            accessOp.getAccessType());
+      }
+    });
+    rewriter.replaceOp(oldFirstL1ObjFifoOp, reuseL1LogicalObjectFifoOp);
+    // For the second Core op we'll insert `Read` right before the first read
+    // from the corresponding L1 logicalobjectFifo.
+    secondCoreOp.walk([&](AMDAIE::LogicalObjectFifoAccessOp accessOp) {
+      if (accessOp.getInput() == oldSecondL1ObjFifoOp) {
+        OpBuilder::InsertionGuard guard(rewriter);
+        rewriter.setInsertionPoint(accessOp);
+        rewriter.create<AMDAIE::LogicalObjectFifoAccessOp>(
+            rewriter.getUnknownLoc(), reuseL1LogicalObjectFifoOp.getOutput(),
+            accessOp.getAccessType());
+        // Need to insert the second one because THIS is what will actually
+        // be used.
+        auto secondAccessOp =
+            rewriter.create<AMDAIE::LogicalObjectFifoAccessOp>(
+                rewriter.getUnknownLoc(),
+                reuseL1LogicalObjectFifoOp.getOutput(),
+                accessOp.getAccessType());
+        rewriter.replaceOp(accessOp, secondAccessOp);
+      }
+    });
+  }
+
+  return success();
+}
+
 }  // namespace mlir::iree_compiler::AMDAIE

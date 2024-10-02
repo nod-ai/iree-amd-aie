@@ -58,7 +58,7 @@ echo "Building IREE"
 
 $CMAKE_ARGS = @(
     "-GNinja"
-    "-DCMAKE_BUILD_TYPE=Release"
+    "-DCMAKE_BUILD_TYPE=Debug"
     "-DCMAKE_INSTALL_PREFIX=$install_dir"
     "-DCMAKE_INSTALL_LIBDIR=lib"
     "-DCMAKE_C_COMPILER=$env:CC"

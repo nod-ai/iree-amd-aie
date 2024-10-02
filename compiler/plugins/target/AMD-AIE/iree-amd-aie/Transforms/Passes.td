@@ -127,6 +127,12 @@ def AMDAIECleanup :
       "mlir::iree_compiler::AMDAIE::createAMDAIECleanupPass()";
 }
 
+def AMDAIECombineLogicalObjFifosForConnectionReuse :
+  Pass<"iree-amdaie-combine-logical-objectfifos-for-connection-reuse", "ModuleOp"> {
+  let summary = "Pass to combine L2 buffers to share inputs of Matmul and Elementwise operations.";
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIECombineLogicalObjFifosForConnectionReusePass()";
+}
+
 def AMDAIECombineStridedOps :
     Pass<"iree-amdaie-combine-strided-ops", ""> {
   let summary = "Combine strided ops in same block if access patterns are compatible.";
