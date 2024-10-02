@@ -411,7 +411,7 @@ void AMDAIEConvertToDmaPass::runOnOperation() {
   if (convertCopiesWalkResult.wasInterrupted()) return signalPassFailure();
 
   auto walkResult =
-      getOperation()->walk([&, this](IREE::LinalgExt::PackOp op) -> WalkResult {
+      getOperation()->walk([&](IREE::LinalgExt::PackOp op) -> WalkResult {
         if (failed(rewriteAsDma(op, rewriter, packTransposeOnSource,
                                 unpackTransposeOnSource))) {
           return WalkResult::interrupt();
@@ -420,7 +420,7 @@ void AMDAIEConvertToDmaPass::runOnOperation() {
       });
   if (walkResult.wasInterrupted()) signalPassFailure();
   walkResult = getOperation()->walk(
-      [&, this](IREE::LinalgExt::UnPackOp op) -> WalkResult {
+      [&](IREE::LinalgExt::UnPackOp op) -> WalkResult {
         if (failed(rewriteAsDma(op, rewriter, packTransposeOnSource,
                                 unpackTransposeOnSource))) {
           return WalkResult::interrupt();
