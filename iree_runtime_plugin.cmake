@@ -26,5 +26,11 @@ if(IREE_AMD_AIE_ENABLE_XRT_DRIVER)
   include(iree_aie_bootgen)
 endif()
 
+set(IREE_AMD_AIE_ENABLE_XRT_LITE_DRIVER OFF)
+if("xrt-lite" IN_LIST IREE_EXTERNAL_HAL_DRIVERS)
+  message(STATUS "Enabling XRT-LITE build because it is an enabled HAL driver")
+  set(IREE_AMD_AIE_ENABLE_XRT_LITE_DRIVER ON)
+endif()
+
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/runtime/src AMD-AIE)
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/experimental AMD-AIE-experimental)
