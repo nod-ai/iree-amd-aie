@@ -649,9 +649,9 @@ LogicalResult insertLogicalObjectFifoAccess(ModuleOp moduleOp) {
       }
       for (auto &&[idx, operand] : llvm::enumerate(op->getOpOperands())) {
         Operation *operandDefiningOp = operand.get().getDefiningOp();
-        if (!operandDefiningOp || !isa<memref::AllocOp>(operandDefiningOp)) {
-          // We're only transforming accesses to AllocOps here.
-        } else if (memrefToLogicalObjectFifoAccess.contains(operand.get())) {
+        if (!dyn_cast_if_present<memref::AllocOp>(operandDefiningOp))
+          continue;
+        if (memrefToLogicalObjectFifoAccess.contains(operand.get())) {
           op->setOperand(idx, memrefToLogicalObjectFifoAccess[operand.get()]);
         } else if (memrefToLogicalObjectFifo.contains(operand.get())) {
           rewriter.setInsertionPoint(opToInsertRewriterPoint);
