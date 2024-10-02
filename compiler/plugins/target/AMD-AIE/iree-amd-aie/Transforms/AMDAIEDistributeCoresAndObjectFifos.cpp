@@ -637,17 +637,6 @@ LogicalResult insertLogicalObjectFifoAccess(ModuleOp moduleOp) {
         memrefToLogicalObjectFifoAccess;
 
     WalkResult res = coreOp->walk([&](Operation *op) {
-      bool hasAllocOperand = [op]() {
-        for (Value operand : op->getOperands()) {
-          if (isa_and_present<memref::AllocOp>(operand.getDefiningOp()))
-            return true;
-        }
-        return false;
-      }();
-
-      if (!hasAllocOperand) {
-        return WalkResult::advance();
-      }
       // We want to insert amdaie.logicalobjectfifo.access ops right before
       // the first usage. But for vectorized ops this would mean they'd get
       // inserted within the vectorized scf.for ops. We therefore would want
@@ -659,6 +648,9 @@ LogicalResult insertLogicalObjectFifoAccess(ModuleOp moduleOp) {
         opToInsertRewriterPoint = opToInsertRewriterPoint->getParentOp();
       }
       for (auto &&[idx, operand] : llvm::enumerate(op->getOpOperands())) {
+        Operation *operandDefiningOp = operand.get().getDefiningOp();
+        if (!dyn_cast_if_present<memref::AllocOp>(operandDefiningOp))
+          continue;
         if (memrefToLogicalObjectFifoAccess.contains(operand.get())) {
           op->setOperand(idx, memrefToLogicalObjectFifoAccess[operand.get()]);
         } else if (memrefToLogicalObjectFifo.contains(operand.get())) {
@@ -674,10 +666,12 @@ LogicalResult insertLogicalObjectFifoAccess(ModuleOp moduleOp) {
                        llvm::dyn_cast<MemRefType>(operand.get().getType())) {
           Value memref = operand.get();
           rewriter.setInsertionPoint(coreOp);
+
           auto logicalObjectFifo =
               rewriter.create<AMDAIE::LogicalObjectFifoFromMemrefOp>(
                   rewriter.getUnknownLoc(), LogicalObjectFifoType::get(type),
                   memref);
+
           rewriter.setInsertionPoint(opToInsertRewriterPoint);
 
           AMDAIE::LogicalObjectFifoAccessOp accessOp;
