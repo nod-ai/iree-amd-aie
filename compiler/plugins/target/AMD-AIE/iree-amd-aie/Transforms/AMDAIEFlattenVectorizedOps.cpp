@@ -7,8 +7,6 @@
 #include "iree-amd-aie/IR/AMDAIEOps.h"
 #include "iree-amd-aie/Transforms/Passes.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
-#include "mlir/IR/IRMapping.h"
-#include "mlir/IR/Iterators.h"
 
 #define DEBUG_TYPE "iree-amdaie-flatten-vectorized-ops"
 
@@ -24,8 +22,6 @@ class AMDAIEFlattenVectorizedOpsPass
     registry.insert<AMDAIEDialect, memref::MemRefDialect>();
   }
 
-  AMDAIEFlattenVectorizedOpsPass() = default;
-  AMDAIEFlattenVectorizedOpsPass(const AMDAIEFlattenVectorizedOpsPass &pass){};
   void runOnOperation() override;
 };
 
