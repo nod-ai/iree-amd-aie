@@ -428,14 +428,15 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 
 // -----
 
-// Don't subsume if a dimension's index would change (by adding new dimensions) and the size becomes too large for the new dimension's max value.
+// Don't subsume if a dimension's index would change (by adding new dimensions)
+// and the size becomes larger than the new dimension's max value (e.g. 1023 for index 2 in the test below).
 // CHECK:       #[[$MAP:.+]] = affine_map<(d0) -> (d0 * 64)>
 // CHECK-LABEL: @inter_to_intra_exceed_max_source
 // CHECK:       %[[CONNECTION:.+]] = amdaie.connection
 // CHECK:       amdaie.controlcode
 // CHECK:         scf.forall (%[[ARG2:.+]], %[[ARG3:.+]]) in (2, 2)
 // CHECK:           %[[APPLY:.+]] = affine.apply #[[$MAP]](%[[ARG3]])
-// CHECK:           %[[NPU_DMA_0:.+]] = amdaie.npu.dma_cpy_nd %[[CONNECTION]]([] [] [], [0, %[[APPLY]]] [1024, 64] [128, 1])
+// CHECK:           %[[NPU_DMA:.+]] = amdaie.npu.dma_cpy_nd %[[CONNECTION]]([] [] [], [0, %[[APPLY]]] [1024, 64] [128, 1])
 #map = affine_map<(d0) -> (d0 * 64)>
 #executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
 module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
@@ -456,14 +457,15 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 
 // -----
 
-// Don't subsume if a dimension's index would change (by adding new dimensions) and the size becomes too large for the new dimension's max value.
+// Don't subsume if a dimension's index would change (by adding new dimensions)
+// and the size becomes larger than the new dimension's max value (e.g. 1023 for index 2 in the test below).
 // CHECK:       #[[$MAP:.+]] = affine_map<(d0) -> (d0 * 64)>
 // CHECK-LABEL: @inter_to_intra_exceed_max_target
 // CHECK:       %[[CONNECTION:.+]] = amdaie.connection
 // CHECK:       amdaie.controlcode
 // CHECK:         scf.forall (%[[ARG2:.+]], %[[ARG3:.+]]) in (2, 2)
 // CHECK:           %[[APPLY:.+]] = affine.apply #[[$MAP]](%[[ARG3]])
-// CHECK:           %[[NPU_DMA_0:.+]] = amdaie.npu.dma_cpy_nd %[[CONNECTION]]([0, %[[APPLY]]] [1024, 64] [128, 1], [] [] [])
+// CHECK:           %[[NPU_DMA:.+]] = amdaie.npu.dma_cpy_nd %[[CONNECTION]]([0, %[[APPLY]]] [1024, 64] [128, 1], [] [] [])
 #map = affine_map<(d0) -> (d0 * 64)>
 #executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
 module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
@@ -813,6 +815,34 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
         scf.for %arg3 = %c0 to %c6 step %c1 {
           %2 = amdaie.npu.dma_cpy_nd %0([%arg2] [16] [1], [] [] [])
           amdaie.npu.dma_wait(%2, S2MM)
+        }
+        amdaie.end
+      }
+    }
+    return
+  }
+}
+
+// -----
+
+// Ensure subsume happens when the outermost dimension becomes the outermost intra
+// dimension (which doesn't have the max limit) after inserting a new dimension.
+// CHECK-LABEL: @inter_to_intra_outermost
+// CHECK:       %[[CONNECTION:.+]] = amdaie.connection
+// CHECK:       amdaie.controlcode
+// CHECK-NOT:     scf.for
+// CHECK:         %[[NPU_DMA:.+]] = amdaie.npu.dma_cpy_nd %[[CONNECTION]]([] [] [], [0, 0, 0, 0] [4, 1024, 64, 2] [0, 128, 2, 1])
+#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
+module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
+  func.func @inter_to_intra_outermost(%arg0: !amdaie.logicalobjectfifo<memref<2048xi32, 1>>, %arg1: !amdaie.logicalobjectfifo<memref<1024x64x2xi32>>) {
+    %c0 = arith.constant 0 : index
+    %c1 = arith.constant 1 : index
+    %c4 = arith.constant 4 : index
+    amdaie.workgroup {
+      %0 = amdaie.connection(%arg0, %arg1) : (!amdaie.logicalobjectfifo<memref<2048xi32, 1>>, !amdaie.logicalobjectfifo<memref<1024x64x2xi32>>)
+      amdaie.controlcode {
+        scf.for %arg2 = %c0 to %c4 step %c1 {
+          %1 = amdaie.npu.dma_cpy_nd %0([] [] [], [0, 0, 0] [1024, 64, 2] [128, 2, 1])
         }
         amdaie.end
       }
@@ -1438,8 +1468,6 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 }
 
 // -----
-
-
 
 #map = affine_map<(d0) -> (d0 * 16)>
 module {
