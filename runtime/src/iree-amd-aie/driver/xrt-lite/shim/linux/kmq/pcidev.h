@@ -39,8 +39,7 @@ struct pdev {
 
   std::string get_subdev_path(const std::string& subdev, uint32_t idx) const;
 
-  std::shared_ptr<device> create_device(device::handle_type handle,
-                                        device::id_type id) const;
+  std::shared_ptr<device> create_device(void* handle) const;
 
   void ioctl(unsigned long cmd, void* arg) const;
 

@@ -9,11 +9,10 @@
 #include <cstdio>
 #include <memory>
 #include <string>
-#include <system_error>
 
 #include "llvm/Support/Error.h"
 
-namespace {
+namespace shim_xdna {
 
 void debugf(const char* format, ...);
 
@@ -52,6 +51,6 @@ void shim_info(const char* fmt, Args&&... args) {
   XRT_PRINTF(format.c_str(), getpid(), std::forward<Args>(args)...);
 }
 
-}  // namespace
+}  // namespace shim_xdna
 
 #endif  // SHIM_DEBUG_H

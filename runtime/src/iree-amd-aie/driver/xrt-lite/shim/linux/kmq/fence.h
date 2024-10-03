@@ -6,12 +6,14 @@
 
 #include <mutex>
 
-#include "device.h"
-#include "hwctx.h"
 #include "shared.h"
 #include "shim_debug.h"
 
 namespace shim_xdna {
+
+struct device;
+struct hw_ctx;
+struct pdev;
 
 struct fence {
   using export_handle = shared_handle::export_handle;
@@ -22,8 +24,6 @@ struct fence {
   fence(const device& device, shared_handle::export_handle ehdl);
 
   ~fence();
-
-  std::unique_ptr<fence> clone() const;
 
   std::unique_ptr<shared_handle> share() const;
 

@@ -49,7 +49,10 @@ jobs:
           git remote add origin $REPO_ADDRESS
           git -c protocol.version=2 fetch --depth 1 origin $BRANCH_NAME
           git reset --hard FETCH_HEAD
-          git -c submodule."third_party/torch-mlir".update=none -c submodule."third_party/stablehlo".update=none -c submodule."src/runtime_src/core/common/aiebu".update=none submodule update --init --recursive --depth 1 --single-branch -j 10
+          git -c submodule."third_party/torch-mlir".update=none \
+              -c submodule."third_party/stablehlo".update=none \
+              -c submodule."src/runtime_src/core/common/aiebu".update=none \
+              submodule update --init --recursive --depth 1 --single-branch -j 10
           
       - name: Install deps
         run: |
@@ -61,6 +64,11 @@ jobs:
         run: |
           pip install -r third_party/iree/runtime/bindings/python/iree/runtime/build_requirements.txt
           pip install pyyaml
+
+      - name: Peano dep
+        run: |
+          bash build_tools/download_peano.sh
+          echo "PEANO_INSTALL_DIR=$PWD/llvm-aie" >> $GITHUB_ENV
 
       - name: Enable cache
         uses: actions/cache/restore@v3

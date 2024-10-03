@@ -82,7 +82,15 @@ $CMAKE_ARGS = @(
     "-DIREE_CMAKE_PLUGIN_PATHS=$repo_root"
     "-DIREE_EXTERNAL_HAL_DRIVERS=xrt"
     "-DIREE_BUILD_PYTHON_BINDINGS=ON"
+    # iree/runtime/src/iree/hal/cts/cts_test_base.h:173:24: error: unused variable 'device_buffer' [-Werror,-Wunused-variable]
+    "-DIREE_ENABLE_WERROR_FLAG=OFF"
 )
+
+$peano_install_dir = "$env:PEANO_INSTALL_DIR"
+if ($peano_install_dir -and (Test-Path "$peano_install_dir"))
+{
+    $CMAKE_ARGS += @("-DPEANO_INSTALL_DIR=$peano_install_dir")
+}
 
 if ($llvm_install_dir -and (Test-Path "$llvm_install_dir"))
 {
@@ -116,7 +124,7 @@ echo "-----"
 # better have git-bash installed...
 $env:Path = "C:\Program Files\Git\bin;$env:Path"
 pushd $build_dir
-& bash -l -c "ctest -R amd-aie --output-on-failure -j --repeat until-pass:5"
+& bash -l -c "ctest -R amd-aie -E driver/xrt-lite --output-on-failure -j --repeat until-pass:5"
 popd
 
 if ($llvm_install_dir -and (Test-Path "$llvm_install_dir"))

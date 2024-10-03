@@ -427,9 +427,8 @@ void* pdev::mmap(void* addr, size_t len, int prot, int flags,
 
 void pdev::munmap(void* addr, size_t len) const { ::munmap(addr, len); }
 
-std::shared_ptr<device> pdev::create_device(device::handle_type handle,
-                                            device::id_type id) const {
-  auto dev = std::make_shared<device>(*this, handle, id);
+std::shared_ptr<device> pdev::create_device(void* handle) const {
+  auto dev = std::make_shared<device>(*this, handle);
   // Alloc device memory on first device creation.
   // No locking is needed since driver will ensure only one heap BO is
   // created.

@@ -7,18 +7,19 @@
 #include <map>
 
 #include "amdxdna_accel.h"
-#include "device.h"
+#include "shared.h"
 #include "shim_debug.h"
 
 namespace shim_xdna {
 
 struct hw_q;  // forward declaration
+struct device;
+struct bo;
+struct cuidx_type;
 
 struct hw_ctx {
   using qos_type = std::map<std::string, uint32_t>;
   enum class access_mode : uint8_t { exclusive = 0, shared = 1 };
-  using access_mode = access_mode;
-  using slot_id = uint32_t;
 
   hw_ctx(const device& dev, const qos_type& qos, std::unique_ptr<hw_q> q);
 
@@ -29,7 +30,7 @@ struct hw_ctx {
 
   void update_access_mode(access_mode) { shim_not_supported_err(__func__); }
 
-  slot_id get_slotidx() const;
+  uint32_t get_slotidx() const;
 
   hw_q* get_hw_queue();
 
@@ -57,7 +58,7 @@ struct hw_ctx {
 
   const std::vector<cu_info>& get_cu_info() const;
 
-  void set_slotidx(slot_id id);
+  void set_slotidx(uint32_t id);
 
   void set_doorbell(uint32_t db);
 
@@ -68,7 +69,7 @@ struct hw_ctx {
   void fini_log_buf();
 
   const device& m_device;
-  slot_id m_handle = AMDXDNA_INVALID_CTX_HANDLE;
+  uint32_t m_handle = AMDXDNA_INVALID_CTX_HANDLE;
   amdxdna_qos_info m_qos = {};
   std::vector<cu_info> m_cu_info;
   std::unique_ptr<hw_q> m_q;

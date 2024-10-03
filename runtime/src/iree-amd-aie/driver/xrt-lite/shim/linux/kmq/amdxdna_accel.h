@@ -132,11 +132,11 @@ struct amdxdna_cu_config {
  * @pad: MBZ
  * @cu_configs: Array of CU configurations of struct amdxdna_cu_config
  */
-struct amdxdna_hwctx_param_config_cu {
-  __u16 num_cus;
-  __u16 pad[3];
-  struct amdxdna_cu_config cu_configs[] __counted_by(num_cus);
-};
+// struct amdxdna_hwctx_param_config_cu {
+//   __u16 num_cus;
+//   __u16 pad[3];
+//   struct amdxdna_cu_config cu_configs[] __counted_by(num_cus);
+// };
 
 enum amdxdna_drm_config_hwctx_param {
   DRM_AMDXDNA_HWCTX_CONFIG_CU,
