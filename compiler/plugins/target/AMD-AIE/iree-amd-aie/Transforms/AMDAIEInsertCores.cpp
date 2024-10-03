@@ -29,6 +29,18 @@ namespace mlir::iree_compiler::AMDAIE {
 
 namespace {
 
+/// Utility which returns 'true' is the operation needs to be inserted with an
+/// `amdaie.core` op.
+/// Some ops are surrrounded by scf.for loop nests. Place the entire
+/// loop nest inside the amdaie.core op here. Currently look for a
+/// subset of ops which we know should be in the core.
+/// TODO(newling) improve this design.
+static bool isCoreComputeOp(Operation *op) {
+  return isa<linalg::LinalgOp, vector::ContractionOp,
+             memref::ExtractStridedMetadataOp, func::CallOp, arith::TruncFOp,
+             vector::TransferReadOp, vector::TransferWriteOp>(op);
+}
+
 /// Utility to map the parallel mapping attributes to the corresponding
 /// induction variables.
 void getAttributeMapping(SmallVector<scf::ForallOp> forallOps,
@@ -128,14 +140,7 @@ LogicalResult insertCoreOps(mlir::ModuleOp moduleOp) {
         coreOp.setLinkWith(fnDecl->getAttrOfType<StringAttr>("link_with"));
       }
 
-      // Some ops are surrrounded by scf.for loop nests. Place the entire
-      // loop nest inside the amdaie.core op here. Currently look for a
-      // subset of ops which we know should be in the core.
-      // TODO(newling) improve this design.
-      bool insertInCore =
-          isa<linalg::LinalgOp>(op) || isa<vector::ContractionOp>(op) ||
-          isa<memref::ExtractStridedMetadataOp>(op) || isa<func::CallOp>(op);
-      if (insertInCore) {
+      if (isCoreComputeOp(op)) {
         // Most distant ancestor of 'op' that's a strict descendant of
         // 'forallOp'.
         Operation *ancestor = op;
