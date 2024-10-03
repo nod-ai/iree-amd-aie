@@ -428,7 +428,7 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 
 // -----
 
-// Don't subsume if original inter size becomes new intra size and is too large.
+// Don't subsume if a dimension's index would change (by adding new dimensions) and the size becomes too large for the new dimension's max value.
 // CHECK:       #[[$MAP:.+]] = affine_map<(d0) -> (d0 * 64)>
 // CHECK-LABEL: @inter_to_intra_exceed_max_source
 // CHECK:       %[[CONNECTION:.+]] = amdaie.connection
