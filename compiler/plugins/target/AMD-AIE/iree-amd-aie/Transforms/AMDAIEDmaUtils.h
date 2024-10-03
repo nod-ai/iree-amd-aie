@@ -343,6 +343,8 @@ struct DmaDimConfig {
           sourceTileType, 0, AMDAIE::AMDAIEDmaBdProp::IterWrapMax);
       SmallVector<uint32_t> stepSizes(sourceMaxNbDims, maxIntraSize);
       stepSizes[0] = maxInterSize;
+      // The outermost intra size doesn't have limit in HW.
+      stepSizes[1] = std::numeric_limits<uint32_t>::max();
       return stepSizes;
     } else if constexpr (OperateOn == CopyOpOperateOn::Target) {
       maxIntraSize = deviceModel.getDmaBdProp<uint16_t>(
@@ -351,6 +353,8 @@ struct DmaDimConfig {
           targetTileType, 0, AMDAIE::AMDAIEDmaBdProp::IterWrapMax);
       SmallVector<uint32_t> stepSizes(targetMaxNbDims, maxIntraSize);
       stepSizes[0] = maxInterSize;
+      // The outermost intra size doesn't have limit in HW.
+      stepSizes[1] = std::numeric_limits<uint32_t>::max();
       return stepSizes;
     } else {
       assert(false && "Function can only operate on Source or Target");

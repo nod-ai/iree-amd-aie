@@ -269,6 +269,18 @@ struct SubsumeLoopIntoDMA
       return false;
     };
 
+    auto insertInFront =
+        [](SmallVector<OpFoldResult> &origOpFold,
+           SmallVector<int64_t> &insertValues) -> SmallVector<int64_t> {
+      std::optional<SmallVector<int64_t>> maybeIntValues =
+          getConstantIntValues(origOpFold);
+      assert(maybeIntValues.has_value() && "expect constant values");
+      SmallVector<int64_t> newIntValues = maybeIntValues.value();
+      newIntValues.insert(newIntValues.begin(), insertValues.begin(),
+                          insertValues.end());
+      return newIntValues;
+    };
+
     SmallVector<int64_t> insertSourceOffsets;
     SmallVector<int64_t> insertSourceSizes;
     SmallVector<int64_t> insertSourceStrides;
@@ -289,17 +301,22 @@ struct SubsumeLoopIntoDMA
                 insertSourceStrides, updateSourceOffsets))) {
           return failure();
         }
+
+        // Check each dim of the new sizes/strides after insertion to make sure
+        // they are not out of the range.
+        SmallVector<int64_t> newSourceSizesInt =
+            insertInFront(newSourceSizes, insertSourceSizes);
+        SmallVector<int64_t> newSourceStridesInt =
+            insertInFront(newSourceStrides, insertSourceStrides);
         SmallVector<uint32_t> maxSizes =
             dmaDimConfig.getMaxSizes<CopyOpOperateOn::Source>();
         SmallVector<uint32_t> maxStrides =
             dmaDimConfig.getMaxStrides<CopyOpOperateOn::Source>();
-        assert(maxSizes.size() >=
-                   insertSourceSizes.size() + newSourceSizes.size() &&
+        assert(maxSizes.size() >= newSourceSizesInt.size() &&
                "Max number of dimensions exceeded");
-        size_t begin =
-            maxSizes.size() - insertSourceSizes.size() - newSourceSizes.size();
-        if (anyOutOfRange(insertSourceSizes, maxSizes, begin)) return failure();
-        if (anyOutOfRange(insertSourceStrides, maxStrides, begin))
+        size_t begin = maxSizes.size() - newSourceSizesInt.size();
+        if (anyOutOfRange(newSourceSizesInt, maxSizes, begin)) return failure();
+        if (anyOutOfRange(newSourceStridesInt, maxStrides, begin))
           return failure();
       }
       // Add loop iteration to the access pattern on the target side.
@@ -310,17 +327,22 @@ struct SubsumeLoopIntoDMA
                 insertTargetStrides, updateTargetOffsets))) {
           return failure();
         }
+
+        // Check each dim of the new sizes/strides after insertion to make sure
+        // they are not out of the range.
+        SmallVector<int64_t> newTargetSizesInt =
+            insertInFront(newTargetSizes, insertTargetSizes);
+        SmallVector<int64_t> newTargetStridesInt =
+            insertInFront(newTargetStrides, insertTargetStrides);
         SmallVector<uint32_t> maxSizes =
             dmaDimConfig.getMaxSizes<CopyOpOperateOn::Target>();
         SmallVector<uint32_t> maxStrides =
             dmaDimConfig.getMaxStrides<CopyOpOperateOn::Target>();
-        assert(maxSizes.size() >=
-                   insertTargetSizes.size() + newTargetSizes.size() &&
+        assert(maxSizes.size() >= newTargetSizesInt.size() &&
                "Max number of dimensions exceeded");
-        size_t begin =
-            maxSizes.size() - insertTargetSizes.size() - newTargetSizes.size();
-        if (anyOutOfRange(insertTargetSizes, maxSizes, begin)) return failure();
-        if (anyOutOfRange(insertTargetStrides, maxStrides, begin))
+        size_t begin = maxSizes.size() - newTargetSizesInt.size();
+        if (anyOutOfRange(newTargetSizesInt, maxSizes, begin)) return failure();
+        if (anyOutOfRange(newTargetStridesInt, maxStrides, begin))
           return failure();
       }
     }
