@@ -584,10 +584,10 @@ def AMDAIETemporaryAllocBufferization :
          `amdaie.logicalobjectfifo.acquire` ->
          `amdaie.logicalobjectfifo.access`.
 
-       We call the directly accessed allocations 'temporary'. The temporary 
+       We call the directly accessed allocations 'temporary'. The temporary
        allocations need to be converted to amdaie.buffer ops, because
-       there is no other support lowering to llvm from memref.allocs in our 
-       stack. The indirectly accessed allocatations, i.e. those with the layering 
+       there is no other support lowering to llvm from memref.allocs in our
+       stack. The indirectly accessed allocatations, i.e. those with the layering
        described above, are handled in pass iree-amdaie-objfifo-bufferization.
   }];
 
