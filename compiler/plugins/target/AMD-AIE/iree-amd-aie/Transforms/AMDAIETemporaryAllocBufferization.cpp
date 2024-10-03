@@ -13,53 +13,11 @@ namespace mlir::iree_compiler::AMDAIE {
 
 namespace {
 
-///
-/// Some memref allocations are accessed directly, as a result of the pass
-///
-/// `iree-amdaie-none-access-to-temporary-buffer`
-///
-/// Thie memref.allocs need to be converted to amdaie.buffer ops
-///
-///
-/// This function detects 'temporary' allocations, such as in the IR:
-///
-/// ```
-/// %alloc = memref.alloc() : memref<16xi32, 2 : i32>
-/// ...
-/// amdaie.workgroup {
-///    ...
-///    %tile_10 = amdaie.tile(%c0, %c2)
-///    %16 = amdaie.core(%tile_10, in : [%13, %14], out : [%15]) {
-///    ...
-///    %reinterpret_cast_16 = memref.reinterpret_cast %alloc to offset:
-///     ...
-///    }
-/// }
-/// ```
-///
-/// And rewrites as
-///
-/// ```
-/// ...
-/// amdaie.workgroup {
-///   ...
-///   %tile_10 = amdaie.tile(%c0, %c2)
-///   %buffer_21 = amdaie.buffer(%tile_20) : memref<16xi32, 2 : i32>
-///   %16 = amdaie.core(%tile_10, in : [%13, %14], out : [%15]) {
-///   ...
-///   %reinterpret_cast_16 = amdaie.buffer_cast %buffer_21 to offset:
-///   ...
-///   }
-/// }
-/// ```
-///
 LogicalResult bufferizeTemporaryMemrefs(Operation *parentOp) {
   IRRewriter rewriter(parentOp->getContext());
-  /// We want to create a unique BufferOp for each
-  /// (AllocOp, TileOp, WorkgroupOp) tuple.
+  /// Create a unique BufferOp for each (AllocOp, TileOp, WorkgroupOp) tuple.
   using Key = std::tuple<memref::AllocOp, CoreOp, WorkgroupOp>;
   DenseMap<Key, BufferOp> bufferMap;
-
   parentOp->walk([&](memref::AllocOp allocOp) {
     for (Operation *user : allocOp->getUsers()) {
       if (CoreOp coreOp = user->getParentOfType<CoreOp>()) {
@@ -89,6 +47,8 @@ LogicalResult bufferizeTemporaryMemrefs(Operation *parentOp) {
     });
   }
 
+  // Note: we don't erase allocs/deallocs, we leave this for canonicalization.
+
   return success();
 }
 
@@ -101,8 +61,8 @@ class AMDAIETemporaryAllocBufferizationPass
   }
 
   void runOnOperation() override {
-    Operation *parentOp = getOperation();
-    if (failed(bufferizeTemporaryMemrefs(parentOp))) return signalPassFailure();
+    if (failed(bufferizeTemporaryMemrefs(getOperation())))
+      return signalPassFailure();
   }
 };
 
