@@ -269,6 +269,18 @@ struct SubsumeLoopIntoDMA
       return false;
     };
 
+    auto insertInFront =
+        [](SmallVector<OpFoldResult> &origOpFold,
+           SmallVector<int64_t> &insertValues) -> SmallVector<int64_t> {
+      std::optional<SmallVector<int64_t>> maybeIntValues =
+          getConstantIntValues(origOpFold);
+      assert(maybeIntValues.has_value() && "expect constant values");
+      SmallVector<int64_t> newIntValues = maybeIntValues.value();
+      newIntValues.insert(newIntValues.begin(), insertValues.begin(),
+                          insertValues.end());
+      return newIntValues;
+    };
+
     SmallVector<int64_t> insertSourceOffsets;
     SmallVector<int64_t> insertSourceSizes;
     SmallVector<int64_t> insertSourceStrides;
@@ -292,24 +304,10 @@ struct SubsumeLoopIntoDMA
 
         // Check each dim of the new sizes/strides after insertion to make sure
         // they are not out of the range.
-        std::optional<SmallVector<int64_t>> maybeNewSourceSizes =
-            getConstantIntValues(newSourceSizes);
-        std::optional<SmallVector<int64_t>> maybeNewSourceStrides =
-            getConstantIntValues(newSourceStrides);
-        assert(maybeNewSourceSizes.has_value() &&
-               "expect constant source size values");
-        assert(maybeNewSourceStrides.has_value() &&
-               "expect constant source stride values");
-        SmallVector<int64_t> newSourceSizesInt = maybeNewSourceSizes.value();
+        SmallVector<int64_t> newSourceSizesInt =
+            insertInFront(newSourceSizes, insertSourceSizes);
         SmallVector<int64_t> newSourceStridesInt =
-            maybeNewSourceStrides.value();
-        newSourceSizesInt.insert(newSourceSizesInt.begin(),
-                                 insertSourceSizes.begin(),
-                                 insertSourceSizes.end());
-        newSourceStridesInt.insert(newSourceStridesInt.begin(),
-                                   insertSourceStrides.begin(),
-                                   insertSourceStrides.end());
-
+            insertInFront(newSourceStrides, insertSourceStrides);
         SmallVector<uint32_t> maxSizes =
             dmaDimConfig.getMaxSizes<CopyOpOperateOn::Source>();
         SmallVector<uint32_t> maxStrides =
@@ -332,24 +330,10 @@ struct SubsumeLoopIntoDMA
 
         // Check each dim of the new sizes/strides after insertion to make sure
         // they are not out of the range.
-        std::optional<SmallVector<int64_t>> maybeNewTargetSizes =
-            getConstantIntValues(newTargetSizes);
-        std::optional<SmallVector<int64_t>> maybeNewTargetStrides =
-            getConstantIntValues(newTargetStrides);
-        assert(maybeNewTargetSizes.has_value() &&
-               "expect constant target size values");
-        assert(maybeNewTargetStrides.has_value() &&
-               "expect constant target stride values");
-        SmallVector<int64_t> newTargetSizesInt = maybeNewTargetSizes.value();
+        SmallVector<int64_t> newTargetSizesInt =
+            insertInFront(newTargetSizes, insertTargetSizes);
         SmallVector<int64_t> newTargetStridesInt =
-            maybeNewTargetStrides.value();
-        newTargetSizesInt.insert(newTargetSizesInt.begin(),
-                                 insertTargetSizes.begin(),
-                                 insertTargetSizes.end());
-        newTargetStridesInt.insert(newTargetStridesInt.begin(),
-                                   insertTargetStrides.begin(),
-                                   insertTargetStrides.end());
-
+            insertInFront(newTargetStrides, insertTargetStrides);
         SmallVector<uint32_t> maxSizes =
             dmaDimConfig.getMaxSizes<CopyOpOperateOn::Target>();
         SmallVector<uint32_t> maxStrides =
