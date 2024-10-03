@@ -492,11 +492,30 @@ struct SubsumeLoopIntoDMA
     if (!isa<LoopLikeOpInterface>(parentOp))
       return rewriter.notifyMatchFailure(op, "Parent is not a loop-like op");
 
-    auto hasUsersInSameScope = [&](Value result) -> bool {
+    auto hasOtherUsersInSameScope = [&](Value result) -> bool {
       for (Operation *userOp : result.getUsers()) {
         if (userOp != op.getOperation() && parentOp->isProperAncestor(userOp)) {
           return true;
         }
+      }
+      return false;
+    };
+
+    auto hasCircularUsersInSameScope =
+        [&](SmallVector<AMDAIE::DoublyStridedOpInterface> users) -> bool {
+      bool currentUser = false;
+      for (AMDAIE::DoublyStridedOpInterface userOp : llvm::reverse(users)) {
+        // Check if there is other circular dma user in the same scope.
+        if (isa<AMDAIE::NpuCircularDmaCpyNdOp>(userOp) &&
+            userOp != op.getOperation()) {
+          return true;
+        }
+        // Check if there is other user before the current in the same scope.
+        if (userOp == op.getOperation()) {
+          currentUser = true;
+          continue;
+        }
+        if (currentUser) return true;
       }
       return false;
     };
@@ -526,7 +545,7 @@ struct SubsumeLoopIntoDMA
             "merged with other connections, so abort loop subsumption as it "
             "could potentially lead to deadlocks");
       }
-      if (hasUsersInSameScope(connectionOp.getResult())) {
+      if (hasOtherUsersInSameScope(connectionOp.getResult())) {
         return rewriter.notifyMatchFailure(
             op,
             "Has users of same DMA in scope, analysis to check validity of "
@@ -538,16 +557,28 @@ struct SubsumeLoopIntoDMA
       sourceMemspaceInt = npuCircularDmaOp.getSourceMemorySpaceAsUInt();
       targetMemspaceInt = npuCircularDmaOp.getTargetMemorySpaceAsUInt();
 
-      // Check that the connection this `amdaie.npu.dma_cpy_nd` operation is
-      // operating on, is not being touched within the same scope. Otherwise,
-      // the rewrite is not valid in general as it would be changing the
-      // temporal usage of the source connection.
+      // Check that the connection this `amdaie.npu.circular_dma_cpy_nd` op is
+      // operating on, satisfies the following conditions:
+      // 1) No other users of the connection has the Circular trait in the same
+      // scope; 2) No other users of the connection before this circular dma op
+      // in the same scope. Otherwise, the rewrite is not valid in general as it
+      // would be changing the temporal usage of the source connection.
       AMDAIE::ConnectionOp connectionOp = npuCircularDmaOp.getConnectionOp();
       if (!connectionOp) {
         return rewriter.notifyMatchFailure(
             op, "should operate on an `amdaie.connection` op");
       }
-      if (hasUsersInSameScope(connectionOp.getResult())) {
+      // Walk all dma ops in order and get those which are the users of the
+      // current connection op.
+      SmallVector<AMDAIE::DoublyStridedOpInterface> dmaUsers;
+      parentOp->walk([&](AMDAIE::DoublyStridedOpInterface op) {
+        auto dmaConnection = dyn_cast_if_present<AMDAIE::ConnectionOp>(
+            op->getOperand(0).getDefiningOp());
+        if (dmaConnection && dmaConnection == connectionOp) {
+          dmaUsers.push_back(op);
+        }
+      });
+      if (hasCircularUsersInSameScope(dmaUsers)) {
         return rewriter.notifyMatchFailure(
             op,
             "Has users of same DMA in scope, analysis to check validity of "

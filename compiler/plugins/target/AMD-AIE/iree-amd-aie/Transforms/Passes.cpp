@@ -545,7 +545,10 @@ void addAMDAIEObjectFifoLoweringPasses(OpPassManager &passManager,
   passManager.addPass(createEraseHALDescriptorTypeFromMemRefPass());
   passManager.addPass(memref::createFoldMemRefAliasOpsPass());
   passManager.addPass(createCanonicalizerPass());
-  passManager.addPass(createAMDAIEConvertToDmaPass());
+  AMDAIEConvertToDmaOptions dmaOptions;
+  dmaOptions.packTransposeOnSource = false;
+  dmaOptions.unpackTransposeOnSource = true;
+  passManager.addPass(createAMDAIEConvertToDmaPass(dmaOptions));
 
   passManager.addPass(createAMDAIENormalizeLoopBoundsPass());
   passManager.addPass(createAMDAIEInsertCoresPass());
@@ -577,6 +580,8 @@ void addAMDAIEObjectFifoLoweringPasses(OpPassManager &passManager,
   passManager.addPass(createCanonicalizerPass());
 
   passManager.addPass(createAMDAIEDmaCompositionPass());
+  passManager.addPass(createAMDAIECanonicalizeDoublyStridedOpPass());
+  passManager.addPass(createAMDAIEDmaLoopSubsumptionPass());
   passManager.addPass(createCSEPass());
   passManager.addPass(createCanonicalizerPass());
   passManager.addPass(createAMDAIEDmaCSEPass());
