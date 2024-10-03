@@ -943,46 +943,6 @@ static LogicalResult generateXCLBin(
   return runTool(xclbinutilBin.value().string(), flags, verbose);
 }
 
-// A pass which removes the alignment attribute from llvm load operations, if
-// the alignment is less than 4 (2 or 1).
-//
-// Example replaces:
-//
-// ```
-//  %113 = llvm.load %112 {alignment = 2 : i64} : !llvm.ptr -> vector<32xbf16>
-// ```
-//
-// with
-//
-// ```
-//  %113 = llvm.load %112 : !llvm.ptr -> vector<32xbf16>
-// ```
-//
-// If this pass is not included in the pipeline, there is an alignment error
-// later in the compilation. This is a temporary workaround while a better
-// solution is found: propagation of memref.assume_alignment is one option. See
-// also https://jira.xilinx.com/projects/AIECC/issues/AIECC-589
-namespace {
-struct RemoveAlignment2FromLLVMLoadPass
-    : PassWrapper<RemoveAlignment2FromLLVMLoadPass, OperationPass<ModuleOp>> {
-  void runOnOperation() override {
-    getOperation().walk([](Operation *op) {
-      if (auto loadOp = dyn_cast<LLVM::LoadOp>(op)) {
-        auto alignmentAttr = loadOp.getAlignmentAttr();
-        if (alignmentAttr) {
-          int alignmentVal = alignmentAttr.getValue().getSExtValue();
-          if (alignmentVal == 2 || alignmentVal == 1) {
-            loadOp.setAlignment(std::optional<uint64_t>());
-          }
-        }
-      }
-    });
-  }
-
-  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(
-      RemoveAlignment2FromLLVMLoadPass);
-};
-}  // namespace
 
 static LogicalResult generateUnifiedObject(
     MLIRContext *context, AIE::DeviceOp deviceOp, const std::string &outputFile,
@@ -1001,7 +961,6 @@ static LogicalResult generateUnifiedObject(
   // dialect
   mlir::iree_compiler::aievec::buildConvertVectorToAIEVec(pm);
   mlir::iree_compiler::AMDAIE::addLowerToLLVMPasses(pm);
-  pm.addPass(std::make_unique<RemoveAlignment2FromLLVMLoadPass>());
 
   if (verbose) {
     llvm::outs() << "\nRunning: ";
