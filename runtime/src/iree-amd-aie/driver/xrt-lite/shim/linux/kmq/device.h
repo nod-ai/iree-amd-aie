@@ -5,13 +5,13 @@
 #define PCIE_DEVICE_LINUX_XDNA_H
 
 #include <map>
+#include <mutex>
 
-#include "pcidev.h"
+#include "shared.h"
 #include "shim_debug.h"
 
 namespace shim_xdna {
 
-typedef void* xclDeviceHandle;
 #define XRT_NULL_HANDLE NULL
 
 // cuidx_type - encode cuidx and domain
@@ -36,21 +36,22 @@ struct cuidx_type {
   using domain_index_type = uint16_t;
 };
 
-struct device {
-  // device index type
-  using id_type = unsigned int;
-  using slot_id = uint32_t;
-  using handle_type = xclDeviceHandle;
+struct hw_ctx;
+struct pdev;
+struct bo;
 
-  device(const pdev& pdev, handle_type shim_handle);
+struct device {
+  device(const pdev& pdev, void* shim_handle);
 
   ~device();
 
-  std::unique_ptr<bo> alloc_bo(void* userptr, hw_ctx::slot_id ctx_id,
-                               size_t size, uint64_t flags);
+  using qos_type = std::map<std::string, uint32_t>;
+  enum class access_mode : uint8_t { exclusive = 0, shared = 1 };
+  std::unique_ptr<bo> alloc_bo(void* userptr, uint32_t ctx_id, size_t size,
+                               uint64_t flags);
 
-  std::unique_ptr<hw_ctx> create_hw_context(const device& dev,
-                                            const hw_ctx::qos_type& qos) const;
+  // std::unique_ptr<hw_ctx> create_hw_context(const device& dev,
+  //                                           const qos_type& qos) const;
 
   std::unique_ptr<bo> import_bo(shared_handle::export_handle ehdl) const;
 
@@ -60,8 +61,8 @@ struct device {
 
   std::unique_ptr<bo> import_bo(pid_t, shared_handle::export_handle);
 
-  std::unique_ptr<hw_ctx> create_hw_context(const hw_ctx::qos_type& qos,
-                                            hw_ctx::access_mode mode) const;
+  std::unique_ptr<hw_ctx> create_hw_context(const qos_type& qos,
+                                            access_mode mode) const;
 
   std::vector<char> read_aie_mem(uint16_t col, uint16_t row, uint32_t offset,
                                  uint32_t size);
@@ -76,7 +77,7 @@ struct device {
 
   const pdev& m_pdev;  // The pcidev that this device object is derived from
   std::map<uint32_t, bo*> m_bo_map;
-  xclDeviceHandle m_handle = XRT_NULL_HANDLE;
+  void* m_handle = XRT_NULL_HANDLE;
 
   mutable std::mutex m_mutex;
 };

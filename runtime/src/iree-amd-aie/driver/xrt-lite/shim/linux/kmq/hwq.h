@@ -3,12 +3,15 @@
 
 #ifndef _HWQ_XDNA_H_
 #define _HWQ_XDNA_H_
-
-#include "fence.h"
-#include "hwctx.h"
-#include "shim_debug.h"
+#include <cstdint>
+#include <vector>
 
 namespace shim_xdna {
+struct device;
+struct bo;
+struct hw_ctx;
+struct pdev;
+struct fence;
 
 struct hw_q {
   hw_q(const device &device);
@@ -25,7 +28,7 @@ struct hw_q {
 
   void submit_signal(const fence *);
 
-  virtual void bind_hwctx(const hw_ctx *ctx) = 0;
+  void bind_hwctx(const hw_ctx *ctx);
 
   void unbind_hwctx();
 

@@ -8,7 +8,7 @@
 
 static std::recursive_mutex s_debug_mutex;
 
-namespace {
+namespace shim_xdna {
 struct debug_lock {
   std::lock_guard<std::recursive_mutex> m_lk;
   debug_lock();
@@ -32,4 +32,4 @@ void debugf(const char* format, ...) {
   vprintf(format, args);
   va_end(args);
 }
-}  // namespace
+}  // namespace shim_xdna
