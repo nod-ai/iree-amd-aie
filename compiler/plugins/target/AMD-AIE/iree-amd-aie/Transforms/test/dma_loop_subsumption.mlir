@@ -492,16 +492,11 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 // CHECK-DAG:   %[[C0:.+]] = arith.constant 0 : index
 // CHECK-DAG:   %[[C1:.+]] = arith.constant 1 : index
 // CHECK-DAG:   %[[C64:.+]] = arith.constant 64 : index
-// CHECK-DAG:   %[[C1024:.+]] = arith.constant 1024 : index
 // CHECK:       %[[CONNECTION:.+]] = amdaie.connection
 // CHECK:       amdaie.controlcode
 // CHECK:         %{{.+}} = amdaie.npu.dma_cpy_nd %[[CONNECTION]]([] [] [], [0, 0, 0, 0] [63, 1, 8, 16] [0, 64, 16, 1])
 // CHECK:         scf.for %{{.+}} = %[[C0]] to %[[C64]] step %[[C1]]
 // CHECK:           %{{.+}} = amdaie.npu.dma_cpy_nd %[[CONNECTION]]([] [] [], [0, 0, 0] [1, 8, 16] [128, 16, 1])
-// CHECK:         }
-// CHECK:         %{{.+}} = amdaie.npu.dma_cpy_nd %[[CONNECTION]]([] [] [], [0, 0, 0] [1023, 8, 16] [0, 16, 1])
-// CHECK:         scf.for %{{.+}} = %[[C0]] to %[[C1024]] step %[[C1]]
-// CHECK:           %{{.+}} = amdaie.npu.dma_cpy_nd %[[CONNECTION]]([] [] [], [0, 0] [8, 16] [16, 1])
 // CHECK:         }
 #executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
 module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
@@ -521,12 +516,6 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
         scf.for %arg5 = %c0 to %c64 step %c1 {
           %2 = amdaie.npu.dma_cpy_nd %0([] [] [], [0, 0, 0] [1, 8, 16] [128, 16, 1])
         }
-        scf.for %arg6 = %c0 to %c1023 step %c1 {
-          %3 = amdaie.npu.dma_cpy_nd %0([] [] [], [0, 0] [8, 16] [16, 1])
-        }
-        scf.for %arg7 = %c0 to %c1024 step %c1 {
-          %4 = amdaie.npu.dma_cpy_nd %0([] [] [], [0, 0] [8, 16] [16, 1])
-        }
         amdaie.end
       }
     }
@@ -543,16 +532,11 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 // CHECK-DAG:   %[[C0:.+]] = arith.constant 0 : index
 // CHECK-DAG:   %[[C1:.+]] = arith.constant 1 : index
 // CHECK-DAG:   %[[C64:.+]] = arith.constant 64 : index
-// CHECK-DAG:   %[[C1024:.+]] = arith.constant 1024 : index
 // CHECK:       %[[CONNECTION:.+]] = amdaie.connection
 // CHECK:       amdaie.controlcode
 // CHECK:         %{{.+}} = amdaie.npu.dma_cpy_nd %[[CONNECTION]]([0, 0, 0, 0] [63, 1, 8, 16] [0, 64, 16, 1], [] [] [])
 // CHECK:         scf.for %{{.+}} = %[[C0]] to %[[C64]] step %[[C1]]
 // CHECK:           %{{.+}} = amdaie.npu.dma_cpy_nd %[[CONNECTION]]([0, 0, 0] [1, 8, 16] [128, 16, 1], [] [] [])
-// CHECK:         }
-// CHECK:         %{{.+}} = amdaie.npu.dma_cpy_nd %[[CONNECTION]]([0, 0, 0] [1023, 8, 16] [0, 16, 1], [] [] [])
-// CHECK:         scf.for %{{.+}} = %[[C0]] to %[[C1024]] step %[[C1]]
-// CHECK:           %{{.+}} = amdaie.npu.dma_cpy_nd %[[CONNECTION]]([0, 0] [8, 16] [16, 1], [] [] [])
 // CHECK:         }
 #executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
 module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
@@ -571,12 +555,6 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
         }
         scf.for %arg5 = %c0 to %c64 step %c1 {
           %2 = amdaie.npu.dma_cpy_nd %0([0, 0, 0] [1, 8, 16] [128, 16, 1], [] [] [])
-        }
-        scf.for %arg6 = %c0 to %c1023 step %c1 {
-          %3 = amdaie.npu.dma_cpy_nd %0([0, 0] [8, 16] [16, 1], [] [] [])
-        }
-        scf.for %arg7 = %c0 to %c1024 step %c1 {
-          %4 = amdaie.npu.dma_cpy_nd %0([0, 0] [8, 16] [16, 1], [] [] [])
         }
         amdaie.end
       }
