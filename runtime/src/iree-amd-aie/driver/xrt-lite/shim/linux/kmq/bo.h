@@ -5,12 +5,11 @@
 #define _BO_XDNA_H_
 
 #include <atomic>
+#include <map>
+#include <mutex>
 #include <string>
 
 #include "amdxdna_accel.h"
-#include "device.h"
-#include "hwctx.h"
-#include "pcidev.h"
 #include "shared.h"
 #include "shim_debug.h"
 
@@ -62,6 +61,9 @@ struct xcl_bo_flags {
   };
 };
 
+struct device;
+struct pdev;
+
 struct bo {
   // map_type - determines how a buffer is mapped
   enum class map_type { read, write };
@@ -87,10 +89,11 @@ struct bo {
     uint64_t kmhdl;  // kernel mode handle
   };
 
-  bo(const device& device, hw_ctx::slot_id ctx_id, size_t size, uint64_t flags,
+  using uint32_t = uint32_t;
+  bo(const device& device, uint32_t ctx_id, size_t size, uint64_t flags,
      amdxdna_bo_type type);
 
-  bo(const device& device, hw_ctx::slot_id ctx_id, size_t size, uint64_t flags);
+  bo(const device& device, uint32_t ctx_id, size_t size, uint64_t flags);
 
   bo(const device& device, shared_handle::export_handle ehdl);
 
@@ -171,7 +174,7 @@ struct bo {
 
   // Used when exclusively assigned to a HW context. By default, BO is shared
   // among all HW contexts.
-  hw_ctx::slot_id m_owner_ctx_id = AMDXDNA_INVALID_CTX_HANDLE;
+  uint32_t m_owner_ctx_id = AMDXDNA_INVALID_CTX_HANDLE;
 
   void bind_at(size_t pos, const bo* bh, size_t offset, size_t size);
 

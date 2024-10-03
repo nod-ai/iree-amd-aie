@@ -9,6 +9,7 @@
 #include <unistd.h>
 #include <x86intrin.h>
 
+#include "pcidev.h"
 #include "shim_debug.h"
 
 namespace {
@@ -16,7 +17,7 @@ namespace {
 uint32_t alloc_drm_bo(const shim_xdna::pdev& dev, amdxdna_bo_type type,
                       void* buf, size_t size) {
   amdxdna_drm_create_bo cbo = {
-      .type = type,
+      .type = static_cast<uint32_t>(type),
       .vaddr = reinterpret_cast<uintptr_t>(buf),
       .size = size,
   };
@@ -38,7 +39,7 @@ void get_drm_bo_info(const shim_xdna::pdev& dev, uint32_t boh,
 void* map_parent_range(size_t size) {
   auto p = ::mmap(0, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS,
                   -1, 0);
-  if (!p) shim_err(errno, "mmap(len=%ld) failed", size);
+  if (!p) shim_xdna::shim_err(errno, "mmap(len=%ld) failed", size);
 
   return p;
 }
@@ -101,7 +102,7 @@ bool is_power_of_two(size_t x) { return (x > 0) && ((x & (x - 1)) == 0); }
 
 void* addr_align(void* p, size_t align) {
   if (!is_power_of_two(align))
-    shim_err(EINVAL, "Alignment 0x%lx is not power of two", align);
+    shim_xdna::shim_err(EINVAL, "Alignment 0x%lx is not power of two", align);
 
   return (void*)(((uintptr_t)p + align) & ~(align - 1));
 }
@@ -129,7 +130,8 @@ inline void clflush_data(const void* base, size_t offset, size_t len) {
 
   if (!cacheline_size) {
     long sz = sysconf(_SC_LEVEL1_DCACHE_LINESIZE);
-    if (sz <= 0) shim_err(EINVAL, "Invalid cache line size: %ld", sz);
+    if (sz <= 0)
+      shim_xdna::shim_err(EINVAL, "Invalid cache line size: %ld", sz);
     cacheline_size = sz;
   }
 
@@ -313,8 +315,7 @@ std::unique_ptr<shared_handle> bo::share() const {
 
 amdxdna_bo_type bo::get_type() const { return m_type; }
 
-bo::bo(const device& device, hw_ctx::slot_id ctx_id, size_t size,
-       uint64_t flags)
+bo::bo(const device& device, uint32_t ctx_id, size_t size, uint64_t flags)
     : bo(device, ctx_id, size, flags, flag_to_type(flags)) {
   if (m_type == AMDXDNA_BO_INVALID)
     shim_err(EINVAL, "Invalid BO flags: 0x%lx", flags);
@@ -323,8 +324,8 @@ bo::bo(const device& device, hw_ctx::slot_id ctx_id, size_t size,
 bo::bo(const device& device, size_t size, amdxdna_bo_type type)
     : bo(device, AMDXDNA_INVALID_CTX_HANDLE, size, 0, type) {}
 
-bo::bo(const device& device, hw_ctx::slot_id ctx_id, size_t size,
-       uint64_t flags, amdxdna_bo_type type)
+bo::bo(const device& device, uint32_t ctx_id, size_t size, uint64_t flags,
+       amdxdna_bo_type type)
     : m_pdev(device.get_pdev()),
       m_aligned_size(size),
       m_flags(flags),

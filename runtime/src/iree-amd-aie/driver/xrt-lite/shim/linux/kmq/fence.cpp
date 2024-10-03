@@ -6,6 +6,9 @@
 #include <limits>
 
 #include "amdxdna_accel.h"
+#include "fence.h"
+#include "hwctx.h"
+#include "pcidev.h"
 
 namespace {
 
@@ -138,15 +141,6 @@ fence::fence(const device& device, shared_handle::export_handle ehdl)
   shim_debug("Fence imported: %d@%ld", m_syncobj_hdl, m_state);
 }
 
-fence::fence(const fence& f)
-    : m_pdev(f.m_pdev),
-      m_import(f.share()),
-      m_syncobj_hdl(import_syncobj(m_pdev, m_import->get_export_handle())),
-      m_state{f.m_state},
-      m_signaled{f.m_signaled} {
-  shim_debug("Fence cloned: %d@%ld", m_syncobj_hdl, m_state);
-}
-
 fence::~fence() {
   shim_debug("Fence going away: %d@%ld", m_syncobj_hdl, m_state);
   destroy_syncobj(m_pdev, m_syncobj_hdl);
@@ -160,10 +154,6 @@ std::unique_ptr<shared_handle> fence::share() const {
 }
 
 uint64_t fence::get_next_state() const { return m_state + 1; }
-
-std::unique_ptr<fence> fence::clone() const {
-  return std::make_unique<fence>(*this);
-}
 
 uint64_t fence::wait_next_state() const {
   std::lock_guard<std::mutex> guard(m_lock);

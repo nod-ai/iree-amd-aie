@@ -3,18 +3,15 @@
 
 #include "device.h"
 
-#include <sys/syscall.h>
-#include <unistd.h>
-
-#include <any>
 #include <filesystem>
 
 #include "bo.h"
 #include "hwctx.h"
+#include "pcidev.h"
 
 namespace shim_xdna {
 
-device::device(const pdev& pdev, handle_type shim_handle)
+device::device(const pdev& pdev, void* shim_handle)
     : m_pdev(pdev), m_handle(shim_handle) {
   shim_debug("Created KMQ device (%s) ...", get_pdev().m_sysfs_name.c_str());
 }
@@ -24,16 +21,16 @@ device::~device() {
   m_pdev.close();
 }
 
-std::unique_ptr<hw_ctx> device::create_hw_context(
-    const device& dev, const hw_ctx::qos_type& qos) const {
-  return std::make_unique<hw_ctx>(dev, qos);
-}
+// std::unique_ptr<hw_ctx> device::create_hw_context(
+//     const device& dev, const hw_ctx::qos_type& qos) const {
+//   return std::make_unique<hw_ctx>(dev, qos);
+// }
 
-std::unique_ptr<bo> device::alloc_bo(void* userptr, hw_ctx::slot_id ctx_id,
+std::unique_ptr<bo> device::alloc_bo(void* userptr, uint32_t ctx_id,
                                      size_t size, uint64_t flags) {
   if (userptr) shim_not_supported_err("User ptr BO");
 
-  auto b = bo(this->m_pdev, ctx_id, size, flags);
+  auto b = bo(*this, ctx_id, size, flags);
   return std::make_unique<bo>(*this, ctx_id, size, flags);
 }
 
