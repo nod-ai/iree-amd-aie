@@ -94,6 +94,10 @@ bool isMatmulInDefChain(Value operand);
 /// matmul-like op upstream in its computation tree.
 bool isMatmulProducerOfElementwise(linalg::LinalgOp linalgOp);
 
+/// Utility to convert a `uint32_t` value into a hex string.
+std::string utohexstr(uint32_t value, size_t width, bool header = true,
+                      bool lowercase = false);
+
 namespace detail {
 
 // Returns the largest number that perfectly divides `num` that

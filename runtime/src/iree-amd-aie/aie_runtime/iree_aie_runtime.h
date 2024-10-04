@@ -222,6 +222,10 @@ struct AMDAIEDeviceModel {
   /// aie-rt for whatever reason. Make sure the parameters can't be retrieved in
   /// another way before adding new fields to this struct.
   struct AMDAIEDeviceConfig {
+    /// Set default minimum stride bitwidth/addressing granularity to 32 bits as
+    /// this is the value for all current architecture versions.
+    uint8_t minStrideBitWidth{32};
+    /// The max packet id.
     uint8_t packetIdMaxIdx{0};
     /// Currently, the max arbiter/msel is hidden inside aie-rt.
     uint8_t streamSwitchCoreArbiterMax{0};
@@ -246,6 +250,7 @@ struct AMDAIEDeviceModel {
                              AMDAIEDevice device,
                              AMDAIEDeviceConfig deviceConfig);
 
+  uint8_t getMinStrideBitWidth() const;
   int rows() const;
   int columns() const;
 

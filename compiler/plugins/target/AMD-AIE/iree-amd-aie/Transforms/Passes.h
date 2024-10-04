@@ -111,6 +111,13 @@ std::unique_ptr<Pass> createAMDAIEConnectionToFlowPass();
 /// Pass to unroll the loops within the control code regions.
 std::unique_ptr<Pass> createAMDAIEControlCodeLoopUnrollPass();
 
+/// Pass to convert control code DMA operations into NPU writes and syncs.
+std::unique_ptr<Pass> createAMDAIEControlCodeLoweringPass();
+
+/// Pass to convert control code into a transaction binary.
+std::unique_ptr<Pass> createAMDAIEControlCodeToTransactionPass(
+    AMDAIEControlCodeToTransactionOptions options = {});
+
 /// Pass to convert `scf.forall` to `scf.for` within `aie.core`.
 std::unique_ptr<Pass> createAMDAIEConvertCoreForallToForPass();
 

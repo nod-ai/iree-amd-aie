@@ -11,6 +11,7 @@ include "mlir/Interfaces/CopyOpInterface.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 include "mlir/Interfaces/ViewLikeInterface.td"
+include "mlir/IR/BuiltinAttributes.td"
 include "mlir/IR/OpAsmInterface.td"
 include "mlir/IR/OpBase.td"
 include "mlir/IR/SymbolInterfaces.td"
@@ -177,6 +178,9 @@ def AMDAIE_WorkgroupOp : AMDAIE_Op<"workgroup",
   }];
   
   let regions = (region SizedRegion<1>:$region);
+  let arguments = (
+    ins OptionalAttr<Builtin_DenseResourceElementsAttr>:$npu_instructions
+  );
   
   let assemblyFormat = [{ regions attr-dict }];
 
@@ -191,7 +195,7 @@ def AMDAIE_WorkgroupOp : AMDAIE_Op<"workgroup",
   let extraClassDeclaration = [{
     // Return the control code op within this workgroup.
     ControlCodeOp getControlCode() {
-      return dyn_cast<ControlCodeOp>(getBody()->getTerminator());
+      return cast<ControlCodeOp>(getBody()->getTerminator());
     }
     // Make sure the WorkgroupOp region is well-formed with a ControlCodeOp
     // terminator.
@@ -355,14 +359,15 @@ def AMDAIE_ChannelOp: AMDAIE_Op<"channel", [
 
     ```mlir
     %tile = amdaie.tile(%c0, %c0)
-    %channel = amdaie.channel(%tile, 0, port_type = DMA)
+    %channel = amdaie.channel(%tile, 0, port_type = DMA, direction = MM2S)
     ```
   }];
 
   let arguments = (
     ins Index:$tile,
         ConfinedAttr<I8Attr, [IntMinValue<0>]>:$value,
-        StrmSwPortTypeAttr:$port_type
+        StrmSwPortTypeAttr:$port_type,
+        DMAChannelDir:$direction
   );
 
   let extraClassDeclaration = [{
@@ -370,13 +375,43 @@ def AMDAIE_ChannelOp: AMDAIE_Op<"channel", [
   }];
 
   let assemblyFormat = [{ 
-    `(` $tile `,` $value `,` `port_type` `=` $port_type `)` attr-dict
+    `(` 
+    $tile `,`
+    $value `,` 
+    `port_type` `=` $port_type `,` 
+    `direction` `=` $direction
+    `)`
+    attr-dict
   }];
 }
 
 //===----------------------------------------------------------------------===//
 // IREE AMDAIE Npu Ops
 //===----------------------------------------------------------------------===//
+
+def AMDAIE_NpuAddressPatchOp: AMDAIE_Op<"npu.address_patch"> {
+  let summary = "Operation to patch the address inside a buffer descriptor";
+  let description = [{
+    This NPU controller operation patches the address inside the buffer
+    descriptor with provided ID on the specified column. This enables codegen to
+    provide an argument index and offset at compile time, which is then
+    translated to a physical address at runtime by the firmware.
+
+    Example:
+
+    ```mlir
+    amdaie.npu.address_patch {arg_idx = 0 : ui32, bd_id = 0 : ui32,
+      col = 0 : ui32, offset = 1024 : ui32}
+    ```
+  }];
+  let arguments = (
+    ins UI32Attr:$col,
+        UI32Attr:$bd_id,
+        UI32Attr:$arg_idx,
+        UI32Attr:$offset
+  );
+  let assemblyFormat = [{ attr-dict }];
+}
 
 def AMDAIE_NpuDmaCpyNdOp: AMDAIE_Op<"npu.dma_cpy_nd", [
       AttrSizedOperandSegments, DoublyStridedOpInterface]> {
@@ -554,6 +589,151 @@ def AMDAIE_NpuDmaCpyNdOp: AMDAIE_Op<"npu.dma_cpy_nd", [
   }];
 
   let hasCanonicalizer = 1;
+}
+
+def AMDAIE_NpuHalfDmaCpyNdOp
+  : AMDAIE_Op<"npu.half_dma_cpy_nd", [AttrSizedOperandSegments, OffsetSizeAndStrideOpInterface]> {
+  let summary = "The NPU uController's DMA operation, operating on a single port";
+  let description = [{
+    The NPU DMA operation represents a strided DMA operation with an unlimited
+    number of dimensions, executed by the NPU uController. This operation refers
+    to a `connection` and `input` logical objectFifo being operated on, as well
+    as an optionally specified BD ID and `channel` (DMA port). The `connection`
+    operand provides information on how to use the connection, for example
+    whether a packet header is needed.
+
+    The representation supports a partially-static representation for the 
+    `offsets`, `sizes` and `strides`. A special sentinel value 
+    ShapedType::kDynamic encodes that the corresponding entry has a dynamic
+    value.
+
+    Example:
+
+    ```mlir
+    %2 = amdaie.connection(%1, %0) 
+      : (!amdaie.logicalobjectfifo<memref<32x64xi32, 1>>,
+      !amdaie.logicalobjectfifo<memref<32x1024xi32>>)
+    %bd_id = amdaie.bd_id(%tile_0_0, 0)
+    %channel = amdaie.channel(%tile_0_0, 0, port_type = DMA, direction = MM2S)
+    ...
+    amdaie.controlcode {
+      %5 = amdaie.logicalobjectfifo.from_memref %0, {%tile_0_0} 
+        : memref<32x1024xi32> -> !amdaie.logicalobjectfifo<memref<32768xi32>>
+      %4 = amdaie.npu.half_dma_cpy_nd async %2(%0[0, 0] [32, 64] [1024, 1]
+        bd_id = %bd_id channel = %channel)
+      ...
+    }
+    ```
+  }];
+
+  let arguments = (
+    ins Index:$connection,
+        AnyAMDAIELogicalObjectFifoType:$input,
+        Variadic<Index>:$offsets,
+        Variadic<Index>:$sizes,
+        Variadic<Index>:$strides,
+        DenseI64ArrayAttr:$static_offsets,
+        DenseI64ArrayAttr:$static_sizes,
+        DenseI64ArrayAttr:$static_strides,
+        Optional<Index>:$bd_id,
+        Optional<Index>:$channel
+  );
+
+  let results = (outs Optional<AMDAIE_AsyncTokenType>:$async_token);
+
+  let assemblyFormat = [{
+    custom<AsyncTokenType>(type($async_token))
+    $connection
+    `(`
+    $input
+    custom<DynamicIndexList>($offsets, $static_offsets)
+    custom<DynamicIndexList>($sizes, $static_sizes)
+    custom<DynamicIndexList>($strides, $static_strides)
+    (`bd_id` `=` $bd_id^)?
+    (`channel` `=` $channel^)?
+    `)`
+    attr-dict 
+    `:` type($input)
+  }];
+
+  let builders = [
+    // Build a NpuHalfDmaCpyNdOp with mixed static and dynamic entries.
+    OpBuilder<(ins "::mlir::TypeRange":$result_types, "Value":$connection,
+      "::mlir::Value":$input, "ArrayRef<OpFoldResult>":$offsets,
+      "ArrayRef<OpFoldResult>":$sizes, "ArrayRef<OpFoldResult>":$strides,
+      "::mlir::Value":$bd_id, "::mlir::Value":$channel)>,
+    // Build a NpuHalfDmaCpyNdOp with static entries.
+    OpBuilder<(ins "::mlir::TypeRange":$result_types, "Value":$connection,
+      "::mlir::Value":$target, "ArrayRef<int64_t>":$offsets,
+      "ArrayRef<int64_t>":$sizes, "ArrayRef<int64_t>":$strides,
+      "::mlir::Value":$bd_id, "::mlir::Value":$channel)>,
+    // Build a NpuHalfDmaCpyNdOp with dynamic entries.
+    OpBuilder<(ins "::mlir::TypeRange":$result_types, "Value":$connection,
+      "::mlir::Value":$input, "ValueRange":$offsets, "ValueRange":$sizes,
+      "ValueRange":$strides, "::mlir::Value":$bd_id, "::mlir::Value":$channel)>
+  ];
+
+  let extraClassDeclaration = [{
+    /// Return the number of leading operands before the `offsets`, `sizes` and
+    /// and `strides` operands.
+    static unsigned getOffsetSizeAndStrideStartOperandIndex() { return 2; }
+    
+    /// Return the expected rank of each of the`static_offsets`, `static_sizes`
+    /// and `static_strides` attributes.
+    std::array<unsigned, 3> getArrayAttrMaxRanks() {
+      unsigned rank = getMixedOffsets().size();
+      return {rank, rank, rank};
+    }
+
+    std::optional<BdIdOp> getBdIdOp() {
+      return dyn_cast_if_present<BdIdOp>(getBdId().getDefiningOp());
+    }
+
+    // Return the input `amdaie.connection` operation.
+    std::optional<ConnectionOp> getConnectionOp() {
+      return dyn_cast_if_present<ConnectionOp>(getConnection().getDefiningOp());
+    }
+
+    std::optional<ChannelOp> getChannelOp() {
+      return dyn_cast_if_present<ChannelOp>(getChannel().getDefiningOp());
+    }
+
+    // Return the source memref type. This is retrieved using information from
+    // the input DMA operation.
+    MemRefType getMemrefType() { 
+      return cast<LogicalObjectFifoType>(getInput().getType())
+          .getElementType();
+    }
+
+    // Return the source memory space as an attribute.
+    Attribute getMemorySpace() {
+      return cast<LogicalObjectFifoType>(getInput().getType())
+        .getMemorySpace();
+    }
+
+    // Helper method to return the memory space as an integer. If no memory 
+    // space attribute, this indicates a global memory space and 0 is returned.
+    // Else cast the memory space attribute to an integer. 
+    uint8_t getMemorySpaceAsUInt() {
+      Attribute memSpace = getMemorySpace();
+      return memSpace ? cast<IntegerAttr>(memSpace).getInt() : 0;
+    }
+
+    // Compute and return the constant base offset if possible.
+    std::optional<int64_t> getStaticBaseOffset();
+
+    // Compute and return the size of the DMA access if possible.
+    std::optional<int64_t> getAccessStaticSize();
+    
+    // Check whether this dma operation has a wait user.
+    bool hasDmaWaitOpUser();
+    
+    // Check whether this operation has addressing.
+    bool hasAddressing() {
+      return !getMixedOffsets().empty() || !getMixedSizes().empty() 
+        || !getMixedStrides().empty();
+    }
+  }];
 }
 
 def AMDAIE_NpuCircularDmaCpyNdOp: AMDAIE_Op<"npu.circular_dma_cpy_nd", [
@@ -759,6 +939,85 @@ def AMDAIE_NpuDmaWaitOp: AMDAIE_Op<"npu.dma_wait", []> {
     // Return the Npu DMA operation arguments.
     SmallVector<NpuDmaCpyNdOp> getDmaOps();
   }];
+}
+
+def AMDAIE_NpuPushToQueueOp: AMDAIE_Op<"npu.push_to_queue">,
+  Results<(outs Optional<AMDAIE_AsyncTokenType>:$async_token)> {
+  let summary = "Push the provided BD to the specified channel's queue.";
+  let description = [{
+    This NPU controller operation to push a buffer descriptor with specified
+    `bd_id` to the queue of the (`channel`, `direction`) DMA port on tile
+    (`col`, `row`). The BD will be repeated for a `repeat_count` number of
+    times.
+
+    Example:
+
+    ```mlir
+    amdaie.npu.push_to_queue {bd_id = 0 : ui32, channel = 0 : ui32,
+      col = 0 : ui32, direction = 1 : i32, repeat_count = 1 : ui32,
+      row = 0 : ui32}
+    ```
+  }];
+  let arguments = (
+    ins UI32Attr:$col,
+        UI32Attr:$row,
+        DMAChannelDir:$direction,
+        UI32Attr:$channel,
+        UI32Attr:$repeat_count,
+        UI32Attr:$bd_id
+  );
+  let assemblyFormat = [{
+    custom<AsyncTokenType>(type($async_token)) attr-dict
+  }];
+}
+
+def AMDAIE_NpuWriteBdOp: AMDAIE_Op<"npu.write_bd"> {
+  let summary = "Initialize the buffer descriptor with specified ID";
+  let description = [{
+    This NPU controller operation to initialize the `bd_id` buffer descriptor on
+    the (`col`, `row`) tile with the provided configurations.
+
+    Example:
+
+    ```mlir
+    amdaie.npu.write_bd {bd_id = 0 : ui32, buffer_length = 0 : ui32,
+      buffer_offset = 0 : ui32, col = 0 : ui32, enable_packet = false,
+      iteration_current = 0 : ui32, iteration_size = 0 : ui32,
+      iteration_stride = 0 : ui32, lock_acq_enable = false,
+      lock_acq_id = 0 : ui32, lock_acq_val = 0 : i32, lock_rel_id = 0 : ui32,
+      lock_rel_val = 0 : i32, next_bd = 0 : ui32, out_of_order_id = 0 : ui32,
+      packet_id = 0 : ui32, packet_type = 0 : ui32, paddings_after = array<i32>,
+      paddings_before = array<i32>, row = 0 : ui32, sizes = array<i32: 0, 0, 0>,
+      strides = array<i32: 0, 0, 0>, use_next_bd = false, valid_bd = true}
+    ```
+  }];
+  let arguments = (
+    ins UI32Attr:$col,
+        UI32Attr:$row,
+        UI32Attr:$bd_id,
+        UI32Attr:$buffer_length,
+        UI32Attr:$buffer_offset,
+        DenseI32ArrayAttr:$sizes,
+        DenseI32ArrayAttr:$strides,
+        DenseI32ArrayAttr:$paddings_before,
+        DenseI32ArrayAttr:$paddings_after,
+        UI32Attr:$iteration_current,
+        UI32Attr:$iteration_size,
+        UI32Attr:$iteration_stride,
+        BoolAttr:$enable_packet,
+        UI32Attr:$packet_id,
+        UI32Attr:$packet_type,
+        UI32Attr:$out_of_order_id,
+        BoolAttr:$use_next_bd,
+        UI32Attr:$next_bd,
+        BoolAttr:$valid_bd,
+        BoolAttr:$lock_acq_enable,
+        I32Attr:$lock_rel_val,
+        UI32Attr:$lock_rel_id,
+        I32Attr:$lock_acq_val,
+        UI32Attr:$lock_acq_id
+  );
+  let assemblyFormat = [{ attr-dict }];
 }
 
 //===----------------------------------------------------------------------===//

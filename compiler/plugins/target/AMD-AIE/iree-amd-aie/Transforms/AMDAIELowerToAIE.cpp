@@ -396,203 +396,6 @@ LogicalResult AIEDeviceBuilder::coreToAIE(AMDAIE::CoreOp coreOp,
 }
 
 //===----------------------------------------------------------------------===//
-// Convert amdaie.controlcode operation to NPU instruction func
-//===----------------------------------------------------------------------===//
-
-/// Convert the `amdaie.npu.dma_cpy_nd` operation to `aiex.npu.dma_memcpy_nd`.
-LogicalResult AIEDeviceBuilder::npuDmaCpyNdOpToAIE(
-    AMDAIE::NpuDmaCpyNdOp dmaOp, SmallVector<Operation *> &toBeErased) {
-  LLVM_DEBUG(llvm::dbgs() << "Convert [AMDAIE::NpuDmaCpyNdOp]\n");
-  AMDAIE::ConnectionOp connectionOp = dmaOp.getConnectionOp();
-
-  SmallVector<Value> offsets, sizes, strides;
-  ArrayRef<int64_t> staticOffsets, staticSizes, staticStrides;
-  AMDAIE::BdIdOp bdIdOp;
-  LogicalObjectFifoFromMemrefOp logicalObjFifo;
-  SmallVector<Operation *> memOps;
-  AIE::PacketInfoAttr pktInfoAttr = nullptr;
-  // Convert bidirectional `amdaie.npu.dma_cpy_nd` op into two halves.
-  if (dmaOp.getSource()) {
-    offsets = dmaOp.getSourceOffsets();
-    sizes = dmaOp.getSourceSizes();
-    strides = dmaOp.getSourceStrides();
-    staticOffsets = dmaOp.getSourceStaticOffsets();
-    staticSizes = dmaOp.getSourceStaticSizes();
-    staticStrides = dmaOp.getSourceStaticStrides();
-    bdIdOp = dmaOp.getSourceBdIdOp();
-    if (!bdIdOp) {
-      return dmaOp.emitOpError()
-             << "must have a source BD ID op to lower to the AIE dialect.";
-    }
-    logicalObjFifo = dyn_cast_if_present<AMDAIE::LogicalObjectFifoFromMemrefOp>(
-        dmaOp.getSource().getDefiningOp());
-    if (!logicalObjFifo) {
-      return dmaOp.emitOpError() << "expected source to be an "
-                                    "`amdaie.logicalobjectfifo.from_memref`";
-    }
-    memOps = connectionToSourceTargetMemOps[connectionOp].first;
-    // Set the packet info attribute for MM2S DMAs, operating on a packet flow
-    // connection.
-    std::optional<AMDAIE::FlowOp> maybeFlowOp = connectionOp.getFlowOp();
-    if (maybeFlowOp && maybeFlowOp->getPacketId()) {
-      pktInfoAttr = AIE::PacketInfoAttr::get(
-          rewriter.getContext(),
-          /*pkt_type*/ 0, /*pkt_id*/ maybeFlowOp->getPacketId().value());
-    }
-  } else if (dmaOp.getTarget()) {
-    offsets = dmaOp.getTargetOffsets();
-    sizes = dmaOp.getTargetSizes();
-    strides = dmaOp.getTargetStrides();
-    staticOffsets = dmaOp.getTargetStaticOffsets();
-    staticSizes = dmaOp.getTargetStaticSizes();
-    staticStrides = dmaOp.getTargetStaticStrides();
-    bdIdOp = dmaOp.getTargetBdIdOp();
-    if (!bdIdOp) {
-      return dmaOp.emitOpError()
-             << "must have a target BD ID op to lower to the AIE dialect.";
-    }
-    logicalObjFifo = dyn_cast_if_present<AMDAIE::LogicalObjectFifoFromMemrefOp>(
-        dmaOp.getTarget().getDefiningOp());
-    if (!logicalObjFifo) {
-      return dmaOp.emitOpError() << "expected target to be an "
-                                    "`amdaie.logicalobjectfifo.from_memref`";
-    }
-    memOps = connectionToSourceTargetMemOps[connectionOp].second;
-  } else {
-    return dmaOp.emitOpError()
-           << "has neither source not target memory space as L3.";
-  }
-
-  Value memref = bindingsMapper.lookup(logicalObjFifo.getMemref());
-
-  if (memOps.size() != 1) {
-    return dmaOp.emitOpError() << "only a single connection op source expected";
-  }
-  auto shimDmaAllocOp = dyn_cast<AIE::ShimDMAAllocationOp>(memOps[0]);
-  if (!shimDmaAllocOp) {
-    return dmaOp.emitOpError() << "expected the source of the connection to "
-                                  "be mapped to a `AIE::ShimDMAAllocationOp`";
-  }
-
-  if (!offsets.empty() || !sizes.empty() || !strides.empty()) {
-    // Not doing now as better to just eliminate use of aiex dialect
-    // altogether.
-    return dmaOp.emitError()
-           << "Expect all source offsets, sizes, and strides to be static at "
-              "this point. Dynamic values can be supported, just need to "
-              "cast from 'index' to 64-bit signless integer for "
-              "aiex.npu.dma_memcpy_nd.";
-  }
-
-  uint32_t bdId = bdIdOp.getValue();
-  bool issueToken = dmaOp.hasDmaWaitOpUser();
-
-  rewriter.setInsertionPoint(dmaOp);
-  rewriter.create<AIEX::NpuDmaMemcpyNdOp>(
-      dmaOp.getLoc(), SmallVector<Type, 1>{}, 0, 0, memref, offsets, sizes,
-      strides, staticOffsets, staticSizes, staticStrides, pktInfoAttr,
-      shimDmaAllocOp.getSymName(), bdId, issueToken);
-
-  toBeErased.push_back(dmaOp);
-  return success();
-}
-
-/// Convert the `amdaie.npu.dma_wait` operation to `aiex.npu.dma_wait`.
-LogicalResult AIEDeviceBuilder::npuDmaWaitToAIE(
-    AMDAIE::NpuDmaWaitOp waitOp, SmallVector<Operation *> &toBeErased) {
-  LLVM_DEBUG(llvm::dbgs() << "Convert [AMDAIE::NpuDmaWaitOp]\n");
-  rewriter.setInsertionPoint(waitOp);
-  for (Value asyncToken : waitOp.getAsyncTokens()) {
-    auto npuDmaOp =
-        dyn_cast_if_present<NpuDmaCpyNdOp>(asyncToken.getDefiningOp());
-    if (!npuDmaOp) {
-      return waitOp.emitOpError()
-             << "should be operating on `amdaie.npu.dma_cpy_nd` for "
-                "lowering";
-    }
-    AMDAIE::ConnectionOp connectionOp = npuDmaOp.getConnectionOp();
-    if (!connectionToSourceTargetMemOps.contains(connectionOp)) {
-      return connectionOp.emitOpError() << "should be found in the connection "
-                                           "to source/target mem ops map";
-    }
-    SmallVector<Operation *> memOps =
-        isa<AMDAIE::AsyncSourceTokenType>(asyncToken.getType())
-            ? connectionToSourceTargetMemOps[connectionOp].first
-            : connectionToSourceTargetMemOps[connectionOp].second;
-    if (memOps.size() != 1) {
-      return waitOp.emitOpError()
-             << "only a single connection op source expected";
-    }
-    auto shimDmaAllocOp = dyn_cast<AIE::ShimDMAAllocationOp>(memOps[0]);
-    if (!shimDmaAllocOp) {
-      return waitOp.emitOpError()
-             << "expected the source of the connection to "
-                "be mapped to a `AIE::ShimDMAAllocationOp`";
-    }
-    rewriter.create<AIEX::NpuDmaWaitOp>(rewriter.getUnknownLoc(),
-                                        shimDmaAllocOp.getSymName());
-  }
-  toBeErased.push_back(waitOp);
-  return success();
-}
-
-/// Insert the control code operations into the NPU instruction function.
-LogicalResult AIEDeviceBuilder::controlCodeToAIE(
-    AMDAIE::ControlCodeOp controlCodeOp,
-    xilinx::AIEX::RuntimeSequenceOp funcOp) {
-  LLVM_DEBUG(llvm::dbgs() << "Convert [AMDAIE::ControlCodeOp]\n");
-  Block *funcBlock = &funcOp.getBody().front();
-  rewriter.setInsertionPointToEnd(funcBlock);
-  auto insertIt = funcBlock->begin();
-  auto controlCodeBegin = controlCodeOp.getBody()->begin();
-  auto controlCodeEnd = controlCodeOp.getBody()->getTerminator()->getIterator();
-  funcBlock->getOperations().splice(insertIt,
-                                    controlCodeOp.getBody()->getOperations(),
-                                    controlCodeBegin, controlCodeEnd);
-
-  // Keep track of operations to be erased instead of erasing them directly as
-  // there are bidirectional dependencies between operations. For example,
-  // `amdaie.npu.dma_cpy_nd` potentially needs information from a sunsequent
-  // `amdaie.npu.dma_wait` operation user and vice versa.
-  // TODO(jornt): This is caused by differences between the `AMDAIE` dialect and
-  // the `AIE` dialect and can be streamlined later by adjusting (both)
-  // dialects.
-  SmallVector<Operation *> toBeErased;
-  WalkResult res =
-      funcOp->walk<WalkOrder::PostOrder, ReverseIterator>([&](Operation *op) {
-        if (TypeSwitch<Operation *, LogicalResult>(op)
-                .Case<AMDAIE::NpuCircularDmaCpyNdOp>([&](auto dmaOp) {
-                  // TODO(jornt): This is temporarily handled already by
-                  // combining with `ConnectionOp` to create `aie.objectfifo`
-                  // until we get rid of those.
-                  eraseOp(dmaOp);
-                  return success();
-                })
-                .Case<AMDAIE::NpuDmaCpyNdOp>([&](auto dmaOp) {
-                  return npuDmaCpyNdOpToAIE(dmaOp, toBeErased);
-                })
-                .Case<AMDAIE::NpuDmaWaitOp>([&](auto waitOp) {
-                  return npuDmaWaitToAIE(waitOp, toBeErased);
-                })
-                .Case<AMDAIE::EndOp>([&](auto endOp) {
-                  eraseOp(endOp);
-                  return success();
-                })
-                .Default([&](Operation *op) {
-                  remapOperands(op);
-                  return success();
-                })
-                .failed()) {
-          return WalkResult::interrupt();
-        }
-        return WalkResult::advance();
-      });
-  if (res.wasInterrupted()) return failure();
-  for (Operation *op : toBeErased) eraseOp(op);
-  return success();
-}
-
-//===----------------------------------------------------------------------===//
 // Convert ops in Workgroup to AIE ops
 //===----------------------------------------------------------------------===//
 
@@ -961,9 +764,8 @@ LogicalResult AIEDeviceBuilder::tileToAIE(AMDAIE::TileOp tileOp,
 // Convert amdaie.workgroup operation and insert into aie.device
 //===----------------------------------------------------------------------===//
 
-LogicalResult AIEDeviceBuilder::workgroupToAIE(
-    AMDAIE::WorkgroupOp workgroupOp, xilinx::AIE::DeviceOp deviceOp,
-    xilinx::AIEX::RuntimeSequenceOp npuFuncOp) {
+LogicalResult AIEDeviceBuilder::workgroupToAIE(AMDAIE::WorkgroupOp workgroupOp,
+                                               xilinx::AIE::DeviceOp deviceOp) {
   OpBuilder::InsertionGuard guard(rewriter);
   Block *deviceBlock = &deviceOp.getRegion().front();
   Block *deviceCoreBlock = rewriter.createBlock(&deviceOp.getRegion());
@@ -1003,10 +805,10 @@ LogicalResult AIEDeviceBuilder::workgroupToAIE(
           return WalkResult::advance();
         })
         .Case<AMDAIE::ControlCodeOp>([&](auto controlCodeOp) {
-          if (failed(controlCodeToAIE(controlCodeOp, npuFuncOp))) {
-            controlCodeOp.emitError("could not convert to AIEDialect ops");
-            return WalkResult::interrupt();
-          }
+          // Skip control code as it should already be translated into firmware
+          // code at this point.
+          // TODO(jornt): currently, it still contains ops that are needed in
+          // this translation, but don't have to be translated themselves.
           return WalkResult::skip();
         })
         .Case<AMDAIE::CoreOp>([&](auto coreOp) {
@@ -1100,20 +902,6 @@ LogicalResult AIEDeviceBuilder::lowerToAIE(ModuleOp moduleOp) {
         rewriter.getUnknownLoc(),
         xilinx::AIE::AIEDeviceAttr::get(rewriter.getContext(), aieDevice));
     Block *deviceBlock = &deviceOp.getRegion().emplaceBlock();
-
-    // The amdaie.controlcode operation has no operands, but the
-    // aiex.runtime_sequence that it lowers to, does. Create the signature
-    // of the aiex.runtime_sequence operation that replaces the
-    // amdaie.controlcode. The HAL interface bindings are used to
-    // order the function parameters correctly.
-    SmallVector<IREE::HAL::InterfaceBindingSubspanOp> subspanOps;
-    funcOp->walk([&](IREE::HAL::InterfaceBindingSubspanOp subspanOp) {
-      subspanOps.push_back(subspanOp);
-    });
-    llvm::sort(subspanOps, [](IREE::HAL::InterfaceBindingSubspanOp a,
-                              IREE::HAL::InterfaceBindingSubspanOp b) {
-      return a.getBinding().getZExtValue() < b.getBinding().getZExtValue();
-    });
     rewriter.setInsertionPoint(deviceBlock, deviceBlock->begin());
 
     // Create aiex.runtime_sequence inside aie.device
@@ -1122,11 +910,6 @@ LogicalResult AIEDeviceBuilder::lowerToAIE(ModuleOp moduleOp) {
     Region &body = npuFuncOp.getBody();
     body.emplaceBlock();
 
-    for (auto &&a : llvm::enumerate(subspanOps)) {
-      body.addArgument(a.value().getType(), a.value().getLoc());
-      bindingsMapper.map(a.value(), body.getArgument(a.index()));
-    }
-
     // Walk the AIE regions ops and convert ops into pure AIEDialect ops.
     // IRMapping mapper;
     rewriter.setInsertionPointToStart(deviceBlock);
@@ -1134,7 +917,7 @@ LogicalResult AIEDeviceBuilder::lowerToAIE(ModuleOp moduleOp) {
       if (isa<func::FuncOp, func::ReturnOp>(op)) {
         return WalkResult::advance();
       } else if (auto workgroupOp = dyn_cast<AMDAIE::WorkgroupOp>(op)) {
-        if (failed(workgroupToAIE(workgroupOp, deviceOp, npuFuncOp))) {
+        if (failed(workgroupToAIE(workgroupOp, deviceOp))) {
           return WalkResult::interrupt();
         }
         return WalkResult::skip();
@@ -1146,6 +929,28 @@ LogicalResult AIEDeviceBuilder::lowerToAIE(ModuleOp moduleOp) {
       return WalkResult::advance();
     });
     if (res.wasInterrupted()) return WalkResult::interrupt();
+
+    SmallVector<AMDAIE::WorkgroupOp> workgroupOps;
+    funcOp->walk([&](AMDAIE::WorkgroupOp op) { workgroupOps.push_back(op); });
+    // Only a single workgroup op is supported as only a single `aie.device` is
+    // created.
+    if (workgroupOps.size() > 1) {
+      funcOp.emitOpError()
+          << "multiple `amdaie.workgroup` ops is not supported";
+      return WalkResult::interrupt();
+    }
+    if (workgroupOps.size() == 1) {
+      AMDAIE::WorkgroupOp workgroupOp = workgroupOps[0];
+      mlir::Attribute maybeNpuInstructions =
+          workgroupOp.getNpuInstructionsAttr();
+      // Only add attributes if the instructions attribute is found to
+      // facilitate simplified tests.
+      if (maybeNpuInstructions) {
+        deviceOp->setAttr("npu_instructions", maybeNpuInstructions);
+        deviceOp->setAttr("runtime_sequence_name",
+                          rewriter.getStringAttr(funcOp.getSymName()));
+      }
+    }
 
     // Move NPU instruction function to the end of the device block.
     rewriter.moveOpBefore(npuFuncOp, deviceBlock, deviceBlock->end());

@@ -8,8 +8,8 @@ module {
     amdaie.workgroup {
       %tile_0_0 = amdaie.tile(%c0, %c0)
       %tile_0_1 = amdaie.tile(%c0, %c1)
-      %channel = amdaie.channel(%tile_0_0, 0, port_type = DMA)
-      %channel_1 = amdaie.channel(%tile_0_1, 0, port_type = DMA)
+      %channel = amdaie.channel(%tile_0_0, 0, port_type = DMA, direction = MM2S)
+      %channel_1 = amdaie.channel(%tile_0_1, 0, port_type = DMA, direction = S2MM)
       %0 = amdaie.flow({%channel} -> {%channel_1}) {is_packet_flow = false}
       amdaie.controlcode {
         amdaie.end
@@ -29,10 +29,10 @@ module {
 // CHECK:         %[[TILE_0_0:.*]] = amdaie.tile(%[[C0]], %[[C0]])
 // CHECK:         %[[TILE_0_1:.*]] = amdaie.tile(%[[C0]], %[[C1]])
 // CHECK:         %[[TILE_0_2:.*]] = amdaie.tile(%[[C0]], %[[C2]])
-// CHECK:         %[[CHANNEL:.*]] = amdaie.channel(%[[TILE_0_0]], 0, port_type = DMA)
-// CHECK:         %[[CHANNEL_1:.*]] = amdaie.channel(%[[TILE_0_1]], 0, port_type = DMA)
-// CHECK:         %[[CHANNEL_2:.*]] = amdaie.channel(%[[TILE_0_2]], 0, port_type = DMA)
-// CHECK:         %[[CHANNEL_3:.*]] = amdaie.channel(%[[TILE_0_1]], 1, port_type = DMA)
+// CHECK:         %[[CHANNEL:.*]] = amdaie.channel(%[[TILE_0_0]], 0, port_type = DMA, direction = MM2S)
+// CHECK:         %[[CHANNEL_1:.*]] = amdaie.channel(%[[TILE_0_1]], 0, port_type = DMA, direction = S2MM)
+// CHECK:         %[[CHANNEL_2:.*]] = amdaie.channel(%[[TILE_0_2]], 0, port_type = DMA, direction = MM2S)
+// CHECK:         %[[CHANNEL_3:.*]] = amdaie.channel(%[[TILE_0_1]], 1, port_type = DMA, direction = S2MM)
 // CHECK:         amdaie.flow({%[[CHANNEL]]} -> {%[[CHANNEL_1]]}) {is_packet_flow = false}
 // CHECK:         amdaie.flow({%[[CHANNEL]]} -> {%[[CHANNEL_1]]}) {is_packet_flow = true, packet_id = 0 : ui8}
 // CHECK:         amdaie.flow({%[[CHANNEL_2]]} -> {%[[CHANNEL_3]]}) {is_packet_flow = true, packet_id = 1 : ui8}
@@ -46,10 +46,10 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
       %tile_0_0 = amdaie.tile(%c0, %c0)
       %tile_0_1 = amdaie.tile(%c0, %c1)
       %tile_0_2 = amdaie.tile(%c0, %c2)
-      %channel = amdaie.channel(%tile_0_0, 0, port_type = DMA)
-      %channel_1 = amdaie.channel(%tile_0_1, 0, port_type = DMA)
-      %channel_2 = amdaie.channel(%tile_0_2, 0, port_type = DMA)
-      %channel_3 = amdaie.channel(%tile_0_1, 1, port_type = DMA)
+      %channel = amdaie.channel(%tile_0_0, 0, port_type = DMA, direction = MM2S)
+      %channel_1 = amdaie.channel(%tile_0_1, 0, port_type = DMA, direction = S2MM)
+      %channel_2 = amdaie.channel(%tile_0_2, 0, port_type = DMA, direction = MM2S)
+      %channel_3 = amdaie.channel(%tile_0_1, 1, port_type = DMA, direction = S2MM)
       %0 = amdaie.flow({%channel} -> {%channel_1}) {is_packet_flow = false}
       %1 = amdaie.flow({%channel} -> {%channel_1}) {is_packet_flow = true}
       %2 = amdaie.flow({%channel_2} -> {%channel_3}) {is_packet_flow = true}
@@ -71,8 +71,8 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
     amdaie.workgroup {
       %tile_0_0 = amdaie.tile(%c0, %c0)
       %tile_0_1 = amdaie.tile(%c0, %c1)
-      %channel = amdaie.channel(%tile_0_0, 0, port_type = DMA)
-      %channel_1 = amdaie.channel(%tile_0_1, 0, port_type = DMA)
+      %channel = amdaie.channel(%tile_0_0, 0, port_type = DMA, direction = MM2S)
+      %channel_1 = amdaie.channel(%tile_0_1, 0, port_type = DMA, direction = S2MM)
       %0 = amdaie.flow({%channel} -> {%channel_1}) {is_packet_flow = true}
       %1 = amdaie.flow({%channel} -> {%channel_1}) {is_packet_flow = true}
       %2 = amdaie.flow({%channel} -> {%channel_1}) {is_packet_flow = true}
