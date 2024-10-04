@@ -762,7 +762,13 @@ class MatmulSet(TestSet):
         test_name = output_dir / "test_from_template_truncf_.mlir"
         template_name = matmul_template_dir / "matmul_truncf_MxK_KxN.mlir"
         generate_matmul_test(test_name, template_name, 32, 32, 32, "bf16", "f32")
-        aie_vs_llvm_cpu(config, test_name)
+        aie_vs_llvm_cpu(
+            config, 
+            test_name,
+            tile_pipeline="pack-peel",
+            lower_to_aie_pipeline="objectFifo",
+            use_ukernel=False,
+        )
 
 
 class SmokeSet(TestSet):
