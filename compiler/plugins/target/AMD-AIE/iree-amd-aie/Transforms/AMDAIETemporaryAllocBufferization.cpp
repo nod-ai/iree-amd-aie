@@ -13,47 +13,42 @@ namespace mlir::iree_compiler::AMDAIE {
 
 namespace {
 
-static std::optional<BufferOp> createBufferForTemporaryAllocOp(
-    IRRewriter &rewriter, WorkgroupOp workgroupOp, memref::AllocOp allocOp,
-    CoreOp coreOp, unsigned index) {
-  OpBuilder::InsertionGuard g(rewriter);
-  TileOp tileOp = coreOp.getTileOp();
-  // Reset rewriter's location to after last tile's declaration.
-  auto tiles = workgroupOp.getBody()->getOps<TileOp>();
-  assert(!tiles.empty() && "no tiles in workgroupOp");
-  rewriter.setInsertionPointAfter(*std::prev(tiles.end(), 1));
-  auto bufferType = cast<MemRefType>(allocOp.getType());
-  auto bufferOp = rewriter.create<AMDAIE::BufferOp>(
-      rewriter.getUnknownLoc(), bufferType, tileOp, nullptr);
-  return bufferOp;
-}
-
-static LogicalResult bufferizeTemporaryAllocInCoreOp(
-    IRRewriter &rewriter, WorkgroupOp workgroupOp, CoreOp coreOp,
-    SmallVector<Operation *> &toBeErased) {
-  // Step 1. Get all buffers within a CoreOp.
-  SmallVector<memref::AllocOp> allocOps;
-  coreOp.walk([&](Operation *op) {
-    if (auto allocOp = dyn_cast<memref::AllocOp>(op)) {
-      allocOps.push_back(allocOp);
-      toBeErased.push_back(allocOp);
-    } else if (auto deallocOp = dyn_cast<memref::DeallocOp>(op)) {
-      toBeErased.push_back(deallocOp);
+LogicalResult bufferizeTemporaryMemrefs(Operation *parentOp) {
+  IRRewriter rewriter(parentOp->getContext());
+  /// Create a unique BufferOp for each (AllocOp, TileOp, WorkgroupOp) tuple.
+  using Key = std::tuple<memref::AllocOp, CoreOp, WorkgroupOp>;
+  DenseMap<Key, BufferOp> bufferMap;
+  parentOp->walk([&](memref::AllocOp allocOp) {
+    for (Operation *user : allocOp->getUsers()) {
+      if (CoreOp coreOp = user->getParentOfType<CoreOp>()) {
+        TileOp tileOp = coreOp.getTileOp();
+        auto workgroupOp = coreOp->getParentOfType<WorkgroupOp>();
+        Key key{allocOp, coreOp, workgroupOp};
+        if (bufferMap.count(key) == 0) {
+          rewriter.setInsertionPointAfter(tileOp);
+          auto bufferOp =
+              rewriter.create<BufferOp>(allocOp.getLoc(), allocOp.getType(),
+                                        tileOp, /* address */ nullptr);
+          bufferMap[key] = bufferOp;
+        }
+      }
     }
   });
-  // Bail out early in case of no temporary buffers.
-  if (allocOps.size() == 0) return success();
-  // Step 2. Traverse unique allocOps and create an aie.buffer for them.
-  SmallVector<BufferOp> temporaryBuffers;
-  unsigned tempBufferIndex = 0;
-  for (memref::AllocOp allocOp : allocOps) {
-    std::optional<BufferOp> temporaryBuffer = createBufferForTemporaryAllocOp(
-        rewriter, workgroupOp, allocOp, coreOp, tempBufferIndex++);
-    if (!temporaryBuffer) {
-      return failure();
-    }
-    allocOp.replaceAllUsesWith(temporaryBuffer.value().getResult());
+
+  for (auto [key, bufferOp] : bufferMap) {
+    memref::AllocOp allocOp = std::get<0>(key);
+    CoreOp coreOp = std::get<1>(key);
+    WorkgroupOp workgroupOp = std::get<2>(key);
+    rewriter.replaceUsesWithIf(allocOp, bufferOp, [&](OpOperand &operand) {
+      Operation *owner = operand.getOwner();
+      bool inTile = owner->getParentOfType<CoreOp>() == coreOp;
+      bool inGroup = owner->getParentOfType<WorkgroupOp>() == workgroupOp;
+      return inTile && inGroup;
+    });
   }
+
+  // Note: we don't erase allocs/deallocs, we leave this for canonicalization.
+
   return success();
 }
 
@@ -65,29 +60,11 @@ class AMDAIETemporaryAllocBufferizationPass
     registry.insert<AMDAIEDialect>();
   }
 
-  void runOnOperation() override;
-};
-
-void AMDAIETemporaryAllocBufferizationPass::runOnOperation() {
-  Operation *parentOp = getOperation();
-  IRRewriter rewriter(&getContext());
-
-  SmallVector<Operation *> toBeErased;
-  WalkResult res = parentOp->walk([&](WorkgroupOp workgroupOp) {
-    for (CoreOp coreOp : workgroupOp.getOps<CoreOp>()) {
-      if (failed(bufferizeTemporaryAllocInCoreOp(rewriter, workgroupOp, coreOp,
-                                                 toBeErased)))
-        return WalkResult::interrupt();
-    }
-    return WalkResult::advance();
-  });
-  if (res.wasInterrupted()) return signalPassFailure();
-
-  for (Operation *op : toBeErased) {
-    op->dropAllUses();
-    rewriter.eraseOp(op);
+  void runOnOperation() override {
+    if (failed(bufferizeTemporaryMemrefs(getOperation())))
+      return signalPassFailure();
   }
-}
+};
 
 }  // namespace
 

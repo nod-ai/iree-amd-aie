@@ -14,30 +14,20 @@
 //   CHECK-DAG:   %[[BUFFER_0_3_1:.*]] = amdaie.buffer(%[[TILE_0_3]]) : memref<1024xf32, 2 : i32>
 //   CHECK-DAG:   %[[BUFFER_0_2:.*]] = amdaie.buffer(%[[TILE_0_2]]) : memref<1024xf32, 2 : i32>
 //       CHECK:   amdaie.core(%[[TILE_0_2]]
-//   CHECK-NOT:     memref.alloc
 //       CHECK:     %[[CAST:.*]] = memref.reinterpret_cast %[[BUFFER_0_2]]
 //       CHECK:     linalg.fill ins(%{{.*}}) outs(%[[CAST]]
-//   CHECK-NOT:     dealloc
 //       CHECK:     amdaie.end
 //       CHECK:   amdaie.core(%[[TILE_0_3]]
-//   CHECK-NOT:     memref.alloc
 //       CHECK:     %[[CAST:.*]] = memref.reinterpret_cast %[[BUFFER_0_3_1]]
 //       CHECK:     linalg.fill ins(%{{.*}}) outs(%[[CAST]]
-//   CHECK-NOT:     dealloc
-//   CHECK-NOT:     memref.alloc
 //       CHECK:     %[[CAST_1:.*]] = memref.reinterpret_cast %[[BUFFER_0_3_0]]
 //       CHECK:     linalg.fill ins(%{{.*}}) outs(%[[CAST_1]]
-//   CHECK-NOT:     dealloc
 //       CHECK:     amdaie.end
 //       CHECK:   amdaie.core(%[[TILE_1_2]]
-//   CHECK-NOT:     memref.alloc
-//   CHECK-NOT:     memref.alloc
 //       CHECK:     %[[CAST:.*]] = memref.reinterpret_cast %[[BUFFER_1_2_1]]
 //       CHECK:     %[[CAST_1:.*]] = memref.reinterpret_cast %[[BUFFER_1_2_0]]
 //       CHECK:     linalg.fill ins(%{{.*}}) outs(%[[CAST]]
 //       CHECK:     linalg.fill ins(%{{.*}}) outs(%[[CAST_1]]
-//   CHECK-NOT:     dealloc
-//   CHECK-NOT:     dealloc
 //       CHECK:     amdaie.end
 func.func @temp_buffer() {
   amdaie.workgroup {
@@ -84,5 +74,36 @@ func.func @temp_buffer() {
       amdaie.end
     }
   }
+  return
+}
+
+// -----
+
+// CHECK-LABEL: @temp_buffer_2
+//   CHECK-DAG:   %[[C0:.*]] = arith.constant 0 : index
+//   CHECK-DAG:   %[[C1:.*]] = arith.constant 1 : index
+//   CHECK-DAG:   %[[TILE_0:.*]] = amdaie.tile(%[[C0]], %[[C0]])
+//   CHECK-DAG:   %[[BUFFER_0:.*]] = amdaie.buffer(%[[TILE_0]]) : memref<4xi32>
+//   CHECK-DAG:   %[[TILE_1:.*]] = amdaie.tile(%[[C0]], %[[C1]])
+//   CHECK-DAG:   %[[BUFFER_1:.*]] = amdaie.buffer(%[[TILE_1]]) : memref<4xi32>
+//       CHECK:   amdaie.core(%[[TILE_0]]
+//       CHECK:     %[[CAST:.*]] = memref.reinterpret_cast %[[BUFFER_0]]
+//       CHECK:   amdaie.core(%[[TILE_1]]
+//       CHECK:     %[[CAST:.*]] = memref.reinterpret_cast %[[BUFFER_1]]
+func.func @temp_buffer_2(){
+  %alloc = memref.alloc() : memref<4xi32>
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
+  %tile_0 = amdaie.tile(%c0, %c0)
+  %tile_1 = amdaie.tile(%c0, %c1)
+  %core_0 = amdaie.core(%tile_0, in : [], out : []) {
+    %reinterpret_cast = memref.reinterpret_cast %alloc to offset: [0], sizes: [4], strides: [1] : memref<4xi32> to memref<4xi32>
+    amdaie.end
+  }
+  %core_1 = amdaie.core(%tile_1, in : [], out : []) {
+    %reinterpret_cast = memref.reinterpret_cast %alloc to offset: [0], sizes: [4], strides: [1] : memref<4xi32> to memref<4xi32>
+    amdaie.end
+  }
+  memref.dealloc %alloc : memref<4xi32>
   return
 }

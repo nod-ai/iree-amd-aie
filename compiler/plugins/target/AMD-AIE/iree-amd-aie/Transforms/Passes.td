@@ -572,7 +572,25 @@ def AMDAIESplitLogicalObjFifosForConnectionReuse :
 
 def AMDAIETemporaryAllocBufferization :
     Pass<"iree-amdaie-temporary-alloc-bufferization", ""> {
-  let summary = "Bufferizes temporary alloc buffers into `amdaie.buffer` ops.";
+  let summary = "Convert 'temporary' `memref.alloc` ops to `amdaie.buffer`.";
+  let description = [{
+       Some memref allocations are accessed directly on the core, not going via
+       the layering that is used for streamed inputs, which currently have layering
+       like:
+
+         `memref.alloc` ->
+         `amdaie.logicalobjectfifo.from_memref` ->
+         `amdaie.connection` ->
+         `amdaie.logicalobjectfifo.acquire` ->
+         `amdaie.logicalobjectfifo.access`.
+
+       We call the directly accessed allocations 'temporary'. The temporary
+       allocations need to be converted to amdaie.buffer ops, because
+       there is no other support lowering to llvm from memref.allocs in our
+       stack. The indirectly accessed allocatations, i.e. those with the layering
+       described above, are handled in pass iree-amdaie-objfifo-bufferization.
+  }];
+
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIETemporaryAllocBufferizationPass()";
 }
 
