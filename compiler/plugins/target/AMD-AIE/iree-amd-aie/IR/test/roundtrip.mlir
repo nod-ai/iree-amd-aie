@@ -264,19 +264,25 @@ func.func @logicalobjectfifo_release(%arg0: !amdaie.logicalobjectfifo<memref<1x1
 // CHECK-DAG:   %[[C8:.+]] = arith.constant 8 : index
 // CHECK-DAG:   %[[C16:.+]] = arith.constant 16 : index
 // CHECK-DAG:   %[[C128:.+]] = arith.constant 128 : index
-// CHECK-DAG:   %[[DMA0:.+]] = amdaie.circular_dma_cpy_nd
-// CHECK:       %{{.*}} = amdaie.npu.dma_cpy_nd
-// CHECK-SAME:  %[[DMA0]]
+// CHECK-DAG:   %[[CONNECTION_0:.+]] = amdaie.connection
+// CHECK:       amdaie.npu.dma_cpy_nd
+// CHECK-SAME:  %[[CONNECTION_0]]
 // CHECK-SAME:  [%[[C0]], %[[C0]], %[[C0]], %[[C0]]] [%[[C1]], %[[C1]], %[[C8]], %[[C16]]] [%[[C128]], %[[C128]], %[[C16]], %[[C1]]]
 // CHECK-SAME:  [%[[C0]], %[[C0]], %[[C0]], %[[C0]]] [%[[C1]], %[[C1]], %[[C8]], %[[C16]]] [%[[C128]], %[[C16]], %[[C16]], %[[C1]]]
+// CHECK:       %{{.+}} = amdaie.npu.dma_cpy_nd async_source %[[CONNECTION_0]]([] [] [], [] [] [])
+// CHECK:       %{{.+}} = amdaie.npu.dma_cpy_nd async_target %[[CONNECTION_0]]([] [] [], [] [] [])
+// CHECK:       %{{.+}}:2 = amdaie.npu.dma_cpy_nd async_target async_source %[[CONNECTION_0]]([] [] [], [] [] [])
 func.func @npu_dma_cpy_nd(%arg0: !amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, %arg1: !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>) {
   %c0 = arith.constant 0 : index
   %c1 = arith.constant 1 : index
   %c8 = arith.constant 8 : index
   %c16 = arith.constant 16 : index
   %c128 = arith.constant 128 : index
-  %0 = amdaie.circular_dma_cpy_nd(%arg0[] [] [], %arg1[] [] []) : (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>)
-  %1 = amdaie.npu.dma_cpy_nd %0([%c0, %c0, %c0, %c0] [%c1, %c1, %c8, %c16] [%c128, %c128, %c16, %c1], [%c0, %c0, %c0, %c0] [%c1, %c1, %c8, %c16] [%c128, %c16, %c16, %c1])
+  %0 = amdaie.connection(%arg0, %arg1) : (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>)
+  amdaie.npu.dma_cpy_nd %0([%c0, %c0, %c0, %c0] [%c1, %c1, %c8, %c16] [%c128, %c128, %c16, %c1], [%c0, %c0, %c0, %c0] [%c1, %c1, %c8, %c16] [%c128, %c16, %c16, %c1])
+  %1 = amdaie.npu.dma_cpy_nd async_source %0([] [] [], [] [] [])
+  %2 = amdaie.npu.dma_cpy_nd async_target %0([] [] [], [] [] [])
+  %3:2 = amdaie.npu.dma_cpy_nd async_target async_source %0([] [] [], [] [] [])
   return
 }
 
@@ -290,9 +296,9 @@ func.func @npu_dma_cpy_nd(%arg0: !amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 
 // CHECK-DAG:   %[[C128:.+]] = arith.constant 128 : index
 // CHECK-DAG:   %[[TILE_0_0:.+]] = amdaie.tile(%[[C0]], %[[C0]])
 // CHECK-DAG:   %[[BD_ID_0_0:.+]] = amdaie.bd_id(%[[TILE_0_0]], 0)
-// CHECK-DAG:   %[[DMA0:.+]] = amdaie.circular_dma_cpy_nd
-// CHECK:       %{{.*}} = amdaie.npu.dma_cpy_nd
-// CHECK-SAME:  %[[DMA0]]
+// CHECK-DAG:   %[[CONNECTION_0:.+]] = amdaie.connection
+// CHECK:       %{{.*}} = amdaie.npu.dma_cpy_nd async_source
+// CHECK-SAME:  %[[CONNECTION_0]]
 // CHECK-SAME:  [%[[C0]], %[[C0]], %[[C0]], %[[C0]]] [%[[C1]], %[[C1]], %[[C8]], %[[C16]]] [%[[C128]], %[[C128]], %[[C16]], %[[C1]]] bd_id = %[[BD_ID_0_0]]
 // CHECK-SAME:  [%[[C0]], %[[C0]], %[[C0]], %[[C0]]] [%[[C1]], %[[C1]], %[[C8]], %[[C16]]] [%[[C128]], %[[C16]], %[[C16]], %[[C1]]] bd_id = %[[BD_ID_0_0]]
 func.func @npu_dma_cpy_nd_bd_id(%arg0: !amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, %arg1: !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>) {
@@ -303,22 +309,22 @@ func.func @npu_dma_cpy_nd_bd_id(%arg0: !amdaie.logicalobjectfifo<memref<1x1x8x16
   %c128 = arith.constant 128 : index
   %tile = amdaie.tile(%c0, %c0)
   %bd_id = amdaie.bd_id(%tile, 0)
-  %0 = amdaie.circular_dma_cpy_nd(%arg0[] [] [], %arg1[] [] []) : (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>)
-  %1 = amdaie.npu.dma_cpy_nd %0([%c0, %c0, %c0, %c0] [%c1, %c1, %c8, %c16] [%c128, %c128, %c16, %c1] bd_id = %bd_id, [%c0, %c0, %c0, %c0] [%c1, %c1, %c8, %c16] [%c128, %c16, %c16, %c1]  bd_id = %bd_id)
+  %0 = amdaie.connection(%arg0, %arg1) : (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>)
+  %1 = amdaie.npu.dma_cpy_nd async_source %0([%c0, %c0, %c0, %c0] [%c1, %c1, %c8, %c16] [%c128, %c128, %c16, %c1] bd_id = %bd_id, [%c0, %c0, %c0, %c0] [%c1, %c1, %c8, %c16] [%c128, %c16, %c16, %c1]  bd_id = %bd_id)
   return
 }
 
 // -----
 
 // CHECK-LABEL: func.func @npu_dma_cpy_nd_inline_literals
-// CHECK:       %[[DMA0:.+]] = amdaie.circular_dma_cpy_nd
-// CHECK:       %{{.*}} = amdaie.npu.dma_cpy_nd
-// CHECK-SAME:  %[[DMA0]]
+// CHECK:       %[[CONNECTION_0:.+]] = amdaie.connection
+// CHECK:       %{{.*}} = amdaie.npu.dma_cpy_nd async_source
+// CHECK-SAME:  %[[CONNECTION_0]]
 // CHECK-SAME:  [0, 0, 0, 0] [1, 1, 8, 16] [128, 128, 16, 1]
 // CHECK-SAME:  [0, 0, 0, 0] [1, 1, 8, 16] [128, 16, 16, 1]
 func.func @npu_dma_cpy_nd_inline_literals(%arg0: !amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, %arg1: !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>) {
-  %0 = amdaie.circular_dma_cpy_nd(%arg0[] [] [], %arg1[] [] []) : (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>)
-  %1 = amdaie.npu.dma_cpy_nd %0([0, 0, 0, 0] [1, 1, 8, 16] [128, 128, 16, 1], [0, 0, 0, 0] [1, 1, 8, 16] [128, 16, 16, 1])
+  %0 = amdaie.connection(%arg0, %arg1) : (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>)
+  %1 = amdaie.npu.dma_cpy_nd async_source %0([0, 0, 0, 0] [1, 1, 8, 16] [128, 128, 16, 1], [0, 0, 0, 0] [1, 1, 8, 16] [128, 16, 16, 1])
   return
 }
 
@@ -329,9 +335,9 @@ func.func @npu_dma_cpy_nd_inline_literals(%arg0: !amdaie.logicalobjectfifo<memre
 // CHECK-DAG:   %[[C8:.+]] = arith.constant 8 : index
 // CHECK-DAG:   %[[C16:.+]] = arith.constant 16 : index
 // CHECK-DAG:   %[[C128:.+]] = arith.constant 128 : index
-// CHECK-DAG:   %[[DMA0:.+]] = amdaie.circular_dma_cpy_nd
-// CHECK:       %{{.*}} = amdaie.npu.dma_cpy_nd
-// CHECK-SAME:  %[[DMA0]]
+// CHECK-DAG:   %[[CONNECTION_0:.+]] = amdaie.connection
+// CHECK:       amdaie.npu.dma_cpy_nd
+// CHECK-SAME:  %[[CONNECTION_0]]
 // CHECK-SAME:  [%[[C0]], %[[C0]], %[[C0]], %[[C0]]] [1, 1, %[[C8]], %[[C16]]] [%[[C128]], %[[C128]], %[[C16]], 1]
 // CHECK-SAME:  [%[[C0]], %[[C0]], %[[C0]], %[[C0]]] [1, 1, %[[C8]], %[[C16]]] [%[[C128]], %[[C16]], %[[C16]], 1]
 func.func @npu_dma_cpy_nd_mixed(%arg0: !amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, %arg1: !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>) {
@@ -339,8 +345,8 @@ func.func @npu_dma_cpy_nd_mixed(%arg0: !amdaie.logicalobjectfifo<memref<1x1x8x16
   %c8 = arith.constant 8 : index
   %c16 = arith.constant 16 : index
   %c128 = arith.constant 128 : index
-  %0 = amdaie.circular_dma_cpy_nd(%arg0[] [] [], %arg1[] [] []) : (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>)
-  %1 = amdaie.npu.dma_cpy_nd %0([%c0, %c0, %c0, %c0] [1, 1, %c8, %c16] [%c128, %c128, %c16, 1], [%c0, %c0, %c0, %c0] [1, 1, %c8, %c16] [%c128, %c16, %c16, 1])
+  %0 = amdaie.connection(%arg0, %arg1) : (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>)
+  amdaie.npu.dma_cpy_nd %0([%c0, %c0, %c0, %c0] [1, 1, %c8, %c16] [%c128, %c128, %c16, 1], [%c0, %c0, %c0, %c0] [1, 1, %c8, %c16] [%c128, %c16, %c16, 1])
   return
 }
 
@@ -348,11 +354,11 @@ func.func @npu_dma_cpy_nd_mixed(%arg0: !amdaie.logicalobjectfifo<memref<1x1x8x16
 
 // CHECK-LABEL: func.func @npu_dma_cpy_nd_target_source
 // CHECK-SAME:  %[[ARG0:.+]]: !amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, %[[ARG1:.+]]: !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>
-// CHECK-DAG:   %[[DMA0:.+]] = amdaie.circular_dma_cpy_nd
-// CHECK:       %{{.*}} = amdaie.npu.dma_cpy_nd %[[DMA0]](%[[ARG0]][] [] [], %[[ARG1]][] [] []) : target_type = !amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>  source_type = !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>
+// CHECK-DAG:   %[[CONNECTION_0:.+]] = amdaie.connection
+// CHECK:       amdaie.npu.dma_cpy_nd %[[CONNECTION_0]](%[[ARG0]][] [] [], %[[ARG1]][] [] []) : target_type = !amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>  source_type = !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>
 func.func @npu_dma_cpy_nd_target_source(%arg0: !amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, %arg1: !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>) {
-  %0 = amdaie.circular_dma_cpy_nd(%arg0[] [] [], %arg1[] [] []) : (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>)
-  %1 = amdaie.npu.dma_cpy_nd %0(%arg0[] [] [], %arg1[] [] []) : target_type = !amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>  source_type = !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>
+  %0 = amdaie.connection(%arg0, %arg1) : (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>)
+  amdaie.npu.dma_cpy_nd %0(%arg0[] [] [], %arg1[] [] []) : target_type = !amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>  source_type = !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>
   return
 }
 
@@ -366,8 +372,8 @@ func.func @npu_dma_cpy_nd_target_source(%arg0: !amdaie.logicalobjectfifo<memref<
 // CHECK-DAG:   %[[C128:.+]] = arith.constant 128 : index
 // CHECK-DAG:   %[[TILE_0_0:.+]] = amdaie.tile(%[[C0]], %[[C0]])
 // CHECK-DAG:   %[[BD_ID_0_0:.+]] = amdaie.bd_id(%[[TILE_0_0]], 0)
-// CHECK-DAG:   %[[DMA0:.+]] = amdaie.circular_dma_cpy_nd
-// CHECK:       %{{.*}} = amdaie.npu.dma_cpy_nd %[[DMA0]]
+// CHECK-DAG:   %[[CONNECTION_0:.+]] = amdaie.connection
+// CHECK:       %{{.*}} = amdaie.npu.dma_cpy_nd async_source %[[CONNECTION_0]]
 // CHECK-SAME:  %[[ARG0]][%[[C0]], %[[C0]], %[[C0]], %[[C0]]] [1, 1, %[[C8]], %[[C16]]] [%[[C128]], %[[C128]], %[[C16]], 1] bd_id = %[[BD_ID_0_0]]
 // CHECK-SAME:  %[[ARG1]][%[[C0]], %[[C0]], %[[C0]], %[[C0]]] [1, 1, %[[C8]], %[[C16]]] [%[[C128]], %[[C16]], %[[C16]], 1] bd_id = %[[BD_ID_0_0]]
 // CHECK-SAME:  : target_type = !amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>  source_type = !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>
@@ -378,8 +384,8 @@ func.func @npu_dma_cpy_nd_all_operands(%arg0: !amdaie.logicalobjectfifo<memref<1
   %c128 = arith.constant 128 : index
   %tile = amdaie.tile(%c0, %c0)
   %bd_id = amdaie.bd_id(%tile, 0)
-  %0 = amdaie.circular_dma_cpy_nd(%arg0[] [] [], %arg1[] [] []) : (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>)
-  %1 = amdaie.npu.dma_cpy_nd %0(%arg0[%c0, %c0, %c0, %c0] [1, 1, %c8, %c16] [%c128, %c128, %c16, 1] bd_id = %bd_id, %arg1[%c0, %c0, %c0, %c0] [1, 1, %c8, %c16] [%c128, %c16, %c16, 1] bd_id = %bd_id) : target_type = !amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>  source_type = !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>
+  %0 = amdaie.connection(%arg0, %arg1) : (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>)
+  %1 = amdaie.npu.dma_cpy_nd async_source %0(%arg0[%c0, %c0, %c0, %c0] [1, 1, %c8, %c16] [%c128, %c128, %c16, 1] bd_id = %bd_id, %arg1[%c0, %c0, %c0, %c0] [1, 1, %c8, %c16] [%c128, %c16, %c16, 1] bd_id = %bd_id) : target_type = !amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>  source_type = !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>
   return
 }
 

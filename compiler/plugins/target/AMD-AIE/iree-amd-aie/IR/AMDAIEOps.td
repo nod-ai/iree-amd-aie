@@ -379,8 +379,7 @@ def AMDAIE_ChannelOp: AMDAIE_Op<"channel", [
 //===----------------------------------------------------------------------===//
 
 def AMDAIE_NpuDmaCpyNdOp: AMDAIE_Op<"npu.dma_cpy_nd", [
-      AttrSizedOperandSegments, DoublyStridedOpInterface]>,
-    Results<(outs Index)> {
+      AttrSizedOperandSegments, DoublyStridedOpInterface]> {
   let summary = "The Npu uController's dma operator";
   let description = [{
     The Npu DMA operation represents a strided copy operation with an unlimited
@@ -393,6 +392,16 @@ def AMDAIE_NpuDmaCpyNdOp: AMDAIE_Op<"npu.dma_cpy_nd", [
     source and target `offsets`, `sizes` and `strides`. A special sentinel value
     ShapedType::kDynamic encodes that the corresponding entry has a dynamic value.
 
+    The op can be `async` by specifying one or more `AnyAsyncTokenType` results.
+    Other wait-like operations can use these async tokens to describe a blocking
+    operation on the source or/and target side of this DMA operation.
+    In case of `async_source`, an async token will be returned by this operation
+    when the source DMA port will be done executing.
+    In case of `async_target`, an async token will be returned by this operation
+    when the target DMA port will be done executing.
+    In case of both `async_source` and `async_target`, two tokens will be returned
+    which can be blocked on.
+
     Example:
 
     ```mlir
@@ -401,7 +410,7 @@ def AMDAIE_NpuDmaCpyNdOp: AMDAIE_Op<"npu.dma_cpy_nd", [
       !amdaie.logicalobjectfifo<memref<32x1024xi32>>)
     ...
     amdaie.controlcode {
-      %3 = amdaie.npu.dma_cpy_nd %2([] [] [], [0, 0] [32, 64] [1024, 1])
+      %3 = amdaie.npu.dma_cpy_nd async_source %2([] [] [], [0, 0] [32, 64] [1024, 1])
       ...
     }
     ```
@@ -427,33 +436,35 @@ def AMDAIE_NpuDmaCpyNdOp: AMDAIE_Op<"npu.dma_cpy_nd", [
         Optional<Index>:$source_bd_id
   );
 
+  let results = (outs Variadic<AMDAIE_AnyAsyncTokenType>:$async_tokens);
+
   // Use a custom assembly format because of weird spaces being inserted around 
   // the optional `target` by the default assembly format generator.
   let hasCustomAssemblyFormat = 1;
 
   let builders = [
     // Build a NpuDmaCpyNdOp with mixed static and dynamic entries.
-    OpBuilder<(ins "Value":$dma, "::mlir::Value":$target,
-      "ArrayRef<OpFoldResult>":$target_offsets,
+    OpBuilder<(ins "::mlir::TypeRange":$result_types, "Value":$connection,
+      "::mlir::Value":$target, "ArrayRef<OpFoldResult>":$target_offsets,
       "ArrayRef<OpFoldResult>":$target_sizes,
       "ArrayRef<OpFoldResult>":$target_strides, "::mlir::Value":$target_bd_id,
       "::mlir::Value":$source, "ArrayRef<OpFoldResult>":$source_offsets,
       "ArrayRef<OpFoldResult>":$source_sizes,
       "ArrayRef<OpFoldResult>":$source_strides, "::mlir::Value":$source_bd_id)>,
     // Build a NpuDmaCpyNdOp with static entries.
-    OpBuilder<(ins "Value":$dma, "::mlir::Value":$target,
-      "ArrayRef<int64_t>":$target_offsets, "ArrayRef<int64_t>":$target_sizes,
-      "ArrayRef<int64_t>":$target_strides, "::mlir::Value":$target_bd_id,
-      "::mlir::Value":$source, "ArrayRef<int64_t>":$source_offsets, 
-      "ArrayRef<int64_t>":$source_sizes, "ArrayRef<int64_t>":$source_strides,
-      "::mlir::Value":$source_bd_id)>,
+    OpBuilder<(ins "::mlir::TypeRange":$result_types, "Value":$connection,
+      "::mlir::Value":$target, "ArrayRef<int64_t>":$target_offsets, 
+      "ArrayRef<int64_t>":$target_sizes, "ArrayRef<int64_t>":$target_strides,
+      "::mlir::Value":$target_bd_id, "::mlir::Value":$source,
+      "ArrayRef<int64_t>":$source_offsets, "ArrayRef<int64_t>":$source_sizes,
+      "ArrayRef<int64_t>":$source_strides, "::mlir::Value":$source_bd_id)>,
     // Build a NpuDmaCpyNdOp with dynamic entries.
-    OpBuilder<(ins "Value":$dma, "::mlir::Value":$target,
-      "ValueRange":$target_offsets, "ValueRange":$target_sizes,
-      "ValueRange":$target_strides, "::mlir::Value":$target_bd_id,
-      "::mlir::Value":$source, "ValueRange":$source_offsets,
-      "ValueRange":$source_sizes, "ValueRange":$source_strides, 
-      "::mlir::Value":$source_bd_id)>
+    OpBuilder<(ins "::mlir::TypeRange":$result_types, "Value":$dma,
+      "::mlir::Value":$target, "ValueRange":$target_offsets,
+      "ValueRange":$target_sizes, "ValueRange":$target_strides,
+      "::mlir::Value":$target_bd_id, "::mlir::Value":$source,
+      "ValueRange":$source_offsets, "ValueRange":$source_sizes,
+      "ValueRange":$source_strides, "::mlir::Value":$source_bd_id)>
   ];
 
   let extraClassDeclaration = [{
@@ -702,45 +713,51 @@ def AMDAIE_NpuCircularDmaCpyNdOp: AMDAIE_Op<"npu.circular_dma_cpy_nd", [
 def AMDAIE_NpuDmaWaitOp: AMDAIE_Op<"npu.dma_wait", []> {
   let summary = "Wait for the Npu DMA operation to complete.";
   let description = [{
-    The wait operation will block on the referenced Npu DMA operation to complete
-    execution on the provided `direction`. The `S2MM` direction will block on the
-    destination side of the dma operation, ensuring complete execution. The
-    `MM2S` direction will block on the source side of the dma operation,
-    ensuring that the DMA has successfully started execution, but not
-    guaranteeing that all data has been received on the destination side.
+    The wait operation will block on the referenced dependent ops.
+    
+    If a dependent op returns a `!amdaie.async_token`, this wait op will block
+    on the dependent op having completed execution.
+    If a dependent op returns a `!amdaie.async_source_token`, this wait op will
+    block on the source side of the referenced dependent op having completed
+    execution.
+    If a dependent op returns a `!amdaie.async_target_token`, this wait op will
+    block on the target side of the referenced dependent op having completed
+    execution.
+
+    Being able to block on the source and/or target side separately is useful
+    for copy/dma-like operations that involve multiple physical ports/channels
+    in hardware. In this case, blocking on the source side and/or target side,
+    might be different from blocking on the entire operation.
 
     Example:
 
     ```mlir
-    %2 = amdaie.npu.dma_cpy_nd %0([] [] [], [%c0, %c0] [%c32, %c64] [%c1024, %c1])
-    amdaie.npu.dma_wait(%2, MM2S)
+    %2 = amdaie.npu.dma_cpy_nd async_source %0([] [] [], [%c0, %c0] [%c32, %c64] [%c1024, %c1])
+    amdaie.npu.dma_wait(%2 : !amdaie.async_source_token)
     ```
 
     Here, the `dma_wait` operation will wait until the referenced Npu DMA
-    operation has started execution. On the other hand, the `S2MM` direction can
-    be used to wait on the destination side of the DMA, i.e. until the DMA has
-    finished its write into the target memory:
+    operation has started execution. On the other hand, the 
+    `!amdaie.async_target_token` can be used to wait on the target side of the
+    DMA, i.e. until the DMA has finished its write into the target memory:
 
     ```mlir
-    %2 = amdaie.npu.dma_cpy_nd %0([%c0, %c0] [%c32, %c64] [%c1024, %c1], [] [] [])
-    amdaie.npu.dma_wait(%2, S2MM)
+    %2 = amdaie.npu.dma_cpy_nd async_target %0([%c0, %c0] [%c32, %c64] [%c1024, %c1], [] [] [])
+    amdaie.npu.dma_wait(%2 : !amdaie.async_target_token)
     ```
   }];
 
   let arguments = (
-    ins Index:$dma,
-        DMAChannelDir:$direction
+    ins Variadic<AMDAIE_AnyAsyncTokenType>:$async_tokens
   );
 
   let assemblyFormat = [{
-    `(` $dma `,` $direction `)`  attr-dict
+    (`(` $async_tokens^ `:` type($async_tokens) `)`)? attr-dict
   }];
 
   let extraClassDeclaration = [{
-    // Return the Npu DMA operation argument.
-    NpuDmaCpyNdOp getDmaOp() { 
-      return dyn_cast_if_present<NpuDmaCpyNdOp>(getDma().getDefiningOp());
-    }
+    // Return the Npu DMA operation arguments.
+    SmallVector<NpuDmaCpyNdOp> getDmaOps();
   }];
 }
 
@@ -1073,7 +1090,7 @@ def AMDAIE_LogicalObjectFifoPlaceholderOp:
     amdaie.controlcode {
       %obj1 = amdaie.logicalobjectfifo.from_memref %0, {%tile_0_0}
         : memref<1024xi32> -> !amdaie.logicalobjectfifo<memref<1024xi32>>
-      %npu_dma = amdaie.npu.dma_cpy_nd %connection([] [] [], 
+      %npu_dma = amdaie.npu.dma_cpy_nd async_source %connection([] [] [], 
         %obj0[%c0, %c32] [%c32, %c32] [%c32, %c1]) 
         : source_type = !amdaie.logicalobjectfifo<memref<1024xi32>>
       amdaie.end

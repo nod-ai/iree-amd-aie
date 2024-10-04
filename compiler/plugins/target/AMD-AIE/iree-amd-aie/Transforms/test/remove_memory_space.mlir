@@ -53,8 +53,8 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
       amdaie.controlcode {
         scf.forall (%arg2, %arg3) in (2, 1) {
           %1 = affine.apply #map(%arg2)
-          %2 = amdaie.npu.dma_cpy_nd %0([0, %1] [8, 16] [16, 1], [] [] [])
-          amdaie.npu.dma_wait(%2, S2MM)
+          %2 = amdaie.npu.dma_cpy_nd async_source %0([0, %1] [8, 16] [16, 1], [] [] [])
+          amdaie.npu.dma_wait(%2 : !amdaie.async_source_token)
         }
         amdaie.end
       }
