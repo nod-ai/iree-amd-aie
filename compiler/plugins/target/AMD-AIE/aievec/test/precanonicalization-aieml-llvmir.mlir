@@ -154,3 +154,16 @@ func.func @noncontiguous_write(%v: vector<4x8xi8>) {
     vector.transfer_write %v, %alloc[%c0, %c0] : vector<4x8xi8>, memref<4x10xi8>
     return
 }
+
+// -----
+
+// CHECK-LABEL: @arith_truncf(
+// CHECK-SAME:      %[[INP:.*]]: vector<2x3xf32>)
+func.func @arith_truncf(%inp: vector<2x3xf32>) -> vector<2x3xbf16> {
+    // CHECK:     %[[LINEARIZE:.*]] = vector.shape_cast %[[INP]] : vector<2x3xf32> to vector<6xf32>
+    // CHECK:     %[[TRUNCF:.*]] = arith.truncf %[[LINEARIZE]] : vector<6xf32> to vector<6xbf16>
+    // CHECK:     %[[DELINEARIZE:.*]] = vector.shape_cast %[[TRUNCF]] : vector<6xbf16> to vector<2x3xbf16>
+    // CHECK:     return %[[DELINEARIZE]]
+    %0 = arith.truncf %inp : vector<2x3xf32> to vector<2x3xbf16>
+    return %0 : vector<2x3xbf16>
+}

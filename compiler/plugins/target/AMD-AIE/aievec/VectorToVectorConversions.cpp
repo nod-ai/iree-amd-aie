@@ -400,6 +400,51 @@ struct ToMinorIdentityTransferReadPattern
   }
 };
 
+// clang-format off
+/// Pattern to linearize arith.truncf because later aievec.srs in AIEVecToLLVM is
+/// expected to have 1-D source and target.
+/// Refer: https://github.com/nod-ai/iree-amd-aie/blob/main/compiler/plugins/target/AMD-AIE/aievec/AIEVecToLLVM.cpp#L73-L74
+///
+/// Example of what this pattern achieves :-
+/// INPUT
+///     %0 = arith.truncf %inp : vector<2x3xf32> to vector<2x3xbf16>
+/// OUTPUT
+///     %0 = vector.shape_cast %inp : vector<2x3xf32> to vector<6xf32>
+///     %1 = arith.truncf %0 : vector<6xf32> to vector<6xbf16>
+///     %2 = vector.shape_cast %1 : vector<6xbf16> to vector<2x3xbf16>
+// clang-format on
+struct FlattenArithTruncFOpPattern : public OpRewritePattern<arith::TruncFOp> {
+  using OpRewritePattern<arith::TruncFOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(arith::TruncFOp op,
+                                PatternRewriter &rewriter) const override {
+    // Get old shape type.
+    auto oldShapedType = cast<ShapedType>(op.getType());
+    // Bail out if it's already linearized.
+    if (oldShapedType.getRank() == 1) return failure();
+    // Linearize the shape.
+    int64_t linearizedSize = oldShapedType.getNumElements();
+    // Fetch input.
+    Value origInputOfTruncFOp = op.getIn();
+    // Form linearized vector shape type for input and output.
+    VectorType newVectorTypeForInput = VectorType::get(
+        {linearizedSize},
+        cast<ShapedType>(origInputOfTruncFOp.getType()).getElementType());
+    VectorType newVectorTypeForOutput =
+        VectorType::get({linearizedSize}, oldShapedType.getElementType());
+    // Shape cast the original input to linearized shape type.
+    Value newInputVector = rewriter.create<vector::ShapeCastOp>(
+        op.getLoc(), newVectorTypeForInput, origInputOfTruncFOp);
+    // Create new base operation with the linearized input/output.
+    Value newTruncFOp = rewriter.create<arith::TruncFOp>(
+        op.getLoc(), newVectorTypeForOutput, newInputVector);
+    // Delinearize the output back to the original type.
+    rewriter.replaceOpWithNewOp<vector::ShapeCastOp>(op, op.getType(),
+                                                     newTruncFOp);
+    return success();
+  }
+};
+
 // This pattern extracts an implicit transposition of the 2 innermost
 // dimensions of `rhs` in a gemm-like contraction op, making it an explicit
 // `vector.transpose` op.
@@ -591,16 +636,16 @@ struct CanonicalizeVectorForAIEVecPass
     }
     {
       RewritePatternSet patterns(context);
-      patterns.add<ExtractTransposeFromContractionOp,
-                   ToMinorIdentityTransferReadPattern,
-                   ToMinorIdentityTransferWritePattern,
-                   ConvertLeadingUnitDimInsertToReshapePattern>(context);
+      patterns
+          .add<ExtractTransposeFromContractionOp, FlattenArithTruncFOpPattern,
+               ToMinorIdentityTransferReadPattern,
+               ToMinorIdentityTransferWritePattern,
+               ConvertLeadingUnitDimInsertToReshapePattern>(context);
       patterns.add<ConvertSplatTransferReadToBroadcastPattern>(context);
       mlir::vector::populateFlattenVectorTransferPatterns(patterns);
       mlir::vector::populateVectorBroadcastLoweringPatterns(patterns);
       (void)applyPatternsAndFoldGreedily(op, std::move(patterns));
     }
-
     {
       // These must run after 'populateFlattenVectorTransferPatterns' because
       // vector.shape_casts are introduced. Merging into a single pass creates
