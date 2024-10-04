@@ -189,7 +189,7 @@ iree_status_t iree_hal_xrt_native_executable_create(
                               e.what());
     }
 
-    xrt::device device(xrtDeviceToXclDevice(device_hdl));
+    shim_xdna::device device(xrtDeviceToXclDevice(device_hdl));
     IREE_ASSERT(device, "failed to find device");
 
     try {
@@ -200,11 +200,12 @@ iree_status_t iree_hal_xrt_native_executable_create(
     }
 
     try {
-      params->context = xrt::hw_context(
-          device, xclbin.get_uuid(), xrt::hw_context::access_mode::exclusive);
+      params->context =
+          shim_xdna::hw_ctx(device, xclbin.get_uuid(),
+                                shim_xdna::hw_ctx::access_mode::exclusive);
     } catch (std::exception& e) {
       return iree_make_status(IREE_STATUS_INTERNAL,
-                              "xrt::hw_context context: %s", e.what());
+                              "shim_xdna::hw_context context: %s", e.what());
     }
 
     uint32_t asm_instr_index =
@@ -216,14 +217,14 @@ iree_status_t iree_hal_xrt_native_executable_create(
     uint32_t num_instr = flatbuffers_uint32_vec_len(asm_inst);
 
     try {
-      params->kernel = xrt::kernel(params->context, entry_name);
+      params->kernel = shim_xdna::kernel(params->context, entry_name);
       // XCL_BO_FLAGS_CACHEABLE is used to indicate that this is an instruction
       // buffer that resides in instr_memory. This buffer is always passed as
       // the second argument to the kernel and we can use group id 1.
       int group_id = 1;
-      params->instr =
-          xrt::bo(device, num_instr * sizeof(uint32_t), XCL_BO_FLAGS_CACHEABLE,
-                  params->kernel.group_id(group_id));
+      params->instr = shim_xdna::bo(device, num_instr * sizeof(uint32_t),
+                                    XCL_BO_FLAGS_CACHEABLE,
+                                    params->kernel.group_id(group_id));
     } catch (...) {
       iree_hal_executable_destroy((iree_hal_executable_t*)executable);
       IREE_TRACE_ZONE_END(z0);

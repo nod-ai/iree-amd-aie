@@ -54,8 +54,12 @@ iree_cc_library(
     # (effectively only available for link time symbol resolution)
     # note this requires CMake >= 3.26
     $<BUILD_LOCAL_INTERFACE:xrt_coreutil>
+    xrt_driver_xdna
   COPTS
     $<$<PLATFORM_ID:Linux>:-fexceptions -frtti>
     $<$<PLATFORM_ID:Windows>:/EHsc /GR>
   PUBLIC
 )
+
+target_link_directories(iree-amd-aie_driver_xrt_xrt PUBLIC "/home/mlevental/dev_projects/my-xdna-driver/install/lib")
+target_include_directories(iree-amd-aie_driver_xrt_xrt PUBLIC "/home/mlevental/dev_projects/my-xdna-driver/install/include")

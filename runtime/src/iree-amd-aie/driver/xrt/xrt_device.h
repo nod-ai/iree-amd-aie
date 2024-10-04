@@ -10,7 +10,6 @@
 #include "iree-amd-aie/driver/xrt/api.h"
 #include "iree/base/api.h"
 #include "iree/hal/api.h"
-#include "xrt/xrt_device.h"
 
 #ifdef __cplusplus
 extern "C" {

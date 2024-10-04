@@ -4,14 +4,17 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+#include <filesystem>
+
 #include "iree-amd-aie/driver/xrt/xrt_device.h"
 #include "iree/base/api.h"
 #include "iree/base/tracing.h"
 #include "iree/hal/api.h"
 
 // XRT includes
-#include "xrt/xrt_device.h"
-#include "xrt/xrt_kernel.h"
+#include "shim_xdna/device.h"
+#include "shim_xdna/pcidrv.h"
+#include "shim_xdna/shim.h"
 
 // Maximum device path length we support. The path is always a 16 character hex
 // string.
@@ -19,10 +22,12 @@
 // Maximum device name length we support.
 #define IREE_HAL_XRT_MAX_DEVICE_NAME_LENGTH 64
 
-// Utility macros to convert between xrt::device and iree_hal_device_id_t.
+// Utility macros to convert between shim_xdna::device and iree_hal_device_id_t.
 // #define XRT_DEVICE_TO_DEVICE_ID(device) (iree_hal_device_id_t)((void*)device)
-// #define DEVICE_ID_TO_XRT_DEVICE(device_id) (xrt::device)(device_id)
+// #define DEVICE_ID_TO_XRT_DEVICE(device_id) (shim_xdna::device)(device_id)
 // using namespace iree::hal::xrt;
+
+using xrtDeviceHandle = void*;
 
 typedef struct iree_hal_xrt_driver_t {
   // Abstract resource used for injecting reference counting and vtable; must be
@@ -37,7 +42,7 @@ typedef struct iree_hal_xrt_driver_t {
   // Parameters used to control device behavior.
   iree_hal_xrt_device_params_t device_params;
 
-  xrtDeviceHandle device_hdl;
+  std::shared_ptr<shim_xdna::drv> drv;
 
 } iree_hal_xrt_driver_t;
 
@@ -75,6 +80,12 @@ iree_status_t iree_hal_xrt_driver_create_internal(
       identifier, &driver->identifier,
       (char*)driver + iree_sizeof_struct(*driver));
   driver->device_params = *device_params;
+  driver->drv = std::make_shared<shim_xdna::drv>();
+  const std::filesystem::path drvpath =
+      "/sys/bus/pci/drivers/amdxdna/0000:c5:00.1";
+  std::shared_ptr<shim_xdna::pdev> pf =
+      driver->drv->create_pcidev(drvpath.filename());
+  shim_xdna::add_to_user_ready_list(pf);
 
   *out_driver = reinterpret_cast<iree_hal_driver_t*>(driver);
   return iree_ok_status();
@@ -113,9 +124,10 @@ static iree_status_t iree_hal_xrt_driver_dump_device_info(
   xrtDeviceHandle device_hdl = driver->device_hdl;
   IREE_RETURN_IF_ERROR(
       iree_string_builder_append_cstring(builder, "\n- Platform:"));
-  xrt::device device(xrtDeviceToXclDevice(device_hdl));
-  std::string platform_info = device.get_info<xrt::info::device::platform>();
-  const char* platform_info_str = platform_info.c_str();
+  shim_xdna::device device(xrtDeviceToXclDevice(device_hdl));
+  //  std::string platform_info =
+  //  device.get_info<shim_xdna::info::device::platform>();
+  const char* platform_info_str = "";
   if (platform_info_str) {
     IREE_RETURN_IF_ERROR(iree_string_builder_append_cstring(builder, " "));
     IREE_RETURN_IF_ERROR(
@@ -137,8 +149,8 @@ static iree_status_t iree_hal_xrt_populate_device_info(
 
   // We currenly only work with one XRT device and its device id is 0.
   out_device_info->device_id = 0;
-  xrt::device device(xrtDeviceToXclDevice(device_hdl));
-  std::string device_name = device.get_info<xrt::info::device::name>();
+  shim_xdna::device device(xrtDeviceToXclDevice(device_hdl));
+  std::string device_name = "";
   const size_t name_len = strlen(device_name.c_str());
   if (name_len >= IREE_HAL_XRT_MAX_DEVICE_NAME_LENGTH) {
     return iree_make_status(IREE_STATUS_OUT_OF_RANGE,

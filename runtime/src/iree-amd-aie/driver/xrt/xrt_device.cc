@@ -6,7 +6,6 @@
 
 #include "iree-amd-aie/driver/xrt/xrt_device.h"
 
-#include "experimental/xrt_system.h"
 #include "iree-amd-aie/driver/xrt/direct_allocator.h"
 #include "iree-amd-aie/driver/xrt/direct_command_buffer.h"
 #include "iree-amd-aie/driver/xrt/nop_executable_cache.h"
@@ -17,6 +16,8 @@
 #include "iree/hal/utils/deferred_command_buffer.h"
 #include "iree/hal/utils/file_transfer.h"
 #include "iree/hal/utils/memory_file.h"
+#include "shim_xdna/device.h"
+#include "shim_xdna/shim.h"
 
 typedef struct iree_hal_xrt_device_t {
   // Abstract resource used for injecting reference counting and vtable; must be
@@ -33,7 +34,7 @@ typedef struct iree_hal_xrt_device_t {
   iree_allocator_t host_allocator;
   iree_hal_allocator_t* device_allocator;
 
-  xrtDeviceHandle device_hdl;
+  std::shared_ptr<shim_xdna::device> device;
 } iree_hal_xrt_device_t;
 
 namespace {
@@ -61,18 +62,9 @@ static iree_status_t iree_hal_xrt_device_create_internal(
   IREE_RETURN_IF_ERROR(
       iree_allocator_malloc(host_allocator, total_size, (void**)&device));
 
-  try {
-    if (IREE_UNLIKELY(xrt::system::enumerate_devices() == 0)) {
-      return iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
-                              "No XRT devices found");
-    }
-  } catch (std::exception& e) {
-    return iree_make_status(IREE_STATUS_INTERNAL,
-                            "xrt::system::enumerate_devices failed: %s",
-                            e.what());
-  }
-
-  xrtDeviceHandle device_hdl = xrtDeviceOpen(0);
+  std::shared_ptr<shim_xdna::device> device_hdl =
+      shim_xdna::my_get_userpf_device(
+          static_cast<shim_xdna::device::id_type>(0));
   IREE_ASSERT(device_hdl, "failed to open xrt device");
 
   iree_status_t status =
@@ -88,7 +80,7 @@ static iree_status_t iree_hal_xrt_device_create_internal(
                                      &device->block_pool);
 
     device->host_allocator = host_allocator;
-    device->device_hdl = device_hdl;
+    device->device = device_hdl;
     device->params = *params;
     *out_device = (iree_hal_device_t*)device;
   } else {

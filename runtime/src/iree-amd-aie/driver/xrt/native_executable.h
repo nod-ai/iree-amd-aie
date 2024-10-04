@@ -12,20 +12,23 @@
 #include "iree/base/api.h"
 #include "iree/base/tracing.h"
 #include "iree/hal/api.h"
-#include "xrt/xrt_device.h"
-#include "xrt/xrt_kernel.h"
+
+#include "shim_xdna/hwctx.h"
+#include "shim_xdna/bo.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif  // __cplusplus
 
+typedef void* xrtDeviceHandle;
+
 // Object and launch parameters for a compute kernel.
 typedef struct iree_hal_xrt_kernel_params_t {
-  xrt::hw_context context;
+  shim_xdna::hw_ctx context;
   // The kernel code object.
-  xrt::kernel kernel;
+  shim_xdna::kernel kernel;
   // Instruction buffer argument to the kernel.
-  xrt::bo instr;
+  shim_xdna::bo instr;
   // Number of assembly instructions argument to the kernel
   uint32_t num_instr;  // number of instructions
   IREE_TRACE(iree_string_view_t kernel_name;)

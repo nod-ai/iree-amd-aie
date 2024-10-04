@@ -9,10 +9,11 @@
 #include "iree/base/api.h"
 #include "iree/base/tracing.h"
 #include "iree/hal/api.h"
+#include "shim_xdna/bo.h"
 
 typedef struct iree_hal_xrt_buffer_t {
   iree_hal_buffer_t base;
-  xrt::bo* buffer;
+  shim_xdna::bo* buffer;
   iree_hal_buffer_release_callback_t release_callback;
 } iree_hal_xrt_buffer_t;
 
@@ -33,7 +34,7 @@ static const iree_hal_xrt_buffer_t* iree_hal_xrt_buffer_const_cast(
 }
 
 iree_status_t iree_hal_xrt_buffer_wrap(
-    xrt::bo* xrt_buffer, iree_hal_allocator_t* allocator,
+    shim_xdna::bo* xrt_buffer, iree_hal_allocator_t* allocator,
     iree_hal_memory_type_t memory_type, iree_hal_memory_access_t allowed_access,
     iree_hal_buffer_usage_t allowed_usage, iree_device_size_t allocation_size,
     iree_device_size_t byte_offset, iree_device_size_t byte_length,
@@ -76,7 +77,8 @@ static void iree_hal_xrt_buffer_destroy(iree_hal_buffer_t* base_buffer) {
   IREE_TRACE_ZONE_END(z0);
 }
 
-xrt::bo* iree_hal_xrt_buffer_handle(const iree_hal_buffer_t* base_buffer) {
+shim_xdna::bo* iree_hal_xrt_buffer_handle(
+    const iree_hal_buffer_t* base_buffer) {
   const iree_hal_xrt_buffer_t* buffer =
       iree_hal_xrt_buffer_const_cast(base_buffer);
   return buffer->buffer;
@@ -85,7 +87,7 @@ xrt::bo* iree_hal_xrt_buffer_handle(const iree_hal_buffer_t* base_buffer) {
 static iree_status_t iree_hal_xrt_buffer_invalidate_range(
     iree_hal_buffer_t* base_buffer, iree_device_size_t local_byte_offset,
     iree_device_size_t local_byte_length) {
-  xrt::bo* xrt_buffer = iree_hal_xrt_buffer_handle(base_buffer);
+  shim_xdna::bo* xrt_buffer = iree_hal_xrt_buffer_handle(base_buffer);
   if (IREE_UNLIKELY(!xrt_buffer)) {
     return iree_make_status(
         IREE_STATUS_FAILED_PRECONDITION,
@@ -98,7 +100,7 @@ static iree_status_t iree_hal_xrt_buffer_invalidate_range(
 static iree_status_t iree_hal_xrt_buffer_flush_range(
     iree_hal_buffer_t* base_buffer, iree_device_size_t local_byte_offset,
     iree_device_size_t local_byte_length) {
-  xrt::bo* xrt_buffer = iree_hal_xrt_buffer_handle(base_buffer);
+  shim_xdna::bo* xrt_buffer = iree_hal_xrt_buffer_handle(base_buffer);
   if (IREE_UNLIKELY(!xrt_buffer)) {
     return iree_make_status(
         IREE_STATUS_FAILED_PRECONDITION,

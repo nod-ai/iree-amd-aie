@@ -9,6 +9,7 @@
 #include "iree-amd-aie/driver/xrt/native_executable.h"
 #include "iree-amd-aie/driver/xrt/xrt_buffer.h"
 #include "iree/hal/utils/resource_set.h"
+#include "shim_xdna/bo.h"
 
 // The max number of bindings per descriptor set allowed in the XRT HAL
 // implementation.
@@ -31,7 +32,7 @@ typedef struct iree_hal_xrt_direct_command_buffer_t {
   iree_arena_allocator_t arena;
 
   struct {
-    xrt::bo* bindings[IREE_HAL_XRT_MAX_DESCRIPTOR_SET_BINDING_COUNT];
+    shim_xdna::bo* bindings[IREE_HAL_XRT_MAX_DESCRIPTOR_SET_BINDING_COUNT];
     // Offset and length are used to get the sub buffer at kernel launch.
     iree_device_size_t offsets[IREE_HAL_XRT_MAX_DESCRIPTOR_SET_BINDING_COUNT];
     iree_device_size_t lengths[IREE_HAL_XRT_MAX_DESCRIPTOR_SET_BINDING_COUNT];
@@ -216,9 +217,9 @@ static iree_status_t iree_hal_xrt_direct_command_buffer_update_buffer(
 
   // No need to Allocate scratch space (in an arena) as the memcpy
   // used below is expected to be synchronized.
-  xrt::bo* target_device_buffer = iree_hal_xrt_buffer_handle(
+  shim_xdna::bo* target_device_buffer = iree_hal_xrt_buffer_handle(
       iree_hal_buffer_allocated_buffer(target_ref.buffer));
-  void* target_device_buffer_ptr = target_device_buffer->map();
+  void* target_device_buffer_ptr = target_device_buffer->map(shim_xdna::bo::map_type::write);
   uint8_t* dst = (uint8_t*)target_device_buffer_ptr +
                  iree_hal_buffer_byte_offset(target_ref.buffer) +
                  target_ref.offset;
@@ -233,15 +234,15 @@ static iree_status_t iree_hal_xrt_direct_command_buffer_copy_buffer(
     iree_hal_buffer_ref_t source_ref, iree_hal_buffer_ref_t target_ref) {
   IREE_TRACE_ZONE_BEGIN(z0);
 
-  xrt::bo* target_device_buffer = iree_hal_xrt_buffer_handle(
+  shim_xdna::bo* target_device_buffer = iree_hal_xrt_buffer_handle(
       iree_hal_buffer_allocated_buffer(target_ref.buffer));
-  void* target_device_buffer_ptr = target_device_buffer->map();
+  void* target_device_buffer_ptr = target_device_buffer->map(shim_xdna::bo::map_type::write);
   iree_device_size_t target_offset =
       iree_hal_buffer_byte_offset(target_ref.buffer) + target_ref.offset;
 
-  xrt::bo* source_device_buffer = iree_hal_xrt_buffer_handle(
+  shim_xdna::bo* source_device_buffer = iree_hal_xrt_buffer_handle(
       iree_hal_buffer_allocated_buffer(source_ref.buffer));
-  void* source_device_buffer_ptr = source_device_buffer->map();
+  void* source_device_buffer_ptr = source_device_buffer->map(shim_xdna::bo::map_type::read);
   iree_device_size_t source_offset =
       iree_hal_buffer_byte_offset(source_ref.buffer) + source_ref.offset;
 
@@ -276,7 +277,8 @@ static iree_status_t iree_hal_xrt_direct_command_buffer_push_descriptor_set(
       iree_hal_xrt_direct_command_buffer_cast(base_command_buffer);
   IREE_TRACE_ZONE_BEGIN(z0);
 
-  xrt::bo** current_bindings = command_buffer->descriptor_sets[set].bindings;
+  shim_xdna::bo** current_bindings =
+      command_buffer->descriptor_sets[set].bindings;
   iree_device_size_t* current_offsets =
       command_buffer->descriptor_sets[set].offsets;
   iree_device_size_t* current_lengths =
@@ -322,7 +324,7 @@ static iree_status_t iree_hal_xrt_direct_command_buffer_dispatch(
       z0, iree_hal_resource_set_insert(command_buffer->resource_set, 1,
                                        &executable));
 
-  xrt::run run = xrt::run(kernel_params.kernel);
+  shim_xdna::run run = shim_xdna::run(kernel_params.kernel);
   // Index to push arguments on the kernel.
   iree_host_size_t arg_index = 0;
   // First argument is the opcode.
@@ -337,17 +339,17 @@ static iree_status_t iree_hal_xrt_direct_command_buffer_dispatch(
   // access.
   // TODO(jornt): hack to ensure that the output buffer is synced by syncing all
   // buffers after the run.
-  std::vector<xrt::bo> bos;
+  std::vector<shim_xdna::bo> bos;
   // TODO(max): do we need multiple descriptor sets ever for AIE?
   uint32_t set = 0;
   IREE_RETURN_AND_END_ZONE_IF_ERROR(
       z0, iree_hal_xrt_direct_command_buffer_push_descriptor_set(
               base_command_buffer, set, bindings.count, bindings.values));
   for (iree_host_size_t j = 0; j < bindings.count; ++j) {
-    xrt::bo arg_buffer =
-        xrt::bo(*command_buffer->descriptor_sets[set].bindings[j],
-                command_buffer->descriptor_sets[set].lengths[j],
-                command_buffer->descriptor_sets[set].offsets[j]);
+    shim_xdna::bo arg_buffer =
+        shim_xdna::bo(*command_buffer->descriptor_sets[set].bindings[j],
+                      command_buffer->descriptor_sets[set].lengths[j],
+                      command_buffer->descriptor_sets[set].offsets[j]);
     bos.push_back(arg_buffer);
     run.set_arg(arg_index + j, arg_buffer);
   }
@@ -360,7 +362,7 @@ static iree_status_t iree_hal_xrt_direct_command_buffer_dispatch(
     return iree_make_status(IREE_STATUS_UNKNOWN, e.what());
   }
 
-  for (xrt::bo& bo : bos) bo.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
+  for (shim_xdna::bo& bo : bos) bo.sync(shim_xdna::bo::direction::device2host, 0, 0);
 
   IREE_TRACE_ZONE_END(z0);
   return iree_ok_status();
