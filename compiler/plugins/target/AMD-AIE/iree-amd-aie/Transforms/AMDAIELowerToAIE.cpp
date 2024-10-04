@@ -1147,6 +1147,34 @@ LogicalResult AIEDeviceBuilder::lowerToAIE(ModuleOp moduleOp) {
     });
     if (res.wasInterrupted()) return WalkResult::interrupt();
 
+    SmallVector<AMDAIE::WorkgroupOp> workgroupOps;
+    funcOp->walk([&](AMDAIE::WorkgroupOp op) { workgroupOps.push_back(op); });
+    // Only a single workgroup op is supported as only a single `aie.device` is
+    // created.
+    if (workgroupOps.size() > 1) {
+      funcOp.emitOpError()
+          << "multiple `amdaie.workgroup` ops is not supported";
+      return WalkResult::interrupt();
+    }
+    if (workgroupOps.size() == 1) {
+      AMDAIE::WorkgroupOp workgroupOp = workgroupOps[0];
+      mlir::Attribute maybeNpuInstructions =
+          workgroupOp->getAttr("npu_instructions");
+      if (maybeNpuInstructions) {
+        deviceOp->setAttr("npu_instructions", maybeNpuInstructions);
+        deviceOp->setAttr("runtime_sequence_name",
+                          rewriter.getStringAttr(funcOp.getSymName()));
+      }
+      // if (!maybeNpuInstructions) {
+      //   workgroupOp.emitOpError()
+      //       << "Expected npu_instructions attribute on `amdaie.workgroup`";
+      //   return WalkResult::interrupt();
+      // }
+      // deviceOp->setAttr("npu_instructions", maybeNpuInstructions);
+      // deviceOp->setAttr("runtime_sequence_name",
+      //                   rewriter.getStringAttr(funcOp.getSymName()));
+    }
+
     // Move NPU instruction function to the end of the device block.
     rewriter.moveOpBefore(npuFuncOp, deviceBlock, deviceBlock->end());
     // After walking the FuncOp, it has been converted into a DeviceOp and can

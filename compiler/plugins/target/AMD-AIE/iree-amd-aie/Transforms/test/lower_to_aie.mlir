@@ -202,8 +202,8 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
       %lock_3 = amdaie.lock(%tile_0_2(1), 0)
       %0 = amdaie.logicalobjectfifo.from_buffers({%buffer}, {%lock}, {%lock_1}) : memref<4096xi32, 1 : i32> -> !amdaie.logicalobjectfifo<memref<4096xi32, 1 : i32>, 1>
       %1 = amdaie.logicalobjectfifo.from_buffers({%buffer_1}, {%lock_2}, {%lock_3}) : memref<4096xi32, 2 : i32> -> !amdaie.logicalobjectfifo<memref<4096xi32, 2 : i32>, 1>
-      %channel = amdaie.channel(%tile_0_1, 0, port_type = DMA)
-      %channel_1 = amdaie.channel(%tile_0_2, 0, port_type = DMA)
+      %channel = amdaie.channel(%tile_0_1, 0, port_type = DMA, direction = MM2S)
+      %channel_1 = amdaie.channel(%tile_0_2, 0, port_type = DMA, direction = S2MM)
       %2 = amdaie.flow({%channel} -> {%channel_1}) {is_packet_flow = false}
       %3 = amdaie.connection(%1 {%channel_1}, %0 {%channel}, flow = %2) : (!amdaie.logicalobjectfifo<memref<4096xi32, 2 : i32>, 1>, !amdaie.logicalobjectfifo<memref<4096xi32, 1 : i32>, 1>)
       amdaie.controlcode {
@@ -282,8 +282,8 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
       %lock_3 = amdaie.lock(%tile_0_2(1), 0)
       %0 = amdaie.logicalobjectfifo.from_buffers({%buffer, %buffer_1}, {%lock}, {%lock_1}) : memref<4096xi32, 1 : i32>, memref<4096xi32, 1 : i32> -> !amdaie.logicalobjectfifo<memref<4096xi32, 1 : i32>, 2>
       %1 = amdaie.logicalobjectfifo.from_buffers({%buffer_2, %buffer_3}, {%lock_2}, {%lock_3}) : memref<4096xi32, 2 : i32>, memref<4096xi32, 2 : i32> -> !amdaie.logicalobjectfifo<memref<4096xi32, 2 : i32>, 2>
-      %channel = amdaie.channel(%tile_0_1, 0, port_type = DMA)
-      %channel_1 = amdaie.channel(%tile_0_2, 0, port_type = DMA)
+      %channel = amdaie.channel(%tile_0_1, 0, port_type = DMA, direction = MM2S)
+      %channel_1 = amdaie.channel(%tile_0_2, 0, port_type = DMA, direction = S2MM)
       %2 = amdaie.flow({%channel} -> {%channel_1}) {is_packet_flow = false}
       %3 = amdaie.connection(%1 {%channel_1}, %0 {%channel}, flow = %2) : (!amdaie.logicalobjectfifo<memref<4096xi32, 2 : i32>, 2>, !amdaie.logicalobjectfifo<memref<4096xi32, 1 : i32>, 2>)
       amdaie.controlcode {
@@ -372,14 +372,14 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
       %lock_7 = amdaie.lock(%tile_0_2(1), 0) 
       %0 = amdaie.logicalobjectfifo.from_buffers({%buffer}, {%lock}, {%lock_1}) : memref<4096xi32, 1 : i32> -> !amdaie.logicalobjectfifo<memref<4096xi32, 1 : i32>, 1>
       %1 = amdaie.logicalobjectfifo.from_buffers({%buffer_1}, {%lock_2}, {%lock_3}) : memref<4096xi32, 2 : i32> -> !amdaie.logicalobjectfifo<memref<4096xi32, 2 : i32>, 1>
-      %channel = amdaie.channel(%tile_0_1, 0, port_type = DMA)
-      %channel_1 = amdaie.channel(%tile_0_2, 0, port_type = DMA)
+      %channel = amdaie.channel(%tile_0_1, 0, port_type = DMA, direction = MM2S)
+      %channel_1 = amdaie.channel(%tile_0_2, 0, port_type = DMA, direction = S2MM)
       %2 = amdaie.flow({%channel} -> {%channel_1}) {is_packet_flow = false}
       %3 = amdaie.connection(%1 {%channel_1}, %0 {%channel}, flow = %2) : (!amdaie.logicalobjectfifo<memref<4096xi32, 2 : i32>, 1>, !amdaie.logicalobjectfifo<memref<4096xi32, 1 : i32>, 1>)
       %4 = amdaie.logicalobjectfifo.from_buffers({%buffer_2}, {%lock_4}, {%lock_5}) : memref<2048xi32, 1 : i32> -> !amdaie.logicalobjectfifo<memref<2048xi32, 1 : i32>, 1>
       %5 = amdaie.logicalobjectfifo.from_buffers({%buffer_3}, {%lock_6}, {%lock_7}) : memref<2048xi32, 2 : i32> -> !amdaie.logicalobjectfifo<memref<2048xi32, 2 : i32>, 1>
-      %channel_2 = amdaie.channel(%tile_0_1, 1, port_type = DMA)
-      %channel_3 = amdaie.channel(%tile_0_2, 1, port_type = DMA)
+      %channel_2 = amdaie.channel(%tile_0_1, 1, port_type = DMA, direction = MM2S)
+      %channel_3 = amdaie.channel(%tile_0_2, 1, port_type = DMA, direction = S2MM)
       %6 = amdaie.flow({%channel_2} -> {%channel_3}) {is_packet_flow = false}
       %7 = amdaie.connection(%5 {%channel_3}, %4 {%channel_2}, flow = %6) : (!amdaie.logicalobjectfifo<memref<2048xi32, 2 : i32>, 1>, !amdaie.logicalobjectfifo<memref<2048xi32, 1 : i32>, 1>)
       amdaie.controlcode {
@@ -525,14 +525,14 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
       %lock_7 = amdaie.lock(%tile_0_2(1), 0)
       %0 = amdaie.logicalobjectfifo.from_buffers({%buffer, %buffer_1}, {%lock}, {%lock_1}) : memref<4096xi32, 1 : i32>, memref<4096xi32, 1 : i32> -> !amdaie.logicalobjectfifo<memref<4096xi32, 1 : i32>, 2>
       %1 = amdaie.logicalobjectfifo.from_buffers({%buffer_2, %buffer_3}, {%lock_2}, {%lock_3}) : memref<4096xi32, 2 : i32>, memref<4096xi32, 2 : i32> -> !amdaie.logicalobjectfifo<memref<4096xi32, 2 : i32>, 2>
-      %channel = amdaie.channel(%tile_0_1, 0, port_type = DMA)
-      %channel_1 = amdaie.channel(%tile_0_2, 0, port_type = DMA)
+      %channel = amdaie.channel(%tile_0_1, 0, port_type = DMA, direction = MM2S)
+      %channel_1 = amdaie.channel(%tile_0_2, 0, port_type = DMA, direction = S2MM)
       %2 = amdaie.flow({%channel} -> {%channel_1}) {is_packet_flow = false}
       %3 = amdaie.connection(%1 {%channel_1}, %0 {%channel}, flow = %2) : (!amdaie.logicalobjectfifo<memref<4096xi32, 2 : i32>, 2>, !amdaie.logicalobjectfifo<memref<4096xi32, 1 : i32>, 2>)
       %4 = amdaie.logicalobjectfifo.from_buffers({%buffer_4, %buffer_5, %buffer_6, %buffer_7}, {%lock_4}, {%lock_5}) : memref<2048xi32, 1 : i32>, memref<2048xi32, 1 : i32>, memref<2048xi32, 1 : i32>, memref<2048xi32, 1 : i32> -> !amdaie.logicalobjectfifo<memref<2048xi32, 1 : i32>, 4>
       %5 = amdaie.logicalobjectfifo.from_buffers({%buffer_8, %buffer_9, %buffer_10, %buffer_11}, {%lock_6}, {%lock_7}) : memref<2048xi32, 2 : i32>, memref<2048xi32, 2 : i32>, memref<2048xi32, 2 : i32>, memref<2048xi32, 2 : i32> -> !amdaie.logicalobjectfifo<memref<2048xi32, 2 : i32>, 4>
-      %channel_2 = amdaie.channel(%tile_0_1, 1, port_type = DMA)
-      %channel_3 = amdaie.channel(%tile_0_2, 1, port_type = DMA)
+      %channel_2 = amdaie.channel(%tile_0_1, 1, port_type = DMA, direction = MM2S)
+      %channel_3 = amdaie.channel(%tile_0_2, 1, port_type = DMA, direction = S2MM)
       %6 = amdaie.flow({%channel_2} -> {%channel_3}) {is_packet_flow = false}
       %7 = amdaie.connection(%5 {%channel_3}, %4 {%channel_2}, flow = %6) : (!amdaie.logicalobjectfifo<memref<2048xi32, 2 : i32>, 4>, !amdaie.logicalobjectfifo<memref<2048xi32, 1 : i32>, 4>)
       amdaie.controlcode {
@@ -608,12 +608,12 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
       %0 = amdaie.logicalobjectfifo.placeholder{%tile_0_0} : !amdaie.logicalobjectfifo<memref<4096xi32>>
       %1 = amdaie.logicalobjectfifo.from_buffers({%buffer}, {%lock}, {%lock_1}) : memref<4096xi32, 1 : i32> -> !amdaie.logicalobjectfifo<memref<4096xi32, 1 : i32>, 1>
       %2 = amdaie.logicalobjectfifo.from_buffers({%buffer_1}, {%lock_2}, {%lock_3}) : memref<4096xi32, 2 : i32> -> !amdaie.logicalobjectfifo<memref<4096xi32, 2 : i32>, 1>
-      %channel = amdaie.channel(%tile_0_0, 0, port_type = DMA)
-      %channel_1 = amdaie.channel(%tile_0_1, 0, port_type = DMA)
+      %channel = amdaie.channel(%tile_0_0, 0, port_type = DMA, direction = MM2S)
+      %channel_1 = amdaie.channel(%tile_0_1, 0, port_type = DMA, direction = S2MM)
       %3 = amdaie.flow({%channel} -> {%channel_1}) {is_packet_flow = false}
       %4 = amdaie.connection(%1 {%channel_1}, %0 {%channel}, flow = %3) : (!amdaie.logicalobjectfifo<memref<4096xi32, 1 : i32>, 1>, !amdaie.logicalobjectfifo<memref<4096xi32>, 1>)
-      %channel_2 = amdaie.channel(%tile_0_1, 0, port_type = DMA)
-      %channel_3 = amdaie.channel(%tile_0_2, 0, port_type = DMA)
+      %channel_2 = amdaie.channel(%tile_0_1, 0, port_type = DMA, direction = MM2S)
+      %channel_3 = amdaie.channel(%tile_0_2, 0, port_type = DMA, direction = S2MM)
       %5 = amdaie.flow({%channel_2} -> {%channel_3}) {is_packet_flow = false}
       %6 = amdaie.connection(%2 {%channel_3}, %1 {%channel_2}, flow = %5) : (!amdaie.logicalobjectfifo<memref<4096xi32, 2 : i32>, 1>, !amdaie.logicalobjectfifo<memref<4096xi32, 1 : i32>, 1>)
       amdaie.controlcode {
@@ -648,8 +648,8 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
       %lock_1 = amdaie.lock(%tile_0_1(1), 0)
       %1 = amdaie.logicalobjectfifo.placeholder{%tile_0_0} : !amdaie.logicalobjectfifo<memref<4096xi32>>
       %2 = amdaie.logicalobjectfifo.from_buffers({%buffer}, {%lock}, {%lock_1}) : memref<4096xi32, 1 : i32> -> !amdaie.logicalobjectfifo<memref<4096xi32, 1 : i32>, 1>
-      %channel = amdaie.channel(%tile_0_0, 0, port_type = DMA)
-      %channel_1 = amdaie.channel(%tile_0_1, 0, port_type = DMA)
+      %channel = amdaie.channel(%tile_0_0, 0, port_type = DMA, direction = MM2S)
+      %channel_1 = amdaie.channel(%tile_0_1, 0, port_type = DMA, direction = S2MM)
       %3 = amdaie.flow({%channel} -> {%channel_1}) {is_packet_flow = false}
       %4 = amdaie.connection(%2 {%channel_1}, %1 {%channel}, flow = %3) : (!amdaie.logicalobjectfifo<memref<4096xi32, 1 : i32>, 1>, !amdaie.logicalobjectfifo<memref<4096xi32>, 1>)
       // expected-error @+1 {{could not convert to AIEDialect ops}}
@@ -688,8 +688,8 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
       %lock_1 = amdaie.lock(%tile_0_1(1), 0)
       %1 = amdaie.logicalobjectfifo.placeholder{%tile_0_0} : !amdaie.logicalobjectfifo<memref<4096xi32>>
       %2 = amdaie.logicalobjectfifo.from_buffers({%buffer}, {%lock}, {%lock_1}) : memref<4096xi32, 1 : i32> -> !amdaie.logicalobjectfifo<memref<4096xi32, 1 : i32>, 1>
-      %channel = amdaie.channel(%tile_0_0, 0, port_type = DMA)
-      %channel_1 = amdaie.channel(%tile_0_1, 0, port_type = DMA)
+      %channel = amdaie.channel(%tile_0_0, 0, port_type = DMA, direction = MM2S)
+      %channel_1 = amdaie.channel(%tile_0_1, 0, port_type = DMA, direction = S2MM)
       %3 = amdaie.flow({%channel} -> {%channel_1}) {is_packet_flow = false}
       %4 = amdaie.connection(%2 {%channel_1}, %1 {%channel}, flow = %3) : (!amdaie.logicalobjectfifo<memref<4096xi32, 1 : i32>, 1>, !amdaie.logicalobjectfifo<memref<4096xi32>, 1>)
       amdaie.controlcode {
@@ -742,14 +742,14 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
       %lock_3 = amdaie.lock(%tile_0_1(1), 0)
       %2 = amdaie.logicalobjectfifo.placeholder{%tile_0_0} : !amdaie.logicalobjectfifo<memref<4096xi32>>
       %3 = amdaie.logicalobjectfifo.from_buffers({%buffer}, {%lock}, {%lock_1}) : memref<4096xi32, 1 : i32> -> !amdaie.logicalobjectfifo<memref<4096xi32, 1 : i32>, 1>
-      %channel = amdaie.channel(%tile_0_0, 0, port_type = DMA)
-      %channel_1 = amdaie.channel(%tile_0_1, 0, port_type = DMA)
+      %channel = amdaie.channel(%tile_0_0, 0, port_type = DMA, direction = MM2S)
+      %channel_1 = amdaie.channel(%tile_0_1, 0, port_type = DMA, direction = S2MM)
       %4 = amdaie.flow({%channel} -> {%channel_1}) {is_packet_flow = false}
       %5 = amdaie.connection(%3 {%channel_1}, %2 {%channel}, flow = %4) : (!amdaie.logicalobjectfifo<memref<4096xi32, 1 : i32>, 1>, !amdaie.logicalobjectfifo<memref<4096xi32>, 1>)
       %6 = amdaie.logicalobjectfifo.placeholder{%tile_0_1} : !amdaie.logicalobjectfifo<memref<2048xi32>>
       %7 = amdaie.logicalobjectfifo.from_buffers({%buffer_1}, {%lock_2}, {%lock_3}) : memref<2048xi32, 1 : i32> -> !amdaie.logicalobjectfifo<memref<2048xi32, 1 : i32>, 1>
-      %channel_2 = amdaie.channel(%tile_0_0, 1, port_type = DMA)
-      %channel_3 = amdaie.channel(%tile_0_1, 1, port_type = DMA)
+      %channel_2 = amdaie.channel(%tile_0_0, 1, port_type = DMA, direction = MM2S)
+      %channel_3 = amdaie.channel(%tile_0_1, 1, port_type = DMA, direction = S2MM)
       %8 = amdaie.flow({%channel_2} -> {%channel_3}) {is_packet_flow = false}
       %9 = amdaie.connection(%6 {%channel_2}, %7 {%channel_3}, flow = %8) : (!amdaie.logicalobjectfifo<memref<2048xi32>, 1>, !amdaie.logicalobjectfifo<memref<2048xi32, 1 : i32>, 1>)
       amdaie.controlcode {
@@ -809,14 +809,14 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
       %lock_3 = amdaie.lock(%tile_0_1(1), 0)
       %2 = amdaie.logicalobjectfifo.placeholder{%tile_0_0} : !amdaie.logicalobjectfifo<memref<4096xbf16>>
       %3 = amdaie.logicalobjectfifo.from_buffers({%buffer}, {%lock}, {%lock_1}) : memref<4096xbf16, 1 : i32> -> !amdaie.logicalobjectfifo<memref<4096xbf16, 1 : i32>, 1>
-      %channel = amdaie.channel(%tile_0_0, 0, port_type = DMA)
-      %channel_1 = amdaie.channel(%tile_0_1, 0, port_type = DMA)
+      %channel = amdaie.channel(%tile_0_0, 0, port_type = DMA, direction = MM2S)
+      %channel_1 = amdaie.channel(%tile_0_1, 0, port_type = DMA, direction = S2MM)
       %4 = amdaie.flow({%channel} -> {%channel_1}) {is_packet_flow = false}
       %5 = amdaie.connection(%3 {%channel_1}, %2 {%channel}, flow = %4) : (!amdaie.logicalobjectfifo<memref<4096xbf16, 1 : i32>, 1>, !amdaie.logicalobjectfifo<memref<4096xbf16>, 1>)
       %6 = amdaie.logicalobjectfifo.placeholder{%tile_0_1} : !amdaie.logicalobjectfifo<memref<2048xf32>>
       %7 = amdaie.logicalobjectfifo.from_buffers({%buffer_1}, {%lock_2}, {%lock_3}) : memref<2048xf32, 1 : i32> -> !amdaie.logicalobjectfifo<memref<2048xf32, 1 : i32>, 1>
-      %channel_2 = amdaie.channel(%tile_0_0, 1, port_type = DMA)
-      %channel_3 = amdaie.channel(%tile_0_1, 1, port_type = DMA)
+      %channel_2 = amdaie.channel(%tile_0_0, 1, port_type = DMA, direction = MM2S)
+      %channel_3 = amdaie.channel(%tile_0_1, 1, port_type = DMA, direction = S2MM)
       %8 = amdaie.flow({%channel_2} -> {%channel_3}) {is_packet_flow = false}
       %9 = amdaie.connection(%6 {%channel_2}, %7 {%channel_3}, flow = %8) : (!amdaie.logicalobjectfifo<memref<2048xf32>, 1>, !amdaie.logicalobjectfifo<memref<2048xf32, 1 : i32>, 1>)
       amdaie.controlcode {
@@ -1115,13 +1115,13 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
       %1 = amdaie.logicalobjectfifo.placeholder{%tile} : !amdaie.logicalobjectfifo<memref<4096xi32>>
       %2 = amdaie.logicalobjectfifo.from_buffers({%buffer, %buffer_3}, {%lock}, {%lock_4}) : memref<4096xi32, 1 : i32>, memref<4096xi32, 1 : i32> -> !amdaie.logicalobjectfifo<memref<4096xi32, 1 : i32>, 2>
       %3 = amdaie.logicalobjectfifo.from_buffers({%buffer_5, %buffer_6, %buffer_9, %buffer_10}, {%lock_7, %lock_11}, {%lock_8, %lock_12}) : memref<4096xi32, 2 : i32>, memref<4096xi32, 2 : i32>, memref<4096xi32, 2 : i32>, memref<4096xi32, 2 : i32> -> !amdaie.logicalobjectfifo<memref<4096xi32, 2 : i32>, 2>
-      %channel = amdaie.channel(%tile, 0, port_type = DMA)
-      %channel_13 = amdaie.channel(%tile_0, 0, port_type = DMA)
+      %channel = amdaie.channel(%tile, 0, port_type = DMA, direction = MM2S)
+      %channel_13 = amdaie.channel(%tile_0, 0, port_type = DMA, direction = S2MM)
       %4 = amdaie.flow({%channel} -> {%channel_13}) {is_packet_flow = false}
       %5 = amdaie.connection(%2 {%channel_13}, %1 {%channel}, flow = %4) : (!amdaie.logicalobjectfifo<memref<4096xi32, 1 : i32>, 2>, !amdaie.logicalobjectfifo<memref<4096xi32>>)
-      %channel_14 = amdaie.channel(%tile_0, 1, port_type = DMA)
-      %channel_15 = amdaie.channel(%tile_1, 0, port_type = DMA)
-      %channel_16 = amdaie.channel(%tile_2, 0, port_type = DMA)
+      %channel_14 = amdaie.channel(%tile_0, 1, port_type = DMA, direction = MM2S)
+      %channel_15 = amdaie.channel(%tile_1, 0, port_type = DMA, direction = S2MM)
+      %channel_16 = amdaie.channel(%tile_2, 0, port_type = DMA, direction = S2MM)
       %6 = amdaie.flow({%channel_14} -> {%channel_15, %channel_16}) {is_packet_flow = false}
       %7 = amdaie.connection(%3 {%channel_15, %channel_16}, %2 {%channel_14}, flow = %6) : (!amdaie.logicalobjectfifo<memref<4096xi32, 2 : i32>, 2>, !amdaie.logicalobjectfifo<memref<4096xi32, 1 : i32>, 2>)
       %8 = amdaie.core(%tile_1, in : [%7], out : []) {

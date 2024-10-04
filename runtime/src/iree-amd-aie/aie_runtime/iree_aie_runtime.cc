@@ -159,6 +159,10 @@ AMDAIEDeviceModel::AMDAIEDeviceModel(
   TRY_XAIE_API_FATAL_ERROR(XAie_TurnEccOff, &devInst);
 }
 
+uint8_t AMDAIEDeviceModel::getAddressGranularityInBits() const {
+  return deviceConfig.addressGranularityInBits;
+}
+
 int AMDAIEDeviceModel::rows() const {
   if (device == AMDAIEDevice::xcvc1902 || device == AMDAIEDevice::xcve2802)
     return MLIRAIELegacy::rows(*this);
