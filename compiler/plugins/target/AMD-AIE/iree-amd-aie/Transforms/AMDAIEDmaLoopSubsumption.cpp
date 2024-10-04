@@ -503,7 +503,7 @@ struct SubsumeLoopIntoDMA
 
     auto hasCircularUsersInSameScope =
         [&](SmallVector<AMDAIE::DoublyStridedOpInterface> users) -> bool {
-      bool currentUser = false;
+      bool currentCircularDma = false;
       for (AMDAIE::DoublyStridedOpInterface userOp : llvm::reverse(users)) {
         // Check if there is other circular dma user in the same scope.
         if (isa<AMDAIE::NpuCircularDmaCpyNdOp>(userOp) &&
@@ -512,10 +512,10 @@ struct SubsumeLoopIntoDMA
         }
         // Check if there is other user before the current in the same scope.
         if (userOp == op.getOperation()) {
-          currentUser = true;
+          currentCircularDma = true;
           continue;
         }
-        if (currentUser) return true;
+        if (currentCircularDma) return true;
       }
       return false;
     };
