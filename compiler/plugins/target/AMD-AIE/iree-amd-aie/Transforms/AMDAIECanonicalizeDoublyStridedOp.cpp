@@ -7,7 +7,9 @@
 #include "iree-amd-aie/IR/AMDAIEDialect.h"
 #include "iree-amd-aie/Transforms/AMDAIEDmaUtils.h"
 #include "iree-amd-aie/Transforms/Passes.h"
+#include "iree-amd-aie/Transforms/Transforms.h"
 #include "mlir/Pass/Pass.h"
+#include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
 #define DEBUG_TYPE "iree-amdaie-canonicalize-doubly-strided-dma"
 
@@ -17,90 +19,105 @@ namespace {
 
 /// Recognize linear accesses across multiple DMA access dimensions and fold
 /// them.
-LogicalResult foldDmaOpLinearDims(RewriterBase &rewriter,
-                                  AMDAIE::DoublyStridedOpInterface op) {
-  OpBuilder::InsertionGuard guard(rewriter);
-  SmallVector<OpFoldResult> sourceOffsets = op.getSourceMixedOffsets();
-  SmallVector<OpFoldResult> sourceSizes = op.getSourceMixedSizes();
-  SmallVector<OpFoldResult> sourceStrides = op.getSourceMixedStrides();
-  SmallVector<OpFoldResult> targetOffsets = op.getTargetMixedOffsets();
-  SmallVector<OpFoldResult> targetSizes = op.getTargetMixedSizes();
-  SmallVector<OpFoldResult> targetStrides = op.getTargetMixedStrides();
-  SmallVector<OpFoldResult> newSourceOffsets, newSourceSizes, newSourceStrides,
-      newTargetOffsets, newTargetSizes, newTargetStrides;
-  LogicalResult sourceRes =
-      foldLinearDims(op.getContext(), sourceOffsets, sourceSizes, sourceStrides,
-                     newSourceOffsets, newSourceSizes, newSourceStrides);
-  LogicalResult targetRes =
-      foldLinearDims(op.getContext(), targetOffsets, targetSizes, targetStrides,
-                     newTargetOffsets, newTargetSizes, newTargetStrides);
-  if (failed(sourceRes) && failed(targetRes)) {
-    return failure();
-  }
+struct FoldDmaOpLinearDims
+    : public OpInterfaceRewritePattern<AMDAIE::DoublyStridedOpInterface> {
+  using OpInterfaceRewritePattern::OpInterfaceRewritePattern;
 
-  rewriter.setInsertionPointAfter(op);
-  auto newDoublyStridedOp = op.createDoublyStridedOp(
-      rewriter, newTargetOffsets, newTargetSizes, newTargetStrides,
-      newSourceOffsets, newSourceSizes, newSourceStrides);
-  rewriter.replaceOp(op, newDoublyStridedOp.getOperation());
-  return success();
-}
+  LogicalResult matchAndRewrite(AMDAIE::DoublyStridedOpInterface op,
+                                PatternRewriter &rewriter) const override {
+    OpBuilder::InsertionGuard guard(rewriter);
+    SmallVector<OpFoldResult> sourceOffsets = op.getSourceMixedOffsets();
+    SmallVector<OpFoldResult> sourceSizes = op.getSourceMixedSizes();
+    SmallVector<OpFoldResult> sourceStrides = op.getSourceMixedStrides();
+    SmallVector<OpFoldResult> targetOffsets = op.getTargetMixedOffsets();
+    SmallVector<OpFoldResult> targetSizes = op.getTargetMixedSizes();
+    SmallVector<OpFoldResult> targetStrides = op.getTargetMixedStrides();
+    SmallVector<OpFoldResult> newSourceOffsets, newSourceSizes,
+        newSourceStrides, newTargetOffsets, newTargetSizes, newTargetStrides;
+    LogicalResult sourceRes = foldLinearDims(
+        op.getContext(), sourceOffsets, sourceSizes, sourceStrides,
+        newSourceOffsets, newSourceSizes, newSourceStrides);
+    LogicalResult targetRes = foldLinearDims(
+        op.getContext(), targetOffsets, targetSizes, targetStrides,
+        newTargetOffsets, newTargetSizes, newTargetStrides);
+    if (failed(sourceRes) && failed(targetRes)) {
+      return failure();
+    }
+
+    rewriter.setInsertionPointAfter(op);
+    auto newDoublyStridedOp = op.createDoublyStridedOp(
+        rewriter, newTargetOffsets, newTargetSizes, newTargetStrides,
+        newSourceOffsets, newSourceSizes, newSourceStrides);
+    rewriter.replaceOp(op, newDoublyStridedOp.getOperation());
+    return success();
+  }
+};
 
 /// Fold single dimension linear accesses and make them implicit.
-LogicalResult foldDmaOpSingleDims(RewriterBase &rewriter,
-                                  AMDAIE::DoublyStridedOpInterface op) {
-  OpBuilder::InsertionGuard guard(rewriter);
-  SmallVector<OpFoldResult> sourceOffsets = op.getSourceMixedOffsets();
-  SmallVector<OpFoldResult> sourceSizes = op.getSourceMixedSizes();
-  SmallVector<OpFoldResult> sourceStrides = op.getSourceMixedStrides();
-  SmallVector<OpFoldResult> targetOffsets = op.getTargetMixedOffsets();
-  SmallVector<OpFoldResult> targetSizes = op.getTargetMixedSizes();
-  SmallVector<OpFoldResult> targetStrides = op.getTargetMixedStrides();
-  LogicalResult sourceRes =
-      foldSingleDim(sourceOffsets, sourceSizes, sourceStrides);
-  LogicalResult targetRes =
-      foldSingleDim(targetOffsets, targetSizes, targetStrides);
-  if (failed(sourceRes) && failed(targetRes)) {
-    return failure();
-  }
+struct FoldDmaOpSingleDims
+    : public OpInterfaceRewritePattern<AMDAIE::DoublyStridedOpInterface> {
+  using OpInterfaceRewritePattern::OpInterfaceRewritePattern;
 
-  rewriter.setInsertionPointAfter(op);
-  auto newDoublyStridedOp = op.createDoublyStridedOp(
-      rewriter, targetOffsets, targetSizes, targetStrides, sourceOffsets,
-      sourceSizes, sourceStrides);
-  rewriter.replaceOp(op, newDoublyStridedOp.getOperation());
-  return success();
-}
+  LogicalResult matchAndRewrite(AMDAIE::DoublyStridedOpInterface op,
+                                PatternRewriter &rewriter) const override {
+    OpBuilder::InsertionGuard guard(rewriter);
+    SmallVector<OpFoldResult> sourceOffsets = op.getSourceMixedOffsets();
+    SmallVector<OpFoldResult> sourceSizes = op.getSourceMixedSizes();
+    SmallVector<OpFoldResult> sourceStrides = op.getSourceMixedStrides();
+    SmallVector<OpFoldResult> targetOffsets = op.getTargetMixedOffsets();
+    SmallVector<OpFoldResult> targetSizes = op.getTargetMixedSizes();
+    SmallVector<OpFoldResult> targetStrides = op.getTargetMixedStrides();
+    LogicalResult sourceRes =
+        foldSingleDim(sourceOffsets, sourceSizes, sourceStrides);
+    LogicalResult targetRes =
+        foldSingleDim(targetOffsets, targetSizes, targetStrides);
+    if (failed(sourceRes) && failed(targetRes)) {
+      return failure();
+    }
+
+    rewriter.setInsertionPointAfter(op);
+    auto newDoublyStridedOp = op.createDoublyStridedOp(
+        rewriter, targetOffsets, targetSizes, targetStrides, sourceOffsets,
+        sourceSizes, sourceStrides);
+    rewriter.replaceOp(op, newDoublyStridedOp.getOperation());
+    return success();
+  }
+};
 
 /// Fold unit dimensions within a strided access pattern.
-LogicalResult foldDmaOpUnitDims(RewriterBase &rewriter,
-                                AMDAIE::DoublyStridedOpInterface op) {
-  OpBuilder::InsertionGuard guard(rewriter);
-  SmallVector<OpFoldResult> sourceOffsets = op.getSourceMixedOffsets();
-  SmallVector<OpFoldResult> sourceSizes = op.getSourceMixedSizes();
-  SmallVector<OpFoldResult> sourceStrides = op.getSourceMixedStrides();
-  SmallVector<OpFoldResult> targetOffsets = op.getTargetMixedOffsets();
-  SmallVector<OpFoldResult> targetSizes = op.getTargetMixedSizes();
-  SmallVector<OpFoldResult> targetStrides = op.getTargetMixedStrides();
-  SmallVector<OpFoldResult> newSourceOffsets, newSourceSizes, newSourceStrides,
-      newTargetOffsets, newTargetSizes, newTargetStrides;
-  LogicalResult sourceRes =
-      foldUnitDims(sourceOffsets, sourceSizes, sourceStrides, newSourceOffsets,
-                   newSourceSizes, newSourceStrides);
-  LogicalResult targetRes =
-      foldUnitDims(targetOffsets, targetSizes, targetStrides, newTargetOffsets,
-                   newTargetSizes, newTargetStrides);
-  if (failed(sourceRes) && failed(targetRes)) {
-    return failure();
-  }
+struct FoldDmaOpUnitDims
+    : public OpInterfaceRewritePattern<AMDAIE::DoublyStridedOpInterface> {
+  using OpInterfaceRewritePattern::OpInterfaceRewritePattern;
 
-  rewriter.setInsertionPointAfter(op);
-  auto newDoublyStridedOp = op.createDoublyStridedOp(
-      rewriter, newTargetOffsets, newTargetSizes, newTargetStrides,
-      newSourceOffsets, newSourceSizes, newSourceStrides);
-  rewriter.replaceOp(op, newDoublyStridedOp.getOperation());
-  return success();
-}
+  LogicalResult matchAndRewrite(AMDAIE::DoublyStridedOpInterface op,
+                                PatternRewriter &rewriter) const override {
+    OpBuilder::InsertionGuard guard(rewriter);
+    SmallVector<OpFoldResult> sourceOffsets = op.getSourceMixedOffsets();
+    SmallVector<OpFoldResult> sourceSizes = op.getSourceMixedSizes();
+    SmallVector<OpFoldResult> sourceStrides = op.getSourceMixedStrides();
+    SmallVector<OpFoldResult> targetOffsets = op.getTargetMixedOffsets();
+    SmallVector<OpFoldResult> targetSizes = op.getTargetMixedSizes();
+    SmallVector<OpFoldResult> targetStrides = op.getTargetMixedStrides();
+    SmallVector<OpFoldResult> newSourceOffsets, newSourceSizes,
+        newSourceStrides, newTargetOffsets, newTargetSizes, newTargetStrides;
+    LogicalResult sourceRes =
+        foldUnitDims(sourceOffsets, sourceSizes, sourceStrides,
+                     newSourceOffsets, newSourceSizes, newSourceStrides);
+    LogicalResult targetRes =
+        foldUnitDims(targetOffsets, targetSizes, targetStrides,
+                     newTargetOffsets, newTargetSizes, newTargetStrides);
+    if (failed(sourceRes) && failed(targetRes)) {
+      return failure();
+    }
+
+    rewriter.setInsertionPointAfter(op);
+    auto newDoublyStridedOp = op.createDoublyStridedOp(
+        rewriter, newTargetOffsets, newTargetSizes, newTargetStrides,
+        newSourceOffsets, newSourceSizes, newSourceStrides);
+    rewriter.replaceOp(op, newDoublyStridedOp.getOperation());
+    return success();
+  }
+};
 
 class AMDAIECanonicalizeDoublyStridedOpPass
     : public impl::AMDAIECanonicalizeDoublyStridedOpBase<
@@ -121,29 +138,27 @@ class AMDAIECanonicalizeDoublyStridedOpPass
 
 void AMDAIECanonicalizeDoublyStridedOpPass::runOnOperation() {
   Operation *parentOp = getOperation();
-  IRRewriter rewriter(parentOp->getContext());
+  MLIRContext *context = &getContext();
+  RewritePatternSet patterns(context);
 
-  // Fold DMA unit dimensions. Needs to happen before folding linear dimensions
-  // to avoid blocking detection of linear dimension folding opportunities due
-  // to a unit dimension in between.
-  parentOp->walk([&](AMDAIE::DoublyStridedOpInterface dmaOp) {
-    (void)foldDmaOpUnitDims(rewriter, dmaOp);
-  });
-
-  // Fold linear dimensions within a DMA op.
-  parentOp->walk([&](AMDAIE::DoublyStridedOpInterface dmaOp) {
-    (void)foldDmaOpLinearDims(rewriter, dmaOp);
-  });
-
-  // Make DMA accesses with single dimension implicit.
-  if (foldSingleDims) {
-    parentOp->walk([&](AMDAIE::DoublyStridedOpInterface dmaOp) {
-      (void)foldDmaOpSingleDims(rewriter, dmaOp);
-    });
+  populateCanonicalizeDoublyStridedOpPatterns(patterns, foldSingleDims);
+  if (failed(applyPatternsAndFoldGreedily(parentOp, std::move(patterns)))) {
+    parentOp->emitOpError(
+        "failed to canonicalize doubly strided DMA operations");
+    return signalPassFailure();
   }
 }
 
 }  // namespace
+
+void populateCanonicalizeDoublyStridedOpPatterns(RewritePatternSet &patterns,
+                                                 bool foldSingleDims) {
+  patterns.add<FoldDmaOpUnitDims>(patterns.getContext());
+  patterns.add<FoldDmaOpLinearDims>(patterns.getContext());
+  if (foldSingleDims) {
+    patterns.add<FoldDmaOpSingleDims>(patterns.getContext());
+  }
+}
 
 std::unique_ptr<Pass> createAMDAIECanonicalizeDoublyStridedOpPass(
     AMDAIECanonicalizeDoublyStridedOpOptions options) {

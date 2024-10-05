@@ -39,6 +39,10 @@ LogicalResult normalizeLoopBounds(RewriterBase &rewriter, scf::ForOp forOp);
 LogicalResult normalizeLoopBounds(RewriterBase &rewriter,
                                   scf::ForallOp forallOp);
 
+/// Populate patterns that canonicalize doubly strided DMA operations.
+void populateCanonicalizeDoublyStridedOpPatterns(RewritePatternSet &patterns,
+                                                 bool foldSingleDims);
+
 /// Populate patterns that subsume loops iterations into DMA access patterns.
 void populateDmaLoopSubsumptionPattern(RewritePatternSet &patterns,
                                        AMDAIE::AMDAIEDeviceModel &&deviceModel,

@@ -580,8 +580,6 @@ void addAMDAIEObjectFifoLoweringPasses(OpPassManager &passManager,
   passManager.addPass(createCanonicalizerPass());
 
   passManager.addPass(createAMDAIEDmaCompositionPass());
-  passManager.addPass(createAMDAIECanonicalizeDoublyStridedOpPass());
-  passManager.addPass(createAMDAIEDmaLoopSubsumptionPass());
   passManager.addPass(createCSEPass());
   passManager.addPass(createCanonicalizerPass());
   passManager.addPass(createAMDAIEDmaCSEPass());
