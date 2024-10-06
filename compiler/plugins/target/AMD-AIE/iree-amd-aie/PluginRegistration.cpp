@@ -37,6 +37,7 @@ struct AMDAIESession
     aievec::registerConvertAIEVecToLLVMPass();
     aievec::registerCanonicalizeVectorForAIEVecPass();
     aievec::registerLowerVectorToAIEVecPass();
+    aievec::registerAIEVecPipelines();
   }
 
   void onRegisterDialects(DialectRegistry &registry) override {
