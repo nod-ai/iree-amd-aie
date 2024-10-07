@@ -153,9 +153,16 @@ def load_input(input_string):
     return matrix
 
 
-def write_input(bin_filename, num_elements, element_type, input_number, input_seed):
+def generate_and_write_input(
+    bin_filename, num_elements, element_type, input_number, input_seed
+):
+    """
+    Generate `num_elements` random values based on the random seed `input_seed`
+    and write them to the binary file `bin_filename`. The elements will
+    be of type `element_type`.
+    """
+
     # Random integer values in range [lower_bound, upper_bound)
-    # will be generated for the input data.
     lower_bound = 0
     upper_bound = 10
 
@@ -246,10 +253,45 @@ def np_from_binfile(bin_file, type_str):
     return array
 
 
-def generate_inputs(filename, write_dir, seed):
+def write_input(bin_filename, num_elements, element_type, np_array):
     """
-    Parse the input file 'filename' and generate binary files for the inputs of
-    the mlir function.
+    Write the numpy array `np_array` to the binary file `bin_filename`. The
+    number of elements in `np_array` must be `num_elements` (this is verified).
+    The elements in `np_array` will be cast to the data type `element_type`,
+    and so can be of any type.
+    """
+    # Assert that the number of elements is correct:
+    if num_elements != np_array.size:
+        raise ValueError(
+            f"Expected {num_elements} elements, but got {np_array.size} elements."
+        )
+
+    if element_type == "bf16":
+        array_f32 = np_array.astype(np.float32)
+        data = np.array(
+            [convert_f32_to_bf16(f) for f in array_f32], dtype=np.uint16
+        ).tobytes()
+
+    else:
+        target_type = get_numpy_type(element_type)
+        data = np_array.astype(target_type).tobytes()
+
+    with open(bin_filename, "wb") as file:
+        file.write(data)
+
+
+def generate_inputs(filename, write_dir, seed, preset_inputs={}):
+    """
+    Parse the MLIR file `filename` and generate and write binary files for the
+    inputs of the MLIR function. The inputs either contain values generated at
+    random based on the seed `seed`, or the values are taken from `preset_inputs`.
+    `preset_inputs` is a map from input index (the first index is '1') to a
+    numpy array.
+
+    Example: suppose the MLIR file contains a func.func with 2 arguments,
+    and `preset_inputs` is {'2': np.array([1, 2, 3], dtype=np.int32)}. Then the
+    first argument to the function will have random values generated for it,
+    and the second will have values [1, 2, 3].
     """
 
     name = os.path.splitext(os.path.basename(filename))[0]
@@ -284,13 +326,26 @@ def generate_inputs(filename, write_dir, seed):
                     # This is to ensure that operands are not populated with the
                     # same values.
                     input_seed = seed + input_number
-                    write_input(
-                        bin_filename,
-                        num_elements,
-                        element_type,
-                        input_number,
-                        input_seed,
-                    )
+
+                    # Check if input_number is a key in the dictionary. If it is
+                    # write the value in the dictionary. otherwise create a
+                    # random array.
+                    if input_number in preset_inputs:
+                        write_input(
+                            bin_filename,
+                            num_elements,
+                            element_type,
+                            preset_inputs[input_number],
+                        )
+                    else:
+                        generate_and_write_input(
+                            bin_filename,
+                            num_elements,
+                            element_type,
+                            input_number,
+                            input_seed,
+                        )
+
                     input_number += 1
 
             if (len(tokens) == 2) and tokens[0] == "//input":

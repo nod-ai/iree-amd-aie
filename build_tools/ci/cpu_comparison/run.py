@@ -113,7 +113,7 @@ def shell_out(cmd: list, workdir=None, verbose: int = 0, raise_on_error=True, en
         )
     if raise_on_error and handle.returncode != 0:
         raise RuntimeError(
-            f"Error executing script, error code was {handle.returncode}"
+            f"Error executing script, error code was {handle.returncode}",
         )
     return stdout_decode, stderr_decode
 
@@ -573,46 +573,6 @@ def aie_vs_llvm_cpu(
         output_type,
     )
 
-
-def aie_vs_np_matmul(
-    config,
-    test_file,
-    use_ukernel=False,
-    tile_pipeline="pad-pack",
-    lower_to_aie_pipeline="air",
-    function_name=None,
-    seed=1,
-    rtol=1e-6,
-    atol=1e-6,
-    n_repeats=1,
-):
-    """ """
-
-    if n_repeats == 0:
-        return
-
-    name = name_from_mlir_filename(test_file)
-    input_args = generate_inputs(test_file, config.output_dir, seed)
-    output_type = get_output_type(test_file)
-
-    numpy_output = matmul_from_input_strings(input_args)
-    aie_vs_baseline(
-        config,
-        test_file,
-        input_args,
-        numpy_output,
-        use_ukernel,
-        tile_pipeline,
-        lower_to_aie_pipeline,
-        function_name,
-        seed,
-        rtol,
-        atol,
-        n_repeats,
-        output_type,
-    )
-
-
 class TestSet:
     def __init__(self, name):
         self.name = name
@@ -821,6 +781,25 @@ class SmokeSet(TestSet):
             test_name,
             tile_pipeline="pack-peel",
             lower_to_aie_pipeline="objectFifo",
+        )
+
+        # Test using custom input and output:
+        ones = np.ones(64 * 64, np.float32).reshape([64, 64])
+        name = name_from_mlir_filename(test_name)
+        input_args = generate_inputs(test_name, output_dir, 1, {1: ones, 2: ones})
+        aie_vs_baseline(
+            config,
+            test_name,
+            input_args,
+            ones * 64, # exected output 
+            False, # use_ukernel
+            "pack-peel", # tile_pipeline
+            "objectFifo", # lower_to_aie_pipeline
+            None, # function_name
+            1, # seed
+            0, # rtol
+            0, # atol
+            1, # n_repeats
         )
 
 
