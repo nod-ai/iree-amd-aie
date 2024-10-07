@@ -43,9 +43,11 @@ LogicalResult bufferizeTemporaryMemrefs(Operation *parentOp) {
       Operation *owner = operand.getOwner();
       bool inTile = owner->getParentOfType<CoreOp>() == coreOp;
       bool inGroup = owner->getParentOfType<WorkgroupOp>() == workgroupOp;
-      return inTile && inGroup;
+      bool isNotDealloc = !isa<memref::DeallocOp>(owner);
+      return inTile && inGroup && isNotDealloc;
     });
   }
+
 
   // Note: we don't erase allocs/deallocs, we leave this for canonicalization.
 

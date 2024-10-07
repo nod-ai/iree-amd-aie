@@ -107,3 +107,25 @@ func.func @temp_buffer_2(){
   memref.dealloc %alloc : memref<4xi32>
   return
 }
+
+// -----
+
+// CHECK-LABEL: @alloc_dealloc_left_untouched_for_later_canonicalization
+// CHECK: amdaie.buffer
+// CHECK: %[[ALLOC:.*]] = memref.alloc() : memref<4xi32>
+// CHECK: memref.dealloc %[[ALLOC]] : memref<4xi32>
+// CHECK: amdaie.end
+func.func @alloc_dealloc_left_untouched_for_later_canonicalization() {
+    %c0 = arith.constant 0 : index
+    %c2 = arith.constant 2 : index
+    %tile_0_2 = amdaie.tile(%c0, %c2)
+    %core_0_2 = amdaie.core(%tile_0_2, in : [], out : []) {
+      %alloc = memref.alloc() : memref<4xi32>
+      %reinterpret_cast = memref.reinterpret_cast %alloc
+          to offset: [0], sizes: [4], strides: [1] :
+          memref<4xi32> to memref<4xi32>
+      memref.dealloc %alloc : memref<4xi32>
+      amdaie.end
+    }
+    return
+}
