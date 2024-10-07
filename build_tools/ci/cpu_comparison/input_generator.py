@@ -268,9 +268,7 @@ def write_input(bin_filename, num_elements, element_type, np_array):
 
     if element_type == "bf16":
         array_f32 = np_array.astype(np.float32)
-        data = np.array(
-            [convert_f32_to_bf16(f) for f in array_f32], dtype=np.uint16
-        ).tobytes()
+        data = convert_f32_to_bf16(array_f32).tobytes()
 
     else:
         target_type = get_numpy_type(element_type)
