@@ -7,16 +7,12 @@
 #include "XCLBinGen.h"
 
 #include <filesystem>
+#include <fstream>
 #include <functional>
 #include <random>
-#include <regex>
 #include <sstream>
-// ReSharper disable once CppUnusedIncludeDirective
-#include <fstream>
-#include <unordered_map>
 
 #include "AMDAIETargets.h"
-#include "aievec/Passes.h"
 #include "iree-amd-aie/Transforms/Passes.h"
 #include "iree/compiler/Utils/ToolUtils.h"
 #include "llvm/ADT/SmallString.h"
@@ -28,9 +24,12 @@
 #include "llvm/Support/Path.h"
 #include "llvm/Support/Program.h"
 #include "llvm/Support/ToolOutputFile.h"
+#include "mlir/Dialect/Vector/IR/VectorOps.h"
+#include "mlir/Dialect/Vector/Transforms/VectorTransforms.h"
 #include "mlir/IR/AsmState.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/TypeUtilities.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Support/FileUtilities.h"
 #include "mlir/Target/LLVMIR/Export.h"
@@ -982,6 +981,7 @@ struct RemoveAlignment2FromLLVMLoadPass
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(
       RemoveAlignment2FromLLVMLoadPass);
 };
+
 }  // namespace
 
 static LogicalResult generateUnifiedObject(
@@ -996,10 +996,8 @@ static LogicalResult generateUnifiedObject(
   PassManager pm(context, ModuleOp::getOperationName());
   applyConfigToPassManager(pm, printIRBeforeAll, printIRAfterAll,
                            printIRModuleScope, timing);
+
   pm.addPass(mlir::iree_compiler::AMDAIE::createAMDAIECoreToStandardPass());
-  // Convert specific vector dialect ops (like vector.contract) to the AIEVec
-  // dialect
-  mlir::iree_compiler::aievec::buildConvertVectorToAIEVec(pm);
   mlir::iree_compiler::AMDAIE::addLowerToLLVMPasses(pm);
   pm.addPass(std::make_unique<RemoveAlignment2FromLLVMLoadPass>());
 

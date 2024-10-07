@@ -18,14 +18,14 @@ func.func @matmul_i8_i32(%lhs: tensor<32x16xi8>, %rhs: tensor<16x32xi8>) -> tens
 
 // -----
 
-func.func @matmul_bf16(%lhs: tensor<16x32xbf16>, %rhs: tensor<32x16xbf16>) -> tensor<16x16xbf16>
+func.func @matmul_bf16(%lhs: tensor<16x32xbf16>, %rhs: tensor<32x16xbf16>) -> tensor<16x16xf32>
 {
-  %cst = arith.constant 0.000000e+00 : bf16
-  %0 = tensor.empty() : tensor<16x16xbf16>
-  %1 = linalg.fill ins(%cst : bf16) outs(%0 : tensor<16x16xbf16>) -> tensor<16x16xbf16>
+  %cst = arith.constant 0.000000e+00 : f32
+  %0 = tensor.empty() : tensor<16x16xf32>
+  %1 = linalg.fill ins(%cst : f32) outs(%0 : tensor<16x16xf32>) -> tensor<16x16xf32>
   %res = linalg.matmul ins(%lhs, %rhs: tensor<16x32xbf16>, tensor<32x16xbf16>)
-                    outs(%1: tensor<16x16xbf16>) -> tensor<16x16xbf16>
-  return %res : tensor<16x16xbf16>
+                    outs(%1: tensor<16x16xf32>) -> tensor<16x16xf32>
+  return %res : tensor<16x16xf32>
 }
 
 // CHECK-LABEL: hal.executable.export public @matmul_bf16_dispatch_0_matmul_16x16x32_bf16

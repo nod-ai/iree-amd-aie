@@ -34,6 +34,6 @@ func.func @mm_in_bf16_out_f32(%lhs: tensor<64x64xbf16>,
   return %res : tensor<64x64xf32>
 }
 
-// CHECK-DISABLED-NOT: vector.contract
-// CHECK-ENABLED: vector.contract
-// CHECK-DEFAULT: vector.contract
+// CHECK-DISABLED-NOT: aievec.matmul
+// CHECK-ENABLED: aievec.matmul
+// CHECK-DEFAULT: aievec.matmul
