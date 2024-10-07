@@ -185,16 +185,19 @@ LogicalResult WorkgroupBuilder::buildForDmaCpyNdOp(
       circularDmaTargetOffsets, circularDmaTargetSizes,
       circularDmaTargetStrides, circularDmaSourceOffsets,
       circularDmaSourceSizes, circularDmaSourceStrides);
+  Type ty =
+      !sourceMemSpace
+          ? static_cast<Type>(
+                controlCodeRewriter.getType<AMDAIE::AsyncSourceTokenType>())
+          : static_cast<Type>(
+                controlCodeRewriter.getType<AMDAIE::AsyncTargetTokenType>());
   auto npuDmaCpy = controlCodeRewriter.createAndLookup<AMDAIE::NpuDmaCpyNdOp>(
-      loc, connectionOp.getResult(), npuDmaTarget, npuDmaTargetOffsets,
+      loc, ty, connectionOp.getResult(), npuDmaTarget, npuDmaTargetOffsets,
       npuDmaTargetSizes, npuDmaTargetStrides, /*target_bd_id=*/nullptr,
       npuDmaSource, npuDmaSourceOffsets, npuDmaSourceSizes, npuDmaSourceStrides,
       /*source_bd_id=*/nullptr);
-  DMAChannelDir direction =
-      !sourceMemSpace ? DMAChannelDir::MM2S : DMAChannelDir::S2MM;
   controlCodeRewriter.createAndLookup<AMDAIE::NpuDmaWaitOp>(
-      rewriter.getUnknownLoc(), SmallVector<Type, 1>{}, npuDmaCpy.getResult(),
-      direction);
+      rewriter.getUnknownLoc(), SmallVector<Type, 1>{}, npuDmaCpy.getResult(0));
   rewriter.restoreInsertionPoint(dmaInsertionPoint);
   LLVM_DEBUG(llvm::dbgs() << "workgroupBuild [amdaie.dma_cpy_nd] End\n");
   return success();

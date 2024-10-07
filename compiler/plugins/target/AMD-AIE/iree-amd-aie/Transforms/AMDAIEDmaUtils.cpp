@@ -9,6 +9,7 @@
 #include <cstdlib>
 
 #include "iree-amd-aie/Transforms/AMDAIEUtils.h"
+#include "llvm/ADT/SmallPtrSet.h"
 #include "mlir/Dialect/Utils/StaticValueUtils.h"
 
 namespace mlir::iree_compiler::AMDAIE {
@@ -321,9 +322,23 @@ LogicalResult foldUnitDims(const SmallVector<OpFoldResult> &offsets,
 LogicalResult moveNpuDmaSyncUsersAfterAncestorInSameBlock(
     RewriterBase &rewriter, Operation *parentOp) {
   WalkResult res = parentOp->walk([&](AMDAIE::NpuDmaWaitOp npuDmaWaitOp) {
-    Operation *dmaOp = npuDmaWaitOp.getDma().getDefiningOp();
-    Operation *ancestorInSameBlock =
-        getAncestorInBlock(npuDmaWaitOp, dmaOp->getBlock());
+    SmallPtrSet<Operation *, 4> ancestorsInSameBlock;
+    // All async token producers should result in the same ancestor being found.
+    for (Value asyncToken : npuDmaWaitOp.getAsyncTokens()) {
+      Operation *dmaOp = asyncToken.getDefiningOp();
+      ancestorsInSameBlock.insert(
+          getAncestorInBlock(npuDmaWaitOp, dmaOp->getBlock()));
+    }
+    if (ancestorsInSameBlock.size() == 0) {
+      npuDmaWaitOp.emitOpError() << "no ancestors found";
+      return WalkResult::interrupt();
+    }
+    if (ancestorsInSameBlock.size() != 1) {
+      npuDmaWaitOp.emitOpError()
+          << "the async token producers are located in a different scope";
+      return WalkResult::interrupt();
+    }
+    Operation *ancestorInSameBlock = *ancestorsInSameBlock.begin();
     if (!ancestorInSameBlock) {
       npuDmaWaitOp->emitOpError(
           "doesn't have an ancestor in the same scope as the source DMA op");

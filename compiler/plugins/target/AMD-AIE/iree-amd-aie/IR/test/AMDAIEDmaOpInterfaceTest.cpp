@@ -46,7 +46,7 @@ class DmaOpInterfaceTest : public ::testing::Test {
     auto input =
         rewriter.create<arith::ConstantIndexOp>(rewriter.getUnknownLoc(), 2);
     auto dmaOp = rewriter.create<mlir::iree_compiler::AMDAIE::NpuDmaCpyNdOp>(
-        rewriter.getUnknownLoc(), input, target, targetOffsetsOfr,
+        rewriter.getUnknownLoc(), TypeRange{}, input, target, targetOffsetsOfr,
         targetSizesOfr, targetStridesOfr, nullptr, source, sourceOffsetsOfr,
         sourceSizesOfr, sourceStridesOfr, nullptr);
     std::optional<int64_t> sourceStaticSize = dmaOp.getSourceStaticSize();

@@ -15,6 +15,16 @@ class AMDAIEDialect_Type<string name, string typeMnemonic, list<Trait> traits = 
   let mnemonic = typeMnemonic;
 }
 
+// The types for async tokens which can be returned from async operations. The
+// dedicated types for `source` and `target` can be used to specify on which
+// side of (for example a copy/DMA) operation should be synchronized if there
+// are multiple.
+def AMDAIE_AsyncTokenType : AMDAIEDialect_Type<"AsyncToken", "async_token">;
+def AMDAIE_AsyncSourceTokenType : AMDAIEDialect_Type<"AsyncSourceToken", "async_source_token">;
+def AMDAIE_AsyncTargetTokenType : AMDAIEDialect_Type<"AsyncTargetToken", "async_target_token">;
+def AMDAIE_AnyAsyncTokenType 
+  : AnyTypeOf<[AMDAIE_AsyncTokenType, AMDAIE_AsyncSourceTokenType, AMDAIE_AsyncTargetTokenType]>;
+
 def AMDAIE_LogicalObjectFifoType :
     AMDAIEDialect_Type<"LogicalObjectFifo", "logicalobjectfifo"> {
   let summary = "The logical objectfifo type encapsulating a memref";

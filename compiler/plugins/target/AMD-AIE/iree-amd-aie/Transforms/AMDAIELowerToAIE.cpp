@@ -502,26 +502,36 @@ LogicalResult AIEDeviceBuilder::npuDmaWaitToAIE(
     AMDAIE::NpuDmaWaitOp waitOp, SmallVector<Operation *> &toBeErased) {
   LLVM_DEBUG(llvm::dbgs() << "Convert [AMDAIE::NpuDmaWaitOp]\n");
   rewriter.setInsertionPoint(waitOp);
-  AMDAIE::ConnectionOp connectionOp = waitOp.getDmaOp().getConnectionOp();
-  if (!connectionToSourceTargetMemOps.contains(connectionOp)) {
-    return connectionOp.emitOpError()
-           << "should be found in the connection to source/target mem ops map";
+  for (Value asyncToken : waitOp.getAsyncTokens()) {
+    auto npuDmaOp =
+        dyn_cast_if_present<NpuDmaCpyNdOp>(asyncToken.getDefiningOp());
+    if (!npuDmaOp) {
+      return waitOp.emitOpError()
+             << "should be operating on `amdaie.npu.dma_cpy_nd` for "
+                "lowering";
+    }
+    AMDAIE::ConnectionOp connectionOp = npuDmaOp.getConnectionOp();
+    if (!connectionToSourceTargetMemOps.contains(connectionOp)) {
+      return connectionOp.emitOpError() << "should be found in the connection "
+                                           "to source/target mem ops map";
+    }
+    SmallVector<Operation *> memOps =
+        isa<AMDAIE::AsyncSourceTokenType>(asyncToken.getType())
+            ? connectionToSourceTargetMemOps[connectionOp].first
+            : connectionToSourceTargetMemOps[connectionOp].second;
+    if (memOps.size() != 1) {
+      return waitOp.emitOpError()
+             << "only a single connection op source expected";
+    }
+    auto shimDmaAllocOp = dyn_cast<AIE::ShimDMAAllocationOp>(memOps[0]);
+    if (!shimDmaAllocOp) {
+      return waitOp.emitOpError()
+             << "expected the source of the connection to "
+                "be mapped to a `AIE::ShimDMAAllocationOp`";
+    }
+    rewriter.create<AIEX::NpuDmaWaitOp>(rewriter.getUnknownLoc(),
+                                        shimDmaAllocOp.getSymName());
   }
-  SmallVector<Operation *> memOps =
-      waitOp.getDirection() == AMDAIE::DMAChannelDir::MM2S
-          ? connectionToSourceTargetMemOps[connectionOp].first
-          : connectionToSourceTargetMemOps[connectionOp].second;
-  if (memOps.size() != 1) {
-    return waitOp.emitOpError()
-           << "only a single connection op source expected";
-  }
-  auto shimDmaAllocOp = dyn_cast<AIE::ShimDMAAllocationOp>(memOps[0]);
-  if (!shimDmaAllocOp) {
-    return waitOp.emitOpError() << "expected the source of the connection to "
-                                   "be mapped to a `AIE::ShimDMAAllocationOp`";
-  }
-  rewriter.create<AIEX::NpuDmaWaitOp>(rewriter.getUnknownLoc(),
-                                      shimDmaAllocOp.getSymName());
   toBeErased.push_back(waitOp);
   return success();
 }
