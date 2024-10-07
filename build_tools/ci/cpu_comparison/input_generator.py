@@ -64,6 +64,16 @@ def convert_f32_to_bf16(float32_value):
     return np.uint16(bf16_int_repr)
 
 
+def convert_bf16_to_f32(bfloat16_value):
+    """
+    IEEE bfloat16 to float32. See docstring of convert_f32_to_bf16 for a
+    bit of info on the mantissa/exponent manipulation.
+    """
+    v0 = np.uint32(bfloat16_value) << 16
+    float32_value = np.frombuffer(v0.tobytes(), dtype=np.float32)[0]
+    return float32_value
+
+
 def generate_bfloat16_data(num_values, lower_bound, upper_bound, rng):
 
     float_data = rng.integers(lower_bound, upper_bound, num_values).astype(np.float32)
@@ -163,6 +173,80 @@ def write_input(bin_filename, num_elements, element_type, input_number, input_se
 
     with open(bin_filename, "wb") as file:
         file.write(data)
+
+
+def get_output_type(filename):
+    """
+    Reads the contents of 'filename' which must contain an MLIR function with
+    a single returned value, a tensor.
+
+    If there's a line of the form '// output 4xf32' then
+    just return the string '4xf32'.
+
+    Otherwise find the return op at the end of the function, and get the
+    type from the tensor type. i.e. get '3xf32' from 'tensor<3xf32>'
+    """
+
+    with open(filename, "r") as file:
+        # First attempt: find line of the form '// output 4xf32'
+        # This is fail safe for developers: Just add this line to IR being
+        # tested.
+        for line in file:
+            line = line.strip()
+            tokens = line.split()
+            if len(tokens) > 2 and tokens[0] == "//":
+                if tokens[1] == "output":
+                    return tokens[2].strip()
+
+    # Second attempt (for legacy test files)
+    # Find a line of the form
+    # 'return %foo : tensor<1x2x3x4xsi32>'
+    with open(filename, "r") as file:
+        for line in file:
+            if "return " in line:
+                line = line.strip()
+                lines = line.split("tensor<")
+                assert len(lines) == 2
+                line = lines[-1]
+                line = line[0:-1]
+                return line
+
+    raise ValueError(
+        "Could not find output from the MLIR file. Consider adding a line of the form // output to the file."
+    )
+
+
+def np_from_binfile(bin_file, type_str):
+    """
+    Load a numpy array from the binary file bin_file.
+
+    Not much interesting here, but the case where element_type_str is 'bf16' is
+    possibly not obvious: there is no native numpy element type for brainfloat,
+    so we load it as uint16 and then convert it to float32 (by just packing
+    extra mantissa 0 bits).
+    """
+
+    element_type_str = type_str.strip().split("x")[-1]
+
+
+    # Get a numpy type from the string.
+    np_type = None
+    if element_type_str == "bf16":
+        np_type = np.uint16
+    else:
+        np_type = get_numpy_type(element_type_str)
+
+    shape = [int(x) for x in type_str.strip().split("x")[0:-1]]
+
+    # Load data with the numpy type specified.
+    array = np.fromfile(bin_file, dtype=np_type)
+    array = array.reshape(shape)
+
+    # If the numpy type was just a proxy, do some extra processing.
+    if element_type_str == "bf16":
+        array = np.array([convert_bf16_to_f32(x) for x in array])
+
+    return array
 
 
 def generate_inputs(filename, write_dir, seed):

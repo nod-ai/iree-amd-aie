@@ -617,11 +617,14 @@ def write_calls_file(functions, calls, filename, requirements):
 def intsFromCommaSeperated(s):
     return [int(x) for x in s.split(",")]
 
+
 def stringsFromCommaSeperated(s):
     return s.split(",")
 
+
 def boolFromString(s):
     return not s.lower() in ["false", "0", ""]
+
 
 def main(args):
     lhs_rhs_type = MatrixElemTypeId(args.lhs_rhs_type)
@@ -635,13 +638,11 @@ def main(args):
     dynamicity = [Dynamicity(x) for x in dynamicity]
 
     accumulate = stringsFromCommaSeperated(args.accumulate)
-    accumulate  = [boolFromString(x) for x in accumulate]
+    accumulate = [boolFromString(x) for x in accumulate]
 
     for a in accumulate:
         if a:
-            raise ValueError(
-                "accumulate=true not yet supported in iree-amd-aie tests"
-            )
+            raise ValueError("accumulate=true not yet supported in iree-amd-aie tests")
 
     sizes = [len(m), len(n), len(k), len(dynamicity), len(accumulate)]
     maxSize = max(sizes)
@@ -651,8 +652,6 @@ def main(args):
             f"Sizes are: m={len(m)}, n={len(n)}, k={len(k)}, "
             f"dynamicity={len(dynamicity)}, accumulate={len(accumulate)}"
         )
-
-
 
     shapes = []
     for i in range(maxSize):
