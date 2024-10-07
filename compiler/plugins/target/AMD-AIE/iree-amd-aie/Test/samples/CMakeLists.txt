@@ -8,7 +8,7 @@ iree_lit_test_suite(
   NAME
     lit
   SRCS
-    "conv2d_nhwc_air_e2e.mlir"
+    "conv2d_nhwc_objectfifo_e2e.mlir"
     "matmul_elementwise_pack_peel_air_e2e.mlir"
     "matmul_pack_peel_air_e2e.mlir"
     "matmul_pack_peel_objectfifo.mlir"

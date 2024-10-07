@@ -6,6 +6,8 @@
 
 #include "iree-amd-aie/Transforms/Passes.h"
 
+#include <memory>
+
 #include "aie/Passes.h"
 #include "aievec/Passes.h"
 #include "air/Conversion/AIRLoweringPass.h"
@@ -34,6 +36,7 @@
 #include "mlir/Dialect/Affine/Passes.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/Passes.h"
+#include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/MemRef/Transforms/Passes.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/Passes.h"
@@ -408,16 +411,20 @@ void addConvDecomposePassPipeline(OpPassManager &funcPassManager,
                                   TilingConfig &tilingConfig,
                                   bool enableVectorizationPasses,
                                   TilePassPipeline useTilePipeline) {
+  auto addCleanups = [&]() {
+    funcPassManager.addPass(createAMDAIECleanupPass());
+    funcPassManager.addPass(createCanonicalizerPass());
+    funcPassManager.addPass(createCSEPass());
+  };
+
   // First level tiling using scf.forall
   {
     AMDAIETileAndFuseOptions tileFuseOptions;
     tileFuseOptions.tilingLevel = 0;
     tileFuseOptions.useSCFFor = false;
     funcPassManager.addPass(createAMDAIETileAndFusePass(tileFuseOptions));
+    addCleanups();
   }
-  funcPassManager.addPass(createAMDAIECleanupPass());
-  funcPassManager.addPass(createCanonicalizerPass());
-  funcPassManager.addPass(createCSEPass());
 
   // Pad the linalg operation
   {
@@ -441,67 +448,50 @@ void addConvDecomposePassPipeline(OpPassManager &funcPassManager,
     tileFuseOptions.tilingLevel = 1;
     tileFuseOptions.useSCFFor = false;
     funcPassManager.addPass(createAMDAIETileAndFusePass(tileFuseOptions));
+    addCleanups();
   }
-  funcPassManager.addPass(createAMDAIECleanupPass());
-  funcPassManager.addPass(createCanonicalizerPass());
-  funcPassManager.addPass(createCSEPass());
 
   // Fuse fill op into the inner forall loop
   funcPassManager.addPass(createAMDAIEFuseFillIntoForallPass());
-  funcPassManager.addPass(createCanonicalizerPass());
 
-  // Pad the linalg operation
+  // Pack the linalg operation
   {
-    AMDAIEPadOptions padOptions;
-    padOptions.paddingLevel = 1;
-    funcPassManager.addPass(createAMDAIEPadPass(padOptions));
+    AMDAIEPackAndTransposeOptions packOptions;
+    packOptions.packLevel = 0;
+    funcPassManager.addPass(createAMDAIEPackAndTransposePass(packOptions));
   }
 
-  // Only promote the result to local memory
+  // Promote the inputs and results to local memory
   {
     AMDAIEBufferizeToAllocationOptions bufferizeOptions;
     bufferizeOptions.memorySpace = 2;
-    bufferizeOptions.bufferizeOperand = BufferizeOperand::Output;
+    bufferizeOptions.bufferizeOperand = BufferizeOperand::InputOutput;
     funcPassManager.addPass(
         createAMDAIEBufferizeToAllocationPass(bufferizeOptions));
+    addCleanups();
   }
 
-  // Tile the reduction dimension using scf.for
   {
     AMDAIETileAndFuseOptions tileFuseOptions;
     tileFuseOptions.tilingLevel = 2;
     tileFuseOptions.useSCFFor = true;
     funcPassManager.addPass(createAMDAIETileAndFusePass(tileFuseOptions));
-  }
-  funcPassManager.addPass(createAMDAIECleanupPass());
-  funcPassManager.addPass(createCanonicalizerPass());
-  funcPassManager.addPass(createCSEPass());
-
-  // Pad the linalg operation
-  {
-    AMDAIEPadOptions padOptions;
-    padOptions.paddingLevel = 2;
-    funcPassManager.addPass(createAMDAIEPadPass(padOptions));
+    addCleanups();
   }
 
-  // Promote the inputs to local memory
-  {
-    AMDAIEBufferizeToAllocationOptions bufferizeOptions;
-    bufferizeOptions.memorySpace = 2;
-    bufferizeOptions.bufferizeOperand = BufferizeOperand::Input;
-    funcPassManager.addPass(
-        createAMDAIEBufferizeToAllocationPass(bufferizeOptions));
-  }
-
-  // Decompose Conv2d ops to Conv1d ops
-  funcPassManager.addPass(createDecomposeConvolutionToLowerDimOpsPass());
+  LinalgFoldUnitExtentDimsPassOptions opts;
+  opts.useRankReducingSlices = true;
+  funcPassManager.addPass(mlir::createLinalgFoldUnitExtentDimsPass(opts));
 
   // Vectorization passes
+  // FIXME(newling) https://github.com/nod-ai/iree-amd-aie/issues/820
+  enableVectorizationPasses = false;
   appendVectorizationToPipeline(funcPassManager, enableVectorizationPasses);
   funcPassManager.addPass(createCanonicalizerPass());
 
   // Comprehensive bufferization
   addAMDAIEBufferizePasses(funcPassManager, useTilePipeline);
+  funcPassManager.addPass(createHoistStaticallyBoundAllocationsPass());
 }
 
 void buildAMDAIETransformPassPipeline(
@@ -557,6 +547,9 @@ void addAMDAIEObjectFifoLoweringPasses(OpPassManager &passManager,
                                        bool enablePacketFlow) {
   passManager.addPass(createEraseHALDescriptorTypeFromMemRefPass());
   passManager.addPass(memref::createFoldMemRefAliasOpsPass());
+  // passManager.addPass(std::make_unique<CanonicalizeMemref>());
+  passManager.addPass(createCanonicalizerPass());
+
   passManager.addPass(createAMDAIEConvertToDmaPass());
 
   passManager.addPass(createAMDAIENormalizeLoopBoundsPass());
@@ -582,6 +575,7 @@ void addAMDAIEObjectFifoLoweringPasses(OpPassManager &passManager,
   passManager.addPass(createAMDAIEAssignLogicalObjectFifoDepthPass());
   passManager.addPass(createAMDAIEAccessToAcquireReleasePass());
   passManager.addPass(createAMDAIENoneAccessToTemporaryBufferPass());
+
   passManager.addPass(
       createAMDAIEAssignConnectionTypesPass({enablePacketFlow}));
   passManager.addPass(createCSEPass());
@@ -612,6 +606,7 @@ void addAMDAIEObjectFifoLoweringPasses(OpPassManager &passManager,
   passManager.addPass(createCanonicalizerPass());
 
   passManager.addPass(createAMDAIEObjFifoBufferizationPass());
+  passManager.addPass(createAMDAIETemporaryAllocBufferizationPass());
   passManager.addPass(createAMDAIEConnectionToFlowPass());
   passManager.addPass(createAMDAIEAssignPacketIdsPass());
 

@@ -680,7 +680,7 @@ class ConvolutionTemplateSet(TestSet):
                 config,
                 test_name,
                 tile_pipeline="conv-decompose",
-                lower_to_aie_pipeline="air",
+                lower_to_aie_pipeline="objectFifo",
                 n_repeats=n_conv_repeats,
             )
 
@@ -700,7 +700,7 @@ class ConvolutionSet(TestSet):
                 config,
                 test_files_dir / f"{name}.mlir",
                 tile_pipeline="conv-decompose",
-                lower_to_aie_pipeline="air",
+                lower_to_aie_pipeline="objectFifo",
                 n_repeats=n_conv_repeats,
             )
 
