@@ -36,7 +36,7 @@ import re
 from numpy.random import Generator, MT19937, SeedSequence
 
 
-def convert_f32_to_bf16(float32_value):
+def convert_f32_to_bf16(float32_array):
     """
     IEEE float32 to bfloat16
 
@@ -59,19 +59,17 @@ def convert_f32_to_bf16(float32_value):
     to:   [SEEEEEEEEMMMMMMM]
                            ================= remove 16 bits of mantissa
     """
-    int32_repr = float32_value.view(np.int32)
-    bf16_int_repr = int32_repr >> 16
-    return np.uint16(bf16_int_repr)
+    v0 = float32_array.view(np.uint32) >> 16
+    return v0.astype(np.uint16)
 
 
-def convert_bf16_to_f32(bfloat16_value):
+def convert_bf16_to_f32(bfloat16_array):
     """
     IEEE bfloat16 to float32. See docstring of convert_f32_to_bf16 for a
     bit of info on the mantissa/exponent manipulation.
     """
-    v0 = np.uint32(bfloat16_value) << 16
-    float32_value = np.frombuffer(v0.tobytes(), dtype=np.float32)[0]
-    return float32_value
+    v0 = bfloat16_array.astype(np.uint32) << 16
+    return np.frombuffer(v0.tobytes(), dtype=np.float32)
 
 
 def generate_bfloat16_data(num_values, lower_bound, upper_bound, rng):
@@ -79,7 +77,7 @@ def generate_bfloat16_data(num_values, lower_bound, upper_bound, rng):
     float_data = rng.integers(lower_bound, upper_bound, num_values).astype(np.float32)
 
     # Convert float32 data to bfloat16
-    bf16_data = [convert_f32_to_bf16(f) for f in float_data]
+    bf16_data = convert_f32_to_bf16(float_data)
 
     # Pack bfloat16 data into binary format
     binary_data = struct.pack(f"{len(bf16_data)}H", *bf16_data)
@@ -228,7 +226,6 @@ def np_from_binfile(bin_file, type_str):
 
     element_type_str = type_str.strip().split("x")[-1]
 
-
     # Get a numpy type from the string.
     np_type = None
     if element_type_str == "bf16":
@@ -244,7 +241,7 @@ def np_from_binfile(bin_file, type_str):
 
     # If the numpy type was just a proxy, do some extra processing.
     if element_type_str == "bf16":
-        array = np.array([convert_bf16_to_f32(x) for x in array])
+        array = convert_bf16_to_f32(array)
 
     return array
 
