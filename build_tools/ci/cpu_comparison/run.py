@@ -14,7 +14,13 @@ from textwrap import dedent
 
 import numpy as np
 
-from input_generator import generate_inputs, verify_determinism, load_input
+from input_generator import (
+    generate_inputs,
+    verify_determinism,
+    load_input,
+    get_output_type,
+    np_from_binfile,
+)
 from matmul_template.matmul_generator import generate_matmul_test
 from convolution_template.convolution_generator import ConvolutionMlirGenerator
 from output_comparer import compare
@@ -103,12 +109,11 @@ def shell_out(cmd: list, workdir=None, verbose: int = 0, raise_on_error=True, en
     if not raise_on_error and handle.returncode != 0:
         print(
             f"Error executing script, error code was {handle.returncode}. Not raising an error.",
-            file=sys.stderr
+            file=sys.stderr,
         )
     if raise_on_error and handle.returncode != 0:
         raise RuntimeError(
-            f"Error executing script, error code was {handle.returncode}",
-            file=sys.stderr
+            f"Error executing script, error code was {handle.returncode}"
         )
     return stdout_decode, stderr_decode
 
@@ -176,18 +181,18 @@ def generate_aie_vmfb(
     return aie_vmfb
 
 
-def generate_aie_output(config, aie_vmfb, input_args, function_name, name):
+def generate_aie_output(config, aie_vmfb, input_args, function_name, name, output_type):
     """
     Run a compiled AIE module (aie_vmfb), returning a numpy array of the output.
     """
 
-    aie_npy = config.output_dir / f"{name}_aie.npy"
+    aie_bin = config.output_dir / f"{name}_aie.bin"
     run_args = [
         config.iree_run_exe,
         f"--module={aie_vmfb}",
         *input_args,
         "--device=xrt",
-        f"--output=@{aie_npy}",
+        f"--output=@{aie_bin}",
     ]
     if function_name:
         run_args += [f"--function={function_name}"]
@@ -201,7 +206,7 @@ def generate_aie_output(config, aie_vmfb, input_args, function_name, name):
     if config.verbose:
         print(f"Time spent in running the model: {run_time // 1e6} [ms]")
 
-    return np.load(aie_npy)
+    return np_from_binfile(aie_bin, output_type)
 
 
 def generate_llvm_cpu_output(
@@ -210,6 +215,7 @@ def generate_llvm_cpu_output(
     test_file,
     input_args,
     function_name,
+    output_type,
 ):
     """
     Compile and run a test file for IREE's CPU backend, returning a numpy array
@@ -227,17 +233,17 @@ def generate_llvm_cpu_output(
     ]
     shell_out(compilation_flags, workdir=config.output_dir, verbose=config.verbose)
 
-    cpu_npy = config.output_dir / f"{name}_cpu.npy"
+    cpu_bin = config.output_dir / f"{name}_cpu.bin"
     run_args = [
         config.iree_run_exe,
         f"--module={cpu_vmfb}",
         *input_args,
-        f"--output=@{cpu_npy}",
+        f"--output=@{cpu_bin}",
     ]
     if function_name:
         run_args += [f"--function={function_name}"]
     shell_out(run_args, workdir=config.output_dir, verbose=config.verbose)
-    return np.load(cpu_npy)
+    return np_from_binfile(cpu_bin, output_type)
 
 
 class TestConfig:
@@ -447,6 +453,7 @@ def aie_vs_baseline(
     rtol,
     atol,
     n_repeats,
+    output_type,
 ):
     """
     If the outputs differ, add the test file to a list of failures.
@@ -503,6 +510,7 @@ def aie_vs_baseline(
             input_args,
             function_name,
             name,
+            output_type,
         )
 
         summary_string = compare(baseline_value, aie_output, rtol, atol)
@@ -538,9 +546,15 @@ def aie_vs_llvm_cpu(
         print(f"Running {name} test")
 
     input_args = generate_inputs(test_file, config.output_dir, seed)
+    output_type = get_output_type(test_file)
 
     cpu_output = generate_llvm_cpu_output(
-        config, name, test_file, input_args, function_name
+        config,
+        name,
+        test_file,
+        input_args,
+        function_name,
+        output_type,
     )
 
     aie_vs_baseline(
@@ -556,6 +570,7 @@ def aie_vs_llvm_cpu(
         rtol,
         atol,
         n_repeats,
+        output_type,
     )
 
 
@@ -578,6 +593,8 @@ def aie_vs_np_matmul(
 
     name = name_from_mlir_filename(test_file)
     input_args = generate_inputs(test_file, config.output_dir, seed)
+    output_type = get_output_type(test_file)
+
     numpy_output = matmul_from_input_strings(input_args)
     aie_vs_baseline(
         config,
@@ -592,6 +609,7 @@ def aie_vs_np_matmul(
         rtol,
         atol,
         n_repeats,
+        output_type,
     )
 
 
