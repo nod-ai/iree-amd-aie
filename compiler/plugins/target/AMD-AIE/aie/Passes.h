@@ -28,8 +28,6 @@ createAMDAIELocalizeLocksPass();
 std::unique_ptr<OperationPass<xilinx::AIE::DeviceOp>>
 createAMDAIENormalizeAddressSpacesPass();
 std::unique_ptr<OperationPass<xilinx::AIE::DeviceOp>>
-createAMDAIEObjectFifoStatefulTransformPass();
-std::unique_ptr<OperationPass<xilinx::AIE::DeviceOp>>
 createAMDAIEPathfinderPass();
 std::unique_ptr<OperationPass<ModuleOp>> createAMDAIECoreToStandardPass();
 std::unique_ptr<OperationPass<xilinx::AIE::DeviceOp>>
