@@ -573,6 +573,7 @@ def aie_vs_llvm_cpu(
         output_type,
     )
 
+
 class TestSet:
     def __init__(self, name):
         self.name = name
@@ -791,15 +792,16 @@ class SmokeSet(TestSet):
             config,
             test_name,
             input_args,
-            ones * 64, # exected output 
-            False, # use_ukernel
-            "pack-peel", # tile_pipeline
-            "objectFifo", # lower_to_aie_pipeline
-            None, # function_name
-            1, # seed
-            0, # rtol
-            0, # atol
-            1, # n_repeats
+            ones * 64,  # exected output
+            use_ukernel=False,
+            tile_pipeline="pack-peel",
+            lower_to_aie_pipeline="objectFifo",
+            function_name=None,
+            seed=1,
+            rtol=0,
+            atol=0,
+            n_repeats=1,
+            output_type=get_output_type(test_name),
         )
 
 
