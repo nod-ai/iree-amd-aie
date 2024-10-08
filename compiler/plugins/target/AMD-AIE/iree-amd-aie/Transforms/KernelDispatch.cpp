@@ -174,8 +174,7 @@ FailureOr<ParameterSetting> ParameterSetting::create(linalg::LinalgOp linalgOp,
   // the element types of all tensors which need to be allocated in memory
   // simultaneously.
   FailureOr<unsigned> maybeScaleFactor =
-      isObjectFifo ? getTilingScaleFactor(initType.getElementType())
-                   : getTilingScaleFactor(lhsType.getElementType());
+      getTilingScaleFactor(lhsType.getElementType());
   if (failed(maybeScaleFactor)) {
     return linalgOp.emitOpError(
         "does not have the expected bitwidth (64, 32, 16, or 8), could not "

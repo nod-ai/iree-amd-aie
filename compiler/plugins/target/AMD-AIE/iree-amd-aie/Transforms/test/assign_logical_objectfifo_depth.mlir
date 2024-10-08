@@ -1,4 +1,4 @@
-// RUN: iree-opt --pass-pipeline="builtin.module(iree-amdaie-assign-logical-objectfifo-depth)" %s | FileCheck %s
+// RUN: iree-opt --pass-pipeline="builtin.module(iree-amdaie-assign-logical-objectfifo-depth{l3-buffer-depth=1 l2-buffer-depth=2 l1-buffer-depth=2})" %s | FileCheck %s
 // RUN: iree-opt --pass-pipeline="builtin.module(iree-amdaie-assign-logical-objectfifo-depth{l3-buffer-depth=3 l2-buffer-depth=2 l1-buffer-depth=1})" %s | FileCheck %s --check-prefix=OPTIONS
 
 // CHECK-LABEL: @assign

@@ -48,9 +48,9 @@ def AMDAIEAssignLogicalObjectFifoDepth :
   let options = [
     Option<"l3BufferDepth", "l3-buffer-depth", "int64_t", /*default=*/"1",
       "Set the L3 buffer depth to be used.">,
-    Option<"l2BufferDepth", "l2-buffer-depth", "int64_t", /*default=*/"2",
+    Option<"l2BufferDepth", "l2-buffer-depth", "int64_t", /*default=*/"1",
       "Set the L2 buffer depth to be used.">,
-    Option<"l1BufferDepth", "l1-buffer-depth", "int64_t", /*default=*/"2",
+    Option<"l1BufferDepth", "l1-buffer-depth", "int64_t", /*default=*/"1",
       "Set the L1 buffer depth to be used.">,
   ];
 }
