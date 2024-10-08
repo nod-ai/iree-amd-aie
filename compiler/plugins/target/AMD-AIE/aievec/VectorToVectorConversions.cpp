@@ -642,7 +642,6 @@ struct DetectNonCanonicalOpsPass
 };
 
 void buildCanonicalizeVectorForAIEVec(OpPassManager &pm) {
-
   // TODO: Add passes to split vectors that won't fit in registers
   pm.addPass(createCanonicalizeVectorForAIEVecPass());
   pm.addPass(mlir::createCanonicalizerPass());
