@@ -817,6 +817,8 @@ void addMLIRAIELoweringPasses(OpPassManager &passManager) {
     devicePM.addPass(createAMDAIENormalizeAddressSpacesPass());
     devicePM.addPass(createCanonicalizerPass());
   }
+
+  mlir::iree_compiler::aievec::buildConvertVectorToAIEVec(passManager);
 }
 
 // NOTE: this runs on the top-level program module containing all hal.executable

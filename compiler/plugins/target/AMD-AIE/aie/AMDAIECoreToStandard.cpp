@@ -6,8 +6,10 @@
 
 #include "AIEDialect.h"
 #include "Passes.h"
+#include "aievec/AIEVecDialect.h"
 #include "mlir/Conversion/FuncToLLVM/ConvertFuncToLLVM.h"
 #include "mlir/Conversion/FuncToLLVM/ConvertFuncToLLVMPass.h"
+#include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/ControlFlow/IR/ControlFlow.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
@@ -147,8 +149,6 @@ struct AMDAIECoreToStandardFunc : OpConversionPattern<CoreOp> {
         rewriter.getUnknownLoc(), coreName,
         FunctionType::get(rewriter.getContext(), {}, {}));
 
-
-
     rewriter.cloneRegionBefore(coreOp.getBody(), coreFunc.getBody(),
                                coreFunc.getBody().begin(), mapper);
 
@@ -214,14 +214,12 @@ struct AMDAIECoreToStandardPass : mlir::OperationPass<ModuleOp> {
   void runOnOperation() override {
     ModuleOp m = getOperation();
 
-
     if (m.getOps<DeviceOp>().empty()) {
       m.emitOpError("expected AIE.device operation at toplevel");
       return signalPassFailure();
     }
 
     OpBuilder builder = OpBuilder::atBlockEnd(m.getBody());
-
 
     // Ensure that we don't have an incorrect target triple.  This may override
     // some bogus target triple in the original mlir.
@@ -233,7 +231,9 @@ struct AMDAIECoreToStandardPass : mlir::OperationPass<ModuleOp> {
     target.addLegalDialect<func::FuncDialect>();
     target.addLegalDialect<cf::ControlFlowDialect>();
     target.addLegalDialect<memref::MemRefDialect>();
+    target.addLegalDialect<affine::AffineDialect>();
     target.addLegalDialect<VectorDialect>();
+    target.addLegalDialect<mlir::iree_compiler::aievec::AIEVecDialect>();
     target.addLegalDialect<arith::ArithDialect>();
     target.addLegalDialect<math::MathDialect>();
     target.addLegalOp<func::FuncOp, ModuleOp>();
