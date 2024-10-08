@@ -12,4 +12,3 @@ def test_conversion():
     c = convert_bf16_to_f32(np.array(b))
     assert np.allclose(c, expected, 0, 0)
 
-test_conversion()
