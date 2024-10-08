@@ -574,7 +574,7 @@ static LogicalResult setRootConfigForConvDecomposePipeline(
     // Target one column of 4 cores, each core processing a different
     // output image row. TODO(newling) use 4x4 array.
     // https://github.com/nod-ai/iree-amd-aie/issues/821
-    tileSizeLevel0 = {1, 4 * OH_1, OW_0, OC_0, 0, 0};
+    tileSizeLevel0 = {1, 4 * OH_1, OW_0, OC_1, 0, 0};
     tileSizeLevel1 = {1, OH_1, OW_0, OC_1, 0, 0};
     tileSizeLevel2 = {0, 0, 0, 0, 1, 1, 0};
   }

@@ -6,8 +6,6 @@
 
 #include "iree-amd-aie/Transforms/Passes.h"
 
-#include <memory>
-
 #include "aie/Passes.h"
 #include "aievec/Passes.h"
 #include "air/Conversion/AIRLoweringPass.h"
@@ -36,7 +34,6 @@
 #include "mlir/Dialect/Affine/Passes.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/Passes.h"
-#include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/MemRef/Transforms/Passes.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/Passes.h"

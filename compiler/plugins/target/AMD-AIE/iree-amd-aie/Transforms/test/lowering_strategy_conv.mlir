@@ -2,7 +2,7 @@
 
 
 
-// CHECK{LITERAL}: #config = #iree_codegen.lowering_config<tile_sizes = [[1, 1, 4, 4, 0, 0, 0], [1, 1, 4, 4, 0, 0, 0], [0, 0, 0, 0, 1, 1, 1, 0, 0]]>
+// CHECK{LITERAL}: #config = #iree_codegen.lowering_config<tile_sizes = [[1, 4, 4, 4, 0, 0, 0], [1, 1, 4, 4, 0, 0, 0], [0, 0, 0, 0, 1, 1, 1, 0, 0]]>
 // CHECK{LITERAL}: #packingConfig = #amdaie.packing_config<packing_config = [{packedSizes = [0, 0, 0, 4, 0, 0, 8], transposePackIndices = [0, 1, 2], unpackEmpty = [false, false, true], innerPerm = [[], [1, 0], []], outerPerm = [[0, 1, 3, 2], [], [0, 1, 2, 3]]}]>
 #pipeline_layout = #hal.pipeline.layout<bindings = [
   <storage_buffer>,
@@ -29,7 +29,7 @@ func.func @conv_static_dispatch_0_conv_2d_nhwc_hwcf_2x12x12x64x3x3x32_bf16xbf16x
 
 // -----
 
-// CHECK{LITERAL}: #config = #iree_codegen.lowering_config<tile_sizes = [[1, 1, 4, 4, 0, 0], [1, 1, 4, 4, 0, 0], [0, 0, 0, 0, 1, 1, 0]]>
+// CHECK{LITERAL}: #config = #iree_codegen.lowering_config<tile_sizes = [[1, 4, 4, 4, 0, 0], [1, 1, 4, 4, 0, 0], [0, 0, 0, 0, 1, 1, 0]]>
 // CHECK{LITERAL}: #packingConfig = #amdaie.packing_config<packing_config = [{packedSizes = [0, 0, 0, 4, 0, 0], transposePackIndices = [0, 1, 2], unpackEmpty = [false, false, true], innerPerm = [[], [], []], outerPerm = [[0, 1, 2, 3], [0, 1, 2], [0, 1, 2, 3]]}]>
 #pipeline_layout = #hal.pipeline.layout<bindings = [
   <storage_buffer>,
@@ -57,7 +57,7 @@ func.func @conv_depthwise_channel_last_bf16(){
 // -----
 // Same test as above, but where the operand type is i8. In this case we expect OC tile size 8  (not 4) at level 1. This is because of the instruction size of AIE.
 
-// CHECK{LITERAL}: #config = #iree_codegen.lowering_config<tile_sizes = [[1, 1, 4, 8, 0, 0], [1, 1, 4, 8, 0, 0], [0, 0, 0, 0, 1, 1, 0]]>
+// CHECK{LITERAL}: #config = #iree_codegen.lowering_config<tile_sizes = [[1, 4, 4, 8, 0, 0], [1, 1, 4, 8, 0, 0], [0, 0, 0, 0, 1, 1, 0]]>
 // CHECK{LITERAL}: #packingConfig = #amdaie.packing_config<packing_config = [{packedSizes = [0, 0, 0, 8, 0, 0], transposePackIndices = [0, 1, 2], unpackEmpty = [false, false, true], innerPerm = [[], [], []], outerPerm = [[0, 1, 2, 3], [0, 1, 2], [0, 1, 2, 3]]}]>
 #pipeline_layout = #hal.pipeline.layout<bindings = [
   <storage_buffer>,
