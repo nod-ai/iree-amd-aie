@@ -507,6 +507,10 @@ static LogicalResult setRootConfigForConvDecomposePipeline(
     innerPerm = {{}, {{1, 0}}, {}};
     outerPerm = {{0, 1, 3, 2}, {}, {0, 1, 2, 3}};
     packingSizes = {0, 0, 0, OC, 0, 0, IC};
+    // Target one column of 4 cores, each core processing a different
+    // output image row. TODO(newling) use 4x4 array.
+    // https://github.com/nod-ai/iree-amd-aie/issues/821
+    tileSizeLevel0 = {1, 4, OW, OC, 0, 0, 0};
     tileSizeLevel1 = {1, 1, OW, OC, 0, 0, 0};
     // scf.for tiling of KH, KW, and (packed) IC dimensions:
     tileSizeLevel2 = {0, 0, 0, 0, 1, 1, 1, 0, 0};
@@ -567,6 +571,10 @@ static LogicalResult setRootConfigForConvDecomposePipeline(
     packingSizes = {0, 0, 0, OC_1, 0, 0};
     innerPerm = {{}, {}, {}};
     outerPerm = {{0, 1, 2, 3}, {0, 1, 2}, {0, 1, 2, 3}};
+    // Target one column of 4 cores, each core processing a different
+    // output image row. TODO(newling) use 4x4 array.
+    // https://github.com/nod-ai/iree-amd-aie/issues/821
+    tileSizeLevel0 = {1, 4 * OH_1, OW_0, OC_0, 0, 0};
     tileSizeLevel1 = {1, OH_1, OW_0, OC_1, 0, 0};
     tileSizeLevel2 = {0, 0, 0, 0, 1, 1, 0};
   }
@@ -575,10 +583,6 @@ static LogicalResult setRootConfigForConvDecomposePipeline(
     return linalgOp.emitError(
         "unrecognised convolution op, cannot set packing config. ");
   }
-
-  // For the objectFifo backend we currently target a single core.
-  // FIXME(newling) https://github.com/nod-ai/iree-amd-aie/issues/821
-  tileSizeLevel0 = tileSizeLevel1;
 
   assert(!innerPerm.empty() && !outerPerm.empty() && !packingSizes.empty() &&
          !tileSizeLevel0.empty() && !tileSizeLevel1.empty() &&
