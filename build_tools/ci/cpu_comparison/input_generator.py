@@ -1,33 +1,3 @@
-# This script is expected to be run from the command-line with 3 arguments:
-#
-#   1) the name of a file to parse.
-#   2) the directory where binary files will be written.
-#   3) a random seed.
-#
-# Example:
-# ```
-# python input_generator.py <input_file> <output_dir> <seed>
-# ```
-#
-# The file <input_file> contains an mlir function, and header information
-# about the inputs. See existing tests for examples.
-#
-# The header information specifies the number, shape, and type of inputs.
-# Example:
-#
-# ```
-#  # input 3x40xf32
-#  # input 2x2xi32
-# ```
-# This script finds all lines of the form above and generates binary files with
-# random data for them.
-#
-# This script also create a file containing a single line of the form
-# `--input="3x40xf32=@<binary_file>" --input="2x2xi32=@<binary_file>"`
-#
-# which will be used as input to iree-run-module in the main script.
-
-
 import numpy as np
 import struct
 import sys
@@ -36,7 +6,7 @@ import re
 from numpy.random import Generator, MT19937, SeedSequence
 
 
-def convert_f32_to_bf16(float32_array):
+def f32_to_bf16(float32_array):
     """
     IEEE float32 to bfloat16
 
@@ -63,21 +33,21 @@ def convert_f32_to_bf16(float32_array):
     return v0.astype(np.uint16)
 
 
-def convert_bf16_to_f32(bfloat16_array):
+def bf16_to_f32(bfloat16_array):
     """
-    IEEE bfloat16 to float32. See docstring of convert_f32_to_bf16 for a
+    IEEE bfloat16 to float32. See docstring of f32_to_bf16 for a
     bit of info on the mantissa/exponent manipulation.
     """
     v0 = bfloat16_array.astype(np.uint32) << 16
     return np.frombuffer(v0.tobytes(), dtype=np.float32).reshape(bfloat16_array.shape)
 
 
-def generate_bfloat16_data(num_values, lower_bound, upper_bound, rng):
+def generate_bfloat16_data(nb_values, lower_bound, upper_bound, rng):
 
-    float_data = rng.integers(lower_bound, upper_bound, num_values).astype(np.float32)
+    float_data = rng.integers(lower_bound, upper_bound, nb_values).astype(np.float32)
 
     # Convert float32 data to bfloat16
-    bf16_data = convert_f32_to_bf16(float_data)
+    bf16_data = f32_to_bf16(float_data)
 
     # Pack bfloat16 data into binary format
     binary_data = struct.pack(f"{len(bf16_data)}H", *bf16_data)
@@ -153,12 +123,10 @@ def load_input(input_string):
     return matrix
 
 
-def generate_and_write_input(
-    bin_filename, num_elements, element_type, input_number, input_seed
-):
+def generate_and_write_input(bin_fn, nb_elements, element_type, input_number, seed):
     """
-    Generate `num_elements` random values based on the random seed `input_seed`
-    and write them to the binary file `bin_filename`. The elements will
+    Generate `nb_elements` random values based on the random seed `seed`
+    and write them to the binary file `bin_fn`. The elements will
     be of type `element_type`.
     """
 
@@ -166,17 +134,17 @@ def generate_and_write_input(
     lower_bound = 0
     upper_bound = 10
 
-    rng = get_generator(input_seed)
+    rng = get_generator(seed)
 
     data = None
     if element_type == "bfloat16" or element_type == "bf16":
-        data = generate_bfloat16_data(num_elements, lower_bound, upper_bound, rng)
+        data = generate_bfloat16_data(nb_elements, lower_bound, upper_bound, rng)
     else:
         dtype = get_numpy_type(element_type)
-        tensor = rng.integers(lower_bound, upper_bound, num_elements).astype(dtype)
+        tensor = rng.integers(lower_bound, upper_bound, nb_elements).astype(dtype)
         data = tensor.tobytes()
 
-    with open(bin_filename, "wb") as file:
+    with open(bin_fn, "wb") as file:
         file.write(data)
 
 
@@ -185,17 +153,16 @@ def get_output_type(filename):
     Reads the contents of 'filename' which must contain an MLIR function with
     a single returned value, a tensor.
 
-    If there's a line of the form '// output 4xf32' then
+    If there's a line of the form '// output 4xf32' in the read file then
     just return the string '4xf32'.
 
-    Otherwise find the return op at the end of the function, and get the
-    type from the tensor type. i.e. get '3xf32' from 'tensor<3xf32>'
+    Otherwise find the return op that terminates the function, and get the
+    type from the tensor type. i.e. find a line of the form
+    'return %foo : tensor<3x4xi32>' and extract and return 3x4xi32.
     """
 
+    # First attempt: find line of the form '// output 4xf32'
     with open(filename, "r") as file:
-        # First attempt: find line of the form '// output 4xf32'
-        # This is fail safe for developers: Just add this line to IR being
-        # tested.
         for line in file:
             line = line.strip()
             tokens = line.split()
@@ -203,9 +170,8 @@ def get_output_type(filename):
                 if tokens[1] == "output":
                     return tokens[2].strip()
 
-    # Second attempt (for legacy test files)
-    # Find a line of the form
-    # 'return %foo : tensor<1x2x3x4xsi32>'
+    # Second attempt. Find the return operation, and extract the tensor type.
+    # This won't work if types have aliases.
     with open(filename, "r") as file:
         for line in file:
             if "return " in line:
@@ -217,17 +183,17 @@ def get_output_type(filename):
                 return line
 
     raise ValueError(
-        "Could not find output from the MLIR file. Consider adding a line of the form // output to the file."
+        "Could not find output type from the MLIR file. Consider adding a line of the form '// output 4xf32' to the file."
     )
 
 
-def np_from_binfile(bin_file, type_str):
+def np_from_binfile(bin_fn, type_str):
     """
-    Load a numpy array from the binary file bin_file.
+    Load a numpy array from the binary file bin_fn.
 
-    Not much interesting here, but the case where element_type_str is 'bf16' is
-    possibly not obvious: there is no native numpy element type for brainfloat,
-    so we load it as uint16 and then convert it to float32 (by just packing
+    The case where element_type_str is 'bf16' is possibly not obvious:
+    there is no native numpy element type for brainfloat,
+    so it is loaded as uint16 and then converted to float32 (by packing
     extra mantissa 0 bits).
     """
 
@@ -243,38 +209,38 @@ def np_from_binfile(bin_file, type_str):
     shape = [int(x) for x in type_str.strip().split("x")[0:-1]]
 
     # Load data with the numpy type specified.
-    array = np.fromfile(bin_file, dtype=np_type)
+    array = np.fromfile(bin_fn, dtype=np_type)
     array = array.reshape(shape)
 
     # If the numpy type was just a proxy, do some extra processing.
     if element_type_str == "bf16":
-        array = convert_bf16_to_f32(array)
+        array = bf16_to_f32(array)
 
     return array
 
 
-def write_input(bin_filename, num_elements, element_type, np_array):
+def write_array(bin_fn, nb_elements, element_type, np_array):
     """
-    Write the numpy array `np_array` to the binary file `bin_filename`. The
-    number of elements in `np_array` must be `num_elements` (this is verified).
+    Write the numpy array `np_array` to the binary file `bin_fn`. The
+    number of elements in `np_array` must be `nb_elements` (this is verified).
     The elements in `np_array` will be cast to the data type `element_type`,
     and so can be of any type.
     """
     # Assert that the number of elements is correct:
-    if num_elements != np_array.size:
+    if nb_elements != np_array.size:
         raise ValueError(
-            f"Expected {num_elements} elements, but got {np_array.size} elements."
+            f"Expected {nb_elements} elements, but got {np_array.size} elements."
         )
 
     if element_type == "bf16":
         array_f32 = np_array.astype(np.float32)
-        data = convert_f32_to_bf16(array_f32).tobytes()
+        data = f32_to_bf16(array_f32).tobytes()
 
     else:
         target_type = get_numpy_type(element_type)
         data = np_array.astype(target_type).tobytes()
 
-    with open(bin_filename, "wb") as file:
+    with open(bin_fn, "wb") as file:
         file.write(data)
 
 
@@ -288,7 +254,7 @@ def generate_inputs(filename, write_dir, seed, preset_inputs={}):
 
     Example: suppose the MLIR file contains a func.func with 2 arguments,
     and `preset_inputs` is {'2': np.array([1, 2, 3], dtype=np.int32)}. Then the
-    first argument to the function will have random values generated for it,
+    first argument to the MLIR function will have random values generated for it,
     and the second will have values [1, 2, 3].
     """
 
@@ -308,18 +274,18 @@ def generate_inputs(filename, write_dir, seed, preset_inputs={}):
                     sub_tokens = tokens[2].split("x")
                     element_type = sub_tokens[-1]
 
-                    num_elements = 1
+                    nb_elements = 1
                     for i in range(len(sub_tokens) - 1):
-                        num_elements *= int(sub_tokens[i])
-                    bin_filename = os.path.join(
+                        nb_elements *= int(sub_tokens[i])
+                    bin_fn = os.path.join(
                         write_dir, name + "_input" + str(input_number) + ".bin"
                     )
-                    if re.search(r"\s", str(bin_filename)):
+                    if re.search(r"\s", str(bin_fn)):
                         raise RuntimeError(
-                            f"input {tokens[2]}={bin_filename} has a space in the filename, which is not supported"
+                            f"input {tokens[2]}={bin_fn} has a space in the filename, which is not supported"
                         )
 
-                    input_args.append(f"--input={tokens[2]}=@{bin_filename}")
+                    input_args.append(f"--input={tokens[2]}=@{bin_fn}")
                     # Each input has a distinct seed, based on its input number.
                     # This is to ensure that operands are not populated with the
                     # same values.
@@ -329,16 +295,16 @@ def generate_inputs(filename, write_dir, seed, preset_inputs={}):
                     # write the value in the dictionary. otherwise create a
                     # random array.
                     if input_number in preset_inputs:
-                        write_input(
-                            bin_filename,
-                            num_elements,
+                        write_array(
+                            bin_fn,
+                            nb_elements,
                             element_type,
                             preset_inputs[input_number],
                         )
                     else:
                         generate_and_write_input(
-                            bin_filename,
-                            num_elements,
+                            bin_fn,
+                            nb_elements,
                             element_type,
                             input_number,
                             input_seed,
@@ -354,28 +320,28 @@ def generate_inputs(filename, write_dir, seed, preset_inputs={}):
 
     # Try and check that the number of inputs is correct, raise error if
     # suspected to be incorrect. This isn't perfect, but hopefully it will
-    # catch some errors than it detects false positives.
+    # catch more errors than it detects false positives.
 
     # Find all func.funcs and count their operands:
-    func_num_inputs = []
+    func_nb_inputs = []
     with open(filename, "r") as file:
         all_lines = file.read()
         func_func_index = all_lines.find("func.func")
         while func_func_index != -1:
             open_paren_index = all_lines.find("(", func_func_index)
             close_paren_index = all_lines.find(")", open_paren_index)
-            num_colons = all_lines.count(":", open_paren_index, close_paren_index)
-            func_num_inputs.append(num_colons)
+            nb_colons = all_lines.count(":", open_paren_index, close_paren_index)
+            func_nb_inputs.append(nb_colons)
             func_func_index = all_lines.find("func.func", close_paren_index)
 
     # If the number of inputs initially detected doesn't correspond to the
     # number of inputs in any of the mlir functions, raise an error.
-    if len(input_args) not in func_num_inputs:
+    if len(input_args) not in func_nb_inputs:
         raise ValueError(
             f"Number of inputs generated does not match the number of inputs in "
             f"any of the mlir functions. The number of inputs generated is "
             f"{len(input_args)}, the number of inputs in the mlir functions are "
-            f"{func_num_inputs}"
+            f"{func_nb_inputs}"
         )
 
     return input_args
