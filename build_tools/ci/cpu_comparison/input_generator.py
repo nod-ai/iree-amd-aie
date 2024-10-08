@@ -69,7 +69,7 @@ def convert_bf16_to_f32(bfloat16_array):
     bit of info on the mantissa/exponent manipulation.
     """
     v0 = bfloat16_array.astype(np.uint32) << 16
-    return np.frombuffer(v0.tobytes(), dtype=np.float32)
+    return np.frombuffer(v0.tobytes(), dtype=np.float32).reshape(bfloat16_array.shape)
 
 
 def generate_bfloat16_data(num_values, lower_bound, upper_bound, rng):
