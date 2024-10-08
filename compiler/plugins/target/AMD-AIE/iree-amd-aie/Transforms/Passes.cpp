@@ -547,9 +547,7 @@ void addAMDAIEObjectFifoLoweringPasses(OpPassManager &passManager,
                                        bool enablePacketFlow) {
   passManager.addPass(createEraseHALDescriptorTypeFromMemRefPass());
   passManager.addPass(memref::createFoldMemRefAliasOpsPass());
-  // passManager.addPass(std::make_unique<CanonicalizeMemref>());
   passManager.addPass(createCanonicalizerPass());
-
   passManager.addPass(createAMDAIEConvertToDmaPass());
 
   passManager.addPass(createAMDAIENormalizeLoopBoundsPass());

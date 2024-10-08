@@ -501,30 +501,14 @@ static LogicalResult setRootConfigForConvDecomposePipeline(
   if (isa<linalg::Conv2DNhwcHwcfQOp>(linalgOp) ||
       isa<linalg::Conv2DNhwcHwcfOp>(linalgOp)) {
     // The goal is to pack the input image and kernel as follows, when moving
-    // from L2 to L11:
-    //
-    //  Example where input has 32 channels:
-    //
-    //  %alloc_8 = memref.alloc() : memref<1x3x4x6x8xbf16, 2 : i32>
-    //  iree_linalg_ext.pack %subview_5 outer_dims_perm = [0, 1, 3, 2]
-    //                                  inner_dims_pos = [3]
-    //                                  inner_tiles = [8] into %alloc_8 :
-    //  (memref<1x3x6x32xbf16, strided<[576, 192, 32, 1], offset: ?>, 1 : i32>
-    //   memref<1x3x4x6x8xbf16, 2 : i32>)
-    //
-    //  %alloc_9 = memref.alloc() : memref<3x3x4x1x8x4xbf16, 2 : i32>
-    //  iree_linalg_ext.pack %subview_6 outer_dims_perm = [0, 1, 2, 3]
-    //                                  inner_dims_pos = [2, 3]
-    //                                  inner_tiles = [8, 4] into %alloc_9 :
-    //  (memref<3x3x32x4xbf16, strided<[384, 128, 4, 1], offset: ?>, 1 : i32>
-    //   memref<3x3x4x1x8x4xbf16, 2 : i32>)
+    // from L2 to L1 (example where there are 32 input channels):
+    // Image: memref<1x3x6x32xbf16> ->  memref<1x3x4x6x8xbf16>
+    // Kernel: memref<3x3x32x4xbf16> -> memref<3x3x4x1x8x4xbf16>
     innerPerm = {{}, {{1, 0}}, {}};
     outerPerm = {{0, 1, 3, 2}, {}, {0, 1, 2, 3}};
     packingSizes = {0, 0, 0, OC, 0, 0, IC};
     tileSizeLevel1 = {1, 1, OW, OC, 0, 0, 0};
-    // convert the kernel height, kernel width, and outer IC reduction into
-    // scf.for loops, leaving just a matmul of the instruction size inside
-    // the loops.
+    // scf.for tiling of KH, KW, and (packed) IC dimensions:
     tileSizeLevel2 = {0, 0, 0, 0, 1, 1, 1, 0, 0};
   }
 
@@ -547,9 +531,8 @@ static LogicalResult setRootConfigForConvDecomposePipeline(
 
   // [N, OH, OW, C, KW, HW]
   else if (isa<linalg::DepthwiseConv2DNhwcHwcOp>(linalgOp)) {
-    // Notes:
+    // Notes
     // =====
-    //
     // A property of depthwise convolution is that it can't be expressed in
     // terms of matmul, unlike the above (dense) conv-2ds. The tile sizes we
     // choose below are therefore not constrained by AIE matmul instructions.
