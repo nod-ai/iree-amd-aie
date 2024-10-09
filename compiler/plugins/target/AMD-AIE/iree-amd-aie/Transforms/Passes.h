@@ -28,6 +28,7 @@ void addMLIRAIRLoweringPasses(OpPassManager &passManager, AMDAIEDevice device,
 /// currently the default passes used for lowering from AIE dialect.
 void addMLIRAIELoweringPasses(OpPassManager &passManager);
 
+
 /// Populates passes needed to lower linalg/arith/math ops to LLVM dialect via
 /// the structured ops path. The pass manager `pm` here operate on the module
 /// within the IREE::HAL::ExecutableOp.
@@ -37,8 +38,6 @@ void buildAMDAIETransformPassPipeline(
     LowerToAIEPassPipeline useLowerToAIEPipeline, bool matmulElementwiseFusion,
     bool enableVectorizationPasses, const std::string &pathToUkernels,
     bool enablePacketFlow);
-
-void addLowerToLLVMPasses(OpPassManager &pm);
 
 /// Populates passes needed to lower the IR via a Pack-Peel based approach.
 void addPackPeelBasedPassPipeline(OpPassManager &oassManager,
@@ -269,6 +268,9 @@ std::unique_ptr<Pass> createAMDAIETileAndFusePass(
 
 /// Create pass to propagate pack/unpack ops using upstream patterns.
 std::unique_ptr<Pass> createAMDAIEPropagateDataLayoutPass();
+
+/// Create pass to reset the alignment of LLVM load operations.
+std::unique_ptr<Pass> createAMDAIELoadAlignmentResetPass();
 
 void registerAMDAIEPasses();
 

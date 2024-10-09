@@ -308,6 +308,17 @@ def AMDAIELinkExecutables :
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIELinkExecutablesPass()";
 }
 
+def AMDAIELoadAlignmentReset :
+    Pass<"iree-amdaie-load-alignment-reset", ""> {
+    let summary = "Reset the alignment of the LLVM load operations.";
+    let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIELoadAlignmentResetPass()";
+    let description = [{
+      Reset the alignment of the LLVM load operations to the 'unset'
+      optional value. This is a workaround for an issue in peano, and
+      should eventually be removed.
+    }];
+}
+
 def AMDAIELocalizeLogicalObjectfifo :
     Pass<"iree-amdaie-localize-logicalobjectfifo", "ModuleOp"> {
   let summary = "Localize logical objectfifos to local parallel loop scopes.";
