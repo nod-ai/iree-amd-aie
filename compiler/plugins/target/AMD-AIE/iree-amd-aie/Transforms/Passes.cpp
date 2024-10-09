@@ -284,6 +284,8 @@ void addPackPeelBasedPassPipeline(OpPassManager &funcPassManager,
     funcPassManager.addPass(createAMDAIELowerToUKernelsPass(options));
   }
 
+  funcPassManager.addPass(createAMDAIEFunctionOutliningPass());
+  
   // Comprehensive bufferization
   addAMDAIEBufferizePasses(funcPassManager, useTilePipeline);
   funcPassManager.addPass(createHoistStaticallyBoundAllocationsPass());
