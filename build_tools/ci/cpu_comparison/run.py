@@ -763,14 +763,15 @@ class MatmulSet(TestSet):
         identity_mat = np.eye(32, dtype=np.float32)
         ones = np.ones(32 * 32, dtype=np.float32).reshape([32, 32])
         lhs = ones * 192
+        rhs = identity_mat * 2
         input_args = generate_inputs(
-            template_name, output_dir, 1, {1: lhs, 2: identity_mat}
+            template_name, output_dir, 1, {1: lhs, 2: rhs}
         )
         aie_vs_baseline(
             config,
             template_name,
             input_args,
-            lhs,  # exected output
+            lhs * 2,  # exected output
             use_ukernel=False,
             tile_pipeline="pack-peel",
             lower_to_aie_pipeline="objectFifo",
