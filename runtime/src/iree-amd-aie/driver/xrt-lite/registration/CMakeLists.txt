@@ -10,14 +10,13 @@ iree_cc_library(
   NAME
     registration
   HDRS
-    driver_module.h
+    "driver_module.h"
   SRCS
-    driver_module.c
+    "driver_module.c"
   DEPS
     iree::base
-    iree::base::core_headers
-    iree-amd-aie::driver::xrt-lite
     iree::hal
+    iree-amd-aie::driver::xrt-lite
   DEFINES
     "IREE_HAVE_HAL_XRT_LITE_DRIVER_MODULE=1"
   PUBLIC
