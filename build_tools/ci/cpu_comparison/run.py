@@ -759,15 +759,27 @@ class MatmulSet(TestSet):
             )
 
         # Test(s) of the form matmul(A,B) + truncf(C) where A:MxK, B:KxN and C:MxN
-        test_name = output_dir / "test_from_template_truncf_.mlir"
-        template_name = matmul_template_dir / "matmul_truncf_MxK_KxN.mlir"
-        generate_matmul_test(test_name, template_name, 32, 32, 32, "bf16", "f32")
-        aie_vs_llvm_cpu(
-            config, 
-            test_name,
+        template_name = test_files_dir / "matmul_truncf_32x32x32_bf16_bf16.mlir"
+        identity_mat = np.eye(32, dtype=np.float32)
+        ones = np.ones(32 * 32, dtype=np.float32).reshape([32, 32])
+        lhs = ones * 192
+        input_args = generate_inputs(
+            template_name, output_dir, 1, {1: lhs, 2: identity_mat}
+        )
+        aie_vs_baseline(
+            config,
+            template_name,
+            input_args,
+            lhs,  # exected output
+            use_ukernel=False,
             tile_pipeline="pack-peel",
             lower_to_aie_pipeline="objectFifo",
-            use_ukernel=False,
+            function_name=None,
+            seed=1,
+            rtol=0,
+            atol=0,
+            n_repeats=1,
+            output_type=get_output_type(template_name),
         )
 
 
