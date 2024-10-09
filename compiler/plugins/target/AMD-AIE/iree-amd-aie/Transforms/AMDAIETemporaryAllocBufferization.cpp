@@ -48,7 +48,6 @@ LogicalResult bufferizeTemporaryMemrefs(Operation *parentOp) {
     });
   }
 
-
   // Note: we don't erase allocs/deallocs, we leave this for canonicalization.
 
   return success();

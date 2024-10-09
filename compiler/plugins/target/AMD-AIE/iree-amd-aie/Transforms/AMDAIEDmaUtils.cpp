@@ -60,8 +60,14 @@ bool areAccessPatternsCombinable(const SmallVector<OpFoldResult> &offsetsA,
     }
     if (strideA != strideB) return false;
   }
+
+  // Don't check the outermost dimension of size at this point.
+  SmallVector<OpFoldResult> innerSizesA;
+  SmallVector<OpFoldResult> innerSizesB;
+  std::copy(sizesA.begin() + 1, sizesA.end(), std::back_inserter(innerSizesA));
+  std::copy(sizesB.begin() + 1, sizesB.end(), std::back_inserter(innerSizesB));
   for (auto &&[sizeA, sizeB] :
-       llvm::zip(llvm::reverse(sizesA), llvm::reverse(sizesB))) {
+       llvm::zip(llvm::reverse(innerSizesA), llvm::reverse(innerSizesB))) {
     std::optional<int64_t> maybeSizeA = getConstantIntValue(sizeA);
     std::optional<int64_t> maybeSizeB = getConstantIntValue(sizeB);
     // Handle static and constant value with same int value.
@@ -69,6 +75,20 @@ bool areAccessPatternsCombinable(const SmallVector<OpFoldResult> &offsetsA,
       continue;
     }
     if (sizeA != sizeB) return false;
+  }
+
+  // Edge case for sizesA[0] != sizesB[0].
+  if (offsetsB.size() == offsetsA.size() && sizesA[0] != sizesB[0]) {
+    std::optional<int64_t> constOffsetA = getConstantIntValue(offsetsA[0]);
+    std::optional<int64_t> constSizeA = getConstantIntValue(sizesA[0]);
+    std::optional<int64_t> constOffsetB = getConstantIntValue(offsetsB[0]);
+    std::optional<int64_t> constSizeB = getConstantIntValue(sizesB[0]);
+    if (constOffsetA && constOffsetB && constSizeA && constSizeB) {
+      int64_t offsetDiff = constOffsetB.value() - constOffsetA.value();
+      if (constSizeA.value() != offsetDiff) return false;
+    } else {
+      return false;
+    }
   }
 
   bool foundDiff{false};
@@ -169,40 +189,50 @@ LogicalResult combineAccessPatterns(RewriterBase &rewriter,
     if (!size) return failure();
     newSizes[0] = rewriter.getI64IntegerAttr(size.value() + 1);
   } else {
-    // Sizes are the same, so add a new dimension with 'offset == 0', 'size ==
-    // 2' and 'stride == offsetDiff'.
-    newOffsets.push_back(rewriter.getI64IntegerAttr(0));
-    int64_t offsetDiff;
-    int64_t strideMultiplier;
-    for (auto iter : llvm::enumerate(llvm::zip(offsetsA, offsetsB))) {
-      const OpFoldResult &offsetA = std::get<0>(iter.value());
-      const OpFoldResult &offsetB = std::get<1>(iter.value());
-      newOffsets.push_back(offsetA);
-      if (offsetA != offsetB) {
-        std::optional<int64_t> constOffsetA = getConstantIntValue(offsetA);
-        std::optional<int64_t> constOffsetB = getConstantIntValue(offsetB);
-        if (!constOffsetA || !constOffsetB) {
-          return emitError(rewriter.getUnknownLoc())
-                 << "differing offsets should be constants";
+    // Edge case for sizesA[0] != sizesB[0].
+    if (sizesA[0] != sizesB[0]) {
+      newOffsets = offsetsA;
+      newSizes = sizesA;
+      newStrides = stridesA;
+      std::optional<int64_t> sizeA = getConstantIntValue(sizesA[0]);
+      std::optional<int64_t> sizeB = getConstantIntValue(sizesB[0]);
+      if (!sizeA || !sizeB) return failure();
+      newSizes[0] = rewriter.getI64IntegerAttr(sizeA.value() + sizeB.value());
+    } else {
+      // All dims of sizes are the same, so add a new dimension with
+      // 'offset == 0', 'size == 2' and 'stride == offsetDiff'.
+      newOffsets.push_back(rewriter.getI64IntegerAttr(0));
+      int64_t offsetDiff;
+      int64_t strideMultiplier;
+      for (auto iter : llvm::enumerate(llvm::zip(offsetsA, offsetsB))) {
+        const OpFoldResult &offsetA = std::get<0>(iter.value());
+        const OpFoldResult &offsetB = std::get<1>(iter.value());
+        newOffsets.push_back(offsetA);
+        if (offsetA != offsetB) {
+          std::optional<int64_t> constOffsetA = getConstantIntValue(offsetA);
+          std::optional<int64_t> constOffsetB = getConstantIntValue(offsetB);
+          if (!constOffsetA || !constOffsetB) {
+            return emitError(rewriter.getUnknownLoc())
+                   << "differing offsets should be constants";
+          }
+          offsetDiff = constOffsetB.value() - constOffsetA.value();
+          std::optional<int64_t> maybeStride =
+              getConstantIntValue(stridesA[iter.index()]);
+          if (!maybeStride) {
+            return emitError(rewriter.getUnknownLoc())
+                   << "no constant stride found at the same index where the "
+                      "offset "
+                      "difference occurs";
+          }
+          strideMultiplier = maybeStride.value();
         }
-        offsetDiff = constOffsetB.value() - constOffsetA.value();
-        std::optional<int64_t> maybeStride =
-            getConstantIntValue(stridesA[iter.index()]);
-        if (!maybeStride) {
-          return emitError(rewriter.getUnknownLoc())
-                 << "no constant stride found at the same index where the "
-                    "offset "
-                    "difference occurs";
-        }
-        strideMultiplier = maybeStride.value();
       }
+      newSizes.push_back(rewriter.getI64IntegerAttr(2));
+      newSizes.append(sizesA.begin(), sizesA.end());
+      newStrides.push_back(
+          rewriter.getI64IntegerAttr(offsetDiff * strideMultiplier));
+      newStrides.append(stridesA.begin(), stridesA.end());
     }
-    newSizes.push_back(rewriter.getI64IntegerAttr(2));
-    newSizes.append(sizesA.begin(), sizesA.end());
-    newStrides.push_back(
-        rewriter.getI64IntegerAttr(offsetDiff * strideMultiplier));
-    newStrides.append(stridesA.begin(), stridesA.end());
-    ;
   }
   assert(newOffsets.size() == newSizes.size() &&
          "expected same number of new offsets and sizes");
