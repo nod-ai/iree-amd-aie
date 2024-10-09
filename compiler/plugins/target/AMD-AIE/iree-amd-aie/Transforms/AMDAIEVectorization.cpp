@@ -77,6 +77,25 @@ void AMDAIEVectorizationPass::runOnOperation() {
     // dominate this use'. TODO(newling) follow-up on this.
     if (isa<linalg::FillOp>(op)) return;
 
+    // For quantized ops elementwise ops are vectorized to ops that operate on
+    // extremely large vectors, e.g., things like arith.addi %60, %63 :
+    // vector<1x1x10x10x4x8xi32>. We'd be better off massaging the vectorization
+    // such that the ops are split to narrower ops but this is (currently) and
+    // edge case so just disable. See
+    // https://github.com/nod-ai/iree-amd-aie/issues/594 for more info.
+    if (isElementwise(cast<linalg::LinalgOp>(op))) {
+      // TODO(avarma): Currently switching vectorization on only for
+      //               arith.truncf. Improve this later by trying to bridge the
+      //               gap between this pass and vector-to-aievec.
+      for (Operation &innerOps :
+           cast<linalg::GenericOp>(op).getBody()->getOperations()) {
+        if (!isa<arith::TruncFOp, linalg::YieldOp>(innerOps)) {
+          op->emitRemark() << "not vectorizing linalg elementwise op";
+          return;
+        }
+      }
+    }
+
     // AIE architecture has no vector instructions for 32/64-bit types.
     if (!hasOperandWithSmallElementType(op)) return;
 

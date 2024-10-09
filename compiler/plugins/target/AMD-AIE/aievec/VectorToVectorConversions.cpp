@@ -419,7 +419,8 @@ struct FlattenArithTruncFOpPattern : public OpRewritePattern<arith::TruncFOp> {
   LogicalResult matchAndRewrite(arith::TruncFOp op,
                                 PatternRewriter &rewriter) const override {
     // Get old shape type.
-    auto oldShapedType = cast<ShapedType>(op.getType());
+    auto oldShapedType = dyn_cast<VectorType>(op.getType());
+    if (!oldShapedType) return failure();
     // Bail out if it's already linearized.
     if (oldShapedType.getRank() == 1) return failure();
     // Linearize the shape.
