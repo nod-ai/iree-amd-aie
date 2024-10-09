@@ -230,6 +230,28 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 
 // -----
 
+// CHECK-LABEL: @combine_source_same_dims_diff_sizes
+// CHECK:       %[[CONNECTION:.+]] = amdaie.connection
+// CHECK:       amdaie.npu.dma_cpy_nd %[[CONNECTION]]([] [] [], [0, 0] [128, 64] [128, 1])
+// CHECK-NOT:   amdaie.npu.dma_cpy_nd
+#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
+module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
+  func.func @combine_source_same_dims_diff_sizes(%arg0: !amdaie.logicalobjectfifo<memref<2048xi32, 1 : i32>>, %arg1: !amdaie.logicalobjectfifo<memref<128x128xi32>>) {
+    amdaie.workgroup {
+      %0 = amdaie.connection(%arg0, %arg1) : (!amdaie.logicalobjectfifo<memref<2048xi32, 1 : i32>>, !amdaie.logicalobjectfifo<memref<128x128xi32>>)
+      amdaie.controlcode {
+        amdaie.npu.dma_cpy_nd %0([] [] [], [0, 0] [32, 64] [128, 1])
+        amdaie.npu.dma_cpy_nd %0([] [] [], [32, 0] [64, 64] [128, 1])
+        amdaie.npu.dma_cpy_nd %0([] [] [], [96, 0] [32, 64] [128, 1])
+        amdaie.end
+      }
+    }
+    return
+  }
+}
+
+// -----
+
 // CHECK-LABEL: @combine_source_values
 // CHECK:       %[[CONNECTION:.+]] = amdaie.connection
 // CHECK:       amdaie.npu.dma_cpy_nd %[[CONNECTION]]([] [] [], [0, 0, 0, 0] [2, 16, 8, 16] [32, 32, 8, 1])
@@ -323,6 +345,28 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
       amdaie.controlcode {
         amdaie.npu.dma_cpy_nd %0([0, 0, 32] [16, 8, 16] [32, 8, 1], [] [] [])
         amdaie.npu.dma_cpy_nd %0([0, 0, 64] [16, 8, 16] [32, 8, 1], [] [] [])
+        amdaie.end
+      }
+    }
+    return
+  }
+}
+
+// -----
+
+// CHECK-LABEL: @combine_target_same_dims_diff_sizes
+// CHECK:       %[[CONNECTION:.+]] = amdaie.connection
+// CHECK:       amdaie.npu.dma_cpy_nd %[[CONNECTION]]([0, 0] [128, 64] [128, 1], [] [] [])
+// CHECK-NOT:   amdaie.npu.dma_cpy_nd
+#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
+module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
+  func.func @combine_target_same_dims_diff_sizes(%arg0: !amdaie.logicalobjectfifo<memref<2048xi32, 1 : i32>>, %arg1: !amdaie.logicalobjectfifo<memref<128x128xi32>>) {
+    amdaie.workgroup {
+      %0 = amdaie.connection(%arg0, %arg1) : (!amdaie.logicalobjectfifo<memref<2048xi32, 1 : i32>>, !amdaie.logicalobjectfifo<memref<128x128xi32>>)
+      amdaie.controlcode {
+        amdaie.npu.dma_cpy_nd %0([0, 0] [32, 64] [128, 1], [] [] [])
+        amdaie.npu.dma_cpy_nd %0([32, 0] [64, 64] [128, 1], [] [] [])
+        amdaie.npu.dma_cpy_nd %0([96, 0] [32, 64] [128, 1], [] [] [])
         amdaie.end
       }
     }
