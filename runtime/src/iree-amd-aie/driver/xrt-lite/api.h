@@ -14,9 +14,35 @@
 extern "C" {
 #endif  // __cplusplus
 
+// Must be initialized with iree_hal_xrt_lite_device_options_initialize prior to
+// use.
+struct iree_hal_xrt_lite_device_options_t {
+  // TODO(null): options for initializing a device such as hardware identifiers,
+  // implementation mode switches, and debugging control.
+};
+
+// Initializes |out_params| to default values.
+IREE_API_EXPORT void iree_hal_xrt_lite_device_options_initialize(
+    struct iree_hal_xrt_lite_device_options_t* out_params);
+
+struct iree_hal_xrt_lite_driver_options_t {
+  // TODO(null): options for initializing the driver such as library search
+  // paths, version min/max, etc.
+  struct iree_hal_xrt_lite_device_options_t default_device_options;
+};
+
+IREE_API_EXPORT void iree_hal_xrt_lite_driver_options_initialize(
+    struct iree_hal_xrt_lite_driver_options_t* out_options);
+
+// The provided |identifier| will be used by programs to distinguish the device
+// type from other HAL implementations. If compiling programs with the IREE
+// compiler this must match the value used by IREE::HAL::TargetDevice.
+//
+// |out_driver| must be released by the caller (see iree_hal_driver_release).
 IREE_API_EXPORT iree_status_t iree_hal_xrt_lite_driver_create(
-    iree_string_view_t identifier, iree_allocator_t host_allocator,
-    iree_hal_driver_t** out_driver);
+    iree_string_view_t identifier,
+    const struct iree_hal_xrt_lite_driver_options_t* options,
+    iree_allocator_t host_allocator, iree_hal_driver_t** out_driver);
 
 #ifdef __cplusplus
 }  // extern "C"
