@@ -77,8 +77,8 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
       amdaie.controlcode {
         scf.forall (%arg2, %arg3) in (2, 2) {
           %1 = affine.apply #map(%arg3)
-          %2 = amdaie.npu.circular_dma_cpy_nd %0([0] [2048] [1], [] [] [])
-          %3 = amdaie.npu.dma_cpy_nd %0([] [] [], [0, %1] [32, 64] [128, 1])
+          amdaie.npu.circular_dma_cpy_nd %0([0] [2048] [1], [] [] [])
+          amdaie.npu.dma_cpy_nd %0([] [] [], [0, %1] [32, 64] [128, 1])
         }
         amdaie.end
       }
@@ -108,8 +108,8 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
       amdaie.controlcode {
         scf.forall (%arg2, %arg3) in (2, 2) {
           %1 = affine.apply #map(%arg3)
-          %2 = amdaie.npu.dma_cpy_nd %0([] [] [], [0, %1] [32, 64] [128, 1])
-          %3 = amdaie.npu.circular_dma_cpy_nd %0([0] [2048] [1], [] [] [])
+          amdaie.npu.dma_cpy_nd %0([] [] [], [0, %1] [32, 64] [128, 1])
+          amdaie.npu.circular_dma_cpy_nd %0([0] [2048] [1], [] [] [])
         }
         amdaie.end
       }
