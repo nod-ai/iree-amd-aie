@@ -70,6 +70,7 @@ iree_cc_library(
     "AMDAIEDmaUtils.cpp"
     "AMDAIEFlattenLogicalObjectFifo.cpp"
     "AMDAIEFlattenVectorizedOps.cpp"
+    "AMDAIEFunctionOutlining.cpp"
     "AMDAIEFuseConsumerIntoLoop.cpp"
     "AMDAIEFuseFillIntoForall.cpp"
     "AMDAIEFusePackIntoLoop.cpp"

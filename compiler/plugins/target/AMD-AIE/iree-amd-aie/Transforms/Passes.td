@@ -228,6 +228,12 @@ def AMDAIEFlattenVectorizedOps :
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEFlattenVectorizedOpsPass()";
 }
 
+def AMDAIEFunctionOutlining :
+  InterfacePass<"iree-amdaie-function-outlining", "mlir::FunctionOpInterface"> {
+  let summary = "Function outlining";
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEFunctionOutliningPass()";
+}
+
 def AMDAIEFuseConsumerIntoLoop :
     InterfacePass<"iree-amdaie-fuse-consumer-into-loop", "mlir::FunctionOpInterface"> {
   let summary = "Fuse the consumer operation into the innermost last scf loop.";
