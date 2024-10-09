@@ -521,7 +521,8 @@ void buildAMDAIETransformPassPipeline(
   }
   modulePassManager.addPass(createLowerUKernelOpsToCallsPass());
   if (useLowerToAIEPipeline == LowerToAIEPassPipeline::ObjectFifo) {
-    addAMDAIEObjectFifoLoweringPasses(modulePassManager, enablePacketFlow);
+    addAMDAIEObjectFifoLoweringPasses(modulePassManager, enablePacketFlow,
+                                      useTilePipeline);
   } else if (useLowerToAIEPipeline == LowerToAIEPassPipeline::AIR) {
     addMLIRAIRLoweringPasses(modulePassManager, device, useTilePipeline,
                              matmulElementwiseFusion);
@@ -541,12 +542,20 @@ void buildAMDAIETransformPassPipeline(
 }
 
 void addAMDAIEObjectFifoLoweringPasses(OpPassManager &passManager,
-                                       bool enablePacketFlow) {
+                                       bool enablePacketFlow,
+                                       TilePassPipeline useTilePipeline) {
   passManager.addPass(createEraseHALDescriptorTypeFromMemRefPass());
   passManager.addPass(memref::createFoldMemRefAliasOpsPass());
   passManager.addPass(createCanonicalizerPass());
+  // For matmul pipelines, we do transpose on target side for pack ops to get
+  // better performance. While for convolution pipelines, the same settings
+  // cause 'aie.dma_bd' error, so for now keep using transpose on source for
+  // both pack and unpack ops.
+  // TODO(vivian): explore the other options for conv ops.
   AMDAIEConvertToDmaOptions dmaOptions;
-  dmaOptions.packTransposeOnSource = false;
+  dmaOptions.packTransposeOnSource =
+      (useTilePipeline == TilePassPipeline::ConvDecomposePipeline) ? true
+                                                                   : false;
   dmaOptions.unpackTransposeOnSource = true;
   passManager.addPass(createAMDAIEConvertToDmaPass(dmaOptions));
 
