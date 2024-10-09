@@ -472,54 +472,83 @@ static LogicalResult setRootConfigForPadPackPipeline(
 
 static LogicalResult setRootConfigForConvDecomposePipeline(
     mlir::FunctionOpInterface entryPointFn, linalg::LinalgOp linalgOp) {
+  MLIRContext *context = entryPointFn.getContext();
+
   FailureOr<std::array<uint32_t, 3>> maybeInstructionSize =
       getMatmulInstructionSize(linalgOp);
   int64_t OW = 4;
   int64_t OC = 4;
   int64_t IC = 8;
   if (succeeded(maybeInstructionSize)) {
-    auto instructionSize = maybeInstructionSize.value();
-    OW = instructionSize[0];
-    OC = instructionSize[1];
-    IC = instructionSize[2];
+    auto [m, n, k] = maybeInstructionSize.value();
+    OW = m;
+    OC = n;
+    IC = k;
   }
 
+  SmallVector<int64_t> transposePackIndices{0, 1, 2};
+  SmallVector<bool> unpackEmpty{false, false, true};
+
+  // Convolution type specific vectors:
+  SmallVector<SmallVector<int64_t>> innerPerm;
+  SmallVector<SmallVector<int64_t>> outerPerm;
   SmallVector<int64_t> tileSizeLevel0;
   SmallVector<int64_t> tileSizeLevel1;
   SmallVector<int64_t> tileSizeLevel2;
-  // Note: some of the tiling dimensions are hardcoded for now.
-  if (isa<linalg::Conv2DNhwcHwcfOp>(linalgOp) ||
-      isa<linalg::Conv2DNhwcHwcfQOp>(linalgOp)) {
-    // conv_2d_nhwc_hwcf tiling dims: [N, OH, OW, OC, KH, KW, IC].
-    tileSizeLevel0 = {0, 4, OW, OC, 0, 0, 0};
+  SmallVector<int64_t> packingSizes;
+
+  // [N, OH, OW, OC, KH, KW, IC].
+  if (isa<linalg::Conv2DNhwcHwcfQOp>(linalgOp) ||
+      isa<linalg::Conv2DNhwcHwcfOp>(linalgOp)) {
+    // The goal is to pack the input image and kernel as follows, when moving
+    // from L2 to L1 (example where there are 32 input channels):
+    // Image: memref<1x3x6x32xbf16> ->  memref<1x3x4x6x8xbf16>
+    // Kernel: memref<3x3x32x4xbf16> -> memref<3x3x4x1x8x4xbf16>
+    innerPerm = {{}, {{1, 0}}, {}};
+    outerPerm = {{0, 1, 3, 2}, {}, {0, 1, 2, 3}};
+    packingSizes = {0, 0, 0, OC, 0, 0, IC};
+    // Target one column of 4 cores, each core processing a different
+    // output image row. TODO(newling) use 4x4 array.
+    // https://github.com/nod-ai/iree-amd-aie/issues/821
+    tileSizeLevel0 = {1, 4, OW, OC, 0, 0, 0};
     tileSizeLevel1 = {1, 1, OW, OC, 0, 0, 0};
-    tileSizeLevel2 = {0, 0, 0, 0, 1, 1, IC};
-  } else if (isa<linalg::Conv2DNchwFchwOp>(linalgOp)) {
-    // conv_2d_nchw_fchw tiling dims: [N, OC, OH, OW, IC, KH, KW].
-    tileSizeLevel0 = {0, OC, 4, OW, 0, 0, 0};
-    tileSizeLevel1 = {1, OC, 1, OW, 0, 0, 0};
-    tileSizeLevel2 = {0, 0, 0, 0, IC, 1, 1};
-  } else if (isa<linalg::DepthwiseConv2DNhwcHwcOp>(linalgOp)) {
-    // Notes:
+    // scf.for tiling of KH, KW, and (packed) IC dimensions:
+    tileSizeLevel2 = {0, 0, 0, 0, 1, 1, 1, 0, 0};
+  }
+
+  // [N, OC, OH, OW, IC, KH, KW]
+  else if (isa<linalg::Conv2DNchwFchwOp>(linalgOp)) {
+    // The matmul reduction dimension is the input channel (IC) dimension.
+    // For Conv2DNhwcHwcfOp, this dimension is already the inner-most dimension
+    // of the input image, and the penultimate dimension of the kernel --
+    // exactly what we want. For Conv2DNchwFchwOp, can the tensor dimensions be
+    // permuted in DMA to get them in the correct positions? For the image
+    // tensor, only if H*W is a nice power of 2 (DMA constraint). For kernels,
+    // it requires h*w is a nice power of 2 -- unlikely, we typically have
+    // h=w=3. The dimension permutations will therefore often therefore need to
+    // be done on the core. We leave this for future work, the expectation for
+    // now is that models have been transformed at a high level to avoid
+    // channel-first convolutions.
+    return linalgOp.emitError(
+        "Only channel-last convolution supported currently.");
+  }
+
+  // [N, OH, OW, C, KW, HW]
+  else if (isa<linalg::DepthwiseConv2DNhwcHwcOp>(linalgOp)) {
+    // Notes
     // =====
-    //
-    // An inherent property of depthwise convolutions is that they cannot be
-    // expressed in terms of matmuls, unlike the above (dense) conv-2ds. The
-    // tile sizes we choose below are therefore not constrained by the AIE
-    // matmul instructions.
+    // A property of depthwise convolution is that it can't be expressed in
+    // terms of matmul, unlike the above (dense) conv-2ds. The tile sizes we
+    // choose below are therefore not constrained by AIE matmul instructions.
     //
     // The logic is currently fragile, and there are no guardrails: there are
     // no checks that the data tiles are not too large, or that the input
     // dimensions are perfectly tiled by the hard-coded tile dimensions below.
     // These will be done as a follow-up task.
-    //
-    //
-    // Below we target a 4x4 array of AIE cores.
     auto getElementType = [](Value v) {
       return cast<ShapedType>(v.getType()).getElementType();
     };
     const uint16_t OW_0 = 4;
-    const uint16_t OH_0 = 4;
     const uint16_t OH_1 = 1;
 
     auto operandType = getElementType(linalgOp->getOperand(0));
@@ -530,8 +559,8 @@ static LogicalResult setRootConfigForConvDecomposePipeline(
       OC_0 = maybeMacNumElements.value();
     }
     // If the operand type has fewer than 32-bits, we really should be able to
-    // get a mac-width for it Bail because we didn't, and there's probably just
-    // something missing in the table.
+    // get a mac-width for it. Bail because we didn't, there's probably just
+    // something missing in a table.
     else if (operandType.getIntOrFloatBitWidth() < 32) {
       return linalgOp.emitError(
           "has an operand type with fewer than 32-bits, but no mac-width "
@@ -539,17 +568,40 @@ static LogicalResult setRootConfigForConvDecomposePipeline(
     }
 
     const uint16_t OC_1 = OC_0 / 4;
-
-    // depthwise_conv2d_nhwc_hwc tiling dims:
-    //               [N, OH,   OW,   OC,   KH,KW]
-    tileSizeLevel0 = {1, OH_0, OW_0, OC_0, 0, 0};
+    packingSizes = {0, 0, 0, OC_1, 0, 0};
+    innerPerm = {{}, {}, {}};
+    outerPerm = {{0, 1, 2, 3}, {0, 1, 2}, {0, 1, 2, 3}};
+    // Target one column of 4 cores, each core processing a different
+    // output image row. TODO(newling) use 4x4 array.
+    // https://github.com/nod-ai/iree-amd-aie/issues/821
+    tileSizeLevel0 = {1, 4 * OH_1, OW_0, OC_1, 0, 0};
     tileSizeLevel1 = {1, OH_1, OW_0, OC_1, 0, 0};
-    tileSizeLevel2 = {0, 0, 0, 0, 1, 1};
-  } else {
-    assert(false && "Support must be added for this convolution op");
+    tileSizeLevel2 = {0, 0, 0, 0, 1, 1, 0};
   }
+
+  else {
+    return linalgOp.emitError(
+        "unrecognised convolution op, cannot set packing config. ");
+  }
+
+  assert(!innerPerm.empty() && !outerPerm.empty() && !packingSizes.empty() &&
+         !tileSizeLevel0.empty() && !tileSizeLevel1.empty() &&
+         "not all vectors for initializing config are non-empty");
+
+  auto packingConfigLevel1Attr = getPackingConfigPackingLevelAttr(
+      context, packingSizes, transposePackIndices, unpackEmpty, innerPerm,
+      outerPerm);
+  SmallVector<PackingConfigPackingLevelAttr> packingConfigLevelsVal{
+      packingConfigLevel1Attr};
+
+  auto packingConfigLevels =
+      PackingConfigPackingLevelsAttr::get(context, packingConfigLevelsVal);
+  auto config = PackingConfigAttr::get(context, packingConfigLevels);
+  setPackingConfig(linalgOp, config);
+
   TileSizesListType tileSizes = {tileSizeLevel0, tileSizeLevel1,
                                  tileSizeLevel2};
+
   return setOpConfigAndEntryPointFnTranslation(
       entryPointFn, linalgOp, tileSizes,
       IREE::Codegen::DispatchLoweringPassPipeline::Custom);
