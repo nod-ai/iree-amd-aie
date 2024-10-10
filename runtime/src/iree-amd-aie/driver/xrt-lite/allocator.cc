@@ -325,21 +325,23 @@ static iree_allocator_t iree_hal_xrt_lite_allocator_host_allocator(
   return allocator->host_allocator;
 }
 
-MEMBER_WRAPPER_STATUS(iree_hal_allocator_t, iree_hal_xrt_lite_allocator, trim)
-MEMBER_WRAPPER_VOID(iree_hal_allocator_t, iree_hal_xrt_lite_allocator,
-                    query_statistics)
-MEMBER_WRAPPER_STATUS(iree_hal_allocator_t, iree_hal_xrt_lite_allocator,
-                      query_memory_heaps)
-MEMBER_WRAPPER(iree_hal_allocator_t, iree_hal_xrt_lite_allocator,
-               query_buffer_compatibility, iree_hal_buffer_compatibility_t)
-MEMBER_WRAPPER_STATUS(iree_hal_allocator_t, iree_hal_xrt_lite_allocator,
-                      allocate_buffer)
-MEMBER_WRAPPER_VOID(iree_hal_allocator_t, iree_hal_xrt_lite_allocator,
-                    deallocate_buffer)
-MEMBER_WRAPPER_STATUS(iree_hal_allocator_t, iree_hal_xrt_lite_allocator,
-                      import_buffer)
-MEMBER_WRAPPER_STATUS(iree_hal_allocator_t, iree_hal_xrt_lite_allocator,
-                      export_buffer)
+#define ALLOCATOR_MEMBER(member, return_t)                                  \
+  MEMBER_WRAPPER(iree_hal_allocator_t, iree_hal_xrt_lite_allocator, member, \
+                 return_t)
+#define ALLOCATOR_MEMBER_STATUS(member)                                    \
+  MEMBER_WRAPPER_STATUS(iree_hal_allocator_t, iree_hal_xrt_lite_allocator, \
+                        member)
+#define ALLOCATOR_MEMBER_VOID(member) \
+  MEMBER_WRAPPER_VOID(iree_hal_allocator_t, iree_hal_xrt_lite_allocator, member)
+
+ALLOCATOR_MEMBER_STATUS(trim)
+ALLOCATOR_MEMBER_VOID(query_statistics)
+ALLOCATOR_MEMBER_STATUS(query_memory_heaps)
+ALLOCATOR_MEMBER(query_buffer_compatibility, iree_hal_buffer_compatibility_t)
+ALLOCATOR_MEMBER_STATUS(allocate_buffer)
+ALLOCATOR_MEMBER_VOID(deallocate_buffer)
+ALLOCATOR_MEMBER_STATUS(import_buffer)
+ALLOCATOR_MEMBER_STATUS(export_buffer)
 
 namespace {
 const iree_hal_allocator_vtable_t iree_hal_xrt_lite_allocator_vtable = {

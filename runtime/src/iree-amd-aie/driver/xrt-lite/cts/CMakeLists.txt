@@ -21,7 +21,7 @@ iree_hal_cts_test_suite(
     iree-amd-aie::driver::xrt-lite::registration
   INCLUDED_TESTS
     "allocator"
-#    "buffer_mapping"
+    "buffer_mapping"
 #    "command_buffer"
     "driver"
 )
