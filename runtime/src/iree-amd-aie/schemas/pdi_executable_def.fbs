@@ -1,0 +1,57 @@
+// Copyright 2024 The IREE Authors
+//
+// Licensed under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+namespace iree.amd.aie.hal.xrt_lite;
+
+file_identifier "PDIR";
+file_extension "pdir";
+
+// Source code location denoted by a file name and line within that file.
+table FileLineLocDef {
+  filename:string;
+  line:int32;
+}
+
+// Assembly instructions.
+table AsmInstDef {
+  asm_inst:[uint32];
+}
+
+// PDIs.
+table PdiDef {
+  pdi:string;
+}
+
+table ExecutableDef {
+  // A map of entry point ordinals to string names as used in PDI(s)
+  entry_points:[string];
+
+  // A map of entry point ordinals to the indices of the containing XCLBINs (the following field).
+  // This list has the same size as the entry_points list.
+  // This list currently is just a range (0, number of entry points] but will change when we start doing
+  // kernel merging in the backend. 
+  pdi_indices:[uint32];
+
+  
+  // PDI strings of the entry points.
+  pdis: [PdiDef];
+
+  // A map of entry point ordinals to the indices of the containing asm_instrs (the following field).
+  // This list has the same size as the entry_points list.
+  // This list currently is just a range (0, number of entry points] but can chnage if kernels decide to
+  // share the instruction streams.
+  asm_instr_indices:[uint32];
+
+  // Assembly instructions stream for LX6 processor to run for each kernel
+  // The number of kernels and by extention the number of asm instruction streams
+  // are equal to the number of entry points. We access each kernel
+  // by giving the entry point name to the pdi and getting a kernel object from it.
+  asm_instrs:[AsmInstDef];
+
+  source_locations:[FileLineLocDef];
+}
+
+root_type ExecutableDef;
