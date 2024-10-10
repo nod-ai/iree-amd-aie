@@ -222,12 +222,6 @@ def AMDAIEFlattenLogicalObjectFifo :
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEFlattenLogicalObjectFifoPass()";
 }
 
-def AMDAIEFlattenVectorizedOps :
-  Pass<"iree-amdaie-flatten-vectorized-ops", "ModuleOp"> {
-  let summary = "Flatten vectorized ops.";
-  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEFlattenVectorizedOpsPass()";
-}
-
 def AMDAIEFuseConsumerIntoLoop :
     InterfacePass<"iree-amdaie-fuse-consumer-into-loop", "mlir::FunctionOpInterface"> {
   let summary = "Fuse the consumer operation into the innermost last scf loop.";

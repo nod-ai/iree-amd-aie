@@ -519,7 +519,8 @@ void buildAMDAIETransformPassPipeline(
   }
   modulePassManager.addPass(createLowerUKernelOpsToCallsPass());
   if (useLowerToAIEPipeline == LowerToAIEPassPipeline::ObjectFifo) {
-    addAMDAIEObjectFifoLoweringPasses(modulePassManager, enablePacketFlow);
+    addAMDAIEObjectFifoLoweringPasses(modulePassManager, enablePacketFlow,
+                                      useTilePipeline);
   } else if (useLowerToAIEPipeline == LowerToAIEPassPipeline::AIR) {
     addMLIRAIRLoweringPasses(modulePassManager, device, useTilePipeline,
                              matmulElementwiseFusion);
@@ -540,11 +541,22 @@ void buildAMDAIETransformPassPipeline(
 
 
 void addAMDAIEObjectFifoLoweringPasses(OpPassManager &passManager,
-                                       bool enablePacketFlow) {
+                                       bool enablePacketFlow,
+                                       TilePassPipeline useTilePipeline) {
   passManager.addPass(createEraseHALDescriptorTypeFromMemRefPass());
   passManager.addPass(memref::createFoldMemRefAliasOpsPass());
   passManager.addPass(createCanonicalizerPass());
-  passManager.addPass(createAMDAIEConvertToDmaPass());
+  // For matmul pipelines, we do transpose on target side for pack ops to get
+  // better performance. While for convolution pipelines, the same settings
+  // cause 'aie.dma_bd' error, so for now keep using transpose on source for
+  // both pack and unpack ops.
+  // TODO(vivian): explore the other options for conv ops.
+  AMDAIEConvertToDmaOptions dmaOptions;
+  dmaOptions.packTransposeOnSource =
+      (useTilePipeline == TilePassPipeline::ConvDecomposePipeline) ? true
+                                                                   : false;
+  dmaOptions.unpackTransposeOnSource = true;
+  passManager.addPass(createAMDAIEConvertToDmaPass(dmaOptions));
 
   passManager.addPass(createAMDAIENormalizeLoopBoundsPass());
   passManager.addPass(createAMDAIEInsertCoresPass());
@@ -719,12 +731,11 @@ void addMLIRAIRLoweringPasses(OpPassManager &passManager, AMDAIEDevice device,
   passManager.addPass(createCSEPass());
   {
     xilinx::air::AIRFuseChannelsOptions options;
-    std::vector<std::string> mode;
     if (useTilePipeline == TilePassPipeline::PackPeelPipeline &&
         matmulElementwiseFusion) {
-      mode.push_back("L1");
+      const static llvm::SmallVector<std::string> mode = {"L1"};
+      options.clAggressiveMode = mode;
     }
-    options.clAggressiveMode = ArrayRef(mode);
     passManager.addPass(xilinx::air::createAIRFuseChannels(options));
   }
   passManager.addPass(createCanonicalizerPass());
@@ -790,14 +801,13 @@ void addMLIRAIRLoweringPasses(OpPassManager &passManager, AMDAIEDevice device,
     // with given factors, and subsequently unrolled in
     // AIRUnrollOuterPerfectlyNestedLoopsPass, to enforce SHIM DMA BD count
     // within the hardware limit.
-    std::vector<unsigned> tile_sizes;
     if (useTilePipeline == TilePassPipeline::PackPeelPipeline) {
-      tile_sizes = {2, 2};
+      const static llvm::SmallVector<unsigned> tile_sizes = {2, 2};
+      options.clTileSizes = tile_sizes;
     } else if (useTilePipeline == TilePassPipeline::PadPackPipeline) {
-      tile_sizes = {4, 4};
-    } else
-      tile_sizes = {};
-    options.clTileSizes = ArrayRef(tile_sizes);
+      const static llvm::SmallVector<unsigned> tile_sizes = {4, 4};
+      options.clTileSizes = tile_sizes;
+    }
     passManager.addNestedPass<func::FuncOp>(
         xilinx::air::createAffineLoopOptPass(options));
   }
