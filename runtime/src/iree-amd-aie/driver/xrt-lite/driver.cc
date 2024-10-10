@@ -5,6 +5,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 #include "iree-amd-aie/driver/xrt-lite/api.h"
+#include "iree-amd-aie/driver/xrt-lite/shim/linux/kmq/device.h"
 #include "util.h"
 
 typedef struct iree_hal_xrt_lite_driver_t {
@@ -22,7 +23,7 @@ extern const iree_hal_driver_vtable_t iree_hal_xrt_lite_driver_vtable;
 static iree_hal_xrt_lite_driver_t* iree_hal_xrt_lite_driver_cast(
     iree_hal_driver_t* base_value) {
   IREE_HAL_ASSERT_TYPE(base_value, &iree_hal_xrt_lite_driver_vtable);
-  return (iree_hal_xrt_lite_driver_t*)base_value;
+  return reinterpret_cast<iree_hal_xrt_lite_driver_t*>(base_value);
 }
 
 void iree_hal_xrt_lite_driver_options_initialize(
@@ -87,6 +88,7 @@ IREE_API_EXPORT iree_status_t iree_hal_xrt_lite_driver_create(
   } else {
     iree_hal_driver_release((iree_hal_driver_t*)driver);
   }
+
   IREE_TRACE_ZONE_END(z0);
   return status;
 }
@@ -104,9 +106,84 @@ static void iree_hal_xrt_lite_driver_destroy(iree_hal_driver_t* base_driver) {
   IREE_TRACE_ZONE_END(z0);
 }
 
+#define IREE_HAL_XRT_LITE_DEVICE_ID_DEFAULT 0
+
+static iree_status_t iree_hal_xrt_lite_driver_query_available_devices(
+    iree_hal_driver_t* base_driver, iree_allocator_t host_allocator,
+    iree_host_size_t* out_device_info_count,
+    iree_hal_device_info_t** out_device_infos) {
+  // TODO(null): query available devices and populate the output. Note that
+  // unlike most IREE functions this allocates if required in order to allow
+  // this to return uncached information. Uncached is preferred as it allows
+  // devices that may come and go (power toggles, user visibility toggles, etc)
+  // through a process lifetime to appear without needing a full restart.
+  static const iree_hal_device_info_t device_infos[1] = {
+      {
+          .device_id = IREE_HAL_XRT_LITE_DEVICE_ID_DEFAULT,
+          .name = iree_string_view_literal("default"),
+      },
+  };
+  *out_device_info_count = IREE_ARRAYSIZE(device_infos);
+  return iree_allocator_clone(
+      host_allocator,
+      iree_make_const_byte_span(device_infos, sizeof(device_infos)),
+      (void**)out_device_infos);
+}
+
+static iree_status_t iree_hal_xrt_lite_driver_create_device_by_id(
+    iree_hal_driver_t* base_driver, iree_hal_device_id_t device_id,
+    iree_host_size_t param_count, const iree_string_pair_t* params,
+    iree_allocator_t host_allocator, iree_hal_device_t** out_device) {
+  iree_hal_xrt_lite_driver_t* driver =
+      iree_hal_xrt_lite_driver_cast(base_driver);
+
+  // TODO(null): use the provided params to overwrite the default options. The
+  // format of the params is implementation-defined. The params strings can be
+  // directly referenced if needed as the device creation is only allowed to
+  // access them during the create call below.
+  iree_hal_xrt_lite_device_options_t options =
+      driver->options.default_device_options;
+
+  // TODO(null): implement creation by device_id; this is mostly used as
+  // query_available_devices->create_device_by_id to avoid needing to expose
+  // device paths (which may not always be 1:1). This skeleton only has a single
+  // device so the ID is ignored.
+  (void)driver;
+
+  return iree_hal_xrt_lite_device_create(driver->identifier, &options,
+                                         host_allocator, out_device);
+}
+
+static iree_status_t iree_hal_xrt_lite_driver_create_device_by_path(
+    iree_hal_driver_t* base_driver, iree_string_view_t driver_name,
+    iree_string_view_t device_path, iree_host_size_t param_count,
+    const iree_string_pair_t* params, iree_allocator_t host_allocator,
+    iree_hal_device_t** out_device) {
+  iree_hal_xrt_lite_driver_t* driver =
+      iree_hal_xrt_lite_driver_cast(base_driver);
+
+  // TODO(null): use the provided params to overwrite the default options. The
+  // format of the params is implementation-defined. The params strings can be
+  // directly referenced if needed as the device creation is only allowed to
+  // access them during the create call below.
+  iree_hal_xrt_lite_device_options_t options =
+      driver->options.default_device_options;
+
+  // TODO(null): support parsing of the device_path. Note that a single driver
+  // may respond to multiple driver_name queries. Paths are
+  // implementation-specific and there may be multiple formats; for example,
+  // device UUID, PCI bus ID, ordinal as used by underlying APIs, etc.
+  (void)driver;
+
+  return iree_hal_xrt_lite_device_create(driver->identifier, &options,
+                                         host_allocator, out_device);
+}
+
 namespace {
 const iree_hal_driver_vtable_t iree_hal_xrt_lite_driver_vtable = {
     .destroy = iree_hal_xrt_lite_driver_destroy,
-    .query_available_devices = unimplemented,
+    .query_available_devices = iree_hal_xrt_lite_driver_query_available_devices,
+    .create_device_by_id = iree_hal_xrt_lite_driver_create_device_by_id,
+    .create_device_by_path = iree_hal_xrt_lite_driver_create_device_by_path,
 };
 }

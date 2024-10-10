@@ -6,6 +6,26 @@
 
 include(CMakeDependentOption)
 
+iree_hal_cts_test_suite(
+  DRIVER_NAME
+    xrt-lite
+  DRIVER_REGISTRATION_HDR
+    "iree-amd-aie/driver/xrt-lite/registration/driver_module.h"
+  DRIVER_REGISTRATION_FN
+    "iree_hal_xrt_lite_driver_module_register"
+  COMPILER_TARGET_BACKEND
+    "amd-aie"
+  EXECUTABLE_FORMAT
+    "\"amdaie-xclbin-fb\""
+  DEPS
+    iree-amd-aie::driver::xrt-lite::registration
+  INCLUDED_TESTS
+    "allocator"
+#    "buffer_mapping"
+#    "command_buffer"
+    "driver"
+)
+
 #set(PEANO_INSTALL_DIR "" CACHE PATH "")
 #set(VITIS_DIR "" CACHE PATH "")
 #if((NOT PEANO_INSTALL_DIR) AND (NOT VITIS_DIR))
@@ -54,27 +74,7 @@ include(CMakeDependentOption)
 #  PUBLIC
 #  TESTONLY
 #)
-
-iree_hal_cts_test_suite(
-  DRIVER_NAME
-    xrt-lite
-  DRIVER_REGISTRATION_HDR
-    "iree-amd-aie/driver/xrt-lite/registration/driver_module.h"
-  DRIVER_REGISTRATION_FN
-    "iree_hal_xrt_lite_driver_module_register"
-  COMPILER_TARGET_BACKEND
-    "amd-aie"
-  EXECUTABLE_FORMAT
-    "\"amdaie-xclbin-fb\""
-  DEPS
-    iree-amd-aie::driver::xrt-lite::registration
-  INCLUDED_TESTS
-#    "allocator"
-#    "buffer_mapping"
-#    "command_buffer"
-    "driver"
-)
-
+#
 #iree_cc_test(
 #  NAME
 #    xrt_lite_command_buffer_dispatch_test
