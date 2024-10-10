@@ -15,49 +15,6 @@ namespace shim_xdna {
 #define XRT_BO_USE_NORMAL 0
 #define XRT_BO_USE_DEBUG 1
 
-/**
- * XCL BO Flags bits layout
- *
- * bits  0 ~ 15: DDR BANK index
- * bits 24 ~ 31: BO flags
- */
-#define XRT_BO_FLAGS_MEMIDX_MASK (0xFFFFFFUL)
-#define XCL_BO_FLAGS_NONE (0)
-#define XCL_BO_FLAGS_CACHEABLE (1U << 24)
-#define XCL_BO_FLAGS_KERNBUF (1U << 25)
-#define XCL_BO_FLAGS_SGL (1U << 26)
-#define XCL_BO_FLAGS_SVM (1U << 27)
-#define XCL_BO_FLAGS_DEV_ONLY (1U << 28)
-#define XCL_BO_FLAGS_HOST_ONLY (1U << 29)
-#define XCL_BO_FLAGS_P2P (1U << 30)
-#define XCL_BO_FLAGS_EXECBUF (1U << 31)
-
-/**
- * Encoding of flags passed to xcl buffer allocation APIs
- */
-struct xcl_bo_flags {
-  union {
-    uint64_t all;  // [63-0]
-
-    struct {
-      uint32_t flags;      // [31-0]
-      uint32_t extension;  // [63-32]
-    };
-
-    struct {
-      uint16_t bank;    // [15-0]
-      uint8_t slot;     // [23-16]
-      uint8_t boflags;  // [31-24]
-
-      // extension
-      uint32_t access : 2;   // [33-32]
-      uint32_t dir : 2;      // [35-34]
-      uint32_t use : 1;      // [36]
-      uint32_t unused : 27;  // [63-35]
-    };
-  };
-};
-
 // map_type - determines how a buffer is mapped
 enum class map_type { read, write };
 
@@ -76,10 +33,10 @@ enum class direction {
 
 // properties - buffer details
 struct properties {
-  uint64_t flags;  // flags of bo
-  uint64_t size;   // size of bo
-  uint64_t paddr;  // physical address
-  uint64_t kmhdl;  // kernel mode handle
+  shim_xcl_bo_flags flags;  // flags of bo
+  uint64_t size;            // size of bo
+  uint64_t paddr;           // physical address
+  uint64_t kmhdl;           // kernel mode handle
 };
 
 struct drm_bo {
@@ -99,7 +56,7 @@ struct bo {
   void *m_aligned = nullptr;
   size_t m_parent_size = 0;
   size_t m_aligned_size = 0;
-  uint64_t m_flags = 0;
+  shim_xcl_bo_flags m_flags{};
   amdxdna_bo_type m_type = AMDXDNA_BO_INVALID;
   std::unique_ptr<drm_bo> m_drm_bo;
   const shared_handle m_import;
@@ -115,9 +72,9 @@ struct bo {
   // among all HW contexts.
   uint32_t m_owner_ctx_id = AMDXDNA_INVALID_CTX_HANDLE;
 
-  bo(const pdev &p, uint32_t ctx_id, size_t size, uint64_t flags,
+  bo(const pdev &p, uint32_t ctx_id, size_t size, shim_xcl_bo_flags flags,
      amdxdna_bo_type type);
-  bo(const pdev &p, uint32_t ctx_id, size_t size, uint64_t flags);
+  bo(const pdev &p, uint32_t ctx_id, size_t size, shim_xcl_bo_flags flags);
   bo(const pdev &p, int ehdl);
   // Support BO creation from internal
   bo(const pdev &p, size_t size, amdxdna_bo_type type);
@@ -137,8 +94,6 @@ struct bo {
   // DRM BO managed by driver.
   void bind_at(size_t pos, const bo *bh, size_t offset, size_t size);
   std::string describe() const;
-  // Alloc DRM BO from driver
-  void alloc_bo();
   // Import DRM BO from m_import shared object
   void import_bo();
   // Free DRM BO in driver

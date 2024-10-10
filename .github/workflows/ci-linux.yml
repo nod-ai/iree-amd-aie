@@ -212,3 +212,10 @@ jobs:
             --capture=tee-sys \
             --iree-install-dir=$PWD/iree-install \
             --peano-install-dir=$PWD/llvm-aie
+
+      - name: XRT-LITE tests
+        run: |
+          DEVICE_TEST_DIR="$PWD/iree-install/device_tests"
+          for t in $(ls $DEVICE_TEST_DIR); do
+            $DEVICE_TEST_DIR/$t
+          done

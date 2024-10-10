@@ -149,8 +149,11 @@ elif [[ "$OSTYPE" == "darwin"* ]]; then
 fi
 
 if [ -d "$llvm_install_dir" ]; then
-  cp "$llvm_install_dir"/bin/lld "$install_dir"/bin
-  cp "$llvm_install_dir"/bin/FileCheck "$install_dir"/bin
-  cp "$llvm_install_dir"/bin/not "$install_dir"/bin
+  cp "$llvm_install_dir/bin/lld" "$install_dir/bin"
+  cp "$llvm_install_dir/bin/FileCheck" "$install_dir/bin"
+  cp "$llvm_install_dir/bin/not" "$install_dir/bin"
 fi
-cp "$build_dir"/tools/testing/e2e/iree-e2e-matmul-test "$install_dir"/bin
+
+cp "$build_dir/tools/testing/e2e/iree-e2e-matmul-test" "$install_dir/bin"
+mkdir -p "$install_dir/device_tests"
+cp "$build_dir"/runtime/plugins/AMD-AIE/iree-amd-aie/driver/xrt-lite/cts/*test "$install_dir/device_tests"

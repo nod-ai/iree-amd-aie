@@ -3,9 +3,12 @@
 
 #include "fence.h"
 
+#include <unistd.h>
+
 #include <limits>
 
 #include "hwctx.h"
+#include "shim_debug.h"
 
 namespace {
 
@@ -123,6 +126,12 @@ void submit_signal_syncobj(const shim_xdna::pdev &dev,
 }  // namespace
 
 namespace shim_xdna {
+
+shared_handle::~shared_handle() {
+  if (m_fd != -1) close(m_fd);
+}
+
+int shared_handle::get_export_handle() const { return m_fd; }
 
 fence_handle::fence_handle(const device &device)
     : m_pdev(device.get_pdev()),

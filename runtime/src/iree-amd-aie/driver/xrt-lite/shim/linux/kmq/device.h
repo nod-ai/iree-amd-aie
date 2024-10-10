@@ -9,7 +9,7 @@
 
 #include "experimental/xrt_xclbin.h"
 #include "fence.h"
-#include "shim_debug.h"
+#include "xrt_mem.h"
 
 namespace shim_xdna {
 struct pdev;
@@ -42,12 +42,11 @@ struct device {
   std::unique_ptr<bo> import_bo(int ehdl) const;
   const pdev &get_pdev() const;
 
-  std::unique_ptr<bo> alloc_bo(void *userptr, uint32_t ctx_id, size_t size,
-                               uint64_t flags);
-
-  std::unique_ptr<bo> alloc_bo(size_t size, uint64_t flags);
-  std::unique_ptr<bo> alloc_bo(void *userptr, size_t size, uint64_t flags);
+  std::unique_ptr<bo> alloc_bo(uint32_t ctx_id, size_t size,
+                               shim_xcl_bo_flags flags);
+  std::unique_ptr<bo> alloc_bo(size_t size, shim_xcl_bo_flags flags);
   std::unique_ptr<bo> import_bo(pid_t, int);
+
   std::unique_ptr<hw_ctx> create_hw_context(
       const xrt::uuid &xclbin_uuid, const std::map<std::string, uint32_t> &qos);
   std::vector<char> read_aie_mem(uint16_t col, uint16_t row, uint32_t offset,
@@ -57,6 +56,7 @@ struct device {
   uint32_t read_aie_reg(uint16_t col, uint16_t row, uint32_t reg_addr);
   void write_aie_reg(uint16_t col, uint16_t row, uint32_t reg_addr,
                      uint32_t reg_val);
+
   std::unique_ptr<fence_handle> create_fence(fence_handle::access_mode);
   std::unique_ptr<fence_handle> import_fence(pid_t, int);
   void record_xclbin(const xrt::xclbin &xclbin);

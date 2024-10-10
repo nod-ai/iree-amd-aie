@@ -5,7 +5,6 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 #include "iree-amd-aie/driver/xrt-lite/api.h"
-#include "iree-amd-aie/driver/xrt-lite/shim/linux/kmq/device.h"
 #include "util.h"
 
 typedef struct iree_hal_xrt_lite_driver_t {
