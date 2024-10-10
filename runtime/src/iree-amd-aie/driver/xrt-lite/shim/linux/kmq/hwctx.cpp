@@ -9,6 +9,7 @@
 #include "bo.h"
 #include "core/common/api/xclbin_int.h"
 #include "hwq.h"
+#include "shim_debug.h"
 
 namespace {
 
@@ -90,7 +91,7 @@ cuidx_type hw_ctx::open_cu_context(const std::string &cu_name) {
   shim_err(ENOENT, "CU name (%s) not found", cu_name.c_str());
 }
 
-std::unique_ptr<bo> hw_ctx::alloc_bo(size_t size, uint64_t flags) {
+std::unique_ptr<bo> hw_ctx::alloc_bo(size_t size, shim_xcl_bo_flags flags) {
   return alloc_bo(nullptr, size, flags);
 }
 
@@ -134,7 +135,9 @@ void hw_ctx::delete_ctx_on_device() {
 
 void hw_ctx::init_log_buf() {
   auto log_buf_size = m_num_cols * 1024;
-  m_log_bo = alloc_bo(nullptr, log_buf_size, XCL_BO_FLAGS_EXECBUF);
+  shim_xcl_bo_flags f;
+  f.flags = XCL_BO_FLAGS_EXECBUF;
+  m_log_bo = alloc_bo(nullptr, log_buf_size, f);
   m_log_buf = m_log_bo->map(map_type::write);
   std::memset(m_log_buf, 0, log_buf_size);
 }
@@ -153,21 +156,21 @@ hw_ctx::hw_ctx(device &device, const xrt::xclbin &xclbin, const qos_t &qos)
       cu_conf_param_buf.data());
 
   cu_conf_param->num_cus = m_cu_info.size();
-  xcl_bo_flags f = {};
+  shim_xcl_bo_flags f = {};
   f.flags = XRT_BO_FLAGS_CACHEABLE;
   for (int i = 0; i < m_cu_info.size(); i++) {
-    auto &ci = m_cu_info[i];
+    cu_info &ci = m_cu_info[i];
 
-    m_pdi_bos.push_back(alloc_bo(nullptr, ci.m_pdi.size(), f.all));
-    auto &pdi_bo = m_pdi_bos[i];
-    auto pdi_vaddr = reinterpret_cast<char *>(pdi_bo->map(map_type::write));
+    m_pdi_bos.push_back(alloc_bo(ci.m_pdi.size(), f));
+    std::unique_ptr<bo> &pdi_bo = m_pdi_bos[i];
+    char *pdi_vaddr = reinterpret_cast<char *>(pdi_bo->map(map_type::write));
 
     // see cu_configs[1] in amdxdna_hwctx_param_config_cu
     assert(i < 1 && "only 1 CU supported");
-    auto &cf = cu_conf_param->cu_configs[i];
+    amdxdna_cu_config &cf = cu_conf_param->cu_configs[i];
     std::memcpy(pdi_vaddr, ci.m_pdi.data(), ci.m_pdi.size());
     pdi_bo->sync(direction::host2device, pdi_bo->get_properties().size, 0);
-    cf.cu_bo = pdi_bo.get()->get_drm_bo_handle();
+    cf.cu_bo = pdi_bo->get_drm_bo_handle();
     cf.cu_func = ci.m_func;
   }
 
@@ -182,13 +185,13 @@ hw_ctx::hw_ctx(device &device, const xrt::xclbin &xclbin, const qos_t &qos)
 }
 
 std::unique_ptr<bo> hw_ctx::alloc_bo(void *userptr, size_t size,
-                                     uint64_t flags) {
+                                     shim_xcl_bo_flags flags) {
   // const_cast: alloc_bo() is not const yet in device class
   // Debug buffer is specific to one context.
-  if (xcl_bo_flags{flags}.use == XRT_BO_USE_DEBUG)
-    return m_device.alloc_bo(userptr, m_handle, size, flags);
+  if (flags.use == XRT_BO_USE_DEBUG)
+    return m_device.alloc_bo(m_handle, size, flags);
   // Other BOs are shared across all contexts.
-  return m_device.alloc_bo(userptr, AMDXDNA_INVALID_CTX_HANDLE, size, flags);
+  return m_device.alloc_bo(AMDXDNA_INVALID_CTX_HANDLE, size, flags);
 }
 
 std::unique_ptr<hw_ctx> create_hw_context(device &dev,

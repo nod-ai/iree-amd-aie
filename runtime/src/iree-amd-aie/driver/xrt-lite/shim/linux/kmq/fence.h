@@ -4,10 +4,9 @@
 #ifndef _FENCE_XDNA_H_
 #define _FENCE_XDNA_H_
 
+#include <memory>
 #include <mutex>
 #include <vector>
-
-#include "shim_debug.h"
 
 namespace shim_xdna {
 struct pdev;
@@ -15,14 +14,10 @@ struct device;
 struct hw_ctx;
 
 struct shared_handle {
-  shared_handle(int fd) : m_fd(fd) {}
-
-  ~shared_handle() {
-    if (m_fd != -1) close(m_fd);
-  }
-  int get_export_handle() const { return m_fd; }
-
   const int m_fd;
+  shared_handle(int fd) : m_fd(fd) {}
+  ~shared_handle();
+  int get_export_handle() const;
 };
 
 struct fence_handle {

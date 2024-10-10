@@ -8,7 +8,6 @@
 
 #include "amdxdna_accel.h"
 #include "device.h"
-#include "shim_debug.h"
 
 namespace shim_xdna {
 
@@ -57,8 +56,9 @@ struct hw_ctx {
   ~hw_ctx();
 
   // TODO
-  std::unique_ptr<bo> alloc_bo(void *userptr, size_t size, uint64_t flags);
-  std::unique_ptr<bo> alloc_bo(size_t size, uint64_t flags);
+  std::unique_ptr<bo> alloc_bo(void *userptr, size_t size,
+                               shim_xcl_bo_flags flags);
+  std::unique_ptr<bo> alloc_bo(size_t size, shim_xcl_bo_flags flags);
   std::unique_ptr<bo> import_bo(pid_t, int);
   cuidx_type open_cu_context(const std::string &cuname);
   void create_ctx_on_device();

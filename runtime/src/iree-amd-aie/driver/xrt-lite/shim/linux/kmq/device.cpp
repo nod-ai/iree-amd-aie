@@ -9,7 +9,6 @@
 #include <sys/syscall.h>
 #include <unistd.h>
 
-#include <cassert>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -17,6 +16,8 @@
 #include "bo.h"
 #include "fence.h"
 #include "hwctx.h"
+#include "shim_debug.h"
+#include "xrt_mem.h"
 
 namespace {
 
@@ -158,13 +159,13 @@ std::unique_ptr<hw_ctx> device::create_hw_context(
   return std::make_unique<hw_ctx>(*this, get_xclbin(xclbin_uuid), qos);
 }
 
-std::unique_ptr<bo> device::alloc_bo(size_t size, uint64_t flags) {
-  return alloc_bo(nullptr, size, flags);
+std::unique_ptr<bo> device::alloc_bo(uint32_t ctx_id, size_t size,
+                                     shim_xcl_bo_flags flags) {
+  return std::make_unique<bo>(this->m_pdev, ctx_id, size, flags);
 }
 
-std::unique_ptr<bo> device::alloc_bo(void *userptr, size_t size,
-                                     uint64_t flags) {
-  return alloc_bo(userptr, AMDXDNA_INVALID_CTX_HANDLE, size, flags);
+std::unique_ptr<bo> device::alloc_bo(size_t size, shim_xcl_bo_flags flags) {
+  return alloc_bo(AMDXDNA_INVALID_CTX_HANDLE, size, flags);
 }
 
 std::unique_ptr<bo> device::import_bo(pid_t pid, int ehdl) {
@@ -182,13 +183,6 @@ std::unique_ptr<fence_handle> device::import_fence(pid_t pid, int ehdl) {
 void device::record_xclbin(const xrt::xclbin &xclbin) {
   std::lock_guard<std::mutex> lk(m_mutex);
   m_xclbin = xclbin;
-}
-
-std::unique_ptr<bo> device::alloc_bo(void *userptr, uint32_t ctx_id,
-                                     size_t size, uint64_t flags) {
-  if (userptr) shim_not_supported_err("User ptr BO");
-
-  return std::make_unique<bo>(this->m_pdev, ctx_id, size, flags);
 }
 
 std::unique_ptr<bo> device::import_bo(int ehdl) const {
