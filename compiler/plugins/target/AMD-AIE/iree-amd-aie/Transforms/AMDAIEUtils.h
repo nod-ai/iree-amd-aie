@@ -11,6 +11,7 @@
 
 #include "iree-amd-aie/IR/AMDAIEAttrs.h"
 #include "iree/compiler/Dialect/HAL/IR/HALOps.h"
+#include "llvm/ADT/StringExtras.h"
 #include "mlir/Dialect/Linalg/Utils/Utils.h"
 #include "mlir/IR/Types.h"
 
@@ -93,6 +94,9 @@ bool isMatmulInDefChain(Value operand);
 /// Utility to identify if `linalgOp` is an elementwise operation with a
 /// matmul-like op upstream in its computation tree.
 bool isMatmulProducerOfElementwise(linalg::LinalgOp linalgOp);
+
+std::string utohexstr(uint32_t value, size_t width, bool header = true,
+                      bool lowercase = false);
 
 namespace detail {
 

@@ -350,6 +350,14 @@ bool isMatmulProducerOfElementwise(linalg::LinalgOp linalgOp) {
   return false;
 }
 
+std::string utohexstr(uint32_t value, size_t width, bool header, bool lowercase) {
+  std::string res = "";
+  if (header) res += "0x";
+  std::string hexStr = llvm::utohexstr(value, lowercase);
+  std::string prefix(width - hexStr.size(), '0');
+  return res + prefix + hexStr;
+}
+
 /// Find the largest factor of 'num' which is not larger than 'max'.
 int detail::findLargestFactor(int num, int max) {
   assert(max > 0 && "No factors less than or equal to 0 exist");

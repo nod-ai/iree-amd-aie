@@ -520,6 +520,9 @@ struct AMDAIEDmaToNpuPass : mlir::OperationPass<DeviceOp> {
     instructions[3] = instructions.size() * sizeof(uint32_t);
 
     ArrayRef<uint32_t> instsArrRef(instructions.data(), instructions.size());
+    llvm::outs() << "instructions: \n";
+    for (auto e : instsArrRef) llvm::outs() << e << "\n";
+    llvm::outs() << "\n";
     device->setAttr(
         "npu_instructions",
         DenseUI32ResourceElementsAttr::get(

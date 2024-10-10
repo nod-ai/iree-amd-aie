@@ -617,6 +617,9 @@ void addAMDAIEObjectFifoLoweringPasses(OpPassManager &passManager,
   passManager.addPass(createAMDAIEConnectionToFlowPass());
   passManager.addPass(createAMDAIEAssignPacketIdsPass());
 
+  passManager.addPass(createAMDAIEControlCodeLoweringPass());
+  passManager.addPass(createAMDAIEControlCodeToTransactionPass());
+
   addAMDAIEToAIEPasses(passManager);
 
   // Now lower using the AIE passes from MLIR-AIE.
@@ -800,7 +803,8 @@ void addMLIRAIELoweringPasses(OpPassManager &passManager) {
   {
     OpPassManager &devicePM = passManager.nest<xilinx::AIE::DeviceOp>();
     devicePM.addPass(createCanonicalizerPass());
-    devicePM.addPass(createAMDAIEDmaToNpuPass());
+    //
+    // devicePM.addPass(createAMDAIEDmaToNpuPass());
     devicePM.addPass(createAMDAIEAssignBufferDescriptorIDsPass());
     devicePM.addPass(createAMDAIEAssignBufferAddressesBasicPass());
     devicePM.addPass(createAMDAIEPathfinderPass());
