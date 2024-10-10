@@ -564,6 +564,7 @@ void addAMDAIEObjectFifoLoweringPasses(OpPassManager &passManager,
   passManager.addPass(createAMDAIELocalizeLogicalObjectFifoPass());
   passManager.addPass(createCSEPass());
 
+  passManager.addPass(createAMDAIEDistributeL1AllocationsPass());
   passManager.addPass(createAMDAIEDistributeCoresAndObjectFifosPass());
   passManager.addPass(createCSEPass());
   passManager.addPass(createCanonicalizerPass());
