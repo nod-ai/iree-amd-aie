@@ -1,4 +1,4 @@
-// RUN: iree-opt --pass-pipeline="builtin.module(func.func(iree-amdaie-insert-loops-for-vectorization))" %s | FileCheck %s
+// RUN: iree-opt --pass-pipeline="builtin.module(func.func(iree-amdaie-insert-loops-for-vectorization))" --split-input-file %s | FileCheck %s
 
 !t2_bf16 = tensor<64x64xbf16>
 !t3_bf16 = tensor<64x64x64xbf16>
@@ -137,25 +137,6 @@ module {
     return %0 : !t3_f32
   }
 
-
-  // A check that a linalg.generic where the number of operands is not 3, does
-  // not get transformed to have an scf.for
-  // CHECK-LABEL: funcWithTwoOperands
-  // CHECK-NOT: scf.for
-  func.func @funcWithTwoOperands(%arg0: !t4_bf16, %arg1: !t4_bf16) -> !t4_bf16 {
-    %0 = linalg.generic {indexing_maps =
-                          [
-                           affine_map<(b0, d0, d1, d2) -> (b0, d0, d1, d2)>,
-                           affine_map<(b0, d0, d1, d2) -> (d0, d1, d2, b0)>
-                          ],
-                         iterator_types = ["parallel", "parallel", "parallel", "parallel"]}
-                         ins(%arg0 : !t4_bf16) outs(%arg1 : !t4_bf16) {
-    ^bb0(%in: bf16, %out: bf16):
-      linalg.yield %in : bf16
-    } -> !t4_bf16
-    return %0 : !t4_bf16
-  }
-
   // Check that the final 3 dimensions do have the pattern of a matmul (or matmul transpose)
   // CHECK-LABEL: batched1
   // CHECK-NOT: scf.for
@@ -246,4 +227,33 @@ module {
   }
 }
 
+// -----
 
+// CHECK-LABEL: @element_wise
+// CHECK-SAME:  (%[[ARG0:.*]]: tensor<4x6x8xf32>, %[[ARG1:.*]]: tensor<4x6x8xbf16>)
+module {
+  func.func @element_wise(%arg0: tensor<4x6x8xf32>, %arg1: tensor<4x6x8xbf16>) -> tensor<4x6x8xbf16>{
+    %cst = arith.constant 0.000000e+00 : bf16
+    // CHECK-DAG:   %[[C4:.*]] = arith.constant 4 : index
+    // CHECK:       scf.for %[[IV:.*]] = %{{.*}} to %[[C4]]
+    // CHECK-SAME:                      iter_args(%[[ARG3:.*]] = %[[ARG1]])
+    // CHECK-NOT:     scf.for
+    // CHECK:         tensor.extract_slice %[[ARG0]][%[[IV]], 0, 0] [1, 6, 8] [1, 1, 1]
+    // CHECK:         tensor.extract_slice %[[ARG3]][%[[IV]], 0, 0] [1, 6, 8] [1, 1, 1]
+    // CHECK:         %[[RES:.*]] = linalg.generic
+    // CHECK:         tensor.insert_slice %[[RES]] into %[[ARG3]][%[[IV]], 0, 0] [1, 6, 8] [1, 1, 1]
+    %0 = linalg.generic {
+              indexing_maps = [affine_map<(d0, d1, d2) -> (d0, d1, d2)>,
+                               affine_map<(d0, d1, d2) -> (d0, d1, d2)>
+                              ],
+              iterator_types = ["parallel", "parallel", "parallel"]
+          } ins(%arg0 : tensor<4x6x8xf32>)
+            outs(%arg1 : tensor<4x6x8xbf16>) {
+      ^bb0(%in: f32, %out: bf16):
+        %1 = arith.truncf %in : f32 to bf16
+        %2 = arith.maximumf %1, %cst : bf16
+        linalg.yield %2 : bf16
+    } -> tensor<4x6x8xbf16>
+    return %0 : tensor<4x6x8xbf16>
+  }
+}

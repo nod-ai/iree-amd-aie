@@ -300,3 +300,28 @@ module {
     return
   }
 }
+
+// -----
+
+// CHECK-LABEL: @insert_truncf_within_core
+// CHECK:           scf.forall
+// CHECK:             amdaie.tile
+// CHECK:             amdaie.core
+// CHECK:               vector.transfer_read
+// CHECK:               arith.truncf
+// CHECK:               vector.transfer_write
+// CHECK:               amdaie.end
+module {
+  func.func @insert_truncf_within_core(%arg0: memref<10x10xf32, 2 : i32>, %arg1: memref<10x10xbf16, 2 : i32>) {
+    %cst = arith.constant 0.000000e+00 : f32
+    %c1 = arith.constant 1 : index
+    %c3 = arith.constant 3 : index
+    %c0 = arith.constant 0 : index
+    scf.forall (%arg3, %arg4) in (2, 2) {
+      %read = vector.transfer_read %arg0[%c0, %c1], %cst {in_bounds = [true, true]} : memref<10x10xf32, 2 : i32>, vector<1x1xf32>
+      %truncf = arith.truncf %read : vector<1x1xf32> to vector<1x1xbf16>
+      vector.transfer_write %truncf, %arg1[%c0, %c1] {in_bounds = [true, true]} : vector<1x1xbf16>, memref<10x10xbf16, 2 : i32>
+    } {mapping = [#gpu.thread<y>, #gpu.thread<x>]}
+    return
+  }
+}

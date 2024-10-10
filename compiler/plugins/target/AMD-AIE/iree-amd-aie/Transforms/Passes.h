@@ -158,9 +158,6 @@ std::unique_ptr<Pass> createAMDAIEDmaToCircularDmaPass();
 /// Create a pass to flatten the logical objectFifos.
 std::unique_ptr<Pass> createAMDAIEFlattenLogicalObjectFifoPass();
 
-/// Create a pass to flatten vectorized ops.
-std::unique_ptr<Pass> createAMDAIEFlattenVectorizedOpsPass();
-
 /// Create a pass to fuse the consumer op into the innermost last scf loop.
 std::unique_ptr<Pass> createAMDAIEFuseConsumerIntoLoopPass(
     AMDAIEFuseConsumerIntoLoopOptions options = {});

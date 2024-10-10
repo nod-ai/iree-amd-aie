@@ -64,12 +64,16 @@ func.func @fillAndCopy() -> tensor<8xbf16> {
 }
 
 
-func.func @matmul_elementwise(%3 : tensor<4240x160xi8>, %ele : tensor<160xi8>) -> tensor<4240x160xi8> {
-  // expected-remark @below {{not vectorizing linalg elementwise op}}
-  %9 = linalg.generic {indexing_maps = [affine_map<(d0, d1) -> (d0, d1)>, affine_map<(d0, d1) -> (d1)>, affine_map<(d0, d1) -> (d0, d1)>], iterator_types = ["parallel", "parallel"]} ins(%3, %ele : tensor<4240x160xi8>, tensor<160xi8>) outs(%3 : tensor<4240x160xi8>) {
-    ^bb0(%in: i8, %in_5: i8, %out: i8):
-        %10 = arith.addi %in, %in_5 : i8
-        linalg.yield %10 : i8
-    } -> tensor<4240x160xi8>
-  return %9 : tensor<4240x160xi8>
+// CHECK-LABEL: @matmul_elementwise
+//  CHECK-SAME: (%[[ARG0:.*]]: tensor<4240x160xf32>, %[[ARG1:.*]]: tensor<4240x160xbf16>)
+func.func @matmul_elementwise(%arg0: tensor<4240x160xf32>, %arg1: tensor<4240x160xbf16>) -> tensor<4240x160xbf16> {
+  %0 = linalg.generic {indexing_maps = [affine_map<(d0, d1) -> (d0, d1)>, affine_map<(d0, d1) -> (d0, d1)>], iterator_types = ["parallel", "parallel"]} ins(%arg0: tensor<4240x160xf32>) outs(%arg1 : tensor<4240x160xbf16>) {
+    ^bb0(%in: f32, %out: bf16):
+        %1 = arith.truncf %in : f32 to bf16
+        linalg.yield %1 : bf16
+    } -> tensor<4240x160xbf16>
+  return %0 : tensor<4240x160xbf16>
 }
+// CHECK: %[[VEC_OPERAND_0:.*]] = vector.transfer_read %[[ARG0]]{{.*}} vector<4240x160xf32>
+// CHECK: %[[TRUNCF:.*]] = arith.truncf %[[VEC_OPERAND_0]]
+// CHECK: vector.transfer_write %[[TRUNCF]], %[[ARG1]]
