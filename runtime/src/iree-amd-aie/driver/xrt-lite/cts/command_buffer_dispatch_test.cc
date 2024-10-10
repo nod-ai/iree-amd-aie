@@ -31,6 +31,7 @@ iree_const_byte_span_t get_test_executable_data(iree_string_view_t file_name) {
   const auto& file = toc[0];
   return iree_make_const_byte_span(file.data, file.size);
 }
+
 class CommandBufferDispatchTest
     : public CTSTestBase<::testing::TestWithParam<RecordingType>> {
  protected:
@@ -72,6 +73,48 @@ int32_t generate_random_number(iree_hal_element_type_t element_type,
   return (int32_t)iree_test_utils_pseudorandom_range(
              reinterpret_cast<uint32_t*>(&seed), range) +
          min;
+}
+
+TEST_F(CommandBufferDispatchTest, Create) {
+  iree_hal_command_buffer_t* command_buffer = nullptr;
+  IREE_ASSERT_OK(iree_hal_command_buffer_create(
+      device_, IREE_HAL_COMMAND_BUFFER_MODE_ONE_SHOT,
+      IREE_HAL_COMMAND_CATEGORY_DISPATCH, IREE_HAL_QUEUE_AFFINITY_ANY,
+      /*binding_capacity=*/0, &command_buffer));
+
+  EXPECT_TRUE((iree_hal_command_buffer_allowed_categories(command_buffer) &
+               IREE_HAL_COMMAND_CATEGORY_DISPATCH) ==
+              IREE_HAL_COMMAND_CATEGORY_DISPATCH);
+
+  iree_hal_command_buffer_release(command_buffer);
+}
+
+TEST_F(CommandBufferDispatchTest, BeginEnd) {
+  iree_hal_command_buffer_t* command_buffer = nullptr;
+  IREE_ASSERT_OK(iree_hal_command_buffer_create(
+      device_, IREE_HAL_COMMAND_BUFFER_MODE_ONE_SHOT,
+      IREE_HAL_COMMAND_CATEGORY_DISPATCH, IREE_HAL_QUEUE_AFFINITY_ANY,
+      /*binding_capacity=*/0, &command_buffer));
+
+  IREE_ASSERT_OK(iree_hal_command_buffer_begin(command_buffer));
+  IREE_ASSERT_OK(iree_hal_command_buffer_end(command_buffer));
+
+  iree_hal_command_buffer_release(command_buffer);
+}
+
+TEST_F(CommandBufferDispatchTest, SubmitEmpty) {
+  iree_hal_command_buffer_t* command_buffer = nullptr;
+  IREE_ASSERT_OK(iree_hal_command_buffer_create(
+      device_, IREE_HAL_COMMAND_BUFFER_MODE_ONE_SHOT,
+      IREE_HAL_COMMAND_CATEGORY_DISPATCH, IREE_HAL_QUEUE_AFFINITY_ANY,
+      /*binding_capacity=*/0, &command_buffer));
+
+  IREE_ASSERT_OK(iree_hal_command_buffer_begin(command_buffer));
+  IREE_ASSERT_OK(iree_hal_command_buffer_end(command_buffer));
+
+  IREE_ASSERT_OK(SubmitCommandBufferAndWait(command_buffer));
+
+  iree_hal_command_buffer_release(command_buffer);
 }
 
 TEST_P(CommandBufferDispatchTest, DispatchMatmul) {
@@ -174,7 +217,7 @@ TEST_P(CommandBufferDispatchTest, DispatchMatmul) {
   CleanupExecutable();
 }
 
-INSTANTIATE_TEST_SUITE_P(CommandBufferTest, CommandBufferDispatchTest,
+INSTANTIATE_TEST_SUITE_P(CommandBufferDispatchTest, CommandBufferDispatchTest,
                          ::testing::Values(RecordingType::kDirect),
                          GenerateTestName());
 

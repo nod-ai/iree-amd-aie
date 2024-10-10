@@ -8,21 +8,14 @@
 
 #include "amdxdna_accel.h"
 #include "device.h"
+#include "ert.h"
 #include "hwctx.h"
 
 namespace shim_xdna {
 
-#define XRT_BO_USE_NORMAL 0
-#define XRT_BO_USE_DEBUG 1
-
-// map_type - determines how a buffer is mapped
-enum class map_type { read, write };
-
 enum xclBOSyncDirection {
   XCL_BO_SYNC_BO_TO_DEVICE = 0,
   XCL_BO_SYNC_BO_FROM_DEVICE,
-  XCL_BO_SYNC_BO_GMIO_TO_AIE,
-  XCL_BO_SYNC_BO_AIE_TO_GMIO,
 };
 
 // direction - direction of sync operation
@@ -80,10 +73,12 @@ struct bo {
   bo(const pdev &p, size_t size, amdxdna_bo_type type);
   ~bo();
 
-  void *map(map_type) const;
+  void *map() const;
   void unmap(void *addr);
   void sync(direction, size_t size, size_t offset);
   properties get_properties() const;
+  size_t size();
+
   std::unique_ptr<shared_handle> share() const;
   // For cmd BO only
   void set_cmd_id(uint64_t id);
@@ -92,7 +87,7 @@ struct bo {
   uint32_t get_drm_bo_handle() const;
   amdxdna_bo_type get_type() const;
   // DRM BO managed by driver.
-  void bind_at(size_t pos, const bo *bh, size_t offset, size_t size);
+  void bind_at(size_t pos, const bo &bh, size_t offset, size_t size);
   std::string describe() const;
   // Import DRM BO from m_import shared object
   void import_bo();
@@ -106,6 +101,28 @@ struct bo {
   void detach_from_ctx();
   // Obtain array of arg BO handles, returns real number of handles
   uint32_t get_arg_bo_handles(uint32_t *handles, size_t num) const;
+};
+
+struct exec_buf {
+  bo &m_exec_buf_bo;
+  ert_start_kernel_cmd *m_cmd_pkt;
+  size_t m_cmd_size;
+  uint32_t m_op;
+  uint32_t m_arg_cnt;
+  uint32_t m_reg_idx;
+  std::vector<std::pair<std::string, uint64_t> > m_patching_args;
+
+  exec_buf(bo &bo_execbuf, uint32_t op);
+  static void set_cu_idx(bo &bo_execbuf, cuidx_t cu_idx);
+  void set_cu_idx(cuidx_t cu_idx);
+  void add_ctrl_bo(bo &bo_ctrl);
+  void add_arg_32(uint32_t val);
+  void add_arg_64(uint64_t val);
+  void add_arg_bo(bo &bo_arg, std::string arg_name = "");
+  void dump();
+  static size_t get_ctrl_code_size(const std::string &elf_path);
+  void patch_ctrl_code(bo &bo_ctrl, const std::string &elf_path);
+  void inc_pkt_count(uint32_t n);
 };
 
 }  // namespace shim_xdna

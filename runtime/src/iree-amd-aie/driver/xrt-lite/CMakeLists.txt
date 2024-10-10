@@ -20,13 +20,19 @@ iree_cc_library(
   NAME
     xrt-lite
   SRCS
-    api.h
     allocator.cc
     allocator.h
+    api.h
     buffer.cc
     buffer.h
+    command_buffer.cc
+    command_buffer.h
     device.cc
     driver.cc
+    executable.cc
+    executable.h
+    nop_executable_cache.cc
+    nop_executable_cache.h
     util.h
   DEPS
     iree::base

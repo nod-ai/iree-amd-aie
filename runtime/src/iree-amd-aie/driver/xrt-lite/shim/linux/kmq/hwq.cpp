@@ -11,8 +11,7 @@
 namespace {
 
 ert_packet *get_chained_command_pkt(shim_xdna::bo *boh) {
-  auto cmdpkt =
-      reinterpret_cast<ert_packet *>(boh->map(shim_xdna::map_type::write));
+  ert_packet *cmdpkt = reinterpret_cast<ert_packet *>(boh->map());
   return cmdpkt->opcode == ERT_CMD_CHAIN ? cmdpkt : nullptr;
 }
 
@@ -97,8 +96,7 @@ void hw_q::issue_command(bo *cmd_bo) {
 }
 
 int poll_command(bo *cmd) {
-  auto cmdpkt = reinterpret_cast<ert_packet *>(cmd->map(map_type::write));
-
+  ert_packet *cmdpkt = reinterpret_cast<ert_packet *>(cmd->map());
   if (cmdpkt->state >= ERT_CMD_STATE_COMPLETED) {
     return 1;
   }

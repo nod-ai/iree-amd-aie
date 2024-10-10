@@ -263,8 +263,10 @@ std::vector<std::string> makeChessEnv(Path &vitisDir,
   Path path(::getenv("PATH"));
   Path lnx64o = aieToolsPath / "lib" / "lnx64.o";
   Path dotLib = aieToolsPath / "lnx64" / "tools" / "dot" / "lib";
-  Path ldLibraryPath(::getenv("LD_LIBRARY_PATH"));
-
+  Path ldLibraryPath;
+  if (char *ldLibraryPath_ = ::getenv("LD_LIBRARY_PATH")) {
+    ldLibraryPath = ldLibraryPath_;
+  }
   std::string pathEnv = "PATH=" + chessccPath.string() +
                         std::string{sys::EnvPathSeparator} + path.string();
   std::string ldLibEnv = "LD_LIBRARY_PATH=" + lnx64o.string() +

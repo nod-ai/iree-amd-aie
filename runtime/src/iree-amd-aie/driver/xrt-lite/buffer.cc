@@ -38,7 +38,7 @@ struct iree_hal_xrt_lite_buffer {
     // can be used by implementations that have no way of providing host
     // pointers at a large cost (alloc + device->host transfer on map and
     // host->device transfer + dealloc on umap). Try not to use that.
-    void* host_ptr = this->bo->map(shim_xdna::map_type::write);
+    void* host_ptr = this->bo->map();
     IREE_ASSERT(host_ptr !=
                 nullptr);  // Should be guaranteed by previous checks.
     uint8_t* data_ptr = (uint8_t*)host_ptr + local_byte_offset;
@@ -154,10 +154,10 @@ static void iree_hal_xrt_lite_buffer_destroy(iree_hal_buffer_t* base_buffer) {
 #define BUFFER_MEMBER_STATUS(member) \
   MEMBER_WRAPPER_STATUS(iree_hal_buffer_t, iree_hal_xrt_lite_buffer, member)
 
-BUFFER_MEMBER_STATUS(map_range)
-BUFFER_MEMBER_STATUS(unmap_range)
-BUFFER_MEMBER_STATUS(invalidate_range)
-BUFFER_MEMBER_STATUS(flush_range)
+BUFFER_MEMBER_STATUS(map_range);
+BUFFER_MEMBER_STATUS(unmap_range);
+BUFFER_MEMBER_STATUS(invalidate_range);
+BUFFER_MEMBER_STATUS(flush_range);
 
 namespace {
 const iree_hal_buffer_vtable_t iree_hal_xrt_lite_buffer_vtable = {

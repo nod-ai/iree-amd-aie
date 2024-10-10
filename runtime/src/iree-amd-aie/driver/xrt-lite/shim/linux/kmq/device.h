@@ -30,25 +30,25 @@ struct pdev {
 struct device {
   enum class access_mode : uint8_t { exclusive = 0, shared = 1 };
 
-  xrt::xclbin m_xclbin;
   mutable std::mutex m_mutex;
   pdev m_pdev;
 
   device();
   ~device();
 
-  xrt::xclbin get_xclbin(const xrt::uuid &xclbin_id) const;
-
   std::unique_ptr<bo> import_bo(int ehdl) const;
   const pdev &get_pdev() const;
 
   std::unique_ptr<bo> alloc_bo(uint32_t ctx_id, size_t size,
                                shim_xcl_bo_flags flags);
+  std::unique_ptr<bo> alloc_bo(size_t size, uint32_t flags);
   std::unique_ptr<bo> alloc_bo(size_t size, shim_xcl_bo_flags flags);
   std::unique_ptr<bo> import_bo(pid_t, int);
 
   std::unique_ptr<hw_ctx> create_hw_context(
-      const xrt::uuid &xclbin_uuid, const std::map<std::string, uint32_t> &qos);
+      const xrt::xclbin &xclbin, const std::map<std::string, uint32_t> &qos);
+  std::unique_ptr<hw_ctx> create_hw_context(const xrt::xclbin &xclbin);
+
   std::vector<char> read_aie_mem(uint16_t col, uint16_t row, uint32_t offset,
                                  uint32_t size);
   size_t write_aie_mem(uint16_t col, uint16_t row, uint32_t offset,
@@ -59,7 +59,6 @@ struct device {
 
   std::unique_ptr<fence_handle> create_fence(fence_handle::access_mode);
   std::unique_ptr<fence_handle> import_fence(pid_t, int);
-  void record_xclbin(const xrt::xclbin &xclbin);
 };
 
 std::string read_sysfs(const std::string &filename);
