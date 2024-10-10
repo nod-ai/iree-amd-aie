@@ -56,6 +56,7 @@ void AMDAIEDmaCompositionPass::runOnOperation() {
                                       onlyZeroStrideOnOuterDim);
   }
   populateStridedOpCombinationPattern(patterns);
+  populateCanonicalizeDoublyStridedOpPatterns(patterns, false);
   if (failed(applyPatternsAndFoldGreedily(parentOp, std::move(patterns)))) {
     parentOp->emitOpError("failed to compose strided operations");
     return signalPassFailure();

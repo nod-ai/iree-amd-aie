@@ -16,7 +16,8 @@ namespace mlir::iree_compiler::AMDAIE {
 
 /// Add passes to lower to AIE objectFifos.
 void addAMDAIEObjectFifoLoweringPasses(OpPassManager &passManager,
-                                       bool enablePacketFlow);
+                                       bool enablePacketFlow,
+                                       TilePassPipeline useTilePipeline);
 
 /// Add passes to lower from MLIR-AIR through AIE. This is
 /// currently the default passes used for lowering after IREEs tiling.
