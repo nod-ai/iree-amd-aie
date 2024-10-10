@@ -9,14 +9,15 @@
 #include <x86intrin.h>
 
 #include "shim_debug.h"
+#include "xrt_mem.h"
 
 namespace {
 
 uint32_t alloc_drm_bo(const shim_xdna::pdev &dev, amdxdna_bo_type type,
-                      void *buf, size_t size) {
+                      size_t size) {
   amdxdna_drm_create_bo cbo = {
       .type = static_cast<uint32_t>(type),
-      .vaddr = reinterpret_cast<uintptr_t>(buf),
+      .vaddr = reinterpret_cast<uintptr_t>(nullptr),
       .size = size,
   };
   dev.ioctl(DRM_IOCTL_AMDXDNA_CREATE_BO, &cbo);
@@ -105,9 +106,8 @@ void *addr_align(void *p, size_t align) {
   return reinterpret_cast<void *>((uintptr_t)p + align & ~(align - 1));
 }
 
-amdxdna_bo_type flag_to_type(uint64_t bo_flags) {
-  auto flags = xcl_bo_flags{bo_flags};
-  auto boflags = (static_cast<uint32_t>(flags.boflags) << 24);
+amdxdna_bo_type flag_to_type(shim_xcl_bo_flags flags) {
+  uint32_t boflags = (static_cast<uint32_t>(flags.boflags) << 24);
   switch (boflags) {
     case XCL_BO_FLAGS_NONE:
     case XCL_BO_FLAGS_HOST_ONLY:
@@ -192,7 +192,7 @@ std::string bo::type_to_name() const {
     case AMDXDNA_BO_DEV_HEAP:
       return {"AMDXDNA_BO_DEV_HEAP"};
     case AMDXDNA_BO_DEV:
-      if (xcl_bo_flags{m_flags}.use == XRT_BO_USE_DEBUG)
+      if (shim_xcl_bo_flags{m_flags}.use == XRT_BO_USE_DEBUG)
         return {"AMDXDNA_BO_DEV_DEBUG"};
       return {"AMDXDNA_BO_DEV"};
     case AMDXDNA_BO_CMD:
@@ -251,14 +251,6 @@ void bo::munmap_bo() {
   if (m_parent) unmap_drm_bo(m_pdev, m_parent, m_parent_size);
 }
 
-void bo::alloc_bo() {
-  uint32_t boh = alloc_drm_bo(m_pdev, m_type, nullptr, m_aligned_size);
-
-  amdxdna_drm_get_bo_info bo_info = {};
-  get_drm_bo_info(m_pdev, boh, &bo_info);
-  m_drm_bo = std::make_unique<drm_bo>(*this, bo_info);
-}
-
 void bo::import_bo() {
   uint32_t boh = import_drm_bo(m_pdev, m_import, &m_type, &m_aligned_size);
 
@@ -269,13 +261,13 @@ void bo::import_bo() {
 
 void bo::free_bo() { m_drm_bo.reset(); }
 
-bo::bo(const pdev &p, uint32_t ctx_id, size_t size, uint64_t flags)
+bo::bo(const pdev &p, uint32_t ctx_id, size_t size, shim_xcl_bo_flags flags)
     : bo(p, ctx_id, size, flags, flag_to_type(flags)) {
   if (m_type == AMDXDNA_BO_INVALID)
     shim_err(EINVAL, "Invalid BO flags: 0x%lx", flags);
 }
 
-bo::bo(const pdev &pdev, uint32_t ctx_id, size_t size, uint64_t flags,
+bo::bo(const pdev &pdev, uint32_t ctx_id, size_t size, shim_xcl_bo_flags flags,
        amdxdna_bo_type type)
     : m_pdev(pdev),
       m_aligned_size(size),
@@ -288,18 +280,25 @@ bo::bo(const pdev &pdev, uint32_t ctx_id, size_t size, uint64_t flags,
   if (m_type == AMDXDNA_BO_DEV_HEAP)
     align = 64 * 1024 * 1024;  // Device mem heap must align at 64MB boundary.
 
-  alloc_bo();
+  uint32_t boh = alloc_drm_bo(m_pdev, m_type, m_aligned_size);
+  // TODO(max): this is dumb? performs an ioctl right after we just made one?
+  amdxdna_drm_get_bo_info bo_info = {};
+  get_drm_bo_info(m_pdev, boh, &bo_info);
+  m_drm_bo = std::make_unique<drm_bo>(*this, bo_info);
+
   mmap_bo(align);
 
   // Newly allocated buffer may contain dirty pages. If used as output buffer,
   // the data in cacheline will be flushed onto memory and pollute the output
   // from device. We perform a cache flush right after the BO is allocated to
   // avoid this issue.
-  if (m_type == AMDXDNA_BO_SHMEM) sync(direction::host2device, size, 0);
+  if (m_type == AMDXDNA_BO_SHMEM) {
+    sync(direction::host2device, size, 0);
+  }
 
   attach_to_ctx();
 #ifndef NDEBUG
-  switch (m_flags) {
+  switch (m_flags.all) {
     case 0x0:
       shim_debug("allocating dev heap");
       break;
@@ -353,7 +352,7 @@ bo::~bo() {
 }
 
 bo::bo(const pdev &p, size_t size, amdxdna_bo_type type)
-    : bo(p, AMDXDNA_INVALID_CTX_HANDLE, size, 0, type) {}
+    : bo(p, AMDXDNA_INVALID_CTX_HANDLE, size, shim_xcl_bo_flags{}, type) {}
 
 properties bo::get_properties() const {
   return {m_flags, m_aligned_size, get_paddr(), get_drm_bo_handle()};

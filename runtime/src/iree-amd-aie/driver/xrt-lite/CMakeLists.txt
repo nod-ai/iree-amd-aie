@@ -21,6 +21,10 @@ iree_cc_library(
     xrt-lite
   SRCS
     api.h
+    allocator.cc
+    allocator.h
+    buffer.cc
+    buffer.h
     device.cc
     driver.cc
     util.h
@@ -30,8 +34,5 @@ iree_cc_library(
     iree::base::internal::flatcc::parsing
     iree-amd-aie::schemas::xrt_executable_def_c_fbs
     iree-amd-aie::driver::xrt-lite::shim::linux::kmq::shim-xdna
-  COPTS
-    $<$<PLATFORM_ID:Linux>:-fexceptions -frtti>
-    $<$<PLATFORM_ID:Windows>:/EHsc /GR>
   PUBLIC
 )
