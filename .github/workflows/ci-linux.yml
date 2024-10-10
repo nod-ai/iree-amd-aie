@@ -215,6 +215,7 @@ jobs:
 
       - name: XRT-LITE tests
         run: |
+          source /opt/xilinx/xrt/setup.sh
           DEVICE_TEST_DIR="$PWD/iree-install/device_tests"
           for t in $(ls $DEVICE_TEST_DIR); do
             $DEVICE_TEST_DIR/$t
