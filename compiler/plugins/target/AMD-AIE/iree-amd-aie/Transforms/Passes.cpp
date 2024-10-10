@@ -694,12 +694,11 @@ void addMLIRAIRLoweringPasses(OpPassManager &passManager, AMDAIEDevice device,
   passManager.addPass(createCSEPass());
   {
     xilinx::air::AIRFuseChannelsOptions options;
-    std::vector<std::string> mode;
     if (useTilePipeline == TilePassPipeline::PackPeelPipeline &&
         matmulElementwiseFusion) {
-      mode.push_back("L1");
+      const static llvm::SmallVector<std::string> mode = {"L1"};
+      options.clAggressiveMode = mode;
     }
-    options.clAggressiveMode = ArrayRef(mode);
     passManager.addPass(xilinx::air::createAIRFuseChannels(options));
   }
   passManager.addPass(createCanonicalizerPass());
@@ -765,14 +764,13 @@ void addMLIRAIRLoweringPasses(OpPassManager &passManager, AMDAIEDevice device,
     // with given factors, and subsequently unrolled in
     // AIRUnrollOuterPerfectlyNestedLoopsPass, to enforce SHIM DMA BD count
     // within the hardware limit.
-    std::vector<unsigned> tile_sizes;
     if (useTilePipeline == TilePassPipeline::PackPeelPipeline) {
-      tile_sizes = {2, 2};
+      const static llvm::SmallVector<unsigned> tile_sizes = {2, 2};
+      options.clTileSizes = tile_sizes;
     } else if (useTilePipeline == TilePassPipeline::PadPackPipeline) {
-      tile_sizes = {4, 4};
-    } else
-      tile_sizes = {};
-    options.clTileSizes = ArrayRef(tile_sizes);
+      const static llvm::SmallVector<unsigned> tile_sizes = {4, 4};
+      options.clTileSizes = tile_sizes;
+    }
     passManager.addNestedPass<func::FuncOp>(
         xilinx::air::createAffineLoopOptPass(options));
   }

@@ -66,12 +66,31 @@ class AMDAIEInsertLoopsForVectorizationPass
   // Return success if the generic op is rewritten, failure otherwise.
   LogicalResult maybeRewrite(linalg::GenericOp genericOp,
                              IRRewriter &rewriter) {
+    if (isa<linalg::CopyOp, linalg::FillOp>(genericOp)) return failure();
+
     auto iteratorTypes = genericOp.getIteratorTypesArray();
     auto numIterators = iteratorTypes.size();
 
-    // No outer dimensions to tile if fewer than 4 iterators.
-    if (numIterators < 4) return failure();
+    // No outer dimensions to tile if fewer than 3 iterators.
+    if (numIterators < 3) return failure();
 
+    // Enable generating loops for vectorization in case of element-wise ops.
+    // We tile all but the innermost two dimensions currently because they form
+    // the smallest tiled M x N dimension of the matmul.
+    if (llvm::all_of(iteratorTypes, [&](mlir::utils::IteratorType iterator) {
+          return linalg::isParallelIterator(iterator);
+        })) {
+      assert(numIterators >= 2 && "expected at least 2 iterators here");
+      SmallVector<int64_t> tileSizes(numIterators, 1);
+      tileSizes[numIterators - 2] = 0;
+      tileSizes[numIterators - 1] = 0;
+      auto opts = linalg::LinalgTilingOptions().setTileSizes(tileSizes);
+      auto tiled = linalg::tileLinalgOp(rewriter, genericOp, opts);
+      const auto &loops = tiled.value().loops;
+      assert(!loops.empty() && "expected at least one loop here");
+      rewriter.replaceOp(genericOp, loops[0]->getResult(0));
+      return success();
+    }
     // Matmul-like ops have 3 operands.
     if (genericOp->getNumOperands() != 3) return failure();
 
