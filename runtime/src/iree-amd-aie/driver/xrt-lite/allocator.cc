@@ -158,12 +158,9 @@ struct iree_hal_xrt_lite_allocator {
     // types that do such tracking for them.
     (void)this;
 
-    iree_hal_buffer_t* buffer = nullptr;
-    shim_xcl_bo_flags f = {};
-    f.flags = XCL_BO_FLAGS_HOST_ONLY;
-    f.extension = 0;
     std::unique_ptr<shim_xdna::bo> bo =
-        shim_device->alloc_bo(allocation_size, f);
+        shim_device->alloc_bo(allocation_size, XCL_BO_FLAGS_HOST_ONLY);
+    iree_hal_buffer_t* buffer = nullptr;
     iree_status_t status = iree_hal_xrt_lite_buffer_wrap(
         std::move(bo), reinterpret_cast<iree_hal_allocator_t*>(this),
         compat_params.type, compat_params.access, compat_params.usage,
@@ -334,14 +331,14 @@ static iree_allocator_t iree_hal_xrt_lite_allocator_host_allocator(
 #define ALLOCATOR_MEMBER_VOID(member) \
   MEMBER_WRAPPER_VOID(iree_hal_allocator_t, iree_hal_xrt_lite_allocator, member)
 
-ALLOCATOR_MEMBER_STATUS(trim)
-ALLOCATOR_MEMBER_VOID(query_statistics)
-ALLOCATOR_MEMBER_STATUS(query_memory_heaps)
-ALLOCATOR_MEMBER(query_buffer_compatibility, iree_hal_buffer_compatibility_t)
-ALLOCATOR_MEMBER_STATUS(allocate_buffer)
-ALLOCATOR_MEMBER_VOID(deallocate_buffer)
-ALLOCATOR_MEMBER_STATUS(import_buffer)
-ALLOCATOR_MEMBER_STATUS(export_buffer)
+ALLOCATOR_MEMBER_STATUS(trim);
+ALLOCATOR_MEMBER_VOID(query_statistics);
+ALLOCATOR_MEMBER_STATUS(query_memory_heaps);
+ALLOCATOR_MEMBER(query_buffer_compatibility, iree_hal_buffer_compatibility_t);
+ALLOCATOR_MEMBER_STATUS(allocate_buffer);
+ALLOCATOR_MEMBER_VOID(deallocate_buffer);
+ALLOCATOR_MEMBER_STATUS(import_buffer);
+ALLOCATOR_MEMBER_STATUS(export_buffer);
 
 namespace {
 const iree_hal_allocator_vtable_t iree_hal_xrt_lite_allocator_vtable = {

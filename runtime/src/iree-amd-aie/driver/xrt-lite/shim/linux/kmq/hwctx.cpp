@@ -29,8 +29,8 @@ std::vector<uint8_t> get_pdi(const xrt_core::xclbin::aie_partition_obj &aie,
 
 namespace shim_xdna {
 
-hw_ctx::hw_ctx(device &dev, const qos_t &qos, std::unique_ptr<hw_q> q,
-               const xrt::xclbin &xclbin)
+hw_ctx::hw_ctx(device &dev, const std::map<std::string, uint32_t> &qos,
+               std::unique_ptr<hw_q> q, const xrt::xclbin &xclbin)
     : m_device(dev), m_q(std::move(q)), m_doorbell(0), m_log_buf(nullptr) {
   shim_debug("Creating HW context...");
 
@@ -82,10 +82,10 @@ hw_ctx::~hw_ctx() {
   shim_debug("Destroying KMQ HW context (%d)...", m_handle);
 }
 
-cuidx_type hw_ctx::open_cu_context(const std::string &cu_name) {
+cuidx_t hw_ctx::open_cu_context(const std::string &cu_name) {
   for (uint32_t i = 0; i < m_cu_info.size(); i++) {
     auto &ci = m_cu_info[i];
-    if (ci.m_name == cu_name) return cuidx_type{.index = i};
+    if (ci.m_name == cu_name) return cuidx_t{.index = i};
   }
 
   shim_err(ENOENT, "CU name (%s) not found", cu_name.c_str());
@@ -138,7 +138,7 @@ void hw_ctx::init_log_buf() {
   shim_xcl_bo_flags f;
   f.flags = XCL_BO_FLAGS_EXECBUF;
   m_log_bo = alloc_bo(nullptr, log_buf_size, f);
-  m_log_buf = m_log_bo->map(map_type::write);
+  m_log_buf = m_log_bo->map();
   std::memset(m_log_buf, 0, log_buf_size);
 }
 
@@ -146,7 +146,8 @@ void hw_ctx::fini_log_buf() const {
   if (m_log_bo) m_log_bo->unmap(m_log_buf);
 }
 
-hw_ctx::hw_ctx(device &device, const xrt::xclbin &xclbin, const qos_t &qos)
+hw_ctx::hw_ctx(device &device, const xrt::xclbin &xclbin,
+               const std::map<std::string, uint32_t> &qos)
     : hw_ctx(device, qos, std::make_unique<hw_q>(device), xclbin) {
   create_ctx_on_device();
   std::vector<char> cu_conf_param_buf(sizeof(amdxdna_hwctx_param_config_cu) +
@@ -163,7 +164,7 @@ hw_ctx::hw_ctx(device &device, const xrt::xclbin &xclbin, const qos_t &qos)
 
     m_pdi_bos.push_back(alloc_bo(ci.m_pdi.size(), f));
     std::unique_ptr<bo> &pdi_bo = m_pdi_bos[i];
-    char *pdi_vaddr = reinterpret_cast<char *>(pdi_bo->map(map_type::write));
+    char *pdi_vaddr = reinterpret_cast<char *>(pdi_bo->map());
 
     // see cu_configs[1] in amdxdna_hwctx_param_config_cu
     assert(i < 1 && "only 1 CU supported");
@@ -194,9 +195,9 @@ std::unique_ptr<bo> hw_ctx::alloc_bo(void *userptr, size_t size,
   return m_device.alloc_bo(AMDXDNA_INVALID_CTX_HANDLE, size, flags);
 }
 
-std::unique_ptr<hw_ctx> create_hw_context(device &dev,
-                                          const xrt::xclbin &xclbin,
-                                          const hw_ctx::qos_t &qos) {
+std::unique_ptr<hw_ctx> create_hw_context(
+    device &dev, const xrt::xclbin &xclbin,
+    const std::map<std::string, uint32_t> &qos) {
   return std::make_unique<hw_ctx>(dev, xclbin, qos);
 }
 

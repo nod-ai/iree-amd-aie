@@ -21,7 +21,7 @@ struct cu_info {
   std::vector<uint8_t> m_pdi;
 };
 
-struct cuidx_type {
+struct cuidx_t {
   union {
     std::uint32_t index;
     struct {
@@ -36,7 +36,6 @@ struct cuidx_type {
 };
 
 struct hw_ctx {
-  using qos_t = std::map<std::string, uint32_t>;
   enum class access_mode : uint8_t { exclusive = 0, shared = 1 };
   device &m_device;
   uint32_t m_handle = AMDXDNA_INVALID_CTX_HANDLE;
@@ -50,9 +49,10 @@ struct hw_ctx {
   void *m_log_buf;
   std::vector<std::unique_ptr<bo>> m_pdi_bos;
 
-  hw_ctx(device &dev, const qos_t &qos, std::unique_ptr<hw_q> q,
-         const xrt::xclbin &xclbin);
-  hw_ctx(device &dev, const xrt::xclbin &xclbin, const qos_t &qos);
+  hw_ctx(device &dev, const std::map<std::string, uint32_t> &qos,
+         std::unique_ptr<hw_q> q, const xrt::xclbin &xclbin);
+  hw_ctx(device &dev, const xrt::xclbin &xclbin,
+         const std::map<std::string, uint32_t> &qos);
   ~hw_ctx();
 
   // TODO
@@ -60,7 +60,8 @@ struct hw_ctx {
                                shim_xcl_bo_flags flags);
   std::unique_ptr<bo> alloc_bo(size_t size, shim_xcl_bo_flags flags);
   std::unique_ptr<bo> import_bo(pid_t, int);
-  cuidx_type open_cu_context(const std::string &cuname);
+
+  cuidx_t open_cu_context(const std::string &cuname);
   void create_ctx_on_device();
   void init_log_buf();
   void fini_log_buf() const;

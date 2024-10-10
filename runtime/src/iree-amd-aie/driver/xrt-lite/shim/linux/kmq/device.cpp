@@ -148,15 +148,14 @@ device::~device() { shim_debug("Destroying KMQ device"); }
 
 const pdev &device::get_pdev() const { return m_pdev; }
 
-xrt::xclbin device::get_xclbin(const xrt::uuid &xclbin_id) const {
-  // Allow access to xclbin in process of loading via device::load_xclbin
-  if (xclbin_id && xclbin_id == m_xclbin.get_uuid()) return m_xclbin;
-  throw std::runtime_error("TODO(max):multi-xclbin");
+std::unique_ptr<hw_ctx> device::create_hw_context(
+    const xrt::xclbin &xclbin, const std::map<std::string, uint32_t> &qos) {
+  return std::make_unique<hw_ctx>(*this, xclbin, qos);
 }
 
-std::unique_ptr<hw_ctx> device::create_hw_context(
-    const xrt::uuid &xclbin_uuid, const std::map<std::string, uint32_t> &qos) {
-  return std::make_unique<hw_ctx>(*this, get_xclbin(xclbin_uuid), qos);
+std::unique_ptr<hw_ctx> device::create_hw_context(const xrt::xclbin &xclbin) {
+  const std::map<std::string, uint32_t> qos{};
+  return std::make_unique<hw_ctx>(*this, xclbin, qos);
 }
 
 std::unique_ptr<bo> device::alloc_bo(uint32_t ctx_id, size_t size,
@@ -166,6 +165,12 @@ std::unique_ptr<bo> device::alloc_bo(uint32_t ctx_id, size_t size,
 
 std::unique_ptr<bo> device::alloc_bo(size_t size, shim_xcl_bo_flags flags) {
   return alloc_bo(AMDXDNA_INVALID_CTX_HANDLE, size, flags);
+}
+
+std::unique_ptr<bo> device::alloc_bo(size_t size, uint32_t flags) {
+  shim_xcl_bo_flags f{};
+  f.flags = flags;
+  return alloc_bo(AMDXDNA_INVALID_CTX_HANDLE, size, f);
 }
 
 std::unique_ptr<bo> device::import_bo(pid_t pid, int ehdl) {
@@ -178,11 +183,6 @@ std::unique_ptr<fence_handle> device::create_fence(fence_handle::access_mode) {
 
 std::unique_ptr<fence_handle> device::import_fence(pid_t pid, int ehdl) {
   return std::make_unique<fence_handle>(*this, import_fd(pid, ehdl));
-}
-
-void device::record_xclbin(const xrt::xclbin &xclbin) {
-  std::lock_guard<std::mutex> lk(m_mutex);
-  m_xclbin = xclbin;
 }
 
 std::unique_ptr<bo> device::import_bo(int ehdl) const {
