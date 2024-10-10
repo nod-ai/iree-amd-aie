@@ -16,8 +16,6 @@ iree_register_external_hal_driver(
     iree_hal_xrt_lite_driver_module_register
 )
 
-find_package(ShimXDNA REQUIRED)
-
 iree_cc_library(
   NAME
     xrt-lite
@@ -31,8 +29,7 @@ iree_cc_library(
     iree::base::core_headers
     iree::base::internal::flatcc::parsing
     iree-amd-aie::schemas::xrt_executable_def_c_fbs
-    xrt_driver_xdna
-    $<BUILD_LOCAL_INTERFACE:xrt_coreutil>
+    iree-amd-aie::driver::xrt-lite::shim::linux::kmq::shim-xdna
   COPTS
     $<$<PLATFORM_ID:Linux>:-fexceptions -frtti>
     $<$<PLATFORM_ID:Windows>:/EHsc /GR>
