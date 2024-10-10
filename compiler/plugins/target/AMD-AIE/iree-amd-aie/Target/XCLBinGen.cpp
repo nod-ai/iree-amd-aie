@@ -13,9 +13,10 @@
 #include <sstream>
 
 #include "AMDAIETargets.h"
-#include "iree-amd-aie/Transforms/Passes.h"
+#include "aie/Passes.h"
+#include "air/Conversion/AIRToAIEPass.h"
+#include "iree-dialects/Dialect/LinalgTransform/Passes.h"
 #include "iree/compiler/Utils/ToolUtils.h"
-#include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/FileSystem.h"
@@ -24,6 +25,15 @@
 #include "llvm/Support/Path.h"
 #include "llvm/Support/Program.h"
 #include "llvm/Support/ToolOutputFile.h"
+#include "mlir/Conversion/AffineToStandard/AffineToStandard.h"
+#include "mlir/Conversion/ArithToLLVM/ArithToLLVM.h"
+#include "mlir/Conversion/ControlFlowToLLVM/ControlFlowToLLVM.h"
+#include "mlir/Conversion/FuncToLLVM/ConvertFuncToLLVMPass.h"
+#include "mlir/Conversion/MathToLLVM/MathToLLVM.h"
+#include "mlir/Conversion/MemRefToLLVM/MemRefToLLVM.h"
+#include "mlir/Conversion/SCFToControlFlow/SCFToControlFlow.h"
+#include "mlir/Conversion/VectorToLLVM/ConvertVectorToLLVMPass.h"
+#include "mlir/Dialect/MemRef/Transforms/Passes.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
 #include "mlir/Dialect/Vector/Transforms/VectorTransforms.h"
 #include "mlir/IR/AsmState.h"
@@ -33,6 +43,7 @@
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Support/FileUtilities.h"
 #include "mlir/Target/LLVMIR/Export.h"
+#include "mlir/Transforms/Passes.h"
 
 #define DEBUG_TYPE "amdaie-xclbingen"
 
@@ -942,47 +953,20 @@ static LogicalResult generateXCLBin(
   return runTool(xclbinutilBin.value().string(), flags, verbose);
 }
 
-// A pass which removes the alignment attribute from llvm load operations, if
-// the alignment is less than 4 (2 or 1).
-//
-// Example replaces:
-//
-// ```
-//  %113 = llvm.load %112 {alignment = 2 : i64} : !llvm.ptr -> vector<32xbf16>
-// ```
-//
-// with
-//
-// ```
-//  %113 = llvm.load %112 : !llvm.ptr -> vector<32xbf16>
-// ```
-//
-// If this pass is not included in the pipeline, there is an alignment error
-// later in the compilation. This is a temporary workaround while a better
-// solution is found: propagation of memref.assume_alignment is one option. See
-// also https://jira.xilinx.com/projects/AIECC/issues/AIECC-589
-namespace {
-struct RemoveAlignment2FromLLVMLoadPass
-    : PassWrapper<RemoveAlignment2FromLLVMLoadPass, OperationPass<ModuleOp>> {
-  void runOnOperation() override {
-    getOperation().walk([](Operation *op) {
-      if (auto loadOp = dyn_cast<LLVM::LoadOp>(op)) {
-        auto alignmentAttr = loadOp.getAlignmentAttr();
-        if (alignmentAttr) {
-          int alignmentVal = alignmentAttr.getValue().getSExtValue();
-          if (alignmentVal == 2 || alignmentVal == 1) {
-            loadOp.setAlignment(std::optional<uint64_t>());
-          }
-        }
-      }
-    });
-  }
-
-  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(
-      RemoveAlignment2FromLLVMLoadPass);
-};
-
-}  // namespace
+void addLowerToLLVMPasses(OpPassManager &pm) {
+  using namespace mlir;
+  pm.addPass(createFinalizeMemRefToLLVMConversionPass());
+  pm.addPass(createCanonicalizerPass());
+  pm.addPass(createCSEPass());
+  ConvertFuncToLLVMPassOptions opts;
+  opts.useBarePtrCallConv = true;
+  pm.addPass(createConvertFuncToLLVMPass(opts));
+  pm.addPass(createCanonicalizerPass());
+  pm.addPass(createCSEPass());
+  pm.addPass(createConvertControlFlowToLLVMPass());
+  pm.addPass(createCanonicalizerPass());
+  pm.addPass(createCSEPass());
+}
 
 static LogicalResult generateUnifiedObject(
     MLIRContext *context, AIE::DeviceOp deviceOp, const std::string &outputFile,
@@ -998,8 +982,7 @@ static LogicalResult generateUnifiedObject(
                            printIRModuleScope, timing);
 
   pm.addPass(mlir::iree_compiler::AMDAIE::createAMDAIECoreToStandardPass());
-  mlir::iree_compiler::AMDAIE::addLowerToLLVMPasses(pm);
-  pm.addPass(std::make_unique<RemoveAlignment2FromLLVMLoadPass>());
+  addLowerToLLVMPasses(pm);
 
   if (verbose) {
     llvm::outs() << "\nRunning: ";

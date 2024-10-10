@@ -10,6 +10,7 @@
 //
 // 3) Not specifying the flag at all, which should use the default value (1).
 
+
 // 1) Explicitly disabled:
 // RUN: iree-compile --iree-hal-target-backends=amd-aie \
 // RUN:   --compile-to=executable-targets --iree-amdaie-enable-vectorization-passes=0 %s | FileCheck %s -check-prefix=CHECK-DISABLED
@@ -23,6 +24,7 @@
 // RUN:   --compile-to=executable-targets %s | FileCheck %s -check-prefix=CHECK-DEFAULT
 
 
+
 func.func @mm_in_bf16_out_f32(%lhs: tensor<64x64xbf16>,
                               %rhs: tensor<64x64xbf16>) -> tensor<64x64xf32> {
   %empty = tensor.empty() : tensor<64x64xf32>
@@ -34,6 +36,6 @@ func.func @mm_in_bf16_out_f32(%lhs: tensor<64x64xbf16>,
   return %res : tensor<64x64xf32>
 }
 
-// CHECK-DISABLED-NOT: aievec.matmul
-// CHECK-ENABLED: aievec.matmul
-// CHECK-DEFAULT: aievec.matmul
+// CHECK-DISABLED-NOT: xllvm.intr.aie2.bf.mac16.conf
+// CHECK-ENABLED: xllvm.intr.aie2.bf.mac16.conf
+// CHECK-DEFAULT: xllvm.intr.aie2.bf.mac16.conf
