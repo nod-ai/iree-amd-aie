@@ -20,22 +20,6 @@ namespace mlir::iree_compiler::AMDAIE {
 
 namespace {
 
-// class AMDAIEFuseConsumerIntoLoopPass
-//     : public impl::AMDAIEFuseConsumerIntoLoopBase<
-//           AMDAIEFuseConsumerIntoLoopPass> {
-//  public:
-//   AMDAIEFuseConsumerIntoLoopPass() = default;
-//   AMDAIEFuseConsumerIntoLoopPass(const AMDAIEFuseConsumerIntoLoopPass &pass)
-//   {} AMDAIEFuseConsumerIntoLoopPass(
-//       const AMDAIEFuseConsumerIntoLoopOptions &options)
-//       : AMDAIEFuseConsumerIntoLoopBase(options) {}
-
-//   void getDependentDialects(DialectRegistry &registry) const override {
-//     registry.insert<scf::SCFDialect>();
-//   }
-//   void runOnOperation() override;
-// };
-
 class AMDAIEFunctionOutliningPass
     : public impl::AMDAIEFunctionOutliningBase<AMDAIEFunctionOutliningPass> {
  public:
@@ -52,45 +36,75 @@ void AMDAIEFunctionOutliningPass::runOnOperation() {
   ModuleOp moduleOp = funcOp->getParentOfType<ModuleOp>();
   MLIRContext *context = &getContext();
   IRRewriter rewriter(context);
-  // llvm::outs()<<(*moduleOp)<<"\n";
 
-  DenseMap<StringRef, func::FuncOp> outlinedFuncOps;
-  auto addFuncDecl = [&](std::string name, FunctionType type) -> func::FuncOp {
-    if (moduleOp.lookupSymbol(name)) return outlinedFuncOps[name];
-    rewriter.setInsertionPointToStart(moduleOp.getBody());
-    auto funcDeclOp =
-        rewriter.create<func::FuncOp>(moduleOp.getLoc(), name, type);
-    funcDeclOp.setPrivate();
-    outlinedFuncOps[name] = funcDeclOp;
-    return funcDeclOp;
-  };
-
-  funcOp.walk([&](linalg::LinalgOp op) {
-    if (isa<linalg::FillOp, linalg::CopyOp>(op)) return WalkResult::advance();
+  auto outlinedToAFunction = [&](linalg::LinalgOp &computeOp) -> func::FuncOp {
+    // Form outlined FuncName.
     std::string computeName = "";
-    if (isMatmul(op)) {
+    if (isMatmul(computeOp)) {
       computeName = "_matmul";
     } else {
       // TODO(avarma): Make this better/general.
       computeName = "_elementwise";
     }
     std::string outlinedFuncName =
-        op->getName().stripDialect().str() + computeName + "_outlined";
+        computeOp->getName().stripDialect().str() + computeName + "_outlined";
+    if (auto outlinedFuncOp = dyn_cast_if_present<func::FuncOp>(
+            moduleOp.lookupSymbol(outlinedFuncName)))
+      return outlinedFuncOp;
+
+    // Form outlined FunctionType.
     SmallVector<Type> inputTypes = llvm::map_to_vector(
-        op.getDpsInputs(), [](Value v) { return v.getType(); });
+        computeOp.getDpsInputs(), [](Value v) { return v.getType(); });
     SmallVector<Type> outputTypes =
-        llvm::map_to_vector(op.getDpsInits(), [&](Value v) {
+        llvm::map_to_vector(computeOp.getDpsInits(), [&](Value v) {
           inputTypes.push_back(v.getType());
           return v.getType();
         });
-    func::FuncOp funcDeclOp = addFuncDecl(
-        outlinedFuncName,
-        FunctionType::get(rewriter.getContext(), inputTypes, outputTypes));
-    // if (!funcDeclOp) return WalkResult::advance();
-    rewriter.setInsertionPoint(op);
-    auto callOp = rewriter.create<func::CallOp>(op.getLoc(), funcDeclOp,
-                                                op->getOperands());
-    rewriter.replaceOp(op, callOp.getResults());
+    auto outlinedFuncType =
+        FunctionType::get(rewriter.getContext(), inputTypes, outputTypes);
+
+    // Form outlined FuncSignature
+    rewriter.setInsertionPointToStart(moduleOp.getBody());
+    auto outlinedFunc = rewriter.create<func::FuncOp>(
+        moduleOp.getLoc(), outlinedFuncName, outlinedFuncType);
+    outlinedFunc.setPrivate();
+
+    // Create an entry func block and map the original operands of the compute
+    // op to the block arguments.
+    Block *outlinedFuncBody = outlinedFunc.addEntryBlock();
+    rewriter.setInsertionPointToStart(outlinedFuncBody);
+    SmallVector<BlockArgument> outlinedFuncArgs =
+        llvm::map_to_vector(outlinedFunc.getArguments(),
+                            [&](BlockArgument bbArg) { return bbArg; });
+    unsigned bbArgIndex = 0;
+    IRMapping operandMap;
+    for (Value origOperand : computeOp.getDpsInputs()) {
+      operandMap.map(origOperand, outlinedFuncArgs[bbArgIndex++]);
+    }
+    for (Value origOperand : computeOp.getDpsInits()) {
+      operandMap.map(origOperand, outlinedFuncArgs[bbArgIndex++]);
+    }
+
+    // Clone the compute op while mapping the operand to the function block
+    // arguments.
+    Operation *clonedComputeOp = rewriter.clone(*computeOp, operandMap);
+
+    // Create terminator op returning the cloned compute op's results.
+    rewriter.setInsertionPointToEnd(outlinedFuncBody);
+    rewriter.create<func::ReturnOp>(clonedComputeOp->getLoc(),
+                                    clonedComputeOp->getResult(0));
+
+    return outlinedFunc;
+  };
+
+  funcOp.walk([&](linalg::LinalgOp computeOp) {
+    if (isa<linalg::FillOp, linalg::CopyOp>(computeOp))
+      return WalkResult::skip();
+    func::FuncOp outlinedFuncOp = outlinedToAFunction(computeOp);
+    rewriter.setInsertionPoint(computeOp);
+    auto callOp = rewriter.create<func::CallOp>(
+        computeOp.getLoc(), outlinedFuncOp, computeOp->getOperands());
+    rewriter.replaceOp(computeOp, callOp.getResults());
     return WalkResult::advance();
   });
 }
