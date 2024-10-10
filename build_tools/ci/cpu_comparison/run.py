@@ -759,19 +759,19 @@ class MatmulSet(TestSet):
             )
 
         # Test(s) of the form matmul(A,B) + truncf(C) where A:MxK, B:KxN and C:MxN
-        template_name = test_files_dir / "matmul_truncf_32x32x32_bf16_bf16.mlir"
-        identity_mat = np.eye(32, dtype=np.float32)
-        ones = np.ones(32 * 32, dtype=np.float32).reshape([32, 32])
-        lhs = ones * 192
-        rhs = identity_mat * 2
-        input_args = generate_inputs(
-            template_name, output_dir, 1, {1: lhs, 2: rhs}
-        )
+        test_name = output_dir / f"test_from_template_matmul_truncf.mlir"
+        template_name = matmul_template_dir / "matmul_truncf_MxK_KxN.mlir"
+        generate_matmul_test(test_name, template_name, 8, 8, 8, "bf16", "f32")
+        identity_mat = np.eye(8, dtype=np.float32)
+        ones = np.ones(8 * 8, dtype=np.float32).reshape([8, 8])
+        lhs = ones * 101
+        rhs = identity_mat * 3
+        input_args = generate_inputs(test_name, output_dir, 1, {1: lhs, 2: rhs})
         aie_vs_baseline(
             config,
-            template_name,
+            test_name,
             input_args,
-            lhs * 2,  # exected output
+            ones * 302,  # exected output
             use_ukernel=False,
             tile_pipeline="pack-peel",
             lower_to_aie_pipeline="objectFifo",
@@ -780,7 +780,7 @@ class MatmulSet(TestSet):
             rtol=0,
             atol=0,
             n_repeats=1,
-            output_type=get_output_type(template_name),
+            output_type=get_output_type(test_name),
         )
 
 
