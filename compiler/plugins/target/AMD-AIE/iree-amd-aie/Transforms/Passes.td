@@ -182,6 +182,14 @@ def AMDAIEDistributeCoresAndObjectFifos :
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEDistributeCoresAndObjectFifosPass()";
 }
 
+def AMDAIEDistributeL1Allocations :
+  Pass<"iree-amdaie-distribute-l1-allocations", "ModuleOp"> {
+  let summary = "TODO";
+  let description = [{ TODO }];
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEDistributeL1AllocationsPass()";
+}
+
+
 def AMDAIEDmaComposition :
   Pass<"iree-amdaie-dma-composition"> {
   let summary = "Compose DMA operations by DMA combination and loop subsumption.";
