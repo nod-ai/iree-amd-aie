@@ -41,7 +41,6 @@ iree_status_t iree_hal_xrt_lite_buffer_wrap(
     iree_hal_buffer_release_callback_t release_callback,
     iree_allocator_t host_allocator, iree_hal_buffer_t** out_buffer);
 
-std::unique_ptr<shim_xdna::bo> iree_hal_xrt_lite_buffer_unwrap(
-    iree_hal_buffer_t* base_buffer);
+shim_xdna::bo* iree_hal_xrt_lite_buffer_handle(iree_hal_buffer_t* base_buffer);
 
 #endif  // IREE_HAL_DRIVERS_XRT_LITE_BUFFER_H_

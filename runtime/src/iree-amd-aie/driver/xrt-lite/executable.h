@@ -9,6 +9,7 @@
 
 #include <cstdint>
 
+#include "flatbuffers_common_reader.h"
 #include "iree-amd-aie/driver/xrt-lite/shim/linux/kmq/bo.h"
 #include "iree-amd-aie/driver/xrt-lite/shim/linux/kmq/device.h"
 #include "iree-amd-aie/driver/xrt-lite/shim/linux/kmq/hwctx.h"
@@ -24,9 +25,10 @@ extern "C" {
 struct iree_hal_xrt_lite_kernel_params_t {
   std::unique_ptr<shim_xdna::hw_ctx> context;
   std::unique_ptr<shim_xdna::bo> bo_ctrl_code;
+  std::vector<char> xclbinVector;
+  flatbuffers_uint32_vec_t asm_inst;
   // Number of assembly instructions argument to the kernel
-  uint32_t num_instr;  // number of instructions
-  IREE_TRACE(iree_string_view_t kernel_name;)
+  std::string kernel_name;
   IREE_TRACE(iree_string_view_t source_filename;)
   IREE_TRACE(uint32_t source_line;)
 };
@@ -44,7 +46,7 @@ iree_status_t iree_hal_xrt_lite_native_executable_entry_point_kernel_params(
     iree_hal_xrt_lite_kernel_params_t* out_params);
 
 #ifdef __cplusplus
-}       // extern "C"
+}  // extern "C"
 #endif  // __cplusplus
 
 #endif  // IREE_AMD_AIE_DRIVER_XRT_LITE_NATIVE_EXECUTABLE_H_

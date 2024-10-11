@@ -85,6 +85,7 @@ hw_ctx::~hw_ctx() {
 cuidx_t hw_ctx::open_cu_context(const std::string &cu_name) {
   for (uint32_t i = 0; i < m_cu_info.size(); i++) {
     auto &ci = m_cu_info[i];
+    shim_debug("ci.m_name %s\n", ci.m_name.c_str());
     if (ci.m_name == cu_name) return cuidx_t{.index = i};
   }
 

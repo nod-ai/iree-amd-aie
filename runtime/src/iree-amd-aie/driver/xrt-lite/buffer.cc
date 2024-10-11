@@ -71,8 +71,7 @@ iree_status_t iree_hal_xrt_lite_buffer::invalidate_range(
         IREE_STATUS_FAILED_PRECONDITION,
         "buffer does not have device memory attached and cannot be mapped");
   }
-  this->bo->sync(shim_xdna::direction::device2host, local_byte_length,
-                 local_byte_offset);
+  this->bo->sync(shim_xdna::direction::device2host);
   return iree_ok_status();
 }
 
@@ -86,8 +85,7 @@ iree_status_t iree_hal_xrt_lite_buffer::flush_range(
         IREE_STATUS_FAILED_PRECONDITION,
         "buffer does not have device memory attached and cannot be mapped");
   }
-  this->bo->sync(shim_xdna::direction::host2device, local_byte_length,
-                 local_byte_offset);
+  this->bo->sync(shim_xdna::direction::host2device);
   return iree_ok_status();
 }
 
@@ -146,11 +144,10 @@ static void iree_hal_xrt_lite_buffer_destroy(iree_hal_buffer_t* base_buffer) {
   IREE_TRACE_ZONE_END(z0);
 }
 
-std::unique_ptr<shim_xdna::bo> iree_hal_xrt_lite_buffer_unwrap(
-    iree_hal_buffer_t* base_buffer) {
+shim_xdna::bo* iree_hal_xrt_lite_buffer_handle(iree_hal_buffer_t* base_buffer) {
   iree_hal_xrt_lite_buffer* buffer =
       reinterpret_cast<iree_hal_xrt_lite_buffer*>(base_buffer);
-  return std::move(buffer->bo);
+  return buffer->bo.get();
 }
 
 #define BUFFER_MEMBER_STATUS(member) \

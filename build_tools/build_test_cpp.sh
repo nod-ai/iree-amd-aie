@@ -143,7 +143,7 @@ cmake --build "$build_dir" --target iree-install-dist
 echo "CTest"
 echo "-----"
 if [[ "$OSTYPE" == "linux"* ]]; then
-  ctest --test-dir "$build_dir" -R amd-aie -E "driver/xrt-lite" --output-on-failure -j
+  ctest --test-dir "$build_dir" -R amd-aie -E "driver" --output-on-failure -j
 elif [[ "$OSTYPE" == "darwin"* ]]; then
   ctest --test-dir "$build_dir" -R amd-aie -E "matmul_pack_peel_air_e2e|matmul_elementwise_pack_peel_air_e2e|conv_fill_spec_pad" --output-on-failure -j --repeat until-pass:5
 fi

@@ -25,18 +25,22 @@ iree_cc_library(
     api.h
     buffer.cc
     buffer.h
-    command_buffer.cc
-    command_buffer.h
+    direct_command_buffer.cc
+    direct_command_buffer.h
     device.cc
     driver.cc
     executable.cc
     executable.h
     nop_executable_cache.cc
     nop_executable_cache.h
+    nop_semaphore.cc
+    nop_semaphore.h
     util.h
   DEPS
     iree::base
     iree::base::core_headers
+    iree::hal::utils::deferred_command_buffer
+    iree::hal::utils::semaphore_base
     iree::base::internal::flatcc::parsing
     iree-amd-aie::schemas::xrt_executable_def_c_fbs
     iree-amd-aie::driver::xrt-lite::shim::linux::kmq::shim-xdna

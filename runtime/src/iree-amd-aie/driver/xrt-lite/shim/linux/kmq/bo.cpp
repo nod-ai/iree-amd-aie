@@ -270,6 +270,12 @@ bo::bo(const pdev &p, uint32_t ctx_id, size_t size, shim_xcl_bo_flags flags)
     shim_err(EINVAL, "Invalid BO flags: 0x%lx", flags);
 }
 
+bo::bo(const pdev &p, uint32_t ctx_id, size_t size, uint32_t flags)
+    : bo(p, ctx_id, size, shim_xcl_bo_flags{.flags = flags}) {
+  if (m_type == AMDXDNA_BO_INVALID)
+    shim_err(EINVAL, "Invalid BO flags: 0x%lx", flags);
+}
+
 bo::bo(const pdev &pdev, uint32_t ctx_id, size_t size, shim_xcl_bo_flags flags,
        amdxdna_bo_type type)
     : m_pdev(pdev),
@@ -430,6 +436,8 @@ void bo::sync(direction dir, size_t size, size_t offset) {
   }
 }
 
+void bo::sync(direction dir) { sync(dir, size(), 0); }
+
 void bo::bind_at(size_t pos, const bo &boh, size_t offset, size_t size) {
   std::lock_guard<std::mutex> lg(m_args_map_lock);
 
@@ -471,10 +479,12 @@ uint32_t bo::get_arg_bo_handles(uint32_t *handles, size_t num) const {
   return sz;
 }
 
-exec_buf::exec_buf(bo &bo_execbuf, uint32_t op)
-    : m_exec_buf_bo(bo_execbuf),
-      m_cmd_pkt(reinterpret_cast<ert_start_kernel_cmd *>(bo_execbuf.map())),
-      m_cmd_size(bo_execbuf.size()),
+exec_buf::exec_buf(const pdev &p, uint32_t op)
+    : m_exec_buf_bo(std::make_unique<bo>(p, AMDXDNA_INVALID_CTX_HANDLE,
+                                         MAX_EXEC_BO_SIZE,
+                                         XCL_BO_FLAGS_EXECBUF)),
+      m_cmd_pkt(reinterpret_cast<ert_start_kernel_cmd *>(m_exec_buf_bo->map())),
+      m_cmd_size(m_exec_buf_bo->size()),
       m_op(op),
       m_arg_cnt(0),
       m_reg_idx(0) {
@@ -498,7 +508,7 @@ void exec_buf::set_cu_idx(cuidx_t cu_idx) {
 
 void exec_buf::add_ctrl_bo(bo &bo_ctrl) {
   ert_start_kernel_cmd *cmd_packet =
-      reinterpret_cast<ert_start_kernel_cmd *>(m_exec_buf_bo.map());
+      reinterpret_cast<ert_start_kernel_cmd *>(m_exec_buf_bo->map());
   switch (m_op) {
     case ERT_START_CU:
       break;
@@ -541,7 +551,7 @@ void exec_buf::add_arg_64(uint64_t val) {
 
 void exec_buf::add_arg_bo(bo &bo_arg, std::string arg_name) {
   // Add to argument list for driver
-  m_exec_buf_bo.bind_at(m_arg_cnt, bo_arg, 0, bo_arg.size());
+  m_exec_buf_bo->bind_at(m_arg_cnt, bo_arg, 0, bo_arg.size());
   // Add to argument list for control code patching
   if (arg_name.empty())
     m_patching_args.emplace_back(std::to_string(m_arg_cnt), bo_arg.get_paddr());
@@ -553,7 +563,7 @@ void exec_buf::add_arg_bo(bo &bo_arg, std::string arg_name) {
 
 void exec_buf::dump() {
   std::cout << "Dumping exec buf:";
-  int *data = static_cast<int *>(m_exec_buf_bo.map());
+  int *data = static_cast<int *>(m_exec_buf_bo->map());
   std::cout << std::hex;
   for (int i = 0; i < m_cmd_pkt->count + 1; i++) {
     if (i % 4 == 0) std::cout << "\n";
@@ -574,4 +584,7 @@ void exec_buf::inc_pkt_count(uint32_t n) {
     throw std::runtime_error("Size of exec buf too small: " +
                              std::to_string(m_cmd_size));
 }
+
+bo *exec_buf::get_exec_buf_bo() { return m_exec_buf_bo.get(); }
+
 }  // namespace shim_xdna
