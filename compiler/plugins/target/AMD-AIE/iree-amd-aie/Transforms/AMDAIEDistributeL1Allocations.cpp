@@ -36,9 +36,8 @@ FailureOr<DenseSet<Value>> getThreadIndVars(ModuleOp moduleOp) {
     if (mapping.empty()) return WalkResult::advance();
     if (!isa<gpu::GPUThreadMappingAttr>(*mapping.begin()))
       return WalkResult::advance();
-    for (Value indVar : forallOp.getInductionVars()) {
+    for (Value indVar : forallOp.getInductionVars())
       threadIndVars.insert(indVar);
-    }
     return WalkResult::advance();
   });
   return threadIndVars;
