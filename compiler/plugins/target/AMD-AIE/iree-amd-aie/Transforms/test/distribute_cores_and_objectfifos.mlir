@@ -1,4 +1,3 @@
-// R UN: iree-opt --pass-pipeline="builtin.module(iree-amdaie-distribute-l1-allocations,iree-amdaie-distribute-cores-and-objectfifos,cse)" --split-input-file --verify-diagnostics %s | FileCheck %s
 // RUN: iree-opt --pass-pipeline="builtin.module(iree-amdaie-distribute-cores-and-objectfifos,cse)" --split-input-file --verify-diagnostics %s | FileCheck %s
 
 // Check for unrolling an amdaie.core within a parallel loop with a single
