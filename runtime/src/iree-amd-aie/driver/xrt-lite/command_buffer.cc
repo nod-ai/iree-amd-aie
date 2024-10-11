@@ -6,7 +6,11 @@
 
 #include "iree-amd-aie/driver/xrt-lite/command_buffer.h"
 
+#include "buffer.h"
 #include "iree-amd-aie/driver/xrt-lite/util.h"
+#include "shim/linux/kmq/bo.h"
+
+#define MAX_EXEC_BO_SIZE (4096)
 
 namespace {
 extern const iree_hal_command_buffer_vtable_t
@@ -16,6 +20,7 @@ extern const iree_hal_command_buffer_vtable_t
 struct iree_hal_xrt_lite_command_buffer {
   iree_hal_command_buffer_t base;
   iree_allocator_t host_allocator;
+  iree_hal_buffer_t* exec_buffer;
 
   iree_status_t begin() {
     // TODO(null): if the implementation needs to route the begin to the
@@ -252,8 +257,10 @@ iree_status_t iree_hal_xrt_lite_command_buffer_create(
   // iree_arena_t/block pools. Implementations should also retain any resources
   // used during the recording and can use iree_hal_resource_set_t* to make that
   // easier.
-  iree_status_t status = iree_make_status(
-      IREE_STATUS_UNIMPLEMENTED, "command buffers not yet implemented");
+  iree_hal_buffer_params_t params;
+  params.type = IREE_HAL_MEMORY_TYPE_OPTIMAL_FOR_DEVICE;
+  iree_status_t status = iree_hal_allocator_allocate_buffer(
+      device_allocator, params, MAX_EXEC_BO_SIZE, &command_buffer->exec_buffer);
 
   if (iree_status_is_ok(status)) {
     *out_command_buffer = &command_buffer->base;
@@ -273,7 +280,7 @@ static void iree_hal_xrt_lite_command_buffer_destroy(
 
   // TODO(null): release any implementation resources and
   // iree_hal_resource_set_t.
-
+  iree_hal_buffer_destroy(command_buffer->exec_buffer);
   iree_allocator_free(host_allocator, command_buffer);
 
   IREE_TRACE_ZONE_END(z0);

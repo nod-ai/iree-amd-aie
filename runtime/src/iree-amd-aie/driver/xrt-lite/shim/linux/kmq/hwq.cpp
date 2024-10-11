@@ -71,7 +71,9 @@ void hw_q::submit_wait(const std::vector<fence_handle *> &fences) {
 
 void hw_q::submit_signal(const fence_handle *f) { f->submit_signal(m_hwctx); }
 
-hw_q::~hw_q() { shim_debug("Destroying KMQ HW queue"); }
+hw_q::~hw_q() {
+  shim_debug("Destroying KMQ HW queue");
+}
 
 void hw_q::issue_command(bo *cmd_bo) {
   // Assuming 1024 max args per cmd bo

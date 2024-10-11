@@ -128,8 +128,9 @@ pdev::~pdev() {
 }
 
 void pdev::ioctl(unsigned long cmd, void *arg) const {
-  if (::ioctl(m_dev_fd, cmd, arg) == -1)
+  if (::ioctl(m_dev_fd, cmd, arg) == -1) {
     shim_err(errno, "%s IOCTL failed", ioctl_cmd2name(cmd).c_str());
+  }
 }
 
 void *pdev::mmap(void *addr, size_t len, int prot, int flags,
