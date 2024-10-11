@@ -4,7 +4,7 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#include "iree-amd-aie/driver/xrt-lite/registration/driver_module.h"
+#include "iree-amd-aie/driver/xrt/registration/driver_module.h"
 #include "iree/base/api.h"
 #include "iree/base/string_view.h"
 #include "iree/hal/api.h"
@@ -13,26 +13,26 @@
 #include "iree/testing/gtest.h"
 #include "iree/testing/status_matchers.h"
 #include "tools/testing/e2e/test_utils.h"
-#include "xrt_lite_executables_c.h"
+#include "xrt_executables_c.h"
 
 namespace iree::hal::cts {
 
-const char* get_test_driver_name() { return "xrt-lite"; }
+const char* get_test_driver_name() { return "xrt"; }
 
 iree_status_t register_test_driver(iree_hal_driver_registry_t* registry) {
-  return iree_hal_xrt_lite_driver_module_register(registry);
+  return iree_hal_xrt_driver_module_register(registry);
 }
 
-const char* get_test_executable_format() { return "amdaie-pdi-fb"; }
+const char* get_test_executable_format() { return "amdaie-xclbin-fb"; }
 
 iree_const_byte_span_t get_test_executable_data(iree_string_view_t file_name) {
   const struct iree_file_toc_t* toc =
-      iree_cts_testdata_executables_aie_xrt_lite_create();
+      iree_cts_testdata_executables_aie_xrt_create();
   const auto& file = toc[0];
   return iree_make_const_byte_span(file.data, file.size);
 }
 
-class CommandBufferDispatchTest
+class MatMulDispatchTest
     : public CTSTestBase<::testing::TestWithParam<RecordingType>> {
  protected:
   void PrepareMatmulExecutable() {
@@ -47,7 +47,7 @@ class CommandBufferDispatchTest
     executable_params.executable_format =
         iree_make_cstring_view(get_test_executable_format());
     executable_params.executable_data = get_test_executable_data(
-        iree_make_cstring_view("xrt-lite_executable_cache_test.bin"));
+        iree_make_cstring_view("xrt_executable_cache_test.bin"));
 
     IREE_ASSERT_OK(iree_hal_executable_cache_prepare_executable(
         executable_cache_, &executable_params, &executable_));
@@ -75,7 +75,7 @@ int32_t generate_random_number(iree_hal_element_type_t element_type,
          min;
 }
 
-TEST_F(CommandBufferDispatchTest, Create) {
+TEST_F(MatMulDispatchTest, Create) {
   iree_hal_command_buffer_t* command_buffer = nullptr;
   IREE_ASSERT_OK(iree_hal_command_buffer_create(
       device_, IREE_HAL_COMMAND_BUFFER_MODE_ONE_SHOT,
@@ -89,7 +89,7 @@ TEST_F(CommandBufferDispatchTest, Create) {
   iree_hal_command_buffer_release(command_buffer);
 }
 
-TEST_F(CommandBufferDispatchTest, BeginEnd) {
+TEST_F(MatMulDispatchTest, BeginEnd) {
   iree_hal_command_buffer_t* command_buffer = nullptr;
   IREE_ASSERT_OK(iree_hal_command_buffer_create(
       device_, IREE_HAL_COMMAND_BUFFER_MODE_ONE_SHOT,
@@ -102,7 +102,7 @@ TEST_F(CommandBufferDispatchTest, BeginEnd) {
   iree_hal_command_buffer_release(command_buffer);
 }
 
-TEST_F(CommandBufferDispatchTest, SubmitEmpty) {
+TEST_F(MatMulDispatchTest, SubmitEmpty) {
   iree_hal_command_buffer_t* command_buffer = nullptr;
   IREE_ASSERT_OK(iree_hal_command_buffer_create(
       device_, IREE_HAL_COMMAND_BUFFER_MODE_ONE_SHOT,
@@ -117,11 +117,11 @@ TEST_F(CommandBufferDispatchTest, SubmitEmpty) {
   iree_hal_command_buffer_release(command_buffer);
 }
 
-TEST_P(CommandBufferDispatchTest, DispatchMatmul) {
+TEST_P(MatMulDispatchTest, DispatchMatmul) {
   PrepareMatmulExecutable();
 
   // Create input buffer.
-  constexpr iree_device_size_t WIDTH = 256;
+  constexpr iree_device_size_t WIDTH = 32;
   constexpr iree_device_size_t M = WIDTH, K = WIDTH, N = WIDTH;
   iree_hal_buffer_t *input_A = nullptr, *input_B = nullptr, *output_C = nullptr;
   int32_t seed =
@@ -133,7 +133,7 @@ TEST_P(CommandBufferDispatchTest, DispatchMatmul) {
       iree_hal_element_types_t::IREE_HAL_ELEMENT_TYPE_FLOAT_32, seed + 1);
   CreateFilledDeviceBuffer<float>(M * K * sizeof(float), a, &input_A);
   CreateFilledDeviceBuffer<float>(K * N * sizeof(float), b, &input_B);
-  CreateFilledDeviceBuffer<float>(M * N * sizeof(float), 0, &output_C);
+  CreateFilledDeviceBuffer<float>(M * N * sizeof(float), -1, &output_C);
 
   iree_hal_buffer_ref_t binding_refs[3];
   iree_hal_buffer_binding_table_t binding_table =
@@ -217,7 +217,7 @@ TEST_P(CommandBufferDispatchTest, DispatchMatmul) {
   CleanupExecutable();
 }
 
-INSTANTIATE_TEST_SUITE_P(CommandBufferDispatchTest, CommandBufferDispatchTest,
+INSTANTIATE_TEST_SUITE_P(MatMulDispatchTest, MatMulDispatchTest,
                          ::testing::Values(RecordingType::kDirect),
                          GenerateTestName());
 

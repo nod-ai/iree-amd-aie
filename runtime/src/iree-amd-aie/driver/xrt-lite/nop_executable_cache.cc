@@ -62,6 +62,7 @@ static void iree_hal_xrt_lite_nop_executable_cache_destroy(
       iree_hal_xrt_lite_nop_executable_cache_cast(base_executable_cache);
   IREE_TRACE_ZONE_BEGIN(z0);
 
+  executable_cache->shim_device.reset();
   iree_allocator_free(executable_cache->host_allocator, executable_cache);
 
   IREE_TRACE_ZONE_END(z0);

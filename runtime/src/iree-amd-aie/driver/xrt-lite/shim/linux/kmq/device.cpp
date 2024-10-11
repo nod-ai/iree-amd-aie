@@ -169,9 +169,8 @@ std::unique_ptr<bo> device::alloc_bo(size_t size, shim_xcl_bo_flags flags) {
 }
 
 std::unique_ptr<bo> device::alloc_bo(size_t size, uint32_t flags) {
-  shim_xcl_bo_flags f{};
-  f.flags = flags;
-  return alloc_bo(AMDXDNA_INVALID_CTX_HANDLE, size, f);
+  return alloc_bo(AMDXDNA_INVALID_CTX_HANDLE, size,
+                  shim_xcl_bo_flags{.flags = flags});
 }
 
 std::unique_ptr<bo> device::import_bo(pid_t pid, int ehdl) {

@@ -161,7 +161,9 @@ iree_status_t iree_hal_xrt_lite_native_executable_create(
   executable->entry_point_count = entry_point_count;
   for (iree_host_size_t entry_ordinal = 0; entry_ordinal < entry_point_count;
        entry_ordinal++) {
-    const char* entry_name =
+    iree_hal_xrt_lite_kernel_params_t* params =
+        &executable->entry_points[entry_ordinal];
+    params->kernel_name =
         flatbuffers_string_vec_at(entry_points_vec, entry_ordinal);
     uint32_t xclbin_index =
         flatbuffers_uint32_vec_at(xclbin_indices_vec, entry_ordinal);
@@ -170,38 +172,33 @@ iree_status_t iree_hal_xrt_lite_native_executable_create(
     flatbuffers_string_t xclbin_fb =
         iree_amd_aie_hal_xrt_XclbinDef_xclbin_get(xclbin_def);
 
-    iree_hal_xrt_lite_kernel_params_t* params =
-        &executable->entry_points[entry_ordinal];
-
     // XRT API needs this vector and cant actually read a void*.
     std::vector<char> xclbinVector(
         xclbin_fb, xclbin_fb + flatbuffers_string_len(xclbin_fb));
-    xrt::xclbin xclbin = xrt::xclbin(xclbinVector);
-    params->context = shim_device->create_hw_context(xclbin);
+    params->xclbinVector = xclbinVector;
+//    xrt::xclbin xclbin = xrt::xclbin(xclbinVector);
+//    params->context = shim_device->create_hw_context(xclbin);
 
     uint32_t asm_instr_index =
         flatbuffers_uint32_vec_at(asm_instr_indices_vec, entry_ordinal);
     iree_amd_aie_hal_xrt_AsmInstDef_table_t asminst_def =
         iree_amd_aie_hal_xrt_AsmInstDef_vec_at(asm_instrs_vec, asm_instr_index);
-    flatbuffers_uint32_vec_t asm_inst =
+    params->asm_inst =
         iree_amd_aie_hal_xrt_AsmInstDef_asm_inst_get(asminst_def);
-    uint32_t num_instr = flatbuffers_uint32_vec_len(asm_inst);
 
-    size_t ctrl_code_size = num_instr * sizeof(uint32_t);
-    params->bo_ctrl_code =
-        shim_device->alloc_bo(ctrl_code_size, XCL_BO_FLAGS_CACHEABLE);
-    uint32_t* instr_buffer =
-        static_cast<uint32_t*>(params->bo_ctrl_code->map());
-    memcpy(instr_buffer, asm_inst, ctrl_code_size);
-    params->num_instr = num_instr;
+//    uint32_t num_instr = flatbuffers_uint32_vec_len(asm_inst);
+//    size_t ctrl_code_size = num_instr * sizeof(uint32_t);
+//    params->bo_ctrl_code =
+//        shim_device->alloc_bo(ctrl_code_size, XCL_BO_FLAGS_CACHEABLE);
+//    uint32_t* instr_buffer =
+//        static_cast<uint32_t*>(params->bo_ctrl_code->map());
+//    memcpy(instr_buffer, asm_inst, ctrl_code_size);
 
     // Stash the entry point name in the string table for use when tracing.
     IREE_TRACE({
-      iree_host_size_t entry_name_length = flatbuffers_string_len(entry_name);
-      memcpy(string_table_buffer, entry_name, entry_name_length);
-      params->kernel_name =
-          iree_make_string_view(string_table_buffer, entry_name_length);
-      string_table_buffer += entry_name_length;
+      memcpy(string_table_buffer, params->kernel_name.data(),
+             params->kernel_name.size());
+      string_table_buffer += params->kernel_name.size();
     });
 
     IREE_TRACE({

@@ -13,6 +13,8 @@
 
 namespace shim_xdna {
 
+#define MAX_EXEC_BO_SIZE 4096
+
 enum xclBOSyncDirection {
   XCL_BO_SYNC_BO_TO_DEVICE = 0,
   XCL_BO_SYNC_BO_FROM_DEVICE,
@@ -68,6 +70,7 @@ struct bo {
   bo(const pdev &p, uint32_t ctx_id, size_t size, shim_xcl_bo_flags flags,
      amdxdna_bo_type type);
   bo(const pdev &p, uint32_t ctx_id, size_t size, shim_xcl_bo_flags flags);
+  bo(const pdev &p, uint32_t ctx_id, size_t size, uint32_t flags);
   bo(const pdev &p, int ehdl);
   // Support BO creation from internal
   bo(const pdev &p, size_t size, amdxdna_bo_type type);
@@ -76,6 +79,7 @@ struct bo {
   void *map() const;
   void unmap(void *addr);
   void sync(direction, size_t size, size_t offset);
+  void sync(direction);
   properties get_properties() const;
   size_t size();
 
@@ -104,7 +108,7 @@ struct bo {
 };
 
 struct exec_buf {
-  bo &m_exec_buf_bo;
+  std::unique_ptr<bo> m_exec_buf_bo;
   ert_start_kernel_cmd *m_cmd_pkt;
   size_t m_cmd_size;
   uint32_t m_op;
@@ -112,16 +116,17 @@ struct exec_buf {
   uint32_t m_reg_idx;
   std::vector<std::pair<std::string, uint64_t> > m_patching_args;
 
-  exec_buf(bo &bo_execbuf, uint32_t op);
+  exec_buf(const pdev &p, uint32_t op);
+
   static void set_cu_idx(bo &bo_execbuf, cuidx_t cu_idx);
   void set_cu_idx(cuidx_t cu_idx);
+  bo* get_exec_buf_bo();
+
   void add_ctrl_bo(bo &bo_ctrl);
   void add_arg_32(uint32_t val);
   void add_arg_64(uint64_t val);
   void add_arg_bo(bo &bo_arg, std::string arg_name = "");
   void dump();
-  static size_t get_ctrl_code_size(const std::string &elf_path);
-  void patch_ctrl_code(bo &bo_ctrl, const std::string &elf_path);
   void inc_pkt_count(uint32_t n);
 };
 

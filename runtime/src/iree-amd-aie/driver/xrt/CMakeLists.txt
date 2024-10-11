@@ -38,6 +38,7 @@ iree_cc_library(
     "native_executable.h"
     "native_executable.cc"
     "nop_semaphore.cc"
+    "nop_semaphore.h"
     "nop_executable_cache.h"
     "nop_executable_cache.cc"
   DEPS
@@ -48,6 +49,7 @@ iree_cc_library(
     iree::base::internal::flatcc::parsing
     iree::hal::utils::deferred_command_buffer
     iree::hal::utils::file_transfer
+    iree::hal::utils::semaphore_base
     iree::hal
     iree-amd-aie::schemas::xrt_executable_def_c_fbs
     # hide the target from all exports so it doesn't need to be installed
