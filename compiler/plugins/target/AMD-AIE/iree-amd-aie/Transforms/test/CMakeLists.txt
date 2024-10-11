@@ -28,6 +28,7 @@ iree_lit_test_suite(
     "create_reference_to_allocation.mlir"
     "disable_vectorization.mlir"
     "distribute_cores_and_objectfifos.mlir"
+    "distribute_l1_allocations.mlir"
     "dma_composition.mlir"
     "dma_cse.mlir"
     "dma_loop_subsumption_circular.mlir"
