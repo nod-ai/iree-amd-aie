@@ -125,26 +125,9 @@ struct iree_hal_xrt_lite_allocator {
         this->query_buffer_compatibility(&compat_params, &allocation_size);
     if (!iree_all_bits_set(compatibility,
                            IREE_HAL_BUFFER_COMPATIBILITY_ALLOCATABLE)) {
-      // TODO(benvanik): make a helper for this.
-#if IREE_STATUS_MODE
-      iree_bitfield_string_temp_t temp0, temp1, temp2;
-      iree_string_view_t memory_type_str =
-          iree_hal_memory_type_format(params->type, &temp0);
-      iree_string_view_t usage_str =
-          iree_hal_buffer_usage_format(params->usage, &temp1);
-      iree_string_view_t compatibility_str =
-          iree_hal_buffer_compatibility_format(compatibility, &temp2);
-      return iree_make_status(
-          IREE_STATUS_INVALID_ARGUMENT,
-          "allocator cannot allocate a buffer with the given parameters; "
-          "memory_type=%.*s, usage=%.*s, compatibility=%.*s",
-          (int)memory_type_str.size, memory_type_str.data, (int)usage_str.size,
-          usage_str.data, (int)compatibility_str.size, compatibility_str.data);
-#else
       return iree_make_status(
           IREE_STATUS_INVALID_ARGUMENT,
           "allocator cannot allocate a buffer with the given parameters");
-#endif  // IREE_STATUS_MODE
     }
 
     // TODO(null): allocate the underlying device memory.
@@ -156,10 +139,18 @@ struct iree_hal_xrt_lite_allocator {
     // just wrapping those device pointers in the HAL buffer type. Other
     // implementations that require more tracking can provide their own buffer
     // types that do such tracking for them.
-    (void)this;
+
+    uint32_t flags = XCL_BO_FLAGS_HOST_ONLY;
+    // if (iree_all_bits_set(params->type, IREE_HAL_MEMORY_TYPE_HOST_CACHED)) {
+    //   flags = XCL_BO_FLAGS_CACHEABLE;
+    // } else if (iree_all_bits_set(params->type,
+    //                              IREE_HAL_MEMORY_TYPE_OPTIMAL_FOR_DEVICE)) {
+    //   // TODO(max): the test here isn't specific enough
+    //   flags = XCL_BO_FLAGS_EXECBUF;
+    // }
 
     std::unique_ptr<shim_xdna::bo> bo =
-        shim_device->alloc_bo(allocation_size, XCL_BO_FLAGS_HOST_ONLY);
+        shim_device->alloc_bo(allocation_size, flags);
     iree_hal_buffer_t* buffer = nullptr;
     iree_status_t status = iree_hal_xrt_lite_buffer_wrap(
         std::move(bo), reinterpret_cast<iree_hal_allocator_t*>(this),

@@ -11,7 +11,28 @@
 #include "iree/base/api.h"
 #include "iree/hal/api.h"
 
-// Wraps an allocation in an iree_hal_buffer_t.
+struct iree_hal_xrt_lite_buffer {
+  iree_hal_buffer_t base;
+  std::unique_ptr<shim_xdna::bo> bo;
+  iree_hal_buffer_release_callback_t release_callback;
+
+  iree_status_t map_range(iree_hal_mapping_mode_t mapping_mode,
+                          iree_hal_memory_access_t memory_access,
+                          iree_device_size_t local_byte_offset,
+                          iree_device_size_t local_byte_length,
+                          iree_hal_buffer_mapping_t* mapping);
+
+  iree_status_t unmap_range(iree_device_size_t local_byte_offset,
+                            iree_device_size_t local_byte_length,
+                            iree_hal_buffer_mapping_t* mapping);
+
+  iree_status_t invalidate_range(iree_device_size_t local_byte_offset,
+                                 iree_device_size_t local_byte_length);
+
+  iree_status_t flush_range(iree_device_size_t local_byte_offset,
+                            iree_device_size_t local_byte_length);
+};
+
 iree_status_t iree_hal_xrt_lite_buffer_wrap(
     std::unique_ptr<shim_xdna::bo> bo, iree_hal_allocator_t* allocator,
     iree_hal_memory_type_t memory_type, iree_hal_memory_access_t allowed_access,
@@ -19,5 +40,8 @@ iree_status_t iree_hal_xrt_lite_buffer_wrap(
     iree_device_size_t byte_offset, iree_device_size_t byte_length,
     iree_hal_buffer_release_callback_t release_callback,
     iree_allocator_t host_allocator, iree_hal_buffer_t** out_buffer);
+
+std::unique_ptr<shim_xdna::bo> iree_hal_xrt_lite_buffer_unwrap(
+    iree_hal_buffer_t* base_buffer);
 
 #endif  // IREE_HAL_DRIVERS_XRT_LITE_BUFFER_H_

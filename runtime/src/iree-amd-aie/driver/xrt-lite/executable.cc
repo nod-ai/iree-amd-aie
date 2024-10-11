@@ -14,8 +14,6 @@
 #include "iree-amd-aie/schemas/xrt_executable_def_verifier.h"
 #include "iree/base/api.h"
 
-#define MAX_EXEC_BO_SIZE (4096)
-
 struct iree_hal_xrt_lite_native_executable_t {
   // Abstract resource used for injecting reference counting and vtable; must be
   // at offset 0.
@@ -33,7 +31,7 @@ extern const iree_hal_executable_vtable_t
 static iree_hal_xrt_lite_native_executable_t*
 iree_hal_xrt_lite_native_executable_cast(iree_hal_executable_t* base_value) {
   IREE_HAL_ASSERT_TYPE(base_value, &iree_hal_xrt_lite_native_executable_vtable);
-  return (iree_hal_xrt_lite_native_executable_t*)base_value;
+  return reinterpret_cast<iree_hal_xrt_lite_native_executable_t*>(base_value);
 }
 
 // Verifies the structure of the flatbuffer so that we can avoid doing so during
@@ -151,12 +149,11 @@ iree_status_t iree_hal_xrt_lite_native_executable_create(
       entry_point_count * sizeof(executable->entry_points[0]) +
       total_entry_point_name_chars;
   IREE_RETURN_AND_END_ZONE_IF_ERROR(
-      z0,
-      iree_allocator_malloc(host_allocator, total_size, (void**)&executable));
-  IREE_TRACE(
-      char* string_table_buffer =
-          (char*)((char*)executable + sizeof(*executable) +
-                  entry_point_count * sizeof(executable->entry_points[0])));
+      z0, iree_allocator_malloc(host_allocator, total_size,
+                                reinterpret_cast<void**>(&executable)));
+  IREE_TRACE(char* string_table_buffer = reinterpret_cast<char*>(
+                 reinterpret_cast<char*>(executable) + sizeof(*executable) +
+                 entry_point_count * sizeof(executable->entry_points[0])));
 
   iree_hal_resource_initialize(&iree_hal_xrt_lite_native_executable_vtable,
                                &executable->resource);
@@ -180,8 +177,7 @@ iree_status_t iree_hal_xrt_lite_native_executable_create(
     std::vector<char> xclbinVector(
         xclbin_fb, xclbin_fb + flatbuffers_string_len(xclbin_fb));
     xrt::xclbin xclbin = xrt::xclbin(xclbinVector);
-    std::unique_ptr<shim_xdna::hw_ctx> hw_ctx =
-        shim_device->create_hw_context(xclbin);
+    params->context = shim_device->create_hw_context(xclbin);
 
     uint32_t asm_instr_index =
         flatbuffers_uint32_vec_at(asm_instr_indices_vec, entry_ordinal);
@@ -194,9 +190,6 @@ iree_status_t iree_hal_xrt_lite_native_executable_create(
     size_t ctrl_code_size = num_instr * sizeof(uint32_t);
     params->bo_ctrl_code =
         shim_device->alloc_bo(ctrl_code_size, XCL_BO_FLAGS_CACHEABLE);
-    params->bo_exec_buf =
-        shim_device->alloc_bo(MAX_EXEC_BO_SIZE, XCL_BO_FLAGS_EXECBUF);
-
     uint32_t* instr_buffer =
         static_cast<uint32_t*>(params->bo_ctrl_code->map());
     memcpy(instr_buffer, asm_inst, ctrl_code_size);
@@ -231,7 +224,7 @@ iree_status_t iree_hal_xrt_lite_native_executable_create(
     });
   }
 
-  *out_executable = (iree_hal_executable_t*)executable;
+  *out_executable = reinterpret_cast<iree_hal_executable_t*>(executable);
   IREE_TRACE_ZONE_END(z0);
   return iree_ok_status();
 }
