@@ -545,6 +545,11 @@ void addAMDAIEObjectFifoLoweringPasses(OpPassManager &passManager,
                                        TilePassPipeline useTilePipeline) {
   passManager.addPass(createEraseHALDescriptorTypeFromMemRefPass());
   passManager.addPass(memref::createFoldMemRefAliasOpsPass());
+
+  passManager.addPass(createAMDAIEDistributeL1AllocationsPass());
+  passManager.addPass(createCanonicalizerPass());
+  passManager.addPass(createCSEPass());
+
   passManager.addPass(createCanonicalizerPass());
   // For matmul pipelines, we do transpose on target side for pack ops to get
   // better performance. While for convolution pipelines, the same settings

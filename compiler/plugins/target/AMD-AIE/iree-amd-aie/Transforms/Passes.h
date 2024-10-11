@@ -138,6 +138,9 @@ std::unique_ptr<Pass> createAMDAIEDecomposeLinalgExtPackUnPackToAIRPass();
 /// operations and distribute the logical objectFifos.
 std::unique_ptr<Pass> createAMDAIEDistributeCoresAndObjectFifosPass();
 
+/// Create pass to distribute/privatize/localize memory alloocations in L1 memory
+std::unique_ptr<Pass> createAMDAIEDistributeL1AllocationsPass();
+
 /// Create a pass to compose more complex DMA operations, e.g. by combining DMA
 /// operations and/or subsuming loop iterations into the strided access
 /// patterns.
