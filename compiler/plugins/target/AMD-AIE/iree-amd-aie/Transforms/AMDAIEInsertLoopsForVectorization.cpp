@@ -155,11 +155,63 @@ class AMDAIEInsertLoopsForVectorizationPass
     return success();
   }
 
+  // replace the peeled code which looks something like
+  //
+  // linalg.generic ...
+  // scf.for i = 1 to 7 {
+  //     linalq.generic ...
+  // }
+  // linalg.generic ...
+  //
+  // with something like
+  // scf.for i = 0 to 8 {
+  //    linalg.generic ...
+  // }
+  void doHackyMerge(IRRewriter &rewriter, mlir::FunctionOpInterface operation) {
+    // Find 3 linalg.generics with a reduction dimension:
+    SmallVector<linalg::GenericOp> generics;
+    operation->walk([&](linalg::GenericOp genericOp) {
+      bool hasRed{false};
+      for (auto t : genericOp.getIteratorTypesArray()) {
+        if (linalg::isReductionIterator(t)) {
+          hasRed = true;
+        }
+      }
+      if (hasRed) {
+        generics.push_back(genericOp);
+      }
+    });
+    if (generics.size() != 3) return;
+
+    // If we have 3, we assume they're the prologue, main, epilogue.
+    // Replace all uses of prologue and epilogue with the 'out' input
+    for (auto g : {generics[0], generics[2]}) {
+      auto output = g.getResult(0);
+      auto input = g.getOperands().back();
+      rewriter.replaceAllUsesWith(output, input);
+      rewriter.eraseOp(g);
+    }
+
+    // Reset the scf.for loop bounds
+    auto containingScf = generics[1]->getParentOfType<scf::ForOp>();
+    assert(containingScf);
+    rewriter.setInsertionPoint(containingScf);
+    auto zeroLbIndex =
+        rewriter.create<arith::ConstantIndexOp>(generics[1].getLoc(), 0);
+    containingScf.setLowerBound(zeroLbIndex);
+    auto oneIndex =
+        rewriter.create<arith::ConstantIndexOp>(generics[1].getLoc(), 1);
+    auto currentUb = containingScf.getUpperBound();
+    auto newUb = rewriter.create<arith::AddIOp>(generics[1].getLoc(), currentUb,
+                                                oneIndex);
+    containingScf.setUpperBound(newUb);
+  }
+
   void runOnOperation() final {
     MLIRContext *context = &getContext();
     mlir::FunctionOpInterface operation = getOperation();
-
     IRRewriter rewriter(context);
+    doHackyMerge(rewriter, operation);
     operation->walk([&](linalg::GenericOp genericOp) {
       (void)maybeRewrite(genericOp, rewriter);
     });
