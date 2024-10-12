@@ -9,6 +9,7 @@
 #include "iree-amd-aie/driver/xrt-lite/buffer.h"
 #include "iree-amd-aie/driver/xrt-lite/executable.h"
 #include "iree-amd-aie/driver/xrt-lite/shim/linux/kmq/hwq.h"
+#include "iree-amd-aie/driver/xrt-lite/shim/linux/kmq/kernel.h"
 #include "iree/hal/utils/resource_set.h"
 
 // The max number of bindings per descriptor set allowed in the XRT HAL
@@ -29,7 +30,7 @@ struct iree_hal_xrt_lite_direct_command_buffer {
   // Staging arena used for host->device transfers.
   iree_arena_allocator_t arena;
 
-  std::shared_ptr<shim_xdna::device> shim_device;
+  shim_xdna::device* shim_device;
 
   struct {
     shim_xdna::bo* bindings[IREE_HAL_XRT_LITE_MAX_DESCRIPTOR_SET_BINDING_COUNT];
@@ -52,12 +53,12 @@ iree_hal_xrt_lite_direct_command_buffer_cast(
     iree_hal_command_buffer_t* base_value) {
   IREE_HAL_ASSERT_TYPE(base_value,
                        &iree_hal_xrt_lite_direct_command_buffer_vtable);
-  return (iree_hal_xrt_lite_direct_command_buffer*)base_value;
+  return reinterpret_cast<iree_hal_xrt_lite_direct_command_buffer*>(base_value);
 }
 
 iree_status_t iree_hal_xrt_lite_direct_command_buffer_create(
-    std::shared_ptr<shim_xdna::device> shim_device,
-    iree_hal_allocator_t* device_allocator, iree_hal_command_buffer_mode_t mode,
+    shim_xdna::device* shim_device, iree_hal_allocator_t* device_allocator,
+    iree_hal_command_buffer_mode_t mode,
     iree_hal_command_category_t command_categories,
     iree_host_size_t binding_capacity, iree_arena_block_pool_t* block_pool,
     iree_allocator_t host_allocator,
@@ -106,7 +107,7 @@ static void iree_hal_xrt_lite_direct_command_buffer_destroy(
       iree_hal_xrt_lite_direct_command_buffer_cast(base_command_buffer);
   iree_allocator_t host_allocator = command_buffer->host_allocator;
   IREE_TRACE_ZONE_BEGIN(z0);
-  command_buffer->shim_device.reset();
+
   iree_hal_resource_set_free(command_buffer->resource_set);
   iree_arena_deinitialize(&command_buffer->arena);
   iree_allocator_free(host_allocator, command_buffer);
@@ -133,18 +134,6 @@ static iree_status_t iree_hal_xrt_lite_direct_command_buffer_end(
 
   IREE_TRACE_ZONE_END(z0);
   return iree_ok_status();
-}
-
-static void iree_hal_xrt_lite_direct_command_buffer_begin_debug_group(
-    iree_hal_command_buffer_t* base_command_buffer, iree_string_view_t label,
-    iree_hal_label_color_t label_color,
-    const iree_hal_label_location_t* location) {
-  (void)iree_status_from_code(IREE_STATUS_UNIMPLEMENTED);
-}
-
-static void iree_hal_xrt_lite_direct_command_buffer_end_debug_group(
-    iree_hal_command_buffer_t* base_command_buffer) {
-  (void)iree_status_from_code(IREE_STATUS_UNIMPLEMENTED);
 }
 
 static iree_status_t iree_hal_xrt_lite_direct_command_buffer_execution_barrier(
@@ -300,8 +289,7 @@ static iree_status_t iree_hal_xrt_lite_direct_command_buffer_dispatch(
   cu_name += ":IREE";
   shim_xdna::cuidx_t cu_idx = kernel_params.context->open_cu_context(cu_name);
 
-  shim_xdna::exec_buf ebuf(command_buffer->shim_device->get_pdev(),
-                           ERT_START_CU);
+  shim_xdna::kernel ebuf(command_buffer->shim_device->get_pdev(), ERT_START_CU);
   ebuf.set_cu_idx(cu_idx);
   unsigned int opcode = 3;
   ebuf.add_arg_64(opcode);
@@ -311,13 +299,9 @@ static iree_status_t iree_hal_xrt_lite_direct_command_buffer_dispatch(
     shim_xdna::bo* bo = iree_hal_xrt_lite_buffer_handle(
         iree_hal_buffer_allocated_buffer(bindings.values[j].buffer));
     ebuf.add_arg_bo(*bo);
-  }
-
-  for (iree_host_size_t j = 0; j < bindings.count; ++j) {
-    shim_xdna::bo* bo = iree_hal_xrt_lite_buffer_handle(
-        iree_hal_buffer_allocated_buffer(bindings.values[j].buffer));
     bo->sync(shim_xdna::direction::host2device);
   }
+
   shim_xdna::hw_q* hwq = kernel_params.context->get_hw_queue();
   hwq->issue_command(ebuf.get_exec_buf_bo());
   hwq->wait_command(ebuf.get_exec_buf_bo(), 0);
@@ -326,11 +310,6 @@ static iree_status_t iree_hal_xrt_lite_direct_command_buffer_dispatch(
     shim_xdna::bo* bo = iree_hal_xrt_lite_buffer_handle(
         iree_hal_buffer_allocated_buffer(bindings.values[j].buffer));
     bo->sync(shim_xdna::direction::device2host);
-  }
-
-  for (iree_host_size_t j = 0; j < bindings.count; ++j) {
-    shim_xdna::bo* bo = iree_hal_xrt_lite_buffer_handle(
-        iree_hal_buffer_allocated_buffer(bindings.values[j].buffer));
   }
 
   IREE_TRACE_ZONE_END(z0);

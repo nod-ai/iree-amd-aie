@@ -36,7 +36,7 @@ struct iree_hal_xrt_lite_kernel_params_t {
 // |out_executable| must be released by the caller (see
 // iree_hal_executable_release).
 iree_status_t iree_hal_xrt_lite_native_executable_create(
-    std::shared_ptr<shim_xdna::device> shim_device,
+    shim_xdna::device* shim_device,
     const iree_hal_executable_params_t* executable_params,
     iree_allocator_t host_allocator, iree_hal_executable_t** out_executable);
 

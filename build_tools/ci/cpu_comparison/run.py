@@ -146,6 +146,7 @@ def generate_aie_vmfb(
         f"--iree-amd-aie-install-dir={config.iree_install_dir}",
         f"--iree-amd-aie-vitis-install-dir={config.vitis_dir}",
         f"--iree-hal-dump-executable-files-to={config.output_dir}",
+        "--iree-amdaie-device-hal=xrt-lite",
         "--iree-scheduling-optimize-bindings=false",
         "--iree-hal-memoization=false",
         "--iree-hal-indirect-command-buffers=false",
@@ -191,7 +192,7 @@ def generate_aie_output(config, aie_vmfb, input_args, function_name, name, outpu
         config.iree_run_exe,
         f"--module={aie_vmfb}",
         *input_args,
-        "--device=xrt",
+        "--device=xrt-lite",
         f"--output=@{aie_bin}",
     ]
     if function_name:

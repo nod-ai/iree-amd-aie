@@ -109,7 +109,7 @@ if [[ "$OSTYPE" == "linux"* ]]; then
     -DCMAKE_CXX_COMPILER="${CXX}"
     -DLLVM_TARGET_ARCH=X86
     -DLLVM_TARGETS_TO_BUILD=X86
-    -DIREE_EXTERNAL_HAL_DRIVERS="xrt;xrt-lite"
+    -DIREE_EXTERNAL_HAL_DRIVERS="xrt-lite"
     -S
     "$iree_dir"
     -B
@@ -155,5 +155,7 @@ if [ -d "$llvm_install_dir" ]; then
 fi
 
 cp "$build_dir/tools/testing/e2e/iree-e2e-matmul-test" "$install_dir/bin"
-mkdir -p "$install_dir/device_tests"
-cp "$build_dir"/runtime/plugins/AMD-AIE/iree-amd-aie/driver/xrt-lite/cts/*test "$install_dir/device_tests"
+if [[ "$OSTYPE" == "linux"* ]]; then
+  mkdir -p "$install_dir/device_tests"
+  cp "$build_dir"/runtime/plugins/AMD-AIE/iree-amd-aie/driver/xrt-lite/cts/*test "$install_dir/device_tests"
+fi

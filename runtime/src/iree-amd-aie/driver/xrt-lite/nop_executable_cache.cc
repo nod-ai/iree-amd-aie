@@ -17,7 +17,7 @@ struct iree_hal_xrt_lite_nop_executable_cache_t {
   // Abstract resource used for injecting reference counting and vtable; must be
   // at offset 0.
   iree_hal_resource_t resource;
-  std::shared_ptr<shim_xdna::device> shim_device;
+  shim_xdna::device* shim_device;
   iree_allocator_t host_allocator;
 };
 
@@ -35,8 +35,8 @@ iree_hal_xrt_lite_nop_executable_cache_cast(
 }
 
 iree_status_t iree_hal_xrt_lite_nop_executable_cache_create(
-    std::shared_ptr<shim_xdna::device> shim_device,
-    iree_string_view_t identifier, iree_allocator_t host_allocator,
+    shim_xdna::device* shim_device, iree_string_view_t identifier,
+    iree_allocator_t host_allocator,
     iree_hal_executable_cache_t** out_executable_cache) {
   IREE_ASSERT_ARGUMENT(out_executable_cache);
   *out_executable_cache = nullptr;
@@ -62,7 +62,6 @@ static void iree_hal_xrt_lite_nop_executable_cache_destroy(
       iree_hal_xrt_lite_nop_executable_cache_cast(base_executable_cache);
   IREE_TRACE_ZONE_BEGIN(z0);
 
-  executable_cache->shim_device.reset();
   iree_allocator_free(executable_cache->host_allocator, executable_cache);
 
   IREE_TRACE_ZONE_END(z0);

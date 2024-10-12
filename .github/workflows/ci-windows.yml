@@ -103,6 +103,8 @@ jobs:
           # Remove-Item -Path "$pwd\llvm-build" -Force
           $env:llvm_install_dir = "$pwd\llvm-install"
           echo $env:llvm_install_dir
+          .\build_tools\download_peano.ps1
+          $env:peano_install_dir = "$pwd\llvm-aie"
           .\build_tools.\build_test_cpp.ps1
 
       - name: Create artifacts

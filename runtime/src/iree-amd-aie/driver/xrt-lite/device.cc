@@ -26,7 +26,7 @@ struct iree_hal_xrt_lite_device {
   // Block pool used for command buffers with a larger block size (as command
   // buffers can contain inlined data uploads).
   iree_arena_block_pool_t block_pool;
-  std::shared_ptr<shim_xdna::device> shim_device;
+  shim_xdna::device* shim_device;
 
   iree_status_t create_executable_cache(
       iree_string_view_t identifier, iree_loop_t loop,
@@ -162,7 +162,7 @@ iree_status_t iree_hal_xrt_lite_device_create(
       identifier, &device->identifier,
       reinterpret_cast<char*>(device) + total_size - identifier.size);
   device->host_allocator = host_allocator;
-  device->shim_device = std::make_shared<shim_xdna::device>();
+  device->shim_device = new shim_xdna::device;
 
   // TODO(null): pass device handles and pool configuration to the allocator.
   // Some implementations may share allocators across multiple devices created
@@ -205,7 +205,7 @@ static void iree_hal_xrt_lite_device_destroy(iree_hal_device_t* base_device) {
   // and joined first.
 
   iree_hal_allocator_release(device->device_allocator);
-  device->shim_device.reset();
+  delete device->shim_device;
   iree_allocator_free(host_allocator, device);
 
   IREE_TRACE_ZONE_END(z0);

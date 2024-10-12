@@ -21,6 +21,8 @@ iree_cc_library(
     hwctx.h
     hwq.cpp
     hwq.h
+    kernel.cpp
+    kernel.h
     shim_debug.cpp
     shim_debug.h
   DEPS

@@ -80,6 +80,7 @@ def iree_session(request, pytestconfig, global_cl_args) -> Session:
         f"--iree-amd-aie-install-dir={pytestconfig.option.iree_install_dir}",
         f"--iree-amd-aie-enable-chess={use_chess}",
         f"--iree-amdaie-enable-packet-flow={enable_packet_flow}",
+        "--iree-amdaie-device-hal=xrt-lite",
     ]
     if pytestconfig.option.vitis_dir:
         flags += [f"--iree-amd-aie-vitis-install-dir={pytestconfig.option.vitis_dir}"]
@@ -106,7 +107,7 @@ def session_module(iree_session, tmp_path) -> ir.Module:
 
 
 @pytest.fixture(scope="session")
-def device(device="xrt") -> ir.Module:
+def device(device="xrt-lite") -> ir.Module:
     yield get_driver(device).create_default_device()
 
 

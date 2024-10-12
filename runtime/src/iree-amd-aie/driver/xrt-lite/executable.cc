@@ -100,7 +100,7 @@ iree_amd_aie_hal_xrt_lite_native_executable_flatbuffer_verify(
 }
 
 iree_status_t iree_hal_xrt_lite_native_executable_create(
-    std::shared_ptr<shim_xdna::device> shim_device,
+    shim_xdna::device* shim_device,
     const iree_hal_executable_params_t* executable_params,
     iree_allocator_t host_allocator, iree_hal_executable_t** out_executable) {
   IREE_ASSERT_ARGUMENT(executable_params);
@@ -176,8 +176,8 @@ iree_status_t iree_hal_xrt_lite_native_executable_create(
     std::vector<char> xclbinVector(
         xclbin_fb, xclbin_fb + flatbuffers_string_len(xclbin_fb));
     params->xclbinVector = xclbinVector;
-//    xrt::xclbin xclbin = xrt::xclbin(xclbinVector);
-//    params->context = shim_device->create_hw_context(xclbin);
+    //    xrt::xclbin xclbin = xrt::xclbin(xclbinVector);
+    //    params->context = shim_device->create_hw_context(xclbin);
 
     uint32_t asm_instr_index =
         flatbuffers_uint32_vec_at(asm_instr_indices_vec, entry_ordinal);
@@ -186,13 +186,13 @@ iree_status_t iree_hal_xrt_lite_native_executable_create(
     params->asm_inst =
         iree_amd_aie_hal_xrt_AsmInstDef_asm_inst_get(asminst_def);
 
-//    uint32_t num_instr = flatbuffers_uint32_vec_len(asm_inst);
-//    size_t ctrl_code_size = num_instr * sizeof(uint32_t);
-//    params->bo_ctrl_code =
-//        shim_device->alloc_bo(ctrl_code_size, XCL_BO_FLAGS_CACHEABLE);
-//    uint32_t* instr_buffer =
-//        static_cast<uint32_t*>(params->bo_ctrl_code->map());
-//    memcpy(instr_buffer, asm_inst, ctrl_code_size);
+    //    uint32_t num_instr = flatbuffers_uint32_vec_len(asm_inst);
+    //    size_t ctrl_code_size = num_instr * sizeof(uint32_t);
+    //    params->bo_ctrl_code =
+    //        shim_device->alloc_bo(ctrl_code_size, XCL_BO_FLAGS_CACHEABLE);
+    //    uint32_t* instr_buffer =
+    //        static_cast<uint32_t*>(params->bo_ctrl_code->map());
+    //    memcpy(instr_buffer, asm_inst, ctrl_code_size);
 
     // Stash the entry point name in the string table for use when tracing.
     IREE_TRACE({
