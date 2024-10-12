@@ -35,14 +35,18 @@ template <typename... Args>
 
 template <typename... Args>
 void shim_debug(const char *fmt, Args &&...args) {
-#ifdef SHIM_XDNA_DEBUG
   std::string format{"shim_xdna: "};
   format += std::string(fmt);
   format += "\n";
   debugf(format.c_str(), std::forward<Args>(args)...);
-#endif
 }
 
 }  // namespace shim_xdna
+
+#ifdef SHIM_XDNA_DEBUG
+#define SHIM_DEBUG(...) shim_xdna::shim_debug(__VA_ARGS__)
+#else
+#define SHIM_DEBUG(...)
+#endif
 
 #endif  // SHIM_DEBUG_H

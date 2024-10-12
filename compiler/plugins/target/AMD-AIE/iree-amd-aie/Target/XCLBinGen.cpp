@@ -1159,7 +1159,7 @@ LogicalResult aie2xclbin(
   }
 
   Path pdiPath = tempDirPath / "design.pdi";
-  if (failed(generatePDI(pdiPath, tempDirPath))) {
+  if (failed(generatePDI(pdiPath.string(), tempDirPath))) {
     llvm::errs() << "Failed to generate PDI\n";
     return failure();
   }

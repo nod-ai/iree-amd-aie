@@ -43,6 +43,9 @@ iree_bytecode_module(
   FLAGS
     --compile-mode=hal-executable
     --iree-hal-dump-executable-files-to=${CMAKE_CURRENT_BINARY_DIR}
+    # on windows iree-aie-xclbinutil for some reason isn't found by iree's findTool
+    # so set this instead to the bin dir
+    --iree-amd-aie-install-dir=${CMAKE_BINARY_DIR}
     --iree-hal-target-backends=amd-aie
     --iree-amdaie-lower-to-aie-pipeline=air
     --iree-amdaie-target-device=${TARGET_DEVICE}

@@ -184,7 +184,7 @@ drm_bo::~drm_bo() {
   try {
     free_drm_bo(m_parent.m_pdev, m_handle);
   } catch (const std::system_error &e) {
-    shim_debug("Failed to free DRM BO: %s", e.what());
+    SHIM_DEBUG("Failed to free DRM BO: %s", e.what());
   }
 }
 
@@ -247,7 +247,7 @@ void bo::mmap_bo(size_t align) {
 }
 
 void bo::munmap_bo() {
-  shim_debug("Unmap BO, aligned %p parent %p", m_aligned, m_parent);
+  SHIM_DEBUG("Unmap BO, aligned %p parent %p", m_aligned, m_parent);
   if (m_drm_bo->m_map_offset == AMDXDNA_INVALID_ADDR) return;
 
   unmap_drm_bo(m_pdev, m_aligned, m_aligned_size);
@@ -309,30 +309,30 @@ bo::bo(const pdev &pdev, uint32_t ctx_id, size_t size, shim_xcl_bo_flags flags,
 #ifndef NDEBUG
   switch (m_flags.all) {
     case 0x0:
-      shim_debug("allocating dev heap");
+      SHIM_DEBUG("allocating dev heap");
       break;
     case 0x1000000:
       // pdi bo
-      shim_debug("allocating pdi bo");
+      SHIM_DEBUG("allocating pdi bo");
       break;
     case 0x20000000:
       // XCL_BO_FLAGS_P2P in create_free_bo test
-      shim_debug("allocating XCL_BO_FLAGS_P2P");
+      SHIM_DEBUG("allocating XCL_BO_FLAGS_P2P");
       break;
     case 0x80000000:
       // XCL_BO_FLAGS_EXECBUF in create_free_bo test
-      shim_debug("allocating XCL_BO_FLAGS_EXECBUF");
+      SHIM_DEBUG("allocating XCL_BO_FLAGS_EXECBUF");
       break;
     case 0x1001000000:
       // debug bo
-      shim_debug("allocating debug bo");
+      SHIM_DEBUG("allocating debug bo");
       break;
     default:
       shim_err(-1, "unknown flags %d", flags);
   }
 #endif
 
-  shim_debug(
+  SHIM_DEBUG(
       "Allocated KMQ BO (userptr=0x%lx, size=%ld, flags=0x%llx, "
       "type=%d, drm_bo=%d)",
       m_aligned, m_aligned_size, m_flags, m_type, get_drm_bo_handle());
@@ -341,14 +341,14 @@ bo::bo(const pdev &pdev, uint32_t ctx_id, size_t size, shim_xcl_bo_flags flags,
 bo::bo(const pdev &p, int ehdl) : m_pdev(p), m_import(ehdl) {
   import_bo();
   mmap_bo();
-  shim_debug(
+  SHIM_DEBUG(
       "Imported KMQ BO (userptr=0x%lx, size=%ld, flags=0x%llx, type=%d, "
       "drm_bo=%d)",
       m_aligned, m_aligned_size, m_flags, m_type, get_drm_bo_handle());
 }
 
 bo::~bo() {
-  shim_debug("Freeing KMQ BO, %s", describe().c_str());
+  SHIM_DEBUG("Freeing KMQ BO, %s", describe().c_str());
 
   munmap_bo();
   try {
@@ -356,7 +356,7 @@ bo::~bo() {
     // If BO is in use, we should block and wait in driver
     free_bo();
   } catch (const std::system_error &e) {
-    shim_debug("Failed to free BO: %s", e.what());
+    SHIM_DEBUG("Failed to free BO: %s", e.what());
   }
 }
 
@@ -389,7 +389,7 @@ void bo::attach_to_ctx() {
   if (m_owner_ctx_id == AMDXDNA_INVALID_CTX_HANDLE) return;
 
   auto boh = get_drm_bo_handle();
-  shim_debug("Attaching drm_bo %d to ctx: %d", boh, m_owner_ctx_id);
+  SHIM_DEBUG("Attaching drm_bo %d to ctx: %d", boh, m_owner_ctx_id);
   attach_dbg_drm_bo(m_pdev, boh, m_owner_ctx_id);
 }
 
@@ -397,14 +397,14 @@ void bo::detach_from_ctx() {
   if (m_owner_ctx_id == AMDXDNA_INVALID_CTX_HANDLE) return;
 
   auto boh = get_drm_bo_handle();
-  shim_debug("Detaching drm_bo %d from ctx: %d", boh, m_owner_ctx_id);
+  SHIM_DEBUG("Detaching drm_bo %d from ctx: %d", boh, m_owner_ctx_id);
   detach_dbg_drm_bo(m_pdev, boh, m_owner_ctx_id);
 }
 
 std::unique_ptr<shim_xdna::shared_handle> bo::share() const {
   auto boh = get_drm_bo_handle();
   auto fd = export_drm_bo(m_pdev, boh);
-  shim_debug("Exported bo %d to fd %d", boh, fd);
+  SHIM_DEBUG("Exported bo %d to fd %d", boh, fd);
   return std::make_unique<shared_handle>(fd);
 }
 
@@ -449,7 +449,7 @@ void bo::bind_at(size_t pos, const bo &boh, size_t offset, size_t size) {
   if (boh.get_type() != AMDXDNA_BO_CMD) {
     auto h = boh.get_drm_bo_handle();
     m_args_map[pos] = h;
-    shim_debug("Added arg BO %d to cmd BO %d", h, get_drm_bo_handle());
+    SHIM_DEBUG("Added arg BO %d to cmd BO %d", h, get_drm_bo_handle());
   } else {
     const size_t max_args_order = 6;
     const size_t max_args = 1 << max_args_order;
@@ -461,7 +461,7 @@ void bo::bind_at(size_t pos, const bo &boh, size_t offset, size_t size) {
       m_args_map[key + i] = hs[i];
       bohs += std::to_string(hs[i]) + " ";
     }
-    shim_debug("Added arg BO %s to cmd BO %d", bohs.c_str(),
+    SHIM_DEBUG("Added arg BO %s to cmd BO %d", bohs.c_str(),
                get_drm_bo_handle());
   }
 }

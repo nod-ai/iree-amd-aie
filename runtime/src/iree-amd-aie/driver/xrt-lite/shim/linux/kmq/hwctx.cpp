@@ -16,7 +16,7 @@ hw_ctx::hw_ctx(device &dev, const std::map<std::string, uint32_t> &qos,
                std::unique_ptr<hw_q> q, const std::vector<uint8_t> &pdi,
                const std::string &cu_name, size_t functional)
     : m_device(dev), m_q(std::move(q)), m_doorbell(0), m_log_buf(nullptr) {
-  shim_debug("Creating HW context...");
+  SHIM_DEBUG("Creating HW context...");
 
   for (auto &[key, value] : qos) {
     if (key == "gops")
@@ -78,23 +78,23 @@ hw_ctx::hw_ctx(device &device, const std::vector<uint8_t> &pdi,
   arg.param_val_size = cu_conf_param_buf.size();
   m_device.get_pdev().ioctl(DRM_IOCTL_AMDXDNA_CONFIG_HWCTX, &arg);
 
-  shim_debug("Created KMQ HW context (%d)", m_handle);
+  SHIM_DEBUG("Created KMQ HW context (%d)", m_handle);
 }
 
 hw_ctx::~hw_ctx() {
   try {
     delete_ctx_on_device();
   } catch (const std::system_error &e) {
-    shim_debug("Failed to delete context on device: %s", e.what());
+    SHIM_DEBUG("Failed to delete context on device: %s", e.what());
   }
-  shim_debug("Destroyed HW context (%d)...", m_handle);
-  shim_debug("Destroying KMQ HW context (%d)...", m_handle);
+  SHIM_DEBUG("Destroyed HW context (%d)...", m_handle);
+  SHIM_DEBUG("Destroying KMQ HW context (%d)...", m_handle);
 }
 
 cuidx_t hw_ctx::open_cu_context(const std::string &cu_name) {
   for (uint32_t i = 0; i < m_cu_info.size(); i++) {
     auto &ci = m_cu_info[i];
-    shim_debug("ci.m_name %s", ci.m_name.c_str());
+    SHIM_DEBUG("ci.m_name %s", ci.m_name.c_str());
     if (ci.m_name == cu_name) return cuidx_t{.index = i};
   }
 
