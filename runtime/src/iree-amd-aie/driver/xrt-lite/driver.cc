@@ -37,13 +37,6 @@ void iree_hal_xrt_lite_driver_options_initialize(
       &out_options->default_device_options);
 }
 
-static iree_status_t iree_hal_xrt_lite_driver_options_verify(
-    const iree_hal_xrt_lite_driver_options_t* options) {
-  // TODO(null): verify that the parameters are within expected ranges and any
-  // requested features are supported.
-  return iree_ok_status();
-}
-
 IREE_API_EXPORT iree_status_t iree_hal_xrt_lite_driver_create(
     iree_string_view_t identifier,
     const iree_hal_xrt_lite_driver_options_t* options,
@@ -52,11 +45,6 @@ IREE_API_EXPORT iree_status_t iree_hal_xrt_lite_driver_create(
   IREE_ASSERT_ARGUMENT(out_driver);
   *out_driver = nullptr;
   IREE_TRACE_ZONE_BEGIN(z0);
-
-  // TODO(null): verify options; this may be moved after any libraries are
-  // loaded so the verification can use underlying implementation queries.
-  IREE_RETURN_AND_END_ZONE_IF_ERROR(
-      z0, iree_hal_xrt_lite_driver_options_verify(options));
 
   iree_hal_xrt_lite_driver_t* driver = nullptr;
   iree_host_size_t total_size = sizeof(*driver) + identifier.size;

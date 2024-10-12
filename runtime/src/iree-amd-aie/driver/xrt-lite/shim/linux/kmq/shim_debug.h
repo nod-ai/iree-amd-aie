@@ -35,7 +35,7 @@ template <typename... Args>
 
 template <typename... Args>
 void shim_debug(const char *fmt, Args &&...args) {
-#ifndef NDEBUG
+#ifdef SHIM_XDNA_DEBUG
   std::string format{"shim_xdna: "};
   format += std::string(fmt);
   format += "\n";

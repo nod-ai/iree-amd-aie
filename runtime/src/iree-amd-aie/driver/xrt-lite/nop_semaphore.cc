@@ -6,10 +6,9 @@
 
 #include "iree-amd-aie/driver/xrt-lite/nop_semaphore.h"
 
-#include <cstddef>
-
 #include "iree/base/api.h"
 #include "iree/hal/utils/semaphore_base.h"
+#include "util.h"
 
 struct iree_hal_xrt_lite_semaphore_t {
   iree_hal_semaphore_t base;
@@ -62,54 +61,12 @@ static void iree_hal_xrt_lite_semaphore_destroy(
   IREE_TRACE_ZONE_END(z0);
 }
 
-static iree_status_t iree_hal_xrt_lite_semaphore_query(
-    iree_hal_semaphore_t* base_semaphore, uint64_t* out_value) {
-  iree_hal_xrt_lite_semaphore_t* semaphore =
-      iree_hal_xrt_lite_semaphore_cast(base_semaphore);
-  // TODO: Support semaphores completely.
-  *out_value =
-      iree_atomic_load_int64(&semaphore->value, iree_memory_order_acquire);
-  return iree_ok_status();
-}
-
-static iree_status_t iree_hal_xrt_lite_semaphore_signal(
-    iree_hal_semaphore_t* base_semaphore, uint64_t new_value) {
-  iree_hal_xrt_lite_semaphore_t* semaphore =
-      iree_hal_xrt_lite_semaphore_cast(base_semaphore);
-  // TODO: Support semaphores completely. Return OK currently as everything is
-  // synchronized for each submit to allow things to run.
-  iree_atomic_store_int64(&semaphore->value, new_value,
-                          iree_memory_order_release);
-  iree_hal_semaphore_poll(&semaphore->base);
-  return iree_ok_status();
-}
-
-static void iree_hal_xrt_lite_semaphore_fail(
-    iree_hal_semaphore_t* base_semaphore, iree_status_t status) {
-  iree_hal_xrt_lite_semaphore_t* semaphore =
-      iree_hal_xrt_lite_semaphore_cast(base_semaphore);
-  // TODO: save status and mark timepoint as failed.
-  iree_status_ignore(status);
-  iree_hal_semaphore_poll(&semaphore->base);
-}
-
-static iree_status_t iree_hal_xrt_lite_semaphore_wait(
-    iree_hal_semaphore_t* base_semaphore, uint64_t value,
-    iree_timeout_t timeout) {
-  iree_hal_xrt_lite_semaphore_t* semaphore =
-      iree_hal_xrt_lite_semaphore_cast(base_semaphore);
-  // TODO: Support semaphores completely. Return OK currently as everything is
-  // synchronized for each submit to allow things to run.
-  iree_hal_semaphore_poll(&semaphore->base);
-  return iree_ok_status();
-}
-
 namespace {
 const iree_hal_semaphore_vtable_t iree_hal_xrt_lite_semaphore_vtable = {
-    /*.destroy = */ iree_hal_xrt_lite_semaphore_destroy,
-    /*.query = */ iree_hal_xrt_lite_semaphore_query,
-    /*.signal = */ iree_hal_xrt_lite_semaphore_signal,
-    /*.fail = */ iree_hal_xrt_lite_semaphore_fail,
-    /*.wait = */ iree_hal_xrt_lite_semaphore_wait,
+    .destroy = iree_hal_xrt_lite_semaphore_destroy,
+    .query = unimplemented_ok_status,
+    .signal = unimplemented_ok_status,
+    .fail = unimplemented_ok_void,
+    .wait = unimplemented_ok_status,
 };
 }  // namespace

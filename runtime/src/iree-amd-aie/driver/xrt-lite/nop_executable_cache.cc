@@ -72,7 +72,7 @@ static bool iree_hal_xrt_lite_nop_executable_cache_can_prepare_format(
     iree_hal_executable_caching_mode_t caching_mode,
     iree_string_view_t executable_format) {
   return iree_string_view_equal(executable_format,
-                                iree_make_cstring_view("XRT"));
+                                iree_make_cstring_view("PDIR"));
 }
 
 static iree_status_t iree_hal_xrt_lite_nop_executable_cache_prepare_executable(
@@ -89,10 +89,10 @@ static iree_status_t iree_hal_xrt_lite_nop_executable_cache_prepare_executable(
 namespace {
 const iree_hal_executable_cache_vtable_t
     iree_hal_xrt_lite_nop_executable_cache_vtable = {
-        /*.destroy = */ iree_hal_xrt_lite_nop_executable_cache_destroy,
-        /*.can_prepare_format = */
-        iree_hal_xrt_lite_nop_executable_cache_can_prepare_format,
-        /*.prepare_executable = */
-        iree_hal_xrt_lite_nop_executable_cache_prepare_executable,
+        .destroy = iree_hal_xrt_lite_nop_executable_cache_destroy,
+        .can_prepare_format =
+            iree_hal_xrt_lite_nop_executable_cache_can_prepare_format,
+        .prepare_executable =
+            iree_hal_xrt_lite_nop_executable_cache_prepare_executable,
 };
 }  // namespace

@@ -19,6 +19,14 @@ void unimplemented(Params...) {
   IREE_ASSERT(false && "unimplemented");
 }
 
+template <typename... Params>
+iree_status_t unimplemented_ok_status(Params...) {
+  return iree_ok_status();
+}
+
+template <typename... Params>
+void unimplemented_ok_void(Params...) {}
+
 #define MEMBER_WRAPPER(From, To, member, return_t)       \
   template <typename... Args>                            \
   static return_t To##_##member(From* b, Args... args) { \
