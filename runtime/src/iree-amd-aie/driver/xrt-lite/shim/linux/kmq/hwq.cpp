@@ -20,7 +20,7 @@ int wait_cmd(const shim_xdna::pdev &pdev, const shim_xdna::hw_ctx *ctx,
   int ret = 1;
   auto id = cmd->get_cmd_id();
 
-  shim_xdna::shim_debug("Waiting for cmd (%ld)...", id);
+  SHIM_DEBUG("Waiting for cmd (%ld)...", id);
 
   amdxdna_drm_wait_cmd wcmd = {
       .hwctx = ctx->m_handle,
@@ -45,16 +45,16 @@ hw_q::hw_q(const device &device)
     : m_hwctx(nullptr),
       m_pdev(device.get_pdev()),
       m_queue_boh(AMDXDNA_INVALID_BO_HANDLE) {
-  shim_debug("Created KMQ HW queue");
+  SHIM_DEBUG("Created KMQ HW queue");
 }
 
 void hw_q::bind_hwctx(const hw_ctx *ctx) {
   m_hwctx = ctx;
-  shim_debug("Bond HW queue to HW context %d", m_hwctx->m_handle);
+  SHIM_DEBUG("Bond HW queue to HW context %d", m_hwctx->m_handle);
 }
 
 void hw_q::unbind_hwctx() {
-  shim_debug("Unbond HW queue from HW context %d", m_hwctx->m_handle);
+  SHIM_DEBUG("Unbond HW queue from HW context %d", m_hwctx->m_handle);
   m_hwctx = nullptr;
 }
 
@@ -71,9 +71,7 @@ void hw_q::submit_wait(const std::vector<fence_handle *> &fences) {
 
 void hw_q::submit_signal(const fence_handle *f) { f->submit_signal(m_hwctx); }
 
-hw_q::~hw_q() {
-  shim_debug("Destroying KMQ HW queue");
-}
+hw_q::~hw_q() { SHIM_DEBUG("Destroying KMQ HW queue"); }
 
 void hw_q::issue_command(bo *cmd_bo) {
   // Assuming 1024 max args per cmd bo
@@ -94,7 +92,7 @@ void hw_q::issue_command(bo *cmd_bo) {
 
   auto id = ecmd.seq;
   cmd_bo->set_cmd_id(id);
-  shim_debug("Submitted command (%ld)", id);
+  SHIM_DEBUG("Submitted command (%ld)", id);
 }
 
 int poll_command(bo *cmd) {

@@ -137,14 +137,14 @@ fence_handle::fence_handle(const device &device)
     : m_pdev(device.get_pdev()),
       m_import(std::make_unique<shared_handle>(-1)),
       m_syncobj_hdl(create_syncobj(m_pdev)) {
-  shim_debug("Fence allocated: %d@%d", m_syncobj_hdl, m_state);
+  SHIM_DEBUG("Fence allocated: %d@%d", m_syncobj_hdl, m_state);
 }
 
 fence_handle::fence_handle(const device &device, int ehdl)
     : m_pdev(device.get_pdev()),
       m_import(std::make_unique<shared_handle>(ehdl)),
       m_syncobj_hdl(import_syncobj(m_pdev, m_import->get_export_handle())) {
-  shim_debug("Fence imported: %d@%ld", m_syncobj_hdl, m_state);
+  SHIM_DEBUG("Fence imported: %d@%ld", m_syncobj_hdl, m_state);
 }
 
 fence_handle::fence_handle(const fence_handle &f)
@@ -153,15 +153,15 @@ fence_handle::fence_handle(const fence_handle &f)
       m_syncobj_hdl(import_syncobj(m_pdev, m_import->get_export_handle())),
       m_signaled{f.m_signaled},
       m_state{f.m_state} {
-  shim_debug("Fence cloned: %d@%ld", m_syncobj_hdl, m_state);
+  SHIM_DEBUG("Fence cloned: %d@%ld", m_syncobj_hdl, m_state);
 }
 
 fence_handle::~fence_handle() {
-  shim_debug("Fence going away: %d@%ld", m_syncobj_hdl, m_state);
+  SHIM_DEBUG("Fence going away: %d@%ld", m_syncobj_hdl, m_state);
   try {
     destroy_syncobj(m_pdev, m_syncobj_hdl);
   } catch (const std::system_error &e) {
-    shim_debug("Failed to destroy fence_handle");
+    SHIM_DEBUG("Failed to destroy fence_handle");
   }
 }
 
@@ -190,13 +190,13 @@ uint64_t fence_handle::wait_next_state() const {
 // Timeout value is ignored for now.
 void fence_handle::wait(uint32_t timeout_ms) const {
   auto st = signal_next_state();
-  shim_debug("Waiting for command fence_handle %d@%ld", m_syncobj_hdl, st);
+  SHIM_DEBUG("Waiting for command fence_handle %d@%ld", m_syncobj_hdl, st);
   wait_syncobj_done(m_pdev, m_syncobj_hdl, st);
 }
 
 void fence_handle::submit_wait(const hw_ctx *ctx) const {
   auto st = signal_next_state();
-  shim_debug("Submitting wait for command fence_handle %d@%ld", m_syncobj_hdl,
+  SHIM_DEBUG("Submitting wait for command fence_handle %d@%ld", m_syncobj_hdl,
              st);
   submit_wait_syncobjs(m_pdev, ctx, &m_syncobj_hdl, &st, 1);
 }
@@ -212,13 +212,13 @@ uint64_t fence_handle::signal_next_state() const {
 
 void fence_handle::signal() const {
   auto st = signal_next_state();
-  shim_debug("Signaling command fence_handle %d@%ld", m_syncobj_hdl, st);
+  SHIM_DEBUG("Signaling command fence_handle %d@%ld", m_syncobj_hdl, st);
   signal_syncobj(m_pdev, m_syncobj_hdl, st);
 }
 
 void fence_handle::submit_signal(const hw_ctx *ctx) const {
   auto st = signal_next_state();
-  shim_debug("Submitting signal command fence_handle %d@%ld", m_syncobj_hdl,
+  SHIM_DEBUG("Submitting signal command fence_handle %d@%ld", m_syncobj_hdl,
              st);
   submit_signal_syncobj(m_pdev, ctx, m_syncobj_hdl, st);
 }
@@ -237,7 +237,7 @@ void fence_handle::submit_wait(
   for (auto f : fences) {
     auto fh = static_cast<const fence_handle *>(f);
     auto st = fh->wait_next_state();
-    shim_debug("Waiting for command fence_handle %d@%ld", fh->m_syncobj_hdl,
+    SHIM_DEBUG("Waiting for command fence_handle %d@%ld", fh->m_syncobj_hdl,
                st);
     hdls[i] = fh->m_syncobj_hdl;
     pts[i] = st;

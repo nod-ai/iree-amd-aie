@@ -112,19 +112,19 @@ pdev::pdev() {
   // TODO(max): hardcoded
   m_dev_fd = ::open("/dev/accel/accel0", O_RDWR);
   if (m_dev_fd < 0) shim_err(EINVAL, "Failed to open KMQ device");
-  shim_debug("Device opened, fd=%d", m_dev_fd);
+  SHIM_DEBUG("Device opened, fd=%d", m_dev_fd);
   m_dev_heap_bo =
       std::make_unique<bo>(*this, dev_mem_size, AMDXDNA_BO_DEV_HEAP);
-  shim_debug("Created KMQ pcidev");
+  SHIM_DEBUG("Created KMQ pcidev");
 }
 
 pdev::~pdev() {
-  shim_debug("Destroying KMQ pcidev");
+  SHIM_DEBUG("Destroying KMQ pcidev");
   const std::lock_guard<std::mutex> lock(m_lock);
   m_dev_heap_bo.reset();
   ::close(m_dev_fd);
-  shim_debug("Device closed, fd=%d", m_dev_fd);
-  shim_debug("Destroyed KMQ pcidev");
+  SHIM_DEBUG("Device closed, fd=%d", m_dev_fd);
+  SHIM_DEBUG("Destroyed KMQ pcidev");
 }
 
 void pdev::ioctl(unsigned long cmd, void *arg) const {
@@ -143,9 +143,9 @@ void *pdev::mmap(void *addr, size_t len, int prot, int flags,
   return ret;
 }
 
-device::device() { shim_debug("Created KMQ device"); }
+device::device() { SHIM_DEBUG("Created KMQ device"); }
 
-device::~device() { shim_debug("Destroying KMQ device"); }
+device::~device() { SHIM_DEBUG("Destroying KMQ device"); }
 
 const pdev &device::get_pdev() const { return m_pdev; }
 
