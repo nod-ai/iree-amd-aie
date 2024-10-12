@@ -50,14 +50,13 @@ struct hw_ctx {
   std::vector<std::unique_ptr<bo>> m_pdi_bos;
 
   hw_ctx(device &dev, const std::map<std::string, uint32_t> &qos,
-         std::unique_ptr<hw_q> q, const xrt::xclbin &xclbin);
-  hw_ctx(device &dev, const xrt::xclbin &xclbin,
-         const std::map<std::string, uint32_t> &qos);
+         std::unique_ptr<hw_q> q, const std::vector<uint8_t> &pdi,
+         const std::string &cu_name, size_t functional = 0);
+  hw_ctx(device &dev, const std::vector<uint8_t> &pdi,
+         const std::string &cu_name,
+         const std::map<std::string, uint32_t> &qos = {});
   ~hw_ctx();
 
-  // TODO
-  std::unique_ptr<bo> alloc_bo(void *userptr, size_t size,
-                               shim_xcl_bo_flags flags);
   std::unique_ptr<bo> alloc_bo(size_t size, shim_xcl_bo_flags flags);
   std::unique_ptr<bo> import_bo(pid_t, int);
 
@@ -69,10 +68,6 @@ struct hw_ctx {
 
   hw_q *get_hw_queue() const;
 };
-
-std::unique_ptr<hw_ctx> create_hw_context(
-    device &dev, const xrt::xclbin &xclbin,
-    const std::map<std::string, uint32_t> &qos);
 
 }  // namespace shim_xdna
 

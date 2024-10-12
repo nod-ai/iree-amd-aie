@@ -26,6 +26,7 @@ iree_cc_library(
     iree::base::core_headers
     iree::base::internal::flatcc::building
     iree-amd-aie::schemas::xrt_executable_def_c_fbs
+    iree-amd-aie::schemas::pdi_executable_def_c_fbs
   PUBLIC
 )
 

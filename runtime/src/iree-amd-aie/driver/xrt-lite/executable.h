@@ -25,7 +25,7 @@ extern "C" {
 struct iree_hal_xrt_lite_kernel_params_t {
   std::unique_ptr<shim_xdna::hw_ctx> context;
   std::unique_ptr<shim_xdna::bo> bo_ctrl_code;
-  std::vector<char> xclbinVector;
+  std::vector<uint8_t> pdiVector;
   flatbuffers_uint32_vec_t asm_inst;
   // Number of assembly instructions argument to the kernel
   std::string kernel_name;
@@ -46,7 +46,7 @@ iree_status_t iree_hal_xrt_lite_native_executable_entry_point_kernel_params(
     iree_hal_xrt_lite_kernel_params_t* out_params);
 
 #ifdef __cplusplus
-}  // extern "C"
+}       // extern "C"
 #endif  // __cplusplus
 
 #endif  // IREE_AMD_AIE_DRIVER_XRT_LITE_NATIVE_EXECUTABLE_H_

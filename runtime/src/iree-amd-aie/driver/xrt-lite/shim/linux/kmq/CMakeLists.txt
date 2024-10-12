@@ -27,9 +27,7 @@ iree_cc_library(
     shim_debug.h
   DEPS
     uuid
-    $<BUILD_LOCAL_INTERFACE:xrt_coreutil>
   COPTS
     $<$<PLATFORM_ID:Linux>:-fexceptions -frtti>
-    $<$<PLATFORM_ID:Windows>:/EHsc /GR>
   PUBLIC
 )

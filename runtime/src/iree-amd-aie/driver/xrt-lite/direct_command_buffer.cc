@@ -274,9 +274,8 @@ static iree_status_t iree_hal_xrt_lite_direct_command_buffer_dispatch(
       z0, iree_hal_resource_set_insert(command_buffer->resource_set, 1,
                                        &executable));
 
-  xrt::xclbin xclbin = xrt::xclbin(kernel_params.xclbinVector);
-  kernel_params.context =
-      command_buffer->shim_device->create_hw_context(xclbin);
+  kernel_params.context = command_buffer->shim_device->create_hw_context(
+      kernel_params.pdiVector, kernel_params.kernel_name);
   uint32_t num_instr = flatbuffers_uint32_vec_len(kernel_params.asm_inst);
   size_t ctrl_code_size = num_instr * sizeof(uint32_t);
   auto bo_ctrl_code = command_buffer->shim_device->alloc_bo(
@@ -285,9 +284,8 @@ static iree_status_t iree_hal_xrt_lite_direct_command_buffer_dispatch(
   memcpy(instr_buffer, kernel_params.asm_inst, ctrl_code_size);
   bo_ctrl_code->sync(shim_xdna::direction::host2device);
 
-  std::string cu_name = kernel_params.kernel_name;
-  cu_name += ":IREE";
-  shim_xdna::cuidx_t cu_idx = kernel_params.context->open_cu_context(cu_name);
+  shim_xdna::cuidx_t cu_idx =
+      kernel_params.context->open_cu_context(kernel_params.kernel_name);
 
   shim_xdna::kernel ebuf(command_buffer->shim_device->get_pdev(), ERT_START_CU);
   ebuf.set_cu_idx(cu_idx);

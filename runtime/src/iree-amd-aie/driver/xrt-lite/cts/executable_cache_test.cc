@@ -21,7 +21,7 @@ iree_status_t register_test_driver(iree_hal_driver_registry_t* registry) {
   return iree_hal_xrt_lite_driver_module_register(registry);
 }
 
-const char* get_test_executable_format() { return "amdaie-xclbin-fb"; }
+const char* get_test_executable_format() { return "amdaie-pdi-fb"; }
 
 iree_const_byte_span_t get_test_executable_data(iree_string_view_t file_name) {
   const struct iree_file_toc_t* toc =

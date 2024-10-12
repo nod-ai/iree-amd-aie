@@ -106,7 +106,7 @@ struct iree_hal_xrt_lite_device {
 
     if (iree_string_view_equal(category, IREE_SV("hal.executable.format"))) {
       *out_value =
-          iree_string_view_equal(key, IREE_SV("amdaie-xclbin-fb")) ? 1 : 0;
+          iree_string_view_equal(key, IREE_SV("amdaie-pdi-fb")) ? 1 : 0;
       return iree_ok_status();
     }
     return iree_make_status(IREE_STATUS_UNIMPLEMENTED, "unsupported query");
