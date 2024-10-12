@@ -29,5 +29,7 @@ iree_cc_library(
     uuid
   COPTS
     $<$<PLATFORM_ID:Linux>:-fexceptions -frtti>
+  DEFINES
+    $<$<CONFIG:Debug>:SHIM_XDNA_DEBUG>
   PUBLIC
 )

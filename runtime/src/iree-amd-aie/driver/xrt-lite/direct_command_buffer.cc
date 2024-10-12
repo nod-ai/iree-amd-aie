@@ -11,6 +11,7 @@
 #include "iree-amd-aie/driver/xrt-lite/shim/linux/kmq/hwq.h"
 #include "iree-amd-aie/driver/xrt-lite/shim/linux/kmq/kernel.h"
 #include "iree/hal/utils/resource_set.h"
+#include "util.h"
 
 // The max number of bindings per descriptor set allowed in the XRT HAL
 // implementation.
@@ -115,12 +116,6 @@ static void iree_hal_xrt_lite_direct_command_buffer_destroy(
   IREE_TRACE_ZONE_END(z0);
 }
 
-static iree_status_t iree_hal_xrt_lite_direct_command_buffer_begin(
-    iree_hal_command_buffer_t* base_command_buffer) {
-  // Nothing to do.
-  return iree_ok_status();
-}
-
 static iree_status_t iree_hal_xrt_lite_direct_command_buffer_end(
     iree_hal_command_buffer_t* base_command_buffer) {
   iree_hal_xrt_lite_direct_command_buffer* command_buffer =
@@ -134,70 +129,6 @@ static iree_status_t iree_hal_xrt_lite_direct_command_buffer_end(
 
   IREE_TRACE_ZONE_END(z0);
   return iree_ok_status();
-}
-
-static iree_status_t iree_hal_xrt_lite_direct_command_buffer_execution_barrier(
-    iree_hal_command_buffer_t* base_command_buffer,
-    iree_hal_execution_stage_t source_stage_mask,
-    iree_hal_execution_stage_t target_stage_mask,
-    iree_hal_execution_barrier_flags_t flags,
-    iree_host_size_t memory_barrier_count,
-    const iree_hal_memory_barrier_t* memory_barriers,
-    iree_host_size_t buffer_barrier_count,
-    const iree_hal_buffer_barrier_t* buffer_barriers) {
-  if (iree_any_bit_set(source_stage_mask, IREE_HAL_EXECUTION_STAGE_HOST) ||
-      iree_any_bit_set(target_stage_mask, IREE_HAL_EXECUTION_STAGE_HOST)) {
-    return iree_make_status(IREE_STATUS_UNIMPLEMENTED,
-                            "barrier involving host not yet supported");
-  }
-
-  if (flags != IREE_HAL_EXECUTION_BARRIER_FLAG_NONE) {
-    return iree_make_status(IREE_STATUS_UNIMPLEMENTED,
-                            "non-zero barrier flag not yet supported");
-  }
-
-  // Nothing to do in current synchronous mode.
-
-  return iree_ok_status();
-}
-
-static iree_status_t iree_hal_xrt_lite_direct_command_buffer_signal_event(
-    iree_hal_command_buffer_t* base_command_buffer, iree_hal_event_t* event,
-    iree_hal_execution_stage_t source_stage_mask) {
-  return iree_make_status(IREE_STATUS_UNIMPLEMENTED, "event not yet supported");
-}
-
-static iree_status_t iree_hal_xrt_lite_direct_command_buffer_reset_event(
-    iree_hal_command_buffer_t* base_command_buffer, iree_hal_event_t* event,
-    iree_hal_execution_stage_t source_stage_mask) {
-  return iree_make_status(IREE_STATUS_UNIMPLEMENTED, "event not yet supported");
-}
-
-static iree_status_t iree_hal_xrt_lite_direct_command_buffer_wait_events(
-    iree_hal_command_buffer_t* base_command_buffer,
-    iree_host_size_t event_count, const iree_hal_event_t** events,
-    iree_hal_execution_stage_t source_stage_mask,
-    iree_hal_execution_stage_t target_stage_mask,
-    iree_host_size_t memory_barrier_count,
-    const iree_hal_memory_barrier_t* memory_barriers,
-    iree_host_size_t buffer_barrier_count,
-    const iree_hal_buffer_barrier_t* buffer_barriers) {
-  return iree_make_status(IREE_STATUS_UNIMPLEMENTED, "event not yet supported");
-}
-
-static iree_status_t iree_hal_xrt_lite_direct_command_buffer_discard_buffer(
-    iree_hal_command_buffer_t* base_command_buffer,
-    iree_hal_buffer_ref_t buffer) {
-  // It is okay to do nothing here.
-  return iree_ok_status();
-}
-
-static iree_status_t iree_hal_xrt_lite_direct_command_buffer_fill_buffer(
-    iree_hal_command_buffer_t* base_command_buffer,
-    iree_hal_buffer_ref_t target_ref, const void* pattern,
-    iree_host_size_t pattern_length) {
-  return iree_make_status(IREE_STATUS_UNIMPLEMENTED,
-                          "fill buffer not yet supported");
 }
 
 static iree_status_t iree_hal_xrt_lite_direct_command_buffer_update_buffer(
@@ -243,14 +174,6 @@ static iree_status_t iree_hal_xrt_lite_direct_command_buffer_copy_buffer(
 
   IREE_TRACE_ZONE_END(z0);
   return iree_ok_status();
-}
-
-static iree_status_t iree_hal_xrt_lite_direct_command_buffer_collective(
-    iree_hal_command_buffer_t* base_command_buffer, iree_hal_channel_t* channel,
-    iree_hal_collective_op_t op, uint32_t param, iree_hal_buffer_ref_t send_ref,
-    iree_hal_buffer_ref_t recv_ref, iree_device_size_t element_count) {
-  return iree_make_status(IREE_STATUS_UNIMPLEMENTED,
-                          "collectives not yet supported");
 }
 
 static iree_status_t iree_hal_xrt_lite_direct_command_buffer_dispatch(
@@ -328,19 +251,11 @@ namespace {
 const iree_hal_command_buffer_vtable_t
     iree_hal_xrt_lite_direct_command_buffer_vtable = {
         .destroy = iree_hal_xrt_lite_direct_command_buffer_destroy,
-        .begin = iree_hal_xrt_lite_direct_command_buffer_begin,
-        .end = iree_hal_xrt_lite_direct_command_buffer_end,
-        .execution_barrier =
-            iree_hal_xrt_lite_direct_command_buffer_execution_barrier,
-        .signal_event = iree_hal_xrt_lite_direct_command_buffer_signal_event,
-        .reset_event = iree_hal_xrt_lite_direct_command_buffer_reset_event,
-        .wait_events = iree_hal_xrt_lite_direct_command_buffer_wait_events,
-        .discard_buffer =
-            iree_hal_xrt_lite_direct_command_buffer_discard_buffer,
-        .fill_buffer = iree_hal_xrt_lite_direct_command_buffer_fill_buffer,
+        .begin = unimplemented_ok_status,
+        .end = unimplemented_ok_status,
+        .execution_barrier = unimplemented_ok_status,
         .update_buffer = iree_hal_xrt_lite_direct_command_buffer_update_buffer,
         .copy_buffer = iree_hal_xrt_lite_direct_command_buffer_copy_buffer,
-        .collective = iree_hal_xrt_lite_direct_command_buffer_collective,
         .dispatch = iree_hal_xrt_lite_direct_command_buffer_dispatch,
         .dispatch_indirect =
             iree_hal_xrt_lite_direct_command_buffer_dispatch_indirect,

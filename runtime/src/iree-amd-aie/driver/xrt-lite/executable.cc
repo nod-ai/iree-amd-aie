@@ -249,6 +249,6 @@ iree_status_t iree_hal_xrt_lite_native_executable_entry_point_kernel_params(
 namespace {
 const iree_hal_executable_vtable_t iree_hal_xrt_lite_native_executable_vtable =
     {
-        /*.destroy=*/iree_hal_xrt_lite_native_executable_destroy,
+        .destroy = iree_hal_xrt_lite_native_executable_destroy,
 };
 }  // namespace

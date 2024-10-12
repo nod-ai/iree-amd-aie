@@ -43,37 +43,6 @@ struct iree_hal_xrt_lite_allocator {
 
   ~iree_hal_xrt_lite_allocator() = default;
 
-  iree_status_t trim() {
-    // TODO(null): if the allocator is retaining any unused resources they
-    // should be dropped here. If the underlying implementation has pools or
-    // caches it should be notified that a trim is requested. This is called in
-    // low-memory situations or when IREE is not going to be used for awhile
-    // (low power modes or suspension).
-    (void)this;
-
-    return iree_ok_status();
-  }
-
-  void query_statistics(iree_hal_allocator_statistics_t* out_statistics) {
-    IREE_STATISTICS({
-      memcpy(out_statistics, &this->statistics, sizeof(*out_statistics));
-      // TODO(null): update statistics (merge).
-    });
-  }
-
-  iree_status_t query_memory_heaps(iree_host_size_t capacity,
-                                   iree_hal_allocator_memory_heap_t* heaps,
-                                   iree_host_size_t* out_count) {
-    // TODO(null): return heap information. This is called at least once with a
-    // capacity that may be 0 (indicating a query for the total count) and the
-    // heaps should only be populated if capacity is sufficient to store all of
-    // them.
-    (void)this;
-    iree_status_t status = iree_make_status(IREE_STATUS_UNIMPLEMENTED,
-                                            "heap query not implemented");
-    return status;
-  }
-
   iree_hal_buffer_compatibility_t query_buffer_compatibility(
       iree_hal_buffer_params_t* params, iree_device_size_t* allocation_size) {
     // TODO(null): set compatibility rules based on the implementation.
@@ -193,70 +162,6 @@ struct iree_hal_xrt_lite_allocator {
 
     iree_hal_buffer_destroy(base_buffer);
   }
-
-  iree_status_t import_buffer(
-      const iree_hal_buffer_params_t* params,
-      iree_hal_external_buffer_t* external_buffer,
-      iree_hal_buffer_release_callback_t release_callback,
-      iree_hal_buffer_t** out_buffer) {
-    // Coerce options into those required by the current device.
-    iree_hal_buffer_params_t compat_params = *params;
-    iree_device_size_t allocation_size = external_buffer->size;
-    iree_hal_buffer_compatibility_t compatibility =
-        this->query_buffer_compatibility(&compat_params, &allocation_size);
-    if (!iree_all_bits_set(compatibility,
-                           IREE_HAL_BUFFER_COMPATIBILITY_IMPORTABLE)) {
-      // TODO(benvanik): make a helper for this.
-#if IREE_STATUS_MODE
-      iree_bitfield_string_temp_t temp0, temp1, temp2;
-      iree_string_view_t memory_type_str =
-          iree_hal_memory_type_format(params->type, &temp0);
-      iree_string_view_t usage_str =
-          iree_hal_buffer_usage_format(params->usage, &temp1);
-      iree_string_view_t compatibility_str =
-          iree_hal_buffer_compatibility_format(compatibility, &temp2);
-      return iree_make_status(
-          IREE_STATUS_INVALID_ARGUMENT,
-          "allocator cannot import a buffer with the given parameters; "
-          "memory_type=%.*s, usage=%.*s, compatibility=%.*s",
-          (int)memory_type_str.size, memory_type_str.data, (int)usage_str.size,
-          usage_str.data, (int)compatibility_str.size, compatibility_str.data);
-#else
-      return iree_make_status(
-          IREE_STATUS_INVALID_ARGUMENT,
-          "allocator cannot import a buffer with the given parameters");
-#endif  // IREE_STATUS_MODE
-    }
-
-    // TODO(null): switch on external_buffer->type and import the buffer. See
-    // the headers for more information on semantics. Most implementations can
-    // service IREE_HAL_EXTERNAL_BUFFER_TYPE_DEVICE_ALLOCATION by just wrapping
-    // the underlying device pointer. Those that can service
-    // IREE_HAL_EXTERNAL_BUFFER_TYPE_HOST_ALLOCATION may be able to avoid a lot
-    // of additional copies when moving data around between host and device or
-    // across devices from different drivers.
-    (void)this;
-    iree_status_t status = iree_make_status(
-        IREE_STATUS_UNIMPLEMENTED, "external buffer type not supported");
-
-    return status;
-  }
-
-  iree_status_t export_buffer(iree_hal_buffer_t* buffer,
-                              iree_hal_external_buffer_type_t requested_type,
-                              iree_hal_external_buffer_flags_t requested_flags,
-                              iree_hal_external_buffer_t* out_external_buffer) {
-    // TODO(null): switch on requested_type and export as appropriate. Most
-    // implementations can service
-    // IREE_HAL_EXTERNAL_BUFFER_TYPE_DEVICE_ALLOCATION by just exposing the
-    // underlying device pointer. Those that can service
-    // IREE_HAL_EXTERNAL_BUFFER_TYPE_HOST_ALLOCATION may be able to avoid a lot
-    // of additional copies when moving data around between host and device or
-    // across devices from different drivers.
-    (void)this;
-    return iree_make_status(IREE_STATUS_UNAVAILABLE,
-                            "external buffer type not supported");
-  }
 };
 
 static iree_hal_xrt_lite_allocator* iree_hal_xrt_lite_allocator_cast(
@@ -318,28 +223,19 @@ static iree_allocator_t iree_hal_xrt_lite_allocator_host_allocator(
 #define ALLOCATOR_MEMBER_VOID(member) \
   MEMBER_WRAPPER_VOID(iree_hal_allocator_t, iree_hal_xrt_lite_allocator, member)
 
-ALLOCATOR_MEMBER_STATUS(trim);
-ALLOCATOR_MEMBER_VOID(query_statistics);
-ALLOCATOR_MEMBER_STATUS(query_memory_heaps);
 ALLOCATOR_MEMBER(query_buffer_compatibility, iree_hal_buffer_compatibility_t);
 ALLOCATOR_MEMBER_STATUS(allocate_buffer);
 ALLOCATOR_MEMBER_VOID(deallocate_buffer);
-ALLOCATOR_MEMBER_STATUS(import_buffer);
-ALLOCATOR_MEMBER_STATUS(export_buffer);
 
 namespace {
 const iree_hal_allocator_vtable_t iree_hal_xrt_lite_allocator_vtable = {
     .destroy = iree_hal_xrt_lite_allocator_destroy,
     .host_allocator = iree_hal_xrt_lite_allocator_host_allocator,
-    .trim = iree_hal_xrt_lite_allocator_trim,
-    .query_statistics = iree_hal_xrt_lite_allocator_query_statistics,
-    .query_memory_heaps = iree_hal_xrt_lite_allocator_query_memory_heaps,
+    .trim = unimplemented_ok_status,
+    .query_statistics = unimplemented_ok_void,
     .query_buffer_compatibility =
         iree_hal_xrt_lite_allocator_query_buffer_compatibility,
     .allocate_buffer = iree_hal_xrt_lite_allocator_allocate_buffer,
     .deallocate_buffer = iree_hal_xrt_lite_allocator_deallocate_buffer,
-    .import_buffer = iree_hal_xrt_lite_allocator_import_buffer,
-    .export_buffer = iree_hal_xrt_lite_allocator_export_buffer,
 };
-
 }
