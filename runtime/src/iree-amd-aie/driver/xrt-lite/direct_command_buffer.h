@@ -18,7 +18,7 @@ extern "C" {
 // |out_command_buffer| must be released by the caller (see
 // iree_hal_command_buffer_release).
 iree_status_t iree_hal_xrt_lite_direct_command_buffer_create(
-    std::shared_ptr<shim_xdna::device> shim_device,
+    shim_xdna::device* shim_device,
     iree_hal_allocator_t* device_allocator, iree_hal_command_buffer_mode_t mode,
     iree_hal_command_category_t command_categories,
     iree_host_size_t binding_capacity, iree_arena_block_pool_t* block_pool,

@@ -176,7 +176,7 @@ function run_matmul_test() {
 
   local target_device="npu1_4col"
 
-  local device="xrt"
+  local device="xrt-lite"
 
   local peano_install_path="${PEANO}"
 
@@ -530,7 +530,7 @@ run_matmul_test \
     --acc_type "f32" \
     --target_backend "amd-aie" \
     --target_device "npu1_4col" \
-    --device "xrt" \
+    --device "xrt-lite" \
     --peano_install_path "${PEANO}" \
     --amd_aie_install_path "${IREE_INSTALL_DIR}" \
     --vitis_path  "${VITIS}" \

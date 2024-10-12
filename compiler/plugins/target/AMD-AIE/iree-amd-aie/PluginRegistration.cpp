@@ -46,9 +46,9 @@ struct AMDAIESession
   }
 
   void populateHALTargetDevices(IREE::HAL::TargetDeviceList &targets) override {
-    // #hal.device.target<"xrt", ...
+    // #hal.device.target<"xrt-lite", ...
     // #hal.executable.target<"amd-aie", ...
-    targets.add("xrt", [=]() { return AMDAIE::createTarget(options); });
+    targets.add("xrt-lite", [=]() { return AMDAIE::createTarget(options); });
   }
 
   void populateHALTargetBackends(

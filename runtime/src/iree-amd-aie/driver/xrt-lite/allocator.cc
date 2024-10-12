@@ -24,11 +24,11 @@ extern const iree_hal_allocator_vtable_t iree_hal_xrt_lite_allocator_vtable;
 struct iree_hal_xrt_lite_allocator {
   iree_hal_resource_t resource;
   iree_allocator_t host_allocator;
-  std::shared_ptr<shim_xdna::device> shim_device;
+  shim_xdna::device* shim_device;
   IREE_STATISTICS(iree_hal_allocator_statistics_t statistics;)
 
   iree_hal_xrt_lite_allocator(iree_allocator_t host_allocator,
-                              std::shared_ptr<shim_xdna::device> shim_device)
+                              shim_xdna::device* shim_device)
       : host_allocator(host_allocator), shim_device(shim_device) {
     IREE_TRACE_ZONE_BEGIN(z0);
     iree_hal_resource_initialize(&iree_hal_xrt_lite_allocator_vtable,
@@ -266,7 +266,7 @@ static iree_hal_xrt_lite_allocator* iree_hal_xrt_lite_allocator_cast(
 }
 
 iree_status_t iree_hal_xrt_lite_allocator_create(
-    iree_allocator_t host_allocator, std::shared_ptr<shim_xdna::device> device,
+    iree_allocator_t host_allocator, shim_xdna::device* device,
     iree_hal_allocator_t** out_allocator) {
   IREE_ASSERT_ARGUMENT(out_allocator);
   IREE_TRACE_ZONE_BEGIN(z0);
@@ -296,11 +296,7 @@ static void iree_hal_xrt_lite_allocator_destroy(
       iree_hal_xrt_lite_allocator_cast(base_allocator);
   IREE_TRACE_ZONE_BEGIN(z0);
 
-  // TODO(max): shouldn't this be happening automatically via the refcounting
-  // (or just the dtor of device?)
-  allocator->shim_device.reset();
   iree_hal_resource_release(&allocator->resource);
-  // something's not happening here?
   iree_allocator_free(allocator->host_allocator, allocator);
 
   IREE_TRACE_ZONE_END(z0);
