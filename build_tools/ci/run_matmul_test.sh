@@ -102,21 +102,11 @@ if [ ! -d "${PEANO}" ]; then
   exit 1
 fi
 
-# Parameter 4) <xrt-dir>
+# Parameter 4) <vitis-install-dir>
 if [ -z "${4-}" ]; then
-  XRT_DIR=/opt/xilinx/xrt
-else
-  XRT_DIR=`realpath "$4"`
-fi
-if [ -d "$XRT_DIR" ]; then
-  source $XRT_DIR/setup.sh
-fi
-
-# Parameter 5) <vitis-install-dir>
-if [ -z "${5-}" ]; then
   VITIS=/opt/Xilinx/Vitis/2024.2
 else
-  VITIS=`realpath "$5"`
+  VITIS=`realpath "$4"`
 fi
 
 THIS_DIR="$(cd $(dirname $0) && pwd)"
@@ -138,9 +128,6 @@ else
 fi
 
 GITHUB_ACTIONS="${GITHUB_ACTIONS:-false}"
-
-# Circumvent xclbin security (no longer needed as of April 2024 XDNA driver)
-export XRT_HACK_UNSECURE_LOADING_XCLBIN=1
 
 cd ${OUTPUT_DIR}
 
@@ -405,6 +392,7 @@ function run_matmul_test() {
                       --iree-amd-aie-enable-chess=${use_chess} \
                       --iree-amdaie-enable-packet-flow=${enable_packet_flow} \
                       --iree-hal-dump-executable-files-to=$PWD \
+                      --iree-amdaie-device-hal=xrt-lite \
                       --iree-hal-memoization=false \
                       --iree-hal-indirect-command-buffers=false \
                       --mlir-elide-resource-strings-if-larger=10 \

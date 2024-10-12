@@ -46,9 +46,16 @@ struct AMDAIESession
   }
 
   void populateHALTargetDevices(IREE::HAL::TargetDeviceList &targets) override {
+    // #hal.device.target<"xrt", ...
+    targets.add("xrt", [=] {
+      options.deviceHal = AMDAIE::AMDAIEOptions::DeviceHAL::XRT;
+      return AMDAIE::createTarget(options);
+    });
     // #hal.device.target<"xrt-lite", ...
-    // #hal.executable.target<"amd-aie", ...
-    targets.add("xrt-lite", [=]() { return AMDAIE::createTarget(options); });
+    targets.add("xrt-lite", [=] {
+      options.deviceHal = AMDAIE::AMDAIEOptions::DeviceHAL::XRT_LITE;
+      return AMDAIE::createTarget(options);
+    });
   }
 
   void populateHALTargetBackends(

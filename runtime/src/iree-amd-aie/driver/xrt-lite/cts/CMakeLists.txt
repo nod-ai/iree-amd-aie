@@ -16,7 +16,7 @@ iree_hal_cts_test_suite(
   COMPILER_TARGET_BACKEND
     "amd-aie"
   EXECUTABLE_FORMAT
-    "\"amdaie-xclbin-fb\""
+    "\"amdaie-pdi-fb\""
   DEPS
     iree-amd-aie::driver::xrt-lite::registration
   INCLUDED_TESTS
@@ -49,11 +49,10 @@ iree_bytecode_module(
     --iree-amd-aie-peano-install-dir=${PEANO_INSTALL_DIR}
     --iree-amd-aie-vitis-install-dir=${VITIS_DIR}
     --iree-amd-aie-enable-chess=$<BOOL:${USE_CHESS}>
+    --iree-amdaie-device-hal=xrt-lite
     --iree-amd-aie-show-invoked-commands
     --iree-hal-memoization=false
     --iree-hal-indirect-command-buffers=false
-  DEPS
-    iree-aie-xclbinutil
   PUBLIC
   TESTONLY
 )
@@ -77,51 +76,6 @@ iree_c_embed_data(
   PUBLIC
   TESTONLY
 )
-
-#iree_bytecode_module(
-#  NAME
-#    xrt_lite_command_buffer_dispatch_test_module
-#  MODULE_FILE_NAME
-#    xrt_lite_command_buffer_dispatch_test.bin
-#  SRC
-#    "${CMAKE_CURRENT_LIST_DIR}/command_buffer_dispatch_test.mlir"
-#  FLAGS
-#    --compile-mode=hal-executable
-#    --iree-hal-dump-executable-files-to=${CMAKE_CURRENT_BINARY_DIR}
-#    --iree-hal-target-backends=amd-aie
-#    --iree-amdaie-lower-to-aie-pipeline=air
-#    --iree-amdaie-target-device=${TARGET_DEVICE}
-#    --iree-amd-aie-peano-install-dir=${PEANO_INSTALL_DIR}
-#    --iree-amd-aie-vitis-install-dir=${VITIS_DIR}
-#    --iree-amd-aie-enable-chess=$<BOOL:${USE_CHESS}>
-#    --iree-amd-aie-show-invoked-commands
-#    --iree-hal-memoization=false
-#    --iree-hal-indirect-command-buffers=false
-#  DEPS
-#    iree-aie-xclbinutil
-#  PUBLIC
-#  TESTONLY
-#)
-#
-#iree_c_embed_data(
-#  NAME
-#    xrt_lite_command_buffer_dispatch_c
-#  SRCS
-#    xrt_lite_command_buffer_dispatch_test.bin
-#  C_FILE_OUTPUT
-#    xrt_lite_command_buffer_dispatch_c.c
-#  H_FILE_OUTPUT
-#    xrt_lite_command_buffer_dispatch_c.h
-#  IDENTIFIER
-#    iree_cts_testdata_command_buffer_dispatch_aie_xrt_lite
-#  STRIP_PREFIX
-#    xrt_lite_
-#  DEPENDS
-#    ::xrt_lite_command_buffer_dispatch_test_module
-#  FLATTEN
-#  PUBLIC
-#  TESTONLY
-#)
 
 iree_cc_test(
   NAME

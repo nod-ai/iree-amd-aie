@@ -54,6 +54,9 @@ struct AMDAIEOptions {
   std::string enableAMDAIEUkernels{"none"};
   bool enablePacketFlow{false};
 
+  enum class DeviceHAL { XRT, XRT_LITE };
+  DeviceHAL deviceHal{DeviceHAL::XRT};
+
   void bindOptions(OptionsBinder &binder) {
     static llvm::cl::OptionCategory category("AMD AIE Options");
     binder.opt<std::string>(
@@ -187,6 +190,13 @@ struct AMDAIEOptions {
     binder.opt<bool>("iree-amdaie-enable-packet-flow", enablePacketFlow,
                      llvm::cl::cat(category),
                      llvm::cl::desc("Enable packet routing data movement."));
+
+    binder.opt<DeviceHAL>(
+        "iree-amdaie-device-hal", deviceHal, llvm::cl::cat(category),
+        llvm::cl::desc("Sets the target device HAL."),
+        llvm::cl::values(clEnumValN(DeviceHAL::XRT, "xrt", "xrt device HAL"),
+                         clEnumValN(DeviceHAL::XRT_LITE, "xrt-lite",
+                                    "xrt-lite device HAL")));
   }
 };
 
