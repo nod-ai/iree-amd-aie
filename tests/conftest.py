@@ -3,14 +3,13 @@ from pathlib import Path
 
 import numpy as np
 import pytest
-from ml_dtypes import bfloat16
-
 from iree.compiler import ir
 from iree.compiler._mlir_libs import get_dialect_registry
 from iree.compiler.api import Session, Output, Source, _initializeGlobalCL
 from iree.compiler.extras import types as T
 from iree.runtime import VmModule
 from iree.runtime import get_driver, Config, SystemContext
+from ml_dtypes import bfloat16
 
 for t in [
     "i8",
@@ -47,6 +46,13 @@ def pytest_addoption(parser):
     parser.addoption("--output-dir", type=abs_path)
     parser.addoption("--vitis-dir", type=abs_path)
     parser.addoption("--iree-aie-debug", action="store_true")
+    parser.addoption(
+        "--device-hal",
+        default="xrt",
+        const="xrt",
+        nargs="?",
+        choices=["xrt", "xrt-lite"],
+    )
 
 
 @pytest.fixture(scope="session")
@@ -80,7 +86,7 @@ def iree_session(request, pytestconfig, global_cl_args) -> Session:
         f"--iree-amd-aie-install-dir={pytestconfig.option.iree_install_dir}",
         f"--iree-amd-aie-enable-chess={use_chess}",
         f"--iree-amdaie-enable-packet-flow={enable_packet_flow}",
-        "--iree-amdaie-device-hal=xrt-lite",
+        f"--iree-amdaie-device-hal={pytestconfig.option.device_hal}",
     ]
     if pytestconfig.option.vitis_dir:
         flags += [f"--iree-amd-aie-vitis-install-dir={pytestconfig.option.vitis_dir}"]
@@ -99,7 +105,7 @@ def iree_session(request, pytestconfig, global_cl_args) -> Session:
 
 
 @pytest.fixture
-def session_module(iree_session, tmp_path) -> ir.Module:
+def session_module(iree_session) -> ir.Module:
     with ir.Location.unknown(iree_session.context):
         module_op = ir.Module.create()
         with ir.InsertionPoint(module_op.body):
@@ -107,8 +113,8 @@ def session_module(iree_session, tmp_path) -> ir.Module:
 
 
 @pytest.fixture(scope="session")
-def device(device="xrt-lite") -> ir.Module:
-    yield get_driver(device).create_default_device()
+def device(pytestconfig) -> ir.Module:
+    yield get_driver(pytestconfig.option.device_hal).create_default_device()
 
 
 @contextmanager

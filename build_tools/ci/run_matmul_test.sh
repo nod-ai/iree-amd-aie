@@ -28,16 +28,16 @@ if [ "$#" -lt 2 ] || [ "$#" -gt 5 ]; then
    # The expected parameters are
    #    1) <output-dir>            (required)
    #    2) <iree-install-dir>      (required)
-   #    4) <peano-install-dir>     (optional)
+   #    3) <peano-install-dir>     (optional)
+   #    4) <vitis-install-dir>     (optional)
    #    5) <xrt-dir>               (optional)
-   #    6) <vitis-install-dir>     (optional)
     echo -e "Illegal number of parameters: $#, expected 2-5 parameters." \
             "\n The parameters are as follows:" \
             "\n     1) <output-dir>               (required)" \
             "\n     2) <iree-install-dir>         (required)" \
             "\n     3) <peano-install-dir>        (optional)" \
-            "\n     4) <xrt-dir>                  (optional)" \
-            "\n     5) <vitis-install-dir>        (optional)" \
+            "\n     4) <vitis-install-dir>        (optional)" \
+            "\n     5) <xrt-dir>                  (optional)" \
             "\n Example, dependent on environment variables:" \
             "\n     ./run_matmul_test.sh  " \
             "results_dir_tmp  \$IREE_INSTALL_DIR " \
@@ -109,6 +109,17 @@ else
   VITIS=`realpath "$4"`
 fi
 
+# Parameter 5) <xrt-dir>
+if [ -z "${5-}" ]; then
+  XRT_DIR=/opt/xilinx/xrt
+else
+  XRT_DIR=`realpath "$5"`
+fi
+if [ -f "$XRT_DIR/setup.sh" ]; then
+  source $XRT_DIR/setup.sh
+fi
+
+
 THIS_DIR="$(cd $(dirname $0) && pwd)"
 ROOT_DIR="$(cd $THIS_DIR/../.. && pwd)"
 
@@ -129,10 +140,15 @@ fi
 
 GITHUB_ACTIONS="${GITHUB_ACTIONS:-false}"
 
+# Circumvent xclbin security (no longer needed as of April 2024 XDNA driver)
+export XRT_HACK_UNSECURE_LOADING_XCLBIN=1
+
 cd ${OUTPUT_DIR}
 
 export MATMUL_TESTS_RUN=0
 export MATMUL_TESTS_FAILS=0
+
+DEVICE_HAL="${DEVICE_HAL:-xrt}"
 
 ###############################################################################
 # Define helper function                                                      #
@@ -162,8 +178,6 @@ function run_matmul_test() {
   local target_backend="amd-aie"
 
   local target_device="npu1_4col"
-
-  local device="xrt-lite"
 
   local peano_install_path="${PEANO}"
 
@@ -259,10 +273,6 @@ function run_matmul_test() {
         ;;
       --target_backend)
         target_backend="$2"
-        shift 2
-        ;;
-      --device)
-        device="$2"
         shift 2
         ;;
       --peano_install_path)
@@ -392,7 +402,7 @@ function run_matmul_test() {
                       --iree-amd-aie-enable-chess=${use_chess} \
                       --iree-amdaie-enable-packet-flow=${enable_packet_flow} \
                       --iree-hal-dump-executable-files-to=$PWD \
-                      --iree-amdaie-device-hal=xrt-lite \
+                      --iree-amdaie-device-hal=${DEVICE_HAL} \
                       --iree-hal-memoization=false \
                       --iree-hal-indirect-command-buffers=false \
                       --mlir-elide-resource-strings-if-larger=10 \
@@ -451,7 +461,7 @@ function run_matmul_test() {
   COMMAND="${TEST_RUNNER} \
       --module=${matmul_vmfb} \
       --module=${calls_vmfb} \
-      --device=${device} \
+      --device=${DEVICE_HAL} \
       --max_elements_to_check=${max_elements_to_check}"
 
   total_num_runs=$(( num_repeat_runs * num_corruption_repeat_runs))
@@ -518,7 +528,6 @@ run_matmul_test \
     --acc_type "f32" \
     --target_backend "amd-aie" \
     --target_device "npu1_4col" \
-    --device "xrt-lite" \
     --peano_install_path "${PEANO}" \
     --amd_aie_install_path "${IREE_INSTALL_DIR}" \
     --vitis_path  "${VITIS}" \

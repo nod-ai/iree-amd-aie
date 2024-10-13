@@ -12,4 +12,4 @@ pip download llvm_aie==$RELEASE -f https://github.com/Xilinx/llvm-aie/releases/e
 $peano = (Get-ChildItem -Filter llvm*.whl)
 $new_name = ($peano.Basename + ".zip")
 Rename-Item -Path $peano.Name -NewName $new_name
-Expand-Archive $new_name -DestinationPath $PWD.Path
+Expand-Archive $new_name -DestinationPath $PWD.Path -Force
