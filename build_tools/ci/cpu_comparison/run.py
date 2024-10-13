@@ -2,18 +2,19 @@
 
 # Copyright 2024 The IREE Authors
 
-import sys
 import argparse
 import os
 import platform
 import re
 import subprocess
+import sys
 import time
 from pathlib import Path
 from textwrap import dedent
 
 import numpy as np
 
+from convolution_template.convolution_generator import ConvolutionMlirGenerator
 from input_generator import (
     generate_inputs,
     verify_determinism,
@@ -22,7 +23,6 @@ from input_generator import (
     np_from_binfile,
 )
 from matmul_template.matmul_generator import generate_matmul_test
-from convolution_template.convolution_generator import ConvolutionMlirGenerator
 from output_comparer import compare
 
 
@@ -146,7 +146,7 @@ def generate_aie_vmfb(
         f"--iree-amd-aie-install-dir={config.iree_install_dir}",
         f"--iree-amd-aie-vitis-install-dir={config.vitis_dir}",
         f"--iree-hal-dump-executable-files-to={config.output_dir}",
-        "--iree-amdaie-device-hal=xrt-lite",
+        f"--iree-amdaie-device-hal={config.device_hal}",
         "--iree-scheduling-optimize-bindings=false",
         "--iree-hal-memoization=false",
         "--iree-hal-indirect-command-buffers=false",
@@ -192,7 +192,7 @@ def generate_aie_output(config, aie_vmfb, input_args, function_name, name, outpu
         config.iree_run_exe,
         f"--module={aie_vmfb}",
         *input_args,
-        "--device=xrt-lite",
+        f"--device={config.device_hal}",
         f"--output=@{aie_bin}",
     ]
     if function_name:
@@ -268,6 +268,7 @@ class TestConfig:
         reset_npu_between_runs,
         do_not_run_aie,
         additional_aie_compilation_flags,
+        device_hal,
     ):
         self.output_dir = output_dir
         self.iree_install_dir = iree_install_dir
@@ -284,6 +285,7 @@ class TestConfig:
         self.reset_npu_between_runs = reset_npu_between_runs
         self.do_not_run_aie = do_not_run_aie
         self.additional_aie_compilation_flags = additional_aie_compilation_flags
+        self.device_hal = device_hal
 
         # Try get the xrt and (linux) kernel versions.
         self.linux_kernel = "undetermined"
@@ -847,6 +849,7 @@ def all_tests(
     do_not_run_aie,
     test_set,
     additional_aie_compilation_flags,
+    device_hal
 ):
     """
     There are a few ways to add tests to this script:
@@ -888,6 +891,7 @@ def all_tests(
         reset_npu_between_runs,
         do_not_run_aie,
         additional_aie_compilation_flags,
+        device_hal
     )
     if verbose:
         print(config)
@@ -1024,6 +1028,15 @@ if __name__ == "__main__":
         default="",
     )
 
+    parser.add_argument(
+        "--device-hal",
+        default="xrt",
+        const="xrt",
+        nargs="?",
+        choices=["xrt", "xrt-lite"],
+        help="device HAL to use (default: %(default)s)",
+    )
+
     args = parser.parse_args()
 
     test_set_list = args.test_set.split(",")
@@ -1039,4 +1052,5 @@ if __name__ == "__main__":
         args.do_not_run_aie,
         test_set_list,
         args.additional_aie_compilation_flags,
+        args.device_hal
     )

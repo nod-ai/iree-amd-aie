@@ -270,8 +270,7 @@ std::filesystem::path find_npu_device() {
       auto rel = std::filesystem::relative(actual_path, "/sys/devices");
       if (!rel.empty() && rel.native()[0] != '.') return absolute(actual_path);
     }
-  std::cerr << "No npu device found" << std::endl;
-  exit(-1);
+  shim_err(errno, "No npu device found");
 }
 
 }  // namespace shim_xdna

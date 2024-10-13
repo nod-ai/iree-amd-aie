@@ -198,5 +198,5 @@ jobs:
           mkdir temp
           pytest tests -sv `
             --basetemp=$PWD\temp `
-            --iree-install-dir="$PWD/iree-install" `
-            --peano-install-dir="$PWD/llvm-aie"
+            --iree-install-dir="$PWD\iree-install" `
+            --peano-install-dir="$PWD\llvm-aie"
