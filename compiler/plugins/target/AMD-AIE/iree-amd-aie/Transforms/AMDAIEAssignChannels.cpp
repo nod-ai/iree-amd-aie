@@ -45,14 +45,16 @@ LogicalResult assignChannels(AMDAIE::WorkgroupOp workgroupOp) {
     for (Value tile : sourceLogicalObjFifo.getTiles()) {
       uint8_t channel = generator.getProducerDMAChannel(tile);
       auto channelOp = rewriter.create<AMDAIE::ChannelOp>(
-          rewriter.getUnknownLoc(), tile, channel, StrmSwPortType::DMA);
+          rewriter.getUnknownLoc(), tile, channel, StrmSwPortType::DMA,
+          AMDAIE::DMAChannelDir::MM2S);
       sourceChannels.push_back(channelOp.getResult());
     }
     SmallVector<Value> targetChannels;
     for (Value tile : targetLogicalObjFifo.getTiles()) {
       uint8_t channel = generator.getConsumerDMAChannel(tile);
       auto channelOp = rewriter.create<AMDAIE::ChannelOp>(
-          rewriter.getUnknownLoc(), tile, channel, StrmSwPortType::DMA);
+          rewriter.getUnknownLoc(), tile, channel, StrmSwPortType::DMA,
+          AMDAIE::DMAChannelDir::S2MM);
       targetChannels.push_back(channelOp.getResult());
     }
     rewriter.replaceOpWithNewOp<AMDAIE::ConnectionOp>(

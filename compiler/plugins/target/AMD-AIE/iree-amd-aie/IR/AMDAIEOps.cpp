@@ -6,14 +6,13 @@
 
 #include "iree-amd-aie/IR/AMDAIEOps.h"
 
+#include <numeric>
+
 #include "iree-amd-aie/IR/AMDAIEDialect.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Utils/StaticValueUtils.h"
 #include "mlir/IR/OpDefinition.h"
-
-#define GET_OP_CLASSES
-#include "iree-amd-aie/IR/AMDAIEOps.cpp.inc"
 
 namespace mlir::iree_compiler::AMDAIE {
 
@@ -22,6 +21,38 @@ void AMDAIEDialect::initializeAMDAIEOps() {
 #define GET_OP_LIST
 #include "iree-amd-aie/IR/AMDAIEOps.cpp.inc"
       >();
+}
+
+//===----------------------------------------------------------------------===//
+// custom<AsyncTokenType>(type($async_token))
+//===----------------------------------------------------------------------===//
+
+/// Parses an optional list of async operands.
+static ParseResult parseAsyncTokenType(OpAsmParser &parser, Type &resultType) {
+  if (succeeded(parser.parseOptionalKeyword("async_source"))) {
+    resultType = parser.getBuilder().getType<AMDAIE::AsyncSourceTokenType>();
+  } else if (succeeded(parser.parseOptionalKeyword("async_target"))) {
+    resultType = parser.getBuilder().getType<AMDAIE::AsyncTargetTokenType>();
+  } else if (succeeded(parser.parseOptionalKeyword("async"))) {
+    resultType = parser.getBuilder().getType<AMDAIE::AsyncTokenType>();
+  }
+  return success();
+}
+
+/// Prints optional async tokens with its leading keyword.
+static void printAsyncTokenType(OpAsmPrinter &p, Operation *op,
+                                Type asyncTokenType) {
+  if (asyncTokenType) {
+    if (isa<AMDAIE::AsyncSourceTokenType>(asyncTokenType)) {
+      p << "async_source";
+    } else if (isa<AMDAIE::AsyncTargetTokenType>(asyncTokenType)) {
+      p << "async_target";
+    } else if (isa<AMDAIE::AsyncTokenType>(asyncTokenType)) {
+      p << "async";
+    } else {
+      assert(false && "unsupported async token type");
+    }
+  }
 }
 
 //===----------------------------------------------------------------------===//
@@ -1027,6 +1058,97 @@ void NpuDmaCpyNdOp::getCanonicalizationPatterns(RewritePatternSet &results,
 }
 
 //===----------------------------------------------------------------------===//
+// AMDAIE_NpuHalfDmaCpyNdOp
+//===----------------------------------------------------------------------===//
+
+// Build a NpuHalfDmaCpyNdOp with mixed static and dynamic entries.
+void NpuHalfDmaCpyNdOp::build(OpBuilder &b, OperationState &result,
+                              TypeRange resultTypes, Value connection,
+                              Value input, ArrayRef<OpFoldResult> offsets,
+                              ArrayRef<OpFoldResult> sizes,
+                              ArrayRef<OpFoldResult> strides, Value bdId,
+                              Value channel) {
+  SmallVector<int64_t> staticOffsets, staticSizes, staticStrides;
+  SmallVector<Value> dynamicOffsets, dynamicSizes, dynamicStrides;
+  dispatchIndexOpFoldResults(offsets, dynamicOffsets, staticOffsets);
+  dispatchIndexOpFoldResults(sizes, dynamicSizes, staticSizes);
+  dispatchIndexOpFoldResults(strides, dynamicStrides, staticStrides);
+  build(b, result, resultTypes, connection, input, dynamicOffsets, dynamicSizes,
+        dynamicStrides, staticOffsets, staticSizes, staticStrides, bdId,
+        channel);
+}
+
+// Build a NpuHalfDmaCpyNdOp with static entries.
+void NpuHalfDmaCpyNdOp::build(OpBuilder &b, OperationState &result,
+                              TypeRange resultTypes, Value connection,
+                              Value input, ArrayRef<int64_t> offsets,
+                              ArrayRef<int64_t> sizes,
+                              ArrayRef<int64_t> strides, mlir::Value bdId,
+                              Value channel) {
+  SmallVector<OpFoldResult> offsetValues = llvm::to_vector<4>(llvm::map_range(
+      offsets,
+      [&](int64_t v) -> OpFoldResult { return b.getI64IntegerAttr(v); }));
+  SmallVector<OpFoldResult> sizeValues =
+      llvm::to_vector<4>(llvm::map_range(sizes, [&](int64_t v) -> OpFoldResult {
+        return b.getI64IntegerAttr(v);
+      }));
+  SmallVector<OpFoldResult> strideValues = llvm::to_vector<4>(llvm::map_range(
+      strides,
+      [&](int64_t v) -> OpFoldResult { return b.getI64IntegerAttr(v); }));
+  build(b, result, resultTypes, connection, input, offsetValues, sizeValues,
+        strideValues, bdId, channel);
+}
+
+// Build a NpuHalfDmaCpyNdOp with dynamic entries.
+void NpuHalfDmaCpyNdOp::build(OpBuilder &b, OperationState &result,
+                              TypeRange resultTypes, Value connection,
+                              Value input, ValueRange offsets, ValueRange sizes,
+                              ValueRange strides, mlir::Value bdId,
+                              Value channel) {
+  SmallVector<OpFoldResult> offsetValues = llvm::to_vector<4>(
+      llvm::map_range(offsets, [](Value v) -> OpFoldResult { return v; }));
+  SmallVector<OpFoldResult> sizeValues = llvm::to_vector<4>(
+      llvm::map_range(sizes, [](Value v) -> OpFoldResult { return v; }));
+  SmallVector<OpFoldResult> strideValues = llvm::to_vector<4>(
+      llvm::map_range(strides, [](Value v) -> OpFoldResult { return v; }));
+  build(b, result, resultTypes, connection, input, offsetValues, sizeValues,
+        strideValues, bdId, channel);
+}
+
+std::optional<int64_t> NpuHalfDmaCpyNdOp::getStaticBaseOffset() {
+  int64_t baseOffset = 0;
+  SmallVector<OpFoldResult> offsets = getMixedOffsets();
+  SmallVector<OpFoldResult> strides = getMixedStrides();
+  for (auto &&[offset, stride] : llvm::zip(offsets, strides)) {
+    std::optional<int64_t> constantOffset = getConstantIntValue(offset);
+    std::optional<int64_t> constantStride = getConstantIntValue(stride);
+    // If offset is zero, we can just continue to the next one. This enables
+    // the case where the stride is dynamic.
+    if (constantOffset && constantOffset.value() == 0) continue;
+    if (constantOffset && constantStride) {
+      baseOffset += (constantOffset.value() * constantStride.value());
+    } else {
+      return std::nullopt;
+    }
+  }
+  return baseOffset;
+}
+
+std::optional<int64_t> NpuHalfDmaCpyNdOp::getAccessStaticSize() {
+  SmallVector<OpFoldResult> sizes = getMixedSizes();
+  if (sizes.size() == 0) return 0;
+  std::optional<SmallVector<int64_t>> staticSizes = getConstantIntValues(sizes);
+  if (!staticSizes) return std::nullopt;
+  return std::accumulate(staticSizes->begin(), staticSizes->end(), 1,
+                         std::multiplies<>());
+}
+
+bool NpuHalfDmaCpyNdOp::hasDmaWaitOpUser() {
+  return llvm::any_of((*this)->getUsers(),
+                      [](auto userOp) { return isa<NpuDmaWaitOp>(userOp); });
+}
+
+//===----------------------------------------------------------------------===//
 // AMDAIE_NpuCircularDmaCpyNdOp
 //===----------------------------------------------------------------------===//
 
@@ -1254,3 +1376,10 @@ LogicalResult WorkgroupOp::verify() {
   return success();
 }
 }  // namespace mlir::iree_compiler::AMDAIE
+
+//===----------------------------------------------------------------------===//
+// TableGen definitions (intentionally last)
+//===----------------------------------------------------------------------===//
+
+#define GET_OP_CLASSES
+#include "iree-amd-aie/IR/AMDAIEOps.cpp.inc"

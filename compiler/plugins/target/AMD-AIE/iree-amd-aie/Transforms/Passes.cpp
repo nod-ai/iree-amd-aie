@@ -621,6 +621,9 @@ void addAMDAIEObjectFifoLoweringPasses(OpPassManager &passManager,
   passManager.addPass(createAMDAIEConnectionToFlowPass());
   passManager.addPass(createAMDAIEAssignPacketIdsPass());
 
+  passManager.addPass(createAMDAIEControlCodeLoweringPass());
+  passManager.addPass(createAMDAIEControlCodeToTransactionPass());
+
   addAMDAIEToAIEPasses(passManager);
 
   // Now lower using the AIE passes from MLIR-AIE.
@@ -631,7 +634,6 @@ void addMLIRAIELoweringPasses(OpPassManager &pm) {
   {
     OpPassManager &devicePM = pm.nest<xilinx::AIE::DeviceOp>();
     devicePM.addPass(createCanonicalizerPass());
-    devicePM.addPass(createAMDAIEDmaToNpuPass());
     devicePM.addPass(createAMDAIEAssignBufferDescriptorIDsPass());
     devicePM.addPass(createAMDAIEAssignBufferAddressesBasicPass());
     devicePM.addPass(createAMDAIEPathfinderPass());
@@ -834,11 +836,16 @@ void addMLIRAIRLoweringPasses(OpPassManager &passManager, AMDAIEDevice device,
   passManager.addPass(xilinx::airrt::createAIRRtToNpuPass());
   passManager.addPass(createCanonicalizerPass());
 
+  {
+    // createAMDAIEDmaToNpuPass only needed for AIR.
+    OpPassManager &devicePM = passManager.nest<xilinx::AIE::DeviceOp>();
+    devicePM.addPass(createCanonicalizerPass());
+    devicePM.addPass(createAMDAIEDmaToNpuPass());
+  }
+
   // Now lower using the AIE passes from MLIR-AIE.
   addMLIRAIELoweringPasses(passManager);
 }
-
-
 
 // NOTE: this runs on the top-level program module containing all hal.executable
 // ops.

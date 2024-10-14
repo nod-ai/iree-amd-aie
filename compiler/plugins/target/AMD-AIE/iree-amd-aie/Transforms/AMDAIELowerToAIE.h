@@ -46,14 +46,6 @@ class AIEDeviceBuilder {
   LogicalResult coreToAIE(AMDAIE::CoreOp coreOp, AIE::DeviceOp deviceOp,
                           Block *deviceCoreBlock);
 
-  /// Controlcode ops conversion methods.
-  LogicalResult npuDmaCpyNdOpToAIE(AMDAIE::NpuDmaCpyNdOp dmaOp,
-                                   SmallVector<Operation *> &toBeErased);
-  LogicalResult npuDmaWaitToAIE(AMDAIE::NpuDmaWaitOp waitOp,
-                                SmallVector<Operation *> &toBeErased);
-  LogicalResult controlCodeToAIE(AMDAIE::ControlCodeOp controlCodeOp,
-                                 xilinx::AIEX::RuntimeSequenceOp funcOp);
-
   /// Workgroup ops conversion methods.
   LogicalResult bufferToAIE(AMDAIE::BufferOp bufferOp, Block *deviceBlock,
                             int &bufferId);
@@ -67,8 +59,7 @@ class AIEDeviceBuilder {
       Block *deviceBlock);
   LogicalResult tileToAIE(AMDAIE::TileOp tileOp, Block *deviceBlock);
   LogicalResult workgroupToAIE(AMDAIE::WorkgroupOp workgroupOp,
-                               xilinx::AIE::DeviceOp deviceOp,
-                               xilinx::AIEX::RuntimeSequenceOp npuFuncOp);
+                               xilinx::AIE::DeviceOp deviceOp);
 
   /// Utilities
 
@@ -120,8 +111,6 @@ class AIEDeviceBuilder {
 
   IRRewriter rewriter;
   IRMapping mapper;
-  /// Dedicated mapper for the HAL bindings.
-  IRMapping bindingsMapper;
   /// Map from tile values to AIE memory op (`aie.mem` or `aie.memtile_dma`).
   /// This is used to look up and add new DMA patterns to those memory ops.
   DenseMap<Value, Operation *> tileToMemOpMap;

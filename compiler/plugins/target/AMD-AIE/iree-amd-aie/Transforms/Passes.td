@@ -151,6 +151,22 @@ def AMDAIEControlCodeLoopUnroll :
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEControlCodeLoopUnrollPass()";
 }
 
+def AMDAIEControlCodeLowering :
+    Pass<"iree-amdaie-controlcode-lowering", ""> {
+  let summary = "Lower control code ops to the most basic NPU write/sync/patch instructions";
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEControlCodeLoweringPass()";
+}
+
+def AMDAIEControlCodeToTransaction :
+    Pass<"iree-amdaie-controlcode-to-transaction", ""> {
+  let summary = "Convert controlcode instructions into a NPU instruction transaction.";
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEControlCodeToTransactionPass()";
+  let options = [
+    Option<"dumpTransaction", "dump-transaction", "bool", /*default=*/"false",
+      "Dump the generated transaction. (Used for tests)">
+  ];
+}
+
 def AMDAIEConvertCoreForallToFor :
     Pass<"iree-amdaie-convert-core-forall-to-for", ""> {
   let summary = "Converts `scf.forall` to `scf.for` within `aie.core`.";

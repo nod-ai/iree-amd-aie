@@ -23,6 +23,8 @@ iree_lit_test_suite(
     "combine_strided_ops.mlir"
     "connection_to_flow.mlir"
     "controlcode_loop_unrolling.mlir"
+    "controlcode_lowering.mlir"
+    "controlcode_to_transaction.mlir"
     "convert_core_forall_to_for.mlir"
     "create_aie_workgroup.mlir"
     "create_reference_to_allocation.mlir"
