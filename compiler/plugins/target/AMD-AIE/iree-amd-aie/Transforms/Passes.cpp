@@ -284,9 +284,6 @@ void addPackPeelBasedPassPipeline(OpPassManager &funcPassManager,
     funcPassManager.addPass(createAMDAIELowerToUKernelsPass(options));
   }
 
-  // Vectorization passes
-  appendVectorizationToPipeline(funcPassManager, enableVectorizationPasses);
-
   // Comprehensive bufferization
   addAMDAIEBufferizePasses(funcPassManager, useTilePipeline);
   funcPassManager.addPass(createHoistStaticallyBoundAllocationsPass());
@@ -518,7 +515,8 @@ void buildAMDAIETransformPassPipeline(
   modulePassManager.addPass(createLowerUKernelOpsToCallsPass());
   if (useLowerToAIEPipeline == LowerToAIEPassPipeline::ObjectFifo) {
     addAMDAIEObjectFifoLoweringPasses(modulePassManager, enablePacketFlow,
-                                      useTilePipeline);
+                                      useTilePipeline,
+                                      enableVectorizationPasses);
   } else if (useLowerToAIEPipeline == LowerToAIEPassPipeline::AIR) {
     addMLIRAIRLoweringPasses(modulePassManager, device, useTilePipeline,
                              matmulElementwiseFusion);
@@ -539,7 +537,8 @@ void buildAMDAIETransformPassPipeline(
 
 void addAMDAIEObjectFifoLoweringPasses(OpPassManager &passManager,
                                        bool enablePacketFlow,
-                                       TilePassPipeline useTilePipeline) {
+                                       TilePassPipeline useTilePipeline,
+                                       bool enableVectorizationPasses) {
   passManager.addPass(createEraseHALDescriptorTypeFromMemRefPass());
   passManager.addPass(memref::createFoldMemRefAliasOpsPass());
 
@@ -564,6 +563,13 @@ void addAMDAIEObjectFifoLoweringPasses(OpPassManager &passManager,
 
   passManager.addPass(createAMDAIENormalizeLoopBoundsPass());
   passManager.addPass(createAMDAIEInsertCoresPass());
+
+  {
+    // Vectorization passes
+    OpPassManager &funcPassManager = passManager.nest<func::FuncOp>();
+    appendVectorizationToPipeline(funcPassManager, enableVectorizationPasses);
+  }
+
   passManager.addPass(createAMDAIELocalizeLogicalObjectFifoPass());
   passManager.addPass(createCSEPass());
 
