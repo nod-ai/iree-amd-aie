@@ -567,6 +567,10 @@ void addAMDAIEObjectFifoLoweringPasses(OpPassManager &passManager,
   {
     // Vectorization passes
     OpPassManager &funcPassManager = passManager.nest<func::FuncOp>();
+    enableVectorizationPasses =
+        (useTilePipeline == TilePassPipeline::ConvDecomposePipeline)
+            ? false
+            : enableVectorizationPasses;
     appendVectorizationToPipeline(funcPassManager, enableVectorizationPasses);
   }
 
