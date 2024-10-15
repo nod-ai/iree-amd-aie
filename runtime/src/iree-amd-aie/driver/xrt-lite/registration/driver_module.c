@@ -12,9 +12,6 @@
 static iree_status_t iree_hal_xrt_lite_driver_factory_enumerate(
     void* self, iree_host_size_t* out_driver_info_count,
     const iree_hal_driver_info_t** out_driver_infos) {
-  // TODO(null): return multiple drivers if desired. This information must be
-  // static. The list here is just what is compiled into the binary and not
-  // expected to actually try to load or initialize drivers.
   static const iree_hal_driver_info_t default_driver_info = {
       .driver_name = IREE_SVL("xrt-lite"),
       .full_name = IREE_SVL("XRT-LITE driver (for AIE)"),
@@ -27,16 +24,13 @@ static iree_status_t iree_hal_xrt_lite_driver_factory_enumerate(
 static iree_status_t iree_hal_xrt_lite_driver_factory_try_create(
     void* self, iree_string_view_t driver_name, iree_allocator_t host_allocator,
     iree_hal_driver_t** out_driver) {
-  // TODO(null): use your driver name - this will be the prefix when the user
-  // specifies the device (`--device=null://foo`). A single driver can support
-  // multiple prefixes if it wants.
   if (!iree_string_view_equal(driver_name, IREE_SV("xrt-lite"))) {
     return iree_make_status(IREE_STATUS_UNAVAILABLE,
                             "no driver '%.*s' is provided by this factory",
                             (int)driver_name.size, driver_name.data);
   }
 
-  // TODO(null): populate options from flags. This driver module file is only
+  // TODO(max): populate options from flags. This driver module file is only
   // used in native tools that have access to the flags library. Programmatic
   // creation of the driver and devices will bypass this file and pass the
   // options via this struct or key-value string parameters.

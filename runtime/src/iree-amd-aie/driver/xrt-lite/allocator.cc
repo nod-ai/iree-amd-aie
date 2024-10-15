@@ -11,8 +11,6 @@
 #include "iree-amd-aie/driver/xrt-lite/shim/linux/kmq/device.h"
 #include "iree-amd-aie/driver/xrt-lite/util.h"
 
-// TODO(null): use one ID per address space or pool - each shows as a different
-// track in tracing tools.
 #if IREE_TRACING_FEATURES & IREE_TRACING_FEATURE_ALLOCATION_TRACKING
 static const char* IREE_HAL_XRT_LITE_ALLOCATOR_ID = "XRT-LITE unpooled";
 #endif  // IREE_TRACING_FEATURE_ALLOCATION_TRACKING
@@ -33,11 +31,6 @@ struct iree_hal_xrt_lite_allocator {
     IREE_TRACE_ZONE_BEGIN(z0);
     iree_hal_resource_initialize(&iree_hal_xrt_lite_allocator_vtable,
                                  &this->resource);
-    // TODO(null): query device heaps, supported features (concurrent
-    // access/etc), and prepare any pools that will be used during allocation.
-    // It's expected that most failures that occur after creation are allocation
-    // request-specific so preparing here will help keep the errors more
-    // localized.
     IREE_TRACE_ZONE_END(z0);
   }
 
@@ -45,15 +38,6 @@ struct iree_hal_xrt_lite_allocator {
 
   iree_hal_buffer_compatibility_t query_buffer_compatibility(
       iree_hal_buffer_params_t* params, iree_device_size_t* allocation_size) {
-    // TODO(null): set compatibility rules based on the implementation.
-    // Note that the user may have requested that the allocator place the
-    // allocation based on whatever is optimal for the indicated usage by
-    // including the IREE_HAL_MEMORY_TYPE_OPTIMAL flag. It's still required that
-    // the implementation meet all the requirements but it is free to place it
-    // in either host or device memory so long as the appropriate bits are
-    // updated to indicate where it landed.
-    (void)this;
-
     // All buffers can be allocated on the heap.
     iree_hal_buffer_compatibility_t compatibility =
         IREE_HAL_BUFFER_COMPATIBILITY_ALLOCATABLE;
@@ -99,25 +83,7 @@ struct iree_hal_xrt_lite_allocator {
           "allocator cannot allocate a buffer with the given parameters");
     }
 
-    // TODO(null): allocate the underlying device memory.
-    // The impl_ptr is just used for accounting and can be an opaque value
-    // (handle/etc) so long as it is consistent between the alloc and free and
-    // unique to the buffer while it is live. An example
-    // iree_hal_xrt_lite_buffer_wrap is provided that can be used for
-    // implementations that are managing memory using underlying allocators and
-    // just wrapping those device pointers in the HAL buffer type. Other
-    // implementations that require more tracking can provide their own buffer
-    // types that do such tracking for them.
-
     uint32_t flags = XCL_BO_FLAGS_HOST_ONLY;
-    // if (iree_all_bits_set(params->type, IREE_HAL_MEMORY_TYPE_HOST_CACHED)) {
-    //   flags = XCL_BO_FLAGS_CACHEABLE;
-    // } else if (iree_all_bits_set(params->type,
-    //                              IREE_HAL_MEMORY_TYPE_OPTIMAL_FOR_DEVICE)) {
-    //   // TODO(max): the test here isn't specific enough
-    //   flags = XCL_BO_FLAGS_EXECBUF;
-    // }
-
     std::unique_ptr<shim_xdna::bo> bo =
         shim_device->alloc_bo(allocation_size, flags);
     iree_hal_buffer_t* buffer = nullptr;
@@ -129,9 +95,8 @@ struct iree_hal_xrt_lite_allocator {
         iree_hal_buffer_release_callback_null(), this->host_allocator, &buffer);
 
     if (iree_status_is_ok(status)) {
-      // TODO(null): ensure this accounting is balanced in deallocate_buffer.
-      //      IREE_TRACE_ALLOC_NAMED(IREE_HAL_XRT_LITE_ALLOCATOR_ID, impl_ptr,
-      //                             allocation_size);
+      IREE_TRACE_ALLOC_NAMED(IREE_HAL_XRT_LITE_ALLOCATOR_ID, impl_ptr,
+                             allocation_size);
       IREE_STATISTICS(iree_hal_allocator_statistics_record_alloc(
           &this->statistics, compat_params.type, allocation_size));
       *out_buffer = buffer;
@@ -142,19 +107,9 @@ struct iree_hal_xrt_lite_allocator {
   }
 
   void deallocate_buffer(iree_hal_buffer_t* base_buffer) {
-    // TODO(null): free the underlying device memory here. Buffers allocated
-    // from this allocator will call this method to handle cleanup. Note that
-    // because this method is responsible for doing the base
-    // iree_hal_buffer_destroy and the caller assumes the memory has been freed
-    // an implementation could pool the buffer handle and return it in the
-    // future.
-
-    // TODO(null): if the buffer was imported then this accounting may need to
-    // be conditional depending on the implementation.
     bool was_imported = false;
     if (!was_imported) {
-      // TODO(max):
-      //      IREE_TRACE_FREE_NAMED(IREE_HAL_XRT_LITE_ALLOCATOR_ID, impl_ptr);
+      IREE_TRACE_FREE_NAMED(IREE_HAL_XRT_LITE_ALLOCATOR_ID, impl_ptr);
       IREE_STATISTICS(iree_hal_allocator_statistics_record_free(
           &this->statistics, iree_hal_buffer_memory_type(base_buffer),
           iree_hal_buffer_allocation_size(base_buffer)));

@@ -168,7 +168,7 @@ jobs:
             $PWD/iree-install \
             $PWD/llvm-aie \
             --vitis-dir /opt/Xilinx/Vitis/2024.2 \
-            --reset-npu-between-runs -v \
+            --reset-npu-between-runs -v
 
       - name: E2E correctness matmul test
         run: |
@@ -189,7 +189,7 @@ jobs:
           pytest -v tests \
             --capture=tee-sys \
             --iree-install-dir=$PWD/iree-install \
-            --peano-install-dir=$PWD/llvm-aie \
+            --peano-install-dir=$PWD/llvm-aie
 
       - name: XRT-LITE tests
         run: |

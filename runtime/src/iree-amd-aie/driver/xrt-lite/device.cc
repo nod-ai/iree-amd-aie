@@ -41,8 +41,6 @@ struct iree_hal_xrt_lite_device {
       iree_hal_queue_affinity_t queue_affinity,
       iree_host_size_t binding_capacity,
       iree_hal_command_buffer_t** out_command_buffer) {
-    // TODO(null): pass any additional resources required to create the command
-    // buffer. The implementation could pool command buffers here.
     if (!iree_all_bits_set(mode, IREE_HAL_COMMAND_BUFFER_MODE_ONE_SHOT)) {
       return iree_make_status(IREE_STATUS_UNIMPLEMENTED,
                               "unimplmented multi-shot command buffer");
@@ -119,7 +117,6 @@ struct iree_hal_xrt_lite_device {
       iree_hal_allocator_pool_t pool, iree_hal_buffer_params_t params,
       iree_device_size_t allocation_size,
       iree_hal_buffer_t** IREE_RESTRICT out_buffer) {
-    // TODO: queue-ordered allocations.
     IREE_RETURN_IF_ERROR(iree_hal_semaphore_list_wait(wait_semaphore_list,
                                                       iree_infinite_timeout()));
     IREE_RETURN_IF_ERROR(iree_hal_allocator_allocate_buffer(
@@ -136,10 +133,6 @@ extern const iree_hal_device_vtable_t iree_hal_xrt_lite_device_vtable;
 void iree_hal_xrt_lite_device_options_initialize(
     iree_hal_xrt_lite_device_options_t* out_options) {
   memset(out_options, 0, sizeof(*out_options));
-  // TODO(null): set defaults based on compiler configuration. Flags should not
-  // be used as multiple devices may be configured within the process or the
-  // hosting application may be authored in python/etc that does not use a flags
-  // mechanism accessible here.
 }
 
 iree_status_t iree_hal_xrt_lite_device_create(
@@ -164,9 +157,6 @@ iree_status_t iree_hal_xrt_lite_device_create(
   device->host_allocator = host_allocator;
   device->shim_device = new shim_xdna::device;
 
-  // TODO(null): pass device handles and pool configuration to the allocator.
-  // Some implementations may share allocators across multiple devices created
-  // from the same driver.
   iree_status_t status = iree_hal_xrt_lite_allocator_create(
       host_allocator, device->shim_device, &device->device_allocator);
   iree_arena_block_pool_initialize(ARENA_BLOCK_SIZE, host_allocator,
@@ -197,12 +187,6 @@ static void iree_hal_xrt_lite_device_destroy(iree_hal_device_t* base_device) {
   iree_hal_xrt_lite_device* device = iree_hal_xrt_lite_device_cast(base_device);
   iree_allocator_t host_allocator = iree_hal_device_host_allocator(base_device);
   IREE_TRACE_ZONE_BEGIN(z0);
-
-  // TODO(null): release all implementation resources here. It's expected that
-  // this is only called once all outstanding resources created with this device
-  // have been released by the application and no work is outstanding. If the
-  // implementation performs internal async operations those should be shutdown
-  // and joined first.
 
   iree_hal_allocator_release(device->device_allocator);
   delete device->shim_device;
