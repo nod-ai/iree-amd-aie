@@ -177,6 +177,7 @@ jobs:
         shell: bash
         run: |
           source .venv/Scripts/activate
+          export DEVICE_HAL=xrt
           bash build_tools/ci/run_matmul_test.sh \
             /c/test_matmuls \
             $PWD/iree-install \
@@ -189,7 +190,8 @@ jobs:
           python build_tools/ci/cpu_comparison/run.py \
             /c/test_aie_vs_cpu \
             $PWD/iree-install \
-            $PWD/llvm-aie -v
+            $PWD/llvm-aie -v \
+            --device-hal=xrt
 
       - name: Python tests
         run: |
@@ -199,4 +201,5 @@ jobs:
           pytest tests -sv `
             --basetemp=$PWD\temp `
             --iree-install-dir="$PWD\iree-install" `
-            --peano-install-dir="$PWD\llvm-aie"
+            --peano-install-dir="$PWD\llvm-aie" `
+            --device-hal=xrt

@@ -169,7 +169,6 @@ jobs:
             $PWD/llvm-aie \
             --vitis-dir /opt/Xilinx/Vitis/2024.2 \
             --reset-npu-between-runs -v \
-            --device-hal=xrt-lite
 
       - name: E2E correctness matmul test
         run: |
@@ -178,7 +177,6 @@ jobs:
           # which can fail if limit is to low
           sudo prlimit -lunlimited --pid $$
           source .venv/bin/activate
-          export DEVICE_HAL=xrt-lite
           bash build_tools/ci/run_matmul_test.sh \
             test_matmuls \
             iree-install \
@@ -192,7 +190,6 @@ jobs:
             --capture=tee-sys \
             --iree-install-dir=$PWD/iree-install \
             --peano-install-dir=$PWD/llvm-aie \
-            --device-hal=xrt-lite
 
       - name: XRT-LITE tests
         run: |

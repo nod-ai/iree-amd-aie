@@ -48,8 +48,8 @@ def pytest_addoption(parser):
     parser.addoption("--iree-aie-debug", action="store_true")
     parser.addoption(
         "--device-hal",
-        default="xrt",
-        const="xrt",
+        default="xrt-lite",
+        const="xrt-lite",
         nargs="?",
         choices=["xrt", "xrt-lite"],
     )

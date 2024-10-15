@@ -148,7 +148,7 @@ cd ${OUTPUT_DIR}
 export MATMUL_TESTS_RUN=0
 export MATMUL_TESTS_FAILS=0
 
-DEVICE_HAL="${DEVICE_HAL:-xrt}"
+DEVICE_HAL="${DEVICE_HAL:-xrt-lite}"
 
 ###############################################################################
 # Define helper function                                                      #
