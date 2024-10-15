@@ -24,7 +24,8 @@ void addAMDAIEObjectFifoLoweringPasses(OpPassManager &passManager,
 /// currently the default passes used for lowering after IREEs tiling.
 void addMLIRAIRLoweringPasses(OpPassManager &passManager, AMDAIEDevice device,
                               TilePassPipeline useTilePipeline,
-                              bool matmulElementwiseFusion);
+                              bool matmulElementwiseFusion,
+                              bool enableVectorizationPasses);
 
 /// Add lowering passes from MLIR-AIE. This is
 /// currently the default passes used for lowering from AIE dialect.

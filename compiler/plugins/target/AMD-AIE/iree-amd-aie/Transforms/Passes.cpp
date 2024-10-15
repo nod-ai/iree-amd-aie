@@ -474,11 +474,6 @@ void addConvDecomposePassPipeline(OpPassManager &funcPassManager,
   LinalgFoldUnitExtentDimsPassOptions opts;
   opts.useRankReducingSlices = true;
   funcPassManager.addPass(mlir::createLinalgFoldUnitExtentDimsPass(opts));
-
-  // Vectorization passes
-  // FIXME(newling) https://github.com/nod-ai/iree-amd-aie/issues/820
-  enableVectorizationPasses = false;
-  appendVectorizationToPipeline(funcPassManager, enableVectorizationPasses);
   funcPassManager.addPass(createCanonicalizerPass());
 
   // Comprehensive bufferization
@@ -521,7 +516,8 @@ void buildAMDAIETransformPassPipeline(
                                       enableVectorizationPasses);
   } else if (useLowerToAIEPipeline == LowerToAIEPassPipeline::AIR) {
     addMLIRAIRLoweringPasses(modulePassManager, device, useTilePipeline,
-                             matmulElementwiseFusion);
+                             matmulElementwiseFusion,
+                             enableVectorizationPasses);
   } else {
     assert(
         false &&
@@ -567,6 +563,7 @@ void addAMDAIEObjectFifoLoweringPasses(OpPassManager &passManager,
   {
     // Vectorization passes
     OpPassManager &funcPassManager = passManager.nest<func::FuncOp>();
+    // FIXME(newling) https://github.com/nod-ai/iree-amd-aie/issues/820
     enableVectorizationPasses =
         (useTilePipeline == TilePassPipeline::ConvDecomposePipeline)
             ? false
@@ -679,10 +676,21 @@ void addMLIRAIELoweringPasses(OpPassManager &pm) {
 // for details.
 void addMLIRAIRLoweringPasses(OpPassManager &passManager, AMDAIEDevice device,
                               TilePassPipeline useTilePipeline,
-                              bool matmulElementwiseFusion) {
+                              bool matmulElementwiseFusion,
+                              bool enableVectorizationPasses) {
   // Add passes for preparing for lowering to MLIR-AIR
   passManager.addPass(createEraseHALDescriptorTypeFromMemRefPass());
   passManager.addPass(memref::createFoldMemRefAliasOpsPass());
+  {
+    // Vectorization passes
+    OpPassManager &funcPassManager = passManager.nest<func::FuncOp>();
+    // FIXME(newling) https://github.com/nod-ai/iree-amd-aie/issues/820
+    enableVectorizationPasses =
+        (useTilePipeline == TilePassPipeline::ConvDecomposePipeline)
+            ? false
+            : enableVectorizationPasses;
+    appendVectorizationToPipeline(funcPassManager, enableVectorizationPasses);
+  }
   passManager.addPass(createAMDAIEBridgeToAIRPass());
 
   // Running canonicalization for all pipelines here results in failures.
@@ -846,8 +854,6 @@ void addMLIRAIRLoweringPasses(OpPassManager &passManager, AMDAIEDevice device,
   // Now lower using the AIE passes from MLIR-AIE.
   addMLIRAIELoweringPasses(passManager);
 }
-
-
 
 // NOTE: this runs on the top-level program module containing all hal.executable
 // ops.
