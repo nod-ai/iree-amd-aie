@@ -244,7 +244,7 @@ def AMDAIEFlattenLogicalObjectFifo :
 }
 
 def AMDAIEFunctionOutlining :
-  InterfacePass<"iree-amdaie-function-outlining", "mlir::FunctionOpInterface"> {
+  Pass<"iree-amdaie-function-outlining", "ModuleOp"> {
   let summary = "Function outlining";
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEFunctionOutliningPass()";
 }
