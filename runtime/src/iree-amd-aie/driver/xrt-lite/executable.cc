@@ -14,22 +14,13 @@
 #include "iree-amd-aie/schemas/pdi_executable_def_verifier.h"
 #include "iree/base/api.h"
 
-struct iree_hal_xrt_lite_native_executable_t {
-  // Abstract resource used for injecting reference counting and vtable; must be
-  // at offset 0.
-  iree_hal_resource_t resource;
-  iree_allocator_t host_allocator;
-  iree_host_size_t entry_point_count;
-  iree_hal_xrt_lite_kernel_params_t entry_points[16];
-};
-
 namespace {
 extern const iree_hal_executable_vtable_t
     iree_hal_xrt_lite_native_executable_vtable;
 }  // namespace
 
-static iree_hal_xrt_lite_native_executable_t*
-iree_hal_xrt_lite_native_executable_cast(iree_hal_executable_t* base_value) {
+iree_hal_xrt_lite_native_executable_t* iree_hal_xrt_lite_native_executable_cast(
+    iree_hal_executable_t* base_value) {
   IREE_HAL_ASSERT_TYPE(base_value, &iree_hal_xrt_lite_native_executable_vtable);
   return reinterpret_cast<iree_hal_xrt_lite_native_executable_t*>(base_value);
 }
@@ -176,14 +167,17 @@ iree_status_t iree_hal_xrt_lite_native_executable_create(
 
     std::vector<uint8_t> pdiVector(pdi_fb,
                                    pdi_fb + flatbuffers_string_len(pdi_fb));
-    params->pdiVector = pdiVector;
+    params->pdi = pdiVector;
     uint32_t asm_instr_index =
         flatbuffers_uint32_vec_at(asm_instr_indices_vec, entry_ordinal);
     iree_amd_aie_hal_xrt_lite_AsmInstDef_table_t asminst_def =
         iree_amd_aie_hal_xrt_lite_AsmInstDef_vec_at(asm_instrs_vec,
                                                     asm_instr_index);
-    params->asm_inst =
+    flatbuffers_uint32_vec_t asm_inst =
         iree_amd_aie_hal_xrt_lite_AsmInstDef_asm_inst_get(asminst_def);
+    std::vector<uint32_t> asmVector(
+        asm_inst, asm_inst + flatbuffers_uint32_vec_len(asm_inst));
+    params->asm_inst = asmVector;
 
     // Stash the entry point name in the string table for use when tracing.
     IREE_TRACE({
@@ -227,23 +221,6 @@ static void iree_hal_xrt_lite_native_executable_destroy(
   iree_allocator_free(host_allocator, executable);
 
   IREE_TRACE_ZONE_END(z0);
-}
-
-iree_status_t iree_hal_xrt_lite_native_executable_entry_point_kernel_params(
-    iree_hal_executable_t* base_executable, int32_t entry_point,
-    iree_hal_xrt_lite_kernel_params_t* out_params) {
-  iree_hal_xrt_lite_native_executable_t* executable =
-      iree_hal_xrt_lite_native_executable_cast(base_executable);
-  if (entry_point >= executable->entry_point_count) {
-    return iree_make_status(IREE_STATUS_OUT_OF_RANGE,
-                            "entry point ordinal %d out of range; executable "
-                            "only contains %" PRIhsz " entry points",
-                            entry_point, executable->entry_point_count);
-  }
-
-  memcpy(out_params, &executable->entry_points[entry_point],
-         sizeof(*out_params));
-  return iree_ok_status();
 }
 
 namespace {

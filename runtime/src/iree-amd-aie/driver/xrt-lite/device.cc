@@ -227,5 +227,8 @@ const iree_hal_device_vtable_t iree_hal_xrt_lite_device_vtable = {
     .create_semaphore = iree_hal_xrt_lite_device_create_semaphore,
     .queue_alloca = iree_hal_xrt_lite_device_queue_alloca,
     .queue_execute = iree_hal_xrt_lite_device_queue_execute,
+    .profiling_begin = unimplemented_ok_status,
+    .profiling_flush = unimplemented_ok_status,
+    .profiling_end = unimplemented_ok_status,
 };
 }
