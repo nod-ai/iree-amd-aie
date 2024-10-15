@@ -32,8 +32,9 @@ class AMDAIEFunctionOutliningPass
 };
 
 void AMDAIEFunctionOutliningPass::runOnOperation() {
-  mlir::FunctionOpInterface funcOp = getOperation();
-  ModuleOp moduleOp = funcOp->getParentOfType<ModuleOp>();
+  // mlir::FunctionOpInterface funcOp = getOperation();
+  // ModuleOp moduleOp = funcOp->getParentOfType<ModuleOp>();
+  ModuleOp moduleOp = getOperation();
   MLIRContext *context = &getContext();
   IRRewriter rewriter(context);
 
@@ -55,13 +56,10 @@ void AMDAIEFunctionOutliningPass::runOnOperation() {
     // Form outlined FunctionType.
     SmallVector<Type> inputTypes = llvm::map_to_vector(
         computeOp.getDpsInputs(), [](Value v) { return v.getType(); });
-    SmallVector<Type> outputTypes =
-        llvm::map_to_vector(computeOp.getDpsInits(), [&](Value v) {
-          inputTypes.push_back(v.getType());
-          return v.getType();
-        });
+    for (Value val : computeOp.getDpsInits())
+      inputTypes.push_back(val.getType());
     auto outlinedFuncType =
-        FunctionType::get(rewriter.getContext(), inputTypes, outputTypes);
+        FunctionType::get(rewriter.getContext(), inputTypes, {});
 
     // Form outlined FuncSignature
     rewriter.setInsertionPointToStart(moduleOp.getBody());
@@ -91,20 +89,20 @@ void AMDAIEFunctionOutliningPass::runOnOperation() {
 
     // Create terminator op returning the cloned compute op's results.
     rewriter.setInsertionPointToEnd(outlinedFuncBody);
-    rewriter.create<func::ReturnOp>(clonedComputeOp->getLoc(),
-                                    clonedComputeOp->getResult(0));
+    rewriter.create<func::ReturnOp>(clonedComputeOp->getLoc(), ValueRange({}));
 
     return outlinedFunc;
   };
 
-  funcOp.walk([&](linalg::LinalgOp computeOp) {
+  moduleOp.walk([&](linalg::LinalgOp computeOp) {
     if (isa<linalg::FillOp, linalg::CopyOp>(computeOp))
       return WalkResult::skip();
     func::FuncOp outlinedFuncOp = outlinedToAFunction(computeOp);
     rewriter.setInsertionPoint(computeOp);
-    auto callOp = rewriter.create<func::CallOp>(
-        computeOp.getLoc(), outlinedFuncOp, computeOp->getOperands());
-    rewriter.replaceOp(computeOp, callOp.getResults());
+    rewriter.create<func::CallOp>(computeOp.getLoc(), outlinedFuncOp,
+                                  computeOp->getOperands());
+    rewriter.eraseOp(computeOp);
+    // rewriter.replaceOp(computeOp, callOp.getResults());
     return WalkResult::advance();
   });
 }
