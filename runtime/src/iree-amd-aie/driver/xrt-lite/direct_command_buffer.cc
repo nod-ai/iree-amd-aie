@@ -178,7 +178,7 @@ static iree_status_t iree_hal_xrt_lite_direct_command_buffer_copy_buffer(
 
 static iree_status_t iree_hal_xrt_lite_direct_command_buffer_dispatch(
     iree_hal_command_buffer_t* base_command_buffer,
-    iree_hal_executable_t* executable, int32_t entry_point,
+    iree_hal_executable_t* base_executable, int32_t entry_point,
     const uint32_t workgroup_count[3], iree_const_byte_span_t constants,
     iree_hal_buffer_ref_list_t bindings, iree_hal_dispatch_flags_t flags) {
   iree_hal_xrt_lite_direct_command_buffer* command_buffer =
@@ -188,34 +188,35 @@ static iree_status_t iree_hal_xrt_lite_direct_command_buffer_dispatch(
 
   // Lookup kernel parameters used for side-channeling additional launch
   // information from the compiler.
-  iree_hal_xrt_lite_kernel_params_t kernel_params;
-  IREE_RETURN_AND_END_ZONE_IF_ERROR(
-      z0, iree_hal_xrt_lite_native_executable_entry_point_kernel_params(
-              executable, entry_point, &kernel_params));
+  iree_hal_xrt_lite_native_executable_t* executable =
+      iree_hal_xrt_lite_native_executable_cast(base_executable);
+  iree_hal_xrt_lite_kernel_params_t kernel_params =
+      executable->entry_points[entry_point];
 
   IREE_RETURN_AND_END_ZONE_IF_ERROR(
       z0, iree_hal_resource_set_insert(command_buffer->resource_set, 1,
                                        &executable));
 
-  kernel_params.context = command_buffer->shim_device->create_hw_context(
-      kernel_params.pdiVector, kernel_params.kernel_name);
-  uint32_t num_instr = flatbuffers_uint32_vec_len(kernel_params.asm_inst);
-  size_t ctrl_code_size = num_instr * sizeof(uint32_t);
+  std::unique_ptr<shim_xdna::hw_ctx> context =
+      command_buffer->shim_device->create_hw_context(kernel_params.pdi,
+                                                     kernel_params.kernel_name);
+  size_t ctrl_code_size = kernel_params.asm_inst.size() * sizeof(uint32_t);
   auto bo_ctrl_code = command_buffer->shim_device->alloc_bo(
       ctrl_code_size, XCL_BO_FLAGS_CACHEABLE);
   uint32_t* instr_buffer = static_cast<uint32_t*>(bo_ctrl_code->map());
-  memcpy(instr_buffer, kernel_params.asm_inst, ctrl_code_size);
+  memcpy(instr_buffer, kernel_params.asm_inst.data(), ctrl_code_size);
   bo_ctrl_code->sync(shim_xdna::direction::host2device);
 
   shim_xdna::cuidx_t cu_idx =
-      kernel_params.context->open_cu_context(kernel_params.kernel_name);
+      context->open_cu_context(kernel_params.kernel_name);
 
   shim_xdna::kernel ebuf(command_buffer->shim_device->get_pdev(), ERT_START_CU);
   ebuf.set_cu_idx(cu_idx);
   unsigned int opcode = 3;
   ebuf.add_arg_64(opcode);
   ebuf.add_arg_bo(*bo_ctrl_code);
-  ebuf.add_arg_32(num_instr);
+  ebuf.add_arg_32(kernel_params.asm_inst.size());
+
   for (iree_host_size_t j = 0; j < bindings.count; ++j) {
     shim_xdna::bo* bo = iree_hal_xrt_lite_buffer_handle(
         iree_hal_buffer_allocated_buffer(bindings.values[j].buffer));
@@ -223,7 +224,7 @@ static iree_status_t iree_hal_xrt_lite_direct_command_buffer_dispatch(
     bo->sync(shim_xdna::direction::host2device);
   }
 
-  shim_xdna::hw_q* hwq = kernel_params.context->get_hw_queue();
+  shim_xdna::hw_q* hwq = context->get_hw_queue();
   hwq->issue_command(ebuf.get_exec_buf_bo());
   hwq->wait_command(ebuf.get_exec_buf_bo(), 0);
 
