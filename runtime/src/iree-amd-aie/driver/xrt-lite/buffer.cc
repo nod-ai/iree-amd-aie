@@ -25,20 +25,13 @@ iree_status_t iree_hal_xrt_lite_buffer::map_range(
           ? IREE_HAL_BUFFER_USAGE_MAPPING_PERSISTENT
           : IREE_HAL_BUFFER_USAGE_MAPPING_SCOPED));
 
-  // TODO(null): perform mapping as described. Note that local-to-buffer range
-  // adjustment may be required. The resulting mapping is populated with
-  // standard information such as contents indicating the host addressable
-  // memory range of the mapped buffer and implementation-specific information
-  // if additional resources are required. iree_hal_buffer_emulated_map_range
-  // can be used by implementations that have no way of providing host
-  // pointers at a large cost (alloc + device->host transfer on map and
-  // host->device transfer + dealloc on umap). Try not to use that.
   void* host_ptr = this->bo->map();
-  IREE_ASSERT(host_ptr != nullptr);  // Should be guaranteed by previous checks.
+  // Should be guaranteed by previous checks.
+  IREE_ASSERT(host_ptr != nullptr);
   uint8_t* data_ptr = (uint8_t*)host_ptr + local_byte_offset;
   iree_status_t status =
       this->invalidate_range(local_byte_offset, local_byte_length);
-  // If we mapped for discard scribble over the bytes. This is not a mandated
+  // If we mapped for discard, scribble over the bytes. This is not a mandated
   // behavior but it will make debugging issues easier. Alternatively for heap
   // buffers we could reallocate them such that ASAN yells, but that would
   // only work if the entire buffer was discarded.
@@ -54,18 +47,12 @@ iree_status_t iree_hal_xrt_lite_buffer::map_range(
 iree_status_t iree_hal_xrt_lite_buffer::unmap_range(
     iree_device_size_t local_byte_offset, iree_device_size_t local_byte_length,
     iree_hal_buffer_mapping_t* mapping) {
-  // TODO(null): reverse of map_range. Note that cache invalidation is
-  // explicit via invalidate_range and need not be performed here. If using
-  // emulated mapping this must call iree_hal_buffer_emulated_unmap_range to
-  // release the transient resources.
   return this->flush_range(local_byte_offset, local_byte_length);
 }
 
 iree_status_t iree_hal_xrt_lite_buffer::invalidate_range(
     iree_device_size_t local_byte_offset,
     iree_device_size_t local_byte_length) {
-  // TODO(null): invalidate the range if required by the buffer. Writes on the
-  // device are expected to be visible to the host after this returns.
   if (IREE_UNLIKELY(!this->bo)) {
     return iree_make_status(
         IREE_STATUS_FAILED_PRECONDITION,
@@ -78,8 +65,6 @@ iree_status_t iree_hal_xrt_lite_buffer::invalidate_range(
 iree_status_t iree_hal_xrt_lite_buffer::flush_range(
     iree_device_size_t local_byte_offset,
     iree_device_size_t local_byte_length) {
-  // TODO(null): flush the range if required by the buffer. Writes on the
-  // host are expected to be visible to the device after this returns.
   if (IREE_UNLIKELY(!this->bo)) {
     return iree_make_status(
         IREE_STATUS_FAILED_PRECONDITION,
@@ -113,10 +98,6 @@ iree_status_t iree_hal_xrt_lite_buffer_wrap(
                              memory_type, allowed_access, allowed_usage,
                              &iree_hal_xrt_lite_buffer_vtable, &buffer->base);
   buffer->release_callback = release_callback;
-  // TODO(null): retain or take ownership of provided handles/pointers/etc.
-  // Implementations may want to pass in an internal buffer type discriminator
-  // if there are multiple or use different top-level iree_hal_buffer_t
-  // implementations.
   buffer->bo = std::move(bo);
   *out_buffer = &buffer->base;
 
@@ -130,9 +111,6 @@ static void iree_hal_xrt_lite_buffer_destroy(iree_hal_buffer_t* base_buffer) {
   iree_allocator_t host_allocator = base_buffer->host_allocator;
   IREE_TRACE_ZONE_BEGIN(z0);
 
-  // Optionally call a release callback when the buffer is destroyed. Not all
-  // implementations may require this but it's cheap and provides additional
-  // flexibility.
   if (buffer->release_callback.fn) {
     buffer->release_callback.fn(buffer->release_callback.user_data,
                                 base_buffer);
