@@ -96,6 +96,7 @@ artifacts/
 
 # Local cache files
 llvm-external-projects/iree-dialects/.cache
+.build-cache
 
 # pkgci artifacts
 artifacts/

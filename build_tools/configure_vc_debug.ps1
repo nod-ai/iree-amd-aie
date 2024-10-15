@@ -57,7 +57,6 @@ $env:CCACHE_SLOPPINESS = 'include_file_ctime,include_file_mtime,time_macros'
 echo "Building IREE"
 
 $CMAKE_ARGS = @(
-    "-GNinja"
     "-DCMAKE_BUILD_TYPE=Debug"
     "-DCMAKE_INSTALL_PREFIX=$install_dir"
     "-DCMAKE_INSTALL_LIBDIR=lib"
@@ -90,4 +89,4 @@ $CMAKE_ARGS = @(
 $CMAKE_ARGS += @("-DIREE_BUILD_PYTHON_BINDINGS=OFF")
 
 
-& cmake $CMAKE_ARGS -S $iree_dir -B $build_dir
+& cmake -G "Visual Studio 17 2022" $CMAKE_ARGS -S $iree_dir -B $build_dir
