@@ -1030,8 +1030,8 @@ if __name__ == "__main__":
 
     parser.add_argument(
         "--device-hal",
-        default="xrt",
-        const="xrt",
+        default="xrt-lite",
+        const="xrt-lite",
         nargs="?",
         choices=["xrt", "xrt-lite"],
         help="device HAL to use (default: %(default)s)",
