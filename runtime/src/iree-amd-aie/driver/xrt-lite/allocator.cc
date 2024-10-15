@@ -11,10 +11,6 @@
 #include "iree-amd-aie/driver/xrt-lite/shim/linux/kmq/device.h"
 #include "iree-amd-aie/driver/xrt-lite/util.h"
 
-#if IREE_TRACING_FEATURES & IREE_TRACING_FEATURE_ALLOCATION_TRACKING
-static const char* IREE_HAL_XRT_LITE_ALLOCATOR_ID = "XRT-LITE unpooled";
-#endif  // IREE_TRACING_FEATURE_ALLOCATION_TRACKING
-
 namespace {
 extern const iree_hal_allocator_vtable_t iree_hal_xrt_lite_allocator_vtable;
 }
@@ -95,8 +91,6 @@ struct iree_hal_xrt_lite_allocator {
         iree_hal_buffer_release_callback_null(), this->host_allocator, &buffer);
 
     if (iree_status_is_ok(status)) {
-      IREE_TRACE_ALLOC_NAMED(IREE_HAL_XRT_LITE_ALLOCATOR_ID, impl_ptr,
-                             allocation_size);
       IREE_STATISTICS(iree_hal_allocator_statistics_record_alloc(
           &this->statistics, compat_params.type, allocation_size));
       *out_buffer = buffer;
@@ -109,7 +103,6 @@ struct iree_hal_xrt_lite_allocator {
   void deallocate_buffer(iree_hal_buffer_t* base_buffer) {
     bool was_imported = false;
     if (!was_imported) {
-      IREE_TRACE_FREE_NAMED(IREE_HAL_XRT_LITE_ALLOCATOR_ID, impl_ptr);
       IREE_STATISTICS(iree_hal_allocator_statistics_record_free(
           &this->statistics, iree_hal_buffer_memory_type(base_buffer),
           iree_hal_buffer_allocation_size(base_buffer)));
