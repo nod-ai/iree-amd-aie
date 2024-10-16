@@ -1,4 +1,4 @@
-// Copyright 2023 The IREE Authors
+// Copyright 2024 The IREE Authors
 //
 // Licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -25,12 +25,6 @@ iree_hal_xrt_lite_native_executable_t* iree_hal_xrt_lite_native_executable_cast(
   return reinterpret_cast<iree_hal_xrt_lite_native_executable_t*>(base_value);
 }
 
-// Verifies the structure of the flatbuffer so that we can avoid doing so during
-// runtime.
-//
-// There are still some conditions we must be aware of (such as omitted names on
-// functions with internal linkage), however we shouldn't need to bounds check
-// anything within the flatbuffer after this succeeds.
 static iree_status_t
 iree_amd_aie_hal_xrt_lite_native_executable_flatbuffer_verify(
     iree_const_byte_span_t flatbuffer_data) {
@@ -41,9 +35,6 @@ iree_amd_aie_hal_xrt_lite_native_executable_flatbuffer_verify(
         flatbuffer_data.data_length);
   }
 
-  // Run flatcc generated verification. This ensures all pointers are in-bounds
-  // and that we can safely walk the file, but not that the actual contents of
-  // the flatbuffer meet our expectations.
   int verify_ret = iree_amd_aie_hal_xrt_lite_ExecutableDef_verify_as_root(
       flatbuffer_data.data, flatbuffer_data.data_length);
   if (verify_ret != flatcc_verify_ok) {
@@ -123,10 +114,6 @@ iree_status_t iree_hal_xrt_lite_native_executable_create(
   iree_host_size_t entry_point_count =
       flatbuffers_string_vec_len(entry_points_vec);
 
-  // Calculate the total number of characters across all entry point names. This
-  // is only required when tracing so that we can store copies of the names as
-  // the flatbuffer storing the strings may be released while the executable is
-  // still live.
   iree_host_size_t total_entry_point_name_chars = 0;
   IREE_TRACE({
     for (iree_host_size_t entry_ordinal = 0; entry_ordinal < entry_point_count;
@@ -179,7 +166,6 @@ iree_status_t iree_hal_xrt_lite_native_executable_create(
         asm_inst, asm_inst + flatbuffers_uint32_vec_len(asm_inst));
     params->asm_inst = asmVector;
 
-    // Stash the entry point name in the string table for use when tracing.
     IREE_TRACE({
       memcpy(string_table_buffer, params->kernel_name.data(),
              params->kernel_name.size());

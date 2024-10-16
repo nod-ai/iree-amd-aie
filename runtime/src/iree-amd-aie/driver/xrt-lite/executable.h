@@ -1,4 +1,4 @@
-// Copyright 2023 The IREE Authors
+// Copyright 2024 The IREE Authors
 //
 // Licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -17,11 +17,6 @@
 #include "iree/base/tracing.h"
 #include "iree/hal/api.h"
 
-#ifdef __cplusplus
-extern "C" {
-#endif  // __cplusplus
-
-// Object and launch parameters for a compute kernel.
 struct iree_hal_xrt_lite_kernel_params_t {
   std::vector<uint8_t> pdi;
   std::vector<uint32_t> asm_inst;
@@ -42,15 +37,11 @@ struct iree_hal_xrt_lite_native_executable_t {
 iree_hal_xrt_lite_native_executable_t* iree_hal_xrt_lite_native_executable_cast(
     iree_hal_executable_t* base_value);
 
-// |out_executable| must be released by the caller (see
+// `out_executable` must be released by the caller (see
 // iree_hal_executable_release).
 iree_status_t iree_hal_xrt_lite_native_executable_create(
     shim_xdna::device* shim_device,
     const iree_hal_executable_params_t* executable_params,
     iree_allocator_t host_allocator, iree_hal_executable_t** out_executable);
-
-#ifdef __cplusplus
-}       // extern "C"
-#endif  // __cplusplus
 
 #endif  // IREE_AMD_AIE_DRIVER_XRT_LITE_NATIVE_EXECUTABLE_H_

@@ -7,6 +7,8 @@
 #include "iree-amd-aie/driver/xrt-lite/api.h"
 #include "util.h"
 
+#define IREE_HAL_XRT_LITE_DEVICE_ID_DEFAULT 0
+
 typedef struct iree_hal_xrt_lite_driver_t {
   iree_hal_resource_t resource;
   iree_allocator_t host_allocator;
@@ -68,8 +70,6 @@ static void iree_hal_xrt_lite_driver_destroy(iree_hal_driver_t* base_driver) {
 
   IREE_TRACE_ZONE_END(z0);
 }
-
-#define IREE_HAL_XRT_LITE_DEVICE_ID_DEFAULT 0
 
 static iree_status_t iree_hal_xrt_lite_driver_query_available_devices(
     iree_hal_driver_t* base_driver, iree_allocator_t host_allocator,

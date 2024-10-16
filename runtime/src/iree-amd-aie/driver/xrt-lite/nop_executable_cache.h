@@ -1,4 +1,4 @@
-// Copyright 2023 The IREE Authors
+// Copyright 2024 The IREE Authors
 //
 // Licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -11,23 +11,11 @@
 #include "iree/base/api.h"
 #include "iree/hal/api.h"
 
-#ifdef __cplusplus
-extern "C" {
-#endif  // __cplusplus
-
-// Creates a no-op executable cache that does not cache at all.
-// This is useful to isolate pipeline caching behavior and verify compilation
-// behavior.
-//
-// |out_executable_cache| must be released by the caller (see
+// `out_executable_cache` must be released by the caller (see
 // iree_hal_executable_cache_release).
 iree_status_t iree_hal_xrt_lite_nop_executable_cache_create(
     shim_xdna::device* shim_device, iree_string_view_t identifier,
     iree_allocator_t host_allocator,
     iree_hal_executable_cache_t** out_executable_cache);
-
-#ifdef __cplusplus
-}       // extern "C"
-#endif  // __cplusplus
 
 #endif  // IREE_AMD_AIE_DRIVER_XRT_LITE_NOP_EXECUTABLE_CACHE_H_

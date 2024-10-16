@@ -19,9 +19,9 @@ struct iree_hal_xrt_lite_buffer {
   iree_hal_buffer_release_callback_t release_callback;
 };
 
-iree_status_t invalidate_range(iree_hal_buffer_t* base_buffer,
-                               iree_device_size_t local_byte_offset,
-                               iree_device_size_t local_byte_length) {
+iree_status_t iree_hal_xrt_lite_buffer_invalidate_range(
+    iree_hal_buffer_t* base_buffer, iree_device_size_t local_byte_offset,
+    iree_device_size_t local_byte_length) {
   iree_hal_xrt_lite_buffer* buffer =
       reinterpret_cast<iree_hal_xrt_lite_buffer*>(base_buffer);
   if (IREE_UNLIKELY(!buffer->bo)) {
@@ -34,12 +34,11 @@ iree_status_t invalidate_range(iree_hal_buffer_t* base_buffer,
   return iree_ok_status();
 }
 
-iree_status_t map_range(iree_hal_buffer_t* base_buffer,
-                        iree_hal_mapping_mode_t mapping_mode,
-                        iree_hal_memory_access_t memory_access,
-                        iree_device_size_t local_byte_offset,
-                        iree_device_size_t local_byte_length,
-                        iree_hal_buffer_mapping_t* mapping) {
+iree_status_t iree_hal_xrt_lite_buffer_map_range(
+    iree_hal_buffer_t* base_buffer, iree_hal_mapping_mode_t mapping_mode,
+    iree_hal_memory_access_t memory_access,
+    iree_device_size_t local_byte_offset, iree_device_size_t local_byte_length,
+    iree_hal_buffer_mapping_t* mapping) {
   iree_hal_xrt_lite_buffer* buffer =
       reinterpret_cast<iree_hal_xrt_lite_buffer*>(base_buffer);
   IREE_RETURN_IF_ERROR(iree_hal_buffer_validate_memory_type(
@@ -57,8 +56,8 @@ iree_status_t map_range(iree_hal_buffer_t* base_buffer,
   // Should be guaranteed by previous checks.
   IREE_ASSERT(host_ptr != nullptr);
   uint8_t* data_ptr = reinterpret_cast<uint8_t*>(host_ptr) + local_byte_offset;
-  iree_status_t status =
-      invalidate_range(base_buffer, local_byte_offset, local_byte_length);
+  iree_status_t status = iree_hal_xrt_lite_buffer_invalidate_range(
+      base_buffer, local_byte_offset, local_byte_length);
   // If we mapped for discard, scribble over the bytes. This is not a mandated
   // behavior but it will make debugging issues easier. Alternatively for heap
   // buffers we could reallocate them such that ASAN yells, but that would
@@ -72,9 +71,9 @@ iree_status_t map_range(iree_hal_buffer_t* base_buffer,
   return status;
 }
 
-iree_status_t flush_range(iree_hal_buffer_t* base_buffer,
-                          iree_device_size_t local_byte_offset,
-                          iree_device_size_t local_byte_length) {
+iree_status_t iree_hal_xrt_lite_buffer_flush_range(
+    iree_hal_buffer_t* base_buffer, iree_device_size_t local_byte_offset,
+    iree_device_size_t local_byte_length) {
   iree_hal_xrt_lite_buffer* buffer =
       reinterpret_cast<iree_hal_xrt_lite_buffer*>(base_buffer);
   if (IREE_UNLIKELY(!buffer->bo)) {
@@ -87,11 +86,11 @@ iree_status_t flush_range(iree_hal_buffer_t* base_buffer,
   return iree_ok_status();
 }
 
-iree_status_t unmap_range(iree_hal_buffer_t* base_buffer,
-                          iree_device_size_t local_byte_offset,
-                          iree_device_size_t local_byte_length,
-                          iree_hal_buffer_mapping_t* mapping) {
-  return flush_range(base_buffer, local_byte_offset, local_byte_length);
+iree_status_t iree_hal_xrt_lite_buffer_unmap_range(
+    iree_hal_buffer_t* base_buffer, iree_device_size_t local_byte_offset,
+    iree_device_size_t local_byte_length, iree_hal_buffer_mapping_t* mapping) {
+  return iree_hal_xrt_lite_buffer_flush_range(base_buffer, local_byte_offset,
+                                              local_byte_length);
 }
 
 iree_status_t iree_hal_xrt_lite_buffer_wrap(
@@ -148,9 +147,9 @@ namespace {
 const iree_hal_buffer_vtable_t iree_hal_xrt_lite_buffer_vtable = {
     .recycle = iree_hal_buffer_recycle,
     .destroy = iree_hal_xrt_lite_buffer_destroy,
-    .map_range = map_range,
-    .unmap_range = unmap_range,
-    .invalidate_range = invalidate_range,
-    .flush_range = flush_range,
+    .map_range = iree_hal_xrt_lite_buffer_map_range,
+    .unmap_range = iree_hal_xrt_lite_buffer_unmap_range,
+    .invalidate_range = iree_hal_xrt_lite_buffer_invalidate_range,
+    .flush_range = iree_hal_xrt_lite_buffer_flush_range,
 };
 }

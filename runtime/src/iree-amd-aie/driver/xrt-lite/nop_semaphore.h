@@ -12,16 +12,8 @@
 #include "iree/base/api.h"
 #include "iree/hal/api.h"
 
-#ifdef __cplusplus
-extern "C" {
-#endif  // __cplusplus
-
 iree_status_t iree_hal_xrt_lite_semaphore_create(
     iree_allocator_t host_allocator, uint64_t initial_value,
     iree_hal_semaphore_t** out_semaphore);
-
-#ifdef __cplusplus
-}       // extern "C"
-#endif  // __cplusplus
 
 #endif  // IREE_AMD_AIE_DRIVER_XRT_LITE_NOP_SEMAPHORE_H_
