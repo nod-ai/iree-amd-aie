@@ -27,17 +27,4 @@ iree_status_t unimplemented_ok_status(Params...) {
 template <typename... Params>
 void unimplemented_ok_void(Params...) {}
 
-#define MEMBER_WRAPPER(From, To, member, return_t)       \
-  template <typename... Args>                            \
-  static return_t To##_##member(From* b, Args... args) { \
-    auto* obj = reinterpret_cast<To*>(b);                \
-    return obj->member(args...);                         \
-  }
-
-#define MEMBER_WRAPPER_STATUS(From, To, member) \
-  MEMBER_WRAPPER(From, To, member, iree_status_t)
-
-#define MEMBER_WRAPPER_VOID(From, To, member) \
-  MEMBER_WRAPPER(From, To, member, void)
-
 #endif  // IREE_AMD_AIE_DRIVER_XRT_LITE_UTIL_H

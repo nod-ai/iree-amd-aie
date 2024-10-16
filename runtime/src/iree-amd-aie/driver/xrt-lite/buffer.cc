@@ -9,28 +9,56 @@
 #include "iree-amd-aie/driver/xrt-lite/shim/linux/kmq/bo.h"
 #include "iree-amd-aie/driver/xrt-lite/util.h"
 
-iree_status_t iree_hal_xrt_lite_buffer::map_range(
-    iree_hal_mapping_mode_t mapping_mode,
-    iree_hal_memory_access_t memory_access,
-    iree_device_size_t local_byte_offset, iree_device_size_t local_byte_length,
-    iree_hal_buffer_mapping_t* mapping) {
+namespace {
+extern const iree_hal_buffer_vtable_t iree_hal_xrt_lite_buffer_vtable;
+}
+
+struct iree_hal_xrt_lite_buffer {
+  iree_hal_buffer_t base;
+  std::unique_ptr<shim_xdna::bo> bo;
+  iree_hal_buffer_release_callback_t release_callback;
+};
+
+iree_status_t invalidate_range(iree_hal_buffer_t* base_buffer,
+                               iree_device_size_t local_byte_offset,
+                               iree_device_size_t local_byte_length) {
+  iree_hal_xrt_lite_buffer* buffer =
+      reinterpret_cast<iree_hal_xrt_lite_buffer*>(base_buffer);
+  if (IREE_UNLIKELY(!buffer->bo)) {
+    return iree_make_status(
+        IREE_STATUS_FAILED_PRECONDITION,
+        "buffer does not have device memory attached and cannot be mapped");
+  }
+  buffer->bo->sync(shim_xdna::direction::device2host, local_byte_length,
+                   local_byte_offset);
+  return iree_ok_status();
+}
+
+iree_status_t map_range(iree_hal_buffer_t* base_buffer,
+                        iree_hal_mapping_mode_t mapping_mode,
+                        iree_hal_memory_access_t memory_access,
+                        iree_device_size_t local_byte_offset,
+                        iree_device_size_t local_byte_length,
+                        iree_hal_buffer_mapping_t* mapping) {
+  iree_hal_xrt_lite_buffer* buffer =
+      reinterpret_cast<iree_hal_xrt_lite_buffer*>(base_buffer);
   IREE_RETURN_IF_ERROR(iree_hal_buffer_validate_memory_type(
       iree_hal_buffer_memory_type(
-          reinterpret_cast<const iree_hal_buffer_t*>(this)),
+          reinterpret_cast<const iree_hal_buffer_t*>(buffer)),
       IREE_HAL_MEMORY_TYPE_HOST_VISIBLE));
   IREE_RETURN_IF_ERROR(iree_hal_buffer_validate_usage(
       iree_hal_buffer_allowed_usage(
-          reinterpret_cast<const iree_hal_buffer_t*>(this)),
+          reinterpret_cast<const iree_hal_buffer_t*>(buffer)),
       mapping_mode == IREE_HAL_MAPPING_MODE_PERSISTENT
           ? IREE_HAL_BUFFER_USAGE_MAPPING_PERSISTENT
           : IREE_HAL_BUFFER_USAGE_MAPPING_SCOPED));
 
-  void* host_ptr = this->bo->map();
+  void* host_ptr = buffer->bo->map();
   // Should be guaranteed by previous checks.
   IREE_ASSERT(host_ptr != nullptr);
-  uint8_t* data_ptr = (uint8_t*)host_ptr + local_byte_offset;
+  uint8_t* data_ptr = reinterpret_cast<uint8_t*>(host_ptr) + local_byte_offset;
   iree_status_t status =
-      this->invalidate_range(local_byte_offset, local_byte_length);
+      invalidate_range(base_buffer, local_byte_offset, local_byte_length);
   // If we mapped for discard, scribble over the bytes. This is not a mandated
   // behavior but it will make debugging issues easier. Alternatively for heap
   // buffers we could reallocate them such that ASAN yells, but that would
@@ -44,38 +72,26 @@ iree_status_t iree_hal_xrt_lite_buffer::map_range(
   return status;
 }
 
-iree_status_t iree_hal_xrt_lite_buffer::unmap_range(
-    iree_device_size_t local_byte_offset, iree_device_size_t local_byte_length,
-    iree_hal_buffer_mapping_t* mapping) {
-  return this->flush_range(local_byte_offset, local_byte_length);
-}
-
-iree_status_t iree_hal_xrt_lite_buffer::invalidate_range(
-    iree_device_size_t local_byte_offset,
-    iree_device_size_t local_byte_length) {
-  if (IREE_UNLIKELY(!this->bo)) {
+iree_status_t flush_range(iree_hal_buffer_t* base_buffer,
+                          iree_device_size_t local_byte_offset,
+                          iree_device_size_t local_byte_length) {
+  iree_hal_xrt_lite_buffer* buffer =
+      reinterpret_cast<iree_hal_xrt_lite_buffer*>(base_buffer);
+  if (IREE_UNLIKELY(!buffer->bo)) {
     return iree_make_status(
         IREE_STATUS_FAILED_PRECONDITION,
         "buffer does not have device memory attached and cannot be mapped");
   }
-  this->bo->sync(shim_xdna::direction::device2host);
+  buffer->bo->sync(shim_xdna::direction::host2device, local_byte_length,
+                   local_byte_offset);
   return iree_ok_status();
 }
 
-iree_status_t iree_hal_xrt_lite_buffer::flush_range(
-    iree_device_size_t local_byte_offset,
-    iree_device_size_t local_byte_length) {
-  if (IREE_UNLIKELY(!this->bo)) {
-    return iree_make_status(
-        IREE_STATUS_FAILED_PRECONDITION,
-        "buffer does not have device memory attached and cannot be mapped");
-  }
-  this->bo->sync(shim_xdna::direction::host2device);
-  return iree_ok_status();
-}
-
-namespace {
-extern const iree_hal_buffer_vtable_t iree_hal_xrt_lite_buffer_vtable;
+iree_status_t unmap_range(iree_hal_buffer_t* base_buffer,
+                          iree_device_size_t local_byte_offset,
+                          iree_device_size_t local_byte_length,
+                          iree_hal_buffer_mapping_t* mapping) {
+  return flush_range(base_buffer, local_byte_offset, local_byte_length);
 }
 
 iree_status_t iree_hal_xrt_lite_buffer_wrap(
@@ -128,21 +144,13 @@ shim_xdna::bo* iree_hal_xrt_lite_buffer_handle(iree_hal_buffer_t* base_buffer) {
   return buffer->bo.get();
 }
 
-#define BUFFER_MEMBER_STATUS(member) \
-  MEMBER_WRAPPER_STATUS(iree_hal_buffer_t, iree_hal_xrt_lite_buffer, member)
-
-BUFFER_MEMBER_STATUS(map_range);
-BUFFER_MEMBER_STATUS(unmap_range);
-BUFFER_MEMBER_STATUS(invalidate_range);
-BUFFER_MEMBER_STATUS(flush_range);
-
 namespace {
 const iree_hal_buffer_vtable_t iree_hal_xrt_lite_buffer_vtable = {
     .recycle = iree_hal_buffer_recycle,
     .destroy = iree_hal_xrt_lite_buffer_destroy,
-    .map_range = iree_hal_xrt_lite_buffer_map_range,
-    .unmap_range = iree_hal_xrt_lite_buffer_unmap_range,
-    .invalidate_range = iree_hal_xrt_lite_buffer_invalidate_range,
-    .flush_range = iree_hal_xrt_lite_buffer_flush_range,
+    .map_range = map_range,
+    .unmap_range = unmap_range,
+    .invalidate_range = invalidate_range,
+    .flush_range = flush_range,
 };
 }

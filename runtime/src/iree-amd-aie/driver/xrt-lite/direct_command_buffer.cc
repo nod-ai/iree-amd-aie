@@ -13,13 +13,7 @@
 #include "iree/hal/utils/resource_set.h"
 #include "util.h"
 
-// The max number of bindings per descriptor set allowed in the XRT HAL
-// implementation.
 #define IREE_HAL_XRT_LITE_MAX_DESCRIPTOR_SET_BINDING_COUNT 16
-
-// The max number of descriptor sets allowed in the XRT HAL implementation.
-// This depends on the general descriptor set planning in IREE and should adjust
-// with it.
 #define IREE_HAL_XRT_LITE_MAX_DESCRIPTOR_SET_COUNT 4
 
 struct iree_hal_xrt_lite_direct_command_buffer {
@@ -116,21 +110,6 @@ static void iree_hal_xrt_lite_direct_command_buffer_destroy(
   IREE_TRACE_ZONE_END(z0);
 }
 
-static iree_status_t iree_hal_xrt_lite_direct_command_buffer_end(
-    iree_hal_command_buffer_t* base_command_buffer) {
-  iree_hal_xrt_lite_direct_command_buffer* command_buffer =
-      iree_hal_xrt_lite_direct_command_buffer_cast(base_command_buffer);
-  IREE_TRACE_ZONE_BEGIN(z0);
-  iree_arena_reset(&command_buffer->arena);
-  iree_hal_resource_set_free(command_buffer->resource_set);
-  IREE_RETURN_AND_END_ZONE_IF_ERROR(
-      z0, iree_hal_resource_set_allocate(command_buffer->arena.block_pool,
-                                         &command_buffer->resource_set));
-
-  IREE_TRACE_ZONE_END(z0);
-  return iree_ok_status();
-}
-
 static iree_status_t iree_hal_xrt_lite_direct_command_buffer_update_buffer(
     iree_hal_command_buffer_t* base_command_buffer, const void* source_buffer,
     iree_host_size_t source_offset, iree_hal_buffer_ref_t target_ref) {
@@ -197,9 +176,6 @@ static iree_status_t iree_hal_xrt_lite_direct_command_buffer_dispatch(
       z0, iree_hal_resource_set_insert(command_buffer->resource_set, 1,
                                        &executable));
 
-  std::unique_ptr<shim_xdna::hw_ctx> context =
-      command_buffer->shim_device->create_hw_context(kernel_params.pdi,
-                                                     kernel_params.kernel_name);
   size_t ctrl_code_size = kernel_params.asm_inst.size() * sizeof(uint32_t);
   auto bo_ctrl_code = command_buffer->shim_device->alloc_bo(
       ctrl_code_size, XCL_BO_FLAGS_CACHEABLE);
@@ -207,10 +183,13 @@ static iree_status_t iree_hal_xrt_lite_direct_command_buffer_dispatch(
   memcpy(instr_buffer, kernel_params.asm_inst.data(), ctrl_code_size);
   bo_ctrl_code->sync(shim_xdna::direction::host2device);
 
+  shim_xdna::kernel ebuf(command_buffer->shim_device->get_pdev(), ERT_START_CU);
+  std::unique_ptr<shim_xdna::hw_ctx> context =
+      command_buffer->shim_device->create_hw_context(kernel_params.pdi,
+                                                     kernel_params.kernel_name);
   shim_xdna::cuidx_t cu_idx =
       context->open_cu_context(kernel_params.kernel_name);
 
-  shim_xdna::kernel ebuf(command_buffer->shim_device->get_pdev(), ERT_START_CU);
   ebuf.set_cu_idx(cu_idx);
   unsigned int opcode = 3;
   ebuf.add_arg_64(opcode);
@@ -239,15 +218,6 @@ static iree_status_t iree_hal_xrt_lite_direct_command_buffer_dispatch(
   return iree_ok_status();
 }
 
-static iree_status_t iree_hal_xrt_lite_direct_command_buffer_dispatch_indirect(
-    iree_hal_command_buffer_t* base_command_buffer,
-    iree_hal_executable_t* executable, int32_t entry_point,
-    iree_hal_buffer_ref_t workgroups_ref, iree_const_byte_span_t constants,
-    iree_hal_buffer_ref_list_t bindings, iree_hal_dispatch_flags_t flags) {
-  return iree_make_status(IREE_STATUS_UNIMPLEMENTED,
-                          "need xrt implementation of dispatch indirect");
-}
-
 namespace {
 const iree_hal_command_buffer_vtable_t
     iree_hal_xrt_lite_direct_command_buffer_vtable = {
@@ -258,7 +228,6 @@ const iree_hal_command_buffer_vtable_t
         .update_buffer = iree_hal_xrt_lite_direct_command_buffer_update_buffer,
         .copy_buffer = iree_hal_xrt_lite_direct_command_buffer_copy_buffer,
         .dispatch = iree_hal_xrt_lite_direct_command_buffer_dispatch,
-        .dispatch_indirect =
-            iree_hal_xrt_lite_direct_command_buffer_dispatch_indirect,
+        .dispatch_indirect = unimplemented,
 };
 }  // namespace
