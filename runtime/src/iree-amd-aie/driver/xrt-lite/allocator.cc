@@ -25,16 +25,20 @@ struct iree_hal_xrt_lite_allocator {
                               shim_xdna::device* shim_device)
       : host_allocator(host_allocator), shim_device(shim_device) {
     IREE_TRACE_ZONE_BEGIN(z0);
+
     iree_hal_resource_initialize(&iree_hal_xrt_lite_allocator_vtable,
                                  &this->resource);
+
     IREE_TRACE_ZONE_END(z0);
   }
 };
 
-iree_hal_buffer_compatibility_t
+static iree_hal_buffer_compatibility_t
 iree_hal_xrt_lite_allocator_query_buffer_compatibility(
     iree_hal_allocator_t* base_allocator, iree_hal_buffer_params_t* params,
     iree_device_size_t* allocation_size) {
+  IREE_TRACE_ZONE_BEGIN(z0);
+
   iree_hal_buffer_compatibility_t compatibility =
       IREE_HAL_BUFFER_COMPATIBILITY_ALLOCATABLE;
 
@@ -61,13 +65,16 @@ iree_hal_xrt_lite_allocator_query_buffer_compatibility(
   // can act safely even on buffer ranges that are not naturally aligned.
   *allocation_size = iree_host_align(*allocation_size, 4);
 
+  IREE_TRACE_ZONE_END(z0);
   return compatibility;
 }
 
-iree_status_t iree_hal_xrt_lite_allocator_allocate_buffer(
+static iree_status_t iree_hal_xrt_lite_allocator_allocate_buffer(
     iree_hal_allocator_t* base_allocator,
     const iree_hal_buffer_params_t* params, iree_device_size_t allocation_size,
     iree_hal_buffer_t** out_buffer) {
+  IREE_TRACE_ZONE_BEGIN(z0);
+
   iree_hal_xrt_lite_allocator* allocator =
       reinterpret_cast<iree_hal_xrt_lite_allocator*>(base_allocator);
   iree_hal_buffer_params_t compat_params = *params;
@@ -76,6 +83,7 @@ iree_status_t iree_hal_xrt_lite_allocator_allocate_buffer(
           base_allocator, &compat_params, &allocation_size);
   if (!iree_all_bits_set(compatibility,
                          IREE_HAL_BUFFER_COMPATIBILITY_ALLOCATABLE)) {
+    IREE_TRACE_ZONE_END(z0);
     return iree_make_status(
         IREE_STATUS_INVALID_ARGUMENT,
         "allocator cannot allocate a buffer with the given parameters");
@@ -100,11 +108,15 @@ iree_status_t iree_hal_xrt_lite_allocator_allocate_buffer(
   } else {
     iree_hal_buffer_release(buffer);
   }
+
+  IREE_TRACE_ZONE_END(z0);
   return status;
 }
 
-void iree_hal_xrt_lite_allocator_deallocate_buffer(
+static void iree_hal_xrt_lite_allocator_deallocate_buffer(
     iree_hal_allocator_t* base_allocator, iree_hal_buffer_t* base_buffer) {
+  IREE_TRACE_ZONE_BEGIN(z0);
+
   iree_hal_xrt_lite_allocator* allocator =
       reinterpret_cast<iree_hal_xrt_lite_allocator*>(base_allocator);
   bool was_imported = false;
@@ -114,6 +126,8 @@ void iree_hal_xrt_lite_allocator_deallocate_buffer(
         iree_hal_buffer_allocation_size(base_buffer)));
   }
   iree_hal_buffer_destroy(base_buffer);
+
+  IREE_TRACE_ZONE_END(z0);
 }
 
 iree_status_t iree_hal_xrt_lite_allocator_create(
@@ -155,8 +169,12 @@ static void iree_hal_xrt_lite_allocator_destroy(
 
 static iree_allocator_t iree_hal_xrt_lite_allocator_host_allocator(
     const iree_hal_allocator_t* base_allocator) {
+  IREE_TRACE_ZONE_BEGIN(z0);
+
   const iree_hal_xrt_lite_allocator* allocator =
       reinterpret_cast<const iree_hal_xrt_lite_allocator*>(base_allocator);
+
+  IREE_TRACE_ZONE_END(z0);
   return allocator->host_allocator;
 }
 

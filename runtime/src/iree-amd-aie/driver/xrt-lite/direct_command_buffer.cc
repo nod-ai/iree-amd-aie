@@ -26,30 +26,12 @@ struct iree_hal_xrt_lite_direct_command_buffer {
   iree_arena_allocator_t arena;
 
   shim_xdna::device* shim_device;
-
-  struct {
-    shim_xdna::bo* bindings[IREE_HAL_XRT_LITE_MAX_DESCRIPTOR_SET_BINDING_COUNT];
-    // Offset and length are used to get the sub buffer at kernel launch.
-    iree_device_size_t
-        offsets[IREE_HAL_XRT_LITE_MAX_DESCRIPTOR_SET_BINDING_COUNT];
-    iree_device_size_t
-        lengths[IREE_HAL_XRT_LITE_MAX_DESCRIPTOR_SET_BINDING_COUNT];
-
-  } descriptor_sets[IREE_HAL_XRT_LITE_MAX_DESCRIPTOR_SET_COUNT];
 };
 
 namespace {
 extern const iree_hal_command_buffer_vtable_t
     iree_hal_xrt_lite_direct_command_buffer_vtable;
 }  // namespace
-
-static iree_hal_xrt_lite_direct_command_buffer*
-iree_hal_xrt_lite_direct_command_buffer_cast(
-    iree_hal_command_buffer_t* base_value) {
-  IREE_HAL_ASSERT_TYPE(base_value,
-                       &iree_hal_xrt_lite_direct_command_buffer_vtable);
-  return reinterpret_cast<iree_hal_xrt_lite_direct_command_buffer*>(base_value);
-}
 
 iree_status_t iree_hal_xrt_lite_direct_command_buffer_create(
     shim_xdna::device* shim_device, iree_hal_allocator_t* device_allocator,
@@ -96,13 +78,15 @@ iree_status_t iree_hal_xrt_lite_direct_command_buffer_create(
 
   return status;
 }
+
 static void iree_hal_xrt_lite_direct_command_buffer_destroy(
     iree_hal_command_buffer_t* base_command_buffer) {
-  iree_hal_xrt_lite_direct_command_buffer* command_buffer =
-      iree_hal_xrt_lite_direct_command_buffer_cast(base_command_buffer);
-  iree_allocator_t host_allocator = command_buffer->host_allocator;
   IREE_TRACE_ZONE_BEGIN(z0);
 
+  iree_hal_xrt_lite_direct_command_buffer* command_buffer =
+      reinterpret_cast<iree_hal_xrt_lite_direct_command_buffer*>(
+          base_command_buffer);
+  iree_allocator_t host_allocator = command_buffer->host_allocator;
   iree_hal_resource_set_free(command_buffer->resource_set);
   iree_arena_deinitialize(&command_buffer->arena);
   iree_allocator_free(host_allocator, command_buffer);
@@ -114,8 +98,8 @@ static iree_status_t iree_hal_xrt_lite_direct_command_buffer_update_buffer(
     iree_hal_command_buffer_t* base_command_buffer, const void* source_buffer,
     iree_host_size_t source_offset, iree_hal_buffer_ref_t target_ref) {
   IREE_TRACE_ZONE_BEGIN(z0);
-  const uint8_t* src = (const uint8_t*)source_buffer + source_offset;
 
+  const uint8_t* src = (const uint8_t*)source_buffer + source_offset;
   // No need to Allocate scratch space (in an arena) as the memcpy
   // used below is expected to be synchronized.
   shim_xdna::bo* target_device_buffer = iree_hal_xrt_lite_buffer_handle(
@@ -160,16 +144,16 @@ static iree_status_t iree_hal_xrt_lite_direct_command_buffer_dispatch(
     iree_hal_executable_t* base_executable, int32_t entry_point,
     const uint32_t workgroup_count[3], iree_const_byte_span_t constants,
     iree_hal_buffer_ref_list_t bindings, iree_hal_dispatch_flags_t flags) {
+  IREE_TRACE_ZONE_BEGIN(z0);
+
   iree_hal_xrt_lite_direct_command_buffer* command_buffer =
       reinterpret_cast<iree_hal_xrt_lite_direct_command_buffer*>(
           base_command_buffer);
-  IREE_TRACE_ZONE_BEGIN(z0);
-
   // Lookup kernel parameters used for side-channeling additional launch
   // information from the compiler.
-  iree_hal_xrt_lite_native_executable_t* executable =
-      iree_hal_xrt_lite_native_executable_cast(base_executable);
-  iree_hal_xrt_lite_kernel_params_t kernel_params =
+  iree_hal_xrt_lite_native_executable* executable =
+      reinterpret_cast<iree_hal_xrt_lite_native_executable*>(base_executable);
+  iree_hal_xrt_lite_kernel_params kernel_params =
       executable->entry_points[entry_point];
 
   IREE_RETURN_AND_END_ZONE_IF_ERROR(
@@ -214,7 +198,6 @@ static iree_status_t iree_hal_xrt_lite_direct_command_buffer_dispatch(
   }
 
   IREE_TRACE_ZONE_END(z0);
-
   return iree_ok_status();
 }
 

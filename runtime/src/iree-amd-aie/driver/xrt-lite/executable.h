@@ -17,7 +17,7 @@
 #include "iree/base/tracing.h"
 #include "iree/hal/api.h"
 
-struct iree_hal_xrt_lite_kernel_params_t {
+struct iree_hal_xrt_lite_kernel_params {
   std::vector<uint8_t> pdi;
   std::vector<uint32_t> asm_inst;
   std::string kernel_name;
@@ -25,17 +25,14 @@ struct iree_hal_xrt_lite_kernel_params_t {
   IREE_TRACE(uint32_t source_line;)
 };
 
-struct iree_hal_xrt_lite_native_executable_t {
+struct iree_hal_xrt_lite_native_executable {
   // Abstract resource used for injecting reference counting and vtable; must be
   // at offset 0.
   iree_hal_resource_t resource;
   iree_allocator_t host_allocator;
   iree_host_size_t entry_point_count;
-  iree_hal_xrt_lite_kernel_params_t entry_points[16];
+  iree_hal_xrt_lite_kernel_params entry_points[16];
 };
-
-iree_hal_xrt_lite_native_executable_t* iree_hal_xrt_lite_native_executable_cast(
-    iree_hal_executable_t* base_value);
 
 // `out_executable` must be released by the caller (see
 // iree_hal_executable_release).

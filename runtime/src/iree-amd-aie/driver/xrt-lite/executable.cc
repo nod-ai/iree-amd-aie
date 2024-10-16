@@ -19,16 +19,13 @@ extern const iree_hal_executable_vtable_t
     iree_hal_xrt_lite_native_executable_vtable;
 }  // namespace
 
-iree_hal_xrt_lite_native_executable_t* iree_hal_xrt_lite_native_executable_cast(
-    iree_hal_executable_t* base_value) {
-  IREE_HAL_ASSERT_TYPE(base_value, &iree_hal_xrt_lite_native_executable_vtable);
-  return reinterpret_cast<iree_hal_xrt_lite_native_executable_t*>(base_value);
-}
-
 static iree_status_t
 iree_amd_aie_hal_xrt_lite_native_executable_flatbuffer_verify(
     iree_const_byte_span_t flatbuffer_data) {
+  IREE_TRACE_ZONE_BEGIN(z0);
+
   if (!flatbuffer_data.data || flatbuffer_data.data_length < 16) {
+    IREE_TRACE_ZONE_END(z0);
     return iree_make_status(
         IREE_STATUS_INVALID_ARGUMENT,
         "flatbuffer data is not present or less than 16 bytes (%zu total)",
@@ -38,6 +35,7 @@ iree_amd_aie_hal_xrt_lite_native_executable_flatbuffer_verify(
   int verify_ret = iree_amd_aie_hal_xrt_lite_ExecutableDef_verify_as_root(
       flatbuffer_data.data, flatbuffer_data.data_length);
   if (verify_ret != flatcc_verify_ok) {
+    IREE_TRACE_ZONE_END(z0);
     return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
                             "flatbuffer verification failed: %s",
                             flatcc_verify_error_string(verify_ret));
@@ -50,12 +48,14 @@ iree_amd_aie_hal_xrt_lite_native_executable_flatbuffer_verify(
       iree_amd_aie_hal_xrt_lite_ExecutableDef_entry_points_get(executable_def);
   size_t entry_point_count = flatbuffers_string_vec_len(entry_points_vec);
   if (entry_point_count == 0) {
+    IREE_TRACE_ZONE_END(z0);
     return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
                             "no entry points found in the executable");
   }
   for (size_t i = 0; i < entry_point_count; ++i) {
     if (!flatbuffers_string_len(
             flatbuffers_string_vec_at(entry_points_vec, i))) {
+      IREE_TRACE_ZONE_END(z0);
       return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
                               "executable entry point %zu has no name", i);
     }
@@ -65,6 +65,7 @@ iree_amd_aie_hal_xrt_lite_native_executable_flatbuffer_verify(
       iree_amd_aie_hal_xrt_lite_ExecutableDef_pdis_get(executable_def);
   size_t number_pdi = iree_amd_aie_hal_xrt_lite_PdiDef_vec_len(pdis);
   if (number_pdi == 0) {
+    IREE_TRACE_ZONE_END(z0);
     return iree_make_status(IREE_STATUS_INVALID_ARGUMENT, "no pdi present");
   }
 
@@ -73,12 +74,14 @@ iree_amd_aie_hal_xrt_lite_native_executable_flatbuffer_verify(
   size_t number_asm_instr =
       iree_amd_aie_hal_xrt_lite_AsmInstDef_vec_len(asm_instr);
   if (number_asm_instr != entry_point_count) {
+    IREE_TRACE_ZONE_END(z0);
     return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
                             "number of entry points (%zu) and number of asm "
                             "instructions (%zu) mismatched",
                             entry_point_count, number_asm_instr);
   }
 
+  IREE_TRACE_ZONE_END(z0);
   return iree_ok_status();
 }
 
@@ -91,7 +94,7 @@ iree_status_t iree_hal_xrt_lite_native_executable_create(
   IREE_TRACE_ZONE_BEGIN(z0);
 
   *out_executable = nullptr;
-  iree_hal_xrt_lite_native_executable_t* executable = nullptr;
+  iree_hal_xrt_lite_native_executable* executable = nullptr;
 
   IREE_RETURN_AND_END_ZONE_IF_ERROR(
       z0, iree_amd_aie_hal_xrt_lite_native_executable_flatbuffer_verify(
@@ -141,7 +144,7 @@ iree_status_t iree_hal_xrt_lite_native_executable_create(
   executable->entry_point_count = entry_point_count;
   for (iree_host_size_t entry_ordinal = 0; entry_ordinal < entry_point_count;
        entry_ordinal++) {
-    iree_hal_xrt_lite_kernel_params_t* params =
+    iree_hal_xrt_lite_kernel_params* params =
         &executable->entry_points[entry_ordinal];
     params->kernel_name =
         flatbuffers_string_vec_at(entry_points_vec, entry_ordinal);
@@ -193,17 +196,18 @@ iree_status_t iree_hal_xrt_lite_native_executable_create(
   }
 
   *out_executable = reinterpret_cast<iree_hal_executable_t*>(executable);
+
   IREE_TRACE_ZONE_END(z0);
   return iree_ok_status();
 }
 
 static void iree_hal_xrt_lite_native_executable_destroy(
     iree_hal_executable_t* base_executable) {
-  iree_hal_xrt_lite_native_executable_t* executable =
-      iree_hal_xrt_lite_native_executable_cast(base_executable);
-  iree_allocator_t host_allocator = executable->host_allocator;
   IREE_TRACE_ZONE_BEGIN(z0);
 
+  iree_hal_xrt_lite_native_executable* executable =
+      reinterpret_cast<iree_hal_xrt_lite_native_executable*>(base_executable);
+  iree_allocator_t host_allocator = executable->host_allocator;
   iree_allocator_free(host_allocator, executable);
 
   IREE_TRACE_ZONE_END(z0);

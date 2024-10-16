@@ -34,7 +34,7 @@ static iree_status_t iree_hal_xrt_lite_driver_factory_try_create(
   // used in native tools that have access to the flags library. Programmatic
   // creation of the driver and devices will bypass this file and pass the
   // options via this struct or key-value string parameters.
-  struct iree_hal_xrt_lite_driver_options_t options;
+  struct iree_hal_xrt_lite_driver_options options;
   iree_hal_xrt_lite_driver_options_initialize(&options);
 
   iree_status_t status = iree_hal_xrt_lite_driver_create(
