@@ -29,88 +29,93 @@ struct iree_hal_xrt_lite_allocator {
                                  &this->resource);
     IREE_TRACE_ZONE_END(z0);
   }
-
-  ~iree_hal_xrt_lite_allocator() = default;
-
-  iree_hal_buffer_compatibility_t query_buffer_compatibility(
-      iree_hal_buffer_params_t* params, iree_device_size_t* allocation_size) {
-    // All buffers can be allocated on the heap.
-    iree_hal_buffer_compatibility_t compatibility =
-        IREE_HAL_BUFFER_COMPATIBILITY_ALLOCATABLE;
-
-    if (iree_any_bit_set(params->usage, IREE_HAL_BUFFER_USAGE_TRANSFER)) {
-      compatibility |= IREE_HAL_BUFFER_COMPATIBILITY_QUEUE_TRANSFER;
-    }
-
-    // Buffers can only be used on the queue if they are device visible.
-    if (iree_all_bits_set(params->type, IREE_HAL_MEMORY_TYPE_DEVICE_VISIBLE)) {
-      if (iree_any_bit_set(params->usage,
-                           IREE_HAL_BUFFER_USAGE_DISPATCH_STORAGE)) {
-        compatibility |= IREE_HAL_BUFFER_COMPATIBILITY_QUEUE_DISPATCH;
-      }
-    }
-
-    // We are now optimal.
-    params->type &= ~IREE_HAL_MEMORY_TYPE_OPTIMAL;
-
-    // Guard against the corner case where the requested buffer size is 0. The
-    // application is unlikely to do anything when requesting a 0-byte buffer;
-    // but it can happen in real world use cases. So we should at least not
-    // crash.
-    if (*allocation_size == 0) *allocation_size = 4;
-    // Align allocation sizes to 4 bytes so shaders operating on 32 bit types
-    // can act safely even on buffer ranges that are not naturally aligned.
-    *allocation_size = iree_host_align(*allocation_size, 4);
-
-    return compatibility;
-  }
-
-  iree_status_t allocate_buffer(const iree_hal_buffer_params_t* params,
-                                iree_device_size_t allocation_size,
-                                iree_hal_buffer_t** out_buffer) {
-    // Coerce options into those required by the current device.
-    iree_hal_buffer_params_t compat_params = *params;
-    iree_hal_buffer_compatibility_t compatibility =
-        this->query_buffer_compatibility(&compat_params, &allocation_size);
-    if (!iree_all_bits_set(compatibility,
-                           IREE_HAL_BUFFER_COMPATIBILITY_ALLOCATABLE)) {
-      return iree_make_status(
-          IREE_STATUS_INVALID_ARGUMENT,
-          "allocator cannot allocate a buffer with the given parameters");
-    }
-
-    uint32_t flags = XCL_BO_FLAGS_HOST_ONLY;
-    std::unique_ptr<shim_xdna::bo> bo =
-        shim_device->alloc_bo(allocation_size, flags);
-    iree_hal_buffer_t* buffer = nullptr;
-    iree_status_t status = iree_hal_xrt_lite_buffer_wrap(
-        std::move(bo), reinterpret_cast<iree_hal_allocator_t*>(this),
-        compat_params.type, compat_params.access, compat_params.usage,
-        allocation_size,
-        /*byte_offset=*/0, /*byte_length=*/allocation_size,
-        iree_hal_buffer_release_callback_null(), this->host_allocator, &buffer);
-
-    if (iree_status_is_ok(status)) {
-      IREE_STATISTICS(iree_hal_allocator_statistics_record_alloc(
-          &this->statistics, compat_params.type, allocation_size));
-      *out_buffer = buffer;
-    } else {
-      iree_hal_buffer_release(buffer);
-    }
-    return status;
-  }
-
-  void deallocate_buffer(iree_hal_buffer_t* base_buffer) {
-    bool was_imported = false;
-    if (!was_imported) {
-      IREE_STATISTICS(iree_hal_allocator_statistics_record_free(
-          &this->statistics, iree_hal_buffer_memory_type(base_buffer),
-          iree_hal_buffer_allocation_size(base_buffer)));
-    }
-
-    iree_hal_buffer_destroy(base_buffer);
-  }
 };
+
+iree_hal_buffer_compatibility_t query_buffer_compatibility(
+    iree_hal_allocator_t* base_allocator, iree_hal_buffer_params_t* params,
+    iree_device_size_t* allocation_size) {
+  // All buffers can be allocated on the heap.
+  iree_hal_buffer_compatibility_t compatibility =
+      IREE_HAL_BUFFER_COMPATIBILITY_ALLOCATABLE;
+
+  if (iree_any_bit_set(params->usage, IREE_HAL_BUFFER_USAGE_TRANSFER)) {
+    compatibility |= IREE_HAL_BUFFER_COMPATIBILITY_QUEUE_TRANSFER;
+  }
+
+  // Buffers can only be used on the queue if they are device visible.
+  if (iree_all_bits_set(params->type, IREE_HAL_MEMORY_TYPE_DEVICE_VISIBLE)) {
+    if (iree_any_bit_set(params->usage,
+                         IREE_HAL_BUFFER_USAGE_DISPATCH_STORAGE)) {
+      compatibility |= IREE_HAL_BUFFER_COMPATIBILITY_QUEUE_DISPATCH;
+    }
+  }
+
+  // We are now optimal.
+  params->type &= ~IREE_HAL_MEMORY_TYPE_OPTIMAL;
+
+  // Guard against the corner case where the requested buffer size is 0. The
+  // application is unlikely to do anything when requesting a 0-byte buffer;
+  // but it can happen in real world use cases. So we should at least not
+  // crash.
+  if (*allocation_size == 0) *allocation_size = 4;
+  // Align allocation sizes to 4 bytes so shaders operating on 32 bit types
+  // can act safely even on buffer ranges that are not naturally aligned.
+  *allocation_size = iree_host_align(*allocation_size, 4);
+
+  return compatibility;
+}
+
+iree_status_t allocate_buffer(iree_hal_allocator_t* base_allocator,
+                              const iree_hal_buffer_params_t* params,
+                              iree_device_size_t allocation_size,
+                              iree_hal_buffer_t** out_buffer) {
+  iree_hal_xrt_lite_allocator* allocator =
+      reinterpret_cast<iree_hal_xrt_lite_allocator*>(base_allocator);
+  // Coerce options into those required by the current device.
+  iree_hal_buffer_params_t compat_params = *params;
+  iree_hal_buffer_compatibility_t compatibility = query_buffer_compatibility(
+      base_allocator, &compat_params, &allocation_size);
+  if (!iree_all_bits_set(compatibility,
+                         IREE_HAL_BUFFER_COMPATIBILITY_ALLOCATABLE)) {
+    return iree_make_status(
+        IREE_STATUS_INVALID_ARGUMENT,
+        "allocator cannot allocate a buffer with the given parameters");
+  }
+
+  uint32_t flags = XCL_BO_FLAGS_HOST_ONLY;
+  std::unique_ptr<shim_xdna::bo> bo =
+      allocator->shim_device->alloc_bo(allocation_size, flags);
+  iree_hal_buffer_t* buffer = nullptr;
+  iree_status_t status = iree_hal_xrt_lite_buffer_wrap(
+      std::move(bo), reinterpret_cast<iree_hal_allocator_t*>(allocator),
+      compat_params.type, compat_params.access, compat_params.usage,
+      allocation_size,
+      /*byte_offset=*/0, /*byte_length=*/allocation_size,
+      iree_hal_buffer_release_callback_null(), allocator->host_allocator,
+      &buffer);
+
+  if (iree_status_is_ok(status)) {
+    IREE_STATISTICS(iree_hal_allocator_statistics_record_alloc(
+        &allocator->statistics, compat_params.type, allocation_size));
+    *out_buffer = buffer;
+  } else {
+    iree_hal_buffer_release(buffer);
+  }
+  return status;
+}
+
+void deallocate_buffer(iree_hal_allocator_t* base_allocator,
+                       iree_hal_buffer_t* base_buffer) {
+  iree_hal_xrt_lite_allocator* allocator =
+      reinterpret_cast<iree_hal_xrt_lite_allocator*>(base_allocator);
+  bool was_imported = false;
+  if (!was_imported) {
+    IREE_STATISTICS(iree_hal_allocator_statistics_record_free(
+        &allocator->statistics, iree_hal_buffer_memory_type(base_buffer),
+        iree_hal_buffer_allocation_size(base_buffer)));
+  }
+  iree_hal_buffer_destroy(base_buffer);
+}
 
 static iree_hal_xrt_lite_allocator* iree_hal_xrt_lite_allocator_cast(
     iree_hal_allocator_t* base_value) {
@@ -162,28 +167,14 @@ static iree_allocator_t iree_hal_xrt_lite_allocator_host_allocator(
   return allocator->host_allocator;
 }
 
-#define ALLOCATOR_MEMBER(member, return_t)                                  \
-  MEMBER_WRAPPER(iree_hal_allocator_t, iree_hal_xrt_lite_allocator, member, \
-                 return_t)
-#define ALLOCATOR_MEMBER_STATUS(member)                                    \
-  MEMBER_WRAPPER_STATUS(iree_hal_allocator_t, iree_hal_xrt_lite_allocator, \
-                        member)
-#define ALLOCATOR_MEMBER_VOID(member) \
-  MEMBER_WRAPPER_VOID(iree_hal_allocator_t, iree_hal_xrt_lite_allocator, member)
-
-ALLOCATOR_MEMBER(query_buffer_compatibility, iree_hal_buffer_compatibility_t);
-ALLOCATOR_MEMBER_STATUS(allocate_buffer);
-ALLOCATOR_MEMBER_VOID(deallocate_buffer);
-
 namespace {
 const iree_hal_allocator_vtable_t iree_hal_xrt_lite_allocator_vtable = {
     .destroy = iree_hal_xrt_lite_allocator_destroy,
     .host_allocator = iree_hal_xrt_lite_allocator_host_allocator,
     .trim = unimplemented_ok_status,
     .query_statistics = unimplemented_ok_void,
-    .query_buffer_compatibility =
-        iree_hal_xrt_lite_allocator_query_buffer_compatibility,
-    .allocate_buffer = iree_hal_xrt_lite_allocator_allocate_buffer,
-    .deallocate_buffer = iree_hal_xrt_lite_allocator_deallocate_buffer,
+    .query_buffer_compatibility = query_buffer_compatibility,
+    .allocate_buffer = allocate_buffer,
+    .deallocate_buffer = deallocate_buffer,
 };
 }

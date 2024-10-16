@@ -42,7 +42,7 @@ IREE_API_EXPORT iree_status_t iree_hal_xrt_lite_device_create(
     iree_allocator_t host_allocator, iree_hal_device_t** out_device);
 
 #ifdef __cplusplus
-}  // extern "C"
+}       // extern "C"
 #endif  // __cplusplus
 
 #endif  // IREE_AMD_AIE_DRIVER_XRT_LITE_API_H_
