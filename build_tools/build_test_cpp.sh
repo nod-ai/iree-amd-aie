@@ -82,6 +82,16 @@ CMAKE_ARGS="\
   -DCMAKE_OBJECT_PATH_MAX=4096 \
   -DIREE_CMAKE_PLUGIN_PATHS=$repo_root"
 
+san="${san:-}"
+
+if [ "$san" != "" ];then
+  CMAKE_ARGS="$CMAKE_ARGS -DIREE_ENABLE_$san=ON -DHAVE_STD_REGEX=ON"
+  export ASAN_OPTIONS=detect_leaks=0
+  export MSAN_OPTIONS=halt_on_error=0
+  export TSAN_OPTIONS=halt_on_error=0
+  export UBSAN_OPTIONS=halt_on_error=0
+fi
+
 if [ -d "${llvm_install_dir}" ]; then
   CMAKE_ARGS="$CMAKE_ARGS \
     -DIREE_BUILD_BUNDLED_LLVM=OFF \
@@ -120,6 +130,13 @@ cmake --build "$build_dir" --target install
 # TODO(max): there's no way to install the python runtime bindings
 # ninja iree-install-dist install-IREECompilerPythonModules install-IREEDialectsPythonModules
 cmake --build "$build_dir" --target iree-install-dist
+
+if [ "$san" != "" ];then
+  export ASAN_OPTIONS=detect_leaks=1:verbosity=1:log_threads=1:print_stacktrace=1
+  export MSAN_OPTIONS=halt_on_error=1:verbosity=1:log_threads=1:print_stacktrace=1
+  export TSAN_OPTIONS=halt_on_error=1:verbosity=1:log_threads=1:print_stacktrace=1
+  export UBSAN_OPTIONS=halt_on_error=1:verbosity=1:log_threads=1:print_stacktrace=1
+fi
 
 echo "CTest"
 echo "-----"
