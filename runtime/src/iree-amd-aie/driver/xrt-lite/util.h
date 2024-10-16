@@ -15,11 +15,6 @@ iree_status_t unimplemented(Params...) {
 }
 
 template <typename... Params>
-void unimplemented(Params...) {
-  IREE_ASSERT(false && "unimplemented");
-}
-
-template <typename... Params>
 iree_status_t unimplemented_ok_status(Params...) {
   return iree_ok_status();
 }

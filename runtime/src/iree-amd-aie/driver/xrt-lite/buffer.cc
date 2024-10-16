@@ -19,38 +19,47 @@ struct iree_hal_xrt_lite_buffer {
   iree_hal_buffer_release_callback_t release_callback;
 };
 
-iree_status_t iree_hal_xrt_lite_buffer_invalidate_range(
+static iree_status_t iree_hal_xrt_lite_buffer_invalidate_range(
     iree_hal_buffer_t* base_buffer, iree_device_size_t local_byte_offset,
     iree_device_size_t local_byte_length) {
+  IREE_TRACE_ZONE_BEGIN(z0);
+
   iree_hal_xrt_lite_buffer* buffer =
       reinterpret_cast<iree_hal_xrt_lite_buffer*>(base_buffer);
   if (IREE_UNLIKELY(!buffer->bo)) {
+    IREE_TRACE_ZONE_END(z0);
     return iree_make_status(
         IREE_STATUS_FAILED_PRECONDITION,
         "buffer does not have device memory attached and cannot be mapped");
   }
   buffer->bo->sync(shim_xdna::direction::device2host, local_byte_length,
                    local_byte_offset);
+
+  IREE_TRACE_ZONE_END(z0);
   return iree_ok_status();
 }
 
-iree_status_t iree_hal_xrt_lite_buffer_map_range(
+static iree_status_t iree_hal_xrt_lite_buffer_map_range(
     iree_hal_buffer_t* base_buffer, iree_hal_mapping_mode_t mapping_mode,
     iree_hal_memory_access_t memory_access,
     iree_device_size_t local_byte_offset, iree_device_size_t local_byte_length,
     iree_hal_buffer_mapping_t* mapping) {
+  IREE_TRACE_ZONE_BEGIN(z0);
+
   iree_hal_xrt_lite_buffer* buffer =
       reinterpret_cast<iree_hal_xrt_lite_buffer*>(base_buffer);
-  IREE_RETURN_IF_ERROR(iree_hal_buffer_validate_memory_type(
-      iree_hal_buffer_memory_type(
-          reinterpret_cast<const iree_hal_buffer_t*>(buffer)),
-      IREE_HAL_MEMORY_TYPE_HOST_VISIBLE));
-  IREE_RETURN_IF_ERROR(iree_hal_buffer_validate_usage(
-      iree_hal_buffer_allowed_usage(
-          reinterpret_cast<const iree_hal_buffer_t*>(buffer)),
-      mapping_mode == IREE_HAL_MAPPING_MODE_PERSISTENT
-          ? IREE_HAL_BUFFER_USAGE_MAPPING_PERSISTENT
-          : IREE_HAL_BUFFER_USAGE_MAPPING_SCOPED));
+  IREE_RETURN_AND_END_ZONE_IF_ERROR(
+      z0, iree_hal_buffer_validate_memory_type(
+              iree_hal_buffer_memory_type(
+                  reinterpret_cast<const iree_hal_buffer_t*>(buffer)),
+              IREE_HAL_MEMORY_TYPE_HOST_VISIBLE));
+  IREE_RETURN_AND_END_ZONE_IF_ERROR(
+      z0, iree_hal_buffer_validate_usage(
+              iree_hal_buffer_allowed_usage(
+                  reinterpret_cast<const iree_hal_buffer_t*>(buffer)),
+              mapping_mode == IREE_HAL_MAPPING_MODE_PERSISTENT
+                  ? IREE_HAL_BUFFER_USAGE_MAPPING_PERSISTENT
+                  : IREE_HAL_BUFFER_USAGE_MAPPING_SCOPED));
 
   void* host_ptr = buffer->bo->map();
   // Should be guaranteed by previous checks.
@@ -68,25 +77,33 @@ iree_status_t iree_hal_xrt_lite_buffer_map_range(
   }
 #endif  // !NDEBUG
   mapping->contents = iree_make_byte_span(data_ptr, local_byte_length);
+
+  IREE_TRACE_ZONE_END(z0);
   return status;
 }
 
-iree_status_t iree_hal_xrt_lite_buffer_flush_range(
+static iree_status_t iree_hal_xrt_lite_buffer_flush_range(
     iree_hal_buffer_t* base_buffer, iree_device_size_t local_byte_offset,
     iree_device_size_t local_byte_length) {
+  IREE_TRACE_ZONE_BEGIN(z0);
+
   iree_hal_xrt_lite_buffer* buffer =
       reinterpret_cast<iree_hal_xrt_lite_buffer*>(base_buffer);
   if (IREE_UNLIKELY(!buffer->bo)) {
+    IREE_TRACE_ZONE_END(z0);
     return iree_make_status(
         IREE_STATUS_FAILED_PRECONDITION,
         "buffer does not have device memory attached and cannot be mapped");
   }
+
   buffer->bo->sync(shim_xdna::direction::host2device, local_byte_length,
                    local_byte_offset);
+
+  IREE_TRACE_ZONE_END(z0);
   return iree_ok_status();
 }
 
-iree_status_t iree_hal_xrt_lite_buffer_unmap_range(
+static iree_status_t iree_hal_xrt_lite_buffer_unmap_range(
     iree_hal_buffer_t* base_buffer, iree_device_size_t local_byte_offset,
     iree_device_size_t local_byte_length, iree_hal_buffer_mapping_t* mapping) {
   return iree_hal_xrt_lite_buffer_flush_range(base_buffer, local_byte_offset,
@@ -138,8 +155,12 @@ static void iree_hal_xrt_lite_buffer_destroy(iree_hal_buffer_t* base_buffer) {
 }
 
 shim_xdna::bo* iree_hal_xrt_lite_buffer_handle(iree_hal_buffer_t* base_buffer) {
+  IREE_TRACE_ZONE_BEGIN(z0);
+
   iree_hal_xrt_lite_buffer* buffer =
       reinterpret_cast<iree_hal_xrt_lite_buffer*>(base_buffer);
+
+  IREE_TRACE_ZONE_END(z0);
   return buffer->bo.get();
 }
 

@@ -10,31 +10,31 @@
 #include "iree/base/api.h"
 #include "iree/hal/api.h"
 
-struct iree_hal_xrt_lite_device_options_t {};
+struct iree_hal_xrt_lite_device_options {};
 
 IREE_API_EXPORT void iree_hal_xrt_lite_device_options_initialize(
-    struct iree_hal_xrt_lite_device_options_t* out_params);
+    struct iree_hal_xrt_lite_device_options* out_params);
 
-struct iree_hal_xrt_lite_driver_options_t {
-  struct iree_hal_xrt_lite_device_options_t default_device_options;
+struct iree_hal_xrt_lite_driver_options {
+  struct iree_hal_xrt_lite_device_options default_device_options;
 };
 
 IREE_API_EXPORT void iree_hal_xrt_lite_driver_options_initialize(
-    struct iree_hal_xrt_lite_driver_options_t* out_options);
+    struct iree_hal_xrt_lite_driver_options* out_options);
 
-// The provided |identifier| will be used by programs to distinguish the device
+// The provided `identifier` will be used by programs to distinguish the device
 // type from other HAL implementations. If compiling programs with the IREE
 // compiler this must match the value used by IREE::HAL::TargetDevice.
 //
-// |out_driver| must be released by the caller (see iree_hal_driver_release).
+// `out_driver` must be released by the caller (see iree_hal_driver_release).
 IREE_API_EXPORT iree_status_t iree_hal_xrt_lite_driver_create(
     iree_string_view_t identifier,
-    const struct iree_hal_xrt_lite_driver_options_t* options,
+    const struct iree_hal_xrt_lite_driver_options* options,
     iree_allocator_t host_allocator, iree_hal_driver_t** out_driver);
 
 IREE_API_EXPORT iree_status_t iree_hal_xrt_lite_device_create(
     iree_string_view_t identifier,
-    const struct iree_hal_xrt_lite_device_options_t* options,
+    const struct iree_hal_xrt_lite_device_options* options,
     iree_allocator_t host_allocator, iree_hal_device_t** out_device);
 
 #endif  // IREE_AMD_AIE_DRIVER_XRT_LITE_API_H_
