@@ -25,7 +25,7 @@ struct iree_hal_xrt_lite_kernel_params {
   IREE_TRACE(uint32_t source_line;)
 };
 
-struct iree_hal_xrt_lite_native_executable {
+struct iree_hal_xrt_lite_executable {
   // Abstract resource used for injecting reference counting and vtable; must be
   // at offset 0.
   iree_hal_resource_t resource;
@@ -40,5 +40,8 @@ iree_status_t iree_hal_xrt_lite_native_executable_create(
     shim_xdna::device* shim_device,
     const iree_hal_executable_params_t* executable_params,
     iree_allocator_t host_allocator, iree_hal_executable_t** out_executable);
+
+iree_hal_xrt_lite_executable* iree_hal_xrt_lite_executable_cast(
+    iree_hal_executable_t* base_executable);
 
 #endif  // IREE_AMD_AIE_DRIVER_XRT_LITE_NATIVE_EXECUTABLE_H_

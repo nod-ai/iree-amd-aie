@@ -20,6 +20,14 @@ iree_status_t unimplemented_ok_status(Params...) {
 }
 
 template <typename... Params>
-void unimplemented_ok_void(Params...) {}
+void unimplemented_ok_void(Params...){}
+#ifndef NDEBUG
+#define IREE_HAL_XRT_LITE_CHECKED_VTABLE_CAST(base_value, vtable, subvalue_t) \
+  (IREE_HAL_ASSERT_TYPE(base_value, &vtable),                                 \
+   reinterpret_cast<subvalue_t*>(base_value))
+#else
+#define IREE_HAL_XRT_LITE_CHECKED_VTABLE_CAST(base_value, vtable, subvalue_t) \
+  (reinterpret_cast<subvalue_t*>(base_value))
+#endif
 
 #endif  // IREE_AMD_AIE_DRIVER_XRT_LITE_UTIL_H

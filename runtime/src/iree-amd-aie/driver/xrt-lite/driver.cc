@@ -5,16 +5,16 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 #include "iree-amd-aie/driver/xrt-lite/api.h"
-#include "util.h"
+#include "iree-amd-aie/driver/xrt-lite/util.h"
 
 #define IREE_HAL_XRT_LITE_DEVICE_ID_DEFAULT 0
 
 struct iree_hal_xrt_lite_driver {
   iree_hal_resource_t resource;
   iree_allocator_t host_allocator;
-  iree_string_view_t identifier;
   iree_hal_xrt_lite_driver_options options;
   // + trailing identifier string storage
+  iree_string_view_t identifier;
 };
 
 namespace {
@@ -44,23 +44,24 @@ IREE_API_EXPORT iree_status_t iree_hal_xrt_lite_driver_create(
   iree_hal_xrt_lite_driver* driver = nullptr;
   iree_host_size_t total_size = sizeof(*driver) + identifier.size;
   IREE_RETURN_AND_END_ZONE_IF_ERROR(
-      z0, iree_allocator_malloc(host_allocator, total_size, (void**)&driver));
+      z0, iree_allocator_malloc(host_allocator, total_size,
+                                reinterpret_cast<void**>(&driver)));
   iree_hal_resource_initialize(&iree_hal_xrt_lite_driver_vtable,
                                &driver->resource);
   driver->host_allocator = host_allocator;
   iree_string_view_append_to_buffer(
       identifier, &driver->identifier,
-      (char*)driver + total_size - identifier.size);
+      reinterpret_cast<char*>(driver) + total_size - identifier.size);
   memcpy(&driver->options, options, sizeof(*options));
-  *out_driver = (iree_hal_driver_t*)driver;
+  *out_driver = reinterpret_cast<iree_hal_driver_t*>(driver);
 
   IREE_TRACE_ZONE_END(z0);
   return iree_ok_status();
 }
 
 static void iree_hal_xrt_lite_driver_destroy(iree_hal_driver_t* base_driver) {
-  iree_hal_xrt_lite_driver* driver =
-      reinterpret_cast<iree_hal_xrt_lite_driver*>(base_driver);
+  iree_hal_xrt_lite_driver* driver = IREE_HAL_XRT_LITE_CHECKED_VTABLE_CAST(
+      base_driver, iree_hal_xrt_lite_driver_vtable, iree_hal_xrt_lite_driver);
   iree_allocator_t host_allocator = driver->host_allocator;
   IREE_TRACE_ZONE_BEGIN(z0);
 
@@ -87,7 +88,7 @@ static iree_status_t iree_hal_xrt_lite_driver_query_available_devices(
   return iree_allocator_clone(
       host_allocator,
       iree_make_const_byte_span(device_infos, sizeof(device_infos)),
-      (void**)out_device_infos);
+      reinterpret_cast<void**>(out_device_infos));
 }
 
 static iree_status_t iree_hal_xrt_lite_driver_create_device_by_id(
@@ -96,8 +97,8 @@ static iree_status_t iree_hal_xrt_lite_driver_create_device_by_id(
     iree_allocator_t host_allocator, iree_hal_device_t** out_device) {
   IREE_TRACE_ZONE_BEGIN(z0);
 
-  iree_hal_xrt_lite_driver* driver =
-      reinterpret_cast<iree_hal_xrt_lite_driver*>(base_driver);
+  iree_hal_xrt_lite_driver* driver = IREE_HAL_XRT_LITE_CHECKED_VTABLE_CAST(
+      base_driver, iree_hal_xrt_lite_driver_vtable, iree_hal_xrt_lite_driver);
   iree_hal_xrt_lite_device_options options =
       driver->options.default_device_options;
 
@@ -113,8 +114,8 @@ static iree_status_t iree_hal_xrt_lite_driver_create_device_by_path(
     iree_hal_device_t** out_device) {
   IREE_TRACE_ZONE_BEGIN(z0);
 
-  iree_hal_xrt_lite_driver* driver =
-      reinterpret_cast<iree_hal_xrt_lite_driver*>(base_driver);
+  iree_hal_xrt_lite_driver* driver = IREE_HAL_XRT_LITE_CHECKED_VTABLE_CAST(
+      base_driver, iree_hal_xrt_lite_driver_vtable, iree_hal_xrt_lite_driver);
   iree_hal_xrt_lite_device_options options =
       driver->options.default_device_options;
 
