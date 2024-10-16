@@ -9,15 +9,21 @@
 #include <cstddef>
 
 #include "iree-amd-aie/driver/xrt-lite/shim/linux/kmq/device.h"
-#include "iree-amd-aie/driver/xrt-lite/shim/linux/kmq/hwctx.h"
+#include "iree-amd-aie/driver/xrt-lite/util.h"
 #include "iree-amd-aie/schemas/pdi_executable_def_reader.h"
 #include "iree-amd-aie/schemas/pdi_executable_def_verifier.h"
 #include "iree/base/api.h"
 
 namespace {
-extern const iree_hal_executable_vtable_t
-    iree_hal_xrt_lite_native_executable_vtable;
+extern const iree_hal_executable_vtable_t iree_hal_xrt_lite_executable_vtable;
 }  // namespace
+
+iree_hal_xrt_lite_executable* iree_hal_xrt_lite_executable_cast(
+    iree_hal_executable_t* base_executable) {
+  return IREE_HAL_XRT_LITE_CHECKED_VTABLE_CAST(
+      base_executable, iree_hal_xrt_lite_executable_vtable,
+      iree_hal_xrt_lite_executable);
+}
 
 static iree_status_t
 iree_amd_aie_hal_xrt_lite_native_executable_flatbuffer_verify(
@@ -94,7 +100,7 @@ iree_status_t iree_hal_xrt_lite_native_executable_create(
   IREE_TRACE_ZONE_BEGIN(z0);
 
   *out_executable = nullptr;
-  iree_hal_xrt_lite_native_executable* executable = nullptr;
+  iree_hal_xrt_lite_executable* executable = nullptr;
 
   IREE_RETURN_AND_END_ZONE_IF_ERROR(
       z0, iree_amd_aie_hal_xrt_lite_native_executable_flatbuffer_verify(
@@ -138,7 +144,7 @@ iree_status_t iree_hal_xrt_lite_native_executable_create(
                  reinterpret_cast<char*>(executable) + sizeof(*executable) +
                  entry_point_count * sizeof(executable->entry_points[0])));
 
-  iree_hal_resource_initialize(&iree_hal_xrt_lite_native_executable_vtable,
+  iree_hal_resource_initialize(&iree_hal_xrt_lite_executable_vtable,
                                &executable->resource);
   executable->host_allocator = host_allocator;
   executable->entry_point_count = entry_point_count;
@@ -205,8 +211,10 @@ static void iree_hal_xrt_lite_native_executable_destroy(
     iree_hal_executable_t* base_executable) {
   IREE_TRACE_ZONE_BEGIN(z0);
 
-  iree_hal_xrt_lite_native_executable* executable =
-      reinterpret_cast<iree_hal_xrt_lite_native_executable*>(base_executable);
+  iree_hal_xrt_lite_executable* executable =
+      IREE_HAL_XRT_LITE_CHECKED_VTABLE_CAST(base_executable,
+                                            iree_hal_xrt_lite_executable_vtable,
+                                            iree_hal_xrt_lite_executable);
   iree_allocator_t host_allocator = executable->host_allocator;
   iree_allocator_free(host_allocator, executable);
 
@@ -214,8 +222,7 @@ static void iree_hal_xrt_lite_native_executable_destroy(
 }
 
 namespace {
-const iree_hal_executable_vtable_t iree_hal_xrt_lite_native_executable_vtable =
-    {
-        .destroy = iree_hal_xrt_lite_native_executable_destroy,
+const iree_hal_executable_vtable_t iree_hal_xrt_lite_executable_vtable = {
+    .destroy = iree_hal_xrt_lite_native_executable_destroy,
 };
 }  // namespace

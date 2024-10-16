@@ -6,10 +6,9 @@
 
 #include "iree-amd-aie/driver/xrt-lite/nop_executable_cache.h"
 
-#include <cstddef>
-
 #include "iree-amd-aie/driver/xrt-lite/executable.h"
 #include "iree-amd-aie/driver/xrt-lite/shim/linux/kmq/device.h"
+#include "iree-amd-aie/driver/xrt-lite/util.h"
 #include "iree/base/api.h"
 #include "iree/base/tracing.h"
 
@@ -48,7 +47,7 @@ iree_status_t iree_hal_xrt_lite_nop_executable_cache_create(
   iree_hal_xrt_lite_nop_executable_cache* executable_cache = nullptr;
   IREE_RETURN_AND_END_ZONE_IF_ERROR(
       z0, iree_allocator_malloc(host_allocator, sizeof(*executable_cache),
-                                (void**)&executable_cache));
+                                reinterpret_cast<void**>(&executable_cache)));
   executable_cache = new (executable_cache)
       iree_hal_xrt_lite_nop_executable_cache(shim_device, host_allocator);
   *out_executable_cache =
@@ -63,8 +62,9 @@ static void iree_hal_xrt_lite_nop_executable_cache_destroy(
   IREE_TRACE_ZONE_BEGIN(z0);
 
   iree_hal_xrt_lite_nop_executable_cache* executable_cache =
-      reinterpret_cast<iree_hal_xrt_lite_nop_executable_cache*>(
-          base_executable_cache);
+      IREE_HAL_XRT_LITE_CHECKED_VTABLE_CAST(
+          base_executable_cache, iree_hal_xrt_lite_nop_executable_cache_vtable,
+          iree_hal_xrt_lite_nop_executable_cache);
   iree_allocator_free(executable_cache->host_allocator, executable_cache);
 
   IREE_TRACE_ZONE_END(z0);
@@ -85,8 +85,9 @@ static iree_status_t iree_hal_xrt_lite_nop_executable_cache_prepare_executable(
   IREE_TRACE_ZONE_BEGIN(z0);
 
   iree_hal_xrt_lite_nop_executable_cache* executable_cache =
-      reinterpret_cast<iree_hal_xrt_lite_nop_executable_cache*>(
-          base_executable_cache);
+      IREE_HAL_XRT_LITE_CHECKED_VTABLE_CAST(
+          base_executable_cache, iree_hal_xrt_lite_nop_executable_cache_vtable,
+          iree_hal_xrt_lite_nop_executable_cache);
 
   IREE_TRACE_ZONE_END(z0);
   return iree_hal_xrt_lite_native_executable_create(

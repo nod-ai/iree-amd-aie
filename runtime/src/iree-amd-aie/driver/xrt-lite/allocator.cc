@@ -76,7 +76,9 @@ static iree_status_t iree_hal_xrt_lite_allocator_allocate_buffer(
   IREE_TRACE_ZONE_BEGIN(z0);
 
   iree_hal_xrt_lite_allocator* allocator =
-      reinterpret_cast<iree_hal_xrt_lite_allocator*>(base_allocator);
+      IREE_HAL_XRT_LITE_CHECKED_VTABLE_CAST(base_allocator,
+                                            iree_hal_xrt_lite_allocator_vtable,
+                                            iree_hal_xrt_lite_allocator);
   iree_hal_buffer_params_t compat_params = *params;
   iree_hal_buffer_compatibility_t compatibility =
       iree_hal_xrt_lite_allocator_query_buffer_compatibility(
@@ -118,7 +120,9 @@ static void iree_hal_xrt_lite_allocator_deallocate_buffer(
   IREE_TRACE_ZONE_BEGIN(z0);
 
   iree_hal_xrt_lite_allocator* allocator =
-      reinterpret_cast<iree_hal_xrt_lite_allocator*>(base_allocator);
+      IREE_HAL_XRT_LITE_CHECKED_VTABLE_CAST(base_allocator,
+                                            iree_hal_xrt_lite_allocator_vtable,
+                                            iree_hal_xrt_lite_allocator);
   bool was_imported = false;
   if (!was_imported) {
     IREE_STATISTICS(iree_hal_allocator_statistics_record_free(
@@ -157,10 +161,12 @@ iree_status_t iree_hal_xrt_lite_allocator_create(
 static void iree_hal_xrt_lite_allocator_destroy(
     iree_hal_allocator_t* base_allocator) {
   IREE_ASSERT_ARGUMENT(base_allocator);
-  iree_hal_xrt_lite_allocator* allocator =
-      reinterpret_cast<iree_hal_xrt_lite_allocator*>(base_allocator);
   IREE_TRACE_ZONE_BEGIN(z0);
 
+  iree_hal_xrt_lite_allocator* allocator =
+      IREE_HAL_XRT_LITE_CHECKED_VTABLE_CAST(base_allocator,
+                                            iree_hal_xrt_lite_allocator_vtable,
+                                            iree_hal_xrt_lite_allocator);
   iree_hal_resource_release(&allocator->resource);
   iree_allocator_free(allocator->host_allocator, allocator);
 
@@ -172,7 +178,9 @@ static iree_allocator_t iree_hal_xrt_lite_allocator_host_allocator(
   IREE_TRACE_ZONE_BEGIN(z0);
 
   const iree_hal_xrt_lite_allocator* allocator =
-      reinterpret_cast<const iree_hal_xrt_lite_allocator*>(base_allocator);
+      IREE_HAL_XRT_LITE_CHECKED_VTABLE_CAST(base_allocator,
+                                            iree_hal_xrt_lite_allocator_vtable,
+                                            const iree_hal_xrt_lite_allocator);
 
   IREE_TRACE_ZONE_END(z0);
   return allocator->host_allocator;

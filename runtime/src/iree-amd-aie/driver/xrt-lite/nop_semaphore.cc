@@ -36,7 +36,7 @@ iree_status_t iree_hal_xrt_lite_semaphore_create(
   iree_hal_xrt_lite_semaphore* semaphore = nullptr;
   IREE_RETURN_AND_END_ZONE_IF_ERROR(
       z0, iree_allocator_malloc(host_allocator, sizeof(*semaphore),
-                                (void**)&semaphore));
+                                reinterpret_cast<void**>(&semaphore)));
   semaphore = new (semaphore)
       iree_hal_xrt_lite_semaphore(initial_value, host_allocator);
   *out_semaphore = &semaphore->base;
@@ -50,7 +50,9 @@ static void iree_hal_xrt_lite_semaphore_destroy(
   IREE_TRACE_ZONE_BEGIN(z0);
 
   iree_hal_xrt_lite_semaphore* semaphore =
-      reinterpret_cast<iree_hal_xrt_lite_semaphore*>(base_semaphore);
+      IREE_HAL_XRT_LITE_CHECKED_VTABLE_CAST(base_semaphore,
+                                            iree_hal_xrt_lite_semaphore_vtable,
+                                            iree_hal_xrt_lite_semaphore);
   iree_allocator_t host_allocator = semaphore->host_allocator;
   iree_hal_semaphore_deinitialize(&semaphore->base);
   iree_allocator_free(host_allocator, semaphore);

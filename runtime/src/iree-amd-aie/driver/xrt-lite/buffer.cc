@@ -24,8 +24,8 @@ static iree_status_t iree_hal_xrt_lite_buffer_invalidate_range(
     iree_device_size_t local_byte_length) {
   IREE_TRACE_ZONE_BEGIN(z0);
 
-  iree_hal_xrt_lite_buffer* buffer =
-      reinterpret_cast<iree_hal_xrt_lite_buffer*>(base_buffer);
+  iree_hal_xrt_lite_buffer* buffer = IREE_HAL_XRT_LITE_CHECKED_VTABLE_CAST(
+      base_buffer, iree_hal_xrt_lite_buffer_vtable, iree_hal_xrt_lite_buffer);
   if (IREE_UNLIKELY(!buffer->bo)) {
     IREE_TRACE_ZONE_END(z0);
     return iree_make_status(
@@ -46,8 +46,8 @@ static iree_status_t iree_hal_xrt_lite_buffer_map_range(
     iree_hal_buffer_mapping_t* mapping) {
   IREE_TRACE_ZONE_BEGIN(z0);
 
-  iree_hal_xrt_lite_buffer* buffer =
-      reinterpret_cast<iree_hal_xrt_lite_buffer*>(base_buffer);
+  iree_hal_xrt_lite_buffer* buffer = IREE_HAL_XRT_LITE_CHECKED_VTABLE_CAST(
+      base_buffer, iree_hal_xrt_lite_buffer_vtable, iree_hal_xrt_lite_buffer);
   IREE_RETURN_AND_END_ZONE_IF_ERROR(
       z0, iree_hal_buffer_validate_memory_type(
               iree_hal_buffer_memory_type(
@@ -87,8 +87,8 @@ static iree_status_t iree_hal_xrt_lite_buffer_flush_range(
     iree_device_size_t local_byte_length) {
   IREE_TRACE_ZONE_BEGIN(z0);
 
-  iree_hal_xrt_lite_buffer* buffer =
-      reinterpret_cast<iree_hal_xrt_lite_buffer*>(base_buffer);
+  iree_hal_xrt_lite_buffer* buffer = IREE_HAL_XRT_LITE_CHECKED_VTABLE_CAST(
+      base_buffer, iree_hal_xrt_lite_buffer_vtable, iree_hal_xrt_lite_buffer);
   if (IREE_UNLIKELY(!buffer->bo)) {
     IREE_TRACE_ZONE_END(z0);
     return iree_make_status(
@@ -123,8 +123,8 @@ iree_status_t iree_hal_xrt_lite_buffer_wrap(
 
   iree_hal_xrt_lite_buffer* buffer = nullptr;
   IREE_RETURN_AND_END_ZONE_IF_ERROR(
-      z0,
-      iree_allocator_malloc(host_allocator, sizeof(*buffer), (void**)&buffer));
+      z0, iree_allocator_malloc(host_allocator, sizeof(*buffer),
+                                reinterpret_cast<void**>(&buffer)));
   iree_hal_buffer_initialize(host_allocator, allocator, &buffer->base,
                              allocation_size, byte_offset, byte_length,
                              memory_type, allowed_access, allowed_usage,
@@ -138,11 +138,11 @@ iree_status_t iree_hal_xrt_lite_buffer_wrap(
 }
 
 static void iree_hal_xrt_lite_buffer_destroy(iree_hal_buffer_t* base_buffer) {
-  iree_hal_xrt_lite_buffer* buffer =
-      reinterpret_cast<iree_hal_xrt_lite_buffer*>(base_buffer);
-  iree_allocator_t host_allocator = base_buffer->host_allocator;
+  iree_hal_xrt_lite_buffer* buffer = IREE_HAL_XRT_LITE_CHECKED_VTABLE_CAST(
+      base_buffer, iree_hal_xrt_lite_buffer_vtable, iree_hal_xrt_lite_buffer);
   IREE_TRACE_ZONE_BEGIN(z0);
 
+  iree_allocator_t host_allocator = base_buffer->host_allocator;
   if (buffer->release_callback.fn) {
     buffer->release_callback.fn(buffer->release_callback.user_data,
                                 base_buffer);
@@ -157,8 +157,8 @@ static void iree_hal_xrt_lite_buffer_destroy(iree_hal_buffer_t* base_buffer) {
 shim_xdna::bo* iree_hal_xrt_lite_buffer_handle(iree_hal_buffer_t* base_buffer) {
   IREE_TRACE_ZONE_BEGIN(z0);
 
-  iree_hal_xrt_lite_buffer* buffer =
-      reinterpret_cast<iree_hal_xrt_lite_buffer*>(base_buffer);
+  iree_hal_xrt_lite_buffer* buffer = IREE_HAL_XRT_LITE_CHECKED_VTABLE_CAST(
+      base_buffer, iree_hal_xrt_lite_buffer_vtable, iree_hal_xrt_lite_buffer);
 
   IREE_TRACE_ZONE_END(z0);
   return buffer->bo;

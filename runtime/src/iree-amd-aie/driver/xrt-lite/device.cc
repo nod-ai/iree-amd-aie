@@ -23,7 +23,6 @@ extern const iree_hal_device_vtable_t iree_hal_xrt_lite_device_vtable;
 
 struct iree_hal_xrt_lite_device {
   iree_hal_resource_t resource;
-  iree_string_view_t identifier;
   iree_allocator_t host_allocator;
   // TODO(max): not used because "device allocations" are performed through
   // device
@@ -32,6 +31,9 @@ struct iree_hal_xrt_lite_device {
   // since command buffers can contain inlined data
   iree_arena_block_pool_t block_pool;
   shim_xdna::device* shim_device;
+  // should come last; see the definition of total_size below in
+  // iree_hal_xrt_lite_device_create
+  iree_string_view_t identifier;
 
   iree_hal_xrt_lite_device(const iree_hal_xrt_lite_device_options* options,
                            iree_allocator_t host_allocator) {
@@ -53,12 +55,12 @@ struct iree_hal_xrt_lite_device {
 };
 
 static iree_status_t iree_hal_xrt_lite_device_create_executable_cache(
-    iree_hal_device_t* base_value, iree_string_view_t identifier,
+    iree_hal_device_t* base_device, iree_string_view_t identifier,
     iree_loop_t loop, iree_hal_executable_cache_t** out_executable_cache) {
   IREE_TRACE_ZONE_BEGIN(z0);
 
-  iree_hal_xrt_lite_device* device =
-      reinterpret_cast<iree_hal_xrt_lite_device*>(base_value);
+  iree_hal_xrt_lite_device* device = IREE_HAL_XRT_LITE_CHECKED_VTABLE_CAST(
+      base_device, iree_hal_xrt_lite_device_vtable, iree_hal_xrt_lite_device);
 
   IREE_TRACE_ZONE_END(z0);
   return iree_hal_xrt_lite_nop_executable_cache_create(
@@ -67,7 +69,7 @@ static iree_status_t iree_hal_xrt_lite_device_create_executable_cache(
 }
 
 static iree_status_t iree_hal_xrt_lite_device_create_command_buffer(
-    iree_hal_device_t* base_value, iree_hal_command_buffer_mode_t mode,
+    iree_hal_device_t* base_device, iree_hal_command_buffer_mode_t mode,
     iree_hal_command_category_t command_categories,
     iree_hal_queue_affinity_t queue_affinity, iree_host_size_t binding_capacity,
     iree_hal_command_buffer_t** out_command_buffer) {
@@ -79,8 +81,8 @@ static iree_status_t iree_hal_xrt_lite_device_create_command_buffer(
                             "unimplmented multi-shot command buffer");
   }
 
-  iree_hal_xrt_lite_device* device =
-      reinterpret_cast<iree_hal_xrt_lite_device*>(base_value);
+  iree_hal_xrt_lite_device* device = IREE_HAL_XRT_LITE_CHECKED_VTABLE_CAST(
+      base_device, iree_hal_xrt_lite_device_vtable, iree_hal_xrt_lite_device);
 
   IREE_TRACE_ZONE_END(z0);
   return iree_hal_deferred_command_buffer_create(
@@ -89,12 +91,12 @@ static iree_status_t iree_hal_xrt_lite_device_create_command_buffer(
 }
 
 static iree_status_t iree_hal_xrt_lite_device_create_semaphore(
-    iree_hal_device_t* base_value, uint64_t initial_value,
+    iree_hal_device_t* base_device, uint64_t initial_value,
     iree_hal_semaphore_flags_t flags, iree_hal_semaphore_t** out_semaphore) {
   IREE_TRACE_ZONE_BEGIN(z0);
 
-  iree_hal_xrt_lite_device* device =
-      reinterpret_cast<iree_hal_xrt_lite_device*>(base_value);
+  iree_hal_xrt_lite_device* device = IREE_HAL_XRT_LITE_CHECKED_VTABLE_CAST(
+      base_device, iree_hal_xrt_lite_device_vtable, iree_hal_xrt_lite_device);
 
   IREE_TRACE_ZONE_END(z0);
   return iree_hal_xrt_lite_semaphore_create(device->host_allocator,
@@ -102,7 +104,7 @@ static iree_status_t iree_hal_xrt_lite_device_create_semaphore(
 }
 
 static iree_status_t iree_hal_xrt_lite_device_queue_execute(
-    iree_hal_device_t* base_value, iree_hal_queue_affinity_t queue_affinity,
+    iree_hal_device_t* base_device, iree_hal_queue_affinity_t queue_affinity,
     const iree_hal_semaphore_list_t wait_semaphore_list,
     const iree_hal_semaphore_list_t signal_semaphore_list,
     iree_host_size_t command_buffer_count,
@@ -110,8 +112,8 @@ static iree_status_t iree_hal_xrt_lite_device_queue_execute(
     iree_hal_buffer_binding_table_t const* binding_tables) {
   IREE_TRACE_ZONE_BEGIN(z0);
 
-  iree_hal_xrt_lite_device* device =
-      reinterpret_cast<iree_hal_xrt_lite_device*>(base_value);
+  iree_hal_xrt_lite_device* device = IREE_HAL_XRT_LITE_CHECKED_VTABLE_CAST(
+      base_device, iree_hal_xrt_lite_device_vtable, iree_hal_xrt_lite_device);
 
   for (iree_host_size_t i = 0; i < command_buffer_count; i++) {
     iree_hal_command_buffer_t* xrt_command_buffer = nullptr;
@@ -136,12 +138,12 @@ static iree_status_t iree_hal_xrt_lite_device_queue_execute(
 }
 
 static void iree_hal_xrt_lite_device_replace_device_allocator(
-    iree_hal_device_t* base_value, iree_hal_allocator_t* new_allocator) {
+    iree_hal_device_t* base_device, iree_hal_allocator_t* new_allocator) {
   IREE_TRACE_ZONE_BEGIN(z0);
 
   iree_hal_allocator_retain(new_allocator);
-  iree_hal_xrt_lite_device* device =
-      reinterpret_cast<iree_hal_xrt_lite_device*>(base_value);
+  iree_hal_xrt_lite_device* device = IREE_HAL_XRT_LITE_CHECKED_VTABLE_CAST(
+      base_device, iree_hal_xrt_lite_device_vtable, iree_hal_xrt_lite_device);
   device->device_allocator = new_allocator;
   iree_hal_allocator_release(device->device_allocator);
 
@@ -149,13 +151,13 @@ static void iree_hal_xrt_lite_device_replace_device_allocator(
 }
 
 static iree_status_t iree_hal_xrt_lite_device_query_i64(
-    iree_hal_device_t* base_value, iree_string_view_t category,
+    iree_hal_device_t* base_device, iree_string_view_t category,
     iree_string_view_t key, int64_t* out_value) {
   IREE_TRACE_ZONE_BEGIN(z0);
 
   *out_value = 0;
-  iree_hal_xrt_lite_device* device =
-      reinterpret_cast<iree_hal_xrt_lite_device*>(base_value);
+  iree_hal_xrt_lite_device* device = IREE_HAL_XRT_LITE_CHECKED_VTABLE_CAST(
+      base_device, iree_hal_xrt_lite_device_vtable, iree_hal_xrt_lite_device);
   if (iree_string_view_equal(category, IREE_SV("hal.device.id"))) {
     *out_value =
         iree_string_view_match_pattern(device->identifier, key) ? 1 : 0;
@@ -172,7 +174,7 @@ static iree_status_t iree_hal_xrt_lite_device_query_i64(
 }
 
 static iree_status_t iree_hal_xrt_lite_device_queue_alloca(
-    iree_hal_device_t* base_value, iree_hal_queue_affinity_t queue_affinity,
+    iree_hal_device_t* base_device, iree_hal_queue_affinity_t queue_affinity,
     const iree_hal_semaphore_list_t wait_semaphore_list,
     const iree_hal_semaphore_list_t signal_semaphore_list,
     iree_hal_allocator_pool_t pool, iree_hal_buffer_params_t params,
@@ -180,8 +182,8 @@ static iree_status_t iree_hal_xrt_lite_device_queue_alloca(
     iree_hal_buffer_t** IREE_RESTRICT out_buffer) {
   IREE_TRACE_ZONE_BEGIN(z0);
 
-  iree_hal_xrt_lite_device* device =
-      reinterpret_cast<iree_hal_xrt_lite_device*>(base_value);
+  iree_hal_xrt_lite_device* device = IREE_HAL_XRT_LITE_CHECKED_VTABLE_CAST(
+      base_device, iree_hal_xrt_lite_device_vtable, iree_hal_xrt_lite_device);
   IREE_RETURN_AND_END_ZONE_IF_ERROR(
       z0, iree_hal_semaphore_list_wait(wait_semaphore_list,
                                        iree_infinite_timeout()));
@@ -196,21 +198,21 @@ static iree_status_t iree_hal_xrt_lite_device_queue_alloca(
 }
 
 static iree_string_view_t iree_hal_xrt_lite_device_id(
-    iree_hal_device_t* base_value) {
+    iree_hal_device_t* base_device) {
   IREE_TRACE_ZONE_BEGIN(z0);
 
-  iree_hal_xrt_lite_device* device =
-      reinterpret_cast<iree_hal_xrt_lite_device*>(base_value);
+  iree_hal_xrt_lite_device* device = IREE_HAL_XRT_LITE_CHECKED_VTABLE_CAST(
+      base_device, iree_hal_xrt_lite_device_vtable, iree_hal_xrt_lite_device);
 
   IREE_TRACE_ZONE_END(z0);
   return device->identifier;
 }
 
-static void iree_hal_xrt_lite_device_destroy(iree_hal_device_t* base_value) {
+static void iree_hal_xrt_lite_device_destroy(iree_hal_device_t* base_device) {
   IREE_TRACE_ZONE_BEGIN(z0);
 
-  iree_hal_xrt_lite_device* device =
-      reinterpret_cast<iree_hal_xrt_lite_device*>(base_value);
+  iree_hal_xrt_lite_device* device = IREE_HAL_XRT_LITE_CHECKED_VTABLE_CAST(
+      base_device, iree_hal_xrt_lite_device_vtable, iree_hal_xrt_lite_device);
 
   iree_hal_allocator_release(device->device_allocator);
   delete device->shim_device;
@@ -220,22 +222,22 @@ static void iree_hal_xrt_lite_device_destroy(iree_hal_device_t* base_value) {
 };
 
 static iree_allocator_t iree_hal_xrt_lite_device_host_allocator(
-    iree_hal_device_t* base_value) {
+    iree_hal_device_t* base_device) {
   IREE_TRACE_ZONE_BEGIN(z0);
 
-  iree_hal_xrt_lite_device* device =
-      reinterpret_cast<iree_hal_xrt_lite_device*>(base_value);
+  iree_hal_xrt_lite_device* device = IREE_HAL_XRT_LITE_CHECKED_VTABLE_CAST(
+      base_device, iree_hal_xrt_lite_device_vtable, iree_hal_xrt_lite_device);
 
   IREE_TRACE_ZONE_END(z0);
   return device->host_allocator;
 }
 
 static iree_hal_allocator_t* iree_hal_xrt_lite_device_device_allocator(
-    iree_hal_device_t* base_value) {
+    iree_hal_device_t* base_device) {
   IREE_TRACE_ZONE_BEGIN(z0);
 
-  iree_hal_xrt_lite_device* device =
-      reinterpret_cast<iree_hal_xrt_lite_device*>(base_value);
+  iree_hal_xrt_lite_device* device = IREE_HAL_XRT_LITE_CHECKED_VTABLE_CAST(
+      base_device, iree_hal_xrt_lite_device_vtable, iree_hal_xrt_lite_device);
 
   IREE_TRACE_ZONE_END(z0);
   return device->device_allocator;
@@ -262,8 +264,8 @@ iree_status_t iree_hal_xrt_lite_device_create(
 
   iree_hal_xrt_lite_device* device = nullptr;
   iree_host_size_t total_size = iree_sizeof_struct(*device) + identifier.size;
-  IREE_RETURN_IF_ERROR(
-      iree_allocator_malloc(host_allocator, total_size, (void**)&device));
+  IREE_RETURN_IF_ERROR(iree_allocator_malloc(
+      host_allocator, total_size, reinterpret_cast<void**>(&device)));
   device = new (device) iree_hal_xrt_lite_device(options, host_allocator);
   iree_string_view_append_to_buffer(
       identifier, &device->identifier,
