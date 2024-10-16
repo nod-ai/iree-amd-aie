@@ -44,11 +44,11 @@ struct device {
   std::unique_ptr<bo> alloc_bo(size_t size, shim_xcl_bo_flags flags);
   std::unique_ptr<bo> import_bo(pid_t, int);
 
-  std::unique_ptr<hw_ctx> create_hw_context(
-      const std::vector<uint8_t> &pdi, const std::string &cu_name,
-      const std::map<std::string, uint32_t> &qos);
-  std::unique_ptr<hw_ctx> create_hw_context(const std::vector<uint8_t> &pdi,
-                                            const std::string &cu_name);
+  hw_ctx create_hw_context(const std::vector<uint8_t> &pdi,
+                           const std::string &cu_name,
+                           const std::map<std::string, uint32_t> &qos);
+  hw_ctx create_hw_context(const std::vector<uint8_t> &pdi,
+                           const std::string &cu_name);
 
   std::vector<char> read_aie_mem(uint16_t col, uint16_t row, uint32_t offset,
                                  uint32_t size);

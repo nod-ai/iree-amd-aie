@@ -12,7 +12,7 @@
 #include "iree/hal/api.h"
 
 iree_status_t iree_hal_xrt_lite_buffer_wrap(
-    std::unique_ptr<shim_xdna::bo> bo, iree_hal_allocator_t* allocator,
+    shim_xdna::bo* bo, iree_hal_allocator_t* allocator,
     iree_hal_memory_type_t memory_type, iree_hal_memory_access_t allowed_access,
     iree_hal_buffer_usage_t allowed_usage, iree_device_size_t allocation_size,
     iree_device_size_t byte_offset, iree_device_size_t byte_length,

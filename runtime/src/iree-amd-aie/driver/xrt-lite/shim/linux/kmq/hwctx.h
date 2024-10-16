@@ -56,6 +56,9 @@ struct hw_ctx {
          const std::string &cu_name,
          const std::map<std::string, uint32_t> &qos = {});
   ~hw_ctx();
+  // no copying
+  hw_ctx(const hw_ctx &) = delete;
+  hw_ctx &operator=(const hw_ctx &) = delete;
 
   std::unique_ptr<bo> alloc_bo(size_t size, shim_xcl_bo_flags flags);
   std::unique_ptr<bo> import_bo(pid_t, int);

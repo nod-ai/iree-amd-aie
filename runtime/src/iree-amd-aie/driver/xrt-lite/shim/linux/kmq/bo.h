@@ -40,6 +40,9 @@ struct drm_bo {
   uint64_t m_vaddr = AMDXDNA_INVALID_ADDR;
 
   drm_bo(bo &parent, const amdxdna_drm_get_bo_info &bo_info);
+  // no copying
+  drm_bo(const drm_bo &) = delete;
+  drm_bo &operator=(const drm_bo &) = delete;
   ~drm_bo();
 };
 
@@ -73,6 +76,9 @@ struct bo {
   // Support BO creation from internal
   bo(const pdev &p, size_t size, amdxdna_bo_type type);
   ~bo();
+  // no copying
+  bo(const bo &) = delete;
+  bo &operator=(const bo &) = delete;
 
   void *map() const;
   void unmap(void *addr);
