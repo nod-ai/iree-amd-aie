@@ -183,7 +183,6 @@ static iree_status_t iree_hal_xrt_lite_direct_command_buffer_dispatch(
     shim_xdna::bo* bo = iree_hal_xrt_lite_buffer_handle(
         iree_hal_buffer_allocated_buffer(bindings.values[j].buffer));
     ebuf.add_arg_bo(*bo);
-    bo->sync(shim_xdna::direction::host2device);
   }
 
   shim_xdna::hw_q* hwq = context.get_hw_queue();
@@ -193,6 +192,8 @@ static iree_status_t iree_hal_xrt_lite_direct_command_buffer_dispatch(
   for (iree_host_size_t j = 0; j < bindings.count; ++j) {
     shim_xdna::bo* bo = iree_hal_xrt_lite_buffer_handle(
         iree_hal_buffer_allocated_buffer(bindings.values[j].buffer));
+    // TODO(max): this should be happening automatically via a call to some
+    // buffer API that performs the sync (maybe invalidate_range)
     bo->sync(shim_xdna::direction::device2host);
   }
 
