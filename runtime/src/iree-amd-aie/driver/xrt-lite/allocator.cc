@@ -31,10 +31,10 @@ struct iree_hal_xrt_lite_allocator {
   }
 };
 
-iree_hal_buffer_compatibility_t query_buffer_compatibility(
+iree_hal_buffer_compatibility_t
+iree_hal_xrt_lite_allocator_query_buffer_compatibility(
     iree_hal_allocator_t* base_allocator, iree_hal_buffer_params_t* params,
     iree_device_size_t* allocation_size) {
-  // All buffers can be allocated on the heap.
   iree_hal_buffer_compatibility_t compatibility =
       IREE_HAL_BUFFER_COMPATIBILITY_ALLOCATABLE;
 
@@ -50,7 +50,6 @@ iree_hal_buffer_compatibility_t query_buffer_compatibility(
     }
   }
 
-  // We are now optimal.
   params->type &= ~IREE_HAL_MEMORY_TYPE_OPTIMAL;
 
   // Guard against the corner case where the requested buffer size is 0. The
@@ -65,16 +64,16 @@ iree_hal_buffer_compatibility_t query_buffer_compatibility(
   return compatibility;
 }
 
-iree_status_t allocate_buffer(iree_hal_allocator_t* base_allocator,
-                              const iree_hal_buffer_params_t* params,
-                              iree_device_size_t allocation_size,
-                              iree_hal_buffer_t** out_buffer) {
+iree_status_t iree_hal_xrt_lite_allocator_allocate_buffer(
+    iree_hal_allocator_t* base_allocator,
+    const iree_hal_buffer_params_t* params, iree_device_size_t allocation_size,
+    iree_hal_buffer_t** out_buffer) {
   iree_hal_xrt_lite_allocator* allocator =
       reinterpret_cast<iree_hal_xrt_lite_allocator*>(base_allocator);
-  // Coerce options into those required by the current device.
   iree_hal_buffer_params_t compat_params = *params;
-  iree_hal_buffer_compatibility_t compatibility = query_buffer_compatibility(
-      base_allocator, &compat_params, &allocation_size);
+  iree_hal_buffer_compatibility_t compatibility =
+      iree_hal_xrt_lite_allocator_query_buffer_compatibility(
+          base_allocator, &compat_params, &allocation_size);
   if (!iree_all_bits_set(compatibility,
                          IREE_HAL_BUFFER_COMPATIBILITY_ALLOCATABLE)) {
     return iree_make_status(
@@ -104,8 +103,8 @@ iree_status_t allocate_buffer(iree_hal_allocator_t* base_allocator,
   return status;
 }
 
-void deallocate_buffer(iree_hal_allocator_t* base_allocator,
-                       iree_hal_buffer_t* base_buffer) {
+void iree_hal_xrt_lite_allocator_deallocate_buffer(
+    iree_hal_allocator_t* base_allocator, iree_hal_buffer_t* base_buffer) {
   iree_hal_xrt_lite_allocator* allocator =
       reinterpret_cast<iree_hal_xrt_lite_allocator*>(base_allocator);
   bool was_imported = false;
@@ -115,12 +114,6 @@ void deallocate_buffer(iree_hal_allocator_t* base_allocator,
         iree_hal_buffer_allocation_size(base_buffer)));
   }
   iree_hal_buffer_destroy(base_buffer);
-}
-
-static iree_hal_xrt_lite_allocator* iree_hal_xrt_lite_allocator_cast(
-    iree_hal_allocator_t* base_value) {
-  IREE_HAL_ASSERT_TYPE(base_value, &iree_hal_xrt_lite_allocator_vtable);
-  return reinterpret_cast<iree_hal_xrt_lite_allocator*>(base_value);
 }
 
 iree_status_t iree_hal_xrt_lite_allocator_create(
@@ -151,7 +144,7 @@ static void iree_hal_xrt_lite_allocator_destroy(
     iree_hal_allocator_t* base_allocator) {
   IREE_ASSERT_ARGUMENT(base_allocator);
   iree_hal_xrt_lite_allocator* allocator =
-      iree_hal_xrt_lite_allocator_cast(base_allocator);
+      reinterpret_cast<iree_hal_xrt_lite_allocator*>(base_allocator);
   IREE_TRACE_ZONE_BEGIN(z0);
 
   iree_hal_resource_release(&allocator->resource);
@@ -173,8 +166,9 @@ const iree_hal_allocator_vtable_t iree_hal_xrt_lite_allocator_vtable = {
     .host_allocator = iree_hal_xrt_lite_allocator_host_allocator,
     .trim = unimplemented_ok_status,
     .query_statistics = unimplemented_ok_void,
-    .query_buffer_compatibility = query_buffer_compatibility,
-    .allocate_buffer = allocate_buffer,
-    .deallocate_buffer = deallocate_buffer,
+    .query_buffer_compatibility =
+        iree_hal_xrt_lite_allocator_query_buffer_compatibility,
+    .allocate_buffer = iree_hal_xrt_lite_allocator_allocate_buffer,
+    .deallocate_buffer = iree_hal_xrt_lite_allocator_deallocate_buffer,
 };
 }

@@ -50,7 +50,7 @@ struct iree_hal_xrt_lite_device {
   }
 };
 
-iree_status_t create_executable_cache(
+iree_status_t iree_hal_xrt_lite_device_create_executable_cache(
     iree_hal_device_t* base_value, iree_string_view_t identifier,
     iree_loop_t loop, iree_hal_executable_cache_t** out_executable_cache) {
   iree_hal_xrt_lite_device* device =
@@ -60,7 +60,7 @@ iree_status_t create_executable_cache(
       out_executable_cache);
 }
 
-iree_status_t create_command_buffer(
+iree_status_t iree_hal_xrt_lite_device_create_command_buffer(
     iree_hal_device_t* base_value, iree_hal_command_buffer_mode_t mode,
     iree_hal_command_category_t command_categories,
     iree_hal_queue_affinity_t queue_affinity, iree_host_size_t binding_capacity,
@@ -76,17 +76,16 @@ iree_status_t create_command_buffer(
       &device->block_pool, device->host_allocator_, out_command_buffer);
 }
 
-iree_status_t create_semaphore(iree_hal_device_t* base_value,
-                               uint64_t initial_value,
-                               iree_hal_semaphore_flags_t flags,
-                               iree_hal_semaphore_t** out_semaphore) {
+iree_status_t iree_hal_xrt_lite_device_create_semaphore(
+    iree_hal_device_t* base_value, uint64_t initial_value,
+    iree_hal_semaphore_flags_t flags, iree_hal_semaphore_t** out_semaphore) {
   iree_hal_xrt_lite_device* device =
       reinterpret_cast<iree_hal_xrt_lite_device*>(base_value);
   return iree_hal_xrt_lite_semaphore_create(device->host_allocator_,
                                             initial_value, out_semaphore);
 }
 
-iree_status_t queue_execute(
+iree_status_t iree_hal_xrt_lite_device_queue_execute(
     iree_hal_device_t* base_value, iree_hal_queue_affinity_t queue_affinity,
     const iree_hal_semaphore_list_t wait_semaphore_list,
     const iree_hal_semaphore_list_t signal_semaphore_list,
@@ -118,8 +117,8 @@ iree_status_t queue_execute(
   return iree_ok_status();
 }
 
-void replace_device_allocator(iree_hal_device_t* base_value,
-                              iree_hal_allocator_t* new_allocator) {
+void iree_hal_xrt_lite_device_replace_device_allocator(
+    iree_hal_device_t* base_value, iree_hal_allocator_t* new_allocator) {
   iree_hal_allocator_retain(new_allocator);
   iree_hal_xrt_lite_device* device =
       reinterpret_cast<iree_hal_xrt_lite_device*>(base_value);
@@ -127,9 +126,10 @@ void replace_device_allocator(iree_hal_device_t* base_value,
   device->device_allocator_ = new_allocator;
 }
 
-iree_status_t query_i64(iree_hal_device_t* base_value,
-                        iree_string_view_t category, iree_string_view_t key,
-                        int64_t* out_value) {
+iree_status_t iree_hal_xrt_lite_device_query_i64(iree_hal_device_t* base_value,
+                                                 iree_string_view_t category,
+                                                 iree_string_view_t key,
+                                                 int64_t* out_value) {
   *out_value = 0;
   iree_hal_xrt_lite_device* device =
       reinterpret_cast<iree_hal_xrt_lite_device*>(base_value);
@@ -146,7 +146,7 @@ iree_status_t query_i64(iree_hal_device_t* base_value,
   return iree_make_status(IREE_STATUS_UNIMPLEMENTED, "unsupported query");
 }
 
-iree_status_t queue_alloca(
+iree_status_t iree_hal_xrt_lite_device_queue_alloca(
     iree_hal_device_t* base_value, iree_hal_queue_affinity_t queue_affinity,
     const iree_hal_semaphore_list_t wait_semaphore_list,
     const iree_hal_semaphore_list_t signal_semaphore_list,
@@ -163,13 +163,13 @@ iree_status_t queue_alloca(
   return iree_ok_status();
 }
 
-iree_string_view_t id(iree_hal_device_t* base_value) {
+iree_string_view_t iree_hal_xrt_lite_device_id(iree_hal_device_t* base_value) {
   iree_hal_xrt_lite_device* device =
       reinterpret_cast<iree_hal_xrt_lite_device*>(base_value);
   return device->identifier;
 }
 
-void destroy(iree_hal_device_t* base_value) {
+void iree_hal_xrt_lite_device_destroy(iree_hal_device_t* base_value) {
   iree_hal_xrt_lite_device* device =
       reinterpret_cast<iree_hal_xrt_lite_device*>(base_value);
   IREE_TRACE_ZONE_BEGIN(z0);
@@ -181,12 +181,14 @@ void destroy(iree_hal_device_t* base_value) {
   IREE_TRACE_ZONE_END(z0);
 };
 
-iree_allocator_t host_allocator(iree_hal_device_t* base_value) {
+iree_allocator_t iree_hal_xrt_lite_device_host_allocator(
+    iree_hal_device_t* base_value) {
   iree_hal_xrt_lite_device* device =
       reinterpret_cast<iree_hal_xrt_lite_device*>(base_value);
   return device->host_allocator_;
 }
-iree_hal_allocator_t* device_allocator(iree_hal_device_t* base_value) {
+iree_hal_allocator_t* iree_hal_xrt_lite_device_device_allocator(
+    iree_hal_device_t* base_value) {
   iree_hal_xrt_lite_device* device =
       reinterpret_cast<iree_hal_xrt_lite_device*>(base_value);
   return device->device_allocator_;
@@ -224,17 +226,18 @@ iree_status_t iree_hal_xrt_lite_device_create(
 
 namespace {
 const iree_hal_device_vtable_t iree_hal_xrt_lite_device_vtable = {
-    .destroy = destroy,
-    .id = id,
-    .host_allocator = host_allocator,
-    .device_allocator = device_allocator,
-    .replace_device_allocator = replace_device_allocator,
-    .query_i64 = query_i64,
-    .create_command_buffer = create_command_buffer,
-    .create_executable_cache = create_executable_cache,
-    .create_semaphore = create_semaphore,
-    .queue_alloca = queue_alloca,
-    .queue_execute = queue_execute,
+    .destroy = iree_hal_xrt_lite_device_destroy,
+    .id = iree_hal_xrt_lite_device_id,
+    .host_allocator = iree_hal_xrt_lite_device_host_allocator,
+    .device_allocator = iree_hal_xrt_lite_device_device_allocator,
+    .replace_device_allocator =
+        iree_hal_xrt_lite_device_replace_device_allocator,
+    .query_i64 = iree_hal_xrt_lite_device_query_i64,
+    .create_command_buffer = iree_hal_xrt_lite_device_create_command_buffer,
+    .create_executable_cache = iree_hal_xrt_lite_device_create_executable_cache,
+    .create_semaphore = iree_hal_xrt_lite_device_create_semaphore,
+    .queue_alloca = iree_hal_xrt_lite_device_queue_alloca,
+    .queue_execute = iree_hal_xrt_lite_device_queue_execute,
     .profiling_begin = unimplemented_ok_status,
     .profiling_flush = unimplemented_ok_status,
     .profiling_end = unimplemented_ok_status,
