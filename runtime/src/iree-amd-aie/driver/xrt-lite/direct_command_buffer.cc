@@ -168,11 +168,10 @@ static iree_status_t iree_hal_xrt_lite_direct_command_buffer_dispatch(
   bo_ctrl_code->sync(shim_xdna::direction::host2device);
 
   shim_xdna::kernel ebuf(command_buffer->shim_device->get_pdev(), ERT_START_CU);
-  std::unique_ptr<shim_xdna::hw_ctx> context =
-      command_buffer->shim_device->create_hw_context(kernel_params.pdi,
-                                                     kernel_params.kernel_name);
+  shim_xdna::hw_ctx context = command_buffer->shim_device->create_hw_context(
+      kernel_params.pdi, kernel_params.kernel_name);
   shim_xdna::cuidx_t cu_idx =
-      context->open_cu_context(kernel_params.kernel_name);
+      context.open_cu_context(kernel_params.kernel_name);
 
   ebuf.set_cu_idx(cu_idx);
   unsigned int opcode = 3;
@@ -187,7 +186,7 @@ static iree_status_t iree_hal_xrt_lite_direct_command_buffer_dispatch(
     bo->sync(shim_xdna::direction::host2device);
   }
 
-  shim_xdna::hw_q* hwq = context->get_hw_queue();
+  shim_xdna::hw_q* hwq = context.get_hw_queue();
   hwq->issue_command(ebuf.get_exec_buf_bo());
   hwq->wait_command(ebuf.get_exec_buf_bo(), 0);
 

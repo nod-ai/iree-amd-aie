@@ -90,11 +90,11 @@ static iree_status_t iree_hal_xrt_lite_allocator_allocate_buffer(
   }
 
   uint32_t flags = XCL_BO_FLAGS_HOST_ONLY;
-  std::unique_ptr<shim_xdna::bo> bo =
-      allocator->shim_device->alloc_bo(allocation_size, flags);
+  shim_xdna::bo* bo =
+      allocator->shim_device->alloc_bo(allocation_size, flags).release();
   iree_hal_buffer_t* buffer = nullptr;
   iree_status_t status = iree_hal_xrt_lite_buffer_wrap(
-      std::move(bo), reinterpret_cast<iree_hal_allocator_t*>(allocator),
+      bo, reinterpret_cast<iree_hal_allocator_t*>(allocator),
       compat_params.type, compat_params.access, compat_params.usage,
       allocation_size,
       /*byte_offset=*/0, /*byte_length=*/allocation_size,

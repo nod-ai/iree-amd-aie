@@ -15,7 +15,7 @@ extern const iree_hal_buffer_vtable_t iree_hal_xrt_lite_buffer_vtable;
 
 struct iree_hal_xrt_lite_buffer {
   iree_hal_buffer_t base;
-  std::unique_ptr<shim_xdna::bo> bo;
+  shim_xdna::bo* bo;
   iree_hal_buffer_release_callback_t release_callback;
 };
 
@@ -111,7 +111,7 @@ static iree_status_t iree_hal_xrt_lite_buffer_unmap_range(
 }
 
 iree_status_t iree_hal_xrt_lite_buffer_wrap(
-    std::unique_ptr<shim_xdna::bo> bo, iree_hal_allocator_t* allocator,
+    shim_xdna::bo* bo, iree_hal_allocator_t* allocator,
     iree_hal_memory_type_t memory_type, iree_hal_memory_access_t allowed_access,
     iree_hal_buffer_usage_t allowed_usage, iree_device_size_t allocation_size,
     iree_device_size_t byte_offset, iree_device_size_t byte_length,
@@ -130,7 +130,7 @@ iree_status_t iree_hal_xrt_lite_buffer_wrap(
                              memory_type, allowed_access, allowed_usage,
                              &iree_hal_xrt_lite_buffer_vtable, &buffer->base);
   buffer->release_callback = release_callback;
-  buffer->bo = std::move(bo);
+  buffer->bo = bo;
   *out_buffer = &buffer->base;
 
   IREE_TRACE_ZONE_END(z0);
@@ -148,7 +148,7 @@ static void iree_hal_xrt_lite_buffer_destroy(iree_hal_buffer_t* base_buffer) {
                                 base_buffer);
   }
 
-  buffer->bo.reset();
+  delete buffer->bo;
   iree_allocator_free(host_allocator, buffer);
 
   IREE_TRACE_ZONE_END(z0);
@@ -161,7 +161,7 @@ shim_xdna::bo* iree_hal_xrt_lite_buffer_handle(iree_hal_buffer_t* base_buffer) {
       reinterpret_cast<iree_hal_xrt_lite_buffer*>(base_buffer);
 
   IREE_TRACE_ZONE_END(z0);
-  return buffer->bo.get();
+  return buffer->bo;
 }
 
 namespace {

@@ -264,18 +264,6 @@ void bo::import_bo() {
 
 void bo::free_bo() { m_drm_bo.reset(); }
 
-bo::bo(const pdev &p, uint32_t ctx_id, size_t size, shim_xcl_bo_flags flags)
-    : bo(p, ctx_id, size, flags, flag_to_type(flags)) {
-  if (m_type == AMDXDNA_BO_INVALID)
-    shim_err(EINVAL, "Invalid BO flags: 0x%lx", flags);
-}
-
-bo::bo(const pdev &p, uint32_t ctx_id, size_t size, uint32_t flags)
-    : bo(p, ctx_id, size, shim_xcl_bo_flags{.flags = flags}) {
-  if (m_type == AMDXDNA_BO_INVALID)
-    shim_err(EINVAL, "Invalid BO flags: 0x%lx", flags);
-}
-
 bo::bo(const pdev &pdev, uint32_t ctx_id, size_t size, shim_xcl_bo_flags flags,
        amdxdna_bo_type type)
     : m_pdev(pdev),
@@ -336,6 +324,18 @@ bo::bo(const pdev &pdev, uint32_t ctx_id, size_t size, shim_xcl_bo_flags flags,
       "Allocated KMQ BO (userptr=0x%lx, size=%ld, flags=0x%llx, "
       "type=%d, drm_bo=%d)",
       m_aligned, m_aligned_size, m_flags, m_type, get_drm_bo_handle());
+}
+
+bo::bo(const pdev &p, uint32_t ctx_id, size_t size, shim_xcl_bo_flags flags)
+    : bo(p, ctx_id, size, flags, flag_to_type(flags)) {
+  if (m_type == AMDXDNA_BO_INVALID)
+    shim_err(EINVAL, "Invalid BO flags: 0x%lx", flags);
+}
+
+bo::bo(const pdev &p, uint32_t ctx_id, size_t size, uint32_t flags)
+    : bo(p, ctx_id, size, shim_xcl_bo_flags{.flags = flags}) {
+  if (m_type == AMDXDNA_BO_INVALID)
+    shim_err(EINVAL, "Invalid BO flags: 0x%lx", flags);
 }
 
 bo::bo(const pdev &p, int ehdl) : m_pdev(p), m_import(ehdl) {
