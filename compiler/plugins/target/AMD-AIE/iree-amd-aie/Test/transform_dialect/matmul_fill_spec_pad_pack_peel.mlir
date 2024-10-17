@@ -61,7 +61,7 @@ module attributes { transform.with_named_sequence } {
       padding_values=[0 : i32, 0 : i32, 0 : i32],
       padding_dimensions=[0, 1, 2],
       pad_to_multiple_of=[64, 64, 64],
-      pack_paddings=[1, 1, 1],
+      nofold_flags=[1, 1, 1],
       copy_back_op="linalg.copy"
     } : (!transform.any_op) -> (!transform.any_op, !transform.any_op, !transform.any_op)
     %pad_dps = transform.structured.rewrite_in_destination_passing_style %pad : (!transform.any_op) -> !transform.any_op
