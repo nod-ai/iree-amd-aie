@@ -14,8 +14,13 @@ namespace shim_xdna {
 
 hw_ctx::hw_ctx(device &dev, const std::map<std::string, uint32_t> &qos,
                std::unique_ptr<hw_q> q, const std::vector<uint8_t> &pdi,
-               const std::string &cu_name, size_t functional)
-    : m_device(dev), m_q(std::move(q)), m_doorbell(0), m_log_buf(nullptr) {
+               const std::string &cu_name, uint32_t n_rows, uint32_t n_cols)
+    : m_device(dev),
+      m_q(std::move(q)),
+      m_num_rows(n_rows),
+      m_num_cols(n_cols),
+      m_doorbell(0),
+      m_log_buf(nullptr) {
   SHIM_DEBUG("Creating HW context...");
 
   for (auto &[key, value] : qos) {
@@ -33,18 +38,21 @@ hw_ctx::hw_ctx(device &dev, const std::map<std::string, uint32_t> &qos,
       m_qos.priority = value;
   }
 
-  m_cu_info.push_back({.m_name = cu_name, .m_func = functional, .m_pdi = pdi});
+  // TODO(max): multiple pdis?
+  m_cu_info.push_back(
+      {.m_name = cu_name, .m_func = /*functional*/ 0, .m_pdi = pdi});
 
   if (m_cu_info.empty())
     shim_err(EINVAL, "No valid DPU kernel found in xclbin");
-  m_ops_per_cycle = 2048 /*aie_partition.ops_per_cycle*/;
-  m_num_cols = 4 /*aie_partition.ncol*/;
+  // TODO(max): configure this
+  m_ops_per_cycle = 2048;
 }
 
 hw_ctx::hw_ctx(device &device, const std::vector<uint8_t> &pdi,
-               const std::string &cu_name,
+               const std::string &cu_name, uint32_t n_rows, uint32_t n_cols,
                const std::map<std::string, uint32_t> &qos)
-    : hw_ctx(device, qos, std::make_unique<hw_q>(device), pdi, cu_name) {
+    : hw_ctx(device, qos, std::make_unique<hw_q>(device), pdi, cu_name, n_rows,
+             n_cols) {
   create_ctx_on_device();
   std::vector<char> cu_conf_param_buf(sizeof(amdxdna_hwctx_param_config_cu) +
                                       m_cu_info.size() *
@@ -118,11 +126,7 @@ void hw_ctx::create_ctx_on_device() {
   arg.qos_p = reinterpret_cast<uintptr_t>(&m_qos);
   arg.umq_bo = m_q->m_queue_boh;
   arg.max_opc = m_ops_per_cycle;
-  // TODO(max)
-  //  throw std::runtime_error("TODO(max): core_rows");
-  //  arg.num_tiles = m_num_cols *
-  //  xrt_core::device_query<xrt_core::query::aie_tiles_stats>(&m_device).core_rows;
-  arg.num_tiles = m_num_cols * 4;
+  arg.num_tiles = m_num_rows * m_num_cols;
   arg.log_buf_bo =
       m_log_bo ? m_log_bo->get_drm_bo_handle() : AMDXDNA_INVALID_BO_HANDLE;
   m_device.get_pdev().ioctl(DRM_IOCTL_AMDXDNA_CREATE_HWCTX, &arg);
@@ -133,7 +137,7 @@ void hw_ctx::create_ctx_on_device() {
   m_q->bind_hwctx(this);
 }
 
-void hw_ctx::delete_ctx_on_device() {
+void hw_ctx::delete_ctx_on_device() const {
   if (m_handle == AMDXDNA_INVALID_CTX_HANDLE) return;
 
   m_q->unbind_hwctx();

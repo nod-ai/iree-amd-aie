@@ -8,6 +8,7 @@
 
 #include "iree-amd-aie/driver/xrt-lite/allocator.h"
 #include "iree-amd-aie/driver/xrt-lite/api.h"
+#include "iree-amd-aie/driver/xrt-lite/device.h"
 #include "iree-amd-aie/driver/xrt-lite/direct_command_buffer.h"
 #include "iree-amd-aie/driver/xrt-lite/nop_executable_cache.h"
 #include "iree-amd-aie/driver/xrt-lite/nop_semaphore.h"
@@ -21,38 +22,25 @@ namespace {
 extern const iree_hal_device_vtable_t iree_hal_xrt_lite_device_vtable;
 }
 
-struct iree_hal_xrt_lite_device {
-  iree_hal_resource_t resource;
-  iree_allocator_t host_allocator;
-  // TODO(max): not used because "device allocations" are performed through
-  // device
-  iree_hal_allocator_t* device_allocator;
-  // block pool used for command buffer allocations, uses a larger block size
-  // since command buffers can contain inlined data
-  iree_arena_block_pool_t block_pool;
-  shim_xdna::device* shim_device;
-  // should come last; see the definition of total_size below in
-  // iree_hal_xrt_lite_device_create
-  iree_string_view_t identifier;
+iree_hal_xrt_lite_device::iree_hal_xrt_lite_device(
+    const iree_hal_xrt_lite_device_params* options,
+    iree_allocator_t host_allocator) {
+  IREE_ASSERT_ARGUMENT(options);
+  IREE_TRACE_ZONE_BEGIN(z0);
 
-  iree_hal_xrt_lite_device(const iree_hal_xrt_lite_device_options* options,
-                           iree_allocator_t host_allocator) {
-    IREE_ASSERT_ARGUMENT(options);
-    IREE_TRACE_ZONE_BEGIN(z0);
+  iree_hal_resource_initialize(&iree_hal_xrt_lite_device_vtable, &resource);
+  this->host_allocator = host_allocator;
+  shim_device =
+      new shim_xdna::device(options->n_core_rows, options->n_core_cols);
 
-    iree_hal_resource_initialize(&iree_hal_xrt_lite_device_vtable, &resource);
-    this->host_allocator = host_allocator;
-    shim_device = new shim_xdna::device;
+  iree_status_t status = iree_hal_xrt_lite_allocator_create(
+      host_allocator, shim_device, &device_allocator);
+  IREE_ASSERT(iree_status_is_ok(status));
+  iree_arena_block_pool_initialize(ARENA_BLOCK_SIZE, host_allocator,
+                                   &block_pool);
 
-    iree_status_t status = iree_hal_xrt_lite_allocator_create(
-        host_allocator, shim_device, &device_allocator);
-    IREE_ASSERT(iree_status_is_ok(status));
-    iree_arena_block_pool_initialize(ARENA_BLOCK_SIZE, host_allocator,
-                                     &block_pool);
-
-    IREE_TRACE_ZONE_END(z0);
-  }
-};
+  IREE_TRACE_ZONE_END(z0);
+}
 
 static iree_status_t iree_hal_xrt_lite_device_create_executable_cache(
     iree_hal_device_t* base_device, iree_string_view_t identifier,
@@ -123,8 +111,7 @@ static iree_status_t iree_hal_xrt_lite_device_queue_execute(
         IREE_HAL_COMMAND_BUFFER_MODE_UNVALIDATED;
     IREE_RETURN_AND_END_ZONE_IF_ERROR(
         z0, iree_hal_xrt_lite_direct_command_buffer_create(
-                device->shim_device, device->device_allocator, mode,
-                IREE_HAL_COMMAND_CATEGORY_ANY,
+                device, mode, IREE_HAL_COMMAND_CATEGORY_ANY,
                 /*binding_capacity=*/0, &device->block_pool,
                 device->host_allocator, &xrt_command_buffer));
     IREE_RETURN_AND_END_ZONE_IF_ERROR(
@@ -244,7 +231,7 @@ static iree_hal_allocator_t* iree_hal_xrt_lite_device_device_allocator(
 }
 
 void iree_hal_xrt_lite_device_options_initialize(
-    iree_hal_xrt_lite_device_options* out_options) {
+    iree_hal_xrt_lite_device_params* out_options) {
   IREE_TRACE_ZONE_BEGIN(z0);
 
   memset(out_options, 0, sizeof(*out_options));
@@ -254,7 +241,7 @@ void iree_hal_xrt_lite_device_options_initialize(
 
 iree_status_t iree_hal_xrt_lite_device_create(
     iree_string_view_t identifier,
-    const iree_hal_xrt_lite_device_options* options,
+    const iree_hal_xrt_lite_device_params* options,
     iree_allocator_t host_allocator, iree_hal_device_t** out_device) {
   IREE_ASSERT_ARGUMENT(options);
   IREE_ASSERT_ARGUMENT(out_device);

@@ -160,6 +160,16 @@ jobs:
           source .venv/bin/activate
           pip install -r tests/requirements.txt
 
+      - name: Query device info
+        run: |
+          source .venv/bin/activate
+          echo "aie-metadata"
+          python build_tools/ci/amdxdna_driver_utils/amdxdna_ioctl.py --aie-metadata
+          echo "aie-version"
+          python build_tools/ci/amdxdna_driver_utils/amdxdna_ioctl.py --aie-version
+          echo "XRT_LITE_N_CORE_ROWS=$(python build_tools/ci/amdxdna_driver_utils/amdxdna_ioctl.py --num-rows)" >> $GITHUB_ENV
+          echo "XRT_LITE_N_CORE_COLS=$(python build_tools/ci/amdxdna_driver_utils/amdxdna_ioctl.py --num-cols)" >> $GITHUB_ENV
+
       - name : E2E comparison of AIE to llvm-cpu
         run: |
           source .venv/bin/activate
@@ -168,7 +178,9 @@ jobs:
             $PWD/iree-install \
             $PWD/llvm-aie \
             --vitis-dir /opt/Xilinx/Vitis/2024.2 \
-            --reset-npu-between-runs -v
+            --reset-npu-between-runs -v \
+            --xrt_lite_n_core_rows=$XRT_LITE_N_CORE_ROWS \
+            --xrt_lite_n_core_cols=$XRT_LITE_N_CORE_COLS
 
       - name: E2E correctness matmul test
         run: |
@@ -195,5 +207,5 @@ jobs:
         run: |
           DEVICE_TEST_DIR="$PWD/iree-install/device_tests"
           for t in $(ls $DEVICE_TEST_DIR); do
-            $DEVICE_TEST_DIR/$t
+            $DEVICE_TEST_DIR/$t --xrt_lite_n_core_rows=$XRT_LITE_N_CORE_ROWS --xrt_lite_n_core_cols=$XRT_LITE_N_CORE_COLS
           done

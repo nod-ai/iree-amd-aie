@@ -197,6 +197,11 @@ def generate_aie_output(config, aie_vmfb, input_args, function_name, name, outpu
     ]
     if function_name:
         run_args += [f"--function={function_name}"]
+    if config.xrt_lite_n_core_rows is not None:
+        run_args += [f"--xrt_lite_n_core_rows={config.xrt_lite_n_core_rows}"]
+    if config.xrt_lite_n_core_cols is not None:
+        run_args += [f"--xrt_lite_n_core_cols={config.xrt_lite_n_core_cols}"]
+
     if config.reset_npu_between_runs:
         shell_out(config.reset_npu_script, verbose=config.verbose)
 
@@ -269,6 +274,8 @@ class TestConfig:
         do_not_run_aie,
         additional_aie_compilation_flags,
         device_hal,
+        xrt_lite_n_core_rows,
+        xrt_lite_n_core_cols,
     ):
         self.output_dir = output_dir
         self.iree_install_dir = iree_install_dir
@@ -286,6 +293,8 @@ class TestConfig:
         self.do_not_run_aie = do_not_run_aie
         self.additional_aie_compilation_flags = additional_aie_compilation_flags
         self.device_hal = device_hal
+        self.xrt_lite_n_core_rows = xrt_lite_n_core_rows
+        self.xrt_lite_n_core_cols = xrt_lite_n_core_cols
 
         # Try get the xrt and (linux) kernel versions.
         self.linux_kernel = "undetermined"
@@ -849,7 +858,9 @@ def all_tests(
     do_not_run_aie,
     test_set,
     additional_aie_compilation_flags,
-    device_hal
+    device_hal,
+    xrt_lite_n_core_rows,
+    xrt_lite_n_core_cols,
 ):
     """
     There are a few ways to add tests to this script:
@@ -891,7 +902,9 @@ def all_tests(
         reset_npu_between_runs,
         do_not_run_aie,
         additional_aie_compilation_flags,
-        device_hal
+        device_hal,
+        xrt_lite_n_core_rows,
+        xrt_lite_n_core_cols,
     )
     if verbose:
         print(config)
@@ -946,6 +959,8 @@ if __name__ == "__main__":
     parser.add_argument("peano_install_dir", type=abs_path)
     parser.add_argument("--xrt-dir", type=abs_path)
     parser.add_argument("--vitis-dir", type=abs_path)
+    parser.add_argument("--xrt_lite_n_core_rows", type=int)
+    parser.add_argument("--xrt_lite_n_core_cols", type=int)
 
     # TODO(newling) make bool options boolean, not integer (tried but had issues)
     parser.add_argument(
@@ -1052,5 +1067,7 @@ if __name__ == "__main__":
         args.do_not_run_aie,
         test_set_list,
         args.additional_aie_compilation_flags,
-        args.device_hal
+        args.device_hal,
+        args.xrt_lite_n_core_rows,
+        args.xrt_lite_n_core_cols,
     )

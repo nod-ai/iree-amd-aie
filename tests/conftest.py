@@ -3,6 +3,10 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+
+# TODO(max): connect this (or something) to xrt_lite_n_core_rows and xrt_lite_n_core_cols
+from iree._runtime_libs._runtime import parse_flags
+
 from iree.compiler import ir
 from iree.compiler._mlir_libs import get_dialect_registry
 from iree.compiler.api import Session, Output, Source, _initializeGlobalCL

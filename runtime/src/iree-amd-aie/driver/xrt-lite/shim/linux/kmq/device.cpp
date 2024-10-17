@@ -141,7 +141,10 @@ void *pdev::mmap(void *addr, size_t len, int prot, int flags,
   return ret;
 }
 
-device::device() { SHIM_DEBUG("Created KMQ device"); }
+device::device(uint32_t n_rows, uint32_t n_cols)
+    : n_rows(n_rows), n_cols(n_cols) {
+  SHIM_DEBUG("Created KMQ device");
+}
 
 device::~device() { SHIM_DEBUG("Destroying KMQ device"); }
 
@@ -150,12 +153,12 @@ const pdev &device::get_pdev() const { return m_pdev; }
 hw_ctx device::create_hw_context(const std::vector<uint8_t> &pdi,
                                  const std::string &cu_name,
                                  const std::map<std::string, uint32_t> &qos) {
-  return hw_ctx(*this, pdi, cu_name, qos);
+  return {*this, pdi, cu_name, n_rows, n_cols, qos};
 }
 
 hw_ctx device::create_hw_context(const std::vector<uint8_t> &pdi,
                                  const std::string &cu_name) {
-  return hw_ctx(*this, pdi, cu_name);
+  return {*this, pdi, cu_name, n_rows, n_cols};
 }
 
 std::unique_ptr<bo> device::alloc_bo(uint32_t ctx_id, size_t size,

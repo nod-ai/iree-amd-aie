@@ -22,7 +22,7 @@ struct iree_hal_xrt_lite_direct_command_buffer {
   // Staging arena used for host->device transfers.
   iree_arena_allocator_t arena;
 
-  shim_xdna::device* shim_device;
+  iree_hal_xrt_lite_device* device;
 };
 
 namespace {
@@ -31,13 +31,12 @@ extern const iree_hal_command_buffer_vtable_t
 }  // namespace
 
 iree_status_t iree_hal_xrt_lite_direct_command_buffer_create(
-    shim_xdna::device* shim_device, iree_hal_allocator_t* device_allocator,
-    iree_hal_command_buffer_mode_t mode,
+    iree_hal_xrt_lite_device* device, iree_hal_command_buffer_mode_t mode,
     iree_hal_command_category_t command_categories,
     iree_host_size_t binding_capacity, iree_arena_block_pool_t* block_pool,
     iree_allocator_t host_allocator,
     iree_hal_command_buffer_t** out_command_buffer) {
-  IREE_ASSERT_ARGUMENT(device_allocator);
+  IREE_ASSERT_ARGUMENT(device);
   IREE_ASSERT_ARGUMENT(out_command_buffer);
   *out_command_buffer = nullptr;
   if (binding_capacity > 0) {
@@ -57,12 +56,12 @@ iree_status_t iree_hal_xrt_lite_direct_command_buffer_create(
                                     mode, binding_capacity),
                             reinterpret_cast<void**>(&command_buffer)));
   iree_hal_command_buffer_initialize(
-      device_allocator, mode, command_categories, IREE_HAL_QUEUE_AFFINITY_ANY,
-      binding_capacity,
+      device->device_allocator, mode, command_categories,
+      IREE_HAL_QUEUE_AFFINITY_ANY, binding_capacity,
       reinterpret_cast<uint8_t*>(command_buffer) + sizeof(*command_buffer),
       &iree_hal_xrt_lite_direct_command_buffer_vtable, &command_buffer->base);
   command_buffer->host_allocator = host_allocator;
-  command_buffer->shim_device = shim_device;
+  command_buffer->device = device;
   iree_arena_initialize(block_pool, &command_buffer->arena);
   iree_status_t status =
       iree_hal_resource_set_allocate(block_pool, &command_buffer->resource_set);
@@ -164,15 +163,17 @@ static iree_status_t iree_hal_xrt_lite_direct_command_buffer_dispatch(
                                        &executable));
 
   size_t ctrl_code_size = kernel_params.asm_inst.size() * sizeof(uint32_t);
-  auto bo_ctrl_code = command_buffer->shim_device->alloc_bo(
+  auto bo_ctrl_code = command_buffer->device->shim_device->alloc_bo(
       ctrl_code_size, XCL_BO_FLAGS_CACHEABLE);
   uint32_t* instr_buffer = static_cast<uint32_t*>(bo_ctrl_code->map());
   memcpy(instr_buffer, kernel_params.asm_inst.data(), ctrl_code_size);
   bo_ctrl_code->sync(shim_xdna::direction::host2device);
 
-  shim_xdna::kernel ebuf(command_buffer->shim_device->get_pdev(), ERT_START_CU);
-  shim_xdna::hw_ctx context = command_buffer->shim_device->create_hw_context(
-      kernel_params.pdi, kernel_params.kernel_name);
+  shim_xdna::kernel ebuf(command_buffer->device->shim_device->get_pdev(),
+                         ERT_START_CU);
+  shim_xdna::hw_ctx context =
+      command_buffer->device->shim_device->create_hw_context(
+          kernel_params.pdi, kernel_params.kernel_name);
   shim_xdna::cuidx_t cu_idx =
       context.open_cu_context(kernel_params.kernel_name);
 

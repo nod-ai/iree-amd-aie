@@ -43,6 +43,7 @@ struct hw_ctx {
   std::vector<cu_info> m_cu_info;
   std::unique_ptr<hw_q> m_q;
   uint32_t m_ops_per_cycle;
+  uint32_t m_num_rows;
   uint32_t m_num_cols;
   uint32_t m_doorbell;
   std::unique_ptr<bo> m_log_bo;
@@ -51,9 +52,10 @@ struct hw_ctx {
 
   hw_ctx(device &dev, const std::map<std::string, uint32_t> &qos,
          std::unique_ptr<hw_q> q, const std::vector<uint8_t> &pdi,
-         const std::string &cu_name, size_t functional = 0);
+         const std::string &cu_name, uint32_t n_rows, uint32_t n_cols);
   hw_ctx(device &dev, const std::vector<uint8_t> &pdi,
          const std::string &cu_name,
+         uint32_t n_rows, uint32_t n_cols,
          const std::map<std::string, uint32_t> &qos = {});
   ~hw_ctx();
   // no copying
@@ -67,7 +69,7 @@ struct hw_ctx {
   void create_ctx_on_device();
   void init_log_buf();
   void fini_log_buf() const;
-  void delete_ctx_on_device();
+  void delete_ctx_on_device() const;
 
   hw_q *get_hw_queue() const;
 };

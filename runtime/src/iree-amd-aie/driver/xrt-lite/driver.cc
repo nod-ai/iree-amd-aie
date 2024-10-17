@@ -26,8 +26,7 @@ void iree_hal_xrt_lite_driver_options_initialize(
   IREE_TRACE_ZONE_BEGIN(z0);
 
   memset(out_options, 0, sizeof(*out_options));
-  iree_hal_xrt_lite_device_options_initialize(
-      &out_options->default_device_options);
+  iree_hal_xrt_lite_device_options_initialize(&out_options->device_params);
 
   IREE_TRACE_ZONE_END(z0);
 }
@@ -35,6 +34,7 @@ void iree_hal_xrt_lite_driver_options_initialize(
 IREE_API_EXPORT iree_status_t iree_hal_xrt_lite_driver_create(
     iree_string_view_t identifier,
     const iree_hal_xrt_lite_driver_options* options,
+    const iree_hal_xrt_lite_device_params* device_params,
     iree_allocator_t host_allocator, iree_hal_driver_t** out_driver) {
   IREE_ASSERT_ARGUMENT(options);
   IREE_ASSERT_ARGUMENT(out_driver);
@@ -53,6 +53,7 @@ IREE_API_EXPORT iree_status_t iree_hal_xrt_lite_driver_create(
       identifier, &driver->identifier,
       reinterpret_cast<char*>(driver) + total_size - identifier.size);
   memcpy(&driver->options, options, sizeof(*options));
+  memcpy(&driver->options.device_params, device_params, sizeof(*device_params));
   *out_driver = reinterpret_cast<iree_hal_driver_t*>(driver);
 
   IREE_TRACE_ZONE_END(z0);
@@ -99,8 +100,7 @@ static iree_status_t iree_hal_xrt_lite_driver_create_device_by_id(
 
   iree_hal_xrt_lite_driver* driver = IREE_HAL_XRT_LITE_CHECKED_VTABLE_CAST(
       base_driver, iree_hal_xrt_lite_driver_vtable, iree_hal_xrt_lite_driver);
-  iree_hal_xrt_lite_device_options options =
-      driver->options.default_device_options;
+  iree_hal_xrt_lite_device_params options = driver->options.device_params;
 
   IREE_TRACE_ZONE_END(z0);
   return iree_hal_xrt_lite_device_create(driver->identifier, &options,
@@ -116,8 +116,7 @@ static iree_status_t iree_hal_xrt_lite_driver_create_device_by_path(
 
   iree_hal_xrt_lite_driver* driver = IREE_HAL_XRT_LITE_CHECKED_VTABLE_CAST(
       base_driver, iree_hal_xrt_lite_driver_vtable, iree_hal_xrt_lite_driver);
-  iree_hal_xrt_lite_device_options options =
-      driver->options.default_device_options;
+  iree_hal_xrt_lite_device_params options = driver->options.device_params;
 
   IREE_TRACE_ZONE_END(z0);
   return iree_hal_xrt_lite_device_create(driver->identifier, &options,
