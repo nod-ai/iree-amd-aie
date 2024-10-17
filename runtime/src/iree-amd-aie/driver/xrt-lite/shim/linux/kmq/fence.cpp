@@ -158,11 +158,7 @@ fence_handle::fence_handle(const fence_handle &f)
 
 fence_handle::~fence_handle() {
   SHIM_DEBUG("Fence going away: %d@%ld", m_syncobj_hdl, m_state);
-  try {
-    destroy_syncobj(m_pdev, m_syncobj_hdl);
-  } catch (const std::system_error &e) {
-    SHIM_DEBUG("Failed to destroy fence_handle");
-  }
+  destroy_syncobj(m_pdev, m_syncobj_hdl);
 }
 
 std::unique_ptr<shared_handle> fence_handle::share_handle() const {
