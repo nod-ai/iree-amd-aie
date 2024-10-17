@@ -10,13 +10,16 @@
 #include "iree/base/api.h"
 #include "iree/hal/api.h"
 
-struct iree_hal_xrt_lite_device_options {};
+struct iree_hal_xrt_lite_device_params {
+  int32_t n_core_rows;
+  int32_t n_core_cols;
+};
 
 IREE_API_EXPORT void iree_hal_xrt_lite_device_options_initialize(
-    struct iree_hal_xrt_lite_device_options* out_params);
+    struct iree_hal_xrt_lite_device_params* out_params);
 
 struct iree_hal_xrt_lite_driver_options {
-  struct iree_hal_xrt_lite_device_options default_device_options;
+  struct iree_hal_xrt_lite_device_params device_params;
 };
 
 IREE_API_EXPORT void iree_hal_xrt_lite_driver_options_initialize(
@@ -30,11 +33,12 @@ IREE_API_EXPORT void iree_hal_xrt_lite_driver_options_initialize(
 IREE_API_EXPORT iree_status_t iree_hal_xrt_lite_driver_create(
     iree_string_view_t identifier,
     const struct iree_hal_xrt_lite_driver_options* options,
+    const struct iree_hal_xrt_lite_device_params* device_params,
     iree_allocator_t host_allocator, iree_hal_driver_t** out_driver);
 
 IREE_API_EXPORT iree_status_t iree_hal_xrt_lite_device_create(
     iree_string_view_t identifier,
-    const struct iree_hal_xrt_lite_device_options* options,
+    const struct iree_hal_xrt_lite_device_params* params,
     iree_allocator_t host_allocator, iree_hal_device_t** out_device);
 
 #endif  // IREE_AMD_AIE_DRIVER_XRT_LITE_API_H_

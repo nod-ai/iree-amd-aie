@@ -464,6 +464,13 @@ function run_matmul_test() {
       --device=${DEVICE_HAL} \
       --max_elements_to_check=${max_elements_to_check}"
 
+  if [ -n "$XRT_LITE_N_CORE_ROWS" ]; then
+    COMMAND="${COMMAND} --xrt_lite_n_core_rows=$XRT_LITE_N_CORE_ROWS"
+  fi
+  if [ -n "$XRT_LITE_N_CORE_COLS" ]; then
+    COMMAND="${COMMAND} --xrt_lite_n_core_cols=$XRT_LITE_N_CORE_COLS"
+  fi
+
   total_num_runs=$(( num_repeat_runs * num_corruption_repeat_runs))
   echo "**** Running '${name}' matmul test ${total_num_runs} times (command ${COMMAND}) ****"
   for i in $(seq 1 $num_repeat_runs); do

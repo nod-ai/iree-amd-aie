@@ -28,11 +28,11 @@ struct pdev {
 
 struct device {
   enum class access_mode : uint8_t { exclusive = 0, shared = 1 };
-
-  mutable std::mutex m_mutex;
   pdev m_pdev;
+  uint32_t n_rows;
+  uint32_t n_cols;
 
-  device();
+  device(uint32_t n_rows, uint32_t n_cols);
   ~device();
 
   std::unique_ptr<bo> import_bo(int ehdl) const;
