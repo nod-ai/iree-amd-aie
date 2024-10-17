@@ -87,11 +87,6 @@ $CMAKE_ARGS = @(
 if ($llvm_install_dir -and (Test-Path "$llvm_install_dir"))
 {
     echo "using existing llvm install @ $llvm_install_dir"
-    # TODO(max): send IREE a fix for this
-    # target_compile_definitions may only set INTERFACE properties on IMPORTED
-    $cmake_file = Resolve-Path -Path "$iree_dir/compiler/src/iree/compiler/API/CMakeLists.txt"
-    (Get-Content $cmake_file).Replace("if(MSVC)", "get_target_property(_imported `$`{_object_lib} IMPORTED)`n  if(MSVC AND NOT `$`{_imported})") `
-        | Out-File -encoding ASCII $cmake_file
     $CMAKE_ARGS += @(
         "-DIREE_BUILD_BUNDLED_LLVM=OFF"
         "-DClang_DIR=$llvm_install_dir/lib/cmake/clang"

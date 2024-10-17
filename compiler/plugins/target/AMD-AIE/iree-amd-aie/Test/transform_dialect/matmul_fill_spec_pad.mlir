@@ -53,7 +53,7 @@ module attributes { transform.with_named_sequence } {
     %padded, %pad, %__ = transform.structured.pad %tiled_matmul {
       padding_values=[0 : i32, 0 : i32, 0 : i32],
       padding_dimensions=[0, 1, 2],
-      pack_paddings=[1, 1, 1],
+      nofold_flags=[1, 1, 1],
       copy_back_op="linalg.copy"
     } : (!transform.any_op) -> (!transform.any_op, !transform.any_op, !transform.any_op)
     %pad_dps = transform.structured.rewrite_in_destination_passing_style %pad : (!transform.any_op) -> !transform.any_op
@@ -89,7 +89,7 @@ module attributes { transform.with_named_sequence } {
     %padded_1, %pad_1, %_ = transform.structured.pad %tiled_matmul_1 {
       padding_values=[0 : i32, 0 : i32, 0 : i32],
       padding_dimensions=[0, 1, 2],
-      pack_paddings=[0, 0, 1],
+      nofold_flags=[0, 0, 1],
       copy_back_op="linalg.copy"
     } : (!transform.any_op) -> (!transform.any_op, !transform.any_op, !transform.any_op)
     %pad_1_dps = transform.structured.rewrite_in_destination_passing_style %pad_1 : (!transform.any_op) -> !transform.any_op
@@ -114,7 +114,7 @@ module attributes { transform.with_named_sequence } {
     %padded_reduction, %pad_reduction, %___ = transform.structured.pad %tiled_reduction {
       padding_values=[0 : i32, 0 : i32, 0 : i32],
       padding_dimensions=[0, 1, 2],
-      pack_paddings=[1, 1, 0],
+      nofold_flags=[1, 1, 0],
       copy_back_op="linalg.copy"
     } : (!transform.any_op) -> (!transform.any_op, !transform.any_op, !transform.any_op)
     %pad_2_dps = transform.structured.rewrite_in_destination_passing_style %pad_reduction : (!transform.any_op) -> !transform.any_op
