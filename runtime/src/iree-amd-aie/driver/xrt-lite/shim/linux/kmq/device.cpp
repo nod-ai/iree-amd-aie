@@ -16,6 +16,7 @@
 #include "bo.h"
 #include "fence.h"
 #include "hwctx.h"
+#include "llvm/Support/ErrorHandling.h"
 #include "shim_debug.h"
 #include "xrt_mem.h"
 
@@ -26,29 +27,26 @@ int64_t import_fd(pid_t pid, int ehdl) {
 
 #if defined(SYS_pidfd_open) && defined(SYS_pidfd_getfd)
   auto pidfd = syscall(SYS_pidfd_open, pid, 0);
-  if (pidfd < 0)
-    throw std::system_error(errno, std::system_category(), "pidfd_open failed");
+  if (pidfd < 0) shim_xdna::shim_err(errno, "pidfd_open failed");
 
   int64_t fd = syscall(SYS_pidfd_getfd, pidfd, ehdl, 0);
   if (fd < 0) {
     if (errno == EPERM) {
-      throw std::system_error(
-          errno, std::system_category(),
+      shim_xdna::shim_err(
+          errno,
           "pidfd_getfd failed, check that ptrace access mode "
           "allows PTRACE_MODE_ATTACH_REALCREDS.  For more details please "
           "check /etc/sysctl.d/10-ptrace.conf");
     }
 
-    throw std::system_error(errno, std::system_category(),
-                            "pidfd_getfd failed");
+    shim_xdna::shim_err(errno, "pidfd_getfd failed");
   }
   return fd;
 #else
-  throw std::system_error(
-      int(std::errc::not_supported), std::system_category(),
+  shim_xdna::shim_err(
+      int(std::errc::not_supported),
       "Importing buffer object from different process requires XRT "
       " built and installed on a system with 'pidfd' kernel support");
-  return -1;
 #endif
 }
 

@@ -10,6 +10,7 @@
 #include "amdxdna_accel.h"
 #include "bo.h"
 #include "device.h"
+#include "shim_debug.h"
 
 #define MAX_EXEC_BO_SIZE 4096
 
@@ -64,8 +65,7 @@ void kernel::add_ctrl_bo(bo &bo_ctrl) {
       break;
     }
     default:
-      throw std::runtime_error("Unknown exec buf op code: " +
-                               std::to_string(m_op));
+      shim_err(-1, "Unknown exec buf op code: %d", m_op);
   }
 }
 
@@ -116,8 +116,7 @@ void kernel::inc_pkt_count(uint32_t n) const {
   m_cmd_pkt->count += n / sizeof(int32_t);
   if (m_cmd_size <
       sizeof(m_cmd_pkt->header) + m_cmd_pkt->count * sizeof(int32_t))
-    throw std::runtime_error("Size of exec buf too small: " +
-                             std::to_string(m_cmd_size));
+    shim_err(-1, "Size of exec buf too small: %d", m_cmd_size);
 }
 
 bo *kernel::get_exec_buf_bo() const { return m_exec_buf_bo.get(); }

@@ -27,8 +27,7 @@ iree_cc_library(
     shim_debug.h
   DEPS
     uuid
-  COPTS
-    $<$<PLATFORM_ID:Linux>:-fexceptions -frtti>
+    LLVMSupport
   DEFINES
     $<$<CONFIG:Debug>:SHIM_XDNA_DEBUG>
   PUBLIC

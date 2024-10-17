@@ -3,6 +3,8 @@
 
 #include "hwq.h"
 
+#include <sys/ioctl.h>
+
 #include "bo.h"
 #include "ert.h"
 #include "fence.h"
@@ -28,11 +30,12 @@ int wait_cmd(const shim_xdna::pdev &pdev, const shim_xdna::hw_ctx *ctx,
       .seq = id,
   };
 
-  try {
-    pdev.ioctl(DRM_IOCTL_AMDXDNA_WAIT_CMD, &wcmd);
-  } catch (const std::system_error &ex) {
-    if (ex.code().value() != ETIME) throw;
-    ret = 0;
+  if (::ioctl(pdev.m_dev_fd, DRM_IOCTL_AMDXDNA_WAIT_CMD, &wcmd) == -1) {
+    if (errno == ETIME) {
+      ret = 0;
+    } else {
+      shim_xdna::shim_err(errno, "DRM_IOCTL_AMDXDNA_WAIT_CMD IOCTL failed");
+    }
   }
   return ret;
 }

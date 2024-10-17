@@ -82,11 +82,7 @@ hw_ctx::hw_ctx(device &device, const std::vector<uint8_t> &pdi,
 }
 
 hw_ctx::~hw_ctx() {
-  try {
-    delete_ctx_on_device();
-  } catch (const std::system_error &e) {
-    SHIM_DEBUG("Failed to delete context on device: %s", e.what());
-  }
+  delete_ctx_on_device();
   SHIM_DEBUG("Destroyed HW context (%d)...", m_handle);
   SHIM_DEBUG("Destroying KMQ HW context (%d)...", m_handle);
 }

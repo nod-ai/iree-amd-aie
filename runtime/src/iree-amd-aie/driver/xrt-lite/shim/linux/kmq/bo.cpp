@@ -181,11 +181,7 @@ drm_bo::drm_bo(bo &parent, const amdxdna_drm_get_bo_info &bo_info)
 
 drm_bo::~drm_bo() {
   if (m_handle == AMDXDNA_INVALID_BO_HANDLE) return;
-  try {
-    free_drm_bo(m_parent.m_pdev, m_handle);
-  } catch (const std::system_error &e) {
-    SHIM_DEBUG("Failed to free DRM BO: %s", e.what());
-  }
+  free_drm_bo(m_parent.m_pdev, m_handle);
 }
 
 std::string bo::type_to_name() const {
@@ -351,13 +347,9 @@ bo::~bo() {
   SHIM_DEBUG("Freeing KMQ BO, %s", describe().c_str());
 
   munmap_bo();
-  try {
-    detach_from_ctx();
-    // If BO is in use, we should block and wait in driver
-    free_bo();
-  } catch (const std::system_error &e) {
-    SHIM_DEBUG("Failed to free BO: %s", e.what());
-  }
+  detach_from_ctx();
+  // If BO is in use, we should block and wait in driver
+  free_bo();
 }
 
 bo::bo(const pdev &p, size_t size, amdxdna_bo_type type)

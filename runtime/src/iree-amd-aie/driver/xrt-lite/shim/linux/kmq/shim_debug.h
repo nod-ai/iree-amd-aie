@@ -10,6 +10,8 @@
 #include <memory>
 #include <system_error>
 
+#include "llvm/Support/ErrorHandling.h"
+
 void debugf(const char *format, ...);
 
 namespace shim_xdna {
@@ -19,18 +21,13 @@ template <typename... Args>
   std::string format = std::string(fmt);
   format += " (err=%d)";
   int sz = std::snprintf(nullptr, 0, format.c_str(), args..., err) + 1;
-  if (sz <= 0)
-    throw std::system_error(sz, std::system_category(),
-                            "could not format error string");
+  if (sz <= 0) llvm::report_fatal_error("could not format error string");
 
   auto size = static_cast<size_t>(sz);
   std::unique_ptr<char[]> buf(new char[size]);
   std::snprintf(buf.get(), size, format.c_str(), args..., err);
-  throw std::system_error(err, std::system_category(), std::string(buf.get()));
-}
-
-[[noreturn]] inline void shim_not_supported_err(const char *msg) {
-  shim_err(ENOTSUP, msg);
+  std::string err_str(buf.get());
+  llvm::report_fatal_error(err_str.c_str());
 }
 
 template <typename... Args>
