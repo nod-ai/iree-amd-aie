@@ -7,18 +7,19 @@
 
 #include <string>
 
+#include "AIETarget.h"
 #include "aie/AIEDialect.h"
-#include "mlir/IR/MLIRContext.h"
 #include "mlir/Support/LogicalResult.h"
 
 namespace mlir::iree_compiler::AMDAIE {
 mlir::LogicalResult aie2xclbin(
     mlir::MLIRContext *ctx, xilinx::AIE::DeviceOp, const std::string &outputNPU,
-    const std::string &outputXCLBin, bool printIRBeforeAll,
+    const std::string &artifactPath, bool printIRBeforeAll,
     bool printIRAfterAll, bool printIRModuleScope, bool timing,
     const std::string &tempDir, bool useChess, bool verbose,
     const std::optional<std::string> &vitisDir, const std::string &targetArch,
     const std::string &npuVersion, const std::string &peanoDir,
+    const mlir::iree_compiler::AMDAIE::AMDAIEOptions::DeviceHAL deviceHal,
     const std::string &xclBinKernelID, const std::string &xclBinKernelName,
     const std::string &xclBinInstanceName, const std::string &amdAIEInstallDir,
     const std::optional<std::string> &InputXCLBin,
