@@ -59,11 +59,8 @@ jobs:
 
       - name: Python deps
         run: |
-          pip install "numpy<2" pyyaml "pybind11[global]==2.10.3" nanobind pytest
-
-      - name: Run Pytest
-        run: |
-          pytest build_tools/ci
+          pip install -r third_party/iree/runtime/bindings/python/iree/runtime/build_requirements.txt
+          pip install pyyaml
 
       - name: Enable cache
         uses: actions/cache/restore@v3

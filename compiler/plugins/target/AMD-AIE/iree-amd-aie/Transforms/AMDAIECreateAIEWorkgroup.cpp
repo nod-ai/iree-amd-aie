@@ -9,9 +9,9 @@
 #include "iree-amd-aie/IR/AMDAIEDialect.h"
 #include "iree-amd-aie/IR/AMDAIEOps.h"
 #include "iree-amd-aie/Transforms/Passes.h"
-#include "iree/compiler/Codegen/TransformStrategies/GPU/Common.h"
 #include "mlir/Dialect/Arith/Utils/Utils.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 
 #define DEBUG_TYPE "iree-amdaie-create-aie-workgroup"
@@ -440,7 +440,7 @@ class AMDAIECreateAIEWorkgroupPass
   }
 
   AMDAIECreateAIEWorkgroupPass() = default;
-  AMDAIECreateAIEWorkgroupPass(const AMDAIECreateAIEWorkgroupPass &pass){};
+  AMDAIECreateAIEWorkgroupPass(const AMDAIECreateAIEWorkgroupPass &pass) {};
   void runOnOperation() override;
 };
 
