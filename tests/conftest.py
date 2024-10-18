@@ -4,8 +4,8 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-# TODO(max): connect this (or something) to xrt_lite_n_core_rows and xrt_lite_n_core_cols
 from iree._runtime_libs._runtime import parse_flags
+from ml_dtypes import bfloat16
 
 from iree.compiler import ir
 from iree.compiler._mlir_libs import get_dialect_registry
@@ -13,7 +13,6 @@ from iree.compiler.api import Session, Output, Source, _initializeGlobalCL
 from iree.compiler.extras import types as T
 from iree.runtime import VmModule
 from iree.runtime import get_driver, Config, SystemContext
-from ml_dtypes import bfloat16
 
 for t in [
     "i8",
@@ -57,14 +56,28 @@ def pytest_addoption(parser):
         nargs="?",
         choices=["xrt", "xrt-lite"],
     )
+    parser.addoption("--xrt_lite_n_core_rows", type=int)
+    parser.addoption("--xrt_lite_n_core_cols", type=int)
 
 
 @pytest.fixture(scope="session")
-def global_cl_args(request):
-    _initializeGlobalCL(
+def global_cl_args(request, pytestconfig):
+    compiler_flags = [
         "--iree-hal-memoization=false",
         "--iree-hal-indirect-command-buffers=false",
-    )
+    ]
+    _initializeGlobalCL(*compiler_flags)
+
+    runtime_flags = []
+    if pytestconfig.option.xrt_lite_n_core_rows is not None:
+        runtime_flags += [
+            f"--xrt_lite_n_core_rows={pytestconfig.option.xrt_lite_n_core_rows}"
+        ]
+    if pytestconfig.option.xrt_lite_n_core_cols is not None:
+        runtime_flags += [
+            f"--xrt_lite_n_core_cols={pytestconfig.option.xrt_lite_n_core_cols}"
+        ]
+    parse_flags(*runtime_flags)
 
 
 @pytest.fixture
@@ -117,7 +130,7 @@ def session_module(iree_session) -> ir.Module:
 
 
 @pytest.fixture(scope="session")
-def device(pytestconfig) -> ir.Module:
+def device(pytestconfig, global_cl_args) -> ir.Module:
     yield get_driver(pytestconfig.option.device_hal).create_default_device()
 
 

@@ -201,7 +201,9 @@ jobs:
           pytest -v tests \
             --capture=tee-sys \
             --iree-install-dir=$PWD/iree-install \
-            --peano-install-dir=$PWD/llvm-aie
+            --peano-install-dir=$PWD/llvm-aie \
+            --xrt_lite_n_core_rows=$XRT_LITE_N_CORE_ROWS \
+            --xrt_lite_n_core_cols=$XRT_LITE_N_CORE_COLS
 
       - name: XRT-LITE tests
         run: |
