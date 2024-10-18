@@ -262,7 +262,8 @@ std::unique_ptr<Pass> createAMDAIERemoveMemorySpacePass();
 std::unique_ptr<Pass> createAMDAIESinkIntoCorePass();
 
 /// Create a pass to split logicalobjectfifos for connection reuse.
-std::unique_ptr<Pass> createAMDAIESplitLogicalObjFifosForConnectionReusePass();
+std::unique_ptr<Pass> createAMDAIESplitLogicalObjFifosForConnectionReusePass(
+    AMDAIESplitLogicalObjFifosForConnectionReuseOptions options = {});
 
 /// Create a pass to bufferize temporary alloc ops.
 std::unique_ptr<Pass> createAMDAIETemporaryAllocBufferizationPass();

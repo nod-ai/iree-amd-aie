@@ -26,6 +26,12 @@ class AMDAIESplitLogicalObjFifosForConnectionReusePass
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<AMDAIEDialect>();
   }
+  AMDAIESplitLogicalObjFifosForConnectionReusePass() = default;
+  AMDAIESplitLogicalObjFifosForConnectionReusePass(
+      const AMDAIESplitLogicalObjFifosForConnectionReusePass &pass){};
+  AMDAIESplitLogicalObjFifosForConnectionReusePass(
+      const AMDAIESplitLogicalObjFifosForConnectionReuseOptions &options)
+      : AMDAIESplitLogicalObjFifosForConnectionReuseBase(options) {}
   void runOnOperation() override;
 };
 
@@ -37,7 +43,8 @@ void AMDAIESplitLogicalObjFifosForConnectionReusePass::runOnOperation() {
   SmallVector<AMDAIE::DmaCpyNdOp> l2ToL1DmaOps =
       fetchDmaCpyNdOpsToSplitOrCombine(moduleOp);
 
-  if (failed(splitLogicalObjectFifos(rewriter, l2ToL1DmaOps, context))) {
+  if (failed(splitLogicalObjectFifos(rewriter, l2ToL1DmaOps, context,
+                                     packTransposeOnSource))) {
     LLVM_DEBUG(llvm::dbgs()
                << "Failed to perform splitting of logicalobjectfifos");
     return signalPassFailure();
@@ -46,8 +53,10 @@ void AMDAIESplitLogicalObjFifosForConnectionReusePass::runOnOperation() {
 
 }  // namespace
 
-std::unique_ptr<Pass> createAMDAIESplitLogicalObjFifosForConnectionReusePass() {
-  return std::make_unique<AMDAIESplitLogicalObjFifosForConnectionReusePass>();
+std::unique_ptr<Pass> createAMDAIESplitLogicalObjFifosForConnectionReusePass(
+    AMDAIESplitLogicalObjFifosForConnectionReuseOptions options) {
+  return std::make_unique<AMDAIESplitLogicalObjFifosForConnectionReusePass>(
+      options);
 }
 
 }  // namespace mlir::iree_compiler::AMDAIE
