@@ -1,8 +1,19 @@
-name: CI Linux
+name: CI Ubuntu
 
 on:
   workflow_call:
   workflow_dispatch:
+    inputs:
+      force_debug_with_tmate:
+        type: boolean
+        description: 'Run the build with tmate session'
+        required: false
+        default: false
+      debug_with_tmate:
+        type: boolean
+        description: 'Run the build with a tmate session ONLY in case of failure'
+        required: false
+        default: false
   pull_request:
   merge_group:
   push:
@@ -10,37 +21,27 @@ on:
       - main
 
 concurrency:
-  # A PR number if a pull request and otherwise the commit hash. This cancels
-  # queued and in-progress runs for the same PR (presubmit) or commit
-  # (postsubmit).
-  group: ci-build-test-cpp-linux-${{ github.event.number || github.sha }}
+  group: ci-build-test-cpp-ubuntu-${{ github.event.number || github.sha }}
   cancel-in-progress: true
 
 jobs:
   build_and_ctest:
-    name: Build and Test (linux, ASSERTIONS)
-    runs-on: nod-ai-shared-cpubuilder-manylinux-x86_64
+    name: Build and Test (ubuntu, ASSERTIONS)
+    runs-on: ubuntu-22.04
     strategy:
       fail-fast: true
     env:
       CACHE_DIR: ${{ github.workspace }}/.container-cache
-      # either the PR number or `branch-N` where N always increments
-      CACHE_KEY: linux-build-test-cpp-asserts-manylinux-v2-${{ format('{0}-{1}', github.ref_name, github.run_number) }}
+      CACHE_KEY: ubuntu-build-test-cpp-asserts-v2-${{ format('{0}-{1}', github.ref_name, github.run_number) }}
     steps:
       - name: Set unified TZ
         uses: szenius/set-timezone@v2.0
         with:
-          # this is an arbitrary choice
           timezoneLinux: "Asia/Singapore"
           timezoneMacos: "Asia/Singapore"
           timezoneWindows: "Singapore Standard Time"
 
-      - name: Configure local git mirrors
-        run: |
-          /gitmirror/scripts/trigger_update_mirrors.sh
-          /gitmirror/scripts/git_config.sh
-
-      - name: "Checking out repository"
+      - name: Checking out repository
         env:
           BRANCH_NAME: ${{ github.ref }}
           REPO_ADDRESS: ${{ github.server_url }}/${{ github.repository }}
@@ -54,22 +55,24 @@ jobs:
               -c submodule."third_party/XRT".update=none \
               submodule update --init --recursive --depth 1 --single-branch -j 10
 
+      - name: System deps
+        run: |
+          sudo apt install ccache ninja-build
+
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
       - name: Python deps
         run: |
-          pip install -r third_party/iree/runtime/bindings/python/iree/runtime/build_requirements.txt
-          pip install pyyaml
-
-      - name: Peano dep
-        run: |
-          bash build_tools/download_peano.sh
-          echo "PEANO_INSTALL_DIR=$PWD/llvm-aie" >> $GITHUB_ENV
+          pip install "numpy<2" pyyaml "pybind11[global]==2.10.3" nanobind
 
       - name: Enable cache
         uses: actions/cache/restore@v3
         with:
           path: ${{ env.CACHE_DIR }}
           key:  ${{ env.CACHE_KEY }}
-          restore-keys: linux-build-test-cpp-
+          restore-keys: ubuntu-build-test-cpp-asserts-
 
       - name: Peano dep
         run: |
@@ -89,14 +92,14 @@ jobs:
         if: ${{ !cancelled() }}
         run: |
           pushd third_party/iree/third_party/llvm-project && llvm_sha_short=$(git rev-parse --short HEAD) && popd
-          tar cf llvm-dist-linux-$llvm_sha_short.tar llvm-install
-          tar cf iree-dist-linux.tar iree-install
+          tar cf llvm-dist-ubuntu-$llvm_sha_short.tar llvm-install
+          tar cf iree-dist-ubuntu.tar iree-install
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         if: ${{ !cancelled() }}
         with:
-          name: linux_x86_64_llvm_packages
+          name: ubuntu_x86_64_llvm_packages
           path: llvm-dist-*.tar
           if-no-files-found: warn
 
@@ -104,8 +107,8 @@ jobs:
         uses: actions/upload-artifact@v4
         if: ${{ !cancelled() }}
         with:
-          name: linux_x86_64_iree_packages
-          path: iree-dist-linux.tar
+          name: ubuntu_x86_64_iree_packages
+          path: iree-dist-ubuntu.tar
           if-no-files-found: warn
 
       - name: Save cache
@@ -114,6 +117,12 @@ jobs:
         with:
           path: ${{ env.CACHE_DIR }}
           key: ${{ env.CACHE_KEY }}
+
+      - name: Start tmate session
+        if: ${{ (failure() && inputs.debug_with_tmate) || inputs.force_debug_with_tmate }}
+        uses: mxschmitt/action-tmate@v3.18
+        with:
+          limit-access-to-actor: true
 
   test_linux:
     name: E2E Test linux
@@ -134,11 +143,11 @@ jobs:
       - name: Download artifacts
         uses: actions/download-artifact@v4
         with:
-          name: linux_x86_64_iree_packages
+          name: ubuntu_x86_64_iree_packages
 
       - name: Extract artifact
         run: |
-          tar -xvf iree-dist-linux.tar
+          tar -xvf iree-dist-ubuntu.tar
           echo "IREE_INSTALL_DIR=$PWD/iree-install" >> $GITHUB_ENV
           echo "PYTHONPATH=$PWD/iree-install/python_packages/iree_compiler:$PWD/iree-install/python_packages/iree_runtime" >> $GITHUB_ENV
           bash build_tools/download_peano.sh

@@ -6,11 +6,6 @@
 
 This repository contains an early-phase IREE compiler and runtime plugin for interfacing the AMD AIE accelerator to IREE.
 
-## Architectural Overview
-
-![image](https://github.com/nod-ai/iree-amd-aie/assets/74956/3fa73139-5fdf-4658-86c3-0705352c4ea0)
-
-
 ## Developer Setup
 
 **Strong recommendation**: check the CI scripts @ [.github/workflows](.github/workflows) - they do a fresh checkout and build on every commit and are written to be read by a non-CI expert.
@@ -33,7 +28,7 @@ or if you want a faster checkout
 git \
   -c submodule."third_party/torch-mlir".update=none \
   -c submodule."third_party/stablehlo".update=none \
-  -c submodule."src/runtime_src/core/common/aiebu".update=none \
+  -c submodule."third_party/XRT".update=none \
   clone \
   --recursive \
   --shallow-submodules \
@@ -46,12 +41,10 @@ The above avoids cloning entire repo histories, and skips unused nested submodul
 
 ### Just show me the CMake
 
-To configure and build with XRT runtime enabled
-
 ```
 cd iree-amd-aie
 cmake \
-  -B $WHERE_YOU_WOULD_LIKE_TO_BUILD \
+  -B <WHERE_YOU_WOULD_LIKE_TO_BUILD> \
   -S third_party/iree \
   -DIREE_CMAKE_PLUGIN_PATHS=$PWD \
   -DIREE_BUILD_PYTHON_BINDINGS=ON \
@@ -62,9 +55,9 @@ cmake \
   -DIREE_TARGET_BACKEND_DEFAULTS=OFF \
   -DIREE_TARGET_BACKEND_LLVM_CPU=ON \
   -DIREE_BUILD_TESTS=ON \
-  -DIREE_EXTERNAL_HAL_DRIVERS=xrt \
-  -DCMAKE_INSTALL_PREFIX=$WHERE_YOU_WOULD_LIKE_TO_INSTALL
-cmake --build $WHERE_YOU_WOULD_LIKE_TO_BUILD
+  -DIREE_EXTERNAL_HAL_DRIVERS=xrt-lite \
+  -DCMAKE_INSTALL_PREFIX=<WHERE_YOU_WOULD_LIKE_TO_INSTALL>
+cmake --build <WHERE_YOU_WOULD_LIKE_TO_BUILD>
 ```
 
 ### Instructions
@@ -73,9 +66,9 @@ The bare minimum configure command for IREE with the amd-aie plugin
 
 ```
 cmake \
-  -B $WHERE_YOU_WOULD_LIKE_TO_BUILD \
-  -S $IREE_REPO_SRC_DIR \
-  -DIREE_CMAKE_PLUGIN_PATHS=$IREE_AMD_AIE_REPO_SRC_DIR \
+  -B <WHERE_YOU_WOULD_LIKE_TO_BUILD> \
+  -S <IREE_REPO_SRC_DIR> \
+  -DIREE_CMAKE_PLUGIN_PATHS=<IREE_AMD_AIE_REPO_SRC_DIR> \
   -DIREE_BUILD_PYTHON_BINDINGS=ON
 ```
 
@@ -111,7 +104,7 @@ If you're "bringing your own LLVM", i.e., you have a prebuilt/compiled distribut
   -DIREE_BUILD_BUNDLED_LLVM=OFF
 ```
 
-In this case you will need to supply `-DLLVM_EXTERNAL_LIT=$SOMEWHERE` (e.g., `pip install lit; SOMEWHERE=$(which lit)`).
+In this case you will need to supply `-DLLVM_EXTERNAL_LIT=<SOMEWHERE>` (e.g., `pip install lit; SOMEWHERE=$(which lit)`).
 
 Note, getting the right/matching build of LLVM, that works with IREE is tough (besides the commit hash, there are various flags to set).
 To enable adventurous users to avail themselves of `-DIREE_BUILD_BUNDLED_LLVM=OFF` we cache/store/save the LLVM distribution for every successful CI run.
@@ -121,65 +114,18 @@ These can then be downloaded by checking the artifacts section of any recent CI 
 <img src="https://github.com/user-attachments/assets/97fdeff2-41af-4a6d-a072-6ef0a1ec5695" width="500">
 </p>
 
+## Testing
+
 Lit tests specific to AIE can be run with something like 
 
 ```
-cd $WHERE_YOU_WOULD_LIKE_TO_BUILD
+cd <WHERE_YOU_WOULD_LIKE_TO_BUILD>
 ctest -R amd-aie
 ```
 
-Other tests which run on hardware and requiring XRT are in the `build_tools` subdirectory. 
+Other tests, which run on device, are in the `build_tools` subdirectory. 
 
-## Runtime driver setup
+## Architectural overview (out of date)
 
-To enable the runtime driver, you need to also enable the XRT HAL
+![image](https://github.com/nod-ai/iree-amd-aie/assets/74956/3fa73139-5fdf-4658-86c3-0705352c4ea0)
 
-```
-  -DIREE_EXTERNAL_HAL_DRIVERS=xrt
-```
-
-Additional IREE-specific flags are explained at [IREE's build instructions](https://iree.dev/building-from-source/getting-started/#quickstart-clone-and-build). To use Ninja instead of Make, and clang++ instead of g++, you can add
-
-
-```
-  -G Ninja \
-  -DCMAKE_CXX_COMPILER=clang++ \
-  -DCMAKE_C_COMPILER=clang
-```
-
-
-### Ubuntu Dependencies
-
-XRT requires a number of packages. Here are the requirements for various operating systems
-
-```
-apt install \
-  libcurl4-openssl-dev \
-  libdrm-dev \
-  libelf-dev \
-  libprotobuf-dev \
-  libudev-dev \
-  pkg-config \
-  protobuf-compiler \
-  python3-pybind11 \
-  systemtap-sdt-dev \
-  uuid-dev
-```
-
-### RH Based Deps
-
-This is an incomplete list derived by adding what is needed to our development base manylinux (AlmaLinux 8) image.
-
-```
-yum install \
-  libcurl-devel \
-  libdrm-devel \
-  libudev-devel \
-  libuuid-devel \
-  ncurses-devel \
-  pkgconfig \
-  protobuf-compiler \
-  protobuf-devel \
-  systemtap-sdt-devel \
-  uuid-devel
-```
