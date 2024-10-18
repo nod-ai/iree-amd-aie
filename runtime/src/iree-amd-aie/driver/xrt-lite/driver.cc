@@ -127,6 +127,7 @@ namespace {
 const iree_hal_driver_vtable_t iree_hal_xrt_lite_driver_vtable = {
     .destroy = iree_hal_xrt_lite_driver_destroy,
     .query_available_devices = iree_hal_xrt_lite_driver_query_available_devices,
+    .dump_device_info = unimplemented_ok_status,
     .create_device_by_id = iree_hal_xrt_lite_driver_create_device_by_id,
     .create_device_by_path = iree_hal_xrt_lite_driver_create_device_by_path,
 };

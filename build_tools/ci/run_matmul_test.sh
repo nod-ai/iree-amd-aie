@@ -441,7 +441,7 @@ function run_matmul_test() {
     fi
   fi
 
-  # Renable exit on failure:
+  # Re-enable exit on failure:
   echo "**** Generating calls .vmfb file for ${name} ****"
   ${IREE_COMPILE_EXE} "${calls_ir}" \
       --iree-hal-target-backends=${target_backend} \
@@ -793,7 +793,19 @@ if [ -d "$VITIS" ]; then
 
 fi
 
-echo "\n\n"
+# note this will not actually show any devices because --xrt_lite_n_core_rows --xrt_lite_n_core_cols are not passed
+# which i have omitted to make the conditional slightly more succinct
+if [[ $($IREE_INSTALL_DIR/bin/iree-benchmark-module --dump_devices | grep xrt-lite) ]]; then
+  $IREE_INSTALL_DIR/bin/iree-benchmark-module \
+    --module=$OUTPUT_DIR/mm_test1_bf16_f32_m64_n64_k64.vmfb \
+    --function=matmul_64x64_64xbf16_ \
+    --input=64x64xbf16 \
+    --input=64x64xbf16 \
+    --device=xrt-lite \
+    --benchmark_repetitions=10 \
+    --xrt_lite_n_core_rows=$XRT_LITE_N_CORE_ROWS \
+    --xrt_lite_n_core_cols=$XRT_LITE_N_CORE_COLS
+fi
 
 echo "$MATMUL_TESTS_RUN matmul tests run!"
 if [ $MATMUL_TESTS_FAILS -ne 0 ]; then
