@@ -1,4 +1,4 @@
-// These 2 lines are required by the script which generates input data:
+// These lines are required for e2e numerical testing:
 // input 2x14x14x32xi8
 // input 3x3x32x64xi8
 

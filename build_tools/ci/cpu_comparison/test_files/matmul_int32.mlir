@@ -1,6 +1,7 @@
-// These 2 lines are required by the script which generates input data:
+// These lines are required for e2e numerical testing:
 // input 128x128xi32
 // input 128x128xi32
+// output 128x128xi32
 
 !lhs = tensor<128x128xi32>
 !rhs = tensor<128x128xi32>

@@ -5,6 +5,7 @@
 // SPDX-License-Identifier: # Apache-2.0 WITH LLVM-exception
 
 #include "xaiengine/xaiegbl_defs.h"
+#include "xaiengine/xaiegbl.h"
 #undef s8
 #undef u8
 #undef u16
@@ -14,7 +15,9 @@
 
 #define XAIE_FEATURE_LITE
 
+//===----------------------------------------------------------------------===//
 // AIE Gen 1
+//===----------------------------------------------------------------------===//
 #define XAIE_DEV_SINGLE_GEN XAIE_DEV_GEN_AIE
 #include "xaiengine/xaie_lite_hwcfg.h"
 
@@ -22,6 +25,7 @@ const uint64_t XAIE1_BASE_ADDR = XAIE_BASE_ADDR;
 const uint64_t XAIE1_NPI_BASEADDR = XAIE_NPI_BASEADDR;
 const int XAIE1_NUM_ROWS = XAIE_NUM_ROWS;
 const int XAIE1_NUM_COLS = XAIE_NUM_COLS;
+const uint8_t XAIE1_PACKET_ID_MAX = XAIE_PACKET_ID_MAX;
 const int XAIE1_TILE_NUM_LOCKS = XAIE_TILE_NUM_LOCKS;
 const int XAIE1_SHIM_NUM_LOCKS = XAIE_SHIM_NUM_LOCKS;
 const int XAIE1_TILE_DMA_NUM_CH = XAIE_TILE_DMA_NUM_CH;
@@ -30,6 +34,9 @@ const int XAIE1_COL_SHIFT = XAIE_COL_SHIFT;
 const int XAIE1_ROW_SHIFT = XAIE_ROW_SHIFT;
 const int XAIE1_SHIM_ROW = XAIE_SHIM_ROW;
 const int XAIE1_SHIM_NUM_ROWS = XAIE_SHIM_NUM_ROWS;
+// Arbiter/msel defines are hidden inside aie-rt
+const uint8_t XAIE1_SS_ARBITER_MAX = 5;
+const uint8_t XAIE1_SS_MSEL_MAX = 3;
 const int XAIE1_MEM_TILE_ROW_START = XAIE_MEM_TILE_ROW_START;
 const int XAIE1_MEM_TILE_NUM_ROWS = XAIE_MEM_TILE_NUM_ROWS;
 const int XAIE1_AIE_TILE_ROW_START = XAIE_AIE_TILE_ROW_START;
@@ -66,7 +73,9 @@ const uint64_t XAIE1_PARTITION_BASE_ADDR = XAIE_BASE_ADDR;
 #undef XAIE_DEV_SINGLE_GEN
 #undef XAIE_LITE_HWCFG_H
 
+//===----------------------------------------------------------------------===//
 // AIE Gen ML
+//===----------------------------------------------------------------------===//
 #define XAIE_DEV_SINGLE_GEN XAIE_DEV_GEN_AIEML
 #include "xaiengine/xaie_lite_hwcfg.h"
 
@@ -74,6 +83,7 @@ const uint64_t XAIEML_BASE_ADDR = XAIE_BASE_ADDR;
 const uint64_t XAIEML_NPI_BASEADDR = XAIE_NPI_BASEADDR;
 const int XAIEML_NUM_ROWS = XAIE_NUM_ROWS;
 const int XAIEML_NUM_COLS = XAIE_NUM_COLS;
+const uint8_t XAIEML_PACKET_ID_MAX = XAIE_PACKET_ID_MAX;
 const int XAIEML_TILE_NUM_LOCKS = XAIE_TILE_NUM_LOCKS;
 const int XAIEML_MEM_TILE_NUM_LOCKS = XAIE_MEM_TILE_NUM_LOCKS;
 const int XAIEML_SHIM_NUM_LOCKS = XAIE_SHIM_NUM_LOCKS;
@@ -84,6 +94,9 @@ const int XAIEML_COL_SHIFT = XAIE_COL_SHIFT;
 const int XAIEML_ROW_SHIFT = XAIE_ROW_SHIFT;
 const int XAIEML_SHIM_ROW = XAIE_SHIM_ROW;
 const int XAIEML_SHIM_NUM_ROWS = XAIE_SHIM_NUM_ROWS;
+// Arbiter/msel defines are hidden inside aie-rt
+const uint8_t XAIEML_SS_ARBITER_MAX = 5;
+const uint8_t XAIEML_SS_MSEL_MAX = 3;
 const int XAIEML_MEM_TILE_ROW_START = XAIE_MEM_TILE_ROW_START;
 const int XAIEML_MEM_TILE_NUM_ROWS = XAIE_MEM_TILE_NUM_ROWS;
 const int XAIEML_AIE_TILE_ROW_START = XAIE_AIE_TILE_ROW_START;
@@ -91,6 +104,7 @@ const int XAIEML_AIE_TILE_NUM_ROWS = XAIE_AIE_TILE_NUM_ROWS;
 const int XAIEML_NUM_NOC_INTR_OFFSET = XAIE_NUM_NOC_INTR_OFFSET;
 
 const uint64_t XAIEML_PARTITION_BASE_ADDR = XAIE_BASE_ADDR;
+
 
 #undef XAIE_BASE_ADDR
 #undef XAIE_NPI_BASEADDR
@@ -117,7 +131,9 @@ const uint64_t XAIEML_PARTITION_BASE_ADDR = XAIE_BASE_ADDR;
 #undef XAIE_DEV_SINGLE_GEN
 #undef XAIE_LITE_HWCFG_H
 
+//===----------------------------------------------------------------------===//
 // AIE Gen IPU
+//===----------------------------------------------------------------------===//
 #define IPU_AIE_BASEADDR 0x40000000;
 #define IPU_AIE_NPI_ADDR 0x0;
 #define XAIE_DEV_SINGLE_GEN XAIE_DEV_GEN_AIE2IPU
@@ -127,6 +143,7 @@ const uint64_t XAIE2IPU_BASE_ADDR = XAIE_BASE_ADDR;
 const uint64_t XAIE2IPU_NPI_BASEADDR = XAIE_NPI_BASEADDR;
 const int XAIE2IPU_NUM_ROWS = XAIE_NUM_ROWS;
 const int XAIE2IPU_NUM_COLS = XAIE_NUM_COLS;
+const uint8_t XAIE2IPU_PACKET_ID_MAX = XAIE_PACKET_ID_MAX;
 const int XAIE2IPU_TILE_NUM_LOCKS = XAIE_TILE_NUM_LOCKS;
 const int XAIE2IPU_MEM_TILE_NUM_LOCKS = XAIE_MEM_TILE_NUM_LOCKS;
 const int XAIE2IPU_SHIM_NUM_LOCKS = XAIE_SHIM_NUM_LOCKS;
@@ -137,6 +154,9 @@ const int XAIE2IPU_COL_SHIFT = XAIE_COL_SHIFT;
 const int XAIE2IPU_ROW_SHIFT = XAIE_ROW_SHIFT;
 const int XAIE2IPU_SHIM_ROW = XAIE_SHIM_ROW;
 const int XAIE2IPU_SHIM_NUM_ROWS = XAIE_SHIM_NUM_ROWS;
+// Arbiter/msel defines are hidden inside aie-rt
+const uint8_t XAIE2IPU_SS_ARBITER_MAX = 5;
+const uint8_t XAIE2IPU_SS_MSEL_MAX = 3;
 const int XAIE2IPU_MEM_TILE_ROW_START = XAIE_MEM_TILE_ROW_START;
 const int XAIE2IPU_MEM_TILE_NUM_ROWS = XAIE_MEM_TILE_NUM_ROWS;
 const int XAIE2IPU_AIE_TILE_ROW_START = XAIE_AIE_TILE_ROW_START;
@@ -172,8 +192,9 @@ const uint64_t XAIE2IPU_ADDR_ARRAY_OFF = 0x80000;
 #undef XAIE_DEV_SINGLE_GEN
 #undef XAIE_LITE_HWCFG_H
 
+//===----------------------------------------------------------------------===//
 // AIE Gen Strix B0
-
+//===----------------------------------------------------------------------===//
 #define XAIE_DEV_SINGLE_GEN XAIE_DEV_GEN_AIE2P_STRIX_B0
 #include "xaiengine/xaie_lite_hwcfg.h"
 
@@ -181,6 +202,7 @@ const uint64_t XAIE_STRIXB0_BASE_ADDR = XAIE_BASE_ADDR;
 const uint64_t XAIE_STRIXB0_NPI_BASEADDR = XAIE_NPI_BASEADDR;
 const int XAIE_STRIXB0_NUM_ROWS = XAIE_NUM_ROWS;
 const int XAIE_STRIXB0_NUM_COLS = XAIE_NUM_COLS;
+const uint8_t XAIE_STRIXB0_PACKET_ID_MAX = XAIE_PACKET_ID_MAX;
 const int XAIE_STRIXB0_TILE_NUM_LOCKS = XAIE_TILE_NUM_LOCKS;
 const int XAIE_STRIXB0_MEM_TILE_NUM_LOCKS = XAIE_MEM_TILE_NUM_LOCKS;
 const int XAIE_STRIXB0_SHIM_NUM_LOCKS = XAIE_SHIM_NUM_LOCKS;
@@ -191,6 +213,9 @@ const int XAIE_STRIXB0_COL_SHIFT = XAIE_COL_SHIFT;
 const int XAIE_STRIXB0_ROW_SHIFT = XAIE_ROW_SHIFT;
 const int XAIE_STRIXB0_SHIM_ROW = XAIE_SHIM_ROW;
 const int XAIE_STRIXB0_SHIM_NUM_ROWS = XAIE_SHIM_NUM_ROWS;
+// Arbiter/msel defines are hidden inside aie-rt
+const uint8_t XAIE_STRIXB0_SS_ARBITER_MAX = 5;
+const uint8_t XAIE_STRIXB0_SS_MSEL_MAX = 3;
 const int XAIE_STRIXB0_MEM_TILE_ROW_START = XAIE_MEM_TILE_ROW_START;
 const int XAIE_STRIXB0_MEM_TILE_NUM_ROWS = XAIE_MEM_TILE_NUM_ROWS;
 const int XAIE_STRIXB0_AIE_TILE_ROW_START = XAIE_AIE_TILE_ROW_START;

@@ -1,12 +1,13 @@
 // This test shows arbitrary matmuls that would have producer consumer relationships
 // across different dispatches running on CI.
 
-// These 4 lines are required by the script which generates input data:
+// These lines are required for e2e numerical testing:
 //
 // input 32x32xf32
 // input 32x32xf32
 // input 32x4xf32
 // input 4x32xf32
+// output 4x4xf32
 
 !A_TYPE = tensor<32x32xf32>
 !B_TYPE = tensor<32x4xf32>

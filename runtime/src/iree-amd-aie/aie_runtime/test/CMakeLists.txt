@@ -17,6 +17,7 @@ iree_cc_binary(
     "utest.cc"
   DEPS
     iree-amd-aie::aie_runtime::iree_aie_runtime_static
+  TESTONLY
 )
 
 iree_lit_test(
@@ -104,4 +105,14 @@ iree_lit_test(
     FileCheck
   LABELS
     "hostonly"
+)
+
+iree_cc_test(
+  NAME
+    AMSelGeneratorTest
+  SRCS
+    "test_amsel_generator.cc"
+  DEPS
+    gtest
+    iree-amd-aie::aie_runtime::iree_aie_runtime_static
 )

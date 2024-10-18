@@ -48,35 +48,6 @@
 #define DEBUG_TYPE "aie-target"
 
 namespace mlir::iree_compiler::AMDAIE {
-
-/// Command line option for selecting the target AIE device.
-static llvm::cl::opt<AMDAIEDevice> clAMDAIETargetDevice(
-    "iree-amdaie-target-device",
-    llvm::cl::desc("Sets the target device architecture."),
-    llvm::cl::values(
-        clEnumValN(AMDAIEDevice::xcvc1902, "xcvc1902", "The xcvc1902 device"),
-        clEnumValN(AMDAIEDevice::xcve2302, "xcve2302", "The xcve2302 device"),
-        clEnumValN(AMDAIEDevice::xcve2802, "xcve2802", "The xcve2802 device"),
-        clEnumValN(AMDAIEDevice::npu1, "npu1", "Default Phoenix NPU"),
-        clEnumValN(AMDAIEDevice::npu1_1col, "npu1_1col",
-                   "Phoenix NPU with a single column"),
-        clEnumValN(AMDAIEDevice::npu1_2col, "npu1_2col",
-                   "Phoenix NPU with two columns"),
-        clEnumValN(AMDAIEDevice::npu1_3col, "npu1_3col",
-                   "Phoenix NPU with three columns"),
-        clEnumValN(AMDAIEDevice::npu1_4col, "npu1_4col",
-                   "Phoenix NPU with four columns"),
-        clEnumValN(AMDAIEDevice::npu4, "npu4",
-                   "Strix B0 NPU with 8 columns and 6 rows")),
-    llvm::cl::init(AMDAIEDevice::npu1_4col));
-
-static llvm::cl::opt<std::string> clEnableAMDAIEUkernels(
-    "iree-amdaie-enable-ukernels",
-    llvm::cl::desc("Enables microkernels in the amdaie backend. May be "
-                   "`none`, `all`, or a comma-separated list of specific "
-                   "unprefixed microkernels to enable, e.g. `matmul`."),
-    llvm::cl::init("none"));
-
 static xilinx::AIE::DeviceOp getDeviceOpWithName(ModuleOp moduleOp,
                                                  StringRef targetName) {
   xilinx::AIE::DeviceOp deviceOp;
@@ -161,11 +132,12 @@ class AIETargetBackend final : public IREE::HAL::TargetBackend {
       configItems.emplace_back(StringAttr::get(context, name), value);
     };
     // Set target device
-    addConfig(
-        "target_device",
-        StringAttr::get(context, AMDAIE::stringifyEnum(clAMDAIETargetDevice)));
+    addConfig("target_device",
+              StringAttr::get(
+                  context, AMDAIE::stringifyEnum(options.AMDAIETargetDevice)));
     // Set microkernel enabling flag.
-    addConfig("ukernels", StringAttr::get(context, clEnableAMDAIEUkernels));
+    addConfig("ukernels",
+              StringAttr::get(context, options.enableAMDAIEUkernels));
     auto configAttr = b.getDictionaryAttr(configItems);
     return IREE::HAL::ExecutableTargetAttr::get(
         context, b.getStringAttr("amd-aie"),
@@ -198,7 +170,11 @@ class AIETargetBackend final : public IREE::HAL::TargetBackend {
 
   void buildTranslationPassPipeline(IREE::HAL::ExecutableTargetAttr,
                                     OpPassManager &passManager) override {
-    buildAMDAIETransformPassPipeline(passManager, clAMDAIETargetDevice);
+    buildAMDAIETransformPassPipeline(
+        passManager, options.AMDAIETargetDevice, options.useTilePipeline,
+        options.useLowerToAIEPipeline, options.matmulElementwiseFusion,
+        options.enableVectorizationPasses, options.pathToUkernels,
+        options.enablePacketFlow);
   }
 
   void buildLinkingPassPipeline(OpPassManager &passManager) override {
@@ -366,7 +342,7 @@ LogicalResult AIETargetBackend::serializeExecutable(
     // TODO(max): this should be an enum
     // TODO(max): this needs to be pulled from PCIE
     std::string npuVersion;
-    switch (clAMDAIETargetDevice) {
+    switch (options.AMDAIETargetDevice) {
       case AMDAIEDevice::npu1:
       case AMDAIEDevice::npu1_1col:
       case AMDAIEDevice::npu1_2col:
@@ -403,7 +379,8 @@ LogicalResult AIETargetBackend::serializeExecutable(
             /*xclBinKernelName=*/entryPointNamesFb[ordinal],
             /*xclBinInstanceName=*/"IREE",
             /*amdAIEInstallDir=*/options.amdAieInstallDir,
-            /*InputXCLBin=*/std::nullopt, /*ukernel=*/clEnableAMDAIEUkernels)))
+            /*InputXCLBin=*/std::nullopt,
+            /*ukernel=*/options.enableAMDAIEUkernels)))
       return failure();
 
     std::ifstream instrFile(static_cast<std::string>(npuInstPath));

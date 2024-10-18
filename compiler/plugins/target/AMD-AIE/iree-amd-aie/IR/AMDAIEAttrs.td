@@ -11,6 +11,20 @@ include "iree-amd-aie/IR/AMDAIEDialect.td"
 include "mlir/IR/AttrTypeBase.td"
 include "mlir/IR/EnumAttr.td"
 
+def AMDAIE_ConnectionType: I32EnumAttr<"ConnectionType",
+  "The connection type to be used for a connection op.",
+  [
+    I32EnumAttrCase<"Circuit", 0>,
+    I32EnumAttrCase<"Packet", 1>
+  ]
+  > {
+  let cppNamespace = "mlir::iree_compiler::AMDAIE";
+  let genSpecializedAttr = 0;
+}
+
+def AMDAIE_ConnectionTypeAttr 
+  : EnumAttr<AMDAIE_Dialect, AMDAIE_ConnectionType, "connection_type">;
+
 def AMDAIE_CopyOpOperateOn: I32EnumAttr<"CopyOpOperateOn",
   "Enables templated functions that operate on either source or target of "
   "copy/dma operations",

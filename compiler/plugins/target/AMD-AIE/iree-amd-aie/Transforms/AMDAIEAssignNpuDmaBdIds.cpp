@@ -89,12 +89,12 @@ LogicalResult assignNpuDmaBdIds(AMDAIE::WorkgroupOp workgroupOp) {
                                                       tileOp, bdId.value());
         rewriter.setInsertionPoint(npuDmaOp);
         npuDmaOp = rewriter.replaceOpWithNewOp<AMDAIE::NpuDmaCpyNdOp>(
-            npuDmaOp, npuDmaOp.getConnection(), npuDmaOp.getTarget(),
-            npuDmaOp.getTargetMixedOffsets(), npuDmaOp.getTargetMixedSizes(),
-            npuDmaOp.getTargetMixedStrides(), npuDmaOp.getTargetBdId(),
-            npuDmaOp.getSource(), npuDmaOp.getSourceMixedOffsets(),
-            npuDmaOp.getSourceMixedSizes(), npuDmaOp.getSourceMixedStrides(),
-            bdIdOp);
+            npuDmaOp, npuDmaOp.getResultTypes(), npuDmaOp.getConnection(),
+            npuDmaOp.getTarget(), npuDmaOp.getTargetMixedOffsets(),
+            npuDmaOp.getTargetMixedSizes(), npuDmaOp.getTargetMixedStrides(),
+            npuDmaOp.getTargetBdId(), npuDmaOp.getSource(),
+            npuDmaOp.getSourceMixedOffsets(), npuDmaOp.getSourceMixedSizes(),
+            npuDmaOp.getSourceMixedStrides(), bdIdOp);
       }
       if (npuDmaOp.getTarget()) {
         auto logicalObjFifo =
@@ -122,42 +122,45 @@ LogicalResult assignNpuDmaBdIds(AMDAIE::WorkgroupOp workgroupOp) {
                                                       tileOp, bdId.value());
         rewriter.setInsertionPoint(npuDmaOp);
         (void)rewriter.replaceOpWithNewOp<AMDAIE::NpuDmaCpyNdOp>(
-            npuDmaOp, npuDmaOp.getConnection(), npuDmaOp.getTarget(),
-            npuDmaOp.getTargetMixedOffsets(), npuDmaOp.getTargetMixedSizes(),
-            npuDmaOp.getTargetMixedStrides(), bdIdOp, npuDmaOp.getSource(),
-            npuDmaOp.getSourceMixedOffsets(), npuDmaOp.getSourceMixedSizes(),
-            npuDmaOp.getSourceMixedStrides(), npuDmaOp.getSourceBdId());
+            npuDmaOp, npuDmaOp.getResultTypes(), npuDmaOp.getConnection(),
+            npuDmaOp.getTarget(), npuDmaOp.getTargetMixedOffsets(),
+            npuDmaOp.getTargetMixedSizes(), npuDmaOp.getTargetMixedStrides(),
+            bdIdOp, npuDmaOp.getSource(), npuDmaOp.getSourceMixedOffsets(),
+            npuDmaOp.getSourceMixedSizes(), npuDmaOp.getSourceMixedStrides(),
+            npuDmaOp.getSourceBdId());
       }
       return WalkResult::advance();
     } else if (auto npuWaitOp = dyn_cast<AMDAIE::NpuDmaWaitOp>(op)) {
       // Release BD ID used by input DMA op.
-      AMDAIE::NpuDmaCpyNdOp npuDmaOp = npuWaitOp.getDmaOp();
-      AMDAIE::BdIdOp bdIdOp;
-      if (npuDmaOp.getSourceBdId()) {
-        bdIdOp = dyn_cast_if_present<AMDAIE::BdIdOp>(
-            npuDmaOp.getSourceBdId().getDefiningOp());
-      } else if (npuDmaOp.getTargetBdId()) {
-        bdIdOp = dyn_cast_if_present<AMDAIE::BdIdOp>(
-            npuDmaOp.getTargetBdId().getDefiningOp());
-      } else {
-        return WalkResult::advance();
+      for (AMDAIE::NpuDmaCpyNdOp npuDmaOp : npuWaitOp.getDmaOps()) {
+        AMDAIE::BdIdOp bdIdOp;
+        if (npuDmaOp.getSourceBdId()) {
+          bdIdOp = dyn_cast_if_present<AMDAIE::BdIdOp>(
+              npuDmaOp.getSourceBdId().getDefiningOp());
+        } else if (npuDmaOp.getTargetBdId()) {
+          bdIdOp = dyn_cast_if_present<AMDAIE::BdIdOp>(
+              npuDmaOp.getTargetBdId().getDefiningOp());
+        } else {
+          return WalkResult::advance();
+        }
+        if (!bdIdOp) return WalkResult::advance();
+        auto tileOp = dyn_cast_if_present<AMDAIE::TileOp>(
+            bdIdOp.getTile().getDefiningOp());
+        if (!tileOp) {
+          bdIdOp.emitOpError()
+              << "doesn't operate on a `amdaie.tile` operation";
+          return WalkResult::interrupt();
+        }
+        if (!shimTileToGeneratorMap.contains(tileOp.getResult())) {
+          bdIdOp.emitOpError()
+              << "no BD ID generator found for this BD ID op's tile";
+          return WalkResult::interrupt();
+        }
+        ChannelBdIdGenerator &generator =
+            shimTileToGeneratorMap[tileOp.getResult()];
+        uint32_t value = bdIdOp.getValue();
+        generator.releaseBdId(value);
       }
-      if (!bdIdOp) return WalkResult::advance();
-      auto tileOp =
-          dyn_cast_if_present<AMDAIE::TileOp>(bdIdOp.getTile().getDefiningOp());
-      if (!tileOp) {
-        bdIdOp.emitOpError() << "doesn't operate on a `amdaie.tile` operation";
-        return WalkResult::interrupt();
-      }
-      if (!shimTileToGeneratorMap.contains(tileOp.getResult())) {
-        bdIdOp.emitOpError()
-            << "no BD ID generator found for this BD ID op's tile";
-        return WalkResult::interrupt();
-      }
-      ChannelBdIdGenerator &generator =
-          shimTileToGeneratorMap[tileOp.getResult()];
-      uint32_t value = bdIdOp.getValue();
-      generator.releaseBdId(value);
       return WalkResult::advance();
     }
     return WalkResult::advance();

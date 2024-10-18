@@ -34,7 +34,6 @@ set(IREE_AIE_BOOST_LIBS
     any
     algorithm
     asio
-    exception
     format
     functional
     lexical_cast
@@ -176,7 +175,10 @@ foreach(_core_lib IN LISTS _core_libs)
                              ${IREE_XRT_SOURCE_DIR}/runtime_src)
   target_include_directories(${_core_lib} SYSTEM PUBLIC
                              ${IREE_XRT_SOURCE_DIR}/runtime_src/core/common/elf)
-  target_compile_definitions(${_core_lib} PUBLIC -DBOOST_BIND_GLOBAL_PLACEHOLDERS)
+  target_compile_definitions(${_core_lib}
+                             PUBLIC
+                             -DBOOST_BIND_GLOBAL_PLACEHOLDERS
+                             $<$<CONFIG:Debug>:-DXRT_VERBOSE>)
   target_compile_options(${_core_lib}
                          PRIVATE
                          $<$<PLATFORM_ID:Linux>:-fexceptions -frtti -w>

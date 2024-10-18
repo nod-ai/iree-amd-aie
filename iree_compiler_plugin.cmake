@@ -9,6 +9,7 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/cmake")
 set(IREE_AMD_AIE_SOURCE_DIR "${CMAKE_CURRENT_LIST_DIR}")
 set(IREE_AMD_AIE_RUNTIME_SOURCE_DIR ${CMAKE_CURRENT_LIST_DIR}/runtime/src)
 set(IREE_MLIR_AIR_SOURCE_DIR "${IREE_AMD_AIE_SOURCE_DIR}/third_party/mlir-air/mlir")
+set(IREE_TARGET_BACKEND_AMD_AIE ON CACHE BOOL "")
 
 set(IREE_AMD_AIE_ENABLE_XRT_DRIVER OFF)
 if("xrt" IN_LIST IREE_EXTERNAL_HAL_DRIVERS)
@@ -22,8 +23,4 @@ endif()
 include(iree_aie_bootgen)
 
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/compiler/plugins/target/AMD-AIE target/AMD-AIE)
-add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/tests/samples AMD-AIE/tests/samples)
-add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/tests/OPT/failing_tests AMD-AIE/tests/OPT/failing_tests)
-add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/tests/transform_dialect AMD-AIE/tests/transform_dialect)
-
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/compiler/plugins/preprocessing/XDNA-OPLIB preprocessing/XDNA-OPLIB)

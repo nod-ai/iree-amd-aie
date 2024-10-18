@@ -20,15 +20,13 @@
 #include "air/Transform/AIRMiscPasses.h"
 #include "air/Transform/AffineLoopOptPass.h"
 #include "iree-amd-aie/IR/AMDAIEAttrs.h"
+#include "iree-amd-aie/Transforms/Passes.h"
 #include "iree-dialects/Dialect/LinalgTransform/Passes.h"
 #include "iree/compiler/Codegen/Common/Passes.h"
 #include "iree/compiler/Utils/ToolUtils.h"
 #include "mlir/Conversion/AffineToStandard/AffineToStandard.h"
 #include "mlir/Conversion/ArithToLLVM/ArithToLLVM.h"
-#include "mlir/Conversion/ControlFlowToLLVM/ControlFlowToLLVM.h"
-#include "mlir/Conversion/FuncToLLVM/ConvertFuncToLLVMPass.h"
 #include "mlir/Conversion/MathToLLVM/MathToLLVM.h"
-#include "mlir/Conversion/MemRefToLLVM/MemRefToLLVM.h"
 #include "mlir/Conversion/SCFToControlFlow/SCFToControlFlow.h"
 #include "mlir/Conversion/VectorToLLVM/ConvertVectorToLLVMPass.h"
 #include "mlir/Dialect/Affine/Passes.h"
@@ -42,56 +40,9 @@
 
 namespace mlir::iree_compiler::AMDAIE {
 
-/// Command line option for selecting the lowering pipeline to use to generate
-/// AIE DMA configurations, core code and control code.
-static llvm::cl::opt<LowerToAIEPassPipeline> clUseLowerToAIEPipeline(
-    "iree-amdaie-lower-to-aie-pipeline",
-    llvm::cl::desc("Pick the lowering pipeline to use"),
-    llvm::cl::values(clEnumValN(LowerToAIEPassPipeline::AIR, "air",
-                                "Use the IREE lowering through AIR"),
-                     clEnumValN(LowerToAIEPassPipeline::ObjectFifo,
-                                "objectFifo",
-                                "Use the IREE lowering to objectFifos")),
-    llvm::cl::init(LowerToAIEPassPipeline::ObjectFifo));
-
-/// Command line option for selecting the lowering pipeline to use tiling
-/// computations and packing data.
-static llvm::cl::opt<TilePassPipeline> clUseTilePipeline(
-    "iree-amdaie-tile-pipeline",
-    llvm::cl::desc("Pick the lowering pipeline to use"),
-    llvm::cl::values(
-        clEnumValN(
-            TilePassPipeline::PackPeelPipeline, "pack-peel",
-            "Use the pack-peel based lowering strategy for matmul-like ops"),
-        clEnumValN(
-            TilePassPipeline::PadPackPipeline, "pad-pack",
-            "Use the pad-pack based lowering strategy for matmul-like ops"),
-        clEnumValN(TilePassPipeline::ConvDecomposePipeline, "conv-decompose",
-                   "Use the conv-decompose based lowering strategy for "
-                   "convolution interface ops")),
-    llvm::cl::init(TilePassPipeline::PackPeelPipeline));
-
-static llvm::cl::opt<std::string> clPathToUkernels(
-    "iree-amdaie-path-to-ukernels",
-    llvm::cl::desc("Path to microkernels' directory"), llvm::cl::init(""));
-
-static llvm::cl::opt<bool> clEnableVectorizationPasses(
-    "iree-amdaie-enable-vectorization-passes",
-    llvm::cl::desc("Some pipelines (see iree-amdaie-tile-pipeline) may include "
-                   "vectorization passes. This option enables or disables "
-                   "these vectorization passes. It is intended for development "
-                   "purposes only."),
-    llvm::cl::init(true));
-
-static llvm::cl::opt<bool> clMatmulElementwiseFusion(
-    "iree-amdaie-matmul-elementwise-fusion",
-    llvm::cl::desc("This option enables/disables special passes in MLIR-AIR "
-                   "for matmul-elementwise fusion. It is currently added for "
-                   "development purpose and should be removed in the future."),
-    llvm::cl::init(false));
-
-void appendVectorizationToPipeline(OpPassManager &funcPassManager) {
-  if (!clEnableVectorizationPasses) return;
+void appendVectorizationToPipeline(OpPassManager &funcPassManager,
+                                   bool enableVectorizationPasses) {
+  if (!enableVectorizationPasses) return;
   funcPassManager.addPass(createAMDAIECleanupPass());
   funcPassManager.addPass(createAMDAIEInsertLoopsForVectorizationPass());
   funcPassManager.addPass(createAMDAIEVectorizationPass());
@@ -100,25 +51,6 @@ void appendVectorizationToPipeline(OpPassManager &funcPassManager) {
 //===---------------------------------------------------------------------===//
 // Default allocation functions for AIE backend
 //===---------------------------------------------------------------------===//
-// Allocation callbacks to use with upstream comprehensive bufferization
-static FailureOr<Value> aieComprehensiveBufferizeAllocationFn(
-    OpBuilder &builder, Location loc, MemRefType memRefType,
-    ValueRange dynamicSizes, unsigned alignment) {
-  int64_t numDims = memRefType.getShape().size();
-  AMDAIEMemSpace memSpace = AMDAIEMemSpace::Local;
-  if (clUseTilePipeline == TilePassPipeline::PackPeelPipeline && numDims == 4) {
-    memSpace = AMDAIEMemSpace::Shared;
-  }
-
-  OpBuilder::InsertionGuard g(builder);
-  auto memorySpaceAttr =
-      AMDAIEMemSpaceAttr::get(builder.getContext(), memSpace);
-  MemRefType allocType =
-      MemRefType::get(memRefType.getShape(), memRefType.getElementType(),
-                      AffineMap(), memorySpaceAttr);
-  return builder.create<memref::AllocOp>(loc, allocType, dynamicSizes)
-      .getResult();
-}
 
 static LogicalResult aieComprehensiveBufferizeCopyFn(OpBuilder &builder,
                                                      Location loc, Value from,
@@ -132,9 +64,32 @@ static LogicalResult aieComprehensiveBufferizeCopyFn(OpBuilder &builder,
   return success();
 }
 
-static void addAMDAIEBufferizePasses(OpPassManager &pm) {
+static void addAMDAIEBufferizePasses(OpPassManager &pm,
+                                     TilePassPipeline useTilePipeline) {
   // Bufferize the dispatch.
   using mlir::bufferization::BufferizationOptions;
+
+  // Allocation callbacks to use with upstream comprehensive bufferization
+  auto aieComprehensiveBufferizeAllocationFn =
+      [useTilePipeline](OpBuilder &builder, Location loc, MemRefType memRefType,
+                        ValueRange dynamicSizes, unsigned _alignment) {
+        int64_t numDims = memRefType.getShape().size();
+        AMDAIEMemSpace memSpace = AMDAIEMemSpace::Local;
+        if (useTilePipeline == TilePassPipeline::PackPeelPipeline &&
+            numDims == 4) {
+          memSpace = AMDAIEMemSpace::Shared;
+        }
+
+        OpBuilder::InsertionGuard g(builder);
+        auto memorySpaceAttr =
+            AMDAIEMemSpaceAttr::get(builder.getContext(), memSpace);
+        MemRefType allocType =
+            MemRefType::get(memRefType.getShape(), memRefType.getElementType(),
+                            AffineMap(), memorySpaceAttr);
+        return builder.create<memref::AllocOp>(loc, allocType, dynamicSizes)
+            .getResult();
+      };
+
   BufferizationOptions::AllocationFn allocationFn =
       aieComprehensiveBufferizeAllocationFn;
   BufferizationOptions::MemCpyFn memCpyFn = aieComprehensiveBufferizeCopyFn;
@@ -153,7 +108,10 @@ void addAMDAIEToAIEPasses(OpPassManager &passManager) {
 }
 
 void addPackPeelBasedPassPipeline(OpPassManager &funcPassManager,
-                                  TilingConfig &tilingConfig) {
+                                  TilingConfig &tilingConfig,
+                                  const std::string &pathToUkernels,
+                                  bool enableVectorizationPasses,
+                                  TilePassPipeline useTilePipeline) {
   // First level tiling using scf.forall
   {
     AMDAIETileAndFuseOptions tileFuseOptions;
@@ -322,20 +280,23 @@ void addPackPeelBasedPassPipeline(OpPassManager &funcPassManager,
   {
     AMDAIELowerToUKernelsOptions options;
     // windows
-    options.pathToUkernels = escapeCommandLineComponent(clPathToUkernels);
+    options.pathToUkernels = escapeCommandLineComponent(pathToUkernels);
     funcPassManager.addPass(createAMDAIELowerToUKernelsPass(options));
   }
 
   // Vectorization passes
-  appendVectorizationToPipeline(funcPassManager);
+  appendVectorizationToPipeline(funcPassManager, enableVectorizationPasses);
 
   // Comprehensive bufferization
-  addAMDAIEBufferizePasses(funcPassManager);
+  addAMDAIEBufferizePasses(funcPassManager, useTilePipeline);
   funcPassManager.addPass(createHoistStaticallyBoundAllocationsPass());
 }
 
 void addPadPackBasedPassPipeline(OpPassManager &funcPassManager,
-                                 TilingConfig &tilingConfig) {
+                                 TilingConfig &tilingConfig,
+                                 const std::string &pathToUkernels,
+                                 bool enableVectorizationPasses,
+                                 TilePassPipeline useTilePipeline) {
   // First level tiling using scf.forall
   {
     AMDAIETileAndFuseOptions tileFuseOptions;
@@ -430,29 +391,35 @@ void addPadPackBasedPassPipeline(OpPassManager &funcPassManager,
   {
     AMDAIELowerToUKernelsOptions options;
     // windows
-    options.pathToUkernels = escapeCommandLineComponent(clPathToUkernels);
+    options.pathToUkernels = escapeCommandLineComponent(pathToUkernels);
     funcPassManager.addPass(createAMDAIELowerToUKernelsPass(options));
   }
   // Vectorization passes
-  appendVectorizationToPipeline(funcPassManager);
+  appendVectorizationToPipeline(funcPassManager, enableVectorizationPasses);
   funcPassManager.addPass(createCanonicalizerPass());
 
   // Comprehensive bufferization
-  addAMDAIEBufferizePasses(funcPassManager);
+  addAMDAIEBufferizePasses(funcPassManager, useTilePipeline);
 }
 
 void addConvDecomposePassPipeline(OpPassManager &funcPassManager,
-                                  TilingConfig &tilingConfig) {
+                                  TilingConfig &tilingConfig,
+                                  bool enableVectorizationPasses,
+                                  TilePassPipeline useTilePipeline) {
+  auto addCleanups = [&]() {
+    funcPassManager.addPass(createAMDAIECleanupPass());
+    funcPassManager.addPass(createCanonicalizerPass());
+    funcPassManager.addPass(createCSEPass());
+  };
+
   // First level tiling using scf.forall
   {
     AMDAIETileAndFuseOptions tileFuseOptions;
     tileFuseOptions.tilingLevel = 0;
     tileFuseOptions.useSCFFor = false;
     funcPassManager.addPass(createAMDAIETileAndFusePass(tileFuseOptions));
+    addCleanups();
   }
-  funcPassManager.addPass(createAMDAIECleanupPass());
-  funcPassManager.addPass(createCanonicalizerPass());
-  funcPassManager.addPass(createCSEPass());
 
   // Pad the linalg operation
   {
@@ -476,71 +443,58 @@ void addConvDecomposePassPipeline(OpPassManager &funcPassManager,
     tileFuseOptions.tilingLevel = 1;
     tileFuseOptions.useSCFFor = false;
     funcPassManager.addPass(createAMDAIETileAndFusePass(tileFuseOptions));
+    addCleanups();
   }
-  funcPassManager.addPass(createAMDAIECleanupPass());
-  funcPassManager.addPass(createCanonicalizerPass());
-  funcPassManager.addPass(createCSEPass());
 
   // Fuse fill op into the inner forall loop
   funcPassManager.addPass(createAMDAIEFuseFillIntoForallPass());
-  funcPassManager.addPass(createCanonicalizerPass());
 
-  // Pad the linalg operation
+  // Pack the linalg operation
   {
-    AMDAIEPadOptions padOptions;
-    padOptions.paddingLevel = 1;
-    funcPassManager.addPass(createAMDAIEPadPass(padOptions));
+    AMDAIEPackAndTransposeOptions packOptions;
+    packOptions.packLevel = 0;
+    funcPassManager.addPass(createAMDAIEPackAndTransposePass(packOptions));
   }
 
-  // Only promote the result to local memory
+  // Promote the inputs and results to local memory
   {
     AMDAIEBufferizeToAllocationOptions bufferizeOptions;
     bufferizeOptions.memorySpace = 2;
-    bufferizeOptions.bufferizeOperand = BufferizeOperand::Output;
+    bufferizeOptions.bufferizeOperand = BufferizeOperand::InputOutput;
     funcPassManager.addPass(
         createAMDAIEBufferizeToAllocationPass(bufferizeOptions));
+    addCleanups();
   }
 
-  // Tile the reduction dimension using scf.for
   {
     AMDAIETileAndFuseOptions tileFuseOptions;
     tileFuseOptions.tilingLevel = 2;
     tileFuseOptions.useSCFFor = true;
     funcPassManager.addPass(createAMDAIETileAndFusePass(tileFuseOptions));
-  }
-  funcPassManager.addPass(createAMDAIECleanupPass());
-  funcPassManager.addPass(createCanonicalizerPass());
-  funcPassManager.addPass(createCSEPass());
-
-  // Pad the linalg operation
-  {
-    AMDAIEPadOptions padOptions;
-    padOptions.paddingLevel = 2;
-    funcPassManager.addPass(createAMDAIEPadPass(padOptions));
+    addCleanups();
   }
 
-  // Promote the inputs to local memory
-  {
-    AMDAIEBufferizeToAllocationOptions bufferizeOptions;
-    bufferizeOptions.memorySpace = 2;
-    bufferizeOptions.bufferizeOperand = BufferizeOperand::Input;
-    funcPassManager.addPass(
-        createAMDAIEBufferizeToAllocationPass(bufferizeOptions));
-  }
-
-  // Decompose Conv2d ops to Conv1d ops
-  funcPassManager.addPass(createDecomposeConvolutionToLowerDimOpsPass());
+  LinalgFoldUnitExtentDimsPassOptions opts;
+  opts.useRankReducingSlices = true;
+  funcPassManager.addPass(mlir::createLinalgFoldUnitExtentDimsPass(opts));
 
   // Vectorization passes
-  appendVectorizationToPipeline(funcPassManager);
+  // FIXME(newling) https://github.com/nod-ai/iree-amd-aie/issues/820
+  enableVectorizationPasses = false;
+  appendVectorizationToPipeline(funcPassManager, enableVectorizationPasses);
   funcPassManager.addPass(createCanonicalizerPass());
 
   // Comprehensive bufferization
-  addAMDAIEBufferizePasses(funcPassManager);
+  addAMDAIEBufferizePasses(funcPassManager, useTilePipeline);
+  funcPassManager.addPass(createHoistStaticallyBoundAllocationsPass());
 }
 
-void buildAMDAIETransformPassPipeline(OpPassManager &variantPassManager,
-                                      AMDAIEDevice device) {
+void buildAMDAIETransformPassPipeline(
+    OpPassManager &variantPassManager, AMDAIEDevice device,
+    TilePassPipeline useTilePipeline,
+    LowerToAIEPassPipeline useLowerToAIEPipeline, bool matmulElementwiseFusion,
+    bool enableVectorizationPasses, const std::string &pathToUkernels,
+    bool enablePacketFlow) {
   OpPassManager &modulePassManager = variantPassManager.nest<ModuleOp>();
   {
     FunctionLikeNest funcPassManager(modulePassManager);
@@ -549,23 +503,27 @@ void buildAMDAIETransformPassPipeline(OpPassManager &variantPassManager,
   modulePassManager.addPass(createMaterializeUserConfigsPass());
   {
     AMDAIELoweringStrategyOptions options;
-    options.usePassPipeline = clUseTilePipeline;
-    options.useLowerToAIEPipeline = clUseLowerToAIEPipeline;
+    options.usePassPipeline = useTilePipeline;
+    options.useLowerToAIEPipeline = useLowerToAIEPipeline;
     modulePassManager.addPass(createAMDAIELoweringStrategyPass(options));
   }
   modulePassManager.addPass(createLowerExecutableUsingTransformDialectPass());
   {
     FunctionLikeNest funcPassManager(modulePassManager);
     AMDAIELowerExecutableTargetOptions options;
-    options.usePassPipeline = clUseTilePipeline;
+    options.usePassPipeline = useTilePipeline;
+    options.enableVectorizationPasses = enableVectorizationPasses;
+    options.pathToUkernels = pathToUkernels;
     funcPassManager.addPass(
         [&]() { return createAMDAIELowerExecutableTargetPass(options); });
   }
   modulePassManager.addPass(createLowerUKernelOpsToCallsPass());
-  if (clUseLowerToAIEPipeline == LowerToAIEPassPipeline::ObjectFifo) {
-    addAMDAIEObjectFifoLoweringPasses(modulePassManager);
-  } else if (clUseLowerToAIEPipeline == LowerToAIEPassPipeline::AIR) {
-    addMLIRAIRLoweringPasses(modulePassManager, device);
+  if (useLowerToAIEPipeline == LowerToAIEPassPipeline::ObjectFifo) {
+    addAMDAIEObjectFifoLoweringPasses(modulePassManager, enablePacketFlow,
+                                      useTilePipeline);
+  } else if (useLowerToAIEPipeline == LowerToAIEPassPipeline::AIR) {
+    addMLIRAIRLoweringPasses(modulePassManager, device, useTilePipeline,
+                             matmulElementwiseFusion);
   } else {
     assert(
         false &&
@@ -581,10 +539,29 @@ void buildAMDAIETransformPassPipeline(OpPassManager &variantPassManager,
   });
 }
 
-void addAMDAIEObjectFifoLoweringPasses(OpPassManager &passManager) {
+
+void addAMDAIEObjectFifoLoweringPasses(OpPassManager &passManager,
+                                       bool enablePacketFlow,
+                                       TilePassPipeline useTilePipeline) {
   passManager.addPass(createEraseHALDescriptorTypeFromMemRefPass());
   passManager.addPass(memref::createFoldMemRefAliasOpsPass());
-  passManager.addPass(createAMDAIEConvertToDmaPass());
+
+  passManager.addPass(createAMDAIEDistributeL1AllocationsPass());
+  passManager.addPass(createCanonicalizerPass());
+  passManager.addPass(createCSEPass());
+
+  passManager.addPass(createCanonicalizerPass());
+  // For matmul pipelines, we do transpose on target side for pack ops to get
+  // better performance. While for convolution pipelines, the same settings
+  // cause 'aie.dma_bd' error, so for now keep using transpose on source for
+  // both pack and unpack ops.
+  // TODO(vivian): explore the other options for conv ops.
+  AMDAIEConvertToDmaOptions dmaOptions;
+  dmaOptions.packTransposeOnSource =
+      (useTilePipeline == TilePassPipeline::ConvDecomposePipeline) ? true
+                                                                   : false;
+  dmaOptions.unpackTransposeOnSource = true;
+  passManager.addPass(createAMDAIEConvertToDmaPass(dmaOptions));
 
   passManager.addPass(createAMDAIENormalizeLoopBoundsPass());
   passManager.addPass(createAMDAIEInsertCoresPass());
@@ -609,6 +586,9 @@ void addAMDAIEObjectFifoLoweringPasses(OpPassManager &passManager) {
   passManager.addPass(createAMDAIEAssignLogicalObjectFifoDepthPass());
   passManager.addPass(createAMDAIEAccessToAcquireReleasePass());
   passManager.addPass(createAMDAIENoneAccessToTemporaryBufferPass());
+
+  passManager.addPass(
+      createAMDAIEAssignConnectionTypesPass({enablePacketFlow}));
   passManager.addPass(createCSEPass());
   passManager.addPass(createCanonicalizerPass());
 
@@ -637,6 +617,12 @@ void addAMDAIEObjectFifoLoweringPasses(OpPassManager &passManager) {
   passManager.addPass(createCanonicalizerPass());
 
   passManager.addPass(createAMDAIEObjFifoBufferizationPass());
+  passManager.addPass(createAMDAIETemporaryAllocBufferizationPass());
+  passManager.addPass(createAMDAIEConnectionToFlowPass());
+  passManager.addPass(createAMDAIEAssignPacketIdsPass());
+
+  passManager.addPass(createAMDAIEControlCodeLoweringPass());
+  passManager.addPass(createAMDAIEControlCodeToTransactionPass());
 
   addAMDAIEToAIEPasses(passManager);
 
@@ -644,10 +630,49 @@ void addAMDAIEObjectFifoLoweringPasses(OpPassManager &passManager) {
   addMLIRAIELoweringPasses(passManager);
 }
 
+void addMLIRAIELoweringPasses(OpPassManager &pm) {
+  {
+    OpPassManager &devicePM = pm.nest<xilinx::AIE::DeviceOp>();
+    devicePM.addPass(createCanonicalizerPass());
+    devicePM.addPass(createAMDAIEAssignBufferDescriptorIDsPass());
+    devicePM.addPass(createAMDAIEAssignBufferAddressesBasicPass());
+    devicePM.addPass(createAMDAIEPathfinderPass());
+  }
+
+  pm.addPass(createCanonicalizerPass());
+  pm.addPass(createConvertLinalgToLoopsPass());
+  pm.addPass(createLowerAffinePass());
+  pm.addPass(createConvertSCFToCFPass());
+
+  {
+    OpPassManager &devicePM = pm.nest<xilinx::AIE::DeviceOp>();
+    devicePM.addPass(createAMDAIELocalizeLocksPass());
+    devicePM.addPass(createAMDAIENormalizeAddressSpacesPass());
+    devicePM.addPass(createCanonicalizerPass());
+  }
+
+  mlir::iree_compiler::aievec::buildConvertVectorToAIEVec(pm);
+
+  pm.addPass(createCanonicalizerPass());
+  pm.addPass(createCSEPass());
+  pm.addPass(aievec::createConvertAIEVecToLLVMPass());
+  pm.addPass(createConvertVectorToLLVMPass());
+  pm.addPass(memref::createExpandStridedMetadataPass());
+  pm.addPass(createLowerAffinePass());
+  pm.addPass(createConvertMathToLLVMPass());
+  pm.addPass(createArithToLLVMConversionPass());
+  pm.addPass(createCanonicalizerPass());
+  pm.addPass(createCSEPass());
+  pm.addPass(createAMDAIELoadAlignmentResetPass());
+  pm.addPass(createCanonicalizerPass());
+}
+
 // TODO (Erwei): The "packPeel" temporary argument should be removed once
 // pack-peel and pack-pad share the same pass pipeline. See TODOs inlined below
 // for details.
-void addMLIRAIRLoweringPasses(OpPassManager &passManager, AMDAIEDevice device) {
+void addMLIRAIRLoweringPasses(OpPassManager &passManager, AMDAIEDevice device,
+                              TilePassPipeline useTilePipeline,
+                              bool matmulElementwiseFusion) {
   // Add passes for preparing for lowering to MLIR-AIR
   passManager.addPass(createEraseHALDescriptorTypeFromMemRefPass());
   passManager.addPass(memref::createFoldMemRefAliasOpsPass());
@@ -666,7 +691,7 @@ void addMLIRAIRLoweringPasses(OpPassManager &passManager, AMDAIEDevice device) {
   // 1) make canonicalization work for scf.forall
   // 2) pass to collapse rank-4 scf.foralls to rank-2 scf.foralls.
   // 3) resolve above 'unsupproted operation' error.
-  if (clUseTilePipeline == TilePassPipeline::ConvDecomposePipeline) {
+  if (useTilePipeline == TilePassPipeline::ConvDecomposePipeline) {
     passManager.addPass(createCanonicalizerPass());
   }
 
@@ -692,8 +717,8 @@ void addMLIRAIRLoweringPasses(OpPassManager &passManager, AMDAIEDevice device) {
   passManager.addPass(createCSEPass());
 
   passManager.addPass(xilinx::air::createAIRDependencyPass());
-  if (!(clUseTilePipeline == TilePassPipeline::PackPeelPipeline &&
-        clMatmulElementwiseFusion)) {
+  if (!(useTilePipeline == TilePassPipeline::PackPeelPipeline &&
+        matmulElementwiseFusion)) {
     passManager.addPass(xilinx::air::createAIRDependencyScheduleOptPass());
     passManager.addPass(xilinx::air::createAIRSpecializeDmaBroadcast());
   }
@@ -705,7 +730,7 @@ void addMLIRAIRLoweringPasses(OpPassManager &passManager, AMDAIEDevice device) {
   passManager.addPass(createCSEPass());
   // TODO (Erwei): This pass currently doesn't support pack-peel pipeline. This
   // pass needs to work in order to get multiple AIE columns to work.
-  if (clUseTilePipeline != TilePassPipeline::PackPeelPipeline)
+  if (useTilePipeline != TilePassPipeline::PackPeelPipeline)
     passManager.addNestedPass<func::FuncOp>(
         xilinx::air::createAIRSplitL2MemrefForBufferConstraintPass());
   passManager.addPass(xilinx::air::createAIRIsolateAsyncDmaLoopNests());
@@ -713,12 +738,11 @@ void addMLIRAIRLoweringPasses(OpPassManager &passManager, AMDAIEDevice device) {
   passManager.addPass(createCSEPass());
   {
     xilinx::air::AIRFuseChannelsOptions options;
-    std::vector<std::string> mode;
-    if (clUseTilePipeline == TilePassPipeline::PackPeelPipeline &&
-        clMatmulElementwiseFusion) {
-      mode.push_back("L1");
+    if (useTilePipeline == TilePassPipeline::PackPeelPipeline &&
+        matmulElementwiseFusion) {
+      const static llvm::SmallVector<std::string> mode = {"L1"};
+      options.clAggressiveMode = mode;
     }
-    options.clAggressiveMode = ArrayRef(mode);
     passManager.addPass(xilinx::air::createAIRFuseChannels(options));
   }
   passManager.addPass(createCanonicalizerPass());
@@ -784,14 +808,13 @@ void addMLIRAIRLoweringPasses(OpPassManager &passManager, AMDAIEDevice device) {
     // with given factors, and subsequently unrolled in
     // AIRUnrollOuterPerfectlyNestedLoopsPass, to enforce SHIM DMA BD count
     // within the hardware limit.
-    std::vector<unsigned> tile_sizes;
-    if (clUseTilePipeline == TilePassPipeline::PackPeelPipeline) {
-      tile_sizes = {2, 2};
-    } else if (clUseTilePipeline == TilePassPipeline::PadPackPipeline) {
-      tile_sizes = {4, 4};
-    } else
-      tile_sizes = {};
-    options.clTileSizes = ArrayRef(tile_sizes);
+    if (useTilePipeline == TilePassPipeline::PackPeelPipeline) {
+      const static llvm::SmallVector<unsigned> tile_sizes = {2, 2};
+      options.clTileSizes = tile_sizes;
+    } else if (useTilePipeline == TilePassPipeline::PadPackPipeline) {
+      const static llvm::SmallVector<unsigned> tile_sizes = {4, 4};
+      options.clTileSizes = tile_sizes;
+    }
     passManager.addNestedPass<func::FuncOp>(
         xilinx::air::createAffineLoopOptPass(options));
   }
@@ -801,7 +824,7 @@ void addMLIRAIRLoweringPasses(OpPassManager &passManager, AMDAIEDevice device) {
     // nests that were left untiled by the previous AffineLoopOptPass,
     // generating NPU sequence representing the SHIM DMA BDs.
     xilinx::air::AIRUnrollOuterPerfectlyNestedLoopsPassOptions options;
-    if (clUseTilePipeline == TilePassPipeline::ConvDecomposePipeline)
+    if (useTilePipeline == TilePassPipeline::ConvDecomposePipeline)
       options.clDepth = 4;
     else
       options.clDepth = 2;
@@ -813,31 +836,15 @@ void addMLIRAIRLoweringPasses(OpPassManager &passManager, AMDAIEDevice device) {
   passManager.addPass(xilinx::airrt::createAIRRtToNpuPass());
   passManager.addPass(createCanonicalizerPass());
 
-  // Now lower using the AIE passes from MLIR-AIE.
-  addMLIRAIELoweringPasses(passManager);
-}
-
-void addMLIRAIELoweringPasses(OpPassManager &passManager) {
   {
+    // createAMDAIEDmaToNpuPass only needed for AIR.
     OpPassManager &devicePM = passManager.nest<xilinx::AIE::DeviceOp>();
     devicePM.addPass(createCanonicalizerPass());
     devicePM.addPass(createAMDAIEDmaToNpuPass());
-    devicePM.addPass(createAMDAIEAssignBufferDescriptorIDsPass());
-    devicePM.addPass(createAMDAIEAssignBufferAddressesBasicPass());
-    devicePM.addPass(createAMDAIEPathfinderPass());
   }
 
-  passManager.addPass(createCanonicalizerPass());
-  passManager.addPass(createConvertLinalgToLoopsPass());
-  passManager.addPass(createLowerAffinePass());
-  passManager.addPass(createConvertSCFToCFPass());
-
-  {
-    OpPassManager &devicePM = passManager.nest<xilinx::AIE::DeviceOp>();
-    devicePM.addPass(createAMDAIELocalizeLocksPass());
-    devicePM.addPass(createAMDAIENormalizeAddressSpacesPass());
-    devicePM.addPass(createCanonicalizerPass());
-  }
+  // Now lower using the AIE passes from MLIR-AIE.
+  addMLIRAIELoweringPasses(passManager);
 }
 
 // NOTE: this runs on the top-level program module containing all hal.executable
@@ -849,28 +856,6 @@ void buildAMDAIELinkingPassPipeline(OpPassManager &passManager) {
   // Cleanup IR duplication.
   passManager.addNestedPass<IREE::HAL::ExecutableOp>(
       mlir::createCanonicalizerPass());
-}
-
-void addLowerToLLVMPasses(OpPassManager &pm) {
-  pm.addPass(createCanonicalizerPass());
-  pm.addPass(createCSEPass());
-  pm.addPass(aievec::createConvertAIEVecToLLVMPass());
-  pm.addPass(createConvertVectorToLLVMPass());
-  pm.addPass(memref::createExpandStridedMetadataPass());
-  pm.addPass(createLowerAffinePass());
-  pm.addPass(createConvertMathToLLVMPass());
-  pm.addPass(createArithToLLVMConversionPass());
-  pm.addPass(createFinalizeMemRefToLLVMConversionPass());
-  pm.addPass(createCanonicalizerPass());
-  pm.addPass(createCSEPass());
-  ConvertFuncToLLVMPassOptions opts;
-  opts.useBarePtrCallConv = true;
-  pm.addPass(createConvertFuncToLLVMPass(opts));
-  pm.addPass(createCanonicalizerPass());
-  pm.addPass(createCSEPass());
-  pm.addPass(createConvertControlFlowToLLVMPass());
-  pm.addPass(createCanonicalizerPass());
-  pm.addPass(createCSEPass());
 }
 
 namespace {

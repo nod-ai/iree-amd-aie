@@ -29,6 +29,17 @@ def AMDAIEAssignChannels :
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEAssignChannelsPass()";
 }
 
+def AMDAIEAssignConnectionTypes :
+    Pass<"iree-amdaie-assign-connection-types", ""> {
+  let summary = "Assign connection types to `amdaie.connection` ops.";
+  let constructor =
+    "mlir::iree_compiler::AMDAIE::createAMDAIEAssignConnectionTypesPass()";
+  let options = [
+    Option<"enablePacketFlow", "enable-packet-flow", "bool", /*default=*/"false",
+      "Enable packet routing for connections.">
+  ];
+}
+
 def AMDAIEAssignLogicalObjectFifoDepth :
     Pass<"iree-amdaie-assign-logical-objectfifo-depth", ""> {
   let summary = "Assign a buffer depth of the logical objectfifos.";
@@ -48,6 +59,12 @@ def AMDAIEAssignNpuDmaBdIds :
     Pass<"iree-amdaie-assign-npu-dma-bd-ids", ""> {
   let summary = "Assign BD ids to `amdaie.npu.dma_cpy_nd` operations.";
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEAssignNpuDmaBdIdsPass()";
+}
+
+def AMDAIEAssignPacketIds :
+    Pass<"iree-amdaie-assign-packet-ids", ""> {
+  let summary = "Assign packet ids to `amdaie.flow` operations.";
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEAssignPacketIdsPass()";
 }
 
 def AMDAIEBridgeToAIR : Pass<"iree-amdaie-bridge-to-air", ""> {
@@ -122,10 +139,32 @@ def AMDAIECombineStridedOps :
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIECombineStridedOpsPass()";
 }
 
+def AMDAIEConnectionToFlow :
+    Pass<"iree-amdaie-connection-to-flow", ""> {
+  let summary = "Create flow ops for connections.";
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEConnectionToFlowPass()";
+}
+
 def AMDAIEControlCodeLoopUnroll :
     Pass<"iree-amdaie-controlcode-loop-unroll", ""> {
   let summary = "Unroll the loops in the control code regions.";
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEControlCodeLoopUnrollPass()";
+}
+
+def AMDAIEControlCodeLowering :
+    Pass<"iree-amdaie-controlcode-lowering", ""> {
+  let summary = "Lower control code ops to the most basic NPU write/sync/patch instructions";
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEControlCodeLoweringPass()";
+}
+
+def AMDAIEControlCodeToTransaction :
+    Pass<"iree-amdaie-controlcode-to-transaction", ""> {
+  let summary = "Convert controlcode instructions into a NPU instruction transaction.";
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEControlCodeToTransactionPass()";
+  let options = [
+    Option<"dumpTransaction", "dump-transaction", "bool", /*default=*/"false",
+      "Dump the generated transaction. (Used for tests)">
+  ];
 }
 
 def AMDAIEConvertCoreForallToFor :
@@ -158,6 +197,27 @@ def AMDAIEDistributeCoresAndObjectFifos :
                 "operations and distribute the logical objectFifos.";
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEDistributeCoresAndObjectFifosPass()";
 }
+
+def AMDAIEDistributeL1Allocations :
+  Pass<"iree-amdaie-distribute-l1-allocations", "ModuleOp"> {
+  let summary = "Replace distributed L1 allocations with private allocations.";
+  let description = [{
+    Each AIE core/tile is uniquely identified by gpu thread ids, usually
+    'y' (for AIE row) and 'x' (for AIE column).
+
+    Some of the compilation pipelines in iree-amd-aie generate a single L1
+    memory allocation describing the concatenation of all memory for all
+    cores/tiles. Each thread then slices into a mutually exclusive rectangle
+    of the allocation, along its thread dimensions, so 'privatizing' its
+    memory.
+
+    This pass rewrites these allocations to be private to each core/tile. So
+    it replaces a large allocation in L1 with a smaller allocation, smaller by
+    a factor of the number of cores/threads.
+  }];
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEDistributeL1AllocationsPass()";
+}
+
 
 def AMDAIEDmaComposition :
   Pass<"iree-amdaie-dma-composition"> {
@@ -279,6 +339,17 @@ def AMDAIELinkExecutables :
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIELinkExecutablesPass()";
 }
 
+def AMDAIELoadAlignmentReset :
+    Pass<"iree-amdaie-load-alignment-reset", ""> {
+    let summary = "Reset the alignment of the LLVM load operations.";
+    let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIELoadAlignmentResetPass()";
+    let description = [{
+      Reset the alignment of the LLVM load operations to the 'unset'
+      optional value. This is a workaround for an issue in peano, and
+      should eventually be removed.
+    }];
+}
+
 def AMDAIELocalizeLogicalObjectfifo :
     Pass<"iree-amdaie-localize-logicalobjectfifo", "ModuleOp"> {
   let summary = "Localize logical objectfifos to local parallel loop scopes.";
@@ -302,7 +373,10 @@ def AMDAIELowerExecutableTarget :
                    "Use the pad-pack based lowering strategy for matmul-like ops."),
         clEnumValN(mlir::iree_compiler::AMDAIE::TilePassPipeline::ConvDecomposePipeline, "conv-decompose",
                    "Use the conv-decompose based lowering strategy for convolution interface ops.")
-      )}]>
+      )}]>,
+    Option<"pathToUkernels", "path-to-ukernels", "std::string", /*default=*/"", "Path to microkernels' directory">,
+    Option<"enableVectorizationPasses", "enable-vectorization-passes", "bool", /*default=*/"true",
+            "Enable/disable vectorization.">
   ];
 }
 
@@ -448,6 +522,12 @@ def AMDAIEConvertToDma :
 
   }];
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEConvertToDmaPass()";
+  let options = [
+    Option<"packTransposeOnSource", "pack-transpose-on-source", "bool", /*default=*/"true",
+      "Option to set transposed dma dimensions on source or target side for pack ops">,
+    Option<"unpackTransposeOnSource", "unpack-transpose-on-source", "bool", /*default=*/"true",
+      "Option to set transposed dma dimensions on source or target side for unpack ops">
+  ];
 }
 
 def AMDAIEPad :
@@ -534,7 +614,25 @@ def AMDAIESplitLogicalObjFifosForConnectionReuse :
 
 def AMDAIETemporaryAllocBufferization :
     Pass<"iree-amdaie-temporary-alloc-bufferization", ""> {
-  let summary = "Bufferizes temporary alloc buffers into `amdaie.buffer` ops.";
+  let summary = "Convert 'temporary' `memref.alloc` ops to `amdaie.buffer`.";
+  let description = [{
+       Some memref allocations are accessed directly on the core, not going via
+       the layering that is used for streamed inputs, which currently have layering
+       like:
+
+         `memref.alloc` ->
+         `amdaie.logicalobjectfifo.from_memref` ->
+         `amdaie.connection` ->
+         `amdaie.logicalobjectfifo.acquire` ->
+         `amdaie.logicalobjectfifo.access`.
+
+       We call the directly accessed allocations 'temporary'. The temporary
+       allocations need to be converted to amdaie.buffer ops, because
+       there is no other support lowering to llvm from memref.allocs in our
+       stack. The indirectly accessed allocatations, i.e. those with the layering
+       described above, are handled in pass iree-amdaie-objfifo-bufferization.
+  }];
+
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIETemporaryAllocBufferizationPass()";
 }
 

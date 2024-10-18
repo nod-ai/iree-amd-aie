@@ -116,6 +116,9 @@ cmake --build "$build_dir" -- -k 0
 echo "Installing"
 echo "----------"
 echo "Install to: $install_dir"
+cmake --build "$build_dir" --target install
+# TODO(max): there's no way to install the python runtime bindings
+# ninja iree-install-dist install-IREECompilerPythonModules install-IREEDialectsPythonModules
 cmake --build "$build_dir" --target iree-install-dist
 
 echo "CTest"

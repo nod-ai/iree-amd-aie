@@ -240,7 +240,7 @@ LogicalResult initializeLock(const AMDAIEDeviceModel &deviceModel,
 }
 
 LogicalResult configureStreamSwitch(const AMDAIEDeviceModel &deviceModel,
-                                    const SwitchBox &tileLoc,
+                                    const TileLoc &tileLoc,
                                     const std::vector<Connect> &connects) {
   auto devInst = const_cast<XAie_DevInst *>(&deviceModel.devInst);
   // FIXME hack for TCT routing
@@ -280,7 +280,7 @@ LogicalResult configureStreamSwitch(const AMDAIEDeviceModel &deviceModel,
 }
 
 LogicalResult configureSwitchPacketMasters(const AMDAIEDeviceModel &deviceModel,
-                                           const SwitchBox &tileLoc,
+                                           const TileLoc &tileLoc,
                                            const StrmSwPortType &destBundle,
                                            uint8_t destChannel,
                                            const std::vector<AMSel> &amSels,
@@ -317,7 +317,7 @@ LogicalResult configureSwitchPacketMasters(const AMDAIEDeviceModel &deviceModel,
 }
 
 LogicalResult configureSwitchPacketSlaves(const AMDAIEDeviceModel &deviceModel,
-                                          const SwitchBox &tileLoc,
+                                          const TileLoc &tileLoc,
                                           const StrmSwPortType &srcBundle,
                                           uint8_t srcChannel,
                                           const AMSel &amsel, uint8_t packetId,

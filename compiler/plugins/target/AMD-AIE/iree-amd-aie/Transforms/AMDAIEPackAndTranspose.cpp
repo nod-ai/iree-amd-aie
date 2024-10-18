@@ -20,7 +20,6 @@ namespace {
 static FailureOr<linalg::PackResult> applyPackOnLinalgOp(
     RewriterBase &rewriter, linalg::LinalgOp op,
     SmallVector<OpFoldResult> packedSizes) {
-  // Fail on mismatched number of pack sizes.
   if (packedSizes.size() != op.getNumLoops()) {
     op->emitOpError(
         "requires number of packed sizes match the number of loops (")
@@ -29,12 +28,14 @@ static FailureOr<linalg::PackResult> applyPackOnLinalgOp(
   }
 
   rewriter.setInsertionPoint(op);
-  FailureOr<linalg::PackResult> packResult =
+  FailureOr<linalg::PackResult> maybePackResult =
       linalg::pack(rewriter, op, packedSizes);
-  if (failed(packResult)) {
+  if (failed(maybePackResult)) {
     op->emitOpError("failed to pack the operation");
     return failure();
   }
+
+  linalg::PackResult packResult = maybePackResult.value();
   return packResult;
 }
 
@@ -60,7 +61,8 @@ void AMDAIEPackAndTransposePass::runOnOperation() {
   // Find the linalg op for packing, currently only consider contraction ops
   linalg::LinalgOp linalgOp;
   funcOp->walk([&](linalg::LinalgOp op) {
-    if (linalg::isaContractionOpInterface(op)) {
+    if (linalg::isaContractionOpInterface(op) ||
+        isa<linalg::ConvolutionOpInterface>(op.getOperation())) {
       linalgOp = op;
       return WalkResult::interrupt();
     }
@@ -75,6 +77,7 @@ void AMDAIEPackAndTransposePass::runOnOperation() {
   // Step 1. Before packing the operation, we will prefetch the lowering and
   // packing config.
   auto config = getLoweringConfig<IREE::Codegen::LoweringConfigAttr>(linalgOp);
+
   auto packingConfig = getPackingConfig(linalgOp);
 
   if (!config || !packingConfig) {
@@ -87,6 +90,12 @@ void AMDAIEPackAndTransposePass::runOnOperation() {
   // Extract packing config from the `linalgOp`.
   PackingConfigPackingLevelAttr packCfg =
       packingConfig.getPackingConfigVals(packLevel);
+
+  if (!packCfg) {
+    funcOp->emitOpError("failed to get pack config for pack level ")
+        << packLevel;
+    return signalPassFailure();
+  }
   SmallVector<OpFoldResult> packedSizes =
       getAsIndexOpFoldResult(context, packCfg.getPackedSizes());
 

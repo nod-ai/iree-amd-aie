@@ -46,19 +46,12 @@ class AIEDeviceBuilder {
   LogicalResult coreToAIE(AMDAIE::CoreOp coreOp, AIE::DeviceOp deviceOp,
                           Block *deviceCoreBlock);
 
-  /// Controlcode ops conversion methods.
-  LogicalResult npuDmaCpyNdOpToAIE(AMDAIE::NpuDmaCpyNdOp dmaOp,
-                                   SmallVector<Operation *> &toBeErased);
-  LogicalResult npuDmaWaitToAIE(AMDAIE::NpuDmaWaitOp waitOp,
-                                SmallVector<Operation *> &toBeErased);
-  LogicalResult controlCodeToAIE(AMDAIE::ControlCodeOp controlCodeOp,
-                                 xilinx::AIEX::RuntimeSequenceOp funcOp);
-
   /// Workgroup ops conversion methods.
   LogicalResult bufferToAIE(AMDAIE::BufferOp bufferOp, Block *deviceBlock,
                             int &bufferId);
   LogicalResult connectionToAIE(AMDAIE::ConnectionOp connectionOp,
                                 Block *deviceBlock, int &connectionIndex);
+  LogicalResult flowToAIE(AMDAIE::FlowOp flowOp, Block *deviceBlock);
   LogicalResult lockToAIE(AMDAIE::LockOp lockOp, Block *deviceBlock,
                           int &lockIndex);
   LogicalResult logicalObjFifoFromBuffersToAIE(
@@ -66,8 +59,7 @@ class AIEDeviceBuilder {
       Block *deviceBlock);
   LogicalResult tileToAIE(AMDAIE::TileOp tileOp, Block *deviceBlock);
   LogicalResult workgroupToAIE(AMDAIE::WorkgroupOp workgroupOp,
-                               xilinx::AIE::DeviceOp deviceOp,
-                               xilinx::AIEX::RuntimeSequenceOp npuFuncOp);
+                               xilinx::AIE::DeviceOp deviceOp);
 
   /// Utilities
 
@@ -82,7 +74,13 @@ class AIEDeviceBuilder {
                  int channelIndex, AIE::BDDimLayoutArrayAttr dims,
                  size_t acqNum, size_t relNum, int64_t len, int64_t offset,
                  const SmallVector<AIE::BufferOp> &bufferOps,
-                 const std::pair<AIE::LockOp, AIE::LockOp> &locks);
+                 const std::pair<AIE::LockOp, AIE::LockOp> &locks,
+                 std::optional<uint8_t> pktId);
+
+  /// Utility to create flow ops from connection ops.
+  SmallVector<Operation *> createFlowOps(
+      AMDAIE::FlowOp flowOp, ArrayRef<AMDAIE::ChannelOp> producerChannels,
+      ArrayRef<AMDAIE::ChannelOp> consumerChannels);
 
   /// Utility to create `aie.shim_dma_allocation` ops and corresponding global
   /// symbols.
@@ -113,8 +111,6 @@ class AIEDeviceBuilder {
 
   IRRewriter rewriter;
   IRMapping mapper;
-  /// Dedicated mapper for the HAL bindings.
-  IRMapping bindingsMapper;
   /// Map from tile values to AIE memory op (`aie.mem` or `aie.memtile_dma`).
   /// This is used to look up and add new DMA patterns to those memory ops.
   DenseMap<Value, Operation *> tileToMemOpMap;
@@ -125,6 +121,8 @@ class AIEDeviceBuilder {
   DenseMap<AMDAIE::ConnectionOp,
            std::pair<SmallVector<Operation *>, SmallVector<Operation *>>>
       connectionToSourceTargetMemOps;
+  /// Map from connection ops to the flow ops they have been converted into.
+  DenseMap<AMDAIE::ConnectionOp, SmallVector<Operation *>> connectionToFlowOps;
 };
 
 }  // namespace mlir::iree_compiler::AMDAIE

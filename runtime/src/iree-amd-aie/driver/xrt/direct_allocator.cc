@@ -28,7 +28,7 @@ typedef struct iree_hal_xrt_allocator_t {
   // The device that this allocator is attached to.
   iree_hal_device_t* base_device;
 
-  xrt::device* device;
+  xrtDeviceHandle device_hdl;
 
   iree_allocator_t host_allocator;
 
@@ -46,7 +46,7 @@ static iree_hal_xrt_allocator_t* iree_hal_xrt_allocator_cast(
 }
 
 iree_status_t iree_hal_xrt_allocator_create(
-    iree_hal_device_t* base_device, xrt::device* device,
+    iree_hal_device_t* base_device, xrtDeviceHandle device_hdl,
     iree_allocator_t host_allocator, iree_hal_allocator_t** out_allocator) {
   IREE_ASSERT_ARGUMENT(base_device);
   IREE_ASSERT_ARGUMENT(out_allocator);
@@ -61,7 +61,7 @@ iree_status_t iree_hal_xrt_allocator_create(
                                &allocator->resource);
   allocator->base_device = base_device;
   iree_hal_device_retain(base_device);
-  allocator->device = device;
+  allocator->device_hdl = device_hdl;
   allocator->host_allocator = host_allocator;
 
   *out_allocator = (iree_hal_allocator_t*)allocator;
@@ -171,17 +171,19 @@ static iree_status_t iree_hal_xrt_allocator_allocate_buffer(
   std::unique_ptr<xrt::bo> xrt_buffer;
 
   try {
-    xrt_buffer = std::make_unique<xrt::bo>(*allocator->device, allocation_size,
+    xrt::device device(xrtDeviceToXclDevice(allocator->device_hdl));
+    xrt_buffer = std::make_unique<xrt::bo>(device, allocation_size,
                                            XRT_BO_FLAGS_HOST_ONLY, group_id);
   } catch (...) {
     IREE_TRACE_ZONE_END(z0);
     return iree_make_status(IREE_STATUS_RESOURCE_EXHAUSTED,
                             "could not allocate memory for buffer");
   }
-  IREE_TRACE_ZONE_END(z0);
+
   if (!xrt_buffer) {
-    status = iree_make_status(IREE_STATUS_RESOURCE_EXHAUSTED,
-                              "unable to allocate buffer");
+    IREE_TRACE_ZONE_END(z0);
+    return iree_make_status(IREE_STATUS_RESOURCE_EXHAUSTED,
+                            "unable to allocate buffer");
   }
 
   iree_hal_buffer_t* buffer = nullptr;
@@ -203,6 +205,7 @@ static iree_status_t iree_hal_xrt_allocator_allocate_buffer(
   } else {
     if (buffer) iree_hal_buffer_release(buffer);
   }
+  IREE_TRACE_ZONE_END(z0);
   return status;
 }
 

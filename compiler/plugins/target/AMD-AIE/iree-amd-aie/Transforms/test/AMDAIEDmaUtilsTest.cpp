@@ -111,6 +111,8 @@ TEST_F(AccessPatternCombinationTest, CombinableAccessPatterns) {
   EXPECT_TRUE(checkAreAccessPatternsCombinable({0, 2, 0}, {16, 16, 32},
                                                {32, 64, 1}, {0, 2, 32},
                                                {16, 16, 32}, {32, 64, 1}, 4));
+  EXPECT_TRUE(checkAreAccessPatternsCombinable({32, 0}, {64, 64}, {128, 1},
+                                               {96, 0}, {32, 64}, {128, 1}, 4));
   // size(A) > size(B)
   EXPECT_TRUE(checkAreAccessPatternsCombinable(
       {0, 0, 0}, {2, 16, 32}, {32, 64, 1}, {0, 64}, {16, 32}, {64, 1}, 4));
@@ -168,6 +170,12 @@ TEST_F(AccessPatternCombinationTest, NonCombinableAccessPatterns) {
       {0, 0}, {16, 32}, {64, 1}, {0, 0, 96}, {2, 16, 32}, {32, 64, 1}, 4));
   EXPECT_FALSE(checkAreAccessPatternsCombinable(
       {0, 0}, {16, 32}, {64, 1}, {0, 1, 0}, {2, 16, 32}, {32, 64, 1}, 4));
+
+  // size(A) == size(B) Incompatible offset
+  EXPECT_FALSE(checkAreAccessPatternsCombinable(
+      {32, 0}, {64, 64}, {128, 1}, {32, 0}, {32, 64}, {128, 1}, 4));
+  EXPECT_FALSE(checkAreAccessPatternsCombinable(
+      {32, 0}, {32, 64}, {128, 1}, {96, 0}, {64, 64}, {128, 1}, 4));
 }
 
 TEST_F(AccessPatternCombinationTest, CombineAccessPatterns) {
@@ -197,6 +205,8 @@ TEST_F(AccessPatternCombinationTest, CombineAccessPatterns) {
   checkCombineAccessPatterns({8, 0, 0}, {16, 8, 16}, {16, 8, 1}, {40, 0, 0},
                              {16, 8, 16}, {16, 8, 1}, {0, 8, 0, 0},
                              {2, 16, 8, 16}, {512, 16, 8, 1}, 4);
+  checkCombineAccessPatterns({32, 0}, {64, 64}, {128, 1}, {96, 0}, {32, 64},
+                             {128, 1}, {32, 0}, {96, 64}, {128, 1}, 4);
   // size(A) > size(B)
   checkCombineAccessPatterns({0, 0}, {2, 32}, {64, 1}, {128}, {32}, {1}, {0, 0},
                              {3, 32}, {64, 1}, 3);
@@ -255,6 +265,10 @@ TEST_F(AccessPatternCombinationTest, FailCombineAccessPatterns) {
                              {3, 32}, {64, 1}, 3, false);
   checkCombineAccessPatterns({0}, {32}, {1}, {0, 96}, {2, 32}, {64, 1}, {0, 0},
                              {3, 32}, {64, 1}, 3, false);
+
+  // size(A) == size(B) Incompatible offset
+  checkCombineAccessPatterns({32, 0}, {32, 64}, {128, 1}, {96, 0}, {64, 64},
+                             {128, 1}, {32, 0}, {96, 64}, {128, 1}, 4, false);
 }
 
 }  // namespace

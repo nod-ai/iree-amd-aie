@@ -292,7 +292,6 @@ static iree_status_t iree_hal_xrt_direct_command_buffer_push_descriptor_set(
     IREE_RETURN_AND_END_ZONE_IF_ERROR(
         z0, iree_hal_resource_set_insert(command_buffer->resource_set, 1,
                                          &binding->buffer));
-    std::unique_ptr<xrt::bo> sub_buffer;
     current_bindings[i] = iree_hal_xrt_buffer_handle(
         iree_hal_buffer_allocated_buffer(binding->buffer));
     current_offsets[i] =
@@ -323,51 +322,44 @@ static iree_status_t iree_hal_xrt_direct_command_buffer_dispatch(
       z0, iree_hal_resource_set_insert(command_buffer->resource_set, 1,
                                        &executable));
 
-  xrt::kernel kernel = *kernel_params.kernel;
-  xrt::bo instr = *kernel_params.instr;
-  uint32_t num_instr = kernel_params.num_instr;
-  xrt::run run = xrt::run(kernel);
-
-  // set opcode for transaction binary execution
-  unsigned int opcode = 3;
-
+  xrt::run run = xrt::run(kernel_params.kernel);
   // Index to push arguments on the kernel.
   iree_host_size_t arg_index = 0;
-
   // First argument is the opcode.
+  unsigned int opcode = 3;
   run.set_arg(arg_index++, opcode);
-
   // Second argument is the LX6 instructions.
-  run.set_arg(arg_index++, instr);
-
+  run.set_arg(arg_index++, kernel_params.instr);
   // Third argument is the number of LX6 instructions.
-  run.set_arg(arg_index++, num_instr);
+  run.set_arg(arg_index++, kernel_params.num_instr);
 
   // Copy descriptors from all sets to the end of the current segment for later
   // access.
   // TODO(jornt): hack to ensure that the output buffer is synced by syncing all
   // buffers after the run.
-  xrt::bo arg_buffer;
   std::vector<xrt::bo> bos;
   // TODO(max): do we need multiple descriptor sets ever for AIE?
   uint32_t set = 0;
-  iree_hal_xrt_direct_command_buffer_push_descriptor_set(
-      base_command_buffer, set, bindings.count, bindings.values);
+  IREE_RETURN_AND_END_ZONE_IF_ERROR(
+      z0, iree_hal_xrt_direct_command_buffer_push_descriptor_set(
+              base_command_buffer, set, bindings.count, bindings.values));
   for (iree_host_size_t j = 0; j < bindings.count; ++j) {
-    arg_buffer = xrt::bo(*command_buffer->descriptor_sets[set].bindings[j],
-                         command_buffer->descriptor_sets[set].lengths[j],
-                         command_buffer->descriptor_sets[set].offsets[j]);
+    xrt::bo arg_buffer =
+        xrt::bo(*command_buffer->descriptor_sets[set].bindings[j],
+                command_buffer->descriptor_sets[set].lengths[j],
+                command_buffer->descriptor_sets[set].offsets[j]);
     bos.push_back(arg_buffer);
     run.set_arg(arg_index + j, arg_buffer);
   }
+
   run.start();
   try {
     run.wait2();
-  } catch (...) {
+  } catch (const std::exception& e) {
     IREE_TRACE_ZONE_END(z0);
-    return iree_make_status(IREE_STATUS_UNKNOWN,
-                            "failed to wait for xrt kernel run to finish");
+    return iree_make_status(IREE_STATUS_UNKNOWN, e.what());
   }
+
   for (xrt::bo& bo : bos) bo.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
 
   IREE_TRACE_ZONE_END(z0);

@@ -269,6 +269,18 @@ struct SubsumeLoopIntoDMA
       return false;
     };
 
+    auto insertInFront =
+        [](SmallVector<OpFoldResult> &origOpFold,
+           SmallVector<int64_t> &insertValues) -> SmallVector<int64_t> {
+      std::optional<SmallVector<int64_t>> maybeIntValues =
+          getConstantIntValues(origOpFold);
+      assert(maybeIntValues.has_value() && "expect constant values");
+      SmallVector<int64_t> newIntValues = maybeIntValues.value();
+      newIntValues.insert(newIntValues.begin(), insertValues.begin(),
+                          insertValues.end());
+      return newIntValues;
+    };
+
     SmallVector<int64_t> insertSourceOffsets;
     SmallVector<int64_t> insertSourceSizes;
     SmallVector<int64_t> insertSourceStrides;
@@ -289,17 +301,22 @@ struct SubsumeLoopIntoDMA
                 insertSourceStrides, updateSourceOffsets))) {
           return failure();
         }
+
+        // Check each dim of the new sizes/strides after insertion to make sure
+        // they are not out of the range.
+        SmallVector<int64_t> newSourceSizesInt =
+            insertInFront(newSourceSizes, insertSourceSizes);
+        SmallVector<int64_t> newSourceStridesInt =
+            insertInFront(newSourceStrides, insertSourceStrides);
         SmallVector<uint32_t> maxSizes =
             dmaDimConfig.getMaxSizes<CopyOpOperateOn::Source>();
         SmallVector<uint32_t> maxStrides =
             dmaDimConfig.getMaxStrides<CopyOpOperateOn::Source>();
-        assert(maxSizes.size() >=
-                   insertSourceSizes.size() + newSourceSizes.size() &&
+        assert(maxSizes.size() >= newSourceSizesInt.size() &&
                "Max number of dimensions exceeded");
-        size_t begin =
-            maxSizes.size() - insertSourceSizes.size() - newSourceSizes.size();
-        if (anyOutOfRange(insertSourceSizes, maxSizes, begin)) return failure();
-        if (anyOutOfRange(insertSourceStrides, maxStrides, begin))
+        size_t begin = maxSizes.size() - newSourceSizesInt.size();
+        if (anyOutOfRange(newSourceSizesInt, maxSizes, begin)) return failure();
+        if (anyOutOfRange(newSourceStridesInt, maxStrides, begin))
           return failure();
       }
       // Add loop iteration to the access pattern on the target side.
@@ -310,17 +327,22 @@ struct SubsumeLoopIntoDMA
                 insertTargetStrides, updateTargetOffsets))) {
           return failure();
         }
+
+        // Check each dim of the new sizes/strides after insertion to make sure
+        // they are not out of the range.
+        SmallVector<int64_t> newTargetSizesInt =
+            insertInFront(newTargetSizes, insertTargetSizes);
+        SmallVector<int64_t> newTargetStridesInt =
+            insertInFront(newTargetStrides, insertTargetStrides);
         SmallVector<uint32_t> maxSizes =
             dmaDimConfig.getMaxSizes<CopyOpOperateOn::Target>();
         SmallVector<uint32_t> maxStrides =
             dmaDimConfig.getMaxStrides<CopyOpOperateOn::Target>();
-        assert(maxSizes.size() >=
-                   insertTargetSizes.size() + newTargetSizes.size() &&
+        assert(maxSizes.size() >= newTargetSizesInt.size() &&
                "Max number of dimensions exceeded");
-        size_t begin =
-            maxSizes.size() - insertTargetSizes.size() - newTargetSizes.size();
-        if (anyOutOfRange(insertTargetSizes, maxSizes, begin)) return failure();
-        if (anyOutOfRange(insertTargetStrides, maxStrides, begin))
+        size_t begin = maxSizes.size() - newTargetSizesInt.size();
+        if (anyOutOfRange(newTargetSizesInt, maxSizes, begin)) return failure();
+        if (anyOutOfRange(newTargetStridesInt, maxStrides, begin))
           return failure();
       }
     }
@@ -470,11 +492,30 @@ struct SubsumeLoopIntoDMA
     if (!isa<LoopLikeOpInterface>(parentOp))
       return rewriter.notifyMatchFailure(op, "Parent is not a loop-like op");
 
-    auto hasUsersInSameScope = [&](Value result) -> bool {
+    auto hasOtherUsersInSameScope = [&](Value result) -> bool {
       for (Operation *userOp : result.getUsers()) {
         if (userOp != op.getOperation() && parentOp->isProperAncestor(userOp)) {
           return true;
         }
+      }
+      return false;
+    };
+
+    auto hasCircularUsersInSameScope =
+        [&](SmallVector<AMDAIE::DoublyStridedOpInterface> users) -> bool {
+      bool currentCircularDma = false;
+      for (AMDAIE::DoublyStridedOpInterface userOp : llvm::reverse(users)) {
+        // Check if there is other circular dma user in the same scope.
+        if (isa<AMDAIE::NpuCircularDmaCpyNdOp>(userOp) &&
+            userOp != op.getOperation()) {
+          return true;
+        }
+        // Check if there is other user before the current in the same scope.
+        if (userOp == op.getOperation()) {
+          currentCircularDma = true;
+          continue;
+        }
+        if (currentCircularDma) return true;
       }
       return false;
     };
@@ -485,12 +526,26 @@ struct SubsumeLoopIntoDMA
       sourceMemspaceInt = npuDmaOp.getSourceMemorySpaceAsUInt();
       targetMemspaceInt = npuDmaOp.getTargetMemorySpaceAsUInt();
 
-      // Check that the DMA this `amdaie.npu.dma_cpy_nd` operation is
+      // Check that the connection this `amdaie.npu.dma_cpy_nd` operation is
       // operating on, is not being touched within the same scope. Otherwise,
       // the rewrite is not valid in general as it would be changing the
-      // temporal usage of the source DMA.
-      Value dma = npuDmaOp.getConnection();
-      if (hasUsersInSameScope(dma)) {
+      // temporal usage of the source connection.
+      AMDAIE::ConnectionOp connectionOp = npuDmaOp.getConnectionOp();
+      if (!connectionOp) {
+        return rewriter.notifyMatchFailure(
+            op, "should operate on an `amdaie.connection` op");
+      }
+      std::optional<AMDAIE::ConnectionType> connectionType =
+          connectionOp.getConnectionType();
+      if (connectionType &&
+          connectionType.value() == AMDAIE::ConnectionType::Packet) {
+        return rewriter.notifyMatchFailure(
+            op,
+            "operating on a packet connection, which can potentially still be "
+            "merged with other connections, so abort loop subsumption as it "
+            "could potentially lead to deadlocks");
+      }
+      if (hasOtherUsersInSameScope(connectionOp.getResult())) {
         return rewriter.notifyMatchFailure(
             op,
             "Has users of same DMA in scope, analysis to check validity of "
@@ -502,12 +557,28 @@ struct SubsumeLoopIntoDMA
       sourceMemspaceInt = npuCircularDmaOp.getSourceMemorySpaceAsUInt();
       targetMemspaceInt = npuCircularDmaOp.getTargetMemorySpaceAsUInt();
 
-      // Check that the DMA this `amdaie.npu.dma_cpy_nd` operation is
-      // operating on, is not being touched within the same scope. Otherwise,
-      // the rewrite is not valid in general as it would be changing the
-      // temporal usage of the source DMA.
-      Value dma = npuCircularDmaOp.getConnection();
-      if (hasUsersInSameScope(dma)) {
+      // Check that the connection this `amdaie.npu.circular_dma_cpy_nd` op is
+      // operating on, satisfies the following conditions:
+      // 1) No other users of the connection has the Circular trait in the same
+      // scope; 2) No other users of the connection before this circular dma op
+      // in the same scope. Otherwise, the rewrite is not valid in general as it
+      // would be changing the temporal usage of the source connection.
+      AMDAIE::ConnectionOp connectionOp = npuCircularDmaOp.getConnectionOp();
+      if (!connectionOp) {
+        return rewriter.notifyMatchFailure(
+            op, "should operate on an `amdaie.connection` op");
+      }
+      // Walk all dma ops in order and get those which are the users of the
+      // current connection op.
+      SmallVector<AMDAIE::DoublyStridedOpInterface> dmaUsers;
+      parentOp->walk([&](AMDAIE::DoublyStridedOpInterface op) {
+        auto dmaConnection = dyn_cast_if_present<AMDAIE::ConnectionOp>(
+            op->getOperand(0).getDefiningOp());
+        if (dmaConnection && dmaConnection == connectionOp) {
+          dmaUsers.push_back(op);
+        }
+      });
+      if (hasCircularUsersInSameScope(dmaUsers)) {
         return rewriter.notifyMatchFailure(
             op,
             "Has users of same DMA in scope, analysis to check validity of "

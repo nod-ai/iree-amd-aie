@@ -21,7 +21,7 @@ typedef struct iree_hal_xrt_native_executable_t {
   iree_allocator_t host_allocator;
 
   iree_host_size_t entry_point_count;
-  iree_hal_xrt_kernel_params_t entry_points[];
+  iree_hal_xrt_kernel_params_t entry_points[16];
 } iree_hal_xrt_native_executable_t;
 
 namespace {
@@ -99,7 +99,8 @@ static iree_status_t iree_amd_aie_hal_xrt_native_executable_flatbuffer_verify(
 }
 
 iree_status_t iree_hal_xrt_native_executable_create(
-    xrt::device* device, const iree_hal_executable_params_t* executable_params,
+    xrtDeviceHandle device_hdl,
+    const iree_hal_executable_params_t* executable_params,
     iree_allocator_t host_allocator, iree_hal_executable_t** out_executable) {
   IREE_ASSERT_ARGUMENT(executable_params);
   IREE_ASSERT_ARGUMENT(out_executable);
@@ -174,29 +175,38 @@ iree_status_t iree_hal_xrt_native_executable_create(
     flatbuffers_string_t xclbin_fb =
         iree_amd_aie_hal_xrt_XclbinDef_xclbin_get(xclbin_def);
 
+    iree_hal_xrt_kernel_params_t* params =
+        &executable->entry_points[entry_ordinal];
+
     // XRT API needs this vector and cant actually read a void*.
     std::vector<char> xclbinVector(
         xclbin_fb, xclbin_fb + flatbuffers_string_len(xclbin_fb));
-    std::unique_ptr<xrt::xclbin> xclbin;
+    xrt::xclbin xclbin;
     try {
-      xclbin = std::make_unique<xrt::xclbin>(xclbinVector);
+      xclbin = xrt::xclbin(xclbinVector);
     } catch (std::exception& e) {
       return iree_make_status(IREE_STATUS_INTERNAL, "XCLBIN load error: %s",
                               e.what());
     }
+
+    xrt::device device(xrtDeviceToXclDevice(device_hdl));
+    IREE_ASSERT(device, "failed to find device");
+
     try {
-      device->register_xclbin(*xclbin);
+      device.register_xclbin(xclbin);
     } catch (std::exception& e) {
       return iree_make_status(IREE_STATUS_INTERNAL, "XCLBIN register error: %s",
                               e.what());
     }
-    xrt::hw_context context;
+
     try {
-      context = {*device, xclbin->get_uuid()};
+      params->context = xrt::hw_context(
+          device, xclbin.get_uuid(), xrt::hw_context::access_mode::exclusive);
     } catch (std::exception& e) {
       return iree_make_status(IREE_STATUS_INTERNAL,
                               "xrt::hw_context context: %s", e.what());
     }
+
     uint32_t asm_instr_index =
         flatbuffers_uint32_vec_at(asm_instr_indices_vec, entry_ordinal);
     iree_amd_aie_hal_xrt_AsmInstDef_table_t asminst_def =
@@ -204,17 +214,16 @@ iree_status_t iree_hal_xrt_native_executable_create(
     flatbuffers_uint32_vec_t asm_inst =
         iree_amd_aie_hal_xrt_AsmInstDef_asm_inst_get(asminst_def);
     uint32_t num_instr = flatbuffers_uint32_vec_len(asm_inst);
-    std::unique_ptr<xrt::kernel> kernel;
-    std::unique_ptr<xrt::bo> instr;
+
     try {
-      kernel = std::make_unique<xrt::kernel>(context, entry_name);
+      params->kernel = xrt::kernel(params->context, entry_name);
       // XCL_BO_FLAGS_CACHEABLE is used to indicate that this is an instruction
       // buffer that resides in instr_memory. This buffer is always passed as
       // the second argument to the kernel and we can use group id 1.
       int group_id = 1;
-      instr = std::make_unique<xrt::bo>(*device, num_instr * sizeof(uint32_t),
-                                        XCL_BO_FLAGS_CACHEABLE,
-                                        kernel->group_id(group_id));
+      params->instr =
+          xrt::bo(device, num_instr * sizeof(uint32_t), XCL_BO_FLAGS_CACHEABLE,
+                  params->kernel.group_id(group_id));
     } catch (...) {
       iree_hal_executable_destroy((iree_hal_executable_t*)executable);
       IREE_TRACE_ZONE_END(z0);
@@ -222,17 +231,12 @@ iree_status_t iree_hal_xrt_native_executable_create(
           IREE_STATUS_RESOURCE_EXHAUSTED,
           "could not allocate memory for kernel or instr buffer");
     }
-    uint32_t* instr_buffer = instr->map<uint32_t*>();
-    for (int j = 0; j < num_instr; j++) {
-      instr_buffer[j] = flatbuffers_uint32_vec_at(asm_inst, j);
-    }
+
+    uint32_t* instr_buffer = params->instr.map<uint32_t*>();
+    memcpy(instr_buffer, asm_inst, num_instr * sizeof(uint32_t));
+
     // The Ryzen AI device is not cache coherent, so it is important to sync
-    instr->sync(XCL_BO_SYNC_BO_TO_DEVICE);
-    iree_hal_xrt_kernel_params_t* params =
-        &executable->entry_points[entry_ordinal];
-    params->xclbin = xclbin.release();
-    params->kernel = kernel.release();
-    params->instr = instr.release();
+    params->instr.sync(XCL_BO_SYNC_BO_TO_DEVICE);
     params->num_instr = num_instr;
 
     // Stash the entry point name in the string table for use when tracing.
@@ -263,6 +267,7 @@ iree_status_t iree_hal_xrt_native_executable_create(
       }
     });
   }
+
   *out_executable = (iree_hal_executable_t*)executable;
   IREE_TRACE_ZONE_END(z0);
   return iree_ok_status();
@@ -275,21 +280,6 @@ static void iree_hal_xrt_native_executable_destroy(
   iree_allocator_t host_allocator = executable->host_allocator;
   IREE_TRACE_ZONE_BEGIN(z0);
 
-  for (iree_host_size_t i = 0; i < executable->entry_point_count; ++i) {
-    try {
-#ifndef _WIN32
-      // causes segmentation fault on windows
-      delete executable->entry_points[i].kernel;
-      delete executable->entry_points[i].instr;
-#endif
-      // TODO(jornt): deleting the xclbin here will result in a corrupted size
-      // error in XRT. It looks like the xclbin needs to stay alive while the
-      // device is alive if it has been registered.
-      // delete executable->entry_points[i].xclbin;
-    } catch (...) {
-      (void)iree_status_from_code(IREE_STATUS_DATA_LOSS);
-    }
-  }
   iree_allocator_free(host_allocator, executable);
 
   IREE_TRACE_ZONE_END(z0);
@@ -306,6 +296,7 @@ iree_status_t iree_hal_xrt_native_executable_entry_point_kernel_params(
                             "only contains %" PRIhsz " entry points",
                             entry_point, executable->entry_point_count);
   }
+
   memcpy(out_params, &executable->entry_points[entry_point],
          sizeof(*out_params));
   return iree_ok_status();

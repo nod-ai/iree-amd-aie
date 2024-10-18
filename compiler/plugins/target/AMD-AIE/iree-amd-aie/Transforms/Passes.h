@@ -15,36 +15,50 @@
 namespace mlir::iree_compiler::AMDAIE {
 
 /// Add passes to lower to AIE objectFifos.
-void addAMDAIEObjectFifoLoweringPasses(OpPassManager &passManager);
+void addAMDAIEObjectFifoLoweringPasses(OpPassManager &passManager,
+                                       bool enablePacketFlow,
+                                       TilePassPipeline useTilePipeline);
 
 /// Add passes to lower from MLIR-AIR through AIE. This is
 /// currently the default passes used for lowering after IREEs tiling.
-void addMLIRAIRLoweringPasses(OpPassManager &passManager, AMDAIEDevice device);
+void addMLIRAIRLoweringPasses(OpPassManager &passManager, AMDAIEDevice device,
+                              TilePassPipeline useTilePipeline,
+                              bool matmulElementwiseFusion);
 
 /// Add lowering passes from MLIR-AIE. This is
 /// currently the default passes used for lowering from AIE dialect.
 void addMLIRAIELoweringPasses(OpPassManager &passManager);
 
+
 /// Populates passes needed to lower linalg/arith/math ops to LLVM dialect via
 /// the structured ops path. The pass manager `pm` here operate on the module
 /// within the IREE::HAL::ExecutableOp.
-void buildAMDAIETransformPassPipeline(OpPassManager &pm, AMDAIEDevice device);
-
-void buildAMDAIELowerObjectFIFO(OpPassManager &variantPassManager);
-
-void addLowerToLLVMPasses(OpPassManager &pm);
+void buildAMDAIETransformPassPipeline(
+    OpPassManager &variantPassManager, AMDAIEDevice device,
+    TilePassPipeline useTilePipeline,
+    LowerToAIEPassPipeline useLowerToAIEPipeline, bool matmulElementwiseFusion,
+    bool enableVectorizationPasses, const std::string &pathToUkernels,
+    bool enablePacketFlow);
 
 /// Populates passes needed to lower the IR via a Pack-Peel based approach.
-void addPackPeelBasedPassPipeline(OpPassManager &passManager,
-                                  TilingConfig &tilingConfig);
+void addPackPeelBasedPassPipeline(OpPassManager &oassManager,
+                                  TilingConfig &tilingConfig,
+                                  const std::string &pathToUkernels,
+                                  bool enableVectorizationPasses,
+                                  TilePassPipeline useTilePipeline);
 
 /// Populates passes needed to lower the IR via a Pad-Pack based approach.
 void addPadPackBasedPassPipeline(OpPassManager &passManager,
-                                 TilingConfig &tilingConfig);
+                                 TilingConfig &tilingConfig,
+                                 const std::string &pathToUkernels,
+                                 bool enableVectorizationPasses,
+                                 TilePassPipeline useTilePipeline);
 
 /// Populates passes needed to lower the IR via a Conv-Decompose based approach.
 void addConvDecomposePassPipeline(OpPassManager &passManager,
-                                  TilingConfig &tilingConfig);
+                                  TilingConfig &tilingConfig,
+                                  bool enableVectorizationPasses,
+                                  TilePassPipeline useTilePipeline);
 
 /// Populates passes needed to link HAL executables across AIE targets.
 void buildAMDAIELinkingPassPipeline(OpPassManager &passManager);
@@ -60,6 +74,10 @@ std::unique_ptr<Pass> createAMDAIEAcquireReleaseToUseLockPass();
 /// Create a pass to assign channels to connections.
 std::unique_ptr<Pass> createAMDAIEAssignChannelsPass();
 
+/// Create a pass to assign types to `amdaie.connection` ops.
+std::unique_ptr<Pass> createAMDAIEAssignConnectionTypesPass(
+    AMDAIEAssignConnectionTypesOptions options = {});
+
 /// Create a pass to assign a buffer depth to
 /// `amdaie.logicalobjectfifo.from_memref` ops.
 std::unique_ptr<Pass> createAMDAIEAssignLogicalObjectFifoDepthPass(
@@ -67,6 +85,9 @@ std::unique_ptr<Pass> createAMDAIEAssignLogicalObjectFifoDepthPass(
 
 /// Create a pass to assign BD ids to `amdaie.npu.dma_cpy_nd` operations.
 std::unique_ptr<Pass> createAMDAIEAssignNpuDmaBdIdsPass();
+
+/// Create a pass to assign packet ids to `amdaie.flow` operations.
+std::unique_ptr<Pass> createAMDAIEAssignPacketIdsPass();
 
 /// Create a pass to do some rewrites that help bridging the path to AIR/AIE
 /// lowering.
@@ -84,8 +105,18 @@ std::unique_ptr<Pass> createAMDAIECanonicalizeNpuDmaCpyNdPass();
 std::unique_ptr<Pass> createAMDAIECanonicalizeDoublyStridedOpPass(
     AMDAIECanonicalizeDoublyStridedOpOptions options = {});
 
+/// Create pass to create `amdaie.flow` ops for connections.
+std::unique_ptr<Pass> createAMDAIEConnectionToFlowPass();
+
 /// Pass to unroll the loops within the control code regions.
 std::unique_ptr<Pass> createAMDAIEControlCodeLoopUnrollPass();
+
+/// Pass to convert control code DMA operations into NPU writes and syncs.
+std::unique_ptr<Pass> createAMDAIEControlCodeLoweringPass();
+
+/// Pass to convert control code into a transaction binary.
+std::unique_ptr<Pass> createAMDAIEControlCodeToTransactionPass(
+    AMDAIEControlCodeToTransactionOptions options = {});
 
 /// Pass to convert `scf.forall` to `scf.for` within `aie.core`.
 std::unique_ptr<Pass> createAMDAIEConvertCoreForallToForPass();
@@ -113,6 +144,9 @@ std::unique_ptr<Pass> createAMDAIEDecomposeLinalgExtPackUnPackToAIRPass();
 /// Create pass to unroll the scf.forall operations around `amdaie.core`
 /// operations and distribute the logical objectFifos.
 std::unique_ptr<Pass> createAMDAIEDistributeCoresAndObjectFifosPass();
+
+/// Create pass to distribute/privatize/localize memory alloocations in L1 memory
+std::unique_ptr<Pass> createAMDAIEDistributeL1AllocationsPass();
 
 /// Create a pass to compose more complex DMA operations, e.g. by combining DMA
 /// operations and/or subsuming loop iterations into the strided access
@@ -211,7 +245,8 @@ std::unique_ptr<Pass> createAMDAIEPackAndTransposePass(
 
 /// Create pass to lower copy/pack/unpack ops to AMDAIE DMA ops operating on
 /// logical objectFifos.
-std::unique_ptr<Pass> createAMDAIEConvertToDmaPass();
+std::unique_ptr<Pass> createAMDAIEConvertToDmaPass(
+    AMDAIEConvertToDmaOptions options = {});
 
 /// Create a pass to pad MatmulOp.
 std::unique_ptr<Pass> createAMDAIEPadPass(AMDAIEPadOptions options = {});
@@ -241,6 +276,9 @@ std::unique_ptr<Pass> createAMDAIETileAndFusePass(
 
 /// Create pass to propagate pack/unpack ops using upstream patterns.
 std::unique_ptr<Pass> createAMDAIEPropagateDataLayoutPass();
+
+/// Create pass to reset the alignment of LLVM load operations.
+std::unique_ptr<Pass> createAMDAIELoadAlignmentResetPass();
 
 void registerAMDAIEPasses();
 

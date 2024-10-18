@@ -62,11 +62,11 @@ getFirstLevelLinalgPaddingOptions(IRRewriter &rewriter,
   // For the operations with 2 input and 1 output operands, the packPadding
   // option should be [1, 1, 1]. For `linalg.conv_2d_nhwc_hwcf_q` op, there are
   // 5 operands, and the packPadding options should be [1, 1, 0, 0, 1].
-  SmallVector<bool> packPaddings(linalgOp->getNumOperands(), false);
-  packPaddings[0] = true;
-  packPaddings[1] = true;
-  packPaddings.back() = true;
-  options.packPaddings = packPaddings;
+  SmallVector<bool> nofoldFlags(linalgOp->getNumOperands(), false);
+  nofoldFlags[0] = true;
+  nofoldFlags[1] = true;
+  nofoldFlags.back() = true;
+  options.nofoldFlags = nofoldFlags;
 
   options.paddingDimensions = getPaddingDimensions(linalgOp);
   SmallVector<int64_t> padToMultipleOf(options.paddingDimensions.size(), 1);
@@ -87,9 +87,9 @@ getSecondLevelLinalgPaddingOptions(IRRewriter &rewriter,
   options.paddingValues = paddingValues;
 
   // In the second level, we only pad the output operand.
-  SmallVector<bool> packPaddings(linalgOp->getNumOperands(), false);
-  packPaddings.back() = true;
-  options.packPaddings = packPaddings;
+  SmallVector<bool> nofoldFlags(linalgOp->getNumOperands(), false);
+  nofoldFlags.back() = true;
+  options.nofoldFlags = nofoldFlags;
 
   options.paddingDimensions = getPaddingDimensions(linalgOp);
   SmallVector<int64_t> padToMultipleOf(options.paddingDimensions.size(), 1);
@@ -110,10 +110,10 @@ getThirdLevelLinalgPaddingOptions(IRRewriter &rewriter,
   options.paddingValues = paddingValues;
 
   // In the third level, we only pad the input operands.
-  SmallVector<bool> packPaddings(linalgOp->getNumOperands(), false);
-  packPaddings[0] = true;
-  packPaddings[1] = true;
-  options.packPaddings = packPaddings;
+  SmallVector<bool> nofoldFlags(linalgOp->getNumOperands(), false);
+  nofoldFlags[0] = true;
+  nofoldFlags[1] = true;
+  options.nofoldFlags = nofoldFlags;
 
   options.paddingDimensions = getPaddingDimensions(linalgOp);
   SmallVector<int64_t> padToMultipleOf(options.paddingDimensions.size(), 1);

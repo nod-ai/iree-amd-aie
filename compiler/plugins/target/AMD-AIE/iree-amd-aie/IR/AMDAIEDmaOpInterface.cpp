@@ -9,7 +9,6 @@
 #include "iree-amd-aie/IR/AMDAIEDmaOpInterface.h"
 
 #include "iree-amd-aie/IR/AMDAIEAttrs.h"
-#include "iree-amd-aie/Utils/Utils.h"
 
 /// Include the definitions of the dma-like interfaces.
 #include "iree-amd-aie/IR/AMDAIEDmaOpInterface.cpp.inc"
@@ -49,35 +48,6 @@ std::optional<int64_t> getStaticBaseOffset(DoublyStridedOpInterface op) {
   return baseOffset;
 }
 
-/// Utility to compute the static extent on either the source or target side
-/// of a doubly strided operation. The extent is the range of elements covered
-/// by the strided access pattern, starting from the base offset.
-///
-/// Returns std::nullopt if the extent can't be computed due to for example
-/// dynamic strides or sizes.
-///
-/// Returns 0 in case of empty offsets/strides/sizes, which represents a
-/// contiguous access of all values operated on.
-template <CopyOpOperateOn OperateOn>
-std::optional<int64_t> getStaticExtent(DoublyStridedOpInterface op) {
-  SmallVector<OpFoldResult> sizes;
-  SmallVector<OpFoldResult> strides;
-  if constexpr (OperateOn == CopyOpOperateOn::Source) {
-    sizes = op.getSourceMixedSizes();
-    strides = op.getSourceMixedStrides();
-  } else if constexpr (OperateOn == CopyOpOperateOn::Target) {
-    sizes = op.getTargetMixedSizes();
-    strides = op.getTargetMixedStrides();
-  } else {
-    assert(false && "Function can only operate on Source or Target");
-  }
-  std::optional<SmallVector<int64_t>> staticSizes = getConstantIntValues(sizes);
-  std::optional<SmallVector<int64_t>> staticStrides =
-      getConstantIntValues(strides);
-  if (!staticSizes || !staticStrides) return std::nullopt;
-  return getAccessRangeExtent(staticSizes.value(), staticStrides.value());
-}
-
 template <CopyOpOperateOn OperateOn>
 std::optional<int64_t> getStaticSize(DoublyStridedOpInterface op) {
   SmallVector<OpFoldResult> sizes;
@@ -101,11 +71,6 @@ std::optional<int64_t> getSourceStaticBaseOffset(DoublyStridedOpInterface op) {
   return getStaticBaseOffset<CopyOpOperateOn::Source>(op);
 }
 
-/// Return the static access extent on the source side if it can be computed.
-/// Otherwise, returns nullopt.
-std::optional<int64_t> getSourceStaticExtent(DoublyStridedOpInterface op) {
-  return getStaticExtent<CopyOpOperateOn::Source>(op);
-}
 
 std::optional<int64_t> getSourceStaticSize(DoublyStridedOpInterface op) {
   return getStaticSize<CopyOpOperateOn::Source>(op);
@@ -117,11 +82,6 @@ std::optional<int64_t> getTargetStaticBaseOffset(DoublyStridedOpInterface op) {
   return getStaticBaseOffset<CopyOpOperateOn::Target>(op);
 }
 
-/// Return the static access extent on the target side if it can be computed.
-/// Otherwise, returns nullopt.
-std::optional<int64_t> getTargetStaticExtent(DoublyStridedOpInterface op) {
-  return getStaticExtent<CopyOpOperateOn::Target>(op);
-}
 
 std::optional<int64_t> getTargetStaticSize(DoublyStridedOpInterface op) {
   return getStaticSize<CopyOpOperateOn::Target>(op);

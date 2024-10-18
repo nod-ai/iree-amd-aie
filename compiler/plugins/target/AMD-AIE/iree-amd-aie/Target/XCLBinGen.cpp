@@ -7,19 +7,16 @@
 #include "XCLBinGen.h"
 
 #include <filesystem>
+#include <fstream>
 #include <functional>
 #include <random>
-#include <regex>
 #include <sstream>
-// ReSharper disable once CppUnusedIncludeDirective
-#include <fstream>
-#include <unordered_map>
 
 #include "AMDAIETargets.h"
-#include "aievec/Passes.h"
-#include "iree-amd-aie/Transforms/Passes.h"
+#include "aie/Passes.h"
+#include "air/Conversion/AIRToAIEPass.h"
+#include "iree-dialects/Dialect/LinalgTransform/Passes.h"
 #include "iree/compiler/Utils/ToolUtils.h"
-#include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/FileSystem.h"
@@ -28,12 +25,25 @@
 #include "llvm/Support/Path.h"
 #include "llvm/Support/Program.h"
 #include "llvm/Support/ToolOutputFile.h"
+#include "mlir/Conversion/AffineToStandard/AffineToStandard.h"
+#include "mlir/Conversion/ArithToLLVM/ArithToLLVM.h"
+#include "mlir/Conversion/ControlFlowToLLVM/ControlFlowToLLVM.h"
+#include "mlir/Conversion/FuncToLLVM/ConvertFuncToLLVMPass.h"
+#include "mlir/Conversion/MathToLLVM/MathToLLVM.h"
+#include "mlir/Conversion/MemRefToLLVM/MemRefToLLVM.h"
+#include "mlir/Conversion/SCFToControlFlow/SCFToControlFlow.h"
+#include "mlir/Conversion/VectorToLLVM/ConvertVectorToLLVMPass.h"
+#include "mlir/Dialect/MemRef/Transforms/Passes.h"
+#include "mlir/Dialect/Vector/IR/VectorOps.h"
+#include "mlir/Dialect/Vector/Transforms/VectorTransforms.h"
 #include "mlir/IR/AsmState.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/TypeUtilities.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Support/FileUtilities.h"
 #include "mlir/Target/LLVMIR/Export.h"
+#include "mlir/Transforms/Passes.h"
 
 #define DEBUG_TYPE "amdaie-xclbingen"
 
@@ -943,72 +953,20 @@ static LogicalResult generateXCLBin(
   return runTool(xclbinutilBin.value().string(), flags, verbose);
 }
 
-static std::string chesshack(const std::string &input) {
-  std::string result(input);
-  static const std::unordered_map<std::string, std::string> substitutions{
-      {"memory\\(none\\)", "readnone"},
-      {"memory\\(read\\)", "readonly"},
-      {"memory\\(write\\)", "writeonly"},
-      {"memory\\(argmem: readwrite\\)", "argmemonly"},
-      {"memory\\(argmem: read\\)", "argmemonly readonly"},
-      {"memory\\(argmem: write\\)", "argmemonly writeonly"},
-      {"memory\\(inaccessiblemem: write\\)", "inaccessiblememonly writeonly"},
-      {"memory\\(inaccessiblemem: readwrite\\)", "inaccessiblememonly"},
-      {"memory\\(inaccessiblemem: read\\)", "inaccessiblememonly readonly"},
-      {"memory(argmem: readwrite, inaccessiblemem: readwrite)",
-       "inaccessiblemem_or_argmemonly"},
-      {"memory(argmem: read, inaccessiblemem: read)",
-       "inaccessiblemem_or_argmemonly readonly"},
-      {"memory(argmem: write, inaccessiblemem: write)",
-       "inaccessiblemem_or_argmemonly writeonly"},
-  };
-  for (const auto &pair : substitutions)
-    result = std::regex_replace(result, std::regex(pair.first), pair.second);
-  return result;
+void addLowerToLLVMPasses(OpPassManager &pm) {
+  using namespace mlir;
+  pm.addPass(createFinalizeMemRefToLLVMConversionPass());
+  pm.addPass(createCanonicalizerPass());
+  pm.addPass(createCSEPass());
+  ConvertFuncToLLVMPassOptions opts;
+  opts.useBarePtrCallConv = true;
+  pm.addPass(createConvertFuncToLLVMPass(opts));
+  pm.addPass(createCanonicalizerPass());
+  pm.addPass(createCSEPass());
+  pm.addPass(createConvertControlFlowToLLVMPass());
+  pm.addPass(createCanonicalizerPass());
+  pm.addPass(createCSEPass());
 }
-
-// A pass which removes the alignment attribute from llvm load operations, if
-// the alignment is less than 4 (2 or 1).
-//
-// Example replaces:
-//
-// ```
-//  %113 = llvm.load %112 {alignment = 2 : i64} : !llvm.ptr -> vector<32xbf16>
-// ```
-//
-// with
-//
-// ```
-//  %113 = llvm.load %112 : !llvm.ptr -> vector<32xbf16>
-// ```
-//
-// If this pass is not included in the pipeline, there is an alignment error
-// later in the compilation. This is a temporary workaround while a better
-// solution is found: propagation of memref.assume_alignment is one option. See
-// also https://jira.xilinx.com/projects/AIECC/issues/AIECC-589
-namespace {
-struct RemoveAlignment2FromLLVMLoadPass
-    : public PassWrapper<RemoveAlignment2FromLLVMLoadPass,
-                         OperationPass<ModuleOp>> {
-  void runOnOperation() override {
-    getOperation().walk([](Operation *op) {
-      if (auto loadOp = dyn_cast<LLVM::LoadOp>(op)) {
-        auto alignmentAttr = loadOp.getAlignmentAttr();
-        if (alignmentAttr) {
-          int alignmentVal = alignmentAttr.getValue().getSExtValue();
-          if (alignmentVal == 2 || alignmentVal == 1) {
-            loadOp.setAlignment(std::optional<uint64_t>());
-          }
-        }
-      }
-    });
-  }
-
- public:
-  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(
-      RemoveAlignment2FromLLVMLoadPass);
-};
-}  // namespace
 
 static LogicalResult generateUnifiedObject(
     MLIRContext *context, AIE::DeviceOp deviceOp, const std::string &outputFile,
@@ -1019,19 +977,12 @@ static LogicalResult generateUnifiedObject(
   assert(deviceOp->getParentOp() && isa<ModuleOp>(deviceOp->getParentOp()) &&
          "DeviceOp must be in a module parent");
 
-  ModuleOp moduleOpCopy = cast<ModuleOp>(deviceOp->getParentOp()).clone();
-
-  PassManager pm(context, moduleOpCopy.getOperationName());
+  PassManager pm(context, ModuleOp::getOperationName());
   applyConfigToPassManager(pm, printIRBeforeAll, printIRAfterAll,
                            printIRModuleScope, timing);
 
   pm.addPass(mlir::iree_compiler::AMDAIE::createAMDAIECoreToStandardPass());
-
-  // Convert specific vector dialect ops (like vector.contract) to the AIEVec
-  // dialect
-  mlir::iree_compiler::aievec::buildConvertVectorToAIEVec(pm);
-  mlir::iree_compiler::AMDAIE::addLowerToLLVMPasses(pm);
-  pm.addPass(std::make_unique<RemoveAlignment2FromLLVMLoadPass>());
+  addLowerToLLVMPasses(pm);
 
   if (verbose) {
     llvm::outs() << "\nRunning: ";
@@ -1039,13 +990,15 @@ static LogicalResult generateUnifiedObject(
     llvm::outs() << "\n";
   }
 
+  ModuleOp moduleOpCopy = cast<ModuleOp>(deviceOp->getParentOp()).clone();
   if (failed(pm.run(moduleOpCopy))) {
     llvm::errs() << "Failed to lower to LLVM";
     return failure();
   }
 
   llvm::LLVMContext llvmContext;
-  auto llvmModule = translateModuleToLLVMIR(moduleOpCopy, llvmContext);
+  std::unique_ptr<llvm::Module> llvmModule =
+      translateModuleToLLVMIR(moduleOpCopy, llvmContext);
   if (!llvmModule) {
     llvm::errs() << "Failed to translate module to LLVMIR";
     return failure();
@@ -1059,13 +1012,11 @@ static LogicalResult generateUnifiedObject(
 
   std::string errorMessage;
   if (useChess) {
-    Path inputLLChessHackedFile = tempDir / "input.chesshacked.ll";
-    std::string inputLLChessHackedStr = chesshack(inputLLStr);
     FailureOr<Path> maybeVitisDir = findVitis(vitisDir, npuVersion);
     if (failed(maybeVitisDir)) return failure();
     FailureOr<Path> chessIntrinsicsObjFile = assembleStringUsingChess(
-        /*inputFileStr=*/inputLLChessHackedStr,
-        /*inputFileName=*/"input.chesshacked.ll",
+        /*inputFileStr=*/inputLLStr,
+        /*inputFileName=*/"input.ll",
         /*outputFileName=*/outputFile,
         /*outputDir=*/tempDir,
         /*extraArgs*/ std::vector<std::string>{},
@@ -1115,28 +1066,45 @@ static LogicalResult generateUnifiedObject(
   return success();
 }
 
-FailureOr<ArrayRef<uint32_t>> getNpuInstructions(AIE::DeviceOp deviceOp) {
+namespace mlir::iree_compiler::AMDAIE {
+LogicalResult emitNpuInstructions(AIE::DeviceOp deviceOp,
+                                  const std::string &outputNPU) {
   MLIRContext *ctx = deviceOp.getContext();
   mlir::Attribute maybeNpuInstructions = deviceOp->getAttr("npu_instructions");
   if (!maybeNpuInstructions) {
     return emitError(UnknownLoc::get(ctx),
                      "Expected npu_instructions attribute on aie.device");
   }
-  auto npuInstructions =
+
+  DenseUI32ResourceElementsAttr npuInstructions =
       dyn_cast<DenseUI32ResourceElementsAttr>(maybeNpuInstructions);
   if (!npuInstructions) {
     return emitError(
         UnknownLoc::get(ctx),
         "Failed to cast npu_instructions to DenseUI32ResourceElementsAttr");
   }
+
   std::optional<ArrayRef<uint32_t>> maybeArrayRef =
       npuInstructions.tryGetAsArrayRef();
-  if (!maybeArrayRef.has_value()) {
-    return emitError(
-        UnknownLoc::get(ctx),
-        "Failed getting values for npu_instructions in tryGetAsArrayRef");
+  assert(maybeArrayRef &&
+         "Failed getting values for npu_instructions in tryGetAsArrayRef");
+  std::string errorMessage;
+  std::unique_ptr<llvm::ToolOutputFile> output =
+      openOutputFile(outputNPU, &errorMessage);
+  if (!output) {
+    llvm::errs() << "Failed to open npu_instructions.txt for writing because: "
+                 << errorMessage << "\n";
+    return failure();
   }
-  return maybeArrayRef.value();
+  output->keep();
+
+  for (int i = 0; i < maybeArrayRef->size() - 1; ++i) {
+    output->os() << llvm::format("%08X\n", maybeArrayRef->operator[](i));
+  }
+  // don't emit empty line at the end
+  output->os() << llvm::format("%08X", maybeArrayRef->back());
+
+  return success();
 }
 
 LogicalResult aie2xclbin(
@@ -1150,23 +1118,7 @@ LogicalResult aie2xclbin(
     const std::string &xclBinInstanceName, const std::string &amdAIEInstallDir,
     const std::optional<std::string> &InputXCLBin,
     const std::optional<std::string> &ukernel) {
-  FailureOr<ArrayRef<uint32_t>> maybeNpuInstructions =
-      getNpuInstructions(deviceOp);
-  if (failed(maybeNpuInstructions)) {
-    assert(false && "Failed to get NPU instructions");
-    return failure();
-  }
-  ArrayRef<uint32_t> npuInstructions = maybeNpuInstructions.value();
-
-  std::string errorMessage;
-  auto output = openOutputFile(outputNPU, &errorMessage);
-  if (!output) {
-    llvm::errs() << "Failed to open npu_instructions.txt for writing because: "
-                 << errorMessage << "\n";
-    return failure();
-  }
-  for (uint32_t w : npuInstructions) output->os() << llvm::format("%08X\n", w);
-  output->keep();
+  if (failed(emitNpuInstructions(deviceOp, outputNPU))) return failure();
 
   Path tempDirPath{tempDir};
   tempDirPath.make_preferred();
@@ -1205,3 +1157,5 @@ LogicalResult aie2xclbin(
 
   return success();
 }
+
+}  // namespace mlir::iree_compiler::AMDAIE

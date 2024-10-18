@@ -6,7 +6,7 @@ module {
     amdaie.workgroup {
       %0 = amdaie.connection(%arg0, %arg1) : (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, !amdaie.logicalobjectfifo<memref<8x16xi32>>)
       amdaie.controlcode {
-        %1 = amdaie.npu.dma_cpy_nd %0([] [] [], [] [] [])
+        amdaie.npu.dma_cpy_nd %0([] [] [], [] [] [])
         amdaie.end
       }
     }
@@ -32,8 +32,8 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
       %0 = amdaie.connection(%arg0, %arg1) : (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, !amdaie.logicalobjectfifo<memref<8x16xi32>>)
       %1 = amdaie.connection(%arg0, %arg1) : (!amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>, !amdaie.logicalobjectfifo<memref<8x16xi32>>)
       amdaie.controlcode {
-        %2 = amdaie.npu.dma_cpy_nd %0([] [] [], [0] [16] [1])
-        %3 = amdaie.npu.dma_cpy_nd %1([] [] [], [32] [16] [1])
+        amdaie.npu.dma_cpy_nd %0([] [] [], [0] [16] [1])
+        amdaie.npu.dma_cpy_nd %1([] [] [], [32] [16] [1])
         amdaie.end
       }
     }
@@ -62,8 +62,8 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
       amdaie.controlcode {
         scf.for %arg2 = %c0 to %c6 step %c1 {
           %1 = affine.apply #map(%arg2)
-          %2 = amdaie.npu.dma_cpy_nd %0([] [] [], [0, 0, %1, 0] [8, 16, 8, 16] [8, 32, 8, 1])
-          %3 = amdaie.npu.dma_cpy_nd %0([] [] [], [0, 0, %1, 32] [8, 16, 8, 16] [8, 32, 8, 1])
+          amdaie.npu.dma_cpy_nd %0([] [] [], [0, 0, %1, 0] [8, 16, 8, 16] [8, 32, 8, 1])
+          amdaie.npu.dma_cpy_nd %0([] [] [], [0, 0, %1, 32] [8, 16, 8, 16] [8, 32, 8, 1])
         }
         amdaie.end
       }
@@ -83,9 +83,9 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 // CHECK:       %[[CONNECTION:.+]] = amdaie.connection
 // CHECK:       amdaie.controlcode
 // CHECK-NOT:     scf.for
-// CHECK:         %[[NPU_DMA:.+]] = amdaie.npu.dma_cpy_nd %[[CONNECTION]]([] [] [], [0, 0, 0, 0] [6, 2, 8, 16] [128, 32, 8, 1])
+// CHECK:         %[[NPU_DMA:.+]] = amdaie.npu.dma_cpy_nd async_source %[[CONNECTION]]([] [] [], [0, 0, 0, 0] [6, 2, 8, 16] [128, 32, 8, 1])
 // CHECK-NOT:     amdaie.npu.dma_cpy_nd
-// CHECK:         amdaie.npu.dma_wait(%[[NPU_DMA]], MM2S)
+// CHECK:         amdaie.npu.dma_wait(%[[NPU_DMA]] : !amdaie.async_source_token)
 #map = affine_map<(d0) -> (d0 * 16)>
 #executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
 module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
@@ -98,10 +98,10 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
       amdaie.controlcode {
         scf.for %arg2 = %c0 to %c6 step %c1 {
           %1 = affine.apply #map(%arg2)
-          %2 = amdaie.npu.dma_cpy_nd %0([] [] [], [%1, 0] [8, 16] [8, 1])
-          amdaie.npu.dma_wait(%2, MM2S)
-          %3 = amdaie.npu.dma_cpy_nd %0([] [] [], [%1, 32] [8, 16] [8, 1])
-          amdaie.npu.dma_wait(%3, MM2S)
+          %2 = amdaie.npu.dma_cpy_nd async_source %0([] [] [], [%1, 0] [8, 16] [8, 1])
+          amdaie.npu.dma_wait(%2 : !amdaie.async_source_token)
+          %3 = amdaie.npu.dma_cpy_nd async_source %0([] [] [], [%1, 32] [8, 16] [8, 1])
+          amdaie.npu.dma_wait(%3 : !amdaie.async_source_token)
         }
         amdaie.end
       }
@@ -117,9 +117,9 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 // CHECK:       %[[CONNECTION:.+]] = amdaie.connection
 // CHECK:       amdaie.controlcode
 // CHECK-NOT:     scf.for
-// CHECK:         %[[NPU_DMA:.+]] = amdaie.npu.dma_cpy_nd %[[CONNECTION]]([] [] [], [0, 0, 0, 0] [2, 6, 8, 16] [32, 32, 8, 1])
+// CHECK:         %[[NPU_DMA:.+]] = amdaie.npu.dma_cpy_nd async_source %[[CONNECTION]]([] [] [], [0, 0, 0, 0] [2, 6, 8, 16] [32, 32, 8, 1])
 // CHECK-NOT:     amdaie.npu.dma_cpy_nd
-// CHECK:         amdaie.npu.dma_wait(%[[NPU_DMA]], MM2S)
+// CHECK:         amdaie.npu.dma_wait(%[[NPU_DMA]] : !amdaie.async_source_token)
 #map = affine_map<(d0) -> (d0 * 32)>
 #executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
 module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
@@ -132,11 +132,11 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
       amdaie.controlcode {
         scf.for %arg2 = %c0 to %c6 step %c1 {
           %1 = affine.apply #map(%arg2)
-          %2 = amdaie.npu.dma_cpy_nd %0([] [] [], [0, %1] [8, 16] [8, 1])
-          amdaie.npu.dma_wait(%2, MM2S)
+          %2 = amdaie.npu.dma_cpy_nd async_source %0([] [] [], [0, %1] [8, 16] [8, 1])
+          amdaie.npu.dma_wait(%2 : !amdaie.async_source_token)
         }
-        %3 = amdaie.npu.dma_cpy_nd %0([] [] [], [0, 0, 32] [6, 8, 16] [32, 8, 1])
-        amdaie.npu.dma_wait(%3, MM2S)
+        %3 = amdaie.npu.dma_cpy_nd async_source %0([] [] [], [0, 0, 32] [6, 8, 16] [32, 8, 1])
+        amdaie.npu.dma_wait(%3 : !amdaie.async_source_token)
         amdaie.end
       }
     }

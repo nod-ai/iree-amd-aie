@@ -17,7 +17,6 @@
 #include "AIEVecOps.h"
 #include "AIEVecUtils.h"
 #include "Passes.h"
-#include "Utils.h"
 #include "llvm/ADT/SmallSet.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/EmitC/IR/EmitC.h"

@@ -76,7 +76,6 @@ iree_cc_library(
   SRCS
     AIEVecToLLVM.cpp
     ConvertVectorToAIEVec.cpp
-    Utils.cpp
     VectorToAIEVecConversions.cpp
     VectorToVectorConversions.cpp
     XLLVMToLLVMIRTranslation.cpp

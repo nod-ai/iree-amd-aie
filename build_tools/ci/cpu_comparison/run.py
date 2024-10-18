@@ -2,6 +2,7 @@
 
 # Copyright 2024 The IREE Authors
 
+import sys
 import argparse
 import os
 import platform
@@ -13,8 +14,15 @@ from textwrap import dedent
 
 import numpy as np
 
-from input_generator import generate_inputs, verify_determinism, load_input
+from input_generator import (
+    generate_inputs,
+    verify_determinism,
+    load_input,
+    get_output_type,
+    np_from_binfile,
+)
 from matmul_template.matmul_generator import generate_matmul_test
+from convolution_template.convolution_generator import ConvolutionMlirGenerator
 from output_comparer import compare
 
 
@@ -96,15 +104,16 @@ def shell_out(cmd: list, workdir=None, verbose: int = 0, raise_on_error=True, en
             print("Standard output from script:")
             print(stdout_decode)
         if stderr_decode:
-            print("Standard error from script:")
-            print(stderr_decode)
+            print("Standard error from script:", file=sys.stderr)
+            print(stderr_decode, file=sys.stderr)
     if not raise_on_error and handle.returncode != 0:
         print(
-            f"Error executing script, error code was {handle.returncode}. Not raising an error."
+            f"Error executing script, error code was {handle.returncode}. Not raising an error.",
+            file=sys.stderr,
         )
     if raise_on_error and handle.returncode != 0:
         raise RuntimeError(
-            f"Error executing script, error code was {handle.returncode}"
+            f"Error executing script, error code was {handle.returncode}",
         )
     return stdout_decode, stderr_decode
 
@@ -138,6 +147,8 @@ def generate_aie_vmfb(
         f"--iree-amd-aie-vitis-install-dir={config.vitis_dir}",
         f"--iree-hal-dump-executable-files-to={config.output_dir}",
         "--iree-scheduling-optimize-bindings=false",
+        "--iree-hal-memoization=false",
+        "--iree-hal-indirect-command-buffers=false",
         f"--mlir-disable-threading",
         "--mlir-elide-resource-strings-if-larger=10",
     ]
@@ -170,18 +181,18 @@ def generate_aie_vmfb(
     return aie_vmfb
 
 
-def generate_aie_output(config, aie_vmfb, input_args, function_name, name):
+def generate_aie_output(config, aie_vmfb, input_args, function_name, name, output_type):
     """
     Run a compiled AIE module (aie_vmfb), returning a numpy array of the output.
     """
 
-    aie_npy = config.output_dir / f"{name}_aie.npy"
+    aie_bin = config.output_dir / f"{name}_aie.bin"
     run_args = [
         config.iree_run_exe,
         f"--module={aie_vmfb}",
         *input_args,
         "--device=xrt",
-        f"--output=@{aie_npy}",
+        f"--output=@{aie_bin}",
     ]
     if function_name:
         run_args += [f"--function={function_name}"]
@@ -195,7 +206,7 @@ def generate_aie_output(config, aie_vmfb, input_args, function_name, name):
     if config.verbose:
         print(f"Time spent in running the model: {run_time // 1e6} [ms]")
 
-    return np.load(aie_npy)
+    return np_from_binfile(aie_bin, output_type)
 
 
 def generate_llvm_cpu_output(
@@ -204,6 +215,7 @@ def generate_llvm_cpu_output(
     test_file,
     input_args,
     function_name,
+    output_type,
 ):
     """
     Compile and run a test file for IREE's CPU backend, returning a numpy array
@@ -221,17 +233,17 @@ def generate_llvm_cpu_output(
     ]
     shell_out(compilation_flags, workdir=config.output_dir, verbose=config.verbose)
 
-    cpu_npy = config.output_dir / f"{name}_cpu.npy"
+    cpu_bin = config.output_dir / f"{name}_cpu.bin"
     run_args = [
         config.iree_run_exe,
         f"--module={cpu_vmfb}",
         *input_args,
-        f"--output=@{cpu_npy}",
+        f"--output=@{cpu_bin}",
     ]
     if function_name:
         run_args += [f"--function={function_name}"]
     shell_out(run_args, workdir=config.output_dir, verbose=config.verbose)
-    return np.load(cpu_npy)
+    return np_from_binfile(cpu_bin, output_type)
 
 
 class TestConfig:
@@ -441,6 +453,7 @@ def aie_vs_baseline(
     rtol,
     atol,
     n_repeats,
+    output_type,
 ):
     """
     If the outputs differ, add the test file to a list of failures.
@@ -497,6 +510,7 @@ def aie_vs_baseline(
             input_args,
             function_name,
             name,
+            output_type,
         )
 
         summary_string = compare(baseline_value, aie_output, rtol, atol)
@@ -532,9 +546,15 @@ def aie_vs_llvm_cpu(
         print(f"Running {name} test")
 
     input_args = generate_inputs(test_file, config.output_dir, seed)
+    output_type = get_output_type(test_file)
 
     cpu_output = generate_llvm_cpu_output(
-        config, name, test_file, input_args, function_name
+        config,
+        name,
+        test_file,
+        input_args,
+        function_name,
+        output_type,
     )
 
     aie_vs_baseline(
@@ -550,42 +570,7 @@ def aie_vs_llvm_cpu(
         rtol,
         atol,
         n_repeats,
-    )
-
-
-def aie_vs_np_matmul(
-    config,
-    test_file,
-    use_ukernel=False,
-    tile_pipeline="pad-pack",
-    lower_to_aie_pipeline="air",
-    function_name=None,
-    seed=1,
-    rtol=1e-6,
-    atol=1e-6,
-    n_repeats=1,
-):
-    """ """
-
-    if n_repeats == 0:
-        return
-
-    name = name_from_mlir_filename(test_file)
-    input_args = generate_inputs(test_file, config.output_dir, seed)
-    numpy_output = matmul_from_input_strings(input_args)
-    aie_vs_baseline(
-        config,
-        test_file,
-        input_args,
-        numpy_output,
-        use_ukernel,
-        tile_pipeline,
-        lower_to_aie_pipeline,
-        function_name,
-        seed,
-        rtol,
-        atol,
-        n_repeats,
+        output_type,
     )
 
 
@@ -597,6 +582,70 @@ class TestSet:
         raise NotImplementedError("Subclasses must implement this method")
 
 
+class ConvolutionTemplateSet(TestSet):
+    def __init__(self):
+        super().__init__("ConvolutionTemplate")
+
+    def run(self, config):
+
+        testSet = [
+            {
+                "conv_type": "conv_2d_nhwc_hwcf",
+                "N": 2,
+                "IH": 14,
+                "IC": 32,
+                "OC": 64,
+                "KH": 3,
+                "input_element_type": "i32",
+                "output_element_type": "i32",
+            },
+            {
+                "conv_type": "conv_2d_nhwc_hwcf",
+                "N": 2,
+                "IH": 14,
+                "IC": 32,
+                "OC": 64,
+                "KH": 3,
+                "input_element_type": "bf16",
+                "output_element_type": "f32",
+            },
+            {
+                "conv_type": "conv_2d_nhwc_hwcf",
+                "N": 2,
+                "IH": 14,
+                "IC": 32,
+                "OC": 64,
+                "KH": 3,
+                "input_element_type": "i8",
+                "output_element_type": "i32",
+            },
+            {
+                "conv_type": "depthwise_conv_2d_nhwc_hwc",
+                "N": 1,
+                "IH": 14,
+                "IC": 64,
+                "KH": 3,
+                "input_element_type": "i32",
+                "output_element_type": "i32",
+            },
+        ]
+
+        output_dir = config.output_dir
+        test_name = output_dir / "test_from_template.mlir"
+        for testMap in testSet:
+            convGen = ConvolutionMlirGenerator(**testMap)
+            convGen.write_to_file(test_name)
+            n_conv_repeats = 4
+
+            aie_vs_llvm_cpu(
+                config,
+                test_name,
+                tile_pipeline="conv-decompose",
+                lower_to_aie_pipeline="objectFifo",
+                n_repeats=n_conv_repeats,
+            )
+
+
 class ConvolutionSet(TestSet):
     def __init__(self):
         super().__init__("Convolution")
@@ -605,18 +654,14 @@ class ConvolutionSet(TestSet):
         test_files_dir = config.file_dir / "test_files"
 
         for name in [
-            "conv2d_nhwc_int32",
-            "conv2d_nhwc_bf16",
             "conv2d_nhwc_q",
-            "depthwise_convolution_i32",
         ]:
-            n_conv_repeats = 4
-
+            n_conv_repeats = 2
             aie_vs_llvm_cpu(
                 config,
                 test_files_dir / f"{name}.mlir",
                 tile_pipeline="conv-decompose",
-                lower_to_aie_pipeline="air",
+                lower_to_aie_pipeline="objectFifo",
                 n_repeats=n_conv_repeats,
             )
 
@@ -713,6 +758,31 @@ class MatmulSet(TestSet):
                 lower_to_aie_pipeline="objectFifo",
             )
 
+        # Test(s) of the form matmul(A,B) + truncf(C) where A:MxK, B:KxN and C:MxN
+        test_name = output_dir / f"test_from_template_matmul_truncf.mlir"
+        template_name = matmul_template_dir / "matmul_truncf_MxK_KxN.mlir"
+        generate_matmul_test(test_name, template_name, 8, 8, 8, "bf16", "f32")
+        identity_mat = np.eye(8, dtype=np.float32)
+        ones = np.ones(8 * 8, dtype=np.float32).reshape([8, 8])
+        lhs = ones * 101
+        rhs = identity_mat * 3
+        input_args = generate_inputs(test_name, output_dir, 1, {1: lhs, 2: rhs})
+        aie_vs_baseline(
+            config,
+            test_name,
+            input_args,
+            ones * 302,  # exected output
+            use_ukernel=False,
+            tile_pipeline="pack-peel",
+            lower_to_aie_pipeline="objectFifo",
+            function_name=None,
+            seed=1,
+            rtol=0,
+            atol=0,
+            n_repeats=1,
+            output_type=get_output_type(test_name),
+        )
+
 
 class SmokeSet(TestSet):
     def __init__(self):
@@ -722,24 +792,12 @@ class SmokeSet(TestSet):
         file_dir = config.file_dir
         output_dir = config.output_dir
 
-        test_files_dir = file_dir / "test_files"
-
         # The most basic test, direct from .mlir file using all defaults
+        test_files_dir = file_dir / "test_files"
         aie_vs_llvm_cpu(config, test_files_dir / "matmul_int32.mlir")
 
-        # Using a baseline other than llvm-cpu
-        aie_vs_np_matmul(config, test_files_dir / "matmul_int32.mlir")
-
-        # Convolution and int8
-        aie_vs_llvm_cpu(
-            config,
-            test_files_dir / f"conv2d_nhwc_int8.mlir",
-            tile_pipeline="conv-decompose",
-            lower_to_aie_pipeline="air",
-            n_repeats=2,
-        )
-
         # Using objectFifo pipeline
+        test_name = output_dir / "test_from_template.mlir"
         matmul_template_dir = file_dir / "matmul_template"
         test_name = output_dir / "test_from_objectfifo_basic.mlir"
         template_name = matmul_template_dir / "matmul_MxK_KxN.mlir"
@@ -751,9 +809,29 @@ class SmokeSet(TestSet):
             lower_to_aie_pipeline="objectFifo",
         )
 
+        # Test using custom input and output:
+        ones = np.ones(64 * 64, np.float32).reshape([64, 64])
+        name = name_from_mlir_filename(test_name)
+        input_args = generate_inputs(test_name, output_dir, 1, {1: ones, 2: ones})
+        aie_vs_baseline(
+            config,
+            test_name,
+            input_args,
+            ones * 64,  # exected output
+            use_ukernel=False,
+            tile_pipeline="pack-peel",
+            lower_to_aie_pipeline="objectFifo",
+            function_name=None,
+            seed=1,
+            rtol=0,
+            atol=0,
+            n_repeats=1,
+            output_type=get_output_type(test_name),
+        )
+
 
 def get_test_partition():
-    return [ConvolutionSet(), MatmulSet(), SmokeSet()]
+    return [ConvolutionTemplateSet(), ConvolutionSet(), MatmulSet(), SmokeSet()]
 
 
 def all_tests(
@@ -830,7 +908,10 @@ def all_tests(
     # if no partition is found, raise error.
     for test in test_set:
         if test not in partition_names:
-            raise ValueError(f"Test set '{test}' not found in available test sets.")
+            errorMessage = f"Test set '{test}' not found in available test sets. The available test sets are:"
+            for name in partition_names:
+                errorMessage += f"\n  {name}"
+            raise ValueError(errorMessage)
         partition = map_to_partition[test]
         partition.run(config)
 
@@ -882,9 +963,9 @@ if __name__ == "__main__":
         default=0,
         help=dedent(
             """
-            Verbosity level. Currently 
-            0: total silence. 
-            1 (-v) : almost everything. 
+            Verbosity level. Currently
+            0: total silence.
+            1 (-v) : almost everything.
             2 (-vv) : everything.
             """
         ),

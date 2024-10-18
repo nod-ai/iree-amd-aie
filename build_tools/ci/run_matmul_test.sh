@@ -122,7 +122,7 @@ fi
 THIS_DIR="$(cd $(dirname $0) && pwd)"
 ROOT_DIR="$(cd $THIS_DIR/../.. && pwd)"
 
-GENERATOR="${ROOT_DIR}/tests/matmul/generate_e2e_matmul_tests.py"
+GENERATOR="${THIS_DIR}/generate_e2e_matmul_tests.py"
 # Verify that generator exists
 if [ ! -f "${GENERATOR}" ]; then
   echo "Generator script '${GENERATOR}' not found."
@@ -194,6 +194,8 @@ function run_matmul_test() {
 
   local accumulate="false"
 
+  local enable_packet_flow="false";
+
   # The default is to not expect a compilation failure.
   local expect_compile_failure="0"
 
@@ -238,6 +240,10 @@ function run_matmul_test() {
         ;;
       --do_transpose_rhs)
         do_transpose_rhs="$2"
+        shift 2
+        ;;
+      --enable_packet_flow)
+        enable_packet_flow="$2"
         shift 2
         ;;
       --expect_compile_failure)
@@ -397,7 +403,10 @@ function run_matmul_test() {
                       --iree-amd-aie-install-dir=${amd_aie_install_path} \
                       --iree-amd-aie-vitis-install-dir=${vitis_path} \
                       --iree-amd-aie-enable-chess=${use_chess} \
+                      --iree-amdaie-enable-packet-flow=${enable_packet_flow} \
                       --iree-hal-dump-executable-files-to=$PWD \
+                      --iree-hal-memoization=false \
+                      --iree-hal-indirect-command-buffers=false \
                       --mlir-elide-resource-strings-if-larger=10 \
                       --iree-amd-aie-show-invoked-commands"
 
@@ -409,6 +418,8 @@ function run_matmul_test() {
   set +e
 
   echo "**** Generating matmul .vmfb file for ${name} ****"
+  ${IREE_COMPILE_EXE} "${matmul_ir}" \
+    ${compilation_flags} --compile-to=vm -o "${matmul_vmfb}.vm"
   ${IREE_COMPILE_EXE} "${matmul_ir}" \
     ${compilation_flags} -o "${matmul_vmfb}"
 
@@ -627,11 +638,6 @@ i32_shapes_small=(
   '128x256x128'
 )
 
-i32_shapes_medium=(
-  '1024x1024x1024' 
-  '1536x2048x1536'
-)
-
 run_matmul_test_on_shapes ${i32_shapes_small[@]} \
     --name_prefix "small_i32" \
     --lower_to_aie_pipeline "objectFifo" \
@@ -640,12 +646,22 @@ run_matmul_test_on_shapes ${i32_shapes_small[@]} \
     --acc_type "i32" \
     --num_repeat_runs "10"
 
+run_matmul_test_on_shapes ${i32_shapes_small[@]} \
+    --name_prefix "small" \
+    --lower_to_aie_pipeline "objectFifo" \
+    --tile_pipeline "pack-peel" \
+    --lhs_rhs_type "i32" \
+    --acc_type "i32" \
+    --num_corruption_repeat_runs "10" \
+    --enable_packet_flow "true"
+
 i32_shapes_medium=(
   '1024x1024x1024'
 )
-if [ "$OSTYPE" != "msys" ]; then
-  i32_shapes_medium+=('1536x2048x1536')
-fi
+# TODO(jornt): re-enable `1536x2048x1536`
+#if [ "$OSTYPE" != "msys" ]; then
+#  i32_shapes_medium+=('1536x2048x1536')
+#fi
 
 run_matmul_test_on_shapes ${i32_shapes_medium[@]} \
     --name_prefix "medium_i32" \

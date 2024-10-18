@@ -46,7 +46,7 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
       %1 = amdaie.logicalobjectfifo.from_memref %arg1, {%tile_0_0} : memref<1024xi32> -> !amdaie.logicalobjectfifo<memref<1024xi32>, 2>
       %2 = amdaie.connection(%0, %1) : (!amdaie.logicalobjectfifo<memref<1024xi32, 1 : i32>, 2>, !amdaie.logicalobjectfifo<memref<1024xi32>, 2>)
       amdaie.controlcode {
-        %3 = amdaie.npu.dma_cpy_nd %2([] [] [], [] [] [])
+        amdaie.npu.dma_cpy_nd %2([] [] [], [] [] [])
         amdaie.end
       }
     }

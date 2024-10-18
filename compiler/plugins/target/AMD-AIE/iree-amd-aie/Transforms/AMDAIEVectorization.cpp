@@ -84,9 +84,18 @@ void AMDAIEVectorizationPass::runOnOperation() {
     // edge case so just disable. See
     // https://github.com/nod-ai/iree-amd-aie/issues/594 for more info.
     if (isElementwise(cast<linalg::LinalgOp>(op))) {
-      op->emitRemark() << "not vectorizing linalg elementwise op";
-      return;
+      // TODO(avarma): Currently switching vectorization on only for
+      //               arith.truncf. Improve this later by trying to bridge the
+      //               gap between this pass and vector-to-aievec.
+      for (Operation &innerOps :
+           cast<linalg::GenericOp>(op).getBody()->getOperations()) {
+        if (!isa<arith::TruncFOp, linalg::YieldOp>(innerOps)) {
+          op->emitRemark() << "not vectorizing linalg elementwise op";
+          return;
+        }
+      }
     }
+
     // AIE architecture has no vector instructions for 32/64-bit types.
     if (!hasOperandWithSmallElementType(op)) return;
 

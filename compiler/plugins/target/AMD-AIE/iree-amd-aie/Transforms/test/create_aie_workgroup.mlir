@@ -69,10 +69,10 @@ func.func @core() {
 // CHECK:         amdaie.controlcode
 // CHECK:           %[[FROMMEMREF1:.+]] = amdaie.logicalobjectfifo.from_memref %[[ARG1]], {} : memref<8x16xi32> -> !amdaie.logicalobjectfifo<memref<8x16xi32>>
 // CHECK:           amdaie.npu.circular_dma_cpy_nd %[[CONNECTION]]([] [] [], [] [] [])
-// CHECK:           %[[NPU_DMA:.+]] = amdaie.npu.dma_cpy_nd %[[CONNECTION]]
+// CHECK:           %[[NPU_DMA:.+]] = amdaie.npu.dma_cpy_nd async_source %[[CONNECTION]]
 // CHECK-SAME:      [] [] []
 // CHECK-SAME:      %[[FROMMEMREF1]][0, 0, 0, 0] [1, 1, 8, 16] [128, 16, 16, 1]
-// CHECK:           amdaie.npu.dma_wait(%[[NPU_DMA]], MM2S)
+// CHECK:           amdaie.npu.dma_wait(%[[NPU_DMA]] : !amdaie.async_source_token)
 func.func @dma_cpy_nd_L3_L2(%arg0: memref<1x1x8x16xi32, 1>, %arg1: memref<8x16xi32>) {
   %0 = amdaie.logicalobjectfifo.from_memref %arg0, {} : memref<1x1x8x16xi32, 1> -> !amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>
   %1 = amdaie.logicalobjectfifo.from_memref %arg1, {} : memref<8x16xi32> -> !amdaie.logicalobjectfifo<memref<8x16xi32>>
@@ -92,10 +92,10 @@ func.func @dma_cpy_nd_L3_L2(%arg0: memref<1x1x8x16xi32, 1>, %arg1: memref<8x16xi
 // CHECK:         amdaie.controlcode
 // CHECK:           %[[FROMMEMREF1:.+]] = amdaie.logicalobjectfifo.from_memref %[[ARG1]], {} : memref<8x16xi32> -> !amdaie.logicalobjectfifo<memref<8x16xi32>>
 // CHECK:           amdaie.npu.circular_dma_cpy_nd %[[CONNECTION]]([0, 0, 0, 0] [1, 1, 8, 16] [128, 16, 16, 1], [] [] [])
-// CHECK:           %[[NPU_DMA:.+]] = amdaie.npu.dma_cpy_nd %[[CONNECTION]]
+// CHECK:           %[[NPU_DMA:.+]] = amdaie.npu.dma_cpy_nd async_source %[[CONNECTION]]
 // CHECK-SAME:      [] [] []
 // CHECK-SAME:      %[[FROMMEMREF1]][0, 0, 0, 0] [1, 1, 8, 16] [128, 16, 16, 1]
-// CHECK:           amdaie.npu.dma_wait(%[[NPU_DMA]], MM2S)
+// CHECK:           amdaie.npu.dma_wait(%[[NPU_DMA]] : !amdaie.async_source_token)
 func.func @dma_cpy_nd_L3_L2_target_addressing(%arg0: memref<1x1x8x16xi32, 1>, %arg1: memref<8x16xi32>) {
   %0 = amdaie.logicalobjectfifo.from_memref %arg0, {} : memref<1x1x8x16xi32, 1> -> !amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 1>>
   %1 = amdaie.logicalobjectfifo.from_memref %arg1, {} : memref<8x16xi32> -> !amdaie.logicalobjectfifo<memref<8x16xi32>>
@@ -115,8 +115,8 @@ func.func @dma_cpy_nd_L3_L2_target_addressing(%arg0: memref<1x1x8x16xi32, 1>, %a
 // CHECK:         amdaie.controlcode
 // CHECK:           %[[FROMMEMREF1:.+]] = amdaie.logicalobjectfifo.from_memref %[[ARG0]], {} : memref<1x1x8x16xi32> -> !amdaie.logicalobjectfifo<memref<1x1x8x16xi32>>
 // CHECK:           amdaie.npu.circular_dma_cpy_nd %[[CONNECTION]]([] [] [], [0, 0, 0, 0] [1, 1, 8, 16] [128, 16, 16, 1])
-// CHECK:           %[[NPU_DMA:.+]] = amdaie.npu.dma_cpy_nd %[[CONNECTION]](%[[FROMMEMREF1]][] [] [], [] [] [])
-// CHECK:           amdaie.npu.dma_wait(%[[NPU_DMA]], S2MM)
+// CHECK:           %[[NPU_DMA:.+]] = amdaie.npu.dma_cpy_nd async_target %[[CONNECTION]](%[[FROMMEMREF1]][] [] [], [] [] [])
+// CHECK:           amdaie.npu.dma_wait(%[[NPU_DMA]] : !amdaie.async_target_token)
 func.func @dma_cpy_nd_L2_L3(%arg0: memref<1x1x8x16xi32>, %arg1: memref<8x16xi32, 1>) {
   %0 = amdaie.logicalobjectfifo.from_memref %arg0, {} : memref<1x1x8x16xi32> -> !amdaie.logicalobjectfifo<memref<1x1x8x16xi32>>
   %1 = amdaie.logicalobjectfifo.from_memref %arg1, {} : memref<8x16xi32, 1> -> !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>
@@ -136,10 +136,10 @@ func.func @dma_cpy_nd_L2_L3(%arg0: memref<1x1x8x16xi32>, %arg1: memref<8x16xi32,
 // CHECK:         amdaie.controlcode
 // CHECK:           %[[FROMMEMREF1:.+]] = amdaie.logicalobjectfifo.from_memref %[[ARG0]], {} : memref<1x1x8x16xi32> -> !amdaie.logicalobjectfifo<memref<1x1x8x16xi32>>
 // CHECK:           amdaie.npu.circular_dma_cpy_nd %[[CONNECTION]]([] [] [], [0, 0, 0, 0] [1, 1, 8, 16] [128, 16, 16, 1])
-// CHECK:           %[[NPU_DMA:.+]] = amdaie.npu.dma_cpy_nd %[[CONNECTION]]
+// CHECK:           %[[NPU_DMA:.+]] = amdaie.npu.dma_cpy_nd async_target %[[CONNECTION]]
 // CHECK-SAME:      %[[FROMMEMREF1]][0, 0, 0, 0] [1, 1, 8, 16] [128, 16, 16, 1]
 // CHECK-SAME:      [] [] []
-// CHECK:           amdaie.npu.dma_wait(%[[NPU_DMA]], S2MM)
+// CHECK:           amdaie.npu.dma_wait(%[[NPU_DMA]] : !amdaie.async_target_token)
 func.func @dma_cpy_nd_L2_L3_target_addressing(%arg0: memref<1x1x8x16xi32>, %arg1: memref<8x16xi32, 1>) {
   %0 = amdaie.logicalobjectfifo.from_memref %arg0, {} : memref<1x1x8x16xi32> -> !amdaie.logicalobjectfifo<memref<1x1x8x16xi32>>
   %1 = amdaie.logicalobjectfifo.from_memref %arg1, {} : memref<8x16xi32, 1> -> !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>
@@ -236,10 +236,10 @@ func.func @for_cores() {
 // CHECK-DAG:       %[[FROMMEMREF1:.+]] = amdaie.logicalobjectfifo.from_memref %[[ARG0]]
 // CHECK:           scf.for %[[ARG:.+]] = %[[C0_1]] to %[[C8_1]] step %[[C1_1]]
 // CHECK:             amdaie.npu.circular_dma_cpy_nd %[[CONNECTION]]([] [] [], [] [] [])
-// CHECK:             %[[NPU_DMA:.+]] = amdaie.npu.dma_cpy_nd %[[CONNECTION]]
+// CHECK:             %[[NPU_DMA:.+]] = amdaie.npu.dma_cpy_nd async_source %[[CONNECTION]]
 // CHECK-SAME:        [] [] []
 // CHECK-SAME:        %[[FROMMEMREF1]][0, 0, 0, 0] [1, 1, 8, 16] [128, 16, %[[ARG]], 1]
-// CHECK:             amdaie.npu.dma_wait(%[[NPU_DMA]], MM2S)
+// CHECK:             amdaie.npu.dma_wait(%[[NPU_DMA]] : !amdaie.async_source_token)
 func.func @for_dma(%arg0: memref<1x1x8x16xi32>, %arg1: memref<8x16xi32, 1>) {
   %c0 = arith.constant 0 : index
   %c1 = arith.constant 1 : index
@@ -311,10 +311,10 @@ func.func @forall_cores() {
 // CHECK-DAG:     %[[FROMMEMREF1:.+]] = amdaie.logicalobjectfifo.from_memref %[[ARG0]]
 // CHECK:           scf.forall (%[[ARG0:.*]], %[[ARG1:.*]]) in (2, 2)
 // CHECK:             amdaie.npu.circular_dma_cpy_nd %[[CONNECTION]]([] [] [], [] [] [])
-// CHECK:             %[[NPU_DMA:.+]] = amdaie.npu.dma_cpy_nd %[[CONNECTION]]
+// CHECK:             %[[NPU_DMA:.+]] = amdaie.npu.dma_cpy_nd async_source %[[CONNECTION]]
 // CHECK-SAME:        [] [] []
 // CHECK-SAME:        %[[FROMMEMREF1]][0, 0, 0, 0] [1, 1, 8, 16] [128, %[[ARG1]], %[[ARG0]], 1]
-// CHECK:             amdaie.npu.dma_wait(%[[NPU_DMA]], MM2S)
+// CHECK:             amdaie.npu.dma_wait(%[[NPU_DMA]] : !amdaie.async_source_token)
 func.func @forall_dmas(%arg0: memref<1x1x8x16xi32>, %arg1: memref<8x16xi32, 1>) {
   %0 = amdaie.logicalobjectfifo.from_memref %arg0, {} : memref<1x1x8x16xi32> -> !amdaie.logicalobjectfifo<memref<1x1x8x16xi32>>
   %1 = amdaie.logicalobjectfifo.from_memref %arg1, {} : memref<8x16xi32, 1> -> !amdaie.logicalobjectfifo<memref<8x16xi32, 1>>
@@ -355,12 +355,12 @@ func.func @forall_dmas(%arg0: memref<1x1x8x16xi32>, %arg1: memref<8x16xi32, 1>) 
 // CHECK-DAG:       %[[C8_1:.+]] = arith.constant 8 : index
 // CHECK-DAG:       %[[FROMMEMREF1:.+]] = amdaie.logicalobjectfifo.from_memref %[[ARG0]]
 // CHECK:           amdaie.npu.circular_dma_cpy_nd %[[CONNECTION]]([] [] [], [] [] [])
-// CHECK:           %[[NPU_DMA:.+]] = amdaie.npu.dma_cpy_nd %[[CONNECTION]]([] [] [], %[[FROMMEMREF1]][0, 0, 0, 0] [1, 1, 8, 16] [128, 16, 16, 1]) 
-// CHECK:           amdaie.npu.dma_wait(%[[NPU_DMA]], MM2S)
+// CHECK:           %[[NPU_DMA:.+]] = amdaie.npu.dma_cpy_nd async_source %[[CONNECTION]]([] [] [], %[[FROMMEMREF1]][0, 0, 0, 0] [1, 1, 8, 16] [128, 16, 16, 1]) 
+// CHECK:           amdaie.npu.dma_wait(%[[NPU_DMA]] : !amdaie.async_source_token)
 // CHECK:           scf.for %{{.*}} = %[[C0_1]] to %[[C8_1]] step %[[C1_1]] {
 // CHECK:             amdaie.npu.circular_dma_cpy_nd %[[CONNECTION2]]([] [] [], [] [] [])
-// CHECK:             %[[NPU_DMA_2:.+]] = amdaie.npu.dma_cpy_nd %[[CONNECTION2]]([] [] [], %[[FROMMEMREF1]][0, 0, 0, 0] [1, 1, 8, 16] [128, 16, 16, 1])
-// CHECK:             amdaie.npu.dma_wait(%[[NPU_DMA_2]], MM2S)
+// CHECK:             %[[NPU_DMA_2:.+]] = amdaie.npu.dma_cpy_nd async_source %[[CONNECTION2]]([] [] [], %[[FROMMEMREF1]][0, 0, 0, 0] [1, 1, 8, 16] [128, 16, 16, 1])
+// CHECK:             amdaie.npu.dma_wait(%[[NPU_DMA_2]] : !amdaie.async_source_token)
 // CHECK:           }
 func.func @merge_cores(%arg0: memref<1x1x8x16xi32>, %arg1: memref<8x16xi32, 2>) {
   %c0 = arith.constant 0 : index
@@ -430,15 +430,15 @@ func.func @merge_cores(%arg0: memref<1x1x8x16xi32>, %arg1: memref<8x16xi32, 2>) 
 // CHECK-DAG:       %[[C1_1:.+]] = arith.constant 1 : index
 // CHECK-DAG:       %[[C8_1:.+]] = arith.constant 8 : index
 // CHECK:           amdaie.npu.circular_dma_cpy_nd %[[CONNECTION0]]([] [] [], [] [] [])
-// CHECK:           %[[NPU_DMA_0:.+]] = amdaie.npu.dma_cpy_nd %[[CONNECTION0]]([] [] [], %[[FROMMEMREF0]][0, 0, 0, 0] [1, 1, 8, 16] [128, 16, 16, 1])
-// CHECK:           amdaie.npu.dma_wait(%[[NPU_DMA_0]], MM2S)
+// CHECK:           %[[NPU_DMA_0:.+]] = amdaie.npu.dma_cpy_nd async_source %[[CONNECTION0]]([] [] [], %[[FROMMEMREF0]][0, 0, 0, 0] [1, 1, 8, 16] [128, 16, 16, 1])
+// CHECK:           amdaie.npu.dma_wait(%[[NPU_DMA_0]] : !amdaie.async_source_token)
 // CHECK:           scf.for %{{.*}} = %[[C0_1]] to %[[C8_1]] step %[[C1_1]]
 // CHECK:             amdaie.npu.circular_dma_cpy_nd %[[CONNECTION1]]([] [] [], [] [] [])
-// CHECK:             %[[NPU_DMA_1:.+]] = amdaie.npu.dma_cpy_nd %[[CONNECTION1]]([] [] [], %[[FROMMEMREF2]][0, 0, 0, 0] [1, 1, 16, 16] [128, 16, 8, 1])
-// CHECK:             amdaie.npu.dma_wait(%[[NPU_DMA_1]], MM2S)
+// CHECK:             %[[NPU_DMA_1:.+]] = amdaie.npu.dma_cpy_nd async_source %[[CONNECTION1]]([] [] [], %[[FROMMEMREF2]][0, 0, 0, 0] [1, 1, 16, 16] [128, 16, 8, 1])
+// CHECK:             amdaie.npu.dma_wait(%[[NPU_DMA_1]] : !amdaie.async_source_token)
 // CHECK:             amdaie.npu.circular_dma_cpy_nd %[[CONNECTION2]]([] [] [], [] [] [])
-// CHECK:             %[[NPU_DMA_2:.+]] = amdaie.npu.dma_cpy_nd %[[CONNECTION2]]([] [] [], %[[FROMMEMREF4]][0, 0, 0, 0] [1, 1, 32, 16] [128, 16, 8, 1])
-// CHECK:             amdaie.npu.dma_wait(%[[NPU_DMA_2]], MM2S)
+// CHECK:             %[[NPU_DMA_2:.+]] = amdaie.npu.dma_cpy_nd async_source %[[CONNECTION2]]([] [] [], %[[FROMMEMREF4]][0, 0, 0, 0] [1, 1, 32, 16] [128, 16, 8, 1])
+// CHECK:             amdaie.npu.dma_wait(%[[NPU_DMA_2]] : !amdaie.async_source_token)
 func.func @complex_example(%arg0: memref<1x1x8x16xi32>, %arg1: memref<8x16xi32, 2>, %arg2: memref<1x1x16x16xi32>, %arg3: memref<16x16xi32, 2>, %arg4: memref<1x1x32x16xi32>, %arg5: memref<32x16xi32, 2>) {
   %c0 = arith.constant 0 : index
   %c1 = arith.constant 1 : index
