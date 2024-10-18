@@ -47,7 +47,8 @@ class AMDAIEInsertLoopsForVectorizationPass
   // denotes tiling with smallest possible tile (size 1) and tile size '0'
   // denotes tiling with the largest possible tile (size equal to the
   // dimension size). The tile sizes we use are [1,1,...1,0,0,0].
-  static void rewrite(IRRewriter &rewriter, linalg::GenericOp genericOp) {
+  static void rewrite(IRRewriter &rewriter, linalg::GenericOp genericOp,
+                      bool isTensorType) {
     auto iteratorTypes = genericOp.getIteratorTypesArray();
     auto numIterators = iteratorTypes.size();
     assert(numIterators >= 3 && "expected at least 3 iterators here");
@@ -60,7 +61,11 @@ class AMDAIEInsertLoopsForVectorizationPass
     auto tiled = linalg::tileLinalgOp(rewriter, genericOp, opts);
     const auto &loops = tiled.value().loops;
     assert(!loops.empty() && "expected at least one loop here");
-    rewriter.replaceOp(genericOp, loops[0]->getResult(0));
+    if (isTensorType) {
+      rewriter.replaceOp(genericOp, loops[0]->getResult(0));
+    } else {
+      rewriter.eraseOp(genericOp);
+    }
   }
 
   // Return success if the generic op is rewritten, failure otherwise.
@@ -74,6 +79,7 @@ class AMDAIEInsertLoopsForVectorizationPass
     // No outer dimensions to tile if fewer than 3 iterators.
     if (numIterators < 3) return failure();
 
+    bool isTensorType = isa<TensorType>(genericOp->getOperand(0).getType());
     // Enable generating loops for vectorization in case of element-wise ops.
     // We tile all but the innermost two dimensions currently because they form
     // the smallest tiled M x N dimension of the matmul.
@@ -88,7 +94,11 @@ class AMDAIEInsertLoopsForVectorizationPass
       auto tiled = linalg::tileLinalgOp(rewriter, genericOp, opts);
       const auto &loops = tiled.value().loops;
       assert(!loops.empty() && "expected at least one loop here");
-      rewriter.replaceOp(genericOp, loops[0]->getResult(0));
+      if (isTensorType) {
+        rewriter.replaceOp(genericOp, loops[0]->getResult(0));
+      } else {
+        rewriter.eraseOp(genericOp);
+      }
       return success();
     }
     // Matmul-like ops have 3 operands.
@@ -102,7 +112,7 @@ class AMDAIEInsertLoopsForVectorizationPass
       };
       auto lhsType = elType(genericOp->getOperand(0));
       auto rhsType = elType(genericOp->getOperand(1));
-      auto resType = elType(genericOp->getResult(0));
+      auto resType = elType(genericOp->getOperand(2));
       FailureOr<std::array<uint32_t, 3>> maybeSize =
           ::mlir::iree_compiler::AMDAIE::getAIEMatmulInstructionSize(
               lhsType, rhsType, resType);
@@ -151,7 +161,7 @@ class AMDAIEInsertLoopsForVectorizationPass
       if (!isMatmul && !isMatmulTransposeB) return failure();
     }
 
-    rewrite(rewriter, genericOp);
+    rewrite(rewriter, genericOp, isTensorType);
     return success();
   }
 
