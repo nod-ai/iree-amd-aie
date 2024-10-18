@@ -1,8 +1,8 @@
 // RUN: iree-compile --iree-hal-target-backends=amd-aie --compile-to=executable-targets %s | FileCheck %s --check-prefix=DEFAULT
 // RUN: iree-compile --iree-hal-target-backends=amd-aie --compile-to=executable-targets --iree-amdaie-enable-ukernels=all %s | FileCheck %s --check-prefix=ENABLE_UKERNEL
 
-//        DEFAULT: hal.executable.variant public @amdaie_xclbin_fb target(<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>) {
-// ENABLE_UKERNEL: hal.executable.variant public @amdaie_xclbin_fb target(<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "all"}>) {
+//        DEFAULT: hal.executable.variant public @amdaie_pdi_fb target(<"amd-aie", "amdaie-pdi-fb", {target_device = "npu1_4col", ukernels = "none"}>) {
+// ENABLE_UKERNEL: hal.executable.variant public @amdaie_pdi_fb target(<"amd-aie", "amdaie-pdi-fb", {target_device = "npu1_4col", ukernels = "all"}>) {
 func.func @matmul_small(%lhs : tensor<8x16xi32>,
     %rhs : tensor<16x32xi32>) -> tensor<8x32xi32> {
   %empty = tensor.empty() : tensor<8x32xi32>

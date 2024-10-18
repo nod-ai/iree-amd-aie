@@ -397,18 +397,28 @@ LogicalResult AIETargetBackend::serializeExecutable(
 
     if (auto err = llvm::sys::fs::create_directories(entryPointWorkDir)) {
       return moduleOp.emitOpError()
-             << "failed to create working directory for pdi generation: "
+             << "failed to create working directory for artifact generation: "
              << err.message();
     }
     llvm::outs().flush();
 
     SmallString<128> artifactPath(entryPointWorkDir);
-    llvm::sys::path::append(artifactPath, entryPointNamesFb[ordinal] + ".pdi");
+    switch (options.deviceHal) {
+      case AMDAIEOptions::DeviceHAL::XRT:
+        llvm::sys::path::append(artifactPath, entryPointNamesFb[ordinal] + ".xclbin");
+        break;
+      case AMDAIEOptions::DeviceHAL::XRT_LITE:
+        llvm::sys::path::append(artifactPath, entryPointNamesFb[ordinal] + ".pdi");
+        break;
+      default:
+        llvm::errs() << "Unsupported device HAL\n";
+        return failure();
+    }
     SmallString<128> npuInstPath(entryPointWorkDir);
     llvm::sys::path::append(npuInstPath,
                             entryPointNamesFb[ordinal] + ".npu.txt");
 
-    // Convert ordinal to hexadecimal string for pdi kernel id.
+    // Convert ordinal to hexadecimal string for kernel id.
     std::stringstream ordinalHex;
     ordinalHex << "0x" << std::hex << ordinal;
 
