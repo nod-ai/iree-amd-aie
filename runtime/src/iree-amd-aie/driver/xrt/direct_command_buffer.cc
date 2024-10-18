@@ -333,11 +333,10 @@ static iree_status_t iree_hal_xrt_direct_command_buffer_dispatch(
   // Third argument is the number of LX6 instructions.
   run.set_arg(arg_index++, kernel_params.num_instr);
 
+  xrt::bo ofm_bo;
+
   // Copy descriptors from all sets to the end of the current segment for later
   // access.
-  // TODO(jornt): hack to ensure that the output buffer is synced by syncing all
-  // buffers after the run.
-  std::vector<xrt::bo> bos;
   // TODO(max): do we need multiple descriptor sets ever for AIE?
   uint32_t set = 0;
   IREE_RETURN_AND_END_ZONE_IF_ERROR(
@@ -348,8 +347,11 @@ static iree_status_t iree_hal_xrt_direct_command_buffer_dispatch(
         xrt::bo(*command_buffer->descriptor_sets[set].bindings[j],
                 command_buffer->descriptor_sets[set].lengths[j],
                 command_buffer->descriptor_sets[set].offsets[j]);
-    bos.push_back(arg_buffer);
     run.set_arg(arg_index + j, arg_buffer);
+    bool not_ofm = (bindings.values[j].buffer->memory_type & IREE_HAL_MEMORY_TYPE_HOST_VISIBLE) &&
+                   (bindings.values[j].buffer->allowed_usage & IREE_HAL_MEMORY_TYPE_HOST_VISIBLE);
+    if (!not_ofm)
+        ofm_bo = arg_buffer;
   }
 
   run.start();
@@ -360,7 +362,7 @@ static iree_status_t iree_hal_xrt_direct_command_buffer_dispatch(
     return iree_make_status(IREE_STATUS_UNKNOWN, e.what());
   }
 
-  for (xrt::bo& bo : bos) bo.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
+  ofm_bo.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
 
   IREE_TRACE_ZONE_END(z0);
   return iree_ok_status();
