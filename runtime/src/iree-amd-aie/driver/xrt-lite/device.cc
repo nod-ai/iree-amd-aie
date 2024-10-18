@@ -66,7 +66,7 @@ static iree_status_t iree_hal_xrt_lite_device_create_command_buffer(
   if (!iree_all_bits_set(mode, IREE_HAL_COMMAND_BUFFER_MODE_ONE_SHOT)) {
     IREE_TRACE_ZONE_END(z0);
     return iree_make_status(IREE_STATUS_UNIMPLEMENTED,
-                            "unimplmented multi-shot command buffer");
+                            "unimplemented multi-shot command buffer");
   }
 
   iree_hal_xrt_lite_device* device = IREE_HAL_XRT_LITE_CHECKED_VTABLE_CAST(
