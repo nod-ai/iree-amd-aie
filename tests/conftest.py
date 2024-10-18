@@ -3,6 +3,8 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+
+from iree._runtime_libs._runtime import parse_flags
 from ml_dtypes import bfloat16
 
 from iree.compiler import ir
@@ -47,14 +49,35 @@ def pytest_addoption(parser):
     parser.addoption("--output-dir", type=abs_path)
     parser.addoption("--vitis-dir", type=abs_path)
     parser.addoption("--iree-aie-debug", action="store_true")
+    parser.addoption(
+        "--device-hal",
+        default="xrt-lite",
+        const="xrt-lite",
+        nargs="?",
+        choices=["xrt", "xrt-lite"],
+    )
+    parser.addoption("--xrt_lite_n_core_rows", type=int)
+    parser.addoption("--xrt_lite_n_core_cols", type=int)
 
 
 @pytest.fixture(scope="session")
-def global_cl_args(request):
-    _initializeGlobalCL(
+def global_cl_args(request, pytestconfig):
+    compiler_flags = [
         "--iree-hal-memoization=false",
         "--iree-hal-indirect-command-buffers=false",
-    )
+    ]
+    _initializeGlobalCL(*compiler_flags)
+
+    runtime_flags = []
+    if pytestconfig.option.xrt_lite_n_core_rows is not None:
+        runtime_flags += [
+            f"--xrt_lite_n_core_rows={pytestconfig.option.xrt_lite_n_core_rows}"
+        ]
+    if pytestconfig.option.xrt_lite_n_core_cols is not None:
+        runtime_flags += [
+            f"--xrt_lite_n_core_cols={pytestconfig.option.xrt_lite_n_core_cols}"
+        ]
+    parse_flags(*runtime_flags)
 
 
 @pytest.fixture
@@ -80,6 +103,7 @@ def iree_session(request, pytestconfig, global_cl_args) -> Session:
         f"--iree-amd-aie-install-dir={pytestconfig.option.iree_install_dir}",
         f"--iree-amd-aie-enable-chess={use_chess}",
         f"--iree-amdaie-enable-packet-flow={enable_packet_flow}",
+        f"--iree-amdaie-device-hal={pytestconfig.option.device_hal}",
     ]
     if pytestconfig.option.vitis_dir:
         flags += [f"--iree-amd-aie-vitis-install-dir={pytestconfig.option.vitis_dir}"]
@@ -98,7 +122,7 @@ def iree_session(request, pytestconfig, global_cl_args) -> Session:
 
 
 @pytest.fixture
-def session_module(iree_session, tmp_path) -> ir.Module:
+def session_module(iree_session) -> ir.Module:
     with ir.Location.unknown(iree_session.context):
         module_op = ir.Module.create()
         with ir.InsertionPoint(module_op.body):
@@ -106,8 +130,8 @@ def session_module(iree_session, tmp_path) -> ir.Module:
 
 
 @pytest.fixture(scope="session")
-def device(device="xrt") -> ir.Module:
-    yield get_driver(device).create_default_device()
+def device(pytestconfig, global_cl_args) -> ir.Module:
+    yield get_driver(pytestconfig.option.device_hal).create_default_device()
 
 
 @contextmanager

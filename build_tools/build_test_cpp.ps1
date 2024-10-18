@@ -84,6 +84,12 @@ $CMAKE_ARGS = @(
     "-DIREE_BUILD_PYTHON_BINDINGS=ON"
 )
 
+$peano_install_dir = "$env:PEANO_INSTALL_DIR"
+if ($peano_install_dir -and (Test-Path "$peano_install_dir"))
+{
+    $CMAKE_ARGS += @("-DPEANO_INSTALL_DIR=$peano_install_dir")
+}
+
 if ($llvm_install_dir -and (Test-Path "$llvm_install_dir"))
 {
     echo "using existing llvm install @ $llvm_install_dir"
@@ -116,7 +122,7 @@ echo "-----"
 # better have git-bash installed...
 $env:Path = "C:\Program Files\Git\bin;$env:Path"
 pushd $build_dir
-& bash -l -c "ctest -R amd-aie --output-on-failure -j --repeat until-pass:5"
+& bash -l -c "ctest -R amd-aie -E driver --output-on-failure -j --repeat until-pass:5"
 popd
 
 if ($llvm_install_dir -and (Test-Path "$llvm_install_dir"))

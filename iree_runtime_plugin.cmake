@@ -23,8 +23,8 @@ endif()
 
 if(IREE_AMD_AIE_ENABLE_XRT_DRIVER)
   include(iree_aie_xrt)
-  include(iree_aie_bootgen)
 endif()
+include(iree_aie_bootgen)
 
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/runtime/src AMD-AIE)
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/experimental AMD-AIE-experimental)
