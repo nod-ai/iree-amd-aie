@@ -55,7 +55,7 @@ struct AMDAIEOptions {
   bool enablePacketFlow{false};
 
   enum class DeviceHAL { XRT, XRT_LITE };
-  DeviceHAL deviceHal{DeviceHAL::XRT};
+  DeviceHAL deviceHal{DeviceHAL::XRT_LITE};
 
   void bindOptions(OptionsBinder &binder) {
     static llvm::cl::OptionCategory category("AMD AIE Options");
