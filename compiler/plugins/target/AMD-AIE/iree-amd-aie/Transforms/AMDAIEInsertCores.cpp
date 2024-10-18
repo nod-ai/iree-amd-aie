@@ -18,7 +18,8 @@
 #include "iree-amd-aie/IR/AMDAIEOps.h"
 #include "iree-amd-aie/Transforms/AMDAIEOpUtils.h"
 #include "iree-amd-aie/Transforms/Passes.h"
-#include "iree/compiler/Codegen/TransformStrategies/GPU/Common.h"
+#include "mlir/Dialect/GPU/IR/GPUDialect.h"
+#include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Linalg/IR/LinalgInterfaces.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
@@ -79,13 +80,19 @@ LogicalResult insertCoreOps(mlir::ModuleOp moduleOp) {
     auto parentOps = getInclusiveParentsOfType<scf::ForallOp>(forallOp);
     DenseMap<Attribute, Value> attrMapping;
     getAttributeMapping(parentOps, attrMapping);
-    if (!attrMapping.contains(gpu::threadX(forallOp->getContext())) ||
-        !attrMapping.contains(gpu::threadY(forallOp->getContext()))) {
+    mlir::gpu::GPUThreadMappingAttr threadXAttr =
+        mlir::gpu::GPUThreadMappingAttr::get(forallOp->getContext(),
+                                             mlir::gpu::MappingId::DimX);
+    mlir::gpu::GPUThreadMappingAttr threadYAttr =
+        mlir::gpu::GPUThreadMappingAttr::get(forallOp->getContext(),
+                                             mlir::gpu::MappingId::DimY);
+    if (!attrMapping.contains(threadXAttr) ||
+        !attrMapping.contains(threadYAttr)) {
       forallOp.emitOpError() << "no forall with thread mapping found";
       return WalkResult::interrupt();
     }
-    Value threadX = attrMapping[gpu::threadX(forallOp->getContext())];
-    Value threadY = attrMapping[gpu::threadY(forallOp->getContext())];
+    Value threadX = attrMapping[threadXAttr];
+    Value threadY = attrMapping[threadYAttr];
 
     // Find input and output DMAs that need to be added to the core.
     SmallVector<Value> inputDmas;

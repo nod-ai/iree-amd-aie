@@ -36,7 +36,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        runs-on: [macos-12, macos-14]
+        runs-on: [
+          macos-12,
+          # broken because of https://github.com/iree-org/iree/blob/0c6a151c65285987f5daabc7f76fe57a82b45ab1/compiler/plugins/target/LLVMCPU/ResolveCPUAndCPUFeatures.cpp#L58-L64
+          # macos-14
+        ]
     env:
       CACHE_DIR: ${{ github.workspace }}/.container-cache
       CACHE_KEY: ${{ matrix.runs-on }}-build-test-cpp-asserts-v1-${{ format('{0}-{1}', github.ref_name, github.run_number) }}
@@ -70,7 +74,8 @@ jobs:
 
       - name: Python deps
         run: |
-          pip install "numpy<2" pyyaml "pybind11[global]==2.10.3" nanobind
+          pip install -r third_party/iree/runtime/bindings/python/iree/runtime/build_requirements.txt
+          pip install pytest
 
       - name: Enable cache
         uses: actions/cache/restore@v3
