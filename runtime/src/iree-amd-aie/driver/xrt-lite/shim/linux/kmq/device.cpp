@@ -143,7 +143,7 @@ void *pdev::mmap(void *addr, size_t len, int prot, int flags,
 
 device::device(uint32_t n_rows, uint32_t n_cols)
     : n_rows(n_rows), n_cols(n_cols) {
-  SHIM_DEBUG("Created KMQ device");
+  SHIM_DEBUG("Created KMQ device n_rows %d n_cols %d", n_rows, n_cols);
 }
 
 device::~device() { SHIM_DEBUG("Destroying KMQ device"); }

@@ -10,9 +10,9 @@
 #include "iree/base/api.h"
 #include "iree/base/internal/flags.h"
 
-IREE_FLAG(int32_t, xrt_lite_n_core_rows, 4,
+IREE_FLAG(int32_t, xrt_lite_n_core_rows, 0,
           "Number of core rows to use on NPU.");
-IREE_FLAG(int32_t, xrt_lite_n_core_cols, 4,
+IREE_FLAG(int32_t, xrt_lite_n_core_cols, 0,
           "Number of core cols to use on NPU.");
 
 static const iree_string_view_t key_xrt_lite_n_core_rows =
@@ -71,6 +71,13 @@ static iree_status_t iree_hal_xrt_lite_driver_populate_options(
             "Option 'key_xrt_lite_n_core_rows' expected to be int. Got: '%.*s'",
             (int)value.size, value.data);
       }
+      if (ivalue <= 0) {
+        IREE_TRACE_ZONE_END(z0);
+        return iree_make_status(
+            IREE_STATUS_FAILED_PRECONDITION,
+            "Option 'key_xrt_lite_n_core_rows' expected to be > 0. Got: '%.*s'",
+            (int)value.size, value.data);
+      }
       device_params->n_core_rows = ivalue;
     } else if (iree_string_view_equal(key, key_xrt_lite_n_core_cols)) {
       if (!iree_string_view_atoi_int32(value, &ivalue)) {
@@ -78,6 +85,13 @@ static iree_status_t iree_hal_xrt_lite_driver_populate_options(
         return iree_make_status(
             IREE_STATUS_FAILED_PRECONDITION,
             "Option 'key_xrt_lite_n_core_cols' expected to be int. Got: '%.*s'",
+            (int)value.size, value.data);
+      }
+      if (ivalue <= 0) {
+        IREE_TRACE_ZONE_END(z0);
+        return iree_make_status(
+            IREE_STATUS_FAILED_PRECONDITION,
+            "Option 'key_xrt_lite_n_core_cols' expected to be > 0. Got: '%.*s'",
             (int)value.size, value.data);
       }
       device_params->n_core_cols = ivalue;
@@ -112,25 +126,22 @@ static iree_status_t iree_hal_xrt_lite_driver_factory_try_create(
 
   iree_string_pair_builder_t flag_option_builder;
   iree_string_pair_builder_initialize(host_allocator, &flag_option_builder);
-  iree_status_t status =
-      iree_hal_xrt_lite_driver_parse_flags(&flag_option_builder);
+  IREE_RETURN_AND_END_ZONE_IF_ERROR(
+      z0, iree_hal_xrt_lite_driver_parse_flags(&flag_option_builder));
 
-  if (iree_status_is_ok(status)) {
-    IREE_TRACE_ZONE_END(z0);
-    status = iree_hal_xrt_lite_driver_populate_options(
-        host_allocator, &driver_options, &device_params,
-        iree_string_pair_builder_size(&flag_option_builder),
-        iree_string_pair_builder_pairs(&flag_option_builder));
-  } else {
-    IREE_TRACE_ZONE_END(z0);
-    return status;
-  }
+  IREE_RETURN_AND_END_ZONE_IF_ERROR(
+      z0, iree_hal_xrt_lite_driver_populate_options(
+              host_allocator, &driver_options, &device_params,
+              iree_string_pair_builder_size(&flag_option_builder),
+              iree_string_pair_builder_pairs(&flag_option_builder)));
 
-  status = iree_hal_xrt_lite_driver_create(
-      driver_name, &driver_options, &device_params, host_allocator, out_driver);
+  IREE_RETURN_AND_END_ZONE_IF_ERROR(
+      z0, iree_hal_xrt_lite_driver_create(driver_name, &driver_options,
+                                          &device_params, host_allocator,
+                                          out_driver));
 
   IREE_TRACE_ZONE_END(z0);
-  return status;
+  return iree_ok_status();
 }
 
 IREE_API_EXPORT iree_status_t
