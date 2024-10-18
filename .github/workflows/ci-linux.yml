@@ -59,11 +59,6 @@ jobs:
           pip install -r third_party/iree/runtime/bindings/python/iree/runtime/build_requirements.txt
           pip install pyyaml
 
-      - name: Peano dep
-        run: |
-          bash build_tools/download_peano.sh
-          echo "PEANO_INSTALL_DIR=$PWD/llvm-aie" >> $GITHUB_ENV
-
       - name: Enable cache
         uses: actions/cache/restore@v3
         with:

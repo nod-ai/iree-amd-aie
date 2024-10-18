@@ -82,8 +82,6 @@ $CMAKE_ARGS = @(
     "-DIREE_CMAKE_PLUGIN_PATHS=$repo_root"
     "-DIREE_EXTERNAL_HAL_DRIVERS=xrt"
     "-DIREE_BUILD_PYTHON_BINDINGS=ON"
-    # iree/runtime/src/iree/hal/cts/cts_test_base.h:173:24: error: unused variable 'device_buffer' [-Werror,-Wunused-variable]
-    "-DIREE_ENABLE_WERROR_FLAG=OFF"
 )
 
 $peano_install_dir = "$env:PEANO_INSTALL_DIR"

@@ -122,6 +122,7 @@ ctest -R amd-aie --output-on-failure -j 10
 (the `-j 10` runs `10` tests in parallel)
 
 Other tests, which run on device, are in the `build_tools` subdirectory. 
+See [build_tools/ci/run_all_runtime_tests.sh](build_tools/ci/run_all_runtime_tests.sh) for an example script that shows how to run all the runtime tests.
 
 ## Pro-tips
 
