@@ -14,11 +14,15 @@ IREE_FLAG(int32_t, xrt_lite_n_core_rows, 0,
           "Number of core rows to use on NPU.");
 IREE_FLAG(int32_t, xrt_lite_n_core_cols, 0,
           "Number of core cols to use on NPU.");
+// see shim/linux/kmq/amdxdna_accel.h#L460 for options
+IREE_FLAG(string, xrt_lite_power_mode, "", "Set the power mode of the NPU.");
 
 static const iree_string_view_t key_xrt_lite_n_core_rows =
     iree_string_view_literal("xrt_lite_n_core_rows");
 static const iree_string_view_t key_xrt_lite_n_core_cols =
     iree_string_view_literal("xrt_lite_n_core_cols");
+static const iree_string_view_t key_xrt_lite_power_mode =
+    iree_string_view_literal("xrt_lite_power_mode");
 
 static iree_status_t iree_hal_xrt_lite_driver_factory_enumerate(
     void* self, iree_host_size_t* out_driver_info_count,
@@ -46,6 +50,13 @@ static iree_status_t iree_hal_xrt_lite_driver_parse_flags(
   IREE_RETURN_AND_END_ZONE_IF_ERROR(
       z0, iree_string_pair_builder_add_int32(builder, key_xrt_lite_n_core_cols,
                                              FLAG_xrt_lite_n_core_cols));
+  iree_string_view_t power_mode = IREE_SV(FLAG_xrt_lite_power_mode);
+  if (!iree_string_view_is_empty(power_mode)) {
+    IREE_RETURN_AND_END_ZONE_IF_ERROR(
+        z0, iree_string_pair_builder_add(
+                builder,
+                iree_make_string_pair(key_xrt_lite_power_mode, power_mode)));
+  }
 
   IREE_TRACE_ZONE_END(z0);
   return iree_ok_status();
@@ -68,14 +79,14 @@ static iree_status_t iree_hal_xrt_lite_driver_populate_options(
         IREE_TRACE_ZONE_END(z0);
         return iree_make_status(
             IREE_STATUS_FAILED_PRECONDITION,
-            "Option 'key_xrt_lite_n_core_rows' expected to be int. Got: '%.*s'",
+            "Option 'xrt_lite_n_core_rows' expected to be int. Got: '%.*s'",
             (int)value.size, value.data);
       }
       if (ivalue <= 0) {
         IREE_TRACE_ZONE_END(z0);
         return iree_make_status(
             IREE_STATUS_FAILED_PRECONDITION,
-            "Option 'key_xrt_lite_n_core_rows' expected to be > 0. Got: '%.*s'",
+            "Option 'xrt_lite_n_core_rows' expected to be > 0. Got: '%.*s'",
             (int)value.size, value.data);
       }
       device_params->n_core_rows = ivalue;
@@ -84,20 +95,34 @@ static iree_status_t iree_hal_xrt_lite_driver_populate_options(
         IREE_TRACE_ZONE_END(z0);
         return iree_make_status(
             IREE_STATUS_FAILED_PRECONDITION,
-            "Option 'key_xrt_lite_n_core_cols' expected to be int. Got: '%.*s'",
+            "Option 'xrt_lite_n_core_cols' expected to be int. Got: '%.*s'",
             (int)value.size, value.data);
       }
       if (ivalue <= 0) {
         IREE_TRACE_ZONE_END(z0);
         return iree_make_status(
             IREE_STATUS_FAILED_PRECONDITION,
-            "Option 'key_xrt_lite_n_core_cols' expected to be > 0. Got: '%.*s'",
+            "Option 'xrt_lite_n_core_cols' expected to be > 0. Got: '%.*s'",
             (int)value.size, value.data);
       }
       device_params->n_core_cols = ivalue;
+    } else if (iree_string_view_equal(key, key_xrt_lite_power_mode)) {
+      if (!(iree_string_view_equal(value, IREE_SV("default")) ||
+            iree_string_view_equal(value, IREE_SV("low")) ||
+            iree_string_view_equal(value, IREE_SV("medium")) ||
+            iree_string_view_equal(value, IREE_SV("high")) ||
+            iree_string_view_equal(value, IREE_SV("turbo")))) {
+        IREE_TRACE_ZONE_END(z0);
+        return iree_make_status(
+            IREE_STATUS_FAILED_PRECONDITION,
+            "Option 'xrt_lite_power_mode' expected to be default | low | "
+            "medium | high | turbo. Got: '%.*s'",
+            (int)value.size, value.data);
+      }
+      device_params->power_mode = value;
     } else {
       IREE_TRACE_ZONE_END(z0);
-      return iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
+      return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
                               "Unrecognized options: %.*s", (int)key.size,
                               key.data);
     }

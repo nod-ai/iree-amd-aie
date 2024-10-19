@@ -146,6 +146,15 @@ device::device(uint32_t n_rows, uint32_t n_cols)
   SHIM_DEBUG("Created KMQ device n_rows %d n_cols %d", n_rows, n_cols);
 }
 
+device::device(uint32_t n_rows, uint32_t n_cols,
+               amdxdna_power_mode_type power_mode)
+    : device(n_rows, n_cols) {
+  set_power_mode(power_mode);
+  SHIM_DEBUG("Created KMQ device n_rows %d n_cols %d with power_mode %s",
+             n_rows, n_cols,
+             stringify_amdxdna_power_mode_type(power_mode).c_str());
+}
+
 device::~device() { SHIM_DEBUG("Destroying KMQ device"); }
 
 const pdev &device::get_pdev() const { return m_pdev; }
@@ -249,6 +258,31 @@ void device::write_aie_reg(uint16_t col, uint16_t row, uint32_t reg_addr,
   m_pdev.ioctl(DRM_IOCTL_AMDXDNA_SET_STATE, &arg);
 }
 
+amdxdna_power_mode_type device::get_power_mode() const {
+  amdxdna_drm_get_power_mode state;
+  amdxdna_drm_get_info arg = {.param = DRM_AMDXDNA_GET_POWER_MODE,
+                              .buffer_size = sizeof(state),
+                              .buffer = reinterpret_cast<uintptr_t>(&state)};
+
+  m_pdev.ioctl(DRM_IOCTL_AMDXDNA_GET_INFO, &arg);
+  return static_cast<amdxdna_power_mode_type>(state.power_mode);
+}
+
+void device::set_power_mode(amdxdna_power_mode_type mode) const {
+  amdxdna_drm_set_power_mode state;
+  state.power_mode = mode;
+  amdxdna_drm_set_state arg = {.param = DRM_AMDXDNA_SET_POWER_MODE,
+                               .buffer_size = sizeof(state),
+                               .buffer = reinterpret_cast<uintptr_t>(&state)};
+  if (::ioctl(m_pdev.m_dev_fd, DRM_IOCTL_AMDXDNA_SET_STATE, &arg) == -1) {
+    shim_err(
+        errno,
+        "DRM_AMDXDNA_SET_POWER_MODE failed; probably you need sudo privileges");
+  }
+  SHIM_DEBUG("set power_mode to %s",
+             stringify_amdxdna_power_mode_type(mode).c_str());
+}
+
 std::string read_sysfs(const std::string &filename) {
   std::ifstream file(filename);
   std::string line;
@@ -272,6 +306,24 @@ std::filesystem::path find_npu_device() {
       if (!rel.empty() && rel.native()[0] != '.') return absolute(actual_path);
     }
   shim_err(errno, "No npu device found");
+}
+
+std::string stringify_amdxdna_power_mode_type(
+    amdxdna_power_mode_type power_mode) {
+  switch (power_mode) {
+    case POWER_MODE_DEFAULT:
+      return {"DEFAULT"};
+    case POWER_MODE_LOW:
+      return {"LOW"};
+    case POWER_MODE_MEDIUM:
+      return {"MEDIUM"};
+    case POWER_MODE_HIGH:
+      return {"HIGH"};
+    case POWER_MODE_TURBO:
+      return {"TURBO"};
+    default:
+      llvm::report_fatal_error("unknown power mode");
+  }
 }
 
 }  // namespace shim_xdna
