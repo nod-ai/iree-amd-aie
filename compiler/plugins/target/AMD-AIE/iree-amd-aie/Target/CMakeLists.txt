@@ -34,6 +34,7 @@ iree_cc_library(
   DEPS
     ::AIETargets
     iree-amd-aie::schemas::xrt_executable_def_c_fbs
+    iree-amd-aie::schemas::pdi_executable_def_c_fbs
     iree::base::internal::flatcc::building
     iree::base::internal::flatcc::parsing
     iree::compiler::Dialect::HAL::Target

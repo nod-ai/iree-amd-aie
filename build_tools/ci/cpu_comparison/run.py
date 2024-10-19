@@ -2,18 +2,19 @@
 
 # Copyright 2024 The IREE Authors
 
-import sys
 import argparse
 import os
 import platform
 import re
 import subprocess
+import sys
 import time
 from pathlib import Path
 from textwrap import dedent
 
 import numpy as np
 
+from convolution_template.convolution_generator import ConvolutionMlirGenerator
 from input_generator import (
     generate_inputs,
     verify_determinism,
@@ -22,7 +23,6 @@ from input_generator import (
     np_from_binfile,
 )
 from matmul_template.matmul_generator import generate_matmul_test
-from convolution_template.convolution_generator import ConvolutionMlirGenerator
 from output_comparer import compare
 
 
@@ -146,6 +146,7 @@ def generate_aie_vmfb(
         f"--iree-amd-aie-install-dir={config.iree_install_dir}",
         f"--iree-amd-aie-vitis-install-dir={config.vitis_dir}",
         f"--iree-hal-dump-executable-files-to={config.output_dir}",
+        f"--iree-amdaie-device-hal={config.device_hal}",
         "--iree-scheduling-optimize-bindings=false",
         "--iree-hal-memoization=false",
         "--iree-hal-indirect-command-buffers=false",
@@ -191,11 +192,16 @@ def generate_aie_output(config, aie_vmfb, input_args, function_name, name, outpu
         config.iree_run_exe,
         f"--module={aie_vmfb}",
         *input_args,
-        "--device=xrt",
+        f"--device={config.device_hal}",
         f"--output=@{aie_bin}",
     ]
     if function_name:
         run_args += [f"--function={function_name}"]
+    if config.xrt_lite_n_core_rows is not None:
+        run_args += [f"--xrt_lite_n_core_rows={config.xrt_lite_n_core_rows}"]
+    if config.xrt_lite_n_core_cols is not None:
+        run_args += [f"--xrt_lite_n_core_cols={config.xrt_lite_n_core_cols}"]
+
     if config.reset_npu_between_runs:
         shell_out(config.reset_npu_script, verbose=config.verbose)
 
@@ -267,6 +273,9 @@ class TestConfig:
         reset_npu_between_runs,
         do_not_run_aie,
         additional_aie_compilation_flags,
+        device_hal,
+        xrt_lite_n_core_rows,
+        xrt_lite_n_core_cols,
     ):
         self.output_dir = output_dir
         self.iree_install_dir = iree_install_dir
@@ -283,6 +292,9 @@ class TestConfig:
         self.reset_npu_between_runs = reset_npu_between_runs
         self.do_not_run_aie = do_not_run_aie
         self.additional_aie_compilation_flags = additional_aie_compilation_flags
+        self.device_hal = device_hal
+        self.xrt_lite_n_core_rows = xrt_lite_n_core_rows
+        self.xrt_lite_n_core_cols = xrt_lite_n_core_cols
 
         # Try get the xrt and (linux) kernel versions.
         self.linux_kernel = "undetermined"
@@ -846,6 +858,9 @@ def all_tests(
     do_not_run_aie,
     test_set,
     additional_aie_compilation_flags,
+    device_hal,
+    xrt_lite_n_core_rows,
+    xrt_lite_n_core_cols,
 ):
     """
     There are a few ways to add tests to this script:
@@ -887,6 +902,9 @@ def all_tests(
         reset_npu_between_runs,
         do_not_run_aie,
         additional_aie_compilation_flags,
+        device_hal,
+        xrt_lite_n_core_rows,
+        xrt_lite_n_core_cols,
     )
     if verbose:
         print(config)
@@ -941,6 +959,8 @@ if __name__ == "__main__":
     parser.add_argument("peano_install_dir", type=abs_path)
     parser.add_argument("--xrt-dir", type=abs_path)
     parser.add_argument("--vitis-dir", type=abs_path)
+    parser.add_argument("--xrt_lite_n_core_rows", type=int)
+    parser.add_argument("--xrt_lite_n_core_cols", type=int)
 
     # TODO(newling) make bool options boolean, not integer (tried but had issues)
     parser.add_argument(
@@ -1023,6 +1043,15 @@ if __name__ == "__main__":
         default="",
     )
 
+    parser.add_argument(
+        "--device-hal",
+        default="xrt-lite",
+        const="xrt-lite",
+        nargs="?",
+        choices=["xrt", "xrt-lite"],
+        help="device HAL to use (default: %(default)s)",
+    )
+
     args = parser.parse_args()
 
     test_set_list = args.test_set.split(",")
@@ -1038,4 +1067,7 @@ if __name__ == "__main__":
         args.do_not_run_aie,
         test_set_list,
         args.additional_aie_compilation_flags,
+        args.device_hal,
+        args.xrt_lite_n_core_rows,
+        args.xrt_lite_n_core_cols,
     )
