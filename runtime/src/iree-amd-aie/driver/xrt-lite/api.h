@@ -7,12 +7,14 @@
 #ifndef IREE_AMD_AIE_DRIVER_XRT_LITE_API_H_
 #define IREE_AMD_AIE_DRIVER_XRT_LITE_API_H_
 
+#include "iree-amd-aie/driver/xrt-lite/shim/linux/kmq/amdxdna_accel.h"
 #include "iree/base/api.h"
 #include "iree/hal/api.h"
 
 struct iree_hal_xrt_lite_device_params {
   int32_t n_core_rows;
   int32_t n_core_cols;
+  iree_string_view_t power_mode;
 };
 
 IREE_API_EXPORT void iree_hal_xrt_lite_device_options_initialize(

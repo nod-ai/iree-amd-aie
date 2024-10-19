@@ -25,6 +25,7 @@ struct iree_hal_xrt_lite_device {
   // should come last; see the definition of total_size below in
   // iree_hal_xrt_lite_device_create
   iree_string_view_t identifier;
+  iree_string_view_t power_mode;
 
   iree_hal_xrt_lite_device(const iree_hal_xrt_lite_device_params* options,
                            iree_allocator_t host_allocator);

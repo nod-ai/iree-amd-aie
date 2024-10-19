@@ -7,6 +7,7 @@
 #include <filesystem>
 #include <map>
 
+#include "amdxdna_accel.h"
 #include "fence.h"
 #include "xrt_mem.h"
 
@@ -33,6 +34,7 @@ struct device {
   uint32_t n_cols;
 
   device(uint32_t n_rows, uint32_t n_cols);
+  device(uint32_t n_rows, uint32_t n_cols, amdxdna_power_mode_type power_mode);
   ~device();
 
   std::unique_ptr<bo> import_bo(int ehdl) const;
@@ -58,12 +60,18 @@ struct device {
   void write_aie_reg(uint16_t col, uint16_t row, uint32_t reg_addr,
                      uint32_t reg_val);
 
+  // TODO(max): hide amdxdna_accel enums so they don't leak
+  amdxdna_power_mode_type get_power_mode() const;
+  void set_power_mode(amdxdna_power_mode_type mode) const;
+
   std::unique_ptr<fence_handle> create_fence(fence_handle::access_mode);
   std::unique_ptr<fence_handle> import_fence(pid_t, int);
 };
 
 std::string read_sysfs(const std::string &filename);
 std::filesystem::path find_npu_device();
+std::string stringify_amdxdna_power_mode_type(
+    amdxdna_power_mode_type power_mode);
 
 }  // namespace shim_xdna
 

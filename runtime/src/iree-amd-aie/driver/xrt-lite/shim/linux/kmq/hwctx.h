@@ -6,7 +6,6 @@
 
 #include <map>
 
-#include "amdxdna_accel.h"
 #include "device.h"
 
 namespace shim_xdna {
@@ -54,8 +53,7 @@ struct hw_ctx {
          std::unique_ptr<hw_q> q, const std::vector<uint8_t> &pdi,
          const std::string &cu_name, uint32_t n_rows, uint32_t n_cols);
   hw_ctx(device &dev, const std::vector<uint8_t> &pdi,
-         const std::string &cu_name,
-         uint32_t n_rows, uint32_t n_cols,
+         const std::string &cu_name, uint32_t n_rows, uint32_t n_cols,
          const std::map<std::string, uint32_t> &qos = {});
   ~hw_ctx();
   // no copying

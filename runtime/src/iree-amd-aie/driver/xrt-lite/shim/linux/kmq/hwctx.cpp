@@ -6,6 +6,7 @@
 #include <cassert>
 #include <cstring>
 
+#include "amdxdna_accel.h"
 #include "bo.h"
 #include "hwq.h"
 #include "shim_debug.h"

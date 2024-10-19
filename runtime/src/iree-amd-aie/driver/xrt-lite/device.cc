@@ -30,8 +30,26 @@ iree_hal_xrt_lite_device::iree_hal_xrt_lite_device(
 
   iree_hal_resource_initialize(&iree_hal_xrt_lite_device_vtable, &resource);
   this->host_allocator = host_allocator;
-  shim_device =
-      new shim_xdna::device(options->n_core_rows, options->n_core_cols);
+  this->power_mode = options->power_mode;
+  if (iree_string_view_equal(power_mode, IREE_SV("default"))) {
+    shim_device = new shim_xdna::device(
+        options->n_core_rows, options->n_core_cols, POWER_MODE_DEFAULT);
+  } else if (iree_string_view_equal(power_mode, IREE_SV("low"))) {
+    shim_device = new shim_xdna::device(options->n_core_rows,
+                                        options->n_core_cols, POWER_MODE_LOW);
+  } else if (iree_string_view_equal(power_mode, IREE_SV("medium"))) {
+    shim_device = new shim_xdna::device(
+        options->n_core_rows, options->n_core_cols, POWER_MODE_MEDIUM);
+  } else if (iree_string_view_equal(power_mode, IREE_SV("high"))) {
+    shim_device = new shim_xdna::device(options->n_core_rows,
+                                        options->n_core_cols, POWER_MODE_HIGH);
+  } else if (iree_string_view_equal(power_mode, IREE_SV("turbo"))) {
+    shim_device = new shim_xdna::device(options->n_core_rows,
+                                        options->n_core_cols, POWER_MODE_TURBO);
+  } else {
+    shim_device =
+        new shim_xdna::device(options->n_core_rows, options->n_core_cols);
+  }
 
   iree_status_t status = iree_hal_xrt_lite_allocator_create(
       host_allocator, shim_device, &device_allocator);
@@ -202,6 +220,10 @@ static void iree_hal_xrt_lite_device_destroy(iree_hal_device_t* base_device) {
       base_device, iree_hal_xrt_lite_device_vtable, iree_hal_xrt_lite_device);
 
   iree_hal_allocator_release(device->device_allocator);
+  if (!iree_string_view_is_empty(device->power_mode) &&
+      !iree_string_view_equal(device->power_mode, IREE_SV("default"))) {
+    device->shim_device->set_power_mode(POWER_MODE_DEFAULT);
+  }
   delete device->shim_device;
   iree_allocator_free(device->host_allocator, device);
 
