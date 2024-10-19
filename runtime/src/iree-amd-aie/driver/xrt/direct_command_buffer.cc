@@ -349,7 +349,7 @@ static iree_status_t iree_hal_xrt_direct_command_buffer_dispatch(
                 command_buffer->descriptor_sets[set].offsets[j]);
     run.set_arg(arg_index + j, arg_buffer);
     bool not_ofm = (bindings.values[j].buffer->memory_type & IREE_HAL_MEMORY_TYPE_HOST_VISIBLE) &&
-                   (bindings.values[j].buffer->allowed_usage & IREE_HAL_MEMORY_TYPE_HOST_VISIBLE);
+                   (bindings.values[j].buffer->allowed_usage & IREE_HAL_BUFFER_USAGE_MAPPING);
     if (!not_ofm)
         ofm_bo = arg_buffer;
   }
