@@ -333,7 +333,9 @@ static iree_status_t iree_hal_xrt_direct_command_buffer_dispatch(
   // Third argument is the number of LX6 instructions.
   run.set_arg(arg_index++, kernel_params.num_instr);
 
-  xrt::bo ofm_bo;
+  // Unless patching IPU-instruction happens at host, the number of output_bo is 1
+  // Currently patching IPU-instruction happens in firmware
+  std::vector<xrt::bo> output_bos;
 
   // Copy descriptors from all sets to the end of the current segment for later
   // access.
@@ -351,7 +353,7 @@ static iree_status_t iree_hal_xrt_direct_command_buffer_dispatch(
     bool not_ofm = (bindings.values[j].buffer->memory_type & IREE_HAL_MEMORY_TYPE_HOST_VISIBLE) &&
                    (bindings.values[j].buffer->allowed_usage & IREE_HAL_BUFFER_USAGE_MAPPING);
     if (!not_ofm)
-        ofm_bo = arg_buffer;
+        output_bos.emplace_back(arg_buffer);
   }
 
   run.start();
@@ -362,7 +364,7 @@ static iree_status_t iree_hal_xrt_direct_command_buffer_dispatch(
     return iree_make_status(IREE_STATUS_UNKNOWN, e.what());
   }
 
-  ofm_bo.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
+  for (xrt::bo& ofm : output_bos) ofm.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
 
   IREE_TRACE_ZONE_END(z0);
   return iree_ok_status();
