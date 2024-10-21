@@ -8,7 +8,6 @@
 #include "iree/base/api.h"
 #include "iree/base/string_view.h"
 #include "iree/hal/api.h"
-#include "iree/hal/buffer_view_util.h"
 #include "iree/hal/cts/cts_test_base.h"
 #include "iree/testing/gtest.h"
 #include "iree/testing/status_matchers.h"
