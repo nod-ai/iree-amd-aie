@@ -62,10 +62,7 @@ simple_matmul_test_params = list(
 )
 
 xfails = [
-    (8, 512, 8, T.i32, T.i32, "air", "pad-pack", 1),
-    (8, 512, 16, T.i32, T.i32, "air", "pad-pack", 1),
-    (16, 512, 8, T.i32, T.i32, "air", "pad-pack", 1),
-    (16, 512, 16, T.i32, T.i32, "air", "pad-pack", 1),
+    # currently there are no xfails
 ]
 
 for x in xfails:
