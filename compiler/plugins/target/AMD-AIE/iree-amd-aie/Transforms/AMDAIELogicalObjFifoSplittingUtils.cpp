@@ -317,7 +317,7 @@ static LogicalResult checkWhetherSplitIsPossible(
 // 4. Delete old L2->L1, L3->L2 and corresponding AllocOps.
 LogicalResult splitLogicalObjectFifos(
     IRRewriter &rewriter, SmallVector<AMDAIE::DmaCpyNdOp> &l2ToL1DmaOps,
-    MLIRContext *context, bool packTransposeOnSource) {
+    MLIRContext *context) {
   SplittingLogicalObjectFifoData splittingLogicalObjectFifoData;
   splittingLogicalObjectFifoData.l2ToL1DmaOps = l2ToL1DmaOps;
   if (failed(checkWhetherSplitIsPossible(splittingLogicalObjectFifoData))) {
@@ -350,10 +350,28 @@ LogicalResult splitLogicalObjectFifos(
       l3ToL2DmaOp.getSourceMixedOffsets();
   SmallVector<OpFoldResult> staticL3AsSourceSizes =
       l3ToL2DmaOp.getSourceMixedSizes();
+
+  LogicalObjectFifoFromMemrefOp l2TargetObjectFifo =
+      l3ToL2DmaOp.getTargetObjectFifo();
+  ArrayRef<int64_t> l2TargetShape =
+      l2TargetObjectFifo.getMemrefType().getShape();
+  if (l2TargetShape.size() != staticL2AsTargetSizes.size()) {
+    LLVM_DEBUG(llvm::dbgs() << "L2 target size should be the same");
+    return failure();
+  }
+
+  // Check if the L3->L2 dma is transposed on the target side.
+  bool dmaTransposeOnSource = true;
+  for (auto [s1, s2] : llvm::zip_equal(l2TargetShape, staticL2AsTargetSizes)) {
+    if (s1 != getConstantIntValue(s2)) {
+      dmaTransposeOnSource = false;
+    }
+  }
+
   OpFoldResult zeroVal = getAsIndexOpFoldResult(context, 0);
   OpFoldResult oneVal = getAsIndexOpFoldResult(context, 1);
 
-  if (packTransposeOnSource) {
+  if (dmaTransposeOnSource) {
     // Update split dimensions' offset/size for L2 as target and L3 as source.
     // We can afford to do this here because it's going to be the same for all
     // L3->L2 splits. Here we are setting offset = 0 and size = 1.
@@ -395,7 +413,7 @@ LogicalResult splitLogicalObjectFifos(
     // If the dma transpose is on the source(target) side, then the L2
     // target(source) side has the sizes in order.
     SmallVector<OpFoldResult> newL2Sizes =
-        packTransposeOnSource ? staticL2AsTargetSizes : staticL2AsSourceSizes;
+        dmaTransposeOnSource ? staticL2AsTargetSizes : staticL2AsSourceSizes;
     AMDAIE::LogicalObjectFifoFromMemrefOp source =
         createNewLogicalObjectFifo(rewriter, oldL2ObjectFifo, newL2Sizes);
 
@@ -426,7 +444,7 @@ LogicalResult splitLogicalObjectFifos(
 
       // If the dma transpose is on the target side, L3 source side data are
       // continuous and doesn't have "nonSplitDim".
-      size_t dim = packTransposeOnSource ? nonSplitdim : splitDim;
+      size_t dim = dmaTransposeOnSource ? nonSplitdim : splitDim;
       FailureOr<OpFoldResult> newOffset = updateL3SourceOffset(
           rewriter, staticL3AsSourceOffsets[dim], offsetToAdd, context);
       if (failed(newOffset)) {

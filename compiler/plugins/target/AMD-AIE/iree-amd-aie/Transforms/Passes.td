@@ -610,10 +610,6 @@ def AMDAIESplitLogicalObjFifosForConnectionReuse :
   Pass<"iree-amdaie-split-logical-objectfifos-for-connection-reuse", "ModuleOp"> {
   let summary = "Pass to split L2 buffers to share inputs of Matmul and Elementwise operations.";
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIESplitLogicalObjFifosForConnectionReusePass()";
-  let options = [
-    Option<"packTransposeOnSource", "pack-transpose-on-source", "bool", /*default=*/"true",
-      "Option to set transposed dma dimensions on source or target side for pack ops">,
-  ];
 }
 
 def AMDAIETemporaryAllocBufferization :

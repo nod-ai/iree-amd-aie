@@ -574,14 +574,7 @@ void addAMDAIEObjectFifoLoweringPasses(OpPassManager &passManager,
   passManager.addPass(createCSEPass());
   passManager.addPass(createCanonicalizerPass());
 
-  {
-    AMDAIESplitLogicalObjFifosForConnectionReuseOptions splitOptions;
-    splitOptions.packTransposeOnSource =
-        (useTilePipeline == TilePassPipeline::ConvDecomposePipeline) ? true
-                                                                     : false;
-    passManager.addPass(
-        createAMDAIESplitLogicalObjFifosForConnectionReusePass(splitOptions));
-  }
+  passManager.addPass(createAMDAIESplitLogicalObjFifosForConnectionReusePass());
   passManager.addPass(createCSEPass());
   passManager.addPass(createCanonicalizerPass());
 
