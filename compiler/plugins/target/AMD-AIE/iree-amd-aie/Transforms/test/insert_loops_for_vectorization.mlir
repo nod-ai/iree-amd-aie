@@ -13,7 +13,7 @@ module {
    // A generic that corresponds to a simple matmul (2 rank-2 operands)
    // does NOT get tiled.
    // CHECK-LABEL: vanilla
-   // CHECK-NOT: scf.for
+   // CHECK-NOT:      scf.for
   func.func @vanilla(%arg0: !t2_bf16, %arg1: !t2_bf16, %arg2: !t2_f32) -> !t2_f32 {
     %0 = linalg.generic {indexing_maps =
                           [
@@ -35,14 +35,14 @@ module {
 
   // A batched matmul gets the batch dimension converted to a single scf.for
   // CHECK-LABEL: batched0
-  // CHECK: scf.for
-  // CHECK: linalg.generic
-  // CHECK-SAME: iterator_types = ["parallel", "parallel", "parallel", "reduction"]
-  // CHECK-SAME: ins
-  // CHECK-SAME: tensor<1x64x64xbf16>, tensor<1x64x64xbf16>
-  // CHECK-SAME: outs
-  // CHECK-SAME: tensor<1x64x64xf32>
-  // CHECK-NOT: scf.for
+  // CHECK:         scf.for
+  // CHECK:           linalg.generic
+  // CHECK-SAME:        iterator_types = ["parallel", "parallel", "parallel", "reduction"]
+  // CHECK-SAME:        ins
+  // CHECK-SAME:        tensor<1x64x64xbf16>, tensor<1x64x64xbf16>
+  // CHECK-SAME:        outs
+  // CHECK-SAME:        tensor<1x64x64xf32>
+  // CHECK-NOT:     scf.for
   func.func @batched0(%arg0: !t3_bf16, %arg1: !t3_bf16, %arg2: !t3_f32) -> !t3_f32 {
     %0 = linalg.generic {indexing_maps =
                           [
@@ -65,7 +65,7 @@ module {
   // A batched matmul where the element types are not supported for
   // vectorization on AIE, does not get tiles:
   // CHECK-LABEL: batched_bad_element_types
-  // CHECK-NOT: scf.for
+  // CHECK-NOT:     scf.for
   func.func @batched_bad_element_types(%arg0: !t3_f32, %arg1: !t3_f32, %arg2: !t3_f32) -> !t3_f32 {
     %0 = linalg.generic {indexing_maps =
                           [
@@ -85,14 +85,14 @@ module {
 
   // A test like the above, but with a matmul_tranpose_b instead of a matmul
   // CHECK-LABEL: batched_transpose_b
-  // CHECK: scf.for
-  // CHECK: linalg.generic
-  // CHECK-SAME: iterator_types = ["parallel", "parallel", "parallel", "reduction"]
-  // CHECK-SAME: ins
-  // CHECK-SAME: tensor<1x64x64xbf16>, tensor<1x64x64xbf16>
-  // CHECK-SAME: outs
-  // CHECK-SAME: tensor<1x64x64xf32>
-  // CHECK-NOT: scf.for
+  // CHECK:         scf.for
+  // CHECK:           linalg.generic
+  // CHECK-SAME:        iterator_types = ["parallel", "parallel", "parallel", "reduction"]
+  // CHECK-SAME:        ins
+  // CHECK-SAME:        tensor<1x64x64xbf16>, tensor<1x64x64xbf16>
+  // CHECK-SAME:        outs
+  // CHECK-SAME:        tensor<1x64x64xf32>
+  // CHECK-NOT:     scf.for
   func.func @batched_transpose_b(%arg0: !t3_bf16, %arg1: !t3_bf16, %arg2: !t3_f32) -> !t3_f32 {
     %0 = linalg.generic {indexing_maps =
                           [
@@ -116,7 +116,7 @@ module {
   // Currently the pass does not modify this (so no scf.for should appear).
   // We'll probably add support for this in the future, but for now we don't.
   // CHECK-LABEL: batched_transpose_a
-  // CHECK-NOT: scf.for
+  // CHECK-NOT:      scf.for
 
   func.func @batched_transpose_a(%arg0: !t3_bf16, %arg1: !t3_bf16, %arg2: !t3_f32) -> !t3_f32 {
     %0 = linalg.generic {indexing_maps =
@@ -139,7 +139,7 @@ module {
 
   // Check that the final 3 dimensions do have the pattern of a matmul (or matmul transpose)
   // CHECK-LABEL: batched1
-  // CHECK-NOT: scf.for
+  // CHECK-NOT:     scf.for
   func.func @batched1(%arg0: !t3_bf16, %arg1: !t3_bf16, %arg2: !t3_f32) -> !t3_f32 {
     %0 = linalg.generic {indexing_maps =
                           [
@@ -163,14 +163,14 @@ module {
 
   // Check for a batched matmul where operand 0 is broadcast:
   // CHECK-LABEL: batched2
-  // CHECK: scf.for
-  // CHECK: linalg.generic
-  // CHECK-SAME: iterator_types = ["parallel", "parallel", "parallel", "reduction"]
-  // CHECK-SAME: ins
-  // CHECK-SAME: tensor<64x64xbf16>, tensor<1x64x64xbf16>
-  // CHECK-SAME: outs
-  // CHECK-SAME: tensor<1x64x64xf32>
-  // CHECK-NOT: scf.for
+  // CHECK:         scf.for
+  // CHECK:             linalg.generic
+  // CHECK-SAME:            iterator_types = ["parallel", "parallel", "parallel", "reduction"]
+  // CHECK-SAME:            ins
+  // CHECK-SAME:            tensor<64x64xbf16>, tensor<1x64x64xbf16>
+  // CHECK-SAME:            outs
+  // CHECK-SAME:            tensor<1x64x64xf32>
+  // CHECK-NOT:     scf.for
   func.func @batched2(%arg0: !t2_bf16, %arg1: !t3_bf16, %arg2: !t3_f32) -> !t3_f32 {
     %0 = linalg.generic {indexing_maps =
                           [
@@ -196,12 +196,22 @@ module {
   // matmul of size LHS: 4x8 and RHS: 8x4.
 
   // CHECK-LABEL: packBasedPipeline
-  // CHECK-COUNT-6: scf.for
-  // CHECK-NOT: scf.for
-  // CHECK: linalg.generic
-  // CHECK-SAME: tensor<1x1x1x1x4x8xbf16>
-  // CHECK-SAME: tensor<1x1x1x1x8x4xbf16>
-  // CHECK-SAME: tensor<1x1x1x1x4x4xf32>
+  // CHECK-SAME:  (%[[ARG0:.*]]: tensor<1x1x4x8x4x8xbf16>,
+  // CHECK-SAME:   %[[ARG1:.*]]: tensor<1x1x8x4x8x4xbf16>,
+  // CHECK-SAME:   %[[ARG2:.*]]: tensor<1x1x8x8x4x4xf32>)
+  // CHECK:         tensor.extract_slice %[[ARG0]]
+  // CHECK-SAME:           tensor<1x1x4x8x4x8xbf16> to tensor<4x8x4x8xbf16>
+  // CHECK:         tensor.extract_slice %[[ARG1]]
+  // CHECK-SAME:           tensor<1x1x8x4x8x4xbf16> to tensor<8x4x8x4xbf16>
+  // CHECK:         tensor.extract_slice %[[ARG2]]
+  // CHECK-SAME:           tensor<1x1x8x8x4x4xf32> to tensor<8x8x4x4xf32>
+  // CHECK:         %[[C256:.*]] = arith.constant 256 : index
+  // CHECK:         scf.for %{{.*}} = %{{.*}} to %[[C256]] step %{{.*}}
+  // CHECK-NOT:     scf.for
+  // CHECK:             linalg.generic
+  // CHECK-SAME:            tensor<1x1x4x8xbf16>
+  // CHECK-SAME:            tensor<1x1x8x4xbf16>
+  // CHECK-SAME:            tensor<1x1x4x4xf32>
 
   func.func @packBasedPipeline(
                %arg0: tensor<1x1x4x8x4x8xbf16>,
@@ -255,5 +265,86 @@ module {
         linalg.yield %2 : bf16
     } -> tensor<4x6x8xbf16>
     return %0 : tensor<4x6x8xbf16>
+  }
+}
+
+// -----
+
+// CHECK-LABEL: @element_wise_bufferized
+// CHECK-SAME:  (%[[ARG0:.*]]: memref<1x1x4x6x8xf32>, %[[ARG1:.*]]: memref<1x1x4x6x8xbf16>)
+module {
+  func.func @element_wise_bufferized(%arg0: memref<1x1x4x6x8xf32>, %arg1: memref<1x1x4x6x8xbf16>) -> memref<1x1x4x6x8xbf16>{
+    %cst = arith.constant 0.000000e+00 : bf16
+    // CHECK:       %[[COLLAPSE_UNIT_DIM_0:.*]] = memref.subview %[[ARG0]]
+    // CHECK-SAME:          memref<1x1x4x6x8xf32> to memref<4x6x8xf32, strided<[48, 8, 1]>>
+    // CHECK:       %[[COLLAPSE_UNIT_DIM_1:.*]] = memref.subview %[[ARG1]]
+    // CHECK-SAME:          memref<1x1x4x6x8xbf16> to memref<4x6x8xbf16, strided<[48, 8, 1]>>
+    // CHECK-DAG:   %[[C4:.*]] = arith.constant 4 : index
+    // CHECK:       scf.for %[[IV:.*]] = %{{.*}} to %[[C4]]
+    // CHECK-NOT:     scf.for
+    // CHECK:         %[[SLICE_0:.*]] = memref.subview %[[COLLAPSE_UNIT_DIM_0]]
+    // CHECK:         %[[SLICE_1:.*]] = memref.subview %[[COLLAPSE_UNIT_DIM_1]]
+    // CHECK:         linalg.generic
+    // CHECK-SAME:        ins(%[[SLICE_0]] :
+    // CHECK-SAME:        outs(%[[SLICE_1]] :
+    linalg.generic {
+              indexing_maps = [affine_map<(d0, d1, d2, d3, d4) -> (d0, d1, d2, d3, d4)>,
+                               affine_map<(d0, d1, d2, d3, d4) -> (d0, d1, d2, d3, d4)>
+                              ],
+              iterator_types = ["parallel", "parallel", "parallel", "parallel", "parallel"]
+          } ins(%arg0 : memref<1x1x4x6x8xf32>)
+            outs(%arg1 : memref<1x1x4x6x8xbf16>) {
+      ^bb0(%in: f32, %out: bf16):
+        %1 = arith.truncf %in : f32 to bf16
+        %2 = arith.maximumf %1, %cst : bf16
+        linalg.yield %2 : bf16
+    }
+    return %arg1 : memref<1x1x4x6x8xbf16>
+  }
+}
+
+// -----
+
+// CHECK-LABEL: @matmul_bufferized
+// CHECK-SAME:  (%[[ARG0:.*]]: memref<1x1x4x8x4x8xbf16>,
+// CHECK-SAME:   %[[ARG1:.*]]: memref<1x1x8x4x8x4xbf16>
+// CHECK-SAME:   %[[ARG2:.*]]: memref<1x1x8x8x4x4xf32>)
+module {
+  func.func @matmul_bufferized(
+               %arg0: memref<1x1x4x8x4x8xbf16>,
+               %arg1: memref<1x1x8x4x8x4xbf16>,
+               %arg2: memref<1x1x8x8x4x4xf32>) -> memref<1x1x8x8x4x4xf32> {
+    // CHECK:       %[[COLLAPSE_UNIT_DIM_0:.*]] = memref.subview %[[ARG0]]
+    // CHECK-SAME:          memref<1x1x4x8x4x8xbf16> to memref<4x8x4x8xbf16, strided<[256, 32, 8, 1]>>
+    // CHECK:       %[[COLLAPSE_UNIT_DIM_1:.*]] = memref.subview %[[ARG1]]
+    // CHECK-SAME:          memref<1x1x8x4x8x4xbf16> to memref<8x4x8x4xbf16, strided<[128, 32, 4, 1]>>
+    // CHECK:       %[[COLLAPSE_UNIT_DIM_2:.*]] = memref.subview %[[ARG2]]
+    // CHECK-SAME:          memref<1x1x8x8x4x4xf32> to memref<8x8x4x4xf32, strided<[128, 16, 4, 1]>>
+    // CHECK-DAG:   %[[C256:.*]] = arith.constant 256 : index
+    // CHECK:       scf.for %[[IV:.*]] = %{{.*}} to %[[C256]]
+    // CHECK-NOT:     scf.for
+    // CHECK:         %[[SLICE_0:.*]] = memref.subview %[[COLLAPSE_UNIT_DIM_0]]
+    // CHECK:         %[[SLICE_1:.*]] = memref.subview %[[COLLAPSE_UNIT_DIM_1]]
+    // CHECK:         %[[SLICE_2:.*]] = memref.subview %[[COLLAPSE_UNIT_DIM_2]]
+    // CHECK:         linalg.generic
+    // CHECK-SAME:        ins(%[[SLICE_0]], %[[SLICE_1]] :
+    // CHECK-SAME:        outs(%[[SLICE_2]] :
+    linalg.generic {indexing_maps =
+         [
+           affine_map<(d0, d1, d2, d3, d4, d5, d6, d7, d8) -> (d0, d2, d5, d3, d6, d8)>,
+           affine_map<(d0, d1, d2, d3, d4, d5, d6, d7, d8) -> (d2, d1, d4, d5, d8, d7)>,
+           affine_map<(d0, d1, d2, d3, d4, d5, d6, d7, d8) -> (d0, d1, d4, d3, d6, d7)>
+         ],
+   iterator_types = ["parallel", "parallel", "reduction", "parallel", "parallel", "reduction", "parallel", "parallel", "reduction"]}
+         ins(%arg0, %arg1 : memref<1x1x4x8x4x8xbf16>, memref<1x1x8x4x8x4xbf16>)
+         outs(%arg2 : memref<1x1x8x8x4x4xf32>) {
+    ^bb0(%in: bf16, %in_16: bf16, %out: f32):
+      %18 = arith.extf %in : bf16 to f32
+      %19 = arith.extf %in_16 : bf16 to f32
+      %20 = arith.mulf %18, %19 : f32
+      %21 = arith.addf %out, %20 : f32
+      linalg.yield %21 : f32
+    }
+    return %arg2 : memref<1x1x8x8x4x4xf32>
   }
 }

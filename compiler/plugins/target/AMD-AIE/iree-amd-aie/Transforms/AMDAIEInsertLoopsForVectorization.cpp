@@ -4,10 +4,11 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+#include "iree-amd-aie/Transforms/AMDAIEUtils.h"
 #include "iree-amd-aie/Transforms/Passes.h"
 #include "llvm/ADT/STLExtras.h"
 #include "mlir/Dialect/Linalg/Transforms/Transforms.h"
-#include "iree-amd-aie/Transforms/AMDAIEUtils.h"
+#include "mlir/Dialect/SCF/IR/SCF.h"
 
 namespace mlir::iree_compiler::AMDAIE {
 
@@ -43,11 +44,31 @@ class AMDAIEInsertLoopsForVectorizationPass
     return nDims - firstDim;
   };
 
+  /// Tile the generic op using `tileSizes` and coalesce the generated tiling
+  /// loops.
+  static LogicalResult performTiling(IRRewriter &rewriter,
+                                     linalg::GenericOp genericOp,
+                                     SmallVector<int64_t> &tileSizes,
+                                     bool isTensorType) {
+    auto opts = linalg::LinalgTilingOptions().setTileSizes(tileSizes);
+    auto tiled = linalg::tileLinalgOp(rewriter, genericOp, opts);
+    const auto &tileLoops = tiled.value().loops;
+    SmallVector<scf::ForOp> loops = llvm::map_to_vector(
+        tileLoops, [](Operation *loop) { return cast<scf::ForOp>(loop); });
+    (void)mlir::coalesceLoops(rewriter, loops);
+    if (isTensorType) {
+      rewriter.replaceOp(genericOp, loops[0]->getResult(0));
+    } else {
+      rewriter.eraseOp(genericOp);
+    }
+    return success();
+  }
   // Tile all dimensions except the 3 inner-most dimensions. Tile size '1'
   // denotes tiling with smallest possible tile (size 1) and tile size '0'
   // denotes tiling with the largest possible tile (size equal to the
   // dimension size). The tile sizes we use are [1,1,...1,0,0,0].
-  static void rewrite(IRRewriter &rewriter, linalg::GenericOp genericOp) {
+  static std::optional<SmallVector<int64_t>> formTileSizesForMatmul(
+      linalg::GenericOp genericOp) {
     auto iteratorTypes = genericOp.getIteratorTypesArray();
     auto numIterators = iteratorTypes.size();
     assert(numIterators >= 3 && "expected at least 3 iterators here");
@@ -56,11 +77,41 @@ class AMDAIEInsertLoopsForVectorizationPass
     tileSizes[numIterators - 3] = 0;
     tileSizes[numIterators - 2] = 0;
     tileSizes[numIterators - 1] = 0;
-    auto opts = linalg::LinalgTilingOptions().setTileSizes(tileSizes);
-    auto tiled = linalg::tileLinalgOp(rewriter, genericOp, opts);
-    const auto &loops = tiled.value().loops;
-    assert(!loops.empty() && "expected at least one loop here");
-    rewriter.replaceOp(genericOp, loops[0]->getResult(0));
+    return tileSizes;
+  }
+
+  /// We tile all but the innermost two dimensions currently because they form
+  /// the smallest tiled M x N dimension of the matmul.
+  static std::optional<SmallVector<int64_t>> formTileSizesForElementwise(
+      linalg::GenericOp genericOp) {
+    auto iteratorTypes = genericOp.getIteratorTypesArray();
+    auto numIterators = iteratorTypes.size();
+    assert(numIterators >= 2 && "expected at least 2 iterators here");
+    SmallVector<int64_t> tileSizes(numIterators, 1);
+    tileSizes[numIterators - 2] = 0;
+    tileSizes[numIterators - 1] = 0;
+    return tileSizes;
+  }
+
+  /// Collapse unit dims of the generic op before tiling for vectorization.
+  static void collapseUnitDims(IRRewriter &rewriter,
+                               linalg::GenericOp &genericOp,
+                               bool isTensorType) {
+    linalg::ControlDropUnitDims options;
+    options.rankReductionStrategy =
+        linalg::ControlDropUnitDims::RankReductionStrategy::ExtractInsertSlice;
+    FailureOr<linalg::DropUnitDimsResult> result =
+        linalg::dropUnitDims(rewriter, genericOp, options);
+    if (failed(result)) {
+      return;
+    }
+    if (isTensorType) {
+      rewriter.replaceOp(genericOp, result->replacements);
+    } else {
+      rewriter.eraseOp(genericOp);
+    }
+    genericOp = result->resultOp;
+    return;
   }
 
   // Return success if the generic op is rewritten, failure otherwise.
@@ -74,21 +125,24 @@ class AMDAIEInsertLoopsForVectorizationPass
     // No outer dimensions to tile if fewer than 3 iterators.
     if (numIterators < 3) return failure();
 
+    bool isTensorType = isa<TensorType>(genericOp->getOperand(0).getType());
+
+    OpBuilder::InsertionGuard g(rewriter);
+    rewriter.setInsertionPointAfter(genericOp);
     // Enable generating loops for vectorization in case of element-wise ops.
-    // We tile all but the innermost two dimensions currently because they form
-    // the smallest tiled M x N dimension of the matmul.
     if (llvm::all_of(iteratorTypes, [&](mlir::utils::IteratorType iterator) {
           return linalg::isParallelIterator(iterator);
         })) {
-      assert(numIterators >= 2 && "expected at least 2 iterators here");
-      SmallVector<int64_t> tileSizes(numIterators, 1);
-      tileSizes[numIterators - 2] = 0;
-      tileSizes[numIterators - 1] = 0;
-      auto opts = linalg::LinalgTilingOptions().setTileSizes(tileSizes);
-      auto tiled = linalg::tileLinalgOp(rewriter, genericOp, opts);
-      const auto &loops = tiled.value().loops;
-      assert(!loops.empty() && "expected at least one loop here");
-      rewriter.replaceOp(genericOp, loops[0]->getResult(0));
+      collapseUnitDims(rewriter, genericOp, isTensorType);
+      std::optional<SmallVector<int64_t>> tileSizes =
+          formTileSizesForElementwise(genericOp);
+      if (!tileSizes) {
+        return failure();
+      }
+      if (failed(
+              performTiling(rewriter, genericOp, *tileSizes, isTensorType))) {
+        return failure();
+      }
       return success();
     }
     // Matmul-like ops have 3 operands.
@@ -102,7 +156,7 @@ class AMDAIEInsertLoopsForVectorizationPass
       };
       auto lhsType = elType(genericOp->getOperand(0));
       auto rhsType = elType(genericOp->getOperand(1));
-      auto resType = elType(genericOp->getResult(0));
+      auto resType = elType(genericOp->getOperand(2));
       FailureOr<std::array<uint32_t, 3>> maybeSize =
           ::mlir::iree_compiler::AMDAIE::getAIEMatmulInstructionSize(
               lhsType, rhsType, resType);
@@ -151,7 +205,15 @@ class AMDAIEInsertLoopsForVectorizationPass
       if (!isMatmul && !isMatmulTransposeB) return failure();
     }
 
-    rewrite(rewriter, genericOp);
+    collapseUnitDims(rewriter, genericOp, isTensorType);
+    std::optional<SmallVector<int64_t>> tileSizes =
+        formTileSizesForMatmul(genericOp);
+    if (!tileSizes) {
+      return failure();
+    }
+    if (failed(performTiling(rewriter, genericOp, *tileSizes, isTensorType))) {
+      return failure();
+    }
     return success();
   }
 
