@@ -166,3 +166,40 @@ func.func @arith_truncf(%inp: vector<2x3xf32>) -> vector<2x3xbf16> {
     %0 = arith.truncf %inp : vector<2x3xf32> to vector<2x3xbf16>
     return %0 : vector<2x3xbf16>
 }
+
+// -----
+
+// CHECK-LABEL: @trivial_read_access
+// CHECK-SAME:  (%[[ARG0:.*]]: memref<4x8x4x8xbf16, strided<[256, 32, 8, 1]>>)
+// CHECK:         %[[COLLAPSE_SHAPE:.*]] = memref.collapse_shape %[[ARG0]]
+// CHECK-SAME:        into memref<1024xbf16, strided<[1]>>
+// CHECK:         %[[READ:.*]] = vector.transfer_read %[[COLLAPSE_SHAPE]]
+// CHECK:         %[[SHAPE_CAST:.*]] = vector.shape_cast %[[READ]]
+// CHECK-SAME:        vector<32xbf16> to vector<1x1x4x8xbf16>
+// CHECK:         return %[[SHAPE_CAST]]
+func.func @trivial_read_access(%arg0: memref<4x8x4x8xbf16, strided<[256, 32, 8, 1]>>) -> vector<1x1x4x8xbf16> {
+    %c0 = arith.constant 0 : index
+    %cst = arith.constant 0.000000e+00 : bf16
+    %subview = memref.subview %arg0[2, 3, 0, 0] [1, 1, 4, 8] [1, 1, 1, 1] : memref<4x8x4x8xbf16, strided<[256, 32, 8, 1]>> to memref<1x1x4x8xbf16, strided<[256, 32, 8, 1], offset: 608>>
+    %read = vector.transfer_read %subview[%c0, %c0, %c0, %c0], %cst {in_bounds = [true, true, true, true]} : memref<1x1x4x8xbf16, strided<[256, 32, 8, 1], offset: 608>>, vector<1x1x4x8xbf16>
+    return %read : vector<1x1x4x8xbf16>
+}
+
+// -----
+
+// CHECK-LABEL: @trivial_write_access
+// CHECK-SAME:  (%[[ARG0:.*]]: memref<8x8x4x4xf32, strided<[128, 16, 4, 1]>>,
+// CHECK-SAME:   %[[ARG1:.*]]: vector<1x1x4x4xf32>)
+// CHECK:           %[[COLLAPSE_SHAPE:.*]] = memref.collapse_shape %[[ARG0]]
+// CHECK-SAME:          : memref<8x8x4x4xf32, strided<[128, 16, 4, 1]>> into memref<1024xf32, strided<[1]>>
+// CHECK:           %[[SHAPE_CAST:.*]] = vector.shape_cast %[[ARG1]]
+// CHECK-SAME:          : vector<1x1x4x4xf32> to vector<16xf32>
+// CHECK:           vector.transfer_write %[[SHAPE_CAST]], %[[COLLAPSE_SHAPE]]
+// CHECK:           return
+func.func @trivial_write_access(%arg0: memref<8x8x4x4xf32, strided<[128, 16, 4, 1]>>, %arg1: vector<1x1x4x4xf32>) {
+    %c0 = arith.constant 0 : index
+    %cst = arith.constant 0.000000e+00 : bf16
+    %subview = memref.subview %arg0[2, 3, 0, 0] [1, 1, 4, 4] [1, 1, 1, 1] : memref<8x8x4x4xf32, strided<[128, 16, 4, 1]>> to memref<1x1x4x4xf32, strided<[128, 16, 4, 1], offset: 304>>
+    vector.transfer_write %arg1, %subview[%c0, %c0, %c0, %c0] {in_bounds = [true, true, true, true]} : vector<1x1x4x4xf32>, memref<1x1x4x4xf32, strided<[128, 16, 4, 1], offset: 304>>
+    return
+}
