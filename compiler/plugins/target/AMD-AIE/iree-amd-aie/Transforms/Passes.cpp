@@ -560,6 +560,8 @@ void addAMDAIEObjectFifoLoweringPasses(OpPassManager &passManager,
   passManager.addPass(createAMDAIENormalizeLoopBoundsPass());
   passManager.addPass(createAMDAIEInsertCoresPass());
 
+  passManager.addPass(createAMDAIEFunctionOutliningPass());
+
   {
     // Vectorization passes
     OpPassManager &funcPassManager = passManager.nest<func::FuncOp>();
