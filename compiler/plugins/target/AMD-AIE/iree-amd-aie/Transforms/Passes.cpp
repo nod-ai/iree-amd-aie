@@ -555,12 +555,14 @@ void addAMDAIEObjectFifoLoweringPasses(OpPassManager &passManager,
   // cause 'aie.dma_bd' error, so for now keep using transpose on source for
   // both pack and unpack ops.
   // TODO(vivian): explore the other options for conv ops.
-  AMDAIEConvertToDmaOptions dmaOptions;
-  dmaOptions.packTransposeOnSource =
-      (useTilePipeline == TilePassPipeline::ConvDecomposePipeline) ? true
-                                                                   : false;
-  dmaOptions.unpackTransposeOnSource = true;
-  passManager.addPass(createAMDAIEConvertToDmaPass(dmaOptions));
+  {
+    AMDAIEConvertToDmaOptions dmaOptions;
+    dmaOptions.packTransposeOnSource =
+        (useTilePipeline == TilePassPipeline::ConvDecomposePipeline) ? true
+                                                                     : false;
+    dmaOptions.unpackTransposeOnSource = true;
+    passManager.addPass(createAMDAIEConvertToDmaPass(dmaOptions));
+  }
 
   passManager.addPass(createAMDAIENormalizeLoopBoundsPass());
   passManager.addPass(createAMDAIEInsertCoresPass());
@@ -570,6 +572,7 @@ void addAMDAIEObjectFifoLoweringPasses(OpPassManager &passManager,
   passManager.addPass(createAMDAIEDistributeCoresAndObjectFifosPass());
   passManager.addPass(createCSEPass());
   passManager.addPass(createCanonicalizerPass());
+
   passManager.addPass(createAMDAIESplitLogicalObjFifosForConnectionReusePass());
   passManager.addPass(createCSEPass());
   passManager.addPass(createCanonicalizerPass());
