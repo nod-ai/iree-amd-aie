@@ -728,11 +728,22 @@ void addMLIRAIRLoweringPasses(OpPassManager &passManager, AMDAIEDevice device,
   passManager.addPass(xilinx::air::createAIRDependencyCanonicalizePass());
   passManager.addPass(createCanonicalizerPass());
   passManager.addPass(createCSEPass());
-  // TODO (Erwei): This pass currently doesn't support pack-peel pipeline. This
-  // pass needs to work in order to get multiple AIE columns to work.
-  if (useTilePipeline != TilePassPipeline::PackPeelPipeline)
-    passManager.addNestedPass<func::FuncOp>(
-        xilinx::air::createAIRSplitL2MemrefForBufferConstraintPass());
+  passManager.addPass(xilinx::air::createAIRIsolateAsyncDmaLoopNests());
+  passManager.addPass(createCanonicalizerPass());
+  passManager.addPass(createCSEPass());
+  {
+    xilinx::air::AIRFuseChannelsOptions options;
+    if (useTilePipeline == TilePassPipeline::PackPeelPipeline &&
+        matmulElementwiseFusion) {
+      const static llvm::SmallVector<std::string> mode = {"L1"};
+      options.clAggressiveMode = mode;
+    }
+    passManager.addPass(xilinx::air::createAIRFuseChannels(options));
+  }
+  passManager.addPass(createCanonicalizerPass());
+  passManager.addPass(createCSEPass());
+  passManager.addNestedPass<func::FuncOp>(
+      xilinx::air::createAIRSplitL2MemrefForBufferConstraintPass());
   passManager.addPass(xilinx::air::createAIRIsolateAsyncDmaLoopNests());
   passManager.addPass(createCanonicalizerPass());
   passManager.addPass(createCSEPass());
@@ -808,10 +819,8 @@ void addMLIRAIRLoweringPasses(OpPassManager &passManager, AMDAIEDevice device,
     // with given factors, and subsequently unrolled in
     // AIRUnrollOuterPerfectlyNestedLoopsPass, to enforce SHIM DMA BD count
     // within the hardware limit.
-    if (useTilePipeline == TilePassPipeline::PackPeelPipeline) {
-      const static llvm::SmallVector<unsigned> tile_sizes = {2, 2};
-      options.clTileSizes = tile_sizes;
-    } else if (useTilePipeline == TilePassPipeline::PadPackPipeline) {
+    if (useTilePipeline == TilePassPipeline::PadPackPipeline ||
+        useTilePipeline == TilePassPipeline::PackPeelPipeline) {
       const static llvm::SmallVector<unsigned> tile_sizes = {4, 4};
       options.clTileSizes = tile_sizes;
     }
