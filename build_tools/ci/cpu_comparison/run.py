@@ -795,6 +795,29 @@ class MatmulSet(TestSet):
             output_type=get_output_type(test_name),
         )
 
+        # Large shape Matmul + Truncf
+        generate_matmul_test(test_name, template_name, 128, 128, 256, "bf16", "f32")
+        identity_mat = np.eye(128, dtype=np.float32)
+        ones = np.ones(128 * 128, dtype=np.float32).reshape([128, 128])
+        lhs = ones * 101
+        rhs = identity_mat * 3
+        input_args = generate_inputs(test_name, output_dir, 1, {1: lhs, 2: rhs})
+        aie_vs_baseline(
+            config,
+            test_name,
+            input_args,
+            ones * 302,  # exected output
+            use_ukernel=False,
+            tile_pipeline="pack-peel",
+            lower_to_aie_pipeline="objectFifo",
+            function_name=None,
+            seed=1,
+            rtol=0,
+            atol=0,
+            n_repeats=1,
+            output_type=get_output_type(test_name),
+        )
+
 
 class SmokeSet(TestSet):
     def __init__(self):
