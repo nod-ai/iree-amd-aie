@@ -26,6 +26,7 @@
 #include "mlir/Dialect/Vector/Transforms/LoweringPatterns.h"
 #include "mlir/Dialect/Vector/Transforms/VectorRewritePatterns.h"
 #include "mlir/Dialect/Vector/Utils/VectorUtils.h"
+#include "mlir/IR/Matchers.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassManager.h"
@@ -38,6 +39,73 @@
 namespace mlir::iree_compiler::aievec {
 
 using namespace mlir;
+
+struct CanonicalizeTrivialReadAccessSubviewOpPattern
+    : public OpRewritePattern<vector::TransferReadOp> {
+  using OpRewritePattern<vector::TransferReadOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(vector::TransferReadOp readOp,
+                                PatternRewriter &rewriter) const override {
+    auto subViewOp = dyn_cast_if_present<memref::SubViewOp>(
+        readOp.getSource().getDefiningOp());
+    if (!subViewOp) return failure();
+    if (!llvm::all_of(readOp.getIndices(), [](Value val) {
+          IntegerAttr attr;
+          if (!matchPattern(val, m_Constant(&attr))) return false;
+          return attr.getInt() == 0;
+        }))
+      return failure();
+    SmallVector<Value> newIndices;
+    for (OpFoldResult x : subViewOp.getMixedOffsets()) {
+      Value indexVal;
+      if (auto attr = dyn_cast<Attribute>(x)) {
+        indexVal = rewriter.create<arith::ConstantOp>(readOp.getLoc(),
+                                                      cast<IntegerAttr>(attr));
+      } else {
+        indexVal = cast<Value>(x);
+      }
+      newIndices.push_back(indexVal);
+    }
+    rewriter.replaceOpWithNewOp<vector::TransferReadOp>(
+        readOp, readOp.getType(), subViewOp.getSource(), newIndices,
+        readOp.getPadding(), readOp.getInBoundsValues());
+    return success();
+  }
+};
+
+struct CanonicalizeTrivialWriteAccessSubviewOpPattern
+    : public OpRewritePattern<vector::TransferWriteOp> {
+  using OpRewritePattern<vector::TransferWriteOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(vector::TransferWriteOp writeOp,
+                                PatternRewriter &rewriter) const override {
+    auto subViewOp = dyn_cast_if_present<memref::SubViewOp>(
+        writeOp.getSource().getDefiningOp());
+    if (!subViewOp) return failure();
+    if (!llvm::all_of(writeOp.getIndices(), [](Value val) {
+          IntegerAttr attr;
+          if (!matchPattern(val, m_Constant(&attr))) return false;
+          return attr.getInt() == 0;
+        }))
+      return failure();
+    SmallVector<Value> newIndices;
+    for (OpFoldResult x : subViewOp.getMixedOffsets()) {
+      Value indexVal;
+      if (auto attr = dyn_cast<Attribute>(x)) {
+        indexVal = rewriter.create<arith::ConstantOp>(writeOp.getLoc(),
+                                                      cast<IntegerAttr>(attr));
+      } else {
+        indexVal = cast<Value>(x);
+      }
+      newIndices.push_back(indexVal);
+    }
+    rewriter.create<vector::TransferWriteOp>(
+        writeOp.getLoc(), writeOp.getVector(), subViewOp.getSource(),
+        newIndices, writeOp.getInBoundsValues());
+    rewriter.eraseOp(writeOp);
+    return success();
+  }
+};
 
 static bool isGemmBTransposedContractionOp(vector::ContractionOp op) {
   if (op.getKind() != vector::CombiningKind::ADD) return false;
@@ -628,6 +696,12 @@ struct CanonicalizeVectorForAIEVecPass
     auto op = getOperation();
     MLIRContext *context = &getContext();
 
+    {
+      RewritePatternSet patterns(context);
+      patterns.add<CanonicalizeTrivialReadAccessSubviewOpPattern,
+                   CanonicalizeTrivialWriteAccessSubviewOpPattern>(context);
+      (void)applyPatternsAndFoldGreedily(op, std::move(patterns));
+    }
     {
       // These must run before 'populateVectorBroadcastLoweringPatterns'
       // so that broadcasts can be matched before conversion to insert.
