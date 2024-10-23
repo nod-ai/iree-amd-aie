@@ -809,12 +809,10 @@ void addMLIRAIRLoweringPasses(OpPassManager &passManager, AMDAIEDevice device,
     // with given factors, and subsequently unrolled in
     // AIRUnrollOuterPerfectlyNestedLoopsPass, to enforce SHIM DMA BD count
     // within the hardware limit.
-    if (useTilePipeline == TilePassPipeline::PackPeelPipeline &&
-        matmulElementwiseFusion) {
+    if (useTilePipeline == TilePassPipeline::PackPeelPipeline) {
       const static llvm::SmallVector<unsigned> tile_sizes = {2, 2};
       options.clTileSizes = tile_sizes;
-    } else if (useTilePipeline == TilePassPipeline::PadPackPipeline ||
-               useTilePipeline == TilePassPipeline::PackPeelPipeline) {
+    } else if (useTilePipeline == TilePassPipeline::PadPackPipeline) {
       const static llvm::SmallVector<unsigned> tile_sizes = {4, 4};
       options.clTileSizes = tile_sizes;
     }
