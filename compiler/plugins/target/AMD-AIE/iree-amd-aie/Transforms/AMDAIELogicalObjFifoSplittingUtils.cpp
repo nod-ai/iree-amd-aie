@@ -365,7 +365,11 @@ LogicalResult splitLogicalObjectFifos(
   for (auto [s1, s2] : llvm::zip_equal(l2TargetShape, staticL2AsTargetSizes)) {
     if (s1 != getConstantIntValue(s2)) {
       dmaTransposeOnSource = false;
+      break;
     }
+  }
+  if (staticL3AsSourceSizes.size() != staticL2AsTargetSizes.size()) {
+    dmaTransposeOnSource = false;
   }
 
   OpFoldResult zeroVal = getAsIndexOpFoldResult(context, 0);
@@ -383,16 +387,14 @@ LogicalResult splitLogicalObjectFifos(
     }
   } else {
     // The L2 target side has transposed dimensions, while the L3 source side
-    // data are continuous and doesn't have "nonSplitDim".
+    // data are continuous and don't have `nonSplitDim`. Then the L3 source
+    // sizes need to be modified to match the new L2 target sizes.
     // Hardcoded the transposed dimensions for now.
     const SmallVector<size_t> transposeDim = {0, 2, 1, 3};
-    for (size_t dim : splitDimsForL2) {
-      staticL2AsTargetOffsets[transposeDim[dim]] = zeroVal;
-      staticL2AsTargetSizes[transposeDim[dim]] = oneVal;
-    }
-    // Modify the L3 source sizes to match the new L2 target sizes.
     for (auto &&[splitDim, nonSplitdim] :
          llvm::zip_equal(splitDimsForL2, nonSplitDimsForL2)) {
+      staticL2AsTargetOffsets[transposeDim[splitDim]] = zeroVal;
+      staticL2AsTargetSizes[transposeDim[splitDim]] = oneVal;
       staticL3AsSourceSizes[splitDim] =
           staticL2AsTargetSizes[transposeDim[nonSplitdim]];
     }
@@ -409,7 +411,6 @@ LogicalResult splitLogicalObjectFifos(
     // via `staticL2AsTargetSizes`.
     LogicalObjectFifoFromMemrefOp oldL2ObjectFifo =
         l2ToL1DmaOp.getSourceObjectFifo();
-
     // If the dma transpose is on the source(target) side, then the L2
     // target(source) side has the sizes in order.
     SmallVector<OpFoldResult> newL2Sizes =
@@ -443,7 +444,7 @@ LogicalResult splitLogicalObjectFifos(
       int64_t offsetToAdd = constantOffset.value() * constantSize.value();
 
       // If the dma transpose is on the target side, L3 source side data are
-      // continuous and doesn't have "nonSplitDim".
+      // continuous and don't have `nonSplitDim`.
       size_t dim = dmaTransposeOnSource ? nonSplitdim : splitDim;
       FailureOr<OpFoldResult> newOffset = updateL3SourceOffset(
           rewriter, staticL3AsSourceOffsets[dim], offsetToAdd, context);
