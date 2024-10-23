@@ -32,8 +32,6 @@ class AMDAIEFunctionOutliningPass
 };
 
 void AMDAIEFunctionOutliningPass::runOnOperation() {
-  // mlir::FunctionOpInterface funcOp = getOperation();
-  // ModuleOp moduleOp = funcOp->getParentOfType<ModuleOp>();
   ModuleOp moduleOp = getOperation();
   MLIRContext *context = &getContext();
   IRRewriter rewriter(context);
@@ -102,7 +100,6 @@ void AMDAIEFunctionOutliningPass::runOnOperation() {
     rewriter.create<func::CallOp>(computeOp.getLoc(), outlinedFuncOp,
                                   computeOp->getOperands());
     rewriter.eraseOp(computeOp);
-    // rewriter.replaceOp(computeOp, callOp.getResults());
     return WalkResult::advance();
   });
 }
