@@ -70,6 +70,7 @@ jobs:
         run: |
           bash build_tools/download_peano.sh
           echo "PEANO_INSTALL_DIR=$PWD/llvm-aie" >> $GITHUB_ENV
+          echo "ENABLE_XRT_LITE_CTS_TESTS=ON" >> $GITHUB_ENV
 
       - name: Build packages
         run: |
