@@ -4,6 +4,11 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+set(ENABLE_XRT_LITE_CTS_TESTS OFF CACHE BOOL "")
+if(NOT ENABLE_XRT_LITE_CTS_TESTS)
+  return()
+endif()
+
 include(CMakeDependentOption)
 
 iree_hal_cts_test_suite(
