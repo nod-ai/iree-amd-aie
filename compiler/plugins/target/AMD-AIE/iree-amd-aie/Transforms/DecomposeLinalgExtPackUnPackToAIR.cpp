@@ -230,7 +230,7 @@ FailureOr<LowerPackUnPackResult> lowerUnPack(
       } else {
         readSizes.push_back(rewriter.getIndexAttr(srcShape[i]));
       }
-      if (srcShape[i] != 1) readShape.push_back(srcShape[i]);
+      readShape.push_back(srcShape[i]);
     }
 
     auto mixedTiles = unPackOp.getMixedTiles();

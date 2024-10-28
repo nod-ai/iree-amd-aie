@@ -49,13 +49,10 @@ jobs:
           git remote add origin $REPO_ADDRESS
           git -c protocol.version=2 fetch --depth 1 origin $BRANCH_NAME
           git reset --hard FETCH_HEAD
-          git -c submodule."third_party/torch-mlir".update=none -c submodule."third_party/stablehlo".update=none -c submodule."src/runtime_src/core/common/aiebu".update=none submodule update --init --recursive --depth 1 --single-branch -j 10
-          
-      - name: Install deps
-        run: |
-          dnf install -y almalinux-release-devel epel-release
-          yum remove -y openssl-devel zlib-devel || true
-          yum install -y protobuf-devel protobuf-compiler tmate
+          git -c submodule."third_party/torch-mlir".update=none \
+              -c submodule."third_party/stablehlo".update=none \
+              -c submodule."third_party/XRT".update=none \
+              submodule update --init --recursive --depth 1 --single-branch -j 10
 
       - name: Python deps
         run: |
@@ -68,6 +65,12 @@ jobs:
           path: ${{ env.CACHE_DIR }}
           key:  ${{ env.CACHE_KEY }}
           restore-keys: linux-build-test-cpp-
+
+      - name: Peano dep
+        run: |
+          bash build_tools/download_peano.sh
+          echo "PEANO_INSTALL_DIR=$PWD/llvm-aie" >> $GITHUB_ENV
+          echo "ENABLE_XRT_LITE_CTS_TESTS=ON" >> $GITHUB_ENV
 
       - name: Build packages
         run: |
@@ -147,60 +150,54 @@ jobs:
           source .venv/bin/activate
           pip install -r tests/requirements.txt
 
+      - name: Query device info
+        run: |
+          source .venv/bin/activate
+          echo "aie-metadata"
+          python build_tools/ci/amdxdna_driver_utils/amdxdna_ioctl.py --aie-metadata
+          echo "aie-version"
+          python build_tools/ci/amdxdna_driver_utils/amdxdna_ioctl.py --aie-version
+          echo "XRT_LITE_N_CORE_ROWS=$(python build_tools/ci/amdxdna_driver_utils/amdxdna_ioctl.py --num-rows)" >> $GITHUB_ENV
+          echo "XRT_LITE_N_CORE_COLS=$(python build_tools/ci/amdxdna_driver_utils/amdxdna_ioctl.py --num-cols)" >> $GITHUB_ENV
+
       - name : E2E comparison of AIE to llvm-cpu
         run: |
           source .venv/bin/activate
-          source /opt/xilinx/xrt/setup.sh
           python build_tools/ci/cpu_comparison/run.py \
             test_aie_vs_cpu \
             $PWD/iree-install \
             $PWD/llvm-aie \
-            --xrt-dir /opt/xilinx/xrt \
             --vitis-dir /opt/Xilinx/Vitis/2024.2 \
-            --reset-npu-between-runs -v
+            --reset-npu-between-runs -v \
+            --xrt_lite_n_core_rows=$XRT_LITE_N_CORE_ROWS \
+            --xrt_lite_n_core_cols=$XRT_LITE_N_CORE_COLS
 
       - name: E2E correctness matmul test
         run: |
-          # Without this additional line an error like
-          #
-          # [XRT] ERROR: Failed to allocate host memory buffer (mmap(len=10616832, prot=3, flags=8193, offset=4294967296)
-          # failed (err=11): Resource temporarily unavailable), make sure host bank is enabled (see xbutil configure --host-mem)
-          # iree-amd-aie/runtime/src/iree-amd-aie/driver/xrt/direct_allocator.cc:179: RESOURCE_EXHAUSTED; could not allocate
-          # memory for buffer; while invoking C++ function matmul_test.generate_random_matrix; while calling import;
-          #
-          # might be observed when too much memory is allocated. This
-          # error was seen when running a bf16->f32 matmul with m=n=k=2304.
-          #
-          # This line was suggested at https://github.com/Xilinx/mlir-air/issues/566
-          #
-          # Note that this is only half of the fix. It is also necessary that
-          # the machine that CI is running on has permission to run this line.
-          #
-          # This permission can be adding by adding the line
-          # ```
-          # %github ALL=(ALL) NOPASSWD: /usr/bin/prlimit *
-          # ```
-          #
-          # to the file /etc/sudoers.d/github, which can be done by running
-          # ```
-          # sudo visudo -f /etc/sudoers.d/github
-          # ```
-          # on the github CI machine.
+          # https://stackoverflow.com/a/17567422
+          # shim_xdna::bo::map_drm_bo does an mmap with MAP_LOCKED
+          # which can fail if limit is to low
           sudo prlimit -lunlimited --pid $$
           source .venv/bin/activate
-          source /opt/xilinx/xrt/setup.sh
           bash build_tools/ci/run_matmul_test.sh \
             test_matmuls \
             iree-install \
             $PWD/llvm-aie \
-            /opt/xilinx/xrt \
             /opt/Xilinx/Vitis/2024.2
 
       - name: Python tests
         run: |
           source .venv/bin/activate
-          source /opt/xilinx/xrt/setup.sh
           pytest -v tests \
             --capture=tee-sys \
             --iree-install-dir=$PWD/iree-install \
-            --peano-install-dir=$PWD/llvm-aie
+            --peano-install-dir=$PWD/llvm-aie \
+            --xrt_lite_n_core_rows=$XRT_LITE_N_CORE_ROWS \
+            --xrt_lite_n_core_cols=$XRT_LITE_N_CORE_COLS
+
+      - name: XRT-LITE tests
+        run: |
+          DEVICE_TEST_DIR="$PWD/iree-install/device_tests"
+          for t in $(ls $DEVICE_TEST_DIR); do
+            $DEVICE_TEST_DIR/$t --xrt_lite_n_core_rows=$XRT_LITE_N_CORE_ROWS --xrt_lite_n_core_cols=$XRT_LITE_N_CORE_COLS
+          done

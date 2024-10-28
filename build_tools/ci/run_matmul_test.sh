@@ -28,16 +28,16 @@ if [ "$#" -lt 2 ] || [ "$#" -gt 5 ]; then
    # The expected parameters are
    #    1) <output-dir>            (required)
    #    2) <iree-install-dir>      (required)
-   #    4) <peano-install-dir>     (optional)
+   #    3) <peano-install-dir>     (optional)
+   #    4) <vitis-install-dir>     (optional)
    #    5) <xrt-dir>               (optional)
-   #    6) <vitis-install-dir>     (optional)
     echo -e "Illegal number of parameters: $#, expected 2-5 parameters." \
             "\n The parameters are as follows:" \
             "\n     1) <output-dir>               (required)" \
             "\n     2) <iree-install-dir>         (required)" \
             "\n     3) <peano-install-dir>        (optional)" \
-            "\n     4) <xrt-dir>                  (optional)" \
-            "\n     5) <vitis-install-dir>        (optional)" \
+            "\n     4) <vitis-install-dir>        (optional)" \
+            "\n     5) <xrt-dir>                  (optional)" \
             "\n Example, dependent on environment variables:" \
             "\n     ./run_matmul_test.sh  " \
             "results_dir_tmp  \$IREE_INSTALL_DIR " \
@@ -102,22 +102,23 @@ if [ ! -d "${PEANO}" ]; then
   exit 1
 fi
 
-# Parameter 4) <xrt-dir>
+# Parameter 4) <vitis-install-dir>
 if [ -z "${4-}" ]; then
+  VITIS=/opt/Xilinx/Vitis/2024.2
+else
+  VITIS=`realpath "$4"`
+fi
+
+# Parameter 5) <xrt-dir>
+if [ -z "${5-}" ]; then
   XRT_DIR=/opt/xilinx/xrt
 else
-  XRT_DIR=`realpath "$4"`
+  XRT_DIR=`realpath "$5"`
 fi
-if [ -d "$XRT_DIR" ]; then
+if [ -f "$XRT_DIR/setup.sh" ]; then
   source $XRT_DIR/setup.sh
 fi
 
-# Parameter 5) <vitis-install-dir>
-if [ -z "${5-}" ]; then
-  VITIS=/opt/Xilinx/Vitis/2024.2
-else
-  VITIS=`realpath "$5"`
-fi
 
 THIS_DIR="$(cd $(dirname $0) && pwd)"
 ROOT_DIR="$(cd $THIS_DIR/../.. && pwd)"
@@ -147,6 +148,8 @@ cd ${OUTPUT_DIR}
 export MATMUL_TESTS_RUN=0
 export MATMUL_TESTS_FAILS=0
 
+DEVICE_HAL="${DEVICE_HAL:-xrt-lite}"
+
 ###############################################################################
 # Define helper function                                                      #
 ###############################################################################
@@ -175,8 +178,6 @@ function run_matmul_test() {
   local target_backend="amd-aie"
 
   local target_device="npu1_4col"
-
-  local device="xrt"
 
   local peano_install_path="${PEANO}"
 
@@ -272,10 +273,6 @@ function run_matmul_test() {
         ;;
       --target_backend)
         target_backend="$2"
-        shift 2
-        ;;
-      --device)
-        device="$2"
         shift 2
         ;;
       --peano_install_path)
@@ -405,6 +402,7 @@ function run_matmul_test() {
                       --iree-amd-aie-enable-chess=${use_chess} \
                       --iree-amdaie-enable-packet-flow=${enable_packet_flow} \
                       --iree-hal-dump-executable-files-to=$PWD \
+                      --iree-amdaie-device-hal=${DEVICE_HAL} \
                       --iree-hal-memoization=false \
                       --iree-hal-indirect-command-buffers=false \
                       --mlir-elide-resource-strings-if-larger=10 \
@@ -443,7 +441,7 @@ function run_matmul_test() {
     fi
   fi
 
-  # Renable exit on failure:
+  # Re-enable exit on failure:
   echo "**** Generating calls .vmfb file for ${name} ****"
   ${IREE_COMPILE_EXE} "${calls_ir}" \
       --iree-hal-target-backends=${target_backend} \
@@ -463,8 +461,15 @@ function run_matmul_test() {
   COMMAND="${TEST_RUNNER} \
       --module=${matmul_vmfb} \
       --module=${calls_vmfb} \
-      --device=${device} \
+      --device=${DEVICE_HAL} \
       --max_elements_to_check=${max_elements_to_check}"
+
+  if [ -n "${XRT_LITE_N_CORE_ROWS:-}" ]; then
+    COMMAND="${COMMAND} --xrt_lite_n_core_rows=$XRT_LITE_N_CORE_ROWS"
+  fi
+  if [ -n "${XRT_LITE_N_CORE_COLS:-}" ]; then
+    COMMAND="${COMMAND} --xrt_lite_n_core_cols=$XRT_LITE_N_CORE_COLS"
+  fi
 
   total_num_runs=$(( num_repeat_runs * num_corruption_repeat_runs))
   echo "**** Running '${name}' matmul test ${total_num_runs} times (command ${COMMAND}) ****"
@@ -530,7 +535,6 @@ run_matmul_test \
     --acc_type "f32" \
     --target_backend "amd-aie" \
     --target_device "npu1_4col" \
-    --device "xrt" \
     --peano_install_path "${PEANO}" \
     --amd_aie_install_path "${IREE_INSTALL_DIR}" \
     --vitis_path  "${VITIS}" \
@@ -789,7 +793,38 @@ if [ -d "$VITIS" ]; then
 
 fi
 
-echo "\n\n"
+# note this will not actually show any devices because --xrt_lite_n_core_rows --xrt_lite_n_core_cols are not passed
+# which i have omitted to make the conditional slightly more succinct
+if [[ $($IREE_INSTALL_DIR/bin/iree-benchmark-module --dump_devices | grep xrt-lite) ]]; then
+
+  $IREE_INSTALL_DIR/bin/iree-benchmark-module \
+    --module=$OUTPUT_DIR/mm_test1_bf16_f32_m64_n64_k64.vmfb \
+    --function=matmul_64x64_64xbf16_ \
+    --input=64x64xbf16 \
+    --input=64x64xbf16 \
+    --device=xrt-lite \
+    --benchmark_repetitions=10 \
+    --xrt_lite_n_core_rows=$XRT_LITE_N_CORE_ROWS \
+    --xrt_lite_n_core_cols=$XRT_LITE_N_CORE_COLS \
+
+  # TURBO POWER!!!!!!!!!!!!!!!!!
+  set +o pipefail
+  sudo -nv 2>&1 && has_sudo="true" || has_sudo="false"
+  set -o pipefail
+  if [ has_sudo == "true" ]; then
+    sudo $IREE_INSTALL_DIR/bin/iree-benchmark-module \
+      --module=$OUTPUT_DIR/mm_test1_bf16_f32_m64_n64_k64.vmfb \
+      --function=matmul_64x64_64xbf16_ \
+      --input=64x64xbf16 \
+      --input=64x64xbf16 \
+      --device=xrt-lite \
+      --benchmark_repetitions=10 \
+      --xrt_lite_n_core_rows=$XRT_LITE_N_CORE_ROWS \
+      --xrt_lite_n_core_cols=$XRT_LITE_N_CORE_COLS \
+      --xrt_lite_power_mode=turbo
+  fi
+
+fi
 
 echo "$MATMUL_TESTS_RUN matmul tests run!"
 if [ $MATMUL_TESTS_FAILS -ne 0 ]; then

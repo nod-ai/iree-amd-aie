@@ -15,8 +15,7 @@
 /compiler/ @MaheshRavishankar @nirvedhmeshram @yzhang93 @Abhishek-Varma @jtuyls
 
 # Runtime
-/runtime/ @nirvedhmeshram
-/runtime/src/iree-amd-aie/aie_runtime @makslevental
+/runtime/ @makslevental
 
 # AIE Passes
 /compiler/plugins/target/AMD-AIE/aie @makslevental

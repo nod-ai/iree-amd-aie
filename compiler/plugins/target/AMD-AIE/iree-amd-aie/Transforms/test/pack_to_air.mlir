@@ -79,9 +79,9 @@ func.func @func4() {
 // CHECK: scf.parallel (%[[ARG0:.*]], %[[ARG1:.*]], %[[ARG2:.*]]) = 
 // CHECK: %[[SUBVIEW0:.*]] = memref.subview %[[ALLOC0]][%[[ARG0]], %[[ARG1]], %[[ARG2]]] [1, 8, 64] [1, 1, 1] : memref<32x8x64xf32> to memref<1x8x64xf32, strided<[512, 64, 1], offset: ?>>
 // CHECK: %[[ALLOC1:.*]] = memref.alloc() : memref<1x1x1x8x64xf32, 1>
-// CHECK: %[[SUBVIEW1:.*]] = memref.subview %[[ALLOC1]][0, 0, 0, 0, 0] [1, 1, 1, 8, 64] [1, 1, 1, 1, 1] : memref<1x1x1x8x64xf32, 1> to memref<8x64xf32, 1>
-// CHECK: %[[TRANSPOSE0:.*]] = memref.transpose %[[SUBVIEW1]] (d0, d1) -> (d0, d1) : memref<8x64xf32, 1> to memref<8x64xf32, strided<[64, 1]>, 1>
-// CHECK: air.dma_memcpy_nd (%[[SUBVIEW0]][] [] [], %[[TRANSPOSE0]][] [] []) : (memref<1x8x64xf32, strided<[512, 64, 1], offset: ?>>, memref<8x64xf32, strided<[64, 1]>, 1>)
+// CHECK: %[[SUBVIEW1:.*]] = memref.subview %[[ALLOC1]][0, 0, 0, 0, 0] [1, 1, 1, 8, 64] [1, 1, 1, 1, 1] : memref<1x1x1x8x64xf32, 1> to memref<1x8x64xf32, 1>
+// CHECK: %[[TRANSPOSE0:.*]] = memref.transpose %[[SUBVIEW1]] (d0, d1, d2) -> (d0, d1, d2) : memref<1x8x64xf32, 1> to memref<1x8x64xf32, strided<[512, 64, 1]>, 1>
+// CHECK: air.dma_memcpy_nd (%[[SUBVIEW0]][] [] [], %[[TRANSPOSE0]][] [] []) : (memref<1x8x64xf32, strided<[512, 64, 1], offset: ?>>, memref<1x8x64xf32, strided<[512, 64, 1]>, 1>)
 
 func.func @func5() {
   %c0 = arith.constant 0 : index
