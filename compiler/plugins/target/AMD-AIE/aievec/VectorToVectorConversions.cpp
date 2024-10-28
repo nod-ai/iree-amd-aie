@@ -323,8 +323,8 @@ struct CanonicalizeTrivialReadAccessSubviewOpPattern
     for (OpFoldResult x : subViewOp.getMixedOffsets()) {
       Value indexVal;
       if (auto attr = dyn_cast<Attribute>(x)) {
-        indexVal = rewriter.create<arith::ConstantOp>(readOp.getLoc(),
-                                                      cast<IntegerAttr>(attr));
+        indexVal = rewriter.create<arith::ConstantIndexOp>(
+            readOp.getLoc(), cast<IntegerAttr>(attr).getInt());
       } else {
         indexVal = cast<Value>(x);
       }
@@ -356,8 +356,8 @@ struct CanonicalizeTrivialWriteAccessSubviewOpPattern
     for (OpFoldResult x : subViewOp.getMixedOffsets()) {
       Value indexVal;
       if (auto attr = dyn_cast<Attribute>(x)) {
-        indexVal = rewriter.create<arith::ConstantOp>(writeOp.getLoc(),
-                                                      cast<IntegerAttr>(attr));
+        indexVal = rewriter.create<arith::ConstantIndexOp>(
+            writeOp.getLoc(), cast<IntegerAttr>(attr).getInt());
       } else {
         indexVal = cast<Value>(x);
       }
