@@ -798,15 +798,17 @@ class MatmulSet(TestSet):
         # Large shape Matmul + Truncf
         generate_matmul_test(test_name, template_name, 128, 128, 256, "bf16", "f32")
         identity_mat = np.eye(128, dtype=np.float32)
-        ones = np.ones(128 * 128, dtype=np.float32).reshape([128, 128])
-        lhs = ones * 101
-        rhs = identity_mat * 3
+        lhs_ones = np.ones(128 * 256, dtype=np.float32).reshape([128, 256])
+        rhs_ones = np.ones(256 * 128, dtype=np.float32).reshape([256, 128])
+        out_ones = np.ones(128 * 128, dtype=np.float32).reshape([128, 128])
+        lhs = lhs_ones * 2
+        rhs = rhs_ones * 3
         input_args = generate_inputs(test_name, output_dir, 1, {1: lhs, 2: rhs})
         aie_vs_baseline(
             config,
             test_name,
             input_args,
-            ones * 302,  # exected output
+            out_ones * 1536,  # exected output
             use_ukernel=False,
             tile_pipeline="pack-peel",
             lower_to_aie_pipeline="objectFifo",
