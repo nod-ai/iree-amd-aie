@@ -320,13 +320,13 @@ struct CanonicalizeTrivialReadAccessSubviewOpPattern
         }))
       return failure();
     SmallVector<Value> newIndices;
-    for (OpFoldResult x : subViewOp.getMixedOffsets()) {
+    for (OpFoldResult offset : subViewOp.getMixedOffsets()) {
       Value indexVal;
-      if (auto attr = dyn_cast<Attribute>(x)) {
+      if (auto attr = dyn_cast<Attribute>(offset)) {
         indexVal = rewriter.create<arith::ConstantIndexOp>(
             readOp.getLoc(), cast<IntegerAttr>(attr).getInt());
       } else {
-        indexVal = cast<Value>(x);
+        indexVal = cast<Value>(offset);
       }
       newIndices.push_back(indexVal);
     }
@@ -353,13 +353,13 @@ struct CanonicalizeTrivialWriteAccessSubviewOpPattern
         }))
       return failure();
     SmallVector<Value> newIndices;
-    for (OpFoldResult x : subViewOp.getMixedOffsets()) {
+    for (OpFoldResult offset : subViewOp.getMixedOffsets()) {
       Value indexVal;
-      if (auto attr = dyn_cast<Attribute>(x)) {
+      if (auto attr = dyn_cast<Attribute>(offset)) {
         indexVal = rewriter.create<arith::ConstantIndexOp>(
             writeOp.getLoc(), cast<IntegerAttr>(attr).getInt());
       } else {
-        indexVal = cast<Value>(x);
+        indexVal = cast<Value>(offset);
       }
       newIndices.push_back(indexVal);
     }
