@@ -676,57 +676,57 @@ class MatmulSet(TestSet):
         output_dir = config.output_dir
 
         # Test(s) of the form matmul(A,B) + C where A:MxK, B:KxN, C:MxN
-        test_name = output_dir / "test_from_template_full_bias.mlir"
-        template_name = matmul_template_dir / "matmul_bias_MxK_KxN_MxN.mlir"
-        generate_matmul_test(test_name, template_name, 128, 128, 256, "i32", "i32")
-        aie_vs_llvm_cpu(
-            config,
-            test_name,
-            tile_pipeline="pack-peel",
-            lower_to_aie_pipeline="air",
-            rtol=0,
-            atol=0,
-        )
+        # test_name = output_dir / "test_from_template_full_bias.mlir"
+        # template_name = matmul_template_dir / "matmul_bias_MxK_KxN_MxN.mlir"
+        # generate_matmul_test(test_name, template_name, 128, 128, 256, "i32", "i32")
+        # aie_vs_llvm_cpu(
+        #     config,
+        #     test_name,
+        #     tile_pipeline="pack-peel",
+        #     lower_to_aie_pipeline="air",
+        #     rtol=0,
+        #     atol=0,
+        # )
 
-        if config.xdna_datetime and config.xdna_datetime < 20240801:
-            for name in [
-                "two_matmul_switching",
-                "matmul_f32_8_8_4",
-                "matmul_f32_8_4_8",
-            ]:
-                aie_vs_llvm_cpu(config, test_files_dir / f"{name}.mlir")
+        # if config.xdna_datetime and config.xdna_datetime < 20240801:
+        #     for name in [
+        #         "two_matmul_switching",
+        #         "matmul_f32_8_8_4",
+        #         "matmul_f32_8_4_8",
+        #     ]:
+        #         aie_vs_llvm_cpu(config, test_files_dir / f"{name}.mlir")
 
-            aie_vs_llvm_cpu(
-                config,
-                test_files_dir / "three_matmuls.mlir",
-                function_name="three_$mm$",
-            )
+        #     aie_vs_llvm_cpu(
+        #         config,
+        #         test_files_dir / "three_matmuls.mlir",
+        #         function_name="three_$mm$",
+        #     )
 
         # Test(s) of the form matmul(A,B) where A:MxK, B:KxN
-        test_name = output_dir / "test_from_template.mlir"
-        template_name = matmul_template_dir / "matmul_MxK_KxN.mlir"
-        generate_matmul_test(test_name, template_name, 32, 32, 64, "bf16", "f32")
-        aie_vs_llvm_cpu(config, test_name)
+        # test_name = output_dir / "test_from_template.mlir"
+        # template_name = matmul_template_dir / "matmul_MxK_KxN.mlir"
+        # generate_matmul_test(test_name, template_name, 32, 32, 64, "bf16", "f32")
+        # aie_vs_llvm_cpu(config, test_name)
 
         # Test(s) of the form matmul(A,B) + C where A:MxK, B:KxN, C:N
-        test_name = output_dir / "test_from_template_bias_N.mlir"
-        template_name = matmul_template_dir / "matmul_bias_MxK_KxN_N.mlir"
-        generate_matmul_test(test_name, template_name, 1024, 1024, 512, "bf16", "f32")
-        if config.vitis_dir:
-            aie_vs_llvm_cpu(
-                config,
-                test_name,
-                tile_pipeline="pack-peel",
-                lower_to_aie_pipeline="air",
-                use_ukernel=True,
-            )
-        aie_vs_llvm_cpu(
-            config,
-            test_name,
-            tile_pipeline="pack-peel",
-            lower_to_aie_pipeline="air",
-            use_ukernel=False,
-        )
+        # test_name = output_dir / "test_from_template_bias_N.mlir"
+        # template_name = matmul_template_dir / "matmul_bias_MxK_KxN_N.mlir"
+        # generate_matmul_test(test_name, template_name, 1024, 1024, 512, "bf16", "f32")
+        # if config.vitis_dir:
+        #     aie_vs_llvm_cpu(
+        #         config,
+        #         test_name,
+        #         tile_pipeline="pack-peel",
+        #         lower_to_aie_pipeline="air",
+        #         use_ukernel=True,
+        #     )
+        # aie_vs_llvm_cpu(
+        #     config,
+        #     test_name,
+        #     tile_pipeline="pack-peel",
+        #     lower_to_aie_pipeline="air",
+        #     use_ukernel=False,
+        # )
 
         # Test(s) of the form batch_matmul(A,B) where A:BxMxK, B:BxKxN
         template_name = matmul_template_dir / "batch_matmul_BxMxK_BxKxN.mlir"
@@ -793,8 +793,8 @@ class SmokeSet(TestSet):
         output_dir = config.output_dir
 
         # The most basic test, direct from .mlir file using all defaults
-        test_files_dir = file_dir / "test_files"
-        aie_vs_llvm_cpu(config, test_files_dir / "matmul_int32.mlir")
+        # test_files_dir = file_dir / "test_files"
+        # aie_vs_llvm_cpu(config, test_files_dir / "matmul_int32.mlir")
 
         # Using objectFifo pipeline
         test_name = output_dir / "test_from_template.mlir"

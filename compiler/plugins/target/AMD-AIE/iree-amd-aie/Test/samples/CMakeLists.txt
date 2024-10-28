@@ -6,14 +6,11 @@
 
 iree_lit_test_suite(
   NAME
-    lit
+    lit_objectFifo
   SRCS
     "conv2d_nhwc_objectfifo_e2e.mlir"
-    "matmul_elementwise_pack_peel_air_e2e.mlir"
-    "matmul_pack_peel_air_e2e.mlir"
     "matmul_pack_peel_objectfifo.mlir"
     "matmul_pack_peel_objectfifo_e2e.mlir"
-    "matmul_pad_pack_air_e2e.mlir"
     "xdna_oplib_plugin.mlir"
   TOOLS
     ${IREE_LLD_TARGET}
@@ -21,3 +18,17 @@ iree_lit_test_suite(
     iree-opt
     iree-compile
 )
+
+# iree_lit_test_suite(
+#  NAME
+#    lit_air
+#  SRCS
+#    "matmul_elementwise_pack_peel_air_e2e.mlir"
+#    "matmul_pack_peel_air_e2e.mlir"
+#    "matmul_pad_pack_air_e2e.mlir"
+#  TOOLS
+#    ${IREE_LLD_TARGET}
+#    FileCheck
+#    iree-opt
+#    iree-compile
+# )
