@@ -304,6 +304,45 @@ class FlattenContiguousRowMajorTransferWritePattern
 
 }  // namespace copied_from_mlir
 
+/// Utility to check if the indices provided are all 0.
+static LogicalResult isAllZeroOffsetAccess(mlir::OperandRange indices) {
+  if (!llvm::all_of(indices, [](Value val) {
+        IntegerAttr attr;
+        if (!matchPattern(val, m_Constant(&attr))) return false;
+        return attr.getInt() == 0;
+      })) {
+    return failure();
+  }
+  return success();
+}
+
+/// Utility to fetch indices of Subview op which would be used by a new vector
+/// transfer_read/transfer_write op with trivial access pattern.
+static SmallVector<Value> fetchNewIndices(PatternRewriter &rewriter,
+                                          Location loc,
+                                          memref::SubViewOp subViewOp) {
+  SmallVector<Value> newIndices;
+  for (OpFoldResult offset : subViewOp.getMixedOffsets()) {
+    Value indexVal;
+    if (auto attr = dyn_cast<Attribute>(offset)) {
+      indexVal = rewriter.create<arith::ConstantIndexOp>(
+          loc, cast<IntegerAttr>(attr).getInt());
+    } else {
+      indexVal = cast<Value>(offset);
+    }
+    newIndices.push_back(indexVal);
+  }
+  return newIndices;
+}
+
+/// A rewriter function to canonicalize the following :-
+/// INPUT:
+///       %b = memref.subview %a [offset0, offset1, ...]
+///       %c = vector.transfer_read %b[0, 0, ...]
+/// OUTPUT:
+///       %c = vector.transfer_read %a[offset0, offset1, ...]
+///
+/// This is needed to enable other set of staged canonicalizations in this pass.
 struct CanonicalizeTrivialReadAccessSubviewOpPattern
     : public OpRewritePattern<vector::TransferReadOp> {
   using OpRewritePattern<vector::TransferReadOp>::OpRewritePattern;
@@ -313,23 +352,9 @@ struct CanonicalizeTrivialReadAccessSubviewOpPattern
     auto subViewOp = dyn_cast_if_present<memref::SubViewOp>(
         readOp.getSource().getDefiningOp());
     if (!subViewOp) return failure();
-    if (!llvm::all_of(readOp.getIndices(), [](Value val) {
-          IntegerAttr attr;
-          if (!matchPattern(val, m_Constant(&attr))) return false;
-          return attr.getInt() == 0;
-        }))
-      return failure();
-    SmallVector<Value> newIndices;
-    for (OpFoldResult offset : subViewOp.getMixedOffsets()) {
-      Value indexVal;
-      if (auto attr = dyn_cast<Attribute>(offset)) {
-        indexVal = rewriter.create<arith::ConstantIndexOp>(
-            readOp.getLoc(), cast<IntegerAttr>(attr).getInt());
-      } else {
-        indexVal = cast<Value>(offset);
-      }
-      newIndices.push_back(indexVal);
-    }
+    if (failed(isAllZeroOffsetAccess(readOp.getIndices()))) return failure();
+    SmallVector<Value> newIndices =
+        fetchNewIndices(rewriter, readOp.getLoc(), subViewOp);
     rewriter.replaceOpWithNewOp<vector::TransferReadOp>(
         readOp, readOp.getType(), subViewOp.getSource(), newIndices,
         readOp.getPadding(), readOp.getInBoundsValues());
@@ -337,6 +362,14 @@ struct CanonicalizeTrivialReadAccessSubviewOpPattern
   }
 };
 
+/// A rewriter function to canonicalize the following :-
+/// INPUT:
+///       %b = memref.subview %a [offset0, offset1, ...]
+///       vector.transfer_write %val, %b[0, 0, ...]
+/// OUTPUT:
+///       vector.transfer_write %val, %a[offset0, offset1, ...]
+///
+/// This is needed to enable other set of staged canonicalizations in this pass.
 struct CanonicalizeTrivialWriteAccessSubviewOpPattern
     : public OpRewritePattern<vector::TransferWriteOp> {
   using OpRewritePattern<vector::TransferWriteOp>::OpRewritePattern;
@@ -346,23 +379,9 @@ struct CanonicalizeTrivialWriteAccessSubviewOpPattern
     auto subViewOp = dyn_cast_if_present<memref::SubViewOp>(
         writeOp.getSource().getDefiningOp());
     if (!subViewOp) return failure();
-    if (!llvm::all_of(writeOp.getIndices(), [](Value val) {
-          IntegerAttr attr;
-          if (!matchPattern(val, m_Constant(&attr))) return false;
-          return attr.getInt() == 0;
-        }))
-      return failure();
-    SmallVector<Value> newIndices;
-    for (OpFoldResult offset : subViewOp.getMixedOffsets()) {
-      Value indexVal;
-      if (auto attr = dyn_cast<Attribute>(offset)) {
-        indexVal = rewriter.create<arith::ConstantIndexOp>(
-            writeOp.getLoc(), cast<IntegerAttr>(attr).getInt());
-      } else {
-        indexVal = cast<Value>(offset);
-      }
-      newIndices.push_back(indexVal);
-    }
+    if (failed(isAllZeroOffsetAccess(writeOp.getIndices()))) return failure();
+    SmallVector<Value> newIndices =
+        fetchNewIndices(rewriter, writeOp.getLoc(), subViewOp);
     rewriter.create<vector::TransferWriteOp>(
         writeOp.getLoc(), writeOp.getVector(), subViewOp.getSource(),
         newIndices, writeOp.getInBoundsValues());

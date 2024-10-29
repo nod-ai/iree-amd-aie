@@ -171,6 +171,7 @@ func.func @arith_truncf(%inp: vector<2x3xf32>) -> vector<2x3xbf16> {
 
 // CHECK-LABEL: @trivial_read_access
 // CHECK-SAME:  (%[[ARG0:.*]]: memref<4x8x4x8xbf16, strided<[256, 32, 8, 1]>>)
+// CHECK-NOT:     memref.subview
 // CHECK:         %[[COLLAPSE_SHAPE:.*]] = memref.collapse_shape %[[ARG0]]
 // CHECK-SAME:        into memref<1024xbf16, strided<[1]>>
 // CHECK:         %[[READ:.*]] = vector.transfer_read %[[COLLAPSE_SHAPE]]
@@ -190,6 +191,7 @@ func.func @trivial_read_access(%arg0: memref<4x8x4x8xbf16, strided<[256, 32, 8, 
 // CHECK-LABEL: @trivial_write_access
 // CHECK-SAME:  (%[[ARG0:.*]]: memref<8x8x4x4xf32, strided<[128, 16, 4, 1]>>,
 // CHECK-SAME:   %[[ARG1:.*]]: vector<1x1x4x4xf32>)
+// CHECK-NOT:       memref.subview
 // CHECK:           %[[COLLAPSE_SHAPE:.*]] = memref.collapse_shape %[[ARG0]]
 // CHECK-SAME:          : memref<8x8x4x4xf32, strided<[128, 16, 4, 1]>> into memref<1024xf32, strided<[1]>>
 // CHECK:           %[[SHAPE_CAST:.*]] = vector.shape_cast %[[ARG1]]
