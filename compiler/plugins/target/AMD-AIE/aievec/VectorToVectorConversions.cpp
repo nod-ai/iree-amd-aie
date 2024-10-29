@@ -11,6 +11,7 @@
 // it compatible with the available vector instructions in AIE architectures
 //===----------------------------------------------------------------------===//
 
+#include <limits>
 #include <memory>
 
 #include "Passes.h"
@@ -37,7 +38,273 @@
 
 namespace mlir::iree_compiler::aievec {
 
-using namespace mlir;
+namespace copied_from_mlir {
+
+/// This code is copied from MLIR. It adds a single-line change to 2 Patterns,
+/// FlattenContiguousRowMajorTransferReadPattern and
+/// FlattenContiguousRowMajorTransferWritePattern. This change allows the
+/// memrefs of the transfer operations be flattened to a 1D memrefs, so not just
+/// the vectors are flattened. TODO(newling) consider upstreaming to reduce code
+/// dup.
+///
+/// If this flag is false, then the patterns are exactly the same as the
+/// original MLIR patterns.
+const static bool flatten_memref = true;
+
+/// Creates a memref.collapse_shape collapsing all inner dimensions of the
+/// input starting at `firstDimToCollapse`.
+static Value collapseInnerDims(PatternRewriter &rewriter, mlir::Location loc,
+                               Value input, int64_t firstDimToCollapse) {
+  ShapedType inputType = cast<ShapedType>(input.getType());
+  if (inputType.getRank() == 1) return input;
+  SmallVector<ReassociationIndices> reassociation;
+  for (int64_t i = 0; i < firstDimToCollapse; ++i)
+    reassociation.push_back(ReassociationIndices{i});
+  ReassociationIndices collapsedIndices;
+  for (int64_t i = firstDimToCollapse; i < inputType.getRank(); ++i)
+    collapsedIndices.push_back(i);
+  reassociation.push_back(collapsedIndices);
+  return rewriter.create<memref::CollapseShapeOp>(loc, input, reassociation);
+}
+
+/// Returns the new indices that collapses the inner dimensions starting from
+/// the `firstDimToCollapse` dimension.
+static SmallVector<Value> getCollapsedIndices(RewriterBase &rewriter,
+                                              Location loc,
+                                              ArrayRef<int64_t> shape,
+                                              ValueRange indices,
+                                              int64_t firstDimToCollapse) {
+  assert(firstDimToCollapse < static_cast<int64_t>(indices.size()));
+
+  // If all the collapsed indices are zero then no extra logic is needed.
+  // Otherwise, a new offset/index has to be computed.
+  SmallVector<Value> indicesAfterCollapsing(
+      indices.begin(), indices.begin() + firstDimToCollapse);
+  SmallVector<Value> indicesToCollapse(indices.begin() + firstDimToCollapse,
+                                       indices.end());
+  if (llvm::all_of(indicesToCollapse, isZeroIndex)) {
+    indicesAfterCollapsing.push_back(indicesToCollapse[0]);
+    return indicesAfterCollapsing;
+  }
+
+  // Compute the remaining trailing index/offset required for reading from
+  // the collapsed memref:
+  //
+  //    offset = 0
+  //    for (i = firstDimToCollapse; i < outputRank; ++i)
+  //      offset += sourceType.getDimSize(i) * transferReadOp.indices[i]
+  //
+  // For this example:
+  //   %2 = vector.transfer_read/write %arg4[%c0, %arg0, %c0] (...) :
+  //      memref<1x43x2xi32>, vector<1x2xi32>
+  // which would be collapsed to:
+  //   %1 = vector.transfer_read/write %collapse_shape[%c0, %offset] (...) :
+  //      memref<1x86xi32>, vector<2xi32>
+  // one would get the following offset:
+  //    %offset = %arg0 * 43
+  OpFoldResult collapsedOffset =
+      rewriter.create<arith::ConstantIndexOp>(loc, 0).getResult();
+
+  auto collapsedStrides = computeSuffixProduct(
+      ArrayRef<int64_t>(shape.begin() + firstDimToCollapse, shape.end()));
+
+  // Compute the collapsed offset.
+  auto &&[collapsedExpr, collapsedVals] =
+      computeLinearIndex(collapsedOffset, collapsedStrides, indicesToCollapse);
+  collapsedOffset = affine::makeComposedFoldedAffineApply(
+      rewriter, loc, collapsedExpr, collapsedVals);
+
+  if (collapsedOffset.is<Value>()) {
+    indicesAfterCollapsing.push_back(collapsedOffset.get<Value>());
+  } else {
+    indicesAfterCollapsing.push_back(rewriter.create<arith::ConstantIndexOp>(
+        loc, *getConstantIntValue(collapsedOffset)));
+  }
+
+  return indicesAfterCollapsing;
+}
+
+/// Rewrites contiguous row-major vector.transfer_read ops by inserting
+/// memref.collapse_shape on the source so that the resulting
+/// vector.transfer_read has a 1D source. Requires the source shape to be
+/// already reduced i.e. without unit dims.
+///
+/// If `targetVectorBitwidth` is provided, the flattening will only happen if
+/// the trailing dimension of the vector read is smaller than the provided
+/// bitwidth.
+class FlattenContiguousRowMajorTransferReadPattern
+    : public OpRewritePattern<vector::TransferReadOp> {
+ public:
+  FlattenContiguousRowMajorTransferReadPattern(MLIRContext *context,
+                                               unsigned vectorBitwidth,
+                                               PatternBenefit benefit)
+      : OpRewritePattern<vector::TransferReadOp>(context, benefit),
+        targetVectorBitwidth(vectorBitwidth) {}
+
+  LogicalResult matchAndRewrite(vector::TransferReadOp transferReadOp,
+                                PatternRewriter &rewriter) const override {
+    auto loc = transferReadOp.getLoc();
+    Value vector = transferReadOp.getVector();
+    VectorType vectorType = cast<VectorType>(vector.getType());
+    auto source = transferReadOp.getSource();
+    MemRefType sourceType = dyn_cast<MemRefType>(source.getType());
+
+    // 0. Check pre-conditions
+    // Contiguity check is valid on tensors only.
+    if (!sourceType) return failure();
+    // If this is already 0D/1D, there's nothing to do.
+    if (vectorType.getRank() <= 1) return failure();
+    if (!vectorType.getElementType().isSignlessIntOrFloat()) return failure();
+    unsigned trailingVectorDimBitwidth =
+        vectorType.getShape().back() * vectorType.getElementTypeBitWidth();
+    if (trailingVectorDimBitwidth >= targetVectorBitwidth) return failure();
+    if (!vector::isContiguousSlice(sourceType, vectorType)) return failure();
+    // TODO: generalize this pattern, relax the requirements here.
+    if (transferReadOp.hasOutOfBoundsDim()) return failure();
+    if (!transferReadOp.getPermutationMap().isMinorIdentity()) return failure();
+    if (transferReadOp.getMask()) return failure();
+
+    // TODO(newling) This is the one line which changes from the original
+    // MLIR function. Upstream this as an option to flatten the memref (and
+    // not just the vector).
+    int64_t firstDimToCollapse =
+        flatten_memref ? 0 : sourceType.getRank() - vectorType.getRank();
+
+    // 1. Collapse the source memref
+    Value collapsedSource =
+        collapseInnerDims(rewriter, loc, source, firstDimToCollapse);
+    MemRefType collapsedSourceType =
+        cast<MemRefType>(collapsedSource.getType());
+    int64_t collapsedRank = collapsedSourceType.getRank();
+    assert(collapsedRank == firstDimToCollapse + 1);
+
+    // 2. Generate input args for a new vector.transfer_read that will read
+    // from the collapsed memref.
+    // 2.1. New dim exprs + affine map
+    SmallVector<AffineExpr, 1> dimExprs{
+        getAffineDimExpr(firstDimToCollapse, rewriter.getContext())};
+    auto collapsedMap =
+        AffineMap::get(collapsedRank, 0, dimExprs, rewriter.getContext());
+
+    // 2.2 New indices
+    SmallVector<Value> collapsedIndices =
+        getCollapsedIndices(rewriter, loc, sourceType.getShape(),
+                            transferReadOp.getIndices(), firstDimToCollapse);
+
+    // 3. Create new vector.transfer_read that reads from the collapsed memref
+    VectorType flatVectorType = VectorType::get({vectorType.getNumElements()},
+                                                vectorType.getElementType());
+    vector::TransferReadOp flatRead = rewriter.create<vector::TransferReadOp>(
+        loc, flatVectorType, collapsedSource, collapsedIndices, collapsedMap);
+    flatRead.setInBoundsAttr(rewriter.getBoolArrayAttr({true}));
+
+    // 4. Replace the old transfer_read with the new one reading from the
+    // collapsed shape
+    rewriter.replaceOpWithNewOp<vector::ShapeCastOp>(
+        transferReadOp, cast<VectorType>(vector.getType()), flatRead);
+    return success();
+  }
+
+ private:
+  // Minimum bitwidth that the trailing vector dimension should have after
+  // flattening.
+  unsigned targetVectorBitwidth;
+};
+
+/// Rewrites contiguous row-major vector.transfer_write ops by inserting
+/// memref.collapse_shape on the source so that the resulting
+/// vector.transfer_write has a 1D source. Requires the source shape to be
+/// already reduced i.e. without unit dims.
+///
+/// If `targetVectorBitwidth` is provided, the flattening will only happen if
+/// the trailing dimension of the vector read is smaller than the provided
+/// bitwidth.
+class FlattenContiguousRowMajorTransferWritePattern
+    : public OpRewritePattern<vector::TransferWriteOp> {
+ public:
+  FlattenContiguousRowMajorTransferWritePattern(MLIRContext *context,
+                                                unsigned vectorBitwidth,
+                                                PatternBenefit benefit)
+      : OpRewritePattern<vector::TransferWriteOp>(context, benefit),
+        targetVectorBitwidth(vectorBitwidth) {}
+
+  LogicalResult matchAndRewrite(vector::TransferWriteOp transferWriteOp,
+                                PatternRewriter &rewriter) const override {
+    auto loc = transferWriteOp.getLoc();
+    Value vector = transferWriteOp.getVector();
+    VectorType vectorType = cast<VectorType>(vector.getType());
+    Value source = transferWriteOp.getSource();
+    MemRefType sourceType = dyn_cast<MemRefType>(source.getType());
+
+    // 0. Check pre-conditions
+    // Contiguity check is valid on tensors only.
+    if (!sourceType) return failure();
+    // If this is already 0D/1D, there's nothing to do.
+    if (vectorType.getRank() <= 1)
+      // Already 0D/1D, nothing to do.
+      return failure();
+    if (!vectorType.getElementType().isSignlessIntOrFloat()) return failure();
+    unsigned trailingVectorDimBitwidth =
+        vectorType.getShape().back() * vectorType.getElementTypeBitWidth();
+    if (trailingVectorDimBitwidth >= targetVectorBitwidth) return failure();
+    if (!vector::isContiguousSlice(sourceType, vectorType)) return failure();
+    // TODO: generalize this pattern, relax the requirements here.
+    if (transferWriteOp.hasOutOfBoundsDim()) return failure();
+    if (!transferWriteOp.getPermutationMap().isMinorIdentity())
+      return failure();
+    if (transferWriteOp.getMask()) return failure();
+
+    // TODO(newling) This is the one line which changes from the original
+    // MLIR function. Upstream this as an option to flatten the memref (and
+    // not just the vector).
+    int64_t firstDimToCollapse =
+        flatten_memref ? 0 : sourceType.getRank() - vectorType.getRank();
+
+    // 1. Collapse the source memref
+    Value collapsedSource =
+        collapseInnerDims(rewriter, loc, source, firstDimToCollapse);
+    MemRefType collapsedSourceType =
+        cast<MemRefType>(collapsedSource.getType());
+    int64_t collapsedRank = collapsedSourceType.getRank();
+    assert(collapsedRank == firstDimToCollapse + 1);
+
+    // 2. Generate input args for a new vector.transfer_read that will read
+    // from the collapsed memref.
+    // 2.1. New dim exprs + affine map
+    SmallVector<AffineExpr, 1> dimExprs{
+        getAffineDimExpr(firstDimToCollapse, rewriter.getContext())};
+    auto collapsedMap =
+        AffineMap::get(collapsedRank, 0, dimExprs, rewriter.getContext());
+
+    // 2.2 New indices
+    SmallVector<Value> collapsedIndices =
+        getCollapsedIndices(rewriter, loc, sourceType.getShape(),
+                            transferWriteOp.getIndices(), firstDimToCollapse);
+
+    // 3. Create new vector.transfer_write that writes to the collapsed memref
+    VectorType flatVectorType = VectorType::get({vectorType.getNumElements()},
+                                                vectorType.getElementType());
+    Value flatVector =
+        rewriter.create<vector::ShapeCastOp>(loc, flatVectorType, vector);
+    vector::TransferWriteOp flatWrite =
+        rewriter.create<vector::TransferWriteOp>(
+            loc, flatVector, collapsedSource, collapsedIndices, collapsedMap);
+    flatWrite.setInBoundsAttr(rewriter.getBoolArrayAttr({true}));
+
+    // 4. Replace the old transfer_write with the new one writing the
+    // collapsed shape
+    rewriter.eraseOp(transferWriteOp);
+    return success();
+  }
+
+ private:
+  // Minimum bitwidth that the trailing vector dimension should have after
+  // flattening.
+  unsigned targetVectorBitwidth;
+};
+
+}  // namespace copied_from_mlir
+
 
 static bool isGemmBTransposedContractionOp(vector::ContractionOp op) {
   if (op.getKind() != vector::CombiningKind::ADD) return false;
@@ -643,7 +910,12 @@ struct CanonicalizeVectorForAIEVecPass
                ToMinorIdentityTransferWritePattern,
                ConvertLeadingUnitDimInsertToReshapePattern>(context);
       patterns.add<ConvertSplatTransferReadToBroadcastPattern>(context);
-      mlir::vector::populateFlattenVectorTransferPatterns(patterns);
+      patterns
+          .add<copied_from_mlir::FlattenContiguousRowMajorTransferReadPattern,
+               copied_from_mlir::FlattenContiguousRowMajorTransferWritePattern>(
+              context, std::numeric_limits<unsigned>::max(), 1);
+      mlir::vector::populateShapeCastFoldingPatterns(patterns);
+      mlir::vector::populateDropUnitDimWithShapeCastPatterns(patterns);
       mlir::vector::populateVectorBroadcastLoweringPatterns(patterns);
       (void)applyPatternsAndFoldGreedily(op, std::move(patterns));
     }
