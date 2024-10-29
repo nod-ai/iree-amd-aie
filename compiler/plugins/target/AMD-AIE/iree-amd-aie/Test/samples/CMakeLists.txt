@@ -14,6 +14,7 @@ iree_lit_test_suite(
     "matmul_pack_peel_objectfifo.mlir"
     "matmul_pack_peel_objectfifo_e2e.mlir"
     "matmul_pad_pack_air_e2e.mlir"
+    "matmul_elementwise_pack_peel_objectfifo_e2e.mlir"
     "xdna_oplib_plugin.mlir"
   TOOLS
     ${IREE_LLD_TARGET}
