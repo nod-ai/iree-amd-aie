@@ -169,7 +169,7 @@ std::unique_ptr<Pass> createAMDAIEDmaToCircularDmaPass();
 std::unique_ptr<Pass> createAMDAIEFlattenLogicalObjectFifoPass();
 
 /// Create a pass for function outlining.
-std::unique_ptr<Pass> createAMDAIEFunctionOutliningPass();
+std::unique_ptr<Pass> createAMDAIELinalgFunctionOutliningPass();
 
 /// Create a pass to fuse the consumer op into the innermost last scf loop.
 std::unique_ptr<Pass> createAMDAIEFuseConsumerIntoLoopPass(

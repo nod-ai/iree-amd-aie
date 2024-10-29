@@ -1,4 +1,4 @@
-// RUN: iree-opt --split-input-file --iree-amdaie-function-outlining --verify-diagnostics --split-input-file %s | FileCheck %s
+// RUN: iree-opt --split-input-file --iree-amdaie-linalg-function-outlining --verify-diagnostics --split-input-file %s | FileCheck %s
 
 // CHECK-LABEL: func.func private @generic_matmul_outlined
 // CHECK-SAME:  (%[[LHS:.*]]: memref<1x1x4x8x4x8xbf16>,

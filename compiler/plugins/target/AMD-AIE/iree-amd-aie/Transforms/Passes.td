@@ -259,10 +259,10 @@ def AMDAIEFlattenLogicalObjectFifo :
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEFlattenLogicalObjectFifoPass()";
 }
 
-def AMDAIEFunctionOutlining :
-  Pass<"iree-amdaie-function-outlining", "ModuleOp"> {
-  let summary = "Function outlining";
-  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEFunctionOutliningPass()";
+def AMDAIELinalgFunctionOutlining :
+  Pass<"iree-amdaie-linalg-function-outlining", "ModuleOp"> {
+  let summary = "Outlining of linalg compute ops";
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIELinalgFunctionOutliningPass()";
 }
 
 def AMDAIEFuseConsumerIntoLoop :
