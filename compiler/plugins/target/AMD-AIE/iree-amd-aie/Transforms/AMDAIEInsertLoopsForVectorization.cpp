@@ -45,8 +45,8 @@ class AMDAIEInsertLoopsForVectorizationPass
   };
 
   /// Tile the generic op using `tileSizes` and coalesce the generated tiling
-  /// loops.
-  static LogicalResult performTiling(IRRewriter &rewriter,
+  /// loops in order to minimize the overhead of loop control/branch statements.
+  static void performTiling(IRRewriter &rewriter,
                                      linalg::GenericOp genericOp,
                                      SmallVector<int64_t> &tileSizes,
                                      bool isTensorType) {
@@ -61,7 +61,7 @@ class AMDAIEInsertLoopsForVectorizationPass
     } else {
       rewriter.eraseOp(genericOp);
     }
-    return success();
+    return;
   }
   // Tile all dimensions except the 3 inner-most dimensions. Tile size '1'
   // denotes tiling with smallest possible tile (size 1) and tile size '0'
@@ -93,7 +93,10 @@ class AMDAIEInsertLoopsForVectorizationPass
     return tileSizes;
   }
 
-  /// Collapse unit dims of the generic op before tiling for vectorization.
+  /// Collapse unit dims of the generic op before tiling for vectorization. Since
+  /// this is optinal we need not return failure if the collapsing cannot take
+  /// place. Eg: For <2x3x4> since there aren't any unit dimensions, it'd return
+  /// failure, hence we can simply return.
   static void collapseUnitDims(IRRewriter &rewriter,
                                linalg::GenericOp &genericOp,
                                bool isTensorType) {
@@ -102,9 +105,7 @@ class AMDAIEInsertLoopsForVectorizationPass
         linalg::ControlDropUnitDims::RankReductionStrategy::ExtractInsertSlice;
     FailureOr<linalg::DropUnitDimsResult> result =
         linalg::dropUnitDims(rewriter, genericOp, options);
-    if (failed(result)) {
-      return;
-    }
+    if (failed(result)) return;
     if (isTensorType) {
       rewriter.replaceOp(genericOp, result->replacements);
     } else {
@@ -137,12 +138,9 @@ class AMDAIEInsertLoopsForVectorizationPass
       std::optional<SmallVector<int64_t>> tileSizes =
           formTileSizesForElementwise(genericOp);
       if (!tileSizes) {
-        return failure();
+        return genericOp->emitOpError()<<"unable to form tile sizes for the elementwise op";
       }
-      if (failed(
-              performTiling(rewriter, genericOp, *tileSizes, isTensorType))) {
-        return failure();
-      }
+      performTiling(rewriter, genericOp, *tileSizes, isTensorType);
       return success();
     }
     // Matmul-like ops have 3 operands.
@@ -209,11 +207,9 @@ class AMDAIEInsertLoopsForVectorizationPass
     std::optional<SmallVector<int64_t>> tileSizes =
         formTileSizesForMatmul(genericOp);
     if (!tileSizes) {
-      return failure();
+      return genericOp->emitOpError()<<"unable to form tile sizes for the matmul op";
     }
-    if (failed(performTiling(rewriter, genericOp, *tileSizes, isTensorType))) {
-      return failure();
-    }
+    performTiling(rewriter, genericOp, *tileSizes, isTensorType);
     return success();
   }
 
