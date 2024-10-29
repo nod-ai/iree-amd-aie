@@ -34,13 +34,49 @@ void AMDAIESplitLogicalObjFifosForConnectionReusePass::runOnOperation() {
   MLIRContext *context = &getContext();
   IRRewriter rewriter(context);
 
-  SmallVector<AMDAIE::DmaCpyNdOp> l2ToL1DmaOps =
-      fetchDmaCpyNdOpsToSplitOrCombine(moduleOp);
+  // SmallVector<AMDAIE::DmaCpyNdOp> l2ToL1DmaOps =
+  //     fetchDmaCpyNdOpsToSplitOrCombine(moduleOp);
 
-  if (failed(splitLogicalObjectFifos(rewriter, l2ToL1DmaOps, context))) {
-    LLVM_DEBUG(llvm::dbgs()
-               << "Failed to perform splitting of logicalobjectfifos");
-    return signalPassFailure();
+  // if (failed(splitLogicalObjectFifos(rewriter, l2ToL1DmaOps, context))) {
+  //   LLVM_DEBUG(llvm::dbgs()
+  //              << "Failed to perform splitting of logicalobjectfifos");
+  //   return signalPassFailure();
+  // }
+  SmallVector<AMDAIE::DmaCpyNdOp> dmaOps;
+  moduleOp->walk([&](AMDAIE::DmaCpyNdOp op) {
+    std::optional<uint8_t> sourceMemSpace = op.getSourceMemorySpaceAsUInt();
+    std::optional<uint8_t> targetMemSpace = op.getTargetMemorySpaceAsUInt();
+    if (sourceMemSpace && sourceMemSpace.value() == 1 && targetMemSpace &&
+        targetMemSpace.value() == 0) {
+      dmaOps.push_back(op);
+    }
+    return WalkResult::advance();
+  });
+
+  for (AMDAIE::DmaCpyNdOp dmaOp : dmaOps) {
+    auto stridedOp =
+        cast<AMDAIE::DoublyStridedOpInterface>(dmaOp.getOperation());
+    if (failed(splitDoublyStridedOp(rewriter, stridedOp))) {
+      LLVM_DEBUG(llvm::dbgs()
+                 << "Failed to perform splitting of logicalobjectfifos");
+      return signalPassFailure();
+    }
+  }
+
+  SmallVector<AMDAIE::LogicalObjectFifoFromMemrefOp> objFifoOps;
+  moduleOp->walk([&](AMDAIE::LogicalObjectFifoFromMemrefOp op) {
+    ArrayRef<int64_t> memrefShape = op.getMemrefType().getShape();
+    if (op.getMemorySpaceAsUInt() == 1 && memrefShape.size() > 2 &&
+        memrefShape[0] == 2 && memrefShape[1] == 2) {
+      llvm::outs() << "push objFifo: " << op << "\n";
+      objFifoOps.push_back(op);
+    }
+    return WalkResult::advance();
+  });
+  for (AMDAIE::LogicalObjectFifoFromMemrefOp op : objFifoOps) {
+    if (failed(splitObjFifo(rewriter, op))) {
+      return signalPassFailure();
+    }
   }
 }
 

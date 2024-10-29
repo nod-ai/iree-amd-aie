@@ -19,6 +19,14 @@ LogicalResult splitLogicalObjectFifos(
     IRRewriter &rewriter, SmallVector<AMDAIE::DmaCpyNdOp> &l2ToL1DmaOps,
     MLIRContext *context);
 
+LogicalResult splitObjFifo(IRRewriter &rewriter,
+                           AMDAIE::LogicalObjectFifoFromMemrefOp op,
+                           size_t splitDim = 0, int64_t splitFactor = -1);
+
+LogicalResult splitDoublyStridedOp(IRRewriter &rewriter,
+                                   AMDAIE::DoublyStridedOpInterface op,
+                                   size_t splitDim = 0, int64_t splitFactor = -1);
+
 }  // namespace mlir::iree_compiler::AMDAIE
 
 #endif

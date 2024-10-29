@@ -28,11 +28,8 @@ namespace mlir::iree_compiler::AMDAIE {
 static AMDAIE::LogicalObjectFifoFromMemrefOp createNewLogicalObjectFifo(
     IRRewriter &rewriter,
     AMDAIE::LogicalObjectFifoFromMemrefOp &oldLogicalObjectFifo,
-    SmallVectorImpl<OpFoldResult> &newSizesOpFoldResultArr) {
+    const SmallVectorImpl<int64_t> &newSizes) {
   OpBuilder::InsertionGuard guard(rewriter);
-  SmallVector<int64_t> newSizes = llvm::map_to_vector(
-      newSizesOpFoldResultArr,
-      [](OpFoldResult sizeVal) { return getConstantIndexOrAssert(sizeVal); });
   Value oldAllocOp = oldLogicalObjectFifo.getMemref();
   auto oldMemRefType = cast<MemRefType>(oldAllocOp.getType());
   MemRefType newAllocType = MemRefType::get(
@@ -55,6 +52,17 @@ static AMDAIE::LogicalObjectFifoFromMemrefOp createNewLogicalObjectFifo(
   return newLogicalObjectFifo;
 }
 
+static AMDAIE::LogicalObjectFifoFromMemrefOp createNewLogicalObjectFifo(
+    IRRewriter &rewriter,
+    AMDAIE::LogicalObjectFifoFromMemrefOp &oldLogicalObjectFifo,
+    const SmallVectorImpl<OpFoldResult> &newSizesOpFoldResultArr) {
+  OpBuilder::InsertionGuard guard(rewriter);
+  SmallVector<int64_t> newSizes = llvm::map_to_vector(
+      newSizesOpFoldResultArr,
+      [](OpFoldResult sizeVal) { return getConstantIndexOrAssert(sizeVal); });
+  return createNewLogicalObjectFifo(rewriter, oldLogicalObjectFifo, newSizes);
+}
+
 /// Utility to help fetch those input DmaCpyNd Ops which needs to be split.
 SmallVector<AMDAIE::DmaCpyNdOp> fetchDmaCpyNdOpsToSplitOrCombine(
     Operation *op) {
@@ -63,9 +71,14 @@ SmallVector<AMDAIE::DmaCpyNdOp> fetchDmaCpyNdOpsToSplitOrCombine(
   // applicable) from them.
   // TODO(avarma): We will generalize this later.
   op->walk([&](AMDAIE::CoreOp coreOp) {
-    SmallVector<Value> inputDmas = coreOp.getInputDmas();
-    if (inputDmas.size() != 3) return WalkResult::skip();
-    auto dmaCpyNdOp = inputDmas[2].getDefiningOp<AMDAIE::DmaCpyNdOp>();
+    // SmallVector<Value> inputDmas = coreOp.getInputDmas();
+    // if (inputDmas.size() != 3) return WalkResult::skip();
+    // auto dmaCpyNdOp = inputDmas[2].getDefiningOp<AMDAIE::DmaCpyNdOp>();
+    // assert(dmaCpyNdOp && "expected an amdaie.dma_cpy_nd op");
+    // l2ToL1DmaOps.push_back(dmaCpyNdOp);
+    SmallVector<Value> outputDmas = coreOp.getOutputDmas();
+    if (outputDmas.size() != 1) return WalkResult::skip();
+    auto dmaCpyNdOp = outputDmas[2].getDefiningOp<AMDAIE::DmaCpyNdOp>();
     assert(dmaCpyNdOp && "expected an amdaie.dma_cpy_nd op");
     l2ToL1DmaOps.push_back(dmaCpyNdOp);
     return WalkResult::advance();
@@ -123,15 +136,14 @@ static LogicalResult checkIsRangeFromZero(
 ///       . .|. .|
 ///       . .|. .|
 ///          -----
-static FailureOr<OpFoldResult> updateL3SourceOffset(IRRewriter &rewriter,
-                                                    OpFoldResult oldL3Offset,
-                                                    int64_t offsetToAdd,
-                                                    MLIRContext *context) {
+static FailureOr<OpFoldResult> addToOffset(IRRewriter &rewriter,
+                                           OpFoldResult oldL3Offset,
+                                           int64_t offsetToAdd) {
   auto createAffineMap = [&](AffineExpr affineExpr,
                              int64_t offsetToAdd) -> AffineMap {
     AffineExpr newAffineExpr = affineExpr + offsetToAdd;
     return AffineMap::get(/*dimCount=*/1, /*symbolCount=*/0, {newAffineExpr},
-                          context);
+                          rewriter.getContext());
   };
   OpFoldResult newL3AsSourceOffset;
   OpBuilder::InsertionGuard guard(rewriter);
@@ -422,7 +434,7 @@ LogicalResult splitLogicalObjectFifos(
     // ---------- L3 -> L2 splitting --------------
     // --------------------------------------------
     // Update L3 source offsets for non-split dimensions. Refer doc comment of
-    // `updateL3SourceOffset` for the computation rationale involved.
+    // `addToOffset` for the computation rationale involved.
     SmallVector<OpFoldResult> staticL3AsSourceOffsets =
         l3ToL2DmaOp.getSourceMixedOffsets();
     for (auto &&[splitDim, nonSplitdim] :
@@ -446,8 +458,8 @@ LogicalResult splitLogicalObjectFifos(
       // If the dma transpose is on the target side, L3 source side data are
       // continuous and don't have `nonSplitDim`.
       size_t dim = dmaTransposeOnSource ? nonSplitdim : splitDim;
-      FailureOr<OpFoldResult> newOffset = updateL3SourceOffset(
-          rewriter, staticL3AsSourceOffsets[dim], offsetToAdd, context);
+      FailureOr<OpFoldResult> newOffset = addToOffset(
+          rewriter, staticL3AsSourceOffsets[dim], offsetToAdd);
       if (failed(newOffset)) {
         // TODO: Ideally we should be able to handle even +, -, *, /, etc.
         //       But handle this later (if at all!) as such cases might not
@@ -504,6 +516,222 @@ LogicalResult splitLogicalObjectFifos(
     rewriter.eraseOp(op);
   }
 
+  return success();
+}
+
+template <typename T>
+LogicalResult getDoublyStridedCopyOpProducersAndConsumers(
+    AMDAIE::LogicalObjectFifoFromMemrefOp op, SmallVector<T> &producers,
+    SmallVector<T> &consumers) {
+  for (Operation *userOp : op->getUsers()) {
+    if (auto stridedCopyOp = dyn_cast<T>(userOp)) {
+      if (dyn_cast_if_present<AMDAIE::LogicalObjectFifoFromMemrefOp>(
+              stridedCopyOp.getTarget().getDefiningOp()) == op) {
+        producers.push_back(stridedCopyOp);
+      } else if (dyn_cast_if_present<AMDAIE::LogicalObjectFifoFromMemrefOp>(
+                     stridedCopyOp.getSource().getDefiningOp()) == op) {
+        consumers.push_back(stridedCopyOp);
+      } else {
+        return op.emitOpError()
+               << "has non-consumer, non-producer doubly strided copy op user";
+      }
+    } else {
+      return op.emitOpError() << "has non-doubly strided copy op user";
+    }
+  }
+  return success();
+}
+
+LogicalResult splitObjFifo(IRRewriter &rewriter,
+                           AMDAIE::LogicalObjectFifoFromMemrefOp op,
+                           size_t splitDim, int64_t splitFactor) {
+  llvm::outs() << "splitObjFifo\n";
+  assert(splitDim == 0 &&
+         "splitting of DMAs only supported on the outermost dimension");
+  MemRefType type = op.getMemrefType();
+  SmallVector<int64_t> shape = llvm::to_vector(type.getShape());
+  assert(splitDim < shape.size() &&
+         "the dimension to be split on should be smaller than the number of "
+         "dimensions in the shape");
+  int64_t splitSize = shape[splitDim];
+  if (ShapedType::isDynamic(splitSize)) {
+    return op.emitOpError()
+           << "a dynamic size on the split dimension is not supported";
+  }
+  // TODO(jornt): use DoublyStridedCopyOpInterface
+  SmallVector<AMDAIE::DmaCpyNdOp> producers;
+  SmallVector<AMDAIE::DmaCpyNdOp> consumers;
+  if (failed(getDoublyStridedCopyOpProducersAndConsumers(op, producers,
+                                                         consumers))) {
+    return failure();
+  }
+  if (splitFactor == -1) {
+    splitFactor = splitSize;  // std::max(producers.size(), consumers.size());
+  } else if (splitSize % splitFactor != 0) {
+    return op.emitOpError()
+           << "the size of the dimension to be split: " << splitSize
+           << " is not divisible by the provided splitting factor: "
+           << splitFactor;
+  }
+  shape[splitDim] = splitSize / splitFactor;
+  int64_t splitOffset = std::accumulate(shape.begin() + splitDim + 1,
+                                        shape.end(), 1, std::multiplies<>());
+
+  llvm::outs() << "splitOffset: " << splitOffset << "\n";
+  SmallVector<AMDAIE::LogicalObjectFifoFromMemrefOp> newObjFifos;
+  // SmallVector<SmallPtrSet<Operation *, 16>> newObjFifoStridedOps;
+  newObjFifos.reserve(splitFactor);
+  // newObjFifos.reserve(splitFactor);
+  for (int i = 0; i < splitFactor; i++) {
+    newObjFifos.push_back(createNewLogicalObjectFifo(rewriter, op, shape));
+  }
+  for (AMDAIE::DmaCpyNdOp producer : producers) {
+    SmallVector<OpFoldResult> targetOffsets = producer.getTargetMixedOffsets();
+    SmallVector<OpFoldResult> targetSizes = producer.getTargetMixedSizes();
+    SmallVector<OpFoldResult> targetStrides = producer.getTargetMixedStrides();
+    SmallVector<int64_t> offsetIndices;
+    for (auto [idx, stride] : llvm::enumerate(targetStrides)) {
+      if (std::optional<int64_t> strideVal = getConstantIntValue(stride);
+          strideVal && strideVal.value() == splitOffset) {
+        offsetIndices.push_back(idx);
+      }
+    }
+    if (offsetIndices.size() != 1) {
+      return producer.emitOpError()
+             << "expected exactly one target stride equal to the slit offset";
+    }
+    int64_t offsetIdx = offsetIndices[0];
+    std::optional<int64_t> targetSize =
+        getConstantIntValue(targetSizes[offsetIdx]);
+    std::optional<int64_t> targetOffset =
+        getConstantIntValue(targetOffsets[offsetIdx]);
+    if (!targetSize || !targetOffset) {
+      return producer.emitOpError()
+             << "expected a static target offset and size on index: "
+             << offsetIdx;
+    }
+    if (targetSize.value() != 1) {
+      return producer.emitOpError() << "only a static size of 1 is currently "
+                                       "supported on the split index";
+    }
+    // TODO(jornt): support splitFactor != splitSize.
+    assert(targetOffset < newObjFifos.size());
+    AMDAIE::LogicalObjectFifoFromMemrefOp newObjFifo =
+        newObjFifos[targetOffset.value()];
+    targetOffsets[offsetIdx] = rewriter.getIndexAttr(0);
+    rewriter.setInsertionPoint(producer);
+    auto newDmaOp = rewriter.create<AMDAIE::DmaCpyNdOp>(
+        producer.getLoc(), newObjFifo, targetOffsets, targetSizes,
+        targetStrides, producer.getSource(), producer.getSourceMixedOffsets(),
+        producer.getSourceMixedSizes(), producer.getSourceMixedStrides());
+    rewriter.replaceOp(producer, newDmaOp);
+  }
+  for (AMDAIE::DmaCpyNdOp consumer : consumers) {
+    SmallVector<OpFoldResult> sourceOffsets = consumer.getSourceMixedOffsets();
+    SmallVector<OpFoldResult> sourceSizes = consumer.getSourceMixedSizes();
+    SmallVector<OpFoldResult> sourceStrides = consumer.getSourceMixedStrides();
+    SmallVector<int64_t> offsetIndices;
+    for (auto [idx, stride] : llvm::enumerate(sourceStrides)) {
+      if (std::optional<int64_t> strideVal = getConstantIntValue(stride);
+          strideVal && strideVal.value() == splitOffset) {
+        offsetIndices.push_back(idx);
+      }
+    }
+    if (offsetIndices.size() != 1) {
+      return consumer.emitOpError()
+             << "expected exactly one target stride equal to the slit offset";
+    }
+    int64_t offsetIdx = offsetIndices[0];
+    std::optional<int64_t> sourceSize =
+        getConstantIntValue(sourceSizes[offsetIdx]);
+    std::optional<int64_t> sourceOffset =
+        getConstantIntValue(sourceOffsets[offsetIdx]);
+    if (!sourceSize || !sourceOffset) {
+      return consumer.emitOpError()
+             << "expected a static source offset and size on index: "
+             << offsetIdx;
+    }
+    if (sourceSize.value() != 1) {
+      return consumer.emitOpError() << "only a static size of 1 is currently "
+                                       "supported on the split index";
+    }
+    // TODO(jornt): support splitFactor != splitSize.
+    assert(sourceOffset < newObjFifos.size());
+    AMDAIE::LogicalObjectFifoFromMemrefOp newObjFifo =
+        newObjFifos[sourceOffset.value()];
+    sourceOffsets[offsetIdx] = rewriter.getIndexAttr(0);
+    rewriter.setInsertionPoint(consumer);
+    auto newDmaOp = rewriter.create<AMDAIE::DmaCpyNdOp>(
+        consumer.getLoc(), consumer.getTarget(),
+        consumer.getTargetMixedOffsets(), consumer.getTargetMixedSizes(),
+        consumer.getTargetMixedStrides(), newObjFifo, sourceOffsets,
+        sourceSizes, sourceStrides);
+    rewriter.replaceOp(consumer, newDmaOp);
+  }
+
+  return success();
+}
+
+LogicalResult splitDoublyStridedOp(IRRewriter &rewriter,
+                                   AMDAIE::DoublyStridedOpInterface op,
+                                   size_t splitDim, int64_t splitFactor) {
+  assert(splitDim == 0 &&
+         "splitting of DMAs only supported on the outermost dimension");
+  if (!op->use_empty())
+    return op.emitOpError() << "can't be split because it has uses";
+  SmallVector<OpFoldResult> sourceOffsets = op.getSourceMixedOffsets();
+  SmallVector<OpFoldResult> sourceSizes = op.getSourceMixedSizes();
+  SmallVector<OpFoldResult> sourceStrides = op.getSourceMixedStrides();
+  SmallVector<OpFoldResult> targetOffsets = op.getTargetMixedOffsets();
+  SmallVector<OpFoldResult> targetSizes = op.getTargetMixedSizes();
+  SmallVector<OpFoldResult> targetStrides = op.getTargetMixedStrides();
+  assert(splitDim < sourceOffsets.size() &&
+         "the dimension to be split on should be smaller than the number of "
+         "source dimensions");
+  assert(splitDim < targetOffsets.size() &&
+         "the dimension to be split on should be smaller than the number of "
+         "target dimensions");
+  std::optional<int64_t> sourceSize =
+      getConstantIntValue(sourceSizes[splitDim]);
+  std::optional<int64_t> targetSize =
+      getConstantIntValue(targetSizes[splitDim]);
+  if (!sourceSize) {
+    return op.emitOpError()
+           << "does not have a static source size on dim: " << splitDim;
+  }
+  if (!targetSize) {
+    return op.emitOpError()
+           << "does not have a static target size on dim: " << splitDim;
+  }
+  if (splitFactor <= 0) {
+    splitFactor = std::gcd(sourceSize.value(), targetSize.value());
+  } else if (sourceSize.value() % splitFactor != 0 ||
+             targetSize.value() % splitFactor != 0) {
+    return op.emitOpError() << "the target or source size is not divisible by "
+                               "the provided splitting factor: "
+                            << splitFactor;
+  }
+  int64_t newSourceSize = sourceSize.value() / splitFactor;
+  int64_t newTargetSize = targetSize.value() / splitFactor;
+  sourceSizes[splitDim] = rewriter.getIndexAttr(newSourceSize);
+  targetSizes[splitDim] = rewriter.getIndexAttr(newTargetSize);
+  rewriter.setInsertionPoint(op);
+  for (int i = 0; i < splitFactor; ++i) {
+    FailureOr<OpFoldResult> newSourceOffset =
+        addToOffset(rewriter, sourceOffsets[splitDim], i * newSourceSize);
+    FailureOr<OpFoldResult> newTargetOffset =
+        addToOffset(rewriter, targetOffsets[splitDim], i * newTargetSize);
+    if (failed(newSourceOffset))
+      return op.emitOpError() << "could not create a new source offset";
+    if (failed(newTargetOffset))
+      return op.emitOpError() << "could not create a new target offset";
+    sourceOffsets[splitDim] = newSourceOffset.value();
+    targetOffsets[splitDim] = newTargetOffset.value();
+    op.createDoublyStridedOp(rewriter, targetOffsets, targetSizes,
+                             targetStrides, sourceOffsets, sourceSizes,
+                             sourceStrides);
+  }
+  rewriter.eraseOp(op);
   return success();
 }
 
