@@ -795,7 +795,7 @@ class MatmulSet(TestSet):
             output_type=get_output_type(test_name),
         )
 
-        # Large shape Matmul + Truncf
+        # 128x128x256 shape test of Matmul + Truncf
         generate_matmul_test(test_name, template_name, 128, 128, 256, "bf16", "f32")
         identity_mat = np.eye(128, dtype=np.float32)
         lhs_ones = np.ones(128 * 256, dtype=np.float32).reshape([128, 256])
