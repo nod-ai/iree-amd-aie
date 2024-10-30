@@ -40,7 +40,7 @@ iree_status_t iree_hal_xrt_semaphore_create(
     iree_hal_semaphore_initialize(&iree_hal_xrt_semaphore_vtable,
                                   &semaphore->base);
     semaphore->host_allocator = host_allocator;
-    iree_atomic_store_int64(&semaphore->value, initial_value,
+    iree_atomic_store(&semaphore->value, initial_value,
                             iree_memory_order_release);
     *out_semaphore = &semaphore->base;
   }
@@ -78,7 +78,7 @@ static iree_status_t iree_hal_xrt_semaphore_signal(
       iree_hal_xrt_semaphore_cast(base_semaphore);
   // TODO: Support semaphores completely. Return OK currently as everything is
   // synchronized for each submit to allow things to run.
-  iree_atomic_store_int64(&semaphore->value, new_value,
+  iree_atomic_store(&semaphore->value, new_value,
                           iree_memory_order_release);
   iree_hal_semaphore_poll(&semaphore->base);
   return iree_ok_status();
