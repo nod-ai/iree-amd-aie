@@ -20,22 +20,29 @@ namespace mlir::iree_compiler::AMDAIE {
 
 namespace {
 
+unsigned uniqueOutlinedMatmul = 0;
+unsigned uniqueOutlinedElementwise = 0;
+
 /// Utility to outline the linalg compute op.
 static FailureOr<func::FuncOp> outlinedToAFunction(
-    IRRewriter &rewriter, ModuleOp &moduleOp, linalg::LinalgOp &computeOp) {
-  // Form outlined FuncName.
-  std::string computeName = "";
-  if (isMatmul(computeOp)) {
-    computeName = "_matmul";
-  } else if (isElementwise(computeOp)) {
-    computeName = "_elementwise";
-  } else {
-    return failure();
+    IRRewriter &rewriter, ModuleOp moduleOp, linalg::LinalgOp computeOp,
+    std::string outlineFuncName,
+    DenseMap<Operation *, std::string> &computeOpToOutlinedFuncMap) {
+  // Check if the compute op is equivalent to a previously outlined compute op.
+  // If yes, we replace the `outlineFuncName` of the current compute op to be
+  // same as the previous equivalent outlined compute op in order to lookup the
+  // Symbol table.
+  for (auto &[op, funcName] : computeOpToOutlinedFuncMap) {
+    if (!OperationEquivalence::isEquivalentTo(
+            computeOp.getOperation(), op,
+            OperationEquivalence::ignoreValueEquivalence, /*flags=*/nullptr,
+            OperationEquivalence::IgnoreLocations))
+      continue;
+    outlineFuncName = funcName;
+    break;
   }
-  std::string outlinedFuncName =
-      computeOp->getName().stripDialect().str() + computeName + "_outlined";
   if (auto outlinedFuncOp = dyn_cast_if_present<func::FuncOp>(
-          moduleOp.lookupSymbol(outlinedFuncName))) {
+          moduleOp.lookupSymbol(outlineFuncName))) {
     return outlinedFuncOp;
   }
 
@@ -49,7 +56,7 @@ static FailureOr<func::FuncOp> outlinedToAFunction(
   // Form outlined FuncSignature
   rewriter.setInsertionPointToStart(moduleOp.getBody());
   auto outlinedFunc = rewriter.create<func::FuncOp>(
-      moduleOp.getLoc(), outlinedFuncName, outlinedFuncType);
+      moduleOp.getLoc(), outlineFuncName, outlinedFuncType);
   outlinedFunc.setPrivate();
 
   // Create an entry func block and map the original operands of the compute
@@ -73,6 +80,15 @@ static FailureOr<func::FuncOp> outlinedToAFunction(
   rewriter.setInsertionPointToEnd(outlinedFuncBody);
   rewriter.create<func::ReturnOp>(clonedComputeOp->getLoc(), ValueRange({}));
 
+  computeOpToOutlinedFuncMap[computeOp] = outlineFuncName;
+
+  // Since we have created a new outlined function, we will increase the
+  // corresponding unique count.
+  if (isMatmul(computeOp)) {
+    ++uniqueOutlinedMatmul;
+  } else if (isElementwise(computeOp)) {
+    ++uniqueOutlinedElementwise;
+  }
   return outlinedFunc;
 }
 
@@ -93,18 +109,36 @@ void AMDAIELinalgFunctionOutliningPass::runOnOperation() {
   MLIRContext *context = &getContext();
   IRRewriter rewriter(context);
 
+  DenseMap<Operation *, std::string> computeOpToOutlinedFuncMap;
+  SmallVector<Operation *> toBeErased;
   moduleOp.walk([&](linalg::LinalgOp computeOp) {
-    if (isa<linalg::FillOp, linalg::CopyOp>(computeOp))
+    // Form outlined FuncName.
+    std::string computeName = "";
+    if (isMatmul(computeOp)) {
+      computeName = "_matmul_" + std::to_string(uniqueOutlinedMatmul);
+    } else if (isElementwise(computeOp)) {
+      computeName = "_elementwise_" + std::to_string(uniqueOutlinedElementwise);
+    } else {
       return WalkResult::skip();
+    }
+    std::string outlineFuncName =
+        computeOp->getName().stripDialect().str() + computeName + "_outlined";
     FailureOr<func::FuncOp> outlinedFuncOp =
-        outlinedToAFunction(rewriter, moduleOp, computeOp);
+        outlinedToAFunction(rewriter, moduleOp, computeOp, outlineFuncName,
+                            computeOpToOutlinedFuncMap);
     if (failed(outlinedFuncOp)) return WalkResult::interrupt();
     rewriter.setInsertionPoint(computeOp);
     rewriter.create<func::CallOp>(computeOp.getLoc(), *outlinedFuncOp,
                                   computeOp->getOperands());
-    rewriter.eraseOp(computeOp);
+    // We cannot immediately erase the compute op because it'd be used for
+    // equivalence check.
+    toBeErased.push_back(computeOp);
     return WalkResult::advance();
   });
+  for (Operation *op : toBeErased) {
+    op->dropAllUses();
+    rewriter.eraseOp(op);
+  }
 }
 
 }  // namespace

@@ -262,6 +262,13 @@ def AMDAIEFlattenLogicalObjectFifo :
 def AMDAIELinalgFunctionOutlining :
   Pass<"iree-amdaie-linalg-function-outlining", "ModuleOp"> {
   let summary = "Outlining of linalg compute ops";
+  let description = [{
+    Outlines matmul/elementwise linalg compute ops only. This pass essentially minimises
+    the code footprint overall as the unrolling in the later passes lead to lot repeated
+    lines of codes.
+    One assumption this pass currently makes: All elementwise/matmul linalg ops within a
+    dispatch have same body content.
+  }];
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIELinalgFunctionOutliningPass()";
 }
 
