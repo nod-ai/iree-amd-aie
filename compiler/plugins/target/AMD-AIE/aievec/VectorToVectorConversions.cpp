@@ -40,16 +40,11 @@ namespace mlir::iree_compiler::aievec {
 
 namespace copied_from_mlir {
 
-/// This code is copied from MLIR. It adds a single-line change to 2 Patterns,
-/// FlattenContiguousRowMajorTransferReadPattern and
-/// FlattenContiguousRowMajorTransferWritePattern. This change allows the
-/// memrefs of the transfer operations be flattened to a 1D memrefs, so not just
-/// the vectors are flattened. TODO(newling) consider upstreaming to reduce code
-/// dup.
-///
-/// If this flag is false, then the patterns are exactly the same as the
-/// original MLIR patterns.
-const static bool flatten_memref = true;
+/// This code is copied from MLIR. It adds a single-line change in 2 patterns,
+/// FlattenContiguousRowMajorTransfer[Read|Write]Pattern. The change allows the
+/// memrefs of the transfer operations to be flattened to 1D memrefs, ie not
+/// only the vectors are flattened. TODO(newling) consider upstreaming to reduce
+/// code dup.
 
 /// Creates a memref.collapse_shape collapsing all inner dimensions of the
 /// input starting at `firstDimToCollapse`.
@@ -167,8 +162,8 @@ class FlattenContiguousRowMajorTransferReadPattern
     // TODO(newling) This is the one line which changes from the original
     // MLIR function. Upstream this as an option to flatten the memref (and
     // not just the vector).
-    int64_t firstDimToCollapse =
-        flatten_memref ? 0 : sourceType.getRank() - vectorType.getRank();
+    // int64_t firstDimToCollapse = sourceType.getRank() - vectorType.getRank();
+    int64_t firstDimToCollapse = 0;
 
     // 1. Collapse the source memref
     Value collapsedSource =
@@ -257,8 +252,8 @@ class FlattenContiguousRowMajorTransferWritePattern
     // TODO(newling) This is the one line which changes from the original
     // MLIR function. Upstream this as an option to flatten the memref (and
     // not just the vector).
-    int64_t firstDimToCollapse =
-        flatten_memref ? 0 : sourceType.getRank() - vectorType.getRank();
+    // int64_t firstDimToCollapse = sourceType.getRank() - vectorType.getRank();
+    int64_t firstDimToCollapse = 0;
 
     // 1. Collapse the source memref
     Value collapsedSource =
