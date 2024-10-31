@@ -39,14 +39,18 @@ LogicalResult normalizeLoopBounds(RewriterBase &rewriter, scf::ForOp forOp);
 LogicalResult normalizeLoopBounds(RewriterBase &rewriter,
                                   scf::ForallOp forallOp);
 
-/// Populate patterns that canonicalize doubly strided DMA operations.
-void populateCanonicalizeDoublyStridedOpPatterns(RewritePatternSet &patterns,
-                                                 bool foldSingleDims);
+/// Populate patterns that canonicalize doubly strided DMA operations. If an
+/// optional device model is provided, it will be used to perform hardware-aware
+/// canonicalization.
+void populateCanonicalizeDoublyStridedOpPatterns(
+    RewritePatternSet &patterns, bool foldSingleDims,
+    std::optional<std::reference_wrapper<const AMDAIEDeviceModel>> deviceModel =
+        std::nullopt);
 
 /// Populate patterns that subsume loops iterations into DMA access patterns.
-void populateDmaLoopSubsumptionPattern(RewritePatternSet &patterns,
-                                       AMDAIE::AMDAIEDeviceModel &&deviceModel,
-                                       bool onlyZeroStrideOnOuterDim);
+void populateDmaLoopSubsumptionPattern(
+    RewritePatternSet &patterns, const AMDAIE::AMDAIEDeviceModel &deviceModel,
+    bool onlyZeroStrideOnOuterDim);
 
 /// Populate patterns that combine strided ops in the same block.
 void populateStridedOpCombinationPattern(RewritePatternSet &patterns);

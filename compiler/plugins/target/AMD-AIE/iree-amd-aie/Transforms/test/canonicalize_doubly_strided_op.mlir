@@ -1,5 +1,5 @@
-// RUN: iree-opt --pass-pipeline="builtin.module(func.func(iree-amdaie-canonicalize-doubly-strided-op,canonicalize))" -allow-unregistered-dialect %s | FileCheck %s
-// RUN: iree-opt --pass-pipeline="builtin.module(func.func(iree-amdaie-canonicalize-doubly-strided-op{fold-single-dims=true},canonicalize))" -allow-unregistered-dialect %s | FileCheck %s --check-prefix=FOLD-SINGLE-DIMS
+// RUN: iree-opt --pass-pipeline="builtin.module(func.func(iree-amdaie-canonicalize-doubly-strided-op{hardware-aware=false},canonicalize))" -allow-unregistered-dialect %s | FileCheck %s
+// RUN: iree-opt --pass-pipeline="builtin.module(func.func(iree-amdaie-canonicalize-doubly-strided-op{fold-single-dims=true hardware-aware=false},canonicalize))" -allow-unregistered-dialect %s | FileCheck %s --check-prefix=FOLD-SINGLE-DIMS
 
 // Verify that source and target of `amdaie.circular_dma_cpy_nd` is still correct after canonicalization.
 //
