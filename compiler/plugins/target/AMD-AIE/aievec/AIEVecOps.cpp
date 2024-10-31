@@ -605,6 +605,178 @@ ParseResult FMAElemOp::parse(OpAsmParser &parser, OperationState &result) {
   return parseMulFMAElemOp(parser, result, true);
 }
 
+
+//===----------------------------------------------------------------------===//
+// ExtOp
+//===----------------------------------------------------------------------===//
+
+// Print out Ext op.
+void ExtOp::print(OpAsmPrinter &p) {
+  // Print the source vector
+  p << " " << getSource();
+
+  // Print the attributes
+  p.printOptionalAttrDict((*this)->getAttrs());
+
+  // And now print the types
+  p << " : " << getSource().getType() << ", " << getResult().getType();
+}
+
+// Verify Ext op.
+LogicalResult ExtOp::verify() {
+  // Verify the types
+  VectorType sourceType = llvm::dyn_cast<VectorType>(getSource().getType());
+  VectorType resultType = llvm::dyn_cast<VectorType>(getResult().getType());
+  if (!sourceType || !resultType)
+    return emitError("requires vector type");
+
+  // Check the number of lanes
+  unsigned sourceLanes = getVectorLaneSize(sourceType);
+  unsigned resultLanes = getVectorLaneSize(resultType);
+  // Source lanes must be greater than result lanes
+  if (sourceLanes / resultLanes <= 1)
+    return emitError("lanes in source vector must be at least "
+                     "twice that of result vector");
+  // Source lanes must be a multiple of result lanes
+  if (sourceLanes % resultLanes != 0)
+    return emitError("lanes in result vector must be a multiple "
+                     "of source vector lanes");
+
+  // Verify validity of index
+  unsigned factor = sourceLanes / resultLanes;
+  if (static_cast<unsigned>(getIndex()) >= factor)
+    return emitError("index out of bounds");
+
+  // The datatype of source and result must match
+  Type stype = sourceType.getElementType();
+  Type rtype = resultType.getElementType();
+  if (stype != rtype)
+    return emitError("source and result element type must be same");
+
+  return success();
+}
+
+// Parse Ext op.
+ParseResult ExtOp::parse(OpAsmParser &parser, OperationState &result) {
+  llvm::SMLoc typesLoc;
+  SmallVector<Type, 2> types;
+  OpAsmParser::UnresolvedOperand source;
+
+  // Parse the source vector
+  if (parser.parseOperand(source))
+    return failure();
+
+  // Parse all the attributes and types
+  if (parser.parseOptionalAttrDict(result.attributes) ||
+      parser.getCurrentLocation(&typesLoc) || parser.parseColonTypeList(types))
+    return failure();
+
+  if (result.attributes.getAttrs().size() != 1)
+    return parser.emitError(typesLoc, "requires one attribute");
+
+  // Assert that there are two types (source and result)
+  if (types.size() != 2)
+    return parser.emitError(typesLoc, "requires two types");
+
+  // Some verification
+  VectorType sourceType = llvm::dyn_cast<VectorType>(types[0]);
+  VectorType resultType = llvm::dyn_cast<VectorType>(types[1]);
+  if (!sourceType || !resultType)
+    return parser.emitError(typesLoc, "requires vector type");
+
+  // Populate the source in result
+  if (parser.resolveOperand(source, sourceType, result.operands))
+    return failure();
+
+  return parser.addTypeToList(resultType, result.types);
+}
+
+//===----------------------------------------------------------------------===//
+// ShiftOp
+//===----------------------------------------------------------------------===//
+
+// Print out Shift op.
+void ShiftOp::print(OpAsmPrinter &p) {
+  // Print the lhs and rhs vectors
+  p << " " << getLhs() << ", " << getRhs();
+
+  // Print shift
+  p << ", " << getShift();
+
+  // Print the attributes
+  p.printOptionalAttrDict((*this)->getAttrs());
+
+  // And now print the types
+  p << " : " << getLhs().getType() << ", " << getLhs().getType() << ", "
+    << getShift().getType() << ", " << getResult().getType();
+}
+
+// Verify Shift op.
+LogicalResult ShiftOp::verify() {
+  // Verify the types
+  VectorType resultType = llvm::dyn_cast<VectorType>(getResult().getType());
+  if (!resultType)
+    return emitError("requires vector type");
+
+  // lhs, rhs and result must have the same type
+  VectorType lhsType = llvm::dyn_cast<VectorType>(getLhs().getType());
+  VectorType rhsType = llvm::dyn_cast<VectorType>(getRhs().getType());
+
+  if (!lhsType || !rhsType)
+    return emitError("requires vector type");
+  if (lhsType != resultType || rhsType != resultType)
+    return emitError("All vectors must have same type");
+
+  if (!isa<IntegerType>(getShift().getType()))
+    return emitError("requires integer type");
+
+  return success();
+}
+
+// Parse Shift op.
+ParseResult ShiftOp::parse(OpAsmParser &parser, OperationState &result) {
+  llvm::SMLoc typesLoc;
+  SmallVector<Type, 4> types;
+  OpAsmParser::UnresolvedOperand lhs, rhs, shift;
+
+  // Parse the source vectors
+  if (parser.parseOperand(lhs) || parser.parseComma() ||
+      parser.parseOperand(rhs) || parser.parseComma() ||
+      parser.parseOperand(shift))
+    return failure();
+
+  // Parse all the attributes and types
+  if (parser.parseOptionalAttrDict(result.attributes) ||
+      parser.getCurrentLocation(&typesLoc) || parser.parseColonTypeList(types))
+    return failure();
+
+  if (result.attributes.getAttrs().size() != 1)
+    return parser.emitError(typesLoc, "expects one attribute");
+
+  // Assert that there are two types (source and result vectors)
+  if (types.size() != 4)
+    return parser.emitError(typesLoc, "requires four types");
+
+  // Some verification
+  VectorType lhsType = llvm::dyn_cast<VectorType>(types[0]);
+  VectorType rhsType = llvm::dyn_cast<VectorType>(types[1]);
+  IntegerType shiftType = llvm::dyn_cast<IntegerType>(types[2]);
+  VectorType resultType = llvm::dyn_cast<VectorType>(types[3]);
+  if (!lhsType || !rhsType || !resultType)
+    return parser.emitError(typesLoc, "requires vector type");
+
+  if (!shiftType)
+    return parser.emitError(typesLoc, "requires integer type");
+
+  // Populate the lhs vector, rhs vectors and shift in result
+  if (parser.resolveOperand(lhs, lhsType, result.operands) ||
+      parser.resolveOperand(rhs, rhsType, result.operands) ||
+      parser.resolveOperand(shift, shiftType, result.operands))
+    return failure();
+
+  return parser.addTypeToList(resultType, result.types);
+}
+
 #define GET_ATTRDEF_CLASSES
 #include "aievec/AIEVecAttributes.cpp.inc"
 
