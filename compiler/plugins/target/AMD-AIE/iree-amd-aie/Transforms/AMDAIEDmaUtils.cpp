@@ -264,43 +264,66 @@ LogicalResult foldLinearDims(MLIRContext *ctx,
                              const SmallVector<OpFoldResult> &strides,
                              SmallVector<OpFoldResult> &newOffsets,
                              SmallVector<OpFoldResult> &newSizes,
-                             SmallVector<OpFoldResult> &newStrides) {
+                             SmallVector<OpFoldResult> &newStrides,
+                             ArrayRef<int64_t> maxSizes) {
+  assert(offsets.size() == sizes.size() && offsets.size() == strides.size() &&
+         "expected same number of offsets, sizes and strides");
   bool foldableLinearDimsFound = false;
+  if (offsets.size() == 0) return success(foldableLinearDimsFound);
 
-  if (offsets.size() == 0) {
-    return success(foldableLinearDimsFound);
-  }
+  // As the new offsets/sizes/strides are created in reverse order, reverse the
+  // maxSizes as well for easy comparison.
+  SmallVector<int64_t> maxSizesReversed(maxSizes);
+  std::reverse(maxSizesReversed.begin(), maxSizesReversed.end());
 
-  newOffsets.push_back(offsets[0]);
-  newStrides.push_back(strides[0]);
-  newSizes.push_back(sizes[0]);
+  std::optional<SmallVector<int64_t>> staticSizes = getConstantIntValues(sizes);
+  std::optional<SmallVector<int64_t>> staticStrides =
+      getConstantIntValues(strides);
+  if (!staticSizes || !staticStrides) return failure();
+  SmallVector<int64_t> staticSizeVals = staticSizes.value();
+  SmallVector<int64_t> staticStrideVals = staticStrides.value();
 
-  for (int i = 1; i < offsets.size(); i++) {
+  newOffsets.push_back(offsets[offsets.size() - 1]);
+  newStrides.push_back(strides[strides.size() - 1]);
+  newSizes.push_back(sizes[sizes.size() - 1]);
+
+  for (int i = offsets.size() - 2; i >= 0; i--) {
     // Conditions for folding a dim.
-    // 1. size(i) x stride(i) == stride(i-1), with this we can have new
-    // size(i-1) = size(i-1) * size(i), stride(i-1) = stride(i) and then fold
-    // away the i dimension
-    // 2. Offset(i-1) = 0. This is required because we are dropping the offset
-    // of the i-1 dimension and doing offset(i-1) = offset(i)
-    int vecSize = newOffsets.size();
-    if (isConstantIntValue(newOffsets[vecSize - 1], 0) &&
-        getConstantIndexOrAssert(sizes[i]) *
-                getConstantIndexOrAssert(strides[i]) ==
-            getConstantIndexOrAssert(newStrides[vecSize - 1])) {
+    // 1. Offsets[i] == 0.This is required because we are dropping the offset
+    // of the i dimension and keep newOffets[-1]
+    // 2. newSizes[-1] x newStrides[-1] == strides[i]. With this we can have
+    // newSizes[-1] = sizes[i] * newSizes[-1] , and then fold away the i
+    // dimension
+    // 3. sizes[i] * newSizes[-1] <= maxSizes[newSizes.size() - 1], IF max
+    // constraints are provided. This allows hardware constraints to be
+    // provided.
+    size_t vecSize = newOffsets.size();
+    int64_t newStride = staticStrideVals[i];
+    int64_t newSize = staticSizeVals[i];
+    int64_t prevStride = getConstantIndexOrAssert(newStrides[vecSize - 1]);
+    int64_t prevSize = getConstantIndexOrAssert(newSizes[vecSize - 1]);
+    int64_t dimExtent = prevStride * prevSize;
+    // Fail if max constraints are provided, but the newly created
+    // offsets/sizes/strides start exceeding the number of provide max
+    // constraints as this will result in undefined behaviour.
+    if (maxSizes.size() > 0 && vecSize > maxSizes.size()) return failure();
+    bool fitsMaxConstraint =
+        maxSizes.size() == 0 || newSize * prevSize <= maxSizes[vecSize - 1];
+    if (fitsMaxConstraint && isConstantIntValue(offsets[i], 0) &&
+        dimExtent == newStride) {
       foldableLinearDimsFound = true;
-      int vecSize = newOffsets.size();
-      newOffsets[vecSize - 1] = offsets[i];
-      newStrides[vecSize - 1] = strides[i];
-      newSizes[vecSize - 1] = getAsIndexOpFoldResult(
-          ctx, getConstantIndexOrAssert(sizes[i]) *
-                   getConstantIndexOrAssert(newSizes[vecSize - 1]));
-
+      newSizes[vecSize - 1] = getAsIndexOpFoldResult(ctx, newSize * prevSize);
       continue;
     }
     newOffsets.push_back(offsets[i]);
     newStrides.push_back(strides[i]);
     newSizes.push_back(sizes[i]);
   }
+
+  // Reverse as the new offsets/sizes/strides were created in reverse order.
+  std::reverse(newOffsets.begin(), newOffsets.end());
+  std::reverse(newSizes.begin(), newSizes.end());
+  std::reverse(newStrides.begin(), newStrides.end());
   return success(foldableLinearDimsFound);
 }
 

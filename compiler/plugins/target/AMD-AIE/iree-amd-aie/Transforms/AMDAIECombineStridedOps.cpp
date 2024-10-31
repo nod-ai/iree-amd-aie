@@ -62,7 +62,8 @@ struct CombineStridedOps
       // Find next NPU DMA op.
       Block::iterator begin = std::next(npuDmaOp->getIterator());
       block->walk(begin, block->end(), [&](AMDAIE::NpuDmaCpyNdOp other) {
-        if (npuDmaOp.getConnection() != other.getConnection()) return WalkResult::advance();
+        if (npuDmaOp.getConnection() != other.getConnection())
+          return WalkResult::advance();
         Block *otherBlock = other->getBlock();
         if (!otherBlock) return WalkResult::advance();
         if (otherBlock != block) return WalkResult::interrupt();
@@ -71,10 +72,16 @@ struct CombineStridedOps
         return WalkResult::interrupt();
       });
 
-      uint8_t sourceMemspaceInt = npuDmaOp.getSourceMemorySpaceAsUInt();
-      uint8_t targetMemspaceInt = npuDmaOp.getTargetMemorySpaceAsUInt();
-      AMDAIE::DmaDimConfig dmaDimConfig(deviceModel, sourceMemspaceInt,
-                                        targetMemspaceInt);
+      std::optional<uint8_t> sourceMemspaceInt =
+          npuDmaOp.getSourceMemorySpaceAsUInt();
+      std::optional<uint8_t> targetMemspaceInt =
+          npuDmaOp.getTargetMemorySpaceAsUInt();
+      if (!sourceMemspaceInt || !targetMemspaceInt) {
+        return npuDmaOp.emitOpError()
+               << "expected a source and target memory space";
+      }
+      AMDAIE::DmaDimConfig dmaDimConfig(deviceModel, sourceMemspaceInt.value(),
+                                        targetMemspaceInt.value());
       sourceMaxNbDims = dmaDimConfig.sourceMaxNbDims;
       targetMaxNbDims = dmaDimConfig.targetMaxNbDims;
     } else {

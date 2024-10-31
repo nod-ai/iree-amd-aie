@@ -6,12 +6,14 @@
 
 #include "iree-amd-aie/IR/AMDAIEDialect.h"
 #include "iree-amd-aie/Transforms/AMDAIEDmaUtils.h"
+#include "iree-amd-aie/Transforms/AMDAIEUtils.h"
 #include "iree-amd-aie/Transforms/Passes.h"
 #include "iree-amd-aie/Transforms/Transforms.h"
+#include "iree-amd-aie/aie_runtime/iree_aie_runtime.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
-#define DEBUG_TYPE "iree-amdaie-canonicalize-doubly-strided-dma"
+#define DEBUG_TYPE "iree-amdaie-canonicalize-doubly-strided-op"
 
 namespace mlir::iree_compiler::AMDAIE {
 
@@ -19,12 +21,22 @@ namespace {
 
 /// Recognize linear accesses across multiple DMA access dimensions and fold
 /// them.
-struct FoldDmaOpLinearDims
+class FoldDmaOpLinearDims
     : public OpInterfaceRewritePattern<AMDAIE::DoublyStridedOpInterface> {
   using OpInterfaceRewritePattern::OpInterfaceRewritePattern;
 
+ public:
+  FoldDmaOpLinearDims(
+      MLIRContext *ctx, bool hardwareAwareFolding = true,
+      std::optional<std::reference_wrapper<const AMDAIE::AMDAIEDeviceModel>>
+          deviceModel = std::nullopt)
+      : OpInterfaceRewritePattern<AMDAIE::DoublyStridedOpInterface>(ctx),
+        hardwareAwareFolding(hardwareAwareFolding),
+        deviceModel(deviceModel) {}
+
   LogicalResult matchAndRewrite(AMDAIE::DoublyStridedOpInterface op,
                                 PatternRewriter &rewriter) const override {
+    if (hardwareAwareFolding && !deviceModel) return failure();
     OpBuilder::InsertionGuard guard(rewriter);
     SmallVector<OpFoldResult> sourceOffsets = op.getSourceMixedOffsets();
     SmallVector<OpFoldResult> sourceSizes = op.getSourceMixedSizes();
@@ -34,12 +46,26 @@ struct FoldDmaOpLinearDims
     SmallVector<OpFoldResult> targetStrides = op.getTargetMixedStrides();
     SmallVector<OpFoldResult> newSourceOffsets, newSourceSizes,
         newSourceStrides, newTargetOffsets, newTargetSizes, newTargetStrides;
+    SmallVector<int64_t> maxSourceSizes, maxTargetSizes;
+    if (hardwareAwareFolding && deviceModel) {
+      std::optional<uint8_t> sourceMemSpace = op.getSourceMemorySpaceAsUInt();
+      std::optional<uint8_t> targetMemSpace = op.getTargetMemorySpaceAsUInt();
+      if (!sourceMemSpace || !targetMemSpace) {
+        return op.emitOpError()
+               << "expected a source and target memory space for "
+                  "hardware aware linear dimension folding";
+      }
+      AMDAIE::DmaDimConfig dmaDimConfig(
+          deviceModel.value(), sourceMemSpace.value(), targetMemSpace.value());
+      maxSourceSizes = dmaDimConfig.getMaxSizes<CopyOpOperateOn::Source>();
+      maxTargetSizes = dmaDimConfig.getMaxSizes<CopyOpOperateOn::Target>();
+    }
     LogicalResult sourceRes = foldLinearDims(
         op.getContext(), sourceOffsets, sourceSizes, sourceStrides,
-        newSourceOffsets, newSourceSizes, newSourceStrides);
+        newSourceOffsets, newSourceSizes, newSourceStrides, maxSourceSizes);
     LogicalResult targetRes = foldLinearDims(
         op.getContext(), targetOffsets, targetSizes, targetStrides,
-        newTargetOffsets, newTargetSizes, newTargetStrides);
+        newTargetOffsets, newTargetSizes, newTargetStrides, maxTargetSizes);
     if (failed(sourceRes) && failed(targetRes)) {
       return failure();
     }
@@ -51,6 +77,14 @@ struct FoldDmaOpLinearDims
     rewriter.replaceOp(op, newDoublyStridedOp.getOperation());
     return success();
   }
+
+ private:
+  /// If hardware aware folding is enabled, and the device model is set, this
+  /// rewriter will use the device model to keep hardware stride/size
+  /// limitations into account.
+  bool hardwareAwareFolding{true};
+  std::optional<std::reference_wrapper<const AMDAIE::AMDAIEDeviceModel>>
+      deviceModel;
 };
 
 /// Fold single dimension linear accesses and make them implicit.
@@ -140,8 +174,15 @@ void AMDAIECanonicalizeDoublyStridedOpPass::runOnOperation() {
   Operation *parentOp = getOperation();
   MLIRContext *context = &getContext();
   RewritePatternSet patterns(context);
-
-  populateCanonicalizeDoublyStridedOpPatterns(patterns, foldSingleDims);
+  auto targetAttr = IREE::HAL::ExecutableTargetAttr::lookup(parentOp);
+  std::optional<AMDAIE::AMDAIEDeviceModel> deviceModel;
+  std::optional<AMDAIEDevice> maybeDevice =
+          getConfigAMDAIEDevice(targetAttr);
+  if (maybeDevice.has_value()) {
+    deviceModel = AMDAIE::getDeviceModel(maybeDevice.value());
+  }
+  populateCanonicalizeDoublyStridedOpPatterns(patterns, foldSingleDims,
+                                              hardwareAware, deviceModel);
   if (failed(applyPatternsAndFoldGreedily(parentOp, std::move(patterns)))) {
     parentOp->emitOpError(
         "failed to canonicalize doubly strided DMA operations");
@@ -151,10 +192,13 @@ void AMDAIECanonicalizeDoublyStridedOpPass::runOnOperation() {
 
 }  // namespace
 
-void populateCanonicalizeDoublyStridedOpPatterns(RewritePatternSet &patterns,
-                                                 bool foldSingleDims) {
+void populateCanonicalizeDoublyStridedOpPatterns(
+    RewritePatternSet &patterns, bool foldSingleDims, bool hardwareAware,
+    std::optional<std::reference_wrapper<const AMDAIE::AMDAIEDeviceModel>>
+        deviceModel) {
   patterns.add<FoldDmaOpUnitDims>(patterns.getContext());
-  patterns.add<FoldDmaOpLinearDims>(patterns.getContext());
+  patterns.add<FoldDmaOpLinearDims>(patterns.getContext(), hardwareAware,
+                                    std::move(deviceModel));
   if (foldSingleDims) {
     patterns.add<FoldDmaOpSingleDims>(patterns.getContext());
   }

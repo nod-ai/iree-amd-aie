@@ -39,24 +39,24 @@ void AMDAIEDmaCompositionPass::runOnOperation() {
   Operation *parentOp = getOperation();
   MLIRContext *context = &getContext();
   RewritePatternSet patterns(context);
-  {
-    auto targetAttr = IREE::HAL::ExecutableTargetAttr::lookup(parentOp);
-    std::optional<AMDAIEDevice> maybeDevice = getConfigAMDAIEDevice(targetAttr);
-    if (!maybeDevice) {
-      parentOp->emitOpError()
-          << "has no AMDAIEDevice in the target attribute configuration. This "
-             "device-specific information is required to determine when loops "
-             "can be subsumed into DMA operations, and must be attached to a "
-             "containing ModuleOp.";
-      return signalPassFailure();
-    }
-    AMDAIE::AMDAIEDeviceModel deviceModel =
-        AMDAIE::getDeviceModel(maybeDevice.value());
-    populateDmaLoopSubsumptionPattern(patterns, std::move(deviceModel),
-                                      onlyZeroStrideOnOuterDim);
+  auto targetAttr = IREE::HAL::ExecutableTargetAttr::lookup(parentOp);
+  std::optional<AMDAIEDevice> maybeDevice = getConfigAMDAIEDevice(targetAttr);
+  if (!maybeDevice) {
+    parentOp->emitOpError()
+        << "has no AMDAIEDevice in the target attribute configuration. This "
+            "device-specific information is required to determine when loops "
+            "can be subsumed into DMA operations, and must be attached to a "
+            "containing ModuleOp.";
+    return signalPassFailure();
   }
+  AMDAIE::AMDAIEDeviceModel deviceModel =
+      AMDAIE::getDeviceModel(maybeDevice.value());
+  populateDmaLoopSubsumptionPattern(patterns, deviceModel,
+                                    onlyZeroStrideOnOuterDim);
   populateStridedOpCombinationPattern(patterns);
-  populateCanonicalizeDoublyStridedOpPatterns(patterns, false);
+  populateCanonicalizeDoublyStridedOpPatterns(patterns, false, true,
+                                              deviceModel);
+
   if (failed(applyPatternsAndFoldGreedily(parentOp, std::move(patterns)))) {
     parentOp->emitOpError("failed to compose strided operations");
     return signalPassFailure();

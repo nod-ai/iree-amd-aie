@@ -183,17 +183,23 @@ class AMDAIEUnrollLocalLoops : public OpRewritePattern<scf::ForOp> {
         return WalkResult::advance();
       }
 
-      uint8_t sourceMemspace = dmaOp.getSourceMemorySpaceAsUInt();
-      uint8_t targetMemspace = dmaOp.getTargetMemorySpaceAsUInt();
+      std::optional<uint8_t> sourceMemspace =
+          dmaOp.getSourceMemorySpaceAsUInt();
+      std::optional<uint8_t> targetMemspace =
+          dmaOp.getTargetMemorySpaceAsUInt();
+      if (!sourceMemspace || !targetMemspace) {
+        dmaOp.emitOpError() << "expected a source and target memory space";
+        return WalkResult::interrupt();
+      }
       if (std::is_same<Iterator, ForwardIterator>::value &&
           !dependencies.contains(dmaOp.getSourceObjectFifo()) &&
-          sourceMemspace < targetMemspace) {
+          sourceMemspace.value() < targetMemspace.value()) {
         rewriter.moveOpBefore(dmaOp, forOp);
         hoistHappened = true;
         return WalkResult::advance();
       } else if (std::is_same<Iterator, ReverseIterator>::value &&
                  !dependencies.contains(dmaOp.getTargetObjectFifo()) &&
-                 sourceMemspace > targetMemspace) {
+                 sourceMemspace.value() > targetMemspace.value()) {
         rewriter.moveOpAfter(dmaOp, forOp);
         hoistHappened = true;
         return WalkResult::advance();
@@ -244,9 +250,15 @@ class AMDAIEUnrollLocalLoops : public OpRewritePattern<scf::ForOp> {
       for (auto it = loopBodyBlock->begin(); it != std::next(srcBlockEnd);
            it++) {
         if (auto dmaOp = dyn_cast<AMDAIE::DmaCpyNdOp>(*it)) {
-          uint8_t sourceMemSpaceInt = dmaOp.getSourceMemorySpaceAsUInt();
-          uint8_t targetMemSpaceInt = dmaOp.getTargetMemorySpaceAsUInt();
-          if (targetMemSpaceInt > sourceMemSpaceInt) {
+          std::optional<uint8_t> sourceMemSpaceInt =
+              dmaOp.getSourceMemorySpaceAsUInt();
+          std::optional<uint8_t> targetMemSpaceInt =
+              dmaOp.getTargetMemorySpaceAsUInt();
+          if (!sourceMemSpaceInt || !targetMemSpaceInt) {
+            return dmaOp.emitOpError()
+                   << "expected a source and target memory space";
+          }
+          if (targetMemSpaceInt.value() > sourceMemSpaceInt.value()) {
             AMDAIE::LogicalObjectFifoFromMemrefOp target =
                 dmaOp.getTargetObjectFifo();
             rewriter.setInsertionPoint(target);
@@ -254,7 +266,7 @@ class AMDAIEUnrollLocalLoops : public OpRewritePattern<scf::ForOp> {
                 dyn_cast_if_present<AMDAIE::LogicalObjectFifoFromMemrefOp>(
                     rewriter.clone(*dmaOp.getTarget().getDefiningOp()));
             operandMap.map(target.getOutput(), cloneOp.getOutput());
-          } else if (sourceMemSpaceInt > targetMemSpaceInt) {
+          } else if (sourceMemSpaceInt.value() > targetMemSpaceInt.value()) {
             AMDAIE::LogicalObjectFifoFromMemrefOp source =
                 dmaOp.getSourceObjectFifo();
             rewriter.setInsertionPoint(source);

@@ -40,13 +40,15 @@ LogicalResult normalizeLoopBounds(RewriterBase &rewriter,
                                   scf::ForallOp forallOp);
 
 /// Populate patterns that canonicalize doubly strided DMA operations.
-void populateCanonicalizeDoublyStridedOpPatterns(RewritePatternSet &patterns,
-                                                 bool foldSingleDims);
+void populateCanonicalizeDoublyStridedOpPatterns(
+    RewritePatternSet &patterns, bool foldSingleDims, bool hardwareAware,
+    std::optional<std::reference_wrapper<const AMDAIE::AMDAIEDeviceModel>>
+        deviceModel = std::nullopt);
 
 /// Populate patterns that subsume loops iterations into DMA access patterns.
-void populateDmaLoopSubsumptionPattern(RewritePatternSet &patterns,
-                                       AMDAIE::AMDAIEDeviceModel &&deviceModel,
-                                       bool onlyZeroStrideOnOuterDim);
+void populateDmaLoopSubsumptionPattern(
+    RewritePatternSet &patterns, const AMDAIE::AMDAIEDeviceModel &deviceModel,
+    bool onlyZeroStrideOnOuterDim);
 
 /// Populate patterns that combine strided ops in the same block.
 void populateStridedOpCombinationPattern(RewritePatternSet &patterns);
