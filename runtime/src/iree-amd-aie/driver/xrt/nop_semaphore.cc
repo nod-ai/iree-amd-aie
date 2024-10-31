@@ -68,7 +68,7 @@ static iree_status_t iree_hal_xrt_semaphore_query(
       iree_hal_xrt_semaphore_cast(base_semaphore);
   // TODO: Support semaphores completely.
   *out_value =
-      iree_atomic_load_int64(&semaphore->value, iree_memory_order_acquire);
+      iree_atomic_load(&semaphore->value, iree_memory_order_acquire);
   return iree_ok_status();
 }
 
