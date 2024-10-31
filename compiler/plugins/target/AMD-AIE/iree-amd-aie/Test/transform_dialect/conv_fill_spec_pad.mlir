@@ -129,7 +129,7 @@ module attributes { transform.with_named_sequence } {
     %padded_1, %pad_1, %___ = transform.structured.pad %tiled_conv_1 {
       padding_values=[0.0 : f32, 0.0 : f32, 0.0 : f32],
       padding_dimensions=[0, 1, 2],
-      pack_paddings=[0, 0, 1],
+      nofold_flags=[0, 0, 1],
       copy_back_op="linalg.copy"
     } : (!any) -> (!any, !any, !any)
 
@@ -163,7 +163,7 @@ module attributes { transform.with_named_sequence } {
     %padded_2, %pad_2, %____ = transform.structured.pad %inner_conv {
       padding_values=[0.0 : f32, 0.0 : f32, 0.0 : f32],
       padding_dimensions=[0, 1, 2],
-      pack_paddings=[1, 1, 0],
+      nofold_flags=[1, 1, 0],
       copy_back_op="linalg.copy"
     } : (!any) -> (!any, !any, !any)
 
