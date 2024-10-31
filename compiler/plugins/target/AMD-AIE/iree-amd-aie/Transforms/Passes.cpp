@@ -633,6 +633,8 @@ void addAMDAIEObjectFifoLoweringPasses(OpPassManager &passManager,
 }
 
 void addMLIRAIELoweringPasses(OpPassManager &pm) {
+  mlir::iree_compiler::aievec::buildConvertVectorToAIEVec(pm);
+
   {
     OpPassManager &devicePM = pm.nest<xilinx::AIE::DeviceOp>();
     devicePM.addPass(createCanonicalizerPass());
@@ -652,8 +654,6 @@ void addMLIRAIELoweringPasses(OpPassManager &pm) {
     devicePM.addPass(createAMDAIENormalizeAddressSpacesPass());
     devicePM.addPass(createCanonicalizerPass());
   }
-
-  mlir::iree_compiler::aievec::buildConvertVectorToAIEVec(pm);
 
   pm.addPass(createCanonicalizerPass());
   pm.addPass(createCSEPass());

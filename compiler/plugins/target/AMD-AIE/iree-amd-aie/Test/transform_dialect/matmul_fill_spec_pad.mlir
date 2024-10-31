@@ -145,9 +145,9 @@ module attributes { transform.with_named_sequence } {
 //       CHECK: scf.forall
 //       CHECK: {
 //       CHECK:   memref.alloc() : memref<8x16xi32, 1>
-//       CHECK:   linalg.copy ins(%{{.*}} : memref<8x16xi32, strided<[16, 1], offset: ?>, #hal.descriptor_type<storage_buffer>>) outs(%{{.*}} : memref<8x16xi32, 1>)
+//       CHECK:   linalg.copy ins(%{{.*}} : memref<8x16xi32, #hal.descriptor_type<storage_buffer>>) outs(%{{.*}} : memref<8x16xi32, 1>)
 //       CHECK:   memref.alloc() : memref<16x8xi32, 1>
-//       CHECK:   linalg.copy ins(%{{.*}} : memref<16x8xi32, strided<[8, 1], offset: ?>, #hal.descriptor_type<storage_buffer>>) outs(%{{.*}} : memref<16x8xi32, 1>)
+//       CHECK:   linalg.copy ins(%{{.*}} : memref<16x8xi32, #hal.descriptor_type<storage_buffer>>) outs(%{{.*}} : memref<16x8xi32, 1>)
 //       CHECK:   memref.alloc() : memref<8x8xi32, 1>
 //       CHECK:   scf.forall
 //       CHECK:   {
@@ -166,7 +166,7 @@ module attributes { transform.with_named_sequence } {
 //       CHECK:     linalg.copy ins(%{{.*}} : memref<4x4xi32, 2>) outs(%{{.*}} : memref<4x4xi32, strided<[8, 1], offset: ?>, 1>)
 //       CHECK:     memref.dealloc %{{.*}} : memref<4x4xi32, 2>
 //       CHECK:   }
-//       CHECK:   linalg.copy ins(%{{.*}} : memref<8x8xi32, 1>) outs(%{{.*}} : memref<8x8xi32, strided<[8, 1], offset: ?>, #hal.descriptor_type<storage_buffer>>)
+//       CHECK:   linalg.copy ins(%{{.*}} : memref<8x8xi32, 1>) outs(%{{.*}} : memref<8x8xi32, #hal.descriptor_type<storage_buffer>>)
 //       CHECK:   memref.dealloc %{{.*}} : memref<8x16xi32, 1>
 //       CHECK:   memref.dealloc %{{.*}} : memref<16x8xi32, 1>
 //       CHECK:   memref.dealloc %{{.*}} : memref<8x8xi32, 1>

@@ -160,21 +160,23 @@ LogicalResult setDmaInputs(Operation *&operandOp,
                            SmallVector<OpFoldResult> &sizes,
                            SmallVector<OpFoldResult> &strides) {
   MLIRContext *ctx = operandOp->getContext();
-  if (auto allocOp = dyn_cast<memref::AllocOp>(operandOp)) {
-    auto [stridesI64, baseOffset] = getStridesAndOffset(allocOp.getType());
+  if (isa<memref::AllocOp>(operandOp) ||
+      isa<IREE::HAL::InterfaceBindingSubspanOp>(operandOp)) {
+    MemRefType memRefType = cast<MemRefType>(operandOp->getResult(0).getType());
+    auto [stridesI64, baseOffset] = getStridesAndOffset(memRefType);
     if (baseOffset != 0) {
       auto message = llvm::formatv(
           "with non-zero base offset {0} is not supported by the "
           "current pass, requires testing and possible code changes.",
           baseOffset);
-      return allocOp->emitOpError(message);
+      return operandOp->emitOpError(message);
     }
     strides = getAsIndexOpFoldResult(ctx, stridesI64);
-    auto sizesI64 = allocOp.getType().getShape();
+    auto sizesI64 = memRefType.getShape();
     if (llvm::any_of(sizesI64, [](int64_t size) {
           return ShapedType::isDynamic(size);
         })) {
-      return allocOp->emitOpError(
+      return operandOp->emitOpError(
           "with dynamic shape is not supported by dma op.");
     }
     sizes = getAsIndexOpFoldResult(ctx, sizesI64);
@@ -235,8 +237,9 @@ LogicalResult setDmaInputs(Operation *&operandOp,
     return success();
   }
   return operandOp->emitOpError(
-      "is an unsupported operation. This pass currently only supports AllocOp "
-      "and SubViewOp as inputs.");
+      "is an unsupported operation. This pass currently only supports "
+      "hal.interface.binding.subspan, memref.alloc and memref.subview as "
+      "inputs.");
 }
 
 /// Rewrite the pack/unpack op 'op' as a DMA operation. The function arguments
