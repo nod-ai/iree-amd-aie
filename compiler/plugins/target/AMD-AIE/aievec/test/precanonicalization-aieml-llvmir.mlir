@@ -59,9 +59,9 @@ func.func @broadcast_to_insert(%v: vector<8xbf16>) -> vector<1x4x8xbf16> {
 
 // CHECK-LABEL: @contiguous_read_with_unit_extent_dim(
 // CHECK: memref.collapse_shape
-// CHECK-SAME:  memref<2x4x1x8xi8> into memref<2x32xi8>
+// CHECK-SAME:  memref<2x4x1x8xi8> into memref<64xi8>
 // CHECK: vector.transfer_read
-// CHECK-SAME: {in_bounds = [true]} : memref<2x32xi8>, vector<32xi8>
+// CHECK-SAME: {in_bounds = [true]} : memref<64xi8>, vector<32xi8>
 // CHECK: vector.shape_cast
 // CHECK-SAME: vector<32xi8> to vector<4x8xi8>
 #map = affine_map<(d0, d1, d2, d3) -> (d1, d3)>
@@ -109,7 +109,7 @@ func.func @permutation_read_cannot_collapse() -> vector<8x8xi8> {
 
 // CHECK-LABEL: @contiguous_write_with_unit_extent_dim(
 // CHECK-DAG: vector.shape_cast{{.*}} vector<4x8xi8> to vector<32xi8>
-// CHECK-DAG: memref.collapse_shape{{.*}} memref<2x4x1x8xi8> into memref<2x32xi8>
+// CHECK-DAG: memref.collapse_shape{{.*}} memref<2x4x1x8xi8> into memref<64xi8>
 // CHECK: vector.transfer_write
 // CHECK: return
 #map = affine_map<(d0, d1, d2, d3) -> (d1, d3)>
@@ -125,12 +125,11 @@ func.func @contiguous_write_with_unit_extent_dim(%v: vector<4x8xi8>) {
 
 // CHECK-LABEL: @contiguous_write_with_unit_extent_dim_2(
 // CHECK: %[[C8:.*]] = arith.constant 8 : index
-// CHECK: %[[C0:.*]] = arith.constant 0 : index
 // CHECK: %[[ALLOC:.*]] = memref.alloc() : memref<2x6x1x8x1xi8>
 // CHECK-DAG: %[[CAST:.*]] = vector.shape_cast %[[V:.*]] : vector<4x8xi8> to vector<32xi8>
-// CHECK-DAG: %[[COLLAPSE:.*]] = memref.collapse_shape %[[ALLOC]]{{.*}}memref<2x6x1x8x1xi8> into memref<2x48xi8>
-// CHECK:       vector.transfer_write %[[CAST]], %[[COLLAPSE]][%[[C0]], %[[C8]]]
-// CHECK-SAME:  {in_bounds = [true]} : vector<32xi8>, memref<2x48xi8>
+// CHECK-DAG: %[[COLLAPSE:.*]] = memref.collapse_shape %[[ALLOC]]{{.*}}memref<2x6x1x8x1xi8> into memref<96xi8>
+// CHECK:       vector.transfer_write %[[CAST]], %[[COLLAPSE]][%[[C8]]]
+// CHECK-SAME:  {in_bounds = [true]} : vector<32xi8>, memref<96xi8>
 // CHECK: return
 
 #map = affine_map<(d0, d1, d2, d3, d4) -> (d1, d3)>
