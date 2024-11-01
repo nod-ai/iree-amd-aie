@@ -555,7 +555,6 @@ run_matmul_test \
 # MLIR-AIR Matmul tests
 ###################################################################
 
-# TODO: re-enable after fixing in AIR
 if [ -d "$VITIS" ]; then
   run_matmul_test \
       --name_prefix "ukern" \
