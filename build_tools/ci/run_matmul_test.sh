@@ -555,17 +555,16 @@ run_matmul_test \
 # MLIR-AIR Matmul tests
 ###################################################################
 
-# TODO: re-enable after fixing in AIR
-# if [ -d "$VITIS" ]; then
-#   run_matmul_test \
-#       --name_prefix "ukern" \
-#       --lower_to_aie_pipeline "air" \
-#       --tile_pipeline "pad-pack" \
-#       --lhs_rhs_type "bf16" \
-#       --acc_type "f32" \
-#       --m "256"  --k "256" --n "256" \
-#       --use_ukernel "1"
-# fi
+if [ -d "$VITIS" ]; then
+  run_matmul_test \
+      --name_prefix "ukern" \
+      --lower_to_aie_pipeline "air" \
+      --tile_pipeline "pad-pack" \
+      --lhs_rhs_type "bf16" \
+      --acc_type "f32" \
+      --m "256"  --k "256" --n "256" \
+      --use_ukernel "1"
+fi
 
 # Example of a run with a group of 2+ matmuls. Currently this test is passed
 # the flag '--num_repeat_runs 0" as there is currently an issue with the runtime if
@@ -593,6 +592,7 @@ run_matmul_test \
 
 run_matmul_test \
     --name_prefix "packPeel_i32" \
+    --lower_to_aie_pipeline "air" \
     --tile_pipeline "pack-peel" \
     --lhs_rhs_type "i32" \
     --acc_type "i32" \
@@ -600,6 +600,7 @@ run_matmul_test \
 
 run_matmul_test \
     --name_prefix "packPeel_bf16" \
+    --lower_to_aie_pipeline "air" \
     --tile_pipeline "pack-peel" \
     --lhs_rhs_type "bf16" \
     --acc_type "f32" \
@@ -607,6 +608,7 @@ run_matmul_test \
 
 run_matmul_test \
   --name_prefix "packPeel_t_bf16" \
+  --lower_to_aie_pipeline "air" \
   --tile_pipeline "pack-peel" \
   --lhs_rhs_type "bf16" \
   --acc_type "f32" \
