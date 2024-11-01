@@ -230,6 +230,7 @@ clang-format off
 #include <string>
 
 #include "iree-amd-aie/aie_runtime/iree_aie_runtime.h"
+#include "iree-amd-aie/aie_runtime/xaie_hwcfg.h"
 
 int main(int argc, char** argv) {
   std::string elfPath(argv[1]);
