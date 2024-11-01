@@ -20,11 +20,6 @@
 
 using Path = std::filesystem::path;
 
-extern "C" {
-#include "xaie_hwcfg.h"
-#include "xaiengine.h"
-}
-
 namespace mlir::iree_compiler::AMDAIE {
 
 FailureOr<XAie_DmaDesc> initDMADesc(const AMDAIEDeviceModel &deviceModel,

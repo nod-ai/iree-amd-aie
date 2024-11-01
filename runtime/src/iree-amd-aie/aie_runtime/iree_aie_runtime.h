@@ -8,16 +8,25 @@
 #define IREE_AIE_RUNTIME_H
 
 #include <optional>
+#include <ostream>
+#include <sstream>
 #include <tuple>
 #include <type_traits>
 
-#include "iree-amd-aie/aie_runtime/AMDAIEEnums.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/Support/Debug.h"
+#include "llvm/Support/FormattedStream.h"
 #include "macros.h"
 
+// clang-format off
+#include "iree-amd-aie/aie_runtime/AMDAIEEnums.h"
+// clang-format on
+
 extern "C" {
+
+#include "xaie_hwcfg.h"
 #include "xaiengine.h"
+#include "xaiengine/xaie_device_aieml.h"
 #undef s8
 #undef u8
 #undef u16

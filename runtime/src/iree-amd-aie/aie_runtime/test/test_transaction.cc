@@ -46,9 +46,6 @@ clang-format on
 
 #include "interpreter_op_impl.h"
 #include "iree-amd-aie/aie_runtime/iree_aie_runtime.h"
-#include "iree-amd-aie/aie_runtime/xaie_hwcfg.h"
-
-
 
 using namespace mlir::iree_compiler;
 using namespace mlir::iree_compiler::AMDAIE;

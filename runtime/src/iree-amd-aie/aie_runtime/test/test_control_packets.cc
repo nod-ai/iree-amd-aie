@@ -47,7 +47,7 @@ clang-format on
 #include <cstdio>
 
 #include "interpreter_op_impl.h"
-#include "iree-amd-aie/aie_runtime/xaie_hwcfg.h"
+#include "iree-amd-aie/aie_runtime/iree_aie_runtime.h"
 
 #define DATA_SIZE 17
 #define WRRD_DATA_SIZE 0x02

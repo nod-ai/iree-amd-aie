@@ -14,7 +14,6 @@
 
 extern "C" {
 #include "xaiengine.h"
-#include "xaie_hwcfg.h"
 #undef s8
 #undef u8
 #undef u16
@@ -169,7 +168,6 @@ int AMDAIEDeviceModel::rows() const {
     return MLIRAIELegacy::rows(*this);
   assert(isNPUDevice(device) && "expected NPU device");
   return devInst.NumRows;
-
 }
 
 int AMDAIEDeviceModel::columns() const {

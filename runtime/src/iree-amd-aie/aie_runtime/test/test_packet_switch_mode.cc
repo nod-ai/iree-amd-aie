@@ -129,7 +129,7 @@ clang-format on
 #include <cstdio>
 
 #include "interpreter_op_impl.h"
-#include "iree-amd-aie/aie_runtime/xaie_hwcfg.h"
+#include "iree-amd-aie/aie_runtime/iree_aie_runtime.h"
 
 using namespace mlir::iree_compiler;
 using namespace mlir::iree_compiler::AMDAIE;
