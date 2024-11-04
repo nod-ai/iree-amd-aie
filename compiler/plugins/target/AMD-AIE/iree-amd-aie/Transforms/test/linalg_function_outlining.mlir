@@ -21,6 +21,10 @@
 // CHECK:               amdaie.end
 // CHECK:            }
 // CHECK:            amdaie.core
+// CHECK:               linalg.generic
+// CHECK:               amdaie.end
+// CHECK:            }
+// CHECK:            amdaie.core
 // CHECK:               func.call @generic_matmul_0_outlined(%[[A]], %[[B]], %[[C]])
 // CHECK-NOT:           linalg.generic
 // CHECK:               amdaie.end
@@ -50,7 +54,6 @@ func.func @matmul_example(%A: memref<4x8xbf16>, %B: memref<8x4xbf16>, %C: memref
     amdaie.end
   }
   %1 = amdaie.core(%tile, in : [], out : []) {
-    // expected-remark@+1 {{support to outline this linalg op is missing}}
     linalg.generic {
       indexing_maps = [affine_map<(d0, d1, d2) -> (d0, d2)>,
                        affine_map<(d0, d1, d2) -> (d2, d1)>,

@@ -111,8 +111,6 @@ void AMDAIELinalgFunctionOutliningPass::runOnOperation() {
         computeName =
             "_elementwise_" + std::to_string(uniqueOutlinedElementwise++);
       } else {
-        computeOp->emitRemark()
-            << "support to outline this linalg op is missing";
         return WalkResult::skip();
       }
       outlineFuncName =
