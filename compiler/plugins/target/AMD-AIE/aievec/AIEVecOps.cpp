@@ -777,6 +777,23 @@ ParseResult ShiftOp::parse(OpAsmParser &parser, OperationState &result) {
   return parser.addTypeToList(resultType, result.types);
 }
 
+// If the shift is a constant, and if it is 0 or equal to the number of bytes in
+// the first operand, then return operand directly.
+OpFoldResult ShiftOp::fold(FoldAdaptor adaptor) {
+  if (auto shiftConstOp = getShift().getDefiningOp<arith::ConstantOp>()) {
+    auto shiftValueAttr = cast<IntegerAttr>(shiftConstOp.getValue());
+    if (shiftValueAttr.getInt() == 0) return getLhs();
+    // Check that the shift is equal to the number of bytes in the first
+    // operand. If it is, then the result is the second operand.
+    VectorType lhsType = getLhs().getType();
+    int64_t lhsElms = lhsType.getNumElements();
+    uint32_t lhsElmBits = lhsType.getElementTypeBitWidth();
+    int64_t lhsNumBytes = (lhsElms * lhsElmBits) / 8;
+    if (shiftValueAttr.getInt() == lhsNumBytes) return getRhs();
+  }
+  return nullptr;
+}
+
 #define GET_ATTRDEF_CLASSES
 #include "aievec/AIEVecAttributes.cpp.inc"
 

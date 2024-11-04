@@ -49,6 +49,8 @@ def AIEVec_ShiftOp:
     have the same number of lanes and element types.
     `$result = shift($lhs, $rhs, $shift)`
   }];
+
+  let hasFolder = 1;
 }
 
 def AIEVec_ExtOp:
