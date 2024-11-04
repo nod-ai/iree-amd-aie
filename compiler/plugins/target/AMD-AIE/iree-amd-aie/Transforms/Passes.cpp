@@ -561,6 +561,8 @@ void addAMDAIEObjectFifoLoweringPasses(OpPassManager &passManager,
 
   passManager.addPass(createAMDAIENormalizeLoopBoundsPass());
   passManager.addPass(createAMDAIEInsertCoresPass());
+  if (useTilePipeline != TilePassPipeline::ConvDecomposePipeline)
+    passManager.addPass(createAMDAIELinalgFunctionOutliningPass());
 
   {
     // Vectorization passes
