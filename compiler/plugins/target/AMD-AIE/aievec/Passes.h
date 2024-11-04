@@ -22,15 +22,17 @@
 namespace mlir::iree_compiler::aievec {
 
 /**
- * Append pass(es) for canonicalizing operations in the vector dialect to a form
+ * Append passes for canonicalizing operations in the vector dialect to a form
  * that can be lowered to the AIEVec dialect.
  */
 void buildCanonicalizeVectorForAIEVec(mlir::OpPassManager &);
 
 /**
- * A pass containing patterns for canonicalizing operations in the vector
+ * A pass containing some patterns for canonicalizing operations in the vector
  * dialect to a form that can be lowered to the AIEVec dialect. This pass is
- * named `canonicalize-vector-for-aievec`.
+ * named `canonicalize-vector-for-aievec`. To ensure all required vector dialect
+ * canonicalizations take place, PassManagers should use
+ * `buildCanonicalizeVectorForAIEVec`.
  */
 std::unique_ptr<mlir::Pass> createCanonicalizeVectorForAIEVecPass();
 
@@ -38,6 +40,54 @@ std::unique_ptr<mlir::Pass> createCanonicalizeVectorForAIEVecPass();
  * Expose the pass `canonicalize-vector-for-aievec` to the command line.
  */
 void registerCanonicalizeVectorForAIEVecPass();
+
+/**
+ * This pass ensures that reads from AIE tile memory are aligned according to
+ * hardware constraints. For example, suppose we have 128 bytes in tile memory,
+ * represented in hex as:
+ *
+ *    0x00 0x01 ... 0x7E 0x7F
+ *
+ * On AIE-2, the (vector) read instructions from the tile memory into registers
+ * must be aligned to 256-bits (32-bytes). So if we want to read 64 bytes
+ * starting from 0x00 that is fine, but if we want to read 64 bytes starting
+ * from 0x01, then we cannot use a vector read instruction directly. To work
+ * around this constraint, we do the following:
+ *
+ * 1. Perform a wider read, that loads 128 bytes (2x as many as we want)
+ *    starting from 0x00 into a larger register. That is, bytes 0x00-0x7F are
+ *    loaded, so we have 1 'junk' byte at the beginning and 63 'junk' bytes at
+ *    the end.
+ *
+ * 2. Extract the target bytes 0x01 ... 0x40 from the larger register into a
+ *    smaller register in 2 steps, using 2 AIE specific instructions:
+ *
+ *   a) Extract:
+ *      https://www.xilinx.com/htmldocs/xilinx2023_2/aiengine_ml_intrinsics/intrinsics/group__intr__gpvectorconv__elem.html
+ *
+ *   b) Shift:
+ *      https://www.xilinx.com/htmldocs/xilinx2023_2/aiengine_ml_intrinsics/intrinsics/group__intr__gpvectorop__shift.html
+ *
+ *   First, we use the extract instruction to split the read 128-bytes into two
+ *   halves, 0x00-0x3F and 0x40-0x7F, each in its own 64-byte register. Then, we
+ *   use a shift operation to combine the upper 31 bytes from the first half
+ *   and the lower 33 bytes from the second half into a new 64-byte register.
+ *   This new register contains exactly the 64 bytes we want to read, starting
+ *   from 0x01.
+ *
+ * If we want to read 32 bytes starting from 0x01, we can use a similar
+ * approach. The only consideration is that the shift operation requires 64-byte
+ * inputs, so the order of the of the shift and extracts is reversed.
+ *
+ * We do not currently support unaligned reads of vectors which are not 32-bytes
+ * or 64-bytes in length.
+ *
+ * TODO(newling) use this same approach to align writes to unaligned memory.
+ *  */
+
+std::unique_ptr<mlir::Pass> createAlignTransferReadsPass();
+
+void registerAlignTransferReadsPass();
 
 /**
  * Append pass(es) for lowering operations in the vector dialect to the AIEVec
@@ -48,7 +98,7 @@ void buildLowerVectorToAIEVec(mlir::OpPassManager &pm);
 
 /**
  * A pass containing patterns for lowering operations in the vector dialect to
- * the AIEVec dialect. The pass is currently named `test-lower-vector-to-aievec`.
+ * the AIEVec dialect. The pass is currently named `test-lower-vector-to-aievec`
  */
 static std::unique_ptr<mlir::Pass> createLowerVectorToAIEVec();
 
