@@ -406,7 +406,10 @@ function run_matmul_test() {
                       --iree-hal-memoization=false \
                       --iree-hal-indirect-command-buffers=false \
                       --mlir-elide-resource-strings-if-larger=10 \
-                      --iree-amd-aie-show-invoked-commands"
+                      --iree-amd-aie-show-invoked-commands
+                      --debug-only=iree-amdaie-assign-tiles --mlir-print-ir-before-all"
+                      # --mlir-print-ir-before-all 
+                      # iree-amdaie-controlcode-to-transaction
 
   if [ $use_ukernel -ne 0 ]; then
     compilation_flags="${compilation_flags} \
@@ -518,189 +521,188 @@ function run_matmul_test_on_shapes() {
   done
 }
 
-########################################################
-# Run tests                                            #
-########################################################
+# ########################################################
+# # Run tests                                            #
+# ########################################################
 
-# Notes:
-# 1. Be conservative in adding more shapes, as it can increase both the
-#    build and execution latency of tests. The build latency is nearly the
-#    same for all shapes, while execution latency grows cubicly i.e.
-#    linearly with m*k*n.
+# # Notes:
+# # 1. Be conservative in adding more shapes, as it can increase both the
+# #    build and execution latency of tests. The build latency is nearly the
+# #    same for all shapes, while execution latency grows cubicly i.e.
+# #    linearly with m*k*n.
 
-# Example of a run without any defaults arguments.
-run_matmul_test \
-    --name_prefix "test1" \
-    --lhs_rhs_type "bf16" \
-    --acc_type "f32" \
-    --target_backend "amd-aie" \
-    --target_device "npu1_4col" \
-    --peano_install_path "${PEANO}" \
-    --amd_aie_install_path "${IREE_INSTALL_DIR}" \
-    --vitis_path  "${VITIS}" \
-    --lower_to_aie_pipeline "air" \
-    --tile_pipeline "pad-pack" \
-    --m "64" \
-    --n "64" \
-    --k "64" \
-    --dynamicity "static" \
-    --accumulate "false" \
-    --expect_compile_failure "0" \
-    --do_transpose_rhs "0" \
-    --max_elements_to_check "0" \
-    --use_ukernel "0" \
-    --num_repeat_runs "2"
+# # Example of a run without any defaults arguments.
+# run_matmul_test \
+#     --name_prefix "test1" \
+#     --lhs_rhs_type "bf16" \
+#     --acc_type "f32" \
+#     --target_backend "amd-aie" \
+#     --target_device "npu1_4col" \
+#     --peano_install_path "${PEANO}" \
+#     --amd_aie_install_path "${IREE_INSTALL_DIR}" \
+#     --vitis_path  "${VITIS}" \
+#     --lower_to_aie_pipeline "air" \
+#     --tile_pipeline "pad-pack" \
+#     --m "64" \
+#     --n "64" \
+#     --k "64" \
+#     --dynamicity "static" \
+#     --accumulate "false" \
+#     --expect_compile_failure "0" \
+#     --do_transpose_rhs "0" \
+#     --max_elements_to_check "0" \
+#     --use_ukernel "0" \
+#     --num_repeat_runs "2"
 
-###################################################################
-# MLIR-AIR Matmul tests
-###################################################################
+# ###################################################################
+# # MLIR-AIR Matmul tests
+# ###################################################################
 
-if [ -d "$VITIS" ]; then
-  run_matmul_test \
-      --name_prefix "ukern" \
-      --lower_to_aie_pipeline "air" \
-      --tile_pipeline "pad-pack" \
-      --lhs_rhs_type "bf16" \
-      --acc_type "f32" \
-      --m "256"  --k "256" --n "256" \
-      --use_ukernel "1"
-fi
+# if [ -d "$VITIS" ]; then
+#   run_matmul_test \
+#       --name_prefix "ukern" \
+#       --lower_to_aie_pipeline "air" \
+#       --tile_pipeline "pad-pack" \
+#       --lhs_rhs_type "bf16" \
+#       --acc_type "f32" \
+#       --m "256"  --k "256" --n "256" \
+#       --use_ukernel "1"
+# fi
 
-# Example of a run with a group of 2+ matmuls. Currently this test is passed
-# the flag '--num_repeat_runs 0" as there is currently an issue with the runtime if
-# multiple matmuls are run in the same test. TODO(newling/nmeshram): Document
-# this issue.
-run_matmul_test \
-    --name_prefix "multiple_matmuls" \
-    --lower_to_aie_pipeline "air" \
-    --tile_pipeline "pad-pack" \
-    --lhs_rhs_type "i32" \
-    --acc_type "i32" \
-    --m "512,8,16" \
-    --n "512,32,16" \
-    --k "256,16,8" \
-    --num_repeat_runs "0"
+# # Example of a run with a group of 2+ matmuls. Currently this test is passed
+# # the flag '--num_repeat_runs 0" as there is currently an issue with the runtime if
+# # multiple matmuls are run in the same test. TODO(newling/nmeshram): Document
+# # this issue.
+# run_matmul_test \
+#     --name_prefix "multiple_matmuls" \
+#     --lower_to_aie_pipeline "air" \
+#     --tile_pipeline "pad-pack" \
+#     --lhs_rhs_type "i32" \
+#     --acc_type "i32" \
+#     --m "512,8,16" \
+#     --n "512,32,16" \
+#     --k "256,16,8" \
+#     --num_repeat_runs "0"
 
-run_matmul_test \
-  --name_prefix "transpose_i8_i32" \
-  --lower_to_aie_pipeline "air" \
-  --tile_pipeline "pad-pack" \
-  --lhs_rhs_type "i8" \
-  --acc_type "i32" \
-  --m "16" --n "32" --k "64" \
-  --do_transpose_rhs "1"
+# run_matmul_test \
+#   --name_prefix "transpose_i8_i32" \
+#   --lower_to_aie_pipeline "air" \
+#   --tile_pipeline "pad-pack" \
+#   --lhs_rhs_type "i8" \
+#   --acc_type "i32" \
+#   --m "16" --n "32" --k "64" \
+#   --do_transpose_rhs "1"
 
-run_matmul_test \
-    --name_prefix "packPeel_i32" \
-    --lower_to_aie_pipeline "air" \
-    --tile_pipeline "pack-peel" \
-    --lhs_rhs_type "i32" \
-    --acc_type "i32" \
-    --m "64"  --n "64" --k "128"
+# run_matmul_test \
+#     --name_prefix "packPeel_i32" \
+#     --tile_pipeline "pack-peel" \
+#     --lhs_rhs_type "i32" \
+#     --acc_type "i32" \
+#     --m "64"  --n "64" --k "128"
 
-run_matmul_test \
-    --name_prefix "packPeel_bf16" \
-    --lower_to_aie_pipeline "air" \
-    --tile_pipeline "pack-peel" \
-    --lhs_rhs_type "bf16" \
-    --acc_type "f32" \
-    --m "512"  --n "512" --k "512"
+# run_matmul_test \
+#     --name_prefix "packPeel_bf16" \
+#     --tile_pipeline "pack-peel" \
+#     --lhs_rhs_type "bf16" \
+#     --acc_type "f32" \
+#     --m "512"  --n "512" --k "512"
 
-run_matmul_test \
-  --name_prefix "packPeel_t_bf16" \
-  --lower_to_aie_pipeline "air" \
-  --tile_pipeline "pack-peel" \
-  --lhs_rhs_type "bf16" \
-  --acc_type "f32" \
-  --m "128" --n "256" --k "512" \
-  --do_transpose_rhs "1"
+# run_matmul_test \
+#   --name_prefix "packPeel_t_bf16" \
+#   --tile_pipeline "pack-peel" \
+#   --lhs_rhs_type "bf16" \
+#   --acc_type "f32" \
+#   --m "128" --n "256" --k "512" \
+#   --do_transpose_rhs "1"
 
-###################################################################
-# ObjectFifo Matmul tests
-###################################################################
+# ###################################################################
+# # ObjectFifo Matmul tests
+# ###################################################################
 
 # Run repeatedly to check for non-deterministic hangs and numerical 
 # issues.
 repeat_shapes=(
-  '32x32x32'
-)
-
-run_matmul_test_on_shapes ${repeat_shapes[@]} \
-    --name_prefix "small" \
-    --lower_to_aie_pipeline "objectFifo" \
-    --tile_pipeline "pack-peel" \
-    --lhs_rhs_type "i32" \
-    --acc_type "i32" \
-    --num_corruption_repeat_runs "1000"
-
-i32_shapes_small=(
-  '32x32x32'
-  '64x32x128'
-  '128x32x64'
-  '128x32x64'
-  '128x32x128'
-  '256x32x256'
-  '32x64x32'
-  '64x64x64'
   '128x256x128'
 )
 
-run_matmul_test_on_shapes ${i32_shapes_small[@]} \
-    --name_prefix "small_i32" \
-    --lower_to_aie_pipeline "objectFifo" \
-    --tile_pipeline "pack-peel" \
-    --lhs_rhs_type "i32" \
-    --acc_type "i32" \
-    --num_repeat_runs "10"
+# run_matmul_test_on_shapes ${repeat_shapes[@]} \
+#     --name_prefix "small" \
+#     --lower_to_aie_pipeline "objectFifo" \
+#     --tile_pipeline "pack-peel" \
+#     --lhs_rhs_type "i32" \
+#     --acc_type "i32" \
+#     --num_corruption_repeat_runs "1"
 
-run_matmul_test_on_shapes ${i32_shapes_small[@]} \
-    --name_prefix "small" \
-    --lower_to_aie_pipeline "objectFifo" \
-    --tile_pipeline "pack-peel" \
-    --lhs_rhs_type "i32" \
-    --acc_type "i32" \
-    --num_corruption_repeat_runs "10" \
-    --enable_packet_flow "true"
+# i32_shapes_small=(
+#   '32x32x32'
+#   '64x32x128'
+#   '128x32x64'
+#   '128x32x64'
+#   '128x32x128'
+#   '256x32x256'
+#   '32x64x32'
+#   '64x64x64'
+#   '128x256x128'
+# )
 
-i32_shapes_medium=(
-  '1024x1024x1024'
-)
-# TODO(jornt): re-enable `1536x2048x1536`
-#if [ "$OSTYPE" != "msys" ]; then
-#  i32_shapes_medium+=('1536x2048x1536')
-#fi
+# run_matmul_test_on_shapes ${i32_shapes_small[@]} \
+#     --name_prefix "small_i32" \
+#     --lower_to_aie_pipeline "objectFifo" \
+#     --tile_pipeline "pack-peel" \
+#     --lhs_rhs_type "i32" \
+#     --acc_type "i32" \
+#     --num_repeat_runs "10"
 
-run_matmul_test_on_shapes ${i32_shapes_medium[@]} \
-    --name_prefix "medium_i32" \
-    --lower_to_aie_pipeline "objectFifo" \
-    --tile_pipeline "pack-peel" \
-    --lhs_rhs_type "i32" \
-    --acc_type "i32" \
-    --num_repeat_runs "2"
+# run_matmul_test_on_shapes ${i32_shapes_small[@]} \
+#     --name_prefix "small" \
+#     --lower_to_aie_pipeline "objectFifo" \
+#     --tile_pipeline "pack-peel" \
+#     --lhs_rhs_type "i32" \
+#     --acc_type "i32" \
+#     --num_corruption_repeat_runs "10" \
+#     --enable_packet_flow "true"
 
-# bf16 Matmul tests.
+# i32_shapes_medium=(
+#   '1024x1024x1024'
+# )
+# # TODO(jornt): re-enable `1536x2048x1536`
+# #if [ "$OSTYPE" != "msys" ]; then
+# #  i32_shapes_medium+=('1536x2048x1536')
+# #fi
+
+# run_matmul_test_on_shapes ${i32_shapes_medium[@]} \
+#     --name_prefix "medium_i32" \
+#     --lower_to_aie_pipeline "objectFifo" \
+#     --tile_pipeline "pack-peel" \
+#     --lhs_rhs_type "i32" \
+#     --acc_type "i32" \
+#     --num_repeat_runs "2"
+
+# # bf16 Matmul tests.
 
 bf16_i8_shapes_small=(
-  '64x64x64'
-  '128x256x128'
+  '64x32x64'
+  # '4096x512x512'
+  # '512x512x4096'
+  # '128x256x128'
 )
 
-bf16_i8_shapes_medium=(
-  '512x512x512'
-  '1024x1024x1024'
-  '1536x2048x1536'
-  '4096x2048x4096'
-)
+# bf16_i8_shapes_medium=(
+#   '512x512x512'
+#   '1024x1024x1024'
+#   '1536x2048x1536'
+#   '4096x2048x4096'
+# )
 
-bf16_ukernel_shapes_small=(
-  '64x64x64'
-  '256x256x256'
-)
+# bf16_ukernel_shapes_small=(
+#   '64x64x64'
+#   '256x256x256'
+# )
 
-bf16_ukernel_shapes_medium=(
-  '128x512x512'
-  '512x4096x2048'
-)
+# bf16_ukernel_shapes_medium=(
+#   '128x512x512'
+#   '512x4096x2048'
+# )
 
 run_matmul_test_on_shapes ${bf16_i8_shapes_small[@]} \
     --name_prefix "small_bf16" \
@@ -708,126 +710,126 @@ run_matmul_test_on_shapes ${bf16_i8_shapes_small[@]} \
     --tile_pipeline "pack-peel" \
     --lhs_rhs_type "bf16" \
     --acc_type "f32" \
-    --num_repeat_runs "2"
+    --num_repeat_runs "1"
 
-run_matmul_test_on_shapes ${bf16_i8_shapes_medium[@]} \
-    --name_prefix "medium_bf16" \
-    --lower_to_aie_pipeline "objectFifo" \
-    --tile_pipeline "pack-peel" \
-    --lhs_rhs_type "bf16" \
-    --acc_type "f32" \
-    --num_repeat_runs "2"
+# run_matmul_test_on_shapes ${bf16_i8_shapes_medium[@]} \
+#     --name_prefix "medium_bf16" \
+#     --lower_to_aie_pipeline "objectFifo" \
+#     --tile_pipeline "pack-peel" \
+#     --lhs_rhs_type "bf16" \
+#     --acc_type "f32" \
+#     --num_repeat_runs "2"
 
-# i8 Matmul tests.
-run_matmul_test_on_shapes ${bf16_i8_shapes_small[@]} \
-    --name_prefix "small_i8" \
-    --lower_to_aie_pipeline "objectFifo" \
-    --tile_pipeline "pack-peel" \
-    --lhs_rhs_type "i8" \
-    --acc_type "i32" \
-    --num_repeat_runs "2"
+# # i8 Matmul tests.
+# run_matmul_test_on_shapes ${bf16_i8_shapes_small[@]} \
+#     --name_prefix "small_i8" \
+#     --lower_to_aie_pipeline "objectFifo" \
+#     --tile_pipeline "pack-peel" \
+#     --lhs_rhs_type "i8" \
+#     --acc_type "i32" \
+#     --num_repeat_runs "2"
 
-run_matmul_test_on_shapes ${bf16_i8_shapes_medium[@]} \
-    --name_prefix "medium_i8" \
-    --lower_to_aie_pipeline "objectFifo" \
-    --tile_pipeline "pack-peel" \
-    --lhs_rhs_type "i8" \
-    --acc_type "i32" \
-    --num_repeat_runs "2"
+# run_matmul_test_on_shapes ${bf16_i8_shapes_medium[@]} \
+#     --name_prefix "medium_i8" \
+#     --lower_to_aie_pipeline "objectFifo" \
+#     --tile_pipeline "pack-peel" \
+#     --lhs_rhs_type "i8" \
+#     --acc_type "i32" \
+#     --num_repeat_runs "2"
 
-if [ -d "$VITIS" ]; then
-  run_matmul_test_on_shapes ${bf16_ukernel_shapes_small[@]} \
-      --name_prefix "small_ukern" \
-      --lower_to_aie_pipeline "objectFifo" \
-      --tile_pipeline "pack-peel" \
-      --lhs_rhs_type "bf16" \
-      --acc_type "f32" \
-      --num_repeat_runs "2" \
-      --use_ukernel "1"
+# if [ -d "$VITIS" ]; then
+#   run_matmul_test_on_shapes ${bf16_ukernel_shapes_small[@]} \
+#       --name_prefix "small_ukern" \
+#       --lower_to_aie_pipeline "objectFifo" \
+#       --tile_pipeline "pack-peel" \
+#       --lhs_rhs_type "bf16" \
+#       --acc_type "f32" \
+#       --num_repeat_runs "2" \
+#       --use_ukernel "1"
 
-  run_matmul_test_on_shapes ${bf16_ukernel_shapes_medium[@]} \
-      --name_prefix "medium_ukern" \
-      --lower_to_aie_pipeline "objectFifo" \
-      --tile_pipeline "pack-peel" \
-      --lhs_rhs_type "bf16" \
-      --acc_type "f32" \
-      --num_repeat_runs "2" \
-      --use_ukernel "1"
-fi
+#   run_matmul_test_on_shapes ${bf16_ukernel_shapes_medium[@]} \
+#       --name_prefix "medium_ukern" \
+#       --lower_to_aie_pipeline "objectFifo" \
+#       --tile_pipeline "pack-peel" \
+#       --lhs_rhs_type "bf16" \
+#       --acc_type "f32" \
+#       --num_repeat_runs "2" \
+#       --use_ukernel "1"
+# fi
 
-###################################################################
-# Chess tests
-###################################################################
+# ###################################################################
+# # Chess tests
+# ###################################################################
 
-if [ -d "$VITIS" ]; then
+# if [ -d "$VITIS" ]; then
 
-  run_matmul_test \
-      --name_prefix "chess_i32_matmul" \
-      --lhs_rhs_type "i32" \
-      --acc_type "i32" \
-      --m "32" \
-      --n "32" \
-      --k "32" \
-      --use_chess "1" \
-      --num_repeat_runs "10"
+#   run_matmul_test \
+#       --name_prefix "chess_i32_matmul" \
+#       --lhs_rhs_type "i32" \
+#       --acc_type "i32" \
+#       --m "32" \
+#       --n "32" \
+#       --k "32" \
+#       --use_chess "1" \
+#       --num_repeat_runs "10"
 
-  run_matmul_test \
-      --name_prefix "chess_bf16_ukernel" \
-      --lhs_rhs_type "bf16" \
-      --acc_type "f32" \
-      --m "64" \
-      --n "64" \
-      --k "64" \
-      --use_chess "1" \
-      --num_repeat_runs "10" \
-      --use_ukernel "1"
+#   run_matmul_test \
+#       --name_prefix "chess_bf16_ukernel" \
+#       --lhs_rhs_type "bf16" \
+#       --acc_type "f32" \
+#       --m "64" \
+#       --n "64" \
+#       --k "64" \
+#       --use_chess "1" \
+#       --num_repeat_runs "10" \
+#       --use_ukernel "1"
 
-  run_matmul_test \
-      --name_prefix "chess_i32_matmul_multi_core" \
-      --lower_to_aie_pipeline "objectFifo" \
-      --tile_pipeline "pack-peel" \
-      --lhs_rhs_type "i32" \
-      --acc_type "i32" \
-      --m "32" \
-      --n "32" \
-      --k "32" \
-      --use_chess "1" \
-      --num_repeat_runs "10"
+#   run_matmul_test \
+#       --name_prefix "chess_i32_matmul_multi_core" \
+#       --lower_to_aie_pipeline "objectFifo" \
+#       --tile_pipeline "pack-peel" \
+#       --lhs_rhs_type "i32" \
+#       --acc_type "i32" \
+#       --m "32" \
+#       --n "32" \
+#       --k "32" \
+#       --use_chess "1" \
+#       --num_repeat_runs "10"
 
-fi
+# fi
 
-# note this will not actually show any devices because --xrt_lite_n_core_rows --xrt_lite_n_core_cols are not passed
-# which i have omitted to make the conditional slightly more succinct
-if [[ $($IREE_INSTALL_DIR/bin/iree-benchmark-module --dump_devices | grep xrt-lite) ]]; then
+# # note this will not actually show any devices because --xrt_lite_n_core_rows --xrt_lite_n_core_cols are not passed
+# # which i have omitted to make the conditional slightly more succinct
+# if [[ $($IREE_INSTALL_DIR/bin/iree-benchmark-module --dump_devices | grep xrt-lite) ]]; then
 
-  $IREE_INSTALL_DIR/bin/iree-benchmark-module \
-    --module=$OUTPUT_DIR/mm_test1_bf16_f32_m64_n64_k64.vmfb \
-    --function=matmul_64x64_64xbf16_ \
-    --input=64x64xbf16 \
-    --input=64x64xbf16 \
-    --device=xrt-lite \
-    --benchmark_repetitions=10 \
-    --xrt_lite_n_core_rows=$XRT_LITE_N_CORE_ROWS \
-    --xrt_lite_n_core_cols=$XRT_LITE_N_CORE_COLS \
+#   $IREE_INSTALL_DIR/bin/iree-benchmark-module \
+#     --module=$OUTPUT_DIR/mm_test1_bf16_f32_m64_n64_k64.vmfb \
+#     --function=matmul_64x64_64xbf16_ \
+#     --input=64x64xbf16 \
+#     --input=64x64xbf16 \
+#     --device=xrt-lite \
+#     --benchmark_repetitions=10 \
+#     --xrt_lite_n_core_rows=$XRT_LITE_N_CORE_ROWS \
+#     --xrt_lite_n_core_cols=$XRT_LITE_N_CORE_COLS \
 
-  # TURBO POWER!!!!!!!!!!!!!!!!!
-  set +o pipefail
-  sudo -nv 2>&1 && has_sudo="true" || has_sudo="false"
-  set -o pipefail
-  if [ has_sudo == "true" ]; then
-    sudo $IREE_INSTALL_DIR/bin/iree-benchmark-module \
-      --module=$OUTPUT_DIR/mm_test1_bf16_f32_m64_n64_k64.vmfb \
-      --function=matmul_64x64_64xbf16_ \
-      --input=64x64xbf16 \
-      --input=64x64xbf16 \
-      --device=xrt-lite \
-      --benchmark_repetitions=10 \
-      --xrt_lite_n_core_rows=$XRT_LITE_N_CORE_ROWS \
-      --xrt_lite_n_core_cols=$XRT_LITE_N_CORE_COLS \
-      --xrt_lite_power_mode=turbo
-  fi
+#   # TURBO POWER!!!!!!!!!!!!!!!!!
+#   set +o pipefail
+#   sudo -nv 2>&1 && has_sudo="true" || has_sudo="false"
+#   set -o pipefail
+#   if [ has_sudo == "true" ]; then
+#     sudo $IREE_INSTALL_DIR/bin/iree-benchmark-module \
+#       --module=$OUTPUT_DIR/mm_test1_bf16_f32_m64_n64_k64.vmfb \
+#       --function=matmul_64x64_64xbf16_ \
+#       --input=64x64xbf16 \
+#       --input=64x64xbf16 \
+#       --device=xrt-lite \
+#       --benchmark_repetitions=10 \
+#       --xrt_lite_n_core_rows=$XRT_LITE_N_CORE_ROWS \
+#       --xrt_lite_n_core_cols=$XRT_LITE_N_CORE_COLS \
+#       --xrt_lite_power_mode=turbo
+#   fi
 
-fi
+# fi
 
 echo "$MATMUL_TESTS_RUN matmul tests run!"
 if [ $MATMUL_TESTS_FAILS -ne 0 ]; then

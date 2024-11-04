@@ -14,6 +14,14 @@
 
 namespace mlir::iree_compiler::AMDAIE {
 
+/// Assign tile locations to the logical objectfifos with local memory space
+/// (L1).
+LogicalResult assignLocalTiles(RewriterBase &rewriter, Operation *op);
+
+/// Assign tile locations to the logical objectfifos with non-local memory space
+/// (L2, L3 etc, not L1).
+LogicalResult assignNonLocalTiles(RewriterBase &rewriter, Operation *op);
+
 /// Unroll the loops within the control code regions.
 LogicalResult controlCodeLoopUnroll(RewriterBase &rewriter,
                                     AMDAIE::ControlCodeOp controlCodeOp);

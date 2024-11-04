@@ -6,7 +6,6 @@
 #include "iree-amd-aie/IR/AMDAIEOps.h"
 #include "iree-amd-aie/Transforms/AMDAIELogicalObjFifoSplittingUtils.h"
 #include "iree-amd-aie/Transforms/Passes.h"
-// #include "llvm/Support/Debug.h"
 #include "mlir/IR/Iterators.h"
 #include "mlir/Pass/Pass.h"
 

@@ -89,6 +89,9 @@ std::unique_ptr<Pass> createAMDAIEAssignNpuDmaBdIdsPass();
 /// Create a pass to assign packet ids to `amdaie.flow` operations.
 std::unique_ptr<Pass> createAMDAIEAssignPacketIdsPass();
 
+/// Create a pass to assign tiles to logical objFifos.
+std::unique_ptr<Pass> createAMDAIEAssignTilesPass();
+
 /// Create a pass to do some rewrites that help bridging the path to AIR/AIE
 /// lowering.
 std::unique_ptr<Pass> createAMDAIEBridgeToAIRPass();

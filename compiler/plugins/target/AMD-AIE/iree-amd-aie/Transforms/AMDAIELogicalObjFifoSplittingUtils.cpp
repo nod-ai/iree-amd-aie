@@ -28,7 +28,8 @@ namespace mlir::iree_compiler::AMDAIE {
 static AMDAIE::LogicalObjectFifoFromMemrefOp createNewLogicalObjectFifo(
     IRRewriter &rewriter,
     AMDAIE::LogicalObjectFifoFromMemrefOp &oldLogicalObjectFifo,
-    const SmallVectorImpl<int64_t> &newSizes) {
+    const SmallVectorImpl<int64_t> &newSizes,
+    int tileCol) {
   OpBuilder::InsertionGuard guard(rewriter);
   Value oldAllocOp = oldLogicalObjectFifo.getMemref();
   auto oldMemRefType = cast<MemRefType>(oldAllocOp.getType());
@@ -43,24 +44,42 @@ static AMDAIE::LogicalObjectFifoFromMemrefOp createNewLogicalObjectFifo(
       rewriter.create<memref::DeallocOp>(rewriter.getUnknownLoc(), newAllocOp);
   newDeallocOp->moveBefore(&newAllocOp->getBlock()->back());
   auto type = cast<MemRefType>(newAllocOp.getType());
+  // Create new tile locations
+  SmallVector<Value> oldTileLoc = oldLogicalObjectFifo.getTiles();
+  assert(oldTileLoc.size() > 0);
+  auto tileOp = dyn_cast_if_present<AMDAIE::TileOp>(oldTileLoc[0].getDefiningOp());
+  if (tileCol != -1){
+    auto colIndex = rewriter.create<arith::ConstantIndexOp>(
+          rewriter.getUnknownLoc(), tileCol);
+    auto rowIndex = tileOp.getRow();
+    tileOp = rewriter.create<AMDAIE::TileOp>(
+        rewriter.getUnknownLoc(), colIndex, rowIndex);
+  }
+  // // Create new logical objectfifo.
+  // rewriter.setInsertionPoint(oldLogicalObjectFifo);
+  // auto newLogicalObjectFifo =
+  //     rewriter.create<AMDAIE::LogicalObjectFifoFromMemrefOp>(
+  //         rewriter.getUnknownLoc(), LogicalObjectFifoType::get(type),
+  //         newAllocOp.getResult(), oldLogicalObjectFifo.getTiles());
   // Create new logical objectfifo.
   rewriter.setInsertionPoint(oldLogicalObjectFifo);
   auto newLogicalObjectFifo =
       rewriter.create<AMDAIE::LogicalObjectFifoFromMemrefOp>(
           rewriter.getUnknownLoc(), LogicalObjectFifoType::get(type),
-          newAllocOp.getResult(), oldLogicalObjectFifo.getTiles());
+          newAllocOp.getResult(), tileOp.getResult());
   return newLogicalObjectFifo;
 }
 
 static AMDAIE::LogicalObjectFifoFromMemrefOp createNewLogicalObjectFifo(
     IRRewriter &rewriter,
     AMDAIE::LogicalObjectFifoFromMemrefOp &oldLogicalObjectFifo,
-    const SmallVectorImpl<OpFoldResult> &newSizesOpFoldResultArr) {
+    const SmallVectorImpl<OpFoldResult> &newSizesOpFoldResultArr,
+    int tileCol) {
   OpBuilder::InsertionGuard guard(rewriter);
   SmallVector<int64_t> newSizes = llvm::map_to_vector(
       newSizesOpFoldResultArr,
       [](OpFoldResult sizeVal) { return getConstantIndexOrAssert(sizeVal); });
-  return createNewLogicalObjectFifo(rewriter, oldLogicalObjectFifo, newSizes);
+  return createNewLogicalObjectFifo(rewriter, oldLogicalObjectFifo, newSizes, tileCol);
 }
 
 /// Utility to help fetch those input DmaCpyNd Ops which needs to be split.
@@ -428,7 +447,7 @@ LogicalResult splitLogicalObjectFifos(
     SmallVector<OpFoldResult> newL2Sizes =
         dmaTransposeOnSource ? staticL2AsTargetSizes : staticL2AsSourceSizes;
     AMDAIE::LogicalObjectFifoFromMemrefOp source =
-        createNewLogicalObjectFifo(rewriter, oldL2ObjectFifo, newL2Sizes);
+        createNewLogicalObjectFifo(rewriter, oldL2ObjectFifo, newL2Sizes, -1);
 
     // --------------------------------------------
     // ---------- L3 -> L2 splitting --------------
@@ -583,7 +602,7 @@ LogicalResult splitObjFifo(IRRewriter &rewriter,
   newObjFifos.reserve(splitFactor);
   // newObjFifos.reserve(splitFactor);
   for (int i = 0; i < splitFactor; i++) {
-    newObjFifos.push_back(createNewLogicalObjectFifo(rewriter, op, shape));
+    newObjFifos.push_back(createNewLogicalObjectFifo(rewriter, op, shape, i));
   }
   for (AMDAIE::DmaCpyNdOp producer : producers) {
     SmallVector<OpFoldResult> targetOffsets = producer.getTargetMixedOffsets();
@@ -718,18 +737,20 @@ LogicalResult splitDoublyStridedOp(IRRewriter &rewriter,
   rewriter.setInsertionPoint(op);
   for (int i = 0; i < splitFactor; ++i) {
     FailureOr<OpFoldResult> newSourceOffset =
-        addToOffset(rewriter, sourceOffsets[splitDim], i * newSourceSize);
+        addToOffset(rewriter, sourceOffsets[splitDim], newSourceSize); // i *
     FailureOr<OpFoldResult> newTargetOffset =
-        addToOffset(rewriter, targetOffsets[splitDim], i * newTargetSize);
+        addToOffset(rewriter, targetOffsets[splitDim], newTargetSize); // i *
     if (failed(newSourceOffset))
       return op.emitOpError() << "could not create a new source offset";
     if (failed(newTargetOffset))
       return op.emitOpError() << "could not create a new target offset";
-    sourceOffsets[splitDim] = newSourceOffset.value();
-    targetOffsets[splitDim] = newTargetOffset.value();
+    // sourceOffsets[splitDim] = newSourceOffset.value();
+    // targetOffsets[splitDim] = newTargetOffset.value();
     op.createDoublyStridedOp(rewriter, targetOffsets, targetSizes,
                              targetStrides, sourceOffsets, sourceSizes,
                              sourceStrides);
+    sourceOffsets[splitDim] = newSourceOffset.value();
+    targetOffsets[splitDim] = newTargetOffset.value();
   }
   rewriter.eraseOp(op);
   return success();

@@ -4,6 +4,9 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+#include <chrono>
+#include <iostream>
+
 #include "iree-amd-aie/driver/xrt-lite/direct_command_buffer.h"
 
 #include "iree-amd-aie/driver/xrt-lite/buffer.h"
@@ -190,8 +193,15 @@ static iree_status_t iree_hal_xrt_lite_direct_command_buffer_dispatch(
   }
 
   shim_xdna::hw_q* hwq = context.get_hw_queue();
+  auto t1 = std::chrono::high_resolution_clock::now();
+  // int repeats = 100;
+  // for (int i = 0; i < repeats; i++) {
   hwq->issue_command(ebuf.get_exec_buf_bo());
   hwq->wait_command(ebuf.get_exec_buf_bo(), 0);
+  auto t2 = std::chrono::high_resolution_clock::now();
+  /* Getting number of milliseconds as an integer. */
+  auto ms_int = std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1);
+  std::cout << ms_int.count() << "us\n";
 
   for (iree_host_size_t j = 0; j < bindings.count; ++j) {
     shim_xdna::bo* bo = iree_hal_xrt_lite_buffer_handle(

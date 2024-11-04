@@ -67,6 +67,16 @@ def AMDAIEAssignPacketIds :
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEAssignPacketIdsPass()";
 }
 
+def AMDAIEAssignTiles :
+    Pass<"iree-amdaie-assign-tiles", ""> {
+  let summary = "Assign tiles to logical objFifos.";
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEAssignTilesPass()";
+  // let options = [
+  //   Option<"assignLocalTiles", "enable-local-tiles", "bool", /*default=*/"false",
+  //     "Enable packet routing for connections.">
+  // ];
+}
+
 def AMDAIEBridgeToAIR : Pass<"iree-amdaie-bridge-to-air", ""> {
   let summary = "Perform transformations that allow hooking into AIR/AIE lowering";
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEBridgeToAIRPass()";
