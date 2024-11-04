@@ -20,27 +20,10 @@ namespace mlir::iree_compiler::AMDAIE {
 
 namespace {
 
-unsigned uniqueOutlinedMatmul = 0;
-unsigned uniqueOutlinedElementwise = 0;
-
 /// Utility to outline the linalg compute op.
 static FailureOr<func::FuncOp> outlinedToAFunction(
     IRRewriter &rewriter, ModuleOp moduleOp, linalg::LinalgOp computeOp,
-    std::string outlineFuncName,
-    DenseMap<Operation *, std::string> &computeOpToOutlinedFuncMap) {
-  // Check if the compute op is equivalent to a previously outlined compute op.
-  // If yes, we replace the `outlineFuncName` of the current compute op to be
-  // same as the previous equivalent outlined compute op in order to lookup the
-  // Symbol table.
-  for (auto &[op, funcName] : computeOpToOutlinedFuncMap) {
-    if (!OperationEquivalence::isEquivalentTo(
-            computeOp.getOperation(), op,
-            OperationEquivalence::ignoreValueEquivalence, /*flags=*/nullptr,
-            OperationEquivalence::IgnoreLocations))
-      continue;
-    outlineFuncName = funcName;
-    break;
-  }
+    std::string outlineFuncName) {
   if (auto outlinedFuncOp = dyn_cast_if_present<func::FuncOp>(
           moduleOp.lookupSymbol(outlineFuncName))) {
     return outlinedFuncOp;
@@ -80,15 +63,6 @@ static FailureOr<func::FuncOp> outlinedToAFunction(
   rewriter.setInsertionPointToEnd(outlinedFuncBody);
   rewriter.create<func::ReturnOp>(clonedComputeOp->getLoc(), ValueRange({}));
 
-  computeOpToOutlinedFuncMap[computeOp] = outlineFuncName;
-
-  // Since we have created a new outlined function, we will increase the
-  // corresponding unique count.
-  if (isMatmul(computeOp)) {
-    ++uniqueOutlinedMatmul;
-  } else if (isElementwise(computeOp)) {
-    ++uniqueOutlinedElementwise;
-  }
   return outlinedFunc;
 }
 
@@ -109,23 +83,45 @@ void AMDAIELinalgFunctionOutliningPass::runOnOperation() {
   MLIRContext *context = &getContext();
   IRRewriter rewriter(context);
 
+  unsigned uniqueOutlinedMatmul = 0;
+  unsigned uniqueOutlinedElementwise = 0;
   DenseMap<Operation *, std::string> computeOpToOutlinedFuncMap;
   SmallVector<Operation *> toBeErased;
   moduleOp.walk([&](linalg::LinalgOp computeOp) {
-    // Form outlined FuncName.
-    std::string computeName = "";
-    if (isMatmul(computeOp)) {
-      computeName = "_matmul_" + std::to_string(uniqueOutlinedMatmul);
-    } else if (isElementwise(computeOp)) {
-      computeName = "_elementwise_" + std::to_string(uniqueOutlinedElementwise);
-    } else {
-      return WalkResult::skip();
+    // Form outlined function name for matmul/elementwise compute ops.
+    std::string outlineFuncName = "";
+    // Check if the compute op is equivalent to a previously outlined compute
+    // op. If yes, we replace the `outlineFuncName` of the current compute op to
+    // be same as the previous equivalent outlined compute op in order to lookup
+    // the Symbol table.
+    for (auto &[op, funcName] : computeOpToOutlinedFuncMap) {
+      if (OperationEquivalence::isEquivalentTo(
+              computeOp.getOperation(), op,
+              OperationEquivalence::ignoreValueEquivalence, /*flags=*/nullptr,
+              OperationEquivalence::IgnoreLocations)) {
+        outlineFuncName = funcName;
+        break;
+      }
     }
-    std::string outlineFuncName =
-        computeOp->getName().stripDialect().str() + computeName + "_outlined";
+    if (outlineFuncName == "") {
+      std::string computeName = "";
+      if (isMatmul(computeOp)) {
+        computeName = "_matmul_" + std::to_string(uniqueOutlinedMatmul++);
+      } else if (isElementwise(computeOp)) {
+        computeName =
+            "_elementwise_" + std::to_string(uniqueOutlinedElementwise++);
+      } else {
+        computeOp->emitRemark()
+            << "support to outline this linalg op is missing";
+        return WalkResult::skip();
+      }
+      outlineFuncName =
+          computeOp->getName().stripDialect().str() + computeName + "_outlined";
+      computeOpToOutlinedFuncMap[computeOp] = outlineFuncName;
+    }
+
     FailureOr<func::FuncOp> outlinedFuncOp =
-        outlinedToAFunction(rewriter, moduleOp, computeOp, outlineFuncName,
-                            computeOpToOutlinedFuncMap);
+        outlinedToAFunction(rewriter, moduleOp, computeOp, outlineFuncName);
     if (failed(outlinedFuncOp)) return WalkResult::interrupt();
     rewriter.setInsertionPoint(computeOp);
     rewriter.create<func::CallOp>(computeOp.getLoc(), *outlinedFuncOp,
