@@ -1048,10 +1048,9 @@ static LogicalResult generateUnifiedObject(
     Path peanoLLCBin = peanoDir / "bin" / "llc";
 
     Path OptLLVMIRFile = tempDir / "input.opt.ll";
-    std::vector<std::string> args{
-        "-O2", "--inline-threshold=10", "-S", LLVMIRFile.string(),
-        // missing from libc
-        "--disable-builtin=memset", "-o", OptLLVMIRFile.string()};
+    std::vector<std::string> args{"-O2", "--inline-threshold=10",
+                                  "-S",  LLVMIRFile.string(),
+                                  "-o",  OptLLVMIRFile.string()};
     std::vector<std::string> peanoArgs = makePeanoOptArgs();
     args.reserve(args.size() + peanoArgs.size());
     args.insert(args.end(), peanoArgs.begin(), peanoArgs.end());
