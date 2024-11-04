@@ -209,11 +209,9 @@ FailureOr<ParameterSetting> ParameterSetting::create(linalg::LinalgOp linalgOp,
     uint32_t M1 = findLargestFactor(M / m1Pack, maxL1Size / m1Pack, m1Pack);
     uint32_t N1 = findLargestFactor(N / n1Pack, maxL1Size / n1Pack, n1Pack);
 
-    // auto maxL0Size = 32 * scaleFactor;
-    auto maxL0SizeM = 64 * scaleFactor;
-    auto maxL0SizeN = 64 * scaleFactor; // 64
-    uint32_t M0 = findLargestFactor(M, maxL0SizeM, m1Pack * M1);
-    uint32_t N0 = findLargestFactor(N, maxL0SizeN, n1Pack * N1);
+    auto maxL0Size = 64 * scaleFactor;
+    uint32_t M0 = findLargestFactor(M, maxL0Size, m1Pack * M1);
+    uint32_t N0 = findLargestFactor(N, maxL0Size, n1Pack * N1);
 
     // In pack-peel pipeline there is only one level of tiling for K dimension,
     // so set K1 = 0. The packed outer K dimension needs to be 1, so set K0 = 1.
@@ -224,8 +222,8 @@ FailureOr<ParameterSetting> ParameterSetting::create(linalg::LinalgOp linalgOp,
     // the pack size as (2, 2, M0/2, N0/2) to avoid the large allocation in L1.
     // Also we should make sure the first level inner pack size is divisible by
     // the second level of inner pack size (vector instruction size).
-    // uint32_t m0Pack = (M0 / 2) % m1Pack == 0 ? (M0 / 2) : M0;
-    // uint32_t n0Pack = (N0 / 2) % n1Pack == 0 ? (N0 / 2) : N0;
+//     uint32_t m0Pack = (M0 / 2) % m1Pack == 0 ? (M0 / 2) : M0;
+//     uint32_t n0Pack = (N0 / 2) % n1Pack == 0 ? (N0 / 2) : N0;
     uint32_t m0Pack = (M0 / 4) % m1Pack == 0 ? (M0 / 4) : M0;
     uint32_t n0Pack = (N0 / 4) % n1Pack == 0 ? (N0 / 4) : N0;
     uint32_t k0Pack = findLargestFactor(K, maxL1Size);

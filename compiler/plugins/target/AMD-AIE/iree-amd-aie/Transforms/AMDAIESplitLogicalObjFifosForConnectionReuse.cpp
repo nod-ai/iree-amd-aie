@@ -33,14 +33,14 @@ void AMDAIESplitLogicalObjFifosForConnectionReusePass::runOnOperation() {
   MLIRContext *context = &getContext();
   IRRewriter rewriter(context);
 
-  // SmallVector<AMDAIE::DmaCpyNdOp> l2ToL1DmaOps =
-  //     fetchDmaCpyNdOpsToSplitOrCombine(moduleOp);
-
-  // if (failed(splitLogicalObjectFifos(rewriter, l2ToL1DmaOps, context))) {
-  //   LLVM_DEBUG(llvm::dbgs()
-  //              << "Failed to perform splitting of logicalobjectfifos");
-  //   return signalPassFailure();
-  // }
+//   SmallVector<AMDAIE::DmaCpyNdOp> l2ToL1DmaOps =
+//       fetchDmaCpyNdOpsToSplitOrCombine(moduleOp);
+//
+//   if (failed(splitLogicalObjectFifos(rewriter, l2ToL1DmaOps, context))) {
+//     LLVM_DEBUG(llvm::dbgs()
+//                << "Failed to perform splitting of logicalobjectfifos");
+//     return signalPassFailure();
+//   }
   SmallVector<AMDAIE::DmaCpyNdOp> dmaOps;
   moduleOp->walk([&](AMDAIE::DmaCpyNdOp op) {
     std::optional<uint8_t> sourceMemSpace = op.getSourceMemorySpaceAsUInt();
@@ -49,34 +49,32 @@ void AMDAIESplitLogicalObjFifosForConnectionReusePass::runOnOperation() {
         targetMemSpace.value() == 0) {
       dmaOps.push_back(op);
     }
+    else if (sourceMemSpace && sourceMemSpace.value() == 0 && targetMemSpace &&
+        targetMemSpace.value() == 1) {
+      dmaOps.push_back(op);
+    }
     return WalkResult::advance();
   });
 
   for (AMDAIE::DmaCpyNdOp dmaOp : dmaOps) {
-    auto stridedOp =
-        cast<AMDAIE::DoublyStridedOpInterface>(dmaOp.getOperation());
-    if (failed(splitDoublyStridedOp(rewriter, stridedOp))) {
+    if (failed(splitDoublyStridedOp(rewriter, dmaOp))) {
       LLVM_DEBUG(llvm::dbgs()
                  << "Failed to perform splitting of logicalobjectfifos");
       return signalPassFailure();
     }
   }
 
-  SmallVector<AMDAIE::LogicalObjectFifoFromMemrefOp> objFifoOps;
-  moduleOp->walk([&](AMDAIE::LogicalObjectFifoFromMemrefOp op) {
+  WalkResult res = moduleOp->walk([&](AMDAIE::LogicalObjectFifoFromMemrefOp op) {
     ArrayRef<int64_t> memrefShape = op.getMemrefType().getShape();
-    if (op.getMemorySpaceAsUInt() == 1 && memrefShape.size() > 2 &&
-        memrefShape[0] == 4 && memrefShape[1] == 4) {
-      llvm::outs() << "push objFifo: " << op << "\n";
-      objFifoOps.push_back(op);
+    if (op.getMemorySpaceAsUInt() == 1 && memrefShape.size() > 2 && (memrefShape[0] == 4 || memrefShape[1] == 4)) {
+      size_t splitDim = memrefShape[0] == 4 ? 0 : 1;
+      if (failed(splitObjFifo(rewriter, op, splitDim))) {
+        return WalkResult::interrupt();
+      }
     }
     return WalkResult::advance();
   });
-  for (AMDAIE::LogicalObjectFifoFromMemrefOp op : objFifoOps) {
-    if (failed(splitObjFifo(rewriter, op))) {
-      return signalPassFailure();
-    }
-  }
+  if (res.wasInterrupted()) return signalPassFailure();
 }
 
 }  // namespace

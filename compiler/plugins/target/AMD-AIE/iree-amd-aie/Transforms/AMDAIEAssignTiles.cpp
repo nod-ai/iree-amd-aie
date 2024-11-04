@@ -9,6 +9,7 @@
 #include "iree-amd-aie/Transforms/Passes.h"
 #include "iree-amd-aie/aie_runtime/Utils/ChannelGenerator.h"
 #include "iree-amd-aie/aie_runtime/iree_aie_runtime.h"
+#include "llvm/ADT/DenseSet.h"
 #include "mlir/IR/Verifier.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
@@ -312,6 +313,7 @@ LogicalResult assignNonLocalTiles(RewriterBase &rewriter, Operation *op) {
   }
   LLVM_DEBUG(llvm::dbgs() << "After fillTiles: \n" << *op << "\n");
 
+  DenseMap<MemRefType, int64_t> logicalObjFifoToTileId;
   // After filling candidates, choose a specific one.
   op->walk([&](AMDAIE::LogicalObjectFifoFromMemrefOp logicalObjectFifo) {
     Attribute memSpace = logicalObjectFifo.getMemorySpace();
@@ -330,17 +332,28 @@ LogicalResult assignNonLocalTiles(RewriterBase &rewriter, Operation *op) {
     // account for potential hardware limitations and constraints.
     // SmallVector<Value> tileResults = {cast<Value>(tiles[0].getResult())};
     MemRefType memrefType = logicalObjectFifo.getMemrefType();
-    ArrayRef<int64_t> memrefShape = memrefType.getShape();
-    int64_t elemWidthInBits = memrefType.getElementTypeBitWidth();
+//    ArrayRef<int64_t> memrefShape = memrefType.getShape();
+//    int64_t elemWidthInBits = memrefType.getElementTypeBitWidth();
     int64_t memTileId = 0;
-    if (elemWidthInBits == 16 && memrefShape.size() == 4 &&
-        memrefShape[0] == 1 && memrefShape[1] == 4 && memrefShape[2] == 32) {
-      memTileId = 1;
+
+//    if (elemWidthInBits == 16 && memrefShape.size() == 4 &&
+//        memrefShape[0] == 1 && memrefShape[1] == 4 && memrefShape[2] == 32) {
+//      memTileId = 1;
+//    }
+//     if (elemWidthInBits == 32 && memrefShape.size() == 4 &&
+//         memrefShape[0] == 1 && memrefShape[1] == 4 && memrefShape[2] == 32) {
+//       memTileId = 1;
+//     }
+
+    if (!logicalObjFifoToTileId.contains(memrefType)){
+      logicalObjFifoToTileId[memrefType] = 0;
+    } else {
+      memTileId = logicalObjFifoToTileId[memrefType] + 1;
+      if (memTileId >= tiles.size()) {
+        memTileId = 0;
+      }
+      logicalObjFifoToTileId[memrefType] = memTileId;
     }
-    // if (elemWidthInBits == 32 && memrefShape.size() == 4 &&
-    //     memrefShape[0] == 1 && memrefShape[1] == 4 && memrefShape[2] == 32) {
-    //   memTileId = 1;
-    // }
 
     assert(memTileId < tiles.size());
     SmallVector<Value> tileResults = {
