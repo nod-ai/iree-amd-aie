@@ -46,17 +46,16 @@ class AMDAIEInsertLoopsForVectorizationPass
 
   /// Tile the generic op using `tileSizes` and coalesce the generated tiling
   /// loops in order to minimize the overhead of loop control/branch statements.
-  static void performTiling(IRRewriter &rewriter,
-                                     linalg::GenericOp genericOp,
-                                     SmallVector<int64_t> &tileSizes,
-                                     bool isTensorType) {
+  /// This function can work on both tensor as well as memref inputs.
+  static void performTiling(IRRewriter &rewriter, linalg::GenericOp genericOp,
+                            SmallVector<int64_t> &tileSizes) {
     auto opts = linalg::LinalgTilingOptions().setTileSizes(tileSizes);
     auto tiled = linalg::tileLinalgOp(rewriter, genericOp, opts);
     const auto &tileLoops = tiled.value().loops;
     SmallVector<scf::ForOp> loops = llvm::map_to_vector(
         tileLoops, [](Operation *loop) { return cast<scf::ForOp>(loop); });
     (void)mlir::coalesceLoops(rewriter, loops);
-    if (isTensorType) {
+    if (genericOp->getResults().size()) {
       rewriter.replaceOp(genericOp, loops[0]->getResult(0));
     } else {
       rewriter.eraseOp(genericOp);
@@ -98,15 +97,14 @@ class AMDAIEInsertLoopsForVectorizationPass
   /// place. Eg: For <2x3x4> since there aren't any unit dimensions, it'd return
   /// failure, hence we can simply return.
   static void collapseUnitDims(IRRewriter &rewriter,
-                               linalg::GenericOp &genericOp,
-                               bool isTensorType) {
+                               linalg::GenericOp &genericOp) {
     linalg::ControlDropUnitDims options;
     options.rankReductionStrategy =
         linalg::ControlDropUnitDims::RankReductionStrategy::ExtractInsertSlice;
     FailureOr<linalg::DropUnitDimsResult> result =
         linalg::dropUnitDims(rewriter, genericOp, options);
     if (failed(result)) return;
-    if (isTensorType) {
+    if (genericOp->getResults().size()) {
       rewriter.replaceOp(genericOp, result->replacements);
     } else {
       rewriter.eraseOp(genericOp);
@@ -126,21 +124,19 @@ class AMDAIEInsertLoopsForVectorizationPass
     // No outer dimensions to tile if fewer than 3 iterators.
     if (numIterators < 3) return failure();
 
-    bool isTensorType = isa<TensorType>(genericOp->getOperand(0).getType());
-
     OpBuilder::InsertionGuard g(rewriter);
     rewriter.setInsertionPointAfter(genericOp);
     // Enable generating loops for vectorization in case of element-wise ops.
     if (llvm::all_of(iteratorTypes, [&](mlir::utils::IteratorType iterator) {
           return linalg::isParallelIterator(iterator);
         })) {
-      collapseUnitDims(rewriter, genericOp, isTensorType);
+      collapseUnitDims(rewriter, genericOp);
       std::optional<SmallVector<int64_t>> tileSizes =
           formTileSizesForElementwise(genericOp);
       if (!tileSizes) {
         return genericOp->emitOpError()<<"unable to form tile sizes for the elementwise op";
       }
-      performTiling(rewriter, genericOp, *tileSizes, isTensorType);
+      performTiling(rewriter, genericOp, *tileSizes);
       return success();
     }
     // Matmul-like ops have 3 operands.
@@ -203,13 +199,13 @@ class AMDAIEInsertLoopsForVectorizationPass
       if (!isMatmul && !isMatmulTransposeB) return failure();
     }
 
-    collapseUnitDims(rewriter, genericOp, isTensorType);
+    collapseUnitDims(rewriter, genericOp);
     std::optional<SmallVector<int64_t>> tileSizes =
         formTileSizesForMatmul(genericOp);
     if (!tileSizes) {
       return genericOp->emitOpError()<<"unable to form tile sizes for the matmul op";
     }
-    performTiling(rewriter, genericOp, *tileSizes, isTensorType);
+    performTiling(rewriter, genericOp, *tileSizes);
     return success();
   }
 
