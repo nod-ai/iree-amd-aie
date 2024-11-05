@@ -103,9 +103,8 @@ FailureOr<uint32_t> getAIEMacNumElements(Type inputType, Type outputType) {
   return failure();
 }
 
-FailureOr<std::array<uint32_t, 3>> getAIEMatmulInstructionSize(Type elTypeLhs,
-                                                               Type elTypeRhs,
-                                                               Type elTypeAcc) {
+FailureOr<std::array<uint32_t, 3>> getAIEMatmulInstructionSize(
+    Type elTypeLhs, Type elTypeRhs, Type elTypeAcc, AMDAIEDevice targetDevice) {
   bool allFloatingPoint = isa<FloatType>(elTypeLhs) &&
                           isa<FloatType>(elTypeRhs) &&
                           isa<FloatType>(elTypeAcc);
@@ -123,7 +122,13 @@ FailureOr<std::array<uint32_t, 3>> getAIEMatmulInstructionSize(Type elTypeLhs,
 
   if (allFloatingPoint) {
     if (nBitsLhs == 16 && nBitsRhs == 16 && nBitsAcc == 32) {
-      return std::array<uint32_t, 3>{4, 4, 8};
+      if (targetDevice == AMDAIEDevice::npu4) {
+        // Strix intrinsics.
+        return std::array<uint32_t, 3>{8, 8, 8};
+      } else {
+        // Phoenix intrinsics.
+        return std::array<uint32_t, 3>{4, 4, 8};
+      }
     }
     // There is only 1 floating point case in the table (handled above).
     return failure();

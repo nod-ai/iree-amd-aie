@@ -497,6 +497,7 @@ void buildAMDAIETransformPassPipeline(
     AMDAIELoweringStrategyOptions options;
     options.usePassPipeline = useTilePipeline;
     options.useLowerToAIEPipeline = useLowerToAIEPipeline;
+    options.targetDevice = device;
     modulePassManager.addPass(createAMDAIELoweringStrategyPass(options));
   }
   modulePassManager.addPass(createLowerExecutableUsingTransformDialectPass());

@@ -54,9 +54,9 @@ int64_t getConstantIndexOrAssert(OpFoldResult ofr);
 // This first line says that if 'lhs' is an i8 tensor, 'rhs' is an i4 tensor
 // and 'accumulator' is an i32 tensor, then there is an AIE instruction for
 // matmul with m = 4, n = 8, k = 16.
-FailureOr<std::array<uint32_t, 3>> getAIEMatmulInstructionSize(Type elTypeLhs,
-                                                               Type elTypeRhs,
-                                                               Type elTypeAcc);
+FailureOr<std::array<uint32_t, 3>> getAIEMatmulInstructionSize(
+    Type elTypeLhs, Type elTypeRhs, Type elTypeAcc,
+    AMDAIEDevice targetDevice = AMDAIEDevice::npu1_4col);
 
 // Return the AIE instruction size (m, n, k) for the integer types with
 // bitwidths nBitsLhs, nBitsRhs, and nBitsAcc. Based on the table above.
