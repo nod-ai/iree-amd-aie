@@ -210,8 +210,8 @@ FailureOr<ParameterSetting> ParameterSetting::create(linalg::LinalgOp linalgOp,
     uint32_t N1 = findLargestFactor(N / n1Pack, maxL1Size / n1Pack, n1Pack);
 
     // auto maxL0Size = 32 * scaleFactor;
-    auto maxL0SizeM = 32 * scaleFactor;
-    auto maxL0SizeN = 32 * scaleFactor; // 64
+    auto maxL0SizeM = 64 * scaleFactor;
+    auto maxL0SizeN = 64 * scaleFactor; // 64
     uint32_t M0 = findLargestFactor(M, maxL0SizeM, m1Pack * M1);
     uint32_t N0 = findLargestFactor(N, maxL0SizeN, n1Pack * N1);
 
@@ -226,8 +226,8 @@ FailureOr<ParameterSetting> ParameterSetting::create(linalg::LinalgOp linalgOp,
     // the second level of inner pack size (vector instruction size).
     // uint32_t m0Pack = (M0 / 2) % m1Pack == 0 ? (M0 / 2) : M0;
     // uint32_t n0Pack = (N0 / 2) % n1Pack == 0 ? (N0 / 2) : N0;
-    uint32_t m0Pack = (M0 / 2) % m1Pack == 0 ? (M0 / 2) : M0;
-    uint32_t n0Pack = (N0 / 2) % n1Pack == 0 ? (N0 / 2) : N0;
+    uint32_t m0Pack = (M0 / 4) % m1Pack == 0 ? (M0 / 4) : M0;
+    uint32_t n0Pack = (N0 / 4) % n1Pack == 0 ? (N0 / 4) : N0;
     uint32_t k0Pack = findLargestFactor(K, maxL1Size);
 
     return ParameterSetting{M0,     N0,     K0,     M1,     N1,     K1,

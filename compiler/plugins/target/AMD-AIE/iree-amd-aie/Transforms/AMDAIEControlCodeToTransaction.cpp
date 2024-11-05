@@ -69,6 +69,7 @@ class TransactionBuilder {
   LogicalResult appendTCTSync(uint32_t col, uint32_t row, uint32_t direction,
                               uint32_t rowNum, uint32_t colNum,
                               uint32_t channel) {
+    // if (col == 1) return success();
     llvm::MutableArrayRef<uint32_t> words = reserveAndGetTail(4);
     words[0] = TXN_OPC_TCT;
     words[1] = words.size() * sizeof(uint32_t);  // Operation Size
@@ -88,15 +89,19 @@ class TransactionBuilder {
                                     AMDAIE::DMAChannelDir direction,
                                     uint32_t channel, uint32_t bdId,
                                     uint32_t repeatCount, bool issueToken) {
+    // if (col == 1) return success();
     uint32_t colShift = deviceModel.getColumnShift();
     uint32_t rowShift = deviceModel.getRowShift();
     uint32_t addr =
         direction == AMDAIE::DMAChannelDir::MM2S ? 0x1D214 : 0x1D204;
     if (channel == 1) addr += 0x8;
-    if (col && row) {
-      addr |= ((col & 0xff) << colShift) | ((row & 0xff) << rowShift) |
-              (addr & 0xFFFFF);
-    }
+    // TODO(jornt): use transactions instead.
+    addr = ((col & 0xff) << colShift) | ((row & 0xff) << rowShift) |
+           (addr & 0xFFFFF);
+    // if (col || row) {
+    //   addr |= ((col & 0xff) << colShift) | ((row & 0xff) << rowShift) |
+    //           (addr & 0xFFFFF);
+    // }
     uint32_t value = 0;
     value |= bdId & 0xF;
     value |= (repeatCount & 0xFF) << 16;
@@ -194,6 +199,7 @@ LogicalResult convertOp(AMDAIE::NpuAddressPatchOp op,
   uint32_t bdId = op.getBdId();
   uint32_t colShift = builder.deviceModel.getColumnShift();
   uint32_t addr = (col << colShift) | (0x1D004 + bdId * 0x20);
+  // if (col == 1) return success();
   if (failed(builder.appendAddressPatch(addr, op.getArgIdx(), op.getOffset())))
     return failure();
   return success();

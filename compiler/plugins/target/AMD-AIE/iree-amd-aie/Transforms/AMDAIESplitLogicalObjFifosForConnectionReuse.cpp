@@ -66,7 +66,7 @@ void AMDAIESplitLogicalObjFifosForConnectionReusePass::runOnOperation() {
   moduleOp->walk([&](AMDAIE::LogicalObjectFifoFromMemrefOp op) {
     ArrayRef<int64_t> memrefShape = op.getMemrefType().getShape();
     if (op.getMemorySpaceAsUInt() == 1 && memrefShape.size() > 2 &&
-        memrefShape[0] == 2 && memrefShape[1] == 2) {
+        memrefShape[0] == 4 && memrefShape[1] == 4) {
       llvm::outs() << "push objFifo: " << op << "\n";
       objFifoOps.push_back(op);
     }

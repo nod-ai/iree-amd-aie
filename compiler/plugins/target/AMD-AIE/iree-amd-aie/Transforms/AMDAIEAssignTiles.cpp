@@ -276,6 +276,14 @@ class FillTiles
       return failure();
     }
 
+    // MemRefType memrefType = logicalObjectFifo.getMemrefType();
+    // ArrayRef<int64_t> memrefShape = memrefType.getShape();
+    // if (memrefShape.size() == 2 && memrefShape[0] == 64 && memrefShape[1] ==
+    // 64) {
+    //   tileLocations.clear();
+    //   tileLocations.insert(std::make_pair(0, 0));
+    // }
+
     rewriter.setInsertionPoint(logicalObjectFifo);
     rewriter.replaceOpWithNewOp<AMDAIE::LogicalObjectFifoFromMemrefOp>(
         logicalObjectFifo, logicalObjectFifo.getMemref(),
@@ -324,11 +332,15 @@ LogicalResult assignNonLocalTiles(RewriterBase &rewriter, Operation *op) {
     MemRefType memrefType = logicalObjectFifo.getMemrefType();
     ArrayRef<int64_t> memrefShape = memrefType.getShape();
     int64_t elemWidthInBits = memrefType.getElementTypeBitWidth();
-    int64_t memTileId = elemWidthInBits == 2 && memrefShape.size() == 4 &&
-                                memrefShape[0] == 1 && memrefShape[1] == 2 &&
-                                memrefShape[2] == 32
-                            ? 1
-                            : 0;
+    int64_t memTileId = 0;
+    if (elemWidthInBits == 16 && memrefShape.size() == 4 &&
+        memrefShape[0] == 1 && memrefShape[1] == 4 && memrefShape[2] == 32) {
+      memTileId = 1;
+    }
+    // if (elemWidthInBits == 32 && memrefShape.size() == 4 &&
+    //     memrefShape[0] == 1 && memrefShape[1] == 4 && memrefShape[2] == 32) {
+    //   memTileId = 1;
+    // }
 
     assert(memTileId < tiles.size());
     SmallVector<Value> tileResults = {

@@ -407,9 +407,11 @@ function run_matmul_test() {
                       --iree-hal-indirect-command-buffers=false \
                       --mlir-elide-resource-strings-if-larger=10 \
                       --iree-amd-aie-show-invoked-commands
-                      --debug-only=iree-amdaie-assign-tiles --mlir-print-ir-before-all"
+                      --debug-only=iree-amdaie-controlcode-to-transaction
+                       "
                       # --mlir-print-ir-before-all 
                       # iree-amdaie-controlcode-to-transaction
+                      # --debug-only=iree-amdaie-assign-tiles 
 
   if [ $use_ukernel -ne 0 ]; then
     compilation_flags="${compilation_flags} \
@@ -681,8 +683,8 @@ repeat_shapes=(
 # # bf16 Matmul tests.
 
 bf16_i8_shapes_small=(
-  '64x32x64'
-  # '4096x512x512'
+  # '64x32x64'
+  '4096x512x512'
   # '512x512x4096'
   # '128x256x128'
 )
