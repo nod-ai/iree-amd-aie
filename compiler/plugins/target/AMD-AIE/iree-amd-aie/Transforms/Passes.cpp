@@ -479,8 +479,6 @@ void addConvDecomposePassPipeline(OpPassManager &funcPassManager,
   funcPassManager.addPass(mlir::createLinalgFoldUnitExtentDimsPass(opts));
 
   // Vectorization passes
-  // FIXME(newling) https://github.com/nod-ai/iree-amd-aie/issues/820
-  enableVectorizationPasses = false;
   appendVectorizationToPipeline(funcPassManager, enableVectorizationPasses);
   funcPassManager.addPass(createCanonicalizerPass());
 

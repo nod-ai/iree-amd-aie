@@ -83,6 +83,9 @@ iree_cc_library(
     MLIREmitCDialect
     ::AIEVecDialectIR
     ::AIEVecXLLVMOpsGen
+    iree-amd-aie::aie_runtime::iree_aie_runtime_static
+    iree::compiler::Dialect::HAL::IR
+    iree::compiler::Dialect::HAL::IR::HALDialect
 )
 
 add_subdirectory(test)

@@ -15,6 +15,9 @@
 #include <memory>
 
 #include "Passes.h"
+#include "aievec/AIEVecOps.h"
+#include "iree-amd-aie/Transforms/AMDAIEUtils.h"
+#include "iree-amd-aie/aie_runtime/iree_aie_runtime.h"
 #include "llvm/ADT/STLExtras.h"
 #include "mlir/Conversion/AffineToStandard/AffineToStandard.h"
 #include "mlir/Dialect/Affine/Analysis/LoopAnalysis.h"
@@ -299,7 +302,6 @@ class FlattenContiguousRowMajorTransferWritePattern
 };
 
 }  // namespace copied_from_mlir
-
 
 static bool isGemmBTransposedContractionOp(vector::ContractionOp op) {
   if (op.getKind() != vector::CombiningKind::ADD) return false;
@@ -897,6 +899,7 @@ struct CanonicalizeVectorForAIEVecPass
       populateBubbleSignExtensionsLate(patterns);
       (void)applyPatternsAndFoldGreedily(op, std::move(patterns));
     }
+
     {
       RewritePatternSet patterns(context);
       patterns
@@ -914,6 +917,7 @@ struct CanonicalizeVectorForAIEVecPass
       mlir::vector::populateVectorBroadcastLoweringPatterns(patterns);
       (void)applyPatternsAndFoldGreedily(op, std::move(patterns));
     }
+
     {
       // These must run after 'populateFlattenVectorTransferPatterns' because
       // vector.shape_casts are introduced. Merging into a single pass creates
@@ -922,6 +926,170 @@ struct CanonicalizeVectorForAIEVecPass
       populateBubbleSignExtensionsLate(patterns);
       (void)applyPatternsAndFoldGreedily(op, std::move(patterns));
     }
+  }
+};
+
+/// Returns one of:
+/// 1) failure, if there is definitely an error that should be propagated.
+/// 2) a new transfer_read operation that is sufficiently aligned, if the old
+///    transfer_read is determined to be insufficiently aligned and it is
+///    possible to create a new transfer_read.
+/// 3) the original transfer_read operation, otherwise.
+FailureOr<Value> getAlignedTransferRead(
+    vector::TransferReadOp readOp, IRRewriter &rewriter,
+    const AMDAIE::AMDAIEDeviceModel &deviceModel) {
+  uint32_t vectorLoadStoreAlignmentBits =
+      deviceModel.getVectorLoadStoreAlignmentBits();
+  uint32_t maxVectorSizeBits = deviceModel.getMaxVectorSizeBits();
+  uint32_t shiftOperandBits = deviceModel.getShiftOperandBits();
+
+  // Check that it's not a splat transfer read.
+  if (readOp.getPermutationMap().isConstant()) return readOp.getVector();
+
+  MLIRContext *ctx = readOp.getContext();
+  VectorType shortType = readOp.getVectorType();
+  Location loc = readOp.getLoc();
+  Value padding = readOp.getPadding();
+  ShapedType sourceType = readOp.getSource().getType();
+  Type elementType = shortType.getElementType();
+
+  if (sourceType.getRank() != 1 || shortType.getRank() != 1) {
+    return readOp.emitOpError(
+        "does not have rank-1 source and rank-1 vector type.");
+  }
+
+  uint32_t elementBits = elementType.getIntOrFloatBitWidth();
+  int64_t shortLength = shortType.getShape().back();
+  int64_t shortBits = shortLength * elementBits;
+  uint32_t alignElements = vectorLoadStoreAlignmentBits / elementBits;
+
+  rewriter.setInsertionPoint(readOp);
+
+  AffineMap moduloMap =
+      AffineMap::get(1, 0, getAffineDimExpr(0, ctx) % alignElements);
+
+  Value oldIndex = readOp.getIndices().back();
+
+  Value offset = rewriter.createOrFold<affine::AffineApplyOp>(
+      loc, moduloMap, SmallVector<Value, 1>{oldIndex});
+
+  // If the offset is constant and zero, the read is already aligned.
+  if (auto offsetConstantOp = offset.getDefiningOp<arith::ConstantIndexOp>())
+    if (offsetConstantOp.getValue() == 0) return readOp.getVector();
+
+  // Verify that we can load a vector 2x as long as the original vector.
+  int64_t longBits = 2 * shortBits;
+  int64_t longLength = 2 * shortLength;
+  VectorType longType = VectorType::get(longLength, elementType);
+  if (longBits > maxVectorSizeBits) {
+    // Not returning failure, as it is possible that the read is already
+    // aligned, and we just couldn't prove it.
+    readOp.emitWarning()
+        << "`transfer_read` can't be aligned with a read twice "
+        << "as large because " << longBits
+        << " bits is greater than the maximum vector size of "
+        << maxVectorSizeBits << " bits.";
+
+    return readOp.getVector();
+  }
+
+  SmallVector<bool> inBounds = readOp.getInBoundsValues();
+  bool allInBounds =
+      std::all_of(inBounds.begin(), inBounds.end(), [](bool b) { return b; });
+
+  if (shortBits != shiftOperandBits / 2 && shortBits != shiftOperandBits) {
+    // Not returning failure, as it is possible that the read is already
+    // aligned, and we just couldn't prove it.
+    readOp.emitWarning() << "`transfer_read` doesn't have a vector with "
+                         << shiftOperandBits / 2 << " or " << shiftOperandBits
+                         << " bits."
+                         << "This case is not currently handled.";
+    return readOp.getVector();
+  }
+
+  Value newIndex = rewriter.createOrFold<arith::SubIOp>(loc, oldIndex, offset);
+
+  // Create the aligned transfer read for a vector 2x as long that covers the
+  // elements of the unaligned vector.
+  Value longVec = rewriter.create<vector::TransferReadOp>(
+      loc, longType, readOp.getSource(), SmallVector<Value>{newIndex}, padding,
+      SmallVector<bool>{allInBounds});
+
+  Value elementBytes =
+      rewriter.create<arith::ConstantIndexOp>(loc, elementBits / 8);
+
+  Value offsetBytes =
+      rewriter.createOrFold<arith::MulIOp>(loc, offset, elementBytes);
+
+  Value offsetBytes_i32 = rewriter.createOrFold<arith::IndexCastOp>(
+      loc, rewriter.getIntegerType(32), offsetBytes);
+
+  Value replacement;
+  if (shortBits == shiftOperandBits) {
+    // - Extract lower 64 bytes
+    // - Extract upper 64 bytes
+    // - Apply shift to obtain new 64 bytes
+    Value low = rewriter.create<ExtOp>(loc, shortType, longVec,
+                                       rewriter.getI8IntegerAttr(0));
+    Value upp = rewriter.create<ExtOp>(loc, shortType, longVec,
+                                       rewriter.getI8IntegerAttr(1));
+    replacement = rewriter.createOrFold<ShiftOp>(loc, shortType, low, upp,
+                                                 offsetBytes_i32);
+  } else if (shortBits == shiftOperandBits / 2) {
+    // - Apply shift to obtain new 64 bytes, bottom 32 being the required ones
+    // - Extract lower 32 bytes
+    Value shift = rewriter.createOrFold<ShiftOp>(loc, longType, longVec,
+                                                 longVec, offsetBytes_i32);
+    replacement = rewriter.create<ExtOp>(loc, shortType, shift,
+                                         rewriter.getI8IntegerAttr(0));
+  } else {
+    assert(false &&
+           "unreachable: already checked that shortBytes is equal to or half "
+           "of shiftOperandBytes");
+  }
+
+  rewriter.replaceOp(readOp, replacement);
+
+  return replacement;
+}
+
+struct AlignTransferReadsPass
+    : public PassWrapper<AlignTransferReadsPass, OperationPass<>> {
+  StringRef getArgument() const final { return "align-transfer-reads"; }
+
+  StringRef getDescription() const final {
+    return "Align `vector.transfer_read` operations.";
+  }
+
+  void getDependentDialects(DialectRegistry &registry) const override {
+    registry
+        .insert<arith::ArithDialect, memref::MemRefDialect,
+                vector::VectorDialect, affine::AffineDialect, AIEVecDialect>();
+  }
+
+  void runOnOperation() override {
+    Operation *op = getOperation();
+
+    auto targetAttr = IREE::HAL::ExecutableTargetAttr::lookup(op);
+    std::optional<AMDAIE::AMDAIEDevice> maybeDevice =
+        mlir::iree_compiler::AMDAIE::getConfigAMDAIEDevice(targetAttr);
+    if (!maybeDevice) {
+      op->emitOpError()
+          << "has no AMDAIEDevice in the target attribute configuration. This "
+             "device-specific information is required to determine what vector "
+             "sizes and alignments are supported.";
+      return signalPassFailure();
+    }
+    AMDAIE::AMDAIEDeviceModel deviceModel =
+        AMDAIE::getDeviceModel(maybeDevice.value());
+
+    IRRewriter rewriter(&getContext());
+    op->walk([&](vector::TransferReadOp transferReadOp) {
+      if (failed(
+              getAlignedTransferRead(transferReadOp, rewriter, deviceModel))) {
+        signalPassFailure();
+      }
+    });
   }
 };
 
@@ -943,7 +1111,7 @@ struct DetectNonCanonicalOpsPass
   }
 
   void runOnOperation() override {
-    auto op = getOperation();
+    Operation *op = getOperation();
     MLIRContext *context = &getContext();
     RewritePatternSet patterns(context);
     ConversionTarget target(*context);
@@ -955,8 +1123,8 @@ struct DetectNonCanonicalOpsPass
 };
 
 void buildCanonicalizeVectorForAIEVec(OpPassManager &pm) {
-  // TODO: Add passes to split vectors that won't fit in registers
   pm.addPass(createCanonicalizeVectorForAIEVecPass());
+  pm.addPass(createAlignTransferReadsPass());
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(std::make_unique<DetectNonCanonicalOpsPass>());
 }
@@ -968,6 +1136,16 @@ std::unique_ptr<::mlir::Pass> createCanonicalizeVectorForAIEVecPass() {
 void registerCanonicalizeVectorForAIEVecPass() {
   ::mlir::registerPass([]() -> std::unique_ptr<mlir::Pass> {
     return createCanonicalizeVectorForAIEVecPass();
+  });
+}
+
+std::unique_ptr<::mlir::Pass> createAlignTransferReadsPass() {
+  return std::make_unique<AlignTransferReadsPass>();
+}
+
+void registerAlignTransferReadsPass() {
+  ::mlir::registerPass([]() -> std::unique_ptr<mlir::Pass> {
+    return std::make_unique<AlignTransferReadsPass>();
   });
 }
 

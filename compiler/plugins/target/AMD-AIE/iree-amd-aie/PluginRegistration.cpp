@@ -35,6 +35,7 @@ struct AMDAIESession
     AMDAIE::registerAIRConversionPasses();
     AMDAIE::registerAIRTransformPasses();
     aievec::registerConvertAIEVecToLLVMPass();
+    aievec::registerAlignTransferReadsPass();
     aievec::registerCanonicalizeVectorForAIEVecPass();
     aievec::registerLowerVectorToAIEVecPass();
   }
