@@ -316,11 +316,13 @@ static LogicalResult isAllZeroOffsetAccess(mlir::OperandRange indices) {
   return success();
 }
 
-/// Utility to fetch indices of Subview op which would be used by a new vector
-/// transfer_read/transfer_write op with trivial access pattern.
-static SmallVector<Value> fetchNewIndices(PatternRewriter &rewriter,
-                                          Location loc,
-                                          memref::SubViewOp subViewOp) {
+/// Utility to convert OpFoldResult vector of offsets of a Subview op to
+/// a vector of values.
+static SmallVector<Value> opFoldResultsToValues(PatternRewriter &rewriter,
+                                                Location loc,
+                                                memref::SubViewOp subViewOp) {
+  OpBuilder::InsertionGuard g(rewriter);
+  rewriter.setInsertionPoint(subViewOp);
   SmallVector<Value> newIndices;
   for (OpFoldResult offset : subViewOp.getMixedOffsets()) {
     Value indexVal;
@@ -354,7 +356,7 @@ struct CanonicalizeTrivialReadAccessSubviewOpPattern
     if (!subViewOp) return failure();
     if (failed(isAllZeroOffsetAccess(readOp.getIndices()))) return failure();
     SmallVector<Value> newIndices =
-        fetchNewIndices(rewriter, readOp.getLoc(), subViewOp);
+        opFoldResultsToValues(rewriter, readOp.getLoc(), subViewOp);
     rewriter.replaceOpWithNewOp<vector::TransferReadOp>(
         readOp, readOp.getType(), subViewOp.getSource(), newIndices,
         readOp.getPadding(), readOp.getInBoundsValues());
@@ -381,7 +383,7 @@ struct CanonicalizeTrivialWriteAccessSubviewOpPattern
     if (!subViewOp) return failure();
     if (failed(isAllZeroOffsetAccess(writeOp.getIndices()))) return failure();
     SmallVector<Value> newIndices =
-        fetchNewIndices(rewriter, writeOp.getLoc(), subViewOp);
+        opFoldResultsToValues(rewriter, writeOp.getLoc(), subViewOp);
     rewriter.create<vector::TransferWriteOp>(
         writeOp.getLoc(), writeOp.getVector(), subViewOp.getSource(),
         newIndices, writeOp.getInBoundsValues());

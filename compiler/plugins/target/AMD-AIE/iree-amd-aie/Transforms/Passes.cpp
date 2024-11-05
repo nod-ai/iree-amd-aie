@@ -567,11 +567,6 @@ void addAMDAIEObjectFifoLoweringPasses(OpPassManager &passManager,
   {
     // Vectorization passes
     OpPassManager &funcPassManager = passManager.nest<func::FuncOp>();
-    // FIXME(newling) https://github.com/nod-ai/iree-amd-aie/issues/820
-    enableVectorizationPasses =
-        (useTilePipeline == TilePassPipeline::ConvDecomposePipeline)
-            ? false
-            : enableVectorizationPasses;
     appendVectorizationToPipeline(funcPassManager, enableVectorizationPasses);
   }
 

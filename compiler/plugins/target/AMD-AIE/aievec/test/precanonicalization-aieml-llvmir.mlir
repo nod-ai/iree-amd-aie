@@ -169,21 +169,43 @@ func.func @arith_truncf(%inp: vector<2x3xf32>) -> vector<2x3xbf16> {
 
 // -----
 
+// CHECK:       #map = affine_map<()[s0] -> (s0 * 256 + 96)>
 // CHECK-LABEL: @trivial_read_access
-// CHECK-SAME:  (%[[ARG0:.*]]: memref<4x8x4x8xbf16, strided<[256, 32, 8, 1]>>)
+// CHECK-SAME:  (%[[ARG0:.*]]: memref<4x8x4x8xbf16, strided<[256, 32, 8, 1]>>,
+// CHECK-SAME:   %[[ARG1:.*]]: index)
 // CHECK-NOT:     memref.subview
 // CHECK:         %[[COLLAPSE_SHAPE:.*]] = memref.collapse_shape %[[ARG0]]
 // CHECK-SAME:        into memref<1024xbf16, strided<[1]>>
-// CHECK:         %[[READ:.*]] = vector.transfer_read %[[COLLAPSE_SHAPE]]
+// CHECK:         %[[APPLY_INDEX:.*]] = affine.apply #map()[%[[ARG1]]]
+// CHECK:         %[[READ:.*]] = vector.transfer_read %[[COLLAPSE_SHAPE]][%[[APPLY_INDEX]]]
 // CHECK:         %[[SHAPE_CAST:.*]] = vector.shape_cast %[[READ]]
 // CHECK-SAME:        vector<32xbf16> to vector<1x1x4x8xbf16>
 // CHECK:         return %[[SHAPE_CAST]]
-func.func @trivial_read_access(%arg0: memref<4x8x4x8xbf16, strided<[256, 32, 8, 1]>>) -> vector<1x1x4x8xbf16> {
+func.func @trivial_read_access(%arg0: memref<4x8x4x8xbf16, strided<[256, 32, 8, 1]>>, %in: index) -> vector<1x1x4x8xbf16> {
     %c0 = arith.constant 0 : index
     %cst = arith.constant 0.000000e+00 : bf16
-    %subview = memref.subview %arg0[2, 3, 0, 0] [1, 1, 4, 8] [1, 1, 1, 1] : memref<4x8x4x8xbf16, strided<[256, 32, 8, 1]>> to memref<1x1x4x8xbf16, strided<[256, 32, 8, 1], offset: 608>>
-    %read = vector.transfer_read %subview[%c0, %c0, %c0, %c0], %cst {in_bounds = [true, true, true, true]} : memref<1x1x4x8xbf16, strided<[256, 32, 8, 1], offset: 608>>, vector<1x1x4x8xbf16>
+    %subview = memref.subview %arg0[%in, 3, 0, 0] [1, 1, 4, 8] [1, 1, 1, 1] : memref<4x8x4x8xbf16, strided<[256, 32, 8, 1]>> to memref<1x1x4x8xbf16, strided<[256, 32, 8, 1], offset: ?>>
+    %read = vector.transfer_read %subview[%c0, %c0, %c0, %c0], %cst {in_bounds = [true, true, true, true]} : memref<1x1x4x8xbf16, strided<[256, 32, 8, 1], offset: ?>>, vector<1x1x4x8xbf16>
     return %read : vector<1x1x4x8xbf16>
+}
+
+// -----
+
+// CHECK-LABEL: @trivial_read_access_rank_reduced
+// CHECK-SAME:  (%[[ARG0:.*]]: memref<4x8x1x8xbf16, strided<[64, 8, 8, 1]>>)
+// CHECK-NOT:     memref.subview
+// CHECK:         %[[COLLAPSE_SHAPE:.*]] = memref.collapse_shape %[[ARG0]]
+// CHECK-SAME:        into memref<256xbf16, strided<[1]>>
+// CHECK:         %[[READ:.*]] = vector.transfer_read %[[COLLAPSE_SHAPE]]
+// CHECK:         %[[SHAPE_CAST:.*]] = vector.shape_cast %[[READ]]
+// CHECK-SAME:        vector<8xbf16> to vector<1x1x8xbf16>
+// CHECK:         return %[[SHAPE_CAST]]
+func.func @trivial_read_access_rank_reduced(%arg0: memref<4x8x1x8xbf16, strided<[64, 8, 8, 1]>>) -> vector<1x1x8xbf16> {
+    %c0 = arith.constant 0 : index
+    %cst = arith.constant 0.000000e+00 : bf16
+    %subview = memref.subview %arg0[2, 3, 0, 0] [1, 1, 1, 8] [1, 1, 1, 1] : memref<4x8x1x8xbf16, strided<[64, 8, 8, 1]>> to memref<1x1x8xbf16, strided<[8, 8, 1], offset: 152>>
+    %read = vector.transfer_read %subview[%c0, %c0, %c0], %cst {in_bounds = [true, true, true]} : memref<1x1x8xbf16, strided<[8, 8, 1], offset: 152>>, vector<1x1x8xbf16>
+    return %read : vector<1x1x8xbf16>
 }
 
 // -----
