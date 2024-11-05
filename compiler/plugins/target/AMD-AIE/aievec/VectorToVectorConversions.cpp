@@ -30,6 +30,7 @@
 #include "mlir/Dialect/Vector/Transforms/LoweringPatterns.h"
 #include "mlir/Dialect/Vector/Transforms/VectorRewritePatterns.h"
 #include "mlir/Dialect/Vector/Utils/VectorUtils.h"
+#include "mlir/IR/Matchers.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassManager.h"
@@ -302,6 +303,94 @@ class FlattenContiguousRowMajorTransferWritePattern
 };
 
 }  // namespace copied_from_mlir
+
+/// Utility to check if the indices provided are all 0.
+static LogicalResult isAllZeroOffsetAccess(mlir::OperandRange indices) {
+  if (!llvm::all_of(indices, [](Value val) {
+        IntegerAttr attr;
+        if (!matchPattern(val, m_Constant(&attr))) return false;
+        return attr.getInt() == 0;
+      })) {
+    return failure();
+  }
+  return success();
+}
+
+/// Utility to convert OpFoldResult vector of offsets of a Subview op to
+/// a vector of values.
+static SmallVector<Value> opFoldResultsToValues(PatternRewriter &rewriter,
+                                                Location loc,
+                                                memref::SubViewOp subViewOp) {
+  OpBuilder::InsertionGuard g(rewriter);
+  rewriter.setInsertionPoint(subViewOp);
+  SmallVector<Value> newIndices;
+  for (OpFoldResult offset : subViewOp.getMixedOffsets()) {
+    Value indexVal;
+    if (auto attr = dyn_cast<Attribute>(offset)) {
+      indexVal = rewriter.create<arith::ConstantIndexOp>(
+          loc, cast<IntegerAttr>(attr).getInt());
+    } else {
+      indexVal = cast<Value>(offset);
+    }
+    newIndices.push_back(indexVal);
+  }
+  return newIndices;
+}
+
+/// A rewriter function to canonicalize the following :-
+/// INPUT:
+///       %b = memref.subview %a [offset0, offset1, ...]
+///       %c = vector.transfer_read %b[0, 0, ...]
+/// OUTPUT:
+///       %c = vector.transfer_read %a[offset0, offset1, ...]
+///
+/// This is needed to enable other set of staged canonicalizations in this pass.
+struct CanonicalizeTrivialReadAccessSubviewOpPattern
+    : public OpRewritePattern<vector::TransferReadOp> {
+  using OpRewritePattern<vector::TransferReadOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(vector::TransferReadOp readOp,
+                                PatternRewriter &rewriter) const override {
+    auto subViewOp = dyn_cast_if_present<memref::SubViewOp>(
+        readOp.getSource().getDefiningOp());
+    if (!subViewOp) return failure();
+    if (failed(isAllZeroOffsetAccess(readOp.getIndices()))) return failure();
+    SmallVector<Value> newIndices =
+        opFoldResultsToValues(rewriter, readOp.getLoc(), subViewOp);
+    rewriter.replaceOpWithNewOp<vector::TransferReadOp>(
+        readOp, readOp.getType(), subViewOp.getSource(), newIndices,
+        readOp.getPadding(), readOp.getInBoundsValues());
+    return success();
+  }
+};
+
+/// A rewriter function to canonicalize the following :-
+/// INPUT:
+///       %b = memref.subview %a [offset0, offset1, ...]
+///       vector.transfer_write %val, %b[0, 0, ...]
+/// OUTPUT:
+///       vector.transfer_write %val, %a[offset0, offset1, ...]
+///
+/// This is needed to enable other set of staged canonicalizations in this pass.
+struct CanonicalizeTrivialWriteAccessSubviewOpPattern
+    : public OpRewritePattern<vector::TransferWriteOp> {
+  using OpRewritePattern<vector::TransferWriteOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(vector::TransferWriteOp writeOp,
+                                PatternRewriter &rewriter) const override {
+    auto subViewOp = dyn_cast_if_present<memref::SubViewOp>(
+        writeOp.getSource().getDefiningOp());
+    if (!subViewOp) return failure();
+    if (failed(isAllZeroOffsetAccess(writeOp.getIndices()))) return failure();
+    SmallVector<Value> newIndices =
+        opFoldResultsToValues(rewriter, writeOp.getLoc(), subViewOp);
+    rewriter.create<vector::TransferWriteOp>(
+        writeOp.getLoc(), writeOp.getVector(), subViewOp.getSource(),
+        newIndices, writeOp.getInBoundsValues());
+    rewriter.eraseOp(writeOp);
+    return success();
+  }
+};
 
 static bool isGemmBTransposedContractionOp(vector::ContractionOp op) {
   if (op.getKind() != vector::CombiningKind::ADD) return false;
@@ -892,6 +981,12 @@ struct CanonicalizeVectorForAIEVecPass
     auto op = getOperation();
     MLIRContext *context = &getContext();
 
+    {
+      RewritePatternSet patterns(context);
+      patterns.add<CanonicalizeTrivialReadAccessSubviewOpPattern,
+                   CanonicalizeTrivialWriteAccessSubviewOpPattern>(context);
+      (void)applyPatternsAndFoldGreedily(op, std::move(patterns));
+    }
     {
       // These must run before 'populateVectorBroadcastLoweringPatterns'
       // so that broadcasts can be matched before conversion to insert.

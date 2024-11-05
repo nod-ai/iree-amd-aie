@@ -284,9 +284,6 @@ void addPackPeelBasedPassPipeline(OpPassManager &funcPassManager,
     funcPassManager.addPass(createAMDAIELowerToUKernelsPass(options));
   }
 
-  // Vectorization passes
-  appendVectorizationToPipeline(funcPassManager, enableVectorizationPasses);
-
   // Comprehensive bufferization
   addAMDAIEBufferizePasses(funcPassManager, useTilePipeline);
   funcPassManager.addPass(createHoistStaticallyBoundAllocationsPass());
@@ -477,9 +474,6 @@ void addConvDecomposePassPipeline(OpPassManager &funcPassManager,
   LinalgFoldUnitExtentDimsPassOptions opts;
   opts.useRankReducingSlices = true;
   funcPassManager.addPass(mlir::createLinalgFoldUnitExtentDimsPass(opts));
-
-  // Vectorization passes
-  appendVectorizationToPipeline(funcPassManager, enableVectorizationPasses);
   funcPassManager.addPass(createCanonicalizerPass());
 
   // Comprehensive bufferization
@@ -518,10 +512,12 @@ void buildAMDAIETransformPassPipeline(
   modulePassManager.addPass(createLowerUKernelOpsToCallsPass());
   if (useLowerToAIEPipeline == LowerToAIEPassPipeline::ObjectFifo) {
     addAMDAIEObjectFifoLoweringPasses(modulePassManager, enablePacketFlow,
-                                      useTilePipeline);
+                                      useTilePipeline,
+                                      enableVectorizationPasses);
   } else if (useLowerToAIEPipeline == LowerToAIEPassPipeline::AIR) {
     addMLIRAIRLoweringPasses(modulePassManager, device, useTilePipeline,
-                             matmulElementwiseFusion);
+                             matmulElementwiseFusion,
+                             enableVectorizationPasses);
   } else {
     assert(
         false &&
@@ -539,7 +535,8 @@ void buildAMDAIETransformPassPipeline(
 
 void addAMDAIEObjectFifoLoweringPasses(OpPassManager &passManager,
                                        bool enablePacketFlow,
-                                       TilePassPipeline useTilePipeline) {
+                                       TilePassPipeline useTilePipeline,
+                                       bool enableVectorizationPasses) {
   passManager.addPass(createEraseHALDescriptorTypeFromMemRefPass());
   passManager.addPass(memref::createFoldMemRefAliasOpsPass());
 
@@ -564,6 +561,15 @@ void addAMDAIEObjectFifoLoweringPasses(OpPassManager &passManager,
 
   passManager.addPass(createAMDAIENormalizeLoopBoundsPass());
   passManager.addPass(createAMDAIEInsertCoresPass());
+  if (useTilePipeline != TilePassPipeline::ConvDecomposePipeline)
+    passManager.addPass(createAMDAIELinalgFunctionOutliningPass());
+
+  {
+    // Vectorization passes
+    OpPassManager &funcPassManager = passManager.nest<func::FuncOp>();
+    appendVectorizationToPipeline(funcPassManager, enableVectorizationPasses);
+  }
+
   passManager.addPass(createAMDAIELocalizeLogicalObjectFifoPass());
   passManager.addPass(createCSEPass());
 
@@ -672,10 +678,21 @@ void addMLIRAIELoweringPasses(OpPassManager &pm) {
 // for details.
 void addMLIRAIRLoweringPasses(OpPassManager &passManager, AMDAIEDevice device,
                               TilePassPipeline useTilePipeline,
-                              bool matmulElementwiseFusion) {
+                              bool matmulElementwiseFusion,
+                              bool enableVectorizationPasses) {
   // Add passes for preparing for lowering to MLIR-AIR
   passManager.addPass(createEraseHALDescriptorTypeFromMemRefPass());
   passManager.addPass(memref::createFoldMemRefAliasOpsPass());
+  {
+    // Vectorization passes
+    OpPassManager &funcPassManager = passManager.nest<func::FuncOp>();
+    // FIXME(newling) https://github.com/nod-ai/iree-amd-aie/issues/820
+    enableVectorizationPasses =
+        (useTilePipeline == TilePassPipeline::ConvDecomposePipeline)
+            ? false
+            : enableVectorizationPasses;
+    appendVectorizationToPipeline(funcPassManager, enableVectorizationPasses);
+  }
   passManager.addPass(createAMDAIEBridgeToAIRPass());
 
   // Running canonicalization for all pipelines here results in failures.
