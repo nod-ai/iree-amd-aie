@@ -259,6 +259,17 @@ def AMDAIEFlattenLogicalObjectFifo :
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEFlattenLogicalObjectFifoPass()";
 }
 
+def AMDAIELinalgFunctionOutlining :
+  Pass<"iree-amdaie-linalg-function-outlining", "ModuleOp"> {
+  let summary = "Outlining of linalg compute ops";
+  let description = [{
+    Outlines matmul/elementwise linalg compute ops only. This pass essentially minimises
+    the code footprint overall as the loop unrolling in the later passes lead to a lot of
+    repeated codes.
+  }];
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIELinalgFunctionOutliningPass()";
+}
+
 def AMDAIEFuseConsumerIntoLoop :
     InterfacePass<"iree-amdaie-fuse-consumer-into-loop", "mlir::FunctionOpInterface"> {
   let summary = "Fuse the consumer operation into the innermost last scf loop.";
