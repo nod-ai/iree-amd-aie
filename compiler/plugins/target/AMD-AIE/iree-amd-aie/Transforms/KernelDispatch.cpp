@@ -8,6 +8,7 @@
 
 #include "iree-amd-aie/IR/AMDAIEAttrs.h"
 #include "iree-amd-aie/Transforms/AMDAIEUtils.h"
+#include "iree-amd-aie/aie_runtime/iree_aie_runtime.h"
 #include "iree/compiler/Codegen/Dialect/Codegen/IR/IREECodegenAttrs.h"
 #include "iree/compiler/Codegen/Utils/CPUUtils.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"

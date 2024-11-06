@@ -8,7 +8,6 @@
 #define IREE_AMD_AIE_TRANSFORMS_KERNELDISPATCH_H_
 
 #include "iree-amd-aie/aie_runtime/AMDAIEEnums.h"
-#include "iree-amd-aie/aie_runtime/iree_aie_runtime.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/Interfaces/FunctionInterfaces.h"
 
