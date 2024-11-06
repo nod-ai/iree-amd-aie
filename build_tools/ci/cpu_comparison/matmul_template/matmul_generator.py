@@ -16,9 +16,9 @@ def generate_matmul_test(output_fn, input_fn, m, n, k, lhs_rhs_type, acc_type, b
     replace["TYPE2"] = acc_type
 
     replace["B"] = b  # This is only used for batch matmul
-    accl_is_int = acc_type[0] == "i"
-    replace["ZERO"] = 0 if accl_is_int else 0.0
-    replace["ADD"] = "arith.addi" if accl_is_int else "arith.addf"
+    acc_is_int = acc_type[0] == "i"
+    replace["ZERO"] = 0 if acc_is_int else 0.0
+    replace["ADD"] = "arith.addi" if acc_is_int else "arith.addf"
 
     key_map = map(lambda s: "${" + s + "}", replace.keys())
     key_map_escaped = map(re.escape, key_map)

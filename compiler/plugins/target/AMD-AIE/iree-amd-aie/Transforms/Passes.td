@@ -105,7 +105,9 @@ def AMDAIECanonicalizeDoublyStridedOp :
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIECanonicalizeDoublyStridedOpPass()";
   let options = [
     Option<"foldSingleDims", "fold-single-dims", "bool", /*default=*/"false",
-      "Whether to fold single strided dimensions and make then implicit.">
+      "Whether to fold single strided dimensions and make then implicit.">,
+    Option<"hardwareAware", "hardware-aware", "bool", /*default=*/"true",
+      "Whether the canonicalization should be hardware-aware.">
   ];
 }
 
