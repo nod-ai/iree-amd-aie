@@ -629,6 +629,135 @@ struct AMDAIEDeviceModel getDeviceModel(AMDAIEDevice device) {
   llvm::report_fatal_error("Unhandled AMDAIEDevice case");
 }
 
+/// Generate a DenseMap key we can use for the element types (alternatives
+/// considered: implement tombstone for std::array, or use std::map instead of
+/// DenseMap).
+static constexpr uint32_t getElementTypeKey(uint32_t a, uint32_t b,
+                                            uint32_t c) {
+  return a + (b << 8) + (c << 16);
+}
+
+/// Map from (LHS bitwidth, RHS bitwidth, Accumulator bitwidth) to the AIE
+/// instruction size (m, n, k) for the integer types with those bitwidths.
+/// This function is based on the following table pulled from the
+/// AIEVec_MatMulOp documentation in
+/// mlir-aie/include/aie/Dialect/AIEVec/IR/AIEVecOps.td
+///
+///   lhs                | rhs                | accumulator
+///  :------------------:|:------------------:|:-----------------:
+///   `vector<4x16xi8>`  | `vector<16x8xi4>`  | `vector<4x8xi32>`
+///   `vector<4x8xi8>`   | `vector<8x8xi8>`   | `vector<4x8xi32>`
+///   `vector<4x4xi16>`  | `vector<4x8xi8>`   | `vector<4x8xi32>`
+///   `vector<4x2xi16>`  | `vector<2x8xi16>`  | `vector<4x8xi32>`
+///   `vector<2x8xi16>`  | `vector<8x8xi8>`   | `vector<2x8xi64>`
+///   `vector<4x8xi16>`  | `vector<8x4xi8>`   | `vector<4x4xi64>`
+///   `vector<2x4xi16>`  | `vector<4x8xi16>`  | `vector<2x8xi64>`
+///   `vector<4x4xi16>`  | `vector<4x4xi16>`  | `vector<4x4xi64>`
+///   `vector<4x2xi32>`  | `vector<2x4xi16>`  | `vector<4x4xi64>`
+///   `vector<4x8xbf16>` | `vector<8x4xbf16>` | `vector<4x4xf32>`
+///
+/// An instruction size (m, n, k) is returned for each combination of element
+/// type in the table. Combinations of element type that are not covered by the
+/// table return failure.
+///
+/// Example: consider the first line of the table:
+///   `vector<4x16xi8>`  | `vector<16x8xi4>`  | `vector<4x8xi32>`
+///
+/// This first line says that if 'lhs' is an i8 tensor, 'rhs' is an i4 tensor
+/// and 'accumulator' is an i32 tensor, then there is an AIE instruction for
+/// matmul with m = 4, n = 8, k = 16.
+static llvm::DenseMap<uint32_t, std::array<uint32_t, 3>>
+    &getIntegerMatmulInstructionSizeMap() {
+  // Sanity check.
+  static_assert(getElementTypeKey(1, 2, 3) == 1 + 2 * 256 + 3 * 65536);
+
+  static llvm::DenseMap<uint32_t, std::array<uint32_t, 3>> matmulIntSizes{
+
+      // `vector<4x16xi8>`  | `vector<16x8xi4>`  | `vector<4x8xi32>`
+      {getElementTypeKey(8, 4, 32), {4, 8, 16}},
+
+      // `vector<4x8xi8>`   | `vector<8x8xi8>`   | `vector<4x8xi32>`
+      {getElementTypeKey(8, 8, 32), {4, 8, 8}},
+
+      // `vector<4x4xi16>`  | `vector<4x8xi8>`   | `vector<4x8xi32>`
+      {getElementTypeKey(16, 8, 32), {4, 8, 4}},
+
+      // `vector<4x2xi16>`  | `vector<2x8xi16>`  | `vector<4x8xi32>`
+      {getElementTypeKey(16, 16, 32), {4, 8, 2}},
+
+      // `vector<2x8xi16>`  | `vector<8x8xi8>`   | `vector<2x8xi64>`
+      // `vector<4x8xi16>`  | `vector<8x4xi8>`   | `vector<4x4xi64>`
+      //   choosing the first i16 x i8 -> i64 instruction (arbitrarily)
+      {getElementTypeKey(16, 8, 64), {2, 8, 8}},
+
+      // `vector<2x4xi16>`  | `vector<4x8xi16>`  | `vector<2x8xi64>`
+      // `vector<4x4xi16>`  | `vector<4x4xi16>`  | `vector<4x4xi64>`
+      //   choosing the first i16 x i16 -> i64 instruction (arbitrarily)
+      {getElementTypeKey(16, 16, 64), {2, 8, 4}},
+
+      // `vector<4x2xi32>`  | `vector<2x4xi16>`  | `vector<4x4xi64>`
+      {getElementTypeKey(32, 16, 64), {4, 4, 2}},
+  };
+  return matmulIntSizes;
+}
+
+/// Return the AIE instruction size (m, n, k) for the integer types with
+/// bitwidths nBitsLhs, nBitsRhs, and nBitsAcc. Based on the table above.
+static llvm::FailureOr<std::array<uint32_t, 3>>
+getAIEIntegerMatmulInstructionSize(uint32_t nBitsLhs, uint32_t nBitsRhs,
+                                   uint32_t nBitsAcc) {
+  static llvm::DenseMap<uint32_t, std::array<uint32_t, 3>> &mapForIntTypes =
+      getIntegerMatmulInstructionSizeMap();
+  auto it =
+      mapForIntTypes.find(getElementTypeKey(nBitsLhs, nBitsRhs, nBitsAcc));
+  if (it == mapForIntTypes.end()) {
+    return failure();
+  }
+  return it->second;
+}
+
+llvm::FailureOr<std::array<uint32_t, 3>>
+AMDAIEDeviceModel::getAIEMatmulInstructionSize(Type elTypeLhs, Type elTypeRhs,
+                                               Type elTypeAcc) const {
+  bool allFloatingPoint = isa<FloatType>(elTypeLhs) &&
+                          isa<FloatType>(elTypeRhs) &&
+                          isa<FloatType>(elTypeAcc);
+
+  bool allInteger = isa<IntegerType>(elTypeLhs) &&
+                    isa<IntegerType>(elTypeRhs) && isa<IntegerType>(elTypeAcc);
+
+  if (!allInteger && !allFloatingPoint) {
+    return failure();
+  }
+
+  auto nBitsLhs = elTypeLhs.getIntOrFloatBitWidth();
+  auto nBitsRhs = elTypeRhs.getIntOrFloatBitWidth();
+  auto nBitsAcc = elTypeAcc.getIntOrFloatBitWidth();
+
+  if (allFloatingPoint) {
+    if (nBitsLhs == 16 && nBitsRhs == 16 && nBitsAcc == 32) {
+      if (device == AMDAIEDevice::npu4) {
+        // Strix nup4 intrinsics.
+        return std::array<uint32_t, 3>{8, 8, 8};
+      } else {
+        // Phoenix npu1_4col intrinsics.
+        return std::array<uint32_t, 3>{4, 4, 8};
+      }
+    }
+    // There is only 1 floating point case in the table (handled above).
+    return failure();
+  }
+
+  assert(allInteger &&
+         "expected all element types to either be all float types or all "
+         "integer types");
+  assert((device != AMDAIEDevice::npu4) &&
+         "currently not compiling for all integer element types targetting "
+         "NPU4 device model");
+
+  return getAIEIntegerMatmulInstructionSize(nBitsLhs, nBitsRhs, nBitsAcc);
+}
+
 /// ============================= BEGIN ==================================
 /// ================== stringification utils =============================
 /// ======================================================================

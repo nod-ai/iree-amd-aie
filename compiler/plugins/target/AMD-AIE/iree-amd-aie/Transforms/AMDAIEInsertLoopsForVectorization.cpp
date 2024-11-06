@@ -151,9 +151,22 @@ class AMDAIEInsertLoopsForVectorizationPass
       auto lhsType = elType(genericOp->getOperand(0));
       auto rhsType = elType(genericOp->getOperand(1));
       auto resType = elType(genericOp->getOperand(2));
+      auto targetAttr = IREE::HAL::ExecutableTargetAttr::lookup(
+          genericOp->getParentOfType<func::FuncOp>());
+      std::optional<AMDAIE::AMDAIEDevice> maybeDevice =
+          mlir::iree_compiler::AMDAIE::getConfigAMDAIEDevice(targetAttr);
+      if (!maybeDevice) {
+        genericOp->emitOpError() << "has no AMDAIEDevice in the target "
+                                    "attribute configuration. This "
+                                    "device-specific information is required "
+                                    "to determine what vector "
+                                    "sizes are supported.";
+        return false;
+      }
+      AMDAIE::AMDAIEDeviceModel deviceModel =
+          AMDAIE::getDeviceModel(maybeDevice.value());
       FailureOr<std::array<uint32_t, 3>> maybeSize =
-          ::mlir::iree_compiler::AMDAIE::getAIEMatmulInstructionSize(
-              lhsType, rhsType, resType);
+          deviceModel.getAIEMatmulInstructionSize(lhsType, rhsType, resType);
       return !failed(maybeSize);
     }();
     if (!hasAieVectorizableTypes) return failure();

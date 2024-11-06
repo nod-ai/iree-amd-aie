@@ -39,8 +39,9 @@ FailureOr<std::array<uint32_t, 3>> getMatmulInstructionSize(
   auto elTypeRhs = getElementType(op->getOperand(1));
   auto elTypeAcc = getElementType(op->getResult(0));
 
-  return getAIEMatmulInstructionSize(elTypeLhs, elTypeRhs, elTypeAcc,
-                                     targetDevice);
+  AMDAIEDeviceModel deviceModel = AMDAIE::getDeviceModel(targetDevice);
+  return deviceModel.getAIEMatmulInstructionSize(elTypeLhs, elTypeRhs,
+                                                 elTypeAcc);
 }
 
 FailureOr<std::array<uint32_t, 3>> getPackedSize(linalg::LinalgOp linalgOp,
