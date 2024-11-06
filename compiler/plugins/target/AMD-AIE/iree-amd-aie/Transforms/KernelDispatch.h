@@ -30,8 +30,6 @@ enum class TilePassPipeline {
   None
 };
 
-enum class AMDAIEDevice : uint32_t;
-
 /// Enum for types of loop peeling.
 enum class PeelingType { First, Last, FirstLast };
 

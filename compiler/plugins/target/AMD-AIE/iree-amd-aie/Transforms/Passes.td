@@ -423,10 +423,10 @@ def AMDAIELoweringStrategy :
       /*default=*/"mlir::iree_compiler::AMDAIE::AMDAIEDevice::npu1_4col",
       "AIE device to target",
       [{::llvm::cl::values(
-        clEnumValN(mlir::iree_compiler::AMDAIE::AMDAIEDevice::npu1_4col, "phoenix",
-                   "Compile for Phoenix"),
-        clEnumValN(mlir::iree_compiler::AMDAIE::AMDAIEDevice::npu4, "strix",
-                   "Compile for Strix")
+        clEnumValN(mlir::iree_compiler::AMDAIE::AMDAIEDevice::npu1_4col, "npu1_4col",
+                   "Compile for Phoenix NPU1_4col"),
+        clEnumValN(mlir::iree_compiler::AMDAIE::AMDAIEDevice::npu4, "npu4",
+                   "Compile for Strix NPU4")
       )}]>
   ];
 }
