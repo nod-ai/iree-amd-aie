@@ -737,7 +737,7 @@ AMDAIEDeviceModel::getAIEMatmulInstructionSize(Type elTypeLhs, Type elTypeRhs,
   if (allFloatingPoint) {
     if (nBitsLhs == 16 && nBitsRhs == 16 && nBitsAcc == 32) {
       if (device == AMDAIEDevice::npu4) {
-        // Strix nup4 intrinsics.
+        // Strix npu4 intrinsics.
         return std::array<uint32_t, 3>{8, 8, 8};
       } else {
         // Phoenix npu1_4col intrinsics.
