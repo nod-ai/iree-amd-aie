@@ -19,6 +19,7 @@ iree_lit_test_suite(
     "bridge_to_air.mlir"
     "bufferize_to_allocation.mlir"
     "canonicalize_doubly_strided_op.mlir"
+    "canonicalize_doubly_strided_op_hardware_aware.mlir"
     "canonicalize_npu_dma_cpy_nd.mlir"
     "combine_strided_ops.mlir"
     "connection_to_flow.mlir"

@@ -56,7 +56,7 @@ struct SubsumeLoopIntoDMA
     : public OpInterfaceRewritePattern<AMDAIE::DoublyStridedOpInterface> {
   using OpInterfaceRewritePattern::OpInterfaceRewritePattern;
 
-  SubsumeLoopIntoDMA(MLIRContext *context, AMDAIE::AMDAIEDeviceModel &&model,
+  SubsumeLoopIntoDMA(MLIRContext *context, const AMDAIE::AMDAIEDeviceModel &model,
                      bool onlyZeroStrideOnOuterDim)
       : OpInterfaceRewritePattern(context),
         deviceModel(model),
@@ -256,14 +256,14 @@ struct SubsumeLoopIntoDMA
     }
 
     auto anyOutOfRange = [](const SmallVector<int64_t> &values,
-                            const SmallVector<uint32_t> &maxValues,
+                            const SmallVector<int64_t> &maxValues,
                             size_t begin) -> bool {
       assert(maxValues.size() - begin >= values.size() &&
              "begin should be set so that the values don't exceed the max "
              "values slice");
       for (size_t i = 0; i < values.size(); ++i) {
         int64_t value = values[i];
-        uint32_t maxValue = maxValues[begin + i];
+        int64_t maxValue = maxValues[begin + i];
         if (value < 0 || value > maxValue) return true;
       }
       return false;
@@ -308,9 +308,9 @@ struct SubsumeLoopIntoDMA
             insertInFront(newSourceSizes, insertSourceSizes);
         SmallVector<int64_t> newSourceStridesInt =
             insertInFront(newSourceStrides, insertSourceStrides);
-        SmallVector<uint32_t> maxSizes =
+        SmallVector<int64_t> maxSizes =
             dmaDimConfig.getMaxSizes<CopyOpOperateOn::Source>();
-        SmallVector<uint32_t> maxStrides =
+        SmallVector<int64_t> maxStrides =
             dmaDimConfig.getMaxStrides<CopyOpOperateOn::Source>();
         assert(maxSizes.size() >= newSourceSizesInt.size() &&
                "Max number of dimensions exceeded");
@@ -334,9 +334,9 @@ struct SubsumeLoopIntoDMA
             insertInFront(newTargetSizes, insertTargetSizes);
         SmallVector<int64_t> newTargetStridesInt =
             insertInFront(newTargetStrides, insertTargetStrides);
-        SmallVector<uint32_t> maxSizes =
+        SmallVector<int64_t> maxSizes =
             dmaDimConfig.getMaxSizes<CopyOpOperateOn::Target>();
-        SmallVector<uint32_t> maxStrides =
+        SmallVector<int64_t> maxStrides =
             dmaDimConfig.getMaxStrides<CopyOpOperateOn::Target>();
         assert(maxSizes.size() >= newTargetSizesInt.size() &&
                "Max number of dimensions exceeded");
@@ -520,8 +520,8 @@ struct SubsumeLoopIntoDMA
       return false;
     };
 
-    uint8_t sourceMemspaceInt;
-    uint8_t targetMemspaceInt;
+    std::optional<uint8_t> sourceMemspaceInt;
+    std::optional<uint8_t> targetMemspaceInt;
     if (auto npuDmaOp = dyn_cast<AMDAIE::NpuDmaCpyNdOp>(op.getOperation())) {
       sourceMemspaceInt = npuDmaOp.getSourceMemorySpaceAsUInt();
       targetMemspaceInt = npuDmaOp.getTargetMemorySpaceAsUInt();
@@ -591,8 +591,12 @@ struct SubsumeLoopIntoDMA
           "`amdaie.npu.circular_dma_cpy_nd` operation");
     }
 
-    AMDAIE::DmaDimConfig dmaDimConfig(deviceModel, sourceMemspaceInt,
-                                      targetMemspaceInt);
+    if (!sourceMemspaceInt || !targetMemspaceInt) {
+      return rewriter.notifyMatchFailure(
+          op, "expected a source and target memory space");
+    }
+    AMDAIE::DmaDimConfig dmaDimConfig(deviceModel, sourceMemspaceInt.value(),
+                                      targetMemspaceInt.value());
 
     if (isa<scf::ForOp>(parentOp)) {
       return rewriteWithForOpParent(op, rewriter, dmaDimConfig);
@@ -619,7 +623,7 @@ struct SubsumeLoopIntoDMA
   }
 
   // The device model to use for the DMA operation.
-  AMDAIE::AMDAIEDeviceModel deviceModel;
+  const AMDAIE::AMDAIEDeviceModel &deviceModel;
 
   // In AIE2(+), a stride with value `0`, indicating a repeat of the subsequent
   // dimensions is only supported on the outer dimension through the use of a
@@ -680,7 +684,7 @@ void AMDAIEDmaLoopSubsumptionPass::runOnOperation() {
 }  // namespace
 
 void populateDmaLoopSubsumptionPattern(RewritePatternSet &patterns,
-                                       AMDAIE::AMDAIEDeviceModel &&deviceModel,
+                                       const AMDAIE::AMDAIEDeviceModel &deviceModel,
                                        bool onlyZeroStrideOnOuterDim) {
   SubsumeLoopIntoDMA pattern(patterns.getContext(), std::move(deviceModel),
                              onlyZeroStrideOnOuterDim);

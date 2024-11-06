@@ -61,7 +61,9 @@ class AMDAIECanonicalizeNpuDmaCpyNdPass
       // If the source is in L3, then canonicalize the source addressing.
       // 1) Pad to the correct rank
       // 2) Move the zero stride (if any) to the outer-most (slowest) dim.
-      if (dmaOp.getSourceMemorySpaceAsUInt() == 0) {
+      std::optional<uint8_t> sourceMemSpace =
+          dmaOp.getSourceMemorySpaceAsUInt();
+      if (sourceMemSpace && sourceMemSpace.value() == 0) {
         if (!dmaOp.hasSourceAddressing()) {
           dmaOp.emitOpError()
               << "has source in L3, but does not have source addressing. "
@@ -80,7 +82,9 @@ class AMDAIECanonicalizeNpuDmaCpyNdPass
         bubble(srcStrides, swapIndex);
       }
 
-      if (dmaOp.getTargetMemorySpaceAsUInt() == 0) {
+      std::optional<uint8_t> targetMemSpace =
+          dmaOp.getTargetMemorySpaceAsUInt();
+      if (targetMemSpace && targetMemSpace.value() == 0) {
         if (!dmaOp.hasTargetAddressing()) {
           dmaOp.emitOpError()
               << "has target in L3, but does not have target addressing. "

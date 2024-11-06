@@ -131,13 +131,20 @@ LogicalResult combineAccessPatterns(RewriterBase &rewriter,
 
 /// Fold subsequent dimensions within a strided access pattern that describe a
 /// single linear access. Returns `success` if folding took place.
+/// Accepts optional maximum size constraints as an array of integers. Note that
+/// `maxSizes` is expected to be provided in the same order as `sizes` and they
+/// are compared from right to left (innermost to outermost). Also note that the
+/// number of max sizes might exceed the number of sizes and the other way
+/// around, BUT after canonicalization, the number of sizes should be smaller or
+/// equal to the number of max sizes (if specified).
 LogicalResult foldLinearDims(MLIRContext *ctx,
                              const SmallVector<OpFoldResult> &offsets,
                              const SmallVector<OpFoldResult> &sizes,
                              const SmallVector<OpFoldResult> &strides,
                              SmallVector<OpFoldResult> &newOffsets,
                              SmallVector<OpFoldResult> &newSizes,
-                             SmallVector<OpFoldResult> &newStrides);
+                             SmallVector<OpFoldResult> &newStrides,
+                             ArrayRef<int64_t> maxSizes = {});
 
 /// Fold single dimension linear accesses and make them implicit. `This
 /// operation happens in place. Returns `success` if folding took place.
@@ -153,7 +160,6 @@ LogicalResult foldUnitDims(const SmallVector<OpFoldResult> &offsets,
                            SmallVector<OpFoldResult> &newOffsets,
                            SmallVector<OpFoldResult> &newStrides,
                            SmallVector<OpFoldResult> &newSizes);
-
 
 /// Utility DMA configuration which is calculated based on AMDAIEDeviceModel
 /// information.
@@ -229,7 +235,7 @@ struct DmaDimConfig {
   /// Therefore, `BD ID == 0` is choosen to be used to retrieve device
   /// information.
   template <CopyOpOperateOn OperateOn>
-  SmallVector<uint32_t> getMaxStrides() const {
+  SmallVector<int64_t> getMaxStrides() const {
     uint32_t maxIntraStride;
     uint32_t maxInterStride;
     if constexpr (OperateOn == CopyOpOperateOn::Source) {
@@ -239,7 +245,7 @@ struct DmaDimConfig {
           sourceTileType, 0, AMDAIE::AMDAIEDmaBdProp::IterStepSizeMax);
       // +1 because values are encoded in HW BDs as (value - 1), so the range is
       // [1:2^x].
-      SmallVector<uint32_t> stepSizes(sourceMaxNbDims, maxIntraStride + 1);
+      SmallVector<int64_t> stepSizes(sourceMaxNbDims, maxIntraStride + 1);
       stepSizes[0] = maxInterStride + 1;
       return stepSizes;
     } else if constexpr (OperateOn == CopyOpOperateOn::Target) {
@@ -249,7 +255,7 @@ struct DmaDimConfig {
           targetTileType, 0, AMDAIE::AMDAIEDmaBdProp::IterStepSizeMax);
       // +1 because values are encoded in HW BDs as (value - 1), so the range is
       // [1:2^x].
-      SmallVector<uint32_t> stepSizes(targetMaxNbDims, maxIntraStride + 1);
+      SmallVector<int64_t> stepSizes(targetMaxNbDims, maxIntraStride + 1);
       stepSizes[0] = maxInterStride + 1;
       return stepSizes;
     } else {
@@ -265,7 +271,7 @@ struct DmaDimConfig {
   /// Therefore, `BD ID == 0` is choosen to be used to retrieve device
   /// information.
   template <CopyOpOperateOn OperateOn>
-  SmallVector<uint32_t> getMaxSizes() const {
+  SmallVector<int64_t> getMaxSizes() const {
     uint32_t maxIntraSize;
     uint32_t maxInterSize;
     if constexpr (OperateOn == CopyOpOperateOn::Source) {
@@ -273,20 +279,20 @@ struct DmaDimConfig {
           sourceTileType, 0, AMDAIE::AMDAIEDmaBdProp::WrapMax);
       maxInterSize = deviceModel.getDmaBdProp<uint8_t>(
           sourceTileType, 0, AMDAIE::AMDAIEDmaBdProp::IterWrapMax);
-      SmallVector<uint32_t> stepSizes(sourceMaxNbDims, maxIntraSize);
+      SmallVector<int64_t> stepSizes(sourceMaxNbDims, maxIntraSize);
       stepSizes[0] = maxInterSize;
       // The outermost intra size doesn't have limit in HW.
-      stepSizes[1] = std::numeric_limits<uint32_t>::max();
+      stepSizes[1] = std::numeric_limits<int64_t>::max();
       return stepSizes;
     } else if constexpr (OperateOn == CopyOpOperateOn::Target) {
       maxIntraSize = deviceModel.getDmaBdProp<uint16_t>(
           targetTileType, 0, AMDAIE::AMDAIEDmaBdProp::WrapMax);
       maxInterSize = deviceModel.getDmaBdProp<uint8_t>(
           targetTileType, 0, AMDAIE::AMDAIEDmaBdProp::IterWrapMax);
-      SmallVector<uint32_t> stepSizes(targetMaxNbDims, maxIntraSize);
+      SmallVector<int64_t> stepSizes(targetMaxNbDims, maxIntraSize);
       stepSizes[0] = maxInterSize;
       // The outermost intra size doesn't have limit in HW.
-      stepSizes[1] = std::numeric_limits<uint32_t>::max();
+      stepSizes[1] = std::numeric_limits<int64_t>::max();
       return stepSizes;
     } else {
       assert(false && "Function can only operate on Source or Target");

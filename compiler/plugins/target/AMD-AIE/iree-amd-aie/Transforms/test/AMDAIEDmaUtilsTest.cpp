@@ -271,6 +271,93 @@ TEST_F(AccessPatternCombinationTest, FailCombineAccessPatterns) {
                              {128, 1}, {32, 0}, {96, 64}, {128, 1}, 4, false);
 }
 
+class FoldLinearDimsTest : public ::testing::Test {
+ protected:
+  FoldLinearDimsTest() : rewriter(&context), loc(UnknownLoc::get(&context)) {
+    context.loadDialect<arith::ArithDialect>();
+  }
+
+  SmallVector<OpFoldResult> toOpFoldResult(ArrayRef<int64_t> values) {
+    return llvm::map_to_vector(values, [&](int64_t v) -> OpFoldResult {
+      return getAsIndexOpFoldResult(&context, v);
+    });
+  }
+
+  void checkFoldLinearDims(const SmallVector<int64_t> offsets,
+                           const SmallVector<int64_t> sizes,
+                           const SmallVector<int64_t> strides,
+                           ArrayRef<int64_t> maxSizes,
+                           const SmallVector<int64_t> expectedOffsets,
+                           const SmallVector<int64_t> expectedSizes,
+                           const SmallVector<int64_t> expectedStrides,
+                           bool shouldSucceed = true) {
+    SmallVector<OpFoldResult> offsetsValues = toOpFoldResult(offsets);
+    SmallVector<OpFoldResult> sizesValues = toOpFoldResult(sizes);
+    SmallVector<OpFoldResult> stridesValues = toOpFoldResult(strides);
+    SmallVector<OpFoldResult> expectedOffsetsValues =
+        toOpFoldResult(expectedOffsets);
+    SmallVector<OpFoldResult> expectedSizesValues =
+        toOpFoldResult(expectedSizes);
+    SmallVector<OpFoldResult> expectedStridesValues =
+        toOpFoldResult(expectedStrides);
+    SmallVector<OpFoldResult> newOffsets;
+    SmallVector<OpFoldResult> newSizes;
+    SmallVector<OpFoldResult> newStrides;
+    if (shouldSucceed) {
+      EXPECT_TRUE(succeeded(foldLinearDims(&context, offsetsValues, sizesValues,
+                                           stridesValues, newOffsets, newSizes,
+                                           newStrides, maxSizes)));
+    } else {
+      EXPECT_TRUE(failed(foldLinearDims(&context, offsetsValues, sizesValues,
+                                        stridesValues, newOffsets, newSizes,
+                                        newStrides, maxSizes)));
+    }
+    EXPECT_EQ(newOffsets, expectedOffsetsValues);
+    EXPECT_EQ(newSizes, expectedSizesValues);
+    EXPECT_EQ(newStrides, expectedStridesValues);
+  }
+
+  MLIRContext context;
+  IRRewriter rewriter;
+  Location loc;
+};
+
+TEST_F(FoldLinearDimsTest, NoFold) {
+  checkFoldLinearDims({}, {}, {}, {}, {}, {}, {}, false);
+  checkFoldLinearDims({0}, {8}, {1}, {}, {0}, {8}, {1}, false);
+  checkFoldLinearDims({0, 0}, {16, 8}, {16, 1}, {}, {0, 0}, {16, 8}, {16, 1},
+                      false);
+  checkFoldLinearDims({8, 0}, {16, 8}, {8, 1}, {}, {8, 0}, {16, 8}, {8, 1},
+                      false);
+}
+
+TEST_F(FoldLinearDimsTest, Fold) {
+  checkFoldLinearDims({0, 0}, {16, 8}, {8, 1}, {}, {0}, {128}, {1}, true);
+  checkFoldLinearDims({0, 8}, {16, 8}, {8, 1}, {}, {8}, {128}, {1}, true);
+  checkFoldLinearDims({0, 0, 0}, {8, 16, 8}, {128, 8, 1}, {}, {0}, {1024}, {1},
+                      true);
+  checkFoldLinearDims({0, 0, 0, 0}, {4, 8, 16, 8}, {1024, 128, 8, 1}, {}, {0},
+                      {4096}, {1}, true);
+  checkFoldLinearDims({0, 0, 8, 0}, {4, 8, 16, 8}, {1024, 128, 8, 1}, {},
+                      {8, 0}, {512, 8}, {8, 1}, true);
+}
+
+TEST_F(FoldLinearDimsTest, FoldWithMax) {
+  checkFoldLinearDims({0, 0}, {16, 8}, {8, 1}, {127}, {0, 0}, {16, 8}, {8, 1},
+                      false);
+  checkFoldLinearDims({0, 0}, {16, 8}, {8, 1}, {127, 127}, {0, 0}, {16, 8},
+                      {8, 1}, false);
+  checkFoldLinearDims({0, 0}, {16, 8}, {8, 1}, {128}, {0}, {128}, {1}, true);
+  checkFoldLinearDims({0, 0, 0}, {8, 16, 8}, {128, 8, 1}, {1023, 1023, 1023},
+                      {0, 0}, {8, 128}, {128, 1}, true);
+  checkFoldLinearDims({0, 0, 0, 0}, {4, 8, 16, 8}, {1024, 128, 8, 1},
+                      {1024, 1024, 1024, 1024}, {0, 0}, {4, 1024}, {1024, 1},
+                      true);
+  checkFoldLinearDims({0, 0, 8, 0}, {4, 8, 16, 8}, {1024, 128, 8, 1},
+                      {511, 511, 511, 511}, {0, 8, 0}, {4, 128, 8},
+                      {1024, 8, 1}, true);
+}
+
 }  // namespace
 
 int main(int argc, char **argv) {

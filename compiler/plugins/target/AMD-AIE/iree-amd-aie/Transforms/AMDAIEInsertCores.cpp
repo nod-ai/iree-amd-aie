@@ -98,15 +98,21 @@ LogicalResult insertCoreOps(mlir::ModuleOp moduleOp) {
     SmallVector<Value> inputDmas;
     SmallVector<Value> outputDmas;
     WalkResult dmaRes = forallOp->walk([&](AMDAIE::DmaCpyNdOp dmaOp) {
-      uint8_t sourceMemspace = dmaOp.getSourceMemorySpaceAsUInt();
-      uint8_t targetMemspace = dmaOp.getTargetMemorySpaceAsUInt();
-      if (sourceMemspace == 2 && targetMemspace == 2) {
+      std::optional<uint8_t> sourceMemSpace =
+          dmaOp.getSourceMemorySpaceAsUInt();
+      std::optional<uint8_t> targetMemSpace =
+          dmaOp.getTargetMemorySpaceAsUInt();
+      if (!sourceMemSpace || !targetMemSpace) {
+        dmaOp.emitOpError() << "expected a source and target memory space";
+        return WalkResult::interrupt();
+      }
+      if (sourceMemSpace.value() == 2 && targetMemSpace.value() == 2) {
         dmaOp->emitOpError()
             << "dma op with both source and target on L1 is not supported";
         return WalkResult::interrupt();
-      } else if (sourceMemspace == 2) {
+      } else if (sourceMemSpace == 2) {
         outputDmas.push_back(dmaOp);
-      } else if (targetMemspace == 2) {
+      } else if (targetMemSpace == 2) {
         inputDmas.push_back(dmaOp);
       }
       return WalkResult::advance();
@@ -177,7 +183,7 @@ class AMDAIEInsertCoresPass
   }
 
   AMDAIEInsertCoresPass() = default;
-  AMDAIEInsertCoresPass(const AMDAIEInsertCoresPass &pass) {};
+  AMDAIEInsertCoresPass(const AMDAIEInsertCoresPass &pass){};
   void runOnOperation() override;
 };
 
