@@ -86,13 +86,13 @@ class MultipleDispatches:
 
 
 class BaseMatmul:
-    def __init__(self, M, N, K, input_type, output_type):
+    def __init__(self, M, N, K, input_type, acc_type):
         self.labels = []
         self.M = M
         self.N = N
         self.K = K
         self.input_type = input_type
-        self.output_type = output_type
+        self.acc_type = acc_type
         self.labels.append("Matmul")
 
 
@@ -101,9 +101,9 @@ class MatmulFullBias(BaseMatmul):
     A test of the form matmul(A,B) + C where A:MxK, B:KxN, C:MxN
     """
 
-    def __init__(self, M, N, K, input_type, output_type):
-        super().__init__(M, N, K, input_type, output_type)
-        self.name = f"matmul_full_bias_{M}_{N}_{K}_{input_type}_{output_type}"
+    def __init__(self, M, N, K, input_type, acc_type):
+        super().__init__(M, N, K, input_type, acc_type)
+        self.name = f"matmul_full_bias_{M}_{N}_{K}_{input_type}_{acc_type}"
         self.labels.append("MatmulFullBias")
 
     def run(self, config):
@@ -117,7 +117,7 @@ class MatmulFullBias(BaseMatmul):
             self.N,
             self.K,
             self.input_type,
-            self.output_type,
+            self.acc_type,
         )
         aie_vs_llvm_cpu(
             config,
@@ -135,9 +135,9 @@ class VanillaMatmul(BaseMatmul):
     A test of the form matmul(A,B) where A:MxK, B:KxN
     """
 
-    def __init__(self, M, N, K, input_type, output_type):
-        super().__init__(M, N, K, input_type, output_type)
-        self.name = f"vanilla_matmul_{M}_{N}_{K}_{input_type}_{output_type}"
+    def __init__(self, M, N, K, input_type, acc_type):
+        super().__init__(M, N, K, input_type, acc_type)
+        self.name = f"vanilla_matmul_{M}_{N}_{K}_{input_type}_{acc_type}"
         self.labels.append("VanillaMatmul")
 
     def run(self, config):
@@ -151,7 +151,7 @@ class VanillaMatmul(BaseMatmul):
             self.N,
             self.K,
             self.input_type,
-            self.output_type,
+            self.acc_type,
         )
 
         aie_vs_llvm_cpu(
@@ -167,9 +167,10 @@ class MatmulThinBias(BaseMatmul):
     A test of the form matmul(A,B) + C where A:MxK, B:KxN, C:N
     """
 
-    def __init__(self, M, N, K, input_type, output_type, use_ukernel):
-        super().__init__(M, N, K, input_type, output_type)
-        self.name = f"matmul_thin_bias_{M}_{N}_{K}_{input_type}_{output_type}_ukernel{int(use_ukernel)}"
+    def __init__(self, M, N, K, input_type, acc_type, use_ukernel):
+        super().__init__(M, N, K, input_type, acc_type)
+        tail = "" if use_ukernel else "ukernel"
+        self.name = f"matmul_thin_bias_{M}_{N}_{K}_{input_type}_{acc_type}_{tail}"
         self.labels.append("MatmulThinBias")
         if use_ukernel:
             self.labels.append("UKernel")
@@ -187,7 +188,7 @@ class MatmulThinBias(BaseMatmul):
             self.K,
             self.N,
             self.input_type,
-            self.output_type,
+            self.acc_type,
         )
 
         if self.use_ukernel and not config.vitis_dir:
@@ -210,10 +211,10 @@ class BatchMatmul(BaseMatmul):
     A test of the form batch_matmul(A,B) where A:BxMxK, B:BxKxN
     """
 
-    def __init__(self, B, M, N, K, input_type, output_type):
-        super().__init__(M, N, K, input_type, output_type)
+    def __init__(self, B, M, N, K, input_type, acc_type):
+        super().__init__(M, N, K, input_type, acc_type)
 
-        self.name = f"batch_matmul_{B}_{M}_{N}_{K}_{input_type}_{output_type}"
+        self.name = f"batch_matmul_{B}_{M}_{N}_{K}_{input_type}_{acc_type}"
         self.labels.append("BatchMatmul")
         self.B = B
 
@@ -229,7 +230,7 @@ class BatchMatmul(BaseMatmul):
             m=self.M,
             n=self.N,
             lhs_rhs_type=self.input_type,
-            output_type=self.output_type,
+            acc_type=self.acc_type,
         )
         aie_vs_llvm_cpu(
             config,
@@ -244,9 +245,9 @@ class MatmulTruncf(BaseMatmul):
     A test of the form matmul(A,B) + truncf(C) where A:MxK, B:KxM and C:MxM
     """
 
-    def __init__(self, M, K, input_type, output_type, lhs, rhs, expected_out):
-        super().__init__(M, M, K, input_type, output_type)
-        self.name = f"matmul_truncf_{M}_{K}_{input_type}_{output_type}"
+    def __init__(self, M, K, input_type, acc_type, lhs, rhs, expected_out):
+        super().__init__(M, M, K, input_type, acc_type)
+        self.name = f"matmul_truncf_{M}_{K}_{input_type}_{acc_type}"
         self.labels.append("MatmulTruncf")
         self.lhs = lhs
         self.rhs = rhs
@@ -269,7 +270,7 @@ class MatmulTruncf(BaseMatmul):
             self.N,
             self.K,
             self.input_type,
-            self.output_type,
+            self.acc_type,
         )
 
         input_args = generate_inputs(
@@ -890,11 +891,11 @@ class Tests:
         )
 
         # BatchMatmul test(s):
-        for input_type, output_type in zip(["i32", "bf16"], ["i32", "f32"]):
+        for input_type, acc_type in zip(["i32", "bf16"], ["i32", "f32"]):
             # Batch size = 1:
-            self.register(BatchMatmul(1, 128, 128, 256, input_type, output_type))
+            self.register(BatchMatmul(1, 128, 128, 256, input_type, acc_type))
             # Batch size = 2:
-            self.register(BatchMatmul(2, 64, 64, 64, input_type, output_type))
+            self.register(BatchMatmul(2, 64, 64, 64, input_type, acc_type))
 
         # MatmulThinBias test(s):
         self.register(MatmulThinBias(1024, 1024, 512, "bf16", "f32", True))
