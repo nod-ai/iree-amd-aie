@@ -51,7 +51,7 @@ git checkout 59f1d62
 git submodule update --init --recursive
 ```
 
-Follow the instructions to build and install the driver module: https://github.com/amd/xdna-driver.
+Follow the instructions to build and install the driver module: [xdna-driver](https://github.com/amd/xdna-driver/tree/59f1d6235334499b22dbd056a60ab00bfec142ee).
 
 ## Building (along with IREE)
 
