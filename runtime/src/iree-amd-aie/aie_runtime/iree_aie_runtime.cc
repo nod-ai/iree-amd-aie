@@ -751,9 +751,9 @@ AMDAIEDeviceModel::getAIEMatmulInstructionSize(Type elTypeLhs, Type elTypeRhs,
   assert(allInteger &&
          "expected all element types to either be all float types or all "
          "integer types");
-  assert((device == AMDAIEDevice::npu1_4col) &&
-         "currently not compiling for all integer element types targeting "
-         "NPU4 device model");
+  if (device != AMDAIEDevice::npu1_4col) {
+    return failure();
+  }
 
   return getNpu1IntegerMatmulInstructionSize(nBitsLhs, nBitsRhs, nBitsAcc);
 }
