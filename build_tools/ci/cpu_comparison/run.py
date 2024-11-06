@@ -11,10 +11,10 @@ import sys
 import time
 from pathlib import Path
 from textwrap import dedent
-
 import numpy as np
-
 from convolution_template.convolution_generator import ConvolutionMlirGenerator
+from matmul_template.matmul_generator import generate_matmul_test
+from output_comparer import compare
 from input_generator import (
     generate_inputs,
     verify_determinism,
@@ -22,27 +22,276 @@ from input_generator import (
     get_output_type,
     np_from_binfile,
 )
-from matmul_template.matmul_generator import generate_matmul_test
-from output_comparer import compare
 
 
-def matmul_from_input_strings(input_args):
+def run_conv_test(config, filename, n_repeats):
+    aie_vs_llvm_cpu(
+        config,
+        filename,
+        tile_pipeline="conv-decompose",
+        lower_to_aie_pipeline="objectFifo",
+        n_repeats=n_repeats,
+    )
+    return True
+
+
+class ConvolutionFromTemplate:
+    def __init__(self, params):
+        self.generator = ConvolutionMlirGenerator(**params)
+        params = self.generator.params
+        conv_type = params["conv_type"]
+        N = params["N"]
+        IW = params["IW"]
+        in_type = params["input_element_type"]
+        out_type = params["output_element_type"]
+        # TODO(newling) Use all parameters in name, to avoid name collision.
+        self.name = f"{conv_type}_{N}_{IW}_{in_type}_{out_type}"
+        self.labels = ["Convolution"]
+
+    def run(self, config):
+        # Generate the mlir file
+        output_dir = config.output_dir
+        filename = output_dir / f"{self.name}.mlir"
+        self.generator.write_to_file(filename)
+        # Perform numerical comparison between AIE and CPU
+        return run_conv_test(config, filename, n_repeats=2)
+
+
+class ConvolutionNHWCQ:
+    def __init__(self):
+        self.name = "convolution_nhwc_q"
+        self.labels = ["Convolution", "ConvolutionNHWCQ"]
+
+    def run(self, config):
+        files_dir = config.file_dir / "test_files"
+        filename = files_dir / "conv2d_nhwc_q.mlir"
+        return run_conv_test(config, filename, n_repeats=1)
+
+
+class MultipleDispatches:
+    def __init__(self, name):
+        self.name = name
+        self.labels = ["Matmul", "MultipleDispatches"]
+
+    def run(self, config):
+        test_files_dir = config.file_dir / "test_files"
+        self.filename = test_files_dir / f"{self.name}.mlir"
+        if config.xdna_datetime and config.xdna_datetime < 20240801:
+            aie_vs_llvm_cpu(config, self.filename, function_name="three_$mm$")
+            return True
+        else:
+            # Return False to indicate that the test did not run.
+            return False
+
+
+class BaseMatmul:
+
+    def __init__(self, M, N, K, input_type, output_type):
+        self.labels = []
+        self.M = M
+        self.N = N
+        self.K = K
+        self.input_type = input_type
+        self.output_type = output_type
+        self.labels.append("Matmul")
+
+
+class MatmulFullBias(BaseMatmul):
     """
-    Input 'input_args' should be a list with two strings, of the form
-
-    ["--input=3x40xf32=@<binary_file>", "input=2x2xi32=@<binary_file>"]
-
-    where the binary files contain the input matrices.
-
-    This function
-    1) loads the input matrices from the binary files
-    2) returns the result of multiplying the matrices together
+    A test of the form matmul(A,B) + C where A:MxK, B:KxN, C:MxN
     """
-    if len(input_args) != 2:
-        raise RuntimeError(f"Expected 2 arguments, got {input_args=}")
-    a = load_input(input_args[0])
-    b = load_input(input_args[1])
-    return np.matmul(a, b)
+
+    def __init__(self, M, N, K, input_type, output_type):
+        super().__init__(M, N, K, input_type, output_type)
+        self.name = f"matmul_full_bias_{M}_{N}_{K}_{input_type}_{output_type}"
+        self.labels.append("MatmulFullBias")
+
+    def run(self, config):
+        filename = config.output_dir / f"{self.name}.mlir"
+        matmul_template_dir = config.file_dir / "matmul_template"
+        template_name = matmul_template_dir / "matmul_bias_MxK_KxN_MxN.mlir"
+        generate_matmul_test(
+            filename,
+            template_name,
+            self.M,
+            self.N,
+            self.K,
+            self.input_type,
+            self.output_type,
+        )
+        aie_vs_llvm_cpu(
+            config,
+            filename,
+            tile_pipeline="pack-peel",
+            # TODO(someone) This should work for "objectFifo".
+            lower_to_aie_pipeline="air",
+        )
+
+        return True
+
+
+class VanillaMatmul(BaseMatmul):
+    """
+    A test of the form matmul(A,B) where A:MxK, B:KxN
+    """
+
+    def __init__(self, M, N, K, input_type, output_type):
+        super().__init__(M, N, K, input_type, output_type)
+        self.name = f"vanilla_matmul_{M}_{N}_{K}_{input_type}_{output_type}"
+        self.labels.append("VanillaMatmul")
+
+    def run(self, config):
+        self.filename = config.output_dir / f"{self.name}.mlir"
+        matmul_template_dir = config.file_dir / "matmul_template"
+        template_name = matmul_template_dir / "matmul_MxK_KxN.mlir"
+        generate_matmul_test(
+            self.filename,
+            template_name,
+            self.M,
+            self.N,
+            self.K,
+            self.input_type,
+            self.output_type,
+        )
+
+        aie_vs_llvm_cpu(
+            config,
+            self.filename,
+        )
+
+        return True
+
+
+class MatmulThinBias(BaseMatmul):
+    """
+    A test of the form matmul(A,B) + C where A:MxK, B:KxN, C:N
+    """
+
+    def __init__(self, M, N, K, input_type, output_type, use_ukernel):
+        super().__init__(M, N, K, input_type, output_type)
+        self.name = f"matmul_thin_bias_{M}_{N}_{K}_{input_type}_{output_type}_ukernel{int(use_ukernel)}"
+        self.labels.append("MatmulThinBias")
+        if use_ukernel:
+            self.labels.append("UKernel")
+        self.use_ukernel = use_ukernel
+
+    def run(self, config):
+
+        self.filename = config.output_dir / f"{self.name}.mlir"
+        matmul_template_dir = config.file_dir / "matmul_template"
+        template_name = matmul_template_dir / "matmul_bias_MxK_KxN_N.mlir"
+        generate_matmul_test(
+            self.filename,
+            template_name,
+            self.M,
+            self.K,
+            self.N,
+            self.input_type,
+            self.output_type,
+        )
+
+        if self.use_ukernel and not config.vitis_dir:
+            return False
+
+        else:
+            aie_vs_llvm_cpu(
+                config,
+                self.filename,
+                tile_pipeline="pack-peel",
+                # TODO(someone) This should work for "objectFifo".
+                lower_to_aie_pipeline="air",
+                use_ukernel=self.use_ukernel,
+            )
+            return True
+
+
+class BatchMatmul(BaseMatmul):
+    """
+    A test of the form batch_matmul(A,B) where A:BxMxK, B:BxKxN
+    """
+
+    def __init__(self, B, M, N, K, input_type, output_type):
+        super().__init__(M, N, K, input_type, output_type)
+
+        self.name = f"batch_matmul_{B}_{M}_{N}_{K}_{input_type}_{output_type}"
+        self.labels.append("BatchMatmul")
+        self.B = B
+
+    def run(self, config):
+        self.filename = config.output_dir / f"{self.name}.mlir"
+        matmul_template_dir = config.file_dir / "matmul_template"
+        template_name = matmul_template_dir / "batch_matmul_BxMxK_BxKxN.mlir"
+        generate_matmul_test(
+            self.filename,
+            template_name,
+            k=self.K,
+            b=self.B,
+            m=self.M,
+            n=self.N,
+            lhs_rhs_type=self.input_type,
+            output_type=self.output_type,
+        )
+        aie_vs_llvm_cpu(
+            config,
+            self.filename,
+        )
+
+        return True
+
+
+class MatmulTruncf(BaseMatmul):
+    """
+    A test of the form matmul(A,B) + truncf(C) where A:MxK, B:KxM and C:MxM
+    """
+
+    def __init__(self, M, K, input_type, output_type, lhs, rhs, expected_out):
+        super().__init__(M, M, K, input_type, output_type)
+        self.name = f"matmul_truncf_{M}_{K}_{input_type}_{output_type}"
+        self.labels.append("MatmulTruncf")
+        self.lhs = lhs
+        self.rhs = rhs
+        self.expected_out = expected_out
+
+        # Assertions on shapes: Check that lhs is MxK, rhs is KxM, and expected_out is MxM
+        assert lhs.shape == (M, K)
+        assert rhs.shape == (K, M)
+        assert expected_out.shape == (M, M)
+
+    def run(self, config):
+
+        self.filename = config.output_dir / f"{self.name}.mlir"
+        matmul_template_dir = config.file_dir / "matmul_template"
+        template_name = matmul_template_dir / "matmul_truncf_MxK_KxN.mlir"
+        generate_matmul_test(
+            self.filename,
+            template_name,
+            self.M,
+            self.N,
+            self.K,
+            self.input_type,
+            self.output_type,
+        )
+
+        input_args = generate_inputs(
+            self.filename, config.output_dir, 1, {1: self.lhs, 2: self.rhs}
+        )
+        aie_vs_baseline(
+            config,
+            self.filename,
+            input_args,
+            self.expected_out,
+            use_ukernel=False,
+            tile_pipeline="pack-peel",
+            lower_to_aie_pipeline="objectFifo",
+            function_name=None,
+            seed=1,
+            rtol=0,
+            atol=0,
+            n_repeats=1,
+            output_type=get_output_type(self.filename),
+        )
+
+        return True
 
 
 def find_executable(install_dir: Path, executable_name):
@@ -129,8 +378,8 @@ def generate_aie_vmfb(
     function_name,
 ):
     """
-    Compile a test file for IREE's AIE backend, returning path to the compiled
-    module.
+    Compile a test file for IREE's AIE backend, returning the path to the
+    compiled module.
     """
 
     additional_flags = config.additional_aie_compilation_flags.split()
@@ -483,7 +732,7 @@ def aie_vs_baseline(
         backend. Computed any which way you like
     use_ukernel:
         Whether to use micro-kernels when running on the AIE backend
-    pipeline:
+    tile_pipeline:
         The tiling pipeline to use when compiling for the AIE backend
     function_name:
         The name of the function to run (the test file may contain multiple
@@ -586,292 +835,115 @@ def aie_vs_llvm_cpu(
     )
 
 
-class TestSet:
-    def __init__(self, name):
-        self.name = name
+class Tests:
 
-    def run(self, config):
-        raise NotImplementedError("Subclasses must implement this method")
+    def register(self, test):
+        self.tests.append(test)
+        if test.name in self.existing_names:
+            raise ValueError(f"Test name {test.name} is not unique")
+        self.existing_names.append(test.name)
 
+    def get_label_set(self):
+        """
+        Get the set of all the labels that are used in the tests.
+        """
+        labels = set()
+        for test in self.tests:
+            for label in test.labels:
+                labels.add(label)
+        labels = list(labels)
+        labels.sort()
+        return labels
 
-class ConvolutionTemplateSet(TestSet):
+    def get_test_names(self):
+        names = [test.name for test in self.tests]
+        names.sort()
+        return names
+
     def __init__(self):
-        super().__init__("ConvolutionTemplate")
+        self.existing_names = []
+        self.tests = []
 
-    def run(self, config):
-
-        testSet = [
-            {
-                "conv_type": "conv_2d_nhwc_hwcf",
-                "N": 2,
-                "IH": 14,
-                "IC": 32,
-                "OC": 64,
-                "KH": 3,
-                "input_element_type": "i32",
-                "output_element_type": "i32",
-            },
-            {
-                "conv_type": "conv_2d_nhwc_hwcf",
-                "N": 2,
-                "IH": 14,
-                "IC": 32,
-                "OC": 64,
-                "KH": 3,
-                "input_element_type": "bf16",
-                "output_element_type": "f32",
-            },
-            {
-                "conv_type": "conv_2d_nhwc_hwcf",
-                "N": 2,
-                "IH": 14,
-                "IC": 32,
-                "OC": 64,
-                "KH": 3,
-                "input_element_type": "i8",
-                "output_element_type": "i32",
-            },
-            {
-                "conv_type": "depthwise_conv_2d_nhwc_hwc",
-                "N": 1,
-                "IH": 14,
-                "IC": 64,
-                "KH": 3,
-                "input_element_type": "i32",
-                "output_element_type": "i32",
-            },
-        ]
-
-        output_dir = config.output_dir
-        test_name = output_dir / "test_from_template.mlir"
-        for testMap in testSet:
-            convGen = ConvolutionMlirGenerator(**testMap)
-            convGen.write_to_file(test_name)
-            n_conv_repeats = 4
-
-            aie_vs_llvm_cpu(
-                config,
-                test_name,
-                tile_pipeline="conv-decompose",
-                lower_to_aie_pipeline="objectFifo",
-                n_repeats=n_conv_repeats,
+        # Matmul with truncf test(s):
+        self.register(
+            MatmulTruncf(
+                8,
+                8,
+                "bf16",
+                "f32",
+                101 * np.ones([8, 8]),
+                3 * np.eye(8),
+                302 * np.ones([8, 8]),
             )
-
-
-class ConvolutionSet(TestSet):
-    def __init__(self):
-        super().__init__("Convolution")
-
-    def run(self, config):
-        test_files_dir = config.file_dir / "test_files"
-
-        for name in [
-            "conv2d_nhwc_q",
-        ]:
-            n_conv_repeats = 2
-            aie_vs_llvm_cpu(
-                config,
-                test_files_dir / f"{name}.mlir",
-                tile_pipeline="conv-decompose",
-                lower_to_aie_pipeline="objectFifo",
-                n_repeats=n_conv_repeats,
-            )
-
-
-class MatmulSet(TestSet):
-    def __init__(self):
-        super().__init__("Matmul")
-
-    def run(self, config):
-        matmul_template_dir = config.file_dir / "matmul_template"
-        test_files_dir = config.file_dir / "test_files"
-        output_dir = config.output_dir
-
-        # Test(s) of the form matmul(A,B) + C where A:MxK, B:KxN, C:MxN
-        test_name = output_dir / "test_from_template_full_bias.mlir"
-        template_name = matmul_template_dir / "matmul_bias_MxK_KxN_MxN.mlir"
-        generate_matmul_test(test_name, template_name, 128, 128, 256, "i32", "i32")
-        aie_vs_llvm_cpu(
-            config,
-            test_name,
-            tile_pipeline="pack-peel",
-            lower_to_aie_pipeline="air",
-            rtol=0,
-            atol=0,
         )
 
-        if config.xdna_datetime and config.xdna_datetime < 20240801:
-            for name in [
-                "two_matmul_switching",
-                "matmul_f32_8_8_4",
-                "matmul_f32_8_4_8",
-            ]:
-                aie_vs_llvm_cpu(config, test_files_dir / f"{name}.mlir")
-
-            aie_vs_llvm_cpu(
-                config,
-                test_files_dir / "three_matmuls.mlir",
-                function_name="three_$mm$",
+        self.register(
+            MatmulTruncf(
+                128,
+                256,
+                "bf16",
+                "f32",
+                2 * np.ones([128, 256]),
+                3 * np.ones([256, 128]),
+                1536 * np.ones([128, 128]),
             )
-
-        # Test(s) of the form matmul(A,B) where A:MxK, B:KxN
-        test_name = output_dir / "test_from_template.mlir"
-        template_name = matmul_template_dir / "matmul_MxK_KxN.mlir"
-        generate_matmul_test(test_name, template_name, 32, 32, 64, "bf16", "f32")
-        aie_vs_llvm_cpu(config, test_name)
-
-        # Test(s) of the form matmul(A,B) + C where A:MxK, B:KxN, C:N
-        test_name = output_dir / "test_from_template_bias_N.mlir"
-        template_name = matmul_template_dir / "matmul_bias_MxK_KxN_N.mlir"
-        generate_matmul_test(test_name, template_name, 1024, 1024, 512, "bf16", "f32")
-        if config.vitis_dir:
-            aie_vs_llvm_cpu(
-                config,
-                test_name,
-                tile_pipeline="pack-peel",
-                lower_to_aie_pipeline="air",
-                use_ukernel=True,
-            )
-        aie_vs_llvm_cpu(
-            config,
-            test_name,
-            tile_pipeline="pack-peel",
-            lower_to_aie_pipeline="air",
-            use_ukernel=False,
         )
 
-        # Test(s) of the form batch_matmul(A,B) where A:BxMxK, B:BxKxN
-        template_name = matmul_template_dir / "batch_matmul_BxMxK_BxKxN.mlir"
-        for lhs_type, acc_type in zip(["i32", "bf16"], ["i32", "f32"]):
-            # Batch size = 1
-            test_name = (
-                output_dir / f"test_from_template_bmm_1_{lhs_type}_{acc_type}.mlir"
-            )
-            generate_matmul_test(
-                test_name, template_name, 128, 128, 256, lhs_type, acc_type, b=1
-            )
-            aie_vs_llvm_cpu(
-                config,
-                test_name,
-                tile_pipeline="pack-peel",
-                lower_to_aie_pipeline="objectFifo",
-            )
-            # Batch size = 2
-            test_name = (
-                output_dir / f"test_from_template_bmm_2_{lhs_type}_{acc_type}.mlir"
-            )
-            generate_matmul_test(
-                test_name, template_name, 64, 64, 64, lhs_type, acc_type, b=2
-            )
-            aie_vs_llvm_cpu(
-                config,
-                test_name,
-                tile_pipeline="pack-peel",
-                lower_to_aie_pipeline="objectFifo",
-            )
+        # BatchMatmul test(s):
+        for input_type, output_type in zip(["i32", "bf16"], ["i32", "f32"]):
+            # Batch size = 1:
+            self.register(BatchMatmul(1, 128, 128, 256, input_type, output_type))
+            # Batch size = 2:
+            self.register(BatchMatmul(2, 64, 64, 64, input_type, output_type))
 
-        # Test(s) of the form matmul(A,B) + truncf(C) where A:MxK, B:KxN and C:MxN
-        test_name = output_dir / f"test_from_template_matmul_truncf.mlir"
-        template_name = matmul_template_dir / "matmul_truncf_MxK_KxN.mlir"
-        generate_matmul_test(test_name, template_name, 8, 8, 8, "bf16", "f32")
-        identity_mat = np.eye(8, dtype=np.float32)
-        ones = np.ones(8 * 8, dtype=np.float32).reshape([8, 8])
-        lhs = ones * 101
-        rhs = identity_mat * 3
-        input_args = generate_inputs(test_name, output_dir, 1, {1: lhs, 2: rhs})
-        aie_vs_baseline(
-            config,
-            test_name,
-            input_args,
-            ones * 302,  # exected output
-            use_ukernel=False,
-            tile_pipeline="pack-peel",
-            lower_to_aie_pipeline="objectFifo",
-            function_name=None,
-            seed=1,
-            rtol=0,
-            atol=0,
-            n_repeats=1,
-            output_type=get_output_type(test_name),
-        )
+        # MatmulThinBias test(s):
+        self.register(MatmulThinBias(1024, 1024, 512, "bf16", "f32", True))
+        self.register(MatmulThinBias(1024, 1024, 512, "bf16", "f32", False))
 
-        # 128x128x256 shape test of Matmul + Truncf
-        generate_matmul_test(test_name, template_name, 128, 128, 256, "bf16", "f32")
-        identity_mat = np.eye(128, dtype=np.float32)
-        lhs_ones = np.ones(128 * 256, dtype=np.float32).reshape([128, 256])
-        rhs_ones = np.ones(256 * 128, dtype=np.float32).reshape([256, 128])
-        out_ones = np.ones(128 * 128, dtype=np.float32).reshape([128, 128])
-        lhs = lhs_ones * 2
-        rhs = rhs_ones * 3
-        input_args = generate_inputs(test_name, output_dir, 1, {1: lhs, 2: rhs})
-        aie_vs_baseline(
-            config,
-            test_name,
-            input_args,
-            out_ones * 1536,  # exected output
-            use_ukernel=False,
-            tile_pipeline="pack-peel",
-            lower_to_aie_pipeline="objectFifo",
-            function_name=None,
-            seed=1,
-            rtol=0,
-            atol=0,
-            n_repeats=1,
-            output_type=get_output_type(test_name),
-        )
+        # VanillaMatmul test(s):
+        self.register(VanillaMatmul(32, 32, 64, "bf16", "f32"))
 
+        # MultipleDispatches tests:
+        for name in ["two_matmul_switching", "matmul_f32_8_8_4", "matmul_f32_8_4_8"]:
+            self.register(MultipleDispatches(name))
 
-class SmokeSet(TestSet):
-    def __init__(self):
-        super().__init__("Smoke")
+        # MatmulFullBias test:
+        self.register(MatmulFullBias(128, 128, 256, "i32", "i32"))
 
-    def run(self, config):
-        file_dir = config.file_dir
-        output_dir = config.output_dir
+        # Convolution NHCWQ test:
+        self.register(ConvolutionNHWCQ())
 
-        # The most basic test, direct from .mlir file using all defaults
-        test_files_dir = file_dir / "test_files"
-        aie_vs_llvm_cpu(config, test_files_dir / "matmul_int32.mlir")
+        # Convolution 2D tests:
+        conv_2d_map = {
+            "conv_type": "conv_2d_nhwc_hwcf",
+            "N": 2,
+            "IH": 14,
+            "IC": 32,
+            "OC": 64,
+            "KH": 3,
+        }
+        for input_type, output_type in zip(
+            ["i32", "bf16", "i8"], ["i32", "f32", "i32"]
+        ):
+            conv_2d_map["input_element_type"] = input_type
+            conv_2d_map["output_element_type"] = output_type
+            self.register(ConvolutionFromTemplate(conv_2d_map))
 
-        # Using objectFifo pipeline
-        test_name = output_dir / "test_from_template.mlir"
-        matmul_template_dir = file_dir / "matmul_template"
-        test_name = output_dir / "test_from_objectfifo_basic.mlir"
-        template_name = matmul_template_dir / "matmul_MxK_KxN.mlir"
-        generate_matmul_test(test_name, template_name, 64, 64, 64, "bf16", "f32")
-        aie_vs_llvm_cpu(
-            config,
-            test_name,
-            tile_pipeline="pack-peel",
-            lower_to_aie_pipeline="objectFifo",
-        )
-
-        # Test using custom input and output:
-        ones = np.ones(64 * 64, np.float32).reshape([64, 64])
-        name = name_from_mlir_filename(test_name)
-        input_args = generate_inputs(test_name, output_dir, 1, {1: ones, 2: ones})
-        aie_vs_baseline(
-            config,
-            test_name,
-            input_args,
-            ones * 64,  # exected output
-            use_ukernel=False,
-            tile_pipeline="pack-peel",
-            lower_to_aie_pipeline="objectFifo",
-            function_name=None,
-            seed=1,
-            rtol=0,
-            atol=0,
-            n_repeats=1,
-            output_type=get_output_type(test_name),
-        )
-
-
-def get_test_partition():
-    return [ConvolutionTemplateSet(), ConvolutionSet(), MatmulSet(), SmokeSet()]
+        # Depthwise convolution tests:
+        depthwise_map = {
+            "conv_type": "depthwise_conv_2d_nhwc_hwc",
+            "N": 1,
+            "IH": 14,
+            "IC": 64,
+            "KH": 3,
+            "input_element_type": "i32",
+            "output_element_type": "i32",
+        }
+        self.register(ConvolutionFromTemplate(depthwise_map))
 
 
 def all_tests(
+    tests,
     output_dir,
     iree_install_dir,
     peano_dir,
@@ -941,22 +1013,29 @@ def all_tests(
     if platform.system() != "Windows":
         shell_out(["pwd"], verbose=config.verbose)
 
-    partition = get_test_partition()
-    partition_names = [p.name for p in partition]
-    map_to_partition = {p.name: p for p in partition}
-    if "All" in test_set:
-        test_set = partition_names
-
     # For each test in test_set, find the partition it belongs to and run it
     # if no partition is found, raise error.
-    for test in test_set:
-        if test not in partition_names:
-            errorMessage = f"Test set '{test}' not found in available test sets. The available test sets are:"
-            for name in partition_names:
-                errorMessage += f"\n  {name}"
-            raise ValueError(errorMessage)
-        partition = map_to_partition[test]
-        partition.run(config)
+
+    match_run = []
+    match_not_run = []
+    not_match = []
+
+    for test in tests.tests:
+
+        # Determine if the test is a match for the test_set provided by caller
+        match = "All" in test_set
+        match = match or test.name in test_set
+        for label in test.labels:
+            match = match or label in test_set
+
+        if match:
+            did_run = test.run(config)
+            if not did_run:
+                match_not_run.append(test.name)
+            else:
+                match_run.append(test.name)
+        else:
+            not_match.append(test.name)
 
     if config.failures:
         # Convert the list of failed tests into a map: test name to the
@@ -971,6 +1050,11 @@ def all_tests(
         for test, count in failures_map.items():
             error_string += f"\n   {test} ({count} times)."
         raise RuntimeError(error_string)
+
+    if verbose:
+        print(f"Tests that ran: {match_run}")
+        print(f"Tests that matched but did not run: {match_not_run}")
+        print(f"Tests that did not match: {not_match}")
 
 
 if __name__ == "__main__":
@@ -1031,7 +1115,7 @@ if __name__ == "__main__":
         action="store_true",
         help=dedent(
             """
-            If passed, then the AIE backend will not be run. This is useful for
+            If passed then the AIE backend will not be run. This is useful for
             ensuring that everything up to the AIE run and numerical comparison
             is working correctly, for example if you are not on a device with
             working AIE HW and runtime."
@@ -1039,16 +1123,21 @@ if __name__ == "__main__":
         ),
     )
 
-    partition = get_test_partition()
-    partition_names = [p.name for p in partition]
-    partition_names_and_all = partition_names + ["All"]
+    tests = Tests()
+    labels = tests.get_label_set()
+    labels.append("All")
+    names = tests.get_test_names()
+    label_string = ", ".join(labels)
+    name_string = ", ".join(names)
+
     help_string = (
-        "A comma-separated list of test sets. Available test sets are: "
-        + ", ".join(partition_names_and_all)
+        "A comma-separated list of test names or sets to run. Available test sets: "
+        + f"{label_string}"
+        + f". Available individual tests: {name_string}. "
     )
 
     parser.add_argument(
-        "--test-set",
+        "--tests",
         type=str,
         help=help_string,
         default="All",
@@ -1079,8 +1168,10 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    test_set_list = args.test_set.split(",")
+    test_set_list = args.tests.split(",")
+
     all_tests(
+        tests,
         args.output_dir,
         args.iree_install_dir,
         args.peano_install_dir,

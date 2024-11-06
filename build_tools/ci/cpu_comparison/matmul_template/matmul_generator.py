@@ -3,7 +3,7 @@ import re
 import os
 
 
-def generate_matmul_test(output_fn, input_fn, m, n, k, lhs_rhs_type, acc_type, b=0):
+def generate_matmul_test(output_fn, input_fn, m, n, k, lhs_rhs_type, output_type, b=0):
     """
     Generate mlir file (output_fn) from the template file (input_fn).
     """
@@ -13,12 +13,12 @@ def generate_matmul_test(output_fn, input_fn, m, n, k, lhs_rhs_type, acc_type, b
     replace["N"] = n
     replace["K"] = k
     replace["TYPE1"] = lhs_rhs_type
-    replace["TYPE2"] = acc_type
+    replace["TYPE2"] = output_type
 
     replace["B"] = b  # This is only used for batch matmul
-    accl_is_int = acc_type[0] == "i"
-    replace["ZERO"] = 0 if accl_is_int else 0.0
-    replace["ADD"] = "arith.addi" if accl_is_int else "arith.addf"
+    output_is_int = output_type[0] == "i"
+    replace["ZERO"] = 0 if output_is_int else 0.0
+    replace["ADD"] = "arith.addi" if output_is_int else "arith.addf"
 
     key_map = map(lambda s: "${" + s + "}", replace.keys())
     key_map_escaped = map(re.escape, key_map)
