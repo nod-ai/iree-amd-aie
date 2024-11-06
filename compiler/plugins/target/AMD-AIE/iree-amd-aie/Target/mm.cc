@@ -181,7 +181,7 @@ void matmul_vectorized(const T_in *__restrict pA, unsigned offsetA,
           C33.mac(A3, B3);
 
           for (unsigned i = 1; i < colA; ++i)
-            chess_prepare_for_pipelining chess_loop_range(7, ) {
+            chess_prepare_for_pipelining chess_loop_range(3, ) {
               A0 = aie::load_v<MMUL::size_A>(pA1);
               pA1 += rowA * MMUL::size_A;
               A1 = aie::load_v<MMUL::size_A>(pA2);
