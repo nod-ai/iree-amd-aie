@@ -667,7 +667,7 @@ static constexpr uint32_t getElementTypeKey(uint32_t a, uint32_t b,
 /// and 'accumulator' is an i32 tensor, then there is an AIE instruction for
 /// matmul with m = 4, n = 8, k = 16.
 static llvm::DenseMap<uint32_t, std::array<uint32_t, 3>>
-    &getIntegerMatmulInstructionSizeMap() {
+    &getNpu1IntegerMatmulInstructionSizeMap() {
   // Sanity check.
   static_assert(getElementTypeKey(1, 2, 3) == 1 + 2 * 256 + 3 * 65536);
 
@@ -707,7 +707,7 @@ static llvm::FailureOr<std::array<uint32_t, 3>>
 getNpu1IntegerMatmulInstructionSize(uint32_t nBitsLhs, uint32_t nBitsRhs,
                                     uint32_t nBitsAcc) {
   static llvm::DenseMap<uint32_t, std::array<uint32_t, 3>> &mapForIntTypes =
-      getIntegerMatmulInstructionSizeMap();
+      getNpu1IntegerMatmulInstructionSizeMap();
   auto it =
       mapForIntTypes.find(getElementTypeKey(nBitsLhs, nBitsRhs, nBitsAcc));
   if (it == mapForIntTypes.end()) {
