@@ -704,8 +704,8 @@ static llvm::DenseMap<uint32_t, std::array<uint32_t, 3>>
 /// Return the AIE instruction size (m, n, k) for the integer types with
 /// bitwidths nBitsLhs, nBitsRhs, and nBitsAcc. Based on the table above.
 static llvm::FailureOr<std::array<uint32_t, 3>>
-getAIEIntegerMatmulInstructionSize(uint32_t nBitsLhs, uint32_t nBitsRhs,
-                                   uint32_t nBitsAcc) {
+getNpu1IntegerMatmulInstructionSize(uint32_t nBitsLhs, uint32_t nBitsRhs,
+                                    uint32_t nBitsAcc) {
   static llvm::DenseMap<uint32_t, std::array<uint32_t, 3>> &mapForIntTypes =
       getIntegerMatmulInstructionSizeMap();
   auto it =
@@ -751,11 +751,11 @@ AMDAIEDeviceModel::getAIEMatmulInstructionSize(Type elTypeLhs, Type elTypeRhs,
   assert(allInteger &&
          "expected all element types to either be all float types or all "
          "integer types");
-  assert((device != AMDAIEDevice::npu4) &&
-         "currently not compiling for all integer element types targetting "
+  assert((device == AMDAIEDevice::npu1_4col) &&
+         "currently not compiling for all integer element types targeting "
          "NPU4 device model");
 
-  return getAIEIntegerMatmulInstructionSize(nBitsLhs, nBitsRhs, nBitsAcc);
+  return getNpu1IntegerMatmulInstructionSize(nBitsLhs, nBitsRhs, nBitsAcc);
 }
 
 /// ============================= BEGIN ==================================

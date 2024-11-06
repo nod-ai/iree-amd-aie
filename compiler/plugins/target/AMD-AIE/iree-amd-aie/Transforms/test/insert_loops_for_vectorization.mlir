@@ -352,3 +352,31 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
     return %arg2 : memref<1x1x8x8x4x4xf32>
   }
 }
+
+// -----
+
+module {
+  func.func @no_amdaie_device(
+               %arg0: memref<1x1x4x8x4x8xbf16>,
+               %arg1: memref<1x1x8x4x8x4xbf16>,
+               %arg2: memref<1x1x8x8x4x4xf32>) -> memref<1x1x8x8x4x4xf32> {
+    // expected-error @+1 {{has no AMDAIEDevice in the target attribute configuration. This device-specific information is required to determine what vector sizes are supported.}}
+    linalg.generic {indexing_maps =
+         [
+           affine_map<(d0, d1, d2, d3, d4, d5, d6, d7, d8) -> (d0, d2, d5, d3, d6, d8)>,
+           affine_map<(d0, d1, d2, d3, d4, d5, d6, d7, d8) -> (d2, d1, d4, d5, d8, d7)>,
+           affine_map<(d0, d1, d2, d3, d4, d5, d6, d7, d8) -> (d0, d1, d4, d3, d6, d7)>
+         ],
+   iterator_types = ["parallel", "parallel", "reduction", "parallel", "parallel", "reduction", "parallel", "parallel", "reduction"]}
+         ins(%arg0, %arg1 : memref<1x1x4x8x4x8xbf16>, memref<1x1x8x4x8x4xbf16>)
+         outs(%arg2 : memref<1x1x8x8x4x4xf32>) {
+    ^bb0(%in: bf16, %in_16: bf16, %out: f32):
+      %18 = arith.extf %in : bf16 to f32
+      %19 = arith.extf %in_16 : bf16 to f32
+      %20 = arith.mulf %18, %19 : f32
+      %21 = arith.addf %out, %20 : f32
+      linalg.yield %21 : f32
+    }
+    return %arg2 : memref<1x1x8x8x4x4xf32>
+  }
+}
