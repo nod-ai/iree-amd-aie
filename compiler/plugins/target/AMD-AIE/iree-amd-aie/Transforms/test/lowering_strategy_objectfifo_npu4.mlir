@@ -1,7 +1,19 @@
 // RUN: iree-opt --split-input-file --pass-pipeline='builtin.module(iree-amdaie-lowering-strategy{use-pass-pipeline=pack-peel use-lower-to-aie-pipeline=objectFifo target-device=npu4})' %s | FileCheck %s
 
-// CHECK-{LITERAL}: #config = #iree_codegen.lowering_config<tile_sizes = [[64, 64], [0, 0, 1], [1, 1, 0, 0, 0, 0]]>
-// CHECK-{LITERAL}: #packingConfig = #amdaie.packing_config<packing_config = [{packedSizes = [32, 32, 32], transposePackIndices = [1], unpackEmpty = [false], innerPerm = [[1, 0]], outerPerm = [[0, 1]]}, {packedSizes = [0, 0, 0, 8, 8, 8], transposePackIndices = [0, 1, 2], unpackEmpty = [false, false, true], innerPerm = [[0, 1], [1, 0], [0, 1]], outerPerm = [[0, 1, 3, 2], [0, 1, 3, 2], [0, 1, 3, 2]]}]>
+// CHECK:       #config = #iree_codegen.lowering_config<tile_sizes = [
+// CHECK-SAME:                [64, 64], [0, 0, 1], [1, 1, 0, 0, 0, 0]
+// CHECK-SAME:            ]>
+// CHECK:       #packingConfig = #amdaie.packing_config<packing_config = [{packedSizes = [32, 32, 32], transposePackIndices = [1], unpackEmpty = [false],
+// CHECK-SAME:                      innerPerm = [
+// CHECK-SAME:                              [1, 0]
+// CHECK-SAME:                   ], outerPerm = [
+// CHECK-SAME:                              [0, 1]
+// CHECK-SAME:                   ]}, {packedSizes = [0, 0, 0, 8, 8, 8], transposePackIndices = [0, 1, 2], unpackEmpty = [false, false, true],
+// CHECK-SAME:                      innerPerm = [
+// CHECK-SAME:                              [0, 1], [1, 0], [0, 1]
+// CHECK-SAME:                   ], outerPerm = [
+// CHECK-SAME:                              [0, 1, 3, 2], [0, 1, 3, 2], [0, 1, 3, 2]
+// CHECK-SAME:                   ]}]>
 #pipeline_layout = #hal.pipeline.layout<bindings = [
   <storage_buffer>,
   <storage_buffer>,
