@@ -9,7 +9,8 @@
 !t4_f32  = tensor<64x64x64x64xf32>
 
 
-module {
+#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
+module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
    // A generic that corresponds to a simple matmul (2 rank-2 operands)
    // does NOT get tiled.
    // CHECK-LABEL: vanilla
@@ -241,7 +242,8 @@ module {
 
 // CHECK-LABEL: @element_wise
 // CHECK-SAME:  (%[[ARG0:.*]]: tensor<4x6x8xf32>, %[[ARG1:.*]]: tensor<4x6x8xbf16>)
-module {
+#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
+module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
   func.func @element_wise(%arg0: tensor<4x6x8xf32>, %arg1: tensor<4x6x8xbf16>) -> tensor<4x6x8xbf16>{
     %cst = arith.constant 0.000000e+00 : bf16
     // CHECK-DAG:   %[[C4:.*]] = arith.constant 4 : index
@@ -272,7 +274,8 @@ module {
 
 // CHECK-LABEL: @element_wise_bufferized
 // CHECK-SAME:  (%[[ARG0:.*]]: memref<1x1x4x6x8xf32>, %[[ARG1:.*]]: memref<1x1x4x6x8xbf16>)
-module {
+#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
+module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
   func.func @element_wise_bufferized(%arg0: memref<1x1x4x6x8xf32>, %arg1: memref<1x1x4x6x8xbf16>) -> memref<1x1x4x6x8xbf16>{
     %cst = arith.constant 0.000000e+00 : bf16
     // CHECK:       %[[COLLAPSE_UNIT_DIM_0:.*]] = memref.subview %[[ARG0]]
@@ -309,7 +312,8 @@ module {
 // CHECK-SAME:  (%[[ARG0:.*]]: memref<1x1x4x8x4x8xbf16>,
 // CHECK-SAME:   %[[ARG1:.*]]: memref<1x1x8x4x8x4xbf16>
 // CHECK-SAME:   %[[ARG2:.*]]: memref<1x1x8x8x4x4xf32>)
-module {
+#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
+module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
   func.func @matmul_bufferized(
                %arg0: memref<1x1x4x8x4x8xbf16>,
                %arg1: memref<1x1x8x4x8x4xbf16>,
