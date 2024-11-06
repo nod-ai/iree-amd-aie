@@ -17,6 +17,7 @@
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/FormattedStream.h"
 #include "macros.h"
+#include "mlir/IR/BuiltinTypes.h"
 
 // clang-format off
 #include "iree-amd-aie/aie_runtime/AMDAIEEnums.h"
@@ -371,6 +372,9 @@ struct AMDAIEDeviceModel {
                                           StrmSwPortType bundle) const;
   uint32_t getNumMemTileRows() const { return 1; }
   AIEArch getTargetArch() const { return AIEArch::AIE2; }
+
+  FailureOr<std::array<uint32_t, 3>> getAIEMatmulInstructionSize(
+      Type elTypeLhs, Type elTypeRhs, Type elTypeAcc) const;
 };
 
 struct AMDAIEDeviceModel getDeviceModel(AMDAIEDevice device);

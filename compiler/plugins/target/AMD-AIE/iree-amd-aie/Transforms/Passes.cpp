@@ -497,6 +497,7 @@ void buildAMDAIETransformPassPipeline(
     AMDAIELoweringStrategyOptions options;
     options.usePassPipeline = useTilePipeline;
     options.useLowerToAIEPipeline = useLowerToAIEPipeline;
+    options.targetDevice = device;
     modulePassManager.addPass(createAMDAIELoweringStrategyPass(options));
   }
   modulePassManager.addPass(createLowerExecutableUsingTransformDialectPass());
@@ -686,11 +687,6 @@ void addMLIRAIRLoweringPasses(OpPassManager &passManager, AMDAIEDevice device,
   {
     // Vectorization passes
     OpPassManager &funcPassManager = passManager.nest<func::FuncOp>();
-    // FIXME(newling) https://github.com/nod-ai/iree-amd-aie/issues/820
-    enableVectorizationPasses =
-        (useTilePipeline == TilePassPipeline::ConvDecomposePipeline)
-            ? false
-            : enableVectorizationPasses;
     appendVectorizationToPipeline(funcPassManager, enableVectorizationPasses);
   }
   passManager.addPass(createAMDAIEBridgeToAIRPass());

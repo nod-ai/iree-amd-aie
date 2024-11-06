@@ -8,6 +8,7 @@
 
 #include "iree-amd-aie/IR/AMDAIEAttrs.h"
 #include "iree-amd-aie/Transforms/AMDAIEUtils.h"
+#include "iree-amd-aie/aie_runtime/iree_aie_runtime.h"
 #include "iree/compiler/Codegen/Dialect/Codegen/IR/IREECodegenAttrs.h"
 #include "iree/compiler/Codegen/Utils/CPUUtils.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
@@ -27,7 +28,7 @@ using detail::findLargestFactor;
 namespace {
 
 FailureOr<std::array<uint32_t, 3>> getMatmulInstructionSize(
-    linalg::LinalgOp op) {
+    linalg::LinalgOp op, AMDAIEDevice targetDevice) {
   auto getElementType = [](Value v) {
     return cast<ShapedType>(v.getType()).getElementType();
   };
@@ -39,17 +40,20 @@ FailureOr<std::array<uint32_t, 3>> getMatmulInstructionSize(
   auto elTypeRhs = getElementType(op->getOperand(1));
   auto elTypeAcc = getElementType(op->getResult(0));
 
-  return getAIEMatmulInstructionSize(elTypeLhs, elTypeRhs, elTypeAcc);
+  AMDAIEDeviceModel deviceModel = AMDAIE::getDeviceModel(targetDevice);
+  return deviceModel.getAIEMatmulInstructionSize(elTypeLhs, elTypeRhs,
+                                                 elTypeAcc);
 }
 
 FailureOr<std::array<uint32_t, 3>> getPackedSize(linalg::LinalgOp linalgOp,
                                                  uint64_t M, uint64_t N,
-                                                 uint64_t K) {
+                                                 uint64_t K,
+                                                 AMDAIEDevice targetDevice) {
   // Depending on the operand/result element types, there might be a specific
   // vector instruction size that must be used on AIE. Some types do not have
   // vector instructions, for example if operands are 32-bit types.
   FailureOr<std::array<uint32_t, 3>> maybeInstructionSize =
-      getMatmulInstructionSize(linalgOp);
+      getMatmulInstructionSize(linalgOp, targetDevice);
 
   // Operand/result element types do not have vector instructions. In this case,
   // try for a packing of 4x4x8, but if the tensor dimensions M, N, and K are
@@ -95,7 +99,8 @@ class ParameterSetting {
   }
 
   static FailureOr<ParameterSetting> create(linalg::LinalgOp linalgOp,
-                                            bool isPackPeel, bool isObjectFifo);
+                                            bool isPackPeel, bool isObjectFifo,
+                                            AMDAIEDevice targetDevice);
 
   uint32_t getM0() const { return M0; }
   uint32_t getN0() const { return N0; }
@@ -142,9 +147,9 @@ class ParameterSetting {
   uint32_t k1Pack;
 };
 
-FailureOr<ParameterSetting> ParameterSetting::create(linalg::LinalgOp linalgOp,
-                                                     bool isPackPeel,
-                                                     bool isObjectFifo) {
+FailureOr<ParameterSetting> ParameterSetting::create(
+    linalg::LinalgOp linalgOp, bool isPackPeel, bool isObjectFifo,
+    AMDAIEDevice targetDevice) {
   auto initType =
       llvm::cast<ShapedType>(linalgOp.getDpsInitOperand(0)->get().getType());
   ArrayRef<int64_t> initShape = initType.getShape();
@@ -184,7 +189,7 @@ FailureOr<ParameterSetting> ParameterSetting::create(linalg::LinalgOp linalgOp,
 
   unsigned scaleFactor = maybeScaleFactor.value();
 
-  auto maybePackedSize = getPackedSize(linalgOp, M, N, K);
+  auto maybePackedSize = getPackedSize(linalgOp, M, N, K, targetDevice);
   if (failed(maybePackedSize)) return failure();
   auto [m1Pack, n1Pack, k1Pack] = maybePackedSize.value();
 
@@ -315,11 +320,12 @@ static SmallVector<int64_t> setInnerPermB(bool isMatmulTransposeB) {
 
 static LogicalResult setRootConfigForPackPeelPipeline(
     mlir::FunctionOpInterface entryPointFn, linalg::LinalgOp linalgOp,
-    LowerToAIEPassPipeline useLowerToAIEPipeline, bool isMatmulTransposeB) {
+    LowerToAIEPassPipeline useLowerToAIEPipeline, bool isMatmulTransposeB,
+    AMDAIEDevice targetDevice) {
   bool isObjectFifo =
       useLowerToAIEPipeline == LowerToAIEPassPipeline::ObjectFifo;
-  auto maybePackPeelTiling =
-      ParameterSetting::create(linalgOp, /*isPackPeel=*/true, isObjectFifo);
+  auto maybePackPeelTiling = ParameterSetting::create(
+      linalgOp, /*isPackPeel=*/true, isObjectFifo, targetDevice);
   if (failed(maybePackPeelTiling)) return failure();
   auto packPeelTiling = maybePackPeelTiling.value();
 
@@ -415,9 +421,9 @@ static LogicalResult setRootConfigForPackPeelPipeline(
 
 static LogicalResult setRootConfigForPadPackPipeline(
     mlir::FunctionOpInterface entryPointFn, linalg::LinalgOp linalgOp,
-    bool isMatmulTransposeB) {
+    bool isMatmulTransposeB, AMDAIEDevice targetDevice) {
   auto maybePadPackTiling = ParameterSetting::create(
-      linalgOp, /*isPackPeel=*/false, /*isObjectFifo=*/false);
+      linalgOp, /*isPackPeel=*/false, /*isObjectFifo=*/false, targetDevice);
   if (failed(maybePadPackTiling)) return failure();
   auto padPackTiling = maybePadPackTiling.value();
 
@@ -471,11 +477,12 @@ static LogicalResult setRootConfigForPadPackPipeline(
 //===----------------------------------------------------------------------===//
 
 static LogicalResult setRootConfigForConvDecomposePipeline(
-    mlir::FunctionOpInterface entryPointFn, linalg::LinalgOp linalgOp) {
+    mlir::FunctionOpInterface entryPointFn, linalg::LinalgOp linalgOp,
+    AMDAIEDevice targetDevice) {
   MLIRContext *context = entryPointFn.getContext();
 
   FailureOr<std::array<uint32_t, 3>> maybeInstructionSize =
-      getMatmulInstructionSize(linalgOp);
+      getMatmulInstructionSize(linalgOp, targetDevice);
   int64_t OW = 4;
   int64_t OC = 4;
   int64_t IC = 8;
@@ -683,13 +690,14 @@ static bool isMatmulTransposeB(linalg::GenericOp genericOp) {
 /// transposition.
 static LogicalResult setTransposeLikeOpRootConfig(
     mlir::FunctionOpInterface entryPointFn, linalg::LinalgOp linalgOp,
-    TilePassPipeline passPipeline,
-    LowerToAIEPassPipeline useLowerToAIEPipeline) {
+    TilePassPipeline passPipeline, LowerToAIEPassPipeline useLowerToAIEPipeline,
+    AMDAIEDevice targetDevice) {
   if (passPipeline == TilePassPipeline::PackPeelPipeline)
-    return setRootConfigForPackPeelPipeline(entryPointFn, linalgOp,
-                                            useLowerToAIEPipeline, true);
+    return setRootConfigForPackPeelPipeline(
+        entryPointFn, linalgOp, useLowerToAIEPipeline, true, targetDevice);
   else if (passPipeline == TilePassPipeline::PadPackPipeline)
-    return setRootConfigForPadPackPipeline(entryPointFn, linalgOp, true);
+    return setRootConfigForPadPackPipeline(entryPointFn, linalgOp, true,
+                                           targetDevice);
   return linalgOp.emitError(
       "Unhandled pass pipeline in setTransposeLikeOpRootConfig.");
 }
@@ -698,16 +706,18 @@ static LogicalResult setTransposeLikeOpRootConfig(
 // Root Configurations
 //===----------------------------------------------------------------------===//
 
-static LogicalResult setRootConfig(
-    mlir::FunctionOpInterface entryPointFn, linalg::GenericOp genericOp,
-    TilePassPipeline passPipeline,
-    LowerToAIEPassPipeline useLowerToAIEPipeline) {
+static LogicalResult setRootConfig(mlir::FunctionOpInterface entryPointFn,
+                                   linalg::GenericOp genericOp,
+                                   TilePassPipeline passPipeline,
+                                   LowerToAIEPassPipeline useLowerToAIEPipeline,
+                                   AMDAIEDevice targetDevice) {
   assert(!getLoweringConfig<IREE::Codegen::LoweringConfigAttr>(genericOp) &&
          "expected lowering_config is not set");
 
   if (isMatmulTransposeB(genericOp) &&
-      succeeded(setTransposeLikeOpRootConfig(
-          entryPointFn, genericOp, passPipeline, useLowerToAIEPipeline))) {
+      succeeded(
+          setTransposeLikeOpRootConfig(entryPointFn, genericOp, passPipeline,
+                                       useLowerToAIEPipeline, targetDevice))) {
     return success();
   }
 
@@ -716,16 +726,18 @@ static LogicalResult setRootConfig(
 
 /// Sets the lowering configuration for dispatch region with root op that
 /// implements the contraction operation interface.
-static LogicalResult setRootConfig(
-    mlir::FunctionOpInterface entryPointFn,
-    linalg::ContractionOpInterface contractionOp, TilePassPipeline passPipeline,
-    LowerToAIEPassPipeline useLowerToAIEPipeline) {
+static LogicalResult setRootConfig(mlir::FunctionOpInterface entryPointFn,
+                                   linalg::ContractionOpInterface contractionOp,
+                                   TilePassPipeline passPipeline,
+                                   LowerToAIEPassPipeline useLowerToAIEPipeline,
+                                   AMDAIEDevice targetDevice) {
   assert(!getLoweringConfig<IREE::Codegen::LoweringConfigAttr>(contractionOp) &&
          "expected lowering_config is not set");
   auto linalgOp = cast<linalg::LinalgOp>(contractionOp.getOperation());
   if (isa<linalg::MatmulTransposeBOp>(linalgOp)) {
     if (succeeded(setTransposeLikeOpRootConfig(
-            entryPointFn, linalgOp, passPipeline, useLowerToAIEPipeline))) {
+            entryPointFn, linalgOp, passPipeline, useLowerToAIEPipeline,
+            targetDevice))) {
       return success();
     }
     return failure();
@@ -745,31 +757,34 @@ static LogicalResult setRootConfig(
   // logic. Also, need a flag to experiment between pad based and pack based
   // approach which will have different tile sizes and pass pipelines
   if (passPipeline == TilePassPipeline::PackPeelPipeline)
-    return setRootConfigForPackPeelPipeline(entryPointFn, linalgOp,
-                                            useLowerToAIEPipeline, false);
+    return setRootConfigForPackPeelPipeline(
+        entryPointFn, linalgOp, useLowerToAIEPipeline, false, targetDevice);
   if (passPipeline == TilePassPipeline::PadPackPipeline)
-    return setRootConfigForPadPackPipeline(entryPointFn, linalgOp, false);
+    return setRootConfigForPadPackPipeline(entryPointFn, linalgOp, false,
+                                           targetDevice);
   return linalgOp.emitError("Unhandled pass pipeline in setRootConfig.");
 }
 
 static LogicalResult setConvRootConfig(mlir::FunctionOpInterface entryPointFn,
                                        linalg::ConvolutionOpInterface convOp,
-                                       TilePassPipeline passPipeline) {
+                                       TilePassPipeline passPipeline,
+                                       AMDAIEDevice targetDevice) {
   assert(!getLoweringConfig<IREE::Codegen::LoweringConfigAttr>(convOp) &&
          "expected lowering_config is not set");
   auto linalgOp = cast<linalg::LinalgOp>(convOp.getOperation());
 
   // Current tiling strategy is based on llvm-cpu ConvTileAndDecomposeExpert.
   if (passPipeline == TilePassPipeline::ConvDecomposePipeline)
-    return setRootConfigForConvDecomposePipeline(entryPointFn, linalgOp);
+    return setRootConfigForConvDecomposePipeline(entryPointFn, linalgOp,
+                                                 targetDevice);
   return linalgOp.emitError("Unhandled pass pipeline in setConvRootConfig.");
 }
 
 /// Redirects to methods that set the configuration based on operation type.
 static LogicalResult setRootConfigImpl(
     mlir::FunctionOpInterface entryPointFn, Operation *op,
-    TilePassPipeline passPipeline,
-    LowerToAIEPassPipeline useLowerToAIEPipeline) {
+    TilePassPipeline passPipeline, LowerToAIEPassPipeline useLowerToAIEPipeline,
+    AMDAIEDevice targetDevice) {
   auto setRootConfigFn = [&](Operation *op) -> LogicalResult {
     return TypeSwitch<Operation *, LogicalResult>(op)
         // TODO (nmeshram): This is very limited for now, plan is to
@@ -779,15 +794,16 @@ static LogicalResult setRootConfigImpl(
         .Case<linalg::Conv2DNhwcHwcfOp, linalg::Conv2DNchwFchwOp,
               linalg::Conv2DNhwcHwcfQOp, linalg::DepthwiseConv2DNhwcHwcOp>(
             [&](auto op) {
-              return setConvRootConfig(entryPointFn, op, passPipeline);
+              return setConvRootConfig(entryPointFn, op, passPipeline,
+                                       targetDevice);
             })
         .Case<linalg::GenericOp>([&](auto op) {
           return setRootConfig(entryPointFn, op, passPipeline,
-                               useLowerToAIEPipeline);
+                               useLowerToAIEPipeline, targetDevice);
         })
         .Case<linalg::ContractionOpInterface>([&](auto op) {
           return setRootConfig(entryPointFn, op, passPipeline,
-                               useLowerToAIEPipeline);
+                               useLowerToAIEPipeline, targetDevice);
         })
         .Default([&](Operation *op) { return success(); });
   };
@@ -797,8 +813,8 @@ static LogicalResult setRootConfigImpl(
 /// Sets the translation information to use for a dispatch region.
 static LogicalResult setTranslationInfoAndRootConfig(
     mlir::FunctionOpInterface entryPointFn, ArrayRef<Operation *> computeOps,
-    TilePassPipeline passPipeline,
-    LowerToAIEPassPipeline useLowerToAIEPipeline) {
+    TilePassPipeline passPipeline, LowerToAIEPassPipeline useLowerToAIEPipeline,
+    AMDAIEDevice targetDevice) {
   // Make sure that lowering_config is not preset on any compute ops.
   for (auto computeOp : computeOps) {
     if (getLoweringConfig<IREE::Codegen::LoweringConfigAttr>(computeOp))
@@ -814,7 +830,7 @@ static LogicalResult setTranslationInfoAndRootConfig(
     return entryPointFn.emitError("Case with no root ops not yet supported.");
 
   if (failed(setRootConfigImpl(entryPointFn, rootOperation, passPipeline,
-                               useLowerToAIEPipeline)))
+                               useLowerToAIEPipeline, targetDevice)))
     return failure();
   return success();
 }
@@ -823,9 +839,10 @@ static LogicalResult setTranslationInfoAndRootConfig(
 // Entry Point
 //===----------------------------------------------------------------------===//
 
-LogicalResult initAIELaunchConfig(
-    FunctionOpInterface funcOp, TilePassPipeline passPipeline,
-    LowerToAIEPassPipeline useLowerToAIEPipeline) {
+LogicalResult initAIELaunchConfig(FunctionOpInterface funcOp,
+                                  TilePassPipeline passPipeline,
+                                  LowerToAIEPassPipeline useLowerToAIEPipeline,
+                                  AMDAIEDevice targetDevice) {
   if (getTranslationInfo(funcOp)) return success();
 
   // TODO (nmeshram): Need a default pipeline for control flow cases.
@@ -834,7 +851,8 @@ LogicalResult initAIELaunchConfig(
 
   SmallVector<Operation *> computeOps = getComputeOps(funcOp);
   if (failed(setTranslationInfoAndRootConfig(funcOp, computeOps, passPipeline,
-                                             useLowerToAIEPipeline)))
+                                             useLowerToAIEPipeline,
+                                             targetDevice)))
     return failure();
 
   // The root configuration setting introduces `tensor.dim` operations.
