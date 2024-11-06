@@ -32,6 +32,7 @@ def run_conv_test(config, filename, n_repeats):
         lower_to_aie_pipeline="objectFifo",
         n_repeats=n_repeats,
     )
+    # Return True to indicate that the test ran.
     return True
 
 
@@ -49,11 +50,11 @@ class ConvolutionFromTemplate:
         self.labels = ["Convolution"]
 
     def run(self, config):
-        # Generate the mlir file
+        # Generate MLIR file:
         output_dir = config.output_dir
         filename = output_dir / f"{self.name}.mlir"
         self.generator.write_to_file(filename)
-        # Perform numerical comparison between AIE and CPU
+        # Perform numerical comparison between AIE and CPU:
         return run_conv_test(config, filename, n_repeats=2)
 
 
@@ -85,7 +86,6 @@ class MultipleDispatches:
 
 
 class BaseMatmul:
-
     def __init__(self, M, N, K, input_type, output_type):
         self.labels = []
         self.M = M
