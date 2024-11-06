@@ -261,6 +261,21 @@ static BlockArgument checkOptionalExtOps(Value val) {
   return blockArg;
 }
 
+/// Utility to identify if `linalgOp` is a matmul operation with an elementwise
+/// op downstream in its computation tree.
+bool isElementwiseConsumerOfMatmul(linalg::LinalgOp linalgOp) {
+  if (!isa<linalg::MatmulOp>(linalgOp) && !isMatmul(linalgOp)) {
+    return false;
+  }
+  for (Operation *userOp : linalgOp->getUsers()) {
+    auto linalgUser = dyn_cast<linalg::LinalgOp>(userOp);
+    if (linalgUser && isElementwise(linalgUser)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 /// Utility to match block body for matmul.
 static bool bodyMatcherForMatmul(Value yieldVal, Block *body) {
   Operation *addOp = yieldVal.getDefiningOp();

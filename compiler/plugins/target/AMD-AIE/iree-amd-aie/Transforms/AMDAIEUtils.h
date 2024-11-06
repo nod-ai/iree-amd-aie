@@ -98,6 +98,10 @@ bool isMatmulProducerOfElementwise(linalg::LinalgOp linalgOp);
 std::string utohexstr(uint32_t value, size_t width, bool header = true,
                       bool lowercase = false);
 
+/// Utility to identify if `linalgOp` is a matmul operation with an elementwise
+/// op downstream in its computation tree.
+bool isElementwiseConsumerOfMatmul(linalg::LinalgOp linalgOp);
+
 namespace detail {
 
 // Returns the largest number that perfectly divides `num` that
