@@ -529,17 +529,9 @@ def AMDAIE_NpuDmaCpyNdOp: AMDAIE_Op<"npu.dma_cpy_nd", [
     }
 
     // Return the source memory space as an attribute.
-    Attribute getSourceMemorySpace() {
+    std::optional<Attribute> getSourceMemorySpace() {
       return cast<LogicalObjectFifoType>(getConnectionOp().getSourceType())
         .getMemorySpace();
-    }
-
-    // Helper method to return the source memory space as an integer. If no 
-    // memory space attribute, this indicates a global memory space and we
-    // return 0. Else cast the memory space attribute to an integer. 
-    uint8_t getSourceMemorySpaceAsUInt() {
-      Attribute memSpace = getSourceMemorySpace();
-      return memSpace ? cast<IntegerAttr>(memSpace).getInt() : 0;
     }
 
     // Return the target memref type. This is retrieved using information from
@@ -550,17 +542,9 @@ def AMDAIE_NpuDmaCpyNdOp: AMDAIE_Op<"npu.dma_cpy_nd", [
     }
 
     // Return the target memory space as an attribute.
-    Attribute getTargetMemorySpace() {
+    std::optional<Attribute> getTargetMemorySpace() {
       return cast<LogicalObjectFifoType>(getConnectionOp().getTargetType())
         .getMemorySpace();
-    }
-
-    // Helper method to return the target memory space as an integer. If no
-    // memory space attribute, this indicates a global memory space and we
-    // return 0. Else cast the memory space attribute to an integer. 
-    uint8_t getTargetMemorySpaceAsUInt() {
-      Attribute memSpace = getTargetMemorySpace();
-      return memSpace ? cast<IntegerAttr>(memSpace).getInt() : 0;
     }
 
     BdIdOp getSourceBdIdOp() {
@@ -840,17 +824,9 @@ def AMDAIE_NpuCircularDmaCpyNdOp: AMDAIE_Op<"npu.circular_dma_cpy_nd", [
     }
 
     // Return the source memory space as an attribute.
-    Attribute getSourceMemorySpace() {
+    std::optional<Attribute> getSourceMemorySpace() {
       return cast<LogicalObjectFifoType>(getConnectionOp().getSourceType())
         .getMemorySpace();
-    }
-
-    // Helper method to return the source memory space as an integer. If no 
-    // memory space attribute, this indicates a global memory space and we
-    // return 0. Else cast the memory space attribute to an integer. 
-    uint8_t getSourceMemorySpaceAsUInt() {
-      Attribute memSpace = getSourceMemorySpace();
-      return memSpace ? cast<IntegerAttr>(memSpace).getInt() : 0;
     }
 
     // Return the target memref type. This is retrieved using information from
@@ -861,17 +837,9 @@ def AMDAIE_NpuCircularDmaCpyNdOp: AMDAIE_Op<"npu.circular_dma_cpy_nd", [
     }
 
     // Return the target memory space as an attribute.
-    Attribute getTargetMemorySpace() {
+    std::optional<Attribute> getTargetMemorySpace() {
       return cast<LogicalObjectFifoType>(getConnectionOp().getTargetType())
         .getMemorySpace();
-    }
-
-    // Helper method to return the target memory space as an integer. If no
-    // memory space attribute, this indicates a global memory space and we
-    // return 0. Else cast the memory space attribute to an integer. 
-    uint8_t getTargetMemorySpaceAsUInt() {
-      Attribute memSpace = getTargetMemorySpace();
-      return memSpace ? cast<IntegerAttr>(memSpace).getInt() : 0;
     }
 
     // A utility to create a new doubly strided operation from this one with a
@@ -1513,28 +1481,12 @@ class AMDAIE_DmaCpyNdBaseOp<string mnemonic, list<Trait> traits = []> :
     LogicalObjectFifoFromMemrefOp getSourceObjectFifo();
     LogicalObjectFifoFromMemrefOp getTargetObjectFifo();
 
-    Attribute getSourceMemorySpace() {
+    std::optional<Attribute> getSourceMemorySpace() {
       return cast<LogicalObjectFifoType>(getSourceType()).getMemorySpace();
     }
 
-    /// Helper method to return the source memory space as an integer. If no 
-    /// memory space attribute exists, this indicates a global memory space and
-    /// we return 0. Else we cast the memory space attribute to an integer. 
-    uint8_t getSourceMemorySpaceAsUInt() {
-      Attribute memSpace = getSourceMemorySpace();
-      return memSpace ? cast<IntegerAttr>(memSpace).getInt() : 0;
-    }
-
-    Attribute getTargetMemorySpace() {
+    std::optional<Attribute> getTargetMemorySpace() {
       return cast<LogicalObjectFifoType>(getTargetType()).getMemorySpace();
-    }
-
-    /// Helper method to return the target memory space as an integer. If no
-    /// memory space attribute exists, this indicates a global memory space and
-    /// we return 0. Else we cast the memory space attribute to an integer.
-    uint8_t getTargetMemorySpaceAsUInt() {
-      Attribute memSpace = getTargetMemorySpace();
-      return memSpace ? cast<IntegerAttr>(memSpace).getInt() : 0;
     }
     
     // A utility to create a new doubly strided operation from this one with a
