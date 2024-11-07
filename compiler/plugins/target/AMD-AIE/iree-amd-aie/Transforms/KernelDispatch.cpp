@@ -179,8 +179,7 @@ FailureOr<ParameterSetting> ParameterSetting::create(
   // the element types of all tensors which need to be allocated in memory
   // simultaneously.
   FailureOr<unsigned> maybeScaleFactor =
-      isObjectFifo ? getTilingScaleFactor(initType.getElementType())
-                   : getTilingScaleFactor(lhsType.getElementType());
+                   getTilingScaleFactor(lhsType.getElementType());
   if (failed(maybeScaleFactor)) {
     return linalgOp.emitOpError(
         "does not have the expected bitwidth (64, 32, 16, or 8), could not "
@@ -230,10 +229,10 @@ FailureOr<ParameterSetting> ParameterSetting::create(
     uint32_t m0Pack = (M0 / 2) % m1Pack == 0 ? (M0 / 2) : M0;
     uint32_t n0Pack = (N0 / 2) % n1Pack == 0 ? (N0 / 2) : N0;
 
-    // For matmul ops, make the most use of L1 memory by scaling the K tiling
-    // dimension.
-    uint32_t kPackScale = isElementwiseConsumerOfMatmul(linalgOp) ? 1 : 2;
-    uint32_t k0Pack = findLargestFactor(K, kPackScale * maxL1Size);
+    // For AIR pipeline, the output is not double buffered, so the K tile size
+    // can have a larger scale factor.
+    auto maxL1SizeForK = isObjectFifo ? 32 : 16 * scaleFactor;
+    uint32_t k0Pack = findLargestFactor(K, maxL1SizeForK);
 
     return ParameterSetting{M0,     N0,     K0,     M1,     N1,     K1,
                             m0Pack, n0Pack, k0Pack, m1Pack, n1Pack, k1Pack};
