@@ -119,6 +119,9 @@ TEST_F(MatMulDispatchTest, SubmitEmpty) {
 TEST_P(MatMulDispatchTest, DispatchMatmul) {
   PrepareMatmulExecutable();
 
+  EXPECT_TRUE(false);
+  actually this doesn't even get compiled 
+
   // Create input buffer.
   constexpr iree_device_size_t WIDTH = 32;
   constexpr iree_device_size_t M = WIDTH, K = WIDTH, N = WIDTH;
