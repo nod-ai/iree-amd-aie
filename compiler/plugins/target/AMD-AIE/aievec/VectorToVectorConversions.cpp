@@ -1065,6 +1065,27 @@ FailureOr<Value> getAlignedTransferRead(
 
   Value oldIndex = readOp.getIndices().back();
 
+  // Early exit case: If the current `tranfer_read` offset is already multiple
+  // of alignment, can return without any modification.
+  //
+  // Below, we check if the offset is defined by `affine.apply`, if then if the
+  // `affine.apply` is always a multiple of alignment.
+  //
+  // TODO(newling) generalize - what to case where the offset is not defined by
+  //               `affine.apply`.
+  // TODO(newling) make this reusable for canonicalization: a
+  //               `transfer_read` followed by `aievec.ext` op can be simplified
+  //               with this approach.
+  if (auto offsetAffineApplyOp =
+          oldIndex.getDefiningOp<affine::AffineApplyOp>()) {
+    AffineMap affineMap = offsetAffineApplyOp.getAffineMap();
+    assert(affineMap.getNumResults() == 1 &&
+           "already established that destination of transfer_read is 1D");
+    AffineExpr resultExpr = affineMap.getResult(0);
+    int64_t largestKnownDivisor = resultExpr.getLargestKnownDivisor();
+    if (largestKnownDivisor % alignElements == 0) return readOp.getVector();
+  }
+
   Value offset = rewriter.createOrFold<affine::AffineApplyOp>(
       loc, moduloMap, SmallVector<Value, 1>{oldIndex});
 
