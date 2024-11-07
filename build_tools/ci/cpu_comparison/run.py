@@ -1081,9 +1081,7 @@ class Tests:
         self.register(LegacyMatmul(32, 32, 32, "i32", "i32", n_runs=1000))
 
         i32_shapes_small = [
-            "32x32x32",
             "64x32x128",
-            "128x32x64",
             "128x32x64",
             "128x32x128",
             "256x32x256",
