@@ -389,6 +389,7 @@ def generate_aie_vmfb(
         config.iree_compile_exe,
         test_file,
         "--iree-hal-target-backends=amd-aie",
+        f"--iree-amdaie-target-device={config.target_device}",
         f"--iree-amdaie-tile-pipeline={tile_pipeline}",
         f"--iree-amdaie-lower-to-aie-pipeline={lower_to_aie_pipeline}",
         "--iree-amdaie-matmul-elementwise-fusion",
@@ -526,6 +527,7 @@ class TestConfig:
         device_hal,
         xrt_lite_n_core_rows,
         xrt_lite_n_core_cols,
+        target_device,
     ):
         self.output_dir = output_dir
         self.iree_install_dir = iree_install_dir
@@ -545,6 +547,7 @@ class TestConfig:
         self.device_hal = device_hal
         self.xrt_lite_n_core_rows = xrt_lite_n_core_rows
         self.xrt_lite_n_core_cols = xrt_lite_n_core_cols
+        self.target_device = target_device
 
         # Try get the xrt and (linux) kernel versions.
         self.linux_kernel = "undetermined"
@@ -645,6 +648,7 @@ class TestConfig:
             f"""
         Settings and versions used in all tests
         -+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-
+        target_device:        {self.target_device}
         do_not_run_aie:       {self.do_not_run_aie}
         file_dir:             {self.file_dir}
         iree_compile_exe:     {self.iree_compile_exe}
@@ -668,6 +672,8 @@ class TestConfig:
 
         Some information on the above settings / versions
         =================================================
+        target_device
+          The NPU device to be targeted (npu1_4col, npu4).
         do_not_run_aie
           If True, then the AIE backend will not be run. This is useful for
           ensuring that everything up to the AIE run and numerical comparison
@@ -959,6 +965,7 @@ def all_tests(
     device_hal,
     xrt_lite_n_core_rows,
     xrt_lite_n_core_cols,
+    target_device,
 ):
     """
     There are a few ways to add tests to this script:
@@ -1003,6 +1010,7 @@ def all_tests(
         device_hal,
         xrt_lite_n_core_rows,
         xrt_lite_n_core_cols,
+        target_device,
     )
     if verbose:
         print(config)
@@ -1071,6 +1079,7 @@ if __name__ == "__main__":
     parser.add_argument("--vitis-dir", type=abs_path)
     parser.add_argument("--xrt_lite_n_core_rows", type=int)
     parser.add_argument("--xrt_lite_n_core_cols", type=int)
+    parser.add_argument("--target_device", type=str, required=True)
 
     # TODO(newling) make bool options boolean, not integer (tried but had issues)
     parser.add_argument(
@@ -1187,4 +1196,5 @@ if __name__ == "__main__":
         args.device_hal,
         args.xrt_lite_n_core_rows,
         args.xrt_lite_n_core_cols,
+        args.target_device,
     )

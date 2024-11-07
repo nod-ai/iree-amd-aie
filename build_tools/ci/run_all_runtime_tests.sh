@@ -35,6 +35,7 @@ $this_dir/cpu_comparison/run.py \
   $IREE_INSTALL_DIR \
   $PEANO_INSTALL_DIR \
   --vitis-dir $VITIS_DIR \
+  --target_device "npu1_4col" \
   --xrt_lite_n_core_rows=$XRT_LITE_N_CORE_ROWS \
   --xrt_lite_n_core_cols=$XRT_LITE_N_CORE_COLS \
   -v
