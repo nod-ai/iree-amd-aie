@@ -90,9 +90,13 @@ static const std::string _CHESS_INTRINSIC_WRAPPER_CPP{
 #include "chess_intrinsic_wrapper.cpp"
 };
 
-// This is a string that contains a mm kernel.
-static const std::string _MM_CC{
-#include "mm.cc"
+// This is a string that contains a mm kernel for npu1.
+static const std::string _MM_NPU1_CC{
+#include "mm_npu1.cc"
+};
+// This is a string that contains a mm kernel for npu4.
+static const std::string _MM_NPU4_CC{
+#include "mm_npu4.cc"
 };
 
 using namespace std::placeholders;
@@ -524,6 +528,14 @@ static LogicalResult generateCoreElfFiles(
   auto tileOps = deviceOp.getOps<AIE::TileOp>();
   std::string errorMessage;
 
+  std::string ukernelFileContent = _MM_NPU1_CC;
+  std::string ukernelFileName = "mm_npu1.cc";
+  std::string ukernelObjectName = "mm_npu1.o";
+  if (npuVersion == "npu4") {
+    ukernelFileContent = _MM_NPU4_CC;
+    ukernelFileName = "mm_npu4.cc";
+    ukernelObjectName = "mm_npu4.o";
+  }
   for (AIE::TileOp tileOp : tileOps) {
     int col = tileOp.getCol();
     int row = tileOp.getRow();
@@ -550,11 +562,12 @@ static LogicalResult generateCoreElfFiles(
                         "you're using peano)";
         return failure();
       }
-      if (!std::filesystem::exists(cwd / "mm.o")) {
+      if (!std::filesystem::exists(cwd / ukernelObjectName)) {
+        llvm::outs() << "Compiling ukernel = " << ukernelFileName << "\n";
         mmObjectFilePath = assembleStringUsingChess(
-            /*inputFileStr=*/_MM_CC,
-            /*inputFileName=*/"mm.cc",
-            /*outputFileName=*/"mm.o",
+            /*inputFileStr=*/ukernelFileContent,
+            /*inputFileName=*/ukernelFileName,
+            /*outputFileName=*/ukernelObjectName,
             /*outputDir=*/cwd,
             /*extraArgs*/ std::vector<std::string>{},
             /*workDir=*/tempDir,
@@ -562,8 +575,10 @@ static LogicalResult generateCoreElfFiles(
             /*npuVersion*/ npuVersion, verbose);
         if (failed(mmObjectFilePath)) return failure();
       } else {
-        mmObjectFilePath = cwd / "mm.o";
+        mmObjectFilePath = cwd / ukernelObjectName;
       }
+      llvm::outs() << "Fetched compiled ukernel = " << ukernelObjectName
+                   << "\n";
     }
 
     if (useChess) {

@@ -4,7 +4,7 @@
 // config is set to "none".
 func.func @disabled_ukernel(%arg0 : tensor<?x?x?x?xi32>, %arg1 : tensor<?x?x?x?xi32>,
     %arg2 : tensor<?x?x?x?xi32>) -> tensor<?x?x?x?xi32> attributes {
-  hal.executable.target = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_arch = "chip-tbd", ukernels = "none"}>
+  hal.executable.target = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
 } {
   %0 = linalg.generic {indexing_maps = [affine_map<(d0, d1, d2, d3, d4, d5) -> (d2, d0, d3, d5)>,
                                         affine_map<(d0, d1, d2, d3, d4, d5) -> (d1, d2, d5, d4)>,
@@ -30,7 +30,7 @@ func.func @disabled_ukernel(%arg0 : tensor<?x?x?x?xi32>, %arg1 : tensor<?x?x?x?x
 
 func.func @generic_matmul_i32i32i32_pad_pack(%arg0 : tensor<8x16x4x8xi32>, %arg1 : tensor<16x8x8x4xi32>,
     %arg2 : tensor<16x16x4x4xi32>) -> tensor<16x16x4x4xi32> attributes {
-  hal.executable.target = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_arch = "chip-tbd", ukernels = "all"}>
+  hal.executable.target = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "all"}>
 } {
   %0 = linalg.generic {indexing_maps = [affine_map<(d0, d1, d2, d3, d4, d5) -> (d2, d0, d3, d5)>,
                                         affine_map<(d0, d1, d2, d3, d4, d5) -> (d1, d2, d5, d4)>,
@@ -56,13 +56,13 @@ func.func @generic_matmul_i32i32i32_pad_pack(%arg0 : tensor<8x16x4x8xi32>, %arg1
 //      CHECK:   %[[MICRO_KERNEL:.+]] = iree_codegen.ukernel.generic "matmul_i32_i32_i32_64x64x64_4x8x4"
 // CHECK-SAME:       ins(%[[ARG0]], %[[ARG1]] :
 // CHECK-SAME:       outs(%[[ARG2]] :
-// CHECK-SAME:       fn_def_attrs {link_with = "{{.*}}mm.o"}
+// CHECK-SAME:       fn_def_attrs {link_with = "{{.*}}mm_npu1.o"}
 // CHECK-SAME:       strided_outer_dims(0)
 //      CHECK:   return %[[MICRO_KERNEL]]
 
 // -----
 
-#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_arch = "chip-tbd", ukernels = "all"}>
+#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "all"}>
 #map = affine_map<(d0, d1, d2, d3, d4, d5) -> (d2, d0, d3, d5)>
 #map1 = affine_map<(d0, d1, d2, d3, d4, d5) -> (d1, d2, d5, d4)>
 #map2 = affine_map<(d0, d1, d2, d3, d4, d5) -> (d1, d0, d3, d4)>
@@ -92,13 +92,13 @@ module {
 //      CHECK:   %[[MICRO_KERNEL:.+]] = iree_codegen.ukernel.generic "matmul_bf16_bf16_f32_64x64x64_4x8x4"
 // CHECK-SAME:       ins(%[[ARG0]], %[[ARG1]] :
 // CHECK-SAME:       outs(%[[ARG2]] :
-// CHECK-SAME:       fn_def_attrs {link_with = "{{.*}}mm.o"}
+// CHECK-SAME:       fn_def_attrs {link_with = "{{.*}}mm_npu1.o"}
 // CHECK-SAME:       strided_outer_dims(0)
 //      CHECK:   return %[[MICRO_KERNEL]]
 
 // -----
 
-#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_arch = "chip-tbd", ukernels = "all"}>
+#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "all"}>
 #map = affine_map<(d0, d1, d2, d3, d4, d5) -> (d2, d0, d3, d5)>
 #map1 = affine_map<(d0, d1, d2, d3, d4, d5) -> (d1, d2, d5, d4)>
 #map2 = affine_map<(d0, d1, d2, d3, d4, d5) -> (d1, d0, d3, d4)>
@@ -131,13 +131,13 @@ module {
 //      CHECK:   %[[MICRO_KERNEL:.+]] = iree_codegen.ukernel.generic "matmul_bf16_bf16_f32_64x64x64_4x8x4"
 // CHECK-SAME:       ins(%[[ARG0]], %[[ARG1]] :
 // CHECK-SAME:       outs(%[[ARG2]] :
-// CHECK-SAME:       fn_def_attrs {link_with = "{{.*}}mm.o"}
+// CHECK-SAME:       fn_def_attrs {link_with = "{{.*}}mm_npu1.o"}
 // CHECK-SAME:       strided_outer_dims(0)
 //      CHECK:   return %[[MICRO_KERNEL]]
 
 // -----
 
-#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_arch = "chip-tbd", ukernels = "all"}>
+#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "all"}>
 #map = affine_map<(d0, d1, d2, d3, d4, d5) -> (d2, d0, d3, d5)>
 #map1 = affine_map<(d0, d1, d2, d3, d4, d5) -> (d1, d2, d5, d4)>
 #map2 = affine_map<(d0, d1, d2, d3, d4, d5) -> (d1, d0, d3, d4)>
@@ -170,14 +170,14 @@ module {
 //      CHECK:   %[[MICRO_KERNEL:.+]] = iree_codegen.ukernel.generic "matmul_bf16_bf16_f32_32x32x32_4x8x4"
 // CHECK-SAME:       ins(%[[ARG0]], %[[ARG1]] :
 // CHECK-SAME:       outs(%[[ARG2]] :
-// CHECK-SAME:       fn_def_attrs {link_with = "{{.*}}mm.o"}
+// CHECK-SAME:       fn_def_attrs {link_with = "{{.*}}mm_npu1.o"}
 // CHECK-SAME:       strided_outer_dims(0)
 //      CHECK:   return %[[MICRO_KERNEL]]
 
 // -----
 
 func.func @zero_fill(%arg0 : tensor<16x16x4x4xbf16>) -> tensor<16x16x4x4xbf16> attributes {
-  hal.executable.target = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_arch = "chip-tbd", ukernels = "all"}>
+  hal.executable.target = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "all"}>
 } {
   %cst = arith.constant 0.0 : bf16
   %fill = linalg.fill ins(%cst : bf16) outs(%arg0 : tensor<16x16x4x4xbf16>) -> tensor<16x16x4x4xbf16>
@@ -188,14 +188,14 @@ func.func @zero_fill(%arg0 : tensor<16x16x4x4xbf16>) -> tensor<16x16x4x4xbf16> a
 //  CHECK-NOT:   linalg.fill
 //      CHECK:   %[[MICRO_KERNEL:.+]] = iree_codegen.ukernel.generic "zero_bf16_64x64"
 // CHECK-SAME:       outs(%[[ARG0]] :
-// CHECK-SAME:       fn_def_attrs {link_with = "{{.*}}mm.o"}
+// CHECK-SAME:       fn_def_attrs {link_with = "{{.*}}mm_npu1.o"}
 // CHECK-SAME:       strided_outer_dims(0)
 //      CHECK:   return %[[MICRO_KERNEL]]
 
 // -----
 
 func.func @non_zero_fill(%arg0 : tensor<16x16x4x4xbf16>) -> tensor<16x16x4x4xbf16> attributes {
-  hal.executable.target = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_arch = "chip-tbd", ukernels = "all"}>
+  hal.executable.target = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "all"}>
 } {
   %cst = arith.constant 7.0 : bf16
   %fill = linalg.fill ins(%cst : bf16) outs(%arg0 : tensor<16x16x4x4xbf16>) -> tensor<16x16x4x4xbf16>
@@ -209,7 +209,7 @@ func.func @non_zero_fill(%arg0 : tensor<16x16x4x4xbf16>) -> tensor<16x16x4x4xbf1
 
 func.func @zero_fill_with_matmul(%arg0 : tensor<8x16x4x8xbf16>, %arg1 : tensor<16x8x8x4xbf16>,
     %arg2 : tensor<16x16x4x4xbf16>) -> tensor<16x16x4x4xbf16> attributes {
-  hal.executable.target = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_arch = "chip-tbd", ukernels = "all"}>
+  hal.executable.target = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "all"}>
 } {
   %cst = arith.constant 0.0 : bf16
   %fill = linalg.fill ins(%cst : bf16) outs(%arg2 : tensor<16x16x4x4xbf16>) -> tensor<16x16x4x4xbf16>
@@ -235,13 +235,13 @@ func.func @zero_fill_with_matmul(%arg0 : tensor<8x16x4x8xbf16>, %arg1 : tensor<1
 //  CHECK-NOT:   linalg.fill
 //      CHECK:   %[[ZERO_FILL_MICRO_KERNEL:.+]] = iree_codegen.ukernel.generic "zero_bf16_64x64"
 // CHECK-SAME:       outs(%[[ARG2]] :
-// CHECK-SAME:       fn_def_attrs {link_with = "{{.*}}mm.o"}
+// CHECK-SAME:       fn_def_attrs {link_with = "{{.*}}mm_npu1.o"}
 // CHECK-SAME:       strided_outer_dims(0)
 //  CHECK-NOT:   linalg.generic
 //      CHECK:   %[[MATMUL_MICRO_KERNEL:.+]] = iree_codegen.ukernel.generic "matmul_bf16_bf16_bf16_64x64x64_4x8x4"
 // CHECK-SAME:       ins(%[[ARG0]], %[[ARG1]] :
 // CHECK-SAME:       outs(%[[ZERO_FILL_MICRO_KERNEL]] :
-// CHECK-SAME:       fn_def_attrs {link_with = "{{.*}}mm.o"}
+// CHECK-SAME:       fn_def_attrs {link_with = "{{.*}}mm_npu1.o"}
 // CHECK-SAME:       strided_outer_dims(0)
 //      CHECK:   return %[[MATMUL_MICRO_KERNEL]]
 
@@ -254,7 +254,7 @@ func.func @zero_fill_with_matmul(%arg0 : tensor<8x16x4x8xbf16>, %arg1 : tensor<1
 func.func @zero_fill_matmul_elmwise(%arg0 : tensor<8x16x4x8xbf16>, %arg1 : tensor<16x8x8x4xbf16>,
     %arg2 : tensor<16x16x4x4xbf16>) -> tensor<16x16x4x4xbf16> attributes {
   hal.executable.target = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb",
-  {target_arch = "chip-tbd", ukernels = "all"}>
+  {target_device = "npu1_4col", ukernels = "all"}>
 } {
   %cst = arith.constant 0.0 : bf16
   %cst_1 = arith.constant 1.0 : bf16
@@ -298,7 +298,7 @@ func.func @zero_fill_matmul_elmwise(%arg0 : tensor<8x16x4x8xbf16>, %arg1 : tenso
 
 // -----
 
-#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_arch = "chip-tbd", ukernels = "all"}>
+#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu4", ukernels = "all"}>
 #map = affine_map<(d0, d1, d2, d3, d4, d5) -> (d2, d0, d3, d5)>
 #map1 = affine_map<(d0, d1, d2, d3, d4, d5) -> (d1, d2, d5, d4)>
 #map2 = affine_map<(d0, d1, d2, d3, d4, d5) -> (d1, d0, d3, d4)>
@@ -337,6 +337,6 @@ module {
 //      CHECK:   %[[MICRO_KERNEL:.+]] = iree_codegen.ukernel.generic "matmul_bf16_bf16_f32_32x32x32_8x8x8"
 // CHECK-SAME:       ins(%[[ARG0]], %[[ARG1]] :
 // CHECK-SAME:       outs(%[[ARG2]] :
-// CHECK-SAME:       fn_def_attrs {link_with = "{{.*}}mm.o"}
+// CHECK-SAME:       fn_def_attrs {link_with = "{{.*}}mm_npu4.o"}
 // CHECK-SAME:       strided_outer_dims(0)
 //      CHECK:   return %[[MICRO_KERNEL]]
