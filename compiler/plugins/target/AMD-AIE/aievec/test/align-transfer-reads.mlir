@@ -164,7 +164,7 @@ func.func @test_i8_128bytes(%arg0: index) -> vector<128xi8> {
 // -----
 
 // If a `transfer_read` is already aligned, then the IR should be unchanged.
-// This tests sheck alignments of
+// This test check alignments of
 //  - 16 bytes (insufficient alignment, 16%32 != 0)
 //  - 32 bytes (sufficient alignment, 32%32 == 0)
 //  - 48 bytes (insufficient alignment, 48%32 != 0)
