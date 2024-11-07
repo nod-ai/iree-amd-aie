@@ -168,6 +168,7 @@ jobs:
             $PWD/iree-install \
             $PWD/llvm-aie \
             --vitis-dir /opt/Xilinx/Vitis/2024.2 \
+            --target_device "npu1_4col" \
             --reset-npu-between-runs -v \
             --xrt_lite_n_core_rows=$XRT_LITE_N_CORE_ROWS \
             --xrt_lite_n_core_cols=$XRT_LITE_N_CORE_COLS
