@@ -111,8 +111,8 @@ jobs:
           path: ${{ env.CACHE_DIR }}
           key: ${{ env.CACHE_KEY }}
 
-  test_linux:
-    name: E2E Test linux
+  test_linux_phoenix:
+    name: E2E Test Linux Phoenix
     needs: build_and_ctest
     strategy:
       fail-fast: false
@@ -195,6 +195,60 @@ jobs:
             --peano-install-dir=$PWD/llvm-aie \
             --xrt_lite_n_core_rows=$XRT_LITE_N_CORE_ROWS \
             --xrt_lite_n_core_cols=$XRT_LITE_N_CORE_COLS
+
+      - name: XRT-LITE tests
+        run: |
+          DEVICE_TEST_DIR="$PWD/iree-install/device_tests"
+          for t in $(ls $DEVICE_TEST_DIR); do
+            $DEVICE_TEST_DIR/$t --xrt_lite_n_core_rows=$XRT_LITE_N_CORE_ROWS --xrt_lite_n_core_cols=$XRT_LITE_N_CORE_COLS
+          done
+
+  test_linux_strix:
+    name: E2E Test Linux Strix
+    needs: build_and_ctest
+    strategy:
+      fail-fast: false
+      matrix:
+        runs-on: [linux-strix]
+    runs-on: ${{ matrix.runs-on }}
+    env:
+      XILINXD_LICENSE_FILE: /opt/xilinx/Xilinx.lic
+    steps:
+      - name: "Checking out repository" # for test scripts
+        uses: actions/checkout@8f4b7f84864484a7bf31766abe9204da3cbe65b3 # v3.5.0
+        with:
+          submodules: false # not required for testbench
+          
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: linux_x86_64_iree_packages
+
+      - name: Extract artifact
+        run: |
+          tar -xvf iree-dist-linux.tar
+          echo "IREE_INSTALL_DIR=$PWD/iree-install" >> $GITHUB_ENV
+          echo "PYTHONPATH=$PWD/iree-install/python_packages/iree_compiler:$PWD/iree-install/python_packages/iree_runtime" >> $GITHUB_ENV
+
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+          
+      - name: Create venv and install dependencies
+        run: |
+          python -m venv .venv
+          source .venv/bin/activate
+          pip install -r tests/requirements.txt
+
+      - name: Query device info
+        run: |
+          source .venv/bin/activate
+          echo "aie-metadata"
+          python build_tools/ci/amdxdna_driver_utils/amdxdna_ioctl.py --aie-metadata
+          echo "aie-version"
+          python build_tools/ci/amdxdna_driver_utils/amdxdna_ioctl.py --aie-version
+          echo "XRT_LITE_N_CORE_ROWS=$(python build_tools/ci/amdxdna_driver_utils/amdxdna_ioctl.py --num-rows)" >> $GITHUB_ENV
+          echo "XRT_LITE_N_CORE_COLS=$(python build_tools/ci/amdxdna_driver_utils/amdxdna_ioctl.py --num-cols)" >> $GITHUB_ENV
 
       - name: XRT-LITE tests
         run: |
