@@ -1280,8 +1280,6 @@ if __name__ == "__main__":
     parser.add_argument("--vitis-dir", type=abs_path)
     parser.add_argument("--xrt_lite_n_core_rows", type=int)
     parser.add_argument("--xrt_lite_n_core_cols", type=int)
-
-    # TODO: this must be documented whth a help string.
     parser.add_argument("--target_device", type=str, required=True)
 
     # TODO(newling) make bool options boolean, not integer (tried but had issues)

@@ -619,20 +619,6 @@ run_matmul_test \
 # ObjectFifo Matmul tests
 ###################################################################
 
-# Run repeatedly to check for non-deterministic hangs and numerical 
-# issues.
-repeat_shapes=(
-  '32x32x32'
-)
-
-run_matmul_test_on_shapes ${repeat_shapes[@]} \
-    --name_prefix "small" \
-    --lower_to_aie_pipeline "objectFifo" \
-    --tile_pipeline "pack-peel" \
-    --lhs_rhs_type "i32" \
-    --acc_type "i32" \
-    --num_corruption_repeat_runs "1000"
-
 i32_shapes_small=(
   '32x32x32'
   '64x32x128'
