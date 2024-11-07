@@ -161,3 +161,57 @@ func.func @test_i8_128bytes(%arg0: index) -> vector<128xi8> {
 }
 
 
+// -----
+
+// If a `transfer_read` is already aligned, then the IR should be unchanged.
+// This tests sheck alignments of
+//  - 16 bytes (insufficient alignment, 16%32 != 0)
+//  - 32 bytes (sufficient alignment, 32%32 == 0)
+//  - 48 bytes (insufficient alignment, 48%32 != 0)
+//  - 96 bytes (sufficient alignment, 96%32 == 0)
+
+// Find the 4 maps:
+// CHECK: #[[MAP16:.*]] = affine_map<()[s0] -> (s0 * 16)>
+// CHECK: #[[MAP32:.*]] = affine_map<()[s0] -> (s0 * 32)>
+// CHECK: #[[MAP48:.*]] = affine_map<()[s0] -> (s0 * 48)>
+// CHECK: #[[MAP96:.*]] = affine_map<()[s0] -> (s0 * 96)>
+
+// Find the additional map used for non-aligned cases:
+// CHECK: #[[MOD_MAP:.*]] = affine_map<(d0) -> (d0 mod 32)>
+#map16 = affine_map<()[s0] -> (s0 * 16)>
+#map32 = affine_map<()[s0] -> (s0 * 32)>
+#map48 = affine_map<()[s0] -> (s0 * 48)>
+#map96 = affine_map<()[s0] -> (s0 * 96)>
+#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
+module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
+// Return 4 vectors of 32 bytes each, one from each map:
+func.func @multi_align_test(%arg0: index) -> (vector<32xi8>, vector<32xi8>, vector<32xi8>, vector<32xi8>) {
+  %cst = arith.constant 0 : i8
+
+  // CHECK: %[[ALLOC:.*]] = memref.alloc() : memref<576xi8>
+  %alloc = memref.alloc() : memref<576xi8>
+
+  // Find the 4 mapped indices:
+  // CHECK-DAG: %[[FROM_16:.*]] = affine.apply #[[MAP16]]
+  // CHECK-DAG: %[[FROM_32:.*]] = affine.apply #[[MAP32]]
+  // CHECK-DAG: %[[FROM_48:.*]] = affine.apply #[[MAP48]]
+  // CHECK-DAG: %[[FROM_96:.*]] = affine.apply #[[MAP96]]
+
+  // We expect FROM_16 and FROM_48 to used by subsequent affine.apply ops to
+  // compute the new offsets (because they are insufficiently aligned), and
+  // FROM_32 and FROM_96 to be used directly in the transfer_read ops:
+  // CHECK-DAG: affine.apply #[[MOD_MAP]](%[[FROM_16]])
+  // CHECK-DAG: affine.apply #[[MOD_MAP]](%[[FROM_48]])
+  // CHECK-DAG: vector.transfer_read %[[ALLOC]][%[[FROM_32]]]
+  // CHECK-DAG: vector.transfer_read %[[ALLOC]][%[[FROM_96]]]
+  %from_16 = affine.apply #map16()[%arg0]
+  %from_32 = affine.apply #map32()[%arg0]
+  %from_48 = affine.apply #map48()[%arg0]
+  %from_96 = affine.apply #map96()[%arg0]
+  %1 = vector.transfer_read %alloc[%from_16], %cst {in_bounds = [true]} : memref<576xi8>, vector<32xi8>
+  %2 = vector.transfer_read %alloc[%from_32], %cst {in_bounds = [true]} : memref<576xi8>, vector<32xi8>
+  %3 = vector.transfer_read %alloc[%from_48], %cst {in_bounds = [true]} : memref<576xi8>, vector<32xi8>
+  %4 = vector.transfer_read %alloc[%from_96], %cst {in_bounds = [true]} : memref<576xi8>, vector<32xi8>
+  return %1, %2, %3, %4 : vector<32xi8>, vector<32xi8>, vector<32xi8>, vector<32xi8>
+}
+}
