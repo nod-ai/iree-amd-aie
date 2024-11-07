@@ -250,9 +250,18 @@ jobs:
           echo "XRT_LITE_N_CORE_ROWS=$(python build_tools/ci/amdxdna_driver_utils/amdxdna_ioctl.py --num-rows)" >> $GITHUB_ENV
           echo "XRT_LITE_N_CORE_COLS=$(python build_tools/ci/amdxdna_driver_utils/amdxdna_ioctl.py --num-cols)" >> $GITHUB_ENV
 
-      - name: XRT-LITE tests
+      - name : E2E comparison of AIE to llvm-cpu
         run: |
-          DEVICE_TEST_DIR="$PWD/iree-install/device_tests"
-          for t in $(ls $DEVICE_TEST_DIR); do
-            $DEVICE_TEST_DIR/$t --xrt_lite_n_core_rows=$XRT_LITE_N_CORE_ROWS --xrt_lite_n_core_cols=$XRT_LITE_N_CORE_COLS
-          done
+          source .venv/bin/activate
+          python build_tools/ci/cpu_comparison/run.py \
+            test_aie_vs_cpu \
+            $PWD/iree-install \
+            /opt/xilinx/Vitis/2024.2 \
+            --vitis-dir /opt/xilinx/Vitis/2024.2 \
+            --target_device "npu4" \
+            --use_chess "1" \
+            --reset-npu-between-runs \
+            --xrt_lite_n_core_rows=$XRT_LITE_N_CORE_ROWS \
+            --xrt_lite_n_core_cols=$XRT_LITE_N_CORE_COLS \
+            --tests "vanilla_matmul_32_32_32_i32_i32" \
+            -v
