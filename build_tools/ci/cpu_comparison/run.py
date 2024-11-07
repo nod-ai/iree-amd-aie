@@ -1076,9 +1076,9 @@ if __name__ == "__main__":
     parser.add_argument("iree_install_dir", type=abs_path)
     parser.add_argument("peano_install_dir", type=abs_path)
     parser.add_argument("--xrt-dir", type=abs_path)
-    parser.add_argument("--vitis-dir", type=abs_path, required=True)
-    parser.add_argument("--xrt_lite_n_core_rows", type=int, required=True)
-    parser.add_argument("--xrt_lite_n_core_cols", type=int, required=True)
+    parser.add_argument("--vitis-dir", type=abs_path)
+    parser.add_argument("--xrt_lite_n_core_rows", type=int)
+    parser.add_argument("--xrt_lite_n_core_cols", type=int)
     parser.add_argument("--target_device", type=str, required=True)
 
     # TODO(newling) make bool options boolean, not integer (tried but had issues)
