@@ -21,19 +21,9 @@ from input_generator import (
     load_input,
     get_output_type,
     np_from_binfile,
+    f32_to_bf16,
+    bf16_to_f32,
 )
-
-
-def run_conv_test(config, filename, n_repeats):
-    aie_vs_llvm_cpu(
-        config,
-        filename,
-        tile_pipeline="conv-decompose",
-        lower_to_aie_pipeline="objectFifo",
-        n_repeats=n_repeats,
-    )
-    # Return True to indicate that the test ran.
-    return True
 
 
 class ConvolutionFromTemplate:
@@ -54,8 +44,15 @@ class ConvolutionFromTemplate:
         output_dir = config.output_dir
         filename = output_dir / f"{self.name}.mlir"
         self.generator.write_to_file(filename)
-        # Perform numerical comparison between AIE and CPU:
-        return run_conv_test(config, filename, n_repeats=2)
+        aie_vs_llvm_cpu(
+            config,
+            filename,
+            tile_pipeline="conv-decompose",
+            lower_to_aie_pipeline="objectFifo",
+            n_repeats=2,
+        )
+        # Return True to indicate that the test ran.
+        return True
 
 
 class ConvolutionNHWCQ:
@@ -66,7 +63,14 @@ class ConvolutionNHWCQ:
     def run(self, config):
         files_dir = config.file_dir / "test_files"
         filename = files_dir / "conv2d_nhwc_q.mlir"
-        return run_conv_test(config, filename, n_repeats=1)
+        aie_vs_llvm_cpu(
+            config,
+            filename,
+            tile_pipeline="conv-decompose",
+            lower_to_aie_pipeline="objectFifo",
+            n_repeats=1,
+        )
+        return True
 
 
 class MultipleDispatches:
@@ -159,6 +163,127 @@ class VanillaMatmul(BaseMatmul):
             self.filename,
         )
 
+        return True
+
+
+class LegacyMatmul(BaseMatmul):
+    """
+    Ported from run_matmul_test.sh (Moving all tests over is work in progress).
+
+    These tests use numpy as a baseline.
+    """
+
+    # TODO(newling) Make 'MxKxN' the default everywhere.
+    def __init__(
+        self,
+        M,
+        K,
+        N,
+        input_type,
+        acc_type,
+        n_runs=1,
+        approximation_threshold=20000,
+        seed=1,
+        additional_labels=[],
+    ):
+        super().__init__(M, N, K, input_type, acc_type)
+        self.n_runs = n_runs
+        self.approximation_threshold = approximation_threshold
+        self.seed = seed
+        self.name = f"legacy_matmul_{M}_{N}_{K}_{input_type}_{acc_type}"
+        self.labels.append("LegacyMatmul")
+        self.labels += additional_labels
+
+    def run_local(self, config, input_args, post_processor, baseline, raise_failure):
+        return aie_vs_baseline(
+            config,
+            self.filename,
+            input_args,
+            baseline,
+            use_ukernel=False,
+            tile_pipeline="pack-peel",
+            lower_to_aie_pipeline="objectFifo",
+            function_name=None,
+            seed=self.seed,
+            rtol=0,
+            atol=0,
+            n_repeats=self.n_runs,
+            output_type=get_output_type(self.filename),
+            post_processor=post_processor,
+            raise_failure=raise_failure,
+        )
+
+    def run(self, config):
+        self.filename = config.output_dir / f"{self.name}.mlir"
+        template_dir = config.file_dir / "matmul_template"
+        template_name = template_dir / "matmul_MxK_KxN.mlir"
+        generate_matmul_test(
+            self.filename,
+            template_name,
+            self.M,
+            self.N,
+            self.K,
+            self.input_type,
+            self.acc_type,
+        )
+
+        input_args = generate_inputs(self.filename, config.output_dir, self.seed, {})
+
+        a = load_input(input_args[0])
+        b = load_input(input_args[1])
+
+        M = self.M
+        N = self.N
+        K = self.K
+
+        # To ensure we don't spend too long running matmul in numpy (for example
+        # on my computer with M=N=K=1e4, it takes about 10 seconds to run), we
+        # only do an approximate check that the output from AIE is correct.
+        # This mimics the behaviour of the original run_matmul_test.sh script.
+        #
+        # The value self.approximation_threshold specifies a threshold, below
+        # which we must run the full test.
+        #
+        # Suppose that self.approximation_threshold = 20000. Then if
+        # 1) M*N < 20000, we run the full test.
+        # 2) M*N <= 10 * 20000, we run the full test too (because
+        #    weguess that sparsity only helps if it is < 0.1).
+        # 3) M*N > 10 * 20000, we run an approximate test, sampling
+        #    20000 elements from the output and comparing them to numpy
+        #    computed inner products.
+        approximate_success = False
+        do_approximate = M * N > 10 * self.approximation_threshold
+        if do_approximate:
+
+            # Select the indices to check for correctness as random (without replacement).
+            generator = get_generator(self.seed)
+            indices = generator.choice(
+                M * K, self.approximation_threshold, replace=False
+            )
+            indices.sort()
+
+            # Compute the correct values for the selected indices.
+            baseline_values = np.array(
+                [np.dot(a[i // K], b[:, i % N]) for i in indices]
+            )
+
+            # Describe how to subsample the AIE output to compare with the baseline.
+            post_processor = lambda X: np.array([X[i // N, i % N] for i in indices])
+
+            # Run the approximate test. Do not raise an exception if the comparison
+            # fails, because we'll run the full test in that case, so that we can
+            # provide better diagnostics.
+            raise_failure = False
+            approximate_success = self.run_local(
+                config, input_args, post_processor, baseline_values, raise_failure
+            )
+
+        # The approximate test either didn't run (because the test is small) or
+        # it did run and it failed. In these cases, we run the full test.
+        if not approximate_success:
+            self.run_local(config, input_args, None, np.dot(a, b), config.raise_failure)
+
+        # Return true because the test ran.
         return True
 
 
@@ -290,6 +415,8 @@ class MatmulTruncf(BaseMatmul):
             atol=0,
             n_repeats=1,
             output_type=get_output_type(self.filename),
+            post_processor=None,
+            raise_failure=config.raise_failure,
         )
 
         return True
@@ -521,7 +648,7 @@ class TestConfig:
         iree_compile_exe,
         iree_run_exe,
         verbose,
-        return_on_fail,
+        raise_failure,
         reset_npu_between_runs,
         do_not_run_aie,
         additional_aie_compilation_flags,
@@ -539,7 +666,7 @@ class TestConfig:
         self.file_dir = file_dir
         self.iree_compile_exe = iree_compile_exe
         self.iree_run_exe = iree_run_exe
-        self.return_on_fail = return_on_fail
+        self.raise_failure = raise_failure
         self.verbose = verbose
         self.xdna_datetime = None
         self.xdna_hash = None
@@ -662,7 +789,7 @@ class TestConfig:
         peano_commit_hash:    {self.peano_commit_hash}
         peano_dir:            {self.peano_dir}
         reset_npu_script:     {self.reset_npu_script}
-        return_on_fail:       {self.return_on_fail}
+        raise_failure:       {self.raise_failure}
         use_chess:            {self.use_chess}
         verbose:              {self.verbose}
         vitis_dir:            {self.vitis_dir}
@@ -726,6 +853,8 @@ def aie_vs_baseline(
     atol,
     n_repeats,
     output_type,
+    post_processor,
+    raise_failure,
 ):
     """
     If the outputs differ, add the test file to a list of failures.
@@ -752,6 +881,9 @@ def aie_vs_baseline(
     n_repeats:
         The number of times to run the test. This is useful for tests which
         may pass only sometimes due to driver issues, etc.
+    ...
+    post_processor:
+       filter down to final values.
     """
 
     name = name_from_mlir_filename(test_file)
@@ -785,12 +917,21 @@ def aie_vs_baseline(
             output_type,
         )
 
-        summary_string = compare(baseline_value, aie_output, rtol, atol)
+        final_aie_output = aie_output
+        if post_processor:
+            final_aie_output = post_processor(aie_output)
+
+        summary_string = compare(baseline_value, final_aie_output, rtol, atol)
         if summary_string:
             print(summary_string)
             config.failures.append(test_file)
-            if config.return_on_fail:
+            if raise_failure:
                 raise RuntimeError("Test failed, exiting.")
+            else:
+                return False
+
+    # True indicates test passed
+    return True
 
 
 def aie_vs_llvm_cpu(
@@ -843,7 +984,47 @@ def aie_vs_llvm_cpu(
         atol,
         n_repeats,
         output_type,
+        post_processor=None,
+        raise_failure=config.raise_failure,
     )
+
+
+def nearest_bf16_below(x):
+    vals = np.array([x], dtype=np.float32)
+    return bf16_to_f32(f32_to_bf16(vals))[0]
+
+
+def get_matmul_truncf_tests():
+
+    M = 128
+    K = 256
+    a = 2
+    b = 3
+    test1 = MatmulTruncf(
+        M,
+        K,
+        "bf16",
+        "f32",
+        a * np.ones([M, K]),
+        b * np.ones([K, M]),
+        nearest_bf16_below(a * b * K) * np.ones([M, M]),
+    )
+
+    M = 8
+    K = None
+    a = 101
+    b = 3
+    test0 = MatmulTruncf(
+        M,
+        M,
+        "bf16",
+        "f32",
+        a * np.ones([M, M]),
+        b * np.eye(M),
+        nearest_bf16_below(a * b) * np.ones([M, M]),
+    )
+
+    return [test0, test1]
 
 
 class Tests:
@@ -876,29 +1057,8 @@ class Tests:
         self.tests = []
 
         # Matmul with truncf test(s):
-        self.register(
-            MatmulTruncf(
-                8,
-                8,
-                "bf16",
-                "f32",
-                101 * np.ones([8, 8]),
-                3 * np.eye(8),
-                302 * np.ones([8, 8]),
-            )
-        )
-
-        self.register(
-            MatmulTruncf(
-                128,
-                256,
-                "bf16",
-                "f32",
-                2 * np.ones([128, 256]),
-                3 * np.ones([256, 128]),
-                1536 * np.ones([128, 128]),
-            )
-        )
+        for test in get_matmul_truncf_tests():
+            self.register(test)
 
         # BatchMatmul test(s):
         for input_type, acc_type in zip(["i32", "bf16"], ["i32", "f32"]):
@@ -914,6 +1074,36 @@ class Tests:
         # VanillaMatmul test(s):
         self.register(VanillaMatmul(32, 32, 32, "i32", "i32"))
         self.register(VanillaMatmul(32, 32, 64, "bf16", "f32"))
+
+        # LegacyMatmul test(s):
+        # Run repeatedly to check for non-deterministic hangs and numerical
+        # issues.
+        self.register(LegacyMatmul(32, 32, 32, "i32", "i32", n_runs=1000))
+
+        i32_shapes_small = [
+            "32x32x32",
+            "64x32x128",
+            "128x32x64",
+            "128x32x64",
+            "128x32x128",
+            "256x32x256",
+            "32x64x32",
+            "64x64x64",
+            "128x256x128",
+        ]
+        for s in i32_shapes_small:
+            [M, K, N] = [int(x) for x in s.split("x")]
+            self.register(
+                LegacyMatmul(
+                    M,
+                    K,
+                    N,
+                    "i32",
+                    "i32",
+                    n_runs=10,
+                    additional_labels=["small_matmul_i32"],
+                )
+            )
 
         # MultipleDispatches tests:
         for name in ["two_matmul_switching", "matmul_f32_8_8_4", "matmul_f32_8_4_8"]:
@@ -961,7 +1151,7 @@ def all_tests(
     peano_dir,
     xrt_dir,
     vitis_dir,
-    return_on_fail,
+    raise_failure,
     verbose,
     reset_npu_between_runs,
     do_not_run_aie,
@@ -1009,7 +1199,7 @@ def all_tests(
         iree_compile_exe,
         iree_run_exe,
         verbose,
-        return_on_fail,
+        raise_failure,
         reset_npu_between_runs,
         do_not_run_aie,
         additional_aie_compilation_flags,
@@ -1046,6 +1236,10 @@ def all_tests(
 
         if match:
             did_run = test.run(config)
+
+            if did_run not in [True, False]:
+                raise RuntimeError(f"Test {test.name} did not return a boolean value.")
+
             if not did_run:
                 match_not_run.append(test.name)
             else:
@@ -1086,6 +1280,8 @@ if __name__ == "__main__":
     parser.add_argument("--vitis-dir", type=abs_path)
     parser.add_argument("--xrt_lite_n_core_rows", type=int)
     parser.add_argument("--xrt_lite_n_core_cols", type=int)
+
+    # TODO: this must be documented whth a help string.
     parser.add_argument("--target_device", type=str, required=True)
 
     # TODO(newling) make bool options boolean, not integer (tried but had issues)
