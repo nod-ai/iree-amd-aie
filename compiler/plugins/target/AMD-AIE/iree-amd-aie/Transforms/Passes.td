@@ -320,6 +320,33 @@ def AMDAIEInsertCores :
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEInsertCoresPass()";
 }
 
+def AMDAIEInsertInfiniteLoopAroundCoreBlock :
+    Pass<"iree-amdaie-insert-infinite-loop-around-core-block", ""> {
+  let summary = "Inserts an infinite loop around each `amdaie.core`'s block.";
+  let description  = [{
+    This pass inserts infinite looping around the `amdaie.core` blocks. This
+    results in the cores running the same program over and over which is useful
+    for measuring performance statistics like latency/throughput, averaged over
+    a certain number of runs, while excluding core reconfiguration overhead.
+
+    This pass is meant for developers to allow retrieval of granular performance
+    statistics and is not meant to be enabled by default. With this pass enabled,
+    you can put a loop around the hardware queue command submission, for example:
+    
+    ```
+    for (int i = 0; i < N; i++) {
+      ebuf.m_cmd_pkt->state = ERT_CMD_STATE_NEW;
+      hwq->issue_command(ebuf.get_exec_buf_bo());
+      hwq->wait_command(ebuf.get_exec_buf_bo(), 0);
+    }
+    ```
+
+    Without this pass that's not possible, because the cores are only configured to
+    execute once.
+  }];
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEInsertInfiniteLoopAroundCoreBlockPass()";
+}
+
 def AMDAIEInsertLoopsForVectorization :
   InterfacePass<"iree-amdaie-insert-loops-for-vectorization", "mlir::FunctionOpInterface"> {
 

@@ -208,7 +208,8 @@ class AIETargetBackend final : public IREE::HAL::TargetBackend {
         options.useLowerToAIEPipeline, options.matmulElementwiseFusion,
         options.enableVectorizationPasses, options.pathToUkernels,
         options.enablePacketFlow, options.enableCoalescingLoops,
-        options.enableCollapsingUnitDims, options.enableFunctionOutlining);
+        options.enableCollapsingUnitDims, options.enableFunctionOutlining,
+        options.insertLoopAroundCoreBlock);
   }
 
   void buildLinkingPassPipeline(OpPassManager &passManager) override {
@@ -406,10 +407,12 @@ LogicalResult AIETargetBackend::serializeExecutable(
     SmallString<128> artifactPath(entryPointWorkDir);
     switch (options.deviceHal) {
       case AMDAIEOptions::DeviceHAL::XRT:
-        llvm::sys::path::append(artifactPath, entryPointNamesFb[ordinal] + ".xclbin");
+        llvm::sys::path::append(artifactPath,
+                                entryPointNamesFb[ordinal] + ".xclbin");
         break;
       case AMDAIEOptions::DeviceHAL::XRT_LITE:
-        llvm::sys::path::append(artifactPath, entryPointNamesFb[ordinal] + ".pdi");
+        llvm::sys::path::append(artifactPath,
+                                entryPointNamesFb[ordinal] + ".pdi");
         break;
       default:
         llvm::errs() << "Unsupported device HAL\n";
