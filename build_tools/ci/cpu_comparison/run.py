@@ -396,6 +396,7 @@ def generate_aie_vmfb(
         f"--iree-amd-aie-peano-install-dir={config.peano_dir}",
         f"--iree-amd-aie-install-dir={config.iree_install_dir}",
         f"--iree-amd-aie-vitis-install-dir={config.vitis_dir}",
+        f"--iree-amd-aie-enable-chess={int(config.use_chess)}",
         f"--iree-hal-dump-executable-files-to={config.output_dir}",
         f"--iree-amdaie-device-hal={config.device_hal}",
         "--iree-scheduling-optimize-bindings=false",
@@ -528,6 +529,7 @@ class TestConfig:
         xrt_lite_n_core_rows,
         xrt_lite_n_core_cols,
         target_device,
+        use_chess,
     ):
         self.output_dir = output_dir
         self.iree_install_dir = iree_install_dir
@@ -548,6 +550,7 @@ class TestConfig:
         self.xrt_lite_n_core_rows = xrt_lite_n_core_rows
         self.xrt_lite_n_core_cols = xrt_lite_n_core_cols
         self.target_device = target_device
+        self.use_chess = use_chess
 
         # Try get the xrt and (linux) kernel versions.
         self.linux_kernel = "undetermined"
@@ -660,6 +663,7 @@ class TestConfig:
         peano_dir:            {self.peano_dir}
         reset_npu_script:     {self.reset_npu_script}
         return_on_fail:       {self.return_on_fail}
+        use_chess:            {self.use_chess}
         verbose:              {self.verbose}
         vitis_dir:            {self.vitis_dir}
         xrt_dir:              {self.xrt_dir}
@@ -908,6 +912,7 @@ class Tests:
         self.register(MatmulThinBias(1024, 1024, 512, "bf16", "f32", False))
 
         # VanillaMatmul test(s):
+        self.register(VanillaMatmul(32, 32, 32, "i32", "i32"))
         self.register(VanillaMatmul(32, 32, 64, "bf16", "f32"))
 
         # MultipleDispatches tests:
@@ -966,6 +971,7 @@ def all_tests(
     xrt_lite_n_core_rows,
     xrt_lite_n_core_cols,
     target_device,
+    use_chess,
 ):
     """
     There are a few ways to add tests to this script:
@@ -1011,6 +1017,7 @@ def all_tests(
         xrt_lite_n_core_rows,
         xrt_lite_n_core_cols,
         target_device,
+        use_chess,
     )
     if verbose:
         print(config)
@@ -1176,6 +1183,12 @@ if __name__ == "__main__":
         help="device HAL to use (default: %(default)s)",
     )
 
+    parser.add_argument(
+        "--use_chess",
+        type=bool,
+        default=False,
+    )
+
     args = parser.parse_args()
 
     test_set_list = args.tests.split(",")
@@ -1197,4 +1210,5 @@ if __name__ == "__main__":
         args.xrt_lite_n_core_rows,
         args.xrt_lite_n_core_cols,
         args.target_device,
+        args.use_chess,
     )
