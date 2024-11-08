@@ -1084,7 +1084,7 @@ def all_tests(
             match = match or label in test_set
 
         if match:
-            did_run = test.run(config)
+            did_run = test.run(config, target_device)
             if not did_run:
                 match_not_run.append(test.name)
             else:
