@@ -229,7 +229,16 @@ FailureOr<ParameterSetting> ParameterSetting::create(
     // the second level of inner pack size (vector instruction size).
     uint32_t m0Pack = (M0 / 2) % m1Pack == 0 ? (M0 / 2) : M0;
     uint32_t n0Pack = (N0 / 2) % n1Pack == 0 ? (N0 / 2) : N0;
-    uint32_t k0Pack = findLargestFactor(K, maxL1Size);
+
+    // For matmul ops, make the most use of L1 memory by scaling the K tiling
+    // dimension. For AIR pipeline, the tile sizes are already reaching maximum
+    // when taking elementwise op into account, so don't scale it.
+    // TODO: (vivian) Develop a better way to select tile sizes to make the most
+    // use of L1 memory while taking all factors (double buffer, elementwise
+    // memory usage, lhs/rhs element type etc) into account.
+    uint32_t kPackScale =
+        (isElementwiseConsumerOfMatmul(linalgOp) && !isObjectFifo) ? 1 : 2;
+    uint32_t k0Pack = findLargestFactor(K, kPackScale * maxL1Size);
 
     return ParameterSetting{M0,     N0,     K0,     M1,     N1,     K1,
                             m0Pack, n0Pack, k0Pack, m1Pack, n1Pack, k1Pack};
