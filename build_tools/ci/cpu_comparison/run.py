@@ -162,10 +162,13 @@ class VanillaMatmul(BaseMatmul):
     A test of the form matmul(A,B) where A:MxK, B:KxN
     """
 
-    def __init__(self, M, N, K, input_type, acc_type, run_on_target=["npu1_4col"]):
+    def __init__(
+        self, M, N, K, input_type, acc_type, use_ukernel, run_on_target=["npu1_4col"]
+    ):
         super().__init__(M, N, K, input_type, acc_type, run_on_target)
         self.name = f"vanilla_matmul_{M}_{N}_{K}_{input_type}_{acc_type}"
         self.labels.append("VanillaMatmul")
+        self.use_ukernel = use_ukernel
 
     def _execute(self, config):
         self.filename = config.output_dir / f"{self.name}.mlir"
@@ -181,10 +184,7 @@ class VanillaMatmul(BaseMatmul):
             self.acc_type,
         )
 
-        aie_vs_llvm_cpu(
-            config,
-            self.filename,
-        )
+        aie_vs_llvm_cpu(config, self.filename, use_ukernel=self.use_ukernel)
 
         return True
 
@@ -950,9 +950,22 @@ class Tests:
 
         # VanillaMatmul test(s):
         self.register(
-            VanillaMatmul(32, 32, 32, "i32", "i32", run_on_target=["npu1_4col", "npu4"])
+            VanillaMatmul(
+                32,
+                32,
+                32,
+                "i32",
+                "i32",
+                use_ukernel=False,
+                run_on_target=["npu1_4col", "npu4"],
+            )
         )
-        self.register(VanillaMatmul(32, 32, 64, "bf16", "f32"))
+        self.register(VanillaMatmul(32, 32, 64, "bf16", "f32", use_ukernel=False))
+        self.register(
+            VanillaMatmul(
+                64, 64, 64, "bf16", "f32", use_ukernel=True, run_on_target=["npu4"]
+            )
+        )
 
         # MultipleDispatches tests:
         for name in ["two_matmul_switching", "matmul_f32_8_8_4", "matmul_f32_8_4_8"]:

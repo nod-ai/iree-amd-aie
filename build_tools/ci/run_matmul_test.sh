@@ -782,21 +782,6 @@ if [ -d "$VITIS" ]; then
       --num_repeat_runs "10" \
       --use_ukernel "1"
 
-# Strix ukernel chess test
-  run_matmul_test \
-      --name_prefix "chess_bf16_f32_npu4_ukernel" \
-     --target_device "npu4" \
-      --lower_to_aie_pipeline "objectFifo" \
-      --tile_pipeline "pack-peel" \
-      --lhs_rhs_type "bf16" \
-      --acc_type "f32" \
-      --m "64" \
-      --n "64" \
-      --k "64" \
-      --use_chess "1" \
-      --num_repeat_runs "10" \
-      --use_ukernel "1"
-
   run_matmul_test \
       --name_prefix "chess_i32_matmul_multi_core" \
       --lower_to_aie_pipeline "objectFifo" \
