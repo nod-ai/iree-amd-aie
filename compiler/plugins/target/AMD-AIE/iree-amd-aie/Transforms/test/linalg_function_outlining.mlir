@@ -181,3 +181,23 @@ func.func @elemwise_example(%A: memref<4xf32>, %C: memref<4xbf16>, %B: memref<4x
   }
   return
 }
+
+// -----
+
+// CHECK-LABEL: @linalg_fill_copy
+func.func @linalg_fill_copy(%A: memref<4xf32>, %B: memref<4xf32>) {
+  %c2 = arith.constant 2 : index
+  %c1 = arith.constant 1 : index
+  %cst = arith.constant 0.0 : f32
+  %tile = amdaie.tile(%c1, %c2)
+  %0 = amdaie.core(%tile, in : [], out : []) {
+    // CHECK:     linalg.fill
+    // CHECK-NOT: func.call @fill_elementwise_0_outlined
+    // CHECK:     linalg.copy
+    // CHECK-NOT: func.call @copy_elementwise_1_outlined
+    linalg.fill ins(%cst : f32) outs(%A : memref<4xf32>)
+    linalg.copy ins(%A : memref<4xf32>) outs(%B : memref<4xf32>)
+    amdaie.end
+  }
+  return
+}

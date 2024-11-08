@@ -88,6 +88,8 @@ void AMDAIELinalgFunctionOutliningPass::runOnOperation() {
   DenseMap<Operation *, std::string> computeOpToOutlinedFuncMap;
   SmallVector<Operation *> toBeErased;
   moduleOp.walk([&](linalg::LinalgOp computeOp) {
+    if (isa<linalg::CopyOp, linalg::FillOp>(computeOp))
+      return WalkResult::skip();
     // Form outlined function name for matmul/elementwise compute ops.
     std::string outlineFuncName = "";
     // Check if the compute op is equivalent to a previously outlined compute
