@@ -263,5 +263,4 @@ jobs:
             --reset-npu-between-runs \
             --xrt_lite_n_core_rows=$XRT_LITE_N_CORE_ROWS \
             --xrt_lite_n_core_cols=$XRT_LITE_N_CORE_COLS \
-            --tests "vanilla_matmul_32_32_32_i32_i32" \
             -v

@@ -2,6 +2,7 @@
 
 # Copyright 2024 The IREE Authors
 
+from abc import ABC, abstractmethod
 import argparse
 import os
 import platform
@@ -36,8 +37,28 @@ def run_conv_test(config, filename, n_repeats):
     return True
 
 
-class ConvolutionFromTemplate:
-    def __init__(self, params):
+# Base class to be inherited by any new dispatch/compute op template.
+# The derived instances would therefore be created specifying the intended target
+# device(s) they're to be run; and would accordingly be `run` if the intended
+# target device(s) contains the `target_device` supplied via command-line.
+class RunOnTargetDevice(ABC):
+    def __init__(self, run_on_target):
+        self.run_on_target = run_on_target
+
+    def run(self, config, target_device):
+        if target_device in self.run_on_target:
+            return self._execute(config)
+        # Return False to indicate that the test did not run.
+        return False
+
+    @abstractmethod
+    def _execute(self, config):
+        pass
+
+
+class ConvolutionFromTemplate(RunOnTargetDevice):
+    def __init__(self, params, run_on_target=["npu1_4col"]):
+        super().__init__(run_on_target)
         self.generator = ConvolutionMlirGenerator(**params)
         params = self.generator.params
         conv_type = params["conv_type"]
@@ -49,7 +70,7 @@ class ConvolutionFromTemplate:
         self.name = f"{conv_type}_{N}_{IW}_{in_type}_{out_type}"
         self.labels = ["Convolution"]
 
-    def run(self, config):
+    def _execute(self, config):
         # Generate MLIR file:
         output_dir = config.output_dir
         filename = output_dir / f"{self.name}.mlir"
@@ -58,23 +79,25 @@ class ConvolutionFromTemplate:
         return run_conv_test(config, filename, n_repeats=2)
 
 
-class ConvolutionNHWCQ:
-    def __init__(self):
+class ConvolutionNHWCQ(RunOnTargetDevice):
+    def __init__(self, run_on_target=["npu1_4col"]):
+        super().__init__(run_on_target)
         self.name = "convolution_nhwc_q"
         self.labels = ["Convolution", "ConvolutionNHWCQ"]
 
-    def run(self, config):
+    def _execute(self, config):
         files_dir = config.file_dir / "test_files"
         filename = files_dir / "conv2d_nhwc_q.mlir"
         return run_conv_test(config, filename, n_repeats=1)
 
 
-class MultipleDispatches:
-    def __init__(self, name):
+class MultipleDispatches(RunOnTargetDevice):
+    def __init__(self, name, run_on_target=["npu1_4col"]):
+        super().__init__(run_on_target)
         self.name = name
         self.labels = ["Matmul", "MultipleDispatches"]
 
-    def run(self, config):
+    def _execute(self, config):
         test_files_dir = config.file_dir / "test_files"
         self.filename = test_files_dir / f"{self.name}.mlir"
         if config.xdna_datetime and config.xdna_datetime < 20240801:
@@ -85,8 +108,9 @@ class MultipleDispatches:
             return False
 
 
-class BaseMatmul:
-    def __init__(self, M, N, K, input_type, acc_type):
+class BaseMatmul(RunOnTargetDevice):
+    def __init__(self, M, N, K, input_type, acc_type, run_on_target=["npu1_4col"]):
+        super().__init__(run_on_target)
         self.labels = []
         self.M = M
         self.N = N
@@ -101,12 +125,12 @@ class MatmulFullBias(BaseMatmul):
     A test of the form matmul(A,B) + C where A:MxK, B:KxN, C:MxN
     """
 
-    def __init__(self, M, N, K, input_type, acc_type):
-        super().__init__(M, N, K, input_type, acc_type)
+    def __init__(self, M, N, K, input_type, acc_type, run_on_target=["npu1_4col"]):
+        super().__init__(M, N, K, input_type, acc_type, run_on_target)
         self.name = f"matmul_full_bias_{M}_{N}_{K}_{input_type}_{acc_type}"
         self.labels.append("MatmulFullBias")
 
-    def run(self, config):
+    def _execute(self, config):
         filename = config.output_dir / f"{self.name}.mlir"
         matmul_template_dir = config.file_dir / "matmul_template"
         template_name = matmul_template_dir / "matmul_bias_MxK_KxN_MxN.mlir"
@@ -135,12 +159,12 @@ class VanillaMatmul(BaseMatmul):
     A test of the form matmul(A,B) where A:MxK, B:KxN
     """
 
-    def __init__(self, M, N, K, input_type, acc_type):
-        super().__init__(M, N, K, input_type, acc_type)
+    def __init__(self, M, N, K, input_type, acc_type, run_on_target=["npu1_4col"]):
+        super().__init__(M, N, K, input_type, acc_type, run_on_target)
         self.name = f"vanilla_matmul_{M}_{N}_{K}_{input_type}_{acc_type}"
         self.labels.append("VanillaMatmul")
 
-    def run(self, config):
+    def _execute(self, config):
         self.filename = config.output_dir / f"{self.name}.mlir"
         matmul_template_dir = config.file_dir / "matmul_template"
         template_name = matmul_template_dir / "matmul_MxK_KxN.mlir"
@@ -167,8 +191,10 @@ class MatmulThinBias(BaseMatmul):
     A test of the form matmul(A,B) + C where A:MxK, B:KxN, C:N
     """
 
-    def __init__(self, M, N, K, input_type, acc_type, use_ukernel):
-        super().__init__(M, N, K, input_type, acc_type)
+    def __init__(
+        self, M, N, K, input_type, acc_type, use_ukernel, run_on_target=["npu1_4col"]
+    ):
+        super().__init__(M, N, K, input_type, acc_type, run_on_target)
         tail = "" if use_ukernel else "ukernel"
         self.name = f"matmul_thin_bias_{M}_{N}_{K}_{input_type}_{acc_type}_{tail}"
         self.labels.append("MatmulThinBias")
@@ -176,8 +202,7 @@ class MatmulThinBias(BaseMatmul):
             self.labels.append("UKernel")
         self.use_ukernel = use_ukernel
 
-    def run(self, config):
-
+    def _execute(self, config):
         self.filename = config.output_dir / f"{self.name}.mlir"
         matmul_template_dir = config.file_dir / "matmul_template"
         template_name = matmul_template_dir / "matmul_bias_MxK_KxN_N.mlir"
@@ -211,14 +236,14 @@ class BatchMatmul(BaseMatmul):
     A test of the form batch_matmul(A,B) where A:BxMxK, B:BxKxN
     """
 
-    def __init__(self, B, M, N, K, input_type, acc_type):
-        super().__init__(M, N, K, input_type, acc_type)
+    def __init__(self, B, M, N, K, input_type, acc_type, run_on_target=["npu1_4col"]):
+        super().__init__(M, N, K, input_type, acc_type, run_on_target)
 
         self.name = f"batch_matmul_{B}_{M}_{N}_{K}_{input_type}_{acc_type}"
         self.labels.append("BatchMatmul")
         self.B = B
 
-    def run(self, config):
+    def _execute(self, config):
         self.filename = config.output_dir / f"{self.name}.mlir"
         matmul_template_dir = config.file_dir / "matmul_template"
         template_name = matmul_template_dir / "batch_matmul_BxMxK_BxKxN.mlir"
@@ -245,8 +270,18 @@ class MatmulTruncf(BaseMatmul):
     A test of the form matmul(A,B) + truncf(C) where A:MxK, B:KxM and C:MxM
     """
 
-    def __init__(self, M, K, input_type, acc_type, lhs, rhs, expected_out):
-        super().__init__(M, M, K, input_type, acc_type)
+    def __init__(
+        self,
+        M,
+        K,
+        input_type,
+        acc_type,
+        lhs,
+        rhs,
+        expected_out,
+        run_on_target=["npu1_4col"],
+    ):
+        super().__init__(M, M, K, input_type, acc_type, run_on_target)
         self.name = f"matmul_truncf_{M}_{K}_{input_type}_{acc_type}"
         self.labels.append("MatmulTruncf")
         self.lhs = lhs
@@ -258,8 +293,7 @@ class MatmulTruncf(BaseMatmul):
         assert rhs.shape == (K, M)
         assert expected_out.shape == (M, M)
 
-    def run(self, config):
-
+    def _execute(self, config):
         self.filename = config.output_dir / f"{self.name}.mlir"
         matmul_template_dir = config.file_dir / "matmul_template"
         template_name = matmul_template_dir / "matmul_truncf_MxK_KxN.mlir"
@@ -912,7 +946,9 @@ class Tests:
         self.register(MatmulThinBias(1024, 1024, 512, "bf16", "f32", False))
 
         # VanillaMatmul test(s):
-        self.register(VanillaMatmul(32, 32, 32, "i32", "i32"))
+        self.register(
+            VanillaMatmul(32, 32, 32, "i32", "i32", run_on_target=["npu1_4col", "npu4"])
+        )
         self.register(VanillaMatmul(32, 32, 64, "bf16", "f32"))
 
         # MultipleDispatches tests:
@@ -1045,7 +1081,7 @@ def all_tests(
             match = match or label in test_set
 
         if match:
-            did_run = test.run(config)
+            did_run = test.run(config, target_device)
             if not did_run:
                 match_not_run.append(test.name)
             else:
