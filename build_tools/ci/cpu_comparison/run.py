@@ -37,16 +37,19 @@ def run_conv_test(config, filename, n_repeats):
     return True
 
 
-# Base class to be inherited by any new dispatch/compute op template.
-# The derived instances would therefore be created specifying the intended target
-# device(s) they're to be run; and would accordingly be `run` if the intended
-# target device(s) contains the `target_device` supplied via command-line.
 class RunOnTargetDevice(ABC):
+    """
+    Base class to be inherited by any new dispatch/compute op template.
+    The derived instances would therefore be created specifying the intended target
+    device(s) they're to be run; and would accordingly be `run` if the intended
+    target device(s) contains the `target_device` supplied via command-line.
+    """
+
     def __init__(self, run_on_target):
         self.run_on_target = run_on_target
 
-    def run(self, config, target_device):
-        if target_device in self.run_on_target:
+    def run(self, config):
+        if config.target_device in self.run_on_target:
             return self._execute(config)
         # Return False to indicate that the test did not run.
         return False
@@ -1081,7 +1084,7 @@ def all_tests(
             match = match or label in test_set
 
         if match:
-            did_run = test.run(config, target_device)
+            did_run = test.run(config)
             if not did_run:
                 match_not_run.append(test.name)
             else:
