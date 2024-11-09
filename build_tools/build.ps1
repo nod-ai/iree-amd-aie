@@ -5,4 +5,4 @@ $build_dir = "$repo_root/iree-build"
 
 echo "Building all"
 echo "------------"
-& cmake --build $build_dir --verbose
+& cmake --build $build_dir -- -k 0
