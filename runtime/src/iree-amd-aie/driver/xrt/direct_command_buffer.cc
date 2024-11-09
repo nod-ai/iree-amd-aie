@@ -132,16 +132,18 @@ static iree_status_t iree_hal_xrt_direct_command_buffer_end(
   return iree_ok_status();
 }
 
-static void iree_hal_xrt_direct_command_buffer_begin_debug_group(
+static iree_status_t iree_hal_xrt_direct_command_buffer_begin_debug_group(
     iree_hal_command_buffer_t* base_command_buffer, iree_string_view_t label,
     iree_hal_label_color_t label_color,
     const iree_hal_label_location_t* location) {
   (void)iree_status_from_code(IREE_STATUS_UNIMPLEMENTED);
+  return iree_ok_status();
 }
 
-static void iree_hal_xrt_direct_command_buffer_end_debug_group(
+static iree_status_t iree_hal_xrt_direct_command_buffer_end_debug_group(
     iree_hal_command_buffer_t* base_command_buffer) {
   (void)iree_status_from_code(IREE_STATUS_UNIMPLEMENTED);
+  return iree_ok_status();
 }
 
 static iree_status_t iree_hal_xrt_direct_command_buffer_execution_barrier(
@@ -193,9 +195,10 @@ static iree_status_t iree_hal_xrt_direct_command_buffer_wait_events(
   return iree_make_status(IREE_STATUS_UNIMPLEMENTED, "event not yet supported");
 }
 
-static iree_status_t iree_hal_xrt_direct_command_buffer_discard_buffer(
+static iree_status_t iree_hal_xrt_direct_command_buffer_advise_buffer(
     iree_hal_command_buffer_t* base_command_buffer,
-    iree_hal_buffer_ref_t buffer) {
+    iree_hal_buffer_ref_t buffer_ref, iree_hal_memory_advise_flags_t flags,
+    uint64_t arg0, uint64_t arg1) {
   // It is okay to do nothing here.
   return iree_ok_status();
 }
@@ -203,7 +206,7 @@ static iree_status_t iree_hal_xrt_direct_command_buffer_discard_buffer(
 static iree_status_t iree_hal_xrt_direct_command_buffer_fill_buffer(
     iree_hal_command_buffer_t* base_command_buffer,
     iree_hal_buffer_ref_t target_ref, const void* pattern,
-    iree_host_size_t pattern_length) {
+    iree_host_size_t pattern_length, iree_hal_fill_flags_t flags) {
   return iree_make_status(IREE_STATUS_UNIMPLEMENTED,
                           "fill buffer not yet supported");
 }
@@ -392,8 +395,8 @@ const iree_hal_command_buffer_vtable_t
         /*.signal_event = */ iree_hal_xrt_direct_command_buffer_signal_event,
         /*.reset_event = */ iree_hal_xrt_direct_command_buffer_reset_event,
         /*.wait_events = */ iree_hal_xrt_direct_command_buffer_wait_events,
-        /*.discard_buffer = */
-        iree_hal_xrt_direct_command_buffer_discard_buffer,
+        /*.advise_buffer = */
+        iree_hal_xrt_direct_command_buffer_advise_buffer,
         /*.fill_buffer = */ iree_hal_xrt_direct_command_buffer_fill_buffer,
         /*.update_buffer = */ iree_hal_xrt_direct_command_buffer_update_buffer,
         /*.copy_buffer = */ iree_hal_xrt_direct_command_buffer_copy_buffer,
