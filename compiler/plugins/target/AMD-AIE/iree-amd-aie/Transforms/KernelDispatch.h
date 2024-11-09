@@ -7,6 +7,7 @@
 #ifndef IREE_AMD_AIE_TRANSFORMS_KERNELDISPATCH_H_
 #define IREE_AMD_AIE_TRANSFORMS_KERNELDISPATCH_H_
 
+#include "iree-amd-aie/aie_runtime/AMDAIEEnums.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/Interfaces/FunctionInterfaces.h"
 
@@ -37,7 +38,8 @@ enum class BufferizeOperand { InputOutput, Input, Output, DefOp };
 
 LogicalResult initAIELaunchConfig(FunctionOpInterface funcOp,
                                   TilePassPipeline usePassPipeline,
-                                  LowerToAIEPassPipeline useLowerToAIEPipeline);
+                                  LowerToAIEPassPipeline useLowerToAIEPipeline,
+                                  AMDAIEDevice targetDevice);
 
 }  // namespace mlir::iree_compiler::AMDAIE
 

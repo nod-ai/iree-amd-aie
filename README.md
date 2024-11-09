@@ -37,6 +37,22 @@ git \
 The above avoids cloning entire repo histories for submodules, and skips a few, currently, unused, 
 submodules that are nested in IREE.
 
+### Dependencies
+
+#### For Linux
+
+Build and install `xdna-driver`, use commit `59f1d62`:
+
+```
+git clone git@github.com:amd/xdna-driver.git
+cd <root-of-source-tree>
+# get code for submodules
+git checkout 59f1d62
+git submodule update --init --recursive
+```
+
+Follow the instructions to build and install the driver module: [xdna-driver](https://github.com/amd/xdna-driver/tree/59f1d6235334499b22dbd056a60ab00bfec142ee).
+
 ## Building (along with IREE)
 
 ### Just show me the CMake

@@ -81,7 +81,7 @@ jobs:
       - name: Python deps
         run: |
           pip install -r third_party\iree\runtime\bindings\python\iree\runtime\build_requirements.txt
-          pip install pyyaml
+          pip install pyyaml pybind11==2.13.6 nanobind==2.2.0
 
       - name: Enable cache
         uses: actions/cache/restore@v3
@@ -191,6 +191,7 @@ jobs:
             /c/test_aie_vs_cpu \
             $PWD/iree-install \
             $PWD/llvm-aie -v \
+            --target_device "npu1_4col" \
             --device-hal=xrt
 
       - name: Python tests

@@ -6,12 +6,6 @@ namespace {
 
 using namespace mlir::iree_compiler::AMDAIE;
 
-TEST(IntegerMatmulInstructionSizeTest, FailsWithStrangeShape) {
-  std::array<uint32_t, 3> failValue{3, 5, 7};
-  EXPECT_EQ(getAIEIntegerMatmulInstructionSize(12, 13, 14).value_or(failValue),
-            failValue);
-}
-
 TEST(FindLargestFactorTest, Test0) {
   EXPECT_EQ(detail::findLargestFactor(/* num = */ 6, /* max = */ 1), 1);
   EXPECT_EQ(detail::findLargestFactor(/* num = */ 6, /* max = */ 2), 2);

@@ -284,9 +284,6 @@ void addPackPeelBasedPassPipeline(OpPassManager &funcPassManager,
     funcPassManager.addPass(createAMDAIELowerToUKernelsPass(options));
   }
 
-  // Vectorization passes
-  appendVectorizationToPipeline(funcPassManager, enableVectorizationPasses);
-
   // Comprehensive bufferization
   addAMDAIEBufferizePasses(funcPassManager, useTilePipeline);
   funcPassManager.addPass(createHoistStaticallyBoundAllocationsPass());
@@ -477,11 +474,6 @@ void addConvDecomposePassPipeline(OpPassManager &funcPassManager,
   LinalgFoldUnitExtentDimsPassOptions opts;
   opts.useRankReducingSlices = true;
   funcPassManager.addPass(mlir::createLinalgFoldUnitExtentDimsPass(opts));
-
-  // Vectorization passes
-  // FIXME(newling) https://github.com/nod-ai/iree-amd-aie/issues/820
-  enableVectorizationPasses = false;
-  appendVectorizationToPipeline(funcPassManager, enableVectorizationPasses);
   funcPassManager.addPass(createCanonicalizerPass());
 
   // Comprehensive bufferization
@@ -505,6 +497,7 @@ void buildAMDAIETransformPassPipeline(
     AMDAIELoweringStrategyOptions options;
     options.usePassPipeline = useTilePipeline;
     options.useLowerToAIEPipeline = useLowerToAIEPipeline;
+    options.targetDevice = device;
     modulePassManager.addPass(createAMDAIELoweringStrategyPass(options));
   }
   modulePassManager.addPass(createLowerExecutableUsingTransformDialectPass());
@@ -520,10 +513,12 @@ void buildAMDAIETransformPassPipeline(
   modulePassManager.addPass(createLowerUKernelOpsToCallsPass());
   if (useLowerToAIEPipeline == LowerToAIEPassPipeline::ObjectFifo) {
     addAMDAIEObjectFifoLoweringPasses(modulePassManager, enablePacketFlow,
-                                      useTilePipeline);
+                                      useTilePipeline,
+                                      enableVectorizationPasses);
   } else if (useLowerToAIEPipeline == LowerToAIEPassPipeline::AIR) {
     addMLIRAIRLoweringPasses(modulePassManager, device, useTilePipeline,
-                             matmulElementwiseFusion);
+                             matmulElementwiseFusion,
+                             enableVectorizationPasses);
   } else {
     assert(
         false &&
@@ -541,7 +536,8 @@ void buildAMDAIETransformPassPipeline(
 
 void addAMDAIEObjectFifoLoweringPasses(OpPassManager &passManager,
                                        bool enablePacketFlow,
-                                       TilePassPipeline useTilePipeline) {
+                                       TilePassPipeline useTilePipeline,
+                                       bool enableVectorizationPasses) {
   passManager.addPass(createEraseHALDescriptorTypeFromMemRefPass());
   passManager.addPass(memref::createFoldMemRefAliasOpsPass());
 
@@ -555,21 +551,33 @@ void addAMDAIEObjectFifoLoweringPasses(OpPassManager &passManager,
   // cause 'aie.dma_bd' error, so for now keep using transpose on source for
   // both pack and unpack ops.
   // TODO(vivian): explore the other options for conv ops.
-  AMDAIEConvertToDmaOptions dmaOptions;
-  dmaOptions.packTransposeOnSource =
-      (useTilePipeline == TilePassPipeline::ConvDecomposePipeline) ? true
-                                                                   : false;
-  dmaOptions.unpackTransposeOnSource = true;
-  passManager.addPass(createAMDAIEConvertToDmaPass(dmaOptions));
+  {
+    AMDAIEConvertToDmaOptions dmaOptions;
+    dmaOptions.packTransposeOnSource =
+        (useTilePipeline == TilePassPipeline::ConvDecomposePipeline) ? true
+                                                                     : false;
+    dmaOptions.unpackTransposeOnSource = true;
+    passManager.addPass(createAMDAIEConvertToDmaPass(dmaOptions));
+  }
 
   passManager.addPass(createAMDAIENormalizeLoopBoundsPass());
   passManager.addPass(createAMDAIEInsertCoresPass());
+  if (useTilePipeline != TilePassPipeline::ConvDecomposePipeline)
+    passManager.addPass(createAMDAIELinalgFunctionOutliningPass());
+
+  {
+    // Vectorization passes
+    OpPassManager &funcPassManager = passManager.nest<func::FuncOp>();
+    appendVectorizationToPipeline(funcPassManager, enableVectorizationPasses);
+  }
+
   passManager.addPass(createAMDAIELocalizeLogicalObjectFifoPass());
   passManager.addPass(createCSEPass());
 
   passManager.addPass(createAMDAIEDistributeCoresAndObjectFifosPass());
   passManager.addPass(createCSEPass());
   passManager.addPass(createCanonicalizerPass());
+
   passManager.addPass(createAMDAIESplitLogicalObjFifosForConnectionReusePass());
   passManager.addPass(createCSEPass());
   passManager.addPass(createCanonicalizerPass());
@@ -630,6 +638,8 @@ void addAMDAIEObjectFifoLoweringPasses(OpPassManager &passManager,
 }
 
 void addMLIRAIELoweringPasses(OpPassManager &pm) {
+  mlir::iree_compiler::aievec::buildConvertVectorToAIEVec(pm);
+
   {
     OpPassManager &devicePM = pm.nest<xilinx::AIE::DeviceOp>();
     devicePM.addPass(createCanonicalizerPass());
@@ -650,8 +660,6 @@ void addMLIRAIELoweringPasses(OpPassManager &pm) {
     devicePM.addPass(createCanonicalizerPass());
   }
 
-  mlir::iree_compiler::aievec::buildConvertVectorToAIEVec(pm);
-
   pm.addPass(createCanonicalizerPass());
   pm.addPass(createCSEPass());
   pm.addPass(aievec::createConvertAIEVecToLLVMPass());
@@ -671,10 +679,16 @@ void addMLIRAIELoweringPasses(OpPassManager &pm) {
 // for details.
 void addMLIRAIRLoweringPasses(OpPassManager &passManager, AMDAIEDevice device,
                               TilePassPipeline useTilePipeline,
-                              bool matmulElementwiseFusion) {
+                              bool matmulElementwiseFusion,
+                              bool enableVectorizationPasses) {
   // Add passes for preparing for lowering to MLIR-AIR
   passManager.addPass(createEraseHALDescriptorTypeFromMemRefPass());
   passManager.addPass(memref::createFoldMemRefAliasOpsPass());
+  {
+    // Vectorization passes
+    OpPassManager &funcPassManager = passManager.nest<func::FuncOp>();
+    appendVectorizationToPipeline(funcPassManager, enableVectorizationPasses);
+  }
   passManager.addPass(createAMDAIEBridgeToAIRPass());
 
   // Running canonicalization for all pipelines here results in failures.

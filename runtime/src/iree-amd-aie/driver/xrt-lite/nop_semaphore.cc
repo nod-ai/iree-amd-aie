@@ -23,7 +23,7 @@ struct iree_hal_xrt_lite_semaphore {
                               iree_allocator_t host_allocator)
       : value(initial_value), host_allocator(host_allocator) {
     iree_hal_semaphore_initialize(&iree_hal_xrt_lite_semaphore_vtable, &base);
-    iree_atomic_store_int64(&value, initial_value, iree_memory_order_release);
+    iree_atomic_store(&value, initial_value, iree_memory_order_release);
   }
 };
 

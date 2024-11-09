@@ -105,7 +105,9 @@ def AMDAIECanonicalizeDoublyStridedOp :
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIECanonicalizeDoublyStridedOpPass()";
   let options = [
     Option<"foldSingleDims", "fold-single-dims", "bool", /*default=*/"false",
-      "Whether to fold single strided dimensions and make then implicit.">
+      "Whether to fold single strided dimensions and make then implicit.">,
+    Option<"hardwareAware", "hardware-aware", "bool", /*default=*/"true",
+      "Whether the canonicalization should be hardware-aware.">
   ];
 }
 
@@ -259,6 +261,17 @@ def AMDAIEFlattenLogicalObjectFifo :
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEFlattenLogicalObjectFifoPass()";
 }
 
+def AMDAIELinalgFunctionOutlining :
+  Pass<"iree-amdaie-linalg-function-outlining", "ModuleOp"> {
+  let summary = "Outlining of linalg compute ops";
+  let description = [{
+    Outlines matmul/elementwise linalg compute ops only. This pass essentially minimises
+    the code footprint overall as the loop unrolling in the later passes lead to a lot of
+    repeated codes.
+  }];
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIELinalgFunctionOutliningPass()";
+}
+
 def AMDAIEFuseConsumerIntoLoop :
     InterfacePass<"iree-amdaie-fuse-consumer-into-loop", "mlir::FunctionOpInterface"> {
   let summary = "Fuse the consumer operation into the innermost last scf loop.";
@@ -406,6 +419,16 @@ def AMDAIELoweringStrategy :
                    "Use the IREE lowering to objectFifos"),
         clEnumValN(mlir::iree_compiler::AMDAIE::LowerToAIEPassPipeline::AIR, "air",
                    "Use the IREE lowering through AIR")
+      )}]>,
+    Option<"targetDevice", "target-device",
+      "mlir::iree_compiler::AMDAIE::AMDAIEDevice",
+      /*default=*/"mlir::iree_compiler::AMDAIE::AMDAIEDevice::npu1_4col",
+      "AIE device to target",
+      [{::llvm::cl::values(
+        clEnumValN(mlir::iree_compiler::AMDAIE::AMDAIEDevice::npu1_4col, "npu1_4col",
+                   "Compile for Phoenix NPU1_4col"),
+        clEnumValN(mlir::iree_compiler::AMDAIE::AMDAIEDevice::npu4, "npu4",
+                   "Compile for Strix NPU4")
       )}]>
   ];
 }

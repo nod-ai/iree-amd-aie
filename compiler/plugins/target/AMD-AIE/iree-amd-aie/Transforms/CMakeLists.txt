@@ -72,6 +72,7 @@ iree_cc_library(
     "AMDAIEDmaToCircularDma.cpp"
     "AMDAIEDmaUtils.cpp"
     "AMDAIEFlattenLogicalObjectFifo.cpp"
+    "AMDAIELinalgFunctionOutlining.cpp"
     "AMDAIEFuseConsumerIntoLoop.cpp"
     "AMDAIEFuseFillIntoForall.cpp"
     "AMDAIEFusePackIntoLoop.cpp"
@@ -121,6 +122,7 @@ iree_cc_library(
     iree::compiler::Utils
     iree-amd-aie::aie_runtime::iree_aie_runtime_static
     iree-amd-aie::aie_runtime::Utils
+    iree-amd-aie::aie_runtime::AMDAIEEnums
     iree::target::amd-aie::IR::AMDAIEDialect
     iree::target::amd-aie::aie::AIEDialectIR
     iree::target::amd-aie::aie::AIEPasses

@@ -19,9 +19,10 @@ namespace {
 uint32_t alloc_drm_bo(const shim_xdna::pdev &dev, amdxdna_bo_type type,
                       size_t size) {
   amdxdna_drm_create_bo cbo = {
-      .type = static_cast<uint32_t>(type),
+      .flags = 0,
       .vaddr = reinterpret_cast<uintptr_t>(nullptr),
       .size = size,
+      .type = static_cast<uint32_t>(type),
   };
   dev.ioctl(DRM_IOCTL_AMDXDNA_CREATE_BO, &cbo);
   return cbo.handle;

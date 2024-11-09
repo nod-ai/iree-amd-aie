@@ -297,6 +297,7 @@ LogicalResult AIEDeviceBuilder::coreFuncCallOpToAIE(
     SymbolTable::setSymbolVisibility(newFnDecl,
                                      SymbolTable::Visibility::Private);
     newFnDecl->setAttr("llvm.bareptr", rewriter.getBoolAttr(true));
+    fnDecl.getBody().cloneInto(&(newFnDecl.getBody()), mapper);
     mapper.map(fnDecl.getOperation(), newFnDecl.getOperation());
     fnDecl = newFnDecl;
   }

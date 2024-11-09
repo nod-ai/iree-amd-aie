@@ -1,4 +1,13 @@
-file(GLOB _mlir_files *.mlir)
+set(_mlir_files
+  align-transfer-reads.mlir
+  fold-ops.mlir
+  matmul.mlir
+  precanonicalization-aieml-llvmir.mlir
+  test-mac_elem.mlir
+  test-shuffle.mlir
+  test-srs.mlir
+  test-ups.mlir
+)
 
 iree_lit_test_suite(
   NAME

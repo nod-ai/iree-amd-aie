@@ -17,11 +17,14 @@
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/FormattedStream.h"
 #include "macros.h"
+#include "mlir/IR/BuiltinTypes.h"
+
 // clang-format off
 #include "iree-amd-aie/aie_runtime/AMDAIEEnums.h"
 // clang-format on
 
 extern "C" {
+
 #include "xaie_hwcfg.h"
 #include "xaiengine.h"
 #include "xaiengine/xaie_device_aieml.h"
@@ -204,7 +207,9 @@ enum class AIEArch : uint8_t { AIE1 = 1, AIE2 = 2 };
  * This struct is meant to be a thin wrapper around aie-rt, which provides
  * the canonical representation/metadata for AIE devices; attributes like number
  * of locks, bds per tile, whether certain switch connections are legal or not,
- * etc.
+ * etc. In addition this struct is meant to contain generational specific AIE
+ * VLIW processor constants, such as sizes of vectors supported for
+ * load/store/matmul etc.
  *
  * This representation is parameterized by platform specific constants
  * (BASE_ADDR, COL/ROW shift, NUM_MEM_TILE_ROWS, etc.) which are available in
@@ -219,8 +224,9 @@ enum class AIEArch : uint8_t { AIE1 = 1, AIE2 = 2 };
  */
 struct AMDAIEDeviceModel {
   /// Contains additional device config parameters that can't be retrieved from
-  /// aie-rt for whatever reason. Make sure the parameters can't be retrieved in
-  /// another way before adding new fields to this struct.
+  /// aie-rt or elsewhere for whatever reason. Make sure the parameters can't be
+  /// retrieved in another way before adding new fields to this struct.
+
   struct AMDAIEDeviceConfig {
     /// Set default minimum stride bitwidth/addressing granularity to 32 bits as
     /// this is the value for all current architecture versions.
@@ -234,8 +240,26 @@ struct AMDAIEDeviceModel {
     uint8_t streamSwitchMemTileMSelMax{0};
     uint8_t streamSwitchShimArbiterMax{0};
     uint8_t streamSwitchShimMSelMax{0};
+
+    //////////////////////////////
+    // VLIW processor constants //
+    //////////////////////////////
+    /// The number of bits that L1 memory must be aligned by in order
+    /// to be loaded/stored into a register with a vector instruction. See for
+    /// example:
+    /// https://www.xilinx.com/htmldocs/xilinx2024_1/aiengine_ml_intrinsics/intrinsics/group__intr__loadstore.html
+    uint32_t vectorLoadStoreAlignmentBits{256};
+    /// The largest vector size supported. See for example:
+    /// https://www.xilinx.com/htmldocs/xilinx2024_1/aiengine_ml_intrinsics/intrinsics/group__group__datatype__vector.html
+    uint32_t maxVectorSizeBits{1024};
+    /// The number of bits that each of the two vector operands of the shift
+    /// intrinsic must have. See for example
+    /// https://www.xilinx.com/htmldocs/xilinx2024_1/aiengine_ml_intrinsics/intrinsics/group__intr__gpvectorop__shift.html
+    uint32_t shiftOperandBits{512};
+
     AMDAIEDeviceConfig() = default;
   };
+
   XAie_Config configPtr;
   XAie_DevInst devInst;
   AMDAIEDeviceConfig deviceConfig;
@@ -328,6 +352,14 @@ struct AMDAIEDeviceModel {
   uint8_t getStreamSwitchArbiterMax(uint8_t col, uint8_t row) const;
   uint8_t getStreamSwitchMSelMax(uint8_t col, uint8_t row) const;
 
+  uint32_t getVectorLoadStoreAlignmentBits() const {
+    return deviceConfig.vectorLoadStoreAlignmentBits;
+  }
+
+  uint32_t getMaxVectorSizeBits() const { return deviceConfig.maxVectorSizeBits; }
+
+  uint32_t getShiftOperandBits() const { return deviceConfig.shiftOperandBits; }
+
   /// Return a map from channels to valid BD ids for the requested tile type.
   /// TODO(jornt): find these ranges in the device model.
   DenseMap<uint32_t, SmallVector<uint32_t>> getChannelToValidBdIds(
@@ -340,6 +372,9 @@ struct AMDAIEDeviceModel {
                                           StrmSwPortType bundle) const;
   uint32_t getNumMemTileRows() const { return 1; }
   AIEArch getTargetArch() const { return AIEArch::AIE2; }
+
+  FailureOr<std::array<uint32_t, 3>> getAIEMatmulInstructionSize(
+      Type elTypeLhs, Type elTypeRhs, Type elTypeAcc) const;
 };
 
 struct AMDAIEDeviceModel getDeviceModel(AMDAIEDevice device);

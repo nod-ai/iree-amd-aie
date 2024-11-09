@@ -17,13 +17,15 @@ namespace mlir::iree_compiler::AMDAIE {
 /// Add passes to lower to AIE objectFifos.
 void addAMDAIEObjectFifoLoweringPasses(OpPassManager &passManager,
                                        bool enablePacketFlow,
-                                       TilePassPipeline useTilePipeline);
+                                       TilePassPipeline useTilePipeline,
+                                       bool enableVectorizationPasses);
 
 /// Add passes to lower from MLIR-AIR through AIE. This is
 /// currently the default passes used for lowering after IREEs tiling.
 void addMLIRAIRLoweringPasses(OpPassManager &passManager, AMDAIEDevice device,
                               TilePassPipeline useTilePipeline,
-                              bool matmulElementwiseFusion);
+                              bool matmulElementwiseFusion,
+                              bool enableVectorizationPasses);
 
 /// Add lowering passes from MLIR-AIE. This is
 /// currently the default passes used for lowering from AIE dialect.
@@ -167,6 +169,9 @@ std::unique_ptr<Pass> createAMDAIEDmaToCircularDmaPass();
 
 /// Create a pass to flatten the logical objectFifos.
 std::unique_ptr<Pass> createAMDAIEFlattenLogicalObjectFifoPass();
+
+/// Create a pass for function outlining.
+std::unique_ptr<Pass> createAMDAIELinalgFunctionOutliningPass();
 
 /// Create a pass to fuse the consumer op into the innermost last scf loop.
 std::unique_ptr<Pass> createAMDAIEFuseConsumerIntoLoopPass(

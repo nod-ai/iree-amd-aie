@@ -37,7 +37,7 @@ jobs:
       fail-fast: false
       matrix:
         runs-on: [
-          macos-12,
+          macos-13,
           # broken because of https://github.com/iree-org/iree/blob/0c6a151c65285987f5daabc7f76fe57a82b45ab1/compiler/plugins/target/LLVMCPU/ResolveCPUAndCPUFeatures.cpp#L58-L64
           # macos-14
         ]
@@ -78,7 +78,7 @@ jobs:
       - name: Python deps
         run: |
           pip install -r third_party/iree/runtime/bindings/python/iree/runtime/build_requirements.txt
-          pip install pytest
+          pip install pytest pybind11==2.13.6 nanobind==2.2.0
 
       - name: Enable cache
         uses: actions/cache/restore@v3
