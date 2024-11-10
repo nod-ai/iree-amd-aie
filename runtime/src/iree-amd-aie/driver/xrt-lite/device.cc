@@ -298,6 +298,7 @@ const iree_hal_device_vtable_t iree_hal_xrt_lite_device_vtable = {
     .create_executable_cache = iree_hal_xrt_lite_device_create_executable_cache,
     .create_semaphore = iree_hal_xrt_lite_device_create_semaphore,
     .queue_alloca = iree_hal_xrt_lite_device_queue_alloca,
+    .queue_copy = iree_hal_device_queue_emulated_copy,
     .queue_execute = iree_hal_xrt_lite_device_queue_execute,
     .profiling_begin = unimplemented_ok_status,
     .profiling_flush = unimplemented_ok_status,

@@ -8,9 +8,6 @@
 #include <unistd.h>
 #include <x86intrin.h>
 
-#include <cstring>
-#include <iostream>
-
 #include "shim_debug.h"
 #include "xrt_mem.h"
 
