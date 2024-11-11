@@ -21,10 +21,6 @@
 // CHECK:               amdaie.end
 // CHECK:            }
 // CHECK:            amdaie.core
-// CHECK:               linalg.generic
-// CHECK:               amdaie.end
-// CHECK:            }
-// CHECK:            amdaie.core
 // CHECK:               func.call @generic_matmul_0_outlined(%[[A]], %[[B]], %[[C]])
 // CHECK-NOT:           linalg.generic
 // CHECK:               amdaie.end
@@ -54,25 +50,6 @@ func.func @matmul_example(%A: memref<4x8xbf16>, %B: memref<8x4xbf16>, %C: memref
     amdaie.end
   }
   %1 = amdaie.core(%tile, in : [], out : []) {
-    linalg.generic {
-      indexing_maps = [affine_map<(d0, d1, d2) -> (d0, d2)>,
-                       affine_map<(d0, d1, d2) -> (d2, d1)>,
-                       affine_map<(d0, d1, d2) -> (d0, d1)>
-                      ],
-      iterator_types = ["parallel", "parallel", "reduction"]
-    } ins(%A, %B : memref<4x8xbf16>, memref<8x4xbf16>)
-      outs(%C : memref<4x4xf32>) {
-    ^bb0(%in: bf16, %in_17: bf16, %out: f32):
-      %1 = arith.extf %in : bf16 to f32
-      %2 = arith.extf %in_17 : bf16 to f32
-      %3 = arith.mulf %1, %2 : f32
-      %4 = arith.addf %out, %3 : f32
-      %5 = arith.addf %4, %4 : f32
-      linalg.yield %5  : f32
-    }
-    amdaie.end
-  }
-  %2 = amdaie.core(%tile, in : [], out : []) {
     linalg.generic {
       indexing_maps = [affine_map<(d0, d1, d2) -> (d0, d2)>,
                        affine_map<(d0, d1, d2) -> (d2, d1)>,
@@ -197,6 +174,35 @@ func.func @linalg_fill_copy(%A: memref<4xf32>, %B: memref<4xf32>) {
     // CHECK-NOT: func.call @copy_elementwise_1_outlined
     linalg.fill ins(%cst : f32) outs(%A : memref<4xf32>)
     linalg.copy ins(%A : memref<4xf32>) outs(%B : memref<4xf32>)
+    amdaie.end
+  }
+  return
+}
+
+// -----
+
+func.func @unsupported_linalg_op(%A: memref<4x8xbf16>, %B: memref<8x4xbf16>, %C: memref<4x4xf32>) {
+  %c2 = arith.constant 2 : index
+  %c1 = arith.constant 1 : index
+  %tile = amdaie.tile(%c1, %c2)
+  %1 = amdaie.core(%tile, in : [], out : []) {
+    // expected-error@+1 {{unsupported linalg op for outlining}}
+    linalg.generic {
+      indexing_maps = [affine_map<(d0, d1, d2) -> (d0, d2)>,
+                       affine_map<(d0, d1, d2) -> (d2, d1)>,
+                       affine_map<(d0, d1, d2) -> (d0, d1)>
+                      ],
+      iterator_types = ["parallel", "parallel", "reduction"]
+    } ins(%A, %B : memref<4x8xbf16>, memref<8x4xbf16>)
+      outs(%C : memref<4x4xf32>) {
+    ^bb0(%in: bf16, %in_17: bf16, %out: f32):
+      %1 = arith.extf %in : bf16 to f32
+      %2 = arith.extf %in_17 : bf16 to f32
+      %3 = arith.mulf %1, %2 : f32
+      %4 = arith.addf %out, %3 : f32
+      %5 = arith.addf %4, %4 : f32
+      linalg.yield %5  : f32
+    }
     amdaie.end
   }
   return

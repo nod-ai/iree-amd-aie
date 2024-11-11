@@ -20,6 +20,18 @@ namespace mlir::iree_compiler::AMDAIE {
 
 namespace {
 
+/// Utility to check if the linalg op is a known op we know we want to be able
+/// to outline.
+static bool mustOutline(linalg::LinalgOp linalgOp) {
+  return isMatmul(linalgOp) || isElementwise(linalgOp);
+}
+
+/// Utility to check if the linalg op is a known op we know should not be
+/// outlined.
+static bool mustNotOutline(linalg::LinalgOp linalgOp) {
+  return isa<linalg::CopyOp, linalg::FillOp>(linalgOp);
+}
+
 /// Utility to outline the linalg compute op.
 static FailureOr<func::FuncOp> outlinedToAFunction(
     IRRewriter &rewriter, ModuleOp moduleOp, linalg::LinalgOp computeOp,
@@ -88,8 +100,12 @@ void AMDAIELinalgFunctionOutliningPass::runOnOperation() {
   DenseMap<Operation *, std::string> computeOpToOutlinedFuncMap;
   SmallVector<Operation *> toBeErased;
   moduleOp.walk([&](linalg::LinalgOp computeOp) {
-    if (isa<linalg::CopyOp, linalg::FillOp>(computeOp))
+    if (mustNotOutline(computeOp))
       return WalkResult::skip();
+    else if (!mustOutline(computeOp)) {
+      computeOp->emitOpError() << "unsupported linalg op for outlining";
+      return WalkResult::interrupt();
+    }
     // Form outlined function name for matmul/elementwise compute ops.
     std::string outlineFuncName = "";
     // Check if the compute op is equivalent to a previously outlined compute
