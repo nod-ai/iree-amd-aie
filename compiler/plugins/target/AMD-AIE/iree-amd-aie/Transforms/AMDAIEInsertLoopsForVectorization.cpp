@@ -45,9 +45,8 @@ class AMDAIEInsertLoopsForVectorizationPass
     return nDims - firstDim;
   };
 
-  /// Tile the generic op using `tileSizes` and coalesce the generated tiling
-  /// loops in order to minimize the overhead of loop control/branch statements.
-  /// This function can work on both tensor as well as memref inputs.
+  /// Tile the generic op using `tileSizes`. This function can work on both
+  /// tensor as well as memref inputs.
   static void performTiling(IRRewriter &rewriter, linalg::GenericOp genericOp,
                             SmallVector<int64_t> &tileSizes) {
     auto opts = linalg::LinalgTilingOptions().setTileSizes(tileSizes);
@@ -55,7 +54,6 @@ class AMDAIEInsertLoopsForVectorizationPass
     const auto &tileLoops = tiled.value().loops;
     SmallVector<scf::ForOp> loops = llvm::map_to_vector(
         tileLoops, [](Operation *loop) { return cast<scf::ForOp>(loop); });
-    (void)mlir::coalesceLoops(rewriter, loops);
     if (genericOp->getResults().size()) {
       rewriter.replaceOp(genericOp, loops[0]->getResult(0));
     } else {
