@@ -100,6 +100,7 @@ iree_cc_library(
     "AMDAIEPropagateDataLayout.cpp"
     "AMDAIERemoveMemorySpace.cpp"
     "AMDAIESinkIntoCore.cpp"
+    "AMDAIESplitLogicalObjFifos.cpp"
     "AMDAIESplitLogicalObjFifosForConnectionReuse.cpp"
     "AMDAIETemporaryAllocBufferization.cpp"
     "AMDAIETile.cpp"

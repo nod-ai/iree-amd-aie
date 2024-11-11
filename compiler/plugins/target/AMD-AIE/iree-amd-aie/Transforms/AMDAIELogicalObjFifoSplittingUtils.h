@@ -16,6 +16,13 @@ LogicalResult splitLogicalObjectFifoForElementwiseOp(
     IRRewriter &rewriter, SmallVector<AMDAIE::DmaCpyNdOp> &l2ToL1DmaOps,
     MLIRContext *context);
 
+/// Split L2 space input and output logical objectFifos.
+LogicalResult splitLogicalObjectFifo(IRRewriter &rewriter,
+                                     AMDAIE::LogicalObjectFifoFromMemrefOp op);
+
+/// Split DmaCpyNd ops between L2 and L3 memory spaces.
+LogicalResult splitDoublyStridedOp(IRRewriter &rewriter, AMDAIE::DmaCpyNdOp op);
+
 }  // namespace mlir::iree_compiler::AMDAIE
 
 #endif
