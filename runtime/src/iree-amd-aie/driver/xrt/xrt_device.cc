@@ -283,7 +283,7 @@ static iree_status_t iree_hal_xrt_device_queue_read(
     const iree_hal_semaphore_list_t signal_semaphore_list,
     iree_hal_file_t* source_file, uint64_t source_offset,
     iree_hal_buffer_t* target_buffer, iree_device_size_t target_offset,
-    iree_device_size_t length, uint32_t flags) {
+    iree_device_size_t length, iree_hal_read_flags_t flags) {
   // TODO: expose streaming chunk count/size options.
   iree_status_t loop_status = iree_ok_status();
   iree_hal_file_transfer_options_t options = {
@@ -304,7 +304,7 @@ static iree_status_t iree_hal_xrt_device_queue_write(
     const iree_hal_semaphore_list_t signal_semaphore_list,
     iree_hal_buffer_t* source_buffer, iree_device_size_t source_offset,
     iree_hal_file_t* target_file, uint64_t target_offset,
-    iree_device_size_t length, uint32_t flags) {
+    iree_device_size_t length, iree_hal_read_flags_t flags) {
   // TODO: expose streaming chunk count/size options.
   iree_status_t loop_status = iree_ok_status();
   iree_hal_file_transfer_options_t options = {
@@ -323,12 +323,11 @@ static iree_status_t iree_hal_xrt_device_queue_execute(
     iree_hal_device_t* base_device, iree_hal_queue_affinity_t queue_affinity,
     const iree_hal_semaphore_list_t wait_semaphore_list,
     const iree_hal_semaphore_list_t signal_semaphore_list,
-    iree_host_size_t command_buffer_count,
-    iree_hal_command_buffer_t* const* command_buffers,
-    iree_hal_buffer_binding_table_t const* binding_tables) {
+    iree_hal_command_buffer_t* command_buffer,
+    iree_hal_buffer_binding_table_t binding_table) {
   IREE_TRACE_ZONE_BEGIN(z0);
   iree_hal_xrt_device_t* device = iree_hal_xrt_device_cast(base_device);
-  for (iree_host_size_t i = 0; i < command_buffer_count; i++) {
+  if (command_buffer) {
     iree_hal_command_buffer_t* xrt_command_buffer = nullptr;
     iree_hal_command_buffer_mode_t mode =
         IREE_HAL_COMMAND_BUFFER_MODE_ONE_SHOT |
@@ -342,7 +341,7 @@ static iree_status_t iree_hal_xrt_device_queue_execute(
                 device->host_allocator, &xrt_command_buffer));
     IREE_RETURN_AND_END_ZONE_IF_ERROR(
         z0, iree_hal_deferred_command_buffer_apply(
-                command_buffers[i], xrt_command_buffer,
+                command_buffer, xrt_command_buffer,
                 iree_hal_buffer_binding_table_empty()));
   }
   // Do we need to block here like vulkan HAL? Check if we run into some
@@ -397,7 +396,10 @@ const iree_hal_device_vtable_t iree_hal_xrt_device_vtable = {
     iree_hal_xrt_device_query_semaphore_compatibility,
     /*.queue_alloca = */ iree_hal_xrt_device_queue_alloca,
     /*.queue_dealloca = */ iree_hal_xrt_device_queue_dealloca,
-    /*.queue_read=*/iree_hal_xrt_device_queue_read,
+    /*.queue_fill=*/ iree_hal_device_queue_emulated_fill,
+    /*.queue_update=*/ iree_hal_device_queue_emulated_update,
+    /*.queue_copy=*/ iree_hal_device_queue_emulated_copy,
+    /*.queue_read=*/ iree_hal_xrt_device_queue_read,
     /*.queue_write = */ iree_hal_xrt_device_queue_write,
     /*.queue_execute = */ iree_hal_xrt_device_queue_execute,
     /*.queue_flush = */ iree_hal_xrt_device_queue_flush,
