@@ -183,7 +183,6 @@ func.func @f_conv(%arg0: ${input_tensor_type},
         regex = re.compile("|".join(key_map_escaped))
 
         self.subbed = regex.sub(lambda m: str(replace[m.group(0)[2:-1]]), base_string)
-        print(self.subbed)
 
         self.params = replace
         self.params["conv_type"] = conv_type

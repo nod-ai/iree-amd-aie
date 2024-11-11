@@ -1123,9 +1123,34 @@ if __name__ == "__main__":
     parser.add_argument("peano_install_dir", type=abs_path)
     parser.add_argument("--xrt-dir", type=abs_path)
     parser.add_argument("--vitis-dir", type=abs_path)
-    parser.add_argument("--xrt_lite_n_core_rows", type=int)
-    parser.add_argument("--xrt_lite_n_core_cols", type=int)
-    parser.add_argument("--target_device", type=str, required=True)
+    parser.add_argument(
+        "--xrt_lite_n_core_rows",
+        type=int,
+        help="Number of AIE core rows of the xrt-lite device to use",
+    )
+    parser.add_argument(
+        "--xrt_lite_n_core_cols",
+        type=int,
+        help="Number of AIE core columns of the xrt-lite device to use",
+    )
+
+    # Takes from AMDAIEEnums.td
+    current_devices = [
+        "xcvc1902",
+        "xcve2302",
+        "xcve2802",
+        "npu1",
+        "npu1_1col",
+        "npu1_2col",
+        "npu1_3col",
+        "npu1_4col",
+        "npu4",
+    ]
+    target_device_help_string = f"Target device to run the tests on. Available options: {current_devices}. Hint: phoenix devices start with 'npu1' and strix devices start with 'npu4'."
+
+    parser.add_argument(
+        "--target_device", type=str, required=True, help=target_device_help_string
+    )
 
     # TODO(newling) make bool options boolean, not integer (tried but had issues)
     parser.add_argument(
@@ -1228,9 +1253,16 @@ if __name__ == "__main__":
         default=False,
     )
 
+    parser.epilog = "Example call: ./run.py --verbose  output_dir ${IREE_INSTALL}  ${LLVM_AIE}  --target_device=npu1_4col --xrt_lite_n_core_rows=4 --xrt_lite_n_core_cols=4 --tests=Matmul"
+
     args = parser.parse_args()
 
     test_set_list = args.tests.split(",")
+
+    if args.target_device not in current_devices:
+        raise ValueError(
+            f"Invalid target device '{args.target_device}'. Available options: {current_devices}"
+        )
 
     all_tests(
         tests,
