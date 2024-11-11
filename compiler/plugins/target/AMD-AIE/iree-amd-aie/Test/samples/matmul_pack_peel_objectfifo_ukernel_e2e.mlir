@@ -3,7 +3,7 @@
 
 // PHOENIX-LABEL: hal.executable.export public @matmul_dispatch_0_matmul_128x128x256_bf16xbf16xf32
 // PHOENIX:       aie.device(npu1_4col) {
-// PHOENIX-DAG:   @matmul_bf16_bf16_f32_32x32x64_4x8x4
+// PHOENIX-DAG:   @matmul_bf16_bf16_f32_32x32x32_4x8x4
 // PHOENIX-DAG:   %[[TILE_0_2:.+]] = aie.tile(0, 2)
 // PHOENIX-DAG:   %[[TILE_0_3:.+]] = aie.tile(0, 3)
 // PHOENIX-DAG:   %[[TILE_1_2:.+]] = aie.tile(1, 2)
@@ -27,7 +27,7 @@
 
 // STRIX-LABEL: hal.executable.export public @matmul_dispatch_0_matmul_128x128x256_bf16xbf16xf32
 // STRIX:       aie.device(npu4) {
-// STRIX-DAG:   @matmul_bf16_bf16_f32_32x32x64_8x8x8
+// STRIX-DAG:   @matmul_bf16_bf16_f32_32x32x32_8x8x8
 // STRIX-DAG:   %[[TILE_0_2:.+]] = aie.tile(0, 2)
 // STRIX-DAG:   %[[TILE_0_3:.+]] = aie.tile(0, 3)
 // STRIX-DAG:   %[[TILE_1_2:.+]] = aie.tile(1, 2)
