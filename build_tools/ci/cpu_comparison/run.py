@@ -1134,7 +1134,7 @@ if __name__ == "__main__":
         help="Number of AIE core columns of the xrt-lite device to use",
     )
 
-    # Takes from AMDAIEEnums.td
+    # Taken from AMDAIEEnums.td
     current_devices = [
         "xcvc1902",
         "xcve2302",
