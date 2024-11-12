@@ -100,9 +100,9 @@ void AMDAIELinalgFunctionOutliningPass::runOnOperation() {
   DenseMap<Operation *, std::string> computeOpToOutlinedFuncMap;
   SmallVector<Operation *> toBeErased;
   moduleOp.walk([&](linalg::LinalgOp computeOp) {
-    if (mustNotOutline(computeOp))
+    if (mustNotOutline(computeOp)) {
       return WalkResult::skip();
-    else if (!mustOutline(computeOp)) {
+    } else if (!mustOutline(computeOp)) {
       computeOp->emitOpError() << "unsupported linalg op for outlining";
       return WalkResult::interrupt();
     }
