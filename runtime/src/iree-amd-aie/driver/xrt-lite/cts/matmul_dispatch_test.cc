@@ -120,7 +120,7 @@ TEST_P(MatMulDispatchTest, DispatchMatmul) {
   PrepareMatmulExecutable();
 
   // Create input buffer.
-  constexpr iree_device_size_t WIDTH = 32;
+  constexpr iree_device_size_t WIDTH = 1024;
   constexpr iree_device_size_t M = WIDTH, K = WIDTH, N = WIDTH;
   iree_hal_buffer_t *input_A = nullptr, *input_B = nullptr, *output_C = nullptr;
   int32_t seed =
@@ -130,9 +130,9 @@ TEST_P(MatMulDispatchTest, DispatchMatmul) {
       iree_hal_element_types_t::IREE_HAL_ELEMENT_TYPE_FLOAT_32, seed);
   int32_t b = generate_random_number(
       iree_hal_element_types_t::IREE_HAL_ELEMENT_TYPE_FLOAT_32, seed + 1);
-  CreateFilledDeviceBuffer<float>(M * K * sizeof(float), a, &input_A);
-  CreateFilledDeviceBuffer<float>(K * N * sizeof(float), b, &input_B);
-  CreateFilledDeviceBuffer<float>(M * N * sizeof(float), -1, &output_C);
+  CreateFilledDeviceBuffer<int>(M * K * sizeof(int), a, &input_A);
+  CreateFilledDeviceBuffer<int>(K * N * sizeof(int), b, &input_B);
+  CreateFilledDeviceBuffer<int>(M * N * sizeof(int), -1, &output_C);
 
   iree_hal_buffer_ref_t binding_refs[3];
   iree_hal_buffer_binding_table_t binding_table =
@@ -142,21 +142,21 @@ TEST_P(MatMulDispatchTest, DispatchMatmul) {
       /*buffer_slot=*/0,
       /*buffer=*/input_A,
       /*offset=*/0,
-      /*length=*/M * K * sizeof(float),
+      /*length=*/M * K * sizeof(int),
   };
   binding_refs[1] = {
       /*binding=*/0,
       /*buffer_slot=*/0,
       /*buffer=*/input_B,
       /*offset=*/0,
-      /*length=*/K * N * sizeof(float),
+      /*length=*/K * N * sizeof(int),
   };
   binding_refs[2] = {
       /*binding=*/0,
       /*buffer_slot=*/0,
       /*buffer=*/output_C,
       /*offset=*/0,
-      /*length=*/M * N * sizeof(float),
+      /*length=*/M * N * sizeof(int),
   };
   iree_hal_buffer_ref_list_t bindings = {
       /*.count=*/IREE_ARRAYSIZE(binding_refs),
@@ -190,15 +190,15 @@ TEST_P(MatMulDispatchTest, DispatchMatmul) {
 
   IREE_ASSERT_OK(SubmitCommandBufferAndWait(command_buffer, binding_table));
 
-  std::vector<float> output_values;
+  std::vector<int> output_values;
   output_values.reserve(M * N);
   IREE_ASSERT_OK(iree_hal_device_transfer_d2h(
       device_, output_C,
-      /*source_offset=*/0, output_values.data(), M * N * sizeof(float),
+      /*source_offset=*/0, output_values.data(), M * N * sizeof(int),
       IREE_HAL_TRANSFER_BUFFER_FLAG_DEFAULT, iree_infinite_timeout()));
-  std::vector<float> correct_output_values;
+  std::vector<int> correct_output_values;
   correct_output_values.reserve(M * N);
-  std::fill_n(correct_output_values.data(), M * N, (float)WIDTH * (a * b));
+  std::fill_n(correct_output_values.data(), M * N, (int)WIDTH * (a * b));
   int n_wrong = 0;
   for (int i = 0; i < M * N; ++i) {
     if (output_values[i] != correct_output_values[i]) {
