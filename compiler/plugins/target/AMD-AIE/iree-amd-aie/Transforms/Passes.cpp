@@ -562,8 +562,13 @@ void addAMDAIEObjectFifoLoweringPasses(OpPassManager &passManager,
 
   passManager.addPass(createAMDAIENormalizeLoopBoundsPass());
   passManager.addPass(createAMDAIEInsertCoresPass());
-  if (useTilePipeline != TilePassPipeline::ConvDecomposePipeline)
-    passManager.addPass(createAMDAIELinalgFunctionOutliningPass());
+
+  /**
+   * Outlining is currently disabled as causes performance regression of about
+   * 16% for matmul with m=n=1024 k=4096
+   * */
+  // if (useTilePipeline != TilePassPipeline::ConvDecomposePipeline)
+  //   passManager.addPass(createAMDAIELinalgFunctionOutliningPass());
 
   {
     // Vectorization passes
