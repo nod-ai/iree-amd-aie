@@ -563,7 +563,6 @@ static LogicalResult generateCoreElfFiles(
         return failure();
       }
       if (!std::filesystem::exists(cwd / ukernelObjectName)) {
-        llvm::outs() << "Compiling ukernel = " << ukernelFileName << "\n";
         mmObjectFilePath = assembleStringUsingChess(
             /*inputFileStr=*/ukernelFileContent,
             /*inputFileName=*/ukernelFileName,
@@ -577,8 +576,6 @@ static LogicalResult generateCoreElfFiles(
       } else {
         mmObjectFilePath = cwd / ukernelObjectName;
       }
-      llvm::outs() << "Fetched compiled ukernel = " << ukernelObjectName
-                   << "\n";
     }
 
     if (useChess) {
