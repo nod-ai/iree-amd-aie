@@ -197,19 +197,9 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
   // matmul of size LHS: 4x8 and RHS: 8x4.
 
   // CHECK-LABEL: packBasedPipeline
-  // CHECK-SAME:  (%[[ARG0:.*]]: tensor<1x1x4x8x4x8xbf16>,
-  // CHECK-SAME:   %[[ARG1:.*]]: tensor<1x1x8x4x8x4xbf16>,
-  // CHECK-SAME:   %[[ARG2:.*]]: tensor<1x1x8x8x4x4xf32>)
-  // CHECK:         tensor.extract_slice %[[ARG0]]
-  // CHECK-SAME:           tensor<1x1x4x8x4x8xbf16> to tensor<4x8x4x8xbf16>
-  // CHECK:         tensor.extract_slice %[[ARG1]]
-  // CHECK-SAME:           tensor<1x1x8x4x8x4xbf16> to tensor<8x4x8x4xbf16>
-  // CHECK:         tensor.extract_slice %[[ARG2]]
-  // CHECK-SAME:           tensor<1x1x8x8x4x4xf32> to tensor<8x8x4x4xf32>
-  // CHECK:         %[[C256:.*]] = arith.constant 256 : index
-  // CHECK:         scf.for %{{.*}} = %{{.*}} to %[[C256]] step %{{.*}}
+  // CHECK-COUNT-3: scf.for
   // CHECK-NOT:     scf.for
-  // CHECK:             linalg.generic
+  // CHECK:           linalg.generic
   // CHECK-SAME:            tensor<1x1x4x8xbf16>
   // CHECK-SAME:            tensor<1x1x8x4xbf16>
   // CHECK-SAME:            tensor<1x1x4x4xf32>
@@ -318,21 +308,12 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
                %arg0: memref<1x1x4x8x4x8xbf16>,
                %arg1: memref<1x1x8x4x8x4xbf16>,
                %arg2: memref<1x1x8x8x4x4xf32>) -> memref<1x1x8x8x4x4xf32> {
-    // CHECK:       %[[COLLAPSE_UNIT_DIM_0:.*]] = memref.subview %[[ARG0]]
-    // CHECK-SAME:          memref<1x1x4x8x4x8xbf16> to memref<4x8x4x8xbf16, strided<[256, 32, 8, 1]>>
-    // CHECK:       %[[COLLAPSE_UNIT_DIM_1:.*]] = memref.subview %[[ARG1]]
-    // CHECK-SAME:          memref<1x1x8x4x8x4xbf16> to memref<8x4x8x4xbf16, strided<[128, 32, 4, 1]>>
-    // CHECK:       %[[COLLAPSE_UNIT_DIM_2:.*]] = memref.subview %[[ARG2]]
-    // CHECK-SAME:          memref<1x1x8x8x4x4xf32> to memref<8x8x4x4xf32, strided<[128, 16, 4, 1]>>
-    // CHECK-DAG:   %[[C256:.*]] = arith.constant 256 : index
-    // CHECK:       scf.for %[[IV:.*]] = %{{.*}} to %[[C256]]
+    // CHECK-COUNT-3: scf.for
     // CHECK-NOT:     scf.for
-    // CHECK:         %[[SLICE_0:.*]] = memref.subview %[[COLLAPSE_UNIT_DIM_0]]
-    // CHECK:         %[[SLICE_1:.*]] = memref.subview %[[COLLAPSE_UNIT_DIM_1]]
-    // CHECK:         %[[SLICE_2:.*]] = memref.subview %[[COLLAPSE_UNIT_DIM_2]]
-    // CHECK:         linalg.generic
-    // CHECK-SAME:        ins(%[[SLICE_0]], %[[SLICE_1]] :
-    // CHECK-SAME:        outs(%[[SLICE_2]] :
+    // CHECK:           linalg.generic
+    // CHECK-SAME:            memref<1x1x4x8xbf16
+    // CHECK-SAME:            memref<1x1x8x4xbf16
+    // CHECK-SAME:            memref<1x1x4x4xf32
     linalg.generic {indexing_maps =
          [
            affine_map<(d0, d1, d2, d3, d4, d5, d6, d7, d8) -> (d0, d2, d5, d3, d6, d8)>,

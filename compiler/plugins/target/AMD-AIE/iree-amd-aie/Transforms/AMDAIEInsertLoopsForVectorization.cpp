@@ -55,7 +55,6 @@ class AMDAIEInsertLoopsForVectorizationPass
     const auto &tileLoops = tiled.value().loops;
     SmallVector<scf::ForOp> loops = llvm::map_to_vector(
         tileLoops, [](Operation *loop) { return cast<scf::ForOp>(loop); });
-    (void)mlir::coalesceLoops(rewriter, loops);
     if (genericOp->getResults().size()) {
       rewriter.replaceOp(genericOp, loops[0]->getResult(0));
     } else {
