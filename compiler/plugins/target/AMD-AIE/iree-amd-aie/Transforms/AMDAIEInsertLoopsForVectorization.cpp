@@ -244,8 +244,9 @@ class AMDAIEInsertLoopsForVectorizationPass
 
 }  // namespace
 
-std::unique_ptr<Pass> createAMDAIEInsertLoopsForVectorizationPass() {
-  return std::make_unique<AMDAIEInsertLoopsForVectorizationPass>();
+std::unique_ptr<Pass> createAMDAIEInsertLoopsForVectorizationPass(
+    AMDAIEInsertLoopsForVectorizationOptions options) {
+  return std::make_unique<AMDAIEInsertLoopsForVectorizationPass>(options);
 }
 
 }  // namespace mlir::iree_compiler::AMDAIE
