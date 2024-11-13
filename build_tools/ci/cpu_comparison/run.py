@@ -333,6 +333,7 @@ class MatmulTruncf(BaseMatmul):
             output_type=get_output_type(self.filename),
             coalesce_loops=True,
             collapse_unit_dims=True,
+            function_outline=True,
         )
 
         return True
@@ -422,6 +423,7 @@ def generate_aie_vmfb(
     function_name,
     coalesce_loops=False,
     collapse_unit_dims=False,
+    function_outline=False,
 ):
     """
     Compile a test file for IREE's AIE backend, returning the path to the
@@ -462,6 +464,9 @@ def generate_aie_vmfb(
 
     if collapse_unit_dims:
         compilation_flags += ["--iree-amdaie-enable-collapsing-unit-dims"]
+    
+    if function_outline:
+        compilation_flags += ["--iree-amdaie-enable-function-outlining"]
 
     for additional_flag in additional_flags:
         if additional_flag not in compilation_flags:
@@ -779,6 +784,7 @@ def aie_vs_baseline(
     output_type,
     coalesce_loops=False,
     collapse_unit_dims=False,
+    function_outline=False,
 ):
     """
     If the outputs differ, add the test file to a list of failures.
@@ -809,6 +815,8 @@ def aie_vs_baseline(
         Whether to enable coalescing of loops when compiling for AIE backend
     collapse_unit_dims:
         Whether to enable collapsing of unit dimensions when compiling for AIE backend
+    function_outline:
+        Whether to enable linalg function outlining when compiling for AIE backend
     """
 
     name = name_from_mlir_filename(test_file)
@@ -824,6 +832,7 @@ def aie_vs_baseline(
         function_name,
         coalesce_loops,
         collapse_unit_dims,
+        function_outline,
     )
 
     if config.do_not_run_aie:

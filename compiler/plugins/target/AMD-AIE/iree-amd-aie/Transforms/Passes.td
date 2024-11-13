@@ -270,6 +270,10 @@ def AMDAIELinalgFunctionOutlining :
     repeated codes.
   }];
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIELinalgFunctionOutliningPass()";
+  let options = [
+    Option<"enableFunctionOutlining", "enable-function-outlining", "bool", /*default=*/"false",
+      "Enable/disable linalg function outlining">
+  ];
 }
 
 def AMDAIEFuseConsumerIntoLoop :
