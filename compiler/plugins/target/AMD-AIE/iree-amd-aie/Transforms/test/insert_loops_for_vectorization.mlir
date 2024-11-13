@@ -66,7 +66,7 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
   // A batched matmul where the element types are not supported for
   // vectorization on AIE, does not get tiles:
   // CHECK-LABEL: batched_bad_element_types
-  // CHECK-NOT:     scf.for
+  // CHECK-NOT: scf.for
   func.func @batched_bad_element_types(%arg0: !t3_f32, %arg1: !t3_f32, %arg2: !t3_f32) -> !t3_f32 {
     %0 = linalg.generic {indexing_maps =
                           [
@@ -197,12 +197,12 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
   // matmul of size LHS: 4x8 and RHS: 8x4.
 
   // CHECK-LABEL: packBasedPipeline
-  // CHECK-COUNT-3: scf.for
+  // CHECK-COUNT-6: scf.for
   // CHECK-NOT:     scf.for
   // CHECK:           linalg.generic
-  // CHECK-SAME:            tensor<1x1x4x8xbf16>
-  // CHECK-SAME:            tensor<1x1x8x4xbf16>
-  // CHECK-SAME:            tensor<1x1x4x4xf32>
+  // CHECK-SAME:        tensor<1x1x1x1x4x8xbf16>
+  // CHECK-SAME:        tensor<1x1x1x1x8x4xbf16>
+  // CHECK-SAME:        tensor<1x1x1x1x4x4xf32>
 
   func.func @packBasedPipeline(
                %arg0: tensor<1x1x4x8x4x8xbf16>,
@@ -268,18 +268,15 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
   func.func @element_wise_bufferized(%arg0: memref<1x1x4x6x8xf32>, %arg1: memref<1x1x4x6x8xbf16>) -> memref<1x1x4x6x8xbf16>{
     %cst = arith.constant 0.000000e+00 : bf16
-    // CHECK:       %[[COLLAPSE_UNIT_DIM_0:.*]] = memref.subview %[[ARG0]]
-    // CHECK-SAME:          memref<1x1x4x6x8xf32> to memref<4x6x8xf32, strided<[48, 8, 1]>>
-    // CHECK:       %[[COLLAPSE_UNIT_DIM_1:.*]] = memref.subview %[[ARG1]]
-    // CHECK-SAME:          memref<1x1x4x6x8xbf16> to memref<4x6x8xbf16, strided<[48, 8, 1]>>
-    // CHECK-DAG:   %[[C4:.*]] = arith.constant 4 : index
-    // CHECK:       scf.for %[[IV:.*]] = %{{.*}} to %[[C4]]
+
+    // CHECK-DAG:     %[[C4:.*]] = arith.constant 4 : index
+    // CHECK-COUNT-3: scf.for
     // CHECK-NOT:     scf.for
-    // CHECK:         %[[SLICE_0:.*]] = memref.subview %[[COLLAPSE_UNIT_DIM_0]]
-    // CHECK:         %[[SLICE_1:.*]] = memref.subview %[[COLLAPSE_UNIT_DIM_1]]
-    // CHECK:         linalg.generic
-    // CHECK-SAME:        ins(%[[SLICE_0]] :
-    // CHECK-SAME:        outs(%[[SLICE_1]] :
+    // CHECK:           memref.subview %[[ARG0]]
+    // CHECK:           memref.subview %[[ARG1]]
+    // CHECK:           linalg.generic
+    // CHECK-SAME:        memref<1x1x1x6x8xf32
+    // CHECK-SAME:        memref<1x1x1x6x8xbf16
     linalg.generic {
               indexing_maps = [affine_map<(d0, d1, d2, d3, d4) -> (d0, d1, d2, d3, d4)>,
                                affine_map<(d0, d1, d2, d3, d4) -> (d0, d1, d2, d3, d4)>
@@ -308,12 +305,15 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
                %arg0: memref<1x1x4x8x4x8xbf16>,
                %arg1: memref<1x1x8x4x8x4xbf16>,
                %arg2: memref<1x1x8x8x4x4xf32>) -> memref<1x1x8x8x4x4xf32> {
-    // CHECK-COUNT-3: scf.for
+    // CHECK-COUNT-6: scf.for
     // CHECK-NOT:     scf.for
+    // CHECK:           memref.subview %[[ARG0]]
+    // CHECK:           memref.subview %[[ARG1]]
+    // CHECK:           memref.subview %[[ARG2]]
     // CHECK:           linalg.generic
-    // CHECK-SAME:            memref<1x1x4x8xbf16
-    // CHECK-SAME:            memref<1x1x8x4xbf16
-    // CHECK-SAME:            memref<1x1x4x4xf32
+    // CHECK-SAME:            memref<1x1x1x1x4x8xbf16
+    // CHECK-SAME:            memref<1x1x1x1x8x4xbf16
+    // CHECK-SAME:            memref<1x1x1x1x4x4xf32
     linalg.generic {indexing_maps =
          [
            affine_map<(d0, d1, d2, d3, d4, d5, d6, d7, d8) -> (d0, d2, d5, d3, d6, d8)>,

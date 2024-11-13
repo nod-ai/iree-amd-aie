@@ -18,6 +18,14 @@ namespace {
 class AMDAIEInsertLoopsForVectorizationPass
     : public impl::AMDAIEInsertLoopsForVectorizationBase<
           AMDAIEInsertLoopsForVectorizationPass> {
+ public:
+  AMDAIEInsertLoopsForVectorizationPass() = default;
+  AMDAIEInsertLoopsForVectorizationPass(
+      const AMDAIEInsertLoopsForVectorizationPass &pass) {}
+  AMDAIEInsertLoopsForVectorizationPass(
+      const AMDAIEInsertLoopsForVectorizationOptions &options)
+      : AMDAIEInsertLoopsForVectorizationBase(options) {}
+
  private:
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<linalg::LinalgDialect, scf::SCFDialect>();
@@ -48,13 +56,14 @@ class AMDAIEInsertLoopsForVectorizationPass
   /// Tile the generic op using `tileSizes` and coalesce the generated tiling
   /// loops in order to minimize the overhead of loop control/branch statements.
   /// This function can work on both tensor as well as memref inputs.
-  static void performTiling(IRRewriter &rewriter, linalg::GenericOp genericOp,
-                            SmallVector<int64_t> &tileSizes) {
+  void performTiling(IRRewriter &rewriter, linalg::GenericOp genericOp,
+                     SmallVector<int64_t> &tileSizes) {
     auto opts = linalg::LinalgTilingOptions().setTileSizes(tileSizes);
     auto tiled = linalg::tileLinalgOp(rewriter, genericOp, opts);
     const auto &tileLoops = tiled.value().loops;
     SmallVector<scf::ForOp> loops = llvm::map_to_vector(
         tileLoops, [](Operation *loop) { return cast<scf::ForOp>(loop); });
+    if (enableCoalescing) (void)mlir::coalesceLoops(rewriter, loops);
     if (genericOp->getResults().size()) {
       rewriter.replaceOp(genericOp, loops[0]->getResult(0));
     } else {
@@ -96,8 +105,8 @@ class AMDAIEInsertLoopsForVectorizationPass
   /// this is optinal we need not return failure if the collapsing cannot take
   /// place. Eg: For <2x3x4> since there aren't any unit dimensions, it'd return
   /// failure, hence we can simply return.
-  static void collapseUnitDims(IRRewriter &rewriter,
-                               linalg::GenericOp &genericOp) {
+  void collapseUnitDims(IRRewriter &rewriter, linalg::GenericOp &genericOp) {
+    if (!enableCollapsingUnitDims) return;
     linalg::ControlDropUnitDims options;
     options.rankReductionStrategy =
         linalg::ControlDropUnitDims::RankReductionStrategy::ExtractInsertSlice;

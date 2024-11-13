@@ -342,8 +342,14 @@ def AMDAIEInsertLoopsForVectorization :
     dialect.
   }];
 
- let constructor =
+  let constructor =
      "mlir::iree_compiler::AMDAIE::createAMDAIEInsertLoopsForVectorizationPass()";
+  let options = [
+    Option<"enableCoalescing", "enable-coalescing", "bool", /*default=*/"false",
+      "Enable coalescing of loops generated due to tiling for vectorization.">,
+    Option<"enableCollapsingUnitDims", "enable-collapsing-unit-dims", "bool", /*default=*/"false",
+      "Enable collapsing of unit dimensions in the input tensor/memref.">,
+  ];
 }
 
 def AMDAIELinkExecutables :
