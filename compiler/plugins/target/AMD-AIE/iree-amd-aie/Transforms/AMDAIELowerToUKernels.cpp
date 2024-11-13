@@ -80,21 +80,10 @@ static FnNameAndDefAttrs getFnNameAndDefAttrs(RewriterBase &rewriter,
 /// ================== SAME UTILITIES AS IREE LLVMCPU ====================
 /// ======================================================================
 
-/// TODO(avarma): See if we already have a common utility and work accordingly.
-static FailureOr<AMDAIE::AMDAIEDevice> fetchNpuVersion(
-    IREE::HAL::ExecutableTargetAttr targetAttr) {
-  std::optional<AMDAIE::AMDAIEDevice> maybeDevice =
-      mlir::iree_compiler::AMDAIE::getConfigAMDAIEDevice(targetAttr);
-  if (!maybeDevice) {
-    return failure();
-  }
-  return *maybeDevice;
-}
-
 static FailureOr<std::string> fetchUkernelObjectName(
     IREE::HAL::ExecutableTargetAttr targetAttr) {
-  FailureOr<AMDAIEDevice> maybeDevice = fetchNpuVersion(targetAttr);
-  if (failed(maybeDevice)) {
+  std::optional<AMDAIEDevice> maybeDevice = getConfigAMDAIEDevice(targetAttr);
+  if (!maybeDevice) {
     return failure();
   }
   std::string ukernelObjectName = "mm_npu1.o";
