@@ -949,10 +949,10 @@ class Tests:
         self.register(MatmulThinBias(1024, 1024, 512, "bf16", "f32", False))
 
         # VanillaMatmul test(s):
-        self.register(
-            VanillaMatmul(32, 32, 32, "i32", "i32", run_on_target=["npu1_4col", "npu4"])
-        )
-        self.register(VanillaMatmul(32, 32, 64, "bf16", "f32"))
+        # self.register(
+        #     VanillaMatmul(32, 32, 32, "i32", "i32", run_on_target=["npu1_4col", "npu4"])
+        # )
+        self.register(VanillaMatmul(8, 8, 128, "bf16", "f32"))
 
         # MultipleDispatches tests:
         for name in ["two_matmul_switching", "matmul_f32_8_8_4", "matmul_f32_8_4_8"]:

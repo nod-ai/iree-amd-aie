@@ -284,6 +284,13 @@ void addPackPeelBasedPassPipeline(OpPassManager &funcPassManager,
     funcPassManager.addPass(createAMDAIELowerToUKernelsPass(options));
   }
 
+  // Reabsorb the peeled matmuls into the main loop. The peeling has served
+  // its purpose (allowing initial fill and final elementwise ops to be
+  // correctly tiles).
+  funcPassManager.addPass(createAMDAIEUnpeelPass());
+  // Canonicalize:
+  funcPassManager.addPass(createCanonicalizerPass());
+
   // Comprehensive bufferization
   addAMDAIEBufferizePasses(funcPassManager, useTilePipeline);
   funcPassManager.addPass(createHoistStaticallyBoundAllocationsPass());

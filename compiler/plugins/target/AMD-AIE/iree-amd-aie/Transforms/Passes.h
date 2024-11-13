@@ -279,6 +279,10 @@ std::unique_ptr<Pass> createAMDAIETilePass(AMDAIETileOptions options = {});
 std::unique_ptr<Pass> createAMDAIETileAndFusePass(
     AMDAIETileAndFuseOptions options = {});
 
+/// Create pass to reabsorb prologue and epilogue operations (currently just
+/// matmul) back into loops.
+std::unique_ptr<Pass> createAMDAIEUnpeelPass();
+
 /// Create pass to propagate pack/unpack ops using upstream patterns.
 std::unique_ptr<Pass> createAMDAIEPropagateDataLayoutPass();
 

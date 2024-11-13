@@ -10,6 +10,12 @@
 include "iree-amd-aie/IR/AMDAIEDialect.td"
 include "mlir/Pass/PassBase.td"
 
+def AMDAIEUnpeel :
+    Pass<"iree-amdaie-unpeel", ""> {
+ let summary = "TODO";
+ let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEUnpeelPass()";
+}
+
 def AMDAIEAccessToAcquireRelease :
     Pass<"iree-amdaie-access-to-acquire-release", ""> {
   let summary = "Convert logical objectFifo access operations to acquire/release "

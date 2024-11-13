@@ -82,6 +82,7 @@ namespace mlir::iree_compiler::AMDAIE {
 #define GEN_PASS_DEF_AMDAIETEMPORARYALLOCBUFFERIZATION
 #define GEN_PASS_DEF_AMDAIETILE
 #define GEN_PASS_DEF_AMDAIETILEANDFUSE
+#define GEN_PASS_DEF_AMDAIEUNPEEL
 #define GEN_PASS_DEF_AMDAIEVECTORIZATION
 #include "iree-amd-aie/Transforms/Passes.h.inc"
 
