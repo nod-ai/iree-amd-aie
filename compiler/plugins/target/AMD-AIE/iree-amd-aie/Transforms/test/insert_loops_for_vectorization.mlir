@@ -1,5 +1,6 @@
 // RUN: iree-opt --pass-pipeline="builtin.module(func.func(iree-amdaie-insert-loops-for-vectorization))" --split-input-file %s | FileCheck %s --check-prefix=CHECK
 // RUN: iree-opt --pass-pipeline="builtin.module(func.func(iree-amdaie-insert-loops-for-vectorization{enable-collapsing-unit-dims}))" --split-input-file %s | FileCheck %s --check-prefix=COLLAPSE
+// RUN: iree-opt --pass-pipeline="builtin.module(func.func(iree-amdaie-insert-loops-for-vectorization{enable-coalescing}))" --split-input-file %s | FileCheck %s --check-prefix=COALESCE
 
 !t2_bf16 = tensor<64x64xbf16>
 !t3_bf16 = tensor<64x64x64xbf16>
@@ -221,6 +222,14 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
   // COLLAPSE-SAME:            tensor<1x1x4x8xbf16>
   // COLLAPSE-SAME:            tensor<1x1x8x4xbf16>
   // COLLAPSE-SAME:            tensor<1x1x4x4xf32>
+
+  // COALESCE-LABEL: packBasedPipeline
+  // COALESCE:         scf.for
+  // COALESCE-NOT:     scf.for
+  // COALESCE:           linalg.generic
+  // COALESCE-SAME:        tensor<1x1x1x1x4x8xbf16>
+  // COALESCE-SAME:        tensor<1x1x1x1x8x4xbf16>
+  // COALESCE-SAME:        tensor<1x1x1x1x4x4xf32>
   func.func @packBasedPipeline(
                %arg0: tensor<1x1x4x8x4x8xbf16>,
                %arg1: tensor<1x1x8x4x8x4xbf16>,
@@ -283,6 +292,8 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 // CHECK-SAME:  (%[[ARG0:.*]]: memref<1x1x4x6x8xf32>, %[[ARG1:.*]]: memref<1x1x4x6x8xbf16>)
 // COLLAPSE-LABEL: @element_wise_bufferized
 // COLLAPSE-SAME:  (%[[ARG0:.*]]: memref<1x1x4x6x8xf32>, %[[ARG1:.*]]: memref<1x1x4x6x8xbf16>)
+// COALESCE-LABEL: @element_wise_bufferized
+// COALESCE-SAME:  (%[[ARG0:.*]]: memref<1x1x4x6x8xf32>, %[[ARG1:.*]]: memref<1x1x4x6x8xbf16>)
 #executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
 module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
   func.func @element_wise_bufferized(%arg0: memref<1x1x4x6x8xf32>, %arg1: memref<1x1x4x6x8xbf16>) -> memref<1x1x4x6x8xbf16>{
@@ -309,6 +320,14 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
     // COLLAPSE:         linalg.generic
     // COLLAPSE-SAME:        ins(%[[SLICE_0]] :
     // COLLAPSE-SAME:        outs(%[[SLICE_1]] :
+
+    // COALESCE:         scf.for
+    // COALESCE-NOT:     scf.for
+    // COALESCE:           memref.subview %[[ARG0]]
+    // COALESCE:           memref.subview %[[ARG1]]
+    // COALESCE:           linalg.generic
+    // COALESCE-SAME:        memref<1x1x1x6x8xf32
+    // COALESCE-SAME:        memref<1x1x1x6x8xbf16
     linalg.generic {
               indexing_maps = [affine_map<(d0, d1, d2, d3, d4) -> (d0, d1, d2, d3, d4)>,
                                affine_map<(d0, d1, d2, d3, d4) -> (d0, d1, d2, d3, d4)>
@@ -335,6 +354,10 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 // COLLAPSE-SAME:  (%[[ARG0:.*]]: memref<1x1x4x8x4x8xbf16>,
 // COLLAPSE-SAME:   %[[ARG1:.*]]: memref<1x1x8x4x8x4xbf16>
 // COLLAPSE-SAME:   %[[ARG2:.*]]: memref<1x1x8x8x4x4xf32>)
+// COALESCE-LABEL: @matmul_bufferized
+// COALESCE-SAME:  (%[[ARG0:.*]]: memref<1x1x4x8x4x8xbf16>,
+// COALESCE-SAME:   %[[ARG1:.*]]: memref<1x1x8x4x8x4xbf16>
+// COALESCE-SAME:   %[[ARG2:.*]]: memref<1x1x8x8x4x4xf32>)
 #executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
 module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
   func.func @matmul_bufferized(
@@ -365,6 +388,16 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
     // COLLAPSE:            linalg.generic
     // COLLAPSE-SAME:           ins(%[[SLICE_0]], %[[SLICE_1]] :
     // COLLAPSE-SAME:           outs(%[[SLICE_2]] :
+    
+    // COALESCE:         scf.for
+    // COALESCE-NOT:     scf.for
+    // COALESCE:           memref.subview %[[ARG0]]
+    // COALESCE:           memref.subview %[[ARG1]]
+    // COALESCE:           memref.subview %[[ARG2]]
+    // COALESCE:           linalg.generic
+    // COALESCE-SAME:            memref<1x1x1x1x4x8xbf16
+    // COALESCE-SAME:            memref<1x1x1x1x8x4xbf16
+    // COALESCE-SAME:            memref<1x1x1x1x4x4xf32
     linalg.generic {indexing_maps =
          [
            affine_map<(d0, d1, d2, d3, d4, d5, d6, d7, d8) -> (d0, d2, d5, d3, d6, d8)>,
