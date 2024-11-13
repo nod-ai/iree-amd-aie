@@ -284,6 +284,15 @@ def AMDAIELinalgFunctionOutlining :
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIELinalgFunctionOutliningPass()";
 }
 
+def AMDAIELinearizeMemrefType :
+  Pass<"iree-amdaie-linearize-memref-type", "ModuleOp"> {
+  let summary = "Linearizing memref types";
+  let description = [{
+    TODO(avarma): Expand this later when you move this to upstream.
+  }];
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIELinearizeMemrefTypePass()";
+}
+
 def AMDAIEFuseConsumerIntoLoop :
     InterfacePass<"iree-amdaie-fuse-consumer-into-loop", "mlir::FunctionOpInterface"> {
   let summary = "Fuse the consumer operation into the innermost last scf loop.";
