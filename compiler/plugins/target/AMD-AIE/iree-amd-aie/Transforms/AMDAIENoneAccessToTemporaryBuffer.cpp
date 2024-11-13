@@ -6,8 +6,6 @@
 
 #include "iree-amd-aie/IR/AMDAIEOps.h"
 #include "iree-amd-aie/Transforms/Passes.h"
-#include "mlir/IR/IRMapping.h"
-#include "mlir/IR/Iterators.h"
 
 #define DEBUG_TYPE "iree-amdaie-none-access-to-temporary-buffer"
 
@@ -33,31 +31,26 @@ LogicalResult noneAccessOpToTemporaryBuffer(Operation *parentOp) {
             return WalkResult::advance();
 
           memref::AllocOp newAllocOp;
-          if (!logicalObjectFifoToAlloc.contains(accessOp.getInput())) {
-            // Insert a new alloc op at the point of the first `None` type
-            // access op
-            rewriter.setInsertionPoint(accessOp);
+          auto iter = logicalObjectFifoToAlloc.find(accessOp.getInput());
+          if (iter == logicalObjectFifoToAlloc.end()) {
+            Location loc = accessOp.getLoc();
+
+            // Insert an alloc op at the start of the parent core op's block.
+            rewriter.setInsertionPointToStart(coreOp.getBody(0));
             auto memRefType = cast<MemRefType>(accessOp.getOutput().getType());
             MemRefType allocType = MemRefType::get(
                 memRefType.getShape(), memRefType.getElementType(),
                 MemRefLayoutAttrInterface{}, memRefType.getMemorySpace());
-            newAllocOp = rewriter.create<memref::AllocOp>(
-                rewriter.getUnknownLoc(), allocType);
-            logicalObjectFifoToAlloc[accessOp.getInput()] = newAllocOp;
+            newAllocOp = rewriter.create<memref::AllocOp>(loc, allocType);
+            logicalObjectFifoToAlloc.insert({accessOp.getInput(), newAllocOp});
 
-            // Insert a dealloc op at the end of the block
-            auto newDeallocOp = rewriter.create<memref::DeallocOp>(
-                rewriter.getUnknownLoc(), newAllocOp);
-            newDeallocOp->moveBefore(&newAllocOp->getBlock()->back());
+            // Insert a dealloc just before amdaie.end
+            rewriter.setInsertionPoint(coreOp.getBody(0)->getTerminator());
+            rewriter.create<memref::DeallocOp>(loc, newAllocOp);
           } else {
-            newAllocOp = logicalObjectFifoToAlloc[accessOp.getInput()];
-            if (!newAllocOp) {
-              accessOp.emitOpError()
-                  << "No alloc op is mapped from the input of access op";
-              return WalkResult::interrupt();
-            }
+            newAllocOp = iter->second;
+            assert(newAllocOp && "how was a null value inserted into map?");
           }
-
           rewriter.replaceAllUsesWith(accessOp.getResult(),
                                       newAllocOp.getResult());
           return WalkResult::advance();
@@ -83,6 +76,7 @@ class AMDAIENoneAccessToTemporaryBufferPass
 
 void AMDAIENoneAccessToTemporaryBufferPass::runOnOperation() {
   Operation *parentOp = getOperation();
+
   if (failed(noneAccessOpToTemporaryBuffer(parentOp))) {
     parentOp->emitOpError() << "failed to convert `None` type access "
                                "operations to temporary buffers";
