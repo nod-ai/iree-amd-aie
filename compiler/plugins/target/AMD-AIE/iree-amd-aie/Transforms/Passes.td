@@ -665,6 +665,14 @@ def AMDAIESinkIntoCore :
 def AMDAIESplitLogicalObjFifos :
   Pass<"iree-amdaie-split-logical-objectfifos", "ModuleOp"> {
   let summary = "Pass to split L2 buffers to distribute on multiple shimTiles and memTiles.";
+  let description = [{
+    Splitting L2 input and output logical objectFifos and their user dma operations
+    by a factor of number of AIE rows (for A, C matrix) or columns (for B matrix) used.
+    For example, A matrix is distributed on two AIE rows, with L2 buffer size
+    `[2, 1, 32, 32]`, will be split to two `[1, 1, 32, 32]` buffers.
+    Similarly, B matrix is distributed on two AIE columns with L2 buffer size
+    `[1, 2, 32, 32]`, will also be  split to two `[1, 1, 32, 32]` buffers.
+  }];
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIESplitLogicalObjFifosPass()";
 }
 

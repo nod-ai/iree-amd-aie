@@ -591,7 +591,7 @@ LogicalResult splitLogicalObjectFifo(IRRewriter &rewriter,
 
     size_t splitDimTarget = 0;
     if (isL2DmaTransposed(producer, true)) {
-      splitDimTarget = transposeDim[splitDim];
+      splitDimTarget = transposedL2Dims[splitDim];
     }
     std::optional<int64_t> targetSize =
         getConstantIntValue(targetSizes[splitDimTarget]);
@@ -689,7 +689,7 @@ LogicalResult splitDoublyStridedOp(IRRewriter &rewriter,
 
   size_t splitDimTarget = 0;
   if (isL2DmaTransposed(op, isL2Target)) {
-    splitDimTarget = transposeDim[splitDim];
+    splitDimTarget = transposedL2Dims[splitDim];
   }
   // Get new sizes and offsets after splitting.
   if (!op->use_empty())
