@@ -80,6 +80,17 @@ static FnNameAndDefAttrs getFnNameAndDefAttrs(RewriterBase &rewriter,
 /// ================== SAME UTILITIES AS IREE LLVMCPU ====================
 /// ======================================================================
 
+static FailureOr<std::string> fetchUkernelObjectName(
+    IREE::HAL::ExecutableTargetAttr targetAttr) {
+  std::optional<AMDAIEDevice> maybeDevice = getConfigAMDAIEDevice(targetAttr);
+  if (!maybeDevice) {
+    return failure();
+  }
+  std::string ukernelObjectName = "mm_npu1.o";
+  if (*maybeDevice == AMDAIEDevice::npu4) ukernelObjectName = "mm_npu4.o";
+  return ukernelObjectName;
+}
+
 /// Utility to fetch the element type as string.
 static std::string typeToString(Type type) {
   std::string typeStr;
@@ -115,6 +126,13 @@ static FailureOr<IREE::Codegen::UKernelOpInterface> matchDAGForUKernel(
   if (!hasUkernel(targetAttr, ukernelName)) {
     return failure();
   }
+
+  FailureOr<std::string> maybeUkernelObjectName =
+      fetchUkernelObjectName(targetAttr);
+  if (failed(maybeUkernelObjectName)) {
+    return failure();
+  }
+
   Value lhs = op.getDpsInputOperand(0)->get();
   Value rhs = op.getDpsInputOperand(1)->get();
   Value out = op.getDpsInitOperand(0)->get();
@@ -140,7 +158,7 @@ static FailureOr<IREE::Codegen::UKernelOpInterface> matchDAGForUKernel(
 
   auto fn =
       getFnNameAndDefAttrs(rewriter, ukernelName, inputOutputElemTypeAndSize,
-                           pathToUkernels, "mm.o");
+                           pathToUkernels, *maybeUkernelObjectName);
 
   // Create UKernel for AMD-AIE.
   auto genericMicroKernelOp = rewriter.create<IREE::Codegen::UKernelGenericOp>(
@@ -157,6 +175,12 @@ static FailureOr<IREE::Codegen::UKernelOpInterface> matchDAGForUKernel(
     std::string pathToUkernels) {
   auto targetAttr = IREE::HAL::ExecutableTargetAttr::lookup(op);
   if (!hasUkernel(targetAttr, ukernelName)) {
+    return failure();
+  }
+
+  FailureOr<std::string> maybeUkernelObjectName =
+      fetchUkernelObjectName(targetAttr);
+  if (failed(maybeUkernelObjectName)) {
     return failure();
   }
 
@@ -179,7 +203,7 @@ static FailureOr<IREE::Codegen::UKernelOpInterface> matchDAGForUKernel(
   Location loc = op.getLoc();
 
   auto fn = getFnNameAndDefAttrs(rewriter, ukernelName, elemTypeAndSize,
-                                 pathToUkernels, "mm.o");
+                                 pathToUkernels, *maybeUkernelObjectName);
 
   // Create UKernel for AMD-AIE.
   auto genericMicroKernelOp = rewriter.create<IREE::Codegen::UKernelGenericOp>(
