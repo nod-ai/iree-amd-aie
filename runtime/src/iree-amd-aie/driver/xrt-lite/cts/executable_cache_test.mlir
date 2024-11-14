@@ -13,13 +13,13 @@
 !t_res = tensor<512x512xf32>
 !fdt_res = !flow.dispatch.tensor<writeonly:tensor<512x512xf32>>
 hal.executable.source public @amdaie_fb {
-  hal.executable.export public @mm_f00x ordinal(0) layout(#pipeline_layout) {
+  hal.executable.export public @mm_512_512_4096_bf16_f32 ordinal(0) layout(#pipeline_layout) {
   ^bb0(%arg0: !hal.device):
     %x, %y, %z = flow.dispatch.workgroup_count_from_slice
     hal.return %x, %y, %z : index, index, index
   }
   builtin.module {
-    func.func @mm_f00x() {
+    func.func @mm_512_512_4096_bf16_f32() {
       %c0_f32 = arith.constant 0.0 : f32
       %c0 = arith.constant 0 : index
       %0 = hal.interface.binding.subspan layout(#pipeline_layout) binding(0) alignment(64) offset(%c0) flags("ReadOnly|Indirect") : !fdt_lhs
