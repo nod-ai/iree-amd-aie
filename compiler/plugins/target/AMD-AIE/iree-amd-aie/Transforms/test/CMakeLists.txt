@@ -29,6 +29,7 @@ iree_lit_test_suite(
     "convert_core_forall_to_for.mlir"
     "create_aie_workgroup.mlir"
     "create_reference_to_allocation.mlir"
+    "disable_linalg_function_outlining.mlir"
     "disable_vectorization.mlir"
     "distribute_cores_and_objectfifos.mlir"
     "distribute_l1_allocations.mlir"

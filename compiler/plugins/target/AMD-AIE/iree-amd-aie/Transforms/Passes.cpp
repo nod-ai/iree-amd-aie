@@ -495,7 +495,7 @@ void buildAMDAIETransformPassPipeline(
     LowerToAIEPassPipeline useLowerToAIEPipeline, bool matmulElementwiseFusion,
     bool enableVectorizationPasses, const std::string &pathToUkernels,
     bool enablePacketFlow, bool enableCoalescingLoops,
-    bool enableCollapsingUnitDims) {
+    bool enableCollapsingUnitDims, bool enableFunctionOutlining) {
   OpPassManager &modulePassManager = variantPassManager.nest<ModuleOp>();
   {
     FunctionLikeNest funcPassManager(modulePassManager);
@@ -524,7 +524,7 @@ void buildAMDAIETransformPassPipeline(
     addAMDAIEObjectFifoLoweringPasses(
         modulePassManager, enablePacketFlow, useTilePipeline,
         enableVectorizationPasses, enableCoalescingLoops,
-        enableCollapsingUnitDims);
+        enableCollapsingUnitDims, enableFunctionOutlining);
   } else if (useLowerToAIEPipeline == LowerToAIEPassPipeline::AIR) {
     addMLIRAIRLoweringPasses(modulePassManager, device, useTilePipeline,
                              matmulElementwiseFusion,
@@ -549,7 +549,8 @@ void addAMDAIEObjectFifoLoweringPasses(OpPassManager &passManager,
                                        TilePassPipeline useTilePipeline,
                                        bool enableVectorizationPasses,
                                        bool enableCoalescingLoops,
-                                       bool enableCollapsingUnitDims) {
+                                       bool enableCollapsingUnitDims,
+                                       bool enableFunctionOutlining) {
   passManager.addPass(createEraseHALDescriptorTypeFromMemRefPass());
   passManager.addPass(memref::createFoldMemRefAliasOpsPass());
 
@@ -574,7 +575,7 @@ void addAMDAIEObjectFifoLoweringPasses(OpPassManager &passManager,
 
   passManager.addPass(createAMDAIENormalizeLoopBoundsPass());
   passManager.addPass(createAMDAIEInsertCoresPass());
-  if (useTilePipeline != TilePassPipeline::ConvDecomposePipeline)
+  if (enableFunctionOutlining)
     passManager.addPass(createAMDAIELinalgFunctionOutliningPass());
 
   {

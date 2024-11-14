@@ -51,6 +51,7 @@ struct AMDAIEOptions {
   bool enableVectorizationPasses{true};
   bool enableCoalescingLoops{false};
   bool enableCollapsingUnitDims{false};
+  bool enableFunctionOutlining{false};
   bool matmulElementwiseFusion{false};
   AMDAIEDevice AMDAIETargetDevice{AMDAIEDevice::npu1_4col};
   std::string enableAMDAIEUkernels{"none"};
@@ -162,8 +163,7 @@ struct AMDAIEOptions {
         llvm::cl::cat(category),
         llvm::cl::desc(
             "Pass insert-loops-for-vectorization may disable/enable loop "
-            "coalescing depending on the pass flag. This flag therefore "
-            "ensures that we have a switch on that. It is intended for "
+            "coalescing depending on this pass flag. It is intended for "
             "development purposes only."));
 
     binder.opt<bool>(
@@ -171,9 +171,14 @@ struct AMDAIEOptions {
         llvm::cl::cat(category),
         llvm::cl::desc(
             "Pass insert-loops-for-vectorization may disable/enable collapsing "
-            "unit dims of a tensor/memref depending on the pass flag. This "
-            "flag therefore ensures that we have a switch on that. It is "
+            "unit dims of a tensor/memref depending on this pass flag. It is "
             "intended for development purposes only."));
+
+    binder.opt<bool>(
+        "iree-amdaie-enable-function-outlining", enableFunctionOutlining,
+        llvm::cl::cat(category),
+        llvm::cl::desc("Flag to enable/disable linalg-function-outlining pass."
+                       "It is intended for development purposes only."));
 
     binder.opt<bool>(
         "iree-amdaie-matmul-elementwise-fusion", matmulElementwiseFusion,
