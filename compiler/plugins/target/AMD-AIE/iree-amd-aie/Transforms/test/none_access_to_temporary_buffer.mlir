@@ -21,13 +21,35 @@ func.func @none_access_to_buffer(%arg0: !amdaie.logicalobjectfifo<memref<1x1x8x1
 
 // -----
 
+// CHECK-LABEL: @none_access_to_buffer_with_nesting
+// CHECK:        amdaie.core
+// CHECK:        %[[ALLOC:.+]] = memref.alloc() : memref<4xi32, 2>
+// CHECK-NOT:    amdaie.logicalobjectfifo.access
+// CHECK:        memref.dealloc %[[ALLOC]]
+// CHECK:        amdaie.end
+func.func @none_access_to_buffer_with_nesting(%arg0: !amdaie.logicalobjectfifo<memref<4xi32, 2>>) {
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
+  %tile = amdaie.tile(%c0, %c0)
+  %core = amdaie.core(%tile, in : [], out : []) {
+    scf.for %arg1 = %c0 to %c1 step %c1 {
+      %4 = amdaie.logicalobjectfifo.access(%arg0, None) : !amdaie.logicalobjectfifo<memref<4xi32, 2>> -> memref<4xi32, 2>
+    }
+    %5 = amdaie.logicalobjectfifo.access(%arg0, None) : !amdaie.logicalobjectfifo<memref<4xi32, 2>> -> memref<4xi32, 2>
+    amdaie.end
+  }
+  return
+}
+
+// -----
+
 // CHECK-LABEL: @single_none_access_multiple_users
 // CHECK:       %[[DMA0:.+]] = amdaie.circular_dma_cpy_nd
 // CHECK:       %[[DMA1:.+]] = amdaie.circular_dma_cpy_nd
 // CHECK:       amdaie.core
+// CHECK:         %[[ALLOC:.+]] = memref.alloc() : memref<1x1x8x16xi32, 2>
 // CHECK:         %[[ACQUIRE_1:.+]] = amdaie.logicalobjectfifo.acquire(%[[DMA0]], Consume)
 // CHECK:         %[[ACCESS_1:.+]] = amdaie.logicalobjectfifo.access(%[[ACQUIRE_1]], Read)
-// CHECK:         %[[ALLOC:.+]] = memref.alloc() : memref<1x1x8x16xi32, 2>
 // CHECK:         %[[ACQUIRE_0:.+]] = amdaie.logicalobjectfifo.acquire(%[[DMA1]], Produce)
 // CHECK:         %[[ACCESS_0:.+]] = amdaie.logicalobjectfifo.access(%[[ACQUIRE_0]], Write)
 // CHECK:         linalg.fill ins(%{{.+}} : i32) outs(%[[ACCESS_1]]
@@ -68,9 +90,9 @@ func.func @single_none_access_multiple_users(%arg0: !amdaie.logicalobjectfifo<me
 // CHECK:       %[[DMA0:.+]] = amdaie.circular_dma_cpy_nd
 // CHECK:       %[[DMA1:.+]] = amdaie.circular_dma_cpy_nd
 // CHECK:       amdaie.core
+// CHECK:         %[[ALLOC:.+]] = memref.alloc() : memref<1x1x8x16xi32, 2>
 // CHECK:         %[[ACQUIRE_1:.+]] = amdaie.logicalobjectfifo.acquire(%[[DMA0]], Consume)
 // CHECK:         %[[ACCESS_1:.+]] = amdaie.logicalobjectfifo.access(%[[ACQUIRE_1]], Read)
-// CHECK:         %[[ALLOC:.+]] = memref.alloc() : memref<1x1x8x16xi32, 2>
 // CHECK:         linalg.fill ins(%{{.+}} : i32) outs(%[[ACCESS_1]]
 // CHECK:         linalg.fill ins(%{{.+}} : i32) outs(%[[ALLOC]]
 // CHECK:         scf.for
