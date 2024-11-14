@@ -83,11 +83,6 @@ class AMDAIELinalgFunctionOutliningPass
           AMDAIELinalgFunctionOutliningPass> {
  public:
   AMDAIELinalgFunctionOutliningPass() = default;
-  AMDAIELinalgFunctionOutliningPass(
-      const AMDAIELinalgFunctionOutliningPass &pass) {}
-  AMDAIELinalgFunctionOutliningPass(
-      const AMDAIELinalgFunctionOutliningOptions &options)
-      : AMDAIELinalgFunctionOutliningBase(options) {}
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<AMDAIEDialect, linalg::LinalgDialect>();
   }
@@ -96,7 +91,6 @@ class AMDAIELinalgFunctionOutliningPass
 };
 
 void AMDAIELinalgFunctionOutliningPass::runOnOperation() {
-  if (!enableFunctionOutlining) return;
   ModuleOp moduleOp = getOperation();
   MLIRContext *context = &getContext();
   IRRewriter rewriter(context);
@@ -161,8 +155,7 @@ void AMDAIELinalgFunctionOutliningPass::runOnOperation() {
 
 }  // namespace
 
-std::unique_ptr<Pass> createAMDAIELinalgFunctionOutliningPass(
-    AMDAIELinalgFunctionOutliningOptions options) {
-  return std::make_unique<AMDAIELinalgFunctionOutliningPass>(options);
+std::unique_ptr<Pass> createAMDAIELinalgFunctionOutliningPass() {
+  return std::make_unique<AMDAIELinalgFunctionOutliningPass>();
 }
 }  // namespace mlir::iree_compiler::AMDAIE

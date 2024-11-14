@@ -179,8 +179,7 @@ struct AMDAIEOptions {
     binder.opt<bool>(
         "iree-amdaie-enable-function-outlining", enableFunctionOutlining,
         llvm::cl::cat(category),
-        llvm::cl::desc("Flag to use if we want to enable/disable "
-                       "linalg-function-outlining pass."
+        llvm::cl::desc("Flag to enable/disable linalg-function-outlining pass."
                        "It is intended for development purposes only."));
 
     binder.opt<bool>(
