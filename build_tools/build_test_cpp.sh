@@ -58,7 +58,7 @@ echo '{
     "include": [
         "build_tools/cmake/presets/all.json"
     ]
-}' > $iree_dir/CMakeUserPresets.json 
+}' > $iree_dir/CMakeUserPresets.json
 
 cd $iree_dir
 CMAKE_ARGS=(
@@ -81,6 +81,7 @@ CMAKE_ARGS=(
   -DIREE_INPUT_TORCH=OFF
   -DCMAKE_OBJECT_PATH_MAX=4096
   -DIREE_CMAKE_PLUGIN_PATHS="$repo_root"
+  -DIREE_AMDAIE_TIME_KERNEL=1
 )
 
 PEANO_INSTALL_DIR=${PEANO_INSTALL_DIR:-""}

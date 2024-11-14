@@ -7,6 +7,14 @@
 
 iree_add_all_subdirs()
 
+option(IREE_AMDAIE_TIME_KERNEL "Time and print the kernel execution time" OFF)
+if(IREE_AMDAIE_TIME_KERNEL)
+  add_compile_definitions(IREE_AMDAIE_TIME_KERNEL)
+  message(STATUS "[IREE_AMDAIE] will time and print kernel execution")
+else()
+  message(STATUS "[IREE_AMDAIE] won't print the kernel execution time")
+endif()
+
 iree_register_external_hal_driver(
   NAME
     xrt-lite

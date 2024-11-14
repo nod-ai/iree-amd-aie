@@ -163,11 +163,20 @@ class VanillaMatmul(BaseMatmul):
     """
 
     def __init__(
-        self, M, N, K, input_type, acc_type, use_ukernel, run_on_target=["npu1_4col"]
+        self,
+        M,
+        N,
+        K,
+        input_type,
+        acc_type,
+        use_ukernel,
+        run_on_target=["npu1_4col"],
+        additional_labels=[],
     ):
         super().__init__(M, N, K, input_type, acc_type, run_on_target)
         self.name = f"vanilla_matmul_{M}_{N}_{K}_{input_type}_{acc_type}"
         self.labels.append("VanillaMatmul")
+        self.labels += additional_labels
         self.use_ukernel = use_ukernel
 
     def _execute(self, config):
@@ -992,10 +1001,23 @@ class Tests:
             )
         )
         self.register(VanillaMatmul(32, 32, 64, "bf16", "f32", use_ukernel=False))
+
         # TODO: Failure is expected for the 128x128 case we don't yet understand why.
         self.register(
             VanillaMatmul(
                 64, 64, 64, "bf16", "f32", use_ukernel=True, run_on_target=["npu4"]
+            )
+        )
+
+        self.register(
+            VanillaMatmul(
+                512,
+                512,
+                4096,
+                "bf16",
+                "f32",
+                use_ukernel=False,
+                additional_labels=["Performance"],
             )
         )
 
