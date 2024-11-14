@@ -17,5 +17,4 @@ if __name__ == "__main__":
             print(line.split()[-1])
         if "IREE_AMDAIE" in line:
             print(line)
-            print("\n")
     print("============================")
