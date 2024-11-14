@@ -172,10 +172,8 @@ struct AMDAIEOptions {
         llvm::cl::desc(
             "Pass insert-loops-for-vectorization may disable/enable collapsing "
             "unit dims of a tensor/memref depending on the pass flag. This "
-            "flag "
-            "therefore ensures that we have a switch on that. It is intended "
-            "for "
-            "development purposes only."));
+            "flag therefore ensures that we have a switch on that. It is "
+            "intended for development purposes only."));
 
     binder.opt<bool>(
         "iree-amdaie-matmul-elementwise-fusion", matmulElementwiseFusion,

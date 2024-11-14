@@ -313,6 +313,10 @@ class MatmulTruncf(BaseMatmul):
         input_args = generate_inputs(
             self.filename, config.output_dir, 1, {1: self.lhs, 2: self.rhs}
         )
+        """
+        currently without enabling loop coalescing and unit dimension collapsing
+        we run out of program memory, this is under investigation.
+        """
         aie_vs_baseline(
             config,
             self.filename,
@@ -328,7 +332,7 @@ class MatmulTruncf(BaseMatmul):
             n_repeats=1,
             output_type=get_output_type(self.filename),
             coalesce_loops=True,
-            collapse_unit_dims=True
+            collapse_unit_dims=True,
         )
 
         return True
@@ -819,7 +823,7 @@ def aie_vs_baseline(
         input_args,
         function_name,
         coalesce_loops,
-        collapse_unit_dims
+        collapse_unit_dims,
     )
 
     if config.do_not_run_aie:

@@ -106,7 +106,6 @@ class AMDAIEInsertLoopsForVectorizationPass
   /// place. Eg: For <2x3x4> since there aren't any unit dimensions, it'd return
   /// failure, hence we can simply return.
   void collapseUnitDims(IRRewriter &rewriter, linalg::GenericOp &genericOp) {
-    if (!enableCollapsingUnitDims) return;
     linalg::ControlDropUnitDims options;
     options.rankReductionStrategy =
         linalg::ControlDropUnitDims::RankReductionStrategy::ExtractInsertSlice;
@@ -139,7 +138,7 @@ class AMDAIEInsertLoopsForVectorizationPass
     if (llvm::all_of(iteratorTypes, [&](mlir::utils::IteratorType iterator) {
           return linalg::isParallelIterator(iterator);
         })) {
-      collapseUnitDims(rewriter, genericOp);
+      if (enableCollapsingUnitDims) collapseUnitDims(rewriter, genericOp);
       std::optional<SmallVector<int64_t>> tileSizes =
           formTileSizesForElementwise(genericOp);
       if (!tileSizes) {
@@ -221,7 +220,7 @@ class AMDAIEInsertLoopsForVectorizationPass
       if (!isMatmul && !isMatmulTransposeB) return failure();
     }
 
-    collapseUnitDims(rewriter, genericOp);
+    if (enableCollapsingUnitDims) collapseUnitDims(rewriter, genericOp);
     std::optional<SmallVector<int64_t>> tileSizes =
         formTileSizesForMatmul(genericOp);
     if (!tileSizes) {
