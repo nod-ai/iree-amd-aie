@@ -961,6 +961,7 @@ class Tests:
             )
         )
         self.register(VanillaMatmul(32, 32, 64, "bf16", "f32", use_ukernel=False))
+        # TODO: Failure is expected for the 128x128 case we don't yet understand why.
         self.register(
             VanillaMatmul(
                 64, 64, 64, "bf16", "f32", use_ukernel=True, run_on_target=["npu4"]
