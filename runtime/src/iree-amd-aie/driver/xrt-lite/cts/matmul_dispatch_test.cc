@@ -110,7 +110,6 @@ TEST_P(MatMulDispatchTest, DispatchMatmul) {
   PrepareMatmulExecutable();
 
   // Create input buffer.
-  // constexpr iree_device_size_t WIDTH = 32;
   constexpr iree_device_size_t M = 512, K = 4096, N = 512;
   iree_hal_buffer_t *input_A = nullptr, *input_B = nullptr, *output_C = nullptr;
 
