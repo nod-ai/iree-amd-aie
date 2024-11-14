@@ -163,8 +163,7 @@ struct AMDAIEOptions {
         llvm::cl::cat(category),
         llvm::cl::desc(
             "Pass insert-loops-for-vectorization may disable/enable loop "
-            "coalescing depending on the pass flag. This flag therefore "
-            "ensures that we have a switch on that. It is intended for "
+            "coalescing depending on this pass flag. It is intended for "
             "development purposes only."));
 
     binder.opt<bool>(
@@ -172,8 +171,7 @@ struct AMDAIEOptions {
         llvm::cl::cat(category),
         llvm::cl::desc(
             "Pass insert-loops-for-vectorization may disable/enable collapsing "
-            "unit dims of a tensor/memref depending on the pass flag. This "
-            "flag therefore ensures that we have a switch on that. It is "
+            "unit dims of a tensor/memref depending on this pass flag. It is "
             "intended for development purposes only."));
 
     binder.opt<bool>(
