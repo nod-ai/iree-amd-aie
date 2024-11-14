@@ -8,7 +8,7 @@
 // 2) Explicitly enabling linalg function outlining with
 //             --iree-amdaie-enable-function-outlining=1
 //
-// 3) Not specifying the flag at all, which should use the default value (1).
+// 3) Not specifying the flag at all, which should use the default value (0).
 
 
 // 1) Explicitly disabled:
