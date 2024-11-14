@@ -6,6 +6,9 @@
 
 #include "iree-amd-aie/driver/xrt-lite/direct_command_buffer.h"
 
+#include <chrono>
+#include <iostream>
+
 #include "iree-amd-aie/driver/xrt-lite/buffer.h"
 #include "iree-amd-aie/driver/xrt-lite/executable.h"
 #include "iree-amd-aie/driver/xrt-lite/shim/linux/kmq/hwq.h"
@@ -191,9 +194,21 @@ static iree_status_t iree_hal_xrt_lite_direct_command_buffer_dispatch(
     ebuf.add_arg_bo(*bo);
   }
 
+  auto time0 = std::chrono::high_resolution_clock::now();
+
   shim_xdna::hw_q* hwq = context.get_hw_queue();
   hwq->issue_command(ebuf.get_exec_buf_bo());
   hwq->wait_command(ebuf.get_exec_buf_bo(), 0);
+
+  auto time1 = std::chrono::high_resolution_clock::now();
+  std::chrono::duration<double> elapsed_s = time1 - time0;
+
+#ifdef IREE_AMDAIE_TIME_KERNEL
+  double ellapsed_ms = elapsed_s.count() * 1000;
+  std::cout << "[IREE_AMDAIE] Kernel time: " << ellapsed_ms << " [ms]\n";
+#else
+  (void)elapsed_s;
+#endif
 
   for (iree_host_size_t j = 0; j < bindings.count; ++j) {
     shim_xdna::bo* bo = iree_hal_xrt_lite_buffer_handle(
