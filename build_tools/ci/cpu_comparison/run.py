@@ -313,6 +313,10 @@ class MatmulTruncf(BaseMatmul):
         input_args = generate_inputs(
             self.filename, config.output_dir, 1, {1: self.lhs, 2: self.rhs}
         )
+        """
+        currently without enabling loop coalescing and unit dimension collapsing
+        we run out of program memory, this is under investigation.
+        """
         aie_vs_baseline(
             config,
             self.filename,
@@ -327,6 +331,8 @@ class MatmulTruncf(BaseMatmul):
             atol=0,
             n_repeats=1,
             output_type=get_output_type(self.filename),
+            coalesce_loops=True,
+            collapse_unit_dims=True,
         )
 
         return True
@@ -414,6 +420,8 @@ def generate_aie_vmfb(
     test_file,
     input_args,
     function_name,
+    coalesce_loops=False,
+    collapse_unit_dims=False,
 ):
     """
     Compile a test file for IREE's AIE backend, returning the path to the
@@ -448,6 +456,12 @@ def generate_aie_vmfb(
 
     if use_ukernel:
         compilation_flags += ["--iree-amdaie-enable-ukernels=all"]
+
+    if coalesce_loops:
+        compilation_flags += ["--iree-amdaie-enable-coalescing-loops"]
+
+    if collapse_unit_dims:
+        compilation_flags += ["--iree-amdaie-enable-collapsing-unit-dims"]
 
     for additional_flag in additional_flags:
         if additional_flag not in compilation_flags:
@@ -763,6 +777,8 @@ def aie_vs_baseline(
     atol,
     n_repeats,
     output_type,
+    coalesce_loops=False,
+    collapse_unit_dims=False,
 ):
     """
     If the outputs differ, add the test file to a list of failures.
@@ -789,6 +805,10 @@ def aie_vs_baseline(
     n_repeats:
         The number of times to run the test. This is useful for tests which
         may pass only sometimes due to driver issues, etc.
+    coalesce_loops:
+        Whether to enable coalescing of loops when compiling for AIE backend
+    collapse_unit_dims:
+        Whether to enable collapsing of unit dimensions when compiling for AIE backend
     """
 
     name = name_from_mlir_filename(test_file)
@@ -802,6 +822,8 @@ def aie_vs_baseline(
         test_file,
         input_args,
         function_name,
+        coalesce_loops,
+        collapse_unit_dims,
     )
 
     if config.do_not_run_aie:

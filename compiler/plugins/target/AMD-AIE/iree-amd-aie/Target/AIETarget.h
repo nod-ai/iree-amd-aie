@@ -49,6 +49,8 @@ struct AMDAIEOptions {
   TilePassPipeline useTilePipeline{TilePassPipeline::PackPeelPipeline};
   std::string pathToUkernels{""};
   bool enableVectorizationPasses{true};
+  bool enableCoalescingLoops{false};
+  bool enableCollapsingUnitDims{false};
   bool matmulElementwiseFusion{false};
   AMDAIEDevice AMDAIETargetDevice{AMDAIEDevice::npu1_4col};
   std::string enableAMDAIEUkernels{"none"};
@@ -154,6 +156,24 @@ struct AMDAIEOptions {
             "vectorization passes. This option enables or disables "
             "these vectorization passes. It is intended for development "
             "purposes only."));
+
+    binder.opt<bool>(
+        "iree-amdaie-enable-coalescing-loops", enableCoalescingLoops,
+        llvm::cl::cat(category),
+        llvm::cl::desc(
+            "Pass insert-loops-for-vectorization may disable/enable loop "
+            "coalescing depending on the pass flag. This flag therefore "
+            "ensures that we have a switch on that. It is intended for "
+            "development purposes only."));
+
+    binder.opt<bool>(
+        "iree-amdaie-enable-collapsing-unit-dims", enableCollapsingUnitDims,
+        llvm::cl::cat(category),
+        llvm::cl::desc(
+            "Pass insert-loops-for-vectorization may disable/enable collapsing "
+            "unit dims of a tensor/memref depending on the pass flag. This "
+            "flag therefore ensures that we have a switch on that. It is "
+            "intended for development purposes only."));
 
     binder.opt<bool>(
         "iree-amdaie-matmul-elementwise-fusion", matmulElementwiseFusion,

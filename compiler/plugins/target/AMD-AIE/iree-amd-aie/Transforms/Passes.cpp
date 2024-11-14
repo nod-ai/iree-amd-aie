@@ -41,10 +41,18 @@
 namespace mlir::iree_compiler::AMDAIE {
 
 void appendVectorizationToPipeline(OpPassManager &funcPassManager,
-                                   bool enableVectorizationPasses) {
+                                   bool enableVectorizationPasses,
+                                   bool enableCoalescingLoops = false,
+                                   bool enableCollapsingUnitDims = false) {
   if (!enableVectorizationPasses) return;
   funcPassManager.addPass(createAMDAIECleanupPass());
-  funcPassManager.addPass(createAMDAIEInsertLoopsForVectorizationPass());
+  {
+    AMDAIEInsertLoopsForVectorizationOptions options;
+    options.enableCoalescing = enableCoalescingLoops;
+    options.enableCollapsingUnitDims = enableCollapsingUnitDims;
+    funcPassManager.addPass(
+        createAMDAIEInsertLoopsForVectorizationPass(options));
+  }
   funcPassManager.addPass(createAMDAIEVectorizationPass());
 }
 
@@ -486,7 +494,8 @@ void buildAMDAIETransformPassPipeline(
     TilePassPipeline useTilePipeline,
     LowerToAIEPassPipeline useLowerToAIEPipeline, bool matmulElementwiseFusion,
     bool enableVectorizationPasses, const std::string &pathToUkernels,
-    bool enablePacketFlow) {
+    bool enablePacketFlow, bool enableCoalescingLoops,
+    bool enableCollapsingUnitDims) {
   OpPassManager &modulePassManager = variantPassManager.nest<ModuleOp>();
   {
     FunctionLikeNest funcPassManager(modulePassManager);
@@ -512,9 +521,10 @@ void buildAMDAIETransformPassPipeline(
   }
   modulePassManager.addPass(createLowerUKernelOpsToCallsPass());
   if (useLowerToAIEPipeline == LowerToAIEPassPipeline::ObjectFifo) {
-    addAMDAIEObjectFifoLoweringPasses(modulePassManager, enablePacketFlow,
-                                      useTilePipeline,
-                                      enableVectorizationPasses);
+    addAMDAIEObjectFifoLoweringPasses(
+        modulePassManager, enablePacketFlow, useTilePipeline,
+        enableVectorizationPasses, enableCoalescingLoops,
+        enableCollapsingUnitDims);
   } else if (useLowerToAIEPipeline == LowerToAIEPassPipeline::AIR) {
     addMLIRAIRLoweringPasses(modulePassManager, device, useTilePipeline,
                              matmulElementwiseFusion,
@@ -537,7 +547,9 @@ void buildAMDAIETransformPassPipeline(
 void addAMDAIEObjectFifoLoweringPasses(OpPassManager &passManager,
                                        bool enablePacketFlow,
                                        TilePassPipeline useTilePipeline,
-                                       bool enableVectorizationPasses) {
+                                       bool enableVectorizationPasses,
+                                       bool enableCoalescingLoops,
+                                       bool enableCollapsingUnitDims) {
   passManager.addPass(createEraseHALDescriptorTypeFromMemRefPass());
   passManager.addPass(memref::createFoldMemRefAliasOpsPass());
 
@@ -568,7 +580,9 @@ void addAMDAIEObjectFifoLoweringPasses(OpPassManager &passManager,
   {
     // Vectorization passes
     OpPassManager &funcPassManager = passManager.nest<func::FuncOp>();
-    appendVectorizationToPipeline(funcPassManager, enableVectorizationPasses);
+    appendVectorizationToPipeline(funcPassManager, enableVectorizationPasses,
+                                  enableCoalescingLoops,
+                                  enableCollapsingUnitDims);
   }
 
   passManager.addPass(createAMDAIELocalizeLogicalObjectFifoPass());

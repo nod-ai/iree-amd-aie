@@ -207,7 +207,8 @@ class AIETargetBackend final : public IREE::HAL::TargetBackend {
         passManager, options.AMDAIETargetDevice, options.useTilePipeline,
         options.useLowerToAIEPipeline, options.matmulElementwiseFusion,
         options.enableVectorizationPasses, options.pathToUkernels,
-        options.enablePacketFlow);
+        options.enablePacketFlow, options.enableCoalescingLoops,
+        options.enableCollapsingUnitDims);
   }
 
   void buildLinkingPassPipeline(OpPassManager &passManager) override {

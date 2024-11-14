@@ -18,7 +18,9 @@ namespace mlir::iree_compiler::AMDAIE {
 void addAMDAIEObjectFifoLoweringPasses(OpPassManager &passManager,
                                        bool enablePacketFlow,
                                        TilePassPipeline useTilePipeline,
-                                       bool enableVectorizationPasses);
+                                       bool enableVectorizationPasses,
+                                       bool enableCoalescingLoops,
+                                       bool enableCollapsingUnitDims);
 
 /// Add passes to lower from MLIR-AIR through AIE. This is
 /// currently the default passes used for lowering after IREEs tiling.
@@ -40,7 +42,8 @@ void buildAMDAIETransformPassPipeline(
     TilePassPipeline useTilePipeline,
     LowerToAIEPassPipeline useLowerToAIEPipeline, bool matmulElementwiseFusion,
     bool enableVectorizationPasses, const std::string &pathToUkernels,
-    bool enablePacketFlow);
+    bool enablePacketFlow, bool enableCoalescingLoops,
+    bool enableCollapsingUnitDims);
 
 /// Populates passes needed to lower the IR via a Pack-Peel based approach.
 void addPackPeelBasedPassPipeline(OpPassManager &oassManager,
@@ -189,7 +192,8 @@ std::unique_ptr<Pass> createAMDAIEHoistLogicalObjFifoPass();
 
 /// Create a pass to transform linalg.generics into a form which benefits later
 /// vectorization passes (to vector and aievec dialects).
-std::unique_ptr<Pass> createAMDAIEInsertLoopsForVectorizationPass();
+std::unique_ptr<Pass> createAMDAIEInsertLoopsForVectorizationPass(
+    AMDAIEInsertLoopsForVectorizationOptions options = {});
 
 /// Create a pass to fuse the pack operations into the for loops.
 std::unique_ptr<Pass> createAMDAIEFusePackIntoLoopPass(

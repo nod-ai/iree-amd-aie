@@ -1,4 +1,6 @@
-// RUN: iree-opt --pass-pipeline="builtin.module(func.func(iree-amdaie-insert-loops-for-vectorization))" --split-input-file %s | FileCheck %s
+// RUN: iree-opt --pass-pipeline="builtin.module(func.func(iree-amdaie-insert-loops-for-vectorization))" --split-input-file %s | FileCheck %s --check-prefix=CHECK
+// RUN: iree-opt --pass-pipeline="builtin.module(func.func(iree-amdaie-insert-loops-for-vectorization{enable-collapsing-unit-dims}))" --split-input-file %s | FileCheck %s --check-prefix=COLLAPSE
+// RUN: iree-opt --pass-pipeline="builtin.module(func.func(iree-amdaie-insert-loops-for-vectorization{enable-coalescing}))" --split-input-file %s | FileCheck %s --check-prefix=COALESCE
 
 !t2_bf16 = tensor<64x64xbf16>
 !t3_bf16 = tensor<64x64x64xbf16>
@@ -66,7 +68,7 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
   // A batched matmul where the element types are not supported for
   // vectorization on AIE, does not get tiles:
   // CHECK-LABEL: batched_bad_element_types
-  // CHECK-NOT:     scf.for
+  // CHECK-NOT: scf.for
   func.func @batched_bad_element_types(%arg0: !t3_f32, %arg1: !t3_f32, %arg2: !t3_f32) -> !t3_f32 {
     %0 = linalg.generic {indexing_maps =
                           [
@@ -197,23 +199,37 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
   // matmul of size LHS: 4x8 and RHS: 8x4.
 
   // CHECK-LABEL: packBasedPipeline
-  // CHECK-SAME:  (%[[ARG0:.*]]: tensor<1x1x4x8x4x8xbf16>,
-  // CHECK-SAME:   %[[ARG1:.*]]: tensor<1x1x8x4x8x4xbf16>,
-  // CHECK-SAME:   %[[ARG2:.*]]: tensor<1x1x8x8x4x4xf32>)
-  // CHECK:         tensor.extract_slice %[[ARG0]]
-  // CHECK-SAME:           tensor<1x1x4x8x4x8xbf16> to tensor<4x8x4x8xbf16>
-  // CHECK:         tensor.extract_slice %[[ARG1]]
-  // CHECK-SAME:           tensor<1x1x8x4x8x4xbf16> to tensor<8x4x8x4xbf16>
-  // CHECK:         tensor.extract_slice %[[ARG2]]
-  // CHECK-SAME:           tensor<1x1x8x8x4x4xf32> to tensor<8x8x4x4xf32>
-  // CHECK:         %[[C256:.*]] = arith.constant 256 : index
-  // CHECK:         scf.for %{{.*}} = %{{.*}} to %[[C256]] step %{{.*}}
+  // CHECK-COUNT-6: scf.for
   // CHECK-NOT:     scf.for
-  // CHECK:             linalg.generic
-  // CHECK-SAME:            tensor<1x1x4x8xbf16>
-  // CHECK-SAME:            tensor<1x1x8x4xbf16>
-  // CHECK-SAME:            tensor<1x1x4x4xf32>
+  // CHECK:           linalg.generic
+  // CHECK-SAME:        tensor<1x1x1x1x4x8xbf16>
+  // CHECK-SAME:        tensor<1x1x1x1x8x4xbf16>
+  // CHECK-SAME:        tensor<1x1x1x1x4x4xf32>
 
+  // COLLAPSE-LABEL: packBasedPipeline
+  // COLLAPSE-SAME:  (%[[ARG0:.*]]: tensor<1x1x4x8x4x8xbf16>,
+  // COLLAPSE-SAME:   %[[ARG1:.*]]: tensor<1x1x8x4x8x4xbf16>,
+  // COLLAPSE-SAME:   %[[ARG2:.*]]: tensor<1x1x8x8x4x4xf32>)
+  // COLLAPSE:         tensor.extract_slice %[[ARG0]]
+  // COLLAPSE-SAME:           tensor<1x1x4x8x4x8xbf16> to tensor<4x8x4x8xbf16>
+  // COLLAPSE:         tensor.extract_slice %[[ARG1]]
+  // COLLAPSE-SAME:           tensor<1x1x8x4x8x4xbf16> to tensor<8x4x8x4xbf16>
+  // COLLAPSE:         tensor.extract_slice %[[ARG2]]
+  // COLLAPSE-SAME:           tensor<1x1x8x8x4x4xf32> to tensor<8x8x4x4xf32>
+  // COLLAPSE-COUNT-3: scf.for
+  // COLLAPSE-NOT:     scf.for
+  // COLLAPSE:             linalg.generic
+  // COLLAPSE-SAME:            tensor<1x1x4x8xbf16>
+  // COLLAPSE-SAME:            tensor<1x1x8x4xbf16>
+  // COLLAPSE-SAME:            tensor<1x1x4x4xf32>
+
+  // COALESCE-LABEL: packBasedPipeline
+  // COALESCE:         scf.for
+  // COALESCE-NOT:     scf.for
+  // COALESCE:           linalg.generic
+  // COALESCE-SAME:        tensor<1x1x1x1x4x8xbf16>
+  // COALESCE-SAME:        tensor<1x1x1x1x8x4xbf16>
+  // COALESCE-SAME:        tensor<1x1x1x1x4x4xf32>
   func.func @packBasedPipeline(
                %arg0: tensor<1x1x4x8x4x8xbf16>,
                %arg1: tensor<1x1x8x4x8x4xbf16>,
@@ -274,22 +290,44 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 
 // CHECK-LABEL: @element_wise_bufferized
 // CHECK-SAME:  (%[[ARG0:.*]]: memref<1x1x4x6x8xf32>, %[[ARG1:.*]]: memref<1x1x4x6x8xbf16>)
+// COLLAPSE-LABEL: @element_wise_bufferized
+// COLLAPSE-SAME:  (%[[ARG0:.*]]: memref<1x1x4x6x8xf32>, %[[ARG1:.*]]: memref<1x1x4x6x8xbf16>)
+// COALESCE-LABEL: @element_wise_bufferized
+// COALESCE-SAME:  (%[[ARG0:.*]]: memref<1x1x4x6x8xf32>, %[[ARG1:.*]]: memref<1x1x4x6x8xbf16>)
 #executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
 module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
   func.func @element_wise_bufferized(%arg0: memref<1x1x4x6x8xf32>, %arg1: memref<1x1x4x6x8xbf16>) -> memref<1x1x4x6x8xbf16>{
     %cst = arith.constant 0.000000e+00 : bf16
-    // CHECK:       %[[COLLAPSE_UNIT_DIM_0:.*]] = memref.subview %[[ARG0]]
-    // CHECK-SAME:          memref<1x1x4x6x8xf32> to memref<4x6x8xf32, strided<[48, 8, 1]>>
-    // CHECK:       %[[COLLAPSE_UNIT_DIM_1:.*]] = memref.subview %[[ARG1]]
-    // CHECK-SAME:          memref<1x1x4x6x8xbf16> to memref<4x6x8xbf16, strided<[48, 8, 1]>>
-    // CHECK-DAG:   %[[C4:.*]] = arith.constant 4 : index
-    // CHECK:       scf.for %[[IV:.*]] = %{{.*}} to %[[C4]]
+
+    // CHECK-DAG:     %[[C4:.*]] = arith.constant 4 : index
+    // CHECK-COUNT-3: scf.for
     // CHECK-NOT:     scf.for
-    // CHECK:         %[[SLICE_0:.*]] = memref.subview %[[COLLAPSE_UNIT_DIM_0]]
-    // CHECK:         %[[SLICE_1:.*]] = memref.subview %[[COLLAPSE_UNIT_DIM_1]]
-    // CHECK:         linalg.generic
-    // CHECK-SAME:        ins(%[[SLICE_0]] :
-    // CHECK-SAME:        outs(%[[SLICE_1]] :
+    // CHECK:           memref.subview %[[ARG0]]
+    // CHECK:           memref.subview %[[ARG1]]
+    // CHECK:           linalg.generic
+    // CHECK-SAME:        memref<1x1x1x6x8xf32
+    // CHECK-SAME:        memref<1x1x1x6x8xbf16
+
+    // COLLAPSE:       %[[COLLAPSE_UNIT_DIM_0:.*]] = memref.subview %[[ARG0]]
+    // COLLAPSE-SAME:          memref<1x1x4x6x8xf32> to memref<4x6x8xf32, strided<[48, 8, 1]>>
+    // COLLAPSE:       %[[COLLAPSE_UNIT_DIM_1:.*]] = memref.subview %[[ARG1]]
+    // COLLAPSE-SAME:          memref<1x1x4x6x8xbf16> to memref<4x6x8xbf16, strided<[48, 8, 1]>>
+    // COLLAPSE-DAG:   %[[C4:.*]] = arith.constant 4 : index
+    // COLLAPSE:       scf.for %[[IV:.*]] = %{{.*}} to %[[C4]]
+    // COLLAPSE-NOT:     scf.for
+    // COLLAPSE:         %[[SLICE_0:.*]] = memref.subview %[[COLLAPSE_UNIT_DIM_0]]
+    // COLLAPSE:         %[[SLICE_1:.*]] = memref.subview %[[COLLAPSE_UNIT_DIM_1]]
+    // COLLAPSE:         linalg.generic
+    // COLLAPSE-SAME:        ins(%[[SLICE_0]] :
+    // COLLAPSE-SAME:        outs(%[[SLICE_1]] :
+
+    // COALESCE:         scf.for
+    // COALESCE-NOT:     scf.for
+    // COALESCE:           memref.subview %[[ARG0]]
+    // COALESCE:           memref.subview %[[ARG1]]
+    // COALESCE:           linalg.generic
+    // COALESCE-SAME:        memref<1x1x1x6x8xf32
+    // COALESCE-SAME:        memref<1x1x1x6x8xbf16
     linalg.generic {
               indexing_maps = [affine_map<(d0, d1, d2, d3, d4) -> (d0, d1, d2, d3, d4)>,
                                affine_map<(d0, d1, d2, d3, d4) -> (d0, d1, d2, d3, d4)>
@@ -312,27 +350,54 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 // CHECK-SAME:  (%[[ARG0:.*]]: memref<1x1x4x8x4x8xbf16>,
 // CHECK-SAME:   %[[ARG1:.*]]: memref<1x1x8x4x8x4xbf16>
 // CHECK-SAME:   %[[ARG2:.*]]: memref<1x1x8x8x4x4xf32>)
+// COLLAPSE-LABEL: @matmul_bufferized
+// COLLAPSE-SAME:  (%[[ARG0:.*]]: memref<1x1x4x8x4x8xbf16>,
+// COLLAPSE-SAME:   %[[ARG1:.*]]: memref<1x1x8x4x8x4xbf16>
+// COLLAPSE-SAME:   %[[ARG2:.*]]: memref<1x1x8x8x4x4xf32>)
+// COALESCE-LABEL: @matmul_bufferized
+// COALESCE-SAME:  (%[[ARG0:.*]]: memref<1x1x4x8x4x8xbf16>,
+// COALESCE-SAME:   %[[ARG1:.*]]: memref<1x1x8x4x8x4xbf16>
+// COALESCE-SAME:   %[[ARG2:.*]]: memref<1x1x8x8x4x4xf32>)
 #executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
 module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
   func.func @matmul_bufferized(
                %arg0: memref<1x1x4x8x4x8xbf16>,
                %arg1: memref<1x1x8x4x8x4xbf16>,
                %arg2: memref<1x1x8x8x4x4xf32>) -> memref<1x1x8x8x4x4xf32> {
-    // CHECK:       %[[COLLAPSE_UNIT_DIM_0:.*]] = memref.subview %[[ARG0]]
-    // CHECK-SAME:          memref<1x1x4x8x4x8xbf16> to memref<4x8x4x8xbf16, strided<[256, 32, 8, 1]>>
-    // CHECK:       %[[COLLAPSE_UNIT_DIM_1:.*]] = memref.subview %[[ARG1]]
-    // CHECK-SAME:          memref<1x1x8x4x8x4xbf16> to memref<8x4x8x4xbf16, strided<[128, 32, 4, 1]>>
-    // CHECK:       %[[COLLAPSE_UNIT_DIM_2:.*]] = memref.subview %[[ARG2]]
-    // CHECK-SAME:          memref<1x1x8x8x4x4xf32> to memref<8x8x4x4xf32, strided<[128, 16, 4, 1]>>
-    // CHECK-DAG:   %[[C256:.*]] = arith.constant 256 : index
-    // CHECK:       scf.for %[[IV:.*]] = %{{.*}} to %[[C256]]
+    // CHECK-COUNT-6: scf.for
     // CHECK-NOT:     scf.for
-    // CHECK:         %[[SLICE_0:.*]] = memref.subview %[[COLLAPSE_UNIT_DIM_0]]
-    // CHECK:         %[[SLICE_1:.*]] = memref.subview %[[COLLAPSE_UNIT_DIM_1]]
-    // CHECK:         %[[SLICE_2:.*]] = memref.subview %[[COLLAPSE_UNIT_DIM_2]]
-    // CHECK:         linalg.generic
-    // CHECK-SAME:        ins(%[[SLICE_0]], %[[SLICE_1]] :
-    // CHECK-SAME:        outs(%[[SLICE_2]] :
+    // CHECK:           memref.subview %[[ARG0]]
+    // CHECK:           memref.subview %[[ARG1]]
+    // CHECK:           memref.subview %[[ARG2]]
+    // CHECK:           linalg.generic
+    // CHECK-SAME:            memref<1x1x1x1x4x8xbf16
+    // CHECK-SAME:            memref<1x1x1x1x8x4xbf16
+    // CHECK-SAME:            memref<1x1x1x1x4x4xf32
+
+    // COLLAPSE:          %[[COLLAPSE_UNIT_DIM_0:.*]] = memref.subview %[[ARG0]]
+    // COLLAPSE-SAME:          memref<1x1x4x8x4x8xbf16> to memref<4x8x4x8xbf16, strided<[256, 32, 8, 1]>>
+    // COLLAPSE:          %[[COLLAPSE_UNIT_DIM_1:.*]] = memref.subview %[[ARG1]]
+    // COLLAPSE-SAME:          memref<1x1x8x4x8x4xbf16> to memref<8x4x8x4xbf16, strided<[128, 32, 4, 1]>>
+    // COLLAPSE:          %[[COLLAPSE_UNIT_DIM_2:.*]] = memref.subview %[[ARG2]]
+    // COLLAPSE-SAME:          memref<1x1x8x8x4x4xf32> to memref<8x8x4x4xf32, strided<[128, 16, 4, 1]>>
+    // COLLAPSE-COUNT-3:  scf.for
+    // COLLAPSE-NOT:      scf.for
+    // COLLAPSE:            %[[SLICE_0:.*]] = memref.subview %[[COLLAPSE_UNIT_DIM_0]]
+    // COLLAPSE:            %[[SLICE_1:.*]] = memref.subview %[[COLLAPSE_UNIT_DIM_1]]
+    // COLLAPSE:            %[[SLICE_2:.*]] = memref.subview %[[COLLAPSE_UNIT_DIM_2]]
+    // COLLAPSE:            linalg.generic
+    // COLLAPSE-SAME:           ins(%[[SLICE_0]], %[[SLICE_1]] :
+    // COLLAPSE-SAME:           outs(%[[SLICE_2]] :
+    
+    // COALESCE:         scf.for
+    // COALESCE-NOT:     scf.for
+    // COALESCE:           memref.subview %[[ARG0]]
+    // COALESCE:           memref.subview %[[ARG1]]
+    // COALESCE:           memref.subview %[[ARG2]]
+    // COALESCE:           linalg.generic
+    // COALESCE-SAME:            memref<1x1x1x1x4x8xbf16
+    // COALESCE-SAME:            memref<1x1x1x1x8x4xbf16
+    // COALESCE-SAME:            memref<1x1x1x1x4x4xf32
     linalg.generic {indexing_maps =
          [
            affine_map<(d0, d1, d2, d3, d4, d5, d6, d7, d8) -> (d0, d2, d5, d3, d6, d8)>,
