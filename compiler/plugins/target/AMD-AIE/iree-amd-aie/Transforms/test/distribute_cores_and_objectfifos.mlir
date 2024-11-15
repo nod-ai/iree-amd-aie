@@ -987,9 +987,8 @@ module {
 // CHECK-SAME: ins(%[[ACCESS_1]] : memref<4x4xi32, 2 : i32>) outs(%[[SUBVIEW:.*]] : memref<4x4xi32, strided<[4, 1]>, 2 : i32>) {
 
 #map = affine_map<(d0, d1) -> (d0, d1)>
-#translation = #iree_codegen.translation_info<Custom>
 module {
-  func.func @mixed_alloc_subview_operands() attributes {translation_info = #translation} {
+  func.func @mixed_alloc_subview_operands() {
     %c2 = arith.constant 2 : index
     %c0_i32 = arith.constant 0 : i32
     %alloc = memref.alloc() : memref<4x4xi32, 2 : i32>
