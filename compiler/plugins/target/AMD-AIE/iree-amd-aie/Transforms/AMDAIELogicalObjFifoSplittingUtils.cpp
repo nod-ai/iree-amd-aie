@@ -504,12 +504,12 @@ LogicalResult splitLogicalObjectFifoForElementwiseOp(
 
 /// Utility to get the DoublyStridedCopyOp producers and consumers of a given
 /// objectFifo op.
-template <typename T>
 LogicalResult getDoublyStridedCopyOpProducersAndConsumers(
-    AMDAIE::LogicalObjectFifoFromMemrefOp op, SmallVector<T> &producers,
-    SmallVector<T> &consumers) {
+    AMDAIE::LogicalObjectFifoFromMemrefOp op,
+    SmallVector<AMDAIE::DmaCpyNdOp> &producers,
+    SmallVector<AMDAIE::DmaCpyNdOp> &consumers) {
   for (Operation *userOp : op->getUsers()) {
-    if (auto stridedCopyOp = dyn_cast<T>(userOp)) {
+    if (auto stridedCopyOp = dyn_cast<AMDAIE::DmaCpyNdOp>(userOp)) {
       if (dyn_cast_if_present<AMDAIE::LogicalObjectFifoFromMemrefOp>(
               stridedCopyOp.getTarget().getDefiningOp()) == op) {
         producers.push_back(stridedCopyOp);
@@ -541,6 +541,8 @@ FailureOr<size_t> getSplitDim(AMDAIE::LogicalObjectFifoFromMemrefOp op) {
     splitDim = 0;
   } else if (memrefShape[1] != 1) {
     splitDim = 1;
+  } else if (memrefShape[0] == 1 && memrefShape[1] == 1) {
+    splitDim = memrefShape.size();
   } else {
     return op.emitOpError() << "failed to find a dimension for splitting";
   }
@@ -557,14 +559,15 @@ LogicalResult splitLogicalObjectFifo(IRRewriter &rewriter,
 
   SmallVector<int64_t> memrefShape =
       llvm::to_vector(op.getMemrefType().getShape());
-  assert(splitDim < memrefShape.size() &&
-         "the dimension to be split on should be smaller than the number of "
-         "dimensions in the objectfifo shape");
+  // Both outer dims are 1, no need to split, return success.
+  if (splitDim == memrefShape.size()) return success();
+
   int64_t splitFactor = memrefShape[splitDim];
   if (ShapedType::isDynamic(splitFactor)) {
     return op.emitOpError()
            << "a dynamic size on the split dimension is not supported";
   }
+  if (splitFactor == 1) return success();
   memrefShape[splitDim] /= splitFactor;
 
   // Create `splitFactor` number of objectFifo ops.
@@ -590,7 +593,10 @@ LogicalResult splitLogicalObjectFifo(IRRewriter &rewriter,
     SmallVector<OpFoldResult> targetStrides = producer.getTargetMixedStrides();
 
     size_t splitDimTarget = 0;
-    if (isL2DmaTransposed(producer, true)) {
+    FailureOr<bool> l2DmaTransposed = isL2DmaTransposed(producer, true);
+    if (failed(l2DmaTransposed)) return failure();
+
+    if (l2DmaTransposed.value()) {
       splitDimTarget = transposedL2Dims[splitDim];
     }
     std::optional<int64_t> targetSize =
@@ -683,12 +689,18 @@ LogicalResult splitDoublyStridedOp(IRRewriter &rewriter,
            << "the input dma should have source or target in L2 memory space";
   }
   if (failed(maybeSplitDim)) return failure();
-
   size_t splitDim = maybeSplitDim.value();
+
+  // Both outer dims are 1, no need to split, return success.
+  if (splitDim == memrefShape.size()) return success();
   int64_t splitFactor = memrefShape[splitDim];
+  if (splitFactor == 1) return success();
+
+  FailureOr<bool> l2DmaTransposed = isL2DmaTransposed(op, isL2Target);
+  if (failed(l2DmaTransposed)) return failure();
 
   size_t splitDimTarget = 0;
-  if (isL2DmaTransposed(op, isL2Target)) {
+  if (l2DmaTransposed.value()) {
     splitDimTarget = transposedL2Dims[splitDim];
   }
   // Get new sizes and offsets after splitting.

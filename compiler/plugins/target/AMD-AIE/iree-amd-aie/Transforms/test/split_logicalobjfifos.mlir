@@ -1,9 +1,9 @@
-// RUN: iree-opt --pass-pipeline="builtin.module(iree-amdaie-split-logical-objectfifos,cse)" --split-input-file --verify-diagnostics %s | FileCheck %s
+// RUN: iree-opt --pass-pipeline="builtin.module(iree-amdaie-split-logical-objectfifos)" --split-input-file --verify-diagnostics %s | FileCheck %s
 
 // Test of splitting matmul lhs input objectFifo and dma operations.
 
-//   CHECK-DAG: #map = affine_map<(d0) -> (d0 * 64 + 32)>
-//   CHECK-DAG: #map1 = affine_map<(d0) -> (d0 * 64)>
+//   CHECK-DAG: #[[MAP0:.*]] = affine_map<(d0) -> (d0 * 64 + 32)>
+//   CHECK-DAG: #[[MAP1:.*]] = affine_map<(d0) -> (d0 * 64)>
 // CHECK-label: func.func @split_L2_input_lhs
 //   CHECK-DAG:   %[[ALLOC_A0:.*]] = memref.alloc() : memref<1x1x32x32xi32, 1 : i32>
 //   CHECK-DAG:   %[[ALLOC_A1:.*]] = memref.alloc() : memref<1x1x32x32xi32, 1 : i32>
@@ -12,8 +12,8 @@
 //       CHECK:   %[[OBJ_L2_A1:.*]] = amdaie.logicalobjectfifo.from_memref %[[ALLOC_A1]], {} :
 //  CHECK-SAME:         memref<1x1x32x32xi32, 1 : i32> -> !amdaie.logicalobjectfifo<memref<1x1x32x32xi32, 1 : i32>>
 //       CHECK:   scf.forall (%[[IV0:.*]], %[[IV1:.*]]) in (2, 2)
-//   CHECK-DAG:       %[[IV0_0:.*]] = affine.apply #map1(%[[IV0]])
-//   CHECK-DAG:       %[[IV0_32:.*]] = affine.apply #map(%[[IV0]])
+//   CHECK-DAG:       %[[IV0_0:.*]] = affine.apply #[[MAP1]](%[[IV0]])
+//   CHECK-DAG:       %[[IV0_32:.*]] = affine.apply #[[MAP0]](%[[IV0]])
 //       CHECK:       %[[DMA_L3_TO_L2_A0:.*]] = amdaie.dma_cpy_nd(
 //  CHECK-SAME:                                   %[[OBJ_L2_A0]][0, 0, 0, 0] [1, 32, 1, 32] [1024, 32, 1024, 1]
 //  CHECK-SAME:                                   {{.*}}[%[[IV0_0:.*]], 0] [32, 32] [128, 1]
@@ -52,8 +52,8 @@ module {
 
 // Test of splitting matmul rhs input objectFifo and dma operations.
 
-//   CHECK-DAG: #map = affine_map<(d0) -> (d0 * 64 + 32)>
-//   CHECK-DAG: #map1 = affine_map<(d0) -> (d0 * 64)>
+//   CHECK-DAG: #[[MAP0:.*]] = affine_map<(d0) -> (d0 * 64 + 32)>
+//   CHECK-DAG: #[[MAP1:.*]] = affine_map<(d0) -> (d0 * 64)>
 // CHECK-label: func.func @split_L2_input_rhs
 //   CHECK-DAG:   %[[ALLOC_B0:.*]] = memref.alloc() : memref<1x1x32x32xi32, 1 : i32>
 //   CHECK-DAG:   %[[ALLOC_B1:.*]] = memref.alloc() : memref<1x1x32x32xi32, 1 : i32>
@@ -62,8 +62,8 @@ module {
 //       CHECK:   %[[OBJ_L2_B1:.*]] = amdaie.logicalobjectfifo.from_memref %[[ALLOC_B1]], {} :
 //  CHECK-SAME:         memref<1x1x32x32xi32, 1 : i32> -> !amdaie.logicalobjectfifo<memref<1x1x32x32xi32, 1 : i32>>
 //       CHECK:   scf.forall (%[[IV0:.*]], %[[IV1:.*]]) in (2, 2)
-//   CHECK-DAG:       %[[IV1_0:.*]] = affine.apply #map1(%[[IV1]])
-//   CHECK-DAG:       %[[IV1_32:.*]] = affine.apply #map(%[[IV1]])
+//   CHECK-DAG:       %[[IV1_0:.*]] = affine.apply #[[MAP1]](%[[IV1]])
+//   CHECK-DAG:       %[[IV1_32:.*]] = affine.apply #[[MAP0]](%[[IV1]])
 //       CHECK:       %[[DMA_L3_TO_L2_B0:.*]] = amdaie.dma_cpy_nd(
 //  CHECK-SAME:                                   %[[OBJ_L2_B0]][0, 0, 0, 0] [1, 32, 1, 32] [2048, 32, 1024, 1]
 //  CHECK-SAME:                                   {{.*}}[0, %[[IV1_0:.*]]] [32, 32] [128, 1]
@@ -102,8 +102,8 @@ module {
 
 // Test of splitting matmul output objectFifo and dma operations.
 
-//   CHECK-DAG: #map = affine_map<(d0) -> (d0 * 64)>
-//   CHECK-DAG: #map1 = affine_map<(d0) -> (d0 * 64 + 32)>
+//   CHECK-DAG: #[[MAP0:.*]] = affine_map<(d0) -> (d0 * 64)>
+//   CHECK-DAG: #[[MAP1:.*]] = affine_map<(d0) -> (d0 * 64 + 32)>
 // CHECK-label: func.func @split_L2_output
 //   CHECK-DAG:   %[[ALLOC_C0:.*]] = memref.alloc() : memref<1x2x32x32xi32, 1 : i32>
 //   CHECK-DAG:   %[[ALLOC_C1:.*]] = memref.alloc() : memref<1x2x32x32xi32, 1 : i32>
@@ -112,9 +112,9 @@ module {
 //       CHECK:   %[[OBJ_L2_C1:.*]] = amdaie.logicalobjectfifo.from_memref %[[ALLOC_C1]], {} :
 //  CHECK-SAME:         memref<1x2x32x32xi32, 1 : i32> -> !amdaie.logicalobjectfifo<memref<1x2x32x32xi32, 1 : i32>>
 //       CHECK:   scf.forall (%[[IV0:.*]], %[[IV1:.*]]) in (2, 2)
-//   CHECK-DAG:       %[[IV1_0:.*]] = affine.apply #map(%[[IV1]])
-//   CHECK-DAG:       %[[IV0_0:.*]] = affine.apply #map(%[[IV0]])
-//   CHECK-DAG:       %[[IV0_32:.*]] = affine.apply #map1(%[[IV0]])
+//   CHECK-DAG:       %[[IV1_0:.*]] = affine.apply #[[MAP0]](%[[IV1]])
+//   CHECK-DAG:       %[[IV0_0:.*]] = affine.apply #[[MAP0]](%[[IV0]])
+//   CHECK-DAG:       %[[IV0_32:.*]] = affine.apply #[[MAP1]](%[[IV0]])
 //       CHECK:       %[[DMA_L1_TO_L2_C0:.*]] = amdaie.dma_cpy_nd(
 //  CHECK-SAME:                                   %[[OBJ_L2_C0]][0, 0, 0, 0] [1, 1, 32, 32] [2048, 1024, 32, 1]
 //  CHECK-SAME:                                   {{.*}}[0, 0, 0, 0, 0, 0] [1, 1, 8, 4, 8, 4] [1024, 1024, 16, 4, 128, 1]
