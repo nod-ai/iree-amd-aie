@@ -49,7 +49,7 @@ iree_bytecode_module(
     --compile-mode=hal-executable
     --iree-hal-dump-executable-files-to=${CMAKE_CURRENT_BINARY_DIR}
     --iree-hal-target-backends=amd-aie
-    --iree-amdaie-lower-to-aie-pipeline=air
+    --iree-amdaie-lower-to-aie-pipeline=objectFifo
     --iree-amdaie-target-device=${TARGET_DEVICE}
     --iree-amd-aie-peano-install-dir=${PEANO_INSTALL_DIR}
     --iree-amd-aie-vitis-install-dir=${VITIS_DIR}
