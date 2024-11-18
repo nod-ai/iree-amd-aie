@@ -11,11 +11,8 @@
 
 namespace mlir::iree_compiler::AMDAIE {
 
-/// Utility to help fetch those input DmaCpyNd Ops which needs to be split.
-SmallVector<AMDAIE::DmaCpyNdOp> fetchDmaCpyNdOpsToSplitOrCombine(Operation *op);
-
 /// Utility to split logicalobjectfifos given a vector of L2->L1 dma ops.
-LogicalResult splitLogicalObjectFifos(
+LogicalResult splitThirdInputLogicalObjectFifos(
     IRRewriter &rewriter, SmallVector<AMDAIE::DmaCpyNdOp> &l2ToL1DmaOps,
     MLIRContext *context);
 

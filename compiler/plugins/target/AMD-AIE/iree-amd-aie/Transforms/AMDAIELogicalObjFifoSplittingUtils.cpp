@@ -8,12 +8,8 @@
 
 #include <numeric>
 
-#include "iree-amd-aie/Transforms/AMDAIEDmaUtils.h"
 #include "iree-amd-aie/Transforms/AMDAIEUtils.h"
-#include "llvm/ADT/DenseMap.h"
-#include "llvm/Support/Debug.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
-#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Iterators.h"
@@ -23,16 +19,17 @@
 
 namespace mlir::iree_compiler::AMDAIE {
 
-/// Utility to create a new logical objectfifo based on shape defined by
-/// `newSizesOpFoldResultArr`.
+/// Hardcoded the transposed dimensions of L2 target dma for now.
+/// The values are based on the results from ConvertToDma with option as
+/// transposed on target, e.g., dma size [1, 1, 32, 32] -> [1, 32, 1, 32].
+const static SmallVector<size_t> transposedL2Dims = {0, 2, 1, 3};
+
+/// Utility to create a new logical objectfifo.
 static AMDAIE::LogicalObjectFifoFromMemrefOp createNewLogicalObjectFifo(
     IRRewriter &rewriter,
     AMDAIE::LogicalObjectFifoFromMemrefOp &oldLogicalObjectFifo,
-    SmallVectorImpl<OpFoldResult> &newSizesOpFoldResultArr) {
+    const SmallVectorImpl<int64_t> &newSizes) {
   OpBuilder::InsertionGuard guard(rewriter);
-  SmallVector<int64_t> newSizes = llvm::map_to_vector(
-      newSizesOpFoldResultArr,
-      [](OpFoldResult sizeVal) { return getConstantIndexOrAssert(sizeVal); });
   Value oldAllocOp = oldLogicalObjectFifo.getMemref();
   auto oldMemRefType = cast<MemRefType>(oldAllocOp.getType());
   MemRefType newAllocType = MemRefType::get(
@@ -55,22 +52,17 @@ static AMDAIE::LogicalObjectFifoFromMemrefOp createNewLogicalObjectFifo(
   return newLogicalObjectFifo;
 }
 
-/// Utility to help fetch those input DmaCpyNd Ops which needs to be split.
-SmallVector<AMDAIE::DmaCpyNdOp> fetchDmaCpyNdOpsToSplitOrCombine(
-    Operation *op) {
-  SmallVector<AMDAIE::DmaCpyNdOp> l2ToL1DmaOps;
-  // We are currently walking through CoreOps gathering 3rd Input DmaOp (if
-  // applicable) from them.
-  // TODO(avarma): We will generalize this later.
-  op->walk([&](AMDAIE::CoreOp coreOp) {
-    SmallVector<Value> inputDmas = coreOp.getInputDmas();
-    if (inputDmas.size() != 3) return WalkResult::skip();
-    auto dmaCpyNdOp = inputDmas[2].getDefiningOp<AMDAIE::DmaCpyNdOp>();
-    assert(dmaCpyNdOp && "expected an amdaie.dma_cpy_nd op");
-    l2ToL1DmaOps.push_back(dmaCpyNdOp);
-    return WalkResult::advance();
-  });
-  return l2ToL1DmaOps;
+/// Utility to create a new logical objectfifo based on shape defined by
+/// `newSizesOpFoldResultArr`.
+static AMDAIE::LogicalObjectFifoFromMemrefOp createNewLogicalObjectFifo(
+    IRRewriter &rewriter,
+    AMDAIE::LogicalObjectFifoFromMemrefOp &oldLogicalObjectFifo,
+    const SmallVectorImpl<OpFoldResult> &newSizesOpFoldResultArr) {
+  OpBuilder::InsertionGuard guard(rewriter);
+  SmallVector<int64_t> newSizes = llvm::map_to_vector(
+      newSizesOpFoldResultArr,
+      [](OpFoldResult sizeVal) { return getConstantIndexOrAssert(sizeVal); });
+  return createNewLogicalObjectFifo(rewriter, oldLogicalObjectFifo, newSizes);
 }
 
 /// Utility to verify that the split dimensions for L2 are contiguous.
@@ -123,15 +115,14 @@ static LogicalResult checkIsRangeFromZero(
 ///       . .|. .|
 ///       . .|. .|
 ///          -----
-static FailureOr<OpFoldResult> updateL3SourceOffset(IRRewriter &rewriter,
-                                                    OpFoldResult oldL3Offset,
-                                                    int64_t offsetToAdd,
-                                                    MLIRContext *context) {
+static FailureOr<OpFoldResult> addToOffset(IRRewriter &rewriter,
+                                           OpFoldResult oldL3Offset,
+                                           int64_t offsetToAdd) {
   auto createAffineMap = [&](AffineExpr affineExpr,
                              int64_t offsetToAdd) -> AffineMap {
     AffineExpr newAffineExpr = affineExpr + offsetToAdd;
     return AffineMap::get(/*dimCount=*/1, /*symbolCount=*/0, {newAffineExpr},
-                          context);
+                          rewriter.getContext());
   };
   OpFoldResult newL3AsSourceOffset;
   OpBuilder::InsertionGuard guard(rewriter);
@@ -305,17 +296,50 @@ static LogicalResult checkWhetherSplitIsPossible(
   return success();
 }
 
-// Given a vector of L2->L1 Dma ops' perform the splitting :-
-// 1. Check if the splitting can be performed or not. If not possible, bail out.
-// 2. For the split dimension inferred set offset = 0 and size as 1 for L2 and
-//    L3.
-// 3. Now traverse each L2->L1 Dma op and perform the following :-
-//    a) Create a new L2 AllocOp based on the updated size (step 3 above) and
-//       create a logicalobjectfifo using the same.
-//    b) Split L3->L2 Dma op.
-//    c) SPlit L2->L1 Dma op.
-// 4. Delete old L2->L1, L3->L2 and corresponding AllocOps.
-LogicalResult splitLogicalObjectFifos(
+/// Utility to check if the L3->L2 dma is transposed on the L2 side.
+/// The intuition is if the sizes of L2 and L3 side are the same and L2 dma
+/// strides are in non-decreasing order from right to left, then the dma has
+/// transposition on L3 side, otherwise the transposition is on L2 side.
+static FailureOr<bool> isL2DmaTransposed(AMDAIE::DmaCpyNdOp l3ToL2DmaOp,
+                                         bool isL2Target) {
+  SmallVector<OpFoldResult> l2DmaSizes;
+  SmallVector<OpFoldResult> l2DmaStrides;
+  SmallVector<OpFoldResult> l3DmaSizes;
+  bool l2DmaTransposed = true;
+  if (isL2Target) {
+    l2DmaSizes = l3ToL2DmaOp.getTargetMixedSizes();
+    l3DmaSizes = l3ToL2DmaOp.getSourceMixedSizes();
+    l2DmaStrides = l3ToL2DmaOp.getTargetMixedStrides();
+  } else {
+    l2DmaSizes = l3ToL2DmaOp.getSourceMixedSizes();
+    l3DmaSizes = l3ToL2DmaOp.getTargetMixedSizes();
+    l2DmaStrides = l3ToL2DmaOp.getSourceMixedStrides();
+  }
+  std::optional<SmallVector<int64_t>> staticStrides =
+      getConstantIntValues(l2DmaStrides);
+  if (!staticStrides) {
+    LLVM_DEBUG(llvm::dbgs() << "expected static L2 strides\n");
+    return failure();
+  }
+  SmallVector<int64_t> l2Strides = staticStrides.value();
+  if (std::is_sorted(l2Strides.rbegin(), l2Strides.rend()) &&
+      l2DmaSizes.size() == l3DmaSizes.size()) {
+    l2DmaTransposed = false;
+  }
+  return l2DmaTransposed;
+}
+
+/// Given a vector of L2->L1 Dma ops' perform the splitting :-
+/// 1. Check if the splitting can be performed. If it can't, bail out.
+/// 2. For the split dimension inferred set offset = 0 and size as 1 for L2 and
+///    L3.
+/// 3. Now traverse each L2->L1 Dma op and perform the following :-
+///    a) Create a new L2 AllocOp based on the updated size (step 2 above) and
+///       create a logicalobjectfifo using the same.
+///    b) Split L3->L2 Dma op.
+///    c) Split L2->L1 Dma op.
+/// 4. Delete old L2->L1, L3->L2 and corresponding AllocOps.
+LogicalResult splitThirdInputLogicalObjectFifos(
     IRRewriter &rewriter, SmallVector<AMDAIE::DmaCpyNdOp> &l2ToL1DmaOps,
     MLIRContext *context) {
   SplittingLogicalObjectFifoData splittingLogicalObjectFifoData;
@@ -351,31 +375,13 @@ LogicalResult splitLogicalObjectFifos(
   SmallVector<OpFoldResult> staticL3AsSourceSizes =
       l3ToL2DmaOp.getSourceMixedSizes();
 
-  LogicalObjectFifoFromMemrefOp l2TargetObjectFifo =
-      l3ToL2DmaOp.getTargetObjectFifo();
-  ArrayRef<int64_t> l2TargetShape =
-      l2TargetObjectFifo.getMemrefType().getShape();
-  if (l2TargetShape.size() != staticL2AsTargetSizes.size()) {
-    LLVM_DEBUG(llvm::dbgs() << "L2 target size should be the same");
-    return failure();
-  }
-
-  // Check if the L3->L2 dma is transposed on the target side.
-  bool dmaTransposeOnSource = true;
-  for (auto [s1, s2] : llvm::zip_equal(l2TargetShape, staticL2AsTargetSizes)) {
-    if (s1 != getConstantIntValue(s2)) {
-      dmaTransposeOnSource = false;
-      break;
-    }
-  }
-  if (staticL3AsSourceSizes.size() != staticL2AsTargetSizes.size()) {
-    dmaTransposeOnSource = false;
-  }
-
   OpFoldResult zeroVal = getAsIndexOpFoldResult(context, 0);
   OpFoldResult oneVal = getAsIndexOpFoldResult(context, 1);
 
-  if (dmaTransposeOnSource) {
+  FailureOr<bool> dmaTransposeOnTarget = isL2DmaTransposed(l3ToL2DmaOp, true);
+  if (failed(dmaTransposeOnTarget)) return failure();
+
+  if (!dmaTransposeOnTarget.value()) {
     // Update split dimensions' offset/size for L2 as target and L3 as source.
     // We can afford to do this here because it's going to be the same for all
     // L3->L2 splits. Here we are setting offset = 0 and size = 1.
@@ -389,14 +395,12 @@ LogicalResult splitLogicalObjectFifos(
     // The L2 target side has transposed dimensions, while the L3 source side
     // data are continuous and don't have `nonSplitDim`. Then the L3 source
     // sizes need to be modified to match the new L2 target sizes.
-    // Hardcoded the transposed dimensions for now.
-    const SmallVector<size_t> transposeDim = {0, 2, 1, 3};
     for (auto &&[splitDim, nonSplitdim] :
          llvm::zip_equal(splitDimsForL2, nonSplitDimsForL2)) {
-      staticL2AsTargetOffsets[transposeDim[splitDim]] = zeroVal;
-      staticL2AsTargetSizes[transposeDim[splitDim]] = oneVal;
+      staticL2AsTargetOffsets[transposedL2Dims[splitDim]] = zeroVal;
+      staticL2AsTargetSizes[transposedL2Dims[splitDim]] = oneVal;
       staticL3AsSourceSizes[splitDim] =
-          staticL2AsTargetSizes[transposeDim[nonSplitdim]];
+          staticL2AsTargetSizes[transposedL2Dims[nonSplitdim]];
     }
   }
 
@@ -413,8 +417,9 @@ LogicalResult splitLogicalObjectFifos(
         l2ToL1DmaOp.getSourceObjectFifo();
     // If the dma transpose is on the source(target) side, then the L2
     // target(source) side has the sizes in order.
-    SmallVector<OpFoldResult> newL2Sizes =
-        dmaTransposeOnSource ? staticL2AsTargetSizes : staticL2AsSourceSizes;
+    SmallVector<OpFoldResult> newL2Sizes = dmaTransposeOnTarget.value()
+                                               ? staticL2AsSourceSizes
+                                               : staticL2AsTargetSizes;
     AMDAIE::LogicalObjectFifoFromMemrefOp source =
         createNewLogicalObjectFifo(rewriter, oldL2ObjectFifo, newL2Sizes);
 
@@ -422,7 +427,7 @@ LogicalResult splitLogicalObjectFifos(
     // ---------- L3 -> L2 splitting --------------
     // --------------------------------------------
     // Update L3 source offsets for non-split dimensions. Refer doc comment of
-    // `updateL3SourceOffset` for the computation rationale involved.
+    // `addToOffset` for the computation rationale involved.
     SmallVector<OpFoldResult> staticL3AsSourceOffsets =
         l3ToL2DmaOp.getSourceMixedOffsets();
     for (auto &&[splitDim, nonSplitdim] :
@@ -445,9 +450,9 @@ LogicalResult splitLogicalObjectFifos(
 
       // If the dma transpose is on the target side, L3 source side data are
       // continuous and don't have `nonSplitDim`.
-      size_t dim = dmaTransposeOnSource ? nonSplitdim : splitDim;
-      FailureOr<OpFoldResult> newOffset = updateL3SourceOffset(
-          rewriter, staticL3AsSourceOffsets[dim], offsetToAdd, context);
+      size_t dim = dmaTransposeOnTarget.value() ? splitDim : nonSplitdim;
+      FailureOr<OpFoldResult> newOffset =
+          addToOffset(rewriter, staticL3AsSourceOffsets[dim], offsetToAdd);
       if (failed(newOffset)) {
         // TODO: Ideally we should be able to handle even +, -, *, /, etc.
         //       But handle this later (if at all!) as such cases might not

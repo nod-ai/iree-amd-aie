@@ -6,8 +6,6 @@
 #include "iree-amd-aie/IR/AMDAIEOps.h"
 #include "iree-amd-aie/Transforms/AMDAIELogicalObjFifoSplittingUtils.h"
 #include "iree-amd-aie/Transforms/Passes.h"
-// #include "llvm/Support/Debug.h"
-#include "mlir/IR/Iterators.h"
 #include "mlir/Pass/Pass.h"
 
 #define DEBUG_TYPE "iree-amdaie-split-logical-objectfifos-for-connection-reuse"
@@ -34,10 +32,20 @@ void AMDAIESplitLogicalObjFifosForConnectionReusePass::runOnOperation() {
   MLIRContext *context = &getContext();
   IRRewriter rewriter(context);
 
-  SmallVector<AMDAIE::DmaCpyNdOp> l2ToL1DmaOps =
-      fetchDmaCpyNdOpsToSplitOrCombine(moduleOp);
+  // Walk through CoreOps gathering 3rd input DmaOps (if applicable) which will
+  // be used to split L2 objectFifos of elementwise input for connection reuse.
+  SmallVector<AMDAIE::DmaCpyNdOp> l2ToL1DmaOps;
+  moduleOp->walk([&](AMDAIE::CoreOp coreOp) {
+    SmallVector<Value> inputDmas = coreOp.getInputDmas();
+    if (inputDmas.size() != 3) return WalkResult::skip();
+    auto dmaCpyNdOp = inputDmas[2].getDefiningOp<AMDAIE::DmaCpyNdOp>();
+    assert(dmaCpyNdOp && "expected an amdaie.dma_cpy_nd op");
+    l2ToL1DmaOps.push_back(dmaCpyNdOp);
+    return WalkResult::advance();
+  });
 
-  if (failed(splitLogicalObjectFifos(rewriter, l2ToL1DmaOps, context))) {
+  if (failed(
+          splitThirdInputLogicalObjectFifos(rewriter, l2ToL1DmaOps, context))) {
     LLVM_DEBUG(llvm::dbgs()
                << "Failed to perform splitting of logicalobjectfifos");
     return signalPassFailure();
