@@ -7,6 +7,7 @@
 #include <numeric>
 
 #include "iree-amd-aie/IR/AMDAIEOps.h"
+#include "iree-amd-aie/Transforms/AMDAIEOpUtils.h"
 #include "iree-amd-aie/Transforms/Passes.h"
 #include "iree-amd-aie/Transforms/Transforms.h"
 #include "llvm/ADT/DenseSet.h"
@@ -17,26 +18,6 @@
 #define DEBUG_TYPE "iree-amdaie-acquire-release-to-use-lock"
 
 namespace mlir::iree_compiler::AMDAIE {
-
-template <typename T>
-FailureOr<AMDAIE::LogicalObjectFifoFromBuffersOp> getLogicalObjFifoOperatedOn(
-    T op) {
-  auto copyOp =
-      dyn_cast_if_present<CopyOpInterface>(op.getDma().getDefiningOp());
-  if (!copyOp)
-    return op.emitOpError() << "should operate on a copy-like operation";
-  auto logicalObjFifo =
-      op.getPort() == LogicalObjectFifoPort::Consume
-          ? dyn_cast_if_present<AMDAIE::LogicalObjectFifoFromBuffersOp>(
-                copyOp.getTarget().getDefiningOp())
-          : dyn_cast_if_present<AMDAIE::LogicalObjectFifoFromBuffersOp>(
-                copyOp.getSource().getDefiningOp());
-  if (!logicalObjFifo) {
-    return copyOp.emitOpError()
-           << "should operate on an `amdaie.logicalobjectfifo.from_buffers` op";
-  }
-  return logicalObjFifo;
-}
 
 /// Unroll the scf.for loops inside the core operations based on the depths of
 /// the acquired objFifos.

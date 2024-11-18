@@ -104,7 +104,15 @@ static void addAMDAIEBufferizePasses(OpPassManager &pm,
   addIREEComprehensiveBufferizePasses(pm, allocationFn, memCpyFn);
 }
 
-void addAMDAIEToAIEPasses(OpPassManager &passManager) {
+void addAMDAIEToAIEPasses(OpPassManager &passManager,
+                          bool insertLoopAroundCoreBlock) {
+  // The infinite loop insertion transformation needs to be called before the
+  // `AcquireReleaseToUseLock` pass as the latter will perform loop unrolling
+  // based on the objFifo depths.
+  // TODO(jornt): Make them independent.
+  if (insertLoopAroundCoreBlock)
+    passManager.addPass(createAMDAIEInsertInfiniteLoopAroundCoreBlockPass());
+  passManager.addPass(createCanonicalizerPass());
   passManager.addPass(createAMDAIEAcquireReleaseToUseLockPass());
   passManager.addPass(createAMDAIECanonicalizeNpuDmaCpyNdPass());
   passManager.addPass(createCanonicalizerPass());
@@ -495,7 +503,8 @@ void buildAMDAIETransformPassPipeline(
     LowerToAIEPassPipeline useLowerToAIEPipeline, bool matmulElementwiseFusion,
     bool enableVectorizationPasses, const std::string &pathToUkernels,
     bool enablePacketFlow, bool enableCoalescingLoops,
-    bool enableCollapsingUnitDims, bool enableFunctionOutlining) {
+    bool enableCollapsingUnitDims, bool enableFunctionOutlining,
+    bool insertLoopAroundCoreBlock) {
   OpPassManager &modulePassManager = variantPassManager.nest<ModuleOp>();
   {
     FunctionLikeNest funcPassManager(modulePassManager);
@@ -524,7 +533,8 @@ void buildAMDAIETransformPassPipeline(
     addAMDAIEObjectFifoLoweringPasses(
         modulePassManager, enablePacketFlow, useTilePipeline,
         enableVectorizationPasses, enableCoalescingLoops,
-        enableCollapsingUnitDims, enableFunctionOutlining);
+        enableCollapsingUnitDims, enableFunctionOutlining,
+        insertLoopAroundCoreBlock);
   } else if (useLowerToAIEPipeline == LowerToAIEPassPipeline::AIR) {
     addMLIRAIRLoweringPasses(modulePassManager, device, useTilePipeline,
                              matmulElementwiseFusion,
@@ -544,13 +554,11 @@ void buildAMDAIETransformPassPipeline(
   });
 }
 
-void addAMDAIEObjectFifoLoweringPasses(OpPassManager &passManager,
-                                       bool enablePacketFlow,
-                                       TilePassPipeline useTilePipeline,
-                                       bool enableVectorizationPasses,
-                                       bool enableCoalescingLoops,
-                                       bool enableCollapsingUnitDims,
-                                       bool enableFunctionOutlining) {
+void addAMDAIEObjectFifoLoweringPasses(
+    OpPassManager &passManager, bool enablePacketFlow,
+    TilePassPipeline useTilePipeline, bool enableVectorizationPasses,
+    bool enableCoalescingLoops, bool enableCollapsingUnitDims,
+    bool enableFunctionOutlining, bool insertLoopAroundCoreBlock) {
   passManager.addPass(createEraseHALDescriptorTypeFromMemRefPass());
   passManager.addPass(memref::createFoldMemRefAliasOpsPass());
 
@@ -646,7 +654,7 @@ void addAMDAIEObjectFifoLoweringPasses(OpPassManager &passManager,
   passManager.addPass(createAMDAIEControlCodeLoweringPass());
   passManager.addPass(createAMDAIEControlCodeToTransactionPass());
 
-  addAMDAIEToAIEPasses(passManager);
+  addAMDAIEToAIEPasses(passManager, insertLoopAroundCoreBlock);
 
   // Now lower using the AIE passes from MLIR-AIE.
   addMLIRAIELoweringPasses(passManager);
