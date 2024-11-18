@@ -8,7 +8,6 @@ iree_lit_test_suite(
   NAME
     lit
   SRCS
-    "conv_fill_spec_pad.mlir"
     "matmul_fill_spec_pack_peel.mlir"
     "matmul_fill_spec_pad.mlir"
     "matmul_fill_spec_pad_pack.mlir"

@@ -58,7 +58,7 @@ echo '{
     "include": [
         "build_tools/cmake/presets/all.json"
     ]
-}' > $iree_dir/CMakeUserPresets.json 
+}' > $iree_dir/CMakeUserPresets.json
 
 cd $iree_dir
 CMAKE_ARGS=(
@@ -81,6 +81,7 @@ CMAKE_ARGS=(
   -DIREE_INPUT_TORCH=OFF
   -DCMAKE_OBJECT_PATH_MAX=4096
   -DIREE_CMAKE_PLUGIN_PATHS="$repo_root"
+  -DIREE_AMDAIE_TIME_KERNEL=1
 )
 
 PEANO_INSTALL_DIR=${PEANO_INSTALL_DIR:-""}
@@ -147,7 +148,7 @@ echo "-----"
 if [[ "$OSTYPE" == "linux"* ]]; then
   ctest --test-dir "$build_dir" -R amd-aie -E "driver" --output-on-failure -j
 elif [[ "$OSTYPE" == "darwin"* ]]; then
-  ctest --test-dir "$build_dir" -R amd-aie -E "matmul_pack_peel_air_e2e|matmul_elementwise_pack_peel_air_e2e|conv_fill_spec_pad" --output-on-failure -j --repeat until-pass:5
+  ctest --test-dir "$build_dir" -R amd-aie -E "matmul_pack_peel_air_e2e|matmul_elementwise_pack_peel_air_e2e" --output-on-failure -j --repeat until-pass:5
 fi
 
 if [ -d "$llvm_install_dir" ]; then
