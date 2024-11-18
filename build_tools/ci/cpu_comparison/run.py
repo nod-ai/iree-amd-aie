@@ -37,7 +37,7 @@ def run_conv_test(config, filename, n_repeats):
     return True
 
 
-class RunOnTargetDevice(ABC):
+class BaseTemplate(ABC):
     """
     Base class to be inherited by any new dispatch/compute op template.
     The derived instances would therefore be created specifying the intended target
@@ -45,10 +45,14 @@ class RunOnTargetDevice(ABC):
     target device(s) contains the `target_device` supplied via command-line.
     """
 
-    def __init__(self, run_on_target):
+    def __init__(self, run_on_target, additional_aie_compilation_flags=None):
         self.run_on_target = run_on_target
+        self.additional_aie_compilation_flags = additional_aie_compilation_flags \
+            if additional_aie_compilation_flags is not None else []
 
     def run(self, config):
+        for flag in self.additional_aie_compilation_flags:
+            config.add_additional_aie_compilation_flag(flag)
         if config.target_device in self.run_on_target:
             return self._execute(config)
         # Return False to indicate that the test did not run.
@@ -59,7 +63,7 @@ class RunOnTargetDevice(ABC):
         pass
 
 
-class ConvolutionFromTemplate(RunOnTargetDevice):
+class ConvolutionFromTemplate(BaseTemplate):
     def __init__(self, params, run_on_target=["npu1_4col"]):
         super().__init__(run_on_target)
         self.generator = ConvolutionMlirGenerator(**params)
@@ -82,7 +86,7 @@ class ConvolutionFromTemplate(RunOnTargetDevice):
         return run_conv_test(config, filename, n_repeats=2)
 
 
-class ConvolutionNHWCQ(RunOnTargetDevice):
+class ConvolutionNHWCQ(BaseTemplate):
     def __init__(self, run_on_target=["npu1_4col"]):
         super().__init__(run_on_target)
         self.name = "convolution_nhwc_q"
@@ -94,7 +98,7 @@ class ConvolutionNHWCQ(RunOnTargetDevice):
         return run_conv_test(config, filename, n_repeats=1)
 
 
-class MultipleDispatches(RunOnTargetDevice):
+class MultipleDispatches(BaseTemplate):
     def __init__(self, name, run_on_target=["npu1_4col"]):
         super().__init__(run_on_target)
         self.name = name
@@ -111,9 +115,18 @@ class MultipleDispatches(RunOnTargetDevice):
             return False
 
 
-class BaseMatmul(RunOnTargetDevice):
-    def __init__(self, M, N, K, input_type, acc_type, run_on_target=["npu1_4col"]):
-        super().__init__(run_on_target)
+class BaseMatmul(BaseTemplate):
+    def __init__(
+        self,
+        M,
+        N,
+        K, 
+        input_type,
+        acc_type,
+        run_on_target=["npu1_4col"],
+        additional_compilation_flags=None
+    ):
+        super().__init__(run_on_target, additional_compilation_flags)
         self.labels = []
         self.M = M
         self.N = N
@@ -164,6 +177,7 @@ class VanillaMatmul(BaseMatmul):
 
     def __init__(
         self,
+        name,
         M,
         N,
         K,
@@ -172,9 +186,11 @@ class VanillaMatmul(BaseMatmul):
         use_ukernel,
         run_on_target=["npu1_4col"],
         additional_labels=[],
+        additional_aie_compilation_flags=None,
     ):
-        super().__init__(M, N, K, input_type, acc_type, run_on_target)
-        self.name = f"vanilla_matmul_{M}_{N}_{K}_{input_type}_{acc_type}"
+        super().__init__(M, N, K, input_type, acc_type, run_on_target, 
+            additional_aie_compilation_flags)
+        self.name = f"vanilla_matmul_{name}_{M}_{N}_{K}_{input_type}_{acc_type}"
         self.labels.append("VanillaMatmul")
         self.labels += additional_labels
         self.use_ukernel = use_ukernel
@@ -711,6 +727,9 @@ class TestConfig:
             if peano_commit_hash:
                 self.peano_commit_hash = peano_commit_hash[0]
 
+    def add_additional_aie_compilation_flag(self, flag):
+        self.additional_aie_compilation_flags += flag
+
     def __str__(self):
         return dedent(
             f"""
@@ -991,6 +1010,7 @@ class Tests:
         # VanillaMatmul test(s):
         self.register(
             VanillaMatmul(
+                "scalar_i32",
                 32,
                 32,
                 32,
@@ -1000,17 +1020,32 @@ class Tests:
                 run_on_target=["npu1_4col", "npu4"],
             )
         )
-        self.register(VanillaMatmul(32, 32, 64, "bf16", "f32", use_ukernel=False))
+        self.register(
+            VanillaMatmul(
+                "infinite_loop",
+                32,
+                32,
+                32,
+                "i32",
+                "i32",
+                use_ukernel=False,
+                run_on_target=["npu1_4col", "npu4"],
+                additional_aie_compilation_flags=["--iree-amdaie-enable-infinite-loop-around-core-block=true"]
+            )
+        )
+        self.register(VanillaMatmul("bfloat", 32, 32, 64, "bf16", "f32", use_ukernel=False))
+        
 
         # TODO: Failure is expected for the 128x128 case we don't yet understand why.
         self.register(
             VanillaMatmul(
-                64, 64, 64, "bf16", "f32", use_ukernel=True, run_on_target=["npu4"]
+                "bfloat_ukernel", 64, 64, 64, "bf16", "f32", use_ukernel=True, run_on_target=["npu4"]
             )
         )
 
         self.register(
             VanillaMatmul(
+                "bfloat_perf",
                 512,
                 512,
                 4096,

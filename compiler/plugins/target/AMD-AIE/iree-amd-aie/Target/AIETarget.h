@@ -52,6 +52,7 @@ struct AMDAIEOptions {
   bool enableCoalescingLoops{false};
   bool enableCollapsingUnitDims{false};
   bool enableFunctionOutlining{false};
+  bool insertLoopAroundCoreBlock{false};
   bool matmulElementwiseFusion{false};
   AMDAIEDevice AMDAIETargetDevice{AMDAIEDevice::npu1_4col};
   std::string enableAMDAIEUkernels{"none"};
@@ -179,6 +180,13 @@ struct AMDAIEOptions {
         llvm::cl::cat(category),
         llvm::cl::desc("Flag to enable/disable linalg-function-outlining pass."
                        "It is intended for development purposes only."));
+
+    binder.opt<bool>(
+        "iree-amdaie-enable-infinite-loop-around-core-block",
+        insertLoopAroundCoreBlock, llvm::cl::cat(category),
+        llvm::cl::desc("Flag to enable/disable insertion of loops around the "
+                       "core blocks. Typically only used for granular "
+                       "peformance measurement purposes."));
 
     binder.opt<bool>(
         "iree-amdaie-matmul-elementwise-fusion", matmulElementwiseFusion,
