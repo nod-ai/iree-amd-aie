@@ -12,7 +12,6 @@
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/IR/BuiltinTypes.h"
-#include "mlir/IR/Iterators.h"
 #include "mlir/IR/Operation.h"
 
 #define DEBUG_TYPE "iree-amdaie-logicalobjfifo-splitting-utils"
@@ -56,8 +55,8 @@ static AMDAIE::LogicalObjectFifoFromMemrefOp createNewLogicalObjectFifo(
 /// `newSizesOpFoldResultArr`.
 static AMDAIE::LogicalObjectFifoFromMemrefOp createNewLogicalObjectFifo(
     IRRewriter &rewriter,
-    AMDAIE::LogicalObjectFifoFromMemrefOp &oldLogicalObjectFifo,
-    const SmallVectorImpl<OpFoldResult> &newSizesOpFoldResultArr) {
+    AMDAIE::LogicalObjectFifoFromMemrefOp oldLogicalObjectFifo,
+    ArrayRef<OpFoldResult> newSizesOpFoldResultArr) {
   OpBuilder::InsertionGuard guard(rewriter);
   SmallVector<int64_t> newSizes = llvm::map_to_vector(
       newSizesOpFoldResultArr,
@@ -296,37 +295,50 @@ static LogicalResult checkWhetherSplitIsPossible(
   return success();
 }
 
-/// Utility to check if the L3->L2 dma is transposed on the L2 side.
-/// The intuition is if the sizes of L2 and L3 side are the same and L2 dma
-/// strides are in non-decreasing order from right to left, then the dma has
-/// transposition on L3 side, otherwise the transposition is on L2 side.
-static FailureOr<bool> isL2DmaTransposed(AMDAIE::DmaCpyNdOp l3ToL2DmaOp,
-                                         bool isL2Target) {
-  SmallVector<OpFoldResult> l2DmaSizes;
-  SmallVector<OpFoldResult> l2DmaStrides;
-  SmallVector<OpFoldResult> l3DmaSizes;
-  bool l2DmaTransposed = true;
-  if (isL2Target) {
-    l2DmaSizes = l3ToL2DmaOp.getTargetMixedSizes();
-    l3DmaSizes = l3ToL2DmaOp.getSourceMixedSizes();
-    l2DmaStrides = l3ToL2DmaOp.getTargetMixedStrides();
-  } else {
-    l2DmaSizes = l3ToL2DmaOp.getSourceMixedSizes();
-    l3DmaSizes = l3ToL2DmaOp.getTargetMixedSizes();
-    l2DmaStrides = l3ToL2DmaOp.getSourceMixedStrides();
+/// Determine if the strides and sizes of a dma copy operation might describe
+/// a transposition of dimensions. Considering all dimensions which are
+/// not of size 0 or 1, if there are any non-static strides, or if any
+/// of the static strides are not in descending order, then this might be a
+/// transpose.
+static bool isMaybeTransposed(ArrayRef<OpFoldResult> strides,
+                              ArrayRef<OpFoldResult> sizes) {
+  assert(strides.size() == sizes.size());
+
+  SmallVector<uint64_t> relevantStaticStrides;
+  for (uint32_t i = 0; i < strides.size(); i++) {
+    // If the size of dimension `i` is definitely 0 or 1, it's stride can be
+    // ignored for the purpose of checking if this is transpose.
+    auto maybeSize = getConstantIntValue(sizes[i]);
+    if (maybeSize && (maybeSize.value() == 0 || maybeSize.value() == 1)) {
+      continue;
+    }
+
+    auto maybeStride = getConstantIntValue(strides[i]);
+
+    // If the stride is unknown, then this might be a transpose.
+    if (!maybeStride.has_value()) return true;
+
+    relevantStaticStrides.push_back(maybeStride.value());
   }
-  std::optional<SmallVector<int64_t>> staticStrides =
-      getConstantIntValues(l2DmaStrides);
-  if (!staticStrides) {
-    LLVM_DEBUG(llvm::dbgs() << "expected static L2 strides\n");
-    return failure();
-  }
-  SmallVector<int64_t> l2Strides = staticStrides.value();
-  if (std::is_sorted(l2Strides.rbegin(), l2Strides.rend()) &&
-      l2DmaSizes.size() == l3DmaSizes.size()) {
-    l2DmaTransposed = false;
-  }
-  return l2DmaTransposed;
+
+  bool sorted = std::is_sorted(relevantStaticStrides.rbegin(),
+                               relevantStaticStrides.rend());
+
+  // If the strides are not in descending order, then this is definitely a
+  // tranpose
+  bool isTranspose = !sorted;
+
+  return isTranspose;
+}
+
+static bool isMaybeTransposedOnSourceSide(AMDAIE::DmaCpyNdOp dmaOp) {
+  return isMaybeTransposed(dmaOp.getSourceMixedStrides(),
+                           dmaOp.getSourceMixedSizes());
+}
+
+static bool isMaybeTransposedOnTargetSide(AMDAIE::DmaCpyNdOp dmaOp) {
+  return isMaybeTransposed(dmaOp.getTargetMixedStrides(),
+                           dmaOp.getTargetMixedSizes());
 }
 
 /// Given a vector of L2->L1 Dma ops' perform the splitting :-
@@ -378,10 +390,9 @@ LogicalResult splitThirdInputLogicalObjectFifos(
   OpFoldResult zeroVal = getAsIndexOpFoldResult(context, 0);
   OpFoldResult oneVal = getAsIndexOpFoldResult(context, 1);
 
-  FailureOr<bool> dmaTransposeOnTarget = isL2DmaTransposed(l3ToL2DmaOp, true);
-  if (failed(dmaTransposeOnTarget)) return failure();
+  bool dmaTransposeOnTarget = isMaybeTransposedOnTargetSide(l3ToL2DmaOp);
 
-  if (!dmaTransposeOnTarget.value()) {
+  if (!dmaTransposeOnTarget) {
     // Update split dimensions' offset/size for L2 as target and L3 as source.
     // We can afford to do this here because it's going to be the same for all
     // L3->L2 splits. Here we are setting offset = 0 and size = 1.
@@ -417,9 +428,8 @@ LogicalResult splitThirdInputLogicalObjectFifos(
         l2ToL1DmaOp.getSourceObjectFifo();
     // If the dma transpose is on the source(target) side, then the L2
     // target(source) side has the sizes in order.
-    SmallVector<OpFoldResult> newL2Sizes = dmaTransposeOnTarget.value()
-                                               ? staticL2AsSourceSizes
-                                               : staticL2AsTargetSizes;
+    SmallVector<OpFoldResult> newL2Sizes =
+        dmaTransposeOnTarget ? staticL2AsSourceSizes : staticL2AsTargetSizes;
     AMDAIE::LogicalObjectFifoFromMemrefOp source =
         createNewLogicalObjectFifo(rewriter, oldL2ObjectFifo, newL2Sizes);
 
@@ -450,7 +460,7 @@ LogicalResult splitThirdInputLogicalObjectFifos(
 
       // If the dma transpose is on the target side, L3 source side data are
       // continuous and don't have `nonSplitDim`.
-      size_t dim = dmaTransposeOnTarget.value() ? splitDim : nonSplitdim;
+      size_t dim = dmaTransposeOnTarget ? splitDim : nonSplitdim;
       FailureOr<OpFoldResult> newOffset =
           addToOffset(rewriter, staticL3AsSourceOffsets[dim], offsetToAdd);
       if (failed(newOffset)) {
