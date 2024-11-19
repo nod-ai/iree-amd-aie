@@ -39,13 +39,15 @@ void AMDAIESplitLogicalObjFifosForConnectionReusePass::runOnOperation() {
     SmallVector<Value> inputDmas = coreOp.getInputDmas();
     if (inputDmas.size() != 3) return WalkResult::skip();
     auto dmaCpyNdOp = inputDmas[2].getDefiningOp<AMDAIE::DmaCpyNdOp>();
-    assert(dmaCpyNdOp && "expected an amdaie.dma_cpy_nd op");
+    if (!dmaCpyNdOp) {
+      coreOp->emitOpError() << "failed to get a DmaCpyNdOp from the input";
+    }
     l2ToL1DmaOps.push_back(dmaCpyNdOp);
     return WalkResult::advance();
   });
 
-  if (failed(
-          splitThirdInputLogicalObjectFifos(rewriter, l2ToL1DmaOps, context))) {
+  if (failed(splitLogicalObjectFifoForElementwiseOp(rewriter, l2ToL1DmaOps,
+                                                    context))) {
     LLVM_DEBUG(llvm::dbgs()
                << "Failed to perform splitting of logicalobjectfifos");
     return signalPassFailure();

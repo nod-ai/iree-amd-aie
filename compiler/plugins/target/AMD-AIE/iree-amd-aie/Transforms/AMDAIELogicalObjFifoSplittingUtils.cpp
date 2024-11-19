@@ -26,8 +26,8 @@ const static SmallVector<size_t> transposedL2Dims = {0, 2, 1, 3};
 /// Utility to create a new logical objectfifo.
 static AMDAIE::LogicalObjectFifoFromMemrefOp createNewLogicalObjectFifo(
     IRRewriter &rewriter,
-    AMDAIE::LogicalObjectFifoFromMemrefOp &oldLogicalObjectFifo,
-    const SmallVectorImpl<int64_t> &newSizes) {
+    AMDAIE::LogicalObjectFifoFromMemrefOp oldLogicalObjectFifo,
+    ArrayRef<int64_t> newSizes) {
   OpBuilder::InsertionGuard guard(rewriter);
   Value oldAllocOp = oldLogicalObjectFifo.getMemref();
   auto oldMemRefType = cast<MemRefType>(oldAllocOp.getType());
@@ -295,50 +295,28 @@ static LogicalResult checkWhetherSplitIsPossible(
   return success();
 }
 
-/// Determine if the strides and sizes of a dma copy operation might describe
-/// a transposition of dimensions. Considering all dimensions which are
-/// not of size 0 or 1, if there are any non-static strides, or if any
-/// of the static strides are not in descending order, then this might be a
-/// transpose.
-static bool isMaybeTransposed(ArrayRef<OpFoldResult> strides,
-                              ArrayRef<OpFoldResult> sizes) {
-  assert(strides.size() == sizes.size());
-
-  SmallVector<uint64_t> relevantStaticStrides;
-  for (uint32_t i = 0; i < strides.size(); i++) {
-    // If the size of dimension `i` is definitely 0 or 1, it's stride can be
-    // ignored for the purpose of checking if this is transpose.
-    auto maybeSize = getConstantIntValue(sizes[i]);
-    if (maybeSize && (maybeSize.value() == 0 || maybeSize.value() == 1)) {
-      continue;
-    }
-
-    auto maybeStride = getConstantIntValue(strides[i]);
-
-    // If the stride is unknown, then this might be a transpose.
-    if (!maybeStride.has_value()) return true;
-
-    relevantStaticStrides.push_back(maybeStride.value());
+/// Utility to determine if the strides of a dma copy operation might describe
+/// a transposition of dimensions. Here we are only considering static strides.
+/// If any of the static strides are in non-decreasing order from right to left,
+/// then this might be a transpose.
+static FailureOr<bool> isMaybeTransposed(Location loc,
+                                         ArrayRef<OpFoldResult> strides) {
+  std::optional<SmallVector<int64_t>> maybeStrides =
+      getConstantIntValues(strides);
+  if (!maybeStrides) {
+    emitError(loc) << "expected static L2 strides";
+    return failure();
   }
-
-  bool sorted = std::is_sorted(relevantStaticStrides.rbegin(),
-                               relevantStaticStrides.rend());
-
-  // If the strides are not in descending order, then this is definitely a
-  // tranpose
-  bool isTranspose = !sorted;
-
-  return isTranspose;
+  SmallVector<int64_t> staticStrides = maybeStrides.value();
+  return !std::is_sorted(staticStrides.rbegin(), staticStrides.rend());
 }
 
-static bool isMaybeTransposedOnSourceSide(AMDAIE::DmaCpyNdOp dmaOp) {
-  return isMaybeTransposed(dmaOp.getSourceMixedStrides(),
-                           dmaOp.getSourceMixedSizes());
+static FailureOr<bool> isDmaTransposedOnSourceSide(AMDAIE::DmaCpyNdOp dmaOp) {
+  return isMaybeTransposed(dmaOp->getLoc(), dmaOp.getSourceMixedStrides());
 }
 
-static bool isMaybeTransposedOnTargetSide(AMDAIE::DmaCpyNdOp dmaOp) {
-  return isMaybeTransposed(dmaOp.getTargetMixedStrides(),
-                           dmaOp.getTargetMixedSizes());
+static FailureOr<bool> isDmaTransposedOnTargetSide(AMDAIE::DmaCpyNdOp dmaOp) {
+  return isMaybeTransposed(dmaOp->getLoc(), dmaOp.getTargetMixedStrides());
 }
 
 /// Given a vector of L2->L1 Dma ops' perform the splitting :-
@@ -351,7 +329,7 @@ static bool isMaybeTransposedOnTargetSide(AMDAIE::DmaCpyNdOp dmaOp) {
 ///    b) Split L3->L2 Dma op.
 ///    c) Split L2->L1 Dma op.
 /// 4. Delete old L2->L1, L3->L2 and corresponding AllocOps.
-LogicalResult splitThirdInputLogicalObjectFifos(
+LogicalResult splitLogicalObjectFifoForElementwiseOp(
     IRRewriter &rewriter, SmallVector<AMDAIE::DmaCpyNdOp> &l2ToL1DmaOps,
     MLIRContext *context) {
   SplittingLogicalObjectFifoData splittingLogicalObjectFifoData;
@@ -390,7 +368,9 @@ LogicalResult splitThirdInputLogicalObjectFifos(
   OpFoldResult zeroVal = getAsIndexOpFoldResult(context, 0);
   OpFoldResult oneVal = getAsIndexOpFoldResult(context, 1);
 
-  bool dmaTransposeOnTarget = isMaybeTransposedOnTargetSide(l3ToL2DmaOp);
+  FailureOr<bool> maybeTransposed = isDmaTransposedOnTargetSide(l3ToL2DmaOp);
+  if (failed(maybeTransposed)) return failure();
+  bool dmaTransposeOnTarget = maybeTransposed.value();
 
   if (!dmaTransposeOnTarget) {
     // Update split dimensions' offset/size for L2 as target and L3 as source.
