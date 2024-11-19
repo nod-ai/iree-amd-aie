@@ -87,7 +87,6 @@ static std::pair<memref::LinearizedMemRefInfo, OpFoldResult> getLinearizedMemRef
           linearizedIndices};
 }
 
-
 static OpFoldResult
 getLinearizedSrcIndices(OpBuilder &builder, Location loc, int64_t srcBits,
                         const SmallVector<OpFoldResult> &indices,
@@ -103,29 +102,6 @@ getLinearizedSrcIndices(OpBuilder &builder, Location loc, int64_t srcBits,
           stridedMetadata.getConstifiedMixedStrides(), indices);
   return linearizedIndices;
 }
-
-// static memref::LinearizedMemRefInfo
-// getLinearizedMemRefOffsetAndSize(OpBuilder &builder, Location loc, int srcBits,
-//                                  int dstBits, OpFoldResult offset,
-//                                  ArrayRef<OpFoldResult> sizes) {
-//   SmallVector<OpFoldResult> strides(sizes.size());
-//   if (!sizes.empty()) {
-//     strides.back() = builder.getIndexAttr(1);
-//     AffineExpr s0, s1;
-//     bindSymbols(builder.getContext(), s0, s1);
-//     for (int index = sizes.size() - 1; index > 0; --index) {
-//       strides[index - 1] = affine::makeComposedFoldedAffineApply(
-//           builder, loc, s0 * s1,
-//           ArrayRef<OpFoldResult>{strides[index], sizes[index]});
-//     }
-//   }
-
-//   memref::LinearizedMemRefInfo linearizedMemRefInfo;
-//   std::tie(linearizedMemRefInfo, std::ignore) =
-//       _getLinearizedMemRefOffsetAndSize(builder, loc, srcBits, dstBits, offset,
-//                                        sizes, strides);
-//   return linearizedMemRefInfo;
-// }
 
 static SmallVector<int64_t> getLinearizedShape(MemRefType ty, int srcBits,
                                                int dstBits) {
@@ -161,20 +137,8 @@ static LogicalResult linearizeType(MemRefType memrefType,
   // If the offset is 0, we do not need a strided layout as the stride is
   // 1, so we only use the strided layout if the offset is not 0.
   if (offset != 0) {
-    if (offset == ShapedType::kDynamic) {
-      layoutAttr = StridedLayoutAttr::get(memrefType.getContext(), offset,
-                                          ArrayRef<int64_t>{1});
-    } else {
-      // TODO(avarma): Take into account different src/dst bits.
-      // // Check if the number of bytes are a multiple of the loadStoreWidth
-      // // and if so, divide it by the loadStoreWidth to get the offset.
-      // if ((offset * width) % loadStoreWidth != 0)
-      //   return std::nullopt;
-      // offset = (offset * width) / loadStoreWidth;
-
-      layoutAttr = StridedLayoutAttr::get(memrefType.getContext(), offset,
-                                          ArrayRef<int64_t>{1});
-    }
+    layoutAttr = StridedLayoutAttr::get(memrefType.getContext(), offset,
+                                        ArrayRef<int64_t>{1});
   }
   Type elementType = memrefType.getElementType();
   newMemrefType = MemRefType::get(linearizedShape, elementType, layoutAttr,
@@ -182,22 +146,18 @@ static LogicalResult linearizeType(MemRefType memrefType,
   return success();
 }
 
-static LogicalResult getLinearizedTypeFromSourceType(Type sourceType, MemRefType &linearizedType) {
-  auto currentTypeOfSourceMemref = dyn_cast<MemRefType>(sourceType);
+static LogicalResult getLinearizedTypeFromSourceType(
+    MemRefType currentTypeOfSourceMemref, MemRefType &linearizedType) {
   if (!currentTypeOfSourceMemref) return failure();
-  if (currentTypeOfSourceMemref.getRank() < 2) {
-    linearizedType = currentTypeOfSourceMemref;
-    return success();
-  }
+  if (currentTypeOfSourceMemref.getRank() < 2) return success();
   // Convert current type later.
-  if (failed(linearizeType(currentTypeOfSourceMemref, linearizedType))) {
-    return failure();
-  }
+  return linearizeType(currentTypeOfSourceMemref, linearizedType);
 }
 
 template <typename OpTy>
-struct ConvertMemRefAllocation : public OpRewritePattern<OpTy> {
-  using OpRewritePattern<OpTy>::OpRewritePattern;
+struct LinearizeMemrefAlloc : public OpRewritePattern<OpTy> {
+  LinearizeMemrefAlloc(MLIRContext *context, PatternBenefit benefit = 10)
+      : OpRewritePattern<OpTy>(context, benefit) {}
 
   LogicalResult matchAndRewrite(OpTy allocOp,
                                 PatternRewriter &rewriter) const override {
@@ -205,35 +165,36 @@ struct ConvertMemRefAllocation : public OpRewritePattern<OpTy> {
                       std::is_same<OpTy, memref::AllocaOp>(),
                   "expected only memref::AllocOp or memref::AllocaOp");
     Location loc = allocOp->getLoc();
+    MemRefType currentTypeOfSourceMemref =
+        dyn_cast<MemRefType>(allocOp.getMemref().getType());
     MemRefType newTypeOfSourceMemref;
-    if (failed(getLinearizedTypeFromSourceType(allocOp.getMemref().getType()))) {
+    if (failed(getLinearizedTypeFromSourceType(currentTypeOfSourceMemref,
+                                               newTypeOfSourceMemref))) {
       return failure();
     }
-    if (newTypeOfSourceMemref < 2) return success();
-    
-    auto elementType = loadOp.getMemRefType().getElementType();
+    if (currentTypeOfSourceMemref.getRank() < 2) return success();
+
+    auto elementType = currentTypeOfSourceMemref.getElementType();
     int srcBits = elementType.getIntOrFloatBitWidth();
 
     OpFoldResult zero = rewriter.getIndexAttr(0);
-    SmallVector<OpFoldResult> indices(currentType.getRank(), zero);
 
     // Get linearized type.
-    int srcBits = currentType.getElementType().getIntOrFloatBitWidth();
-    int dstBits = newResultType.getElementType().getIntOrFloatBitWidth();
-    SmallVector<OpFoldResult> sizes = op.getMixedSizes();
+    int dstBits = srcBits;
+    SmallVector<OpFoldResult> sizes = allocOp.getMixedSizes();
 
     memref::LinearizedMemRefInfo linearizedMemRefInfo =
         memref::getLinearizedMemRefOffsetAndSize(
             rewriter, loc, srcBits, dstBits, /*offset =*/zero, sizes);
     SmallVector<Value> dynamicLinearizedSize;
-    if (!newResultType.hasStaticShape()) {
+    if (!newTypeOfSourceMemref.hasStaticShape()) {
       dynamicLinearizedSize.push_back(getValueOrCreateConstantIndexOp(
           rewriter, loc, linearizedMemRefInfo.linearizedSize));
     }
 
-    rewriter.replaceOpWithNewOp<OpTy>(op, newResultType, dynamicLinearizedSize,
-                                      adaptor.getSymbolOperands(),
-                                      adaptor.getAlignmentAttr());
+    rewriter.replaceOpWithNewOp<OpTy>(
+        allocOp, newTypeOfSourceMemref, dynamicLinearizedSize,
+        allocOp.getSymbolOperands(), allocOp.getAlignmentAttr());
     return success();
   }
 };
@@ -245,23 +206,28 @@ struct LinearizeMemrefLoad
   LogicalResult matchAndRewrite(memref::LoadOp loadOp,
                                 PatternRewriter &rewriter) const override {
     Location loc = loadOp->getLoc();
+    MemRefType currentTypeOfSourceMemref =
+        dyn_cast<MemRefType>(loadOp.getMemref().getType());
     MemRefType newTypeOfSourceMemref;
-    if (failed(getLinearizedTypeFromSourceType(loadOp.getMemref().getType()))) {
+    if (failed(getLinearizedTypeFromSourceType(currentTypeOfSourceMemref,
+                                               newTypeOfSourceMemref))) {
       return failure();
     }
-    if (newTypeOfSourceMemref < 2) return success();
-    
+    if (currentTypeOfSourceMemref.getRank() < 2 &&
+        loadOp.getIndices().size() < 2)
+      return success();
+
     auto elementType = loadOp.getMemRefType().getElementType();
     int srcBits = elementType.getIntOrFloatBitWidth();
-    // Linearize the indices of the original load instruction. Do not account
-    // for the scaling yet. This will be accounted for later.
-    OpFoldResult linearizedIndices = getLinearizedSrcIndices(
-        rewriter, loc, srcBits, loadOp.getIndices(), loadOp.getMemRef());
-
+    Value linearizedIndices = rewriter.create<affine::AffineLinearizeIndexOp>(
+        loc, loadOp.getIndices(), currentTypeOfSourceMemref.getShape(), true);
+    auto reinterpretOp = rewriter.create<memref::ReinterpretCastOp>(
+        loc, newTypeOfSourceMemref, loadOp.getMemref(), 0,
+        newTypeOfSourceMemref.getShape(), ArrayRef<int64_t>({1}));
     Value linearizedLoad = rewriter.create<memref::LoadOp>(
-        loc, loadOp.getMemref(),
+        loc, reinterpretOp,
         getIndicesForLoadOrStore(rewriter, loc, linearizedIndices, srcBits,
-                                  srcBits));
+                                 srcBits));
 
     rewriter.replaceOp(loadOp, {linearizedLoad});
     return success();
@@ -286,79 +252,11 @@ void AMDAIELinearizeMemrefTypePass::runOnOperation() {
   IRRewriter rewriter(context);
 
   RewritePatternSet patterns(context);
+  patterns.add<LinearizeMemrefAlloc<memref::AllocOp>>(context);
+  patterns.add<LinearizeMemrefAlloc<memref::AllocaOp>>(context);
   patterns.add<LinearizeMemrefLoad>(context);
   (void)applyPatternsAndFoldGreedily(moduleOp, std::move(patterns));
 
-  // moduleOp.walk([&](Operation *op) {
-  //   if (isa<func::FuncOp, func::ReturnOp, arith::ConstantOp>(op))
-  //     return WalkResult::skip();
-  //   // TODO(avarma): Except funcOps. This will be improved later. And the
-  //   // following will be pulled out to a PatterRewriter later.
-  //   for (Value operand : op->getOperands()) {
-  //     auto currentType = dyn_cast<MemRefType>(operand.getType());
-  //     if (!currentType) {
-  //       continue;
-  //       // return rewriter.notifyMatchFailure(op->getLoc(),
-  //       //                                    "unhandled non-memref types");
-  //     }
-  //     // Convert current type later.
-  //     MemRefType newResultType;
-  //     if (failed(linearizeType(currentType, newResultType)))
-  //       return WalkResult::interrupt();
-
-  //     // if (!newResultType) {
-  //     //     return;
-  //     //     // return rewriter.notifyMatchFailure(
-  //     //     //     op->getLoc(),
-  //     //     //     llvm::formatv("failed to legalize memref type: {0}",
-  //     //     //     op.getType()));
-  //     //   }
-  //     // Location loc = op->getLoc();
-  //     OpFoldResult zero = rewriter.getIndexAttr(0);
-  //     SmallVector<OpFoldResult> indices(currentType.getRank(), zero);
-
-  //     // Get linearized type.
-  //     // int srcBits = currentType.getElementType().getIntOrFloatBitWidth();
-  //     // int dstBits = newResultType.getElementType().getIntOrFloatBitWidth();
-  //     llvm::outs() << "SRC TYPE := " << currentType << "\n";
-  //     llvm::outs() << "NEW TYPE := " << newResultType << "\n";
-
-  //     // Linearize the indices of the original load instruction. Do not account
-  //     // for the scaling yet. This will be accounted for later.
-  //     OpFoldResult linearizedIndices = getLinearizedSrcIndices(
-  //         rewriter, loc, srcBits, adaptor.getIndices(), op.getMemRef());
-
-  //     Value newLoad = rewriter.create<memref::LoadOp>(
-  //         loc, adaptor.getMemref(),
-  //         getIndicesForLoadOrStore(rewriter, loc, linearizedIndices, srcBits,
-  //                                  dstBits));
-
-  //     // OpFoldResult elementOffset;
-  //     // Value byteOffset = adaptor.getByteOffset();
-  //     // if (byteOffset && !matchPattern(byteOffset, m_Zero())) {
-  //     //   elementOffset = convertByteOffsetToElementOffset(
-  //     //       rewriter, loc, byteOffset, currentType.getElementType());
-  //     // } else {
-  //     //   elementOffset = rewriter.getIndexAttr(0);
-  //     // }
-
-  //     // llvm::outs()<<"AFFINE MAP :=
-  //     // "<<currentType.getLayout().getAffineMap()<<"\n"; llvm::outs().flush();
-  //     // SmallVector<OpFoldResult> sizes = getMixedValues(
-  //     //     currentType.getShape(), adaptor.getDynamicDims(), rewriter);
-  //     // memref::LinearizedMemRefInfo linearizedMemRefInfo =
-  //     //     memref::getLinearizedMemRefOffsetAndSize(rewriter, loc, srcBits,
-  //     //                                              dstBits, elementOffset,
-  //     //                                              sizes);
-
-  //     //   SmallVector<Value> dynamicLinearizedSize;
-  //     //   if (newResultType.getRank() > 0 && !newResultType.hasStaticShape()) {
-  //     //     dynamicLinearizedSize.push_back(getValueOrCreateConstantIndexOp(
-  //     //         rewriter, loc, linearizedMemRefInfo.linearizedSize));
-  //     //   }
-  //   }
-  //   return WalkResult::advance();
-  // });
   return;
 }
 
