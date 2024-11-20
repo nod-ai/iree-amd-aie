@@ -1333,8 +1333,8 @@ if __name__ == "__main__":
             """
             Additional flags to pass to the AIE compiler, for all tests.
             Example, do print the IR between passes during compilation you might have:
-            --additional_aie_compilation_flags="--mlir-print-ir-before-all --mlir-print-ir-module-scope
-            --aie2xclbin-print-ir-before-all --aie2xclbin-print-ir-module-scope"'
+            --additional-aie-compilation-flags="--mlir-print-ir-before-all --mlir-print-ir-module-scope
+            --aie2xclbin-print-ir-before-all --aie2xclbin-print-ir-module-scope"
             """
         ),
         default="",
