@@ -35,16 +35,18 @@ void AMDAIESplitLogicalObjFifosForConnectionReusePass::runOnOperation() {
   // Walk through CoreOps gathering 3rd input DmaOps (if applicable) which will
   // be used to split L2 objectFifos of elementwise input for connection reuse.
   SmallVector<AMDAIE::DmaCpyNdOp> l2ToL1DmaOps;
-  moduleOp->walk([&](AMDAIE::CoreOp coreOp) {
+  WalkResult res = moduleOp->walk([&](AMDAIE::CoreOp coreOp) {
     SmallVector<Value> inputDmas = coreOp.getInputDmas();
     if (inputDmas.size() != 3) return WalkResult::skip();
     auto dmaCpyNdOp = inputDmas[2].getDefiningOp<AMDAIE::DmaCpyNdOp>();
     if (!dmaCpyNdOp) {
       coreOp->emitOpError() << "failed to get a DmaCpyNdOp from the input";
+      return WalkResult::interrupt();
     }
     l2ToL1DmaOps.push_back(dmaCpyNdOp);
     return WalkResult::advance();
   });
+  if (res.wasInterrupted()) return signalPassFailure();
 
   if (failed(splitLogicalObjectFifoForElementwiseOp(rewriter, l2ToL1DmaOps,
                                                     context))) {
