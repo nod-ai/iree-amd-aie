@@ -7,11 +7,9 @@
 #ifndef IREE_AMD_AIE_TRANSFORMS_AMDAIEUTILS_H_
 #define IREE_AMD_AIE_TRANSFORMS_AMDAIEUTILS_H_
 
-#include <array>
-
-#include "iree-amd-aie/IR/AMDAIEAttrs.h"
-#include "iree/compiler/Dialect/HAL/IR/HALOps.h"
-#include "mlir/Dialect/Linalg/Utils/Utils.h"
+#include "iree-amd-aie/aie_runtime/AMDAIEEnums.h"
+#include "iree/compiler/Dialect/HAL/IR/HALTypes.h"
+#include "mlir/Dialect/Linalg/IR/LinalgInterfaces.h"
 #include "mlir/IR/Types.h"
 
 namespace mlir::iree_compiler::AMDAIE {
@@ -62,14 +60,21 @@ bool isMatmulProducerOfElementwise(linalg::LinalgOp linalgOp);
 std::string utohexstr(uint32_t value, size_t width, bool header = true,
                       bool lowercase = false);
 
+/// If `op` is in `block`, then return `op`. Otherwise traverse through parents
+/// to the first ancestor of `op` that is in `block`, and return that
+/// ancestor. If `op` has no ancestor in `block`, or if `op` is nullptr or
+/// `block` is nullptr, return nullptr.
+Operation *getAncestorInBlock(Operation *op, Block *block);
+
 namespace detail {
 
-// Returns the largest number that perfectly divides `num` that
-// is less than or equal to max
+/// Returns the largest number that perfectly divides `num` that
+/// is less than or equal to max
 int findLargestFactor(int num, int max);
 
-// A variant where we prefer factors to also be a multiple of `multiple`
+/// A variant where we prefer factors to also be a multiple of `multiple`
 int findLargestFactor(int num, int max, int multiple);
+
 
 }  // namespace detail
 
