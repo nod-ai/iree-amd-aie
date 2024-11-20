@@ -30,12 +30,12 @@ LogicalResult getSplitDimAndFactorFromDma(AMDAIE::DmaCpyNdOp op,
 /// Split L2 space input and output logical objectFifos.
 LogicalResult splitLogicalObjectFifo(IRRewriter &rewriter,
                                      AMDAIE::LogicalObjectFifoFromMemrefOp op,
-                                     int64_t &splitDim, int64_t &splitFactor);
+                                     int64_t splitDim, int64_t splitFactor);
 
 /// Split DmaCpyNd ops between L2 and L3 memory spaces.
 LogicalResult splitDoublyStridedOp(IRRewriter &rewriter, AMDAIE::DmaCpyNdOp op,
-                                   int64_t &splitDim, int64_t &splitFactor,
-                                   int64_t &splitDimInL2Dma);
+                                   int64_t splitDim, int64_t splitFactor,
+                                   int64_t splitDimInL2Dma);
 
 }  // namespace mlir::iree_compiler::AMDAIE
 

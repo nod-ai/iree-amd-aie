@@ -528,6 +528,11 @@ LogicalResult getDmaCpyNdOpProducersAndConsumers(
 }
 
 /// Utility to get the split dimension and factor given a L2 objectFifo op.
+/// The current assumption is the L2 buffer shape is `[nrows, ncols, tileSize1,
+/// tileSize2]`, in which `nrows == ncols`. So when the first two dimensions in
+/// the buffer shape are not equal to 1, we split the buffer by a factor of
+/// ncols (nrows). Note for the output buffer, even if both the outer two
+/// dimensions are not 1, we only split the first dimension.
 LogicalResult getSplitDimAndFactorFromObjFifo(
     AMDAIE::LogicalObjectFifoFromMemrefOp op, int64_t &splitDim,
     int64_t &splitFactor) {
@@ -607,7 +612,7 @@ LogicalResult getSplitDimAndFactorFromDma(AMDAIE::DmaCpyNdOp op,
 /// Split L2 space input and output logical objectFifos.
 LogicalResult splitLogicalObjectFifo(IRRewriter &rewriter,
                                      AMDAIE::LogicalObjectFifoFromMemrefOp op,
-                                     int64_t &splitDim, int64_t &splitFactor) {
+                                     int64_t splitDim, int64_t splitFactor) {
   SmallVector<int64_t> memrefShape =
       llvm::to_vector(op.getMemrefType().getShape());
   assert(
@@ -713,8 +718,8 @@ LogicalResult splitLogicalObjectFifo(IRRewriter &rewriter,
 
 /// Split DmaCpyNd ops between L2 and L3 memory spaces.
 LogicalResult splitDoublyStridedOp(IRRewriter &rewriter, AMDAIE::DmaCpyNdOp op,
-                                   int64_t &splitDim, int64_t &splitFactor,
-                                   int64_t &splitDimInL2Dma) {
+                                   int64_t splitDim, int64_t splitFactor,
+                                   int64_t splitDimInL2Dma) {
   SmallVector<OpFoldResult> sourceOffsets = op.getSourceMixedOffsets();
   SmallVector<OpFoldResult> sourceSizes = op.getSourceMixedSizes();
   SmallVector<OpFoldResult> sourceStrides = op.getSourceMixedStrides();
