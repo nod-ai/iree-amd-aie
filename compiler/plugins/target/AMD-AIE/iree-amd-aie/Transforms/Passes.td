@@ -11,7 +11,7 @@ include "iree-amd-aie/IR/AMDAIEDialect.td"
 include "mlir/Pass/PassBase.td"
 
 def AMDAIEAssignTilesToObjectFifo :
-    Pass<"iree-amdaie-assign-tiles-to-object-fifo", ""> {
+    Pass<"iree-amdaie-assign-tiles-to-object-fifo", "ModuleOp"> {
  let summary = "TODO";
  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEAssignTilesToObjectFifoPass()";
 }
