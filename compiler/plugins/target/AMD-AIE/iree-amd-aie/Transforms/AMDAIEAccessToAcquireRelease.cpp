@@ -4,10 +4,10 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+#include "iree-amd-aie/IR/AMDAIEAttrs.h"
 #include "iree-amd-aie/IR/AMDAIEOps.h"
+#include "iree-amd-aie/Transforms/AMDAIEUtils.h"
 #include "iree-amd-aie/Transforms/Passes.h"
-#include "mlir/IR/IRMapping.h"
-#include "mlir/IR/Iterators.h"
 
 #define DEBUG_TYPE "iree-amdaie-access-to-acquire-release"
 
@@ -15,77 +15,99 @@ namespace mlir::iree_compiler::AMDAIE {
 
 namespace {
 
+/// Some blocks have terminator ops, which must appear as the very last op in
+/// the block. If `block` has a terminator, set the insertion point of
+/// `rewriter` to just before the terminator, ready to create a new penultimate
+/// op in the block. Otherwise, set the insertion point to the very end of the
+/// block.
+void setInsertionToEnd(IRRewriter &rewriter, Block *block) {
+  if (block->back().hasTrait<OpTrait::IsTerminator>())
+    rewriter.setInsertionPoint(block->getTerminator());
+  else
+    rewriter.setInsertionPointToEnd(block);
+}
+
+llvm::MapVector<Value, SmallVector<AMDAIE::LogicalObjectFifoAccessOp>>
+getFifosToAccesses(AMDAIE::CoreOp coreOp, AMDAIE::MemoryAccess type) {
+  llvm::MapVector<Value, SmallVector<AMDAIE::LogicalObjectFifoAccessOp>>
+      accesses;
+  coreOp->walk([&](AMDAIE::LogicalObjectFifoAccessOp accessOp) {
+    if (accessOp.getAccessType() != type) return WalkResult::advance();
+    Value input = accessOp.getInput();
+    auto iter = accesses.find(input);
+    if (iter == accesses.end()) {
+      accesses.insert({input, {accessOp}});
+    } else {
+      iter->second.push_back(accessOp);
+    }
+    return WalkResult::advance();
+  });
+  return accesses;
+}
+
 /// Walk all read access operations within the core operations and insert
 /// semaphore acquire and release stubs. Acquire operations will be inserted
-/// at the location of the access operation and release operations will be
-/// inserted before the next access or at the end of the block.
+/// at the location of the access operation, and release operations will be
+/// inserted some time before the next read access.
 LogicalResult readAccessToAcquireRelease(Operation *parentOp) {
+  AMDAIE::MemoryAccess accessType = AMDAIE::MemoryAccess::Read;
+  AMDAIE::LogicalObjectFifoPort port = LogicalObjectFifoPort::Consume;
+
   IRRewriter rewriter(parentOp->getContext());
 
   SmallVector<AMDAIE::CoreOp> coreOps;
   parentOp->walk([&](AMDAIE::CoreOp coreOp) { coreOps.push_back(coreOp); });
 
-  // Map from DMA source/target logical objectFifos to those respective DMA
-  // operations.
-  DenseMap<Value, AMDAIE::ConnectionOp> logicalObjectFifoToDma;
+  // Map from the source and target amdaie.logicalobjectfifo values of
+  // amdaie.connections to the amdaie.connections themselves.
+  DenseMap<Value, AMDAIE::ConnectionOp> logicalObjectFifoToConnection;
   parentOp->walk([&](AMDAIE::ConnectionOp dmaOp) {
-    logicalObjectFifoToDma[dmaOp.getSource()] = dmaOp;
-    logicalObjectFifoToDma[dmaOp.getTarget()] = dmaOp;
+    logicalObjectFifoToConnection.insert({dmaOp.getSource(), dmaOp});
+    logicalObjectFifoToConnection.insert({dmaOp.getTarget(), dmaOp});
   });
 
   for (AMDAIE::CoreOp coreOp : coreOps) {
-    llvm::MapVector<Value, AMDAIE::LogicalObjectFifoAccessOp>
-        logicalObjectFifoToLastAccess;
-    WalkResult res =
-        coreOp->walk([&](AMDAIE::LogicalObjectFifoAccessOp accessOp) {
-          if (accessOp.getAccessType() != AMDAIE::MemoryAccess::Read)
-            return WalkResult::advance();
+    auto fifosToAccesses = getFifosToAccesses(coreOp, accessType);
 
-          if (logicalObjectFifoToLastAccess.contains(accessOp.getInput())) {
-            rewriter.setInsertionPoint(accessOp);
-            rewriter.create<AMDAIE::LogicalObjectFifoRelease>(
-                rewriter.getUnknownLoc(),
-                logicalObjectFifoToDma[accessOp.getInput()].getResult(),
-                LogicalObjectFifoPort::Consume);
-          }
+    for (auto &&[logicalObjectFifo, accessOps] : fifosToAccesses) {
+      for (uint64_t i = 0; i < accessOps.size(); ++i) {
+        AMDAIE::LogicalObjectFifoAccessOp accessOp = accessOps[i];
 
-          if (!logicalObjectFifoToDma.contains(accessOp.getInput())) {
-            accessOp.emitOpError()
-                << "read access not found as source of DMA operation";
-            return WalkResult::interrupt();
-          }
-          rewriter.setInsertionPoint(accessOp);
-          auto acquireOp = rewriter.create<AMDAIE::LogicalObjectFifoAcquire>(
-              rewriter.getUnknownLoc(),
-              llvm::cast<LogicalObjectFifoType>(accessOp.getInput().getType()),
-              logicalObjectFifoToDma[accessOp.getInput()].getResult(),
-              LogicalObjectFifoPort::Consume);
-          auto newAccessOp = rewriter.create<AMDAIE::LogicalObjectFifoAccessOp>(
-              rewriter.getUnknownLoc(), acquireOp.getResult(),
-              AMDAIE::MemoryAccess::Read);
-          rewriter.replaceAllUsesWith(accessOp.getResult(),
-                                      newAccessOp.getResult());
-          logicalObjectFifoToLastAccess[accessOp.getInput()] = accessOp;
-          return WalkResult::advance();
-        });
-    if (res.wasInterrupted()) return failure();
+        Value input = accessOp.getInput();
+        if (!logicalObjectFifoToConnection.contains(input)) {
+          return accessOp.emitOpError()
+                 << "does not have a connection in the logicalobjectfifo map";
+        }
 
-    // Insert release for remaining read access operations at end of block.
-    for (auto &&[value, accessOp] : logicalObjectFifoToLastAccess) {
-      Block *parentBlock = accessOp->getBlock();
-      if (!parentBlock->back().hasTrait<OpTrait::IsTerminator>()) {
-        rewriter.setInsertionPointToEnd(parentBlock);
-      } else {
-        rewriter.setInsertionPoint(parentBlock->getTerminator());
+        // Insert the access op.
+        rewriter.setInsertionPoint(accessOp);
+        Block *block = accessOp->getBlock();
+        auto acquireOp = rewriter.create<AMDAIE::LogicalObjectFifoAcquire>(
+            rewriter.getUnknownLoc(),
+            llvm::cast<LogicalObjectFifoType>(input.getType()),
+            logicalObjectFifoToConnection[input].getResult(), port);
+        auto newAccessOp = rewriter.create<AMDAIE::LogicalObjectFifoAccessOp>(
+            rewriter.getUnknownLoc(), acquireOp.getResult(), accessType);
+        rewriter.replaceAllUsesWith(accessOp.getResult(),
+                                    newAccessOp.getResult());
+
+        // Insert the release op. The location of the release is as close to the
+        // following access op as possible, but always in the same block as the
+        // access op being released.
+        AMDAIE::LogicalObjectFifoAccessOp nextAccessOp;
+        if (i + 1 != accessOps.size()) nextAccessOp = accessOps[i + 1];
+        Operation *nextAccessOpsAncestor =
+            getAncestorInBlock(nextAccessOp, block);
+        if (nextAccessOpsAncestor &&
+            nextAccessOpsAncestor->getBlock() == block) {
+          llvm::errs() << "Setting insertion point to nextAccessOpsAncestor\n";
+          rewriter.setInsertionPoint(nextAccessOpsAncestor);
+        } else
+          setInsertionToEnd(rewriter, block);
+        rewriter.create<AMDAIE::LogicalObjectFifoRelease>(
+            rewriter.getUnknownLoc(),
+            logicalObjectFifoToConnection[input].getResult(), port);
       }
-      if (!logicalObjectFifoToDma.contains(accessOp.getInput())) {
-        accessOp.emitOpError()
-            << "read access not found as source of DMA operation";
-        return failure();
-      }
-      rewriter.create<AMDAIE::LogicalObjectFifoRelease>(
-          rewriter.getUnknownLoc(), logicalObjectFifoToDma[accessOp.getInput()],
-          LogicalObjectFifoPort::Consume);
     }
   }
   return success();
@@ -95,6 +117,8 @@ LogicalResult readAccessToAcquireRelease(Operation *parentOp) {
 /// semaphore operations. Release operations will be inserted
 /// at the location of the access operation and acquire operations will be
 /// inserted after the preceding access or at the beginning of the block.
+/// TODO(newling): update this to ensure that corresponding accesses and releases
+/// are in the same block, as in the case of `readAccessToAcquireRelease`.
 LogicalResult writeAccessToAcquireRelease(Operation *parentOp) {
   IRRewriter rewriter(parentOp->getContext());
 
@@ -214,7 +238,7 @@ class AMDAIEAccessToAcquireReleasePass
 
   AMDAIEAccessToAcquireReleasePass() = default;
   AMDAIEAccessToAcquireReleasePass(
-      const AMDAIEAccessToAcquireReleasePass &pass) {};
+      const AMDAIEAccessToAcquireReleasePass &pass){};
   void runOnOperation() override;
 };
 
@@ -225,6 +249,7 @@ void AMDAIEAccessToAcquireReleasePass::runOnOperation() {
                                "acquire-release semaphore stubs";
     return signalPassFailure();
   }
+
   if (failed(writeAccessToAcquireRelease(parentOp))) {
     parentOp->emitOpError() << "failed to convert write access operations to "
                                "acquire-release semaphore stubs";
