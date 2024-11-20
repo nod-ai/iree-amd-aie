@@ -49,14 +49,17 @@ class BaseTest(ABC):
     An instance of this class has a member `aie_compilation_flags`
     which are additional flags to be passed to the AIE backend compiler.
 
-    Compilation flags can therefore be injected in 2 ways:
+    Compilation flags can therefore be injected into tests in 2 ways:
     1) via the constructor of this base class
     2) via the `add_aie_compilation_flags` method
     """
 
-    def __init__(self, run_on_target=["npu1_4col"], aie_compilation_flags=[]):
-        self.run_on_target = run_on_target
-        self.aie_compilation_flags = aie_compilation_flags
+    def __init__(self, run_on_target=["npu1_4col"], aie_compilation_flags=None):
+        self.run_on_target = [] if run_on_target is None else run_on_target
+        self.aie_compilation_flags = (
+            [] if aie_compilation_flags is None else aie_compilation_flags
+        )
+
         # NB: derived classes should add labels to this list in their
         # constructor, never overwrite it.
         self.labels = ["All"]
@@ -146,9 +149,9 @@ class BaseMatmul(BaseTest):
         K,
         input_type,
         acc_type,
-        tile_pipeline="pack-peel",
-        lower_to_aie_pipeline="objectFifo",
         use_ukernel=False,
+        lower_to_aie_pipeline="objectFifo",
+        tile_pipeline="pack-peel",
         n_repeats=1,
     ):
         super().__init__(run_on_target, aie_compilation_flags)
@@ -201,7 +204,7 @@ class MatmulFullBias(BaseMatmul):
     def __init__(self, M, N, K, input_type, acc_type, run_on_target=["npu1_4col"]):
         super().__init__(
             run_on_target=run_on_target,
-            aie_compilation_flags=[],
+            aie_compilation_flags=None,
             M=M,
             N=N,
             K=K,
@@ -236,8 +239,8 @@ class VanillaMatmul(BaseMatmul):
         name_suffix="",
         use_ukernel=False,
         run_on_target=["npu1_4col"],
-        additional_labels=[],
-        aie_compilation_flags=[],
+        additional_labels=None,
+        aie_compilation_flags=None,
     ):
         super().__init__(
             run_on_target=run_on_target,
@@ -248,7 +251,6 @@ class VanillaMatmul(BaseMatmul):
             input_type=input_type,
             acc_type=acc_type,
             tile_pipeline="pack-peel",
-            lower_to_aie_pipeline="objectFifo",
             use_ukernel=use_ukernel,
             n_repeats=1,
         )
@@ -259,7 +261,8 @@ class VanillaMatmul(BaseMatmul):
         if use_ukernel:
             self.name += "_ukernel"
         self.labels.append("VanillaMatmul")
-        self.labels += additional_labels
+        if additional_labels:
+            self.labels += additional_labels
         self.use_ukernel = use_ukernel
 
     def _execute(self, config):
@@ -278,11 +281,18 @@ class MatmulThinBias(BaseMatmul):
     """
 
     def __init__(
-        self, M, N, K, input_type, acc_type, use_ukernel, run_on_target=["npu1_4col"]
+        self,
+        M,
+        N,
+        K,
+        input_type,
+        acc_type,
+        use_ukernel=False,
+        run_on_target=["npu1_4col"],
     ):
         super().__init__(
             run_on_target=run_on_target,
-            aie_compilation_flags=[],
+            aie_compilation_flags=None,
             M=M,
             N=N,
             K=K,
@@ -313,15 +323,13 @@ class BatchMatmul(BaseMatmul):
     def __init__(self, B, M, N, K, input_type, acc_type, run_on_target=["npu1_4col"]):
         super().__init__(
             run_on_target=run_on_target,
-            aie_compilation_flags=[],
+            aie_compilation_flags=None,
             M=M,
             N=N,
             K=K,
             input_type=input_type,
             acc_type=acc_type,
             tile_pipeline="pack-peel",
-            lower_to_aie_pipeline="objectFifo",
-            use_ukernel=False,
             n_repeats=1,
         )
 
@@ -364,15 +372,13 @@ class MatmulTruncf(BaseMatmul):
     ):
         super().__init__(
             run_on_target=run_on_target,
-            aie_compilation_flags=[],
+            aie_compilation_flags=None,
             M=M,
             N=M,
             K=K,
             input_type=input_type,
             acc_type=acc_type,
             tile_pipeline="pack-peel",
-            lower_to_aie_pipeline="objectFifo",
-            use_ukernel=False,
             n_repeats=1,
         )
 
@@ -412,14 +418,14 @@ class MatmulTruncf(BaseMatmul):
             test_file=self.filename,
             input_args=input_args,
             baseline_value=self.expected_out,
-            use_ukernel=False,
-            tile_pipeline="pack-peel",
-            lower_to_aie_pipeline="objectFifo",
+            use_ukernel=self.use_ukernel,
+            tile_pipeline=self.tile_pipeline,
             function_name=None,
             seed=1,
             rtol=0,
             atol=0,
-            n_repeats=1,
+            lower_to_aie_pipeline=self.lower_to_aie_pipeline,
+            n_repeats=self.n_repeats,
             output_type=get_output_type(self.filename),
         )
 
@@ -1045,7 +1051,7 @@ class Tests:
 
         # MatmulThinBias test(s):
         self.register(MatmulThinBias(1024, 1024, 512, "bf16", "f32", use_ukernel=True))
-        self.register(MatmulThinBias(1024, 1024, 512, "bf16", "f32", use_ukernel=False))
+        self.register(MatmulThinBias(1024, 1024, 512, "bf16", "f32"))
 
         # VanillaMatmul test(s):
         self.register(
@@ -1055,7 +1061,6 @@ class Tests:
                 32,
                 "i32",
                 "i32",
-                use_ukernel=False,
                 run_on_target=["npu1_4col", "npu4"],
             )
         )
@@ -1067,14 +1072,13 @@ class Tests:
                 "i32",
                 "i32",
                 name_suffix="infinite_loop",
-                use_ukernel=False,
                 run_on_target=["npu1_4col", "npu4"],
                 aie_compilation_flags=[
                     "--iree-amdaie-enable-infinite-loop-around-core-block=true"
                 ],
             )
         )
-        self.register(VanillaMatmul(32, 32, 64, "bf16", "f32", use_ukernel=False))
+        self.register(VanillaMatmul(32, 32, 64, "bf16", "f32"))
 
         # TODO: Failure is expected for the 128x128 case we don't yet understand why.
         self.register(
@@ -1096,7 +1100,6 @@ class Tests:
                 4096,
                 "bf16",
                 "f32",
-                use_ukernel=False,
                 additional_labels=["Performance"],
             )
         )
