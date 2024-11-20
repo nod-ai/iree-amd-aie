@@ -7,6 +7,8 @@
 #include "AMDAIEUtils.h"
 
 #include "llvm/ADT/StringExtras.h"
+#include "mlir/Dialect/Linalg/Utils/Utils.h"
+#include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/IR/BuiltinTypes.h"
 
 namespace mlir::iree_compiler::AMDAIE {
@@ -249,7 +251,7 @@ bool isMatmulInDefChain(Value operand) {
 /// Utility to identify if `linalgOp` is an elementwise operation with a
 /// matmul-like op upstream in its computation tree.
 bool isMatmulProducerOfElementwise(linalg::LinalgOp linalgOp) {
-  if (!isElementwise(linalgOp) || isa<linalg::FillOp>(linalgOp)) {
+  if (!linalg::isElementwise(linalgOp) || isa<linalg::FillOp>(linalgOp)) {
     return false;
   }
   // Check if any of the defining op is a matmul-like op.
