@@ -100,7 +100,7 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 // CHECK:       0x00000028
 // CHECK:       0x00000000
 // CHECK:       0x00000000
-// CHECK:       0x0001D21C
+// CHECK:       0x0601D21C
 // CHECK:       0x00000000
 // CHECK:       0x803F0002
 // CHECK:       0x00000018
@@ -127,7 +127,7 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 // CHECK:       0x00000038
 // CHECK:       0x00000000
 // CHECK:       0x00000000
-// CHECK:       0x0001D214
+// CHECK:       0x0401D214
 // CHECK:       0x00000000
 // CHECK:       0x80FF000F
 // CHECK:       0x00000018
