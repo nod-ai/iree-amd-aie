@@ -10,6 +10,12 @@
 include "iree-amd-aie/IR/AMDAIEDialect.td"
 include "mlir/Pass/PassBase.td"
 
+def AMDAIEDoLightMagic :
+    Pass<"iree-amdaie-do-light-magic", ""> {
+ let summary = "TODO";
+ let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEDoLightMagicPass()";
+}
+
 def AMDAIEAccessToAcquireRelease :
     Pass<"iree-amdaie-access-to-acquire-release", ""> {
   let summary = "Convert logical objectFifo access operations to acquire/release "
@@ -332,7 +338,7 @@ def AMDAIEInsertInfiniteLoopAroundCoreBlock :
     This pass is meant for developers to allow retrieval of granular performance
     statistics and is not meant to be enabled by default. With this pass enabled,
     you can put a loop around the hardware queue command submission, for example:
-    
+
     ```
     for (int i = 0; i < N; i++) {
       ebuf.m_cmd_pkt->state = ERT_CMD_STATE_NEW;
