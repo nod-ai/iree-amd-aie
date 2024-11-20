@@ -105,7 +105,7 @@ iree_cc_library(
     "AMDAIETemporaryAllocBufferization.cpp"
     "AMDAIETile.cpp"
     "AMDAIETileAndFuse.cpp"
-    "AMDAIEDoLightMagic.cpp"
+    "AMDAIEAssignTilesToObjectFifo.cpp"
     "AMDAIEUtils.cpp"
     "AMDAIEVectorization.cpp"
     "BridgeToAIRPass.cpp"

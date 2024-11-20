@@ -290,7 +290,7 @@ std::unique_ptr<Pass> createAMDAIETileAndFusePass(
     AMDAIETileAndFuseOptions options = {});
 
 /// Create pass to TODO(newling)
-std::unique_ptr<Pass> createAMDAIEDoLightMagicPass();
+std::unique_ptr<Pass> createAMDAIEAssignTilesToObjectFifoPass();
 
 /// Create pass to propagate pack/unpack ops using upstream patterns.
 std::unique_ptr<Pass> createAMDAIEPropagateDataLayoutPass();

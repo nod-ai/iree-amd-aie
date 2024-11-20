@@ -10,23 +10,23 @@
 #include "mlir/Dialect/Linalg/Utils/Utils.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 
-#define DEBUG_TYPE "iree-amdaie-do-light-magic"
+#define DEBUG_TYPE "iree-amdaie-assign-tiles-to-object-fifo"
 
 namespace mlir::iree_compiler::AMDAIE {
 
 namespace {
 
-class AMDAIEDoLightMagicPass : public impl::AMDAIEDoLightMagicBase<AMDAIEDoLightMagicPass> {
+class AMDAIEAssignTilesToObjectFifoPass : public impl::AMDAIEAssignTilesToObjectFifoBase<AMDAIEAssignTilesToObjectFifoPass> {
  public:
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<AMDAIEDialect>();
   }
-  AMDAIEDoLightMagicPass() = default;
-  AMDAIEDoLightMagicPass(const AMDAIEDoLightMagicPass &pass){};
+  AMDAIEAssignTilesToObjectFifoPass() = default;
+  AMDAIEAssignTilesToObjectFifoPass(const AMDAIEAssignTilesToObjectFifoPass &pass){};
   void runOnOperation() override;
 };
 
-void AMDAIEDoLightMagicPass::runOnOperation() {
+void AMDAIEAssignTilesToObjectFifoPass::runOnOperation() {
   Operation *parentOp = getOperation();
   IRRewriter rewriter(parentOp);
   parentOp->walk([&](func::FuncOp funcOp) { /* do something */ });
@@ -34,8 +34,8 @@ void AMDAIEDoLightMagicPass::runOnOperation() {
 
 }  // namespace
 
-std::unique_ptr<Pass> createAMDAIEDoLightMagicPass() {
-  return std::make_unique<AMDAIEDoLightMagicPass>();
+std::unique_ptr<Pass> createAMDAIEAssignTilesToObjectFifoPass() {
+  return std::make_unique<AMDAIEAssignTilesToObjectFifoPass>();
 }
 
 }  // namespace mlir::iree_compiler::AMDAIE

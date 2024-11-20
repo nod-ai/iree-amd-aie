@@ -10,10 +10,10 @@
 include "iree-amd-aie/IR/AMDAIEDialect.td"
 include "mlir/Pass/PassBase.td"
 
-def AMDAIEDoLightMagic :
-    Pass<"iree-amdaie-do-light-magic", ""> {
+def AMDAIEAssignTilesToObjectFifo :
+    Pass<"iree-amdaie-assign-tiles-to-object-fifo", ""> {
  let summary = "TODO";
- let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEDoLightMagicPass()";
+ let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEAssignTilesToObjectFifoPass()";
 }
 
 def AMDAIEAccessToAcquireRelease :
