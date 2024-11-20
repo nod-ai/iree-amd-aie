@@ -241,6 +241,7 @@ class VanillaMatmul(BaseMatmul):
         run_on_target=["npu1_4col"],
         additional_labels=None,
         aie_compilation_flags=None,
+        n_repeats=1,
     ):
         super().__init__(
             run_on_target=run_on_target,
@@ -252,7 +253,7 @@ class VanillaMatmul(BaseMatmul):
             acc_type=acc_type,
             tile_pipeline="pack-peel",
             use_ukernel=use_ukernel,
-            n_repeats=1,
+            n_repeats=n_repeats,
         )
 
         self.name = f"vanilla_matmul_{M}_{N}_{K}_{input_type}_{acc_type}"
@@ -1093,16 +1094,25 @@ class Tests:
             )
         )
 
-        self.register(
-            VanillaMatmul(
-                512,
-                512,
-                4096,
-                "bf16",
-                "f32",
-                additional_labels=["Performance"],
+        # Some bf16 Performance tests:
+        for M, N, K, use_ukernel in [
+            (512, 512, 4096, False),
+            (512, 512, 4096, True),
+            (512, 4096, 512, False),
+            (512, 4096, 512, True),
+        ]:
+            self.register(
+                VanillaMatmul(
+                    M,
+                    N,
+                    K,
+                    "bf16",
+                    "f32",
+                    additional_labels=["Performance"],
+                    use_ukernel=use_ukernel,
+                    n_repeats=2,
+                )
             )
-        )
 
         # MultipleDispatches tests:
         for name in ["two_matmul_switching", "matmul_f32_8_8_4", "matmul_f32_8_4_8"]:
