@@ -6,10 +6,8 @@
 
 #include "AMDAIEUtils.h"
 
-#include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/StringExtras.h"
 #include "mlir/IR/BuiltinTypes.h"
-#include "mlir/IR/Iterators.h"
 
 namespace mlir::iree_compiler::AMDAIE {
 
@@ -270,6 +268,13 @@ std::string utohexstr(uint32_t value, size_t width, bool header,
   std::string hexStr = llvm::utohexstr(value, lowercase);
   std::string prefix(width - hexStr.size(), '0');
   return res + prefix + hexStr;
+}
+
+/// Return an ancestor of 'op' in 'block', or nullptr if no such ancestor.
+Operation *getAncestorInBlock(Operation *op, Block *block) {
+  if (!op || !block) return nullptr;
+  while (op && (op->getBlock() != block)) op = op->getParentOp();
+  return op;
 }
 
 /// Find the largest factor of 'num' which is not larger than 'max'.
