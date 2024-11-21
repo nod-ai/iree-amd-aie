@@ -447,9 +447,8 @@ void AMDAIEDistributeCoresAndObjectFifosPass::runOnOperation() {
   if (!maybeDevice) {
     moduleOp->emitOpError()
         << "has no AMDAIEDevice in the target attribute configuration. This "
-           "device-specific information is required to determine when loops "
-           "can be subsumed into DMA operations, and must be attached to a "
-           "containing ModuleOp.";
+           "device-specific information is required for tile assignment "
+           "purposes, and must be attached to a containing ModuleOp.";
     return signalPassFailure();
   }
   AMDAIEDeviceModel deviceModel = getDeviceModel(maybeDevice.value());

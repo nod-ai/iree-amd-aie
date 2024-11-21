@@ -306,7 +306,7 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 
 // -----
 
-// Test duplicate global logical objFifos.
+// Test duplicate global logical objectFifos (L3).
 // CHECK-LABEL: @duplicate_global_object_fifos
 // CHECK-DAG:   %[[C0:.*]] = arith.constant 0 : index
 // CHECK-DAG:   %[[C1:.*]] = arith.constant 1 : index

@@ -68,7 +68,8 @@ def AMDAIEAssignPacketIds :
 }
 
 def AMDAIEAssignTiles : Pass<"iree-amdaie-assign-tiles", ""> {
-  let summary = "Assign physical tile locations to logical objFifos.";
+  let summary = "Assign physical tile locations to logical objectFifos. "
+                "Existing assignments will be ignored/replaced.";
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEAssignTilesPass()";
 }
 

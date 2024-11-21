@@ -85,36 +85,34 @@ LogicalResult clearNonLocalTiles(RewriterBase &rewriter, Operation *op) {
   return success();
 }
 
-/// Utility to duplicate global objFifos for each strided copy-like operation
-/// user to allow global logical objectFifos to be assigned to different tile
-/// locations.
+/// Utility to duplicate global objectFifos (L3) for each strided copy-like
+/// operation user to allow global logical objectFifos to be assigned to
+/// different tile locations.
 LogicalResult duplicateGlobalObjFifos(RewriterBase &rewriter, Operation *op) {
   op->walk([&](AMDAIE::DoublyStridedCopyOpInterface copyOp) {
     auto source = dyn_cast_if_present<AMDAIE::LogicalObjectFifoFromMemrefOp>(
         copyOp.getSource().getDefiningOp());
     auto target = dyn_cast_if_present<AMDAIE::LogicalObjectFifoFromMemrefOp>(
         copyOp.getTarget().getDefiningOp());
+    auto createNewObjFifoAndReplaceUsesFrom =
+        [&](AMDAIE::LogicalObjectFifoFromMemrefOp oldObjFifo) {
+          rewriter.setInsertionPoint(copyOp);
+          auto newObjFifo =
+              rewriter.create<AMDAIE::LogicalObjectFifoFromMemrefOp>(
+                  rewriter.getUnknownLoc(),
+                  cast<LogicalObjectFifoType>(oldObjFifo.getOutput().getType()),
+                  oldObjFifo.getMemref());
+          rewriter.replaceUsesWithIf(
+              oldObjFifo.getOutput(), newObjFifo.getOutput(),
+              [&](OpOperand &use) {
+                return use.getOwner() == copyOp.getOperation();
+              });
+        };
     if (source && source.getMemorySpaceAsUInt() == 0) {
-      rewriter.setInsertionPoint(copyOp);
-      auto newSource = rewriter.create<AMDAIE::LogicalObjectFifoFromMemrefOp>(
-          rewriter.getUnknownLoc(),
-          cast<LogicalObjectFifoType>(source.getOutput().getType()),
-          source.getMemref());
-      rewriter.replaceUsesWithIf(
-          source.getOutput(), newSource.getOutput(), [&](OpOperand &use) {
-            return use.getOwner() == copyOp.getOperation();
-          });
+      createNewObjFifoAndReplaceUsesFrom(source);
     }
     if (target && target.getMemorySpaceAsUInt() == 0) {
-      rewriter.setInsertionPoint(copyOp);
-      auto newTarget = rewriter.create<AMDAIE::LogicalObjectFifoFromMemrefOp>(
-          rewriter.getUnknownLoc(),
-          cast<LogicalObjectFifoType>(target.getOutput().getType()),
-          target.getMemref());
-      rewriter.replaceUsesWithIf(
-          target.getOutput(), newTarget.getOutput(), [&](OpOperand &use) {
-            return use.getOwner() == copyOp.getOperation();
-          });
+      createNewObjFifoAndReplaceUsesFrom(target);
     }
   });
   return success();
@@ -236,7 +234,8 @@ class FillTiles
       tiles.erase(std::unique(tiles.begin(), tiles.end()), tiles.end());
       for (AMDAIE::TileOp tile : tiles) {
         std::optional<int64_t> column = getConstantIntValue(tile.getCol());
-        if (!column) return tile.emitOpError() << "found non-constant column";
+        if (!column)
+          return rewriter.notifyMatchFailure(tile, "found non-constant column");
         tileLocations.insert(std::make_pair(column.value(), row));
       }
       return success();
@@ -309,8 +308,8 @@ LogicalResult assignNonLocalTiles(RewriterBase &rewriter, Operation *op,
   }
   LLVM_DEBUG(llvm::dbgs() << "After fillTiles: \n" << *op << "\n");
 
-  // Keep track of the buffer usage on tiles to try distributing buffers equally
-  // over available tiles.
+  // Keep track of the buffer usage on tiles to try distributing buffers evenly
+  // over available tile resources.
   DenseMap<TileLoc, size_t> tileLocToUsage;
   auto tileLocAndUsageCmp = [&](AMDAIE::TileOp a, AMDAIE::TileOp b) -> bool {
     int64_t colA = getConstantIndexOrAssert(a.getCol());
@@ -347,7 +346,9 @@ LogicalResult assignNonLocalTiles(RewriterBase &rewriter, Operation *op,
         AMDAIE::TileOp assignedTileOp =
             *std::min_element(tiles.begin(), tiles.end(), tileLocAndUsageCmp);
 
-        // Increase usage of the chosen tile.
+        // Increase usage of the chosen tile as a new logical objectFifo will be
+        // assigned to it. This allows distributing the logical objectFifos
+        // evenly across the available tile resources.
         int64_t col = getConstantIndexOrAssert(assignedTileOp.getCol());
         int64_t row = getConstantIndexOrAssert(assignedTileOp.getRow());
         tileLocToUsage[TileLoc(col, row)] += 1;
@@ -386,42 +387,33 @@ void AMDAIEAssignTilesPass::runOnOperation() {
   if (!maybeDevice) {
     parentOp->emitOpError()
         << "has no AMDAIEDevice in the target attribute configuration. This "
-           "device-specific information is required to determine when loops "
-           "can be subsumed into DMA operations, and must be attached to a "
-           "containing ModuleOp.";
+           "device-specific information is required to looking up column and "
+           "row related information, and must be attached to a containing "
+           "ModuleOp.";
     return signalPassFailure();
   }
   AMDAIEDeviceModel deviceModel = getDeviceModel(maybeDevice.value());
 
-  // Assign tile locations to logical objectfifos on local (L1) memory.
+  // Assign tile locations to logical objectFifos on local (L1) memory.
   if (failed(assignLocalTiles(rewriter, parentOp))) {
     parentOp->emitOpError() << "local tile assignment failed";
     return signalPassFailure();
   }
-  if (failed(verify(parentOp, true))) {
-    return signalPassFailure();
-  }
   LLVM_DEBUG(llvm::dbgs() << "After assignLocalTiles: \n" << *parentOp << "\n");
 
-  // Duplicate global objFifos for each strided copy-like operation user to
+  // Duplicate global objectFifos for each strided copy-like operation user to
   // allow global logical objectFifos to be assigned to different tile
   // locations.
   if (failed(duplicateGlobalObjFifos(rewriter, parentOp))) {
     parentOp->emitOpError() << "failed duplicating global object fifos";
     return signalPassFailure();
   }
-  if (failed(verify(parentOp, true))) {
-    return signalPassFailure();
-  }
   LLVM_DEBUG(llvm::dbgs() << "After duplicateGlobalObjFifos: \n"
                           << *parentOp << "\n");
 
-  // Assign tile locations to logical objectfifos on non-local (not L1) memory.
+  // Assign tile locations to logical objectFifos on non-local (not L1) memory.
   if (failed(assignNonLocalTiles(rewriter, parentOp, deviceModel))) {
     parentOp->emitOpError() << "local tile assignment failed";
-    return signalPassFailure();
-  }
-  if (failed(verify(parentOp, true))) {
     return signalPassFailure();
   }
   LLVM_DEBUG(llvm::dbgs() << "After assignNonLocalTiles: \n"
