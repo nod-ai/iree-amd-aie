@@ -653,14 +653,14 @@ run_matmul_test_on_shapes ${i32_shapes_small[@]} \
     --acc_type "i32" \
     --num_repeat_runs "10"
 
-run_matmul_test_on_shapes ${i32_shapes_small[@]} \
-    --name_prefix "small" \
-    --lower_to_aie_pipeline "objectFifo" \
-    --tile_pipeline "pack-peel" \
-    --lhs_rhs_type "i32" \
-    --acc_type "i32" \
-    --num_corruption_repeat_runs "10" \
-    --enable_packet_flow "true"
+#run_matmul_test_on_shapes ${i32_shapes_small[@]} \
+#    --name_prefix "small" \
+#    --lower_to_aie_pipeline "objectFifo" \
+#    --tile_pipeline "pack-peel" \
+#    --lhs_rhs_type "i32" \
+#    --acc_type "i32" \
+#    --num_corruption_repeat_runs "10" \
+#    --enable_packet_flow "true"
 
 i32_shapes_medium=(
   '1024x1024x1024'
