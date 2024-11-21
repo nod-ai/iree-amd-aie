@@ -1111,19 +1111,19 @@ class Tests:
                     additional_flags = ["--iree-amdaie-enable-function-outlining"]
 
                 self.register(
-                VanillaMatmul(
-                    M,
-                    N,
-                    K,
-                    "bf16",
-                    "f32",
-                    aie_compilation_flags=additional_flags,
-                    name_suffix=suffix,
-                    additional_labels=["Performance"],
-                    use_ukernel=use_ukernel,
-                    n_repeats=2,
+                    VanillaMatmul(
+                        M,
+                        N,
+                        K,
+                        "bf16",
+                        "f32",
+                        aie_compilation_flags=additional_flags,
+                        name_suffix=suffix,
+                        additional_labels=["Performance"],
+                        use_ukernel=use_ukernel,
+                        n_repeats=2,
+                    )
                 )
-            )
 
         # MultipleDispatches tests:
         for name in ["two_matmul_switching", "matmul_f32_8_8_4", "matmul_f32_8_4_8"]:
