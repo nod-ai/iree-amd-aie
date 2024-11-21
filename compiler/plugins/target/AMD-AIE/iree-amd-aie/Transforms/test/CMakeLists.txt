@@ -16,6 +16,7 @@ iree_lit_test_suite(
     "assign_logical_objectfifo_depth.mlir"
     "assign_npu_dma_bd_ids.mlir"
     "assign_packet_ids.mlir"
+    "assign_tiles.mlir"
     "bridge_to_air.mlir"
     "bufferize_to_allocation.mlir"
     "canonicalize_doubly_strided_op.mlir"

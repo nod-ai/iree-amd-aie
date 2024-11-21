@@ -14,7 +14,7 @@
 // CHECK-DAG:   aie.core(%[[TILE_0_3]])
 // CHECK-DAG:   aie.core(%[[TILE_1_3]])
 // CHECK-DAG:   aie.shim_dma_allocation {{.*}}(MM2S, 0, 0)
-// CHECK-DAG:   aie.shim_dma_allocation {{.*}}(MM2S, 1, 0)
+// CHECK-DAG:   aie.shim_dma_allocation {{.*}}(MM2S, 0, 1)
 // CHECK-DAG:   aie.memtile_dma(%[[TILE_0_1]])
 // CHECK-DAG:   aie.mem(%[[TILE_0_2]])
 // CHECK-DAG:   aie.mem(%[[TILE_0_3]])

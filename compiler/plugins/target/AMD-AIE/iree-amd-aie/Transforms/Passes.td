@@ -67,6 +67,12 @@ def AMDAIEAssignPacketIds :
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEAssignPacketIdsPass()";
 }
 
+def AMDAIEAssignTiles : Pass<"iree-amdaie-assign-tiles", ""> {
+  let summary = "Assign physical tile locations to logical objectFifos. "
+                "Existing assignments will be ignored/replaced.";
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEAssignTilesPass()";
+}
+
 def AMDAIEBridgeToAIR : Pass<"iree-amdaie-bridge-to-air", ""> {
   let summary = "Perform transformations that allow hooking into AIR/AIE lowering";
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEBridgeToAIRPass()";

@@ -1,5 +1,19 @@
 // RUN: iree-opt --pass-pipeline="builtin.module(iree-amdaie-distribute-cores-and-objectfifos,cse)" --split-input-file --verify-diagnostics %s | FileCheck %s
 
+// expected-error @+1 {{has no AMDAIEDevice in the target attribute configuration}}
+module {
+  func.func @no_amdaie_device() {
+    amdaie.workgroup {
+      amdaie.controlcode {
+        amdaie.end
+      }
+    }
+    return
+  }
+}
+
+// -----
+
 // Check for unrolling an amdaie.core within a parallel loop with a single
 // induction variable with multiple iterations. There are no dma ops in this
 // check.
@@ -18,7 +32,8 @@
 // CHECK:         %{{.*}} = amdaie.core(%[[TILE_2]], in : [], out : [])
 // CHECK:         %[[TILE_3:.*]] = amdaie.tile(%[[C3]], %[[C2]])
 // CHECK:         %{{.*}} = amdaie.core(%[[TILE_3]], in : [], out : [])
-module {
+#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
+module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
   func.func @distribute_cores_and_objectfifos_1x4() {
     %c2 = arith.constant 2 : index
     scf.forall (%arg0, %arg1) in (1, 1) {
@@ -50,7 +65,8 @@ module {
 // CHECK-DAG:     %[[CORE_1_0:.*]] = amdaie.core(%[[TILE_1_0]], in : [], out : [])
 // CHECK-DAG:     %[[TILE_1_1:.*]] = amdaie.tile(%[[C1]], %[[C1]])
 // CHECK-DAG:     %[[CORE_1_1:.*]] = amdaie.core(%[[TILE_1_1]], in : [], out : [])
-module {
+#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
+module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
   func.func @distribute_cores_and_objectfifos_2x2() {
     scf.forall (%arg0, %arg1) in (1, 1) {
       scf.forall (%arg2, %arg3) in (2, 2) {
@@ -92,7 +108,8 @@ module {
 // CHECK-DAG:     %[[CORE_1:.*]] = amdaie.core(%[[TILE_1_2]], in : [%[[DMA_1]]], out : [])
 // CHECK:           %[[VAL_1:.+]] = amdaie.logicalobjectfifo.access(%[[FROM_MEMREF_1]], Read)
 // CHECK:           linalg.fill ins(%{{.+}} : i32) outs(%[[VAL_1]] : memref<32x64xi32, 2>)
-module {
+#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
+module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
   func.func @unroll_dma() {
     %c0_i32 = arith.constant 0 : i32
     %c2 = arith.constant 2 : index
@@ -142,7 +159,8 @@ module {
 // CHECK-DAG:     %[[CORE_1:.*]] = amdaie.core(%[[TILE_1_2]], in : [%[[DMA_0]]], out : [])
 // CHECK:           %[[VAL_0:.+]] = amdaie.logicalobjectfifo.access(%[[FROM_MEMREF_1]], Read)
 // CHECK:           linalg.fill ins(%{{.+}} : i32) outs(%[[VAL_0]] : memref<32x64xi32, 2>)
-module {
+#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
+module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
   func.func @hoist_dma_single_loop() {
     %c0_i32 = arith.constant 0 : i32
     %c2 = arith.constant 2 : index
@@ -196,7 +214,8 @@ module {
 // CHECK-DAG:     amdaie.core(%[[TILE_0_3]], in : [%[[DMA_0]]], out : [])
 // CHECK:           %[[VAL_0:.+]] = amdaie.logicalobjectfifo.access(%[[FROM_MEMREF_1]], Read)
 #map = affine_map<(d0) -> (d0 * 32)>
-module {
+#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
+module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
   func.func @hoist_dma_and_affine_single_loop_2x1() {
     %c0_i32 = arith.constant 0 : i32
     %alloc = memref.alloc() : memref<32x1024xi32, 1>
@@ -251,7 +270,8 @@ module {
 // CHECK-DAG:     amdaie.core(%[[TILE_0_3]], in : [%[[DMA_1]]], out : [])
 // CHECK-DAG:       %[[VAL_0:.+]] = amdaie.logicalobjectfifo.access(%[[FROM_MEMREF_1]], Read)
 #map = affine_map<(d0) -> (d0 * 32)>
-module {
+#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
+module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
   func.func @unroll_dma_and_affine_single_loop() {
     %c0_i32 = arith.constant 0 : i32
     %alloc = memref.alloc() : memref<32x1024xi32, 1>
@@ -308,7 +328,8 @@ module {
 // CHECK-DAG:       %[[VAL_0:.+]] = amdaie.logicalobjectfifo.access(%[[FROM_MEMREF_1]], Read)
 // CHECK-DAG:     %[[CORE_1_3:.*]] = amdaie.core(%[[TILE_1_3]], in : [%[[DMA_0]]], out : [])
 // CHECK-DAG:       %[[VAL_0:.+]] = amdaie.logicalobjectfifo.access(%[[FROM_MEMREF_1]], Read)
-module {
+#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
+module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
   func.func @hoist_dma_multi_loop() {
     %c0_i32 = arith.constant 0 : i32
     %c2 = arith.constant 2 : index
@@ -367,7 +388,8 @@ module {
 // CHECK-DAG:       amdaie.logicalobjectfifo.access(%[[FROM_MEMREF_1]], Read)
 // CHECK-DAG:     %[[CORE_1_3:.*]] = amdaie.core(%[[TILE_1_3]], in : [%[[DMA_1]]], out : [])
 // CHECK-DAG:       amdaie.logicalobjectfifo.access(%[[FROM_MEMREF_1]], Read)
-module {
+#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
+module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
   func.func @hoist_dma_one_of_multi_loop() {
     %c0_i32 = arith.constant 0 : i32
     %c2 = arith.constant 2 : index
@@ -440,7 +462,8 @@ module {
 // CHECK-DAG:     %[[CORE_1_3:.*]] = amdaie.core(%[[TILE_1_3]], in : [%[[DMA_3]]], out : [])
 // CHECK-DAG:       %[[VAL_0:.+]] = amdaie.logicalobjectfifo.access(%[[FROM_MEMREF_3]], Read)
 // CHECK-DAG:       linalg.fill ins(%{{.+}} : i32) outs(%[[VAL_0]] : memref<32x64xi32, 2>)
-module {
+#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
+module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
   func.func @hoist_dma_dependencies() {
     %c0_i32 = arith.constant 0 : i32
     %c2 = arith.constant 2 : index
@@ -491,6 +514,8 @@ module {
 // CHECK-DAG:     %[[TILE_1_3:.+]] = amdaie.tile(%[[C1]], %[[C3]])
 // CHECK-DAG:     %[[TILE_0_0:.+]] = amdaie.tile(%[[C0]], %[[C0]])
 // CHECK-DAG:     %[[TILE_0_1:.+]] = amdaie.tile(%[[C0]], %[[C1]])
+// CHECK-DAG:     %[[TILE_1_1:.+]] = amdaie.tile(%[[C1]], %[[C1]])
+// CHECK-DAG:     %[[TILE_1_0:.+]] = amdaie.tile(%[[C1]], %[[C0]])
 // CHECK-DAG:     %[[FROM_MEMREF_0:.+]] = amdaie.logicalobjectfifo.from_memref %[[ALLOC_0]], {%[[TILE_0_0]]}
 // CHECK-DAG:     %[[FROM_MEMREF_1:.+]] = amdaie.logicalobjectfifo.from_memref %[[ALLOC_1]], {%[[TILE_0_1]]}
 // CHECK-DAG:     %[[FROM_MEMREF_2:.+]] = amdaie.logicalobjectfifo.from_memref %[[ALLOC_2]], {%[[TILE_0_3]], %[[TILE_1_3]]}
@@ -499,8 +524,8 @@ module {
 // CHECK-DAG:     %[[FROM_MEMREF_5:.+]] = amdaie.logicalobjectfifo.from_memref %[[ALLOC_3]], {%[[TILE_1_2]]}
 // CHECK-DAG:     %[[FROM_MEMREF_6:.+]] = amdaie.logicalobjectfifo.from_memref %[[ALLOC_3]], {%[[TILE_0_3]]}
 // CHECK-DAG:     %[[FROM_MEMREF_7:.+]] = amdaie.logicalobjectfifo.from_memref %[[ALLOC_3]], {%[[TILE_1_3]]}
-// CHECK-DAG:     %[[FROM_MEMREF_8:.+]] = amdaie.logicalobjectfifo.from_memref %[[ALLOC_4]], {%[[TILE_0_1]]}
-// CHECK-DAG:     %[[FROM_MEMREF_9:.+]] = amdaie.logicalobjectfifo.from_memref %[[ALLOC_5]], {%[[TILE_0_0]]}
+// CHECK-DAG:     %[[FROM_MEMREF_8:.+]] = amdaie.logicalobjectfifo.from_memref %[[ALLOC_4]], {%[[TILE_1_1]]}
+// CHECK-DAG:     %[[FROM_MEMREF_9:.+]] = amdaie.logicalobjectfifo.from_memref %[[ALLOC_5]], {%[[TILE_1_0]]}
 // CHECK-DAG:     %[[DMA_0:.*]] = amdaie.dma_cpy_nd(%[[FROM_MEMREF_1]][] [] [], %[[FROM_MEMREF_0]][%[[ARG1]]]
 // CHECK-DAG:     %[[DMA_1:.*]] = amdaie.dma_cpy_nd(%[[FROM_MEMREF_3]][] [] [], %[[FROM_MEMREF_1]]
 // CHECK-DAG:     %[[DMA_2:.*]] = amdaie.dma_cpy_nd(%[[FROM_MEMREF_8]][%c0, %c0] [%c1, %c1] [%c1, %c1], %[[FROM_MEMREF_4]]
@@ -529,7 +554,8 @@ module {
 // CHECK-DAG:       linalg.fill ins(%{{.+}} : i32) outs(%[[VAL_1]] : memref<32x64xi32, 2>)
 // CHECK-DAG:       linalg.fill ins(%{{.+}} : i32) outs(%[[VAL_0]] : memref<32x32xi32, 2>)
 // CHECK-DAG:     %[[DMA_7:.*]] = amdaie.dma_cpy_nd(%[[FROM_MEMREF_9]][%[[ARG1]]] [%c1] [%c1], %[[FROM_MEMREF_8]]
-module {
+#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
+module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
   func.func @nested_dma_dependencies() {
     %c0_i32 = arith.constant 0 : i32
     %c1 = arith.constant 1 : index
@@ -589,23 +615,26 @@ module {
 //       CHECK:         linalg.fill ins(%[[C0]] : i32) outs(%[[ACCESS]] : memref<1x1x8x8x4x4xi32, 2 : i32>)
 //       CHECK:         amdaie.end
 //       CHECK:   memref.dealloc %[[ALLOC]] :
-func.func @l1_temporary_buffer_for_matmul_elem() {
-    %c0_i32 = arith.constant 0 : i32
-    %c2 = arith.constant 2 : index
-    %alloc_6 = memref.alloc() : memref<1x1x8x8x4x4xi32, 2 : i32>
-    scf.forall (%arg0, %arg1) in (1, 1) {
-        scf.forall (%arg2, %arg3) in (1, 1) {
-        %subview = memref.subview %alloc_6[0, 0, 0, 0, 0, 0] [1, 1, 8, 8, 4, 4] [1, 1, 1, 1, 1, 1] : memref<1x1x8x8x4x4xi32, 2 : i32> to memref<1x1x8x8x4x4xi32, 2 : i32>
-        %26 = arith.addi %arg2, %c2 : index
-        %tile = amdaie.tile(%arg3, %26)
-        %27 = amdaie.core(%tile, in : [], out : []) {
-            linalg.fill ins(%c0_i32 : i32) outs(%subview : memref<1x1x8x8x4x4xi32, 2 : i32>)
-            amdaie.end
-        }
-        } {mapping = [#gpu.thread<y>, #gpu.thread<x>]}
-    } {mapping = [#gpu.block<y>, #gpu.block<x>]}
-    memref.dealloc %alloc_6 : memref<1x1x8x8x4x4xi32, 2 : i32>
-    return
+#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
+module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
+  func.func @l1_temporary_buffer_for_matmul_elem() {
+      %c0_i32 = arith.constant 0 : i32
+      %c2 = arith.constant 2 : index
+      %alloc_6 = memref.alloc() : memref<1x1x8x8x4x4xi32, 2 : i32>
+      scf.forall (%arg0, %arg1) in (1, 1) {
+          scf.forall (%arg2, %arg3) in (1, 1) {
+          %subview = memref.subview %alloc_6[0, 0, 0, 0, 0, 0] [1, 1, 8, 8, 4, 4] [1, 1, 1, 1, 1, 1] : memref<1x1x8x8x4x4xi32, 2 : i32> to memref<1x1x8x8x4x4xi32, 2 : i32>
+          %26 = arith.addi %arg2, %c2 : index
+          %tile = amdaie.tile(%arg3, %26)
+          %27 = amdaie.core(%tile, in : [], out : []) {
+              linalg.fill ins(%c0_i32 : i32) outs(%subview : memref<1x1x8x8x4x4xi32, 2 : i32>)
+              amdaie.end
+          }
+          } {mapping = [#gpu.thread<y>, #gpu.thread<x>]}
+      } {mapping = [#gpu.block<y>, #gpu.block<x>]}
+      memref.dealloc %alloc_6 : memref<1x1x8x8x4x4xi32, 2 : i32>
+      return
+  }
 }
 
 // -----
@@ -618,19 +647,22 @@ func.func @l1_temporary_buffer_for_matmul_elem() {
 // CHECK-SAME: to memref<1x1x10xbf16, strided<[200, 100, 1], offset: ?>, 2>
 // CHECK-NOT: memref.subview
 // CHECK: return
-func.func @not_distributable() {
-  %cst = arith.constant 0.000000e+00 : bf16
-  %c0 = arith.constant 0 : index
-  %c1 = arith.constant 1 : index
-  %c4 = arith.constant 4 : index
-  %alloc = memref.alloc() : memref<2x2x100xbf16, 2>
-  scf.forall (%arg0, %arg1) in (2, 2) {
-    scf.for %arg2 = %c0 to %c4 step %c1 {
-      %subview = memref.subview %alloc[%arg0, %arg1, %arg2] [1, 1, 10] [1, 1, 1] : memref<2x2x100xbf16, 2> to memref<1x1x10xbf16, strided<[200, 100, 1], offset: ?>, 2>
-      linalg.fill ins(%cst : bf16) outs(%subview : memref<1x1x10xbf16, strided<[200, 100, 1], offset: ?>, 2>)
-    }
-  } {mapping = [#gpu.thread<y>, #gpu.thread<x>]}
-  return
+#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
+module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
+  func.func @not_distributable() {
+    %cst = arith.constant 0.000000e+00 : bf16
+    %c0 = arith.constant 0 : index
+    %c1 = arith.constant 1 : index
+    %c4 = arith.constant 4 : index
+    %alloc = memref.alloc() : memref<2x2x100xbf16, 2>
+    scf.forall (%arg0, %arg1) in (2, 2) {
+      scf.for %arg2 = %c0 to %c4 step %c1 {
+        %subview = memref.subview %alloc[%arg0, %arg1, %arg2] [1, 1, 10] [1, 1, 1] : memref<2x2x100xbf16, 2> to memref<1x1x10xbf16, strided<[200, 100, 1], offset: ?>, 2>
+        linalg.fill ins(%cst : bf16) outs(%subview : memref<1x1x10xbf16, strided<[200, 100, 1], offset: ?>, 2>)
+      }
+    } {mapping = [#gpu.thread<y>, #gpu.thread<x>]}
+    return
+  }
 }
 
 
@@ -652,6 +684,7 @@ func.func @not_distributable() {
 // CHECK-DAG:         %[[TILE_0_1:.*]] = amdaie.tile(%c0, %c1)
 // CHECK-DAG:         %[[TILE_1_1:.*]] = amdaie.tile(%c1, %c1)
 // CHECK-DAG:         %[[TILE_0_0:.*]] = amdaie.tile(%c0, %c0)
+// CHECK-DAG:         %[[TILE_1_0:.*]] = amdaie.tile(%c1, %c0)
 // CHECK-DAG:         %[[FROM_MEMREF_0:.*]] = amdaie.logicalobjectfifo.from_memref %[[ALLOC_2]], {%[[TILE_0_1]]}
 // CHECK-DAG:         %[[FROM_MEMREF_1:.*]] = amdaie.logicalobjectfifo.from_memref %[[ALLOC_3]], {%[[TILE_1_1]]}
 // CHECK-DAG:         %[[FROM_MEMREF_2:.*]] = amdaie.logicalobjectfifo.from_memref %[[ALLOC_3]], {%[[TILE_0_1]]}
@@ -663,7 +696,7 @@ func.func @not_distributable() {
 // CHECK-DAG:         %[[FROM_MEMREF_8:.*]] = amdaie.logicalobjectfifo.from_memref %[[ALLOC]], {%[[TILE_1_2]]}
 // CHECK-DAG:         %[[FROM_MEMREF_9:.*]] = amdaie.logicalobjectfifo.from_memref %[[ALLOC]], {%[[TILE_0_2]]}
 // CHECK-DAG:         %[[FROM_MEMREF_10:.*]] = amdaie.logicalobjectfifo.from_memref %[[OUTPUT]], {%[[TILE_0_0]]}
-// CHECK-DAG:         %[[FROM_MEMREF_11:.*]] = amdaie.logicalobjectfifo.from_memref %[[IN_A]], {%[[TILE_0_0]]}
+// CHECK-DAG:         %[[FROM_MEMREF_11:.*]] = amdaie.logicalobjectfifo.from_memref %[[IN_A]], {%[[TILE_1_0]]}
 // CHECK-DAG:         %[[FROM_MEMREF_12:.*]] = amdaie.logicalobjectfifo.from_memref %[[IN_B]], {%[[TILE_0_0]]}
 // CHECK-DAG:         %[[DMA_0:.*]] = amdaie.dma_cpy_nd(%[[FROM_MEMREF_0]]
 // CHECK-SAME:        %[[FROM_MEMREF_11]]
@@ -702,7 +735,8 @@ func.func @not_distributable() {
 #map1 = affine_map<(d0, d1, d2, d3, d4, d5) -> (d2, d0, d3, d5)>
 #map2 = affine_map<(d0, d1, d2, d3, d4, d5) -> (d1, d2, d5, d4)>
 #map3 = affine_map<(d0, d1, d2, d3, d4, d5) -> (d1, d0, d3, d4)>
-module {
+#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
+module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
   func.func @distribute_cores_and_objectfifos() {
     %c2 = arith.constant 2 : index
     %c1024 = arith.constant 1024 : index
@@ -818,7 +852,8 @@ module {
 // CHECK-DAG:                 vector.transfer_write %[[CONTRACT]], %[[VAL_2]]
 // CHECK-DAG-SAME:                      [%[[C0]], %[[C0]], %[[ARG3]], %[[ARG2]], %[[C0]], %[[C0]]]
 // CHECK-DAG-SAME:                      in_bounds = [true, true, true, true, true, true]
-module {
+#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
+module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
   func.func @distribute_cores_and_objectfifos_vectorization() {
     %c192 = arith.constant 192 : index
     %c32 = arith.constant 32 : index
@@ -918,7 +953,8 @@ module {
 // CHECK-DAG:           func.call @matmul_i32_i32
 // CHECK-DAG:           amdaie.end
 // CHECK-DAG:         } {elf_file = "/path/to/ukernel.o"}
-module {
+#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
+module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
   func.func private @matmul_i32_i32(memref<i32, 2 : i32>, index, memref<i32, 2 : i32>, index, memref<i32, 2 : i32>, index) attributes {link_with = "/path/to/ukernels.o", llvm.bareptr = true}
   func.func @distribute_cores_and_objectfifos_ukernel() {
     %c64 = arith.constant 64 : index
@@ -987,7 +1023,8 @@ module {
 // CHECK-SAME: ins(%[[ACCESS_1]] : memref<4x4xi32, 2 : i32>) outs(%[[SUBVIEW:.*]] : memref<4x4xi32, strided<[4, 1]>, 2 : i32>) {
 
 #map = affine_map<(d0, d1) -> (d0, d1)>
-module {
+#executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
+module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} {
   func.func @mixed_alloc_subview_operands() {
     %c2 = arith.constant 2 : index
     %c0_i32 = arith.constant 0 : i32
