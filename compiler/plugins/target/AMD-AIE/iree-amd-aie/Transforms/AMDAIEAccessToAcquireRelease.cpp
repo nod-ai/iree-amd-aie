@@ -21,10 +21,11 @@ namespace {
 /// op in the block. Otherwise, set the insertion point to the very end of the
 /// block.
 void setInsertionToEnd(IRRewriter &rewriter, Block *block) {
-  if (block->back().hasTrait<OpTrait::IsTerminator>())
+  if (block->back().hasTrait<OpTrait::IsTerminator>()) {
     rewriter.setInsertionPoint(block->getTerminator());
-  else
+  } else {
     rewriter.setInsertionPointToEnd(block);
+  }
 }
 
 llvm::MapVector<Value, SmallVector<AMDAIE::LogicalObjectFifoAccessOp>>
@@ -100,10 +101,10 @@ LogicalResult readAccessToAcquireRelease(Operation *parentOp) {
             getAncestorInBlock(nextAccessOp, block);
         if (nextAccessOpsAncestor &&
             nextAccessOpsAncestor->getBlock() == block) {
-          llvm::errs() << "Setting insertion point to nextAccessOpsAncestor\n";
           rewriter.setInsertionPoint(nextAccessOpsAncestor);
-        } else
+        } else {
           setInsertionToEnd(rewriter, block);
+        }
         rewriter.create<AMDAIE::LogicalObjectFifoRelease>(
             rewriter.getUnknownLoc(),
             logicalObjectFifoToConnection[input].getResult(), port);
@@ -114,11 +115,11 @@ LogicalResult readAccessToAcquireRelease(Operation *parentOp) {
 }
 
 /// Walk all write access operations within the core operations and insert
-/// semaphore operations. Release operations will be inserted
-/// at the location of the access operation and acquire operations will be
-/// inserted after the preceding access or at the beginning of the block.
-/// TODO(newling): update this to ensure that corresponding accesses and releases
-/// are in the same block, as in the case of `readAccessToAcquireRelease`.
+/// semaphore operations. Release operations will be inserted at the location of
+/// the access operation and acquire operations will be inserted after the
+/// preceding access or at the beginning of the block. TODO(newling): update
+/// this to ensure that corresponding accesses and releases are in the same
+/// block, as in the case of `readAccessToAcquireRelease`.
 LogicalResult writeAccessToAcquireRelease(Operation *parentOp) {
   IRRewriter rewriter(parentOp->getContext());
 
