@@ -318,6 +318,22 @@ uint32_t AMDAIEDeviceModel::getMemTileSize(uint8_t col, uint8_t row) const {
   return devInst.DevProp.DevMod[static_cast<uint8_t>(tileType)].MemMod->Size;
 }
 
+SmallVector<uint32_t> AMDAIEDeviceModel::getMemSpaceRows(
+    uint8_t memSpace) const {
+  SmallVector<uint32_t> res;
+  if (memSpace == 0) {
+    res.resize(deviceConfig.shimTileNumRows);
+    std::iota(res.begin(), res.end(), configPtr.ShimRowNum);
+  } else if (memSpace == 1) {
+    res.resize(configPtr.MemTileNumRows);
+    std::iota(res.begin(), res.end(), configPtr.MemTileRowStart);
+  } else if (memSpace == 2) {
+    res.resize(configPtr.AieTileNumRows);
+    std::iota(res.begin(), res.end(), configPtr.AieTileRowStart);
+  }
+  return res;
+}
+
 bool AMDAIEDeviceModel::hasLegalMemAffinity(uint8_t coreCol, uint8_t coreRow,
                                             uint8_t memCol,
                                             uint8_t memRow) const {
@@ -483,6 +499,7 @@ struct AMDAIEDeviceModel getDeviceModel(AMDAIEDevice device) {
   switch (device) {
     case AMDAIEDevice::xcvc1902: {
       AMDAIEDeviceModel::AMDAIEDeviceConfig deviceConfig;
+      deviceConfig.shimTileNumRows = XAIE1_SHIM_NUM_ROWS;
       deviceConfig.packetIdMaxIdx = XAIE1_PACKET_ID_MAX;
       deviceConfig.streamSwitchCoreArbiterMax = XAIE1_SS_ARBITER_MAX;
       deviceConfig.streamSwitchCoreMSelMax = XAIE1_SS_MSEL_MAX;
@@ -507,6 +524,7 @@ struct AMDAIEDeviceModel getDeviceModel(AMDAIEDevice device) {
     }
     case AMDAIEDevice::xcve2302: {
       AMDAIEDeviceModel::AMDAIEDeviceConfig deviceConfig;
+      deviceConfig.shimTileNumRows = XAIEML_SHIM_NUM_ROWS;
       deviceConfig.packetIdMaxIdx = XAIEML_PACKET_ID_MAX;
       deviceConfig.streamSwitchCoreArbiterMax = XAIEML_SS_ARBITER_MAX;
       deviceConfig.streamSwitchCoreMSelMax = XAIEML_SS_MSEL_MAX;
@@ -530,6 +548,7 @@ struct AMDAIEDeviceModel getDeviceModel(AMDAIEDevice device) {
     }
     case AMDAIEDevice::xcve2802: {
       AMDAIEDeviceModel::AMDAIEDeviceConfig deviceConfig;
+      deviceConfig.shimTileNumRows = XAIEML_SHIM_NUM_ROWS;
       deviceConfig.packetIdMaxIdx = XAIEML_PACKET_ID_MAX;
       deviceConfig.streamSwitchCoreArbiterMax = XAIEML_SS_ARBITER_MAX;
       deviceConfig.streamSwitchCoreMSelMax = XAIEML_SS_MSEL_MAX;
@@ -557,6 +576,7 @@ struct AMDAIEDeviceModel getDeviceModel(AMDAIEDevice device) {
     case AMDAIEDevice::npu1_3col:
     case AMDAIEDevice::npu1_4col: {
       AMDAIEDeviceModel::AMDAIEDeviceConfig deviceConfig;
+      deviceConfig.shimTileNumRows = XAIE2IPU_SHIM_NUM_ROWS;
       deviceConfig.packetIdMaxIdx = XAIE2IPU_PACKET_ID_MAX;
       deviceConfig.streamSwitchCoreArbiterMax = XAIE2IPU_SS_ARBITER_MAX;
       deviceConfig.streamSwitchCoreMSelMax = XAIE2IPU_SS_MSEL_MAX;
@@ -603,6 +623,7 @@ struct AMDAIEDeviceModel getDeviceModel(AMDAIEDevice device) {
     }
     case AMDAIEDevice::npu4: {
       AMDAIEDeviceModel::AMDAIEDeviceConfig deviceConfig;
+      deviceConfig.shimTileNumRows = XAIE_STRIXB0_MEM_TILE_NUM_ROWS;
       deviceConfig.packetIdMaxIdx = XAIE_STRIXB0_PACKET_ID_MAX;
       deviceConfig.streamSwitchCoreArbiterMax = XAIE_STRIXB0_SS_ARBITER_MAX;
       deviceConfig.streamSwitchCoreMSelMax = XAIE_STRIXB0_SS_MSEL_MAX;

@@ -52,6 +52,7 @@ iree_cc_library(
     "AMDAIEAssignLogicalObjectFifoDepth.cpp"
     "AMDAIEAssignNpuDmaBdIds.cpp"
     "AMDAIEAssignPacketIds.cpp"
+    "AMDAIEAssignTiles.cpp"
     "AMDAIEBufferizeToAllocation.cpp"
     "AMDAIECanonicalizeNpuDmaCpyNd.cpp"
     "AMDAIECanonicalizeDoublyStridedOp.cpp"
