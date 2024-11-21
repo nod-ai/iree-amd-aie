@@ -1100,6 +1100,8 @@ class Tests:
             (512, 512, 4096, True),
             (512, 4096, 512, False),
             (512, 4096, 512, True),
+            (4096, 512, 512, False),
+            (4096, 512, 512, True),
         ]:
             self.register(
                 VanillaMatmul(
