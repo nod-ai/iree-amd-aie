@@ -11,7 +11,7 @@
 #include "mlir/IR/Verifier.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
-#define DEBUG_TYPE "iree-amdaie-assign-tiles-to-object-fifo"
+#define DEBUG_TYPE "iree-amdaie-assign-tiles-to-objectfifo"
 
 namespace mlir::iree_compiler::AMDAIE {
 

@@ -80,7 +80,7 @@ iree_lit_test_suite(
     "tile_and_fuse_matmul_using_scf_forall.mlir"
     "tile_and_fuse_convolution_using_scf_forall.mlir"
     "tile_copy_using_scf_for.mlir"
-    "assign_tiles_to_object_fifo.mlir"
+    "assign_tiles_to_objectfifo.mlir"
     "vectorization.mlir"
   TOOLS
     ${IREE_LLD_TARGET}
