@@ -44,7 +44,10 @@ FailureOr<DenseSet<Value>> getThreadIndVars(ModuleOp moduleOp) {
 }
 
 /// Try to detect subview(s) that look like they're 'distributing' L1 memory.
-/// That is: they slice the L1 memory along thread/tile dimensions.
+/// That is: they slice the L1 memory along thread/tile dimensions. If the
+/// allocation `alloc` does not look like it's distributed across threads/tiles,
+/// return an empty memref type. Otherwise, return the memref type that the
+/// subviews are viewing.
 MemRefType getDistributedType(memref::AllocOp alloc,
                               const DenseSet<Value> &indVars) {
   MemRefType type;
@@ -54,11 +57,16 @@ MemRefType getDistributedType(memref::AllocOp alloc,
       // that if a subview has an offset which is not a constant and not a
       // thread id, it's not 'distributing'.
       Operation::operand_range offsets = subview.getOffsets();
+      int nIndVars {0};
       for (Value offset : offsets) {
         bool isConst = matchPattern(offset, m_Constant());
         bool isIndVar = llvm::is_contained(indVars, offset);
+        nIndVars += isIndVar;
         if (!isConst && !isIndVar) return {};
       }
+
+      // If there are no thread ids, this subview is not distributing.
+      if (nIndVars == 0) return {};
 
       auto nextType = cast<MemRefType>(subview.getResult().getType());
       if (!type) {
@@ -91,11 +99,15 @@ SmallVector<Value> substitute(Container toUpdate,
 /// smaller memory. This is ultimately needed because cores can't operate on
 /// one shared L1 memory.
 LogicalResult distributeLocalMemory(ModuleOp moduleOp) {
+
+
+  // llvm::errs() << "Module is \n\n" << moduleOp << "\n\n";
   FailureOr<DenseSet<Value>> maybeIndVars = getThreadIndVars(moduleOp);
   if (failed(maybeIndVars)) return failure();
   const DenseSet<Value> &indVars = maybeIndVars.value();
   IRRewriter rewriter(moduleOp.getContext());
-  moduleOp->walk([&](memref::AllocOp oldAlloc) {
+  auto allocWalkResult = moduleOp->walk([&](memref::AllocOp oldAlloc)
+                                            -> WalkResult {
     // Only consider local memory (L1).
     Attribute maybeMemorySpace = oldAlloc.getType().getMemorySpace();
     if (!maybeMemorySpace) return WalkResult::advance();
@@ -173,8 +185,8 @@ LogicalResult distributeLocalMemory(ModuleOp moduleOp) {
                 return success();
               })
               .Default([&](Operation *user) {
-                user->emitOpError("needs logic implemented for handling.");
-                return failure();
+                return user->emitOpError(
+                    "needs logic implemented for handling.");
               });
 
       if (failed(switchResult)) return WalkResult::interrupt();
@@ -182,6 +194,8 @@ LogicalResult distributeLocalMemory(ModuleOp moduleOp) {
 
     return WalkResult::advance();
   });
+
+  if (allocWalkResult.wasInterrupted()) return failure();
 
   return success();
 }
