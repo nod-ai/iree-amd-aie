@@ -119,13 +119,13 @@ func.func @read_and_write(%arg0: !amdaie.logicalobjectfifo<memref<1x1x8x16xi32, 
 // CHECK:         %[[ACQUIRE_1:.+]] = amdaie.logicalobjectfifo.acquire(%[[CONNECTION0]], Consume)
 // CHECK:         %[[ACCESS_1:.+]] = amdaie.logicalobjectfifo.access(%[[ACQUIRE_1]], Read)
 // CHECK:         linalg.fill ins(%{{.+}} : i32) outs(%[[ACCESS_1]]
+// CHECK:         amdaie.logicalobjectfifo.release(%[[CONNECTION0]], Consume)
 // CHECK:         scf.for
-// CHECK:           amdaie.logicalobjectfifo.release(%[[CONNECTION0]], Consume)
 // CHECK:           %[[ACQUIRE_1:.+]] = amdaie.logicalobjectfifo.acquire(%[[CONNECTION0]], Consume)
 // CHECK:           %[[ACCESS_1:.+]] = amdaie.logicalobjectfifo.access(%[[ACQUIRE_1]], Read)
 // CHECK:           linalg.fill ins(%{{.+}} : i32) outs(%[[ACCESS_1]]
+// CHECK:           amdaie.logicalobjectfifo.release(%[[CONNECTION0]], Consume)
 // CHECK:         }
-// CHECK:         amdaie.logicalobjectfifo.release(%[[CONNECTION0]], Consume)
 // CHECK:         %[[ACQUIRE_1:.+]] = amdaie.logicalobjectfifo.acquire(%[[CONNECTION0]], Consume)
 // CHECK:         %[[ACCESS_1:.+]] = amdaie.logicalobjectfifo.access(%[[ACQUIRE_1]], Read)
 // CHECK:         %[[ACQUIRE_0:.+]] = amdaie.logicalobjectfifo.acquire(%[[CONNECTION1]], Produce)
@@ -159,6 +159,7 @@ func.func @read_write_multiple_blocks(%arg0: !amdaie.logicalobjectfifo<memref<1x
 }
 
 // -----
+
 
 // Check deterministic order of multiple reads.
 // CHECK-LABEL: @multiple_reads_deterministic_order
@@ -219,3 +220,179 @@ func.func @multiple_writes_deterministic_order(%arg0: !amdaie.logicalobjectfifo<
   }
   return
 }
+
+// -----
+
+// CHECK-LABEL: @loop_without_prologue
+// CHECK:       scf.for
+// CHECK-SAME:  {
+// CHECK:           acquire
+// CHECK:           access
+// CHECK:           linalg.fill
+// CHECK:           logicalobjectfifo.release
+// CHECK-SAME:      {size = 1 : i32}
+// CHECK-NEXT:   }
+// CHECK:        acquire
+// CHECK:        access
+// CHECK:        linalg.fill
+// CHECK:        logicalobjectfifo.release
+// CHECK-NEXT:   amdaie.end
+func.func @loop_without_prologue(%arg0: !amdaie.logicalobjectfifo<memref<32xi32, 2>>,
+                                 %arg1: !amdaie.logicalobjectfifo<memref<32xi32, 1>>) {
+  %c0 = arith.constant 0 : index
+  %tile = amdaie.tile(%c0, %c0)
+  %c0_i32 = arith.constant 0 : i32
+  %c1 = arith.constant 1 : index
+  %c32 = arith.constant 32 : index
+  %connection = amdaie.connection(%arg0, %arg1) : (!amdaie.logicalobjectfifo<memref<32xi32, 2>>, !amdaie.logicalobjectfifo<memref<32xi32, 1>>)
+  %core = amdaie.core(%tile, in : [%connection], out : []) {
+    scf.for %arg = %c0 to %c32 step %c1 {
+      %access1= amdaie.logicalobjectfifo.access(%arg0, Read) : !amdaie.logicalobjectfifo<memref<32xi32, 2>> -> memref<32xi32, 2>
+      linalg.fill ins(%c0_i32 : i32) outs(%access1 : memref<32xi32, 2>)
+    }
+    %access2 = amdaie.logicalobjectfifo.access(%arg0, Read) : !amdaie.logicalobjectfifo<memref<32xi32, 2>> -> memref<32xi32, 2>
+    linalg.fill ins(%c0_i32 : i32) outs(%access2 : memref<32xi32, 2>)
+    amdaie.end
+  }
+  return
+}
+
+// -----
+
+// CHECK-LABEL: @loop_without_epilogue
+// CHECK:       amdaie.core
+// CHECK-NEXT:  acquire
+// CHECK-NEXT:  access
+// CHECK-NEXT:  linalg.fill
+// CHECK-NEXT:  logicalobjectfifo.release
+// CHECK-NEXT:  scf.for
+// CHECK-SAME:  {
+// CHECK-NEXT:     acquire
+// CHECK-NEXT:     access
+// CHECK-NEXT:     linalg.fill
+// CHECK-NEXT:     logicalobjectfifo.release
+// CHECK-SAME:     {size = 1 : i32}
+// CHECK-NEXT:  }
+func.func @loop_without_epilogue(%arg0: !amdaie.logicalobjectfifo<memref<32xi32, 2>>,
+                                 %arg1: !amdaie.logicalobjectfifo<memref<32xi32, 1>>) {
+  %c0 = arith.constant 0 : index
+  %tile = amdaie.tile(%c0, %c0)
+  %c0_i32 = arith.constant 0 : i32
+  %c1 = arith.constant 1 : index
+  %c32 = arith.constant 32 : index
+  %connection = amdaie.connection(%arg0, %arg1) : (!amdaie.logicalobjectfifo<memref<32xi32, 2>>, !amdaie.logicalobjectfifo<memref<32xi32, 1>>)
+  %core = amdaie.core(%tile, in : [%connection], out : []) {
+    %access1 = amdaie.logicalobjectfifo.access(%arg0, Read) : !amdaie.logicalobjectfifo<memref<32xi32, 2>> -> memref<32xi32, 2>
+    linalg.fill ins(%c0_i32 : i32) outs(%access1 : memref<32xi32, 2>)
+    scf.for %arg = %c0 to %c32 step %c1 {
+      %access2 = amdaie.logicalobjectfifo.access(%arg0, Read) : !amdaie.logicalobjectfifo<memref<32xi32, 2>> -> memref<32xi32, 2>
+      linalg.fill ins(%c0_i32 : i32) outs(%access2 : memref<32xi32, 2>)
+    }
+    amdaie.end
+  }
+  return
+}
+
+// -----
+
+// Test of the case
+//
+// for ... {
+//   access
+//   for ... {
+//     access
+//   }
+// }
+//
+// with expected result
+//
+// for ... {
+//   acquire
+//   release
+//   for ... {
+//     acquire
+//     release
+//   }
+// }
+
+// CHECK-LABEL: @nested_for_loops
+// CHECK:       amdaie.core
+// CHECK:       scf.for
+// CHECK:       acquire
+// CHECK:       access
+// CHECK:       linalg.fill
+// CHECK:       logicalobjectfifo.release
+// CHECK:       scf.for
+// CHECK:         acquire
+// CHECK:         access
+// CHECK:         linalg.fill
+// CHECK:         logicalobjectfifo.release
+// CHECK:       }
+// CHECK:     }
+// CHECK: amdaie.end
+func.func @nested_for_loops(%arg0: !amdaie.logicalobjectfifo<memref<32xi32, 2>>,
+                            %arg1: !amdaie.logicalobjectfifo<memref<32xi32, 1>>) {
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
+  %c4 = arith.constant 4 : index
+  %c8 = arith.constant 8 : index
+  %tile = amdaie.tile(%c0, %c0)
+  %connection = amdaie.connection(%arg0, %arg1) : (!amdaie.logicalobjectfifo<memref<32xi32, 2>>, !amdaie.logicalobjectfifo<memref<32xi32, 1>>)
+  %core = amdaie.core(%tile, in : [%connection], out : []) {
+    scf.for %arg_0 = %c0 to %c4 step %c1 {
+      %access2 = amdaie.logicalobjectfifo.access(%arg0, Read) : !amdaie.logicalobjectfifo<memref<32xi32, 2>> -> memref<32xi32, 2>
+      linalg.fill ins(%c0 : index) outs(%access2 : memref<32xi32, 2>)
+      scf.for %arg_1 = %c0 to %c8 step %c1 {
+        %access3 = amdaie.logicalobjectfifo.access(%arg0, Read) : !amdaie.logicalobjectfifo<memref<32xi32, 2>> -> memref<32xi32, 2>
+        linalg.fill ins(%c0 : index) outs(%access3 : memref<32xi32, 2>)
+      }
+    }
+    amdaie.end
+  }
+  return
+}
+
+// -----
+
+// CHECK-LABEL: @epilogue_write_with_preceding_none_accesses
+// CHECK:       amdaie.core
+// CHECK-NEXT:  acquire
+// CHECK-SAME:  Produce
+// CHECK-NEXT:  access
+// CHECK-SAME:  Write
+// CHECK-NEXT:  linalg.fill
+// CHECK-NEXT:  scf.for
+// CHECK-SAME:  {
+// CHECK-NEXT:     linalg.fill
+// CHECK-NEXT:  }
+// CHECK-NEXT:  linalg.fill
+// CHECK-NEXT:  logicalobjectfifo.release
+// CHECK-SAME:  Produce
+// CHECK-NEXT:  amdaie.end
+
+// With the current implementation, the acquire for Write access is inserted
+// before the very first access of the objectfifo, which in this case is on a
+// None access.
+func.func @epilogue_write_with_preceding_none_accesses(
+               %arg0: !amdaie.logicalobjectfifo<memref<32xi32, 2>>,
+               %arg1: !amdaie.logicalobjectfifo<memref<32xi32, 1>>) {
+  %c0 = arith.constant 0 : index
+  %tile = amdaie.tile(%c0, %c0)
+  %c0_i32 = arith.constant 0 : i32
+  %c1 = arith.constant 1 : index
+  %c32 = arith.constant 32 : index
+  %connection = amdaie.connection(%arg0, %arg1) : (!amdaie.logicalobjectfifo<memref<32xi32, 2>>, !amdaie.logicalobjectfifo<memref<32xi32, 1>>)
+  %core = amdaie.core(%tile, in : [%connection], out : []) {
+    %access1 = amdaie.logicalobjectfifo.access(%arg0, None) : !amdaie.logicalobjectfifo<memref<32xi32, 2>> -> memref<32xi32, 2>
+    linalg.fill ins(%c0_i32 : i32) outs(%access1 : memref<32xi32, 2>)
+    scf.for %arg = %c0 to %c32 step %c1 {
+      %access2 = amdaie.logicalobjectfifo.access(%arg0, None) : !amdaie.logicalobjectfifo<memref<32xi32, 2>> -> memref<32xi32, 2>
+      linalg.fill ins(%c0_i32 : i32) outs(%access2 : memref<32xi32, 2>)
+    }
+    %access3 = amdaie.logicalobjectfifo.access(%arg0, Write) : !amdaie.logicalobjectfifo<memref<32xi32, 2>> -> memref<32xi32, 2>
+    linalg.fill ins(%c0_i32 : i32) outs(%access3 : memref<32xi32, 2>)
+    amdaie.end
+  }
+  return
+}
+
