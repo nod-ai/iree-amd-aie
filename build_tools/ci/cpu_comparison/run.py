@@ -59,6 +59,8 @@ class BaseTest(ABC):
         self.aie_compilation_flags = (
             [] if aie_compilation_flags is None else aie_compilation_flags
         )
+        assert isinstance(self.aie_compilation_flags, list)
+        assert all(isinstance(flag, str) for flag in self.aie_compilation_flags)
 
         # NB: derived classes should add labels to this list in their
         # constructor, never overwrite it.
@@ -66,6 +68,11 @@ class BaseTest(ABC):
 
     def add_aie_compilation_flags(self, flags):
         if flags:
+            if isinstance(flags, str):
+                flags = flags.split()
+            assert isinstance(flags, list)
+            assert all(isinstance(flag, str) for flag in flags)
+
             self.aie_compilation_flags += flags
             # unique-ify the list
             self.aie_compilation_flags = list(set(self.aie_compilation_flags))
@@ -408,11 +415,13 @@ class MatmulTruncf(BaseMatmul):
         we run out of program memory, this is under investigation. We also 
         enable function outlining.
         """
-        self.aie_compilation_flags += [
-            "--iree-amdaie-enable-coalescing-loops",  # enable loop coalescing
-            "--iree-amdaie-enable-collapsing-unit-dims",  # enable unit dimension collapsing
-            "--iree-amdaie-enable-function-outlining",  # enable function outlining
-        ]
+        self.add_aie_compilation_flags(
+            [
+                "--iree-amdaie-enable-coalescing-loops",
+                "--iree-amdaie-enable-collapsing-unit-dims",
+                "--iree-amdaie-enable-function-outlining",
+            ]
+        )
         aie_vs_baseline(
             config=config,
             aie_compilation_flags=self.aie_compilation_flags,
@@ -776,9 +785,6 @@ class TestConfig:
             )
             if peano_commit_hash:
                 self.peano_commit_hash = peano_commit_hash[0]
-
-    def add_aie_compilation_flags(self, flag):
-        self.aie_compilation_flags += flag
 
     def __str__(self):
         return dedent(
