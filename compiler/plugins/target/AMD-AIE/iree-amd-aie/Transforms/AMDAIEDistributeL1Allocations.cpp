@@ -101,7 +101,6 @@ SmallVector<Value> substitute(Container toUpdate,
 LogicalResult distributeLocalMemory(ModuleOp moduleOp) {
 
 
-  // llvm::errs() << "Module is \n\n" << moduleOp << "\n\n";
   FailureOr<DenseSet<Value>> maybeIndVars = getThreadIndVars(moduleOp);
   if (failed(maybeIndVars)) return failure();
   const DenseSet<Value> &indVars = maybeIndVars.value();
