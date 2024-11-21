@@ -112,6 +112,9 @@ std::unique_ptr<Pass> createAMDAIECanonicalizeDoublyStridedOpPass(
 /// Create pass to create `amdaie.flow` ops for connections.
 std::unique_ptr<Pass> createAMDAIEConnectionToFlowPass();
 
+/// Pass to convert `scf.forall` to `scf.for` within `amdaie.controlcode`.
+std::unique_ptr<Pass> createAMDAIEControlCodeForallToForPass();
+
 /// Pass to unroll the loops within the control code regions.
 std::unique_ptr<Pass> createAMDAIEControlCodeLoopUnrollPass();
 

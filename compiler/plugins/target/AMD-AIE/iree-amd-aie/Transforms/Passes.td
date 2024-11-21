@@ -147,6 +147,12 @@ def AMDAIEConnectionToFlow :
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEConnectionToFlowPass()";
 }
 
+def AMDAIEControlCodeForallToFor :
+    Pass<"iree-amdaie-controlcode-forall-to-for", ""> {
+  let summary = "Converts `scf.forall` to `scf.for` within `amdaie.controlcode`.";
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEControlCodeForallToForPass()";
+}
+
 def AMDAIEControlCodeLoopUnroll :
     Pass<"iree-amdaie-controlcode-loop-unroll", ""> {
   let summary = "Unroll the loops in the control code regions.";
