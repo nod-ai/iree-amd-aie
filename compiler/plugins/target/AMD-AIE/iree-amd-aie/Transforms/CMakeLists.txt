@@ -58,6 +58,7 @@ iree_cc_library(
     "AMDAIECombineStridedOps.cpp"
     "AMDAIEConnectionToFlow.cpp"
     "AMDAIEConvertToDma.cpp"
+    "AMDAIEControlCodeForallToFor.cpp"
     "AMDAIEControlCodeLowering.cpp"
     "AMDAIEControlCodeLoopUnroll.cpp"
     "AMDAIEControlCodeToTransaction.cpp"

@@ -622,6 +622,12 @@ void addAMDAIEObjectFifoLoweringPasses(
   passManager.addPass(createCSEPass());
   passManager.addPass(createCanonicalizerPass());
 
+  // Convert control code `scf.forall` ops to `scf.for` ops right before the DMA
+  // composition optimization pass to enable more loop subsumption optimization
+  // opportunities.
+  passManager.addPass(createAMDAIEControlCodeForallToForPass());
+  passManager.addPass(createCSEPass());
+  passManager.addPass(createCanonicalizerPass());
   passManager.addPass(createAMDAIEDmaCompositionPass());
   passManager.addPass(createCSEPass());
   passManager.addPass(createCanonicalizerPass());
