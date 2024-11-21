@@ -1103,13 +1103,22 @@ class Tests:
             (4096, 512, 512, False),
             (4096, 512, 512, True),
         ]:
-            self.register(
+            for add_outlining in [True, False]:
+                suffix = ""
+                additional_flags = []
+                if add_outlining:
+                    suffix = "outlining"
+                    additional_flags = ["--iree-amdaie-enable-function-outlining"]
+
+                self.register(
                 VanillaMatmul(
                     M,
                     N,
                     K,
                     "bf16",
                     "f32",
+                    aie_compilation_flags=additional_flags,
+                    name_suffix=suffix,
                     additional_labels=["Performance"],
                     use_ukernel=use_ukernel,
                     n_repeats=2,
