@@ -7,7 +7,6 @@
 
 // CHECK-LABEL: @basic_case_0
 // CHECK-DAG: %[[C1:.*]] = arith.constant 1 : index
-// CHECK-DAG: %[[C0_I32:.*]] = arith.constant 0 : i32
 // CHECK-DAG: %[[C2:.*]] = arith.constant 2 : index
 // CHECK-DAG: %[[TILE_1_2:.*]] = amdaie.tile(%[[C1]], %[[C2]]
 // CHECK-DAG: %[[TILE_1_1:.*]] = amdaie.tile(%[[C1]], %[[C1]]
@@ -20,7 +19,6 @@
 module {
   func.func @basic_case_0() {
     %c1 = arith.constant 1 : index
-    %c0_i32 = arith.constant 0 : i32
     %c2 = arith.constant 2 : index
     // TODO(newling) making these function arguments results in segfault, shouldn't.
     %alloc = memref.alloc() : memref<32x1024xi32, 1>
