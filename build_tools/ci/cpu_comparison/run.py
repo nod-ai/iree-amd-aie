@@ -1202,7 +1202,7 @@ def all_tests(
         raise RuntimeError(f"'{iree_install_dir}' is not a directory.")
     iree_compile_exe = find_executable(iree_install_dir, "iree-compile")
     iree_run_exe = find_executable(iree_install_dir, "iree-run-module")
-    file_dir = Path(__file__).parent
+    file_dir = Path(os.path.dirname(os.path.abspath(__file__)))
 
     config = TestConfig(
         output_dir,
