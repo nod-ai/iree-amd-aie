@@ -57,7 +57,7 @@ MemRefType getDistributedType(memref::AllocOp alloc,
       // that if a subview has an offset which is not a constant and not a
       // thread id, it's not 'distributing'.
       Operation::operand_range offsets = subview.getOffsets();
-      int nIndVars {0};
+      int nIndVars{0};
       for (Value offset : offsets) {
         bool isConst = matchPattern(offset, m_Constant());
         bool isIndVar = llvm::is_contained(indVars, offset);
@@ -99,8 +99,6 @@ SmallVector<Value> substitute(Container toUpdate,
 /// smaller memory. This is ultimately needed because cores can't operate on
 /// one shared L1 memory.
 LogicalResult distributeLocalMemory(ModuleOp moduleOp) {
-
-
   FailureOr<DenseSet<Value>> maybeIndVars = getThreadIndVars(moduleOp);
   if (failed(maybeIndVars)) return failure();
   const DenseSet<Value> &indVars = maybeIndVars.value();
