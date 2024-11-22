@@ -57,7 +57,13 @@ def AIE_NpuDmaMemcpyNdOp: AIEX_Op<"npu.dma_memcpy_nd", [
         OptionalAttr<PacketInfoAttr>:$packet,
         FlatSymbolRefAttr:$metadata,
         I64Attr:$id,
-        DefaultValuedOptionalAttr<BoolAttr, "false">:$issue_token
+        DefaultValuedOptionalAttr<BoolAttr, "false">:$issue_token,
+        DefaultValuedOptionalAttr<I64Attr, "0">:$d0_zero_before,
+        DefaultValuedOptionalAttr<I64Attr, "0">:$d1_zero_before,
+        DefaultValuedOptionalAttr<I64Attr, "0">:$d2_zero_before,
+        DefaultValuedOptionalAttr<I64Attr, "0">:$d0_zero_after,
+        DefaultValuedOptionalAttr<I64Attr, "0">:$d1_zero_after,
+        DefaultValuedOptionalAttr<I64Attr, "0">:$d2_zero_after
   );
 
   let assemblyFormat = [{
@@ -186,6 +192,7 @@ def AIE_NpuWriteBdOp: AIEX_Op<"npu.writebd"> {
         I32Attr:$d0_stride,
         I32Attr:$d1_size,
         I32Attr:$d1_stride,
+        I32Attr:$d2_size,
         I32Attr:$d2_stride,
         I32Attr:$iteration_current,
         I32Attr:$iteration_size,
@@ -198,7 +205,13 @@ def AIE_NpuWriteBdOp: AIEX_Op<"npu.writebd"> {
         I32Attr:$lock_rel_id,
         I32Attr:$lock_acq_enable,
         I32Attr:$lock_acq_val,
-        I32Attr:$lock_acq_id
+        I32Attr:$lock_acq_id,
+        I32Attr:$d0_zero_before,
+        I32Attr:$d1_zero_before,
+        I32Attr:$d2_zero_before,
+        I32Attr:$d0_zero_after,
+        I32Attr:$d1_zero_after,
+        I32Attr:$d2_zero_after
   );
   let results = (outs );
   let assemblyFormat = [{ attr-dict }];

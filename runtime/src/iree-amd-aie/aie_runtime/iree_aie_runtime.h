@@ -201,7 +201,7 @@ inline ::XAie_TxnOpcode txnToTxn(XAie_TxnOpcode t) {
 }
 
 // mlir-air legacy
-enum class AIEArch : uint8_t { AIE1 = 1, AIE2 = 2 };
+enum class AIEArch : uint8_t { AIE1 = 1, AIE2 = 2, AIE2p = 3 };
 
 /*
  * This struct is meant to be a thin wrapper around aie-rt, which provides

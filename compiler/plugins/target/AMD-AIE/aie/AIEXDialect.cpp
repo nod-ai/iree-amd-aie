@@ -30,6 +30,10 @@ void AIEXDialect::initialize() {
 #define GET_OP_CLASSES
 #include "aie/AIEX.cpp.inc"
 
+//===----------------------------------------------------------------------===//
+// NpuDmaMemcpyNdOp
+//===----------------------------------------------------------------------===//
+
 llvm::SmallVector<int64_t, 4>
 AIEX::NpuDmaMemcpyNdOp::getStridesInAddressGranularity() {
   MemRefType buffer = getMemref().getType();
