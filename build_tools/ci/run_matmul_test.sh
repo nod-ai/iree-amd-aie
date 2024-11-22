@@ -653,6 +653,7 @@ run_matmul_test_on_shapes ${i32_shapes_small[@]} \
     --acc_type "i32" \
     --num_repeat_runs "10"
 
+# Disable because of failure on 4x4 AIE array
 #run_matmul_test_on_shapes ${i32_shapes_small[@]} \
 #    --name_prefix "small" \
 #    --lower_to_aie_pipeline "objectFifo" \
