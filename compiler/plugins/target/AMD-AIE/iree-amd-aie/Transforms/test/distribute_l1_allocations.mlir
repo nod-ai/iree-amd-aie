@@ -95,13 +95,13 @@ func.func @non_distributing_subview(%index : index) {
 // Example where the subview type is a complete view of the alloc: unchanged IR.
 
 // CHECK-LABEL: @complete_view_subview
-// CHECK-NEXT: memref.alloc
-// CHECK-NEXT: scf.forall
-// CHECK-NEXT:    arith.constant
-// CHECK-NEXT:    memref.subview
-// CHECK-NEXT:    linalg.fill
-// CHECK-NEXT: mapping = [#gpu.thread<x>]
-// CHECK-NEXT: return
+// CHECK-NEXT:   memref.alloc() : memref<4xbf16, 2>
+// CHECK-NEXT:   scf.forall
+// CHECK-NEXT:      arith.constant
+// CHECK-NEXT:      memref.subview
+// CHECK-NEXT:      linalg.fill
+// CHECK-NEXT:   mapping = [#gpu.thread<x>]
+// CHECK-NEXT:   return
 
 func.func @complete_view_subview() {
   %alloc = memref.alloc() : memref<4xbf16, 2>
