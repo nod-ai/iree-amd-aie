@@ -301,6 +301,7 @@ struct DmaToNpuPattern : OpConversionPattern<NpuDmaMemcpyNdOp> {
     auto d0_stride = zero;
     auto d1_size = zero;
     auto d1_stride = zero;
+    auto d2_size = zero;
     auto d2_stride = zero;
     auto iteration_current = zero;
     auto iteration_size = zero;
@@ -314,6 +315,12 @@ struct DmaToNpuPattern : OpConversionPattern<NpuDmaMemcpyNdOp> {
     auto lock_acq_enable = zero;
     auto lock_acq_val = zero;
     auto lock_acq_id = zero;
+    auto d0_zero_before = zero;
+    auto d1_zero_before = zero;
+    auto d2_zero_before = zero;
+    auto d0_zero_after = zero;
+    auto d1_zero_after = zero;
+    auto d2_zero_after = zero;
 
     auto issue_token = BoolAttr::get(ctx, false);
     auto repeat_count = zero;
@@ -361,6 +368,9 @@ struct DmaToNpuPattern : OpConversionPattern<NpuDmaMemcpyNdOp> {
     // d1_stride
     if (strides[1]) d1_stride = IntegerAttr::get(i32ty, strides[1] - 1);
 
+    // d2_size
+    if (strides[3]) d2_size = IntegerAttr::get(i32ty, sizes[2]);
+
     // d2_stride
     if (strides[2]) d2_stride = IntegerAttr::get(i32ty, strides[2] - 1);
 
@@ -389,12 +399,32 @@ struct DmaToNpuPattern : OpConversionPattern<NpuDmaMemcpyNdOp> {
     // This logic is kept for now for backward compatibility.
     if (!isMM2S) issue_token = BoolAttr::get(ctx, true);
 
+    // d0_zero_before
+    d0_zero_before = IntegerAttr::get(i32ty, op.getD0ZeroBefore());
+
+    // d1_zero_before
+    d1_zero_before = IntegerAttr::get(i32ty, op.getD1ZeroBefore());
+
+    // d2_zero_before
+    d2_zero_before = IntegerAttr::get(i32ty, op.getD2ZeroBefore());
+
+    // d0_zero_after
+    d0_zero_after = IntegerAttr::get(i32ty, op.getD0ZeroAfter());
+
+    // d1_zero_after
+    d1_zero_after = IntegerAttr::get(i32ty, op.getD1ZeroAfter());
+
+    // d2_zero_after
+    d2_zero_after = IntegerAttr::get(i32ty, op.getD2ZeroAfter());
+
     rewriter.create<NpuWriteBdOp>(
         op->getLoc(), column, bd_id, buffer_length, buffer_offset,
         enable_packet, out_of_order_id, packet_id, packet_type, d0_size,
-        d0_stride, d1_size, d1_stride, d2_stride, iteration_current,
+        d0_stride, d1_size, d1_stride, d2_size, d2_stride, iteration_current,
         iteration_size, iteration_stride, next_bd, row, use_next_bd, valid_bd,
-        lock_rel_val, lock_rel_id, lock_acq_enable, lock_acq_val, lock_acq_id);
+        lock_rel_val, lock_rel_id, lock_acq_enable, lock_acq_val, lock_acq_id,
+        d0_zero_before, d1_zero_before, d2_zero_before, d0_zero_after,
+        d1_zero_after, d2_zero_after);
 
     AMDAIEDeviceModel tm =
         getDeviceModel(static_cast<AMDAIEDevice>(dev.getDevice()));

@@ -203,6 +203,23 @@ replace_string_in_file(
   ${IREE_MLIR_AIR_SOURCE_DIR}/lib/Conversion/AIRToAIEPass.cpp
   "memtileToSizeMap[t] = m.getTargetModel().getMemTileSize()"
   "memtileToSizeMap[t] = m.getTargetModel().getMemTileSize(t.getCol(), t.getRow())")
+replace_string_in_file(
+  ${IREE_MLIR_AIR_SOURCE_DIR}/lib/Conversion/AIRToAIEPass.cpp
+  "targetModel.hasProperty(AIE::AIETargetModel::UsesSemaphoreLocks)"
+  "true")
+replace_string_in_file(
+  ${IREE_MLIR_AIR_SOURCE_DIR}/lib/Conversion/AIRToAIEPass.cpp
+  "device.getTargetModel().hasProperty(AIE::AIETargetModel::IsNPU)"
+  "true")
+  
+replace_string_in_file(
+  ${IREE_MLIR_AIR_SOURCE_DIR}/lib/Conversion/AIRToAIESchedulingUtils.cpp
+  "targetModel.hasProperty(AIE::AIETargetModel::UsesSemaphoreLocks)"
+  "true")
+replace_string_in_file(
+  ${IREE_MLIR_AIR_SOURCE_DIR}/lib/Conversion/AIRToAIESchedulingUtils.cpp
+  "target_model.hasProperty(AIE::AIETargetModel::UsesSemaphoreLocks)"
+  "true")
 
 replace_string_in_file(
   ${IREE_MLIR_AIR_SOURCE_DIR}/lib/Conversion/AIRRtToNpuPass.cpp

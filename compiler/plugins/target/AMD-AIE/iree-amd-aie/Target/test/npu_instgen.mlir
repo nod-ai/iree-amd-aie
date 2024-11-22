@@ -43,6 +43,7 @@ module {
                          d1_stride = 7 : i32,
                          d1_size = 8 : i32,
                          d2_stride = 9 : i32,
+                         d2_size = 14 : i32,
                          ddr_id = 10 : i32,
                          iteration_current = 11 : i32,
                          iteration_stride = 12 : i32,
@@ -54,7 +55,14 @@ module {
                          lock_rel_val = 4 : i32,
                          next_bd = 5 : i32,
                          use_next_bd = 1 : i32,
-                         valid_bd = 1 : i32}
+                         valid_bd = 1 : i32,
+                         d0_zero_before = 0 : i32,
+                         d1_zero_before = 1 : i32,
+                         d2_zero_before = 2 : i32,
+                         d0_zero_after = 3 : i32,
+                         d1_zero_after = 4 : i32,
+                         d2_zero_after = 5 : i32
+                         }
 
       // CHECK: 00000000
       // CHECK: 00000000
