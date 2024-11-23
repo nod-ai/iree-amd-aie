@@ -210,14 +210,18 @@ FailureOr<ParameterSetting> ParameterSetting::create(
     // be (tileM0/4, tileN0/4). Since packing happens before tiling, and an
     // extra step is performed to fuse pack ops into the loops, the adjusted
     // level 1 tile sizes should be (tileM0/4/packedM1, tileN0/4/packedN1).
-    // TODO (vivian): make sure AIR pipeline also works on 4x4, and refactor the
-    // following codes.
-    uint32_t numCols = isObjectFifo ? 4 : 2;
+    // TODO (vivian): Refactor the codes with the following aspects
+    // 1) make sure AIR pipeline also works on 4x4 cores;
+    // 2) use device info as a guide to make tiling strategies;
+    // 3) develop a better way to select tile sizes to make the most use of
+    // memory while taking all factors (double buffer, elementwise memory usage,
+    // lhs/rhs element type, etc) into account.
+    uint32_t numRowsAndCols = isObjectFifo ? 4 : 2;
     auto maxL1Size = 16 * scaleFactor;
     uint32_t M1 = findLargestFactor(M / m1Pack, maxL1Size / m1Pack, m1Pack);
     uint32_t N1 = findLargestFactor(N / n1Pack, maxL1Size / n1Pack, n1Pack);
 
-    auto maxL0Size = numCols * maxL1Size;
+    auto maxL0Size = numRowsAndCols * maxL1Size;
     uint32_t M0 = findLargestFactor(M, maxL0Size, m1Pack * M1);
     uint32_t N0 = findLargestFactor(N, maxL0Size, n1Pack * N1);
 
@@ -230,8 +234,10 @@ FailureOr<ParameterSetting> ParameterSetting::create(
     // the pack size as (4, 4, M0/4, N0/4) to avoid the large allocation in L1.
     // Also we should make sure the first level inner pack size is divisible by
     // the second level of inner pack size (vector instruction size).
-    uint32_t m0Pack = (M0 / numCols) % m1Pack == 0 ? (M0 / numCols) : M0;
-    uint32_t n0Pack = (N0 / numCols) % n1Pack == 0 ? (N0 / numCols) : N0;
+    uint32_t m0Pack =
+        (M0 / numRowsAndCols) % m1Pack == 0 ? (M0 / numRowsAndCols) : M0;
+    uint32_t n0Pack =
+        (N0 / numRowsAndCols) % n1Pack == 0 ? (N0 / numRowsAndCols) : N0;
     uint32_t k0Pack = findLargestFactor(K, maxL1Size);
 
     return ParameterSetting{M0,     N0,     K0,     M1,     N1,     K1,
