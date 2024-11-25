@@ -24,7 +24,7 @@ class AIE_Op<string mnemonic, list<Trait> traits = []> :
 
 def AIE_DeviceOp: AIE_Op<"device", [
     HasParent<"mlir::ModuleOp">,
-    SymbolTable, SingleBlock, NoTerminator, IsolatedFromAbove
+    SymbolTable, SingleBlockImplicitTerminator<"EndOp">, IsolatedFromAbove
   ]> {
   let summary = "Define an AIE design targetting a complete device";
   let arguments = (ins AMDAIEDeviceAttr:$device);

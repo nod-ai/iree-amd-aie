@@ -6,22 +6,12 @@
 
 #include "AMDAIEDmaUtils.h"
 
-#include <cstdlib>
-
+#include "AMDAIEUtils.h"
 #include "iree-amd-aie/Transforms/AMDAIEUtils.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "mlir/Dialect/Utils/StaticValueUtils.h"
 
 namespace mlir::iree_compiler::AMDAIE {
-
-/// Return an ancestor of 'op' in 'block', or nullptr if no such ancestor.
-Operation *getAncestorInBlock(Operation *op, Block *block) {
-  if (!op || !block) return nullptr;
-  auto parent = op;
-  while (parent && (parent->getBlock() != block))
-    parent = parent->getParentOp();
-  return parent;
-}
 
 bool areAccessPatternsCombinable(const SmallVector<OpFoldResult> &offsetsA,
                                  const SmallVector<OpFoldResult> &sizesA,

@@ -93,6 +93,9 @@ std::unique_ptr<Pass> createAMDAIEAssignNpuDmaBdIdsPass();
 /// Create a pass to assign packet ids to `amdaie.flow` operations.
 std::unique_ptr<Pass> createAMDAIEAssignPacketIdsPass();
 
+/// Create a pass to assign physical tile locations to logical objFifos.
+std::unique_ptr<Pass> createAMDAIEAssignTilesPass();
+
 /// Create a pass to do some rewrites that help bridging the path to AIR/AIE
 /// lowering.
 std::unique_ptr<Pass> createAMDAIEBridgeToAIRPass();
@@ -111,6 +114,9 @@ std::unique_ptr<Pass> createAMDAIECanonicalizeDoublyStridedOpPass(
 
 /// Create pass to create `amdaie.flow` ops for connections.
 std::unique_ptr<Pass> createAMDAIEConnectionToFlowPass();
+
+/// Pass to convert `scf.forall` to `scf.for` within `amdaie.controlcode`.
+std::unique_ptr<Pass> createAMDAIEControlCodeForallToForPass();
 
 /// Pass to unroll the loops within the control code regions.
 std::unique_ptr<Pass> createAMDAIEControlCodeLoopUnrollPass();
@@ -275,6 +281,9 @@ std::unique_ptr<Pass> createAMDAIERemoveMemorySpacePass();
 
 /// Create a pass to sink all dependencies into `amdaie.core` operations.
 std::unique_ptr<Pass> createAMDAIESinkIntoCorePass();
+
+/// Create a pass to split logicalobjectfifos for shimTile/memTile distribution.
+std::unique_ptr<Pass> createAMDAIESplitLogicalObjFifosPass();
 
 /// Create a pass to split logicalobjectfifos for connection reuse.
 std::unique_ptr<Pass> createAMDAIESplitLogicalObjFifosForConnectionReusePass();

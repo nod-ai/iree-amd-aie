@@ -201,7 +201,7 @@ inline ::XAie_TxnOpcode txnToTxn(XAie_TxnOpcode t) {
 }
 
 // mlir-air legacy
-enum class AIEArch : uint8_t { AIE1 = 1, AIE2 = 2 };
+enum class AIEArch : uint8_t { AIE1 = 1, AIE2 = 2, AIE2p = 3 };
 
 /*
  * This struct is meant to be a thin wrapper around aie-rt, which provides
@@ -228,6 +228,12 @@ struct AMDAIEDeviceModel {
   /// retrieved in another way before adding new fields to this struct.
 
   struct AMDAIEDeviceConfig {
+    ///////////////////////////////////////
+    // AIE Array configuration constants //
+    ///////////////////////////////////////
+    /// The number of shim tile rows. Not found in aie-rt data structures, but
+    /// provided as `XAIE_SHIM_NUM_ROWS`.
+    uint8_t shimTileNumRows{1};
     /// Set default minimum stride bitwidth/addressing granularity to 32 bits as
     /// this is the value for all current architecture versions.
     uint8_t minStrideBitWidth{32};
@@ -334,6 +340,8 @@ struct AMDAIEDeviceModel {
   uint32_t getMemTileSize(uint8_t col, uint8_t row) const;
   uint32_t getCoreTileLocalMemorySize() const;
 
+  SmallVector<uint32_t> getMemSpaceRows(uint8_t memSpace) const;
+
   uint32_t getNumBDs(uint8_t col, uint8_t row) const;
 
   uint32_t getNumSourceSwitchBoxConnections(uint8_t col, uint8_t row,
@@ -356,7 +364,9 @@ struct AMDAIEDeviceModel {
     return deviceConfig.vectorLoadStoreAlignmentBits;
   }
 
-  uint32_t getMaxVectorSizeBits() const { return deviceConfig.maxVectorSizeBits; }
+  uint32_t getMaxVectorSizeBits() const {
+    return deviceConfig.maxVectorSizeBits;
+  }
 
   uint32_t getShiftOperandBits() const { return deviceConfig.shiftOperandBits; }
 

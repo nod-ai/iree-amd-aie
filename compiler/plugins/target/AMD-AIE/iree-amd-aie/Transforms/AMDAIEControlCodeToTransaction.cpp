@@ -93,10 +93,10 @@ class TransactionBuilder {
     uint32_t addr =
         direction == AMDAIE::DMAChannelDir::MM2S ? 0x1D214 : 0x1D204;
     if (channel == 1) addr += 0x8;
-    if (col && row) {
-      addr |= ((col & 0xff) << colShift) | ((row & 0xff) << rowShift) |
-              (addr & 0xFFFFF);
-    }
+    // TODO(jornt): use aie-rt's transaction serializer instead to avoid these
+    // indiscrepancies between this file and aie-rt.
+    addr = ((col & 0xff) << colShift) | ((row & 0xff) << rowShift) |
+           (addr & 0xFFFFF);
     uint32_t value = 0;
     value |= bdId & 0xF;
     value |= (repeatCount & 0xFF) << 16;

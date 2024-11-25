@@ -405,7 +405,7 @@ LogicalResult AIEDeviceBuilder::bufferToAIE(AMDAIE::BufferOp bufferOp,
                                             Block *deviceBlock, int &bufferId) {
   LLVM_DEBUG(llvm::dbgs() << "Convert [AMDAIE::BufferOp]\n");
   OpBuilder::InsertionGuard guard(rewriter);
-  rewriter.setInsertionPointToEnd(deviceBlock);
+  rewriter.setInsertionPoint(deviceBlock->getTerminator());
   auto elemType = cast<MemRefType>(bufferOp.getType());
   Value tile = mapper.lookup(bufferOp.getTile());
   auto aieBufferOp = rewriter.create<AIE::BufferOp>(
@@ -431,7 +431,7 @@ LogicalResult AIEDeviceBuilder::connectionToAIE(
     AMDAIE::ConnectionOp connectionOp, Block *deviceBlock,
     int &connectionIndex) {
   LLVM_DEBUG(llvm::dbgs() << "Convert [AMDAIE::ConnectionOp]\n");
-  rewriter.setInsertionPointToEnd(deviceBlock);
+  rewriter.setInsertionPoint(deviceBlock->getTerminator());
   SmallVector<AMDAIE::ChannelOp> producerChannels;
   SmallVector<AMDAIE::ChannelOp> consumerChannels;
   for (Value producerChannel : connectionOp.getSourceChannels()) {
@@ -543,7 +543,8 @@ LogicalResult AIEDeviceBuilder::connectionToAIE(
       }
       std::pair<AIE::LockOp, AIE::LockOp> lockPair =
           std::make_pair(consumerLocks[0], producerLocks[0]);
-      rewriter.moveOpBefore(memOp, deviceBlock, deviceBlock->end());
+      rewriter.moveOpBefore(memOp, deviceBlock,
+                            deviceBlock->without_terminator().end());
       createDMA(memOp, AIE::DMAChannelDir::MM2S, channel.getValue(), dims,
                 acqNum, acqNum, maybeSize.value(), maybeOffset.value(), buffers,
                 lockPair, packetId);
@@ -631,7 +632,8 @@ LogicalResult AIEDeviceBuilder::connectionToAIE(
       }
       std::pair<AIE::LockOp, AIE::LockOp> lockPair =
           std::make_pair(producerLocks[0], consumerLocks[0]);
-      rewriter.moveOpBefore(memOp, deviceBlock, deviceBlock->end());
+      rewriter.moveOpBefore(memOp, deviceBlock,
+                            deviceBlock->without_terminator().end());
       createDMA(memOp, AIE::DMAChannelDir::S2MM, channel.getValue(), dims,
                 acqNum, acqNum, maybeSize.value(), maybeOffset.value(), buffers,
                 lockPair, packetId);
@@ -649,7 +651,7 @@ LogicalResult AIEDeviceBuilder::connectionToAIE(
 LogicalResult AIEDeviceBuilder::flowToAIE(AMDAIE::FlowOp flowOp,
                                           Block *deviceBlock) {
   LLVM_DEBUG(llvm::dbgs() << "Convert [AMDAIE::ConnectionOp]\n");
-  rewriter.setInsertionPointToEnd(deviceBlock);
+  rewriter.setInsertionPoint(deviceBlock->getTerminator());
   SmallVector<AMDAIE::ChannelOp> producerChannels;
   SmallVector<AMDAIE::ChannelOp> consumerChannels;
   for (Value producerChannel : flowOp.getSources()) {
@@ -671,7 +673,7 @@ LogicalResult AIEDeviceBuilder::flowToAIE(AMDAIE::FlowOp flowOp,
     consumerChannels.push_back(channelOp);
   }
   // Insert flow ops.
-  rewriter.setInsertionPointToEnd(deviceBlock);
+  rewriter.setInsertionPoint(deviceBlock->getTerminator());
   SmallVector<Operation *> flowOps =
       createFlowOps(flowOp, producerChannels, consumerChannels);
   return success();
@@ -681,7 +683,7 @@ LogicalResult AIEDeviceBuilder::lockToAIE(AMDAIE::LockOp lockOp,
                                           Block *deviceBlock, int &lockIndex) {
   LLVM_DEBUG(llvm::dbgs() << "Convert [AMDAIE::LockOp]\n");
   OpBuilder::InsertionGuard guard(rewriter);
-  rewriter.setInsertionPointToEnd(deviceBlock);
+  rewriter.setInsertionPoint(deviceBlock->getTerminator());
   Value tile = mapper.lookup(lockOp.getTile());
   auto aieLockOp = rewriter.create<AIE::LockOp>(
       lockOp.getLoc(), tile, lockOp.getValueAttr(), lockOp.getInitValueAttr(),
@@ -712,7 +714,7 @@ LogicalResult logicalObjFifoFromBuffersToMemOp(
   for (Value tile : logicalObjFifo.getTiles()) {
     if (tileToMemOpMap.contains(tile)) continue;
     Value aieTile = mapper.lookup(tile);
-    rewriter.setInsertionPointToEnd(deviceBlock);
+    rewriter.setInsertionPoint(deviceBlock->getTerminator());
     auto newMemOp = rewriter.create<MemOp>(rewriter.getUnknownLoc(), aieTile);
     rewriter.setInsertionPointToStart(&newMemOp.getRegion().emplaceBlock());
     rewriter.create<AIE::EndOp>(rewriter.getUnknownLoc());
@@ -855,7 +857,7 @@ LogicalResult AIEDeviceBuilder::workgroupToAIE(AMDAIE::WorkgroupOp workgroupOp,
           return WalkResult::advance();
         })
         .Default([&](Operation *op) {
-          rewriter.setInsertionPointToEnd(deviceBlock);
+          rewriter.setInsertionPoint(deviceBlock->getTerminator());
           if (!isa_and_present<AMDAIEDialect>(op->getDialect())) {
             rewriter.clone(*op, mapper);
           } else {
@@ -868,7 +870,8 @@ LogicalResult AIEDeviceBuilder::workgroupToAIE(AMDAIE::WorkgroupOp workgroupOp,
   if (res.wasInterrupted()) return failure();
 
   // Merge core operations into end of the device block
-  rewriter.mergeBlocks(deviceCoreBlock, deviceBlock);
+  rewriter.inlineBlockBefore(deviceCoreBlock, deviceBlock,
+                             deviceBlock->without_terminator().end());
   return success();
 }
 
@@ -902,7 +905,9 @@ LogicalResult AIEDeviceBuilder::lowerToAIE(ModuleOp moduleOp) {
     auto deviceOp = rewriter.create<xilinx::AIE::DeviceOp>(
         rewriter.getUnknownLoc(),
         xilinx::AIE::AIEDeviceAttr::get(rewriter.getContext(), aieDevice));
-    Block *deviceBlock = &deviceOp.getRegion().emplaceBlock();
+    xilinx::AIE::DeviceOp::ensureTerminator(deviceOp.getRegion(), rewriter,
+                                            deviceOp.getLoc());
+    Block *deviceBlock = deviceOp.getBody();
     rewriter.setInsertionPoint(deviceBlock, deviceBlock->begin());
 
     // Create aiex.runtime_sequence inside aie.device
@@ -954,7 +959,8 @@ LogicalResult AIEDeviceBuilder::lowerToAIE(ModuleOp moduleOp) {
     }
 
     // Move NPU instruction function to the end of the device block.
-    rewriter.moveOpBefore(npuFuncOp, deviceBlock, deviceBlock->end());
+    rewriter.moveOpBefore(npuFuncOp, deviceBlock,
+                          deviceBlock->without_terminator().end());
     // After walking the FuncOp, it has been converted into a DeviceOp and can
     // safely be erased.
     eraseOp(funcOp);

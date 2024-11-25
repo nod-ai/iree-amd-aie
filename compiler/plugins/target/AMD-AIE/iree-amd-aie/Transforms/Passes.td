@@ -67,6 +67,12 @@ def AMDAIEAssignPacketIds :
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEAssignPacketIdsPass()";
 }
 
+def AMDAIEAssignTiles : Pass<"iree-amdaie-assign-tiles", ""> {
+  let summary = "Assign physical tile locations to logical objectFifos. "
+                "Existing assignments will be ignored/replaced.";
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEAssignTilesPass()";
+}
+
 def AMDAIEBridgeToAIR : Pass<"iree-amdaie-bridge-to-air", ""> {
   let summary = "Perform transformations that allow hooking into AIR/AIE lowering";
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEBridgeToAIRPass()";
@@ -145,6 +151,12 @@ def AMDAIEConnectionToFlow :
     Pass<"iree-amdaie-connection-to-flow", ""> {
   let summary = "Create flow ops for connections.";
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEConnectionToFlowPass()";
+}
+
+def AMDAIEControlCodeForallToFor :
+    Pass<"iree-amdaie-controlcode-forall-to-for", ""> {
+  let summary = "Converts `scf.forall` to `scf.for` within `amdaie.controlcode`.";
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEControlCodeForallToForPass()";
 }
 
 def AMDAIEControlCodeLoopUnroll :
@@ -665,6 +677,25 @@ def AMDAIESinkIntoCore :
    related ops which should be kept outside of cores.
   }];
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIESinkIntoCorePass()";
+}
+
+def AMDAIESplitLogicalObjFifos :
+  Pass<"iree-amdaie-split-logical-objectfifos", "ModuleOp"> {
+  let summary = "Pass to split L2 buffers to distribute on multiple shimTiles and memTiles.";
+  let description = [{
+    Splitting L2 input and output logical objectFifos and their user dma operations,
+    so that the logical objectFifos can be distributed on multiple shimTiles/memTiles.
+    Ideally, the split factor should only depend on the number of AIE columns being used,
+    however the current implementation only considers situations in which `nrows == ncols`.
+
+    For example, for the case of a matmul C = A x B, the two outermost dimensions
+    of the L2 buffers are the implications of `nrows x ncols` AIE cores being used.
+    So if, A matrix is distributed on a 2x2 AIE array, with L2 buffer size
+    `[2, 1, 32, 32]`, will be split to two `[1, 1, 32, 32]` buffers.
+    Similarly, B matrix is distributed on a 2x2 AIE array with L2 buffer size
+    `[1, 2, 32, 32]`, will be split to two `[1, 1, 32, 32]` buffers.
+  }];
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIESplitLogicalObjFifosPass()";
 }
 
 def AMDAIESplitLogicalObjFifosForConnectionReuse :
