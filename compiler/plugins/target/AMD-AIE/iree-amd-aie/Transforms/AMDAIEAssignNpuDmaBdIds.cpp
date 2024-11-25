@@ -173,10 +173,17 @@ LogicalResult assignNpuDmaBdIds(AMDAIE::WorkgroupOp workgroupOp) {
         //     NpuDmaCpyNdOps (id=15),
         //     NpuDmaWaitOps,
         //     NpuDmaCpyNdOps (id=0), // Wrap happens here
-        //
-        // Assume upto THREE NpuDmaCpyNdOps before any NpuDmaWaitOps
-        const uint32_t reservedNum = 3;
-        generator.resetLastUsedBdId(channel, reservedNum);
+        uint32_t countNpuDmaCpyNdOp = 0;
+        auto nextOp = npuWaitOp->getNextNode();
+        // Local counter for NpuDmaCpyNdOp encountered after the current
+        // NpuDmaWaitOp, but before the next NpuDmaWaitOp.
+        while (nextOp && !dyn_cast<AMDAIE::NpuDmaWaitOp>(nextOp)) {
+          if (dyn_cast_if_present<AMDAIE::NpuDmaCpyNdOp>(nextOp)) {
+            countNpuDmaCpyNdOp++;
+          }
+          nextOp = nextOp->getNextNode();
+        }
+        generator.resetLastUsedBdId(channel, countNpuDmaCpyNdOp);
       }
       return WalkResult::advance();
     }

@@ -23,20 +23,28 @@ LogicalResult dmaBdChain(AMDAIE::WorkgroupOp workgroupOp) {
   DenseMap<std::pair<uint32_t, uint32_t>, uint32_t> colArgIdxToNextBdId;
   DenseMap<std::pair<uint32_t, uint32_t>, uint32_t> colArgIdxToStartBdId;
   bool useNextBd = false;
+  bool enablePacket = false;
   uint32_t argIdx = 0;
   uint32_t col = 0;
 
+  // Walk the operations in the reverse order to build the chain
   AMDAIE::ControlCodeOp controlCodeOp = workgroupOp.getControlCode();
   WalkResult res = controlCodeOp->walk<WalkOrder::PostOrder, ReverseIterator>(
       [&](Operation *op) {
-        if (auto NpuAddressPatchOp = dyn_cast<AMDAIE::NpuAddressPatchOp>(op)) {
-          argIdx = NpuAddressPatchOp.getArgIdx();
+        if (auto npuAddressPatchOp = dyn_cast<AMDAIE::NpuAddressPatchOp>(op)) {
+          argIdx = npuAddressPatchOp.getArgIdx();
         } else if (auto writeBdOp = dyn_cast<AMDAIE::NpuWriteBdOp>(op)) {
+          enablePacket |= writeBdOp.getEnablePacket();
+          if (enablePacket) {
+            // packet mode is enabled, do not chain BDs
+            return WalkResult::advance();
+          }
           col = writeBdOp.getCol();
           if (colArgIdxToNextBdId.contains({col, argIdx})) {
             uint32_t nextBdId = colArgIdxToNextBdId[{col, argIdx}];
             uint32_t currBdId = writeBdOp.getBdId();
             if (nextBdId > currBdId) {
+              // chain the current BD to the next BD
               writeBdOp.setNextBd(nextBdId);
               writeBdOp.setUseNextBd(true);
             }
@@ -47,23 +55,26 @@ LogicalResult dmaBdChain(AMDAIE::WorkgroupOp workgroupOp) {
       });
 
   if (res.wasInterrupted()) return failure();
+  if (enablePacket) return success();
 
+  // Remove NpuPushToQueueOp and NpuDmaWaitOp that are not needed, unless they
+  // are at the end of a chain
   std::vector<Operation *> opsToRemove;
   res = controlCodeOp->walk([&](Operation *op) {
     if (auto writeBdOp = dyn_cast<AMDAIE::NpuWriteBdOp>(op)) {
       useNextBd = writeBdOp.getUseNextBd();
-    } else if (auto NpuAddressPatchOp =
+    } else if (auto npuAddressPatchOp =
                    dyn_cast<AMDAIE::NpuAddressPatchOp>(op)) {
-      argIdx = NpuAddressPatchOp.getArgIdx();
-      col = NpuAddressPatchOp.getCol();
-    } else if (auto NpuPushToQueueOp = dyn_cast<AMDAIE::NpuPushToQueueOp>(op)) {
+      argIdx = npuAddressPatchOp.getArgIdx();
+      col = npuAddressPatchOp.getCol();
+    } else if (auto npuPushToQueueOp = dyn_cast<AMDAIE::NpuPushToQueueOp>(op)) {
       if (useNextBd) {
         if (!colArgIdxToStartBdId.contains({col, argIdx})) {
           // start of a chain
-          colArgIdxToStartBdId[{col, argIdx}] = NpuPushToQueueOp.getBdId();
+          colArgIdxToStartBdId[{col, argIdx}] = npuPushToQueueOp.getBdId();
         }
         // remove NpuPushToQueueOp and dmaWaitOp
-        for (Value result : NpuPushToQueueOp->getResults()) {
+        for (Value result : npuPushToQueueOp->getResults()) {
           for (auto &use : result.getUses()) {
             Operation *userOp = use.getOwner();
             if (auto dmaWaitOp = dyn_cast<AMDAIE::NpuDmaWaitOp>(userOp)) {
@@ -71,11 +82,11 @@ LogicalResult dmaBdChain(AMDAIE::WorkgroupOp workgroupOp) {
             }
           }
         }
-        opsToRemove.push_back(NpuPushToQueueOp);
+        opsToRemove.push_back(npuPushToQueueOp);
       } else {
         if (colArgIdxToStartBdId.contains({col, argIdx})) {
           // end of a chain
-          NpuPushToQueueOp.setBdId(colArgIdxToStartBdId[{col, argIdx}]);
+          npuPushToQueueOp.setBdId(colArgIdxToStartBdId[{col, argIdx}]);
           colArgIdxToStartBdId.erase({col, argIdx});
         }
       }

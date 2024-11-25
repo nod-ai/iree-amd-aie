@@ -406,4 +406,37 @@ LogicalResult moveNpuDmaSyncUsersAfterAncestorInSameBlock(
   return success();
 }
 
+LogicalResult moveNpuSourceDmaSyncAfterTargetDmaCpy(RewriterBase &rewriter,
+                                                    Operation *parentOp) {
+  // Stores NPU source DMA wait operations to be moved later.
+  SmallVector<AMDAIE::NpuDmaWaitOp> npuSourceDmaWaitOps;
+
+  WalkResult res = parentOp->walk([&](Operation *op) {
+    if (auto npuDmaWaitOp = dyn_cast<AMDAIE::NpuDmaWaitOp>(op)) {
+      // Check if the DMA wait operation contains an async target token.
+      bool hasAsyncTargetToken =
+          llvm::any_of(npuDmaWaitOp.getAsyncTokens(), [](Value token) {
+            return isa<AMDAIE::AsyncTargetTokenType>(token.getType());
+          });
+      if (!hasAsyncTargetToken) {
+        npuSourceDmaWaitOps.push_back(npuDmaWaitOp);
+      } else {
+        // Move all collected NPU source DMA wait ops after the current target
+        // DMA wait op, but only if they belong to the same block.
+        for (auto &npuSourceDmaWaitOp : npuSourceDmaWaitOps) {
+          if (npuSourceDmaWaitOp->getBlock() == npuDmaWaitOp->getBlock()) {
+            rewriter.moveOpBefore(npuSourceDmaWaitOp, npuDmaWaitOp);
+          }
+        }
+        // Clear the list after moving.
+        npuSourceDmaWaitOps.clear();
+      }
+    }
+    return WalkResult::advance();
+  });
+
+  if (res.wasInterrupted()) return failure();
+  return success();
+}
+
 }  // namespace mlir::iree_compiler::AMDAIE

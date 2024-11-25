@@ -148,14 +148,16 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
 // CHECK:       amdaie.workgroup
 // CHECK-DAG:     %[[TILE_0_0:.+]] = amdaie.tile(%[[C0]], %[[C0]])
 // CHECK-DAG:     %[[BD_ID_0:.+]] = amdaie.bd_id(%[[TILE_0_0]], 0)
+// CHECK-DAG:     %[[BD_ID_1:.+]] = amdaie.bd_id(%[[TILE_0_0]], 1)
+// CHECK-DAG:     %[[BD_ID_2:.+]] = amdaie.bd_id(%[[TILE_0_0]], 2)
 // CHECK-DAG:     %[[FROM_MEMREF_0:.+]] = amdaie.logicalobjectfifo.from_memref %{{.+}}, {%[[TILE_0_0]]} : memref<8x16xi32> -> !amdaie.logicalobjectfifo<memref<8x16xi32>>
 // CHECK:         %[[CIRC_DMA:.+]] = amdaie.circular_dma_cpy_nd
 // CHECK:         amdaie.controlcode
 // CHECK:           %[[NPU_DMA_0:.+]] = amdaie.npu.dma_cpy_nd async_source %[[CIRC_DMA]]([] [] [], %[[FROM_MEMREF_0]][0, 0, 0] [1, 8, 16] [128, 16, 1] bd_id = %[[BD_ID_0]])
 // CHECK:           amdaie.npu.dma_wait(%[[NPU_DMA_0]] : !amdaie.async_source_token)
-// CHECK:           %[[NPU_DMA_1:.+]] = amdaie.npu.dma_cpy_nd async_source %[[CIRC_DMA]]([] [] [], %[[FROM_MEMREF_0]][0, 0] [8, 16] [16, 1] bd_id = %[[BD_ID_0]])
+// CHECK:           %[[NPU_DMA_1:.+]] = amdaie.npu.dma_cpy_nd async_source %[[CIRC_DMA]]([] [] [], %[[FROM_MEMREF_0]][0, 0] [8, 16] [16, 1] bd_id = %[[BD_ID_1]])
 // CHECK:           amdaie.npu.dma_wait(%[[NPU_DMA_1]] : !amdaie.async_source_token)
-// CHECK:           %[[NPU_DMA_2:.+]] = amdaie.npu.dma_cpy_nd async_source %[[CIRC_DMA]]([] [] [], %[[FROM_MEMREF_0]][0] [128] [1] bd_id = %[[BD_ID_0]])
+// CHECK:           %[[NPU_DMA_2:.+]] = amdaie.npu.dma_cpy_nd async_source %[[CIRC_DMA]]([] [] [], %[[FROM_MEMREF_0]][0] [128] [1] bd_id = %[[BD_ID_2]])
 // CHECK:           amdaie.npu.dma_wait(%[[NPU_DMA_2]] : !amdaie.async_source_token)
 #map = affine_map<(d0) -> (d0 * 16)>
 #executable_target_amdaie_xclbin_fb = #hal.executable.target<"amd-aie", "amdaie-xclbin-fb", {target_device = "npu1_4col", ukernels = "none"}>
