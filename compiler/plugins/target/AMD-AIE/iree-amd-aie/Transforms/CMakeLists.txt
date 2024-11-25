@@ -66,6 +66,7 @@ iree_cc_library(
     "AMDAIECreateReferenceToAllocation.cpp"
     "AMDAIEDistributeCoresAndObjectFifos.cpp"
     "AMDAIEDistributeL1Allocations.cpp"
+    "AMDAIEDmaBdChain.cpp"
     "AMDAIEDmaCSE.cpp"
     "AMDAIEDmaComposition.cpp"
     "AMDAIEDmaLoopSubsumption.cpp"

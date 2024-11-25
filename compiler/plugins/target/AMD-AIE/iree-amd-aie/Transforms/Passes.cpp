@@ -627,14 +627,14 @@ void addAMDAIEObjectFifoLoweringPasses(
   passManager.addPass(createCanonicalizerPass());
   passManager.addPass(createAMDAIEDmaCSEPass());
 
-  passManager.addPass(createAMDAIEAssignNpuDmaBdIdsPass());
-  passManager.addPass(createCSEPass());
-  passManager.addPass(createCanonicalizerPass());
-
   passManager.addPass(createAMDAIEControlCodeLoopUnrollPass());
   passManager.addPass(createCSEPass());
   passManager.addPass(createCanonicalizerPass());
   passManager.addPass(createAMDAIEDmaCSEPass());
+
+  passManager.addPass(createAMDAIEAssignNpuDmaBdIdsPass());
+  passManager.addPass(createCSEPass());
+  passManager.addPass(createCanonicalizerPass());
 
   passManager.addPass(createAMDAIECanonicalizeDoublyStridedOpPass());
   passManager.addPass(createCanonicalizerPass());
@@ -652,6 +652,7 @@ void addAMDAIEObjectFifoLoweringPasses(
   passManager.addPass(createAMDAIEAssignPacketIdsPass());
 
   passManager.addPass(createAMDAIEControlCodeLoweringPass());
+  passManager.addPass(createAMDAIEDmaBdChainPass());
   passManager.addPass(createAMDAIEControlCodeToTransactionPass());
 
   addAMDAIEToAIEPasses(passManager, insertLoopAroundCoreBlock);

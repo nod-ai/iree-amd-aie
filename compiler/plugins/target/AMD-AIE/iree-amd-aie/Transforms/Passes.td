@@ -220,6 +220,11 @@ def AMDAIEDistributeL1Allocations :
   let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEDistributeL1AllocationsPass()";
 }
 
+def AMDAIEDmaBdChain :
+    Pass<"iree-amdaie-dma-bd-chain"> {
+  let summary = "Chain the DMA BDs to reduce the number of DMA wait.";
+  let constructor = "mlir::iree_compiler::AMDAIE::createAMDAIEDmaBdChainPass()";
+}
 
 def AMDAIEDmaComposition :
   Pass<"iree-amdaie-dma-composition"> {

@@ -16,6 +16,11 @@ using namespace llvm;
 
 namespace mlir::iree_compiler::AMDAIE {
 
+enum class BdIdAssignmentMode {
+  Incremental,  // Prioritize incremental assignment
+  Smallest      // Choose the smallest unused id
+};
+
 /// Utility to generate valid buffer descriptor (BD) ids for channels. Keeps
 /// state on assigned BD ids to avoid reuse.
 class ChannelBdIdGenerator {
@@ -28,11 +33,15 @@ class ChannelBdIdGenerator {
       DenseMap<uint32_t, SmallVector<uint32_t>> &&channelToValidBdIds)
       : channelToValidBdIds(std::move(channelToValidBdIds)) {}
 
-  void assignBdId(uint32_t bdId) { assignedBdIds.insert(bdId); }
+  void assignBdId(uint32_t bdId) {
+    assignedBdIds.insert(bdId);
+    lastUsedBdId = bdId;
+  }
 
   /// Attempts to find and assign an unused BD id for the provided channel.
   /// Returns `std::nullopt` if no valid BD id could be found.
-  std::optional<uint32_t> getAndAssignBdId(uint32_t channel);
+  std::optional<uint32_t> getAndAssignBdId(
+      uint32_t channel, BdIdAssignmentMode mode = BdIdAssignmentMode::Smallest);
 
   /// Check whether the provided BD id is currently assigned.
   bool isBdIdAssigned(uint32_t bdId) const { return assignedBdIds.count(bdId); }
@@ -41,11 +50,21 @@ class ChannelBdIdGenerator {
   /// reused.
   void releaseBdId(uint32_t bdId) { assignedBdIds.erase(bdId); }
 
+  // Resets the last used index for Incremental mode
+  void resetLastUsedBdId(uint32_t channel, uint32_t reservedNum) {
+    size_t maxBdId = channelToValidBdIds[channel].size() - 1;
+    if (lastUsedBdId + reservedNum > maxBdId) {
+      lastUsedBdId = std::numeric_limits<uint32_t>::max();
+    }
+  }
+
  private:
   // Maps channel indices to vectors of valid BD ids.
   DenseMap<uint32_t, SmallVector<uint32_t>> channelToValidBdIds;
   // Set with all BD ids that are currently assigned.
   DenseSet<uint32_t> assignedBdIds;
+  // Tracks the last used index for Incremental mode
+  uint32_t lastUsedBdId = std::numeric_limits<uint32_t>::max();
 };
 
 }  // namespace mlir::iree_compiler::AMDAIE

@@ -156,6 +156,9 @@ std::unique_ptr<Pass> createAMDAIEDistributeCoresAndObjectFifosPass();
 /// memory
 std::unique_ptr<Pass> createAMDAIEDistributeL1AllocationsPass();
 
+/// Create pass to chain DMA BDs and reduce the number of DMA waits.
+std::unique_ptr<Pass> createAMDAIEDmaBdChainPass();
+
 /// Create a pass to compose more complex DMA operations, e.g. by combining DMA
 /// operations and/or subsuming loop iterations into the strided access
 /// patterns.

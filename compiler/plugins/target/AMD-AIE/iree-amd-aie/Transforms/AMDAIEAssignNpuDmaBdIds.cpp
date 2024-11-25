@@ -58,6 +58,13 @@ LogicalResult assignNpuDmaBdIds(AMDAIE::WorkgroupOp workgroupOp) {
     return success();
   };
 
+  // TODO(jornt): Temporarily use channel 0 for all DMAs. This should
+  // return correct results for Shim channels, however, for generality
+  // towards other DMAs and future hardware generations, channel
+  // assignment should happen before BD assignemnt. This requires more
+  // refactoring.
+  const uint32_t channel = 0;
+
   // Walk `amdaie.npu_dma_cpy_nd` and  `amdaie.dma_wait` operations and assign
   // and release BD IDs when encountering the respective operations using the
   // tile BD ID generators initialized earlier.
@@ -78,12 +85,8 @@ LogicalResult assignNpuDmaBdIds(AMDAIE::WorkgroupOp workgroupOp) {
           return WalkResult::interrupt();
         ChannelBdIdGenerator &generator =
             shimTileToGeneratorMap[tileOp.getResult()];
-        // TODO(jornt): Temporarily use channel 0 for all DMAs. This should
-        // return correct results for Shim channels, however, for generality
-        // towards other DMAs and future hardware generations, channel
-        // assignment should happen before BD assignemnt. This requires more
-        // refactoring.
-        std::optional<uint32_t> bdId = generator.getAndAssignBdId(0);
+        std::optional<uint32_t> bdId = generator.getAndAssignBdId(
+            channel, BdIdAssignmentMode::Incremental);
         rewriter.setInsertionPointAfter(tileOp);
         auto bdIdOp = rewriter.create<AMDAIE::BdIdOp>(rewriter.getUnknownLoc(),
                                                       tileOp, bdId.value());
@@ -111,12 +114,8 @@ LogicalResult assignNpuDmaBdIds(AMDAIE::WorkgroupOp workgroupOp) {
           return WalkResult::interrupt();
         ChannelBdIdGenerator &generator =
             shimTileToGeneratorMap[tileOp.getResult()];
-        // TODO(jornt): Temporarily use channel 0 for all DMAs. This should
-        // return correct results for Shim channels, however, for generality
-        // towards other DMAs and future hardware generations, channel
-        // assignment should happen before BD assignemnt. This requires more
-        // refactoring.
-        std::optional<uint32_t> bdId = generator.getAndAssignBdId(0);
+        std::optional<uint32_t> bdId = generator.getAndAssignBdId(
+            channel, BdIdAssignmentMode::Incremental);
         rewriter.setInsertionPointAfter(tileOp);
         auto bdIdOp = rewriter.create<AMDAIE::BdIdOp>(rewriter.getUnknownLoc(),
                                                       tileOp, bdId.value());
@@ -160,6 +159,24 @@ LogicalResult assignNpuDmaBdIds(AMDAIE::WorkgroupOp workgroupOp) {
             shimTileToGeneratorMap[tileOp.getResult()];
         uint32_t value = bdIdOp.getValue();
         generator.releaseBdId(value);
+        // TODO(zhewen): This is a temporary solution to make any BD ID wrap
+        // occurs only after the NpuDmaWaitOps
+        //
+        // Not allowed (wrap occurs before NpuDmaWaitOps):
+        //     NpuDmaCpyNdOps (id=15),
+        //     NpuDmaCpyNdOps (id=0),  // Wrap happens here
+        //     NpuDmaWaitOps,
+        //     NpuDmaCpyNdOps (id=1),
+        //
+        // Allowed (wrap occurs after NpuDmaWaitOps):
+        //     NpuDmaCpyNdOps (id=14),
+        //     NpuDmaCpyNdOps (id=15),
+        //     NpuDmaWaitOps,
+        //     NpuDmaCpyNdOps (id=0), // Wrap happens here
+        //
+        // Assume upto THREE NpuDmaCpyNdOps before any NpuDmaWaitOps
+        const uint32_t reservedNum = 3;
+        generator.resetLastUsedBdId(channel, reservedNum);
       }
       return WalkResult::advance();
     }
