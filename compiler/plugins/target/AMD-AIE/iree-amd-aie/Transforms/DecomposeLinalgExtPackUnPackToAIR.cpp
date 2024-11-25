@@ -241,10 +241,11 @@ FailureOr<LowerPackUnPackResult> lowerUnPack(
     auto tileShape = srcShape.drop_front(destRank);
     // Append the inner tile shape to the permuted and rank-reduced outer shape.
     readShape.append(tileShape.begin(), tileShape.end());
-    Type elemType = unPackOp.getInputType().getElementType();
-    Attribute memorySpace =
-        cast<MemRefType>(unPackOp.getInputType()).getMemorySpace();
-    auto readType = MemRefType::get(readShape, elemType, nullptr, memorySpace);
+    MemRefType inputType = cast<MemRefType>(unPackOp.getInputType());
+    auto readType =
+        cast<MemRefType>(memref::SubViewOp::inferRankReducedResultType(
+            readShape, inputType, readOffsets, readSizes, readStrides));
+
     tile = rewriter.create<memref::SubViewOp>(loc, readType, input, readOffsets,
                                               readSizes, readStrides);
     perm = getPackUnpackNormalizedPerm(readType.getRank(), innerDimsPos);
