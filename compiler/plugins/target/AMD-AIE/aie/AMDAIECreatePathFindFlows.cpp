@@ -194,7 +194,8 @@ LogicalResult runOnPacketFlow(
         Port destPort = {(pktDest.getBundle()), pktDest.getChannel()};
         TileLoc destCoord = {destTile.getCol(), destTile.getRow()};
         if (pktFlowOp->hasAttr("keep_pkt_header"))
-          keepPktHeaderAttr[PhysPort{destCoord, destPort}] =
+          keepPktHeaderAttr[PhysPort{destCoord, destPort,
+                                     PhysPort::Direction::DST}] =
               StringAttr::get(Op.getContext(), "true");
         assert(srcPort.bundle != StrmSwPortType::SS_PORT_TYPE_MAX &&
                srcPort.channel != -1 && "expected srcPort to have been set");
@@ -243,8 +244,10 @@ LogicalResult runOnPacketFlow(
   SmallVector<PhysPortAndID> slavePorts;
   for (const auto &[tileId, connects] : switchboxes) {
     for (const auto &[conn, flowID] : connects) {
-      PhysPortAndID sourceFlow = {PhysPort{tileId, conn.src}, flowID};
-      packetFlows[sourceFlow].insert({PhysPort{tileId, conn.dst}, flowID});
+      PhysPortAndID sourceFlow = {
+          PhysPort{tileId, conn.src, PhysPort::Direction::SRC}, flowID};
+      packetFlows[sourceFlow].insert(
+          {PhysPort{tileId, conn.dst, PhysPort::Direction::DST}, flowID});
       slavePorts.push_back(sourceFlow);
     }
   }
@@ -307,7 +310,7 @@ LogicalResult runOnPacketFlow(
     std::sort(tileMasters.begin(), tileMasters.end());
     for (Port tileMaster : tileMasters) {
       std::vector<std::pair<uint8_t, uint8_t>> amsels =
-          masterSets[{tileLoc, tileMaster}];
+          masterSets[{tileLoc, tileMaster, PhysPort::Direction::DST}];
       std::vector<Value> amselVals;
       for (std::pair<uint8_t, uint8_t> amsel : amsels) {
         assert(amselOps.count(amsel) == 1 && "expected amsel in amselOps");
@@ -316,7 +319,8 @@ LogicalResult runOnPacketFlow(
       auto msOp = builder.create<MasterSetOp>(
           builder.getUnknownLoc(), builder.getIndexType(), (tileMaster.bundle),
           tileMaster.channel, amselVals);
-      if (auto pktFlowAttrs = keepPktHeaderAttr[{tileLoc, tileMaster}])
+      if (auto pktFlowAttrs = keepPktHeaderAttr[{tileLoc, tileMaster,
+                                                 PhysPort::Direction::DST}])
         msOp->setAttr("keep_pkt_header", pktFlowAttrs);
     }
 
