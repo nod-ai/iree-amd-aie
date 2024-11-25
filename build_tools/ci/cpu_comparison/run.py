@@ -102,15 +102,19 @@ class BaseTest(ABC):
         if config.target_device not in self.run_on_target:
             return False
 
+        # If use_chess=1, and config has not provided a valid
+        # path to vitis, then don't run the test. The asymettry between 
+        # logic for peano and chess is because we don't expect everyone 
+        # running this script to have chess (currently Windows CI for example
+        # does not). 
+        if self.use_chess and not config.vitis_dir:
+            return False
+
         # If use_chess=0, and config has not provided a valid
         # path to peano, then bail: a path to peano must be provided.
         if not self.use_chess and not config.peano_dir:
             raise RuntimeError("Peano path not provided, and use_chess=False")
 
-        # If use_chess=1, and config has not provided a valid
-        # path to vitis, then bail: a path to vitis must be provided.
-        if self.use_chess and not config.vitis_dir:
-            raise RuntimeError("Vitis path not provided, and use_chess=True")
 
         # Call into test-specific code to run the test.
         return self._execute(config)
