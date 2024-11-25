@@ -486,7 +486,8 @@ std::optional<std::map<PathEndPoint, SwitchSettings>> Router::findPaths(
           auto curr = endPoint;
           // trace backwards until a vertex already processed is reached
           while (!processed.count(curr)) {
-            auto &sb = impl->graph[std::make_pair(preds[curr].tileLoc, curr.tileLoc)];
+            auto &sb =
+                impl->graph[std::make_pair(preds[curr].tileLoc, curr.tileLoc)];
             size_t i =
                 std::distance(sb.srcPorts.begin(),
                               std::find(sb.srcPorts.begin(), sb.srcPorts.end(),
@@ -870,7 +871,8 @@ FailureOr<std::tuple<MasterSetsT, SlaveAMSelsT>> emitPacketRoutingConfiguration(
   MasterSetsT mastersets;
   for (const auto &[physPort, ports] : masterAMSels) {
     for (Port port : ports) {
-      mastersets[PhysPort{physPort.first, port}].push_back(physPort.second);
+      mastersets[PhysPort{physPort.first, port, PhysPort::Direction::DST}]
+          .push_back(physPort.second);
     }
   }
 
@@ -882,6 +884,14 @@ FailureOr<std::tuple<MasterSetsT, SlaveAMSelsT>> emitPacketRoutingConfiguration(
 /// ============================= BEGIN ==================================
 /// ================== stringification utils =============================
 /// ======================================================================
+
+std::string to_string(const PhysPort::Direction &direction) {
+  switch (direction) {
+    STRINGIFY_ENUM_CASE(PhysPort::Direction::SRC)
+    STRINGIFY_ENUM_CASE(PhysPort::Direction::DST)
+  }
+  llvm::report_fatal_error("Unhandled PhysPortDirection case");
+}
 
 std::string to_string(const SwitchSetting &setting) {
   return "SwitchSetting(" +
@@ -913,7 +923,7 @@ std::string to_string(const SwitchSettings &settings) {
 STRINGIFY_2TUPLE_STRUCT(Port, bundle, channel)
 STRINGIFY_2TUPLE_STRUCT(Connect, src, dst)
 STRINGIFY_2TUPLE_STRUCT(PathEndPoint, tileLoc, port)
-STRINGIFY_2TUPLE_STRUCT(PhysPort, tileLoc, port)
+STRINGIFY_3TUPLE_STRUCT(PhysPort, tileLoc, port, direction)
 STRINGIFY_2TUPLE_STRUCT(PhysPortAndID, physPort, id)
 
 BOTH_OSTREAM_OPS_FORALL_ROUTER_TYPES(OSTREAM_OP_DEFN, BOTH_OSTREAM_OP)

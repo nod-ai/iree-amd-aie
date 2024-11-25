@@ -23,7 +23,8 @@ struct Port {
 
   // mlir-air legacy
   Port() : bundle(), channel() {}
-  Port(StrmSwPortType b, int c) : bundle(b), channel(c) {}
+  Port(StrmSwPortType b, int c)
+      : bundle(b), channel(c) {}
   typedef std::tuple<StrmSwPortType, int> TupleType;
   Port(TupleType t) : Port(std::get<0>(t), std::get<1>(t)) {}
   operator TupleType() const { return {bundle, channel}; }
@@ -109,12 +110,16 @@ bool existsPathToDest(const SwitchSettings &settings, TileLoc currTile,
                       int finalDestChannel);
 
 struct PhysPort {
+  enum Direction { SRC, DST };
   TileLoc tileLoc;
   Port port;
-  PhysPort(TileLoc t, Port p) : tileLoc(t), port(p) {}
-  using TupleType = std::tuple<TileLoc, Port>;
-  PhysPort(TupleType t) : PhysPort(std::get<0>(t), std::get<1>(t)) {}
-  operator TupleType() const { return {tileLoc, port}; }
+  Direction direction;
+  PhysPort(TileLoc t, Port p, Direction direction)
+      : tileLoc(t), port(p), direction(direction) {}
+  using TupleType = std::tuple<TileLoc, Port, Direction>;
+  PhysPort(TupleType t)
+      : PhysPort(std::get<0>(t), std::get<1>(t), std::get<2>(t)) {}
+  operator TupleType() const { return {tileLoc, port, direction}; }
   TUPLE_LIKE_STRUCT_RELATIONAL_OPS(PhysPort)
 };
 
@@ -166,7 +171,9 @@ TO_STRINGS(TO_STRING_DECL)
   _(OSTREAM_OP_, mlir::iree_compiler::AMDAIE::Port)          \
   _(OSTREAM_OP_, mlir::iree_compiler::AMDAIE::SwitchSetting) \
   _(OSTREAM_OP_, mlir::iree_compiler::AMDAIE::PhysPort)      \
-  _(OSTREAM_OP_, mlir::iree_compiler::AMDAIE::PhysPortAndID)
+  _(OSTREAM_OP_, mlir::iree_compiler::AMDAIE::PhysPortAndID) \
+  _(OSTREAM_OP_, mlir::iree_compiler::AMDAIE::PhysPort::Direction)
+
 
 BOTH_OSTREAM_OPS_FORALL_ROUTER_TYPES(OSTREAM_OP_DECL, BOTH_OSTREAM_OP)
 
