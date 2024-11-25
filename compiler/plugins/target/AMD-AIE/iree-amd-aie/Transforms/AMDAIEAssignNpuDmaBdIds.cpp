@@ -175,6 +175,9 @@ LogicalResult assignNpuDmaBdIds(AMDAIE::WorkgroupOp workgroupOp) {
         //     NpuDmaCpyNdOps (id=0), // Wrap happens here
         uint32_t countNpuDmaCpyNdOp = 0;
         auto nextOp = npuWaitOp->getNextNode();
+        while (nextOp && dyn_cast<AMDAIE::NpuDmaWaitOp>(nextOp)) {
+          nextOp = nextOp->getNextNode();
+        }
         // Local counter for NpuDmaCpyNdOp encountered after the current
         // NpuDmaWaitOp, but before the next NpuDmaWaitOp.
         while (nextOp && !dyn_cast<AMDAIE::NpuDmaWaitOp>(nextOp)) {

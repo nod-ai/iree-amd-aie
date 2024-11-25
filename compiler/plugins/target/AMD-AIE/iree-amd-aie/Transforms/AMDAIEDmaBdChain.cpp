@@ -26,24 +26,29 @@ LogicalResult dmaBdChain(AMDAIE::WorkgroupOp workgroupOp) {
   bool enablePacket = false;
   uint32_t argIdx = 0;
   uint32_t col = 0;
+  uint32_t repeatCount = 1;
 
   // Walk the operations in the reverse order to build the chain
   AMDAIE::ControlCodeOp controlCodeOp = workgroupOp.getControlCode();
   WalkResult res = controlCodeOp->walk<WalkOrder::PostOrder, ReverseIterator>(
       [&](Operation *op) {
-        if (auto npuAddressPatchOp = dyn_cast<AMDAIE::NpuAddressPatchOp>(op)) {
+        if (auto npuPushToQueueOp = dyn_cast<AMDAIE::NpuPushToQueueOp>(op)) {
+          // repeat count > 1, do not chain BDs
+          repeatCount = npuPushToQueueOp.getRepeatCount();
+        } else if (auto npuAddressPatchOp =
+                       dyn_cast<AMDAIE::NpuAddressPatchOp>(op)) {
           argIdx = npuAddressPatchOp.getArgIdx();
+          col = npuAddressPatchOp.getCol();
         } else if (auto writeBdOp = dyn_cast<AMDAIE::NpuWriteBdOp>(op)) {
+          // packet mode is enabled, do not chain BDs
           enablePacket |= writeBdOp.getEnablePacket();
-          if (enablePacket) {
-            // packet mode is enabled, do not chain BDs
+          if (enablePacket || repeatCount > 1) {
             return WalkResult::advance();
           }
-          col = writeBdOp.getCol();
           if (colArgIdxToNextBdId.contains({col, argIdx})) {
             uint32_t nextBdId = colArgIdxToNextBdId[{col, argIdx}];
             uint32_t currBdId = writeBdOp.getBdId();
-            if (nextBdId > currBdId) {
+            if (nextBdId == currBdId + 1) {
               // chain the current BD to the next BD
               writeBdOp.setNextBd(nextBdId);
               writeBdOp.setUseNextBd(true);
