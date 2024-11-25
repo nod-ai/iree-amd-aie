@@ -211,6 +211,10 @@ replace_string_in_file(
   ${IREE_MLIR_AIR_SOURCE_DIR}/lib/Conversion/AIRToAIEPass.cpp
   "device.getTargetModel().hasProperty(AIE::AIETargetModel::IsNPU)"
   "true")
+replace_string_in_file(
+  ${IREE_MLIR_AIR_SOURCE_DIR}/lib/Conversion/AIRToAIEPass.cpp
+  "AIE::getTargetModel(*device)"
+  "getDeviceModel(*device)")
   
 replace_string_in_file(
   ${IREE_MLIR_AIR_SOURCE_DIR}/lib/Conversion/AIRToAIESchedulingUtils.cpp
