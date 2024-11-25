@@ -176,8 +176,9 @@ class BaseMatmul(BaseTest):
             self.labels.append("UKernel")
 
     def vs_cpu(self, config, filename):
-        if self.use_ukernel and not config.vitis_dir:
-            return False
+        if not config.do_not_run_aie:
+            if self.use_ukernel and not config.vitis_dir:
+                return False
 
         aie_vs_llvm_cpu(
             config=config,
@@ -1101,14 +1102,20 @@ class Tests:
         )
 
         # Some bf16 Performance tests:
-        for M, N, K, use_ukernel in [
-            (512, 512, 4096, False),
+        for M, N, K, add_outlining in [
             (512, 512, 4096, True),
-            (512, 4096, 512, False),
+            (512, 512, 4096, False),
             (512, 4096, 512, True),
-            (4096, 512, 512, False),
+            (512, 4096, 512, False),
             (4096, 512, 512, True),
+            (4096, 512, 512, False),
         ]:
+            suffix = ""
+            additional_flags = []
+            if add_outlining:
+                suffix = "outlining"
+                additional_flags = ["--iree-amdaie-enable-function-outlining"]
+
             self.register(
                 VanillaMatmul(
                     M,
@@ -1116,9 +1123,11 @@ class Tests:
                     K,
                     "bf16",
                     "f32",
+                    aie_compilation_flags=additional_flags,
+                    name_suffix=suffix,
                     additional_labels=["Performance"],
-                    use_ukernel=use_ukernel,
-                    n_repeats=2,
+                    use_ukernel=False,
+                    n_repeats=3,
                 )
             )
 
