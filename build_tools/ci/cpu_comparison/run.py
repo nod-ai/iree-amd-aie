@@ -1050,12 +1050,11 @@ class Tests:
         )
 
         # BatchMatmul test(s):
-        # Disable because of failure on 4x4 AIE array
-        # for input_type, acc_type in zip(["i32", "bf16"], ["i32", "f32"]):
-        #     # Batch size = 1:
-        #     self.register(BatchMatmul(1, 128, 128, 256, input_type, acc_type))
-        #     # Batch size = 2:
-        #     self.register(BatchMatmul(2, 64, 64, 64, input_type, acc_type))
+        for input_type, acc_type in zip(["i32", "bf16"], ["i32", "f32"]):
+            # Batch size = 1:
+            self.register(BatchMatmul(1, 128, 128, 256, input_type, acc_type))
+            # Batch size = 2:
+            self.register(BatchMatmul(2, 64, 64, 64, input_type, acc_type))
 
         # MatmulThinBias test(s):
         self.register(MatmulThinBias(1024, 1024, 512, "bf16", "f32", use_ukernel=True))
