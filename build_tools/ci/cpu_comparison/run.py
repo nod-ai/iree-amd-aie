@@ -198,6 +198,8 @@ class BaseMatmul(BaseTest):
         tile_pipeline="pack-peel",
         n_repeats=1,
         use_chess=False,
+        function_name="matmul",
+        n_kernel_runs=1,
     ):
         """
         Base class for all variants of dispatches with a matmul, currently
@@ -211,6 +213,7 @@ class BaseMatmul(BaseTest):
         self.input_type = input_type
         self.acc_type = acc_type
         self.n_repeats = n_repeats
+        self.n_kernel_runs = n_kernel_runs
 
         self.tile_pipeline = tile_pipeline
         if tile_pipeline == "pack-peel":
@@ -227,6 +230,7 @@ class BaseMatmul(BaseTest):
         self.use_ukernel = use_ukernel
         if use_ukernel:
             self.labels.append("UKernel")
+        self.function_name = function_name
 
     def vs_cpu(self, config, filename):
         if self.use_ukernel and not config.vitis_dir:
@@ -242,6 +246,22 @@ class BaseMatmul(BaseTest):
             n_repeats=self.n_repeats,
         )
 
+        return True
+
+    def benchmark(self, config, filename):
+        if self.use_ukernel and not config.vitis_dir:
+            return False
+        benchmark_aie(
+            config=config,
+            aie_compilation_flags=self.aie_compilation_flags,
+            test_file=filename,
+            use_ukernel=self.use_ukernel,
+            tile_pipeline=self.tile_pipeline,
+            lower_to_aie_pipeline=self.lower_to_aie_pipeline,
+            function_name=self.function_name,
+            n_repeats=self.n_repeats,
+            n_kernel_runs=self.n_kernel_runs,
+        )
         return True
 
     def generate(self, filename, template_name):
@@ -339,6 +359,64 @@ class Matmul(BaseMatmul):
         self.vs_cpu(config, self.filename)
 
         return True
+
+
+class MatmulBenchmark(BaseMatmul):
+    """
+    A test of the form matmul(A,B) where A:MxK, B:KxN
+    """
+
+    benchmark_compilation_flags = ["--iree-amdaie-enable-infinite-loop-around-core-block=true"]
+
+    def __init__(
+        self,
+        M,
+        N,
+        K,
+        input_type,
+        acc_type,
+        name_suffix="",
+        use_ukernel=False,
+        run_on_target=["npu1_4col"],
+        additional_labels=None,
+        aie_compilation_flags=None,
+        n_repeats=1,
+        n_kernel_runs=1,
+    ):
+        aie_compilation_flags = (
+            [] if aie_compilation_flags is None else aie_compilation_flags
+        )
+        aie_compilation_flags += MatmulBenchmark.benchmark_compilation_flags
+        super().__init__(
+            run_on_target=run_on_target,
+            aie_compilation_flags=aie_compilation_flags,
+            M=M,
+            N=N,
+            K=K,
+            input_type=input_type,
+            acc_type=acc_type,
+            tile_pipeline="pack-peel",
+            use_ukernel=use_ukernel,
+            n_repeats=n_repeats,
+            n_kernel_runs=n_kernel_runs,
+        )
+
+        self.name = f"vanilla_matmul_benchmark_{M}_{N}_{K}_{input_type}_{acc_type}"
+        if name_suffix:
+            self.name += f"_{name_suffix}"
+        if use_ukernel:
+            self.name += "_ukernel"
+        self.labels.append("MatmulBenchmark")
+        if additional_labels:
+            self.labels += additional_labels
+        self.use_ukernel = use_ukernel
+
+    def _execute(self, config):
+        self.filename = config.output_dir / f"{self.name}.mlir"
+        matmul_template_dir = config.file_dir / "matmul_template"
+        template_name = matmul_template_dir / "matmul_MxK_KxN.mlir"
+        self.generate(self.filename, template_name)
+        return self.benchmark(config, self.filename)
 
 
 class MatmulThinBias(BaseMatmul):
@@ -672,6 +750,39 @@ def generate_aie_output(config, aie_vmfb, input_args, function_name, name, outpu
     return np_from_binfile(aie_bin, output_type)
 
 
+def benchmark_aie_kernel_time(config, aie_vmfb, input_args, function_name, name, n_repeats, n_kernel_runs):
+    """
+    Benchmark a compiled AIE module's (aie_vmfb) kernel time, average over the specified number of runs.
+    """
+    aie_bin = config.output_dir / f"{name}_aie.bin"
+    run_args = [
+        config.iree_benchmark_exe,
+        f"--module={aie_vmfb}",
+        *input_args,
+        f"--device={config.device_hal}",
+        f"--benchmark_repetitions={n_repeats}",
+        f"--batch_size={n_kernel_runs}",
+        f"--xrt_lite_n_kernel_runs={n_kernel_runs}",
+    ]
+    if function_name:
+        run_args += [f"--function={function_name}"]
+    if config.xrt_lite_n_core_rows is not None:
+        run_args += [f"--xrt_lite_n_core_rows={config.xrt_lite_n_core_rows}"]
+    if config.xrt_lite_n_core_cols is not None:
+        run_args += [f"--xrt_lite_n_core_cols={config.xrt_lite_n_core_cols}"]
+
+    if config.reset_npu_between_runs:
+        shell_out(config.reset_npu_script, verbose=config.verbose)
+
+    start = time.monotonic_ns()
+    shell_out(run_args, config.output_dir, config.verbose)
+    run_time = time.monotonic_ns() - start
+
+    if config.verbose:
+        print(f"Time spent in running the model: {run_time // 1e6} [ms]")
+    return True
+
+
 def generate_llvm_cpu_output(
     config,
     name,
@@ -722,6 +833,7 @@ class TestConfig:
         xrt_dir,
         vitis_dir,
         file_dir,
+        iree_benchmark_exe,
         iree_compile_exe,
         iree_run_exe,
         verbose,
@@ -738,6 +850,7 @@ class TestConfig:
         self.xrt_dir = xrt_dir
         self.vitis_dir = vitis_dir
         self.file_dir = file_dir
+        self.iree_benchmark_exe = iree_benchmark_exe
         self.iree_compile_exe = iree_compile_exe
         self.iree_run_exe = iree_run_exe
         self.verbose = verbose
@@ -990,6 +1103,83 @@ def aie_vs_baseline(
             raise RuntimeError("Test failed, exiting.")
 
 
+def benchmark_aie(
+    config,
+    aie_compilation_flags,
+    test_file,
+    use_ukernel,
+    tile_pipeline,
+    lower_to_aie_pipeline,
+    function_name,
+    n_repeats,
+    n_kernel_runs,
+    seed=1,
+):
+    """
+    Arguments to the function are:
+    config:
+        TestConfig containing any state which is common to all tests
+    test_file:
+        The path to the test (.mlir) file
+    input_args:
+        a string of the form
+        "--input=3x40xf32=@<binary_file> --input=2x2xi32=@<binary_file>"
+    use_ukernel:
+        Whether to use micro-kernels when running on the AIE backend
+    tile_pipeline:
+        The tiling pipeline to use when compiling for the AIE backend
+    lower_to_aie_pipeline:
+        The pipeline to be used for lowering to AIE (objectFifo, AIR).
+    n_repeats:
+        The number of repetitions to be used for getting statistics (mean, median, stddev) 
+    n_kernel_runs:
+        The number of invocations of the kernel, for averaging.
+    function_name:
+        The name of the function to run (the test file may contain multiple
+        functions).
+    seed:
+        The seed to be used for generating the inputs.
+    """
+    if (
+        "--iree-amdaie-enable-infinite-loop-around-core-block=true" 
+        not in aie_compilation_flags
+    ):
+        raise ValueError("To benchmark an AIE kernel module, the " \
+            "`--iree-amdaie-enable-infinite-loop-around-core-block=true` " \
+            "should be passed.")
+
+    name = name_from_mlir_filename(test_file)
+    input_args = generate_inputs(test_file, config.output_dir, seed)
+
+    aie_vmfb = generate_aie_vmfb(
+        config,
+        aie_compilation_flags,
+        name,
+        tile_pipeline,
+        lower_to_aie_pipeline,
+        use_ukernel,
+        test_file,
+        input_args,
+        function_name,
+    )
+
+    if config.do_not_run_aie:
+        if config.verbose:
+            print(f"Skipping AIE run for {test_file} because 'do_not_run_aie=True'.")
+        return
+    
+    print(f"Performance benchmark: {test_file}")
+    benchmark_aie_kernel_time(
+        config,
+        aie_vmfb,
+        input_args,
+        function_name,
+        name,
+        n_repeats,
+        n_kernel_runs,
+    )
+
+
 def aie_vs_llvm_cpu(
     config,
     aie_compilation_flags,
@@ -1160,6 +1350,8 @@ class Tests:
             )
         )
 
+        
+
         # Some bf16 Performance tests:
         for M, N, K, use_ukernel in [
             (512, 512, 4096, False),
@@ -1176,9 +1368,21 @@ class Tests:
                     K,
                     "bf16",
                     "f32",
-                    additional_labels=["Performance"],
                     use_ukernel=use_ukernel,
                     n_repeats=2,
+                )
+            )
+            self.register(
+                MatmulBenchmark(
+                    M,
+                    N,
+                    K,
+                    "bf16",
+                    "f32",
+                    additional_labels=["Performance"],
+                    use_ukernel=use_ukernel,
+                    n_repeats=5,
+                    n_kernel_runs=100,
                 )
             )
 
@@ -1297,6 +1501,7 @@ def all_tests(
     reset_npu_between_runs,
     do_not_run_aie,
     test_set,
+    skip_test_set,
     device_hal,
     xrt_lite_n_core_rows,
     xrt_lite_n_core_cols,
@@ -1324,6 +1529,7 @@ def all_tests(
         output_dir.mkdir()
     if not iree_dir.exists():
         raise RuntimeError(f"'{iree_dir}' is not a directory.")
+    iree_benchmark_exe = find_executable(iree_dir, "iree-benchmark-module")
     iree_compile_exe = find_executable(iree_dir, "iree-compile")
     iree_run_exe = find_executable(iree_dir, "iree-run-module")
     file_dir = Path(os.path.dirname(os.path.abspath(__file__)))
@@ -1335,6 +1541,7 @@ def all_tests(
         xrt_dir,
         vitis_dir,
         file_dir,
+        iree_benchmark_exe,
         iree_compile_exe,
         iree_run_exe,
         verbose,
@@ -1363,6 +1570,14 @@ def all_tests(
     not_match = []
 
     for test in tests.tests:
+
+        skip = (
+            test.name in skip_test_set or
+            any((label in skip_test_set for label in test.labels))
+        )
+        if skip:
+            not_match.append(test.name)
+            continue
 
         # Determine if the test is a match for the test_set provided by caller
         # match = "All" in test_set
@@ -1503,8 +1718,13 @@ if __name__ == "__main__":
     label_string = ", ".join(labels)
     name_string = ", ".join(names)
 
-    help_string = (
+    tests_help_string = (
         "A comma-separated list of test names or sets to run. Available test sets: "
+        + f"{label_string}"
+        + f". Available individual tests: {name_string}. "
+    )
+    skip_tests_help_string = (
+        "A comma-separated list of test names or sets to skip. Available test sets: "
         + f"{label_string}"
         + f". Available individual tests: {name_string}. "
     )
@@ -1512,8 +1732,15 @@ if __name__ == "__main__":
     parser.add_argument(
         "--tests",
         type=str,
-        help=help_string,
+        help=tests_help_string,
         default="All",
+    )
+
+    parser.add_argument(
+        "--skip_tests",
+        type=str,
+        help=skip_tests_help_string,
+        default="",
     )
 
     parser.add_argument(
@@ -1530,6 +1757,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     test_set_list = args.tests.split(",")
+    skip_test_list = args.skip_tests.split(",")
 
     if args.target_device not in current_devices:
         raise ValueError(
@@ -1554,6 +1782,7 @@ if __name__ == "__main__":
         args.reset_npu_between_runs,
         args.do_not_run_aie,
         test_set_list,
+        skip_test_list,
         args.device_hal,
         args.xrt_lite_n_core_rows,
         args.xrt_lite_n_core_cols,
