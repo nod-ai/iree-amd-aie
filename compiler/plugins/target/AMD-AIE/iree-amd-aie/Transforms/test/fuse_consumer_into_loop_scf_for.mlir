@@ -1,4 +1,4 @@
-// RUN: iree-opt --split-input-file --pass-pipeline='builtin.module(func.func(iree-amdaie-fuse-consumer-into-loop{use-scf-for=true}))' --verify-diagnostics %s | FileCheck %s
+// RUN: iree-opt --split-input-file --pass-pipeline='builtin.module(func.func(iree-amdaie-fuse-consumer-into-loop{use-scf-for=true},cse))' --verify-diagnostics %s | FileCheck %s
 
 #map = affine_map<(d0, d1, d2, d3, d4, d5, d6, d7, d8) -> (d0, d2, d5, d3, d6, d8)>
 #map1 = affine_map<(d0, d1, d2, d3, d4, d5, d6, d7, d8) -> (d2, d1, d4, d5, d8, d7)>
@@ -48,8 +48,10 @@ module {
     return %0 : tensor<1024x1024xi32>
   }
 }
-//      CHECK: #[[UNPACK_RESULT_MAP0:.*]] = affine_map<(d0) -> (d0 * 4)>
-//      CHECK: #[[UNPACK_RESULT_MAP1:.*]] = affine_map<(d0) -> (d0 * 8)>
+//  CHECK-DAG: #[[UNPACK_RESULT_MAP0:.*]] = affine_map<(d0) -> (d0 * 4)>
+//  CHECK-DAG: #[[UNPACK_RESULT_MAP1:.*]] = affine_map<(d0) -> (d0 * 8)>
+//  CHECK-DAG: #[[EXTRACT_SLICE_MAP0:.*]] = affine_map<(d0) -> (32, d0 * -4 + 64)>
+//  CHECK-DAG: #[[EXTRACT_SLICE_MAP1:.*]] = affine_map<(d0) -> (32, d0 * -8 + 64)>
 //      CHECK:   %[[FINAL:.*]] = scf.forall
 // CHECK-SAME:                         shared_outs(%[[ITER_ARG_FINAL:.*]] = %{{.*}})
 //      CHECK:   {
@@ -62,13 +64,13 @@ module {
 //      CHECK:       %[[SECOND_LOOP:.*]]:2 = scf.for %[[IV0:.*]] = %{{.*}} to %{{.*}} step %{{.*}} iter_args(%[[ITER_ARG_1:.*]] = %[[FIRST_LOOP]], %[[ITER_ARG_3:.*]] = %[[UNPACK_OUT]])
 //      CHECK:       {
 //      CHECK:            %[[MATMUL:.*]] = linalg.generic
-//      CHECK:            affine.apply
-//      CHECK:            affine.apply
-//      CHECK:            %[[iv0:.*]] = affine.apply #[[UNPACK_RESULT_MAP0]](%[[IV0]])
-//      CHECK:            %[[iv1:.*]] = affine.apply #[[UNPACK_RESULT_MAP1]](%[[IV0]])
-//      CHECK:            %[[TILED_UNPACK_DEST:.*]] = tensor.extract_slice %[[ITER_ARG_3]][0, 0, %[[iv0]], %[[iv1]]] [1, 1, 32, 32] [1, 1, 1, 1]
-//      CHECK:            %[[TILED_UNPACK:.*]] = tensor.unpack %[[MATMUL]] outer_dims_perm = [0, 1, 3, 2] inner_dims_pos = [2, 3] inner_tiles = [4, 8] into %[[TILED_UNPACK_DEST]]
 //      CHECK:            %[[YIELD_MATMUL:.*]] = tensor.insert_slice %[[MATMUL]] into %[[ITER_ARG_1]]
+//  CHECK-DAG:            %[[iv0:.*]] = affine.apply #[[UNPACK_RESULT_MAP0]](%[[IV0]])
+//  CHECK-DAG:            %[[iv1:.*]] = affine.apply #[[UNPACK_RESULT_MAP1]](%[[IV0]])
+//  CHECK-DAG:            %[[iv2:.*]] = affine.min #[[EXTRACT_SLICE_MAP0]](%[[IV0]])
+//  CHECK-DAG:            %[[iv3:.*]] = affine.min #[[EXTRACT_SLICE_MAP1]](%[[IV0]])
+//      CHECK:            %[[TILED_UNPACK_DEST:.*]] = tensor.extract_slice %[[ITER_ARG_3]][0, 0, %[[iv0]], %[[iv1]]] [1, 1, %[[iv2]], %[[iv3]]] [1, 1, 1, 1]
+//      CHECK:            %[[TILED_UNPACK:.*]] = tensor.unpack %[[MATMUL]] outer_dims_perm = [0, 1, 3, 2] inner_dims_pos = [2, 3] inner_tiles = [4, 8] into %[[TILED_UNPACK_DEST]]
 //      CHECK:            %[[YIELD_UNPACK:.*]] = tensor.insert_slice %[[TILED_UNPACK]] into %[[ITER_ARG_3]]
 //      CHECK:            scf.yield %[[YIELD_MATMUL]], %[[YIELD_UNPACK]]
 //      CHECK:       }
@@ -135,8 +137,10 @@ module {
     return %0 : tensor<1024x1024xi32>
   }
 }
-//      CHECK: #[[UNPACK_RESULT_MAP0:.*]] = affine_map<(d0) -> (d0 * 4)>
-//      CHECK: #[[UNPACK_RESULT_MAP1:.*]] = affine_map<(d0) -> (d0 * 8)>
+//  CHECK-DAG: #[[UNPACK_RESULT_MAP0:.*]] = affine_map<(d0) -> (d0 * 4)>
+//  CHECK-DAG: #[[UNPACK_RESULT_MAP1:.*]] = affine_map<(d0) -> (d0 * 8)>
+//  CHECK-DAG: #[[EXTRACT_SLICE_MAP0:.*]] = affine_map<(d0) -> (32, d0 * -4 + 64)>
+//  CHECK-DAG: #[[EXTRACT_SLICE_MAP1:.*]] = affine_map<(d0) -> (32, d0 * -8 + 64)>
 //      CHECK:   %[[FINAL:.*]] = scf.forall
 // CHECK-SAME:                         shared_outs(%[[ITER_ARG_FINAL:.*]] = %{{.*}})
 //      CHECK:   {
@@ -150,6 +154,7 @@ module {
 //      CHECK:       %[[SECOND_LOOP:.*]]:3 = scf.for %[[IV0:.*]] = %{{.*}} to %{{.*}} step %{{.*}} iter_args(%[[ITER_ARG_1:.*]] = %[[FIRST_LOOP]], %[[ITER_ARG_2:.*]] = %[[ELEM_OUT]], %[[ITER_ARG_3:.*]] = %[[UNPACK_OUT]])
 //      CHECK:       {
 //      CHECK:            %[[MATMUL:.*]] = linalg.generic
+//      CHECK:            %[[YIELD_MATMUL:.*]] = tensor.insert_slice %[[MATMUL]] into %[[ITER_ARG_1]]
 //      CHECK:            %[[OPERAND2:.*]] = tensor.extract_slice %[[ELEM_OUT]][0, 0, %[[IV0]], %[[IV0]], 0, 0] [1, 1, 4, 8, 4, 8] [1, 1, 1, 1, 1, 1]
 //      CHECK:            %[[OPERAND3:.*]] = tensor.extract_slice %[[ITER_ARG_2]][0, 0, %[[IV0]], %[[IV0]], 0, 0] [1, 1, 4, 8, 4, 8] [1, 1, 1, 1, 1, 1]
 //      CHECK:            %[[FUSED_CONSUMER:.*]] = linalg.generic
@@ -158,14 +163,13 @@ module {
 //      CHECK:                                    {
 //      CHECK:                                         arith.addi  
 //      CHECK:                                    }
-//      CHECK:            %[[YIELD_MATMUL:.*]] = tensor.insert_slice %[[MATMUL]] into %[[ITER_ARG_1]]
-//      CHECK:            affine.apply
-//      CHECK:            affine.apply
-//      CHECK:            %[[iv0:.*]] = affine.apply #[[UNPACK_RESULT_MAP0]](%[[IV0]])
-//      CHECK:            %[[iv1:.*]] = affine.apply #[[UNPACK_RESULT_MAP1]](%[[IV0]])
-//      CHECK:            %[[TILED_UNPACK_DEST:.*]] = tensor.extract_slice %[[ITER_ARG_3]][0, 0, %[[iv0]], %[[iv1]]] [1, 1, 32, 32] [1, 1, 1, 1]
-//      CHECK:            %[[TILED_UNPACK:.*]] = tensor.unpack %[[FUSED_CONSUMER]] outer_dims_perm = [0, 1, 3, 2] inner_dims_pos = [2, 3] inner_tiles = [4, 8] into %[[TILED_UNPACK_DEST]]
 //      CHECK:            %[[YIELD_ELEM:.*]] = tensor.insert_slice %[[FUSED_CONSUMER]] into %[[ITER_ARG_2]]
+//  CHECK-DAG:            %[[iv0:.*]] = affine.apply #[[UNPACK_RESULT_MAP0]](%[[IV0]])
+//  CHECK-DAG:            %[[iv1:.*]] = affine.apply #[[UNPACK_RESULT_MAP1]](%[[IV0]])
+//  CHECK-DAG:            %[[iv2:.*]] = affine.min #[[EXTRACT_SLICE_MAP0]](%[[IV0]])
+//  CHECK-DAG:            %[[iv3:.*]] = affine.min #[[EXTRACT_SLICE_MAP1]](%[[IV0]])
+//      CHECK:            %[[TILED_UNPACK_DEST:.*]] = tensor.extract_slice %[[ITER_ARG_3]][0, 0, %[[iv0]], %[[iv1]]] [1, 1, %[[iv2]], %[[iv3]]] [1, 1, 1, 1]
+//      CHECK:            %[[TILED_UNPACK:.*]] = tensor.unpack %[[FUSED_CONSUMER]] outer_dims_perm = [0, 1, 3, 2] inner_dims_pos = [2, 3] inner_tiles = [4, 8] into %[[TILED_UNPACK_DEST]]
 //      CHECK:            %[[YIELD_UNPACK:.*]] = tensor.insert_slice %[[TILED_UNPACK]] into %[[ITER_ARG_3]]
 //      CHECK:            scf.yield %[[YIELD_MATMUL]], %[[YIELD_ELEM]], %[[YIELD_UNPACK]]
 //      CHECK:       }
