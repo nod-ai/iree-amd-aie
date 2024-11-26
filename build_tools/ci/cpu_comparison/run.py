@@ -1027,13 +1027,13 @@ class Tests:
         # Matmul with truncf test(s):
         self.register(
             MatmulTruncf(
-                8,
-                8,
+                16,
+                16,
                 "bf16",
                 "f32",
-                101 * np.ones([8, 8]),
-                3 * np.eye(8),
-                302 * np.ones([8, 8]),
+                101 * np.ones([16, 16]),
+                3 * np.eye(16),
+                302 * np.ones([16, 16]),
             )
         )
 

@@ -307,8 +307,8 @@ extern "C" {
 
 #define matmul_vectorized_c_func(lhs_ctype_in, lhs_mlir_type_in,                                             \
                                  rhs_ctype_in, rhs_mlir_type_in,                                             \
-                                 acc_ctype_out, acc_mlir_type_out, M, K, N, r, s, t)                         \
-  void matmul_##lhs_mlir_type_in##_##rhs_mlir_type_in##_##acc_mlir_type_out##_##M##x##K##x##N##_##r##x##s##x##t( \
+                                 acc_ctype_out, acc_mlir_type_out, M, N, K, r, s, t)                         \
+  void matmul_##lhs_mlir_type_in##_##rhs_mlir_type_in##_##acc_mlir_type_out##_##M##x##N##x##K##_##r##x##s##x##t( \
       lhs_ctype_in *a_in, unsigned offsetA, rhs_ctype_in *b_in, unsigned offsetB,                            \
       acc_ctype_out *c_out, unsigned offsetC) {                                                              \
     matmul_vectorized_##r##x##s##x##t##_##lhs_mlir_type_in##_##rhs_mlir_type_in##_##acc_mlir_type_out<       \
@@ -320,9 +320,11 @@ extern "C" {
     zero_vectorized<ctype_out, M, N, r>(c_out, offsetC);                      \
   }
 
+matmul_combos(matmul_vectorized_c_func, 16, 16, 32)
 matmul_combos(matmul_vectorized_c_func, 32, 32, 32)
 matmul_combos(matmul_vectorized_c_func, 64, 64, 64)
 
+zero_fill_combos(zero_vectorized_c_func, 16, 16)
 zero_fill_combos(zero_vectorized_c_func, 32, 32)
 zero_fill_combos(zero_vectorized_c_func, 64, 64)
 
