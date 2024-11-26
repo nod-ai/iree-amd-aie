@@ -103,7 +103,7 @@ class BaseTest(ABC):
             return False
 
         # If use_chess=1, and config has not provided a valid
-        # path to vitis, then don't run the test. The asymettry between 
+        # path to vitis, then don't run the test. The asymmetry between 
         # logic for peano and chess is because we don't expect everyone 
         # running this script to have chess (currently Windows CI for example
         # does not). 
@@ -1182,6 +1182,7 @@ class Tests:
                 )
             )
 
+        # ukernel test for AIR pad-pack pipeline
         self.register(
             Matmul(
                 256,
@@ -1217,6 +1218,7 @@ class Tests:
                 )
             )
 
+        # chess test
         self.register(
             Matmul(
                 32,
@@ -1230,6 +1232,7 @@ class Tests:
             )
         )
 
+        # chess test with ukernel
         self.register(
             Matmul(
                 64,
