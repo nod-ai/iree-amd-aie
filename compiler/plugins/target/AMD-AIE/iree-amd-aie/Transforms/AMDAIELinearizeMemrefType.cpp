@@ -199,6 +199,13 @@ struct LinearizeMemrefAlloc : public OpRewritePattern<OpTy> {
   }
 };
 
+static Value linearizeOperand(Location loc, PatternRewriter &rewriter,
+                              Value operand, MemRefType linearizedType) {
+  return rewriter.create<memref::ReinterpretCastOp>(
+      loc, linearizedType, operand, 0, linearizedType.getShape(),
+      ArrayRef<int64_t>({1}));
+}
+
 struct LinearizeMemrefLoad
     : public OpRewritePattern<memref::LoadOp> {
   using OpRewritePattern<memref::LoadOp>::OpRewritePattern;
@@ -206,8 +213,7 @@ struct LinearizeMemrefLoad
   LogicalResult matchAndRewrite(memref::LoadOp loadOp,
                                 PatternRewriter &rewriter) const override {
     Location loc = loadOp->getLoc();
-    MemRefType currentTypeOfSourceMemref =
-        dyn_cast<MemRefType>(loadOp.getMemref().getType());
+    MemRefType currentTypeOfSourceMemref = loadOp.getMemRefType();
     MemRefType newTypeOfSourceMemref;
     if (failed(getLinearizedTypeFromSourceType(currentTypeOfSourceMemref,
                                                newTypeOfSourceMemref))) {
@@ -221,15 +227,226 @@ struct LinearizeMemrefLoad
     int srcBits = elementType.getIntOrFloatBitWidth();
     Value linearizedIndices = rewriter.create<affine::AffineLinearizeIndexOp>(
         loc, loadOp.getIndices(), currentTypeOfSourceMemref.getShape(), true);
-    auto reinterpretOp = rewriter.create<memref::ReinterpretCastOp>(
-        loc, newTypeOfSourceMemref, loadOp.getMemref(), 0,
-        newTypeOfSourceMemref.getShape(), ArrayRef<int64_t>({1}));
+    Value linearizedOperand = linearizeOperand(
+        loc, rewriter, loadOp.getMemref(), newTypeOfSourceMemref);
     Value linearizedLoad = rewriter.create<memref::LoadOp>(
-        loc, reinterpretOp,
+        loc, linearizedOperand,
         getIndicesForLoadOrStore(rewriter, loc, linearizedIndices, srcBits,
                                  srcBits));
 
     rewriter.replaceOp(loadOp, {linearizedLoad});
+    return success();
+  }
+};
+
+struct LinearizeMemrefStore : public OpRewritePattern<memref::StoreOp> {
+  using OpRewritePattern<memref::StoreOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(memref::StoreOp storeOp,
+                                PatternRewriter &rewriter) const override {
+    Location loc = storeOp->getLoc();
+    MemRefType currentTypeOfSourceMemref = storeOp.getMemRefType();
+    MemRefType newTypeOfSourceMemref;
+    if (failed(getLinearizedTypeFromSourceType(currentTypeOfSourceMemref,
+                                               newTypeOfSourceMemref))) {
+      return failure();
+    }
+    if (currentTypeOfSourceMemref.getRank() < 2 &&
+        storeOp.getIndices().size() < 2)
+      return success();
+
+    auto elementType = storeOp.getMemRefType().getElementType();
+    int srcBits = elementType.getIntOrFloatBitWidth();
+    Value linearizedIndices = rewriter.create<affine::AffineLinearizeIndexOp>(
+        loc, storeOp.getIndices(), currentTypeOfSourceMemref.getShape(), true);
+    Value linearizedOperand = linearizeOperand(
+        loc, rewriter, storeOp.getMemref(), newTypeOfSourceMemref);
+    rewriter.replaceOpWithNewOp<memref::StoreOp>(
+        storeOp, storeOp.getValueToStore(), linearizedOperand,
+        getIndicesForLoadOrStore(rewriter, loc, linearizedIndices, srcBits,
+                                 srcBits));
+
+    return success();
+  }
+};
+
+struct LinearizeMemrefDealloc : public OpRewritePattern<memref::DeallocOp> {
+  using OpRewritePattern<memref::DeallocOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(memref::DeallocOp deallocOp,
+                                PatternRewriter &rewriter) const override {
+    Location loc = deallocOp->getLoc();
+    MemRefType currentTypeOfSourceMemref =
+        dyn_cast<MemRefType>(deallocOp.getMemref().getType());
+    MemRefType newTypeOfSourceMemref;
+    if (failed(getLinearizedTypeFromSourceType(currentTypeOfSourceMemref,
+                                               newTypeOfSourceMemref))) {
+      return failure();
+    }
+    if (currentTypeOfSourceMemref.getRank() < 2) return success();
+
+    Value linearizedOperand = linearizeOperand(
+        loc, rewriter, deallocOp.getMemref(), newTypeOfSourceMemref);
+
+    rewriter.replaceOpWithNewOp<memref::DeallocOp>(deallocOp,
+                                                   linearizedOperand);
+    return success();
+  }
+};
+
+struct LinearizeMemrefCopy : public OpRewritePattern<memref::CopyOp> {
+  using OpRewritePattern<memref::CopyOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(memref::CopyOp copyOp,
+                                PatternRewriter &rewriter) const override {
+    Location loc = copyOp->getLoc();
+    MemRefType currentTypeOfSourceMemref =
+        dyn_cast<MemRefType>(copyOp.getSource().getType());
+    MemRefType currentTypeOfTargetMemref =
+        dyn_cast<MemRefType>(copyOp.getTarget().getType());
+    MemRefType newTypeOfSourceMemref;
+    if (failed(getLinearizedTypeFromSourceType(currentTypeOfSourceMemref,
+                                               newTypeOfSourceMemref))) {
+      return failure();
+    }
+    if (currentTypeOfSourceMemref.getRank() < 2 &&
+        currentTypeOfTargetMemref.getRank() < 2)
+      return success();
+
+    Value linearizedSource = linearizeOperand(loc, rewriter, copyOp.getSource(),
+                                              newTypeOfSourceMemref);
+    Value linearizedTarget = linearizeOperand(loc, rewriter, copyOp.getTarget(),
+                                              newTypeOfSourceMemref);
+
+    rewriter.replaceOpWithNewOp<memref::CopyOp>(copyOp, linearizedSource,
+                                                linearizedTarget);
+    return success();
+  }
+};
+
+// struct LinearizeMemrefSubview
+//     : public OpRewritePattern<memref::SubViewOp> {
+//   using OpRewritePattern<memref::SubViewOp>::OpRewritePattern;
+
+//   LogicalResult matchAndRewrite(memref::SubViewOp loadOp,
+//                                 PatternRewriter &rewriter) const override {
+//     Location loc = loadOp->getLoc();
+//     MemRefType currentTypeOfSourceMemref = loadOp.getSourceType();
+//     MemRefType newTypeOfSourceMemref;
+//     if (failed(getLinearizedTypeFromSourceType(currentTypeOfSourceMemref,
+//                                                newTypeOfSourceMemref))) {
+//       return failure();
+//     }
+//     if (currentTypeOfSourceMemref.getRank() < 2 &&
+//         loadOp.getIndices().size() < 2)
+//       return success();
+
+//     auto elementType = loadOp.getMemRefType().getElementType();
+//     int srcBits = elementType.getIntOrFloatBitWidth();
+//     Value linearizedIndices =
+//     rewriter.create<affine::AffineLinearizeIndexOp>(
+//         loc, loadOp.getIndices(), currentTypeOfSourceMemref.getShape(),
+//         true);
+//     Value linearizedOperand = linearizeOperand(loc, rewriter,
+//     loadOp.getMemref(), newTypeOfSourceMemref); Value linearizedLoad =
+//     rewriter.create<memref::LoadOp>(
+//         loc, linearizedOperand,
+//         getIndicesForLoadOrStore(rewriter, loc, linearizedIndices, srcBits,
+//                                  srcBits));
+
+//     rewriter.replaceOp(loadOp, {linearizedLoad});
+//     return success();
+//   }
+// };
+
+struct LinearizeMemrefCollapse final
+    : public OpRewritePattern<memref::CollapseShapeOp> {
+  using OpRewritePattern<memref::CollapseShapeOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(memref::CollapseShapeOp collapseShapeOp,
+                                PatternRewriter &rewriter) const override {
+    Location loc = collapseShapeOp->getLoc();
+    MemRefType currentTypeOfSourceMemref =
+        dyn_cast<MemRefType>(collapseShapeOp.getSrc().getType());
+    ArrayAttr reassociationAttr = collapseShapeOp.getReassociation();
+
+    if (reassociationAttr.size() != 1) return failure();
+    SmallVector<int64_t> integerArrayOfReassociation =
+        extractFromIntegerArrayAttr<int64_t>(reassociationAttr[0]);
+    if (!(std::is_sorted(integerArrayOfReassociation.begin(),
+                         integerArrayOfReassociation.end()) &&
+          integerArrayOfReassociation[0] == 0 &&
+          integerArrayOfReassociation[integerArrayOfReassociation.size() - 1] ==
+              integerArrayOfReassociation.size() - 1))
+      return failure();
+
+    MemRefType newTypeOfSourceMemref;
+    if (failed(getLinearizedTypeFromSourceType(currentTypeOfSourceMemref,
+                                               newTypeOfSourceMemref))) {
+      return failure();
+    }
+    if (currentTypeOfSourceMemref.getRank() < 2) return success();
+
+    Value linearizedOperand = linearizeOperand(
+        loc, rewriter, collapseShapeOp.getSrc(), newTypeOfSourceMemref);
+    rewriter.replaceOp(collapseShapeOp, linearizedOperand);
+
+    return success();
+  }
+};
+
+struct LinearizeVectorLoad : public OpRewritePattern<vector::LoadOp> {
+  using OpRewritePattern<vector::LoadOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(vector::LoadOp loadOp,
+                                PatternRewriter &rewriter) const override {
+    Location loc = loadOp->getLoc();
+    MemRefType currentTypeOfSourceMemref = loadOp.getMemRefType();
+    MemRefType newTypeOfSourceMemref;
+    if (failed(getLinearizedTypeFromSourceType(currentTypeOfSourceMemref,
+                                               newTypeOfSourceMemref))) {
+      return failure();
+    }
+    if (currentTypeOfSourceMemref.getRank() < 2 &&
+        loadOp.getIndices().size() < 2)
+      return success();
+
+    Value linearizedIndices = rewriter.create<affine::AffineLinearizeIndexOp>(
+        loc, loadOp.getIndices(), currentTypeOfSourceMemref.getShape(), true);
+    Value linearizedOperand = linearizeOperand(loc, rewriter, loadOp.getBase(),
+                                               newTypeOfSourceMemref);
+    Value linearizedLoad = rewriter.create<vector::LoadOp>(
+        loc, loadOp.getType(), linearizedOperand, linearizedIndices);
+
+    rewriter.replaceOp(loadOp, {linearizedLoad});
+    return success();
+  }
+};
+
+struct LinearizeVectorStore : public OpRewritePattern<vector::StoreOp> {
+  using OpRewritePattern<vector::StoreOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(vector::StoreOp storeOp,
+                                PatternRewriter &rewriter) const override {
+    Location loc = storeOp->getLoc();
+    MemRefType currentTypeOfSourceMemref = storeOp.getMemRefType();
+    MemRefType newTypeOfSourceMemref;
+    if (failed(getLinearizedTypeFromSourceType(currentTypeOfSourceMemref,
+                                               newTypeOfSourceMemref))) {
+      return failure();
+    }
+    if (currentTypeOfSourceMemref.getRank() < 2 &&
+        storeOp.getIndices().size() < 2)
+      return success();
+
+    Value linearizedIndices = rewriter.create<affine::AffineLinearizeIndexOp>(
+        loc, storeOp.getIndices(), currentTypeOfSourceMemref.getShape(), true);
+    Value linearizedOperand = linearizeOperand(loc, rewriter, storeOp.getBase(),
+                                               newTypeOfSourceMemref);
+    rewriter.replaceOpWithNewOp<vector::StoreOp>(
+        storeOp, storeOp.getValueToStore(), linearizedOperand,
+        linearizedIndices);
+
     return success();
   }
 };
@@ -255,6 +472,13 @@ void AMDAIELinearizeMemrefTypePass::runOnOperation() {
   patterns.add<LinearizeMemrefAlloc<memref::AllocOp>>(context);
   patterns.add<LinearizeMemrefAlloc<memref::AllocaOp>>(context);
   patterns.add<LinearizeMemrefLoad>(context);
+  patterns.add<LinearizeMemrefStore>(context);
+  patterns.add<LinearizeMemrefDealloc>(context);
+  patterns.add<LinearizeMemrefCopy>(context);
+  patterns.add<LinearizeMemrefCollapse>(context);
+  patterns.add<LinearizeVectorLoad>(context);
+  patterns.add<LinearizeVectorStore>(context);
+
   (void)applyPatternsAndFoldGreedily(moduleOp, std::move(patterns));
 
   return;
