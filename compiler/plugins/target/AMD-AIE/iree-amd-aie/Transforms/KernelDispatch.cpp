@@ -100,6 +100,7 @@ class ParameterSetting {
 
   static FailureOr<ParameterSetting> create(linalg::LinalgOp linalgOp,
                                             bool isPackPeel, bool isObjectFifo,
+                                            bool isMatmulElementwiseFusion,
                                             AMDAIEDevice targetDevice);
 
   uint32_t getM0() const { return M0; }
@@ -149,7 +150,7 @@ class ParameterSetting {
 
 FailureOr<ParameterSetting> ParameterSetting::create(
     linalg::LinalgOp linalgOp, bool isPackPeel, bool isObjectFifo,
-    AMDAIEDevice targetDevice) {
+    bool isMatmulElementwiseFusion, AMDAIEDevice targetDevice) {
   auto initType =
       llvm::cast<ShapedType>(linalgOp.getDpsInitOperand(0)->get().getType());
   ArrayRef<int64_t> initShape = initType.getShape();
@@ -216,7 +217,8 @@ FailureOr<ParameterSetting> ParameterSetting::create(
     // 3) develop a better way to select tile sizes to make the most use of
     // memory while taking all factors (double buffer, elementwise memory usage,
     // lhs/rhs element type, etc) into account.
-    uint32_t numRowsAndCols = isObjectFifo ? 4 : 2;
+    uint32_t numRowsAndCols =
+        isObjectFifo ? 4 : (isMatmulElementwiseFusion ? 2 : 4);
     auto maxL1Size = 16 * scaleFactor;
     uint32_t M1 = findLargestFactor(M / m1Pack, maxL1Size / m1Pack, m1Pack);
     uint32_t N1 = findLargestFactor(N / n1Pack, maxL1Size / n1Pack, n1Pack);
@@ -330,11 +332,12 @@ static SmallVector<int64_t> setInnerPermB(bool isMatmulTransposeB) {
 static LogicalResult setRootConfigForPackPeelPipeline(
     mlir::FunctionOpInterface entryPointFn, linalg::LinalgOp linalgOp,
     LowerToAIEPassPipeline useLowerToAIEPipeline, bool isMatmulTransposeB,
-    AMDAIEDevice targetDevice) {
+    bool isMatmulElementwiseFusion, AMDAIEDevice targetDevice) {
   bool isObjectFifo =
       useLowerToAIEPipeline == LowerToAIEPassPipeline::ObjectFifo;
-  auto maybePackPeelTiling = ParameterSetting::create(
-      linalgOp, /*isPackPeel=*/true, isObjectFifo, targetDevice);
+  auto maybePackPeelTiling =
+      ParameterSetting::create(linalgOp, /*isPackPeel=*/true, isObjectFifo,
+                               isMatmulElementwiseFusion, targetDevice);
   if (failed(maybePackPeelTiling)) return failure();
   auto packPeelTiling = maybePackPeelTiling.value();
 
@@ -432,7 +435,8 @@ static LogicalResult setRootConfigForPadPackPipeline(
     mlir::FunctionOpInterface entryPointFn, linalg::LinalgOp linalgOp,
     bool isMatmulTransposeB, AMDAIEDevice targetDevice) {
   auto maybePadPackTiling = ParameterSetting::create(
-      linalgOp, /*isPackPeel=*/false, /*isObjectFifo=*/false, targetDevice);
+      linalgOp, /*isPackPeel=*/false, /*isObjectFifo=*/false,
+      /*isMatmulElementwiseFusion*/ false, targetDevice);
   if (failed(maybePadPackTiling)) return failure();
   auto padPackTiling = maybePadPackTiling.value();
 
@@ -700,10 +704,11 @@ static bool isMatmulTransposeB(linalg::GenericOp genericOp) {
 static LogicalResult setTransposeLikeOpRootConfig(
     mlir::FunctionOpInterface entryPointFn, linalg::LinalgOp linalgOp,
     TilePassPipeline passPipeline, LowerToAIEPassPipeline useLowerToAIEPipeline,
-    AMDAIEDevice targetDevice) {
+    bool isMatmulElementwiseFusion, AMDAIEDevice targetDevice) {
   if (passPipeline == TilePassPipeline::PackPeelPipeline)
     return setRootConfigForPackPeelPipeline(
-        entryPointFn, linalgOp, useLowerToAIEPipeline, true, targetDevice);
+        entryPointFn, linalgOp, useLowerToAIEPipeline, true,
+        isMatmulElementwiseFusion, targetDevice);
   else if (passPipeline == TilePassPipeline::PadPackPipeline)
     return setRootConfigForPadPackPipeline(entryPointFn, linalgOp, true,
                                            targetDevice);
@@ -719,14 +724,15 @@ static LogicalResult setRootConfig(mlir::FunctionOpInterface entryPointFn,
                                    linalg::GenericOp genericOp,
                                    TilePassPipeline passPipeline,
                                    LowerToAIEPassPipeline useLowerToAIEPipeline,
+                                   bool isMatmulElementwiseFusion,
                                    AMDAIEDevice targetDevice) {
   assert(!getLoweringConfig<IREE::Codegen::LoweringConfigAttr>(genericOp) &&
          "expected lowering_config is not set");
 
   if (isMatmulTransposeB(genericOp) &&
-      succeeded(
-          setTransposeLikeOpRootConfig(entryPointFn, genericOp, passPipeline,
-                                       useLowerToAIEPipeline, targetDevice))) {
+      succeeded(setTransposeLikeOpRootConfig(
+          entryPointFn, genericOp, passPipeline, useLowerToAIEPipeline,
+          isMatmulElementwiseFusion, targetDevice))) {
     return success();
   }
 
@@ -739,6 +745,7 @@ static LogicalResult setRootConfig(mlir::FunctionOpInterface entryPointFn,
                                    linalg::ContractionOpInterface contractionOp,
                                    TilePassPipeline passPipeline,
                                    LowerToAIEPassPipeline useLowerToAIEPipeline,
+                                   bool isMatmulElementwiseFusion,
                                    AMDAIEDevice targetDevice) {
   assert(!getLoweringConfig<IREE::Codegen::LoweringConfigAttr>(contractionOp) &&
          "expected lowering_config is not set");
@@ -746,7 +753,7 @@ static LogicalResult setRootConfig(mlir::FunctionOpInterface entryPointFn,
   if (isa<linalg::MatmulTransposeBOp>(linalgOp)) {
     if (succeeded(setTransposeLikeOpRootConfig(
             entryPointFn, linalgOp, passPipeline, useLowerToAIEPipeline,
-            targetDevice))) {
+            isMatmulElementwiseFusion, targetDevice))) {
       return success();
     }
     return failure();
@@ -767,7 +774,8 @@ static LogicalResult setRootConfig(mlir::FunctionOpInterface entryPointFn,
   // approach which will have different tile sizes and pass pipelines
   if (passPipeline == TilePassPipeline::PackPeelPipeline)
     return setRootConfigForPackPeelPipeline(
-        entryPointFn, linalgOp, useLowerToAIEPipeline, false, targetDevice);
+        entryPointFn, linalgOp, useLowerToAIEPipeline, false,
+        isMatmulElementwiseFusion, targetDevice);
   if (passPipeline == TilePassPipeline::PadPackPipeline)
     return setRootConfigForPadPackPipeline(entryPointFn, linalgOp, false,
                                            targetDevice);
@@ -793,7 +801,7 @@ static LogicalResult setConvRootConfig(mlir::FunctionOpInterface entryPointFn,
 static LogicalResult setRootConfigImpl(
     mlir::FunctionOpInterface entryPointFn, Operation *op,
     TilePassPipeline passPipeline, LowerToAIEPassPipeline useLowerToAIEPipeline,
-    AMDAIEDevice targetDevice) {
+    bool isMatmulElementwiseFusion, AMDAIEDevice targetDevice) {
   auto setRootConfigFn = [&](Operation *op) -> LogicalResult {
     return TypeSwitch<Operation *, LogicalResult>(op)
         // TODO (nmeshram): This is very limited for now, plan is to
@@ -808,11 +816,13 @@ static LogicalResult setRootConfigImpl(
             })
         .Case<linalg::GenericOp>([&](auto op) {
           return setRootConfig(entryPointFn, op, passPipeline,
-                               useLowerToAIEPipeline, targetDevice);
+                               useLowerToAIEPipeline, isMatmulElementwiseFusion,
+                               targetDevice);
         })
         .Case<linalg::ContractionOpInterface>([&](auto op) {
           return setRootConfig(entryPointFn, op, passPipeline,
-                               useLowerToAIEPipeline, targetDevice);
+                               useLowerToAIEPipeline, isMatmulElementwiseFusion,
+                               targetDevice);
         })
         .Default([&](Operation *op) { return success(); });
   };
@@ -823,7 +833,7 @@ static LogicalResult setRootConfigImpl(
 static LogicalResult setTranslationInfoAndRootConfig(
     mlir::FunctionOpInterface entryPointFn, ArrayRef<Operation *> computeOps,
     TilePassPipeline passPipeline, LowerToAIEPassPipeline useLowerToAIEPipeline,
-    AMDAIEDevice targetDevice) {
+    bool isMatmulElementwiseFusion, AMDAIEDevice targetDevice) {
   // Make sure that lowering_config is not preset on any compute ops.
   for (auto computeOp : computeOps) {
     if (getLoweringConfig<IREE::Codegen::LoweringConfigAttr>(computeOp))
@@ -839,7 +849,8 @@ static LogicalResult setTranslationInfoAndRootConfig(
     return entryPointFn.emitError("Case with no root ops not yet supported.");
 
   if (failed(setRootConfigImpl(entryPointFn, rootOperation, passPipeline,
-                               useLowerToAIEPipeline, targetDevice)))
+                               useLowerToAIEPipeline, isMatmulElementwiseFusion,
+                               targetDevice)))
     return failure();
   return success();
 }
@@ -851,6 +862,7 @@ static LogicalResult setTranslationInfoAndRootConfig(
 LogicalResult initAIELaunchConfig(FunctionOpInterface funcOp,
                                   TilePassPipeline passPipeline,
                                   LowerToAIEPassPipeline useLowerToAIEPipeline,
+                                  bool isMatmulElementwiseFusion,
                                   AMDAIEDevice targetDevice) {
   if (getTranslationInfo(funcOp)) return success();
 
@@ -859,9 +871,9 @@ LogicalResult initAIELaunchConfig(FunctionOpInterface funcOp,
     return funcOp.emitError("Control flow not yet supported.");
 
   SmallVector<Operation *> computeOps = getComputeOps(funcOp);
-  if (failed(setTranslationInfoAndRootConfig(funcOp, computeOps, passPipeline,
-                                             useLowerToAIEPipeline,
-                                             targetDevice)))
+  if (failed(setTranslationInfoAndRootConfig(
+          funcOp, computeOps, passPipeline, useLowerToAIEPipeline,
+          isMatmulElementwiseFusion, targetDevice)))
     return failure();
 
   // The root configuration setting introduces `tensor.dim` operations.

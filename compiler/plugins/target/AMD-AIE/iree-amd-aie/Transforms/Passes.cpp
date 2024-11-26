@@ -516,6 +516,7 @@ void buildAMDAIETransformPassPipeline(
     options.usePassPipeline = useTilePipeline;
     options.useLowerToAIEPipeline = useLowerToAIEPipeline;
     options.targetDevice = device;
+    options.isMatmulElementwiseFusion = matmulElementwiseFusion;
     modulePassManager.addPass(createAMDAIELoweringStrategyPass(options));
   }
   modulePassManager.addPass(createLowerExecutableUsingTransformDialectPass());

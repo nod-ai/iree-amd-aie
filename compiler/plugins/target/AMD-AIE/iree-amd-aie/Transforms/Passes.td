@@ -465,6 +465,10 @@ def AMDAIELoweringStrategy :
         clEnumValN(mlir::iree_compiler::AMDAIE::LowerToAIEPassPipeline::AIR, "air",
                    "Use the IREE lowering through AIR")
       )}]>,
+    Option<"isMatmulElementwiseFusion", "is-matmul-elementwise-fusion",
+      "bool",
+      /*default=*/"false",
+      "Is element-wise fusion or not">,
     Option<"targetDevice", "target-device",
       "mlir::iree_compiler::AMDAIE::AMDAIEDevice",
       /*default=*/"mlir::iree_compiler::AMDAIE::AMDAIEDevice::npu1_4col",

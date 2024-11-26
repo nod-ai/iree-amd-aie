@@ -14,11 +14,7 @@
 namespace mlir::iree_compiler::AMDAIE {
 
 /// Enum for AIE lowering pipelines to pick.
-enum class LowerToAIEPassPipeline {
-  AIR,
-  ObjectFifo,
-  None
-};
+enum class LowerToAIEPassPipeline { AIR, ObjectFifo, None };
 
 /// Enum for tiling pass pipelines to pick. Because of how the pass-pipeline
 /// enums are implemented using tablegen in IREE, it isnt extensible.
@@ -39,6 +35,7 @@ enum class BufferizeOperand { InputOutput, Input, Output, DefOp };
 LogicalResult initAIELaunchConfig(FunctionOpInterface funcOp,
                                   TilePassPipeline usePassPipeline,
                                   LowerToAIEPassPipeline useLowerToAIEPipeline,
+                                  bool isMatmulElementwiseFusion,
                                   AMDAIEDevice targetDevice);
 
 }  // namespace mlir::iree_compiler::AMDAIE
