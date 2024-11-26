@@ -237,6 +237,28 @@ void addPackPeelBasedPassPipeline(OpPassManager &funcPassManager,
   funcPassManager.addPass(createCanonicalizerPass());
   funcPassManager.addPass(createCSEPass());
 
+  // Second level tiling of reduction dimension using scf.for
+  {
+    AMDAIETileAndFuseOptions tileFuseOptions;
+    tileFuseOptions.tilingLevel = 3;
+    tileFuseOptions.useSCFFor = true;
+    tileFuseOptions.tileElementwise = false;
+    funcPassManager.addPass(createAMDAIETileAndFusePass(tileFuseOptions));
+  }
+  funcPassManager.addPass(createAMDAIECleanupPass());
+  funcPassManager.addPass(createCanonicalizerPass());
+  funcPassManager.addPass(createCSEPass());
+
+  // Fuse second level pack ops into for loop
+  {
+    AMDAIEFusePackIntoLoopOptions fusePackOptions;
+    fusePackOptions.fusePackDepth = 1;
+    fusePackOptions.useSCFFor = true;
+    funcPassManager.addPass(createAMDAIEFusePackIntoLoopPass(fusePackOptions));
+  }
+  funcPassManager.addPass(createCanonicalizerPass());
+  funcPassManager.addPass(createCSEPass());
+
   // Promote the matmul inputs to local memory
   {
     AMDAIEBufferizeToAllocationOptions bufferizeOptions;

@@ -413,17 +413,19 @@ static LogicalResult setRootConfigForPackPeelPipeline(
   // ------------------------------------------------------
   SmallVector<int64_t> tileSizeLevel0 = {packPeelTiling.getM0(),
                                          packPeelTiling.getN0()};
-  SmallVector<int64_t> tileSizeLevel1 = {0, 0, packPeelTiling.getK0()};
+  SmallVector<int64_t> tileSizeLevel1 = {0, 0, 2, 0, 0, 0};
   SmallVector<int64_t> tileSizeLevel2 = {1, 1, 0, 0, 0, 0};
+  SmallVector<int64_t> tileSizeLevel3 = {0, 0, 1, 0, 0, 0};
 
   if (isa<linalg::BatchMatmulOp>(linalgOp)) {
     tileSizeLevel0.insert(tileSizeLevel0.begin(), 1);
     tileSizeLevel1.insert(tileSizeLevel1.begin(), 0);
     tileSizeLevel2.insert(tileSizeLevel2.begin(), 0);
+    tileSizeLevel3.insert(tileSizeLevel2.begin(), 0);
   }
 
-  TileSizesListType tileSizes = {tileSizeLevel0, tileSizeLevel1,
-                                 tileSizeLevel2};
+  TileSizesListType tileSizes = {tileSizeLevel0, tileSizeLevel1, tileSizeLevel2,
+                                 tileSizeLevel3};
   if (failed(setOpConfigAndEntryPointFnTranslation(
           entryPointFn, linalgOp, tileSizes,
           IREE::Codegen::DispatchLoweringPassPipeline::Custom))) {
