@@ -416,7 +416,7 @@ static LogicalResult assembleFileUsingChess(
     const std::string &npuVersion, bool verbose) {
   auto [xChessCCExe, args] =
       makeChessArgs(vitisDir, tempDir, npuVersion, verbose);
-  args.reserve(args.size() + std::distance(extraArgs.begin(), extraArgs.end()));
+  args.reserve(args.size() + extraArgs.size());
   args.insert(args.end(), extraArgs.begin(), extraArgs.end());
   args.emplace_back("-c");
   args.emplace_back(inputFile);
@@ -451,29 +451,24 @@ static LogicalResult assembleFileUsingPeano(
     const std::string &inputFile, const std::string &outputFile,
     const std::vector<std::string> &extraArgs, Path &_tempDir, Path &peanoDir,
     const std::string &_npuVersion, bool verbose) {
-  std::vector<std::string> args;
-  args.reserve(args.size() + std::distance(extraArgs.begin(), extraArgs.end()));
+  std::vector<std::string> args{
+      "-O2",
+      // TODO(max): pipe target arch in somehow
+      "--target=aie2-none-unknown-elf",
+      //
+      "-fno-use-init-array",
+      // Pass -fno-threadsafe-statics to prevent dependence on lock
+      // acquire/release handling for static local variables.
+      "-fno-threadsafe-statics",
+      // Don't pull in system headers from /usr/include or /usr/local/include.
+      // All of the basic headers that we need come from the compiler.
+      "-nostdsysteminc",
+      //
+      "-c", inputFile,
+      //
+      "-o", outputFile};
+  args.reserve(args.size() + extraArgs.size());
   args.insert(args.end(), extraArgs.begin(), extraArgs.end());
-  args.emplace_back("-O2");
-  // TODO(max): pipe target arch in somehow
-  args.emplace_back("--target=aie2-none-unknown-elf");
-  std::vector<std::string> peanoArgs = makePeanoOptArgs();
-  args.reserve(args.size() + peanoArgs.size());
-  for (const std::string &item : peanoArgs) {
-    args.emplace_back("-mllvm");
-    args.emplace_back(item);
-  }
-  args.emplace_back("-fno-use-init-array");
-  // Pass -fno-threadsafe-statics to prevent dependence on lock acquire/release
-  // handling for static local variables.
-  args.emplace_back("-fno-threadsafe-statics");
-  // Don't pull in system headers from /usr/include or /usr/local/include.
-  // All of the basic headers that we need come from the compiler.
-  args.emplace_back("-nostdsysteminc");
-  args.emplace_back("-c");
-  args.emplace_back(inputFile);
-  args.emplace_back("-o");
-  args.emplace_back(outputFile);
   if (verbose) args.emplace_back("-v");
   return runTool((peanoDir / "bin" / "clang").string(), args, verbose);
 }
