@@ -190,6 +190,6 @@ jobs:
           python build_tools/ci/cpu_comparison/run.py \
             /c/test_aie_vs_cpu \
             $PWD/iree-install \
-            $PWD/llvm-aie -v \
-            --target_device "npu1_4col" \
-            --device-hal=xrt
+            --peano_dir=$PWD/llvm-aie -v \
+            --target_device="npu1_4col" \
+            --device_hal=xrt
