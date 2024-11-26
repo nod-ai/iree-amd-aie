@@ -80,7 +80,9 @@ void AMDAIEPeelForLoopPass::runOnOperation() {
   mlir::FunctionOpInterface funcOp = getOperation();
   IRRewriter rewriter(context);
 
-  funcOp->walk([&](scf::ForOp forOp) {
+  scf::ForOp result;
+  funcOp->walk<WalkOrder::PreOrder>([&](scf::ForOp forOp) {
+    if (result) return;
     auto lbInt = getConstantIntValue(forOp.getLowerBound());
     auto ubInt = getConstantIntValue(forOp.getUpperBound());
     auto stepInt = getConstantIntValue(forOp.getStep());
@@ -90,7 +92,6 @@ void AMDAIEPeelForLoopPass::runOnOperation() {
         ceil(float(*ubInt - *lbInt) / *stepInt) <= 1)
       return;
 
-    scf::ForOp result;
     switch (peelingType) {
       case PeelingType::First:
         if (failed(scf::peelForLoopFirstIteration(rewriter, forOp, result))) {
