@@ -50,6 +50,113 @@
 extern int iree_aie_bootgen_main(int argc, const char *argv[]);
 
 // https://stackoverflow.com/a/60198074
+using namespace std::placeholders;
+using namespace llvm;
+using namespace mlir;
+using namespace xilinx;
+using Path = std::filesystem::path;
+
+namespace mlir::iree_compiler::AMDAIE {
+namespace detail {
+
+// peano's `opt` program optimizes llvm-ir (.ll files). We run it with a system
+// call. This functions constructs the flags to pass to `opt`. There are some
+// default flags, most of which are copied from llvm-aie. See
+//
+// clang-format off
+// https://github.com/nod-ai/iree-amd-aie/pull/622
+// https://github.com/Xilinx/llvm-aie/blob/0be095354faa49985cd031661853f6d9b9b787f2/clang/lib/Driver/ToolChains/AIE.cpp#L97-L121
+// clang-format on
+//
+// There are also additional flags which have been passed down from the user,
+// `additionalPeanoOptFlags`. This function appends these user specific flags,
+// and checks that they are valid. If they are not, it returns failure.
+FailureOr<std::vector<std::string>> makePeanoOptArgs(
+    const std::string &filenameIrIn, const std::string &filenameIrOut,
+    const std::string &additionalPeanoOptFlags) {
+  std::vector<std::string> args{
+      // peano has no proper vectorization cost model for AIE
+      "-vectorize-loops=false",
+      //
+      "-vectorize-slp=false",
+      // An if-then-else cascade requires at least 5 delay slots for
+      // evaluating the condition and 5 delay slots for one of the
+      // branches, thus speculating 10 instructions should be fine
+      "--two-entry-phi-node-folding-threshold=10",
+      // Make sure to perform most optimizations before mandatory
+      // inlinings, otherwise noalias attributes can get lost and
+      // hurt AA results.
+      "-mandatory-inlining-before-opt=false",
+      // complete AA analysis on phi nodes.
+      "-basic-aa-full-phi-analysis=true",
+      // Extend the max limit of the search depth in BasicAA
+      "-basic-aa-max-lookup-search-depth=10",
+      //
+      "-O2",
+      //
+      "--inline-threshold=10",
+      // missing from libc
+      "--disable-builtin=memset",
+      // Source file, IR to optimize
+      "-S", filenameIrIn,
+      // Output file, optimized IR
+      "-o", filenameIrOut};
+
+  if (additionalPeanoOptFlags.empty()) return args;
+
+  // Check that additionalPeanoOptFlags is of the form "-flag1 -flag2".
+  // i.e. that it starts and ends with ".
+  if (additionalPeanoOptFlags.size() < 2 ||
+      additionalPeanoOptFlags.front() != '"' ||
+      additionalPeanoOptFlags.back() != '"') {
+    llvm::errs()
+        << "additional peano opt flags must be of the form "
+           "\"-flag1 -flag2 ...\". Specifically it must start and end with \".";
+    return failure();
+  }
+
+  // TODO(newling) use string_view, shouldn't need to copy the string here.
+  std::string stripped =
+      additionalPeanoOptFlags.substr(1, additionalPeanoOptFlags.size() - 2);
+
+  // Split the additional flags on whitespace, and then add to the default args.
+  std::istringstream iss(stripped);
+  std::vector<std::string> additionalFlags{
+      std::istream_iterator<std::string>{iss},
+      std::istream_iterator<std::string>{}};
+
+  // Return true if `flag` is an optimization level flag, like -O2.
+  auto isOptLevelFlag = [](const std::string &flag) {
+    bool isOptFlag = flag.size() == 3 && flag[0] == '-' && flag[1] == 'O';
+    return isOptFlag;
+  };
+
+  // Return true if flags `a` and `b` cannot coexist when passed to `opt`.
+  auto isContention = [&](const std::string &a, const std::string &b) {
+    // If both flags are optimization level flags, they cannot coexist, because
+    // llvm-opt will fail to run if it sees two different optimization levels.
+    if (isOptLevelFlag(a) && isOptLevelFlag(b)) return true;
+    return false;
+  };
+
+  // Append the additional flags, unless they conflict with an existing flag,
+  // in which case replace the existing flag.
+  args.reserve(args.size() + additionalFlags.size());
+  for (const auto &flag : additionalFlags) {
+    auto iter = std::find_if(args.begin(), args.end(),
+                             std::bind(isContention, _1, flag));
+    if (iter == args.end()) {
+      args.push_back(flag);
+    } else {
+      *iter = flag;
+    }
+  }
+  return args;
+}
+}  // namespace detail
+}  // namespace mlir::iree_compiler::AMDAIE
+
+namespace {
 namespace uuid {
 static std::random_device rd;
 static std::mt19937 gen(rd());
@@ -99,14 +206,6 @@ static const std::string _MM_NPU4_CC{
 #include "mm_npu4.cc"
 };
 
-using namespace std::placeholders;
-using namespace llvm;
-using namespace mlir;
-using namespace xilinx;
-using Path = std::filesystem::path;
-
-namespace {
-
 FailureOr<std::string> getTargetDir(const std::string &npuVersion) {
   if (npuVersion == "npu1") return std::string{"target_aie_ml"};
   if (npuVersion == "npu4") return std::string{"target_aie2p"};
@@ -133,7 +232,6 @@ void applyConfigToPassManager(PassManager &pm, bool printIRBeforeAll,
 
   if (timing) pm.enableTiming();
 }
-}  // namespace
 
 FailureOr<Path> findVitis(std::optional<Path> &vitisDir,
                           const std::string &npuVersion) {
@@ -192,8 +290,8 @@ FailureOr<Path> findVitis(std::optional<Path> &vitisDir,
   return *vitisDir;
 }
 
-static FailureOr<Path> findAMDAIETool(std::string toolName,
-                                      const Path &amdAIEInstallDir) {
+FailureOr<Path> findAMDAIETool(std::string toolName,
+                               const Path &amdAIEInstallDir) {
 #if defined(_WIN32)
   toolName += ".exe";
 #endif  // _WIN32
@@ -410,13 +508,15 @@ LogicalResult runTool(
   return success();
 }
 
-static LogicalResult assembleFileUsingChess(
-    const std::string &inputFile, const std::string &outputFile,
-    const std::vector<std::string> &extraArgs, Path &tempDir, Path &vitisDir,
-    const std::string &npuVersion, bool verbose) {
+LogicalResult assembleFileUsingChess(const std::string &inputFile,
+                                     const std::string &outputFile,
+                                     const std::vector<std::string> &extraArgs,
+                                     Path &tempDir, Path &vitisDir,
+                                     const std::string &npuVersion,
+                                     bool verbose) {
   auto [xChessCCExe, args] =
       makeChessArgs(vitisDir, tempDir, npuVersion, verbose);
-  args.reserve(args.size() + std::distance(extraArgs.begin(), extraArgs.end()));
+  args.reserve(args.size() + extraArgs.size());
   args.insert(args.end(), extraArgs.begin(), extraArgs.end());
   args.emplace_back("-c");
   args.emplace_back(inputFile);
@@ -426,54 +526,30 @@ static LogicalResult assembleFileUsingChess(
   return runTool(xChessCCExe, args, verbose, env);
 }
 
-std::vector<std::string> makePeanoOptArgs() {
-  return {
-      // peano has no proper vectorization cost model for AIE
-      "-vectorize-loops=false",
+LogicalResult assembleFileUsingPeano(const std::string &inputFile,
+                                     const std::string &outputFile,
+                                     const std::vector<std::string> &extraArgs,
+                                     Path &_tempDir, Path &peanoDir,
+                                     const std::string &_npuVersion,
+                                     bool verbose) {
+  std::vector<std::string> args{
+      "-O2",
+      // TODO(max): pipe target arch in somehow
+      "--target=aie2-none-unknown-elf",
       //
-      "-vectorize-slp=false",
-      // An if-then-else cascade requires at least 5 delay slots for
-      // evaluating the condition and 5 delay slots for one of the
-      // branches, thus speculating 10 instructions should be fine
-      "--two-entry-phi-node-folding-threshold=10",
-      // Make sure to perform most optimizations before mandatory
-      // inlinings, otherwise noalias attributes can get lost and
-      // hurt AA results.
-      "-mandatory-inlining-before-opt=false",
-      // complete AA analysis on phi nodes.
-      "-basic-aa-full-phi-analysis=true",
-      // Extend the max limit of the search depth in BasicAA
-      "-basic-aa-max-lookup-search-depth=10",
-  };
-}
-
-static LogicalResult assembleFileUsingPeano(
-    const std::string &inputFile, const std::string &outputFile,
-    const std::vector<std::string> &extraArgs, Path &_tempDir, Path &peanoDir,
-    const std::string &_npuVersion, bool verbose) {
-  std::vector<std::string> args;
-  args.reserve(args.size() + std::distance(extraArgs.begin(), extraArgs.end()));
+      "-fno-use-init-array",
+      // Pass -fno-threadsafe-statics to prevent dependence on lock
+      // acquire/release handling for static local variables.
+      "-fno-threadsafe-statics",
+      // Don't pull in system headers from /usr/include or /usr/local/include.
+      // All of the basic headers that we need come from the compiler.
+      "-nostdsysteminc",
+      //
+      "-c", inputFile,
+      //
+      "-o", outputFile};
+  args.reserve(args.size() + extraArgs.size());
   args.insert(args.end(), extraArgs.begin(), extraArgs.end());
-  args.emplace_back("-O2");
-  // TODO(max): pipe target arch in somehow
-  args.emplace_back("--target=aie2-none-unknown-elf");
-  std::vector<std::string> peanoArgs = makePeanoOptArgs();
-  args.reserve(args.size() + peanoArgs.size());
-  for (const std::string &item : peanoArgs) {
-    args.emplace_back("-mllvm");
-    args.emplace_back(item);
-  }
-  args.emplace_back("-fno-use-init-array");
-  // Pass -fno-threadsafe-statics to prevent dependence on lock acquire/release
-  // handling for static local variables.
-  args.emplace_back("-fno-threadsafe-statics");
-  // Don't pull in system headers from /usr/include or /usr/local/include.
-  // All of the basic headers that we need come from the compiler.
-  args.emplace_back("-nostdsysteminc");
-  args.emplace_back("-c");
-  args.emplace_back(inputFile);
-  args.emplace_back("-o");
-  args.emplace_back(outputFile);
   if (verbose) args.emplace_back("-v");
   return runTool((peanoDir / "bin" / "clang").string(), args, verbose);
 }
@@ -482,7 +558,7 @@ static_assert(std::is_same_v<decltype(assembleFileUsingPeano),
                              decltype(assembleFileUsingChess)>);
 using FileAssemblerT = std::function<decltype(assembleFileUsingPeano)>;
 
-static FailureOr<Path> assembleStringUsing(
+FailureOr<Path> assembleStringUsing(
     const FileAssemblerT &assembler, const std::string &inputFileStr,
     const std::string &inputFileName, const std::string &outputFileName,
     Path &outputDir, const std::vector<std::string> &extraArgs, Path &workDir,
@@ -520,11 +596,12 @@ static_assert(std::is_same_v<decltype(assembleStringUsingChess),
                              decltype(assembleStringUsingPeano)>);
 
 // Generate the elf files for the core
-static LogicalResult generateCoreElfFiles(
-    AIE::DeviceOp deviceOp, const std::string &objFile, Path &tempDir,
-    bool useChess, std::optional<Path> vitisDir, const std::string &targetArch,
-    bool verbose, Path peanoDir, const std::string &npuVersion,
-    const std::optional<std::string> &ukernel) {
+LogicalResult generateCoreElfFiles(AIE::DeviceOp deviceOp,
+                                   const std::string &objFile, Path &tempDir,
+                                   bool useChess, std::optional<Path> vitisDir,
+                                   const std::string &targetArch, bool verbose,
+                                   Path peanoDir, const std::string &npuVersion,
+                                   const std::optional<std::string> &ukernel) {
   auto tileOps = deviceOp.getOps<AIE::TileOp>();
   std::string errorMessage;
 
@@ -672,8 +749,8 @@ static LogicalResult generateCoreElfFiles(
   return success();
 }
 
-static LogicalResult generateCDO(MLIRContext *context, AIE::DeviceOp deviceOp,
-                                 const Path &tempDir) {
+LogicalResult generateCDO(MLIRContext *context, AIE::DeviceOp deviceOp,
+                          const Path &tempDir) {
   auto copy = cast<ModuleOp>(deviceOp.getParentOp()->clone());
   deviceOp = *copy.getOps<AIE::DeviceOp>().begin();
   if (failed(mlir::iree_compiler::AMDAIE::AIETranslateToCDODirect(
@@ -685,9 +762,8 @@ static LogicalResult generateCDO(MLIRContext *context, AIE::DeviceOp deviceOp,
   return success();
 }
 
-static json::Object makeKernelJSON(const std::string &name,
-                                   const std::string &id,
-                                   const std::string &instance) {
+json::Object makeKernelJSON(const std::string &name, const std::string &id,
+                            const std::string &instance) {
   return json::Object{
       {"name", name},
       {"type", "dpu"},
@@ -740,8 +816,7 @@ static json::Object makeKernelJSON(const std::string &name,
       {"instances", json::Array{json::Object{{"name", instance}}}}};
 }
 
-static LogicalResult generatePDI(const std::string &Output,
-                                 const Path &tempDir) {
+LogicalResult generatePDI(const std::string &Output, const Path &tempDir) {
   std::string errorMessage;
   // Create design.bif.
   Path designBifFile = tempDir / "design.bif";
@@ -794,11 +869,12 @@ static LogicalResult generatePDI(const std::string &Output,
   return success();
 }
 
-static LogicalResult generateXCLBin(
-    const std::string &Output, const Path &tempDir,
-    const std::string &xclBinKernelID, const std::string &xclBinKernelName,
-    const std::string &xclBinInstanceName, const Path &amdAIEInstallDir,
-    bool verbose, const std::optional<std::string> &inputXclbin) {
+LogicalResult generateXCLBin(const std::string &Output, const Path &tempDir,
+                             const std::string &xclBinKernelID,
+                             const std::string &xclBinKernelName,
+                             const std::string &xclBinInstanceName,
+                             const Path &amdAIEInstallDir, bool verbose,
+                             const std::optional<std::string> &inputXclbin) {
   std::string errorMessage;
   // Create mem_topology.json.
   Path memTopologyJsonFile = tempDir / "mem_topology.json";
@@ -975,7 +1051,6 @@ static LogicalResult generateXCLBin(
 }
 
 void addLowerToLLVMPasses(OpPassManager &pm) {
-  using namespace mlir;
   pm.addPass(createFinalizeMemRefToLLVMConversionPass());
   pm.addPass(createCanonicalizerPass());
   pm.addPass(createCSEPass());
@@ -989,12 +1064,12 @@ void addLowerToLLVMPasses(OpPassManager &pm) {
   pm.addPass(createCSEPass());
 }
 
-static LogicalResult generateUnifiedObject(
+LogicalResult generateUnifiedObject(
     MLIRContext *context, AIE::DeviceOp deviceOp, const std::string &outputFile,
     bool printIRBeforeAll, bool printIRAfterAll, bool printIRModuleScope,
     bool timing, bool useChess, bool verbose, Path &tempDir,
     std::optional<Path> vitisDir, const std::string &targetArch, Path &peanoDir,
-    const std::string &npuVersion) {
+    const std::string &npuVersion, const std::string &additionalPeanoOptFlags) {
   assert(deviceOp->getParentOp() && isa<ModuleOp>(deviceOp->getParentOp()) &&
          "DeviceOp must be in a module parent");
 
@@ -1060,14 +1135,16 @@ static LogicalResult generateUnifiedObject(
     Path peanoLLCBin = peanoDir / "bin" / "llc";
 
     Path OptLLVMIRFile = tempDir / "input.opt.ll";
-    std::vector<std::string> args{
-        "-O2", "--inline-threshold=10", "-S", LLVMIRFile.string(),
-        // missing from libc
-        "--disable-builtin=memset", "-o", OptLLVMIRFile.string()};
-    std::vector<std::string> peanoArgs = makePeanoOptArgs();
-    args.reserve(args.size() + peanoArgs.size());
-    args.insert(args.end(), peanoArgs.begin(), peanoArgs.end());
-    if (failed(runTool(peanoOptBin.string(), args, verbose))) {
+
+    FailureOr<std::vector<std::string>> peanoArgs =
+        mlir::iree_compiler::AMDAIE::detail::makePeanoOptArgs(
+            LLVMIRFile, OptLLVMIRFile, additionalPeanoOptFlags);
+    if (failed(peanoArgs)) {
+      llvm::errs() << "Failed to make peano opt args";
+      return failure();
+    }
+
+    if (failed(runTool(peanoOptBin.string(), peanoArgs.value(), verbose))) {
       llvm::errs() << "Failed to optimize ll with peano";
       return failure();
     }
@@ -1086,6 +1163,7 @@ static LogicalResult generateUnifiedObject(
   moduleOpCopy->erase();
   return success();
 }
+}  // namespace
 
 namespace mlir::iree_compiler::AMDAIE {
 LogicalResult emitNpuInstructions(AIE::DeviceOp deviceOp,
@@ -1139,7 +1217,8 @@ LogicalResult aie2xclbin(
     const std::string &xclBinKernelID, const std::string &xclBinKernelName,
     const std::string &xclBinInstanceName, const std::string &amdAIEInstallDir,
     const std::optional<std::string> &InputXCLBin,
-    const std::optional<std::string> &ukernel) {
+    const std::optional<std::string> &ukernel,
+    const std::string &additionalPeanoOptFlags) {
   if (failed(emitNpuInstructions(deviceOp, outputNPU))) return failure();
 
   Path tempDirPath{tempDir};
@@ -1153,7 +1232,8 @@ LogicalResult aie2xclbin(
   if (failed(generateUnifiedObject(
           ctx, deviceOp, unifiedObj.string(), printIRBeforeAll, printIRAfterAll,
           printIRModuleScope, timing, useChess, verbose, tempDirPath,
-          vitisDirPath, targetArch, peanoDirPath, npuVersion))) {
+          vitisDirPath, targetArch, peanoDirPath, npuVersion,
+          additionalPeanoOptFlags))) {
     llvm::errs() << "Failed to generate unified object\n";
     return failure();
   }
