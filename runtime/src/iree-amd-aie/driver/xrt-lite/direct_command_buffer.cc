@@ -13,11 +13,6 @@
 #include "iree-amd-aie/driver/xrt-lite/util.h"
 #include "iree/hal/utils/resource_set.h"
 
-#ifdef IREE_AMDAIE_TIME_KERNEL
-#include <chrono>
-#include <iostream>
-#endif
-
 struct iree_hal_xrt_lite_direct_command_buffer {
   iree_hal_command_buffer_t base;
   iree_allocator_t host_allocator;
@@ -197,19 +192,11 @@ static iree_status_t iree_hal_xrt_lite_direct_command_buffer_dispatch(
   }
 
   shim_xdna::hw_q* hwq = context.get_hw_queue();
-
-#ifdef IREE_AMDAIE_TIME_KERNEL
-  auto time0 = std::chrono::high_resolution_clock::now();
-  hwq->issue_command(ebuf.get_exec_buf_bo());
-  hwq->wait_command(ebuf.get_exec_buf_bo(), 0);
-  auto time1 = std::chrono::high_resolution_clock::now();
-  std::chrono::duration<double> elapsed_s = time1 - time0;
-  double ellapsed_ms = elapsed_s.count() * 1000;
-  std::cout << "[IREE_AMDAIE] Kernel time: " << ellapsed_ms << " [ms]\n";
-#else
-  hwq->issue_command(ebuf.get_exec_buf_bo());
-  hwq->wait_command(ebuf.get_exec_buf_bo(), 0);
-#endif
+  for (int i = 0; i < kernel_params.n_kernel_runs; i++) {
+    ebuf.m_cmd_pkt->state = ERT_CMD_STATE_NEW;
+    hwq->issue_command(ebuf.get_exec_buf_bo());
+    hwq->wait_command(ebuf.get_exec_buf_bo(), 0);
+  }
 
   for (iree_host_size_t j = 0; j < bindings.count; ++j) {
     shim_xdna::bo* bo = iree_hal_xrt_lite_buffer_handle(

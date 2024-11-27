@@ -14,14 +14,18 @@ if __name__ == "__main__":
     with open(path, "r") as f:
         lines = f.readlines()
     print("============================")
-    first_print = True
     for line in lines:
-        if "Run #1" in line:
-            if not first_print:
-                print("\n" + line.split()[-1])
-            else:
-                print(line.split()[-1])
-            first_print = False
-        if "IREE_AMDAIE" in line:
+        if "Performance benchmark:" in line:
+            print("\n")
+            print(line.split()[-1])
+        if "----------------------" in line:
+            print(line.strip())
+        if "Benchmark" in line:
+            print(line.strip())
+        if "real_time_mean" in line:
+            print(line.strip())
+        if "real_time_median" in line:
+            print(line.strip())
+        if "real_time_stddev" in line:
             print(line.strip())
     print("============================")
