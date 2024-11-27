@@ -55,16 +55,16 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
       amdaie.controlcode {
         %5 = amdaie.logicalobjectfifo.from_memref %1, {%tile_0} : memref<64x32xi32> -> !amdaie.logicalobjectfifo<memref<2048xi32>>
         memref.assume_alignment %1, 64 : memref<64x32xi32>
-// CHECK: amdaie.npu.half_dma_cpy_nd  %4(%5 [] [] [] bd_id = %bd_id channel = %channel) : !amdaie.logicalobjectfifo<memref<2048xi32>>
-// CHECK: amdaie.npu.half_dma_cpy_nd  %4(%0 [] [] [] channel = %channel_3) : !amdaie.logicalobjectfifo<memref<2048xi32, 1 : i32>, 2>
+// CHECK: amdaie.npu.half_dma_cpy_nd  %4(%5 [] [] [] bd_id = %bd_id channel = %channel use_next_bd = false) : !amdaie.logicalobjectfifo<memref<2048xi32>>
+// CHECK: amdaie.npu.half_dma_cpy_nd  %4(%0 [] [] [] channel = %channel_3 use_next_bd = false) : !amdaie.logicalobjectfifo<memref<2048xi32, 1 : i32>, 2>
         amdaie.npu.dma_cpy_nd %4([] [] [], %5[] [] [] bd_id = %bd_id) : source_type = !amdaie.logicalobjectfifo<memref<2048xi32>>
-// CHECK: %[[TOKEN_0:.+]] = amdaie.npu.half_dma_cpy_nd async %4(%5 [0, 0, 0, 0] [2, 4, 16, 16] [0, 64, 8, 1] bd_id = %bd_id channel = %channel) : !amdaie.logicalobjectfifo<memref<2048xi32>>
-// CHECK: amdaie.npu.half_dma_cpy_nd  %4(%0 [] [] [] channel = %channel_3) : !amdaie.logicalobjectfifo<memref<2048xi32, 1 : i32>, 2>
+// CHECK: %[[TOKEN_0:.+]] = amdaie.npu.half_dma_cpy_nd async %4(%5 [0, 0, 0, 0] [2, 4, 16, 16] [0, 64, 8, 1] bd_id = %bd_id channel = %channel use_next_bd = false) : !amdaie.logicalobjectfifo<memref<2048xi32>>
+// CHECK: amdaie.npu.half_dma_cpy_nd  %4(%0 [] [] [] channel = %channel_3 use_next_bd = false) : !amdaie.logicalobjectfifo<memref<2048xi32, 1 : i32>, 2>
 // CHECK: amdaie.npu.dma_wait(%[[TOKEN_0]] : !amdaie.async_token)
         %6 = amdaie.npu.dma_cpy_nd async_source %4([] [] [], %5[0, 0, 0, 0] [2, 4, 16, 16] [0, 64, 8, 1] bd_id = %bd_id) : source_type = !amdaie.logicalobjectfifo<memref<2048xi32>>
         amdaie.npu.dma_wait(%6 : !amdaie.async_source_token)
-// CHECK: %[[TOKEN_1:.+]] = amdaie.npu.half_dma_cpy_nd async %4(%5 [0, 0, 0, 32] [2, 4, 16, 16] [128, 64, 8, 1] bd_id = %bd_id channel = %channel) : !amdaie.logicalobjectfifo<memref<2048xi32>>
-// CHECK: amdaie.npu.half_dma_cpy_nd  %4(%0 [] [] [] channel = %channel_3) : !amdaie.logicalobjectfifo<memref<2048xi32, 1 : i32>, 2>
+// CHECK: %[[TOKEN_1:.+]] = amdaie.npu.half_dma_cpy_nd async %4(%5 [0, 0, 0, 32] [2, 4, 16, 16] [128, 64, 8, 1] bd_id = %bd_id channel = %channel use_next_bd = false) : !amdaie.logicalobjectfifo<memref<2048xi32>>
+// CHECK: amdaie.npu.half_dma_cpy_nd  %4(%0 [] [] [] channel = %channel_3 use_next_bd = false) : !amdaie.logicalobjectfifo<memref<2048xi32, 1 : i32>, 2>
 // CHECK: amdaie.npu.dma_wait(%[[TOKEN_1]] : !amdaie.async_token)
         %7 = amdaie.npu.dma_cpy_nd async_source %4([] [] [], %5[0, 0, 0, 32] [2, 4, 16, 16] [128, 64, 8, 1] bd_id = %bd_id) : source_type = !amdaie.logicalobjectfifo<memref<2048xi32>>
         amdaie.npu.dma_wait(%7 : !amdaie.async_source_token)
@@ -103,16 +103,16 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
       amdaie.controlcode {
         %5 = amdaie.logicalobjectfifo.from_memref %1, {%tile_0} : memref<64x32xi32> -> !amdaie.logicalobjectfifo<memref<2048xbf16>>
         memref.assume_alignment %1, 64 : memref<64x32xi32>
-// CHECK: amdaie.npu.half_dma_cpy_nd  %4(%5 [] [] [] bd_id = %bd_id channel = %channel) : !amdaie.logicalobjectfifo<memref<2048xbf16>>
-// CHECK: amdaie.npu.half_dma_cpy_nd  %4(%0 [] [] [] channel = %channel_3) : !amdaie.logicalobjectfifo<memref<2048xbf16, 1 : i32>, 2>
+// CHECK: amdaie.npu.half_dma_cpy_nd  %4(%5 [] [] [] bd_id = %bd_id channel = %channel use_next_bd = false) : !amdaie.logicalobjectfifo<memref<2048xbf16>>
+// CHECK: amdaie.npu.half_dma_cpy_nd  %4(%0 [] [] [] channel = %channel_3 use_next_bd = false) : !amdaie.logicalobjectfifo<memref<2048xbf16, 1 : i32>, 2>
         amdaie.npu.dma_cpy_nd %4([] [] [], %5[] [] [] bd_id = %bd_id) : source_type = !amdaie.logicalobjectfifo<memref<2048xbf16>>
-// CHECK: %[[TOKEN_0:.+]] = amdaie.npu.half_dma_cpy_nd async %4(%5 [0, 0, 0, 0] [2, 4, 16, 16] [0, 64, 8, 1] bd_id = %bd_id channel = %channel) : !amdaie.logicalobjectfifo<memref<2048xbf16>>
-// CHECK: amdaie.npu.half_dma_cpy_nd  %4(%0 [] [] [] channel = %channel_3) : !amdaie.logicalobjectfifo<memref<2048xbf16, 1 : i32>, 2>
+// CHECK: %[[TOKEN_0:.+]] = amdaie.npu.half_dma_cpy_nd async %4(%5 [0, 0, 0, 0] [2, 4, 16, 16] [0, 64, 8, 1] bd_id = %bd_id channel = %channel use_next_bd = false) : !amdaie.logicalobjectfifo<memref<2048xbf16>>
+// CHECK: amdaie.npu.half_dma_cpy_nd  %4(%0 [] [] [] channel = %channel_3 use_next_bd = false) : !amdaie.logicalobjectfifo<memref<2048xbf16, 1 : i32>, 2>
 // CHECK: amdaie.npu.dma_wait(%[[TOKEN_0]] : !amdaie.async_token)
         %6 = amdaie.npu.dma_cpy_nd async_source %4([] [] [], %5[0, 0, 0, 0] [2, 4, 16, 16] [0, 64, 8, 1] bd_id = %bd_id) : source_type = !amdaie.logicalobjectfifo<memref<2048xbf16>>
         amdaie.npu.dma_wait(%6 : !amdaie.async_source_token)
-// CHECK: %[[TOKEN_1:.+]] = amdaie.npu.half_dma_cpy_nd async %4(%5 [0, 0, 0, 32] [2, 4, 16, 16] [128, 64, 8, 1] bd_id = %bd_id channel = %channel) : !amdaie.logicalobjectfifo<memref<2048xbf16>>
-// CHECK: amdaie.npu.half_dma_cpy_nd  %4(%0 [] [] [] channel = %channel_3) : !amdaie.logicalobjectfifo<memref<2048xbf16, 1 : i32>, 2>
+// CHECK: %[[TOKEN_1:.+]] = amdaie.npu.half_dma_cpy_nd async %4(%5 [0, 0, 0, 32] [2, 4, 16, 16] [128, 64, 8, 1] bd_id = %bd_id channel = %channel use_next_bd = false) : !amdaie.logicalobjectfifo<memref<2048xbf16>>
+// CHECK: amdaie.npu.half_dma_cpy_nd  %4(%0 [] [] [] channel = %channel_3 use_next_bd = false) : !amdaie.logicalobjectfifo<memref<2048xbf16, 1 : i32>, 2>
 // CHECK: amdaie.npu.dma_wait(%[[TOKEN_1]] : !amdaie.async_token)
         %7 = amdaie.npu.dma_cpy_nd async_source %4([] [] [], %5[0, 0, 0, 32] [2, 4, 16, 16] [128, 64, 8, 1] bd_id = %bd_id) : source_type = !amdaie.logicalobjectfifo<memref<2048xbf16>>
         amdaie.npu.dma_wait(%7 : !amdaie.async_source_token)
@@ -151,16 +151,16 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
       amdaie.controlcode {
         %5 = amdaie.logicalobjectfifo.from_memref %1, {%tile_0} : memref<64x32xi32> -> !amdaie.logicalobjectfifo<memref<2048xi32>>
         memref.assume_alignment %1, 64 : memref<64x32xi32>
-// CHECK: amdaie.npu.half_dma_cpy_nd  %4(%0 [] [] [] channel = %channel) : !amdaie.logicalobjectfifo<memref<2048xi32, 1 : i32>, 2>
-// CHECK: amdaie.npu.half_dma_cpy_nd  %4(%5 [] [] [] bd_id = %bd_id channel = %channel_3) : !amdaie.logicalobjectfifo<memref<2048xi32>
+// CHECK: amdaie.npu.half_dma_cpy_nd  %4(%0 [] [] [] channel = %channel use_next_bd = false) : !amdaie.logicalobjectfifo<memref<2048xi32, 1 : i32>, 2>
+// CHECK: amdaie.npu.half_dma_cpy_nd  %4(%5 [] [] [] bd_id = %bd_id channel = %channel_3 use_next_bd = false) : !amdaie.logicalobjectfifo<memref<2048xi32>
         amdaie.npu.dma_cpy_nd %4(%5[] [] [] bd_id = %bd_id, [] [] []) : target_type = !amdaie.logicalobjectfifo<memref<2048xi32>>
-// CHECK: amdaie.npu.half_dma_cpy_nd  %4(%0 [] [] [] channel = %channel) : !amdaie.logicalobjectfifo<memref<2048xi32, 1 : i32>, 2>
-// CHECK: %[[TOKEN_0:.+]] = amdaie.npu.half_dma_cpy_nd async %4(%5 [0, 0, 0, 0] [2, 4, 16, 16] [0, 64, 8, 1] bd_id = %bd_id channel = %channel_3) : !amdaie.logicalobjectfifo<memref<2048xi32>>
+// CHECK: amdaie.npu.half_dma_cpy_nd  %4(%0 [] [] [] channel = %channel use_next_bd = false) : !amdaie.logicalobjectfifo<memref<2048xi32, 1 : i32>, 2>
+// CHECK: %[[TOKEN_0:.+]] = amdaie.npu.half_dma_cpy_nd async %4(%5 [0, 0, 0, 0] [2, 4, 16, 16] [0, 64, 8, 1] bd_id = %bd_id channel = %channel_3 use_next_bd = false) : !amdaie.logicalobjectfifo<memref<2048xi32>>
 // CHECK: amdaie.npu.dma_wait(%[[TOKEN_0]] : !amdaie.async_token)
         %6 = amdaie.npu.dma_cpy_nd async_target %4(%5[0, 0, 0, 0] [2, 4, 16, 16] [0, 64, 8, 1] bd_id = %bd_id, [] [] []) : target_type = !amdaie.logicalobjectfifo<memref<2048xi32>>
         amdaie.npu.dma_wait(%6 : !amdaie.async_target_token)
-// CHECK: amdaie.npu.half_dma_cpy_nd  %4(%0 [] [] [] channel = %channel) : !amdaie.logicalobjectfifo<memref<2048xi32, 1 : i32>, 2>
-// CHECK: %[[TOKEN_1:.+]] = amdaie.npu.half_dma_cpy_nd async %4(%5 [0, 0, 32, 32] [2, 4, 16, 16] [128, 64, 8, 1] bd_id = %bd_id channel = %channel_3) : !amdaie.logicalobjectfifo<memref<2048xi32>>
+// CHECK: amdaie.npu.half_dma_cpy_nd  %4(%0 [] [] [] channel = %channel use_next_bd = false) : !amdaie.logicalobjectfifo<memref<2048xi32, 1 : i32>, 2>
+// CHECK: %[[TOKEN_1:.+]] = amdaie.npu.half_dma_cpy_nd async %4(%5 [0, 0, 32, 32] [2, 4, 16, 16] [128, 64, 8, 1] bd_id = %bd_id channel = %channel_3 use_next_bd = false) : !amdaie.logicalobjectfifo<memref<2048xi32>>
 // CHECK: amdaie.npu.dma_wait(%[[TOKEN_1]] : !amdaie.async_token)
         %7 = amdaie.npu.dma_cpy_nd async_target %4(%5[0, 0, 32, 32] [2, 4, 16, 16] [128, 64, 8, 1] bd_id = %bd_id, [] [] []) : target_type = !amdaie.logicalobjectfifo<memref<2048xi32>>
         amdaie.npu.dma_wait(%7 : !amdaie.async_target_token)
@@ -199,16 +199,16 @@ module attributes {hal.executable.target = #executable_target_amdaie_xclbin_fb} 
       amdaie.controlcode {
         %5 = amdaie.logicalobjectfifo.from_memref %1, {%tile_0} : memref<64x32xi32> -> !amdaie.logicalobjectfifo<memref<2048xi8>>
         memref.assume_alignment %1, 64 : memref<64x32xi32>
-// CHECK: amdaie.npu.half_dma_cpy_nd  %4(%0 [] [] [] channel = %channel) : !amdaie.logicalobjectfifo<memref<2048xi8, 1 : i32>, 2>
-// CHECK: amdaie.npu.half_dma_cpy_nd  %4(%5 [] [] [] bd_id = %bd_id channel = %channel_3) : !amdaie.logicalobjectfifo<memref<2048xi8>>
+// CHECK: amdaie.npu.half_dma_cpy_nd  %4(%0 [] [] [] channel = %channel use_next_bd = false) : !amdaie.logicalobjectfifo<memref<2048xi8, 1 : i32>, 2>
+// CHECK: amdaie.npu.half_dma_cpy_nd  %4(%5 [] [] [] bd_id = %bd_id channel = %channel_3 use_next_bd = false) : !amdaie.logicalobjectfifo<memref<2048xi8>>
         amdaie.npu.dma_cpy_nd %4(%5[] [] [] bd_id = %bd_id, [] [] []) : target_type = !amdaie.logicalobjectfifo<memref<2048xi8>>
-// CHECK: amdaie.npu.half_dma_cpy_nd  %4(%0 [] [] [] channel = %channel) : !amdaie.logicalobjectfifo<memref<2048xi8, 1 : i32>, 2>
-// CHECK: %[[TOKEN_0:.+]] = amdaie.npu.half_dma_cpy_nd async %4(%5 [0, 0, 0, 0] [2, 4, 16, 16] [0, 64, 8, 1] bd_id = %bd_id channel = %channel_3) : !amdaie.logicalobjectfifo<memref<2048xi8>>
+// CHECK: amdaie.npu.half_dma_cpy_nd  %4(%0 [] [] [] channel = %channel use_next_bd = false) : !amdaie.logicalobjectfifo<memref<2048xi8, 1 : i32>, 2>
+// CHECK: %[[TOKEN_0:.+]] = amdaie.npu.half_dma_cpy_nd async %4(%5 [0, 0, 0, 0] [2, 4, 16, 16] [0, 64, 8, 1] bd_id = %bd_id channel = %channel_3 use_next_bd = false) : !amdaie.logicalobjectfifo<memref<2048xi8>>
 // CHECK: amdaie.npu.dma_wait(%[[TOKEN_0]] : !amdaie.async_token)
         %6 = amdaie.npu.dma_cpy_nd async_target %4(%5[0, 0, 0, 0] [2, 4, 16, 16] [0, 64, 8, 1] bd_id = %bd_id, [] [] []) : target_type = !amdaie.logicalobjectfifo<memref<2048xi8>>
         amdaie.npu.dma_wait(%6 : !amdaie.async_target_token)
-// CHECK: amdaie.npu.half_dma_cpy_nd  %4(%0 [] [] [] channel = %channel) : !amdaie.logicalobjectfifo<memref<2048xi8, 1 : i32>, 2>
-// CHECK: %[[TOKEN_1:.+]] = amdaie.npu.half_dma_cpy_nd async %4(%5 [0, 0, 32, 32] [2, 4, 16, 16] [128, 64, 8, 1] bd_id = %bd_id channel = %channel_3) : !amdaie.logicalobjectfifo<memref<2048xi8>>
+// CHECK: amdaie.npu.half_dma_cpy_nd  %4(%0 [] [] [] channel = %channel use_next_bd = false) : !amdaie.logicalobjectfifo<memref<2048xi8, 1 : i32>, 2>
+// CHECK: %[[TOKEN_1:.+]] = amdaie.npu.half_dma_cpy_nd async %4(%5 [0, 0, 32, 32] [2, 4, 16, 16] [128, 64, 8, 1] bd_id = %bd_id channel = %channel_3 use_next_bd = false) : !amdaie.logicalobjectfifo<memref<2048xi8>>
 // CHECK: amdaie.npu.dma_wait(%[[TOKEN_1]] : !amdaie.async_token)
         %7 = amdaie.npu.dma_cpy_nd async_target %4(%5[0, 0, 32, 32] [2, 4, 16, 16] [128, 64, 8, 1] bd_id = %bd_id, [] [] []) : target_type = !amdaie.logicalobjectfifo<memref<2048xi8>>
         amdaie.npu.dma_wait(%7 : !amdaie.async_target_token)

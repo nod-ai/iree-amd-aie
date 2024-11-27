@@ -620,7 +620,9 @@ def AMDAIE_NpuHalfDmaCpyNdOp
         DenseI64ArrayAttr:$static_sizes,
         DenseI64ArrayAttr:$static_strides,
         Optional<Index>:$bd_id,
-        Optional<Index>:$channel
+        Optional<Index>:$channel,
+        BoolAttr:$use_next_bd,
+        Optional<Index>:$next_bd
   );
 
   let results = (outs Optional<AMDAIE_AsyncTokenType>:$async_token);
@@ -635,6 +637,8 @@ def AMDAIE_NpuHalfDmaCpyNdOp
     custom<DynamicIndexList>($strides, $static_strides)
     (`bd_id` `=` $bd_id^)?
     (`channel` `=` $channel^)?
+    `use_next_bd` `=` $use_next_bd
+    (`next_bd` `=` $next_bd^)?
     `)`
     attr-dict 
     `:` type($input)
@@ -645,16 +649,19 @@ def AMDAIE_NpuHalfDmaCpyNdOp
     OpBuilder<(ins "::mlir::TypeRange":$result_types, "Value":$connection,
       "::mlir::Value":$input, "ArrayRef<OpFoldResult>":$offsets,
       "ArrayRef<OpFoldResult>":$sizes, "ArrayRef<OpFoldResult>":$strides,
-      "::mlir::Value":$bd_id, "::mlir::Value":$channel)>,
+      "::mlir::Value":$bd_id, "::mlir::Value":$channel,
+      "bool":$use_next_bd, "::mlir::Value":$next_bd)>,
     // Build a NpuHalfDmaCpyNdOp with static entries.
     OpBuilder<(ins "::mlir::TypeRange":$result_types, "Value":$connection,
       "::mlir::Value":$target, "ArrayRef<int64_t>":$offsets,
       "ArrayRef<int64_t>":$sizes, "ArrayRef<int64_t>":$strides,
-      "::mlir::Value":$bd_id, "::mlir::Value":$channel)>,
+      "::mlir::Value":$bd_id, "::mlir::Value":$channel,
+      "bool":$use_next_bd, "::mlir::Value":$next_bd)>,
     // Build a NpuHalfDmaCpyNdOp with dynamic entries.
     OpBuilder<(ins "::mlir::TypeRange":$result_types, "Value":$connection,
       "::mlir::Value":$input, "ValueRange":$offsets, "ValueRange":$sizes,
-      "ValueRange":$strides, "::mlir::Value":$bd_id, "::mlir::Value":$channel)>
+      "ValueRange":$strides, "::mlir::Value":$bd_id, "::mlir::Value":$channel,
+      "bool":$use_next_bd, "::mlir::Value":$next_bd)>,
   ];
 
   let extraClassDeclaration = [{
@@ -671,6 +678,10 @@ def AMDAIE_NpuHalfDmaCpyNdOp
 
     std::optional<BdIdOp> getBdIdOp() {
       return dyn_cast_if_present<BdIdOp>(getBdId().getDefiningOp());
+    }
+
+    std::optional<BdIdOp> getNextBdIdOp() {
+      return dyn_cast_if_present<BdIdOp>(getNextBd().getDefiningOp());
     }
 
     // Return the input `amdaie.connection` operation.

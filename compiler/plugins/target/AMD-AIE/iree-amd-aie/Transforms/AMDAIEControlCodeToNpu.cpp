@@ -109,8 +109,16 @@ struct HalfDmaCpyNdToNpuConverter final
     staticStrides.insert(staticStrides.begin(),
                          numIntraAddrDim - staticStrides.size(), 0);
 
-    bool useNextBd{false};
+    bool useNextBd = op.getUseNextBd();
     int32_t nextBd{0};
+    if (useNextBd) {
+      std::optional<AMDAIE::BdIdOp> nextBdIdOp = op.getBdIdOp();
+      if (!nextBdIdOp) {
+        return op.emitOpError() << "useNextBd set, but no next BD ID op found";
+      }
+      nextBd = nextBdIdOp.value().getValue();
+    }
+
     bool validBd{true};
     int32_t lockRelVal{0};
     int32_t lockRelId{0};
