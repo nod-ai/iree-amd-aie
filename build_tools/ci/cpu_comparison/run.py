@@ -103,10 +103,10 @@ class BaseTest(ABC):
             return False
 
         # If use_chess=1, and config has not provided a valid
-        # path to vitis, then don't run the test. The asymmetry between
-        # logic for peano and chess is because we don't expect everyone
+        # path to vitis, then don't run the test. The asymmetry between 
+        # logic for peano and chess is because we don't expect everyone 
         # running this script to have chess (currently Windows CI for example
-        # does not).
+        # does not). 
         if self.use_chess and not config.vitis_dir:
             return False
 
@@ -114,6 +114,7 @@ class BaseTest(ABC):
         # path to peano, then bail: a path to peano must be provided.
         if not self.use_chess and not config.peano_dir:
             raise RuntimeError("Peano path not provided, and use_chess=False")
+
 
         # Call into test-specific code to run the test.
         return self._execute(config)
@@ -365,9 +366,7 @@ class MatmulBenchmark(BaseMatmul):
     A test of the form matmul(A,B) where A:MxK, B:KxN
     """
 
-    benchmark_compilation_flags = [
-        "--iree-amdaie-enable-infinite-loop-around-core-block=true"
-    ]
+    benchmark_compilation_flags = ["--iree-amdaie-enable-infinite-loop-around-core-block=true"]
 
     def __init__(
         self,
@@ -751,9 +750,7 @@ def generate_aie_output(config, aie_vmfb, input_args, function_name, name, outpu
     return np_from_binfile(aie_bin, output_type)
 
 
-def benchmark_aie_kernel_time(
-    config, aie_vmfb, input_args, function_name, name, n_repeats, n_kernel_runs
-):
+def benchmark_aie_kernel_time(config, aie_vmfb, input_args, function_name, name, n_repeats, n_kernel_runs):
     """
     Benchmark a compiled AIE module's (aie_vmfb) kernel time, average over the specified number of runs.
     """
@@ -1134,7 +1131,7 @@ def benchmark_aie(
     lower_to_aie_pipeline:
         The pipeline to be used for lowering to AIE (objectFifo, AIR).
     n_repeats:
-        The number of repetitions to be used for getting statistics (mean, median, stddev)
+        The number of repetitions to be used for getting statistics (mean, median, stddev) 
     n_kernel_runs:
         The number of invocations of the kernel, for averaging.
     function_name:
@@ -1144,14 +1141,12 @@ def benchmark_aie(
         The seed to be used for generating the inputs.
     """
     if (
-        "--iree-amdaie-enable-infinite-loop-around-core-block=true"
+        "--iree-amdaie-enable-infinite-loop-around-core-block=true" 
         not in aie_compilation_flags
     ):
-        raise ValueError(
-            "To benchmark an AIE kernel module, the "
-            "`--iree-amdaie-enable-infinite-loop-around-core-block=true` "
-            "should be passed."
-        )
+        raise ValueError("To benchmark an AIE kernel module, the " \
+            "`--iree-amdaie-enable-infinite-loop-around-core-block=true` " \
+            "should be passed.")
 
     name = name_from_mlir_filename(test_file)
     input_args = generate_inputs(test_file, config.output_dir, seed)
@@ -1172,7 +1167,7 @@ def benchmark_aie(
         if config.verbose:
             print(f"Skipping AIE run for {test_file} because 'do_not_run_aie=True'.")
         return
-
+    
     print(f"Performance benchmark: {test_file}")
     benchmark_aie_kernel_time(
         config,
@@ -1354,6 +1349,8 @@ class Tests:
                 run_on_target=["npu4"],
             )
         )
+
+        
 
         # Some bf16 Performance tests:
         for M, N, K, use_ukernel in [
@@ -1574,8 +1571,9 @@ def all_tests(
 
     for test in tests.tests:
 
-        skip = test.name in skip_test_set or any(
-            (label in skip_test_set for label in test.labels)
+        skip = (
+            test.name in skip_test_set or
+            any((label in skip_test_set for label in test.labels))
         )
         if skip:
             not_match.append(test.name)
