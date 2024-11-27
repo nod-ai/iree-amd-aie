@@ -28,7 +28,7 @@ struct AMDAIEOptions {
   // Dump system commands used during compilation
   bool showInvokedCommands{false};
 
-  // Use the chess compiler. The default is to use peano. 
+  // Use the chess compiler. The default is to use peano.
   bool useChess{false};
 
   // Additional flags to run peano's opt with (if peano is the backend compiler

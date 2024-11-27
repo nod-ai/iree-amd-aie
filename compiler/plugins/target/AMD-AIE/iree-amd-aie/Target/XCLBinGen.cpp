@@ -526,37 +526,7 @@ LogicalResult assembleFileUsingChess(const std::string &inputFile,
   return runTool(xChessCCExe, args, verbose, env);
 }
 
-LogicalResult assembleFileUsingPeano(const std::string &inputFile,
-                                     const std::string &outputFile,
-                                     const std::vector<std::string> &extraArgs,
-                                     Path &_tempDir, Path &peanoDir,
-                                     const std::string &_npuVersion,
-                                     bool verbose) {
-  std::vector<std::string> args{
-      "-O2",
-      // TODO(max): pipe target arch in somehow
-      "--target=aie2-none-unknown-elf",
-      //
-      "-fno-use-init-array",
-      // Pass -fno-threadsafe-statics to prevent dependence on lock
-      // acquire/release handling for static local variables.
-      "-fno-threadsafe-statics",
-      // Don't pull in system headers from /usr/include or /usr/local/include.
-      // All of the basic headers that we need come from the compiler.
-      "-nostdsysteminc",
-      //
-      "-c", inputFile,
-      //
-      "-o", outputFile};
-  args.reserve(args.size() + extraArgs.size());
-  args.insert(args.end(), extraArgs.begin(), extraArgs.end());
-  if (verbose) args.emplace_back("-v");
-  return runTool((peanoDir / "bin" / "clang").string(), args, verbose);
-}
-
-static_assert(std::is_same_v<decltype(assembleFileUsingPeano),
-                             decltype(assembleFileUsingChess)>);
-using FileAssemblerT = std::function<decltype(assembleFileUsingPeano)>;
+using FileAssemblerT = std::function<decltype(assembleFileUsingChess)>;
 
 FailureOr<Path> assembleStringUsing(
     const FileAssemblerT &assembler, const std::string &inputFileStr,
@@ -588,12 +558,6 @@ FailureOr<Path> assembleStringUsing(
 static auto assembleStringUsingChess =
     std::bind(assembleStringUsing, assembleFileUsingChess, _1, _2, _3, _4, _5,
               _6, _7, _8, _9);
-static auto assembleStringUsingPeano =
-    std::bind(assembleStringUsing, assembleFileUsingPeano, _1, _2, _3, _4, _5,
-              _6, _7, _8, _9);
-
-static_assert(std::is_same_v<decltype(assembleStringUsingChess),
-                             decltype(assembleStringUsingPeano)>);
 
 // Generate the elf files for the core
 LogicalResult generateCoreElfFiles(AIE::DeviceOp deviceOp,
@@ -1124,8 +1088,8 @@ LogicalResult generateUnifiedObject(
       return failure();
     }
   } else {
-    Path LLVMIRFile = tempDir / "input.ll";
-    if (auto maybeErr = dumpStrToDisk(inputLLStr, LLVMIRFile.string());
+    std::string LLVMIRFile = (tempDir / "input.ll").string();
+    if (auto maybeErr = dumpStrToDisk(inputLLStr, LLVMIRFile);
         maybeErr.has_value()) {
       llvm::errs() << "Failed to dump to disk input.ll"
                    << " because: " << maybeErr;
@@ -1134,7 +1098,7 @@ LogicalResult generateUnifiedObject(
     Path peanoOptBin = peanoDir / "bin" / "opt";
     Path peanoLLCBin = peanoDir / "bin" / "llc";
 
-    Path OptLLVMIRFile = tempDir / "input.opt.ll";
+    std::string OptLLVMIRFile = (tempDir / "input.opt.ll").string();
 
     FailureOr<std::vector<std::string>> peanoArgs =
         mlir::iree_compiler::AMDAIE::detail::makePeanoOptArgs(
@@ -1151,9 +1115,9 @@ LogicalResult generateUnifiedObject(
 
     if (failed(runTool(
             peanoLLCBin.string(),
-            {OptLLVMIRFile.string(), "-O2",
-             "--march=" + StringRef(targetArch).lower(), "--function-sections",
-             "--filetype=obj", "-o", std::string(outputFile)},
+            {OptLLVMIRFile, "-O2", "--march=" + StringRef(targetArch).lower(),
+             "--function-sections", "--filetype=obj", "-o",
+             std::string(outputFile)},
             verbose))) {
       llvm::errs() << "Failed to assemble ll with peano\n";
       return failure();
