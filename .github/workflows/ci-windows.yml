@@ -192,5 +192,5 @@ jobs:
             $PWD/iree-install \
             --peano_dir=$PWD/llvm-aie -v \
             --target_device "npu1_4col" \
-            --device-hal=xrt \
+            --device_hal=xrt \
             --skip_tests "Performance"
