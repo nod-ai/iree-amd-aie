@@ -159,34 +159,6 @@ LogicalResult assignNpuDmaBdIds(AMDAIE::WorkgroupOp workgroupOp) {
             shimTileToGeneratorMap[tileOp.getResult()];
         uint32_t value = bdIdOp.getValue();
         generator.releaseBdId(value);
-        // TODO(zhewen): This is a temporary solution to make any BD ID wrap
-        // occurs only after the NpuDmaWaitOps
-        //
-        // Not allowed (wrap occurs before NpuDmaWaitOps):
-        //     NpuDmaCpyNdOps (id=15),
-        //     NpuDmaCpyNdOps (id=0),  // Wrap happens here
-        //     NpuDmaWaitOps,
-        //     NpuDmaCpyNdOps (id=1),
-        //
-        // Allowed (wrap occurs after NpuDmaWaitOps):
-        //     NpuDmaCpyNdOps (id=14),
-        //     NpuDmaCpyNdOps (id=15),
-        //     NpuDmaWaitOps,
-        //     NpuDmaCpyNdOps (id=0), // Wrap happens here
-        uint32_t countNpuDmaCpyNdOp = 0;
-        auto nextOp = npuWaitOp->getNextNode();
-        while (nextOp && dyn_cast<AMDAIE::NpuDmaWaitOp>(nextOp)) {
-          nextOp = nextOp->getNextNode();
-        }
-        // Local counter for NpuDmaCpyNdOp encountered after the current
-        // NpuDmaWaitOp, but before the next NpuDmaWaitOp.
-        while (nextOp && !dyn_cast<AMDAIE::NpuDmaWaitOp>(nextOp)) {
-          if (dyn_cast_if_present<AMDAIE::NpuDmaCpyNdOp>(nextOp)) {
-            countNpuDmaCpyNdOp++;
-          }
-          nextOp = nextOp->getNextNode();
-        }
-        generator.resetLastUsedBdId(channel, countNpuDmaCpyNdOp);
       }
       return WalkResult::advance();
     }

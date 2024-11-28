@@ -415,7 +415,7 @@ LogicalResult moveNpuSourceDmaSyncAfterTargetDmaCpy(RewriterBase &rewriter,
         // DMA wait op, but only if they belong to the same block.
         for (auto &npuSourceDmaWaitOp : npuSourceDmaWaitOps) {
           if (npuSourceDmaWaitOp->getBlock() == npuDmaWaitOp->getBlock()) {
-            rewriter.moveOpBefore(npuSourceDmaWaitOp, npuDmaWaitOp);
+            rewriter.moveOpAfter(npuSourceDmaWaitOp, npuDmaWaitOp);
           }
         }
         // Clear the list after moving.

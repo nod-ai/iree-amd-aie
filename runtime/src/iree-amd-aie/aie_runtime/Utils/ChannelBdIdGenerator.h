@@ -50,14 +50,6 @@ class ChannelBdIdGenerator {
   /// reused.
   void releaseBdId(uint32_t bdId) { assignedBdIds.erase(bdId); }
 
-  // Resets the last used index for Incremental mode
-  void resetLastUsedBdId(uint32_t channel, uint32_t reservedNum) {
-    size_t maxBdId = channelToValidBdIds[channel].size() - 1;
-    if (lastUsedBdId + reservedNum > maxBdId) {
-      lastUsedBdId = std::numeric_limits<uint32_t>::max();
-    }
-  }
-
  private:
   // Maps channel indices to vectors of valid BD ids.
   DenseMap<uint32_t, SmallVector<uint32_t>> channelToValidBdIds;

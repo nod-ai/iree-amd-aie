@@ -53,7 +53,7 @@ struct DmaCpyNdToHalfDmaCpyNdConverter final
         dmaOp.getLoc(), sourceResultTypes, connectionOp, source,
         dmaOp.getSourceMixedOffsets(), dmaOp.getSourceMixedSizes(),
         dmaOp.getSourceMixedStrides(), dmaOp.getSourceBdId(), sourceChannelOp,
-        useNextBd, nextBd);
+        useNextBd, nextBd, dmaOp.getSourceBdId());
 
     // Convert target half.
     Value target =
@@ -72,7 +72,7 @@ struct DmaCpyNdToHalfDmaCpyNdConverter final
         dmaOp.getLoc(), targetResultTypes, connectionOp, target,
         dmaOp.getTargetMixedOffsets(), dmaOp.getTargetMixedSizes(),
         dmaOp.getTargetMixedStrides(), dmaOp.getTargetBdId(), targetChannelOp,
-        useNextBd, nextBd);
+        useNextBd, nextBd, dmaOp.getTargetBdId());
     if (dmaOp.getNumResults() == 1) {
       if (sourceDma.getNumResults() == 1) {
         rewriter.replaceUsesWithIf(

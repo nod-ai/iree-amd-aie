@@ -112,7 +112,7 @@ struct HalfDmaCpyNdToNpuConverter final
     bool useNextBd = op.getUseNextBd();
     int32_t nextBd{0};
     if (useNextBd) {
-      std::optional<AMDAIE::BdIdOp> nextBdIdOp = op.getBdIdOp();
+      std::optional<AMDAIE::BdIdOp> nextBdIdOp = op.getNextBdIdOp();
       if (!nextBdIdOp) {
         return op.emitOpError() << "useNextBd set, but no next BD ID op found";
       }
@@ -215,6 +215,20 @@ struct HalfDmaCpyNdToNpuConverter final
         strides);
     if (failed(npuPushToQueueOp)) return failure();
     rewriter.replaceOp(op, *npuPushToQueueOp);
+
+    bool useNextBd = op.getUseNextBd();
+    if (useNextBd)
+      // Erase if not end of chain.
+      rewriter.eraseOp(*npuPushToQueueOp);
+    else {
+      std::optional<AMDAIE::BdIdOp> maybeStartBdIdOp = op.getStartBdIdOp();
+      if (maybeStartBdIdOp) {
+        // Update the BD ID with the start of the chain.
+        uint32_t startBdId = maybeStartBdIdOp.value().getValue();
+        uint32_t bdId = maybeBdIdOp.value().getValue();
+        if (startBdId != bdId) npuPushToQueueOp->setBdId(startBdId);
+      }
+    }
     return success();
   }
 
