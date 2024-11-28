@@ -21,9 +21,6 @@ class AMDAIEFuseConsumerIntoLoopPass
  public:
   AMDAIEFuseConsumerIntoLoopPass() = default;
   AMDAIEFuseConsumerIntoLoopPass(const AMDAIEFuseConsumerIntoLoopPass &pass) {}
-  AMDAIEFuseConsumerIntoLoopPass(
-      const AMDAIEFuseConsumerIntoLoopOptions &options)
-      : AMDAIEFuseConsumerIntoLoopBase(options) {}
 
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<scf::SCFDialect>();
@@ -36,7 +33,20 @@ void AMDAIEFuseConsumerIntoLoopPass::runOnOperation() {
   mlir::FunctionOpInterface funcOp = getOperation();
   IRRewriter rewriter(context);
 
-  // Step 1. Find the first scf loop in postorder walk.
+  // Step 1. The depth until which we would keep fusing consumer chain.
+  // TODO(avarma): This should also be part of KernelDispatch logic.
+  unsigned fuseDepth = 1;
+  // Check if there is matmul-elementwise fusion opportunity. If so, overwrite
+  // the `fuseDepth` to be 2.
+  funcOp->walk<WalkOrder::PostOrder, ReverseIterator>([&](linalg::LinalgOp op) {
+    if (isMatmulProducerOfElementwise(op)) {
+      fuseDepth = 2;
+      return WalkResult::interrupt();
+    }
+    return WalkResult::advance();
+  });
+
+  // Step 2. Find the first scf loop in postorder walk.
   Operation *scfLoopOp = nullptr;
   funcOp->walk<WalkOrder::PostOrder, ReverseIterator>(
       [&](LoopLikeOpInterface op) {
@@ -54,7 +64,8 @@ void AMDAIEFuseConsumerIntoLoopPass::runOnOperation() {
                << "There is no scf.for/forall loop to fuse with\n");
     return;
   }
-  // Step 2. Search the compute op and its consumer slices.
+
+  // Step 3. Search the compute op and its consumer slices.
   linalg::LinalgOp linalgOp;
   scfLoopOp->walk<WalkOrder::PostOrder, ReverseIterator>(
       [&](linalg::LinalgOp op) {
@@ -64,14 +75,6 @@ void AMDAIEFuseConsumerIntoLoopPass::runOnOperation() {
   if (!linalgOp) {
     LLVM_DEBUG(llvm::dbgs() << "Could not find any compute op\n");
     return;
-  }
-  // Step 3. The depth until which we would keep fusing consumer chain.
-  // TODO(avarma): This should also be part of KernelDispatch logic.
-  unsigned fuseDepth = 1;
-  // Check if there is matmul-elementwise fusion opportunity. If so, overwrite
-  // the `fuseDepth` to be 2
-  if (isMatmulProducerOfElementwise(linalgOp)) {
-    fuseDepth = 2;
   }
 
   Operation *computeOp = linalgOp;
@@ -111,9 +114,7 @@ void AMDAIEFuseConsumerIntoLoopPass::runOnOperation() {
 
 }  // namespace
 
-std::unique_ptr<Pass> createAMDAIEFuseConsumerIntoLoopPass(
-    AMDAIEFuseConsumerIntoLoopOptions options) {
-  return std::make_unique<AMDAIEFuseConsumerIntoLoopPass>(options);
+std::unique_ptr<Pass> createAMDAIEFuseConsumerIntoLoopPass() {
+  return std::make_unique<AMDAIEFuseConsumerIntoLoopPass>();
 }
-
 }  // namespace mlir::iree_compiler::AMDAIE
