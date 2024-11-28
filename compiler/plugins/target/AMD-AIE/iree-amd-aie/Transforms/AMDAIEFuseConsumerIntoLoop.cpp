@@ -80,7 +80,6 @@ void AMDAIEFuseConsumerIntoLoopPass::runOnOperation() {
   Operation *computeOp = linalgOp;
   // Step 4. Based on the `fuseDepth`, we would greedily fuse the consumer ops.
   for (unsigned depth = 1; depth <= fuseDepth; depth++) {
-    LLVM_DEBUG(llvm::dbgs() << "Compute op = " << (*computeOp) << "\n");
     do {
       Value::user_range users = computeOp->getResult(0).getUsers();
       if (!llvm::hasSingleElement(users)) {
