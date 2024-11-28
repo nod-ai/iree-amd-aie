@@ -97,7 +97,20 @@ def LogicalObjFifoOpInterface : OpInterface<"LogicalObjFifoOpInterface"> {
       /*defaultImplementation=*/[{
         return $_op.getTiles();
       }]
-    >
+    >,
+    InterfaceMethod<
+      /*desc=*/[{
+        A utility to replace this logical objectFifo operation with a new one with new tiles. 
+      }],
+      /*retTy=*/"::llvm::FailureOr<::mlir::iree_compiler::AMDAIE::LogicalObjFifoOpInterface>",
+      /*methodName=*/"replaceWithNewTiles",
+      /*args=*/(ins "::mlir::RewriterBase &":$rewriter,
+                    "::mlir::ValueRange":$tiles),
+      /*methodBody=*/"",
+      /*defaultImplementation=*/[{
+        return $_op.replaceWithNewTiles(rewriter, tiles);
+      }]
+    >,
   ];
 }
 
