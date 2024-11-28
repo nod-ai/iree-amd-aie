@@ -188,17 +188,6 @@ func.func @no_user_of_producer(%arg0: tensor<64xf32>) {
 
 // -----
 
-func.func @parallel_insert_slice_not_found(%arg0: tensor<64xf32>) -> tensor<64xf32> {
-  %0 = scf.forall (%arg1, %arg2) in (1,2) shared_outs(%out = %arg0) -> tensor<64xf32> {
-    %1 = linalg.elemwise_binary {fun = #linalg.binary_fn<add>} ins(%arg0, %arg0 : tensor<64xf32>, tensor<64xf32>) outs(%arg0 : tensor<64xf32>) -> tensor<64xf32>
-    // expected-error @+1 {{Expected either tensor.insert_slice OR tensor.parallel_insert_slice to be the only user of the compute op}}
-    %2 = arith.mulf %1, %out : tensor<64xf32>
-  }
-  return %0 : tensor<64xf32>
-}
-
-// -----
-
 func.func @no_consumer_fusion(%arg0: tensor<64xf32>) -> tensor<64xf32> {
   %0 = scf.forall (%arg1, %arg2) in (1,2) shared_outs(%out = %arg0) -> tensor<64xf32> {
     %1 = linalg.elemwise_binary {fun = #linalg.binary_fn<add>} ins(%arg0, %arg0 : tensor<64xf32>, tensor<64xf32>) outs(%arg0 : tensor<64xf32>) -> tensor<64xf32>
