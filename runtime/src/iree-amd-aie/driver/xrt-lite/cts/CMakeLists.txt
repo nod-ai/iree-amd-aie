@@ -55,7 +55,6 @@ iree_bytecode_module(
     --iree-amd-aie-vitis-install-dir=${VITIS_DIR}
     --iree-amd-aie-enable-chess=$<BOOL:${USE_CHESS}>
     --iree-amdaie-device-hal=xrt-lite
-    --iree-amd-aie-show-invoked-commands
     --iree-hal-memoization=false
     --iree-hal-indirect-command-buffers=false
   PUBLIC

@@ -1143,7 +1143,8 @@ def AMDAIE_LogicalObjectFifoAcquire:
 
 def AMDAIE_LogicalObjectFifoFromBuffersOp
     : AMDAIE_Op<"logicalobjectfifo.from_buffers", 
-    [LogicalObjFifoOpInterface, Pure, AttrSizedOperandSegments]> {
+    [DeclareOpInterfaceMethods<LogicalObjFifoOpInterface, ["replaceWithNewTiles"]>,
+     Pure, AttrSizedOperandSegments]> {
   let summary = "Create a logical objectFifo from a set of buffers";
   let description = [{
     Creates a logical objectFifo which encapsulates a set of memref `buffers`.
@@ -1220,7 +1221,8 @@ def AMDAIE_LogicalObjectFifoFromBuffersOp
 
 def AMDAIE_LogicalObjectFifoFromMemrefOp
     : AMDAIE_Op<"logicalobjectfifo.from_memref", 
-    [LogicalObjFifoOpInterface, Pure]> {
+    [DeclareOpInterfaceMethods<LogicalObjFifoOpInterface, ["replaceWithNewTiles"]>, 
+     Pure]> {
   let summary = "Create a logical objectFifo from a memref";
   let description = [{
     Creates a logical objectFifo which encapsulates a memref. The logical objectFifo
@@ -1294,7 +1296,8 @@ def AMDAIE_LogicalObjectFifoFromMemrefOp
 
 def AMDAIE_LogicalObjectFifoPlaceholderOp: 
     AMDAIE_Op<"logicalobjectfifo.placeholder", [
-      LogicalObjFifoOpInterface, Pure]> {
+      DeclareOpInterfaceMethods<LogicalObjFifoOpInterface, ["replaceWithNewTiles"]>,
+      Pure]> {
   let summary = "A placeholder for a logical objectFifo.";
   let description = [{
     Represents a placeholder for a logical objectFifo. The actual logical
