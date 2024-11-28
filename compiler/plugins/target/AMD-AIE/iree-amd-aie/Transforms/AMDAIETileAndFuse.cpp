@@ -401,7 +401,7 @@ void AMDAIETileAndFusePass::runOnOperation() {
       signalPassFailure();
     }
     auto groupType =
-        tilingLevel == 0 ? GPUGroupType::Block : GPUGroupType::Thread;
+        tilingLevel == 0 || tilingLevel == 1 ? GPUGroupType::Block : GPUGroupType::Thread;
     if (failed(setGpuAttributeOnForall(groupType, loopForAll, consumerOp))) {
       return signalPassFailure();
     }

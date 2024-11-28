@@ -35,6 +35,7 @@ void AMDAIEFuseConsumerIntoLoopPass::runOnOperation() {
 
   // Step 1. The depth until which we would keep fusing consumer chain.
   // TODO(avarma): This should also be part of KernelDispatch logic.
+  // unsigned fuseDepth = 1;
   unsigned fuseDepth = 1;
   // Check if there is matmul-elementwise fusion opportunity. If so, overwrite
   // the `fuseDepth` to be 2.
@@ -62,6 +63,35 @@ void AMDAIEFuseConsumerIntoLoopPass::runOnOperation() {
     return;
   }
 
+  Value::user_range users0 = scfLoopOp->getResult(0).getUsers();
+  if (llvm::hasSingleElement(users0) &&
+      isa<tensor::InsertSliceOp, tensor::ParallelInsertSliceOp>(
+          *(users0.begin()))) {
+    // scfLoopOp->emitOpError("Expected only one user of the compute op");
+    // return signalPassFailure();
+    Operation *terminatorStoreOp0 = *(users0.begin());
+    // if (!()) {
+    //   terminatorStoreOp0->emitOpError(
+    //       "Expected either tensor.insert_slice OR
+    //       tensor.parallel_insert_slice " "to be the only user of the compute
+    //       op");
+    //   return signalPassFailure();
+    // }
+
+    llvm::outs() << "terminatorStoreOp0: " << *terminatorStoreOp0 << "\n";
+
+    std::optional<scf::SCFFuseConsumerOfSliceResult> fusedConsumer0 =
+        scf::tileAndFuseConsumerOfSlice(rewriter, terminatorStoreOp0);
+    if (fusedConsumer0) {
+      fusedConsumer0->origConsumerOperand->getOwner()->erase();
+      // return; // signalPassFailure();
+    } else {
+      terminatorStoreOp0->emitOpError()
+          << "Failed to fuse any loop consumer op into the producer: "
+          << terminatorStoreOp0;
+    }
+  }
+
   // Step 3. Search the compute op and its consumer slices.
   Operation *computeOp;
   scfLoopOp->walk<WalkOrder::PostOrder, ReverseIterator>(
@@ -74,38 +104,63 @@ void AMDAIEFuseConsumerIntoLoopPass::runOnOperation() {
     return;
   }
 
-  // Step 4. Based on the `fuseDepth`, we would greedily fuse the consumer ops.
-  for (unsigned depth = 1; depth <= fuseDepth; depth++) {
-    do {
-      Value::user_range users = computeOp->getResult(0).getUsers();
-      if (!llvm::hasSingleElement(users)) {
-        LLVM_DEBUG(llvm::dbgs()
-                   << "Expected only one user of the compute op\n");
-        return signalPassFailure();
-      }
-
-      Operation *candidateSliceOp = *(users.begin());
-      if (!(isa<tensor::InsertSliceOp, tensor::ParallelInsertSliceOp>(
-              candidateSliceOp))) {
-        computeOp = computeOp->getParentOfType<LoopLikeOpInterface>();
-        LLVM_DEBUG(llvm::dbgs()
-                   << "Going to reattempt fusion because didn't find "
-                      "tensor.insert_slice/tensor.parallel_insert_slice as the "
-                      "user of the compute op\n");
-        continue;
-      }
-      std::optional<scf::SCFFuseConsumerOfSliceResult> fusedConsumer =
-          scf::tileAndFuseConsumerOfSlice(rewriter, candidateSliceOp);
-      if (!fusedConsumer) {
-        candidateSliceOp->emitOpError(
-            "Failed to fuse any consumer op into the producer");
-        return signalPassFailure();
-      }
-      fusedConsumer->origConsumerOperand->getOwner()->erase();
-      computeOp = fusedConsumer->tiledAndFusedConsumerOperand->getOwner();
-      break;
-    } while (computeOp && computeOp->getParentOp() != funcOp);
+  Value::user_range users = computeOp->getResult(0).getUsers();
+  if (!llvm::hasSingleElement(users)) {
+    computeOp->emitOpError("Expected only one user of the compute op");
+    return signalPassFailure();
   }
+
+  Operation *terminatorStoreOp = *(users.begin());
+  if (!(isa<tensor::InsertSliceOp, tensor::ParallelInsertSliceOp>(
+          terminatorStoreOp))) {
+    terminatorStoreOp->emitOpError(
+        "Expected either tensor.insert_slice OR tensor.parallel_insert_slice "
+        "to be the only user of the compute op");
+    return signalPassFailure();
+  }
+
+  std::optional<scf::SCFFuseConsumerOfSliceResult> fusedConsumer =
+      scf::tileAndFuseConsumerOfSlice(rewriter, terminatorStoreOp);
+  if (!fusedConsumer) {
+    terminatorStoreOp->emitOpError()
+        << "Failed to fuse any consumer op into the producer: "
+        << terminatorStoreOp;
+    return;  //  signalPassFailure();
+  }
+  fusedConsumer->origConsumerOperand->getOwner()->erase();
+
+  // // Step 4. Based on the `fuseDepth`, we would greedily fuse the consumer
+  // ops. for (unsigned depth = 1; depth <= fuseDepth; depth++) {
+  //   do {
+  //     Value::user_range users = computeOp->getResult(0).getUsers();
+  //     if (!llvm::hasSingleElement(users)) {
+  //       LLVM_DEBUG(llvm::dbgs()
+  //                  << "Expected only one user of the compute op\n");
+  //       return signalPassFailure();
+  //     }
+
+  //     Operation *candidateSliceOp = *(users.begin());
+  //     if (!(isa<tensor::InsertSliceOp, tensor::ParallelInsertSliceOp>(
+  //             candidateSliceOp))) {
+  //       computeOp = computeOp->getParentOfType<LoopLikeOpInterface>();
+  //       LLVM_DEBUG(llvm::dbgs()
+  //                  << "Going to reattempt fusion because didn't find "
+  //                     "tensor.insert_slice/tensor.parallel_insert_slice as
+  //                     the " "user of the compute op\n");
+  //       continue;
+  //     }
+  //     std::optional<scf::SCFFuseConsumerOfSliceResult> fusedConsumer =
+  //         scf::tileAndFuseConsumerOfSlice(rewriter, candidateSliceOp);
+  //     if (!fusedConsumer) {
+  //       candidateSliceOp->emitOpError(
+  //           "Failed to fuse any consumer op into the producer");
+  //       return signalPassFailure();
+  //     }
+  //     fusedConsumer->origConsumerOperand->getOwner()->erase();
+  //     computeOp = fusedConsumer->tiledAndFusedConsumerOperand->getOwner();
+  //     break;
+  //   } while (computeOp && computeOp->getParentOp() != funcOp);
+  // }
 }
 
 }  // namespace

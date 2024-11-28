@@ -368,6 +368,7 @@ class MatmulBenchmark(BaseMatmul):
         aie_compilation_flags=None,
         n_repeats=1,
         n_kernel_runs=1,
+        use_chess=False,
     ):
         aie_compilation_flags = (
             [] if aie_compilation_flags is None else aie_compilation_flags
@@ -385,6 +386,7 @@ class MatmulBenchmark(BaseMatmul):
             use_ukernel=use_ukernel,
             n_repeats=n_repeats,
             n_kernel_runs=n_kernel_runs,
+            use_chess=use_chess,
         )
 
         self.name = f"vanilla_matmul_benchmark_{M}_{N}_{K}_{input_type}_{acc_type}"
@@ -1181,6 +1183,10 @@ def aie_vs_baseline(
             output_type,
         )
 
+        np.set_printoptions(threshold=sys.maxsize)
+        # print(f"baseline: {baseline_value}")
+        # print(f"aie_output: {aie_output}")
+
         summary_string = compare(baseline_value, aie_output, rtol, atol)
         if summary_string:
             print(summary_string)
@@ -1406,6 +1412,24 @@ class Tests:
                 use_chess=True,
             )
         )
+        self.register(
+            Matmul(
+                512,
+                4096,
+                512,
+                "bf16",
+                "f32",
+                name_suffix="_cache",
+                run_on_target=["npu1_4col"],
+                use_chess=False,
+                additional_labels=["CacheTest"],
+                aie_compilation_flags=[
+                    "--iree-amdaie-num-rows=2",
+                    "--iree-amdaie-num-cols=2",
+                ],
+                use_ukernel=True,
+            )
+        )
 
         for target in ["npu1_4col", "npu4"]:
             use_chess = target == "npu4"
@@ -1441,12 +1465,15 @@ class Tests:
 
         # Some bf16 Performance tests:
         for M, N, K, use_ukernel in [
-            (512, 512, 4096, False),
-            (512, 512, 4096, True),
-            (512, 4096, 512, False),
+            # (512, 512, 4096, False),
+            # (512, 512, 4096, True),
+            # (512, 4096, 512, False),
             (512, 4096, 512, True),
-            (4096, 512, 512, False),
-            (4096, 512, 512, True),
+            # (128, 128, 32, True),
+            # (128, 128, 256, True),
+            # (256, 256, 512, True),
+            # (4096, 512, 512, False),
+            # (4096, 512, 512, True),
         ]:
             self.register(
                 Matmul(
@@ -1469,7 +1496,14 @@ class Tests:
                     additional_labels=["Performance"],
                     use_ukernel=use_ukernel,
                     n_repeats=5,
-                    n_kernel_runs=100,
+                    n_kernel_runs=200,
+                    use_chess=False,
+                    aie_compilation_flags=[
+                        "--iree-amdaie-num-rows=2",
+                        "--iree-amdaie-num-cols=2",
+                        # "--mlir-print-ir-before-all",
+                        # "--debug-only=iree-amdaie-dma-loop-subsumption,iree-amdaie-combine-strided-ops"
+                    ],
                 )
             )
 

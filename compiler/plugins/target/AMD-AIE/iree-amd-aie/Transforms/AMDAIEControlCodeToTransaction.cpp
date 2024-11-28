@@ -220,9 +220,12 @@ LogicalResult convertOp(AMDAIE::NpuDmaWaitOp op, TransactionBuilder &builder) {
 LogicalResult convertOp(AMDAIE::NpuPushToQueueOp op,
                         TransactionBuilder &builder) {
   uint32_t repeatCount = op.getRepeatCount() - 1;
+  bool issueToken{true};
+  // if (op.getBdId() != 0 && op.getBdId() != 4 && op.getBdId() != 8)
+  //   issueToken = false;
   if (failed(builder.appendPushToQueueOp(op.getCol(), op.getRow(),
                                          op.getDirection(), op.getChannel(),
-                                         op.getBdId(), repeatCount, true))) {
+                                         op.getBdId(), repeatCount, issueToken))) {
     return failure();
   }
   return success();
@@ -250,6 +253,11 @@ LogicalResult convertOp(AMDAIE::NpuWriteBdOp op, TransactionBuilder &builder) {
       std::max((int64_t)strides[strides.size() - 2] - 1, (int64_t)0);
   uint32_t d2Stride =
       std::max((int64_t)strides[strides.size() - 3] - 1, (int64_t)0);
+  // uint32_t d0Stride = 0;
+  // uint32_t d1Stride = 0;
+  // uint32_t d2Stride = 0;
+  // uint32_t d0Size = 0;
+  // uint32_t d1Size = 0;
   uint32_t iterationSize =
       std::max((int64_t)op.getIterationSize() - 1, (int64_t)0);
   uint32_t iterationStride =

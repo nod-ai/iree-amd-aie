@@ -68,7 +68,7 @@ static LogicalResult aieComprehensiveBufferizeCopyFn(OpBuilder &builder,
   // post-bufferization copies do not trigger properly.
   // So we keep using `createLinalgCopyOp` which builds a GenericOp.
   // builder.create<linalg::CopyOp>(loc, from, to);
-  mlir::iree_compiler::createLinalgCopyOp(builder, loc, from, to);
+  // mlir::iree_compiler::createLinalgCopyOp(builder, loc, from, to);
   return success();
 }
 
@@ -191,10 +191,32 @@ void addPackPeelBasedPassPipeline(OpPassManager &funcPassManager,
         createAMDAIEBufferizeToAllocationPass(bufferizeOptions));
   }
 
-  // Tile the reduction dimension using scf.for
   {
     AMDAIETileAndFuseOptions tileFuseOptions;
     tileFuseOptions.tilingLevel = 1;
+    tileFuseOptions.useSCFFor = false;
+    funcPassManager.addPass(createAMDAIETileAndFusePass(tileFuseOptions));
+  }
+  funcPassManager.addPass(createAMDAIECleanupPass());
+  funcPassManager.addPass(createCanonicalizerPass());
+  funcPassManager.addPass(createCSEPass());
+
+  // Fuse both levels of pack ops into for loop
+  {
+    AMDAIEFusePackIntoLoopOptions fusePackOptions;
+    // fusePackOptions.fusePackDepth = 2;
+    fusePackOptions.fusePackDepth = 1;
+    fusePackOptions.useSCFFor = false;
+    funcPassManager.addPass(createAMDAIEFusePackIntoLoopPass(fusePackOptions));
+  }
+  funcPassManager.addPass(createCanonicalizerPass());
+  funcPassManager.addPass(createCSEPass());
+
+  // Tile the reduction dimension using scf.for
+  {
+    AMDAIETileAndFuseOptions tileFuseOptions;
+    // tileFuseOptions.tilingLevel = 1;
+    tileFuseOptions.tilingLevel = 2;
     tileFuseOptions.useSCFFor = true;
     tileFuseOptions.tileElementwise = false;
     funcPassManager.addPass(createAMDAIETileAndFusePass(tileFuseOptions));
@@ -206,7 +228,8 @@ void addPackPeelBasedPassPipeline(OpPassManager &funcPassManager,
   // Fuse both levels of pack ops into for loop
   {
     AMDAIEFusePackIntoLoopOptions fusePackOptions;
-    fusePackOptions.fusePackDepth = 2;
+    // fusePackOptions.fusePackDepth = 2;
+    fusePackOptions.fusePackDepth = 1;
     fusePackOptions.useSCFFor = true;
     funcPassManager.addPass(createAMDAIEFusePackIntoLoopPass(fusePackOptions));
   }
@@ -225,7 +248,8 @@ void addPackPeelBasedPassPipeline(OpPassManager &funcPassManager,
   // Second level tiling using scf.forall
   {
     AMDAIETileAndFuseOptions tileFuseOptions;
-    tileFuseOptions.tilingLevel = 2;
+    // tileFuseOptions.tilingLevel = 2;
+    tileFuseOptions.tilingLevel = 3;
     tileFuseOptions.useSCFFor = false;
     tileFuseOptions.tileElementwise = false;
     funcPassManager.addPass(createAMDAIETileAndFusePass(tileFuseOptions));
@@ -268,6 +292,9 @@ void addPackPeelBasedPassPipeline(OpPassManager &funcPassManager,
 
   // Fuse unpack/elementwise consumer ops into the last inner forall loop
   funcPassManager.addPass(createAMDAIEFuseConsumerIntoLoopPass());
+  funcPassManager.addPass(createCanonicalizerPass());
+  funcPassManager.addPass(createCSEPass());
+  funcPassManager.addPass(createAMDAIEFuseConsumerIntoLoopPass());
 
   // Note: canonicalizer pass should not run starting from here until
   // bufferization to avoid creating redundant allocation and data copy.
@@ -301,8 +328,14 @@ void addPackPeelBasedPassPipeline(OpPassManager &funcPassManager,
   }
 
   // Comprehensive bufferization
+  // TODO(jornt): Uncommenting the following lines leads to additional copies!! 
+  // funcPassManager.addPass(createCanonicalizerPass());
+  // funcPassManager.addPass(createCSEPass());
   addAMDAIEBufferizePasses(funcPassManager, useTilePipeline);
   funcPassManager.addPass(createHoistStaticallyBoundAllocationsPass());
+  funcPassManager.addPass(createCanonicalizerPass());
+  funcPassManager.addPass(createCSEPass());
+  funcPassManager.addPass(createCanonicalizerPass());
 }
 
 void addPadPackBasedPassPipeline(OpPassManager &funcPassManager,
@@ -604,15 +637,15 @@ void addAMDAIEObjectFifoLoweringPasses(
   passManager.addPass(createCanonicalizerPass());
 
   passManager.addPass(createAMDAIESplitLogicalObjFifosForConnectionReusePass());
-  // Currently, SplitLogicalObjFifos pass only works for matmul-like ops.
-  if (useTilePipeline == TilePassPipeline::PackPeelPipeline)
-    passManager.addPass(createAMDAIESplitLogicalObjFifosPass());
-  passManager.addPass(createCSEPass());
-  passManager.addPass(createCanonicalizerPass());
+  // // Currently, SplitLogicalObjFifos pass only works for matmul-like ops.
+  // if (useTilePipeline == TilePassPipeline::PackPeelPipeline)
+  //   passManager.addPass(createAMDAIESplitLogicalObjFifosPass());
+  // passManager.addPass(createCSEPass());
+  // passManager.addPass(createCanonicalizerPass());
 
-  passManager.addPass(createAMDAIEAssignTilesPass());
-  passManager.addPass(createCSEPass());
-  passManager.addPass(createCanonicalizerPass());
+  // passManager.addPass(createAMDAIEAssignTilesPass());
+  // passManager.addPass(createCSEPass());
+  // passManager.addPass(createCanonicalizerPass());
 
   passManager.addPass(createAMDAIEDmaToCircularDmaPass());
   passManager.addNestedPass<func::FuncOp>(createAMDAIECreateAIEWorkgroupPass());
@@ -637,16 +670,22 @@ void addAMDAIEObjectFifoLoweringPasses(
   passManager.addPass(createAMDAIEControlCodeForallToForPass());
   passManager.addPass(createCSEPass());
   passManager.addPass(createCanonicalizerPass());
+  passManager.addPass(createAMDAIECanonicalizeDoublyStridedOpPass());
+  passManager.addPass(createCSEPass());
+  passManager.addPass(createCanonicalizerPass());
   passManager.addPass(createAMDAIEDmaCompositionPass());
   passManager.addPass(createCSEPass());
   passManager.addPass(createCanonicalizerPass());
   passManager.addPass(createAMDAIEDmaCSEPass());
 
-  passManager.addPass(createAMDAIEAssignNpuDmaBdIdsPass());
-  passManager.addPass(createCSEPass());
-  passManager.addPass(createCanonicalizerPass());
+  // passManager.addPass(createAMDAIEAssignNpuDmaBdIdsPass());
+  // passManager.addPass(createCSEPass());
+  // passManager.addPass(createCanonicalizerPass());
 
   passManager.addPass(createAMDAIEControlCodeLoopUnrollPass());
+  passManager.addPass(createCSEPass());
+  passManager.addPass(createCanonicalizerPass());
+  passManager.addPass(createAMDAIEAssignNpuDmaBdIdsPass());
   passManager.addPass(createCSEPass());
   passManager.addPass(createCanonicalizerPass());
   passManager.addPass(createAMDAIEDmaCSEPass());

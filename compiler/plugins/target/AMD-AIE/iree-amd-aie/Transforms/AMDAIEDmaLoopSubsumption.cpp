@@ -184,13 +184,13 @@ struct SubsumeLoopIntoDMA
     // TODO(jornt): find a way to annotate the DMA resource(s) being
     // operated on so that this touch checking logic can be implemented in
     // general for different ops.
-    if (op->hasTrait<CircularDmaOp>() &&
-        !hasLoopDependency(op, allInductionValues)) {
-      rewriter.setInsertionPoint(loopOp);
-      Operation *cloneOp = rewriter.clone(*op.getOperation());
-      rewriter.replaceOp(op, cloneOp);
-      return success();
-    }
+    // if (op->hasTrait<CircularDmaOp>() &&
+    //     !hasLoopDependency(op, allInductionValues)) {
+    //   rewriter.setInsertionPoint(loopOp);
+    //   Operation *cloneOp = rewriter.clone(*op.getOperation());
+    //   rewriter.replaceOp(op, cloneOp);
+    //   return success();
+    // }
 
     // Initialize new access pattern offsets/sizes/strides with current values.
     SmallVector<OpFoldResult> newSourceOffsets = op.getSourceMixedOffsets();
@@ -199,6 +199,8 @@ struct SubsumeLoopIntoDMA
     SmallVector<OpFoldResult> newTargetOffsets = op.getTargetMixedOffsets();
     SmallVector<OpFoldResult> newTargetSizes = op.getTargetMixedSizes();
     SmallVector<OpFoldResult> newTargetStrides = op.getTargetMixedStrides();
+
+    LLVM_DEBUG(llvm::dbgs() << "before nb dims\n");
 
     // Verify number of dimensions needed to subsume this loop into the strided
     // access pattern and fail early if there aren't enough dimensions.
@@ -210,15 +212,33 @@ struct SubsumeLoopIntoDMA
       if (nbIterations > 1) nbNonUnitIterations++;
     }
     if (newSourceOffsets.size() + nbNonUnitIterations >
-        dmaDimConfig.sourceMaxNbDims)
+        dmaDimConfig.sourceMaxNbDims) {
+      LLVM_DEBUG(llvm::dbgs() << "newSourceOffsets.size(): "
+                              << newSourceOffsets.size() << "\n");
+      LLVM_DEBUG(llvm::dbgs()
+                 << "nbNonUnitIterations: " << nbNonUnitIterations << "\n");
+      LLVM_DEBUG(llvm::dbgs()
+                 << "dmaDimConfig.sourceMaxNbDims: "
+                 << std::to_string(dmaDimConfig.sourceMaxNbDims) << "\n");
       return failure();
+    }
     if (newTargetOffsets.size() + nbNonUnitIterations >
-        dmaDimConfig.targetMaxNbDims)
+        dmaDimConfig.targetMaxNbDims) {
+      LLVM_DEBUG(llvm::dbgs() << "newTargetOffsets.size(): "
+                              << newTargetOffsets.size() << "\n");
+      LLVM_DEBUG(llvm::dbgs()
+                 << "nbNonUnitIterations: " << nbNonUnitIterations << "\n");
+      LLVM_DEBUG(llvm::dbgs()
+                 << "dmaDimConfig.targetMaxNbDims: "
+                 << std::to_string(dmaDimConfig.targetMaxNbDims) << "\n");
       return failure();
+    }
+
+    LLVM_DEBUG(llvm::dbgs() << "onlyZeroStrideOnOuterDim\n");
 
     // Fail if zero stride is only supported on the outer dimension and adding
     // this loop to the strided access pattern would violate that.
-    if (onlyZeroStrideOnOuterDim) {
+    if (onlyZeroStrideOnOuterDim && !op->hasTrait<CircularDmaOp>()) {
       if (!newSourceStrides.empty()) {
         std::optional<int64_t> outerStride =
             getConstantIntValue(newSourceStrides[0]);
@@ -256,6 +276,8 @@ struct SubsumeLoopIntoDMA
       }
     }
 
+    LLVM_DEBUG(llvm::dbgs() << "before anyOutOfRange\n");
+
     auto anyOutOfRange = [](const SmallVector<int64_t> &values,
                             const SmallVector<int64_t> &maxValues,
                             size_t begin) -> bool {
@@ -290,6 +312,8 @@ struct SubsumeLoopIntoDMA
     SmallVector<int64_t> insertTargetSizes;
     SmallVector<int64_t> insertTargetStrides;
     SmallVector<std::pair<size_t, int64_t>> updateTargetOffsets;
+
+    LLVM_DEBUG(llvm::dbgs() << "before Add the loop iterations\n");
 
     // Add the loop iterations to the DMA access patterns.
     for (auto &&[lb, ub, step, iterationIvValues] :
@@ -347,6 +371,8 @@ struct SubsumeLoopIntoDMA
           return failure();
       }
     }
+
+    LLVM_DEBUG(llvm::dbgs() << "before updateSourceOffsets\n");
 
     // Update the source and target access patterns.
     auto toOpFoldResult =
@@ -535,6 +561,8 @@ struct SubsumeLoopIntoDMA
       }
     } else if (auto npuCircularDmaOp =
                    dyn_cast<AMDAIE::NpuCircularDmaCpyNdOp>(op.getOperation())) {
+      LLVM_DEBUG(llvm::dbgs()
+                 << "npuCircularDmaOp: " << npuCircularDmaOp << "\n");
       // TODO(jornt): Consolidate with `NpuDmaCpyNdOp`.
       sourceMemspaceInt = npuCircularDmaOp.getSourceMemorySpaceAsUInt();
       targetMemspaceInt = npuCircularDmaOp.getTargetMemorySpaceAsUInt();
@@ -566,6 +594,7 @@ struct SubsumeLoopIntoDMA
                                       targetMemspaceInt.value());
 
     if (isa<scf::ForOp>(parentOp)) {
+      LLVM_DEBUG(llvm::dbgs() << "rewriteWithForOpParent\n");
       return rewriteWithForOpParent(op, rewriter, dmaDimConfig);
     } else if (isa<scf::ForallOp>(parentOp)) {
       return rewriteWithForallOpParent(op, rewriter, dmaDimConfig);

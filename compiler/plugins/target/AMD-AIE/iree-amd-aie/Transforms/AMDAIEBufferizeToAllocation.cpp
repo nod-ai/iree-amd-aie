@@ -90,6 +90,30 @@ static FailureOr<SmallVector<Value>> getOperandsFromDefOp(
   return operands;
 }
 
+static FailureOr<SmallVector<Value>> getPackOperands(linalg::LinalgOp linalgOp,
+                                                     uint32_t depthLevel) {
+  SmallVector<Value> operands;
+  for (Value input : linalgOp.getDpsInputs()) {
+    uint32_t currentLevel{0};
+    Operation *currentOp = input.getDefiningOp();
+    while (currentLevel < depthLevel && currentOp != nullptr) {
+      if (dyn_cast<tensor::PackOp>(currentOp)) {
+        currentLevel++;
+        if (currentLevel == depthLevel) break;
+      }
+      currentOp = currentOp->getOperand(0).getDefiningOp();
+    }
+    // The defining op has to be a pack op, fail otherwise.
+    if (!currentOp) {
+      return linalgOp.emitOpError()
+             << "couldn't find a pack operand at level: " << depthLevel;
+    }
+    // We only want to fetch the input operand of the pack op.
+    operands.push_back(currentOp->getResult(0));
+  }
+  return operands;
+}
+
 // This function helps to fetch operands of either a LinalgOp or its defining
 // ops, based on which operands the caller wants to bufferize via
 // `bufferizeOperand` parameter.
@@ -107,7 +131,9 @@ static FailureOr<SmallVector<Value>> getOperandsToBufferize(
       return SmallVector<Value>(linalgOp.getDpsInits());
     /// Create new allocations for operands from the def ops.
     case BufferizeOperand::DefOp:
-      return getOperandsFromDefOp(linalgOp);
+      // return getOperandsFromDefOp(linalgOp);
+      // TODO(jornt): remove hardcoding
+      return getPackOperands(linalgOp, 2);
     default:
       return failure();
   }
@@ -190,6 +216,7 @@ void AMDAIEBufferizeToAllocationPass::runOnOperation() {
   }
 
   for (auto operand : *operandsToBufferize) {
+    llvm::outs() << "operandsToBufferize: " << *operand.getDefiningOp() << "\n";
     AMDAIEMemSpaceAttr memorySpaceAttr =
         getMemorySpaceAttr(rewriter, memorySpace);
     rewriter.setInsertionPointAfter(operand.getDefiningOp());

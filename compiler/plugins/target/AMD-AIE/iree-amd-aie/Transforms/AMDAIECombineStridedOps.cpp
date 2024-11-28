@@ -25,6 +25,8 @@ namespace mlir::iree_compiler::AMDAIE {
 
 namespace {
 
+using mlir::OpTrait::iree_compiler::AMDAIE::CircularDmaOp;
+
 struct CombineStridedOps
     : public OpInterfaceRewritePattern<AMDAIE::DoublyStridedOpInterface> {
   using OpInterfaceRewritePattern::OpInterfaceRewritePattern;
@@ -113,6 +115,11 @@ struct CombineStridedOps
     bool areTargetsCombinable = areAccessPatternsCombinable(
         targetOffsetsA, targetSizesA, targetStridesA, targetOffsetsB,
         targetSizesB, targetStridesB, targetMaxNbDims);
+
+    LLVM_DEBUG(llvm::dbgs()
+               << "areSourcesCombinable: " << areSourcesCombinable << "\n");
+    LLVM_DEBUG(llvm::dbgs()
+               << "areTargetsCombinable: " << areTargetsCombinable << "\n");
 
     if (areSourcesCombinable && areTargetsCombinable) {
       SmallVector<OpFoldResult> newSourceOffsets;

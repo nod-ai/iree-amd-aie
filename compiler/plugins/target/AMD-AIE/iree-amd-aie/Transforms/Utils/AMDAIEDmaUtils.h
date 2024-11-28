@@ -232,10 +232,12 @@ struct DmaDimConfig {
       : deviceModel(deviceModel) {
     uint8_t shimNbIntraDims = deviceModel.getDmaProp<uint8_t>(
         AMDAIE::AMDAIETileType::SHIMNOC, AMDAIE::AMDAIEDmaProp::NumAddrDim);
-    uint8_t memTileNbIntraDims = deviceModel.getDmaProp<uint8_t>(
-        AMDAIE::AMDAIETileType::MEMTILE, AMDAIE::AMDAIEDmaProp::NumAddrDim);
-    uint8_t coreNbIntraDims = deviceModel.getDmaProp<uint8_t>(
-        AMDAIE::AMDAIETileType::AIETILE, AMDAIE::AMDAIEDmaProp::NumAddrDim);
+    // uint8_t memTileNbIntraDims = deviceModel.getDmaProp<uint8_t>(
+    //     AMDAIE::AMDAIETileType::MEMTILE, AMDAIE::AMDAIEDmaProp::NumAddrDim);
+    uint8_t memTileNbIntraDims = 8;
+    // uint8_t coreNbIntraDims = deviceModel.getDmaProp<uint8_t>(
+    //     AMDAIE::AMDAIETileType::AIETILE, AMDAIE::AMDAIEDmaProp::NumAddrDim);
+    uint8_t coreNbIntraDims = 6;
     if (sourceMemspaceInt == 0) {
       sourceTileType = AMDAIE::AMDAIETileType::SHIMNOC;
       sourceMaxNbDims = shimNbIntraDims + kAMDAIEDmaNbInterDims;
@@ -314,6 +316,7 @@ struct DmaDimConfig {
           sourceTileType, 0, AMDAIE::AMDAIEDmaBdProp::WrapMax);
       maxInterSize = deviceModel.getDmaBdProp<uint8_t>(
           sourceTileType, 0, AMDAIE::AMDAIEDmaBdProp::IterWrapMax);
+      maxInterSize = 128;
       SmallVector<int64_t> stepSizes(sourceMaxNbDims, maxIntraSize);
       stepSizes[0] = maxInterSize;
       // The outermost intra size doesn't have limit in HW.
@@ -324,6 +327,7 @@ struct DmaDimConfig {
           targetTileType, 0, AMDAIE::AMDAIEDmaBdProp::WrapMax);
       maxInterSize = deviceModel.getDmaBdProp<uint8_t>(
           targetTileType, 0, AMDAIE::AMDAIEDmaBdProp::IterWrapMax);
+      maxInterSize = 128;
       SmallVector<int64_t> stepSizes(targetMaxNbDims, maxIntraSize);
       stepSizes[0] = maxInterSize;
       // The outermost intra size doesn't have limit in HW.

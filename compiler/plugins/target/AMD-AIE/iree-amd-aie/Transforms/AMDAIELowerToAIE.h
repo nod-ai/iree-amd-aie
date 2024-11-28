@@ -66,13 +66,16 @@ class AIEDeviceBuilder {
 
   /// Utility to convert vectors of `size` and `stride` into an
   /// `AIE::BDDimLayoutArrayAttr`.
-  AIE::BDDimLayoutArrayAttr convertSizeStrideToBDDimLayoutArrayAttr(
-      const SmallVector<OpFoldResult> &sizes,
-      const SmallVector<OpFoldResult> &strides, uint8_t memSpace);
+  std::pair<AIE::BDDimLayoutArrayAttr, int64_t>
+  convertSizeStrideToBDDimLayoutArrayAttr(ArrayRef<OpFoldResult> sizes,
+                                          ArrayRef<OpFoldResult> strides,
+                                          uint8_t memSpace, size_t start = 0,
+                                          bool skipZero = true);
 
   /// Utility to create DMA blocks and add them to `memOp`.
   void createDMA(Operation *memOp, AIE::DMAChannelDir channelDir,
-                 int channelIndex, AIE::BDDimLayoutArrayAttr dims,
+                 int channelIndex, ArrayRef<OpFoldResult> sizes,
+                 ArrayRef<OpFoldResult> strides, uint8_t memSpace,
                  size_t acqNum, size_t relNum, int64_t len, int64_t offset,
                  const SmallVector<AIE::BufferOp> &bufferOps,
                  const std::pair<AIE::LockOp, AIE::LockOp> &locks,

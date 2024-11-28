@@ -41,10 +41,10 @@ namespace mlir::iree_compiler::AMDAIE {
 // AIEDeviceBuilder utilities
 //===----------------------------------------------------------------------===//
 
-AIE::BDDimLayoutArrayAttr
+std::pair<AIE::BDDimLayoutArrayAttr, int64_t>
 AIEDeviceBuilder::convertSizeStrideToBDDimLayoutArrayAttr(
-    const SmallVector<OpFoldResult> &sizes,
-    const SmallVector<OpFoldResult> &strides, uint8_t memSpace) {
+    ArrayRef<OpFoldResult> sizes, ArrayRef<OpFoldResult> strides,
+    uint8_t memSpace, size_t start, bool skipZero) {
   assert(sizes.size() == strides.size() &&
          "expected stride and size vectors of same size");
   // Fold remaining dimensions, assuming zero offsets as offsets should be taken
@@ -54,27 +54,52 @@ AIEDeviceBuilder::convertSizeStrideToBDDimLayoutArrayAttr(
   SmallVector<OpFoldResult> newOffsets;
   SmallVector<OpFoldResult> newSizes;
   SmallVector<OpFoldResult> newStrides;
-  foldDims(offsets, sizes, strides, newOffsets, newSizes, newStrides, memSpace);
+  // foldDims(offsets, sizes, strides, newOffsets, newSizes, newStrides,
+  // memSpace);
+  newOffsets =
+      llvm::map_to_vector(offsets, [&](OpFoldResult ofr) { return ofr; });
+  newSizes = llvm::map_to_vector(sizes, [&](OpFoldResult ofr) { return ofr; });
+  newStrides =
+      llvm::map_to_vector(strides, [&](OpFoldResult ofr) { return ofr; });
 
   SmallVector<AIE::BDDimLayoutAttr, 4> bdDimLayoutAttr;
   // If the access pattern (strides/sizes) have a single dimension, make it
   // implicit with an empty `BDDimLayoutAttr` as this is what the AIE dialect
   // expects.
-  if (newStrides.size() == 1) {
+  if (newStrides.size() == 1 && start == 0) {
     std::optional<int64_t> stride = getConstantIntValue(newStrides[0]);
     if (stride && stride.value() == 1) {
-      return AIE::BDDimLayoutArrayAttr::get(rewriter.getContext(),
-                                            ArrayRef(bdDimLayoutAttr));
+      return {AIE::BDDimLayoutArrayAttr::get(rewriter.getContext(),
+                                             ArrayRef(bdDimLayoutAttr)),
+              0};
     }
   }
   bdDimLayoutAttr.reserve(newSizes.size());
-  for (auto [size, stride] : llvm::zip(newSizes, newStrides)) {
-    bdDimLayoutAttr.push_back(AIE::BDDimLayoutAttr::get(
-        rewriter.getContext(), getConstantIntValue(size).value(),
-        getConstantIntValue(stride).value()));
+  // for (auto [size, stride] : llvm::zip(newSizes, newStrides)) {
+  int64_t transferLength = 1;
+  for (int i = start; i < newSizes.size(); i++) {
+    OpFoldResult size = newSizes[i];
+    OpFoldResult stride = newStrides[i];
+    int64_t strideVal;
+    // Skip zero strides as should be handled already.
+    if (isConstantIntValue(stride, 0)) {
+      if (skipZero) {
+        continue;
+      } else {
+        strideVal = 1;
+      }
+    } else {
+      strideVal = getConstantIntValue(stride).value();
+    }
+    if (isConstantIntValue(size, 1)) continue;
+    int64_t sizeVal = getConstantIntValue(size).value();
+    transferLength *= sizeVal;
+    bdDimLayoutAttr.push_back(
+        AIE::BDDimLayoutAttr::get(rewriter.getContext(), sizeVal, strideVal));
   }
-  return AIE::BDDimLayoutArrayAttr::get(rewriter.getContext(),
-                                        ArrayRef(bdDimLayoutAttr));
+  return {AIE::BDDimLayoutArrayAttr::get(rewriter.getContext(),
+                                         ArrayRef(bdDimLayoutAttr)),
+          transferLength};
 }
 
 /// Create a new `aie.dma_start` op with a sequence of DMA BD blocks within the
@@ -97,8 +122,9 @@ AIEDeviceBuilder::convertSizeStrideToBDDimLayoutArrayAttr(
 ///    aie.next_bd ^bb1
 void AIEDeviceBuilder::createDMA(
     Operation *memOp, AIE::DMAChannelDir channelDir, int channelIndex,
-    AIE::BDDimLayoutArrayAttr dims, size_t acqNum, size_t relNum, int64_t len,
-    int64_t offset, const SmallVector<AIE::BufferOp> &bufferOps,
+    ArrayRef<OpFoldResult> sizes, ArrayRef<OpFoldResult> strides,
+    uint8_t memSpace, size_t acqNum, size_t relNum, int64_t len, int64_t offset,
+    const SmallVector<AIE::BufferOp> &bufferOps,
     const std::pair<AIE::LockOp, AIE::LockOp> &locks,
     std::optional<uint8_t> pktId) {
   OpBuilder::InsertionGuard g(rewriter);
@@ -116,41 +142,172 @@ void AIEDeviceBuilder::createDMA(
                                    &endBlock);
   if (lastDmaBlock) lastDmaBlock->getTerminator()->setSuccessor(dmaBlock, 1);
 
-  auto createBdBlockOps = [&](AIE::BufferOp buff, Block *succ) {
+  auto createBdBlockOps = [&](AIE::BufferOp buff, Block *succ,
+                              AIE::BDDimLayoutArrayAttr dims,
+                              bool shouldAcqLock, bool shouldRelLock,
+                              int64_t transferLength, int64_t addOffset = 0) {
     AIE::LockOp acqLock = locks.first, relLock = locks.second;
-    rewriter.create<AIE::UseLockOp>(rewriter.getUnknownLoc(), acqLock,
-                                    AIE::LockAction::AcquireGreaterEqual,
-                                    acqNum);
-    // Insert a packet op for MM2S DMAs if part of a packet flow. Only do this
-    // for MM2S DMA ports as only those can insert packet headers.
+    if (shouldAcqLock) {
+      rewriter.create<AIE::UseLockOp>(rewriter.getUnknownLoc(), acqLock,
+                                      AIE::LockAction::AcquireGreaterEqual,
+                                      acqNum);
+    }
+    // Insert a packet op for MM2S DMAs if part of a packet flow. Only do
+    // this for MM2S DMA ports as only those can insert packet headers.
     if (channelDir == AIE::DMAChannelDir::MM2S && pktId) {
       rewriter.create<AIE::DMABDPACKETOp>(rewriter.getUnknownLoc(),
                                           /*pkt_type*/ 0,
                                           /*pkt_id*/ pktId.value());
     }
     if (!dims.getValue().empty()) {
-      rewriter.create<AIE::DMABDOp>(rewriter.getUnknownLoc(), buff, offset, len,
-                                    dims);
+      rewriter.create<AIE::DMABDOp>(rewriter.getUnknownLoc(), buff,
+                                    offset + addOffset, transferLength, dims);
     } else {
-      rewriter.create<AIE::DMABDOp>(rewriter.getUnknownLoc(), buff, offset,
-                                    len);
+      rewriter.create<AIE::DMABDOp>(rewriter.getUnknownLoc(), buff,
+                                    offset + addOffset, transferLength);
     }
-    rewriter.create<AIE::UseLockOp>(rewriter.getUnknownLoc(), relLock,
-                                    AIE::LockAction::Release, relNum);
+    if (shouldRelLock) {
+      rewriter.create<AIE::UseLockOp>(rewriter.getUnknownLoc(), relLock,
+                                      AIE::LockAction::Release, relNum);
+    }
     rewriter.create<AIE::NextBDOp>(rewriter.getUnknownLoc(), succ);
   };
 
   // Create Bd blocks.
   Block *succ = nullptr, *curr = bdBlock;
   for (size_t blockIndex = 0; blockIndex < bufferOps.size(); ++blockIndex) {
-    if (blockIndex == bufferOps.size() - 1) {
-      succ = bdBlock;
+    // TODO: hardcoded
+    // bool firstCirc = sizes.size() == 4 && getConstantIntValue(sizes[0]) ==
+    // 256 &&
+    //     getConstantIntValue(sizes[1]) == 2;
+    // bool firstSecondCirc = sizes.size() == 6 && getConstantIntValue(sizes[0])
+    // == 256 &&
+    //     getConstantIntValue(sizes[1]) == 2;
+    // bool secondCirc = sizes.size() == 5 && getConstantIntValue(sizes[0]) ==
+    // 128 &&
+    //            getConstantIntValue(sizes[1]) == 2
+    // 128x128x32
+    // bool firstCirc = sizes.size() == 4 && getConstantIntValue(strides[0]) ==
+    // 0 &&
+    //     getConstantIntValue(strides[1]) == 2048;
+    // bool firstSecondCirc = sizes.size() == 5 &&
+    // getConstantIntValue(strides[0]) == 0 &&
+    //     getConstantIntValue(strides[1]) == 2048;
+    // bool secondCirc = sizes.size() == 4 && getConstantIntValue(strides[0]) ==
+    // 2048 &&
+    //     getConstantIntValue(strides[1]) == 0;
+    // bool secondSecondCirc = sizes.size() == 5 &&
+    // getConstantIntValue(strides[0]) == 2048 &&
+    //     getConstantIntValue(strides[1]) == 0;
+    // 128x128x256: 16384
+    // int64_t addOffset = 32768;
+    // bool firstCirc = sizes.size() == 4 && getConstantIntValue(strides[0]) ==
+    // 0 &&
+    //     getConstantIntValue(strides[1]) == addOffset;
+    // bool firstSecondCirc = sizes.size() == 6 &&
+    // getConstantIntValue(strides[0]) == 0 &&
+    //     getConstantIntValue(strides[1]) == addOffset;
+    // bool secondCirc = sizes.size() == 4 && getConstantIntValue(strides[0]) ==
+    // addOffset &&
+    //     getConstantIntValue(strides[1]) == 0;
+    // bool secondSecondCirc = sizes.size() == 6 &&
+    // getConstantIntValue(strides[0]) == addOffset &&
+    //     getConstantIntValue(strides[1]) == 0;
+    // 256x256x512: 32768
+    int64_t addOffset = 32768;
+    bool firstCirc = sizes.size() == 4 &&
+                     getConstantIntValue(strides[0]) == 0 &&
+                     getConstantIntValue(strides[1]) == addOffset;
+    bool firstSecondCirc = sizes.size() == 6 &&
+                           getConstantIntValue(strides[0]) == 0 &&
+                           getConstantIntValue(strides[1]) == addOffset;
+    bool secondCirc = sizes.size() == 5 &&
+                      getConstantIntValue(strides[1]) == addOffset &&
+                      getConstantIntValue(strides[2]) == 0;
+    bool secondSecondCirc = sizes.size() == 7 &&
+                            getConstantIntValue(strides[1]) == addOffset &&
+                            getConstantIntValue(strides[2]) == 0;
+    if (firstCirc || firstSecondCirc) {
+      LLVM_DEBUG(llvm::dbgs() << "FIRST FIRST\n");
+      // AIE::BDDimLayoutArrayAttr dims;
+      // if (firstCirc)
+      //   dims = convertSizeStrideToBDDimLayoutArrayAttr(sizes, strides, 1);
+      // else
+      //   dims = convertSizeStrideToBDDimLayoutArrayAttr(sizes, strides, 1);
+      // auto [dims, transferLength] =
+      // convertSizeStrideToBDDimLayoutArrayAttr(sizes, strides, 0, false);
+      auto [dims, transferLength] =
+          convertSizeStrideToBDDimLayoutArrayAttr(sizes, strides, memSpace, 1);
+      for (int i = 0; i < 2; i++) {
+        if (blockIndex == bufferOps.size() - 1 && i == 1) {
+          succ = bdBlock;
+        } else {
+          succ = rewriter.createBlock(&endBlock);
+        }
+        rewriter.setInsertionPointToStart(curr);
+        // int64_t divLen = 2;
+        createBdBlockOps(bufferOps[blockIndex], succ, dims, i == 0, i == 1,
+                         transferLength, 0);
+        curr = succ;
+      }
+      // if (blockIndex == bufferOps.size() - 1) {
+      //   succ = bdBlock;
+      // } else {
+      //   succ = rewriter.createBlock(&endBlock);
+      // }
+      // rewriter.setInsertionPointToStart(curr);
+      // createBdBlockOps(bufferOps[blockIndex], succ, dims, true, true,
+      // transferLength); curr = succ;
+    } else if (secondCirc || secondSecondCirc) {
+      LLVM_DEBUG(llvm::dbgs() << "SECOND\n");
+      // AIE::BDDimLayoutArrayAttr dims =
+      //     convertSizeStrideToBDDimLayoutArrayAttr(sizes, strides, 3);
+      // AIE::BDDimLayoutArrayAttr dims =
+      //     convertSizeStrideToBDDimLayoutArrayAttr(sizes, strides, 0);
+      // auto [dims, transferLength] =
+      //     convertSizeStrideToBDDimLayoutArrayAttr(sizes, strides, 0, false);
+      auto [dims, transferLength] =
+          convertSizeStrideToBDDimLayoutArrayAttr(sizes, strides, memSpace, 3);
+      for (int i = 0; i < 2; i++) {
+        for (int j = 0; j < 2; j++) {
+          if (blockIndex == bufferOps.size() - 1 && i == 1 && j == 1) {
+            succ = bdBlock;
+          } else {
+            succ = rewriter.createBlock(&endBlock);
+          }
+          rewriter.setInsertionPointToStart(curr);
+          bool acqLock = (i == 0) && (j == 0);
+          bool relLock = (i == 1) && (j == 1);
+          // int64_t addOffset = i * 32768;
+          // int64_t addOffset = i * 2048;
+          createBdBlockOps(bufferOps[blockIndex], succ, dims, acqLock, relLock,
+                           transferLength, i * addOffset);
+          curr = succ;
+        }
+      }
+      // if (blockIndex == bufferOps.size() - 1) {
+      //   succ = bdBlock;
+      // } else {
+      //   succ = rewriter.createBlock(&endBlock);
+      // }
+      // rewriter.setInsertionPointToStart(curr);
+      // createBdBlockOps(bufferOps[blockIndex], succ, dims, true, true,
+      // transferLength); curr = succ;
     } else {
-      succ = rewriter.createBlock(&endBlock);
+      // AIE::BDDimLayoutArrayAttr dims =
+      //     convertSizeStrideToBDDimLayoutArrayAttr(sizes, strides);
+      auto [dims, transferLength] =
+          convertSizeStrideToBDDimLayoutArrayAttr(sizes, strides, memSpace);
+      if (blockIndex == bufferOps.size() - 1) {
+        succ = bdBlock;
+      } else {
+        succ = rewriter.createBlock(&endBlock);
+      }
+      rewriter.setInsertionPointToStart(curr);
+      createBdBlockOps(bufferOps[blockIndex], succ, dims, true, true,
+                       transferLength);
+      curr = succ;
     }
-    rewriter.setInsertionPointToStart(curr);
-    createBdBlockOps(bufferOps[blockIndex], succ);
-    curr = succ;
   }
 }
 
@@ -289,10 +446,10 @@ LogicalResult AIEDeviceBuilder::coreFuncCallOpToAIE(
   auto fnDecl = dyn_cast_if_present<func::FuncOp>(
       SymbolTable::lookupSymbolIn(moduleOp, fnName));
   assert(fnDecl && "expected function declaration");
-  // Check the mapper to see if we've already created a new function declaration
-  // with the new function type. If not, create the same. We need to create a
-  // new function declaration because the caller's function type has changed by
-  // this point.
+  // Check the mapper to see if we've already created a new function
+  // declaration with the new function type. If not, create the same. We need
+  // to create a new function declaration because the caller's function type
+  // has changed by this point.
   if (!mapper.contains(fnDecl.getOperation())) {
     OpBuilder::InsertionGuard g(rewriter);
     auto symbolTableOp = SymbolTable::getNearestSymbolTable(oldCallOp);
@@ -426,10 +583,11 @@ LogicalResult AIEDeviceBuilder::bufferToAIE(AMDAIE::BufferOp bufferOp,
 /// Convert the `amdaie.connection` operation into `aie.flow` ops and DMA
 /// operations. Depending on the location of the source/target of the
 /// connection, different DMA ops are created:
-/// 1. Source/target on a Shim tile: iterate through producer/consumer channels
-/// and create corresponding `aie.shim_dma_allocation` ops.
+/// 1. Source/target on a Shim tile: iterate through producer/consumer
+/// channels and create corresponding `aie.shim_dma_allocation` ops.
 /// 2. Source/target on MemTile: iterate through producer/consumer channels,
-/// lookup the correct `aie.memtile_dma` op and create new DMA BD blocks inside.
+/// lookup the correct `aie.memtile_dma` op and create new DMA BD blocks
+/// inside.
 /// 3. Source/target on MemTile: iterate through producer/consumer channels,
 /// lookup the correct `aie.mem` op and create new DMA BD blocks inside.
 LogicalResult AIEDeviceBuilder::connectionToAIE(
@@ -510,16 +668,12 @@ LogicalResult AIEDeviceBuilder::connectionToAIE(
       return maybeNpuDmaUserOp->emitOpError()
              << "expected to have a source memory space";
     }
-    AIE::BDDimLayoutArrayAttr dims = convertSizeStrideToBDDimLayoutArrayAttr(
-        maybeNpuDmaUserOp->getSourceMixedSizes(),
-        maybeNpuDmaUserOp->getSourceMixedStrides(),
-        maybeSourceMemSpace.value());
     SmallVector<CopyOpInterface> objFifoProducers =
         sourceObjFifo.getCopyLikeProducers();
     SmallVector<CopyOpInterface> objFifoConsumers =
         sourceObjFifo.getCopyLikeConsumers();
-    // Default acquire/release value is 1. Will be adjusted depending on number
-    // of producers/consumers.
+    // Default acquire/release value is 1. Will be adjusted depending on
+    // number of producers/consumers.
     int acqNum{1};
     if (objFifoConsumers.size() < objFifoProducers.size()) {
       assert(objFifoProducers.size() % objFifoConsumers.size() == 0);
@@ -557,9 +711,11 @@ LogicalResult AIEDeviceBuilder::connectionToAIE(
           std::make_pair(consumerLocks[0], producerLocks[0]);
       rewriter.moveOpBefore(memOp, deviceBlock,
                             deviceBlock->without_terminator().end());
-      createDMA(memOp, AIE::DMAChannelDir::MM2S, channel.getValue(), dims,
-                acqNum, acqNum, maybeSize.value(), maybeOffset.value(), buffers,
-                lockPair, packetId);
+      createDMA(memOp, AIE::DMAChannelDir::MM2S, channel.getValue(),
+                maybeNpuDmaUserOp->getSourceMixedSizes(),
+                maybeNpuDmaUserOp->getSourceMixedStrides(),
+                maybeSourceMemSpace.value(), acqNum, acqNum, maybeSize.value(),
+                maybeOffset.value(), buffers, lockPair, packetId);
     }
   }
 
@@ -606,16 +762,12 @@ LogicalResult AIEDeviceBuilder::connectionToAIE(
       return maybeNpuDmaUserOp->emitOpError()
              << "expected to have a target memory space";
     }
-    AIE::BDDimLayoutArrayAttr dims = convertSizeStrideToBDDimLayoutArrayAttr(
-        maybeNpuDmaUserOp->getTargetMixedSizes(),
-        maybeNpuDmaUserOp->getTargetMixedStrides(),
-        maybeTargetMemSpace.value());
     SmallVector<CopyOpInterface> objFifoProducers =
         targetObjFifo.getCopyLikeProducers();
     SmallVector<CopyOpInterface> objFifoConsumers =
         targetObjFifo.getCopyLikeConsumers();
-    // Default acquire/release value is 1. Will be adjusted depending on number
-    // of producers/consumers.
+    // Default acquire/release value is 1. Will be adjusted depending on
+    // number of producers/consumers.
     int acqNum{1};
     if (objFifoProducers.size() < objFifoConsumers.size()) {
       assert(objFifoConsumers.size() % objFifoProducers.size() == 0);
@@ -653,14 +805,16 @@ LogicalResult AIEDeviceBuilder::connectionToAIE(
           std::make_pair(producerLocks[0], consumerLocks[0]);
       rewriter.moveOpBefore(memOp, deviceBlock,
                             deviceBlock->without_terminator().end());
-      createDMA(memOp, AIE::DMAChannelDir::S2MM, channel.getValue(), dims,
-                acqNum, acqNum, maybeSize.value(), maybeOffset.value(), buffers,
-                lockPair, packetId);
+      createDMA(memOp, AIE::DMAChannelDir::S2MM, channel.getValue(),
+                maybeNpuDmaUserOp->getTargetMixedSizes(),
+                maybeNpuDmaUserOp->getTargetMixedStrides(),
+                maybeTargetMemSpace.value(), acqNum, acqNum, maybeSize.value(),
+                maybeOffset.value(), buffers, lockPair, packetId);
     }
   }
 
-  // Keep track of source/target mem ops for this connection for later retrieval
-  // to create NPU ops.
+  // Keep track of source/target mem ops for this connection for later
+  // retrieval to create NPU ops.
   connectionToSourceTargetMemOps[connectionOp] =
       std::make_pair(sourceMemOps, targetMemOps);
   return success();
@@ -811,13 +965,13 @@ LogicalResult AIEDeviceBuilder::workgroupToAIE(AMDAIE::WorkgroupOp workgroupOp,
           return WalkResult::advance();
         })
         .Case<AMDAIE::ChannelOp>([&](auto channelOp) {
-          // Channel ops are purely used for retrieving information in other ops
-          // so don't convert to AIE dialect.
+          // Channel ops are purely used for retrieving information in other
+          // ops so don't convert to AIE dialect.
           return WalkResult::advance();
         })
         .Case<AMDAIE::CircularDmaCpyNdOp>([&](auto dmaOp) {
-          dmaOp.emitOpError()
-              << "`amdaie.circular_dma_cpy_nd` unsupported in lowering to AIE";
+          dmaOp.emitOpError() << "`amdaie.circular_dma_cpy_nd` unsupported "
+                                 "in lowering to AIE";
           return WalkResult::interrupt();
         })
         .Case<AMDAIE::ConnectionOp>([&](auto dmaOp) {
@@ -827,8 +981,8 @@ LogicalResult AIEDeviceBuilder::workgroupToAIE(AMDAIE::WorkgroupOp workgroupOp,
           return WalkResult::advance();
         })
         .Case<AMDAIE::ControlCodeOp>([&](auto controlCodeOp) {
-          // Skip control code as it should already be translated into firmware
-          // code at this point.
+          // Skip control code as it should already be translated into
+          // firmware code at this point.
           // TODO(jornt): currently, it still contains ops that are needed in
           // this translation, but don't have to be translated themselves.
           return WalkResult::skip();
@@ -900,8 +1054,8 @@ LogicalResult AIEDeviceBuilder::workgroupToAIE(AMDAIE::WorkgroupOp workgroupOp,
 
 /// Convert a `ModuleOp` contents to the AIE dialect by inserting a
 /// `AIE::DeviceOp` into the module for every encountered `FuncOp`, and then
-/// traverse the function build the AIE device operation and convert all AMDAIE
-/// dialect operations to AIE dialect operations.
+/// traverse the function build the AIE device operation and convert all
+/// AMDAIE dialect operations to AIE dialect operations.
 LogicalResult AIEDeviceBuilder::lowerToAIE(ModuleOp moduleOp) {
   Block *moduleBlock = &moduleOp->getRegion(0).front();
   xilinx::AIE::AIEDevice aieDevice = static_cast<xilinx::AIE::AIEDevice>(
@@ -950,8 +1104,8 @@ LogicalResult AIEDeviceBuilder::lowerToAIE(ModuleOp moduleOp) {
 
     SmallVector<AMDAIE::WorkgroupOp> workgroupOps;
     funcOp->walk([&](AMDAIE::WorkgroupOp op) { workgroupOps.push_back(op); });
-    // Only a single workgroup op is supported as only a single `aie.device` is
-    // created.
+    // Only a single workgroup op is supported as only a single `aie.device`
+    // is created.
     if (workgroupOps.size() > 1) {
       funcOp.emitOpError()
           << "multiple `amdaie.workgroup` ops is not supported";

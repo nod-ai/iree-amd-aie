@@ -231,7 +231,8 @@ FailureOr<ParameterSetting> ParameterSetting::create(
     uint32_t K1 = 0;
     uint32_t K0 = 1;
     uint32_t maxL1SizeK = 16 * scaleFactor;
-    uint32_t k0Pack = findLargestFactor(K, maxL1SizeK);
+    uint32_t kPackScale = 2; // 1; // 2;
+    uint32_t k0Pack = findLargestFactor(K, kPackScale * maxL1SizeK);
 
     // Instead of directly packing to (1, 1, M0, N0), the new strategy is making
     // the pack size as (numRows, numCols, M0/numRows, N0/numCols) to avoid the
@@ -240,6 +241,12 @@ FailureOr<ParameterSetting> ParameterSetting::create(
     // instruction size).
     uint32_t m0Pack = (M0 / numRows) % m1Pack == 0 ? (M0 / numRows) : M0;
     uint32_t n0Pack = (N0 / numCols) % n1Pack == 0 ? (N0 / numCols) : N0;
+    llvm::outs() << "m0Pack: " << m0Pack << "\n";
+    llvm::outs() << "n0Pack: " << n0Pack << "\n";
+    llvm::outs() << "k0Pack: " << k0Pack << "\n";
+    llvm::outs() << "m1Pack: " << m1Pack << "\n";
+    llvm::outs() << "n1Pack: " << n1Pack << "\n";
+    llvm::outs() << "k1Pack: " << k1Pack << "\n";
 
     return ParameterSetting{M0,     N0,     K0,     M1,     N1,     K1,
                             m0Pack, n0Pack, k0Pack, m1Pack, n1Pack, k1Pack};
@@ -365,7 +372,8 @@ static LogicalResult setRootConfigForPackPeelPipeline(
   if (isa<linalg::BatchMatmulOp>(linalgOp)) {
     outerPermVec.push_back(2);
   }
-  SmallVector<SmallVector<int64_t>> outerPerm = {outerPermVec};
+  // SmallVector<SmallVector<int64_t>> outerPerm = {outerPermVec};
+  SmallVector<SmallVector<int64_t>> outerPerm = {{1, 0}};
   auto packingConfigLevel0Attr = getPackingConfigPackingLevelAttr(
       context, packedSizesL0, transposePackIndices, unpackEmpty, innerPerm,
       outerPerm);
@@ -395,6 +403,7 @@ static LogicalResult setRootConfigForPackPeelPipeline(
   if (isa<linalg::BatchMatmulOp>(linalgOp)) {
     outerPerm = {{0, 1, 2, 4, 3}, {0, 1, 2, 4, 3}, {0, 1, 2, 4, 3}};
   } else {
+    // outerPerm = {{0, 1, 3, 2}, {0, 1, 3, 2}, {0, 1, 3, 2}};
     outerPerm = {{0, 1, 3, 2}, {0, 1, 3, 2}, {0, 1, 3, 2}};
   }
   auto packingConfigLevel1Attr = getPackingConfigPackingLevelAttr(
@@ -411,10 +420,14 @@ static LogicalResult setRootConfigForPackPeelPipeline(
   // ------------------------------------------------------
   // -------------- Set lowering config -------------------
   // ------------------------------------------------------
-  SmallVector<int64_t> tileSizeLevel0 = {packPeelTiling.getM0(),
-                                         packPeelTiling.getN0()};
-  SmallVector<int64_t> tileSizeLevel1 = {0, 0, packPeelTiling.getK0()};
-  SmallVector<int64_t> tileSizeLevel2 = {1, 1, 0, 0, 0, 0};
+  SmallVector<int64_t> tileSizeLevel0 = {packPeelTiling.getM0() * 2,
+                                         packPeelTiling.getN0() * 2};
+  SmallVector<int64_t> tileSizeLevel1 = {2, 2, 0};
+  SmallVector<int64_t> tileSizeLevel2 = {0, 0, 1};
+  // SmallVector<int64_t> tileSizeLevel2 = {0, 0, 1};
+  // SmallVector<int64_t> tileSizeLevel1 = {1, 1, 0};
+  SmallVector<int64_t> tileSizeLevel3 = {1, 1, 0, 0, 0, 0};
+  // SmallVector<int64_t> tileSizeLevel2 = {0, 0, 1, 0, 0, 0};
 
   if (isa<linalg::BatchMatmulOp>(linalgOp)) {
     tileSizeLevel0.insert(tileSizeLevel0.begin(), 1);
@@ -423,7 +436,7 @@ static LogicalResult setRootConfigForPackPeelPipeline(
   }
 
   TileSizesListType tileSizes = {tileSizeLevel0, tileSizeLevel1,
-                                 tileSizeLevel2};
+                                 tileSizeLevel2, tileSizeLevel3};
   if (failed(setOpConfigAndEntryPointFnTranslation(
           entryPointFn, linalgOp, tileSizes,
           IREE::Codegen::DispatchLoweringPassPipeline::Custom))) {
